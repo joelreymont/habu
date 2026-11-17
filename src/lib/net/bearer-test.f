@@ -2,9 +2,11 @@
 \ ISSUER! and ISSUER! or METADATA! while serving, the 503 of a key set that
 \ cannot be fetched, key selection among an EC key, an encryption key and the
 \ token's, the 401 challenges, plain and naming METADATA!'s URL, its scope or
-\ both, a METADATA! URL holding a quote or CR LF and a scope holding a quote
-\ or two spaces refused, malformed tokens, alg none, crit and HS256, repeated
-\ member names, aud, iss, exp and nbf, claim strings, CLAIM-HOLDS? on string,
+\ both, a METADATA! URL holding a quote or CR LF or lacking the well-known
+\ segment and a scope holding a quote or two spaces refused, ISSUER!, CLIENT!
+\ and METADATA! refusing http but to a loopback IP literal, the metadata
+\ route's body, malformed tokens, alg none, crit and HS256, repeated member
+\ names, aud, iss, exp and nbf, claim strings, CLAIM-HOLDS? on string, scope,
 \ number and absent claims and an array holding nested values and an escape,
 \ CLAIM$ after the admitted request, CLAIM$ and CLAIM-HOLDS? in a task it
 \ spawns, the refetch window, a cached kid answered while a fetch is in
@@ -49,7 +51,7 @@ CAP BUFFER: BODY
 variable BODY-U
 CAP BUFFER: HEADS
 variable HEADS-U
-5 SPAN-BUFFER: HELD
+10 SPAN-BUFFER: HELD
 
 $1000 constant TOKEN-CAP
 TOKEN-CAP SPAN-BUFFER: TOKEN
@@ -148,19 +150,32 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : PLAIN-ROUTE ( HTTP:request HTTP:response -- )
    nip [: AZP-BODY ;] HTTP:JSON! ;
 
+: FLAG! ( bool n -- )
+   {: at:n :}
+   if [char] t else [char] f then
+   HELD at 1 SPAN:SUB SPAN:$ drop c! ;
+
 : HELD! ( ^u8 n ^u8 n n -- )
    {: at:n :}
-   BEARER:CLAIM-HOLDS? if [char] t else [char] f then
-   HELD at 1 SPAN:SUB SPAN:$ drop c! ;
+   BEARER:CLAIM-HOLDS? at FLAG! ;
+
+: APP-1? ( ^u8 n bool -- bool )
+   if s" app-1" STR= else 2drop false then ;
 
 : ROLES-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    asked answer BEARER:ADMIT? 0= if exit then
+   s" azp" BEARER:CLAIM$ {: azp:^ zu:n found:bool :}
    s" roles" s" Areas.Read" 0 HELD!
    s" roles" s" Areas.Write" 1 HELD!
    s" azp" s" app-1" 2 HELD!
    s" tid" s" 7" 3 HELD!
    s" oid" s" o-1" 4 HELD!
+   s" scp" s" b" 5 HELD!
+   s" scp" s" c" 6 HELD!
+   s" scp" s" d" 7 HELD!
+   s" scp" s" a b" 8 HELD!
+   azp zu found APP-1? 9 FLAG!
    answer HELD SPAN:$ HTTP:BODY! ;
 
 : CLAIM-FLAG ( -- )
@@ -263,10 +278,10 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\""
    REFUSED ;
 : BOTH ( n -- )
-   S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\", scope=\"tender.read tender.write\""
+   S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write\""
    REFUSED ;
 : BOTH-INVALID ( n -- )
-   S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\", scope=\"tender.read tender.write\""
+   S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource/mcp\", scope=\"tender.read tender.write\""
    REFUSED ;
 : SCOPED ( n -- ) S\" Bearer scope=\"tender.read tender.write\"" REFUSED ;
 : SCOPED-INVALID ( n -- )
@@ -411,6 +426,9 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" an aud array without the audience is invalid" T-LABEL
    KID-A S\" {\"iss\":\"https://issuer.test\",\"aud\":[\"other\"],\"exp\":"
    LATER WHO CLAIMS MINT SEND INVALID
+   s" an aud string holding the audience among other words is invalid" T-LABEL
+   KID-A S\" {\"iss\":\"https://issuer.test\",\"aud\":\"api://bearer-test other\",\"exp\":"
+   LATER WHO CLAIMS MINT SEND INVALID
    s" another aud is invalid" T-LABEL
    KID-A S\" {\"iss\":\"https://issuer.test\",\"aud\":\"other\",\"exp\":"
    LATER WHO CLAIMS MINT SEND INVALID
@@ -454,10 +472,10 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    S\" {\"azp\":\"app-1\",\"oid\":null,\"tid\":null}" ANSWERED ;
 
 : HOLDINGS ( -- )
-   s" CLAIM-HOLDS? finds a string as a claim or an array element past nested values, decoded, and nothing else" T-LABEL
+   s" CLAIM-HOLDS? finds a string as a claim, a word of a scope or an array element past nested values, decoded, and nothing else, and leaves CLAIM$'s answer" T-LABEL
    KID-A ISS-AUD LATER
-   S\" ,\"azp\":\"app-1\",\"roles\":[{\"r\":\"Areas.Write\"},[\"Areas.Write\"],\"Areas\\u002eRead\"],\"tid\":7}"
-   CLAIMS MINT s" /roles" OPEN BEARING FINISH s" tftff" ANSWERED ;
+   S\" ,\"azp\":\"app-1\",\"roles\":[{\"r\":\"Areas.Write\"},[\"Areas.Write\"],\"Areas\\u002eRead\"],\"tid\":7,\"scp\":\"a b c\"}"
+   CLAIMS MINT s" /roles" OPEN BEARING FINISH s" tftffttfft" ANSWERED ;
 
 \ The unguarded route on the admitted request's kept-alive connection, which
 \ the same worker serves.
@@ -539,6 +557,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    HITS atomic@ 4 T= ;
 
 : METADATA$ ( -- ^u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
+: MCP$ ( -- ^u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource/mcp" ;
 : REPLACED$ ( -- ^u8 n ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
 : SCOPE$ ( -- ^u8 n ) s" tender.read tender.write" ;
 
@@ -546,7 +565,11 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" with a URL and a scope no Authorization challenges Bearer naming both" T-LABEL
    s" /claims" OPEN FINISH BOTH
    s" with a URL and a scope a changed signature byte is invalid, naming both" T-LABEL
-   KID-A CURRENT MINT FLIP SEND BOTH-INVALID ;
+   KID-A CURRENT MINT FLIP SEND BOTH-INVALID
+   s" the metadata route names the resource below the well-known segment, the issuer and the scopes" T-LABEL
+   s" /.well-known/oauth-protected-resource/mcp" OPEN FINISH
+   S\" {\"resource\":\"https://bearer-test.example/mcp\",\"authorization_servers\":[\"https://issuer.test\"],\"scopes_supported\":[\"tender.read\",\"tender.write\"]}"
+   ANSWERED ;
 
 : SCOPE-ONLY ( -- )
    s" with only a scope no Authorization challenges Bearer naming the scope" T-LABEL
@@ -558,7 +581,59 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" with METADATA! no Authorization challenges Bearer naming the metadata" T-LABEL
    s" /claims" OPEN FINISH NAMED
    s" with METADATA! a changed signature byte is invalid, naming the metadata" T-LABEL
-   KID-A CURRENT MINT FLIP SEND NAMED-INVALID ;
+   KID-A CURRENT MINT FLIP SEND NAMED-INVALID
+   s" the metadata route names the authority with no path, and no scopes_supported for an empty scope" T-LABEL
+   s" /.well-known/oauth-protected-resource" OPEN FINISH
+   S\" {\"resource\":\"https://bearer-test.example\",\"authorization_servers\":[\"https://issuer.test\"]}"
+   ANSWERED ;
+
+: NAMED-HOST$ ( -- ^u8 n ) s" http://bearer-test.example/keys" ;
+: LOCALHOST$ ( -- ^u8 n ) s" http://localhost:8080/keys" ;
+: V4$ ( -- ^u8 n ) s" http://127.0.0.1:8080/keys" ;
+: V6$ ( -- ^u8 n ) s" http://[::1]:8080/keys" ;
+: SECURE$ ( -- ^u8 n ) s" https://bearer-test.example/keys" ;
+
+: ISSUED-AT ( ^u8 n -- )
+   {: url:^ uu:n :}
+   s" https://issuer.test" s" api://bearer-test" url uu BEARER:ISSUER! ;
+
+: CLIENT-AT ( ^u8 n -- ) s" app" s" " BEARER:CLIENT! ;
+
+\ Leaves ISSUER! and CLIENT! stating SECURE$.
+: URL-CASES ( -- )
+   s" ISSUER! rejects an http URL to a named host" T-LABEL
+   [: NAMED-HOST$ ISSUED-AT ;] BEARER:E-OPERAND TTHROWSQ
+   s" ISSUER! rejects http://localhost" T-LABEL
+   [: LOCALHOST$ ISSUED-AT ;] BEARER:E-OPERAND TTHROWSQ
+   s" ISSUER! rejects an http iss to a named host" T-LABEL
+   [: s" http://bearer-test.example" s" api://bearer-test" SECURE$ BEARER:ISSUER! ;]
+   BEARER:E-OPERAND TTHROWSQ
+   s" ISSUER! passes URI's rejection of user information" T-LABEL
+   [: s" http://127.0.0.1@evil.example/keys" ISSUED-AT ;] E-URI-HOST TTHROWSQ
+   s" CLIENT! rejects an http URL to a named host" T-LABEL
+   [: NAMED-HOST$ CLIENT-AT ;] BEARER:E-OPERAND TTHROWSQ
+   s" CLIENT! rejects http://localhost" T-LABEL
+   [: LOCALHOST$ CLIENT-AT ;] BEARER:E-OPERAND TTHROWSQ
+   s" ISSUER! and CLIENT! accept http to 127.0.0.1 and [::1], and https" T-LABEL
+   V4$ ISSUED-AT V6$ ISSUED-AT SECURE$ ISSUED-AT
+   V4$ CLIENT-AT V6$ CLIENT-AT SECURE$ CLIENT-AT ;
+
+: METADATA-AT ( ^u8 n -- ) SCOPE$ BEARER:METADATA! ;
+
+: METADATA-ACCEPTS ( -- )
+   s" METADATA! accepts http to 127.0.0.1 and [::1]" T-LABEL
+   s" http://127.0.0.1:8080/.well-known/oauth-protected-resource" METADATA-AT
+   s" http://[::1]:8080/.well-known/oauth-protected-resource/mcp" METADATA-AT ;
+
+: METADATA-REJECTS ( -- )
+   s" METADATA! rejects an http URL to a named host" T-LABEL
+   [: s" http://bearer-test.example/.well-known/oauth-protected-resource" METADATA-AT ;]
+   BEARER:E-OPERAND TTHROWSQ
+   s" METADATA! rejects http://localhost" T-LABEL
+   [: s" http://localhost:8080/.well-known/oauth-protected-resource" METADATA-AT ;]
+   BEARER:E-OPERAND TTHROWSQ
+   s" METADATA! rejects a URL without the well-known segment" T-LABEL
+   [: s" https://bearer-test.example/mcp" METADATA-AT ;] BEARER:E-OPERAND TTHROWSQ ;
 
 
 : ROUTES ( -- )
@@ -568,7 +643,10 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" GET" s" /plain" [: PLAIN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /spawn" [: SPAWN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /roles" [: ROLES-ROUTE ;] HTTP:ROUTE
-   s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE ;
+   s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /.well-known/oauth-protected-resource" [: BEARER:RESOURCE-METADATA ;] HTTP:ROUTE
+   s" GET" s" /.well-known/oauth-protected-resource/mcp" [: BEARER:RESOURCE-METADATA ;]
+   HTTP:ROUTE ;
 
 : EARLY ( -- )
    LOOPBACK 0 THREE-WORKERS IDLE-MS HTTP:START
@@ -603,10 +681,11 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    UNAVAILABLE ADMITTED UNKNOWN-KID NO-TOKEN MALFORMED SIGNATURES AUDIENCES
    TIMES STRINGS HOLDINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
    HTTP:STOP
+   URL-CASES
    ISSUE
    \ METADATA! is refused while serving, so its challenges are immutable
    \ configuration for a server's run: each statement gets a start of its own.
-   METADATA$ SCOPE$ BEARER:METADATA!
+   MCP$ SCOPE$ BEARER:METADATA!
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
    FRESH METADATA-SCOPE
    HTTP:STOP
@@ -614,20 +693,26 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
    SCOPE-ONLY
    HTTP:STOP
+   METADATA-ACCEPTS
    \ The second statement replaces the first.
    REPLACED$ SCOPE$ BEARER:METADATA!
    METADATA$ s" " BEARER:METADATA!
    \ A refused call installs neither of its texts: METADATA$'s challenges stay
    \ in force, as METADATA asserts.
    s" METADATA! with a quote in its URL throws E-OPERAND" T-LABEL
-   [: s\" https://bearer-test.example/\"x" SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   [: s\" https://bearer-test.example/.well-known/oauth-protected-resource/\"x"
+      SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
    s" METADATA! with CR LF in its URL throws E-OPERAND" T-LABEL
-   [: s\" https://bearer-test.example/\r\nX-Injected: 1" SCOPE$ BEARER:METADATA! ;]
-   BEARER:E-OPERAND TTHROWSQ
+   [: s\" https://bearer-test.example/.well-known/oauth-protected-resource/\r\nX-Injected: 1"
+      SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   s" METADATA! with a byte above $7E in its URL throws E-OPERAND" T-LABEL
+   [: s\" https://bearer-test.example/.well-known/oauth-protected-resource/\xFF"
+      SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
    s" METADATA! with a quote in its scope throws E-OPERAND" T-LABEL
    [: REPLACED$ s\" tender.read \"x" BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
    s" METADATA! with two spaces between scope tokens throws E-OPERAND" T-LABEL
    [: REPLACED$ s" tender.read  tender.write" BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   METADATA-REJECTS
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
    METADATA
    HTTP:STOP

@@ -6,11 +6,13 @@
 \ `req res BEARER:ADMIT? if ... then` and reads the caller's claims with CLAIM$
 \ and CLAIM-HOLDS?. METADATA! names this server's protected-resource metadata
 \ (RFC 9728 5.1) and the scope its tokens need (RFC 6750 3) in each 401
-\ challenge. As a client, TOKEN gets a token from the token endpoint CLIENT!
-\ names, for the client itself (RFC 6749 4.4) or for a person (Entra
-\ On-Behalf-Of), and REFRESH renews one with a refresh grant (RFC 6749 6).
-\ STORAGE CLASS. PROCESS-WIDE: the issuer and the challenges naming the
-\ metadata and scope, written before HTTP serves; the key set, read and
+\ challenge, and RESOURCE-METADATA answers that metadata's GET (RFC 9728 3).
+\ As a client, TOKEN gets a token from the token endpoint CLIENT! names, for
+\ the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
+\ REFRESH renews one with a refresh grant (RFC 6749 6). Every URL BEARER
+\ fetches or advertises is https, or http to a loopback IP literal for tests.
+\ STORAGE CLASS. PROCESS-WIDE: the issuer, and the challenges, resource and
+\ scope METADATA! states, written before HTTP serves; the key set, read and
 \ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
 \ time; the counts of workers waiting for that fetch and of fetches returned,
 \ under KEYS-LOCK, and the semaphore that wakes them, which ISSUER! sets up;
@@ -46,7 +48,7 @@ public
 
 -9630 s" no answer from the token endpoint" ERROR:CODE E-TRANSFER
 -9631 s" the issuer refused with a 4xx a retry will not change" ERROR:CODE E-REFUSED
--9632 s" a METADATA! text holds a byte its quoted challenge value cannot carry, or a scope is not space-separated scope tokens"
+-9632 s" a URL is not https (state https, or http only to 127.0.0.0/8 or [::1]), a METADATA! URL is not /.well-known/oauth-protected-resource right after its authority, then nothing or a path with no query or fragment (insert the segment before the resource's path; drop the query and fragment), a METADATA! URL holds a quote, backslash, control or non-ASCII byte (percent-encode it), or a scope is not tokens of printable ASCII but quote and backslash one space apart (remove the other bytes and spaces)"
    ERROR:CODE E-OPERAND
 -9633 s" the token endpoint answered a status a retry may change" ERROR:CODE E-UNAVAILABLE
 -9634 s" the token endpoint answered a reply TOKEN or REFRESH cannot use" ERROR:CODE E-RESPONSE
@@ -74,16 +76,26 @@ PTR-VARIABLE KEYS-URL-AT   SCRATCH-VARIABLE KEYS-URL-LEN
 : AUDIENCE ( -- SPAN:span<u8> ) AUDIENCE-AT @ AUDIENCE-LEN @ SPAN:MAKE ;
 : KEYS-URL ( -- SPAN:span<u8> ) KEYS-URL-AT @ KEYS-URL-LEN @ SPAN:MAKE ;
 
-\ NAMED-LEN bytes at NAMED, an allocation holding the two challenges naming
-\ METADATA!'s URL and scope, the no-token one's NAMED-U bytes first; empty while
-\ neither is stated. A built program starts with the plain challenges: NAMED is
-\ a PTR-VARIABLE and NAMED-LEN and NAMED-U are scratch cells, each written as 0
-\ in the product.
+\ NAMED-LEN bytes at NAMED, an allocation holding METADATA!'s statement: the
+\ two challenges naming its URL and scope, CHALLENGES-U bytes, the no-token
+\ one's NAMED-U bytes first; then the resource its URL names, RESOURCE-U
+\ bytes, none without a URL; then the scope. Empty while neither is stated. A
+\ built program starts with the plain challenges: NAMED is a PTR-VARIABLE and
+\ the lengths are scratch cells, each written as 0 in the built program.
 PTR-VARIABLE NAMED
 variable NAMED-LEN   NAMED-LEN scratch-cell-mark
 variable NAMED-U   NAMED-U scratch-cell-mark
+variable CHALLENGES-U   CHALLENGES-U scratch-cell-mark
+variable RESOURCE-U   RESOURCE-U scratch-cell-mark
 
 : NAMED-SPAN ( -- SPAN:span<u8> ) NAMED @ NAMED-LEN @ SPAN:MAKE ;
+: CHALLENGES ( -- SPAN:span<u8> ) NAMED-SPAN CHALLENGES-U @ SPAN:TAKE ;
+
+: RESOURCE$ ( -- ^u8 n )
+   NAMED-SPAN CHALLENGES-U @ SPAN:SKIP RESOURCE-U @ SPAN:TAKE SPAN:$ ;
+
+: SCOPE$ ( -- ^u8 n )
+   NAMED-SPAN CHALLENGES-U @ RESOURCE-U @ + SPAN:SKIP SPAN:$ ;
 
 \ The key set's text, under KEYS-LOCK (never held across the network) with
 \ KEYS-AT, FETCHING, WAITERS and ROUND; FETCHED is the flagged fetcher's alone.
@@ -101,10 +113,12 @@ TASK:FACILITY KEYS-LOCK
 KEYS-LOCK TASK:FACILITY-INIT
 
 \ A worker's scratch: the decoded segments, no longer than the token and so
-\ than the head; a note holding the kid, then CLAIM$'s answer; the key.
+\ than the head; a note holding the kid, then CLAIM$'s answer; the string
+\ claim CLAIM-HOLDS? splits, apart from the note CLAIM$ lends; the key.
 0 constant SEGMENTS-OFF
 HTTP:HEAD-CAP constant NOTE-OFF
-HTTP:HEAD-CAP 2 * constant MODULUS-OFF
+HTTP:HEAD-CAP 2 * constant WORDS-OFF
+HTTP:HEAD-CAP 3 * constant MODULUS-OFF
 MODULUS-OFF CRYPTO:RS256-MAX-BYTES + constant EXPONENT-OFF
 EXPONENT-OFF EXPONENT-CAP + constant SCRATCH-BYTES
 HTTP:MAX-WORKERS SCRATCH-BYTES * SPAN-BUFFER: SCRATCH
@@ -182,11 +196,15 @@ TASK:+USER FROM n
    MEMBER JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
-: NOTE$ ( ^u8 n ^u8 n -- ^u8 n bool )
-   NOTE-OFF HTTP:HEAD-CAP ROOM {: note :}
+\ A string member decoded into the room; false when it is absent or no string.
+: DECODED$ ( ^u8 n ^u8 n SPAN:span<u8> -- ^u8 n bool )
+   {: room :}
    MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
-   note SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE
-   note SPAN:$ drop got true ;
+   room SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE
+   room SPAN:$ drop got true ;
+
+: NOTE$ ( ^u8 n ^u8 n -- ^u8 n bool )
+   NOTE-OFF HTTP:HEAD-CAP ROOM DECODED$ ;
 
 
 \ The token of the sole Authorization, when its scheme is Bearer, compared
@@ -405,6 +423,29 @@ ENUM lookup-step
 
 : AUDIENCE? ( -- bool ) CLAIMS$ s" aud" AUDIENCE SPAN:$ HOLDS? ;
 
+\ The offset of the first space at or after from, or the end.
+: SPACE-AT ( ^u8 n n -- n )
+   {: t:^ u:n from:n :}
+   u from ?do t i + c@ $20 = if i unloop exit then loop u ;
+
+\ Whether the name is one of the text's words from the offset on, runs of
+\ bytes but spaces.
+: WORD-FROM? ( ^u8 n ^u8 n n -- bool )
+   {: t:^ u:n w:^ wu:n from:n :}
+   from begin {: at:n :} at u < while
+      t u at SPACE-AT {: to:n :}
+      to at > if t at + to at - w wu STR= if true exit then then
+      to 1+
+   repeat false ;
+
+\ A string claim splits into words here, where AUDIENCE? compares aud whole
+\ (RFC 7519 4.1.3).
+: HELD? ( ^u8 n ^u8 n -- bool )
+   {: name:^ nu:n w:^ wu:n :}
+   WORDS-OFF HTTP:HEAD-CAP ROOM {: room :}
+   CLAIMS$ name nu room DECODED$ if w wu 0 WORD-FROM? exit then
+   2drop CLAIMS$ name nu w wu HOLDS? ;
+
 : VALID? ( n -- bool )
    {: now:n :}
    CLAIMS$ s" iss" ISSUER SPAN:$ false MEMBER-IS? 0= if false exit then
@@ -433,7 +474,7 @@ ENUM lookup-step
 \ The challenge for NO-TOKEN or INVALID.
 : CHALLENGE$ ( n -- ^u8 n )
    {: outcome:n :}
-   NAMED-SPAN {: named :}
+   CHALLENGES {: named :}
    named SPAN:LEN 0= if
       outcome NO-TOKEN = if s" Bearer" exit then
       S\" Bearer error=\"invalid_token\"" exit
@@ -483,16 +524,40 @@ ENUM lookup-step
    {: past-sep:n :}
    SCOPE-NAME scope su row past-sep PARAM ;
 
-: COMPOSED ( ^u8 n ^u8 n -- SPAN:span<u8> n )
-   {: url:^ uu:n scope:^ su:n :}
-   uu 0= su 0= and if s" " SPAN:MAKE 0 exit then
+: CHALLENGES-LEN ( n n -- n )
+   {: uu:n su:n :}
+   uu 0= su 0= and if 0 exit then
    METADATA-NAME nip uu PARAM-LEN SCOPE-NAME nip su PARAM-LEN +
    uu 0<> su 0<> and if SEPARATOR nip + then {: params:n :}
-   NAMED-PREFIX nip INVALID-PREFIX nip + params 2 * +
-   MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: row :}
+   NAMED-PREFIX nip INVALID-PREFIX nip + params 2 * + ;
+
+\ RFC 9728 3.1: the segment METADATA!'s URL holds between its authority and
+\ the resource's path.
+: WELL-KNOWN ( -- ^u8 n ) s" /.well-known/oauth-protected-resource" ;
+
+: RESOURCE-LEN ( n -- n ) dup 0= if exit then WELL-KNOWN nip - ;
+
+\ The resource the URL names, its bytes but the well-known segment at end.
+: RESOURCE+ ( ^u8 n n SPAN:span<u8> n -- n )
+   {: url:^ uu:n end:n row off:n :}
+   uu 0= if off exit then
+   url end row off PUT {: past:n :}
+   end WELL-KNOWN nip + {: from:n :}
+   url from + uu from - row past PUT ;
+
+\ METADATA!'s statement as NAMED holds it: the allocation, NAMED-U and
+\ CHALLENGES-U; the well-known segment starts at end.
+: COMPOSED ( ^u8 n ^u8 n n -- SPAN:span<u8> n n )
+   {: url:^ uu:n scope:^ su:n end:n :}
+   uu su CHALLENGES-LEN {: cu:n :}
+   cu uu RESOURCE-LEN + su + {: total:n :}
+   total 0= if s" " SPAN:MAKE 0 0 exit then
+   total MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: row :}
    NAMED-PREFIX url uu scope su row 0 NAMING {: split:n :}
    INVALID-PREFIX url uu scope su row split NAMING drop
-   row split ;
+   url uu end row cu RESOURCE+ {: past:n :}
+   scope su row past PUT drop
+   row split cu ;
 
 \ HTTP writes a header value as it is: a quote or backslash would end the
 \ quoted resource_metadata early, and a CR or LF would start a line of its own.
@@ -500,7 +565,7 @@ ENUM lookup-step
    {: text u:n :}
    u 0 ?do
       text i + c@ {: c :}
-      c $22 = c $5C = or c $20 < or c $7F = or if E-OPERAND throw then
+      c $22 = c $5C = or c $20 < or c $7E > or if E-OPERAND throw then
    loop ;
 
 
@@ -523,15 +588,88 @@ ENUM lookup-step
    PASSED @ 0= if false exit then
    FROM @ HTTP:>REQUEST HTTP:SERVING? ;
 
+: V6-LOOPBACK ( -- ^u8 n ) s" [::1]" ;
+
+\ Decimal 0 to 255 without a leading zero, which a resolver may read as
+\ octal.
+: OCTET? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   u 1 < u 3 > or if false exit then
+   a u STR-DIGITS? 0= if false exit then
+   u 1 > a c@ [char] 0 = and if false exit then
+   a u s" 255" STR-DIGITS<= ;
+
+\ A dotted-quad IPv4 literal in 127.0.0.0/8.
+: LOOPBACK-V4? ( ^u8 n -- bool )
+   {: h:^ hu:n :}
+   h hu s" 127." STARTS-WITH? 0= if false exit then
+   h hu 4 DOT {: d1:n :}
+   h hu d1 1+ DOT {: d2:n :}
+   d2 hu >= if false exit then
+   h hu d2 1+ DOT hu <> if false exit then
+   h 4 + d1 4 - OCTET?
+   h d1 + 1+ d2 d1 - 1- OCTET? and
+   h d2 + 1+ hu d2 - 1- OCTET? and ;
+
+\ E-OPERAND for an http URL whose host is no loopback IP literal; URI:ORIGIN's
+\ rejection for one it cannot read.
+: SECURE ( ^u8 n -- )
+   URI:ORIGIN drop {: s:^ su:n h:^ hu:n :}
+   s su s" https" STR=CI if exit then
+   h hu V6-LOOPBACK STR= if exit then
+   h hu LOOPBACK-V4? 0= if E-OPERAND throw then ;
+
+\ The resource's path: nothing, or `/` and no query or fragment.
+: PATH? ( ^u8 n -- bool )
+   {: p:^ pu:n :}
+   pu 0= if true exit then
+   p c@ [char] / <> if false exit then
+   p pu s" ?" CONTAINS? 0= p pu s" #" CONTAINS? 0= and ;
+
+\ Where the well-known segment starts in METADATA!'s URL, 0 for an empty
+\ URL; SECURE's rejection, or E-OPERAND for a URL not of RFC 9728 3.1's form.
+: WELL-KNOWN-AT ( ^u8 n -- n )
+   {: url:^ uu:n :}
+   uu 0= if 0 exit then
+   url uu SECURE
+   url uu URI:REQUEST-TARGET$ drop url - {: end:n :}
+   url end + uu end - {: rest:^ ru:n :}
+   rest ru WELL-KNOWN STARTS-WITH? 0= if E-OPERAND throw then
+   rest WELL-KNOWN nip + ru WELL-KNOWN nip - PATH? 0= if E-OPERAND throw then
+   end ;
+
+: SCOPES+ ( ^JSON:writer ^u8 n n -- ^JSON:writer )
+   {: s:^ su:n from:n :}
+   from begin {: at:n :}
+      s su at SPACE-AT {: to:n :}
+      s at + to at - JSON:WRITE-STRING
+      to su <
+   while JSON:WRITE-COMMA to 1+ repeat ;
+
+: RESOURCE-BODY ( ^JSON:writer -- ^JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" resource" RESOURCE$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" authorization_servers" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
+   ISSUER SPAN:$ JSON:WRITE-STRING JSON:WRITE-ARRAY-END
+   SCOPE$ {: s:^ su:n :}
+   su 0 > if
+      JSON:WRITE-COMMA s" scopes_supported" JSON:WRITE-KEY
+      JSON:WRITE-ARRAY-START s su 0 SCOPES+ JSON:WRITE-ARRAY-END
+   then
+   JSON:WRITE-OBJECT-END ;
+
 public
 
 \ The issuer whose tokens ADMIT? accepts: its iss, the audience this server
 \ answers to, and its JWK Set's URL. The texts are borrowed and outlive the
 \ server, as literals do. A built program keeps none: it states them at run
-\ time. E-HTTP-STATE while HTTP serves.
+\ time. E-HTTP-STATE while HTTP serves; E-OPERAND for an iss or key set URL
+\ neither https nor http to a loopback IP literal, URI:ORIGIN's rejection for
+\ one it cannot read, either leaving the previous issuer in force.
 : ISSUER! ( ^u8 n ^u8 n ^u8 n -- )
    {: iss:^ iu:n aud:^ au:n url:^ uu:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
+   iss iu SECURE url uu SECURE
    iss ISSUER-AT ! iu ISSUER-LEN !
    aud AUDIENCE-AT ! au AUDIENCE-LEN !
    url KEYS-URL-AT ! uu KEYS-URL-LEN !
@@ -541,22 +679,40 @@ public
 
 \ The URL of this server's protected-resource metadata and the scope of access
 \ a token needs here (RFC 6750 3), which each 401 challenge then names as
-\ resource_metadata and scope; an empty text names none. The texts are copied,
-\ so they need not outlive the call. A built program keeps neither: it
-\ challenges plainly until it states METADATA! at run time.
-\ E-OPERAND for a URL holding a quote, a backslash, a control byte below $20 or
-\ $7F, which the quoted challenge value cannot carry, or a scope that is not
-\ space-separated RFC 6749 3.3 scope tokens. A refused text or allocation
-\ leaves the previous challenges in force. E-HTTP-STATE while HTTP serves.
+\ resource_metadata and scope, and RESOURCE-METADATA answers; an empty text
+\ names none. The texts are copied, so they need not outlive the call. A built
+\ program keeps neither: it challenges plainly until it states METADATA! at
+\ run time. E-OPERAND for a URL neither https nor http to a loopback IP
+\ literal, or not of the form
+\ `<scheme>://<authority>/.well-known/oauth-protected-resource[<path>]`
+\ (RFC 9728 3.1), or holding a quote, a backslash, or a byte below $20 or above
+\ $7E unencoded, or for a scope that is not space-separated RFC 6749 3.3 scope
+\ tokens; URI:ORIGIN's rejection for a URL it cannot read. A refused text or
+\ allocation leaves the previous statement in force. E-HTTP-STATE while HTTP
+\ serves.
 : METADATA! ( ^u8 n ^u8 n -- )
    {: url:^ uu:n scope:^ su:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    url uu QUOTABLE
+   url uu WELL-KNOWN-AT {: end:n :}
    scope su SCOPE-TOKENS
-   url uu scope su COMPOSED {: row split:n :}
+   url uu scope su end COMPOSED {: row split:n cu:n :}
    NAMED-SPAN {: was :}
-   row SPAN:$ NAMED-LEN ! NAMED ! split NAMED-U !
+   row SPAN:$ NAMED-LEN ! NAMED ! split NAMED-U ! cu CHALLENGES-U !
+   uu RESOURCE-LEN RESOURCE-U !
    was SPAN:LEN 0 > if was MEM:FREE-SPAN then ;
+
+
+\ The route handler a host gives HTTP:ROUTE for the GET of METADATA!'s URL
+\ path: 200 with the protected-resource metadata (RFC 9728 2), naming the
+\ resource that URL stands for, the issuer as its one authorization server
+\ and METADATA!'s scope tokens as scopes_supported, absent for an empty
+\ scope. E-HTTP-STATE before ISSUER! or with no METADATA! URL stated.
+: RESOURCE-METADATA ( HTTP:request HTTP:response -- )
+   nip {: answer:HTTP:response :}
+   ISSUER SPAN:LEN 0= RESOURCE-U @ 0= or if E-HTTP-STATE throw then
+   answer 200 HTTP:STATUS!
+   answer [: RESOURCE-BODY ;] HTTP:JSON! ;
 
 
 \ Whether the request carries a current bearer token of the issuer's for this
@@ -585,12 +741,14 @@ public
    ANSWERING? 0= if s" " false exit then
    CLAIMS$ name nu NOTE$ ;
 
-\ Whether a claim of the admitted request this worker answers is the string,
-\ or an array holding it, as Entra's roles; false outside one.
+\ Whether a claim of the admitted request this worker answers holds the
+\ name: a string claim as one of its space-separated words (RFC 6749 3.3
+\ scope), as Entra's scp; an array claim as an element, as Entra's roles;
+\ false outside one.
 : CLAIM-HOLDS? ( ^u8 n ^u8 n -- bool )
    {: name:^ nu:n w:^ wu:n :}
    ANSWERING? 0= if false exit then
-   CLAIMS$ name nu w wu HOLDS? ;
+   name nu w wu HELD? ;
 
 
 10000 constant TOKEN-TIMEOUT-MS     \ protective: the bound on the token endpoint's whole answer
@@ -619,8 +777,12 @@ ENUM grant
 \ there, written before any TOKEN or REFRESH, not while one runs. An empty
 \ secret states a public client, which presents none (RFC 6749 2.3.1). The
 \ texts are borrowed and outlive every TOKEN and REFRESH, as literals do.
+\ E-OPERAND for a URL neither https nor http to a loopback IP literal,
+\ URI:ORIGIN's rejection for one it cannot read, either leaving the previous
+\ client in force.
 : CLIENT! ( ^u8 n ^u8 n ^u8 n -- )
    {: url:^ uu:n id:^ iu:n secret:^ su:n :}
+   url uu SECURE
    url uu SPAN:MAKE ENDPOINT !
    id iu SPAN:MAKE CLIENT-ID !
    secret su SPAN:MAKE SECRET ! ;

@@ -1,9 +1,9 @@
 \ uri.f - file URIs (RFC 8089) decoded to the paths they name, paths encoded,
 \ bytes encoded as a web form or a query component and decoded from a form,
-\ whether a request path holds a dot segment, and http(s) URLs read: a
-\ reference resolved against one, two compared by origin, and the request
-\ target sliced out. A file path is bytes, as the file system takes them: a
-\ decoded NUL or `/` is kept.
+\ whether a request path holds a dot segment, and http(s) URLs read: one's
+\ origin, a reference resolved against one, two compared by origin, and the
+\ request target sliced out. A file path is bytes, as the file system takes
+\ them: a decoded NUL or `/` is kept.
 \ Input is checked and output measured before a byte is written, so no
 \ rejection leaves a byte behind. RESOLVE removes dot segments in place, after
 \ it writes the target: the removal never lengthens the path.
@@ -280,12 +280,6 @@ $5D constant CLOSE-BRACKET
 : HTTP-END ( ^u8 n -- n )
    HTTP-AT {: s:n h:^ hu:n p:n end:n :} end ;
 
-\ The scheme, the host and the port of an http(s) URL.
-: ORIGIN ( ^u8 n -- ^u8 n ^u8 n n )
-   {: a:^ u:n :}
-   a u HTTP-AT {: s:n h:^ hu:n p:n end:n :}
-   a s h hu p ;
-
 \ The offset of the last `/` below w, or 0.
 : LAST-SLASH ( ^u8 n -- n )
    {: a:^ w:n :}
@@ -478,6 +472,13 @@ public
    a u HTTP-END {: from:n :}
    a u HASH-END {: to:n :}
    a from + to from - ;
+
+\ The scheme, the host, brackets kept, and the port HTTP-AT reads from an
+\ http(s) URL. Rejected as HTTP-AT rejects.
+: ORIGIN ( ^u8 n -- ^u8 n ^u8 n n )
+   {: a:^ u:n :}
+   a u HTTP-AT {: s:n h:^ hu:n p:n end:n :}
+   a s h hu p ;
 
 \ Whether two http(s) URLs share an origin: schemes equal without case, hosts
 \ without ASCII case, ports as numbers, defaults applied. Rejected as HTTP-AT
