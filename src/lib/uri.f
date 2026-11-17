@@ -1,6 +1,6 @@
-\ uri.f - file URIs (RFC 8089) decoded to the paths they name, and paths
-\ encoded. A path is bytes, as the file system takes them: a decoded NUL or `/`
-\ is kept, and src/lib/fs.f refuses a NUL where it opens a path (E-FFI-NUL).
+\ uri.f - file URIs (RFC 8089) decoded to the paths they name, paths encoded,
+\ and bytes encoded as a web form. A path is bytes, as the file system takes
+\ them: a decoded NUL or `/` is kept.
 \ Input is checked and output measured before a byte is written, so no refusal
 \ leaves a byte behind.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
@@ -78,11 +78,15 @@ $23 constant HASH
    {: a:^ u:n out:^ :}
    0 0 begin dup u < while a u out PUT repeat 2drop ;
 
-: KEPT? ( n -- bool )
+: ALNUM? ( n -- bool )
    {: c:n :}
    c ASCII-UPPER {: up:n :}
    up [char] A >= up [char] Z <= and
-   c [char] 0 >= c [char] 9 <= and or
+   c [char] 0 >= c [char] 9 <= and or ;
+
+: KEPT? ( n -- bool )
+   {: c:n :}
+   c ALNUM?
    c [char] - = or  c [char] . = or  c [char] _ = or  c [char] ~ = or
    c SLASH = or ;
 
@@ -93,13 +97,32 @@ $23 constant HASH
    {: a:^ u:n :}
    0 u 0 ?do a i + c@ WIDTH + loop ;
 
-: ENCODE-BYTE ( n ^u8 n -- n )
+: ESCAPE ( n ^u8 n -- n )
    {: c:n out:^ at:n :}
-   c KEPT? if c out at + c! at 1+ exit then
    PERCENT out at + c!
    HEX-DIGITS drop c NIBBLE-BITS rshift + c@ out at + 1+ c!
    HEX-DIGITS drop c $F and + c@ out at + 2 + c!
    at ESCAPE-WIDTH + ;
+
+: ENCODE-BYTE ( n ^u8 n -- n )
+   {: c:n out:^ at:n :}
+   c KEPT? if c out at + c! at 1+ exit then
+   c out at ESCAPE ;
+
+: FORM-KEPT? ( n -- bool )
+   {: c:n :}
+   c ALNUM?
+   c [char] * = or  c [char] - = or  c [char] . = or  c [char] _ = or ;
+
+: FORM-WIDTH ( n -- n )
+   {: c:n :}
+   c FORM-KEPT? c STR-SPACE = or if 1 else ESCAPE-WIDTH then ;
+
+: FORM-BYTE ( n ^u8 n -- n )
+   {: c:n out:^ at:n :}
+   c FORM-KEPT? if c out at + c! at 1+ exit then
+   c STR-SPACE = if [char] + out at + c! at 1+ exit then
+   c out at ESCAPE ;
 
 public
 
@@ -117,6 +140,16 @@ public
    s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
    f out fu BYTE-COPY
    fu u 0 ?do a i + c@ out rot ENCODE-BYTE loop drop
+   len ;
+
+\ Writes the bytes as application/x-www-form-urlencoded: ASCII letters, digits
+\ and `*-._` as they are, a space as `+`, every other byte as upper-case `%XX`.
+: FORM-ENCODE ( ^u8 n SPAN:span<u8> -- n )
+   {: a:^ u:n s :}
+   u 0 < if E-SPAN-LENGTH throw then
+   0 u 0 ?do a i + c@ FORM-WIDTH + loop {: len:n :}
+   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
+   0 u 0 ?do a i + c@ out rot FORM-BYTE loop drop
    len ;
 
 \ The scheme is `file` in any case, then `//` and an authority that is empty or

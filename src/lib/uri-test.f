@@ -1,5 +1,5 @@
-\ uri-test.f - file URIs decoded to paths, and paths encoded to file URIs,
-\ through src/lib/uri.f.
+\ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, and
+\ bytes encoded as a web form, through src/lib/uri.f.
 \ Run: bin/hb --load src/lib/uri-test.f
 
 require src/lib/error.f
@@ -14,6 +14,7 @@ using SPAN
 64 SPAN-BUFFER: DST
 64 SPAN-BUFFER: URI-DST
 2 BUFFER: ONE                     \ `/` and the byte a round trip takes
+3 BUFFER: WANT                    \ one byte's form encoding
 $A5 constant CANARY
 
 : PATH$ ( ^u8 n -- ^u8 n )
@@ -168,6 +169,53 @@ $A5 constant CANARY
 : ROUND-TRIP ( -- )
    256 0 do i TRIP loop ;
 
+: FORM$ ( ^u8 n -- ^u8 n )
+   URI-DST URI:FORM-ENCODE {: u:n :}
+   URI-DST $ drop u ;
+
+: FORM-SAFE$ ( -- ^u8 n )
+   s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*-._" ;
+
+: HEX$ ( -- ^u8 n ) s" 0123456789ABCDEF" ;
+
+: FORM-SAFE? ( n -- bool )
+   {: c:n :}
+   FORM-SAFE$ {: a:^ u:n :}
+   false u 0 ?do a i + c@ c = or loop ;
+
+: FORM-WANT ( n -- ^u8 n )
+   {: b:n :}
+   b FORM-SAFE? if b WANT c! WANT 1 exit then
+   b STR-SPACE = if [char] + WANT c! WANT 1 exit then
+   [char] % WANT c!
+   HEX$ drop b 4 rshift + c@ WANT 1+ c!
+   HEX$ drop b $F and + c@ WANT 2 + c!
+   WANT 3 ;
+
+: FORM-BYTES ( -- )
+   256 0 do i ONE c! ONE 1 FORM$ i FORM-WANT T$= loop ;
+
+\ `~` and `/`, which a path keeps, are escaped in a form.
+: FORM-MIXED ( -- )
+   s" a b*-._~/" FORM$ s" a+b*-._%7E%2F" T$= ;
+
+: FORM-SHORT ( -- )   \ `a+%7E` is 5 bytes
+   s" a ~" DST 4 TAKE URI:FORM-ENCODE drop ;
+
+: FORM-NEGATIVE ( -- )
+   s" a" drop -1 DST URI:FORM-ENCODE drop ;
+
+\ A form encoding rejected writes nothing, and a span of exactly its length
+\ is enough.
+: FORM-ALL-OR-NOTHING ( -- )
+   CANARY DST FILL
+   [: FORM-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
+   5 UNTOUCHED
+   [: FORM-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
+   5 UNTOUCHED
+   s" a ~" DST 5 TAKE URI:FORM-ENCODE 5 T=
+   DST $ drop 5 s" a+%7E" T$= ;
+
 : MAIN ( -- )
    T-RESET
    FORMS
@@ -181,6 +229,9 @@ $A5 constant CANARY
    RELATIVES
    ENCODE-ALL-OR-NOTHING
    ROUND-TRIP
+   FORM-BYTES
+   FORM-MIXED
+   FORM-ALL-OR-NOTHING
    T-REPORT
    s" uri-test: ok" type cr ;
 
