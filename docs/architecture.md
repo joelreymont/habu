@@ -293,9 +293,10 @@ process exits, so what ran leaves nothing behind, and its verdict is the load's.
 - in check mode the interpreter keeps the top-level stack's types; a top-level
   word runs only when it does not act and every input it takes is known, and
   otherwise the checker applies its type and its outputs are unknown;
-- a quotation the check cannot see, stored or passed, is taken to act; a
-  quotation literal or a tick carries its word's facts, and a call charges a
-  word with the facts of the quotations it takes;
+- a quotation type states what running the quotation may do, and a place
+  that keeps a quotation states each of its facts; a quotation literal or a
+  tick carries its word's facts, and a call charges a word with the facts of
+  the quotations it takes and runs;
 - a definition that calls an immediate word that acts is left to the run.
 
 No definer acts: `require`, `create`, `STRUCTURE`, `SUMTYPE`, `ENUM`,
