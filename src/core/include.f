@@ -243,7 +243,7 @@ variable JOIN-U
 variable OWNER-U
 \ Readers reach the loader's record by SRCLOC:SOURCE-CELL, the running hb's
 \ in a build.
-0 constant REC-TOP
+SRCLOC:REC-TOP constant REC-TOP
 CELL constant REC-ROOT
 2 cells constant REC-ROOTLEN
 3 cells constant REC-BYTES
@@ -2015,16 +2015,15 @@ private
 
 \ A frame carries its own resolved path: a nested include overwrites
 \ INCLUDE-PATH before the inner file is read, so only the frame names the outer
-\ file to an inner refusal or a POP. The file's bytes follow the header in the
-\ same mapping, sized to the file: FR-ROOM counts the source bytes it can
-\ hold, FR-SIZE the file's.
-0 constant FR-PREV
+\ file to an inner rejection or a POP. Its mapping is sized to the file:
+\ FR-ROOM counts the source bytes it can hold, FR-SIZE the file's.
+SRCLOC:FR-PREV constant FR-PREV
 CELL constant FR-NAMED
-2 cells constant FR-PATHLEN
+SRCLOC:FR-PATHLEN constant FR-PATHLEN
 3 cells constant FR-ROOM
-4 cells constant FR-SIZE
+SRCLOC:FR-SIZE constant FR-SIZE
 5 cells constant FR-ROOTLEN
-6 cells constant FR-EXEC-COPY
+SRCLOC:FR-EXEC-COPY constant FR-EXEC-COPY
 7 cells constant FR-EVAL-OK
 8 cells constant FR-EVAL-PTR
 9 cells constant FR-EVAL-SIZE
@@ -2040,9 +2039,9 @@ CELL constant FR-NAMED
 16 cells constant FR-T-NODES
 17 cells constant FR-T-ROOTS
 18 cells constant FR-T-PARAMS
-19 cells constant FR-PATH
-FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
-FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES
+SRCLOC:FR-PATH constant FR-PATH
+SRCLOC:FR-ROOT constant FR-ROOT
+SRCLOC:HEADER-BYTES constant HEADER-BYTES
 $1000 constant ROOM-MIN
 \ A frame's FR-PREV, FR-EXEC-COPY and FR-EVAL-PTR cells hold addresses; its
 \ other header cells hold counts, flags and stamps, and its bytes follow them.

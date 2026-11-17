@@ -62,6 +62,7 @@ create ONCE-UNDEF-P PATH-CAP allot
 create CAPTURE-P PATH-CAP allot
 create ONCE-JSON-P PATH-CAP allot
 create SHADOW-P PATH-CAP allot
+create MARK-P PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -94,6 +95,7 @@ variable ONCE-UNDEF-U
 variable CAPTURE-U
 variable ONCE-JSON-U
 variable SHADOW-U
+variable MARK-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -192,6 +194,9 @@ variable RC
 : SHADOW$ ( -- ^u8 n )
    SHADOW-P SHADOW-U @ ;
 
+: MARK$ ( -- ^u8 n )
+   MARK-P MARK-U @ ;
+
 : FRAG-FIXTURE! ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
    {: pre:^ preu:n frag:^ fragu:n post:^ postu:n path:^ pathu:n :}
    SB-RESET
@@ -241,7 +246,8 @@ variable RC
    s" once-undef.f" ONCE-UNDEF-P ONCE-UNDEF-U PATH!
    s" capture.f" CAPTURE-P CAPTURE-U PATH!
    s" once-json.f" ONCE-JSON-P ONCE-JSON-U PATH!
-   s" shadow.f" SHADOW-P SHADOW-U PATH! ;
+   s" shadow.f" SHADOW-P SHADOW-U PATH!
+   s" mark.f" MARK-P MARK-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" FS:WRITE-ALL
@@ -789,6 +795,29 @@ undefine include
    BODY$ s" :4:3" ASSERT-AT
    EXITED @ TTRUE
    RC @ 70 T= ;
+
+\ body.f keeps a token of its line 2 and includes mark.f, which writes a
+\ record at it: the record is placed in body.f, not in the text that loaded it.
+: ASSERT-OUTER-PLACE ( -- )
+   EXITED @ TTRUE
+   RC @ 0 T=
+   SB-RESET  s"  --> " SB-APPEND  BODY$ SB-APPEND  s" :2:12" SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ COUNT-SUB 2 T= ;
+
+: TEST-OUTER-FILE-PLACE ( -- )
+   MARK$ s" LRD-MARK" FS:WRITE-ALL
+   SB-RESET
+   S\" PTR-VARIABLE LRD-TOK-A  variable LRD-TOK-U\n" SB-APPEND
+   S\" parse-name LRD-HERE LRD-TOK-U ! LRD-TOK-A !\n" SB-APPEND
+   S\" : LRD-MARK ( -- )\n   s\" E-LRD-MARK\" REJECTION:OPEN  s\" a kept record\" REJECTION:EMIT-STR\n"
+      SB-APPEND
+   S\"   LRD-TOK-A @ LRD-TOK-U @ REJECTION:AT  s\" here\" REJECTION:EMIT-STR\n" SB-APPEND
+   S\"   REJECTION:KEEP ;\nLRD-MARK\ninclude " SB-APPEND  MARK$ SB-APPEND  10 SB-APPEND-C
+   BODY$ SB$ FS:WRITE-ALL
+   s" a token of an outer file is placed in that file under --load" T-LABEL
+   BODY$ RUN  ASSERT-OUTER-PLACE
+   s" a token of an outer file is placed in that file under tools/check.f" T-LABEL
+   BODY$ CHECK-RUN  ASSERT-OUTER-PLACE ;
 
 \ A structure the checker finds open at a body's closing `;`, a plain body's or
 \ a does> clause's, is placed at that `;` (column 1 of PLACE's line).
@@ -1517,6 +1546,7 @@ variable LONG-U
    TEST-SEALED-DUPLICATE
    TEST-EVALUATED-PLACE
    TEST-EVALUATED-SLICE
+   TEST-OUTER-FILE-PLACE
    TEST-REPLAY-DUP-PLACE
    TEST-REPLAY-TASK
    TEST-WINDOW-NESTED

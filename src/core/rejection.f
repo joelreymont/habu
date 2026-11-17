@@ -371,11 +371,12 @@ public
    SOURCE-POSITION 0 0= ;
 
 private
-\ The file a top-level step names; empty when no file or label names it.
-: LOAD-FILE$ ( -- ^u8 n )
-   PATH$ {: pa:^ pu:n :}
+\ The name a record gives the file at path pa pu: its label, else its path.
+: FILE-NAME$ ( ^u8 n -- ^u8 n ) {: pa:^ pu:n :}
    pa pu LABELS? IF LABEL-NAME$ EXIT THEN
    pa pu ;
+\ The file a top-level step names; empty when no file or label names it.
+: LOAD-FILE$ ( -- ^u8 n )   PATH$ FILE-NAME$ ;
 
 variable NOTES   0 NOTES !              \ the JSON notes object is open
 variable GUTTER   1 GUTTER !            \ digits of AT's line, 1 unplaced
@@ -561,10 +562,37 @@ private
 : SAVED$ ( ^u8 -- ^u8 n ) {: f:^ :}
    f EVAL-INB FRAME@ {: b:^ :}
    b  f EVAL-INE FRAME@ b - ;
-\ Whether frame f is the first evaluation its input ran: f interrupted the
-\ active file's bytes, or the frame it runs in is the outermost, a REPL line's.
+\ The loader's frames, innermost first, one per open file: each links to the
+\ frame of the file it interrupted.
+SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER
+\ The bytes the open file of frame fr runs; empty until they are read.
+: FRAME-BYTES$ ( ^u8 -- ^u8 n ) {: fr:^ :}
+   fr SRCLOC:FR-SIZE + cell-view @ {: u:n :}
+   u 0 < IF NULL-PTR 0 EXIT THEN
+   fr SRCLOC:FR-EXEC-COPY FRAME@ {: c:^ :}
+   c NULL-PTR = IF fr SRCLOC:HEADER-BYTES + u EXIT THEN
+   c u ;
+\ The name a record gives the file of frame fr.
+: FRAME-FILE$ ( ^u8 -- ^u8 n ) {: fr:^ :}
+   fr SRCLOC:FR-PATH +  fr SRCLOC:FR-PATHLEN + cell-view @ FILE-NAME$ ;
+\ The frame of the innermost open file whose bytes hold the n bytes at t;
+\ NULL-PTR when none does.
+: HOLDER ( ^u8 n -- ^u8 ) {: t:^ tu:n :}
+   LOADER @ dup NULL-PTR = IF EXIT THEN
+   SRCLOC:REC-TOP FRAME@
+   BEGIN dup NULL-PTR = 0= WHILE
+      dup FRAME-BYTES$ t tu HOLDS? IF EXIT THEN
+      SRCLOC:FR-PREV FRAME@
+   REPEAT ;
+\ Places the token t tu in the open file holding it; answers whether one does.
+: FILE-PLACE ( ^u8 n -- bool ) {: t:^ tu:n :}
+   t tu HOLDER {: fr:^ :}
+   fr NULL-PTR = IF 0 0= 0= EXIT THEN
+   fr FRAME-BYTES$ t tu BUFFER-PLACE  fr FRAME-FILE$ PLACE-FILE!  0 0= ;
+\ Whether frame f is the first evaluation its input ran: f interrupted an open
+\ file's bytes, or the frame it runs in is the outermost, a REPL line's.
 : INVOKED? ( ^u8 -- bool ) {: f:^ :}
-   OWNED$ f EVAL-INB FRAME@ 0 HOLDS?
+   f EVAL-INB FRAME@ 0 HOLDER NULL-PTR = 0=
    f OUTER OUTER NULL-PTR =  or ;
 \ The frame of the first evaluation, outward from the innermost; NULL-PTR when
 \ the input read is no evaluated text.
@@ -603,31 +631,31 @@ private
    {: s:n :}
    b s +  e s - ;
 \ Places at the token the invoker's input had read as the evaluation began, in
-\ the active file or else the line it interrupted.
+\ the open file holding it or else the line it interrupted.
 : INVOKE-PLACE ( ^u8 -- ) {: inv:^ :}
    inv SAVED$ {: b:^ bu:n :}
    b inv EVAL-INP FRAME@ TOKEN-BEFORE {: a:^ u:n :}
    u 0= IF EXIT THEN
    -1 EVALUATED !
-   OWNED$ a u HOLDS? IF OWNED$ a u BUFFER-PLACE LOAD-FILE$ PLACE-FILE! EXIT THEN
+   a u FILE-PLACE IF EXIT THEN
    b bu a u BUFFER-PLACE NO-FILE$ PLACE-FILE! ;
 public
 \ Whether one source a rejection places from holds the token p n whole while
-\ the rejection is written: the armed source, the given closer's bytes or the
-\ loader's owned bytes, which stay put for good, or the root stream's text or
-\ an evaluated text being run, which stays put while it runs. A zero-length
-\ token is held at any offset from 0 to the buffer's length.
+\ the rejection is written: the armed source, the given closer's bytes, an open
+\ file's bytes, the root stream's text or an evaluated text being run, each of
+\ which stays put while it is open or runs. A zero-length token is held at any
+\ offset from 0 to the buffer's length.
 : HELD? ( ^u8 n -- bool ) {: p:^ n:n :}
    p n ARMED? IF 0 0= EXIT THEN
    CLOSER$ p n HOLDS? IF 0 0= EXIT THEN
-   OWNED$ p n HOLDS? IF 0 0= EXIT THEN
+   p n HOLDER NULL-PTR = 0= IF 0 0= EXIT THEN
    ROOT-TEXT$ p n HOLDS? IF 0 0= EXIT THEN
    INVOKER {: inv:^ :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p n inv IN-EVALUATED? nip ;
 private
-\ Places the token t tu in the armed source holding its first byte, else the
-\ loader's owned bytes, else an evaluated text, which places it where the
+\ Places the token t tu in the armed source holding its first byte, else an
+\ open file's bytes, else an evaluated text, which places it where the
 \ evaluation was run, else the buffer read, holding the whole token, as itself
 \ or as the bytes a body's text copied it from; answers whether one did. A
 \ token of a run a definer built is placed by none of them.
@@ -635,9 +663,7 @@ private
    t >SOURCE IF t tu SOURCE-PLACE 0 0= EXIT THEN drop
    t BUILDER nip 0 > IF 0 0= 0= EXIT THEN
    t tu BODY>INPUT {: s:^ :}
-   OWNED$ s tu HOLDS? IF
-      OWNED$ s tu BUFFER-PLACE LOAD-FILE$ PLACE-FILE!  0 0= EXIT
-   THEN
+   s tu FILE-PLACE IF 0 0= EXIT THEN
    INVOKER {: inv:^ :}
    inv NULL-PTR = 0= IF
       t tu inv IN-EVALUATED? nip IF
@@ -654,7 +680,7 @@ public
    p >SOURCE nip IF 0 0= EXIT THEN
    p BUILDER nip 0 > IF 0 0= 0= EXIT THEN
    p 1 BODY>INPUT {: s:^ :}
-   OWNED$ s 1 HOLDS? IF 0 0= EXIT THEN
+   s 1 HOLDER NULL-PTR = 0= IF 0 0= EXIT THEN
    INPUT$ s 1 HOLDS? IF 0 0= EXIT THEN
    INVOKER {: inv:^ :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
