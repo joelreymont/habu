@@ -16625,108 +16625,6 @@ private
    THEN
    RES-TRUE ;
 
-\ A prefix handle is portable only through the current record that links it. The
-\ key includes the link field, so an effect and a grid sharing a handle stay apart.
-PERSISTED-PTR-VARIABLE PENDING-OWNER-P   NULL-PTR PENDING-OWNER-P !
-variable PENDING-OWNER-CAP   0 PENDING-OWNER-CAP !
-variable PENDING-OWNER-N     0 PENDING-OWNER-N !
-variable PENDING-OWNER-READY 0 PENDING-OWNER-READY !
-1 constant PENDING-EFFECT
-2 constant PENDING-CONTROL
-3 constant PENDING-GRID
-4 constant PENDING-CREATED
-\ Keys are handles in the build's stores.
-PENDING-OWNER-P PENDING-OWNER-CAP 2 cells TABLE+
-PENDING-OWNER-N 0 CELL-ROW+
-PENDING-OWNER-READY 0 CELL-ROW+
-private
-
-: PENDING-OWNER-ROW ( n -- ^n )
-   2 cells * PENDING-OWNER-P @ + CELL-VIEW ;
-: PENDING-OWNER-KEY ( n n -- n )
-   {: handle:n field:n :}
-   handle 0 <= IF 0 EXIT THEN
-   handle 4 * field + ;
-: PENDING-OWNER-SLOT ( n -- n ) {: key:n :}
-   key $9E3779B97F4A7C15 * PENDING-OWNER-CAP @ 1- and ;
-: PENDING-OWNER-PUT-RAW ( n n -- ) {: key:n ord:n :}
-   key PENDING-OWNER-SLOT
-   BEGIN dup PENDING-OWNER-ROW @ dup 0 <> over key <> and WHILE
-      drop 1+ PENDING-OWNER-CAP @ 1- and
-   REPEAT
-   0= IF 1 PENDING-OWNER-N +! THEN
-   PENDING-OWNER-ROW {: row:^ :}
-   key row ! ord 1+ row CELL + ! ;
-: PENDING-OWNER-GROW ( -- )
-   PENDING-OWNER-P @ {: old:^ :}
-   PENDING-OWNER-CAP @ {: oldcap:n :}
-   oldcap 0= IF 64 ELSE oldcap 2 * THEN {: cap:n :}
-   cap 2 cells * ARENA-ALLOC-BYTES PENDING-OWNER-P ! cap PENDING-OWNER-CAP !
-   0 PENDING-OWNER-N !
-   oldcap 0 ?do
-      old i 2 cells * + CELL-VIEW @ {: key:n :}
-      key 0 <> IF
-         key old i 2 cells * + CELL + CELL-VIEW @ 1-
-         PENDING-OWNER-PUT-RAW
-      THEN
-   loop
-   old oldcap 2 cells * ARENA-ABANDON ;
-: PENDING-OWNER-FIELD@ ( ^n n -- n ) {: row:^ field:n :}
-   field PENDING-EFFECT = IF row RLINK.EFFECT cells + @ EXIT THEN
-   field PENDING-CONTROL = IF row RLINK.CONTROL cells + @ EXIT THEN
-   field PENDING-GRID = IF row RLINK.GRID cells + @ EXIT THEN
-   row RLINK.CONTROL cells + @ dup 0= IF EXIT THEN
-   1- NORET-CELL NORET.CREATES @ ;
-: PENDING-OWNER-OF ( n n -- n bool ) {: handle:n field:n :}
-   handle field PENDING-OWNER-KEY {: key:n :}
-   key 0= PENDING-OWNER-CAP @ 0= or IF 0 RES-FALSE EXIT THEN
-   key PENDING-OWNER-SLOT
-   BEGIN dup PENDING-OWNER-ROW @ dup 0 <> over key <> and WHILE
-      drop 1+ PENDING-OWNER-CAP @ 1- and
-   REPEAT
-   key <> IF drop 0 RES-FALSE EXIT THEN
-   PENDING-OWNER-ROW CELL + @ 1- {: ord:n :}
-   ord RECORD-LINK-CURRENT? 0= IF 0 RES-FALSE EXIT THEN
-   ord RECORD-LINK-CELL field PENDING-OWNER-FIELD@ handle = IF
-      ord RES-TRUE EXIT THEN
-   0 RES-FALSE ;
-: PENDING-OWNER-PUT ( n n n -- ) {: handle:n field:n ord:n :}
-   handle field PENDING-OWNER-KEY {: key:n :}
-   key 0= IF EXIT THEN
-   \ An alias keeps the earlier live owner. Replacing it with the pending
-   \ alias would make that alias's prefix reference name itself on import.
-   handle field PENDING-OWNER-OF IF drop EXIT THEN drop
-   PENDING-OWNER-N @ 2 * PENDING-OWNER-CAP @ >= IF
-      PENDING-OWNER-GROW THEN
-   key ord PENDING-OWNER-PUT-RAW ;
-: PENDING-OWNER-RECORD ( n -- ) {: ord:n :}
-   PENDING-OWNER-READY @ 0= IF EXIT THEN
-   ord RECORD-LINK-CELL {: row:^ :}
-   row RLINK.EFFECT cells + @ PENDING-EFFECT ord PENDING-OWNER-PUT
-   row RLINK.CONTROL cells + @ PENDING-CONTROL ord PENDING-OWNER-PUT
-   row RLINK.GRID cells + @ PENDING-GRID ord PENDING-OWNER-PUT
-   row PENDING-CREATED PENDING-OWNER-FIELD@
-      PENDING-CREATED ord PENDING-OWNER-PUT ;
-
-PERSISTED-PTR-VARIABLE PENDING-DIRTY-P   NULL-PTR PENDING-DIRTY-P !
-variable PENDING-DIRTY-CAP   0 PENDING-DIRTY-CAP !
-variable PENDING-DIRTY-N     0 PENDING-DIRTY-N !
-variable PENDING-MARKED      0 PENDING-MARKED !
-\ A build's ordinals never join the unit hb has marked.
-PENDING-DIRTY-P PENDING-DIRTY-CAP 1 cells TABLE+
-PENDING-DIRTY-N 0 CELL-ROW+
-PENDING-MARKED 0 CELL-ROW+
-private
-: PENDING-DIRTY+ ( n -- ) {: ord:n :}
-   PENDING-MARKED @ 0= IF EXIT THEN
-   PENDING-DIRTY-N @ 0 ?do
-      i cells PENDING-DIRTY-P @ + CELL-VIEW @ ord = IF UNLOOP EXIT THEN
-   loop
-   PENDING-DIRTY-P PENDING-DIRTY-CAP PENDING-DIRTY-N @ 1+ 1
-      ARENA-ROWS-ENSURE
-   ord PENDING-DIRTY-N @ cells PENDING-DIRTY-P @ + CELL-VIEW !
-   1 PENDING-DIRTY-N +! ;
-
 : RECORD-LINK-WRITE ( n n n n -- )
    {: ord:n effect:n control:n occurrence:n :}
    ord RECORD-LINK-ROOM
@@ -16736,9 +16634,7 @@ private
    control row RLINK.CONTROL cells + !
    0 row RLINK.GRID cells + !
    0 row RLINK.READ cells + !
-   row RECORD-LINK-BOUND-ROW
-   ord PENDING-OWNER-RECORD
-   ord PENDING-DIRTY+ ;
+   row RECORD-LINK-BOUND-ROW ;
 
 : RECORD-LINK-READ! ( n n -- ) {: ord:n read:n :}
    ord RECORD-LINK-CELL {: row:^ :}
@@ -16831,9 +16727,7 @@ private
    THEN
    occurrence row RLINK.OCC cells + !
    grid row RLINK.GRID cells + !
-   grid RECORD-LINK-EFFECT-HI @ max RECORD-LINK-EFFECT-HI !
-   ord PENDING-OWNER-RECORD
-   ord PENDING-DIRTY+ ;
+   grid RECORD-LINK-EFFECT-HI @ max RECORD-LINK-EFFECT-HI ! ;
 
 \ The record a created word carries, built from the effect its definer states.
 \ 0 when the effect does not parse or no record can hold it, with SGBAD saying
@@ -17079,8 +16973,6 @@ package CHECK
    sym NORET-NEWEST {: control:n :}
    control row RLINK.CONTROL cells + !
    control RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI !
-   ord PENDING-OWNER-RECORD
-   ord PENDING-DIRTY+
    ord sym HOLD-AMENDED ;
 
 \ The name-keyed appender records NO intact evidence: every caller of it has
