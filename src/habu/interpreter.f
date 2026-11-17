@@ -3187,7 +3187,7 @@ variable OPENER-U
          f FRAME-CELLS-RESTORE
       endof
       FRAME-UNWOUND of
-         f prior found REPL-RECOVER
+         prior USE-FLOOR !  found REC !
          f FRAME-CELLS-RESTORE
       endof
    endcase
