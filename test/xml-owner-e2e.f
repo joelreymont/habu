@@ -1,5 +1,6 @@
 \ Run one public XML owner consumer from source; its deterministic edited XML
 \ artifacts go in a temporary tree the process removes at exit.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -60,15 +61,15 @@ variable RC
 
 : REFUSALS ( -- )
    s" a linear source cannot be saved in a dynamic record" T-LABEL
-   s" DYNAMIC-BUFFER BAD XML:source" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" DYNAMIC-BUFFER BAD XML:source" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" the owner constructor stays private" T-LABEL
-   s" : BAD ( ^n -- XML:source-owner ) XML:SOURCE-OWNER-MAKE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : BAD ( ^n -- XML:source-owner ) XML:SOURCE-OWNER-MAKE ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" the owner unpacker stays private" T-LABEL
-   s" : BAD ( XML:source-owner -- ^n ) XML:SOURCE-OWNER-UNMAKE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : BAD ( XML:source-owner -- ^n ) XML:SOURCE-OWNER-UNMAKE ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" the source token eraser stays private" T-LABEL
-   s" : BAD ( XML:source -- ^n ) XML:SRC-ERASE ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : BAD ( XML:source -- ^n ) XML:SRC-ERASE ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" the source token mint stays private" T-LABEL
-   s" : BAD ( ^n -- XML:source ) XML:SRC-MINT ;" TEST-EVAL:RC CHECKER-REJECT-RC T= ;
+   s" : BAD ( ^n -- XML:source ) XML:SRC-MINT ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T= ;
 
 : FILE-READ ( ^u8 n -- n )
    FILE$ FILE-BYTES FILE-CAP FS:READ-ALL ;

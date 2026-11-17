@@ -4,6 +4,7 @@
 \ one whose list is ordered against its bodies closes in body order. The
 \ verifier's scan (src/habu/verify-source.f RECORD-MUTUAL) registers what a
 \ MUTUAL declares, as the load does.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/habu/verify-source.f
 require test/decl-diag-capture.f
@@ -46,7 +47,7 @@ TYPED-VARIABLE LINK-V smlink
 : REJECTS ( ^u8 n ^u8 n ^u8 n n -- )
    {: sa:^ su:n ta:^ tu:n la:^ lu:n code:n :}
    DECL-DIAG:PROSE
-   sa su TEST-EVAL:RC CHECKER-REJECT-RC T=
+   sa su TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s\" error[E-BAD-DECLARATION]: bad mutual declaration" DECL-DIAG:HAS? TTRUE
    ta tu la lu DECL-DIAG:CAUSE? TTRUE
    code DECL-REJECT:REASON$ la lu DECL-DIAG:SAME? TTRUE
@@ -114,7 +115,7 @@ TYPED-VARIABLE LINK-V smlink
    \ placed at the pointee's name.
    DECL-DIAG:PROSE
    s" MUTUAL smka smkb<p> STRUCTURE smka FIELD x n FIELD q ^smkb<n> ;STRUCTURE STRUCTURE smkb<p> FIELD v read-view<p,p,u8> ;STRUCTURE ;MUTUAL"
-      TEST-EVAL:RC CHECKER-REJECT-RC T=
+      TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s\" error[E-BAD-DECLARATION]: bad mutual declaration `smkb`\n" DECL-DIAG:HAS? TTRUE
    s" smkb" s" a pointer cannot reach `smkb`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
    7109 DECL-REJECT:REASON$ s" a pointer cannot reach `smkb`, which takes a scope or region" DECL-DIAG:SAME? TTRUE
@@ -126,7 +127,7 @@ TYPED-VARIABLE LINK-V smlink
    ['] SMV-SCAN catch 0 T=
    SMV-SRC TEST-EVAL:RC 0 T=
    DECL-DIAG:PROSE
-   ['] SMV-DUP catch CHECKER-REJECT-RC T=
+   ['] SMV-DUP catch EXIT-STATUS:REJECTED T=
    s\" error[E-BAD-DECLARATION]: bad mutual declaration `smvdc`\n --> <input>:1:53\n" DECL-DIAG:HAS? TTRUE
    s\" ^^ duplicate field name\n" DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF

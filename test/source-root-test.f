@@ -1,4 +1,5 @@
 \ Named entries own root-relative dependencies; canonical identity deduplicates.
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -117,7 +118,7 @@ private
 : NUL-REFUSED ( -- )
    s" a path holding a 0 byte is rejected by required" T-LABEL
    REJECTION:CAPTURE
-   [: s\" a\zb.f" A-PATH required ;] CHECKER-REJECT-RC TTHROWSQ
+   [: s\" a\zb.f" A-PATH required ;] EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$
    S\" error[E-PATH-NUL]: `required` got a path with a NUL byte, which no file name holds\n"
    STARTS-WITH? TTRUE
@@ -133,7 +134,7 @@ private
    [: [: SOURCE-ROOT:CANON-OS ;]
       [: 2drop 2drop s\" a\zb.f" s" /" SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
    REJECTION:BUFFER$
    S\" error[E-PATH-NUL]: `SOURCE-ROOT:READ-OS` got a path with a NUL byte" STARTS-WITH? TTRUE
@@ -146,7 +147,7 @@ private
    [: [: 2drop s\" a\zb.f" true ;]
       [: SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
    REJECTION:BUFFER$ s" error[E-SOURCE-ROOT]: " STARTS-WITH? TTRUE
    REJECTION:BUFFER$ s" SOURCE-INPUT:CANON" CONTAINS? TTRUE
@@ -160,7 +161,7 @@ private
    [: [: 2drop s" src/core/include.f" true ;]
       [: SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH required ;] SOURCE-INPUT:WITH ;]
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
    REJECTION:BUFFER$ s" error[E-SOURCE-ROOT]: " STARTS-WITH? TTRUE
    REJECTION:BUFFER$ s" SOURCE-INPUT:CANON" CONTAINS? TTRUE
@@ -175,7 +176,7 @@ private
    [: [: SOURCE-ROOT:CANON-OS ;]
       [: 2drop 2drop LONG-PATH CAP s" /" SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
    REJECTION:BUFFER$
    s" error[E-PATH-RANGE]: `SOURCE-ROOT:READ-OS` got a path " STARTS-WITH? TTRUE
@@ -185,7 +186,7 @@ private
 : WITH-EMPTY ( -- )
    s" an empty path is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
    REJECTION:CAPTURE
-   [: s" " [: ;] SOURCE-ROOT:WITH ;] CHECKER-REJECT-RC TTHROWSQ
+   [: s" " [: ;] SOURCE-ROOT:WITH ;] EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
    REJECTION:BUFFER$
    s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got an empty path" STARTS-WITH? TTRUE
@@ -196,7 +197,7 @@ private
    s" a root path of WORK-BYTES is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
    CAP 2 * 0 ?do 97 LONG-ROOT i + c! loop
    REJECTION:CAPTURE
-   [: LONG-ROOT CAP 2 * [: ;] SOURCE-ROOT:WITH ;] CHECKER-REJECT-RC TTHROWSQ
+   [: LONG-ROOT CAP 2 * [: ;] SOURCE-ROOT:WITH ;] EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
    REJECTION:BUFFER$
    s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got a path" STARTS-WITH? TTRUE

@@ -33,6 +33,7 @@
 \ wordlist, whose row is in hb's own namespace (WL:NAMESPACE): a build points
 \ BOOT:NAMESPACE-WL at the target's.
 
+require src/core/exit-status.f
 require src/lib/prelude.f
 require src/core/bytes.f
 require src/habu/boot-cells.f
@@ -355,7 +356,7 @@ create NL NEWLINE c,
 \ may call a name it read earlier.
 : UNDEFINED-NAME ( ^u8 n -- ) {: a:^ u:n :}
    a u OPEN-NAME UNDEFINED-RECORD
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : UNDERFLOW ( -- )
    s" E-UNDERFLOW" REJECTION:OPEN
@@ -363,18 +364,18 @@ create NL NEWLINE c,
    TOKEN$ REJECTION:AT  s" stack underflow" SAY
    REJECTION:HELP  s" push the values the code at " SAY  TOKEN$ TICKS
    s"  takes before it" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : UNDEFINED ( -- )
    TOKEN$ BODY-KEYWORD? if
-      TOKEN$ KEYWORD-RECORD  CHECKER-REJECT-RC REJECTION:STOP
+      TOKEN$ KEYWORD-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP
    else
       TOKEN$ UNDEFINED-NAME
    then ;
 
 \ The token reads as a number that does not fit in a cell.
 : NUMBER-RANGE ( -- )
-   TOKEN$ REJECTION:LITERAL-RANGE  CHECKER-REJECT-RC REJECTION:STOP ;
+   TOKEN$ REJECTION:LITERAL-RANGE  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : USED-WID ( n -- n )
    cells USE-WIDS-OFF + CELL@ ;
@@ -400,7 +401,7 @@ variable ANSWERERS   \ bit i set when using slot i exports the ambiguous name
    0 ANSWERERS !
    [: 1 swap lshift ANSWERERS @ or ANSWERERS ! ;] a u ANSWERING
    a u ANSWERERS @ USING-AMBIGUOUS-REJECT
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 variable ANSWERED
 
@@ -412,7 +413,7 @@ variable ANSWERED
 
 : SHADOWED ( ^u8 n -- ) {: a:^ u:n :}
    a u  a u ANSWER CHECKER-USING$ USING-SHADOW-REJECT
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Ends the open record and the process with status rc; a capture's records go
 \ out first, since die-closed runs no exit action.
@@ -420,7 +421,7 @@ variable ANSWERED
    REJECTION:KEEP  REJECTION:RELEASE  s" " rc die-closed ;
 
 : SEALED-FAIL ( ^u8 n ^u8 n -- )
-   REJECTION:SEALED  CHECKER-REJECT-RC KEEP-DIE ;
+   REJECTION:SEALED  EXIT-STATUS:REJECTED KEEP-DIE ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
@@ -432,7 +433,7 @@ variable ANSWERED
    s"  while a checker replay is open" SAY
    TOKEN$ REJECTION:AT  s" replay still open" SAY
    REJECTION:HELP  s" close the checker replay before this definition" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Whether c was found: INP stops past it, else at the end of the input.
 : SKIP-PAST ( n -- bool )
@@ -451,7 +452,7 @@ variable ANSWERED
    s" the comment " SAY  TOKEN$ TICKS  s"  opens is never closed" SAY
    TOKEN$ REJECTION:AT  s" the comment opens here" SAY
    REJECTION:HELP  s" close the comment with " SAY  s" )" TICKS
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : COMMENT? ( -- bool )
    TKL-CELL CELL@ 1 <> if false exit then
@@ -499,7 +500,7 @@ TYPED-VARIABLE REC ^n
    t tu REJECTION:AT  s" not admitted" SAY
    REJECTION:HELP
    s" call only public words of the packages admitted before the seal" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : POLICY-CHECK-REC ( ^u8 n ^n -- ) {: a:^ u:n rec:^ :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
@@ -561,7 +562,7 @@ TYPED-VARIABLE REC ^n
    REJECTION:HELP
    s" call a public word instead: an internal word serves the engine alone"
    SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The gate before a record's xt leaves the loop: an internal word. A wide
 \ effect passes: the interpret row carries each multi-cell value as one item
@@ -582,7 +583,7 @@ TYPED-VARIABLE REC ^n
    TOKEN$ REJECTION:AT  s" scoped entry" SAY
    REJECTION:HELP  s" call " SAY  TOKEN$ TICKS
    s"  inside a definition, where the checker proves its scope" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : GATE ( -- )
    XT-GATE
@@ -629,7 +630,7 @@ TYPED-VARIABLE RUNS-ON bool
    SEARCH
    REC @ XREF-FOUND? 0= if
       TOKEN$ BODY-KEYWORD? if
-         TOKEN$ BODY-ONLY-RECORD  CHECKER-REJECT-RC REJECTION:STOP
+         TOKEN$ BODY-ONLY-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP
       else
          UNDEFINED
       then
@@ -644,7 +645,7 @@ TYPED-VARIABLE RUNS-ON bool
 \ the text names kw lowercase whatever the token's case.
 : NAME-MISSING ( ^u8 n -- ) {: kw:^ u:n :}
    kw u TOKEN$ s" no name follows" REJECTION:MISSING-NAME
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : OPERAND ( ^u8 n -- ) {: kw:^ u:n :}
    TOKEN if exit then
@@ -671,11 +672,11 @@ public
 private
 
 : BAD-LITERAL ( -- )
-   TOKEN$ LITERAL-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+   TOKEN$ LITERAL-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : TOO-LONG ( -- )
    TOKEN$ COUNTED-MAX REJECTION:COUNTED-RANGE
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : PAST ( ^u8 -- )
    1 + INP-CELL ADDR! ;
@@ -823,7 +824,7 @@ CAST: TICK-ACTION ( n -- [ ^u8 n -- bool ] )
       TOKEN$ REJECTION:AT  s" trusted only" SAY
       REJECTION:HELP  s" call a checked word that does what " SAY
       TOKEN$ TICKS  s"  does" SAY
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 
 \ The run log sees the tick's target before the xt is pushed: the file may
@@ -899,12 +900,12 @@ public
 private
 
 : PKG-CONTEXT-FAIL ( -- )
-   TOKEN$ PKG-CONTEXT-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+   TOKEN$ PKG-CONTEXT-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 EXPORT CHECKER-RESOLVE:PKG-OUTSIDE-REJECT
 : PKG-OUTSIDE-FAIL ( -- )
    PKG-REC-CELL CELL@ XREF-ADDR>REC XREF-NAME$ TOKEN$ PKG-OUTSIDE-REJECT
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 EXPORT CHECK:REJECT-DUPLICATE
 : PKG-DUPLICATE ( ^u8 n -- )   2dup REJECT-DUPLICATE ;
@@ -971,7 +972,7 @@ CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
       TOKEN$ TICKS  s"  has no checker to declare its export to" SAY
       TOKEN$ REJECTION:AT  s" checker-export dispatch unset" SAY
       REJECTION:HELP  s" load the checker before any export" SAY
-      CHECKER-REJECT-RC KEEP-DIE
+      EXIT-STATUS:REJECTED KEEP-DIE
    then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
@@ -1001,7 +1002,7 @@ CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
    TOKEN$ REJECTION:AT  s" opened before the seal" SAY
    REJECTION:HELP
    s" give the sealed source's package a name of its own" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : PKG-REOPEN ( ^n -- n ) {: row:^ :}
    row PKG-INDEX {: ix:n :}
@@ -1118,14 +1119,14 @@ EXPORT CHECKER-RESOLVE:PART-GUARD
    TOKEN$ REJECTION:AT  s" unknown package" SAY
    REJECTION:HELP  s" load the file that defines " SAY  TOKEN$ TICKS
    s"  before this using, or check its spelling" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 EXPORT CHECKER-RESOLVE:HEAD-ROW
 
 : PKG-USED-WID ( -- n )
    TOKEN 0= if s" using" NAME-MISSING then
    TOKEN$ 0 COLON-AT 0 >= if
-      TOKEN$ REJECTION:USING-BAD-NAME  CHECKER-REJECT-RC REJECTION:STOP
+      TOKEN$ REJECTION:USING-BAD-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    then
    TOKEN$ HEAD-ROW {: row:^ :}
    row XREF-FOUND? 0= if USING-UNKNOWN then
@@ -1139,7 +1140,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    USE-MAX s" " REJECTION:LIMIT
    REJECTION:HELP  s" close a using with " SAY  s" ;using" TICKS
    s"  before opening another" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The using depth the buffer may close down to: its entry depth.
 variable USE-FLOOR
@@ -1160,13 +1161,13 @@ variable USE-FLOOR
 : PKG-END-USING ( -- )
    USE-DEPTH-CELL CELL@ {: d:n :}
    d 0= if
-      TOKEN$ REJECTION:USING-UNBALANCED  CHECKER-REJECT-RC REJECTION:STOP
+      TOKEN$ REJECTION:USING-UNBALANCED  EXIT-STATUS:REJECTED REJECTION:STOP
    then
    PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
-      TOKEN$ s" package" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+      TOKEN$ s" package" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
    then
    d USE-FLOOR @ <= if
-      TOKEN$ s" file" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+      TOKEN$ s" file" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
    then
    d 1- USE-DEPTH-CELL CELL! ;
 
@@ -1221,7 +1222,7 @@ EXPORT CHECK:EXPORT-UNSAFE
    then
    k XREF-REC XREF-NAME$ get-current WL-PROBE XREF-FOUND? if
       PKG-TAIL DOES-CLAUSE:SUFFIX$ PKG-TAIL REJECTION:CLAUSE-TAKEN
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
@@ -1253,7 +1254,7 @@ EXPORT CHECK:EXPORT-UNSAFE
    TOKEN$ REJECTION:AT  s" outside a package" SAY
    REJECTION:HELP  s" write " SAY  s" EXPORT NAME" TICKS
    s"  in a package, after " SAY  s" package P" TICKS
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ In a package, publish an existing word under its tail into the current
 \ wordlist: its code, its immediate, wide and certified-input bits, and a
@@ -1410,7 +1411,7 @@ CAST: AS-DECLARE ( n -- [ ^u8 n ^u8 n -- ] )
    REJECTION:HELP
    s" load the native compiler, as the boot prefix does, before any definition"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The checker declaration xt given takes the name a u and the signature given.
 : DEF-DECLARE-NAME ( ^u8 n ^u8 n n -- ) {: a:^ u:n sig:^ len:n xt:n :}
@@ -1449,7 +1450,7 @@ private
    INP-CELL ADDR@ {: p:^ :}
    p INE-CELL ADDR@ WORD-END p - {: pu:n :}
    DEF-CAPTURED-NAME p pu UNCLOSED-REJECT
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ body-capture grows the block when the text would pass its capacity, so an
 \ address into the text is formed after the capture, never kept across it.
@@ -1606,7 +1607,7 @@ private
 \ No definition takes a keyword's name; a sealed design also keeps every
 \ other dispatch-row name out, before the dictionary's duplicate checks.
 : DEF-WALL ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   a u t tu DEF-NAME-REJECT? if CHECKER-REJECT-RC REJECTION:STOP then
+   a u t tu DEF-NAME-REJECT? if EXIT-STATUS:REJECTED REJECTION:STOP then
    POLICY-NDICT-CELL CELL@ 0<> if
       a u DEF-NAME-KEYWORD? if a u t tu POLICY-REFUSE then
    then ;
@@ -1660,7 +1661,7 @@ public
 private
 
 : DEF-SIG-BAD ( -- )
-   TOKEN$ SIGNATURE-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+   TOKEN$ SIGNATURE-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A head's signature that the input ends before or inside is the source ending
 \ inside the definition.
@@ -1692,7 +1693,7 @@ private
    REJECTION:HELP
    s" load the native compiler, as the boot prefix does, before any definition"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC KEEP-DIE ;
+   EXIT-STATUS:REJECTED KEEP-DIE ;
 
 public
 \ The name a u passes the wall, room, duplicate, code room and
@@ -1928,7 +1929,7 @@ TYPED-VARIABLE GROUP-OPEN ^u8
             name stemu + sufu suffix sufu STR=CI and if
                stem stemu suffix sufu
                DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ REJECTION:CLAUSE-TAKEN
-               CHECKER-REJECT-RC REJECTION:STOP
+               EXIT-STATUS:REJECTED REJECTION:STOP
             then
          then
       then
@@ -1941,7 +1942,7 @@ TYPED-VARIABLE GROUP-OPEN ^u8
       TOKEN$ REJECTION:AT  s" second `does>`" REJECTION:EMIT-STR
       REJECTION:HELP
       s" keep one `does>` per definition" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    ndict@ 1+ DICT-CAP < 0= if
       DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ TOKEN$ REJECTION:DICTIONARY-FULL
@@ -1985,7 +1986,7 @@ variable DECL-MARK
    REJECTION:HELP
    s" close `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` in the source that opens it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DEF-SOURCE-END ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
@@ -2041,7 +2042,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ item.
 : DEF-NAME-REFUSE ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u s" not one token" REJECTION:MISSING-NAME
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DEF-OPEN-REFUSE ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
    s" E-DEFINITION-OPEN" REJECTION:OPEN
@@ -2052,12 +2053,12 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    REJECTION:HELP
    s" end the open definition with `;` before defining `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Opens the rejection of an effect value DEFINE-RUN cannot take, such as
 \ EFFECT:N or one a local's type widens past the parameter cap, through its
 \ label; the quotation writes why, and the caller adds the notes, the help and
-\ CHECKER-REJECT-RC REJECTION:STOP.
+\ EXIT-STATUS:REJECTED REJECTION:STOP.
 : DEF-NOT-EFFECT ( [ -- ] ^u8 n -- ) {: a:^ u:n :}
    s" E-NOT-EFFECT" REJECTION:OPEN
    s" the effect `define-word` got for `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
@@ -2073,7 +2074,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    REJECTION:HELP
    s" use fewer distinct type parameters in the effect and the locals' types"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DEF-ONE-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 0= if false exit then
@@ -2090,7 +2091,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       REJECTION:HELP
       s" pass `define-word` an effect, a quotation type with no return clause"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    eff EFFECT-DENSE 0= if a u DEF-WIDE then
    {: dense:n :}
@@ -2100,7 +2101,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
       REJECTION:HELP
       s" give `define-word` an effect a written `( -- )` signature could state"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-NO-COMPILER
@@ -2160,14 +2161,14 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    a u NO-DEFINITION
    s" open a definition with `define-word` before `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : STRAY-END ( -- )
    PEND-CELL CELL@ 0<> if exit then
    s" ;" NO-DEFINITION
    s" a definition begins with `: NAME` and this `;` closes none: delete it, or write `: NAME` where the definition begins"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ What `;` runs: it ends the definition.
 : END-RUN ( -- )
@@ -2183,7 +2184,7 @@ CAST: QUOT-ENTRY ( [ R -- S ] -- n )
    REJECTION:HELP
    s" pass `compile,` the execution token of a named word, as `'` gives one"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Refuses a call of a retired word, and of a package word whose package is
 \ not in the current namespace.
@@ -2251,7 +2252,7 @@ variable LIT-AT
    TOKEN$ REJECTION:AT  s" unknown item op" SAY
    s" op" REJECTION:NOTE  op REJECTION:EMIT-N
    REJECTION:HELP  s" pass an op " SAY  s" ITEM-ABI" TICKS  s"  defines" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Rejects the item A U unless define-word opened the definition: only its
 \ effect numbers the parameters a local's type is read by.
@@ -2263,7 +2264,7 @@ variable LIT-AT
    TOKEN$ REJECTION:AT  s" not opened by " SAY  s" define-word" TICKS
    REJECTION:HELP  s" open the definition with " SAY  s" define-word" TICKS
    s" , whose effect numbers the local's type parameters" SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Appends a local of type node T, whose index is the LOCAL items before it;
 \ its node numbers T's parameters on from the definition's effect.
@@ -2351,7 +2352,7 @@ variable LIT-AT
       REJECTION:HELP
       s" load the checker, which sets the trust-raw dispatch, before this definer"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC KEEP-DIE
+      EXIT-STATUS:REJECTED KEEP-DIE
    then
    target ;
 
@@ -2598,7 +2599,7 @@ EXPORT CHECK:REC-WIDE-PUBLISH
       REJECTION:HELP
       s" declare the `linear:` type with a bare name inside its package"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    DEF-QUALIFY {: a:^ u:n wid:n :}
    a u TOKEN$ wid DKIND:CAST DEF-RECORD
@@ -2627,7 +2628,7 @@ private
 \ rejection names.
 : DEFER-NAME ( -- )
    TOKEN if exit then
-   TOKEN$ DEFER-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP ;
+   TOKEN$ DEFER-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:^ :}
@@ -2745,7 +2746,7 @@ EXPORT CHECK:KW-IMMEDIATE
    id 0< if false exit then
    id KW-HOST =  id KW-TARGET = or if
       SEARCH
-      REC @ XREF-FOUND? if TOKEN$ SECTION-REJECT  CHECKER-REJECT-RC REJECTION:STOP then
+      REC @ XREF-FOUND? if TOKEN$ SECTION-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP then
       id KW-TARGET = if 1 else 0 then SECTION-CELL CELL!
       true exit
    then
@@ -2770,7 +2771,7 @@ EXPORT CHECK:KW-IMMEDIATE
       KW-EXPORT of PKG-EXPORT endof
       KW-SPLIT-STR of
          CHECKER-SPLIT-STR @ 0= if
-            TOKEN$ SPLIT-STR-REJECT  CHECKER-REJECT-RC REJECTION:STOP
+            TOKEN$ SPLIT-STR-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP
          then
       endof
       KW-COLON of false DEF-HEAD endof
@@ -2917,7 +2918,7 @@ private
    GROUP-OPEN @ {: at:^ :}
    at NULL-PTR - 0= if exit then
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
-   at 2 GROUP-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+   at 2 GROUP-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : RUN ( -- )
    NULL-PTR GROUP-OPEN !
@@ -3288,7 +3289,7 @@ private
    REJECTION:HELP
    s" a closed text must leave the stack as it found it: drop or consume what it pushes"
    SAY
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 public
 : INSTALL-EVALUATE ( -- )

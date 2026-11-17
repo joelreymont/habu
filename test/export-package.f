@@ -7,6 +7,7 @@
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/export-package.f
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -20,7 +21,7 @@ require src/lib/engine-candidate.f
 
 2048 constant XPK-CAP
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
-70 constant XPK-REJECT-RC             \ a rejection's exit status (CHECKER-REJECT-RC)
+70 constant XPK-REJECT-RC             \ a rejection's exit status (EXIT-STATUS:REJECTED)
 
 variable XPK-ROOT-U
 variable XPK-CHILD-U

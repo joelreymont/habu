@@ -8,11 +8,12 @@
 \ A definition of a name its scope already held is rejected at the name, and
 \ the scan goes on past it as past any rejected definition.
 \
-\ A rejection stops its definition or statement with CHECKER-REJECT-RC after its
-\ record and the scan goes on at the next; any other code is thrown on. A
+\ A rejection stops its definition or statement with EXIT-STATUS:REJECTED after
+\ its record and the scan goes on at the next; any other code is thrown on. A
 \ lexer defect, which runs to the end of its file, or a loader form discovery
 \ rejects ends the scan where it lies, after every record before it.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
@@ -156,7 +157,7 @@ variable CA-COMPOSING                   \ the run is a composition
 \ counted one, else none.
 : CA-STATUS ( n n -- n ) {: rc:n rejects:n :}
    rc 0 <> IF rc exit THEN
-   rejects 0 > IF CHECKER-REJECT-RC exit THEN
+   rejects 0 > IF EXIT-STATUS:REJECTED exit THEN
    0 ;
 
 : CA-CHECK-SOURCE ( -- )
@@ -180,7 +181,7 @@ variable CA-COMPOSING                   \ the run is a composition
 : CA-RUN-CAPTURED ( -- n )
    CA-FILE-A@ CA-FILE-U @ REJECTION:FILE!
    [: CA-CHECK ;] catch {: rc:n :}
-   rc 0 <> rc CHECKER-REJECT-RC <> and IF rc throw THEN
+   rc 0 <> rc EXIT-STATUS:REJECTED <> and IF rc throw THEN
    rc CA-STOPPED
    rc ;
 

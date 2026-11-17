@@ -10,6 +10,7 @@
 \ COMPILE-FIXED builds the body of a `constant`, `create`, `defer` or child,
 \ which has no text, through the same step.
 
+require src/core/exit-status.f
 require src/lib/prelude.f
 require src/lib/error.f
 require src/core/bytes.f
@@ -126,7 +127,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
 : TICKS ( ^u8 n -- ) {: a:^ u:n :}
    96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
 
-: REJECT ( -- ) CHECKER-REJECT-RC REJECTION:STOP ;
+: REJECT ( -- ) EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A closer, a `;]` or an arm word with no structure of its kind open.
 : STRAY ( ^u8 n -- ) {: a:^ u:n :}

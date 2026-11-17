@@ -167,14 +167,14 @@ CAST: >SNAP ( n -- snap )
 \ The definer just read has no name after it.
 : DEF-NO-NAME ( -- )
    SRCLOC:TOKEN$ SRCLOC:TOKEN$ s" no name follows" REJECTION:MISSING-NAME
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DEFLINEAR ( -- )
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:^ nameu:n :}
    kw ku name nameu REJECTION:NOT-A-NAME
-   name nameu name nameu DEF-NAME-REJECT? IF CHECKER-REJECT-RC REJECTION:STOP THEN
+   name nameu name nameu DEF-NAME-REJECT? IF EXIT-STATUS:REJECTED REJECTION:STOP THEN
    name nameu CHECKER-DEFLINEAR ;
 NOMINAL-PROVIDER
 INTRINSIC-DECLARATION INTRINSIC
@@ -214,11 +214,11 @@ global
    parse-name dup 0= IF DEF-NO-NAME THEN
    {: name:^ nameu:n :}
    kw ku name nameu REJECTION:NOT-A-NAME
-   name nameu name nameu DEF-NAME-REJECT? IF CHECKER-REJECT-RC REJECTION:STOP THEN
+   name nameu name nameu DEF-NAME-REJECT? IF EXIT-STATUS:REJECTED REJECTION:STOP THEN
    parse-name over {: f:^ :}
    BEGIN
       dup 0= IF
-         name nameu VRDEF-UNCLOSED  CHECKER-REJECT-RC REJECTION:STOP
+         name nameu VRDEF-UNCLOSED  EXIT-STATUS:REJECTED REJECTION:STOP
       THEN
       2dup VRDEF-END? IF
          drop {: e:^ :}  name nameu f e f - CHECKER-DEFRECORD

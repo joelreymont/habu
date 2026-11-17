@@ -160,7 +160,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ The child's record opens with the line L and holds the help line H.
 : SLV-ASSERT-REJECT ( ^u8 n ^u8 n -- )
    {: l:^ lu:n h:^ hu:n :}
-   CHECKER-REJECT-RC SLV-ASSERT-RC
+   EXIT-STATUS:REJECTED SLV-ASSERT-RC
    SLV-ERR$ l lu STARTS-WITH? TTRUE
    SLV-ERR$ h hu CONTAINS? TTRUE ;
 
@@ -195,7 +195,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ E-SEALED-PACKAGE record naming the word it would add.
 : SLV-ASSERT-PROT-PUBLISH ( ^u8 n -- ) {: prose:^ proseu:n :}
    SLV-EXITED @ TTRUE
-   SLV-RC @ CHECKER-REJECT-RC T=
+   SLV-RC @ EXIT-STATUS:REJECTED T=
    SLV-ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? TTRUE
    SLV-ERR$ prose proseu CONTAINS? TTRUE ;
 

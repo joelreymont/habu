@@ -633,7 +633,7 @@ DOES-COMPANION-INSTALL
    REJECTION:HELP
    s" run `undefine` after the `CHECK:SCOPED` quotation returns"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : XREF-REQUIRE-UNDEFINE ( n ^u8 n -- n ) {: idx:n a:^ u:n :}
    idx 0 < if
@@ -645,7 +645,7 @@ DOES-COMPANION-INSTALL
       REJECTION:HELP
       s" name a word this scope defines, or drop the `undefine` line"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    idx ;
 
@@ -688,7 +688,7 @@ public
       s" scope" REJECTION:NOTE  a u BOOT:GLOBAL-WL XREF-EMIT-SCOPE
       REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
       w wu XREF-EMIT-CALL
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    idx ;
 
@@ -710,7 +710,7 @@ public
       floor REJECTION:EMIT-U  s"  belong to the engine" REJECTION:EMIT-STR
       REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
       w wu XREF-EMIT-CALL
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    idx ;
 
@@ -745,7 +745,7 @@ private
    REJECTION:HELP
    s" pass the slot and occurrence `DEF-OCC:SELECT` answered for a word"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 public
 : SELECT ( ^n -- n n ) def-occ-select ;
@@ -907,7 +907,7 @@ public
    data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
    {: ta:^ tu:n :}
    parse-name dup 0= if
-      ta tu UNDEFINE-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
+      ta tu UNDEFINE-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    then
    XREF:UNDEFINE-NAME ;
 

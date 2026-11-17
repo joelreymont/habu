@@ -2,6 +2,7 @@
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f \
 \   src/habu/verify-source.f test/certify-does-definer.f
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -375,7 +376,7 @@ variable CDD-SRC-U
 : CDD-ROW-REJECTED ( [ -- ] ^u8 n -- )
    {: wa:^ wu:n :}
    REJECTION:CAPTURE
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[E-GENERATES-ROW]" CONTAINS? TTRUE
    REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;

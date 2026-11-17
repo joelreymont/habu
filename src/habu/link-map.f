@@ -11,6 +11,7 @@
 \ a pad row for the bytes before one that no row spans. Then a row for each
 \ package the build declared.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/le.f
 require src/lib/sort.f
@@ -49,7 +50,7 @@ private
    s" define `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
    s" ` in a wordlist the build makes: its global wordlist, a package it declares or one `wordlist` answers"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Build record r's wordlist id wid as the target numbers it.
 : WID-MAP ( n n -- n )

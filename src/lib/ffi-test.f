@@ -1,6 +1,7 @@
 \ ffi-test.f - checked C-ABI FFI tests against libc.
 \ Run: bin/hb --load src/lib/ffi-test.f
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/ffi-abi.f
@@ -311,7 +312,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-RECORD ( [ -- ] ^u8 n -- )
    {: h:^ hu:n :}
    DECL-DIAG:PROSE
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    h hu DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
 
@@ -327,12 +328,12 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-PATH-LENGTH ( -- )
    s" path length is exact from one through PATH-CAP" T-LABEL
    1 REJECTION:QUIET +!
-   [: FFI-T-LONG-PATH 0 FFI:SELECT-LIBRARY ;] CHECKER-REJECT-RC TTHROWSQ
+   [: FFI-T-LONG-PATH 0 FFI:SELECT-LIBRARY ;] EXIT-STATUS:REJECTED TTHROWSQ
    -1 REJECTION:QUIET +!
    FFI-T-LONG-PATH!
    FFI-T-LONG-PATH PATH-CAP FFI:SELECT-LIBRARY
    1 REJECTION:QUIET +!
-   [: FFI-T-LONG-PATH PATH-CAP 1+ FFI:SELECT-LIBRARY ;] CHECKER-REJECT-RC TTHROWSQ
+   [: FFI-T-LONG-PATH PATH-CAP 1+ FFI:SELECT-LIBRARY ;] EXIT-STATUS:REJECTED TTHROWSQ
    -1 REJECTION:QUIET +!
    FFI:SELECT-PROCESS ;
 
@@ -566,7 +567,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-FOREIGN-LIBRARY ( -- )
    s" a library name spelled for the other target is rejected by name" T-LABEL
-   FFI-T-FOREIGN-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   FFI-T-FOREIGN-SRC$ EXIT-STATUS:REJECTED FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    s" the record names the rejected name and this target" T-LABEL
@@ -588,7 +589,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-UNSELECTED ( -- )
    s" a declaration before any selection is rejected with a record" T-LABEL
-   FFI-T-UNSELECTED-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   FFI-T-UNSELECTED-SRC$ EXIT-STATUS:REJECTED FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: FUNCTION: with no library selected" CONTAINS? TTRUE ;
@@ -602,7 +603,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-LONG-FOREIGN-LIBRARY ( -- )
    s" a PATH-CAP foreign name keeps the target rejection and its full name" T-LABEL
-   FFI-T-LONG-FOREIGN-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   FFI-T-LONG-FOREIGN-SRC$ EXIT-STATUS:REJECTED FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]" CONTAINS? TTRUE
@@ -713,7 +714,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    fitu LEN>N 0 T=
    fiterr LEN>N 0 T=
    s" a base whose library name passes the path cap is rejected at the base" T-LABEL
-   FFI-T-BASE-MAX 1+ FFI-T-HUGE-BASE-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   FFI-T-BASE-MAX 1+ FFI-T-HUGE-BASE-SRC$ EXIT-STATUS:REJECTED FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library name made from this base" CONTAINS? TTRUE
@@ -733,7 +734,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-HUGE-PATH ( -- )
    s" a library path past the path cap is rejected with its length" T-LABEL
-   FFI-T-HUGE-PATH-SRC$ CHECKER-REJECT-RC FFI-T-RUN-EXITS
+   FFI-T-HUGE-PATH-SRC$ EXIT-STATUS:REJECTED FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library path is longer than a path can be" CONTAINS? TTRUE
@@ -905,9 +906,9 @@ create FFI-T-LONG FFI-T-LONG-U allot
    [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
    [: s" abcdefgh" FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-CAPACITY TTHROWSQ
    1 REJECTION:QUIET +!
-   [: FFI-T-CSTR-SRC -1 FFI:SELECT-LIBRARY ;] CHECKER-REJECT-RC TTHROWSQ
-   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:SELECT-LIBRARY ;] CHECKER-REJECT-RC TTHROWSQ
-   [: FFI-T-GUARDED-PATH ;] CHECKER-REJECT-RC TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 FFI:SELECT-LIBRARY ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:SELECT-LIBRARY ;] EXIT-STATUS:REJECTED TTHROWSQ
+   [: FFI-T-GUARDED-PATH ;] EXIT-STATUS:REJECTED TTHROWSQ
    -1 REJECTION:QUIET +!
    s" a string holding a 0 byte is refused before it reaches C" T-LABEL
    0 FFI-T-CSTR-DST SPAN:FILL

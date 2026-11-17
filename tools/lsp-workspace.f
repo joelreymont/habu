@@ -5,6 +5,7 @@
 \ PROCESS-GLOBAL: the roots and the request's graph belong to the server's one
 \ task; only the roots are kept between requests.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -288,7 +289,7 @@ variable CUR-ROOT                        \ and the root being walked
    {: q :}
    q catch {: rc:n :}
    rc 0= if CUR @ LOADS exit then
-   rc CHECKER-REJECT-RC =  VERIFY:DISCOVERY-STOPPED @ 0<>  and if CUR @ VERIFY:DISCOVERY-STOPPED @ FAULT exit then
+   rc EXIT-STATUS:REJECTED =  VERIFY:DISCOVERY-STOPPED @ 0<>  and if CUR @ VERIFY:DISCOVERY-STOPPED @ FAULT exit then
    rc FAULT$ nip nip if CUR @ rc FAULT exit then
    rc throw ;
 

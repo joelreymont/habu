@@ -1,3 +1,4 @@
+require src/core/exit-status.f
 require src/compiler/target/model.f
 require src/compiler/numeric-policy.f
 require src/compiler/binding.f
@@ -23,7 +24,7 @@ private
    s" supported" REJECTION:NOTE
    false [: SUPPORTED-LABEL SAY-ITEM ;] EACH-PROFILE drop
    REJECTION:HELP  s" build for one of the supported targets" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 public
 

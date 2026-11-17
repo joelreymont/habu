@@ -3,6 +3,7 @@
 \ publication by kind, the pending callback stub, and retraction on refusal.
 \ src/habu/t0.f calls it on every target.
 
+require src/core/exit-status.f
 require src/lib/prelude.f
 require src/lib/error.f
 require src/lib/string.f
@@ -149,7 +150,7 @@ private
 \ checker's reason, then its reject status, which the run names the
 \ definition under. The clause is named by the caller, from its open unit.
 : CLAUSE-CK ( n ^u8 n -- )
-   CHECKER-OWNER:DOES-REPORT -1 <> if CHECKER-REJECT-RC throw then ;
+   CHECKER-OWNER:DOES-REPORT -1 <> if EXIT-STATUS:REJECTED throw then ;
 
 \ The engine records the split just past the `does> ` it consumed, so a cut
 \ that is not just past a `does> ` in this source means the source and the
@@ -343,7 +344,7 @@ public
    s" define `" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
    s" ` in a `host` section if the build runs it, or call it only from target words"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a refusal there on its line.

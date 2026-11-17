@@ -3,6 +3,7 @@
 \ The converter pair (>NAME / NAME>N) is the only boundary crossing; the same
 \ name in two packages is two types. T-REPORT exits 1 on any failure.
 
+require src/core/exit-status.f
 require src/lib/codegen.f
 require src/lib/type/deftype.f
 require src/lib/test.f
@@ -52,7 +53,7 @@ s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 \ The record names the surface PTR once, in its `word` note.
 : PTR-REJECTED ( -- )
    REJECTION:CAPTURE
-   ['] MINT-PTR CHECKER-REJECT-RC TTHROWSQ
+   ['] MINT-PTR EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]: bad deftype declaration `ptr`" CONTAINS? TTRUE
    REJECTION:BUFFER$ s" ^ reserved name" CONTAINS? TTRUE
    REJECTION:BUFFER$ S\" = word: PTR\n" CONTAINS? TTRUE
@@ -96,7 +97,7 @@ s" : DTX ( rev -- str ) ;" TEST-EVAL:RC 70 T=
 : DT-REC ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
    {: sa:^ su:n ta:^ tu:n ba:^ bu:n la:^ lu:n ha:^ hu:n :}
    REJECTION:CAPTURE
-   sa su TEST-EVAL:RC CHECKER-REJECT-RC T=
+   sa su TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    REJECTION:BUFFER$ ta tu CONTAINS? TTRUE
    ba bu la lu DECL-DIAG:CAUSE? TTRUE
    REJECTION:BUFFER$ s" = word:" CONTAINS? TFALSE
@@ -143,11 +144,11 @@ S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYP
 \ NEWTYPE's gets the pointer's spelling.
 REJECTION:CAPTURE
 : DT-PTR-PTR ( -- ) s" DEFTYPE dx ^^" VERIFY:SOURCE-BUF ;
-' DT-PTR-PTR catch CHECKER-REJECT-RC T=
+' DT-PTR-PTR catch EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad deftype declaration `dx`\n --> <input>:1:13\n  |\n1 | DEFTYPE dx ^^\n  |             ^ pointer without a pointee\n  = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE dx ^T` instead, `^` joined to the type it points at, as in `NEWTYPE dx ^u8`\n\n" CONTAINS? TTRUE
 REJECTION:CAPTURE
 : DT-NT-PTR ( -- ) s" NEWTYPE nx ^" VERIFY:SOURCE-BUF ;
-' DT-NT-PTR catch CHECKER-REJECT-RC T=
+' DT-NT-PTR catch EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `nx`\n --> <input>:1:12\n  |\n1 | NEWTYPE nx ^\n  |            ^ pointer without a pointee\n  = help: spell a pointer `^T`, `^` joined to the type it points at, as in `NEWTYPE link ^u8`\n\n" CONTAINS? TTRUE
 \ a width inside a longer base gets the NEWTYPE that loads, `n` for the width.
 s" DEFTYPE dx ^width"
@@ -191,20 +192,20 @@ S\" = help: a `DEFTYPE` base is one name with no type arguments: declare `NEWTYP
 \ a NEWTYPE has no header and no clause, and its helps offer neither.
 REJECTION:CAPTURE
 : DT-NT-PARAM ( -- ) s" NEWTYPE dtqqq a" VERIFY:SOURCE-BUF ;
-' DT-NT-PARAM catch CHECKER-REJECT-RC T=
+' DT-NT-PARAM catch EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtqqq`\n --> <input>:1:15\n  |\n1 | NEWTYPE dtqqq a\n  |               ^ unknown type\n  = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n\n" CONTAINS? TTRUE
 REJECTION:CAPTURE
 : DT-NT-OPEN ( -- ) s" NEWTYPE dtqqq option<n" VERIFY:SOURCE-BUF ;
-' DT-NT-OPEN catch CHECKER-REJECT-RC T=
+' DT-NT-OPEN catch EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtqqq`\n --> <input>:1:15\n  |\n1 | NEWTYPE dtqqq option<n\n  |               ^^^^^^^^ unclosed type application\n  = help: close each `<` of the type with `>`\n\n" CONTAINS? TTRUE
 REJECTION:CAPTURE
 : DT-NT-RV ( -- ) s" NEWTYPE dtrv read-view<n,n,n>" VERIFY:SOURCE-BUF ;
-' DT-NT-RV catch CHECKER-REJECT-RC T=
+' DT-NT-RV catch EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad newtype declaration `dtrv`\n --> <input>:1:24\n  |\n1 | NEWTYPE dtrv read-view<n,n,n>\n  |                        ^ type argument must be a scope parameter\n  = help: declare a STRUCTURE whose header lists the parameter, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" CONTAINS? TTRUE
 \ a base no type declares: the record names DEFTYPE and its help offers one
 \ bare name, never a pointer.
 REJECTION:CAPTURE
-s" DEFTYPE path frob" TEST-EVAL:RC CHECKER-REJECT-RC T=
+s" DEFTYPE path frob" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]: bad deftype declaration `path`" CONTAINS? TTRUE
 s" frob" s" unknown type" DECL-DIAG:CAUSE? TTRUE
 REJECTION:BUFFER$ s" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`" CONTAINS? TTRUE

@@ -34,7 +34,6 @@ using SOURCE-ROOT
 \ check.f's exit statuses.
 64 constant CHK-E-USAGE
 69 constant CHK-E-UNAVAILABLE
-70 constant CHK-E-CHECK
 
 TYPED-VARIABLE CHK-BYTES-A ^u8
 variable CHK-BYTES-U
@@ -549,10 +548,10 @@ variable VFY-EXE-U
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
       VFY-ANSWER @ VFY-DEFERRED = if 0 RESULT:OK exit then
-      VFY-ANSWER @ VFY-REFUSED = if CHECKER-REJECT-RC RESULT:OK exit then
-      VFY-ANSWER @ VFY-MISSING = if CHECKER-REJECT-RC RESULT:OK exit then
+      VFY-ANSWER @ VFY-REFUSED = if EXIT-STATUS:REJECTED RESULT:OK exit then
+      VFY-ANSWER @ VFY-MISSING = if EXIT-STATUS:REJECTED RESULT:OK exit then
       VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR RESULT:OK exit then
-      VFY-ANSWER @ VFY-FULL = if REJECTION:DICT-FULL-RC RESULT:OK exit then
+      VFY-ANSWER @ VFY-FULL = if EXIT-STATUS:FULL RESULT:OK exit then
    then
    o RESULT:ERR ;
 
@@ -1122,8 +1121,8 @@ public
 \ readable, 77 for a full dictionary, 0 when nothing was rejected.
 : VERIFY-STATUS ( -- n )
    VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR exit then
-   VFY-ANSWER @ VFY-FULL = if REJECTION:DICT-FULL-RC exit then
-   VFY-ANSWER @ VFY-REFUSED =  VFY-ANSWER @ VFY-MISSING =  or if CHECKER-REJECT-RC exit then
+   VFY-ANSWER @ VFY-FULL = if EXIT-STATUS:FULL exit then
+   VFY-ANSWER @ VFY-REFUSED =  VFY-ANSWER @ VFY-MISSING =  or if EXIT-STATUS:REJECTED exit then
    0 ;
 
 \ The file a loader of the last verification named that is not there or could

@@ -1,4 +1,5 @@
 \ Fixed build target and action values. CTARGET remains the wire and digest owner.
+require src/core/exit-status.f
 require src/lib/string.f
 require src/compiler/target.f
 require src/compiler/digest.f
@@ -244,7 +245,7 @@ private
    REJECTION:HELP
    s" name one of the targets listed, as `aarch64-unknown-linux-gnu`"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : DETECT-NATIVE-PROFILE ( -- native-profile-id )
    HB-TARGET-LINUX? if RTARGET-NATIVE--PROFILE--ID:LINUX-ARM64 exit then

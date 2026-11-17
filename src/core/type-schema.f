@@ -152,7 +152,7 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
    s" ` was given " REJECTION:EMIT-STR  what whatu REJECTION:EMIT-STR
    s" value" REJECTION:NOTE  v REJECTION:EMIT-N
    REJECTION:HELP  fix fixu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A persistent node or root never names a transient one.
 : KEEP-CK ( n ^u8 n -- ) {: id:n w:^ wu:n :}

@@ -4,6 +4,7 @@
 \ MATCH refines each branch with its variant's payload, joins branch outputs and
 \ enforces exhaustiveness over declaration-order tags (no default branch).
 
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/ffi-abi.f
@@ -259,7 +260,7 @@ package MAMB-A public SUMTYPE mamb VARIANT a1 n ;VARIANT ;SUMTYPE ;package
 package MAMB-B public SUMTYPE mamb VARIANT b1 n ;VARIANT ;SUMTYPE ;package
 REJECTION:CAPTURE
 s" package MAMB-C using MAMB-A using MAMB-B : MAMB1 ( MAMB-A:mamb -- n ) MATCH mamb a1 OF ENDOF ;MATCH ; ;package"
-TEST-EVAL:RC CHECKER-REJECT-RC T=
+TEST-EVAL:RC EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ s\" error[E-USING-AMBIGUOUS]: bad match: ambiguous type family\n" STARTS-WITH? TTRUE
 SB-RESET  s" --> " SB-APPEND  SOURCE-ROOT:CWD$ SB-APPEND  s" /test/type-match-suite.f:" SB-APPEND
 REJECTION:BUFFER$ SB$ CONTAINS? TTRUE

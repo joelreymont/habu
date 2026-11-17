@@ -610,7 +610,7 @@ private
    REJECTION:HELP
    s" declare `: " REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
    s"  ( -- )` and read inputs inside it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Installs the '( ... )' in TSTART..TI when it is the first after the name, the
 \ signature (a built definition's from its effect); true when that ends the walk.
@@ -1043,7 +1043,7 @@ public
    {: wa:^ wu:n la:^ lu:n ha:^ hu:n code:n :}
    wa wu code PLACE  la lu REJECTION:EMIT-STR  SIG-NOTE
    REJECTION:HELP  ha hu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 \ RAISE-LABEL under code's own label.
 : RAISE ( ^u8 n ^u8 n n -- ) {: wa:^ wu:n ha:^ hu:n code:n :}
    wa wu code LABEL$ ha hu code RAISE-LABEL ;
@@ -1053,12 +1053,12 @@ public
    in out WIDTHS  SIG-NOTE
    REJECTION:HELP  s" give both sides the same width in cells: " REJECTION:EMIT-STR
    in out WIDTHS
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 \ Rejects signature sa su of name na nu that does not parse.
 : REJECT-SIGNATURE ( ^u8 n ^u8 n -- ) {: sa:^ su:n na:^ nu:n :}
    sa su na nu SGBAD-REJECTION
    sa su na nu SGBAD-PIN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 ;package
 
 \ The family TAGGED-HIT? last found, or -1 for a type variable.
@@ -2000,7 +2000,7 @@ global
 private
 
 : DEF-RESUMES? ( n -- bool )
-   CHECKER-REJECT-RC =  MULTI-ERR? and ;
+   EXIT-STATUS:REJECTED =  MULTI-ERR? and ;
 
 : DEF-RESUMED ( -- )
    0 LAYOUT-XPORT !  0 BIND-HORIZON ! ;
@@ -2130,7 +2130,7 @@ package CHECKER-IDENTITY
    ta tu CAST-ERROR:TOKEN!
    wa wu E-CAST-FAM CAST-ERROR:OPEN
    REJECTION:HELP  ta tu ta 0 SGBAD-FIX
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 \ A row that did not parse is rejected before a gate walks it; family tails read
 \ the engine's open namespace.
 : PARSE ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
@@ -2414,7 +2414,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ Ends a top-level token's record, which a caller collecting many keeps.
 : TOP-END ( -- n )
    MULTI-ERR? IF REJECTION:KEEP 0 EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A top-level token no scope defines, run when runs is set, else ticked; or one
 \ with a malformed qualifier when bad is set.
@@ -2498,7 +2498,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ Ends a row's rejection: counted under --all-errors, else thrown.
 : ROW-END ( -- )
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : GENR-MESSAGE ( ^u8 n n -- ) {: na:^ nu:n kind:n :}
    s" the `generates:` row names " REJECTION:EMIT-STR  na nu CODE-SPAN
@@ -2604,7 +2604,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : GENR-SHAPE-STOP ( ^u8 n -- ) {: na:^ nu:n :}
    s" , as `generates: " REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
    s"  ( n -- )`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ D's name NA NU, followed by the input A U, which opens with no `(`.
 : GENR-NO-EFFECT ( ^u8 n ^u8 n -- ) {: na:^ nu:n a:^ u:n :}
@@ -3083,7 +3083,7 @@ EXPORT CHECKER-REG:TS-PTR
    s" pass the value to a word whose effect names its type, or move `"
    REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` inside a definition" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ At top level the engine's one-cell primitive runs: over a multi-cell value it
 \ would move part of it.
@@ -3177,7 +3177,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    a u t tu REJECTION:DUPLICATE ;
 
 : REJECT-DUPLICATE ( ^u8 n ^u8 n -- )
-   DUPLICATE-RECORD  CHECKER-REJECT-RC REJECTION:STOP ;
+   DUPLICATE-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The token's verdict as DO-TOK1 and CHECK take it: a checked step runs, as
 \ does one deferred to the run; a refused or uncheckable one renders the
@@ -3195,7 +3195,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
    CHECK-VERDICT dup DVERD ! {: v:n :}
    v VERDICT-CHECKED =  v VERDICT-DEFERRED =  or  RCOMPILE @ 0=  and IF EXIT THEN
    REJECTION:QUIET @ 0= IF DIAG-PRINT THEN
-   CHECKER-REJECT-RC throw ;
+   EXIT-STATUS:REJECTED throw ;
 
 \ A step is a guest in the term pools: an event fires between the tokens of a
 \ declaration whose terms sit in the pools, on the stack and in its variables,
@@ -3325,7 +3325,7 @@ variable TG-GEN    variable TG-TERM-NAME
    s" define a word that leaves the whole value, `: " REJECTION:EMIT-STR
    w v REJECTION:EMIT-STR  s"  ( -- " REJECTION:EMIT-STR  ty REND-TYPE
    s"  ) ... ;`, in place of the constant" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ `constant`, spelled a u, would take the cell it names w v from an empty stack.
 : TOP-EMPTY-TAKE-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
@@ -3336,7 +3336,7 @@ variable TG-GEN    variable TG-TERM-NAME
    REJECTION:HELP
    s" push the value before `constant`, as `0 constant " REJECTION:EMIT-STR
    w v REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Then the keyword's own row judges the cell it takes.
 : TOP-TAKE-STEP ( ^u8 n ^u8 n -- ) {: a:^ u:n w:^ v:n :}
@@ -3387,7 +3387,7 @@ variable TOP-DROP-N
    s" leave the value from a word whose effect gives `" REJECTION:EMIT-STR
    ty REND-TYPE  s" ` concrete type arguments, as `( -- " REJECTION:EMIT-STR
    ty REND-CELL-ARGS  s"  )`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ An item of open width has no cell count to drop, so it is rejected at
 \ `drop`; otherwise a body's step judges it. A rejection is placed at the

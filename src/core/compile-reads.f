@@ -173,7 +173,7 @@ private
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
    s" ` got a length of " REJECTION:EMIT-STR  n REJECTION:EMIT-N
    REJECTION:HELP  s" pass the span's own length, 0 or more" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ w is the word the program called.
 : APPEND ( ^u8 n n ^u8 n ^u8 n -- )

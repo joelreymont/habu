@@ -1,6 +1,7 @@
 \ ffi-abi-test.f - target-independent FFI ABI and marshalling tests.
 \ Run: bin/hb --load src/lib/ffi-abi-test.f
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/ffi-abi.f
 require test/decl-diag-capture.f
@@ -73,7 +74,7 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 : FFI-T-NO-DASHES ( -- )
    s" an effect without '--' prints its record" T-LABEL
    DECL-DIAG:PROSE
-   FFI-T-NO-DASHES$ TEST-EVAL:RC CHECKER-REJECT-RC T=
+   FFI-T-NO-DASHES$ TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" error[E-FFI-SYNTAX]: expected '--' before ')'"
    DECL-DIAG:HAS? TTRUE
    s" = help: write the effect as ( inputs -- output )"
@@ -83,7 +84,7 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 : FFI-T-NO-PATH ( -- )
    s" LIBRARY with no path prints its record" T-LABEL
    DECL-DIAG:PROSE
-   s" LIBRARY" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" LIBRARY" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" error[E-FFI-SYNTAX]: the library path is empty"
    DECL-DIAG:HAS? TTRUE
    s" = help: write the library's path or file name after LIBRARY"
@@ -111,7 +112,7 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 : FFI-T-FOREIGN ( -- )
    s" LIBRARY with a name spelled for the other target prints its record" T-LABEL
    DECL-DIAG:PROSE
-   FFI-T-FOREIGN$ TEST-EVAL:RC CHECKER-REJECT-RC T=
+   FFI-T-FOREIGN$ TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    FFI-T-FOREIGN-HEAD$ DECL-DIAG:HAS? TTRUE
    FFI-T-FOREIGN-HELP$ DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;

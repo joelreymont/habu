@@ -3,6 +3,7 @@
 \ A64ICODE's code buffer (LAYOUT) and places them at TEXT-VA plus their offset
 \ there. Words visible only inside LINKER.
 
+require src/core/exit-status.f
 require src/lib/hashmap.f
 require src/habu/layout.f
 require src/habu/xref.f
@@ -246,7 +247,7 @@ variable UNSAFE-COUNT
    s" found" REJECTION:NOTE  t tu REJECTION:EMIT-STR
    REJECTION:HELP
    s" build for macos-aarch64, linux-aarch64 or wasm" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ The address value machine a's emission bytes b, s of them, hold at site for a row of
@@ -350,7 +351,7 @@ variable UNSAFE-COUNT
    s" a stripped program has no dictionary, writable code or interpreter: run `"
    REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
    s" ` while the program builds, never from code its entry reaches" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ The shadow record host address a names, or -1. A Wasm module has no hb
@@ -524,7 +525,7 @@ variable UNSAFE-COUNT
    REJECTION:HELP
    s" call only words the build's files define or the target's kernel provides"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ Emission e's code, then a defer's trailer: DEFER-MAGIC and its dispatch cell

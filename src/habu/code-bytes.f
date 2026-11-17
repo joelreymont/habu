@@ -3,6 +3,8 @@
 \ AT is the only place it becomes a pointer, through the private cast N>U8, and
 \ it rejects a span IN-CODE? does not admit.
 
+require src/core/exit-status.f
+
 package CODE-BYTES
 
 private
@@ -40,7 +42,7 @@ CAST: N>U8 ( n -- ^u8 )
    REJECTION:HELP
    s" pass an address inside a definition's code and a length that ends before `cp@`"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 public
 

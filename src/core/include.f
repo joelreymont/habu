@@ -15,7 +15,6 @@
 \ Z and CANON scratch, so NORMAL-BUF and CANDIDATE-BUF survive.
 
 PATH-CAP constant INCLUDE-PATH-CAP
-$46 constant INCLUDE-EVAL-RC
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 
 package REQUIRE-REG
@@ -160,7 +159,7 @@ public
 
 \ Stops with word w's record for the path a u it cannot take.
 : LOADER-PATH-STOP ( ^u8 n ^u8 n n n -- )
-   INCLUDE-PATH-CAP LOADER-PATH-RECORD  CHECKER-REJECT-RC REJECTION:STOP ;
+   INCLUDE-PATH-CAP LOADER-PATH-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Whether a loader or ROOT! can take the path a u before resolving it: 0 0, else
 \ the kind and len LOADER-PATH-STOP takes. Length is the resolver's to judge.
@@ -329,7 +328,7 @@ private
    w wu SRCLOC:SPELLED drop p pu why whyu PATH-REJECT
    w wu a u LOADER-PATH-AT if why whyu REJECTION:EMIT-STR then
    REJECTION:HELP  help helpu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : TRY-CANON ( ^u8 n -- bool )
    {: p:^ pu:n :}
@@ -737,7 +736,7 @@ private
    REJECTION:HELP
    s" load only files under the source root, which this " REJECTION:EMIT-STR
    s" program's policy set with `POLICY-ROOT`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ CONFINE of a path a program asked for as req, which a rejection names and
 \ places at p, or nowhere when pu is 0.
@@ -882,7 +881,7 @@ INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
    REJECTION:HELP
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
    INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ ROOT! for word w, the one the program called.
 : ROOT-SET ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
@@ -936,7 +935,7 @@ ROOT-MOVER
       REJECTION:HELP
       s" save the current directory with `SOURCE-ROOT:PUSHPATH` first; " REJECTION:EMIT-STR
       s" a load or `SOURCE-ROOT:WITH` body pops only what it saved" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    SLOT-N @ 1- {: ix:n :}
    RELEASE-CURRENT
@@ -973,7 +972,7 @@ using SOURCE-ROOT
 \ A loader word's parsed path of length u: a missing one is rejected at the word.
 : INCLUDE-CHECK-PATH ( n -- ) {: u:n :}
    u 0 <= if
-      SRCLOC:TOKEN$ INCLUDE-NO-PATH  CHECKER-REJECT-RC REJECTION:STOP
+      SRCLOC:TOKEN$ INCLUDE-NO-PATH  EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 
 package REQUIRE-REG
@@ -1684,7 +1683,7 @@ public
       s" the including file was found under, then Habu's source root, " REJECTION:EMIT-STR
       s" then the directory hb runs in" REJECTION:EMIT-STR
    then
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ RESOLVE of a u whose rejection stands at t tu, unplaced when tu is 0. SELECT
 \ and CANONICAL may reuse the buffer a u lies in, so a rejection names
@@ -1735,7 +1734,7 @@ public
    REJECTION:HELP
    s" require it after `REQUIRE-BOOT-FREEZE`, or move it under `" REJECTION:EMIT-STR
    root rootu REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The row a boot file is recorded as: the spelling BOOT-CANDIDATE asks for. That
 \ is its path below the engine root, or, for a file a directory symlink inside
@@ -2057,7 +2056,7 @@ variable LAST-LOAD-EVAL-OK
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
    s" ` runs with no file loading" REJECTION:EMIT-STR
    REJECTION:HELP  s" call it from code a load runs" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : FRAME-EXEC-SOURCE ( ^u8 -- ^u8 )
    {: frame:^ :}
@@ -2389,7 +2388,7 @@ private
    s" drop or consume them before the file ends: " REJECTION:EMIT-STR
    s" a value crosses a load only through a word or a variable"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : RESIDUE-TAKEN ( n -- ) {: n:n :}
    s" E-EVAL-RESIDUE" REJECTION:OPEN
@@ -2398,7 +2397,7 @@ private
    REJECTION:HELP
    s" a file starts on an empty stack: " REJECTION:EMIT-STR
    s" pass values through a word or a variable" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Run at the end of the unit, where depth is what the file left.
 : RESIDUE-CHECK ( -- )
@@ -2471,7 +2470,7 @@ public
    CLOSER-U @ 0 <> if
       OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @ t tu UNCLOSED
       ABANDON-XT @ execute  q execute  CLOSED
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    t OPENER-A !  tu OPENER-U !  c CLOSER-A !  cu CLOSER-U !  q ABANDON-XT !
    1 DECL-SERIAL +! ;
@@ -2485,7 +2484,7 @@ public
    OPEN-SINCE? 0= if exit then
    OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @ NULL-PTR 0 UNCLOSED
    ABANDON-XT @ execute  CLOSED
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Load word w wu begins a load: a declaration still open is rejected at its
 \ opener, so none spans a load.
@@ -2494,7 +2493,7 @@ public
    OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @  w wu SRCLOC:SPELLED drop
    UNCLOSED-LOAD
    ABANDON-XT @ execute  CLOSED
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A text a throw left abandons the declaration it opened, with no record.
 : TEXT-UNWOUND ( n -- )
@@ -2806,7 +2805,7 @@ public
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop 2drop
    mode LOAD-INCLUDE = if path size included exit then
    mode LOAD-REQUIRE = if path size required exit then
-   INCLUDE-EVAL-RC throw ;
+   EXIT-STATUS:REJECTED throw ;
 ;package
 
 package SOURCE-ROOT
@@ -2818,7 +2817,7 @@ private
    SRCLOC:TOKEN$ REJECTION:AT  s" sealed" REJECTION:EMIT-STR
    REJECTION:HELP
    s" call `POLICY-ROOT` before the policy seals the dictionary" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : POLICY-ROOT-SET ( [ -- ] -- )
    data-base POLICY-REQUIRE-CELL + xt!

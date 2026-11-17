@@ -10,9 +10,6 @@
 \ word, which ends it. The record is built in TEXT, so a renderer that resets
 \ TEXT-LEN cannot run inside one.
 
-\ The status a rejection stops with.
-70 constant CHECKER-REJECT-RC
-
 package REJECTION
 private
 
@@ -926,11 +923,11 @@ public
 : NOT-A-NAME ( ^u8 n ^u8 n -- ) {: kw:^ ku:n t:^ tu:n :}
    t tu s" (" CORE-STR= IF
       kw ku t tu s" a signature, not a name" MISSING-NAME
-      CHECKER-REJECT-RC STOP
+      EXIT-STATUS:REJECTED STOP
    THEN
    t tu s" \" CORE-STR= IF
       kw ku t tu s" a comment, not a name" MISSING-NAME
-      CHECKER-REJECT-RC STOP
+      EXIT-STATUS:REJECTED STOP
    THEN ;
 
 \ The counted string the literal's opener t tu opens is longer than the max
@@ -1028,9 +1025,6 @@ public
    s" `, or the word already named `" EMIT-STR
    stem stemu EMIT-STR  sfx sfxu EMIT-STR  96 EMIT1 ;
 
-\ The status a load stops with when the dictionary has no record left.
-77 constant DICT-FULL-RC
-
 \ Rejects a definition of NAME when the dictionary has no record left, placed
 \ at PLACE.
 : DICTIONARY-FULL ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
@@ -1038,7 +1032,7 @@ public
    s" the dictionary has no record left for `" EMIT-STR  a u EMIT-STR  96 EMIT1
    t tu AT  s" no record left" EMIT-STR
    HELP  s" define fewer words in this load" EMIT-STR
-   DICT-FULL-RC STOP ;
+   EXIT-STATUS:FULL STOP ;
 
 \ The name a u would change a sealed package: the record stands at the source
 \ token t tu, which is not a u when the name is generated. It is written
@@ -1088,7 +1082,7 @@ private
       a PLACES? IF  a u AT  s" too long" EMIT-STR  THEN
       HELP  s" name the file by a path of at most " EMIT-STR
       PATH-CAP EMIT-U  s"  bytes" EMIT-STR
-      CHECKER-REJECT-RC STOP
+      EXIT-STATUS:REJECTED STOP
    THEN
    a d u COPY  u ;
 : FILE-COPY ( ^u8 n -- )

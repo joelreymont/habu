@@ -35,6 +35,7 @@
 \ holds zeros where it is laid, and the list names none of them. An engine's
 \ is the space as is.
 
+require src/core/exit-status.f
 require src/lib/le.f
 require src/lib/sort.f
 require src/habu/layout.f
@@ -443,7 +444,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
    REJECTION:HELP
    s" point into the data a variable, buffer or allot made, never at the bytes between"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A host address in the open space as its offset in the image's data: an
 \ engine's from the space's start.
@@ -457,7 +458,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
       REJECTION:HELP
       s" store in a DATA pointer cell only 0 or an address in the data the build allots"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    ENGINE? @ if off exit then
    v LAID-OFFSET ;
@@ -484,7 +485,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
       REJECTION:HELP
       s" declare a cell (`xt!`, `ptr-cell-mark`) only in data the build allotted, below `here`"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 
 : EACH-KEPT ( [ n -- ] -- )

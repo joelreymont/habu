@@ -1082,8 +1082,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" CONTAINS? {: placed:bool :}
-   named placed and  rc CHECKER-REJECT-RC =  and 0= if rc SHOW then
-   s" the build exits 70" LABEL  rc CHECKER-REJECT-RC T=
+   named placed and  rc EXIT-STATUS:REJECTED =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc EXIT-STATUS:REJECTED T=
    s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
    s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE ;
 
@@ -1100,8 +1100,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" CONTAINS? {: placed:bool :}
-   named placed and  rc CHECKER-REJECT-RC =  and 0= if rc SHOW then
-   s" the build exits 70" LABEL  rc CHECKER-REJECT-RC T=
+   named placed and  rc EXIT-STATUS:REJECTED =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc EXIT-STATUS:REJECTED T=
    s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
    s" the refusal names squat-main.f's line 4" LABEL  placed TTRUE ;
 
@@ -1964,8 +1964,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" HT2" WHICH!  s" top.f" s" prog-top" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-LAYOUT-VALUE]" CONTAINS? {: said:bool :}
    CMD:ERR$ s" top.f" NEST-PATH$ CONTAINS? {: named:bool :}
-   said named and  rc CHECKER-REJECT-RC =  and 0= if rc SHOW then
-   s" the build exits 70" LABEL  rc CHECKER-REJECT-RC T=
+   said named and  rc EXIT-STATUS:REJECTED =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc EXIT-STATUS:REJECTED T=
    s" the rejection gives the moved member's reason" LABEL  said TTRUE
    s" the rejection names top.f" LABEL  named TTRUE ;
 

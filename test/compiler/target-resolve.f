@@ -1,5 +1,6 @@
 \ Registered target-action acceptance. Each printed label and refusal is
 \ repeatable with `bin/hb --load test/compiler/target-resolve.f`.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/compiler/target/model.f
 require tools/build-target.f
@@ -11,7 +12,7 @@ private
 \ A target change inside an action is rejected with E-BUILD-ACTIVE, status 70.
 : ACTIVE-REJECTED ( [ -- ] -- )
    REJECTION:CAPTURE  true REJECTION:JSON !
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    false REJECTION:JSON !
    REJECTION:BUFFER$ S\" \"code\":\"E-BUILD-ACTIVE\"" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;

@@ -7,6 +7,7 @@
 \ validated as an executable here, so a bad override is rejected with its record
 \ (E-ENGINE-NOT-EXECUTABLE) before any spawn.
 
+require src/core/exit-status.f
 require src/lib/fs.f
 require src/lib/process-env.f
 require src/lib/engine-id.f
@@ -43,7 +44,7 @@ PATH-CAP BUFFER: JOINED
    REJECTION:HELP
    s" point " REJECTION:EMIT-STR  NAME$ REJECTION:EMIT-STR
    s"  at an executable hb, or unset it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : VALIDATE$ ( ^u8 n -- ^u8 n )
    2dup FS:EXECUTABLE? 0= if 2dup REJECT then ;

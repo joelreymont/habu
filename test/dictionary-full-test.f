@@ -4,10 +4,11 @@
 \ E-DICTIONARY-FULL, placed at the name they make, a does> clause at its
 \ `does>`, a namespace at its qualified head, an EXPORT at its operand, a
 \ declaration where it ran out of room and a replayed definition at its `:`,
-\ and the load exits REJECTION:DICT-FULL-RC. A full dictionary stops the load,
+\ and the load exits EXIT-STATUS:FULL. A full dictionary stops the load,
 \ so each case is its own child hb. Each child fills the dictionary to a set
 \ number of free records counted from its own ndict@, so no case depends on how
 \ many records the engine uses at boot.
+require src/core/exit-status.f
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/rejection.f
@@ -30,7 +31,7 @@ private
    {: src:^ srcu:n want:^ wantu:n label:^ labelu:n :}
    src srcu RUN-CASE
    want wantu label labelu GE-EXPECT-ERR
-   REJECTION:DICT-FULL-RC label labelu GE-EXPECT-RC
+   EXIT-STATUS:FULL label labelu GE-EXPECT-RC
    s" PASS: " type label labelu type cr ;
 
 \ MK and its does> clause take the last two records, so OVER1 finds none.

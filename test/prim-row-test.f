@@ -1,5 +1,6 @@
 \ prim-row-test.f - verify-source reads a row's header and body by the row rule.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/habu/verify-source.f
@@ -20,7 +21,7 @@ private
 \ The action stops with a record that opens with h hu, its message and place.
 : REJECTED ( [ -- ] ^u8 n -- ) {: q h:^ hu:n :}
    REJECTION:CAPTURE  q catch  REJECTION:BUFFER-OFF
-   CHECKER-REJECT-RC T=
+   EXIT-STATUS:REJECTED T=
    REJECTION:BUFFER$ h hu STARTS-WITH? TTRUE ;
 
 : ROW-CASE ( -- )

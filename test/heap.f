@@ -7,6 +7,7 @@
 \ outside DYNAMIC-STORAGE; a record pointer enters no generic-pointer word that
 \ reads a cell; and tools/check.f --verify-only certifies a word using a HEAP's
 \ words instead of deferring the rest of the source to the run.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/json.f
 require src/lib/arena.f
@@ -117,9 +118,9 @@ variable EVAL-U
 
 : REFUSALS ( -- )
    s" a refused declaration defines nothing" T-LABEL
-   s" HEAP BAD u16" EVAL CHECKER-REJECT-RC T=
+   s" HEAP BAD u16" EVAL EXIT-STATUS:REJECTED T=
    s" BAD-NEW" UNDEFINED? TTRUE
-   s" HEAP WORSE no-such-type" EVAL CHECKER-REJECT-RC T=
+   s" HEAP WORSE no-such-type" EVAL EXIT-STATUS:REJECTED T=
    s" WORSE-NEW" UNDEFINED? TTRUE ;
 
 
@@ -127,11 +128,11 @@ variable EVAL-U
 \ DYNAMIC-STORAGE's private words: outside it a tick or a call is undefined.
 : CALLS ( -- )
    s" checked code neither calls nor ticks the record runtime words" T-LABEL
-   s" ' DYNAMIC-STORAGE:MAP-RECORD drop" EVAL CHECKER-REJECT-RC T=
-   s" : Z7 ( -- ) NULL-PTR 16 DYNAMIC-STORAGE:UNMAP-RECORD ;" EVAL CHECKER-REJECT-RC T=
+   s" ' DYNAMIC-STORAGE:MAP-RECORD drop" EVAL EXIT-STATUS:REJECTED T=
+   s" : Z7 ( -- ) NULL-PTR 16 DYNAMIC-STORAGE:UNMAP-RECORD ;" EVAL EXIT-STATUS:REJECTED T=
    s" Z7" UNDEFINED? TTRUE
    s" a record pointer enters no generic-pointer word that reads a cell" T-LABEL
-   s" : Z4 ( ^note -- ) 16 TAKE ;" EVAL CHECKER-REJECT-RC T=
+   s" : Z4 ( ^note -- ) 16 TAKE ;" EVAL EXIT-STATUS:REJECTED T=
    s" Z4" UNDEFINED? TTRUE ;
 
 

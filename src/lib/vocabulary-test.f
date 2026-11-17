@@ -122,7 +122,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ status 70, no output.
 : REFUSES ( ^u8 n ^u8 n ^u8 n -- )
    {: name:^ nu:n line:^ lu:n place:^ pu:n :}
-   name nu CHECKER-REJECT-RC line lu place pu s" " SAYS ;
+   name nu EXIT-STATUS:REJECTED line lu place pu s" " SAYS ;
 
 : TIER0-REFUSES ( ^u8 n ^u8 n ^u8 n -- )
    {: name:^ nu:n line:^ lu:n place:^ pu:n :}
@@ -277,7 +277,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" confined/string-required" s" error[E-POLICY]: `required` is not in the vocabulary this source may use" s" test/policy/confined/string-required.f:1:" REFUSES
    s" confined/root-call" s" error[E-POLICY]: `VOCABULARY:SOURCE-ROOT!` is not in the vocabulary this source may use" s" test/policy/confined/root-call.f:1:" REFUSES
    s" allow-root-direct" HARNESS!
-   s" " CHECKER-REJECT-RC ROOT$ s" /test/policy/confined/link.f` lies outside the source root" s" " SAYS
+   s" " EXIT-STATUS:REJECTED ROOT$ s" /test/policy/confined/link.f` lies outside the source root" s" " SAYS
    s" allow-root-preflight" HARNESS!
    s" " 0 ROOT$ s" `../outside.f` lies outside the source root" S\" 0\n70\n0\n\n" SAYS
    s" allow-root-scope-throw" HARNESS!

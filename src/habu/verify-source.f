@@ -128,6 +128,7 @@
 \ unreported: the load stops at it, so the operands of a misspelt parsing word
 \ or the rest of a misread declaration are not refused after it.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/source-syntax.f
 require src/core/checker-owner-guard.f
@@ -181,7 +182,7 @@ variable DISCOVERY-STOPPED
 
 \ A loader form discovery rejects, its record written: the stop, with KIND.
 : DISCOVERY-STOP ( n -- )
-   DISCOVERY-STOPPED !  CHECKER-REJECT-RC REJECTION:STOP ;
+   DISCOVERY-STOPPED !  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Captured by the verifier child's body as it starts loading. A direct caller
 \ that does not supply an entry observation retains checking order.
@@ -411,21 +412,21 @@ variable FLAG-N
 \ The definer the scan read last, at TOKEN-BYTE, has no name after it.
 : NAME-STOP ( -- )
    TOKEN-BYTE @ TOKEN-FROM NO-NAME-RECORD
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The source ends inside the statement's definition, named by the token after
 \ its opener.
 : UNCLOSED-STOP ( -- )
    TOP-CUR-A @ SOURCE@ - TOP-CUR-U @ + TOKEN-FROM {: t:^ tu:n :}
    t tu t tu INTERPRETER:UNCLOSED-REJECT
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The declaration t tu opened, which c cu closes, is still open when the token
 \ o ou opens another or, with ou 0, when the source ends: the load's record.
 : UNCLOSED-DECL-STOP ( ^u8 n ^u8 n ^u8 n -- )
    {: t:^ tu:n c:^ cu:n o:^ ou:n :}
    t tu c cu o ou SOURCE-ROOT:UNCLOSED
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Places the empty token at the statement the scan is in, labelled l lu, when
 \ a source the record knows holds it.
@@ -608,7 +609,7 @@ EXPORT CHECK:VREC-TOKEN
    4 SKIPPED-PAYLOAD {: raw:^ rawu:n :}
    raw rawu ESC-BYTES 0= IF
       SOURCE@ TOKEN-START @ + 3 INTERPRETER:LITERAL-REJECT
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    2dup raw rawu SRCLOC:LITERAL!
    kind raw rawu STR-LAST! ;
@@ -750,7 +751,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 \ The record of t tu, a definition's name or `does>`, with no closed signature
 \ after it.
 : SIGNATURE-STOP ( ^u8 n -- ) {: t:^ tu:n :}
-   t tu INTERPRETER:SIGNATURE-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+   t tu INTERPRETER:SIGNATURE-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The signature that must follow t tu; with none the scan stops.
 : SIGNATURE-AT ( ^u8 n -- ^u8 n )
@@ -769,7 +770,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    QUIET-UNTERM
    FOUND @ 0= IF
       opener openeru INTERPRETER:LITERAL-REJECT
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    SOURCE@ start + SCAN-I @ start - ;
 
@@ -933,7 +934,7 @@ variable BODY-LIT-KIND
 \ byte AT, which is not a u when the name is generated.
 : SEAL-STOP ( ^u8 n n n -- ) {: a:^ u:n at:n tu:n :}
    a u  SOURCE@ at + tu  REJECTION:SEALED
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 EXPORT CHECKER-RESOLVE:SOURCE-SEALED?
 EXPORT CHECKER-RESOLVE:SOURCE-SEAL
@@ -990,7 +991,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    s 1 + su 2 -
    o ou NORMAL-STRING-OPENER? 0= IF
       ESC-BYTES 0= IF
-         o ou INTERPRETER:LITERAL-REJECT  CHECKER-REJECT-RC REJECTION:STOP
+         o ou INTERPRETER:LITERAL-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP
       THEN
    THEN
    2drop
@@ -1134,7 +1135,7 @@ variable GROUP-AT
    NEXT-RAW dup 0= IF
       GROUP-AT @ TOKEN-FROM INTERPRETER:GROUP-REJECT
       COMPOSE-ON @ INDEX-ON @ or 0<> IF E-DISC-UNTERM DISCOVERY-STOP THEN
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN ;
 
 : APPEND-GROUP ( -- )
@@ -1553,7 +1554,7 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ^u8 n ] )
 : BODY-VERDICT ( n -- n ) {: v:n :}
    v -1 = v 2 = or IF v EXIT THEN
    MULTI-ERR? IF 0 EXIT THEN
-   CHECKER-REJECT-RC throw ;
+   EXIT-STATUS:REJECTED throw ;
 
 \ The colon definitions this run judged, each counted once its verdict is
 \ final (CENSUS): a `:` or `kernel:` statement (COLON?) is certified when its
@@ -1705,7 +1706,7 @@ variable WRAP-MAKES                           \ a `create` or definer call befor
 \ is rejected at its `does>`, the token t tu, as the load's checker rejects it.
 : DOES-UNMADE-STOP ( ^u8 n -- ) {: t:^ tu:n :}
    t tu DOES-UNMADE-OPEN
-   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN ;
+   MULTI-ERR? IF REJECTION:KEEP ELSE EXIT-STATUS:REJECTED REJECTION:STOP THEN ;
 
 : VERIFY-WRAPPER ( -- )
    WRAP-CTL @ IF EXIT THEN
@@ -2054,7 +2055,7 @@ ENGINE-TARGET-INIT
 \ otherwise it stops the scan as the duplicate stops the load.
 : DUPLICATE-AT! ( ^u8 n ^u8 n -- )
    DUPLICATE-RECORD
-   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN ;
+   MULTI-ERR? IF REJECTION:KEEP ELSE EXIT-STATUS:REJECTED REJECTION:STOP THEN ;
 
 \ The record of a duplicate whose name, u bytes long, starts at TOKEN-BYTE in
 \ the scanned source, or of the statement's word there when the definer
@@ -2069,7 +2070,7 @@ ENGINE-TARGET-INIT
 : NAME-REJECT? ( ^u8 n n -- bool )
    {: a:^ u:n at:n :}
    a u SOURCE@ at + u DEF-NAME-REJECT? 0= IF false EXIT THEN
-   MULTI-ERR? IF REJECTION:KEEP ELSE CHECKER-REJECT-RC REJECTION:STOP THEN
+   MULTI-ERR? IF REJECTION:KEEP ELSE EXIT-STATUS:REJECTED REJECTION:STOP THEN
    true ;
 
 \ A keyword or number name stops first, then one that lands in a sealed package.
@@ -2316,7 +2317,7 @@ variable TRUSTED-DOES
    rc 0= IF EXIT THEN
    DISARM
    rc E-CHECKER-IDENTITY-UNRESOLVED = IF QUIET-TYPE-REPORT EXIT THEN
-   MULTI-ERR? IF rc CHECKER-REJECT-RC <> IF rc throw THEN EXIT THEN
+   MULTI-ERR? IF rc EXIT-STATUS:REJECTED <> IF rc throw THEN EXIT THEN
    rc throw ;
 
 \ A name only rendered text may define is left to the run
@@ -2340,7 +2341,7 @@ variable TRUSTED-DOES
    CHECKER-AUTH-PACKAGE-ACTIVE? IF true EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ {: a:^ u:n :}
    a u UNSEEN-COVERS? IF a u DW-RENDERED DEFER-AT  false EXIT THEN
-   a u INTERPRETER:PKG-CONTEXT-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+   a u INTERPRETER:PKG-CONTEXT-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : SEAL-ROW ( -- )
    PACKAGE-KEYWORD-GUARD IF CHECKER-AUTH-PACKAGE$ SOURCE-SEAL THEN ;
@@ -2406,7 +2407,7 @@ DYNAMIC-BUFFER NOM-TAIL u8
 \ TOP-DEFINER? opens an unreported stretch.
 : DECLARATION-END ( -- )
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : RECORD-DEFLINEAR ( -- )
    0 NEWEST-SYM !
@@ -2885,7 +2886,7 @@ variable STG-TYPE-U
       dup 0= IF
          name nameu VRDEF-UNCLOSED
          MULTI-ERR? IF 2drop REJECTION:KEEP EXIT THEN
-         CHECKER-REJECT-RC REJECTION:STOP
+         EXIT-STATUS:REJECTED REJECTION:STOP
       THEN
       2dup VALUE-RECORD-END? IF
          drop {: e:^ :}
@@ -3325,7 +3326,7 @@ variable LOAD-U
 \ The load word w wu is called while the declaration t tu opened, which c cu
 \ closes, is open: the load's record.
 : UNCLOSED-LOAD-STOP ( ^u8 n ^u8 n ^u8 n -- )
-   SOURCE-ROOT:UNCLOSED-LOAD  CHECKER-REJECT-RC REJECTION:STOP ;
+   SOURCE-ROOT:UNCLOSED-LOAD  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : COMPOSE-TOP? ( ^u8 n -- bool ) {: a:^ u:n :}
    COMPOSE-ON @ 0= IF 0 0= 0= EXIT THEN
@@ -3361,7 +3362,7 @@ private
 \ The token t tu breaks the row the top-level token opened.
 : ROW-MALFORMED ( ^u8 n -- ) {: t:^ tu:n :}
    TOP-CUR-A @ REJECTION:LOCATE drop drop {: l:n c:n :}
-   t tu l c ROW-REJECT  CHECKER-REJECT-RC REJECTION:STOP ;
+   t tu l c ROW-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : ROW-ENDED ( -- )
    SOURCE@ SOURCE-U @ + 0 ROW-MALFORMED ;
@@ -3675,7 +3676,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" ;using" STR=CI IF a u RECORD-END-USING 0 0= EXIT THEN
    a u s" split-str" STR=CI IF
       CHECKER-SPLIT-STR @ 0= IF
-         a u INTERPRETER:SPLIT-STR-REJECT  CHECKER-REJECT-RC REJECTION:STOP
+         a u INTERPRETER:SPLIT-STR-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP
       THEN
       0 0= EXIT
    THEN
@@ -3933,7 +3934,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    \ A refused name goes on as an ordinary word, refused as one.
    ctl CHECKER-OWNER-ABI:BINDING-REFUSED and 0<>
    section and IF false EXIT THEN
-   section sym 0<> and IF a u INTERPRETER:SECTION-REJECT  CHECKER-REJECT-RC REJECTION:STOP THEN
+   section sym 0<> and IF a u INTERPRETER:SECTION-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP THEN
    a u RECORD-DEFINER? 0= IF 0 0= 0= EXIT THEN
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
    native 0= IF a u at sym ENGINE-ORIGIN-USE THEN
@@ -4285,7 +4286,7 @@ private
    REJECTION:HELP
    s" compose one source at a time: let the open composition end first"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The record of a path or label a u, which a composition cannot hold. It
 \ stands at a u where a source holds it, else at the token the engine read last.
@@ -4296,7 +4297,7 @@ private
    REJECTION:HELP
    s" pass a path of 1 to " REJECTION:EMIT-STR  PATH-CAP REJECTION:EMIT-U
    s"  bytes" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The registry suffix and the caller's checker scope survive the composition's
 \ success and throw.

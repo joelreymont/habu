@@ -5,6 +5,7 @@
 \ resolves to its routine when the module has one. Every record enters its
 \ emission at a function: a definition at function 0, a does> companion at its
 \ clause's function (NSHADOW:TAKE-DOES).
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
@@ -236,7 +237,7 @@ variable KERNEL-N                    \ the kernel routines this link added
       i REFUSED @ REFUSED.
       i 1+ REFUSED-N @ < if REJECTION:KEEP then
    loop
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ Every placed emission's functions, in emission order, before any site is read.

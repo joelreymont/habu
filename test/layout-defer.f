@@ -3,6 +3,7 @@
 \ NAME-BIND sizes from the counted need reusing the largest region, and
 \ NAME-GROW carries live cells over.
 
+require src/core/exit-status.f
 require src/lib/test.f
 
 T-RESET
@@ -130,13 +131,13 @@ variable DFL-EVAL-U
 : DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ evaluate-closed ;
 : DFL-EVAL ( ^u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
 
-s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL CHECKER-REJECT-RC T=
+s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL EXIT-STATUS:REJECTED T=
 \ A second declaration of the column redefines its accessor.
 REJECTION:CAPTURE
-s" DEFER-LAYOUT-BUFFER DTK-AT dtk" DFL-EVAL CHECKER-REJECT-RC T=
+s" DEFER-LAYOUT-BUFFER DTK-AT dtk" DFL-EVAL EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER-OFF
 REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" `DTK-AT`" CONTAINS? TTRUE
-s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL CHECKER-REJECT-RC T=
+s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL EXIT-STATUS:REJECTED T=
 
 T-REPORT

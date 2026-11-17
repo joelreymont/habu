@@ -37,7 +37,7 @@ private
    REJECTION:HELP
    s" test the value with `CODE-SPAN:" REJECTION:EMIT-STR  test testu REJECTION:EMIT-STR
    s" ` first and pass only one it accepts" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : LENGTH-CK ( n ^u8 n -- ) {: raw:n w:^ wu:n :}
    raw VALID? 0= if

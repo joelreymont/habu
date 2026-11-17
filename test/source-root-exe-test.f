@@ -5,6 +5,7 @@
 \ first boot row), else the tree two levels above the executable when that is
 \ one, else the working directory.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -312,18 +313,18 @@ variable DEEP-U
    {: dir:^ diru:n name:^ nameu:n :}
    SB-RESET s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND
    name nameu SB-APPEND 96 SB-APPEND-C
-   RC @ CHECKER-REJECT-RC = ERR$ SB$ CONTAINS? and 0= if SHOW then
-   RC @ CHECKER-REJECT-RC T=
+   RC @ EXIT-STATUS:REJECTED = ERR$ SB$ CONTAINS? and 0= if SHOW then
+   RC @ EXIT-STATUS:REJECTED T=
    ERR$ SB$ CONTAINS? TTRUE
    SB-RESET dir diru SB-APPEND 47 SB-APPEND-C name nameu SB-APPEND
    ERR$ SB$ CONTAINS? dup 0= if SHOW then TTRUE ;
 
-\ A rejection record: exit CHECKER-REJECT-RC, nothing on stdout, this code on
+\ A rejection record: exit EXIT-STATUS:REJECTED, nothing on stdout, this code on
 \ stderr.
 : REJECTED ( ^u8 n -- )
    {: code:^ codeu:n :}
-   RC @ CHECKER-REJECT-RC = OUT-U @ 0= and ERR$ code codeu CONTAINS? and 0= if SHOW then
-   RC @ CHECKER-REJECT-RC T=
+   RC @ EXIT-STATUS:REJECTED = OUT-U @ 0= and ERR$ code codeu CONTAINS? and 0= if SHOW then
+   RC @ EXIT-STATUS:REJECTED T=
    OUT-U @ 0 T=
    ERR$ code codeu CONTAINS? TTRUE ;
 

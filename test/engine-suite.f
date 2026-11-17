@@ -14,6 +14,7 @@
 \ for row. No case writes a wid down: every wid is read out of the row that
 \ owns it.
 
+require src/core/exit-status.f
 require src/lib/type/deftype.f
 require src/lib/fs-mutate.f
 require src/lib/string.f
@@ -440,7 +441,7 @@ s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" ES-RES-REFUSE:CAPTURED ES-
 s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  REJECTION:BUFFER$ s" engine-suite.f" 55 s" : ES-RES-P4 ( -- n ) ES-NO-SUCH-PKG:T-LABEL-CAP ;" T-PLACED
 s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
 -1 REJECTION:QUIET +!  REJECTION:CAPTURE
-s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME CHECKER-REJECT-RC T=
+s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  1 REJECTION:QUIET +!
 s" engine resolution: the global row survived the refusals" T-LABEL

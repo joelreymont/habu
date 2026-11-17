@@ -26,7 +26,7 @@ variable STRUCT-OPEN
    SRCLOC:TOKEN$ REJECTION:AT  s" no structure open" REJECTION:EMIT-STR
    REJECTION:HELP  s" open a structure with `BEGIN-STRUCTURE name` before `" REJECTION:EMIT-STR
    w wu REJECTION:EMIT-STR  96 REJECTION:EMIT1
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The field word w, at the source token t tu, has no name after it. It is
 \ written through its help, and the caller stops it.
@@ -40,7 +40,7 @@ variable STRUCT-OPEN
 \ source token is the field word, as the source spells it.
 : STRUCT-NAME ( -- ^u8 n )
    parse-name dup 0= if
-      SRCLOC:TOKEN$ SRCLOC:TOKEN$ STRUCT-NO-NAME  CHECKER-REJECT-RC REJECTION:STOP
+      SRCLOC:TOKEN$ SRCLOC:TOKEN$ STRUCT-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 
 : STRUCT-UNALIGNED ( n ^u8 n -- ) {: off:n fa:^ fu:n :}
@@ -54,7 +54,7 @@ variable STRUCT-OPEN
    REJECTION:HELP
    s" declare `PTR-FIELD:` fields before byte fields, or pad to a multiple of "
    REJECTION:EMIT-STR  CELL REJECTION:EMIT-U  s"  with `+FIELD`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ ---- the defining words -----------------------------------------------------
 

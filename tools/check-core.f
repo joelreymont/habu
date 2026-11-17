@@ -653,7 +653,7 @@ private
    CHK-POS-N @ 0 ?do  i CHK-RESOLVE-POS drop  loop
    [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do  i CHK-POS$ CHK-ENGINE-PROVIDED  loop
-   CHECKER-REJECT-RC CHK-THROW ;
+   EXIT-STATUS:REJECTED CHK-THROW ;
 
 \ The run stage quotes the label into REJECTION:LABEL! only after the stages
 \ that read the source, so a label the materializer takes from its caller is
@@ -852,7 +852,7 @@ private
    REJECTION:HELP
    CHK-RERUN  s"  to see its whole output, or make it write less" REJECTION:EMIT-STR
    REJECTION:KEEP
-   CHK-E-CHECK CHK-THROW ;
+   EXIT-STATUS:REJECTED CHK-THROW ;
 
 \ A child still going at its deadline: what a u names, the run or the verifier.
 : CHK-LATE ( ^u8 n -- ) {: a:^ u:n :}
@@ -868,7 +868,7 @@ private
 \ What a run still going at its deadline wrote is not replayed.
 : CHK-RUN-LATE ( -- )
    s" the run" CHK-LATE
-   CHK-E-CHECK CHK-THROW ;
+   EXIT-STATUS:REJECTED CHK-THROW ;
 
 : CHK-RUN-CAPPED ( -- )
    [: CHK-RUN-CAPTURE ;] catch {: rc:n :}
@@ -1074,7 +1074,7 @@ private
       verified OF ENDOF
       refused OF VERIFY-STATUS CHK-THROW ENDOF
       engine-provided OF
-         path pathu CHK-ENGINE-PROVIDED  CHECKER-REJECT-RC CHK-THROW
+         path pathu CHK-ENGINE-PROVIDED  EXIT-STATUS:REJECTED CHK-THROW
       ENDOF
       held OF
          s" E-VERIFIER-HOLDS" CHK-OPEN

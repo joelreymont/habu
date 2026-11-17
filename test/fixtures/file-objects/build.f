@@ -1,6 +1,7 @@
 \ build.f - test/file-objects.f's child, which builds the fixtures here in the out root HABU_OUT names.
 \ Its arguments: the kernel object every build links, then the mode, if any (MODE$).
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -26,7 +27,7 @@ PATH-CAP BUFFER: PROG-BUF
    BUILD-OUT:BASE$ s" prog" PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
 
-70 constant REFUSED   \ the checker's refusal (src/core/check-hook.f CHECK-RC)
+70 constant REFUSED   \ the checker's rejection (EXIT-STATUS:REJECTED)
 
 : PAD ( -- ) s" test/fixtures/file-objects/pad.f" included ;
 : RESIDUE ( -- ) s" test/fixtures/file-objects/residue.f" included ;

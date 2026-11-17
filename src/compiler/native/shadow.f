@@ -7,6 +7,7 @@
 \ e+1, which later files run while they compile. A native shadow's one emission
 \ serves both roles. A record's emission is always the target's.
 
+require src/core/exit-status.f
 require src/lib/prelude.f
 require src/lib/error.f
 require src/lib/le.f
@@ -145,7 +146,7 @@ private
    REJECTION:EMIT-STR
    REJECTION:HELP
    s" call it from the main thread, after the task returns" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : OPEN-CK ( -- )
    OPEN? 0= if E-NSHADOW-STATE throw then ;

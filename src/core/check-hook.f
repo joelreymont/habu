@@ -4,8 +4,6 @@
 
 package CHECK
 
-70 constant CHECK-RC
-
 private
 
 EXPORT CHECKER-PREFLIGHT:CHECK-TARGET!
@@ -77,7 +75,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
    finally 0 <> if
       s" checker: preflight did not reject unmodeled immediate" 76 die
    then
-   CHECK-RC throw ;
+   EXIT-STATUS:REJECTED throw ;
 
 \ The name as written, which is what the wall prints: the first token of the
 \ source the engine hands the hook.
@@ -243,7 +241,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    0= if
       drop
       node 0 <> if na nu LBUF:NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
-      CHECK-RC throw
+      EXIT-STATUS:REJECTED throw
    then
    shape swap TFAM:TFAM-STORED-ROWS ;
 
@@ -315,7 +313,7 @@ using SCHEMA-REG
    REJECTION:HELP
    s" pass a type EFFECT:N, EFFECT:NAMED, EFFECT:READ-TYPE or EFFECT:PTR made in this file: a type ends with the file that built it"
    REJECTION:EMIT-STR
-   CHECK-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : UNKNOWN-HELP$ ( -- ^u8 n )
    s" name n, bool, r or a family the package running the definer can name" ;
@@ -330,7 +328,7 @@ using SCHEMA-REG
    REJECTION:HELP
    s" pass the effect EFFECT:EMPTY made, or one EFFECT:IN or EFFECT:OUT answered"
    REJECTION:EMIT-STR
-   CHECK-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : FAMILY-NODE ( n -- n ) {: fam:n :}
    fam TFAM:TFAM-ARITY@ {: k:n :}
@@ -359,7 +357,7 @@ CAST: >BYTES ( n -- ^u8 )
    s" ' public in more than one used package" REJECTION:EMIT-STR
    DEFINER-PLACE
    a u SGBAD-AMBIG-HELP
-   CHECK-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The type a spelling names: a built-in type's con code and 0, else 0 and the
 \ family; one that names neither is rejected.
@@ -378,7 +376,7 @@ CAST: >BYTES ( n -- ^u8 )
    a >BYTES u REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
    DEFINER-PLACE
    REJECTION:HELP  UNKNOWN-HELP$ REJECTION:EMIT-STR
-   CHECK-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A rejected READ of the type xa xu, naming the token, or the type when the
 \ reason names none; why is the STG- reason no stored form holds it, else 0.
@@ -405,7 +403,7 @@ CAST: >BYTES ( n -- ^u8 )
       else s" write the type as a signature writes it" then then
       REJECTION:EMIT-STR
    then
-   CHECK-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
 \ given, placed at the token the engine read last, which ran the definer.
@@ -419,7 +417,7 @@ CAST: >BYTES ( n -- ^u8 )
    s" a built definition's types are concrete: " REJECTION:EMIT-STR
    s" write one such as n or ^u8 in place of '" REJECTION:EMIT-STR
    la lu REJECTION:EMIT-STR  s" '" REJECTION:EMIT-STR
-   CHECK-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : TEXT-TYPE ( n n -- n ) {: a:n u:n :}
    a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;]
@@ -444,7 +442,7 @@ CAST: >BYTES ( n -- ^u8 )
    s" this engine is older than the tree it loads: " REJECTION:EMIT-STR
    s\" build the engine in stages (docs/bootstrap.md \"Staged hosts\")"
    REJECTION:EMIT-STR
-   CHECK-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The transient schema node a TYPE-OP-ABI code makes of a and b, else rejected.
 \ NAMED's lookup, and the type entries READ's lookups would read, come first:
@@ -566,9 +564,10 @@ variable DENSE-N
 public
 
 \ The check of a definition's source: a rejected or deferred body's record is
-\ written, then CHECK-RC thrown. In multi-error mode the record is counted and
-\ the answer is -1, which publishes the definition (zero unpublishes) so its
-\ name resolves for later definitions; the driver exits nonzero via MULTI-ERR-END.
+\ written, then EXIT-STATUS:REJECTED thrown. In multi-error mode the record is
+\ counted and the answer is -1, which publishes the definition (zero
+\ unpublishes) so its name resolves for later definitions; the driver exits
+\ nonzero via MULTI-ERR-END.
 : DEFINITION ( ^u8 n -- n )
    {: a:^ u:n :}
    a u FIRST-TOKEN {: na:^ nu:n :}
@@ -578,7 +577,7 @@ public
    a u BODY-ARM DISARMER  finally
    dup -1 = if na nu mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then
-   dup -1 <> if CHECK-RC throw then ;
+   dup -1 <> if EXIT-STATUS:REJECTED throw then ;
 
 private
 \ At a piece's end, each record an amender (`INTRINSIC`, `generates:`, `names:`,

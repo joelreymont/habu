@@ -4,6 +4,7 @@
 \ through `evaluate-closed`, the row --load keeps in this process; a child runs
 \ only the boundaries named at their cases (a crash, a rewired search order, the
 \ file label, the REPL).
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/string.f
@@ -47,7 +48,6 @@ using PTY-HARNESS
 
 private
 
-70 constant CHECK-RC                 \ the engine refusing what it cannot certify
 9 constant SIB-RC                    \ the sibling evaluation's own throw
 
 
@@ -102,10 +102,10 @@ variable ERR-U
 : CASE-CREATE-XT ( -- )
    s" create T ' DUP , : the xt is refused as in a body, nothing is compiled" T-LABEL
    ARM
-   [: s" : TS-B1 ( -- ) ['] DUP , ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B1 ( -- ) ['] DUP , ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
    ARM
-   HERE-N [: s" create TS-T3 ' DUP ," evaluate-closed ;] CHECK-RC TTHROWSQ
+   HERE-N [: s" create TS-T3 ' DUP ," evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
    HERE-N swap - 0 T=
    DISARM ;
@@ -113,10 +113,10 @@ variable ERR-U
 : CASE-CREATE-HERE ( -- )
    s" create T here , : the pointer is refused as in a body, nothing is compiled" T-LABEL
    ARM
-   [: s" : TS-B2 ( -- ) here , ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B2 ( -- ) here , ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
    ARM
-   HERE-N [: s" create TS-T4 here ," evaluate-closed ;] CHECK-RC TTHROWSQ
+   HERE-N [: s" create TS-T4 here ," evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
    HERE-N swap - 0 T=
    DISARM ;
@@ -124,20 +124,20 @@ variable ERR-U
 : CASE-VARIABLE-HERE ( -- )
    s" variable V here V ! : refused by the raw-cell rule, V stays 0" T-LABEL
    ARM
-   [: s" : TS-B3 ( -- ) here TS-V ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B3 ( -- ) here TS-V ! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    RAW-PTR AT-STORE
    ARM
-   [: s" variable TS-NV here TS-NV !" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" variable TS-NV here TS-NV !" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    RAW-PTR AT-STORE
    DISARM ;                 \ the refused program's TS-NV goes with its rollback
 
 : CASE-VARIABLE-XT ( -- )
    s" variable W ' DUP W ! : refused by the raw-cell xt rule, W stays 0" T-LABEL
    ARM
-   [: s" : TS-B4 ( -- ) ['] DUP TS-V ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B4 ( -- ) ['] DUP TS-V ! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    RAW-XT AT-STORE
    ARM
-   [: s" variable TS-NW ' DUP TS-NW !" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" variable TS-NW ' DUP TS-NW !" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    RAW-XT AT-STORE
    DISARM ;                 \ the refused program's TS-NW goes with its rollback
 
@@ -165,72 +165,72 @@ variable ERR-U
 : CASE-TYPED-N-PTR ( -- )
    s" here BN ! through a ( -- ^n ) accessor is refused as in a body" T-LABEL
    CLEAR ARM
-   [: s" : TS-B5 ( -- ) here TS-BN ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B5 ( -- ) here TS-BN ! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-STORE GOT-PTR
    ARM
-   [: s" here TS-BN !" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" here TS-BN !" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-STORE GOT-PTR
    DISARM UNTOUCHED ;
 
 : CASE-TYPED-N-XT ( -- )
    s" an xt through the same accessor is refused as in a body" T-LABEL
    CLEAR ARM
-   [: s" : TS-B6 ( -- ) ['] DUP TS-BN ! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B6 ( -- ) ['] DUP TS-BN ! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-STORE GOT-XT
    ARM
-   [: s" ' DUP TS-BN !" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" ' DUP TS-BN !" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-STORE GOT-XT
    DISARM UNTOUCHED ;
 
 : CASE-ADD-STORE ( -- )
    s" pointer and xt operands to BN +! are refused as in a body" T-LABEL
    CLEAR ARM
-   [: s" : TS-B7 ( -- ) here TS-BN +! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B7 ( -- ) here TS-BN +! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-ADD GOT-PTR
    ARM
-   [: s" here TS-BN +!" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" here TS-BN +!" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-ADD GOT-PTR
    ARM
-   [: s" : TS-B8 ( -- ) ['] DUP TS-BN +! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B8 ( -- ) ['] DUP TS-BN +! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-ADD GOT-XT
    ARM
-   [: s" ' DUP TS-BN +!" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" ' DUP TS-BN +!" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-ADD GOT-XT
    DISARM UNTOUCHED ;
 
 : CASE-BYTE-STORE ( -- )
    s" pointer and xt operands to c! through ( -- ^u8 ) are refused as in a body" T-LABEL
    CLEAR ARM
-   [: s" : TS-B9 ( -- ) here TS-BC c! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B9 ( -- ) here TS-BC c! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-CSTORE GOT-PTR
    ARM
-   [: s" here TS-BC c!" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" here TS-BC c!" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-CSTORE GOT-PTR
    ARM
-   [: s" : TS-B10 ( -- ) ['] DUP TS-BC c! ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B10 ( -- ) ['] DUP TS-BC c! ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-CSTORE GOT-XT
    ARM
-   [: s" ' DUP TS-BC c!" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" ' DUP TS-BC c!" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH AT-CSTORE GOT-XT
    DISARM UNTOUCHED ;
 
 : CASE-POINTER-SUM ( -- )
    S\" s\" abc\" + . : a byte pointer into a scalar consumer is refused as in a body" T-LABEL
    ARM
-   [: S\" : TS-B11 ( -- ) s\" abc\" + . ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: S\" : TS-B11 ( -- ) s\" abc\" + . ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"^u8\"" HAS?
    ARM
-   [: S\" s\" abc\" + ." evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: S\" s\" abc\" + ." evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH S\" \"token\":\".\"" HAS?  S\" \"found\":\"^u8\"" HAS?
    DISARM ;
 
 : CASE-REAL-TO-N ( -- )
    s" 0.5 N with N ( n -- ) : a real into a scalar consumer is refused as in a body" T-LABEL
    ARM
-   [: s" : TS-B14 ( -- ) 0.5 TS-NN ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B14 ( -- ) 0.5 TS-NN ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"found\":\"r\"" HAS?
    ARM
-   [: s" 0.5 TS-NN" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" 0.5 TS-NN" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"found\":\"r\"" HAS?
    DISARM ;
 
@@ -239,7 +239,7 @@ variable ERR-U
 : CASE-LEFTOVER ( -- )
    s" a cell a TRUSTED: body leaves past its effect is refused at its next typed consumer" T-LABEL
    CLEAR ARM
-   [: s" TRUSTED: TS-L1 ( -- ) here ;  TS-L1 TS-PV !" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" TRUSTED: TS-L1 ( -- ) here ;  TS-L1 TS-PV !" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-STALE-READ\"" HAS?  AT-STORE
    S\" \"message\":\"unknown cell: this reads a cell beneath the cells the interpret row knows" HAS?
    DISARM UNTOUCHED ;
@@ -249,10 +249,10 @@ variable ERR-U
 \ placed at the `evaluate` in the file, with the string's line in an evaluated
 \ note. The load holds the resolved path, so the assertions match its tail.
 : INCLUDE-SITE ( -- )
-   [: s" include test/fixtures/top-row-site.f" evaluate-closed ;] CHECK-RC TTHROWSQ ;
+   [: s" include test/fixtures/top-row-site.f" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ ;
 
 : INCLUDE-EVAL ( -- )
-   [: s" include test/fixtures/top-row-eval.f" evaluate-closed ;] CHECK-RC TTHROWSQ ;
+   [: s" include test/fixtures/top-row-eval.f" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ ;
 
 : CASE-SITE ( -- )
    s" a top-level refusal names its file and line" T-LABEL
@@ -300,19 +300,19 @@ variable ERR-U
 : CASE-EXECUTE-UNDERFLOW ( -- )
    s" ' F execute with F's input missing is refused as in a body" T-LABEL
    ARM
-   [: s" : TS-B12 ( -- ) ['] TS-F2 execute ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B12 ( -- ) ['] TS-F2 execute ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" HAS?  S\" \"token\":\"execute\"" HAS?
    DISARM
-   s" true REJECTION:JSON ! ' TS-F2 execute" CHECK-RC EXITS
+   s" true REJECTION:JSON ! ' TS-F2 execute" EXIT-STATUS:REJECTED EXITS
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 : CASE-CATCH-NON-XT ( -- )
    s" 0 0 catch hands catch a number and is refused as in a body" T-LABEL
    ARM
-   [: s" : TS-B13 ( -- ) 0 0 catch ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B13 ( -- ) 0 0 catch ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"token\":\"catch\"" HAS?
    DISARM
-   s" true REJECTION:JSON ! 0 0 catch" CHECK-RC EXITS
+   s" true REJECTION:JSON ! 0 0 catch" EXIT-STATUS:REJECTED EXITS
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\"catch\"" ERR-HAS?
    S\" \"found\":\"n\"" ERR-HAS? ;
 
@@ -320,14 +320,14 @@ variable ERR-U
 \ body left, which crashes the process.
 : CASE-EXECUTE-UNKNOWN ( -- )
    s" execute of a cell a TRUSTED: body left names the unknown cell" T-LABEL
-   s" true REJECTION:JSON ! TRUSTED: TS-L2 ( -- ) here ;  TS-L2 execute" CHECK-RC EXITS
+   s" true REJECTION:JSON ! TRUSTED: TS-L2 ( -- ) here ;  TS-L2 execute" EXIT-STATUS:REJECTED EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 \ A child: unchecked, `evaluate` would read a string from whatever the stack
 \ holds. `'` of a word with no stack effect pushes an xt of no known effect.
 : CASE-EXECUTE-OPAQUE-TICK ( -- )
    s" execute of ' of a word with no stack effect names the opaque xt" T-LABEL
-   s" true REJECTION:JSON ! ' evaluate execute" CHECK-RC EXITS
+   s" true REJECTION:JSON ! ' evaluate execute" EXIT-STATUS:REJECTED EXITS
    S\" \"code\":\"E-EXEC-OPAQUE-XT\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 \ A child: unchecked, the second `2r>` pops into the return frame of the code
@@ -337,12 +337,12 @@ variable ERR-U
 : CASE-RETURN-BELOW ( -- )
    s" r> below a body's return frame names the return-stack reason" T-LABEL
    REJECTION:CAPTURE
-   [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : TS-B15 ( -- ) r> drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here" HAS?
    s" = evaluated: : TS-B15 ( -- ) r> drop ;" HAS?
    REJECTION:BUFFER-OFF
    s" 2r> below the saved return cells is refused with the same reason" T-LABEL
-   s" 1 2 2>r 2r> 2r> 2drop" CHECK-RC EXITS
+   s" 1 2 2>r 2r> 2r> 2drop" EXIT-STATUS:REJECTED EXITS
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here" ERR-HAS?
    s" = expected: a b" ERR-HAS? ;
 
@@ -355,23 +355,23 @@ variable ERR-U
    s" a call binding the return base with no read is refused by the seal" T-LABEL
    ARM
    [: s" : TS-U1 ( U | U -- U | U ) ; : TS-B16 ( n -- n ) TS-U1 ;" evaluate-closed ;]
-   CHECK-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\"TS-U1\"" HAS?
    DISARM
    s" r@ over a return base a call bound is refused by the seal, never run" T-LABEL
    s" true REJECTION:JSON ! : TS-U2 ( U | U -- U | U ) ; : TS-B17 ( n -- n n ) TS-U2 r@ ; : TS-T7 ( -- n ) 5 TS-B17 drop ; TS-T7 . cr"
-   CHECK-RC EXITS
+   EXIT-STATUS:REJECTED EXITS
    S\" \"code\":\"E-RETURN-STACK\"" ERR-HAS?  S\" \"token\":\"r@\"" ERR-HAS?
    s" a literal binding its return base with no read is refused at ;]" T-LABEL
    ARM
    [: s" : TS-U3 ( U | U -- U | U ) ; : TS-B18 ( -- ) [: 5 TS-U3 r@ drop drop ;] drop ;" evaluate-closed ;]
-   CHECK-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM
    s" a literal reading its caller's pushed cell through the bound base is refused at ;]" T-LABEL
    ARM
    [: s" : TS-U4 ( U | U -- U | U ) ; : TS-B19 ( -- n ) 5 >r [: 7 TS-U4 r@ swap drop ;] execute r> drop ;" evaluate-closed ;]
-   CHECK-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-RETURN-STACK\"" HAS?  S\" \"token\":\";]\"" HAS?
    DISARM ;
 
@@ -382,7 +382,7 @@ variable ERR-U
 : CASE-LABEL ( -- )
    s" a tool's file label names an evaluated step's rejection at the word that ran it" T-LABEL
    S\" s\" /subject/label.f\" REJECTION:LABEL! true REJECTION:JSON ! here TS-V !"
-   CHECK-RC EXITS
+   EXIT-STATUS:REJECTED EXITS
    S\" \"file\":\"/subject/label.f\"" ERR-HAS?
    S\" \"evaluated\":{\"source_line\":\"s\\\" /subject/label.f" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
@@ -401,7 +401,7 @@ variable ERR-U
 : CASE-SHORT-ROW ( -- )
    s" a literal over a row shorter than the stack leaves the cells beneath unknown" T-LABEL
    S\" true REJECTION:JSON ! TRUSTED: TS-EV2 ( ^u8 n -- ) evaluate 2drop ; TRUSTED: TS-L3 ( -- ) 0 0 ; s\\\" TS-L3 s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
-   CHECK-RC EXITS
+   EXIT-STATUS:REJECTED EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS? ;
 
 \ A child, whose `using` outlives its program: a used public retired by
@@ -419,7 +419,7 @@ variable ERR-U
    SB$ 0 EXITS  s" AFTER" OUT-HAS?  code codeu ERR-LACKS? ;
 
 : REFUSES-P3 ( ^u8 n -- ) {: code:^ codeu:n :}
-   SB$ CHECK-RC EXITS
+   SB$ EXIT-STATUS:REJECTED EXITS
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\".\"" ERR-HAS?
    code codeu ERR-LACKS? ;
 

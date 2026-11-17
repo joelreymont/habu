@@ -2,6 +2,7 @@
 \ selects them.
 \   bin/hb --load test/checker-completion.f
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/habu/verify-source.f
 require test/checker-decl-locs-lib.f
@@ -467,7 +468,7 @@ variable USE-N   variable USE-SUM
    s" a second arm while one is armed is refused by name" T-LABEL
    5 [: KEEP ;] CURSOR!
    REJECTION:CAPTURE
-   [: 6 [: KEEP ;] CURSOR! ;] CHECKER-REJECT-RC TTHROWSQ
+   [: 6 [: KEEP ;] CURSOR! ;] EXIT-STATUS:REJECTED TTHROWSQ
    REJECTION:BUFFER$
    S\" error[E-CURSOR-NESTED]: `CHECKER-CURSOR!` armed a cursor while another is armed\n"
    STARTS-WITH? TTRUE
@@ -488,7 +489,7 @@ variable NEST-ARM   variable NEST-ENUM
 \ Whether XT stopped with the checker's status after an E-CURSOR-NESTED record
 \ that opens with the line L and says to leave the visitor.
 : NESTED? ( [ -- ] ^u8 n -- bool ) {: l:^ lu:n :}
-   REJECTION:CAPTURE  catch CHECKER-REJECT-RC =
+   REJECTION:CAPTURE  catch EXIT-STATUS:REJECTED =
    REJECTION:BUFFER$ l lu STARTS-WITH? and
    REJECTION:BUFFER$
    S\" = help: arm, disarm or enumerate before the check runs or after it returns, never from a visitor\n"

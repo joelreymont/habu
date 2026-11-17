@@ -8,6 +8,8 @@
 \ copy the caller owns. Every checksum weighs each member by position, so a
 \ member read from the wrong offset, register or stack slot fails its case.
 
+require src/core/exit-status.f
+
 STRUCT-FIXTURE:SELECT
 
 FUNCTION: FFI-T-SUM8 hb_sum8 ( ^u8 -- n ) 0 8 STRUCT-ARG ;FUNCTION
@@ -195,7 +197,7 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
 : FFI-T-SA-ARITY ( [ -- ] ^u8 n ^u8 n -- )
    {: h:^ hu:n p:^ pu:n :}
    DECL-DIAG:PROSE
-   CHECKER-REJECT-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    h hu DECL-DIAG:HAS? TTRUE
    p pu DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;

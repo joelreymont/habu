@@ -3,6 +3,7 @@
 \ newest first, at the arena's reset or release, a public declaration publishes
 \ NAME-NEW, a HEAP or DYNAMIC-BUFFER element holds an arena handle, and a
 \ refused declaration defines neither of its two words.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/arena.f
@@ -151,8 +152,8 @@ variable EVAL-U
    s" a public declaration leaves its package's section public" T-LABEL
    ARENA-FIX:AFTER TTRUE
    s" a private declaration's words are not found from another package" T-LABEL
-   s" : P1 ( ^ARENA:arena -- ^ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW ;" EVAL CHECKER-REJECT-RC T=
-   s" : P2 ( ^ARENA:arena [ ^ARENA-FIX:rec -- ] -- ^ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-DISPOSE ;" EVAL CHECKER-REJECT-RC T=
+   s" : P1 ( ^ARENA:arena -- ^ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW ;" EVAL EXIT-STATUS:REJECTED T=
+   s" : P2 ( ^ARENA:arena [ ^ARENA-FIX:rec -- ] -- ^ARENA-FIX:rec ) ARENA-FIX:PRECS-NEW-DISPOSE ;" EVAL EXIT-STATUS:REJECTED T=
    s" P1" get-current search-wl 0= TTRUE ;
 
 
@@ -195,32 +196,32 @@ private
 
 : REFUSALS ( -- )
    s" a refused element type defines neither of the two words" T-LABEL
-   s" ARENA BAD u16" EVAL CHECKER-REJECT-RC T=
+   s" ARENA BAD u16" EVAL EXIT-STATUS:REJECTED T=
    s" BAD" NO-WORDS
-   s" ARENA WORSE no-such-type" EVAL CHECKER-REJECT-RC T=
+   s" ARENA WORSE no-such-type" EVAL EXIT-STATUS:REJECTED T=
    s" WORSE" NO-WORDS
    s" an element type ARENA cannot store defines neither word" T-LABEL
-   s" ARENA XQ [ -- xt ]" EVAL CHECKER-REJECT-RC T=
+   s" ARENA XQ [ -- xt ]" EVAL EXIT-STATUS:REJECTED T=
    s" XQ" NO-WORDS
-   s" ARENA XC [ xt -- ]" EVAL CHECKER-REJECT-RC T=
+   s" ARENA XC [ xt -- ]" EVAL EXIT-STATUS:REJECTED T=
    s" XC" NO-WORDS
-   s" ARENA XW [ width<n> -- ]" EVAL CHECKER-REJECT-RC T=
+   s" ARENA XW [ width<n> -- ]" EVAL EXIT-STATUS:REJECTED T=
    s" XW" NO-WORDS
-   s" ARENA XV [ -- width<n> ]" EVAL CHECKER-REJECT-RC T=
+   s" ARENA XV [ -- width<n> ]" EVAL EXIT-STATUS:REJECTED T=
    s" XV" NO-WORDS
-   s" ARENA OPENQ [ a -- a ]" EVAL CHECKER-REJECT-RC T=
+   s" ARENA OPENQ [ a -- a ]" EVAL EXIT-STATUS:REJECTED T=
    s" OPENQ" NO-WORDS
    s" a name whose derived word is taken defines neither word" T-LABEL
-   s" ARENA TAKEN n" QUIET-EVAL CHECKER-REJECT-RC T=
+   s" ARENA TAKEN n" QUIET-EVAL EXIT-STATUS:REJECTED T=
    s" TAKEN" s" -NEW" ABSENT
    s" a refusal counted by a multi-error load defines nothing" T-LABEL
    s" ARENA MBAD u16" MULTI 1 T= 0 T=
    s" MBAD" NO-WORDS
    s" a name whose word is taken in the other section defines neither word" T-LABEL
-   s" public ARENA PUBDIS n" QUIET-EVAL CHECKER-REJECT-RC T=  s" private" EVAL 0 T=
+   s" public ARENA PUBDIS n" QUIET-EVAL EXIT-STATUS:REJECTED T=  s" private" EVAL 0 T=
    s" PUBDIS" PUB-NO-WORDS
    s" PUBDIS" s" -NEW" ABSENT
-   s" ARENA PRIVNEW n" QUIET-EVAL CHECKER-REJECT-RC T=
+   s" ARENA PRIVNEW n" QUIET-EVAL EXIT-STATUS:REJECTED T=
    s" PRIVNEW" NO-WORDS
    s" PRIVNEW" s" -NEW-DISPOSE" PUB-ABSENT
    s" a qualified name declares both words in that package's public section" T-LABEL
@@ -229,9 +230,9 @@ private
    s" : QUAL-USE ( ^ARENA:arena -- ^n ) [: drop ;] ARENA-TEST:QUAL-NEW-DISPOSE ;"
    EVAL 0 T=
    s" and refuses one whose word is taken in that package's private section" T-LABEL
-   s" public ARENA ARENA-TEST:TAKEN n" QUIET-EVAL CHECKER-REJECT-RC T=  s" private" EVAL 0 T=
-   s" ARENA ARENA-TEST:PUBDIS n" QUIET-EVAL CHECKER-REJECT-RC T=
-   s" ARENA ARENA-FIX:PRECS n" QUIET-EVAL CHECKER-REJECT-RC T= ;
+   s" public ARENA ARENA-TEST:TAKEN n" QUIET-EVAL EXIT-STATUS:REJECTED T=  s" private" EVAL 0 T=
+   s" ARENA ARENA-TEST:PUBDIS n" QUIET-EVAL EXIT-STATUS:REJECTED T=
+   s" ARENA ARENA-FIX:PRECS n" QUIET-EVAL EXIT-STATUS:REJECTED T= ;
 
 
 : VERIFY-USES-SRC$ ( -- ^u8 n )
@@ -302,7 +303,7 @@ public
    s" ARENA:NEW dup TOP-NEW drop ARENA:RELEASE" EVAL 0 T=
    s" : TOP-USE ( ^ARENA:arena -- ^n ) [: drop ;] TOP-NEW-DISPOSE ;" EVAL 0 T=
    s" and a qualified one whose word is taken in that package's private section is refused" T-LABEL
-   s" ARENA ARENA-FIX:TOP-TAKEN n" QUIET-EVAL CHECKER-REJECT-RC T= ;
+   s" ARENA ARENA-FIX:TOP-TAKEN n" QUIET-EVAL EXIT-STATUS:REJECTED T= ;
 
 ;package
 

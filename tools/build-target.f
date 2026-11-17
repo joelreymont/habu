@@ -1,4 +1,5 @@
 \ Pending target selection and the one active native build action.
+require src/core/exit-status.f
 require src/compiler/target/model.f
 
 package BUILD-TARGET
@@ -16,7 +17,7 @@ variable ACTIVE
    REJECTION:HELP
    s" select the target before `BUILD-TARGET:WITH` or after its action returns"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : END-ACTION ( -- )
    0 ACTIVE ! ;

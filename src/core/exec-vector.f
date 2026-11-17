@@ -8,4 +8,4 @@
    REJECTION:HELP
    s" install a word in the `defer` before it runs, as `[: WORD ;] is NAME`"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;

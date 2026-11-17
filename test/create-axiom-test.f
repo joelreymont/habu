@@ -4,6 +4,7 @@
 \ DEF-ADDR-PUBLISH). Restoring `PE-PTR-A PE-OUT` reds INFER-CASE's inferred effect
 \ and both callers.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/habu/verify-source.f
 
@@ -11,7 +12,7 @@ package CREATE-AXIOM-TEST
 private
 
 0 constant LOADED               \ what `catch` answers for a source that loaded
-70 constant REJECT-RC           \ src/core/check-hook.f CHECK CHECK-RC (private there)
+70 constant REJECT-RC           \ a rejection (EXIT-STATUS:REJECTED)
 
 \ `evaluate-closed` loads a definition as a source file loads one. At top level
 \ what these publish is global, the position the inference case needs.

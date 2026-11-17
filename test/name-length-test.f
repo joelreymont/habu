@@ -4,6 +4,7 @@
 \ ceiling: a long one is taken, a package name, a part path and a field name
 \ included.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/string.f
@@ -273,7 +274,7 @@ variable LBL-U
    s" a word with a long name resolves" T-LABEL
    CALL-LONG$ CHECK-QUIET-CANDIDATE! -1 T=
    s" ... is defined in this scope" T-LABEL
-   LONG-LEN 113 DEF-SRC TEST-EVAL:RC CHECKER-REJECT-RC T=
+   LONG-LEN 113 DEF-SRC TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" a value-record with a long name is declared" T-LABEL
    s" VALUE-RECORD " LONG-LEN 114 LETTERS JOIN s"  f n END-VALUE-RECORD" JOIN
    {: ra:^ ru:n :}

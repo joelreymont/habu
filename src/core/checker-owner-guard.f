@@ -22,7 +22,7 @@ public
    REJECTION:HELP
    s" publish a declaration-owner record that carries every operation"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The checker that owns the source published a declaration-owner record that
 \ is out of bounds or not one.
@@ -32,7 +32,7 @@ public
    REJECTION:EMIT-STR
    REJECTION:HELP
    s" publish the record through CHECKER-OWNER-ABI" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 private
 

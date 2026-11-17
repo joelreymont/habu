@@ -8,6 +8,7 @@
 \ the target (RECORD-IMAGE), and the record list. LINKER:WRITE writes the
 \ linked program; the other words are LINKER's own.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/le.f
 require src/lib/sort.f
@@ -102,7 +103,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    then
    REJECTION:HELP
    s" store in an xt cell only 0 or the xt of a word the program defines" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 : COPY-ROW ( n -- )
@@ -142,7 +143,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       REJECTION:HELP
       s" leave the header cells to the link: store into a cell the build allots"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    v off COPY-AT LE:U64! ;
 
@@ -300,7 +301,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    REJECTION:HELP
    s" define `" REJECTION:EMIT-STR  name nameu REJECTION:EMIT-STR
    s" ` in a file the engine build loads" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ Build record r's source when r is an alias but not of a does> clause, else -1; an owned
@@ -553,7 +554,7 @@ public
          s" the link has no file writer for a PE target" REJECTION:EMIT-STR
          REJECTION:HELP
          s" build for a Linux or macOS target" REJECTION:EMIT-STR
-         CHECKER-REJECT-RC REJECTION:STOP
+         EXIT-STATUS:REJECTED REJECTION:STOP
       ENDOF
       wasm OF path pathu WASM:WRITE-MODULE ENDOF
    ;MATCH ;

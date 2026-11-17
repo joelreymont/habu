@@ -22,6 +22,7 @@
 \ the stored effect and fails closed at a wide instantiation, while a quoted
 \ MAKE seeds from the declared output.
 
+require src/core/exit-status.f
 require src/lib/adt/result.f
 require src/lib/string.f
 require src/lib/test.f
@@ -37,7 +38,7 @@ TYPED-VARIABLE TCE-A ^u8   variable TCE-U
    TCE-U ! TCE-A !
    [: TCE-GO ;] catch ;
 : TCE-PROTECTED ( ^u8 n -- )   \ the text is rejected with E-CTOR-PROTECTED
-   REJECTION:CAPTURE  TCE-CATCH CHECKER-REJECT-RC T=
+   REJECTION:CAPTURE  TCE-CATCH EXIT-STATUS:REJECTED T=
    REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 

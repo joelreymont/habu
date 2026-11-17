@@ -2,6 +2,7 @@
 \ Each case's source is rejected with the same error line by `--load`'s
 \ evaluate-closed and by tools/check.f over that source written to a file.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -40,7 +41,7 @@ s" case.f" TCE-PATH FS:JOIN-PATH TCE-PATH-U !
    TCE-ERR TCE-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    TCE-ERR erru LEN>N wa wu CONTAINS? TTRUE
-   src srcu TCE-OUT outu LEN>N TCE-ERR erru LEN>N oc CHECKER-REJECT-RC
+   src srcu TCE-OUT outu LEN>N TCE-ERR erru LEN>N oc EXIT-STATUS:REJECTED
    T-ENDING-EXITED= ;
 
 public
@@ -51,7 +52,7 @@ public
 : TCE-REJECTS ( ^u8 n ^u8 n -- ) {: src:^ srcu:n wa:^ wu:n :}
    src TCE-A !  srcu TCE-U !
    REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF
-   CHECKER-REJECT-RC T=  REJECTION:BUFFER$ wa wu STARTS-WITH? TTRUE
+   EXIT-STATUS:REJECTED T=  REJECTION:BUFFER$ wa wu STARTS-WITH? TTRUE
    src srcu wa wu TCE-CHECK ;
 
 ;package

@@ -1,5 +1,6 @@
 \ A caught declaration with an unfinished quotation must leave the parser
 \ usable for the next declaration.
+require src/core/exit-status.f
 require src/lib/test.f
 require test/decl-diag-capture.f
 
@@ -9,7 +10,7 @@ package QUOT-ROLLBACK-TEST
 \ record whose evaluated note marks `nope` under the label.
 : REJECTS ( ^u8 n ^u8 n -- )
    {: sa:^ su:n la:^ lu:n :}
-   REJECTION:CAPTURE  sa su TEST-EVAL:RC CHECKER-REJECT-RC T=
+   REJECTION:CAPTURE  sa su TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    REJECTION:BUFFER$ s" error[E-BAD-DECLARATION]" CONTAINS? TTRUE
    s" nope" la lu DECL-DIAG:CAUSE? TTRUE
    REJECTION:BUFFER-OFF ;

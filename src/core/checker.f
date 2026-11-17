@@ -487,7 +487,7 @@
 \
 \ The binder's answers: LIVE-BIND answers its refusals rather than raising
 \ them. It leaves ( sym why ), why 0 or the code of the refusal it reached:
-\ CHECKER-REJECT-RC when no authority names a package context for a bare
+\ EXIT-STATUS:REJECTED when no authority names a package context for a bare
 \ token, E-USING-SHADOW-GLOBAL when a used public also exports the tail a
 \ global binds, E-USING-AMBIGUOUS when two used publics export it and nothing
 \ earlier binds it or the global does. Under a refusal sym is no answer. It
@@ -716,7 +716,7 @@
 \
 \ Rejecting a definition: a body, a does> clause or a top-level token is
 \ checking, rejected or stopped. Every writer prints its record and throws
-\ CHECKER-REJECT-RC; the definition's catcher decides by DEF-RESUMES?. Caught
+\ EXIT-STATUS:REJECTED; the definition's catcher decides by DEF-RESUMES?. Caught
 \ under MULTI-ERR? it takes checking to rejected: what the walk left set is
 \ cleared, the record step runs as for a rejected verdict, and the load goes on
 \ at the next definition.
@@ -1845,7 +1845,7 @@ CHECKER-PKG-LIVE-DEFAULT
    REJECTION:HELP
    s" define and verify at top level or in a `public`, `private` or `global` section inside `package ... ;package`"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 ;package
 package CHECKER-RESOLVE
@@ -2837,7 +2837,7 @@ package CHECK
       REJECTION:HELP
       s" test the lookup's answer with `XREF-FOUND?` before reading its record"
       REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    cells + @ ;
 
@@ -7717,7 +7717,7 @@ variable PKHAVE
 \ DEFLINEAR hands a name it read; any other caller is the engine's.
 : CT-ADD-LINEAR ( ^u8 n ^u8 n -- ) {: a:^ u:n pa:^ pu:n :}
    a u BYTE-SPAN? 0= IF s" checker: a linear type's name describes no memory" 76 die THEN
-   a u TYPE-RESERVED? IF a u CHECKER-LINEAR-TAKEN  CHECKER-REJECT-RC REJECTION:STOP THEN
+   a u TYPE-RESERVED? IF a u CHECKER-LINEAR-TAKEN  EXIT-STATUS:REJECTED REJECTION:STOP THEN
    a u pa pu CT-LINEAR-SET ;
 
 \ A linear type's type entry text, the form CHECK:HEAD$ states.
@@ -8982,7 +8982,7 @@ variable VREC-TYPE-U
    name nameu fields fieldsu VREC-TRY {: at:n why:n :}
    why 0= IF EXIT THEN
    name nameu  fields fieldsu at VREC-TOKEN  why CHECKER-RECORD-REJECT
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
@@ -10915,7 +10915,7 @@ ON-USE-DEFAULT
    REJECTION:HELP
    s" call `CHECKER-WITH-USES` after the running scope returns, never from its quotations"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 : USES-INSTALL ( [ n n n n n n -- ] -- )
    USES-OPEN @ 0 <> IF USES-NESTED THEN
    is CHECKER-ON-USE
@@ -11024,7 +11024,7 @@ PTR-VARIABLE CB-P   variable CB-CAP   variable CB-N    \ their spellings: cells,
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR  s" ` " REJECTION:EMIT-STR
    what whatu REJECTION:EMIT-STR
    REJECTION:HELP  fix fixu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 : CURSOR-BUSY ( ^u8 n -- ) {: w:^ wu:n :}
    w wu s" ran while a check owns the cursor or a visitor runs"
    s" arm, disarm or enumerate before the check runs or after it returns, never from a visitor"
@@ -11687,7 +11687,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    sa su at atu SGBAD-REJECTION
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
    sa su at atu SGBAD-PIN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ An effect with these rows deeper than a record holds is a stored signature
 \ no record can hold, whatever path records it: refused as a bad one by the
@@ -11729,7 +11729,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    REJECTION:HELP
    s" drop the binder from the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
    s" `: only a checked `:` definition binds a callback scope" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ USIG-ADD-AS past its parse, given the rows of signature text SA; answers the
 \ row's outcome.
@@ -13083,7 +13083,7 @@ CTOR-PROT-DEFAULTS
    REJECTION:HELP
    s" keep `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` and define your own word under another name" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Package a u, written t tu, bears the name of the constructor package of
 \ family na nu of package pa pu, empty for a top-level family.
@@ -13100,7 +13100,7 @@ CTOR-PROT-DEFAULTS
    REJECTION:HELP
    s" put your words in a package of another name, as `package " REJECTION:EMIT-STR
    t tu REJECTION:EMIT-STR  s" -WORDS`" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The name with each `:` spelled `-`: a bare name outside the package.
 : CTOR-BARE ( ^u8 n -- ) {: a:^ u:n :}
@@ -13118,7 +13118,7 @@ CTOR-PROT-DEFAULTS
    REJECTION:HELP
    s" define it under a name of your own, as `" REJECTION:EMIT-STR
    a u CTOR-BARE  96 REJECTION:EMIT1
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : CHECKER-UNDEFINE-GUARD ( ^u8 n -- ) {: a:^ u:n :}
    a u CTOR-WORD?-XT IF a u CTOR-WORD-REJECT THEN ;
@@ -13179,7 +13179,7 @@ package CHECK
    REJECTION:HELP
    s" name a package without `:`; inside package A, `package B` opens its part `A:B`"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : CHECKER-QA@ ( -- ^u8 )
    CHECKER-QA @ ;
@@ -13398,7 +13398,7 @@ private
    pa pu REJECTION:EMIT-STR
    s" ` instead: no other package may export a sealed package's private word"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A keyword that names no word is read before any lookup, so no export can
 \ name it.
@@ -13415,7 +13415,7 @@ private
    REJECTION:HELP  s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
    s" : a keyword needs no export" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Writes the record of a `;package`, the token t tu, that closes package a u,
 \ which its file or string did not open, through its help; the caller ends it.
@@ -13733,7 +13733,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    SRCLOC:TOKEN$ REJECTION:AT  s" replays inside a definition" REJECTION:EMIT-STR
    REJECTION:HELP
    s" verify source after `;` ends the definition, or while no task is live" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : OPEN ( n -- ) {: tag:n :}
    PEND-CELL DATA@ 0 <>  TASKS-LIVE-CELL DATA@ 0 <>  and IF PENDING-REJECT THEN
@@ -13959,7 +13959,7 @@ ROW-CELLS cells constant SCOPE-BYTES
    cta ctu ROOM
    cta ctu wid CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF
       ta tu DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    cta ctu wid replay-record
    ix ndict@ 1 - PAIRS-P PAIRS-CAP PAIRS-N PAIR+ ;
@@ -13977,7 +13977,7 @@ ROW-CELLS cells constant SCOPE-BYTES
    a u get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
    ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = IF EXIT THEN
    a u DOES-CLAUSE:SUFFIX$ a u REJECTION:CLAUSE-TAKEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Opens the package at path a u in its private section; one a qualified
 \ definition made, with a public wordlist only, gets its private one here.
@@ -14009,7 +14009,7 @@ EXPORT CHECKER-RESOLVE:CK-REC-NAME$
    PKG-PUB-CELL DATA@ 0= IF EXIT THEN
    PKG-OUTSIDE-CELL DATA@ 0 <> IF
       PKG-REC-CELL SCOPE-IX REC-AT CK-REC-NAME$  NULL-PTR 0 PKG-OUTSIDE-REJECT
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    PKG-PARENT-CELL DATA@ CUR-CELL DATA!
    ENCLOSING:REC SCOPE-IX {: outer:n :}
@@ -14023,7 +14023,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 : OPEN-USING ( ^u8 n -- ) {: a:^ u:n :}
    a u CHECKER-USING
    a u CHECKER-COLON-SCAN drop 0 <> IF
-      a u REJECTION:USING-BAD-NAME  CHECKER-REJECT-RC REJECTION:STOP
+      a u REJECTION:USING-BAD-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    a u HEAD-ROW {: row:^ :}
    row NULL-PTR = IF a u RES-TRUE NS-ENSURE ELSE row THEN {: rec:^ :}
@@ -14039,13 +14039,13 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 : CLOSE-USING ( ^u8 n -- ) {: t:^ tu:n :}
    USE-DEPTH-CELL DATA@ {: d:n :}
    d 0 <= IF
-      t tu REJECTION:USING-UNBALANCED  CHECKER-REJECT-RC REJECTION:STOP
+      t tu REJECTION:USING-UNBALANCED  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    PKG-PUB-CELL DATA@ 0 <>  d USE-PKG-SAVE-CELL DATA@ <=  and IF
-      t tu s" package" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+      t tu s" package" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    d SOURCE-FLOOR @ <= IF
-      t tu s" file" REJECTION:USING-OUTER  CHECKER-REJECT-RC REJECTION:STOP
+      t tu s" file" REJECTION:USING-OUTER  EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    d 1 - USE-DEPTH-CELL DATA! ;
 
@@ -14088,7 +14088,7 @@ CAST: AS-ACTION ( n -- [ -- ] )
    s" ` " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
    NULL-PTR 0 REJECTION:AT  s" a part opens here" REJECTION:EMIT-STR
    REJECTION:HELP  h hu REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A part opens in its package's private section, in its buffer, under no using
 \ it opened, inside no part.
@@ -14220,7 +14220,7 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
    REJECTION:HELP
    s" verify one source at a time: start the next after this one returns"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A source loaded inside an active verifier window inherits its caller's
 \ package and imports. On a clean return it keeps no import it opened.
@@ -14423,7 +14423,7 @@ private
 
 : STGR-END ( -- )
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The declared name, the rejected token and the STG- reason.
 : CHECKER-STORAGE-REJECT ( ^u8 n ^u8 n n -- )
@@ -14798,7 +14798,7 @@ EXPORT CHECKER-RESOLVE:USED-ONLY?
    0 BIND-SEEDED !
    a u CHECKER-QUALIFIED? 0= IF
       CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-      AUTHORITY 0= TOP-STEP @ 0= and IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
+      AUTHORITY 0= TOP-STEP @ 0= and IF 2drop drop 0 EXIT-STATUS:REJECTED EXIT THEN
       2drop drop
    THEN
    a u CK-PENDING-SYM {: pending:n :}
@@ -14904,7 +14904,7 @@ EXPORT CHECK:OK
 \ throws nothing: the scan's end raises it if the definition is refused for it.
 : RAISE ( ^u8 n n -- )
    {: s:^ su:n why:n :}
-   why CHECKER-REJECT-RC = IF CHECKER-PKG-CONTEXT-REJECT THEN
+   why EXIT-STATUS:REJECTED = IF CHECKER-PKG-CONTEXT-REJECT THEN
    USING-HOLD @ IF
       CUSING @ 0 <> IF EXIT THEN
       s USH-TOK-A !  su USH-TOK-U !
@@ -14915,11 +14915,11 @@ EXPORT CHECK:OK
    THEN
    why E-USING-SHADOW-GLOBAL = IF
       s su SYM-STR USH-PKG-A @ + USH-PKG-U @ USING-SHADOW-REJECT
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    why E-USING-AMBIGUOUS = IF
       s su CK-USED-MASK @ USING-AMBIGUOUS-REJECT
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" 76 die ;
 
@@ -15797,7 +15797,7 @@ private
    s" write `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` with one `:` between the package and the word, as `PKG:WORD`"
    REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 ;package
 package CHECK
 EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
@@ -15872,7 +15872,7 @@ EXPORT CHECKER-OVERLAY:OTHER-SHAPE?
 
 \ The name t tu, the token that defines it again, is rejected.
 : CHECKER-DUP-DEFINITION ( ^u8 n -- )
-   2dup REJECTION:DUPLICATE CHECKER-REJECT-RC REJECTION:STOP ;
+   2dup REJECTION:DUPLICATE EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 global
 \ --- a package public whose own bare tail a private word of the package claims --
@@ -15956,7 +15956,7 @@ private
    s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR
    pin pout SBA-CELLS-TXT
    s" `, or rename one of the two" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A length that describes no memory is refused with the symbol pool's refusal
 \ before the constructor scan reads it.
@@ -17590,7 +17590,7 @@ private
    s" ` is an internal engine word, which no package may export" REJECTION:EMIT-STR
    a u REJECTION:AT  s" internal to the engine" REJECTION:EMIT-STR
    REJECTION:HELP  s" export a public word instead" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : EXPORT-DECLARATION ( ^u8 n -- ) {: a:^ u:n :}
    s" E-EXPORT-UNSAFE" REJECTION:OPEN
@@ -17600,7 +17600,7 @@ private
    a u REJECTION:AT  s" declaration" REJECTION:EMIT-STR
    REJECTION:HELP  s" call `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` at top level instead of exporting it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : EXPORT-PRIM ( ^u8 n -- ) {: a:^ u:n :}
    s" E-EXPORT-PRIM" REJECTION:OPEN
@@ -17609,7 +17609,7 @@ private
    a u REJECTION:AT  s" primitive" REJECTION:EMIT-STR
    REJECTION:HELP  s" call `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` directly: a primitive is visible in every package" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : EXPORT-JUDGED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-EXPORT-PRIM" REJECTION:OPEN
@@ -17619,7 +17619,7 @@ private
    a u REJECTION:AT  s" built in" REJECTION:EMIT-STR
    REJECTION:HELP  s" drop the export: `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" ` is visible in every package" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : EXPORT-UNDEFINED ( ^u8 n -- ) {: a:^ u:n :}
    s" E-EXPORT-UNDEFINED" REJECTION:OPEN
@@ -17628,7 +17628,7 @@ private
    a u REJECTION:AT  s" not found" REJECTION:EMIT-STR
    REJECTION:HELP  s" define `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` before exporting it, or check its spelling" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The source's own definition was rejected, so its row holds no checked effect.
 : EXPORT-REJECTED ( ^u8 n -- ) {: a:^ u:n :}
@@ -17639,7 +17639,7 @@ private
    a u REJECTION:AT  s" rejected definition" REJECTION:EMIT-STR
    REJECTION:HELP  s" fix the definition of `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" ` before exporting it" REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 EXPORT CHECKER-RESOLVE:EXPORT-PRIVATE
 EXPORT CHECKER-RESOLVE:EXPORT-SEALED?
@@ -17660,7 +17660,7 @@ EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
       s" write `EXPORT " REJECTION:EMIT-STR  qa qn a u EMIT-QUALIFIED
       s" `" REJECTION:EMIT-STR
    ELSE qa qn EMIT-HIDER THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Rejects the operand a u, which names no word EXPORT may take. SYM is
 \ EXPORT-SYM's symbol; WALK-USED still describes the walk that bound it.
@@ -23262,7 +23262,7 @@ EXPORT CHECKER-TAPE:COUNTED-MAX
    STRING-KIND K-COUNTED-STRING =
    u COUNTED-MAX >  and IF
       TSTART @ TADDR SCAN-U @  COUNTED-MAX REJECTION:COUNTED-RANGE
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
    a u ;
 

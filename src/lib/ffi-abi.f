@@ -28,6 +28,7 @@
 \ or fewer has no copy, kept as 0.
 
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
+s" src/core/exit-status.f" required
 s" src/lib/error.f" required
 s" src/core/rollback-cells.f" required
 s" src/lib/span.f" required
@@ -948,7 +949,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 \ open declaration, so the next FUNCTION: in the file is not rejected for it.
 : STOP-REJECTION ( -- )
    OPEN? if SOURCE-ROOT:CLOSED then  CLOSED!
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : HELP-END ( ^u8 n -- )
    {: h:^ hu:n :}
@@ -1644,7 +1645,7 @@ public
    [: OPEN? if
          OPENER$ s" ;FUNCTION" t tu SOURCE-ROOT:UNCLOSED
          SOURCE-ROOT:CLOSED  CLOSED!
-         CHECKER-REJECT-RC REJECTION:STOP
+         EXIT-STATUS:REJECTED REJECTION:STOP
       then
       CLOSED!
       0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !

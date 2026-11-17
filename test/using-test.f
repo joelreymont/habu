@@ -4,6 +4,7 @@
 \ in NAME, and a bare tail resolving in two used packages is a hard error. Cases
 \ answer the throw code of their source (0 = accepted).
 
+require src/core/exit-status.f
 require src/lib/prelude.f
 require src/habu/verify-source.f
 require src/lib/test.f
@@ -210,13 +211,13 @@ s" MW drop" UCE-CATCH 0 T=
 \ no used package exports, a word the open package defines itself and a read
 \ after `;using` are unchanged. A buffer evaluated under its includer's using
 \ resolves through it, so it refuses too.
-s" using USG MW drop ;using" UCE-CATCH CHECKER-REJECT-RC T=
-s" using USG ' MW drop ;using" UCE-CATCH CHECKER-REJECT-RC T=
+s" using USG MW drop ;using" UCE-CATCH EXIT-STATUS:REJECTED T=
+s" using USG ' MW drop ;using" UCE-CATCH EXIT-STATUS:REJECTED T=
 s" using USG USG:MW drop ;using" UCE-CATCH 0 T=
 s" using USG NC drop ;using" UCE-CATCH 0 T=
 s" package USM : MW ( -- n ) 5 ; using USG MW drop ' MW drop ;using ;package" UCE-CATCH 0 T=
 using USG
-s" MW drop" UCE-CATCH CHECKER-REJECT-RC T=
+s" MW drop" UCE-CATCH EXIT-STATUS:REJECTED T=
 ;using
 s" using USG ;using MW drop ' MW drop" UCE-CATCH 0 T=
 

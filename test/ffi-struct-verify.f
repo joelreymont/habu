@@ -6,6 +6,8 @@
 \ its file to the run and would hide the clauses) and name no defined symbol,
 \ so a clean certify shows the check resolves none.
 
+require src/core/exit-status.f
+
 : FFI-SV-HEAD$ ( -- ^u8 n )
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n24 constant FFI-SV-W\n" ;
 
@@ -335,7 +337,7 @@ variable FFI-SV-SRC-U
    FFI-SV-WRITE
    s" test/ffi-sv.f" E2E-TREE:ARGS
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:RC@ CHECKER-REJECT-RC T=
+   E2E-TREE:RC@ EXIT-STATUS:REJECTED T=
    E2E-TREE:ERR$ s" error[E-FFI-SYNTAX]: the clause names an input that is not ^u8"
    CONTAINS? TTRUE ;
 

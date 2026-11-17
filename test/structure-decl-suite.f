@@ -3,6 +3,7 @@
 \ It asserts reject codes, rendered diagnostics, field-row counts and the
 \ generated words. A failure prints F<index> and detail; T-REPORT exits 1.
 
+require src/core/exit-status.f
 require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
@@ -670,7 +671,7 @@ s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with
 \ arguments the same.
 DECL-DIAG:PROSE
 : SDG-LATE ( -- ) s\" s\" STRUCTURE sdglate<a> FIELD y ^a ;STRUCTURE\" evaluate\nSTRUCTURE sdgfwd<p,q> FIELD x ^sdglate<read-view<p,q,n>> ;STRUCTURE" VERIFY:SOURCE-BUF ;
-' SDG-LATE catch CHECKER-REJECT-RC T=
+' SDG-LATE catch EXIT-STATUS:REJECTED T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgfwd`\n" DECL-DIAG:HAS? TTRUE
 \ CAUSE? reads the note only TEST-EVAL writes: the place and label stand for it.
 s\"  --> <input>:2:40\n" DECL-DIAG:HAS? TTRUE
@@ -690,16 +691,16 @@ s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with
 \ argument, helped by its slot.
 REJECTION:CAPTURE
 : SDG-RV ( -- ) s" STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
-' SDG-RV catch CHECKER-REJECT-RC T=
+' SDG-RV catch EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgrv`\n --> <input>:1:35\n  |\n1 | STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE\n  |                                   ^ type argument must be a scope parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" CONTAINS? TTRUE
 REJECTION:CAPTURE
 : SDG-MV ( -- ) s" STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
-' SDG-MV catch CHECKER-REJECT-RC T=
+' SDG-MV catch EXIT-STATUS:REJECTED T=
 REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgmv`\n --> <input>:1:43\n  |\n1 | STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE\n  |                                           ^ type argument must be a region parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n\n" CONTAINS? TTRUE
 \ A type spaced across one line is marked for its whole written span.
 : SDG-SPACED ( -- ) s" STRUCTURE sdgsp FIELD f option<n,    n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
 DECL-DIAG:PROSE
-' SDG-SPACED catch CHECKER-REJECT-RC T=
+' SDG-SPACED catch EXIT-STATUS:REJECTED T=
 s\"  ^^^^^^^^^^^^^^^ type has too many arguments\n" DECL-DIAG:HAS? TTRUE
 
 \ A field may point at its own family: three linked records walk round, MAKE and

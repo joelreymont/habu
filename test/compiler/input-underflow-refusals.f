@@ -5,6 +5,7 @@
 \ effect is the signature's rows, whatever the body bound. Cases run through
 \ `evaluate-closed`, the path `bin/hb --load` takes; a refusal is a throw.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 
@@ -21,8 +22,6 @@ variable IUF-V
 package INPUT-UNDERFLOW-TEST
 
 private
-
-70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
 
 : ARM ( -- )   \ capture the next diagnostic as JSON instead of printing it
@@ -80,7 +79,7 @@ private
 : CASE-BARE ( -- )
    s" a call with nothing on the stack is refused at the call" T-LABEL
    ARM
-   [: s" : IUF-BARE ( -- n ) UFC 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-BARE ( -- n ) UFC 0 ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" UFC" TOKEN?  s" 1" s" 0" SHORT-BY?
    s" 0" NOT-TOKEN?
    DISARM ;
@@ -88,7 +87,7 @@ private
 : CASE-TWO-DEEP ( -- )
    s" a two-cell call over one declared input names both depths" T-LABEL
    ARM
-   [: s" : IUF-TWO ( n -- n ) UFC2 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-TWO ( n -- n ) UFC2 0 ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" UFC2" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
@@ -98,7 +97,7 @@ private
 : CASE-SWAP-OVER-PROOF ( -- )
    s" a swap over a proof-carrying cell is refused at the swap" T-LABEL
    ARM
-   [: s" : IUF-XSWAP ( -- ) [: ;] catch swap drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-XSWAP ( -- ) [: ;] catch swap drop drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" swap" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
@@ -107,14 +106,14 @@ private
 : CASE-WIDE-OVER-PROOF ( -- )
    s" a 2swap over a proof and a multi-cell value counts cells" T-LABEL
    ARM
-   [: s" : IUF-XWIDE ( -- ) 5 RB:RF [: ;] catch 2swap drop drop drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-XWIDE ( -- ) 5 RB:RF [: ;] catch 2swap drop drop drop drop drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" 2swap" TOKEN?  s" 5" s" 3" SHORT-BY?
    DISARM ;
 
 : CASE-WIDE-COPY ( -- )
    s" a 2dup of a multi-cell declared input counts cells" T-LABEL
    ARM
-   [: s" : IUF-WCOPY ( rb<n> -- rb<n> rb<n> ) 2dup ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-WCOPY ( rb<n> -- rb<n> rb<n> ) 2dup ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" 2dup" TOKEN?  s" 3" s" 2" SHORT-BY?
    DISARM ;
 
@@ -124,21 +123,21 @@ private
 : CASE-TO-R ( -- )
    s" a >r with nothing on the stack is refused at the >r" T-LABEL
    ARM
-   [: s" : IUF-TOR ( -- ) >r r> drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-TOR ( -- ) >r r> drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
 : CASE-TWO-TO-R ( -- )
    s" a 2>r over one cell is refused at the 2>r" T-LABEL
    ARM
-   [: s" : IUF-2TOR ( -- ) 1 2>r 2r> 2drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-2TOR ( -- ) 1 2>r 2r> 2drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" 2>r" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
 : CASE-SECOND-TO-R ( -- )
    s" the >r that empties past the declared inputs is refused" T-LABEL
    ARM
-   [: s" : IUF-TOR2 ( -- ) 1 >r >r 2r> 2drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-TOR2 ( -- ) 1 >r >r 2r> 2drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
@@ -147,14 +146,14 @@ private
 : CASE-TO-R-AFTER-PROOF ( -- )
    s" a >r after a proof-carrying cell moved is refused at that >r" T-LABEL
    ARM
-   [: s" : IUF-XTOR ( -- ) [: ;] catch >r >r 2r> 2drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-XTOR ( -- ) [: ;] catch >r >r 2r> 2drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" >r" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
 : CASE-TWO-TO-R-IN-ARM ( -- )
    s" a 2>r in an if arm is refused at the 2>r, not at then" T-LABEL
    ARM
-   [: s" : IUF-ARM2TOR ( f -- ) if 1 2>r 2r> 2drop then ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-ARM2TOR ( f -- ) if 1 2>r 2r> 2drop then ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" 2>r" TOKEN?  s" 2" s" 1" SHORT-BY?
    DISARM ;
 
@@ -163,7 +162,7 @@ private
 : CASE-AFTER-LOCALS ( -- )
    s" a call after a locals binding is still refused at the call" T-LABEL
    ARM
-   [: s" : IUF-LOC ( n -- n ) {: x:n :} UFC x ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-LOC ( n -- n ) {: x:n :} UFC x ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" UFC" TOKEN?  s" 1" s" 0" SHORT-BY?
    DISARM ;
 
@@ -172,7 +171,7 @@ private
 : CASE-LOCALS-BINDER ( -- )
    s" a locals group with nothing to bind is refused at its own closer" T-LABEL
    ARM
-   [: s" : IUF-BIND ( -- ) {: x:n :} ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-BIND ( -- ) {: x:n :} ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" :}" TOKEN?
    DISARM ;
 
@@ -183,7 +182,7 @@ private
 : CASE-OVER-ABANDONED-CANDIDATE ( -- )
    s" an abandoned candidate's refusal does not rename this one" T-LABEL
    ARM
-   [: s" : IUF-SPEC ( -- n ) IUF-V @ cell+ drop drop 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-SPEC ( -- n ) IUF-V @ cell+ drop drop 0 ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" drop" TOKEN?
    S\" \"code\":\"E-RAW-CELL-PTR\"" LACKS?
    DISARM ;
@@ -195,7 +194,7 @@ private
 : CASE-DECLARED-ROWS ( -- )
    s" an underflow's declared effect is the signature as written" T-LABEL
    ARM
-   [: s" : IUF-PLUS ( n -- n ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-PLUS ( n -- n ) + ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" n -- n" DECLARED?
    DISARM ;
 
@@ -204,7 +203,7 @@ private
 : CASE-DECLARED-VARIABLE ( -- )
    s" a specialised variable stays a variable in the declared effect" T-LABEL
    ARM
-   [: s" : IUF-PARAM ( a -- a ) 1 + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-PARAM ( a -- a ) 1 + ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    s" a -- a" DECLARED?
    DISARM ;
 
@@ -213,7 +212,7 @@ private
 : CASE-DECLARED-QUOTATION-ROWS ( -- )
    s" a quotation's own rows stay named in the declared effect" T-LABEL
    ARM
-   [: s" : IUF-QROW ( [ R -- S ] -- [ R -- S ] ) swap ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-QROW ( [ R -- S ] -- [ R -- S ] ) swap ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    s" [ R -- S ] -- [ R -- S ]" DECLARED?
    DISARM ;
 
@@ -222,7 +221,7 @@ private
 : CASE-DECLARED-FRESH ( -- )
    s" a fresh name stays as written in the declared effect" T-LABEL
    ARM
-   [: s" : IUF-FRESH ( n -- fresh-region-a ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-FRESH ( n -- fresh-region-a ) + ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    s" n -- fresh-region-a" DECLARED?
    DISARM ;
 
@@ -230,7 +229,7 @@ private
 : CASE-DECLARED-BINDER ( -- )
    s" a quantifier keeps its own name in the declared effect" T-LABEL
    ARM
-   [: s" : IUF-FORALL ( a forall<p,[ read-view<p,p,u8> -- ]> -- a ) drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-FORALL ( a forall<p,[ read-view<p,p,u8> -- ]> -- a ) drop drop drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    s" a forall<p,[ read-view<p,p,u8> -- ]> -- a" DECLARED?
    DISARM ;
 
@@ -239,14 +238,14 @@ private
 : CASE-DECLARED-CLAUSE ( -- )
    s" a refused does> clause's declared effect is its signature as written" T-LABEL
    ARM
-   [: s" : IUF-DOES-UF ( n -- ) create , does> ( n -- n ) @ + + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-DOES-UF ( n -- ) create , does> ( n -- n ) @ + + ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    NAMED  s" n -- n" DECLARED?
    DISARM ;
 
 : CASE-DECLARED-CLAUSE-MISMATCH ( -- )
    s" a mismatched does> clause's declared effect is its signature as written" T-LABEL
    ARM
-   [: s" : IUF-DOES-MM ( n -- ) create , does> ( n -- n ) @ ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-DOES-MM ( n -- ) create , does> ( n -- n ) @ ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH$ HAS?  s" n -- n" DECLARED?
    DISARM ;
 
@@ -254,7 +253,7 @@ private
 : CASE-DECLARED-CLAUSE-RECURSE ( -- )
    s" an uncheckable does> clause's record declares its signature too" T-LABEL
    ARM
-   [: s" : IUF-DOES-RC ( n -- ) create , does> ( n -- n ) drop dup 0 > IF 1 - RECURSE THEN ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-DOES-RC ( n -- ) create , does> ( n -- n ) drop dup 0 > IF 1 - RECURSE THEN ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-UNCHECKABLE\"" HAS?
    s" n -- n" DECLARED?
    DISARM ;
@@ -263,14 +262,14 @@ private
 : CASE-DECLARED-BAD-SIG ( -- )
    s" a malformed signature's record declares no effect" T-LABEL
    ARM
-   [: s" : IUF-BAD-SIG ( ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-BAD-SIG ( ) + ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-BAD-SIGNATURE\"" HAS?  S\" \"declared\":" LACKS?
    DISARM ;
 
 : CASE-DECLARED-CLAUSE-BAD-SIG ( -- )
    s" a malformed does> clause signature's record declares no effect" T-LABEL
    ARM
-   [: s" : IUF-DOES-BAD ( n -- ) create , does> ( n n ) + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-DOES-BAD ( n -- ) create , does> ( n n ) + ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-BAD-SIGNATURE\"" HAS?  S\" \"declared\":" LACKS?
    DISARM ;
 
@@ -281,7 +280,7 @@ private
 : CASE-ROWS-AT-REFUSAL ( -- )
    s" a refusal's rows take no binding a later token makes" T-LABEL
    ARM
-   [: s" : IUF-LATE ( ^u8 bool -- ) if 1 then drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-LATE ( ^u8 bool -- ) if 1 then drop drop drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH$ HAS?  s" then" TOKEN?
    s" ^u8" s" ^u8 n" ROWS?
    DISARM ;
@@ -290,7 +289,7 @@ private
 : CASE-ROWS-NAMES ( -- )
    s" a refusal's rows keep the letters a later token binds" T-LABEL
    ARM
-   [: s" : IUF-NAMES ( a b bool -- ) if 1 else 0 0 = then rot 1 + drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-NAMES ( a b bool -- ) if 1 else 0 0 = then rot 1 + drop drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    s" a b bool" s" a b n" ROWS?
    DISARM ;
 
@@ -299,7 +298,7 @@ private
 : CASE-ROWS-REPAIR ( -- )
    s" a refusal's help reads the rows its token saw" T-LABEL
    ARM
-   [: s" : IUF-LATE-CALL ( ^u8 bool -- ) UFC2 drop drop drop drop ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-LATE-CALL ( ^u8 bool -- ) UFC2 drop drop drop drop ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    s" n n" s" ^u8 bool" ROWS?  s" convert or replace the value" HAS?
    DISARM ;
 
@@ -310,7 +309,7 @@ private
 : CASE-MISTYPED-CALL ( -- )
    s" a short call that is also mistyped keeps its own mismatch" T-LABEL
    ARM
-   [: s" : IUF-TYPE ( r -- n ) UFC2 0 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : IUF-TYPE ( r -- n ) UFC2 0 ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    MISMATCH$ HAS?  CODE$ LACKS?
    s" UFC2" TOKEN?
    DISARM ;

@@ -16,6 +16,7 @@ ENTRY-ORDER !
 \ hb carries the verifier. tools/check-verify-child.f loads this file under its
 \ own tree's root, so on an engine that does not carry it the verifier comes from
 \ that tree, not the client's.
+require src/core/exit-status.f
 require src/habu/verify-source.f
 require src/core/exit-status.f
 
@@ -490,8 +491,8 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ full dictionary. Any other code goes on with no answer.
 : STOP-RESULT ( n -- ) {: rc:n :}
    rc EXIT-STATUS:IOERR = if s" unread" TARGET-RESULT exit then
-   rc REJECTION:DICT-FULL-RC = if s" full" RESULT exit then
-   rc CHECKER-REJECT-RC = 0= if rc throw then
+   rc EXIT-STATUS:FULL = if s" full" RESULT exit then
+   rc EXIT-STATUS:REJECTED = 0= if rc throw then
    VERIFY:FAULT-TARGET$ nip 0 > if s" missing" TARGET-RESULT exit then
    s" refused" RESULT ;
 

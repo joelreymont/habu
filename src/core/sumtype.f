@@ -472,7 +472,7 @@ variable TDECL-TOK-N
    SIG-UNRES-CLEAR
    TDECL-NAME-END
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ The declared name is read first by the body's name gate and by the report. A
 \ length that describes no memory (BYTE-SPAN?) is recorded as no name, so the

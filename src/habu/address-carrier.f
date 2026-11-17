@@ -5,6 +5,8 @@
 \ layout.f, which owns SNAP-RELOC, and the image tools that load this file on a
 \ product engine may not reopen it (docs/forth-card.md § 6).
 
+require src/core/exit-status.f
+
 package ADDRESS-CARRIER
 public
 
@@ -81,7 +83,7 @@ public
       size REJECTION:EMIT-N  s" , which no address chain has" REJECTION:EMIT-STR
       REJECTION:HELP
       s" pass the size `ADDRESS-CARRIER:CHAIN-SIZE` answers for the chain" REJECTION:EMIT-STR
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    0 3 0 ?do
       p i 4 * + W32@ ADDR-RD-BITS rshift ADDR-IMM-MASK and

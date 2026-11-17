@@ -5,6 +5,7 @@
 \ Each build's checker starts from the primitive rows in the stores CHECK
 \ registers, and the close puts them back as hb had them.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/memory.f
@@ -232,7 +233,7 @@ variable LOW-DP
 : CASE-F ( -- )
    0 REFUSED !  0 REWOUND !
    [: BODY-F ;] BUILD
-   REFUSED @ CHECKER-REJECT-RC T=
+   REFUSED @ EXIT-STATUS:REJECTED T=
    REWOUND @ E-INTERN-REWIND T=
    LOW-DP @ IMAGE @ DATA-START + >= TTRUE
    HOST-CHECK
@@ -276,7 +277,7 @@ create LK-HOST 7 ,
    0 REFUSED !
    HOST-ADDR HOST-AT !
    [: BODY-I ;] BUILD
-   REFUSED @ CHECKER-REJECT-RC T=
+   REFUSED @ EXIT-STATUS:REJECTED T=
    HOST-ADDR HOST-AT @ T=
    HOST-CHECK
    s" i: a does> word in a build that creates no word is rejected, and hb's created word stays" SAY ;
@@ -327,7 +328,7 @@ variable RC-2
    RC-1 @ 0 T=
    RC-2 @ 0 T=
    s\" : LK-N2 ( -- bool ) s\" a\" s\" a\" STR= ;" TEST-EVAL:RC 0 T=
-   s" : LK-N3 ( -- n ) 5 STR= ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : LK-N3 ( -- n ) 5 STR= ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" n: a build may redefine an hb word; hb's effect stays" SAY ;
 
 : O1 ( -- )
@@ -347,7 +348,7 @@ variable RC-2
    RC-1 @ 0 T=
    RC-2 @ 0 T=
    s" : LK-O2 ( -- bool ) 0 WL:GLOBAL? ;" TEST-EVAL:RC 0 T=
-   s" : LK-O3 ( -- n ) WL:GLOBAL? ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" : LK-O3 ( -- n ) WL:GLOBAL? ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    s" o: a build may define a package hb has; hb's stays" SAY ;
 
 : CASE-P ( -- )
@@ -370,7 +371,7 @@ variable RC-2
    [: BODY-Q ;] BUILD
    HOST-CHECK
    RC-1 @ 0 T=
-   RC-2 @ CHECKER-REJECT-RC T=
+   RC-2 @ EXIT-STATUS:REJECTED T=
    s" package LINKER-TEST : LK-Q2 ( -- n ) 1 LK-Q0 ; ;package"
       TEST-EVAL:RC 0 T=
    s" q: a build's definitions leave hb's records linked" SAY ;
@@ -421,9 +422,9 @@ variable RAN-L
 : CASE-L ( -- )
    [: [: s" : LK-L1 ( -- ) ;" evaluate-closed ;] INTERPRETER:WITHOUT-PACKAGE ;] catch 0 T=
    s" LK-L1" LOOKUP -1 T<>
-   s" package LK-PB ;package" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" package LK-PB ;package" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    0 RAN-L !
-   s" OPEN-L -1 RAN-L ! package LK-PB ;package" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" OPEN-L -1 RAN-L ! package LK-PB ;package" TEST-EVAL:RC EXIT-STATUS:REJECTED T=
    RAN-L @ -1 T=
    s" l: WITHOUT-PACKAGE defines at top level and keeps the caller's package outside" SAY ;
 

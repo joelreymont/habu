@@ -183,11 +183,11 @@ private
 \ its own.
 : UNFIN ( -- n )
    9 [: s" : NATIVE-EVAL-D ( -- n ) 42" evaluate-closed ;] catch
-   CHECKER-REJECT-RC T= ;
+   EXIT-STATUS:REJECTED T= ;
 
 : UNFIN-NESTED ( -- n )
    9 [: s" NATIVE-EVAL-TEST:INNER-OPEN$ evaluate-closed" evaluate-closed ;] catch
-   CHECKER-REJECT-RC T= ;
+   EXIT-STATUS:REJECTED T= ;
 
 : UNFINISHED ( -- )
    s" a text that ends inside a definition is refused, rc 70" T-LABEL
@@ -318,7 +318,7 @@ create ERR IO-CAP allot
 : UNFINISHED-LINE ( -- )
    s" an uncaught unfinished text exits 70" T-LABEL
    UNFINISHED-LINE$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N CHECKER-REJECT-RC T=
+   PROCESS:ENDING>RC RC>N EXIT-STATUS:REJECTED T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
    ERR erru s" error[E-VS-UNTERMINATED-DEFINITION]: " CONTAINS? TTRUE

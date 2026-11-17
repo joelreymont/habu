@@ -1,5 +1,6 @@
 \ width-type.f - the built-in type `width<t>`: one cell holding the bytes t
 \ takes in storage, read with `width>n`.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 
@@ -12,8 +13,6 @@ STRUCTURE wtbox FIELD t wtlin FIELD k n ;STRUCTURE
 package WIDTH-TYPE-TEST
 
 private
-
-70 constant CHECK-RC    \ the engine refusing a definition it cannot certify
 
 
 : ARM ( -- )
@@ -45,26 +44,26 @@ private
 : CASE-OTHER-TYPE ( -- )
    s" a width of one type is not a width of another" T-LABEL
    ARM
-   [: s" : W5 ( width<n> -- n ) W3 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : W5 ( width<n> -- n ) W3 ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"expected\":\"width<turn>\",\"found\":\"width<n>\"" MISMATCH
    DISARM
    ARM
    [: s" : W8 ( width<u8> -- width<u32> ) ;" evaluate-closed ;]
-   CHECK-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"expected\":\"width<u32>\",\"found\":\"width<u8>\"" MISMATCH
    DISARM
    ARM
-   [: s" : W9 ( width<n> -- width<u8> ) ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : W9 ( width<n> -- width<u8> ) ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"expected\":\"width<u8>\",\"found\":\"width<n>\"" MISMATCH
    DISARM
    [: s" : W10 ( width<u32> -- n ) width>n ;" evaluate-closed ;] 0 TTHROWSQ
    ARM
-   [: s" : W11 ( width<u8> -- n ) W10 ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : W11 ( width<u8> -- n ) W10 ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"expected\":\"width<u32>\",\"found\":\"width<u8>\"" MISMATCH
    DISARM
    ARM
    [: s" : W12 ( [ -- width<u8> ] -- [ -- width<u32> ] ) ;" evaluate-closed ;]
-   CHECK-RC TTHROWSQ
+   EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"expected\":\"[ -- width<u32> ]\",\"found\":\"[ -- width<u8> ]\""
    MISMATCH
    DISARM ;
@@ -72,29 +71,29 @@ private
 : CASE-NOT-N ( -- )
    s" an n is not a width, and a width takes no arithmetic" T-LABEL
    ARM
-   [: s" : W6 ( n -- width<n> ) ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : W6 ( n -- width<n> ) ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"expected\":\"width<n>\",\"found\":\"n\"" MISMATCH
    DISARM
    ARM
-   [: s" : W7 ( width<n> -- n ) 1 + ;" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" : W7 ( width<n> -- n ) 1 + ;" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"expected\":\"n n\",\"found\":\"width<n> n\"" MISMATCH
    DISARM ;
 
 : CASE-STORAGE ( -- )
    s" no storage holds a width" T-LABEL
    ARM
-   [: s" TYPED-VARIABLE WV width<n>" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" TYPED-VARIABLE WV width<n>" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    STORED
    DISARM
    ARM
-   [: s" 4 TYPED-BUFFER WB width<n>" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" 4 TYPED-BUFFER WB width<n>" evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    STORED
    DISARM ;
 
 : DECL-REFUSED ( ^u8 n -- )
    {: a:^ u:n :}
    ARM
-   [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: a u evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-BAD-DECLARATION\"" HAS?
    s" a width is not stored: keep its bytes (width>n)" HAS?
    DISARM ;
@@ -111,7 +110,7 @@ private
 : FORM-REFUSED ( ^u8 n -- )
    {: a:^ u:n :}
    ARM
-   [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: a u evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    S\" \"code\":\"E-BAD-STORAGE\"" HAS?
    s" [type] names no type storage holds" HAS?
    DISARM ;
@@ -119,7 +118,7 @@ private
 : FORM-PINNED ( ^u8 n ^u8 n -- )
    {: a:^ u:n f:^ fu:n :}
    ARM
-   [: a u evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: a u evaluate-closed ;] EXIT-STATUS:REJECTED TTHROWSQ
    f fu HAS?
    DISARM ;
 
@@ -148,7 +147,7 @@ private
 
 : CASE-TYPE-FORM-NAME ( -- )
    s" [type] is a keyword no definition is named" T-LABEL
-   s" : [type] ;" TEST-EVAL:RC CHECK-RC T= ;
+   s" : [type] ;" TEST-EVAL:RC EXIT-STATUS:REJECTED T= ;
 
 : CASE-MEMBER ( -- )
    s" no declaration holds a width member" T-LABEL

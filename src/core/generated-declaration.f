@@ -127,7 +127,7 @@ NEWEST ROLLBACK-CELLS:MARK
    r ROW-REASON$  r ROW-FIX$ ;
 
 \ The status a stopped declaration ends the load with.
-CHECKER-REJECT-RC constant STOP-RC
+EXIT-STATUS:REJECTED constant STOP-RC
 
 \ A rejection's label is composed here, grown to fit, and read when the record
 \ prints, so the next rejection may reuse the buffer.

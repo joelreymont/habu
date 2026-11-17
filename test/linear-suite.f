@@ -5,6 +5,7 @@
 \ tools/check.f fixtures in fork children, an hb built with --repl, and a
 \ program tools/hb-build.f builds from files that name a linear type.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -45,7 +46,7 @@ variable SRC-U
 \ The status was the checker's and the captured record carries the code and
 \ the word.
 : REJECTS ( n ^u8 n ^u8 n -- ) {: rc:n c:^ cu:n w:^ wu:n :}
-   rc CHECKER-REJECT-RC T=
+   rc EXIT-STATUS:REJECTED T=
    REJECTION:BUFFER$ c cu CONTAINS? TTRUE
    REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
 \ REJECTS, and the record quotes the evaluated text and labels its cause.

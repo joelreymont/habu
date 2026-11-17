@@ -21,6 +21,7 @@
 \ cleared. Builds sharing an out root write an end file whole, and only when it
 \ changes (WRITE-CHANGED), and each kernel file whole.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -315,7 +316,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    s" MAIN" REJECTION:AT  s" not defined" REJECTION:EMIT-STR
    REJECTION:HELP
    s" define `: MAIN ( -- ) ... ;` in " REJECTION:EMIT-STR  SRC$ REJECTION:EMIT-STR
-   CHECKER-REJECT-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 : REPL-BODY ( -- )

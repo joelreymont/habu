@@ -57,7 +57,7 @@ global
    parse-name {: na:^ nu:n :}
    nu 0= if
       kw ku kw ku s" no name follows" REJECTION:MISSING-NAME
-      CHECKER-REJECT-RC REJECTION:STOP
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    kw ku na nu REJECTION:NOT-A-NAME
    LBUF:STORAGE-LINE-TOKEN {: ba:^ bu:n :}

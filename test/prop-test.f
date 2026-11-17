@@ -24,6 +24,7 @@
 \ odd, so i*STEP mod 2^31 is injective over the shard range, and the LCG's odd
 \ multiplier makes each step a bijection on the state space.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -232,7 +233,7 @@ variable TBUF-U
    ['] COMPILE catch  REJECTION:BUFFER$ nip {: rc:n diag-u:n :}
    REJECTION:BUFFER-OFF
    rc 0= IF  -1 VERD !  EXIT  THEN
-   rc CHECKER-REJECT-RC <>  diag-u 0=  or IF  rc throw  THEN
+   rc EXIT-STATUS:REJECTED <>  diag-u 0=  or IF  rc throw  THEN
    0 VERD ! ;
 variable MEAS-OUT
 \ A measurement text's throw code, a read below its floor among them, or a

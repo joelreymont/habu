@@ -1,6 +1,7 @@
 \ json-read-test.f - focused tests for the checked JSON pull parser.
 \ Run: bin/hb --load src/lib/json-read-test.f
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/float.f
@@ -1160,7 +1161,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    src srcu JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu JRT-SUBJECT-OUT outu LEN>N JRT-SUBJECT-ERR erru LEN>N
-   oc CHECKER-REJECT-RC T-ENDING-EXITED= ;
+   oc EXIT-STATUS:REJECTED T-ENDING-EXITED= ;
 
 : JRT-TEST-PRIVATE-STATE ( -- )
    s" JRT-BAD-MINT ( ^n -- JSON:reader ) JSON:MINT-READER" JRT-REJECTED

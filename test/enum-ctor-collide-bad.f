@@ -1,5 +1,6 @@
 \ A generated constructor collision prints its rejection record and throws the
 \ checker's status, which the caller catches.
+require src/core/exit-status.f
 require src/lib/test.f
 
 package ENUM-CTOR-COLLIDE-BAD
@@ -9,7 +10,7 @@ package ENUM-CTOR-COLLIDE-BAD
 
 : MAIN ( -- )
    T-RESET
-   [: DECLARE ;] CHECKER-REJECT-RC TTHROWSQ
+   [: DECLARE ;] EXIT-STATUS:REJECTED TTHROWSQ
    ECOL-RED 37 T=
    T-REPORT ;
 
