@@ -9,9 +9,17 @@ public
 3 constant DONE
 4 constant HALT-REQ
 
-$8 constant SEM-OBJ-OFF
-\ A guard cell, then Linux sem_t or Darwin Mach port storage.
-SEM-OBJ-OFF $20 + constant SEMAPHORE-BYTES
+private
+BEGIN-STRUCTURE SEMAPHORE-SIZE
+   CELL +FIELD SEM.GUARD
+   \ Linux sem_t or Darwin Mach port storage.
+   $20 +FIELD SEM.OBJ
+END-STRUCTURE
+
+public
+NULL-PTR SEM.GUARD NULL-PTR - constant SEM-GUARD-OFF
+NULL-PTR SEM.OBJ NULL-PTR - constant SEM-OBJ-OFF
+SEMAPHORE-SIZE constant SEMAPHORE-BYTES
 
 private
 BEGIN-STRUCTURE TCB-SIZE
