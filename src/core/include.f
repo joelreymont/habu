@@ -16,7 +16,6 @@
 
 PATH-CAP constant INCLUDE-PATH-CAP
 $46 constant INCLUDE-EVAL-RC
--2110 constant INCLUDE-RANGE-RC
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 
 package REQUIRE-REG
@@ -2018,38 +2017,34 @@ CELL constant FR-NAMED
 3 cells constant FR-ROOM
 4 cells constant FR-SIZE
 5 cells constant FR-ROOTLEN
-6 cells constant FR-OWNER
-7 cells constant FR-EXEC-COPY
-8 cells constant FR-EVAL-OK
-9 cells constant FR-EVAL-PTR
-10 cells constant FR-EVAL-SIZE
-11 cells constant FR-EVAL-FIRST
-12 cells constant FR-EVAL-END
+6 cells constant FR-EXEC-COPY
+7 cells constant FR-EVAL-OK
+8 cells constant FR-EVAL-PTR
+9 cells constant FR-EVAL-SIZE
+10 cells constant FR-EVAL-FIRST
+11 cells constant FR-EVAL-END
 \ How many root programs are being read while this frame is the top.
-13 cells constant FR-ROOT-RUNS
+12 cells constant FR-ROOT-RUNS
 \ The file's stamp: change time seconds, nanoseconds and size.
-14 cells constant FR-CTIME-SEC
-15 cells constant FR-CTIME-NS
-16 cells constant FR-STAMP-SIZE
+13 cells constant FR-CTIME-SEC
+14 cells constant FR-CTIME-NS
+15 cells constant FR-STAMP-SIZE
 \ The transient schema mark the file's load took (SCHEMA-REG:TRANSIENT-MARK).
-17 cells constant FR-T-NODES
-18 cells constant FR-T-ROOTS
-19 cells constant FR-T-PARAMS
-20 cells constant FR-PATH
+16 cells constant FR-T-NODES
+17 cells constant FR-T-ROOTS
+18 cells constant FR-T-PARAMS
+19 cells constant FR-PATH
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
 FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant HEADER-BYTES
 $1000 constant ROOM-MIN
-\ A frame's FR-PREV, FR-OWNER, FR-EXEC-COPY and FR-EVAL-PTR cells hold
-\ addresses; its other header cells hold counts, flags and stamps, and its bytes
-\ follow them.
+\ A frame's FR-PREV, FR-EXEC-COPY and FR-EVAL-PTR cells hold addresses; its
+\ other header cells hold counts, flags and stamps, and its bytes follow them.
 CAST: FRAME-CELLS ( ^u8 -- ^^u8 )
 : FRAME-PREV ( ^u8 -- ^^u8 ) FRAME-CELLS FR-PREV CELL / ptr-field ;
-: FRAME-OWNER ( ^u8 -- ^^u8 ) FRAME-CELLS FR-OWNER CELL / ptr-field ;
 : FRAME-EXEC-COPY ( ^u8 -- ^^u8 )
    FRAME-CELLS FR-EXEC-COPY CELL / ptr-field ;
 : FRAME-EVAL-PTR ( ^u8 -- ^^u8 )
    FRAME-CELLS FR-EVAL-PTR CELL / ptr-field ;
-PTR-VARIABLE RANGE-OWNER
 variable LAST-LOAD-EVAL-OK
 
 : TOP@ ( -- ^u8 ) TOP @ ;
@@ -2108,7 +2103,6 @@ variable LAST-LOAD-EVAL-OK
    HEADER-BYTES ROOM-MIN + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
    {: frame:^ :}
    TOP@ frame FRAME-PREV !
-   RANGE-OWNER @ frame FRAME-OWNER !
    SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
    INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
    ROOM-MIN frame FR-ROOM + CELL-VIEW !
@@ -2134,7 +2128,6 @@ variable LAST-LOAD-EVAL-OK
 : POP ( -- )
    s" SOURCE-ROOT:POP" CHECK-ACTIVE
    TOP@ {: frame:^ :}
-   frame FRAME-OWNER @ RANGE-OWNER !
    frame FRAME-EXEC-COPY @ {: copy:^ :}
    frame FR-SIZE + CELL-VIEW @ 1 max {: copyu:n :}
    frame FRAME-PREV @ TOP!
@@ -2323,9 +2316,6 @@ EXPORT CHECK:SPLIT-STR-FILE?
    split CHECKER-SPLIT-STR !
    rc 0 <> if rc throw then ;
 
-: CHECK-RANGE ( n n n -- ) {: size:n first:n end:n :}
-   first 0 < first end > or end size > or if INCLUDE-RANGE-RC throw then ;
-
 : INTERPRET-INSTALL ( -- ) [: evaluate-range ;] is INCLUDE-INTERPRET ;
 INTERPRET-INSTALL
 
@@ -2369,12 +2359,8 @@ private
 \ A failed fragment rolls back the require rows it added whichever loop read
 \ it; the residue check stays outside, on the unit's stack.
 : RUN-RANGE ( n n -- ) {: first:n end:n :}
-   RANGE-OWNER @ 0= if INCLUDE-RANGE-RC throw then
-   s" SOURCE-ROOT:RUN-RANGE" CHECK-ACTIVE
-   TOP@ RANGE-OWNER @ <> if INCLUDE-RANGE-RC throw then
    TOP@ {: frame:^ :}
    frame FR-SIZE + CELL-VIEW @ {: size:n :}
-   size first end CHECK-RANGE
    EXEC-SOURCE frame FRAME-EVAL-PTR !
    size frame FR-EVAL-SIZE + CELL-VIEW !
    first frame FR-EVAL-FIRST + CELL-VIEW !
@@ -2555,7 +2541,6 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 : LOAD-UNIT ( -- )
    BODY-CLOSE
    LOAD-BYTES
-   TOP@ RANGE-OWNER !
    align
    [: CALL-UNIT ;] source-file-run
    align ;
