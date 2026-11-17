@@ -938,6 +938,88 @@ public
    PRIVATE-DIR$ FS:REMOVE-DIR ;
 ;package
 
+package FS-TEST
+70 constant MANY-COUNT        \ spans two FS:ATOMIC-CREATE-FILES groups of 64
+5 constant MANY-TAKEN         \ a name written before the call
+66 constant MANY-THROW-AT     \ in the second group
+8192 constant MANY-CAP
+create MANY-DIR-BUF PATH-CAP allot
+variable MANY-DIR-U
+create MANY-PATH-BUF PATH-CAP allot
+create MANY-BYTES-BUF MANY-CAP allot
+create MANY-GOT-BUF MANY-CAP allot
+
+: MANY-DIR$ ( -- ^u8 n ) MANY-DIR-BUF MANY-DIR-U @ ;
+
+: MANY-PATH$ ( n -- ^u8 n )
+   MANY-DIR$ rot FMT:INT$ MANY-PATH-BUF FS:JOIN-PATH
+   MANY-PATH-BUF swap ;
+
+\ File i's bytes: 97i + 1 of them, each its offset plus 7i.
+: MANY-BYTES ( n -- ^u8 n ) {: idx :}
+   idx 97 * 1+ {: size :}
+   size 0 ?do i idx 7 * + 255 and MANY-BYTES-BUF i + c! loop
+   MANY-BYTES-BUF size ;
+
+\ The body: file i's name and bytes.
+: MANY-FILE ( n -- ^u8 n ^u8 n ) {: idx :}
+   idx MANY-BYTES idx FMT:INT$ 2swap ;
+
+\ E-FS-BAND is a code FS:ATOMIC-CREATE-FILES never throws itself.
+: MANY-THROWS ( n -- ^u8 n ^u8 n )
+   dup MANY-THROW-AT = if E-FS-BAND throw then
+   MANY-FILE ;
+
+\ The body: both files are named `twice`, the second's name taken since FILL.
+: MANY-TWICE ( n -- ^u8 n ^u8 n ) {: idx :}
+   s" twice" idx 0= if s" first" else s" second" then ;
+
+: MANY-HOLDS ( n -- ) {: idx :}
+   idx MANY-PATH$ MANY-GOT-BUF MANY-CAP FS:READ-ALL {: gotu :}
+   MANY-GOT-BUF gotu idx MANY-BYTES T$= ;
+
+: MANY-REMOVE ( n -- )
+   0 ?do i MANY-PATH$ FS:REMOVE-FILE loop
+   MANY-DIR$ FS:REMOVE-DIR ;
+
+public
+\ FS:ATOMIC-CREATE-FILES over two groups: the name taken beforehand keeps its
+\ bytes, every other holds its own; a name taken since FILL keeps the bytes
+\ published first; and REMOVE-DIR shows no sibling stayed.
+: CREATE-MANY ( -- )
+   FMT-ROOT$ s" many" MANY-DIR-BUF FS:JOIN-PATH MANY-DIR-U !
+   MANY-DIR$ FS:MAKE-DIR
+   MANY-TAKEN MANY-PATH$ s" taken" FS:WRITE-ALL
+   MANY-DIR$ MANY-COUNT [: MANY-FILE ;] FS:ATOMIC-CREATE-FILES
+   s" a name taken before FS:ATOMIC-CREATE-FILES keeps its bytes" T-LABEL
+   MANY-TAKEN MANY-PATH$ MANY-GOT-BUF MANY-CAP FS:READ-ALL {: takenu :}
+   MANY-GOT-BUF takenu s" taken" T$=
+   s" every other name FS:ATOMIC-CREATE-FILES made holds its bytes" T-LABEL
+   MANY-COUNT 0 ?do i MANY-TAKEN <> if i MANY-HOLDS then loop
+   MANY-DIR$ 2 [: MANY-TWICE ;] FS:ATOMIC-CREATE-FILES
+   s" a name taken since FILL keeps the first file's bytes" T-LABEL
+   MANY-DIR$ s" twice" MANY-PATH-BUF FS:JOIN-PATH {: twiceu :}
+   MANY-PATH-BUF twiceu MANY-GOT-BUF MANY-CAP FS:READ-ALL {: gotu :}
+   MANY-GOT-BUF gotu s" first" T$=
+   T-LABEL-CLEAR
+   MANY-PATH-BUF twiceu FS:REMOVE-FILE
+   MANY-COUNT MANY-REMOVE ;
+
+\ A body's throw in the second group: the first group's names hold their
+\ bytes, none of the second's is made, and REMOVE-DIR shows no sibling.
+: CREATE-MANY-THROW ( -- )
+   MANY-DIR$ FS:MAKE-DIR
+   s" a body's throw passes through FS:ATOMIC-CREATE-FILES" T-LABEL
+   [: MANY-DIR$ MANY-COUNT [: MANY-THROWS ;] FS:ATOMIC-CREATE-FILES ;]
+   E-FS-BAND TTHROWSQ
+   s" ... and the first group's names hold their bytes" T-LABEL
+   64 0 ?do i MANY-HOLDS loop
+   s" ... and none of the second group's names is made" T-LABEL
+   MANY-COUNT 64 ?do i MANY-PATH$ FS:TRY-LSTAT TFALSE loop
+   T-LABEL-CLEAR
+   64 MANY-REMOVE ;
+;package
+
 : FMT-TEST-DIRS ( -- )
    FMT-MKDIR-PATH FS:MAKE-DIR
    FMT-MKDIR-PATH FS:DIR? TTRUE
@@ -2051,6 +2133,8 @@ public
    FS-TEST:ATOMIC-SEARCH-DIR
    FS-TEST:ATOMIC-PRIVATE
    FS-TEST:ATOMIC-CREATE
+   FS-TEST:CREATE-MANY
+   FS-TEST:CREATE-MANY-THROW
    FMT-TEST-STAGED-PRIMARY
    FMT-TEST-DIRS
    FMT-TEST-DIRS-DENIED

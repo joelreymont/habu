@@ -767,15 +767,20 @@ private
    dir SIBLING-Z 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then
    dir ;
 
-: ATOMIC-ABANDON ( n ^u8 n n n -- ) {: dir dst:^ off nameu code :}
-   ERRNO {: cause :}
+\ Unlinks sib, a NUL-terminated name in dir; a failure is reported under the
+\ prefix pre, never thrown, so the error that called the cleanup stands.
+: ATOMIC-DISCARD ( n ^u8 n ^u8 n -- ) {: dir pre:^ preu sib:^ sibu :}
    CAUSE-CLEAR
-   dir [: ATOMIC-UNLINK ;] catch {: clean-code:n :}
-   drop
+   [: dir sib 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then ;]
+   catch {: clean-code:n :}
    clean-code 0<> if
       s" atomic replacement" s" cleanup" clean-code
-      dst off SIBLING-Z nameu STAGED-REPORT
-   then
+      pre preu sib sibu STAGED-REPORT
+   then ;
+
+: ATOMIC-ABANDON ( n ^u8 n n n -- ) {: dir dst:^ off nameu code :}
+   ERRNO {: cause :}
+   dir dst off SIBLING-Z nameu ATOMIC-DISCARD
    code cause CAUSE-FAIL ;
 
 \ Stack-preserving under `catch`; a throw after the publish leaves the new file.
@@ -860,6 +865,159 @@ public
 : ATOMIC-CREATE-PRIVATE ( ^u8 n ^u8 n -- bool )
    {: path:^ pathu src:^ srcu :}
    path pathu src srcu ATOMIC-SEED true true ATOMIC-WRITE-SEED ;
+
+private
+\ FS:ATOMIC-CREATE-FILES is a machine over groups of at most ATOMIC-GROUP
+\ files. Each group goes FILL (each free name's sibling created, written and
+\ hinted), SYNC (each sibling's data ordered before its rename, then closed
+\ once) and PUBLISH (each sibling renamed to its name, or unlinked if the
+\ name was taken since); after the last group, DIR-SYNC once. A throw in
+\ FILL, SYNC or PUBLISH goes to ABANDON, which closes the group's open
+\ descriptors, unlinks its unpublished siblings and rethrows. Linux fsyncs
+\ each file; Darwin barriers each, and DIR-SYNC's F_FULLFSYNC flushes the
+\ drive once for them all.
+
+\ Files in flight at once: a descriptor stays open from its write to its
+\ fsync, since a write error is reported to the descriptor open when it
+\ happened, and descriptors are bounded and shared with a server's sockets.
+64 constant ATOMIC-GROUP
+
+\ NAME_MAX, the longest name component, in bytes, on Linux and Darwin.
+255 constant NAME-MAX
+
+\ sync_file_range(2) and its SYNC_FILE_RANGE_WRITE, Linux's: starts the
+\ writeback of a file's dirty pages without waiting for it.
+PROCESS-SYMBOLS
+FUNCTION: SYNC-RANGE-CALL sync_file_range ( n n n n -- i32 ) ;FUNCTION
+2 constant SFR-WRITE
+
+\ Starts each file's writeback as FILL writes it, so the group's blocks are
+\ allocated in one journal transaction and each SYNC fsync finds its data
+\ under way, as PostgreSQL's pre_sync_fname does. A hint: its result is
+\ unread. Darwin has no such call.
+: HINT-WRITE ( n -- ) {: fd :}
+   HB-TARGET-LINUX-KERNEL? if
+      fd 0 0 SFR-WRITE SYNC-RANGE-CALL drop
+   then ;
+
+\ A group's slot: the sibling's descriptor, -1 when none is open; the
+\ sibling's name length, 0 when no sibling is left to publish or unlink;
+\ then the sibling's and the target's names, each NUL-terminated.
+SIBLING-LEN-MAX 1+ constant SIB-ROOM
+2 cells SIB-ROOM + NAME-MAX 1+ + CELL 1- + CELL / cells constant SLOT-ROOM
+
+\ The scope's bytes: the report prefix `<dir>/` in PREFIX-ROOM, then slots.
+: PREFIX-ROOM ( n -- n ) CELL + CELL / cells ;
+
+: GROUP-SLOT ( ^u8 n -- ^n ) SLOT-ROOM * + CELL-VIEW ;
+: SLOT-SIB-LEN ( ^n -- ^n ) CELL + ;
+: SLOT-SIB ( ^n -- ^u8 ) BYTE-VIEW 2 cells + ;
+: SLOT-NAME ( ^n -- ^u8 ) SLOT-SIB SIB-ROOM + ;
+
+: SLOT-EMPTY ( ^n -- ) {: slot:^ :}
+   -1 slot !
+   0 slot SLOT-SIB-LEN ! ;
+
+\ FILL for file idx: a taken name is skipped.
+: SLOT-FILL ( R n ^n n [ R n -- R ^u8 n ^u8 n ] -- R )
+   {: dir slot:^ idx body :}
+   idx body execute {: name:^ nameu src:^ srcu :}
+   nameu 1 < if CAUSE-CLEAR E-FS-PATH throw then
+   nameu NAME-MAX > if CAUSE-CLEAR E-FS-CAPACITY throw then
+   srcu 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
+   dir name nameu LSTAT-AT? if exit then
+   name slot SLOT-NAME nameu BYTE-COPY
+   0 slot SLOT-NAME nameu + c!
+   dir ATOMIC-SEED MODE-0644 ATOMIC-RESERVE-AT {: sibu fd :}
+   fd slot !
+   SIBLING-Z slot SLOT-SIB sibu 1+ BYTE-COPY
+   sibu slot SLOT-SIB-LEN !
+   fd src srcu ATOMIC-WRITE-FD
+   fd HINT-WRITE ;
+
+: CREATE-FILL ( R n ^u8 n n [ R n -- R ^u8 n ^u8 n ] -- R )
+   {: dir slots:^ first size body :}
+   size 0 ?do dir slots i GROUP-SLOT first i + body SLOT-FILL loop ;
+
+\ SYNC: the slot is marked closed before the close, which runs once.
+: SLOT-SYNC ( ^n -- ) {: slot:^ :}
+   slot @ {: fd :}
+   fd 0 < if exit then
+   fd ORDER-SYNC drop
+   -1 slot !
+   fd ATOMIC-CLOSE drop ;
+
+: SLOT-PUBLISH ( n ^n -- ) {: dir slot:^ :}
+   slot SLOT-SIB-LEN @ 0= if exit then
+   dir slot SLOT-SIB slot SLOT-NAME RENAME-NOREPLACE 0= if
+      dir slot SLOT-SIB 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then
+   then
+   0 slot SLOT-SIB-LEN ! ;
+
+\ Stack-preserving under `catch`.
+: CREATE-GROUP ( R n ^u8 n n [ R n -- R ^u8 n ^u8 n ] -- R n ^u8 n n [ R n -- R ^u8 n ^u8 n ] )
+   {: dir slots:^ first size body :}
+   dir slots first size body CREATE-FILL
+   size 0 ?do slots i GROUP-SLOT SLOT-SYNC loop
+   size 0 ?do dir slots i GROUP-SLOT SLOT-PUBLISH loop
+   dir slots first size body ;
+
+: SLOT-ABANDON ( n ^u8 n ^n -- ) {: dir pre:^ preu slot:^ :}
+   slot @ {: fd :}
+   fd 0 >= if fd CLOSE-FD drop then
+   slot SLOT-SIB-LEN @ {: sibu :}
+   sibu 0 > if dir pre preu slot SLOT-SIB sibu ATOMIC-DISCARD then ;
+
+\ ABANDON: rethrows code with the cause it found, after the group's cleanup.
+: CREATE-ABANDON ( n ^u8 n ^u8 n n -- )
+   {: dir pre:^ preu slots:^ size code :}
+   ERRNO {: cause :}
+   size 0 ?do dir pre preu slots i GROUP-SLOT SLOT-ABANDON loop
+   code cause CAUSE-FAIL ;
+
+: CREATE-SCOPE ( R n ^u8 n n [ R n -- R ^u8 n ^u8 n ] ^u8 NUM:alloc-byte-len -- R )
+   MEM:ALLOCATION>SPAN {: dir path:^ pathu count body buf :}
+   path pathu s" /" buf SUFFIX-PATH {: preu :}
+   buf SPAN:$ drop {: pre:^ :}
+   pre pathu PREFIX-ROOM + {: slots:^ :}
+   count 0 ?do
+      i  count i - ATOMIC-GROUP min {: first size :}
+      size 0 ?do slots i GROUP-SLOT SLOT-EMPTY loop
+      dir slots first size body [: CREATE-GROUP ;] catch {: code:n :}
+      2drop 2drop drop
+      code 0<> if dir pre preu slots size code CREATE-ABANDON then
+   ATOMIC-GROUP +loop
+   dir ATOMIC-SYNC-DIR drop ;
+
+\ Stack-preserving under `catch`.
+: CREATE-RUN ( R n ^u8 n n [ R n -- R ^u8 n ^u8 n ] -- R n ^u8 n n [ R n -- R ^u8 n ^u8 n ] )
+   {: dir path:^ pathu count body :}
+   dir path pathu count body
+   pathu PREFIX-ROOM  count ATOMIC-GROUP min SLOT-ROOM * +
+   MEM:BYTES-ALLOC-LEN [: CREATE-SCOPE ;] MEM:WITH-BYTES
+   dir path pathu count body ;
+
+public
+\ Creates each free name in directory path with the bytes body answers for
+\ file i, 0 <= i < count, umasked 0644; a taken name is left as it is. The
+\ body's answers need last only until its next call. Each name is one
+\ component: an empty one is E-FS-PATH, one over NAME_MAX bytes
+\ E-FS-CAPACITY. Count 0 does nothing; a negative count is E-FS-CAPACITY.
+\ On return every name is on disk as ATOMIC-SYNC-DIR says. A throw unlinks
+\ its group's unpublished siblings, reporting on fd 2 one it cannot, and
+\ leaves earlier groups' names whole: one in FILL or SYNC publishes none of
+\ its group's names, one in PUBLISH keeps those it renamed; E-FS-SYNC leaves
+\ every name in place. A throw sets FS:ERRNO.
+: ATOMIC-CREATE-FILES ( R ^u8 n n [ R n -- R ^u8 n ^u8 n ] -- R )
+   {: path:^ pathu count body :}
+   count 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
+   count 0= if exit then
+   path pathu OPEN-DIR-SEARCH {: dir :}
+   dir path pathu count body [: CREATE-RUN ;] catch {: code:n :}
+   ERRNO {: cause :}
+   2drop 2drop drop
+   dir CLOSE-FD drop
+   code 0<> if code cause CAUSE-FAIL then ;
 
 
 \ The longest base FS:MKTEMP-DIR-IN makes its temp in for a prefix of n bytes:

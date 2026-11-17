@@ -2,9 +2,11 @@
 \ A directory fsync the host accepted fails with EIO: the file's sync passes,
 \ the rename lands and the reopened directory's sync fails, so the write is
 \ E-FS-SYNC, the target holding the new bytes. renameat2 fails with EINVAL, as
-\ on NFS: a claim of a free name is E-FS-IO, the name free and no sibling left.
+\ on NFS: a claim of a free name is E-FS-IO, the name free and no sibling left,
+\ and FS:ATOMIC-CREATE-FILES publishes none of its group's names.
 \ With ATOMIC_FAIL_FILE set a regular file's fsync fails with EIO too, so each
-\ call is E-FS-IO before its rename and every file keeps its old bytes.
+\ call is E-FS-IO before its rename and every file keeps its old bytes, and
+\ FS:ATOMIC-CREATE-FILES publishes none of its group's names.
 HB-TARGET-LINUX? ?TARGET
 
 require src/lib/string.f
@@ -36,6 +38,7 @@ create TARGET PATH-CAP allot   variable TARGET-U
 create FREE PATH-CAP allot   variable FREE-U
 create STAGED PATH-CAP allot   variable STAGED-U
 create CACHED PATH-CAP allot   variable CACHED-U
+create MANY PATH-CAP allot   variable MANY-U
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 create GOT IO-CAP allot
@@ -48,6 +51,7 @@ variable SIBLINGS
 : FREE$ ( -- ^u8 n ) FREE FREE-U @ ;
 : STAGED$ ( -- ^u8 n ) STAGED STAGED-U @ ;
 : CACHED$ ( -- ^u8 n ) CACHED CACHED-U @ ;
+: MANY$ ( -- ^u8 n ) MANY MANY-U @ ;
 
 : C+ ( ^u8 n -- )
    SHIM CODEGEN:APPEND-STRING
@@ -78,8 +82,8 @@ variable SIBLINGS
    s"               const char *newpath, unsigned int flags) {" C+
    s"    errno = EINVAL; return -1; }" C+ ;
 
-\ The child prints four pairs of lines, one per call: the code its write,
-\ claim or replacement threw, then FS:ERRNO.
+\ The child prints five pairs of lines, one per call: the code its write,
+\ claim, replacement or creation of three files threw, then FS:ERRNO.
 : CHILD-SOURCE ( -- )
    PROG CODEGEN:RESET
    s" require src/lib/fs-mutate.f" P+
@@ -98,7 +102,10 @@ variable SIBLINGS
    s"    FS:REPLACE-STAGED ;] catch SHOW" P+
    S\"    s\" ATOMIC_CACHED\" GETENV {: cp:^ cu:n :}" P+
    S\"    [: cp cu [: s\" cached bytes\" FS:WRITE-ALL ;]" P+
-   s"    FS:REPLACE-CACHED ;] catch SHOW ;" P+
+   s"    FS:REPLACE-CACHED ;] catch SHOW" P+
+   S\"    s\" ATOMIC_MANY\" GETENV {: m:^ mu:n :}" P+
+   S\"    [: m mu 3 [: FMT:INT$ s\" many bytes\" ;]" P+
+   s"    FS:ATOMIC-CREATE-FILES ;] catch SHOW ;" P+
    s" GO" P+ ;
 
 : OLD-BYTES ( -- )
@@ -117,6 +124,8 @@ variable SIBLINGS
    ROOT$ s" free" FREE FS:JOIN-PATH FREE-U !
    ROOT$ s" staged" STAGED FS:JOIN-PATH STAGED-U !
    ROOT$ s" cached" CACHED FS:JOIN-PATH CACHED-U !
+   ROOT$ s" many" MANY FS:JOIN-PATH MANY-U !
+   MANY$ FS:MAKE-DIR
    SHIM-SOURCE
    SHIM-C$ SHIM CODEGEN:CONTENTS FS:WRITE-ALL
    SHIM-C$ SHIM-SO$ C-LIBRARY:BUILD
@@ -134,7 +143,10 @@ variable SIBLINGS
    s" ATOMIC_FREE" >LEN FREE$ >LEN PROC-ENV+
    s" ATOMIC_STAGED" >LEN STAGED$ >LEN PROC-ENV+
    s" ATOMIC_CACHED" >LEN CACHED$ >LEN PROC-ENV+
-   fail-file? if s" ATOMIC_FAIL_FILE" >LEN s" 1" >LEN PROC-ENV+ then
+   s" ATOMIC_MANY" >LEN MANY$ >LEN PROC-ENV+
+   fail-file? if
+      s" ATOMIC_FAIL_FILE" >LEN s" 1" >LEN PROC-ENV+
+   then
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN prog progu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
@@ -153,11 +165,13 @@ variable SIBLINGS
    EIO FMT:SB-INT 10 SB-APPEND-C
    0 FMT:SB-INT 10 SB-APPEND-C
    0 FMT:SB-INT 10 SB-APPEND-C
+   E-FS-IO FMT:SB-INT 10 SB-APPEND-C
+   EINVAL FMT:SB-INT 10 SB-APPEND-C
    SB$ ;
 
 : FILE-WANT$ ( -- ^u8 n )
    SB-RESET
-   4 0 ?do
+   5 0 ?do
       E-FS-IO FMT:SB-INT 10 SB-APPEND-C
       EIO FMT:SB-INT 10 SB-APPEND-C
    loop
@@ -173,10 +187,21 @@ variable SIBLINGS
    0 SIBLINGS !  ROOT$ [: COUNT-SIBLING ;] FS-LIST:EACH
    SIBLINGS @ 0 T= ;
 
+\ None of the three names FS:ATOMIC-CREATE-FILES was given is in MANY$, and
+\ no sibling is left there.
+: MANY-NONE ( -- )
+   s" ... and no name FS:ATOMIC-CREATE-FILES was given is published" T-LABEL
+   3 0 ?do
+      MANY$ i FMT:INT$ GOT FS:JOIN-PATH GOT swap FS:TRY-LSTAT TFALSE
+   loop
+   s" ... and no sibling of theirs is left" T-LABEL
+   0 SIBLINGS !  MANY$ [: COUNT-SIBLING ;] FS-LIST:EACH
+   SIBLINGS @ 0 T= ;
+
 : FAULTS-CASE ( -- )
    false RUN {: outu:n erru:n rc:n :}
    OUT outu WANT$ STR= 0= rc 0 <> or if ERR erru type cr then
-   s" write E-FS-SYNC, EIO; claim E-FS-IO, EINVAL; staged E-FS-SYNC, EIO; cached 0, 0"
+   s" write E-FS-SYNC, EIO; claim E-FS-IO, EINVAL; staged E-FS-SYNC, EIO; cached 0, 0; create E-FS-IO, EINVAL"
    T-LABEL
    OUT outu WANT$ T$=
    s" the child engine exits cleanly" T-LABEL
@@ -190,6 +215,7 @@ variable SIBLINGS
    s" ... and cached holds the cached bytes" T-LABEL
    CACHED$ GOT IO-CAP FS:READ-ALL {: cachedu:n :}
    GOT cachedu s" cached bytes" T$=
+   MANY-NONE
    NO-LEFTOVER ;
 
 : HOLDS-OLD ( ^u8 n -- )
@@ -200,7 +226,7 @@ variable SIBLINGS
    OLD-BYTES
    true RUN {: outu:n erru:n rc:n :}
    OUT outu FILE-WANT$ STR= 0= rc 0 <> or if ERR erru type cr then
-   s" a file fsync's EIO: write, claim, staged and cached E-FS-IO, EIO"
+   s" a file fsync's EIO: write, claim, staged, cached, create E-FS-IO, EIO"
    T-LABEL
    OUT outu FILE-WANT$ T$=
    s" the child engine exits cleanly" T-LABEL
@@ -211,6 +237,7 @@ variable SIBLINGS
    STAGED$ HOLDS-OLD
    s" ... and cached holds the old bytes" T-LABEL
    CACHED$ HOLDS-OLD
+   MANY-NONE
    NO-LEFTOVER ;
 
 public
