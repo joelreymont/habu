@@ -265,14 +265,14 @@ naming the word, the cell and the value.
 ## Tools
 
 **Tools read source through the interpreter.** A tool that reports on source
-runs a child `hb` that loads the subject under hooks and writes one JSON line
-per fact. A diagnostic carries the source position the interpreter is at when
-the checker records the event. There are five hooks:
-- the publisher reports each definition with its file and span;
-- the checker reports each use of a word;
-- the loader reports each file it reads or finds already loaded;
+runs `hb --check`, which loads the subject and writes one JSON line per fact.
+A diagnostic carries the source position the interpreter is at when the checker
+records the event. Each fact is a row its owner records as it works:
+- the publisher records each definition with its file and span;
+- the checker records each use of a word;
+- the loader records each file it reads or finds already loaded;
 - the loader takes an editor's open text for a file in place of the disk;
-- the checker lists the words visible at a cursor.
+- the interpreter lists the words visible at a cursor.
 
 A definition's location is the tool's fact: the tool keeps it, and the record
 does not.
@@ -280,11 +280,11 @@ does not.
 **Loading checks and runs; a check runs nothing that acts.** Loading a file is
 the checker's regular use: the checker checks each definition at `;`, and the
 interpreter runs everything else, effects included. A check, the editor's or
-the check tool's, is that same load in a child `hb` with one setting: a word
+the check tool's, is that same load run by `hb --check`, with one setting: a word
 that acts outside the process does not run. Everything else runs, because
 running words decides which names exist: `ENUM` and the sum-type definers
-generate definitions by `evaluate`, and `STRUCTURE` reads ahead. The child
-exits, so what ran leaves nothing behind, and the check's verdict is the load's.
+generate definitions by `evaluate`, and `STRUCTURE` reads ahead. The check's
+process exits, so what ran leaves nothing behind, and its verdict is the load's.
 - each primitive row says whether it acts outside the process: writing or
   changing files, processes, signals, the network, terminal input or a foreign
   call;
@@ -293,21 +293,15 @@ exits, so what ran leaves nothing behind, and the check's verdict is the load's.
 - in check mode the interpreter keeps the top-level stack's types; a top-level
   word runs only when it does not act and every input it takes is known, and
   otherwise the checker applies its type and its outputs are unknown;
-- in check mode an acting primitive refuses, which catches an action reached
-  through `execute` or an immediate word, and the interpreter treats the word
-  as not run.
+- a quotation the check cannot see, stored or passed, is taken to act; a
+  quotation literal or a tick carries its word's facts, and a call charges a
+  word with the facts of the quotations it takes;
+- a definition that calls an immediate word that acts is left to the run.
 
 No definer acts: `require`, `create`, `STRUCTURE`, `SUMTYPE`, `ENUM`,
 `FUNCTION:` and the buffer and variable definers reach no file, process,
 signal, terminal or foreign-call primitive, only the stderr report and `die`
 of a refusal. The words that act are entry words such as `RUN` and `MAIN`.
-
-**The editor checks against a loaded closure.** Most of a load is the
-file's `require` closure, which does not change while the file is edited. The
-editor keeps a child per load context with the closure loaded. Each check
-forks that child, loads only the edited text, reports and exits, so nothing
-the check ran survives it. A new edit ends a check still running. A changed
-`require` line or a changed required file rebuilds the child.
 
 **A check reports every independent error.** When the check sets the
 multi-error flag, a refused definition is rewound as always and the
