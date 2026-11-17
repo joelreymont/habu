@@ -1457,10 +1457,10 @@ CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
    na nu CHILD-ABI:BYTE-OFF off TDECL-CHILD ;
 
 : TDECL-NAME-PREFLIGHT-MISSING ( ^u8 n -- )
-   2drop s" sumtype: generated name preflight not installed" 76 die ;
+   2drop s" sumtype: generated name preflight not installed" EXIT-STATUS:INTERNAL die ;
 
 : TDECL-CAPACITY-PREFLIGHT-MISSING ( ^u8 n n -- )
-   2drop drop s" sumtype: generated capacity preflight not installed" 76 die ;
+   2drop drop s" sumtype: generated capacity preflight not installed" EXIT-STATUS:INTERNAL die ;
 
 : TDECL-PREFLIGHT-DEFAULTS ( -- )
    [: TDECL-NAME-PREFLIGHT-MISSING ;] is TDECL-NAME-PREFLIGHT-XT
@@ -1514,22 +1514,22 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 
 : TDPLAN-BYTE-NEED ( n -- n ) {: add:n :}
    add 0 < add TDPLAN-BYTE-MAX > or IF
-      s" sumtype: generated declaration plan capacity overflow" 76 die
+      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-U @ 0 < IF
-      s" sumtype: generated declaration plan capacity overflow" 76 die
+      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-U @ TDPLAN-BYTE-MAX add - > IF
-      s" sumtype: generated declaration plan capacity overflow" 76 die
+      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-U @ add + ;
 
 : TDPLAN-GROW-CAP ( n n -- n ) {: need:n cap:n :}
    need 0 <= need TDPLAN-BYTE-MAX > or IF
-      s" sumtype: generated declaration plan capacity overflow" 76 die
+      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    cap 0 <= cap TDPLAN-BYTE-MAX > or IF
-      s" sumtype: generated declaration plan capacity overflow" 76 die
+      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    cap TDPLAN-BYTE-MAX 2 / <= IF cap 2 * need max EXIT THEN
    need ;
@@ -1542,17 +1542,17 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 
 : TDPLAN-ROWS>BYTES ( n -- n )
    dup 0 < over TDPLAN-ROW-MAX > or IF
-      s" sumtype: generated declaration row capacity overflow" 76 die
+      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-REC * ;
 
 : TDPLAN-NEXT-ROW-CAP ( -- n )
    TDPLAN-N @ TDPLAN-ROW-MAX >= IF
-      s" sumtype: generated declaration row capacity overflow" 76 die
+      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-N @ 1 + {: need:n :}
    TDPLAN-ROW-CAP @ 0 <= TDPLAN-ROW-CAP @ TDPLAN-ROW-MAX > or IF
-      s" sumtype: generated declaration row capacity overflow" 76 die
+      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-ROW-CAP @ TDPLAN-ROW-MAX 2 / <= IF
       TDPLAN-ROW-CAP @ 2 * need max EXIT
@@ -1586,7 +1586,7 @@ private
 
 : TDPLAN-ROW ( n -- ^n )
    dup 0 < over TDPLAN-ROW-CAP @ >= or IF
-      s" sumtype: generated declaration row capacity overflow" 76 die
+      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-REC * TDPLAN-ROW-P @ + ;
 
@@ -1651,10 +1651,10 @@ private
 
 : TDPLAN-SPAN$ ( n n -- ^u8 n ) {: off:n u:n :}
    off 0 < u 0 < or off TDPLAN-U @ > or IF
-      s" sumtype: invalid generated declaration span" 76 die
+      s" sumtype: invalid generated declaration span" EXIT-STATUS:INTERNAL die
    THEN
    u TDPLAN-U @ off - > IF
-      s" sumtype: invalid generated declaration span" 76 die
+      s" sumtype: invalid generated declaration span" EXIT-STATUS:INTERNAL die
    THEN
    TDPLAN-P @ off + u ;
 
@@ -1756,7 +1756,7 @@ private
 
 : TDPLAN-PREFLIGHT ( -- )
    TDPLAN-PREFLIGHT-NAMES
-   TDPLAN-N @ 0= IF s" sumtype: empty generated declaration plan" 76 die THEN
+   TDPLAN-N @ 0= IF s" sumtype: empty generated declaration plan" EXIT-STATUS:INTERNAL die THEN
    0 TDPLAN-NAME$ TDPLAN-N @ TDECL-CAPACITY-PREFLIGHT-XT
    TDPLAN-PREFLIGHT-CHECKER ;
 
@@ -2008,7 +2008,7 @@ private
    kind TDPLAN-PROD? IF
       row TDPLAN-NAME$ kind TDPLAN-SHAPE fam TDECL-CHILD EXIT
    THEN
-   s" sumtype: no builder for this plan row" 76 die ;
+   s" sumtype: no builder for this plan row" EXIT-STATUS:INTERNAL die ;
 
 : TDECL-GEN-EVAL ( n -- ) {: fam:n :}
    TDPLAN-PREFLIGHT

@@ -457,8 +457,8 @@ private
 public
 
 : TF-REC@ ( n -- ^n ) {: id:n :}
-   id 0 < IF s" tfam: bad family id" 76 die THEN
-   id TFAM-N @ >= IF s" tfam: bad family id" 76 die THEN
+   id 0 < IF s" tfam: bad family id" EXIT-STATUS:INTERNAL die THEN
+   id TFAM-N @ >= IF s" tfam: bad family id" EXIT-STATUS:INTERNAL die THEN
    id TF-REC * TF-BASE + ;
 
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
@@ -492,7 +492,7 @@ public
 : TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
 : TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
 : TFAM-PK@ ( n n -- n ) {: id:n i:n :}
-   i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
+   i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" EXIT-STATUS:INTERNAL die THEN
    id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + @ ;
 
 : TFAM-PUBLIC? ( n -- bool ) TFAM-VIS@ CHECKER-PACKAGE-PUBLIC = ;
@@ -591,7 +591,7 @@ public
 
 \ --- friend-only field mutators (populated by later declaration passes / tests).
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
-   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" 76 die THEN
+   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" EXIT-STATUS:INTERNAL die THEN
    p id TF-REC@ TF.LAYOUT !
    TFM-EPOCH+ ;
 : TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
@@ -610,8 +610,8 @@ public
    TFM-EPOCH+ ;
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
-   i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
-   k 0 < k PK-MAX > or IF s" tfam: parameter kind out of range" 76 die THEN
+   i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" EXIT-STATUS:INTERNAL die THEN
+   k 0 < k PK-MAX > or IF s" tfam: parameter kind out of range" EXIT-STATUS:INTERNAL die THEN
    k id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + ! ;
 
 \ --- matching and lookup.
@@ -678,7 +678,7 @@ variable TFX-CUR              \ private bucket-walk cursor
 
 : TFX-POP ( n -- ) {: id:n :}
    id TFX-ROW-BKT {: b:^ :}
-   b @ id 1 + <> IF s" tfam: tail index corrupt" 76 die THEN
+   b @ id 1 + <> IF s" tfam: tail index corrupt" EXIT-STATUS:INTERNAL die THEN
    id TF-REC@ TF.TAILNEXT @ b ! ;
 
 : TFX-BKTS-CLEAR ( -- )
@@ -727,7 +727,7 @@ variable TFX-CUR              \ private bucket-walk cursor
 \ a later lookup. Dying here names the caller that broke the order.
 : TFX-RETIRE ( n -- ) {: newn:n :}
    TFX-READY @ 0= IF EXIT THEN
-   TFX-HI @ TFAM-N @ > IF s" tfam: tail index retired after its rows went" 76 die THEN
+   TFX-HI @ TFAM-N @ > IF s" tfam: tail index retired after its rows went" EXIT-STATUS:INTERNAL die THEN
    TFAM-N @ 1 -
    BEGIN dup newn >= WHILE
       dup TFX-POP
@@ -776,8 +776,8 @@ public
    {: pa:^ pu:n vis:n na:^ nu:n arity:n kind:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    na nu TF-REQUIRE-CANON
-   arity 0 < IF s" tfam: negative family arity" 76 die THEN
-   kind TFAM-KIND-VALID? 0= IF s" tfam: family kind out of range" 76 die THEN
+   arity 0 < IF s" tfam: negative family arity" EXIT-STATUS:INTERNAL die THEN
+   kind TFAM-KIND-VALID? 0= IF s" tfam: family kind out of range" EXIT-STATUS:INTERNAL die THEN
    pa pu na nu TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN drop   \ FIND returns (id-or-0 flag); drop the id
    TF-ENSURE
    TFX-ENSURE                             \ before the slot is committed; see TFX-ADD
@@ -862,8 +862,8 @@ private
 : SUMV-SCRUB ( n n -- ) {: lo:n hi:n :}   \ zero the variant records [lo,hi); see PF-SCRUB
    SUMV-BASE  lo SUMV-REC CELL / *  hi SUMV-REC CELL / *  ARENA-CELLS-ZERO ;
 : SUMV-REC@ ( n -- ^n ) {: id:n :}
-   id 0 < IF s" tfam: bad variant id" 76 die THEN
-   id SUMV-N @ >= IF s" tfam: bad variant id" 76 die THEN
+   id 0 < IF s" tfam: bad variant id" EXIT-STATUS:INTERNAL die THEN
+   id SUMV-N @ >= IF s" tfam: bad variant id" EXIT-STATUS:INTERNAL die THEN
    id SUMV-REC * SUMV-BASE + ;
 
 public
@@ -959,7 +959,7 @@ private
 
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
    SVX-GEN @ HIDX-GEN @ <> IF newn SVX-HI ! EXIT THEN
-   SVX-HI @ SUMV-N @ > IF s" tfam: ctor index retired after its rows went" 76 die THEN
+   SVX-HI @ SUMV-N @ > IF s" tfam: ctor index retired after its rows went" EXIT-STATUS:INTERNAL die THEN
    SUMV-N @ newn ?do
       i SUMV-CTOR-SYM@ {: sym:n :}
       sym 0 <> IF
@@ -975,7 +975,7 @@ private
 public
 
 : SUMV-CTOR-SYM! ( n n -- ) {: vid:n sym:n :}
-   vid SUMV-CTOR-SYM@ 0 <> IF s" tfam: variant constructor symbol already set" 76 die THEN
+   vid SUMV-CTOR-SYM@ 0 <> IF s" tfam: variant constructor symbol already set" EXIT-STATUS:INTERNAL die THEN
    SVX-ENSURE
    sym vid SUMV-REC@ SV.CTOR-SYM !
    vid sym SVX-LINK ;
@@ -1035,7 +1035,7 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 : VNX-POP ( n -- ) {: id:n :}
    id VNX-ROW-BKT {: b:^ :}
-   b @ id 1 + <> IF s" tfam: variant tail index corrupt" 76 die THEN
+   b @ id 1 + <> IF s" tfam: variant tail index corrupt" EXIT-STATUS:INTERNAL die THEN
    id VNX-LINK @ b ! ;
 
 \ The links follow the variant store's capacity and the buckets keep the load
@@ -1073,7 +1073,7 @@ variable VNX-CUR              \ private bucket-walk cursor
 \ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
 : VNX-RETIRE ( n -- ) {: newn:n :}
    VNX-READY @ 0= IF EXIT THEN
-   VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" 76 die THEN
+   VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" EXIT-STATUS:INTERNAL die THEN
    SUMV-N @ 1 -
    BEGIN dup newn >= WHILE dup VNX-POP 1 - REPEAT drop
    newn VNX-HI ! ;
@@ -1493,7 +1493,7 @@ public
 private
 
 : ID-REQUIRE ( n n -- ) {: id:n n:n :}
-   id 0 <  id n >=  or IF s" pf: field id names no field" 76 die THEN ;
+   id 0 <  id n >=  or IF s" pf: field id names no field" EXIT-STATUS:INTERNAL die THEN ;
 
 public
 
@@ -1575,7 +1575,7 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 
 : FVX-POP ( n -- ) {: id:n :}
    id FVX-ROW-BKT {: b:^ :}
-   b @ id 1 + <> IF s" tfam: field owner index corrupt" 76 die THEN
+   b @ id 1 + <> IF s" tfam: field owner index corrupt" EXIT-STATUS:INTERNAL die THEN
    id FVX-LINK @ b ! ;
 
 \ The links follow the field store's capacity and the buckets keep the load
@@ -1708,7 +1708,7 @@ private
 \ holds rows that are not its variants' payload; both setters store it unchecked.
 : RANGE-BAD ( -- )
    s" tfam: a family's variant or field range holds rows that are not its payload"
-   76 die ;
+   EXIT-STATUS:INTERNAL die ;
 
 \ A variant's named payload is the rows of its owner chain (FVX) that sit inside
 \ its family's field slice. The chain can also hold the owner's rows outside the
@@ -1792,7 +1792,7 @@ private
 : SUMV-NAMED-PAYLOAD? ( n -- bool ) SUMV-FAM@ SUM-NAMED-PAYLOAD? ;
 
 \ A payload index the variant does not have.
-: PAY-INDEX-BAD ( -- ) s" tfam: payload index out of range" 76 die ;
+: PAY-INDEX-BAD ( -- ) s" tfam: payload index out of range" EXIT-STATUS:INTERNAL die ;
 
 public
 
@@ -2458,27 +2458,27 @@ TFAM-SCH-ROW-ARITY-INSTALL
    a b bu + < b a au + < and ;
 : PF-CELL-BYTES ( n -- n ) {: n:n :}
    n 0 < n PF-MAX-N CELL / > or IF
-      s" pf: a field's slot or cells is too large to count in bytes" 76 die THEN
+      s" pf: a field's slot or cells is too large to count in bytes" EXIT-STATUS:INTERNAL die THEN
    n cells ;
 : PF-CELL-SLOTS-REQUIRE ( n n n n n n -- )   \ a field laid out in whole cells
    {: slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    slot PF-CELL-BYTES boff <> IF
-      s" pf: a field's byte-off is not its slot in bytes" 76 die THEN
+      s" pf: a field's byte-off is not its slot in bytes" EXIT-STATUS:INTERNAL die THEN
    flags PF-FLAG-BUFFER = IF                  \ a buffer's bytes end in its last cell
       bytesn 1 - CELL / 1 + cellsn <> IF
-         s" pf: a buffer's cells do not end with its bytes" 76 die THEN
+         s" pf: a buffer's cells do not end with its bytes" EXIT-STATUS:INTERNAL die THEN
    ELSE
       cellsn PF-CELL-BYTES bytesn <> IF
-         s" pf: a field's bytes is not its cells in bytes" 76 die THEN
+         s" pf: a field's bytes is not its cells in bytes" EXIT-STATUS:INTERNAL die THEN
    THEN
-   al CELL <> IF s" pf: a field's align is not the cell size" 76 die THEN ;
+   al CELL <> IF s" pf: a field's align is not the cell size" EXIT-STATUS:INTERNAL die THEN ;
 : PF-U8? ( n -- bool ) {: node:n :}   \ a buffer's schema: the con u8
    node SCHEMA-CON? IF node SCHEMA-A@ CC-U8 = ELSE RES-FALSE THEN ;
 
 \ A field that is no buffer is as many cells as its schema is wide.
 : PF-WIDTH-REQUIRE ( n n n -- ) {: fam:n sch:n cellsn:n :}
    fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF
-      s" pf: a field's cells is not its schema's width" 76 die THEN ;
+      s" pf: a field's cells is not its schema's width" EXIT-STATUS:INTERNAL die THEN ;
 
 \ --- entry reads (TFAM-FIND, below). A family read from its type entry is
 \ first its head (ER-HEAD: declared, with its layout policy and slots), then,
@@ -2527,22 +2527,22 @@ public
 : PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    flags PF-FLAGS-NONE <> flags PF-FLAG-BUFFER <> and IF
-      s" pf: field flags set undefined bits" 76 die THEN
+      s" pf: field flags set undefined bits" EXIT-STATUS:INTERNAL die THEN
    slot cellsn PF-RANGE-OK? 0= IF
-      s" pf: a field's slot or cells is out of range" 76 die THEN
+      s" pf: a field's slot or cells is out of range" EXIT-STATUS:INTERNAL die THEN
    boff bytesn PF-RANGE-OK? 0= IF
-      s" pf: a field's byte-off or bytes is out of range" 76 die THEN
-   al PF-POW2? 0= IF s" pf: a field's align is not a power of two" 76 die THEN
+      s" pf: a field's byte-off or bytes is out of range" EXIT-STATUS:INTERNAL die THEN
+   al PF-POW2? 0= IF s" pf: a field's align is not a power of two" EXIT-STATUS:INTERNAL die THEN
    boff al mod 0 <> IF
-      s" pf: a field's byte-off is not a multiple of its align" 76 die THEN
+      s" pf: a field's byte-off is not a multiple of its align" EXIT-STATUS:INTERNAL die THEN
    flags PF-FLAG-BUFFER = IF
-      sch SCHEMA-ROOT@ PF-U8? 0= IF s" pf: a buffer's schema is not u8" 76 die THEN
+      sch SCHEMA-ROOT@ PF-U8? 0= IF s" pf: a buffer's schema is not u8" EXIT-STATUS:INTERNAL die THEN
    ELSE
       ER-STATE @ ER-IDLE = IF fam sch cellsn PF-WIDTH-REQUIRE THEN
    THEN
    fam TFAM-LAYOUT-POLICY@ {: policy:n :}
    policy TL-STACK-CELL-TAG =  policy TL-PACKED-TAG = or  policy TL-NICHE = or
-   0= IF s" pf: a field was added to a family whose layout policy lays out no fields" 76 die THEN
+   0= IF s" pf: a field was added to a family whose layout policy lays out no fields" EXIT-STATUS:INTERNAL die THEN
    slot cellsn boff bytesn al flags PF-CELL-SLOTS-REQUIRE ;
 : PF-DUP? ( n n ^u8 n -- bool ) {: fam:n var:n na:^ nu:n :}
    fam var FVX-FIRST
@@ -2561,14 +2561,14 @@ public
    {: fam:n var:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    WRITE-WINDOW-CK
    fam var PF-OWNER-OK? 0= IF
-      s" pf: a field's owner is not a product, or a sum or enum variant of the family" 76 die THEN
+      s" pf: a field's owner is not a product, or a sum or enum variant of the family" EXIT-STATUS:INTERNAL die THEN
    na nu PF-NAME-REQUIRE
    fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
    fam sch PF-SCHEMA-OK? 0= IF
-      s" pf: a field's schema does not fit its family's parameter kinds" 76 die THEN
+      s" pf: a field's schema does not fit its family's parameter kinds" EXIT-STATUS:INTERNAL die THEN
    fam sch slot cellsn boff bytesn al flags PF-LAYOUT-REQUIRE
    fam var slot cellsn boff bytesn PF-OVERLAP? IF
-      s" pf: a field overlaps another field of its owner" 76 die THEN
+      s" pf: a field overlaps another field of its owner" EXIT-STATUS:INTERNAL die THEN
    PF-ENSURE
    na nu TF-INTERN {: noff:n :}
    PF-N @ {: id:n :}
@@ -2616,7 +2616,7 @@ variable MBX-GEN   0 MBX-GEN !
 
 \ A member has one generated word: a second symbol for its row is a defect.
 : SYM-ONCE ( n n -- ) {: old:n sym:n :}
-   old 0 <>  old sym <>  and IF s" tfam: a member's symbol is already set" 76 die THEN ;
+   old 0 <>  old sym <>  and IF s" tfam: a member's symbol is already set" EXIT-STATUS:INTERNAL die THEN ;
 
 : FIELD-SYM! ( n n -- ) {: fid:n sym:n :}
    sym 0= IF EXIT THEN
@@ -2956,8 +2956,8 @@ private
 : LAY-SCRUB ( n n -- ) {: lo:n hi:n :}    \ zero the layout records [lo,hi); see PF-SCRUB
    LAY-BASE  lo LAY-REC CELL / *  hi LAY-REC CELL / *  ARENA-CELLS-ZERO ;
 : LAY-REC@ ( n -- ^n ) {: id:n :}
-   id 0 < IF s" tfam: bad layout id" 76 die THEN
-   id LAY-N @ >= IF s" tfam: bad layout id" 76 die THEN
+   id 0 < IF s" tfam: bad layout id" EXIT-STATUS:INTERNAL die THEN
+   id LAY-N @ >= IF s" tfam: bad layout id" EXIT-STATUS:INTERNAL die THEN
    id LAY-REC * LAY-BASE + ;
 
 public
@@ -2977,7 +2977,7 @@ public
    0 RES-FALSE ;
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
    WRITE-WINDOW-CK
-   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" 76 die THEN
+   p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" EXIT-STATUS:INTERNAL die THEN
    fam LAY-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    LAY-ENSURE
    LAY-N @ {: id:n :}
@@ -3161,7 +3161,7 @@ public
    TF-RBF-GROW ;
 : TF-RBF-CUR ( -- ^n ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
 : TF-RBF-TOP ( -- ^n )
-   TF-RBF-DEPTH @ 0= IF s" tfam: no type rollback frame is open" 76 die THEN
+   TF-RBF-DEPTH @ 0= IF s" tfam: no type rollback frame is open" EXIT-STATUS:INTERNAL die THEN
    TF-RBF-DEPTH @ 1 - TF-RBF-REC * TF-RBF-BASE + ;
 
 ;package
@@ -3478,7 +3478,7 @@ public
 
 \ The word every type entry's record runs. A type entry lives in the types
 \ wordlist, which no search order holds, so only the engine could run one.
-: TYPE-WORD ( -- ) s" tfam: a type entry ran as a word" 76 die ;
+: TYPE-WORD ( -- ) s" tfam: a type entry ran as a word" EXIT-STATUS:INTERNAL die ;
 
 : ENTRY? ( n -- bool ) TF-REC@ TF.ENTRY @ 0 <> ;
 \ Family id's type entry is record ix.
@@ -3514,7 +3514,7 @@ create ET-CH 8 allot
 : ET-NUM ( n -- ) {: v:n :}
    ET-SEP
    v 0 < 0= IF v ET-DIGITS EXIT THEN
-   v negate 0 < IF s" tfam: type entry number out of range" 76 die THEN
+   v negate 0 < IF s" tfam: type entry number out of range" EXIT-STATUS:INTERNAL die THEN
    45 ET-C,  v negate ET-DIGITS ;
 
 
@@ -3601,7 +3601,7 @@ create ET-CH 8 allot
       s" R" ET-NAME node SCHEMA-B@ ET-NUM
       node SCHEMA-B@ 0 ?do node SCHEMA-A@ i + SCHEMA-ROOT@ recurse loop EXIT
    THEN
-   s" tfam: type entry of a bad schema node" 76 die ;
+   s" tfam: type entry of a bad schema node" EXIT-STATUS:INTERNAL die ;
 
 
 : ET-SYM ( n -- ) {: sym:n :}
@@ -3667,7 +3667,7 @@ create ER-MSG ER-MSG-CAP allot
    u 0 ?do a i + c@ ER-MSG i + c! loop
    ER-NAME-U @ ER-MSG-CAP u - min {: k:n :}
    k 0 ?do ER-NAME @ i + c@ ER-MSG u + i + c! loop
-   ER-MSG u k + 76 die ;
+   ER-MSG u k + EXIT-STATUS:INTERNAL die ;
 
 
 \ The index of the last ':' in a name, -1 for none.
@@ -3955,7 +3955,7 @@ public
                rec CK-REC-NAME$ CT-FIND drop
             ELSE
                rec CK-REC-NAME$ SPLIT-NAME 0= IF
-                  s" tfam: bad type entry name" 76 die THEN
+                  s" tfam: bad type entry name" EXIT-STATUS:INTERNAL die THEN
                TFAM-FIND drop drop
             THEN
          THEN
@@ -4170,7 +4170,7 @@ public
 private
 
 : TFC-MINT-VARS ( n -- ) {: ar:n :}
-   ar TFC-VAR-CAP > IF s" tfam: construct arity over cap" 76 die THEN
+   ar TFC-VAR-CAP > IF s" tfam: construct arity over cap" EXIT-STATUS:INTERNAL die THEN
    0 TFC-I !
    BEGIN TFC-I @ ar < WHILE
       FRESH MK-VAR TFC-I @ cells TFC-VARS + !
@@ -4178,7 +4178,7 @@ private
    REPEAT ;
 
 : TFC-ARGS! ( n -- ) {: term:n :}
-   term PARAM>ARGC TFC-VAR-CAP > IF s" tfam: layout arity over cap" 76 die THEN
+   term PARAM>ARGC TFC-VAR-CAP > IF s" tfam: layout arity over cap" EXIT-STATUS:INTERNAL die THEN
    0 TFC-I !
    BEGIN TFC-I @ term PARAM>ARGC < WHILE
       term TFC-I @ PARAM>ARG  TFC-I @ cells TFC-VARS + !
@@ -4227,7 +4227,7 @@ defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
       \ A schema's quotation in a constructor's input is stored, so it reads no local.
       mode TFC-STORE = IF dup Q>BLOCK PAY NSCOPE-RAISE THEN EXIT
    THEN
-   s" tfam: unsupported construct payload schema" 76 die ;
+   s" tfam: unsupported construct payload schema" EXIT-STATUS:INTERNAL die ;
 
 
 : TFC-QUOT-ROW-IMPL ( n n n -- n ) {: rownode:n base:n mode:n :}
@@ -4249,7 +4249,7 @@ TFC-QUOT-ROW-INSTALL
 : MEMBER-FAM ( n n -- n ) {: shape:n param:n :}
    shape CHILD-ABI:INDEX = IF param EXIT THEN
    shape CHILD-ABI:FIELD =  shape CHILD-ABI:SPAN = or IF param PF-FAM@ EXIT THEN
-   s" tfam: a member shape names no member" 76 die ;
+   s" tfam: a member shape names no member" EXIT-STATUS:INTERNAL die ;
 
 : SLOT-OPEN? ( n n -- bool ) {: term:n slot:n :}
    term slot PARAM>ARG T-UNSTALE {: arg:n :}
@@ -4545,10 +4545,10 @@ private
    term0 T-UNSTALE {: term:n :}
    term PARAM>FAM {: fam:n :}
    term PARAM>ARGC fam TFAM-ARITY@ <> IF
-      s" tfam: layout members need the family's arity" 76 die THEN
+      s" tfam: layout members need the family's arity" EXIT-STATUS:INTERNAL die THEN
    fam TFAM-PRODUCT? IF term fam FRESH MK-ROW FIELD-MEMBERS EXIT THEN
    fam TFAM-SUM? fam TFAM-ENUM? or 0= IF
-      s" tfam: members of a family with no layout" 76 die THEN
+      s" tfam: members of a family with no layout" EXIT-STATUS:INTERNAL die THEN
    FRESH MK-ROW
    fam TFAM-VAR-COUNT@ 0 ?do term fam TFAM-VAR-START@ i + rot VARIANT-MEMBERS loop ;
 : TFAM-MEMBERS-INSTALL ( -- ) [: TFAM-MEMBERS ;] is TFAM-MEMBERS-XT ;
@@ -4559,7 +4559,7 @@ TFAM-MEMBERS-INSTALL
    shape CHILD-ABI:CELL-OFF = IF a EXIT THEN
    shape CHILD-ABI:PTR-OFF = IF FRESH MK-VAR MK-PTR EXIT THEN
    shape CHILD-ABI:BYTE-OFF = IF CC-U8 MK-CON EXIT THEN
-   s" tfam: unknown child shape" 76 die ;
+   s" tfam: unknown child shape" EXIT-STATUS:INTERNAL die ;
 
 \ Letters the type variable ID in NMAP as a signature spells parameter INDEX.
 : FRESH-LETTER ( n n -- ) {: id:n index:n :}
@@ -4596,9 +4596,9 @@ private
 : FIELD-IN ( n n -- n n n ) {: fid:n flags:n :}
    fid TYPE-FIELD:FAMILY@ {: fam:n :}
    fid TYPE-FIELD:FLAGS@ flags <> IF
-      s" tfam: a field accessor met a field of other flags" 76 die THEN
+      s" tfam: a field accessor met a field of other flags" EXIT-STATUS:INTERNAL die THEN
    fid TYPE-FIELD:BYTE-OFF@ fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
-      s" tfam: a field ends past its family's width" 76 die THEN
+      s" tfam: a field ends past its family's width" EXIT-STATUS:INTERNAL die THEN
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
    FRESH MK-ROW {: base:n :}
@@ -4612,7 +4612,7 @@ private
    loop ;
 
 : SPAN-U8 ( -- n )
-   s" SPAN" s" span" TFAM-FIND 0= IF s" tfam: no SPAN:span family" 76 die THEN
+   s" SPAN" s" span" TFAM-FIND 0= IF s" tfam: no SPAN:span family" EXIT-STATUS:INTERNAL die THEN
    {: fam:n :}
    PARAM-SCR-N @ {: pbase:n :}
    CC-U8 MK-CON PARAM-SCR+
@@ -4697,7 +4697,7 @@ private
 
 \ ROW with `^ARENA:arena` pushed.
 : ARENA-ARG ( n -- n ) {: row:n :}
-   s" ARENA" s" arena" TFAM-FIND 0= IF s" tfam: no ARENA:arena family" 76 die THEN
+   s" ARENA" s" arena" TFAM-FIND 0= IF s" tfam: no ARENA:arena family" EXIT-STATUS:INTERNAL die THEN
    TFAM-FRESH-TERM MK-PTR row MK-PUSH ;
 
 \ ROW with the action `[ ^T -- ]` pushed.

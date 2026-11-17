@@ -785,7 +785,7 @@ private
 here DECLARATIONS - constant OWNER-COMMITTED
 : OWNER-SIZE-AGREE ( -- )
    OWNER-COMMITTED OWNER-BYTES <> if
-      s" checker: declaration-owner field list and record size disagree" 76 die then ;
+      s" checker: declaration-owner field list and record size disagree" EXIT-STATUS:INTERNAL die then ;
 OWNER-SIZE-AGREE
 ;package
 
@@ -864,13 +864,13 @@ package CHECKER-REG
 EXPORT CHECK:SCRATCH-OPEN
 : SCRATCH{ ( -- )
    SCRATCH-OPEN @ NULL-PTR <> IF
-      s" checker: SCRATCH{ inside an open span" 76 die
+      s" checker: SCRATCH{ inside an open span" EXIT-STATUS:INTERNAL die
    THEN
    align here SCRATCH-OPEN ! ;
 
 : }SCRATCH ( -- )
    SCRATCH-OPEN @ {: start:^ :}
-   start NULL-PTR = IF s" checker: }SCRATCH without SCRATCH{" 76 die THEN
+   start NULL-PTR = IF s" checker: }SCRATCH without SCRATCH{" EXIT-STATUS:INTERNAL die THEN
    here NULL-PTR - start NULL-PTR - - CELL / 0 ?do
       start i cells + scratch-cell-mark
    loop
@@ -999,18 +999,18 @@ TV-CLEAR
    next nc 4 oc TV-FILL-AT    next nc 5 oc TV-FILL-AT
    next nc 8 oc TV-FILL-AT    next nc 9 oc TV-FILL-AT
    TVT-P @ oc TV-UNMAP-RC 0 <> IF
-      next nc TV-UNMAP-RC 0 <> IF s" checker: typevar cleanup munmap failed" 76 die THEN
-      s" checker: typevar munmap failed" 76 die
+      next nc TV-UNMAP-RC 0 <> IF s" checker: typevar cleanup munmap failed" EXIT-STATUS:SYSTEM die THEN
+      s" checker: typevar munmap failed" EXIT-STATUS:SYSTEM die
    THEN
    next nc TV-PUBLISH ;
 
 : TV-ENSURE ( n -- ) {: need:n :}
-   need 0 < need TV-MAX-CAP > or IF s" checker: typevar capacity overflow" 76 die THEN
+   need 0 < need TV-MAX-CAP > or IF s" checker: typevar capacity overflow" EXIT-STATUS:INTERNAL die THEN
    need TV-CAP @ <= IF EXIT THEN
    need TV-GROW ;
 
 : TV-ENSURE-MAX ( n n -- ) {: tvn:n rvn:n :}
-   tvn 0 < rvn 0 < or IF s" checker: typevar capacity overflow" 76 die THEN
+   tvn 0 < rvn 0 < or IF s" checker: typevar capacity overflow" EXIT-STATUS:INTERNAL die THEN
    tvn rvn max TV-ENSURE ;
 
 : TV-READY ( -- ) 1 TV-ENSURE ;
@@ -1962,7 +1962,7 @@ variable SPN   PTR-VARIABLE SPA-P   variable SPA-CAP
 \ Every nonnull SPA base lives in the scratch region. Terms carry indices;
 \ growth preserves the full capacity, including rows saved by a trial.
 : SPA-ENSURE ( n -- ) {: need:n :}
-   need 0 <= need MAXPUSH > or IF s" checker: push arena capacity overflow" 76 die THEN
+   need 0 <= need MAXPUSH > or IF s" checker: push arena capacity overflow" EXIT-STATUS:INTERNAL die THEN
    need SPA-CAP @ <= IF exit THEN
    need MAXPUSH-INIT max
    SPA-CAP @ MAXPUSH 2 / <= IF SPA-CAP @ 2 * max THEN {: nc:n :}
@@ -2553,7 +2553,7 @@ ROW-CAP PERSISTED-PTR-U8-TABLE COUNT-LINKS
 \ capacity, and no count; answers the row.
 : ROW+ ( ^^a ^n n -- n )
    {: pv:^ capv:^ bytes:n :}
-   ROW-N @ ROW-CAP >= IF s" checker: store rows full" 76 die THEN
+   ROW-N @ ROW-CAP >= IF s" checker: store rows full" EXIT-STATUS:INTERNAL die THEN
    ROW-N @ {: row:n :}
    pv BYTE-VIEW row ROW.PTR !
    capv BYTE-VIEW row ROW.CAP !
@@ -2599,7 +2599,7 @@ CELL-ROW-CAP PERSISTED-PTR-U8-TABLE CELL-LINKS
 \ Records a cell that holds V during every build.
 : CELL-ROW+ ( ^n n -- )
    {: cv:^ v:n :}
-   CELL-ROW-N @ CELL-ROW-CAP >= IF s" checker: cell rows full" 76 die THEN
+   CELL-ROW-N @ CELL-ROW-CAP >= IF s" checker: cell rows full" EXIT-STATUS:INTERNAL die THEN
    CELL-ROW-N @ {: row:n :}
    cv BYTE-VIEW row CELL-ROW.CELL !
    v row CELL-ROW.VALUE !
@@ -2683,7 +2683,7 @@ EXPORT CHECKER-REG:GROW
    CT-STR-U @ add + CT-STR-GROW ;
 
 : CT-CODE-CHECK ( n -- )
-   dup 0 <= IF s" checker: bad signature type code" 76 die THEN
+   dup 0 <= IF s" checker: bad signature type code" EXIT-STATUS:INTERNAL die THEN
    drop ;
 
 : CT-ROOM ( n -- )
@@ -2723,7 +2723,7 @@ EXPORT CHECKER-REG:GROW
 \ ENTRIES-PENDING for a retired linear row, which an entry may still hold.
 : CT-REWIND ( n n -- ) {: ctn:n ctu:n :}
    ctn 1 < ctn CTN @ > or ctu 0 < or ctu CT-STR-U @ > or IF
-      s" checker: type table rewind outside the registry" 76 die
+      s" checker: type table rewind outside the registry" EXIT-STATUS:INTERNAL die
    THEN
    CTN @ ctn ?do
       i cells CT-CLASS + @ CT-LINEAR = IF -1 ENTRIES-PENDING ! THEN
@@ -2916,10 +2916,10 @@ EXPORT CHECKER-RESOLVE:REC-AT
       data-base NULL-PTR -  BUILDING? IF HB-CEILING @ ELSE ceiling THEN
    THEN {: base:n top:n :}
    top base - {: size:n :}
-   off CELL < off size >= or IF s" checker: facts text outside DATA" 76 die THEN
+   off CELL < off size >= or IF s" checker: facts text outside DATA" EXIT-STATUS:INTERNAL die THEN
    NULL-PTR BYTE-VIEW base + off + {: a:^ :}
    a CELL - CELL-VIEW @ {: u:n :}
-   u 0 < u size off - > or IF s" checker: facts text outside DATA" 76 die THEN
+   u 0 < u size off - > or IF s" checker: facts text outside DATA" EXIT-STATUS:INTERNAL die THEN
    a u ;
 
 : LINEAR-TEXT? ( ^u8 n -- bool ) {: a:^ u:n :}
@@ -3060,7 +3060,7 @@ variable TWALK-D
 : TWALK-RESET ( -- ) 0 TWALK-D ! ;
 : TWALK-DEEPER ( -- )
    TWALK-D @ 1 + dup TWALK-D !
-   TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
+   TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" EXIT-STATUS:INTERNAL die THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
 \ With any? false, find the named type variable for the occurs check; with any?
@@ -3906,7 +3906,7 @@ EXPORT CHECKER-QUOT-FRESH:HELD
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN
    r PARAM>HID 0 > ;
 : HIDDEN-SLOT@ ( n -- n ) {: t:n :}
-   t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" 76 die THEN
+   t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" EXIT-STATUS:INTERNAL die THEN
    t T-UNSTALE PARAM>HID 1 - ;
 \ The family a row cell belongs to, stale or not: a raw PARAM>FAM on a wrapper
 \ reads the stale arena index as a param index (a fail-open garbage family).
@@ -3961,9 +3961,9 @@ EXPORT CHECKER-QUOT-FRESH:HELD
 \ `slot` ranges over [0,W): 0..W-2 payload slots, W-1 the tag.
 : MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
    src0 T-RES {: src:n :}
-   src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" 76 die THEN
+   src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" EXIT-STATUS:INTERNAL die THEN
    src T-WIDTH {: w:n :}
-   slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" 76 die THEN
+   slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" EXIT-STATUS:INTERNAL die THEN
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup src PARAM>ARGC < WHILE
       src over PARAM>ARG PARAM-SCR+
@@ -3976,7 +3976,7 @@ EXPORT CHECKER-QUOT-FRESH:HELD
 \ checking never consumes it. The wrapper belongs to the value.
 : MK-LOGICAL ( n -- n ) {: src0:n :}
    src0 T-UNSTALE {: src:n :}
-   src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" 76 die THEN
+   src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" EXIT-STATUS:INTERNAL die THEN
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup src PARAM>ARGC < WHILE
       src over PARAM>ARG PARAM-SCR+
@@ -5115,11 +5115,11 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 : NMB! NMB-FIELD ! ;
 : SDEC! SDEC-FIELD ! ;
 : TOKBUF-ROUND-CAP {: need :}
-   need 0 <= IF s" checker: bad token buffer cap" 76 die THEN
-   need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" 76 die THEN
+   need 0 <= IF s" checker: bad token buffer cap" EXIT-STATUS:INTERNAL die THEN
+   need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" EXIT-STATUS:INTERNAL die THEN
    need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
 : TOKBUF-ALLOC ( n -- ^u8 )
-   map-anon 0 <> IF drop s" checker: token buffer mmap failed" 76 die THEN ;
+   map-anon 0 <> IF drop s" checker: token buffer mmap failed" EXIT-STATUS:SYSTEM die THEN ;
 
 : CCOPY ( ^u8 ^u8 n -- ) {: a:^ d:^ u:n :}
    0 BEGIN dup u < WHILE
@@ -6640,8 +6640,8 @@ variable VRC-RVN
    need 1 + VRI-AK-GROW ;
 
 : VREC-CHECK ( n -- ) {: id:n :}
-   id 0 < IF s" checker: bad value-record id" 76 die THEN
-   id VREC-N @ >= IF s" checker: bad value-record id" 76 die THEN ;
+   id 0 < IF s" checker: bad value-record id" EXIT-STATUS:INTERNAL die THEN
+   id VREC-N @ >= IF s" checker: bad value-record id" EXIT-STATUS:INTERNAL die THEN ;
 
 : VREC-NAME-PTR ( n -- ^u8 )
    dup VREC-CHECK
@@ -6679,8 +6679,8 @@ variable VRC-RVN
    0 RES-FALSE ;
 
 : VREC-NODE-CHECK ( n -- ) {: id:n :}
-   id 0 <= IF s" checker: bad value-record node" 76 die THEN
-   id VREC-NODE-N @ >= IF s" checker: bad value-record node" 76 die THEN ;
+   id 0 <= IF s" checker: bad value-record node" EXIT-STATUS:INTERNAL die THEN
+   id VREC-NODE-N @ >= IF s" checker: bad value-record node" EXIT-STATUS:INTERNAL die THEN ;
 
 : VREC-NODE-SLOT ( n ^a -- ^a ) {: id:n base:^ :}
    id VREC-NODE-CHECK
@@ -6740,8 +6740,8 @@ variable VRC-RVN
    id ;
 
 : VREC-FIELD@ ( n -- n ) {: idx:n :}
-   idx 0 < IF s" checker: bad value-record field" 76 die THEN
-   idx VREC-FIELD-N @ >= IF s" checker: bad value-record field" 76 die THEN
+   idx 0 < IF s" checker: bad value-record field" EXIT-STATUS:INTERNAL die THEN
+   idx VREC-FIELD-N @ >= IF s" checker: bad value-record field" EXIT-STATUS:INTERNAL die THEN
    idx cells VREC-FIELDS + @ ;
 
 : VREC-FIELD! ( n -- ) {: node:n :}
@@ -6756,7 +6756,7 @@ variable VRC-RVN
    rn 0 < rn VREC-N @ > or  fn 0 < or fn VREC-FIELD-N @ > or
    dn 1 < or dn VREC-NODE-N @ > or  an 0 < or an VNARG-N @ > or
    su 0 < or su VREC-STR-U @ > or IF
-      s" checker: value-record rewind outside the registry" 76 die
+      s" checker: value-record rewind outside the registry" EXIT-STATUS:INTERNAL die
    THEN
    VREC-NAME-A rn VREC-N @ ARENA-CELLS-ZERO   VREC-NAME-U rn VREC-N @ ARENA-CELLS-ZERO
    VREC-START rn VREC-N @ ARENA-CELLS-ZERO    VREC-COUNT rn VREC-N @ ARENA-CELLS-ZERO
@@ -6863,7 +6863,7 @@ variable VRC-RVN
          x VREC-RES PAY node VN.A!
          node
       endof
-      T-SCOPE of s" checker: live scope in record schema" 76 die endof
+      T-SCOPE of s" checker: live scope in record schema" EXIT-STATUS:INTERNAL die endof
       T-ATOM of
          VR-ATOM VREC-NODE-NEW {: node:n :}
          x VREC-RES ATOM>A x VREC-RES ATOM>U node VREC-COPY-STR
@@ -7716,7 +7716,7 @@ variable PKHAVE
 
 \ DEFLINEAR hands a name it read; any other caller is the engine's.
 : CT-ADD-LINEAR ( ^u8 n ^u8 n -- ) {: a:^ u:n pa:^ pu:n :}
-   a u BYTE-SPAN? 0= IF s" checker: a linear type's name describes no memory" 76 die THEN
+   a u BYTE-SPAN? 0= IF s" checker: a linear type's name describes no memory" EXIT-STATUS:INTERNAL die THEN
    a u TYPE-RESERVED? IF a u CHECKER-LINEAR-TAKEN  EXIT-STATUS:REJECTED REJECTION:STOP THEN
    a u pa pu CT-LINEAR-SET ;
 
@@ -8978,7 +8978,7 @@ variable VREC-TYPE-U
 \ at the record's name.
 : CHECKER-DEFRECORD ( ^u8 n ^u8 n -- )
    {: name:^ nameu:n fields:^ fieldsu:n :}
-   name nameu BYTE-SPAN? 0= IF s" checker: a value record's name describes no memory" 76 die THEN
+   name nameu BYTE-SPAN? 0= IF s" checker: a value record's name describes no memory" EXIT-STATUS:INTERNAL die THEN
    name nameu fields fieldsu VREC-TRY {: at:n why:n :}
    why 0= IF EXIT THEN
    name nameu  fields fieldsu at VREC-TOKEN  why CHECKER-RECORD-REJECT
@@ -9206,8 +9206,8 @@ variable CHX-HI
    MD-CONSTRUCT-WIDE MDIAG!  0 OK !  -1 FAILSET ! ;
 
 : USIGS-ROUND-CAP {: need :}
-   need 0 <= IF s" checker: bad user sig cap" 76 die THEN
-   need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
+   need 0 <= IF s" checker: bad user sig cap" EXIT-STATUS:INTERNAL die THEN
+   need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" EXIT-STATUS:INTERNAL die THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
 
 \ ---- navigation: where a named declaration was written ----------------------
@@ -9258,7 +9258,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    {: off:n visit:n start:n end:n noff:n nu:n :}
    DL-N @ 0 > IF
       DL-N @ 1 - DL-ROW-OFF off >= IF
-         s" checker: declaration location out of record order" 76 die
+         s" checker: declaration location out of record order" EXIT-STATUS:INTERNAL die
       THEN
    THEN
    DL-P DL-CAP DL-N @ 1 + DL-ROW ARENA-ROWS-ENSURE
@@ -9476,7 +9476,7 @@ variable SYM-ID
 \ source can call, so the length is compared with the room left, never added to
 \ the used mark: a length of -1 would move the mark back.
 : SYM-STR-OVERFLOW ( -- )
-   s" checker: symbol string capacity overflow" 76 die ;
+   s" checker: symbol string capacity overflow" EXIT-STATUS:INTERNAL die ;
 
 : SYM-STR-ENSURE ( n -- ) {: add:n :}
    add 0 < SYM-STR-U @ add + 0 < or IF SYM-STR-OVERFLOW THEN
@@ -9641,13 +9641,13 @@ HIDX-MEM-CLEAR
 
 : HIDX-SYM-POP ( n -- ) {: id:n :}
    id HIDX-ROW-HASH HIDX-BKT {: b:^ :}
-   b @ id <> IF s" checker: symbol index corrupt" 76 die THEN
+   b @ id <> IF s" checker: symbol index corrupt" EXIT-STATUS:INTERNAL die THEN
    id HT-NEXT HIDX-CELL @ b !
    id SYM-PKG$ HIDX-PKG-BKT {: pb:^ :}
-   pb @ id <> IF s" checker: package index corrupt" 76 die THEN
+   pb @ id <> IF s" checker: package index corrupt" EXIT-STATUS:INTERNAL die THEN
    id HT-PKG-NEXT HIDX-CELL @ pb !
    id SYM-NAME$ HIDX-NAME-BKT {: nb:^ :}
-   nb @ id <> IF s" checker: name index corrupt" 76 die THEN
+   nb @ id <> IF s" checker: name index corrupt" EXIT-STATUS:INTERNAL die THEN
    id HT-NAME-NEXT HIDX-CELL @ nb ! ;
 
 \ Pops rows [n, SYM-N) before a scope restores SYM-N.
@@ -9675,7 +9675,7 @@ HIDX-MEM-CLEAR
 : HIDX-ALLOC ( -- )
    SYM-CAP HIDX-TABLES * cells {: u:n :}
    u map-anon 0 <> IF
-      drop s" checker: symbol index mmap failed" 76 die THEN
+      drop s" checker: symbol index mmap failed" EXIT-STATUS:SYSTEM die THEN
    HIDX-MEM!  u HIDX-MEM-U ! ;
 
 \ Every invalidation drops the mapping, so a build maps fresh zeroed rows.
@@ -9867,7 +9867,7 @@ HIDX-MEM-CLEAR
    SYM-N @ 1 + SYM-GROW ;
 
 : SYM-INTERN ( ^u8 n n ^u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
-   nameu 0= IF s" checker: empty symbol name" 76 die THEN
+   nameu 0= IF s" checker: empty symbol name" EXIT-STATUS:INTERNAL die THEN
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
    SYM-N @ SYM-ID !
@@ -10293,7 +10293,7 @@ UIX-RESET
    UIX-N @ 1 - UIX-I !
    UIX-I @ UIX-E-BKT UIX-E @ {: b:n :}
    b UIX-B @ UIX-I @ 1 + <> IF
-      s" checker: node intern table corrupt" 76 die
+      s" checker: node intern table corrupt" EXIT-STATUS:INTERNAL die
    THEN
    UIX-I @ UIX-E-NEXT UIX-E @ b UIX-B !
    UIX-I @ UIX-N ! ;
@@ -10477,7 +10477,7 @@ UIX-RESET
          nip                                         \ the arm's own node: E-INTERN below finishes it
       endof
       T-STALE of
-         TOP-COPYING @ 0= IF s" checker: stale type in stored effect" 76 die THEN
+         TOP-COPYING @ 0= IF s" checker: stale type in stored effect" EXIT-STATUS:INTERNAL die THEN
          EN-STALE E-NODE-NEW E-WOFF >r
          x E-RES STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.A !
          x E-RES TOP-UNKNOWN @ = IF -1 r@ E-WPTR EN.B ! THEN   \ a cell beneath the known ones
@@ -10512,7 +10512,7 @@ UIX-RESET
       T-SCOPE of
          \ A live scope cannot outlive its event: the enclosing interpret-row
          \ cell is saved as a lost stale cell.
-         TOP-COPYING @ 0= IF s" checker: live scope in stored effect" 76 die THEN
+         TOP-COPYING @ 0= IF s" checker: live scope in stored effect" EXIT-STATUS:INTERNAL die THEN
          -1 TOP-SCOPE-SEEN !  EN-STALE E-NODE-OFF
       endof
       T-ATOM of
@@ -10694,7 +10694,7 @@ CHX-RESET
    CHX-N @ 1 - CHX-I !
    CHX-I @ CHX-E-BKT CHX-E @ {: b:n :}
    b CHX-B @ CHX-I @ 1 + <> IF
-      s" checker: content intern table corrupt" 76 die
+      s" checker: content intern table corrupt" EXIT-STATUS:INTERNAL die
    THEN
    CHX-I @ CHX-E-NEXT CHX-E @ b CHX-B !
    CHX-I @ CHX-N ! ;
@@ -10794,7 +10794,7 @@ CHX-RESET
 
 : IDX-SYM-OK ( n -- ) {: sym:n :}
    sym 1 <  sym SYM-CAP >=  or IF
-      s" checker: store record symbol outside index range" 76 die
+      s" checker: store record symbol outside index range" EXIT-STATUS:INTERNAL die
    THEN ;
 
 : USX@ ( n -- n )
@@ -10880,7 +10880,7 @@ RECORD-HOOK-DEFAULTS
 : CHECKER-CTOR-DECL-AT! ( n ^u8 n n n n -- )
    {: sym:n name:^ nameu:n visit:n start:n end:n :}
    sym USIG-NEWEST {: rec1:n :}
-   rec1 0= IF s" checker: missing constructor record" 76 die THEN
+   rec1 0= IF s" checker: missing constructor record" EXIT-STATUS:INTERNAL die THEN
    name nameu DLB-ADD {: noff:n :}
    rec1 1 - visit start end noff nameu DL-ROW+ ;
 
@@ -11319,7 +11319,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 \ can read the rows; zeroed rows and bytes leave no retired symbol in an image.
 : SYM-REWIND ( n n -- ) {: symn:n symu:n :}
    symn 1 < symn SYM-N @ > or symu 0 < or symu SYM-STR-U @ > or IF
-      s" checker: symbol rewind outside the registry" 76 die
+      s" checker: symbol rewind outside the registry" EXIT-STATUS:INTERNAL die
    THEN
    symn HIDX-SYMS-RETIRE
    SYMS CELL-VIEW  symn SYM-REC CELL / *  SYM-N @ SYM-REC CELL / *  ARENA-CELLS-ZERO
@@ -11367,7 +11367,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 : CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
 : CHECKER-USING$ ( n -- ^u8 n ) {: ix:n :}
    ix 0 < ix CHECKER-USING-N >= or IF
-      s" checker: using index out of range" 76 die
+      s" checker: using index out of range" EXIT-STATUS:INTERNAL die
    THEN
    ix CK-USE-SLOT ix CK-USE-LEN@ ;
 
@@ -11926,7 +11926,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          pool RECURSE swap P-REST!                         \ ( head )
       endof
       EN-STALE of                                 \ EN.A 0: a cell lost to a live scope; EN.B: TOP-UNKNOWN
-         pool TOP-READ-P @ BYTE-VIEW <> IF s" checker: stale type outside interpret row" 76 die THEN
+         pool TOP-READ-P @ BYTE-VIEW <> IF s" checker: stale type outside interpret row" EXIT-STATUS:INTERNAL die THEN
          r@ EN.B @ 0 <> IF TOP-UNKNOWN @ ELSE
             r@ EN.A @ dup 0= IF drop CC-N MK-CON ELSE pool RECURSE THEN MK-STALE
          THEN r> drop
@@ -12718,12 +12718,12 @@ create PE-SPEC-TERMS PE-SPEC-CAP cells allot
 variable PE-SPEC-TOS
 
 : PE-SPEC-PUSH ( n -- )
-   PE-SPEC-TOS @ PE-SPEC-CAP >= IF s" checker: primitive-spec operands overflow" 76 die THEN
+   PE-SPEC-TOS @ PE-SPEC-CAP >= IF s" checker: primitive-spec operands overflow" EXIT-STATUS:INTERNAL die THEN
    PE-SPEC-TERMS PE-SPEC-TOS @ cells + !
    PE-SPEC-TOS @ 1 + PE-SPEC-TOS ! ;
 
 : PE-SPEC-POP ( -- n )
-   PE-SPEC-TOS @ 0 <= IF s" checker: primitive-spec operand missing" 76 die THEN
+   PE-SPEC-TOS @ 0 <= IF s" checker: primitive-spec operand missing" EXIT-STATUS:INTERNAL die THEN
    PE-SPEC-TOS @ 1 - PE-SPEC-TOS !
    PE-SPEC-TERMS PE-SPEC-TOS @ cells + @ ;
 
@@ -12755,7 +12755,7 @@ variable PE-SPEC-TOS
    code PRIM-SPEC:A-C2-INVOKE = IF PE-C2-INVOKE EXIT THEN
    code PRIM-SPEC:A-QUOT-ANY = IF PE-QANY EXIT THEN
    code PRIM-SPEC:A-STOW-LAYOUT = IF PE-STOW-LAYOUT PE-SPEC-PUSH EXIT THEN
-   s" checker: unknown primitive-spec atom" 76 die ;
+   s" checker: unknown primitive-spec atom" EXIT-STATUS:INTERNAL die ;
 
 PTABLE-START
 
@@ -12844,7 +12844,7 @@ DFERS-P DFER-CAP-V 1 DFER-END STORE+
 \ intern nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ^u8 n -- ) {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF
-      s" checker: package name length describes no memory" 76 die
+      s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die
    THEN
    a u SYM-PKG-INTERN  CHECKER-PACKAGE-U !  CHECKER-PACKAGE-NAME ! ;
 
@@ -12924,7 +12924,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 : HELD-RANGE ( n n -- )
    {: k:n limit:n :}
    k 0 < k limit < 0= or IF
-      s" checker: held facts index out of range" 76 die
+      s" checker: held facts index out of range" EXIT-STATUS:INTERNAL die
    THEN ;
 
 
@@ -12981,7 +12981,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 : HELD-RETIRED@ ( n -- n n n )
    HELD-FACT@ {: ix:n a:^ u:n :}
    ix HELD-RETIRED <>  u 3 cells <>  or IF
-      s" checker: held entry is not a retired record" 76 die
+      s" checker: held entry is not a retired record" EXIT-STATUS:INTERNAL die
    THEN
    a CELL-VIEW @   a CELL + CELL-VIEW @   a 2 cells + CELL-VIEW @ ;
 \ Holds that an amender changed record ix's facts after its
@@ -12996,7 +12996,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 : HELD-AMENDED@ ( n -- n n )
    HELD-FACT@ {: ix:n a:^ u:n :}
    ix HELD-AMENDED <>  u 2 cells <>  or IF
-      s" checker: held entry is not an amended record" 76 die
+      s" checker: held entry is not an amended record" EXIT-STATUS:INTERNAL die
    THEN
    a CELL-VIEW @   a CELL + CELL-VIEW @ ;
 \ Keeps the first n entries.
@@ -13012,9 +13012,9 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 EXPORT CHECKER-USE:NAME!
 
 : CHECKER-USING ( ^u8 n -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
+   a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" EXIT-STATUS:INTERNAL die THEN
    CK-USE-DEPTH {: d:n :}
-   d USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
+   d USE-MAX >= IF s" checker: using stack overflow" EXIT-STATUS:INTERNAL die THEN
    a u HEAD-ROW {: row:^ :}
    row NULL-PTR = IF a u ELSE row CK-REC-NAME$ THEN {: ra:^ ru:n :}
    ra ru d NAME! ;
@@ -14114,7 +14114,7 @@ CAST: AS-ACTION ( n -- [ -- ] )
 \ NAME, or `A:NAME` in package A.
 : PART-PATH ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    TOP-NAME$ {: pa:^ pu:n :}
-   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
+   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die THEN
    a u CHECKER-COLON-SCAN drop 0 <> IF a u PACKAGE-COLON-REJECT THEN
    pu 0= IF a u EXIT THEN
    pu 1 + u + {: ku:n :}
@@ -14145,7 +14145,7 @@ EXPORT CHECKER-OVERLAY:OPEN-PACKAGE
 
 \ The path a u, then the name as written t tu.
 : CHECKER-PACKAGE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" 76 die THEN
+   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die THEN
    a u CTOR-OWNER-XT {: pa:^ pu:n na:^ nu:n owned:bool :}
    owned IF a u t tu pa pu na nu CTOR-PKG-REJECT THEN
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF a u OPEN-PACKAGE THEN
@@ -14224,7 +14224,7 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
 \ package and imports. On a clean return it keeps no import it opened.
 : CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
    SCOPE-BYTES map-anon 0= 0= IF
-      s" checker: file scope allocation failed" 76 die
+      s" checker: file scope allocation failed" EXIT-STATUS:SYSTEM die
    THEN {: frame:^ :}
    frame SAVE-SCOPE
    CK-USE-ENGINE-DEPTH SOURCE-FLOOR !
@@ -14232,7 +14232,7 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
    rc 0= IF frame FILE-DONE ELSE frame RESTORE-SCOPE THEN
    frame SCOPE-BYTES munmap {: release:n :}
    rc 0= 0= IF rc throw THEN
-   release 0= 0= IF s" checker: file scope release failed" 76 die THEN ;
+   release 0= 0= IF s" checker: file scope release failed" EXIT-STATUS:SYSTEM die THEN ;
 
 ;package
 package CHECKER-REG
@@ -14919,7 +14919,7 @@ EXPORT CHECK:OK
       s su CK-USED-MASK @ USING-AMBIGUOUS-REJECT
       EXIT-STATUS:REJECTED REJECTION:STOP
    THEN
-   s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" 76 die ;
+   s" checker: CHECKER-RESOLVE:RAISE got a code LIVE-BIND never answers" EXIT-STATUS:INTERNAL die ;
 
 \ The scope question for a caller that defines nothing: would resolving NAME be
 \ refused? It raises and renders nothing.
@@ -15107,7 +15107,7 @@ package CHECK
 : CHECKER-USIGS-TRUNCATE-FROM-RAW ( ^u8 n -- ) {: a:^ u:n :}
    a u CHECKER-FIND-ACTIVE-SYM USIG-LIVE-START {: off1:n :}
    off1 0= IF
-      s" checker: missing signature truncation mark" 76 die
+      s" checker: missing signature truncation mark" EXIT-STATUS:INTERNAL die
    THEN
    off1 1 - USIGS-RESTORE-END ;
 
@@ -15271,7 +15271,7 @@ variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
 
 : BWIN-ENSURE ( -- )
    BWIN-N @ BWIN-CAP @ < IF EXIT THEN
-   BWIN-N @ BWIN-MAX >= IF s" checker: call binding capacity overflow" 76 die THEN
+   BWIN-N @ BWIN-MAX >= IF s" checker: call binding capacity overflow" EXIT-STATUS:INTERNAL die THEN
    BWIN-N @ 1+ BWIN-INIT max
    BWIN-CAP @ BWIN-MAX 2 / <= IF BWIN-CAP @ 2 * max THEN
    {: cap:n :}
@@ -15400,7 +15400,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 
 : CWIN-ENSURE ( -- )
    CWIN-N @ CWIN-CAP @ < IF EXIT THEN
-   CWIN-N @ CWIN-ROW-MAX >= IF s" checker: recorded site capacity overflow" 76 die THEN
+   CWIN-N @ CWIN-ROW-MAX >= IF s" checker: recorded site capacity overflow" EXIT-STATUS:INTERNAL die THEN
    CWIN-N @ 1 + CWIN-INIT max
    CWIN-CAP @ CWIN-ROW-MAX 2 / <= IF CWIN-CAP @ 2 * max THEN
    {: cap:n :}
@@ -15504,7 +15504,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    ord CW-INIT-WIDTH CWIN-FIND {: width:n bytes:n :}
    width 0 < IF -1 -1 -1 EXIT THEN
    ord CW-INIT-EXTENT CWIN-FIND {: extent:n align:n :}
-   extent bytes <> IF s" checker: init layout rows disagree" 76 die THEN
+   extent bytes <> IF s" checker: init layout rows disagree" EXIT-STATUS:INTERNAL die THEN
    width bytes align ;
 : EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
 \ A token's generic member number for its receiver's instance, -1 for none.
@@ -15679,7 +15679,7 @@ private
 : EV-FILE ( n n n n -- )
    {: kind:n a0:n a1:n ord:n :}
    ord EV-LO @ EV-N @ + <> IF
-      s" checker: a source-tape event filed out of its token's order" 76 die
+      s" checker: a source-tape event filed out of its token's order" EXIT-STATUS:INTERNAL die
    THEN
    EV-P EV-CAP EV-N @ 1 + EV-ROW ARENA-ROWS-ENSURE
    EV-P EV-N @ EV-ROW NAV-CELL {: p:^ :}
@@ -15728,7 +15728,7 @@ private
 \ [n, DFER-END) are zeroed before the terminator is written.
 : DFER-REWIND ( n -- ) {: n:n :}
    n 0 < n DFER-END @ > or IF
-      s" checker: defer table rewind outside the registry" 76 die
+      s" checker: defer table rewind outside the registry" EXIT-STATUS:INTERNAL die
    THEN
    DFERS  n CELL /  DFER-END @ CELL /  ARENA-CELLS-ZERO
    n DFER-END !
@@ -16339,7 +16339,7 @@ variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
 : NORETS ( -- ^u8 ) NORET-P @ ;
 
 : NORET-CELL ( n -- ^n ) {: off:n :}
-   off NORET-ENTRY-ALIGN 1 - and 0 <> IF s" checker: unaligned no-return cell" 76 die THEN
+   off NORET-ENTRY-ALIGN 1 - and 0 <> IF s" checker: unaligned no-return cell" EXIT-STATUS:INTERNAL die THEN
    NORETS off + CELL-VIEW ;
 
 : NORET-TERM ( -- )
@@ -16418,7 +16418,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ NRX-TRUNCATE walked are zeroed after it: a later image carries none.
 : NORET-RESTORE-END ( n -- ) {: newend:n :}
    newend 0 < newend NORET-END @ > or IF
-      s" checker: control-flag rewind outside the registry" 76 die
+      s" checker: control-flag rewind outside the registry" EXIT-STATUS:INTERNAL die
    THEN
    newend RECORD-CONTROL-REWIND-XT
    newend NRX-TRUNCATE
@@ -16546,7 +16546,7 @@ private
    RECORD-LINK-ROW * RECORD-LINK-P @ + CELL-VIEW ;
 
 : RECORD-LINK-ROOM ( n -- ) {: ord:n :}
-   ord DICT-CAP >= IF s" checker: record link outside dictionary" 76 die THEN
+   ord DICT-CAP >= IF s" checker: record link outside dictionary" EXIT-STATUS:INTERNAL die THEN
    ord RECORD-LINK-CAP @ < IF EXIT THEN
    RECORD-LINK-CAP @ 0= IF 64 ELSE RECORD-LINK-CAP @ THEN
    BEGIN dup ord <= WHILE 2 * REPEAT
@@ -16786,7 +16786,7 @@ package CHECK
       s" checker: the kernel object has no row for " ERROR-TEXT:TYPE
       a u ERROR-TEXT:TYPE
       S\" , which a no-return axiom names\n" ERROR-TEXT:TYPE
-      s" " 76 die
+      s" " EXIT-STATUS:INTERNAL die
    THEN
    sym flag 0 0 sym NORET-CREATES@ sym NORET-SOURCE@ nonzero NORET-APPEND ;
 
@@ -17015,10 +17015,10 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
 \ A malformed text is a linker defect, never a program's, so it dies.
 : READ-UNDEFINE ( ^u8 n -- )
    {: a:^ u:n :}
-   u CELL 2 + < IF s" checker: bad held undefine" 76 die THEN
+   u CELL 2 + < IF s" checker: bad held undefine" EXIT-STATUS:INTERNAL die THEN
    a CELL-VIEW @ {: pkgu:n :}
    a CELL + c@ {: vis:n :}
-   pkgu 0 <  u CELL 2 + - pkgu <  or  vis SYM-PUBLIC >  or IF s" checker: bad held undefine" 76 die THEN
+   pkgu 0 <  u CELL 2 + - pkgu <  or  vis SYM-PUBLIC >  or IF s" checker: bad held undefine" EXIT-STATUS:INTERNAL die THEN
    a CELL 1 + + {: pkg:^ :}
    pkg pkgu vis  pkg pkgu +  u CELL 1 + - pkgu -  SYM-INTERN {: sym:n :}
    CHECKER-REC-SYM @ {: was:n :}
@@ -17106,10 +17106,10 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
 
 : INTRINSIC ( n -- ) {: id:n :}
    id 0 <=  id INTRINSIC>CTL CTL-INTRINSIC-MASK invert and 0 <>  or IF
-      s" INTRINSIC: id out of range" 76 die
+      s" INTRINSIC: id out of range" EXIT-STATUS:INTERNAL die
    THEN
    CK-CLOSED-SYM @ {: sym:n :}
-   sym 0= IF s" INTRINSIC: no recorded definition to tag" 76 die THEN
+   sym 0= IF s" INTRINSIC: no recorded definition to tag" EXIT-STATUS:INTERNAL die THEN
    sym CTL-FLAGS-SYM CTL-INTRINSIC-MASK invert and  id INTRINSIC-CTL or {: flags:n :}
    sym flags sym CTL-MASKS-SYM NORET-ADD-SYM
    CK-CLOSED-IX @ ndict@ < IF
@@ -17981,7 +17981,7 @@ variable WF-CURROW   variable WF-POS-I
 
 : WF-GROW-CAP ( n -- n ) {: need:n :}
    $7FFFFFFFFFFFFFFF WF-REC / {: lim:n :}
-   need 0 <= need lim > or if s" checker: width-fact capacity overflow" 76 die then
+   need 0 <= need lim > or if s" checker: width-fact capacity overflow" EXIT-STATUS:INTERNAL die then
    WF-CAP @ lim 2 / <= if WF-CAP @ 2 * need max WF-INIT max exit then
    need ;
 
@@ -17993,7 +17993,7 @@ variable WF-CURROW   variable WF-POS-I
 
 : WF-ROW ( n -- ^n ) WF-REC * WFS + ;
 : WF-ROW@ ( n -- ^n ) {: i:n :}
-   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
+   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" EXIT-STATUS:INTERNAL die THEN
    i WF-ROW ;
 : WF-N@ ( -- n ) WF-N @ ;
 : WF-OFF@ ( n -- n ) WF-ROW@ WF.OFF @ ;
@@ -18032,7 +18032,7 @@ variable WF-CURROW   variable WF-POS-I
    off pos WF-SEEK {: idx:n :}
    idx WF-N @ < if
       off pos idx WF-KEY= if
-         fam term w idx WF-SAME? 0= if s" checker: conflicting width fact" 76 die then
+         fam term w idx WF-SAME? 0= if s" checker: conflicting width fact" EXIT-STATUS:INTERNAL die then
          exit
       then
    then
@@ -18414,7 +18414,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 
 : SCOPE-ALLOC-LEN ( -- n )
    s" NUM:alloc-byte-len" SIG-FAM? 0= IF
-      drop s" checker: mutable scope requires alloc-byte-len" 76 die THEN
+      drop s" checker: mutable scope requires alloc-byte-len" EXIT-STATUS:INTERNAL die THEN
    >r PARAM-SCR-N @ s" NUM:alloc-byte-len" r> MK-PARAM ;
 
 : SCOPE-MUT-ROOT-SHAPE? ( n -- bool ) {: scheme:n :}
@@ -18600,7 +18600,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 : SCOPE-INIT-DROP ( n n -- n ) {: row:n width:n :}
    row
    width 0 ?do
-      R-RES dup TAG S-PUSH <> IF s" checker: init bundle underruns row" 76 die THEN
+      R-RES dup TAG S-PUSH <> IF s" checker: init bundle underruns row" EXIT-STATUS:INTERNAL die THEN
       P>REST
    loop ;
 
@@ -18930,7 +18930,7 @@ EXPORT CHECKER-RESOLVE:BODY-KEYWORD?
    copy DCUR ! ;
 
 : ROW-DROP-1 ( n -- n )
-   R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
+   R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" EXIT-STATUS:INTERNAL die THEN
    P>REST ;
 : ROW-DROP-N ( n n -- n ) {: w:n :}
    0 BEGIN dup w < WHILE
@@ -19015,18 +19015,18 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 : XG-CELL-HID@ ( n n -- ) {: fam:n slot:n :}
    XG-ROW @ R-RES {: node:n :}
-   node TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
+   node TAG S-PUSH <> IF s" checker: hidden group underruns row" EXIT-STATUS:INTERNAL die THEN
    node P>TYPE T-RES {: t:n :}
-   t HIDDEN-PARAM? 0= IF s" checker: hidden group cell not hidden" 76 die THEN
-   t CELL>FAM fam <> IF s" checker: hidden group family mismatch" 76 die THEN
-   t HIDDEN-SLOT@ slot <> IF s" checker: hidden group slot mismatch" 76 die THEN
+   t HIDDEN-PARAM? 0= IF s" checker: hidden group cell not hidden" EXIT-STATUS:INTERNAL die THEN
+   t CELL>FAM fam <> IF s" checker: hidden group family mismatch" EXIT-STATUS:INTERNAL die THEN
+   t HIDDEN-SLOT@ slot <> IF s" checker: hidden group slot mismatch" EXIT-STATUS:INTERNAL die THEN
    t node XG-T+               \ the stale wrapper and metadata travel with this cell
    node P>REST XG-ROW ! ;
 
 : XG-READ-HID ( n -- ) {: t:n :}
    t CELL>FAM {: fam:n :}
    t T-WIDTH {: w:n :}
-   t HIDDEN-SLOT@ w 1 - <> IF s" checker: hidden tag not on group top" 76 die THEN
+   t HIDDEN-SLOT@ w 1 - <> IF s" checker: hidden tag not on group top" EXIT-STATUS:INTERNAL die THEN
    w 1 - BEGIN dup 0 >= WHILE
       fam over XG-CELL-HID@
       1 -
@@ -19048,7 +19048,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
       t XG-READ-HID RES-TRUE EXIT THEN
    \ Every caller expands a known layout and stops at an open one before
    \ reading: one here is a checker bug.
-   t LAYOUT-PARAM? IF s" checker: logical layout cell in a transport group" 76 die THEN
+   t LAYOUT-PARAM? IF s" checker: logical layout cell in a transport group" EXIT-STATUS:INTERNAL die THEN
    node P>TYPE node XG-T+
    node P>REST XG-ROW !
    RES-TRUE ;
@@ -19120,7 +19120,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    a u s" 2drop" CORE-STR= IF s" " EXIT THEN
    a u s" 2swap" CORE-STR= IF s" 1032" EXIT THEN
    a u s" 2over" CORE-STR= IF s" 321032" EXIT THEN
-   s" checker: transport seq for non-transport" 76 die ;
+   s" checker: transport seq for non-transport" EXIT-STATUS:INTERNAL die ;
 
 : XP-RS? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u WF-XPORT-RROW? IF RES-TRUE EXIT THEN
@@ -19354,7 +19354,7 @@ PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
    LOCNB start +  idx cells LOCEND + @ start - ;
 : LOC-HW ( -- ^n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
-   need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" 76 die THEN
+   need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" EXIT-STATUS:INTERNAL die THEN
    LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max LOC-HW-INIT max EXIT THEN
    need ;
 : LOC-HW-ENSURE ( n -- ) {: need:n :}
@@ -19363,7 +19363,7 @@ PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
    LOC-HW-P @ LOC-HW-CAP @ cells cap cells SR-GROW LOC-HW-P !
    cap LOC-HW-CAP ! ;
 : LOCW-HW@ ( n -- n ) {: s:n :}
-   s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
+   s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" EXIT-STATUS:INTERNAL die THEN
    s cells LOC-HW + @ ;
 : LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
 \ The no-op default keeps the call effect-known and drops the name span,
@@ -19615,7 +19615,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
 
 : WF-TOKEN-CUT ( n -- ) {: wf0:n :}   \ drop this token's facts, the table's last rows
    WF-N @ wf0 ?do
-      i WF-OFF@ TSTART @ <> IF s" checker: width fact past the current token" 76 die THEN
+      i WF-OFF@ TSTART @ <> IF s" checker: width fact past the current token" EXIT-STATUS:INTERNAL die THEN
    loop
    wf0 WF-N ! ;
 : LOC-DECL-GROUP ( n -- ) {: gi:n :}
@@ -19625,7 +19625,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
 : LOC-DECL-GROUPS ( n n -- ) {: decl:n wf0:n :}
    wf0 WF-TOKEN-CUT
    decl  #LOC @ LGRP @ -  WF-ROW-SCAN
-   decl  #LOC @ LGRP @ -  XG-READ 0= IF s" checker: declared local row unreadable" 76 die THEN
+   decl  #LOC @ LGRP @ -  XG-READ 0= IF s" checker: declared local row unreadable" EXIT-STATUS:INTERNAL die THEN
    0 BEGIN dup #LOC @ LGRP @ - < WHILE
       dup LOC-DECL-GROUP
       1 +
@@ -21200,10 +21200,10 @@ private
 \ the clause only if the parent was not deferred.
 : CHECKER-VERIFY-DEFERRED-BODY ( -- ^u8 n )
    TBASE@ FAILB @ + REJECTION:>SOURCE 0= IF
-      drop s" checker: deferred body pin outside source" 76 die
+      drop s" checker: deferred body pin outside source" EXIT-STATUS:INTERNAL die
    THEN {: start:n :}
    TBASE@ FAILE @ + REJECTION:>SOURCE 0= IF
-      drop s" checker: deferred body end outside source" 76 die
+      drop s" checker: deferred body end outside source" EXIT-STATUS:INTERNAL die
    THEN {: end:n :}
    REJECTION:SOURCE$ drop start +  end start - ;
 
@@ -21430,7 +21430,7 @@ SIMM-ONS-P SIMM-CAP-V CELL TABLE+
 : SIMM-REWIND ( n -- )
    {: n:n :}
    n 0 < n SIMM-N @ > or IF
-      s" checker: immediate table rewind outside the table" 76 die
+      s" checker: immediate table rewind outside the table" EXIT-STATUS:INTERNAL die
    THEN
    SIMM-SYMS n SIMM-N @ ARENA-CELLS-ZERO
    SIMM-ONS n SIMM-N @ ARENA-CELLS-ZERO
@@ -22522,10 +22522,10 @@ variable POST-A0
 \ so a package's own `compile,` does not capture it.
 : COMPILE-CALL-REC ( -- ^n n )
    s" compile," WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: run:^ :}
-   run NULL-PTR = IF s" checker: no row of compile," 76 die THEN
+   run NULL-PTR = IF s" checker: no row of compile," EXIT-STATUS:INTERNAL die THEN
    run FACTS-READ-XT
    run REC-HOME-SYM {: sym:n :}
-   sym 0= IF s" checker: no symbol for compile," 76 die THEN
+   sym 0= IF s" checker: no symbol for compile," EXIT-STATUS:INTERNAL die THEN
    run sym ;
 
 \ A postponed token names its record even where a local of its spelling is
@@ -23042,8 +23042,8 @@ EXPORT CHECK:REC-RESET
 EXPORT CHECK:REC-STEP
 EXPORT CHECK:TKF
 : ARM ( -- )
-   SET @ 0= if s" checker: no source-tape observer to arm" 76 die then
-   ARMED @ 0 <> if s" checker: source-tape observer already armed" 76 die then
+   SET @ 0= if s" checker: no source-tape observer to arm" EXIT-STATUS:INTERNAL die then
+   ARMED @ 0 <> if s" checker: source-tape observer already armed" EXIT-STATUS:INTERNAL die then
    1 ARMED !
    REC-RESET ;
 
@@ -23103,10 +23103,10 @@ EXPORT CHECK:TKF
 : EVENT ( n -- n n n )
    {: ord:n :}
    TELLING @ 0= IF
-      s" checker: source-tape event asked for outside the observer's verdict" 76 die
+      s" checker: source-tape event asked for outside the observer's verdict" EXIT-STATUS:INTERNAL die
    THEN
    ord EV-LO @ <  ord EV-LO @ EV-N @ + >=  or IF
-      s" checker: source-tape event asked for a token the scan did not report" 76 die
+      s" checker: source-tape event asked for a token the scan did not report" EXIT-STATUS:INTERNAL die
    THEN
    EV-P ord EV-LO @ - EV-ROW NAV-CELL {: p:^ :}
    p @  p CELL + @  p 2 cells + @ ;
@@ -23191,7 +23191,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
 : CHECK-RESET {: a u :}
    WRITE-WINDOW-CK
    a u TORDER-SCAN!
-   a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
+   a u BYTE-SPAN? 0= IF s" checker: token buffer too large" EXIT-STATUS:INTERNAL die THEN
    RES-FALSE RECOVERY-USED!
    FO-RESET
    u TOKBUF-ENSURE
@@ -23430,7 +23430,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 : ANNOT-REC-SYM ( ^n -- n ) {: rec:^ :}
    rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec CK-REC-WID {: wid:n :}
-   nameu 0= wid -2 = or IF s" checker: an annotated word has no live record" 76 die THEN
+   nameu 0= wid -2 = or IF s" checker: an annotated word has no live record" EXIT-STATUS:INTERNAL die THEN
    wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    ndict@ 0 ?DO
       i REC-AT {: ns:^ :}
@@ -23445,10 +23445,10 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
          THEN
       THEN
    LOOP
-   s" checker: an annotated word's wordlist has no package" 76 die ;
+   s" checker: an annotated word's wordlist has no package" EXIT-STATUS:INTERNAL die ;
 
 : CTL-ADD-REC ( ^n n -- ) {: rec:^ flag:n :}
-   rec NULL-PTR = IF s" checker: an annotated word was not found" 76 die THEN
+   rec NULL-PTR = IF s" checker: an annotated word was not found" EXIT-STATUS:INTERNAL die THEN
    rec ANNOT-REC-SYM {: sym:n :}
    sym sym CTL-FLAGS-SYM flag or
       sym CTL-MASKS-SYM NORET-ADD-SYM
@@ -23458,11 +23458,11 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ The dictionary's last record and its defining wordlist identify the binding;
 \ neither the source spelling nor an active-package guess does.
 : NOMINAL-PROVIDER ( -- )
-   ndict@ 0= IF s" checker: nominal provider has no dictionary record" 76 die THEN
+   ndict@ 0= IF s" checker: nominal provider has no dictionary record" EXIT-STATUS:INTERNAL die THEN
    ndict@ 1- REC-AT NOMINAL-ADD-REC ;
 \ The same annotation after a word that may move the source root (CTL-ROOTS).
 : ROOT-MOVER ( -- )
-   ndict@ 0= IF s" checker: root mover has no dictionary record" 76 die THEN
+   ndict@ 0= IF s" checker: root mover has no dictionary record" EXIT-STATUS:INTERNAL die THEN
    ndict@ 1- REC-AT CTL-ROOTS CTL-ADD-REC ;
 \ The registrars above are found by name: a record's index holds only in the
 \ process that made it, and a built hb numbers its records anew.

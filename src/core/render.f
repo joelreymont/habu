@@ -57,14 +57,14 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    oc 0 > IF SEEN-P @ next oc ARENA-CELLS-COPY THEN
    next oc nc ARENA-CELLS-UNBOUND
    SEEN-P @ oc SEEN-UNMAP-RC 0 <> IF
-      next nc SEEN-UNMAP-RC 0 <> IF s" render: seen cleanup munmap failed" 76 die THEN
-      s" render: seen munmap failed" 76 die
+      next nc SEEN-UNMAP-RC 0 <> IF s" render: seen cleanup munmap failed" EXIT-STATUS:SYSTEM die THEN
+      s" render: seen munmap failed" EXIT-STATUS:SYSTEM die
    THEN
    next SEEN-P !   nc SEEN-CAP ! ;
 
 : SEEN-ENSURE ( -- )
    MAXTV MAXTV-INIT max {: need:n :}
-   need 0 < need SEEN-MAX-CAP > or IF s" render: seen capacity overflow" 76 die THEN
+   need 0 < need SEEN-MAX-CAP > or IF s" render: seen capacity overflow" EXIT-STATUS:INTERNAL die THEN
    need SEEN-CAP @ <= IF EXIT THEN
    need SEEN-GROW ;
 
@@ -986,7 +986,7 @@ variable MDV-I   variable MDV-F
       MD-CF-OPEN      of s" E-CONTROL-OPEN" endof
       MD-DEPTH-WIDE   of s" E-DEPTH-WIDE" endof
       MD-LITERAL-RANGE of s" E-LITERAL-RANGE" endof
-      s" render: a reason with no code" 76 die
+      s" render: a reason with no code" EXIT-STATUS:INTERNAL die
    endcase ;
 
 
@@ -1192,7 +1192,7 @@ variable MDV-I   variable MDV-F
       MD-C2-FIELD-UNKNOWN of s" the record has no field of this name" endof
       MD-CALLBACK-NOT-GENERIC of s" the callback must work for every scope, and this one names an outer scope" endof
       MD-SCOPED-TICK  of s"  is a scoped entry, which only a direct call may reach" endof
-      s" render: a reason with no message" 76 die
+      s" render: a reason with no message" EXIT-STATUS:INTERNAL die
    endcase ;
 
 \ A reason's label: a few words under its token.
@@ -1295,7 +1295,7 @@ variable MDV-I   variable MDV-F
       MD-LOCAL-ESCAPE of s" quotation outlives its locals" endof
       MD-BINDER-PLACE of s" binder outside a callback" endof
       MD-DEPTH-WIDE   of s" row with a wide or open value" endof
-      s" render: a reason with no label" 76 die
+      s" render: a reason with no label" EXIT-STATUS:INTERNAL die
    endcase ;
 
 
@@ -1429,7 +1429,7 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    k RF-RETURN = IF s" E-RETURN-STACK" EXIT THEN
-   s" render: a rejection with no code" 76 die ;
+   s" render: a rejection with no code" EXIT-STATUS:INTERNAL die ;
 : NM-SPAN ( -- ^u8 n )
    NMOFF @ TADDR NMU @ ;
 \ The return rows `return_stack` names, expected then actual: a rejected read's
@@ -1758,7 +1758,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
       RF-RETURN of RS-REASON$ EMIT-STR endof
       RF-REASON of REASON-MESSAGE endof
       RF-UNCHECKABLE of s"  cannot be checked here" TOK-MESSAGE endof
-      s" render: a rejection with no message" 76 die
+      s" render: a rejection with no message" EXIT-STATUS:INTERNAL die
    endcase ;
 
 : END-LABEL ( -- )
@@ -1806,7 +1806,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
       RF-UNCHECKABLE of s" checking stops here" EMIT-STR endof
       RF-REASON of MDIAG @ MD-LABEL$ EMIT-STR endof
       RF-RETURN of RS-LABEL$ EMIT-STR endof
-      s" render: a rejection with no label" 76 die
+      s" render: a rejection with no label" EXIT-STATUS:INTERNAL die
    endcase ;
 
 : TEXT-NOTE ( ^u8 n ^u8 n -- ) {: ka:^ ku:n va:^ vu:n :}
@@ -2163,7 +2163,7 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN
    k RF-RETURN = IF RETURN-HELP EXIT THEN
-   s" render: a rejection with no help" 76 die ;
+   s" render: a rejection with no help" EXIT-STATUS:INTERNAL die ;
 
 \ The record of a does> head that creates no word, placed at its `does>` token
 \ t tu, for a reader that judges the head without CHECK; the caller ends it.
@@ -2272,7 +2272,7 @@ package CAST-ERROR
    code E-LINEAR-PAYLOAD = IF s" E-LINEAR-PAYLOAD" EXIT THEN
    code E-LINEAR-OWNER = IF s" E-LINEAR-OWNER" EXIT THEN
    code E-LINEAR-SCOPE = IF s" E-LINEAR-SCOPE" EXIT THEN
-   s" checker: a cast rejection with no code name" 76 die ;
+   s" checker: a cast rejection with no code name" EXIT-STATUS:INTERNAL die ;
 \ E-CAST-FAM's label is the parse's: only PARSE raises it, with SGBAD set. Each
 \ E-CAST-ARITY case gives its own label.
 : LABEL$ ( n -- ^u8 n ) {: code:n :}
@@ -2284,7 +2284,7 @@ package CAST-ERROR
    code E-LINEAR-PAYLOAD = IF s" not one token and one payload" EXIT THEN
    code E-LINEAR-OWNER = IF s" declared outside the type's package" EXIT THEN
    code E-LINEAR-SCOPE = IF s" outside its owner's private section" EXIT THEN
-   s" checker: a cast rejection with no label" 76 die ;
+   s" checker: a cast rejection with no label" EXIT-STATUS:INTERNAL die ;
 : WORD$ ( -- ^u8 n ) WORD-A @ WORD-U @ ;
 : SIG$ ( -- ^u8 n ) SIG-A @ SIG-U @ ;
 \ The message: the declaration in backticks, why wa wu, then the token TOKEN!

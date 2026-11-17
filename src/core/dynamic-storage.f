@@ -96,7 +96,7 @@ variable MUTEX
    REG @ old REG-BYTES munmap 0< if
       UNLOCK
       s" dynamic storage: the system refused to unmap this process's own mapping"
-      76 die
+      EXIT-STATUS:SYSTEM die
    then
    fresh REG !
    cap REG-CAP ! ;
@@ -151,7 +151,7 @@ variable MUTEX
    cb @ old munmap 0< if
       UNLOCK
       s" dynamic storage: the system refused to unmap this process's own mapping"
-      76 die
+      EXIT-STATUS:SYSTEM die
    then
    fresh cap cb ctl PUBLISH
    UNLOCK ;
@@ -171,7 +171,7 @@ public
    cb @ cap munmap 0< if
       UNLOCK
       s" dynamic storage: the system refused to unmap this process's own mapping"
-      76 die
+      EXIT-STATUS:SYSTEM die
    then
    ctl UNREGISTER
    NULL-PTR cb !
@@ -224,7 +224,7 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 : UNMAP-RECORD ( ^a ^n -- )
    @ munmap 0< if
       s" dynamic storage: the system refused to unmap this process's own mapping"
-      76 die
+      EXIT-STATUS:SYSTEM die
    then ;
 
 private

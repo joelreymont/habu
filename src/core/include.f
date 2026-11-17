@@ -988,7 +988,7 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 
 : SIZE-DIE ( -- )
-   s" require: inventory size overflow" 76 die ;
+   s" require: inventory size overflow" EXIT-STATUS:INTERNAL die ;
 
 : FROZEN-REC ( n -- ^n )
    2 * cells FROZEN @ swap + ;
@@ -1126,7 +1126,7 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
          s" require: cannot release a path chunk" INCLUDE-DIE
       then
    repeat drop
-   s" require: path chunk missing" 76 die ;
+   s" require: path chunk missing" EXIT-STATUS:INTERNAL die ;
 
 : ROUND-CELL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: rem:n :}
@@ -1167,7 +1167,7 @@ public
 
 : APPEND ( ^u8 n -- ) {: a:^ u:n :}
    u 0 <= u INCLUDE-PATH-CAP > or if
-      s" require: invalid path length" 76 die
+      s" require: invalid path length" EXIT-STATUS:INTERNAL die
    then
    REQUIRE-N @ {: idx:n :}
    idx ROW-LIMIT >= if SIZE-DIE then
@@ -1192,7 +1192,7 @@ public
 : TRUNCATE ( n -- )
    {: keep:n :}
    keep 0 < keep REQUIRE-N @ > or if
-      s" require: truncate outside the registry" 76 die
+      s" require: truncate outside the registry" EXIT-STATUS:INTERNAL die
    then
    keep REWIND
    REQUIRE-BOOT-N @ keep > if keep REQUIRE-BOOT-N ! then
@@ -1208,7 +1208,7 @@ public
 : REMOVE ( n -- )
    {: idx:n :}
    idx PREFIX-N @ < idx REQUIRE-N @ >= or if
-      s" require: remove outside live rows" 76 die
+      s" require: remove outside live rows" EXIT-STATUS:INTERNAL die
    then
    idx REQUIRE-N @ 1- = if
       idx REWIND
@@ -1329,7 +1329,7 @@ private
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
       s" /proc/self/exe" ENGINE-FIND-FOR exit
    then
-   s" include: no engine path on this target" 76 die ;
+   s" include: no engine path on this target" EXIT-STATUS:INTERNAL die ;
 
 : ENGINE-INIT ( -- )
    ENGINE-READ @ 0= 0= if exit then
@@ -1909,7 +1909,7 @@ variable DISC-PATH-U
 : EVENT-POOL-ROOM ( n -- ) {: u:n :}
    EVENT-POOL-N @ u + {: need:n :}
    u 0 < need 0 < or if
-      s" events: a path length is negative or overflows the event pool" 76 die
+      s" events: a path length is negative or overflows the event pool" EXIT-STATUS:INTERNAL die
    then
    need EVENT-POOL-CAP @ <= if exit then
    need EVENT-POOL-CAP @ EVENT-GROWN {: cap:n :}
@@ -2872,13 +2872,13 @@ public
 \ effect at a time, since one pair is saved: a second would lose the first.
 
 : REQUIRE-SNAPSHOT ( -- )
-   REQUIRE-SAVE-N @ 0 >= if s" require: a registry snapshot is already in effect" 76 die then
+   REQUIRE-SAVE-N @ 0 >= if s" require: a registry snapshot is already in effect" EXIT-STATUS:INTERNAL die then
    REQUIRE-N @ REQUIRE-SAVE-N !
    REQUIRE-BASE @ REQUIRE-SAVE-BASE !
    REQUIRE-N @ REQUIRE-BASE ! ;
 
 : REQUIRE-RESTORE ( -- )
-   REQUIRE-SAVE-N @ 0< if s" require: no registry snapshot to restore" 76 die then
+   REQUIRE-SAVE-N @ 0< if s" require: no registry snapshot to restore" EXIT-STATUS:INTERNAL die then
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
    REQUIRE-SAVE-N @ REQUIRE-REG:REWIND
    -1 REQUIRE-SAVE-N ! ;
@@ -2915,7 +2915,7 @@ public
    REJECTION:HELP
    s" build this file only for a target its test admits, or widen the test"
    REJECTION:EMIT-STR
-   EXIT-STATUS:IOERR REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 ;using

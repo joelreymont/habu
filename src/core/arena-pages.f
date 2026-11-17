@@ -7,7 +7,7 @@
 \ --- growable checker arenas --------------------------------------------
 \ `map-anon` answers a pointer whose element type the caller picks.
 : ARENA-ALLOC ( n -- ^a )
-   map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
+   map-anon 0 <> IF drop s" checker: arena mmap failed" EXIT-STATUS:SYSTEM die THEN ;
 
 : ARENA-ALLOC-BYTES ( n -- ^u8 ) ARENA-ALLOC ;
 
@@ -65,7 +65,7 @@
 : ARENA-UNMAP ( ^a n -- )
    {: base:^ bytes:n :}
    bytes 0= IF EXIT THEN
-   base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
+   base bytes munmap 0 <> IF s" checker: arena munmap failed" EXIT-STATUS:SYSTEM die THEN ;
 
 \ A store in image DATA is zeroed: it is still baked, so its bytes do not
 \ depend on how writes and the grow interleave, and a stale pointer into it

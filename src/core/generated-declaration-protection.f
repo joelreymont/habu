@@ -49,7 +49,7 @@ INSTALL
 : FAIL ( n -- )
    {: rc:n :}
    [: ROLLBACKS ;] catch {: cleanup:n :}
-   cleanup 0 <> IF s" declaration rollback failed" 76 die THEN
+   cleanup 0 <> IF s" declaration rollback failed" EXIT-STATUS:INTERNAL die THEN
    rc throw ;
 
 public

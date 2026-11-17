@@ -395,7 +395,7 @@ public
 
 : PART-PREPARE ( -- )
    DECL-MARK PREPARE 0= IF
-      s" the declaration left the checker's frame stack unbalanced" 76 die
+      s" the declaration left the checker's frame stack unbalanced" EXIT-STATUS:INTERNAL die
    THEN ;
 
 : PART-ROLLBACK ( -- ) DECL-MARK ROLLBACK ;

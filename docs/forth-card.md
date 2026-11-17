@@ -641,7 +641,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   targets only states them on its first code line, before its requires:
   `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET`. On another target
   the load stops there with an E-TARGET rejection naming the target (the
-  seam's `HB-TARGET$`), throw 74. A file that requires it states nothing.
+  seam's `HB-TARGET$`), throw 70. A file that requires it states nothing.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a

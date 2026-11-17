@@ -1102,7 +1102,7 @@ named words, with one word that runs them in order.
   line, before its requires: `HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or
   ?TARGET`. `?TARGET ( bool -- )` returns on true; on false the load stops
   at that line with an `E-TARGET` rejection naming the target (the seam's
-  `HB-TARGET$ ( -- ^u8 n )`), status 74, so a build exits 74 and writes no
+  `HB-TARGET$ ( -- ^u8 n )`), status 70, so a build exits 70 and writes no
   program or module. The files that require it inherit the
   statement through the require and state nothing.
   List the targets the file supports, not the ones it rejects, so a new

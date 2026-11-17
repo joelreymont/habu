@@ -1,4 +1,5 @@
 \ The first source-prefix record in the running engine's dictionary.
+require src/core/exit-status.f
 require src/habu/xref.f
 
 package CORE-PREFIX
@@ -13,7 +14,7 @@ public
          rec XREF-NAME$ s" IMK-NDICT0" CORE-STR=CI if i unloop exit then
       then
    loop
-   s" prefix boundary: first source record is missing" 76 die ;
+   s" prefix boundary: first source record is missing" EXIT-STATUS:INTERNAL die ;
 
 private
 

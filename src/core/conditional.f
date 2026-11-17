@@ -20,7 +20,7 @@
          REJECTION:EMIT-STR
          ta tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
          REJECTION:HELP  s" close it with `[then]`" REJECTION:EMIT-STR
-         EXIT-STATUS:IOERR REJECTION:STOP
+         EXIT-STATUS:REJECTED REJECTION:STOP
       then
       2dup s" [if]" CORE-STR=CI if 2drop 1 + else
          s" [then]" CORE-STR=CI if 1 - then

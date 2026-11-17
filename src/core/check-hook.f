@@ -73,7 +73,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
    ta tu NAME-IMM-READS 0 >= if exit then
    ba bu ta tu [: CHECK-TARGET! ;]  ba bu ROWS-ARM DISARMER
    finally 0 <> if
-      s" checker: preflight did not reject unmodeled immediate" 76 die
+      s" checker: preflight did not reject unmodeled immediate" EXIT-STATUS:INTERNAL die
    then
    EXIT-STATUS:REJECTED throw ;
 
@@ -103,7 +103,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ Ends the process with the sentence REJECTION:TEXT holds from byte t on: a
 \ facts text the checker cannot keep is an engine defect.
 : TEXT-DIE ( n -- ) {: t:n :}
-   REJECTION:TEXT t +  REJECTION:TEXT-LEN @ t -  76 die ;
+   REJECTION:TEXT t +  REJECTION:TEXT-LEN @ t -  EXIT-STATUS:INTERNAL die ;
 
 \ Dies naming na nu, a u saying what is wrong with the facts text written for
 \ it, which REJECTION:TEXT holds. The sentence goes after the text in TEXT,
@@ -635,7 +635,7 @@ private
    sym SYM-PKG$ {: ka:^ ku:n :} ku 0 <> if ka ku ERROR-TEXT:TYPE s" :" ERROR-TEXT:TYPE then
    sym SYM-NAME$ ERROR-TEXT:TYPE
    s" : " ERROR-TEXT:TYPE
-   REJECTION:TEXT REJECTION:TEXT-LEN @ 76 die ;
+   REJECTION:TEXT REJECTION:TEXT-LEN @ EXIT-STATUS:INTERNAL die ;
 
 \ Sym's first row and tags in REJECTION:TEXT, each further row after `overload`;
 \ no row: its tags, false if none it says. False for rows a created effect ends.

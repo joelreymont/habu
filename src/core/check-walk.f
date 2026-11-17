@@ -814,7 +814,7 @@ EXPORT CHECKER-ITEMS:ITEM-COUNT
    kind BODY-ITEM-KIND:LOCAL-REF = IF v ITEM-LOCAL-REF ELSE
    kind BODY-ITEM-KIND:LOCAL = IF LOCAL-STRAY ELSE
    kind ITEM-STRAY? IF ITEM-UNDEFINED ELSE
-      s" checker: an item of no kind the walk knows" 76 die
+      s" checker: an item of no kind the walk knows" EXIT-STATUS:INTERNAL die
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    a u unj ok-in unck-in pin-in DO-TOK-TAIL
    kind BODY-ITEM-KIND:LOCAL =  kind BODY-ITEM-KIND:LOCAL-REF = or
@@ -1781,7 +1781,7 @@ EXPORT CHECK:RBF-PUSH
    RBF-DEPTH @ TYPES-READY ;
 
 : FRAME-MISMATCH ( -- )
-   s" checker: declaration rollback frame mismatch" 76 die ;
+   s" checker: declaration rollback frame mismatch" EXIT-STATUS:INTERNAL die ;
 
 \ Find the declaration's frame underneath leaked ordinary scopes before
 \ consuming them. If it is not there the frame stack is beyond
@@ -3678,7 +3678,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
 
 : GUEST-CELLS ( n ^n n bool -- n )
    {: k:n p:^ cnt:n save:bool :}
-   k cnt + GUEST-CAP > IF s" checker: guest cells full" 76 die THEN
+   k cnt + GUEST-CAP > IF s" checker: guest cells full" EXIT-STATUS:INTERNAL die THEN
    cnt 0 ?DO
       save IF i cells p + @  k i + cells GUEST-SAVED + !
       ELSE k i + cells GUEST-SAVED + @  i cells p + ! THEN
@@ -3689,7 +3689,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
 
 : GUEST-PTRS ( n ^^u8 n bool -- n )
    {: k:n p:^ cnt:n save:bool :}
-   k cnt + GUEST-PTRS-CAP > IF s" checker: guest pointers full" 76 die THEN
+   k cnt + GUEST-PTRS-CAP > IF s" checker: guest pointers full" EXIT-STATUS:INTERNAL die THEN
    cnt 0 ?DO
       save IF i cells p + 0 ptr-field @  k i + cells GUEST-SAVED-PTRS + 0 ptr-field !
       ELSE k i + cells GUEST-SAVED-PTRS + 0 ptr-field @  i cells p + 0 ptr-field ! THEN
@@ -3754,7 +3754,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    save GUEST-POINTERS  GUEST-FAMS  GUEST-NMAP ;
 
 : READ-ENTER ( -- )
-   GUEST-OPEN @ IF s" checker: a facts read inside another" 76 die THEN
+   GUEST-OPEN @ IF s" checker: a facts read inside another" EXIT-STATUS:INTERNAL die THEN
    RES-TRUE GUEST-KEEP  -1 GUEST-OPEN !
    DOES-EFF-CLEAR  WRAP-CLEAR
    0 SIG-RAW-MODE ! ;
@@ -3921,9 +3921,9 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    {: ix:n src:n :}
    ix REC-AT REC-SYM {: sym:n :}
    src REC-AT REC-SYM {: from:n :}
-   sym 0=  from 0= or IF s" checker: an export or its source has no checked symbol" 76 die THEN
+   sym 0=  from 0= or IF s" checker: an export or its source has no checked symbol" EXIT-STATUS:INTERNAL die THEN
    from USIG-NEWEST {: eff:n :}
-   eff 0= IF s" checker: an export's source has no checked effect" 76 die THEN
+   eff 0= IF s" checker: an export's source has no checked effect" EXIT-STATUS:INTERNAL die THEN
    eff 1 - E-PTR EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
    sym CHECKER-REC-SYM !
    din dout rin rout hasr from EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
@@ -3953,7 +3953,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    ix LINKED? IF EXIT THEN
    off 0 > IF ix READ-IX EXIT THEN
    -1 off - {: src:n :}
-   src 0 <  src ix >=  or IF s" checker: an export's source is not an earlier record" 76 die THEN
+   src 0 <  src ix >=  or IF s" checker: an export's source is not an earlier record" EXIT-STATUS:INTERNAL die THEN
    src HAS-SYM? IF src REC-AT recurse THEN
    ix src ALIAS-READ ;
 
@@ -3995,7 +3995,7 @@ FACTS-READ-INSTALL
 \ nothing.
 : PRIM-CLOSE ( ^u8 n bool bool -- )
    {: pkg:^ pkgu:n trusted:bool fixed:bool :}
-   PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" 76 die THEN
+   PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" EXIT-STATUS:INTERNAL die THEN
    pkgu 0= IF  PE-NA@ PE-NU @ PE-SYM-OF
    ELSE  pkg pkgu SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN  THEN {: sym:n :}
    sym BUILD-SYM-END @ < IF  -1 PE-LAST !  EXIT  THEN

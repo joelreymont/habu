@@ -187,7 +187,7 @@ EXPORT CHECK:WRITE-WINDOW-CK
    id ;
 
 : T-ROOT+ ( n -- n ) {: node:n :}
-   node NODE-LIVE? 0= IF s" tfam: bad schema root" 76 die THEN
+   node NODE-LIVE? 0= IF s" tfam: bad schema root" EXIT-STATUS:INTERNAL die THEN
    SCH-T-ROOT-P SCH-T-ROOT-CAP SCH-T-ROOT-N @ 1 + 1 ARENA-ROWS-ENSURE
    SCH-T-ROOT-N @ {: i:n :}
    node i cells SCH-T-ROOT-P @ + !
@@ -196,13 +196,13 @@ EXPORT CHECK:WRITE-WINDOW-CK
 
 : T-ROOT@ ( n -- n ) {: idx:n :}
    idx TRANSIENT-BASE - {: i:n :}
-   i SCH-T-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
+   i SCH-T-ROOT-N @ >= IF s" tfam: bad schema root index" EXIT-STATUS:INTERNAL die THEN
    i cells SCH-T-ROOT-P @ + @ ;
 
 : SCH-REC@ ( n -- ^n ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
    id T-NODE? IF id TRANSIENT-BASE - SCH-REC * SCH-T-P @ + EXIT THEN
-   id 0 <= IF s" tfam: bad schema node" 76 die THEN
-   id SCH-N @ >= IF s" tfam: bad schema node" 76 die THEN
+   id 0 <= IF s" tfam: bad schema node" EXIT-STATUS:INTERNAL die THEN
+   id SCH-N @ >= IF s" tfam: bad schema node" EXIT-STATUS:INTERNAL die THEN
    id SCH-REC * SCH-BASE + ;
 
 : SCHEMA-KIND? ( n -- bool ) {: tag:n :}   \ tag is a creatable node kind
@@ -256,8 +256,8 @@ public
    WRITE-WINDOW-CK
    node s" SCHEMA-ROOT+" KEEP-CK
    TRANSIENT-MODE? IF node T-ROOT+ EXIT THEN
-   node 0 <= IF s" tfam: bad schema root" 76 die THEN
-   node SCH-N @ >= IF s" tfam: bad schema root" 76 die THEN
+   node 0 <= IF s" tfam: bad schema root" EXIT-STATUS:INTERNAL die THEN
+   node SCH-N @ >= IF s" tfam: bad schema root" EXIT-STATUS:INTERNAL die THEN
    SCH-ROOT-ENSURE
    SCH-ROOT-N @ {: idx:n :}
    node idx cells SCH-ROOT-BASE + !
@@ -265,8 +265,8 @@ public
    idx ;
 : SCHEMA-ROOT@ ( n -- n ) {: idx:n :}
    idx TRANSIENT-BASE >= IF idx T-ROOT@ EXIT THEN
-   idx 0 < IF s" tfam: bad schema root index" 76 die THEN
-   idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
+   idx 0 < IF s" tfam: bad schema root index" EXIT-STATUS:INTERNAL die THEN
+   idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" EXIT-STATUS:INTERNAL die THEN
    idx cells SCH-ROOT-BASE + @ ;
 \ The index the next SCHEMA-ROOT+ answers, in the mode's region.
 : SCHEMA-ROOT-N@ ( -- n )
@@ -313,7 +313,7 @@ public
 : SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
 : SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-B@ ;
 : SCHEMA-ROW-ELEM@ ( n n -- n ) {: node:n i:n :}   \ i-th element type node of the row
-   i 0 < i node SCHEMA-ROW-COUNT@ >= or IF s" tfam: bad quot row elem index" 76 die THEN
+   i 0 < i node SCHEMA-ROW-COUNT@ >= or IF s" tfam: bad quot row elem index" EXIT-STATUS:INTERNAL die THEN
    node SCHEMA-ROW-START@ i + SCHEMA-ROOT@ ;
 : SCHEMA-ROW-OK? ( n -- bool )                     \ live SCH-ROW node (no die on nil/oob)
    dup SCHEMA-NODE-OK? IF SCHEMA-ROW? ELSE drop RES-FALSE THEN ;
@@ -346,7 +346,7 @@ public
 : SCHEMA-QUOT? ( n -- bool ) SCHEMA-TAG@ SCH-QUOT = ;
 : SCHEMA-QUOT-HASR@ ( n -- n ) SCHEMA-A@ ;
 : SCHEMA-QUOT-ROW@ ( n n -- n ) {: node:n i:n :}    \ i-th effect side's SCH-ROW node
-   i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot side index" 76 die THEN
+   i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot side index" EXIT-STATUS:INTERNAL die THEN
    node SCHEMA-B@ i + SCHEMA-ROOT@ ;
 : SCHEMA-QUOT-DIN@ ( n -- n ) 0 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-DOUT@ ( n -- n ) 1 SCHEMA-QUOT-ROW@ ;
@@ -446,7 +446,7 @@ public
 
 : REWIND ( n n -- ) {: n:n rootn:n :}
    n 0 < n SCH-N @ > or rootn 0 < or rootn SCH-ROOT-N @ > or IF
-      s" checker: schema rewind outside the registry" 76 die
+      s" checker: schema rewind outside the registry" EXIT-STATUS:INTERNAL die
    THEN
    n SCH-N @ SCH-SCRUB
    rootn SCH-ROOT-N @ SCH-ROOT-SCRUB
