@@ -1467,6 +1467,18 @@ create FMT-ROOT-PATH-BUF PATH-CAP allot
 \ descriptor would hold the lowest free number.
 40 constant FMT-DEEP-LEVELS
 
+: FMT-TEST-RMDIR-ERRNO ( -- )
+   [: FMT-RMDIR-MISSING ;] catch FS:ERRNO {: code:n cause:n :}
+   s" removing a missing directory is E-FS-IO with ENOENT" T-LABEL
+   code E-FS-IO T=
+   cause FS:ENOENT T=
+   1 FMT-DEEP$ FS:MAKE-DIRS
+   [: FMT-TREE FS:REMOVE-DIR ;] catch FS:ERRNO {: full:n full-cause:n :}
+   s" removing a directory that holds one is E-FS-IO with ENOTEMPTY" T-LABEL
+   full E-FS-IO T=
+   full-cause FS:ENOTEMPTY T=
+   FMT-TREE FS:REMOVE-TREE ;
+
 : FMT-TEST-REMOVE-TREE-DEPTH-FDS ( -- )
    FMT-DEEP-LEVELS FMT-DEEP$ FS:MAKE-DIRS
    FMT-DEEP-LEVELS 1 - FMT-DEEP$ FMT-MODE-0555 FS:CHMOD-MODE
@@ -2158,8 +2170,6 @@ public
    [: FMT-CHMOD-MISSING ;] E-FS-STAT TTHROWSQ
    s" setting a missing file's mode is E-FS-IO" T-LABEL
    [: FMT-CHMOD-MODE-MISSING ;] E-FS-IO TTHROWSQ
-   s" removing a missing directory is E-FS-IO" T-LABEL
-   [: FMT-RMDIR-MISSING ;] E-FS-IO TTHROWSQ
    s" making a directory that exists is E-FS-IO" T-LABEL
    [: FMT-MKDIR-EXISTS ;] E-FS-IO TTHROWSQ
    FMT-LONG!
@@ -2180,6 +2190,7 @@ public
    FMT-TEST-REMOVE-TREE-SLASHED-LINK
    FMT-TEST-REMOVE-TREE-DANGLING
    FMT-TEST-REMOVE-TREE-NOTDIR
+   FMT-TEST-RMDIR-ERRNO
    FMT-TEST-REMOVE-TREE-DEPTH-FDS
    FMT-TASKS:RUN
    FMT-TEST-CLEANUP

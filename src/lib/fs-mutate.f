@@ -179,18 +179,9 @@ public
    {: target:^ targetu link:^ linku :}
    target targetu >PATHZ link linku >PATHZ2 LINK-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
-private
-\ mkdir(2) is bound through libc, so a failure leaves its errno in FFI:ERRNO
-\ for ERRNO-FAIL: the engine primitive collapses every failure to a bare -1.
-PROCESS-SYMBOLS
-FUNCTION: MKDIR-CALL mkdir ( ^u8 n -- i32 ) ;FUNCTION
-: MADE? ( ^u8 n -- bool )
-   MKDIR-CALL 0= ;
-
-public
 \ A throw sets FS:ERRNO.
 : MKDIR-MODE ( ^u8 n n -- ) {: a:^ u mode :}
-   a u >PATHZ mode MADE? 0= if E-FS-IO ERRNO-FAIL then ;
+   a u >PATHZ mode mkdir 0 < if E-FS-IO throw then ;
 
 \ A throw sets FS:ERRNO.
 : MAKE-DIR ( ^u8 n -- )
@@ -304,8 +295,8 @@ private
 \ with a stat, which accepts a link to a directory. Any other failure throws at
 \ once with mkdir's cause; a non-directory in the way throws with EEXIST.
 : MKDIR-ONE ( ^u8 n -- ) {: a:^ u :}
-   a u >PATHZ MODE-DIR MADE? if exit then
-   FFI:ERRNO EEXIST <> if E-FS-IO ERRNO-FAIL then
+   a u >PATHZ MODE-DIR mkdir 0 >= if exit then
+   ERRNO EEXIST <> if E-FS-IO throw then
    a u DIR? 0= if E-FS-IO EEXIST CAUSE-FAIL then ;
 
 public
