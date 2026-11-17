@@ -21,7 +21,7 @@ PTR-VARIABLE M-A
 variable M-N
 variable M-O
 : M-ALLOC-BUF ( -- ^u8 )
-   MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;
+   MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" EXIT-STATUS:SYSTEM die then ;
 
 : MBUF-A@ ( -- ^u8 )
    MBUF-A @ ;
@@ -33,7 +33,7 @@ variable M-O
    MBUF-A@ 0= if M-ALLOC-BUF MBUF-A! then ;
 
 : M-UNMAP ( -- )
-   MBUF-A@ MSIZE munmap 0 <> if s" image-bytes: munmap failed" 74 die then
+   MBUF-A@ MSIZE munmap 0 <> if s" image-bytes: munmap failed" EXIT-STATUS:SYSTEM die then
    NULL-PTR MBUF-A! ;
 
 public

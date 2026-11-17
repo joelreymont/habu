@@ -1209,7 +1209,7 @@ EXPORT CHECK:EXPORT-UNSAFE
 : PKG-OCC-ROOM ( -- )
    data-base DEF-OCC:PTR-CELL + 0 ptr-field @ CELL-VIEW @ {: last:n :}
    last -2 =  last -1 =  or if
-      s" interpreter: definition occurrence numbers exhausted" 76 die
+      s" interpreter: definition occurrence numbers exhausted" EXIT-STATUS:INTERNAL die
    then ;
 
 \ The clause takes the slot above the export's own, and its name must not be

@@ -5,6 +5,7 @@
 \ image into its dictionary band and slides the record list, then builds the
 \ name index and enters the engine's main. Its caller binds the tail's labels.
 HB-TARGET-LINUX? HB-TARGET-MACOS? or ?TARGET
+require src/core/exit-status.f
 require src/lib/le.f
 require src/lib/string.f
 require src/arch/arm64/asm.f
@@ -106,7 +107,7 @@ using SYSCALL
 \ the crash handler's stack and the boot data stack (x19).
 : ENTRY, ( label -- )
    {: text0:label :}
-   ASM-LEN 0<> if s" boot: the start-up must sit at code offset 0" 76 die then
+   ASM-LEN 0<> if s" boot: the start-up must sit at code offset 0" EXIT-STATUS:INTERNAL die then
    text0 LBL,
    EM-ENTRY-ARGS
    C-SIGNAL-STACK

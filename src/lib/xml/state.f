@@ -3,6 +3,7 @@
 \ stream, a BOM included. Open frames' names and live bindings are copied once into
 \ scope storage, so releasing consumed bytes never revisits them.
 
+require src/core/exit-status.f
 require src/lib/xml/source.f
 require src/lib/byte-buffer.f
 require src/lib/siphash.f
@@ -76,7 +77,7 @@ CAST: >STATE ( ^cursor -- ^n )
 32 constant HEADER-CELLS
 HEADER-CELLS SIPHASH:STATE-CELLS + constant FIXED-CELLS
 : LAYOUT-CHECK ( -- )
-   CURSOR-CELLS FIXED-CELLS <> if s" xml: cursor layout" 70 die then ;
+   CURSOR-CELLS FIXED-CELLS <> if s" xml: cursor layout" EXIT-STATUS:INTERNAL die then ;
 LAYOUT-CHECK
 8 constant TABLE-START
 5 constant FRAME-CELLS

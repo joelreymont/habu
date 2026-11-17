@@ -70,14 +70,14 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 \ The slots grow, so they are mapped outside DATA.
 : TABLE-MAP ( n -- n )
-   cells map-anon 0 <> if drop s" intern: table mmap failed" 76 die then
+   cells map-anon 0 <> if drop s" intern: table mmap failed" EXIT-STATUS:SYSTEM die then
    NULL-PTR - ;
 
 
 : TABLE-RELEASE ( n n -- )
    {: base:n slots:n :}
    base 0 CELL-AT slots cells munmap 0 <> if
-      s" intern: table munmap failed" 76 die
+      s" intern: table munmap failed" EXIT-STATUS:SYSTEM die
    then ;
 
 

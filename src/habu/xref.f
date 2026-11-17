@@ -388,7 +388,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 
 : XREF-REQUIRE-INDEX ( n -- n )
    dup 0 >= if exit then
-   s" xref: word not found" 76 die ;
+   s" xref: word not found" EXIT-STATUS:INTERNAL die ;
 
 \ RETIRE and SEAL rewrite a write-protected record cell through patch32, which
 \ this package's row in src/habu/prims.f (EPPRIM: XREF patch32) types for it.

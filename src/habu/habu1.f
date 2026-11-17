@@ -180,7 +180,7 @@ private
 package ENGINE-EMIT
 public
 : TARGET-UNKNOWN ( -- )
-   s" hb: habu1: no primitive body for this target" 76 die ;
+   s" hb: habu1: no primitive body for this target" EXIT-STATUS:INTERNAL die ;
 ;package
 
 package ENGINE-EMIT
@@ -325,7 +325,7 @@ variable NUM-LINT
    0 swap 0 ADDI,
    15 1 MOVZ,  15 SP LINUX-SPAWN-ERR-OFF STRB,
    1 SP LINUX-SPAWN-ERR-OFF ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-   0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 EXIT-STATUS:EXEC MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : LINUX-SPAWN-FAIL ( reg -- )
    REG>N LINUX-SPAWN-FAIL-N ;
@@ -580,7 +580,7 @@ private
    9 31 0 SUB,  9 SP LINUX-SPAWN-ERR-OFF STRW,
    0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,  1 SP LINUX-SPAWN-ERR-OFF ADDI,
    2 SPAWN-ERRNO-BYTES MOVZ,  NR-WRITE SYS,
-   0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 EXIT-STATUS:EXEC MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ The parent, with the child's pid in x0: read the pipe until end of file (an
 \ execve that worked: x9 becomes the pid) or the child's errno (x9 becomes
@@ -2650,7 +2650,7 @@ public
       0 0 MOVZ,  done B,
       dead LBL,
          S\" hb: fork: cannot map the child's own region\n" ERR-TEXT,
-         0 78 MOVZ,  NR-EXIT-GROUP SYS,
+         0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
       parent LBL,                       \ the descriptor is released whatever close answers
          9 0 0 ADDI,  0 SP 0 LDR,  NR-CLOSE SYS,  0 9 0 ADDI,  done B,
       plain LBL,
@@ -2681,7 +2681,7 @@ public
       0 0 MOVZ,  done B,
       dead LBL,
          S\" hb: fork: cannot map the child's region alias\n" ERR-TEXT,
-         0 78 MOVZ,  NR-EXIT-GROUP SYS,
+         0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,
       done LBL,
       0 out CBNZ,  9 DATA-VA VA>N LIT64,  0 9 EXIT-OWNER-CELL STR,
       out LBL,
@@ -3498,7 +3498,7 @@ private
       done B,
    bad LBL,
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      0 EXIT-STATUS:REJECTED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    done LBL, ;
 
@@ -3576,7 +3576,7 @@ private
       1 invalid-msg ADR,  2 iu MOVZ,
    emit LBL,
       0 2 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      0 EXIT-STATUS:REJECTED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    invalid-msg LBL,  ia iu BYTES,
    done LBL, ;
@@ -3606,7 +3606,7 @@ package ENGINE-EMIT
          0 2 MOVZ,  1 14 PD-NAME-OFF ADDI,  2 14 PD-NLEN-OFF LDR,  NR-WRITE SYS,
          SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,
          13 13 1 ADDI,  pdloop B,
-      pdexit LBL,  0 73 MOVZ,  NR-EXIT-GROUP SYS,
+      pdexit LBL,  0 EXIT-STATUS:INTERNAL MOVZ,  NR-EXIT-GROUP SYS,
    pdok LBL,
    NDICT DATA SEAL-NDICT-CELL STR, ;
 

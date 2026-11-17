@@ -2,6 +2,7 @@
 \ engine cannot load it; what a booted engine needs lives in src/habu/fdio.f
 \ (FDIO:WALL) and src/habu/sign-id.f.
 
+require src/core/exit-status.f
 require src/habu/fdio.f
 require src/os/image-bytes.f
 using IMAGE-BYTES
@@ -11,7 +12,7 @@ variable DRV-WFD
 
 : DRV-WRITE-IMAGE-PATH ( ^u8 n -- )
    PATH0 1537 493 open DRV-WFD !
-   DRV-WFD @ 0 < IF s" driver: cannot open output" 74 die THEN
+   DRV-WFD @ 0 < IF s" driver: cannot open output" EXIT-STATUS:IOERR die THEN
    DRV-WFD @ MBUF MLEN@ FDIO:WALL
    DRV-WFD @ close ;
 

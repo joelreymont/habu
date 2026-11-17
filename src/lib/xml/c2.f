@@ -3,6 +3,7 @@
 \ the frame, attribute and namespace tables the reader grows are released when
 \ WITH-READER's callback returns or throws. TASK-LOCAL: the chain of the task's
 \ live reader records is one TASK:+USER cell.
+require src/core/exit-status.f
 require src/lib/xml.f
 require src/lib/c2-memory.f
 require src/lib/task.f
@@ -60,7 +61,7 @@ private
 39 constant READER-CELLS
 XML:CURSOR-BYTES constant LINK-OFF
 : LAYOUT-CHECK ( -- )
-   READER-CELLS 1- cells LINK-OFF <> if s" xml-c2: reader layout" 70 die then ;
+   READER-CELLS 1- cells LINK-OFF <> if s" xml-c2: reader layout" EXIT-STATUS:INTERNAL die then ;
 LAYOUT-CHECK
 
 \ The task's innermost live reader record, or null. A reader links its record

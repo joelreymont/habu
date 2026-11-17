@@ -21,6 +21,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after;
 \ PAGE+, FILE+, CODE-ID+ and CODE+ write only the caller's BUF.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -94,7 +95,7 @@ DIGEST ID SHA256>HEX
 : MARK ( ^u8 n n -- n )
    {: m:^ mu:n from:n :}
    HTML HTML-U m mu from FIND-SUB-FROM MATCH option
-      none OF s" hb: src/lib/browser/app.html lacks a marker in order" 1 die ENDOF
+      none OF s" hb: src/lib/browser/app.html lacks a marker in order" EXIT-STATUS:INTERNAL die ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
 

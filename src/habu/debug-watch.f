@@ -3,6 +3,8 @@
 \ RUNTIME-FILES). The table lives in dictionary data; fixed DATA header cells
 \ publish its address and count to the signal-safe breakpoint handler.
 
+require src/core/exit-status.f
+
 package DEBUG
 
 8 constant BPW-MAX
@@ -49,7 +51,7 @@ public
 : BPW+ ( ^n -- )
    {: addr:^ :}
    addr BPW-FIND 0 >= if exit then
-   BPW-N@ BPW-MAX >= if s" bpw: table full" type 76 throw then
+   BPW-N@ BPW-MAX >= if s" bpw: table full" type EXIT-STATUS:FULL throw then
    addr BPW-N@ BPW-SLOT !
    BPW-N@ 1+ BPW-N! ;
 

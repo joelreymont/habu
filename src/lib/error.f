@@ -460,7 +460,7 @@ create NL $0A c,
 \ A refusal's line ends here; the empty die adds nothing to it.
 : REFUSE ( -- )
    NL 1 SAY
-   s" " 70 die ;
+   s" " EXIT-STATUS:REJECTED die ;
 
 
 \ A refusal's first words: the declaring word, FAULT when the flag is set.

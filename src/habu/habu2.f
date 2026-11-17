@@ -310,7 +310,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LPLACEEND LABEL@ LBL, PLACEEND$ BYTES, ;
 
 : C-TARGET-UNKNOWN ( -- )
-   s" hb: unknown target" 76 die ;
+   s" hb: unknown target" EXIT-STATUS:INTERNAL die ;
 
 private
 
@@ -378,7 +378,7 @@ public
 : C-EXIT-LABEL ( ^n n -- ) {: msg:^ len:n :}
    0 2 MOVZ,  1 msg LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
-   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 EXIT-STATUS:INTERNAL MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Push the pending definition's name, the body text's first token (DEF-TKA
 \ is stale once a multi-line body refills the reader); x11 is left alone.
@@ -430,7 +430,7 @@ package DEF-TRUST
 public
 
 \ Resolve `trust-decl` into x11. A missing registrar names itself on fd 2 and
-\ exits 70 rather than publishing a definition whose effect nothing recorded.
+\ exits EXIT-STATUS:INTERNAL rather than publishing a definition whose effect nothing recorded.
 \ Public because BDRAINPRETRUST needs the XT for its own push sequence.
 : FIND ( -- )
    LBL LBL {: absent:label ready:label :}
@@ -443,7 +443,7 @@ public
 
 package LASTC-TRUST
 
-\ Resolve `trust-raw`. A missing registrar names itself on fd 2 and exits 70.
+\ Resolve `trust-raw`. A missing registrar names itself on fd 2 and exits EXIT-STATUS:INTERNAL.
 : FIND-RAW ( -- )
    LBL LBL {: absent:label ready:label :}
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
@@ -484,7 +484,7 @@ package ENGINE-EMIT
 public
 \ x11 = the operation at OFF in the source owner's record. An owner whose record
 \ ends before OFF (its byte size at [record-8]) or holds 0 there writes the line
-\ MA MU to fd 2 and exits 70.
+\ MA MU to fd 2 and exits EXIT-STATUS:INTERNAL.
 : C-OWNER-FIELD ( n ^u8 n -- ) {: off:n ma:^ mu:n :}
    LBL LBL LBL {: absent:label msg:label ready:label :}
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
@@ -493,7 +493,7 @@ public
    11 11 off LDR,  11 ready CBNZ,
    absent LBL,
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      0 EXIT-STATUS:INTERNAL MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    ready LBL, ;
 

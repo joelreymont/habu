@@ -91,7 +91,7 @@ variable TPU
 \ length nor one that wraps the sum passes.
 : TMP-PATH-CHECK ( n -- )
    dup 0 < swap PATH-CAP TPQ @ - 1 - > or
-   if s" env: TMP-PATH exceeds buffer" 76 die then ;
+   if s" env: TMP-PATH exceeds buffer" EXIT-STATUS:FULL die then ;
 
 : TMP-PATH-COPY-SRC ( ^u8 n -- )
    0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;

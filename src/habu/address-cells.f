@@ -28,7 +28,7 @@ $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 
 private
 
-: REFUSE ( -- ) s" address-cells: invalid storage header" 76 die ;
+: REFUSE ( -- ) s" address-cells: invalid storage header" EXIT-STATUS:INTERNAL die ;
 : SHAPE ( n n -- ) {: count:n cap:n :}
    cap 0 <= cap MAX-ROWS > or count 0 < or if REFUSE then
    count cap > if REFUSE then ;

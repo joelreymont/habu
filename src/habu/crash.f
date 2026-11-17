@@ -179,7 +179,7 @@ private
 : DIE-LINE-SITE, ( ^u8 n n n -- )
    LBL {: a:^ u:n status:n flag:n msg:label :}
    u 0= u DIE-LINE-ROOM > or IF
-      s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" 76 die
+      s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" EXIT-STATUS:INTERNAL die
    THEN
    0 status MOVZ,  1 msg ADR,  2 u MOVZ,  4 flag MOVZ,
    LDIE-LINE LABEL@ B,
@@ -195,7 +195,7 @@ public
 : DIE-LINE-VALUE, ( ^u8 n n n -- )
    {: a:^ u:n status:n reg:n :}
    u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
-      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" 76 die
+      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" EXIT-STATUS:INTERNAL die
    THEN
    reg 3 <> IF 3 reg 0 ADDI, THEN
    a u status 1 DIE-LINE-SITE, ;
@@ -226,7 +226,7 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
 : TEXT+ ( ^u8 n ^u8 ^n -- )
    {: a:^ u:n buf:^ len:^ :}
    len @ u + FAULT-TEXT-CAP > IF
-      s" crash: a fault record's text is longer than FAULT-TEXT-CAP" 76 die
+      s" crash: a fault record's text is longer than FAULT-TEXT-CAP" EXIT-STATUS:INTERNAL die
    THEN
    u 0 ?do  a i + c@  buf len @ + i + c!  loop
    len @ u + len ! ;
@@ -240,17 +240,17 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
 : CHECK-TEXT ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do
       a i + c@ PLAIN? 0= IF
-         s" crash: a fault record's text holds a byte JSON escapes" 76 die
+         s" crash: a fault record's text holds a byte JSON escapes" EXIT-STATUS:INTERNAL die
       THEN
    loop ;
 
 : PART? ( n -- ) {: want:n :}
    FAULT-PART @ want <> IF
-      s" crash: a fault record's parts are out of REJECTION's order" 76 die
+      s" crash: a fault record's parts are out of REJECTION's order" EXIT-STATUS:INTERNAL die
    THEN ;
 : NOTE-PART? ( -- )
    FAULT-PART @ FAULT-SHUT = IF
-      s" crash: a fault note outside a record" 76 die
+      s" crash: a fault note outside a record" EXIT-STATUS:INTERNAL die
    THEN ;
 
 \ [x14] = the register's low byte, x14 one past it.
@@ -415,7 +415,7 @@ public
 \ x6 or x7.
 : FAULT-TEXT, ( ^u8 n n n -- ) {: k:^ ku:n p:n l:n :}
    p 3 < p 7 > or  l 3 < or  l 7 > or IF
-      s" crash: a FAULT-TEXT, register is outside x3..x7" 76 die
+      s" crash: a FAULT-TEXT, register is outside x3..x7" EXIT-STATUS:INTERNAL die
    THEN
    k ku NOTE+  PIECE,
    10 p 0 ADDI,  11 l 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL, ;

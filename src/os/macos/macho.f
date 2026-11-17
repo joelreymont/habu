@@ -22,6 +22,7 @@
 \ OPEN reads the container extents of the signed executable; an unsigned one is
 \ refused. Offsets come from load commands and section records, never from the
 \ inspecting host.
+require src/core/exit-status.f
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
 require src/os/import-names.f
@@ -62,7 +63,7 @@ public
       4 of s" fork" endof
       5 of s" mach_vm_remap" endof
       6 of s" mach_task_self_" endof
-      s" macho: no such import" 73 die
+      s" macho: no such import" EXIT-STATUS:IMAGE die
    endcase ;
 7 constant IMPORTS
 
@@ -71,7 +72,7 @@ public
    {: a:^ u:n :}
    IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
    SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
-   SB$ 73 die ;
+   SB$ EXIT-STATUS:IMAGE die ;
 
 \ Import row n's cell, as a byte offset from the GOT's start.
 : SLOT-OFF ( n -- n ) 8 * ;
@@ -351,7 +352,7 @@ variable SIGN-CMD
 variable CURSOR
 
 : CHECK ( bool -- )
-   0= if s" macho: invalid Habu Mach-O container" 74 die then ;
+   0= if s" macho: invalid Habu Mach-O container" EXIT-STATUS:IOERR die then ;
 
 : AT ( n n -- ^u8 ) {: off:n size:n :}
    off 0 >= size 0 >= and off BYTES @ <= and CHECK

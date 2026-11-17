@@ -98,7 +98,7 @@ private
 : PROF-TARGET-OK ( -- )
    HB-TARGET-LINUX? if exit then
    HB-TARGET-MACOS? if exit then
-   s" hb: this target's signal frame is not modelled" 76 die ;
+   s" hb: this target's signal frame is not modelled" EXIT-STATUS:INTERNAL die ;
 PROF-TARGET-OK
 
 DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA

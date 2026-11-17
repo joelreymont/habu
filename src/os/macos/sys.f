@@ -2,6 +2,7 @@
 \ Engine emitters say
 \ `NR-WRITE SYS,`; porting to another OS/arch swaps this file.
 
+require src/core/exit-status.f
 require src/arch/arm64/mnem.f
 using A64ICODE
 package SYSCALL
@@ -88,7 +89,7 @@ public
 $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux emitters use it today
 
 : SYS, ( n -- )
-   dup 0 < if s" hb: sys: a Linux-only syscall number" 76 die then
+   dup 0 < if s" hb: sys: a Linux-only syscall number" EXIT-STATUS:INTERNAL die then
    16 swap MOVZ,  $80 SVC, ;
 
 : OS-OPEN-RD ( n -- )

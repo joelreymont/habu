@@ -3,6 +3,7 @@
 \ The mapping's record is laid by hand, head then control cells, both scratch.
 \ Each declaration makes its accessor as a typed child whose body holds its
 \ offset in the mapping, then its element's bytes.
+require src/core/exit-status.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
 
@@ -22,14 +23,14 @@ variable DEFAULT-N
 \ The offset the next bytes take; USED moves only once they are laid.
 : FIT ( n -- n ) {: bytes:n :}
    bytes 0 <= if
-      s" compiler workspace: a declaration takes no bytes" 76 die
+      s" compiler workspace: a declaration takes no bytes" EXIT-STATUS:INTERNAL die
    then
    USED @ CELL 1- + CELL / CELL * {: off:n :}
    off LIMIT > if
-      s" compiler workspace: the mapping is full at LIMIT bytes" 76 die
+      s" compiler workspace: the mapping is full at LIMIT bytes" EXIT-STATUS:FULL die
    then
    bytes LIMIT off - > if
-      s" compiler workspace: the mapping is full at LIMIT bytes" 76 die
+      s" compiler workspace: the mapping is full at LIMIT bytes" EXIT-STATUS:FULL die
    then
    off ;
 
@@ -73,10 +74,10 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
 : EXTENT ( n n n -- n ) {: operand:n kind:n w:n :}
    kind VARIABLE-KIND = if w exit then
    operand 0 <= if
-      s" compiler workspace: a declaration has no elements" 76 die
+      s" compiler workspace: a declaration has no elements" EXIT-STATUS:REJECTED die
    then
    operand LIMIT w / > if
-      s" compiler workspace: the mapping is full at LIMIT bytes" 76 die
+      s" compiler workspace: the mapping is full at LIMIT bytes" EXIT-STATUS:FULL die
    then
    operand w * ;
 
@@ -103,7 +104,7 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
    kind VARIABLE-KIND = operand 0<> and
    DEFAULT-N @ DEFAULT-CAP >= and if
       s" compiler workspace: the default table is full at DEFAULT-CAP rows"
-      76 die
+      EXIT-STATUS:FULL die
    then
    bytes FIT {: off:n :}
    na nu ta tu kind ACCESSOR

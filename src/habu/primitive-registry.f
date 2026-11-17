@@ -26,12 +26,12 @@ variable NAME-BYTES
    row ROW-CELLS * field + ROWS ;
 
 : RESERVE ( n -- ) {: size:n :}
-   size 0 <= if s" prims: a primitive's name is empty" 76 die then
+   size 0 <= if s" prims: a primitive's name is empty" EXIT-STATUS:INTERNAL die then
    USED @ MAX-N CELL / ROW-CELLS / >= if
-      s" prims: ROWS is full at MAX-N bytes" 76 die
+      s" prims: ROWS is full at MAX-N bytes" EXIT-STATUS:INTERNAL die
    then
    size MAX-N CELL 1- - NAME-BYTES @ - > if
-      s" prims: NAMES is full at MAX-N bytes" 76 die
+      s" prims: NAMES is full at MAX-N bytes" EXIT-STATUS:INTERNAL die
    then
    USED @ 1+ ROW-CELLS * ROWS-RESERVE
    NAME-BYTES @ size + CELL 1- + CELL / NAMES-RESERVE ;

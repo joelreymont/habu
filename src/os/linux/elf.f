@@ -12,6 +12,7 @@
 \ address less that load's. Offsets come from these headers, never from the
 \ inspecting host.
 
+require src/core/exit-status.f
 require src/arch/arm64/icode.f
 require src/os/image-bytes.f
 require src/os/import-names.f
@@ -74,7 +75,7 @@ public
       1 of s" dlsym" endof
       2 of s" free" endof
       3 of s" realpath" endof
-      s" elf: no such import" 73 die
+      s" elf: no such import" EXIT-STATUS:IMAGE die
    endcase ;
 4 constant IMPORTS
 
@@ -83,7 +84,7 @@ public
    {: a:^ u:n :}
    IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
    SB-RESET  s" elf: no such import " SB-APPEND  a u SB-APPEND
-   SB$ 73 die ;
+   SB$ EXIT-STATUS:IMAGE die ;
 
 \ Import row n's cell, as a byte offset from the read-write tail's start.
 : SLOT-OFF ( n -- n ) 8 * ELF-GOT-OFF + ;
@@ -259,7 +260,7 @@ private
    ELF-TABLES-END CODE-OFF > if
       SB-RESET  s" elf: " SB-APPEND  IMPORT-NAMES:COUNT FMT:SB-U
       s"  imports outgrow the header page's " SB-APPEND  CODE-OFF FMT:SB-U
-      s"  bytes" SB-APPEND  SB$ 73 die
+      s"  bytes" SB-APPEND  SB$ EXIT-STATUS:IMAGE die
    then
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
@@ -298,7 +299,7 @@ variable RELA-ENT
 variable RELA-BYTES
 
 : CHECK ( bool ^u8 n -- ) {: ok:bool why:^ whyu:n :}
-   ok 0= if why whyu 74 die then ;
+   ok 0= if why whyu EXIT-STATUS:IOERR die then ;
 
 : AT ( n n -- ^u8 ) {: off:n size:n :}
    off 0 >= size 0 >= and off BYTES @ <= and

@@ -3,6 +3,7 @@
 \ restores the existing convention by comparing x0 with -4095 after svc:
 \ carry set means error, carry clear means success.
 
+require src/core/exit-status.f
 require src/arch/arm64/icode.f
 require src/os/linux-flags.f
 using A64ICODE
@@ -109,7 +110,7 @@ $100 constant AT-SYMLINK-NOFOLLOW
 : OS-TIMER-NOW ( n -- )
    {: reg :}
    reg 0 = reg 1 = or reg 8 = or reg 16 = or
-   if s" hb: sys: OS-TIMER-NOW into a register it restores" 76 die then
+   if s" hb: sys: OS-TIMER-NOW into a register it restores" EXIT-STATUS:INTERNAL die then
    SP SP 48 SUBI,
    0 SP 16 STR,  1 SP 24 STR,  8 SP 32 STR,  16 SP 40 STR,
    0 CLOCK-MONOTONIC MOVZ,  1 SP 0 ADDI,  NR-CLOCK-GETTIME SYS,

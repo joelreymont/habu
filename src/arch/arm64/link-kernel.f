@@ -3,6 +3,7 @@
 \ to the object's, and the cut that keeps only the kernel code a program
 \ reaches. The two kernels bake different inputs, so the map goes
 \ by name and wordlist.
+require src/core/exit-status.f
 require src/lib/le.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -86,7 +87,7 @@ variable PATH-U
 
 : BAD ( -- )
    SAY-OBJECT
-   s" link: the kernel object is cut short or malformed" 74 die ;
+   s" link: the kernel object is cut short or malformed" EXIT-STATUS:IOERR die ;
 
 : KOBJ@ ( n -- n ) 0 KOBJ swap + LE:U64@ ;
 
@@ -146,7 +147,7 @@ variable PATH-U
    2 TABLE PRESETS-N ! PRESETS-AT !
    AT @ KOBJ-U @ = if
       SAY-OBJECT
-      s" link: the kernel object has no checker rows: its tree is older than this hb" 74 die
+      s" link: the kernel object has no checker rows: its tree is older than this hb" EXIT-STATUS:IOERR die
    then
    IMPORTS MACHO-U ! MACHO-AT !
    IMPORTS ELF-U ! ELF-AT !
@@ -160,7 +161,7 @@ variable PATH-U
    SHA-CTX  0 KOBJ 40 +  KOBJ-U @ 40 -  SUM SHA256-IN
    SUM 32  0 KOBJ 8 + 32  STR= 0= if
       SAY-OBJECT
-      s" link: the kernel object fails its checksum" 74 die
+      s" link: the kernel object fails its checksum" EXIT-STATUS:IOERR die
    then ;
 
 : LABEL-AT ( n -- n ) 8 * LABELS-AT @ + KOBJ@ ;
@@ -219,7 +220,7 @@ public
    drop
    SAY-OBJECT
    s" link: the kernel object has no symbol " SAY a u SAY SAY-CR
-   s" link: the kernel object lacks a symbol the link reads" 74 die ;
+   s" link: the kernel object lacks a symbol the link reads" EXIT-STATUS:IOERR die ;
 
 : SYM-LABEL ( ^u8 n -- label ) SYM >LABEL ;
 
@@ -248,7 +249,7 @@ public
 \ from 2 to 8.
 : SCOPE-SITE ( n -- label )
    2 - {: j:n :}
-   j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" 74 die then
+   j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" EXIT-STATUS:IOERR die then
    j 8 * SCOPES-AT @ + KOBJ@ >LABEL ;
 
 \ The Mach-O and the ELF import sections' bytes.
@@ -304,7 +305,7 @@ public
    path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if
       s" link: no kernel object at " SAY path pathu SAY SAY-CR
-      s" link: the kernel object is missing" 74 die
+      s" link: the kernel object is missing" EXIT-STATUS:IOERR die
    then
    size 1 max KOBJ-RESERVE
    file 0 KOBJ size FS:READ-SIZED
@@ -315,7 +316,7 @@ public
       SAY-OBJECT
       s" link: its DATA-START is " SAY theirs SAY-INT
       s" , hb's is " SAY DATA-START SAY-INT SAY-CR
-      s" link: a target may not raise DATA-START above the running hb's" 74 die
+      s" link: a target may not raise DATA-START above the running hb's" EXIT-STATUS:IOERR die
    then
    s" TEXT-VA" SYM KTEXT-VA !  s" DATA-VA" SYM KDATA-VA ! ;
 
@@ -370,7 +371,7 @@ private
 \ The running hb's primitive table; its row count is the cell before it.
 : HOST-TABLE ( -- n )
    data-base PRIM-TABLE-CELL + @ {: off:n :}
-   off 0= if s" link: this hb has no primitive table" 74 die then
+   off 0= if s" link: this hb has no primitive table" EXIT-STATUS:INTERNAL die then
    rbase off + ;
 
 : HOST-ROW ( n n -- ^u8 )
@@ -577,7 +578,7 @@ public
 : OFFSET ( label -- n )
    {: l:label :}
    l A64ICODE:LBL-BOUND? 0= if
-      s" link: a label the link reads is unbound" 74 die
+      s" link: a label the link reads is unbound" EXIT-STATUS:INTERNAL die
    then
    l LABEL-POS 4 * ;
 
@@ -591,7 +592,7 @@ public
 \ kernel, with their labels, references, data spans and pending fixups as the
 \ writer left them; the product's own code follows. No C2 entry is bound.
 : ADOPT ( -- )
-   READ? 0= if s" link: no kernel object was read for this link" 74 die then
+   READ? 0= if s" link: no kernel object was read for this link" EXIT-STATUS:INTERNAL die then
    A64ICODE:ASM-INIT
    CODE-U @ 4 / {: words:n :}
    words A64ICODE:ASM-CP?

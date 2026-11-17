@@ -1,4 +1,5 @@
 \ Build-only DATA extent checks; runtime images need only layout.f.
+require src/core/exit-status.f
 require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/address-cells.f
@@ -53,15 +54,15 @@ variable NAMES-U
 
 : NAME-C+ ( n -- ) {: b :}
    NAMES-U @ NAMES-CAP < 0= if
-      s" layout: DATA-CLAIMS names exceed NAMES-CAP" 76 die
+      s" layout: DATA-CLAIMS names exceed NAMES-CAP" EXIT-STATUS:INTERNAL die
    then
    b NAMES NAMES-U @ + c!
    NAMES-U @ 1+ NAMES-U ! ;
 
 : CLAIM ( n n -- ) {: off len :}
    parse-name {: a u :}
-   u 0 = if s" layout: DATA-CLAIMS row has no name" 76 die then
-   u $FF > if s" layout: DATA-CLAIMS name exceeds its count byte" 76 die then
+   u 0 = if s" layout: DATA-CLAIMS row has no name" EXIT-STATUS:INTERNAL die then
+   u $FF > if s" layout: DATA-CLAIMS name exceeds its count byte" EXIT-STATUS:INTERNAL die then
    u NAME-C+
    0 begin dup u < while dup a + c@ NAME-C+ 1+ repeat drop
    off , len , ;
@@ -260,7 +261,7 @@ create TAB
    a NAME-AT MSG+
    s"  and " MSG+
    b NAME-AT MSG+
-   MSG$ 76 die ;
+   MSG$ EXIT-STATUS:INTERNAL die ;
 
 : CLAIMS-ASSERT ( -- )
    COUNT-ROWS {: n :}
@@ -278,7 +279,7 @@ COUNT-ROWS 1- constant PROF-ROW
 \ added after it would be the one BAND-ASSERT moves instead.
 : PROF-ROW-ASSERT ( -- )
    PROF-ROW ROW-OFF 0 DATA-SIZE PROF-ABI:PROF-BAND-AT <> if
-      s" layout: DATA-CLAIMS last row is not PROF-BAND" 76 die
+      s" layout: DATA-CLAIMS last row is not PROF-BAND" EXIT-STATUS:INTERNAL die
    then ;
 PROF-ROW-ASSERT
 

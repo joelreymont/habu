@@ -3,6 +3,7 @@
 \ address chains take the value a data resolver gives. Words visible only
 \ inside LINKER.
 
+require src/core/exit-status.f
 require src/lib/le.f
 require src/core/bytes.f
 require src/arch/arm64/asm.f
@@ -18,7 +19,7 @@ package ARM64
 : DATA-ROW ( ^u8 ^u8 [ n -- n ] -- )
    {: p:^ end:^ data :}
    p end ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
-   size 0= if s" a64link: a data address row holds no address chain" 74 die then
+   size 0= if s" a64link: a data address row holds no address chain" EXIT-STATUS:INTERNAL die then
    p  p size ADDRESS-CARRIER:CHAIN-VALUE data execute  size
    ADDRESS-CARRIER:SET-CHAIN-VALUE ;
 
@@ -62,10 +63,10 @@ public
          p end data DATA-ROW
       else
          kind NEMIT:ADDR-CODE <> if
-            s" a64link: an address row of no known kind" 74 die
+            s" a64link: an address row of no known kind" EXIT-STATUS:INTERNAL die
          then
          p end ADDRESS-CARRIER:CHAIN-SIZE ADDRESS-CARRIER:ADDR-CHAIN-BYTES <> if
-            s" a64link: a code address row holds no 16-byte chain" 74 die
+            s" a64link: a code address row holds no 16-byte chain" EXIT-STATUS:INTERNAL die
          then
          p ADDRESS-CARRIER:ADDR-CHAIN-BYTES ADDRESS-CARRIER:CHAIN-VALUE
          resolve execute  at s +  p CODE-ADDRESS!

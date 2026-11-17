@@ -3,9 +3,9 @@
 \ the image writer. A short write is retried; a write returning zero or an
 \ error stops the process, unretried and unlogged.
 
-package FDIO
+require src/core/exit-status.f
 
-74 constant FAIL-RC        \ the internal-driver I/O exit status (driver-io.f's own)
+package FDIO
 
 variable WR                \ bytes the last write accepted
 variable OFF               \ bytes handed over so far
@@ -24,7 +24,7 @@ variable U
 
 : STEP ( -- )
    FD @ DST LEFT write WR !
-   WR @ 0 <= if s" fdio: write failed" FAIL-RC die then
+   WR @ 0 <= if s" fdio: write failed" EXIT-STATUS:IOERR die then
    OFF @ WR @ + OFF ! ;
 
 public

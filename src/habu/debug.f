@@ -5,6 +5,7 @@
 \ With debug-watch.f and stepper.f it makes package DEBUG; the rest is private,
 \ so a program keeps its own FIND, FREE or STEP.
 
+require src/core/exit-status.f
 require src/arch/arm64/asm.f
 require src/habu/code-bytes.f
 require src/habu/debug-watch.f
@@ -113,7 +114,7 @@ CAST: XT>N ( [ R -- S ] -- n )
    then
    at FIND 0 < 0= IF exit THEN                \ already set
    ctrl 1 and 0<>  TRAMP@ 0=  and if E-BP-TARGET throw then
-   FREE dup 0 < IF drop s" bp: table full (8)" type 76 throw THEN   \ recoverable in the REPL
+   FREE dup 0 < IF drop s" bp: table full (8)" type EXIT-STATUS:FULL throw THEN   \ recoverable in the REPL
    {: idx :}
    at 4 CODE-BYTES:AT drop {: xt:^ :}
    xt ctrl idx BP-SET-SLOT

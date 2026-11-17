@@ -3,6 +3,7 @@
 \ submission changes the descriptor set or the nearest deadline. The caller
 \ keeps a pending operation's descriptor open and its flags unchanged. Regular
 \ files use pread on the poll thread, so slow disk I/O delays other completions.
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f
@@ -132,7 +133,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
       MAC-READ-FD @ MAC-DRAIN 64 MAC-READ MAC-RESULT
       dup MAC-AGAIN negate = if drop exit then
       dup ERR-INTR negate <> if
-         0 <= if s" aio: wake pipe read failed" 74 die then
+         0 <= if s" aio: wake pipe read failed" EXIT-STATUS:IOERR die then
       else drop then
    again ;
 
@@ -163,7 +164,7 @@ FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
    row MR.OWNS-FLAGS @ 0= if exit then
    0 row MR.OWNS-FLAGS !
    row MR.FD @ 4 row MR.OLD-FLAGS @ MAC-FCNTL 0 < if
-      s" aio: descriptor flags could not be restored" 74 die
+      s" aio: descriptor flags could not be restored" EXIT-STATUS:SYSTEM die
    then ;
 
 : MAC-FINISH ( n n -- ) {: idx:n result:n :}

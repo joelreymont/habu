@@ -71,7 +71,7 @@ create CWK-ERR CWK-CAP allot
    src srcu CWK-OUT CWK-CAP >LEN CWK-ERR CWK-CAP >LEN PROCESS:WAIT-FOREVER
    SUBJECT:RUN {: outl:len errl:len oc :}
    CWK-ERR errl LEN>N {: err:^ erru:n :}
-   src srcu CWK-OUT outl LEN>N err erru oc 76 T-ENDING-EXITED=
+   src srcu CWK-OUT outl LEN>N err erru oc 77 T-ENDING-EXITED=
    err erru
    s" compiler workspace: the default table is full at DEFAULT-CAP rows"
    CONTAINS? TTRUE ;

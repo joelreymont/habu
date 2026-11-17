@@ -1683,7 +1683,7 @@ variable OP-REC                      \ the last of them
    u k + STR-BUF-RESERVE
    a 0 STR-BUF u BYTE-COPY
    m u STR-BUF k BYTE-COPY
-   0 STR-BUF u k + 76 die ;
+   0 STR-BUF u k + EXIT-STATUS:INTERNAL die ;
 
 \ The index of the seeded record named a u.
 : SEEDED ( ^u8 n -- n )
@@ -1813,7 +1813,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
    k du + STR-BUF-RESERVE
    m 0 STR-BUF k BYTE-COPY
    d k STR-BUF du BYTE-COPY
-   0 STR-BUF k du + 76 die ;
+   0 STR-BUF k du + EXIT-STATUS:INTERNAL die ;
 
 \ Operation code at a, whose primitive's entry is to: false when it is not
 \ inlined after all (DIV2), so the name is a call.
