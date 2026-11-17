@@ -416,10 +416,9 @@ private
    conn idx status REFUSE ;
 
 
-: SERVE-ONE ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
-   conn idx SERVE-ONE-RUN {: result:served :}
-   idx SLOT-FINISH
-   result ;
+\ n is the worker's own slot, finished on every way out, a throw included.
+: SERVE-ONE ( TCP4:connection n -- served )
+   [: SERVE-ONE-RUN ;] [: SELF-SLOT SLOT-FINISH ;] finally ;
 
 
 : PARK-UNLOCK ( -- )
@@ -542,8 +541,8 @@ variable EXIT-HOOK-N
    loop ;
 
 
-\ The connection a worker was still serving when it ended: a stop killed it
-\ inside a wait, or a throw left SERVE-CONNECTION before its close.
+\ Closes the connection the slot still serves: a stop killed the worker inside
+\ a wait, or a throw left SERVE-CONNECTION, before its close.
 : DROP-SERVING ( -- )
    SELF-SLOT {: idx:n :}
    idx SERVING-LIVE @ 0= if exit then
@@ -625,10 +624,16 @@ variable EXIT-HOOK-N
    [: NEXT-JOB ;] [: JOB-UNLOCK ;] finally ;
 
 
-\ The connection leaves the queue, so its place goes back to ROOM.
+\ The connection leaves the queue, so its place goes back to ROOM. A throw
+\ ends only the connection, so the worker goes on to its next job.
 : SERVE-TAKEN ( -- )
    ROOM TASK:SIGNAL-SEM
-   SELF-SLOT TAKEN-ARG @ TCP4:>CONNECTION SERVE-CONNECTION ;
+   [: SELF-SLOT TAKEN-ARG @ TCP4:>CONNECTION SERVE-CONNECTION ;] catch {: code:n :}
+   code 0= if exit then
+   LOG:ERROR s" http" LOG:LINE
+   s" connection failed, throw " LOG:TEXT+  code LOG:INT+
+   LOG:;LINE
+   DROP-SERVING ;
 
 
 : REPORT-CALL ( n -- ) {: code:n :}
@@ -674,9 +679,10 @@ variable EXIT-HOOK-N
 \ Its resources are opened after that, because a hook names them by the slot,
 \ and a hook that throws reports startup failure before ending this worker.
 \
-\ However this worker leaves - the stop job, or a hook or a word that threw - it
-\ counts itself out before the throw goes on ending it, so a stop waits for the
-\ workers that are still serving and for no others.
+\ However this worker leaves - the stop job, or a throw from a start hook or
+\ from outside a connection's or a call's own work - it counts itself out before
+\ the throw goes on ending it, so a stop waits for the workers that are still
+\ serving and for no others.
 : WORKER-BODY ( -- )
    1 CLAIMED atomic-add SELF-SLOT!
    [: SERVE-JOBS ;] catch {: code:n :}
