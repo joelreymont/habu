@@ -433,8 +433,8 @@
 \ Storage declaration rejections: a storage definer rejects a declaration whose
 \ type it cannot size, that has no name or one it cannot publish, or whose
 \ count is a literal outside its extent or a token the gate cannot certify.
-\ The gate pre-pass and the run-time definers both reject through
-\ CHECKER-STORAGE-REJECT, which prints E-BAD-STORAGE at the rejected token.
+\ The gate pre-pass and the run-time definers reject through the same words,
+\ which print the record at the rejected token.
 \ It is a hard stop on the ordinary load path, and is printed and counted under
 \ a MULTI-ERROR load; either way nothing is registered or defined.
 \
@@ -11344,7 +11344,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
    symn SYM-N !
    symu SYM-STR-U ! ;
 
-\ The token SGBAD names in signature SA SU, at its copy in the checked text
+\ The token SGBAD names in text SA SU, at its copy in the checked text
 \ when the scan holds SA SU's bytes there at SGA SGU, else where the parse read it.
 : SGBAD-AT ( ^u8 n -- ^u8 )
    {: sa:^ su:n :}
@@ -11354,8 +11354,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
    SGA @ SGU @ sa su CORE-STR= 0= IF SGBAD-A @ EXIT THEN
    SGA @ off + ;
 
-\ The token a rejected stored signature SA SU names: the one SGBAD names, or
-\ the declaring name AT ATU when SGBAD names none or the whole row.
+\ The token SGBAD names in rejected text SA SU, a stored signature or a
+\ storage type, or AT ATU when SGBAD names none or the whole text.
 : SGBAD-TOKEN ( ^u8 n ^u8 n -- ^u8 n )
    {: sa:^ su:n at:^ atu:n :}
    SGBAD @ 0=  SGBAD-U @ 0=  or  SGBAD-A @ sa =  SGBAD-U @ su =  and  or
@@ -11530,9 +11530,10 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 : SGBAD-AMBIG-HELP ( ^u8 n -- ) {: a:^ u:n :}
    s" type family" a u SGBAD-USED @ UPKG-HELP ;
 
-\ The return and unsupplied kinds name the whole row, so their label
-\ sits on the declaring name.
-: SGBAD-LABEL$ ( -- ^u8 n )
+\ The label for SGBAD's kind of fault, A U for a fault of no other kind. The
+\ return and unsupplied kinds name the whole row, so their label sits on the
+\ caller's fallback: a signature's declaring name, or the storage type.
+: SGBAD-LABEL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    SGBAD-RETURN? IF s" its signature moves the return stack" EXIT THEN
    SGBAD-AMBIG? IF s" ambiguous here" EXIT THEN
    SGBAD-UNKNOWN? IF s" no type has this name" EXIT THEN
@@ -11541,7 +11542,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    SGBAD-BINDERS? IF s" too many binders nest here" EXIT THEN
    SGBAD-DEPTH? IF s" nested too deep to record" EXIT THEN
    SGBAD-UNSUPPLIED? IF s" its outputs name a variable no input supplies" EXIT THEN
-   s" the signature does not parse here" ;
+   a u ;
 
 \ A row is deep by its cells or by the types it nests.
 : DEPTH-SUGGEST$ ( -- ^u8 n )
@@ -11689,7 +11690,8 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    REJECTION:OPEN
    s" the signature of `" REJECTION:EMIT-STR  at atu REJECTION:EMIT-STR
    s" ` cannot be recorded" REJECTION:EMIT-STR
-   sa su at atu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
+   sa su at atu SGBAD-TOKEN REJECTION:AT
+   s" the signature does not parse here" SGBAD-LABEL$ REJECTION:EMIT-STR
    sa su SIG-TRIM {: ta:^ tu:n :}
    tu 0 > IF s" signature" REJECTION:NOTE  ta tu REJECTION:EMIT-CUT THEN
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
@@ -14350,7 +14352,6 @@ private
 
 : STGR-REASON$ ( n -- ^u8 n ) {: why:n :}
    why STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
-   why STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
    why STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
    why STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
    why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
@@ -14483,6 +14484,15 @@ private
    s" , which is public in more than one used package" REJECTION:EMIT-STR
    ta tu REJECTION:AT  s" ambiguous here" REJECTION:EMIT-STR
    ta tu SGBAD-AMBIG-HELP
+   STGR-END ;
+
+\ Type ta tu of na nu does not parse: SGBAD holds the fault's kind and the
+\ token the parse stopped on, none where the type ended early.
+: STGR-MALFORMED ( ^u8 n ^u8 n -- ) {: na:^ nu:n ta:^ tu:n :}
+   s" E-BAD-STORAGE" REJECTION:OPEN  na nu STG-MALFORMED-TYPE STGR-MESSAGE
+   ta tu ta tu SGBAD-TOKEN REJECTION:AT
+   s" the type does not parse here" SGBAD-LABEL$ REJECTION:EMIT-STR
+   REJECTION:HELP  na nu ta tu STG-MALFORMED-TYPE STGR-HELP
    STGR-END ;
 
 \ A count the definer took at run time has no token of its own: the record
@@ -15058,14 +15068,13 @@ package CHECK
    SGBAD-UNKNOWN? IF
       na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REJECT EXIT
    THEN
-   SGBAD @ IF STG-MALFORMED-TYPE ELSE
-      LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
-      LBI-XT @ IF STG-XT-TYPE ELSE
-      LBI-WIDTH @ IF STG-WIDTH-TYPE ELSE
-      LBI-EFFECT @ IF STG-EFFECT-TYPE ELSE
-      LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE
-      THEN THEN THEN THEN THEN
-   THEN {: why:n :}
+   SGBAD @ IF na nu ta tu STGR-MALFORMED EXIT THEN
+   LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
+   LBI-XT @ IF STG-XT-TYPE ELSE
+   LBI-WIDTH @ IF STG-WIDTH-TYPE ELSE
+   LBI-EFFECT @ IF STG-EFFECT-TYPE ELSE
+   LBI-LINEAR @ IF STG-LINEAR-TYPE ELSE STG-UNSTORABLE-TYPE
+   THEN THEN THEN THEN THEN {: why:n :}
    na nu ta tu
    why STG-XT-TYPE =  LBI-T @ LAYOUT-PARAM? 0= and
    why STG-UNSTORABLE-TYPE = or  lay and

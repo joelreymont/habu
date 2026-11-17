@@ -1050,6 +1050,26 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" arena-atom.f" FIXTURE!
    s" E-BAD-STORAGE" s" [ -- xt ]" 2 9 18 27 REFUSED-MODES ;
 
+\ A storage type that does not parse is rejected at the token the parse stopped
+\ on, or on the type where the parse ran off its end.
+: TEST-STORAGE-MALFORMED ( -- )
+   s" a storage type that does not parse is rejected at the token the parse stopped on" T-LABEL
+   SB-RESET
+   s" package P" SB-APPEND LF+
+   s" TYPED-VARIABLE XB [ n n ]" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" typed-var-malformed.f" FIXTURE!
+   s" E-BAD-STORAGE" s" ]" 2 25 34 35 REFUSED-MODES
+   0 s" label" s" the type does not parse here" FIELD=
+   s" a bare `^` storage type is rejected at the `^`" T-LABEL
+   SB-RESET
+   s" package P" SB-APPEND LF+
+   s" TYPED-VARIABLE XB ^" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" typed-var-bare-ptr.f" FIXTURE!
+   s" E-BAD-STORAGE" s" ^" 2 19 28 29 REFUSED-MODES
+   0 s" label" s" `^` with no element type" FIELD= ;
+
 \ Under --verify-only the declaration pre-pass alone rejects the fixture; the
 \ record's label says why.
 : PREPASS-REJECTED ( ^u8 n ^u8 n ^u8 n n n n n -- )
@@ -3916,6 +3936,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-PREPASS-COMMENT
    TEST-PREPASS-NAME-COMMENT
    TEST-ARENA
+   TEST-STORAGE-MALFORMED
    TEST-BAD-SIGNATURE
    TEST-LOCAL-GROUP
    TEST-STORED-SIGNATURE

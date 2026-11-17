@@ -2535,7 +2535,8 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 
 \ A bad effect is placed and labelled as a bad stored signature is.
 : GENR-SIG-PARTS ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
-   sa su na nu SGBAD-TOKEN REJECTION:AT  SGBAD-LABEL$ REJECTION:EMIT-STR
+   sa su na nu SGBAD-TOKEN REJECTION:AT
+   s" the signature does not parse here" SGBAD-LABEL$ REJECTION:EMIT-STR
    s" signature" REJECTION:NOTE  sa su SIG-TRIM REJECTION:EMIT-CUT
    SGBAD-SIZE? IF s" reason" REJECTION:NOTE  BADSIG-REASON THEN
    sa su na nu SGBAD-HELP ;

@@ -2281,7 +2281,7 @@ package CAST-ERROR
 \ E-CAST-ARITY case gives its own label.
 : LABEL$ ( n -- ^u8 n ) {: code:n :}
    code E-CAST-CLASS = IF s" a retype no cast may make" EXIT THEN
-   code E-CAST-FAM = IF SGBAD-LABEL$ EXIT THEN
+   code E-CAST-FAM = IF s" the signature does not parse here" SGBAD-LABEL$ EXIT THEN
    code E-CAST-LINEAR = IF s" a linear value would change hands" EXIT THEN
    code E-CAST-MINT = IF s" mints outside a private section" EXIT THEN
    code E-CAST-SCOPE = IF s" not a view cast this place may declare" EXIT THEN
