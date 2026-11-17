@@ -400,35 +400,16 @@ private
    XREF-RETIRED-WL wl patch32
    -1 wl 4 + patch32 ;
 
-private
-
-CAST: GRID-RETIRE-XT ( n -- [ ^n -- ] )
-
-: GRID-RETIRE-OWNER ( ^n ^u8 -- )
-   {: rec:^ owner:^ :}
-   owner NULL-PTR = IF EXIT THEN
-   owner CHECKER-OWNER-ABI:GRID-RETIRE-OFF + CELL-VIEW @ {: action:n :}
-   action 0 <> IF rec action GRID-RETIRE-XT execute THEN ;
-
-: GRID-RETIRE ( ^n -- ) {: rec:^ :}
-   NCOMP-DISPATCH:TARGET-DECL-A @
-      {: target:^ :}
-   NCOMP-DISPATCH:DECL-A @
-      {: source:^ :}
-   rec target GRID-RETIRE-OWNER
-   source target <> IF rec source GRID-RETIRE-OWNER THEN ;
-
 EXPORT CHECK:HOLD-RETIRED
 EXPORT CHECKER-RESOLVE:REC>INDEX
 
 public
 
-\ A build holds the retirement and the record count then (CHECK:HOLD-RETIRED)
-\ before the grid action drops the record's checker link, so a link replays it
-\ before the first record the compile made after it (the linker's LINK-OBJECT).
+\ A build holds the retirement and the record count then (CHECK:HOLD-RETIRED),
+\ so a link replays it before the first record the compile made after it (the
+\ linker's LINK-OBJECT).
 : RETIRE ( ^n -- ) {: rec:^ :}
    rec REC>INDEX  rec XREF-WORDLIST  HOLD-RETIRED
-   rec GRID-RETIRE
    rec RETIRE-RAW ;
 
 \ DNAME-SEALED is bit 13 of the flags cell's upper half, rewritten whole with

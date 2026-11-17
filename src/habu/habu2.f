@@ -531,25 +531,6 @@ public
 \ (ndict-1, as `create` counted it) DNAME-WIDE.
 package DOESPATCH
 
-: GRID-BEFORE ( -- )
-   LBL LBL {: absent:label done:label :}
-   CHECKER-OWNER-ABI:GRID-BEFORE-OFF absent DECL-OWNER:TARGET
-   10 SP 40 LDR,  10 G-PUSH
-   C-CALL-X11-SAVED
-   9 G-POP
-   done B,
-   absent LBL,  9 0 MOVZ,
-   done LBL, ;
-
-: GRID-AFTER ( -- )
-   LBL {: done:label :}
-   9 SP 32 LDR,  9 done CBZ,
-   CHECKER-OWNER-ABI:GRID-AFTER-OFF done DECL-OWNER:TARGET
-   10 SP 40 LDR,  10 G-PUSH
-   9 SP 32 LDR,  9 G-PUSH
-   C-CALL-X11-SAVED
-   done LBL, ;
-
 : NOTIFY-PUBLICATION ( -- )
    LBL {: done:label :}
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
@@ -653,7 +634,6 @@ public
    9 0 MOVZ,
    before LBL,
    9 SP 24 STR,
-   GRID-BEFORE  9 SP 32 STR,
    9 SP 24 LDR,  11 SP 40 LDR,
    10 11 0 ADDI,  EM-DEF-OCC:LBEFORE LABEL@ BL,
    10 SP 8 LDR,  9 SP 24 LDR,
@@ -692,8 +672,7 @@ public
       EM-REC-WIDE-PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
-   GRID-AFTER
-   \ The source observer sees the final effect and retained storage grid.
+   \ The source observer sees the final effect.
    NOTIFY-PUBLICATION
    30 SP 0 LDR,  SP SP 48 ADDI,  RET, ;
 
@@ -1726,7 +1705,7 @@ public
    \ rebuild it before lookup, so stale ordinals cannot survive this cut.
    MARK-SAVE
    SP SP 16 SUBI,  30 SP 0 STR,
-   CHECKER-OWNER-ABI:GRID-REVOKE-OFF no-owner DECL-OWNER:TARGET
+   CHECKER-OWNER-ABI:DP-CUT-OFF no-owner DECL-OWNER:TARGET
    9 12 DATA SUB,  9 G-PUSH  11 BLR,
    no-owner LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,

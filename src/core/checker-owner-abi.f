@@ -130,10 +130,7 @@ $1F00 constant BINDING-ID-MASK
 \ exports, through any re-exports; otherwise the symbol itself.
 $1E0 constant VERIFY-SYM-SOURCE-OFF
 CHECKER-OWNER-EXT:RECORD-PUBLISHED-OFF constant RECORD-PUBLISHED-OFF      \ ( n -- )
-CHECKER-OWNER-EXT:GRID-BEFORE-OFF constant GRID-BEFORE-OFF               \ ( ^n -- n )
-CHECKER-OWNER-EXT:GRID-AFTER-OFF constant GRID-AFTER-OFF                 \ ( ^n n -- )
-CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -- )
-CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ^n -- )
+CHECKER-OWNER-EXT:DP-CUT-OFF constant DP-CUT-OFF                         \ ( n -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
 CHECKER-OWNER-EXT:BODY-CLOSE-OFF constant BODY-CLOSE-OFF \ ( -- )
