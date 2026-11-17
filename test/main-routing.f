@@ -22,6 +22,9 @@ create PATH-BUF PATH-CAP allot
 : STACK$ ( -- ^u8 n )
    s" stack.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
+: ODD$ ( -- ^u8 n )
+   S\" q\"\\\nd.f" PATH-BUF GT-PATH PATH-BUF swap ;
+
 \ A stdin program of several MiB, which the stream grows many times to hold.
 $480000 constant LONG-SIZE
 DYNAMIC-BUFFER PADDED u8
@@ -51,6 +54,10 @@ DYNAMIC-BUFFER PADDED u8
 : LOAD-ROUTE ( -- )
    s" Q" [: s" --load" GE-ARG+ READ$ GE-ARG+ ;] RUN
    S\" Q\n" s" load leaves stdin alone" PASS ;
+
+: ODD-LOAD ( -- )
+   s" " [: s" --load" GE-ARG+ ODD$ GE-ARG+ ;] RUN
+   S\" ODD\n" s" load takes a path holding a quote, a backslash and a line feed" PASS ;
 
 : NO-ARGS ( -- )
    S\" s\" PIPE\" type cr\n" [: ;] RUN
@@ -91,7 +98,8 @@ public
    FILE$ S\" s\" FILE\" type cr\n" FS:WRITE-ALL
    READ$ S\" create MAIN-ROUTE-READ-BYTE 1 allot\n0 MAIN-ROUTE-READ-BYTE 1 read drop\nMAIN-ROUTE-READ-BYTE 1 type cr\n" FS:WRITE-ALL
    STACK$ S\" 7\n" FS:WRITE-ALL
-   PLAIN LOAD-ROUTE NO-ARGS STACK-SCOPE LONG-STDIN
+   ODD$ S\" s\" ODD\" type cr\n" FS:WRITE-ALL
+   PLAIN LOAD-ROUTE ODD-LOAD NO-ARGS STACK-SCOPE LONG-STDIN
    GT-CLEANUP
    T-REPORT ;
 

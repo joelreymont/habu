@@ -109,10 +109,22 @@ $10000 constant READ-SIZE
    a USED @ TEXT u BYTE-COPY
    USED @ u + USED ! ;
 
-\ One `s" <path>" <word>` row. Through script-required the registry loads
+\ The byte at p spelled so an `s\"` literal decodes it back.
+: APPEND-ESCAPED ( ^u8 -- ) {: p:^ :}
+   p c@ {: c:n :}
+   c [char] " = c BACKSLASH = or if S\" \\" APPEND  p 1 APPEND exit then
+   c BLANK < c $7F >= or if
+      s" 0123456789ABCDEF" drop {: hex:^ :}
+      S\" \\x" APPEND  hex c 4 rshift + 1 APPEND  hex c $0F and + 1 APPEND exit
+   then
+   p 1 APPEND ;
+
+\ One `s\" <path>" <word>` row. Through script-required the registry loads
 \ each file in its own include frame and skips one the engine holds.
 : ROW ( ^u8 n ^u8 n -- ) {: path:^ u:n word:^ w:n :}
-   S\" s\" " APPEND  path u APPEND  S\" \" " APPEND  word w APPEND  NL 1 APPEND ;
+   S\" s\\\" " APPEND
+   u 0 ?do path i + APPEND-ESCAPED loop
+   S\" \" " APPEND  word w APPEND  NL 1 APPEND ;
 
 \ One read past USED; whether the file has ended.
 : STEP ( n -- bool ) {: fd:n :}
