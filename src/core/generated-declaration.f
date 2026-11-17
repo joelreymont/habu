@@ -126,9 +126,6 @@ NEWEST ROLLBACK-CELLS:MARK
    r NULL-PTR = IF NOTHING$ NOTHING$ EXIT THEN
    r ROW-REASON$  r ROW-FIX$ ;
 
-\ The status a stopped declaration ends the load with.
-EXIT-STATUS:REJECTED constant STOP-RC
-
 \ A rejection's label is composed here, grown to fit, and read when the record
 \ prints, so the next rejection may reuse the buffer.
 $80 constant LABEL-FIRST                \ bytes of the first mapping
@@ -219,7 +216,7 @@ public
    rc RENDER
    FORGET-SRC
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
-   STOP-RC REJECTION:STOP ;
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 7182 constant E-REASON-DUP  \ the code already has a reason
 

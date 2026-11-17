@@ -209,7 +209,7 @@ CAST: APP-ACTION ( n -- [ -- ] )
 \ Normal completion follows die's deliberate exit path, which runs the hook.
 : MAIN ( -- )
    ROUTED
-   NULL$ 0 die ;
+   NULL$ EXIT-STATUS:SUCCESS die ;
 
 public
 

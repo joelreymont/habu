@@ -14,7 +14,6 @@ require src/lib/test/stderr.f
 package STDERR-TEST
 
 64 constant FILE-CAP
-77 constant E-THROWN                \ a code 0..255
 
 create PATH-BUF PATH-CAP allot      \ the capture file's path
 variable PATH-U
@@ -69,7 +68,7 @@ variable CODE-B
    S\" a regression logs this line twice .....\n" ;
 
 
-: LOUD ( -- )  LINE$ ERR-OUT  LINE$ ERR-OUT  E-THROWN throw ;
+: LOUD ( -- )  LINE$ ERR-OUT  LINE$ ERR-OUT  77 throw ;
 
 
 : HALVES ( ^u8 n -- )
@@ -84,7 +83,7 @@ variable CODE-B
    s" a capture is read whole past a throw" T-LABEL
    ARENA:NEW {: a:^ :}
    [: LOUD ;] PATH$ a STDERR:CAPTURING HALVES
-   E-THROWN T=
+   77 T=
    PATH$ FS:FILE? TFALSE
    a ARENA:RELEASE ;
 

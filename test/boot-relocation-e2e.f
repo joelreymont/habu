@@ -106,7 +106,8 @@ variable RC
 
 : SANDBOX$ ( -- ^u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
-      none OF s" boot-relocation: required executable missing on PATH: sandbox-exec" EXIT-STATUS:UNAVAILABLE die ENDOF
+      none OF s" boot-relocation: required executable missing on PATH: sandbox-exec"
+         EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF
    ;MATCH
    SANDBOX swap ;

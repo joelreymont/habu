@@ -2176,8 +2176,9 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
 
 - **Named constants, no magic numbers.** Limits and codes are named
   constants in the module that owns them, stdlib throw codes in
-  `src/lib/error.f`, exit statuses in `EXIT-STATUS`; a literal is acceptable only for a true primitive of the
-  encoding (the `3`/`7` of the 3-bit tag), with a comment.
+  `src/lib/error.f`, exit statuses in `EXIT-STATUS`; a literal is acceptable
+  only for a true primitive of the encoding (the `3`/`7` of the 3-bit tag),
+  with a comment.
 - **`$hex` for bit patterns, addresses, offsets and encodings; decimal for
   counts and quantities.** A format's constants keep its spec's spelling.
   `$hex` parses case-insensitively with an optional leading `-`.

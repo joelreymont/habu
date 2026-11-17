@@ -1367,13 +1367,13 @@ variable LABEL-U
    GE-SRC-RESET
    lit litu GE-SRC+ s"  ndict!" GE-SRC-LINE
    SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND
-   74 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD
+   70 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD
    GE-SRC-RESET
    s" : GD-NDICT-BAD ( -- ) " GE-SRC+
    lit litu GE-SRC+ s"  ndict! ;" GE-SRC-LINE
    s" GD-NDICT-BAD" GE-SRC-LINE
    SB-RESET s" optimized ndict! refuses " SB-APPEND lit litu SB-APPEND
-   74 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD ;
+   70 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD ;
 
 : NDICT-LIVE-RESTORE ( -- )
    GE-HB-RESET

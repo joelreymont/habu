@@ -606,7 +606,8 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
-      s" pg-rows-test: no conninfo argument; test/db/pg-cluster.f runs this file" EXIT-STATUS:USAGE die
+      s" pg-rows-test: no conninfo argument; test/db/pg-cluster.f runs this file"
+      EXIT-STATUS:USAGE die
    then
    s" a read before the declaration" T-LABEL
    [: PG:READ-RESET ;] PG:E-READERS TTHROWSQ

@@ -779,25 +779,8 @@ $27F8 constant THROWS-CELL
 $27F0 constant ENDED-CELL
 \ STAMP-CELL: the number of the throw that carries the kept record, 0 for none.
 $2848 constant STAMP-CELL
-\ EXIT-HOOK-CELL: the process-exit vector, an xt or 0 for no hook. The engine
-\ calls it once with the exit code in x0, the cell cleared FIRST, immediately
-\ before the exit_group of a DELIBERATE program exit: `die`, the uncaught
-\ top-level throw and the exit(0) after the entry returns. The exits the engine
-\ takes itself, when it rejects the program or finds itself broken, do NOT call
-\ it: a broken engine must not run program code. Clearing before the call is
-\ what stops a hook that dies or throws from re-entering itself; the exit path
-\ it lands in finds the vector empty. The catch handler chain (HND-CELL) is
-\ emptied with it, so a throw from the hook is uncaught and ends the process
-\ with the hook's code: `die` runs inside the program's catches, and a hook's
-\ throw caught there would return from `die`. A stripped image's exit follows
-\ its root's return, when the chain is already empty. The hook's effect is
-\ ( -- ) and it runs on the data stack as it stands, because `die` may be
-\ running on a task thread whose stack is its own. A stripped program that
-\ reaches at-exit.f starts with the vector its load armed, as a file the program
-\ reaches keeps its header stores; one that does not starts with it empty. $2818
-\ follows SRCLOC's three cells in the $2800..$3000 header band, below $7FF8 so
-\ the engine names it with a 12-bit scaled LDR/STR immediate off a region base,
-\ and below DATA-START so no compiled source reaches it by allot.
+\ EXIT-HOOK-CELL: the process-exit vector, an xt ( -- ) or 0. A deliberate exit clears it and the
+\ handler chain (HND-CELL) before the call, so the hook's own die or throw ends the process.
 $2818 constant EXIT-HOOK-CELL
 \ EXIT-OWNER-CELL: the DATA base of the thread that owns the process exit, 0
 \ while none does; below DATA-START so no allot reaches it.

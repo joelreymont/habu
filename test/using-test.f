@@ -22,8 +22,6 @@ TYPED-VARIABLE UCE-A ^u8   variable UCE-U
 \ The captured rejection record contains the text.
 : UCE-SAID ( ^u8 n -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
-70 constant E-REJECT            \ E-UNDEFINED / checker rejection
-
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
 package UC public : AW ( -- n ) 33 ; ;package   \ same tail AW as UA -> ambiguity source
@@ -69,16 +67,16 @@ s" using UMM : UT-MM-V ( n -- n ) MM ; ;using" VS-CATCH 0 T=
 
 \ === negatives (rejected, fail closed) ===
 \ used package's PRIVATE word does not resolve bare
-s" using UP SECP drop ;using" UCE-CATCH E-REJECT T=
+s" using UP SECP drop ;using" UCE-CATCH 70 T=
 \ a private word is not reachable in a checked body under using either
-s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH E-REJECT T=
+s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH 70 T=
 \ a bare public is not visible without a using
-s" AW drop" UCE-CATCH E-REJECT T=
+s" AW drop" UCE-CATCH 70 T=
 \ ambiguous: AW resolves in two used packages (interpret)
-s" using UA using UC AW drop ;using ;using" UCE-CATCH E-REJECT T=
+s" using UA using UC AW drop ;using ;using" UCE-CATCH 70 T=
 \ ambiguous in a compiled body: the checker refuses it (checker.f LIVE-BIND)
 REJECTION:CAPTURE
-s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
+s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH 70 T=
 S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
 S\" ^^^^^^^^^ evaluates the text below\n" UCE-SAID
 S\" = evaluated: using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using\n" UCE-SAID
@@ -87,52 +85,52 @@ S\" = packages: UA, UC\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ a word public in two used parts
 REJECTION:CAPTURE
-s" package UPT private package UPU public : AW ( -- n ) 1 ; ;package package UPV public : AW ( -- n ) 2 ; ;package using UPU using UPV : UT-PAMB ( -- n ) AW ; ;using ;using ;package" UCE-CATCH E-REJECT T=
+s" package UPT private package UPU public : AW ( -- n ) 1 ; ;package package UPV public : AW ( -- n ) 2 ; ;package using UPU using UPV : UT-PAMB ( -- n ) AW ; ;using ;using ;package" UCE-CATCH 70 T=
 S\" = packages: UPT:UPU, UPT:UPV\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UPU:AW` or `UPV:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ a word public in a used top-level package and in the used part that hides it
 REJECTION:CAPTURE
-s" package UHB public : HW ( -- n ) 9 ; ;package using UHB package UHA private package UHB public : HW ( -- n ) 7 ; ;package using UHB : UHA-C ( -- n ) HW ; ;using ;package ;using" UCE-CATCH E-REJECT T=
+s" package UHB public : HW ( -- n ) 9 ; ;package using UHB package UHA private package UHB public : HW ( -- n ) 7 ; ;package using UHB : UHA-C ( -- n ) HW ; ;using ;package ;using" UCE-CATCH 70 T=
 S\" = packages: UHB, UHA:UHB\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UHB:HW`, or rename the part `UHA:UHB`, which hides package `UHB` here\n" UCE-SAID  REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
-s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-REJECT T=
+s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH 70 T=
 S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
 S\"  ^^ ambiguous here\n" UCE-SAID
 S\" = packages: UA, UC\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ a top-level `target` where a word of that name is in scope, and where none is
 REJECTION:CAPTURE
-s" package UT-CLASH : TARGET ( -- ) ; target ;package" VS-CATCH E-REJECT T=
+s" package UT-CLASH : TARGET ( -- ) ; target ;package" VS-CATCH 70 T=
 S\" error[E-SECTION-WORD]: `target` is the section word, and a word of that name is in scope\n" UCE-SAID
 S\"  ^^^^^^ section word or word in scope\n" UCE-SAID
 S\" = help: rename the word, or call it by its qualified name if it is public\n" UCE-SAID  REJECTION:BUFFER-OFF
 s" package UT-SECT : UT-SECT-W ( -- ) ; target ;package" VS-CATCH 0 T=
 \ unknown package
-s" using NOPE-PKG" UCE-CATCH E-REJECT T=
+s" using NOPE-PKG" UCE-CATCH 70 T=
 \ a colon-bearing name is not a package name
-s" using UA:AW" UCE-CATCH E-REJECT T=
+s" using UA:AW" UCE-CATCH 70 T=
 \ ;using with no using open is unbalanced
-s" ;using" UCE-CATCH E-REJECT T=
+s" ;using" UCE-CATCH 70 T=
 \ a define under a using lands in the current scope, never in the used package
-s" using UA : UT-NEW ( -- n ) 5 ; ;using UA:UT-NEW drop" UCE-CATCH E-REJECT T=
+s" using UA : UT-NEW ( -- n ) 5 ; ;using UA:UT-NEW drop" UCE-CATCH 70 T=
 \ overflow: more than USE-MAX (16) concurrent usings
-s" using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA" UCE-CATCH E-REJECT T=
+s" using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA using UA" UCE-CATCH 70 T=
 
 \ === scope end: using does not leak ===
 \ ;using ends the scope: AW is unresolved after it
-s" using UA AW drop ;using AW drop" UCE-CATCH E-REJECT T=
+s" using UA AW drop ;using AW drop" UCE-CATCH 70 T=
 \ ;package clears a using opened inside the package
-s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH E-REJECT T=
+s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH 70 T=
 
 \ === a package's ;using closes only the package's own usings ===
 \ `;package` restores the using depth the package opened at, so a `;using` inside
 \ the package that closes a using opened before it is refused by name instead of
 \ coming undone at `;package` and leaving AW resolving past it.
-s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH E-REJECT T=
+s" using UA package UQ ;using ;package AW drop ;using" UCE-CATCH 70 T=
 \ the production source verifier refuses the same nesting
 REJECTION:CAPTURE
-s" using UA package UQ ;using ;package" VS-CATCH E-REJECT T=
+s" using UA package UQ ;using ;package" VS-CATCH 70 T=
 S\" error[E-USING-OUTER]: `;using` would close a using opened outside this package\n" UCE-SAID
 S\"  ^^^^^^ using opened outside\n" UCE-SAID
 S\" = help: close each using in the package that opens it\n" UCE-SAID  REJECTION:BUFFER-OFF
@@ -145,7 +143,7 @@ s" using UA package UQ public : UT-Q3 ( -- n ) AW ; ;package : UT-Q4 ( -- n ) AW
 \ a buffer lowers the package floor at its end: `;package` closes UQF, not UA
 s" using UA package UQF" UCE-CATCH 0 T=
 ;package
-s" AW drop" UCE-CATCH E-REJECT T=
+s" AW drop" UCE-CATCH 70 T=
 \ A throw closes the package its buffer opened, and the checker's mirror follows
 \ before the throw reaches its handler: one compiled word catches the buffer and
 \ replays at once.
@@ -153,14 +151,14 @@ package USING-TEST
 public
 : RECLOSE ( -- n n )  s" package UQT AW drop" UCE-CATCH  s" 1 drop" VS-CATCH ;
 ;package
-USING-TEST:RECLOSE 0 T= E-REJECT T=
+USING-TEST:RECLOSE 0 T= 70 T=
 
 \ === global-vs-used-public shadow ===
 \ A bare tail inside a using scope that resolves to a global and a used public
 \ of the same name is ambiguous and fails closed at the reference site. global
 \ defined by an earlier load, then using-import of the same name -> reject
 REJECTION:CAPTURE
-s" using USG : USG-R1 ( -- n ) GW ; ;using" UCE-CATCH E-REJECT T=
+s" using USG : USG-R1 ( -- n ) GW ; ;using" UCE-CATCH 70 T=
 S\" error[E-USING-SHADOW-GLOBAL]: `GW` is both a global word and a public of used package `USG`\n" UCE-SAID
 S\" ^^^^^^^^^ evaluates the text below\n" UCE-SAID
 S\" = evaluated: using USG : USG-R1 ( -- n ) GW ; ;using\n" UCE-SAID
@@ -169,19 +167,19 @@ S\" = global: GW\n" UCE-SAID  S\" = package: USG:GW\n" UCE-SAID
 S\" = help: write `USG:GW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ a used part's public that is also a global word
 REJECTION:CAPTURE
-s" package UPG private package UPGW public : GW ( -- n ) 1 ; ;package using UPGW : UPG-R1 ( -- n ) GW ; ;using ;package" UCE-CATCH E-REJECT T=
+s" package UPG private package UPGW public : GW ( -- n ) 1 ; ;package using UPGW : UPG-R1 ( -- n ) GW ; ;using ;package" UCE-CATCH 70 T=
 S\" error[E-USING-SHADOW-GLOBAL]: `GW` is both a global word and a public of used package `UPG:UPGW`\n" UCE-SAID
 S\" = package: UPG:UPGW:GW\n" UCE-SAID
 S\" = help: write `UPGW:GW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ a used top-level package's public that is also a global word, where a part hides the package
 REJECTION:CAPTURE
-s" : UHX ( -- n ) 1 ; package UHS public : UHX ( -- n ) 9 ; ;package using UHS package UHT private package UHS public : ZW ( -- n ) 7 ; ;package : UHT-C ( -- n ) UHX ; ;package ;using" UCE-CATCH E-REJECT T=
+s" : UHX ( -- n ) 1 ; package UHS public : UHX ( -- n ) 9 ; ;package using UHS package UHT private package UHS public : ZW ( -- n ) 7 ; ;package : UHT-C ( -- n ) UHX ; ;package ;using" UCE-CATCH 70 T=
 S\" error[E-USING-SHADOW-GLOBAL]: `UHX` is both a global word and a public of used package `UHS`\n" UCE-SAID
 S\" = package: UHS:UHX\n" UCE-SAID
 S\" = help: rename one of the two: the global word has no qualified form, and the part `UHT:UHS` hides package `UHS` here\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ order-swapped: using first, global defined later in the same scope, then bareword
 REJECTION:CAPTURE
-s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-REJECT T=
+s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH 70 T=
 S\" error[E-USING-SHADOW-GLOBAL]: `SW` is both a global word and a public of used package `USG`\n" UCE-SAID
 S\" ^^^^^^^^^ evaluates the text below\n" UCE-SAID
 S\" = evaluated: using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using\n" UCE-SAID
@@ -190,7 +188,7 @@ S\" = global: SW\n" UCE-SAID  S\" = package: USG:SW\n" UCE-SAID
 S\" = help: write `USG:SW` to call the package's word, or rename one of the two: the global word has no qualified form\n" UCE-SAID  REJECTION:BUFFER-OFF
 \ effects coincide: a silent bind to the global would certify; must reject
 REJECTION:CAPTURE
-s" using USG : USG-R3 ( -- n ) MW ; ;using" UCE-CATCH E-REJECT T=
+s" using USG : USG-R3 ( -- n ) MW ; ;using" UCE-CATCH 70 T=
 S\" error[E-USING-SHADOW-GLOBAL]: `MW` is both a global word and a public of used package `USG`\n" UCE-SAID
 S\" ^^^^^^^^^ evaluates the text below\n" UCE-SAID
 S\" = evaluated: using USG : USG-R3 ( -- n ) MW ; ;using\n" UCE-SAID
@@ -229,7 +227,7 @@ package USH public
 s" using USH : USH-R3 ( -- n ) SOLO ; ;using" UCE-CATCH 0 T=
 USH-R3 7 T=
 REJECTION:CAPTURE
-s" using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using" UCE-CATCH E-REJECT T=
+s" using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using" UCE-CATCH 70 T=
 S\" error[E-USING-SHADOW-GLOBAL]: `LATER` is both a global word and a public of used package `USH`\n" UCE-SAID
 S\" ^^^^^^^^^ evaluates the text below\n" UCE-SAID
 S\" = evaluated: using USH : LATER ( -- n ) 3 ; : USH-R4 ( -- n ) LATER ; ;using\n" UCE-SAID
@@ -245,7 +243,7 @@ USH-R5 13 T=
 \ effect makes a wrong binding observable through rejection and execution.
 package USP public : USPW ( n -- n ) 1 + ; ;package
 s" package USQ using USP : USPW ( -- n ) 5 ; ;using ;package" UCE-CATCH 0 T=
-s" package USQ using USP public : USQ-R1 ( -- n ) 41 USPW ; ;using ;package" UCE-CATCH E-REJECT T=
+s" package USQ using USP public : USQ-R1 ( -- n ) 41 USPW ; ;using ;package" UCE-CATCH 70 T=
 s" package USQ using USP public : USQ-R2 ( -- n ) 41 USP:USPW ; ;using ;package" UCE-CATCH 0 T=
 USQ:USQ-R2 42 T=
 
@@ -278,17 +276,17 @@ public : VISIBLE ( -- ) ; ;package
 s" package UTC using UTA public : CELL ( cell-id -- cell-id ) ; : KEEP ( import-id -- import-id ) ; ;package" UCE-CATCH 0 T=
 \ Compiled effects retain the imported family after its scope closes.
 s" : UT-SAME ( UTA:cell-id -- UTA:cell-id ) UTC:CELL ;" UCE-CATCH 0 T=
-s" : UT-WRONG ( UTB:import-id -- UTB:import-id ) UTC:KEEP ;" UCE-CATCH E-REJECT T=
+s" : UT-WRONG ( UTB:import-id -- UTB:import-id ) UTC:KEEP ;" UCE-CATCH 70 T=
 s" using UTA using UTA : UT-REPEAT ( import-id -- import-id ) ; ;using ;using" UCE-CATCH 0 T=
-s" using UTA using UTB : UT-TAMB ( import-id -- import-id ) ; ;using ;using" UCE-CATCH E-REJECT T=
-s" using UTP : UT-SECRET ( secret-id -- secret-id ) ; ;using" UCE-CATCH E-REJECT T=
+s" using UTA using UTB : UT-TAMB ( import-id -- import-id ) ; ;using ;using" UCE-CATCH 70 T=
+s" using UTP : UT-SECRET ( secret-id -- secret-id ) ; ;using" UCE-CATCH 70 T=
 \ A closed import no longer names its types.
-s" using UTA ;using : UT-CLOSED ( import-id -- import-id ) ;" UCE-CATCH E-REJECT T=
+s" using UTA ;using : UT-CLOSED ( import-id -- import-id ) ;" UCE-CATCH 70 T=
 \ A public family no other package declares still needs its package imported
 \ or named: bare outside it is refused, under `using` it resolves.
 package UTD public NEWTYPE solo-id
 ;package
-s" : UT-SOLO-BARE ( solo-id -- solo-id ) ;" UCE-CATCH E-REJECT T=
+s" : UT-SOLO-BARE ( solo-id -- solo-id ) ;" UCE-CATCH 70 T=
 s" using UTD : UT-SOLO-USED ( solo-id -- solo-id ) ; ;using" UCE-CATCH 0 T=
 \ The current package still wins before imported families.
 s" package UTB using UTA public : OWN ( import-id -- import-id ) ; ;package" UCE-CATCH 0 T=
@@ -297,7 +295,7 @@ s" : UT-OWN ( UTB:import-id -- UTB:import-id ) UTB:OWN ;" UCE-CATCH 0 T=
 \ Binding to the package's different effect must reject the mismatched caller.
 s" : OPK-K ( -- n ) 7 ;" UCE-CATCH 0 T=
 s" package OPKD : OPK-K ( n -- n ) drop 41 ; ;package" UCE-CATCH 0 T=
-s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH E-REJECT T=
+s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH 70 T=
 
 \ === a buffer closes only the usings it opens ===
 \ A load file is a using scope: a buffer's `;using` that would close a using its
@@ -307,14 +305,14 @@ s" package OPKD public : OPKD-R ( -- n ) OPK-K ; ;package" UCE-CATCH E-REJECT T=
 \ clean and the throwing path alike. A using the buffer opened closes, and the
 \ verifier's replay refuses the inherited one the same way.
 using UA
-s" ;using using UB" UCE-CATCH E-REJECT T=
-s" ;using using UB NO-SUCH-WORDX" UCE-CATCH E-REJECT T=
-s" using UB ;using ;using" UCE-CATCH E-REJECT T=
+s" ;using using UB" UCE-CATCH 70 T=
+s" ;using using UB NO-SUCH-WORDX" UCE-CATCH 70 T=
+s" using UB ;using ;using" UCE-CATCH 70 T=
 s" AW drop" UCE-CATCH 0 T=
-s" BW drop" UCE-CATCH E-REJECT T=
+s" BW drop" UCE-CATCH 70 T=
 s" using UB BW drop ;using AW drop" UCE-CATCH 0 T=
 REJECTION:CAPTURE
-s" ;using" VS-CATCH E-REJECT T=
+s" ;using" VS-CATCH 70 T=
 S\" error[E-USING-OUTER]: `;using` would close a using opened outside this file\n" UCE-SAID
 S\"  ^^^^^^ using opened outside\n" UCE-SAID
 S\" = help: close each using in the file that opens it\n" UCE-SAID  REJECTION:BUFFER-OFF
@@ -324,9 +322,9 @@ s" using UB ;using" VS-CATCH 0 T=
 \ === a buffer closes only the packages it opens ===
 package UQK
 REJECTION:CAPTURE
-s" ;package" UCE-CATCH E-REJECT T=
+s" ;package" UCE-CATCH 70 T=
 S\" error[E-PKG-CONTEXT]: `;package` closes `UQK`, which this file or string did not open\n" UCE-SAID
-s" ;package" VS-CATCH E-REJECT T=
+s" ;package" VS-CATCH 70 T=
 REJECTION:BUFFER-OFF
 ;package
 
@@ -351,8 +349,8 @@ USING-TEST:URS-V @ 5 T=
 s" using URA using URB : URA-R1 ( n -- n ) URW ; ;using ;using 41 URA-R1 USING-TEST:URS-V !" UCE-CATCH 0 T=
 USING-TEST:URS-V @ 42 T=
 \ a retired public with no global: undefined on both routes
-s" using URN : URN-R1 ( -- n ) URNW ; ;using" UCE-CATCH E-REJECT T=
-s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
+s" using URN : URN-R1 ( -- n ) URNW ; ;using" UCE-CATCH 70 T=
+s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH 70 T=
 
 \ === a part of the open package ===
 \ Inside package UPA, `using UPB` names UPA's part UPB: its publics are bare
@@ -362,9 +360,9 @@ s" package UPA package UPB public : UPX ( -- n ) 6 ; ;package ;package" UCE-CATC
 package USING-TEST public variable UPT-V ;package
 s" package UPA using UPB : UPR ( -- n ) UPX ; ;using UPR USING-TEST:UPT-V ! ;package" UCE-CATCH 0 T=
 USING-TEST:UPT-V @ 6 T=
-s" package UPA using UPB ;using UPX drop ;package" UCE-CATCH E-REJECT T=
+s" package UPA using UPB ;using UPX drop ;package" UCE-CATCH 70 T=
 s" package UPA using UPB : UPV ( -- n ) UPX ; ;using ;package" VS-CATCH 0 T=
-s" using UPB" UCE-CATCH E-REJECT T=
+s" using UPB" UCE-CATCH 70 T=
 
 \ === a definition reusing an ambiguous used name ===
 \ A definition binds its own pending name first, so a global AW is admitted
@@ -376,14 +374,14 @@ package USING-TEST public variable UAD-V ;package
 s" using UA using UC : AW ( -- n ) 1 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
 USING-TEST:UAD-V @ 1 T=
 REJECTION:CAPTURE
-s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-REJECT T=
+s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH 70 T=
 S\" error[E-USING-AMBIGUOUS]: `AW` is public in more than one used package\n" UCE-SAID
 S\" ^^^^^^^^^ evaluates the text below\n" UCE-SAID
 S\" = evaluated: using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using\n" UCE-SAID
 S\"  ^^ ambiguous here\n" UCE-SAID
 S\" = packages: UA, UC\n" UCE-SAID
 S\" = help: write the package's name before the word, as `UA:AW` or `UC:AW`\n" UCE-SAID  REJECTION:BUFFER-OFF
-s" using UA using UC AW drop ;using ;using" UCE-CATCH E-REJECT T=
+s" using UA using UC AW drop ;using ;using" UCE-CATCH 70 T=
 s" undefine AW" UCE-CATCH 0 T=
 
 T-REPORT

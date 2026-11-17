@@ -1327,7 +1327,7 @@ TYPED-VARIABLE GUARD-MSG-U len
    3 30 0 ADDI,
    c cu  p pu r ru GUARD-MSG$  FAULT-OPEN,
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
-   h hu $4F FAULT-STOP, ;
+   h hu EXIT-STATUS:TASK-COMPILE FAULT-STOP, ;
 
 public
 \ The main thread is the compiler: only the thread whose DATA is the main
@@ -1410,7 +1410,7 @@ private
    LBL LBL LBL LBL {: bounded:label floor-ok:label keep:label done:label :}
    \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
    14 DICT-CAP LIT64,  A 14 CMP,  C-LS bounded BCOND,
-      s" E-DICT-COUNT habu: dictionary count above DICT-CAP:" 74 A DIE-LINE-VALUE,
+      s" E-DICT-COUNT habu: dictionary count above DICT-CAP:" EXIT-STATUS:REJECTED A DIE-LINE-VALUE,
    bounded LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
@@ -4646,7 +4646,7 @@ private
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
       SP SP 160 ADDI,  RET,
       bfail LBL,
-         s" E-DICT-INDEX habu: dictionary index alloc failed" 74 DIE-LINE,
+         s" E-DICT-INDEX habu: dictionary index alloc failed" EXIT-STATUS:SYSTEM DIE-LINE,
    HIDX-EMIT:LREBUILD LABEL@ LBL,
       \ register-transparent like LHIDXBUILD: BNDSET and LHIDXADD call it
       \ mid-primitive with caller state live.
@@ -4674,7 +4674,7 @@ private
       15 SP 80 LDR,  16 SP 88 LDR, 17 SP 96 LDR,
       SP SP 160 ADDI,  RET,
    HIDX-EMIT:LFULL LABEL@ LBL,
-      s" E-DICT-INDEX habu: dictionary index exhausted" 76 DIE-LINE, ;
+      s" E-DICT-INDEX habu: dictionary index exhausted" EXIT-STATUS:INTERNAL DIE-LINE, ;
 
 \ A dictionary slot's occurrence is owned by one anonymous mapping. The first
 \ cell is the last issued number; the remaining DICT-CAP cells are indexed by
@@ -4775,7 +4775,7 @@ private
    init-bad LBL,
       3 DEF-OCC:STATE-BYTES LIT64,
       s" hb: the system refused the definition occurrence table; raise the address-space limit (ulimit -v) above its size in bytes:"
-      78 3 DIE-LINE-VALUE, ;
+      EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE, ;
 
 \ A rollback's lower-or-retire step (evaluate's recovery, replay-close,
 \ retire-from), x9 = the NDICT to lower to. With no task live it answers

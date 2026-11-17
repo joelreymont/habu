@@ -216,7 +216,7 @@ create RBT-OUT RBT-CAP allot
 create RBT-ERR RBT-CAP allot
 
 : MEMT-EXIT0 ( -- )
-   s" " 0 die ;
+   s" " EXIT-STATUS:SUCCESS die ;
 
 : MEMT-FORK ( [ -- ] -- PROCESS:status )
    {: body :}

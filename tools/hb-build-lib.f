@@ -394,7 +394,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
       HBB-WERR-LF
    then
    HBB-CLEANUP
-   EXIT-STATUS:REJECTED HBB-EXIT ;
+   EXIT-STATUS:UNCAUGHT HBB-EXIT ;
 
 \ Exit action in a build: names where, keeps -o as it was (not --json-errors).
 : HBB-EXITED ( -- )

@@ -76,7 +76,7 @@ create GPO-SLEEP-PFD 8 allot
    wr FD>N close
    ar FD>N close
    GPO-IDLE
-   0 GPO-EXIT ;
+   EXIT-STATUS:SUCCESS GPO-EXIT ;
 
 \ Stack-preserving under catch: the watched fd and the child are the window.
 : GSR-ARM ( fd pid -- fd pid ) {: rd:fd cpid:pid :}
@@ -104,7 +104,7 @@ create GPO-SLEEP-PFD 8 allot
    arm 0<> if arm cpid GSR-REFUSED then
    rd FD>N close
    GPO-IDLE
-   0 GPO-EXIT ;
+   EXIT-STATUS:SUCCESS GPO-EXIT ;
 
 : GSR-RUN ( -- bool )
    PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}

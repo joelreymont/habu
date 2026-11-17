@@ -557,7 +557,7 @@ variable RUN-FILE-U
 
 \ The 128 TASK:NEW tasks push the cleanups' rows past the table into a mapped
 \ chunk, which no target can carry: the linker refuses the source by the
-\ address cell EXIT-CHUNKS (src/lib/task.f) and the build fails 70.
+\ address cell EXIT-CHUNKS and the build fails 67.
 : CASE-BUILD-CHUNK ( -- )
    s" cleanups-chunk.f" s" cleanups-chunk-out" CASE-PATHS
    CLEANUPS-TEXT
@@ -567,7 +567,7 @@ variable RUN-FILE-U
    S\" 128 CHILD-HOLD\n: MAIN ( -- ) ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a source that leaves a cleanup chunk mapped is refused" T-LABEL
-   outu erru rc 70 EXPECT-RC
+   outu erru rc 67 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
    erru s" in EXIT-CHUNKS +0 holds" ERR-HAS? TTRUE
    erru s" which an object cannot name" ERR-HAS? TTRUE ;

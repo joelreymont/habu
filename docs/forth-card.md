@@ -540,11 +540,11 @@ holds an address**.
 - Library codes are named constants in `src/lib/error.f`; checker throws also use
   positive codes above 255 in their owning source. Codes 0..255 are exit
   statuses, each named once in `EXIT-STATUS` (`src/core/exit-status.f`). Every
-  other code, negative or above 255, has one `E-` name across the tree; a file that needs it under its own
-  name reads the owner's constant (`E-OWNER constant E-LOCAL`). A library owns
-  one inclusive block of about a hundred bounded by its own `E-X-FIRST` /
-  `E-X-LAST` (arrays, filesystem, strings, …) and
-  reserves that whole range whether or not every code is minted;
+  other code, negative or above 255, has one `E-` name across the tree; a file
+  that needs it under its own name reads the owner's constant (`E-OWNER constant
+  E-LOCAL`). A library owns one inclusive block of about a hundred bounded by
+  its own `E-X-FIRST` / `E-X-LAST` (arrays, filesystem, strings, …) and reserves
+  that whole range whether or not every code is minted;
   `tools/error-code-lint.f` reports a file minting inside another's.
 - A code is declared with its text: `-9701 s" the provider refused the key"
   ERROR:CODE E-KEY` defines the constant `E-KEY` and keeps its name, qualified

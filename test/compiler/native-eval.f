@@ -325,12 +325,10 @@ create ERR IO-CAP allot
    ERR erru s" = evaluated: : NATIVE-EVAL-F ( -- n ) 42" CONTAINS? TTRUE
    ERR erru s" never closed" CONTAINS? TTRUE ;
 
-$4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
-
 : IN-TASK ( -- )
    s" evaluation in a task exits before it reads the text" T-LABEL
    s" NATIVE-EVAL-TEST:EVAL-IN-TASK" OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N TASK-THREAD T=
+   PROCESS:ENDING>RC RC>N 79 T=
    LEN>N {: erru:n :}
    s" and names evaluate-closed, printing nothing else" T-LABEL
    LEN>N 0 T=

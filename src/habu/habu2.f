@@ -63,10 +63,9 @@ variable LFLOORREC   \ the underdepth throw for a data access below the base
 variable LCOMPILEDIE   \ the die sites' tail, x0 = code: ends their line, then throws x0 inside evaluate (LEVALREC), else exits x0
 variable LPLACE        \ the place writer each die site calls after its class head
 ;package
-\ Snapshot relocation labels and messages; the band
-\ offsets and exit statuses are src/habu/layout.f package SNAP-RELOC. This file
-\ compiles on a product engine, where no source reopens a baked package, so the
-\ emitter's half is its own package.
+\ Snapshot relocation labels and messages. This file compiles on a product
+\ engine, where no source reopens a baked package, so the emitter's half of
+\ snapshot relocation is its own package.
 package RELOC-EMIT
 public
 variable LMARK      \ declare one DATA cell as holding a region address
@@ -918,7 +917,7 @@ variable LREPLAYTRAP
 
 : EMIT-REPLAY-TRAP ( -- )
    LREPLAYTRAP LABEL@ LBL,
-   s" E-REPLAY-RECORD habu: replay record executed" 76 DIE-LINE, ;
+   s" E-REPLAY-RECORD habu: replay record executed" EXIT-STATUS:INTERNAL DIE-LINE, ;
 
 \ namespace-record ( ^u8 n bool -- n )
 \ A name holds at most one colon, never at an edge: a part's path `A:B`.
@@ -1486,7 +1485,7 @@ public
    C-CC rok BCOND,
       3 REGION PROT-PAGE-MAX + LIT64,
       s" hb: the system refused the code region; raise the address-space limit (ulimit -v) above its size in bytes:"
-      78 3 DIE-LINE-VALUE,
+      EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
    rok LBL,
    9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
    9 PROT-PAGE-MAX negate LIT64,  0 0 9 AND,       \ page-aligned region base
@@ -1514,7 +1513,8 @@ public
       13 SP 0 LDR,  14 SP 8 LDR,  15 SP 16 LDR,  0 SP 24 LDR,  SP SP 32 ADDI,
       adone B,
       afail LBL,
-         s" hb: the system refused the code region's writable alias; raise the address-space limit (ulimit -v)" 78 DIE-LINE,
+         s" hb: the system refused the code region's writable alias; raise the address-space limit (ulimit -v)"
+         EXIT-STATUS:SYSTEM DIE-LINE,
       adone LBL,
    ELSE
       LBL LBL {: vfail:label vdone:label :}
@@ -1527,7 +1527,8 @@ public
       0 10 0 ADDI,  NR-CLOSE SYS,  C-CS vfail BCOND,
       0 9 0 ADDI,  vdone B,
       vfail LBL,
-         s" hb: the system refused the code region's views; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)" 78 DIE-LINE,
+         s" hb: the system refused the code region's views; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)"
+         EXIT-STATUS:SYSTEM DIE-LINE,
       vdone LBL,
    THEN ;
 
@@ -1544,7 +1545,7 @@ public
    C-EQ dvok BCOND,
       3 DATA-SIZE LIT64,
       s" hb: the system refused the fixed data region; raise the address-space limit (ulimit -v) above its size in bytes:"
-      78 3 DIE-LINE-VALUE,
+      EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
    dvok LBL, ;
 
 ;package

@@ -799,7 +799,7 @@ private
    NR-SIGRETURN SYS,                             \ macOS: sigreturn(uctx, infostyle, token)
    \ Reached only if sigreturn fails.
    21 C-CRASH-LR>R30
-   s" E-SIGRETURN habu: sigreturn failed in the crash handler" $86 DIE-LINE, ;
+   s" E-SIGRETURN habu: sigreturn failed in the crash handler" EXIT-STATUS:SYSTEM DIE-LINE, ;
 
 \ Row 0: a saved pc in [LCRASHH, LSIGH), the crash handler's own code, goes
 \ straight to the re-raise. On macOS x1 is still the trampoline's infostyle.

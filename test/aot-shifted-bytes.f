@@ -492,7 +492,7 @@ variable G-IMAGE-U
    GE-HB-RESET
    s" HABU_OUT" >LEN C-OUT$ >LEN PROC-ENV-SET
    C-MAIN$ C-IMAGE$ BUILD-ARGV BUILD-RUN
-   70 s" the build of main.f" LABEL GE-EXPECT-RC
+   67 s" the build of main.f" LABEL GE-EXPECT-RC
    s" LINKER:E-ADDRESS" s" the build's error" LABEL GE-EXPECT-ERR-HAS ;
 
 \ A cell holding the address where a file's data ends, past its last datum, is refused.

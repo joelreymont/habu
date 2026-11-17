@@ -2,9 +2,8 @@
 \ Build-only, as data-claims.f is: layout.f is baked into every runtime image
 \ and none of this is read at run time. Each target's handler and the report
 \ meet only in memory (the band at the top of DATA, the arena whose base the
-\ band holds); every offset, size, signal fact, exit status and message of that
-\ meeting is here once. Each handler's frame layout stays with its emitter.
-require src/core/exit-status.f
+\ band holds); every offset, size, signal fact and message of that meeting is
+\ here once. Each handler's frame layout stays with its emitter.
 require src/habu/layout.f
 
 package PROF-ABI

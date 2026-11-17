@@ -1,6 +1,7 @@
 \ process-pty-io-smoke.f - the checked PTY process supervisor
 \ (src/lib/process-pty-io.f) through its public PROCESS-PTY:* lifecycle.
 
+require src/core/exit-status.f
 require src/lib/process-pty-io.f
 require src/lib/prelude.f
 require src/lib/aio.f
@@ -127,7 +128,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
 \ supervisor opens it while the target is still gated and alive.
 : DEAD-CHILD ( -- )
    ALIVE-R @ >FD CLOSE-OK             \ child drops the read end; holds only the write end
-   s" " 0 die ;                        \ exit closes the write end -> parent read EOFs
+   s" " EXIT-STATUS:SUCCESS die ;      \ exit closes the write end -> parent read EOFs
 
 : FORK-DEAD ( -- pid )
    PROC-FORK:CHECKED dup PID>N 0= if drop DEAD-CHILD then ;

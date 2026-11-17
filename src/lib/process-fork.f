@@ -5,6 +5,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: the reaper's pollfd belongs to the process, not
 \ to a task.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/core/compile-reads.f
 require src/lib/task.f                       \ TASK:CHILD-RESET, registered below
@@ -139,7 +140,7 @@ public
 : CHILD-MAIN ( [ -- ] -- ) {: q :}
    0 data-base HND-CELL + !
    q ERROR:TOP-LEVEL
-   s" " 0 die ;
+   s" " EXIT-STATUS:SUCCESS die ;
 
 \ setpgid(pid, pgid): place pid into process group pgid. `0 0 PROC-FORK:SET-PGID`
 \ makes the caller its own group leader (pgid == pid) so a later group signal
@@ -236,11 +237,11 @@ public
    CHECKED {: rpid:pid :}
    rpid PID>N 0= if
       0 >PID cpid SET-PGID RC>N 0 < if
-         s" " 0 die
+         s" " EXIT-STATUS:SUCCESS die
       then
       pd CLOSE-EXCEPT
       pd PROC-REAP-WATCH1
-      s" " 0 die
+      s" " EXIT-STATUS:SUCCESS die
    then
    rpid ;
 

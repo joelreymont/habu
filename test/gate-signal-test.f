@@ -297,7 +297,8 @@ variable STAT-PATH-U
 
 : NOHUP$ ( -- ^u8 n )
    s" nohup" >LEN NOHUP FIND-EXECUTABLE MATCH option
-      none OF s" gate-signal-test: required executable missing on PATH: nohup" EXIT-STATUS:UNAVAILABLE die ENDOF
+      none OF s" gate-signal-test: required executable missing on PATH: nohup"
+         EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF
    ;MATCH
    NOHUP swap ;

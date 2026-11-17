@@ -3,6 +3,7 @@
 \ and unbinds. The outer comparator sorts a second row through the inner one,
 \ so the image nests a foreign call inside a callback at the tier an
 \ application is linked at.
+require src/core/exit-status.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
 require src/lib/task.f
@@ -10,7 +11,6 @@ require src/lib/task.f
 package STRIPPED-CALLBACK-SUBJECT
 private
 
-$4A constant FAILURE-RC
 8 constant ROW-N
 
 PROCESS-SYMBOLS
@@ -60,10 +60,10 @@ public
    CMP-NEST FFI-CB:UNBIND
    CMP FFI-CB:UNBIND
    OUTER 10 ROW-SORTED? 0= if
-      s" stripped-callback: the row is not sorted" FAILURE-RC die
+      s" stripped-callback: the row is not sorted" EXIT-STATUS:FAILURE die
    then
    NESTED @ 0= if
-      s" stripped-callback: no nested sort came back sorted" FAILURE-RC die
+      s" stripped-callback: no nested sort came back sorted" EXIT-STATUS:FAILURE die
    then
    s" stripped-callback: ok" type cr ;
 

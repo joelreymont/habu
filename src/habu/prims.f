@@ -672,8 +672,9 @@ ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ body-capture ( ^u8 n -- ): append the bytes and one space to the body text
 \ through the capture routine `:` uses, which grows the text block when they do
-\ not fit (rc 71 when it cannot). It refuses BODYLEN past the text capacity and
-\ a BODYLEN + u + 1 that wraps, with BODYLEN and u both unsigned.
+\ not fit and throws E-BODY-TEXT when it cannot. It refuses BODYLEN past the
+\ text capacity and a BODYLEN + u + 1 that wraps, with BODYLEN and u both
+\ unsigned.
 EPRIM: body-capture PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: INTERPRETER body-capture PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE

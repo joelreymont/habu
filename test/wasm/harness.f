@@ -77,7 +77,8 @@ variable MEM-END
 \ bun's own failures may exit 2 as well, so any other text ends the check.
 : NO-FAULT-LINE ( ^u8 n -- )
    type cr
-   s" wasm harness: bun's memory line is not followed by a `fault <kind> <addr>` line" EXIT-STATUS:FAILURE die ;
+   s" wasm harness: bun's memory line is not followed by a `fault <kind> <addr>` line"
+   EXIT-STATUS:FAILURE die ;
 
 : FAULT-FIELD ( ^u8 n ^u8 n -- n )
    {: line:^ lu:n a:^ u:n :}

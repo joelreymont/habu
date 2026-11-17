@@ -735,12 +735,12 @@ variable SHARD-FAULT
    SHARD-MUTE-STDERR
    SHARD-FAULT @ 0 >= IF
       dup SHARD-FAULT @ = IF s" prop-test: FAULT-INJECT" SHARD-FAIL THEN
-      s" " 0 die
+      s" " EXIT-STATUS:SUCCESS die
    THEN
    SHARD-SEED DEFAULT-COUNT RUN-CORE
    PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT" SHARD-FAIL THEN
    NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY" SHARD-FAIL THEN
-   s" " 0 die ;
+   s" " EXIT-STATUS:SUCCESS die ;
 : SHARD-FORK ( n -- ) {: i:n :}
    PROC-FORK:RAW {: p:pid :}
    p PID>N 0= IF i SHARD-CHILD THEN   \ child diverges (dies), only the parent falls through
@@ -787,7 +787,7 @@ variable SS-I  variable SS-J  variable SS-BAD
    1 MUTE-FD  2 MUTE-FD
    PROP-SHARD-N 2 / SHARD-FAULT !
    7 SWEEP
-   s" " 0 die ;
+   s" " EXIT-STATUS:SUCCESS die ;
 : SELFTEST-SWEEP-RED ( -- )
    PROC-FORK:RAW {: p:pid :}
    p PID>N 0= IF SWEEP-RED-CHILD THEN
