@@ -1,5 +1,6 @@
-\ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, and
-\ bytes encoded as a web form and decoded from one, through src/lib/uri.f.
+\ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, bytes
+\ encoded as a web form and decoded from one, and request paths checked for a
+\ dot segment, through src/lib/uri.f.
 \ Run: bin/hb --load src/lib/uri-test.f
 
 require src/lib/error.f
@@ -234,6 +235,36 @@ create DECODED BUF:HDR-BYTES allot
    s" a ~" DST 5 TAKE URI:FORM-ENCODE 5 T=
    DST $ drop 5 s" a+%7E" T$= ;
 
+\ A dot segment in each reading, raw or decoded once, and none decoded twice.
+: DOT-SEGMENTS ( -- )
+   s" /a/../b" URI:DOT-SEGMENT? TTRUE
+   s" /a/./b" URI:DOT-SEGMENT? TTRUE
+   s" /a/%2e%2E/b" URI:DOT-SEGMENT? TTRUE
+   s" /a/..%2fb" URI:DOT-SEGMENT? TTRUE
+   s" /a/..%5Cb" URI:DOT-SEGMENT? TTRUE
+   s" /a\..\b" URI:DOT-SEGMENT? TTRUE
+   s" /a/..;v=1/b" URI:DOT-SEGMENT? TTRUE
+   s" /a/..%3bv/b" URI:DOT-SEGMENT? TTRUE
+   s" /a/b..c/d" URI:DOT-SEGMENT? TFALSE
+   s" /a/.../b" URI:DOT-SEGMENT? TFALSE
+   s" /a/x?$filter=../y" URI:DOT-SEGMENT? TFALSE
+   s" /sap/opu/odata/sap/API_PRODUCT_SRV/A_Product('0000020701_R001')"
+   URI:DOT-SEGMENT? TFALSE
+   s" /sap/opu/odata/..#x" URI:DOT-SEGMENT? TTRUE
+   s" /sap/opu/odata/..%2f..%2fbc%2fping" URI:DOT-SEGMENT? TTRUE
+   s" /sap/opu/odata/..%2F.." URI:DOT-SEGMENT? TTRUE
+   s" /sap/opu/odata/..%5c..%5cbc%5cping" URI:DOT-SEGMENT? TTRUE
+   s" /sap/opu/odata/..%3bx/..%3bx/bc/ping" URI:DOT-SEGMENT? TTRUE
+   s" /a/..%3fx" URI:DOT-SEGMENT? TTRUE
+   s" /a%3f/../b" URI:DOT-SEGMENT? TTRUE
+   s" /a/..%23x" URI:DOT-SEGMENT? TTRUE
+   s" /a/..%2e" drop 5 URI:DOT-SEGMENT? TTRUE
+   s" /a/%2e" drop 5 URI:DOT-SEGMENT? TFALSE
+   s" /a/.." URI:DOT-SEGMENT? TTRUE
+   s" .." URI:DOT-SEGMENT? TTRUE
+   s" /a/%252e%252e/b" URI:DOT-SEGMENT? TFALSE
+   s" " URI:DOT-SEGMENT? TFALSE ;
+
 : MAIN ( -- )
    DECODED 16 BUF:N>BLEN BUF:INIT
    T-RESET
@@ -253,6 +284,7 @@ create DECODED BUF:HDR-BYTES allot
    FORM-BARE-PERCENT
    FORM-MIXED
    FORM-ALL-OR-NOTHING
+   DOT-SEGMENTS
    T-REPORT
    DECODED BUF:DISPOSE
    s" uri-test: ok" type cr ;

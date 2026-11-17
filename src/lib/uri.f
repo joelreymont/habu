@@ -1,6 +1,7 @@
 \ uri.f - file URIs (RFC 8089) decoded to the paths they name, paths encoded,
-\ and bytes encoded as a web form and decoded from one. A path is bytes, as the
-\ file system takes them: a decoded NUL or `/` is kept.
+\ bytes encoded as a web form and decoded from one, and whether a request path
+\ holds a dot segment. A file path is bytes, as the file system takes them: a
+\ decoded NUL or `/` is kept.
 \ Input is checked and output measured before a byte is written, so no refusal
 \ leaves a byte behind.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
@@ -18,8 +19,11 @@ $25 constant PERCENT
 $2F constant SLASH
 $3F constant QUESTION
 $23 constant HASH
+$5C constant BACKSLASH
+$3B constant SEMICOLON
 3 constant ESCAPE-WIDTH          \ `%` and two hex digits
 4 constant NIBBLE-BITS
+3 constant NOT-DOT               \ a segment's text that is no `.` or `..`
 
 : SCHEME$ ( -- ^u8 n ) s" file:" ;
 : MARKER$ ( -- ^u8 n ) s" //" ;
@@ -125,19 +129,46 @@ $23 constant HASH
    c STR-SPACE = if [char] + out at + c! at 1+ exit then
    c out at ESCAPE ;
 
-\ The byte form-encoded text spells at that offset, and the offset after it:
-\ `+` is a space and `%XX` a byte; a `%` without two hex digits after it is
-\ itself (WHATWG URL 1.3).
-: DECODED-AT ( ^u8 n n -- n n )
+\ The byte at that offset with one `%XX` decoded, and the offset after it; a
+\ `%` without two hex digits after it is itself (WHATWG URL 1.3).
+: PERCENT-AT ( ^u8 n n -- n n )
    {: a:^ u:n at:n :}
    a at + c@ {: c:n :}
-   c [char] + = if STR-SPACE at 1+ exit then
    c PERCENT <> if c at 1+ exit then
    at ESCAPE-WIDTH + u > if c at 1+ exit then
    a at + 1+ c@ {: hi:n :}
    a at + 2 + c@ {: lo:n :}
    hi STR-HEX-DIGIT? lo STR-HEX-DIGIT? and 0= if c at 1+ exit then
    hi NIBBLE NIBBLE-BITS lshift lo NIBBLE or at ESCAPE-WIDTH + ;
+
+\ The byte form-encoded text spells at that offset, and the offset after it:
+\ `+` is a space.
+: DECODED-AT ( ^u8 n n -- n n )
+   {: a:^ u:n at:n :}
+   a at + c@ [char] + = if STR-SPACE at 1+ exit then
+   a u at PERCENT-AT ;
+
+: DOTS? ( n -- bool )
+   {: dots:n :}
+   dots 1 = dots 2 = or ;
+
+: SEPARATOR? ( n -- bool )
+   {: c:n :}
+   c SLASH = c BACKSLASH = or ;
+
+\ The segment text's dot count after the byte or escape at that offset (NOT-DOT
+\ once it holds anything else), the offset after it, and whether a text it
+\ closed was `.` or `..`; a raw `?` or `#` answers the path's end, closing none.
+: SEGMENT-STEP ( n n ^u8 n -- n n bool )
+   {: dots:n at:n a:^ u:n :}
+   a at + c@ {: raw:n :}
+   raw QUESTION = raw HASH = or if dots u false exit then
+   a u at PERCENT-AT {: c:n next:n :}
+   c SEPARATOR? if 0 next dots DOTS? exit then
+   c SEMICOLON = c QUESTION = or c HASH = or if
+      NOT-DOT next dots DOTS? exit then
+   c [char] . = if dots 1+ NOT-DOT min next false exit then
+   NOT-DOT next false ;
 
 public
 
@@ -189,6 +220,18 @@ public
    a u 0 DECODED-AT {: c:n next:n :}
    c b c@ <> if false exit then
    a next + u next - b 1+ v 1- RECURSE ;
+
+\ Whether any segment of the path, up to a raw `?` or `#`, is `.` or `..` in a
+\ reading a client or server may make: raw or percent-decoded once, `/` or `\`
+\ separating segments, a segment's text ending at its first `;`, or decoded `?`
+\ or `#`. One decoded pass covers the raw reading: no separator, `;`, `?` or
+\ `#` is a hex digit, so decoding never joins or hides one. `%252e` is no dot:
+\ RFC 3986 section 2.4 forbids decoding twice.
+: DOT-SEGMENT? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   0 0 begin dup u < while
+      a u SEGMENT-STEP if 2drop true exit then
+   repeat drop DOTS? ;
 
 \ The scheme is `file` in any case, then `//` and an authority that is empty or
 \ `localhost` in any case, ending at the path's `/`: every answer is absolute.
