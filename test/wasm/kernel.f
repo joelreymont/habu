@@ -116,20 +116,6 @@ false [if] \ off until dot habu-add-the-checks-a49d054d, then called by RUN
    s" " s" true" s" bool>n ." SAME
    s" " s" false" s" bool>n ." SAME ;
 
-: ORDER ( ^u8 n -- )
-   {: nm:^ nu:n :}
-   s" 1 s>f 1 s>f" nm nu s" bool>n ." SAME
-   s" 1 s>f 2 s>f" nm nu s" bool>n ." SAME
-   s" 2 s>f 1 s>f" nm nu s" bool>n ." SAME
-   s" $7FF8000000000000 IEEE754:BITS>F64 1 s>f" nm nu s" bool>n ." SAME   \ a NaN left
-   s" 1 s>f $7FF8000000000000 IEEE754:BITS>F64" nm nu s" bool>n ." SAME   \ a NaN right
-   s" $8000000000000000 IEEE754:BITS>F64 0 s>f" nm nu s" bool>n ." SAME   \ -0.0, +0.0
-   s" 0 s>f $8000000000000000 IEEE754:BITS>F64" nm nu s" bool>n ." SAME ; \ +0.0, -0.0
-
-: COMPARISONS ( -- )
-   s" f<=" ORDER
-   s" f>=" ORDER ;
-
 public
 
 : RUN ( -- )
@@ -139,7 +125,6 @@ public
    TEXT
    NUMBERS
    TESTS
-   COMPARISONS
    T-REPORT ;
 
 ;package

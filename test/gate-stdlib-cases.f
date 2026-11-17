@@ -611,10 +611,6 @@ SUITE siphash
    src/lib/siphash-test.f
 ;SUITE
 
-SUITE prelude
-   src/lib/prelude-test.f
-;SUITE
-
 SUITE array-helpers
    src/lib/array-test.f
 ;SUITE

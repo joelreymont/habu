@@ -2350,7 +2350,7 @@ runtime or analysis layer.
   `2*`, `hex`, `.r`, `value`, `to`, `cmove` and `bye`; each is
   `E-UNDEFINED` in a checked body (`: W ( -- ) bl ;`). Use cells, explicit
   increments and comparisons, and the checked byte and string helpers. `0<>`,
-  `true`, `false`, `fdup`, `fover`, `fdrop`, `f<=` and `f>=` come from
+  `true`, `false`, `bool>n`, `fdup`, `fover` and `fdrop` come from
   `src/lib/prelude.f`, which the engine already provides: writing `require
   src/lib/prelude.f` documents the dependency but is not load-bearing.
 - **Escaped literals for readable snapshots**: `s"` reads no escapes; `S\"`,

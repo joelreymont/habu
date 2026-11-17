@@ -4186,8 +4186,8 @@ package ENGINE-EMIT
 ;package
 
 package ENGINE-EMIT
-\ FP: doubles as raw IEEE754 bit-cells on the data stack. Compare conds per FP
-\ flag semantics: < MI, > GT, = EQ (NaN compares false).
+\ FP: doubles as raw IEEE754 bit-cells on the data stack. Each compare's
+\ condition is false on fcmp's unordered flags, NZCV 0011.
 : BF+ ( -- )
    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
 
@@ -4222,6 +4222,12 @@ package ENGINE-EMIT
 
 : BF= ( -- )
    C-EQ (FCMP) ;
+
+: BF<= ( -- )
+   C-LS (FCMP) ;
+
+: BF>= ( -- )
+   C-GE (FCMP) ;
 
 : (FCMP0) ( n -- )
    FP-COND !  A G-POP  0 A FMOVXD,  0 FCMP0,
@@ -4274,6 +4280,7 @@ package ENGINE-EMIT
    s" f/" ['] BF/ FPRIM-L   s" fnegate" ['] BFNEG FPRIM-L
    s" fabs" ['] BFABS FPRIM-L  s" fsqrt" ['] BFSQRT FPRIM-L
    s" f<" ['] BF< FPRIM-L   s" f>" ['] BF> FPRIM-L   s" f=" ['] BF= FPRIM-L
+   s" f<=" ['] BF<= FPRIM-L  s" f>=" ['] BF>= FPRIM-L
    s" f0<" ['] BF0< FPRIM-L  s" f0=" ['] BF0= FPRIM-L
    s" s>f" ['] BS>F FPRIM-L  s" f>s" ['] BF>S FPRIM-L
    s" f." ['] BFDOT FPRIM-L ;

@@ -5531,11 +5531,10 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    done X64CODE:LBL,
    RAX TOP!, ;
 
-\ All ones over the top cell where x > y: ucomisd's above, false when either
-\ is a NaN, as habu1.f's fcmp conditions are. A less-than exchanges the
-\ operands.
-: FGT, ( xmm xmm -- ) {: x:xmm y:xmm :}
-   x y ASM-SINK ENC-UCOMISD-RR  C-A RAX FLAG,  RAX TOP!, ;
+\ All ones over the top cell where c holds for ucomisd x, y. An unordered pair
+\ sets ZF, PF and CF, so A and AE are false when either is a NaN.
+: FCOMPARE, ( xmm xmm condition -- ) {: x:xmm y:xmm c:condition :}
+   x y ASM-SINK ENC-UCOMISD-RR  c RAX FLAG,  RAX TOP!, ;
 
 \ All ones over the top cell where x = y: equal and ordered.
 : FEQ, ( xmm xmm -- ) {: x:xmm y:xmm :}
@@ -5705,10 +5704,12 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    s" f-" [: FBIN,  XMM0 XMM1 ASM-SINK ENC-SUBSD-RR  FCLOSE, ;] PRIM
    s" f*" [: FBIN,  XMM0 XMM1 ASM-SINK ENC-MULSD-RR  FCLOSE, ;] PRIM
    s" f/" [: FBIN,  XMM0 XMM1 ASM-SINK ENC-DIVSD-RR  FCLOSE, ;] PRIM
-   s" f<" [: FPAIR,  XMM1 XMM0 FGT, ;] PRIM
+   s" f<" [: FPAIR,  XMM1 XMM0 C-A FCOMPARE, ;] PRIM
    s" f=" [: FPAIR,  XMM0 XMM1 FEQ, ;] PRIM
-   s" f>" [: FPAIR,  XMM0 XMM1 FGT, ;] PRIM
-   s" f0<" [: FZERO,  XMM1 XMM0 FGT, ;] PRIM
+   s" f>" [: FPAIR,  XMM0 XMM1 C-A FCOMPARE, ;] PRIM
+   s" f<=" [: FPAIR,  XMM1 XMM0 C-AE FCOMPARE, ;] PRIM
+   s" f>=" [: FPAIR,  XMM0 XMM1 C-AE FCOMPARE, ;] PRIM
+   s" f0<" [: FZERO,  XMM1 XMM0 C-A FCOMPARE, ;] PRIM
    s" f0=" [: FZERO,  XMM0 XMM1 FEQ, ;] PRIM
    s" fabs" [:
       RAX 0 PEEK,  RAX 1 >IMM8 ASM-SINK ENC-SHL-RI8  RAX 1 >IMM8 ASM-SINK ENC-SHR-RI8

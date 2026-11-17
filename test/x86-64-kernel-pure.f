@@ -153,6 +153,9 @@ public
 : RR-R ( n n n -- ) {: a:n b:n want:n :}
    CASE+  a N, b N,  ROW  want WANT  SETTLED ;
 
+: RR-F ( n n n -- ) {: a:n b:n want:n :}
+   CASE+  a N, b N,  ROW  want FLAG WANT  SETTLED ;
+
 : R-R ( n n -- ) {: a:n want:n :}
    CASE+  a N,  ROW  want WANT  SETTLED ;
 

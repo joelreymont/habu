@@ -229,9 +229,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    SB$ s" d.f" SOURCE! ;
 
 
-\ The program f.f: each float word through a word whose operands are not
-\ literals at the call, and a double out of an if's two arms, printed by `f.`
-\ and `.`.
+\ The program f.f: float words through a word whose operands are not literals
+\ at the call, and a double out of an if's two arms, printed by `f.` and `.`.
 : F! ( -- )
    SB-RESET
    S\" : ADD ( r r -- r ) f+ ;\n: SUB ( r r -- r ) f- ;\n: MUL ( r r -- r ) f* ;\n" SB-APPEND

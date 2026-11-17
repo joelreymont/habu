@@ -308,8 +308,7 @@ s" : W31-BOOLEANS ( -- ) true if 1 else 0 then . false if 1 else 0 then . true f
 s\" 1\n0\n2\n-1\n0\n" ROW
 
 \ f<= and then f>= on equal, lesser and greater reals, a NaN on either side and
-\ the signed zeros both ways: prelude words, which the map answers with kernel
-\ words.
+\ the signed zeros both ways.
 s" W31-ORDERS"
 s" : W31-ORDERS-NAN ( -- r ) 0 s>f 0 s>f f/ ; : W31-ORDERS-NEG0 ( -- r ) 0 s>f fnegate ; : W31-ORDERS ( -- ) 1 s>f 1 s>f f<= 1 s>f 2 s>f f<= 2 s>f 1 s>f f<= W31-ORDERS-NAN 1 s>f f<= 1 s>f W31-ORDERS-NAN f<= W31-ORDERS-NEG0 0 s>f f<= 0 s>f W31-ORDERS-NEG0 f<= 1 s>f 1 s>f f>= 1 s>f 2 s>f f>= 2 s>f 1 s>f f>= W31-ORDERS-NAN 1 s>f f>= 1 s>f W31-ORDERS-NAN f>= W31-ORDERS-NEG0 0 s>f f>= 0 s>f W31-ORDERS-NEG0 f>= depth . .s 2drop 2drop 2drop 2drop 2drop 2drop 2drop ;"
 s\" 14\n-1\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n-1\n0\n0\n-1\n-1\n" ROW

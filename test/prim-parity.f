@@ -223,6 +223,8 @@ $3A constant COLON-B
    na nu s" f<"  STR= IF a s>f b s>f f< B>N EXIT THEN
    na nu s" f>"  STR= IF a s>f b s>f f> B>N EXIT THEN
    na nu s" f="  STR= IF a s>f b s>f f= B>N EXIT THEN
+   na nu s" f<=" STR= IF a s>f b s>f f<= B>N EXIT THEN
+   na nu s" f>=" STR= IF a s>f b s>f f>= B>N EXIT THEN
    s" order" na nu NO-ARM ;
 
 : NN-F-REF ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
@@ -269,8 +271,8 @@ $3A constant COLON-B
 
 \ Source has no float literals: a float case is integers the arm converts with
 \ `s>f`/`f>s`, which pins presence and integral behaviour (fractional semantics:
-\ src/lib/float-test.f). RR-R and R-R cast a double's bits instead, reaching
-\ infinities and NaN.
+\ src/lib/float-test.f). RR-R, RR-F and R-R cast a double's bits instead,
+\ reaching infinities, NaN and signed zeros.
 \ No row of these has a reference, so the shapes run the primitive alone.
 : RR-R-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
    a IEEE754:BITS>F64 b IEEE754:BITS>F64 {: x:r y:r :}
@@ -279,6 +281,15 @@ $3A constant COLON-B
    na nu s" f*" STR= IF x y f* IEEE754:F64>BITS EXIT THEN
    na nu s" f/" STR= IF x y f/ IEEE754:F64>BITS EXIT THEN
    s" binary bits" na nu NO-ARM ;
+
+: RR-F-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+   a IEEE754:BITS>F64 b IEEE754:BITS>F64 {: x:r y:r :}
+   na nu s" f<"  STR= IF x y f<  B>N EXIT THEN
+   na nu s" f>"  STR= IF x y f>  B>N EXIT THEN
+   na nu s" f="  STR= IF x y f=  B>N EXIT THEN
+   na nu s" f<=" STR= IF x y f<= B>N EXIT THEN
+   na nu s" f>=" STR= IF x y f>= B>N EXIT THEN
+   s" order bits" na nu NO-ARM ;
 
 : R-R-PRIM ( n ^u8 n -- n ) {: a:n na:^ nu:n :}
    na nu s" fsqrt" STR= IF a IEEE754:BITS>F64 fsqrt IEEE754:F64>BITS EXIT THEN
@@ -426,6 +437,10 @@ public
 : RR-R ( n n n -- ) {: a:n b:n want:n :}
    BITS-CASE+
    LBL-PRIM a b SUBJ$ RR-R-PRIM want T= ;
+
+: RR-F ( n n n -- ) {: a:n b:n want:n :}
+   BITS-CASE+
+   LBL-PRIM a b SUBJ$ RR-F-PRIM want T= ;
 
 : R-R ( n n -- ) {: a:n want:n :}
    BITS-CASE+

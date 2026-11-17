@@ -27,8 +27,6 @@ public
    a u s" 0<>" STR=CI if s" WKWORDS:NONZERO?" exit then
    a u s" true" STR=CI if s" WKWORDS:YES" exit then
    a u s" false" STR=CI if s" WKWORDS:NO" exit then
-   a u s" f<=" STR=CI if s" WKWORDS:F-AT-MOST?" exit then
-   a u s" f>=" STR=CI if s" WKWORDS:F-AT-LEAST?" exit then
    a u s" NULL-PTR" STR=CI if s" WKWORDS:NIL" exit then
    a u s" data-base" STR=CI if s" WKWORDS:DATA-START" exit then
    a u s" +!" STR=CI if s" WKWORDS:ADD-STORE" exit then

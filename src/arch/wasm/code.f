@@ -53,6 +53,8 @@ $61 constant OP-F64-EQ
 $62 constant OP-F64-NE
 $63 constant OP-F64-LT
 $64 constant OP-F64-GT
+$65 constant OP-F64-LE
+$66 constant OP-F64-GE
 $6A constant OP-I32-ADD
 $6B constant OP-I32-SUB
 $72 constant OP-I32-OR

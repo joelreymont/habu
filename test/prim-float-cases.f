@@ -5,12 +5,12 @@
 \ 1. Fractional semantics belong to src/lib/float-test.f and f64 text.
 
 \ A runner includes the file (never require) with CASES, ;CASES and the shapes
-\ NN-N NN-F RR-R ( n n n -- ) and N-N N-F R-R ( n n -- ) in scope; the first
-\ four mean what they mean in prim-cases.f.
+\ NN-N NN-F RR-R RR-F ( n n n -- ) and N-N N-F R-R ( n n -- ) in scope; NN-N,
+\ NN-F, N-N and N-F mean what they mean in prim-cases.f.
 
 \ RR-R and R-R cases are a double's bits in and out: a NaN made from numbers is
 \ $7FF8000000000000 on every target, and a NaN operand passes through, the left
-\ one of two.
+\ one of two. RR-F cases are two doubles' bits in and a flag out.
 
 0 CASES f+
            3           4                   7  NN-N
@@ -60,16 +60,48 @@
 0 CASES f<
            3           4                   1  NN-F
            4           3                   0  NN-F
+  $7FF8000000000000  $3FF0000000000000                   0  RR-F
+  $3FF0000000000000  $7FF8000000000000                   0  RR-F
+  $8000000000000000                  0                   0  RR-F
+                  0  $8000000000000000                   0  RR-F
 ;CASES
 
 0 CASES f>
            4           3                   1  NN-F
            3           4                   0  NN-F
+  $7FF8000000000000  $3FF0000000000000                   0  RR-F
+  $3FF0000000000000  $7FF8000000000000                   0  RR-F
+  $8000000000000000                  0                   0  RR-F
+                  0  $8000000000000000                   0  RR-F
 ;CASES
 
 0 CASES f=
            3           3                   1  NN-F
            3           4                   0  NN-F
+  $7FF8000000000000  $3FF0000000000000                   0  RR-F
+  $3FF0000000000000  $7FF8000000000000                   0  RR-F
+  $8000000000000000                  0                   1  RR-F
+                  0  $8000000000000000                   1  RR-F
+;CASES
+
+0 CASES f<=
+           3           3                   1  NN-F
+           3           4                   1  NN-F
+           4           3                   0  NN-F
+  $7FF8000000000000  $3FF0000000000000                   0  RR-F
+  $3FF0000000000000  $7FF8000000000000                   0  RR-F
+  $8000000000000000                  0                   1  RR-F
+                  0  $8000000000000000                   1  RR-F
+;CASES
+
+0 CASES f>=
+           3           3                   1  NN-F
+           3           4                   0  NN-F
+           4           3                   1  NN-F
+  $7FF8000000000000  $3FF0000000000000                   0  RR-F
+  $3FF0000000000000  $7FF8000000000000                   0  RR-F
+  $8000000000000000                  0                   1  RR-F
+                  0  $8000000000000000                   1  RR-F
 ;CASES
 
 0 CASES f0<

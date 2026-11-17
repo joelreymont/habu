@@ -742,6 +742,8 @@ public
    name u s" f<" STR=CI if OP-F64-LT FCOMPARE-BODY BODY$ true exit then
    name u s" f>" STR=CI if OP-F64-GT FCOMPARE-BODY BODY$ true exit then
    name u s" f=" STR=CI if OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
+   name u s" f<=" STR=CI if OP-F64-LE FCOMPARE-BODY BODY$ true exit then
+   name u s" f>=" STR=CI if OP-F64-GE FCOMPARE-BODY BODY$ true exit then
    name u s" f0<" STR=CI if OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
    name u s" f0=" STR=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
    name u s" s>f" STR=CI if S>F-BODY BODY$ true exit then
