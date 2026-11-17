@@ -164,7 +164,11 @@ private
    child CHILD-SEED
    child state triple NODE-B@ SQL-PATH {: path:n :}
    child s" SELECT s,o FROM " SQL+ child path SQL-NAME
-   plan CTE {: relation:n :}
+   \ Path traversals nested in EXISTS must not be flattened into their
+   \ surrounding match plan. Keep ordinary paths inline for optimizer freedom.
+   plan CTE-START {: relation:n :}
+   plan PLAN-CONTEXT @ 0<> if plan s" AS MATERIALIZED(" SQL+
+   else plan s" AS(" SQL+ then
    plan input relation INHERIT-BOUNDS
    plan subject relation GUARANTEE plan object relation GUARANTEE
    plan s" SELECT " SQL+ plan relation SCOPE+

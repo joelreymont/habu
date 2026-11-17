@@ -157,7 +157,13 @@ defer GROUP-SQL ( ^plan n n bool -- n )
    state predicate NODE-K N-PATH = if
       plan triple input PATH-TRIPLE exit
    then
-   plan CTE {: relation:n :}
+   \ A correlated EXISTS can contain several triples and recursive paths.
+   \ Fence its match steps: PostgreSQL otherwise expands every sparql_match
+   \ body into one exponentially expensive join plan. Ordinary graph patterns
+   \ remain inline so indexed counts and joins keep predicate pushdown.
+   plan CTE-START {: relation:n :}
+   plan PLAN-CONTEXT @ 0<> if plan s" AS MATERIALIZED(" SQL+
+   else plan s" AS(" SQL+ then
    plan input relation INHERIT-BOUNDS
    plan subject relation GUARANTEE
    plan predicate relation GUARANTEE
