@@ -527,6 +527,9 @@ require src/core/rejection.f
 -9278 constant E-CRYPTO-VERIFY     \ RS256 verification setup or operation failure
 -9279 constant E-CRYPTO-SIGN       \ RS256 signing setup or generation failure
 
+\ Datagram sockets of any address family: -9240..-9249, minted by
+\ src/lib/net/datagram.f, which owns package DATAGRAM.
+
 \ PostgreSQL over libpq: -9250..-9259, minted by src/lib/pg.f, which owns package
 \ PG. The block is full; PG's row readers are -9320..-9329 and its growth region
 \ -9560..-9569.

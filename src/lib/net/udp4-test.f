@@ -208,7 +208,7 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
    CLOSE-PAIR ;
 
 
-\ The socket is nonblocking, so a RECEIVE with nothing queued is parked on the
+\ Each receive try is nonblocking, so a RECEIVE with nothing queued is parked on the
 \ loop and not inside recvfrom: the main thread's later send is what answers it.
 \ A task asserts nothing: the worker records what it got for the case to check
 \ once the worker is done.

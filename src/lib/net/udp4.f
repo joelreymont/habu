@@ -5,13 +5,12 @@
 \ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row
 \ (IO-STORAGE); the datagram spans are caller-owned.
 require src/lib/error.f
-require src/lib/memory.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
 require src/lib/num-types.f
 require src/lib/task.f
-require src/lib/aio.f
 require src/lib/le.f                  \ the socklen cell the endpoint carries
+require src/lib/net/datagram.f
 
 package UDP4
 public
@@ -53,13 +52,6 @@ $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $FFE3 constant MAX-PAYLOAD
-\ Linux: SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC; Darwin: SOCK_DGRAM.
-: SOCKET-FLAGS ( -- n )
-   HB-TARGET-LINUX-KERNEL? if $80802 exit then
-   HB-TARGET-MACOS? if 2 exit then
-   E-PLATFORM throw ;
-$20 constant MSG-TRUNC
-1000000 constant NS-PER-MS
 
 \ Endpoint storage is per task: a $10 sockaddr_in and a $04 socklen_t.
 $14 TASK:+USERS IO-STORAGE u8
@@ -137,104 +129,41 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
-\ The exact Linux libc schemas. RTLD_DEFAULT borrows process symbols: the
-\ executable already needs libc.so.6, so no library reference is retained.
-\ test/net/udp4.py exercises every binding with an independent Python UDP peer.
+\ RTLD_DEFAULT borrows process symbols: the executable already needs libc, so
+\ no library reference is retained.
 PROCESS-SYMBOLS
 
-FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
 FUNCTION: LOCAL-CALL getsockname ( n ^u8 ^u8 -- i32 ) ;FUNCTION
-FUNCTION: RECEIVE-CALL recvfrom ( n ^u8 n n ^u8 ^u8 -- n ) ;FUNCTION
 
 : LAST-ERROR ( -- errno )
    FFI:ERRNO >ERRNO ;
-
-
-: SOCKET-RAW ( -- n )
-   2 SOCKET-FLAGS 0 SOCKET-CALL {: fd:n :}
-   HB-TARGET-LINUX-KERNEL? if fd exit then
-   HB-TARGET-MACOS? 0= if E-PLATFORM throw then
-   fd 0 < if fd exit then
-   \ Fresh sockets have no status flags to preserve. Darwin uses O_NONBLOCK=4.
-   fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
-   fd 4 4 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
-   fd ;
-
-
-: BIND-RAW ( socket -- n ) {: socket:socket :}
-   socket SOCKET>N SOCKADDR SOCKADDR-BYTES BIND-CALL ;
-
-
-: CLOSE-RAW ( socket -- n ) {: socket:socket :}
-   socket SOCKET>N CLOSE-CALL ;
 
 
 : LOCAL-RAW ( socket -- n ) {: socket:socket :}
    socket SOCKET>N SOCKADDR ADDRLEN LOCAL-CALL ;
 
 
-: SEND-RAW ( socket ^u8 NUM:byte-len -- n )
-   {: socket:socket bytes size:NUM:byte-len :}
-   socket SOCKET>N bytes size BLEN>N 0
-   SOCKADDR SOCKADDR-BYTES SEND-CALL ;
+: >OPEN-RESULT ( DATAGRAM:open-result -- open-result )
+   MATCH DATAGRAM:open-result
+      opened OF >SOCKET UDP4-OPEN--RESULT:OPENED ENDOF
+      failed OF DATAGRAM:ERRNO>N >ERRNO UDP4-OPEN--RESULT:FAILED ENDOF
+   ;MATCH ;
 
 
-: DARWIN-RECEIVE ( socket ^u8 NUM:byte-len -- n errno )
-   {: socket:socket bytes capacity:NUM:byte-len :}
-   \ BSD recvfrom does not report the original size after truncation. Read one
-   \ complete IPv4 datagram, then copy the prefix promised to the caller.
-   MAX-PAYLOAD MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:^ extent:NUM:alloc-byte-len :}
-   socket SOCKET>N buf MAX-PAYLOAD 0 SOCKADDR ADDRLEN RECEIVE-CALL {: got:n :}
-   LAST-ERROR {: error:errno :}
-   got 0 >= if buf bytes got capacity BLEN>N min BYTE-COPY then
-   buf extent MEM:RELEASE-BYTES
-   got error ;
-
-: RECEIVE-RAW ( socket ^u8 NUM:byte-len -- n errno )
-   {: socket:socket bytes capacity:NUM:byte-len :}
-   HB-TARGET-MACOS? if socket bytes capacity DARWIN-RECEIVE exit then
-   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
-   socket SOCKET>N bytes capacity BLEN>N MSG-TRUNC
-   SOCKADDR ADDRLEN RECEIVE-CALL LAST-ERROR ;
+: >STATUS ( DATAGRAM:status -- status )
+   MATCH DATAGRAM:status
+      ok OF UDP4-STATUS:OK ENDOF
+      failed OF DATAGRAM:ERRNO>N >ERRNO UDP4-STATUS:FAILED ENDOF
+   ;MATCH ;
 
 
-\ The wait between two tries: one poll on the AIO loop for the time this
-\ RECEIVE has left. `cancelled` cannot arrive - nothing here cancels, the ticket
-\ never leaves this word, and the cleanup AIO registers on a submitting task runs
-\ only after that task has ended - so it is a broken foreign result.
-: WAIT-READABLE ( socket ms -- AIO:outcome ) {: socket:socket left:ms :}
-   socket SOCKET>N >FD AIO:READABLE left AIO:POLL AIO:AWAIT ;
-
-
-: REMAINING ( ns -- ms )
-   NS>N mono-ns - dup 0 <= if drop 0 >MS exit then
-   NS-PER-MS 1 - + NS-PER-MS / >MS ;
-
-
-\ What a RECEIVE given timeout ms may still wait: a negative timeout has no
-\ deadline and waits as itself.
-: LEFT ( ms ns -- ms ) {: timeout:ms deadline:ns :}
-   timeout MS>N 0 < if timeout exit then
-   deadline REMAINING ;
-
-
-: RETRY? ( errno -- bool )
-   ERRNO>N dup 4 = swap
-   HB-TARGET-LINUX-KERNEL? if 11 else
-      HB-TARGET-MACOS? if 35 else E-PLATFORM throw then
-   then = or ;
-
-
-: RECEIVED ( n NUM:byte-len -- receive-result ) {: actual:n capacity:NUM:byte-len :}
-   actual 0 MAX-PAYLOAD WITHIN-RANGE
-   actual capacity BLEN>N > if
-      actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:TRUNCATED
-   else
-      actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:PACKET
-   then ;
+: >RECEIVE-RESULT ( DATAGRAM:receive-result -- receive-result )
+   MATCH DATAGRAM:receive-result
+      packet OF ENDPOINT@ UDP4-RECEIVE--RESULT:PACKET ENDOF
+      truncated OF ENDPOINT@ UDP4-RECEIVE--RESULT:TRUNCATED ENDOF
+      timeout OF UDP4-RECEIVE--RESULT:TIMEOUT ENDOF
+      failed OF DATAGRAM:ERRNO>N >ERRNO UDP4-RECEIVE--RESULT:FAILED ENDOF
+   ;MATCH ;
 
 
 : OCTET-LENGTH ( ^u8 n -- n ) {: text size:n :}
@@ -287,14 +216,10 @@ public
    dup 0 MAX-PAYLOAD WITHIN-RANGE LENGTH ;
 
 
-\ BIND returns an owned nonblocking socket; the caller closes it exactly once.
+\ BIND returns an owned socket; the caller closes it exactly once.
 \ Address is a numeric IPv4 address (e.g. $7F000001); port zero asks the OS.
 : BIND ( address port -- open-result )
-   ENDPOINT! SOCKET-RAW dup 0 < if drop LAST-ERROR UDP4-OPEN--RESULT:FAILED exit then
-   >SOCKET {: socket:socket :}
-   socket BIND-RAW 0 < if
-      LAST-ERROR socket CLOSE-RAW drop UDP4-OPEN--RESULT:FAILED
-   else socket UDP4-OPEN--RESULT:OPENED then ;
+   ENDPOINT! 2 SOCKADDR SOCKADDR-BYTES DATAGRAM:BIND >OPEN-RESULT ;
 
 
 : LOCAL ( socket -- endpoint-result ) {: socket:socket :}
@@ -303,47 +228,34 @@ public
    else ENDPOINT@ UDP4-ENDPOINT--RESULT:ENDPOINT then ;
 
 
-\ The input is borrowed for this call. Success means the OS accepted the whole
-\ datagram, not that it arrived. Interrupted/would-block errors reach the caller.
+\ The input is borrowed for this call. SEND waits while the socket's send
+\ buffer is full; an interrupted send answers `failed`.
 : SEND ( socket address port ^u8 NUM:byte-len -- status )
    {: socket:socket address:address port:port bytes size:NUM:byte-len :}
    socket CHECK-SOCKET size BLEN>N 0 MAX-PAYLOAD WITHIN-RANGE
    address port ENDPOINT!
-   socket bytes size SEND-RAW dup 0 < if drop LAST-ERROR UDP4-STATUS:FAILED exit then
-   size BLEN>N <> if E-RESULT throw then UDP4-STATUS:OK ;
+   socket SOCKET>N SOCKADDR SOCKADDR-BYTES bytes size DATAGRAM:SEND >STATUS ;
 
 
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
 \ while only capacity bytes were copied. Source filtering and reordering are the
-\ caller's. Timeout zero makes one immediate try and never reaches the loop; -1
-\ waits on the AIO loop with no deadline; any other timeout is an absolute
-\ deadline the waits on the AIO loop share. AIO:START must have run before the
+\ caller's. Timeout zero makes one immediate try and never reaches the loop; a
+\ negative one waits on the AIO loop with no deadline; any other is a deadline
+\ from the call that every wait on the AIO loop shares. AIO:START must have run before the
 \ first wait.
 : RECEIVE ( socket ^u8 NUM:byte-len ms -- receive-result )
    {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
-   timeout MS>N $7FFFFFFF > if E-OPERAND throw then
-   mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}
-   begin
-      ENDPOINT-OUTPUT socket bytes capacity RECEIVE-RAW {: got:n error:errno :}
-      got 0 >= if got capacity RECEIVED exit then
-      error dup RETRY? 0= if UDP4-RECEIVE--RESULT:FAILED exit then drop
-      timeout deadline LEFT dup MS>N 0= if drop UDP4-RECEIVE--RESULT:TIMEOUT exit then
-      socket swap WAIT-READABLE
-      MATCH AIO:outcome
-         ready OF drop ENDOF
-         timed-out OF UDP4-RECEIVE--RESULT:TIMEOUT exit ENDOF
-         cancelled OF E-RESULT throw ENDOF
-         refused OF >ERRNO UDP4-RECEIVE--RESULT:FAILED exit ENDOF
-      ;MATCH
-   again ;
+   ENDPOINT-OUTPUT
+   socket SOCKET>N bytes capacity timeout SOCKADDR ADDRLEN DATAGRAM:RECEIVE
+   >RECEIVE-RESULT ;
 
 
 \ The caller closes each socket once and never reuses it: on Linux, close
 \ consumes the descriptor even if interrupted. Never retry it.
 : CLOSE ( socket -- status )
-   dup CHECK-SOCKET CLOSE-RAW 0 < if LAST-ERROR UDP4-STATUS:FAILED else UDP4-STATUS:OK then ;
+   dup CHECK-SOCKET SOCKET>N DATAGRAM:CLOSE >STATUS ;
 
 
 ;package
