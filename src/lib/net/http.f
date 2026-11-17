@@ -31,7 +31,7 @@ $40 constant PARK-SLOTS           \ kept-alive connections parked at once
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
 $100 constant LINGER-CAP          \ bytes one drain read takes from a lingering peer
-$C8 constant ACCEPT-WAIT-MS       \ the listener's pause when starved, and how often a waiting worker reads the stop flag
+$C8 constant STOP-READ-MS         \ the longest the listener's pause or a waiting worker goes without reading the stop flag
 $C8 constant STOP-MARGIN-MS       \ over the longest park: scheduling slack and one window's parse
 $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
 
@@ -217,14 +217,14 @@ private
 
 
 \ Waits for the first byte of a request, nothing of it buffered, reading
-\ STOPPING? at least every ACCEPT-WAIT-MS: false once a stop has been raised,
+\ STOPPING? at least every STOP-READ-MS: false once a stop has been raised,
 \ true once the peer speaks or the deadline has passed, which READ-HEAD then
 \ reads as it reads any fill.
 : AWAIT-REQUEST ( TCP4:connection n -- bool ) {: conn:TCP4:connection deadline:n :}
    begin
       STOPPING? if false exit then
       mono-ns deadline >= if true exit then
-      conn ACCEPT-WAIT-MS DEADLINE-AT deadline min WAIT-READABLE
+      conn STOP-READ-MS DEADLINE-AT deadline min WAIT-READABLE
    until
    true ;
 
@@ -771,7 +771,7 @@ variable EXIT-HOOK-N
 \ A sleep, not an AIO timer: the pause also waits out an AIO that refuses
 \ records.
 : ACCEPT-PAUSE ( -- )
-   ACCEPT-WAIT-MS >MS TASK:SLEEP ;
+   STOP-READ-MS >MS TASK:SLEEP ;
 
 
 \ A failed accept stops the server only when the listener itself is broken. A
@@ -814,20 +814,16 @@ variable EXIT-HOOK-N
    1 WAKE-ARMED ! ;
 
 
-\ One of the listener's own polls armed. One AIO refuses at its ceiling
-\ (E-AIO-FULL at Linux's records, E-AIO-POLL-BOUND on Darwin) is a warning: the
-\ listener pauses and tries again until it is armed or a stop is raised.
-: ARM-PATIENTLY ( [ -- ] -- ) {: arm :}
-   begin
-      STOPPING? if exit then
-      arm catch {: code:n :}
-      code 0= if exit then
-      code E-AIO-FULL <> code E-AIO-POLL-BOUND <> and if code throw then
-      LOG:WARN s" http" LOG:LINE
-      s" poll refused, throw " LOG:TEXT+  code LOG:INT+
-      LOG:;LINE
-      ACCEPT-PAUSE
-   again ;
+\ One arm of the listener's own polls. A poll refused at AIO's ceiling waits
+\ for records to be freed, so it is a warning and a pause.
+: ARM-OR-PAUSE ( [ -- ] -- ) {: arm :}
+   arm catch {: code:n :}
+   code 0= if exit then
+   code E-AIO-FULL <> code E-AIO-POLL-BOUND <> and if code throw then
+   LOG:WARN s" http" LOG:LINE
+   s" poll refused, throw " LOG:TEXT+  code LOG:INT+
+   LOG:;LINE
+   ACCEPT-PAUSE ;
 
 
 : HANDED? ( n -- bool )
@@ -878,8 +874,7 @@ variable EXIT-HOOK-N
    READY? 0= if 1 STOPPING atomic-add drop exit then
    WAKER AIO:WOKE
    PARK-LOCK TASK:GET
-   [: ARM-HANDED ;] [: PARK-UNLOCK ;] finally
-   ['] ARM-WAKE ARM-PATIENTLY ;
+   [: ARM-HANDED ;] [: PARK-UNLOCK ;] finally ;
 
 
 \ The row vacated, its connection read out first: a worker may take the row
@@ -908,8 +903,7 @@ variable EXIT-HOOK-N
       timed-out OF ENDOF
       cancelled OF 1 STOPPING atomic-add drop ENDOF
       refused OF drop 1 STOPPING atomic-add drop ENDOF
-   ;MATCH
-   ['] ARM-ACCEPT ARM-PATIENTLY ;
+   ;MATCH ;
 
 
 \ The wait AWAIT-ANY answered has left the group, so its flag is cleared first.
@@ -919,14 +913,14 @@ variable EXIT-HOOK-N
    tag out ROW-HEARD ;
 
 
-\ The listener waits in one AIO:AWAIT-ANY on its accept, its wake and every
-\ parked connection.
+\ The listener waits only with its accept and wake polls both armed, so the
+\ wake STOP sends always ends the wait.
 : LISTEN-LOOP ( -- )
-   ['] ARM-ACCEPT ARM-PATIENTLY
-   ['] ARM-WAKE ARM-PATIENTLY
    begin
       STOPPING? if exit then
-      LISTENING AIO:AWAIT-ANY HEARD
+      ACCEPT-ARMED @ 0= if ['] ARM-ACCEPT ARM-OR-PAUSE else
+      WAKE-ARMED @ 0= if ['] ARM-WAKE ARM-OR-PAUSE else
+      LISTENING AIO:AWAIT-ANY HEARD then then
    again ;
 
 
@@ -1042,7 +1036,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 \ and linger parks in turn - plus STOP-MARGIN-MS. It counts no handler work.
 : STOP-BOUND-MS ( -- n )
    IDLE-MS @ BODY-TIMEOUT-MS @ BOUND+ LINGER-MS BOUND+
-   ACCEPT-WAIT-MS max
+   STOP-READ-MS max
    STOP-MARGIN-MS BOUND+ ;
 
 

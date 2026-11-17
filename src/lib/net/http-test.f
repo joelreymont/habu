@@ -45,7 +45,7 @@ package HTTP
    ACCEPTED-COUNT atomic@ ;
 : HTTP-TEST:QUEUED ( -- n ) JOB-SLOTS 1+ ;
 : HTTP-TEST:STOP-MARGIN-MS ( -- n ) STOP-MARGIN-MS ;
-: HTTP-TEST:ACCEPT-WAIT-MS ( -- n ) ACCEPT-WAIT-MS ;
+: HTTP-TEST:ACCEPT-WAIT-MS ( -- n ) STOP-READ-MS ;
 \ Whether the first worker's slot holds a connection: the one-worker server
 \ sets it just before READ-REQUEST starts that connection's deadline.
 : HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
