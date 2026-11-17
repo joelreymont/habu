@@ -87,6 +87,8 @@ private
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-TOP-ONLY
 
+using TASK-ABI
+
 \ Both converters stay private: no caller mints a handle over its own memory or
 \ projects one back to an address.
 CAST: >SEM ( n -- sem )
@@ -99,15 +101,12 @@ $80 constant TASK-MUTEX-BYTES
 0 constant TASK-FACILITY-OWNER-OFF
 $8 constant TASK-FACILITY-MUTEX-OFF
 TASK-FACILITY-MUTEX-OFF TASK-MUTEX-BYTES + constant TASK-FACILITY-BYTES
-$20 constant TASK-SEM-BYTES              \ Linux sem_t or Darwin Mach port storage
 $7FFFFFFF constant TASK-SEM-MAX          \ SEM_VALUE_MAX
 $04 constant TASK-EINTR
 $0B constant TASK-EAGAIN
 $6E constant TASK-ETIMEDOUT              \ Linux
 1 constant TASK-CLOCK-MONOTONIC          \ Linux clockid_t
 0 constant TASK-SEM-GUARD-OFF
-$8 constant TASK-SEM-OBJ-OFF
-TASK-SEM-OBJ-OFF TASK-SEM-BYTES + constant TASK-SEMAPHORE-BYTES
 $10 constant TASK-TIMESPEC-BYTES         \ struct timespec on an LP64 host
 0 constant TASK-SPEC-SEC-OFF
 $8 constant TASK-SPEC-NSEC-OFF
@@ -123,56 +122,6 @@ TASK-ABI:DONE constant TASK-DONE
 TASK-ABI:HALT-REQ constant TASK-HALT-REQ
 
 TASK-ABI:TCB-BYTES constant TASK-TCB-BYTES
-
-BEGIN-STRUCTURE TASK-TCB-SIZE
-   CELL +FIELD TCB.SIZE
-   CELL +FIELD TCB.XT-CELL
-   CELL +FIELD TCB.THREAD
-   PTR-FIELD: TCB.STACK
-   CELL +FIELD TCB.STACK-U
-   PTR-FIELD: TCB.REGION
-   CELL +FIELD TCB.REGION-U
-   CELL +FIELD TCB.DBASE
-   CELL +FIELD TCB.NDICT
-   CELL +FIELD TCB.CP
-   CELL +FIELD TCB.STATUS
-   CELL +FIELD TCB.STOP
-   CELL +FIELD TCB.RET
-   CELL +FIELD TCB.USER-XT-CELL
-   PTR-FIELD: TCB.RSTACK
-   CELL +FIELD TCB.RSTACK-U
-   PTR-FIELD: TCB.LSTACK
-   CELL +FIELD TCB.LSTACK-U
-   CELL +FIELD TCB.THROW
-   TASK-SEMAPHORE-BYTES +FIELD TCB.PARK
-   CELL +FIELD TCB.RESULT
-   CELL +FIELD TCB.RESULT-SET
-   CELL +FIELD TCB.JOINER
-   CELL +FIELD TCB.EXIT-SLOT
-   TASK-SEMAPHORE-BYTES +FIELD TCB.DONE
-END-STRUCTURE
-
-: TASK-TCB-OFFSET ( ^a ^b n -- ) {: field:^ origin:^ want:n :}
-   field FFI:>CELL origin FFI:>CELL - want <> if
-      s" task: tcb field layout" EXIT-STATUS:INTERNAL die then ;
-
-: TASK-TCB-LAYOUT-CHECK ( -- )
-   TASK-TCB-SIZE TASK-TCB-BYTES <> if s" task: tcb layout" EXIT-STATUS:INTERNAL die then
-   \ The offsets the immutable engine entry loads, and the two this package
-   \ reads as numbers.
-   here CELL-VIEW {: origin:^ :}
-   origin TCB.XT-CELL origin TASK-ABI:XT-OFF TASK-TCB-OFFSET
-   origin TCB.STACK origin TASK-ABI:STACK-OFF TASK-TCB-OFFSET
-   origin TCB.REGION origin TASK-ABI:REGION-OFF TASK-TCB-OFFSET
-   origin TCB.REGION-U origin TASK-ABI:REGION-U-OFF TASK-TCB-OFFSET
-   origin TCB.DBASE origin TASK-ABI:DBASE-OFF TASK-TCB-OFFSET
-   origin TCB.NDICT origin TASK-ABI:NDICT-OFF TASK-TCB-OFFSET
-   origin TCB.CP origin TASK-ABI:CP-OFF TASK-TCB-OFFSET
-   origin TCB.STATUS origin TASK-ABI:STATUS-OFF TASK-TCB-OFFSET
-   origin TCB.PARK origin TASK-ABI:PARK-OFF TASK-TCB-OFFSET
-   origin TCB.EXIT-SLOT origin TASK-ABI:EXIT-SLOT-OFF TASK-TCB-OFFSET ;
-
-TASK-TCB-LAYOUT-CHECK
 
 variable TASK-USER-NEXT
 TASK-USER-NEXT ROLLBACK-CELLS:MARK
@@ -320,7 +269,7 @@ host
    SEM-REC TASK-SEM-GUARD-OFF + ;
 
 : SEM-OBJ ( sem -- ^u8 )
-   SEM-REC BYTE-VIEW TASK-SEM-OBJ-OFF + ;
+   SEM-REC BYTE-VIEW SEM-OBJ-OFF + ;
 
 \ The guard cell holds the record's OWN
 \ address exactly while the POSIX object behind it is live.
@@ -398,7 +347,7 @@ host
 $40 constant TASK-SEM-POOL-N
 1 cells constant TASK-SEM-CHUNK-USED-OFF
 TASK-SEM-POOL-N 1 + cells constant TASK-SEM-CHUNK-RECS-OFF
-TASK-SEM-CHUNK-RECS-OFF TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * +
+TASK-SEM-CHUNK-RECS-OFF TASK-SEM-POOL-N SEMAPHORE-BYTES * +
    constant TASK-SEM-CHUNK-BYTES
 
 : TASK-ZERO-CELLS, ( n -- )
@@ -421,7 +370,7 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
    c TASK-SEM-CHUNK-USED-OFF + idx cells + TASK-N>PTR ;
 
 : SEM-CHUNK-REC ( n n -- n ) {: c:n idx:n :}
-   c TASK-SEM-CHUNK-RECS-OFF + idx TASK-SEMAPHORE-BYTES * + ;
+   c TASK-SEM-CHUNK-RECS-OFF + idx SEMAPHORE-BYTES * + ;
 
 \ The used cell moves 0 -> 1 in one step, so racing claimers get different
 \ records. Answers the record, or 0 when the chunk has none free.
@@ -437,9 +386,9 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 : SEM-CHUNK-SLOT ( sem n -- n ) {: s:sem c:n :}
    s SEM>N c 0 SEM-CHUNK-REC - {: off:n :}
    off 0 < if 0 exit then
-   off TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * >= if 0 exit then
-   off TASK-SEMAPHORE-BYTES mod 0 <> if 0 exit then
-   c off TASK-SEMAPHORE-BYTES / SEM-CHUNK-USED FFI:>CELL ;
+   off TASK-SEM-POOL-N SEMAPHORE-BYTES * >= if 0 exit then
+   off SEMAPHORE-BYTES mod 0 <> if 0 exit then
+   c off SEMAPHORE-BYTES / SEM-CHUNK-USED FFI:>CELL ;
 
 : SEM-POOL-SLOT ( sem -- n ) {: s:sem :}
    SEM-POOL-FIRST
@@ -499,7 +448,7 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 \ and READY are scratch, so a program starts with no park and its first wake
 \ makes one.
 TASK-ALIGN8
-create MAIN-PARK-REC TASK-SEMAPHORE-BYTES SCRATCH-ALLOT
+create MAIN-PARK-REC SEMAPHORE-BYTES SCRATCH-ALLOT
 TASK-ALIGN8
 SCRATCH-VARIABLE MAIN-PARK-READY
 
@@ -990,8 +939,7 @@ TASK-CHAIN-PUBLISH
 : TASK-CHAIN! ( ^n -- )
    TASK-CHAIN ! ;
 
-\ Nothing after the TCB belongs to TASK-ABI, so the layout check above answers
-\ for the structure unchanged.
+\ The link cell sits after the TCB, outside what TASK-ABI declares.
 : TASK-LINK@ ( ^n -- n )
    TASK-TCB-BYTES + 0 ptr-field @ FFI:>CELL ;
 
@@ -1506,7 +1454,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ Zeroes the TCB but its park, which a post in flight may still meet.
 : TCB-CLEAR ( ^n -- ) {: tcb:^ :}
    TASK-ABI:PARK-OFF 0 ?do 0 tcb i + ! CELL +loop
-   TASK-TCB-BYTES TASK-ABI:PARK-OFF TASK-SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
+   TASK-TCB-BYTES TASK-ABI:PARK-OFF SEMAPHORE-BYTES + ?do 0 tcb i + ! CELL +loop ;
 
 \ Of two TASK:FREEs on one task only one proceeds and the other is refused; a
 \ task in any state but EMPTY is refused. The record is cleared before its claim
@@ -1707,7 +1655,7 @@ CAST: >SLOT-AT ( n -- ^t )
 
 : SEMAPHORE ( -- )
    TASK-ALIGN8
-   create TASK-SEMAPHORE-BYTES SCRATCH-ALLOT
+   create SEMAPHORE-BYTES SCRATCH-ALLOT
    does> ( -- TASK:sem ) FFI:>CELL >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
@@ -2070,6 +2018,8 @@ TASK-MIN-STACK constant MIN-STACK
 \ that did not come from the pool is E-TASK-SEM-POOL.
 : FREE-SEMAPHORE ( sem -- )
    SEM-FREE ;
+
+;using
 
 seal-package
 

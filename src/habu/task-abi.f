@@ -1,4 +1,5 @@
-\ Fixed C-to-Habu task entry contract, shared by the engine and TASK library.
+\ The task control block and the offsets the engine's task entry loads from it,
+\ shared by the engine and the TASK library.
 package TASK-ABI
 public
 
@@ -8,21 +9,52 @@ public
 3 constant DONE
 4 constant HALT-REQ
 
-$8 constant XT-OFF
-$18 constant STACK-OFF
-$28 constant REGION-OFF
-$30 constant REGION-U-OFF
-$38 constant DBASE-OFF
-$40 constant NDICT-OFF
-$48 constant CP-OFF
-$50 constant STATUS-OFF
-\ The task's own wake-up: TASK:WAIT waits on this semaphore and TASK:WAKE posts
-\ it. A guard cell then one sem_t, it lives as long as its TCB in this process
-\ and the capture sweep destroys it; ACTIVATE drains it, so every run opens at
-\ zero.
-$98 constant PARK-OFF
-\ The head of the task's cleanup chain: 0 for none, else the row plus one.
-$D8 constant EXIT-SLOT-OFF
-$108 constant TCB-BYTES
+$8 constant SEM-OBJ-OFF
+\ A guard cell, then Linux sem_t or Darwin Mach port storage.
+SEM-OBJ-OFF $20 + constant SEMAPHORE-BYTES
+
+private
+BEGIN-STRUCTURE TCB-SIZE
+public
+   CELL +FIELD TCB.SIZE
+   CELL +FIELD TCB.XT-CELL
+   CELL +FIELD TCB.THREAD
+   PTR-FIELD: TCB.STACK
+   CELL +FIELD TCB.STACK-U
+   PTR-FIELD: TCB.REGION
+   CELL +FIELD TCB.REGION-U
+   CELL +FIELD TCB.DBASE
+   CELL +FIELD TCB.NDICT
+   CELL +FIELD TCB.CP
+   CELL +FIELD TCB.STATUS
+   CELL +FIELD TCB.STOP
+   CELL +FIELD TCB.RET
+   CELL +FIELD TCB.USER-XT-CELL
+   PTR-FIELD: TCB.RSTACK
+   CELL +FIELD TCB.RSTACK-U
+   PTR-FIELD: TCB.LSTACK
+   CELL +FIELD TCB.LSTACK-U
+   CELL +FIELD TCB.THROW
+   \ The task's own wake-up semaphore.
+   SEMAPHORE-BYTES +FIELD TCB.PARK
+   CELL +FIELD TCB.RESULT
+   CELL +FIELD TCB.RESULT-SET
+   CELL +FIELD TCB.JOINER
+   \ The head of the task's cleanup chain: 0 for none, else the row plus one.
+   CELL +FIELD TCB.EXIT-SLOT
+   SEMAPHORE-BYTES +FIELD TCB.DONE
+END-STRUCTURE
+
+NULL-PTR TCB.XT-CELL NULL-PTR - constant XT-OFF
+NULL-PTR TCB.STACK NULL-PTR - constant STACK-OFF
+NULL-PTR TCB.REGION NULL-PTR - constant REGION-OFF
+NULL-PTR TCB.REGION-U NULL-PTR - constant REGION-U-OFF
+NULL-PTR TCB.DBASE NULL-PTR - constant DBASE-OFF
+NULL-PTR TCB.NDICT NULL-PTR - constant NDICT-OFF
+NULL-PTR TCB.CP NULL-PTR - constant CP-OFF
+NULL-PTR TCB.STATUS NULL-PTR - constant STATUS-OFF
+NULL-PTR TCB.PARK NULL-PTR - constant PARK-OFF
+NULL-PTR TCB.EXIT-SLOT NULL-PTR - constant EXIT-SLOT-OFF
+TCB-SIZE constant TCB-BYTES
 
 ;package
