@@ -81,6 +81,20 @@ s" $7FFFFFFFFFFFFFFF LAYOUT-BUFFER LB-EXTENT lb-res<n,n>" LB-EVAL CHECKER-REJECT
 s" 1 LAYOUT-BUFFER LB-OPEN lb-res<a,a>" LB-EVAL CHECKER-REJECT-RC T=
 s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL CHECKER-REJECT-RC T=
 
+\ A second peek at a token on the next line reads none either, and the token
+\ runs as the next statement.
+variable LB-PEEK-U1
+variable LB-PEEK-U2
+variable LB-PEEK-RAN
+: LB-PEEK2 ( -- )
+   LBUF:STORAGE-LINE-TOKEN nip LB-PEEK-U1 !
+   LBUF:STORAGE-LINE-TOKEN nip LB-PEEK-U2 ! ;
+: LB-PEEK-NEXT ( -- ) 1 LB-PEEK-RAN ! ;
+s\" LB-PEEK2\nLB-PEEK-NEXT" LB-EVAL 0 T=
+LB-PEEK-U1 @ 0 T=
+LB-PEEK-U2 @ 0 T=
+LB-PEEK-RAN @ 1 T=
+
 PTR-VARIABLE LB-DP
 
 : LB-DUPLICATE ( -- )

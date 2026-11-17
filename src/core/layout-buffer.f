@@ -244,13 +244,15 @@ public
    NULL-PTR - data-base INP-CELL + ! ;
 
 \ The next token, as parse-name reads one, when it stands on the cursor's line:
-\ the bytes the read skips hold no line feed (CHECKER-TYPE-SPAN-BREAK?). A token
-\ on a later line goes back to the input, and none is read.
+\ the bytes the read skips hold no line feed (CHECKER-TYPE-SPAN-BREAK?). For a
+\ token on a later line it reads none and leaves the cursor where it found it.
 : STORAGE-LINE-TOKEN ( -- ^u8 n )
    data-base INP-CELL + @ {: at:n :}
    parse-name {: a:^ u:n :}
    a NULL-PTR - at - {: gap:n :}
-   a gap - gap CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD a 0 exit then
+   a gap - gap CHECKER-TYPE-SPAN-BREAK? if
+      at data-base INP-CELL + !  a 0 exit
+   then
    a u ;
 
 private
