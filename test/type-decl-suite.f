@@ -1357,11 +1357,15 @@ s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay2`\n"
 s" whatnot" s" unknown payload type" TDT-AT
 s" SUMTYPE tdpay3<a> VARIANT ok tdres<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay3`\n"
-s" tdpay3" s" type family applied to wrong number of arguments" TDT-AT
+s" tdres" s" type family applied to wrong number of arguments" TDT-AT
 s\"   = help: give the family as many type arguments as its header declares\n" TDT-HAS
 s" SUMTYPE tdpay4<a> VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay4`\n"
 s" z" s" unknown payload type" TDT-AT
+s\" SUMTYPE tdpay6<a> VARIANT ok tdres<a,\n a, a> ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay6`\n"
+s" tdres" s" type family applied to wrong number of arguments" TDT-AT
+s\"   = help: give the family as many type arguments as its header declares\n" TDT-HAS
 \ A pointer payload is spelled ^T: `ptr` is an unknown payload type.
 s" SUMTYPE tdpayptr VARIANT ok ptr u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpayptr`\n"
@@ -1746,6 +1750,9 @@ s" tdqs:qself" s" invalid layout policy for recursive sum" TDT-AT
 s" SUMTYPE qselfr VARIANT wv ^tdqs:qselfr ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfr`\n"
 s" tdqs:qselfr" s" invalid layout policy for recursive sum" TDT-AT
+s" SUMTYPE qselfa<a> VARIANT wv tdqs:qselfa<a> ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfa`\n"
+s" tdqs:qselfa" s" invalid layout policy for recursive sum" TDT-AT
 s" STRUCTURE qsprod FIELD child tdqs:qsprod ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `qsprod`\n"
 s" tdqs:qsprod" s" type cannot recursively name its owner" TDT-AT

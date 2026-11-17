@@ -739,11 +739,11 @@ defer TDV-ELEM-XT ( ^u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recu
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TDV-ARGS-BUILD ( n n -- n ) {: fam:n base:n :}
+: TDV-ARGS-BUILD ( ^u8 n n n -- n ) {: fa:^ fu:n fam:n base:n :}
    TDV-ARG-N @ base - {: cnt:n :}
    cnt fam TFAM-ARITY@ <> IF
       base TDV-ARG-N !
-      TDN-A @ TDN-U @ s" type family applied to wrong number of arguments"
+      fa fu s" type family applied to wrong number of arguments"
       s" give the family as many type arguments as its header declares"
       E-TDECL-PAYLOAD TDECL-THROW
    THEN
@@ -758,21 +758,21 @@ defer TDV-ELEM-XT ( ^u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recu
 
 \ A qualified or applied self-reference resolves to the just-registered row, so
 \ recursion is rejected by id. The end is the address just past the closing `>`.
-: TDECL-VPAY-ARGS ( n -- n ^u8 ) {: fam:n :}
+: TDECL-VPAY-ARGS ( ^u8 n n -- n ^u8 ) {: fa:^ fu:n fam:n :}
    fam TDECL-CUR-FAM @ = IF
-      TDN-A @ TDN-U @ s" invalid layout policy for recursive sum"
+      fa fu s" invalid layout policy for recursive sum"
          TDECL-SELF-FIX$ E-TDECL-RECURSIVE TDECL-THROW
    THEN
    TDV-ARG-N @ {: base:n :}
    BEGIN
       TDECL-NEXT
-      2dup s" >" CORE-STR= IF + fam base TDV-ARGS-BUILD swap EXIT THEN
+      2dup s" >" CORE-STR= IF + fa fu fam base TDV-ARGS-BUILD swap EXIT THEN
       2dup DELIM? IF s" bad type application"
          TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW THEN
       TDV-ELEM-XT TDV-ARG+
       TDECL-NEXT
       2dup s" ," CORE-STR= IF 2drop ELSE
-      2dup s" >" CORE-STR= IF + fam base TDV-ARGS-BUILD swap EXIT ELSE
+      2dup s" >" CORE-STR= IF + fa fu fam base TDV-ARGS-BUILD swap EXIT ELSE
          s" bad type application" TDECL-APP-FIX$ E-TDECL-SYNTAX TDECL-THROW
       THEN THEN
    AGAIN ;
@@ -872,7 +872,7 @@ private
    a u TDECL-VPAY-FAM? 0= IF drop 0 RES-FALSE EXIT THEN
    {: fam:n :}
    TDECL-NEXT 2dup s" <" CORE-STR= IF
-      2drop fam TDECL-VPAY-ARGS fam a rot TDECL-VPAY-UNSTORED RES-TRUE EXIT THEN
+      2drop a u fam TDECL-VPAY-ARGS fam a rot TDECL-VPAY-UNSTORED RES-TRUE EXIT THEN
    PK! 0 RES-FALSE ;
 
 \ An absent head has no arity or layout to build. Consume its complete
