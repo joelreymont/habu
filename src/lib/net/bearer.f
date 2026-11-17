@@ -3,12 +3,12 @@
 \ signed RS256 with a key of its JWK Set, whose iss and aud name that issuer
 \ and this server, and whose exp and nbf hold (RFC 7515, 7517, 7519). The host
 \ states the issuer with ISSUER! before HTTP:START, guards a route with
-\ `req res BEARER:ADMIT? if ... then` and reads the caller's string claims with
-\ CLAIM$. METADATA! names this server's protected-resource metadata (RFC 9728
-\ 5.1) and the scope its tokens need (RFC 6750 3) in each 401 challenge. As a
-\ client, TOKEN gets a token from the token endpoint CLIENT! names, for the
-\ client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
-\ REFRESH renews one with a refresh grant (RFC 6749 6).
+\ `req res BEARER:ADMIT? if ... then` and reads the caller's claims with CLAIM$
+\ and CLAIM-HOLDS?. METADATA! names this server's protected-resource metadata
+\ (RFC 9728 5.1) and the scope its tokens need (RFC 6750 3) in each 401
+\ challenge. As a client, TOKEN gets a token from the token endpoint CLIENT!
+\ names, for the client itself (RFC 6749 4.4) or for a person (Entra
+\ On-Behalf-Of), and REFRESH renews one with a refresh grant (RFC 6749 6).
 \ STORAGE CLASS. PROCESS-WIDE: the issuer and the challenges naming the
 \ metadata and scope, written before HTTP serves; the key set, read and
 \ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
@@ -384,22 +384,26 @@ ENUM lookup-step
    SLOT MODULUS @ SPAN:$ SLOT EXPONENT @ SPAN:$
    SLOT SIGNED @ SPAN:$ SLOT SIGNATURE @ SPAN:$ CRYPTO:RS256-VERIFY? ;
 
-\ One element of an aud array: 1 the audience, 0 another, -1 past the last.
-: AUDIENCE-ELEMENT ( JSON:reader -- JSON:reader n )
+\ One element of an array: 1 the string, 0 another, -1 past the last.
+: ELEMENT ( JSON:reader ^u8 n -- JSON:reader n )
+   {: w:^ wu:n :}
    JSON:READ-NEXT {: kind:n :}
    kind JSON:T-ARR-END = if -1 exit then
-   kind JSON:T-STR = if AUDIENCE SPAN:$ JSON:READ-STR-EQ? if 1 else 0 then exit then
+   kind JSON:T-STR = if w wu JSON:READ-STR-EQ? if 1 else 0 then exit then
    kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ 2drop then
    0 ;
 
-: AUDIENCE? ( -- bool )
-   CLAIMS$ s" aud" MEMBER {: kind:n :}
+: HOLDS? ( ^u8 n ^u8 n ^u8 n -- bool )
+   {: t:^ tu:n k:^ ku:n w:^ wu:n :}
+   t tu k ku MEMBER {: kind:n :}
    kind JSON:T-STR = if
-      AUDIENCE SPAN:$ JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same exit
+      w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same exit
    then
    kind JSON:T-ARR <> if JSON:READ-CLOSE false exit then
-   begin AUDIENCE-ELEMENT dup 0= while drop repeat
+   begin w wu ELEMENT dup 0= while drop repeat
    {: found:n :} JSON:READ-CLOSE found 0 > ;
+
+: AUDIENCE? ( -- bool ) CLAIMS$ s" aud" AUDIENCE SPAN:$ HOLDS? ;
 
 : VALID? ( n -- bool )
    {: now:n :}
@@ -515,6 +519,10 @@ ENUM lookup-step
       then
    loop ;
 
+: ANSWERING? ( -- bool )
+   PASSED @ 0= if false exit then
+   FROM @ HTTP:>REQUEST HTTP:SERVING? ;
+
 public
 
 \ The issuer whose tokens ADMIT? accepts: its iss, the audience this server
@@ -574,9 +582,15 @@ public
 \ borrowed until the worker's next CLAIM$ or ADMIT?.
 : CLAIM$ ( ^u8 n -- ^u8 n bool )
    {: name:^ nu:n :}
-   PASSED @ 0= if s" " false exit then
-   FROM @ HTTP:>REQUEST HTTP:SERVING? 0= if s" " false exit then
+   ANSWERING? 0= if s" " false exit then
    CLAIMS$ name nu NOTE$ ;
+
+\ Whether a claim of the admitted request this worker answers is the string,
+\ or an array holding it, as Entra's roles; false outside one.
+: CLAIM-HOLDS? ( ^u8 n ^u8 n -- bool )
+   {: name:^ nu:n w:^ wu:n :}
+   ANSWERING? 0= if false exit then
+   CLAIMS$ name nu w wu HOLDS? ;
 
 
 10000 constant TOKEN-TIMEOUT-MS     \ protective: the bound on the token endpoint's whole answer

@@ -4,10 +4,11 @@
 \ token's, the 401 challenges, plain and naming METADATA!'s URL, its scope or
 \ both, a METADATA! URL holding a quote or CR LF and a scope holding a quote
 \ or two spaces refused, malformed tokens, alg none, crit and HS256, repeated
-\ member names, aud, iss, exp and nbf, claim strings, CLAIM$ after the
-\ admitted request and in a task it spawns, the refetch window, a cached kid
-\ answered while a fetch is in flight, and an unknown kid and an empty set
-\ waiting for that fetch.
+\ member names, aud, iss, exp and nbf, claim strings, CLAIM-HOLDS? on string,
+\ number and absent claims and an array holding nested values and an escape,
+\ CLAIM$ after the admitted request, CLAIM$ and CLAIM-HOLDS? in a task it
+\ spawns, the refetch window, a cached kid answered while a fetch is in
+\ flight, and an unknown kid and an empty set waiting for that fetch.
 \ Run: bin/hb --load src/lib/net/bearer-test.f
 
 require src/lib/test.f
@@ -48,6 +49,7 @@ CAP BUFFER: BODY
 variable BODY-U
 CAP BUFFER: HEADS
 variable HEADS-U
+5 SPAN-BUFFER: HELD
 
 $1000 constant TOKEN-CAP
 TOKEN-CAP SPAN-BUFFER: TOKEN
@@ -83,7 +85,7 @@ CAP BUFFER: WAITED-BODY
 variable WAITED-U
 TYPED-VARIABLE WAITING CURL:handle
 TASK:MIN-STACK TASK:TASK WAITER
-TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
+TASK:MIN-STACK TASK:TASK CLAIMER
 
 \ The bytes copied into the span at off; answers the offset past them.
 : PUT ( ^u8 n SPAN:span<u8> n -- n )
@@ -146,7 +148,24 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 : PLAIN-ROUTE ( HTTP:request HTTP:response -- )
    nip [: AZP-BODY ;] HTTP:JSON! ;
 
-: CLAIM-FLAG ( -- ) s" azp" BEARER:CLAIM$ nip nip bool>n TASK:RETURN ;
+: HELD! ( ^u8 n ^u8 n n -- )
+   {: at:n :}
+   BEARER:CLAIM-HOLDS? if [char] t else [char] f then
+   HELD at 1 SPAN:SUB SPAN:$ drop c! ;
+
+: ROLES-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer BEARER:ADMIT? 0= if exit then
+   s" roles" s" Areas.Read" 0 HELD!
+   s" roles" s" Areas.Write" 1 HELD!
+   s" azp" s" app-1" 2 HELD!
+   s" tid" s" 7" 3 HELD!
+   s" oid" s" o-1" 4 HELD!
+   answer HELD SPAN:$ HTTP:BODY! ;
+
+: CLAIM-FLAG ( -- )
+   s" azp" BEARER:CLAIM$ nip nip
+   s" azp" s" app-1" BEARER:CLAIM-HOLDS? or bool>n TASK:RETURN ;
 
 \ Answers CLAIMER's flag; a throw in CLAIMER answers 500.
 : SPAWN-ROUTE ( HTTP:request HTTP:response -- )
@@ -434,6 +453,12 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    KID-A ISS-AUD LATER S\" ,\"azp\":\"app-1\",\"tid\":7}" CLAIMS MINT SEND
    S\" {\"azp\":\"app-1\",\"oid\":null,\"tid\":null}" ANSWERED ;
 
+: HOLDINGS ( -- )
+   s" CLAIM-HOLDS? finds a string as a claim or an array element past nested values, decoded, and nothing else" T-LABEL
+   KID-A ISS-AUD LATER
+   S\" ,\"azp\":\"app-1\",\"roles\":[{\"r\":\"Areas.Write\"},[\"Areas.Write\"],\"Areas\\u002eRead\"],\"tid\":7}"
+   CLAIMS MINT s" /roles" OPEN BEARING FINISH s" tftff" ANSWERED ;
+
 \ The unguarded route on the admitted request's kept-alive connection, which
 \ the same worker serves.
 : STALE-CLAIM ( -- )
@@ -446,7 +471,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    h CURL:CLEANUP ;
 
 : SPAWNED-CLAIM ( -- )
-   s" CLAIM$ in a task the admitted request spawns answers false" T-LABEL
+   s" CLAIM$ and CLAIM-HOLDS? in a task the admitted request spawns answer false" T-LABEL
    KID-A CURRENT MINT s" /spawn" OPEN BEARING FINISH s" false" ANSWERED ;
 
 : ASK ( -- ) PENDING @ FINISH TASK:RETURN ;
@@ -542,6 +567,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    s" GET" s" /claims" [: GUARDED-ROUTE ;] HTTP:ROUTE
    s" GET" s" /plain" [: PLAIN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /spawn" [: SPAWN-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /roles" [: ROLES-ROUTE ;] HTTP:ROUTE
    s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE ;
 
 : EARLY ( -- )
@@ -575,7 +601,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    s" " s" " BEARER:METADATA!
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
    UNAVAILABLE ADMITTED UNKNOWN-KID NO-TOKEN MALFORMED SIGNATURES AUDIENCES
-   TIMES STRINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
+   TIMES STRINGS HOLDINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
    HTTP:STOP
    ISSUE
    \ METADATA! is refused while serving, so its challenges are immutable

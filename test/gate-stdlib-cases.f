@@ -482,8 +482,7 @@ SUITE mcp
    src/lib/net/mcp-test.f
 ;SUITE
 
-\ BEARER:ADMIT? on a loopback port that serves its own key set: the 503, the
-\ 401 challenges, the token checks, CLAIM$ and the refetch window.
+\ BEARER:ADMIT? on a loopback port that serves its own key set.
 SUITE bearer
    src/lib/net/bearer-test.f
 ;SUITE
