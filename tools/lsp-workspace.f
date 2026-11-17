@@ -289,7 +289,9 @@ variable CUR-ROOT                        \ and the root being walked
    {: q :}
    q catch {: rc:n :}
    rc 0= if CUR @ LOADS exit then
-   rc EXIT-STATUS:REJECTED =  VERIFY:DISCOVERY-STOPPED @ 0<>  and if CUR @ VERIFY:DISCOVERY-STOPPED @ FAULT exit then
+   rc EXIT-STATUS:REJECTED =  VERIFY:DISCOVERY-STOPPED @ 0<>  and if
+      CUR @ VERIFY:DISCOVERY-STOPPED @ FAULT exit
+   then
    rc FAULT$ nip nip if CUR @ rc FAULT exit then
    rc throw ;
 

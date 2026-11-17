@@ -785,7 +785,8 @@ private
 here DECLARATIONS - constant OWNER-COMMITTED
 : OWNER-SIZE-AGREE ( -- )
    OWNER-COMMITTED OWNER-BYTES <> if
-      s" checker: declaration-owner field list and record size disagree" EXIT-STATUS:INTERNAL die then ;
+      s" checker: declaration-owner field list and record size disagree" EXIT-STATUS:INTERNAL die
+   then ;
 OWNER-SIZE-AGREE
 ;package
 
@@ -999,13 +1000,17 @@ TV-CLEAR
    next nc 4 oc TV-FILL-AT    next nc 5 oc TV-FILL-AT
    next nc 8 oc TV-FILL-AT    next nc 9 oc TV-FILL-AT
    TVT-P @ oc TV-UNMAP-RC 0 <> IF
-      next nc TV-UNMAP-RC 0 <> IF s" checker: typevar cleanup munmap failed" EXIT-STATUS:SYSTEM die THEN
+      next nc TV-UNMAP-RC 0 <> IF
+         s" checker: typevar cleanup munmap failed" EXIT-STATUS:SYSTEM die
+      THEN
       s" checker: typevar munmap failed" EXIT-STATUS:SYSTEM die
    THEN
    next nc TV-PUBLISH ;
 
 : TV-ENSURE ( n -- ) {: need:n :}
-   need 0 < need TV-MAX-CAP > or IF s" checker: typevar capacity overflow" EXIT-STATUS:INTERNAL die THEN
+   need 0 < need TV-MAX-CAP > or IF
+      s" checker: typevar capacity overflow" EXIT-STATUS:INTERNAL die
+   THEN
    need TV-CAP @ <= IF EXIT THEN
    need TV-GROW ;
 
@@ -1962,7 +1967,9 @@ variable SPN   PTR-VARIABLE SPA-P   variable SPA-CAP
 \ Every nonnull SPA base lives in the scratch region. Terms carry indices;
 \ growth preserves the full capacity, including rows saved by a trial.
 : SPA-ENSURE ( n -- ) {: need:n :}
-   need 0 <= need MAXPUSH > or IF s" checker: push arena capacity overflow" EXIT-STATUS:INTERNAL die THEN
+   need 0 <= need MAXPUSH > or IF
+      s" checker: push arena capacity overflow" EXIT-STATUS:INTERNAL die
+   THEN
    need SPA-CAP @ <= IF exit THEN
    need MAXPUSH-INIT max
    SPA-CAP @ MAXPUSH 2 / <= IF SPA-CAP @ 2 * max THEN {: nc:n :}
@@ -3060,7 +3067,9 @@ variable TWALK-D
 : TWALK-RESET ( -- ) 0 TWALK-D ! ;
 : TWALK-DEEPER ( -- )
    TWALK-D @ 1 + dup TWALK-D !
-   TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" EXIT-STATUS:INTERNAL die THEN ;
+   TWALK-MAX-DEPTH > IF
+      s" checker: term walk too deep (cyclic term)" EXIT-STATUS:INTERNAL die
+   THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
 \ With any? false, find the named type variable for the occurs check; with any?
@@ -5116,7 +5125,9 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 : SDEC! SDEC-FIELD ! ;
 : TOKBUF-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad token buffer cap" EXIT-STATUS:INTERNAL die THEN
-   need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" EXIT-STATUS:INTERNAL die THEN
+   need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF
+      s" checker: token buffer too large" EXIT-STATUS:INTERNAL die
+   THEN
    need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
 : TOKBUF-ALLOC ( n -- ^u8 )
    map-anon 0 <> IF drop s" checker: token buffer mmap failed" EXIT-STATUS:SYSTEM die THEN ;
@@ -7716,7 +7727,9 @@ variable PKHAVE
 
 \ DEFLINEAR hands a name it read; any other caller is the engine's.
 : CT-ADD-LINEAR ( ^u8 n ^u8 n -- ) {: a:^ u:n pa:^ pu:n :}
-   a u BYTE-SPAN? 0= IF s" checker: a linear type's name describes no memory" EXIT-STATUS:INTERNAL die THEN
+   a u BYTE-SPAN? 0= IF
+      s" checker: a linear type's name describes no memory" EXIT-STATUS:INTERNAL die
+   THEN
    a u TYPE-RESERVED? IF a u CHECKER-LINEAR-TAKEN  EXIT-STATUS:REJECTED REJECTION:STOP THEN
    a u pa pu CT-LINEAR-SET ;
 
@@ -8978,7 +8991,9 @@ variable VREC-TYPE-U
 \ at the record's name.
 : CHECKER-DEFRECORD ( ^u8 n ^u8 n -- )
    {: name:^ nameu:n fields:^ fieldsu:n :}
-   name nameu BYTE-SPAN? 0= IF s" checker: a value record's name describes no memory" EXIT-STATUS:INTERNAL die THEN
+   name nameu BYTE-SPAN? 0= IF
+      s" checker: a value record's name describes no memory" EXIT-STATUS:INTERNAL die
+   THEN
    name nameu fields fieldsu VREC-TRY {: at:n why:n :}
    why 0= IF EXIT THEN
    name nameu  fields fieldsu at VREC-TOKEN  why CHECKER-RECORD-REJECT
@@ -9207,7 +9222,9 @@ variable CHX-HI
 
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" EXIT-STATUS:INTERNAL die THEN
-   need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" EXIT-STATUS:INTERNAL die THEN
+   need USIGS-MAX-CAP USIGS-GRAIN - > IF
+      s" checker: user sigs too large" EXIT-STATUS:INTERNAL die
+   THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
 
 \ ---- navigation: where a named declaration was written ----------------------
@@ -11926,7 +11943,9 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          pool RECURSE swap P-REST!                         \ ( head )
       endof
       EN-STALE of                                 \ EN.A 0: a cell lost to a live scope; EN.B: TOP-UNKNOWN
-         pool TOP-READ-P @ BYTE-VIEW <> IF s" checker: stale type outside interpret row" EXIT-STATUS:INTERNAL die THEN
+         pool TOP-READ-P @ BYTE-VIEW <> IF
+            s" checker: stale type outside interpret row" EXIT-STATUS:INTERNAL die
+         THEN
          r@ EN.B @ 0 <> IF TOP-UNKNOWN @ ELSE
             r@ EN.A @ dup 0= IF drop CC-N MK-CON ELSE pool RECURSE THEN MK-STALE
          THEN r> drop
@@ -12718,7 +12737,9 @@ create PE-SPEC-TERMS PE-SPEC-CAP cells allot
 variable PE-SPEC-TOS
 
 : PE-SPEC-PUSH ( n -- )
-   PE-SPEC-TOS @ PE-SPEC-CAP >= IF s" checker: primitive-spec operands overflow" EXIT-STATUS:INTERNAL die THEN
+   PE-SPEC-TOS @ PE-SPEC-CAP >= IF
+      s" checker: primitive-spec operands overflow" EXIT-STATUS:INTERNAL die
+   THEN
    PE-SPEC-TERMS PE-SPEC-TOS @ cells + !
    PE-SPEC-TOS @ 1 + PE-SPEC-TOS ! ;
 
@@ -13012,7 +13033,9 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 EXPORT CHECKER-USE:NAME!
 
 : CHECKER-USING ( ^u8 n -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" EXIT-STATUS:INTERNAL die THEN
+   a u BYTE-SPAN? 0= IF
+      s" checker: using name length describes no memory" EXIT-STATUS:INTERNAL die
+   THEN
    CK-USE-DEPTH {: d:n :}
    d USE-MAX >= IF s" checker: using stack overflow" EXIT-STATUS:INTERNAL die THEN
    a u HEAD-ROW {: row:^ :}
@@ -14114,7 +14137,9 @@ CAST: AS-ACTION ( n -- [ -- ] )
 \ NAME, or `A:NAME` in package A.
 : PART-PATH ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
    TOP-NAME$ {: pa:^ pu:n :}
-   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die THEN
+   a u BYTE-SPAN? 0= IF
+      s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die
+   THEN
    a u CHECKER-COLON-SCAN drop 0 <> IF a u PACKAGE-COLON-REJECT THEN
    pu 0= IF a u EXIT THEN
    pu 1 + u + {: ku:n :}
@@ -14145,7 +14170,9 @@ EXPORT CHECKER-OVERLAY:OPEN-PACKAGE
 
 \ The path a u, then the name as written t tu.
 : CHECKER-PACKAGE ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
-   a u BYTE-SPAN? 0= IF s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die THEN
+   a u BYTE-SPAN? 0= IF
+      s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die
+   THEN
    a u CTOR-OWNER-XT {: pa:^ pu:n na:^ nu:n owned:bool :}
    owned IF a u t tu pa pu na nu CTOR-PKG-REJECT THEN
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF a u OPEN-PACKAGE THEN
@@ -15400,7 +15427,9 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 
 : CWIN-ENSURE ( -- )
    CWIN-N @ CWIN-CAP @ < IF EXIT THEN
-   CWIN-N @ CWIN-ROW-MAX >= IF s" checker: recorded site capacity overflow" EXIT-STATUS:INTERNAL die THEN
+   CWIN-N @ CWIN-ROW-MAX >= IF
+      s" checker: recorded site capacity overflow" EXIT-STATUS:INTERNAL die
+   THEN
    CWIN-N @ 1 + CWIN-INIT max
    CWIN-CAP @ CWIN-ROW-MAX 2 / <= IF CWIN-CAP @ 2 * max THEN
    {: cap:n :}
@@ -16339,7 +16368,9 @@ variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
 : NORETS ( -- ^u8 ) NORET-P @ ;
 
 : NORET-CELL ( n -- ^n ) {: off:n :}
-   off NORET-ENTRY-ALIGN 1 - and 0 <> IF s" checker: unaligned no-return cell" EXIT-STATUS:INTERNAL die THEN
+   off NORET-ENTRY-ALIGN 1 - and 0 <> IF
+      s" checker: unaligned no-return cell" EXIT-STATUS:INTERNAL die
+   THEN
    NORETS off + CELL-VIEW ;
 
 : NORET-TERM ( -- )
@@ -17018,7 +17049,9 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    u CELL 2 + < IF s" checker: bad held undefine" EXIT-STATUS:INTERNAL die THEN
    a CELL-VIEW @ {: pkgu:n :}
    a CELL + c@ {: vis:n :}
-   pkgu 0 <  u CELL 2 + - pkgu <  or  vis SYM-PUBLIC >  or IF s" checker: bad held undefine" EXIT-STATUS:INTERNAL die THEN
+   pkgu 0 <  u CELL 2 + - pkgu <  or  vis SYM-PUBLIC >  or IF
+      s" checker: bad held undefine" EXIT-STATUS:INTERNAL die
+   THEN
    a CELL 1 + + {: pkg:^ :}
    pkg pkgu vis  pkg pkgu +  u CELL 1 + - pkgu -  SYM-INTERN {: sym:n :}
    CHECKER-REC-SYM @ {: was:n :}
@@ -17981,7 +18014,9 @@ variable WF-CURROW   variable WF-POS-I
 
 : WF-GROW-CAP ( n -- n ) {: need:n :}
    $7FFFFFFFFFFFFFFF WF-REC / {: lim:n :}
-   need 0 <= need lim > or if s" checker: width-fact capacity overflow" EXIT-STATUS:INTERNAL die then
+   need 0 <= need lim > or if
+      s" checker: width-fact capacity overflow" EXIT-STATUS:INTERNAL die
+   then
    WF-CAP @ lim 2 / <= if WF-CAP @ 2 * need max WF-INIT max exit then
    need ;
 
@@ -18032,7 +18067,9 @@ variable WF-CURROW   variable WF-POS-I
    off pos WF-SEEK {: idx:n :}
    idx WF-N @ < if
       off pos idx WF-KEY= if
-         fam term w idx WF-SAME? 0= if s" checker: conflicting width fact" EXIT-STATUS:INTERNAL die then
+         fam term w idx WF-SAME? 0= if
+            s" checker: conflicting width fact" EXIT-STATUS:INTERNAL die
+         then
          exit
       then
    then
@@ -18600,7 +18637,9 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
 : SCOPE-INIT-DROP ( n n -- n ) {: row:n width:n :}
    row
    width 0 ?do
-      R-RES dup TAG S-PUSH <> IF s" checker: init bundle underruns row" EXIT-STATUS:INTERNAL die THEN
+      R-RES dup TAG S-PUSH <> IF
+         s" checker: init bundle underruns row" EXIT-STATUS:INTERNAL die
+      THEN
       P>REST
    loop ;
 
@@ -19048,7 +19087,9 @@ variable XG-N   variable XG-TN   variable XG-ROW
       t XG-READ-HID RES-TRUE EXIT THEN
    \ Every caller expands a known layout and stops at an open one before
    \ reading: one here is a checker bug.
-   t LAYOUT-PARAM? IF s" checker: logical layout cell in a transport group" EXIT-STATUS:INTERNAL die THEN
+   t LAYOUT-PARAM? IF
+      s" checker: logical layout cell in a transport group" EXIT-STATUS:INTERNAL die
+   THEN
    node P>TYPE node XG-T+
    node P>REST XG-ROW !
    RES-TRUE ;
@@ -19354,7 +19395,9 @@ PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
    LOCNB start +  idx cells LOCEND + @ start - ;
 : LOC-HW ( -- ^n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
-   need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" EXIT-STATUS:INTERNAL die THEN
+   need 0 <= need LOC-HW-MAX-CELLS > or IF
+      s" checker: local bind capacity overflow" EXIT-STATUS:INTERNAL die
+   THEN
    LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max LOC-HW-INIT max EXIT THEN
    need ;
 : LOC-HW-ENSURE ( n -- ) {: need:n :}
@@ -19615,7 +19658,9 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
 
 : WF-TOKEN-CUT ( n -- ) {: wf0:n :}   \ drop this token's facts, the table's last rows
    WF-N @ wf0 ?do
-      i WF-OFF@ TSTART @ <> IF s" checker: width fact past the current token" EXIT-STATUS:INTERNAL die THEN
+      i WF-OFF@ TSTART @ <> IF
+         s" checker: width fact past the current token" EXIT-STATUS:INTERNAL die
+      THEN
    loop
    wf0 WF-N ! ;
 : LOC-DECL-GROUP ( n -- ) {: gi:n :}
@@ -19625,7 +19670,9 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
 : LOC-DECL-GROUPS ( n n -- ) {: decl:n wf0:n :}
    wf0 WF-TOKEN-CUT
    decl  #LOC @ LGRP @ -  WF-ROW-SCAN
-   decl  #LOC @ LGRP @ -  XG-READ 0= IF s" checker: declared local row unreadable" EXIT-STATUS:INTERNAL die THEN
+   decl  #LOC @ LGRP @ -  XG-READ 0= IF
+      s" checker: declared local row unreadable" EXIT-STATUS:INTERNAL die
+   THEN
    0 BEGIN dup #LOC @ LGRP @ - < WHILE
       dup LOC-DECL-GROUP
       1 +
@@ -23103,10 +23150,12 @@ EXPORT CHECK:TKF
 : EVENT ( n -- n n n )
    {: ord:n :}
    TELLING @ 0= IF
-      s" checker: source-tape event asked for outside the observer's verdict" EXIT-STATUS:INTERNAL die
+      s" checker: source-tape event asked for outside the observer's verdict"
+      EXIT-STATUS:INTERNAL die
    THEN
    ord EV-LO @ <  ord EV-LO @ EV-N @ + >=  or IF
-      s" checker: source-tape event asked for a token the scan did not report" EXIT-STATUS:INTERNAL die
+      s" checker: source-tape event asked for a token the scan did not report"
+      EXIT-STATUS:INTERNAL die
    THEN
    EV-P ord EV-LO @ - EV-ROW NAV-CELL {: p:^ :}
    p @  p CELL + @  p 2 cells + @ ;
@@ -23430,7 +23479,9 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 : ANNOT-REC-SYM ( ^n -- n ) {: rec:^ :}
    rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec CK-REC-WID {: wid:n :}
-   nameu 0= wid -2 = or IF s" checker: an annotated word has no live record" EXIT-STATUS:INTERNAL die THEN
+   nameu 0= wid -2 = or IF
+      s" checker: an annotated word has no live record" EXIT-STATUS:INTERNAL die
+   THEN
    wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    ndict@ 0 ?DO
       i REC-AT {: ns:^ :}

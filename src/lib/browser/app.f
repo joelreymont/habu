@@ -95,7 +95,9 @@ DIGEST ID SHA256>HEX
 : MARK ( ^u8 n n -- n )
    {: m:^ mu:n from:n :}
    HTML HTML-U m mu from FIND-SUB-FROM MATCH option
-      none OF s" hb: src/lib/browser/app.html lacks a marker in order" EXIT-STATUS:INTERNAL die ENDOF
+      none OF
+         s" hb: src/lib/browser/app.html lacks a marker in order" EXIT-STATUS:INTERNAL die
+      ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
 

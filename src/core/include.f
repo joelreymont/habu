@@ -2872,7 +2872,9 @@ public
 \ effect at a time, since one pair is saved: a second would lose the first.
 
 : REQUIRE-SNAPSHOT ( -- )
-   REQUIRE-SAVE-N @ 0 >= if s" require: a registry snapshot is already in effect" EXIT-STATUS:INTERNAL die then
+   REQUIRE-SAVE-N @ 0 >= if
+      s" require: a registry snapshot is already in effect" EXIT-STATUS:INTERNAL die
+   then
    REQUIRE-N @ REQUIRE-SAVE-N !
    REQUIRE-BASE @ REQUIRE-SAVE-BASE !
    REQUIRE-N @ REQUIRE-BASE ! ;

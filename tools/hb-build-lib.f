@@ -56,7 +56,8 @@ variable HBB-ELAPSED-NS
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [--target name] [options] [source.f] -o out" EXIT-STATUS:USAGE die ;
+   s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [--target name] [options] [source.f] -o out"
+   EXIT-STATUS:USAGE die ;
 
 : HBB-COPY-PATH! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ up:^ :}
    u PATH-CAP > if E-BUILD-PATH throw then
@@ -186,7 +187,9 @@ variable HBB-ELAPSED-NS
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
    HBB-I @ 2 + HBB-ARG$ HBB-OUT-ARG!
    HBB-SRC$ FS:FILE? 0= if s" hb-build: no such source" EXIT-STATUS:NOINPUT die then
-   HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" EXIT-STATUS:USAGE die then ;
+   HBB-SRC$ HBB-PATH-HAS-DQ? if
+      s" hb-build: source path contains a double quote" EXIT-STATUS:USAGE die
+   then ;
 
 : HBB-GOT-NAME$ ( -- ^u8 n )
    HBB-ENGINE @ if s" hb-engine-got" exit then

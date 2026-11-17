@@ -114,7 +114,9 @@ CAST: XT>N ( [ R -- S ] -- n )
    then
    at FIND 0 < 0= IF exit THEN                \ already set
    ctrl 1 and 0<>  TRAMP@ 0=  and if E-BP-TARGET throw then
-   FREE dup 0 < IF drop s" bp: table full (8)" type EXIT-STATUS:FULL throw THEN   \ recoverable in the REPL
+   FREE dup 0 < IF
+      drop s" bp: table full (8)" type EXIT-STATUS:FULL throw
+   THEN   \ recoverable in the REPL
    {: idx :}
    at 4 CODE-BYTES:AT drop {: xt:^ :}
    xt ctrl idx BP-SET-SLOT

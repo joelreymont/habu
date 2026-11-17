@@ -727,7 +727,9 @@ variable TFX-CUR              \ private bucket-walk cursor
 \ a later lookup. Dying here names the caller that broke the order.
 : TFX-RETIRE ( n -- ) {: newn:n :}
    TFX-READY @ 0= IF EXIT THEN
-   TFX-HI @ TFAM-N @ > IF s" tfam: tail index retired after its rows went" EXIT-STATUS:INTERNAL die THEN
+   TFX-HI @ TFAM-N @ > IF
+      s" tfam: tail index retired after its rows went" EXIT-STATUS:INTERNAL die
+   THEN
    TFAM-N @ 1 -
    BEGIN dup newn >= WHILE
       dup TFX-POP
@@ -959,7 +961,9 @@ private
 
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
    SVX-GEN @ HIDX-GEN @ <> IF newn SVX-HI ! EXIT THEN
-   SVX-HI @ SUMV-N @ > IF s" tfam: ctor index retired after its rows went" EXIT-STATUS:INTERNAL die THEN
+   SVX-HI @ SUMV-N @ > IF
+      s" tfam: ctor index retired after its rows went" EXIT-STATUS:INTERNAL die
+   THEN
    SUMV-N @ newn ?do
       i SUMV-CTOR-SYM@ {: sym:n :}
       sym 0 <> IF
@@ -975,7 +979,9 @@ private
 public
 
 : SUMV-CTOR-SYM! ( n n -- ) {: vid:n sym:n :}
-   vid SUMV-CTOR-SYM@ 0 <> IF s" tfam: variant constructor symbol already set" EXIT-STATUS:INTERNAL die THEN
+   vid SUMV-CTOR-SYM@ 0 <> IF
+      s" tfam: variant constructor symbol already set" EXIT-STATUS:INTERNAL die
+   THEN
    SVX-ENSURE
    sym vid SUMV-REC@ SV.CTOR-SYM !
    vid sym SVX-LINK ;
@@ -1073,7 +1079,9 @@ variable VNX-CUR              \ private bucket-walk cursor
 \ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
 : VNX-RETIRE ( n -- ) {: newn:n :}
    VNX-READY @ 0= IF EXIT THEN
-   VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" EXIT-STATUS:INTERNAL die THEN
+   VNX-HI @ SUMV-N @ <> IF
+      s" tfam: variant tail index retired out of step with its rows" EXIT-STATUS:INTERNAL die
+   THEN
    SUMV-N @ 1 -
    BEGIN dup newn >= WHILE dup VNX-POP 1 - REPEAT drop
    newn VNX-HI ! ;
@@ -2536,13 +2544,18 @@ public
    boff al mod 0 <> IF
       s" pf: a field's byte-off is not a multiple of its align" EXIT-STATUS:INTERNAL die THEN
    flags PF-FLAG-BUFFER = IF
-      sch SCHEMA-ROOT@ PF-U8? 0= IF s" pf: a buffer's schema is not u8" EXIT-STATUS:INTERNAL die THEN
+      sch SCHEMA-ROOT@ PF-U8? 0= IF
+         s" pf: a buffer's schema is not u8" EXIT-STATUS:INTERNAL die
+      THEN
    ELSE
       ER-STATE @ ER-IDLE = IF fam sch cellsn PF-WIDTH-REQUIRE THEN
    THEN
    fam TFAM-LAYOUT-POLICY@ {: policy:n :}
    policy TL-STACK-CELL-TAG =  policy TL-PACKED-TAG = or  policy TL-NICHE = or
-   0= IF s" pf: a field was added to a family whose layout policy lays out no fields" EXIT-STATUS:INTERNAL die THEN
+   0= IF
+      s" pf: a field was added to a family whose layout policy lays out no fields"
+      EXIT-STATUS:INTERNAL die
+   THEN
    slot cellsn boff bytesn al flags PF-CELL-SLOTS-REQUIRE ;
 : PF-DUP? ( n n ^u8 n -- bool ) {: fam:n var:n na:^ nu:n :}
    fam var FVX-FIRST
@@ -2561,11 +2574,14 @@ public
    {: fam:n var:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    WRITE-WINDOW-CK
    fam var PF-OWNER-OK? 0= IF
-      s" pf: a field's owner is not a product, or a sum or enum variant of the family" EXIT-STATUS:INTERNAL die THEN
+      s" pf: a field's owner is not a product, or a sum or enum variant of the family"
+      EXIT-STATUS:INTERNAL die
+   THEN
    na nu PF-NAME-REQUIRE
    fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
    fam sch PF-SCHEMA-OK? 0= IF
-      s" pf: a field's schema does not fit its family's parameter kinds" EXIT-STATUS:INTERNAL die THEN
+      s" pf: a field's schema does not fit its family's parameter kinds" EXIT-STATUS:INTERNAL die
+   THEN
    fam sch slot cellsn boff bytesn al flags PF-LAYOUT-REQUIRE
    fam var slot cellsn boff bytesn PF-OVERLAP? IF
       s" pf: a field overlaps another field of its owner" EXIT-STATUS:INTERNAL die THEN
@@ -2616,7 +2632,9 @@ variable MBX-GEN   0 MBX-GEN !
 
 \ A member has one generated word: a second symbol for its row is a defect.
 : SYM-ONCE ( n n -- ) {: old:n sym:n :}
-   old 0 <>  old sym <>  and IF s" tfam: a member's symbol is already set" EXIT-STATUS:INTERNAL die THEN ;
+   old 0 <>  old sym <>  and IF
+      s" tfam: a member's symbol is already set" EXIT-STATUS:INTERNAL die
+   THEN ;
 
 : FIELD-SYM! ( n n -- ) {: fid:n sym:n :}
    sym 0= IF EXIT THEN

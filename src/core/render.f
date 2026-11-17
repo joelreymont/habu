@@ -57,14 +57,18 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    oc 0 > IF SEEN-P @ next oc ARENA-CELLS-COPY THEN
    next oc nc ARENA-CELLS-UNBOUND
    SEEN-P @ oc SEEN-UNMAP-RC 0 <> IF
-      next nc SEEN-UNMAP-RC 0 <> IF s" render: seen cleanup munmap failed" EXIT-STATUS:SYSTEM die THEN
+      next nc SEEN-UNMAP-RC 0 <> IF
+         s" render: seen cleanup munmap failed" EXIT-STATUS:SYSTEM die
+      THEN
       s" render: seen munmap failed" EXIT-STATUS:SYSTEM die
    THEN
    next SEEN-P !   nc SEEN-CAP ! ;
 
 : SEEN-ENSURE ( -- )
    MAXTV MAXTV-INIT max {: need:n :}
-   need 0 < need SEEN-MAX-CAP > or IF s" render: seen capacity overflow" EXIT-STATUS:INTERNAL die THEN
+   need 0 < need SEEN-MAX-CAP > or IF
+      s" render: seen capacity overflow" EXIT-STATUS:INTERNAL die
+   THEN
    need SEEN-CAP @ <= IF EXIT THEN
    need SEEN-GROW ;
 

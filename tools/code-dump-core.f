@@ -30,7 +30,9 @@ private
 : STEP ( ^u8 n n -- n ) {: a:^ u:n pc:n :}
    pc FMT:.INT s" : " type
    a u pc DUMP-DECODE:STEP {: bytes:n :}
-   bytes 0 <= bytes u > or if s" code-dump: decoder escaped recorded span" EXIT-STATUS:INTERNAL die then
+   bytes 0 <= bytes u > or if
+      s" code-dump: decoder escaped recorded span" EXIT-STATUS:INTERNAL die
+   then
    cr bytes ;
 
 : WALK ( n ^u8 n -- ) {: xt:n a:^ u:n :}

@@ -71,8 +71,12 @@ variable LINT-OUT-ON
    RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
    RLEN @ cap = IF
       RFD @ READ-PROBE 1 read RGOT !
-      RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
-      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer: " a u EXIT-STATUS:FULL LINT-READ-DIE THEN
+      RGOT @ 0 < IF
+         RFD @ close s" lint: cannot read file: " a u EXIT-STATUS:IOERR LINT-READ-DIE
+      THEN
+      RGOT @ 0 > IF
+         RFD @ close s" lint: file exceeds buffer: " a u EXIT-STATUS:FULL LINT-READ-DIE
+      THEN
    THEN
    RFD @ close
    buf RLEN @ ;

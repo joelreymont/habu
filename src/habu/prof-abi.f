@@ -18,7 +18,8 @@ variable LPROFRECLAIM
 \ The band closes the DATA region: it starts PROF-CNT-BYTES below DATA's end.
 : PROF-BAND-AT ( n n -- n ) {: base:n size:n :} size PROF-CNT-BYTES - base + ;
 0  constant PROF-TOT        \ sample intervals elapsed: aarch64 weighs each sample (ARN-LAST)
-8  constant PROF-LIM        \ report + exit(EXIT-STATUS:PROF-LIMIT) at this many, 0 = sample until prof-off
+8  constant PROF-LIM        \ report + exit(EXIT-STATUS:PROF-LIMIT) at this many,
+                            \ 0 = sample until prof-off
 16 constant PROF-OTHER      \ Habu-code samples outside any dict word (main loop, helpers)
 24 constant PROF-FOREIGN    \ samples in a context that is not Habu code, charged to no word
 32 constant PROF-DBASE      \ the dictionary base, recorded by prof-on

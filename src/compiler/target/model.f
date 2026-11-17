@@ -254,7 +254,8 @@ private
    s" rtarget: the engine was built for no host it knows" EXIT-STATUS:INTERNAL die ;
 
 : WINDOWS-CORE ( -- )
-   s" rtarget: CORE reached the ABI of a Windows profile it answers unsupported" EXIT-STATUS:INTERNAL die ;
+   s" rtarget: CORE reached the ABI of a Windows profile it answers unsupported"
+   EXIT-STATUS:INTERNAL die ;
 
 \ The action owner calls HOST before opening the target source window. A
 \ product engine later calls this same mapping against its own baked flags.

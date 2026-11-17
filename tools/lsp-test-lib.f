@@ -736,7 +736,6 @@ require tools/lsp-defs.f
 require tools/lsp-highlight.f
 require tools/lsp-workspace.f
 require tools/lsp-core.f
-require src/core/exit-status.f
 
 package LSP-TEST
 using BUF
@@ -3343,7 +3342,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) 2 ;\n: DEF-SUM ( -- n ) DEF-ONE DEF-TWO + ;\n" ;
 
 \ TEXT-DEF-C with its uses swapped, then one `using` more than the checker
-\ holds open, at which the verifier dies (`76 die`) and exits without a
+\ holds open, at which the verifier dies with status 76 and exits without a
 \ verdict as in incomplete.
 : TEXT-DEF-C-SWAPPED ( -- ^u8 n )
    TXT-B CLEAR

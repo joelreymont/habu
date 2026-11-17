@@ -33,7 +33,6 @@ require src/habu/boot-files.f
 require src/compiler/target/model.f
 require src/habu/linker.f
 require src/habu/link-data.f
-require src/core/exit-status.f
 
 package HB-BUILD-CORE
 private
@@ -352,9 +351,13 @@ CAST: >WRITER ( n -- [ bool [ ^u8 n -- ] -- ] )
 
 : WRITER ( -- [ bool [ ^u8 n -- ] -- ] )
    s" KERNEL-OBJECT" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
-   pkg XREF-FOUND? 0= if s" hb-build: the tree has no package KERNEL-OBJECT" EXIT-STATUS:INTERNAL die then
+   pkg XREF-FOUND? 0= if
+      s" hb-build: the tree has no package KERNEL-OBJECT" EXIT-STATUS:INTERNAL die
+   then
    s" WRITE" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
-   rec XREF-FOUND? 0= if s" hb-build: KERNEL-OBJECT has no public WRITE" EXIT-STATUS:INTERNAL die then
+   rec XREF-FOUND? 0= if
+      s" hb-build: KERNEL-OBJECT has no public WRITE" EXIT-STATUS:INTERNAL die
+   then
    rec XREF-START >WRITER ;
 
 \ An inputs file is the object's checksum (its bytes 8-40), the object's stamp

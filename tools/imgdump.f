@@ -84,7 +84,8 @@ CAST: MAP>BYTES ( n -- ^u8 )
    dup 0 < IF IFD @ close s" imgdump: mmap failed" EXIT-STATUS:SYSTEM die THEN MAP>BYTES ;
 
 : IMG-USAGE ( -- )
-   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name" EXIT-STATUS:USAGE die ;
+   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name"
+   EXIT-STATUS:USAGE die ;
 
 : IMG-PATH$ ( -- ^u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then
@@ -371,7 +372,8 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    \ must have their ASLR slide removed before they are compared to the file.
    MACHO @ if MACHO:TEXT-VA exit then
    ELF-FIXED-BASE? 0= if
-      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base" EXIT-STATUS:DATAERR die
+      s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base"
+      EXIT-STATUS:DATAERR die
    then
    X64-IMAGE @ if 0 exit then                  \ x86 records hold absolute xts
    ELF-ENTRY-OFF I@ ;

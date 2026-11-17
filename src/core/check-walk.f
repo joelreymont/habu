@@ -3921,7 +3921,9 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    {: ix:n src:n :}
    ix REC-AT REC-SYM {: sym:n :}
    src REC-AT REC-SYM {: from:n :}
-   sym 0=  from 0= or IF s" checker: an export or its source has no checked symbol" EXIT-STATUS:INTERNAL die THEN
+   sym 0=  from 0= or IF
+      s" checker: an export or its source has no checked symbol" EXIT-STATUS:INTERNAL die
+   THEN
    from USIG-NEWEST {: eff:n :}
    eff 0= IF s" checker: an export's source has no checked effect" EXIT-STATUS:INTERNAL die THEN
    eff 1 - E-PTR EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
@@ -3953,7 +3955,9 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    ix LINKED? IF EXIT THEN
    off 0 > IF ix READ-IX EXIT THEN
    -1 off - {: src:n :}
-   src 0 <  src ix >=  or IF s" checker: an export's source is not an earlier record" EXIT-STATUS:INTERNAL die THEN
+   src 0 <  src ix >=  or IF
+      s" checker: an export's source is not an earlier record" EXIT-STATUS:INTERNAL die
+   THEN
    src HAS-SYM? IF src REC-AT recurse THEN
    ix src ALIAS-READ ;
 

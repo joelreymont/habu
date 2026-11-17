@@ -28,7 +28,6 @@ require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
-require src/core/exit-status.f
 \ The require closure, and LSP-CHECK:VERIFY-BYTES: the check that stops before the
 \ run stage, which --verify-only makes.
 require tools/check-verify-core.f

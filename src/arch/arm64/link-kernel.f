@@ -147,7 +147,8 @@ variable PATH-U
    2 TABLE PRESETS-N ! PRESETS-AT !
    AT @ KOBJ-U @ = if
       SAY-OBJECT
-      s" link: the kernel object has no checker rows: its tree is older than this hb" EXIT-STATUS:DATAERR die
+      s" link: the kernel object has no checker rows: its tree is older than this hb"
+      EXIT-STATUS:DATAERR die
    then
    IMPORTS MACHO-U ! MACHO-AT !
    IMPORTS ELF-U ! ELF-AT !
@@ -249,7 +250,9 @@ public
 \ from 2 to 8.
 : SCOPE-SITE ( n -- label )
    2 - {: j:n :}
-   j 0<  j SCOPES-N @ >= or if s" link: the kernel object has no scope site of that kind" EXIT-STATUS:DATAERR die then
+   j 0<  j SCOPES-N @ >= or if
+      s" link: the kernel object has no scope site of that kind" EXIT-STATUS:DATAERR die
+   then
    j 8 * SCOPES-AT @ + KOBJ@ >LABEL ;
 
 \ The Mach-O and the ELF import sections' bytes.

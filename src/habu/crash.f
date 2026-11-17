@@ -195,7 +195,8 @@ public
 : DIE-LINE-VALUE, ( ^u8 n n n -- )
    {: a:^ u:n status:n reg:n :}
    u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
-      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value" EXIT-STATUS:INTERNAL die
+      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value"
+      EXIT-STATUS:INTERNAL die
    THEN
    reg 3 <> IF 3 reg 0 ADDI, THEN
    a u status 1 DIE-LINE-SITE, ;
@@ -877,7 +878,8 @@ public
    0 SP 0 ADDI,  1 0 MOVZ,  NR-SIGALTSTACK SYS,
    SP SP SIGSTK-FRAME ADDI,                           \ ADD, not ADDS: the flags are the call's
    C-CC ok BCOND,
-      s" hb: the system refused to register the signal stack (sigaltstack)" EXIT-STATUS:SYSTEM DIE-LINE,
+      s" hb: the system refused to register the signal stack (sigaltstack)"
+      EXIT-STATUS:SYSTEM DIE-LINE,
    ok LBL, ;
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives

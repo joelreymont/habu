@@ -18,7 +18,6 @@ ENTRY-ORDER !
 \ that tree, not the client's.
 require src/core/exit-status.f
 require src/habu/verify-source.f
-require src/core/exit-status.f
 
 package CHECK-VERIFY-CHILD
 
@@ -86,7 +85,9 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    begin
       IN-U @ CHUNK + IN-RESERVE
       0 IN-U @ IN CHUNK read RD !
-      RD @ 0 < if s" check-verify: cannot read the open documents and the subject" EXIT-STATUS:IOERR die then
+      RD @ 0 < if
+         s" check-verify: cannot read the open documents and the subject" EXIT-STATUS:IOERR die
+      then
       RD @ 0 >
    while
       IN-U @ RD @ + IN-U !
@@ -549,7 +550,8 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 public
 
 : USAGE ( -- )
-   s" usage: check-verify-child.f -- SUBJECT [--prose | --label LABEL [--prose] | --entry [--prose] | --at N | --of TAIL | --index]" EXIT-STATUS:USAGE die ;
+   s" usage: check-verify-child.f -- SUBJECT [--prose | --label LABEL [--prose] | --entry [--prose] | --at N | --of TAIL | --index]"
+   EXIT-STATUS:USAGE die ;
 
 \ N in the third form's `--at N`; -1 for none.
 : CURSOR-ARG ( -- n )

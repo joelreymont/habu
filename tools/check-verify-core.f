@@ -27,7 +27,6 @@ require src/lib/engine-candidate.f
 require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/habu/verify-source.f
-require src/core/exit-status.f
 
 package LSP-CHECK
 using SOURCE-ROOT

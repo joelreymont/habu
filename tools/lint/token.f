@@ -33,7 +33,9 @@ variable PARENS?
    PARENS? @ T-FLAG ;
 
 : TOKEN-ENSURE ( -- )   \ labeled capacity exit: a bare rc 77 is unattributable
-   TN# @ TMAX >= if s" lint: token table full (TMAX); grow tools/lint/token.f" EXIT-STATUS:FULL die then ;
+   TN# @ TMAX >= if
+      s" lint: token table full (TMAX); grow tools/lint/token.f" EXIT-STATUS:FULL die
+   then ;
 
 : TOKEN+ ( ^u8 n -- ) {: a:^ u :}
    TOKEN-ENSURE

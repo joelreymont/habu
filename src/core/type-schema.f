@@ -313,7 +313,9 @@ public
 : SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
 : SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-B@ ;
 : SCHEMA-ROW-ELEM@ ( n n -- n ) {: node:n i:n :}   \ i-th element type node of the row
-   i 0 < i node SCHEMA-ROW-COUNT@ >= or IF s" tfam: bad quot row elem index" EXIT-STATUS:INTERNAL die THEN
+   i 0 < i node SCHEMA-ROW-COUNT@ >= or IF
+      s" tfam: bad quot row elem index" EXIT-STATUS:INTERNAL die
+   THEN
    node SCHEMA-ROW-START@ i + SCHEMA-ROOT@ ;
 : SCHEMA-ROW-OK? ( n -- bool )                     \ live SCH-ROW node (no die on nil/oob)
    dup SCHEMA-NODE-OK? IF SCHEMA-ROW? ELSE drop RES-FALSE THEN ;

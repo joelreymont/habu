@@ -380,7 +380,8 @@ $10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane
 
 : LOFF-OK? ( n -- bool )  dup LOFF-LO >=  swap LOFF-HI <  and ;
 
-: ?LOFF ( n -- n )  dup LOFF-OK? if exit then  s" icode: label offset out of reach" EXIT-STATUS:ENCODE die ;
+: ?LOFF ( n -- n )  dup LOFF-OK? if exit then
+   s" icode: label offset out of reach" EXIT-STATUS:ENCODE die ;
 \ BR-EMIT expects BBASE, the branch encoded with a zero delta, and BKIND.
 variable BBASE  variable BKIND
 
