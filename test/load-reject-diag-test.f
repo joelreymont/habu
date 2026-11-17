@@ -1435,6 +1435,22 @@ variable LONG-U
    s" parse-imm modeled immediate remains live" T-LABEL
    MODELED$ RUN s" 73" ASSERT-OK-OUT ;
 
+\ A rollback with a task live retires the records it drops and keeps the
+\ cursors, so the rejection it recovers from is all the load prints.
+: TEST-LIVE-ROLLBACK ( -- )
+   s" a rejected declaration with a task live prints only its rejection" T-LABEL
+   SB-RESET
+   S\" require src/lib/task.f\nrequire src/lib/test/wait.f\n" SB-APPEND
+   S\" TASK:MIN-STACK TASK:TASK LRD-WORKER\nvariable LRD-READY\n" SB-APPEND
+   S\" : LRD-SPIN ( -- ) 1 LRD-READY atomic! begin TASK:PAUSE again ;\n" SB-APPEND
+   s" : LRD-GO ( -- ) ['] LRD-SPIN LRD-WORKER TASK:ACTIVATE" SB-APPEND
+   S\"   LRD-READY 1 LRD-WORKER TEST-WAIT:FOR-CELL ;\nLRD-GO\n" SB-APPEND
+   S\" ENUM lrd-col green red green ;ENUM\n" SB-APPEND
+   BODY$ SB$ FS:WRITE-ALL
+   BODY$ RUN
+   s" E-BAD-DECLARATION" ASSERT-NAMED
+   ERR$ s" E-TASK-COMPILE" CONTAINS? TFALSE ;
+
 : MAIN ( -- )
    T-RESET
    SETUP
@@ -1496,6 +1512,7 @@ variable LONG-U
       TEST-T0-RAW-STORE
    then
    TEST-PREFLIGHT-POSITIVES
+   TEST-LIVE-ROLLBACK
    FS:CLEANUP-RUN
    T-REPORT
    s" load-reject-diag-test: ok" type cr ;

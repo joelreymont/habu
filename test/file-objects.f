@@ -602,9 +602,11 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:ERR$ s" linker: " CONTAINS? {: named:bool :}
    CMD:ERR$ s" task-left-main.f: a task is still running at the file's end" CONTAINS?
    named and {: said:bool :}
-   rc 0 =  said 0=  or if rc SHOW then
+   CMD:ERR$ s" E-TASK-COMPILE" CONTAINS? {: lowered:bool :}
+   rc 0 =  said 0=  or  lowered or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
-   s" the build says a task is still running at the file's end" LABEL  said TTRUE ;
+   s" the build says a task is still running at the file's end" LABEL  said TTRUE
+   s" the build's rollback retires what the task may use" LABEL  lowered TFALSE ;
 
 \ The loader's rejection TEXT, then word-load-inc.f's canonical path, as the
 \ next build of a fixture whose word reaches that file should say it.

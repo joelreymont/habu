@@ -415,17 +415,15 @@
 \ undone newest first and replay-close zeroes the overlay's records and
 \ restores them; while a task is live it retires those records instead and
 \ keeps NDICT and CP, restoring the rest. A definition pending at the open is
-\ parked across the replay; with a task live at the open such a replay is
-\ rejected first, as the engine refuses it, and no task starts while one is
-\ parked. The outermost asking scope opens the overlay: the verifier window
-\ (tag -1) or a package-neutral rollback scope (its frame depth). A scope
-\ opened inside it saves the engine scope in a snapshot row and restores it on
-\ close, so names a scope publishes bind until the overlay closes. Between a
-\ logged record's restore and the drop of a replay record of the same name, one
-\ wordlist holds two live records of it: CLOSE ends that window with
-\ replay-close and ROLLBACK with ndict!, each before any lookup. Every writer
-\ refusal ends the process, so each refusal a replay can meet is checked in
-\ CHECKER-OVERLAY first and thrown by name.
+\ parked across the replay. The outermost asking scope opens the overlay: the
+\ verifier window (tag -1) or a package-neutral rollback scope (its frame
+\ depth). A scope opened inside it saves the engine scope in a snapshot row and
+\ restores it on close, so names a scope publishes bind until the overlay
+\ closes. Between a logged record's restore and the drop of a replay record of
+\ the same name, one wordlist holds two live records of it: CLOSE ends that
+\ window with replay-close and ROLLBACK with ndict! or retire-from, each before
+\ any lookup. Every writer rejection ends the process, so each rejection a
+\ replay can meet is checked in CHECKER-OVERLAY first and thrown by name.
 \
 \ Replayed package scope: live compilation splits each package and using word
 \ between the engine and the checker. The engine's keyword moves its scope and
@@ -13846,14 +13844,15 @@ EXPORT CHECKER-RESYNC:MIRROR
 \ A scope opened inside the overlay closes here, not through replay-close, so
 \ ROLLBACK restores the three counters replay-close restores. WIDN goes back
 \ last, after UNDO took back the private wids granted since the mark and ndict!
-\ dropped every record holding a wid at or above it.
+\ dropped every record holding a wid at or above it, or retire-from retired them.
 : ROLLBACK ( n n n n -- )
    {: nd:n logn:n cp:n widn:n :}
    ON @ 0=  nd MARK @ <  or IF EXIT THEN
    logn UNDO
-   ndict@ nd > IF nd ndict! THEN
+   ndict@ nd > IF nd retire-from ELSE 0 0= 0= THEN {: kept:bool :}
+   kept 0= ndict@ nd > and IF nd ndict! THEN
    nd UNPAIR
-   cp@ cp > IF cp cp! THEN
+   kept 0= cp@ cp > and IF cp cp! THEN
    widn replay-widn! ;
 
 \ Retire REC for the time of one lookup under the binding horizon; UNHIDE gives

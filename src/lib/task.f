@@ -6,7 +6,8 @@
 \ a thread whose DATA holds a TCB in TASK-TCB-CELL: a task or a callback.
 \ `cp!` and `ndict!` also exit $4F on main while TASKS-LIVE-CELL (the main
 \ region's count, the AIO loop task included) is nonzero: lowering frees code a task may be running and
-\ records it may reference. A task's DBASE, NDICT and CP are registers loaded
+\ records it may reference. A rollback asks `retire-from` first, which retires them and keeps every
+\ cursor. A task's DBASE, NDICT and CP are registers loaded
 \ from its TCB as it starts, so a definition main has in progress is out of its
 \ reach. A word main finishes later reaches a task only as an xt through a
 \ channel that orders (a queue, an atomic cell, `is` on a defer):

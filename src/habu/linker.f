@@ -5750,6 +5750,7 @@ EXPORT CHECK:DROP-FACTS
 \ Records still below the count would name bodies in the unmapped space; their
 \ code goes back as FORGET-DEFS-FROM gives it.
 : FORGET-SPACE ( -- )
+   FIRST-REC @ retire-from IF EXIT THEN
    FIRST-REC @ CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    FIRST-REC @ ndict!
    floor CODE-RECLAIM:TRUNCATE ;

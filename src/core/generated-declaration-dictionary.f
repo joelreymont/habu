@@ -33,6 +33,7 @@ public
    here DP-MARK ! ;
 
 : ROLLBACK ( -- )
+   NDICT-MARK @ retire-from IF EXIT THEN
    NDICT-MARK @ ndict!
    CP-MARK @ CODE-RECLAIM:TRUNCATE
    DP-MARK @ DICTIONARY-DP! ;

@@ -3045,6 +3045,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    {: f:^ :}
    DEF-ABORT
    f ROWS-CUT
+   f FR-NDICT FR@ retire-from IF EXIT THEN
    \ A buffer may start a task and throw without allocating a definition.
    \ Only changed cursors need their guarded mutation sinks during recovery.
    f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
