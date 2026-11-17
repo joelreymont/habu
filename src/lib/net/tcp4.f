@@ -171,14 +171,9 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : LENGTH ( n -- NUM:byte-len )
-   NUM:BYTE-LEN MATCH NUM:numeric-result
-      ok OF ENDOF
-      negative OF E-OPERAND throw ENDOF
-      zero OF E-OPERAND throw ENDOF
-      overflow OF E-OPERAND throw ENDOF
-      underflow OF E-OPERAND throw ENDOF
-      bad-alignment OF E-OPERAND throw ENDOF
-      misaligned OF E-OPERAND throw ENDOF
+   NUM:BYTE-LEN MATCH option
+      none OF E-OPERAND throw ENDOF
+      some OF ENDOF
    ;MATCH ;
 
 

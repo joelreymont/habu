@@ -27,15 +27,6 @@ using X64ASM
 using X64CODE
 using X64RT
 
-: N>BLEN ( n -- NUM:byte-len )
-   NUM:BYTE-LEN
-   MATCH NUM:numeric-result
-      ok OF ENDOF                                negative OF E-BUF-BOUNDS throw ENDOF
-      zero OF E-BUF-BOUNDS throw ENDOF           overflow OF E-BUF-BOUNDS throw ENDOF
-      underflow OF E-BUF-BOUNDS throw ENDOF      bad-alignment OF E-BUF-BOUNDS throw ENDOF
-      misaligned OF E-BUF-BOUNDS throw ENDOF
-   ;MATCH ;
-
 \ ---- comparing a byte span against its expected string -----------------------
 : HEX-DIGIT ( n -- n ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - exit then
@@ -376,7 +367,7 @@ create ERR CAPTURE-CAP allot
 
 : RUN ( -- )
    T-RESET
-   ASM-SINK 64 N>BLEN BUF:INIT
+   ASM-SINK 64 BUF:N>BLEN BUF:INIT
    TRAP-CASES
    STENCIL-CASES
    OPEN-CASES

@@ -22,15 +22,6 @@ using X64ASM
 \ clears it, so a case can never read a neighbour's bytes.
 create SINK BUF:HDR-BYTES allot
 
-: N>BLEN ( n -- NUM:byte-len )
-   NUM:BYTE-LEN
-   MATCH NUM:numeric-result
-      ok OF ENDOF                                negative OF E-BUF-BOUNDS throw ENDOF
-      zero OF E-BUF-BOUNDS throw ENDOF           overflow OF E-BUF-BOUNDS throw ENDOF
-      underflow OF E-BUF-BOUNDS throw ENDOF      bad-alignment OF E-BUF-BOUNDS throw ENDOF
-      misaligned OF E-BUF-BOUNDS throw ENDOF
-   ;MATCH ;
-
 : SINK-LEN ( -- n )
    SINK BUF:SPAN$ X64T-BL>RAW {: a:^ u:n :}  u ;
 
@@ -728,7 +719,7 @@ create SINK BUF:HDR-BYTES allot
    SINK BUF:CLEAR ;
 
 : RUN ( -- )
-   SINK 64 N>BLEN BUF:INIT
+   SINK 64 BUF:N>BLEN BUF:INIT
    ALU-ADD-OR ALU-ADC-SBB ALU-AND-SUB ALU-XOR-CMP TEST-FORMS
    MOVES WIDENING ADDRESS-AND-ZERO ONE-REGISTER SIGNED-MULTIPLY
    IMMEDIATE-STORES STORE-REFUSALS

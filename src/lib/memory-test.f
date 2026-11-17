@@ -156,25 +156,6 @@ T-RESET
 T-REPORT
 [then]
 
-\ numeric-result<a> is a layout value with no polymorphic eliminator, so the
-\ classifier MATCHes the concrete role it holds and maps ok -> 0 / refusal ->
-\ E-NUM-* (the num-types-test.f idiom). The scalar words admit zero; only
-\ the alloc-byte-len sink rejects zero, and that refusal precedes any mmap.
-
-: MEMT-AB-CODE ( NUM:numeric-result<NUM:alloc-byte-len> -- n )
-   MATCH NUM:numeric-result
-      ok OF drop 0 ENDOF                    negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
-   ;MATCH ;
-
-: MEMT-BYTES-ALLOC# ( n -- n ) NUM:BYTE-LEN
-   MATCH NUM:numeric-result ok OF NUM:AS-ALLOC-BYTE-LEN MEMT-AB-CODE ENDOF
-      negative OF E-NUM-NEGATIVE ENDOF zero OF E-NUM-ZERO ENDOF
-      overflow OF E-NUM-OVERFLOW ENDOF underflow OF E-NUM-UNDERFLOW ENDOF
-      bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF misaligned OF E-NUM-MISALIGNED ENDOF ;MATCH ;
-
 \ The returned alloc role's raw projection is MEM-private, so the tests touch
 \ memory over the KNOWN raw extent and drop the role.
 \ MEM:WITH-BYTES releases the mapping on scope exit. The body is a named word
@@ -280,8 +261,6 @@ HB-TARGET-LINUX-X86-64? [if]
 
 : TEST-ALLOC-ROLES ( -- )
    T-RESET
-   0 MEMT-BYTES-ALLOC# E-NUM-ZERO T=      -1 MEMT-BYTES-ALLOC# E-NUM-NEGATIVE T=
-   1 MEMT-BYTES-ALLOC# 0 T=
    MEMT-TYPED-BYTES
    MEMT-TYPED-64K
    MEMT-TYPED-CELLS

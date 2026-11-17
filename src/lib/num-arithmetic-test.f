@@ -1,74 +1,64 @@
 \ num-arithmetic-test.f - the NUM arithmetic boundary and static rejection
 \ matrix, suite `num-arithmetic` in the standard-library gate.
 \ Run: bin/hb --load src/lib/num-arithmetic-test.f
-\ `numeric-result` is a layout value, built and MATCHed only inside compiled
-\ words; each classifier answers the ok payload's raw value (nonnegative) or the
-\ E-NUM-* refusal (negative), so one `T=` pins both.
+\ Each classifier answers the some payload's raw value (nonnegative) or T-NONE,
+\ so one `T=` pins both.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/property.f
+require src/lib/adt/option.f
 require src/lib/num-types.f
 require src/lib/num-arithmetic.f
 
 \ The bounds mirror the library's independently.
 $7FFFFFFFFFFFFFFF constant T-MAX-N                 \ largest nonnegative cell
 $4000000000000000 constant T-LARGEST-POW2          \ the highest nonnegative bit
+-1 constant T-NONE                                 \ a classifier's answer for none
 
-\ Each classifier below turns an ok result into the raw value it pins against a
-\ literal, so the roles are read out here rather than by reopening the package
-\ under test.
+\ The roles are read out here rather than by reopening the package under test.
 CAST: T-BL>RAW ( NUM:byte-len -- n )
 CAST: T-IC>RAW ( NUM:item-count -- n )
 CAST: T-BO>RAW ( NUM:byte-off -- n )
 
-: BL-CODE ( NUM:numeric-result<NUM:byte-len> -- n )
-   MATCH NUM:numeric-result
-      ok OF T-BL>RAW ENDOF            negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
+: BL-CODE ( option<NUM:byte-len> -- n )
+   MATCH option
+      none OF T-NONE ENDOF
+      some OF T-BL>RAW ENDOF
    ;MATCH ;
-: IC-CODE ( NUM:numeric-result<NUM:item-count> -- n )
-   MATCH NUM:numeric-result
-      ok OF T-IC>RAW ENDOF            negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
+: IC-CODE ( option<NUM:item-count> -- n )
+   MATCH option
+      none OF T-NONE ENDOF
+      some OF T-IC>RAW ENDOF
    ;MATCH ;
-: BO-CODE ( NUM:numeric-result<NUM:byte-off> -- n )
-   MATCH NUM:numeric-result
-      ok OF T-BO>RAW ENDOF            negative OF E-NUM-NEGATIVE ENDOF
-      zero OF E-NUM-ZERO ENDOF           overflow OF E-NUM-OVERFLOW ENDOF
-      underflow OF E-NUM-UNDERFLOW ENDOF bad-alignment OF E-NUM-BAD-ALIGNMENT ENDOF
-      misaligned OF E-NUM-MISALIGNED ENDOF
+: BO-CODE ( option<NUM:byte-off> -- n )
+   MATCH option
+      none OF T-NONE ENDOF
+      some OF T-BO>RAW ENDOF
    ;MATCH ;
 
 \ A bad seed aborts the run.
-: OKBL ( n -- NUM:byte-len ) NUM:BYTE-LEN MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-: OKIC ( n -- NUM:item-count ) NUM:ITEM-COUNT MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
-: OKBO ( n -- NUM:byte-off ) NUM:BYTE-OFF MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
+: OKBL ( n -- NUM:byte-len ) NUM:BYTE-LEN MATCH option
+   none OF 90 throw ENDOF some OF ENDOF ;MATCH ;
+: OKIC ( n -- NUM:item-count ) NUM:ITEM-COUNT MATCH option
+   none OF 90 throw ENDOF some OF ENDOF ;MATCH ;
+: OKBO ( n -- NUM:byte-off ) NUM:BYTE-OFF MATCH option
+   none OF 90 throw ENDOF some OF ENDOF ;MATCH ;
 
 : RT-ADVANCE ( -- )
    5 OKBO 0 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE 5 T=
    5 OKBO 7 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE 12 T=
    T-MAX-N OKBO 0 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE T-MAX-N T=
-   T-MAX-N OKBO 1 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE E-NUM-OVERFLOW T= ;
+   T-MAX-N OKBO 1 OKBL NUM:ADVANCE-BYTE-OFF BO-CODE T-NONE T= ;
 
 : RT-SUB ( -- )
    5 OKBL 5 OKBL NUM:SUB-BYTES BL-CODE 0 T=
    9 OKBL 4 OKBL NUM:SUB-BYTES BL-CODE 5 T=
-   3 OKBL 4 OKBL NUM:SUB-BYTES BL-CODE E-NUM-UNDERFLOW T=
+   3 OKBL 4 OKBL NUM:SUB-BYTES BL-CODE T-NONE T=
    5 OKIC 5 OKIC NUM:SUB-ITEMS IC-CODE 0 T=
    9 OKIC 4 OKIC NUM:SUB-ITEMS IC-CODE 5 T=
-   3 OKIC 4 OKIC NUM:SUB-ITEMS IC-CODE E-NUM-UNDERFLOW T= ;
+   3 OKIC 4 OKIC NUM:SUB-ITEMS IC-CODE T-NONE T= ;
 
 : RT ( -- )
    T-RESET
@@ -79,15 +69,15 @@ RT
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected, 1 uncheckable.
 : STAT ( -- )
    T-RESET
-   s" GOOD-SUB ( NUM:byte-len NUM:byte-len -- NUM:numeric-result<NUM:byte-len> ) NUM:SUB-BYTES"
+   s" GOOD-SUB ( NUM:byte-len NUM:byte-len -- option<NUM:byte-len> ) NUM:SUB-BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" GOOD-ADVANCE ( NUM:byte-off NUM:byte-len -- NUM:numeric-result<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
+   s" GOOD-ADVANCE ( NUM:byte-off NUM:byte-len -- option<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" BAD-ADVANCE-REV ( NUM:byte-len NUM:byte-off -- NUM:numeric-result<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
+   s" BAD-ADVANCE-REV ( NUM:byte-len NUM:byte-off -- option<NUM:byte-off> ) NUM:ADVANCE-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-RAW-SUB ( n n -- NUM:numeric-result<NUM:byte-len> ) NUM:SUB-BYTES"
+   s" BAD-RAW-SUB ( n n -- option<NUM:byte-len> ) NUM:SUB-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" BAD-CROSS-SUB ( NUM:byte-len NUM:item-count -- NUM:numeric-result<NUM:byte-len> ) NUM:SUB-BYTES"
+   s" BAD-CROSS-SUB ( NUM:byte-len NUM:item-count -- option<NUM:byte-len> ) NUM:SUB-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 STAT

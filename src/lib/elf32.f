@@ -53,14 +53,9 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 CAST: N>BLEN ( n -- NUM:byte-len )
 
 : AS-BLEN ( n -- NUM:byte-len )
-   NUM:BYTE-LEN MATCH NUM:numeric-result
-      ok OF ENDOF
-      negative OF E-BOUNDS throw ENDOF
-      zero OF E-BOUNDS throw ENDOF
-      overflow OF E-BOUNDS throw ENDOF
-      underflow OF E-BOUNDS throw ENDOF
-      bad-alignment OF E-BOUNDS throw ENDOF
-      misaligned OF E-BOUNDS throw ENDOF
+   NUM:BYTE-LEN MATCH option
+      none OF E-BOUNDS throw ENDOF
+      some OF ENDOF
    ;MATCH ;
 
 : CHECK-RANGE ( n n n -- ) {: total:n offset:n size:n :}

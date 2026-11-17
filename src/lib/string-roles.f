@@ -30,46 +30,31 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
 : RAW-BUF-APPEND ( ^u8 n ^u8 n ^len -- )      BUF-APPEND ;
 : RAW-BUF-APPEND-C ( n ^u8 n ^len -- )           BUF-APPEND-C ;
 
-\ A failed role predicate throws E-STR-BOUNDS. Only the negative arm is reached:
-\ by LENGTH, OFFSET and COUNT, and by SPLIT-NEXT's next when length + 1 wraps.
-: OK-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-STR-BOUNDS throw ENDOF
-      zero OF E-STR-BOUNDS throw ENDOF          overflow OF E-STR-BOUNDS throw ENDOF
-      underflow OF E-STR-BOUNDS throw ENDOF     bad-alignment OF E-STR-BOUNDS throw ENDOF
-      misaligned OF E-STR-BOUNDS throw ENDOF
+: N>BYTE-LEN ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH option
+      none OF E-STR-BOUNDS throw ENDOF
+      some OF ENDOF
    ;MATCH ;
-: OK-BYTE-OFF ( NUM:numeric-result<NUM:byte-off> -- NUM:byte-off )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-STR-BOUNDS throw ENDOF
-      zero OF E-STR-BOUNDS throw ENDOF          overflow OF E-STR-BOUNDS throw ENDOF
-      underflow OF E-STR-BOUNDS throw ENDOF     bad-alignment OF E-STR-BOUNDS throw ENDOF
-      misaligned OF E-STR-BOUNDS throw ENDOF
+: N>BYTE-OFF ( n -- NUM:byte-off )
+   NUM:BYTE-OFF MATCH option
+      none OF E-STR-BOUNDS throw ENDOF
+      some OF ENDOF
    ;MATCH ;
-: OK-ITEM-COUNT ( NUM:numeric-result<NUM:item-count> -- NUM:item-count )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-STR-BOUNDS throw ENDOF
-      zero OF E-STR-BOUNDS throw ENDOF          overflow OF E-STR-BOUNDS throw ENDOF
-      underflow OF E-STR-BOUNDS throw ENDOF     bad-alignment OF E-STR-BOUNDS throw ENDOF
-      misaligned OF E-STR-BOUNDS throw ENDOF
-   ;MATCH ;
-: OK-INDEX ( NUM:numeric-result<NUM:index> -- NUM:index )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-STR-BOUNDS throw ENDOF
-      zero OF E-STR-BOUNDS throw ENDOF          overflow OF E-STR-BOUNDS throw ENDOF
-      underflow OF E-STR-BOUNDS throw ENDOF     bad-alignment OF E-STR-BOUNDS throw ENDOF
-      misaligned OF E-STR-BOUNDS throw ENDOF
+: N>ITEM-COUNT ( n -- NUM:item-count )
+   NUM:ITEM-COUNT MATCH option
+      none OF E-STR-BOUNDS throw ENDOF
+      some OF ENDOF
    ;MATCH ;
 
-: N>BYTE-LEN ( n -- NUM:byte-len )       NUM:BYTE-LEN OK-BYTE-LEN ;
-: N>BYTE-OFF ( n -- NUM:byte-off )       NUM:BYTE-OFF OK-BYTE-OFF ;
-: N>ITEM-COUNT ( n -- NUM:item-count )   NUM:ITEM-COUNT OK-ITEM-COUNT ;
-: N>INDEX ( n -- NUM:index )             NUM:INDEX OK-INDEX ;
+\ A split slice ends at or after its start, so its length is never negative.
+CAST: RAW>BYTE-LEN ( n -- NUM:byte-len )
+\ A found idx is a position in the string, never negative.
+CAST: IDX>INDEX ( idx -- NUM:index )
 
 : IDX-OPT>INDEX-OPT ( option<idx> -- option<NUM:index> )
    MATCH option
       none OF OPTION:NONE ENDOF
-      some OF IDX>N N>INDEX OPTION:SOME ENDOF
+      some OF IDX>INDEX OPTION:SOME ENDOF
    ;MATCH ;
 
 public
@@ -101,7 +86,7 @@ STRUCTURE split
    a u BYTE-LEN>N sep start BYTE-OFF>N RAW-SPLIT-NEXT   \ ( sub-ptr sub-rawlen raw-next more? )
    {: rn:n more?:bool :}                                \ sub-ptr sub-rawlen remain on the stack
    more? if
-      N>BYTE-LEN  rn N>BYTE-OFF  STR-SPLIT:MAKE OPTION:SOME
+      RAW>BYTE-LEN  rn N>BYTE-OFF  STR-SPLIT:MAKE OPTION:SOME
    else
       2drop OPTION:NONE
    then ;

@@ -359,10 +359,8 @@ def main():
         for operation in ('READ', 'WRITE'):
             body = f'''
 : RUN ( -- )
-   [: {handle} SERIAL:>HANDLE BODY {length} NUM:BYTE-LEN MATCH NUM:numeric-result
-      ok OF ENDOF negative OF -1 throw ENDOF zero OF -1 throw ENDOF
-      overflow OF -1 throw ENDOF underflow OF -1 throw ENDOF
-      bad-alignment OF -1 throw ENDOF misaligned OF -1 throw ENDOF
+   [: {handle} SERIAL:>HANDLE BODY {length} NUM:BYTE-LEN MATCH option
+      none OF -1 throw ENDOF some OF ENDOF
    ;MATCH {timeout} >MS SERIAL:{operation} REPORT ;] catch . ; RUN
 '''
             assert native(habu, output, body) == code.split()

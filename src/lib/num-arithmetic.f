@@ -2,9 +2,10 @@
 \ after src/lib/num-types.f and adds no roles or overloads. These words are the
 \ whole admitted role algebra; an omitted, reversed or cross-unit pair is
 \ statically unavailable. A fallible role-changing operation answers
-\ numeric-result<role>, never a throw. Every success value goes through
-\ num-types.f's public validator, which owns the audited MINT-*.
+\ option<role>, never a throw: `none` is its one failure. A success value has
+\ passed its failure predicate, so it is minted through num-types.f's MINT-*.
 
+require src/lib/adt/option.f
 require src/lib/num-types.f
 
 package NUM
@@ -16,12 +17,8 @@ CAST: ITEM-COUNT>N ( item-count -- n )
 CAST: INDEX>N ( index -- n )
 CAST: BYTE-OFF>N ( byte-off -- n )
 
-\ Failure arms: overflow past the machine max, underflow below zero.
-: A-OVER     ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:OVERFLOW ;
-: A-UNDER    ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:UNDERFLOW ;
-
 \ Each returns the failure predicate as a real bool from a comparison; the caller
-\ recomputes the value only on the success path (through a validator).
+\ recomputes the value only on the success path.
 : SUM-OVF? ( n n -- bool )
    {: a:n b:n :} a MAX-CELL-N b - > ;
 : DIFF-UNF? ( n n -- bool )
@@ -42,19 +39,19 @@ public
    {: off:byte-off len:byte-len :}
    off BYTE-OFF>N len BYTE-LEN>N < ;
 
-: ADVANCE-BYTE-OFF ( byte-off byte-len -- numeric-result<byte-off> )
+: ADVANCE-BYTE-OFF ( byte-off byte-len -- option<byte-off> )
    {: o:byte-off d:byte-len :}
    o BYTE-OFF>N d BYTE-LEN>N {: x:n y:n :}
-   x y SUM-OVF? if A-OVER else x y + BYTE-OFF then ;
+   x y SUM-OVF? if OPTION:NONE else x y + MINT-BYTE-OFF OPTION:SOME then ;
 
-: SUB-BYTES ( byte-len byte-len -- numeric-result<byte-len> )
+: SUB-BYTES ( byte-len byte-len -- option<byte-len> )
    {: a:byte-len b:byte-len :}
    a BYTE-LEN>N b BYTE-LEN>N {: x:n y:n :}
-   x y DIFF-UNF? if A-UNDER else x y - BYTE-LEN then ;
-: SUB-ITEMS ( item-count item-count -- numeric-result<item-count> )
+   x y DIFF-UNF? if OPTION:NONE else x y - MINT-BYTE-LEN OPTION:SOME then ;
+: SUB-ITEMS ( item-count item-count -- option<item-count> )
    {: a:item-count b:item-count :}
    a ITEM-COUNT>N b ITEM-COUNT>N {: x:n y:n :}
-   x y DIFF-UNF? if A-UNDER else x y - ITEM-COUNT then ;
+   x y DIFF-UNF? if OPTION:NONE else x y - MINT-ITEM-COUNT OPTION:SOME then ;
 
 \ The one public NUM word that touches a pointer: the byte primitives take a
 \ bare n, so without it every caller would erase a validated offset through a

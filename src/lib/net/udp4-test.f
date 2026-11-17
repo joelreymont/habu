@@ -213,9 +213,8 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 
 
 \ PAYLOAD-BYTES rejects this size, so the length comes straight from NUM.
-: OVERSIZE-LEN ( -- NUM:byte-len ) OVERSIZE-N NUM:BYTE-LEN MATCH NUM:numeric-result
-   ok OF ENDOF negative OF 90 throw ENDOF zero OF 90 throw ENDOF overflow OF 90 throw ENDOF
-   underflow OF 90 throw ENDOF bad-alignment OF 90 throw ENDOF misaligned OF 90 throw ENDOF ;MATCH ;
+: OVERSIZE-LEN ( -- NUM:byte-len ) OVERSIZE-N NUM:BYTE-LEN MATCH option
+   none OF 90 throw ENDOF some OF ENDOF ;MATCH ;
 
 
 : T-OVERSIZE ( -- )

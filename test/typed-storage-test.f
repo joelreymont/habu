@@ -202,8 +202,7 @@ PTR-VARIABLE TS-DP
    here TS-DP 0 ptr-field @ = TTRUE
    s" BAD-RB" 0 search-wl 0= TTRUE ;
 
-\ 8. Distinct capability pin #1: numeric-result over a nominal keeps working
-\    through the LANDED LAYOUT-BUFFER (the existing capability is untouched)
+\ 8. A result family over a nominal is stored and fetched through LAYOUT-BUFFER
 3 LAYOUT-BUFFER RES-K-BUF tsres<tsk,n>
 
 : RES-K-PUT ( n n -- ) {: v:n i:n :} v N>TSK TSRES:OK i RES-K-BUF ! ;
