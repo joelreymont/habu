@@ -17,10 +17,11 @@
 \ count. A rejection ends the load, so each rejected text runs in a child; the
 \ deepest are stored rows (`defer`). A packet is read in this process. An effect
 \ split by line breaks and tabs loads, and an unknown type ending a line is
-\ rejected by name. A pointer is spelled ^T: `ptr` in a signature, a stored
-\ signature or a local's annotation is an unknown type, and a `^` a blank parts
-\ from its element type is a bare `^`. A local's annotation verdict names and
-\ places the token it rejects.
+\ rejected by name. A family nested past the unify worklist's first capacity
+\ checks. A pointer is spelled ^T: `ptr` in a signature, a stored signature or
+\ a local's annotation is an unknown type, and a `^` a blank parts from its
+\ element type is a bare `^`. A local's annotation verdict names and places the
+\ token it rejects.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/adt/result.f
@@ -129,6 +130,16 @@ TYPED-VARIABLE SRC-U len
    TIME:THREAD-CPU-NS  SRC$ CHECK-QUIET-CANDIDATE! VERDICT-REFUSED T=
    TIME:THREAD-CPU-NS swap - ;
 
+\ A 23-parameter family nested k deep in its last slot, a word whose input it
+\ is and a caller with the same input.
+: WIDE-NEST ( n -- ) {: k:n :}
+   k 0 ?do s" sn-wide<" S+  s" n," 22 S+N loop  s" n" S+  s" >" k S+N ;
+: WIDE ( n -- ) {: k:n :}
+   SRC-RESET  s" NEWTYPE sn-wide<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>" S+
+   s"  : SN-WK ( " S+  k WIDE-NEST  s"  -- ) drop ;" S+
+   s"  : SN-WGO ( " S+  k WIDE-NEST  s"  -- ) SN-WK ;" S+ ;
+
+
 \ A definition with no signature that recurses, from its name to its last token.
 : RECURSE-TEXT ( -- )   s" SN-DOWN dup 0 > IF 1 - RECURSE THEN" S+ ;
 
@@ -213,6 +224,8 @@ public
    s" 32 nested binders check" T-LABEL
    s" SN-BINDERS-32" 32 BINDERS
    SRC$ TEST-EVAL:RC 0 T=
+   s" a 23-parameter family nested 24 deep checks" T-LABEL
+   24 WIDE  SRC$ TEST-EVAL:RC 0 T=
    s" 9000 nested pointees refuse by the depth limit" T-LABEL
    9000 POINTEES
    s" effect too deep to record (depth 4097, at most 4096)" REFUSES

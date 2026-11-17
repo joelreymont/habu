@@ -2262,40 +2262,40 @@ variable JOIN-FACTS
 : T-UNSTALE ( n -- n )
    T-RES dup TAG T-STALE = IF STALE>INNER T-RES THEN ;
 
-\ MAXUWL sizes eight parallel worklist arrays (UWL and the seven per-pair
-\ tables below), 64 bytes of boot DP per cell. There is no grow path.
-1024 constant MAXUWL
-create UWL MAXUWL cells allot
+\ The unify worklist: one row per queued pair, USP rows in use. A row holds the
+\ actual term, the expected term, then the pair's CUR- cells declared below.
 SCRATCH{
-variable USP
+PTR-VARIABLE UWL   variable UWL-CAP   variable USP
 }SCRATCH
+9 constant UWL-ROW
+: UWL-AT ( n -- ^n ) UWL-ROW * cells UWL @ + ;
 variable UOK
 variable UF-ACT   variable UF-EXP   variable UF-SET
 variable TAIL-HIT   \ this unify let a declared callable's implicit tail escape
 variable TAIL-SKOLEM   variable TAIL-ROW   \ TAIL-HIT: the held tail and the row it escaped into (HOLD-ESCAPE?)
 variable LIT-HIT   \ this unify met a literal that does not fit its type
 variable LIT-V   variable LIT-T   \ LIT-HIT: the literal's value and the type code it did not fit
-\ Strict pairs (pointer pointees) unify by equality/var-binding only, so a
-\ concrete `^u8` never satisfies `^cell`/`^u32`.
-create UWL-STR MAXUWL cells allot   variable CUR-STRICT
-\ >= 0 is a slot counted from the TOP of the root expected row; -1 is no
-\ position; <= -2 is the root-spine cursor c encoded as -(c+2).
-create UWL-POS MAXUWL cells allot   variable CUR-UPOS
+\ Row cell 2. Strict pairs (pointer pointees) unify by equality/var-binding
+\ only, so a concrete `^u8` never satisfies `^cell`/`^u32`.
+variable CUR-STRICT
+\ Row cell 3. >= 0 is a slot counted from the TOP of the root expected row; -1
+\ is no position; <= -2 is the root-spine cursor c encoded as -(c+2).
+variable CUR-UPOS
 variable UF-POSN
 
-\ A recorded call freezes its specialized rows when the input spine reaches
-\ its open tail, before that tail is bound to the caller's untouched stack.
-\ Keep this bit separate from diagnostic positions: layout expansion may lose
-\ a source slot while still descending the same input spine.
-create UWL-CALL MAXUWL cells allot   variable CUR-CALL
-create UWL-QUOT MAXUWL cells allot   variable CUR-QUOT
-create UWL-ARG MAXUWL cells allot    variable CUR-ARG
-\ Parallel per-pair roles: bit 0 the first (actual) term's, bit 1 the second's;
-\ a set bit is demanded (a declaration), a clear one provided (a value).
-create UWL-ROLE MAXUWL cells allot   variable CUR-ROLE
-\ Parallel per-pair literal fact: the actual cell's CP-LIT proof, 0 for none or
-\ when the wanted side's chain is provided (U-TYPE); LIT-FITS? reads it.
-create UWL-LIT MAXUWL cells allot    variable CUR-LIT
+\ Row cell 4. A recorded call freezes its specialized rows when the input
+\ spine reaches its open tail, before that tail is bound to the caller's
+\ untouched stack. Keep this bit separate from diagnostic positions: layout
+\ expansion may lose a source slot while still descending the same input spine.
+variable CUR-CALL
+\ Row cells 5 and 6.
+variable CUR-QUOT   variable CUR-ARG
+\ Row cell 7, the pair's roles: bit 0 the first (actual) term's, bit 1 the
+\ second's; a set bit is demanded (a declaration), a clear one provided (a value).
+variable CUR-ROLE
+\ Row cell 8, the pair's literal fact: the actual cell's CP-LIT proof, 0 for
+\ none or when the wanted side's chain is provided (U-TYPE); LIT-FITS? reads it.
+variable CUR-LIT
 1 constant ROLE-D1   2 constant ROLE-D2
 variable CALL-DIN   variable CALL-DOUT
 SCRATCH{
@@ -2312,34 +2312,26 @@ PTR-VARIABLE CWIN-BOOT  variable CWIN-BOOT-N  variable CWIN-BOOT-CAP
 : CWIN-BOOT-DEFAULT ( -- ) [: CWIN-BOOT CWIN-BOOT-N CWIN-BOOT-CAP ;] is CWIN-STATE ;
 CWIN-BOOT-DEFAULT
 
-: U-PUSH ( n -- )
-   USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
-   USP @ cells UWL + !
+: PAIR ( n n -- ) {: a:n b:n :}
+   UWL UWL-CAP USP @ 1 + UWL-ROW ARENA-ROWS-ENSURE
+   USP @ UWL-AT {: row:^ :}
+   a row !  b row cell+ !
+   CUR-STRICT @ row 2 cells + !  CUR-UPOS @ row 3 cells + !
+   CUR-CALL @ row 4 cells + !  CUR-QUOT @ row 5 cells + !
+   CUR-ARG @ row 6 cells + !  CUR-ROLE @ row 7 cells + !
+   CUR-LIT @ row 8 cells + !
    USP @ 1 + USP ! ;
 
-: U-POP USP @ 1 - USP ! USP @ cells UWL + @ ;
 
-
-: PAIR ( n n -- )
-   CUR-STRICT @ USP @ cells UWL-STR + !
-   CUR-UPOS @ USP @ cells UWL-POS + !
-   CUR-CALL @ USP @ cells UWL-CALL + !
-   CUR-QUOT @ USP @ cells UWL-QUOT + !
-   CUR-ARG @ USP @ cells UWL-ARG + !
-   CUR-ROLE @ USP @ cells UWL-ROLE + !
-   CUR-LIT @ USP @ cells UWL-LIT + !
-   swap U-PUSH U-PUSH ;
-
-
-: PAIR-STRICT ( n n -- )
-   -1 USP @ cells UWL-STR + !
-   CUR-UPOS @ USP @ cells UWL-POS + !
-   0 USP @ cells UWL-CALL + !
-   CUR-QUOT @ USP @ cells UWL-QUOT + !
-   CUR-ARG @ USP @ cells UWL-ARG + !
-   CUR-ROLE @ USP @ cells UWL-ROLE + !
-   0 USP @ cells UWL-LIT + !
-   swap U-PUSH U-PUSH ;
+: PAIR-STRICT ( n n -- ) {: a:n b:n :}
+   UWL UWL-CAP USP @ 1 + UWL-ROW ARENA-ROWS-ENSURE
+   USP @ UWL-AT {: row:^ :}
+   a row !  b row cell+ !
+   -1 row 2 cells + !  CUR-UPOS @ row 3 cells + !
+   0 row 4 cells + !  CUR-QUOT @ row 5 cells + !
+   CUR-ARG @ row 6 cells + !  CUR-ROLE @ row 7 cells + !
+   0 row 8 cells + !
+   USP @ 1 + USP ! ;
 
 
 : PAIR-QUOT ( n n n -- )
@@ -2350,29 +2342,13 @@ CWIN-BOOT-DEFAULT
 
 
 : UNPAIR ( -- n n )
-   U-POP U-POP swap
-   USP @ cells UWL-STR + @ CUR-STRICT !
-   USP @ cells UWL-POS + @ CUR-UPOS !
-   USP @ cells UWL-CALL + @ CUR-CALL !
-   USP @ cells UWL-QUOT + @ CUR-QUOT !
-   USP @ cells UWL-ARG + @ CUR-ARG !
-   USP @ cells UWL-ROLE + @ CUR-ROLE !
-   USP @ cells UWL-LIT + @ CUR-LIT ! ;
-
-
-\ A refused unification can stop with pairs still queued. A source load has
-\ finished before capture, so the queue and its last path belong to that old
-\ check.
-: UWL-SNAP-RESET ( -- )
-   0 USP !
-   UWL 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-STR 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-POS 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-CALL 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-QUOT 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-ARG 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-ROLE 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-LIT 0 MAXUWL ARENA-CELLS-ZERO ;
+   USP @ 1 - USP !
+   USP @ UWL-AT {: row:^ :}
+   row 2 cells + @ CUR-STRICT !  row 3 cells + @ CUR-UPOS !
+   row 4 cells + @ CUR-CALL !  row 5 cells + @ CUR-QUOT !
+   row 6 cells + @ CUR-ARG !  row 7 cells + @ CUR-ROLE !
+   row 8 cells + @ CUR-LIT !
+   row @  row cell+ @ ;
 
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
@@ -4448,13 +4424,13 @@ variable FORALL-OPEN-ON
    required TAG T-QUOT <> required TAG T-FORALL <> and IF RES-FALSE EXIT THEN
    actual FORALL-PREFIX-LEN required FORALL-PREFIX-LEN > ;
 
-create FORALL-OPEN-RECS MAXUWL 4 * cells allot
 SCRATCH{
+PTR-VARIABLE FORALL-OPEN-RECS   variable FORALL-OPEN-CAP
 variable FORALL-INPUT-ROOT
 }SCRATCH
-: FORALL-OPEN-REC ( n -- ^n ) 4 * cells FORALL-OPEN-RECS + ;
+: FORALL-OPEN-REC ( n -- ^n ) 4 * cells FORALL-OPEN-RECS @ + ;
 : FORALL-OPEN-ADD ( n n n n -- ) {: var:n parent:n second:n domain:n :}
-   FORALL-OPEN-N @ MAXUWL >= IF s" checker: forall input worklist full" 76 die THEN
+   FORALL-OPEN-RECS FORALL-OPEN-CAP FORALL-OPEN-N @ 1 + 4 ARENA-ROWS-ENSURE
    FORALL-OPEN-N @ FORALL-OPEN-REC {: rec:^ :}
    var rec !  parent rec cell+ !  second rec 2 cells + !
    domain rec 3 cells + !
