@@ -815,6 +815,32 @@ EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
+\ ffi-call-k ( x1 .. xk fn -- n ): a C call of fn with k integer arguments
+\ taken from the stack, x1 the first. No package row types them yet, so no
+\ checked word calls them.
+EPRIM: ffi-call-0     PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-1     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-2     PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-3     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-4     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-5     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-6     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-7     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: ffi-call-8     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                      PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+ETRUSTED-ONLY!
 EPRIM: task-entry PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE

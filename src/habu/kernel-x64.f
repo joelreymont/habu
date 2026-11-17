@@ -4157,6 +4157,35 @@ private
    STACK-CELLS,
    BUF-CALL, ;
 
+\ The SysV register of integer argument n, 0 to 5.
+: ARG-REG ( n -- r64 )
+   dup 0 = if drop RDI exit then
+   dup 1 = if drop RSI exit then
+   dup 2 = if drop RDX exit then
+   dup 3 = if drop RCX exit then
+   4 = if R8 exit then
+   R9 ;
+
+\ The body of ffi-call-k ( x1 .. xk fn -- n ), k from 0 to 8: x1..x6, x1
+\ the deepest cell, go to rdi..r9, and x7 and x8 to the machine stack
+\ through SYSV-CALL,'s copy from rax. CB-ENTER, uses rcx, r8 and r9, so
+\ the loads follow it; the frame it publishes holds the stack without the
+\ cells, and every one is read before the call can call back.
+: FFI-CALL-K-BODY ( n -- ) {: k:n :}
+   R11 POP,
+   k 0 > if  DSP k CELL * >IMM8 ASM-SINK ENC-SUB-RI8  then
+   k REG-CELLS > if
+      R10 k REG-CELLS - IMM32,
+      RAX DSP REG-CELLS CELL * MEM-OFF ASM-SINK ENC-LEA
+   else
+      R10 ZERO-REG,
+   then
+   0 CB-ENTER,
+   k REG-CELLS min 0 ?do  i ARG-REG DSP i CELL * MOV-LOAD,  loop
+   0 SYSV-CALL,
+   CB-LEAVE,
+   RAX PUSH, ;
+
 \ With r11 = the function, r10 = nstack and argbuf fpbuf stackbuf the top three
 \ cells: pop them, load xmm0..7 from fpbuf and rdi..r9 from argbuf, and call
 \ with the stackbuf cells. nstack is the caller's data, and SYSV-CALL, copies
@@ -4195,6 +4224,15 @@ public
    s" dlsym-entry" [: s" dlsym" LIBC-ENTRY, RAX PUSH, ;] PRIM
    s" ffi-call" [: FFI-CALL-BODY ;] PRIM
    s" ffi-call-n" [: FFI-CALL-N-BODY ;] PRIM
+   s" ffi-call-0" [: 0 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-1" [: 1 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-2" [: 2 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-3" [: 3 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-4" [: 4 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-5" [: 5 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-6" [: 6 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-7" [: 7 FFI-CALL-K-BODY ;] PRIM
+   s" ffi-call-8" [: 8 FFI-CALL-K-BODY ;] PRIM
    s" ffi-call-abi" [: FFI-CALL-ABI-BODY  RAX PUSH, ;] PRIM
    s" ffi-call-abi-r" [: FFI-CALL-ABI-BODY  XMM0-PUSH, ;] PRIM
    \ SysV records have no indirect copies. Drop the zero relocation mask;

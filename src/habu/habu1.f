@@ -2012,6 +2012,17 @@ private
    BCB-LEAVE
    0 G-PUSH ;
 
+\ The body of ffi-call-k ( x1 .. xk fn -- n ), k from 0 to 8: x1, the deepest
+\ cell, goes to x0 and xk to x(k-1). The pops precede BCB-ENTER, which keeps
+\ x0..x7 and x16, so the frame it publishes holds the stack without them.
+: BFFI-CALL-K ( n -- ) {: k:n :}
+   16 G-POP
+   k 0 ?do  k 1- i - G-POP  loop
+   BCB-ENTER
+   16 BLR,
+   BCB-LEAVE
+   0 G-PUSH ;
+
 : BFFI-LOAD-DREG ( n n -- )
    FFI-OFF !
    FFI-DREG !
@@ -4132,6 +4143,15 @@ package ENGINE-EMIT
    s" munmap" ['] BMUNMAP FPRIM
    s" ffi-call" ['] BFFI-CALL FPRIM
    s" ffi-call-n" ['] BFFI-CALL FPRIM
+   s" ffi-call-0" [: 0 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-1" [: 1 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-2" [: 2 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-3" [: 3 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-4" [: 4 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-5" [: 5 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-6" [: 6 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-7" [: 7 BFFI-CALL-K ;] FPRIM
+   s" ffi-call-8" [: 8 BFFI-CALL-K ;] FPRIM
    s" task-entry" ['] BTASK-ENTRY FPRIM
    s" dlopen-entry" ['] LIBC-OS:DLOPEN-ENTRY FPRIM
    s" dlsym-entry" ['] LIBC-OS:DLSYM-ENTRY FPRIM

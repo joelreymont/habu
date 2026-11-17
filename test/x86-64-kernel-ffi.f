@@ -107,6 +107,7 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    16 * ENTRY-RSP-LOW +  256 * ;
 
 : STUB6 ( -- label ) [: 0 STUB, ;] X64HARNESS:ROUTINE, ;
+: STUB7 ( -- label ) [: 1 STUB, ;] X64HARNESS:ROUTINE, ;
 : STUB8 ( -- label ) [: 2 STUB, ;] X64HARNESS:ROUTINE, ;
 : STUB9 ( -- label ) [: 3 STUB, ;] X64HARNESS:ROUTINE, ;
 
@@ -145,10 +146,34 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    ARGS AT, PLACES N, s9 PUSH-XT, s" ffi-call-n" ROW  want9 WANT
    ARGS AT, PLACES N, s9 PUSH-XT, s" ffi-call-n" SHIFTED-ROW  want9 WANT ;
 
+\ Cells 1..k, 1 the deepest, and the stub: ffi-call-k's operands.
+: K-ARGS, ( label n -- ) {: s:label k:n :}
+   k 0 ?do  i 1+ N,  loop  s PUSH-XT, ;
+
+\ ffi-call-0 on getpid, less the getpid row's answer.
+: GETPID-0, ( -- )
+   s" getpid" LIBC,  s" ffi-call-0" ROW
+   s" getpid" ROW  SUB,  0 WANT ;
+
+\ ffi-call-6 passes registers only; ffi-call-7 and -8 one and two
+\ machine-stack cells, at both rsp parities.
+: K-CALLS, ( label label label -- ) {: s6:label s7:label s8:label :}
+   6 STUB-ANSWER 7 STUB-ANSWER 8 STUB-ANSWER {: w6:n w7:n w8:n :}
+   s6 6 K-ARGS, s" ffi-call-6" ROW  w6 WANT
+   s7 7 K-ARGS, s" ffi-call-7" ROW  w7 WANT
+   s7 7 K-ARGS, s" ffi-call-7" SHIFTED-ROW  w7 WANT
+   s8 8 K-ARGS, s" ffi-call-8" ROW  w8 WANT
+   s8 8 K-ARGS, s" ffi-call-8" SHIFTED-ROW  w8 WANT ;
+
 : CALLS-CASE ( -- )
    STUB8 STUB9 {: s8:label s9:label :}
    GETPID,
    s8 s9 STUB-CALLS, ;
+
+: K-CASE ( -- )
+   STUB6 STUB7 STUB8 {: s6:label s7:label s8:label :}
+   GETPID-0,
+   s6 s7 s8 K-CALLS, ;
 
 \ The ABI rows: the float stub through both, whose plain row answers rax and
 \ -r row xmm0; the nine-place stub with three stackbuf cells, at both rsp
@@ -221,6 +246,7 @@ public
    X64HARNESS:INIT
    [: CALLS-CASE ;] false s" hb-x64-kernel-ffi" TMP-PATH BUILD
    [: CALLS-CASE ;] true s" hb-x64-kernel-ffi-negative" TMP-PATH BUILD
+   [: K-CASE ;] false s" hb-x64-kernel-ffi-k" TMP-PATH BUILD
    [: ABI-CASE ;] false s" hb-x64-kernel-ffi-abi" TMP-PATH BUILD
    [: SNPRINTF-CASE ;] false s" hb-x64-kernel-ffi-snprintf" TMP-PATH BUILD
    X64HARNESS:DISPOSE
