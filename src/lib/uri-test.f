@@ -1,11 +1,12 @@
 \ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, and
-\ bytes encoded as a web form, through src/lib/uri.f.
+\ bytes encoded as a web form and decoded from one, through src/lib/uri.f.
 \ Run: bin/hb --load src/lib/uri-test.f
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/span.f
+require src/lib/byte-buffer.f
 require src/lib/uri.f
 
 package URI-TEST
@@ -16,6 +17,7 @@ using SPAN
 2 BUFFER: ONE                     \ `/` and the byte a round trip takes
 3 BUFFER: WANT                    \ one byte's form encoding
 $A5 constant CANARY
+create DECODED BUF:HDR-BYTES allot
 
 : PATH$ ( ^u8 n -- ^u8 n )
    DST URI:FILE>PATH {: u:n :}
@@ -195,6 +197,22 @@ $A5 constant CANARY
 : FORM-BYTES ( -- )
    256 0 do i ONE c! ONE 1 FORM$ i FORM-WANT T$= loop ;
 
+: DECODED$ ( ^u8 n -- ^u8 n )
+   DECODED BUF:CLEAR
+   DECODED URI:FORM-DECODE+
+   DECODED BUF:SPAN$ BUF:BLEN>N ;
+
+\ Every byte comes back from its form encoding as it went in.
+: FORM-TRIP ( -- )
+   256 0 do i ONE c! ONE 1 FORM$ DECODED$ ONE 1 T$= loop ;
+
+\ A `%` at the end, with one digit, or with a non-hex digit in either place
+\ decodes to itself.
+: FORM-BARE-PERCENT ( -- )
+   s" %" DECODED$ s" %" T$=
+   s" a%4" DECODED$ s" a%4" T$=
+   s" %G1%1G" DECODED$ s" %G1%1G" T$= ;
+
 \ `~` and `/`, which a path keeps, are escaped in a form.
 : FORM-MIXED ( -- )
    s" a b*-._~/" FORM$ s" a+b*-._%7E%2F" T$= ;
@@ -217,6 +235,7 @@ $A5 constant CANARY
    DST $ drop 5 s" a+%7E" T$= ;
 
 : MAIN ( -- )
+   DECODED 16 BUF:N>BLEN BUF:INIT
    T-RESET
    FORMS
    ESCAPES
@@ -230,9 +249,12 @@ $A5 constant CANARY
    ENCODE-ALL-OR-NOTHING
    ROUND-TRIP
    FORM-BYTES
+   FORM-TRIP
+   FORM-BARE-PERCENT
    FORM-MIXED
    FORM-ALL-OR-NOTHING
    T-REPORT
+   DECODED BUF:DISPOSE
    s" uri-test: ok" type cr ;
 
 MAIN

@@ -1,6 +1,6 @@
 \ uri.f - file URIs (RFC 8089) decoded to the paths they name, paths encoded,
-\ and bytes encoded as a web form. A path is bytes, as the file system takes
-\ them: a decoded NUL or `/` is kept.
+\ and bytes encoded as a web form and decoded from one. A path is bytes, as the
+\ file system takes them: a decoded NUL or `/` is kept.
 \ Input is checked and output measured before a byte is written, so no refusal
 \ leaves a byte behind.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
@@ -9,6 +9,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/adt/option.f
+require src/lib/byte-buffer.f
 
 package URI
 private
@@ -124,6 +125,20 @@ $23 constant HASH
    c STR-SPACE = if [char] + out at + c! at 1+ exit then
    c out at ESCAPE ;
 
+\ The byte form-encoded text spells at that offset, and the offset after it:
+\ `+` is a space and `%XX` a byte; a `%` without two hex digits after it is
+\ itself (WHATWG URL 1.3).
+: DECODED-AT ( ^u8 n n -- n n )
+   {: a:^ u:n at:n :}
+   a at + c@ {: c:n :}
+   c [char] + = if STR-SPACE at 1+ exit then
+   c PERCENT <> if c at 1+ exit then
+   at ESCAPE-WIDTH + u > if c at 1+ exit then
+   a at + 1+ c@ {: hi:n :}
+   a at + 2 + c@ {: lo:n :}
+   hi STR-HEX-DIGIT? lo STR-HEX-DIGIT? and 0= if c at 1+ exit then
+   hi NIBBLE NIBBLE-BITS lshift lo NIBBLE or at ESCAPE-WIDTH + ;
+
 public
 
 \ Writes `file://`, an empty authority, then the path with every byte but `/`
@@ -156,6 +171,24 @@ public
    s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
    0 u 0 ?do a i + c@ out rot FORM-BYTE loop drop
    len ;
+
+\ Appends to the BUF the bytes application/x-www-form-urlencoded text decodes
+\ to (DECODED-AT).
+: FORM-DECODE+ ( ^u8 n ^a -- )
+   {: a:^ u:n buf:^ :}
+   0 begin dup u < while
+      a u rot DECODED-AT swap buf BUF:APPEND-BYTE
+   repeat drop ;
+
+\ Whether form-encoded text decodes to exactly the name; recurses once per
+\ byte of the name.
+: FORM= ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n b:^ v:n :}
+   u 0= if v 0= exit then
+   v 0= if false exit then
+   a u 0 DECODED-AT {: c:n next:n :}
+   c b c@ <> if false exit then
+   a next + u next - b 1+ v 1- RECURSE ;
 
 \ The scheme is `file` in any case, then `//` and an authority that is empty or
 \ `localhost` in any case, ending at the path's `/`: every answer is absolute.

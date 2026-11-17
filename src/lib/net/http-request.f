@@ -24,6 +24,7 @@ require src/lib/num-types.f
 require src/lib/span.f
 require src/lib/byte-buffer.f
 require src/lib/task.f
+require src/lib/uri.f
 
 package HTTP
 
@@ -86,7 +87,6 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 63 constant QUESTION
 44 constant CH-COMMA
 59 constant SEMICOLON
-43 constant PLUS
 61 constant EQUALS
 38 constant AMPERSAND
 1000000 constant NS-PER-MS
@@ -955,32 +955,6 @@ E-HTTP-BODY-READ constant E-BODY-READ
    WHOLE idx BODY-STATE ! ;
 
 
-\ The byte form-encoded text spells at that offset, and the offset after it:
-\ "+" is a space and "%XX" a byte; a "%" without two hex digits after it is
-\ itself (WHATWG URL 1.3).
-: FORM-BYTE ( ^u8 n n -- n n )
-   {: a:^ u:n at:n :}
-   a at + c@ {: c:n :}
-   c PLUS = if SP at 1+ exit then
-   c PERCENT <> if c at 1+ exit then
-   at 2 + u >= if c at 1+ exit then
-   a at + 1+ c@ {: hi:n :}
-   a at + 2 + c@ {: lo:n :}
-   hi STR-HEX-DIGIT? lo STR-HEX-DIGIT? and 0= if c at 1+ exit then
-   hi STR-HEX-DIGIT-VALUE HEX-BASE * lo STR-HEX-DIGIT-VALUE + at 3 + ;
-
-
-\ Whether form-encoded text decodes to exactly the name; recurses once per
-\ byte of the name.
-: FORM= ( ^u8 n ^u8 n -- bool )
-   {: a:^ u:n b:^ v:n :}
-   u 0= if v 0= exit then
-   v 0= if false exit then
-   a u 0 FORM-BYTE {: c:n next:n :}
-   c b c@ <> if false exit then
-   a next + u next - b 1+ v 1- RECURSE ;
-
-
 \ A query pair's name and value; a pair with no "=" has the empty value.
 : PAIR ( ^u8 n -- ^u8 n ^u8 n )
    {: a:^ u:n :}
@@ -991,14 +965,6 @@ E-HTTP-BODY-READ constant E-BODY-READ
 
 
 public
-
-\ Appends application/x-www-form-urlencoded text to the BUF decoded (FORM-BYTE).
-: FORM-DECODE+ ( ^u8 n ^a -- )
-   {: a:^ u:n buf:^ :}
-   0 begin dup u < while
-      a u rot FORM-BYTE swap buf BUF:APPEND-BYTE
-   repeat drop ;
-
 
 : METHOD$ ( request -- ^u8 n )
    SLOT-OF-REQUEST SLOT-METHOD$ ;
@@ -1014,9 +980,9 @@ public
 
 \ Appends to the BUF the value of the query's first name=value pair whose name
 \ is the given one and answers true; false, appending nothing, when no pair
-\ has it. Names and values decode as a form (application/x-www-form-urlencoded:
-\ "+" a space, "%XX" a byte); a pair with no "=" has the empty value. The
-\ parser checked every escape (ESCAPES-OK?), so each one decodes.
+\ has it. Names and values decode as a web form; a pair with no "=" has the
+\ empty value. The parser checked every escape (ESCAPES-OK?), so each one
+\ decodes.
 : PARAM+ ( request ^u8 n ^a -- bool )
    {: subject:request key:^ keyu:n buf:^ :}
    subject QUERY$ {: q:^ qu:n :}
@@ -1024,7 +990,7 @@ public
       q qu AMPERSAND start SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
       found 0= if false exit then
       fa fu PAIR {: na:^ nu:n va:^ vu:n :}
-      na nu key keyu FORM= if va vu buf FORM-DECODE+ true exit then
+      na nu key keyu URI:FORM= if va vu buf URI:FORM-DECODE+ true exit then
       next
    again ;
 

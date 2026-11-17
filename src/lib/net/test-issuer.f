@@ -27,6 +27,7 @@ require src/lib/utf8-scalar.f
 require src/lib/crypto/evp.f
 require src/lib/crypto/jws-fixture.f
 require src/lib/net/http.f
+require src/lib/uri.f
 
 package TEST-ISSUER
 private
@@ -144,12 +145,12 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    {: p:^ pu:n :}
    p pu 0 [char] = FIND {: eq:n :}
    NOTE BUF-OF BUF:CLEAR
-   p eq NOTE BUF-OF HTTP:FORM-DECODE+
+   p eq NOTE BUF-OF URI:FORM-DECODE+
    NOTE BUF-OF BUF$ WHICH {: k:n :}
    k 0< if true exit then
    k SLOT-FIELD FIELD-AT @ 0< 0= if false exit then
    FORM BUF-OF BUF:LEN@ BUF:BLEN>N {: at:n :}
-   eq pu < if p eq + 1+ pu eq - 1- FORM BUF-OF HTTP:FORM-DECODE+ then
+   eq pu < if p eq + 1+ pu eq - 1- FORM BUF-OF URI:FORM-DECODE+ then
    at k SLOT-FIELD FIELD-AT !
    FORM BUF-OF BUF:LEN@ BUF:BLEN>N at - k SLOT-FIELD FIELD-LEN !
    true ;
