@@ -2505,14 +2505,6 @@ private
 
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
-\ The active checker owner closes the created body pending at a load boundary,
-\ so the body's `,` grid stops there.
-: BODY-CLOSE ( -- )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
-   CHECKER-OWNER-ABI:CLOSER {: close:n :}
-   close 0= if exit then
-   close CLOSE-ACTION execute ;
-
 \ A file that ends with no definition open ends the transient schema nodes its
 \ definers built definitions from; a build ends them at the file's last piece.
 : TRANSIENT-END ( -- )
@@ -2520,14 +2512,14 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    data-base PEND-CELL + @ 0 <> if exit then
    END-TYPES ;
 
-\ The created body closes and the residue check runs inside the unit, so a runner's call
-\ returns only for an accepted file; each compiled part starts in host.
+\ The residue check runs inside the unit, so a runner's call returns only for
+\ an accepted file; each compiled part starts in host.
 : CALL-UNIT ( -- )
    TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
-   [: 0 data-base SECTION-CELL + !  RUN-RANGE BODY-CLOSE RESIDUE-CHECK
+   [: 0 data-base SECTION-CELL + !  RUN-RANGE RESIDUE-CHECK
       TRANSIENT-END ;]
    SOURCE-UNIT:LOAD ;
 
@@ -2536,10 +2528,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ allotted. A throw skips the end align, which does not matter: a load that
 \ threw refuses the parent's object, so no stored segment continues the
 \ parent's data from there.
-\ A created body the loader's file left pending closes before the loaded file
-\ runs, so its `,` grid belongs to the loader's file.
 : LOAD-UNIT ( -- )
-   BODY-CLOSE
    LOAD-BYTES
    align
    [: CALL-UNIT ;] source-file-run

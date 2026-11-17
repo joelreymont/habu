@@ -2375,18 +2375,8 @@ variable LIT-AT
    latch 0= if DEF-NO-COMPILER then
    NCOMP-DISPATCH:FIXED-COMP-CELL CELL@ AS-COMPILE-FIXED execute ;
 
-\ Each checker a created word publishes to ends the body it holds pending.
-: DEF-BODY-CLOSE ( -- )
-   NCOMP-DISPATCH:DECL-A @ CHECKER-OWNER-ABI:CLOSER {: own:n :}
-   own 0<> if own PKG-AS-ACTION execute then
-   NCOMP-DISPATCH:TARGET-DECL-A @ CHECKER-OWNER-ABI:CLOSER {: target:n :}
-   target 0= target own = or if exit then
-   target PKG-AS-ACTION execute ;
-
 \ The cell-aligned here a created body pushes, kept as the latest body start.
-\ The pending body closes first, so its `,` run ends where this body starts.
 : DEF-ANCHOR ( -- n )
-   DEF-BODY-CLOSE
    POINTER-STORAGE:ALIGN-APART DEF-HERE dup COMMA-BASE-CELL CELL! ;
 
 \ The fixed body pushes the anchor, and ends in the slot a `does>` patches.

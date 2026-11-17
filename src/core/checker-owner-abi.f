@@ -133,12 +133,6 @@ CHECKER-OWNER-EXT:RECORD-PUBLISHED-OFF constant RECORD-PUBLISHED-OFF      \ ( n 
 CHECKER-OWNER-EXT:DP-CUT-OFF constant DP-CUT-OFF                         \ ( n -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
 CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
-CHECKER-OWNER-EXT:BODY-CLOSE-OFF constant BODY-CLOSE-OFF \ ( -- )
-\ The body-close action of the owner record at ptr, 0 for no record. Every
-\ owner record is laid out from this field list, so it holds the slot.
-: CLOSER ( ^u8 -- n ) {: rec:^ :}
-   rec NULL-PTR = if 0 exit then
-   rec BODY-CLOSE-OFF + CELL-VIEW @ ;
 CHECKER-OWNER-EXT:DECL-ROW-OFF constant DECL-ROW-OFF \ ( ^u8 n ^u8 n -- bool )
 
 \ These cells precede the record; callable offsets count from the record
