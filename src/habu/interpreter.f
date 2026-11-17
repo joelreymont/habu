@@ -572,10 +572,10 @@ TYPED-VARIABLE REC ^n
    f DNAME-INT and 0<> if INTERNAL then ;
 
 \ Name dispatch and tick reject an exact native code entry, including an alias,
-\ when it carries a baked scope kind. Arbitrary untyped xref xt execution is
-\ outside these paths.
+\ when it carries a scope kind. Arbitrary untyped xref xt execution is outside
+\ these paths.
 : SCOPE-ENTRY-GUARD ( -- )
-   REC @ XREF-START scope-kind? 0= if exit then
+   REC @ XREF-START CHECK:SCOPE-CODE-KIND 0= if exit then
    s" E-UNSAFE" REJECTION:OPEN
    TOKEN$ TICKS
    s"  is a scoped entry, which only a checked definition may call" SAY

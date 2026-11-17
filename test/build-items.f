@@ -27,7 +27,9 @@
 \ `xt` is rejected with the storage definers' reason. A build of a
 \ program whose source stores a definer's type is rejected with the record its
 \ load prints. A rejected built local whose type text outgrows the checker's
-\ first token buffers is named by that whole text.
+\ first token buffers is named by that whole text. A program that requires the
+\ XML reader builds cold and warm to the same image and reads an element's
+\ name, and one whose definition ticks a C2-MEM scoped entry is rejected.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
@@ -39,6 +41,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
+require src/lib/codesign.f
 require tools/gate-json-assert-core.f
 
 package BITEM-PKG
@@ -625,41 +628,78 @@ BITEM:EVALUATED-CHILD
 BITEM:LNEG-CHILD
 BITEM:UNREAD-CHILD
 
-\ A fresh hb runs the build, since the build is under test.
-package BITEM-STORED
+\ A fresh hb runs each build, since the build is under test; each case has its
+\ own out under DIR, and the warm build reuses the cold one's.
+package BITEM-BUILD
 private
+524288 constant PROG-CAP                 \ a program's bytes
 PATH-CAP BUFFER: DIR  variable DIR-U
-PATH-CAP BUFFER: APP  variable APP-U
+PATH-CAP BUFFER: PATH
+PROG-CAP BUFFER: PROG-1
+PROG-CAP BUFFER: PROG-2
 : DIR$ ( -- ^u8 n ) DIR DIR-U @ ;
-: APP$ ( -- ^u8 n ) APP APP-U @ ;
+\ NAME's path in DIR, in bytes the next call reuses.
+: IN$ ( ^u8 n -- ^u8 n ) DIR$ 2swap PATH FS:JOIN-PATH PATH swap ;
 
-: BUILD ( CMD:command -- CMD:command n )
+\ Builds SRC into DIR's PROG under DIR's OUT.
+: BUILD ( CMD:command ^u8 n ^u8 n ^u8 n -- CMD:command n )
+   {: src:^ srcu:n out:^ outu:n prog:^ progu:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
-   s" test/fixtures/postpone-stored-use.f" CMD:ARG+
-   s" -o" CMD:ARG+  APP$ CMD:ARG+  s" HABU_OUT" DIR$ CMD:ENV+
+   src srcu CMD:ARG+  s" -o" CMD:ARG+  prog progu IN$ CMD:ARG+
+   s" HABU_OUT" out outu IN$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
 
+\ A status other than the one expected shows the status and both streams.
+: SHOW ( CMD:command n n -- CMD:command n ) {: rc:n want:n :}
+   rc want <> if
+      s" build-items: exited " type rc .
+      s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr
+   then
+   rc ;
+
 : STORED ( CMD:command -- CMD:command )
-   BUILD {: rc:n :}
+   s" test/fixtures/postpone-stored-use.f" s" stored" s" stored-app" BUILD
+   70 SHOW {: rc:n :}
    CMD:ERR$ s" a definer's type ends with the load that built it: build it where it is used"
    CONTAINS? TTRUE
    CMD:ERR$ s" HELD" CONTAINS? TTRUE
    rc 70 T= ;
 
-: CHECKS ( -- ) [: STORED ;] CMD:WITH-COMMAND ;
+: XML ( CMD:command -- CMD:command )
+   s" test/fixtures/build-items/xml-reader.f" s" xml" s" xml-cold" BUILD 0 SHOW {: cold:n :}
+   cold 0 T=  cold 0<> if exit then
+   s" test/fixtures/build-items/xml-reader.f" s" xml" s" xml-warm" BUILD 0 SHOW {: warm:n :}
+   warm 0 T=  warm 0<> if exit then
+   s" xml-cold" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
+   s" xml-warm" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
+   PROG-1 u1 PROG-2 u2 CODESIGN:SAME-IMAGE? TTRUE
+   CMD:RESET  s" xml-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N 0 SHOW {: rc:n :}
+   CMD:OUT$ S\" bitem-xml-reader: a\n" STR= TTRUE
+   rc 0 T= ;
+
+\ The build's own C2-MEM entries are scoped entries too.
+: TICK ( CMD:command -- CMD:command )
+   s" test/fixtures/build-items/scoped-tick.f" s" tick" s" tick-app" BUILD
+   70 SHOW {: rc:n :}
+   CMD:ERR$ s" `C2-MEM:WITH-INIT` is a scoped entry, which only a direct call may reach"
+   CONTAINS? TTRUE
+   CMD:ERR$ s" scoped-tick.f:7:" CONTAINS? TTRUE
+   rc 70 T= ;
+
+: CHECKS ( -- ) [: STORED XML TICK ;] CMD:WITH-COMMAND ;
 : REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
 
 public
 : RUN ( -- )
-   s" habu-bitem-stored" FS:MKTEMP-DIR {: a:^ u:n :}
+   s" habu-bitem-build" FS:MKTEMP-DIR {: a:^ u:n :}
    a DIR u BYTE-COPY  u DIR-U !
-   DIR$ s" app" APP FS:JOIN-PATH APP-U !
    ['] CHECKS ['] REMOVE finally ;
 ;package
 
-BITEM-STORED:RUN
+BITEM-BUILD:RUN
 
 \ A fresh hb runs the fixture: the case needs the token buffers at their first
 \ capacity, which an earlier check in this process could have grown. The record

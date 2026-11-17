@@ -18180,9 +18180,46 @@ variable WF-CURROW   variable WF-POS-I
    0 OK !
    RES-TRUE ;
 
+\ A build's own C2-MEM entries, kind k's at cell k, k from 2 to 8, 0 for none:
+\ they are new code, which the running engine's scope-kind? does not know. A
+\ process runs one build, so nothing clears them.
+SCRATCH{
+create BUILD-SCOPES 9 cells allot
+}SCRATCH
+
+public
+\ C2-MEM's word whose entry scope-kind? answers kind k for, k from 2 to 8.
+: SCOPE-WORD$ ( n -- ^u8 n )
+   {: k:n :}
+   k 2 = IF s" WITH-READ" EXIT THEN
+   k 3 = IF s" WITH-MUT" EXIT THEN
+   k 4 = IF s" WITH-MUT-LOAN" EXIT THEN
+   k 5 = IF s" WITH-INIT" EXIT THEN
+   k 6 = IF s" WITH-RECORDS" EXIT THEN
+   k 7 = IF s" WITH-RECORD" EXIT THEN
+   s" WITH-FIELD" ;
+
+\ Records the entries of the C2-MEM scope words the build holds, which a build
+\ does once it has sealed C2-MEM.
+: SCOPE-ENTRIES! ( -- )
+   s" C2-MEM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
+   pkg NULL-PTR = IF EXIT THEN
+   pkg @ {: wid:n :}
+   9 2 ?do
+      i SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+      rec NULL-PTR = IF 0 ELSE rec @ THEN  BUILD-SCOPES i cells + !
+   loop ;
+
 \ The code entry, not the name or a persisted control flag, is the authority
-\ for the public C2 scope operations.
-: SCOPE-CODE-KIND ( n -- n ) scope-kind? ;
+\ for the public C2 scope operations: an entry's kind is scope-kind?'s, else
+\ the kind whose recorded entry it is.
+: SCOPE-CODE-KIND ( n -- n )
+   {: e:n :}
+   e scope-kind? {: k:n :}
+   k 0 <>  e 0 =  or IF k EXIT THEN
+   0  9 2 ?do  BUILD-SCOPES i cells + @ e = IF drop i THEN  loop ;
+private
+
 : SCOPE-SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-PKG$ {: pkg:^ pkgu:n :}
    pkgu 0= IF BOOT:GLOBAL-WL EXIT THEN

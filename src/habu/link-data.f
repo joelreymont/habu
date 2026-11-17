@@ -474,24 +474,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    DATA-IMAGE ;
 
 
-\ C2-MEM's word whose entry scope-kind? answers kind k for, k from 2 to 8.
-: SCOPE-WORD$ ( n -- ^u8 n )
-   {: k:n :}
-   k 2 = if s" WITH-READ" exit then
-   k 3 = if s" WITH-MUT" exit then
-   k 4 = if s" WITH-MUT-LOAN" exit then
-   k 5 = if s" WITH-INIT" exit then
-   k 6 = if s" WITH-RECORDS" exit then
-   k 7 = if s" WITH-RECORD" exit then
-   s" WITH-FIELD" ;
-
-
 \ Kind k's chain in the kernel becomes adrp+add of the entry of k's word in
 \ C2-MEM's public wordlist wid. An engine build loads and seals C2-MEM's seven
 \ words before its link, which places every routine.
 : SCOPE-ENTRY! ( n n -- )
    {: wid:n k:n :}
-   k SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+   k CHECK:SCOPE-WORD$ wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec XREF-START LINK-ADDRESS {: to:n :}
    k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
    to  ARM64:TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;

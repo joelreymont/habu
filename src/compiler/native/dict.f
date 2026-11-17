@@ -52,7 +52,7 @@ public
    rec XREF-FLAGS DNAME-INT and 0<>  rec VISIBLE-RECORD? 0= and if
       true exit
    then
-   rec XREF-START scope-kind? 0<> ;
+   rec XREF-START CHECK:SCOPE-CODE-KIND 0<> ;
 
 \ The bound record whatever its flags, or none. Two used publics that both
 \ export the tail, with nothing earlier binding it, are the ambiguity the engine
