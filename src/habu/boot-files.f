@@ -68,6 +68,7 @@ private
    CHECKER WASM s" src/arch/wasm/profile.f" ROW
    CHECKER WASM s" src/os/wasm/layout.f" ROW
    CHECKER COMMON s" src/habu/layout.f" ROW
+   CHECKER COMMON s" src/habu/fnv.f" ROW
    CHECKER COMMON s" src/habu/intern-table.f" ROW
    CHECKER COMMON s" src/core/rejection.f" ROW
    CHECKER COMMON s" src/core/exec-vector.f" ROW
