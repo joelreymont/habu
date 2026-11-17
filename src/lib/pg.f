@@ -186,6 +186,8 @@ DYNAMIC-BUFFER RES-OWNER n
 DYNAMIC-BUFFER RES-CONN n
 DYNAMIC-BUFFER RES-OUTER n
 DYNAMIC-BUFFER RES-SCOPED n
+DYNAMIC-BUFFER RES-ROWS n
+DYNAMIC-BUFFER RES-COLS n
 
 here data-base - negate 7 and allot
 variable GENERATION
@@ -400,7 +402,21 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 
 : RES-PG@ ( n -- ^u8 )   RES-PG-CELL @ ;
-: RES-PG! ( ^u8 n -- ) {: p slot:n :}   p slot RES-PG-CELL ! ;
+
+\ A PGresult never changes once made, so its row and column counts are read
+\ here, once, into the slot beside it; a cleared slot (NULL) counts none.
+: RES-PG! ( ^u8 n -- ) {: p slot:n :}
+   p slot RES-PG-CELL !
+   p NULL-ADDR? if
+      0 slot RES-ROWS !
+      0 slot RES-COLS !
+   else
+      p LIB-NTUPLES slot RES-ROWS !
+      p LIB-NFIELDS slot RES-COLS !
+   then ;
+
+: RES-ROWS@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-ROWS @ ;
+: RES-COLS@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-COLS @ ;
 
 : RES-GEN@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-GEN @ ;
 : RES-GEN! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-GEN ! ;
@@ -680,14 +696,16 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 
 \ A scoped result whose connection closed keeps its slot, with no PGresult,
-\ until its scope ends.
+\ until its scope ends. The slot it answers has passed RES-CHECK, so a word
+\ given it reads the registry unchecked.
 : RESULT-SLOT ( n -- n ) {: raw:n :}
    raw 0 < if E-HANDLE throw then
    raw HANDLE-SLOT {: slot:n :}
-   slot RES-LIVE@ 0= if E-CLEARED throw then
-   slot RES-GEN@ raw HANDLE-GEN <> if E-CLEARED throw then
-   slot RES-OWNER@ TASK:SELF-N <> if E-HANDLE throw then
-   slot RES-PG@ NULL-ADDR? if E-CLEARED throw then
+   slot RES-CHECK
+   slot RES-LIVE atomic@ 0= if E-CLEARED throw then
+   slot RES-GEN @ raw HANDLE-GEN <> if E-CLEARED throw then
+   slot RES-OWNER @ TASK:SELF-N <> if E-HANDLE throw then
+   slot RES-PG @ NULL-ADDR? if E-CLEARED throw then
    slot ;
 
 
@@ -746,6 +764,8 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    RES-CONN-RELEASE
    RES-OUTER-RELEASE
    RES-SCOPED-RELEASE
+   RES-ROWS-RELEASE
+   RES-COLS-RELEASE
    0 CONN-CAPACITY !
    0 RESULT-CAPACITY !
    0 CONFIGURED ! ;
@@ -778,6 +798,8 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    RESULT-CAP RES-CONN-RESERVE
    RESULT-CAP RES-OUTER-RESERVE
    RESULT-CAP RES-SCOPED-RESERVE
+   RESULT-CAP RES-ROWS-RESERVE
+   RESULT-CAP RES-COLS-RESERVE
    RESULT-CAP 0 ?do NO-CONN i RES-CONN ! loop ;
 
 
@@ -1454,37 +1476,41 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot s" ROLLBACK" VERB ;
 
 
+\ The slot is RESULT-SLOT's answer, so its fields are read unchecked.
 : CELL-AT ( n row col -- n n n ) {: slot:n r:row c:col :}
-   slot RES-PG@ {: res :}
    r ROW>N {: ri:n :}
    c COL>N {: ci:n :}
    ri 0 < if E-COLUMN throw then
    ci 0 < if E-COLUMN throw then
-   ri res LIB-NTUPLES >= if E-COLUMN throw then
-   ci res LIB-NFIELDS >= if E-COLUMN throw then
+   ri slot RES-ROWS @ >= if E-COLUMN throw then
+   ci slot RES-COLS @ >= if E-COLUMN throw then
    slot ri ci ;
 
 
+\ The cell CELL-AT answered, its slot read without checking it again.
 : VALUE$ ( n n n -- ^u8 n ) {: slot:n ri:n ci:n :}
-   slot RES-PG@ {: res :}
+   slot RES-PG @ {: res :}
    res ri ci LIB-GETVALUE
    res ri ci LIB-GETLENGTH ;
 
 
+\ The cell CELL-AT answered, its slot read without checking it again.
 : CELL-NULL? ( n n n -- bool ) {: slot:n ri:n ci:n :}
-   slot RES-PG@ ri ci LIB-GETISNULL 0 <> ;
+   slot RES-PG @ ri ci LIB-GETISNULL 0 <> ;
 
 
+\ The slot is RESULT-SLOT's answer, so its fields are read unchecked.
 : BINARY-COLUMN? ( n n -- bool ) {: slot:n ci:n :}
-   slot RES-PG@ ci LIB-FFORMAT BINARY-FORMAT = ;
+   slot RES-PG @ ci LIB-FFORMAT BINARY-FORMAT = ;
 
 
+\ The slot is RESULT-SLOT's answer, so its fields are read unchecked.
 : COLUMN-AT ( n col -- ^u8 n )
    {: slot:n c:col :}
-   slot RES-PG@ {: res :}
+   slot RES-PG @ {: res :}
    c COL>N {: ci:n :}
    ci 0 < if E-COLUMN throw then
-   ci res LIB-NFIELDS >= if E-COLUMN throw then
+   ci slot RES-COLS @ >= if E-COLUMN throw then
    res ci ;
 
 
@@ -1923,11 +1949,11 @@ public
 
 
 : ROWS ( PG:result -- PG:result count )
-   PEEK RES-PG@ LIB-NTUPLES >COUNT ;
+   PEEK RES-ROWS@ >COUNT ;
 
 
 : COLS ( PG:result -- PG:result count )
-   PEEK RES-PG@ LIB-NFIELDS >COUNT ;
+   PEEK RES-COLS@ >COUNT ;
 
 
 : AFFECTED ( PG:result -- PG:result count )
