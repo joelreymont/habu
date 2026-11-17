@@ -29,21 +29,21 @@ jobs:
           name: sparql-current-sources
           path: export/sources.tar.gz
           retention-days: 3
-      - name: Download Debian PostgreSQL and pgvector packages
+      - name: Download PostgreSQL 18 and pgvector packages
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD/export/packages:/packages" debian:trixie-slim sh -ec '
+          docker run --rm -v "$PWD/export/packages:/packages" postgres:18-trixie sh -ec '
             rm -f /etc/apt/apt.conf.d/docker-clean
             apt-get update
-            apt-get -y --download-only install postgresql-17 postgresql-17-pgvector
+            apt-get -y --download-only --reinstall install postgresql-18 postgresql-client-18 postgresql-18-pgvector libpq5 liburing2
             cp /var/cache/apt/archives/*.deb /packages/
           '
           cd export/packages
           sha256sum *.deb > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: postgresql-offline-packages
+          name: postgresql18-offline-packages
           path: export/packages/
           compression-level: 0
           retention-days: 3
