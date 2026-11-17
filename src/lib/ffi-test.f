@@ -887,7 +887,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    s" error[E-FFI-SYNTAX]: ;FUNCTION with no declaration open" FFI-T-RECORD
 
    s" FFI-T-RAW ( ^a n n -- n ) ffi-call-n" FFI-T-CHECK-REJECTS
-   s" FFI-T-ROW ( n -- n ) FFI:CALL" FFI-T-CHECK-REJECTS
+   s" FFI-T-ROW ( n n -- n ) FFI:CALL" FFI-T-CHECK-REJECTS
    s" FFI-T-STAGE ( n n -- ) FFI:VALUE!" FFI-T-CHECK-REJECTS
    s" FFI-T-RAW-ABI ( ^a ^a ^a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS
    s" FFI-T-MULTI ( ^u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS

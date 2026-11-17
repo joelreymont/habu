@@ -151,12 +151,11 @@ PATH-CAP 1 + constant LIB-PATH-CAP
 
 0 cells constant FN-ADDR-OFF
 1 cells constant FN-LIB-OFF
-2 cells constant FN-ARGC-OFF
-3 cells constant FN-SPILL-OFF
-4 cells constant FN-RELOC-OFF
-5 cells constant FN-NAME-OFF              \ the symbol's address, a pointer cell
-6 cells constant FN-NAME-LEN-OFF          \ the symbol's length, its 0 byte not counted
-7 cells constant FN-ROW-BYTES
+2 cells constant FN-SPILL-OFF
+3 cells constant FN-RELOC-OFF
+4 cells constant FN-NAME-OFF              \ the symbol's address, a pointer cell
+5 cells constant FN-NAME-LEN-OFF          \ the symbol's length, its 0 byte not counted
+6 cells constant FN-ROW-BYTES
 0 cells constant LIB-LEN-OFF
 1 cells constant LIB-HANDLE-OFF
 2 cells constant LIB-FAILED-OFF
@@ -276,10 +275,6 @@ LIB-N ROLLBACK-CELLS:MARK
 : FN-SPILL@ ( n -- n )
    {: idx:n :}
    idx FN-SPILL-OFF FN-FIELD @ ;
-
-: FN-ARGC@ ( n -- n )
-   {: idx:n :}
-   idx FN-ARGC-OFF FN-FIELD @ ;
 
 : FN-RELOC@ ( n -- n )
    {: idx:n :}
@@ -489,6 +484,13 @@ variable DLERROR-FN-CELL
    saved cell LE:U32!
    fn ;
 
+\ The row's address, its cached cell read in line, as a call reads it every
+\ time; FN-LOOKUP resolves it only while the cell is 0.
+: CALLEE ( n -- n ) {: idx:n :}
+   FN-TABLE @ idx FN-ROW-BYTES * + FN-ADDR-OFF + CELL-VIEW @
+   dup 0 <> if exit then
+   drop idx FN-LOOKUP ;
+
 public
 
 : NOW ( -- n ) FFI-RTLD-NOW ;
@@ -601,23 +603,24 @@ private
 
 : LIBRARY-PATH ( ^u8 n -- n ) 0 LIBRARY-PATH-OR ;
 
-: CALL ( n -- n ) {: idx:n :}
-   idx FN-LOOKUP {: fn:n :}
-   FFI-BUF idx FN-ARGC@ fn ffi-call-n ;
+\ Row idx's function called with argc integer arguments staged in FFI-BUF;
+\ argc is its declaration's count, a literal where it is called.
+: CALL ( n n -- n ) {: idx:n argc:n :}
+   FFI-BUF argc idx CALLEE ffi-call-n ;
 
-: CALL-PTR ( n -- ^u8 ) CALL CELL>PTR ;
+: CALL-PTR ( n n -- ^u8 ) CALL CELL>PTR ;
 
-: CALL-ABI ( n -- n ) {: idx:n :}
-   idx FN-LOOKUP {: fn:n :}
-   FFI-BUF FFI-FBUF FFI-STACK-BUF idx FN-SPILL@ fn ffi-call-abi ;
+\ Row idx's function called through the full ABI, with spill stack cells;
+\ spill is the row's own count, compiled in by the declaration.
+: CALL-ABI ( n n -- n ) {: idx:n spill:n :}
+   FFI-BUF FFI-FBUF FFI-STACK-BUF spill idx CALLEE ffi-call-abi ;
 
-: CALL-ABI-PTR ( n -- ^u8 ) CALL-ABI CELL>PTR ;
+: CALL-ABI-PTR ( n n -- ^u8 ) CALL-ABI CELL>PTR ;
 
-: CALL-ABI-R ( n -- r ) {: idx:n :}
-   idx FN-LOOKUP {: fn:n :}
-   FFI-BUF FFI-FBUF FFI-STACK-BUF idx FN-SPILL@ fn ffi-call-abi-r ;
+: CALL-ABI-R ( n n -- r ) {: idx:n spill:n :}
+   FFI-BUF FFI-FBUF FFI-STACK-BUF spill idx CALLEE ffi-call-abi-r ;
 
-: CALL-ABI-F32 ( n -- r )
+: CALL-ABI-F32 ( n n -- r )
    CALL-ABI-R IEEE754:F64>BITS $FFFFFFFF and F32:WIDEN ;
 
 \ A struct-returning declaration resolves its row before staging: a first-call
@@ -675,12 +678,13 @@ private
    lo dst len 8 min REG-STORE
    len 8 > if hi dst 8 + len 8 - REG-STORE then ;
 
-\ The stored symbol's length decides along with its bytes, so neither a prefix
-\ nor a name holding a 0 byte matches a row.
-: SAME-FN? ( ^u8 n n n n n n -- bool )
-   {: name:^ u:n lib:n argc:n spills:n reloc:n idx:n :}
+\ Whether row idx is the declaration of name in library lib with spills stack
+\ cells and relocation mask reloc, a row's identity: no call reads an
+\ argument count from its row. The stored symbol's length decides along with
+\ its bytes, so neither a prefix nor a name holding a 0 byte matches a row.
+: SAME-FN? ( ^u8 n n n n n -- bool )
+   {: name:^ u:n lib:n spills:n reloc:n idx:n :}
    idx FN-LIB@ lib <> if false exit then
-   idx FN-ARGC@ argc <> if false exit then
    idx FN-SPILL@ spills <> if false exit then
    idx FN-RELOC@ reloc <> if false exit then
    idx NAME-LEN u <> if false exit then
@@ -697,16 +701,19 @@ private
    b idx NAME-CELL !
    u idx FN-NAME-LEN-OFF FN-FIELD ! ;
 
-: FN-INDEX ( ^u8 n n n n n -- n )
-   {: name:^ u:n lib:n argc:n spills:n reloc:n :}
+\ The row of name in library lib with spills and reloc, or -1 for none.
+: FN-INDEX ( ^u8 n n n n -- n )
+   {: name:^ u:n lib:n spills:n reloc:n :}
    FN-N @ 0 ?do
-      name u lib argc spills reloc i SAME-FN? if i unloop exit then
+      name u lib spills reloc i SAME-FN? if i unloop exit then
    loop
    -1 ;
 
-: DECLARE-ROW ( ^u8 n n n n n -- n )
-   {: name:^ u:n lib:n argc:n spills:n reloc:n :}
-   name u lib argc spills reloc FN-INDEX dup 0 >= if exit then drop
+\ The row of name in library lib with spills and reloc: the existing one, else
+\ a new unresolved row.
+: DECLARE-ROW ( ^u8 n n n n -- n )
+   {: name:^ u:n lib:n spills:n reloc:n :}
+   name u lib spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
    FN-N @ {: idx:n :}
    name u idx NAME-STORE
@@ -714,7 +721,6 @@ private
    spills idx FN-SPILL-OFF FN-FIELD !
    reloc idx FN-RELOC-OFF FN-FIELD !
    lib idx FN-LIB-OFF FN-FIELD !
-   argc idx FN-ARGC-OFF FN-FIELD !
    0 idx FN-ADDR!
    idx ;
 
@@ -727,15 +733,15 @@ public
 \ defined below it, in this package. libc's location is thread-local and the
 \ value is a four-byte C int.
 : ERRNO ( -- n )
-   ERRNO-FN CALL-PTR LE:U32@ ;
+   ERRNO-FN 0 CALL-PTR LE:U32@ ;
 
 \ Sets errno to 0, for a call whose failure only errno tells.
 : ERRNO-CLEAR ( -- )
-   0 ERRNO-FN CALL-PTR LE:U32! ;
+   0 ERRNO-FN 0 CALL-PTR LE:U32! ;
 
-ERRNO-SYMBOL$ PROCESS 0 0 0 DECLARE-ROW ERRNO-FN-CELL !
+ERRNO-SYMBOL$ PROCESS 0 0 DECLARE-ROW ERRNO-FN-CELL !
 
-s" dlerror" PROCESS 0 0 0 DECLARE-ROW DLERROR-FN-CELL !
+s" dlerror" PROCESS 0 0 DECLARE-ROW DLERROR-FN-CELL !
 
 
 \ FUNCTION: - declare a foreign function, get a checked word.
@@ -1384,8 +1390,8 @@ private
    RES-KIND @ R-POINTER = if C-POINTER exit then
    C-INT ;
 
-\ Answers the integer registers and stack cells the call takes, which its row
-\ keeps, and the call it rides.
+\ Answers the integer registers and stack cells the call takes, and the call
+\ it rides.
 : PLAN-CALL ( -- n n n )
    ARG-KIND ARG-WIDTH ARG-SBYTES C-ARGS VAR-START @ STRUCT-BYTES @ ARG-REG ARG-PAY
    PLAN-INPUTS {: int:n flt:n stk:n :}
@@ -1544,9 +1550,11 @@ private
       then
    loop ;
 
-: SLOT ( n n -- n )
-   {: int:n stk:n :}
-   0 SYM-BUF SYM-U @ CUR-LIB @ int stk RELOC-MASK DECLARE-ROW ;
+\ The row of the declared symbol in the current library, with stk spilled
+\ stack cells and this plan's relocation mask.
+: SLOT ( n -- n )
+   {: stk:n :}
+   0 SYM-BUF SYM-U @ CUR-LIB @ stk RELOC-MASK DECLARE-ROW ;
 
 \ A niche value's zero cell is none, so `some` of the returned cell reads NULL as none.
 \ AAPCS64 and SysV leave the register bits above a u8, u16 or u32 result
@@ -1607,13 +1615,19 @@ private
    RES-KIND @ R-NONE = if exit then
    RES-TEXT RES-TEXT-U @ EFFECT:READ-TYPE EFFECT:OUT ;
 
+\ A struct call's definition is STRUCT-BODY's, whose call reads its spill
+\ count and relocation mask from the row. Any other stages its inputs, then
+\ calls its row with the call's count compiled in: int, the integer
+\ arguments, for CALL and CALL-PTR; stk, the spilled stack cells, for an ABI
+\ call.
 : EMIT ( n n n -- )
    {: int:n stk:n kind:n :}
-   int stk SLOT {: slot:n :}
+   stk SLOT {: slot:n :}
    0 NAME-BUF NAME-U @ DECLARED-EFFECT define-word
    kind C-STRUCT = if slot STRUCT-BODY postpone ; exit then
    STAGE
    slot literal
+   kind C-INT = kind C-POINTER = or if int else stk then literal
    kind CALL-WORD
    RESULT-TAIL
    postpone ; ;
