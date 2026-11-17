@@ -1,6 +1,7 @@
 split-str
-\ equal.f - VALUE=, whether two JSON texts hold the same value. A file of
-\ package JSON (src/lib/json.f).
+\ equal.f - VALUE=, whether two JSON texts hold the same value, and
+\ NUMBER-COMPARE, the order of two numbers. A file of package JSON
+\ (src/lib/json.f).
 \
 \ Two numbers are equal when their values are, decided on the lexemes the
 \ reader admitted, with no conversion to binary64: a nonzero value is the sign,
@@ -144,6 +145,56 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    a NEGATIVE?  b NEGATIVE?  xor if false exit then
    xa xb <>  na nb <>  or if false exit then
    a fa +  b fb +  na SAME-DIGITS? ;
+
+
+\ -1, 0 or 1 as m is below, equal to or above k.
+: CELL-ORDER ( n n -- n )
+   {: m:n k:n :}
+   m k < if -1 exit then
+   m k > if 1 exit then
+   0 ;
+
+\ The order of the first count significant digits from a and from b, each side
+\ stepping over its point.
+: DIGIT-ORDER ( ^u8 ^u8 n -- n )
+   {: a:^ b:^ count:n :}
+   0 0  count 0 ?do
+      over a + c@  over b + c@  CELL-ORDER
+      dup 0<> if nip nip unloop exit then drop
+      i count 1- < if swap a swap NEXT-DIGIT swap b swap NEXT-DIGIT then
+   loop
+   2drop 0 ;
+
+\ The order of two nonzero magnitudes, each given by its bytes and what DIGITS
+\ answers for it.
+: MAGNITUDE-ORDER ( ^u8 n n n ^u8 n n n -- n )
+   {: a:^ xa:n fa:n na:n b:^ xb:n fb:n nb:n :}
+   xa xb <> if xa xb CELL-ORDER exit then
+   a fa +  b fb +  na nb min DIGIT-ORDER {: d:n :}
+   d 0<> if d exit then
+   na nb CELL-ORDER ;
+
+\ -1, 0 or 1 for a lexeme at p with count significant digits.
+: VALUE-SIGN ( ^u8 n -- n )
+   {: p:^ count:n :}
+   count 0= if 0 exit then
+   p NEGATIVE? if -1 exit then
+   1 ;
+
+: NUMBER-ORDER ( ^u8 n ^u8 n -- n )
+   {: a:^ u:n b:^ v:n :}
+   a u DIGITS {: xa:n fa:n na:n :}
+   b v DIGITS {: xb:n fb:n nb:n :}
+   a na VALUE-SIGN  b nb VALUE-SIGN {: sa:n sb:n :}
+   sa sb <> if sa sb CELL-ORDER exit then
+   sa 0= if 0 exit then
+   a xa fa na b xb fb nb MAGNITUDE-ORDER sa * ;
+
+\ NUMBER-ORDER's answer replaces the slot under the lexemes, so the quotation
+\ under catch leaves the types it was given.
+: ORDER-SLOT ( n ^u8 n ^u8 n -- n ^u8 n ^u8 n )
+   {: a:^ u:n b:^ v:n :}
+   drop  a u b v NUMBER-ORDER  a u b v ;
 
 
 \ A number whose exponents a cell cannot hold is rejected at its token.
@@ -711,5 +762,14 @@ public
    a u REQUIRE-SOURCE
    b v REQUIRE-SOURCE
    a u b v EQUAL-RUN ;
+
+\ Some -1, 0 or 1 as lexeme a's value is below, equal to or above b's; a and
+\ b must be number lexemes the reader admits.
+: NUMBER-COMPARE ( ^u8 n ^u8 n -- option<n> )
+   {: a:^ u:n b:^ v:n :}
+   0 a u b v [: ORDER-SLOT ;] catch {: order pa ua pb ub code:n :}
+   code 0= if order OPTION:SOME exit then
+   code E-JSON-READ-NUMBER = if OPTION:NONE exit then
+   code throw ;
 
 ;package

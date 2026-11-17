@@ -6,9 +6,14 @@ split-str
 \ advances; values decode on demand. Every E-JSON-READ code and E-MEMBER is
 \ thrown through REASON:THROW with the text
 \ `L:C: expected <e>, found <f>; <fix>`, line and byte column counted from the
-\ source's start. READ-MEMBERS reads a closed object, each listed member once
-\ and no other, calling a handler with each member's index; READ-REJECT
-\ rejects the current token with E-MEMBER at its place.
+\ source's start. READ-MEMBERS reads a closed object, each member its list
+\ names once, one whose name ends in `?` at most once and keyed without it,
+\ and no other, calling a handler with each member's index in the list.
+\ READ-REPEAT answers some index, from 0 in document order, of the first
+\ top-level key of an object that repeats one before it once decoded, nested
+\ objects' keys not counted: READ-FIND-KEY takes the first copy where
+\ JSON.parse keeps the last. A first value other than an object throws
+\ E-JSON-READ-STATE before the rest is read.
 \ Writing goes through the nominal `^JSON:writer`, minted only by the typed
 \ storage definers; one never opened (the definer's zero image) or already
 \ closed refuses every operation with E-JSON-WRITE-STATE.
@@ -42,6 +47,8 @@ split-str
 \ whatever their member order, spacing and escapes; numbers are equal when their
 \ mathematical values are, as JSON Schema defines equality: 1, 1.0, 1e0 and
 \ 10e-1 are equal, -0 equals 0, and 0.1 differs from 0.10000000000000001.
+\ NUMBER-COMPARE orders two number lexemes by value, none when an exponent
+\ leaves a signed cell.
 \ POINTER-SPAN finds the value an RFC 6901 JSON Pointer names in a text.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the JSON:cursor record
 \ (zero-filled typed storage owns nothing, and READ-DISPOSE leaves it so) and the

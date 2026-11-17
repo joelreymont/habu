@@ -876,6 +876,35 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    s" true" s" true" JSON:VALUE= TTRUE
    s" true" s" false" JSON:VALUE= TFALSE ;
 
+: JRT-COMPARE ( ^u8 n ^u8 n n -- ) {: a:^ u:n b:^ v:n want:n :}
+   a u b v JSON:NUMBER-COMPARE MATCH option
+     none OF false TTRUE ENDOF
+     some OF want T= ENDOF
+   ;MATCH ;
+
+: JRT-UNCOMPARED ( ^u8 n ^u8 n -- ) {: a:^ u:n b:^ v:n :}
+   a u b v JSON:NUMBER-COMPARE MATCH option
+     none OF true TTRUE ENDOF
+     some OF drop false TTRUE ENDOF
+   ;MATCH ;
+
+: JRT-TEST-NUMBER-COMPARE ( -- )
+   s" NUMBER-COMPARE orders number lexemes by value" T-LABEL
+   s" 1" s" 1.0" 0 JRT-COMPARE
+   s" 10e-1" s" 1" 0 JRT-COMPARE
+   s" -0" s" 0" 0 JRT-COMPARE
+   s" 1" s" 2" -1 JRT-COMPARE
+   s" -2" s" -10" 1 JRT-COMPARE
+   s" -1" s" 1" -1 JRT-COMPARE
+   s" 0.5" s" 0" 1 JRT-COMPARE
+   s" 0" s" -0.5" 1 JRT-COMPARE
+   s" 0.1" s" 0.10000000000000001" -1 JRT-COMPARE
+   s" 123456789012345678901" s" 123456789012345678902" -1 JRT-COMPARE
+   s" 1e400" s" 1e399" 1 JRT-COMPARE
+   s" 1E+2" s" 100" 0 JRT-COMPARE
+   s" 1e9999999999999999999999" s" 1" JRT-UNCOMPARED
+   s" 1" s" -1e-9999999999999999999999" JRT-UNCOMPARED ;
+
 : JRT-TEST-VALUE-EQ-ARRAYS ( -- )
    s" VALUE= compares arrays element by element in order" T-LABEL
    s" []" s" [ ]" JSON:VALUE= TTRUE
@@ -1883,6 +1912,7 @@ create JRT-NAMES 400 allot
    JRT-TEST-MEMBER-REUSE
    JRT-TEST-CODES
    JRT-TEST-VALUE-EQ-SCALARS
+   JRT-TEST-NUMBER-COMPARE
    JRT-TEST-VALUE-EQ-ARRAYS
    JRT-TEST-VALUE-EQ-OBJECTS
    JRT-TEST-VALUE-EQ-REPEATS
