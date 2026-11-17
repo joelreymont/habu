@@ -1,6 +1,7 @@
 \ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, bytes
-\ encoded as a web form and decoded from one, and request paths checked for a
-\ dot segment, through src/lib/uri.f.
+\ encoded as a web form or a query component and decoded from a form, request
+\ paths checked for a dot segment, and http(s) URLs resolved, compared and
+\ sliced, through src/lib/uri.f.
 \ Run: bin/hb --load src/lib/uri-test.f
 
 require src/lib/error.f
@@ -15,6 +16,7 @@ using SPAN
 
 64 SPAN-BUFFER: DST
 64 SPAN-BUFFER: URI-DST
+128 SPAN-BUFFER: URL-DST
 2 BUFFER: ONE                     \ `/` and the byte a round trip takes
 3 BUFFER: WANT                    \ one byte's form encoding
 $A5 constant CANARY
@@ -265,6 +267,163 @@ create DECODED BUF:HDR-BYTES allot
    s" /a/%252e%252e/b" URI:DOT-SEGMENT? TFALSE
    s" " URI:DOT-SEGMENT? TFALSE ;
 
+: RESOLVED$ ( ^u8 n ^u8 n -- ^u8 n )
+   URL-DST URI:RESOLVE {: u:n :}
+   URL-DST $ drop u ;
+
+: RESOLVE= ( ^u8 n ^u8 n ^u8 n -- )   \ base, reference, target
+   {: b:^ bu:n r:^ ru:n t:^ tu:n :}
+   b bu r ru RESOLVED$ t tu T$= ;
+
+: CATALOG$ ( -- ^u8 n )
+   s" https://h/sap/opu/odata4/iwfnd/config/default/iwfnd/catalog/0002/ServiceGroups?$expand=X&$top=3" ;
+
+: SERVICE$ ( -- ^u8 n )
+   s" https://h/sap/opu/odata/iwfnd/CATALOGSERVICE;v=0002/ServiceCollection?$skiptoken=2" ;
+
+: NEXT$ ( -- ^u8 n )
+   s" https://h/sap/opu/odata4/iwfnd/config/default/iwfnd/catalog/0002/ServiceGroups?$expand=X&$skiptoken=100" ;
+
+\ The four pages an OData server linked: relative, absolute with a segment
+\ parameter kept, absolute path, and another host.
+: PAGES ( -- )
+   CATALOG$ s" ServiceGroups?$expand=X&$skiptoken=100" NEXT$ RESOLVE=
+   s" https://h/sap/opu/odata/iwfnd/CATALOGSERVICE;v=0002/ServiceCollection?$top=2"
+   SERVICE$ SERVICE$ RESOLVE=
+   CATALOG$ s" /sap/opu/odata/sap/X/A?$skiptoken=5"
+   s" https://h/sap/opu/odata/sap/X/A?$skiptoken=5" RESOLVE=
+   CATALOG$ s" https://other/x" s" https://other/x" RESOLVE= ;
+
+: RFC= ( ^u8 n ^u8 n -- )   \ reference, target
+   {: r:^ ru:n t:^ tu:n :}
+   s" http://a/b/c/d;p?q" r ru t tu RESOLVE= ;
+
+: RFC-DROP ( ^u8 n -- )
+   {: r:^ ru:n :}
+   s" http://a/b/c/d;p?q" r ru URL-DST URI:RESOLVE drop ;
+
+\ RFC 3986 section 5.4.1, a scheme other than http(s) rejected.
+: RFC-NORMAL ( -- )
+   [: s" g:h" RFC-DROP ;] E-URI-HTTP TTHROWSQ
+   s" g" s" http://a/b/c/g" RFC=
+   s" ./g" s" http://a/b/c/g" RFC=
+   s" g/" s" http://a/b/c/g/" RFC=
+   s" /g" s" http://a/g" RFC=
+   s" //g" s" http://g" RFC=
+   s" ?y" s" http://a/b/c/d;p?y" RFC=
+   s" g?y" s" http://a/b/c/g?y" RFC=
+   s" #s" s" http://a/b/c/d;p?q#s" RFC=
+   s" g#s" s" http://a/b/c/g#s" RFC=
+   s" g?y#s" s" http://a/b/c/g?y#s" RFC=
+   s" ;x" s" http://a/b/c/;x" RFC=
+   s" g;x" s" http://a/b/c/g;x" RFC=
+   s" g;x?y#s" s" http://a/b/c/g;x?y#s" RFC=
+   s" " s" http://a/b/c/d;p?q" RFC=
+   s" ." s" http://a/b/c/" RFC=
+   s" ./" s" http://a/b/c/" RFC=
+   s" .." s" http://a/b/" RFC=
+   s" ../" s" http://a/b/" RFC=
+   s" ../g" s" http://a/b/g" RFC=
+   s" ../.." s" http://a/" RFC=
+   s" ../../" s" http://a/" RFC=
+   s" ../../g" s" http://a/g" RFC= ;
+
+\ RFC 3986 section 5.4.2, a scheme without `//` rejected.
+: RFC-ABNORMAL ( -- )
+   s" ../../../g" s" http://a/g" RFC=
+   s" ../../../../g" s" http://a/g" RFC=
+   s" /./g" s" http://a/g" RFC=
+   s" /../g" s" http://a/g" RFC=
+   s" g." s" http://a/b/c/g." RFC=
+   s" .g" s" http://a/b/c/.g" RFC=
+   s" g.." s" http://a/b/c/g.." RFC=
+   s" ..g" s" http://a/b/c/..g" RFC=
+   s" ./../g" s" http://a/b/g" RFC=
+   s" ./g/." s" http://a/b/c/g/" RFC=
+   s" g/./h" s" http://a/b/c/g/h" RFC=
+   s" g/../h" s" http://a/b/c/h" RFC=
+   s" g;x=1/./y" s" http://a/b/c/g;x=1/y" RFC=
+   s" g;x=1/../y" s" http://a/b/c/y" RFC=
+   s" g?y/./x" s" http://a/b/c/g?y/./x" RFC=
+   s" g?y/../x" s" http://a/b/c/g?y/../x" RFC=
+   s" g#s/./x" s" http://a/b/c/g#s/./x" RFC=
+   s" g#s/../x" s" http://a/b/c/g#s/../x" RFC=
+   [: s" http:g" RFC-DROP ;] E-URI-HTTP TTHROWSQ ;
+
+: BASE-DROP ( ^u8 n -- )
+   s" g" URL-DST URI:RESOLVE drop ;
+
+\ User information, a `\` before it, and a port over 65535 or an unclosed
+\ bracket in the base; user information in a reference.
+: BAD-AUTHORITIES ( -- )
+   [: s" https://u@h/x" BASE-DROP ;] E-URI-HOST TTHROWSQ
+   [: s" https://h\@evil/x" BASE-DROP ;] E-URI-HOST TTHROWSQ
+   [: s" https://h:99999/" BASE-DROP ;] E-URI-HOST TTHROWSQ
+   [: s" https://[::1/" BASE-DROP ;] E-URI-HOST TTHROWSQ
+   [: s" //u@evil/x" RFC-DROP ;] E-URI-HOST TTHROWSQ
+   [: s" https://h\@evil/x" RFC-DROP ;] E-URI-HOST TTHROWSQ ;
+
+\ A first segment whose bytes before its `:` do not form a scheme is a relative path.
+: COLON-PATHS ( -- )
+   s" A(D=datetime'2020-01-01T00:00')?$skiptoken=1"
+   s" http://a/b/c/A(D=datetime'2020-01-01T00:00')?$skiptoken=1" RFC=
+   s" 1a:b" s" http://a/b/c/1a:b" RFC= ;
+
+: RESOLVE-SHORT ( -- )   \ `http://a/b/c/g` is 14 bytes
+   s" http://a/b/c/d;p?q" s" g" DST 13 TAKE URI:RESOLVE drop ;
+
+\ A span short of the target writes nothing; one of exactly its length is
+\ enough.
+: RESOLVE-ALL-OR-NOTHING ( -- )
+   CANARY DST FILL
+   [: RESOLVE-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
+   14 UNTOUCHED
+   s" http://a/b/c/d;p?q" s" g" DST 14 TAKE URI:RESOLVE 14 T=
+   DST $ drop 14 s" http://a/b/c/g" T$= ;
+
+\ A reference resolved against an http(s) base: a server's pages, RFC 3986's
+\ examples, paths holding `:`, authorities rejected and a short span.
+: RESOLVES ( -- )
+   PAGES
+   RFC-NORMAL
+   RFC-ABNORMAL
+   COLON-PATHS
+   BAD-AUTHORITIES
+   RESOLVE-ALL-OR-NOTHING ;
+
+\ The default port, scheme and host in any case, an empty port, a bracketed
+\ host; another port, scheme or host.
+: SAME-ORIGINS ( -- )
+   s" https://h/a" s" HTTPS://H:443/b" URI:SAME-ORIGIN? TTRUE
+   s" https://h:/" s" https://h/" URI:SAME-ORIGIN? TTRUE
+   s" https://[::1]:443/" s" https://[::1]/" URI:SAME-ORIGIN? TTRUE
+   s" https://h/a" s" https://h:8443/" URI:SAME-ORIGIN? TFALSE
+   s" https://h/a" s" http://h/" URI:SAME-ORIGIN? TFALSE
+   s" https://h/a" s" https://other/x" URI:SAME-ORIGIN? TFALSE ;
+
+\ The path and query without the fragment; none after a bare authority.
+: REQUEST-TARGETS ( -- )
+   s" https://h/sap/X/A?$skiptoken=5#f" URI:REQUEST-TARGET$
+   s" /sap/X/A?$skiptoken=5" T$=
+   s" https://h" URI:REQUEST-TARGET$ nip 0 T= ;
+
+: QUERY$ ( ^u8 n -- ^u8 n )
+   URI-DST URI:QUERY-ENCODE {: u:n :}
+   URI-DST $ drop u ;
+
+: QUERY-SHORT ( -- )   \ `a%20b` is 5 bytes
+   s" a b" DST 4 TAKE URI:QUERY-ENCODE drop ;
+
+\ A space as `%20`, quotes and the delimiters a query gives meaning to
+\ escaped; a short span writes nothing.
+: QUERY-ENCODES ( -- )
+   s" MaterialDocument eq '4900037654'" QUERY$
+   s" MaterialDocument%20eq%20%274900037654%27" T$=
+   s" a+b&c=d/" QUERY$ s" a%2Bb%26c%3Dd%2F" T$=
+   CANARY DST FILL
+   [: QUERY-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
+   5 UNTOUCHED ;
+
 : MAIN ( -- )
    DECODED 16 BUF:N>BLEN BUF:INIT
    T-RESET
@@ -285,6 +444,10 @@ create DECODED BUF:HDR-BYTES allot
    FORM-MIXED
    FORM-ALL-OR-NOTHING
    DOT-SEGMENTS
+   RESOLVES
+   SAME-ORIGINS
+   REQUEST-TARGETS
+   QUERY-ENCODES
    T-REPORT
    DECODED BUF:DISPOSE
    s" uri-test: ok" type cr ;

@@ -319,7 +319,7 @@ require src/core/rejection.f
 
 \ Private C2 owner-frame runtime, declared at this file's end.
 
-\ File URIs (package URI, src/lib/uri.f): -9370..-9379, declared at this file's end.
+\ URIs (package URI, src/lib/uri.f): -9370..-9379, declared at this file's end.
 -9370 constant E-URI-FIRST
 -9379 constant E-URI-LAST
 
@@ -880,6 +880,8 @@ generates: FAULT ( -- n )
 -9371 s" after `file:`, anything but `//`, an empty or `localhost` authority, and the `/` that starts the path" ERROR:CODE E-URI-AUTHORITY
 -9372 s" a `%` without two hex digits after it, or a bare `?` or `#`, which a file URI's path carries only escaped" ERROR:CODE E-URI-ESCAPE
 -9373 s" a path to encode that does not start with `/`, so no file URI names it" ERROR:CODE E-URI-RELATIVE
+-9374 s" not an absolute URL whose scheme is `http` or `https`: give the whole URL, as `https://host/path`" ERROR:CODE E-URI-HTTP
+-9375 s" an http URL's authority that is not a host with an optional port: user information (`@`), an empty host, a byte outside letters, digits, `-._~` and a bracketed address, or a port over 65535; give `host` or `host:port`" ERROR:CODE E-URI-HOST
 -9380 s" a header block that names no single decimal body length within the reader's maximum or a charset other than UTF-8, or a line that is not `token: value` ended by CR LF within LINE-CAP" ERROR:CODE E-CONTENT-LENGTH-MALFORMED
 -9381 s" end of file inside a header block or a body" ERROR:CODE E-CONTENT-LENGTH-TRUNCATED
 -9382 s" a reader used before BIND or after a rejection, NEXT-LENGTH with a body pending, BODY with none, or BIND with a buffer under LINE-CAP + 2 bytes or a negative maximum" ERROR:CODE E-CONTENT-LENGTH-STATE

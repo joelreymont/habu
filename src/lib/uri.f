@@ -1,9 +1,12 @@
 \ uri.f - file URIs (RFC 8089) decoded to the paths they name, paths encoded,
-\ bytes encoded as a web form and decoded from one, and whether a request path
-\ holds a dot segment. A file path is bytes, as the file system takes them: a
+\ bytes encoded as a web form or a query component and decoded from a form,
+\ whether a request path holds a dot segment, and http(s) URLs read: a
+\ reference resolved against one, two compared by origin, and the request
+\ target sliced out. A file path is bytes, as the file system takes them: a
 \ decoded NUL or `/` is kept.
-\ Input is checked and output measured before a byte is written, so no refusal
-\ leaves a byte behind.
+\ Input is checked and output measured before a byte is written, so no
+\ rejection leaves a byte behind. RESOLVE removes dot segments in place, after
+\ it writes the target: the removal never lengthens the path.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/error.f
@@ -21,15 +24,24 @@ $3F constant QUESTION
 $23 constant HASH
 $5C constant BACKSLASH
 $3B constant SEMICOLON
+$5B constant OPEN-BRACKET
+$5D constant CLOSE-BRACKET
 3 constant ESCAPE-WIDTH          \ `%` and two hex digits
 4 constant NIBBLE-BITS
 3 constant NOT-DOT               \ a segment's text that is no `.` or `..`
+80 constant HTTP-PORT
+443 constant HTTPS-PORT
+65535 constant PORT-MAX
+-1 constant NO-PORT
 
 : SCHEME$ ( -- ^u8 n ) s" file:" ;
 : MARKER$ ( -- ^u8 n ) s" //" ;
 : PREFIX$ ( -- ^u8 n ) s" file://" ;
 : LOCALHOST$ ( -- ^u8 n ) s" localhost" ;
 : HEX-DIGITS ( -- ^u8 n ) s" 0123456789ABCDEF" ;
+: HTTP$ ( -- ^u8 n ) s" http" ;
+: HTTPS$ ( -- ^u8 n ) s" https" ;
+: SEPARATOR$ ( -- ^u8 n ) s" ://" ;
 
 : LOCAL? ( ^u8 n -- bool )
    {: a:^ u:n :}   \ an authority naming this machine
@@ -89,18 +101,19 @@ $3B constant SEMICOLON
    up [char] A >= up [char] Z <= and
    c [char] 0 >= c [char] 9 <= and or ;
 
-: KEPT? ( n -- bool )
+\ RFC 3986's unreserved bytes: letters, digits and `-._~`.
+: UNRESERVED? ( n -- bool )
    {: c:n :}
    c ALNUM?
-   c [char] - = or  c [char] . = or  c [char] _ = or  c [char] ~ = or
-   c SLASH = or ;
+   c [char] - = or  c [char] . = or  c [char] _ = or  c [char] ~ = or ;
 
-: WIDTH ( n -- n )
-   KEPT? if 1 else ESCAPE-WIDTH then ;
+: KEPT? ( n -- bool )
+   {: c:n :}
+   c UNRESERVED? c SLASH = or ;
 
-: ENCODED-LEN ( ^u8 n -- n )
-   {: a:^ u:n :}
-   0 u 0 ?do a i + c@ WIDTH + loop ;
+: ENCODED-LEN ( ^u8 n [ n -- bool ] -- n )
+   {: a:^ u:n kept :}
+   0 u 0 ?do a i + c@ kept execute if 1 else ESCAPE-WIDTH then + loop ;
 
 : ESCAPE ( n ^u8 n -- n )
    {: c:n out:^ at:n :}
@@ -109,9 +122,9 @@ $3B constant SEMICOLON
    HEX-DIGITS drop c $F and + c@ out at + 2 + c!
    at ESCAPE-WIDTH + ;
 
-: ENCODE-BYTE ( n ^u8 n -- n )
-   {: c:n out:^ at:n :}
-   c KEPT? if c out at + c! at 1+ exit then
+: ENCODE-BYTE ( n ^u8 n [ n -- bool ] -- n )
+   {: c:n out:^ at:n kept :}
+   c kept execute if c out at + c! at 1+ exit then
    c out at ESCAPE ;
 
 : FORM-KEPT? ( n -- bool )
@@ -170,6 +183,219 @@ $3B constant SEMICOLON
    c [char] . = if dots 1+ NOT-DOT min next false exit then
    NOT-DOT next false ;
 
+\ The first offset below end whose byte answers true to test, or end.
+: SCAN ( ^u8 n [ n -- bool ] -- n )
+   {: p:^ end:n test :}
+   0 begin dup end < if dup p + c@ test execute 0= else false then
+   while 1+ repeat ;
+
+: QUERY-OR-HASH? ( n -- bool )
+   {: c:n :}
+   c QUESTION = c HASH = or ;
+
+: AUTHORITY-END? ( n -- bool )
+   {: c:n :}
+   c SLASH = c QUERY-OR-HASH? or ;
+
+\ The offset of the first `?` or `#` at or after from, or the end.
+: PATH-END ( ^u8 n n -- n )
+   {: a:^ u:n from:n :}
+   a from + u from - [: QUERY-OR-HASH? ;] SCAN from + ;
+
+: HASH-END ( ^u8 n -- n )
+   [: HASH = ;] SCAN ;
+
+: ADDRESS-BYTE? ( n -- bool )
+   {: c:n :}
+   c STR-HEX-DIGIT? c [char] : = or  c [char] . = or ;
+
+\ The length of a bracketed address, brackets included.
+: BRACKETED ( ^u8 n -- n )
+   {: a:^ u:n :}
+   a 1+ u 1- [: ADDRESS-BYTE? 0= ;] SCAN 1+ {: close:n :}
+   close 1 = close u = or if E-URI-HOST throw then
+   a close + c@ CLOSE-BRACKET <> if E-URI-HOST throw then
+   close 1+ ;
+
+\ The length of the host an authority starts with.
+: HOST-LEN ( ^u8 n -- n )
+   {: a:^ u:n :}
+   u 0 > if a c@ OPEN-BRACKET = if a u BRACKETED exit then then
+   a u [: UNRESERVED? 0= ;] SCAN ;
+
+: PORT-DIGIT ( n n -- n )
+   {: acc:n c:n :}
+   c STR-DIGIT? 0= if E-URI-HOST throw then
+   acc 10 * c STR-DIGIT-VALUE + {: v:n :}
+   v PORT-MAX > if E-URI-HOST throw then
+   v ;
+
+\ The port the bytes after the host give: none, `:` alone or `:` and digits.
+: PORT ( ^u8 n -- n )
+   {: a:^ u:n :}
+   u 0= if NO-PORT exit then
+   a c@ [char] : <> if E-URI-HOST throw then
+   u 1 = if NO-PORT exit then
+   0 u 1 ?do a i + c@ PORT-DIGIT loop ;
+
+\ The host, the port and the length of the authority the bytes after `//`
+\ start with, which ends at the first `/`, `?` or `#`, or at the end.
+: AUTHORITY ( ^u8 n -- ^u8 n n n )
+   {: a:^ u:n :}
+   a u [: AUTHORITY-END? ;] SCAN {: end:n :}
+   a end HOST-LEN {: h:n :}
+   h 0= if E-URI-HOST throw then
+   a h  a h + end h - PORT  end ;
+
+: SCHEME-IS? ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n s:^ v:n :}
+   SEPARATOR$ {: m:^ w:n :}
+   v w + u > if false exit then
+   a v s v STR=CI  a v + w m w STR= and ;
+
+\ The length of the scheme, `http` or `https` in any case, before `://`.
+: SCHEME-LEN ( ^u8 n -- n )
+   {: a:^ u:n :}
+   a u HTTP$ SCHEME-IS? if HTTP$ nip exit then
+   a u HTTPS$ SCHEME-IS? 0= if E-URI-HTTP throw then
+   HTTPS$ nip ;
+
+: DEFAULT-PORT ( n n -- n )   \ a scheme's length, a port
+   {: s:n p:n :}
+   p NO-PORT <> if p exit then
+   s HTTP$ nip = if HTTP-PORT else HTTPS-PORT then ;
+
+\ The scheme's length, the host, the port, its scheme's default when absent
+\ or empty, and the offset where the authority ends, of an http(s) URL. Not
+\ `http://` or `https://` is E-URI-HTTP; an authority that is not one or more
+\ unreserved bytes or a bracketed address of hex digits, `:` and `.`, then an
+\ optional `:` and up to PORT-MAX in digits, is E-URI-HOST.
+: HTTP-AT ( ^u8 n -- n ^u8 n n n )
+   {: a:^ u:n :}
+   a u SCHEME-LEN {: s:n :}
+   s SEPARATOR$ nip + {: from:n :}
+   a from + u from - AUTHORITY {: h:^ hu:n p:n end:n :}
+   s h hu  s p DEFAULT-PORT  from end + ;
+
+: HTTP-END ( ^u8 n -- n )
+   HTTP-AT {: s:n h:^ hu:n p:n end:n :} end ;
+
+\ The scheme, the host and the port of an http(s) URL.
+: ORIGIN ( ^u8 n -- ^u8 n ^u8 n n )
+   {: a:^ u:n :}
+   a u HTTP-AT {: s:n h:^ hu:n p:n end:n :}
+   a s h hu p ;
+
+\ The offset of the last `/` below w, or 0.
+: LAST-SLASH ( ^u8 n -- n )
+   {: a:^ w:n :}
+   w begin dup 0 > if 1- dup a + c@ SLASH = else true then until ;
+
+: SLASH-AT ( ^u8 n -- n )
+   {: a:^ w:n :}
+   SLASH a w + c!  w 1+ ;
+
+\ Moves the segment at r, its `/` and the bytes before the next `/`, to w.
+: SEGMENT ( ^u8 n n n -- n n )
+   {: a:^ u:n w:n r:n :}
+   a r 1+ + u r 1+ - [: SLASH = ;] SCAN r 1+ + {: e:n :}
+   a r + a w + e r - BYTE-COPY
+   w e r - +  e ;
+
+\ One step of RFC 3986 section 5.2.4 over the input at r, the output below w.
+\ The input always starts with `/`, so rules A and D never apply.
+: DOT-STEP ( ^u8 n n n -- n n )
+   {: a:^ u:n w:n r:n :}
+   a r + u r - {: in:^ iu:n :}
+   in iu s" /./" STARTS-WITH? if w r 2 + exit then
+   in iu s" /." STR= if a w SLASH-AT u exit then
+   in iu s" /../" STARTS-WITH? if a w LAST-SLASH r 3 + exit then
+   in iu s" /.." STR= if a  a w LAST-SLASH  SLASH-AT u exit then
+   a u w r SEGMENT ;
+
+\ Removes the dot segments of a path that is empty or starts with `/`, in
+\ place; answers its new length.
+: DOT-SEGMENTS ( ^u8 n -- n )
+   {: a:^ u:n :}
+   0 0 begin dup u < while a u 2swap DOT-STEP repeat drop ;
+
+: SCHEME-BYTE? ( n -- bool )
+   {: c:n :}
+   c ALNUM? c [char] + = or  c [char] - = or  c [char] . = or ;
+
+\ Whether a reference has a scheme: an ASCII letter, then letters, digits,
+\ `+`, `-` or `.`, then `:` (RFC 3986 section 3.1).
+: SCHEME? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   a u [: SCHEME-BYTE? 0= ;] SCAN {: at:n :}
+   at 0= at u = or if false exit then
+   a c@ ALNUM? a c@ STR-DIGIT? 0= and  a at + c@ [char] : = and ;
+
+: STARTS? ( ^u8 n n -- bool )   \ whether the first byte is the byte
+   {: a:^ u:n c:n :}
+   u 0 > if a c@ c = exit then
+   false ;
+
+\ Each reference form below answers the target's pieces: the number of the
+\ base's bytes it starts with, 1 when a `/` follows them, else 0, then the
+\ offsets where the target's path starts and ends.
+
+: ABSOLUTE ( ^u8 n -- n n n n )
+   {: r:^ ru:n :}
+   r ru HTTP-END {: e:n :}
+   0 0 e  r ru e PATH-END ;
+
+\ `//` and an authority: the base's scheme and `:`, then the reference.
+: NETWORK ( ^u8 n ^u8 n -- n n n n )
+   {: b:^ bu:n r:^ ru:n :}
+   b bu SCHEME-LEN 1+ {: al:n :}
+   MARKER$ nip {: m:n :}
+   r m + ru m - AUTHORITY {: h:^ hu:n p:n end:n :}
+   al 0  al m + end +  r ru m end + PATH-END al + ;
+
+: ABSOLUTE-PATH ( ^u8 n n -- n n n n )
+   {: r:^ ru:n be:n :}
+   be 0 be  r ru 0 PATH-END be + ;
+
+: QUERY-ONLY ( ^u8 n n -- n n n n )
+   {: b:^ bu:n be:n :}
+   b bu be PATH-END {: bp:n :}
+   bp 0 be bp ;
+
+\ Empty, or a fragment alone: the base up to its fragment.
+: SAME-DOCUMENT ( ^u8 n n -- n n n n )
+   {: b:^ bu:n be:n :}
+   b bu be PATH-END {: bp:n :}
+   b bu HASH-END 0 be bp ;
+
+\ A relative path, after the base path's last `/`, or after `/` for an empty
+\ base path (RFC 3986 section 5.2.3).
+: MERGE ( ^u8 n n ^u8 n -- n n n n )
+   {: b:^ bu:n be:n r:^ ru:n :}
+   b bu be PATH-END {: bp:n :}
+   r ru 0 PATH-END {: rp:n :}
+   bp be = if be 1 be be 1+ rp + exit then
+   b bp LAST-SLASH 1+ {: al:n :}
+   al 0 be al rp + ;
+
+: PIECES ( ^u8 n ^u8 n -- n n n n )
+   {: b:^ bu:n r:^ ru:n :}
+   b bu HTTP-END {: be:n :}
+   r ru SCHEME? if r ru ABSOLUTE exit then
+   r ru MARKER$ STARTS-WITH? if b bu r ru NETWORK exit then
+   r ru SLASH STARTS? if r ru be ABSOLUTE-PATH exit then
+   r ru QUESTION STARTS? if b bu be QUERY-ONLY exit then
+   ru 0= r ru HASH STARTS? or if b bu be SAME-DOCUMENT exit then
+   b bu be r ru MERGE ;
+
+\ Removes the dot segments of the path between from and to, then moves the
+\ bytes after it up; answers the target's length.
+: SQUEEZE ( ^u8 n n n -- n )
+   {: out:^ len:n from:n to:n :}
+   out from + to from - DOT-SEGMENTS from + {: pe:n :}
+   out to + out pe + len to - BYTE-COPY
+   pe len to - + ;
+
 public
 
 \ Writes `file://`, an empty authority, then the path with every byte but `/`
@@ -182,10 +408,10 @@ public
    u 0= if E-URI-RELATIVE throw then
    a c@ SLASH <> if E-URI-RELATIVE throw then
    PREFIX$ {: f:^ fu:n :}
-   fu a u ENCODED-LEN + {: len:n :}
+   fu a u [: KEPT? ;] ENCODED-LEN + {: len:n :}
    s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
    f out fu BYTE-COPY
-   fu u 0 ?do a i + c@ out rot ENCODE-BYTE loop drop
+   fu u 0 ?do a i + c@ out rot [: KEPT? ;] ENCODE-BYTE loop drop
    len ;
 
 \ The number of bytes FORM-ENCODE writes for the bytes.
@@ -232,6 +458,52 @@ public
    0 0 begin dup u < while
       a u SEGMENT-STEP if 2drop true exit then
    repeat drop DOTS? ;
+
+\ Writes the bytes as a query component (RFC 3986 section 3.4): letters,
+\ digits and `-._~` as they are, every other byte as upper-case `%XX`. A space
+\ is `%20`, never `+`, which is form encoding.
+: QUERY-ENCODE ( ^u8 n SPAN:span<u8> -- n )
+   {: a:^ u:n s :}
+   u 0 < if E-SPAN-LENGTH throw then
+   a u [: UNRESERVED? ;] ENCODED-LEN {: len:n :}
+   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
+   0 u 0 ?do a i + c@ out rot [: UNRESERVED? ;] ENCODE-BYTE loop drop
+   len ;
+
+\ The path and query of an http(s) URL: its bytes from the authority's end
+\ to the first `#` or the end; no copy. An empty path stays empty, where
+\ RFC 9112's origin-form sends `/`. Rejected as HTTP-AT rejects.
+: REQUEST-TARGET$ ( ^u8 n -- ^u8 n )
+   {: a:^ u:n :}
+   a u HTTP-END {: from:n :}
+   a u HASH-END {: to:n :}
+   a from + to from - ;
+
+\ Whether two http(s) URLs share an origin: schemes equal without case, hosts
+\ without ASCII case, ports as numbers, defaults applied. Rejected as HTTP-AT
+\ rejects.
+: SAME-ORIGIN? ( ^u8 n ^u8 n -- bool )
+   {: a:^ u:n b:^ v:n :}
+   a u ORIGIN {: s:^ su:n h:^ hu:n p:n :}
+   b v ORIGIN {: t:^ tu:n k:^ ku:n q:n :}
+   s su t tu STR=CI  h hu k ku STR=CI and  p q = and ;
+
+\ Writes the URL a reference names against an http(s) base (RFC 3986 section
+\ 5.2.2, strict): a reference with a scheme must itself be an http(s) URL,
+\ and the target's path loses its dot segments; nothing else is normalised.
+\ A base or reference rejected as HTTP-AT rejects throws that, a span short
+\ of the target before dot-segment removal E-SPAN-CAPACITY, a negative
+\ reference length E-SPAN-LENGTH.
+: RESOLVE ( ^u8 n ^u8 n SPAN:span<u8> -- n )
+   {: b:^ bu:n r:^ ru:n s :}
+   ru 0 < if E-SPAN-LENGTH throw then
+   b bu r ru PIECES {: al:n ml:n from:n to:n :}
+   al ml + ru + {: len:n :}
+   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
+   b out al BYTE-COPY
+   ml 0 > if SLASH out al + c! then
+   r out al + ml + ru BYTE-COPY
+   out len from to SQUEEZE ;
 
 \ The scheme is `file` in any case, then `//` and an authority that is empty or
 \ `localhost` in any case, ending at the path's `/`: every answer is absolute.
