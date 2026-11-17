@@ -1,5 +1,5 @@
-\ long-name.f - a 256-byte name ends the process: exit 70, and fd 2 says the
-\ name is too long (src/lib/error-test.f).
+\ long-name.f - a declaration with a 256-byte name is rejected with a record,
+\ rc 70 (src/lib/error-test.f).
 
 require src/lib/error.f
 

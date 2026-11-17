@@ -1,5 +1,5 @@
-\ no-name.f - a code with no name after it ends the process: exit 70, and fd 2
-\ names the code (src/lib/error-test.f).
+\ no-name.f - a code with no name after it is rejected with a record, rc 70
+\ (src/lib/error-test.f).
 
 require src/lib/error.f
 

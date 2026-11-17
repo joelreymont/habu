@@ -2,11 +2,7 @@
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/process.f
-require src/lib/process-command.f
-require src/lib/engine-candidate.f
 require src/lib/test.f
-require src/lib/test/ending.f
 
 -9671 s" the global test code" ERROR:CODE E-ERROR-TEST-GLOBAL
 
@@ -85,74 +81,46 @@ package PB
    UNDECLARED ERROR:FAULT? TFALSE ;
 
 
-\ A refusal ends the process, so each fixture runs in a fresh hb: that exit is
-\ the boundary under test.
-: FIXTURE-RUN ( CMD:command ^u8 n -- CMD:command ) {: path:^ pathu:n :}
-   s" --load" CMD:ARG+ path pathu CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER 70 T-RUN-EXITED= ;
-
-
-: TAKEN-RUN ( CMD:command -- CMD:command )
-   s" test/fixtures/error/taken.f" FIXTURE-RUN
-   CMD:ERR$ s" ERROR:CODE: -9673 is E-TAKEN-OLD, declared again as E-TAKEN-NEW"
-   CONTAINS? TTRUE ;
+\ The capture holds one record, whose head line is h hu and help line p pu.
+: ONE-RECORD ( ^u8 n ^u8 n -- ) {: h:^ hu:n p:^ pu:n :}
+   REJECTION:BUFFER$ h hu CONTAINS? TTRUE
+   REJECTION:BUFFER$ p pu CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER-OFF ;
 
 
 : TAKEN-CASE ( -- )
-   s" a taken code ends the process naming both constants" T-LABEL
-   [: TAKEN-RUN ;] CMD:WITH-COMMAND ;
-
-
-: TAIL-RUN ( CMD:command -- CMD:command )
-   s" test/fixtures/error/tail.f" FIXTURE-RUN
-   CMD:ERR$ s" ERROR:CODE: -9682 is ERROR-TAIL-A:E-X, declared again as ERROR-TAIL-B:E-X"
-   CONTAINS? TTRUE ;
-
-
-: TAIL-CASE ( -- )
-   s" a taken code declared under the same name in a second package ends the process" T-LABEL
-   [: TAIL-RUN ;] CMD:WITH-COMMAND ;
-
-
-: EMPTY-RUN ( CMD:command -- CMD:command )
-   s" test/fixtures/error/empty.f" FIXTURE-RUN
-   CMD:ERR$ s" ERROR:CODE: E-EMPTY-TEXT has an empty text" CONTAINS? TTRUE ;
+   s" a taken code is rejected naming the constant that holds it" T-LABEL
+   REJECTION:CAPTURE
+   [: s" test/fixtures/error/taken.f" included ;] 70 TTHROWSQ
+   REJECTION:BUFFER$ s"  ^^^^^^^^^^^ declared again" CONTAINS? TTRUE
+   s" error[E-DUPLICATE-DEFINITION]: code -9673 is already `ERROR-TEST:E-TAKEN-OLD`"
+   s" = help: give `ERROR-TEST:E-TAKEN-NEW` a code its block has not declared" ONE-RECORD ;
 
 
 : EMPTY-CASE ( -- )
-   s" an empty text ends the process naming the constant" T-LABEL
-   [: EMPTY-RUN ;] CMD:WITH-COMMAND ;
-
-
-: FAULT-EMPTY-RUN ( CMD:command -- CMD:command )
-   s" test/fixtures/error/fault-empty.f" FIXTURE-RUN
-   CMD:ERR$ s" ERROR:FAULT: E-FAULT-EMPTY has an empty text"
-   CONTAINS? TTRUE ;
-
-
-: FAULT-EMPTY-CASE ( -- )
-   s" FAULT refuses an empty text as CODE does, naming ERROR:FAULT" T-LABEL
-   [: FAULT-EMPTY-RUN ;] CMD:WITH-COMMAND ;
-
-
-: NO-NAME-RUN ( CMD:command -- CMD:command )
-   s" test/fixtures/error/no-name.f" FIXTURE-RUN
-   CMD:ERR$ s" ERROR:CODE: no name after the code -9675" CONTAINS? TTRUE ;
+   s" an empty text is rejected at the declaring word" T-LABEL
+   REJECTION:CAPTURE
+   [: s" test/fixtures/error/empty.f" included ;] 70 TTHROWSQ
+   REJECTION:BUFFER$ s"  ^^^^^^^^^^ declared here" CONTAINS? TTRUE
+   s" error[E-BAD-DECLARATION]: code -9674 has an empty text"
+   s" = help: give the code a text that says what failed" ONE-RECORD ;
 
 
 : NO-NAME-CASE ( -- )
-   s" a code with no name after it ends the process" T-LABEL
-   [: NO-NAME-RUN ;] CMD:WITH-COMMAND ;
-
-
-: LONG-NAME-RUN ( CMD:command -- CMD:command )
-   s" test/fixtures/error/long-name.f" FIXTURE-RUN
-   CMD:ERR$ s" is longer than 255 bytes" CONTAINS? TTRUE ;
+   s" a code with no name after it is rejected" T-LABEL
+   REJECTION:CAPTURE
+   [: s" test/fixtures/error/no-name.f" included ;] 70 TTHROWSQ
+   s" error[E-MISSING-NAME]: `ERROR:CODE` needs a name"
+   s" = help: give `ERROR:CODE` one name, a token with no blanks" ONE-RECORD ;
 
 
 : LONG-NAME-CASE ( -- )
-   s" a 256-byte name ends the process" T-LABEL
-   [: LONG-NAME-RUN ;] CMD:WITH-COMMAND ;
+   s" a 256-byte name is rejected" T-LABEL
+   REJECTION:CAPTURE
+   [: s" test/fixtures/error/long-name.f" included ;] 70 TTHROWSQ
+   s" error[E-BAD-DECLARATION]: the name of a code is 256 bytes, more than the 255 a name holds"
+   s" = help: shorten the name to 255 bytes or fewer" ONE-RECORD ;
 
 
 \ The cut text's row lies where FILL lays its cells, so a head left on it
@@ -189,14 +157,25 @@ package PB
    FAULT-CASE
    NOT-FAULT-CASE
    TAKEN-CASE
-   TAIL-CASE
    EMPTY-CASE
-   FAULT-EMPTY-CASE
    NO-NAME-CASE
    LONG-NAME-CASE
    ROLLBACK-CASE ;
 
 ERROR-RUN
-T-REPORT
+
+public
+
+\ tail.f opens packages of its own, which a file included inside ERROR-TEST
+\ cannot: it runs with no package open.
+: TAIL-CASE ( -- )
+   s" a taken code declared under the same name in a second package is rejected" T-LABEL
+   REJECTION:CAPTURE
+   [: s" test/fixtures/error/tail.f" included ;] 70 TTHROWSQ
+   s" error[E-DUPLICATE-DEFINITION]: code -9682 is already `ERROR-TAIL-A:E-X`"
+   s" = help: give `ERROR-TAIL-B:E-X` a code its block has not declared" ONE-RECORD ;
 
 ;package
+
+ERROR-TEST:TAIL-CASE
+T-REPORT

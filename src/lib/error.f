@@ -9,7 +9,6 @@
 \ holds its own fault flag: only this package reads a row's layout. TASK-LOCAL:
 \ the ENDED-CELL of the thread's region that CAUGHT sets and reads.
 
-\ ERROR-TEXT comes from a boot file, which every prefix loads.
 require src/habu/layout.f
 require src/habu/xref.f
 require src/core/bytes.f
@@ -405,7 +404,6 @@ private
 
 PERSISTED-PTR-VARIABLE HEAD
 HEAD ROLLBACK-CELLS:MARK
-create NL $0A c,
 
 : ROW-PREV ( ^n -- ^n )  0 ptr-field @ ;
 : ROW-CODE ( ^n -- n )  cell+ @ ;
@@ -436,31 +434,6 @@ create NL $0A c,
    XREF-ADDR>REC XREF-NAME$ ;
 
 
-: SAY ( ^u8 n -- )  ERROR-TEXT:TYPE ;
-
-
-: SAY-INT ( n -- )
-   dup 0< if s" -" SAY then
-   ERROR-TEXT:DIGITS$ SAY ;
-
-
-: SAY-NAME ( ^u8 n ^u8 n -- ) {: p:^ pu:n name:^ nameu:n :}
-   pu 0<> if p pu SAY s" :" SAY then
-   name nameu SAY ;
-
-
-\ A refusal's line ends here; the empty die adds nothing to it.
-: REFUSE ( -- )
-   NL 1 SAY
-   s" " EXIT-STATUS:REJECTED die ;
-
-
-\ A refusal's first words: the declaring word, FAULT when the flag is set.
-: SAY-WORD ( bool -- )
-   if s" ERROR:FAULT: " SAY exit then
-   s" ERROR:CODE: " SAY ;
-
-
 : SAME-NAME? ( ^n ^u8 n ^u8 n -- bool )
    {: at:^ p:^ pu:n name:^ nameu:n :}
    at ROW-NAME$ {: r:^ ru:n :}
@@ -471,26 +444,45 @@ create NL $0A c,
    false ;
 
 
-\ Ends the process, exit 70 and one line on fd 2 that starts with the declaring
-\ word, for a missing name, a name past 255 bytes, an empty text, or a code
-\ another name holds.
-: CHECK ( n ^u8 n ^u8 n n bool -- )
-   {: code:n p:^ pu:n name:^ nameu:n textu:n fault:bool :}
+\ Rejects code's declaration as p pu : name nameu, from token t tu after kw ku:
+\ no name, a name past NAME-CAP bytes, an empty text, or a code another holds.
+: CHECK ( n ^u8 n ^u8 n n ^u8 n ^u8 n -- )
+   {: code:n p:^ pu:n name:^ nameu:n textu:n kw:^ ku:n t:^ tu:n :}
+   kw ku t tu REJECTION:NOT-A-NAME
    nameu 0= if
-      fault SAY-WORD s" no name after the code " SAY code SAY-INT REFUSE
+      kw ku kw ku s" no name follows it" REJECTION:MISSING-NAME
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    nameu NAME-CAP > if
-      fault SAY-WORD s" the name " SAY name nameu SAY
-      s"  is longer than 255 bytes" SAY REFUSE
+      s" E-BAD-DECLARATION" REJECTION:OPEN
+      s" the name of a code is " REJECTION:EMIT-STR  nameu REJECTION:EMIT-U
+      s"  bytes, more than the " REJECTION:EMIT-STR  NAME-CAP REJECTION:EMIT-U
+      s"  a name holds" REJECTION:EMIT-STR
+      t tu REJECTION:AT  s" too long" REJECTION:EMIT-STR
+      REJECTION:HELP  s" shorten the name to " REJECTION:EMIT-STR
+      NAME-CAP REJECTION:EMIT-U  s"  bytes or fewer" REJECTION:EMIT-STR
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    textu 0= if
-      fault SAY-WORD p pu name nameu SAY-NAME s"  has an empty text" SAY REFUSE
+      s" E-BAD-DECLARATION" REJECTION:OPEN
+      s" code " REJECTION:EMIT-STR  code REJECTION:EMIT-N
+      s"  has an empty text" REJECTION:EMIT-STR
+      kw ku REJECTION:AT  s" declared here" REJECTION:EMIT-STR
+      REJECTION:HELP  s" give the code a text that says what failed" REJECTION:EMIT-STR
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    code FIND {: at:^ :}
    at NULL-PTR = if exit then
    at p pu name nameu SAME-NAME? if exit then
-   fault SAY-WORD code SAY-INT s"  is " SAY at ROW-NAME$ SAY
-   s" , declared again as " SAY p pu name nameu SAY-NAME REFUSE ;
+   s" E-DUPLICATE-DEFINITION" REJECTION:OPEN
+   s" code " REJECTION:EMIT-STR  code REJECTION:EMIT-N
+   s"  is already `" REJECTION:EMIT-STR  at ROW-NAME$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   t tu REJECTION:AT  s" declared again" REJECTION:EMIT-STR
+   REJECTION:HELP  s" give `" REJECTION:EMIT-STR
+   pu 0<> if p pu REJECTION:EMIT-STR  s" :" REJECTION:EMIT-STR then
+   name nameu REJECTION:EMIT-STR
+   s" ` a code its block has not declared" REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
@@ -534,9 +526,10 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 \ CODE's and FAULT's declaration of the name after them, the flag saying FAULT.
 : DECLARE ( n ^u8 n bool -- )
    {: code:n text:^ textu:n fault:bool :}
+   SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: name:^ nameu:n :}
    PKG$ {: p:^ pu:n :}
-   code p pu name nameu textu fault CHECK
+   code p pu name nameu textu kw ku name nameu CHECK
    code name nameu DEFINE
    code p pu name nameu text textu fault ROW, ;
 
@@ -545,13 +538,14 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 \ the name after it, PKG:TAIL split at its last colon; it defines no word.
 : MINTED ( n ^u8 n bool -- )
    {: code:n text:^ textu:n fault:bool :}
+   SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: name:^ nameu:n :}
    nameu
    begin dup 0 > if dup 1- name + c@ $3A <> else false then while 1- repeat
    {: cut:n :}
    cut 0 > if cut 1- else 0 then {: pu:n :}
    name cut + nameu cut - {: tail:^ tailu:n :}
-   code name pu tail tailu textu fault CHECK
+   code name pu tail tailu textu kw ku name nameu CHECK
    code name pu tail tailu text textu fault ROW, ;
 parses: MINTED 1
 
