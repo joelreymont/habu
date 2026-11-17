@@ -14,6 +14,7 @@
 require src/lib/base64.f
 require src/lib/byte-buffer.f
 require src/lib/f64-text.f
+require src/lib/error.f
 require src/lib/float32.f
 require src/lib/float32-buffer.f
 require src/lib/fmt.f
@@ -2874,25 +2875,6 @@ private
    JSON:READ-CLOSE
    queued going or ;
 
-: CODE$ ( n -- ^u8 n )
-   {: code:n :}
-   code E-CONFIG = if s" MODEL:E-CONFIG" exit then
-   code E-KEY = if s" MODEL:E-KEY" exit then
-   code E-CAPACITY = if s" MODEL:E-CAPACITY" exit then
-   code E-TRANSPORT = if s" MODEL:E-TRANSPORT" exit then
-   code E-HTTP = if s" MODEL:E-HTTP" exit then
-   code E-RESPONSE = if s" MODEL:E-RESPONSE" exit then
-   code E-REFUSED = if s" MODEL:E-REFUSED" exit then
-   code E-INCOMPLETE = if s" MODEL:E-INCOMPLETE" exit then
-   code E-UNAVAILABLE = if s" MODEL:E-UNAVAILABLE" exit then
-   code E-TIER = if s" MODEL:E-TIER" exit then
-   code E-CANCELLED = if s" MODEL:E-CANCELLED" exit then
-   code SECRET:E-CONFIG = if s" SECRET:E-CONFIG" exit then
-   code SECRET:E-ACCESS = if s" SECRET:E-ACCESS" exit then
-   code SECRET:E-CAPACITY = if s" SECRET:E-CAPACITY" exit then
-   code SECRET:E-UNAVAILABLE = if s" SECRET:E-UNAVAILABLE" exit then
-   code FMT:INT$ ;
-
 
 : CURL+ ( n -- )
    {: rc:n :}
@@ -3806,7 +3788,7 @@ private
    s"  " LOG:TEXT+ c REQUEST-URL$ LOG:TEXT+
    c RESPONSE-ID$ nip 0<> if s"  " LOG:TEXT+ c RESPONSE-ID$ LOG:TEXT+ then
    c NOTE+
-   s"  " LOG:TEXT+ code CODE$ LOG:TEXT+
+   s"  " LOG:TEXT+ code ERROR:NAME$ dup 0= if 2drop code FMT:INT$ then LOG:TEXT+
    c KEY+
    code c REPLY+
    code c CAUSE+
