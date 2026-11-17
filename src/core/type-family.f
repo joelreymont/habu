@@ -5091,13 +5091,28 @@ private
    shape CHILD-ABI:INDEX = IF param TFAM-SLOTS@ CELL * ELSE param TYPE-FIELD:BYTE-OFF@ THEN
    num <> ;
 
+\ Records the entry name of TERM's family and, unless its width is one cell
+\ whatever its arguments, each argument's, as T-WIDTH measures them.
+: WIDTH-SPELLED ( n -- ) {: t:n :}
+   t T-UNSTALE {: r:n :}
+   r TAG T-PARAM <> IF EXIT THEN
+   r PARAM>FAM {: fam:n :}
+   fam 0 < IF EXIT THEN
+   fam ENTRY-NAME$ COMPILE-READS:TEXT+
+   fam TFAM-BOXED-OR-NICHE? IF EXIT THEN
+   fam TFAM-LAYOUT? 0= IF EXIT THEN
+   r PARAM>ARGC 0 ?do r i PARAM>ARG RECURSE loop ;
+
+: MEMBER-SPELLED ( n n n -- ) {: shape:n param:n term0:n :}
+   term0 T-UNSTALE {: term:n :}
+   term PARAM>ARGC 0 ?do
+      shape param i MEMBER-READS? IF term i PARAM>ARG WIDTH-SPELLED THEN
+   loop ;
+
 public
 
-\ TFAM-MEMBER-STEP? ( sym -- bool ): a generic member's call whose receiver's
-\ instance fixes the member's number steps over that instance and, in a body,
-\ files the number; any other runs DO-TOK's word call, over the one-cell
-\ published row. At top level the word itself runs, so an instance that moves
-\ the number is rejected there.
+\ At top level the word runs with its declared number, so a moved one is rejected
+\ and a kept one still makes the part depend on the widths it reads.
 : TFAM-MEMBER-STEP? ( n -- bool ) {: sym:n :}
    sym SYM-MEMBER 0= IF 2drop RES-FALSE EXIT THEN {: shape:n param:n :}
    shape CHILD-ABI:INDEX = IF 1 ELSE 0 THEN LIVE-RECEIVER
@@ -5107,6 +5122,7 @@ public
       MD-MEMBER-TOP MDIAG!  0 OK !  -1 FAILSET !  RES-TRUE EXIT
    THEN
    shape param term MEMBER-ROWS RECORDED-STEP
+   shape param term MEMBER-SPELLED
    TOP-STEP @ 0= IF shape param num MEMBER-FACT THEN
    RES-TRUE ;
 

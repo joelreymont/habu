@@ -53,7 +53,8 @@ package FILE-OBJECTS-TEST
 37 constant SPELLED-BLOB                 \ the spelled sequence's blob.f's
 38 constant MUTUAL-TYPES                 \ the MUTUAL sequence's mt.f's
 39 constant MUTUAL-MAIN                  \ and mt-main.f's
-40 constant TAILS                        \ TAIL$'s tails
+40 constant FOLDED-LAST                  \ the folded sequence's main.f's last part's
+41 constant TAILS                        \ TAIL$'s tails
 68 constant FILES-C                     \ build C's: count.f's, shape.f's, each sequence's, those that
                                          \ never link included, the twins', the order sequence's four,
                                          \ the header, same and held sequences' three each, e.f's, the
@@ -241,6 +242,7 @@ variable CLASS-N                        \ the class CLASS+ read
    i PFIELD-MAIN = if s" /pfield/pf-main.f.hfo" exit then
    i MUTUAL-TYPES = if s" /mutual/mt.f.hfo" exit then
    i MUTUAL-MAIN = if s" /mutual/mt-main.f.hfo" exit then
+   i FOLDED-LAST = if s" /folded/main.f+2.hfo" exit then
    s" /test/fixtures/file-objects/seal-second.f.hfo" ;
 
 : ROOT! ( ^u8 n -- ) {: out:^ outu:n :}
@@ -1910,6 +1912,59 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build links blob.f" SPELLED-BLOB LINKED
    s\" 32\n7\n11\n13\n8\n24\n" s" the program prints a cold build's numbers" PRINTS-RUN ;
 
+\ The folded sequence's thing.f: the record thing, with a second field when the
+\ flag is true, held<a> and a held<thing> buffer.
+: WRITE-THING ( bool -- )
+   {: wide:bool :}
+   s\" STRUCTURE thing DERIVE addr\n   FIELD x n\n" SRC+
+   wide if s\"    FIELD y n\n" SRC+ then
+   s\" ;STRUCTURE\nSTRUCTURE held<a> DERIVE addr\n" SRC+
+   s\"    FIELD value a\n   FIELD set bool\n;STRUCTURE\n" SRC+
+   s\" 1 TYPED-BUFFER HB held<thing>\n: HV ( -- ^held<thing> ) 0 HB ;\n" SRC+
+   s" thing.f" NEST-WRITE ;
+
+\ main.f calls set on the held<thing> lib.f's GETH answers, never spelling thing:
+\ the offset its call adds is the one the fold reads off thing's width.
+: WRITE-FOLDED ( -- )
+   L$ s" folded" NEST-DIR FS:JOIN-PATH NEST-DIR-U !
+   NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   false WRITE-THING
+   s\" : GETH ( -- ^held<thing> ) HV ;\n" SRC+  s" lib.f" NEST-WRITE
+   s" thing.f" REQUIRE+  s" lib.f" REQUIRE+
+   s\" : MAIN ( -- ) GETH HELD:SET NULL-PTR -  GETH NULL-PTR -  - . ;\n" SRC+
+   s" main.f" NEST-WRITE ;
+
+\ After thing gains a field HF2 compiles main.f's last part, which never spells
+\ thing, and prints a cold build's offset of set: 16, where HF's is 8.
+: FOLDED-CASE ( CMD:command -- CMD:command )
+   WRITE-FOLDED
+   s" HF" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   FOLDED-LAST KEEP
+   true WRITE-THING
+   s" HF2" WHICH!  s" main.f" NEST-PATH$ FIXTURE-BUILD 0= if exit then
+   s" the build compiles main.f's last part" FOLDED-LAST COMPILED
+   s\" 16\n" s" the program prints a cold build's offset" PRINTS-RUN ;
+
+\ top.f's top level calls set on a held<thing> it never spells: once thing gains
+\ a field, HT2's warm build rejects it as a cold build does.
+: FOLDED-TOP-CASE ( CMD:command -- CMD:command )
+   L$ s" folded-top" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   false WRITE-THING
+   s" thing.f" REQUIRE+  s\" TYPED-VARIABLE PV ^held<thing>\n" SRC+  s" p.f" NEST-WRITE
+   s" p.f" REQUIRE+
+   s\" PV @ HELD:SET NULL-PTR -  PV @ NULL-PTR -  - constant OFF\n" SRC+
+   s\" : MAIN ( -- ) OFF . ;\n" SRC+  s" top.f" NEST-WRITE
+   s" HT" WHICH!  s" top.f" s" prog-top" NEST-BUILD 0= if exit then
+   s" prog-top" s\" 8\n" s" the program prints set's offset" NEST-RUN
+   true WRITE-THING
+   s" HT2" WHICH!  s" top.f" s" prog-top" NEST-RC {: rc:n :}
+   CMD:ERR$ s" error[E-LAYOUT-VALUE]" CONTAINS? {: said:bool :}
+   CMD:ERR$ s" top.f" NEST-PATH$ CONTAINS? {: named:bool :}
+   said named and  rc CHECKER-REJECT-RC =  and 0= if rc SHOW then
+   s" the build exits 70" LABEL  rc CHECKER-REJECT-RC T=
+   s" the rejection gives the moved member's reason" LABEL  said TTRUE
+   s" the rejection names top.f" LABEL  named TTRUE ;
+
 \ The packaged sequence's t.f: package TURNS's record turn, with a third field
 \ when the flag is true, and box<a>.
 : WRITE-TURNS ( bool -- )
@@ -2140,8 +2195,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
-      DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE PACKAGED-CASE EVALUATED-CASE OPENED-CASE
-      BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]
+      DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE
+      OPENED-CASE BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]
    CMD:WITH-COMMAND ;
 
 

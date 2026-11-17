@@ -195,7 +195,7 @@ create USED-EXTS BUF:HDR-BYTES allot
 create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create TIMES BUF:HDR-BYTES allot     \ the object's TIMES: the part's block (TIMES+)
-create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling part's source and evaluated texts name whole, 8 bytes each
+create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling part's source and spelled texts name whole, 8 bytes each
 create NAMED-RECS BUF:HDR-BYTES allot \ the records with a time the running scan hit, 8 bytes each, in hit order
 create SPELLS BUF:HDR-BYTES allot    \ the object's NAMES: SPELL-HIT's sums, each open a 0 then its sum
 create RAN-RECS BUF:HDR-BYTES allot  \ the records the compiling part ran, 8 bytes each (RAN-RECORD)
@@ -208,7 +208,7 @@ variable UNDER-PATH-N
 create ENTRY-ROOT BUF:HDR-BYTES allot \ the root current as the part started (MARKS)
 create EXIT-ROOT BUF:HDR-BYTES allot \ the root current as the part ended
 create PART-READS BUF:HDR-BYTES allot \ the reads the part's compile made (READS-KEEP)
-create PART-TEXTS BUF:HDR-BYTES allot \ the texts the part's compile evaluated (READS-KEEP)
+create PART-TEXTS BUF:HDR-BYTES allot \ the texts the part's compile spelled (READS-KEEP)
 create OBJECT BUF:HDR-BYTES allot    \ the object WRITE-OBJECT lays or READ-OBJECT reads
 create PRIOR BUF:HDR-BYTES allot     \ the compiling file's object as the last build left it
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
@@ -3023,7 +3023,7 @@ variable RD-END
    FILES-N @ 0 ?do i 1 + FILE-ROWS @ ROW-ABSENT = if BAD unloop exit then loop ;
 
 
-\ After FILES-CK: bad when the source or a text it evaluated names a record of the build's body, or names a piece whole
+\ After FILES-CK: bad when the source or a text its compile spelled names a record of the build's body, or names a piece whole
 \ (NAMES-CK) that no whole FILES row, one with the BUILT row's time, lists.
 : NAMED-CK ( -- )
    GOOD? 0= if exit then

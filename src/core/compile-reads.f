@@ -1,11 +1,11 @@
 \ compile-reads.f - what a compile reads besides its source: the roots it looked
 \ up and what they resolved to, the environment variables it read, the texts it
-\ evaluated and the files it read.
+\ spells and the files it read.
 \ A recording is one mapping of reads. Each read is three cells (kind, first
 \ length, second length), the first bytes, the second bytes, then zero bytes to
 \ the next cell boundary: ROOT-READ holds an absolute spelling and its canonical
 \ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes,
-\ TEXT-READ a text the compile evaluates and no bytes, FILE-READ a path and the
+\ TEXT-READ a text the compile spells and no bytes, FILE-READ a path and the
 \ three cells of its file's STAMP, FILE-LREAD a path and the three cells of its
 \ LSTAMP. A recording is indexed by a hash of each read, so a repeated read is
 \ found without a scan.
@@ -235,7 +235,8 @@ public
    b NULL-PTR - 0= if s" COMPILE-READS:ENV+" ENV-ABSENT a u b 0 APPEND exit then
    s" COMPILE-READS:ENV+" ENV-READ a u b v APPEND ;
 
-\ A text the compile evaluates. One of length 0 or less records nothing: `evaluate` reads no byte of it.
+\ A text whose names the part depends on as if its source spelled them. One of
+\ length 0 or less records nothing.
 : TEXT+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0 <= if exit then
    s" COMPILE-READS:TEXT+" TEXT-READ a u a 0 APPEND ;

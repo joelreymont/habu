@@ -214,6 +214,8 @@ each is in the build with the time the part's object recorded:
 - a public word its source, or a text its compile evaluates, spells outside
   comment lines, and for a part that reopens a package, or evaluates a text
   that does, that package's private words too;
+- a type whose width sets a member offset or stride its code holds or its top
+  level's member call is judged by, and that type's arguments;
 - a part that changes a record an earlier part made, which counts as defining
   that record's name;
 - when it ran an earlier word while it compiled, every word that word's code
