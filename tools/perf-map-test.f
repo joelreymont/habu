@@ -4,6 +4,7 @@
 \ A header's pid and period also read as hex, so only a call-chain line's first
 \ column may be mapped. A captured address belongs to another binary, so the
 \ resolution case builds its line from a word defined here.
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -88,7 +89,7 @@ variable ACC
 \ line - symbol column and dso - is left alone.
 : LIVE-FRAME$ ( -- ^u8 n )
    s" MARKER" FIND-REC {: idx:n :}
-   idx 0 < if s" perf-map-test: MARKER is not in the dictionary" 76 die then
+   idx 0 < if s" perf-map-test: MARKER is not in the dictionary" EXIT-STATUS:FAILURE die then
    SB-RESET
    S\" \t          " SB-APPEND
    idx XREF-REC XREF-START HEX+

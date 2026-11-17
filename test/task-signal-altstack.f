@@ -3,6 +3,7 @@
 \ The x86-64 task entry registers its own band below the task's pushes, so a
 \ worker answers a signal stack other than its creator's. The worker's failure
 \ exits the process by name before its creator can join.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
@@ -24,19 +25,19 @@ FUNCTION: SIGALTSTACK-CALL sigaltstack ( ^u8 ^u8 -- i32 )
 
 : READ-SS ( -- )
    NULL-PTR SS-ROW SIGALTSTACK-CALL 0 <> if
-      s" task-altstack: cannot query signal stack" 78 die
+      s" task-altstack: cannot query signal stack" EXIT-STATUS:SYSTEM die
    then ;
 
 : CHECK-SS ( -- )
    READ-SS
    SS-ROW CELL-VIEW @ 0= if
-      s" task-altstack: no signal stack" 78 die
+      s" task-altstack: no signal stack" EXIT-STATUS:FAILURE die
    then
    SS-ROW CELL + CELL-VIEW @ SS-DISABLE and 0 <> if
-      s" task-altstack: disabled signal stack" 78 die
+      s" task-altstack: disabled signal stack" EXIT-STATUS:FAILURE die
    then
    SS-ROW 2 CELL * + CELL-VIEW @ SS-SIZE <> if
-      s" task-altstack: wrong signal stack size" 78 die
+      s" task-altstack: wrong signal stack size" EXIT-STATUS:FAILURE die
    then ;
 
 : CHECK-PROF ( -- )
@@ -46,7 +47,7 @@ FUNCTION: SIGALTSTACK-CALL sigaltstack ( ^u8 ^u8 -- i32 )
    CHECK-SS
    prof-off
    SS-ROW CELL-VIEW @ SS-BEFORE @ <> if
-      s" task-altstack: profiler replaced signal stack" 78 die
+      s" task-altstack: profiler replaced signal stack" EXIT-STATUS:FAILURE die
    then ;
 
 TASK:MIN-STACK TASK:TASK WORKER
@@ -54,7 +55,7 @@ TASK:MIN-STACK TASK:TASK WORKER
 : CHECK-WORKER ( -- )
    CHECK-SS
    SS-ROW CELL-VIEW @ SS-MAIN @ = if
-      s" task-altstack: worker shares its creator's signal stack" 78 die
+      s" task-altstack: worker shares its creator's signal stack" EXIT-STATUS:FAILURE die
    then
    CHECK-PROF
    0 TASK:RETURN ;
@@ -65,7 +66,7 @@ TASK:MIN-STACK TASK:TASK WORKER
       ['] CHECK-WORKER WORKER TASK:ACTIVATE
       WORKER TASK:JOIN MATCH result
          ok OF drop ENDOF
-         err OF drop s" task-altstack: worker failed" 78 die ENDOF
+         err OF drop s" task-altstack: worker failed" EXIT-STATUS:FAILURE die ENDOF
       ;MATCH
       CHECK-PROF
    then

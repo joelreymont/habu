@@ -1,6 +1,7 @@
 \ C2 exclusive-view intrinsic: a two-cell stack value carries exactly one
 \ linear authority while its element parameter only describes the pointee.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/adt/option.f
 require src/lib/test/subject.f
@@ -15,7 +16,7 @@ DEFLINEAR C2-MUT-VIEW:tok
 : WRAP ( mut-view<p,q,a,u8> -- option<mut-view<p,q,a,u8>> ) OPTION:SOME ;
 : UNWRAP ( option<mut-view<p,q,a,u8>> -- mut-view<p,q,a,u8> )
    MATCH option
-      none OF 1 throw ENDOF
+      none OF EXIT-STATUS:FAILURE throw ENDOF
       some OF ENDOF
    ;MATCH ;
 : PHANTOM ( mut-view<p,q,a,tok> -- option<mut-view<p,q,a,tok>> ) OPTION:SOME ;

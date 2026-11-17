@@ -1,4 +1,5 @@
 \ A borrowed view moves by value through nested typed records.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/adt/option.f
 require src/lib/memory.f
@@ -31,7 +32,7 @@ private
 : SUM-ROUND ( read-view<p,q,u8> -- read-view<p,q,u8> )
    SUM-WRAP
    MATCH option
-      none OF 1 throw ENDOF
+      none OF EXIT-STATUS:FAILURE throw ENDOF
       some OF C2VINNER:UNMAKE 19 T= ENDOF
    ;MATCH ;
 
@@ -42,7 +43,7 @@ private
 : VACANT-ROUND ( read-view<p,q,u8> -- read-view<p,q,u8> )
    VACANT swap
    MATCH c2vmaybe
-      held OF drop 1 throw ENDOF
+      held OF drop EXIT-STATUS:FAILURE throw ENDOF
       vacant OF ENDOF
    ;MATCH ;
 

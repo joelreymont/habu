@@ -9,6 +9,7 @@
 \ while the subject runs: it then waits in the reap (src/lib/process.f
 \ PROCESS:REAP-CAPTURE-BOUNDED), not in the capture's poll.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -17,14 +18,12 @@ require src/lib/test/fifo.f
 
 package CHECK-SIGNAL-SUBJECT
 
-64 constant USAGE-RC
-
 create REPORT 1 cells allot
 
 : REPORT-PID ( fd -- ) {: w:fd :}
    getpid REPORT !
    w FD>N REPORT 1 cells write 1 cells <> if
-      s" check-signal-subject: report refused" USAGE-RC die
+      s" check-signal-subject: report refused" EXIT-STATUS:IOERR die
    then ;
 
 : CLOSED? ( -- bool )

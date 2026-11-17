@@ -1,4 +1,5 @@
 \ Observe OS thread identities independently of Habu's task registry.
+require src/core/exit-status.f
 require src/lib/ffi-abi.f
 require src/lib/fs-list.f
 require src/lib/le.f
@@ -19,14 +20,14 @@ FUNCTION: PID-THREADS proc_pidinfo ( n n n ^u8 n -- i32 )
 ;FUNCTION
 
 : ADD-ID ( n -- ) {: id:n :}
-   THREAD-N @ THREAD-CAP >= if s" thread snapshot: capacity exceeded" 74 die then
+   THREAD-N @ THREAD-CAP >= if s" thread snapshot: capacity exceeded" EXIT-STATUS:FAILURE die then
    id OUT-IDS @ THREAD-N @ THREAD-ID-BYTES * + LE:U64!
    1 THREAD-N +! ;
 
 : ADD-NAME ( ^u8 n -- )
    STR>NUMBER? MATCH option
       some OF ADD-ID ENDOF
-      none OF s" thread snapshot: invalid task name" 74 die ENDOF
+      none OF s" thread snapshot: invalid task name" EXIT-STATUS:FAILURE die ENDOF
    ;MATCH ;
 
 \ Flavor 28 (PROC_PIDLISTTHREADIDS) lists each thread's unique id. Flavor 6
@@ -37,7 +38,7 @@ FUNCTION: PID-THREADS proc_pidinfo ( n n n ^u8 n -- i32 )
       getpid 28 0 out THREAD-BYTES PID-THREADS {: bytes:n :}
       bytes 0 <= bytes THREAD-BYTES >= or
       bytes THREAD-ID-BYTES mod 0<> or if
-         s" thread snapshot: proc_pidinfo failed or overflowed" 74 die
+         s" thread snapshot: proc_pidinfo failed or overflowed" EXIT-STATUS:SYSTEM die
       then
       bytes THREAD-ID-BYTES / exit
    then

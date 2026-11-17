@@ -1,5 +1,6 @@
 \ gate-stdlib-lib.f - adapter from the native suite registry to bin/hb.
 
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/runner.f
@@ -12,10 +13,8 @@ require src/lib/process.f
 
 package STDLIB-GATE
 
-64 constant SUITE-USAGE-RC
-
 : SUITE-USAGE ( -- )
-   s" usage: bin/hb --load test/run.f [-- test-name ...]" SUITE-USAGE-RC die ;
+   s" usage: bin/hb --load test/run.f [-- test-name ...]" EXIT-STATUS:USAGE die ;
 
 : SUITE-CHECK-ARGS ( -- )
    ARGC 3 > if 3 SCRIPT-SEP? 0= if SUITE-USAGE then then
@@ -88,7 +87,7 @@ package STDLIB-GATE
    GT-POOL-CLEANUP
    GT-POOL-SIGNAL-CHECK
    rc 0 <> if exit then                 \ the body threw: the framework rethrows that code
-   GT-POOL-RED# 0 > if s" test pool failed" 1 die then ;
+   GT-POOL-RED# 0 > if s" test pool failed" EXIT-STATUS:FAILURE die then ;
 
 : SUITE-INSTALL-HOOKS ( -- )
    [: SUITE-SETUP ;] TEST:SETUP!

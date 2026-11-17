@@ -132,7 +132,6 @@ create XE-EMPTY 1 allot
 \ ---- `[']` of a using-imported bare name ------------------------------------
 \ A tick resolves its token as a call does. Each program runs in a child, so a
 \ regression is a red row, not a crashed suite.
-70 constant XE-UNDEF-RC
 
 : XE-USING-PRELUDE ( -- )
    SB-RESET
@@ -181,7 +180,7 @@ create XE-EMPTY 1 allot
 
 : XE-AMB-DIED ( -- )
    XE-EXITED @ TTRUE
-   XE-RC @ XE-UNDEF-RC T=
+   XE-RC @ 70 T=
    XE-ERR$ s" error[E-USING-AMBIGUOUS]: `XEU-W`" CONTAINS? TTRUE ;
 
 : XE-USING ( -- )
@@ -206,7 +205,7 @@ create XE-EMPTY 1 allot
    XE-AMB-DIED
    s" ['] of a name nothing resolves is undefined, never a silent no-op" T-LABEL
    s" : XEU-NONE ( -- n ) 7 ['] XEU-NOSUCH drop ;" XE-AMB-PROG$ XE-RUN
-   XE-EXITED @ TTRUE  XE-RC @ XE-UNDEF-RC T=
+   XE-EXITED @ TTRUE  XE-RC @ 70 T=
    XE-ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
    XE-ERR$ s" XEU-NOSUCH" CONTAINS? TTRUE ;
 

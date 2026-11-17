@@ -4,7 +4,6 @@ require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/memory.f
-require src/core/exit-status.f
 require src/lib/test/ending.f
 require src/lib/process.f
 require src/lib/process-fork.f
@@ -101,7 +100,7 @@ FUNCTION: MEMT-SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
    1 MEMT-CORE-LIMIT !
    1 MEMT-CORE-LIMIT cell+ !
    MEMT-RLIMIT-CORE MEMT-CORE-LIMIT MEMT-SET-LIMIT 0 <> if
-      s" memory-test: cannot set the core limit" 78 die
+      s" memory-test: cannot set the core limit" EXIT-STATUS:SYSTEM die
    then ;
 
 MEMT-NO-CORE
@@ -565,7 +564,7 @@ TASK:MIN-STACK TASK:TASK WBP-TASK
 
 \ A forked case exits nonzero when one of its assertions failed.
 : WBP-EXIT ( -- )
-   T-FAILURES 0 <> if s" pooled case failed" 1 die then
+   T-FAILURES 0 <> if s" pooled case failed" EXIT-STATUS:FAILURE die then
    MEMT-EXIT0 ;
 
 : WBP-DIRTY ( ^u8 NUM:alloc-byte-len -- )

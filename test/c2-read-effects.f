@@ -3,6 +3,7 @@
 \ Checked words may transport views supplied by their callers, including through
 \ a by-value sum, but may not invent scopes or erase their dependencies.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/adt/option.f
 require src/lib/test/subject.f
@@ -16,14 +17,14 @@ private
 : WRAP ( read-view<p,q,u8> -- option<read-view<p,q,u8>> ) OPTION:SOME ;
 : UNWRAP ( option<read-view<p,q,u8>> -- read-view<p,q,u8> )
    MATCH option
-      none OF 1 throw ENDOF
+      none OF EXIT-STATUS:FAILURE throw ENDOF
       some OF ENDOF
    ;MATCH ;
 : GENERIC-COPY ( read-view<p,q,a> -- read-view<p,q,a> read-view<p,q,a> ) dup ;
 : GENERIC-WRAP ( read-view<p,q,a> -- option<read-view<p,q,a>> ) OPTION:SOME ;
 : GENERIC-UNWRAP ( option<read-view<p,q,a>> -- read-view<p,q,a> )
    MATCH option
-      none OF 1 throw ENDOF
+      none OF EXIT-STATUS:FAILURE throw ENDOF
       some OF ENDOF
    ;MATCH ;
 : NEST ( option<option<read-view<p,q,u8>>> -- option<option<read-view<p,q,u8>>> ) ;

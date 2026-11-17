@@ -660,7 +660,7 @@ create LOCG-BUF LOCG-CAP allot
 variable LOCG-U
 : LOCG-C ( n -- )
    LOCG-U @ LOCG-CAP >= if
-      s" engine-suite: generated definition too long" 1 die
+      s" engine-suite: generated definition too long" EXIT-STATUS:FAILURE die
    then
    LOCG-BUF LOCG-U @ + c!  LOCG-U @ 1 + LOCG-U ! ;
 : LOCG+ ( ^u8 n -- )
@@ -1382,7 +1382,7 @@ s" " nip 0 T=
 $340000000 constant ES-LINUX-DATA-VA
 $44000000000 constant ES-MACOS-DATA-VA
 : ES-TARGET-UNKNOWN ( -- )
-   s" engine-suite: unknown target" 76 die ;
+   s" engine-suite: unknown target" EXIT-STATUS:FAILURE die ;
 
 : ES-DATA-VA ( -- n )
    HB-TARGET-LINUX? if ES-LINUX-DATA-VA exit then
@@ -2064,7 +2064,7 @@ variable RET2-IDX
 variable NDX-WID
 
 : ANS+ ( n -- ) {: v:n :}
-   ANS-I @ ANS-CAP >= if s" engine-suite: search-wl battery overflow" 1 die then
+   ANS-I @ ANS-CAP >= if s" engine-suite: search-wl battery overflow" EXIT-STATUS:FAILURE die then
    ANS-SECOND @ 0= if
       v ANS-I @ cells ANS-A + !
    else

@@ -1,4 +1,5 @@
 \ A table initializes many committed records under one C2 scope.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
@@ -13,7 +14,7 @@ MANY 2 * CELL * constant MANY-BYTES
 
 : ENTRY ( ^u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
-      drop s" c2-records-program: missing native entry" 71 die
+      drop s" c2-records-program: missing native entry" EXIT-STATUS:FAILURE die
    then XREF-START ;
 
 : EDIT-LAST ( mut-view<b,j,a,init<i,C2-RECORDS-TYPES:pair>> -- mut-view<b,j,a,init<i,C2-RECORDS-TYPES:pair>> )

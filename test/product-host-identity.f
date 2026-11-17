@@ -5,6 +5,7 @@
 \ Not registered in the suite; run it by hand.
 \ The printed directory retains the copied trees and all four products.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -74,11 +75,11 @@ variable RC
    DEST$ FS:FILE-SIZE {: size:n :}
    size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:^ len :}
    DEST$ buf size FS:READ-ALL size <> if
-      s" product-host-identity: short variant source read" 74 die
+      s" product-host-identity: short variant source read" EXIT-STATUS:IOERR die
    then
    buf size anchor anchoru FIND-SUB MATCH option
       none OF
-         s" product-host-identity: primitive insertion anchor missing" 74 die
+         s" product-host-identity: primitive insertion anchor missing" EXIT-STATUS:FAILURE die
       ENDOF
       some OF IDX>N {: at:n :}
          DEST$ buf at FS:WRITE-ALL

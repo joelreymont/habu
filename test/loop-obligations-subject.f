@@ -1,5 +1,8 @@
 \ Loop exits: unloop and exit forms run to their values, and the checker refuses
 \ each unbalanced form. test/loop-obligations.f loads it and reads its output.
+
+require src/core/exit-status.f
+
 package LOOP-OBLIGATION-TEST
 
 ENUM choice
@@ -13,7 +16,7 @@ ENUM choice
 : CHOICE-ID ( choice -- n )
    MATCH choice first OF 1 ENDOF second OF 2 ENDOF ;MATCH ;
 
-: EQ! ( n n -- ) <> if 79 throw then ;
+: EQ! ( n n -- ) <> if EXIT-STATUS:FAILURE throw then ;
 
 PTR-VARIABLE SOURCE-A
 variable SOURCE-U
@@ -141,8 +144,8 @@ variable ROUND
       i NESTED i EQ!
       OUTER-INDEX 0 EQ!
       OUTER-SECOND 1 EQ!
-      0 0= BOTH-ARMS 0= if 79 throw then
-      0 1 = BOTH-ARMS if 79 throw then
+      0 0= BOTH-ARMS 0= if EXIT-STATUS:FAILURE throw then
+      0 1 = BOTH-ARMS if EXIT-STATUS:FAILURE throw then
       i ELSE-EXIT i EQ!
       i BEGIN-EXIT i EQ!
       i REPEAT-EXIT i EQ!

@@ -4,6 +4,7 @@
 \ SOURCE-ROOT:ENGINE$). On macOS the child reruns in a sandbox denying
 \ process-info-pidinfo: the tree is still found and PROCESS:OWN-PATH throws
 \ E-ENGINE-PATH.
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -105,7 +106,7 @@ variable RC
 
 : SANDBOX$ ( -- ^u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
-      none OF s" boot-relocation: required executable missing on PATH: sandbox-exec" 1 die ENDOF
+      none OF s" boot-relocation: required executable missing on PATH: sandbox-exec" EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF
    ;MATCH
    SANDBOX swap ;

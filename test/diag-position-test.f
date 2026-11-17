@@ -24,8 +24,6 @@ require tools/check-core.f
 package DIAG-POSITION-TEST
 
 PATH-CAP 1+ 4 * constant CAP
-70 constant REJECT-RC
-67 constant THROW-RC
 
 create FX CAP allot
 create EMPTY 1 allot
@@ -141,7 +139,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    want CHECK-CAPTURE ;
 
 : CHECK ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT ;
+   70 CHECK-EXIT ;
 
 : FIELD-MISSING ( ^u8 n -- )
    {: key:^ keyu:n :}
@@ -417,10 +415,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a bare name a global and a used public share" T-LABEL
    s" : SHADE ( -- ) ;" s"    SHADE ;" SHADOW-FIXTURE
    s" shadow.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" SHADE" 8 4 87 92 AT
-   s" --all-errors" REJECT-RC CHECK-EXIT
+   s" --all-errors" 70 CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" SHADE" 8 4 87 92 AT ;
 
@@ -429,7 +427,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" that name as a ['] target" T-LABEL
    s" : SHADE ( -- ) ;" s"    ['] SHADE drop ;" SHADOW-FIXTURE
    s" tick-shadow.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" SHADE" 8 8 91 96 AT ;
 
@@ -437,7 +435,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" that name as an is target" T-LABEL
    s" defer SHADE ( -- )" s"    [: ;] is SHADE ;" SHADOW-FIXTURE
    s" is-shadow.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 s" SHADE" 8 13 100 105 AT ;
 
@@ -462,9 +460,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : TEST-SHADOWED-ARITY ( -- )
    s" a public whose private twin moves other cells" T-LABEL
    SHADOWED-FIXTURE
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    FX-PATH$ SHADOWED-AT
-   s" --all-errors" REJECT-RC CHECK-EXIT
+   s" --all-errors" 70 CHECK-EXIT
    FX-PATH$ SHADOWED-AT
    s" --verify-only" CHECK
    GJA-LINE# @ 1 T=
@@ -551,9 +549,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    NOT-RECORDED-TEXT
    s" -1 throw" SB-APPEND LF+
    s" not-recorded-throw.f" FIXTURE!
-   s" " THROW-RC CHECK-EXIT
+   s" " 67 CHECK-EXIT
    FX-PATH$ NOT-RECORDED
-   s" --all-errors" THROW-RC CHECK-EXIT
+   s" --all-errors" 67 CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
 
 \ --verify-only reads a stored type on across lines while a `<` or `[` is
@@ -943,7 +941,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
 : REFUSED-MODES ( ^u8 n ^u8 n n n n n -- )
-   REJECT-RC REFUSED-MODES-RC ;
+   70 REFUSED-MODES-RC ;
 
 \ A named file that will not open is one record, which no source places: its
 \ message carries the reason the open failed.
@@ -1030,7 +1028,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" ARENA X n" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" arena-taken.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
    s" --all-errors" CHECK
    s" E-DUPLICATE-DEFINITION" REJECTED-AS  0 s" X" 4 7 48 49 AT
@@ -1744,7 +1742,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    S\" `\n  = searched: " SB-APPEND  want wantu SB-APPEND
    S\" \n  = help: a path given on the command line is looked up from the" SB-APPEND
    S\"  directory hb runs in\n\n" SB-APPEND
-   SB$ REJECT-RC LOADED  GT-ERR$ SB$ T$=
+   SB$ 70 LOADED  GT-ERR$ SB$ T$=
    s" " CHECK
    0 s" code" s" E-MISSING-SOURCE" FIELD=
    SB-RESET  s" cannot open `" SB-APPEND  FX-PATH$ SB-APPEND  s" `" SB-APPEND
@@ -1824,9 +1822,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ load and the check alike.
 : RANGE-REJECTED ( [ -- ] -- ) {: msg :}
    msg RANGE-RECORD
-   SB$ REJECT-RC RAN  GT-ERR$ SB$ T$=
-   SB$ REJECT-RC LOADED  GT-ERR$ SB$ T$=
-   s" E-PATH-RANGE" REJECT-RC CHECKED
+   SB$ 70 RAN  GT-ERR$ SB$ T$=
+   SB$ 70 LOADED  GT-ERR$ SB$ T$=
+   s" E-PATH-RANGE" 70 CHECKED
    msg RANGE-FIELDS ;
 
 : TOO-LONG-MSG ( -- )
@@ -1858,7 +1856,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    CHECK-ARGV
    s" --verify-only" >LEN PROC-ARGV+  s" --stdin-path" >LEN PROC-ARGV+
    FX-PATH$ >LEN PROC-ARGV+
-   s" E-PATH-RANGE" REJECT-RC LAUNCHED  GT-ERR$ GJA-SPLIT-LINES
+   s" E-PATH-RANGE" 70 LAUNCHED  GT-ERR$ GJA-SPLIT-LINES
    [: TOO-LONG-MSG ;] RANGE-FIELDS ;
 
 \ A source read from stdin is placed in its own bytes, as the file holding them
@@ -1868,7 +1866,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" parse-name x drop 26 + 32 evaluate \ cast: LRD-WIDE ( n -- ptr u8 n )"
    {: src:^ srcu:n :}
    CHECK-ARGV
-   src srcu s" E-CAST-FAM" REJECT-RC PIPED  GT-ERR$ GJA-SPLIT-LINES
+   src srcu s" E-CAST-FAM" 70 PIPED  GT-ERR$ GJA-SPLIT-LINES
    GJA-LINE# @ 1 T=
    0 s" ptr" 1 60 59 62 s" <stdin>" src srcu PLACED-IN ;
 
@@ -1882,7 +1880,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : CB-BODY ( -- n ) 1 ;" SB-APPEND LF+
    s" ;CALLBACK" SB-APPEND LF+
    s" callback-duplicate.f" FIXTURE!
-   s" E-DUPLICATE-DEFINITION" REJECT-RC CHECKED
+   s" E-DUPLICATE-DEFINITION" 70 CHECKED
    0 s" ;CALLBACK" 4 1 74 83 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The fixture's path spelled BASE/./.../NAME, past the cap.
@@ -1928,14 +1926,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" script-required of an empty path" T-LABEL
    s\" s\" \" script-required" s" script-empty.f" LINE-FIXTURE
    [: EMPTY-MSG ;] RANGE-RECORD
-   SB$ REJECT-RC LOADED  GT-ERR$ SB$ T$=
-   s" E-PATH-RANGE" REJECT-RC CHECKED
+   SB$ 70 LOADED  GT-ERR$ SB$ T$=
+   s" E-PATH-RANGE" 70 CHECKED
    [: EMPTY-MSG ;] RANGE-FIELDS ;
 
 \ The run places the record for CODE at line L, column C of the fixture.
 : RAN-AT ( ^u8 n n n -- ) {: c:^ cu:n l:n col:n :}
    SB-RESET  s" error[" SB-APPEND  c cu SB-APPEND
-   SB$ REJECT-RC RAN
+   SB$ 70 RAN
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :" SB-APPEND
    l FMT:SB-U  s" :" SB-APPEND  col FMT:SB-U  LF+
    GT-ERR$ SB$ CONTAINS? TTRUE ;
@@ -1944,10 +1942,10 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ fixture's bytes BS to BE on line 1.
 : LITERAL-PLACED ( ^u8 n n n -- ) {: c:^ cu:n bs:n be:n :}
    c cu 1 bs 1+ RAN-AT
-   c cu REJECT-RC CHECKED
+   c cu 70 CHECKED
    c cu REJECTED-AS
    0 FX bs + be bs -  1 bs 1+ bs be FX-PATH$ FX$ PLACED-IN
-   s" --verify-only" REJECT-RC CHECK-EXIT
+   s" --verify-only" 70 CHECK-EXIT
    c cu REJECTED-AS
    0 FX bs + be bs -  1 bs 1+ bs be FX-PATH$ CANON$ FX$ PLACED-IN ;
 
@@ -2016,14 +2014,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s\"    s\" LOADX       \" PUT evaluate-closed ;" SB-APPEND LF+
    s" TWICE" SB-APPEND LF+
    s" spent-closed-twice.f" FIXTURE!
-   s" error[E-MISSING-SOURCE]" REJECT-RC RAN
+   s" error[E-MISSING-SOURCE]" 70 RAN
    GT-ERR$ s"  --> " CONTAINS? TFALSE
    GT-ERR$ s" = word:" CONTAINS? TFALSE
    s" a literal a definition passes to `included` at run time" T-LABEL
    SB-RESET  s\" : GO ( -- ) s\" nofile.f\" included ;" SB-APPEND LF+
    s" GO" SB-APPEND LF+
    s" spent-run-time.f" FIXTURE!
-   s" error[E-MISSING-SOURCE]" REJECT-RC RAN
+   s" error[E-MISSING-SOURCE]" 70 RAN
    GT-ERR$ s"  --> " CONTAINS? TFALSE
    GT-ERR$ s" = word:" CONTAINS? TFALSE ;
 
@@ -2125,7 +2123,7 @@ HB-TARGET-LINUX? [if]
    LSP-CHECK:RESET
    s" all-errors" LSP-CHECK:OPT  s" json-errors" LSP-CHECK:OPT  s" source-list" LSP-CHECK:OPT
    FX-PATH$ LSP-CHECK:FILE  DEP-PATH$ LSP-CHECK:FILE
-   REJECT-RC CHECK-CAPTURE
+   70 CHECK-CAPTURE
    s" E-MISSING-SOURCE" REJECTED-AS
    0 s" listed-absent.f" 1 9 8 23 AT ;
 [then]
@@ -2267,7 +2265,7 @@ HB-TARGET-LINUX? 0= [if]
    s" " CHECK
    s" E-UNDEFINED" REJECTED-AS
    0 s" nosuchword" 1 1 0 10 AT
-   s" E-UNDEFINED" s" :1:1" REJECT-RC LOADED-AT ;
+   s" E-UNDEFINED" s" :1:1" 70 LOADED-AT ;
 
 \ A listed file that does not exist is met in its place, so the undefined word
 \ in the file listed before it comes first, in the check as in the load.
@@ -2278,12 +2276,12 @@ HB-TARGET-LINUX? 0= [if]
    LSP-CHECK:RESET
    s" json-errors" LSP-CHECK:OPT  s" source-list" LSP-CHECK:OPT
    FX-PATH$ LSP-CHECK:FILE  DEP-PATH$ LSP-CHECK:FILE
-   REJECT-RC CHECK-CAPTURE
+   70 CHECK-CAPTURE
    s" E-UNDEFINED" REJECTED-AS
    0 s" nosuchword" 1 1 0 10 AT
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+  FX-PATH$ >LEN PROC-ARGV+  DEP-PATH$ >LEN PROC-ARGV+
-   s" error[E-UNDEFINED]" REJECT-RC LAUNCHED
+   s" error[E-UNDEFINED]" 70 LAUNCHED
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND s" :1:1" SB-APPEND
    GT-ERR$ SB$ CONTAINS? TTRUE ;
 
@@ -2291,7 +2289,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-MALFORMED-LOAD ( -- )
    s" a malformed colon definition the load rejects at its `:`" T-LABEL
    s" : P:Q:R ( -- ) ;" s" malformed-colon.f" LINE-FIXTURE
-   s" error[E-BAD-QUALIFIED-RECORD]" REJECT-RC LOADED
+   s" error[E-BAD-QUALIFIED-RECORD]" 70 LOADED
    SB-RESET
    S\" error[E-BAD-QUALIFIED-RECORD]: the record name `P:Q:R` has more than one `:`\n --> "
    SB-APPEND  FX-PATH$ SB-APPEND
@@ -2315,21 +2313,21 @@ HB-TARGET-LINUX? 0= [if]
    s" a bad escape" T-LABEL
    s\" s\\\" A\\yB\" 2drop" s" escaped-bad.f" LINE-FIXTURE
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
-   s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
+   s" E-UNTERMINATED-STRING" s" :1:1" 70 LOADED-AT
    s" a bad escape before a string that never closes" T-LABEL
    SB-RESET
    s\" s\\\" A\\yB\" 2drop" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" escaped-bad-unterminated.f" FIXTURE!
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
-   s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
+   s" E-UNTERMINATED-STRING" s" :1:1" 70 LOADED-AT
    s" a bad escape in a body before a string that never closes" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" A\\yB\" 2drop ;" SB-APPEND LF+
    s\" s\" abc" SB-APPEND LF+
    s" escaped-bad-body-unterminated.f" FIXTURE!
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REFUSED-MODES
-   s" E-UNTERMINATED-STRING" s" :1:12" REJECT-RC LOADED-AT
+   s" E-UNTERMINATED-STRING" s" :1:12" 70 LOADED-AT
    s" a definition that does not check before a string that never closes" T-LABEL
    SB-RESET
    s" : X ( -- ) NO-SUCH ;" SB-APPEND LF+
@@ -2348,7 +2346,7 @@ HB-TARGET-LINUX? 0= [if]
    GJA-LINE# @ 2 T=
    0 s" E-UNDEFINED" s" NO-SUCH" 1 12 11 18 VERIFY-REJECTED-AT
    1 s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 VERIFY-REJECTED-AT
-   s" E-UNDEFINED" s" :1:12" REJECT-RC LOADED-AT ;
+   s" E-UNDEFINED" s" :1:12" 70 LOADED-AT ;
 
 \ A primitive row's record in check mode flag: E-MALFORMED-REGISTRY-ROW with
 \ message m mu, label l lu and the row rule's help ending in h hu.
@@ -2378,7 +2376,7 @@ HB-TARGET-LINUX? 0= [if]
 \ The load knows no `EPRIM:`, so it rejects the fixture at it: p pu is the
 \ record's place after the path, through its marked source line.
 : ROW-LOADED ( ^u8 n -- ) {: p:^ pu:n :}
-   s" error[E-UNDEFINED]" REJECT-RC LOADED
+   s" error[E-UNDEFINED]" 70 LOADED
    SB-RESET
    S\" error[E-UNDEFINED]: cannot find word `EPRIM:`\n --> " SB-APPEND
    FX-PATH$ SB-APPEND  p pu SB-APPEND
@@ -2416,19 +2414,19 @@ HB-TARGET-LINUX? 0= [if]
    s" a declaration read from stdin, at its token in <input>" T-LABEL
    PROC-ARGV-RESET
    s" STRUCTURE a11x<q> FIELD next ^a11x<n> FIELD w read-view<q,q,n> ;STRUCTURE"
-   s" --> <input>:1:31" REJECT-RC PIPED
+   s" --> <input>:1:31" 70 PIPED
    GT-ERR$ s" = word:" CONTAINS? TFALSE ;
 
 \ The loader rejects a VALUE-RECORD field where the source wrote it.
 : TEST-VALUE-RECORD-LOAD ( -- )
    s" a duplicate VALUE-RECORD field under the loader, at the second field" T-LABEL
    s" VALUE-RECORD vr x n x n END-VALUE-RECORD" s" value-record-dup.f" LINE-FIXTURE
-   s" E-BAD-DECLARATION" s" :1:21" REJECT-RC LOADED-AT ;
+   s" E-BAD-DECLARATION" s" :1:21" 70 LOADED-AT ;
 
 : TEST-VALUE-RECORD-NO-TYPE ( -- )
    s" a VALUE-RECORD field with no type under the loader, at the field" T-LABEL
    s" VALUE-RECORD vr x n y END-VALUE-RECORD" s" value-record-no-type.f" LINE-FIXTURE
-   s" error[E-BAD-DECLARATION]" REJECT-RC LOADED
+   s" error[E-BAD-DECLARATION]" 70 LOADED
    SB-RESET
    s" error[E-BAD-DECLARATION]: field `y` of value record `vr` has no type" SB-APPEND
    S\" \n --> " SB-APPEND  FX-PATH$ SB-APPEND
@@ -2440,7 +2438,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-VALUE-RECORD-BAD-TYPE ( -- )
    s" a VALUE-RECORD field with an unknown type under the loader, at the type" T-LABEL
    s" VALUE-RECORD vr x n y nope END-VALUE-RECORD" s" value-record-bad-type.f" LINE-FIXTURE
-   s" error[E-BAD-DECLARATION]" REJECT-RC LOADED
+   s" error[E-BAD-DECLARATION]" 70 LOADED
    SB-RESET
    s" error[E-BAD-DECLARATION]: field `y` of value record `vr`" SB-APPEND
    S\"  has an unknown or malformed type\n --> " SB-APPEND  FX-PATH$ SB-APPEND
@@ -2565,21 +2563,21 @@ HB-TARGET-LINUX? 0= [if]
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-path.f" FIXTURE!
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 1 0 3 REFUSED-MODES
-   s" E-UNTERMINATED-STRING" s" :1:1" REJECT-RC LOADED-AT
+   s" E-UNTERMINATED-STRING" s" :1:1" 70 LOADED-AT
    s" a bad escape in a loader's path in a body" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-body-path.f" FIXTURE!
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 12 11 14 REFUSED-MODES
-   s" E-UNTERMINATED-STRING" s" :1:12" REJECT-RC LOADED-AT
+   s" E-UNTERMINATED-STRING" s" :1:12" 70 LOADED-AT
    s" a bad escape in a loader's path in a kernel: body" T-LABEL
    SB-RESET
    s\" kernel: L ( -- ) s\\\" inc-t\\yarget.f\" included ;" SB-APPEND LF+
    s" require missing-dep.f" SB-APPEND LF+
    s" escaped-bad-kernel-path.f" FIXTURE!
    s" E-UNTERMINATED-STRING" s\" s\\\"" 1 18 17 20 REFUSED-MODES
-   s" E-UNTERMINATED-STRING" s" :1:18" REJECT-RC LOADED-AT ;
+   s" E-UNTERMINATED-STRING" s" :1:18" 70 LOADED-AT ;
 
 \ A word a create caller made is bound, and typed `-- ^a`, by the run of that
 \ caller: its tick is admitted, and a call to it fails its check in source
@@ -2598,37 +2596,37 @@ HB-TARGET-LINUX? 0= [if]
    s" a signature that does not parse and a call of that word" T-LABEL
    s" : X ( -- zz ) MADE ;" s" made-badsig.f" MADE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" REJECT-RC LOADED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT
    s" a signature that does not parse and a tick of that word" T-LABEL
    s" : X ( -- zz ) ['] MADE drop ;" s" made-badsig-tick.f" MADE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" REJECT-RC LOADED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT
    s" that signature, a call of that word and a trust-boundary word" T-LABEL
    s" : X ( -- zz ) MADE evaluate ;" s" made-badsig-unsafe.f" MADE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 51 53 VERIFY-REFUSED-AT
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" REJECT-RC LOADED-AT
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT
    s" a trust-boundary word before a call of that word" T-LABEL
    s" : X ( -- ) evaluate MADE ;" s" made-unsafe.f" MADE-FIXTURE
    s" E-UNSAFE" s" evaluate" 3 12 53 61 VERIFY-REFUSED-AT
-   s" E-UNSAFE" s" :3:12" REJECT-RC LOADED-AT
+   s" E-UNSAFE" s" :3:12" 70 LOADED-AT
    s" a call of that word, whose address X does not declare" T-LABEL
    s" : X ( -- ) MADE ;" s" made-call.f" MADE-FIXTURE
    s" E-MISMATCH" s" MADE" 3 12 53 57 RUN-REFUSED-AT
    s" MADE" VERIFY-DEFERS
-   s" E-MISMATCH" s" :3:12" REJECT-RC LOADED-AT
+   s" E-MISMATCH" s" :3:12" 70 LOADED-AT
    s" a signature that does not parse and a word nothing defines" T-LABEL
    s" : X ( -- zz ) NOPE ;" s" made-nope.f" MADE-FIXTURE
-   s" E-UNDEFINED" s" :3:15" REJECT-RC LOADED-AT
+   s" E-UNDEFINED" s" :3:15" 70 LOADED-AT
    s" that signature, a call of MADE and a word nothing defines" T-LABEL
    s" : X ( -- zz ) MADE NOPE ;" s" made-call-nope.f" MADE-FIXTURE
-   s" E-UNDEFINED" s" :3:20" REJECT-RC LOADED-AT
+   s" E-UNDEFINED" s" :3:20" 70 LOADED-AT
    s" that signature and a call of MADE, with no row for MK" T-LABEL
    s" : MK ( -- ) create ;" s" : X ( -- zz ) MADE ;" s" made-stop.f" MK-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 RUN-REFUSED-AT
    s" --verify-only" 0 CHECK-EXIT
    GJA-LINE# @ 1 T=
    0 21 MK-DEFERRED
-   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" REJECT-RC LOADED-AT ;
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT ;
 
 \ The fixture's first line: RAW-IMM, an immediate whose effect is not ( -- ),
 \ so the load refuses each body that compiles it before it runs.
@@ -2674,7 +2672,7 @@ HB-TARGET-LINUX? 0= [if]
 \ The check with FLAG gives one record, the immediate `EV` at 2:38, which may
 \ write into the body it runs in.
 : EV-WRITES ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT
+   70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
    0 s" EV" 2 38 86 88 AT
    0 s" message"
@@ -2691,7 +2689,7 @@ HB-TARGET-LINUX? 0= [if]
    s" ev-none.f" FIXTURE!
    s" " EV-WRITES
    s" --verify-only" EV-WRITES
-   s" E-UNMODELED-IMMEDIATE" s" :2:38" REJECT-RC LOADED-AT
+   s" E-UNMODELED-IMMEDIATE" s" :2:38" 70 LOADED-AT
    GT-ERR$ s" may define words or add to a definition" CONTAINS? TTRUE ;
 
 \ The fixture's first two lines: OPEN2 and OPEN3, definers that evaluate `drop`
@@ -2725,7 +2723,7 @@ HB-TARGET-LINUX? 0= [if]
 
 \ The check with FLAG gives one record, the unread immediate `M` at 4:12.
 : PP-UNREAD ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT
+   70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
    0 s" M" 4 12 97 98 AT
    0 s" message"
@@ -2747,7 +2745,7 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-pp-unread.f" FIXTURE!
    s" " PP-UNREAD
    s" --verify-only" PP-UNREAD
-   s" E-UNMODELED-IMMEDIATE" s" :4:12" REJECT-RC LOADED-AT
+   s" E-UNMODELED-IMMEDIATE" s" :4:12" 70 LOADED-AT
    GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
    s" a postponed reading immediate with its parses: row" T-LABEL
    PP-LINES
@@ -2764,7 +2762,7 @@ HB-TARGET-LINUX? 0= [if]
 
 \ The check with FLAG gives one record, the unread immediate `V` at 3:14.
 : TK-UNREAD ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT
+   70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
    0 s" V" 3 14 80 81 AT
    0 s" message"
@@ -2772,7 +2770,7 @@ HB-TARGET-LINUX? 0= [if]
 
 \ The check with FLAG gives one record, the unread immediate `V` at 5:16.
 : TJ-UNREAD ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT
+   70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
    0 s" V" 5 16 153 154 AT ;
 
@@ -2790,7 +2788,7 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-tk-join.f" FIXTURE!
    s" " TJ-UNREAD
    s" --verify-only" TJ-UNREAD
-   s" E-UNMODELED-IMMEDIATE" s" :5:16" REJECT-RC LOADED-AT ;
+   s" E-UNMODELED-IMMEDIATE" s" :5:16" 70 LOADED-AT ;
 
 \ An immediate reads what the words it ticks and executes read.
 : TEST-IMM-TICKED ( -- )
@@ -2801,7 +2799,7 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-tk-unread.f" FIXTURE!
    s" " TK-UNREAD
    s" --verify-only" TK-UNREAD
-   s" E-UNMODELED-IMMEDIATE" s" :3:14" REJECT-RC LOADED-AT
+   s" E-UNMODELED-IMMEDIATE" s" :3:14" 70 LOADED-AT
    GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
    s" an immediate executing a ticked reading word, with its parses: row" T-LABEL
    TK-LINES
@@ -2816,7 +2814,7 @@ HB-TARGET-LINUX? 0= [if]
 \ The check with FLAG gives one record, the immediate `V` at 3:16, which may
 \ write into the body it runs in.
 : ITEM-WRITES ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT
+   70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
    0 s" V" 3 16 84 85 AT
    0 s" message"
@@ -2835,7 +2833,7 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-item.f" FIXTURE!
    s" " ITEM-WRITES
    s" --verify-only" ITEM-WRITES
-   s" E-UNMODELED-IMMEDIATE" s" :3:16" REJECT-RC LOADED-AT
+   s" E-UNMODELED-IMMEDIATE" s" :3:16" 70 LOADED-AT
    GT-ERR$ s" may define words or add to a definition" CONTAINS? TTRUE ;
 
 \ The fixture's first five lines: MK makes Q, which postpones V, so a reader
@@ -2868,7 +2866,7 @@ HB-TARGET-LINUX? 0= [if]
    0 s" message"
    s" `R` reads the source after it and no `parses:` row says how many tokens" FIELD=
    3 Q-DEFERRED
-   s" E-UNMODELED-IMMEDIATE" s" :6:12" REJECT-RC LOADED-AT
+   s" E-UNMODELED-IMMEDIATE" s" :6:12" 70 LOADED-AT
    GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
    s" an immediate whose body the check deferred, with its parses: row" T-LABEL
    MK-Q-LINES
@@ -2898,7 +2896,7 @@ HB-TARGET-LINUX? 0= [if]
 \ The check with FLAG gives one record, the immediate `V` at 2:14, which may
 \ move the source root.
 : ROOT-MOVES ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT
+   70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
    0 s" V" 2 14 63 64 AT
    0 s" message"
@@ -2915,7 +2913,7 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-roots.f" FIXTURE!
    s" " ROOT-MOVES
    s" --verify-only" ROOT-MOVES
-   s" E-UNMODELED-IMMEDIATE" s" :2:14" REJECT-RC LOADED-AT
+   s" E-UNMODELED-IMMEDIATE" s" :2:14" 70 LOADED-AT
    GT-ERR$ s" may move the source root" CONTAINS? TTRUE ;
 
 \ The fixture's first five lines: V calls the deferred D, set to W, which reads
@@ -2931,7 +2929,7 @@ HB-TARGET-LINUX? 0= [if]
 \ The check with FLAG gives one record, the immediate `V` at 6:14, which calls
 \ words the check cannot see.
 : DC-UNSEEN ( ^u8 n -- )
-   REJECT-RC CHECK-EXIT
+   70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
    0 s" V" 6 14 113 114 AT
    0 s" message"
@@ -2947,7 +2945,7 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-dc-unseen.f" FIXTURE!
    s" " DC-UNSEEN
    s" --verify-only" DC-UNSEEN
-   s" E-UNMODELED-IMMEDIATE" s" :6:14" REJECT-RC LOADED-AT
+   s" E-UNMODELED-IMMEDIATE" s" :6:14" 70 LOADED-AT
    GT-ERR$ s" calls words the check cannot see" CONTAINS? TTRUE
    s" an immediate calling a deferred word, with its parses: row" T-LABEL
    DC-LINES
@@ -2978,7 +2976,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : CONST ( n -- ) ( a note ) create dup ," SB-APPEND LF+
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" head-open-cmt.f" FIXTURE!
-   s\" \"line\":3,\"column\":10,\"byte_start\":72,\"byte_end\":77" REJECT-RC LOADED
+   s\" \"line\":3,\"column\":10,\"byte_start\":72,\"byte_end\":77" 70 LOADED
    GT-ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
 
 : TEST-VARIANT-COLLIDE ( -- )
@@ -3058,7 +3056,7 @@ HB-TARGET-LINUX? 0= [if]
    s" PN foo" SB-APPEND LF+
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
    s" defer-parses.f" FIXTURE!
-   REJECT-RC 0 s" PN" s" " DEFER-SUGGESTS
+   70 0 s" PN" s" " DEFER-SUGGESTS
    s" a renderer no generates: row declares" T-LABEL
    GEN-LINES
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
@@ -3073,13 +3071,13 @@ HB-TARGET-LINUX? 0= [if]
    s" D" SB-APPEND LF+
    s" : Y ( -- n ) ;" SB-APPEND LF+
    s" defer-defer-stretch.f" FIXTURE!
-   REJECT-RC 2 s" D" s" call `D` from a definition" DEFER-SUGGESTS
+   70 2 s" D" s" call `D` from a definition" DEFER-SUGGESTS
    s" a deferred word whose signature names a type rendered text may make" T-LABEL
    GEN-LINES
    s" defer D ( widget -- )" SB-APPEND LF+
    s" : Y ( -- n ) ;" SB-APPEND LF+
    s" defer-type.f" FIXTURE!
-   REJECT-RC 1 s" widget" s" declare `widget` with `NEWTYPE`, `STRUCTURE` or `SUMTYPE` before its use" DEFER-SUGGESTS
+   70 1 s" widget" s" declare `widget` with `NEWTYPE`, `STRUCTURE` or `SUMTYPE` before its use" DEFER-SUGGESTS
    s" a top-level name only rendered text may define" T-LABEL
    GEN-LINES
    s" MADE" SB-APPEND LF+
@@ -3250,17 +3248,17 @@ HB-TARGET-LINUX? 0= [if]
    s" : X ( bool -- ) if ;" s" if-open.f" LINE-FIXTURE
    s" E-CONTROL-OPEN" s" ;" 1 20 19 20 REFUSED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
-   s" E-CONTROL-OPEN" s" :1:20" REJECT-RC LOADED-AT
+   s" E-CONTROL-OPEN" s" :1:20" 70 LOADED-AT
    s" an if still open at ; after a refused drop" T-LABEL
    s" : X ( -- ) drop 0 0= if ;" s" if-open-drop.f" LINE-FIXTURE
    s" E-CONTROL-OPEN" s" ;" 1 25 24 25 REFUSED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
-   s" E-CONTROL-OPEN" s" :1:25" REJECT-RC LOADED-AT
+   s" E-CONTROL-OPEN" s" :1:25" 70 LOADED-AT
    s" a case still open at ;" T-LABEL
    s" : X ( n -- ) case ;" s" case-open.f" LINE-FIXTURE
    s" E-CONTROL-OPEN" s" ;" 1 19 18 19 REFUSED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
-   s" E-CONTROL-OPEN" s" :1:19" REJECT-RC LOADED-AT
+   s" E-CONTROL-OPEN" s" :1:19" 70 LOADED-AT
    s" a structure past the frame limit is refused at its opener, not at ;" T-LABEL
    DEEP-FIXTURE
    s" --all-errors" CHECK
@@ -3268,7 +3266,7 @@ HB-TARGET-LINUX? 0= [if]
    0 s" code" s" E-UNCHECKABLE" FIELD=
    0 s" if" 1 272 271 273 AT
    0 s" message" s" control flow nested too deep to check (depth 33, at most 32)" FIELD=
-   s" E-UNCHECKABLE" s" :1:272" REJECT-RC LOADED-AT
+   s" E-UNCHECKABLE" s" :1:272" 70 LOADED-AT
    s" a loop that meets an if inside its do" T-LABEL
    s" : X ( -- ) 3 0 do 0 0= if loop then ;" s" loop-in-if.f" LINE-FIXTURE
    s" E-CONTROL-ORPHAN" s" loop" 1 27 26 30 REFUSED-AT
@@ -3370,7 +3368,7 @@ HB-TARGET-LINUX? 0= [if]
    s"   ;" SB-APPEND LF+
    s" empty-clause-lines.f" FIXTURE!
    s" E-MISMATCH" s" ;" 3 3 44 45 REFUSED-AT
-   s" E-MISMATCH" s" :3:3" REJECT-RC LOADED-AT
+   s" E-MISMATCH" s" :3:3" 70 LOADED-AT
    s" an empty does> clause of a definer with a parses: row" T-LABEL
    s" : MK ( n -- ) create , does> ( -- ) ; parses: MK 1" s" empty-clause-parses.f" LINE-FIXTURE
    s" " CHECK
@@ -3382,14 +3380,14 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-UNCLOSED ( -- )
    s" a structure still open at the file's end" T-LABEL
    s" BEGIN-STRUCTURE P" s" unclosed.f" LINE-FIXTURE
-   s" E-UNCLOSED" s" :1:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" :1:1" 70 LOADED-AT
    s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REFUSED-MODES
    s" a structure opened inside an open one" T-LABEL
    SB-RESET
    s" BEGIN-STRUCTURE P" SB-APPEND LF+
    s" BEGIN-STRUCTURE Q" SB-APPEND LF+
    s" unclosed-nested.f" FIXTURE!
-   s" E-UNCLOSED" s" :1:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" :1:1" 70 LOADED-AT
    s" E-UNCLOSED" s" BEGIN-STRUCTURE" 1 1 0 15 REFUSED-MODES
    s" a FUNCTION: group still open at the file's end" T-LABEL
    SB-RESET
@@ -3397,7 +3395,7 @@ HB-TARGET-LINUX? 0= [if]
    s" PROCESS-SYMBOLS" SB-APPEND LF+
    s" FUNCTION: F getpid ( -- i32 )" SB-APPEND LF+
    s" unclosed-ffi.f" FIXTURE!
-   s" E-UNCLOSED" s" :3:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" :3:1" 70 LOADED-AT
    s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES
    s" a structure opened inside an open FUNCTION: group" T-LABEL
    SB-RESET
@@ -3408,7 +3406,7 @@ HB-TARGET-LINUX? 0= [if]
    s" END-STRUCTURE" SB-APPEND LF+
    s" ;FUNCTION" SB-APPEND LF+
    s" unclosed-ffi-nested.f" FIXTURE!
-   s" E-UNCLOSED" s" :3:1" REJECT-RC LOADED-AT
+   s" E-UNCLOSED" s" :3:1" 70 LOADED-AT
    s" E-UNCLOSED" s" FUNCTION:" 3 1 42 51 REFUSED-MODES ;
 
 \ A throw nothing catches, of a code no table names and outside the exit
@@ -3422,12 +3420,12 @@ HB-TARGET-LINUX? 0= [if]
    s" : fail ( -- ) -100000 throw ;" SB-APPEND LF+
    s" fail" SB-APPEND LF+
    s" uncaught.f" FIXTURE!
-   s" E-THROW" s" :2:1" THROW-RC LOADED-AT
+   s" E-THROW" s" :2:1" 67 LOADED-AT
    GT-ERR$ s" error[" COUNT-SUB 1 T=
    FX-P DEP-P FX-PU @ BYTE-COPY  FX-PU @ DEP-PU !
    s" a throw nothing catches in a required file" T-LABEL
    s" require uncaught.f" s" uncaught-outer.f" LINE-FIXTURE
-   s" error[E-THROW]" THROW-RC LOADED
+   s" error[E-THROW]" 67 LOADED
    SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :2:1" SB-APPEND
    GT-ERR$ SB$ CONTAINS? TTRUE
    GT-ERR$ s" error[" COUNT-SUB 1 T=
@@ -3438,7 +3436,7 @@ HB-TARGET-LINUX? 0= [if]
    s"  evaluate-closed ;" SB-APPEND LF+
    s" EV" SB-APPEND LF+
    s" uncaught-eval.f" FIXTURE!
-   s" error[" THROW-RC LOADED
+   s" error[" 67 LOADED
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :2:1" SB-APPEND
    GT-ERR$ SB$ CONTAINS? TTRUE
    GT-ERR$ s" = evaluated:" CONTAINS? TTRUE
@@ -3456,7 +3454,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY ['] CLEAN finally ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" finally-carried.f" FIXTURE!
-   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   s" error[E-PROBE]: probe text" 67 LOADED
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A caught code thrown on in the body that caught it keeps its record, after a
@@ -3471,7 +3469,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch dup 0<> if CLEAN throw then drop ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-stack.f" FIXTURE!
-   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   s" error[E-PROBE]: probe text" 67 LOADED
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-LOCAL ( -- )
@@ -3484,7 +3482,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} CLEAN rc 0<> if rc throw then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-local.f" FIXTURE!
-   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   s" error[E-PROBE]: probe text" 67 LOADED
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ A caught code joined with another value at an arm is a new throw.
@@ -3496,7 +3494,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch dup 9999 = if drop 9998 then dup 0<> if throw then drop ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-joined.f" FIXTURE!
-   s" error[E-THROW]: nothing caught a throw of code 9998" THROW-RC LOADED
+   s" error[E-THROW]: nothing caught a throw of code 9998" 67 LOADED
    GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
@@ -3512,7 +3510,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} ['] BODY2 catch drop rc 0<> if rc throw then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-kept-since.f" FIXTURE!
-   s" error[E-THROW]: nothing caught a throw of code 9999" THROW-RC LOADED
+   s" error[E-THROW]: nothing caught a throw of code 9999" 67 LOADED
    GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
@@ -3526,7 +3524,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch >r CLEAN r> dup 0<> if throw then drop ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-rstack.f" FIXTURE!
-   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   s" error[E-PROBE]: probe text" 67 LOADED
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ `ri throw` never runs, but it counts INNER's catch, so each catch keeps a slot
@@ -3541,7 +3539,7 @@ HB-TARGET-LINUX? 0= [if]
    s"  rc 0<> if rc throw then ri throw ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-two.f" FIXTURE!
-   s" error[E-PROBE]: probe text" THROW-RC LOADED
+   s" error[E-PROBE]: probe text" 67 LOADED
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-QUOT ( -- )
@@ -3552,7 +3550,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} rc 0<> if [: rc throw ;] execute then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
    s" rethrow-quot.f" FIXTURE!
-   s" error[E-THROW]: nothing caught a throw of code 9999" THROW-RC LOADED
+   s" error[E-THROW]: nothing caught a throw of code 9999" 67 LOADED
    GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
    GT-ERR$ s" error[" COUNT-SUB 1 T= ;
 
@@ -3568,7 +3566,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : fail ( -- ) -1234 throw ;" SB-APPEND LF+
    s" fail" SB-APPEND LF+
    s" caught-outer.f" FIXTURE!
-   s" E-THROW" s" :3:1" THROW-RC LOADED-AT
+   s" E-THROW" s" :3:1" 67 LOADED-AT
    GT-ERR$ s" error[" COUNT-SUB 1 T=
    GT-ERR$ s" caught-dep.f" CONTAINS? TFALSE ;
 
@@ -3672,7 +3670,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-SEALED-DEFINE ( -- )
    s" a definition into an engine-sealed package names its whole name" T-LABEL
    s" : ENGINE-INTERNAL:FOO ( -- ) ;" s" sealed-engine.f" LINE-FIXTURE
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" ENGINE-INTERNAL:FOO" 1 3 2 21 AT
    s" a definition into a package the source sealed names its whole name" T-LABEL
@@ -3680,7 +3678,7 @@ HB-TARGET-LINUX? 0= [if]
    SEALED-SP+
    s" : SP:B ( -- ) ;" SB-APPEND LF+
    s" sealed-source.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP:B" 6 3 55 59 AT ;
 
@@ -3692,7 +3690,7 @@ HB-TARGET-LINUX? 0= [if]
    SEALED-SP+
    s" : SP:A ( -- ) ;" SB-APPEND LF+
    s" sealed-dup-define.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP:A" 6 3 55 59 AT
    s" a duplicate variable into a sealed package names the seal" T-LABEL
@@ -3704,7 +3702,7 @@ HB-TARGET-LINUX? 0= [if]
    s" ;package" SB-APPEND LF+
    s" variable SP:X" SB-APPEND LF+
    s" sealed-dup-variable.f" FIXTURE!
-   s" E-SEALED-PACKAGE" s" SP:X" 6 10 60 64 REJECT-RC REFUSED-MODES-RC
+   s" E-SEALED-PACKAGE" s" SP:X" 6 10 60 64 70 REFUSED-MODES-RC
    s" a duplicate export into a sealed package names the seal" T-LABEL
    SB-RESET
    s" package SP2" SB-APPEND LF+
@@ -3720,7 +3718,7 @@ HB-TARGET-LINUX? 0= [if]
    S\" s\" ACCEPTED\" type cr" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" sealed-dup-export.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    s" E-SEALED-PACKAGE" REJECTED-AS
    0 s" SP2:A" 10 8 134 139 AT ;
 
@@ -3738,7 +3736,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : Q-TWO ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
    s" : USE-TWO ( -- n ) Q-TWO 73 ;" SB-APPEND LF+
    s" stale-parses.f" FIXTURE!
-   s" E-UNMODELED-IMMEDIATE" s" :6:20" REJECT-RC LOADED-AT ;
+   s" E-UNMODELED-IMMEDIATE" s" :6:20" 70 LOADED-AT ;
 
 \ The parses: table grows: a check and a load accept 40 declared parsing
 \ immediates, and the load runs each one at compile time.
@@ -3827,13 +3825,13 @@ HB-TARGET-LINUX? 0= [if]
    s" include close-outer-inc.f" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" close-outer.f" FIXTURE!
-   s" " REJECT-RC CHECK-EXIT
+   s" " 70 CHECK-EXIT
    s" E-PKG-CONTEXT" REJECTED-AS
    0 s" ;package" 1 1 0 8 DEP-AT
-   s" --verify-only" REJECT-RC CHECK-EXIT
+   s" --verify-only" 70 CHECK-EXIT
    s" E-PKG-CONTEXT" REJECTED-AS
    0 s" ;package" 1 1 0 8 DEP-AT
-   s" error[E-PKG-CONTEXT]" REJECT-RC LOADED
+   s" error[E-PKG-CONTEXT]" 70 LOADED
    SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :1:1" SB-APPEND
    GT-ERR$ SB$ CONTAINS? TTRUE ;
 

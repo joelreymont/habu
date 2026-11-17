@@ -1,4 +1,5 @@
 \ The complete C2 image authenticates the exact field-loan code entry.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/c2-memory.f
 require src/habu/xref.f
@@ -7,7 +8,7 @@ package C2-FIELD-LOAN-KIND
 private
 : FIELD-ENTRY ( -- n )
    s" C2-MEM:WITH-FIELD" XREF-FIND dup XREF-FOUND? 0= if
-      drop s" field-loan entry missing" 71 die then XREF-START ;
+      drop s" field-loan entry missing" EXIT-STATUS:FAILURE die then XREF-START ;
 public
 : RUN ( -- )
    T-RESET

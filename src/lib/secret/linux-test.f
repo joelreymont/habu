@@ -12,6 +12,7 @@
 \ the stopped keyring fails that is not E-ACCESS logged once.
 \ dbus-daemon, gnome-keyring-daemon, gdbus and secret-tool on PATH are required.
 HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or ?TARGET
+require src/core/exit-status.f
 require src/lib/secret.f
 require src/lib/test.f
 require src/lib/codegen.f
@@ -84,7 +85,7 @@ NO-PID KEY-PID !
       none OF
          s" secret-linux-test: required executable missing on PATH: " type
          name u type cr
-         s" " 69 die
+         s" " EXIT-STATUS:UNAVAILABLE die
       ENDOF
       some OF LEN>N ENDOF
    ;MATCH ;

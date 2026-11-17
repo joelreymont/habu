@@ -962,8 +962,8 @@ SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE
 
-SUITE engine-error-package
-   test/engine-error-package.f
+SUITE definition-name
+   test/definition-name.f
 ;SUITE
 
 SUITE address-cell-rollback

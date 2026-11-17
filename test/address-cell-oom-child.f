@@ -1,6 +1,7 @@
 \ Fill the inline table, then deny every further mapping (Linux only; the
 \ parent test skips elsewhere). The mark that must grow the table throws
 \ E-XTCELL-GROW: caught, the table still takes marks; uncaught, it ends the child.
+require src/core/exit-status.f
 require src/lib/ffi-abi.f
 require src/habu/address-cells.f
 package ADDRESS-CELL-OOM-CHILD
@@ -17,11 +18,11 @@ create LIMIT 16 allot                \ struct rlimit: rlim_cur, rlim_max
 : LIMIT-AS! ( -- )
    0 LIMIT ! 0 LIMIT cell+ !
    RLIMIT-AS LIMIT SET-LIMIT 0 <> if
-      s" address-cell-oom: setrlimit failed" 76 die then ;
+      s" address-cell-oom: setrlimit failed" EXIT-STATUS:SYSTEM die then ;
 
 : RUN ( -- )
    BOOT-CAP LIVE-SPAN nip - {: remaining:n :}
-   remaining 0 <= if s" address-cell-oom: no inline room" 76 die then
+   remaining 0 <= if s" address-cell-oom: no inline room" EXIT-STATUS:FAILURE die then
    remaining 0 ?do SLOTS i cells + ptr-cell-mark loop
    s" address-cell-oom: ready" type cr
    LIMIT-AS!
@@ -29,7 +30,7 @@ create LIMIT 16 allot                \ struct rlimit: rlim_cur, rlim_max
    SLOTS ptr-cell-mark
    SLOTS remaining 1- cells + ptr-cell-mark
    LIVE-SPAN nip BOOT-CAP <> if
-      s" address-cell-oom: duplicate changed count" 76 die then
+      s" address-cell-oom: duplicate changed count" EXIT-STATUS:FAILURE die then
    s" address-cell-oom: duplicate-ok" type cr
    [: SLOTS remaining cells + ptr-cell-mark ;] catch
    s" address-cell-oom: caught " type .
@@ -37,7 +38,7 @@ create LIMIT 16 allot                \ struct rlimit: rlim_cur, rlim_max
    SLOTS ptr-cell-mark
    s" address-cell-oom: after-catch-ok" type cr
    SLOTS remaining cells + ptr-cell-mark
-   s" address-cell-oom: unexpected allocation success" 76 die ;
+   s" address-cell-oom: unexpected allocation success" EXIT-STATUS:FAILURE die ;
 RUN
 ;using
 ;package

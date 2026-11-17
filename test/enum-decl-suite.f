@@ -2,6 +2,7 @@
 \ end, driven through the global `ENUM`. It asserts reject codes, rendered
 \ diagnostics, field-row counts and the generated constructors.
 
+require src/core/exit-status.f
 require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f
@@ -882,7 +883,7 @@ variable LI
 
 : SRC$ ( -- ^u8 n ) SRC-BUF SRC-U @ ;
 : PUT-C ( n -- ) {: c:n :}
-   SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" 1 die THEN
+   SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" EXIT-STATUS:FAILURE die THEN
    c SRC-BUF SRC-U @ + c!  SRC-U @ 1 + SRC-U ! ;
 : PUT$ ( ^u8 n -- ) {: a:^ u:n :}
    0 LI !

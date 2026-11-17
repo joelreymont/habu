@@ -1,6 +1,5 @@
 \ protection-span.f - code-area bounds and long-body regressions.
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/ending.f
@@ -9,7 +8,6 @@ require src/lib/test/subject.f
 package PROTECTION-TEST
 
 $800 constant CAP
-EXIT-STATUS:SEAL-VIOLATION constant VIOLATION-RC
 
 create OUT CAP allot
 create ERR CAP allot
@@ -22,7 +20,7 @@ create ERR CAP allot
    src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
 
 : REJECTS ( ^u8 n -- )
-   VIOLATION-RC EXPECT ;
+   83 EXPECT ;
 
 : ACCEPTS ( ^u8 n -- )
    0 EXPECT ;
@@ -33,12 +31,12 @@ create ERR CAP allot
    s" dbase@ DICT-SIZE + cp!" ACCEPTS
    s" dbase@ REGION + $4000 - 4 - cp!" ACCEPTS
    s" dbase@ REGION + 4 - cp!" ACCEPTS
-   s" dbase@ REGION + 4 - cp! create PST-END" EXIT-STATUS:FULL EXPECT
+   s" dbase@ REGION + 4 - cp! create PST-END" 77 EXPECT
    s" dbase@ REGION + 4 - cp! 1 constant PST-END" REJECTS
-   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" EXIT-STATUS:FULL EXPECT ;
+   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" 77 EXPECT ;
 
 : TEST-TASK-USER ( -- )
-   s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" EXIT-STATUS:UNCAUGHT EXPECT ;
+   s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" 67 EXPECT ;
 
 \ An ordinary definition whose body text passes 20000 bytes: PST-LONG calls a
 \ word with a 59-byte name 350 times, 60 bytes of text each with its separator.

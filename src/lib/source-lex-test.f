@@ -1,6 +1,7 @@
 \ source-lex-test.f - focused tests for src/lib/source-lex.f, package LINT-LEX.
 \ Run: bin/hb --load src/lib/source-lex-test.f
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
@@ -23,7 +24,7 @@ variable TEST-N
       exit
    THEN
    s" source-lex-test failed at assertion " type TEST-N @ FMT:.INT cr
-   s" source-lex-test failed" 1 die ;
+   s" source-lex-test failed" EXIT-STATUS:FAILURE die ;
 : ASSERT=  ( n n -- )  = ASSERT ;
 : ASSERT$  ( ^u8 n ^u8 n -- )  STR= ASSERT ;
 

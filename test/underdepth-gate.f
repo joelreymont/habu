@@ -9,7 +9,6 @@
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/underdepth-gate.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -24,7 +23,6 @@ require src/lib/engine-candidate.f
 require test/tail-parity.f
 
 2048 constant UDG-CAP
-70 constant UDG-REJECT-RC           \ interpret-level reject exit (EXIT-STATUS:REJECTED)
 
 variable UDG-ROOT-U
 variable UDG-CHILD-U
@@ -132,7 +130,7 @@ public
 \ place is the test's own line.
 : UDG-ASSERT-AT ( ^u8 n ^u8 n ^u8 n -- ) {: h:^ hu:n a:^ u:n l:^ lu:n :}
    UDG-EXITED @ TTRUE
-   UDG-RC @ UDG-REJECT-RC T=
+   UDG-RC @ 70 T=
    UDG-ERR$ h hu CONTAINS? TTRUE
    UDG-ERR$ a u CONTAINS? TTRUE
    UDG-ERR$ u l lu UDG-CARETS$ CONTAINS? TTRUE ;

@@ -1,6 +1,8 @@
 \ Run in a child: trimming and rewinding reuse ordinals and code addresses, and
 \ each report must charge only the live owner.
 
+require src/core/exit-status.f
+
 variable TRIM-IX
 variable TRIM-PC
 
@@ -8,7 +10,7 @@ variable TRIM-PC
 \ identity must leave the index before reuse, and the replacement starts fresh.
 : VERIFY-HIDDEN ( -- )
    TRIM-PC @ prof-pc>rec -1 <> if
-      s" profiler trim: hidden pc has a live record" 74 die then ;
+      s" profiler trim: hidden pc has a live record" EXIT-STATUS:FAILURE die then ;
 : PROF-TRIM-OLD ( -- ) 100000000 0 ?do i drop loop ;
 s" PROF-TRIM-OLD" XREF-FIND-INDEX TRIM-IX !
 s" PROF-TRIM-OLD" XREF-FIND XREF-START TRIM-PC !
@@ -19,10 +21,10 @@ s" PROF-TRIM-OLD" XREF:HIDE-DEFS-FROM
 : PROF-TRIM-NEW ( -- n ) 7 ;
 : VERIFY-TRIM ( -- )
    s" PROF-TRIM-NEW" XREF-FIND-INDEX TRIM-IX @ <> if
-      s" profiler trim: ordinal was not reused" 74 die then
+      s" profiler trim: ordinal was not reused" EXIT-STATUS:FAILURE die then
    prof-json
    s" PROF-TRIM-NEW" XREF-FIND XREF-START prof-pc>rec TRIM-IX @ <> if
-      s" profiler trim: new pc has no live record" 74 die then
+      s" profiler trim: new pc has no live record" EXIT-STATUS:FAILURE die then
    TRIM-IX @ prof-row ;
 VERIFY-TRIM
 s" PROF-TRIM-NEW" XREF:HIDE-DEFS-FROM
@@ -53,9 +55,9 @@ REUSE-CP @ cp!
 : PROF-RECLAIM-TARGET ( -- n ) 100000000 0 ?do i drop loop 42 ;
 : VERIFY-RECLAIM ( -- )
    s" PROF-RECLAIM-TARGET" XREF-FIND XREF-START REUSE-PC @ <> if
-      s" profiler reclaim: code address was not reused" 74 die then
+      s" profiler reclaim: code address was not reused" EXIT-STATUS:FAILURE die then
    PROF-RECLAIM-TARGET 42 <> if
-      s" profiler reclaim: target returned wrong value" 74 die then
+      s" profiler reclaim: target returned wrong value" EXIT-STATUS:FAILURE die then
    prof-off
    prof-json ;
 VERIFY-RECLAIM

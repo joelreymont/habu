@@ -1,8 +1,7 @@
-\ engine-error-package.f - the post-seal checker bridge, and a definition no
-\ authority can place in a package failing closed with EXIT-STATUS:REJECTED and
+\ definition-name.f - the post-seal checker bridge, and a definition no
+\ authority can place in a package failing closed with exit status 70 and
 \ naming the refused state on fd 2. The suite runs it on HABU_UNDER_TEST.
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -11,7 +10,7 @@ require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
 
-package ENGINE-ERROR-TEST
+package DEFINITION-NAME-TEST
 private
 
 $800 constant CAP
@@ -48,16 +47,16 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
-   HB$ s" :" RUN-SOURCE EXIT-STATUS:REJECTED T=
+   HB$ s" :" RUN-SOURCE 70 T=
    ERR$ s" error[E-MISSING-NAME]: `:` needs a name" CONTAINS? TTRUE ;
 
 : COMMENT-NAME ( -- )
    s" a colon named by a comment opener rejects at the name" T-LABEL
-   HB$ s" : \ ( -- ) ;" RUN-SOURCE EXIT-STATUS:REJECTED T=
+   HB$ s" : \ ( -- ) ;" RUN-SOURCE 70 T=
    ERR$ s" error[E-MISSING-NAME]: `:` needs a name" CONTAINS? TTRUE
    ERR$ s" a comment, not a name" CONTAINS? TTRUE
    s" a type definer named by a signature opener rejects at the name" T-LABEL
-   HB$ s" DEFLINEAR ( -- )" RUN-SOURCE EXIT-STATUS:REJECTED T=
+   HB$ s" DEFLINEAR ( -- )" RUN-SOURCE 70 T=
    ERR$ s" error[E-MISSING-NAME]: `DEFLINEAR` needs a name" CONTAINS? TTRUE
    ERR$ s" a signature, not a name" CONTAINS? TTRUE ;
 
@@ -71,7 +70,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : KEYWORD-REJECT ( ^u8 n -- ) {: tok:^ toku:n :}
    tok toku KEYWORD-SOURCE$ {: src:^ srcu:n :}
    s" keyword definition rejects at its name" T-LABEL
-   HB$ src srcu RUN-SOURCE EXIT-STATUS:REJECTED T=
+   HB$ src srcu RUN-SOURCE 70 T=
    s" keyword definition names the constraint" T-LABEL
    SB-RESET s" error[E-RESERVED-DEFINITION]: `" SB-APPEND tok toku SB-APPEND
    s" ` is a keyword" SB-APPEND
@@ -82,7 +81,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : DEFINER-REJECT ( ^u8 n ^u8 n ^u8 n -- )
    {: src:^ srcu:n msg:^ msgu:n at:^ atu:n :}
    s" a definer's own keyword or number name rejects at the name" T-LABEL
-   HB$ src srcu RUN-SOURCE EXIT-STATUS:REJECTED T=
+   HB$ src srcu RUN-SOURCE 70 T=
    ERR$ msg msgu CONTAINS? TTRUE
    ERR$ at atu CONTAINS? TTRUE
    OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
@@ -116,25 +115,25 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    \ guilty spelling itself, not a later body token where syntax finally trips.
    s" keyword definition names CASE" T-LABEL
    HB$ S\" package KW-UPPER private : CASE ( -- ) ; s\" AFTER\" type ;package"
-      RUN-SOURCE EXIT-STATUS:REJECTED T=
+      RUN-SOURCE 70 T=
    ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" CONTAINS? TTRUE
    s" qualified keyword definition rejects at its tail" T-LABEL
-   HB$ s" : KW-QUAL:CASE ( -- ) ;" RUN-SOURCE EXIT-STATUS:REJECTED T=
+   HB$ s" : KW-QUAL:CASE ( -- ) ;" RUN-SOURCE 70 T=
    ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" CONTAINS? TTRUE
    \ FOLD is a normal, non-immediate dictionary word, not engine syntax. Its
    \ same-name private definition must remain callable through ordinary lookup.
    s" ordinary FOLD definition remains callable" T-LABEL
    HB$ s" package KW-FOLD private : FOLD ( n -- n ) 1+ ; : CALL-FOLD ( -- n ) 41 FOLD ; CALL-FOLD . ;package"
-      RUN-SOURCE EXIT-STATUS:SUCCESS T=
+      RUN-SOURCE 0 T=
    s" ordinary FOLD definition returns through dictionary lookup" T-LABEL
    OUT$ s" 42" CONTAINS? TTRUE
    s" qualified ordinary FOLD definition remains callable" T-LABEL
-   HB$ s" : KW-FOLD-Q:FOLD ( n -- n ) 1+ ; 41 KW-FOLD-Q:FOLD ." RUN-SOURCE EXIT-STATUS:SUCCESS T=
+   HB$ s" : KW-FOLD-Q:FOLD ( n -- n ) 1+ ; 41 KW-FOLD-Q:FOLD ." RUN-SOURCE 0 T=
    OUT$ s" 42" CONTAINS? TTRUE ;
 
 : POST-SEAL-BRIDGE ( -- )
    s" post-seal package reaches checker bridge" T-LABEL
-   PACKAGE-RC EXIT-STATUS:SUCCESS T= ;
+   PACKAGE-RC 0 T= ;
 
 public
 
@@ -145,8 +144,8 @@ public
    KEYWORD-DEFINITION
    POST-SEAL-BRIDGE
    T-REPORT
-   s" engine-error-package: ok" type cr ;
+   s" definition-name: ok" type cr ;
 
 ;package
 
-ENGINE-ERROR-TEST:RUN
+DEFINITION-NAME-TEST:RUN

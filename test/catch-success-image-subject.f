@@ -1,4 +1,7 @@
 \ Guarded catch source a --repl build links into hb, run as its MAIN.
+
+require src/core/exit-status.f
+
 package CATCH-IMAGE
 private
 variable FAIL
@@ -11,8 +14,8 @@ public
    [: READER ;] catch {: code:n :}
    code ZERO? if 1+ else drop code throw then ;
 : RUN ( -- )
-   1 GUARDED 42 <> if s" wrong catch success" 74 die then
-   [: -1 GUARDED drop ;] catch -71 <> if s" wrong catch failure" 74 die then
+   1 GUARDED 42 <> if s" wrong catch success" EXIT-STATUS:FAILURE die then
+   [: -1 GUARDED drop ;] catch -71 <> if s" wrong catch failure" EXIT-STATUS:FAILURE die then
    s" catch-image: ok" type cr ;
 ;package
 

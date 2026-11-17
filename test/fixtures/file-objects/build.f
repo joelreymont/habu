@@ -43,7 +43,7 @@ PATH-CAP BUFFER: PROG-BUF
 : GAP ( -- ) s" test/fixtures/file-objects/gap.f" included ;
 : NEW-WORDLIST ( -- ) s" test/fixtures/file-objects/wordlist.f" included ;
 
-\ The second argument, second, shifted, stop or facts, or none; any other ends the build, rc 1.
+\ The second argument, second, shifted, stop or facts, or none; any other is a usage error.
 : MODE$ ( -- ^u8 n )
    SCRIPT-ARGC 1 = if s" " exit then
    SCRIPT-ARGC 2 = if
@@ -52,7 +52,7 @@ PATH-CAP BUFFER: PROG-BUF
       1 SCRIPT-ARGV$ s" stop" STR= if s" stop" exit then
       1 SCRIPT-ARGV$ s" facts" STR= if s" facts" exit then
    then
-   s" build: unknown argument" 1 die ;
+   s" build: unknown argument" EXIT-STATUS:USAGE die ;
 
 : SECOND? ( -- bool ) MODE$ s" second" STR= ;
 : SHIFTED? ( -- bool ) MODE$ s" shifted" STR= ;
@@ -62,7 +62,7 @@ PATH-CAP BUFFER: PROG-BUF
 \ The case's code is the one wanted, or the build ends rc 1 with the message.
 : EXPECT ( n n ^u8 n -- )
    {: rc:n want:n msg:^ msgu:n :}
-   rc want <> if msg msgu 1 die then ;
+   rc want <> if msg msgu EXIT-STATUS:FAILURE die then ;
 
 : STOP-FILE ( -- )
    s" test/fixtures/file-objects/count.f" included
@@ -571,7 +571,7 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    OBJ-U64 0 ?do i EMISSION-WALK loop
    FLAG-AT @ 0<  PKG-REC @ 0<  or  HIGH-REC @ 0<  or  INDEX-AT @ 0<  or
    LATE-FLAG-AT @ 0<  or  LATE-AT @ 0<  or  SLOT-AT @ 0<  or if
-      s" build: CRAFTS: e.f's object lacks a field the edits need" 1 die
+      s" build: CRAFTS: e.f's object lacks a field the edits need" EXIT-STATUS:FAILURE die
    then ;
 
 
@@ -596,7 +596,7 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    t CRAFT-TAIL tu BYTE-COPY  tu CRAFT-TAIL-U !
    0 CRAFT-PATH-U !
    s" obj" DIR$ ['] CRAFT-SEEN FS:WALK-FILES
-   CRAFT-PATH-U @ 0= if s" build: CRAFT-FIND: no object ends with the tail" 1 die then
+   CRAFT-PATH-U @ 0= if s" build: CRAFT-FIND: no object ends with the tail" EXIT-STATUS:FAILURE die then
    CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL CRAFT-U ! ;
 
 
@@ -635,7 +635,7 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 \ past k moves and one holding k grows (SPAN-GROW): EXTENT-CK finds each extent at its span. Past CRAFT-CAP, rc 1.
 : CRAFT-GROW ( n n -- )
    {: k:n u:n :}
-   CRAFT-U @ u + CRAFT-CAP > if s" build: CRAFTS: the grown object exceeds CRAFT-CAP" 1 die then
+   CRAFT-U @ u + CRAFT-CAP > if s" build: CRAFTS: the grown object exceeds CRAFT-CAP" EXIT-STATUS:FAILURE die then
    CRAFT-FIRST k +  CRAFT-OBJ k u + +  CRAFT-U @ k -  BYTE-COPY
    PIECES-FIELD 8 + {: len-at:n :}
    len-at OBJ@ u + len-at OBJ!
@@ -656,7 +656,7 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 : SLOT-TARGET ( -- n )
    CRAFT-WALK
    SLOT-AT @ 8 + {: tag-at:n :}
-   tag-at OBJ@ 5 <> if s" build: CRAFTS: V's slot names a target" 1 die then
+   tag-at OBJ@ 5 <> if s" build: CRAFTS: V's slot names a target" EXIT-STATUS:FAILURE die then
    tag-at 8 + 24 CRAFT-GROW
    LOW-REC @ CRAFT-ID {: sum:n count:n :}
    0 tag-at OBJ!  0 tag-at 8 + OBJ!  sum tag-at 16 + OBJ!  count tag-at 24 + OBJ!
@@ -704,7 +704,7 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 : FIRST-WORD-ROW ( -- n )
    s" /words/b.f.hfo" CRAFT-FIND
    CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
-   WORDS-FIELD 8 + OBJ@ WORD-ROW-BYTES < if s" build: BY-WORD: b.f's object lists no word" 1 die then
+   WORDS-FIELD 8 + OBJ@ WORD-ROW-BYTES < if s" build: BY-WORD: b.f's object lists no word" EXIT-STATUS:FAILURE die then
    WORDS-FIELD OBJ@ ;
 
 \ b.f's first WORDS row with its time one more; then a build.
@@ -1081,7 +1081,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 public
 
 : RUN ( -- )
-   SCRIPT-ARGC 0 = if s" build: the first argument is the kernel object" 1 die then
+   SCRIPT-ARGC 0 = if s" build: the first argument is the kernel object" EXIT-STATUS:USAGE die then
    0 SCRIPT-ARGV$ LINKER:KERNEL
    STOP? if STOPS exit then
    FACTS? if FACTS exit then

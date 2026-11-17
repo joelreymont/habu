@@ -41,7 +41,6 @@ $7F constant Q-NO-SUCH-QUEUE
 
 $4000 constant Q-CAPTURE-CAP
 60000 constant Q-CAPTURE-MS          \ includes compiling src/lib/queue.f in the child
-$43 constant Q-THROW-RC              \ hb's exit status for an uncaught throw
 
 create Q-SEEN Q-TOTAL cells allot
 create Q-OUT Q-CAPTURE-CAP allot
@@ -159,10 +158,11 @@ variable Q-POOL-RC
    Q-OUT Q-CAPTURE-CAP >LEN Q-ERR Q-CAPTURE-CAP >LEN
    Q-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
+\ hb exits 67 on an uncaught throw.
 : Q-EXPECT-THROW ( n -- ) {: code:n :}
    Q-SRC CODEGEN:CONTENTS {: src:^ srcu:n :}
    src srcu Q-RUN-STDIN {: outu:len erru:len oc :}
-   src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc Q-THROW-RC T-ENDING-EXITED=
+   src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc 67 T-ENDING-EXITED=
    outu LEN>N 0 T=
    Q-ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE ;
 

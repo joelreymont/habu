@@ -1,5 +1,6 @@
 \ Deny only a writable mmap after MEM:ALLOC-GUARDED reserves its inaccessible
 \ span. A failed fixed remap must return all virtual pages in that span.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
@@ -54,10 +55,10 @@ FUNCTION: PAGE-SIZE getpagesize ( -- i32 ) ;FUNCTION
    6 PROGRAM c!
    FILTER-IN-PROG
    PR-SET-NO-NEW-PRIVS 1 0 0 0 PRCTL-NO-PRIV 0 <> if
-      s" memory-guarded-failure: no_new_privs refused" 78 die
+      s" memory-guarded-failure: no_new_privs refused" EXIT-STATUS:SYSTEM die
    then
    PR-SET-SECCOMP SECCOMP-FILTER PROGRAM 0 0 PRCTL-SECCOMP 0 <> if
-      s" memory-guarded-failure: seccomp filter refused" 78 die
+      s" memory-guarded-failure: seccomp filter refused" EXIT-STATUS:SYSTEM die
    then ;
 
 : STATM-PAGES ( -- n )

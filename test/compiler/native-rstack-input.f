@@ -15,7 +15,6 @@ package NRS-INPUT-TEST
 private
 
 $4000 constant CAP
-70 constant REFUSED-RC
 
 create OUT CAP allot
 create ERR CAP allot
@@ -68,43 +67,43 @@ variable ERR-U
    s" rs1: a body replaces a declared return-stack cell"
    S\" : RC1 ( | n -- | n ) r> drop 0 >r ;\nTRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RC1 r> ;\nUSE . cr\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` | n -- | n `"
-   s" --> <input>:1:8"  REFUSED-RC REFUSED
+   s" --> <input>:1:8"  70 REFUSED
    s" rs1: a TRUSTED: body replaces a declared return-stack cell"
    S\" TRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RT1 r> ;\nUSE . cr\n"
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `RT1` cannot be recorded"
-   s" |          ^^^ its signature moves the return stack"  REFUSED-RC REFUSED
+   s" |          ^^^ its signature moves the return stack"  70 REFUSED
    s" rs2: a body pops a declared return-stack input"
    S\" : RP ( | n -- n | ) r> ;\n: USE ( -- n ) 5 >r RP ;\nUSE . cr\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` | n -- n | `"
-   s" --> <input>:1:7"  REFUSED-RC REFUSED
+   s" --> <input>:1:7"  70 REFUSED
    s" a quotation type moves a cell to the return stack"
    S\" : RUNQ ( n [ n -- | U -- U n ] | U -- n | U ) execute r> ;\n: USE ( -- n ) 5 [: >r ;] RUNQ ;\nUSE . cr\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` n [ n -- | U -- U n ] | U -- n | U `"
-   s" --> <input>:1:9"  REFUSED-RC REFUSED
+   s" --> <input>:1:9"  70 REFUSED
    s" a generates: row declares a return-stack cell"
    S\" package GP\n: G ( n -- ) drop parse-name 2drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
    s" error[E-GENERATES-ROW]: the `generates:` row names `G`"
-   s" its signature moves the return stack"  REFUSED-RC REFUSED
+   s" its signature moves the return stack"  70 REFUSED
    s" a bar on one side only"
    S\" : ONE ( R n | S -- R ) drop ;\n"
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` R n | S -- R `"
-   s" --> <input>:1:8"  REFUSED-RC REFUSED
+   s" --> <input>:1:8"  70 REFUSED
    s" a quotation literal pushes a cell its caller pops"
    S\" : QPUSH ( n -- n ) [: >r ;] execute r> ;\n: USE ( -- n ) 5 QPUSH ;\nUSE . cr\n"
    s" error[E-RETURN-STACK]: return stack: the quotation leaves its return row unbalanced"
-   s" --> <input>:1:26"  REFUSED-RC REFUSED
+   s" --> <input>:1:26"  70 REFUSED
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
    s" error[E-RETURN-STACK]: return stack: the quotation reads below the return-stack cells it pushed"
-   s" --> <input>:1:25"  REFUSED-RC REFUSED
+   s" --> <input>:1:25"  70 REFUSED
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here"
-   s" --> <input>:1:9"  REFUSED-RC REFUSED
+   s" --> <input>:1:9"  70 REFUSED
    s" an unsigned definition pops a cell it did not push"
    S\" : UPOP r> ;\n"
    s" error[E-RETURN-STACK]: return stack: this reads below the return-stack cells pushed here"
-   s" --> <input>:1:8"  REFUSED-RC REFUSED ;
+   s" --> <input>:1:8"  70 REFUSED ;
 
 \ ---- still admitted -----------------------------------------------------------
 \ A bar on one side only pairs the written row with a fresh one and is admitted,

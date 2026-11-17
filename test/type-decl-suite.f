@@ -1,6 +1,7 @@
 \ type-decl-suite.f — behavior suite for the NEWTYPE/SUMTYPE declaration grammar
 \ (src/core/sumtype.f).
 
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require test/decl-diag-capture.f
@@ -261,7 +262,7 @@ variable BUF-N
 
 : RESET ( -- ) 0 BUF-N ! ;
 : APPEND ( ^u8 n -- ) {: a:^ u:n :}
-   BUF-N @ u + BUF-CAP > IF s" local-bind test source overflow" 76 die THEN
+   BUF-N @ u + BUF-CAP > IF s" local-bind test source overflow" EXIT-STATUS:FAILURE die THEN
    0 BEGIN dup u < WHILE
       a over + c@ BUF BUF-N @ + c!
       BUF-N @ 1 + BUF-N !
@@ -2097,7 +2098,7 @@ create BUF BUF-CAP allot
 variable BUF-N
 
 : C+ ( n -- )
-   BUF-N @ BUF-CAP >= IF s" wide derive test source overflow" 76 die THEN
+   BUF-N @ BUF-CAP >= IF s" wide derive test source overflow" EXIT-STATUS:FAILURE die THEN
    BUF BUF-N @ + c!  BUF-N @ 1 + BUF-N ! ;
 : APPEND ( ^u8 n -- ) {: a:^ u:n :}
    u 0 ?do  a i + c@ C+  loop ;

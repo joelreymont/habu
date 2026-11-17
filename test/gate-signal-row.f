@@ -3,6 +3,7 @@
 \ `leaf`. Every spawn makes a process group of its own, the shape of a row
 \ building an engine: two spawns deep and, during the burst, between two spawns.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/process.f
@@ -15,7 +16,6 @@ package GATE-SIGNAL-ROW
 
 24 constant BURST-N
 15 constant BURST-GAP-MS             \ the burst outlasts the test's reaction to the second report
-64 constant USAGE-RC
 
 create WRITERS BURST-N cells allot
 create REPORT 1 cells allot
@@ -35,7 +35,7 @@ variable HOLD                        \ the FIFO's write end
 : REPORT-PID ( -- )
    getpid REPORT !
    HOLD @ REPORT 1 cells write 1 cells <> if
-      s" gate-signal-row: report refused" USAGE-RC die
+      s" gate-signal-row: report refused" EXIT-STATUS:IOERR die
    then ;
 
 : PAUSE ( n -- ) {: ms:n :}
@@ -73,7 +73,7 @@ variable HOLD                        \ the FIFO's write end
    begin r FD>N SINK 64 read dup 0 > while drop repeat
    r FD>N close
    0< if
-      s" gate-signal-row: the helper's pipe refused a read" USAGE-RC die
+      s" gate-signal-row: the helper's pipe refused a read" EXIT-STATUS:IOERR die
    then ;
 
 \ Starts the HELPER, reports its pid and starts BURST-N writers one after
@@ -117,7 +117,7 @@ public
 : MAIN ( -- )
    SCRIPT-ARGC 0= if ROW exit then
    0 SCRIPT-ARGV$ s" leaf" STR= if LEAF exit then
-   s" gate-signal-row: unknown mode" USAGE-RC die ;
+   s" gate-signal-row: unknown mode" EXIT-STATUS:USAGE die ;
 
 ;package
 

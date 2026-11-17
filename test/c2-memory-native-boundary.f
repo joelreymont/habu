@@ -1,4 +1,5 @@
 \ The C2 writer admits only the public runtime entries.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/c2-memory.f
@@ -21,7 +22,7 @@ private
 
 : ENTRY ( ^u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
-      drop s" c2-memory-native-boundary: missing entry" 71 die
+      drop s" c2-memory-native-boundary: missing entry" EXIT-STATUS:FAILURE die
    then XREF-START ;
 
 public

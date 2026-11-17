@@ -2,14 +2,13 @@
 \ the released case runs two that exit 0, and grown-bind exits 0 unless its
 \ binding was lost.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
+require src/core/exit-status.f
 require test/ffi-callback-fixture.f
 require src/lib/string.f
 require src/lib/task.f
 
 package FFI-CB-TEST
 using FFI-CB
-
-70 constant SURVIVED-RC
 
 \ A worker sorts through CMP-FN, which the scenario binds to the main region; a
 \ non-zero argument first waits until the main thread is inside a foreign call
@@ -23,7 +22,7 @@ using FFI-CB
    THREAD-ROW BYTE-VIEW ROW-N CELL CMP-FN @ QSORT ;
 
 : STARTED ( n -- )
-   0 <> if s" ffi-callback-child: pthread_create failed" SURVIVED-RC die then ;
+   0 <> if s" ffi-callback-child: pthread_create failed" EXIT-STATUS:SYSTEM die then ;
 
 : RAID-START ( [ -- ] -- ) {: body :}
    CMP TASK:SELF-CONTEXT ENTRY CMP-FN !
@@ -41,7 +40,7 @@ using FFI-CB
    s" sleeping: a thread is parked on its own context" type cr
    1 GATE atomic!
    10000 >MS TASK:SLEEP
-   s" ffi-callback-child: sleeping was not refused" SURVIVED-RC die ;
+   s" ffi-callback-child: sleeping was not refused" EXIT-STATUS:FAILURE die ;
 
 : SORT-STALE ( -- )
    OUTER 10 ROW-FILL
@@ -52,7 +51,7 @@ using FFI-CB
    SORT-PLAIN if s" unbound: sorted while bound" type cr then
    CMP UNBIND
    SORT-STALE
-   s" ffi-callback-child: unbound was not refused" SURVIVED-RC die ;
+   s" ffi-callback-child: unbound was not refused" EXIT-STATUS:FAILURE die ;
 
 : WORKER-STALE ( -- )
    ['] WORK-ENDS WORKER-B TASK:ACTIVATE
@@ -60,7 +59,7 @@ using FFI-CB
       s" worker-stale: the worker sorted and ended bound" type cr
    then
    SORT-STALE
-   s" ffi-callback-child: worker-stale was not refused" SURVIVED-RC die ;
+   s" ffi-callback-child: worker-stale was not refused" EXIT-STATUS:FAILURE die ;
 
 \ Defines once with no task live, so the definition is admitted. The thunk
 \ restores C's callee-saved registers, the caller's record count and code
@@ -83,7 +82,7 @@ variable DEFINED                        \ 1 once CMP-DEFINE has defined
    CMP-DEFINE TASK:SELF-CONTEXT ENTRY {: fn:n :}
    OUTER 10 ROW-FILL
    OUTER BYTE-VIEW ROW-N CELL fn QSORT
-   s" ffi-callback-child: body-defines was not refused" SURVIVED-RC die ;
+   s" ffi-callback-child: body-defines was not refused" EXIT-STATUS:FAILURE die ;
 
 \ PARK sees the halt and returns; TASK:PAUSE only yields while a comparison
 \ runs, so qsort completes and the worker ends after C returns; KILL joins it.
@@ -152,7 +151,7 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
    s" caller-thread: the slot is bound to the caller's context" type cr
    fn 1 THREAD-START STARTED
    10000 >MS TASK:SLEEP
-   s" ffi-callback-child: caller-thread was not refused" SURVIVED-RC die ;
+   s" ffi-callback-child: caller-thread was not refused" EXIT-STATUS:FAILURE die ;
 
 \ Left unbound until a text that grows the tables binds it and throws.
 CALLBACK: CMP-GROWN ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
@@ -165,7 +164,7 @@ variable GROWN-FN                     \ the C entry the thrown text answered
 : GROWN-BIND ( -- )
    PAD-TO-EDGE
    [: GROWN$ evaluate-closed ;] catch 1 <> if
-      s" ffi-callback-child: grown-bind's text did not throw 1" SURVIVED-RC die
+      s" ffi-callback-child: grown-bind's text did not throw 1" EXIT-STATUS:FAILURE die
    then
    OUTER 10 ROW-FILL
    OUTER BYTE-VIEW ROW-N CELL GROWN-FN @ QSORT
@@ -175,7 +174,7 @@ variable GROWN-FN                     \ the C entry the thrown text answered
    0 SCRIPT-ARGV$ STR= ;
 
 : DISPATCH ( -- )
-   SCRIPT-ARGC 1 <> if s" ffi-callback-child: one case name" SURVIVED-RC die then
+   SCRIPT-ARGC 1 <> if s" ffi-callback-child: one case name" EXIT-STATUS:USAGE die then
    s" outside" CASE? if OUTSIDE then
    s" sleeping" CASE? if SLEEPING then
    s" unbound" CASE? if UNBOUND then
@@ -184,7 +183,7 @@ variable GROWN-FN                     \ the C entry the thrown text answered
    s" caller-thread" CASE? if CALLER-THREAD then
    s" released" CASE? if HALTED KILLED exit then
    s" grown-bind" CASE? if GROWN-BIND exit then
-   s" ffi-callback-child: unknown case" SURVIVED-RC die ;
+   s" ffi-callback-child: unknown case" EXIT-STATUS:USAGE die ;
 
 DISPATCH
 

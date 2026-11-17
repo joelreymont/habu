@@ -1,6 +1,7 @@
 \ shadow-kinds.f - each kind of definition, loaded by the typed loop at tier 0
 \ under a native arm64 shadow: its shadow routine against T0's host routine.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
@@ -56,7 +57,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
 
 : TIER-CK ( -- )
    T0? 0= if
-      s" shadow-kinds: no tier-0 compiler is installed (COMP-CELL 0)" 1 die
+      s" shadow-kinds: no tier-0 compiler is installed (COMP-CELL 0)" EXIT-STATUS:FAILURE die
    then ;
 
 \ Whether a section line starts at byte at.
@@ -208,7 +209,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
    s" stale shadow rows: " type STALE .N cr ;
 
 : FINISH ( -- )
-   FAILS @ 0<> if s" shadow-kinds: a kind failed" 1 die then ;
+   FAILS @ 0<> if s" shadow-kinds: a kind failed" EXIT-STATUS:FAILURE die then ;
 
 public
 

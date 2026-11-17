@@ -12,6 +12,7 @@
 \ module's memory bytes before its run and after it, 0 for a module that did not
 \ link.
 
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/process.f
@@ -62,7 +63,7 @@ variable MEM-END
 \ exit 1 as well, so any other text ends the check.
 : NO-THROW-LINE ( ^u8 n -- )
    type cr
-   s" wasm harness: bun exited 1 without a `throw <i64>` line" 1 die ;
+   s" wasm harness: bun exited 1 without a `throw <i64>` line" EXIT-STATUS:FAILURE die ;
 
 : THROWN ( -- n )
    FIRST-LINE {: a:^ u:n :}
@@ -76,7 +77,7 @@ variable MEM-END
 \ bun's own failures may exit 2 as well, so any other text ends the check.
 : NO-FAULT-LINE ( ^u8 n -- )
    type cr
-   s" wasm harness: bun's memory line is not followed by a `fault <kind> <addr>` line" 1 die ;
+   s" wasm harness: bun's memory line is not followed by a `fault <kind> <addr>` line" EXIT-STATUS:FAILURE die ;
 
 : FAULT-FIELD ( ^u8 n ^u8 n -- n )
    {: line:^ lu:n a:^ u:n :}
@@ -100,7 +101,7 @@ variable MEM-END
 \ text after `memory ` ends the check.
 : NO-MEMORY-LINE ( ^u8 n -- )
    type cr
-   s" wasm harness: run.mjs wrote a `memory` line without two numbers" 1 die ;
+   s" wasm harness: run.mjs wrote a `memory` line without two numbers" EXIT-STATUS:FAILURE die ;
 
 : MEMORY-FIELD ( ^u8 n ^u8 n -- n )
    {: line:^ lu:n a:^ u:n :}
@@ -139,7 +140,7 @@ variable MEM-END
    s" wasm-tools" SPAWN {: rc:n :}
    rc 1 > if
       ERR ERR-U @ type cr
-      s" wasm harness: wasm-tools validate failed" 1 die
+      s" wasm harness: wasm-tools validate failed" EXIT-STATUS:FAILURE die
    then
    rc 0= ;
 

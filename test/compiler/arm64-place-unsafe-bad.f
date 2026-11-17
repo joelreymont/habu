@@ -3,6 +3,7 @@
 \ it writes. The script arguments are the kernel object the link adopts and the
 \ program's path. test/compiler/arm64-place.f runs it and checks the rejection.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/os/script-argv.f
@@ -23,7 +24,7 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    data-base APP-ENTRY:XT-CELL + xt!
    s" ARM64-PLACE-UNSAFE-ARMED" type cr
    1 SCRIPT-ARGV$ LINKER:WRITE
-   s" arm64-place-unsafe: PL-MAKE was not refused" 1 die ;
+   s" arm64-place-unsafe: PL-MAKE was not refused" EXIT-STATUS:FAILURE die ;
 
 
 public

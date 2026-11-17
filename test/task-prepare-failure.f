@@ -1,6 +1,7 @@
 \ A failed later stack allocation leaves no earlier task mappings behind.
 \ Linux's virtual-memory limit permits three guarded 64K stacks but refuses
 \ the next reserve.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/task.f
 require src/lib/fs.f
@@ -54,16 +55,16 @@ TASK:MIN-STACK TASK:TASK WORKER
       WARM
       VM-BYTES START-VM !
       RLIMIT-AS OLD-LIMIT GET-LIMIT 0 <> if
-         s" task-prepare-failure: cannot read address-space limit" 78 die
+         s" task-prepare-failure: cannot read address-space limit" EXIT-STATUS:SYSTEM die
       then
       START-VM @ LIMIT-PAGES STACK-ABI:PAGE-BYTES * + NEW-LIMIT !
       OLD-LIMIT cell+ @ NEW-LIMIT cell+ !
       RLIMIT-AS NEW-LIMIT SET-LIMIT 0 <> if
-         s" task-prepare-failure: cannot set address-space limit" 78 die
+         s" task-prepare-failure: cannot set address-space limit" EXIT-STATUS:SYSTEM die
       then
       ['] FAIL-PREPARE catch {: rc:n :}
       RLIMIT-AS OLD-LIMIT SET-LIMIT 0 <> if
-         s" task-prepare-failure: cannot restore address-space limit" 78 die
+         s" task-prepare-failure: cannot restore address-space limit" EXIT-STATUS:SYSTEM die
       then
       s" later task allocation is refused" T-LABEL
       rc E-MEM-MAP T=

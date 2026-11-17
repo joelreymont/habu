@@ -1,6 +1,7 @@
 \ code-reclaim.f - the live-XREF floor used when FORGET gives code back, and
 \ the created record a definer's does> acts on after a motion retires records.
 
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/ending.f
@@ -15,7 +16,7 @@ private
 
 : REC ( ^u8 n -- ^n )
    XREF-FIND
-   dup XREF-FOUND? 0= if s" code-reclaim: subject not found" 76 die then ;
+   dup XREF-FOUND? 0= if s" code-reclaim: subject not found" EXIT-STATUS:FAILURE die then ;
 
 : REC-START ( ^u8 n -- n )
    REC XREF-START ;

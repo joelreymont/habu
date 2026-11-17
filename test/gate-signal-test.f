@@ -5,6 +5,7 @@
 \ each its own process group, writing under the row's scratch and then sleeping
 \ 20 s. The root is signalled once both engines have reported, mid-burst.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
@@ -296,7 +297,7 @@ variable STAT-PATH-U
 
 : NOHUP$ ( -- ^u8 n )
    s" nohup" >LEN NOHUP FIND-EXECUTABLE MATCH option
-      none OF s" gate-signal-test: required executable missing on PATH: nohup" 1 die ENDOF
+      none OF s" gate-signal-test: required executable missing on PATH: nohup" EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF
    ;MATCH
    NOHUP swap ;

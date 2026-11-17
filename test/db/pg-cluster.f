@@ -2,6 +2,7 @@
 \ PostgreSQL cluster.
 \
 \     bin/hb --load test/db/pg-cluster.f [-- case.f ...]
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -354,7 +355,7 @@ false STOPPED !
 \ A failed run exits 1. A caught signal is answered first.
 : FAIL-ROW ( ^u8 n -- ) {: msg:^ msgu:n :}
    SIGNAL-CHECK
-   msg msgu 1 die ;
+   msg msgu EXIT-STATUS:FAILURE die ;
 
 \ A caught signal is answered here.
 \ A negative ms waits with no deadline, and the answer is then always true.

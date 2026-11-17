@@ -18,6 +18,7 @@
 \ one arena between them the second read would have copied its name over the
 \ first's.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/float.f
@@ -605,7 +606,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
-      s" pg-rows-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die
+      s" pg-rows-test: no conninfo argument; test/db/pg-cluster.f runs this file" EXIT-STATUS:USAGE die
    then
    s" a read before the declaration" T-LABEL
    [: PG:READ-RESET ;] PG:E-READERS TTHROWSQ

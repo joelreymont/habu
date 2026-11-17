@@ -6,6 +6,7 @@
 \ concurrent case proves that being parked costs the tasks beside it nothing.
 \ The CPU time counts only the calling OS thread.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -105,9 +106,6 @@ TASK:MIN-STACK TASK:TASK SLEEP-COUNTER
 TASK:MIN-STACK TASK:TASK SLEEP-KILLED
 
 $4000 constant TASK-CAP
-$4F constant TASK-REFUSED-RC
-$62 constant TASK-DIE-RC
-67 constant TASK-UNCAUGHT-RC
 8 constant APP-CYCLES
 16 constant APP-ITERS
 APP-ITERS 10 * 5 + constant APP-FFI-WANT
@@ -613,7 +611,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ The record's first line, which names the primitive; answers stderr's length.
 : TASK-REJECTED-ERR ( ^u8 n ^u8 n -- len )
    {: src:^ srcu:n line:^ lineu:n :}
-   src srcu TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
+   src srcu 79 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
    TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE
    erru ;
@@ -642,7 +640,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" error[E-TASK-COMPILE]: source is read on a task's thread" ;
 
 : TASK-TEST-FRAMED-COMPILES ( -- )
-   TASK-FRAMED-COMPILES$ TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-FRAMED-COMPILES$ 79 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
    TASK-ERR erru LEN>N TASK-FRAMED-REFUSAL$ CONTAINS? TTRUE ;
 
@@ -662,7 +660,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-ERR erru LEN>N needle needleu CONTAINS? TTRUE ;
 
 : TASK-TEST-WORKER-DIE ( -- )
-   TASK-DIE$ TASK-DIE-RC s" task died" TASK-EXPECT-FAIL ;
+   TASK-DIE$ 98 s" task died" TASK-EXPECT-FAIL ;
 
 \ SB and fmt's render buffer are task-local.
 \
@@ -727,7 +725,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-OUT lateu LEN>N S\" 77\n0\n-1\n-1\n" T$=
    laterr LEN>N 0 T=
    E-TASK-USER TEST-EVAL:THROWN-HEAD$ {: needle:^ needleu:n :}
-   TASK-USER-WRAP$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL
+   TASK-USER-WRAP$ 67 needle needleu TASK-EXPECT-FAIL
    TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
    TASK-OUT liveu LEN>N S\" -1\n" T$=
    TASK-ERR liverr LEN>N s" error[E-UNDEFINED]: cannot find word `LIVE`" CONTAINS? TTRUE
@@ -1913,7 +1911,7 @@ variable ENTRY-WORDS
       i 1 + ENTRY-WORDS !
       W-RET = if unloop exit then
    loop
-   s" task-test: no RET within the pthread entry's bound" 76 die ;
+   s" task-test: no RET within the pthread entry's bound" EXIT-STATUS:FAILURE die ;
 
 : TASK-TEST-ENTRY-RELEASE-ARM ( -- )
    ENTRY-SCAN-ARM
@@ -1939,7 +1937,7 @@ variable ENTRY-BYTES
       i 1+ ENTRY-BYTES !
       base i + ENTRY-B8@ B-RET = if unloop exit then
    loop
-   s" task-test: no RET within the pthread entry's bound" 76 die ;
+   s" task-test: no RET within the pthread entry's bound" EXIT-STATUS:FAILURE die ;
 
 : TASK-TEST-ENTRY-RELEASE-X64 ( -- )
    ENTRY-SCAN-X64

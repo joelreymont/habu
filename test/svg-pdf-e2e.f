@@ -1,4 +1,5 @@
 \ SVG bytes -> native librsvg/Cairo -> staged PDF -> independent PDF readers.
+require src/core/exit-status.f
 require src/lib/svg-pdf.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -164,7 +165,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : AFTER ( ^u8 n ^u8 n -- ^u8 n )
    {: data:^ size:n key:^ keyu:n :}
    data size key keyu FIND-SUB MATCH option
-      none OF s" PDF field missing" 1 die ENDOF
+      none OF s" PDF field missing" EXIT-STATUS:FAILURE die ENDOF
       some OF IDX>N keyu + {: off:n :} data off + size off - ENDOF
    ;MATCH ;
 : SPACE? ( n -- bool ) dup 32 <= swap 0 >= and ;
@@ -184,7 +185,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    text size TOKEN-SIZE {: digits:n :}
    text digits F64-TEXT:PARSE MATCH result
       ok OF {: value:r :} text digits + size digits - value ENDOF
-      err OF drop s" PDF number malformed" 1 die ENDOF
+      err OF drop s" PDF number malformed" EXIT-STATUS:FAILURE die ENDOF
    ;MATCH ;
 : NEAR ( r r r -- )
    {: actual:r expected:r epsilon:r :}
@@ -198,7 +199,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : LINE-AT ( ^u8 n ^u8 n -- ^u8 n )
    {: data:^ size:n key:^ keyu:n :}
    data size key keyu FIND-SUB MATCH option
-      none OF s" PDF path missing" 1 die ENDOF
+      none OF s" PDF path missing" EXIT-STATUS:FAILURE die ENDOF
       some OF IDX>N ENDOF
    ;MATCH
    begin dup 0 > while

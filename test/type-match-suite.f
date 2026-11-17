@@ -217,7 +217,7 @@ variable MD-U
 variable MD-I
 : MD-CLEAR ( -- ) 0 MD-U ! ;
 : MD-APP ( ^u8 n -- ) {: a:^ u:n :}
-   MD-U @ u + MD-CAP > if s" match-suite: depth fixture too long" 76 die then
+   MD-U @ u + MD-CAP > if s" match-suite: depth fixture too long" EXIT-STATUS:FAILURE die then
    0 MD-I !
    begin MD-I @ u < while
       a MD-I @ + c@  MD-BUF MD-U @ + c!

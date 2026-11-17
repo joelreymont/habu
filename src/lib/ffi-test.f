@@ -206,7 +206,6 @@ variable FFI-T-PAIR-AFTER
 \ A child declares 270 distinct symbols and 270 library paths, past any fixed
 \ table; an alias and a declaration after the paths then call.
 $4000 constant FFI-T-CAP
-67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
 
 CODEGEN:BUFFER FFI-T-SRC
 
@@ -647,7 +646,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-NO-LIB ( -- )
    s" a missing library fails at the first call with its path and reason, once" T-LABEL
-   FFI-T-NO-LIB-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   FFI-T-NO-LIB-SRC$ 67 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE
@@ -743,7 +742,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-NO-VERSION ( -- )
    s" a version list with none present names each version in order, once" T-LABEL
-   FFI-T-NO-VERSION-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   FFI-T-NO-VERSION-SRC$ 67 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE

@@ -7,7 +7,6 @@
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/export-package.f
 
-require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -20,8 +19,6 @@ require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 2048 constant XPK-CAP
-70 constant XPK-UNDEF-RC              \ undefined-word child exit status
-70 constant XPK-REJECT-RC             \ a rejection's exit status (EXIT-STATUS:REJECTED)
 
 variable XPK-ROOT-U
 variable XPK-CHILD-U
@@ -682,9 +679,9 @@ create XPK-EMPTY 1 allot
 \ The source a u is rejected with record e and text c by stdin, by --load and
 \ by the verifier alone.
 : XPK-REJECT-ALL ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
-   a u XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
-   a u XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
-   XPK-RUN-VERIFY XPK-REJECT-RC XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR? ;
+   a u XPK-RUN-STDIN 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
+   a u XPK-RUN-LOAD 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
+   XPK-RUN-VERIFY 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR? ;
 
 : XPK-POSITIVES ( -- )
    s" dual-name execution + checked callers" T-LABEL
@@ -698,19 +695,19 @@ create XPK-EMPTY 1 allot
 
 : XPK-NEGATIVES ( -- )
    s" undefined source rejects (stdin)" T-LABEL
-   XPK-UNDEF-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
+   XPK-UNDEF-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" NOSUCH-EXPORT-SRC" XPK-ERR?
    s" undefined source rejects (--load)" T-LABEL
-   XPK-UNDEF-FORGE$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
+   XPK-UNDEF-FORGE$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" missing name rejects" T-LABEL
-   XPK-NONAME-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-NONAME-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" duplicate tail rejects with labeled diagnosis" T-LABEL
-   XPK-DUP-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-DUP-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" error[E-DUPLICATE-DEFINITION]" XPK-ERR?
    s" self-export rejects as duplicate" T-LABEL
-   XPK-SELF-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-SELF-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" primitive source rejects (E-EXPORT-PRIM)" T-LABEL
-   XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-PRIM-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" error[E-EXPORT-PRIM]" XPK-ERR?  s" `dup`" XPK-ERR?
    s" a word the checker judges rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-JUDGED-FORGE$ s" error[E-EXPORT-PRIM]" s" is built into the checker"
@@ -737,28 +734,28 @@ create XPK-EMPTY 1 allot
    XPK-CREATE-FORGE$ s" error[E-EXPORT-PRIM]" s" `create` is a primitive"
    XPK-REJECT-ALL
    s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
-   XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-UNSAFE-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `patch32`" XPK-ERR?
    s" exporting a declaration names it (E-EXPORT-UNSAFE)" T-LABEL
-   XPK-DECL-EXPORT-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-DECL-EXPORT-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `ENUM` is a declaration" XPK-ERR?
    s" top-level EXPORT rejects (E-EXPORT-NO-PACKAGE)" T-LABEL
-   XPK-TOP-FORGE$ XPK-RUN-STDIN XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-TOP-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR? ;
 
 \ A name a global section's package does not publish is E-UNDEFINED.
 : XPK-GLOBAL-UNDEFINED ( ^u8 n -- ) {: a:^ u:n :}
    a u T-LABEL
-   a u XPK-GLOBAL-AFTER$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
+   a u XPK-GLOBAL-AFTER$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" E-UNDEFINED" XPK-ERR? ;
 
 \ Both --load and tools/check.f reject the source a u with the record e eu
 \ and, unless it is empty, the caret line c cu.
 : XPK-SEALED ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
    a u XPK-RUN-LOAD
-   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  XPK-REJECT-RC XPK-ASSERT-RC
+   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  70 XPK-ASSERT-RC
    XPK-RUN-CHECK
-   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  XPK-REJECT-RC XPK-ASSERT-RC ;
+   e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  70 XPK-ASSERT-RC ;
 
 \ Both --load and tools/check.f accept the source a u.
 : XPK-ACCEPT-BOTH ( ^u8 n -- )
@@ -779,22 +776,22 @@ create XPK-EMPTY 1 allot
    s" tools/check.f accepts types declared in a global section" T-LABEL
    XPK-RUN-CHECK 0 XPK-ASSERT-RC
    s" global outside a package is rejected" T-LABEL
-   XPK-GLOBAL-OUTSIDE$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-GLOBAL-OUTSIDE$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" E-PKG-CONTEXT" XPK-ERR?
    s" `;package` outside a package is rejected by every reader" T-LABEL
-   XPK-END-PACKAGE-OUTSIDE$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-END-PACKAGE-OUTSIDE$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" E-PKG-CONTEXT" XPK-ERR?
-   XPK-RUN-CHECK XPK-REJECT-RC XPK-ASSERT-RC  s" E-PKG-CONTEXT" XPK-ERR?
-   XPK-RUN-VERIFY XPK-REJECT-RC XPK-ASSERT-RC  s" E-PKG-CONTEXT" XPK-ERR?
+   XPK-RUN-CHECK 70 XPK-ASSERT-RC  s" E-PKG-CONTEXT" XPK-ERR?
+   XPK-RUN-VERIFY 70 XPK-ASSERT-RC  s" E-PKG-CONTEXT" XPK-ERR?
    s" `;package` of a package rendered text opened is accepted" T-LABEL
    XPK-EVAL-OPEN$ XPK-ACCEPT-BOTH
    s" `public` in a package rendered text opened is accepted" T-LABEL
    XPK-EVAL-PUBLIC$ XPK-ACCEPT-BOTH
    s" a sealed package's global section takes no definition" T-LABEL
-   XPK-GLOBAL-SEALED$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-GLOBAL-SEALED$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" E-SEALED-PACKAGE" XPK-ERR?
    s" tools/check.f rejects a sealed package's global definition" T-LABEL
-   XPK-RUN-CHECK XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-RUN-CHECK 70 XPK-ASSERT-RC
    s" E-SEALED-PACKAGE" XPK-ERR?
    s" a sealed package takes no qualified definition" T-LABEL
    XPK-SEALED-QUALIFIED$ s" E-SEALED-PACKAGE" s" " XPK-SEALED
@@ -805,7 +802,7 @@ create XPK-EMPTY 1 allot
    s" the verifier alone rejects it" T-LABEL
    XPK-RUN-VERIFY
    s" error[E-SEALED-PACKAGE]: `XSA:HID` is private to `XSA`, which is sealed" XPK-ERR?
-   XPK-REJECT-RC XPK-ASSERT-RC
+   70 XPK-ASSERT-RC
    s" a sealed package's EXPORT is judged at its seal before its source" T-LABEL
    s" " s" EXPORT NOPE:X" XPK-SEALED-LINE$
    s" error[E-SEALED-PACKAGE]: `NOPE:X` would change a sealed package"
@@ -947,7 +944,7 @@ create XPK-EMPTY 1 allot
    s" EXPORT U:MK" XPK-LINE  s" ;package" XPK-LINE  s" 1 . cr" XPK-LINE SB$
    s" error[E-DUPLICATE-DEFINITION]: `MK;does` is already defined in this wordlist"
    s" |          ^^ its clause's name is taken" XPK-SEALED
-   XPK-RUN-VERIFY  s" |          ^^ its clause's name is taken" XPK-ERR?  XPK-REJECT-RC XPK-ASSERT-RC
+   XPK-RUN-VERIFY  s" |          ^^ its clause's name is taken" XPK-ERR?  70 XPK-ASSERT-RC
    s" a sealed package's part defines in its private and public sections" T-LABEL
    XPK-PART-SECTIONS$ XPK-ACCEPT-BOTH
    s" a sealed package's part defines under a using" T-LABEL
@@ -965,7 +962,7 @@ create XPK-EMPTY 1 allot
 \ the declaration word itself.
 : XPK-DECL-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n :}
    a u T-LABEL
-   SB-RESET a u XPK-LINE SB$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   SB-RESET a u XPK-LINE SB$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    e eu XPK-ERR? ;
 
 : XPK-DECL ( -- )
@@ -981,7 +978,7 @@ create XPK-EMPTY 1 allot
    s" : XPK-DECL-USER ( -- ) TASK:+USER ;" T-LABEL
    SB-RESET  s" require src/lib/task.f" XPK-LINE
    s" : XPK-DECL-USER ( -- ) TASK:+USER ;" XPK-LINE
-   SB$ XPK-RUN-LOAD XPK-REJECT-RC XPK-ASSERT-RC
+   SB$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" E-UNSAFE" XPK-ERR?
    s" : XPK-DECL-RX ( -- ) XU:+USER ;" T-LABEL
    SB-RESET  s" require src/lib/task.f" XPK-LINE
@@ -1024,7 +1021,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 : XPK-PT-XPORT ( ^u8 n -- ) {: a:^ u:n :}
    a u T-LABEL
    SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
-   XPK-REJECT-RC XPK-ASSERT-RC  s" error[E-LAYOUT-VALUE]: `" XPK-ERR?
+   70 XPK-ASSERT-RC  s" error[E-LAYOUT-VALUE]: `" XPK-ERR?
    SB-RESET s" `" SB-APPEND  a u SB-APPEND
    s" ` at top level would take part of a value held in more than one cell" SB-APPEND
    SB$ XPK-ERR? ;
@@ -1033,7 +1030,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 : XPK-PT-CONSTANT ( -- )
    s" top-level constant over a point" T-LABEL
    SB-RESET XPK-PT-LINES  s" constant K" XPK-LINE  SB$ XPK-RUN-STDIN
-   XPK-REJECT-RC XPK-ASSERT-RC
+   70 XPK-ASSERT-RC
    s" error[E-LAYOUT-VALUE]: `constant` would take one cell of `pt:point`, a value held in more than one cell"
    XPK-ERR?
    s"  --> <input>:8:1" XPK-ERR?
@@ -1046,7 +1043,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 : XPK-EMPTY-CONSTANT ( -- )
    s" top-level constant on an empty stack" T-LABEL
    SB-RESET s" constant K" XPK-LINE  SB$ XPK-RUN-STDIN
-   XPK-REJECT-RC XPK-ASSERT-RC
+   70 XPK-ASSERT-RC
    s" error[E-INPUT-UNDERFLOW]: `constant` takes the value `K` names, and the stack is empty"
    XPK-ERR?
    s"  --> <input>:1:1" XPK-ERR?
@@ -1060,7 +1057,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" top-level constant after a constant over a point" T-LABEL
    SB-RESET XPK-PT-LINES
    s" 7 constant SEVEN constant K" XPK-LINE  SB$ XPK-RUN-STDIN
-   XPK-REJECT-RC XPK-ASSERT-RC
+   70 XPK-ASSERT-RC
    s" error[E-LAYOUT-VALUE]: `constant` would take one cell of `pt:point`, a value held in more than one cell"
    XPK-ERR?
    s"  --> <input>:8:18" XPK-ERR?
@@ -1096,7 +1093,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" ;package" XPK-LINE
    s" 5 LT:NEW drop" XPK-LINE
    SB$ XPK-RUN-STDIN
-   XPK-REJECT-RC XPK-ASSERT-RC
+   70 XPK-ASSERT-RC
    s" error[E-LINEAR-DROP]: a linear value is discarded here" XPK-ERR?
    s" ^^^^ linear value dropped" XPK-ERR? ;
 
@@ -1108,7 +1105,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" : XPK-OPEN ( -- myopt<a> ) MYOPT:NONE ;" XPK-LINE
    s" XPK-OPEN drop" XPK-LINE
    SB$ XPK-RUN-STDIN
-   XPK-REJECT-RC XPK-ASSERT-RC
+   70 XPK-ASSERT-RC
    s" error[E-LAYOUT-VALUE]: `drop` cannot drop `myopt<a>`, a value whose cell count is not known here"
    XPK-ERR?
    s"  --> <input>:3:10" XPK-ERR?

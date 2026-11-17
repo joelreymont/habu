@@ -5,6 +5,7 @@
 \ `require` to a target count through the real loader's dedup scan and storage
 \ path.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/test/ending.f       \ T-TIMED-OUT - the report of a child past its deadline
 require src/lib/process.f            \ PROCESS:ending, the child completion
@@ -28,12 +29,12 @@ variable EXITED?
 : FORGE$ ( -- ^u8 n )  FORGE-BUF FORGE-U @ ;
 
 : FORGE-C ( n -- ) {: c:n :}
-   FORGE-U @ 1+ FORGE-CAP > if s" require-cap: forge overflow" 1 die then
+   FORGE-U @ 1+ FORGE-CAP > if s" require-cap: forge overflow" EXIT-STATUS:FAILURE die then
    c FORGE-BUF FORGE-U @ + c!
    FORGE-U @ 1+ FORGE-U ! ;
 
 : FORGE-APPEND ( ^u8 n -- ) {: a:^ u:n :}
-   FORGE-U @ u + FORGE-CAP > if s" require-cap: forge overflow" 1 die then
+   FORGE-U @ u + FORGE-CAP > if s" require-cap: forge overflow" EXIT-STATUS:FAILURE die then
    a FORGE-BUF FORGE-U @ + u BYTE-COPY
    FORGE-U @ u + FORGE-U ! ;
 

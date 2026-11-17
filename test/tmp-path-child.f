@@ -5,6 +5,7 @@
 \ and its slash, `over` is one byte more, `negative` is -1 and `huge` is
 \ the maximum cell.
 
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/memory.f
 
@@ -25,7 +26,7 @@ create NAME PATH-CAP allot
    a u s" over" STR= if ROOM 1 + exit then
    a u s" negative" STR= if -1 exit then
    a u s" huge" STR= if MEM-MAX-N exit then
-   s" tmp-path-child: unknown case" 64 die ;
+   s" tmp-path-child: unknown case" EXIT-STATUS:USAGE die ;
 
 public
 

@@ -4,6 +4,7 @@
 \ (`bin/hb --load test/db/pg-cluster.f`). Loaded without the argument, the file
 \ dies naming the harness; there is no skip.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/memory.f
@@ -2084,7 +2085,7 @@ variable WARN-LINES
 \ AIO:STOP runs whatever the cases threw; a code it throws replaces theirs.
 : MAIN ( -- )
    SCRIPT-ARGC 1 <> if
-      s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die
+      s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" EXIT-STATUS:USAGE die
    then
    CONNECTIONS RESULTS CONFIGURE
    PROGRESS-CASES

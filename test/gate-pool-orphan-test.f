@@ -6,6 +6,7 @@
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f
 \ src/lib/process.f src/lib/process-fork.f test/gate-pool-orphan-test.f
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -38,12 +39,10 @@ create GPO-SLEEP-PFD 8 allot
 \ A child here runs until it is killed. One that cannot fork what its part
 \ needs - its reaper, or the child it watches - must not throw: that would
 \ unwind its copy of this test's stack and run the test on in the child. It
-\ exits GPO-REFUSED-RC instead, and its parent reports that status.
-3 constant GPO-REFUSED-RC
-
+\ exits instead, and its parent reports that status.
 : GPO-REFUSED ( n -- ) {: code:n :}
    s" gate-pool-orphan-test: a child ended on throw " type code .
-   GPO-REFUSED-RC GPO-EXIT ;
+   EXIT-STATUS:FAILURE GPO-EXIT ;
 
 : GPO-KILLED? ( PROCESS:status -- bool )
    MATCH PROCESS:status

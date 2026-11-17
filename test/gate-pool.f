@@ -37,6 +37,7 @@
 \ HB_SOCK_TMP counts from 1 too, and a root killed before its cleanup leaves
 \ its own - moves on to `<seq>-1`, `<seq>-2`, up to GT-POOL-SOCK-TRIES.
 
+require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs-mutate.f
@@ -1503,7 +1504,7 @@ variable GT-POOL-CPU-NS
 : GT-POOL-RED-DIE ( -- )
    GT-POOL-RED-REPORT
    GT-POOL-CLEANUP
-   s" test pool failed" 1 die ;
+   s" test pool failed" EXIT-STATUS:FAILURE die ;
 
 \ Green path: every slot has retired and nothing reads the captures after this,
 \ so the suite-less user's root goes here.

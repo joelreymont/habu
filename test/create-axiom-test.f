@@ -4,7 +4,6 @@
 \ DEF-ADDR-PUBLISH). Restoring `PE-PTR-A PE-OUT` reds INFER-CASE's inferred effect
 \ and both callers.
 
-require src/core/exit-status.f
 require src/lib/test.f
 require src/habu/verify-source.f
 
@@ -12,7 +11,6 @@ package CREATE-AXIOM-TEST
 private
 
 0 constant LOADED               \ what `catch` answers for a source that loaded
-70 constant REJECT-RC           \ a rejection (EXIT-STATUS:REJECTED)
 
 \ `evaluate-closed` loads a definition as a source file loads one. At top level
 \ what these publish is global, the position the inference case needs.
@@ -73,10 +71,10 @@ private
    s" CAX-B1-NAME NULL-PTR -" TEST-EVAL:N 0 T<>
 
    s" declaring the address it used to claim is refused at the token" T-LABEL
-   [: LOAD-PTR-A ;] REJECT-RC TTHROWSQ
+   [: LOAD-PTR-A ;] 70 TTHROWSQ
 
    s" and so is any other output - the row states an effect, not a wildcard" T-LABEL
-   [: LOAD-N ;] REJECT-RC TTHROWSQ
+   [: LOAD-N ;] 70 TTHROWSQ
 
    s" the definer half src/core/enums.f ENUM+ ships balances" T-LABEL
    [: LOAD-ENUM-HALF ;] LOADED TTHROWSQ
@@ -93,7 +91,7 @@ private
    s" CAX-B8" TEST-EVAL:N 5 T=
 
    s" and the row is a typed address, not a wildcard" T-LABEL
-   [: LOAD-CELL-N ;] REJECT-RC TTHROWSQ
+   [: LOAD-CELL-N ;] 70 TTHROWSQ
 
    s" a word a definer makes inside a package is read by its public reader" T-LABEL
    [: LOAD-PKG-MADE ;] LOADED TTHROWSQ
@@ -131,7 +129,7 @@ private
    mkin 0 T=  mkout 0 T=
 
    s" so a caller claiming a cell from it is refused, not certified" T-LABEL
-   [: INFER-BAD ;] REJECT-RC TTHROWSQ
+   [: INFER-BAD ;] 70 TTHROWSQ
 
    s" and the caller that claims nothing certifies and runs" T-LABEL
    [: INFER-GOOD ;] LOADED TTHROWSQ
@@ -155,8 +153,8 @@ private
 
 : VC-REJECT-CASE ( -- )
    s" parser-only definers are rejected in colon bodies" T-LABEL
-   [: VC-VARIABLE ;] REJECT-RC TTHROWSQ
-   [: VC-CONSTANT ;] REJECT-RC TTHROWSQ
+   [: VC-VARIABLE ;] 70 TTHROWSQ
+   [: VC-CONSTANT ;] 70 TTHROWSQ
 
    s" the same spellings stay inert in strings and comments" T-LABEL
    [: VC-INERT ;] LOADED TTHROWSQ ;

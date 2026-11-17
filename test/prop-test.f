@@ -379,7 +379,7 @@ variable NFC0
 
 : BAIT  ( ^u8 n -- )
    CHK
-   VERD @ -1 = IF s" prop-test: BAIT certified - checker soundness regressed!" 1 die THEN ;
+   VERD @ -1 = IF s" prop-test: BAIT certified - checker soundness regressed!" EXIT-STATUS:FAILURE die THEN ;
 : BAITS ( -- )
    s" : G ( -- ) 3 0 ?do 99 leave loop ;"            BAIT   \ leave carries an extra value
    s" : G ( i64 -- i64 ) dup 0 < if 0 0 exit then ;" BAIT   \ exit-path arity != fall-through
@@ -429,7 +429,7 @@ variable CERT-I
    PBUF PBUF-U @ CHK
    VERD @ -1 <> IF
       s" prop-test: alphabet class REJECTED: " type CERT-I @ ALPHA-CERT$ type cr
-      s" prop-test: alphabet self-test FAILED (class no longer certifies)" 1 die THEN
+      s" prop-test: alphabet self-test FAILED (class no longer certifies)" EXIT-STATUS:FAILURE die THEN
    ;] TRIAL ;
 : ALPHA-RESET ( -- )
    0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
@@ -455,7 +455,7 @@ variable CERT-I
    repeat
    ALPHA-MISSING -1 <> IF
       s" prop-test: alphabet class NEVER GENERATED within cap: " type ALPHA-MISSING ALPHA-DET$ type cr
-      s" prop-test: alphabet self-test FAILED (class unreachable)" 1 die THEN
+      s" prop-test: alphabet self-test FAILED (class unreachable)" EXIT-STATUS:FAILURE die THEN
    s" prop-test: alphabet OK (" type ALPHA-N FMT:.INT s"  op classes generated + certified)" type cr ;
 
 \ A sound checker never hands us a real false-cert to shrink, so exercise the
@@ -463,7 +463,7 @@ variable CERT-I
 : SELFTEST-SHRINK ( -- )
    0 BLEN !  s" dup drop 1+ 1- negate 1+ 1- " PROP-B+  1 NIN !  1 DOUT !
    BLEN @  [: STILLCERT? ;] SHRINK  BLEN @  >  0= IF
-      s" prop-test: self-test SHRINK BROKEN (no reduction)" 1 die THEN
+      s" prop-test: self-test SHRINK BROKEN (no reduction)" EXIT-STATUS:FAILURE die THEN
    s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ type s" )" type cr ;
 
 \ No generated seed reaches CONFIRM-FR?, so this drives it: a bool into `+` is
@@ -471,16 +471,16 @@ variable CERT-I
 : SELFTEST-FR ( -- )
    0 BLEN !  s" 0 0= + " PROP-B+  1 NIN !  1 DOUT !  REBUILD-G
    PBUF PBUF-U @ CHK  VERD @ -1 = IF
-      s" prop-test: self-test FR canary CERTIFIED (no rejected body to confirm)" 1 die THEN
+      s" prop-test: self-test FR canary CERTIFIED (no rejected body to confirm)" EXIT-STATUS:FAILURE die THEN
    CONFIRM-FR? 0= IF
-      s" prop-test: self-test FALSE-REJECT ORACLE BROKEN (rejected body did not confirm)" 1 die THEN
+      s" prop-test: self-test FALSE-REJECT ORACLE BROKEN (rejected body did not confirm)" EXIT-STATUS:FAILURE die THEN
    s" prop-test: false-reject oracle OK (a rejected body runs to its declared arity)" type cr ;
 
 \ A clean run reaches end of input, which exits 0 in batch mode.
 : NMETA ( -- n )  NSI @ NCI @ + ;
 : FINISH
-   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN
-   NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY found" 1 die THEN ;
+   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" EXIT-STATUS:FAILURE die THEN
+   NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY found" EXIT-STATUS:FAILURE die THEN ;
 variable ARG-N  variable ARG-I  variable ARG-L
 : ARG>U?  ( ^u8 -- n bool ) {: z:^ :}   \ parse a non-empty decimal argv c-string
    z ZLEN ARG-L !  ARG-L @ 0= IF 0 0 0= 0= exit THEN
@@ -490,7 +490,7 @@ variable ARG-N  variable ARG-I  variable ARG-L
       48 -  ARG-N @ 10 * +  ARG-N !
       ARG-I @ 1+ ARG-I !
    repeat  ARG-N @ 0 0= ;
-: USAGE ( -- )  s" prop-test: usage: bin/hb --load test/prop-test.f [-- seed count]" 64 die ;
+: USAGE ( -- )  s" prop-test: usage: bin/hb --load test/prop-test.f [-- seed count]" EXIT-STATUS:USAGE die ;
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
 
 : SCRIPT-ARG-U ( n -- n )
@@ -505,12 +505,12 @@ create BUF 64 allot
    0 PBUF-U !
    s" CANARY depth BASE ! 7 nip 7 depth BASE @ - CLEAR-MEAS VERIFY" P+
    MEAS-PBUF
-   LAST-TRAP @ 0= if s" prop-test: below-input guard self-test did not detect a clobber" 1 die then
+   LAST-TRAP @ 0= if s" prop-test: below-input guard self-test did not detect a clobber" EXIT-STATUS:FAILURE die then
    0 PBUF-U !
    s" CANARY depth BASE ! 7 1+ depth BASE @ - CLEAR-MEAS VERIFY" P+
    MEAS-PBUF
    LAST-TRAP @ LAST-MEAS @ 1 <> or if
-      s" prop-test: below-input guard self-test rejected an intact guard" 1 die
+      s" prop-test: below-input guard self-test rejected an intact guard" EXIT-STATUS:FAILURE die
    then ;
 
 : OUT-OK? ( -- bool )
@@ -520,8 +520,8 @@ create BUF 64 allot
    0 PBUF-U !
    s" CANARY depth BASE ! 7 dup depth BASE @ - CLEAR-MEAS VERIFY" P+
    MEAS-PBUF
-   5 DOUT ! OUT-OK? if s" prop-test: output-depth self-test accepted a mismatch" 1 die then
-   2 DOUT ! OUT-OK? 0= if s" prop-test: output-depth self-test rejected an exact match" 1 die then ;
+   5 DOUT ! OUT-OK? if s" prop-test: output-depth self-test accepted a mismatch" EXIT-STATUS:FAILURE die then
+   2 DOUT ! OUT-OK? 0= if s" prop-test: output-depth self-test rejected an exact match" EXIT-STATUS:FAILURE die then ;
 
 : BUILD-CHECK-CASE-RUNNER ( ^u8 n -- ) {: ops:^ opsu:n :}
    0 PBUF-U !
@@ -537,15 +537,15 @@ variable CASE-EXP
    [: CASE-DEF @ CASE-DEFU @ CHK
    VERD @ -1 <> if
       s" prop-test: primitive candidate rejected: " type CASE-DEF @ CASE-DEFU @ type cr
-      s" prop-test: primitive semantic case failed" 1 die
+      s" prop-test: primitive semantic case failed" EXIT-STATUS:FAILURE die
    then
    CASE-EXP @ DOUT !
    CASE-OPS @ CASE-OPSU @ BUILD-CHECK-CASE-RUNNER
    MEAS-PBUF
    OUT-OK? 0= if
       s" prop-test: primitive runtime mismatch: " type CASE-DEF @ CASE-DEFU @ type cr
-      LAST-TRAP @ if s" prop-test: primitive reached below its declared inputs" 1 die then
-      s" prop-test: primitive runtime output depth differs from its typed candidate" 1 die
+      LAST-TRAP @ if s" prop-test: primitive reached below its declared inputs" EXIT-STATUS:FAILURE die then
+      s" prop-test: primitive runtime output depth differs from its typed candidate" EXIT-STATUS:FAILURE die
    then
    ;] TRIAL ;
 
@@ -708,7 +708,7 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
 \ reproducible serially.
 : SHARD-FAIL ( ^u8 n -- )
    type s"  in shard seed " type RUN-SEED @ .
-   s" " 1 die ;
+   s" " EXIT-STATUS:FAILURE die ;
 \ Fault-injection seam for the sweep red-path self-test only. Its selected
 \ shard fails; every other shard exits cleanly without an iteration. A negative
 \ slot disables the seam.
@@ -758,7 +758,7 @@ variable SS-I  variable SS-J  variable SS-BAD
    1 SHARD-SEEDS-CHECK
    $7FFFFFFF SHARD-SEEDS-CHECK
    $61C8864F SHARD-SEEDS-CHECK
-   SS-BAD @ IF s" prop-test: shard-seed self-test FAILED (duplicate or out-of-range slot seed)" 1 die THEN
+   SS-BAD @ IF s" prop-test: shard-seed self-test FAILED (duplicate or out-of-range slot seed)" EXIT-STATUS:FAILURE die THEN
    s" prop-test: shard-seeds OK (distinct per-slot seed streams)" type cr ;
 
 \ The sweep exits with its red-shard count, so an all-red sweep cannot satisfy
@@ -772,7 +772,7 @@ variable SS-I  variable SS-J  variable SS-BAD
    PROC-FORK:RAW {: p:pid :}
    p PID>N 0= IF SWEEP-RED-CHILD THEN
    p PROCESS:WAIT PROCESS:STATUS>RC RC>N 1 <> IF
-      s" prop-test: sweep-red self-test FAILED (a red shard did not fail the sweep)" 1 die THEN
+      s" prop-test: sweep-red self-test FAILED (a red shard did not fail the sweep)" EXIT-STATUS:FAILURE die THEN
    s" prop-test: sweep-red OK (one red shard fails the sweep)" type cr ;
 
 : RUN-DEFAULT ( -- )

@@ -294,7 +294,7 @@ create MSG-TEXT MSG-LEN allot
    TEST-FAIL @ 0 = if
       s" argv-test: ok (" type TEST-N @ FMT:.INT s"  assertions)" type cr
    else
-      s" argv-test: failures" 1 die
+      s" argv-test: failures" EXIT-STATUS:FAILURE die
    then ;
 
 : ARGV-TEST-MAIN ( -- )

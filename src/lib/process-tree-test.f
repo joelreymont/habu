@@ -5,6 +5,7 @@
 \ a zombie or missing pid leaves ESRCH, a sandbox denial EPERM). The refusal
 \ cases are macOS only: sandbox-exec makes the kernel refuse.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -349,7 +350,7 @@ variable IDLE-COPY-U
 
 : SANDBOX$ ( -- ^u8 n )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
-      none OF s" process-tree-test: required executable missing on PATH: sandbox-exec" 1 die ENDOF
+      none OF s" process-tree-test: required executable missing on PATH: sandbox-exec" EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF
    ;MATCH
    SANDBOX swap ;
@@ -438,7 +439,7 @@ public
       0 SCRIPT-ARGV$ s" walker" STR= if WALK exit then
       0 SCRIPT-ARGV$ s" capture" STR= if CAPTURE-WALK exit then
       0 SCRIPT-ARGV$ s" pty" STR= if PTY-WALK exit then
-      s" process-tree-test: unknown mode" 64 die
+      s" process-tree-test: unknown mode" EXIT-STATUS:USAGE die
    then
    CASES
    T-REPORT ;

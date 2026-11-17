@@ -186,7 +186,7 @@ variable GE-EVAL-SRC-U
    \ one inside the child, which then exits EXIT-STATUS:TIMEOUT.
    GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
    GT-RC@ EXIT-STATUS:TIMEOUT = if E-PROC-TIMEOUT throw then
-   s" native test failed" 1 die ;
+   s" native test failed" EXIT-STATUS:FAILURE die ;
 
 \ The entry's exit status for an rc check. A timed-out entry has none, and
 \ GT-RC@ would throw before any report, so it fails here: GE-FAIL prints its

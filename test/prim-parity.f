@@ -5,6 +5,7 @@
 \ set is data: `<overload> CASES <name>` ... `;CASES`, each line inputs, outputs
 \ and a shape (`3 4 7 NN-N`); the overload ordinal picks the row.
 
+require src/core/exit-status.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -15,7 +16,6 @@ require src/lib/ieee754.f                  \ the bit shapes' casts
 package PARITY
 private
 
-1 constant PARITY-RC
 $200 constant COVER-CAP                 \ >= the table's row capacity
 $40 constant SUBJ-CAP
 $80 constant LBL-CAP
@@ -76,7 +76,7 @@ $3A constant COLON-B
    SUBJ-BUF SUBJ-U @ ;
 
 : SUBJ! ( ^u8 n -- ) {: a:^ u:n :}
-   u SUBJ-CAP > IF s" prim-parity: primitive name too long" PARITY-RC die THEN
+   u SUBJ-CAP > IF s" prim-parity: primitive name too long" EXIT-STATUS:FAILURE die THEN
    a SUBJ-BUF u BYTE-COPY
    u SUBJ-U ! ;
 
@@ -91,10 +91,10 @@ $3A constant COLON-B
 
 : NO-ARM ( ^u8 n ^u8 n -- ) {: ka:^ ku:n na:^ nu:n :}
    s" prim-parity: no " type ka ku type s"  arm for " type na nu type cr
-   s" prim-parity: unwired primitive" PARITY-RC die ;
+   s" prim-parity: unwired primitive" EXIT-STATUS:FAILURE die ;
 
 : LBL ( ^u8 n -- ) {: ta:^ tu:n :}   \ "<subject> <tail>" as the failure label
-   SUBJ-U @ tu + 1+ LBL-CAP > IF s" prim-parity: label too long" PARITY-RC die THEN
+   SUBJ-U @ tu + 1+ LBL-CAP > IF s" prim-parity: label too long" EXIT-STATUS:FAILURE die THEN
    SUBJ-BUF LBL-BUF SUBJ-U @ BYTE-COPY
    $20 LBL-BUF SUBJ-U @ + c!
    ta LBL-BUF SUBJ-U @ + 1+ tu BYTE-COPY
@@ -369,7 +369,7 @@ $3A constant COLON-B
 
 : MARK-PAIRED ( ^u8 n -- )
    0 FIND-ROW dup 0 < IF
-      s" prim-parity: missing paired primitive" PARITY-RC die
+      s" prim-parity: missing paired primitive" EXIT-STATUS:FAILURE die
    THEN
    MARK ;
 
@@ -377,23 +377,23 @@ public
 
 : CASES ( n -- ) {: overload:n :}       \ <overload> CASES <name> ... ;CASES
    parse-name {: a:^ u:n :}
-   u 0= IF s" prim-parity: CASES needs a primitive name" PARITY-RC die THEN
+   u 0= IF s" prim-parity: CASES needs a primitive name" EXIT-STATUS:FAILURE die THEN
    a u SUBJ!
    a u overload FIND-ROW SUBJ-ROW !
    SUBJ-ROW @ 0 < IF
       s" prim-parity: no table row for " type SUBJ$ type cr
-      s" prim-parity: unknown primitive overload" PARITY-RC die
+      s" prim-parity: unknown primitive overload" EXIT-STATUS:FAILURE die
    THEN
    SUBJ-ROW @ PRIM-ROW? 0= IF
       s" prim-parity: not an effect row: " type SUBJ$ type cr
-      s" prim-parity: wrong row kind" PARITY-RC die
+      s" prim-parity: wrong row kind" EXIT-STATUS:FAILURE die
    THEN
    0 SUBJ-N ! ;
 
 : ;CASES ( -- )
    SUBJ-N @ 0= IF
       s" prim-parity: empty case set for " type SUBJ$ type cr
-      s" prim-parity: empty case set" PARITY-RC die
+      s" prim-parity: empty case set" EXIT-STATUS:FAILURE die
    THEN
    SUBJ-ROW @ MARK
    0 SUBJ-U ! ;
@@ -565,7 +565,7 @@ private
 
 : MAP-FITS ( -- )
    PRIM-SPEC:COUNT COVER-CAP > IF
-      s" prim-parity: table outgrew the coverage map" PARITY-RC die
+      s" prim-parity: table outgrew the coverage map" EXIT-STATUS:FAILURE die
    THEN ;
 
 MAP-FITS

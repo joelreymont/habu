@@ -5,6 +5,7 @@
 \ it waits in pg_sleep, a backend busy for it, until killed or the harness's
 \ case deadline.
 
+require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/fs.f
 require src/lib/aio.f
@@ -13,7 +14,6 @@ require src/lib/test/fifo.f
 
 package PG-HOLD
 
-64 constant USAGE-RC
 7 constant SHM-LINE                 \ LOCK_FILE_LINE_SHMEM_KEY
 $1000 constant PIDFILE-CAP
 10 constant NEWLINE
@@ -24,8 +24,8 @@ variable HOLD                       \ the FIFO's write end
 
 : REPORT ( ^u8 n -- ) {: a:^ u:n :}
    HOLD @ {: fd:n :}
-   fd a u write u <> if s" pg-hold: report refused" USAGE-RC die then
-   fd s\" \n" write 1 <> if s" pg-hold: report refused" USAGE-RC die then ;
+   fd a u write u <> if s" pg-hold: report refused" EXIT-STATUS:IOERR die then
+   fd s\" \n" write 1 <> if s" pg-hold: report refused" EXIT-STATUS:IOERR die then ;
 
 \ The offset of line n, counted from 1, in the first u bytes of TEXT; -1 when
 \ they hold fewer lines.
@@ -40,7 +40,7 @@ variable HOLD                       \ the FIFO's write end
 
 : LINE$ ( n n -- ^u8 n ) {: line:n u:n :}
    line u LINE-AT {: at:n :}
-   at 0 < if s" pg-hold: postmaster.pid is short" 1 die then
+   at 0 < if s" pg-hold: postmaster.pid is short" EXIT-STATUS:FAILURE die then
    at begin dup u < if TEXT over + c@ NEWLINE <> else false then while 1+ repeat
    {: stop:n :}
    TEXT at + stop at - ;
@@ -51,7 +51,7 @@ using PG
    1 1 CONFIGURE
    0 SCRIPT-ARGV$ CONNECT MATCH PG:connect-result
       connected OF ENDOF
-      refused OF type cr s" pg-hold: connect refused" 1 die ENDOF
+      refused OF type cr s" pg-hold: connect refused" EXIT-STATUS:UNAVAILABLE die ENDOF
    ;MATCH ;
 
 \ The one value a one-row, one-column query answers, reported.
@@ -69,14 +69,14 @@ using PG
 : MAIN ( -- )
    s" PG_HOLD_FIFO" TEST-FIFO:WRITER FD>N HOLD !
    SCRIPT-ARGC 1 <> if
-      s" pg-hold: test/db/pg-cluster.f runs this with a conninfo" USAGE-RC die
+      s" pg-hold: test/db/pg-cluster.f runs this with a conninfo" EXIT-STATUS:USAGE die
    then
    AIO:START
    OPEN {: c :}
    c s" show unix_socket_directories" REPORT-SHOW
    c REPORT-SEGMENT
    c s" select pg_sleep(600)" [: ;] WITH-RESULT
-   s" pg-hold: the sleep ended before the row was killed" 1 die ;
+   s" pg-hold: the sleep ended before the row was killed" EXIT-STATUS:FAILURE die ;
 
 MAIN
 

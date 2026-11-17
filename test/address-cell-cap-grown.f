@@ -1,4 +1,5 @@
 \ Grow past the fixed band without losing either old or new declarations.
+require src/core/exit-status.f
 require src/lib/test.f
 require src/habu/address-cells.f
 
@@ -24,7 +25,7 @@ variable BASE-N
 : RUN ( -- )
    T-RESET
    ROWS dup BASE-N !
-   ROW-N >= if s" address-cell-growth: fixture has no new rows" 76 die then
+   ROW-N >= if s" address-cell-growth: fixture has no new rows" EXIT-STATUS:FAILURE die then
    BASE-N @ 0 ?do i ADDRESS-CELLS:ROW@ SAVED i cells + ! loop
    ROW-N BASE-N @ - 0 ?do SLOTS i cells + ptr-cell-mark loop
    ROWS ROW-N T=

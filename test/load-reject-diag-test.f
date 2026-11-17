@@ -26,7 +26,6 @@ require src/lib/engine-candidate.f
 package LOAD-REJECT-TEST
 
 $1000 constant CAP
-70 constant REJECT-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
 
@@ -371,7 +370,7 @@ undefine include
    ERR$ name nameu CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ REJECT-RC T= ;
+   RC @ 70 T= ;
 
 : ASSERT-OK ( -- )
    EXITED @ TTRUE
@@ -689,24 +688,24 @@ undefine include
    s" a definer's missing signature names its class, token and line" T-LABEL
    s" : LRD-MK ( n -- ) create , does> @ ;"
    s" error[E-MISSING-SIGNATURE]: `does>` has no closed `( -- )` signature"
-      s" :1:28" REJECT-RC CODE-REJECT-AT
+      s" :1:28" 70 CODE-REJECT-AT
    s" defer LRD-D"
    s" error[E-MISSING-SIGNATURE]: `LRD-D` has no closed `( -- )` signature"
-      s" :1:7" REJECT-RC CODE-REJECT-AT ;
+      s" :1:7" 70 CODE-REJECT-AT ;
 
 \ Reopening a package the engine sealed stops at the package's name.
 : TEST-SEALED-PACKAGE ( -- )
    s" a sealed package's reopening names its class, package and line" T-LABEL
    S\" package NDICT\n;package"
    s" error[E-SEALED-PACKAGE]: `NDICT` would change a sealed package"
-      s" :1:9" REJECT-RC CODE-REJECT-AT ;
+      s" :1:9" 70 CODE-REJECT-AT ;
 
 \ A definition into a package the engine sealed stops at its whole name.
 : TEST-SEALED-DEFINE ( -- )
    s" a definition into a sealed package names its class, whole name and line" T-LABEL
    s" : NDICT:FOO ( -- ) ;"
    s" error[E-SEALED-PACKAGE]: `NDICT:FOO` would change a sealed package"
-      s" :1:3" REJECT-RC CODE-REJECT-AT ;
+      s" :1:3" 70 CODE-REJECT-AT ;
 
 \ A name a sealed package already holds is refused as sealed, as the check
 \ refuses it: the seal is asked before the duplicate.
@@ -714,7 +713,7 @@ undefine include
    s" a duplicate definition into a sealed package names the seal" T-LABEL
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\n;package\n: SP:A ( -- ) ;\n"
    s" error[E-SEALED-PACKAGE]: `SP:A` would change a sealed package"
-      s" :6:3" REJECT-RC CODE-REJECT-AT
+      s" :6:3" 70 CODE-REJECT-AT
    s" a duplicate export into a sealed package names the seal" T-LABEL
    SB-RESET
    S\" package SP2\npublic\n: A ( -- ) ;\n" SB-APPEND
@@ -722,7 +721,7 @@ undefine include
    S\" package SP\npublic\n: A ( -- ) ;\nseal-package\nEXPORT SP2:A\n" SB-APPEND
    S\" s\" ACCEPTED\" type cr\n;package\n" SB-APPEND
    SB$ s" error[E-SEALED-PACKAGE]: `SP2:A` would change a sealed package"
-      s" :10:8" REJECT-RC CODE-REJECT-AT ;
+      s" :10:8" 70 CODE-REJECT-AT ;
 
 \ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
 \ the file's bytes, so its rejection is placed at that `evaluate`, with the
@@ -770,7 +769,7 @@ undefine include
    ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
    BODY$ s" :4:3" ASSERT-AT
    EXITED @ TTRUE
-   RC @ REJECT-RC T= ;
+   RC @ 70 T= ;
 
 \ A structure the checker finds open at a body's closing `;`, a plain body's or
 \ a does> clause's, is placed at that `;` (column 1 of PLACE's line).
@@ -818,7 +817,7 @@ undefine include
    s" : LRDREP:MAKE ( n -- n ) 1 + ;" s" already defined" ASSERT-EVALUATED
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ REJECT-RC T= ;
+   RC @ 70 T= ;
 
 : TEST-REPLAY-TASK ( -- )
    s" a replay inside a definition while a task is live is rejected" T-LABEL
@@ -828,7 +827,7 @@ undefine include
    BODY$ s" :10:15" ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ REJECT-RC T=
+   RC @ 70 T=
    s" a task started inside a replay of a definition is rejected and the definition completes" T-LABEL
    BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: GO s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n: EV ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word [: RPL ;] catch . ;\ns\" OUTER\" EV 81 ;\nOUTER . cr\n: AFTER ( -- n ) 82 ;\nAFTER . cr\n" FS:WRITE-ALL
    BODY$ RUN
@@ -847,7 +846,7 @@ undefine include
    BODY$ s" :4:1" ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ REJECT-RC T= ;
+   RC @ 70 T= ;
 
 \ The VERIFY:ON-CANDIDATE hook starts a composition while the one labelled
 \ lrd-a is open; the record stands at the start of lrd-a.
@@ -858,7 +857,7 @@ undefine include
    ERR$ s" error[E-VERIFY-WINDOW]: `VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE` ran while a source composition is open" COUNT-SUB 1 T=
    s" lrd-a" s" :1:1" ASSERT-AT
    EXITED @ TTRUE
-   RC @ REJECT-RC T= ;
+   RC @ 70 T= ;
 
 \ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
@@ -946,7 +945,7 @@ undefine include
 \ symbolic link.
 : ASSERT-RESIDUE ( ^u8 n ^u8 n -- ) {: msg:^ msgu:n at:^ atu:n :}
    EXITED @ TTRUE
-   RC @ REJECT-RC T=
+   RC @ 70 T=
    OUT-U @ 0 T=
    ERR$ s" error[E-EVAL-RESIDUE]: " STARTS-WITH? TTRUE
    ERR$ msg msgu CONTAINS? TTRUE
@@ -1030,7 +1029,7 @@ undefine include
    S\"   = expected: n\n  = found: (nothing)\n" SB-APPEND
    S\"   = declared: n -- n\n  = inferred: n --\n" SB-APPEND
    S\"   = help: leave n after `drop`, or declare ( n -- )\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED
+   70 ASSERT-REJECTED
    s" an undefined word prints one E-UNDEFINED" T-LABEL
    ONCE-UNDEF$ RUN
    SB-RESET
@@ -1040,7 +1039,7 @@ undefine include
    S\"   |            ^^^ not found\n" SB-APPEND
    s"   = help: define `FOO` before this point," SB-APPEND
    S\"  or check its spelling\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED
+   70 ASSERT-REJECTED
    s" a rejected definition prints one JSON line" T-LABEL
    ONCE-JSON$ RUN
    SB-RESET
@@ -1055,7 +1054,7 @@ undefine include
    S\" ,\"notes\":{\"expected\":\"n\",\"found\":\"(nothing)\"" SB-APPEND
    S\" ,\"declared\":\"n -- n\",\"inferred\":\"n --\"}" SB-APPEND
    S\" ,\"help\":\"leave n after `drop`, or declare ( n -- )\"}\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 : TEST-CAPTURE-RELEASE ( -- )
    s" a rejection under a capture that ends the run is printed" T-LABEL
@@ -1066,7 +1065,7 @@ undefine include
    S\" :2:1\n  |\n2 | CP-NOPE\n  | ^^^^^^^ not found\n" SB-APPEND
    s"   = help: define `CP-NOPE` before this point," SB-APPEND
    S\"  or check its spelling\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 : TEST-CAPTURE-SEALED ( -- )
    s" a sealed package's rejection under a capture is printed" T-LABEL
@@ -1079,7 +1078,7 @@ undefine include
    S\" :5:9\n  |\n5 | package LRD-SEALED\n  |         ^^^^^^^^^^ sealed\n" SB-APPEND
    s"   = help: put this in a package of your own:" SB-APPEND
    S\"  a sealed package takes no new words\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 \ An undefined name that is the definition's own gets the `recurse` help only
 \ as a call in its body: a tick of `recurse` gives no xt, and `recurse` in a
@@ -1095,7 +1094,7 @@ undefine include
    S\"   |                                          ^^^^^^^^ not found\n" SB-APPEND
    s"   = help: `LRD-FACT` is the word this definition defines:" SB-APPEND
    S\"  call it from its own body with `recurse`\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED
+   70 ASSERT-REJECTED
    s" a tick of the definition's own name is told to define it" T-LABEL
    BODY$ s" : LRD-TICK ( -- xt ) ['] LRD-TICK ;" FS:WRITE-ALL
    BODY$ RUN
@@ -1106,7 +1105,7 @@ undefine include
    S\"   |                          ^^^^^^^^ not found\n" SB-APPEND
    s"   = help: define `LRD-TICK` before this point," SB-APPEND
    S\"  or check its spelling\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED
+   70 ASSERT-REJECTED
    s" a quotation's call of the definition's own name is told to define it" T-LABEL
    BODY$ s" : LRD-QUOT ( -- ) [: LRD-QUOT ;] drop ;" FS:WRITE-ALL
    BODY$ RUN
@@ -1117,7 +1116,7 @@ undefine include
    S\"   |                      ^^^^^^^^ not found\n" SB-APPEND
    s"   = help: define `LRD-QUOT` before this point," SB-APPEND
    S\"  or check its spelling\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 \ The top-level lrd-held on line 5, after LRD-HOLD's public lrd-held,
 \ is told LRD-HOLD's qualified form, not `recurse`: no body is open.
@@ -1133,7 +1132,7 @@ undefine include
    s"   = help: `lrd-held` is public in `LRD-HOLD`: " SB-APPEND
    s" write `LRD-HOLD:lrd-held`, or call it inside " SB-APPEND
    S\" `using LRD-HOLD` … `;using`\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 \ The keyword starts line 1, which holds LINE.
 : BODY-ONLY-EXPECT ( ^u8 n ^u8 n -- ) {: word:^ wordu:n line:^ lineu:n :}
@@ -1152,31 +1151,31 @@ undefine include
    s" a top-level if is told to move into a definition" T-LABEL
    BODY$ S\" if\n" FS:WRITE-ALL
    BODY$ RUN
-   s" if" s" if" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" if" s" if" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f tells a top-level if to move into a definition" T-LABEL
    BODY$ CHECK-RUN
-   s" if" s" if" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" if" s" if" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" an unclosed top-level {: is told to move into a definition" T-LABEL
    BODY$ S\" {: a\n" FS:WRITE-ALL
    BODY$ RUN
-   s" {:" s" {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" {:" s" {: a" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f tells an unclosed top-level {: to move into a definition"
    T-LABEL
    BODY$ CHECK-RUN
-   s" {:" s" {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" {:" s" {: a" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" a top-level {: require :} is told to move into a definition" T-LABEL
    BODY$ S\" {: require :}\n" FS:WRITE-ALL
    BODY$ RUN
-   s" {:" s" {: require :}" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" {:" s" {: require :}" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f tells a top-level {: require :} to move into a definition"
    T-LABEL
    BODY$ CHECK-RUN
-   s" {:" s" {: require :}" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" {:" s" {: require :}" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f tells an if before an unclosed {: to move into a definition"
    T-LABEL
    BODY$ S\" if {: a\n" FS:WRITE-ALL
    BODY$ CHECK-RUN
-   s" if" s" if {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
+   s" if" s" if {: a" BODY-ONLY-EXPECT  70 ASSERT-REJECTED ;
 
 : TEST-TOP-LOCALS-END ( -- )
    s" a top-level :} is told it closes no locals list" T-LABEL
@@ -1188,36 +1187,36 @@ undefine include
    S\" :1:1\n  |\n1 | :}\n  | ^^ no `{:` open\n" SB-APPEND
    S\"   = help: delete it: a locals list is written only inside a definition\n\n"
       SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 \ Under --all-errors the scan goes on past the keyword, but not into its operand.
 : TEST-BODY-OPERAND ( -- )
    s" tools/check.f --all-errors reads past a top-level [char]'s operand" T-LABEL
    BODY$ S\" [char] zzq\n" FS:WRITE-ALL
    BODY$ CHECK-ALL-RUN
-   s" [char]" s" [char] zzq" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" [char]" s" [char] zzq" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f --all-errors reads past a top-level {: group" T-LABEL
    BODY$ S\" {: a b :}\n" FS:WRITE-ALL
    BODY$ CHECK-ALL-RUN
-   s" {:" s" {: a b :}" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" {:" s" {: a b :}" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f --all-errors reads past a top-level {: to the source's end" T-LABEL
    BODY$ S\" {: a\n" FS:WRITE-ALL
    BODY$ CHECK-ALL-RUN
-   s" {:" s" {: a" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" {:" s" {: a" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f --all-errors reads a top-level [type]'s operand as a type" T-LABEL
    BODY$ S\" [type] box< n >\n" FS:WRITE-ALL
    BODY$ CHECK-ALL-RUN
-   s" [type]" s" [type] box< n >" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED
+   s" [type]" s" [type] box< n >" BODY-ONLY-EXPECT  70 ASSERT-REJECTED
    s" tools/check.f --all-errors ends a top-level [type]'s operand before ;]" T-LABEL
    BODY$ S\" [type] ;]\n" FS:WRITE-ALL
    BODY$ CHECK-ALL-RUN
    ERR$ s" error[E-UNDEFINED]" COUNT-SUB 2 T=
    ERR$ s" `;]` works only inside a definition" CONTAINS? TTRUE
-   RC @ REJECT-RC T=
+   RC @ 70 T=
    s" tools/check.f --all-errors reads a top-level is past a comment" T-LABEL
    BODY$ S\" is ( c ) zzq\n" FS:WRITE-ALL
    BODY$ CHECK-ALL-RUN
-   s" is" s" is ( c ) zzq" BODY-ONLY-EXPECT  REJECT-RC ASSERT-REJECTED ;
+   s" is" s" is ( c ) zzq" BODY-ONLY-EXPECT  70 ASSERT-REJECTED ;
 
 \ The record of keyword KW named at column COL of the one line SRC.
 : KEYWORD-EXPECT ( ^u8 n ^u8 n n -- )
@@ -1239,9 +1238,9 @@ undefine include
    {: kw:^ kwu:n src:^ srcu:n col:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
-   kw kwu src srcu col KEYWORD-EXPECT  REJECT-RC ASSERT-REJECTED
+   kw kwu src srcu col KEYWORD-EXPECT  70 ASSERT-REJECTED
    BODY$ CHECK-RUN
-   kw kwu src srcu col KEYWORD-EXPECT  REJECT-RC ASSERT-REJECTED ;
+   kw kwu src srcu col KEYWORD-EXPECT  70 ASSERT-REJECTED ;
 
 : TEST-KEYWORD-OPERAND ( -- )
    s" a top-level tick of if is told it is not a word" T-LABEL
@@ -1265,7 +1264,7 @@ undefine include
    S\"   |                    ^^^^^^^^ not found\n" SB-APPEND
    s"   = help: define `LRD-MADE` before this point," SB-APPEND
    S\"  or check its spelling\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 : TEST-SHADOW ( -- )
    s" a bare word a global and a used package share is rejected" T-LABEL
@@ -1278,7 +1277,7 @@ undefine include
    s"   = help: write `LRD-SH:LRD-SHADOW` to call the package's word," SB-APPEND
    S\"  or rename one of the two: the global word has no qualified form\n\n"
    SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 \ A path no file name holds is rejected by the loader word, labelled with why.
 : TEST-EMPTY-PATH ( -- )
@@ -1290,7 +1289,7 @@ undefine include
    BODY$ SB-APPEND  S\" :1:6\n  |\n1 | s\" \" included\n" SB-APPEND
    S\"   |      ^^^^^^^^ passes a path that is empty\n  = help: pass a path of 1 to " SB-APPEND
    PATH-CAP FMT:SB-INT  S\"  bytes\n\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED
+   70 ASSERT-REJECTED
    s" an empty path is rejected in one JSON line under REJECTION:JSON" T-LABEL
    BODY$ S\" -1 REJECTION:JSON !\ns\" \" included" FS:WRITE-ALL
    BODY$ RUN
@@ -1302,7 +1301,7 @@ undefine include
    S\" ,\"token\":\"included\",\"source_line\":\"s\\\" \\\" included\"" SB-APPEND
    S\" ,\"label\":\"passes a path that is empty\",\"help\":\"pass a path of 1 to " SB-APPEND
    PATH-CAP FMT:SB-INT  S\"  bytes\"}\n" SB-APPEND
-   REJECT-RC ASSERT-REJECTED ;
+   70 ASSERT-REJECTED ;
 
 \ SRC as the body exits EXIT-STATUS:UNCAUGHT, its stderr opening with the line
 \ SB holds and then its help: the record has no place.
@@ -1375,7 +1374,7 @@ variable LONG-U
    s" check.f loads nothing for a body's include" T-LABEL
    MISS$ CHECK-RUN
    EXITED @ TTRUE
-   RC @ REJECT-RC T=
+   RC @ 70 T=
    ERR$ s" E-UNMODELED-IMMEDIATE" COUNT-SUB 1 T=
    ERR$ s" E-MISSING-SOURCE" CONTAINS? TFALSE ;
 
