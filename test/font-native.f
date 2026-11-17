@@ -1,6 +1,7 @@
 \ font-native.f - native HarfBuzz FONT test on each platform's installed fonts:
 \ on Linux, DejaVu Sans, URW's Nimbus Roman and Noto Color Emoji, each found
-\ by its file name under /usr/share/fonts.
+\ by its file name under fontconfig's default directories: /usr/share/fonts,
+\ /usr/local/share/fonts, then $XDG_DATA_HOME/fonts or ~/.local/share/fonts.
 require src/lib/font.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -14,7 +15,15 @@ TYPED-VARIABLE FACE FONT:font
 TYPED-VARIABLE COLOR-FACE FONT:font
 TYPED-VARIABLE IMAGE FONT:image
 
-: FONT-ROOT$ ( -- ^u8 n ) s" /usr/share/fonts" ;
+PATH-CAP BUFFER: USER-ROOT
+
+: USER-ROOT$ ( -- ^u8 n )
+   s" XDG_DATA_HOME" GETENV dup 0 > if
+      s" fonts"
+   else
+      2drop s" HOME" GETENV s" .local/share/fonts"
+   then
+   USER-ROOT FS:JOIN-PATH USER-ROOT swap ;
 
 \ The walk joins every path within PATH-CAP bytes, so FOUND holds any it gives.
 PATH-CAP BUFFER: FOUND
@@ -31,14 +40,19 @@ variable WANT-U
    a u FS:BASENAME WANT$ STR= 0= if exit then
    a FOUND u BYTE-COPY u FOUND-U ! ;
 
-\ The path is valid until the next FIND-FONT. A missing FONT-ROOT$ is a file
-\ not found: a case labelled with the file's name fails, the path is empty.
+: WALK-ROOT ( ^u8 n -- ) {: a:^ u:n :}
+   FOUND-U @ 0<> if exit then
+   a u FS:DIR? 0= if exit then
+   a u [: KEEP-MATCH ;] FS:WALK-FILES ;
+
+\ The path is valid until the next FIND-FONT. A file under no root is not
+\ found: a case labelled with the file's name fails, the path is empty.
 : FIND-FONT ( ^u8 n -- ^u8 n )
    {: name:^ len:n :}
    name WANT-P ! len WANT-U ! 0 FOUND-U !
-   FONT-ROOT$ FS:DIR? if
-      FONT-ROOT$ [: KEEP-MATCH ;] FS:WALK-FILES
-   then
+   s" /usr/share/fonts" WALK-ROOT
+   s" /usr/local/share/fonts" WALK-ROOT
+   USER-ROOT$ WALK-ROOT
    FOUND-U @ 0= if
       name len T-LABEL false T-ASSERT T-LABEL-CLEAR
    then
