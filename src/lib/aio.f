@@ -169,7 +169,19 @@ create KIND-OPS
 : KIND>OP ( n -- n ) {: kind:n :}
    KIND-OPS kind cells + @ ;
 
-11 cells constant HOST-BYTES
+\ What REC.HOST holds on Darwin; the Linux backend keeps nothing there.
+BEGIN-STRUCTURE MAC-REC-BYTES
+   CELL +FIELD MR.FD
+   CELL +FIELD MR.EVENTS
+   CELL +FIELD MR.COUNT
+   CELL +FIELD MR.OFFSET
+   CELL +FIELD MR.DEADLINE
+   CELL +FIELD MR.OWNS-FLAGS
+   CELL +FIELD MR.OLD-FLAGS
+   CELL +FIELD MR.SEEKABLE
+   CELL +FIELD MR.GEN               \ the generation MAC-PREPARE polled it at, or -1
+   CELL +FIELD MR.SLOT              \ its descriptor's pollfd entry that turn, or -1
+END-STRUCTURE
 
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.STATE
@@ -192,7 +204,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.BUF
    CELL +FIELD REC.BUF-LEN
    SPEC-BYTES +FIELD REC.SPEC       \ the timespec a TIMEOUT or a link submits
-   HOST-BYTES +FIELD REC.HOST       \ the backend's own fields
+   MAC-REC-BYTES +FIELD REC.HOST    \ the backend's own fields
 END-STRUCTURE
 
 \ The records live in a chain of chunks: a link cell, then the records. The

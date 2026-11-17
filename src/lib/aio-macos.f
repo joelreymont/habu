@@ -25,26 +25,6 @@ private
 \ and committed only as far as the entries in use.
 10240 constant OPEN-MAX
 
-BEGIN-STRUCTURE MAC-REC-BYTES
-   CELL +FIELD MR.FD
-   CELL +FIELD MR.EVENTS
-   CELL +FIELD MR.COUNT
-   CELL +FIELD MR.OFFSET
-   CELL +FIELD MR.DEADLINE
-   CELL +FIELD MR.OWNS-FLAGS
-   CELL +FIELD MR.OLD-FLAGS
-   CELL +FIELD MR.SEEKABLE
-   CELL +FIELD MR.GEN               \ the generation MAC-PREPARE polled it at, or -1
-   CELL +FIELD MR.SLOT              \ its descriptor's pollfd entry that turn, or -1
-END-STRUCTURE
-
-\ These fields live in the record's REC.HOST; one past it is this file's defect.
-: MAC-FITS ( -- )
-   MAC-REC-BYTES HOST-BYTES > if
-      s" aio: Darwin record fields past REC.HOST" 70 die
-   then ;
-MAC-FITS
-
 \ Per descriptor, under AIO-LOCK: the active records on it, and its pollfd
 \ entry in the turn that wrote it. A mapping indexed by descriptor, grown to
 \ the highest one submitted and given back with the loop.
