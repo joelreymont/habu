@@ -33,7 +33,7 @@ ERROR:CODE E-JSON-READ-EOF
 ERROR:CODE E-JSON-READ-COLON
 -3909 s" no ',' or matching container close where one belongs"
 ERROR:CODE E-JSON-READ-COMMA
--3910 s" an accessor on the wrong token kind, or a dst too small"
+-3910 s" an accessor on the wrong token kind, or a call the reader's phase does not allow"
 ERROR:CODE E-JSON-READ-STATE
 
 package JSON
@@ -754,7 +754,7 @@ public
 private
 
 : WRITE-BYTE ( ^cursor n -- ) {: state:^ byte:n :}
-   state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if E-JSON-READ-STATE throw then
+   state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if E-SPAN-CAPACITY throw then
    byte state CURSOR-DST @ state CURSOR-OUT @ + c! ;
 
 : MATCH-BYTE ( ^cursor n -- ) {: state:^ byte:n :}
@@ -837,7 +837,7 @@ private
             d over + c@ b <> if 0 state CURSOR-MATCHED ! then
          then
       else
-         dup cap >= if E-JSON-READ-STATE throw then
+         dup cap >= if E-SPAN-CAPACITY throw then
          d over + b swap c!
       then
       1+ step
@@ -883,8 +883,8 @@ private
 
 public
 
-\ Decodes into non-null caller storage; a negative or short capacity is
-\ E-JSON-READ-STATE.
+\ Decodes into non-null caller storage; a negative capacity is
+\ E-JSON-READ-STATE, a string longer than it E-SPAN-CAPACITY.
 : READ-STR ( JSON:reader ^u8 n -- JSON:reader n )
    {: dst:^ cap:n :}
    READER>STATE dst cap STR-INNER ;
