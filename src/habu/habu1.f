@@ -1452,11 +1452,11 @@ public
    11 11 off LDR,
    done LBL, ;
 
-\ Cut the checker's records back to the mark at [base+off],
-\ through x9; a 0 mark or no owner branches to kept, which the caller places.
-: RETRACT-TO ( n n label -- ) {: base:n off:n kept:label :}
+\ Cut back to the mark at [base+off] through the owner's cut operation at op,
+\ through x9; a 0 mark or no operation branches to kept, which the caller places.
+: RETRACT-TO ( n n n label -- ) {: base:n off:n op:n kept:label :}
    9 base off LDR,  9 kept CBZ,
-   NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF FIND  11 kept CBZ,
+   op FIND  11 kept CBZ,
       9 9 1 SUBI,  9 G-PUSH  11 BLR, ;
 
 \ x11 = the operation at off in the target owner's record; no record, or a 0
@@ -1736,9 +1736,8 @@ public
    DP-HIGH LABEL@ LBL, ;
 
 private
-\ Runs before a path stores the new DP held in register new: the `,` run has
-\ ended, and the release high-water is at least the DP the DP cell holds when
-\ that is above new. Clobbers the two scratch registers.
+\ Before DP becomes register new: ends the `,` run and raises the release
+\ high-water to the DP when that is above new. Clobbers both scratch registers.
 : DP-LOWER, ( n n n -- )
    {: new:n t:n u:n :}
    LBL {: done:label :}

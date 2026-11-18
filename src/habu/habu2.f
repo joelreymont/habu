@@ -2105,7 +2105,7 @@ private
 \ EVALD reaches 0 or the nearest handler (x11) is inside the current frame;
 \ delivery then matches the non-evaluate path.
 : EM-EVAL-THROW-RECOVER ( -- )
-   LBL LBL LBL {: owned:label scope:label kept:label :}
+   LBL LBL LBL LBL {: owned:label scope:label rows:label kept:label :}
    LBL {: retired:label :}
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !
@@ -2140,9 +2140,13 @@ private
          scope B,
       owned LBL,
       SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,  30 SP 24 STR,   \ x30 for the exits below
-      \ The checker's records go with the definitions, back to the end as the
-      \ buffer began (EVAL-FRAME:ROWS: end+1, 0 with no owner then).
-      13 EVAL-FRAME:ROWS kept DECL-OWNER:RETRACT-TO
+      \ The checker's records and held facts go with the definitions, back to
+      \ the ends as the buffer began (EVAL-FRAME:ROWS and EVAL-FRAME:HELD: end+1,
+      \ 0 with no owner then). The held cut comes before LRETIRE holds retirements.
+      13 EVAL-FRAME:ROWS NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF rows DECL-OWNER:RETRACT-TO
+      rows LBL,
+      13 SP 8 LDR,
+      13 EVAL-FRAME:HELD NCOMP-DISPATCH:DECL-HELD-CUT-OFF kept DECL-OWNER:RETRACT-TO
       kept LBL,
       13 SP 8 LDR,  9 13 EVAL-FRAME:NDICT LDR,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 retired CBNZ,
       9 13 EVAL-FRAME:CP LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,

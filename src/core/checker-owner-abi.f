@@ -87,6 +87,10 @@ $20000 constant BOUND-SEEDED
 \ buffer began, when the definition is rejected or the buffer rolled back.
 $1A0 constant RETRACT-ROWS-OFF
 $1A8 constant ROWS-END-OFF
+\ The held facts count ( -- n ) as an evaluated buffer begins, and the cut back
+\ to it ( n -- ) when the buffer rolls back.
+$1B0 constant HELD-END-OFF
+$1D8 constant HELD-CUT-OFF
 \ The does> clause record a replayed TRUSTED: definer publishes at its `;`: its
 \ clause is declared, never checked, so VERIFY-SOURCE-DOES-OFF, which checks one
 \ first, is not this.

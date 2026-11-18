@@ -60,7 +60,7 @@ package FILE-OBJECTS-TEST
 43 constant INSIDE-I                     \ and inside-i.f's, which loads inside a package or alone
 44 constant AIO-OBJ                      \ src/lib/aio.f's, which kept-aio.f requires
 45 constant TAILS                        \ TAIL$'s tails
-62 constant FILES-C                     \ build C's objects
+63 constant FILES-C                     \ build C's objects
 208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -325,7 +325,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote sixty-two objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote sixty-three objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -365,6 +365,8 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ s\" header: compiled 2 1 0\n" CONTAINS? TTRUE
    s" the same builds compile 3 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" same: compiled 3 0\n" CONTAINS? TTRUE
+   s" the build after the body's rollback compiles 1 file" LABEL
+   STATE-W STATE-W-U @ s\" none: compiled 1\n" CONTAINS? TTRUE
    s" the held builds compile 2, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" held: compiled 2 2 0\n" CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
@@ -1133,7 +1135,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : SPAWN-REPL-CASE ( CMD:command -- CMD:command )
    s" SR" WHICH!  s" test/fixtures/file-objects/spawn-main.f" REPL-BUILD drop ;
 
-\ rollback.f's build, which catches a refused text that allotted data: it exits 67
+\ rollback.f's build, which catches texts whose rollback moves DP back: it exits 67
 \ and the linker says the file gave back data space.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
    s" CF" WHICH!
@@ -1149,6 +1151,18 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CAUGHT-NONE-CASE ( CMD:command -- CMD:command )
    s" CN" WHICH!  s" test/fixtures/file-objects/rollback-none.f" FIXTURE-BUILD 0= if exit then
    s\" 1\n\n" s" the program prints MAIN's 1" PRINTS-RUN ;
+
+\ rollback-define.f's build (DF) and its warm rebuild (DF2), whose top level gives
+\ back a definition's record before a definition, a require and the file's end: each
+\ program prints what MAIN prints, and DF2's has DF's bytes.
+: DEFINE-CASE ( CMD:command -- CMD:command )
+   s" DF" WHICH!  s" test/fixtures/file-objects/rollback-define.f" FIXTURE-BUILD 0= if exit then
+   s\" 1\n3\n2\n\n" s" the program prints 1, then the 3 and 2 of the words on given-back records" PRINTS-RUN
+   L$ s" prog" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
+   s" DF2" WHICH!  s" test/fixtures/file-objects/rollback-define.f" FIXTURE-BUILD 0= if exit then
+   s\" 1\n3\n2\n\n" s" the program prints 1, then the 3 and 2 of the words on given-back records" PRINTS-RUN
+   L$ s" prog" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
+   s" the program has DF's bytes" LABEL  PROG-1 u1 PROG-2 u2 STR= TTRUE ;
 
 \ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with
 \ E-CTOR-PROTECTED at ctor-main.f's line 6. Answers its exit code.
@@ -2220,7 +2234,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
-      CAUGHT-NONE-CASE CTOR-CASE EXPORT-CASE
+      CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE

@@ -5224,7 +5224,7 @@ EXPORT CHECK:TYPE-END
    -1 TOP-EV !
    ndict@ FILE-REC !  HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
    TFAM-N@ FILE-TFAM !  TYPE-END FILE-TYPES !
-   NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
+   NSHADOW:TRIM  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
    SOURCE-EVENT:COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !
@@ -5362,6 +5362,7 @@ EXPORT CHECK:LINEAR-TEXT$
 \ E-WORDLIST for an id no record holds.
 : PIECE-END ( n -- )
    {: req:n :}
+   NSHADOW:TRIM
    FILE-HELD @ AMENDED   \ the facts its amenders changed
    TYPE-ENTRIES
    req 0< if SOURCE-ROOT:END-TYPES then   \ a request's part keeps its nodes through the request

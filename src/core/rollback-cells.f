@@ -60,9 +60,8 @@ seal-package
 package DATA-SPACE
 public
 
-\ Rewinds DATA to cut, in DP-CELL's units: the address-cell rows and interned
-\ texts at or above it go, the `,` run ends, and the release high-water is at
-\ least the DP this lowers from when that is above cut.
+\ Rewinds DATA to cut, in DP-CELL's units, raising the release high-water to a
+\ DP it lowers, so the build refuses the data given back.
 : REWIND ( n -- )
    {: cut:n :}
    data-base NULL-PTR - {: base:n :}

@@ -313,12 +313,40 @@ $E9 constant TAIL-OP
    e COPY-ADDRS
    REC-RESERVE ;
 
+\ The first row of the tail whose records are at or above ndict@.
+: GIVEN-BACK ( -- n )
+   N-RECS @ begin
+      dup 0 > if dup 1 - REC-IDX @ ndict@ >= else false then
+   while 1 - repeat ;
+
+\ Keep, in order, the patches of the emissions below e.
+: PATCHES-BELOW ( n -- ) {: e:n :}
+   0 N-PATCHES @ 0 ?do
+      i PATCHED @ e < if  i PATCHED @ over PATCHED !  1 +  then
+   loop
+   N-PATCHES ! ;
+
+\ Drop emission e and every later one.
+: EMS-TO ( n -- ) {: e:n :}
+   e EM-AT @ CODE-N !  e EM-FUN0 @ N-FUNS !
+   e EM-CALL0 @ N-CALLS !  e EM-ADDR0 @ N-ADDRS !
+   e N-EMS !  e PATCHES-BELOW
+   SOURCE-N @ e > if 0 SOURCE-CAP ! then ;
+
+\ Drop the rows of the records a rollback gave back, those at or above ndict@,
+\ and their emissions on.
+: TRIM ( -- )
+   GIVEN-BACK {: k:n :}
+   k N-RECS @ = if exit then
+   k REC-EM @ EMS-TO  k N-RECS ! ;
+
 \ Copy the target's emission, or a native shadow's one, over any pair no
 \ publication claimed.
 : TAKE-TARGET ( -- )
    OPEN-CK
    TARGET-CK
    construct pending none PENDING !  false HOST-PENDING !
+   TRIM
    N-EMS @ COPY ;
 
 : SUB-ROW ( n n n -- n ) {: k:n first:n count:n :}
@@ -404,9 +432,8 @@ $E9 constant TAIL-OP
    0 SOURCE-N ! ;
 
 
-\ Adds the emissions published since the last query, refiling every one into a
-\ larger table once their functions would fill more than half of it. Published
-\ rows never change until CLEAR, so filing in publication order keeps the first.
+\ Files new emissions, refiling all into a larger table past half full. Filed rows
+\ change only where CLEAR or TRIM empty the table, so the first filed one stays.
 : SOURCE-INDEX ( -- )
    N-FUNS @ {: funs:n :}
    SOURCE-CAP @ 0=  funs 2 * SOURCE-CAP @ >  or if funs SOURCE-EMPTY then
@@ -551,6 +578,8 @@ public
 \ Records in the order they were published.
 : RECORDS ( -- n )
    OPEN-CK N-RECS @ ;
+
+EXPORT TRIM
 
 : RECORD@ ( n -- n )
    REC-IDX @ ;

@@ -221,7 +221,7 @@ $37F0 constant BPWN-CELL
 \ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. EVAL-PREV links
 \ each to the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
-STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE    \ its one free cell is $E8
+STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores.
@@ -248,6 +248,9 @@ $30 constant NDICT
 \ ROWS: the checker's record end as the buffer began, plus one, 0 when no owner
 \ records.
 $B0 constant ROWS
+\ HELD: the checker's held facts count as the buffer began, plus one, 0 when no
+\ owner holds facts.
+$E8 constant HELD
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.
 $B8 constant ENCLOSING
@@ -631,9 +634,12 @@ CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
 \ The rest are called by the engine and the source verifier.
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
-\ The cut back to the store end a definition or buffer began at, and that end.
+\ The cuts back to the store end a definition or buffer began at and the held
+\ facts count a buffer began at, and those ends.
 CHECKER-OWNER-ABI:RETRACT-ROWS-OFF constant DECL-RETRACT-ROWS-OFF
 CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
+CHECKER-OWNER-ABI:HELD-CUT-OFF constant DECL-HELD-CUT-OFF
+CHECKER-OWNER-ABI:HELD-END-OFF constant DECL-HELD-END-OFF
 CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-CREATES-SYM-OFF constant DECL-VERIFY-CREATES-SYM-OFF

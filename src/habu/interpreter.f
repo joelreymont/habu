@@ -2984,8 +2984,8 @@ $38 constant FR-DP
 \ The frame on its way into the catch that links it; empty at rest.
 TYPED-VARIABLE FRAME-ARG ^u8
 
-\ The source owner's record end and its cut, raw execution tokens in the owner
-\ record.
+\ The source owner's record end or held facts count, and its cut back to one:
+\ raw execution tokens in the owner record.
 CAST: AS-ROWS-END ( n -- [ -- n ] )
 CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
@@ -3002,6 +3002,22 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-FRAME:ROWS FR@ {: mark:n :}
    mark 0= if exit then
    SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF PKG-OPERATION {: xt:n :}
+   xt 0= if exit then
+   mark 1- xt AS-ROWS-CUT execute ;
+
+\ The checker's held facts count as a buffer begins, plus one, or 0 when no
+\ owner holds facts.
+: HELD-MARK ( -- n )
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-HELD-END-OFF PKG-OPERATION {: xt:n :}
+   xt 0= if 0 exit then
+   xt AS-ROWS-END execute 1+ ;
+
+\ Cut the held facts to the frame's mark, so no record the rollback drops keeps
+\ one, unless a load the buffer ran placed facts: the build then refuses it.
+: HELD-CUT ( ^u8 -- ) {: f:^ :}
+   f EVAL-FRAME:HELD FR@ {: mark:n :}
+   mark 0= if exit then
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-HELD-CUT-OFF PKG-OPERATION {: xt:n :}
    xt 0= if exit then
    mark 1- xt AS-ROWS-CUT execute ;
 
@@ -3040,6 +3056,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    PKG-OUTSIDE-CELL CELL@ f EVAL-FRAME:PKG-OUTSIDE FR!
    SECTION-CELL CELL@ f EVAL-FRAME:SECTION FR!
    ROWS-MARK f EVAL-FRAME:ROWS FR!
+   HELD-MARK f EVAL-FRAME:HELD FR!
    f FRAME-CELLS ROLLBACK-CELLS:SAVE
    f ;
 
@@ -3080,6 +3097,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    {: f:^ :}
    DEF-ABORT
    f ROWS-CUT
+   f HELD-CUT
    f EVAL-FRAME:NDICT FR@ retire-from IF EXIT THEN
    \ A buffer may start a task and throw without allocating a definition.
    \ Only changed cursors need their guarded mutation sinks during recovery.

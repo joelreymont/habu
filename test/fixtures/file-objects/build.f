@@ -223,6 +223,8 @@ PATH-CAP BUFFER: FIFTH-BUF
 : SAME-K$ ( -- str ) s" same" s" k.f" FIRST-BUF FILE-IN ;
 : SAME-S1$ ( -- str ) s" same" s" s1.f" SECOND-BUF FILE-IN ;
 : SAME-S2$ ( -- str ) s" same" s" s2.f" THIRD-BUF FILE-IN ;
+: NONE-K$ ( -- str ) s" none" s" k.f" FIRST-BUF FILE-IN ;
+: NONE-PROG$ ( -- str ) s" none" s" prog" SECOND-BUF FILE-IN ;
 
 \ Given a build's caught code: that code, or its LINKER:COMPILED when it threw none.
 : RESULT ( n -- n ) dup 0= if drop LINKER:COMPILED then ;
@@ -450,6 +452,22 @@ PATH-CAP BUFFER: FIFTH-BUF
    SAME-BUILD {: one:n :}
    SAME-WRITTEN {: two:n :}
    s" same: compiled " type  one FMT:.INT space  two FMT:.INT cr ;
+
+\ The body's caught text gives back a record before any file loads, allotting
+\ nothing: k.f then loads and the program is written.
+: NONE-WRITTEN ( -- n )
+   [: s" app" RTARGET:HOST-TARGET [:
+         [: s" : FOB-GONE ( -- ) ; 12345 throw" evaluate-closed ;] catch
+         12345 s" build: NONES: the text's throw was not caught" EXPECT
+         NONE-K$ included  NONE-PROG$ LINKER:WRITE ;]
+      LINKER:WITH ;]
+   catch RESULT ;
+
+\ k.f defines FOB-K and stores it as the program's entry.
+: NONES ( -- )
+   s" none" DIR$ FS:MAKE-DIR
+   NONE-K$ s\" : FOB-K ( -- ) ;\n' FOB-K data-base $43A0 + xt!\n" FS:WRITE-ALL
+   s" none: compiled " type  NONE-WRITTEN FMT:.INT cr ;
 
 \ ---- objects the link refuses or links wrong ----
 \ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
@@ -1039,8 +1057,8 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS HEADS SAMES HELDS CRAFTS BY-WORD BY-RUN
-   BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS HEADS NONES SAMES HELDS CRAFTS BY-WORD
+   BY-RUN BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
