@@ -33,7 +33,7 @@ CAST: >DATA ( n -- ^n )
 public
 
 : DATA-START ( -- ^n )
-   WPROF:DATA-BASE >DATA ;
+   WPROF:DATA-VA >DATA ;
 
 : ADD-STORE ( n ^n -- )
    {: amount:n cell:^ :}

@@ -41,10 +41,10 @@ STACK-BASE ERR-BASE - constant ERR-CAP
 STACK-END constant RETURN-BASE
 RETURN-BASE STACK-ABI:RETURN-BYTES + constant LOOP-BASE
 
-\ The DATA region holds a build's data space from DATA-BASE, offset for offset,
-\ header band included: a Wasm target's DATA-VA and DATA-SIZE are these two.
-LOOP-BASE STACK-ABI:LOOP-BYTES + constant DATA-BASE
-PAGES-MAX PAGE-BYTES * DATA-BASE - constant DATA-MAX
+\ The DATA region holds a build's data space from DATA-VA, offset for offset,
+\ header band included; DATA-MAX is a Wasm target's DATA-SIZE.
+LOOP-BASE STACK-ABI:LOOP-BYTES + constant DATA-VA
+PAGES-MAX PAGE-BYTES * DATA-VA - constant DATA-MAX
 
 \ One eight-byte slot per field, so i64 and i32 fields are all naturally aligned.
 0 constant CTX-STACK-BASE

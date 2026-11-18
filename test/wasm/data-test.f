@@ -122,9 +122,9 @@ public
    PEER 0 T=
    LOAD-DUMPS {: host:n :}
    s" the task header's stack base cell holds STACK-BASE" T-LABEL
-   WPROF:DATA-BASE STACK-ABI:BASE-CELL + AFTER LE:U64@ WPROF:STACK-BASE T=
+   WPROF:DATA-VA STACK-ABI:BASE-CELL + AFTER LE:U64@ WPROF:STACK-BASE T=
    s" the task header's stack capacity cell holds STACK-BYTES" T-LABEL
-   WPROF:DATA-BASE STACK-ABI:CAP-CELL + AFTER LE:U64@ WPROF:STACK-BYTES T=
+   WPROF:DATA-VA STACK-ABI:CAP-CELL + AFTER LE:U64@ WPROF:STACK-BYTES T=
    s" the run keeps the byte the peer stored in the page it grew" T-LABEL
    host HOST-OFFSET + AFTER c@ HOST-BYTE T=
    s" OUT starts with the stack depth line" T-LABEL

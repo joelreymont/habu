@@ -79,9 +79,9 @@ $7FF8000000000000 constant NAN-MADE
 4 constant HIGH-HALF                 \ a cell's upper 32 bits, little-endian
 2 constant L-CODE                    \ throw's code
 \ The thread's throw count, THROWS-CELL of the DATA region.
-WPROF:DATA-BASE THROWS-CELL + constant THROWS-AT
+WPROF:DATA-VA THROWS-CELL + constant THROWS-AT
 \ The kept record's stamp, STAMP-CELL of the DATA region.
-WPROF:DATA-BASE STAMP-CELL + constant STAMP-AT
+WPROF:DATA-VA STAMP-CELL + constant STAMP-AT
 
 \ ---- catch and finally
 2 constant L-STATUS                  \ the first callee's status

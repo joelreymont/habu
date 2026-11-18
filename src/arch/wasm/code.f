@@ -97,7 +97,7 @@ $40 constant EMPTY-TYPE              \ a block, loop or if taking and leaving no
 3 constant ALIGN-64
 
 \ Tier 0's return and loop stack depths, i64 cells in a module's memory.
-WPROF:DATA-BASE RSP-CELL + constant RDEPTH-AT
-WPROF:DATA-BASE LOOPSP-CELL + constant LDEPTH-AT
+WPROF:DATA-VA RSP-CELL + constant RDEPTH-AT
+WPROF:DATA-VA LOOPSP-CELL + constant LDEPTH-AT
 
 ;package

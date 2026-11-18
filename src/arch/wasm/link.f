@@ -2,7 +2,7 @@ split-str
 \ link.f - WLINK, the Wasm backend's linker: encoded functions, a data image and
 \ table slots written as one Wasm module (docs/xcomp.md "Linking"); the rows come
 \ from LINKER's Wasm writer (src/arch/wasm/link-module.f). The image's byte at
-\ offset off is memory's byte at WPROF:DATA-BASE + off. LINK checks every row
+\ offset off is memory's byte at WPROF:DATA-VA + off. LINK checks every row
 \ before it writes, stores the data cells into its copy of the image and patches
 \ only the module, so LINK can run again.
 \ STORAGE CLASS. MODULE-OWNED: the rows, bodies and image live in this package's
@@ -305,7 +305,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ Wasm stack address or capacity.
 : DATA-CELL! ( n n -- )
    {: v:n off:n :}
-   WPROF:DATA-BASE off + I32-CONST  v I64-CONST
+   WPROF:DATA-VA off + I32-CONST  v I64-CONST
    OP-I64-STORE PUT-BYTE  ALIGN-64 PUT-U32  0 PUT-U32 ;
 
 \ The data stack's first cell := local k, an i64.
@@ -401,7 +401,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ The pages holding every region and the image. The run wrapper and tier 0's
 \ code store into the DATA region's header cells whatever the image's length.
 : PAGES ( -- n )
-   WPROF:DATA-BASE  IMAGE-U @ DATA-BYTES max +  PAGE-BYTES 1- +  PAGE-BYTES / ;
+   WPROF:DATA-VA  IMAGE-U @ DATA-BYTES max +  PAGE-BYTES 1- +  PAGE-BYTES / ;
 
 : TYPE-SEC ( -- )
    NTYPES @ PUT-U32
@@ -469,7 +469,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 : DATA-SEC ( -- )
    NRUNS @ PUT-U32
    NRUNS @ 0 ?do
-      ACTIVE PUT-U32  WPROF:DATA-BASE i RUN-AT @ + ADDRESS-CONST  OP-END PUT-BYTE
+      ACTIVE PUT-U32  WPROF:DATA-VA i RUN-AT @ + ADDRESS-CONST  OP-END PUT-BYTE
       i RUN-LEN @ PUT-U32
       i RUN-AT @ IMAGE  i RUN-LEN @ PUT-BYTES
    loop ;
@@ -506,7 +506,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    {: kind:n t:n :}
    kind NEMIT:ADDR-DATA = if
       t 0 <  t IMAGE-U @ > or if E-WLINK-UNRESOLVED throw then
-      WPROF:DATA-BASE t +  exit
+      WPROF:DATA-VA t +  exit
    then
    kind NEMIT:ADDR-CODE = if
       t FIRST-SLOT <  t NSLOTS @ FIRST-SLOT + >= or if E-WLINK-UNRESOLVED throw then

@@ -573,7 +573,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" sloop.wasm" BUILD 0 T=
    RAN 2 T=
    WASM-HARNESS:FAULT-KIND 102 T=
-   WASM-HARNESS:FAULT-ADDR WPROF:DATA-BASE T= ;
+   WASM-HARNESS:FAULT-ADDR WPROF:DATA-VA T= ;
 
 
 \ Package G in grow.f: a cell row reserved, then reserved larger.

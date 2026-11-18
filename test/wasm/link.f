@@ -270,7 +270,7 @@ IMAGE-LEN BUFFER: IMAGE-BUF            \ byte i holds i
    S-TABLE SECTION$ s" 0170010303" T$=
    S-ELEMENT SECTION$ s" 010041010b020302" T$=
    s" a data address is the DATA base plus its target, the image's length included" T-LABEL
-   MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  WPROF:DATA-BASE IMAGE-LEN + T=
+   MBUF MOD-U @  0 BODY@ drop 2 +  WLEB:S64-PAD@  WPROF:DATA-VA IMAGE-LEN + T=
    s" a code address is its slot" T-LABEL
    MBUF MOD-U @  1 BODY@ drop 2 +  WLEB:S64-PAD@  2 T=
    s" data cells hold the same, low byte first; the image's trailing zeros are in no segment" T-LABEL
@@ -295,7 +295,7 @@ $350000 constant PAGE-53-END
    S-MEMORY SECTION$ s" 010132808004" T$=
    s" an image of zeros writes no segment" T-LABEL
    S-DATA SECTION$ s" 00" T$=
-   PAGE-53-END WPROF:DATA-BASE - {: u:n :}
+   PAGE-53-END WPROF:DATA-VA - {: u:n :}
    u 1+ ZEROS u WLINK:DATA!
    0 LINKED
    s" an image ending at page 53's end: a minimum of 53 pages" T-LABEL
@@ -462,7 +462,7 @@ $100000000 constant MEMORY32-BYTES     \ 65536 pages of 64 KiB
 \ need not hold the bytes these lengths name.
 : MEMORY-ROW ( -- )
    s" an image ending one byte past memory32's 4 GiB is refused" T-LABEL
-   [: 1 ZEROS  MEMORY32-BYTES WPROF:DATA-BASE - 1+  WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
+   [: 1 ZEROS  MEMORY32-BYTES WPROF:DATA-VA - 1+  WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ
    s" an image of MAX-N bytes, whose end would wrap, is refused" T-LABEL
    [: 1 ZEROS MAX-N WLINK:DATA! ;] E-WLINK-MEMORY TTHROWSQ ;
 
