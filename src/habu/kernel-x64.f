@@ -4820,6 +4820,10 @@ variable REPLAY-TRAP-CELL
    R9 R8 REC-WID MOV-STORE,
    RDI R10 ASM-SINK ENC-MOV-RR  REKEY-LBL CALL, ;
 
+\ record-rekey ( n -- ) index, below NDICT: the body checks nothing.
+: RECORD-REKEY-BODY ( -- )
+   RDI POP,  REKEY-LBL CALL, ;
+
 \ A private wordlist granted inside an overlay may only be withdrawn at or
 \ above that overlay's saved WIDN. The namespace row itself remains indexed.
 : REPLAY-PRIVATE-BODY ( -- )
@@ -5337,6 +5341,7 @@ public
    s" replay-widn!" [: REPLAY-WIDN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" replay-record" [: REPLAY-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" record-wid!" [: RECORD-WID-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" record-rekey" [: RECORD-REKEY-BODY ;] PRIM
    s" replay-private" [: REPLAY-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID

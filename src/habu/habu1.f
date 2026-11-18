@@ -131,7 +131,7 @@ variable LBGROWFAIL   \ the body text could not grow: throws E-BODY-TEXT (habu2.
 ;package
 \ Hash-index label ids, bound in EMIT-HIDX: LREBUILD for the in-place compaction
 \ LHIDXADD and LHIDXBUILD call, LFULL for the cannot-maintain exit, LREKEY for
-\ the re-key record-wid! calls.
+\ the re-key after a write to a record's wid cell.
 package HIDX-EMIT
 public
 variable LREBUILD
@@ -4438,8 +4438,8 @@ private
 \ HIDX-EMIT:LFULL is the loud exit for the unreachable full wrap.
 \ HIDX-EMIT:LREKEY (x3 = record index) re-indexes a record under its current wid
 \ cell unless its chain already holds it, register-transparent.
-\ DEFWRITE:RECORD-WID calls it after rewriting a published record's wid, because
-\ a rebuild keys a record retired across it on RETIRED's chain.
+\ A writer of a published record's wid cell calls it after the store: a rebuild
+\ keys a record under the cell it holds then.
 : EMIT-HIDX ( -- )
    LBL LBL LBL LBL LBL LBL LBL
    {: aret:label bfail:label floop:label fdone:label rret:label zloop:label

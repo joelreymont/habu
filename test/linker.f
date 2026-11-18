@@ -396,6 +396,57 @@ TYPED-VARIABLE SEALED-S bool
 
 CASE-S
 
+variable T-AT                        \ LK-T0's record index, below the build's first
+: LK-T0 ( -- n ) 7 ;
+
+\ The body retires it as a program's `undefine` of an hb word does.
+: BODY-T ( -- ) T-AT @ XREF-REC XREF:RETIRE ;
+
+: CASE-T ( -- )
+   TAKE-HOST
+   s" LK-T0" XREF-FIND-CURRENT-INDEX T-AT !
+   [: BODY-T ;] BUILD
+   HOST-CHECK
+   s" : LK-T1 ( -- n ) LK-T0 ;" TEST-EVAL:RC 0 T=
+   s" LK-T1" TEST-EVAL:N 7 T=
+   s" t: an hb word a build retires is found again after the close" SAY ;
+
+CASE-T
+
+\ From a fresh table one build cannot reach HIDX:LOAD-MAX, which lies above
+\ DICT-CAP; a close keeps its build's claims, so builds add them up until one more
+\ can. U-MANY stops short of LOAD-MAX, so the compaction falls in U-RETIRE's build.
+variable U-SEQ
+variable U-LAST
+TYPED-VARIABLE U-COMPACTED bool
+
+\ The main task's DATA sits at DATA-VA.
+: U-CLAIMS ( -- n ) NULL-PTR DATA-VA + HIDX:CLAIMS + CELL-VIEW @ ;
+: U-LETTERS ( n -- ) begin dup 26 mod 65 + SB-APPEND-C 26 / dup 0= until drop ;
+: U-ONE ( -- ) SB-RESET s" create LK-U" SB-APPEND U-SEQ @ U-LETTERS 1 U-SEQ +! SB$ evaluate-closed ;
+: U-ROOM ( -- n ) DICT-CAP ndict@ - 256 - ;
+: U-MANY ( -- ) U-ROOM  HIDX:LOAD-MAX U-CLAIMS - 1-  min 0 ?do U-ONE loop ;
+
+: U-RETIRE ( -- )
+   T-AT @ XREF-REC XREF:RETIRE
+   false U-COMPACTED !
+   U-ROOM 0 ?do
+      U-CLAIMS U-LAST !  U-ONE
+      U-CLAIMS U-LAST @ < if true U-COMPACTED ! leave then
+   loop ;
+
+: CASE-U ( -- )
+   s" LK-T0" XREF-FIND-CURRENT-INDEX T-AT !
+   U-ROOM 0 > TTRUE
+   begin HIDX:LOAD-MAX U-CLAIMS - U-ROOM >= while [: U-MANY ;] BUILD repeat
+   [: U-RETIRE ;] BUILD
+   U-COMPACTED @ TTRUE
+   s" : LK-U1 ( -- n ) LK-T0 ;" TEST-EVAL:RC 0 T=
+   s" LK-U1" TEST-EVAL:N 7 T=
+   s" u: a revived hb word is found after a compaction in its build" SAY ;
+
+CASE-U
+
 ;package
 
 T-REPORT

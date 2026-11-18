@@ -1150,6 +1150,10 @@ variable LREPLAYTRAP
    bad EXIT-STATUS:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
+\ record-rekey ( n -- ) index, below NDICT: the body checks nothing.
+: RECORD-REKEY ( -- )
+   3 G-POP  HIDX-EMIT:LREKEY LABEL@ BL, ;
+
 \ replay-private ( n bool -- ) namespace index, flag: true gives the row a
 \ fresh private wid, as `package` gives one to a row a qualified definition
 \ made; false takes back the one it gave. replay-close puts WIDN back but
@@ -2484,6 +2488,7 @@ package ENGINE-EMIT
    s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-record" ['] DEFWRITE:REPLAY-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" record-wid!" ['] DEFWRITE:RECORD-WID ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" record-rekey" ['] DEFWRITE:RECORD-REKEY FPRIM
    s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

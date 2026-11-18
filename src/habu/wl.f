@@ -6,7 +6,7 @@ public
 \ A live package row's: the row keeps its public and private wids where a word
 \ keeps its code span.
 -1 constant NAMESPACE
-\ A retired record's; the row stays on its old hash chain.
+\ A retired record's.
 -2 constant RETIRED
 \ A package row a rollback retired; no lookup is keyed on it.
 -3 constant RETIRED-NAMESPACE

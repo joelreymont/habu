@@ -66,6 +66,7 @@ EXPORT REQUIRE-REG:REQUIRE-KNOWN?
 EXPORT SOURCE-EVENT:EVENT-DEPTH@
 EXPORT SOURCE-EVENT:EVENT-SPELLED@
 EXPORT SOURCE-EVENT:EVENT-TOK@
+EXPORT XREF:REVIVE-BELOW
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
@@ -5819,7 +5820,7 @@ EXPORT CHECK:STORES-CLOSE
          NSHADOW:CLOSE construct step mapped PROGRESS ! true
       ENDOF
       moved OF
-         RESTORE FORGET-SPACE construct step shadowed PROGRESS ! true
+         FIRST-REC @ REVIVE-BELOW  RESTORE FORGET-SPACE construct step shadowed PROGRESS ! true
       ENDOF
       checked OF
          STORES-CLOSE construct step moved PROGRESS ! true

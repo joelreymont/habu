@@ -500,6 +500,8 @@ EPRIM: fork          PE-N PE-OUT EPRIM;
 EPRIM: wait-status   PE-N PE-IN  PE-N PE-OUT EPRIM;
 \ Rewriting a write-protected dictionary record cell is package XREF's to do.
 EPPRIM: XREF patch32 PE-N PE-IN PE-PTR-N PE-IN ECLOSE-PRIVATE
+\ Re-indexing a record under its wordlist cell after a write is package XREF's to do.
+EPPRIM: XREF record-rekey PE-N PE-IN ECLOSE-PRIVATE
 \ Planting and clearing a breakpoint instruction is package DEBUG's.
 EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ The four relocation-record primitives below, per target.

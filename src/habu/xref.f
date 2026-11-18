@@ -14,12 +14,6 @@ split-str
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
-\ Two of the non-wordlist values a record's wordlist cell can carry: the live
-\ package marker BOOT:NAMESPACE-WL answers and RETIRED, src/habu/wl.f's
-\ WL:RETIRED. The engine's hash index is keyed on the same cell, and
-\ XREF:RETIRE below and the checker overlay's record-wid! are the two writers
-\ that change it after a record is already in that index - see the
-\ WL:RETIRED comment there for what the lookup does about it.
 WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
@@ -380,15 +374,45 @@ private
    -1 wl 4 + patch32 ;
 
 EXPORT CHECK:HOLD-RETIRED
+EXPORT CHECK:BUILDING?
 EXPORT CHECKER-RESOLVE:REC>INDEX
+
+\ The retirements made while a build's space is open: index, then the
+\ wordlist cell the record had.
+DYNAMIC-BUFFER BUILD-RETIRED n
+variable BUILD-RETIRED-N
+
+: KEEP-RETIRED ( n n -- ) {: ix:n wid:n :}
+   BUILDING? 0= if exit then
+   BUILD-RETIRED-N @ {: k:n :}
+   k 1 + 2 * BUILD-RETIRED-RESERVE
+   ix k 2 * BUILD-RETIRED !   wid k 2 * 1 + BUILD-RETIRED !
+   1 BUILD-RETIRED-N +! ;
+
+: REVIVE ( n -- ) {: k:n :}
+   k 2 * BUILD-RETIRED @ {: ix:n :}
+   k 2 * 1 + BUILD-RETIRED @ {: wid:n :}
+   ix XREF-REC XREF-WORDLIST-SLOT cells + {: wl:^ :}
+   wid wl patch32
+   wid 32 rshift wl 4 + patch32
+   ix record-rekey ;
+
+\ Newest first, so a record retired twice gets the cell it had before the first.
+: REVIVE-BELOW ( n -- ) {: n:n :}
+   BUILD-RETIRED-N @ {: count:n :}
+   count 0 ?do
+      count 1 - i -
+      dup 2 * BUILD-RETIRED @ n < if REVIVE else drop then
+   loop
+   0 BUILD-RETIRED-N !  BUILD-RETIRED-RELEASE ;
 
 public
 
-\ A build holds the retirement and the record count then (CHECK:HOLD-RETIRED),
-\ so a link replays it before the first record the compile made after it (the
-\ linker's LINK-OBJECT).
+\ In a build it is held with the record count, which orders it in a link's replay,
+\ and kept for REVIVE-BELOW, which gives hb's records their cells back.
 : RETIRE ( ^n -- ) {: rec:^ :}
    rec REC>INDEX  rec XREF-WORDLIST  HOLD-RETIRED
+   rec REC>INDEX  rec XREF-WORDLIST  KEEP-RETIRED
    rec RETIRE-RAW ;
 
 \ DNAME-SEALED is bit 13 of the flags cell's upper half, rewritten whole with
