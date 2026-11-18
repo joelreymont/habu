@@ -6,9 +6,8 @@
   kernel's routines (throw recovery, the exit hook);
   `rt.f` is its part.
 - `layout.f` — image, dictionary and snapshot layout and the DATA bands.
-- `interpreter.f` (with `repl.f`) and `main.f` —
-  the interpret loop and command line in Habu (`docs/architecture.md`
-  "Interpreter").
+- `interpreter.f` and `main.f` — the interpret loop and command line in
+  Habu (`docs/architecture.md` "Interpreter").
 - `*-x64.f` — the x86-64 engine (`kernel-x64.f` bodies, `boot-x64.f` entry).
 - `snap*.f` — saved images; `*-abi.f` — fixed cells shared with
   source-loaded code.

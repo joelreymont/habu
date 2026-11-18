@@ -1,13 +1,12 @@
 split-str
 \ stepper.f - the REPL token stepper: `step <code>` runs the rest of the line one
 \ token at a time, echoing each token and the data stack after it. While
-\ stepping the REPL hook returns one token per call, so the engine's interpret
-\ loop is the evaluator. Package DEBUG (debug.f); built in after layout.f
-\ and repl.f (tools/hb-build-core.f RUNTIME-FILES).
+\ stepping the REPL's reader returns one token per call, so the engine's
+\ interpret loop is the evaluator. Package DEBUG (debug.f); built in after
+\ layout.f (tools/hb-build-core.f RUNTIME-FILES).
 
 require src/habu/debug-watch.f
 require src/lib/genio-core.f
-require src/habu/repl.f
 
 package DEBUG
 
@@ -98,9 +97,11 @@ variable SLEN  variable SPOS  variable STEPPING
       S-OUT  s" step> " type  over over type  s"  " type
    THEN ;
 
-: SRD-LINE ( -- str )  STEPPING @ IF S-NEXT-TOK ELSE S-LINE THEN ;
-
 public
+
+\ The REPL's next input: the stepped line's next token while stepping, else the
+\ next line.
+: REPL-READ ( -- str )  STEPPING @ IF S-NEXT-TOK ELSE S-LINE THEN ;
 
 : STEP ( -- )
    SINP@ {: p :}
@@ -109,9 +110,5 @@ public
    SLEN @ 0 ?do p i + c@ i SBUF c! loop
    0 SPOS !  -1 STEPPING !
    REJECTION:INPUT$ + SINP! ;
-
-: S-INSTALL ( -- )
-   [: SRD-LINE ;] is REPL-READ ;
-S-INSTALL
 
 ;package

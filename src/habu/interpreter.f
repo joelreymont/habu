@@ -2834,7 +2834,7 @@ public
 require src/lib/memory.f
 require src/habu/address-cells.f
 require src/core/rollback-cells.f
-require src/habu/repl.f
+require src/habu/stepper.f
 require src/core/compile-reads.f
 
 package INTERPRETER
@@ -3275,7 +3275,7 @@ variable OPENER-U
    true REPL-OK !
    begin
       REPL-OK @ if S\"  ok\n" type then
-      REPL-READ {: a:^ u:n :}
+      DEBUG:REPL-READ {: a:^ u:n :}
       a 0= if REPL-END exit then
       a u REPL-LINE REPL-OK !
    again ;

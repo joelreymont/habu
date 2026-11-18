@@ -109,7 +109,6 @@ variable REPL-ROOT-U
    REPL-PATH# @ 1+ REPL-PATH# ! ;
 
 : ADD-BACKSTOP-PATHS  ( -- )
-   s" src/habu/repl.f" ADD-REPL-PATH
    s" src/lib/line-editor.f" ADD-REPL-PATH
    s" src/habu/debug-watch.f" ADD-REPL-PATH
    s" src/habu/stepper.f" ADD-REPL-PATH
