@@ -1,23 +1,25 @@
 split-str
-\ genio-test.f - a TCP device hands back lines of any length.
-\ One process holds both ends of a loopback connection. The client writes every
-\ line and shuts its sending side before the server reads, so no read waits on a
-\ peer or needs the AIO loop. The terminal is put back before anything is
-\ asserted, so the REPL that follows the load reads its own input again.
+\ genio-test.f - GENIO:READ-LINE answers a device's lines of any length, an
+\ empty one included.
+\ The device's accept reads an in-process source that holds every line before
+\ the first read, so no read waits; its end is the end of input.
 \ A device write that faults is caught with the output state its catch saved,
 \ so the next write reaches its device rather than fd 1.
+\ The REPL reads the current input device's lines, an empty one and one a word
+\ reads included, and ends at its end of input.
 \ Run: bin/hb --load src/lib/genio-test.f </dev/null
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/task.f
-require src/lib/net/tcp4.f
-require src/lib/genio.f
+require src/lib/genio-core.f
+require src/lib/process.f
+require src/lib/pty-harness.f
+require src/lib/engine-candidate.f
+require src/lib/test/ending.f
 
 package GENIO-TEST
 private
 
-$7F000001 constant LOOPBACK
-1 constant BACKLOG
 $A constant LF
 $61 constant CH-A
 $62 constant CH-B
@@ -26,84 +28,71 @@ $64 constant CH-D
 1000 constant LONG-LEN                 \ several READ-LINE reads, the last partial
 512 constant EVEN-LEN                  \ READ-LINE's reads end on the line's end
 700 constant TASK-LEN                  \ read by the worker
-1000 constant ACCEPT-LEN               \ read by successive ACCEPTs
-$100 constant ACCEPT-CAP
-$800 constant SRC-CAP
+256 constant TAIL-LEN                  \ a last line that fills its chunk
+$1000 constant SRC-CAP
 $10 constant SINK-CAP
 
 create SRC SRC-CAP allot
-create PART ACCEPT-CAP allot
 create SINK SINK-CAP allot
 
-variable LISTENER
-variable CLIENT
+variable SRC-LEN
+variable SRC-AT
 variable DEV
 variable GOT-LEN
 variable GOT-SAME
+variable GOT-NULL
 variable WANT-CH
 variable GOT-CODE
-variable PARTS
-variable PART-LAST
 variable SINK-N
 variable SINK-DEV
 variable FAULTY-DEV
 TASK:MIN-STACK TASK:TASK READER
 
-\ ---- the endpoints -----------------------------------------------------------
+\ ---- the source --------------------------------------------------------------
 
-: STATUS-OK ( TCP4:status -- )
-   MATCH TCP4:status
-      ok OF ENDOF
-      failed OF TCP4:ERRNO>N drop s" tcp status failed" T-FAIL-AS ENDOF
-   ;MATCH ;
+: PUT-BYTES ( n n -- ) {: len:n c:n :}
+   len 0 ?do c SRC SRC-LEN @ + i + c! loop
+   SRC-LEN @ len + SRC-LEN ! ;
 
-: BIND-LISTENER ( -- n )
-   LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
-   MATCH TCP4:bind-result
-      bound OF TCP4:LISTENER>N ENDOF
-      failed OF TCP4:ERRNO>N drop GENIO:E-IO throw ENDOF
-   ;MATCH ;
+: PUT-LINE ( n n -- )
+   PUT-BYTES
+   LF SRC SRC-LEN @ + c!
+   SRC-LEN @ 1+ SRC-LEN ! ;
 
-: LISTENER-PORT ( -- n )
-   LISTENER @ TCP4:>LISTENER TCP4:LOCAL
-   MATCH TCP4:endpoint-result
-      endpoint OF TCP4:PORT>N swap TCP4:ADDRESS>N drop ENDOF
-      failed OF TCP4:ERRNO>N drop GENIO:E-IO throw ENDOF
-   ;MATCH ;
+: PUT-ALL ( -- )
+   0 SRC-LEN !  0 SRC-AT !
+   LONG-LEN CH-A PUT-LINE
+   EVEN-LEN CH-B PUT-LINE
+   TASK-LEN CH-C PUT-LINE
+   0 CH-A PUT-LINE
+   TAIL-LEN CH-D PUT-BYTES ;
 
-: CONNECT-TO ( n -- n )
-   LOOPBACK TCP4:ADDRESS swap TCP4:PORT TCP4:CONNECT
-   MATCH TCP4:connect-result
-      connected OF TCP4:CONNECTION>N ENDOF
-      failed OF TCP4:ERRNO>N drop GENIO:E-IO throw ENDOF
-   ;MATCH ;
+\ A line, without its newline, or its first `cap` bytes; the rest of a longer
+\ line stays in the source for the next accept. -1 once the source is spent.
+: SRC-ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
+   SRC-AT @ SRC-LEN @ >= if -1 exit then
+   0
+   begin ( len )
+      dup cap >= if exit then
+      SRC-AT @ SRC-LEN @ >= if exit then
+      SRC-AT @ 1+ SRC-AT !
+      SRC SRC-AT @ 1- + c@ LF = if exit then
+      SRC SRC-AT @ 1- + c@ over bytes swap + c!
+      1+
+   again ;
 
-: ACCEPT-FD ( TCP4:accept-result -- n )
-   MATCH TCP4:accept-result
-      accepted OF TCP4:PORT>N drop TCP4:ADDRESS>N drop TCP4:CONNECTION>N ENDOF
-      failed OF TCP4:ERRNO>N drop GENIO:E-IO throw ENDOF
-   ;MATCH ;
+: NO-EMIT ( n -- ) drop ;
+: NO-KEY ( -- n ) GENIO:E-IO throw ;
+: NO-READY? ( -- bool ) false ;
+: NO-READ ( ^u8 n -- n ) {: a:^ cap:n :} 0 ;
+: NO-ACCEPT ( ^u8 n -- n ) {: a:^ cap:n :} -1 ;
+: NO-WRITE ( str -- ) {: a:^ u:n :} ;
+: NOTHING ( -- ) ;
 
-: OPEN-PAIR ( -- )
-   BIND-LISTENER LISTENER !
-   LISTENER @ TCP4:>LISTENER BACKLOG TCP4:LISTEN STATUS-OK
-   LISTENER-PORT CONNECT-TO CLIENT !
-   LISTENER @ TCP4:>LISTENER TCP4:ACCEPT ACCEPT-FD
-   TCP4:>CONNECTION GENIO:TCP-DEVICE GENIO:DEVICE>N DEV ! ;
-
-\ ---- the client's lines -------------------------------------------------------
-
-: SEND-LINE ( n n -- ) {: len:n c:n :}
-   len 0 ?do c SRC i + c! loop
-   LF SRC len + c!
-   CLIENT @ TCP4:>CONNECTION SRC len 1+ TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-OK ;
-
-: SEND-ALL ( -- )
-   LONG-LEN CH-A SEND-LINE
-   EVEN-LEN CH-B SEND-LINE
-   TASK-LEN CH-C SEND-LINE
-   ACCEPT-LEN CH-D SEND-LINE
-   CLIENT @ TCP4:>CONNECTION TCP4:SENDING TCP4:SHUTDOWN STATUS-OK ;
+: OPEN-SRC ( -- )
+   [: NO-EMIT ;] [: NO-KEY ;] [: NO-READY? ;] [: NO-READ ;]
+   [: NO-WRITE ;] [: SRC-ACCEPT ;] [: NOTHING ;] [: NOTHING ;]
+   0 GENIO:DEVICE GENIO:DEVICE>N DEV ! ;
 
 \ ---- reading through the device ------------------------------------------------
 
@@ -117,25 +106,13 @@ TASK:MIN-STACK TASK:TASK READER
 
 : LINE-BODY ( -- )
    GENIO:READ-LINE {: a:^ u:n :}
-   u GOT-LEN !  a u WANT-CH @ SAME? GOT-SAME ! ;
-
-: PARTS-BODY ( -- )
-   0 GOT-LEN !  0 PARTS !  true GOT-SAME !
-   begin
-      PART ACCEPT-CAP GENIO:ACCEPT {: got:n :}
-      PART got WANT-CH @ SAME? 0= if false GOT-SAME ! then
-      GOT-LEN @ got + GOT-LEN !  PARTS @ 1+ PARTS !  got PART-LAST !
-      got ACCEPT-CAP <
-   until ;
+   a 0= GOT-NULL !  u GOT-LEN !  a u WANT-CH @ SAME? GOT-SAME ! ;
 
 : LINE-ROW ( -- )
    ['] LINE-BODY catch GOT-CODE ! ;
 
-: PARTS-ROW ( -- )
-   ['] PARTS-BODY catch GOT-CODE ! ;
-
 : ROW ( [ -- ] n -- ) {: body c:n :}
-   -1 GOT-LEN !  false GOT-SAME !  0 GOT-CODE !  c WANT-CH !
+   -1 GOT-LEN !  false GOT-SAME !  false GOT-NULL !  0 GOT-CODE !  c WANT-CH !
    DEV@ GENIO:TERMINAL body GENIO:WITH-IO ;
 
 : T-LINE ( n n str -- ) {: want:n c:n la:^ lu:n :}
@@ -143,7 +120,14 @@ TASK:MIN-STACK TASK:TASK READER
    [: LINE-ROW ;] c ROW
    GOT-CODE @ 0 T=
    GOT-LEN @ want T=
-   GOT-SAME @ TTRUE ;
+   GOT-SAME @ TTRUE
+   GOT-NULL @ TFALSE ;
+
+: T-NULL-LINE ( str -- ) {: la:^ lu:n :}
+   la lu T-LABEL
+   [: LINE-ROW ;] 0 ROW
+   GOT-CODE @ 0 T=
+   GOT-NULL @ TTRUE ;
 
 \ ---- a device write that faults ---------------------------------------------
 \ The sink appends what it is written; the faulty device's write reads address 0.
@@ -156,15 +140,9 @@ TASK:MIN-STACK TASK:TASK READER
 : FAULTY-WRITE ( str -- ) {: a:^ u:n :}
    NULL-PTR BYTE-VIEW c@ drop ;
 
-: NO-EMIT ( n -- ) drop ;
-: NO-KEY ( -- n ) GENIO:E-IO throw ;
-: NO-READY? ( -- bool ) false ;
-: NO-READ ( ^u8 n -- n ) {: a:^ cap:n :} 0 ;
-: NOTHING ( -- ) ;
-
 : OUT-DEVICE ( [ str -- ] -- GENIO:device ) {: qwrite :}
    [: NO-EMIT ;] [: NO-KEY ;] [: NO-READY? ;] [: NO-READ ;]
-   qwrite [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;
+   qwrite [: NO-ACCEPT ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;
 
 : FAULT-TYPE ( -- ) s" x" type ;
 : SINK-TYPE ( -- ) s" y" type ;
@@ -199,33 +177,59 @@ TASK:MIN-STACK TASK:TASK READER
       err OF 0 T= ENDOF
    ;MATCH ;
 
-: T-PARTS ( -- )
-   s" successive ACCEPTs bring a 1000-byte line whole" T-LABEL
-   [: PARTS-ROW ;] CH-D ROW
-   GOT-CODE @ 0 T=
-   GOT-LEN @ ACCEPT-LEN T=
-   GOT-SAME @ TTRUE
-   PARTS @ ACCEPT-LEN ACCEPT-CAP / 1+ T=
-   PART-LAST @ ACCEPT-LEN ACCEPT-CAP mod T= ;
-
 : CLOSE-ALL ( -- )
-   DEV@ GENIO:CLOSE
-   CLIENT @ TCP4:>CONNECTION TCP4:CLOSE STATUS-OK
-   LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER STATUS-OK ;
+   DEV@ GENIO:CLOSE ;
+
+\ ---- the REPL over a device -----------------------------------------------------
+\ Only a tty runs the REPL, so a child on a pty includes the fixture. It exits,
+\ prompts on the tty again, or says ok to lines the device never sent.
+0 constant REPL-HUNG-UP
+1 constant REPL-AT-TTY
+2 constant REPL-LOOPED
+
+: REPL-ENDING ( -- n )
+   begin
+      s\"  ok\r\n\r\x1B[Khabu> " PTY-HARNESS:IN-BUF? if REPL-AT-TTY exit then
+      s" DEVICE-AFTER" s\"  ok\r\n ok\r\n" PTY-HARNESS:AFTER? if REPL-LOOPED exit then
+      PTY-HARNESS:MASTER-FD PTY-HARNESS:READ-STEP 0 < if REPL-HUNG-UP exit then
+   again ;
+
+\ A child left reading the tty gets its ^D; one that never ends is killed.
+: REPL-STOP ( n -- ) {: how:n :}
+   how REPL-AT-TTY = if 4 PTY-HARNESS:SEND-BYTE then
+   how REPL-LOOPED = if PTY-HARNESS:CHILD-PID PROCESS:SIGKILL PROCESS:KILL-RAW drop then ;
+
+: T-REPL-DEVICE ( -- )
+   s" the REPL reads the input device's lines and ends at its end of input" T-LABEL
+   ENGINE-CANDIDATE:PATH$ PTY-HARNESS:SPAWN-ON-PTY
+   s" habu> " PTY-HARNESS:WAIT-FOR dup TTRUE if
+      PTY-HARNESS:BUF-CLEAR
+      s" include test/fixtures/genio-repl-device.f" PTY-HARNESS:SEND-LINE
+      REPL-ENDING {: how:n :}
+      how REPL-STOP
+      how REPL-HUNG-UP T=
+      s\" 300\r\nDEVICE-REPL" PTY-HARNESS:IN-BUF? TTRUE
+      s" DEVICE-AFTER" PTY-HARNESS:IN-BUF? TTRUE
+   then
+   PTY-HARNESS:REAP {: oc :}
+   ENGINE-CANDIDATE:PATH$ PTY-HARNESS:BUF$ s" " oc 0 T-ENDING-EXITED=
+   PTY-HARNESS:CLOSE-MASTER ;
 
 public
 
 : GENIO-TEST-RUN ( -- )
    T-RESET
-   OPEN-PAIR
-   SEND-ALL
+   PUT-ALL
+   OPEN-SRC
    LONG-LEN CH-A s" READ-LINE answers a 1000-byte line whole" T-LINE
    EVEN-LEN CH-B s" READ-LINE answers a 512-byte line whole" T-LINE
    T-WORKER
-   T-PARTS
-   0 CH-A s" the end of input is a zero-length line" T-LINE
+   0 CH-A s" READ-LINE answers an empty line, not the end of input" T-LINE
+   TAIL-LEN CH-D s" READ-LINE answers a last line that fills its chunk and has no newline" T-LINE
+   s" the end of input answers a null line" T-NULL-LINE
    CLOSE-ALL
    T-FAULTING-WRITE
+   T-REPL-DEVICE
    T-REPORT ;
 
 ;package

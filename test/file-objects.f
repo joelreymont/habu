@@ -1850,9 +1850,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" public variable N  TASK:+USER U n  TYPED-VARIABLE D GENIO:device\nprivate\n" SRC+
    s\" : NOTHING ( -- ) ;\n: ADD-CHAR ( n -- ) drop 1 N +! ;\n: NO-KEY ( -- n ) 0 ;\n" SRC+
    s\" : NOT-READY ( -- bool ) false ;\n: NO-READ ( ^u8 n -- n ) {: a:^ u:n :} 0 ;\n" SRC+
+   s\" : NO-ACCEPT ( ^u8 n -- n ) {: a:^ u:n :} -1 ;\n" SRC+
    s\" : ADD-BYTES ( ^u8 n -- ) {: a:^ u:n :} u N +! ;\n: BUILD ( -- GENIO:device )\n" SRC+
    s\"    [: ADD-CHAR ;] [: NO-KEY ;] [: NOT-READY ;] [: NO-READ ;]\n" SRC+
-   s\"    [: ADD-BYTES ;] [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n" SRC+
+   s\"    [: ADD-BYTES ;] [: NO-ACCEPT ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n" SRC+
    s\" BUILD D !  D @ GENIO:OUTPUT!  s\" xyz\" type  7 U !\n;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+
    s\" : TO-D ( -- ) FILE-OBJECTS-ROUTE:D @ GENIO:OUTPUT!  s\" abc\" type ;\n" SRC+

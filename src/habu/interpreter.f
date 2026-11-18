@@ -3268,8 +3268,7 @@ variable OPENER-U
    [: DEF-SOURCE-END DECL-SOURCE-END ;] catch {: code:n :}
    code 0<> if NULL$ code die then ;
 
-\ Each line calls REPL-READ anew: genio may replace its reader. A definition
-\ may span lines; EOF refuses one still open.
+\ A definition may span lines; EOF refuses one still open.
 : REPL ( -- )
    0 ENTRY-PEND !
    SOURCE-ROOT:TEXT-MARK DECL-MARK !

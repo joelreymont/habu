@@ -1,9 +1,10 @@
 split-str
-\ genio-core.f - the generic text I/O device table: EMIT, KEY, ACCEPT and the
-\ rest reach a device through a vector table, chosen per task. It requires no
-\ transport and changes nothing on load; src/lib/genio.f adds the TCP device and
-\ the routed REPL reader in the same package.
-\ STORAGE CLASS. TASK-LOCAL: the device indices (GENIO-ABI) and the byte scratch.
+\ genio-core.f - the generic text I/O device table: EMIT, KEY, READ-LINE and
+\ the rest reach a device through a vector table, chosen per task. It requires no
+\ transport and changes nothing on load.
+\ STORAGE CLASS. TASK-LOCAL: the device indices (GENIO-ABI) and the byte scratch;
+\ READ-LINE's line and the chunk a device's accept fills are TASK:+USERS rows,
+\ so two tasks may each be reading a line from their own device.
 \ PROCESS-WIDE: the device table, so a task inherits its creator's devices.
 \
 \ Dispatch: each dispatcher (KEY, READ, CLOSE and the rest) stores the row it
@@ -17,16 +18,17 @@ split-str
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
+require src/lib/num-types.f
 require src/lib/task.f
+require src/lib/byte-buffer.f
 require src/lib/line-editor.f
 
 package GENIO
 
 public
 
-\ A device handle carries its row: 0 is the terminal, 1..GENIO-ABI:DEVICES are
-\ the registered devices. Like every value nominal the raw converters are not
-\ validators; DEVICE, TERMINAL and TCP-DEVICE are the ways to obtain one.
+\ A handle's row: 0 is the terminal, 1..GENIO-ABI:DEVICES the registered devices.
+\ The raw converters validate nothing; DEVICE and TERMINAL make a handle.
 DEFTYPE DEVICE
 
 E-GENIO-OPERAND constant E-OPERAND
@@ -210,11 +212,10 @@ private
 : TERMINAL-KEY ( -- n )
    LINE-EDITOR:KEY ;
 
+\ READ-LINE reads the terminal through its editor, so this runs only when the
+\ input device stops being live between two accepts of one line: the line ends.
 : TERMINAL-ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
-   LINE-EDITOR:READ-LINE {: line:^ len:n :}
-   len cap > if E-OPERAND throw then
-   len 0 ?do line i + c@ bytes i + c! loop
-   len ;
+   -1 ;
 
 : FIONREAD ( -- n )
    HB-TARGET-LINUX-KERNEL? if FIONREAD-LINUX exit then
@@ -434,22 +435,6 @@ public
    code 0<> if code throw then
    nip ;
 
-\ One line without its terminator. A zero length is the end of input -- the
-\ terminal answers it on ^D and a stream answers it when the peer closes -- so
-\ a read loop ends instead of spinning. A stream fills at most the buffer and
-\ leaves the rest of a longer line for the next ACCEPT, so a filled buffer means
-\ the line may go on; the terminal refuses a line longer than the buffer with
-\ E-OPERAND, because its editor's line cannot be read twice.
-: ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
-   IN-ROW {: idx:n :}
-   idx FAULT-CHECK
-   ACTIVE-PTR @ {: prev:n :}
-   idx ACTIVE-PTR !
-   bytes cap [: RUN-ACCEPT-OP ;] catch {: code:n :}
-   prev ACTIVE-PTR !
-   code 0<> if code throw then
-   nip ;
-
 \ The handle is dead afterwards: the row's generation moves on, so a later
 \ device that takes the row answers a different handle and this one is refused
 \ with E-GENIO-STATE rather than routed to somebody else's connection. Closing
@@ -469,5 +454,72 @@ public
    prev ACTIVE-PTR !
    idx TERMINAL-ROW <> if idx RETIRE-ROW then
    code 0 <> if code throw then ;
+
+private
+
+\ A BUF that grows to the longest line its task has read; the main task has no
+\ exit chain, so its line lasts the process.
+$100 constant CHUNK-CAP
+CHUNK-CAP TASK:+USERS IO-CHUNK u8
+BUF:HDR-BYTES TASK:+USERS IO-LINE u8
+TASK:+USER IO-LINE-LIVE n
+
+: CHUNK ( -- ^u8 )
+   0 IO-CHUNK ;
+
+: LINE-DISPOSE ( -- )
+   0 IO-LINE-LIVE !
+   0 IO-LINE BUF:DISPOSE ;
+
+: LINE-REGISTER ( -- )
+   TASK:SELF-N 0= if exit then
+   [: LINE-DISPOSE ;] TASK:SELF TASK:AT-EXIT ;
+
+\ A refused registration releases the line it would have released, so a task's
+\ live line always has its release armed.
+: LINE-OPEN ( -- )
+   IO-LINE-LIVE @ 0<> if exit then
+   0 IO-LINE CHUNK-CAP BUF:N>BLEN BUF:INIT
+   [: LINE-REGISTER ;] catch {: code:n :}
+   code 0<> if 0 IO-LINE BUF:DISPOSE code throw then
+   1 IO-LINE-LIVE ! ;
+
+CAST: BLEN>N ( NUM:byte-len -- n )
+
+\ At most the buffer of one line, without its terminator. A filled buffer goes on
+\ at the next call, 0 when nothing is left; an empty line is 0, the end of input -1.
+: ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
+   IN-ROW {: idx:n :}
+   idx FAULT-CHECK
+   ACTIVE-PTR @ {: prev:n :}
+   idx ACTIVE-PTR !
+   bytes cap [: RUN-ACCEPT-OP ;] catch {: code:n :}
+   prev ACTIVE-PTR !
+   code 0<> if code throw then
+   nip ;
+
+\ True when the line goes on past this chunk.
+: APPEND-CHUNK ( n -- bool ) {: got:n :}
+   got 0 < if false exit then
+   CHUNK got BUF:N>BLEN 0 IO-LINE BUF:APPEND-SPAN
+   got CHUNK-CAP = ;
+
+\ False at the end of input; else IO-LINE holds the whole line.
+: LINE-FILL ( -- bool )
+   CHUNK CHUNK-CAP ACCEPT {: first:n :}
+   first 0 < if false exit then
+   first begin APPEND-CHUNK while CHUNK CHUNK-CAP ACCEPT repeat
+   true ;
+
+public
+
+\ The terminal's line is the tty editor's own, with its history; another device's
+\ comes through its accept. NULL$ is the end of input, never an empty line.
+: READ-LINE ( -- ^u8 n )
+   IN-ROW TERMINAL-ROW = if LINE-EDITOR:READ-LINE exit then
+   LINE-OPEN
+   0 IO-LINE BUF:CLEAR
+   LINE-FILL 0= if NULL$ exit then
+   0 IO-LINE BUF:SPAN$ BLEN>N ;
 
 ;package

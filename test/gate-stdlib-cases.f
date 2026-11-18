@@ -195,9 +195,6 @@ SUITE print-min-int
    test/print-min-int.f
 ;SUITE
 
-\ A TCP device's lines past any fixed length: READ-LINE grows its per-task line,
-\ a worker's line is released by its exit chain, and successive ACCEPTs bring a
-\ line longer than their buffer across whole.
 SUITE genio
    src/lib/genio-test.f
 ;SUITE

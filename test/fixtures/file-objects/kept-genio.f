@@ -14,7 +14,7 @@ private
 : READY? ( -- bool ) 0 0= ;
 : NO-READ ( ^u8 n -- n ) {: a:^ u:n :} 0 ;
 : DROP-BYTES ( str -- ) {: a:^ u:n :} ;
-: NO-ACCEPT ( str -- n ) {: a:^ u:n :} 0 ;
+: NO-ACCEPT ( str -- n ) {: a:^ u:n :} -1 ;
 
 : BUILD ( -- GENIO:device )
    [: DROP-CHAR ;] [: NO-KEY ;] [: READY? ;] [: NO-READ ;]

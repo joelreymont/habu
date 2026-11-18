@@ -50,7 +50,7 @@ variable SINK-DEV
    0 ;
 
 : SINK-ACCEPT ( ^u8 n -- n ) {: a:^ cap:n :}
-   0 ;
+   -1 ;
 
 : SINK-NOTHING ( -- ) ;
 

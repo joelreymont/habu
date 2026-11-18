@@ -16,6 +16,7 @@ require src/core/rejection.f
 require src/os/env-base.f
 require src/habu/interpreter.f
 require src/habu/repl.f
+require src/lib/line-editor.f
 
 package COMMAND-LINE
 

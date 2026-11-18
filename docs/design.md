@@ -431,14 +431,13 @@ hosted words that make sense on a target, and the hosted-only words (`KILL`,
 `JOIN`, `AT-EXIT`) are refused by the target's checker rows rather than
 emulated. No target tasker exists in the tree yet.
 
-**Devices.** `EMIT`, `KEY`, `TYPE` and `ACCEPT` reach the current task's
+**Devices.** `EMIT`, `KEY`, `TYPE` and `READ-LINE` reach the current task's
 input and output device through a small table of operations
 (`src/lib/genio-core.f`), as VFX's generic I/O devices do. A socket or serial port
 can then become the REPL's console without changes to the REPL, which keeps a
 running server or microcontroller inspectable and correctable from a distance.
-A stream device's `ACCEPT` is standard Forth's: it fills the caller's buffer
-and leaves the rest of a longer line for the next `ACCEPT`, and `READ-LINE`
-answers a line of any length.
+A device's accept fills a buffer with at most one line, as standard Forth's
+`ACCEPT` does, and `READ-LINE` joins its calls into a line of any length.
 The device record stays small enough to be the per-task vector table SwiftX
 uses on a microcontroller.
 
