@@ -2147,7 +2147,11 @@ answers alike.
   whose result row its inputs name only as quotations' outputs, such as
   `MEM:WITH-BYTES`'s `( … [ R ^u8 NUM:alloc-byte-len -- S ] -- S )`, ends the
   branch when each of those quotations is such a literal:
-  `[: REJECT-SCOPE ;] MEM:WITH-BYTES ;` needs no `throw` after it.
+  `[: REJECT-SCOPE ;] MEM:WITH-BYTES ;` needs no `throw` after it. The
+  checker does not follow such a call through a word with a return-stack
+  clause (`| U -- U`), or to a quotation taken below a hidden- or
+  layout-parameter cell, whose width differs between caller and word: those
+  calls return.
 
 ## Engine limits ordinary source reaches
 

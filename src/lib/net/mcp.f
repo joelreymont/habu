@@ -910,9 +910,8 @@ CAST: HELD>N ( held -- n )
    fix fa fu ka ku PUT-KEYED drop
    s" descriptor" buf eu ku + fix fu ku + REJECT ;
 
-\ Rejects the reader's token in a descriptor, the key put as PUT-KEYED puts it. Never
-\ returns: the reader in its effect balances a branch that does not call it.
-: KEY-REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n -- JSON:reader )
+\ Rejects the reader's token in a descriptor, the key put as PUT-KEYED puts it.
+: KEY-REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n -- )
    {: ka:^ ku:n ea:^ eu:n fa:^ fu:n :}
    ka ku ea eu fa fu  eu fu + ku 2 * + MEM:BYTES-ALLOC-LEN
    [: KEY-SCOPE ;] MEM:WITH-BYTES ;

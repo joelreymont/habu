@@ -105,7 +105,8 @@ E-BAD-STORED-SIGNATURE), a type-entry field the tree reads and the running hb
 does not write (the running hb writes the image's type entries, so the engine
 it builds stops at start-up with `tfam: bad type entry`), an existing atom code
 given a new meaning (the running
-checker replays the rows with the old meaning and says nothing), or a tool that
+checker replays the rows with the old meaning and says nothing), a checker rule
+the tree's code needs (the running checker rejects that code), or a tool that
 calls a word hb carries (the linker) by a name or effect its own change gives
 it, or a change to which files a build
 loads or their order, needs a stage: the tool itself runs the words hb carries

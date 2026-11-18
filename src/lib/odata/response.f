@@ -51,14 +51,12 @@ private
    drop {: a:^ an:n b:^ bn:n c:^ cn:n d:^ dn:n fa:^ fu:n buf:^ :}
    buf 0 a an PUT b bn PUT c cn PUT d dn PUT fa fu RESPONSE-REJECT ;
 
-\ RESPONSE-REJECT with the four spans joined as the expected text. The last
-\ throw is never reached: it shows the checker it never returns.
+\ RESPONSE-REJECT with the four spans joined as the expected text.
 : JOINED-REJECT ( JSON:reader str str str str str -- )
    {: a:^ an:n b:^ bn:n c:^ cn:n d:^ dn:n fa:^ fu:n :}
    a an b bn c cn d dn fa fu
    an bn + cn + dn + 1 max MEM:BYTES-ALLOC-LEN
-   [: JOINED-SCOPE ;] MEM:WITH-BYTES
-   E-RESPONSE throw ;
+   [: JOINED-SCOPE ;] MEM:WITH-BYTES ;
 
 : QUOTED? ( n -- bool ) dup JSON:T-STR = swap JSON:T-KEY = or ;
 : OPENER? ( n -- bool ) dup JSON:T-OBJ = swap JSON:T-ARR = or ;
@@ -783,12 +781,10 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    s" each member of the record once" fa fu RESPONSE-REJECT ;
 
 \ Rejects the record whose `}` is current for repeating the member named.
-\ The last throw is never reached: it shows the checker it never returns.
 : REPEAT-REJECT ( JSON:reader str -- )
    {: na:^ nu:n :}
    na nu  REMOVE$ nip nu + KEEP-ONE$ nip + MEM:BYTES-ALLOC-LEN
-   [: REPEAT-SCOPE ;] MEM:WITH-BYTES
-   E-RESPONSE throw ;
+   [: REPEAT-SCOPE ;] MEM:WITH-BYTES ;
 
 \ On the record's `}`: its names are checked and dropped.
 : ONCE ( JSON:reader ^JSON:writer ^copy -- JSON:reader ^JSON:writer )

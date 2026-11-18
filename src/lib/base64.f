@@ -95,14 +95,13 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
    buf tu code REASON:THROW ;
 
 \ Throws code with the header's text, ea as X and fa as the fix, placed at off
-\ in the input a u; the last throw only shows the checker REJECT never returns.
+\ in the input a u.
 : REJECT ( str n str str n -- )
    {: a:^ u:n off:n ea:^ eu:n fa:^ fu:n code:n :}
    a a off + 1 1 0 REJECTION:POSITION drop {: line:n col:n :}
    line col a u off ea eu fa fu code
    line col a u off FOUND-LEN eu fu TEXT-SIZE MEM:BYTES-ALLOC-LEN
-   [: REJECT-SCOPE ;] MEM:WITH-BYTES
-   code throw ;
+   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
 
 : FIX$ ( bool -- str )
    if s" write the data as BASE64:ENCODE-URL writes it" exit then

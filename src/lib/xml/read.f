@@ -111,8 +111,7 @@ private
    name u CAPPED {: len:n form:n :}
    state off fa fu code name len form
    form FOUND-CUT = if len CUT$ nip + else len then 5 + MEM:BYTES-ALLOC-LEN
-   [: END-TAG-SCOPE ;] MEM:WITH-BYTES
-   code throw ;
+   [: END-TAG-SCOPE ;] MEM:WITH-BYTES ;
 
 : MATCH-END-NAME ( ^n -- )
    {: state :}

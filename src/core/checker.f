@@ -12600,9 +12600,8 @@ variable CALL-DEAD
    P>TYPE T-RES {: t:n :}
    t LAYOUT-PARAM? t HIDDEN-PARAM? or 0= ;
 
-\ 0 for a declared cell want without s; 1 for a quotation reaching s only by
-\ its output's base, paired exactly with a push node holding a literal that
-\ never returns; else -1.
+\ 0: want does not name s. 1: want is s's quotation and node, paired exactly,
+\ never returns. -1: neither.
 : DEAD-ARG ( n n n bool -- n ) {: s:n want:n node:n exact:bool :}
    s want RES-FALSE OCC-WALK 0= IF 0 EXIT THEN
    want T-RES {: q:n :}
@@ -12618,9 +12617,8 @@ variable CALL-DEAD
    d p exact c
    d R-RES TAG S-PUSH =  c 0 < 0= and ;
 
-\ One pair of DEAD-ARGS' walk: the next rows and exactness, and the count, -1
-\ once p has no cell or the pair disqualifies the call. A hidden- or
-\ layout-parameter cell takes a different number of row cells on each side.
+\ One pair of DEAD-ARGS' walk; the count is -1 once p has no cell or the pair
+\ disqualifies. Past a hidden- or layout-parameter cell rows no longer pair.
 : DEAD-STEP ( n n bool n n -- n n bool n ) {: d:n p:n exact:bool c:n s:n :}
    p R-RES TAG S-PUSH <> IF d p exact -1 EXIT THEN
    d R-RES {: dn:n :}  p R-RES {: pn:n :}

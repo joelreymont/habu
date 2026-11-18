@@ -177,14 +177,11 @@ STRUCTURE place
    FIX-SEP$ PUT fa fu PUT
    code REASON:THROW ;
 
-\ The last throw is never reached: it shows the checker that the word never
-\ returns, so a branch that calls it needs no result.
 : REJECT-WRITE ( n n ^u8 n n n str str n -- )
    {: line:n col:n a:^ off:n len:n form:n ea:^ eu:n fa:^ fu:n code:n :}
    line col a off len form ea eu fa fu code
    line col len form eu fu TEXT-SIZE MEM:BYTES-ALLOC-LEN
-   [: REJECT-SCOPE ;] MEM:WITH-BYTES
-   code throw ;
+   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
 
 \ Rejects at off in the span a u, whose first byte sits at the place at.
 : REJECT-FROM ( str place n str str n -- )

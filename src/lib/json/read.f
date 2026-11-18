@@ -413,14 +413,12 @@ $7F constant DEL
    FIX-SEP$ PUT fa fu PUT
    code REASON:THROW ;
 
-\ Throws code with the text of the place at off, sized first, SB untouched. The
-\ last throw is never reached: it shows the checker that REJECT never returns.
+\ Throws code with the text of the place at off, sized first, SB untouched.
 : REJECT ( ^cursor n ^u8 n ^u8 n n -- )
    {: state:^ off:n ea:^ eu:n fa:^ fu:n code:n :}
    state off ea eu fa fu code
    state off eu fu code TEXT-SIZE MEM:BYTES-ALLOC-LEN
-   [: REJECT-SCOPE ;] MEM:WITH-BYTES
-   code throw ;
+   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
 
 \ The current token's first byte: a string's or a key's opening quote.
 : TOKEN-START ( ^cursor -- n ) {: state:^ :}
@@ -1478,8 +1476,7 @@ private
    a u start NAME-AT {: na:^ nu:n next:n :}
    seen  na nu OPTIONAL?  or if next exit then
    state na nu  MEMBER-OF$ nip nu + 1+ MEM:BYTES-ALLOC-LEN
-   [: MISSING-SCOPE ;] MEM:WITH-BYTES
-   next ;
+   [: MISSING-SCOPE ;] MEM:WITH-BYTES ;
 
 \ At the object's `}`: rejects the first required name not seen.
 : REQUIRE-ALL ( ^cursor str n ^u8 -- )

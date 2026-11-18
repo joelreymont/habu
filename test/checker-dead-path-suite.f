@@ -2,11 +2,12 @@ split-str
 \ checker-dead-path-suite.f - which calls end a path.
 \
 \ A call ends its path when the word its token resolves to never returns,
-\ whatever its spelling: a package's own `throw` returns. `execute`, `catch`,
+\ whatever its spelling: a package's own `throw` returns. `execute`,
 \ `finally` and a word whose result row only its quotations' outputs name end
 \ it when the quotation cells they take hold `[: … ;]` literals that never
-\ return. The fact rides on the cell, so a word's result, a join of two
-\ different literals and a cell carried into a loop do not carry it.
+\ return; `catch` only when its literal never throws either, as a throw
+\ returns to it. The fact rides on the cell, so a word's result, a join of
+\ two different literals and a cell carried into a loop do not carry it.
 
 require src/lib/prelude.f
 require src/lib/memory.f
@@ -40,6 +41,9 @@ public
 
 : APPRN ( R [ R -- R ] -- R n )
    execute 0 ;
+
+: APPRET ( R [ R -- S ] | U -- S | U )
+   execute ;
 
 : SCOPE ( n ^u8 NUM:alloc-byte-len -- )
    drop drop drop 5 throw ;
@@ -157,7 +161,7 @@ s" nothing may follow that call on its path" T-LABEL
 s" DP-P ( n n -- n ) 0 = if 8 MEM:BYTES-ALLOC-LEN [: DEADPATH-FIX:SCOPE ;] MEM:WITH-BYTES 5 then" CHECK-QUIET-CANDIDATE! 0 T=
 
 s" a combinator running a quotation that returns still returns" T-LABEL
-s" DP-Q ( n n -- n ) 0 = if 8 MEM:BYTES-ALLOC-LEN [: DEADPATH-FIX:KEEP ;] MEM:WITH-BYTES drop then" CHECK-QUIET-CANDIDATE! 0 T=
+s" DP-Q ( n n -- n ) 0 = if 8 MEM:BYTES-ALLOC-LEN [: DEADPATH-FIX:KEEP ;] MEM:WITH-BYTES 1 + then" CHECK-QUIET-CANDIDATE! -1 T=
 
 s" a combinator whose result row is its input row still returns" T-LABEL
 s" DP-R ( n n -- n ) 0 = if drop [: 5 throw ;] DEADPATH-FIX:AROUND then" CHECK-QUIET-CANDIDATE! 0 T=
@@ -182,6 +186,9 @@ s" DP-W ( n -- ) [: ;] [: 5 throw ;] rot case >r swap r> 1 of 2drop endof drop n
 s" a quotation below a multi-cell value is paired with its own argument" T-LABEL
 s" DP-X ( n n -- n ) 0 = if drop [: 5 throw ;] [: drop ;] OPTION:NONE DEADPATH-FIX:APPO 5 then" CHECK-QUIET-CANDIDATE! -1 T=
 
+s" a combinator with a return-stack clause still returns" T-LABEL
+s" DP-Z ( n n -- n ) 0 = if drop [: 5 throw ;] DEADPATH-FIX:APPRET then" CHECK-QUIET-CANDIDATE! 0 T=
+
 \ ---- 4. the certified word does what its arms say -----------------------------
 s" the live path leaves the declared cell" T-LABEL
 1 2 DEADPATH-FIX:JT 1 T=
@@ -191,9 +198,8 @@ s" the dead path throws the code the arm named" T-LABEL
 ' JT-DEAD catch E-A-EMPTY T=
 
 \ ---- 5. a cell holding a never-returning literal ends the path ---------------
-\ The fact is on the cell the `[: ;]` pushed, never on its type: a value that
-\ only shares a term with such a literal returns. Each candidate declares one
-\ more value than its live path leaves.
+\ The fact is on the cell `[: ;]` pushed, not its type: a value sharing only a
+\ term with it returns. Each candidate declares one more value than it leaves.
 s" a literal straight to execute ends the path" T-LABEL
 s" DN-A ( -- n ) [: 5 throw ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
 
@@ -266,5 +272,15 @@ s" DN-W ( -- n ) [: ;] false [: if drop [: 5 throw ;] then ;] execute DEADPATH-F
 
 s" CHOOSE then APP inside an executed literal" T-LABEL
 s" DN-X ( -- n ) [: ;] [: [: 5 throw ;] true DEADPATH-FIX:CHOOSE DEADPATH-FIX:APP ;] execute" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---- 7. the rejection names the call that ended the path ----------------------
+: DP-NAMES-EXECUTE ( -- )
+   s" code after execute of a never-returning literal names the execute" T-LABEL
+   REJECTION:CAPTURE
+   [: s" : DP-Y ( -- n ) [: 5 throw ;] execute 7 ;" evaluate-closed ;] 70 TTHROWSQ
+   REJECTION:BUFFER$
+   s" error[E-DEAD-CODE]: `7` never runs: `execute` before it never returns"
+   STARTS-WITH? TTRUE  REJECTION:BUFFER-OFF ;
+DP-NAMES-EXECUTE
 
 T-REPORT
