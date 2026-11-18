@@ -17543,12 +17543,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       a u s" execute" CORE-STR= IF RSEXEC ELSE
       a u s" catch" CORE-STR= IF RSCATCH ELSE
       a u s" finally" CORE-STR= IF RSFINALLY ELSE
-      a u s" c2-invoke" CORE-STR= IF
-         ENFORCED?
-         a u CHECKER-FIND-ACTIVE-SYM PRIM-TRUSTED-SYM? and IF
-            -1 CAPREQ !  0 OK !  -1 FAILSET !
-         ELSE RS-C2-INVOKE THEN
-      ELSE
+      a u s" c2-invoke" CORE-STR= IF RS-C2-INVOKE ELSE
       0 RSH ! THEN THEN THEN THEN THEN THEN THEN
    ELSE 0 RSH ! THEN
    THEN THEN THEN

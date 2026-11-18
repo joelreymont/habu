@@ -1419,7 +1419,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a malformed qualified call after a trust-boundary word" T-LABEL
    s" : X ( n -- n ) evaluate A:B:C ;" s" unsafe-qual.f" LINE-FIXTURE
    s" E-BAD-QUALIFIED" s" A:B:C" 1 25 24 29 REFUSED-AT
-   s" a trust-boundary word before a TRUSTED-only primitive" T-LABEL
+   s" a trust-boundary word before another package's private primitive" T-LABEL
    s" : X ( n -- n ) evaluate 1 c2-invoke ;" s" unsafe-cap.f" LINE-FIXTURE
    s" E-UNSAFE" s" evaluate" 1 16 15 23 REFUSED-AT
    s" an unknown construct variant after a trust-boundary word" T-LABEL
@@ -1432,7 +1432,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a mismatch before a quotation local" T-LABEL
    s" : X ( n -- n ) dup c@ [: {: y:n :} ;] drop 1 ;" s" mismatch-qlocal.f" LINE-FIXTURE
    s" E-BAD-LOCAL-SHAPE" s" {:" 1 26 25 27 REFUSED-AT
-   s" a signature that does not parse and a TRUSTED-only primitive" T-LABEL
+   s" a signature that does not parse and another package's private primitive" T-LABEL
    s" : X ( n -- zz ) 1 c2-invoke ;" s" badsig-cap.f" LINE-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 1 12 11 13 REFUSED-AT ;
 
