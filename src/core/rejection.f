@@ -1024,6 +1024,12 @@ public
    u 0 > if s"  for " EMIT-STR  a u EMIT-STR then
    s" bytes" NOTE  bytes EMIT-U ;
 
+\ Throws SYSTEM after the E-MAP record of n bytes the system refused for what a u names.
+: MAP-STOP ( n ^u8 n -- )
+   MAP-REFUSED
+   HELP  s" raise the process's address-space limit (ulimit -v)" EMIT-STR
+   EXIT-STATUS:SYSTEM STOP ;
+
 private
 : DUPLICATE-OPEN ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
    s" E-DUPLICATE-DEFINITION" OPEN

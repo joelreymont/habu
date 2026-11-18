@@ -327,7 +327,7 @@ variable BIG-U
    s" = help: give `PDC-TWO` n n: convert or replace the value before it" path pathu GE-EXPECT-ERR-HAS ;
 
 \ A refused reserve of the engine's own, the stdin stream's text, is one E-MAP
-\ record whose help holds though the program reserved nothing.
+\ record whose help holds though the program reserved nothing, and exits SYSTEM.
 : MAP-DIE-STREAM ( n -- ) {: limit:n :}
    s" map-die-stream" {: label:^ labelu:n :}
    SB-RESET  s" ulimit -v " SB-APPEND  limit FMT:SB-U
@@ -337,7 +337,7 @@ variable BIG-U
    RECORDS 1 <> if label labelu GE-FAIL then
    s" error[E-MAP]: the system refused " label labelu GE-EXPECT-ERR-HAS
    MAP-HELP$ label labelu GE-EXPECT-ERR-HAS
-   EXIT-STATUS:UNCAUGHT label labelu GE-EXPECT-RC ;
+   EXIT-STATUS:SYSTEM label labelu GE-EXPECT-RC ;
 
 \ Linux's ulimit -v: 8 MB over the probe's peak holds hb, not what a 32 MB
 \ source grows to.

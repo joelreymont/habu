@@ -5129,8 +5129,8 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
       s" checker: token buffer too large" EXIT-STATUS:INTERNAL die
    THEN
    need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
-: TOKBUF-ALLOC ( n -- ^u8 )
-   map-anon 0 <> IF drop s" checker: token buffer mmap failed" EXIT-STATUS:SYSTEM die THEN ;
+: TOKBUF-ALLOC ( n -- ^u8 ) {: bytes:n :}
+   bytes map-anon 0 <> IF drop bytes s" the checker's token buffer" REJECTION:MAP-STOP THEN ;
 
 : CCOPY ( ^u8 ^u8 n -- ) {: a:^ d:^ u:n :}
    0 BEGIN dup u < WHILE
@@ -9704,8 +9704,7 @@ HIDX-MEM-CLEAR
 
 : HIDX-ALLOC ( -- )
    SYM-CAP HIDX-TABLES * cells {: u:n :}
-   u map-anon 0 <> IF
-      drop s" checker: symbol index mmap failed" EXIT-STATUS:SYSTEM die THEN
+   u map-anon 0 <> IF drop u s" the checker's symbol index" REJECTION:MAP-STOP THEN
    HIDX-MEM!  u HIDX-MEM-U ! ;
 
 \ Every invalidation drops the mapping, so a build maps fresh zeroed rows.
@@ -14272,9 +14271,8 @@ EXPORT CHECKER-OVERLAY:RESTORE-SCOPE
 \ A source loaded inside an active verifier window inherits its caller's
 \ package and imports. On a clean return it keeps no import it opened.
 : CHECKER-VERIFY-FILE ( [ -- ] -- ) {: q :}
-   SCOPE-BYTES map-anon 0= 0= IF
-      s" checker: file scope allocation failed" EXIT-STATUS:SYSTEM die
-   THEN {: frame:^ :}
+   SCOPE-BYTES map-anon 0= 0= IF drop SCOPE-BYTES s" a file scope" REJECTION:MAP-STOP THEN
+   {: frame:^ :}
    frame SAVE-SCOPE
    CK-USE-ENGINE-DEPTH SOURCE-FLOOR !
    q catch {: rc:n :}
