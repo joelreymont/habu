@@ -18260,7 +18260,9 @@ variable SV-TRAIL   variable SV-PIN
 variable SV-RAWPTR  variable SV-ONECELL  variable SV-STEP  variable SV-CELLVAR
 variable SV-FACT  variable SV-FTERM  variable SV-FKIND
 variable SV-BASEPTR  variable SV-RAWEXEC  variable SV-STALE  variable SV-SCOPE
-variable TSEEN  variable TSOK  variable TFA
+variable TSEEN  variable TSOK
+\ The closest failed row's effect, how far it got, and the last trial's reach.
+variable TCLOSE  variable TBEST  variable TREACH
 }SCRATCH
 
 : TRIAL-SAVE
@@ -18318,16 +18320,23 @@ variable TSEEN  variable TSOK  variable TFA
       i TV@ UNBOUND =  i TVK@ TVK-BASE-ONLY =  and IF RES-TRUE unloop EXIT THEN
    loop RES-FALSE ;
 
+\ A failed trial's rank: twice the input values it matched before the mismatch
+\ it latched, else the most, plus one when it latched a reason after a match.
+: TRIAL-REACH ( -- n )
+   SV-FSET @ 0=  FAILSET @ 0 <> and  DEXP @ 0 <> and  DEXP @ SV-DEXP @ <> and
+   IF DPOS @ 0 max ELSE -1 2 rshift THEN {: got:n :}
+   MDIAG @ SV-MDIAG @ <>  got 0 >  and IF 1 ELSE 0 THEN  got 2 * + ;
+
 : TRY-EFF ( ^u8 -- bool ) {: h:^ :}
    TRIAL-DEPTH @ 1 + TRIAL-DEPTH !
    TRIAL-SAVE
    h EFF-APPLY
    OK @ SGBAD @ 0= and  SV-FV @ BASE-ONLY-OPEN? 0= and
-   IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REST RES-FALSE THEN
+   IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REACH TREACH !  TRIAL-REST RES-FALSE THEN
    TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;
 
 : TRY-PRIMS ( n -- bool ) {: sym:n :}
-   0 TSEEN !  0 TSOK !  0 TFA !
+   0 TSEEN !  0 TSOK !  0 TCLOSE !  -1 TBEST !
    sym PRIM-FIRST-IDX dup 0 = IF drop RES-FALSE EXIT THEN
    1 - PE-I !
    begin PE-I @ #PE @ <  TSOK @ 0=  and while
@@ -18335,9 +18344,10 @@ variable TSEEN  variable TSOK  variable TFA
          PE-I @ PE-SYM@ sym = IF
             PE-I @ PE-TRUSTED-ONLY? IF   \ checked code, a body or a top-level step -> reject fail-closed
                -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
-            TSEEN @ 0= IF PE-I @ PE-EFF@ TFA ! THEN
             -1 TSEEN !
-            PE-I @ PE-EFF@ E-PTR TRY-EFF IF -1 TSOK ! THEN
+            PE-I @ PE-EFF@ E-PTR TRY-EFF IF -1 TSOK ! ELSE
+               TREACH @ TBEST @ > IF  TREACH @ TBEST !  PE-I @ PE-EFF@ TCLOSE !  THEN
+            THEN
          THEN
       THEN
       PE-I @ 1 + PE-I !

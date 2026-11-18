@@ -40,6 +40,7 @@ variable RBIND-N                                   \ lexical names while renderi
 variable RLETS                                     \ the letters given, bit i for name index i
 variable RNAMED                                    \ how many names were given
 variable RRESV                                     \ the letters REND-EFFECT's first pass met stored
+variable RFRESH                                    \ nonzero while PE-INPUTS writes a row
 64 constant RATOM-CAP
 create RATOM-KEY RATOM-CAP cells allot
 variable RATOM-N
@@ -103,11 +104,11 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    VAR-LETTERS 0 ?do used 1 i lshift and 0= IF i NAME-TAKE unloop EXIT THEN loop
    NLET @ VAR-LETTERS max NAME-TAKE ;
 
-\ A variable is named by the letter it stores unless a name took it; that one
-\ and an unlettered one take NAME-FREE's.
+\ A variable is named by the letter it stores unless a name took it; that one,
+\ an unlettered one and one in a row PE-INPUTS writes take NAME-FREE's.
 : VAR-NAME-NEW ( n -- n ) {: vp:n :}
    vp TVS@ {: c:n :}
-   c 0= IF NAME-FREE EXIT THEN
+   c 0=  RFRESH @ 0 <>  or IF NAME-FREE EXIT THEN
    c LETTER>IDX {: own:n :}
    RNAMES @ 1 = IF RRESV @ 1 own lshift or RRESV ! THEN
    RLETS @ 1 own lshift and 0= IF own NAME-TAKE EXIT THEN
@@ -1604,6 +1605,73 @@ s" immediate" TOP-KEYWORD-ID constant KW-IMMEDIATE
 : ROW-WORD ( n -- ) s" nothing" ROW-OR ;
 : ROW-NOTE ( n -- ) s" (nothing)" ROW-OR ;
 
+\ Primitive row i's inputs, its variables named after the record's; the names
+\ are given back, so every row starts from the same ones.
+: PE-INPUTS ( n -- ) {: i:n :}
+   NLET @ RLETS @ RNAMED @ {: nlet:n lets:n named:n :}
+   i PE-EFF@ E-PTR {: h:^ :}
+   1 RFRESH !
+   h E-INST-RESET  h E-DIN@ E-INST ROW-WORD
+   0 RFRESH !
+   nlet NLET !  lets RLETS !  named RNAMED ! ;
+
+: SYM-ROW? ( n n -- bool ) {: i:n sym:n :}
+   i PE-TAKES?  i PE-SYM@ sym =  and ;
+: SYM-ROWS ( n -- n ) {: sym:n :}
+   sym PRIM-FIRST-IDX dup 0= IF EXIT THEN
+   0 swap 1 - BEGIN dup #PE @ < WHILE
+      dup sym SYM-ROW? IF swap 1 + swap THEN
+      1 +
+   REPEAT drop ;
+
+\ The start and length in TEXT of each row text TAKES-ROW kept.
+SCRATCH{
+PTR-VARIABLE TAKEN-P   variable TAKEN-CAP   variable TAKEN-N
+}SCRATCH
+: TAKEN-AT ( n -- ^n ) 2 * cells TAKEN-P @ + ;
+: TAKEN$ ( n -- str ) TAKEN-AT {: row:^ :}  TEXT row @ +  row cell+ @ ;
+: TAKEN? ( n n -- bool ) {: at:n len:n :}
+   0 BEGIN dup TAKEN-N @ < WHILE
+      dup TAKEN$  TEXT at + len  CORE-STR= IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: TAKEN+ ( n n -- ) {: at:n len:n :}
+   TAKEN-P TAKEN-CAP TAKEN-N @ 1 + 2 ARENA-ROWS-ENSURE
+   TAKEN-N @ TAKEN-AT {: row:^ :}
+   at row !  len row cell+ !
+   TAKEN-N @ 1 + TAKEN-N ! ;
+
+\ Row i's inputs after ` or ` unless no row was written, taken back when an
+\ earlier row wrote the same text.
+: TAKES-ROW ( n -- ) {: i:n :}
+   TEXT-LEN @ {: at:n :}
+   TAKEN-N @ 0 <> IF s"  or " EMIT-STR THEN
+   TEXT-LEN @ {: from:n :}
+   i PE-INPUTS
+   TEXT-LEN @ from - {: len:n :}
+   from len TAKEN? IF at TEXT-LEN ! EXIT THEN
+   from len TAKEN+ ;
+
+\ Names the variables of the expected row, then of the found one, writing
+\ nothing, so a form list takes none of their letters.
+: RECORD-NAMES ( -- )
+   TEXT-LEN @ RQM @ {: at:n qm:n :}
+   DEXP @ 0 <> IF DEXP @ DROW THEN
+   DACT @ 0 <> IF DACT @ DROW THEN
+   at TEXT-LEN !  qm RQM ! ;
+
+\ What the pinned token takes: the expected row, or, when the token's word has
+\ more than one row, each row's inputs in table order.
+: TAKES-WORD ( -- )
+   PIN-TOK$ CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym SYM-ROWS 2 < IF DEXP @ ROW-WORD EXIT THEN
+   RECORD-NAMES
+   0 TAKEN-N !
+   sym PRIM-FIRST-IDX 1 - BEGIN dup #PE @ < WHILE
+      dup sym SYM-ROW? IF dup TAKES-ROW THEN
+      1 +
+   REPEAT drop ;
+
 \ A signature as written, without its parentheses.
 : SIG-BARE ( str -- str )
    SIG-TRIM {: a:^ u:n :}
@@ -1629,7 +1697,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    s"  on the stack; its signature promises " EMIT-STR  DEXP @ ROW-WORD ;
 : MISMATCH-MESSAGE ( -- )
    DEND @ 0 <> IF END-MESSAGE EXIT THEN
-   TOK-SPAN  s"  takes " EMIT-STR  DEXP @ ROW-WORD
+   TOK-SPAN  s"  takes " EMIT-STR  TAKES-WORD
    s" ; the stack holds " EMIT-STR  DACT @ ROW-WORD ;
 
 : LOCAL-MESSAGE ( -- )
@@ -1826,7 +1894,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    s" the stack holds " EMIT-STR  DACT @ ROW-WORD  s"  after this" EMIT-STR ;
 : MISMATCH-LABEL ( -- )
    DEND @ 0 <> IF END-LABEL EXIT THEN
-   s" takes " EMIT-STR  DEXP @ ROW-WORD ;
+   s" takes " EMIT-STR  TAKES-WORD ;
 
 : LOCAL-LABEL ( -- )
    LOCALBAD-GROUP? IF s" not a local name" EMIT-STR EXIT THEN
@@ -1949,6 +2017,11 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    qm RQM !  dst REJECTION:DEST !
    s"  )" EMIT-STR ;
 
+\ A reason one row of a many-row word gave still names every form the word takes.
+: FORMS-NOTE ( -- )
+   PIN-TOK$ CHECKER-FIND-ACTIVE-SYM SYM-ROWS 2 < IF EXIT THEN
+   s" note" REJECTION:NOTE  TOK-SPAN  s"  takes " EMIT-STR  AT-PIN TAKES-WORD ;AT-PIN ;
+
 : DIAG-NOTES ( -- )
    DKIND {: k:n :}
    k RF-IMM = IF PIN-TOK$ IMM-NOTES THEN
@@ -1962,6 +2035,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
       AT-PIN  MDIAG-CELL-VAR @ REND-TYPE  ;AT-PIN
       s" ` the type that keeps it hands it" EMIT-STR
    THEN
+   k RF-REASON = IF FORMS-NOTE THEN
    k EFFECT-NOTES? IF EFFECT-NOTES THEN ;
 
 \ The help for a body whose end does not fit its signature: the row it should

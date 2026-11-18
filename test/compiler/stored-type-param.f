@@ -240,6 +240,67 @@ private
    s" a ^t compared with the null takes a record pointer" T-LABEL
    NULL-TURN TFALSE ;
 
+: CASE-POINTER-KINDS ( -- )
+   s" `=` none of whose rows fit names each row and the closest row's types" T-LABEL
+   ARM
+   [: s" : STORED-R24 ( ^STORED:turn ^STORED:node -- bool ) = ;" evaluate-closed ;]
+      70 TTHROWSQ
+   S\" \"message\":\"`=` takes n n or ^a ^a; the stack holds ^stored:turn ^stored:node\"" HAS?
+   S\" \"label\":\"takes n n or ^a ^a\"" HAS?
+   S\" \"expected\":\"^stored:node ^stored:node\",\"found\":\"^stored:turn ^stored:node\"" HAS?
+   S\" \"help\":\"give `=` ^stored:node ^stored:node: convert or replace the value before it\"" HAS?
+   DISARM ;
+
+: CASE-SUB-KINDS ( -- )
+   s" `-` given a record pointer and n gives the offset row's reason" T-LABEL
+   ARM
+   [: s" : STORED-R26 ( ^STORED:turn n -- ^STORED:turn ) - ;" evaluate-closed ;]
+      70 TTHROWSQ
+   S\" \"message\":\"`a` is stepped by an offset; `stored:turn` is not a plain cell type\"" HAS?
+   S\" \"label\":\"steps by an offset\"" HAS?
+   S\" \"expected\":\"^a n\",\"found\":\"^stored:turn n\",\"family\":\"stored:turn\"" HAS?
+   S\" \"help\":\"declare the word for the plain cell type it steps, or step `stored:turn` by its size\"" HAS?
+   S\" \"note\":\"`-` takes n n or ^b n or ^b ^c or ^b ^b\"" HAS?
+   DISARM ;
+
+: CASE-SUB-NAMES ( -- )
+   s" `-` names its forms after the record's letters, the same in each list" T-LABEL
+   ARM
+   [: s" : STORED-R27 ( n -- n ) NULL-PTR - ;" evaluate-closed ;]
+      70 TTHROWSQ
+   S\" \"message\":\"`-` takes n n or ^c n or ^c ^d or ^c ^c; the stack holds n ^b\"" HAS?
+   S\" \"label\":\"takes n n or ^c n or ^c ^d or ^c ^c\"" HAS?
+   DISARM ;
+
+: CASE-SUB-HELP ( -- )
+   s" `-` none of whose rows fit helps with the closest row alone" T-LABEL
+   ARM
+   [: s" : STORED-R38 ( n ^a -- n ) drop NULL-PTR - ;" evaluate-closed ;]
+      70 TTHROWSQ
+   S\" \"message\":\"`-` takes n n or ^c n or ^c ^d or ^c ^c; the stack holds n ^b\"" HAS?
+   S\" \"label\":\"takes n n or ^c n or ^c ^d or ^c ^c\"" HAS?
+   S\" \"help\":\"give `-` ^a ^b: convert or replace the value before it\"" HAS?
+   DISARM ;
+
+: CASE-SUB-FRESH ( -- )
+   s" `-` lists each form once, its letters given in order" T-LABEL
+   ARM
+   [: s" : STORED-R35 ( -- n ) - ;" evaluate-closed ;]
+      70 TTHROWSQ
+   S\" \"note\":\"`-` takes n n or ^a n or ^a ^b or ^a ^a\"" HAS?
+   DISARM ;
+
+: CASE-ADD-KINDS ( -- )
+   s" `+` given two record pointers, a row no value of which fits, names each form" T-LABEL
+   ARM
+   [: s" : STORED-R25 ( ^STORED:turn ^STORED:node -- ^STORED:turn ) + ;" evaluate-closed ;]
+      70 TTHROWSQ
+   S\" \"message\":\"`+` takes n n or ^a n or n ^a; the stack holds ^stored:turn ^stored:node\"" HAS?
+   S\" \"label\":\"takes n n or ^a n or n ^a\"" HAS?
+   S\" \"expected\":\"n n\",\"found\":\"^stored:turn ^stored:node\"" HAS?
+   S\" \"help\":\"give `+` n n: convert or replace the value before it\"" HAS?
+   DISARM ;
+
 : CASE-LOCAL ( -- )
    s" a ^ local takes a record pointer until a fetch through it" T-LABEL
    LOCAL-TURN TTRUE
@@ -481,6 +542,12 @@ public
    CASE-ONE-CELL-FETCH
    CASE-ONE-CELL-ENUM
    CASE-NULL
+   CASE-POINTER-KINDS
+   CASE-SUB-KINDS
+   CASE-SUB-NAMES
+   CASE-SUB-HELP
+   CASE-SUB-FRESH
+   CASE-ADD-KINDS
    CASE-LOCAL
    CASE-OLD-STEP
    CASE-READ

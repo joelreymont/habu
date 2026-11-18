@@ -268,7 +268,7 @@ package CHECK
       CALL-PRIMS <> IF FEP @ EFF-APPLY EXIT THEN
    THEN
    CURSYM @ TRY-PRIMS IF EXIT THEN
-   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY EXIT THEN
+   TSEEN @ 0 <> IF TCLOSE @ E-PTR EFF-APPLY EXIT THEN
    \ The load compiles a word its lookup found, though no checker symbol or row
    \ types it, so only the check fails the call.
    TOK-LIVE-REC @ IF a u CALL-UNDEFINED drop EXIT THEN
