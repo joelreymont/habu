@@ -6,7 +6,6 @@ split-str
 \ (generated-declaration.f) builds constructors at commit, so a reject publishes
 \ none. Loads after decl-event.f and structure-decl.f.
 
-using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
@@ -14,11 +13,7 @@ package TYPE-DECL
 private
 package ENUM-DECL
 using DECL-FRONT
-EXPORT TFAM:TFAM-DECL
 EXPORT TFAM:TFAM-FLD-RANGE!
-EXPORT TFAM:TFAM-LAYOUT!
-EXPORT TFAM:TFAM-SLOTS!
-EXPORT TFAM:TFAM-VAR-RANGE!
 
 \ Transient parse state, not declaration state: ENUM is top-level
 \ interpret-only, so one declaration runs at a time.
@@ -400,6 +395,5 @@ global
 INTRINSIC-DECLARATION INTRINSIC
 ;package
 
-;using
 ;using
 ;using

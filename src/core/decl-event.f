@@ -5,12 +5,19 @@ split-str
 \ opens one declaration at a time: PART-SNAPSHOT starts an empty log, and the
 \ checker frame's rollback rewinds the declaration's field rows.
 
-using SCHEMA-REG
 using TFAM
 
 package TYPE-DECL
 private
 package DECL-EVENT
+EXPORT SCHEMA-REG:SCH-QUOT-ROWS
+EXPORT SCHEMA-REG:SCHEMA-B@
+EXPORT SCHEMA-REG:SCHEMA-C@
+EXPORT SCHEMA-REG:SCHEMA-QUOT-ROW@
+EXPORT SCHEMA-REG:SCHEMA-QUOT?
+EXPORT SCHEMA-REG:SCHEMA-ROW-COUNT@
+EXPORT SCHEMA-REG:SCHEMA-ROW-ELEM@
+EXPORT SCHEMA-REG:SCHEMA-ROW-OK?
 
 \ --- syntax-event kinds (record tag values). Each event row holds a kind, VAR
 \ and FLD; their meaning by kind:
@@ -73,7 +80,6 @@ variable DEV-FLD-ORD  \ fields logged by the open declaration
 variable DEV-VAR-ORD  \ variants logged by the open declaration
 variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-VARIANT
 
-EXPORT CHECK:REG-GROW1
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
    DEV-A-P DEV-CAP-V @ DEV-REC *  nc DEV-REC *  REG-GROW1
@@ -213,5 +219,4 @@ public
 ;package
 ;package
 
-;using
 ;using

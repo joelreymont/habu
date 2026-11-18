@@ -4,16 +4,16 @@ split-str
 \ checker variables, and the checker instantiates them per use. Node fields hold
 \ integers only (con codes, family ids, root indices), so a grow is a cell copy
 \ and snapshot persist bakes stores with no rebase. Loaded unchecked right after
-\ checker.f, as package SCHEMA-REG: a name used outside this file is public.
+\ checker.f, as package SCHEMA-REG, all private: an engine package takes a word
+\ with `EXPORT SCHEMA-REG:NAME`.
 
 \ --- schema node kinds (node tag values). Node id 0 is the reserved nil node.
 \ SCH-NIL is the reserved sentinel and SCH-KIND-MAX the creatable-tag ceiling
-\ SCHEMA-KIND? tests against; neither is a caller's value, so both stay private.
+\ SCHEMA-KIND? tests against.
 package SCHEMA-REG
+private
 
 0 constant SCH-NIL
-
-public
 
 1 constant SCH-PARAM      \ A = parameter index (>= 0)
 2 constant SCH-CON        \ A = concrete con code
@@ -23,8 +23,6 @@ public
 6 constant SCH-ROW        \ A = element-root start, B = element count (one quotation effect side)
 7 constant SCH-XT         \ no fields
 
-private
-
 7 constant SCH-KIND-MAX   \ highest valid creatable tag
 
 \ A quotation payload has four effect SIDES stored as four schema roots contiguous
@@ -33,22 +31,17 @@ private
 \ side's ordered type nodes (possibly empty), so a side can be multi-type or empty.
 \ The hasr flag (A) records whether the return-stack sides carry a non-neutral
 \ effect (an explicit `| rin -- rout` clause).
-public
 
 4 constant SCH-QUOT-ROWS
 
 \ --- node record layout (interleaved cell arena, one grow buffer).
-private
 
 0 cells constant SCH.TAG-OFF
 1 cells constant SCH.A-OFF
 2 cells constant SCH.B-OFF
 3 cells constant SCH.C-OFF
 
-public
-
 4 cells constant SCH-REC
-private
 
 : SCH.TAG ( ^a -- ^a ) SCH.TAG-OFF + ;
 : SCH.A ( ^a -- ^a ) SCH.A-OFF + ;
@@ -58,36 +51,24 @@ private
 16 constant SCH-CAP-INIT        \ holds the built-ins' schemas (TF-CAP-INIT)
 16 constant SCH-ROOT-INIT       \ cells; holds the built-ins' schema roots
 
-public
-
 variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !
-
-private
 
 : SCH-CAP ( -- n ) SCH-CAP-V @ ;
 create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot
 PERSISTED-PTR-VARIABLE SCH-A-P    SCH-A-BOOT SCH-A-P !
 
-public
-
 : SCH-BASE ( -- ^n ) SCH-A-P @ ;
 
 variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !
-
-private
 
 : SCH-ROOT-CAP ( -- n ) SCH-ROOT-CAP-V @ ;
 create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot
 PERSISTED-PTR-VARIABLE SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !
 
-public
-
 : SCH-ROOT-BASE ( -- ^n ) SCH-ROOT-P @ ;
 
 variable SCH-N   \ next node id; 1 leaves node 0 as the nil sentinel
 variable SCH-ROOT-N   \ next schema-root index
-
-private
 
 \ Retiring a node or root scrubs it back to canonical zero, as PF-SCRUB
 \ (src/core/type-family.f) does for field rows: a zeroed row is the canonical
@@ -98,8 +79,6 @@ private
    SCH-ROOT-BASE lo hi ARENA-CELLS-ZERO ;
 
 EXPORT CHECKER-REG:GROW
-
-public
 
 : SCHEMA-RESET ( -- )           \ base state; node 0, the nil sentinel, stays
    1 SCH-N @ SCH-SCRUB
@@ -113,20 +92,14 @@ SCHEMA-RESET
    SCH-A-P  SCH-CAP-V @ SCH-REC *  nc SCH-REC *  GROW
    nc SCH-CAP-V ! ;
 
-private
-
 : SCH-ENSURE ( -- )             \ room for the next node id (SCH-N)
    SCH-N @ SCH-CAP-V @ < IF exit THEN
    SCH-N @ 1 + SCH-GROW ;
-
-public
 
 : SCH-ROOT-GROW ( n -- ) {: need:n :}
    need SCH-ROOT-CAP-V @ 2 * max {: nc:n :}
    SCH-ROOT-P  SCH-ROOT-CAP-V @ cells  nc cells  GROW
    nc SCH-ROOT-CAP-V ! ;
-
-private
 
 : SCH-ROOT-ENSURE ( -- )        \ room for the next root index (SCH-ROOT-N)
    SCH-ROOT-N @ SCH-ROOT-CAP-V @ < IF exit THEN
@@ -145,11 +118,11 @@ SCRATCH-VARIABLE SCH-MODE        \ 0 persistent, 1 transient
 
 : TRANSIENT-MODE? ( -- bool ) SCH-MODE @ 0 <> ;
 
-\ SCHEMA-REG:WORD was given V, which is WHAT; FIX says what to pass instead.
+\ WORD was given V, which is WHAT; FIX says what to pass instead.
 : SCHEMA-BAD ( n str str str -- )
    {: v:n w:^ wu:n what:^ whatu:n fix:^ fixu:n :}
    s" E-SCHEMA-BAD" REJECTION:OPEN
-   s" `SCHEMA-REG:" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
+   s" `" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
    s" ` was given " REJECTION:EMIT-STR  what whatu REJECTION:EMIT-STR
    s" value" REJECTION:NOTE  v REJECTION:EMIT-N
    REJECTION:HELP  fix fixu REJECTION:EMIT-STR
@@ -209,13 +182,11 @@ EXPORT CHECK:WRITE-WINDOW-CK
 : SCHEMA-KIND? ( n -- bool ) {: tag:n :}   \ tag is a creatable node kind
    tag SCH-PARAM >= tag SCH-KIND-MAX <= and ;
 
-public
-
 : SCHEMA-NEW ( n n n n -- n ) {: tag:n a:n b:n c:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
    tag SCHEMA-KIND? 0= IF
       tag s" SCHEMA-NEW" s" a tag that is no schema node kind"
-      s" pass a kind from `SCHEMA-REG:SCH-PARAM` to `SCHEMA-REG:SCH-ROW`"
+      s" pass a kind from `SCH-PARAM` to `SCH-ROW`"
       SCHEMA-BAD
    THEN
    SCH-NEW-ID {: id:n :}
@@ -324,15 +295,12 @@ public
 \ --- SCH-QUOT quotation payload node: the checker's quotation effect sides (din,
 \ dout, rin, rout) as four SCH-ROW roots, so a schema can carry a quotation-typed
 \ argument. A side that is not a live SCH-ROW node is rejected.
-private
 
 : QUOT-SIDE-CK ( n -- ) {: side:n :}
    side s" SCHEMA-QUOT" KEEP-CK
    side SCHEMA-ROW-OK? IF EXIT THEN
    side s" SCHEMA-QUOT" s" a side that is not a live row node"
-   s" pass four sides `SCHEMA-REG:SCHEMA-ROW` made" SCHEMA-BAD ;
-
-public
+   s" pass four sides `SCHEMA-ROW` made" SCHEMA-BAD ;
 
 \ The four sides, whether there is a return clause, and the stated facts. A holds
 \ the facts, ORed with 1 when there is a return clause: no fact uses bit 0.
@@ -362,7 +330,6 @@ public
    row row row row RES-FALSE 0 SCHEMA-QUOT ;
 
 \ Row with node after its elements.
-private
 
 : SIDE+ ( n n -- n ) {: row:n node:n :}
    row SCHEMA-ROW-COUNT@ {: k:n :}
@@ -370,8 +337,6 @@ private
    k 0 ?do row i SCHEMA-ROW-ELEM@ SCHEMA-ROOT+ drop loop
    node SCHEMA-ROOT+ drop
    start k 1 + SCHEMA-ROW ;
-
-public
 
 \ Effect EFF with NODE as its new top input.
 : EFFECT-IN ( n n -- n ) {: eff:n node:n :}
@@ -404,15 +369,11 @@ public
 \ pushed and popped in lockstep with checker.f's core frame through the
 \ REG-EXT-RB-* hooks. Rejecting a scope retires its nodes; later nodes reuse the
 \ ids.
-private
 
 0 cells constant SCHRB.N-OFF
 1 cells constant SCHRB.ROOTN-OFF
 
-public
-
 2 cells constant SCH-RBF-REC
-private
 
 : SCHRB.N ( ^a -- ^a ) SCHRB.N-OFF + ;
 : SCHRB.ROOTN ( ^a -- ^a ) SCHRB.ROOTN-OFF + ;
@@ -424,11 +385,7 @@ create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
 PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
 : SCH-RBF-BASE ( -- ^n ) SCH-RBF-P @ ;
 
-public
-
 variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
-
-private
 
 : SCH-RBF-GROW ( -- )
    SCH-RBF-CAP-V @ 2 * {: nc:n :}
@@ -444,8 +401,6 @@ private
 \ the retired nodes and roots and moves no frame depth: SCHEMA-ROLLBACK-RESTORE
 \ (the checker frame) and src/core/sumtype.f TDECL-RESTORE. SCHEMA-RESET runs
 \ at load, before REWIND exists, and scrubs itself.
-
-public
 
 : REWIND ( n n -- ) {: n:n rootn:n :}
    n 0 < n SCH-N @ > or rootn 0 < or rootn SCH-ROOT-N @ > or IF

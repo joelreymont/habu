@@ -1,0 +1,9 @@
+---
+title: "Make the rest of TYPE-DECL's internals private"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-18T16:36:15.882651+01:00"
+---
+
+Problem: src/core/sumtype.f package TYPE-DECL keeps public words no program, library file, tool or test calls: ANY-VALUE DECL-FAMILY-NAME DECL-FIELD! DECL-HEADER DECL-PARAM DECL-PARAM-USE PARSE-QUOT TDECL-ADDR-REPLAY TDECL-ADDR-WORDS TDECL-AMBIG TDECL-AMBIG-DIAG TDECL-ARM TDECL-ARMED TDECL-COLLIDE-WHY TDECL-CTOR-PUBLISH TDECL-CTOR-REPLAY TDECL-CTOR-WORDS-BODY TDECL-DEFFAMILY TDECL-DEFTYPE TDECL-DERIVE-WHY TDECL-INIT-REPLAY TDECL-INIT-WORDS TDECL-LAYOUT-DESC TDECL-NICHE-MESSAGE$ TDECL-NOMINAL-REPLAY TDECL-POLICY TDECL-PROD-WORDS TDECL-SEALED-WORD TDECL-THROW TDECL-THROW-AT TDECL-VIS TDECL-WHY@ TDECL-WORD-NOTE TDPLAN-BEGIN TDPLAN-NAME$, and READ-TYPE (:1082; programs call EFFECT:READ-TYPE, a different word) and QUOT-ROLLBACK (:412). Acceptance: each is E-UNDEFINED outside TYPE-DECL and its parts, and engine callers outside them take it by EXPORT; the error codes (E-TDECL-*, E-ENUM-TAG) and TDECL-CONVERTERS (src/lib/type/deftype.f:47) stay public. Depends: none. Claim: unassigned.

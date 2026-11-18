@@ -1,8 +1,7 @@
 split-str
 \ postpone-effect.f - an effect a definer builds renders as the signature its
-\ built word records, naming a private family by its package, and its nodes
-\ are transient: no persistent schema root takes one. A multi-error load that
-\ refuses a built body keeps its effect, which names the definer's
+\ built word records, naming a private family by its package. A multi-error
+\ load that refuses a built body keeps its effect, which names the definer's
 \ structure, for a caller in another package. A word built over
 \ EFFECT:READ-TYPE or EFFECT:NAMED of a type takes the type its text form
 \ declares, and READ-TYPE refuses a family the running package does not know.
@@ -69,7 +68,6 @@ public
 package POSTPONE-EFFECT
 private
 STRUCTURE peslot FIELD a n ;STRUCTURE
-CAST: >NODE ( EFFECT:type -- n )
 
 : SLOT-PTR ( -- EFFECT:type )
    s" POSTPONE-EFFECT:peslot" EFFECT:NAMED EFFECT:PTR ;
@@ -100,30 +98,6 @@ s" PE-SLOT-B ( ^postpone-effect:peslot n -- ^postpone-effect:peslot ) PE-SLOT-W"
 CHECK-QUIET-CANDIDATE! -1 T=
 s" PE-XT-A ( xt -- xt ) PE-XT-W" CHECK-QUIET-CANDIDATE! -1 T=
 s" PE-XT-B ( n -- n ) PE-XT-W" CHECK-QUIET-CANDIDATE! 0 T=
-
-\ The captured record opens with the line L and gives the transient-node help.
-: SAID-BAD ( str -- ) {: l:^ lu:n :}
-   REJECTION:BUFFER$ l lu STARTS-WITH? TTRUE
-   REJECTION:BUFFER$
-   S\" = help: pass a node made outside transient mode\n"
-   CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
-
-: ROOT-PERSIST ( -- )
-   SLOT-PTR >NODE {: node:n :}
-   REJECTION:CAPTURE
-   [: node SCHEMA-REG:SCHEMA-ROOT+ drop ;] 70 TTHROWSQ
-   S\" error[E-SCHEMA-BAD]: `SCHEMA-REG:SCHEMA-ROOT+` was given a transient node outside transient mode\n"
-   SAID-BAD ;
-ROOT-PERSIST
-
-\ Nor does a persistent pointer node.
-: PTR-PERSIST ( -- )
-   SLOT-PTR >NODE {: node:n :}
-   REJECTION:CAPTURE
-   [: node SCHEMA-REG:SCHEMA-PTR drop ;] 70 TTHROWSQ
-   S\" error[E-SCHEMA-BAD]: `SCHEMA-REG:SCHEMA-PTR` was given a transient node outside transient mode\n"
-   SAID-BAD ;
-PTR-PERSIST
 
 TYPED-VARIABLE EVAL-A ^u8
 variable EVAL-U

@@ -2014,6 +2014,8 @@ public
 
 package SOURCE-ROOT
 EXPORT CHECK:FILE-POS-CLEAR
+EXPORT SCHEMA-REG:TRANSIENT-MARK
+EXPORT SCHEMA-REG:TRANSIENT-RELEASE
 private
 
 \ A frame carries its own resolved path: a nested include overwrites
@@ -2129,7 +2131,7 @@ variable LAST-LOAD-EVAL-OK
    0 frame FR-CTIME-SEC + CELL-VIEW !
    0 frame FR-CTIME-NS + CELL-VIEW !
    -1 frame FR-STAMP-SIZE + CELL-VIEW !
-   SCHEMA-REG:TRANSIENT-MARK {: nodes:n roots:n params:n :}
+   TRANSIENT-MARK {: nodes:n roots:n params:n :}
    nodes frame FR-T-NODES + CELL-VIEW !
    roots frame FR-T-ROOTS + CELL-VIEW !
    params frame FR-T-PARAMS + CELL-VIEW !
@@ -2259,7 +2261,7 @@ public
    frame FR-T-NODES + CELL-VIEW @
    frame FR-T-ROOTS + CELL-VIEW @
    frame FR-T-PARAMS + CELL-VIEW @
-   SCHEMA-REG:TRANSIENT-RELEASE ;
+   TRANSIENT-RELEASE ;
 
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.

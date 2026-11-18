@@ -641,7 +641,6 @@ variable CASE-EXP
    \ under a type variable; the case is about its arity, so it names a pointee.
    s" : PROP-PC ( -- ^n ) data-base ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) schema-reg:schema-root-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n -- r ) s>f ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- ) emit ; " s" 7 " 0 CHECK-CASE
    s" : PROP-PC ( -- ) cr ; " s" " 0 CHECK-CASE

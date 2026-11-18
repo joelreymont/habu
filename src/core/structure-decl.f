@@ -9,18 +9,15 @@ split-str
 \ after decl-event.f and structure-make.f, whose GENERATE and ARM ;STRUCTURE calls,
 \ or ;MUTUAL for each of its members.
 
-using SCHEMA-REG
 using TFAM
 
 package TYPE-DECL
 private
 package STRUCTURE-DECL
 using DECL-FRONT
-EXPORT TFAM:TFAM-DECL
 EXPORT TFAM:TFAM-FLD-RANGE!
-EXPORT TFAM:TFAM-LAYOUT!
 EXPORT TFAM:TFAM-PK!
-EXPORT TFAM:TFAM-SLOTS!
+EXPORT SCHEMA-REG:SCHEMA-PARAM?
 
 \ Transient parse state, not declaration state: STRUCTURE is top-level
 \ interpret-only, so one declaration runs at a time.
@@ -266,11 +263,9 @@ variable HELP-U
 
 : SD-KIND$ ( -- str ) s" structure" ;
 
-EXPORT CHECK:CON-OF
 EXPORT CHECK:SIG-DELIM-CHAR?
 EXPORT CHECK:SIG-NEST
 EXPORT CHECK:TYPE-MAY-ARRIVE-XT
-EXPORT CHECK:UNSTORED-REASON
 EXPORT CHECK:WIDTH-FAM
 \ A family that owns a linear value is an accepted field type: the structure owns
 \ the obligation by containment (TFAM-CONCRETE-LINEAR? walks into it), the rule a
@@ -1200,11 +1195,11 @@ public
 
 private
 
-\ TYPE-DECL:TDECL-FAM-REG holds the family only when the wrap left no rejection,
+\ TDECL-FAM-REG holds the family only when the wrap left no rejection,
 \ which a multi-error load tallies and any other load throws.
 : WRAP-KEEP ( n -- ) {: tally:n :}
    REJECTION:TALLY @ tally <> IF EXIT THEN
-   FAM @ TYPE-DECL:TDECL-FAM-REG ! ;
+   FAM @ TDECL-FAM-REG ! ;
 
 \ Rejects `DEFTYPE` NAME at BASE, armed with reason, help and code.
 : ONE-NAME-REJECT ( str str str str n -- )
@@ -1232,7 +1227,7 @@ public
 \ Answers as REPLAY-STRUCTURE; TDECL-FAM-REG is the family, or -1 if none.
 : SD-WRAP-OUTCOME ( str str str str -- str bool )
    {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
-   -1 TYPE-DECL:TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
+   -1 TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
    ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
    miss 0= IF tally WRAP-KEEP THEN
    ma mu miss ;
@@ -1243,7 +1238,7 @@ private
 \ family, or -1 when a multi-error load rejected it.
 : SD-WRAP ( ^u8 n ^u8 n ^u8 n ^u8 n -- n )
    SD-WRAP-OUTCOME IF 2drop E-UNRESOLVED throw THEN 2drop
-   TYPE-DECL:TDECL-FAM-REG @ ;
+   TDECL-FAM-REG @ ;
 
 ;package
 
@@ -1255,7 +1250,7 @@ EXPORT STRUCTURE-DECL:SD-WRAP
 \ scratch-only when the clause was spelled.
 : SCRATCH-MARK ( bool -- ) {: scratch:bool :}
    scratch 0= IF EXIT THEN
-   TYPE-DECL:TDECL-FAM-REG @ {: fam:n :}
+   TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
    fam TFAM-SCRATCH! ;
 
@@ -1306,5 +1301,4 @@ INTRINSIC-DECLARATION INTRINSIC
 
 ;package
 
-;using
 ;using

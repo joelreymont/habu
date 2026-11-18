@@ -6,7 +6,6 @@ split-str
 \ product bundle is its field cells in slot order, so MAKE and UNMAKE are casts
 \ the checker certifies, with no TRUST, TRUSTED: or set-check.
 
-using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
@@ -14,7 +13,6 @@ package TYPE-DECL
 private
 package STRUCTURE-MAKE
 EXPORT TFAM:PF-ROW
-EXPORT TFAM:TFAM-VAR-RANGE!
 
 : SM-FIELD-SCHEMA@ ( n n -- n ) {: idx:n fs:n :}
    fs idx + PF-PENDING-SCH@ ;
@@ -105,6 +103,5 @@ public
 ;package
 ;package
 
-;using
 ;using
 ;using
