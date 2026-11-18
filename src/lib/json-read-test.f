@@ -1890,6 +1890,33 @@ create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN 
    s\" 2:19: expected one of `key`, `on`, found `\"pin\"`; rename the member to one of those, or remove it"
    JRT-LISTED-H-SAY ;
 
+\ Unnamed members first, between and last: an object holding listed names,
+\ an array, a repeated key and the key `*`.
+: JRT-WILD$ ( -- str )
+   s\" {\"x\":{\"host\":[1,{\"port\":2}]},\"host\":\"a\",\"y\":[1,[2],{\"c\":3}],\"port\":8080,\"x\":true,\"*\":\"q\"}" ;
+
+: JRT-TEST-LISTED-WILD ( -- )
+   s" READ-LISTED under `*` skips each unnamed member wherever it sits" T-LABEL
+   0 JRT-ORDER !
+   JRT-WILD$ JRT-FIRST s" host port *" JRT-SEEN [: JRT-TOP-H ;] JRT-LISTED-EACH
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   JRT-ORDER @ 12 T=
+   s" READ-LISTED under `*` rejects a repeated listed key at its second key" T-LABEL
+   s\" {\"host\":\"a\",\"x\":1,\"host\":\"b\"}" s" host *"
+   s\" 1:19: expected each member once, found `\"host\"`; remove the repeated member, keeping one"
+   JRT-LISTED-SAY
+   s" READ-LISTED under `*` rejects a missing member at the object's close" T-LABEL
+   s\" {\"x\":1,\"host\":\"a\"}" s" host user *"
+   s" 1:18: expected the member `user`, found `}`; add the member to the object"
+   JRT-LISTED-SAY
+   s" READ-LISTED over `*` alone skips every member, answering only -1" T-LABEL
+   0 JRT-ORDER !
+   JRT-WILD$ JRT-FIRST s" *" JRT-SEEN [: JRT-TOP-H ;] JRT-LISTED-EACH
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   JRT-ORDER @ 0 T= ;
+
 create JRT-NAMES 400 allot
 
 : JRT-NAME-PUT ( n str -- n ) {: at:n a:^ u:n :}
@@ -1999,6 +2026,7 @@ create JRT-NAMES 400 allot
    JRT-TEST-LISTED-HANDLER
    JRT-TEST-LISTED-HUNDRED
    JRT-TEST-LISTED-OPTIONAL
+   JRT-TEST-LISTED-WILD
    JRT-TEST-REWIND
    JRT-TEST-SEEN-BYTES ;
 

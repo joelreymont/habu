@@ -1404,6 +1404,14 @@ private
    u 0= if 0 exit then
    1 u 0 ?do a i + c@ SP = if 1+ then loop ;
 
+\ The names a list holds before a last name `*`, and whether it has one.
+: LISTED ( str -- str bool ) {: a:^ u:n :}
+   u 0= if a u false exit then
+   a u + 1- c@ [char] * <> if a u false exit then
+   u 1 = if a 0 true exit then
+   a u + 2 - c@ SP <> if a u false exit then
+   a u 2 - true ;
+
 \ The name that starts at start, as listed, and the next name's start.
 : NAME-AT ( str n -- str n ) {: a:^ u:n start:n :}
    a u SP start SPLIT-NEXT drop ;
@@ -1488,11 +1496,16 @@ private
       state a u  seen i + c@ 0<>  REQUIRE-NAME
    loop drop ;
 
-\ The index of the current key's name, marked seen, with the reader advanced
-\ to the member's value. After a key the reader yields a value or throws.
-: MEMBER-INDEX ( ^cursor str n ^u8 -- n )
-   {: state:^ a:^ u:n count:n seen:^ :}
+\ Reads from the current key to its member's value's last token.
+: SKIP-MEMBER ( ^cursor -- ) {: state:^ :}
+   state NEXT-INNER drop state SKIP-INNER ;
+
+\ The current key's name's index, marked seen, the reader on its value; -1
+\ for a key skipped under `*`. After a key the reader yields a value or throws.
+: MEMBER-INDEX ( ^cursor str n bool ^u8 -- n )
+   {: state:^ a:^ u:n count:n wild:bool seen:^ :}
    state a u count KEY-INDEX {: idx:n :}
+   idx 0< wild and if state SKIP-MEMBER -1 exit then
    idx 0< if state a u count UNKNOWN-REJECT then
    seen idx + c@ 0<> if
       state s" each member once" s" remove the repeated member, keeping one"
@@ -1527,13 +1540,14 @@ public
    READER>STATE ea eu fa fu E-MEMBER REJECT-TOKEN ;
 
 \ A seen buffer holds the listed object's depth, then a byte per listed name.
-: SEEN-BYTES ( ^u8 n -- n ) READ-NAME-COUNT 1 cells + ;
+: SEEN-BYTES ( ^u8 n -- n ) LISTED drop READ-NAME-COUNT 1 cells + ;
 
 \ seen takes SEEN-BYTES for the names, all zero before the object's first call.
 : READ-LISTED ( JSON:reader ^u8 n ^u8 -- JSON:reader n )
-   {: a:^ u:n seen:^ :}
+   {: list:^ lu:n seen:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-SOUND
+   list lu LISTED {: a:^ u:n wild:bool :}
    a u READ-NAME-COUNT {: count:n :}
    seen CELL-VIEW {: held:^ :}
    seen 1 cells + {: marks:^ :}
@@ -1547,10 +1561,13 @@ public
          E-JSON-READ-STATE REJECT-TOKEN
       then
    then
-   state NEXT-INNER {: token:n :}
-   token T-OBJ-END = if state a u count marks REQUIRE-ALL -1 exit then
-   token T-KEY <> if state MEMBER-NAME-REJECT then
-   state a u count marks MEMBER-INDEX ;
+   begin
+      state NEXT-INNER dup T-OBJ-END = if
+         drop state a u count marks REQUIRE-ALL -1 exit
+      then
+      T-KEY <> if state MEMBER-NAME-REJECT then
+      state a u count wild marks MEMBER-INDEX
+   dup 0< while drop repeat ;
 
 \ A container's opener is read again, so the depth counts it as before.
 : READ-REWIND ( JSON:reader ^u8 n -- JSON:reader ) {: a:^ u:n :}

@@ -8,7 +8,8 @@ split-str
 \ `L:C: expected <e>, found <f>; <fix>`, line and byte column counted from the
 \ source's start. READ-LISTED reads a closed object one member at a time,
 \ each member its list names once, one whose name ends in `?` at most once
-\ and keyed without it, and no other: from the object's `{` or a member
+\ and keyed without it, and no other unless the list's last name is `*`,
+\ which skips the others, repeated or not: from the object's `{` or a member
 \ value's last token it answers the key's index in the list, with the reader
 \ on the value's first token, or -1 at the `}`.
 \ READ-REWIND puts a reader on a value's last token back on its first, given
