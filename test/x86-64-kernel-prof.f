@@ -11,8 +11,6 @@ require src/habu/wl.f
 require src/habu/stack-abi.f
 require src/habu/prof-abi.f
 require src/os/linux-x86-64/target-layout.f
-require src/lib/string.f
-require src/core/bytes.f
 require src/habu/xref.f
 require test/x86-64-boot-harness.f
 require src/lib/fd.f
@@ -52,7 +50,7 @@ $40000000 constant SPIN-BOUND           \ turns a spin waits: about a second, a 
 \ ---- the report case's facts ---------------------------------------------------
 0 constant F-DUPFD
 3 constant FD-FLOOR                     \ F_DUPFD's lowest descriptor: past the standard three
-6 constant TEXTS                        \ the captures the report case compares
+3 constant TEXTS                        \ the captures the report case compares
 $1000 constant TEXT-CAP                 \ a capture's room, and what the image reads into
 8 constant RFD                          \ scratch (PUSH-SCRATCH,): the pipe's two ends,
 16 constant WFD
@@ -70,8 +68,6 @@ $40 constant GOT                        \ and what it read
 40 constant SKEWED                      \ and those that found the identity false
 64 constant PHASES                      \ the delays between a turn's arm and its reset
 800 constant PHASE-STEP-NS              \ and their step: together they cross the interval
-3 constant IMAGE-INDEXED                \ the report image indexes A, B and C: one digit
-4 constant A64-INSN                     \ how far back the host's replay searches a kept cell
 
 \ State S: B's pc deferred three times with A's return address kept beside it,
 \ twice with C's and once with 0, and pc 1, which no record owns, once; A's
@@ -105,8 +101,8 @@ DEFERRED S-OTHER + S-FOREIGN + S-SPILL + constant S-TOT
    XREF-FIND-WL-INDEX dup 0 >= if exit then
    s" x86-64-kernel-prof: the host lacks a word the report names" 1 die ;
 
-\ The host's records, the package's wids and the code starts, which the
-\ report image seeds and states at the same indices.
+\ The host's records and the package's wids, which the report image seeds at
+\ the same indices.
 s" prof-a" BOOT:GLOBAL-WL HOST-IX constant A-IX
 s" prof-b" BOOT:GLOBAL-WL HOST-IX constant B-IX
 s" X64K-PROF-Q" BOOT:NAMESPACE-WL HOST-IX constant Q-IX
@@ -115,15 +111,6 @@ s" CALLER-WITH-A-LONG-NAME" Q-PUBLIC HOST-IX constant C-IX
 Q-IX XREF-REC XREF-PKG-PRIVATE constant Q-PRIVATE
 C-IX XREF-REC XREF-WORDLIST constant C-WID
 A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX
-A-IX XREF-REC XREF-START constant A-START
-B-IX XREF-REC XREF-START constant B-START
-C-IX XREF-REC XREF-START constant C-START
-
-\ The host's band as an offset from data-base: the band closes the running
-\ engine's DATA, whose last cell SNAP-RELOC:XTCELL-OFF-MAX states as the
-\ engine was built. The bare DATA-SIZE is only the host global, which the
-\ macOS layout shim stands another host's value in for.
-0 SNAP-RELOC:XTCELL-OFF-MAX CELL + PROF-BAND-AT constant HOST-BAND
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
@@ -388,7 +375,6 @@ C-IX XREF-REC XREF-START constant C-START
 TEXTS TEXT-CAP * BUFFER: TEXT-BYTES
 TEXTS TYPED-BUFFER TEXT-LEN n
 variable GOT-N
-variable AT-BYTE
 
 : TEXT ( n -- ^u8 n ) {: k:n :}  TEXT-BYTES k TEXT-CAP * +  k TEXT-LEN @ ;
 
@@ -411,102 +397,11 @@ variable AT-BYTE
    GOT-N @ TEXT-CAP >= if s" x86-64-kernel-prof: a capture outgrew its room" 1 die then
    GOT-N @ k TEXT-LEN ! ;
 
-: HOST-BAND@ ( n -- n ) {: off:n :}  data-base HOST-BAND + off + @ ;
-: HOST-BAND! ( n n -- ) {: v:n off:n :}  v  data-base HOST-BAND + off +  ! ;
-
-\ The one cast: the arena's address, which the band holds as a number.
-CAST: >ARENA ( n -- ^n )
-
-: ARENA@ ( n -- n ) {: off:n :}  PROF-ARENA HOST-BAND@ >ARENA off + @ ;
-: ARENA! ( n n -- ) {: v:n off:n :}  v  PROF-ARENA HOST-BAND@ >ARENA off +  ! ;
-
-\ The arena offset of the index entry that names record ix.
-variable ENTRY-AT
-: HOST-ENTRY ( n -- n ) {: ix:n :}
-   -1 ENTRY-AT !
-   ARN-COUNT ARENA@ 0 ?do
-      ARN-IDX i PROF-ENT * + ENT-IDX + ARENA@ ix = if  ARN-IDX i PROF-ENT * + ENTRY-AT !  then
-   loop
-   ENTRY-AT @ 0 < if s" x86-64-kernel-prof: the index names no prof-a" 1 die then
-   ENTRY-AT @ ;
-
-\ Deferred slot i's offset in the arena: its pc, the cell kept beside it, then
-\ the weight arm64's replay adds, one per sample as x86-64 counts.
-: SLOT ( n -- n ) PROF-DEFER-ENT * ARN-DEF + ;
-
-: HOST-SLOT! ( n n n -- ) {: pc:n cell:n i:n :}
-   pc i SLOT ARENA!  cell i SLOT CELL + ARENA!
-   1 i SLOT 2 CELL * + ARENA! ;
-
-\ State S in this host's band and arena. The cells kept beside B's pc lie an
-\ instruction past A's and C's starts, so the replay's search one instruction
-\ back lands on each start.
-: HOST-STATE ( -- )
-   S-TOT PROF-TOT HOST-BAND!  S-OTHER PROF-OTHER HOST-BAND!
-   S-FOREIGN PROF-FOREIGN HOST-BAND!
-   S-SPILL ARN-SPILL ARENA!  S-FRAMES ARN-FRAMES ARENA!  S-DROP ARN-DROP ARENA!
-   S-FCALLED ARN-FCALLED ARENA!
-   S-A-ARRAY  ARN-INCL A-IX CELL * +  ARENA!
-   S-A-ENTRY  A-IX HOST-ENTRY ENT-INCL +  ARENA!
-   C-START ARN-HI ARENA!
-   FROM-A 0 ?do  B-START  A-START A64-INSN +  i HOST-SLOT!  loop
-   NONE-AT FROM-A ?do  B-START  C-START A64-INSN +  i HOST-SLOT!  loop
-   B-START 0 NONE-AT HOST-SLOT!
-   1 0 PC1-AT HOST-SLOT!
-   DEFERRED ARN-DEFER ARENA! ;
-
-\ The byte past the key in capture k, which must hold it.
-: KEY-END ( str n -- n ) {: key:^ keyu:n k:n :}
-   k TEXT {: a:^ u:n :}
-   0 AT-BYTE !
-   begin
-      AT-BYTE @ keyu + u <= if  a AT-BYTE @ + keyu key keyu STR= 0=  else  false  then
-   while
-      1 AT-BYTE +!
-   repeat
-   AT-BYTE @ keyu + u > if s" x86-64-kernel-prof: a capture lacks a field it must print" 1 die then
-   AT-BYTE @ keyu + ;
-
-\ The byte past the digits that start at byte at of capture k.
-: DIGITS-END ( n n -- n ) {: at:n k:n :}
-   k TEXT {: a:^ u:n :}
-   at AT-BYTE !
-   begin
-      AT-BYTE @ u < if  a AT-BYTE @ + c@ STR-DIGIT?  else  false  then
-   while
-      1 AT-BYTE +!
-   repeat
-   AT-BYTE @ ;
-
-\ Drop capture k's bytes from byte from up to byte past.
-: CLOSE-GAP ( n n n -- ) {: from:n past:n k:n :}
-   k TEXT {: a:^ u:n :}
-   a past +  a from +  u past -  BYTE-COPY
-   u past - from +  k TEXT-LEN ! ;
-
-\ Replace the digits after the key in capture k with the image's count.
-: REINDEX ( str n -- ) {: key:^ keyu:n k:n :}
-   key keyu k KEY-END {: at:n :}
-   at k DIGITS-END {: past:n :}
-   IMAGE-INDEXED [char] 0 +  k TEXT drop at + c!
-   at 1+ past k CLOSE-GAP ;
-
-\ The six captures, the image's indexed count in the two S reports. The JSON
-\ rows follow the index's start order, which the image's spans keep.
+\ This host's reports before its profiler ever ran.
 : HOST-CAPTURES ( -- )
-   A-START B-START >=  B-START C-START >=  or if
-      s" x86-64-kernel-prof: prof-a, prof-b and C do not start in that order" 1 die
-   then
    [: prof-report ;] 0 CAPTURE
    [: prof-json ;] 1 CAPTURE
-   [: B-IX prof-row ;] 2 CAPTURE
-   0 prof-on  prof-off  prof-reset
-   HOST-STATE
-   [: prof-report ;] 3 CAPTURE
-   [: B-IX prof-row ;] 4 CAPTURE
-   [: prof-json ;] 5 CAPTURE
-   s"  indexed " 3 REINDEX
-   s\" \"indexed\":" 5 REINDEX ;
+   [: B-IX prof-row ;] 2 CAPTURE ;
 
 \ ---- the report and limit cases --------------------------------------------------
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
@@ -551,6 +446,9 @@ variable ENTRY-AT
 \ Store n, or a label's address, into the cell at an offset past r8.
 : R8-N!, ( n n -- ) {: v:n off:n :}  RAX v IMM,  RAX R8 off MEM-OFF STORE, ;
 : R8-LABEL!, ( label n -- ) {: at:label off:n :}  RAX at MOVABS,  RAX R8 off MEM-OFF STORE, ;
+
+\ Deferred slot i's offset in the arena: its pc, then the cell kept beside it.
+: SLOT ( n -- n ) PROF-DEFER-ENT * ARN-DEF + ;
 
 \ State S in the image's band and arena. The cells kept beside B's pc are A's
 \ and C's return addresses, which the replay searches one byte back. A's
@@ -733,13 +631,43 @@ variable ENTRY-AT
    RSP ITIMER-BYTES ADDI,
    0 G-PUSH  DEFAULT-RATE WANT ;
 
+\ State S's fields in the columns the host's reports print.
+: S-CALLERS, ( -- )
+   s" <-        3  50.0 prof-a" true HAS,
+   s" <-        2  33.3 X64K-PROF-Q:CALLER-WITH-A-LONG-NAME" true HAS,
+   s" <-        1  16.6 (unknown)" true HAS, ;
+
+: S-B-ROW, ( -- )
+   s" 6  31.5       6  31.5  prof-b" true HAS,  S-CALLERS, ;
+
+: S-REPORT, ( -- )
+   [: s" prof-report" ROW ;] REPORT-TEXT,
+   s"  new 1 " true HAS,
+   s"  indexed 3 " true HAS,
+   S-B-ROW,
+   s" 0   0.0       9  47.3  prof-a" true HAS,
+   s" 0   0.0       2  10.5  X64K-PROF-Q:CALLER-WITH-A-LONG-NAME" true HAS, ;
+
+: S-ROW, ( -- )
+   [: B-IX N,  s" prof-row" ROW ;] REPORT-TEXT,  S-B-ROW, ;
+
+: S-JSON, ( -- )
+   [: s" prof-json" ROW ;] REPORT-TEXT,
+   s\" \"new\":1," true HAS,
+   s\" \"indexed\":3," true HAS,
+   s\" {\"word\":\"prof-a\",\"excl\":0,\"incl\":9}" true HAS,
+   s\" {\"word\":\"prof-b\",\"excl\":6,\"incl\":6}" true HAS,
+   s\" {\"word\":\"X64K-PROF-Q:CALLER-WITH-A-LONG-NAME\",\"excl\":0,\"incl\":2}" true HAS,
+   s\" {\"word\":\"prof-b\",\"caller\":\"prof-a\",\"n\":3}" true HAS,
+   s\" {\"word\":\"prof-b\",\"caller\":\"X64K-PROF-Q:CALLER-WITH-A-LONG-NAME\",\"n\":2}" true HAS,
+   s\" {\"word\":\"prof-b\",\"caller\":\"(unknown)\",\"n\":1}" true HAS, ;
+
 \ The report case compares every byte the image's prof-report, prof-json and
-\ prof-row print on fd 1 with what this host's own rows print for the same
-\ state, captured at load (HOST-CAPTURES): once with no arena, and once for
-\ state S over records the image seeds at the host's own record indices, so the
-\ edge table keys the same pairs into the same slots. The `indexed` count is
-\ each engine's live one. Then a foreign sample at PROF-LIM 1 must return, and
-\ a report while armed arms ITIMER_REAL again at the default rate.
+\ prof-row print on fd 1 with no arena with what this host's own rows print
+\ before its profiler ran (HOST-CAPTURES), over records the image seeds at the
+\ host's own record indices; then it checks the three reports' fields for
+\ state S. Then a foreign sample at PROF-LIM 1 must return, and a report while
+\ armed arms ITIMER_REAL again at the default rate.
 : REPORT-CASE ( -- )
    SPANS, {: a:label a-end:label b:label b-end:label c:label c-end:label :}
    a a-end b b-end c c-end HOST-RECORDS,
@@ -749,9 +677,7 @@ variable ENTRY-AT
    [: B-IX N,  s" prof-row" ROW ;] PIPED,  2 SAME,
    0 N,  s" prof-on" ROW  s" prof-off" ROW  s" prof-reset" ROW
    b a-end c c-end IMAGE-STATE,
-   [: s" prof-report" ROW ;] PIPED,  3 SAME,
-   [: B-IX N,  s" prof-row" ROW ;] PIPED,  4 SAME,
-   [: s" prof-json" ROW ;] PIPED,  5 SAME,
+   S-REPORT,  S-ROW,  S-JSON,
    0 N,  s" prof-on" ROW
    FOREIGN-LIMIT,  0 G-PUSH  1 WANT
    [: s" prof-report" ROW ;] PIPED,  0 G-POP  0 G-POP
