@@ -1,0 +1,11 @@
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="N" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">
+      <EntityType Name="A"/>
+      <Association Name="AB">
+        <End Type="N.A" Multiplicity="1" Role="X"/>
+        <End Type="N.A" Multiplicity="*" Role="X"/>
+      </Association>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

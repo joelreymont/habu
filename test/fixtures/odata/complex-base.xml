@@ -1,0 +1,7 @@
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="N" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <ComplexType Name="C" BaseType="N.Missing"/>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

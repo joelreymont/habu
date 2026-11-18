@@ -13,16 +13,17 @@
 \ `<Annotations Target>` block, its term's alias resolved through
 \ edmx:Include or a Schema's Alias. An annotation with a Qualifier is not
 \ kept, nor one whose value is a Record, a Collection or an element.
-\ A rejected document is E-METADATA after one `odata` log line giving the byte,
-\ what was expected and what was found; duplicate names, names that resolve to
-\ nothing and an entity set whose type has no Key are rejected. A body the XML
-\ reader rejects throws the reader's code after one line giving the end of the
-\ last event read. A rejected response is E-RESPONSE after the same line, its
-\ byte counted from the body, or for COPY-ENTITY from the record's `{`; a body
-\ the JSON reader rejects in PAGE or RECORD$ throws the reader's code after one
-\ line giving the end of the last token read. Each piece of a log line taken
-\ from the document or the body is cut at 32 bytes, with `...` after it. No
-\ count, size or depth is limited but by memory, a count past 18 digits aside.
+\ A rejected document is E-METADATA with REASON text `L:C: expected X, found
+\ Y; fix`: L:C is the line and byte column in the document, from 1, counted
+\ as the XML reader counts its own, and a name or value from the document is
+\ cut at 32 bytes, with `...` after it, a namespace URI aside, shown whole.
+\ Duplicate names, names that resolve to nothing and an entity set whose type
+\ has no Key are rejected. A body the XML reader rejects throws the reader's
+\ code with its text. A rejected response is E-RESPONSE with text of the same
+\ form, placed as the JSON reader places its own, in the bytes the reader was
+\ given; a body the JSON reader rejects in PAGE or RECORD$ throws the reader's
+\ code with its text. No count, size or depth is limited but by memory, a
+\ count past 18 digits aside.
 \ A navigation's target depends on the source set: NAVIGATION-TARGET takes a
 \ set and a navigation property of its type. A V4 binding's Target names an
 \ entity set or a singleton; a binding to a singleton or along a containment
@@ -55,8 +56,10 @@
 \ value both versions write in one JSON form gives the same bytes.
 \ KEY writes an entity's key predicate from its key values' text, each
 \ checked against its property's Edm type and written in the version's
-\ literal form: a value that does not fit is E-KEY, thrown with no log line
-\ straight after the callback that gave it.
+\ literal form: a value that does not fit its type, or a type the version
+\ writes in no key, is E-KEY, with REASON text naming the property, its type
+\ and the value that does not fit, thrown straight after the callback that
+\ gave it.
 \ STORAGE CLASS. CALLER-OWNED: the model lives in the arena METADATA is given
 \ and is freed with it; a rejection leaves partial records there until the
 \ caller resets or releases it. METADATA's scratch, as large as the document,

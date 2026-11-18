@@ -3,7 +3,7 @@
 \ with the expected text beside it; a V2 and a V4 page and record of the same
 \ records written plain and compared with one expected text, the V4 page
 \ also in 4.01's spelling; a binding to a singleton leading to no set; each
-\ corrupted copy rejected, two with their log lines' document text cut; and
+\ corrupted copy rejected with its reason text, two with document text cut; and
 \ ODATA:KEY's literal for each Edm type a key may
 \ hold, in both versions, over keys-v2.xml and keys-v4.xml, which hold one set
 \ per type keyed by it; a record copied as sets whose types share a member
@@ -13,11 +13,11 @@
 
 require src/lib/string.f
 require src/lib/fs.f
-require src/lib/fs-mutate.f
 require src/lib/arena.f
+require src/lib/reason.f
 require src/lib/test.f
-require src/lib/test/stderr.f
 require src/lib/json.f
+require src/lib/xml.f
 require src/lib/odata.f
 
 package ODATA-TEST
@@ -34,8 +34,6 @@ CAP BUFFER: OUT
 CAP BUFFER: STR
 256 constant LINK-CAP
 LINK-CAP BUFFER: LINK
-PATH-CAP BUFFER: LOG-PATH
-variable LOG-PATH-LEN
 
 : ADD ( ^u8 n -- )
    {: text:^ len:n :}
@@ -157,62 +155,159 @@ variable LOG-PATH-LEN
    DESC$ S\"  navigation Household to-many none\n" T$=
    a ARENA:RELEASE ;
 
-: REJECTS ( ^u8 n -- )
-   {: path:^ len:n :}
+\ The document at PATH is rejected with CODE and TEXT.
+: REJECTS-CODE ( ^u8 n ^u8 n n -- )
+   {: path:^ len:n text:^ tl:n code:n :}
    ARENA:NEW {: a:^ :}
-   [: a path len MODEL drop ;] ODATA:E-METADATA TTHROWSQ
+   [: a path len MODEL drop ;] code TTHROWSQ
+   code REASON:TEXT$ text tl T$=
+   REASON:RELEASE
    a ARENA:RELEASE ;
 
-\ The document at PATH is rejected after a log line that ends in TAIL.
-: LOGS ( ^u8 n ^u8 n -- )
-   {: path:^ len:n tail:^ tl:n :}
-   s" odata-test" FS:MKTEMP-DIR {: dir:^ dl:n :}
-   dir dl FS:CLEANUP-TREE+
-   dir dl s" log.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-LEN !
-   ARENA:NEW {: a:^ :}
-   [: a path len MODEL drop ;]
-   LOG-PATH LOG-PATH-LEN @ a STDERR:CAPTURING {: rc:n log:^ ll:n :}
-   rc ODATA:E-METADATA T=
-   log ll tail tl ENDS-WITH? TTRUE
-   a ARENA:RELEASE ;
+: REJECTS ( ^u8 n ^u8 n -- ) ODATA:E-METADATA REJECTS-CODE ;
 
 \ undeclared-type.xml's type name has a two-byte character over byte 32;
 \ long-names.xml's set name is 33 bytes and its type name 34.
 : TEST-FOUND-CUT ( -- )
    s" test/fixtures/odata/undeclared-type.xml"
-   S\" ; found SHOP.ArchivedInvoicesOfLastYear...\n" LOGS
+   s" 38:9: expected `EntityType` of `EntitySet` `ArchivedOrders` to name an entity type the document declares, found `SHOP.ArchivedInvoicesOfLastYear...`; declare that entity type, or name one the document declares"
+   REJECTS
    s" test/fixtures/odata/long-names.xml"
-   S\" , EntitySet AddressesOfEveryCustomerOfTheSho...: expected EntityType SHOP.KeylessAddressOfEveryCustom... to have a Key; found none\n"
-   LOGS ;
+   s" 46:9: expected `EntityType` `SHOP.KeylessAddressOfEveryCustom...` of `EntitySet` `AddressesOfEveryCustomerOfTheSho...` to have a `Key`, found none; give the entity type a `Key`"
+   REJECTS ;
 
 : TEST-REJECTIONS ( -- )
    TEST-FOUND-CUT
-   s" test/fixtures/odata/import-target.xml" REJECTS
-   s" test/fixtures/odata/undeclared-association.xml" REJECTS
-   s" test/fixtures/odata/repeated-set.xml" REJECTS
-   s" test/fixtures/odata/keyless-set.xml" REJECTS
-   s" test/fixtures/odata/redeclared-property.xml" REJECTS
+   s" test/fixtures/odata/import-target.xml"
+   s" 58:11: expected `Target` of `NavigationPropertyBinding` `Household` to name an entity set or singleton the document declares, found `RestockAll`; declare that entity set or singleton, or name one the document declares"
+   REJECTS
+   s" test/fixtures/odata/undeclared-association.xml"
+   s" 27:9: expected `Relationship` of `NavigationProperty` `Buyer` to name an `Association` the document declares, found `SHOP.OrderParties`; declare that `Association`, or name one the document declares"
+   REJECTS
+   s" test/fixtures/odata/repeated-set.xml"
+   s" 43:9: expected `EntitySet` to have a name not declared before, found `Orders`; rename or remove it"
+   REJECTS
+   s" test/fixtures/odata/keyless-set.xml"
+   s" 46:9: expected `EntityType` `SHOP.Keyless` of `EntitySet` `Addresses` to have a `Key`, found none; give the entity type a `Key`"
+   REJECTS
+   s" test/fixtures/odata/redeclared-property.xml"
+   s" 17:9: expected `Property` to have a name not declared before, found `Name`; rename or remove it"
+   REJECTS
    s" test/fixtures/odata/base-cycle.xml"
-   S\" , EntityType Order: expected BaseType to lead to a type with none; found a cycle\n"
-   LOGS
+   s" 32:7: expected `BaseType` of `EntityType` `Order` to lead to a type with none, found a cycle; remove a `BaseType` from the cycle"
+   REJECTS
    s" test/fixtures/odata/unknown-key.xml"
-   S\" , PropertyRef LineNo: expected Name to name a property of Line once; found LineNo\n"
-   LOGS
+   s" 43:11: expected `Name` of `PropertyRef` to name a property of `Line` once, found `LineNo`; name a property the type declares or inherits, each once"
+   REJECTS
    s" test/fixtures/odata/repeated-binding.xml"
-   S\" , NavigationPropertyBinding Buyer: expected one NavigationPropertyBinding per Path; found a second\n"
-   LOGS
+   s" 61:11: expected a `Path` no other `NavigationPropertyBinding` of `EntitySet` `Orders` has, found `Buyer`; remove one of the two bindings"
+   REJECTS
    s" test/fixtures/odata/repeated-association-set.xml"
-   S\" , AssociationSet CurrentOrders: expected one AssociationSet for EntitySet Orders and NavigationProperty Buyer; found ProspectOrders\n"
-   LOGS
+   s" 47:9: expected `AssociationSet` `CurrentOrders` to be the only one for `EntitySet` `Orders` and `NavigationProperty` `Buyer`, found `ProspectOrders`; remove one of the two association sets"
+   REJECTS
    s" test/fixtures/odata/three-end-association.xml"
-   S\" , Association CustomerOrders: expected two End elements, one for each role; found 3\n"
-   LOGS
+   s" 37:7: expected two `End` elements in `Association` `CustomerOrders`, one for each role, found 3; give it one `End` for each of the two roles"
+   REJECTS
    s" test/fixtures/odata/three-end-association-set.xml"
-   S\" , AssociationSet CurrentOrders: expected two End elements, one for each role; found 3\n"
-   LOGS
+   s" 46:9: expected two `End` elements in `AssociationSet` `CurrentOrders`, one for each role, found 3; give it one `End` for each of the two roles"
+   REJECTS
    s" test/fixtures/odata/repeated-set-role.xml"
-   S\" , AssociationSet CurrentOrders: expected two End elements, one for each role; found role Buyer twice\n"
-   LOGS ;
+   s" 46:9: expected the two `End` elements of `AssociationSet` `CurrentOrders` to have different roles, found `Buyer`; give one `End` the other role"
+   REJECTS
+   s" test/fixtures/odata/v3-schema.xml"
+   s" 7:5: expected `Schema` in a CSDL namespace of OData V2 (1.0, 1.1 or 2.0), found `http://schemas.microsoft.com/ado/2009/11/edm`; put the `Schema` in that namespace"
+   REJECTS
+   s" test/fixtures/odata/wrong-root.xml"
+   s" 1:1: expected `edmx:Edmx` in the EDMX namespace of OData V2 or V4, found `Edm` in `http://schemas.microsoft.com/ado/2007/06/edmx`; make the root element `edmx:Edmx` in that namespace"
+   REJECTS
+   s" test/fixtures/odata/complex-base.xml"
+   s" 4:7: expected `BaseType` of `ComplexType` `C` to name a type the document declares, found `N.Missing`; declare that type, or name one the document declares"
+   REJECTS
+   s" test/fixtures/odata/one-end-association.xml"
+   s" 5:7: expected two `End` elements in `Association` `AB`, one for each role, found 1; give it one `End` for each of the two roles"
+   REJECTS
+   s" test/fixtures/odata/repeated-end-role.xml"
+   s" 7:9: expected the two `End` elements of `Association` `AB` to have different roles, found `X`; give one `End` the other role"
+   REJECTS
+   s" test/fixtures/odata/mismatched-end.xml"
+   s" 7:9: expected `</EntityType>`, found `EntityTypo`; close elements in the reverse of the order they were opened"
+   XML:E-MALFORMED REJECTS-CODE ;
+
+: TEST-METADATA-SITE-TEXTS ( -- )
+   s" test/fixtures/odata/missing-property-type.xml"
+   s" 30:9: expected attribute `Type` of `Property`, found none; add the attribute"
+   REJECTS
+   s" test/fixtures/odata/unqualified-term.xml"
+   s" 21:9: expected `Term` of `Annotation` to be a qualified name, found `Label`; write the term's namespace or alias, a dot and its name"
+   REJECTS
+   s" test/fixtures/odata/v2-edmx-version.xml"
+   s" 2:1: expected `Version` of `Edmx` to be 1.0 for OData V2, found `2.0`; set `Version` to 1.0"
+   REJECTS
+   s" test/fixtures/odata/v4-edmx-version.xml"
+   s" 2:1: expected `Version` of `Edmx` to be 4.0 or 4.01 for OData V4, found `4.1`; set `Version` to 4.0 or 4.01"
+   REJECTS
+   s" test/fixtures/odata/schema-in-no-namespace.xml"
+   s" 7:5: expected `Schema` in a CSDL namespace of OData V2 (1.0, 1.1 or 2.0), found no namespace; put the `Schema` in that namespace"
+   REJECTS
+   s" test/fixtures/odata/bad-nullable.xml"
+   s" 26:9: expected `Nullable` of `Property` to be true or false, found `no`; set `Nullable` to true or false"
+   REJECTS
+   s" test/fixtures/odata/bad-multiplicity.xml"
+   s" 39:9: expected `Multiplicity` of `End` to be 1, 0..1 or *, found `many`; set `Multiplicity` to 1, 0..1 or *"
+   REJECTS
+   s" test/fixtures/odata/second-container.xml"
+   s" 69:7: expected no `EntityContainer` after the first, found `Extra`; move its contents into the first and remove it"
+   REJECTS ;
+
+: TEST-RESOLVE-SITE-TEXTS ( -- )
+   s" test/fixtures/odata/undeclared-end-type.xml"
+   s" 38:9: expected `Type` of `End` `Buyer` to name an entity type the document declares, found `SHOP.Client`; declare that entity type, or name one the document declares"
+   REJECTS
+   s" test/fixtures/odata/complex-end-type.xml"
+   s" 38:9: expected `Type` of `End` `Buyer` to name an entity type the document declares, found `SHOP.Address`, a `ComplexType`; name an `EntityType` instead"
+   REJECTS
+   s" test/fixtures/odata/complex-set-type.xml"
+   s" 43:9: expected `EntityType` of `EntitySet` `ArchivedOrders` to name an entity type the document declares, found `SHOP.Address`, a `ComplexType`; name an `EntityType` instead"
+   REJECTS
+   s" test/fixtures/odata/undeclared-role.xml"
+   s" 19:9: expected `FromRole` of `NavigationProperty` `Orders` to name a role an `End` of `Association` `CustomerOrders` declares, found `Client`; name a role an `End` of the `Association` declares"
+   REJECTS
+   s" test/fixtures/odata/undeclared-to-role.xml"
+   s" 19:9: expected `ToRole` of `NavigationProperty` `Orders` to name a role an `End` of `Association` `CustomerOrders` declares, found `Sold`; name a role an `End` of the `Association` declares"
+   REJECTS
+   s" test/fixtures/odata/undeclared-navigation-type.xml"
+   s" 26:9: expected `Type` of `NavigationProperty` `LastLine` to name an entity type the document declares, found `self.Lime`; declare that entity type, or name one the document declares"
+   REJECTS
+   s" test/fixtures/odata/complex-navigation-type.xml"
+   s" 26:9: expected `Type` of `NavigationProperty` `LastLine` to name an entity type the document declares, found `self.Address`, a `ComplexType`; name an `EntityType` instead"
+   REJECTS
+   s" test/fixtures/odata/undeclared-set-role.xml"
+   s" 47:11: expected `Role` of `End` to name a role of `Association` `CustomerOrders`, found `Client`; name a role an `End` of the `Association` declares"
+   REJECTS
+   s" test/fixtures/odata/undeclared-end-set.xml"
+   s" 47:11: expected `EntitySet` of `End` `Buyer` to name an entity set the document declares, found `Clients`; declare that entity set, or name one the document declares"
+   REJECTS
+   s" test/fixtures/odata/undeclared-set-association.xml"
+   s" 46:9: expected `Association` of `AssociationSet` `CurrentOrders` to name an `Association` the document declares, found `SHOP.ClientOrders`; declare that `Association`, or name one the document declares"
+   REJECTS
+   s" test/fixtures/odata/undeclared-container-target.xml"
+   s" 57:11: expected `Target` of `NavigationPropertyBinding` `LastLine` to name an entity set or singleton of `Container`, found `self.Container/Nowhere/Lines`; name an entity set or singleton the container declares"
+   REJECTS
+   s" test/fixtures/odata/undeclared-binding-path.xml"
+   s" 58:11: expected `Path` of `NavigationPropertyBinding` to name a navigation property of `Customer`, found `Housemates`; name a navigation property the type declares or inherits"
+   REJECTS
+   s" test/fixtures/odata/repeated-term.xml"
+   s" 72:9: expected one `Annotation` of term `Label` of `com.sap.vocabularies.Common.v1` per target, found a second; remove one of the two"
+   REJECTS
+   s" test/fixtures/odata/repeated-term-inline-first.xml"
+   s" 8:9: expected one `Annotation` of term `Label` of `T` per target, found a second; remove one of the two"
+   REJECTS
+   s" test/fixtures/odata/repeated-term-block-first.xml"
+   s" 8:9: expected one `Annotation` of term `Label` of `T` per target, found a second; remove one of the two"
+   REJECTS
+   s" test/fixtures/odata/repeated-term-thrice.xml"
+   s" 6:9: expected one `Annotation` of term `Label` of `T` per target, found a second; remove one of the two"
+   REJECTS ;
 
 : SET-NAMED ( ^ODATA:metadata ^u8 n -- ^ODATA:entity-set )
    ODATA:ENTITY-SET MATCH nullable
@@ -295,23 +390,33 @@ variable LOG-PATH-LEN
    s" test/fixtures/odata/v2.xml" s" test/fixtures/odata/v2-record.json" RECORD-OF
    s" test/fixtures/odata/v4.xml" s" test/fixtures/odata/v4-record.json" RECORD-OF ;
 
-: PAGE-REJECTS ( ^u8 n ^u8 n -- )
-   {: xml:^ xl:n path:^ len:n :}
+\ E-RESPONSE's text is WANT, then released, so a later case's plain throw
+\ cannot match it.
+: SAID ( ^u8 n -- )
+   {: want:^ wl:n :}
+   ODATA:E-RESPONSE REASON:TEXT$ want wl T$=
+   REASON:RELEASE ;
+
+: PAGE-REJECTS ( ^u8 n ^u8 n ^u8 n -- )
+   {: xml:^ xl:n path:^ len:n want:^ wl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
    [: m path len BODY CURSOR LINK-SPAN ODATA:PAGE drop drop 2drop ;]
    ODATA:E-RESPONSE TTHROWSQ
+   want wl SAID
    a ARENA:RELEASE ;
 
-\ PAGE takes the page of the set; COPY-ENTITY rejects one of its records.
-: COPY-REJECTS ( ^u8 n ^u8 n ^u8 n -- )
-   {: xml:^ xl:n set:^ sl:n path:^ len:n :}
+\ PAGE takes the page of the set; COPY-ENTITY rejects one of its records,
+\ placed in the records array PAGE answers.
+: COPY-REJECTS ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: xml:^ xl:n set:^ sl:n path:^ len:n want:^ wl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
    m set sl SET-TYPE {: t:^ :}
    m path len BODY CURSOR LINK-SPAN
    ODATA:PAGE drop drop {: rt:^ rl:n :}
    [: t rt rl PLAIN 2drop ;] ODATA:E-RESPONSE TTHROWSQ
+   want wl SAID
    CURSOR JSON:READ-DISPOSE
    a ARENA:RELEASE ;
 
@@ -320,18 +425,108 @@ variable LOG-PATH-LEN
 : V4$ ( -- ^u8 n ) s" test/fixtures/odata/v4.xml" ;
 
 : TEST-RESPONSE-REJECTIONS ( -- )
-   V2$ s" test/fixtures/odata/repeated-next.json" PAGE-REJECTS
-   V2$ s" test/fixtures/odata/no-records.json" PAGE-REJECTS
-   V2$ s" test/fixtures/odata/bad-count.json" PAGE-REJECTS
-   V4$ s" test/fixtures/odata/repeated-count.json" PAGE-REJECTS
-   V2$ s" Orders" s" test/fixtures/odata/bad-date.json" COPY-REJECTS
-   V2$ s" Orders" s" test/fixtures/odata/repeated-member.json" COPY-REJECTS
+   V2$ s" test/fixtures/odata/repeated-next.json"
+   s\" 1:73: expected member `__next` once, found `\"__next\"`; remove the repeated member, keeping one"
+   PAGE-REJECTS
+   V2$ s" test/fixtures/odata/no-records.json"
+   s" 1:20: expected the member `results` in the envelope, found `}`; add the member to the object"
+   PAGE-REJECTS
+   V2$ s" test/fixtures/odata/bad-count.json"
+   s\" 1:17: expected a non-negative integer for member `__count`, found `\"2.5\"`; write the count as one to 18 decimal digits"
+   PAGE-REJECTS
+   V4$ s" test/fixtures/odata/repeated-count.json"
+   s\" 1:63: expected member `@odata.count` once, found `\"@odata.count\"`; remove the repeated member, keeping one"
+   PAGE-REJECTS
+   V2$ s" Orders" s" test/fixtures/odata/bad-date.json"
+   s\" 1:42: expected /Date(ms)/ or null for member `Shipped` of type Edm.DateTime, found `\"2024-01-01T00:00:00\"`; write the value as /Date(ms)/, /Date(ms+mmmm)/ or /Date(ms-mmmm)/ in the years 0 to 9999, or null"
+   COPY-REJECTS
+   V2$ s" Orders" s" test/fixtures/odata/repeated-member.json"
+   s" 1:42: expected each member of the record once, found `}`; remove the repeated member `OrderID`, keeping one"
+   COPY-REJECTS
    V2$ s" Customers" s" test/fixtures/odata/repeated-v2-expanded.json"
+   s" 1:1113: expected each member of the record once, found `}`; remove the repeated member `Name`, keeping one"
    COPY-REJECTS
    V4$ s" Customers" s" test/fixtures/odata/repeated-v4-expanded.json"
+   s" 1:715: expected each member of the record once, found `}`; remove the repeated member `Name`, keeping one"
    COPY-REJECTS
    V4$ s" Customers" s" test/fixtures/odata/repeated-complex.json"
+   s" 1:249: expected each member of the record once, found `}`; remove the repeated member `City`, keeping one"
    COPY-REJECTS ;
+
+\ COPY-ENTITY rejects a value that is no record, placed at the value.
+: TEST-ENTITY-REJECTION ( -- )
+   ARENA:NEW {: a:^ :}
+   a V2$ MODEL s" Orders" SET-TYPE {: t:^ :}
+   [: CURSOR s" [1]" JSON:READ-INIT JSON:READ-NEXT drop JSON:READ-NEXT drop
+      WRITER OUT CAP JSON:WRITE-OPEN t STR CAP ODATA:COPY-ENTITY
+      drop JSON:READ-FINISH ;]
+   ODATA:E-RESPONSE TTHROWSQ
+   s" 1:2: expected a record object, found `1`; write that kind of value here"
+   SAID
+   CURSOR JSON:READ-DISPOSE
+   a ARENA:RELEASE ;
+
+\ Customers' Orders is to-many in both documents, Orders' Buyer to-one.
+: TEST-RESPONSE-SITE-TEXTS ( -- )
+   V2$ s" test/fixtures/odata/number-d.json"
+   s" 1:6: expected an array or an object for member `d`, found `5`; write that kind of value here"
+   PAGE-REJECTS
+   V4$ s" test/fixtures/odata/array-body.json"
+   s" 1:1: expected an object for the body, found `[`; write that kind of value here"
+   PAGE-REJECTS
+   V4$ s" Customers" s" test/fixtures/odata/number-in-records.json"
+   s" 1:13: expected a record object in an array of records, found `5`; write that kind of value here"
+   COPY-REJECTS
+   V2$ s" Customers" s" test/fixtures/odata/repeated-results.json"
+   s\" 1:26: expected member `results` once in a results object, found `\"results\"`; remove the repeated member, keeping one"
+   COPY-REJECTS
+   V2$ s" Customers" s" test/fixtures/odata/number-results.json"
+   s" 1:23: expected an array of records for member `results`, found `5`; write that kind of value here"
+   COPY-REJECTS
+   V2$ s" Customers" s" test/fixtures/odata/empty-results.json"
+   s" 1:13: expected the member `results` in a results object, found `}`; add the member to the object"
+   COPY-REJECTS
+   V4$ s" Customers" s" test/fixtures/odata/number-navigation.json"
+   s" 1:12: expected null or an array of records for navigation `Orders`, found `5`; write that kind of value here"
+   COPY-REJECTS
+   V4$ s" Customers" s" test/fixtures/odata/object-navigation.json"
+   s" 1:12: expected null or an array of records for navigation `Orders`, found `{`; write that kind of value here"
+   COPY-REJECTS
+   V2$ s" Customers" s" test/fixtures/odata/v2-number-navigation.json"
+   s" 1:12: expected null, an array of records or an object with `results` for navigation `Orders`, found `5`; write that kind of value here"
+   COPY-REJECTS
+   V4$ s" Orders" s" test/fixtures/odata/array-navigation.json"
+   s" 1:11: expected null or a record for navigation `Buyer`, found `[`; write that kind of value here"
+   COPY-REJECTS
+   V4$ s" Customers" s" test/fixtures/odata/object-collection.json"
+   s" 1:14: expected null or an array of records for member `Branches`, found `{`; write that kind of value here"
+   COPY-REJECTS
+   V4$ s" Customers" s" test/fixtures/odata/array-complex.json"
+   s" 1:10: expected null or a record for member `Home`, found `[`; write that kind of value here"
+   COPY-REJECTS ;
+
+\ A to-many navigation holding null is written as null.
+: TEST-NULL-NAVIGATION ( -- )
+   ARENA:NEW {: a:^ :}
+   a V4$ MODEL {: m:^ :}
+   m s" Customers" SET-TYPE {: t:^ :}
+   m s\" {\"value\":[{\"Orders\":null}]}" CURSOR LINK-SPAN
+   ODATA:PAGE drop drop {: rt:^ rl:n :}
+   t rt rl PLAIN s\" [{\"Orders\":null}]" T$=
+   a ARENA:RELEASE ;
+
+\ PAGE throws a body's JSON rejection on with the JSON reader's own text.
+: TEST-JSON-REJECTION ( -- )
+   ARENA:NEW {: a:^ :}
+   a V4$ MODEL {: m:^ :}
+   [: m s\" {\"value\":[1,]}" CURSOR LINK-SPAN ODATA:PAGE
+      drop drop 2drop ;]
+   E-JSON-READ-MALFORMED TTHROWSQ
+   E-JSON-READ-MALFORMED REASON:TEXT$
+   s" 1:13: expected a value, found `]`; write a value, or remove a trailing comma"
+   T$=
+   REASON:RELEASE
+   a ARENA:RELEASE ;
 
 CAP BUFFER: KEY-OUT
 PTR-VARIABLE VALUE-AT
@@ -349,9 +544,11 @@ variable VALUE-LEN
    {: m:^ set:^ sl:n v:^ vl:n want:^ wl:n :}
    m set sl v vl PREDICATE$ want wl T$= ;
 
-: REJECTS-KEY ( ^ODATA:metadata ^u8 n ^u8 n -- )
-   {: m:^ set:^ sl:n v:^ vl:n :}
-   [: m set sl v vl PREDICATE$ 2drop ;] ODATA:E-KEY TTHROWSQ ;
+: REJECTS-KEY ( ^ODATA:metadata ^u8 n ^u8 n ^u8 n -- )
+   {: m:^ set:^ sl:n v:^ vl:n want:^ wl:n :}
+   [: m set sl v vl PREDICATE$ 2drop ;] ODATA:E-KEY TTHROWSQ
+   ODATA:E-KEY REASON:TEXT$ want wl T$=
+   REASON:RELEASE ;
 
 : V2-KEYS ( ^ODATA:metadata -- )
    {: m:^ :}
@@ -373,12 +570,24 @@ variable VALUE-LEN
    s" (datetimeoffset'2024-03-05T10%3A30%3A00Z')" WRITES
    m s" Time" s" PT10H30M00S" s" (time'PT10H30M00S')" WRITES
    m s" Binary" s" AQL/" s" (X'0102FF')" WRITES
-   m s" Date" s" 2024-03-05" REJECTS-KEY
-   m s" TimeOfDay" s" 10:30:00" REJECTS-KEY
-   m s" Duration" s" P1D" REJECTS-KEY
-   m s" Int32" s" 4.2" REJECTS-KEY
-   m s" Guid" s" 0050568d393c1ed49d97e2a6e1c5e8a1" REJECTS-KEY
-   m s" DateTime" s" /Date(1709634600000)/" REJECTS-KEY ;
+   m s" Date" s" 2024-03-05"
+   s" expected a key property of a type OData V2 writes in a key, found `Edm.Date` for key property `K`; address the entity without a key predicate"
+   REJECTS-KEY
+   m s" TimeOfDay" s" 10:30:00"
+   s" expected a key property of a type OData V2 writes in a key, found `Edm.TimeOfDay` for key property `K`; address the entity without a key predicate"
+   REJECTS-KEY
+   m s" Duration" s" P1D"
+   s" expected a key property of a type OData V2 writes in a key, found `Edm.Duration` for key property `K`; address the entity without a key predicate"
+   REJECTS-KEY
+   m s" Int32" s" 4.2"
+   s" expected a `Edm.Int32` value for key property `K`, found `4.2`; give `K` a value in that type's form"
+   REJECTS-KEY
+   m s" Guid" s" 0050568d393c1ed49d97e2a6e1c5e8a1"
+   s" expected a `Edm.Guid` value for key property `K`, found `0050568d393c1ed49d97e2a6e1c5e8a1`; give `K` a value in that type's form"
+   REJECTS-KEY
+   m s" DateTime" s" /Date(1709634600000)/"
+   s" expected a `Edm.DateTime` value for key property `K`, found `/Date(1709634600000)/`; give `K` a value in that type's form"
+   REJECTS-KEY ;
 
 : V4-KEYS ( ^ODATA:metadata -- )
    {: m:^ :}
@@ -400,8 +609,15 @@ variable VALUE-LEN
    m s" TimeOfDay" s" 10:30:00.5" s" (10%3A30%3A00.5)" WRITES
    m s" Duration" s" P1DT2H" s" (duration'P1DT2H')" WRITES
    m s" Binary" s" AQI=" s" (binary'AQI%3D')" WRITES
-   m s" DateTime" s" 2024-03-05T10:30:00Z" REJECTS-KEY
-   m s" Time" s" PT10H" REJECTS-KEY ;
+   m s" DateTime" s" 2024-03-05T10:30:00Z"
+   s" expected a key property of a type OData V4 writes in a key, found `Edm.DateTime` for key property `K`; address the entity without a key predicate"
+   REJECTS-KEY
+   m s" Time" s" PT10H"
+   s" expected a key property of a type OData V4 writes in a key, found `Edm.Time` for key property `K`; address the entity without a key predicate"
+   REJECTS-KEY
+   m s" Guid" s" {0050568d-393c-1ed4-9d97-e2a6e1c5e8a1}"
+   s" expected a `Edm.Guid` value for key property `K`, found `{0050568d-393c-1ed4-9d97-e2a6e1c...`; give `K` a value in that type's form"
+   REJECTS-KEY ;
 
 : ORDER-VALUE ( ^ODATA:property -- ^u8 n )
    ODATA:PROPERTY-NAME$ s" Year" STR= if s" 2024" else s" it's a/b" then ;
@@ -466,10 +682,16 @@ variable VALUE-LEN
    TEST-DERIVED
    TEST-SINGLETON-TARGET
    TEST-REJECTIONS
+   TEST-METADATA-SITE-TEXTS
+   TEST-RESOLVE-SITE-TEXTS
    TEST-PAGES
    TEST-ARRAY-PAGE
    TEST-RECORDS
    TEST-RESPONSE-REJECTIONS
+   TEST-RESPONSE-SITE-TEXTS
+   TEST-NULL-NAVIGATION
+   TEST-ENTITY-REJECTION
+   TEST-JSON-REJECTION
    TEST-KEYS
    TEST-SHARED-NAMES
    TEST-FOREIGN-NAVIGATION

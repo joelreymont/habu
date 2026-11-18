@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.01" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+  <edmx:Reference Uri="/vocabularies/common">
+    <edmx:Include Namespace="com.sap.vocabularies.Common.v1" Alias="Common"/>
+  </edmx:Reference>
+  <edmx:Reference Uri="/vocabularies/core">
+    <edmx:Include Namespace="Org.OData.Core.V1" Alias="Core"/>
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema Namespace="com.example.shop" Alias="self">
+      <EntityType Name="Party" Abstract="true">
+        <Key>
+          <PropertyRef Name="PartyID"/>
+        </Key>
+        <Property Name="PartyID" Type="Edm.String" Nullable="false">
+          <Annotation Term="Common.Label" String="Party"/>
+        </Property>
+        <NavigationProperty Name="Referrer" Type="self.Party"/>
+      </EntityType>
+      <EntityType Name="Customer" BaseType="self.Person">
+        <Annotation Term="Common.Label" String="Customer"/>
+        <Property Name="Name" Type="Edm.String"/>
+        <Property Name="Home" Type="self.Address"/>
+        <Property Name="Branches" Type="Collection(com.example.shop.Address)"/>
+        <NavigationProperty Name="Orders" Type="Collection(self.Order)" Partner="Buyer"/>
+        <NavigationProperty Name="LastLine" Type="self.Address"/>
+      </EntityType>
+      <EntityType Name="Person" BaseType="self.Party" Abstract="true">
+        <Property Name="Email" Type="Edm.String"/>
+        <NavigationProperty Name="Household" Type="Collection(self.Customer)"/>
+      </EntityType>
+      <EntityType Name="Order">
+        <Key>
+          <PropertyRef Name="OrderID"/>
+        </Key>
+        <Property Name="OrderID" Type="Edm.Int64" Nullable="false"/>
+        <Property Name="Placed" Type="Edm.DateTimeOffset" Precision="7"/>
+        <NavigationProperty Name="Buyer" Type="com.example.shop.Customer" Nullable="false" Partner="Orders"/>
+        <NavigationProperty Name="Lines" Type="Collection(self.Line)" ContainsTarget="true"/>
+      </EntityType>
+      <EntityType Name="Line">
+        <Key>
+          <PropertyRef Name="LineID"/>
+        </Key>
+        <Property Name="LineID" Type="Edm.Int32" Nullable="false"/>
+      </EntityType>
+      <ComplexType Name="Address">
+        <Property Name="City" Type="Edm.String"/>
+        <Property Name="Since" Type="Edm.DateTimeOffset"/>
+      </ComplexType>
+      <Action Name="Restock" IsBound="false">
+        <Parameter Name="Count" Type="Edm.Int32"/>
+      </Action>
+      <EntityContainer Name="Container">
+        <EntitySet Name="Customers" EntityType="self.Customer">
+          <NavigationPropertyBinding Path="Orders" Target="Orders"/>
+          <NavigationPropertyBinding Path="LastLine" Target="Orders/Lines"/>
+          <NavigationPropertyBinding Path="Household" Target="Customers"/>
+        </EntitySet>
+        <EntitySet Name="Orders" EntityType="com.example.shop.Order">
+          <NavigationPropertyBinding Path="Buyer" Target="Customers"/>
+        </EntitySet>
+        <EntitySet Name="Showcase" EntityType="self.Order">
+          <NavigationPropertyBinding Path="Buyer" Target="self.Container/Shop"/>
+        </EntitySet>
+        <Singleton Name="Shop" Type="self.Customer"/>
+        <ActionImport Name="RestockAll" Action="self.Restock"/>
+      </EntityContainer>
+      <Annotations Target="self.Order/Placed">
+        <Annotation Term="com.sap.vocabularies.Common.v1.Label" String="Placed at"/>
+        <Annotation Term="Core.Computed" Bool="true"/>
+        <Annotation Term="Common.Label" Qualifier="Short" String="Read past: qualified"/>
+      </Annotations>
+      <Annotations Target="com.example.shop.Order">
+        <Annotation Term="Common.Label" String="Order"/>
+      </Annotations>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

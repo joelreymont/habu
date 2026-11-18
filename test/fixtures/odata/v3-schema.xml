@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata" xmlns:sap="http://www.sap.com/Protocols/SAPData">
+  <edmx:Reference Uri="/vocabularies/common" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+    <edmx:Include Namespace="com.sap.vocabularies.Common.v1" Alias="Common"/>
+  </edmx:Reference>
+  <edmx:DataServices m:DataServiceVersion="2.0">
+    <Schema Namespace="SHOP" xml:lang="en" xmlns="http://schemas.microsoft.com/ado/2009/11/edm">
+      <EntityType Name="Party" sap:label="Party">
+        <Key>
+          <PropertyRef Name="PartyID"/>
+        </Key>
+        <Property Name="PartyID" Type="Edm.String" Nullable="false" MaxLength="10" sap:label="Party"/>
+        <Property Name="Name" Type="Edm.String" sap:label="Name &amp; Title"/>
+      </EntityType>
+      <EntityType Name="Customer" BaseType="SHOP.Party" sap:label="Customer">
+        <Property Name="Region" Type="Edm.String" Nullable="true"/>
+        <Property Name="Home" Type="SHOP.Address"/>
+        <Property Name="Branches" Type="Collection(SHOP.Address)"/>
+        <NavigationProperty Name="Orders" Relationship="SHOP.CustomerOrders" FromRole="Buyer" ToRole="Bought"/>
+      </EntityType>
+      <EntityType Name="Order" sap:label="Sales Order">
+        <Key>
+          <PropertyRef Name="Year"/>
+          <PropertyRef Name="OrderID"/>
+        </Key>
+        <Property Name="OrderID" Type="Edm.String" Nullable="false"/>
+        <Property Name="Year" Type="Edm.Int16" Nullable="false"/>
+        <Property Name="Amount" Type="Edm.Decimal" Precision="13" Scale="2"/>
+        <Property Name="Placed" Type="Edm.DateTimeOffset"/>
+        <Property Name="Shipped" Type="Edm.DateTime"/>
+        <NavigationProperty Name="Buyer" Relationship="SHOP.CustomerOrders" FromRole="Bought" ToRole="Buyer"/>
+      </EntityType>
+      <ComplexType Name="Address">
+        <Property Name="City" Type="Edm.String"/>
+        <Property Name="Since" Type="Edm.DateTime"/>
+      </ComplexType>
+      <Association Name="CustomerOrders">
+        <End Type="SHOP.Customer" Multiplicity="1" Role="Buyer"/>
+        <End Type="SHOP.Order" Multiplicity="*" Role="Bought"/>
+      </Association>
+      <EntityContainer Name="SHOP_Entities" m:IsDefaultEntityContainer="true">
+        <EntitySet Name="Orders" EntityType="SHOP.Order"/>
+        <EntitySet Name="ArchivedOrders" EntityType="SHOP.Order"/>
+        <EntitySet Name="Customers" EntityType="SHOP.Customer"/>
+        <EntitySet Name="FormerCustomers" EntityType="SHOP.Customer"/>
+        <AssociationSet Name="CurrentOrders" Association="SHOP.CustomerOrders">
+          <End EntitySet="Customers" Role="Buyer"/>
+          <End EntitySet="Orders" Role="Bought"/>
+        </AssociationSet>
+        <AssociationSet Name="PastOrders" Association="SHOP.CustomerOrders">
+          <End EntitySet="FormerCustomers" Role="Buyer"/>
+          <End EntitySet="ArchivedOrders" Role="Bought"/>
+        </AssociationSet>
+        <FunctionImport Name="ReleaseOrder" ReturnType="SHOP.Order" EntitySet="Orders" m:HttpMethod="POST">
+          <Parameter Name="OrderID" Type="Edm.String" Mode="In"/>
+        </FunctionImport>
+      </EntityContainer>
+      <Annotations Target="SHOP.Order/Amount" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+        <Annotation Term="Common.Label" String="Net Amount"/>
+      </Annotations>
+      <Annotations Target="SHOP.SHOP_Entities/Orders" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+        <Annotation Term="Common.Label" String="Read past: a set"/>
+      </Annotations>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

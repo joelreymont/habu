@@ -14,27 +14,50 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/memory.f
-require src/lib/log.f
 require src/lib/date.f
 require src/lib/adt/option.f
+require src/lib/reason.f
 require src/lib/json.f
 require src/lib/odata/metadata.f
 
 package ODATA
 private
 
-\ Rejections: one log line, then E-RESPONSE. LINE-AT opens the line; the
-\ caller names the subject, EXPECT adds what was expected, REJECT ends it.
-: LINE-AT ( ^u8 n n -- )
-   {: from:^ fl:n at:n :}
-   LOG:ERROR s" odata" LOG:LINE
-   from fl LOG:TEXT+ s"  byte " LOG:TEXT+ at LOG:INT+
-   s" , " LOG:TEXT+ ;
+\ Rejects the current token as E-RESPONSE, the reader's text giving its
+\ place in the bytes the reader was given and the token found.
+: RESPONSE-REJECT ( JSON:reader ^u8 n ^u8 n -- )
+   {: ea:^ eu:n fa:^ fu:n :}
+   [: ea eu fa fu JSON:READ-REJECT ;] catch {: code:n :}
+   code JSON:E-MEMBER = if
+      JSON:E-MEMBER REASON:TEXT$ E-RESPONSE REASON:THROW
+   then
+   code throw ;
 
-: EXPECT ( ^u8 n -- ) s" : expected " LOG:TEXT+ LOG:TEXT+ ;
+: KIND-FIX$ ( -- ^u8 n ) s" write that kind of value here" ;
+: REPEAT-FIX$ ( -- ^u8 n ) s" remove the repeated member, keeping one" ;
+: MISSING-FIX$ ( -- ^u8 n ) s" add the member to the object" ;
 
-: REJECT ( ^u8 n -- )
-   FOUND+ LOG:;LINE E-RESPONSE throw ;
+: PUT ( ^u8 n ^u8 n -- ^u8 n )
+   {: buf:^ at:n a:^ u:n :}
+   a buf at + u BYTE-COPY
+   buf at u + ;
+
+\ Never returns; declared to answer the reader because MEM:WITH-BYTES must
+\ hand its linear value back. REPEAT-SCOPE is declared the same way.
+: JOINED-SCOPE
+   ( JSON:reader ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n ^u8 NUM:alloc-byte-len
+     -- JSON:reader )
+   drop {: a:^ an:n b:^ bn:n c:^ cn:n d:^ dn:n fa:^ fu:n buf:^ :}
+   buf 0 a an PUT b bn PUT c cn PUT d dn PUT fa fu RESPONSE-REJECT ;
+
+\ RESPONSE-REJECT with the four spans joined as the expected text. The last
+\ throw is never reached: it shows the checker it never returns.
+: JOINED-REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+   {: a:^ an:n b:^ bn:n c:^ cn:n d:^ dn:n fa:^ fu:n :}
+   a an b bn c cn d dn fa fu
+   an bn + cn + dn + 1 max MEM:BYTES-ALLOC-LEN
+   [: JOINED-SCOPE ;] MEM:WITH-BYTES
+   E-RESPONSE throw ;
 
 : QUOTED? ( n -- bool ) dup JSON:T-STR = swap JSON:T-KEY = or ;
 : OPENER? ( n -- bool ) dup JSON:T-OBJ = swap JSON:T-ARR = or ;
@@ -96,20 +119,14 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    e NEXT {: kind:n :}
    e kind SKIP ;
 
-: ENVELOPE-LINE ( JSON:reader ^envelope ^u8 n -- JSON:reader )
-   {: e:^ what:^ wl:n :}
-   e ENVELOPE-BODY @ TOKEN-AT {: at:n :}
-   s" response" at LINE-AT what wl LOG:TEXT+ ;
+\ The current token is not WANT, which WHAT needs.
+: UNEXPECTED ( JSON:reader ^u8 n ^u8 n -- )
+   {: what:^ wl:n want:^ nl:n :}
+   want nl s"  for " what wl s" " KIND-FIX$ JOINED-REJECT ;
 
-\ The current token, of KIND, is not what WHAT needs.
-: UNEXPECTED ( JSON:reader ^envelope n ^u8 n ^u8 n -- JSON:reader )
-   {: e:^ kind:n what:^ wl:n want:^ nl:n :}
-   e what wl ENVELOPE-LINE
-   want nl EXPECT kind JSON:KIND$ REJECT ;
-
-: TWICE ( JSON:reader ^envelope ^u8 n -- JSON:reader )
-   ENVELOPE-LINE
-   s" it once" EXPECT s" it again" REJECT ;
+: TWICE ( JSON:reader ^u8 n -- )
+   {: what:^ wl:n :}
+   what wl s"  once" s" " s" " REPEAT-FIX$ JOINED-REJECT ;
 
 : RECORDS? ( ^envelope -- bool ) ENVELOPE-RECORDS @ SPAN:LEN 0 > ;
 
@@ -121,12 +138,12 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    e ENVELOPE-BODY @ at + e ENVELOPE-END @ at - SPAN:MAKE
    e ENVELOPE-RECORDS ! ;
 
-: NEED-RECORDS ( ^envelope ^u8 n -- )
+\ On the `}` of the object that holds the records.
+: NEED-RECORDS ( JSON:reader ^envelope ^u8 n -- JSON:reader )
    {: e:^ name:^ nl:n :}
    e RECORDS? if exit then
-   s" response" e ENVELOPE-END @ LINE-AT
-   s" the envelope" LOG:TEXT+
-   s" member " EXPECT name nl LOG:TEXT+ s" none" REJECT ;
+   s" the member `" name nl s" ` in the envelope" s" "
+   MISSING-FIX$ JOINED-REJECT ;
 
 \ The value of one to 18 decimal digits, which no cell overflows.
 : DIGITS ( ^u8 n -- option<n> )
@@ -146,8 +163,8 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    {: text:^ len:n e:^ what:^ wl:n :}
    text len DIGITS MATCH option
       none OF
-         e what wl ENVELOPE-LINE
-         s" a non-negative integer" EXPECT text len REJECT
+         s" a non-negative integer for " what wl s" " s" "
+         s" write the count as one to 18 decimal digits" JOINED-REJECT
       ENDOF
       some OF
          e ENVELOPE-COUNT ! true e ENVELOPE-COUNTED !
@@ -156,16 +173,16 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 
 : COUNT-ONCE ( JSON:reader ^envelope ^u8 n -- JSON:reader n )
    {: e:^ what:^ wl:n :}
-   e ENVELOPE-COUNTED @ if e what wl TWICE then
+   e ENVELOPE-COUNTED @ if what wl TWICE then
    e NEXT ;
 
 : V2-COUNT ( JSON:reader ^envelope -- JSON:reader )
    {: e:^ :}
-   e s" member __count" COUNT-ONCE {: kind:n :}
+   e s" member `__count`" COUNT-ONCE {: kind:n :}
    kind JSON:T-STR = if
-      [: e s" member __count" TAKE-COUNT ;] DECODED
+      [: e s" member `__count`" TAKE-COUNT ;] DECODED
    else
-      e kind s" member __count" s" a string of digits" UNEXPECTED
+      s" member `__count`" s" a string of digits" UNEXPECTED
    then ;
 
 : V4-COUNT ( JSON:reader ^envelope ^u8 n -- JSON:reader )
@@ -174,7 +191,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    kind JSON:T-INT = if
       JSON:READ-SPAN$ e what wl TAKE-COUNT
    else
-      e kind what wl s" an integer" UNEXPECTED
+      what wl s" an integer" UNEXPECTED
    then ;
 
 : LINK-TEXT ( JSON:reader ^u8 n ^envelope -- JSON:reader )
@@ -186,23 +203,23 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 
 : NEXT-LINK ( JSON:reader ^envelope ^u8 n -- JSON:reader )
    {: e:^ what:^ wl:n :}
-   e ENVELOPE-LINKED @ if e what wl TWICE then
+   e ENVELOPE-LINKED @ if what wl TWICE then
    true e ENVELOPE-LINKED !
    e NEXT {: kind:n :}
    kind JSON:T-STR = if
       [: e LINK-TEXT ;] DECODED
    else
-      e kind what wl s" a string" UNEXPECTED
+      what wl s" a string" UNEXPECTED
    then ;
 
 : ARRAY-MEMBER ( JSON:reader ^envelope ^u8 n -- JSON:reader )
    {: e:^ what:^ wl:n :}
-   e RECORDS? if e what wl TWICE then
+   e RECORDS? if what wl TWICE then
    e NEXT {: kind:n :}
    kind JSON:T-ARR = if
       e kind TAKE
    else
-      e kind what wl s" an array of records" UNEXPECTED
+      what wl s" an array of records" UNEXPECTED
    then ;
 
 \ The members of the current object, each handed to Q on its key.
@@ -213,24 +230,24 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 : RESULTS-MEMBER ( JSON:reader ^envelope -- JSON:reader )
    {: e:^ :}
    s" results" JSON:READ-STR-EQ? if
-      e s" member results" ARRAY-MEMBER exit
+      e s" member `results`" ARRAY-MEMBER exit
    then
    s" __count" JSON:READ-STR-EQ? if e V2-COUNT exit then
    s" __next" JSON:READ-STR-EQ? if
-      e s" member __next" NEXT-LINK exit
+      e s" member `__next`" NEXT-LINK exit
    then
    e SKIP-MEMBER ;
 
 : PAGE-D ( JSON:reader ^envelope -- JSON:reader )
    {: e:^ :}
-   e RECORDS? if e s" member d" TWICE then
+   e RECORDS? if s" member `d`" TWICE then
    e NEXT {: kind:n :}
    kind JSON:T-ARR = if e kind TAKE exit then
    kind JSON:T-OBJ = if
       e [: e RESULTS-MEMBER ;] MEMBERS
       e s" results" NEED-RECORDS exit
    then
-   e kind s" member d" s" an array or an object" UNEXPECTED ;
+   s" member `d`" s" an array or an object" UNEXPECTED ;
 
 : V2-PAGE-MEMBER ( JSON:reader ^envelope -- JSON:reader )
    {: e:^ :}
@@ -239,28 +256,30 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 : V4-PAGE-MEMBER ( JSON:reader ^envelope -- JSON:reader )
    {: e:^ :}
    s" value" JSON:READ-STR-EQ? if
-      e s" member value" ARRAY-MEMBER exit
+      e s" member `value`" ARRAY-MEMBER exit
    then
    s" @odata.count" JSON:READ-STR-EQ? if
-      e s" member @odata.count" V4-COUNT exit
+      e s" member `@odata.count`" V4-COUNT exit
    then
-   s" @count" JSON:READ-STR-EQ? if e s" member @count" V4-COUNT exit then
+   s" @count" JSON:READ-STR-EQ? if
+      e s" member `@count`" V4-COUNT exit
+   then
    s" @odata.nextLink" JSON:READ-STR-EQ? if
-      e s" member @odata.nextLink" NEXT-LINK exit
+      e s" member `@odata.nextLink`" NEXT-LINK exit
    then
    s" @nextLink" JSON:READ-STR-EQ? if
-      e s" member @nextLink" NEXT-LINK exit
+      e s" member `@nextLink`" NEXT-LINK exit
    then
    e SKIP-MEMBER ;
 
 : RECORD-D ( JSON:reader ^envelope -- JSON:reader )
    {: e:^ :}
-   e RECORDS? if e s" member d" TWICE then
+   e RECORDS? if s" member `d`" TWICE then
    e NEXT {: kind:n :}
    kind JSON:T-OBJ = if
       e kind TAKE
    else
-      e kind s" member d" s" an object" UNEXPECTED
+      s" member `d`" s" an object" UNEXPECTED
    then ;
 
 : V2-RECORD-MEMBER ( JSON:reader ^envelope -- JSON:reader )
@@ -271,7 +290,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    {: e:^ :}
    e NEXT {: kind:n :}
    kind JSON:T-OBJ <> if
-      e kind s" the body" s" an object" UNEXPECTED
+      s" the body" s" an object" UNEXPECTED
    then
    kind ;
 
@@ -304,21 +323,11 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    then
    e FINISH ;
 
-\ A read the JSON reader stopped: one line with the end of the last token
-\ read and the code, which the caller throws on.
-: READ-STOPPED ( ^envelope n -- )
-   {: e:^ code:n :}
-   code E-JSON-READ-LAST < code E-JSON-READ-FIRST > or if exit then
-   s" response" e ENVELOPE-END @ LINE-AT
-   s" the end of the last token read: the read stopped with " LOG:TEXT+
-   code LOG:CODE+ LOG:;LINE ;
-
-: GUARDED ( ^envelope ^JSON:cursor [ -- ] -- )
-   {: e:^ cur:^ q :}
+: GUARDED ( ^JSON:cursor [ -- ] -- )
+   {: cur:^ q :}
    q catch {: code:n :}
    code 0= if exit then
    cur JSON:READ-DISPOSE
-   e code READ-STOPPED
    code throw ;
 
 : NEW-ENVELOPE ( ^u8 ^metadata ^u8 SPAN:span<u8> -- ^envelope )
@@ -343,30 +352,29 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 : PAGE-IN ( ^u8 ^metadata ^u8 n ^JSON:cursor SPAN:span<u8> -- ^u8 n n option<n> )
    {: room:^ m:^ body:^ len:n cur:^ link:SPAN:span<u8> :}
    room m body link NEW-ENVELOPE {: e:^ :}
-   e cur [: e cur body len PAGE-WALK ;] GUARDED
+   cur [: e cur body len PAGE-WALK ;] GUARDED
    e ENVELOPE-RECORDS @ SPAN:$
    e ENVELOPE-LINK-LEN @ e COUNT-OF ;
 
 : RECORD-IN ( ^u8 ^metadata ^u8 n ^JSON:cursor -- ^u8 n )
    {: room:^ m:^ body:^ len:n cur:^ :}
    room m body body 0 SPAN:MAKE NEW-ENVELOPE {: e:^ :}
-   e cur [: e cur body len RECORD-WALK ;] GUARDED
+   cur [: e cur body len RECORD-WALK ;] GUARDED
    e ENVELOPE-RECORDS @ SPAN:$ ;
 
 \ A frame is one open container: `results` a V2 results object, `done` once its
-\ array is read; for an entity, `open` is its `{` and `names` its names' start.
+\ array is read; for an entity, `names` is its names' start.
 ENUM nest entity entities results object array ;ENUM
 
 STRUCTURE frame DERIVE addr
    FIELD nest nest
    FIELD type ^entity-type
    FIELD done bool
-   FIELD open ^u8
    FIELD names n
 ;STRUCTURE
 
-\ Offsets count from `start`, the record's `{`. `names` holds each open entity's
-\ names, a length cell and the bytes padded to a cell; mappings start empty.
+\ `names` holds each open entity's names, a length cell and the bytes padded
+\ to a cell; mappings start empty.
 STRUCTURE copy DERIVE addr
    FIELD frames ^u8
    FIELD room n
@@ -376,7 +384,6 @@ STRUCTURE copy DERIVE addr
    FIELD names-room n
    FIELD names-used n
    FIELD names-mapping SPAN:span<u8>
-   FIELD start ^u8
    FIELD dst ^u8
    FIELD cap n
    BUFFER text 24
@@ -442,11 +449,10 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    c TOP {: f:^ :}
    kind f FRAME-NEST ! t f FRAME-TYPE ! false f FRAME-DONE ! ;
 
-: PUSH-ENTITY ( ^copy ^entity-type ^u8 -- )
-   {: c:^ t:^ open:^ :}
+: PUSH-ENTITY ( ^copy ^entity-type -- )
+   {: c:^ t:^ :}
    c NEST-ENTITY t PUSH
    c TOP {: f:^ :}
-   open f FRAME-OPEN !
    c COPY-NAMES-USED @ f FRAME-NAMES ! ;
 
 \ The bytes a name of LEN takes in the names, its length cell included.
@@ -479,17 +485,24 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: i:n j:n base:^ :}
    base i NAME$ base j NAME$ STR< ;
 
-: SAME-NEIGHBOUR? ( ^n n ^u8 -- bool )
+\ The name in the slot the order holds at I.
+: NTH-NAME ( ^n n ^u8 -- ^u8 n )
+   {: order:^ i:n base:^ :}
+   base order i cells + @ NAME$ ;
+
+\ A name equal to the one before it in the order and true, else an empty
+\ span and false.
+: SAME-NEIGHBOUR? ( ^n n ^u8 -- ^u8 n bool )
    {: order:^ k:n base:^ :}
    k 1 ?do
-      base order i 1- cells + @ NAME$
-      base order i cells + @ NAME$ STR=
-      if true unloop exit then
-   loop false ;
+      order i 1- base NTH-NAME  order i base NTH-NAME STR=
+      if order i base NTH-NAME true unloop exit then
+   loop base 0 false ;
 
-\ Whether the top entity repeats a member: its names sorted by their bytes
-\ in an order of their slots, past the names, equal names are neighbours.
-: REPEATED? ( ^copy -- bool )
+\ The member the top entity repeats and true, else an empty span and false:
+\ its names sorted by their bytes in an order of their slots, past the
+\ names, equal names are neighbours.
+: REPEATED? ( ^copy -- ^u8 n bool )
    {: c:^ :}
    c TOP FRAME-NAMES @ {: from:n :}
    c COPY-NAMES-USED @ {: past:n :}
@@ -499,9 +512,6 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    order base from past SLOTS {: k:n :}
    order k [: base NAME< ;] SORT:SORT!
    order k base SAME-NEIGHBOUR? ;
-
-: OPEN-AT ( JSON:reader ^JSON:writer -- JSON:reader ^JSON:writer ^u8 )
-   swap JSON:READ-SPAN$ drop {: at:^ :} swap at ;
 
 : ADVANCE ( JSON:reader ^JSON:writer -- JSON:reader ^JSON:writer n )
    swap JSON:READ-NEXT rot swap ;
@@ -525,11 +535,6 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    -1 c COPY-DEPTH +!
    c COPY-DEPTH @ 0= if JSON:T-END exit then
    ADVANCE ;
-
-: RECORD-LINE ( JSON:reader ^JSON:writer ^copy ^u8 n -- JSON:reader ^JSON:writer )
-   {: c:^ what:^ wl:n :}
-   swap c COPY-START @ TOKEN-AT {: at:n :} swap
-   s" response record" at LINE-AT what wl LOG:TEXT+ ;
 
 \ A value written as it stands; a container opens its frame.
 : PLAIN ( JSON:reader ^JSON:writer n ^copy -- JSON:reader ^JSON:writer )
@@ -561,24 +566,24 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: kind:n c:^ t:^ :}
    kind JSON:T-ARR-END = if JSON:WRITE-ARRAY-END c CLOSE exit then
    kind JSON:T-OBJ <> if
-      c s" an array of records" RECORD-LINE
-      s" a record object" EXPECT kind JSON:KIND$ REJECT
+      drop s" a record object in an array of records" KIND-FIX$
+      RESPONSE-REJECT
    then
    JSON:WRITE-COMMA JSON:WRITE-OBJECT-START
-   OPEN-AT {: open:^ :} c t open PUSH-ENTITY ADVANCE ;
+   c t PUSH-ENTITY ADVANCE ;
 
 : RESULTS-ARRAY ( JSON:reader ^JSON:writer ^copy ^frame -- JSON:reader ^JSON:writer n )
    {: c:^ f:^ :}
    f FRAME-DONE @ if
-      c s" a results object" RECORD-LINE
-      s" member results once" EXPECT s" it again" REJECT
+      drop s" member `results` once in a results object" REPEAT-FIX$
+      RESPONSE-REJECT
    then
    true f FRAME-DONE !
    f FRAME-TYPE @ {: t:^ :}
    ADVANCE {: kind:n :}
    kind JSON:T-ARR <> if
-      c s" member results" RECORD-LINE
-      s" an array of records" EXPECT kind JSON:KIND$ REJECT
+      drop s" an array of records for member `results`" KIND-FIX$
+      RESPONSE-REJECT
    then
    JSON:WRITE-ARRAY-START c NEST-ENTITIES t PUSH ADVANCE ;
 
@@ -587,8 +592,8 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: kind:n c:^ f:^ :}
    kind JSON:T-OBJ-END = if
       f FRAME-DONE @ 0= if
-         c s" a results object" RECORD-LINE
-         s" member results" EXPECT s" none" REJECT
+         drop s" the member `results` in a results object" MISSING-FIX$
+         RESPONSE-REJECT
       then
       c CLOSE exit
    then
@@ -676,21 +681,22 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    [char] Z out zone + 4 + c!
    out zone 5 + ;
 
-: DATE-REJECT ( JSON:reader ^JSON:writer ^copy ^property ^u8 n -- JSON:reader ^JSON:writer )
-   {: c:^ p:^ found:^ fl:n :}
-   c s" member " RECORD-LINE p PROPERTY-NAME @ TEXT+
-   s" /Date(ms)/ or null for " EXPECT p PROPERTY-TYPE @ TEXT+
-   found fl REJECT ;
+: DATE-REJECT ( JSON:reader ^JSON:writer ^property -- )
+   {: p:^ :}
+   drop s" /Date(ms)/ or null for member `" p PROPERTY-NAME @ SPAN:$
+   s" ` of type " p PROPERTY-TYPE @ SPAN:$
+   s" write the value as /Date(ms)/, /Date(ms+mmmm)/ or /Date(ms-mmmm)/ in the years 0 to 9999, or null"
+   JOINED-REJECT ;
 
 : DATE-MEMBER ( JSON:reader ^JSON:writer ^property ^copy -- JSON:reader ^JSON:writer )
    {: p:^ c:^ :}
    JSON:WRITE-COMMA p PROPERTY-NAME @ SPAN:$ JSON:WRITE-KEY
    ADVANCE {: kind:n :}
    kind JSON:T-NULL = if JSON:WRITE-NULL exit then
-   kind JSON:T-STR <> if c p kind JSON:KIND$ DATE-REJECT then
+   kind JSON:T-STR <> if p DATE-REJECT then
    c DECODE {: text:^ len:n :}
    text len MS MATCH option
-      none OF c p text len DATE-REJECT ENDOF
+      none OF p DATE-REJECT ENDOF
       some OF c ISO JSON:WRITE-STRING ENDOF
    ;MATCH ;
 
@@ -698,10 +704,15 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: n:^ :}
    JSON:WRITE-COMMA n NAVIGATION-NAME @ SPAN:$ JSON:WRITE-KEY ;
 
-: NAV-REJECT ( JSON:reader ^JSON:writer ^copy ^navigation n ^u8 n -- JSON:reader ^JSON:writer )
-   {: c:^ n:^ kind:n want:^ wl:n :}
-   c s" navigation " RECORD-LINE n NAVIGATION-NAME @ TEXT+
-   want wl EXPECT kind JSON:KIND$ REJECT ;
+: NAV-REJECT ( JSON:reader ^JSON:writer ^navigation ^u8 n -- )
+   {: n:^ want:^ wl:n :}
+   drop want wl s"  for navigation `" n NAVIGATION-NAME @ SPAN:$ s" `"
+   KIND-FIX$ JOINED-REJECT ;
+
+: COMPLEX-REJECT ( JSON:reader ^JSON:writer ^property ^u8 n -- )
+   {: p:^ want:^ wl:n :}
+   drop want wl s"  for member `" p PROPERTY-NAME @ SPAN:$ s" `"
+   KIND-FIX$ JOINED-REJECT ;
 
 \ A complex value: null, one record or, for a collection, an array of
 \ records or a V2 results object.
@@ -716,20 +727,17 @@ CAST: >FRAMES ( ^u8 -- ^frame )
          JSON:WRITE-ARRAY-START c NEST-ENTITIES t PUSH ADVANCE exit
       then
       kind JSON:T-OBJ = t TYPE-V2? and if c NEST-RESULTS t PUSH ADVANCE exit then
-      c s" member " RECORD-LINE p PROPERTY-NAME @ TEXT+
-      s" null or an array of records" EXPECT kind JSON:KIND$ REJECT
+      p s" null or an array of records" COMPLEX-REJECT
    then
    kind JSON:T-OBJ <> if
-      c s" member " RECORD-LINE p PROPERTY-NAME @ TEXT+
-      s" null or a record" EXPECT kind JSON:KIND$ REJECT
+      p s" null or a record" COMPLEX-REJECT
    then
-   JSON:WRITE-OBJECT-START OPEN-AT {: open:^ :} c t open PUSH-ENTITY ADVANCE ;
+   JSON:WRITE-OBJECT-START c t PUSH-ENTITY ADVANCE ;
 
 \ A V2 navigation's object: deferred, a results object or one record.
 : V2-NAV-OBJECT ( JSON:reader ^JSON:writer ^navigation ^copy -- JSON:reader ^JSON:writer n )
    {: n:^ c:^ :}
    n NAVIGATION-TARGET-TYPE @ {: t:^ :}
-   OPEN-AT {: open:^ :}
    ADVANCE {: first:n :}
    first JSON:T-KEY = if
       swap s" __deferred" JSON:READ-STR-EQ? {: deferred:bool :} swap
@@ -737,32 +745,57 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    then
    n NAV-KEY
    n TO-MANY? if c NEST-RESULTS t PUSH first exit then
-   JSON:WRITE-OBJECT-START c t open PUSH-ENTITY first ;
+   JSON:WRITE-OBJECT-START c t PUSH-ENTITY first ;
 
-: NAV-MEMBER ( JSON:reader ^JSON:writer ^navigation ^copy -- JSON:reader ^JSON:writer n )
-   {: n:^ c:^ :}
+: NAV-MANY ( JSON:reader ^JSON:writer n ^navigation ^copy -- JSON:reader ^JSON:writer n )
+   {: kind:n n:^ c:^ :}
    n NAVIGATION-TARGET-TYPE @ {: t:^ :}
-   ADVANCE {: kind:n :}
-   kind JSON:T-NULL = if n NAV-KEY JSON:WRITE-NULL ADVANCE exit then
    kind JSON:T-ARR = if
       n NAV-KEY JSON:WRITE-ARRAY-START c NEST-ENTITIES t PUSH ADVANCE exit
    then
+   t TYPE-V2? 0= if n s" null or an array of records" NAV-REJECT then
    kind JSON:T-OBJ <> if
-      c n kind s" null, a record or an array of records" NAV-REJECT
+      n s" null, an array of records or an object with `results`"
+      NAV-REJECT
    then
+   n c V2-NAV-OBJECT ;
+
+: NAV-ONE ( JSON:reader ^JSON:writer n ^navigation ^copy -- JSON:reader ^JSON:writer n )
+   {: kind:n n:^ c:^ :}
+   n NAVIGATION-TARGET-TYPE @ {: t:^ :}
+   kind JSON:T-OBJ <> if n s" null or a record" NAV-REJECT then
    t TYPE-V2? if n c V2-NAV-OBJECT exit then
-   n TO-MANY? if c n kind s" an array of records" NAV-REJECT then
-   n NAV-KEY JSON:WRITE-OBJECT-START
-   OPEN-AT {: open:^ :} c t open PUSH-ENTITY ADVANCE ;
+   n NAV-KEY JSON:WRITE-OBJECT-START c t PUSH-ENTITY ADVANCE ;
+
+: NAV-MEMBER ( JSON:reader ^JSON:writer ^navigation ^copy -- JSON:reader ^JSON:writer n )
+   {: n:^ c:^ :}
+   ADVANCE {: kind:n :}
+   kind JSON:T-NULL = if n NAV-KEY JSON:WRITE-NULL ADVANCE exit then
+   kind n c n TO-MANY? if NAV-MANY else NAV-ONE then ;
+
+: REMOVE$ ( -- ^u8 n ) s" remove the repeated member `" ;
+: KEEP-ONE$ ( -- ^u8 n ) s" `, keeping one" ;
+
+: REPEAT-SCOPE ( JSON:reader ^u8 n ^u8 NUM:alloc-byte-len -- JSON:reader )
+   drop {: na:^ nu:n buf:^ :}
+   buf 0 REMOVE$ PUT na nu PUT KEEP-ONE$ PUT {: fa:^ fu:n :}
+   s" each member of the record once" fa fu RESPONSE-REJECT ;
+
+\ Rejects the record whose `}` is current for repeating the member named.
+\ The last throw is never reached: it shows the checker it never returns.
+: REPEAT-REJECT ( JSON:reader ^u8 n -- )
+   {: na:^ nu:n :}
+   na nu  REMOVE$ nip nu + KEEP-ONE$ nip + MEM:BYTES-ALLOC-LEN
+   [: REPEAT-SCOPE ;] MEM:WITH-BYTES
+   E-RESPONSE throw ;
 
 \ On the record's `}`: its names are checked and dropped.
 : ONCE ( JSON:reader ^JSON:writer ^copy -- JSON:reader ^JSON:writer )
    {: c:^ :}
    c TOP {: f:^ :}
-   c REPEATED? 0= if f FRAME-NAMES @ c COPY-NAMES-USED ! exit then
-   s" response record" c COPY-START @ f FRAME-OPEN @ OFFSET LINE-AT
-   s" a record" LOG:TEXT+
-   s" each member once" EXPECT s" a member repeated" REJECT ;
+   c REPEATED? {: na:^ nu:n again:bool :}
+   again 0= if f FRAME-NAMES @ c COPY-NAMES-USED ! exit then
+   drop na nu REPEAT-REJECT ;
 
 : IN-RECORD ( JSON:reader ^JSON:writer n ^copy ^entity-type -- JSON:reader ^JSON:writer n )
    {: kind:n c:^ t:^ :}
@@ -814,10 +847,11 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    room 0 SPAN:MAKE c COPY-NAMES-MAPPING !
    dst c COPY-DST ! cap c COPY-CAP !
    swap JSON:READ-TOKEN {: kind:n :}
-   kind JSON:T-OBJ <> if E-JSON-READ-STATE throw then
-   JSON:READ-SPAN$ drop c COPY-START ! swap
-   JSON:WRITE-OBJECT-START
-   c t c COPY-START @ PUSH-ENTITY
+   kind JSON:T-OBJ <> if
+      s" a record object" KIND-FIX$ RESPONSE-REJECT
+   then
+   swap JSON:WRITE-OBJECT-START
+   c t PUSH-ENTITY
    [: c WALK ;] [: c DROP-FRAMES ;] finally ;
 
 public

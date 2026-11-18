@@ -1,0 +1,12 @@
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="N" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <Annotations Target="N.A">
+        <Annotation Term="T.Label" String="a"/>
+      </Annotations>
+      <EntityType Name="A">
+        <Annotation Term="T.Label" String="b"/>
+      </EntityType>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

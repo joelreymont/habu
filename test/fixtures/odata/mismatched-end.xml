@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+  <edmx:DataServices>
+    <Schema Namespace="N">
+      <EntityType Name="A" Abstract="true">
+        <Property Name="K" Type="Edm.String" Nullable="false"/>
+      </EntityTypo>

@@ -11,18 +11,21 @@ require src/lib/span.f
 require src/lib/memory.f
 require src/lib/uri.f
 require src/lib/base64.f
+require src/lib/byte-buffer.f
+require src/lib/reason.f
 require src/lib/odata/metadata.f
 
 package ODATA
 private
 
-\ The predicate being written: what is left of the caller's span, the
-\ number of key properties and of those written, and whether the type is V2.
+\ The predicate being written: rest is what is left of the caller's span;
+\ text is a rejection's BUF header, just after the record.
 STRUCTURE predicate DERIVE addr
    FIELD rest SPAN:span<u8>
    FIELD keys n
    FIELD written n
    FIELD v2 bool
+   FIELD text ^u8
 ;STRUCTURE
 
 CAST: >PREDICATE ( ^u8 -- ^predicate )
@@ -297,17 +300,72 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    then
    false ;
 
-\ A type no row takes, a version's missing type among them, is E-KEY.
-: LITERAL ( ^predicate ^u8 n ^u8 n -- )
+\ Whether a row takes TYPE, a version's missing type false.
+: LITERAL ( ^predicate ^u8 n ^u8 n -- bool )
    {: p:^ t:^ tl:n v:^ vl:n :}
-   p t tl v vl TEXTUAL if exit then
-   p t tl v vl INTEGRAL if exit then
-   p t tl v vl FRACTIONAL if exit then
+   p t tl v vl TEXTUAL if true exit then
+   p t tl v vl INTEGRAL if true exit then
+   p t tl v vl FRACTIONAL if true exit then
    p PREDICATE-V2 @ if
       p t tl v vl V2-TEMPORAL
    else
       p t tl v vl V4-TEMPORAL
-   then FITS ;
+   then ;
+
+\ A rejection's text: SAY adds text as given, SAY-QUOTED in backticks with
+\ `...` after it when the bool says it was cut.
+: SAY ( ^predicate ^u8 n -- )
+   {: p:^ a:^ u:n :}
+   a u BUF:N>BLEN p PREDICATE-TEXT @ BUF:APPEND-SPAN ;
+
+: SAY-QUOTED ( ^predicate ^u8 n bool -- )
+   {: p:^ a:^ u:n cut:bool :}
+   p s" `" SAY p a u SAY
+   cut if p s" ..." SAY then
+   p s" `" SAY ;
+
+: SAY-NAME ( ^predicate ^property -- )
+   PROPERTY-NAME$ false SAY-QUOTED ;
+
+: SAY-TYPE ( ^predicate ^property -- )
+   PROPERTY-TYPE$ false SAY-QUOTED ;
+
+\ The property's type has a row, which the value does not fit.
+: VALUE-TEXT ( ^predicate ^property ^u8 n -- )
+   {: p:^ pr:^ v:^ vl:n :}
+   p s" expected a " SAY p pr SAY-TYPE
+   p s"  value for key property " SAY p pr SAY-NAME
+   p s" , found " SAY p v vl CUT SAY-QUOTED
+   p s" ; give " SAY p pr SAY-NAME
+   p s"  a value in that type's form" SAY ;
+
+\ No row takes the property's type.
+: TYPE-TEXT ( ^predicate ^property -- )
+   {: p:^ pr:^ :}
+   p s" expected a key property of a type OData V" SAY
+   p p PREDICATE-V2 @ if s" 2" else s" 4" then SAY
+   p s"  writes in a key, found " SAY p pr SAY-TYPE
+   p s"  for key property " SAY p pr SAY-NAME
+   p s" ; address the entity without a key predicate" SAY ;
+
+\ Throws E-KEY with the text WRITE gives; the text is freed once
+\ REASON:THROW has copied it, and on WRITE's throw.
+: REJECT ( ^predicate [ ^predicate -- ] -- )
+   {: p:^ write :}
+   p PREDICATE-TEXT @ 64 BUF:N>BLEN BUF:INIT
+   [: p write execute
+      p PREDICATE-TEXT @ BUF:SPAN$ BUF:BLEN>N E-KEY REASON:THROW ;]
+   [: p PREDICATE-TEXT @ BUF:DISPOSE ;] finally ;
+
+\ The value's literal; a value LITERAL throws E-KEY for, or a type no row
+\ takes, is E-KEY with its text, any other code thrown on.
+: CHECKED-LITERAL ( ^predicate ^property ^u8 n -- )
+   {: p:^ pr:^ v:^ vl:n :}
+   false [: drop p pr PROPERTY-TYPE$ v vl LITERAL ;] catch
+   {: taken code:n :}
+   code E-KEY = if p [: pr v vl VALUE-TEXT ;] REJECT then
+   code 0<> if code throw then
+   taken 0= if p [: pr TYPE-TEXT ;] REJECT then ;
 
 \ The separator and the name go before the callback, so E-KEY follows the
 \ callback that gave the value with nothing written between.
@@ -317,11 +375,14 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    p PREDICATE-KEYS @ 1 > if
       p pr PROPERTY-NAME$ ESCAPED p s" =" RAW
    then
-   p pr PROPERTY-TYPE$ pr q execute LITERAL
+   pr q execute {: v:^ vl:n :}
+   p pr v vl CHECKED-LITERAL
    1 p PREDICATE-WRITTEN +! ;
 
 : WRITE-PREDICATE ( ^entity-type [ ^property -- ^u8 n ] SPAN:span<u8> ^u8 NUM:alloc-byte-len -- n )
-   drop >PREDICATE {: t:^ q s p:^ :}
+   drop {: t:^ q s at:^ :}
+   at >PREDICATE {: p:^ :}
+   at PREDICATE-BYTES + p PREDICATE-TEXT !
    s p PREDICATE-REST !
    t TYPE-V2? p PREDICATE-V2 !
    t [: drop 1 p PREDICATE-KEYS +! ;] EACH-KEY
@@ -335,7 +396,7 @@ public
 \ The key predicate of the entity whose key values CALLBACK gives as text,
 \ written into the span; its length.
 : KEY ( ^entity-type [ ^property -- ^u8 n ] SPAN:span<u8> -- n )
-   PREDICATE-BYTES MEM:BYTES-ALLOC-LEN
+   PREDICATE-BYTES BUF:HDR-BYTES + MEM:BYTES-ALLOC-LEN
    [: WRITE-PREDICATE ;] MEM:WITH-BYTES ;
 
 ;package
