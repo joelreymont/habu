@@ -76,6 +76,34 @@ using PTY-HARNESS
    s" error[E-UNCLOSED]" s" `BEGIN-STRUCTURE`" AFTER? TTRUE
    s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE ;
 
+\ A definition opened and closed on later lines leaves the declaration's
+\ record on the line that opened it: each line reuses the reader's buffer.
+: DECL-LINES-CASE ( -- )
+   OPEN dup TTRUE if
+      s" BEGIN-STRUCTURE EOF-REC2" STEP TTRUE
+      s" : EOF-FOO ( -- )" STEP TTRUE
+      s" 1 2 + drop ;" STEP dup TTRUE if
+         4 SEND-BYTE
+      then
+   then
+   70 EXIT=
+   s" error[E-UNCLOSED]" s" `BEGIN-STRUCTURE`" AFTER? TTRUE
+   s" error[E-UNCLOSED]" s" | BEGIN-STRUCTURE EOF-REC2" AFTER? TTRUE
+   s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE ;
+
+\ A definition still open inside an open declaration is reported, on its own
+\ line, and the declaration is not.
+: DEF-AFTER-DECL-CASE ( -- )
+   OPEN dup TTRUE if
+      s" BEGIN-STRUCTURE EOF-REC3" STEP TTRUE
+      s" : EOF-BAR ( -- )" STEP dup TTRUE if
+         4 SEND-BYTE
+      then
+   then
+   70 EXIT=
+   s" error[E-VS-UNTERMINATED-DEFINITION]" s" | : EOF-BAR ( -- )" AFTER? TTRUE
+   s" error[E-UNCLOSED]" IN-BUF? TFALSE ;
+
 \ A failed definition must unwind through the line savepoint, then accept a
 \ new definition.
 : REJECT-CASE ( -- )
@@ -185,6 +213,8 @@ public
    SPAN-CASE
    EOF-CASE
    DECL-EOF-CASE
+   DECL-LINES-CASE
+   DEF-AFTER-DECL-CASE
    REJECT-CASE
    ZERO-THROW-CASE
    USING-CASE

@@ -3164,9 +3164,10 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    prior USE-FLOOR !
    found REC ! ;
 
-\ A copy of the line that opened the pending definition: the reader reuses its
-\ buffer for each line, and the line's frame puts back the input cells, so an
-\ end of input inside the definition is placed on this copy.
+\ A copy of the line that opened the pending definition, freed when the
+\ definition ends: the reader reuses its buffer for each line, and the line's
+\ frame puts back the input cells, so an end of input inside the definition is
+\ placed on this copy.
 TYPED-VARIABLE OPENER-A ^u8
 variable OPENER-U
 
@@ -3185,6 +3186,14 @@ variable OPENER-U
    a c u BYTE-COPY
    c OPENER-A !  u OPENER-U !
    c off + PENDTKA-CELL ADDR! ;
+
+\ Line a u ends, begun with PEND-CELL at open: the definition and the
+\ declaration each keep a copy of their opener's line while they need it.
+: OPENERS-KEEP ( str n -- ) {: a:^ u:n open:n :}
+   PEND-CELL CELL@ {: now:n :}
+   now 0= if OPENER-DROP then
+   now 0<>  now open <> and if a u OPENER-KEEP then
+   a u SOURCE-ROOT:KEEP-OPENER ;
 
 \ The record, at the running token, of a throw of code c that its text did not
 \ catch.
@@ -3221,8 +3230,6 @@ variable OPENER-U
    out case
       FRAME-DONE of
          f FRAME-UNLINK
-         PEND-CELL CELL@ {: now:n :}
-         now 0<>  now open <> and if a u OPENER-KEEP then
       endof
       FRAME-LINKED of
          f FRAME-UNLINK
@@ -3237,20 +3244,26 @@ variable OPENER-U
       endof
    endcase
    f FRAME-FREE
-   out FRAME-DONE <> if
+   out FRAME-DONE = {: done:bool :}
+   done 0= if
       code 1 255 BETWEEN? 0= if code ERROR:UNCAUGHT then
       mark SOURCE-ROOT:TEXT-UNWOUND
+   then
+   a u open OPENERS-KEEP
+   done 0= if
       REPL-STACK-CLEAR
       2 REPL-QNL 2 write drop
       false exit
    then
    true ;
 
+\ The end of input goes on the pending definition's line, reported first, else
+\ on the open declaration's.
 : REPL-END ( -- )
    OPENER-U @ {: u:n :}
-   u 0<> if
-      OPENER-A @ {: c:^ :}
-      c SRCLOC:INB-CELL ADDR!  c u + INE-CELL ADDR!
+   u 0<> if OPENER-A @ u else SOURCE-ROOT:OPENER-LINE then {: c:^ cu:n :}
+   cu 0<> if
+      c SRCLOC:INB-CELL ADDR!  c cu + INE-CELL ADDR!
    then
    [: DEF-SOURCE-END DECL-SOURCE-END ;] catch {: code:n :}
    code 0<> if NULL$ code die then ;

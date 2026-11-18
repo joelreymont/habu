@@ -2499,6 +2499,9 @@ variable OPENER-U
 PTR-VARIABLE CLOSER-A
 variable CLOSER-U
 TYPED-VARIABLE ABANDON-XT [ -- ]
+\ A copy of the REPL line OPENER-A points into: the reader reuses its buffer.
+PTR-VARIABLE LINE-A
+variable LINE-U
 \ Counts the rows OPENED records: the open row is always the newest.
 variable DECL-SERIAL
 
@@ -2520,6 +2523,18 @@ variable DECL-SERIAL
    t tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
    REJECTION:HELP  s" close it with " REJECTION:EMIT-STR
    c cu TICKED  32 REJECTION:EMIT1 ;
+
+: LINE-DROP ( -- )
+   LINE-U @ {: u:n :}
+   u 0= if exit then
+   LINE-A @ u munmap 0 <> if E-MEM-UNMAP throw then
+   0 LINE-U ! ;
+
+: LINE-COPY ( str -- ^u8 ) {: a:^ u:n :}
+   u map-anon 0 <> if drop u s" a REPL line" s" " REJECTION:MAP-PASS-FILE then
+   {: c:^ :}
+   a c u BYTE-COPY
+   c ;
 
 public
 
@@ -2561,6 +2576,21 @@ public
    then
    t OPENER-A !  tu OPENER-U !  c CLOSER-A !  cu CLOSER-U !  q ABANDON-XT !
    1 DECL-SERIAL +! ;
+
+\ A REPL line a u ends: the open declaration keeps a copy of its opener's line.
+: KEEP-OPENER ( ^u8 n -- ) {: a:^ u:n :}
+   CLOSER-U @ 0= if LINE-DROP exit then
+   OPENER-A @ a - {: off:n :}
+   off 0 >=  off u < and 0= if exit then
+   LINE-DROP
+   a u LINE-COPY {: c:^ :}
+   c LINE-A !  u LINE-U !
+   c off + OPENER-A ! ;
+
+\ The copy of the open declaration's opener line, else a zero-length string.
+: OPENER-LINE ( -- str )
+   CLOSER-U @ 0= if NULL-PTR 0 exit then
+   LINE-A @ LINE-U @ ;
 
 \ The mark a text takes as it starts, for TEXT-END and TEXT-UNWOUND.
 : TEXT-MARK ( -- n )
