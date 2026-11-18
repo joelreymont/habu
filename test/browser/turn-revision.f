@@ -7,6 +7,6 @@ split-str
 package TURN-REVISION
 public
 
-3 constant PROTOCOL
+4 constant PROTOCOL
 
 ;package

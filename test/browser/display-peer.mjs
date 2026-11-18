@@ -3,6 +3,8 @@
 // With --chrome the page is served under an MCP Apps host's image policy,
 // img-src 'self' data:, so its SVG renders only from a data: URL; that SVG
 // must run no script, fetch no external reference and follow no link.
+// A mounted viewport's resize turn carries the page's devicePixelRatio in
+// thousandths as its a, Math.round(devicePixelRatio * 1000) in the page.
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +19,7 @@ const bytes = readFileSync(file);
 mkdirSync(output, { recursive: true });
 const records = [];
 const host = {
-  hello() {}, size: () => [640, 480],
+  hello() {}, size: () => [640, 480], ratio: () => 1000,
   svg: (bytes) => records.push(["svg", bytes]),
   input: (enabled) => records.push(["input", enabled]),
   draw: () => records.push(["draw"]),
@@ -156,17 +158,23 @@ async function browser() {
     if (path === "/mount") return new Response(
       '<!doctype html><canvas tabindex="0" style="width:320px;height:240px"></canvas><script type="module" src="/mount-boot.js"></script>',
       { headers: { "Content-Type": "text/html" } });
-    // Counts each instance's turns and keeps each WebGPU device, so a disposed
-    // viewport's listeners and device can be checked. breakPipeline makes the
-    // next device's pipeline throw; ignoreAbort fetches without the signal.
+    // Counts each instance's turns, keeps each resize turn's a in ratios and
+    // each WebGPU device, so a disposed viewport's listeners and device can be
+    // checked. Keeps each matchMedia list, since emulating another ratio fires
+    // no change event. breakPipeline makes the next device's pipeline throw;
+    // ignoreAbort fetches without the signal.
     if (path === "/mount-boot.js") return new Response(`
       import { Module } from '/turn.js';
       import { mount } from '/viewport.js';
-      window.modules = []; window.devices = []; window.records = [];
+      window.modules = []; window.devices = []; window.records = []; window.lists = [];
+      const media = window.matchMedia;
+      window.matchMedia = (query) => { const list = media.call(window, query); lists.push(list); return list; };
       const load = Module.load;
-      Module.load = async (...args) => { const m = await load.call(Module, ...args); modules.push(m); m.turns = 0; return m; };
+      Module.load = async (...args) => { const m = await load.call(Module, ...args); modules.push(m); m.turns = 0; m.ratios = [];
+        return m; };
       const turn = Module.prototype.turn;
-      Module.prototype.turn = function (event) { this.turns++; return turn.call(this, event); };
+      Module.prototype.turn = function (event) { this.turns++;
+        if (event && event[0] === 9n) this.ratios.push(Number(event[1])); return turn.call(this, event); };
       const request = GPUAdapter.prototype.requestDevice;
       GPUAdapter.prototype.requestDevice = async function (...args) { const d = await request.apply(this, args);
         devices.push(d); d.lost.then((info) => { d.reason = info.reason; });
@@ -701,9 +709,18 @@ async function browser() {
       await call("Page.navigate", { url: `http://127.0.0.1:${server.port}/mount` });
       await until(() => evaluate("window.ready === true"));
       const svgLength = original.length;
+      // Under a ratio other than headless Chrome's 1, so a host answering a
+      // constant 1000 fails. The ratio is cleared only once the viewport is
+      // disposed: a viewport still mounted would resize at its next frame.
+      const scale = (ratio) => call("Emulation.setDeviceMetricsOverride",
+        { width: 0, height: 0, deviceScaleFactor: ratio, mobile: false });
+      await scale(2);
       await evaluate("(async () => { window.first = await mountOne(); })()");
       assert.deepEqual(await evaluate("records"), [["input", true], ["input", false], ["svg", svgLength]],
         "mount enables input, then the start turn's records arrive");
+      await until(() => evaluate("modules[0].ratios.length > 0"));
+      assert.deepEqual(await evaluate("modules[0].ratios"), [2000],
+        "the mount's resize carries devicePixelRatio 2 in thousandths");
       assert.equal(await evaluate("canvas.style.visibility"), "hidden");
       await evaluate("first.post({ kind: 'typed', text: 'draw' })");
       await evaluate("first.post({ kind: 'typed', text: 'text' })");
@@ -737,7 +754,9 @@ async function browser() {
       await evaluate("first.dispose()");
       await until(() => evaluate("devices[0].reason !== undefined"));
       assert.equal(await evaluate("devices[0].reason"), "destroyed", "dispose releases the GPU device");
-      assert.deepEqual([await listeners("canvas"), await listeners("window")], [0, 0], "dispose removes every listener");
+      await call("Emulation.clearDeviceMetricsOverride");
+      assert.deepEqual([await listeners("canvas"), await listeners("window"), await listeners("lists.at(-1)")], [0, 0, 0],
+        "dispose removes every listener");
       assert.equal(await evaluate(key), before + 1, "a key on a disposed canvas runs no turn");
       assert.equal(await evaluate("canvas.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1 })), modules[0].turns"),
         before + 1, "a pointer on a disposed canvas runs no turn");
@@ -749,8 +768,25 @@ async function browser() {
         [["input", true], ["input", false], ["svg", svgLength], ["svg", null]], "a second mount runs a fresh module");
       assert.equal(await evaluate("modules.length === 2 && devices.length === 2 && modules[1].turns"), 3,
         "the second mount has its own module and device, and ran start, resize and draw");
+      // A ratio change reaches the module through the mount's matchMedia watch.
+      assert.deepEqual(await evaluate("modules[1].ratios"), [1000]);
+      await scale(2);
+      await evaluate("lists.at(-1)?.dispatchEvent(new Event('change')), 0");
+      await until(() => evaluate("modules[1].ratios.length === 2"))
+        .catch(() => assert.fail("a devicePixelRatio change sends a resize turn"));
+      assert.deepEqual(await evaluate("modules[1].ratios"), [1000, 2000],
+        "a devicePixelRatio change to 2 sends a resize turn whose a is 2000");
+      // A ratio change that keeps the drawing buffer's size, as browser zoom
+      // on a canvas that fills its frame does, reaches the re-armed watch.
+      await scale(2.001);
+      await evaluate("lists.at(-1)?.dispatchEvent(new Event('change')), 0");
+      await until(() => evaluate("modules[1].ratios.length === 3"))
+        .catch(() => assert.fail("a devicePixelRatio change that keeps the buffer's size sends a resize turn"));
+      assert.deepEqual(await evaluate("[modules[1].ratios, canvas.width, canvas.height]"), [[1000, 2000, 2001], 640, 480],
+        "a devicePixelRatio change that keeps the buffer's size sends a resize turn and resizes no buffer");
       await evaluate("second.dispose()");
       await until(() => evaluate("devices[1].reason === 'destroyed'"));
+      await call("Emulation.clearDeviceMetricsOverride");
 
       // A canvas holding another context is refused before any device exists;
       // a setup step that throws once the device exists destroys it.

@@ -1,9 +1,10 @@
 // viewport.js - the browser viewer as a component. mount runs a Habu Wasm
 // module's turns (turn.js) on the main thread, holds its meshes on the GPU
 // and draws their instances with WebGPU on the caller's canvas, and sends the
-// canvas's pointer, wheel, key and size to the module. The caller owns the
-// page: nothing here looks up the DOM, and every other record reaches the
-// caller through a callback.
+// canvas's pointer, wheel, key and size to the module, with a resize turn at
+// mount and at each change of the drawing buffer's size or of devicePixelRatio.
+// The caller owns the page: nothing here looks up the DOM, and every other
+// record reaches the caller through a callback.
 //
 //   mount(canvas, { Module, module, fetch, rpc, onTree, onText, onSvg, onInput })
 //     -> Promise<viewport>
@@ -1190,6 +1191,11 @@ function modifiers(e) {
     (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
 }
 
+// devicePixelRatio in thousandths, at least 1: a resize turn's a.
+function ratio() {
+  return Math.max(1, Math.round(devicePixelRatio * 1000));
+}
+
 // The canvas's displayed box in device pixels.
 function drawingSize(canvas) {
   const box = canvas.getBoundingClientRect();
@@ -1316,6 +1322,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
       text: live((s) => onText(s, false)),
       tree: live(onTree),
       size: () => [canvas.width, canvas.height],
+      ratio,
     });
   } catch (e) {
     dispose();
@@ -1385,19 +1392,31 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
   // Enabled only before start: its first records may immediately disable it.
   onInput(true);
   send(() => module.start());
+  // The a the module was last told; 0 before the mount's first resize, so that
+  // one always sends.
+  let told = 0;
   const resize = () => {
     const [width, height] = drawingSize(canvas);
-    if (canvas.width === width && canvas.height === height) return false;
-    canvas.width = width;
-    canvas.height = height;
-    renderer.resize();
+    const sized = canvas.width === width && canvas.height === height;
+    if (sized && ratio() === told) return;
+    if (!sized) {
+      canvas.width = width;
+      canvas.height = height;
+      renderer.resize();
+    }
+    told = ratio();
     send(() => module.resize());
-    return true;
   };
   observer = new ResizeObserver(resize);
   observer.observe(canvas);
   window.addEventListener("resize", resize, { signal });
-  if (!resize()) send(() => module.resize());
+  // A move to another screen changes devicePixelRatio and no CSS size, so
+  // neither listener above fires; the query matches only the current ratio, so
+  // it is re-armed at each change.
+  const watch = () => matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
+    .addEventListener("change", () => { watch(); resize(); }, { once: true, signal });
+  watch();
+  resize();
 
   const open = () => {
     if (disposed) throw new Error("the viewport is disposed");

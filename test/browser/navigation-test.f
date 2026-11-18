@@ -113,7 +113,7 @@ PATH-CAP BUFFER: FILE
    s" text 6:8,9@640,480 0,3 pressed 1,3" LINE
    s" text 7:10,-20@640,480 0,4" LINE
    s" text key Escape 640,480 8" LINE
-   s" text 9:0,0@100,80 0,0" LINE
+   s" text 9:1000,0@100,80 0,0" LINE
    s" text 10:3,0@100,80 0,0" LINE
    ROWS-WANT
    s\" },{\"key\":5,\"parent\":4,\"label\":\"Board\"}," SB-APPEND

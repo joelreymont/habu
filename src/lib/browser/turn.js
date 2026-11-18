@@ -31,7 +31,9 @@
 //     post's d, buttons and mods are 0. For an rpc, a, b are the JSON of the
 //     response's result, c 1, or of its error, c 2; a transport failure is c 0
 //     with String(error)
-//   wheel: a, b signed device-pixel deltas; resize: a, b are 0
+//   wheel: a, b signed device-pixel deltas; resize: a the page's
+//     devicePixelRatio, device pixels per CSS pixel (the screen's density
+//     times the page zoom), in thousandths, at least 1; b 0
 //   control: a is a tree row's key, transient across sessions and never a
 //     persistent identity; b is 1 when the person opens a row whose more is
 //     true, which the module answers by sending the tree again with that row's
@@ -230,7 +232,7 @@ const PICKED = 18n;
 const OCCLUDED = 19n;
 const ID_BYTES = 16;
 
-const PROTOCOL = 3n;
+const PROTOCOL = 4n;
 
 // Records.
 const HELLO = 0n;
@@ -298,8 +300,10 @@ export class Module {
   // bytes copied, highlight(words) with a copied Uint32Array,
   // ground(plane, box) with copied Float32Arrays of four and six, or
   // ground(null) for none,
-  // text(string), tree(rows, selected), svg(copiedBytes), input(enabled), and
-  // size() -> [width, height] of the drawing buffer.
+  // text(string), tree(rows, selected), svg(copiedBytes), input(enabled),
+  // size() -> [width, height] of the drawing buffer, and ratio() -> device
+  // pixels per CSS pixel in thousandths, an integer of at least 1; 1000 for a
+  // host with no screen.
   static async load(bytes, host) {
     const { instance } = await WebAssembly.instantiate(bytes);
     return new Module(instance.exports, host);
@@ -347,7 +351,7 @@ export class Module {
   }
 
   resize() {
-    return this.turn([RESIZE, 0, 0, ...this.host.size(), 0, 0]);
+    return this.turn([RESIZE, this.host.ratio(), 0, ...this.host.size(), 0, 0]);
   }
 
   // A tree row selected, or opened when opened is true.

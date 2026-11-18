@@ -471,6 +471,7 @@ try {
     input: (enabled) => print(`input ${enabled ? 1 : 0}`),
     text: (s) => print(`text ${s}`),
     size: () => state.size,
+    ratio: () => 1000,
   });
   module.start().catch(report);
   await quiet();
