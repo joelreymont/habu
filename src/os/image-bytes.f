@@ -4,6 +4,7 @@ split-str
 \ target writer and links as any file does; the writer sizes the buffer.
 
 require src/core/exit-status.f
+require src/core/rejection.f
 require src/core/bytes.f
 require src/lib/span.f
 
@@ -22,7 +23,7 @@ PTR-VARIABLE M-A
 variable M-N
 variable M-O
 : M-ALLOC-BUF ( -- ^u8 )
-   MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" EXIT-STATUS:SYSTEM die then ;
+   MSIZE map-anon 0 <> if drop MSIZE s" the image buffer" REJECTION:MAP-STOP then ;
 
 : MBUF-A@ ( -- ^u8 )
    MBUF-A @ ;

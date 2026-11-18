@@ -71,7 +71,8 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 \ The slots grow, so they are mapped outside DATA.
 : TABLE-MAP ( n -- n )
-   cells map-anon 0 <> if drop s" intern: table mmap failed" EXIT-STATUS:SYSTEM die then
+   cells {: bytes:n :}
+   bytes map-anon 0 <> if drop bytes s" the intern table" REJECTION:MAP-STOP then
    NULL-PTR - ;
 
 

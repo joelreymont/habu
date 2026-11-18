@@ -6,6 +6,7 @@ split-str
 \ reference, DLBL, cells included, and every BYTES, run is recorded until
 \ ARESET; CUT removes code and re-encodes the references that stay.
 require src/core/exit-status.f
+require src/core/rejection.f
 require src/arch/arm64/asm.f
 require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
@@ -42,7 +43,7 @@ variable I-W
 
 : CODE-ALLOC ( -- ^u8 )
    CODE-CAP-BYTES map-anon 0 <> if
-      drop s" icode: code mmap failed" EXIT-STATUS:SYSTEM die then ;
+      drop CODE-CAP-BYTES s" the image writer's code buffer" REJECTION:MAP-STOP then ;
 
 : CODE ( -- ^u8 )
    CODE-A @ NULL-PTR = IF CODE-ALLOC CODE-A ! THEN
@@ -50,7 +51,7 @@ variable I-W
 
 : ICODE-TAB-ALLOC ( -- ^n )
    ICODE-TAB-BYTES map-anon 0 <> if
-      drop s" icode: table mmap failed" EXIT-STATUS:SYSTEM die then ;
+      drop ICODE-TAB-BYTES s" the image writer's instruction table" REJECTION:MAP-STOP then ;
 
 : ICODE-TABS ( -- ^n )
    ICODE-TAB-A @ NULL-PTR = IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN
