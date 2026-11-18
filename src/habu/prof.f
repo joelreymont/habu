@@ -1102,11 +1102,12 @@ private
       9 10 0 STR,  10 10 8 ADDI,  turn B,
    zeroed LBL,  0 17 0 ADDI, ;
 
-\ One index entry per profile ID with code of its own. A live ID takes its
-\ current dictionary span; a seed-retired ID takes its stored span; any other
-\ retired ID has no entry. The old index's inclusive counts are folded first.
+\ One index entry per profile ID with code of its own. A live or retired
+\ word's ID takes its record's span; a seed-retired ID takes its stored span;
+\ a package row has no entry. The old index's inclusive counts are folded first.
 : C-PROF-INDEX-BUILD ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: bl bnext bdone blo bhi retained span :}
+   LBL {: word :}
    9 ARN-IDX LIT64,  9 0 9 ADD,
    11 0 MOVZ,  6 0 MOVZ,
    1 0 MOVN,  2 0 MOVZ,                              \ lo = all ones, hi = 0
@@ -1117,7 +1118,9 @@ private
       12 5 RID-OWNER LDR,  12 0 CMPI,  C-LT retained BCOND,
       15 0 MOVZ,  15 5 RID-START STR,  15 5 RID-END STR,
       13 DREC MOVZ,  13 12 13 MUL,  13 DBASE 13 ADD,
-      14 13 DICT-WL-OFF LDR,  14 14 2 ADDI,  14 2 CMPI,  C-CC bnext BCOND,
+      14 13 DICT-WL-OFF LDR,  14 0 CMPI,  C-GE word BCOND,
+      15 WL:RETIRED invert MOVN,  14 15 CMP,  C-NE bnext BCOND,
+      word LBL,
       13 13 8 LDR,  C-PROF-SPAN-BYTES  13 bnext CBZ,
       12 5 RID-OWNER LDR,  15 DREC MOVZ,  12 12 15 MUL,
       12 DBASE 12 ADD,  12 12 0 LDR,  12 bnext CBZ,

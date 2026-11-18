@@ -388,7 +388,10 @@ below it throws a stack underflow and a text that leaves cells throws
 cannot reach them: `' F execute` with F's input under the floor is
 `E-INPUT-UNDERFLOW` at `execute`. A text that ends inside a definition it
 opened is refused as every source is, `E-VS-UNTERMINATED-DEFINITION` (`source
-ended inside definition: NAME`), and the definition is rolled back (forth.md **Checked code and primitive boundaries** states what `evaluate-closed` checks).
+ended inside definition: NAME`), and the definition is aborted (forth.md **Checked code and primitive boundaries** states what `evaluate-closed` checks).
+A caught failed text begun outside a definition keeps its storage and its
+words lose their names: a row it linked into older data stays valid, and a
+later `require` of a file it required loads the file again.
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 

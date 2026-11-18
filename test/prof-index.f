@@ -9,8 +9,8 @@ require src/lib/test.f
 
 \ Records defined here sit at the dictionary's top, so the sweep covers every
 \ body shape this engine emits: short and long colon words, a created cell with
-\ no code, a does> child whose span is a suffix of its parent's, a retired word,
-\ and the gaps between them.
+\ no code, a does> child whose span is a suffix of its parent's, a retired word
+\ whose code stays, and the gaps between them.
 package PROF-INDEX-FIXTURE
 public
 : PIF-TINY ( -- n ) 1 ;
@@ -25,7 +25,7 @@ create PIF-CELL 8 allot
 7 PIF-MAKE PIF-SEVEN
 ;package
 
-\ A retired record keeps its code but leaves the index: neither answer names it.
+\ A retired record keeps its code and its index entry: both answers name it.
 : PIF-DOOMED ( -- n ) 42 ;
 undefine PIF-DOOMED
 
@@ -39,7 +39,7 @@ variable PROBES
 
 : REC-CODE-BYTES ( n -- n ) {: i:n :}   \ 0 when record i owns no code
    i XREF-REC {: rec:^ :}
-   rec XREF-RETIRED? if 0 exit then
+   rec XREF-WORDLIST XREF:PACKAGE-WL? if 0 exit then   \ its span cells hold wids
    rec XREF-START 0= if 0 exit then
    rec XREF-CODE-BYTES ;
 
@@ -53,10 +53,10 @@ variable PROBES
    st BESTS @ < if exit then          \ ties keep the later record, as a stable sort does
    i BEST !  st BESTS ! ;
 
-\ The rule both answers state: the live record with the greatest (start, record
-\ index) at or below the pc, reported only when the pc is below its end. Records
-\ with no code of their own (a package row, a retired row, an empty body) are in
-\ neither answer.
+\ The rule both answers state: the live or retired word with the greatest
+\ (start, record index) at or below the pc, reported only when the pc is below
+\ its end. Records with no code of their own (a package row, an empty body) are
+\ in neither answer.
 : LINREF ( n -- n ) {: pc:n :}
    -1 BEST !  0 BESTS !
    ndict@ 0 ?do pc i REF-ONE loop

@@ -382,11 +382,12 @@ variable SESSION-CELL
    R13 ASM-SINK ENC-POP  R12 ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
    RET, ;
 
-\ One entry per profile ID with code of its own, in ID order. A live row uses
-\ its dictionary span; a seed-retired row uses its stored span. Ordinary
-\ retired records have no entry. Leaves rcx = the entry count and rbp = 0.
+\ One entry per profile ID with code of its own, in ID order. A live or
+\ retired word's row uses its record's span; a seed-retired row uses its stored
+\ span; a package row has no entry. Leaves rcx = the entry count and rbp = 0.
 : BUILD, ( -- )
    LBL LBL LBL LBL LBL LBL {: turn:label next:label done:label live:label entry:label lowdone:label :}
+   LBL {: word:label :}
    RDI RSI ARN-IDX MEM-OFF LEA,                                  \ the entry cursor
    RCX ZERO-REG,  RDX ZERO-REG,  RBP ZERO-REG,
    R12 ALL-ONES,  R15 ZERO-REG,                                  \ lo, hi
@@ -407,8 +408,9 @@ variable SESSION-CELL
       R11 RAX DREC SCALE,
       RAX DBASE-REG COPY,  R11 RAX ASM-SINK ENC-ADD-RR
       RAX R11 DICT-WL-OFF MEM-OFF LOAD,
-      RAX WL:RETIRED negate ADDI,
-      RAX WL:RETIRED negate >IMM8 ASM-SINK ENC-CMP-RI8  C-B next JCC,
+      RAX TEST,  C-NS word JCC,
+      RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+      word LBL,
       RAX R11 CELL MEM-OFF LOAD,  SPAN-BYTES,  RAX TEST,  C-E next JCC,
       R9 R11 MEM-AT LOAD,  R9 TEST,  C-E next JCC,
       R10 R9 COPY,  R10 RAX ASM-SINK ENC-ADD-RR

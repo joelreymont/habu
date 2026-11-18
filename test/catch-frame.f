@@ -1,6 +1,8 @@
 split-str
 \ catch-frame.f - a caught throw restores the whole caller frame: data SP,
-\ return-stack and loop-stack depth and the handler chain.
+\ return-stack and loop-stack depth and the handler chain. A caught failed
+\ text keeps the storage older data points into and the files it required
+\ load again.
 
 require src/habu/stack-abi.f
 require src/lib/test.f
@@ -77,9 +79,53 @@ variable ACC
 
 public
 
+\ The texts run outside the package and store into these, so they are public.
+variable CF-HEAD
+defer CF-ACT ( -- n )
+variable CF-ANSWER
+
+private
+
+\ A row is two cells: the next row as a distance from NULL-PTR, 0 at the end,
+\ then its value.
+CAST: >ROW ( n -- ^n )
+
+: ROW-SUM ( -- n )
+   0 CF-HEAD @
+   begin dup 0<> while
+      >ROW dup 1 cells + @ rot + swap @
+   repeat drop ;
+
+: LIST-KEPT ( -- )
+   s" a failed text's row in an older list survives new data" T-LABEL
+   ROW-SUM {: before:n :}
+   s" datum here NULL-PTR - CATCH-FRAME-TEST:CF-HEAD @ , 7 , CATCH-FRAME-TEST:CF-HEAD ! 12345 throw"
+   TEST-EVAL:RC 12345 T=
+   s" create CF-PAD 0 , 0 , 0 , 0 , 0 , 0 ," TEST-EVAL:RC 0 T=
+   ROW-SUM before 7 + T= ;
+
+: DEFER-KEPT ( -- )
+   s" a defer a failed text set runs its word after new definitions" T-LABEL
+   s" : CF-SEVEN ( -- n ) 7 ; : CF-SET ( -- ) [: CF-SEVEN ;] is CATCH-FRAME-TEST:CF-ACT ; CF-SET 12345 throw"
+   TEST-EVAL:RC 12345 T=
+   s" : CF-NINE ( -- n ) 9 ; : CF-TEN ( -- n ) 10 ;" TEST-EVAL:RC 0 T=
+   CF-ACT 7 T= ;
+
+: REQUIRE-AGAIN ( -- )
+   s" a file a failed text required loads on a later require" T-LABEL
+   s" require test/fixtures/catch-frame-require.f 12345 throw" TEST-EVAL:RC 12345 T=
+   s" require test/fixtures/catch-frame-require.f CATCH-FRAME-FIXTURE:ANSWER CATCH-FRAME-TEST:CF-ANSWER !"
+   TEST-EVAL:RC 0 T=
+   CF-ANSWER @ 42 T= ;
+
+public
+
 : RUN ( -- )
    T-RESET
    IN-PROCESS
+   LIST-KEPT
+   DEFER-KEPT
+   REQUIRE-AGAIN
    T-REPORT
    s" catch-frame: ok" type cr ;
 

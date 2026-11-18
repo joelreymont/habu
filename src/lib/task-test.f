@@ -533,8 +533,8 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s\" s\" ' LIVE drop\" TEST-EVAL:RC drop" SB-APPEND TASK-LF
    SB$ ;
 
-\ Slots (one above a raised DATA floor) made in texts that throw, each under later
-\ data: PA and PC keep apart, PC follows PA.
+\ A slot made in a text that throws stays taken, under later data: PA and PC
+\ keep apart, and PC follows PA's and PB's slots.
 : TASK-ROLLBACK-SLOT$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -543,8 +543,6 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" TASK:+USER PA n" SB-APPEND TASK-LF
    s\" s\" TASK:+USER PB n  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF
    s" create JUNK 111 , 222 , 333 , 444 , 555 ," SB-APPEND TASK-LF
-   s\" s\" INTERN:WINDOW-OPEN TASK:+USER PD n  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF
-   s" create JUNK2 111 , 222 , 333 , 444 , 555 ," SB-APPEND TASK-LF
    s" TASK:+USER PC n  W TASK:PREPARE" SB-APPEND TASK-LF
    s" 5 W PA TASK:HIS !  7 W PC TASK:HIS !" SB-APPEND TASK-LF
    s" W PA TASK:HIS @ .  W PC TASK:HIS @ ." SB-APPEND TASK-LF
@@ -701,7 +699,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 : TASK-TEST-ROLLBACK-SLOT ( -- )
    TASK-ROLLBACK-SLOT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 1\n1\n5\n7\n0\n" T$=
+   TASK-OUT outu LEN>N S\" 1\n5\n7\n8\n" T$=
    erru LEN>N 0 T= ;
 
 : TASK-USER-REEXPORT$ ( -- str )
@@ -1722,12 +1720,10 @@ variable ENTRY-RACE-PENDING
 \ cannot be forced, so the case takes many short rounds instead of one timed one.
 400 constant ENTRY-RACE-ROUNDS
 
-\ A failed evaluate gives its space back only while no task is live: a task a KILL
-\ failed to release keeps every later rollback's space for the life of the image.
+\ Main claims a slot only while no task is live, so the probe throws 1 then and
+\ E-TASK-USER otherwise; a probe that claims a slot keeps it.
 : NO-TASK-LIVE? ( -- bool )
-   here NULL-PTR - {: before:n :}
-   s" create TASK-TEST-NTL 1 , 2 , 3 ,  1 throw" TEST-EVAL:RC drop
-   here NULL-PTR - before = ;
+   s" TASK:+USER NTLS n  1 throw" TEST-EVAL:RC 1 = ;
 
 : ENDED-WORK ( -- )
    1 ENDED-RAN atomic-add drop ;

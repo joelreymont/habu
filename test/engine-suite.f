@@ -1500,14 +1500,12 @@ TFQ TTRUE
 : TFG ( -- bool ) 5.0 3.0 f> ;
 TFG TTRUE
 
-\ A definition the checker refuses inside evaluate throws 70; the evaluate frame
-\ rolls CP and NDICT back.
-variable ES-CPX-CP
+\ A definition the checker refuses inside evaluate throws 70 and adds no record.
 variable ES-CPX-ND
 \ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
 : ES-CPX-BAD$ ( -- str ) s" : CPX-BAD evaluate ;" ;
 \ a name longer than DNAME-INL: the definer copies it into code space before
-\ the entry, so the reject rollback must reclaim the name bytes too
+\ the entry
 : ES-CPX-BAD-EXT$ ( -- str ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
 TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
 TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
@@ -1516,19 +1514,15 @@ TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
 : ES-CPX-BAD-EXT-RUN ( -- )
    ['] ES-CPX-BAD-EXT-EVAL catch 70 T= ;
 1 REJECTION:QUIET +!
-cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
-ES-CPX-BAD-RUN
-s" cpx-reject-1" T-LABEL cp@ ES-CPX-CP @ T=
+ndict@ ES-CPX-ND !
 ES-CPX-BAD-RUN
 ES-CPX-BAD-RUN
 ES-CPX-BAD-RUN
-s" cpx-reject-4" T-LABEL cp@ ES-CPX-CP @ T=
+ES-CPX-BAD-RUN
 s" cpx-reject-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 ES-CPX-BAD-EXT-RUN
-s" cpx-reject-ext-1" T-LABEL cp@ ES-CPX-CP @ T=
 ES-CPX-BAD-EXT-RUN
 ES-CPX-BAD-EXT-RUN
-s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 -1 REJECTION:QUIET +!
 : CPX-GOOD ( n -- n ) 1 + ;

@@ -267,6 +267,7 @@ EXPORT CHECK:CHECKER-VERIFY-TOP-BINDING
 EXPORT CHECK:UNDEFINED-RECORD
 EXPORT CHECK:KEYWORD-RECORD
 EXPORT CHECKER-TAPE:COUNTED-MAX
+EXPORT XREF:RETIRE-ABOVE
 
 32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
@@ -2975,10 +2976,9 @@ EXPORT CODE-RECLAIM:TRUNCATE
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
    PKG-OUTSIDE-CELL CELL@ 0<> if outside PKG-OUTSIDE-CELL CELL! then ;
 
-\ A throw out of an evaluated buffer reaches the kernel's throw recovery, which
-\ pops the frame and reads these fields where they sit. The clean-exit
-\ continuation at $10 stays zero: nothing reads it for a buffer this frame
-\ bounds.
+\ An evaluated buffer's frame, which this file's frame words and rejection.f
+\ read. The clean-exit continuation at $10 stays zero: nothing reads it for a
+\ buffer this frame bounds.
 $18 constant FR-BOUND
 $20 constant FR-XDS
 $38 constant FR-DP
@@ -3040,6 +3040,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    STACK-ABI:BASE-CELL CELL@ cells-in cells + f FR-XDS FR!
    cp@ f EVAL-FRAME:CP FR!
    ndict@ f EVAL-FRAME:NDICT FR!
+   REQUIRE-REG:MARK f EVAL-FRAME:REQUIRES FR!
    DP-CELL CELL@ f FR-DP FR!
    STACK-ABI:BASE-CELL CELL@ f STACK-ABI:EVAL-BASE FR!
    STACK-ABI:CAP-CELL CELL@ f STACK-ABI:EVAL-CAP FR!
@@ -3092,17 +3093,18 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
 
+\ A failed text keeps its code, records and data, which older data may point
+\ into: its records lose their names, its texts leave the string table and
+\ its files leave the require registry, so a later require loads them again.
 : FRAME-ROLLBACK-CODE ( ^u8 -- )
    {: f:^ :}
    DEF-ABORT
    f ROWS-CUT
    f HELD-CUT
-   f EVAL-FRAME:NDICT FR@ retire-from IF EXIT THEN
-   \ A buffer may start a task and throw without allocating a definition.
-   \ Only changed cursors need their guarded mutation sinks during recovery.
-   f EVAL-FRAME:NDICT FR@ dup ndict@ <> if ndict! else drop then
-   f EVAL-FRAME:CP FR@ dup cp@ <> if TRUNCATE else drop then
-   f FRAME-CUT DATA-SPACE:REWIND ;
+   f EVAL-FRAME:NDICT FR@ RETIRE-ABOVE
+   f FRAME-CUT INTERN:KEEP-BELOW
+   0 COMMA-RUN-CELL CELL!
+   f EVAL-FRAME:REQUIRES FR@ REQUIRE-REG:TRUNCATE ;
 
 
 : FRAME-ROLLBACK-TOKEN ( -- )
@@ -3144,8 +3146,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 : FRAME-FREE ( ^u8 -- )
    dup EVAL-FRAME-SIZE FR@ munmap 0<> if E-MEM-UNMAP throw then ;
 
-\ A rollback that left DP above the cut (a live task's, a pending definition's)
-\ kept every body; one that left DP at the cut puts the marked cells back.
+\ A text that laid data keeps the marked cells, which may point into it; one
+\ that laid none puts them back.
 : FRAME-CELLS-RESTORE ( ^u8 -- )
    {: f:^ :}
    DP-CELL CELL@ f FRAME-CUT = if
@@ -3335,8 +3337,8 @@ public
 
 ;package
 
-\ Only INTERPRETER saves and puts back the marked cells, and it binds
-\ DATA-SPACE:REWIND last: once it binds these, they are retired.
+\ Only INTERPRETER saves and puts back the marked cells, and no source after it
+\ rewinds DATA: once it binds these, they are retired.
 undefine ROLLBACK-CELLS:BYTES
 undefine ROLLBACK-CELLS:SAVE
 undefine ROLLBACK-CELLS:RESTORE

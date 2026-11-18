@@ -45,8 +45,6 @@ using NDICT
 : RECORD ( ^u8 n n -- ^n ) CHECKER-RESOLVE:WL-PROBE ;
 CAST: REF-WORD ( n -- [ -- n ] )
 : REF-VALUE ( n n -- n ) DEF-OCC:CALLABLE REF-WORD execute ;
-variable REF-SLOT
-variable REF-OCC
 variable ROLL-SLOT
 variable ROLL-OCC
 
@@ -132,22 +130,18 @@ private
    S\" : NDB-ROLLBACK ( -- n ) 71 ; using NDICT s\q NDB-ROLLBACK\q SPELL-START 0<> TTRUE ;using NDICT-BINDING-TEST:CAPTURE-ROLLBACK 73 throw" EV ;
 
 
-: ROLLBACK-REUSE ( -- )
+: ROLLBACK-KEPT ( -- )
    ndict@ {: before:n :}
-   \ The whole source frame, including the successful definition, must roll back.
+   \ The whole source frame, the successful definition included, keeps its record.
    ['] FAIL-EVALUATION 73 TTHROWS
-   ndict@ before T=
+   ndict@ before 1+ T=
    ROLL-SLOT @ before T=
-   s" 74 constant NDB-AFTER-ROLLBACK" EV
-   s" NDB-AFTER-ROLLBACK" 0 RECORD before XREF-REC = TTRUE
    s" NDB-ROLLBACK" SPELL-START 0 T=
+   s" 74 constant NDB-AFTER-ROLLBACK" EV
+   s" NDB-AFTER-ROLLBACK" 0 RECORD before 1+ XREF-REC = TTRUE
    s" NDB-AFTER-ROLLBACK" FIXED-VALUE 74 T=
-   ROLL-SLOT @ REF-SLOT !  ROLL-OCC @ REF-OCC !
-   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
-   s" NDB-AFTER-ROLLBACK" 0 RECORD DEF-OCC:SELECT {: new-slot:n new-occ:n :}
-   new-slot ROLL-SLOT @ T=
-   new-occ ROLL-OCC @ T<>
-   new-slot new-occ REF-VALUE 74 T= ;
+   \ The occurrence the failed text selected still reaches its word.
+   ROLL-SLOT @ ROLL-OCC @ REF-VALUE 71 T= ;
 
 
 : RUN ( -- )
@@ -158,7 +152,7 @@ private
    s" a checker replay inside a definition leaves it pending" T-LABEL REPLAY-PENDING T-NEXT
    s" compiled calls retain the binding they captured" T-LABEL REDECLARATION T-NEXT
    s" the retired wordlist returns the latest matching record" T-LABEL RETIRED-LATEST T-NEXT
-   s" failed source evaluation invalidates recyclable slots" T-LABEL ROLLBACK-REUSE T-NEXT
+   s" failed source evaluation keeps its records and occurrences" T-LABEL ROLLBACK-KEPT T-NEXT
    T-REPORT ;
 
 ' RUN

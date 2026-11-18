@@ -1587,9 +1587,8 @@ private
    RAX LOCN-CELL CELL!,  RAX CAPDEPTH-CELL CELL!,  RAX RAWNEXT-CELL CELL!,
    RAX TOKLOCN-CELL CELL!,  RAX TOKDEPTH-CELL CELL!,  RAX TOKRAW-CELL CELL!, ;
 
-\ A caught compiler failure leaves its handler, return and loop state to the
-\ catch frame. Definition-local state is abandoned before Habu recovery
-\ lowers the cursors or retires the failed frame while tasks remain live.
+\ A caught compiler failure leaves its handler, return and loop state to the catch
+\ frame; definition-local state is abandoned before the frame's recovery retires its records.
 : DEF-ABORT-BODY ( -- )
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:COMP-LATCH-CELL CELL!,

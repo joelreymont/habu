@@ -149,6 +149,7 @@ variable REWOUND
 
 : BODY-F ( -- )
    [: REFUSE ;] catch REFUSED !
+   16 allot  -16 allot
    [: REWIND ;] catch REWOUND ! ;
 
 : CASE-F ( -- )
@@ -157,7 +158,7 @@ variable REWOUND
    REFUSED @ 70 T=
    REWOUND @ E-INTERN-REWIND T=
    HOST-CHECK
-   s" f: after a rollback in the space a new string is refused" SAY ;
+   s" f: after DP moves back in the space a new string is rejected" SAY ;
 
 : G1$ ( -- str ) s" LK-G1" ;
 

@@ -141,12 +141,10 @@ private
    XT-NESTED 5 T=  SEEN @ 0 T= ;
 
 \ A text that ends inside a definition it opened is refused as every buffer
-\ is, and the open definition goes with it: the code it emitted is taken back
-\ (a pending definition has no counted record, so ndict@ cannot show it), the
-\ next text is interpreted rather than compiled into it, and its name resolves
-\ to nothing until it is defined again. The interpretation probe runs before
-\ any other text because a throw out of a text resets the compile state on
-\ its own.
+\ is, and the open definition is aborted: the next text is interpreted rather
+\ than compiled into it, and its name resolves to nothing until it is defined
+\ again. The interpretation probe runs before any other text because a throw
+\ out of a text resets the compile state on its own.
 : UNFIN ( -- n )
    9 [: s" : NATIVE-EVAL-D ( -- n ) 42" evaluate-closed ;] catch
    70 T= ;
@@ -158,12 +156,9 @@ private
 : UNFINISHED ( -- )
    s" a text that ends inside a definition is refused, rc 70" T-LABEL
    0 SEEN !
-   cp@ {: code :}
    UNFIN
    s" and leaves the caller's cell" T-LABEL
    9 T=
-   s" the definition's code is rolled back" T-LABEL
-   cp@ code - 0 T=
    s" the next text is interpreted" T-LABEL
    s" 5 NATIVE-EVAL-TEST:SEEN !" evaluate-closed
    SEEN @ 5 T=
@@ -175,12 +170,9 @@ private
 
 : UNFINISHED-NESTED ( -- )
    s" an inner text's unfinished definition throws through the outer text" T-LABEL
-   cp@ {: code :}
    UNFIN-NESTED
    s" and leaves the caller's cell" T-LABEL
    9 T=
-   s" the inner text's definition is rolled back" T-LABEL
-   cp@ code - 0 T=
    [: s" NATIVE-EVAL-E" evaluate-closed ;] 70 TTHROWSQ ;
 
 \ A definer that runs a text while its definition is open: the text compiles

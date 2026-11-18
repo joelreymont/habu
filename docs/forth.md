@@ -2111,8 +2111,8 @@ answers alike.
   (`E-QUEUE-STATE`). Habu has no `abort"`.
 - **`throw` is catchable, `die` ends the process.** `throw` is the checker's
   exception edge, for recoverable and interactive paths (REPL recovery: `?`,
-  rollback, reread); `die` is no-return, for build makers and CLI boundaries
-  where exiting is the contract.
+  the line's words lose their names, reread); `die` is no-return, for build
+  makers and CLI boundaries where exiting is the contract.
 - **A memory fault in Habu code is a throw.** A read or write that faults
   (unmapped or unwritable memory) in a word's code writes the record
   `error[E-MEMORY-FAULT]: a read or write faulted`, with notes `address` and
@@ -2480,8 +2480,11 @@ sections above.
   Files, stdin and `evaluate` strings refuse an open definition at their end
   (`E-VS-UNTERMINATED-DEFINITION`) or an open comment
   (`E-UNTERMINATED-COMMENT`).
-  The first includes its stack comment, locals and quotations; the definition
-  rolls back on a caught `evaluate`. Text evaluated while a definition is open
+  The first includes its stack comment, locals and quotations; a caught
+  `evaluate` aborts the definition. A caught failed text begun outside a
+  definition keeps its storage and its words lose their names: older data
+  that points into it stays valid, no name finds its words, and a later
+  `require` of a file it required loads the file again. Text evaluated while a definition is open
   may not close it with `;` (`E-VS-UNTERMINATED-DEFINITION`). Completed tokens in nested evaluations stay compiled in the
   outer definition after a caught refusal. The open-definition diagnostic
   locates the name (or `def-open` caller), the open-comment diagnostic its `(`,

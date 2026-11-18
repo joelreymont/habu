@@ -1,12 +1,12 @@
 split-str
-\ Evaluation rollback retires declarations by address, not registration order.
+\ A caught failed text keeps the address cells it declared, and the texts it
+\ interned leave the string table.
 require src/lib/test.f
 require src/habu/address-cells.f
 
 package ADDRESS-CELL-ROLLBACK
 variable BASE-N
 variable BASE-HERE
-variable FAILED-AT
 variable FAILED-OFF
 create OLDER CELL allot
 
@@ -17,50 +17,45 @@ create OLDER CELL allot
 : DECLARED ( -- )
    ROWS BASE-N @ 1+ T=
    ROWS 1- OFFSET FAILED-OFF ! ;
-: REUSED ( -- )
-   ROWS BASE-N @ 1+ T=
-   ROWS 1- OFFSET FAILED-OFF @ T= ;
-: RESTORED ( n -- )
-   12345 T=
-   ROWS BASE-N @ T=
-   here NULL-PTR - BASE-HERE @ T= ;
+\ The failed text's k rows stay, and so does its data.
+: KEPT ( n n -- ) {: rc:n k:n :}
+   rc 12345 T=
+   ROWS BASE-N @ k + T=
+   here NULL-PTR - BASE-HERE @ k cells + >= TTRUE ;
+\ A declaration after it adds a row of its own, past the failed cell.
+: ADDED ( n -- ) {: k:n :}
+   ROWS BASE-N @ k + 1+ T=
+   ROWS 1- OFFSET FAILED-OFF @ > TTRUE ;
 
 : FAIL-QUOTATION ( -- )
-   s" TYPED-VARIABLE FAILED [ n -- n ] FAILED @ FAILED xt! FAILED BYTE-VIEW NULL-PTR - FAILED-AT ! DECLARED 12345 throw"
+   s" TYPED-VARIABLE FAILED [ n -- n ] FAILED @ FAILED xt! DECLARED 12345 throw"
    evaluate-closed ;
 : FAIL-DEFER ( -- )
    s" defer FAILED ( -- n ) DECLARED 12345 throw" evaluate-closed ;
 : FAIL-POINTER ( -- )
    s" PERSISTED-PTR-VARIABLE FAILED DECLARED 12345 throw" evaluate-closed ;
 : THREE-SHAPES ( -- )
-   s" failed quotation cell can become a persisted pointer" T-LABEL
-   START [: FAIL-QUOTATION ;] catch RESTORED
-   \ Stop a cell short of the failed cell: the next declaration's gap ends there.
-   FAILED-AT @ BASE-HERE @ - 1 cells - allot
-   s" PERSISTED-PTR-VARIABLE AFTER-QUOTATION" evaluate-closed REUSED
-   s" failed defer cell can become a persisted pointer" T-LABEL
-   START [: FAIL-DEFER ;] catch RESTORED
-   s" PERSISTED-PTR-VARIABLE AFTER-DEFER" evaluate-closed REUSED
-   s" failed persisted pointer can become an executable defer" T-LABEL
-   START [: FAIL-POINTER ;] catch RESTORED
+   s" a failed quotation cell keeps its row" T-LABEL
+   START [: FAIL-QUOTATION ;] catch 1 KEPT
+   s" PERSISTED-PTR-VARIABLE AFTER-QUOTATION" evaluate-closed 1 ADDED
+   s" a failed defer cell keeps its row" T-LABEL
+   START [: FAIL-DEFER ;] catch 1 KEPT
+   s" PERSISTED-PTR-VARIABLE AFTER-DEFER" evaluate-closed 1 ADDED
+   s" a failed persisted pointer keeps its row" T-LABEL
+   START [: FAIL-POINTER ;] catch 1 KEPT
    s" defer AFTER-POINTER ( -- n ) : INSTALL-ANSWER ( -- ) [: 42 ;] is AFTER-POINTER ; INSTALL-ANSWER AFTER-POINTER 42 T="
-   evaluate-closed REUSED ;
+   evaluate-closed 1 ADDED ;
 
 : FAIL-UNORDERED ( -- )
    s" PERSISTED-PTR-VARIABLE FAILED DECLARED 0 OLDER xt! 12345 throw"
    evaluate-closed ;
 : UNORDERED ( -- )
-   s" late declaration of an older cell survives rollback" T-LABEL
-   START [: FAIL-UNORDERED ;] catch 12345 T=
-   ROWS BASE-N @ 1+ T=
-   here NULL-PTR - BASE-HERE @ T=
-   \ The row that survived is OLDER's: declaring OLDER again adds none.
-   0 OLDER xt!  ROWS BASE-N @ 1+ T=
-   \ Rebuild the derived index, then reuse the retired address with a new kind.
+   s" a failed text's late declaration of an older cell stays" T-LABEL
+   START [: FAIL-UNORDERED ;] catch 2 KEPT
+   \ OLDER's row is among them: declaring OLDER again adds none.
+   0 OLDER xt!  ROWS BASE-N @ 2 + T=
    s" defer AFTER-UNORDERED ( -- n ) : INSTALL-OLDER ( -- ) [: 42 ;] is AFTER-UNORDERED ; INSTALL-OLDER AFTER-UNORDERED 42 T="
-   evaluate-closed
-   ROWS BASE-N @ 2 + T=
-   ROWS 1- OFFSET FAILED-OFF @ T= ;
+   evaluate-closed 2 ADDED ;
 
 : INNER-FAILURE ( -- )
    s" PERSISTED-PTR-VARIABLE INNER-FAILED ROWS BASE-N @ 2 + T= 12345 throw"
@@ -68,16 +63,16 @@ create OLDER CELL allot
 : NESTED-FAILURE ( -- )
    s" defer OUTER-FAILED ( -- n ) INNER-FAILURE" evaluate-closed ;
 : NESTED ( -- )
-   s" every escaped evaluation boundary retires its suffix" T-LABEL
-   START [: NESTED-FAILURE ;] catch RESTORED
+   s" every escaped evaluation boundary keeps its rows" T-LABEL
+   START [: NESTED-FAILURE ;] catch 2 KEPT
    s" PERSISTED-PTR-VARIABLE AFTER-NESTED" evaluate-closed
-   ROWS BASE-N @ 1+ T= ;
+   ROWS BASE-N @ 3 + T= ;
 
 : LAY-TEXT ( -- ) s" address-cell-rollback-text" INTERN:TEXT drop ;
 : FAIL-TEXT ( -- ) s" LAY-TEXT 12345 throw" evaluate-closed ;
 : TEXT-GONE ( -- )
    s" a failed load's text leaves the string table" T-LABEL
-   START [: FAIL-TEXT ;] catch RESTORED
+   START [: FAIL-TEXT ;] catch 0 KEPT
    s" address-cell-rollback-text" INTERN:FIND 0 T= ;
 
 \ The facts text `;` stores for ACR-FACTS; no other word in hb has this effect.
@@ -87,7 +82,7 @@ create OLDER CELL allot
 : FACTS-GONE ( -- )
    s" a failed line's facts text leaves the string table" T-LABEL
    FACTS$ INTERN:FIND 0 T=
-   START [: FAIL-FACTS ;] catch RESTORED
+   START [: FAIL-FACTS ;] catch 0 KEPT
    FACTS$ INTERN:FIND 0 T= ;
 
 \ here lands 3 bytes into the text's length cell.

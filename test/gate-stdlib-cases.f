@@ -1416,7 +1416,6 @@ SUITE repl-open-definition
    test/repl-open-definition.f
 ;SUITE
 
-\ Its failed-REPL-line case starts and reaps one engine child on a PTY.
 SUITE dictionary-zero
    test/dictionary-zero.f
 ;SUITE

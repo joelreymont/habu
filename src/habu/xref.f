@@ -368,10 +368,33 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 package XREF
 private
 
-: RETIRE-RAW ( ^n -- ) {: rec:^ :}
+\ A marker is negative, so its high half is all ones: the two halves leave the
+\ whole wordlist cell equal to the marker the lookup compares.
+: WL-STAMP ( n ^n -- ) {: wid:n rec:^ :}
    rec XREF-WORDLIST-SLOT cells + {: wl:^ :}
-   XREF-RETIRED-WL wl patch32
+   wid wl patch32
    -1 wl 4 + patch32 ;
+
+: RETIRE-RAW ( ^n -- ) XREF-RETIRED-WL swap WL-STAMP ;
+
+: RETIRE-REC ( ^n -- ) {: rec:^ :}
+   rec XREF-WORDLIST {: wid:n :}
+   wid 0 >= if rec RETIRE-RAW exit then
+   wid RETIRED-WL? if exit then
+   WL:RETIRED-NAMESPACE rec WL-STAMP ;
+
+\ LASTC-CELL names the record a does> patches; one the cut retires is cleared.
+: LASTC-CUT ( n -- )
+   XREF-REC-ADDR {: cut:n :}
+   data-base LASTC-CELL + @ cut < if exit then
+   0 data-base LASTC-CELL + ! ;
+
+\ Retires every record from index n up and keeps the count, the code and the
+\ data: a word loses its name and a live package row its package. No build
+\ holds these retirements.
+: RETIRE-ABOVE ( n -- ) {: first:n :}
+   ndict@ first ?do  i XREF-REC RETIRE-REC  loop
+   first LASTC-CUT ;
 
 EXPORT CHECK:HOLD-RETIRED
 EXPORT CHECK:BUILDING?

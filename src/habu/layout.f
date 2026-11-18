@@ -250,6 +250,8 @@ $B8 constant ENCLOSING
 $D8 constant PKG-OUTSIDE
 \ SECTION: SECTION-CELL as the buffer began, which its end puts back.
 $98 constant SECTION
+\ REQUIRES: the require registry's count as the buffer began.
+$F0 constant REQUIRES
 ;package
 
 \ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 with

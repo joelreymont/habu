@@ -1,6 +1,6 @@
 split-str
-\ code-reclaim.f - the code a rollback gives back, and the created record a
-\ definer's does> acts on after a motion retires records.
+\ code-reclaim.f - the code a caught failed text keeps, and the created record
+\ a definer's does> acts on after a motion retires records.
 
 require src/core/exit-status.f
 require src/lib/string.f
@@ -30,9 +30,9 @@ variable P-CP
 : PLAIN-CASE ( -- )
    s" : CR-P1 ( -- n ) 1 ;" evaluate-closed
    cp@ P-CP !
-   s" a rollback gives back the code of the words it retires" T-LABEL
+   s" a failed text keeps the code of the words whose names it retires" T-LABEL
    s" : CR-P2 ( -- n ) 2 ; : CR-P3 ( -- n ) 3 ; 73 throw" TEST-EVAL:RC 0<> TTRUE
-   cp@ P-CP @ T=
+   cp@ P-CP @ > TTRUE
    s" CR-P2" DEFINED? TFALSE
    s" CR-P3" DEFINED? TFALSE
    s" CR-P1" DEFINED? TTRUE
@@ -41,24 +41,23 @@ variable P-CP
 variable U-CP
 variable U-NDICT
 
-: REUSE-CASE ( -- )
+: REDEFINE-CASE ( -- )
+   s" : CR-REUSE ( n -- n ) 1 + ; 73 throw" TEST-EVAL:RC 0<> TTRUE
    cp@ U-CP !
    ndict@ U-NDICT !
-   s" a new definition reuses the record and code a rollback gave back" T-LABEL
-   s" : CR-REUSE ( n -- n ) 1 + ; 73 throw" TEST-EVAL:RC 0<> TTRUE
+   s" a name a failed text defined is defined again in new code and a new record" T-LABEL
    s" : CR-REUSE ( n -- n ) 3 * ;" evaluate-closed
-   s" CR-REUSE" REC-START U-CP @ T=
+   s" CR-REUSE" REC-START U-CP @ >= TTRUE
    s" CR-REUSE" REC-INDEX U-NDICT @ T=
 
-   s" a caller compiled after reuse reaches the new bytes" T-LABEL
+   s" a caller compiled after the new definition reaches its bytes" T-LABEL
    s" : CR-REUSE-CALL ( n -- n ) CR-REUSE ;" evaluate-closed
    s" 5 CR-REUSE-CALL" TEST-EVAL:N 15 T= ;
 
 \ LASTC-CELL names the record the last create, variable or constant wrote, and
-\ a definer's does> gives that record its action. Every motion that lowers the
-\ dictionary count retires the records above it, and the next definition reuses
-\ their slots, so a definer run after one creates its word over a retired slot
-\ and its does> must act on that word. Each program runs in a child.
+\ a definer's does> gives that record its action. A failed text retires the
+\ records it made and an undefine retires one, so a definer run after either
+\ must act on its own word, not a retired one. Each program runs in a child.
 $1000 constant LC-CAP
 LC-CAP BUFFER: LC-OUT
 LC-CAP BUFFER: LC-ERR
@@ -103,7 +102,7 @@ public
 : RUN ( -- )
    T-RESET
    PLAIN-CASE
-   REUSE-CASE
+   REDEFINE-CASE
    LASTC-CASE
    T-REPORT ;
 

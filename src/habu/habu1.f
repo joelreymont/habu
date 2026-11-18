@@ -1345,17 +1345,17 @@ variable LDIE
 ;package
 
 package ENGINE-EMIT
-\ cp! and ndict! are the rollback sinks. Each caller asks retire-from first, so
-\ they lower only with no task live, except a CP rewind inside a pending body.
+\ cp! and ndict! lower CP and NDICT. Each caller asks retire-from first, so they
+\ lower only with no task live, except a token's CP rewind in a pending body.
 : BCPSET ( -- )
    A G-POP
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote;
 \ does> patches it. A record at or above NDICT is retired and its slot reused,
-\ so every motion that lowers NDICT (these two sinks, evaluate's error
-\ recovery, the REPL's) calls this after setting the count. A LASTC below the
-\ count is kept; one at or above it is cleared, not moved back: a does>-patched
-\ record no longer says a create made it. A does> with none refuses by name.
+\ so every motion that lowers NDICT (ndict!, replay-close) calls this after
+\ setting the count. A LASTC below the count is kept; one at or above it is
+\ cleared, not moved back: a does>-patched record no longer says a create made
+\ it. A does> with none refuses by name.
 \ LASTC-CUT, cuts at the index in k instead, for a rollback that retires
 \ records and keeps the count. Clobbers the two scratch registers.
 : LASTC-CUT, ( n n n -- ) {: k:n t:n u:n :}
@@ -4590,13 +4590,13 @@ private
       s" hb: the system refused the definition occurrence table; raise the address-space limit (ulimit -v) above its size in bytes:"
       EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE, ;
 
-\ A rollback's lower-or-retire step (evaluate's recovery, replay-close,
-\ retire-from), x9 = the NDICT to lower to. With no task live it answers
-\ x14 = 0 and the caller lowers; the count cannot rise from 0 under it, since
-\ only main or a live task activates one. Else a task may still use the code
-\ and records above, so it stamps each record in [x9, NDICT) with WL:RETIRED, a
-\ live package row with RETIRED-NAMESPACE, clears a LASTC at or above x9 and
-\ answers x14 nonzero: the caller keeps CP, NDICT, DP and the relocation rows.
+\ A rollback's lower-or-retire step (replay-close, retire-from), x9 = the NDICT
+\ to lower to. With no task live it answers x14 = 0 and the caller lowers; the
+\ count cannot rise from 0 under it, since only main or a live task activates
+\ one. Else a task may still use the code and records above, so it stamps each
+\ record in [x9, NDICT) with WL:RETIRED, a live package row with
+\ RETIRED-NAMESPACE, clears a LASTC at or above x9 and answers x14 nonzero: the
+\ caller keeps CP, NDICT, DP and the relocation rows.
 \ Preserves every register but x14.
 : EMIT-DEF-OCC-RETIRE ( -- )
    LBL LBL LBL LBL LBL {: loop:label pkg:label next:label cut:label done:label :}
