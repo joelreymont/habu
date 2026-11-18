@@ -294,6 +294,10 @@ require src/os/env-base.f
 
 \ The debugger's breakpoints (package DEBUG): -9300..-9309, minted in
 \ src/habu/debug.f.
+
+\ The host's available memory: -9310..-9319, minted in src/lib/os-memory.f,
+\ which owns package OS-MEMORY.
+
 \ Package PG's row readers: -9320..-9329, minted by src/lib/pg-rows.f.
 
 \ The WebSocket frame codec, RFC 6455 (package WS, src/lib/net/ws-frame.f):
