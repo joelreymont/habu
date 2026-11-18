@@ -2557,7 +2557,8 @@ sections above.
   earlier use, other package, or inaccessible private product still refuses.
   A `TRUSTED:` body carries
   bound calls' renderer facts, and a deferred body retains the facts of calls
-  it binds. Calls through a `defer` or an executed xt expose no callee facts.
+  it binds. A call through a `defer` or an executed quotation has the facts
+  its type states.
   A name already known to the checker resolves before any renderer mark, even
   if the generated product shadows it. A reached renderer without a read
   declaration group or `generates:` row is itself `W-CHECK-DEFERRED`, even
@@ -2574,8 +2575,8 @@ sections above.
   declaration group. A `generates:` claim
   does not define the made word; the load judges its actual effect and any
   other products. An undefined D, a deferred D, a D no `parse-name` reaches
-  through the words it calls (a call through a `defer` or an executed xt
-  shows none), a duplicate declaration (including a clause or inherited
+  through the words it calls (a `defer` or executed quotation counts only
+  when its type states `parses`), a duplicate declaration (including a clause or inherited
   definer effect), or an invalid effect is `E-GENERATES-ROW`. A used-scope
   conflict is `E-USING-SHADOW-GLOBAL` or `E-USING-AMBIGUOUS`. The
   name is one blank-delimited token; the signature opens at the first `(`
@@ -2777,9 +2778,9 @@ sections above.
   overwrite, or local bind and pushback loses evidence. A called word that
   throws is assumed to overwrite its declared inputs unless its own body
   proves otherwise. The literal and `['] W` carry W's evidence, including
-  through a local bound to that same tick. A fresh declared quotation
-  parameter, typed `xt<effect>` cell or `defer` has no such edge and leaves
-  the window typed. A tick of a never-returning callee still fits against its
+  through a local bound to that same tick. A declared quotation
+  parameter, typed `xt<effect>` cell or `defer` may throw and keeps no cell
+  intact, so a catch of it leaves its window stale. A tick of a never-returning callee still fits against its
   declared output row.
 - **Linear and multi-cell values respect the stale boundary.** A linear
   handle cannot cross a quotation-literal catch: reading it is

@@ -179,6 +179,18 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   quotation may read the locals of the word it is written in while that word
   runs: `{: v :} [: v RENDER ;] [: v CLOSE ;] finally`. It may not outlive
   them (`E-LOCAL-ESCAPE`) and binds no group of its own.
+- A quotation type or a `defer`'s effect states, after its outputs, each fact
+  its quotation may have, once: `renders` (it may define words or a definition
+  from text no source spells), `parses` (it may read the source after it),
+  `creates` (it may define the name it reads), `nominal` (it may register a
+  nominal type), `roots` (it may move the source root):
+  `TYPED-VARIABLE XV [ -- renders ]`, `defer DV ( -- renders creates )`. A
+  quotation kept in a typed cell, field or buffer element, installed with `is`,
+  returned, or passed to a callee that keeps it has a type stating each of its
+  facts, else `E-MISMATCH` at the token that keeps it; a parameter the callee
+  only runs takes any quotation and charges the caller with its facts. Running
+  one (`execute`, `catch`, `finally`) charges the runner with what its type
+  states. A quotation from a type may throw; `throw` is never written.
 - `SCRATCH-ONLY` after a `NEWTYPE`'s name or base (`NEWTYPE ticket
   SCRATCH-ONLY`) declares a family whose values are valid only in the process
   that made them.
@@ -429,8 +441,9 @@ that cell.
 A definer that makes a word at load time (`ERROR:CODE`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
 word's uses before the run; what no row states is left to the run (§ 3). A
-deferred D, or one no `parse-name` reaches through the words it calls (not
-through a `defer` or an executed xt), is `E-GENERATES-ROW`.
+deferred D, or one no `parse-name` reaches through the words it calls (a
+`defer` or executed quotation counts only when its type states `parses`), is
+`E-GENERATES-ROW`.
 `FUNCTION:` needs no row.
 
 A definer that builds a word from words it found writes no text:
