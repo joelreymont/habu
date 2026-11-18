@@ -1,9 +1,10 @@
 ---
 title: Delete the three repl-term.f files
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-18T17:35:19.919220+01:00"
+closed-at: "2026-11-18T21:56:57.826365+01:00"
 blocks:
   - habu-let-a-stripped-d305e42c
 ---
