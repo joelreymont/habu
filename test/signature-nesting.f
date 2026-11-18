@@ -2,15 +2,14 @@ split-str
 \ signature-nesting.f - a signature nested past the parser's limits is rejected
 \ by name through the real load path: a 33rd nested binder, and pointees or
 \ quotations nested past EFFECT-DEPTH-MAX. An effect with more than 64
-\ quotations checks. A body nested past CF-FRAMES-MAX
-\ control frames, a RECURSE with no declared effect and a RECURSE in a does>
-\ clause are uncheckable for a reason they name too, and each says so in its
-\ JSON packet with help of its own; the packet of a RECURSE with no declared
-\ effect has no declared note and is in the record form. A token that fails
-\ before the frames overflow keeps its mismatch in prose, packet and
-\ CHECK-CANDIDATE!'s answer; a failure pinned before a name a rendering
-\ statement may define keeps its packet and answer, and that name alone defers
-\ its definition. An undefined word is rejected in packet and answer. A mismatch
+\ quotations checks. A body of 70 nested IFs checks and runs, as does one of 70
+\ nested DO loops that each unloop and exit with a value. A RECURSE with no
+\ declared effect and a RECURSE in a does> clause are uncheckable for a reason
+\ they name too, and each says so in its JSON packet with help of its own; the
+\ packet of a RECURSE with no declared effect has no declared note and is in
+\ the record form. A failure pinned before a name a rendering statement may
+\ define keeps its packet and answer, and that name alone defers its
+\ definition. An undefined word is rejected in packet and answer. A mismatch
 \ over values below prints the word's inputs and the cells that fill them, so it
 \ is a type fault and a surplus a depth fault; one over an open input (a
 \ quotation's or an unsigned definition's) prints its found row over the cells
@@ -103,25 +102,18 @@ TYPED-VARIABLE SRC-U len
    SRC-RESET
    s" : SN-LOCAL-DEEP ( n -- ) {: x:" S+  s" [" k S+N  s"  :} ;" S+ ;
 
-\ A definition NAME whose body nests k `IF`s, from its name to its last token.
-: IFS-TEXT ( str n -- )
-   {: name:^ nameu:n k:n :}
-   name nameu S+  s"  ( bool -- ) " S+  s" dup IF " k S+N  s" THEN " k S+N  s" drop" S+ ;
-
-: NESTED-IFS ( str n -- )
-   {: name:^ nameu:n k:n :}
-   SRC-RESET  s" : " S+  name nameu k IFS-TEXT  s"  ;" S+ ;
-
-\ The same nest whose innermost `IF` tests a number, from its name to its last
-\ token: the token fails its condition before it overflows the frames.
-: BADCOND-TEXT ( n -- )
+\ A colon definition SN-IFS-70 whose body nests k `IF`s.
+: NESTED-IFS ( n -- )
    {: k:n :}
-   s" SN-BADCOND ( bool -- ) " S+  s" dup IF " k 1 - S+N  s" 1 IF " S+
-   s" THEN " k S+N  s" drop" S+ ;
+   SRC-RESET  s" : SN-IFS-70 ( bool -- ) " S+  s" dup IF " k S+N  s" THEN " k S+N
+   s" drop ;" S+ ;
 
-: NESTED-BADCOND ( n -- )
+\ A colon definition SN-DOS whose body nests k `DO` loops and leaves 7 from the
+\ innermost, unlooping each before it exits.
+: NESTED-DOS ( n -- )
    {: k:n :}
-   SRC-RESET  s" : " S+  k BADCOND-TEXT  s"  ;" S+ ;
+   SRC-RESET  s" : SN-DOS ( -- n ) " S+  s" 1 0 DO " k S+N  s" 7 " S+
+   s" unloop " k S+N  s" exit " S+  s" LOOP " k S+N  s" ;" S+ ;
 
 \ A loop over 70 cells, more than a diagnostic prints of a row, whose body
 \ leaves one more cell, from its name to its last token.
@@ -268,30 +260,12 @@ public
    s" a local's type nested past the depth limit refuses by it" T-LABEL
    2049 LOCAL-QUOTATIONS
    S\" error[E-BAD-SIGNATURE]: effect too deep to record (depth 4097, at most 4096) at `[` in the annotation of local `x`\n" REFUSES
-   s" 33 nested IFs are uncheckable by the control-frame limit" T-LABEL
-   s" SN-IFS-33" 33 NESTED-IFS
-   s" error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at most 32)" REFUSES
-   s" = evaluated: ... dup IF dup IF dup IF dup IF dup IF dup IF THEN THEN" SAID  s" one structure too deep" SAID
-   s" 32 nested IFs check" T-LABEL
-   s" SN-IFS-32" 32 NESTED-IFS
-   SRC$ TEST-EVAL:RC 0 T=
-   s" 33 nested IFs write an uncheckable packet that names the limit" T-LABEL
-   SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
-   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"token\":\"IF\""
-   S\" \"message\":\"control flow nested too deep to check (depth 33, at most 32)\""
-   VERDICT-UNCHECKABLE PACKET-HAS
-   s" 33 nested IFs suggest a named word for the inner structures" T-LABEL
-   SRC-RESET s" SN-IFS-33" 33 IFS-TEXT
-   S\" \"code\":\"E-UNCHECKABLE\"" S\" \"token\":\"IF\""
-   S\" \"help\":\"move the inner control structures into a named word"
-   VERDICT-UNCHECKABLE PACKET-HAS
-   s" a wrong condition at the 33rd nested IF reports the mismatch" T-LABEL
-   33 NESTED-BADCOND
-   s" error[E-MISMATCH]: `IF` takes bool; the stack holds n" REFUSES
-   s" a wrong condition at the 33rd nested IF writes a rejected packet" T-LABEL
-   SRC-RESET 33 BADCOND-TEXT
-   S\" \"code\":\"E-MISMATCH\"" S\" \"token\":\"IF\""
-   S\" \"expected\":\"bool\",\"found\":\"n\"" VERDICT-REFUSED PACKET-HAS
+   s" 70 nested IFs check and run" T-LABEL
+   70 NESTED-IFS
+   SRC$ TEST-EVAL:RC 0 T=  s" true SN-IFS-70" TEST-EVAL:RC 0 T=
+   s" 70 nested DO loops each unlooped exit with a value" T-LABEL
+   70 NESTED-DOS
+   SRC$ TEST-EVAL:RC 0 T=  s" SN-DOS" TEST-EVAL:N 7 T=
    s" an undefined word is refused and writes a rejected packet" T-LABEL
    SRC-RESET  s" SN-UNDEF ( -- ) SN-NO-SUCH-WORD" S+
    S\" \"code\":\"E-UNDEFINED\"" S\" \"token\":\"SN-NO-SUCH-WORD\""

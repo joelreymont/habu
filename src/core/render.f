@@ -922,7 +922,6 @@ variable MDV-I   variable MDV-F
       MD-NONEXH       of s" E-MATCH-NONEXHAUSTIVE" endof
       MD-STRAY        of s" E-MATCH-STRAY" endof
       MD-TRUNC        of s" E-MATCH-UNTERMINATED" endof
-      MD-DEPTH        of s" E-MATCH-DEPTH" endof
       MD-QUOT         of s" E-MATCH-QUOTATION" endof
       MD-OPEN-ARGS    of s" E-MATCH-OPEN-ARGS" endof
       MD-JOIN         of s" E-MATCH-BRANCH-JOIN" endof
@@ -954,7 +953,6 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" E-RIGID-STALE-GENERATION" endof
       MD-RIGID-XDOM   of s" E-RIGID-DOMAIN-CONFUSION" endof
       MD-EFFECT-DEPTH of s" E-UNCHECKABLE" endof
-      MD-CF-DEPTH     of s" E-UNCHECKABLE" endof
       MD-RECURSE-SIG  of s" E-UNCHECKABLE" endof
       MD-RECURSE-DOES of s" E-UNCHECKABLE" endof
       MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
@@ -1037,7 +1035,6 @@ variable MDV-I   variable MDV-F
       MD-QUOT         of s" move the `MATCH` into a named word with a declared effect and call that word in the quotation" endof
       MD-OPEN-ARGS    of s" give the value concrete family arguments in the signature, as `option<n>` instead of `option<a>`" endof
       MD-JOIN         of s" make every `OF` arm that continues leave the same stack types at its `ENDOF`" endof
-      MD-DEPTH        of s" move the inner `MATCH` into a named word and call that word here" endof
       MD-MISSING-OF   of s" write `OF` after the variant, as `variant OF ... ENDOF`" endof
       MD-DIVBAR       of s" call the block collective where no control structure or quotation is open, so every thread of the block reaches it" endof
       MD-EXEC-OPAQUE  of s" `execute` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell; call a declaration by name at top level" endof
@@ -1063,7 +1060,6 @@ variable MDV-I   variable MDV-F
       MD-C2-ESCAPE    of s" return only values that do not depend on the owner or loan this operation opened" endof
       MD-C2-INIT-RECORD of s" pass a `STRUCTURE … DERIVE init` value made by its `MAKE`, with no linear, unique or open field" endof
       MD-EFFECT-DEPTH of DEPTH-SUGGEST$ endof
-      MD-CF-DEPTH     of s" move the inner control structures into a named word and call that word here" endof
       MD-RECURSE-SIG  of s" declare the definition's stack effect after its name, as `: NAME ( n -- n )`" endof
       MD-RECURSE-DOES of s" move the recursion into a named word with a declared effect and call that word from the `does>` clause" endof
       MD-IS-UNKNOWN   of s" name a word declared with `defer` after `is`, as `PKG:NAME` or with its package imported by `using`" endof
@@ -1136,7 +1132,6 @@ variable MDV-I   variable MDV-F
       MD-NONEXH       of s" bad match: missing variants:" endof
       MD-STRAY        of s" bad match: misplaced match token" endof
       MD-TRUNC        of s" bad match: unterminated match" endof
-      MD-DEPTH        of s" bad match: nesting exceeds control-frame capacity" endof
       MD-QUOT         of s" bad match: quotation rows cannot carry a scrutinee" endof
       MD-OPEN-ARGS    of s" bad match: scrutinee type arguments are unresolved" endof
       MD-JOIN         of s" bad match: branch output mismatch" endof
@@ -1168,7 +1163,6 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
       MD-UNDERFLOW    of TOP-STEP @ IF s" input underflow: the statement takes more cells than the stack holds" ELSE s" input underflow: the call takes more cells than the definition's declared inputs leave" THEN endof
       MD-EFFECT-DEPTH of DEPTH-REASON$ endof
-      MD-CF-DEPTH     of s" control flow nested too deep to check" endof
       MD-RECURSE-SIG  of s" recursion needs a declared stack effect" endof
       MD-RECURSE-DOES of s" recurse in a does> clause would call the defining word" endof
       MD-IS-UNKNOWN   of s"  names no word" endof
@@ -1247,7 +1241,6 @@ variable MDV-I   variable MDV-F
       MD-NONEXH       of s" some variants have no arm" endof
       MD-STRAY        of s" innermost is no `MATCH`" endof
       MD-TRUNC        of s" ends with a `MATCH` open" endof
-      MD-DEPTH        of s" nested past the frame limit" endof
       MD-QUOT         of s" inside a quotation" endof
       MD-OPEN-ARGS    of s" arguments not concrete" endof
       MD-JOIN         of s" arms leave different types" endof
@@ -1325,7 +1318,6 @@ variable MDV-I   variable MDV-F
       MD-UNLOOP-JOIN  of s" paths disagree on `unloop`" endof
       MD-CF-OPEN      of s" ends with a structure open" endof
       MD-DOES-UNMADE  of s" `does>` needs a word this definition creates" endof
-      MD-CF-DEPTH     of s" one structure too deep" endof
       MD-RECURSE-SIG  of s" no effect to call" endof
       MD-RECURSE-DOES of s" inside a `does>` clause" endof
       MD-IF-DEPTH     of s" arm ends at another depth" endof
@@ -1443,8 +1435,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-ONE-CELL = IF ONE-CELL-COUNTS EXIT THEN
    MDIAG @ MD-OFF-STEP = IF OFF-STEP-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
-   MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
-   MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS THEN ;
+   MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS THEN ;
 
 
 : IMM-CODE$ ( -- str )

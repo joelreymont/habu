@@ -696,7 +696,7 @@ multi-cell type rationale is `docs/design.md` "Types".
 - The other match and construct codes: `E-MATCH-UNKNOWN-FAMILY`,
   `E-MATCH-FAMILY-KIND`, `E-MATCH-FAMILY-MISMATCH`, `E-MATCH-UNKNOWN-VARIANT`,
   `E-MATCH-DUPLICATE-VARIANT`, `E-MATCH-MISSING-OF`, `E-MATCH-STRAY`,
-  `E-MATCH-UNTERMINATED`, `E-MATCH-DEPTH`, `E-CONSTRUCT-UNKNOWN-FAMILY`,
+  `E-MATCH-UNTERMINATED`, `E-CONSTRUCT-UNKNOWN-FAMILY`,
   `E-CONSTRUCT-FAMILY-KIND`, `E-CONSTRUCT-UNKNOWN-VARIANT`,
   `E-CONSTRUCT-UNTERMINATED`. Each carries a repair class.
 - **A linear payload makes the sum linear**, transitively through nesting:
@@ -2161,14 +2161,6 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
 - **One REPL line.** A longer line is rejected, `hb: repl line over <cap> bytes:
   <length> typed`, and read again, never truncated, evaluated or saved to
   history. Load long definitions from a file.
-- **Quotation nesting in one definition**, the most `[:` bodies open at once:
-  each open `[:` takes one of the control frames the next item counts. Factor
-  the inner quotations into named words.
-- **Control-flow nesting in one definition** (`begin`, `if`, `while`, `do`,
-  `?do`, `[:` and the other open structures): a body nests at most 32 control
-  frames, and the checker rejects 33 nested `begin`s with
-  `error[E-UNCHECKABLE]: control flow nested too deep to check (depth 33, at
-  most 32)`. Factor the inner loops into their own words.
 - **A definition's effect depth**: a row of cells, where a cell's type adds the
   levels it nests, so a returned quotation's row counts from the cell that
   holds it. Past it the definition is uncheckable: `E-UNCHECKABLE`, `effect too

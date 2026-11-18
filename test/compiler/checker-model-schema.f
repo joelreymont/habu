@@ -93,69 +93,6 @@ private
       s" CMV12 ( idx -- len )"
       V-REJECT VEC-ROW ;
 
-\ The control-frame ceiling. `CF-PUSH` (src/core/checker.f) turns the frame
-\ after the last one into an unresolvable instead of pushing it, so the sharpest
-\ pair of programs is two runs of `begin` differing only in length: at the
-\ ceiling the definition is merely unbalanced and is refused, one deeper it
-\ stops being checkable and the verdict changes class. Both texts are built
-\ from the ceiling below, so a row cannot drift from the number it is about.
-
-32 constant FRAME-CEIL
-
-: +OPENERS ( n -- ) {: opens:n :}
-   opens 0 ?do s"  begin" SB-APPEND loop ;
-
-: OPENERS$ ( str n -- str ) {: a:^ u:n opens:n :}
-   SB-RESET a u SB-APPEND opens +OPENERS SB$ ;
-
-: FRAME-CAP-ROW ( str str n n -- )
-   {: na:^ nu:n sa:^ su:n opens:n verd:n :}
-   na nu STR+ VEC-NAME VEC-N @ COL!
-   sa su opens OPENERS$ STR+ VEC-SRC VEC-N @ COL!
-   verd VEC-VERD VEC-N @ COL!
-   VEC-N @ 1+ VEC-N ! ;
-
-: BUILD-FRAME-CAP-VECTORS ( -- )
-   s" frames_at_the_ceiling_are_still_checked"
-      s" CMV13 ( i64 -- i64 )" FRAME-CEIL V-REJECT FRAME-CAP-ROW
-   s" one_frame_past_the_ceiling_is_unresolvable"
-      s" CMV14 ( i64 -- i64 )" FRAME-CEIL 1+ V-UNCK FRAME-CAP-ROW ;
-
-\ `MATCH`'s own depth guard, a different rule from the ceiling above. A match
-\ form opens two frames (the form's and a branch's), and `MATCH-FAM-STEP`
-\ (src/core/check-walk.f) hard-rejects once the frame stack is deeper than the
-\ number below, so a match never installs one frame and overflows on the other.
-\ At that depth the form takes the ceiling's last two slots and the next opener
-\ makes the definition uncheckable; one deeper the guard refuses first, and a
-\ hard reject outranks an uncheckable. Lowering the guard turns the first row
-\ into a refusal; raising or removing it turns the second into an uncheckable.
-\ Both texts are built from the number, and the number is derived from the
-\ ceiling, the relation the checker's two literals stand in: a ceiling moved on
-\ one side only breaks a row.
-
-2 constant MATCH-FRAMES               \ the form's frame, and one branch's
-FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
-
-: MATCH-SRC$ ( str n str -- str ) {: ha:^ hu:n opens:n ta:^ tu:n :}
-   SB-RESET ha hu SB-APPEND opens +OPENERS s"  " SB-APPEND ta tu SB-APPEND SB$ ;
-
-: MATCH-DEPTH-ROW ( str str n str n -- )
-   {: na:^ nu:n sa:^ su:n opens:n ha:^ hu:n verd:n :}
-   na nu STR+ VEC-NAME VEC-N @ COL!
-   sa su opens ha hu MATCH-SRC$ STR+ VEC-SRC VEC-N @ COL!
-   verd VEC-VERD VEC-N @ COL!
-   VEC-N @ 1+ VEC-N ! ;
-
-: BUILD-MATCH-DEPTH-VECTORS ( -- )
-   s" a_match_at_the_deepest_frame_that_fits_takes_both_frames"
-      s" CMV15 ( cmres -- n )" MATCH-DEPTH-MAX
-      s" MATCH cmres cmok OF begin"
-      V-UNCK MATCH-DEPTH-ROW
-   s" a_match_one_frame_deeper_is_refused_before_the_overflow"
-      s" CMV16 ( cmres -- n )" MATCH-DEPTH-MAX 1+
-      s" MATCH cmres cmok OF"
-      V-REJECT MATCH-DEPTH-ROW ;
-
 \ Eight rows about `construct`, a three-token form and a small state machine:
 \ the rules are the capture, the truncation test at the definition boundary, and
 \ the inline step that turns a variant payload into the family's bundle.
@@ -463,8 +400,6 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" CMV10 ( i64 -- i64 ) CHECKER-MODEL-CASES:MK-BOOL if CHECKER-MODEL-CASES:STEP1"
       V-REJECT VEC-ROW
    BUILD-WIDENING-VECTORS
-   BUILD-FRAME-CAP-VECTORS
-   BUILD-MATCH-DEPTH-VECTORS
    BUILD-CONSTRUCT-VECTORS
    BUILD-SCRUTINEE-VECTORS
    BUILD-ATOM-VECTORS

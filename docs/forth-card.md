@@ -219,7 +219,6 @@ before the word runs, and `--load` exits 70.
 | a word with no declared effect whose effect would hold a `forall<…>` callback outside a callback input, as `: W [: WITH-SCOPE ;] ;` where `WITH-SCOPE ( forall<p,[ a -- ]> -- )` | `E-BINDER-PLACE`, `a callback binder would sit outside …` — call the scope operation directly |
 | `--` or `\|` in a locals group: `{: a -- b :}`, `{: a \| :}` | `E-BAD-LOCAL-SHAPE` at the token, `a locals group names only locals; …` — the signature declares the outputs, and Habu has no uninitialised locals |
 | a definition whose effect, a returned quotation's row included, is deeper than the ceiling | `E-UNCHECKABLE`, `effect too deep to record (depth <depth>, at most <cap>)` |
-| a body nesting more than 32 control frames (each `if`, `begin`, `do`, `case`, `MATCH`, `of` arm and `[:` takes one): 33 nested `dup IF` | `E-UNCHECKABLE`, `control flow nested too deep to check (depth <depth>, at most <cap>)` |
 | `: DOWN dup 0 > IF 1 - RECURSE THEN ;`: `recurse` in a definition with no signature | `E-UNCHECKABLE`, `recursion needs a declared stack effect` |
 | `: MK ( n -- ) create , does> ( -- n ) @ dup 0 > IF RECURSE THEN ;`: `recurse` in a `does>` clause | `E-UNCHECKABLE`, `recurse in a does> clause would call the defining word` |
 | `: P ( -- ) does> ( -- n ) @ ;`: a head that calls no `create` or definer before its `does>`, or calls one only after an `if`, loop or quotation | `E-DOES-UNCREATED` at `does>`, rc 70, `` `does>` needs a word this definition creates `` |

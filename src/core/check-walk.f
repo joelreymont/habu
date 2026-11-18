@@ -329,7 +329,6 @@ EXPORT CHECKER-TAPE:K-MATCH
 : MATCH-FAM-STEP ( n -- )
    {: fam:n :}
    K-MATCH fam 0 EVENT!
-   #CFC @ CF-FRAMES-MAX 2 - > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
    fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-FAIL EXIT THEN
    DCUR @ MTCH-W @ ROW-TOP-LOST {: lost:n :}
    MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop

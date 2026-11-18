@@ -147,13 +147,6 @@ $0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots.
 131072 constant DICT-CAP
 $600000 constant CFSTK-OFF
-32 constant CF-REC
-\ Control-flow stack region [CFSTK-OFF, DICT-SIZE): cell 0 is the depth counter,
-\ then CF-REC-byte records. CFSTK-DEPTH-MAX always exceeds the checker's CFS
-\ cap 31.
-DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / constant CFSTK-REGION-CAP
-256 constant CFSTK-SANE-MAX
-CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX
 
 \ Profiler counter band: one 64-bit sample counter per dictionary slot, reserved
 \ at the very top of the DATA region [DATA-SIZE - PROF-CNT-BYTES, DATA-SIZE).

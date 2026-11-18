@@ -156,7 +156,7 @@ s" MEB3=" type s" BE3 ( n -- n ) MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF b
 s" MATCH-ENUM" type cr
 
 \ Rejected, a hard reject 0 and never uncheckable 1: exhaustiveness, duplicates,
-\ resolution, scrutinee shape, joins, truncation, strays, depth overflow.
+\ resolution, scrutinee shape, joins, truncation, strays.
 s" MB1=" type s" B1 ( mres -- n ) MATCH mres ok OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MB2=" type s" B2 ( mres -- n ) MATCH mres ok OF ENDOF ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MB3=" type s" B3 ( mres -- n ) MATCH mres small OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
@@ -212,9 +212,7 @@ s" PS1=" type s" PS1 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" PS2=" type s" PS2 ( n -- n n ) dup"    CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-WORDVAR" type cr
 
-\ Frame headroom: a match two CFS slots from the cap is a hard reject (verdict
-\ 0, pinned diagnostics), not the silent-uncheckable CF overflow; the same shape
-\ with headroom certifies.
+\ Frame depth: a match nested inside many ifs certifies.
 $400 constant MD-CAP
 create MD-BUF MD-CAP allot
 variable MD-U
@@ -236,10 +234,8 @@ variable MD-J   \ MD-BODY's own loop index: MD-APP clobbers MD-I per append
    s" MATCH mres ok OF construct mres ok ENDOF err OF construct mres err ENDOF ;MATCH " MD-APP
    0 MD-J !  begin MD-J @ k < while s" then " MD-APP MD-J @ 1 + MD-J ! repeat
    MD-BUF MD-U @ ;
-s" MD31=" type 31 MD-BODY CHECK-QUIET-CANDIDATE! 0 T=
-s" MD30=" type 30 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
-s" MD29=" type 29 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
-s" MATCH-DEPTH" type cr
+s" MD70=" type 70 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
+s" MATCH-NESTED" type cr
 
 \ Scope: family resolution is signature scope (eliminability = nameability),
 \ unlike construct's owner-only rule. In-package private matches; a cross-package
@@ -342,9 +338,6 @@ s" GP1 ( mprod -- n ) MATCH mprod make OF ENDOF ;MATCH" MDG<
 s\" \"code\":\"E-MATCH-FAMILY-KIND\"" MDG?
 s" GP2 ( n -- mprod ) construct mprod make" MDG<
 s\" \"code\":\"E-CONSTRUCT-FAMILY-KIND\"" MDG?
-31 MD-BODY MDG<
-s\" \"code\":\"E-MATCH-DEPTH\"" MDG?
-s\" \"label\":\"nested past the frame limit\"" MDG?
 MDG-END
 \ prose shape: the `bad match: missing variants` text, prose mode.
 REJECTION:CAPTURE

@@ -5446,7 +5446,6 @@ private
 8 constant MD-NONEXH          \ ;MATCH with unseen variants
 9 constant MD-STRAY           \ stray ;match / closer over a foreign frame
 10 constant MD-TRUNC          \ unterminated match form at definition end
-11 constant MD-DEPTH          \ match cannot reserve its two control frames
 12 constant MD-QUOT           \ match inside a quotation: open rows carry no scrutinee
 13 constant MD-OPEN-ARGS      \ open-arg parametric scrutinee (one conservative cell)
 14 constant MD-JOIN           \ branch outputs do not unify
@@ -5530,7 +5529,6 @@ private
 58 constant MD-CF-OPEN       \ a control structure open at the definition's end
 
 \ Uncheckable, not refused (UNCK-REASON?): E-UNCHECKABLE.
-59 constant MD-CF-DEPTH      \ an opener found all CF-FRAMES-MAX control frames in use (CF-PUSH)
 60 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
 61 constant MD-RECURSE-DOES  \ a RECURSE in a does> clause, which calls the defining word (CF-RECURSE)
 
@@ -11990,13 +11988,11 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    s" more than " REJECTION:EMIT-STR  BINDER-DEPTH-MAX REJECTION:EMIT-U
       s"  nested binders" REJECTION:EMIT-STR ;
 
-: CAP-DEPTH-COUNTS ( n n -- )
-   {: depth:n cap:n :}
-   s"  (depth " REJECTION:EMIT-STR  depth REJECTION:EMIT-U
-   s" , at most " REJECTION:EMIT-STR  cap REJECTION:EMIT-U  s" )" REJECTION:EMIT-STR ;
-
 : DEPTH-COUNTS ( n -- )
-   EFFECT-DEPTH-MAX CAP-DEPTH-COUNTS ;
+   {: depth:n :}
+   s"  (depth " REJECTION:EMIT-STR  depth REJECTION:EMIT-U
+   s" , at most " REJECTION:EMIT-STR  EFFECT-DEPTH-MAX REJECTION:EMIT-U
+   s" )" REJECTION:EMIT-STR ;
 
 \ The reason a signature too large to record names its bound, count and limit.
 : BADSIG-REASON ( -- )
@@ -19840,9 +19836,6 @@ defer LOCSHOWXT ( str n -- )
 : LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
 variable #CFC
-SCRATCH{
-variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
-}SCRATCH
 
 : LCOLON ( str -- n ) {: a:^ u:n :}
    0 BEGIN dup u < WHILE
@@ -20289,11 +20282,10 @@ $C0 constant CFS-REC
 : CF.QRD ( ^a -- ^a ) CF.QRD-OFF + ;
 
 
-32 constant CF-FRAMES-MAX   \ control frames one body may nest
 SCRATCH{
-create CFS CF-FRAMES-MAX CFS-REC * allot
-variable INDO
-\ One bit per CFS slot; all 32 slots fit a cell. A quotation owns a fresh mask.
+PTR-VARIABLE CFS-P   variable CFS-CAP
+\ The live loops: 0 for none, else 1 + the innermost live DO frame's slot,
+\ whose CF.LA holds the loops live outside it. A quotation starts at none.
 variable CF-LOOPS
 }SCRATCH
 \ XROW accumulates the data row at each exit (all returns, incl. the
@@ -20303,7 +20295,7 @@ variable CF-LOOPS
 \ live loop obligations beside the corresponding data and return rows.
 
 : CF-ROW ( n -- ^n )
-   CFS-REC * CFS + ;
+   CFS-REC * CFS-P @ + ;
 
 : SCOPE-LOC-TYPE ( n -- n )
    cells LOCVAL + @ dup 0 <> IF CP-TYPE THEN ;
@@ -20445,16 +20437,15 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
 \ straight-line-wrapper rule above takes nothing from a body that pushed one.
 : CF-PUSH {: k s0 s1 r0 r1 :}
    -1 WRAPBENT !
-   #CFC @ CF-FRAMES-MAX >= IF
-     MD-CF-DEPTH MDIAG!  UNCK-RAISE  -1 CF-OVER ! ELSE
-     #CFC @ CF-ROW {: rec:^ :}
-     k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
-     r0 rec CF.RA !  r1 rec CF.RB !
-     #LOC @ rec CF.LN !  0 rec CF.LSC !  0 rec CF.QRD !
-     CF-LOOPS @ rec CF.LA !  0 rec CF.LB !
-     FACTS @ rec CF.FA !  0 rec CF.FB !  0 rec CF.FT !
-     0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
-     #CFC @ 1 + #CFC ! THEN ;
+   CFS-P CFS-CAP #CFC @ 1 + CFS-REC CELL / ARENA-ROWS-ENSURE
+   #CFC @ CF-ROW {: rec:^ :}
+   k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
+   r0 rec CF.RA !  r1 rec CF.RB !
+   #LOC @ rec CF.LN !  0 rec CF.LSC !  0 rec CF.QRD !
+   CF-LOOPS @ rec CF.LA !  0 rec CF.LB !
+   FACTS @ rec CF.FA !  0 rec CF.FB !  0 rec CF.FT !
+   0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
+   #CFC @ 1 + #CFC ! ;
 
 : CF@K CF-TOP CF.KND @ ;
 
@@ -20507,12 +20498,11 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    #LOC @ {: live:n :}
    0 #LOC !  DEF-LSC @ LSC-CK  live #LOC ! ;
 
-\ The frames are the compiler's only while every token was walked and every
-\ opener kept one: a word after a terminating word is skipped (DEADERR), and an
-\ opener skipped so, or one past the deepest frame (CF-OVER), leaves its closer
-\ no frame here though the compiler has one.
+\ The frames are the compiler's only while every token was walked: a word after
+\ a terminating word is skipped (DEADERR), and an opener skipped so leaves its
+\ closer no frame here though the compiler has one.
 : CF-REFUSE ( n -- )
-   DEADERR @ 0=  CF-OVER @ 0=  and IF MDIAG-COMPILE! ELSE drop THEN ;
+   DEADERR @ 0= IF MDIAG-COMPILE! ELSE drop THEN ;
 
 \ A control-flow word over no frame or another kind's is one the compiler
 \ refuses, for the reason why.
@@ -20527,26 +20517,13 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    CF-LOOPS @ <> IF MD-UNLOOP-JOIN CF-FAIL THEN ;
 
 
-: CF-LOOP-BIT ( n -- n )
-   1 swap lshift ;
-
-
-: CF-LOOP-ACTIVE? ( n -- bool )
-   CF-LOOP-BIT CF-LOOPS @ and 0 <> ;
-
-
-\ Search only this function's live frames, innermost first.
+\ The slot of the (n+1)th live loop, innermost first, or -1.
 : CF-LOOP-FIND ( n -- n )
-   INDO !
-   #CFC @
+   CF-LOOPS @ swap
    BEGIN dup 0 > WHILE
-      1 -
-      dup CF-ROW CF.KND @ 6 = IF drop -1 EXIT THEN
-      dup CF-LOOP-ACTIVE? IF
-         INDO @ 0= IF EXIT THEN
-         -1 INDO +!
-      THEN
-   REPEAT drop -1 ;
+      over 0= IF drop 1 - EXIT THEN
+      swap 1 - CF-ROW CF.LA @ swap 1 -
+   REPEAT drop 1 - ;
 
 
 : SUNI-JOIN ( n -- )
@@ -20634,7 +20611,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : UNCK-REASON? ( n -- bool )
    {: why:n :}
    why MD-EFFECT-DEPTH =
-   why MD-CF-DEPTH =  or  why MD-RECURSE-SIG =  or  why MD-RECURSE-DOES =  or ;
+   why MD-RECURSE-SIG =  or  why MD-RECURSE-DOES =  or ;
 
 : REFUSAL-UNCHECKABLE? ( -- bool )
    REFUSAL@ {: k:n :}
@@ -20985,7 +20962,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : CF-UNLOOP ( -- )
    0 CF-LOOP-FIND
    dup 0 < IF drop MD-NO-LOOP CF-FAIL EXIT THEN
-   CF-LOOP-BIT invert CF-LOOPS @ and CF-LOOPS ! ;
+   CF-ROW CF.LA @ CF-LOOPS ! ;
 
 \ A loop entry drops every CP-VALUE? fact: on the second pass a carried cell
 \ need not hold the literal, input or quotation it held on the first.
@@ -21045,7 +21022,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    CF-LOOP-ENTRY
    5 DCUR @ 0 RCUR @ 0 CF-PUSH
    0 CF-TOP CF.DED !
-   #CFC @ 1 - CF-LOOP-BIT CF-LOOPS @ or CF-LOOPS ! ;
+   #CFC @ CF-LOOPS ! ;
 
 : CF-?DO ( -- )
    CF-DO
@@ -21074,7 +21051,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
      ELSE
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
-        #CFC @ 1 - CF-LOOP-BIT CF@LA or CF-LOOPS=
+        #CFC @ CF-LOOPS=
      THEN
      CF@LA CF-LOOPS !
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
@@ -21110,7 +21087,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
       CF-ANY-DO? 0= IF MD-NO-LOOP CF-REFUSE THEN
       MD-NO-LOOP CF-FAIL
    ELSE
-     doidx CF-LOOP-BIT doidx CF-ROW CF.LA @ or CF-LOOPS=
+     doidx 1 + CF-LOOPS=
      doidx CF-ROW CF.SA @ DCUR @
      doidx CF-ROW CF.RA @ RCUR @ CF-CARRIED=
      doidx CF-ROW CF.SA @ SUNI-JOIN
@@ -21308,9 +21285,8 @@ variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHE
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 CHECKER-MATCH-MODE ! ;
 
-\ A match whose family resolves nothing, or one nested past the frame depth,
-\ leaves the walk without the roles of its tokens. The walk reads them
-\ unmodeled through the match's own `;MATCH`.
+\ A match whose family resolves nothing leaves the walk without the roles of
+\ its tokens. The walk reads them unmodeled through the match's own `;MATCH`.
 : MATCH-ABANDON ( -- )
    MATCH-REJECT  1 MSKIP !  4 CHECKER-MATCH-MODE ! ;
 
@@ -22865,10 +22841,10 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    FAILB @ FAILTU @ + FAILE ! ;
 
 \ Rejects a structure open at closer CA CU, or at the given closer, as the load's
-\ compiler does, unless a compile rejection or CF-OVER holds the pin.
+\ compiler does, unless a compile rejection holds the pin.
 : CLOSER-REFUSE ( str -- )
    {: ca:^ cu:n :}
-   CF-OPEN? 0=  RCOMPILE @ 0 <>  or  CF-OVER @ 0 <>  or IF EXIT THEN
+   CF-OPEN? 0=  RCOMPILE @ 0 <>  or IF EXIT THEN
    TBASE @ REJECTION:CLOSES? IF REJECTION:CLOSER$ nip ELSE cu THEN 0= IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
       CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC ELSE MD-CF-OPEN THEN
@@ -23669,7 +23645,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
 \ refused before any state is reset.
 : CHECK-CLEAR ( -- )
    WRAP-CLEAR  0 WRAPMADE !
-   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 CF-OVER !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
+   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
    0 CF-LOOPS !
    0 ZSHAPE !
    0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !

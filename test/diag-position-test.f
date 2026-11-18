@@ -3218,18 +3218,6 @@ HB-TARGET-LINUX? 0= [if]
    s" E-NO-LOOP" s" leave" 1 16 15 20 REFUSED-AT ;
 
 
-\ A do holding 32 nested ifs, which loop leaves before their thens: the 32nd if
-\ opens the definition's 33rd control structure.
-: DEEP-FIXTURE ( -- )
-   SB-RESET
-   s" : X ( n -- ) 0 do" SB-APPEND
-   32 0 do s"  0 0= if" SB-APPEND loop
-   s"  loop" SB-APPEND
-   32 0 do s"  then" SB-APPEND loop
-   s"  ;" SB-APPEND LF+
-   s" if-deep.f" FIXTURE! ;
-
-
 : TEST-CONTROL-REASON ( -- )
    s" a loop body that changes the stack's depth" T-LABEL
    s" : X ( n -- n ) 3 0 do dup loop ;" s" loop-depth.f" LINE-FIXTURE
@@ -3280,14 +3268,6 @@ HB-TARGET-LINUX? 0= [if]
    s" E-CONTROL-OPEN" s" ;" 1 19 18 19 REFUSED-AT
    0 s" message" s" a control structure is still open at the end of the definition" FIELD=
    s" E-CONTROL-OPEN" s" :1:19" 70 LOADED-AT
-   s" a structure past the frame limit is refused at its opener, not at ;" T-LABEL
-   DEEP-FIXTURE
-   s" --all-errors" CHECK
-   GJA-LINE# @ 1 T=
-   0 s" code" s" E-UNCHECKABLE" FIELD=
-   0 s" if" 1 272 271 273 AT
-   0 s" message" s" control flow nested too deep to check (depth 33, at most 32)" FIELD=
-   s" E-UNCHECKABLE" s" :1:272" 70 LOADED-AT
    s" a loop that meets an if inside its do" T-LABEL
    s" : X ( -- ) 3 0 do 0 0= if loop then ;" s" loop-in-if.f" LINE-FIXTURE
    s" E-CONTROL-ORPHAN" s" loop" 1 27 26 30 REFUSED-AT
@@ -3590,37 +3570,6 @@ HB-TARGET-LINUX? 0= [if]
    s" E-THROW" s" :3:1" 67 LOADED-AT
    GT-ERR$ s" error[" COUNT-SUB 1 T=
    GT-ERR$ s" caught-dep.f" CONTAINS? TFALSE ;
-
-\ A match beyond the control-frame limit leaves its body to the load. The
-\ checker's abandoned-match walk must still spend literal payloads before
-\ counting a real ;MATCH, so their text cannot replace the depth refusal.
-: MATCH-DEPTH-START ( -- )
-   SB-RESET
-   s" ENUM shade red ;ENUM" SB-APPEND LF+
-   s" : X ( -- )" SB-APPEND
-   31 0 DO s"  true if" SB-APPEND LOOP LF+
-   s" MATCH shade red OF " SB-APPEND ;
-
-: MATCH-DEPTH-END ( -- )
-   s"  ENDOF ;MATCH" SB-APPEND LF+
-   31 0 DO s"  then" SB-APPEND LOOP
-   s"  ;" SB-APPEND LF+ ;
-
-: TEST-MATCH-DEPTH-PAYLOAD ( -- )
-   s" a string cannot close an abandoned match" T-LABEL
-   MATCH-DEPTH-START
-   s" s" SB-APPEND 34 SB-APPEND-C
-   s"  ;match NOPE" SB-APPEND 34 SB-APPEND-C
-   s"  2drop" SB-APPEND
-   MATCH-DEPTH-END
-   s" depth-string.f" FIXTURE!
-   s" E-MATCH-DEPTH" s" shade" 3 7 286 291 REFUSED-AT
-   s" a [char] operand cannot close an abandoned match" T-LABEL
-   MATCH-DEPTH-START
-   s" [char] ;match drop" SB-APPEND
-   MATCH-DEPTH-END
-   s" depth-char.f" FIXTURE!
-   s" E-MATCH-DEPTH" s" shade" 3 7 286 291 REFUSED-AT ;
 
 : AMBIG-FIXTURE ( bool str -- )
    {: global:bool body:^ bodyu:n :}
@@ -3986,7 +3935,6 @@ HB-TARGET-LINUX? 0= [if]
    TEST-RETHROW-TWO
    TEST-RETHROW-QUOT
    TEST-CAUGHT-STAYS
-   TEST-MATCH-DEPTH-PAYLOAD
    TEST-USING-ORDER
    TEST-TOP-MISMATCH
    TEST-SEALED-DEFINE
