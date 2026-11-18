@@ -409,6 +409,22 @@ create XE-EMPTY 1 allot
    SB-RESET  XE-RUN-LINE
    s" : MK2 ( -- [ [ -- renders ] -- ] ) [: RUN ;] ;" XE-LINE
    SB$ s" state `renders`" XE-FACT-REJECTED
+   s" a quotation type inside a quotation type keeps what it is handed, in either order" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" : W2R ( [ [ -- ] -- ] [ -- ] -- ) swap execute ;" XE-LINE
+   s" : C7 ( -- ) [: KV ! ;] [: EVC ;] W2R ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   XE-ERR$ s" : C7 ( -- ) [: KV ! ;] [: EVC ;] W2R ;" CONTAINS? TTRUE
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" : MKK ( -- [ [ -- ] -- ] ) [: KV ! ;] ;" XE-LINE
+   s" : W2R ( [ [ -- ] -- ] [ -- ] -- ) swap execute ;" XE-LINE
+   s" : C10 ( -- ) MKK [: EVC ;] W2R ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   XE-ERR$ s" : C10 ( -- ) MKK [: EVC ;] W2R ;" CONTAINS? TTRUE
    s" a bodyless defer's output keeps what it is handed" T-LABEL
    SB-RESET
    s" TYPED-VARIABLE KV [ -- ]" XE-LINE

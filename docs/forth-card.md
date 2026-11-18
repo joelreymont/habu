@@ -188,9 +188,12 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   quotation kept in a typed cell, field or buffer element, installed with `is`,
   returned, or passed to a callee that keeps it has a type stating each of its
   facts, else `E-MISMATCH` at the token that keeps it; a parameter the callee
-  only runs takes any quotation and charges the caller with its facts. Running
-  one (`execute`, `catch`, `finally`) charges the runner with what its type
-  states. A quotation from a type may throw; `throw` is never written.
+  only runs takes any quotation and charges the caller with its facts. Inside a
+  quotation type, a quotation type always counts as kept: in
+  `: W ( [ [ -- ] -- ] -- )` the inner `[ -- ]` takes only a quotation with no
+  facts. Running one (`execute`, `catch`, `finally`) charges the runner with
+  what its type states. A quotation from a type may throw; `throw` is never
+  written.
 - `SCRATCH-ONLY` after a `NEWTYPE`'s name or base (`NEWTYPE ticket
   SCRATCH-ONLY`) declares a family whose values are valid only in the process
   that made them.

@@ -3319,6 +3319,32 @@ variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotati
    THEN ;
 : KEEP-QUOTS ( n -- ) TWALK-RESET KEEP-QUOTS* ;
 
+\ A quotation type written inside a quotation type is kept at every depth: only
+\ a word's own parameter and a literal's own input are judged by a body.
+: KEEP-INNER* ( n -- ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      TWALK-DEEPER
+      x Q>DIN KEEP-QUOTS*  x Q>DOUT KEEP-QUOTS*
+      x Q>RIN KEEP-QUOTS*  x Q>ROUT KEEP-QUOTS*
+      TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+: KEEP-INNER ( n -- ) dup 0= IF drop EXIT THEN TWALK-RESET KEEP-INNER* ;
+
 
 : E-AK-SAME? ( n n -- bool ) {: t1:n t2:n :}
    t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
@@ -8664,7 +8690,9 @@ variable PD-ATOM0                        \ the first atom index this signature p
    a u BYTE-SPAN? IF u ELSE 0 THEN SL !
    0 SI !
    SIG-FACTS-MODE @ IF PARSE-FACTS EXIT THEN
-   PSIG ;
+   PSIG {: din:n dout:n rin:n rout:n :}
+   din KEEP-INNER  dout KEEP-INNER  rin KEEP-INNER  rout KEEP-INNER
+   din dout rin rout ;
 
 : ATOM-REKEY ( n n n -- ) {: from:n key:n id:n :}
    ATOMN @ from ?do

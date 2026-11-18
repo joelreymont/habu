@@ -2313,6 +2313,7 @@ PTR-VARIABLE HOLDER-FIRST
    {: na:^ nu:n :}
    REND-SIG 2drop
    RQM @ 0 = IF
+      BROW @ KEEP-INNER  DCUR @ KEEP-INNER
       na nu CHECKER-USIG-CERT-CURRENT
       EXIT
    THEN

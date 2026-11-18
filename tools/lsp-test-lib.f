@@ -1558,17 +1558,15 @@ variable OPEN-N
    OUT-R @ OUT-SPAN OUT-LEN DEADLINE @ DRAIN
    ERR-R @ ERR-SPAN ERR-LEN DEADLINE @ DRAIN ;
 
-: FINISHED ( [ -- ] -- [ -- ] )
-   dup execute
+: FINISHED ( [ -- ] -- )
+   execute
    SIGN-OFF
    SAY ;
 
-: UNFINISHED ( [ -- ] -- [ -- ] )  dup execute ;
-
-\ Holds the conversation RUN writes from these turns, every wait against one
-\ deadline CHECKED-MS from its start.
-: HELD-BY ( [ -- ] [ [ -- ] -- [ -- ] ] n -- bool )
-   {: turns run rc:n :}
+\ Holds the conversation BODY writes, every wait against one deadline
+\ CHECKED-MS from its start.
+: HELD-BY ( [ -- ] n -- bool )
+   {: body rc:n :}
    FD:PIPE-PAIR {: in-r:fd in-w:fd :}
    FD:PIPE-PAIR {: out-r:fd out-w:fd :}
    FD:PIPE-PAIR {: err-r:fd err-w:fd :}
@@ -1587,8 +1585,7 @@ variable OPEN-N
    0 SENT !
    mono-ns {: t0:n :}
    CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE !
-   turns run catch {: code:n :}
-   drop
+   body catch {: code:n :}
    in-w FD>N close
    code 0= if [: DRAINED ;] catch else code then {: why:n :}
    false OUT-OPEN !
@@ -1608,7 +1605,8 @@ variable OPEN-N
    why 0= ;
 
 : HELD ( [ -- ] -- )
-   [: FINISHED ;] 0 HELD-BY 0= if exit then
+   {: turns :}
+   [: turns FINISHED ;] 0 HELD-BY 0= if exit then
    s" 2" NULL-RESULT
    ENDS ;
 
@@ -1838,7 +1836,7 @@ variable PUB-COUNT
 : TALK-CUT ( str [ -- ] [ -- ] n -- )
    {: a:^ u:n turns after rc:n :}
    a u CONVERSATION
-   turns [: UNFINISHED ;] rc HELD-BY 0= if exit then
+   turns rc HELD-BY 0= if exit then
    after execute
    ENDS ;
 
@@ -6897,7 +6895,7 @@ variable PROBE-DECLS
    init SESSION-INIT !
    cases SESSION-CASES !
    a u CONVERSATION
-   [: SESSION-TURNS ;] [: FINISHED ;] 0 HELD-BY if
+   [: [: SESSION-TURNS ;] FINISHED ;] 0 HELD-BY if
       s" 2" NULL-RESULT ENDS
       TRACE-APPEND
    then
