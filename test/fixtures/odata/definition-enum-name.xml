@@ -1,0 +1,10 @@
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="N" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EnumType Name="Color">
+        <Member Name="Red"/>
+      </EnumType>
+      <TypeDefinition Name="Color" UnderlyingType="Edm.String"/>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

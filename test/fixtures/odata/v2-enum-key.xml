@@ -1,0 +1,13 @@
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="N" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">
+      <EntityType Name="Week">
+        <Key>
+          <PropertyRef Name="On"/>
+        </Key>
+        <Property Name="On" Type="N.Day" Nullable="false"/>
+      </EntityType>
+      <EnumType Name="Day" xmlns="http://docs.oasis-open.org/odata/ns/edm"><Member Name="Monday"/></EnumType>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

@@ -223,95 +223,81 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    dup DECODE-ROOM [: URL-CHECK ;] MEM:WITH-BYTES
    p s" binary" v vl TAGGED ;
 
-\ Whether TYPE is `Edm.` and NAME.
-: EDM? ( str str -- bool )
-   {: t:^ tl:n name:^ nl:n :}
-   tl nl 4 + = 0= if false exit then
-   t 4 s" Edm." STR= t 4 + nl name nl STR= and ;
+: INTEGRAL ( ^predicate str n n -- )
+   {: p:^ v:^ vl:n lo:n hi:n :}
+   v vl lo hi INTEGER p v vl ESCAPED ;
 
-\ An integer type's least and greatest values, and whether TYPE is one.
-: RANGE ( ^u8 n -- n n bool )
-   {: t:^ tl:n :}
-   t tl s" Byte" EDM? if 0 255 true exit then
-   t tl s" SByte" EDM? if -128 127 true exit then
-   t tl s" Int16" EDM? if -32768 32767 true exit then
-   t tl s" Int32" EDM? if -2147483648 2147483647 true exit then
-   t tl s" Int64" EDM? if
-      $8000000000000000 $7FFFFFFFFFFFFFFF true exit
-   then
-   0 0 false ;
+: INT64 ( ^predicate str -- )
+   {: p:^ v:^ vl:n :}
+   v vl $8000000000000000 $7FFFFFFFFFFFFFFF INTEGER
+   p v vl s" L" V2-SUFFIXED ;
 
-\ Each row checks the value, then writes its literal, and answers whether
-\ TYPE is its type.
-: INTEGRAL ( ^predicate str str -- bool )
-   {: p:^ t:^ tl:n v:^ vl:n :}
-   t tl RANGE 0= if 2drop false exit then
-   v vl 2swap INTEGER
-   p v vl t tl s" Int64" EDM? if s" L" else s" " then V2-SUFFIXED
-   true ;
-
-: TEXTUAL ( ^predicate str str -- bool )
-   {: p:^ t:^ tl:n v:^ vl:n :}
-   t tl s" String" EDM? if p v vl QUOTED true exit then
-   t tl s" Boolean" EDM? if v vl BOOLEAN p v vl ESCAPED true exit then
-   t tl s" Guid" EDM? if
-      v vl GUID p s" guid" v vl V2-TAGGED true exit
-   then
-   t tl s" Binary" EDM? if p v vl BINARY true exit then
-   false ;
-
-: FRACTIONAL ( ^predicate ^u8 n ^u8 n -- bool )
-   {: p:^ t:^ tl:n v:^ vl:n :}
-   t tl s" Decimal" EDM? if
-      v vl DECIMAL p v vl s" M" V2-SUFFIXED true exit
-   then
-   t tl s" Double" EDM? if
-      v vl FLOAT p v vl s" d" V2-SUFFIXED true exit
-   then
-   t tl s" Single" EDM? if
-      v vl FLOAT p v vl s" f" V2-SUFFIXED true exit
-   then
-   false ;
-
-\ The text is ISO 8601 UTC; V2's datetime literal drops its `Z`.
-: V2-TEMPORAL ( ^predicate str str -- bool )
-   {: p:^ t:^ tl:n v:^ vl:n :}
-   t tl s" DateTime" EDM? if
-      v vl UTC p s" datetime" v vl 1- TAGGED true exit
-   then
-   t tl s" DateTimeOffset" EDM? if
-      v vl UTC p s" datetimeoffset" v vl TAGGED true exit
-   then
-   t tl s" Time" EDM? if
-      v vl TIME p s" time" v vl TAGGED true exit
-   then
-   false ;
-
-: V4-TEMPORAL ( ^predicate str str -- bool )
-   {: p:^ t:^ tl:n v:^ vl:n :}
-   t tl s" DateTimeOffset" EDM? if
-      v vl DATE-OFFSET p v vl ESCAPED true exit
-   then
-   t tl s" Date" EDM? if v vl DATE p v vl ESCAPED true exit then
-   t tl s" TimeOfDay" EDM? if
-      v vl TIME-OF-DAY p v vl ESCAPED true exit
-   then
-   t tl s" Duration" EDM? if
-      v vl DURATION p s" duration" v vl TAGGED true exit
-   then
-   false ;
-
-\ Whether a row takes TYPE, a version's missing type false.
-: LITERAL ( ^predicate ^u8 n ^u8 n -- bool )
-   {: p:^ t:^ tl:n v:^ vl:n :}
-   p t tl v vl TEXTUAL if true exit then
-   p t tl v vl INTEGRAL if true exit then
-   p t tl v vl FRACTIONAL if true exit then
+\ V2 writes ISO 8601 UTC tagged, V4 any offset bare.
+: DATE-TIME-OFFSET ( ^predicate str -- )
+   {: p:^ v:^ vl:n :}
    p PREDICATE-V2 @ if
-      p t tl v vl V2-TEMPORAL
-   else
-      p t tl v vl V4-TEMPORAL
-   then ;
+      v vl UTC p s" datetimeoffset" v vl TAGGED exit
+   then
+   v vl DATE-OFFSET p v vl ESCAPED ;
+
+\ The index of the first comma at or after AT, the length for none.
+: COMMA-END ( str n -- n )
+   {: a:^ u:n at:n :}
+   at begin
+      dup u < if dup a + c@ [char] , <> else false then
+   while 1+ repeat ;
+
+: MEMBER-OF? ( ^enum-type str -- bool )
+   {: e:^ v:^ vl:n :}
+   e ENUM-TYPE-MEMBERS @ begin dup NULL-PTR <> while
+      dup ENUM-MEMBER-NAME @ v vl SPAN= if drop true exit then
+      ENUM-MEMBER-NEXT @
+   repeat drop false ;
+
+\ Member names, each before a comma or the end.
+: FLAGS ( ^enum-type str -- )
+   {: e:^ a:^ u:n :}
+   0 begin {: at:n :}
+      a u at COMMA-END {: end:n :}
+      e a at + end at - MEMBER-OF? FITS
+      end 1+ end u <
+   while repeat drop ;
+
+\ `Namespace.Name'value'`, the value one member's name, or a flags type's
+\ names joined by `,`.
+: ENUM-LITERAL ( ^predicate ^enum-type str -- )
+   {: p:^ e:^ v:^ vl:n :}
+   e ENUM-TYPE-FLAGS @ if e v vl FLAGS else e v vl MEMBER-OF? FITS then
+   p e ENUM-TYPE-NAMESPACE @ SPAN:$ ESCAPED p s" ." RAW
+   p e ENUM-TYPE-NAME @ SPAN:$ ESCAPED
+   p s" '" RAW p v vl ESCAPED p s" '" RAW ;
+
+\ Each arm checks the value, then writes its literal; V2's datetime
+\ literal is the checked UTC text without its `Z`.
+: LITERAL ( ^predicate ^key-ref str -- )
+   {: p:^ k:^ v:^ vl:n :}
+   k KEY-REF-KIND @ MATCH key-kind
+      string OF p v vl QUOTED ENDOF
+      boolean OF v vl BOOLEAN p v vl ESCAPED ENDOF
+      guid OF v vl GUID p s" guid" v vl V2-TAGGED ENDOF
+      binary OF p v vl BINARY ENDOF
+      byte OF p v vl 0 255 INTEGRAL ENDOF
+      sbyte OF p v vl -128 127 INTEGRAL ENDOF
+      int16 OF p v vl -32768 32767 INTEGRAL ENDOF
+      int32 OF p v vl -2147483648 2147483647 INTEGRAL ENDOF
+      int64 OF p v vl INT64 ENDOF
+      decimal OF v vl DECIMAL p v vl s" M" V2-SUFFIXED ENDOF
+      double OF v vl FLOAT p v vl s" d" V2-SUFFIXED ENDOF
+      single OF v vl FLOAT p v vl s" f" V2-SUFFIXED ENDOF
+      date-time OF v vl UTC p s" datetime" v vl 1- TAGGED ENDOF
+      date-time-offset OF p v vl DATE-TIME-OFFSET ENDOF
+      time OF v vl TIME p s" time" v vl TAGGED ENDOF
+      date OF v vl DATE p v vl ESCAPED ENDOF
+      time-of-day OF v vl TIME-OF-DAY p v vl ESCAPED ENDOF
+      duration OF v vl DURATION p s" duration" v vl TAGGED ENDOF
+      enumeration OF p k KEY-REF-ENUM-TYPE @ v vl ENUM-LITERAL ENDOF
+      undeclared OF E-KEY throw ENDOF
+   ;MATCH ;
 
 \ A rejection's text: SAY adds text as given, SAY-QUOTED in backticks with
 \ `...` after it when the bool says it was cut.
@@ -331,7 +317,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 : SAY-TYPE ( ^predicate ^property -- )
    PROPERTY-TYPE$ false SAY-QUOTED ;
 
-\ The property's type has a row, which the value does not fit.
+\ The value does not fit the property's type.
 : VALUE-TEXT ( ^predicate ^property str -- )
    {: p:^ pr:^ v:^ vl:n :}
    p s" expected a " SAY p pr SAY-TYPE
@@ -340,14 +326,12 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    p s" ; give " SAY p pr SAY-NAME
    p s"  a value in that type's form" SAY ;
 
-\ No row takes the property's type.
-: TYPE-TEXT ( ^predicate ^property -- )
+\ The property's type is one the document does not declare.
+: UNDECLARED-TEXT ( ^predicate ^property -- )
    {: p:^ pr:^ :}
-   p s" expected a key property of a type OData V" SAY
-   p p PREDICATE-V2 @ if s" 2" else s" 4" then SAY
-   p s"  writes in a key, found " SAY p pr SAY-TYPE
-   p s"  for key property " SAY p pr SAY-NAME
-   p s" ; address the entity without a key predicate" SAY ;
+   p s" expected " SAY p pr SAY-NAME
+   p s"  to have a type the document declares, found " SAY p pr SAY-TYPE
+   p s" ; give METADATA a document that declares " SAY p pr SAY-TYPE ;
 
 \ Throws E-KEY with the text WRITE gives; the text is freed once
 \ REASON:THROW has copied it, and on WRITE's throw.
@@ -358,26 +342,31 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
       p PREDICATE-TEXT @ BUF:SPAN$ BUF:BLEN>N E-KEY REASON:THROW ;]
    [: p PREDICATE-TEXT @ BUF:DISPOSE ;] finally ;
 
-\ The value's literal; a value LITERAL throws E-KEY for, or a type no row
-\ takes, is E-KEY with its text, any other code thrown on.
-: CHECKED-LITERAL ( ^predicate ^property str -- )
-   {: p:^ pr:^ v:^ vl:n :}
-   false [: drop p pr PROPERTY-TYPE$ v vl LITERAL ;] catch
-   {: taken code:n :}
-   code E-KEY = if p [: pr v vl VALUE-TEXT ;] REJECT then
-   code 0<> if code throw then
-   taken 0= if p [: pr TYPE-TEXT ;] REJECT then ;
+\ The value's literal; a value LITERAL throws E-KEY for is E-KEY with its
+\ text, any other code thrown on.
+: CHECKED-LITERAL ( ^predicate ^key-ref str -- )
+   {: p:^ k:^ v:^ vl:n :}
+   [: p k v vl LITERAL ;] catch {: code:n :}
+   code E-KEY = if
+      k KEY-REF-KIND @ KEY-KIND-UNDECLARED KEY-KIND-EQ if
+         [: k KEY-REF-PROPERTY @ UNDECLARED-TEXT ;]
+      else
+         [: k KEY-REF-PROPERTY @ v vl VALUE-TEXT ;]
+      then p swap REJECT
+   then
+   code 0<> if code throw then ;
 
 \ The separator and the name go before the callback, so E-KEY follows the
 \ callback that gave the value with nothing written between.
-: KEY-PART ( ^property ^predicate [ ^property -- str ] -- )
-   {: pr:^ p:^ q :}
+: KEY-PART ( ^key-ref ^predicate [ ^property -- str ] -- )
+   {: k:^ p:^ q :}
+   k KEY-REF-PROPERTY @ {: pr:^ :}
    p PREDICATE-WRITTEN @ 0 > if p s" ," RAW then
    p PREDICATE-KEYS @ 1 > if
       p pr PROPERTY-NAME$ ESCAPED p s" =" RAW
    then
    pr q execute {: v:^ vl:n :}
-   p pr v vl CHECKED-LITERAL
+   p k v vl CHECKED-LITERAL
    1 p PREDICATE-WRITTEN +! ;
 
 : WRITE-PREDICATE ( ^entity-type [ ^property -- ^u8 n ] SPAN:span<u8> ^u8 NUM:alloc-byte-len -- n )
@@ -386,9 +375,9 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    at PREDICATE-BYTES + p PREDICATE-TEXT !
    s p PREDICATE-REST !
    t TYPE-V2? p PREDICATE-V2 !
-   t [: drop 1 p PREDICATE-KEYS +! ;] EACH-KEY
+   t [: drop 1 p PREDICATE-KEYS +! ;] KEY-REFS-OF
    p s" (" RAW
-   t [: p q KEY-PART ;] EACH-KEY
+   t [: p q KEY-PART ;] KEY-REFS-OF
    p s" )" RAW
    s SPAN:LEN p PREDICATE-REST @ SPAN:LEN - ;
 

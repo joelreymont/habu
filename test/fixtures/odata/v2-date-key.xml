@@ -1,0 +1,12 @@
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="N" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">
+      <EntityType Name="Day">
+        <Key>
+          <PropertyRef Name="On"/>
+        </Key>
+        <Property Name="On" Type="Edm.Date" Nullable="false"/>
+      </EntityType>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

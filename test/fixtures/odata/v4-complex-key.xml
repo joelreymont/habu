@@ -1,0 +1,15 @@
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="N" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Spot">
+        <Key>
+          <PropertyRef Name="At"/>
+        </Key>
+        <Property Name="At" Type="N.Place" Nullable="false"/>
+      </EntityType>
+      <ComplexType Name="Place">
+        <Property Name="Line" Type="Edm.String"/>
+      </ComplexType>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

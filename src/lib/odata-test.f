@@ -5,11 +5,11 @@ split-str
 \ records written plain and compared with one expected text, the V4 page
 \ also in 4.01's spelling; a binding to a singleton leading to no set; each
 \ corrupted copy rejected with its reason text, two with document text cut; and
-\ ODATA:KEY's literal for each Edm type a key may
+\ ODATA:KEY's literal for each type a key may
 \ hold, in both versions, over keys-v2.xml and keys-v4.xml, which hold one set
-\ per type keyed by it; a record copied as sets whose types share a member
-\ name with types they do not derive from; and a navigation of another type
-\ leading to no set.
+\ per type the version writes in a key, keyed by it; a record copied as sets
+\ whose types share a member name with types they do not derive from; and a
+\ navigation of another type leading to no set.
 \ Run: bin/hb --load src/lib/odata-test.f
 
 require src/lib/string.f
@@ -232,6 +232,18 @@ LINK-CAP BUFFER: LINK
    s" test/fixtures/odata/repeated-end-role.xml"
    s" 7:9: expected the two `End` elements of `Association` `AB` to have different roles, found `X`; give one `End` the other role"
    REJECTS
+   s" test/fixtures/odata/enum-entity-name.xml"
+   s" 10:7: expected `EnumType` to have a name not declared before, found `Color`; rename or remove it"
+   REJECTS
+   s" test/fixtures/odata/definition-enum-name.xml"
+   s" 7:7: expected `TypeDefinition` to have a name not declared before, found `Color`; rename or remove it"
+   REJECTS
+   s" test/fixtures/odata/enum-definition-name.xml"
+   s" 5:7: expected `EnumType` to have a name not declared before, found `Color`; rename or remove it"
+   REJECTS
+   s" test/fixtures/odata/enum-is-flags.xml"
+   s" 4:7: expected `IsFlags` of `EnumType` to be true or false, found `yes`; set `IsFlags` to true or false"
+   REJECTS
    s" test/fixtures/odata/mismatched-end.xml"
    s" 7:9: expected `</EntityType>`, found `EntityTypo`; close elements in the reverse of the order they were opened"
    XML:E-MALFORMED REJECTS-CODE ;
@@ -260,6 +272,21 @@ LINK-CAP BUFFER: LINK
    REJECTS
    s" test/fixtures/odata/second-container.xml"
    s" 69:7: expected no `EntityContainer` after the first, found `Extra`; move its contents into the first and remove it"
+   REJECTS
+   s" test/fixtures/odata/v2-date-key.xml"
+   s" 6:11: expected `Type` of key property `On` to be a type OData V2 writes in a key, found `Edm.Date`; give the key property a type OData V2 writes in a key, or take it out of the `Key`"
+   REJECTS
+   s" test/fixtures/odata/v2-enum-key.xml"
+   s" 6:11: expected `Type` of key property `On` to be a type OData V2 writes in a key, found `N.Day`; give the key property a type OData V2 writes in a key, or take it out of the `Key`"
+   REJECTS
+   s" test/fixtures/odata/v4-date-time-key.xml"
+   s" 6:11: expected `Type` of key property `At` to be a type OData V4 writes in a key, found `Edm.DateTime`; give the key property a type OData V4 writes in a key, or take it out of the `Key`"
+   REJECTS
+   s" test/fixtures/odata/v4-complex-key.xml"
+   s" 6:11: expected `Type` of key property `At` to be a type OData V4 writes in a key, found `N.Place`; give the key property a type OData V4 writes in a key, or take it out of the `Key`"
+   REJECTS
+   s" test/fixtures/odata/v4-collection-key.xml"
+   s" 6:11: expected `Type` of key property `At` to be a type OData V4 writes in a key, found `Collection(Edm.String)`; give the key property a type OData V4 writes in a key, or take it out of the `Key`"
    REJECTS ;
 
 : TEST-RESOLVE-SITE-TEXTS ( -- )
@@ -573,15 +600,6 @@ variable VALUE-LEN
    s" (datetimeoffset'2024-03-05T10%3A30%3A00Z')" WRITES
    m s" Time" s" PT10H30M00S" s" (time'PT10H30M00S')" WRITES
    m s" Binary" s" AQL/" s" (X'0102FF')" WRITES
-   m s" Date" s" 2024-03-05"
-   s" expected a key property of a type OData V2 writes in a key, found `Edm.Date` for key property `K`; address the entity without a key predicate"
-   REJECTS-KEY
-   m s" TimeOfDay" s" 10:30:00"
-   s" expected a key property of a type OData V2 writes in a key, found `Edm.TimeOfDay` for key property `K`; address the entity without a key predicate"
-   REJECTS-KEY
-   m s" Duration" s" P1D"
-   s" expected a key property of a type OData V2 writes in a key, found `Edm.Duration` for key property `K`; address the entity without a key predicate"
-   REJECTS-KEY
    m s" Int32" s" 4.2"
    s" expected a `Edm.Int32` value for key property `K`, found `4.2`; give `K` a value in that type's form"
    REJECTS-KEY
@@ -612,11 +630,20 @@ variable VALUE-LEN
    m s" TimeOfDay" s" 10:30:00.5" s" (10%3A30%3A00.5)" WRITES
    m s" Duration" s" P1DT2H" s" (duration'P1DT2H')" WRITES
    m s" Binary" s" AQI=" s" (binary'AQI%3D')" WRITES
-   m s" DateTime" s" 2024-03-05T10:30:00Z"
-   s" expected a key property of a type OData V4 writes in a key, found `Edm.DateTime` for key property `K`; address the entity without a key predicate"
+   m s" ByColor" s" Red" s" (keys.Color'Red')" WRITES
+   m s" ByAccess" s" Read,Write" s" (keys.Access'Read%2CWrite')" WRITES
+   m s" BySku" s" A-1" s" ('A-1')" WRITES
+   m s" ByColor" s" Green"
+   s" expected a `keys.Color` value for key property `K`, found `Green`; give `K` a value in that type's form"
    REJECTS-KEY
-   m s" Time" s" PT10H"
-   s" expected a key property of a type OData V4 writes in a key, found `Edm.Time` for key property `K`; address the entity without a key predicate"
+   m s" ByColor" s" Red,Blue"
+   s" expected a `keys.Color` value for key property `K`, found `Red,Blue`; give `K` a value in that type's form"
+   REJECTS-KEY
+   m s" ByAccess" s" Read,Exec"
+   s" expected a `keys.Access` value for key property `K`, found `Read,Exec`; give `K` a value in that type's form"
+   REJECTS-KEY
+   m s" ByOutside" s" Red"
+   s" expected `K` to have a type the document declares, found `C.Color`; give METADATA a document that declares `C.Color`"
    REJECTS-KEY
    m s" Guid" s" {0050568d-393c-1ed4-9d97-e2a6e1c5e8a1}"
    s" expected a `Edm.Guid` value for key property `K`, found `{0050568d-393c-1ed4-9d97-e2a6e1c...`; give `K` a value in that type's form"

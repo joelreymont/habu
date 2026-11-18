@@ -43,7 +43,7 @@ public
    ERROR:CODE E-METADATA
 -9931 s" a response body the library rejects: correct it where its reason text says"
    ERROR:CODE E-RESPONSE
--9932 s" a key value that does not fit its property's Edm type: correct it as its reason text says"
+-9932 s" a key value that does not fit its property's type: correct it as its reason text says"
    ERROR:CODE E-KEY
 
 private
@@ -78,8 +78,35 @@ STRUCTURE association DERIVE addr
    FIELD next ^association
 ;STRUCTURE
 
+\ A key property's type: an Edm type V2, V4 or both write in a key, a V4
+\ enumeration type, or `undeclared`, a V4 type the document does not declare.
+ENUM key-kind DERIVE eq
+   string boolean guid binary byte sbyte int16 int32 int64 decimal double
+   single date-time date-time-offset time date time-of-day duration
+   enumeration undeclared
+;ENUM
+
+STRUCTURE enum-member DERIVE addr
+   FIELD name SPAN:span<u8>
+   FIELD next ^enum-member
+;STRUCTURE
+
+\ A V4 EnumType; a value of a `flags` one names one or more members.
+STRUCTURE enum-type DERIVE addr
+   FIELD name SPAN:span<u8>
+   FIELD namespace SPAN:span<u8>
+   FIELD flags bool
+   FIELD members ^enum-member
+;STRUCTURE
+
+\ A V4 TypeDefinition's UnderlyingType.
+STRUCTURE type-definition DERIVE addr
+   FIELD underlying SPAN:span<u8>
+;STRUCTURE
+
 \ `names` maps a set or member name to its `named`; `targets` maps to a
 \ binding's target (V4) or an association set (V2).
+\ A key-ref's `enum-type` is set when its `kind` is `enumeration`.
 \ An entity type's `rank-end` is 0 until the walk of the base types leaves it.
 \ A property's `complex-type` is the complex type its Type names, or names in
 \ `Collection(...)` with `many` set; null for any other.
@@ -152,6 +179,8 @@ STRUCTURE navigation OPAQUE DERIVE addr
 STRUCTURE key-ref OPAQUE DERIVE addr
    FIELD name SPAN:span<u8>
    FIELD property ^property
+   FIELD kind key-kind
+   FIELD enum-type ^enum-type
    FIELD offset n
    FIELD next ^key-ref
 ;STRUCTURE
@@ -211,13 +240,14 @@ STRUCTURE alias DERIVE addr
 ENUM kind DERIVE tag
    type-name association-name property-name navigation-name end-role
    set-name member-name alias-name visible keyed term binding-path
-   binding-second link-second singleton-name
+   binding-second link-second singleton-name enum-name definition-name
 ;ENUM
 
 \ The open CSDL element; `skip` is any element the table does not name.
 ENUM phase DERIVE eq
    document edmx reference data-services schema type-body key property-body
-   container set-body association-body set-pairs annotations skip
+   container set-body association-body set-pairs annotations enum-body
+   skip
 ;ENUM
 
 \ An element's namespace: EDMX of V2 or V4, CSDL of V2 (1.0, 1.1, 2.0) or
@@ -248,6 +278,7 @@ STRUCTURE doc DERIVE addr
    FIELD set ^entity-set
    FIELD association-set ^association-set
    FIELD block ^block
+   FIELD enum-type ^enum-type
    FIELD set-last ^entity-set
    FIELD property-last ^property
    FIELD navigation-last ^navigation
@@ -286,6 +317,9 @@ ARENA ASSOCIATION-SETS association-set
 ARENA BINDINGS binding
 ARENA BLOCKS block
 ARENA ALIASES alias
+ARENA ENUM-TYPES enum-type
+ARENA ENUM-MEMBERS enum-member
+ARENA DEFINITIONS type-definition
 ARENA NAMEDS named
 
 CAST: >PROPS ( ^u8 -- ^^property )
@@ -388,10 +422,12 @@ CAST: >RECORD ( n -- ^t )
    d line FMT:INT$ ADD d s" :" ADD d col FMT:INT$ ADD
    d s" : expected " ADD ;
 
+\ Throws E-METADATA with the text built so far.
+: REJECT-DOC ( ^doc -- ) DOC-TEXT @ BUF:SPAN$ BUF:BLEN>N E-METADATA REASON:THROW ;
+
 : FIX ( ^doc ^u8 n -- )
    {: d:^ fix:^ len:n :}
-   d s" ; " ADD d fix len ADD
-   d DOC-TEXT @ BUF:SPAN$ BUF:BLEN>N E-METADATA REASON:THROW ;
+   d s" ; " ADD d fix len ADD d REJECT-DOC ;
 
 \ Found text as given: none, a count, a description.
 : FOUND ( ^doc ^u8 n ^u8 n -- )
@@ -489,6 +525,7 @@ CAST: >RECORD ( n -- ^t )
       association-body OF PHASE-SCHEMA ENDOF
       set-pairs OF PHASE-CONTAINER ENDOF
       annotations OF PHASE-SCHEMA ENDOF
+      enum-body OF PHASE-SCHEMA ENDOF
       skip OF PHASE-SKIP ENDOF
    ;MATCH ;
 
@@ -615,6 +652,14 @@ CAST: >RECORD ( n -- ^t )
 : FIND-TYPE ( ^doc str -- ^entity-type )
    {: d:^ name:^ len:n :}
    d KIND-TYPE-NAME name len REFERENCE-KEY d FIND ;
+
+: FIND-ENUM ( ^doc str -- ^enum-type )
+   {: d:^ name:^ len:n :}
+   d KIND-ENUM-NAME name len REFERENCE-KEY d FIND ;
+
+: FIND-DEFINITION ( ^doc str -- ^type-definition )
+   {: d:^ name:^ len:n :}
+   d KIND-DEFINITION-NAME name len REFERENCE-KEY d FIND ;
 
 : FIND-ASSOCIATION ( ^doc str -- ^association )
    {: d:^ name:^ len:n :}
@@ -875,9 +920,13 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ k:kind name:SPAN:span<u8> :}
    d k d DOC-NAMESPACE @ SPAN:$ name SPAN:$ QUALIFIED-KEY ;
 
+\ A schema's entity, complex, enumeration and defined types share one name
+\ space.
 : TYPE-TAKEN? ( ^doc SPAN:span<u8> -- bool )
    {: d:^ name:SPAN:span<u8> :}
-   d KIND-TYPE-NAME name DECLARED-KEY d HELD? ;
+   d KIND-TYPE-NAME name DECLARED-KEY d HELD?
+   d KIND-ENUM-NAME name DECLARED-KEY d HELD? or
+   d KIND-DEFINITION-NAME name DECLARED-KEY d HELD? or ;
 
 : TYPE-START ( XML:reader ^doc bool -- XML:reader )
    {: d:^ complex:bool :}
@@ -907,14 +956,20 @@ CAST: >RECORD ( n -- ^t )
    d KIND-PROPERTY-NAME t name SPAN:$ OWNED-KEY d HELD?
    d KIND-NAVIGATION-NAME t name SPAN:$ OWNED-KEY d HELD? or ;
 
-: NULLABLE ( XML:reader ^doc -- XML:reader bool )
-   {: d:^ :}
-   d s" Nullable" ATTR$ 0= if 2drop true exit then
+\ The boolean attribute NAME of the current element, DEFAULT when absent.
+: BOOL-ATTR ( XML:reader ^doc str bool -- XML:reader bool )
+   {: d:^ name:^ len:n default:bool :}
+   d name len ATTR$ 0= if 2drop default exit then
    {: v:^ vl:n :}
    v vl s" true" STR= if true exit then
    v vl s" false" STR= if false exit then
-   d PLACE-HERE d s" `Nullable` of `Property` to be true or false" ADD
-   d v vl s" set `Nullable` to true or false" FOUND-QUOTED ;
+   d PLACE-HERE XML:LOCAL$ {: el:^ el-len:n :}
+   d s" `" ADD d name len ADD d s" ` of `" ADD d el el-len ADD
+   d s" ` to be true or false, found " ADD d v vl QUOTE
+   d s" ; set `" ADD d name len ADD d s" ` to true or false" ADD d REJECT-DOC ;
+
+: NULLABLE ( XML:reader ^doc -- XML:reader bool )
+   s" Nullable" true BOOL-ATTR ;
 
 : ADD-PROPERTY ( ^doc ^property -- )
    {: d:^ p:^ :}
@@ -1184,6 +1239,40 @@ CAST: >RECORD ( n -- ^t )
    then
    d SKIP-START ;
 
+: ENUM-START ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d name TYPE-TAKEN? if d name REPEATED then
+   d DOC-ARENA @ ENUM-TYPES-NEW {: e:^ :}
+   name e ENUM-TYPE-NAME !
+   d DOC-NAMESPACE @ e ENUM-TYPE-NAMESPACE !
+   d s" IsFlags" false BOOL-ATTR e ENUM-TYPE-FLAGS !
+   d KIND-ENUM-NAME name DECLARED-KEY d e REMEMBER-AT
+   e d DOC-ENUM-TYPE !
+   d PHASE-ENUM-BODY ENTER ;
+
+: ENUM-MEMBER-START ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d DOC-ARENA @ ENUM-MEMBERS-NEW {: m:^ :}
+   d s" Name" NEED m ENUM-MEMBER-NAME !
+   d DOC-ENUM-TYPE @ {: e:^ :}
+   e ENUM-TYPE-MEMBERS @ m ENUM-MEMBER-NEXT ! m e ENUM-TYPE-MEMBERS !
+   d SKIP-START ;
+
+: IN-ENUM ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d SPACE-EDM4 s" Member" IS? if d ENUM-MEMBER-START exit then
+   d SKIP-START ;
+
+: DEFINITION-START ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d name TYPE-TAKEN? if d name REPEATED then
+   d DOC-NAMES @ DEFINITIONS-NEW {: t:^ :}
+   d s" UnderlyingType" NEED t TYPE-DEFINITION-UNDERLYING !
+   d KIND-DEFINITION-NAME name DECLARED-KEY d t REMEMBER-AT
+   d SKIP-START ;
+
 : IN-SCHEMA ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d d CSDL s" EntityType" IS? if d false TYPE-START exit then
@@ -1191,6 +1280,8 @@ CAST: >RECORD ( n -- ^t )
    d d CSDL s" Association" IS? if d ASSOCIATION-START exit then
    d d CSDL s" EntityContainer" IS? if d CONTAINER-START exit then
    d SPACE-EDM4 s" Annotations" IS? if d BLOCK-START exit then
+   d SPACE-EDM4 s" EnumType" IS? if d ENUM-START exit then
+   d SPACE-EDM4 s" TypeDefinition" IS? if d DEFINITION-START exit then
    d SKIP-START ;
 
 \ A start tag: its namespace is classified, then the open phase takes it.
@@ -1217,6 +1308,7 @@ CAST: >RECORD ( n -- ^t )
       association-body OF d IN-ASSOCIATION ENDOF
       set-pairs OF d IN-SET-PAIRS ENDOF
       annotations OF d IN-ANNOTATIONS ENDOF
+      enum-body OF d IN-ENUM ENDOF
       skip OF d DEEPER ENDOF
    ;MATCH ;
 
@@ -1297,6 +1389,101 @@ CAST: >RECORD ( n -- ^t )
       n NAVIGATION-NEXT @
    repeat drop ;
 
+\ Each takes an Edm type's name without `Edm.` and answers its kind,
+\ none for a name it does not list.
+: SHARED-KIND ( str -- option<key-kind> )
+   {: n:^ nl:n :}
+   n nl s" String" STR= if KEY-KIND-STRING OPTION:SOME exit then
+   n nl s" Boolean" STR= if KEY-KIND-BOOLEAN OPTION:SOME exit then
+   n nl s" Guid" STR= if KEY-KIND-GUID OPTION:SOME exit then
+   n nl s" Binary" STR= if KEY-KIND-BINARY OPTION:SOME exit then
+   n nl s" Byte" STR= if KEY-KIND-BYTE OPTION:SOME exit then
+   n nl s" SByte" STR= if KEY-KIND-SBYTE OPTION:SOME exit then
+   n nl s" Int16" STR= if KEY-KIND-INT16 OPTION:SOME exit then
+   n nl s" Int32" STR= if KEY-KIND-INT32 OPTION:SOME exit then
+   n nl s" Int64" STR= if KEY-KIND-INT64 OPTION:SOME exit then
+   n nl s" Decimal" STR= if KEY-KIND-DECIMAL OPTION:SOME exit then
+   n nl s" Double" STR= if KEY-KIND-DOUBLE OPTION:SOME exit then
+   n nl s" Single" STR= if KEY-KIND-SINGLE OPTION:SOME exit then
+   n nl s" DateTimeOffset" STR= if
+      KEY-KIND-DATE-TIME-OFFSET OPTION:SOME exit
+   then
+   OPTION:NONE ;
+
+: V2-KIND ( str -- option<key-kind> )
+   {: n:^ nl:n :}
+   n nl s" DateTime" STR= if KEY-KIND-DATE-TIME OPTION:SOME exit then
+   n nl s" Time" STR= if KEY-KIND-TIME OPTION:SOME exit then
+   n nl SHARED-KIND ;
+
+: V4-KIND ( str -- option<key-kind> )
+   {: n:^ nl:n :}
+   n nl s" Date" STR= if KEY-KIND-DATE OPTION:SOME exit then
+   n nl s" TimeOfDay" STR= if KEY-KIND-TIME-OF-DAY OPTION:SOME exit then
+   n nl s" Duration" STR= if KEY-KIND-DURATION OPTION:SOME exit then
+   n nl SHARED-KIND ;
+
+: PRIMITIVE? ( str -- bool )
+   {: t:^ tl:n :}
+   tl 4 < if false exit then
+   t 4 s" Edm." STR= ;
+
+\ The kind of key the type TYPE is in VERSION's key predicate, none for a
+\ type that version writes in no key.
+: TYPE-KIND ( str version -- option<key-kind> )
+   {: t:^ tl:n v:version :}
+   t tl PRIMITIVE? 0= if OPTION:NONE exit then
+   t 4 + tl 4 - v V2-VERSION? if V2-KIND else V4-KIND then ;
+
+: UNKEYED ( ^doc ^key-ref ^property -- )
+   {: d:^ k:^ p:^ :}
+   d V2? if s" 2" else s" 4" then {: ver:^ vl:n :}
+   d k KEY-REF-OFFSET @ PLACE
+   d s" `Type` of key property " ADD d k KEY-REF-NAME @ QUOTE-SPAN
+   d s"  to be a type OData V" ADD d ver vl ADD d s"  writes in a key" ADD
+   d s" , found " ADD d p PROPERTY-TYPE @ QUOTE-SPAN
+   d s" ; give the key property a type OData V" ADD d ver vl ADD
+   d s"  writes in a key, or take it out of the `Key`" ADD d REJECT-DOC ;
+
+\ Sets K's kind from the Edm type TYPE, which P's type is or is defined
+\ over, rejecting a type the document's version writes in no key.
+: EDM-KIND ( ^doc ^key-ref ^property str -- )
+   {: d:^ k:^ p:^ t:^ tl:n :}
+   t tl d DOC-MODEL @ METADATA-VERSION @ TYPE-KIND
+   MATCH option
+      none OF d k p UNKEYED ENDOF
+      some OF k KEY-REF-KIND ! ENDOF
+   ;MATCH ;
+
+\ Whether TYPE is one namespace-qualified name, which another document can
+\ declare; `Collection(...)` is not.
+: QUALIFIED? ( str -- bool )
+   {: t:^ tl:n :}
+   t tl s" Collection(" STARTS-WITH? if false exit then
+   t tl QUALIFIER {: q:^ ql:n n:^ nl:n :} nl 0 > ;
+
+: ENUM-KIND ( ^doc ^key-ref ^property -- )
+   {: d:^ k:^ p:^ :}
+   p PROPERTY-TYPE @ SPAN:$ {: t:^ tl:n :}
+   d t tl FIND-ENUM {: e:^enum-type :}
+   e NULL-PTR = if
+      t tl QUALIFIED? 0= d t tl FIND-TYPE NULL-PTR <> or if d k p UNKEYED then
+      KEY-KIND-UNDECLARED k KEY-REF-KIND ! exit
+   then
+   KEY-KIND-ENUMERATION k KEY-REF-KIND !
+   e k KEY-REF-ENUM-TYPE ! ;
+
+\ Sets K's kind from its property P's type: an Edm type, a V4 type definition
+\ over one or enumeration type, else `undeclared`, rejecting any other.
+: KEY-REF-TYPE ( ^doc ^key-ref ^property -- )
+   {: d:^ k:^ p:^ :}
+   p PROPERTY-TYPE @ SPAN:$ {: t:^ tl:n :}
+   t tl PRIMITIVE? if d k p t tl EDM-KIND exit then
+   d V2? if d k p UNKEYED then
+   d t tl FIND-DEFINITION {: def:^type-definition :}
+   def NULL-PTR = if d k p ENUM-KIND exit then
+   d k p def TYPE-DEFINITION-UNDERLYING @ SPAN:$ EDM-KIND ;
+
 \ A property in T's Key is marked under `keyed`.
 : KEYED? ( ^doc ^entity-type ^property -- bool )
    {: d:^ t:^ p:^ :}
@@ -1317,7 +1504,8 @@ CAST: >RECORD ( n -- ^t )
       s" name a property the type declares or inherits, each once" FOUND-QUOTED
    then
    d KIND-KEYED t p PAIR-KEY d 0 REMEMBER
-   p k KEY-REF-PROPERTY ! ;
+   p k KEY-REF-PROPERTY !
+   d k p KEY-REF-TYPE ;
 
 \ Sets T's fields from its base's, then holds its members and resolves its
 \ Key.
@@ -2114,6 +2302,12 @@ CAST: >RECORD ( n -- ^t )
       ANNOTATION-NEXT @
    repeat drop name 0 false ;
 
+: KEY-REFS-OF ( ^entity-type [ ^key-ref -- ] -- )
+   {: t:^ q :}
+   t ENTITY-TYPE-KEY-HOLDER @ ENTITY-TYPE-KEY @ begin dup NULL-PTR <> while
+      dup q execute KEY-REF-NEXT @
+   repeat drop ;
+
 public
 
 : METADATA ( ^ARENA:arena ^u8 n -- ^metadata )
@@ -2151,10 +2345,8 @@ public
 
 \ The key in declared order: the type's own, else its nearest base type's.
 : EACH-KEY ( ^entity-type [ ^property -- ] -- )
-   {: t:^ q :}
-   t ENTITY-TYPE-KEY-HOLDER @ ENTITY-TYPE-KEY @ begin dup NULL-PTR <> while
-      dup KEY-REF-PROPERTY @ q execute KEY-REF-NEXT @
-   repeat drop ;
+   {: q :}
+   [: KEY-REF-PROPERTY @ q execute ;] KEY-REFS-OF ;
 
 : PROPERTY-NAME$ ( ^property -- str ) PROPERTY-NAME @ SPAN:$ ;
 : PROPERTY-TYPE$ ( ^property -- str ) PROPERTY-TYPE @ SPAN:$ ;

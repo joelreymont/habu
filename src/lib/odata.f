@@ -18,13 +18,16 @@ split-str
 \ Y; fix`: L:C is the line and byte column in the document, from 1, counted
 \ as the XML reader counts its own, and a name or value from the document is
 \ cut at 32 bytes, with `...` after it, a namespace URI aside, shown whole.
-\ Duplicate names, names that resolve to nothing and an entity set whose type
-\ has no Key are rejected. A body the XML reader rejects throws the reader's
-\ code with its text. A rejected response is E-RESPONSE with text of the same
-\ form, placed as the JSON reader places its own, in the bytes the reader was
-\ given; a body the JSON reader rejects in PAGE or RECORD$ throws the reader's
-\ code with its text. No count, size or depth is limited but by memory, a
-\ count past 18 digits aside.
+\ Duplicate names, names that resolve to nothing, an entity set whose type
+\ has no Key and a key property of a type the version's key predicate cannot
+\ hold are rejected; V4's holds an enumeration type and a type definition over
+\ a type it holds. A V4 key property whose type the document does not declare
+\ loads, and KEY rejects any value for it. A body the XML reader rejects
+\ throws the reader's code with its text. A rejected response is E-RESPONSE
+\ with text of the same form, placed as the JSON reader places its own, in the
+\ bytes the reader was given; a body the JSON reader rejects in PAGE or
+\ RECORD$ throws the reader's code with its text. No count, size or depth is
+\ limited but by memory, a count past 18 digits aside.
 \ A navigation's target depends on the source set: NAVIGATION-TARGET takes a
 \ set and a navigation property of its type. A V4 binding's Target names an
 \ entity set or a singleton; a binding to a singleton or along a containment
@@ -57,11 +60,11 @@ split-str
 \ rejected. V2 and V4 bodies of the same records give the same members; a
 \ value both versions write in one JSON form gives the same bytes.
 \ KEY writes an entity's key predicate from its key values' text, each
-\ checked against its property's Edm type and written in the version's
-\ literal form: a value that does not fit its type, or a type the version
-\ writes in no key, is E-KEY, with REASON text naming the property, its type
-\ and the value that does not fit, thrown straight after the callback that
-\ gave it.
+\ checked against its property's type and written in the version's literal
+\ form, a V4 enumeration value as the type's qualified name and the member
+\ names in single quotes: a value that does not fit its type is E-KEY, with
+\ REASON text naming the property, its type and, for a type the document
+\ declares, the value, thrown straight after the callback that gave it.
 \ STORAGE CLASS. CALLER-OWNED: the model lives in the arena METADATA is given
 \ and is freed with it; a rejection leaves partial records there until the
 \ caller resets or releases it. METADATA's scratch, as large as the document,

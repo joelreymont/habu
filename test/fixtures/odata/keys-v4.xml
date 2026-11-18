@@ -98,17 +98,38 @@
         </Key>
         <Property Name="K" Type="Edm.Binary" Nullable="false"/>
       </EntityType>
-      <EntityType Name="DateTime">
+      <EnumType Name="Color">
+        <Member Name="Red"/>
+        <Member Name="Blue"/>
+      </EnumType>
+      <EnumType Name="Access" IsFlags="true">
+        <Member Name="Read" Value="1"/>
+        <Member Name="Write" Value="2"/>
+      </EnumType>
+      <TypeDefinition Name="Sku" UnderlyingType="Edm.String"/>
+      <EntityType Name="ByColor">
         <Key>
           <PropertyRef Name="K"/>
         </Key>
-        <Property Name="K" Type="Edm.DateTime" Nullable="false"/>
+        <Property Name="K" Type="keys.Color" Nullable="false"/>
       </EntityType>
-      <EntityType Name="Time">
+      <EntityType Name="ByAccess">
         <Key>
           <PropertyRef Name="K"/>
         </Key>
-        <Property Name="K" Type="Edm.Time" Nullable="false"/>
+        <Property Name="K" Type="keys.Access" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="BySku">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="keys.Sku" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="ByOutside">
+        <Key>
+          <PropertyRef Name="K"/>
+        </Key>
+        <Property Name="K" Type="C.Color" Nullable="false"/>
       </EntityType>
       <EntityContainer Name="Keys">
         <EntitySet Name="String" EntityType="keys.String"/>
@@ -127,8 +148,10 @@
         <EntitySet Name="TimeOfDay" EntityType="keys.TimeOfDay"/>
         <EntitySet Name="Duration" EntityType="keys.Duration"/>
         <EntitySet Name="Binary" EntityType="keys.Binary"/>
-        <EntitySet Name="DateTime" EntityType="keys.DateTime"/>
-        <EntitySet Name="Time" EntityType="keys.Time"/>
+        <EntitySet Name="ByColor" EntityType="keys.ByColor"/>
+        <EntitySet Name="ByAccess" EntityType="keys.ByAccess"/>
+        <EntitySet Name="BySku" EntityType="keys.BySku"/>
+        <EntitySet Name="ByOutside" EntityType="keys.ByOutside"/>
       </EntityContainer>
     </Schema>
   </edmx:DataServices>

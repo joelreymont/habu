@@ -92,24 +92,6 @@
         </Key>
         <Property Name="K" Type="Edm.Binary" Nullable="false"/>
       </EntityType>
-      <EntityType Name="Date">
-        <Key>
-          <PropertyRef Name="K"/>
-        </Key>
-        <Property Name="K" Type="Edm.Date" Nullable="false"/>
-      </EntityType>
-      <EntityType Name="TimeOfDay">
-        <Key>
-          <PropertyRef Name="K"/>
-        </Key>
-        <Property Name="K" Type="Edm.TimeOfDay" Nullable="false"/>
-      </EntityType>
-      <EntityType Name="Duration">
-        <Key>
-          <PropertyRef Name="K"/>
-        </Key>
-        <Property Name="K" Type="Edm.Duration" Nullable="false"/>
-      </EntityType>
       <EntityContainer Name="Keys" m:IsDefaultEntityContainer="true">
         <EntitySet Name="String" EntityType="KEYS.String"/>
         <EntitySet Name="Boolean" EntityType="KEYS.Boolean"/>
@@ -126,9 +108,6 @@
         <EntitySet Name="DateTimeOffset" EntityType="KEYS.DateTimeOffset"/>
         <EntitySet Name="Time" EntityType="KEYS.Time"/>
         <EntitySet Name="Binary" EntityType="KEYS.Binary"/>
-        <EntitySet Name="Date" EntityType="KEYS.Date"/>
-        <EntitySet Name="TimeOfDay" EntityType="KEYS.TimeOfDay"/>
-        <EntitySet Name="Duration" EntityType="KEYS.Duration"/>
       </EntityContainer>
     </Schema>
   </edmx:DataServices>
