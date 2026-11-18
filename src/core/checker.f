@@ -13971,26 +13971,29 @@ public
 
 private
 
-\ Signed comparisons, as the engine's head makes them: `U>` loads after this file.
+\ A name of u bytes copied at cp@ and used bytes after it fit when they end at
+\ or below the ceiling and a long name's copy ends below it, as def-open's name
+\ test demands. Signed comparisons, as the engine's head makes them: `U>` loads
+\ after this file.
 : FITS-AFTER? ( n n -- bool ) {: u:n used:n :}
-   u DNAME-INL > 0= IF RES-TRUE EXIT THEN
-   CEILING {: ceil:n :}
-   ceil cp@ > 0= IF RES-FALSE EXIT THEN
-   ceil cp@ - {: room:n :}
-   room used > 0= IF RES-FALSE EXIT THEN
-   room used - {: left:n :}
-   left u SPAN > ;
+   u SPAN {: span:n :}
+   CEILING cp@ - {: room:n :}
+   span 0 > IF room span > 0= IF RES-FALSE EXIT THEN THEN
+   span used + room > 0= ;
 
 public
 
+\ Rejects the name a u, empty when its copy is placed, and used bytes of code
+\ after it at cp@, placed at t tu, unless they fit below the ceiling. A
+\ definition places at least one byte.
 : ROOM ( ^u8 n ^u8 n n -- ) {: a:^ u:n t:^ tu:n used:n :}
    u used FITS-AFTER? IF EXIT THEN
    s" E-CODE-SPACE-FULL" REJECTION:OPEN
-   s" code space has no room for the name `" REJECTION:EMIT-STR
-   a u REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-   t tu REJECTION:AT  s" no code room" REJECTION:EMIT-STR
+   s" the code space is full at `" REJECTION:EMIT-STR
+   t tu REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
+   t tu REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
    REJECTION:HELP
-   s" shorten the name, or define fewer words in this load" REJECTION:EMIT-STR
+   s" load fewer or smaller definitions into this image" REJECTION:EMIT-STR
    EXIT-STATUS:FULL REJECTION:STOP ;
 ;package
 

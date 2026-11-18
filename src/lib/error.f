@@ -724,7 +724,6 @@ generates: FAULT ( -- n )
 -8407 s" the does> cut the engine recorded is not just past a `does> ` in the definition source: it lies outside the source, or after other bytes - the source and the pending definition disagree" ERROR:FAULT E-NFEED-CUT
 -8480 s" a place read as the kind it is not: the register of a data-stack slot, or the slot index of a register" ERROR:CODE E-NEFF-KIND
 -8506 s" a branch distance that is not a whole instruction or does not fit the field its form encodes it in, or an adr or adrp distance its 21-bit field cannot hold" ERROR:CODE E-A64EMIT-REACH
--8561 s" the emission does not fit in what is left of the code arena under the engine's own end reserve" ERROR:CODE E-NPUB-ROOM
 -8563 s" an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned" ERROR:FAULT E-NPUB-OFFSET
 -8564 s" a reader asked src/compiler/native/emission.f about rows no backend has sealed, or that its RETIRE row has cleared; rows opened over live ones or added to none; a placement asked of an unplaced emission" ERROR:FAULT E-NEMIT-STATE
 -8565 s" a row index at or past the count the sealed emission holds, a row offset outside the emission, an empty emission, a trailing return longer than it, or a call site of neither kind" ERROR:FAULT E-NEMIT-ROW

@@ -48,10 +48,14 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 : APPEND-PENDING ( n -- )
    ndict-append ;
 
-: ROOM-CK ( n -- n ) {: size:n :}
-   cp@ {: fn:n :}
-   fn size + CODE-SPACE:CEILING > if E-NPUB-ROOM throw then
-   fn ;
+\ Rejects size bytes of code the ceiling has no room for at cp@, the pending
+\ definition's name copied before it.
+: CODE-ROOM ( n -- ) {: size:n :}
+   NULL-PTR 0 ndict@ XREF-REC XREF-NAME$ size CODE-SPACE:ROOM ;
+
+\ The code slot size bytes go to.
+: ROOM-CK ( n -- n )
+   CODE-ROOM cp@ ;
 
 : PLACE-CK ( n -- ) {: fn:n :}
    NEMIT:PLACED? 0= if exit then
@@ -184,7 +188,7 @@ create TRAILER TRAILER-BYTES allot
 : DOES-PROVE ( n -- n n n n ) {: fun:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx DOES-NAME-PAD {: pad:n :}
-   fn size + pad + CODE-SPACE:CEILING > if E-NPUB-ROOM throw then
+   size pad + CODE-ROOM
    fun NEMIT:FUNCTION-OFFSET@ {: off:n :}
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
@@ -212,7 +216,7 @@ public
 
 : PUBLISH-PENDING-DEFER ( n -- ) {: cell:n :}
    PENDING-PROVE {: idx:n fn:n size:n :}
-   fn size + TRAILER-BYTES + CODE-SPACE:CEILING > if E-NPUB-ROOM throw then
+   size TRAILER-BYTES + CODE-ROOM
    fn NSHADOW:SOURCE-FUNS
    idx fn size cell COMMIT-OWNED
    idx NSHADOW:PUBLISH

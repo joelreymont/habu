@@ -1527,18 +1527,6 @@ private
    off i BODY-ITEMS:OFF ITEM!  u i BODY-ITEMS:LEN ITEM!
    i 1 + BODY-ITEMS:COUNT-CELL CELL! ;
 
-\ The comparison is signed, as the engine's head makes it.
-: DEF-CODE-ROOM ( -- )
-   cp@ CODE-SPACE:CEILING >= if
-      s" E-CODE-SPACE-FULL" REJECTION:OPEN
-      s" the code space is full at `" REJECTION:EMIT-STR
-      TOKEN$ REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR
-      TOKEN$ REJECTION:AT  s" no code space left" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" load fewer or smaller definitions into this image" REJECTION:EMIT-STR
-      EXIT-STATUS:FULL REJECTION:STOP
-   then ;
-
 \ The rejections name `:` and `kernel:` as spelled, `trusted:` as the reader
 \ keyword it is.
 : DEF-NAME ( bool -- ) {: trusted:bool :}
@@ -1741,7 +1729,7 @@ public
    a u wid WL-PROBE XREF-FOUND? if
       t tu PKG-DUPLICATE
    then
-   a u t tu PKG-CODE-ROOM
+   a u t tu 1 CODE-SPACE:ROOM
    SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if a u t tu SEALED-FAIL then
    kind DKIND:MASK and {: dk:n :}
    \ A value or an address in a target section stays unmarked: it answers on the host.
@@ -1778,7 +1766,6 @@ private
       DEF-NO-COMPILER
    then
    trusted DEF-NAME
-   DEF-CODE-ROOM
    0 DEF-START
    0 LOCN-CELL CELL!
    trusted if
@@ -2140,7 +2127,6 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if
       DEF-NO-COMPILER
    then
-   DEF-CODE-ROOM
    OVERLAY-GUARD
    a u DEF-QUALIFY-NAME {: ta:^ tu:n wid:n :}
    ta tu wid WL-PROBE XREF-FOUND? if a u PKG-DUPLICATE then
@@ -2444,10 +2430,8 @@ variable LIT-AT
    DEF-ANCHOR 0 COMP-BODY:ADDRESS DEF-FIXED
    DEF-CLOSE ;
 
-\ No record slot left is rejected after the name, naming it. A full code
-\ space is rejected first, at the keyword.
+\ No record slot or code space left is rejected after the name, naming it.
 : DEF-ADDR-ROW ( str bool -- ) {: kw:^ ku:n cell?:bool :}
-   DEF-CODE-ROOM
    kw ku OPERAND  kw ku TOKEN$ REJECTION:NOT-A-NAME
    DKIND:ADDR DNAME-ALLOC or cell? if DNAME-CELL or then DEF-START
    DEF-ADDR-TAIL ;
@@ -2469,9 +2453,7 @@ variable LIT-AT
 \ after the top item is judged and before the constant takes the top cell.
 variable DEF-VALUE
 
-\ Before the name is read, so a full code space is rejected at the keyword.
 : DEF-CONSTANT ( -- )
-   DEF-CODE-ROOM
    TOKEN$ {: kw:^ ku:n :}
    s" constant" OPERAND  s" constant" TOKEN$ REJECTION:NOT-A-NAME
    kw ku TOKEN$ TOP-TAKE
@@ -2526,7 +2508,6 @@ EXPORT CHECK:REC-WIDE-PUBLISH
 : DEF-CAST-ROW ( -- )
    TOKEN$ {: kw:^ ku:n :}
    DEF-CAST-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
-   DEF-CODE-ROOM
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
    0 0 COMP-BODY:CAST DEF-FIXED  DEF-CLOSE
@@ -2626,7 +2607,6 @@ EXPORT CHECK:REC-WIDE-PUBLISH
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
    shape param CHILD-BODY 2drop
    NCOMP-DISPATCH:COMP-CELL CELL@ 0= if DEF-NO-COMPILER then
-   DEF-CODE-ROOM
    OVERLAY-GUARD
    a u shape param ta tu CHILD-DEFINE ;
 
@@ -2642,7 +2622,6 @@ EXPORT CHECK:REC-WIDE-PUBLISH
 \ with no pending record the capture maps to no input.
 : DEF-LINEAR ( -- )
    s" linear:" OPERAND  s" linear:" TOKEN$ REJECTION:NOT-A-NAME
-   DEF-CODE-ROOM
    DEF-SEED
    false DEF-SIG-SPAN {: s:^ end:^ :}
    s end DEF-SIG-PASS
@@ -2760,7 +2739,6 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    DEFER-UNSET-XT {: unset:n :}
    TOKEN$ {: kw:^ ku:n :}
    DEFER-NAME  kw ku TOKEN$ REJECTION:NOT-A-NAME
-   DEF-CODE-ROOM
    DEF-SEED
    false DEF-SIG-SPAN {: s:^ end:^ :}
    s end DEF-SIG-PASS
