@@ -3164,36 +3164,84 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    prior USE-FLOOR !
    found REC ! ;
 
-\ A copy of the line that opened the pending definition, freed when the
-\ definition ends: the reader reuses its buffer for each line, and the line's
-\ frame puts back the input cells, so an end of input inside the definition is
-\ placed on this copy.
-TYPED-VARIABLE OPENER-A ^u8
-variable OPENER-U
+\ The REPL's lines: kept while a definition is pending or a declaration is
+\ open, so a token kept past its line still names its bytes; a line never moves.
+\ A chunk holds its older chunk, its size and its free end, then each line as
+\ its length and its bytes.
+PTR-VARIABLE LINES-NEWEST
+65536 constant LINES-CHUNK
+3 cells constant LINES-HEAD
 
-: OPENER-DROP ( -- )
-   OPENER-U @ {: u:n :}
-   u 0= if exit then
-   OPENER-A @ u munmap 0<> if E-MEM-UNMAP throw then
-   0 OPENER-U ! ;
+: CHUNK-OLDER ( ^u8 -- ^u8 ) 0 ptr-field @ ;
+: CHUNK-SIZE ( ^u8 -- n ) CELL FR@ ;
+: CHUNK-USED ( ^u8 -- n ) 2 cells FR@ ;
+: CHUNK-USED! ( n ^u8 -- ) 2 cells FR! ;
 
-\ The opener's token moves into the copy.
-: OPENER-KEEP ( str -- ) {: a:^ u:n :}
-   OPENER-DROP
-   PENDTKA-CELL ADDR@ a - {: off:n :}
-   off 0 >=  off u < and 0= if exit then
-   u MEM-ALLOC-PTR {: c:^ :}
-   a c u BYTE-COPY
-   c OPENER-A !  u OPENER-U !
-   c off + PENDTKA-CELL ADDR! ;
+\ A chunk after older, with room for a line of u bytes.
+: CHUNK-NEW ( ^u8 n -- ^u8 ) {: older:^ u:n :}
+   LINES-HEAD CELL + u + LINES-CHUNK max {: size:n :}
+   size MEM-ALLOC-PTR {: c:^ :}
+   older c 0 ptr-field !
+   size c CELL FR!
+   LINES-HEAD c CHUNK-USED!
+   c LINES-NEWEST !
+   c ;
 
-\ Line a u ends, begun with PEND-CELL at open: the definition and the
-\ declaration each keep a copy of their opener's line while they need it.
-: OPENERS-KEEP ( str n -- ) {: a:^ u:n open:n :}
-   PEND-CELL CELL@ {: now:n :}
-   now 0= if OPENER-DROP then
-   now 0<>  now open <> and if a u OPENER-KEEP then
-   a u SOURCE-ROOT:KEEP-OPENER ;
+\ The newest chunk if a line of u bytes fits at its free end, else a new one.
+: CHUNK-ROOM ( n -- ^u8 ) {: u:n :}
+   LINES-NEWEST @ {: c:^ :}
+   c NULL-PTR = if c u CHUNK-NEW exit then
+   c CHUNK-USED CELL + u + c CHUNK-SIZE > if c u CHUNK-NEW exit then
+   c ;
+
+\ The kept copy of line a u.
+: LINE-KEEP ( str -- str ) {: a:^ u:n :}
+   u CHUNK-ROOM {: c:^ :}
+   c CHUNK-USED {: o:n :}
+   u c o FR!
+   a c o + CELL + u BYTE-COPY
+   o CELL + u + c CHUNK-USED!
+   c o + CELL + u ;
+
+: RECORD$ ( n ^u8 -- str ) {: o:n c:^ :}
+   c o + CELL +  c o FR@ ;
+
+: RECORD-HAS? ( n ^u8 ^u8 -- bool ) {: o:n p:^ c:^ :}
+   p c o + CELL + - {: d:n :}
+   d 0 >=  d c o FR@ <= and ;
+
+\ The line of chunk c holding p, else a zero-length string.
+: CHUNK-LINE ( ^u8 ^u8 -- str ) {: p:^ c:^ :}
+   LINES-HEAD
+   begin dup c CHUNK-USED < while
+      dup p c RECORD-HAS? if c RECORD$ exit then
+      c over FR@ CELL + +
+   repeat
+   drop NULL-PTR 0 ;
+
+\ The kept line holding p, looked for from chunk c on; else a zero-length string.
+: CHAIN-LINE ( ^u8 ^u8 -- str ) {: p:^ c:^ :}
+   c NULL-PTR = if NULL-PTR 0 exit then
+   p c CHUNK-LINE {: s:^ u:n :}
+   u 0<> if s u exit then
+   p c CHUNK-OLDER RECURSE ;
+
+: LINE-AT ( ^u8 -- str )
+   LINES-NEWEST @ CHAIN-LINE ;
+
+\ A definition is pending or a declaration is open.
+: LINES-NEEDED? ( -- bool )
+   PEND-CELL CELL@ 0<>  SOURCE-ROOT:OPENER$ nip 0<> or ;
+
+\ Unmaps every chunk but the first and empties the first.
+: LINES-EMPTY ( -- )
+   LINES-NEWEST @ {: c:^ :}
+   c NULL-PTR = if exit then
+   c CHUNK-OLDER {: o:^ :}
+   o NULL-PTR = if LINES-HEAD c CHUNK-USED! exit then
+   o LINES-NEWEST !
+   c c CHUNK-SIZE munmap 0<> if E-MEM-UNMAP throw then
+   RECURSE ;
 
 \ The record, at the running token, of a throw of code c that its text did not
 \ catch.
@@ -3212,7 +3260,6 @@ variable OPENER-U
    c REJECTION:PASS ;
 
 : REPL-LINE ( str -- bool ) {: a:^ u:n :}
-   PEND-CELL CELL@ {: open:n :}
    SOURCE-ROOT:TEXT-MARK {: mark:n :}
    depth FRAME-OPEN {: f:^ :}
    \ The session, not this line, owns a pending definition from an earlier
@@ -3249,7 +3296,7 @@ variable OPENER-U
       code 1 255 BETWEEN? 0= if code ERROR:UNCAUGHT then
       mark SOURCE-ROOT:TEXT-UNWOUND
    then
-   a u open OPENERS-KEEP
+   LINES-NEEDED? 0= if LINES-EMPTY then
    done 0= if
       REPL-STACK-CLEAR
       2 REPL-QNL 2 write drop
@@ -3260,8 +3307,9 @@ variable OPENER-U
 \ The end of input goes on the pending definition's line, reported first, else
 \ on the open declaration's.
 : REPL-END ( -- )
-   OPENER-U @ {: u:n :}
-   u 0<> if OPENER-A @ u else SOURCE-ROOT:OPENER-LINE then {: c:^ cu:n :}
+   SOURCE-ROOT:OPENER$ drop {: t:^ :}
+   PEND-CELL CELL@ 0<> if PENDTKA-CELL ADDR@ else t then
+   LINE-AT {: c:^ cu:n :}
    cu 0<> if
       c SRCLOC:INB-CELL ADDR!  c cu + INE-CELL ADDR!
    then
@@ -3277,7 +3325,7 @@ variable OPENER-U
       REPL-OK @ if S\"  ok\n" type then
       DEBUG:REPL-READ {: a:^ u:n :}
       a 0= if REPL-END exit then
-      a u REPL-LINE REPL-OK !
+      a u LINE-KEEP REPL-LINE REPL-OK !
    again ;
 
 public

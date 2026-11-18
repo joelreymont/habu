@@ -77,7 +77,7 @@ using PTY-HARNESS
    s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE ;
 
 \ A definition opened and closed on later lines leaves the declaration's
-\ record on the line that opened it: each line reuses the reader's buffer.
+\ record on the line that opened it.
 : DECL-LINES-CASE ( -- )
    OPEN dup TTRUE if
       s" BEGIN-STRUCTURE EOF-REC2" STEP TTRUE
@@ -90,6 +90,22 @@ using PTY-HARNESS
    s" error[E-UNCLOSED]" s" `BEGIN-STRUCTURE`" AFTER? TTRUE
    s" error[E-UNCLOSED]" s" | BEGIN-STRUCTURE EOF-REC2" AFTER? TTRUE
    s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE ;
+
+\ A `FUNCTION:` left open is rejected, its opener spelled as typed, when a later
+\ line opens another.
+: FN-LINES-CASE ( -- )
+   OPEN dup TTRUE if
+      s" require src/lib/ffi-abi.f" STEP TTRUE
+      s" PROCESS-SYMBOLS" STEP TTRUE
+      s" FUNCTION: FNL-PID getpid ( -- n )" STEP TTRUE
+      BUF-CLEAR s" 1 drop FUNCTION: FNL-PPID getppid ( -- n )" SEND-LINE
+      s" E-UNCLOSED" WAIT-FOR TTRUE
+      s" E-UNCLOSED" s" habu> " WAIT-AFTER TTRUE
+      s" error[E-UNCLOSED]" s" `FUNCTION:` is still open" AFTER? TTRUE
+      s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE
+      4 SEND-BYTE
+   then
+   0 EXIT= ;
 
 \ A definition still open inside an open declaration is reported, on its own
 \ line, and the declaration is not.
@@ -214,6 +230,7 @@ public
    EOF-CASE
    DECL-EOF-CASE
    DECL-LINES-CASE
+   FN-LINES-CASE
    DEF-AFTER-DECL-CASE
    REJECT-CASE
    ZERO-THROW-CASE

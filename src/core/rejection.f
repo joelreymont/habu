@@ -654,8 +654,7 @@ private
 \ the copy records (layout.f BODY-SOURCE): its first byte and its source;
 \ false when t is in no run with a row there.
 \ Rows count from the buffer's first byte, and they name this buffer only
-\ while the definition's name lies in it: a REPL line refills the buffer that
-\ held the line before, and OPENER-KEEP moves the name out of it.
+\ while the definition's name lies in it: each REPL line is a copy of its own.
 : INPUT-RUN ( ^u8 -- ^u8 n bool ) {: t:^ :}
    BODY-BASE @ {: base:^ :}
    data-base PEND-CELL + @ 0=  base NULL-PTR = or IF t 0 0 0= 0= EXIT THEN
