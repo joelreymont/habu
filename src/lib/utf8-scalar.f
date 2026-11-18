@@ -3,6 +3,10 @@
 \ the lead byte and cursor+1: malformed, truncated, non-shortest, surrogate and
 \ out-of-range input is data and never throws. VALID? is true when every step is a
 \ SCALAR (empty included). FIT cuts a span at a cap without ending in a character.
+\ SUBPART-END answers the end of the longest prefix of a well-formed sequence at
+\ a cursor (Unicode 3.9, Table 3-7), at least the cursor's byte. CUT? is true
+\ when the bytes from a cursor to the end, at least one, are a proper prefix of
+\ a well-formed sequence.
 \ Negative lengths, caps and cursors are E-STR-BOUNDS. STORAGE CLASS. CALLER-OWNED.
 
 require src/lib/error.f
@@ -43,6 +47,18 @@ $10000 constant FOUR-MINIMUM
 $D800 constant SURROGATE-FIRST
 $DFFF constant SURROGATE-LAST
 $10FFFF constant SCALAR-LAST
+
+\ Table 3-7's leads, and the bytes each allows second; later bytes are
+\ CONTINUATION-LEAST..CONTINUATION-MOST.
+$C2 constant TWO-LEAD-LEAST
+$ED constant SURROGATE-LEAD
+$F4 constant FOUR-LEAD-MOST
+$80 constant CONTINUATION-LEAST
+$BF constant CONTINUATION-MOST
+$A0 constant E0-SECOND-LEAST
+$9F constant ED-SECOND-MOST
+$90 constant F0-SECOND-LEAST
+$8F constant F4-SECOND-MOST
 
 : YES ( -- bool )
    0 0= ;
@@ -160,6 +176,39 @@ $10FFFF constant SCALAR-LAST
    then
    lead cursor >RAW-BYTE ;
 
+\ A well-formed sequence's width for its lead, 1 for a byte that leads none.
+: LEAD-WIDTH ( n -- n ) {: lead:n :}
+   lead TWO-LEAD-LEAST < if 1 exit then
+   lead THREE-LEAD-FIRST < if 2 exit then
+   lead FOUR-LEAD-FIRST < if 3 exit then
+   lead FOUR-LEAD-MOST <= if 4 exit then
+   1 ;
+
+: SECOND-LEAST ( n -- n ) {: lead:n :}
+   lead THREE-LEAD-FIRST = if E0-SECOND-LEAST exit then
+   lead FOUR-LEAD-FIRST = if F0-SECOND-LEAST exit then
+   CONTINUATION-LEAST ;
+
+: SECOND-MOST ( n -- n ) {: lead:n :}
+   lead SURROGATE-LEAD = if ED-SECOND-MOST exit then
+   lead FOUR-LEAD-MOST = if F4-SECOND-MOST exit then
+   CONTINUATION-MOST ;
+
+: IN-RANGE? ( n n n -- bool ) {: byte:n least:n most:n :}
+   byte least >= byte most <= and ;
+
+\ Whether `byte` may follow at `index` after `lead` in a well-formed sequence.
+: TRAIL-OK? ( n n n -- bool ) {: lead:n index:n byte:n :}
+   index 1 = if
+      byte lead SECOND-LEAST lead SECOND-MOST IN-RANGE? exit
+   then
+   byte CONTINUATION-LEAST CONTINUATION-MOST IN-RANGE? ;
+
+: SUBPART ( ^u8 n n n -- n ) {: at:^ limit:n lead:n index:n :}
+   index limit >= if index exit then
+   lead index at index + c@ TRAIL-OK? 0= if index exit then
+   at limit lead index 1+ recurse ;
+
 public
 
 : NEXT ( ^u8 n n -- scalar-step ) {: source:^ length:n cursor:n :}
@@ -181,6 +230,21 @@ public
       then
    repeat
    drop YES ;
+
+: SUBPART-END ( ^u8 n n -- n ) {: source:^ length:n cursor:n :}
+   source length cursor LEAD@ {: lead:n :}
+   source cursor + {: at:^ :}
+   lead LEAD-WIDTH length cursor - min {: limit:n :}
+   cursor at limit lead 1 SUBPART + ;
+
+: CUT? ( ^u8 n n -- bool ) {: source:^ length:n cursor:n :}
+   length NONNEGATIVE
+   cursor length = if NO exit then
+   source length cursor LEAD@ LEAD-WIDTH length cursor - > if
+      source length cursor SUBPART-END length =
+   else
+      NO
+   then ;
 
 \ A cap before a continuation byte backs up to its lead, and never more than a
 \ character's three trailing bytes, however many stray continuations precede it.

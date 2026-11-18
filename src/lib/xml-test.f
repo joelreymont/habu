@@ -2,6 +2,7 @@ require src/lib/test.f
 require src/lib/xml.f
 require src/lib/test/guard-page.f
 require src/lib/byte-buffer.f
+require src/lib/reason.f
 
 package XML-TEST
 using XML
@@ -10,6 +11,7 @@ $400 constant TEXT-CAP
 create TEXT-BUF TEXT-CAP allot
 create OTHER-BUF TEXT-CAP allot
 3 SPAN-BUFFER: INPUT-CHUNK
+64 SPAN-BUFFER: INPUT-WHOLE
 PTR-VARIABLE INPUT-SOURCE
 variable INPUT-LEN
 variable INPUT-POS
@@ -105,6 +107,11 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
 
 : INPUT-FAILURE ( -- n )
    INPUT-OPEN ['] DRAIN catch swap XML:CLOSE ;
+
+\ As INPUT-FAILURE, through chunks of up to 64 bytes.
+: INPUT-WHOLE-FAILURE ( -- n )
+   RD INPUT-POS ['] INPUT-FILL INPUT-WHOLE INIT-INPUT
+   ['] DRAIN catch swap XML:CLOSE ;
 
 : INPUT-OVER-COUNT ( ^n SPAN:span<u8> -- n )
    2drop 4 ;
@@ -729,10 +736,10 @@ variable URI-LEN
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : INPUT-MARKUP ( -- )
-   s" <a><!--long--><![CDATA[é&]]><?go q?></a>"
+   s" <a><!--long名😀--><![CDATA[é&]]><?go q?></a>"
    1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:START NEXT=
-   XML-KIND:COMMENT NEXT= s" long" TEXT=
+   XML-KIND:COMMENT NEXT= s" long名😀" TEXT=
    XML-KIND:CDATA NEXT= s" é&" TEXT=
    XML-KIND:PI NEXT= s" q" TEXT=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
@@ -986,6 +993,229 @@ variable SEEN
    s" <a/>" 1 2 INPUT-SET
    INPUT-FAILURE -9299 T= ;
 
+\ A rejection's text: the place, what was expected, the token found and the fix.
+: SAID ( n ^u8 n -- ) {: code:n wa:^ wu:n :}
+   code REASON:TEXT$ wa wu T$=
+   REASON:RELEASE ;
+
+: REJECTION-TEXTS ( -- )
+   s" an end tag that closes another element names the open one" T-LABEL
+   s" <a></b>" E-MALFORMED BAD
+   E-MALFORMED s" 1:6: expected `</a>`, found `b`; close elements in the reverse of the order they were opened" SAID
+   s" a found run takes a UTF-8 character above ASCII whole" T-LABEL
+   s\" <a></caf\xC3\xA9>" E-MALFORMED BAD
+   E-MALFORMED s\" 1:6: expected `</a>`, found `caf\xC3\xA9`; close elements in the reverse of the order they were opened" SAID
+   s" a found run may start with a UTF-8 character above ASCII" T-LABEL
+   s\" <a></\xC3\xA9crit>" E-MALFORMED BAD
+   E-MALFORMED s\" 1:6: expected `</a>`, found `\xC3\xA9crit`; close elements in the reverse of the order they were opened" SAID
+   s" a found run cut inside a character ends before it" T-LABEL
+   s\" <a></xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\xC3\xA9z>" E-MALFORMED BAD
+   E-MALFORMED s" 1:6: expected `</a>`, found `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...`; close elements in the reverse of the order they were opened" SAID
+   s" a document that ends inside an element names its end tag" T-LABEL
+   s\" <a>\n<b>" E-TRUNCATED BAD
+   E-TRUNCATED s" 2:4: expected `</b>`, found the end of the input; write the rest of the document, closing each open element" SAID
+   s" an input reader places a rejection in the whole input after it drops consumed bytes" T-LABEL
+   s\" <a>\n<b>xxxxxxxx</b>\n<c>yyyyyyyy</c>\n<d></e>\n</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-MALFORMED T=
+   E-MALFORMED s" 4:6: expected `</d>`, found `e`; close elements in the reverse of the order they were opened" SAID
+   s" a found run that reaches the end of an input reader's window ends in ..." T-LABEL
+   s" <a></a bbbbbbbbbbbb>" 3 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-MALFORMED T=
+   E-MALFORMED s" 1:8: expected `>`, found `bb...`; write that byte here, or correct the markup before it" SAID
+   s" a found run that stops at a character the end of an input reader's window cuts ends in ..." T-LABEL
+   s\" <a></a b\xC3\xA9bbbbbbb>" 3 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-MALFORMED T=
+   E-MALFORMED s" 1:8: expected `>`, found `b...`; write that byte here, or correct the markup before it" SAID
+   s" a character the end of an input reader's window cuts is found as ..." T-LABEL
+   s\" <a></a \xC3\xA9>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-MALFORMED T=
+   E-MALFORMED s" 1:8: expected `>`, found `...`; write that byte here, or correct the markup before it" SAID
+   s" an input reader rejects a character XML 1.0 does not allow as a plain reader does" T-LABEL
+   s\" <a>\n<b>xxxxxxxx</b>\n<c>yyyyyyyy</c>\n<d>\x01</d>\n</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-SCALAR T=
+   E-SCALAR s" 4:4: expected a character XML 1.0 allows, found byte $01; remove the character, or write one XML 1.0 allows" SAID
+   s" an input reader rejects a bad character reference as a plain reader does" T-LABEL
+   s\" <a>\n&#xZZ;</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-ENTITY T=
+   E-ENTITY s" 2:1: expected a character reference such as `&#65;` or `&#x41;`, found `&#xZ...`; write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`" SAID
+   s" an input reader rejects a document cut inside a reference as a plain reader does" T-LABEL
+   s\" <a>\n&am" 2 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-TRUNCATED T=
+   E-TRUNCATED s" 2:4: expected the rest of the document, found the end of the input; write the rest of the document" SAID
+   s" a found run that stops at bytes no character begins at the end of an input reader's window ends before them" T-LABEL
+   s\" <a></a b\xC0\x80bbbbbbb>" 3 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-MALFORMED T=
+   E-MALFORMED s" 1:8: expected `>`, found `b`; write that byte here, or correct the markup before it" SAID
+   s" a byte no character begins at the end of an input reader's window is found as that byte" T-LABEL
+   s\" <a></a \xC0\x80>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-MALFORMED T=
+   E-MALFORMED s" 1:8: expected `>`, found byte $C0; write that byte here, or correct the markup before it" SAID
+   s" a rejected reader refuses a further NEXT" T-LABEL
+   s\" <a>\n&bogus;</a>" 2 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   ['] DRAIN catch E-ENTITY T=
+   E-ENTITY s" 2:1: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&bogus;`; write `&amp;` for a literal `&`, and end each reference with `;`" SAID
+   ['] NEXT-ONE catch E-STATE T=
+   XML:CLOSE ;
+
+: MARKUP-TEXTS ( -- )
+   s" a start tag with no space between attributes" T-LABEL
+   s" <a q='x'v='y'/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:9: expected white space, `>` or `/>` after the element name or an attribute, found `v`; separate attributes with white space, and end the start tag with `>` or `/>`" SAID
+   s" a second root element" T-LABEL
+   s" <a/><b/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:5: expected white space, a comment or a processing instruction after the root element, found `<`; wrap the elements in one root element" SAID
+   s" an end tag with no open element" T-LABEL
+   s" <a/></a>" E-MALFORMED BAD
+   E-MALFORMED s" 1:5: expected an end tag only after its start tag, found `<`; remove the end tag, or write its start tag before it" SAID
+   s" `]]>` in text, after a newline and a two-byte character" T-LABEL
+   s\" <a>\né]]></a>" E-MALFORMED BAD
+   E-MALFORMED s" 2:3: expected text without `]]>`, found `]]`; write `]]&gt;` for a literal `]]>` in text" SAID
+   s" text after the root element" T-LABEL
+   s" <a/>x" E-MALFORMED BAD
+   E-MALFORMED s" 1:5: expected only white space outside the root element, found `x`; move the text inside the root element, or remove it" SAID
+   s" `--` inside a comment" T-LABEL
+   s" <!--a--b--><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:6: expected `-->` or comment text without `--`, found `--b--`; remove `--` from the comment, or end the comment with `-->`" SAID
+   s" a CDATA section outside the root element" T-LABEL
+   s" <![CDATA[x]]><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:1: expected a CDATA section only inside the root element, found `<`; move the CDATA section inside the root element, or remove it" SAID
+   s" an XML declaration after the document's start" T-LABEL
+   s"  <?xml version='1.0'?><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:2: expected `<?xml` only at the start of the document, found `<`; move the XML declaration to the start of the document, or remove it" SAID ;
+
+\ The XML declaration's, a processing instruction's and `<!` markup's texts.
+: PROLOG-TEXTS ( -- )
+   s" an attribute after the declaration's last names the extra one" T-LABEL
+   s" <?xml version='1.0' standalone='yes' foo='x'?><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:38: expected `?>` to end the XML declaration, found `foo`; write only `version`, `encoding` and `standalone`, in that order" SAID
+   s" a misnamed last declaration attribute names it" T-LABEL
+   s" <?xml version='1.0' foo='x'?><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:21: expected `standalone` as the declaration's last attribute, found `foo`; correct the attribute's name, or remove the attribute" SAID
+   s" a standalone value other than yes or no names the value" T-LABEL
+   s\" <?xml version='1.0'\nstandalone='maybe'?><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 2:13: expected `yes` or `no`, found `maybe`; write `yes` or `no` as `standalone`'s value" SAID
+   s" a declaration not in lower case names its target" T-LABEL
+   s" <?XML version='1.0'?><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:3: expected `xml` in lower case, found `XML`; begin the XML declaration with `<?xml`" SAID
+   s" a document that ends inside the declaration asks for its end" T-LABEL
+   s" <?xml version='1.0'" E-TRUNCATED BAD
+   E-TRUNCATED s" 1:20: expected `?>` to end the XML declaration, found the end of the input; end the declaration with `?>`" SAID
+   s" declaration attributes with no space between them" T-LABEL
+   s" <?xml version='1.0'?x?><a/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:20: expected white space or `?>`, found `?`; separate the declaration's attributes with a space" SAID
+   s" a document that ends after a processing instruction's target" T-LABEL
+   s" <?p" E-TRUNCATED BAD
+   E-TRUNCATED s" 1:4: expected `?>` to end the processing instruction, found the end of the input; end the processing instruction with `?>`" SAID
+   s" a target joined to its content counts columns in bytes" T-LABEL
+   s\" <a>\n\xC3\xA9<?p/?></a>" E-MALFORMED BAD
+   E-MALFORMED s" 2:6: expected white space or `?>` after the target, found `/`; put a space between the target and the instruction's content" SAID
+   s" a DOCTYPE is rejected where it starts" T-LABEL
+   s" <!DOCTYPE a><a/>" E-DTD BAD
+   E-DTD s" 1:1: expected an element, a comment or a processing instruction, found `<`; remove the `<!DOCTYPE`: the reader reads no DTD" SAID
+   s" `<!` that opens neither a comment nor CDATA" T-LABEL
+   s" <a><!x></a>" E-MALFORMED BAD
+   E-MALFORMED s" 1:4: expected `<!--` or `<![CDATA[`, found `<`; write `<!--` for a comment or `<![CDATA[` for character data" SAID ;
+
+: NAME-TEXTS ( -- )
+   s" a name that starts with neither a letter, `_` nor `:` is rejected at it" T-LABEL
+   s\" <a>\n<\xC3\xA9 1='x'/></a>" E-MALFORMED BAD
+   E-MALFORMED s" 2:5: expected a name, found `1`; start the name with a letter, `_` or `:`" SAID
+   s" a name that starts with `:` is rejected at the name" T-LABEL
+   s" <:a/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:2: expected a name that starts with a letter or `_`, found `:a`; write a prefix before the leading `:`, or remove it" SAID
+   s" a name with a second `:` is rejected at the name" T-LABEL
+   s" <p:a:b/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:2: expected a name with at most one `:`, between a prefix and a local name, found `p:a:b`; write the name as `prefix:local` or `local`" SAID
+   s" an attribute whose local name starts with a digit is rejected at the attribute's name" T-LABEL
+   s" <a p:1='x'/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:4: expected a local name after `:` that starts with a letter or `_`, found `p:1`; start the part after `:` with a letter or `_`" SAID
+   s" an unquoted attribute value is rejected at it" T-LABEL
+   s" <a b=c/>" E-MALFORMED BAD
+   E-MALFORMED s\" 1:6: expected a value in `\"` or `'` quotes, found `c`; write the value between `\"` or `'` quotes" SAID
+   s" a `<` in an attribute value is rejected at it" T-LABEL
+   s" <a q='<x'/>" E-MALFORMED BAD
+   E-MALFORMED s" 1:7: expected the attribute value's closing quote, found `<`; close the value with its quote, or write `&lt;` for a literal `<`" SAID ;
+
+: NAMESPACE-TEXTS ( -- )
+   s" a declaration of the xmlns prefix is rejected at its name" T-LABEL
+   s" <a xmlns:xmlns='u'/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:4: expected a prefix other than `xmlns`, found `xmlns:xmlns`; remove the declaration: XML binds `xmlns` itself" SAID
+   s" a binding of the xmlns namespace is rejected at its name" T-LABEL
+   s" <a xmlns:p='http://www.w3.org/2000/xmlns/'/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:4: expected a namespace other than `http://www.w3.org/2000/xmlns/`, found `xmlns:p`; declare another namespace URI, or remove the declaration" SAID
+   s" the xml prefix bound to another namespace is rejected at its name" T-LABEL
+   s" <a xmlns:xml='other'/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:4: expected `xml` bound to `http://www.w3.org/XML/1998/namespace`, found `xmlns:xml`; remove the declaration: XML binds `xml` itself" SAID
+   s" the XML namespace bound to another prefix is rejected at its name" T-LABEL
+   s" <a xmlns='http://www.w3.org/XML/1998/namespace'/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:4: expected a namespace other than `http://www.w3.org/XML/1998/namespace`, found `xmlns`; write the `xml` prefix for that namespace, and remove this declaration" SAID
+   s" an empty prefix declaration counts the line and the bytes of the column" T-LABEL
+   s\" <r>\n\xC3\xA9<a xmlns:p=''/></r>" E-NAMESPACE BAD
+   E-NAMESPACE s" 2:6: expected a prefix declaration with a URI, found `xmlns:p`; write the prefix's URI: XML 1.0 cannot undeclare a prefix" SAID
+   s" a repeated attribute is rejected at the second one" T-LABEL
+   s" <a q='1' q='2'/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:10: expected an attribute the element does not already have, found `q`; remove the repeated attribute, or give it another name or namespace" SAID
+   s" a repeated expanded attribute name is rejected at the second one" T-LABEL
+   s" <a xmlns:p='u' xmlns:q='u' p:x='1' q:x='2'/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:36: expected an attribute the element does not already have, found `q:x`; remove the repeated attribute, or give it another name or namespace" SAID
+   s" an input reader rejects an unbound prefix at the name in the whole input" T-LABEL
+   s\" <r>\n<a>\n<p:b/></a></r>" 2 $7FFFFFFFFFFFFFFF INPUT-SET
+   INPUT-FAILURE E-NAMESPACE T=
+   E-NAMESPACE s" 3:2: expected a prefix an `xmlns:` declaration binds in scope, found `p:b`; declare it with `xmlns:` on this element or an enclosing one" SAID
+   s" an element name with the xmlns prefix is rejected at the name" T-LABEL
+   s" <xmlns:a/>" E-NAMESPACE BAD
+   E-NAMESPACE s" 1:2: expected an element name without the `xmlns` prefix, found `xmlns:a`; rename the element: `xmlns` marks only namespace declarations" SAID ;
+
+
+: DECLARATION-TEXTS ( -- )
+   s" a declaration without attributes names `version` where it is missing" T-LABEL
+   s" <?xml?><a/>" E-MALFORMED BAD
+   E-MALFORMED s\" 1:6: expected `version=\q1.0\q`, found `?`; write `version=\q1.0\q` after `<?xml`" SAID
+   s" a declaration whose first attribute is not `version` names that attribute" T-LABEL
+   s" <?xml encoding='UTF-8' version='1.0'?><a/>" E-MALFORMED BAD
+   E-MALFORMED s\" 1:7: expected `version` as the first attribute, found `encoding`; write `version=\q1.0\q` before the declaration's other attributes" SAID
+   s" a version other than 1.0 is rejected at its value" T-LABEL
+   s" <?xml version='1.1'?><a/>" E-ENCODING BAD
+   E-ENCODING s\" 1:16: expected `1.0`, found `1.1`; declare `version=\q1.0\q`: the reader reads XML 1.0" SAID
+   s" an input reader counts a byte order mark's three bytes in the column" T-LABEL
+   s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
+   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE E-ENCODING T=
+   E-ENCODING s\" 1:34: expected `UTF-8` after a UTF-8 byte order mark, found `US-ASCII`; declare `encoding=\qUTF-8\q`, or remove the byte order mark" SAID
+   s" US-ASCII after a byte order mark is rejected at the value on its line" T-LABEL
+   s\" \xEF\xBB\xBF<?xml\nversion='1.0' encoding='US-ASCII'?><a/>" E-ENCODING BAD
+   E-ENCODING s\" 2:25: expected `UTF-8` after a UTF-8 byte order mark, found `US-ASCII`; declare `encoding=\qUTF-8\q`, or remove the byte order mark" SAID
+   s" a plain reader takes UTF-8 or US-ASCII only" T-LABEL
+   s" <?xml version='1.0' encoding='ISO-8859-1'?><a/>" E-ENCODING BAD
+   E-ENCODING s\" 1:31: expected `UTF-8` or `US-ASCII`, found `ISO-8859-1`; save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
+
+: SCALAR-TEXTS ( -- )
+   s" a character XML 1.0 does not allow is rejected where it stands" T-LABEL
+   s\" <a>\n\x01</a>" E-SCALAR BAD
+   E-SCALAR s" 2:1: expected a character XML 1.0 allows, found byte $01; remove the character, or write one XML 1.0 allows" SAID
+   s" a reference to a character XML 1.0 does not allow is rejected at its `&`" T-LABEL
+   s" <a>&#1;</a>" E-SCALAR BAD
+   E-SCALAR s" 1:4: expected a character XML 1.0 allows, found `&#1;`; remove the character, or write one XML 1.0 allows" SAID
+   s" a reference to no predefined entity is rejected at its `&`" T-LABEL
+   s" <a>&foo;</a>" E-ENTITY BAD
+   E-ENTITY s" 1:4: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&foo;`; write `&amp;` for a literal `&`, and end each reference with `;`" SAID
+   s" a character reference with a digit outside its radix is rejected at its `&`" T-LABEL
+   s" <a>&#xZZ;</a>" E-ENTITY BAD
+   E-ENTITY s" 1:4: expected a character reference such as `&#65;` or `&#x41;`, found `&#xZZ;`; write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`" SAID
+   s" a byte no UTF-8 character starts counts a two-byte character's bytes in the column" T-LABEL
+   s\" <a>\n\xC3\xA9\xFF</a>" E-UTF8 BAD
+   E-UTF8 s" 2:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
+   s" ESCAPE-TEXT places bad UTF-8 in the text it is given" T-LABEL
+   [: s\" ab\xFF" TEXT-BUF TEXT-CAP ESCAPE-TEXT drop ;] E-UTF8 TTHROWSQ
+   E-UTF8 s" 1:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
+   s" a US-ASCII input stream places a high byte of a later chunk in the whole input" T-LABEL
+   s\" <?xml version='1.0' encoding='US-ASCII'?>\n<a>\xC3\xA9</a>"
+   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE E-ENCODING T=
+   E-ENCODING s\" 2:4: expected a US-ASCII character, found `...`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID
+   s" a US-ASCII input stream places a high byte its first chunk holds" T-LABEL
+   s\" <?xml version='1.0' encoding='US-ASCII'?>\n<a>\xC3\xA9</a>"
+   $7FFFFFFFFFFFFFFF $7FFFFFFFFFFFFFFF INPUT-SET INPUT-WHOLE-FAILURE E-ENCODING T=
+   E-ENCODING s\" 2:4: expected a US-ASCII character, found `\xC3\xA9`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
+
 T-RESET
 EMPTY-ELEMENT
 NAMESPACE-SCOPES
@@ -1025,6 +1255,13 @@ INPUT-LARGE-SCOPE
 INPUT-NAMESPACE-SCOPES
 INPUT-DEEP-CHAIN
 INPUT-FAILURES
+REJECTION-TEXTS
+MARKUP-TEXTS
+PROLOG-TEXTS
+NAME-TEXTS
+NAMESPACE-TEXTS
+DECLARATION-TEXTS
+SCALAR-TEXTS
 TALL-TREE
 MANY-ATTRIBUTES
 MANY-BINDINGS

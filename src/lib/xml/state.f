@@ -4,9 +4,11 @@
 \ scope storage, so releasing consumed bytes never revisits them.
 
 require src/lib/xml/source.f
+require src/lib/utf8-scalar.f
 require src/lib/byte-buffer.f
 require src/lib/siphash.f
 require src/lib/entropy.f
+require src/core/rejection.f
 
 package XML
 public
@@ -161,6 +163,11 @@ NULL-PTR CURSOR-HASH-K0 NULL-PTR - constant HASH-K0
 NULL-PTR CURSOR-HASH-K1 NULL-PTR - constant HASH-K1
 NULL-PTR CURSOR-SIP NULL-PTR - constant SIP-STATE
 
+\ FAILED is ST-FAILED from NEXT's entry until it returns, so a NEXT that
+\ throws leaves the reader refusing every read.
+0 constant ST-LIVE
+1 constant ST-FAILED
+
 0 constant LEGACY-UTF8
 1 constant SOURCE-UTF8
 2 constant SOURCE-UTF16-LE-BOM
@@ -172,9 +179,8 @@ NULL-PTR CURSOR-SIP NULL-PTR - constant SIP-STATE
 8 constant LEGACY-ASCII
 9 constant INPUT-ASCII
 
-\ An input reader owns only its current lexical window and active scope strings.
-\ Its metadata and byte buffers are released by CLOSE, including after a
-\ failed NEXT. The caller retains the callback, context and input.
+\ CLOSE releases an input reader's stream and its buffers, after a failed NEXT
+\ too. Line and column are those of the window's first byte in the whole input.
 STRUCTURE stream DERIVE addr
    FIELD fill [ ^n SPAN:span<u8> -- n ]
    FIELD ctx ^n
@@ -189,6 +195,8 @@ STRUCTURE stream DERIVE addr
    FIELD scope ^u8
    FIELD scope-len n
    FIELD scope-cap n
+   FIELD line n
+   FIELD column n
 ;STRUCTURE
 
 : INPUT? ( ^n -- bool )
@@ -234,6 +242,8 @@ CAST: STREAM>BYTES ( ^stream -- ^u8 )
       BYTE-VIEW >STREAM {: stream :}
    fill stream STREAM-FILL !
    ctx stream STREAM-CTX !
+   1 stream STREAM-LINE !
+   1 stream STREAM-COLUMN !
    bytes stream STREAM-INPUT !
    cap stream STREAM-INPUT-CAP !
    stream cap ['] STREAM-OPEN-BUFS catch
@@ -300,6 +310,28 @@ LINEAR: ERASE ( XML:reader -- ^n )
    {: state :}
    state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
 
+\ An input reader's input follows the window until its fill has answered 0.
+: WINDOW-PLACE ( ^n -- place )
+   {: state :}
+   state INPUT? 0= if WHOLE exit then
+   state STREAM@ {: stream :}
+   stream STREAM-LINE @ stream STREAM-COLUMN @
+   stream STREAM-EOF @ 0= PLACE-MAKE ;
+
+\ Rejects at off in the window, placed in the whole input.
+: REJECT ( ^n n ^u8 n ^u8 n n -- )
+   {: state off:n ea:^ eu:n fa:^ fu:n code:n :}
+   state SOURCE$ state WINDOW-PLACE off ea eu fa fu code REJECT-FROM ;
+
+\ Rejects the first byte above $7F in the window from off on.
+: ASCII-WINDOW ( ^n n -- )
+   {: state off:n :}
+   state SOURCE$ {: window:^ size:n :}
+   window off + size off - HIGH-BYTE off + {: high:n :}
+   high size < if
+      state high ASCII-EXPECTED$ ASCII-FIX$ E-ENCODING REJECT
+   then ;
+
 : INPUT-REFILL ( ^n -- bool )
    {: state :}
    state STREAM@ {: stream :}
@@ -309,12 +341,12 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-FILL @ execute {: count:n :}
    count 0 < count stream STREAM-INPUT-CAP @ > or if E-RANGE throw then
    count 0= if 1 stream STREAM-EOF ! false exit then
-   state SOURCE-MODE + @ INPUT-ASCII = if
-      stream STREAM-INPUT @ count ASCII-WIRE
-   then
    stream STREAM-INPUT @ count BUF:N>BLEN stream TOKEN-BUF BUF:APPEND-SPAN
    stream TOKEN-BUF BUF:SPAN$ BUF:BLEN>N
    state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
+   state SOURCE-MODE + @ INPUT-ASCII = if
+      state state SOURCE-LEN + @ count - ASCII-WINDOW
+   then
    true ;
 
 : INPUT-ENSURE ( ^n n -- bool )
@@ -328,7 +360,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 : AT ( ^n n -- n )
    {: state index:n :}
    state INPUT? if state index 1+ INPUT-ENSURE drop then
-   state SOURCE$ index BYTE@ ;
+   state SOURCE$ state WINDOW-PLACE index BYTE@ ;
 
 : EOF? ( ^n -- bool )
    {: state :}
@@ -341,15 +373,9 @@ LINEAR: ERASE ( XML:reader -- ^n )
 : ADVANCE ( ^n -- )
    POSITION + 1 swap +! ;
 
+\ Skips count bytes the caller has already matched, so the reader holds them.
 : ADVANCE-N ( ^n n -- )
-   {: state count:n :}
-   state INPUT? if
-      state state POSITION + @ count + INPUT-ENSURE drop
-   then
-   count state SOURCE-LEN + @ state POSITION + @ - > if
-      E-TRUNCATED throw
-   then
-   count state POSITION + +! ;
+   swap POSITION + +! ;
 
 : SPAN$ ( ^n n n -- ^u8 n )
    {: state start:n size:n :}
@@ -374,9 +400,18 @@ LINEAR: ERASE ( XML:reader -- ^n )
    loop
    true ;
 
+\ The expected text is the byte in backticks, written in the scope's three bytes.
+: BYTE-SCOPE ( ^n n ^u8 NUM:alloc-byte-len -- )
+   drop {: state byte:n buf:^ :}
+   $60 buf c!  byte buf 1+ c!  $60 buf 2 + c!
+   state state POSITION + @ buf 3
+   s" write that byte here, or correct the markup before it" E-MALFORMED REJECT ;
+
 : REQUIRE-BYTE ( ^n n -- )
    {: state byte:n :}
-   state PEEK byte <> if E-MALFORMED throw then
+   state PEEK byte <> if
+      state byte 3 MEM:BYTES-ALLOC-LEN [: BYTE-SCOPE ;] MEM:WITH-BYTES
+   then
    state ADVANCE ;
 
 : WHITE? ( ^n -- bool )
@@ -386,33 +421,20 @@ LINEAR: ERASE ( XML:reader -- ^n )
 : SKIP-WHITE ( ^n -- )
    begin dup WHITE? while dup ADVANCE repeat drop ;
 
+\ Only fills the window: the read after it rejects what UTF8:NEXT does not decode.
 : INPUT-SCALAR-ENSURE ( ^n -- )
    {: state :}
    state state POSITION + @ 1+ INPUT-ENSURE 0= if exit then
-   state PEEK {: lead:n :}
-   lead $80 < if exit then
-   lead $C2 < if E-UTF8 throw then
-   lead $E0 < if 2 else
-      lead $F0 < if 3 else
-         lead $F5 < if 4 else E-UTF8 throw then
-      then
-   then {: width:n :}
-   width 1 ?do
-      state state POSITION + @ i + 1+ INPUT-ENSURE 0= if unloop exit then
-      state state POSITION + @ i + AT {: byte:n :}
-      byte $C0 and $80 <> if E-UTF8 throw then
-      i 1 = if
-         lead $E0 = byte $A0 < and
-         lead $ED = byte $A0 >= and or
-         lead $F0 = byte $90 < and or
-         lead $F4 = byte $90 >= and or if E-UTF8 throw then
-      then
-   loop ;
+   begin
+      state SOURCE$ state POSITION + @ UTF8:CUT?
+   while
+      state state SOURCE-LEN + @ 1+ INPUT-ENSURE 0= if exit then
+   repeat ;
 
 : SCAN-SCALAR ( ^n -- n )
    {: state :}
    state INPUT? if state INPUT-SCALAR-ENSURE then
-   state SOURCE$ state POSITION + @ SCALAR-AT
+   state SOURCE$ state WINDOW-PLACE state POSITION + @ SCALAR-AT
    state POSITION + ! ;
 
 : INPUT-NUMERIC-LOOKAHEAD ( ^n -- )
@@ -424,8 +446,12 @@ LINEAR: ERASE ( XML:reader -- ^n )
       state state POSITION + @ count + 1+ INPUT-ENSURE 0= if exit then
       state state POSITION + @ count + AT
       dup $3B = if drop exit then
+      {: byte:n :}
+      state SOURCE$ state WINDOW-PLACE state POSITION + @ byte
       HEX-DIGIT {: digit:n :}
-      value digit radix NUMERIC-STEP count 1+ radix
+      state SOURCE$ state WINDOW-PLACE state POSITION + @
+      value digit radix NUMERIC-STEP
+      count 1+ radix
    again ;
 
 : INPUT-ENTITY-LOOKAHEAD ( ^n -- )
@@ -456,7 +482,8 @@ LINEAR: ERASE ( XML:reader -- ^n )
          then
       then
    then
-   state SOURCE$ state POSITION + @ mode DECODE-AT ;
+   state SOURCE$ state WINDOW-PLACE state POSITION + @ mode
+   DECODE-AT ;
 
 \ An input reader keeps each open frame's name and each live binding's prefix and
 \ URI in the scope buffer: SCOPE-REF appends them when the frame opens or the
@@ -518,6 +545,10 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-INPUT-CAP @ {: chunk:n :}
    state SOURCE-LEN + @ chunk + cap <=
    cap 4 / chunk tail max <= and if exit then
+   state SOURCE-IDX ptr-field @ {: window:^ :}
+   window window consumed + stream STREAM-LINE @ stream STREAM-COLUMN @ 0
+      REJECTION:POSITION drop
+   stream STREAM-COLUMN ! stream STREAM-LINE !
    state SOURCE-IDX ptr-field @ consumed + tail BUF:N>BLEN
       stream TOKEN-BUF BUF:REPLACE
    stream TOKEN-TRIM
@@ -605,11 +636,11 @@ LINEAR: ERASE ( XML:reader -- ^n )
 
 : BOM ( ^n -- )
    {: state :}
-   state s\" \xFF\xFE" MATCH$ state s\" \xFE\xFF" MATCH$ or if
-      E-ENCODING throw
-   then
-   state s\" <\z" MATCH$ state s\" \z<" MATCH$ or if
-      E-ENCODING throw
+   state s\" \xFF\xFE" MATCH$ state s\" \xFE\xFF" MATCH$ or
+   state s\" <\z" MATCH$ or state s\" \z<" MATCH$ or if
+      state 0 s" a document in UTF-8 or US-ASCII"
+      s" save the document as UTF-8, or read UTF-16 with XML:INIT-SOURCE"
+      E-ENCODING REJECT
    then
    state s\" \xEF\xBB\xBF" MATCH$ if state 3 ADVANCE-N then ;
 

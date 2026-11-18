@@ -52,29 +52,38 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    {: state :}
    state EOF? if false exit then
    state INPUT? if state INPUT-SCALAR-ENSURE then
-   state SOURCE$ state POSITION + @ SCALAR-AT drop NAME-CHAR? ;
+   state SOURCE$ state WINDOW-PLACE state POSITION + @ SCALAR-AT
+   drop NAME-CHAR? ;
 
 : SCAN-NAME ( ^n -- n n )
    {: state :}
    state POSITION + @ {: start:n :}
    state SCAN-SCALAR dup NC-INITIAL? swap $3A = or 0= if
-      E-MALFORMED throw
+      state start s" a name" s" start the name with a letter, `_` or `:`"
+      E-MALFORMED REJECT
    then
    begin state NAME-CONTINUES? while state SCAN-SCALAR drop repeat
    start state POSITION + @ start - ;
 
 : QNAME-CHECK ( ^n n n -- )
    {: state start:n size:n :}
-   state SOURCE$ start SCALAR-AT drop NC-INITIAL? 0= if
-      E-NAMESPACE throw
+   state SOURCE$ state WINDOW-PLACE start SCALAR-AT drop
+   NC-INITIAL? 0= if
+      state start s" a name that starts with a letter or `_`"
+      s" write a prefix before the leading `:`, or remove it" E-NAMESPACE REJECT
    then
    0
    size 0 ?do
       state start i + AT $3A = if
          1+
-         dup 1 > i size 1- = or if E-NAMESPACE throw then
-         state SOURCE$ start i + 1+ SCALAR-AT drop NC-INITIAL? 0= if
-            E-NAMESPACE throw
+         dup 1 > i size 1- = or if
+            state start s" a name with at most one `:`, between a prefix and a local name"
+            s" write the name as `prefix:local` or `local`" E-NAMESPACE REJECT
+         then
+         state SOURCE$ state WINDOW-PLACE start i + 1+ SCALAR-AT
+         drop NC-INITIAL? 0= if
+            state start s" a local name after `:` that starts with a letter or `_`"
+            s" start the part after `:` with a letter or `_`" E-NAMESPACE REJECT
          then
       then
    loop
@@ -109,11 +118,18 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 : SCAN-VALUE ( ^n -- n n )
    {: state :}
    state PEEK {: quote:n :}
-   quote QUOTE? 0= if E-MALFORMED throw then
+   quote QUOTE? 0= if
+      state state POSITION + @ s\" a value in `\"` or `'` quotes"
+      s\" write the value between `\"` or `'` quotes" E-MALFORMED REJECT
+   then
    state ADVANCE
    state POSITION + @ {: start:n :}
    begin state PEEK quote <> while
-      state PEEK $3C = if E-MALFORMED throw then
+      state PEEK $3C = if
+         state state POSITION + @ s" the attribute value's closing quote"
+         s" close the value with its quote, or write `&lt;` for a literal `<`"
+         E-MALFORMED REJECT
+      then
       state DECODE-ATTR SCAN-DECODE
       state POSITION + ! drop
    repeat
@@ -179,17 +195,50 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state attr ATTRIBUTE-VALUE$
    state uri 0 URI$ NORMAL-EQUAL? ;
 
+: XMLNS-CHECK ( ^n ^n ^u8 n -- )
+   {: state attr prefix size:n :}
+   attr ATTRIBUTE-NAME + @ {: at:n :}
+   prefix size s" xmlns" BYTES= if
+      state at s" a prefix other than `xmlns`"
+      s" remove the declaration: XML binds `xmlns` itself"
+      E-NAMESPACE REJECT
+   then
+   state attr XMLNS-URI RESERVED-URI? if
+      state at
+      s" a namespace other than `http://www.w3.org/2000/xmlns/`"
+      s" declare another namespace URI, or remove the declaration"
+      E-NAMESPACE REJECT
+   then ;
+
+: XML-PREFIX-CHECK ( ^n ^n ^u8 n -- )
+   {: state attr prefix size:n :}
+   attr ATTRIBUTE-NAME + @ {: at:n :}
+   prefix size s" xml" BYTES= if
+      state attr XML-URI RESERVED-URI? 0= if
+         state at
+         s" `xml` bound to `http://www.w3.org/XML/1998/namespace`"
+         s" remove the declaration: XML binds `xml` itself"
+         E-NAMESPACE REJECT
+      then
+   else
+      state attr XML-URI RESERVED-URI? if
+         state at
+         s" a namespace other than `http://www.w3.org/XML/1998/namespace`"
+         s" write the `xml` prefix for that namespace, and remove this declaration"
+         E-NAMESPACE REJECT
+      then
+   then ;
+
 : NS-BINDING-CHECK ( ^n ^n -- )
    {: state attr :}
    state state attr NS-PREFIX SPAN$ {: prefix size:n :}
-   prefix size s" xmlns" BYTES= if E-NAMESPACE throw then
-   state attr XMLNS-URI RESERVED-URI? if E-NAMESPACE throw then
-   prefix size s" xml" BYTES= if
-      state attr XML-URI RESERVED-URI? 0= if E-NAMESPACE throw then
-   else
-      state attr XML-URI RESERVED-URI? if E-NAMESPACE throw then
-   then
-   size 0 > attr ATTRIBUTE-VALUE-U + @ 0= and if E-NAMESPACE throw then ;
+   state attr prefix size XMLNS-CHECK
+   state attr prefix size XML-PREFIX-CHECK
+   size 0 > attr ATTRIBUTE-VALUE-U + @ 0= and if
+      state attr ATTRIBUTE-NAME + @ s" a prefix declaration with a URI"
+      s" write the prefix's URI: XML 1.0 cannot undeclare a prefix"
+      E-NAMESPACE REJECT
+   then ;
 
 \ A URI hashes its decoded scalars, one word each: the units NORMAL-EQUAL?
 \ compares, so URIs it calls equal hash equal however they are spelled.
@@ -199,7 +248,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    0
    begin dup size < while
       {: cursor:n :}
-      source size cursor DECODE-ATTR DECODE-AT
+      source size WHOLE cursor DECODE-ATTR DECODE-AT
       {: scalar:n next:n :}
       sip scalar SIPHASH:ABSORB-WORD next
    repeat
@@ -283,7 +332,12 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    begin dup 0 >= while
       state swap ATTRIBUTE {: other :}
       other ATTRIBUTE-HASH + @ hash = if
-         state attr other same execute if E-NAMESPACE throw then
+         state attr other same execute if
+            state attr ATTRIBUTE-NAME + @
+            s" an attribute the element does not already have"
+            s" remove the repeated attribute, or give it another name or namespace"
+            E-NAMESPACE REJECT
+         then
       then
       other ATTRIBUTE-LINK + @
    repeat
@@ -334,13 +388,19 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 : LOOKUP-URI ( ^n n n -- n n n )
    {: state prefix:n size:n :}
    state state prefix size SPAN$ PREFIX-BINDING if exit then
-   E-NAMESPACE throw ;
+   state prefix s" a prefix an `xmlns:` declaration binds in scope"
+   s" declare it with `xmlns:` on this element or an enclosing one"
+   E-NAMESPACE REJECT ;
 
 : RESOLVE-NAME ( ^n n n bool -- n n n )
    {: state name:n size:n attr:bool :}
    state name size SPAN$ PREFIX-SIZE {: prefix-size:n :}
    prefix-size 0= attr and if 0 0 state EMPTY-URI-HASH exit then
-   state name prefix-size SPAN$ s" xmlns" BYTES= if E-NAMESPACE throw then
+   state name prefix-size SPAN$ s" xmlns" BYTES= if
+      state name s" an element name without the `xmlns` prefix"
+      s" rename the element: `xmlns` marks only namespace declarations"
+      E-NAMESPACE REJECT
+   then
    state name prefix-size LOOKUP-URI ;
 
 : RESOLVE-ATTRIBUTE ( ^n ^n -- n )

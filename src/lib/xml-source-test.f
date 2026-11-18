@@ -2,6 +2,7 @@ require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
 require src/lib/test/guard-page.f
+require src/lib/reason.f
 
 package XML-SOURCE-TEST
 
@@ -261,6 +262,11 @@ CAST: ENCODING>N ( XML:encoding -- n )
    [: 2dup SOURCE-STORE SOURCE-CAP 2swap XML:SOURCE-INIT XML:SOURCE-CLOSE ;]
    catch want T= 2drop ;
 
+\ A rejection's text: the place, what was expected, the token found and the fix.
+: SAID ( n ^u8 n -- ) {: code:n wa:^ wu:n :}
+   code REASON:TEXT$ wa wu T$=
+   REASON:RELEASE ;
+
 : ASCII-REJECTIONS ( -- )
    s" <?xml version='1.0' encoding='ISO-8859-1'?><a/>"
       XML:E-ENCODING BAD-NEXT
@@ -278,13 +284,16 @@ CAST: ENCODING>N ( XML:encoding -- n )
       XML:E-ENCODING BAD-INIT
    s\" \xEF\xBB\xBF<?xml version='1.0' encoding='US-ASCII'?><a/>"
       XML:E-ENCODING BAD-INIT
+   XML:E-ENCODING s" 1:34: expected an encoding that matches the document's bytes, such as `UTF-8` or `UTF-16`, found `US-ASCII`; declare the encoding the document is saved in, or save it as US-ASCII without a byte order mark" SAID
    s\" <?xml version='1.0' encoding='US-ASCII'?><a/>"
       true ASCII>UTF16 XML:E-ENCODING BAD-INIT
+   XML:E-ENCODING s" 1:31: expected an encoding that matches the document's bytes, such as `UTF-8` or `UTF-16`, found unit $0055; declare the encoding the document is saved in, or save it as US-ASCII without a byte order mark" SAID
    s\" <?xml version='1.0' encoding='US-ASCII'?><a/>"
       false ASCII>UTF16 XML:E-ENCODING BAD-INIT ;
 
 : BOMLESS-REJECTIONS ( -- )
    s\" <a/>" true ASCII>UTF16 XML:E-ENCODING BAD-INIT
+   XML:E-ENCODING s" 1:1: expected a byte order mark or `<?xml` at the start of a UTF-16 document, found unit $003C; begin the document with a byte order mark or an XML declaration, or save it as UTF-8" SAID
    s\" <a/>" false ASCII>UTF16 XML:E-ENCODING BAD-INIT
    s\" <?xml version='1.0'?><a/>"
    true ASCII>UTF16 XML:E-ENCODING BAD-NEXT
@@ -691,6 +700,8 @@ CAST: ENCODING>N ( XML:encoding -- n )
    s\" \xFF\xFE\z\xD8A\z" XML:E-UTF16 BAD-INIT
    s\" \xFF\xFE\z\z\z\z" XML:E-ENCODING BAD-INIT
    s\" \z\z\xFE\xFF" XML:E-ENCODING BAD-INIT
+   s\" \z\z\xFE\xFF<a/>" XML:E-ENCODING BAD-INIT
+   XML:E-ENCODING s" 1:1: expected a UTF-8 or UTF-16 document, found byte $00; save the document as UTF-8 or UTF-16" SAID
    s\" <\za\z/\z>\z" XML:E-ENCODING BAD-INIT
    s\" <a>\xC0\x80</a>" XML:E-UTF8 BAD-INIT
    s\" <a>\xED\xA0\x80</a>" XML:E-UTF8 BAD-INIT
@@ -700,6 +711,59 @@ CAST: ENCODING>N ( XML:encoding -- n )
    s\" \xEF\xBB\xBF\xEF\xBB\xBF<a/>" OPEN READER
    ['] DRAIN catch XML:E-MALFORMED T=
    XML:CLOSE XML:SOURCE-CLOSE ;
+
+
+\ A source reader's rejection: its code and its text, read at the catch.
+: SAID-NEXT ( ^u8 n n ^u8 n -- )
+   {: want:n wa:^ wu:n :}
+   OPEN READER
+   ['] DRAIN catch want T=
+   want REASON:TEXT$ wa wu T$=
+   REASON:RELEASE
+   XML:CLOSE XML:SOURCE-CLOSE ;
+
+: DECLARATION-TEXTS ( -- )
+   s" UTF-16 without a byte order mark names the encoding it is missing" T-LABEL
+   s" <?xml version='1.0'?><a/>" true ASCII>UTF16 XML:E-ENCODING
+   s\" 1:20: expected `encoding` after `version`, found `?`; declare `encoding=\qUTF-16LE\q` or `encoding=\qUTF-16BE\q`, as the document's bytes are"
+   SAID-NEXT
+   s" an attribute in the encoding's place is named" T-LABEL
+   s" <?xml version='1.0' standalone='yes'?><a/>" true ASCII>UTF16 XML:E-ENCODING
+   s\" 1:21: expected `encoding` after `version`, found `standalone`; declare `encoding=\qUTF-16LE\q` or `encoding=\qUTF-16BE\q`, as the document's bytes are"
+   SAID-NEXT
+   s" a byte order mark takes UTF-16" T-LABEL
+   s" <?xml version='1.0' encoding='UTF-8'?><a/>" true BOM-ASCII XML:E-ENCODING
+   s\" 1:31: expected `UTF-16`, as the byte order mark shows, found `UTF-8`; declare `encoding=\qUTF-16\q`"
+   SAID-NEXT
+   s" little-endian UTF-16 without a byte order mark takes UTF-16LE" T-LABEL
+   s" <?xml version='1.0' encoding='UTF-16BE'?><a/>" true ASCII>UTF16 XML:E-ENCODING
+   s\" 1:31: expected `UTF-16LE`, the encoding of the document's bytes, found `UTF-16BE`; declare `encoding=\qUTF-16LE\q`"
+   SAID-NEXT
+   s" big-endian UTF-16 without a byte order mark takes UTF-16BE" T-LABEL
+   s" <?xml version='1.0' encoding='UTF-16LE'?><a/>" false ASCII>UTF16 XML:E-ENCODING
+   s\" 1:31: expected `UTF-16BE`, the encoding of the document's bytes, found `UTF-16LE`; declare `encoding=\qUTF-16BE\q`"
+   SAID-NEXT
+   s" UTF-16 without a byte order mark begins with its declaration" T-LABEL
+   s" <?xml-stylesheet x?><a/>" false ASCII>UTF16 XML:E-ENCODING
+   s\" 1:1: expected an XML declaration, which a UTF-16 document without a byte order mark begins with, found `<`; begin the document with `<?xml version=\q1.0\q encoding=\qUTF-16LE\q?>` or its `UTF-16BE` form, or with a byte order mark"
+   SAID-NEXT ;
+
+: UNIT-TEXTS ( -- )
+   s" a UTF-16 line ends at an LF unit, not at an LF byte of another unit" T-LABEL
+   s\" \xFF\xFE<\za\z>\z\x0A\z\x0A\x01\z\xDC<\z/\za\z>\z" XML:E-UTF16 BAD-INIT
+   XML:E-UTF16 s" 2:2: expected a character, or a high surrogate before a low one, found unit $DC00; write the high surrogate before the low one, or remove the low surrogate" SAID
+   s" a lone last byte of UTF-16 is placed after the last unit" T-LABEL
+   s\" \xFF\xFE<\za\z/\z>\zA" XML:E-UTF16 BAD-INIT
+   XML:E-UTF16 s" 1:6: expected a UTF-16 unit of two bytes, found byte $41; write the last character whole, or remove the stray byte" SAID
+   s" a big-endian high surrogate before another unit is placed at that unit" T-LABEL
+   s\" \xFE\xFF\z<\za\z>\xD8\z\zA\z<\z/\za\z>" XML:E-UTF16 BAD-INIT
+   XML:E-UTF16 s" 1:6: expected a low surrogate after the high surrogate, found unit $0041; write the low surrogate after the high one, or remove the high surrogate" SAID
+   s" a UTF-16 character XML 1.0 does not allow is found as its unit" T-LABEL
+   s\" \xFF\xFE<\za\z>\z\xFE\xFF<\z/\za\z>\z" XML:E-SCALAR BAD-INIT
+   XML:E-SCALAR s" 1:5: expected a character XML 1.0 allows, found unit $FFFE; remove the character, or write one XML 1.0 allows" SAID
+   s" a byte no UTF-8 character starts is placed by lines" T-LABEL
+   s\" <a>\x0A<b/>\x0A\xFF</a>" XML:E-UTF8 BAD-INIT
+   XML:E-UTF8 s" 3:1: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID ;
 
 T-RESET
 UTF16-READ
@@ -728,5 +792,7 @@ ENCODE-BOUND
 SOURCE-OUTPUT-ALIAS
 REFUSED-READER-KEEPS-SOURCE
 REJECTIONS
+DECLARATION-TEXTS
+UNIT-TEXTS
 T-REPORT
 ;package

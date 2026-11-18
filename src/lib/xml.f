@@ -23,7 +23,10 @@ require src/lib/xml/write.f
 \ until the next advance; empty CDATA is emitted. Offsets are zero-based source
 \ bytes, a BOM included. Tables grow with the document, so depth, attributes
 \ and bindings are bounded only by memory. A failed NEXT poisons the reader:
-\ later reads are E-STATE and CLOSE still consumes it.
+\ later reads are E-STATE and CLOSE still consumes it. An input code
+\ (E-MALFORMED, E-TRUNCATED, E-UTF8, E-UTF16, E-SCALAR, E-ENTITY, E-NAMESPACE,
+\ E-DTD, E-ENCODING) is thrown through REASON:THROW with the text
+\ `L:C: expected <e>, found <f>; <fix>`; a caller's fault carries none.
 \ Decoders validate the whole result before writing and refuse overlap with
 \ the source or the reader's buffers. A DTD is E-DTD (not a validating
 \ processor); an unsupported encoding is E-ENCODING. Qualify XML:CLOSE and

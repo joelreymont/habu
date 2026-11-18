@@ -36,7 +36,7 @@ private
    0 0
    begin dup size < while
       {: total:n cursor:n :}
-      source size cursor SCALAR-AT {: scalar:n next:n :}
+      source size WHOLE cursor SCALAR-AT {: scalar:n next:n :}
       scalar attr ESCAPED-LEN {: added:n :}
       added MAX-SIZE total - > if E-CAPACITY throw then
       total added + next
@@ -55,7 +55,7 @@ private
    destination 0
    begin dup size < while
       {: output cursor:n :}
-      source size cursor SCALAR-AT {: scalar:n next:n :}
+      source size WHOLE cursor SCALAR-AT {: scalar:n next:n :}
       scalar attr output WRITE-ESCAPED next
    repeat
    2drop ;

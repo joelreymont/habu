@@ -1,5 +1,6 @@
 \ utf8-scalar-test.f - direct and property tests for UTF8:NEXT, the
-\ whole-span check UTF8:VALID? built on it, and the boundary cut UTF8:FIT.
+\ whole-span check UTF8:VALID? built on it, the boundary cut UTF8:FIT and the
+\ cut-character check UTF8:CUT?.
 
 require src/lib/test.f
 require src/lib/property.f
@@ -471,6 +472,28 @@ variable STATE-B-CURSOR
    [: CASE-BUF 1+ -1 2 UTF8:FIT drop ;] E-STR-BOUNDS TTHROWSQ
    CANARIES ;
 
+\ A lead and fewer continuations than its width are cut only when some ending
+\ decodes: the second-byte ranges after $E0, $ED, $F0 and $F4 decide.
+: CUT-CHECKS ( -- )
+   S\" \xC3" 0 UTF8:CUT? TTRUE
+   S\" \xC3\xA9" 0 UTF8:CUT? TFALSE
+   S\" \xC0" 0 UTF8:CUT? TFALSE
+   S\" \xE0" 0 UTF8:CUT? TTRUE
+   S\" \xE0\x80" 0 UTF8:CUT? TFALSE
+   S\" \xE0\xA0" 0 UTF8:CUT? TTRUE
+   S\" \xED\xA0" 0 UTF8:CUT? TFALSE
+   S\" \xED\x9F" 0 UTF8:CUT? TTRUE
+   S\" \xF0\x8F" 0 UTF8:CUT? TFALSE
+   S\" \xF4\x8F\xBF" 0 UTF8:CUT? TTRUE
+   S\" \xF4\x90" 0 UTF8:CUT? TFALSE
+   S\" \xF5" 0 UTF8:CUT? TFALSE
+   S\" \x80" 0 UTF8:CUT? TFALSE
+   S\" A" 0 UTF8:CUT? TFALSE
+   S\" A" 1 UTF8:CUT? TFALSE
+   S\" A\xC3" 1 UTF8:CUT? TTRUE
+   [: CASE-BUF 1+ -1 -1 UTF8:CUT? drop ;] E-STR-BOUNDS TTHROWSQ
+   [: CASE-BUF 1+ 1 2 UTF8:CUT? drop ;] E-STR-BOUNDS TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -479,7 +502,7 @@ public
    TRUNCATIONS FINAL-LEAD BAD-CONTINUATIONS SURROGATES ABOVE-SCALAR-LIMIT
    ADJACENT-CALLS NESTED-CALL
    INTERLEAVED-STATES CURSOR-BOUNDS PROPERTY-WIDTHS RANDOM-PROPERTY
-   VALID-ACCEPTS VALID-REFUSES FIT-CUTS ;
+   VALID-ACCEPTS VALID-REFUSES FIT-CUTS CUT-CHECKS ;
 
 ;package
 
