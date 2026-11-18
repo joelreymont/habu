@@ -54,7 +54,7 @@ create PROG-BUF PATH-CAP allot
 
 : STORE-ENTRY ( str -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
-   data-base APP-ENTRY:XT-CELL + xt! ;
+   APP-ENTRY:XT! ;
 
 
 : WRITE-PROG ( str str -- )

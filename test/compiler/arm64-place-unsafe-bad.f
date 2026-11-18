@@ -22,7 +22,7 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 : BODY ( -- )
    s" test/compiler/arm64-place-fixture.f" included
    s" PL-MAKE" XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
-   data-base APP-ENTRY:XT-CELL + xt!
+   APP-ENTRY:XT!
    s" ARM64-PLACE-UNSAFE-ARMED" type cr
    1 SCRIPT-ARGV$ LINKER:WRITE
    s" arm64-place-unsafe: PL-MAKE was not refused" EXIT-STATUS:FAILURE die ;

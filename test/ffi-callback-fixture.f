@@ -30,6 +30,8 @@ FUNCTION: BSEARCH bsearch ( ^u8 ^u8 n n n -- n ) ;FUNCTION
 
 FUNCTION: PTHREAD-CREATE pthread_create ( ^u8 n n n -- i32 ) ;FUNCTION
 
+FUNCTION: PTHREAD-SELF pthread_self ( -- n ) ;FUNCTION
+
 create OUTER ROW-N cells allot        \ the row the calling task sorts
 create INNER ROW-N cells allot        \ the row a comparator sorts, nested
 create THREAD-ROW ROW-N cells allot   \ the row a second thread sorts
@@ -48,7 +50,7 @@ variable UNBIND-CODE                  \ what UNBIND threw inside the comparator
 variable INSIDE                       \ 1 once a body is parked
 variable GATE                         \ the release a parked body waits for
 variable THREAD                       \ pthread_t
-variable WHO-OWNER                    \ CB-OWNER of the region WHO last ran on
+variable WHO-THREAD                   \ pthread_self where WHO last ran
 variable CMP-CALLER-FN
 variable CALLER-WANT                  \ sorters a first comparison waits for
 variable CALLER-INSIDE                \ sorters that reached CMP-CALLER
@@ -149,10 +151,9 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 \ Bound and never reached: a thread C started is refused before its dispatch.
 : START-IMPL ( n -- n ) ;
 
-\ A comparator that keeps the owner of the region it runs on, which is the
-\ calling thread's.
+\ A comparator that keeps the thread it runs on.
 : WHO-IMPL ( ^u8 ^u8 -- n ) {: a b :}
-   data-base CB-OWNER + atomic@ WHO-OWNER !
+   PTHREAD-SELF WHO-THREAD !
    a b ROW-ORDER ;
 
 
@@ -175,7 +176,7 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 \ row it is, and the call must run on that sorter's region.
 : CMP-CALLER-IMPL ( ^u8 ^u8 -- n ) {: a b :}
    a CELL-VIEW @ 100 / {: band:n :}
-   CALLER-REGIONS band cells + @ data-base FFI:>CELL <> if
+   CALLER-REGIONS band cells + @ TASK:SELF-CONTEXT <> if
       1 CALLER-MISSES atomic-add drop
    then
    band CALLER-ENTER
@@ -294,7 +295,7 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
    BIND-SELF SORTS TASK:RETURN ;
 
 : CALLER-SORT ( ^n n -- bool ) {: row:^ band:n :}
-   data-base FFI:>CELL CALLER-REGIONS band cells + !
+   TASK:SELF-CONTEXT CALLER-REGIONS band cells + !
    row band 100 * ROW-FILL
    row BYTE-VIEW ROW-N CELL CMP-CALLER-FN @ QSORT
    row band 100 * ROW-SORTED? ;

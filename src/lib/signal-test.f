@@ -131,18 +131,12 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
       1+
    repeat drop ;
 
-: ABI-SLOT ( n -- ^n ) {: off:n :}
-   data-base off + ;
-
-: STUB@ ( -- n )
-   SIGNAL-ABI:STUB-CELL ABI-SLOT @ ;
-
 \ Read in the MAIN task, where the boot wrote it: the fd word's absolute
 \ address. A spawned task's region carries neither published cell, so this
 \ pointer is the only way that task reaches the one word the stub writes
 \ through.
 : KEEP-FD-WORD ( -- )
-   SIGNAL-ABI:FD-PTR-CELL ABI-SLOT 0 ptr-field @ ABI-KEPT ! ;
+   SIGNAL-ABI:FD ABI-KEPT ! ;
 
 : FD-WORD ( -- ^n )
    ABI-KEPT @ ;
@@ -174,7 +168,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    sig SA-ACT SA-OLD SIGACTION-CALL 0 <> if E-PROC-OUTPUT throw then ;
 
 : REINSTALL ( n -- ) {: sig:n :}
-   sig STUB@ SA-RESTART SET-DISPOSITION ;
+   sig SIGNAL-ABI:STUB SA-RESTART SET-DISPOSITION ;
 
 : RE-DEFAULT ( n -- ) {: sig:n :}
    sig SIG-DFL SA-NO-FLAGS SET-DISPOSITION ;
@@ -348,7 +342,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    SIGNAL:SIGUSR1 REINSTALL
 
    s" CATCH installed the engine's published stub, not a Forth word" T-LABEL
-   OLD-HANDLER STUB@ T=
+   OLD-HANDLER SIGNAL-ABI:STUB T=
 
    s" ... with SA_RESTART, so a blocked read or write resumes" T-LABEL
    OLD-FLAGS SA-RESTART EXPECT-FLAGS T=

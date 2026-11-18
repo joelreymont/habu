@@ -94,7 +94,7 @@ variable OVER-CEILING
 
 : STORE-ENTRY ( str -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
-   data-base APP-ENTRY:XT-CELL + xt! ;
+   APP-ENTRY:XT! ;
 
 
 DYNAMIC-BUFFER FIRST-LINK u8
@@ -181,13 +181,6 @@ DYNAMIC-BUFFER SECOND-LINK u8
    s" data"  s" error[E-LINK-DATA-POINTER]" 70 BAD-CHILD
    s" data" NAMES-LABEL
    CMD:ERR$ s" the data address 1 lies outside the build's space" CONTAINS? TTRUE ;
-
-: BAD-HEADER ( CMD:command -- CMD:command )
-   s" header"  s" error[E-LINK-HEADER-CELL]" 70 BAD-CHILD
-   s" header" NAMES-LABEL
-   SB-RESET  s" the build stored into the header cell at offset " SB-APPEND
-   UNCGH-CELL FMT:SB-INT  s" ," SB-APPEND
-   CMD:ERR$ SB$ CONTAINS? TTRUE ;
 
 : BAD-EVAL ( CMD:command -- CMD:command )
    s" eval"  s" error[E-CANNOT-RUN-STRIPPED]: `LD-EV` calls `evaluate-closed`" 70 BAD-CHILD ;
@@ -299,7 +292,6 @@ public
    [: BAD-SHIFTED ;] CMD:WITH-COMMAND
    [: BAD-UNENDED ;] CMD:WITH-COMMAND
    [: BAD-DP-AT-START ;] CMD:WITH-COMMAND
-   [: BAD-HEADER ;] CMD:WITH-COMMAND
    [: BAD-EVAL ;] CMD:WITH-COMMAND
    [: BAD-DICT ;] CMD:WITH-COMMAND
    ROOT$ FS:REMOVE-TREE

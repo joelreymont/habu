@@ -24,7 +24,7 @@ using FFI-CB
 
 $3000 constant SCRIPT-CAP
 $4000 constant CAP
-1000 constant OWNER-READS
+1000 constant THREAD-READS
 200 constant HELD-MS                  \ how long a held row keeps a call waiting
 10 constant LF
 
@@ -40,7 +40,7 @@ variable SCRIPT-U
 variable WANT-U
 variable SUBJECT-U
 variable IMAGE-U
-variable MAIN-OWNER                   \ the owner the main thread claims with
+variable MAIN-THREAD                  \ the thread WHO runs on for the main task
 
 \ With the fixture's eleven callbacks these five make sixteen entries, a
 \ table-size edge.
@@ -102,28 +102,27 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" == the main task" SAY
    BIND-SELF SORTS SORT-FACTS ;
 
-\ WHO is a comparator that keeps CB-OWNER of the region it runs on. qsort of a
-\ two-cell row calls it on this thread, and every call claims the owner afresh,
-\ so one value across a thousand sorts with a yield between them is the thread
-\ pointer holding still. The cell is cleared first, so a sort that never
-\ called WHO reads the free owner.
-: WHO-CLAIM ( n -- n ) {: fn:n :}
-   0 WHO-OWNER !
+\ WHO is a comparator that keeps pthread_self. qsort of a two-cell row calls it
+\ once, so one value across a thousand sorts with a yield between them is the
+\ main task's callbacks holding to one thread. The cell is cleared first, so a
+\ sort that never called WHO reads 0.
+: WHO-SORT ( n -- n ) {: fn:n :}
+   0 WHO-THREAD !
    OUTER BYTE-VIEW 2 CELL fn QSORT
-   WHO-OWNER @ ;
+   WHO-THREAD @ ;
 
-: OWNER-STABLE? ( n -- bool ) {: fn:n :}
-   fn WHO-CLAIM MAIN-OWNER !
-   true OWNER-READS 0 ?do
+: THREAD-STABLE? ( n -- bool ) {: fn:n :}
+   fn WHO-SORT MAIN-THREAD !
+   true THREAD-READS 0 ?do
       TASK:PAUSE
-      fn WHO-CLAIM MAIN-OWNER @ = and
+      fn WHO-SORT MAIN-THREAD @ = and
    loop ;
 
-: CASE-OWNER ( -- )
-   s" == the owner a thread claims with" SAY
-   WHO TASK:SELF-CONTEXT ENTRY OWNER-STABLE?
-      s" the main thread claims with one value, a thousand calls and yields apart" FACT
-   MAIN-OWNER @ 0 <> s" which is not the free owner" FACT
+: CASE-THREAD ( -- )
+   s" == the thread a callback runs on" SAY
+   WHO TASK:SELF-CONTEXT ENTRY THREAD-STABLE?
+      s" the main task's callbacks run on one thread, a thousand calls and yields apart" FACT
+   MAIN-THREAD @ 0 <> s" which every sort called" FACT
    WHO UNBIND ;
 
 : CASE-WORKERS ( -- )
@@ -565,9 +564,9 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   bsearch through it answers the fallback: its first probe matches" W
    s" ok   and faults E-FFI-CALLBACK-STATE" W
    s" ok   a fallback of 1 reaches C too: no row matches" W
-   s" == the owner a thread claims with" W
-   s" ok   the main thread claims with one value, a thousand calls and yields apart" W
-   s" ok   which is not the free owner" W
+   s" == the thread a callback runs on" W
+   s" ok   the main task's callbacks run on one thread, a thousand calls and yields apart" W
+   s" ok   which every sort called" W
    s" == a worker on its own context, unbinding before it ends" W
    WANT-SORTS
    s" == a worker on its own context, ending bound" W
@@ -706,7 +705,7 @@ public
    0 SCRIPT-U !
    CASE-MAIN
    CASE-UNSET
-   CASE-OWNER
+   CASE-THREAD
    CASE-WORKERS
    CASE-CALLER
    CASE-CALLER-HELD

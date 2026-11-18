@@ -3,10 +3,11 @@ split-str
 \ process, chosen by the first script argument: `data`, a cell declared as a
 \ DATA pointer that holds an address outside the build's space, read by the
 \ entry, since a stripped link checks only the data its entry reaches;
-\ `header`, a build's xt! into a header cell the link writes; `eval`, an entry
-\ that calls `evaluate-closed`; `dict`, an entry that calls `search-wl`. The
-\ second argument is the kernel object the link adopts, the third the path it
-\ would write. test/compiler/arm64-link-data.f runs each and checks it.
+\ `header`, an empty entry, refused only by a malformed kernel object when the
+\ link writes the header cells; `eval`, an entry that calls `evaluate-closed`;
+\ `dict`, an entry that calls `search-wl`. The second argument is the kernel
+\ object the link adopts, the third the path it would write.
+\ test/compiler/arm64-link-data.f runs each and checks it.
 
 require src/core/exit-status.f
 require src/lib/error.f
@@ -32,26 +33,25 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 : DATA-BODY ( -- )
    s" variable LD-BAD  1 LD-BAD !  LD-BAD ptr-cell-mark" evaluate-closed
    s" : LD-BAD-READ ( -- ) LD-BAD @ drop ;" evaluate-closed
-   s" LD-BAD-READ" WORD-XT  data-base APP-ENTRY:XT-CELL + xt!  WRITE
+   s" LD-BAD-READ" WORD-XT  APP-ENTRY:XT!  WRITE
    s" arm64-link-data-bad: the DATA pointer was not refused" EXIT-STATUS:FAILURE die ;
 
 
 : HEADER-BODY ( -- )
    s" : LD-HB ( -- ) ;" evaluate-closed
-   s" LD-HB" WORD-XT  data-base APP-ENTRY:XT-CELL + xt!
-   s" LD-HB" WORD-XT  data-base UNCGH-CELL + xt!  WRITE
-   s" arm64-link-data-bad: the header store was not refused" EXIT-STATUS:FAILURE die ;
+   s" LD-HB" WORD-XT  APP-ENTRY:XT!  WRITE
+   s" arm64-link-data-bad: the kernel object was not refused" EXIT-STATUS:FAILURE die ;
 
 
 : EVAL-BODY ( -- )
    s\" : LD-EV ( -- ) s\" \" evaluate-closed ;" evaluate-closed
-   s" LD-EV" WORD-XT  data-base APP-ENTRY:XT-CELL + xt!  WRITE
+   s" LD-EV" WORD-XT  APP-ENTRY:XT!  WRITE
    s" arm64-link-data-bad: the evaluate-closed call was not refused" EXIT-STATUS:FAILURE die ;
 
 
 : DICT-BODY ( -- )
    s\" : LD-DW ( -- ) s\" LD-DW\" 0 search-wl drop ;" evaluate-closed
-   s" LD-DW" WORD-XT  data-base APP-ENTRY:XT-CELL + xt!  WRITE
+   s" LD-DW" WORD-XT  APP-ENTRY:XT!  WRITE
    s" arm64-link-data-bad: the wordlist lookup was not refused" EXIT-STATUS:FAILURE die ;
 
 
