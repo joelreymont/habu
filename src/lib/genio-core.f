@@ -1,3 +1,4 @@
+split-str
 \ genio-core.f - the generic text I/O device table: EMIT, KEY, ACCEPT and the
 \ rest reach a device through a vector table, chosen per task. It requires no
 \ transport and changes nothing on load; src/lib/genio.f adds the TCP device and
@@ -196,7 +197,7 @@ private
 \ The terminal's operations name the descriptors rather than calling `emit` and
 \ `type`, which follow the current device.
 
-: TERMINAL-WRITE ( ^u8 n -- ) {: bytes:^ len:n :}
+: TERMINAL-WRITE ( str -- ) {: bytes:^ len:n :}
    STDOUT-FD bytes len write drop ;
 
 : TERMINAL-EMIT ( n -- ) {: c:n :}
@@ -358,7 +359,7 @@ private
 \ The buffer stays under the count read, so the catch preserves the shape.
 : RUN-READ-OP ( ^u8 n -- ^u8 n )
    over swap ACTIVE-ROW OP-READ @ execute ;
-: RUN-ACCEPT-OP ( ^u8 n -- ^u8 n )
+: RUN-ACCEPT-OP ( str -- str )
    over swap ACTIVE-ROW OP-ACCEPT @ execute ;
 
 \ Everything the row was, undone, ending with the release: the generation has

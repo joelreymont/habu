@@ -1,3 +1,4 @@
+split-str
 \ INTERPRETER:NUMBER against num-parse's value, float flag and ok; the name
 \ wall, which refuses a name the reader reads or refuses for range, checks its
 \ range flag.
@@ -15,7 +16,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 
 \ Fixed IEEE-754 vectors, independently rounded by C strtod in FE_TONEAREST.
 \ Reader parity alone cannot detect a double rounding both readers share.
-: FLOAT-BITS ( ^u8 n n -- )
+: FLOAT-BITS ( str n -- )
    {: a:^ u:n bits:n :}
    a u num-parse {: got:n flt:bool ok:bool :}
    a u T-LABEL got bits T= flt TTRUE ok TTRUE
@@ -49,7 +50,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    s" formatted decimal source replay" GE-HB-RUN-STDIN ;
 
 
-: RANGE? ( ^u8 n -- bool )
+: RANGE? ( str -- bool )
    INTERPRETER:NUMBER {: v:n flt:bool ok:bool range:bool :} range ;
 
 
@@ -57,7 +58,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    want if got TTRUE else got TFALSE then ;
 
 
-: SAME-PARSE ( ^u8 n -- ) {: a:^ u:n :}
+: SAME-PARSE ( str -- ) {: a:^ u:n :}
    a u num-parse {: want:n want-flt:bool want-ok:bool :}
    a u INTERPRETER:NUMBER drop {: got:n flt:bool ok:bool :}
    a u T-LABEL got want T=
@@ -65,7 +66,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    a u T-LABEL ok want-ok FLAG= ;
 
 
-: HOSTILE-EVAL ( ^u8 n -- n ) {: a:^ u:n :}
+: HOSTILE-EVAL ( str -- n ) {: a:^ u:n :}
    GE-SRC-RESET
    s" : " GE-SRC+ a u GE-SRC+ s"  ( -- n ) 42 ;" GE-SRC-LINE
    a u GE-SRC+ s"  drop" GE-SRC-LINE
@@ -73,7 +74,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    a u GE-RC@ ;
 
 
-: SAME-WALL ( ^u8 n -- ) {: a:^ u:n :}
+: SAME-WALL ( str -- ) {: a:^ u:n :}
    a u num-parse nip nip  a u RANGE?  or {: number:bool :}
    number if 1 REFUSALS +! 70 else 0 then {: want:n :}
    a u HOSTILE-EVAL {: rc:n :}

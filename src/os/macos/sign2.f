@@ -1,3 +1,4 @@
+split-str
 \ sign2.f - the ad-hoc signing post-pass for src/os/macos/macho.f's images:
 \ CODESIG2 inserts LC_CODE_SIGNATURE into the header slack, grows __LINKEDIT
 \ and appends a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory

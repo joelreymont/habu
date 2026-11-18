@@ -1,3 +1,4 @@
+split-str
 \ f64-text.f - exact finite binary64 text computed here in integers: PARSE
 \ rounds a decimal to the nearest binary64 and FORMAT writes the shortest
 \ decimal that reads back. Neither reads the locale or the rounding mode, and
@@ -35,12 +36,12 @@ BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
 : DIGITS ( ^u8 n n -- n ) {: text:^ len:n offset:n :}
    offset begin dup len < if text over + c@ DIGIT? else false then while 1+ repeat ;
-: SIGN-SKIP ( ^u8 n n -- n ) {: text:^ len:n offset:n :}
+: SIGN-SKIP ( str n -- n ) {: text:^ len:n offset:n :}
    offset len < if text offset + c@ dup $2B = swap $2D = or if offset 1+ exit then then offset ;
 : EXPONENT? ( n -- bool ) dup $65 = swap $45 = or ;
 
 \ Zero means complete decimal; one means malformed; two means trailing bytes.
-: FRACTION-END ( ^u8 n n -- n ) {: text:^ len:n offset:n :}
+: FRACTION-END ( str n -- n ) {: text:^ len:n offset:n :}
    offset len < if text offset + c@ $2E = if
       text len offset 1+ DIGITS exit
    then then offset ;
@@ -57,7 +58,7 @@ BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
    else end then else end then
    len = if 0 else 2 then ;
 
-: NONFINITE-TEXT? ( ^u8 n -- bool )
+: NONFINITE-TEXT? ( str -- bool )
    2dup 0 SIGN-SKIP {: offset:n :} offset - swap offset + swap
    2dup s" nan" STR=CI if 2drop true exit then
    2dup s" inf" STR=CI if 2drop true exit then s" infinity" STR=CI ;
@@ -309,7 +310,7 @@ private
 
 \ The exponent after the marker at offset - 1; once its magnitude reaches
 \ EXPONENT-CAP it grows no more.
-: EXPONENT-VALUE ( ^u8 n n -- n )
+: EXPONENT-VALUE ( str n -- n )
    {: text:^ len:n offset:n :}
    text len offset SIGN-SKIP {: start:n :}
    0 len start ?do
@@ -328,7 +329,7 @@ private
 
 \ The count of significant digits kept, q with the value D x 10^q, D those
 \ digits, and whether a dropped digit was not 0.
-: SCAN-DECIMAL ( ^u8 n -- n n bool )
+: SCAN-DECIMAL ( str -- n n bool )
    {: text:^ len:n :}
    text len PARTS {: first:n integer-end:n end:n :}
    0 0 false text first integer-end false COUNT-DIGITS
@@ -339,7 +340,7 @@ private
 
 
 \ Leaves D, the first `kept` significant digits, in big.
-: FILL-DECIMAL ( ^u8 n n ^n -- )
+: FILL-DECIMAL ( str n ^n -- )
    {: text:^ len:n kept:n big:^ :}
    text len PARTS {: first:n integer-end:n end:n :}
    0 0 0 text first integer-end kept big FILL-DIGITS
@@ -389,7 +390,7 @@ private
 
 
 \ Decides the far ranges before it allocates; the sign joins last.
-: READ-DECIMAL ( ^u8 n -- result<r,fault> )
+: READ-DECIMAL ( str -- result<r,fault> )
    {: text:^ len:n :}
    text c@ $2D = if $8000000000000000 else 0 then {: sign:n :}
    text len SCAN-DECIMAL {: count:n q:n dropped:bool :}

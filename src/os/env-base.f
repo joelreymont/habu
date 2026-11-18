@@ -1,3 +1,4 @@
+split-str
 \ env-base.f - startup argv/envp access. ARGC-CELL, ARGV-CELL and ENVP-CELL sit
 \ at fixed offsets below DATA-START; every process, image or task reads them
 \ through its own DATA base.
@@ -32,18 +33,18 @@ $2D constant ENV-DASH
 : ZLEN ( ^u8 -- n )
    0 begin 2dup ZBYTE@ 0= 0= while 1 + repeat swap drop ;
 
-: ARGV$ ( n -- ^u8 n )
+: ARGV$ ( n -- str )
    ARGV dup ZLEN ;
 
 : ENV-FALSE ( -- bool )
    0 0= 0= ;
 
-: ENV=? ( ^u8 ^u8 n -- bool )
+: ENV=? ( ^u8 str -- bool )
    {: z:^ a:^ u:n :}
    u 0 ?do z i ZBYTE@ a i ZBYTE@ = 0= if unloop ENV-FALSE exit then loop
    z u ZBYTE@ $3D = ;
 
-: NULL$ ( -- ^u8 n )
+: NULL$ ( -- str )
    NULL-PTR 0 ;
 
 \ CURRENT$ reads a variable unrecorded; GETENV records the read in the
@@ -93,7 +94,7 @@ variable TPU
    dup 0 < swap PATH-CAP TPQ @ - 1 - > or
    if s" env: TMP-PATH exceeds buffer" EXIT-STATUS:FULL die then ;
 
-: TMP-PATH-COPY-SRC ( ^u8 n -- )
+: TMP-PATH-COPY-SRC ( str -- )
    0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;
 
 : TMP-PATH ( ^u8 n -- ^u8 n )

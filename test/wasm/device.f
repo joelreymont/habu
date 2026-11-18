@@ -1,3 +1,4 @@
+split-str
 \ device.f - the wasm device check: WLINK's modules validated by wasm-tools and
 \ run by bun through test/wasm/harness.f; the wasm-device suite runs it.
 \ The wasm and browser suites it requires run first and report on their own;

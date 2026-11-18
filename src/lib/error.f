@@ -1,3 +1,4 @@
+split-str
 \ error.f - canonical stdlib throw codes, and the rejection record of a throw of
 \ one. -999999..-100000 is reserved for external applications and libraries
 \ (docs/forth.md, Errors). A file owns the whole block between its FIRST and
@@ -414,11 +415,11 @@ HEAD ROLLBACK-CELLS:MARK
 : ROW-FAULT? ( ^n -- bool )  4 cells + @ 0<> ;
 
 
-: ROW-NAME$ ( ^n -- ^u8 n ) {: r:^ :}
+: ROW-NAME$ ( ^n -- str ) {: r:^ :}
    r 5 cells + BYTE-VIEW r 2 cells + @ ;
 
 
-: ROW-TEXT$ ( ^n -- ^u8 n ) {: r:^ :}
+: ROW-TEXT$ ( ^n -- str ) {: r:^ :}
    r 5 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
 
 
@@ -431,12 +432,12 @@ HEAD ROLLBACK-CELLS:MARK
 
 
 \ The open package's own spelling, empty outside a package.
-: PKG$ ( -- ^u8 n )
+: PKG$ ( -- str )
    data-base PKG-REC-CELL + @ dup 0= if drop s" " exit then
    XREF-ADDR>REC XREF-NAME$ ;
 
 
-: SAME-NAME? ( ^n ^u8 n ^u8 n -- bool )
+: SAME-NAME? ( ^n str str -- bool )
    {: at:^ p:^ pu:n name:^ nameu:n :}
    at ROW-NAME$ {: r:^ ru:n :}
    pu 0= if r ru name nameu XREF-STR=CI exit then

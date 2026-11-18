@@ -1,3 +1,4 @@
+split-str
 \ native-hookless-reject.f - a definition the checker refuses is refused naming
 \ it and the token refused, and keeps no row.
 
@@ -33,7 +34,7 @@ create TEXT CAP allot                  variable TEXT-U
 : PRINTS ( ^u8 n -- ) {: a:^ u:n :}
    OUT$ a u CONTAINS? SHOW TTRUE ;
 
-: SUBJECT-STORE! ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
+: SUBJECT-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH PROCESS:ending
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF

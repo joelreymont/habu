@@ -1,3 +1,4 @@
+split-str
 \ part-main.f - MAIN's fetch of an out-of-domain tag dies with the bad-tag error.
 
 package APP

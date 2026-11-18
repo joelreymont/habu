@@ -1,3 +1,4 @@
+split-str
 \ roles.f — nominal scalar role conversions baked into hb.
 \
 \ The checker treats roles such as idx/len/fd as distinct nominal cell types.
@@ -39,7 +40,7 @@ EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-DECLARATION
 EXPORT CHECK:NOMINAL-PROVIDER
 EXPORT CHECK:SR-GROW
-: DTC+ ( ^u8 n -- ) {: a:^ u:n :}
+: DTC+ ( str -- ) {: a:^ u:n :}
    DTC-U @ u + DTC-CAP @ > IF
       DTC-U @ u + DTC-CAP @ 2 * max DTC-INIT max {: nc:n :}
       DTC-P @ DTC-CAP @ nc SR-GROW DTC-P !
@@ -48,10 +49,10 @@ EXPORT CHECK:SR-GROW
    a DTC-BUF DTC-U @ + u ARENA-COPY
    DTC-U @ u + DTC-U ! ;
 
-: DTC-NAME$ ( -- ^u8 n )
+: DTC-NAME$ ( -- str )
    DTC-BUF DTC-NAME-OFF @ + DTC-NAME-U @ ;
 
-: DTC-SIG$ ( -- ^u8 n )
+: DTC-SIG$ ( -- str )
    DTC-BUF DTC-SIG-OFF @ + DTC-SIG-U @ ;
 
 \ The buffer carries two spans and nothing else: DTC-NAME$ and DTC-SIG$ are
@@ -68,7 +69,7 @@ EXPORT CHECK:SR-GROW
    DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U ! ;
 
 \ DTC+, with each byte a-z in upper case.
-: DTC-UPPER+ ( ^u8 n -- ) {: a:^ u:n :}
+: DTC-UPPER+ ( str -- ) {: a:^ u:n :}
    a u DTC+
    DTC-BUF DTC-U @ u - + {: at:^ :}
    0 BEGIN dup u < WHILE
@@ -78,13 +79,13 @@ EXPORT CHECK:SR-GROW
 
 \ >NAME ( base -- tail ) of surface SA SU, tail TA TU and base BA BU, which is
 \ `n` for a one-cell nominal.
-: DTC-BUILD-IN ( ^u8 n ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
+: DTC-BUILD-IN ( str str str -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
    DTC-BEGIN
    s" >" DTC+ sa su DTC+ DTC-NAME-END
    ba bu DTC+ s"  -- " DTC+ ta tu DTC+ DTC-SIG-END ;
 
 \ NAME>BASE ( tail -- base ), the base in upper case in the name: NAME>N for `n`.
-: DTC-BUILD-OUT ( ^u8 n ^u8 n ^u8 n -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
+: DTC-BUILD-OUT ( str str str -- ) {: sa:^ su:n ta:^ tu:n ba:^ bu:n :}
    DTC-BEGIN
    sa su DTC+ s" >" DTC+ ba bu DTC-UPPER+ DTC-NAME-END
    ta tu DTC+ s"  -- " DTC+ ba bu DTC+ DTC-SIG-END ;
@@ -185,7 +186,7 @@ private
    dup $5A > IF EXIT THEN
    $20 or ;
 
-: VRDEF-STR=CI ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
+: VRDEF-STR=CI ( str str -- bool ) {: a:^ u:n b:^ v:n :}
    u v <> IF 0 0= 0= EXIT THEN
    0 BEGIN dup u < WHILE
       dup a + c@ VRDEF-FOLD-C
@@ -193,12 +194,12 @@ private
       1+
    REPEAT drop 0 0= ;
 
-: VRDEF-END? ( ^u8 n -- bool )
+: VRDEF-END? ( str -- bool )
    s" END-VALUE-RECORD" VRDEF-STR=CI ;
 
 \ The source ends inside value record a u. It is written through its help, and
 \ the caller stops it.
-: VRDEF-UNCLOSED ( ^u8 n -- ) {: a:^ u:n :}
+: VRDEF-UNCLOSED ( str -- ) {: a:^ u:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
    s" value record `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" ` has no `END-VALUE-RECORD`" REJECTION:EMIT-STR

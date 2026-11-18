@@ -1,3 +1,4 @@
+split-str
 \ zip-ffi.f - exact libzip/libc ABI bindings, private to ZIP.
 \ STORAGE CLASS. None of its own: the registries it walks are zip-state.f's.
 require src/lib/ffi-abi.f
@@ -79,6 +80,6 @@ FUNCTION: C-PWRITE pwrite ( n ^u8 n n -- n ) ;FUNCTION
 : C-STAT ( ^u8 n ^n -- n ) {: archive:^ idx:n stat:^ :}
    archive idx 0 stat BYTE-VIEW STAT-CALL ;
 
-: C-FOPEN ( ^u8 n -- ^u8 ) 0 FOPEN-CALL ;
+: C-FOPEN ( str -- ^u8 ) 0 FOPEN-CALL ;
 
 ;package

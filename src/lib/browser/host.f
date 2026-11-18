@@ -1,3 +1,4 @@
+split-str
 \ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server; the
 \ page-module turn protocol is the header of turn.js. The page's six files, beside
 \ this one, are read into dictionary buffers as it loads, so an application image

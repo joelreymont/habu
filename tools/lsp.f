@@ -1,3 +1,4 @@
+split-str
 \ lsp.f - the Habu language server, speaking LSP on stdin and stdout.
 
 \ An absolute --load entry may run from a different Habu tree. For this

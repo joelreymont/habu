@@ -1,3 +1,4 @@
+split-str
 \ prims.f - the engine primitive specification, one machine-independent table.
 \ Each row names one primitive and states its checker effect once: a build
 \ states the table, as the kernel object carries it, onto checker.f's `PE-*`
@@ -114,7 +115,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    row 0 < row ROW-N @ >= or IF s" prims: row index out of range" EXIT-STATUS:INTERNAL die THEN
    row field SLOT ;
 
-: NAME-SPAN, ( ^u8 n -- ) {: a:^ u:n :}
+: NAME-SPAN, ( str -- ) {: a:^ u:n :}
    u 0 < IF s" prims: negative name length" EXIT-STATUS:INTERNAL die THEN
    NAME-U @ u + NAME-CAP > IF s" prims: name buffer full" EXIT-STATUS:INTERNAL die THEN
    0 BI !
@@ -234,7 +235,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    ROW-N @ 0 <= IF s" prims: fixed ABI before any row" EXIT-STATUS:INTERNAL die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
 
-: REACH-CODE ( ^u8 n -- n ) {: a:^ u:n :}
+: REACH-CODE ( str -- n ) {: a:^ u:n :}
    a u s" stack" CORE-STR= IF R-STACK EXIT THEN
    a u s" memory" CORE-STR= IF R-MEMORY EXIT THEN
    a u s" data" CORE-STR= IF R-DATA EXIT THEN
@@ -264,10 +265,10 @@ public
 : NAME$ ( n -- ^u8 n ) {: row:n :}
    NAMES row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ ;
 
-: PKG$ ( n -- ^u8 n ) {: row:n :}
+: PKG$ ( n -- str ) {: row:n :}
    NAMES row F-PKG-OFF ROW-FIELD @ +  row F-PKG-LEN ROW-FIELD @ ;
 
-: REF$ ( n -- ^u8 n ) {: row:n :}
+: REF$ ( n -- str ) {: row:n :}
    NAMES row F-REF-OFF ROW-FIELD @ +  row F-REF-LEN ROW-FIELD @ ;
 
 : TRUSTED-ONLY? ( n -- bool )

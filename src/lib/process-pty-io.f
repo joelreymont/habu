@@ -1,3 +1,4 @@
+split-str
 \ process-pty-io.f - checked process supervisor over the linear PTY handle registry.
 \ Reopens package PROCESS-PTY (src/lib/process-pty-handle.f): the registry's
 \ words are private, so the supervisor lives in the package and exports its
@@ -275,7 +276,7 @@ create IO-OUTER SLOT-CAP cells allot
 : IO-RUN-BODY ( R process-pty-handle [ R process-pty-handle -- S process-pty-handle ] -- S )
    execute HANDLE>N IO-SCOPE @ <> if E-PROC-PTY-HANDLE throw then ;
 
-: IO-WITH ( R ^u8 n [ R process-pty-handle -- S process-pty-handle ] bool -- S )
+: IO-WITH ( R str [ R process-pty-handle -- S process-pty-handle ] bool -- S )
    {: path:^ pathu:n body tty:bool :}
    path pathu >LEN tty IO-SPAWN-MODE IO-ENTER
    body [: IO-RUN-BODY ;] [: IO-LEAVE ;] finally ;
@@ -288,7 +289,7 @@ public
 \ teardown are private, so no handle outlives its scope. The target is forked
 \ but blocked before exec with its lifetime watch open; LAUNCH releases it.
 \ The handle's `master` is the target's stdout read end, `done` its stdin.
-: WITH-TARGET ( R ^u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
+: WITH-TARGET ( R str [ R process-pty-handle -- S process-pty-handle ] -- S )
    false IO-WITH ;
 
 \ The same scope with the target's standard descriptors on the slave side of a
@@ -297,12 +298,12 @@ public
 \ stopping at it. The handle's `master` is the PTY master and `done` a duplicate
 \ of it. Nobody acquires the terminal as controlling (TIOCSCTTY is an unencoded
 \ request the engine's ioctl guard refuses), so there is no job control.
-: WITH-TTY-TARGET ( R ^u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
+: WITH-TTY-TARGET ( R str [ R process-pty-handle -- S process-pty-handle ] -- S )
    true IO-WITH ;
 
 \ Send one line to the target's input: the bytes then a line feed. A short write
 \ is an error, never a silent truncation.
-: WRITE-LINE ( process-pty-handle ^u8 n -- process-pty-handle ) {: a:^ u:n :}
+: WRITE-LINE ( process-pty-handle str -- process-pty-handle ) {: a:^ u:n :}
    HANDLE-IDX DONE@ {: w:fd :}
    u 0 > if w FD>N a u write u <> if E-PROC-OUTPUT throw then then
    IO-LF IO-LFBYTE c!

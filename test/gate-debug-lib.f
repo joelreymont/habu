@@ -1,3 +1,4 @@
+split-str
 \ gate-debug-lib.f - profiler and debugger gate cases, included by
 \ test/gate-debug.f.
 
@@ -44,7 +45,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-GAP? ( n -- bool ) {: c:n :}
    c STR-SPACE = c [char] " = or c [char] : = or ;
 
-: GDB-NUM-AT ( n ^u8 n -- n )   \ the digit run at or after offset i, -1 when none
+: GDB-NUM-AT ( n str -- n )   \ the digit run at or after offset i, -1 when none
    {: i:n a:^ u:n :}
    i GDB-I !
    begin GDB-I @ u < if a GDB-I @ + c@ GDB-GAP? else STR-FALSE then while
@@ -60,14 +61,14 @@ variable GDB-CUT      \ GDB-AFTER's cut point
      some OF ENDOF
    ;MATCH ;
 
-: GDB-FIELD ( ^u8 n ^u8 n -- n )   \ the integer printed after <name>, -1 when absent
+: GDB-FIELD ( str str -- n )   \ the integer printed after <name>, -1 when absent
    {: a:^ u:n b:^ v:n :}
    a u b v FIND-SUB MATCH option
      none OF -1 ENDOF
      some OF IDX>N v + a u GDB-NUM-AT ENDOF
    ;MATCH ;
 
-: GDB-AFTER ( ^u8 n ^u8 n -- ^u8 n )   \ the tail past the first <b>, empty when absent
+: GDB-AFTER ( str str -- str )   \ the tail past the first <b>, empty when absent
    {: a:^ u:n b:^ v:n :}
    a u b v FIND-SUB MATCH option
      none OF a 0 ENDOF
@@ -75,13 +76,13 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    ;MATCH ;
 
 \ The sample total, from either report: "profiler samples N" or {"samples":N}.
-: GDB-SAMPLES ( ^u8 n -- n )
+: GDB-SAMPLES ( str -- n )
    s" samples" GDB-FIELD ;
 
 \ The header's own identity, plus the limit the sample total must reach (-1:
 \ none). A sample counts the intervals since the last one, so the one that
 \ reaches the limit may carry the total past it.
-: GDB-ACCOUNT ( ^u8 n n -- ) {: a:^ u:n want:n :}
+: GDB-ACCOUNT ( str n -- ) {: a:^ u:n want:n :}
    a u GDB-SAMPLES {: tot:n :}
    tot 0 < if s" profiler report has no header line" GE-FAIL then
    want 0 >= tot want < and if
@@ -249,7 +250,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
       s" PASS: a sample with no establishable caller keeps an explicit (unknown) row" type cr
    then ;
 
-: GDB-PROF-RATE-RUN ( ^u8 n -- )   \ run GDB-BUSY under one prof-on line
+: GDB-PROF-RATE-RUN ( str -- )   \ run GDB-BUSY under one prof-on line
    {: arm:^ armu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -338,7 +339,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 \ The head and place lines of the record of an uncaught throw of code c
 \ thrown at `at`, a PATH:L:C.
-: GDB-THROWN$ ( n ^u8 n -- ^u8 n )
+: GDB-THROWN$ ( n str -- str )
    {: c:n at:^ atu:n :}
    SB-RESET c TEST-EVAL:THROWN-HEAD$ SB-APPEND
    GE-SB-LF s"  --> " SB-APPEND at atu SB-APPEND GE-SB-LF

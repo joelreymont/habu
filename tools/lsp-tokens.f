@@ -1,3 +1,4 @@
+split-str
 \ lsp-tokens.f - textDocument/semanticTokens/full: a token over each word an
 \ open document's last completed check bound in it, typed by what the check
 \ states the word is. A word bound to no located declaration (an engine word)

@@ -1,3 +1,4 @@
+split-str
 \ debug-watch.f - REPL watch cells shared by stepper.f and debug.f, which with
 \ this file make package DEBUG. hb loads it after repl.f (tools/hb-build-core.f
 \ RUNTIME-FILES). The table lives in dictionary data; fixed DATA header cells

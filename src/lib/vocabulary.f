@@ -1,3 +1,4 @@
+split-str
 \ vocabulary.f - restrict loaded source to admitted packages' public words. A
 \ harness loads the packages a design may call, admits each, seals and reads the
 \ design inside one compiled word: a token the harness reads after RESTRICT is

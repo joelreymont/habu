@@ -1,3 +1,4 @@
+split-str
 \ spawn-test.f - focused tests for src/lib/spawn.f.
 \ Run: bin/hb --load src/lib/spawn-test.f
 \ A script names a child's fd as /dev/fd/N, which dash and macOS sh open for any
@@ -39,18 +40,18 @@ variable SCRIPT-LEN
    script len PROCESS:ARG ;
 
 
-: FILL$ ( n n -- ^u8 n )
+: FILL$ ( n n -- str )
    {: len c :}
    len 0 ?do c ROW-BYTES i + c! loop
    ROW-BYTES len ;
 
 
-: SCRIPT! ( ^u8 n -- )
+: SCRIPT! ( str -- )
    {: src:^ len :}
    src SCRIPT-BYTES len BYTE-COPY
    len SCRIPT-LEN ! ;
 
-: SCRIPT$ ( -- ^u8 n ) SCRIPT-BYTES SCRIPT-LEN @ ;
+: SCRIPT$ ( -- str ) SCRIPT-BYTES SCRIPT-LEN @ ;
 
 
 : MARKER-AT ( n -- n )
@@ -109,34 +110,34 @@ variable SCRIPT-LEN
       dup ENVP 0= if drop -1 exit then
       dup SAFE-ROW? 0= while 1+ repeat ;
 
-: PARENT-NAME$ ( n -- ^u8 n )
+: PARENT-NAME$ ( n -- str )
    ENVP dup ZLEN {: z:^ u :}
    z z u NAME-LEN ;
 
-: PARENT-VALUE$ ( n -- ^u8 n )
+: PARENT-VALUE$ ( n -- str )
    ENVP dup ZLEN {: z:^ u :}
    z u NAME-LEN {: nu :}
    z nu + 1+ u nu - 1- ;
 
 
-: AT? ( n ^u8 n -- bool )
+: AT? ( n str -- bool )
    {: pos s:^ u :}
    pos u + OUT-LEN @ > if false exit then
    pos OUT u s u STR= ;
 
-: LINE-IS? ( n ^u8 n -- bool )
+: LINE-IS? ( n str -- bool )
    {: pos s:^ u :}
    pos s u AT? 0= if false exit then
    pos u + OUT-LEN @ < if pos u + OUT c@ LF-BYTE = else false then ;
 
-: PAST-NAME ( n ^u8 n -- n )
+: PAST-NAME ( n str -- n )
    {: pos name:^ u :}
    pos name u AT? 0= if -1 exit then
    pos u + {: at :}
    at OUT-LEN @ < if at OUT c@ EQUAL-BYTE = if at 1+ exit then then
    -1 ;
 
-: ROW-LINE? ( n ^u8 n ^u8 n -- bool )
+: ROW-LINE? ( n str str -- bool )
    {: pos name:^ u val:^ vu :}
    pos name u PAST-NAME dup 0< if drop false exit then
    val vu LINE-IS? ;
@@ -145,14 +146,14 @@ variable SCRIPT-LEN
    begin dup OUT-LEN @ < if dup OUT c@ LF-BYTE <> else false then while 1+ repeat
    1+ ;
 
-: NAME-LINES ( ^u8 n -- n )
+: NAME-LINES ( str -- n )
    {: name:^ u :}
    0 0 begin dup OUT-LEN @ < while
       dup name u PAST-NAME 0 >= if swap 1+ swap then
       NEXT-LINE
    repeat drop ;
 
-: ROW-LINES ( ^u8 n ^u8 n -- n )
+: ROW-LINES ( str str -- n )
    {: name:^ u val:^ vu :}
    0 0 begin dup OUT-LEN @ < while
       dup name u val vu ROW-LINE? if swap 1+ swap then

@@ -1,3 +1,4 @@
+split-str
 \ exit-status.f - the status a process exits with, each named once.
 
 package EXIT-STATUS

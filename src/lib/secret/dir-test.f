@@ -1,3 +1,4 @@
+split-str
 \ E2E of SECRET:DIR-BIND through the public SECRET words over a fresh
 \ directory under TMPDIR, removed whatever the cases do. Fails on: a wrong or
 \ truncated item; a miss read as empty or the reverse; a copy past the
@@ -27,7 +28,7 @@ PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 : ROOT$ ( -- ^u8 n ) ROOT SPAN:$ drop ROOT-U @ ;
-: SERVICE$ ( -- ^u8 n ) s" org.habu.secret-dir-test" ;
+: SERVICE$ ( -- str ) s" org.habu.secret-dir-test" ;
 
 
 \ The path of the named entry in ROOT, borrowed until the next call.

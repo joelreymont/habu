@@ -1,3 +1,4 @@
+split-str
 \ structure-decl.f: the STRUCTURE and MUTUAL front end (package STRUCTURE-DECL),
 \ grammar loop and reject dispatch only. DECL-FRONT (generated-declaration.f) owns
 \ the token source and the guarded run; DECL-EVENT (decl-event.f) owns every event.
@@ -67,10 +68,10 @@ variable MEM-CLOSED                   \ its members closed so far: the next rank
 : MEM-NAME ( n -- ^^u8 ) MEM-NAMES @ swap ptr-field ;
 : MEM-PTEE ( n -- ^^u8 ) MEM-PTEES @ swap ptr-field ;
 : MEM-CELL ( n n -- ^n ) {: i:n k:n :} i MEM-REC * k + cells MEM-P @ + ;
-: MEM-NAME$ ( n -- ^u8 n ) {: i:n :} i MEM-NAME @  i M.NAME-U MEM-CELL @ ;
+: MEM-NAME$ ( n -- str ) {: i:n :} i MEM-NAME @  i M.NAME-U MEM-CELL @ ;
 : MEM-LISTED@ ( n -- bool ) M.LISTED MEM-CELL @ 0 <> ;
 \ Adds a member named na nu of family fam, listed or open.
-: MEM-ADD ( ^u8 n n bool -- ) {: na:^ nu:n fam:n listed:bool :}
+: MEM-ADD ( str n bool -- ) {: na:^ nu:n fam:n listed:bool :}
    MEM-N @ {: i:n :}
    MEM-NAMES MEM-NAMES-CAP i 1 + 1 ARENA-ROWS-ENSURE
    MEM-PTEES MEM-PTEES-CAP i 1 + 1 ARENA-ROWS-ENSURE
@@ -81,7 +82,7 @@ variable MEM-CLOSED                   \ its members closed so far: the next rank
    listed IF -1 ELSE 0 THEN i M.LISTED MEM-CELL !
    i 1 + MEM-N ! ;
 \ The member named na nu, -1 for none.
-: MEM-FIND ( ^u8 n -- n ) {: na:^ nu:n :}
+: MEM-FIND ( str -- n ) {: na:^ nu:n :}
    MEM-N @ 0 ?do
       i MEM-NAME$ na nu CORE-STR= IF i unloop EXIT THEN
    loop -1 ;
@@ -117,39 +118,39 @@ SD-RESET
 \ The node parser's rejections name the type as its caller does ("type",
 \ "payload type"); SD-TYPE-NODE sets the noun for one parse.
 PTR-VARIABLE NOUN-A   variable NOUN-U
-: NOUN@ ( -- ^u8 n ) NOUN-A @ NOUN-U @ ;
+: NOUN@ ( -- str ) NOUN-A @ NOUN-U @ ;
 
-: SD-WORD+ ( ^u8 n -- ) {: a:^ u:n :}   \ a blank, then the word
+: SD-WORD+ ( str -- ) {: a:^ u:n :}   \ a blank, then the word
    u 0= IF EXIT THEN
    s"  " DECL-REJECT:LABEL+  a u DECL-REJECT:LABEL+ ;
 
 \ The text before the noun, the noun, the text after it, blank-separated.
-: SD-NOUN-TEXT ( ^u8 n ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n na:^ nu:n sa:^ su:n :}
+: SD-NOUN-TEXT ( str str str -- str ) {: pa:^ pu:n na:^ nu:n sa:^ su:n :}
    DECL-REJECT:LABEL-START
    pa pu DECL-REJECT:LABEL+
    pu 0= IF na nu DECL-REJECT:LABEL+ ELSE na nu SD-WORD+ THEN
    sa su SD-WORD+
    DECL-REJECT:LABEL$ ;
-: SD-TEXT ( ^u8 n ^u8 n -- ^u8 n ) {: pa:^ pu:n sa:^ su:n :}   \ with the noun SD-TYPE-NODE set
+: SD-TEXT ( str str -- str ) {: pa:^ pu:n sa:^ su:n :}   \ with the noun SD-TYPE-NODE set
    pa pu NOUN@ sa su SD-NOUN-TEXT ;
-: SD-REJECT ( ^u8 n ^u8 n ^u8 n n -- n ) {: pa:^ pu:n sa:^ su:n fa:^ fu:n code:n :}
+: SD-REJECT ( str str str n -- n ) {: pa:^ pu:n sa:^ su:n fa:^ fu:n code:n :}
    pa pu sa su SD-TEXT fa fu code DECL-REJECT:REJECT ;
 
-: SD-NAME-FIX$ ( -- ^u8 n ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
-: LIST-NAME-FIX$ ( -- ^u8 n ) s" list the families after `MUTUAL`, as in `MUTUAL node link`" ;
-: SD-FIELD-FIX$ ( -- ^u8 n ) s" give each field of the structure its own name" ;
+: SD-NAME-FIX$ ( -- str ) s" write the family name after `STRUCTURE`, as in `STRUCTURE point`" ;
+: LIST-NAME-FIX$ ( -- str ) s" list the families after `MUTUAL`, as in `MUTUAL node link`" ;
+: SD-FIELD-FIX$ ( -- str ) s" give each field of the structure its own name" ;
 : DEFTYPE? ( -- bool ) DECL-REJECT:KIND$ s" deftype" CORE-STR= ;
 : ENUM? ( -- bool ) DECL-REJECT:KIND$ s" enum" CORE-STR= ;
 \ A NEWTYPE or DEFTYPE: one base on one line, with no header and no clause.
 : WRAP? ( -- bool ) DEFTYPE? DECL-REJECT:KIND$ s" newtype" CORE-STR= or ;
 \ A DEFTYPE base is one name (WRAP-DRIVE), so its help offers no `^` or header.
-: SD-TYPE-FIX$ ( -- ^u8 n )
+: SD-TYPE-FIX$ ( -- str )
    DEFTYPE? IF
       s" name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`" EXIT THEN
    WRAP? IF
       s" name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`" EXIT THEN
    s" name a type declared before this declaration: `n`, `^u8`, a header parameter, a `STRUCTURE` or an `ENUM`" ;
-: SD-PARAM-FIX$ ( -- ^u8 n )
+: SD-PARAM-FIX$ ( -- str )
    WRAP? IF SD-TYPE-FIX$ EXIT THEN
    ENUM? IF
       s" use `n`, `f` or `r`, or a type parameter the header declares, as in `ENUM box<a>`" EXIT THEN
@@ -164,40 +165,40 @@ variable HELP-U
    HELP-P HELP-CAP HELP-FIRST HELP-U @ 1 + ARENA-ROOM
    c HELP-P @ HELP-U @ + c!
    HELP-U @ 1 + HELP-U ! ;
-: HELP+ ( ^u8 n -- ) {: a:^ u:n :}
+: HELP+ ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ HELP-C+ loop ;
 \ The name at a u as its declaration folds it.
-: HELP-FOLD+ ( ^u8 n -- ) {: a:^ u:n :}
+: HELP-FOLD+ ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ CORE-FOLD-C HELP-C+ loop ;
 
 \ The NEWTYPE a DEFTYPE NAME over BASE becomes, NAME folded to its tail, its
 \ closing "` instead" left to the caller.
-: NEWTYPE-HELP ( ^u8 n ^u8 n -- ) {: na:^ nu:n ba:^ bu:n :}
+: NEWTYPE-HELP ( str str -- ) {: na:^ nu:n ba:^ bu:n :}
    0 HELP-U !
    s" a `DEFTYPE` base is one name with no type arguments: declare `NEWTYPE " HELP+
    na nu HELP-FOLD+
    s"  " HELP+  ba bu HELP+ ;
 \ The edit the loader accepts for `DEFTYPE NAME BASE` whose NAME and BASE the
 \ wrap accepted: the NEWTYPE over BASE as written.
-: BASE-HELP$ ( ^u8 n ^u8 n -- ^u8 n )
+: BASE-HELP$ ( str str -- str )
    NEWTYPE-HELP  s" ` instead" HELP+  HELP-P @ HELP-U @ ;
 \ NEWTYPE-HELP over BASE up to its token at ta, which the caller then rewrites.
-: HELP-HEAD ( ^u8 n ^u8 ^u8 -- ) {: na:^ nu:n ba:^ ta:^ :}
+: HELP-HEAD ( str ^u8 ^u8 -- ) {: na:^ nu:n ba:^ ta:^ :}
    na nu ba  ta NULL-PTR - ba NULL-PTR - -  NEWTYPE-HELP ;
 \ BASE after its token ta tu, then the help's close.
-: HELP-TAIL$ ( ^u8 n ^u8 n -- ^u8 n ) {: ba:^ bu:n ta:^ tu:n :}
+: HELP-TAIL$ ( str str -- str ) {: ba:^ bu:n ta:^ tu:n :}
    ta NULL-PTR - tu + ba NULL-PTR - - {: hu:n :}
    ba hu + bu hu - HELP+  s" ` instead" HELP+
    HELP-P @ HELP-U @ ;
 \ The edit the loader accepts for `DEFTYPE NAME BASE` whose token TOK names bare a
 \ family of arity ar taking `n` throughout: the NEWTYPE of BASE, `<n,...>` after TOK.
-: ARGS-HELP$ ( ^u8 n ^u8 n ^u8 n n -- ^u8 n ) {: na:^ nu:n ba:^ bu:n ta:^ tu:n ar:n :}
+: ARGS-HELP$ ( str str str n -- str ) {: na:^ nu:n ba:^ bu:n ta:^ tu:n ar:n :}
    na nu ba ta HELP-HEAD  ta tu HELP+  s" <n" HELP+
    ar 1 ?do s" ,n" HELP+ loop
    s" >" HELP+  ba bu ta tu HELP-TAIL$ ;
 \ The edit the loader accepts for a DEFTYPE whose base names `width` at ta inside
 \ a longer base: the NEWTYPE of that base, `n` for the width.
-: WIDTH-HELP$ ( ^u8 n -- ^u8 n ) {: ta:^ tu:n :}
+: WIDTH-HELP$ ( str -- str ) {: ta:^ tu:n :}
    DECL-REJECT:FAMILY$ BASE-A @ ta HELP-HEAD  s" n" HELP+
    BASE-A @ BASE-U @ ta tu HELP-TAIL$ ;
 
@@ -207,19 +208,19 @@ variable HELP-U
    YES fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-CELL = and loop ;
 \ Whether the token at a is a DEFTYPE's whole base, which a help naming one
 \ type may replace.
-: WHOLE-BASE? ( ^u8 n -- bool ) {: a:^ u:n :}
+: WHOLE-BASE? ( str -- bool ) {: a:^ u:n :}
    DEFTYPE? a BASE-A @ = and u BASE-U @ = and ;
 \ The help for family fam named bare at a: a DEFTYPE gets the NEWTYPE that
 \ loads, or another base when no `n` arguments fit.
-: SD-ARGS-FIX$ ( n ^u8 n -- ^u8 n ) {: fam:n a:^ u:n :}
+: SD-ARGS-FIX$ ( n str -- str ) {: fam:n a:^ u:n :}
    DEFTYPE? 0= IF s" give the family its type arguments, as in `box<n>`" EXIT THEN
    fam CELL-PARAMS? 0= IF SD-TYPE-FIX$ EXIT THEN
    DECL-REJECT:FAMILY$ BASE-A @ BASE-U @ a u fam TFAM-ARITY@ ARGS-HELP$ ;
-: SD-APP-FIX$ ( -- ^u8 n )
+: SD-APP-FIX$ ( -- str )
    s" write a type application as `family<type,type>`, as in `SPAN:span<^u8>`" ;
 \ The help for a malformed pointer token at a: a DEFTYPE's whole base gets the base
 \ help, a longer base the NEWTYPE over `^T`, a wrap, payload or field the spelling.
-: SD-PTR-FIX$ ( ^u8 n -- ^u8 n )
+: SD-PTR-FIX$ ( str -- str )
    WHOLE-BASE? IF SD-TYPE-FIX$ EXIT THEN
    DEFTYPE? IF
       DECL-REJECT:FAMILY$ {: na:^ nu:n :}
@@ -232,19 +233,19 @@ variable HELP-U
    ENUM? IF
       s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^list`" EXIT THEN
    s" spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`" ;
-: SD-OPEN-FIX$ ( -- ^u8 n )
+: SD-OPEN-FIX$ ( -- str )
    WRAP? IF s" close each `<` of the type with `>`" EXIT THEN
    s" close each `<` of the type with `>` before the next clause" ;
 
 \ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
 \ asks: a copy kept here drifted twice (it admitted `if`, then value-record names).
 \ Case and duplicate are TFAM-DECL's.
-: NAME-RESERVED? ( ^u8 n -- bool )
+: NAME-RESERVED? ( str -- bool )
    2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
    TYPE-NAME:FAMILY-RESERVED? ;
 
-: REQUIRE-NAME ( ^u8 n -- )
+: REQUIRE-NAME ( str -- )
    dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
@@ -255,10 +256,10 @@ variable HELP-U
       s" pick another name: a built-in type such as `n` cannot name a family"
       TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
 
-: NAME-GATE ( ^u8 n -- )
+: NAME-GATE ( str -- )
    2dup DECL-REJECT:FAMILY! REQUIRE-NAME ;
 
-: SD-KIND$ ( -- ^u8 n ) s" structure" ;
+: SD-KIND$ ( -- str ) s" structure" ;
 
 EXPORT CHECK:CON-OF
 EXPORT CHECK:SIG-DELIM-CHAR?
@@ -274,7 +275,7 @@ EXPORT CHECK:WIDTH-FAM
 \ The declared family may be named only beneath a `^` (`^node`, `SPAN:span<^node>`);
 \ by value, as in `option<node>`, it is 7109. So may a listed MUTUAL member,
 \ whose ;STRUCTURE has not been read; a closed member is any family.
-: FIELD-FAM? ( ^u8 n -- n bool ) {: a:^ u:n :}
+: FIELD-FAM? ( str -- n bool ) {: a:^ u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
    sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
    sr SR-FOUND <> IF 0 NO EXIT THEN
@@ -301,14 +302,14 @@ EXPORT CHECK:WIDTH-FAM
       TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    id YES ;
 
-: USE-KIND$ ( n -- ^u8 n )
+: USE-KIND$ ( n -- str )
    dup PK-CELL = IF drop s" a value type" EXIT THEN
    dup PK-TYPE = IF drop s" an element type" EXIT THEN
    dup PK-SCOPE = IF drop s" a scope" EXIT THEN
    PK-REGION = IF s" a region" EXIT THEN
    s" a pointee or quotation element" ;
 \ Rejects the parameter at a u used as want, which field fa fu used as kind.
-: PARAM-KIND-REJECT ( n ^u8 n ^u8 n n -- ) {: kind:n fa:^ fu:n a:^ u:n want:n :}
+: PARAM-KIND-REJECT ( n str str n -- ) {: kind:n fa:^ fu:n a:^ u:n want:n :}
    a u DECL-REJECT:TOKEN!
    DECL-REJECT:LABEL-START
    s" `" DECL-REJECT:LABEL+
@@ -328,7 +329,7 @@ EXPORT CHECK:WIDTH-FAM
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 \ The declared family cannot be held by value instead, so its help moves the view out.
-: PTR-VIEW-FIX$ ( bool -- ^u8 n ) {: self:bool :}
+: PTR-VIEW-FIX$ ( bool -- str ) {: self:bool :}
    self ENUM? and IF
       s" keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`" EXIT THEN
    self IF
@@ -340,7 +341,7 @@ EXPORT CHECK:WIDTH-FAM
    s" hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`" ;
 \ Rejects a pointer reaching the family named at a u, which takes a scope or region;
 \ self is whether that family is the declared one.
-: PTR-VIEW-REJECT ( ^u8 n bool -- ) {: a:^ u:n self:bool :}
+: PTR-VIEW-REJECT ( str bool -- ) {: a:^ u:n self:bool :}
    a u DECL-REJECT:TOKEN!
    DECL-REJECT:LABEL-START
    s" a pointer cannot reach `" DECL-REJECT:LABEL+
@@ -349,7 +350,7 @@ EXPORT CHECK:WIDTH-FAM
    DECL-REJECT:LABEL$  self PTR-VIEW-FIX$
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
-: LETTER-TYPE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
+: LETTER-TYPE ( str n -- n ) {: a:^ u:n want:n :}
    a c@
    dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
    dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
@@ -380,7 +381,7 @@ EXPORT CHECK:WIDTH-FAM
 
 \ Each parser word takes the index it starts at and answers the index after what it
 \ consumed; a type's text holds blanks, and a `[` may touch the type after it.
-: SD-ATOM ( ^u8 n n -- ^u8 n n ) {: a:^ u:n start:n :}
+: SD-ATOM ( str n -- str n ) {: a:^ u:n start:n :}
    start u < IF a start + c@ 91 = IF a start + 1 start 1 + EXIT THEN THEN
    start
    BEGIN
@@ -395,7 +396,7 @@ EXPORT CHECK:WIDTH-FAM
    a start + j start - j ;
 
 \ The blanks an argument may start with.
-: SD-SKIP ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+: SD-SKIP ( str n -- n ) {: a:^ u:n i:n :}
    i BEGIN
       dup u < IF a over + c@ SD-BLANK? ELSE NO THEN
    WHILE
@@ -404,7 +405,7 @@ EXPORT CHECK:WIDTH-FAM
 
 \ Whether the atom ending at j opens a pointer, and the index its pointee is read
 \ from: the byte after `^`. An atom `ptr` not followed by `<` names no type.
-: SD-POINTEE-AT ( ^u8 n ^u8 n n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
+: SD-POINTEE-AT ( str str n -- n bool ) {: na:^ nu:n a:^ u:n j:n :}
    na c@ 94 = IF
       nu 1 = j u < IF a j + c@ 91 = ELSE NO THEN and IF j YES EXIT THEN
       nu 1 = IF
@@ -418,12 +419,12 @@ EXPORT CHECK:WIDTH-FAM
    na nu DECL-REJECT:TOKEN!
    s" unknown" s" " na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
-defer SD-PARSE-NODE ( ^u8 n n n -- n n )
+defer SD-PARSE-NODE ( str n n -- n n )
 
 \ The argument spelled at aa au fills slot k of fam; LETTER-TYPE judges a
 \ parameter argument. A wrap reaches no region slot: each follows two scope
 \ slots, the first of which rejects it.
-: SD-ARG-KIND ( ^u8 n n n n -- ) {: aa:^ au:n fam:n k:n node:n :}
+: SD-ARG-KIND ( str n n n -- ) {: aa:^ au:n fam:n k:n node:n :}
    FIELD-MISS @ IF EXIT THEN
    node SCHEMA-PARAM? IF EXIT THEN
    FAM @ node PF-NODE-KIND? 0= IF drop EXIT THEN
@@ -451,19 +452,19 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
 
 \ The index after the byte that brings the application whose head is at h back
 \ to depth 0: its closing `>`, or a `]` where its brackets do not pair; else u.
-: SD-APP-END ( ^u8 n n -- n ) {: a:^ u:n h:n :}
+: SD-APP-END ( str n -- n ) {: a:^ u:n h:n :}
    0 h BEGIN dup u < WHILE
       2dup a swap + c@ SIG-NEST
       rot 1 = over 0= and IF drop 1 + EXIT THEN
       swap 1 +
    REPEAT nip ;
 
-: SD-APP-MARK ( ^u8 n n -- ) {: a:^ u:n h:n :}
+: SD-APP-MARK ( str n -- ) {: a:^ u:n h:n :}
    a h +  a u h SD-APP-END h -  DECL-REJECT:TOKEN! ;
 
 \ Argument k onward of fam's application, the first at i: each is judged against
 \ its slot, then the count of arguments and the index after the closing `>`.
-: SD-APP-ARGS ( ^u8 n n n n n -- n n ) {: a:^ u:n fam:n h:n k:n i:n :}
+: SD-APP-ARGS ( str n n n n -- n n ) {: a:^ u:n fam:n h:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
       a u h SD-APP-MARK
       s" " s" has too many arguments"
@@ -484,7 +485,7 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
    a u h SD-APP-MARK
    s" malformed" s" application" SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
-: SD-APP ( ^u8 n n n n -- n n ) {: a:^ u:n fam:n h:n i:n :}
+: SD-APP ( str n n n -- n n ) {: a:^ u:n fam:n h:n i:n :}
    SD-ARG-N @ {: base:n :}
    a u fam h 0 i SD-APP-ARGS {: k:n j:n :}
    k fam TFAM-ARITY@ <> IF
@@ -500,9 +501,9 @@ defer SD-PARSE-NODE ( ^u8 n n n -- n n )
    base SD-ARG-N !
    fam start k SCHEMA-APP j ;
 
-defer SD-LOOSE-NODE ( ^u8 n n -- n )
+defer SD-LOOSE-NODE ( str n -- n )
 
-: SD-LOOSE-ARGS ( ^u8 n n n -- n ) {: a:^ u:n h:n i:n :}
+: SD-LOOSE-ARGS ( str n n -- n ) {: a:^ u:n h:n i:n :}
    a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
    j u >= IF
       a u h SD-APP-MARK
@@ -516,7 +517,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
       SD-APP-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    a u h j 1 + RECURSE ;
 
-: SD-LOOSE-APP ( ^u8 n n n -- n ) {: a:^ u:n h:n i:n :}
+: SD-LOOSE-APP ( str n n -- n ) {: a:^ u:n h:n i:n :}
    i u >= IF
       a u h SD-APP-MARK
       s" unclosed" s" application"
@@ -524,7 +525,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
    a i + c@ 62 = IF i 1 + EXIT THEN
    a u h i SD-LOOSE-ARGS ;
 
-: SD-LOOSE-ATOM ( ^u8 n -- ) {: a:^ u:n :}
+: SD-LOOSE-ATOM ( str -- ) {: a:^ u:n :}
    u 1 = IF
       a c@ dup ASCII-N = over ASCII-F = or over ASCII-R = or
       IF drop EXIT THEN
@@ -549,7 +550,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 
 \ The pointee of a pointer argument read from k (SD-POINTEE-AT), with POINTEE
 \ set as SD-PTR-NODE sets it.
-: SD-LOOSE-PTR ( ^u8 n n -- n ) {: a:^ u:n k:n :}
+: SD-LOOSE-PTR ( str n -- n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k SD-LOOSE-NODE
@@ -558,7 +559,7 @@ defer SD-LOOSE-NODE ( ^u8 n n -- n )
 \ PARSE-QUOT reads a quotation type over the tokens from SD-QUOT-AT, the index
 \ after the last token or element read.
 variable SD-QUOT-AT
-: SD-QUOT-NEXT ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: SD-QUOT-NEXT ( str -- str ) {: a:^ u:n :}
    a u SD-QUOT-AT @ SD-SKIP {: s:n :}
    s u < IF a s + c@ SIG-DELIM-CHAR? ELSE NO THEN IF s 1 + ELSE
       s BEGIN
@@ -568,11 +569,11 @@ variable SD-QUOT-AT
    e SD-QUOT-AT !
    a s +  e s - ;
 \ The `<` and `[` depth after the bytes a u, from depth.
-: SD-DEPTH ( n ^u8 n -- n ) {: depth:n a:^ u:n :}
+: SD-DEPTH ( n str -- n ) {: depth:n a:^ u:n :}
    depth u 0 ?do a i + c@ SIG-NEST loop ;
 \ An element is read from its token on, so an application in it may span
 \ blanks; an outer `^` does not reach it: the declared family needs its own.
-: SD-QUOT-ELEM ( ^u8 n ^u8 n -- n ) {: ta:^ tu:n a:^ u:n :}
+: SD-QUOT-ELEM ( str str -- n ) {: ta:^ tu:n a:^ u:n :}
    ta NULL-PTR - a NULL-PTR - - {: i:n :}
    POINTEE @ {: outer:n :}
    0 POINTEE !
@@ -581,12 +582,12 @@ variable SD-QUOT-AT
    outer POINTEE ! ;
 \ A malformed quotation is rejected at the token it stopped at, or at its `[`
 \ when the text ends first.
-: SD-QUOT-FAIL ( ^u8 n ^u8 n ^u8 n n ^u8 -- )
+: SD-QUOT-FAIL ( str str str n ^u8 -- )
    {: ta:^ tu:n wa:^ wu:n fa:^ fu:n code:n qa:^ :}
    tu 0= IF qa 1 ELSE ta tu THEN DECL-REJECT:TOKEN!
    wa wu fa fu code DECL-REJECT:REJECT throw ;
 \ The quotation whose `[` is at k, and the index after its `]`.
-: SD-QUOT-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
+: SD-QUOT-NODE ( str n -- n n ) {: a:^ u:n k:n :}
    k 1 + SD-QUOT-AT !
    [: a u SD-QUOT-NEXT ;]
    [: a u SD-QUOT-ELEM ;]
@@ -597,7 +598,7 @@ variable SD-QUOT-AT
 \ a scope or region slot would reject first. A pointee naming a member that
 \ takes no scope or region is that member's first pointee when it has none: the
 \ open member's in SELF-A, a listed member's in its row.
-: SD-REACH ( ^u8 n n -- ) {: a:^ u:n fam:n :}
+: SD-REACH ( str n -- ) {: a:^ u:n fam:n :}
    POINTEE @ 0= IF EXIT THEN
    fam FAM @ = {: self:bool :}
    fam TFAM-NONVALUE-PARAM? IF a u self PTR-VIEW-REJECT THEN
@@ -609,7 +610,7 @@ variable SD-QUOT-AT
 
 \ SD-PARSE-NODE-IMPL's grammar over the arguments of a family that may still arrive
 \ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
-: SD-LOOSE-NODE-IMPL ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+: SD-LOOSE-NODE-IMPL ( str n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-LOOSE-PTR EXIT THEN drop
    na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE nip EXIT THEN
@@ -631,7 +632,7 @@ SD-LOOSE-INSTALL
 
 \ Every declared pointer is built here. A rejection in its pointee that sets no token
 \ of its own is placed at the whole type, as one in a family's arguments is.
-: SD-PTR-NODE ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
+: SD-PTR-NODE ( str n -- n n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
    a u k TYPE-DECL:ANY-VALUE SD-PARSE-NODE {: node:n e:n :}
@@ -643,7 +644,7 @@ SD-LOOSE-INSTALL
 
 \ The node at i of a field type's text: a type parameter, a con, a family
 \ application, a pointer argument or a quotation, with the index after it.
-: SD-PARSE-NODE-IMPL ( ^u8 n n n -- n n ) {: a:^ u:n i:n want:n :}
+: SD-PARSE-NODE-IMPL ( str n n -- n n ) {: a:^ u:n i:n want:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-PTR-NODE EXIT THEN drop
    na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE EXIT THEN
@@ -680,12 +681,12 @@ SD-PARSER-INSTALL
    c 91 = IF depth 1 + EXIT THEN
    c 93 = IF depth 1 - EXIT THEN
    depth ;
-: SD-QUOT-OPEN? ( ^u8 n -- bool ) {: a:^ u:n :}
+: SD-QUOT-OPEN? ( str -- bool ) {: a:^ u:n :}
    0 u 0 ?do a i + c@ SD-SQUARE loop 0 > ;
 
 \ A declaration's tokens share one buffer: parse-name never refills, a replay
 \ reads one body. A type with a `[` open is left to PARSE-QUOT to reject.
-: SD-SPAN-REST ( ^u8 n n ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n depth:n ca:^ cu:n na:^ nu:n :}
+: SD-SPAN-REST ( str n str str -- ^u8 n ) {: a:^ u:n depth:n ca:^ cu:n na:^ nu:n :}
    u depth
    BEGIN dup 0 > WHILE
       NEXT dup 0= IF YES ELSE
@@ -703,14 +704,14 @@ SD-PARSER-INSTALL
 \ The type to the token closing each `<` and `[` it opens, a span of the source
 \ or replay body that SD-MISSING! may keep; SD-SPAN-REST ends it early.
 public
-: SD-SPAN ( ^u8 n ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n ca:^ cu:n na:^ nu:n :}
+: SD-SPAN ( str str str -- str ) {: a:^ u:n ca:^ cu:n na:^ nu:n :}
    0 a u SD-DEPTH {: depth:n :}
    depth 1 < IF a u EXIT THEN
    a u depth ca cu na nu SD-SPAN-REST 2dup DECL-REJECT:TOKEN! ;
 private
 
 \ The node of a whole type text.
-: SD-WHOLE-NODE ( ^u8 n n -- n ) {: a:^ u:n want:n :}
+: SD-WHOLE-NODE ( str n -- n ) {: a:^ u:n want:n :}
    a u 0 want SD-PARSE-NODE {: node:n j:n :}
    j u <> IF
       a j +  u j -  {: ba:^ bu:n :}
@@ -723,7 +724,7 @@ private
 \ SD-TYPE-NODE ( text fam want noun -- node ): want is the use of a parameter that is
 \ the whole type; FIELD-MISS stays set.
 public
-: SD-TYPE-NODE ( ^u8 n n n ^u8 n -- n )
+: SD-TYPE-NODE ( str n n str -- n )
    {: a:^ u:n fam:n want:n na:^ nu:n :}
    FAM @ {: ofam:n :}
    TYPE@ NOUN@ {: ota:^ otu:n oa:^ ou:n :}
@@ -734,7 +735,7 @@ public
 private
 
 \ A field type's text, from its first token (SD-SPAN).
-: RESOLVE-TYPE ( ^u8 n n -- n ) {: want:n :}
+: RESOLVE-TYPE ( str n -- n ) {: want:n :}
    dup 0= IF 2drop s" missing type"
       s" write a type after the field name, as in `FIELD x n`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -769,7 +770,7 @@ private
    FAM @ DECL-EVENT:OPAQUE
    FAM @ TFAM-OPAQUE! ;
 
-: DERIVE-FEATURE? ( ^u8 n -- bool )
+: DERIVE-FEATURE? ( str -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
@@ -786,7 +787,7 @@ private
 \ `addr` has no arity condition: an accessor projects the field schema at the
 \ caller's instantiation, and the checker refuses the one instantiation a baked
 \ offset would misdescribe (a type argument wider than one cell).
-: DERIVE-ONE ( ^u8 n -- )
+: DERIVE-ONE ( str -- )
    2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! DRV-EQ DECL-EVENT:DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! DRV-HASH DECL-EVENT:DERIVE EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! DRV-ADDR DECL-EVENT:DERIVE EXIT THEN
@@ -812,7 +813,7 @@ private
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
 
-: EMIT-FIELD ( ^u8 n n -- )
+: EMIT-FIELD ( str n -- )
    SCHEMA-ROOT+ {: sch:n :}
    FAM @ sch SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
@@ -826,21 +827,21 @@ private
 \ A field named like a generated member (MAKE, UNMAKE, F:AT, F:BYTES, F:CELLS, a
 \ derived tail) would make the generator define a name twice, a die inside the
 \ plan. Refused only under DERIVE addr, which header clauses have fixed by now.
-: MEMBER-CLASH? ( ^u8 n -- bool )
+: MEMBER-CLASH? ( str -- bool )
    2dup s" make" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" unmake" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup TFAM-ADDR-FIXED-TAIL? IF 2drop YES EXIT THEN
    TFAM-DERIVED-TAIL? ;
 \ A public family's accessor is a word named by the field itself (`POINT:X`),
 \ so its field name takes the definer name rule; a private family's is `POINT-X`.
-: REQUIRE-FIELD-NAME ( ^u8 n -- )    \ consumes the copy; throws on a member clash or a keyword accessor
+: REQUIRE-FIELD-NAME ( str -- )    \ consumes the copy; throws on a member clash or a keyword accessor
    FAM @ TFAM-DERIVE-ADDR? 0= IF 2drop EXIT THEN
    FAM @ TFAM-GEN-PUBLIC? IF 2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN THEN
    MEMBER-CLASH? IF
       s" field name is a generated member name"
       s" rename the field: under `DERIVE addr` the names `make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` and `tag` are taken"
       TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
-: FIELD-NAME ( -- ^u8 n )                 \ a FIELD or BUFFER name, judged
+: FIELD-NAME ( -- str )                 \ a FIELD or BUFFER name, judged
    NEXT dup 0= IF
       2drop s" missing field name"
       s" write a name and a type after `FIELD`, as in `FIELD x n`"
@@ -884,7 +885,7 @@ private
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ before its cells are counted
    v ;
-: EMIT-BUFFER ( ^u8 n n -- ) {: na:^ nu:n bytes:n :}
+: EMIT-BUFFER ( str n -- ) {: na:^ nu:n bytes:n :}
    bytes 1 - CELL / 1 + {: fw:n :}
    CC-U8 SCHEMA-CON SCHEMA-ROOT+ {: sch:n :}
    na nu DECL-REJECT:TOKEN!
@@ -915,10 +916,10 @@ private
    na nu bytes EMIT-BUFFER
    -1 SEEN-FIELD ! ;
 
-: SD-DUP-FIX$ ( -- ^u8 n ) s" rename the family: this package already declares a family with this name" ;
+: SD-DUP-FIX$ ( -- str ) s" rename the family: this package already declares a family with this name" ;
 \ Registers the family na nu names, its duplicate placed at the token ta tu,
 \ and answers its id.
-: SD-DECL ( ^u8 n ^u8 n n -- n )
+: SD-DECL ( str str n -- n )
    {: na:^ nu:n ta:^ tu:n ar:n :}
    ta tu DECL-REJECT:TOKEN!
    s" duplicate family" SD-DUP-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
@@ -930,7 +931,7 @@ private
    FAM !
    TYPE-FIELD:COUNT SD-FLDS @ + FLDBASE !
    0 NFLD !   0 SD-CELLS !   0 SD-ITEMS ! ;
-: SD-REGISTER ( ^u8 n ^u8 n n -- ) SD-DECL SD-OPEN ;
+: SD-REGISTER ( str str n -- ) SD-DECL SD-OPEN ;
 
 : SD-MAKEABLE? ( -- bool )
    FAM @ TFAM-FLD-COUNT@ 0 > ;
@@ -1003,7 +1004,7 @@ private
 \ The close: every member, in the order its `;STRUCTURE` was read, judged
 \ again, then generated; each fault names its member and stands at the token
 \ ta tu.
-: CLOSE-ALL ( ^u8 n -- ) {: ta:^ tu:n :}
+: CLOSE-ALL ( str -- ) {: ta:^ tu:n :}
    MEM-N @ 0 ?do
       i MEM-RANKED dup MEM-NAME$ DECL-REJECT:FAMILY!
       ta tu DECL-REJECT:TOKEN!
@@ -1036,7 +1037,7 @@ private
       TYPE-DECL:E-TDECL-ARITY DECL-REJECT:REJECT throw
    THEN ;
 \ The header token a u after `STRUCTURE`, recorded as the family.
-: STRUCTURE-HEADER ( ^u8 n -- ^u8 n n )
+: STRUCTURE-HEADER ( str -- str n )
    2dup DECL-REJECT:FAMILY!
    dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    HEADER ;
@@ -1053,7 +1054,7 @@ private
    na nu CLOSE-ALL ;
 
 \ A header in the MUTUAL list: the member is listed, its family row added.
-: LIST-ENTRY ( ^u8 n -- )
+: LIST-ENTRY ( str -- )
    2dup DECL-REJECT:FAMILY!
    2dup TYPE-DECL:DECL-FAMILY-NAME nip 0= IF
       2drop s" missing name"
@@ -1064,7 +1065,7 @@ private
    na nu na nu ar SD-DECL {: fam:n :}
    na nu fam YES MEM-ADD ;
 \ The token after the list: end of input, a member or the terminator.
-: LIST-END? ( ^u8 n -- bool ) {: a:^ u:n :}
+: LIST-END? ( str -- bool ) {: a:^ u:n :}
    u 0=  a u s" structure" CORE-STR=CI or  a u s" ;mutual" CORE-STR=CI or ;
 : LIST ( -- )
    NEXT 2dup LIST-END? IF
@@ -1123,10 +1124,10 @@ private
 
 \ The member table is cleared on both exits: a later declaration's family may
 \ reuse a rejected member's id.
-: SD-FRONT ( -- ^u8 n ^u8 n [ -- ] )
+: SD-FRONT ( -- str str [ -- ] )
    SD-KIND$ s" ;structure"
    [: SD-RESET [: DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
-: MUTUAL-FRONT ( -- ^u8 n ^u8 n [ -- ] )
+: MUTUAL-FRONT ( -- str str [ -- ] )
    s" mutual" s" ;mutual"
    [: SD-RESET [: MUTUAL-DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
 
@@ -1135,7 +1136,7 @@ private
    c 58 =  c 60 = or  c 94 = or ;
 \ Rejects a DEFTYPE base the wrap sealed that is not one name, since its
 \ converter NAME>BASE is named after it, offering the NEWTYPE that loads.
-: ONE-NAME-GATE ( ^u8 n ^u8 n -- ) {: na:^ nu:n ba:^ bu:n :}
+: ONE-NAME-GATE ( str str -- ) {: na:^ nu:n ba:^ bu:n :}
    DEFTYPE? 0= IF EXIT THEN
    NO bu 0 ?do ba i + c@ NAME-STOP? or loop 0= IF EXIT THEN
    ba bu DECL-REJECT:TOKEN!
@@ -1171,7 +1172,7 @@ private
 \ Takes the name as written and the kind, the declaration's keyword, "newtype"
 \ or "deftype". The stream has no closer, so a rejected one resynchronizes to
 \ its end.
-: WRAP-FRONT ( ^u8 n ^u8 n -- ^u8 n ^u8 n [ -- ] )
+: WRAP-FRONT ( str str -- str str [ -- ] )
    2swap NAME-U ! NAME-A !
    s" " [: SD-RESET WRAP-DRIVE ;] ;
 
@@ -1191,7 +1192,7 @@ public
 \ defining no word: first list token, then the rest of the body, which holds
 \ the other list tokens, the members and ;MUTUAL. A body without ;MUTUAL is
 \ rejected "missing ;MUTUAL". Answers as REPLAY-STRUCTURE.
-: REPLAY-MUTUAL ( ^u8 n ^u8 n -- ^u8 n bool )
+: REPLAY-MUTUAL ( str str -- str bool )
    MUTUAL-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 
 private
@@ -1203,7 +1204,7 @@ private
    FAM @ TYPE-DECL:TDECL-FAM-REG ! ;
 
 \ Rejects `DEFTYPE` NAME at BASE, armed with reason, help and code.
-: ONE-NAME-REJECT ( ^u8 n ^u8 n ^u8 n ^u8 n n -- )
+: ONE-NAME-REJECT ( str str str str n -- )
    {: na:^ nu:n ba:^ bu:n wa:^ wu:n fa:^ fu:n code:n :}
    s" deftype" DECL-REJECT:OPEN
    na nu DECL-REJECT:FAMILY!
@@ -1215,7 +1216,7 @@ public
 
 \ Whether BASE holds no `[`: a quotation type spans tokens and a DEFTYPE base
 \ is one; if it does, rejects NAME. The wrap judges any other base.
-: SD-ONE-NAME ( ^u8 n ^u8 n -- bool ) {: na:^ nu:n ba:^ bu:n :}
+: SD-ONE-NAME ( str str -- bool ) {: na:^ nu:n ba:^ bu:n :}
    NO bu 0 ?do ba i + c@ 91 = or loop 0= IF YES EXIT THEN
    na nu ba bu s" a deftype base is one name"
    s" write the base as one bare name, with no `:`, `<`, `^` or `[`, as in `DEFTYPE REV str`: the converter `REV>STR` is named after it"
@@ -1226,7 +1227,7 @@ public
 \ each record of the name stands at TOKEN, the name as written. KIND is the
 \ declaration's keyword, "newtype" or "deftype", which its records name.
 \ Answers as REPLAY-STRUCTURE; TDECL-FAM-REG is the family, or -1 if none.
-: SD-WRAP-OUTCOME ( ^u8 n ^u8 n ^u8 n ^u8 n -- ^u8 n bool )
+: SD-WRAP-OUTCOME ( str str str str -- str bool )
    {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
    -1 TYPE-DECL:TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
    ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
@@ -1256,7 +1257,7 @@ EXPORT STRUCTURE-DECL:SD-WRAP
    fam TFAM-SCRATCH! ;
 
 \ The one-cell family NAME, with the SCRATCH-ONLY clause when SCRATCH.
-: NEWTYPE-CELL ( ^u8 n bool -- ) {: na:^ nu:n scratch:bool :}
+: NEWTYPE-CELL ( str bool -- ) {: na:^ nu:n scratch:bool :}
    na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY  scratch SCRATCH-MARK ;
 
 public

@@ -1,3 +1,4 @@
+split-str
 \ content-key.f - package CONTENT-KEY: manifest-hashed content cache keys, built
 \ in one WITH-FOLD scope through a linear fold naming the scope's own storage,
 \ so keys folded at overlapping times cannot mix bytes. Each fold owns a SHA-256
@@ -52,12 +53,12 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
    c st BYTE-OFF + c!
    st st BYTE-OFF + 1 SHA256-FEED ;
 
-: BYTES+ ( ^u8 ^u8 n -- ) {: st:^ a:^ u:n :}
+: BYTES+ ( ^u8 str -- ) {: st:^ a:^ u:n :}
    st a u SHA256-FEED ;
 
 \ A fragment is its tag, its length in two little-endian bytes and its bytes:
 \ FILE+ folds the file's name, and a path of PATH-CAP bytes has to fold whole.
-: FRAG+ ( ^u8 n ^u8 n -- ) {: st:^ tag:n a:^ u:n :}
+: FRAG+ ( str str -- ) {: st:^ tag:n a:^ u:n :}
    u 0 < if E-STR-BOUNDS throw then
    u CK-FRAG-MAX > if E-STR-BOUNDS throw then
    st tag U8+
@@ -70,7 +71,7 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
    st DIGEST-LEN U8+
    st dg DIGEST-LEN BYTES+ ;
 
-: FILE-DIGEST! ( ^u8 ^u8 n -- ) {: st:^ a:^ u:n :}
+: FILE-DIGEST! ( ^u8 str -- ) {: st:^ a:^ u:n :}
    st FILE-CTX-OFF + a u st FILE-DG-OFF + SHA256-FILE-IN
    dup 0 <> if throw then drop ;
 
@@ -105,7 +106,7 @@ public
 
 \ Reads the physical path but folds the logical name, so a build naming sources
 \ root-relative shares its key across identical trees in different workspaces.
-: FILE-NAMED+ ( CONTENT-KEY:fold ^u8 n ^u8 n -- CONTENT-KEY:fold )
+: FILE-NAMED+ ( CONTENT-KEY:fold str str -- CONTENT-KEY:fold )
    {: a:^ u:n name:^ size:n :}
    STATE {: st:^ :}
    st CK-FILE-TAG name size FRAG+

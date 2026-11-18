@@ -1,3 +1,4 @@
+split-str
 \ prop-test.f - property-based checker soundness in Habu: generates typed
 \ definitions, checks them, runs the certified ones in process (`evaluate`) and
 \ exits 1 when a certified definition's out-arity differs from its declaration
@@ -66,13 +67,13 @@ create BBUF BBUF-CAP allot   variable BLEN     \ the body
 create PBUF PBUF-CAP allot  variable PBUF-U   \ the full def / the runner
 variable SA  variable SU  variable PJ  variable NJ
 variable RUN-SEED  variable N  variable RI
-: PROP-B+  ( ^u8 n -- ) {: a:^ u:n :}
+: PROP-B+  ( str -- ) {: a:^ u:n :}
    0 begin dup u < while
       dup a + c@  BBUF BLEN @ + c!
       BLEN @ 1+ BLEN !
       1+
    repeat drop ;
-: P+  ( ^u8 n -- ) {: a:^ u:n :}
+: P+  ( str -- ) {: a:^ u:n :}
    0 begin dup u < while
       dup a + c@  PBUF PBUF-U @ + c!
       PBUF-U @ 1+ PBUF-U !
@@ -109,14 +110,14 @@ variable PERT?                             \ declared out perturbed away from th
    LOCN @ 1+ LOCN ! ;
 \ Named structural (net-0) op texts: PROP-STEP emits them and the alphabet
 \ self-test asserts each one is generated and certifies.
-: OP-LOOP$   ( -- ^u8 n )  s" 3 0 ?do loop " ;
-: OP-LEAVE$  ( -- ^u8 n )  s" 3 0 ?do leave loop " ;
-: OP-STR$    ( -- ^u8 n )  S\" s\" x\" 2drop " ;
-: OP-QUOT0$  ( -- ^u8 n )  s" [: ;] execute " ;
-: OP-BRANCH$ ( -- ^u8 n )  s" dup 0= if 1+ else 1- then " ;
-: OP-RSTK$   ( -- ^u8 n )  s" >r r> " ;
-: OP-RCOPY$  ( -- ^u8 n )  s" >r r@ drop r> " ;
-: OP-QUOT1$  ( -- ^u8 n )  s" [: 1+ ;] execute " ;
+: OP-LOOP$   ( -- str )  s" 3 0 ?do loop " ;
+: OP-LEAVE$  ( -- str )  s" 3 0 ?do leave loop " ;
+: OP-STR$    ( -- str )  S\" s\" x\" 2drop " ;
+: OP-QUOT0$  ( -- str )  s" [: ;] execute " ;
+: OP-BRANCH$ ( -- str )  s" dup 0= if 1+ else 1- then " ;
+: OP-RSTK$   ( -- str )  s" >r r> " ;
+: OP-RCOPY$  ( -- str )  s" >r r@ drop r> " ;
+: OP-QUOT1$  ( -- str )  s" [: 1+ ;] execute " ;
 : PROP-STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
    5 RND% 0 = IF
       DEP @ 1 >= IF 9 ELSE 4 THEN RND% K !     \ DEP>=1: ops 0..8; DEP=0: depth-free 0..3
@@ -205,7 +206,7 @@ PBUF-CAP 55 + constant TBUF-CAP
 TBUF-CAP BUFFER: TBUF
 variable TBUF-U
 
-: TBUF+ ( ^u8 n -- )
+: TBUF+ ( str -- )
    {: a:^ u:n :}
    TBUF-U @ u + TBUF-CAP > IF  E-STR-CAPACITY throw  THEN
    a TBUF TBUF-U @ + u BYTE-COPY
@@ -213,7 +214,7 @@ variable TBUF-U
 
 \ A program reaches a refused candidate's body only through TRUSTED:, so
 \ COMPILE-TRUSTED compiles `TRUSTED` and its `: G ( ... ) <body> ;` unenforced.
-: COMPILE-TRUSTED ( ^u8 n -- n )
+: COMPILE-TRUSTED ( str -- n )
    0 TBUF-U !  s" TRUSTED" TBUF+  TBUF+
    TBUF TBUF-U @ SRC-U !  SRC-A !
    ['] COMPILE catch ;
@@ -226,7 +227,7 @@ variable TBUF-U
    name-ch PC  s"  depth CLEAR-MEAS MEAS-OUT !" P+ ;
 \ A refusal is rc 70 with the checker's diagnostic captured; any other
 \ nonzero rc, an engine refusal after certification among them, is rethrown.
-: CHK  ( ^u8 n -- )
+: CHK  ( str -- )
    SRC-U !
    SRC-A !
    REJECTION:CAPTURE
@@ -273,7 +274,7 @@ variable MEAS-OUT
 \ are capped/quiet but the finding is fatal either way: the NSI/NCI
 \ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD).
 variable SWEEP-QUIET
-: LOG-META  ( ^u8 n -- ) {: a:^ u:n :}
+: LOG-META  ( str -- ) {: a:^ u:n :}
    SWEEP-QUIET @ if exit then
    s" prop-test: metamorphic " type a u type s"  inconsistency: " type POS. cr
    s" variant: " type PBUF PBUF-U @ type cr
@@ -398,7 +399,7 @@ variable NFC0
 create ALPHA-SEEN ALPHA-N allot
 variable PH-I  variable PH-J  variable PH-HIT
 variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
-: PROP-HAS? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
+: PROP-HAS? ( str str -- bool ) {: a:^ u:n b:^ v:n :}
    v 0= IF 0 0= exit THEN
    0 PH-I !
    begin PH-I @ v + u <= while
@@ -409,7 +410,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
       PH-HIT @ IF 0 0= exit THEN
       PH-I @ 1+ PH-I !
    repeat 0 0= 0= ;
-: ALPHA-DET$ ( n -- ^u8 n ) {: i:n :}   \ the substring PROP-STEP emits for class i
+: ALPHA-DET$ ( n -- str ) {: i:n :}   \ the substring PROP-STEP emits for class i
    i 0 = IF OP-LOOP$ exit THEN
    i 1 = IF OP-LEAVE$ exit THEN
    i 2 = IF OP-STR$ exit THEN
@@ -419,7 +420,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    i 6 = IF OP-RCOPY$ exit THEN
    i 7 = IF OP-QUOT1$ exit THEN
    s" {: z" ;
-: ALPHA-CERT$ ( n -- ^u8 n ) {: i:n :}  \ a minimal certifiable instance of class i
+: ALPHA-CERT$ ( n -- str ) {: i:n :}  \ a minimal certifiable instance of class i
    i 8 = IF s" {: z0 :} z0 " exit THEN
    i ALPHA-DET$ ;
 variable CERT-I
@@ -537,7 +538,7 @@ create BUF 64 allot
       s" prop-test: output-depth self-test rejected an exact match" EXIT-STATUS:FAILURE die
    then ;
 
-: BUILD-CHECK-CASE-RUNNER ( ^u8 n -- ) {: ops:^ opsu:n :}
+: BUILD-CHECK-CASE-RUNNER ( str -- ) {: ops:^ opsu:n :}
    0 PBUF-U !
    s" CANARY depth BASE ! " P+
    ops opsu P+
@@ -546,7 +547,7 @@ create BUF 64 allot
 PTR-VARIABLE CASE-DEF  variable CASE-DEFU
 PTR-VARIABLE CASE-OPS  variable CASE-OPSU
 variable CASE-EXP
-: CHECK-CASE ( ^u8 n ^u8 n n -- )
+: CHECK-CASE ( str str n -- )
    CASE-EXP !  CASE-OPSU !  CASE-OPS !  CASE-DEFU !  CASE-DEF !
    [: CASE-DEF @ CASE-DEFU @ CHK
    VERD @ -1 <> if
@@ -723,7 +724,7 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
 \ The named failure line goes to stdout (fd 2 is muted in shards; `die` writes
 \ stderr, so its message would vanish) and carries the shard seed so any red is
 \ reproducible serially.
-: SHARD-FAIL ( ^u8 n -- )
+: SHARD-FAIL ( str -- )
    type s"  in shard seed " type RUN-SEED @ .
    s" " EXIT-STATUS:FAILURE die ;
 \ Fault-injection seam for the sweep red-path self-test only. Its selected

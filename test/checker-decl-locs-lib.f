@@ -1,3 +1,4 @@
+split-str
 \ Arms a declaration location and a completion cursor as the verifier does
 \ (src/core/checker.f DECL-LOCS), for test/checker-completion.f.
 
@@ -47,13 +48,13 @@ public
 \ (VERIFY:SOURCE-BUF-THEN-IN-SCOPE). A replay compiles nothing: a name it
 \ declares binds only while its scope is open, so the queries read the rows
 \ there, as the verifier reads uses and locations during its own check.
-: PLACED-REPLAY ( ^u8 n ^u8 n n n n [ -- ] -- )
+: PLACED-REPLAY ( str str n n n [ -- ] -- )
    {: na:^ nu:n a:^ u:n v:n s:n e:n queries :}
    na nu v s e ARM
    a u queries VERIFY:SOURCE-BUF-THEN-IN-SCOPE
    DISARM ;
 
-: ARMED-REPLAY ( ^u8 n ^u8 n [ -- ] -- )
+: ARMED-REPLAY ( str str [ -- ] -- )
    {: na:^ nu:n a:^ u:n queries :}
    na nu a u VISIT AT-START AT-END queries PLACED-REPLAY ;
 

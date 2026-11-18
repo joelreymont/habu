@@ -1,3 +1,4 @@
+split-str
 \ lsp-rename.f - the language server's rename. A rename edits a token's tail alone,
 \ its bytes after a qualifier's colon, so the new name the client asks for is a tail
 \ and a qualifier stays. PREPARED and ANSWER refuse nothing once LSP-REFERENCES has
@@ -25,14 +26,14 @@ private
 
 \ Whether these bytes read as a qualified name, or with a second colon as
 \ one no word has: their first colon is neither first nor last.
-: QUALIFIES? ( ^u8 n -- bool )
+: QUALIFIES? ( str -- bool )
    {: a:^ u:n :}
    a u [char] : INDEX-OF MATCH option
       some OF IDX>N {: k:n :} k 0 >  k u 1- <  and ENDOF
       none OF false ENDOF
    ;MATCH ;
 
-: ANY-BYTE? ( ^u8 n [ n -- bool ] -- bool )
+: ANY-BYTE? ( str [ n -- bool ] -- bool )
    {: a:^ u:n test :}
    u 0 ?do
       a i + c@ test execute if true unloop exit then

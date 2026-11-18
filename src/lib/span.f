@@ -1,3 +1,4 @@
+split-str
 \ span.f - a pointer that carries its reach: one two-cell value, a base `^t`
 \ and a reach in bytes, every access bounds-checked against it. The read-only
 \ ( ^u8 n ) pair stays the string idiom; SPAN:COPY takes it as its source.
@@ -117,7 +118,7 @@ private
 \ The bytes from an address to the next cell boundary, at most n.
 : LEAD ( ^u8 n -- n ) {: p:^ l :} p PTR>N negate CELL-BYTES 1- and l min ;
 
-: SET-BYTES ( u8 ^u8 n -- ) {: v p:^ l :} l 0 ?do v p i + c! loop ;
+: SET-BYTES ( u8 str -- ) {: v p:^ l :} l 0 ?do v p i + c! loop ;
 
 public
 

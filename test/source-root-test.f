@@ -1,3 +1,4 @@
+split-str
 \ Named entries own root-relative dependencies; canonical identity deduplicates.
 require src/lib/string.f
 require src/lib/test.f
@@ -41,16 +42,16 @@ public
 : BUMP ( n -- ) LOADED +! ;
 private
 
-: COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
+: COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
    a dst u BYTE-COPY u lenp ! ;
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: A$ ( -- ^u8 n ) APP-A APP-A-U @ ;
-: B$ ( -- ^u8 n ) APP-B APP-B-U @ ;
-: FALLBACK$ ( -- ^u8 n ) FALLBACK FALLBACK-U @ ;
-: A-PATH ( ^u8 n -- ^u8 n ) A$ 2swap JOIN ;
-: B-PATH ( ^u8 n -- ^u8 n ) B$ 2swap JOIN ;
-: FALLBACK-PATH ( ^u8 n -- ^u8 n ) FALLBACK$ 2swap JOIN ;
+: A$ ( -- str ) APP-A APP-A-U @ ;
+: B$ ( -- str ) APP-B APP-B-U @ ;
+: FALLBACK$ ( -- str ) FALLBACK FALLBACK-U @ ;
+: A-PATH ( str -- str ) A$ 2swap JOIN ;
+: B-PATH ( str -- str ) B$ 2swap JOIN ;
+: FALLBACK-PATH ( str -- str ) FALLBACK$ 2swap JOIN ;
 
 : RESTORED ( -- )
    CURRENT$ SAVED-ROOT SAVED-ROOT-U @ T$=
@@ -230,9 +231,9 @@ private
    0 SOURCE-EVENT:ROOT@ A$ T$=
    RESTORED ;
 
-: INVOCATION$ ( -- ^u8 n ) ROOT$ s" invoke" JOIN ;
+: INVOCATION$ ( -- str ) ROOT$ s" invoke" JOIN ;
 
-: ENGINE-LINK ( ^u8 n -- ) {: name:^ nameu:n :}
+: ENGINE-LINK ( str -- ) {: name:^ nameu:n :}
    CWD$ name nameu JOIN TARGET TARGET-U COPY!
    TARGET TARGET-U @ INVOCATION$ name nameu JOIN FS:MAKE-SYMLINK ;
 
@@ -303,13 +304,13 @@ public
 
 private
 
-: DEEP-NAME+ ( ^u8 n n -- ) {: ix:n :}
+: DEEP-NAME+ ( str n -- ) {: ix:n :}
    SB-APPEND s" /" SB-APPEND ix FMT:SB-U s" .f" SB-APPEND ;
 
-: DEEP-PATH ( ^u8 n n -- ^u8 n )
+: DEEP-PATH ( str n -- str )
    SB-RESET DEEP-NAME+ SB$ A-PATH ;
 
-: DEEP-MAKE ( ^u8 n bool -- ) {: prefix:^ prefixu:n fail:bool :}
+: DEEP-MAKE ( str bool -- ) {: prefix:^ prefixu:n fail:bool :}
    prefix prefixu A-PATH FS:MAKE-DIRS
    DEEP-COUNT 0 ?do
       prefix prefixu i DEEP-PATH TARGET TARGET-U COPY!
@@ -405,7 +406,7 @@ PATH-CAP 1+ 2 * constant JOIN-WORK
 -1 1 rshift constant MAX-CELL
 create JOIN-SRC JOIN-WORK allot
 
-: JOIN-ROOT$ ( n -- ^u8 n ) JOIN-SRC swap ;
+: JOIN-ROOT$ ( n -- str ) JOIN-SRC swap ;
 
 : JOIN-ROOM ( -- )
    JOIN-WORK 0 ?do 97 JOIN-SRC i + c! loop

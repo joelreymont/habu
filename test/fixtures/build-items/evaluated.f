@@ -1,3 +1,4 @@
+split-str
 \ evaluated.f - a definer opens a word from this file's text, then evaluates a
 \ string that appends a call of drop, which the empty word cannot feed, called
 \ on line 16. The call's bytes lie in the string, whose leading spaces end at
@@ -8,7 +9,7 @@ package BITEM-EVALUATED
 private
 
 \ : NAME ( -- ) drop ;
-: MAKE-EVALUATED ( ^u8 n -- )
+: MAKE-EVALUATED ( str -- )
    EFFECT:EMPTY define-word
    s"           drop" evaluate-closed
    postpone ; ;

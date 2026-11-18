@@ -1,3 +1,4 @@
+split-str
 \ kernel-object.f - the tree's arm64 start-up and kernel, written as a kernel
 \ object a build's link adopts.
 \ Only a kernel build compiles this file, so the kernel and the layout it reads

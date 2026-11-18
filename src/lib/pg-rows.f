@@ -1,3 +1,4 @@
+split-str
 \ pg-rows.f - package PG's connections per module, statements and row readers.
 \ Before the first OPEN, read or query: `n PG:CONNECTIONS+` in each module for
 \ the connections it opens, and `n PG:CONFIGURE-READERS` once for the tasks
@@ -131,7 +132,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    at READ-CHUNK @ ;
 
 
-: ARENA+ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: ARENA+ ( str -- str ) {: a:^ u:n :}
    MY-ARENA {: at:n :}
    at u ROOM {: chunk :}
    at READ-USED @ {: used:n :}
@@ -150,7 +151,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    fresh at REFUSAL ! ;
 
 
-: REFUSAL+ ( ^u8 n n -- ) {: a:^ u:n at:n :}
+: REFUSAL+ ( str n -- ) {: a:^ u:n at:n :}
    a u at REFUSAL @ at REFUSAL-U @ SPAN:SKIP SPAN:COPY
    u at REFUSAL-U +! ;
 
@@ -183,12 +184,12 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
    slot ci BINARY-COLUMN? if E-TYPE throw then ;
 
 
-: CELL$ ( PG:result n -- PG:result ^u8 n ) {: c:n :}
+: CELL$ ( PG:result n -- PG:result str ) {: c:n :}
    0 >ROW c >COL NULL? if E-ROW throw then
    0 >ROW c >COL TEXT$ ;
 
 
-: BOOL$ ( ^u8 n -- bool ) {: a:^ u:n :}
+: BOOL$ ( str -- bool ) {: a:^ u:n :}
    u 1 <> if E-ROW throw then
    a c@ TRUE-BYTE = ;
 
@@ -225,7 +226,7 @@ public
 
 
 \ The attempt for a caller that drives POLL itself.
-: OPEN-START ( ^u8 n -- PG:connection )
+: OPEN-START ( str -- PG:connection )
    CONNECTIONS RESULTS CONFIGURE
    1 CONNECTIONS-FROZEN !
    CONNECT-START ;
@@ -281,7 +282,7 @@ public
 
 \ The text of the task's last refused statement or lost connection, valid until
 \ its next PG operation. A statement's start empties it; see pg.f OP-START.
-: REFUSED$ ( -- ^u8 n )
+: REFUSED$ ( -- str )
    MY-ARENA {: at:n :}
    REFUSED-KIND @ {: kind:n :}
    kind KIND-REFUSAL = if at REFUSAL @ SPAN:$ drop at REFUSAL-U @ exit then
@@ -343,7 +344,7 @@ public
 
 
 \ A nullable text: false means SQL NULL, and the span is then empty.
-: COL-TEXT? ( PG:result n -- PG:result ^u8 n bool ) {: c:n :}
+: COL-TEXT? ( PG:result n -- PG:result str bool ) {: c:n :}
    0 >ROW c >COL NULL? if s" " ARENA+ false exit then
    c COL-TEXT true ;
 
@@ -381,11 +382,11 @@ public
 \ These answer libpq's own bytes, valid until the result's scope ends: a page
 \ of rows is read inside its scope, and nothing is copied.
 
-: AT$ ( PG:result n n -- PG:result ^u8 n ) {: at:n col:n :}
+: AT$ ( PG:result n n -- PG:result str ) {: at:n col:n :}
    at >ROW col >COL TEXT$ ;
 
 
-: AT?$ ( PG:result n n -- PG:result ^u8 n bool ) {: at:n col:n :}
+: AT?$ ( PG:result n n -- PG:result str bool ) {: at:n col:n :}
    at >ROW col >COL NULL? if s" " false exit then
    at col AT$ true ;
 

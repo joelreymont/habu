@@ -1,3 +1,4 @@
+split-str
 \ Read a program's <program>.map by column name: its code rows, the regions
 \ the link appended after the code and its packages. An unknown version
 \ supplies no rows.
@@ -34,7 +35,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 \ The version-1 sidecar uses one space between fields; the header names columns
 \ so a reordered or extended map is read by meaning, not by column position.
-: FIELD$ ( ^u8 n n -- ^u8 n ) {: a:^ u:n col:n :}
+: FIELD$ ( str n -- str ) {: a:^ u:n col:n :}
    0
    col 0 ?do
       {: start:n :}
@@ -53,31 +54,31 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 : LOADED? ( -- bool ) USED @ 0<> ;
 
-: LINE$ ( -- ^u8 n )
+: LINE$ ( -- str )
    0 TEXT BYTE-VIEW USED @ 10 POS @ SPLIT-NEXT
    drop POS ! ;
 
 : NUMBER ( ^u8 n -- n )
    STR>NUMBER? MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH ;
 
-: NUM-COL ( ^u8 n n -- n ) FIELD$ NUMBER ;
+: NUM-COL ( str n -- n ) FIELD$ NUMBER ;
 
-: ROW-LEN ( ^u8 n -- n ) {: a:^ u:n :}
+: ROW-LEN ( str -- n ) {: a:^ u:n :}
    a u COL-LEN @ NUM-COL dup CODE-SPAN:VALID? if CODE-SPAN:BYTES else drop -1 then ;
 
 : ROW-BYTES ( ^u8 n -- n )
    ROW-LEN dup 0 < if
       s" image-names: a row's length is not a length" EXIT-STATUS:DATAERR die then ;
 
-: KIND? ( ^u8 n ^u8 n -- bool )
+: KIND? ( str str -- bool )
    {: row:^ rowu:n kind:^ kindu:n :}
    row rowu COL-KIND @ FIELD$ kind kindu STR= ;
 
-: ROW-CHARGED? ( ^u8 n -- bool ) {: a:^ u:n :}
+: ROW-CHARGED? ( str -- bool ) {: a:^ u:n :}
    a u COL-KIND @ FIELD$ s" runtime" STR= if true exit then
    a u COL-KIND @ FIELD$ s" word" STR= ;
 
-: ORIGIN+ ( ^u8 n n -- ) {: a:^ u:n bytes:n :}
+: ORIGIN+ ( str n -- ) {: a:^ u:n bytes:n :}
    a u COL-ORIGIN @ FIELD$ s" baked" STR= if
       ATTR-BAKED @ bytes + ATTR-BAKED ! exit then
    a u COL-ORIGIN @ FIELD$ s" loaded" STR= if
@@ -86,7 +87,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
       ATTR-GENERATED @ bytes + ATTR-GENERATED ! exit then
    ATTR-UNKNOWN @ bytes + ATTR-UNKNOWN ! ;
 
-: NS+ ( ^u8 n -- ) {: row:^ rowu:n :}
+: NS+ ( str -- ) {: row:^ rowu:n :}
    NS-N @ 1+ NS-ROWS-RESERVE
    NS-N @ NS-ROWS {: pkg:^ :}
    row rowu COL-START @ NUM-COL pkg PKG-PUB !
@@ -104,7 +105,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    repeat ;
 
 \ The kinds of the rows after the code: the regions the link appended and the pad before one.
-: TAIL? ( ^u8 n -- bool )
+: TAIL? ( str -- bool )
    {: kind:^ kindu:n :}
    kind kindu s" data" STR= if true exit then
    kind kindu s" data-list" STR= if true exit then
@@ -113,14 +114,14 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    kind kindu s" record-list" STR= if true exit then
    kind kindu s" pad" STR= ;
 
-: UNCHARGED? ( ^u8 n -- bool )
+: UNCHARGED? ( str -- bool )
    {: kind:^ kindu:n :}
    kind kindu s" namespace" STR= if true exit then
    kind kindu s" alias" STR= if true exit then
    kind kindu TAIL? ;
 
 \ At most 64 bytes of the kind: a corrupt map's field can pass the string builder.
-: UNKNOWN-KIND ( ^u8 n -- )
+: UNKNOWN-KIND ( str -- )
    {: kind:^ kindu:n :}
    SB-RESET s" image-names: a map row of unknown kind " SB-APPEND
    kind kindu 64 min SB-APPEND SB$ EXIT-STATUS:DATAERR die ;
@@ -128,7 +129,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 public
 
 \ Writes <path>.map into dst, a PATH-CAP buffer; false when it would pass PATH-CAP.
-: MAP-PATH! ( ^u8 n ^u8 -- n bool )
+: MAP-PATH! ( str ^u8 -- n bool )
    {: path:^ pathu:n dst:^ :}
    pathu 4 + PATH-CAP > if 0 false exit then
    path dst pathu BYTE-COPY
@@ -136,7 +137,7 @@ public
    pathu 4 + true ;
 
 \ <path>.map in PATH until the next call, false when it would pass PATH-CAP.
-: MAP$ ( ^u8 n -- ^u8 n bool )
+: MAP$ ( str -- str bool )
    {: path:^ pathu:n :}
    path pathu PATH MAP-PATH! {: mapu:n ok:bool :}
    ok if PATH mapu true else path pathu false then ;
@@ -204,7 +205,7 @@ public
    repeat -1 ;
 
 \ The summed length of every row of a kind.
-: KIND-BYTES ( ^u8 n -- n )
+: KIND-BYTES ( str -- n )
    {: kind:^ kindu:n :}
    LOADED? 0= COL-KIND @ 0 < or if 0 exit then
    0 ROWS @ POS !
@@ -232,7 +233,7 @@ private
 
 : ATTR? ( -- bool ) ATTR-OK @ 0<> ;
 
-: PACKAGE$ ( n -- ^u8 n ) {: wid:n :}
+: PACKAGE$ ( n -- str ) {: wid:n :}
    wid 0= if s" global" exit then
    wid -1 = if s" -" exit then
    NS-N @ 0 ?do
@@ -242,7 +243,7 @@ private
       then
    loop s" -" ;
 
-: GROUP-KEY$ ( ^u8 n n -- ^u8 n ) {: row:^ rowu:n group:n :}
+: GROUP-KEY$ ( str n -- str ) {: row:^ rowu:n group:n :}
    group 0= if row rowu COL-WID @ NUM-COL PACKAGE$ exit then
    COL-SOURCE @ 0 < if s" -" exit then
    row rowu COL-SOURCE @ FIELD$ ;
@@ -271,7 +272,7 @@ private
       then
    repeat ;
 
-: REPORT-GROUP ( n ^u8 n -- )
+: REPORT-GROUP ( n str -- )
    {: group:n label:^ labelu:n :}
    cr label labelu type cr
    s" bytes" type 9 emit s" owner" type cr

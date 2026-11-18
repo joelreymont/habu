@@ -1,3 +1,4 @@
+split-str
 \ vector.f - package VEC: a typed vector<t> that takes its elements from an
 \ allocator it keeps and grows through it. COUNT elements are live; growth
 \ doubles the room the block holds, so n pushes make about log2 n resize calls.

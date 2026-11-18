@@ -1,3 +1,4 @@
+split-str
 require test/gate-entry-guard-target.f
 
 package ENTRY-GUARD-IMPORT-FIXTURE

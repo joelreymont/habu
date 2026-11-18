@@ -1,3 +1,4 @@
+split-str
 \ seal-second.f - the sealed program's second file: its package gains two words,
 \ an export, a does> child, a variable and a private word, which a link of this
 \ file's object replays, then is sealed.

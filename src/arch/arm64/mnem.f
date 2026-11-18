@@ -1,3 +1,4 @@
+split-str
 \ mnem.f - one word per mnemonic: encode with asm.f, emit with icode.f EMITW.
 \ The encoders are imported and called bare: a qualifier on every one-line
 \ mnemonic would be the whole file. Condition-code names live in asm.f beside

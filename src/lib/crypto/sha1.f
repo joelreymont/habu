@@ -1,3 +1,4 @@
+split-str
 \ sha1.f - SHA-1 (FIPS 180-4) for the WebSocket handshake, not for security:
 \ RFC 6455's Sec-WebSocket-Accept only proves a server read the client's key.
 \ Collisions are practical: authenticate, sign or name adversary bytes with the

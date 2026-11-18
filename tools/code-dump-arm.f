@@ -1,3 +1,4 @@
+split-str
 \ code-dump-arm.f - one recorded ARM instruction for the shared code walker.
 
 require src/arch/arm64/disasm.f

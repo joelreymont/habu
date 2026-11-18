@@ -1,3 +1,4 @@
+split-str
 \ export-package.f - interpret-level `EXPORT` in fresh child engines. Inside an
 \ open package's public section it publishes an existing word under its own
 \ tail; outside a package it is rejected. A package's `global` section defines
@@ -35,18 +36,18 @@ create XPK-OUT XPK-CAP allot
 create XPK-ERR XPK-CAP allot
 create XPK-EMPTY 1 allot
 
-: XPK-COPY! ( ^u8 n ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
+: XPK-COPY! ( str ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
-: XPK-ROOT ( -- ^u8 n )   XPK-ROOT-BUF XPK-ROOT-U @ ;
-: XPK-CHILD ( -- ^u8 n )  XPK-CHILD-BUF XPK-CHILD-U @ ;
-: XPK-IN$ ( -- ^u8 n )    XPK-IN XPK-IN-U @ ;
+: XPK-ROOT ( -- str )   XPK-ROOT-BUF XPK-ROOT-U @ ;
+: XPK-CHILD ( -- str )  XPK-CHILD-BUF XPK-CHILD-U @ ;
+: XPK-IN$ ( -- str )    XPK-IN XPK-IN-U @ ;
 
 : XPK-LF ( -- )   10 SB-APPEND-C ;
 
-: XPK-LINE ( ^u8 n -- )   SB-APPEND XPK-LF ;
+: XPK-LINE ( str -- )   SB-APPEND XPK-LF ;
 
 \ --- forge programs -----------------------------------------------------------
 \ Child exits: a primitive source, a trusted primitive and a top-level EXPORT
@@ -58,7 +59,7 @@ create XPK-EMPTY 1 allot
    s" : W ( n -- n ) 2 * ;" XPK-LINE
    s" ;package" XPK-LINE ;
 
-: XPK-OK-FORGE$ ( -- ^u8 n )               \ dual-name execution + checked callers
+: XPK-OK-FORGE$ ( -- str )               \ dual-name execution + checked callers
    SB-RESET
    XPK-SRC-PKG
    s" package XB" XPK-LINE
@@ -73,13 +74,13 @@ create XPK-EMPTY 1 allot
    s" 5 U2 . cr" XPK-LINE
    SB$ ;
 
-: XPK-TOP-FORGE$ ( -- ^u8 n )              \ top-level EXPORT rejects
+: XPK-TOP-FORGE$ ( -- str )              \ top-level EXPORT rejects
    SB-RESET
    s" : SQ ( n -- n ) dup * ;" XPK-LINE
    s" EXPORT SQ" XPK-LINE
    SB$ ;
 
-: XPK-UNDEF-FORGE$ ( -- ^u8 n )            \ undefined source rejects
+: XPK-UNDEF-FORGE$ ( -- str )            \ undefined source rejects
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -87,14 +88,14 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-NONAME-FORGE$ ( -- ^u8 n )           \ EXPORT with no name rejects
+: XPK-NONAME-FORGE$ ( -- str )           \ EXPORT with no name rejects
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT" XPK-LINE
    SB$ ;
 
-: XPK-DUP-FORGE$ ( -- ^u8 n )              \ second export of the same tail rejects
+: XPK-DUP-FORGE$ ( -- str )              \ second export of the same tail rejects
    SB-RESET
    XPK-SRC-PKG
    s" package XB" XPK-LINE
@@ -104,7 +105,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-SELF-FORGE$ ( -- ^u8 n )             \ self-export in the same section rejects
+: XPK-SELF-FORGE$ ( -- str )             \ self-export in the same section rejects
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -113,7 +114,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-PRIM-FORGE$ ( -- ^u8 n )             \ primitive source rejects (E-EXPORT-PRIM)
+: XPK-PRIM-FORGE$ ( -- str )             \ primitive source rejects (E-EXPORT-PRIM)
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -121,7 +122,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-JUDGED-FORGE$ ( -- ^u8 n )           \ a word the checker judges (E-EXPORT-PRIM)
+: XPK-JUDGED-FORGE$ ( -- str )           \ a word the checker judges (E-EXPORT-PRIM)
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -129,7 +130,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-KEYWORD-FORGE$ ( -- ^u8 n )          \ a top-level keyword (E-EXPORT-UNDEFINED)
+: XPK-KEYWORD-FORGE$ ( -- str )          \ a top-level keyword (E-EXPORT-UNDEFINED)
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -138,7 +139,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ U's public NAME, exported bare from a package under `using U`.
-: XPK-USED-FORGE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: XPK-USED-FORGE$ ( str -- str ) {: a:^ u:n :}
    SB-RESET
    s" package U" XPK-LINE
    s" public" XPK-LINE
@@ -153,7 +154,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ The part U's public XW, exported bare from its parent XPA under `using U`.
-: XPK-PART-FORGE$ ( -- ^u8 n )
+: XPK-PART-FORGE$ ( -- str )
    SB-RESET
    s" package XPA" XPK-LINE
    s" private package U" XPK-LINE
@@ -166,7 +167,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ Top-level U's public XW, exported bare from XPH, whose part U hides U.
-: XPK-HIDDEN-FORGE$ ( -- ^u8 n )
+: XPK-HIDDEN-FORGE$ ( -- str )
    SB-RESET
    s" package U public : XW ( -- n ) 9 ; ;package" XPK-LINE
    s" using U" XPK-LINE
@@ -177,7 +178,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ An export whose source does not resolve, after a private STRUCTURE.
-: XPK-STRUCT-FORGE$ ( -- ^u8 n )
+: XPK-STRUCT-FORGE$ ( -- str )
    SB-RESET
    s" package QX public : OTHER ( -- ) ; ;package" XPK-LINE
    s" package QC private" XPK-LINE
@@ -186,7 +187,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-CREATE-FORGE$ ( -- ^u8 n )           \ a primitive spelled as a keyword (E-EXPORT-PRIM)
+: XPK-CREATE-FORGE$ ( -- str )           \ a primitive spelled as a keyword (E-EXPORT-PRIM)
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
@@ -194,7 +195,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-UNSAFE-FORGE$ ( -- ^u8 n )           \ trusted primitive rejects (E-EXPORT-UNSAFE)
+: XPK-UNSAFE-FORGE$ ( -- str )           \ trusted primitive rejects (E-EXPORT-UNSAFE)
    SB-RESET
    s" package TICK-ALIAS" XPK-LINE
    s" public" XPK-LINE
@@ -202,7 +203,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-DECL-EXPORT-FORGE$ ( -- ^u8 n )      \ a declaration rejects (E-EXPORT-UNSAFE)
+: XPK-DECL-EXPORT-FORGE$ ( -- str )      \ a declaration rejects (E-EXPORT-UNSAFE)
    SB-RESET
    s" package XD" XPK-LINE
    s" public" XPK-LINE
@@ -210,7 +211,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-PRIV-FORGE$ ( -- ^u8 n )             \ an unsealed package's private word
+: XPK-PRIV-FORGE$ ( -- str )             \ an unsealed package's private word
    SB-RESET
    s" package XA" XPK-LINE
    s" : PW ( -- n ) 73 ;" XPK-LINE
@@ -223,7 +224,7 @@ create XPK-EMPTY 1 allot
    s" XB:TAKE . cr" XPK-LINE
    SB$ ;
 
-: XPK-DATA-FORGE$ ( -- ^u8 n )             \ a data record is never internal
+: XPK-DATA-FORGE$ ( -- str )             \ a data record is never internal
    SB-RESET
    s" 42 constant K package P public export K ;package P:K ." XPK-LINE
    SB$ ;
@@ -231,7 +232,7 @@ create XPK-EMPTY 1 allot
 \ Re-exporting a generated constructor (closed but callable) under a second
 \ public name is allowed, a checked caller through the alias compiles, and the
 \ alias inherits DNAME-WIDE.
-: XPK-CTOR-FORGE$ ( -- ^u8 n )
+: XPK-CTOR-FORGE$ ( -- str )
    SB-RESET
    s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
@@ -244,7 +245,7 @@ create XPK-EMPTY 1 allot
    S\" s\" ctor-alias-ok\" type cr" XPK-LINE
    SB$ ;
 
-: XPK-CTOR-WIDE-SRC-FORGE$ ( -- ^u8 n )    \ interpret gate on the SOURCE ctor
+: XPK-CTOR-WIDE-SRC-FORGE$ ( -- str )    \ interpret gate on the SOURCE ctor
    SB-RESET
    s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
@@ -254,7 +255,7 @@ create XPK-EMPTY 1 allot
    s" dup" XPK-LINE
    SB$ ;
 
-: XPK-CTOR-WIDE-ALIAS-FORGE$ ( -- ^u8 n )  \ interpret gate on the ALIAS
+: XPK-CTOR-WIDE-ALIAS-FORGE$ ( -- str )  \ interpret gate on the ALIAS
    SB-RESET
    s" SUMTYPE xpw" XPK-LINE
    s"   VARIANT ok n ;VARIANT" XPK-LINE
@@ -276,30 +277,30 @@ create XPK-EMPTY 1 allot
    s" : P-GLOBAL ( -- n ) P-HELP ;" XPK-LINE
    s" ;package" XPK-LINE ;
 
-: XPK-GLOBAL-FORGE$ ( -- ^u8 n )
+: XPK-GLOBAL-FORGE$ ( -- str )
    SB-RESET XPK-GLOBAL-PKG
    s" P-GLOBAL . cr" XPK-LINE
    SB$ ;
 
 \ The package, then the line a u.
-: XPK-GLOBAL-AFTER$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: XPK-GLOBAL-AFTER$ ( str -- str ) {: a:^ u:n :}
    SB-RESET XPK-GLOBAL-PKG  a u XPK-LINE  SB$ ;
 
-: XPK-GLOBAL-OUTSIDE$ ( -- ^u8 n )
+: XPK-GLOBAL-OUTSIDE$ ( -- str )
    SB-RESET
    s" global" XPK-LINE
    s" : P-GLOBAL ( -- n ) 1 ;" XPK-LINE
    SB$ ;
 
-: XPK-END-PACKAGE-OUTSIDE$ ( -- ^u8 n )
+: XPK-END-PACKAGE-OUTSIDE$ ( -- str )
    SB-RESET  s" ;package" XPK-LINE  SB$ ;
 
-: XPK-EVAL-OPEN$ ( -- ^u8 n )
+: XPK-EVAL-OPEN$ ( -- str )
    SB-RESET
    S\" s\" package XQ\" evaluate : XD ( -- n ) 1 ; ;package 1 . cr" XPK-LINE
    SB$ ;
 
-: XPK-EVAL-PUBLIC$ ( -- ^u8 n )
+: XPK-EVAL-PUBLIC$ ( -- str )
    SB-RESET
    S\" s\" package XQ\" evaluate" XPK-LINE
    s" public" XPK-LINE
@@ -309,7 +310,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A global section after seal-package: its body would bind the sealed private.
-: XPK-GLOBAL-SEALED$ ( -- ^u8 n )
+: XPK-GLOBAL-SEALED$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -322,7 +323,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A STRUCTURE in a sealed package's global section.
-: XPK-SEALED-STRUCTURE$ ( -- ^u8 n )
+: XPK-SEALED-STRUCTURE$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -334,7 +335,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A DEFTYPE over a base in a sealed package's private section.
-: XPK-SEALED-DEFTYPE$ ( -- ^u8 n )
+: XPK-SEALED-DEFTYPE$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -344,7 +345,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A DEFTYPE without a base in a sealed package's private section.
-: XPK-SEALED-DEFTYPE-BARE$ ( -- ^u8 n )
+: XPK-SEALED-DEFTYPE-BARE$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -354,7 +355,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A STRUCTURE whose header does not parse, in a sealed package's global section.
-: XPK-SEALED-PARAM$ ( -- ^u8 n )
+: XPK-SEALED-PARAM$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -365,7 +366,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A qualified name defined in a sealed package's private section.
-: XPK-SEALED-QUALIFIED$ ( -- ^u8 n )
+: XPK-SEALED-QUALIFIED$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -377,7 +378,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A sealed package's part B, then the line a u in B's global section.
-: XPK-SEALED-PART$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: XPK-SEALED-PART$ ( str -- str ) {: a:^ u:n :}
    SB-RESET
    s" package U" XPK-LINE
    s" public" XPK-LINE
@@ -396,7 +397,7 @@ create XPK-EMPTY 1 allot
 
 \ A public STRUCTURE in part B of sealed package Z: its constructor package is
 \ the part B-SX of Z.
-: XPK-SEALED-CTOR$ ( -- ^u8 n )
+: XPK-SEALED-CTOR$ ( -- str )
    SB-RESET
    s" package Z" XPK-LINE
    s" private" XPK-LINE
@@ -411,7 +412,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A qualified STRUCTURE B:s in part B of a sealed package.
-: XPK-SEALED-PART-STRUCT$ ( -- ^u8 n )
+: XPK-SEALED-PART-STRUCT$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -424,7 +425,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A MUTUAL in a sealed package.
-: XPK-SEALED-MUTUAL$ ( -- ^u8 n )
+: XPK-SEALED-MUTUAL$ ( -- str )
    SB-RESET
    s" package MU" XPK-LINE
    s" seal-package" XPK-LINE
@@ -437,7 +438,7 @@ create XPK-EMPTY 1 allot
 
 \ A public SUMTYPE in part B of sealed package Z: its constructor package is
 \ the part B-SX of Z.
-: XPK-SEALED-SUM-CTOR$ ( -- ^u8 n )
+: XPK-SEALED-SUM-CTOR$ ( -- str )
    SB-RESET
    s" package Z" XPK-LINE
    s" private" XPK-LINE
@@ -452,7 +453,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A MUTUAL in a sealed package whose first member has a header.
-: XPK-SEALED-MUTUAL-PARAM$ ( -- ^u8 n )
+: XPK-SEALED-MUTUAL-PARAM$ ( -- str )
    SB-RESET
    s" package MU" XPK-LINE
    s" seal-package" XPK-LINE
@@ -464,7 +465,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A MUTUAL whose rejected first entry comes before a sealed package's name.
-: XPK-SEALED-MUTUAL-ORDER$ ( -- ^u8 n )
+: XPK-SEALED-MUTUAL-ORDER$ ( -- str )
    SB-RESET
    s" package MS" XPK-LINE
    s" seal-package" XPK-LINE
@@ -475,7 +476,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A CALLBACK: in a sealed package.
-: XPK-SEALED-CALLBACK$ ( -- ^u8 n )
+: XPK-SEALED-CALLBACK$ ( -- str )
    SB-RESET
    s" require src/lib/ffi-callback.f" XPK-LINE
    s" package P" XPK-LINE
@@ -487,7 +488,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A CALLBACK: whose name is taken.
-: XPK-TAKEN-CALLBACK$ ( -- ^u8 n )
+: XPK-TAKEN-CALLBACK$ ( -- str )
    SB-RESET
    s" require src/lib/ffi-callback.f" XPK-LINE
    s" : CB ( -- n ) 9 ;" XPK-LINE
@@ -495,14 +496,14 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A CALLBACK: with no name.
-: XPK-NAMELESS-CALLBACK$ ( -- ^u8 n )
+: XPK-NAMELESS-CALLBACK$ ( -- str )
    SB-RESET
    s" require src/lib/ffi-callback.f" XPK-LINE
    s" CALLBACK: ( -- ) ;CALLBACK" XPK-LINE
    SB$ ;
 
 \ A sealed package P, then the section word s su, if any, and the line a u.
-: XPK-SEALED-LINE$ ( ^u8 n ^u8 n -- ^u8 n ) {: s:^ su:n a:^ u:n :}
+: XPK-SEALED-LINE$ ( str str -- str ) {: s:^ su:n a:^ u:n :}
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -514,7 +515,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ Package XSB exports a private word of the sealed package XSA.
-: XPK-SEALED-EXPORT$ ( -- ^u8 n )
+: XPK-SEALED-EXPORT$ ( -- str )
    SB-RESET
    s" package XSA" XPK-LINE
    s" private" XPK-LINE
@@ -527,7 +528,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A sealed package's part B defines in its private and public sections.
-: XPK-PART-SECTIONS$ ( -- ^u8 n )
+: XPK-PART-SECTIONS$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -542,7 +543,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ As XPK-PART-SECTIONS$, with part B using another package.
-: XPK-PART-USING$ ( -- ^u8 n )
+: XPK-PART-USING$ ( -- str )
    SB-RESET
    s" package U" XPK-LINE
    s" public" XPK-LINE
@@ -563,7 +564,7 @@ create XPK-EMPTY 1 allot
    SB$ ;
 
 \ A sealed package's part B defines B:PV from its global section.
-: XPK-PART-QUALIFIED$ ( -- ^u8 n )
+: XPK-PART-QUALIFIED$ ( -- str )
    SB-RESET
    s" package P" XPK-LINE
    s" private" XPK-LINE
@@ -579,7 +580,7 @@ create XPK-EMPTY 1 allot
 \ Types declared in XG's global section name its private xgcell; the OPAQUE
 \ xgbox's generated words go to XG's private section, and the section after
 \ it is global again.
-: XPK-GLOBAL-TYPES$ ( -- ^u8 n )
+: XPK-GLOBAL-TYPES$ ( -- str )
    SB-RESET
    s" package XG" XPK-LINE
    s" STRUCTURE xgcell FIELD v n ;STRUCTURE" XPK-LINE
@@ -597,7 +598,7 @@ create XPK-EMPTY 1 allot
 \ --- child spawn + outcome capture --------------------------------------------
 \ Children run ENGINE-CANDIDATE:PATH$ over piped stdin or under --load.
 
-: XPK-STORE! ( len len PROCESS:ending ^u8 n -- )
+: XPK-STORE! ( len len PROCESS:ending str -- )
    {: outu:len erru:len oc src:^ srcu:n :}
    outu LEN>N XPK-OUT-U !  erru LEN>N XPK-ERR-U !
    oc MATCH PROCESS:ending
@@ -608,12 +609,12 @@ create XPK-EMPTY 1 allot
      ENDOF
    ;MATCH ;
 
-: XPK-IN! ( ^u8 n -- ) {: a:^ u:n :}
+: XPK-IN! ( str -- ) {: a:^ u:n :}
    u XPK-CAP > if E-FS-CAPACITY throw then
    a XPK-IN u BYTE-COPY
    u XPK-IN-U ! ;
 
-: XPK-RUN-LOAD ( ^u8 n -- )
+: XPK-RUN-LOAD ( str -- )
    {: src:^ srcu:n :}
    XPK-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -624,7 +625,7 @@ create XPK-EMPTY 1 allot
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu XPK-STORE! ;
 
-: XPK-RUN-STDIN ( ^u8 n -- )
+: XPK-RUN-STDIN ( str -- )
    XPK-IN!
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
@@ -657,10 +658,10 @@ create XPK-EMPTY 1 allot
    XPK-EXITED @ TTRUE
    XPK-RC @ rc T= ;
 
-: XPK-OUT? ( ^u8 n -- ) {: a:^ u:n :}
+: XPK-OUT? ( str -- ) {: a:^ u:n :}
    XPK-OUT XPK-OUT-U @ a u CONTAINS? TTRUE ;
 
-: XPK-ERR? ( ^u8 n -- ) {: a:^ u:n :}
+: XPK-ERR? ( str -- ) {: a:^ u:n :}
    XPK-ERR XPK-ERR-U @ a u CONTAINS? TTRUE ;
 
 : XPK-PREPARE ( -- )
@@ -678,7 +679,7 @@ create XPK-EMPTY 1 allot
 
 \ The source a u is rejected with record e and text c by stdin, by --load and
 \ by the verifier alone.
-: XPK-REJECT-ALL ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
+: XPK-REJECT-ALL ( str str str -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
    a u XPK-RUN-STDIN 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
    a u XPK-RUN-LOAD 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
    XPK-RUN-VERIFY 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR? ;
@@ -744,21 +745,21 @@ create XPK-EMPTY 1 allot
    s" error[E-EXPORT-NO-PACKAGE]" XPK-ERR? ;
 
 \ A name a global section's package does not publish is E-UNDEFINED.
-: XPK-GLOBAL-UNDEFINED ( ^u8 n -- ) {: a:^ u:n :}
+: XPK-GLOBAL-UNDEFINED ( str -- ) {: a:^ u:n :}
    a u T-LABEL
    a u XPK-GLOBAL-AFTER$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    s" E-UNDEFINED" XPK-ERR? ;
 
 \ Both --load and tools/check.f reject the source a u with the record e eu
 \ and, unless it is empty, the caret line c cu.
-: XPK-SEALED ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
+: XPK-SEALED ( str str str -- ) {: a:^ u:n e:^ eu:n c:^ cu:n :}
    a u XPK-RUN-LOAD
    e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  70 XPK-ASSERT-RC
    XPK-RUN-CHECK
    e eu XPK-ERR?  cu 0 > IF c cu XPK-ERR? THEN  70 XPK-ASSERT-RC ;
 
 \ Both --load and tools/check.f accept the source a u.
-: XPK-ACCEPT-BOTH ( ^u8 n -- )
+: XPK-ACCEPT-BOTH ( str -- )
    XPK-RUN-LOAD 0 XPK-ASSERT-RC
    XPK-RUN-CHECK 0 XPK-ASSERT-RC ;
 
@@ -960,7 +961,7 @@ create XPK-EMPTY 1 allot
 \ The declaration words are their packages' global words over private
 \ implementations: a checked body reaches no implementation, and may not call
 \ the declaration word itself.
-: XPK-DECL-REJECT ( ^u8 n ^u8 n -- ) {: a:^ u:n e:^ eu:n :}
+: XPK-DECL-REJECT ( str str -- ) {: a:^ u:n e:^ eu:n :}
    a u T-LABEL
    SB-RESET a u XPK-LINE SB$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
    e eu XPK-ERR? ;
@@ -1018,7 +1019,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" 2 3 PT:AT" XPK-LINE ;
 
 \ A point, then the primitive a u on its own line, run; the record names a u.
-: XPK-PT-XPORT ( ^u8 n -- ) {: a:^ u:n :}
+: XPK-PT-XPORT ( str -- ) {: a:^ u:n :}
    a u T-LABEL
    SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
    70 XPK-ASSERT-RC  s" error[E-LAYOUT-VALUE]: `" XPK-ERR?
@@ -1075,7 +1076,7 @@ variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
    s" 2swap" XPK-PT-XPORT  s" 2over" XPK-PT-XPORT  s" 2>r" XPK-PT-XPORT
    XPK-PT-CONSTANT XPK-EMPTY-CONSTANT XPK-PT-CONSTANTS ;
 
-: XPK-PT-DROP ( ^u8 n ^u8 n -- ) {: w:^ v:n a:^ u:n :}
+: XPK-PT-DROP ( str str -- ) {: w:^ v:n a:^ u:n :}
    w v T-LABEL
    SB-RESET XPK-PT-LINES  a u XPK-LINE  SB$ XPK-RUN-STDIN
    0 XPK-ASSERT-RC  s" 100" XPK-OUT? ;

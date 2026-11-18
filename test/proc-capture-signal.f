@@ -1,3 +1,4 @@
+split-str
 \ proc-capture-signal.f - a child capture survives a signal storm. poll(2) is
 \ the one blocking syscall SA_RESTART never restarts, so each tick of the 1 kHz
 \ profiler's SIGALRM (prof-on, ITIMER_REAL) returns EINTR, which process.f must
@@ -25,12 +26,12 @@ package PROC-CAPTURE-SIGNAL
 create PCS-OUT PCS-OUT-CAP allot
 create PCS-ERR PCS-ERR-CAP allot
 
-: PCS-MARK ( -- ^u8 n ) s" habu-eintr-capture-ok" ;
+: PCS-MARK ( -- str ) s" habu-eintr-capture-ok" ;
 
 \ /bin/sh sleeps a quarter second, then writes the marker with no trailing newline.
 \ The marker is spelled out again here because the shell reads it as text; the
 \ two spellings must stay identical or PCS-MARK below stops matching.
-: PCS-SCRIPT ( -- ^u8 n ) s" sleep 0.25; printf %s habu-eintr-capture-ok" ;
+: PCS-SCRIPT ( -- str ) s" sleep 0.25; printf %s habu-eintr-capture-ok" ;
 
 : PCS-RUN-SLEEPER ( -- n n n )
    PROC-ARGV-RESET
@@ -54,7 +55,7 @@ create PCS-ERR PCS-ERR-CAP allot
 100 constant PCS-HOLD-MS             \ the held child's window
 1000000000 constant PCS-HOLD-MAX-NS  \ ten windows: a window each tick renewed would not end
 
-: PCS-HOLD-SCRIPT ( -- ^u8 n )
+: PCS-HOLD-SCRIPT ( -- str )
    s" read x; exit 3" ;
 
 \ A child that lives until its stdin closes, then exits 3: the pid and the

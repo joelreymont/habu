@@ -1,3 +1,4 @@
+split-str
 \ driver-io.f - writes a build's image file. It reaches MBUF, so a booted
 \ engine cannot load it; what a booted engine needs lives in src/habu/fdio.f
 \ (FDIO:WALL) and src/habu/sign-id.f.
@@ -10,7 +11,7 @@ using IMAGE-BYTES
 package DRIVER
 variable DRV-WFD
 
-: DRV-WRITE-IMAGE-PATH ( ^u8 n -- )
+: DRV-WRITE-IMAGE-PATH ( str -- )
    PATH0 1537 493 open DRV-WFD !
    DRV-WFD @ 0 < IF s" driver: cannot open output" EXIT-STATUS:IOERR die THEN
    DRV-WFD @ MBUF MLEN@ FDIO:WALL

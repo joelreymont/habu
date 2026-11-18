@@ -1,3 +1,4 @@
+split-str
 \ pcap-result.f - a process capture result read as numbers for a test: the
 \ stdout and stderr byte counts and the exit code, 0 for a clean exit. A test
 \ that keeps the counts stores the three cells it answers:

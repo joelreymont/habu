@@ -1,3 +1,4 @@
+split-str
 \ pointer.f - RFC 6901 JSON Pointers: POINTER? and POINTER-SPAN. A file of
 \ package JSON (src/lib/json.f).
 \
@@ -32,7 +33,7 @@ private
 126 constant TILDE
 
 \ Whether every tilde in the bytes is followed by 0 or 1.
-: ESCAPES-OK? ( ^u8 n -- bool )
+: ESCAPES-OK? ( str -- bool )
    {: p:^ u:n :}
    u 0 ?do
       p i + c@ TILDE = if
@@ -43,7 +44,7 @@ private
    loop true ;
 
 \ The end of the token that starts at from: the next slash, or u.
-: TOKEN-END ( ^u8 n n -- n )
+: TOKEN-END ( str n -- n )
    {: p:^ u:n from:n :}
    from begin
       dup u < if dup p + c@ SLASH <> else false then
@@ -51,7 +52,7 @@ private
 
 \ The byte at in, an escape decoded, and the offset past it. POINTER? passed
 \ every tilde, so the byte after one is 0 or 1.
-: UNESCAPE-STEP ( ^u8 n -- n n )
+: UNESCAPE-STEP ( str -- n n )
    {: p:^ in:n :}
    p in + c@ {: c:n :}
    c TILDE <> if c in 1+ exit then
@@ -80,7 +81,7 @@ private
 
 \ The array index a token names: 0, or a digit 1-9 then digits, below cap;
 \ false for any other token. An index stays below cap, so it never overflows.
-: INDEX? ( ^u8 n n -- n bool )
+: INDEX? ( str n -- n bool )
    {: t:^ len:n cap:n :}
    len 0= if 0 false exit then
    len 1 > t c@ ZERO = and if 0 false exit then
@@ -102,7 +103,7 @@ private
 
 \ Moves the reader from the value it is on into the place the decoded token
 \ names there; false when there is none. cap bounds an index.
-: DESCEND ( JSON:reader ^u8 n n -- JSON:reader bool )
+: DESCEND ( JSON:reader str n -- JSON:reader bool )
    {: t:^ len:n cap:n :}
    READ-TOKEN {: kind:n :}
    kind T-OBJ = if t len READ-FIND-KEY exit then
@@ -112,7 +113,7 @@ private
 
 \ Takes the token after the slash at at; answers the offset after the token
 \ and whether it names a place.
-: TOKEN-STEP ( JSON:reader n ^u8 n ^u8 n -- JSON:reader n bool )
+: TOKEN-STEP ( JSON:reader n str ^u8 n -- JSON:reader n bool )
    {: at:n p:^ u:n room:^ cap:n :}
    p u at 1+ TOKEN-END {: end:n :}
    p at 1+ end room UNESCAPE {: len:n :}
@@ -128,7 +129,7 @@ private
 
 \ The place's offset and length in the text, and whether it is there. The
 \ reader reads the whole text on either answer.
-: LOCATE ( ^cursor ^u8 n ^u8 n ^u8 -- n n bool )
+: LOCATE ( ^cursor str str ^u8 -- n n bool )
    {: rec:^ text:^ tu:n p:^ u:n room:^ :}
    rec text tu READ-INIT
    READ-NEXT drop
@@ -157,7 +158,7 @@ public
 \ Whether the bytes are an RFC 6901 pointer: empty, or each reference token
 \ after a slash, every tilde followed by 0 or 1, and the bytes UTF-8. False
 \ for a negative length or a null address with a positive one.
-: POINTER? ( ^u8 n -- bool )
+: POINTER? ( str -- bool )
    {: p:^ u:n :}
    u 0= if true exit then
    u 0 < if false exit then
@@ -175,7 +176,7 @@ public
 \ a scalar, name no place. A pointer POINTER? rejects throws E-JSON-POINTER
 \ before the text is read; a text that is not one valid JSON value throws the
 \ reader's code.
-: POINTER-SPAN ( ^u8 n ^u8 n -- n n bool )
+: POINTER-SPAN ( str str -- n n bool )
    {: text:^ tu:n p:^ u:n :}
    p u POINTER? 0= if E-JSON-POINTER throw then
    text tu REQUIRE-SOURCE

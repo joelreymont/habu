@@ -1,3 +1,4 @@
+split-str
 \ workspace.f - CWORK storage: the declaring package's own words capture none
 \ of its accessors, and no checked source reaches the mapping's cells.
 
@@ -52,7 +53,7 @@ public
 create CWK-FOOB 1 allot
 
 \ The text `value CWORK-VARIABLE <name><i> n`.
-: CWK-SRC$ ( n ^u8 n n -- ^u8 n ) {: value:n na:^ nu:n i:n :}
+: CWK-SRC$ ( n str n -- str ) {: value:n na:^ nu:n i:n :}
    SB-RESET  value FMT:SB-INT  s"  CWORK-VARIABLE " SB-APPEND
    na nu SB-APPEND  i FMT:SB-INT  s"  n" SB-APPEND  SB$ ;
 

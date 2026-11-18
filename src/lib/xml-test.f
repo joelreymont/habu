@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/test/guard-page.f
@@ -42,25 +43,25 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
    {: start:n size:n :}
    RAW LEN>N size T= OFF>N start T= ;
 
-: NAME= ( XML:reader ^u8 n -- XML:reader )
+: NAME= ( XML:reader str -- XML:reader )
    {: expected size:n :}
    NAME$ expected size T$= ;
 
-: LOCAL= ( XML:reader ^u8 n -- XML:reader )
+: LOCAL= ( XML:reader str -- XML:reader )
    {: expected size:n :}
    LOCAL$ expected size T$= ;
 
-: URI= ( XML:reader ^u8 n -- XML:reader )
+: URI= ( XML:reader str -- XML:reader )
    {: expected size:n :}
    TEXT-BUF TEXT-CAP URI TEXT-BUF swap expected size T$= ;
 
-: PREFIX= ( XML:reader ^u8 n ^u8 n -- XML:reader )
+: PREFIX= ( XML:reader str str -- XML:reader )
    {: prefix prefix-size:n expected size:n :}
    prefix prefix-size T-LABEL
    prefix prefix-size TEXT-BUF TEXT-CAP PREFIX-URI TTRUE
    TEXT-BUF swap expected size T$= ;
 
-: PREFIX-MISSING ( XML:reader ^u8 n -- XML:reader )
+: PREFIX-MISSING ( XML:reader str -- XML:reader )
    $5A TEXT-BUF c!
    TEXT-BUF TEXT-CAP PREFIX-URI TFALSE 0 T=
    TEXT-BUF c@ $5A T= ;
@@ -68,26 +69,26 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
 : PREFIX-READ ( XML:reader -- XML:reader )
    s" p" TEXT-BUF TEXT-CAP PREFIX-URI 2drop ;
 
-: TEXT= ( XML:reader ^u8 n -- XML:reader )
+: TEXT= ( XML:reader str -- XML:reader )
    {: expected size:n :}
    TEXT-BUF TEXT-CAP TEXT TEXT-BUF swap expected size T$= ;
 
-: ATTR-NAME= ( XML:reader ^u8 n -- XML:reader )
+: ATTR-NAME= ( XML:reader str -- XML:reader )
    {: expected size:n :}
    ATTR-NAME$ expected size T$= ;
 
-: ATTR-URI= ( XML:reader ^u8 n -- XML:reader )
+: ATTR-URI= ( XML:reader str -- XML:reader )
    {: expected size:n :}
    TEXT-BUF TEXT-CAP ATTR-URI TEXT-BUF swap expected size T$= ;
 
-: ATTR-TEXT= ( XML:reader ^u8 n -- XML:reader )
+: ATTR-TEXT= ( XML:reader str -- XML:reader )
    {: expected size:n :}
    TEXT-BUF TEXT-CAP ATTR-TEXT TEXT-BUF swap expected size T$= ;
 
 : DRAIN ( XML:reader -- XML:reader )
    begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
 
-: INPUT-SET ( ^u8 n n n -- )
+: INPUT-SET ( str n n -- )
    {: source size:n limit:n fail-at:n :}
    source INPUT-SOURCE ! size INPUT-LEN !
    limit INPUT-LIMIT ! fail-at INPUT-FAIL !
@@ -123,7 +124,7 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
 : INPUT-TEXT-ALIASED ( XML:reader -- XML:reader )
    INPUT-CHUNK SPAN:$ TEXT drop ;
 
-: INPUT-BAD ( ^u8 n n -- )
+: INPUT-BAD ( str n -- )
    {: source size:n expected:n :}
    source size 1 $7FFFFFFFFFFFFFFF INPUT-SET
    INPUT-FAILURE expected T= ;
@@ -138,7 +139,7 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
    [: 2dup OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch expected T=
    2drop ;
 
-: BAD-INIT ( ^u8 n n -- )
+: BAD-INIT ( str n -- )
    {: expected:n :}
    [: 2dup OPEN XML:CLOSE ;] catch expected T=
    2drop ;
@@ -617,7 +618,7 @@ PTR-VARIABLE WIDE-DOC
 variable WIDE-LEN
 variable URI-LEN
 
-: WIDE+ ( ^u8 n -- )
+: WIDE+ ( str -- )
    {: source size:n :}
    source WIDE-DOC @ WIDE-LEN @ + size >LEN BYTE-COPY-LEN
    size WIDE-LEN +! ;
@@ -628,13 +629,13 @@ variable URI-LEN
    value 10 mod $30 + WIDE-DOC @ WIDE-LEN @ + c!
    1 WIDE-LEN +! ;
 
-: URI+ ( ^u8 n -- )
+: URI+ ( str -- )
    {: source size:n :}
    source OTHER-BUF URI-LEN @ + size >LEN BYTE-COPY-LEN
    size URI-LEN +! ;
 
 \ Emit URI index, its U+20061 scalars as UTF-8 or as character references.
-: WIDE-URI ( n bool [ ^u8 n -- ] -- )
+: WIDE-URI ( n bool [ str -- ] -- )
    {: index:n refs:bool emit :}
    URI-SCALARS 0 ?do
       index i rshift 1 and 0= if
@@ -644,12 +645,12 @@ variable URI-LEN
       then
    loop ;
 
-: EXPECTED-URI$ ( n -- ^u8 n )
+: EXPECTED-URI$ ( n -- str )
    0 URI-LEN !
    false [: URI+ ;] WIDE-URI
    OTHER-BUF URI-LEN @ ;
 
-: WIDE-BUILD ( ^u8 n -- )
+: WIDE-BUILD ( str -- )
    {: tail size:n :}
    0 WIDE-LEN !
    s" <r" WIDE+
@@ -663,7 +664,7 @@ variable URI-LEN
 
 : WIDE-OPEN ( -- XML:reader ) RD WIDE-DOC @ WIDE-LEN @ INIT ;
 
-: WIDE-BAD ( ^u8 n -- )
+: WIDE-BAD ( str -- )
    WIDE-BUILD
    [: WIDE-OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch E-NAMESPACE T= ;
 
@@ -843,16 +844,16 @@ variable URI-LEN
    s" <a xmlns:p='urn:u' xmlns:q='urn:u'><b><c p:x='1' q:x='2'/></b></a>"
       E-NAMESPACE INPUT-BAD ;
 
-: DEEP+ ( ^u8 n -- ) BUF:N>BLEN DEEP-DOC BUF:APPEND-SPAN ;
+: DEEP+ ( str -- ) BUF:N>BLEN DEEP-DOC BUF:APPEND-SPAN ;
 
 \ Level i of the chain is p:aD, D the digit i mod 10.
-: LEVEL-NAME ( n -- ^u8 n )
+: LEVEL-NAME ( n -- str )
    10 mod [char] 0 + {: digit:n :}
    s" p:a" drop DEEP-NAME 3 BYTE-COPY
    digit DEEP-NAME 3 + c!
    DEEP-NAME 4 ;
 
-: DEEP-BUILD ( -- ^u8 n )
+: DEEP-BUILD ( -- str )
    DEEP-DOC 16 BUF:N>BLEN BUF:INIT
    s" <r xmlns:p='urn:p'>" DEEP+
    DEEP-LEVELS 0 ?do s" <" DEEP+ i LEVEL-NAME DEEP+ s" >" DEEP+ loop
@@ -894,7 +895,7 @@ variable URI-LEN
 variable SEEN
 
 : DOC-START ( -- ) DEEP-DOC 16 BUF:N>BLEN BUF:INIT ;
-: DOC$ ( -- ^u8 n ) DEEP-DOC BUF:SPAN$ BUF:BLEN>N ;
+: DOC$ ( -- str ) DEEP-DOC BUF:SPAN$ BUF:BLEN>N ;
 
 : DEEP-N+ ( n -- )
    {: value:n :}
@@ -994,7 +995,7 @@ variable SEEN
    INPUT-FAILURE -9299 T= ;
 
 \ A rejection's text: the place, what was expected, the token found and the fix.
-: SAID ( n ^u8 n -- ) {: code:n wa:^ wu:n :}
+: SAID ( n str -- ) {: code:n wa:^ wu:n :}
    code REASON:TEXT$ wa wu T$=
    REASON:RELEASE ;
 

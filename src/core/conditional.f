@@ -1,3 +1,4 @@
+split-str
 \ conditional.f - `[if]` and `[then]` choose text at a file's top level, as a
 \ target's files are chosen:
 \ `HB-TARGET-MACOS? [if] require src/lib/power/macos.f [then]`. A false answer

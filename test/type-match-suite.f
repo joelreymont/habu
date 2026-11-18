@@ -1,3 +1,4 @@
+split-str
 \ type-match-suite.f — checked MATCH suite (docs/forth.md "Structures And
 \ Enums"), run by the engine over stdin like the other type suites:
 \     bin/hb < test/type-match-suite.f
@@ -216,7 +217,7 @@ create MD-BUF MD-CAP allot
 variable MD-U
 variable MD-I
 : MD-CLEAR ( -- ) 0 MD-U ! ;
-: MD-APP ( ^u8 n -- ) {: a:^ u:n :}
+: MD-APP ( str -- ) {: a:^ u:n :}
    MD-U @ u + MD-CAP > if s" match-suite: depth fixture too long" EXIT-STATUS:FAILURE die then
    0 MD-I !
    begin MD-I @ u < while
@@ -225,7 +226,7 @@ variable MD-I
       MD-I @ 1 + MD-I !
    repeat ;
 variable MD-J   \ MD-BODY's own loop index: MD-APP clobbers MD-I per append
-: MD-BODY ( n -- ^u8 n ) {: k:n :}   \ k if-frames around one full match
+: MD-BODY ( n -- str ) {: k:n :}   \ k if-frames around one full match
    MD-CLEAR
    s" MD ( f mres -- f mres ) " MD-APP
    0 MD-J !  begin MD-J @ k < while s" over if " MD-APP MD-J @ 1 + MD-J ! repeat
@@ -274,7 +275,7 @@ s" MATCH-SCOPE" type cr
 : MDG< ( ^u8 n -- )   \ run one candidate with JSON diags into the buffer
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: MDG? ( ^u8 n -- )
+: MDG? ( str -- )
    T-NEXT
    REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL

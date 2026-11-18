@@ -1,3 +1,4 @@
+split-str
 \ A plain zero cannot prove that this caught reader returned normally.
 package CATCH-REFUSAL
 private

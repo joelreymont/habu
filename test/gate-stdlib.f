@@ -1,3 +1,4 @@
+split-str
 \ gate-stdlib.f - entry wrapper for the native test suite.
 \ It requires its own dependency prefix so test/run.f has no hidden setup.
 

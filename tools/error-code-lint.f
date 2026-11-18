@@ -1,3 +1,4 @@
+split-str
 \ error-code-lint.f - CLI entrypoint for the E- throw-code collision lint.
 \ Enforcing: prints the collision ledger and THROWS on any finding. A nonzero
 \ throw code claimed by two different E- names anywhere under the Habu source

@@ -1,3 +1,4 @@
+split-str
 \ source-root-exe-app.f - an application outside the engine's tree.
 \ test/source-root-exe-test.f copies this file to <tmp>/app/app.f with the app's
 \ own src/lib/error.f beside it, and runs it from an empty directory with an
@@ -17,11 +18,11 @@ package SOURCE-ROOT-EXE-APP
 create PATH-BUF INCLUDE-PATH-CAP allot
 variable PATH-U
 
-: INVOKED$ ( -- ^u8 n ) 0 SCRIPT-ARGV$ ;
+: INVOKED$ ( -- str ) 0 SCRIPT-ARGV$ ;
 : ROOT$ ( -- ^u8 n ) 1 SCRIPT-ARGV$ ;
 
 \ JOIN answers in resolver scratch that the next query overwrites.
-: ENGINE-COPY$ ( -- ^u8 n )
+: ENGINE-COPY$ ( -- str )
    ROOT$ s" src/lib/error.f" JOIN {: a:^ u:n :}
    a PATH-BUF u BYTE-COPY u PATH-U !
    PATH-BUF PATH-U @ ;

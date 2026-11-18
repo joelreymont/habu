@@ -1,3 +1,4 @@
+split-str
 \ fs-cause-test.f - real filesystem failures through the public FS load path.
 \ Run: bin/hb --load src/lib/fs-cause-test.f
 
@@ -54,7 +55,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : MISSING-STAT ( -- ) s" missing" PATH FS:STAT-MODE drop ;
 : MISSING-LSTAT ( -- ) s" missing" PATH FS:TRY-LSTAT drop ;
 : LINK-DIR ( -- ) ROOT$ s" link" PATH FS:MAKE-LINK ;
-: CALLBACK-FAIL ( ^u8 n -- ) 2drop MISSING ;
+: CALLBACK-FAIL ( str -- ) 2drop MISSING ;
 : CALLBACK-LIST ( -- ) ROOT$ [: CALLBACK-FAIL ;] FS-LIST:EACH ;
 
 \ Both tasks hold a different failed open across the same barrier. Neither

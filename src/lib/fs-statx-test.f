@@ -1,3 +1,4 @@
+split-str
 \ fs-statx-test.f - FS-STATX:BIRTH, SUBVOLUME and PERMISSIONS on files made
 \ under the test's temporary directory, and their refusal of a closed one.
 \ Run: bin/hb --load src/lib/fs-statx-test.f
@@ -70,7 +71,7 @@ variable ROOT-U
    FD>N STATFS-BUF FSTATFS-CALL 0 T=
    STATFS-BUF LE:U64@ ;
 
-: FS-NAME$ ( n -- ^u8 n ) {: m:n :}
+: FS-NAME$ ( n -- str ) {: m:n :}
    m TMPFS-MAGIC = if s" tmpfs" exit then
    m BTRFS-MAGIC = if s" btrfs" exit then
    s" magic " SB-RESET SB-APPEND  m FMT:SB-HEX  SB$ ;

@@ -1,3 +1,4 @@
+split-str
 \ Run: bin/hb --load src/lib/error-test.f
 
 require src/lib/error.f
@@ -82,7 +83,7 @@ package PB
 
 
 \ The capture holds one record, whose head line is h hu and help line p pu.
-: ONE-RECORD ( ^u8 n ^u8 n -- ) {: h:^ hu:n p:^ pu:n :}
+: ONE-RECORD ( str str -- ) {: h:^ hu:n p:^ pu:n :}
    REJECTION:BUFFER$ h hu CONTAINS? TTRUE
    REJECTION:BUFFER$ p pu CONTAINS? TTRUE
    REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
@@ -125,11 +126,11 @@ package PB
 
 \ The cut text's row lies where FILL lays its cells, so a head left on it
 \ walks into them.
-: ROLLBACK-TEXT$ ( -- ^u8 n )
+: ROLLBACK-TEXT$ ( -- str )
    s\" -9686 s\" the cut code\" ERROR:CODE E-CUT  1 throw" ;
 
 
-: AFTER-TEXT$ ( -- ^u8 n )
+: AFTER-TEXT$ ( -- str )
    s\" -9687 s\" the code after the cut\" ERROR:CODE E-AFTER" ;
 
 

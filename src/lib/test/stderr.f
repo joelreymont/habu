@@ -1,3 +1,4 @@
+split-str
 \ stderr.f - a test's hold on fd 2, package STDERR. CAPTURE sends fd 2 to the
 \ file at a path, created empty or truncated, until ;CAPTURE gives the process
 \ its own stderr back. A failed dup or dup2 is E-FS-IO. CAPTURING runs a word
@@ -57,7 +58,7 @@ public
 private
 
 \ Nothing writes the file once its capture has ended, so its size bounds it.
-: READ-WHOLE ( ^u8 n ^ARENA:arena -- ^u8 n )
+: READ-WHOLE ( str ^ARENA:arena -- str )
    {: path:^ u:n a:^ :}
    a path u FS:FILE-SIZE ARENA:ALLOC {: at:^ cap:n :}
    at  path u at cap FS:READ-ALL ;
@@ -66,7 +67,7 @@ public
 
 \ Answers the code xt threw, 0 for none, and the text it wrote to fd 2, which
 \ the arena holds; the capture ends whether or not xt threw.
-: CAPTURING ( [ -- ] ^u8 n ^ARENA:arena -- n ^u8 n )
+: CAPTURING ( [ -- ] str ^ARENA:arena -- n str )
    {: run path:^ u:n a:^ :}
    path u CAPTURE
    run catch ;CAPTURE

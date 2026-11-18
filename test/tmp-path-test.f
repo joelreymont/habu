@@ -1,3 +1,4 @@
+split-str
 \ tmp-path-test.f - TMP-PATH holds a PATH-CAP path and no length wraps past it.
 \ TMP-PATH (src/os/env-base.f) answers TMPDIR, a slash and the caller's name in
 \ one buffer of PATH-CAP bytes, and ends the process with exit 77 when they do

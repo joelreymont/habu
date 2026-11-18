@@ -1,3 +1,4 @@
+split-str
 \ lsp-highlight.f - textDocument/documentHighlight: the token that declares a
 \ word in an open document and every use of it there, from the last verified
 \ check. STORAGE CLASS. CALLER-OWNED: no state; the writer is the caller's, the
@@ -32,7 +33,7 @@ private
    WRITE-OBJECT-END true ;
 
 \ A use that names no record there is of no word.
-: OF-WORD? ( ^u8 n n n n n n -- bool )
+: OF-WORD? ( str n n n n n -- bool )
    {: t:^ tu:n u:n g:n ts:n te:n rec:n :}
    u USE-GROUP g <> if false exit then
    u USE-TARGET {: us:n ue:n :}

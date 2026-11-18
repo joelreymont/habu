@@ -1,3 +1,4 @@
+split-str
 \ digest.f - SHA-256 values and little-endian eight-byte slots for compiler data.
 \
 \ Not reentrant: this package keeps one digest context (SHA-CTX) and one output
@@ -35,7 +36,7 @@ public
 
 \ ---- whole runs of slots -----------------------------------------------------
 
-: SLOTS-COPY ( ^u8 ^u8 n -- )
+: SLOTS-COPY ( ^u8 str -- )
    {: src:^ dst:^ n:n :}
    n 0 <= if exit then
    n 0 ?do
@@ -43,7 +44,7 @@ public
       dst i SLOT-BYTES * + CELL-VIEW !
    loop ;
 
-: SLOTS-ZERO ( ^u8 n -- )
+: SLOTS-ZERO ( str -- )
    {: dst:^ n:n :}
    n 0 <= if exit then
    n 0 ?do 0 dst i SLOT-BYTES * + CELL-VIEW ! loop ;

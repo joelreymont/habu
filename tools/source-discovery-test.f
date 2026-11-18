@@ -1,3 +1,4 @@
+split-str
 \ source-discovery-test.f - fixtures for the whole-file discovery pass
 \ (tools/source-discovery.f): its ordered load-event artifact and its refusals.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
@@ -33,12 +34,12 @@ variable SDT-ROOT-U
 variable SDT-ENTRY-U
 variable SDT-SRC-U
 
-: SDT-ROOT$ ( -- ^u8 n )   SDT-ROOT SDT-ROOT-U @ ;
+: SDT-ROOT$ ( -- str )   SDT-ROOT SDT-ROOT-U @ ;
 public
 : SDT-ENTRY$ ( -- ^u8 n )  SDT-ENTRY SDT-ENTRY-U @ ;
 private
 
-: SDT-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
+: SDT-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
@@ -47,21 +48,21 @@ private
    s" habu-source-discovery-test" FS:MKTEMP-DIR SDT-ROOT SDT-ROOT-U SDT-COPY!
    SDT-ROOT$ FS:CLEANUP-TREE+ ;
 
-: SDT-WRITE-ENTRY ( ^u8 n ^u8 n -- )
+: SDT-WRITE-ENTRY ( str str -- )
    {: name:^ nameu:n content:^ contentu:n :}
    SDT-ROOT$ name nameu SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
    SDT-ENTRY$ content contentu FS:WRITE-ALL ;
 
-: SDT-PATH ( ^u8 n -- ^u8 n )
+: SDT-PATH ( str -- str )
    SDT-ROOT$ 2swap JOIN CANONICAL drop ;
 
 : SDT-READ ( -- )  SDT-ENTRY$ ENTRY-RESOLVE drop RESOLVED-ROOT$ DISCOVER:READ-IN ;
 
 : SDT-DISCOVER ( -- )  SDT-READ DISCOVER:RUN-READ ;
 
-: SDT-WANT+ ( ^u8 n -- )  SDT-WANT SDT-WANT-CAP SDT-WANT-U BUF-APPEND ;
+: SDT-WANT+ ( str -- )  SDT-WANT SDT-WANT-CAP SDT-WANT-U BUF-APPEND ;
 
-: SDT-MIXED$ ( -- ^u8 n )
+: SDT-MIXED$ ( -- str )
    S\" require sd-a.f\ninclude sd-b.f\ninclude sd-b.f\ns\" sd-c.f\" required\ns\" sd-c.f\" required\ns\" sd-d.f\" provided\n: HELPER ( n -- n ) dup + ;\nrequire sd-e.f\n" ;
 
 : SDT-TEST-MIXED ( -- )
@@ -80,7 +81,7 @@ private
    6 EVENT-KIND@ EV-REQUIRED T=
    6 EVENT-PATH@ s" sd-e.f" SDT-PATH T$= ;
 
-: SDT-SPELLING$ ( -- ^u8 n )
+: SDT-SPELLING$ ( -- str )
    S\" s\" ./sd-f.f\" required\ns\" sd-f.f\" required\n" ;
 
 : SDT-TEST-SPELLING ( -- )
@@ -92,7 +93,7 @@ private
    0 EVENT-PATH@ s" sd-f.f" SDT-PATH T$=
    1 EVENT-PATH@ s" sd-f.f" SDT-PATH T$= ;
 
-: SDT-FRESH$ ( -- ^u8 n )
+: SDT-FRESH$ ( -- str )
    S\" s\" sd-tool.f\" required\ns\" sd-user.f\" required\n" ;
 
 : SDT-TEST-FRESH ( -- )
@@ -109,7 +110,7 @@ private
 
 \ More than 256 direct dependencies: one event per require, in order. Line k
 \ requires sd-wXY.f, XY spelling k in two letters (line 256 requires sd-wjw.f).
-: SDT-WIDE-LINE$ ( -- ^u8 n )  S\" require sd-waa.f\n" ;
+: SDT-WIDE-LINE$ ( -- str )  S\" require sd-waa.f\n" ;
 17 constant SDT-WIDE-LINE                \ the bytes of SDT-WIDE-LINE$
 257 constant SDT-WIDE-N
 create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
@@ -182,7 +183,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- whole-file scan: colon-body loaders are events, spans byte-exact --------
 
-: SDT-COLON$ ( -- ^u8 n )
+: SDT-COLON$ ( -- str )
    S\" : MAYBE ( -- ) s\" sd-h.f\" required ;\nMAYBE\n" ;
 
 : SDT-TEST-COLON-BODY ( -- )
@@ -193,7 +194,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    0 EVENT-STATE@ EV-STATE-FRESH T=
    0 EVENT-PATH@ s" sd-h.f" SDT-PATH T$= ;
 
-: SDT-EVENT-TOK$ ( n -- ^u8 n ) {: ix:n :}
+: SDT-EVENT-TOK$ ( n -- str ) {: ix:n :}
    ix EVENT-TOK@ {: off:n len:n :}
    SDT-SRC off + len ;
 
@@ -231,7 +232,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ At top level `char` and `'` take the next token raw, in a body `[char]` and
 \ `[']`, as the loader does; each source's one event is the require it runs.
-: SDT-RAW-ONE ( ^u8 n -- ) {: a:^ u:n :}
+: SDT-RAW-ONE ( str -- ) {: a:^ u:n :}
    s" raw.f" a u SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 1 T=
@@ -253,7 +254,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ A `c"` across a comment is still an opener (E-DISC-OPENER); a non-comment token
 \ between makes the path dynamic (E-DISC-DYNAMIC). A refused walk leaves no
 \ event: reading one past the log faults, so read one only when the walk left it.
-: SDT-COMMENTED-ONE ( ^u8 n -- )
+: SDT-COMMENTED-ONE ( str -- )
    {: a:^ u:n :}
    s" commented.f" a u SDT-WRITE-ENTRY
    SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:READ-ALL SDT-SRC-U !
@@ -274,14 +275,14 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ --- a loader form in a body is the run of a word no check runs ---------------
 
 \ The walk refuses nothing and records one event, the load of PATH.
-: SDT-ONE-LOAD ( ^u8 n -- ) {: pa:^ pu:n :}
+: SDT-ONE-LOAD ( str -- ) {: pa:^ pu:n :}
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    EVENT-COUNT 1 T=
    EVENT-COUNT 1 <> if exit then
    0 EVENT-PATH@ pa pu SDT-PATH T$= ;
 
 \ SDT-ONE-LOAD of an entry holding SOURCE.
-: SDT-ONE-EVENT ( ^u8 n ^u8 n -- ) {: a:^ u:n pa:^ pu:n :}
+: SDT-ONE-EVENT ( str str -- ) {: a:^ u:n pa:^ pu:n :}
    s" one-event.f" a u SDT-WRITE-ENTRY
    pa pu SDT-ONE-LOAD ;
 
@@ -318,7 +319,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ SOURCE, as an entry, is refused with CODE at its loader word at OFF, LEN bytes
 \ long.
-: SDT-REPLACED-AT ( ^u8 n n n n -- ) {: a:^ u:n code:n off:n len:n :}
+: SDT-REPLACED-AT ( str n n n -- ) {: a:^ u:n code:n off:n len:n :}
    s" replaced.f" a u SDT-WRITE-ENTRY
    code off len SDT-STOPS-AT ;
 
@@ -425,10 +426,10 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 
 \ --- oversized string literals: data tolerated, loader path rejected ---------
 
-: SDT-X16$ ( -- ^u8 n )
+: SDT-X16$ ( -- str )
    s" xxxxxxxxxxxxxxxx" ;
 
-: SDT-DOT16$ ( -- ^u8 n )
+: SDT-DOT16$ ( -- str )
    s" ././././././././" ;
 
 \ SDT-FIT bytes pass PATH-CAP only once joined to a root, SDT-BIG as written.
@@ -436,7 +437,7 @@ PATH-CAP 16 / 1+ 16 * constant SDT-BIG
 PATH-CAP 16 / 16 * constant SDT-FIT
 
 \ writes name = head + u bytes of the 16-byte piece, u a multiple of 16, + tail
-: SDT-WRITE-BIG ( ^u8 n ^u8 n n ^u8 n ^u8 n -- )
+: SDT-WRITE-BIG ( str str n str str -- )
    {: name:^ nameu:n head:^ headu:n u:n piece:^ pieceu:n tail:^ tailu:n :}
    SDT-ROOT$ name nameu SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U !
    SDT-ENTRY$ head headu FS:WRITE-ALL
@@ -582,10 +583,10 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 \ harvested decides only that.
 : SDT-SETTLE ( -- )  DISCOVER:ROWS-PASS-BEGIN DISCOVER:ROWS-PASS-END ;
 
-: SDT-SELECT-NAMED ( ^u8 n -- ) {: name:^ u:n :}
+: SDT-SELECT-NAMED ( str -- ) {: name:^ u:n :}
    SDT-ROOT$ name u SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U ! ;
 
-: SDT-HARVEST-NAMED ( ^u8 n -- )
+: SDT-HARVEST-NAMED ( str -- )
    SDT-SELECT-NAMED SDT-HARVEST-ENTRY ;
 
 : SDT-ROW-LIB ( -- )

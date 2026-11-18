@@ -1,3 +1,4 @@
+split-str
 \ A failed use of a re-exported signature names the checked consumer.
 package XPS
 public

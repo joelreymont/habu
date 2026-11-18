@@ -1,3 +1,4 @@
+split-str
 \ Every flat src/lib/<name>.f module bare-loads (`bin/hb --load` in a fresh
 \ child, empty stdin, exit 0): it requires its own dependency closure. A missing
 \ require is masked by the gate's resident load order and surfaces only here.
@@ -30,19 +31,19 @@ TYPED-VARIABLE JSON-SEEN bool
 : TRUE ( -- bool ) 0 0= ;
 : FALSE ( -- bool ) 0 0= 0= ;
 
-: SLASHES ( ^u8 n -- n ) {: a:^ u:n :}
+: SLASHES ( str -- n ) {: a:^ u:n :}
    0 0 begin dup u < while
       dup a + c@ SLASH = if swap 1+ swap then
       1+
    repeat drop ;
 
-: SUFFIX? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n sa:^ su:n :}
+: SUFFIX? ( str str -- bool ) {: a:^ u:n sa:^ su:n :}
    u su < if FALSE exit then
    a u su - +  su  sa su  STR= ;
 
 \ A flat module is src/lib/<name>.f and not a -test.f: two '/' bytes; a nested
 \ src/lib/<sub>/<name>.f has three.
-: FLAT-MODULE? ( ^u8 n -- bool ) {: a:^ u:n :}
+: FLAT-MODULE? ( str -- bool ) {: a:^ u:n :}
    a u s" .f" SUFFIX? 0= if FALSE exit then
    a u s" -test.f" SUFFIX? if FALSE exit then
    a u SLASHES 2 = ;

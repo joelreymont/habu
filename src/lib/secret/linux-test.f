@@ -1,3 +1,4 @@
+split-str
 \ E2E of SECRET:WRITE and SECRET:READ on Linux under the attribute keys and
 \ label SECRET:LINUX-ITEM! binds, against a private D-Bus session bus and a
 \ gnome-keyring-daemon on it, unlocked with a fixed password: both this
@@ -59,24 +60,24 @@ NO-PID BUS-PID !
 NO-PID KEY-PID !
 -1 KEY-WATCH !
 
-: DBUS-DAEMON$ ( -- ^u8 n ) DBUS-DAEMON DBUS-DAEMON-U @ ;
-: KEYRING$ ( -- ^u8 n ) KEYRING KEYRING-U @ ;
-: GDBUS$ ( -- ^u8 n ) GDBUS GDBUS-U @ ;
-: SECRET-TOOL$ ( -- ^u8 n ) SECRET-TOOL SECRET-TOOL-U @ ;
+: DBUS-DAEMON$ ( -- str ) DBUS-DAEMON DBUS-DAEMON-U @ ;
+: KEYRING$ ( -- str ) KEYRING KEYRING-U @ ;
+: GDBUS$ ( -- str ) GDBUS GDBUS-U @ ;
+: SECRET-TOOL$ ( -- str ) SECRET-TOOL SECRET-TOOL-U @ ;
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: SOCKETS$ ( -- ^u8 n ) SOCKETS SOCKETS-U @ ;
-: ADDRESS$ ( -- ^u8 n ) ADDRESS CODEGEN:CONTENTS ;
+: SOCKETS$ ( -- str ) SOCKETS SOCKETS-U @ ;
+: ADDRESS$ ( -- str ) ADDRESS CODEGEN:CONTENTS ;
 
-: SERVICE-KEY$ ( -- ^u8 n ) s" app" ;
-: ACCOUNT-KEY$ ( -- ^u8 n ) s" user" ;
-: LABEL$ ( -- ^u8 n ) s" Habu secret-linux test item" ;
-: SERVICE$ ( -- ^u8 n ) s" org.habu.secret-linux-test" ;
-: PASSWORD$ ( -- ^u8 n ) s" habu-test" ;
+: SERVICE-KEY$ ( -- str ) s" app" ;
+: ACCOUNT-KEY$ ( -- str ) s" user" ;
+: LABEL$ ( -- str ) s" Habu secret-linux test item" ;
+: SERVICE$ ( -- str ) s" org.habu.secret-linux-test" ;
+: PASSWORD$ ( -- str ) s" habu-test" ;
 
 
 \ A path under ROOT or SOCKETS, borrowed until the next one.
-: ROOT/ ( ^u8 n -- ^u8 n ) ROOT$ 2swap JOINED FS:JOIN-PATH JOINED swap ;
-: SOCKETS/ ( ^u8 n -- ^u8 n ) SOCKETS$ 2swap JOINED FS:JOIN-PATH JOINED swap ;
+: ROOT/ ( str -- str ) ROOT$ 2swap JOINED FS:JOIN-PATH JOINED swap ;
+: SOCKETS/ ( str -- str ) SOCKETS$ 2swap JOINED FS:JOIN-PATH JOINED swap ;
 
 
 : TOOL ( ^u8 n ^u8 -- n )
@@ -108,7 +109,7 @@ NO-PID KEY-PID !
    a SOCKETS u BYTE-COPY u SOCKETS-U !
    SOCKETS$ FS:CLEANUP-TREE+ ;
 
-: CONF+ ( ^u8 n -- ) CONF CODEGEN:APPEND-STRING ;
+: CONF+ ( str -- ) CONF CODEGEN:APPEND-STRING ;
 
 \ The policy is the stock session bus's; no service directory, so the bus
 \ activates nothing.
@@ -250,7 +251,7 @@ NO-PID KEY-PID !
 : STOP ( -- ) KEYRING-STOP BUS-PID END ;
 
 
-: ATTRS ( CMD:command ^u8 n -- CMD:command )
+: ATTRS ( CMD:command str -- CMD:command )
    {: account:^ au:n :}
    SERVICE-KEY$ CMD:ARG+ SERVICE$ CMD:ARG+
    ACCOUNT-KEY$ CMD:ARG+ account au CMD:ARG+ ;
@@ -272,14 +273,14 @@ NO-PID KEY-PID !
    s" search" CMD:ARG+ s" --all" CMD:ARG+ account au ATTRS TOOL-RUN
    CMD:OUT$ ;
 
-: LABEL-LINE$ ( -- ^u8 n )
+: LABEL-LINE$ ( -- str )
    EXPECTED CODEGEN:RESET
    s" label = " EXPECTED CODEGEN:APPEND-STRING
    LABEL$ EXPECTED CODEGEN:APPEND-STRING
    NEWLINE EXPECTED CODEGEN:APPEND-BYTE
    EXPECTED CODEGEN:CONTENTS ;
 
-: LABEL-ARG$ ( -- ^u8 n )
+: LABEL-ARG$ ( -- str )
    EXPECTED CODEGEN:RESET
    s" --label=" EXPECTED CODEGEN:APPEND-STRING
    LABEL$ EXPECTED CODEGEN:APPEND-STRING
@@ -313,7 +314,7 @@ NO-PID KEY-PID !
    catch STDERR:;CAPTURE ;
 
 \ The call logged one line, a secret line holding the text.
-: LOGGED-ONCE ( ^u8 n -- )
+: LOGGED-ONCE ( str -- )
    {: text:^ tu:n :}
    s" stderr.txt" ROOT/ LOGGED LOG-CAP FS:READ-ALL {: u:n :}
    LOGGED u NEWLINE COUNT-CHAR 1 T=

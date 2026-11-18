@@ -1,3 +1,4 @@
+split-str
 \ Replace a certified zero-test summary the built hb carries.
 package CATCH-IMAGE
 public

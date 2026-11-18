@@ -1,3 +1,4 @@
+split-str
 \ link-band.f - the shadow emissions a program's roots reach, or every one for
 \ an engine, on arm64 or Wasm. An arm64 link lays them after the kernel in
 \ A64ICODE's code buffer (LAYOUT) and places them at TEXT-VA plus their offset
@@ -72,7 +73,7 @@ variable UNSAFE-COUNT
 
 
 \ The name of the record entering emission e at its first byte, empty for none.
-: ROUTINE-NAME$ ( n -- ^u8 n )
+: ROUTINE-NAME$ ( n -- str )
    {: e:n :}
    NSHADOW:RECORDS 0 ?do
       i NSHADOW:EMISSION@ e =  i NSHADOW:ENTRY@ 0= and if
@@ -167,7 +168,7 @@ variable UNSAFE-COUNT
 \ The kernel words a stripped program cannot run: it has no dictionary to read
 \ or write, no writable code and no interpreter for the evaluate words,
 \ literal, compile, and ;.
-: UNSAFE-NAME? ( ^u8 n -- bool )
+: UNSAFE-NAME? ( str -- bool )
    {: a:^ u:n :}
    a u s" create" XREF-STR=CI
    a u s" patch32" XREF-STR=CI or

@@ -1,3 +1,4 @@
+split-str
 \ ffi-struct-verify.f - LSP-CHECK:VERIFY-BYTES, the check of tools/check.f
 \ --verify-only, reads FUNCTION: declarations. Loaded by
 \ src/lib/ffi-test.f inside package FFI-TEST. Each
@@ -6,7 +7,7 @@
 \ its file to the run and would hide the clauses) and name no defined symbol,
 \ so a clean certify shows the check resolves none.
 
-: FFI-SV-HEAD$ ( -- ^u8 n )
+: FFI-SV-HEAD$ ( -- str )
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n24 constant FFI-SV-W\n" ;
 
 : FFI-SV-SETUP ( -- )
@@ -20,7 +21,7 @@ variable FFI-SV-SRC-U
 \ A deadlock guard.
 60000 constant FFI-SV-MS
 
-: FFI-SV-SRC$ ( -- ^u8 n )
+: FFI-SV-SRC$ ( -- str )
    0 FFI-SV-SRC FFI-SV-SRC-U @ ;
 
 \ Write the source where the load children read it.
@@ -53,7 +54,7 @@ variable FFI-SV-SRC-U
    true FFI-SV-CHECK-AS ;
 
 \ Check `FUNCTION: FFI-SV no_symbol <decl> ;FUNCTION`.
-: FFI-SV-RUN ( ^u8 n -- n )
+: FFI-SV-RUN ( str -- n )
    {: decl:^ declu:n :}
    SB-RESET
    FFI-SV-HEAD$ SB-APPEND
@@ -63,7 +64,7 @@ variable FFI-SV-SRC-U
    FFI-SV-CHECK ;
 
 \ Check FFI-SV-HEAD$ and then the source, a newline after it.
-: FFI-SV-SOURCE ( ^u8 n -- n )
+: FFI-SV-SOURCE ( str -- n )
    {: src:^ srcu:n :}
    SB-RESET
    FFI-SV-HEAD$ SB-APPEND
@@ -75,7 +76,7 @@ variable FFI-SV-SRC-U
 : FFI-SV-SHOW ( -- )
    LSP-CHECK:VERIFY-OUT$ type LSP-CHECK:VERIFY-LOG$ type ;
 
-: FFI-SV-SAYS ( ^u8 n -- )
+: FFI-SV-SAYS ( str -- )
    {: s:^ su:n :}
    LSP-CHECK:VERIFY-OUT$ s su CONTAINS? 0= IF FFI-SV-SHOW THEN
    LSP-CHECK:VERIFY-OUT$ s su CONTAINS? TTRUE ;
@@ -88,7 +89,7 @@ variable FFI-SV-SRC-U
    kind 0 T=
    LSP-CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? TFALSE ;
 
-: FFI-SV-PASS ( ^u8 n -- )
+: FFI-SV-PASS ( str -- )
    {: decl:^ declu:n :}
    decl declu T-LABEL
    decl declu FFI-SV-RUN
@@ -96,25 +97,25 @@ variable FFI-SV-SRC-U
 
 
 \ The source is refused, with CODE in a packet.
-: FFI-SV-REFUSES ( n ^u8 n -- )
+: FFI-SV-REFUSES ( n str -- )
    {: kind:n code:^ codeu:n :}
    kind 1 <> IF FFI-SV-SHOW THEN
    kind 1 T=
    LSP-CHECK:VERIFY-OUT$ code codeu CONTAINS? TTRUE ;
 
-: FFI-SV-REFUSED ( ^u8 n ^u8 n -- )
+: FFI-SV-REFUSED ( str str -- )
    {: decl:^ declu:n code:^ codeu:n :}
    decl declu FFI-SV-RUN
    code codeu FFI-SV-REFUSES ;
 
-: FFI-SV-REFUSE ( ^u8 n ^u8 n -- )
+: FFI-SV-REFUSE ( str str -- )
    {: decl:^ declu:n code:^ codeu:n :}
    decl declu T-LABEL
    decl declu code codeu FFI-SV-REFUSED ;
 
 
 \ A rejection's record names the load's code.
-: FFI-SV-SYNTAX ( ^u8 n ^u8 n -- )
+: FFI-SV-SYNTAX ( str str -- )
    {: decl:^ declu:n msg:^ msgu:n :}
    decl declu S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSE
    FFI-T-SRC CODEGEN:RESET
@@ -122,12 +123,12 @@ variable FFI-SV-SRC-U
    msg msgu FFI-T-SRC+
    S\" \"" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS FFI-SV-SAYS ;
-: FFI-SV-ARITY ( ^u8 n -- )
+: FFI-SV-ARITY ( str -- )
    S\" \"code\":\"E-FFI-ARITY\"" FFI-SV-REFUSE ;
 
 \ A struct plan the check rejects with E-FFI-ARITY prints the load's record,
 \ its header and its help, placed at ;FUNCTION with the definer's label.
-: FFI-SV-RECORD ( ^u8 n ^u8 n -- )
+: FFI-SV-RECORD ( str str -- )
    {: head:^ headu:n help:^ helpu:n :}
    LSP-CHECK:VERIFY-OUT$ head headu CONTAINS? TTRUE
    LSP-CHECK:VERIFY-OUT$ S\" \"token\":\";FUNCTION\",\"source_line\":" CONTAINS? TTRUE
@@ -141,7 +142,7 @@ variable FFI-SV-SRC-U
 
 
 \ Sixteen record inputs whose payloads sum, modulo 2^64, to almost nothing.
-: FFI-SV-WRAP$ ( -- ^u8 n )
+: FFI-SV-WRAP$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s" ( " FFI-T-SRC+
    16 0 ?do s" ^u8 " FFI-T-SRC+ loop
@@ -238,7 +239,7 @@ variable FFI-SV-SRC-U
 
 
 \ A whole source the load rejects, with its message and token.
-: FFI-SV-UNOPENED ( ^u8 n ^u8 n ^u8 n -- )
+: FFI-SV-UNOPENED ( str str str -- )
    {: src:^ srcu:n msg:^ msgu:n tok:^ toku:n :}
    src srcu T-LABEL
    src srcu FFI-SV-SOURCE
@@ -318,7 +319,7 @@ variable FFI-SV-SRC-U
 \ source and the load, which calls that word, accepts it. The load runs in a
 \ child because inside this file's FFI-TEST the source's `package` would open
 \ a part of FFI-TEST, not a package of its own.
-: FFI-SV-ORDINARY ( ^u8 n -- )
+: FFI-SV-ORDINARY ( str -- )
    {: src:^ srcu:n :}
    SB-RESET src srcu SB-APPEND
    FFI-SV-CHECK
@@ -338,7 +339,7 @@ variable FFI-SV-SRC-U
 \ load binds the alias, bare inside its package or qualified outside it, to
 \ STRUCT-ARG's code and refuses the clause, so the check refuses it with the
 \ load's code. The load runs in a child for FFI-SV-SHADOWED's reason.
-: FFI-SV-ALIASED ( ^u8 n -- )
+: FFI-SV-ALIASED ( str -- )
    {: src:^ srcu:n :}
    SB-RESET src srcu SB-APPEND
    FFI-SV-CHECK S\" \"code\":\"E-FFI-SYNTAX\"" FFI-SV-REFUSES
@@ -373,7 +374,7 @@ variable FFI-SV-SRC-U
 
 \ A declaration is read before its library is checked, so one that cannot be
 \ read and selects none gets the same record from the load and the check.
-: FFI-SV-UNSELECTED-HAS ( ^u8 n -- )
+: FFI-SV-UNSELECTED-HAS ( str -- )
    {: out:^ outu:n :}
    out outu s" error[E-FFI-SYNTAX]: expected '(' after the C symbol" CONTAINS? TTRUE
    out outu s" ffi-sv.f:2:20" CONTAINS? TTRUE

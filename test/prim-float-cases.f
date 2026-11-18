@@ -1,3 +1,4 @@
+split-str
 \ The float primitive case sets as data, one per float row of src/habu/prims.f
 \ in table order, as test/prim-cases.f holds the integer rows; the file defines
 \ no word. Columns are integers: a runner passes each input through s>f and each

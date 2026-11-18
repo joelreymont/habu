@@ -1,3 +1,4 @@
+split-str
 require test/fixtures/file-objects/mid-w1.f
 require test/fixtures/file-objects/mid-four.f
 require test/fixtures/file-objects/flip.f

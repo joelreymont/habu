@@ -1,3 +1,4 @@
+split-str
 \ test-model-test.f - MODEL:CHAT against a loopback HTTP server whose
 \ /responses routes answer through TEST-MODEL: a completed reply gives its text,
 \ JSON escapes included; an incomplete one MODEL:E-INCOMPLETE with its reason;
@@ -35,19 +36,19 @@ $10000 TASK:TASK WORK-TASK
 TASK:SEMAPHORE IN-REC
 TASK:SEMAPHORE GO
 
-: KEY$ ( -- ^u8 n ) s" test-model-key" ;
+: KEY$ ( -- str ) s" test-model-key" ;
 : TEXT$ ( -- ^u8 n ) S\" {\qanswer\q:\qsay \\\qhi\\\q\q}" ;
-: REASON$ ( -- ^u8 n ) s" max_output_tokens" ;
+: REASON$ ( -- str ) s" max_output_tokens" ;
 
-: SCHEMA$ ( -- ^u8 n )
+: SCHEMA$ ( -- str )
    S\" {\qtype\q:\qobject\q,\qproperties\q:{\qanswer\q:{\qtype\q:\qstring\q}},\qrequired\q:[\qanswer\q]}" ;
-: TOOLS$ ( -- ^u8 n )
+: TOOLS$ ( -- str )
    S\" [{\qtype\q:\qfunction\q,\qname\q:\qlookup\q,\qparameters\q:{\qtype\q:\qobject\q,\qproperties\q:{}}}]" ;
-: TOOL-OUTPUT$ ( -- ^u8 n )
+: TOOL-OUTPUT$ ( -- str )
    S\" [{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qfunction_call\q,\qid\q:\qfc_1\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{}\q,\qstatus\q:\qcompleted\q}]" ;
 
 
-: WINDOW$ ( -- ^u8 n )
+: WINDOW$ ( -- str )
    S\" [{\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]},{\qtype\q:\qcompaction\q,\qid\q:\qcmp_item\q,\qencrypted_content\q:\qsealed\q}]" ;
 
 
@@ -61,11 +62,11 @@ TASK:SEMAPHORE GO
    KEY$ nip true ;
 
 
-: STORE-WRITE ( ^u8 n ^u8 n ^u8 n -- )
+: STORE-WRITE ( str str str -- )
    2drop 2drop 2drop SECRET:E-CONFIG throw ;
 
 
-: STORE-ERASE ( ^u8 n ^u8 n -- bool )
+: STORE-ERASE ( str str -- bool )
    2drop 2drop SECRET:E-CONFIG throw ;
 
 

@@ -1,3 +1,4 @@
+split-str
 \ operand-rows.f - the `parses:`, `parses-through:` and `names:` words.
 
 package CHECK

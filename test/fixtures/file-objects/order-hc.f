@@ -1,3 +1,4 @@
+split-str
 package FILE-OBJECTS-ORDER-HC
 public : GETC ( -- n ) FILE-OBJECTS-ORDER-HA:VA @ FILE-OBJECTS-ORDER-HB:VB @ + ;
 ;package

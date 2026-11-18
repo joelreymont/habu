@@ -1,3 +1,4 @@
+split-str
 \ c-library.f - a C source file a test writes, compiled to a shared library by
 \ the system compiler. cc inherits this process's environment: its driver finds
 \ ld through PATH. STORAGE CLASS. PROCESS-WIDE: BUILD fills the one argv and

@@ -1,3 +1,4 @@
+split-str
 \ source-lex-test.f - focused tests for src/lib/source-lex.f, package LINT-LEX.
 \ Run: bin/hb --load src/lib/source-lex-test.f
 
@@ -26,7 +27,7 @@ variable TEST-N
    s" source-lex-test failed at assertion " type TEST-N @ FMT:.INT cr
    s" source-lex-test failed" EXIT-STATUS:FAILURE die ;
 : ASSERT=  ( n n -- )  = ASSERT ;
-: ASSERT$  ( ^u8 n ^u8 n -- )  STR= ASSERT ;
+: ASSERT$  ( str str -- )  STR= ASSERT ;
 
 $22 constant DQUOTE
 $100 constant FIX-CAP
@@ -43,7 +44,7 @@ variable BIG-LEX-U
 : BIG-LEX-A! ( ^u8 -- )
    BIG-LEX-A ! ;
 
-: BIG-LEX$ ( -- ^u8 n ) BIG-LEX-A@ BIG-LEX-U @ ;
+: BIG-LEX$ ( -- str ) BIG-LEX-A@ BIG-LEX-U @ ;
 
 : BIG-LEX-PUT ( n -- ) {: k :}
    120 BIG-LEX-A@ k 2 * + c!
@@ -65,12 +66,12 @@ variable BIG-LEX-U
    DQUOTE LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
    s"  ;" STR:LENGTH LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
    10 LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C ;
-: LEX-FIX$  ( -- ^u8 n )  LEX-FIX LEX-LEN STR:BUF-LEN@ BL>RAW ;
+: LEX-FIX$  ( -- str )  LEX-FIX LEX-LEN STR:BUF-LEN@ BL>RAW ;
 
 \ `: BAD s" nope` - the literal opened at byte 6 never closes. It lives in its
 \ own buffer so the good fixture above is never clobbered and any test that
 \ needs a malformed scan can establish one for itself.
-: UNTERM-FIX$  ( -- ^u8 n )
+: UNTERM-FIX$  ( -- str )
    BAD-LEN STR:BUF-RESET
    s" : BAD s" STR:LENGTH BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND
    DQUOTE BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND-C
@@ -80,18 +81,18 @@ variable BIG-LEX-U
 : ESC-FIX-RESET  ( -- )
    ESC-LEN STR:BUF-RESET ;
 
-: ESC-FIX+  ( ^u8 n -- )
+: ESC-FIX+  ( str -- )
    STR:LENGTH ESC-FIX FIX-CAP STR:LENGTH ESC-LEN STR:BUF-APPEND ;
 
 : ESC-FIX-C+  ( n -- )
    ESC-FIX FIX-CAP STR:LENGTH ESC-LEN STR:BUF-APPEND-C ;
 
-: ESC-FIX$  ( -- ^u8 n )  ESC-FIX ESC-LEN STR:BUF-LEN@ BL>RAW ;
+: ESC-FIX$  ( -- str )  ESC-FIX ESC-LEN STR:BUF-LEN@ BL>RAW ;
 
 \ `: E S\" a\" b" dup ;` - the S\" opener honours backslash escapes, so the
 \ escaped quote at byte 10 must NOT close the literal. Building it byte-wise
 \ keeps the fixture out of this file's own string syntax.
-: ESC-OPENER$  ( -- ^u8 n )
+: ESC-OPENER$  ( -- str )
    ESC-FIX-RESET
    s" : E S" ESC-FIX+  92 ESC-FIX-C+  DQUOTE ESC-FIX-C+
    s"  a" ESC-FIX+     92 ESC-FIX-C+  DQUOTE ESC-FIX-C+
@@ -101,7 +102,7 @@ variable BIG-LEX-U
 
 \ `: P s" a\" c ;` - the plain s" opener does NOT honour backslash escapes, so
 \ the same byte pair closes the literal at byte 9.
-: PLAIN-OPENER$  ( -- ^u8 n )
+: PLAIN-OPENER$  ( -- str )
    ESC-FIX-RESET
    s" : P s" ESC-FIX+  DQUOTE ESC-FIX-C+
    s"  a" ESC-FIX+     92 ESC-FIX-C+  DQUOTE ESC-FIX-C+
@@ -111,7 +112,7 @@ variable BIG-LEX-U
 \ `: Q s" : FORGED ;" s" " dup ;` - two literals, the first holding text that
 \ would be a definition if it were ever tokenized and the second holding
 \ nothing at all.
-: PAYLOAD-FIX$  ( -- ^u8 n )
+: PAYLOAD-FIX$  ( -- str )
    ESC-FIX-RESET
    s" : Q s" ESC-FIX+  DQUOTE ESC-FIX-C+
    s"  : FORGED ;" ESC-FIX+  DQUOTE ESC-FIX-C+
@@ -126,7 +127,7 @@ $28 constant ROW-LPAREN-C
 create ROW-FIX ROW-CAP allot     variable ROW-LEN
 
 : ROW-RESET  ( -- )  ROW-LEN STR:BUF-RESET ;
-: ROW+  ( ^u8 n -- )  STR:LENGTH ROW-FIX ROW-CAP STR:LENGTH ROW-LEN STR:BUF-APPEND ;
+: ROW+  ( str -- )  STR:LENGTH ROW-FIX ROW-CAP STR:LENGTH ROW-LEN STR:BUF-APPEND ;
 : ROW-C+  ( n -- )  ROW-FIX ROW-CAP STR:LENGTH ROW-LEN STR:BUF-APPEND-C ;
 : ROW-Q  ( -- )  DQUOTE ROW-C+ ;
 : ROW-BS  ( -- )  92 ROW-C+ ;
@@ -519,7 +520,7 @@ variable REG-I
 \ names opens a string; a word-at-a-time lexer that thinks otherwise eats real
 \ source. Each row form gets all eight names, and the definition after the last
 \ row proves the scanner handed the source back.
-: EIGHT-BARE-ROWS$  ( -- ^u8 n )
+: EIGHT-BARE-ROWS$  ( -- str )
    ROW-RESET
    s" EPRIM: s" ROW+       ROW-Q            s"  PE-N EPRIM;" ROW+  ROW-NL
    s" EPRIM: c" ROW+       ROW-Q            s"  PE-N EPRIM;" ROW+  ROW-NL
@@ -532,7 +533,7 @@ variable REG-I
    s" : AFTER dup ;" ROW+
    ROW$ ;
 
-: EIGHT-PKG-ROWS$  ( -- ^u8 n )
+: EIGHT-PKG-ROWS$  ( -- str )
    ROW-RESET
    s" EPPRIM: PK s" ROW+       ROW-Q     s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
    s" EPPRIM: PK c" ROW+       ROW-Q     s"  PE-N ECLOSE-PRIVATE" ROW+  ROW-NL
@@ -571,7 +572,7 @@ variable REG-I
 \ Openers and closers spelled in a top-level comment or string body never reach
 \ the row scanner at all, so no registry token appears and the paren comment
 \ stays one COMMENT token.
-: FAKE-ROWS$  ( -- ^u8 n )
+: FAKE-ROWS$  ( -- str )
    ROW-RESET
    ROW-BS  s"  EPRIM: FAKE EPRIM;" ROW+  ROW-NL
    s" ( EPPRIM: PK FAKE2 ECLOSE-PRIVATE )" ROW+  ROW-NL
@@ -615,7 +616,7 @@ variable REG-I
 
 \ The diagnostic names the token the rule rejects and the row's opener; the
 \ tokens before the row survive while nothing at or after it is exposed.
-: LATE-BAD-ROW$  ( -- ^u8 n )
+: LATE-BAD-ROW$  ( -- str )
    ROW-RESET
    s" : FIRST dup ;" ROW+  ROW-NL
    s"    EPRIM: EPRIM;" ROW+  ROW-NL
@@ -634,7 +635,7 @@ variable REG-I
 \ After one of these the engine consumes the next word as a parsed name and never
 \ executes it, so `: EPRIM: ( -- )` declares the opener instead of opening a
 \ row, which would swallow the source up to the closer.
-: DEFINER-POSITION$  ( -- ^u8 n )
+: DEFINER-POSITION$  ( -- str )
    ROW-RESET
    s" : EPRIM: dup ;" ROW+  ROW-NL
    s" : EPPRIM: drop ;" ROW+  ROW-NL
@@ -674,7 +675,7 @@ variable REG-I
 \ `EPPRIM: pkg name ... ECLOSE-PRIVATE`, and its opener parses the name, so a
 \ row named `create` or `:` is a row: neither name defines the closer after it.
 \ The definition after the rows proves the scanner handed the source back.
-: DEFINER-NAMED-ROWS$  ( -- ^u8 n )
+: DEFINER-NAMED-ROWS$  ( -- str )
    ROW-RESET
    s" EPRIM: create EPRIM;" ROW+  ROW-NL
    s" EPRIM: : EPRIM;" ROW+  ROW-NL

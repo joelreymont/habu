@@ -1,3 +1,4 @@
+split-str
 require test/gate-entry-guard-helper.f
 
 package ENTRY-GUARD-FIXTURE

@@ -1,3 +1,4 @@
+split-str
 \ warm-engine.f - a warm engine build writes the engine a cold build does. A
 \ copy of the checkout's sources is built cold, its checker.f gains data at its
 \ end, which moves every later file's data, and the copy is built again, warm
@@ -26,7 +27,7 @@ PATH-CAP BUFFER: JOINED-2
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
 
 \ The path of name under the test's directory, in JOINED.
-: AT$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: AT$ ( str -- str ) {: a:^ u:n :}
    ROOT$ a u JOINED FS:JOIN-PATH {: ju:n :}
    JOINED ju ;
 

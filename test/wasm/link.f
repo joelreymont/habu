@@ -1,3 +1,4 @@
+split-str
 \ link.f - WLINK (src/arch/wasm/link.f) on the host engine: function
 \ bodies, a data image and table slots become one Wasm module. Byte fixtures
 \ pin the module shape and ABI, the run wrapper's task DATA header stores
@@ -97,7 +98,7 @@ TYPED-VARIABLE WANT-U len
    len 0 ?do  at i + B@  GOT-BUF i 2 * +  BYTE>HEX  loop
    GOT-BUF len 2 * ;
 
-: SECTION$ ( n -- ^u8 n )
+: SECTION$ ( n -- str )
    {: id:n :}
    id SEC-AT @ id SEC-LEN @ HEX$ ;
 
@@ -107,7 +108,7 @@ TYPED-VARIABLE WANT-U len
 : W+ ( ^u8 n -- )
    WANT-BUF HEX-CAP WANT-U BUF-APPEND ;
 
-: WANT$ ( -- ^u8 n )
+: WANT$ ( -- str )
    WANT-BUF WANT-U @ LEN>N ;
 
 \ ---- refusals ----------------------------------------------------------------------

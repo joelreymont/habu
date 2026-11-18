@@ -1,3 +1,4 @@
+split-str
 \ process-reaper.f - a pool's reaper: an hb running src/lib/process-reaper-main.f,
 \ which leads a process group of its own and holds the read end of a pipe whose
 \ write end only the pool keeps. A child spawned REAPED is in that group from
@@ -26,10 +27,10 @@ private
 
 1 constant HUP-BIT                       \ SIGHUP's bit, signal 1 on both hosts
 
-: MAIN$ ( -- ^u8 n ) s" src/lib/process-reaper-main.f" ;
+: MAIN$ ( -- str ) s" src/lib/process-reaper-main.f" ;
 
 \ The program under the tree above the engine's bin directory.
-: MAIN-PATH ( -- ^u8 n )
+: MAIN-PATH ( -- str )
    OWN-PATH SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME
    MAIN$ PATHZ-BUF PATH-CAP SPAN:MAKE FS:JOIN-PATH-INTO
    PATHZ-BUF swap ;
@@ -42,7 +43,7 @@ private
    h MINT ;
 
 \ The engine on the program, the pipe's read end its fd 3, fds 0 and 1 closed.
-: REAPER-REQUEST ( ^u8 n fd -- PROCESS:request )
+: REAPER-REQUEST ( str fd -- PROCESS:request )
    {: main:^ mainu r:fd :}
    OWN-PATH NEW BLOCK-HUP
    main mainu ARG
@@ -51,7 +52,7 @@ private
    1 >FD CLOSED ;
 
 \ The top cell, a placeholder, carries the pid out, so catch keeps the depth.
-: REAPER-SPAWN ( ^u8 n fd n -- ^u8 n fd n )
+: REAPER-SPAWN ( str fd n -- str fd n )
    drop {: main:^ mainu r:fd :}
    main mainu r
    main mainu r REAPER-REQUEST SPAWN PID>N ;

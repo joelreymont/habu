@@ -1,3 +1,4 @@
+split-str
 \ diff-test.f - src/lib/diff.f's unified patches and three-way merges, byte
 \ for byte. Every expected text is what git 2.x writes for the same input
 \ (`git diff --no-index` without its index line, and `git merge-file -p --diff3
@@ -17,8 +18,8 @@ create OUT BUF:HDR-BYTES allot
 create WANT BUF:HDR-BYTES allot
 
 : W+ ( ^u8 n -- )  BUF:N>BLEN WANT BUF:APPEND-SPAN ;
-: GOT$ ( -- ^u8 n )  OUT BUF:SPAN$ BUF:BLEN>N ;
-: WANT$ ( -- ^u8 n )  WANT BUF:SPAN$ BUF:BLEN>N ;
+: GOT$ ( -- str )  OUT BUF:SPAN$ BUF:BLEN>N ;
+: WANT$ ( -- str )  WANT BUF:SPAN$ BUF:BLEN>N ;
 : SAME ( -- )  GOT$ WANT$ T$= ;
 
 : FRESH ( ^u8 n -- )  T-LABEL OUT BUF:CLEAR WANT BUF:CLEAR ;

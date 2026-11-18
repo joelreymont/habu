@@ -1,3 +1,4 @@
+split-str
 \ engine-candidate.f - the validated engine binary nested tooling trusts and
 \ spawns: HABU_UNDER_TEST from the child-env default table a gate exports, then
 \ from the live environment, else the running program's own path, so a
@@ -21,7 +22,7 @@ private
 
 PATH-CAP BUFFER: JOINED
 
-: RESOLVE$ ( -- ^u8 n )
+: RESOLVE$ ( -- str )
    NAME$ >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    NAME$ GETENV dup 0 > if exit then
@@ -29,7 +30,7 @@ PATH-CAP BUFFER: JOINED
 
 \ An empty override stays empty for VALIDATE$ to reject; joined, it would name
 \ the working directory.
-: ABSOLUTE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: ABSOLUTE$ ( str -- str ) {: a:^ u:n :}
    u 0= if a u exit then
    a c@ [char] / = if a u exit then
    SOURCE-ROOT:CWD$ a u JOINED FS:JOIN-PATH {: ju:n :}
@@ -46,7 +47,7 @@ PATH-CAP BUFFER: JOINED
    s"  at an executable hb, or unset it" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: VALIDATE$ ( ^u8 n -- ^u8 n )
+: VALIDATE$ ( str -- str )
    2dup FS:EXECUTABLE? 0= if 2dup REJECT then ;
 
 public

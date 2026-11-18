@@ -1,3 +1,4 @@
+split-str
 \ vocabulary-test.f - the design seal through the real load path, at tier 0;
 \ each case is one child: bin/hb --load <harness>.f -- <case>.f, in test/policy.
 \ Run: bin/hb --load src/lib/vocabulary-test.f
@@ -25,19 +26,19 @@ PTR-VARIABLE STEM-A                    \ the harness the next child loads, as it
 variable STEM-U
 variable CODE                          \ the last child's exit code, -1 when it did not exit
 
-: ARTIFACT$ ( -- ^u8 n ) s" build/vocabulary-run.txt" ;
-: DIR$ ( -- ^u8 n ) s" test/policy/" ;
+: ARTIFACT$ ( -- str ) s" build/vocabulary-run.txt" ;
+: DIR$ ( -- str ) s" test/policy/" ;
 
-: HARNESS! ( ^u8 n -- ) STEM-U ! STEM-A ! ;
-: STEM$ ( -- ^u8 n ) STEM-A @ STEM-U @ ;
+: HARNESS! ( str -- ) STEM-U ! STEM-A ! ;
+: STEM$ ( -- str ) STEM-A @ STEM-U @ ;
 : TIER0 ( -- ) s" allow" HARNESS! ;
 
-: FILE$ ( ^u8 n -- ^u8 n )
+: FILE$ ( str -- str )
    {: stem:^ su:n :}
    SB-RESET DIR$ SB-APPEND stem su SB-APPEND s" .f" SB-APPEND
    SB$ ;
 
-: CODE! ( CMD:command PROCESS:ending ^u8 n -- CMD:command )
+: CODE! ( CMD:command PROCESS:ending str -- CMD:command )
    {: oc ran:^ ranu:n :}
    CMD:OUT$ {: out:^ outu:n :}
    CMD:ERR$ {: err:^ erru:n :}
@@ -47,7 +48,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
      timeout OF ran ranu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: FILE-ARG+ ( CMD:command ^u8 n -- CMD:command )
+: FILE-ARG+ ( CMD:command str -- CMD:command )
    FILE$ CMD:ARG+ ;
 
 \ An empty case name loads the harness alone.
@@ -62,7 +63,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" bin/hb" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    nu 0 > if name nu else STEM$ then FILE$ CODE! ;
 
-: ERR-LINE$ ( CMD:command -- CMD:command ^u8 n )
+: ERR-LINE$ ( CMD:command -- CMD:command str )
    CMD:ERR$ {: a:^ u:n :}
    a u LF INDEX-OF MATCH option
      none OF a u ENDOF
@@ -75,7 +76,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ The first `want` bytes of that line, so a case pins a record's first line
 \ whole or by its head.
-: SAID-HEAD$ ( CMD:command n -- CMD:command ^u8 n ) {: want:n :}
+: SAID-HEAD$ ( CMD:command n -- CMD:command str ) {: want:n :}
    SB-RESET SAID+
    SB$ {: a:^ u:n :}
    a u want min ;
@@ -93,7 +94,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    SB$ T-LABEL ;
 
 \ One scope per child: its captures stay readable until the verdict is taken.
-: RUNS-IN ( ^u8 n n ^u8 n ^u8 n CMD:command -- CMD:command )
+: RUNS-IN ( str n str str CMD:command -- CMD:command )
    >r {: name:^ nu:n rc:n line:^ lu:n out:^ ou:n :} r>
    name nu s" exit code" LABEL
    name nu SPAWN
@@ -108,7 +109,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    [: RUNS-IN ;] CMD:WITH-COMMAND ;
 
 \ RUNS, and a span the whole stderr holds: the record's place or its notes.
-: SAYS-IN ( ^u8 n n ^u8 n ^u8 n ^u8 n CMD:command -- CMD:command )
+: SAYS-IN ( str n str str str CMD:command -- CMD:command )
    >r {: name:^ nu:n rc:n line:^ lu:n span:^ su:n out:^ ou:n :} r>
    >r name nu rc line lu out ou r> RUNS-IN
    name nu s" stderr span" LABEL
@@ -123,7 +124,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    {: name:^ nu:n line:^ lu:n place:^ pu:n :}
    name nu 70 line lu place pu s" " SAYS ;
 
-: TIER0-REFUSES ( ^u8 n ^u8 n ^u8 n -- )
+: TIER0-REFUSES ( str str str -- )
    {: name:^ nu:n line:^ lu:n place:^ pu:n :}
    TIER0 name nu line lu place pu REFUSES ;
 
@@ -133,10 +134,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
    {: line:^ lu:n notes:^ nu:n out:^ ou:n :}
    s" " 107 line lu notes nu out ou SAYS ;
 
-: SEALED$ ( -- ^u8 n ) s" error[E-POLICY]: the vocabulary is sealed" ;
-: KEYWORD$ ( -- ^u8 n ) s" error[E-POLICY]: a package publishes a word spelled like a keyword" ;
+: SEALED$ ( -- str ) s" error[E-POLICY]: the vocabulary is sealed" ;
+: KEYWORD$ ( -- str ) s" error[E-POLICY]: a package publishes a word spelled like a keyword" ;
 
-: OK-OUT$ ( -- ^u8 n ) S\" 42\n5\n5\n42\n0\n11\n" ;
+: OK-OUT$ ( -- str ) S\" 42\n5\n5\n42\n0\n11\n" ;
 
 \ A local shadows every word, as it does unsealed.
 : LOCALS ( -- )

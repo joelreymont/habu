@@ -1,3 +1,4 @@
+split-str
 \ process-test.f -- focused tests for src/lib/process.f.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-test.f
 
@@ -51,35 +52,35 @@ create PT-DRAIN-BUF PT-CHUNK allot
 2 constant PT-ENOENT
 300 constant PT-SHORT-TIMEOUT-MS
 
-: PT-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
+: PT-COPY! ( str ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: PT-PATH! ( ^u8 n ^u8 n ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
+: PT-PATH! ( str str ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
    pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
-: PT-ROOT ( -- ^u8 n )
+: PT-ROOT ( -- str )
    PT-ROOT-BUF PT-ROOT-U @ ;
 
-: PT-CAPTURE-OK ( -- ^u8 n )
+: PT-CAPTURE-OK ( -- str )
    PT-CAPTURE-OK-BUF PT-CAPTURE-OK-U @ ;
 
-: PT-CAPTURE-LONG ( -- ^u8 n )
+: PT-CAPTURE-LONG ( -- str )
    PT-CAPTURE-LONG-BUF PT-CAPTURE-LONG-U @ ;
 
-: PT-CAPTURE-HANG ( -- ^u8 n )
+: PT-CAPTURE-HANG ( -- str )
    PT-CAPTURE-HANG-BUF PT-CAPTURE-HANG-U @ ;
 
-: PT-CAPTURE-ERR-LONG ( -- ^u8 n )
+: PT-CAPTURE-ERR-LONG ( -- str )
    PT-CAPTURE-ERR-LONG-BUF PT-CAPTURE-ERR-LONG-U @ ;
 
-: PT-CAPTURE-FALSE ( -- ^u8 n )
+: PT-CAPTURE-FALSE ( -- str )
    PT-CAPTURE-FALSE-BUF PT-CAPTURE-FALSE-U @ ;
 
-: PT-CAPTURE-EOF ( -- ^u8 n )
+: PT-CAPTURE-EOF ( -- str )
    PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U @ ;
 
-: PT-TERM-MARKER ( -- ^u8 n )
+: PT-TERM-MARKER ( -- str )
    PT-TERM-MARKER-BUF PT-TERM-MARKER-U @ ;
 
 : PT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
@@ -101,7 +102,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT s" capture-eof.f" PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U PT-PATH!
    PT-ROOT s" term-marker" PT-TERM-MARKER-BUF PT-TERM-MARKER-U PT-PATH! ;
 
-: PT-WRITE-SCRIPT ( ^u8 n ^u8 n -- ) {: path:^ pathu src:^ srcu :}
+: PT-WRITE-SCRIPT ( str str -- ) {: path:^ pathu src:^ srcu :}
    path pathu src srcu FS:WRITE-ALL
    path pathu FS:CLEANUP+ ;
 
@@ -125,20 +126,20 @@ create PT-DRAIN-BUF PT-CHUNK allot
    FS:CLEANUP-RUN
    PT-ROOT FS:EXISTS? TFALSE ;
 
-: PT-RUN-HB-SCRIPT ( ^u8 n ^u8 n ^u8 n n -- n n n )
+: PT-RUN-HB-SCRIPT ( str ^u8 n ^u8 n n -- n n n )
    {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
    s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
-: PT-RUN-HB-SCRIPT-OUTCOME ( ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+: PT-RUN-HB-SCRIPT-OUTCOME ( str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
    s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: PT-RUN-CAPTURE ( ^u8 n ^u8 n ^u8 n n -- n n n )
+: PT-RUN-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS PROCESS:RUN-CAPTURE
    PT-CAPTURE>N ;
@@ -549,14 +550,14 @@ variable PT-HOLD-IN                      \ its stdin's write end: closing it rel
 variable PT-HOLD-OUT                     \ the read end its stdout and stderr share
 
 \ A child of /bin/sh running the script, on the test's own stdio.
-: PT-SH ( ^u8 n -- pid )
+: PT-SH ( str -- pid )
    {: s:^ su:n :}
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s su >LEN PROC-ARGV+
    s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO ;
 
-: PT-HOLD-SCRIPT ( -- ^u8 n )
+: PT-HOLD-SCRIPT ( -- str )
    s" exec >&- 2>&-; read x; exit 5" ;
 
 \ A child that closes stdout and stderr at once, then lives until its stdin
@@ -723,7 +724,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    errn 0 T=
    PT-OUT outn s" stdin-zero" T$= ;
 
-: PT-UNMARKED-SCRIPT ( -- ^u8 n )
+: PT-UNMARKED-SCRIPT ( -- str )
    s" exec >&-; read x" ;
 
 \ Unmarked source: the stdout pipe's write end sits above 2 without
@@ -775,7 +776,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
 
 \ A capture of the child in mode, with no deadline. A child that ends before
 \ `ready` fails the case without a throw, so the case still kills it.
-: PT-TERM-START ( ^u8 n -- ) {: mode:^ modeu:n :}
+: PT-TERM-START ( str -- ) {: mode:^ modeu:n :}
    PT-TERM-MARKER s" marker" FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -798,7 +799,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
 : PT-SINCE-MS ( n -- n )
    mono-ns swap - PROCESS:NS-PER-MS / ;
 
-: PT-TERM-ENDED= ( ^u8 n n -- ) {: what:^ whatu:n sig:n :}
+: PT-TERM-ENDED= ( str n -- ) {: what:^ whatu:n sig:n :}
    what whatu s" " s" " PROCESS:CAPTURE-ENDING sig T-ENDING-SIGNALED= ;
 
 : TEST-KILL-CAPTURE-ASKS ( -- )

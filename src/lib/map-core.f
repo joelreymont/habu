@@ -1,3 +1,4 @@
+split-str
 \ map-core.f - package MAP: fixed-capacity open-addressed string-key map in
 \ caller cells (CELL-COUNT sizes them; not CELLS, which would shadow `cells` in
 \ later bodies). Layout, hash, probe and locate are private; src/lib/map-test.f

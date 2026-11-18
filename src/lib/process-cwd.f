@@ -1,3 +1,4 @@
+split-str
 \ process-cwd.f - checked argv/env/cwd process helpers in `package PROC-CWD`.
 \ STORAGE CLASS. PROCESS-WIDE: the cwd copy buffer is one per image, so one task
 \ at a time prepares a cwd child through RUN-ARGV-ENV-CWD-*.

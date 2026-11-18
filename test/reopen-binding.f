@@ -1,3 +1,4 @@
+split-str
 \ A bare tail names the word its scope holds, and the checker certifies that
 \ word: the one the compiler calls. Package REOPEN-BIND
 \ (test/reopen-binding-lib.f) publishes @, dup and + with effects the engine's

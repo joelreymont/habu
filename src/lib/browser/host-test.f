@@ -1,3 +1,4 @@
+split-str
 \ host-test.f - BROWSER-HOST:ROUTES answered over a real loopback port. CURL
 \ fetches /, /host.js, /viewport.js, /turn.js and /page.js from Habu's HTTP
 \ server; each is answered 200 with its content type, and its body is the bytes

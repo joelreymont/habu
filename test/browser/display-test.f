@@ -1,3 +1,4 @@
+split-str
 \ display-test.f - checked Wasm fixture through the foreign display peer; the
 \ printed directory retains the module and exact CLI output. Chrome runs only
 \ when the test is loaded with `-- --chrome`: then --chrome also runs the real
@@ -52,7 +53,7 @@ variable FILE-U
 : BUILD ( -- n )
    s" test/browser/display.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
 
-: MAC-CHROME ( -- ^u8 n )
+: MAC-CHROME ( -- str )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
 : CHROME-ASKED? ( -- bool )

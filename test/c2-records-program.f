@@ -1,3 +1,4 @@
+split-str
 \ A table initializes many committed records under one C2 scope.
 require src/core/exit-status.f
 require src/lib/test.f

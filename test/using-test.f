@@ -1,3 +1,4 @@
+split-str
 \ using-test.f - `using NAME ... ;using`: package NAME's public wordlist is
 \ visible to bare lookup until the matching `;using`, the enclosing `;package`
 \ or the end of the load file. Privates stay invisible, definitions never land
@@ -12,15 +13,15 @@ T-RESET
 
 TYPED-VARIABLE UCE-A ^u8   variable UCE-U
 : UCE-GO ( -- )  UCE-A @ UCE-U @ evaluate-closed ;
-: UCE-CATCH ( ^u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
+: UCE-CATCH ( str -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
 
 \ the same source through the production source verifier: the checker resolves the
 \ bare tail itself there, with no engine body lookup in front of it.
 : VS-GO ( -- )   UCE-A @ UCE-U @ VERIFY:SOURCE-BUF ;
-: VS-CATCH ( ^u8 n -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
+: VS-CATCH ( str -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
 
 \ The captured rejection record contains the text.
-: UCE-SAID ( ^u8 n -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: UCE-SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package

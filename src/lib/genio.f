@@ -1,3 +1,4 @@
+split-str
 \ genio.f - generic text I/O devices: a TCP connection device and the routed
 \ REPL reader, added to package GENIO from src/lib/genio-core.f (device table,
 \ terminal, dispatchers). Requiring it installs READ-LINE as REPL-READ.
@@ -76,7 +77,7 @@ private
 : SELF-CONNECTION ( -- TCP4:connection )
    SELF-STATE TCP4:>CONNECTION ;
 
-: TCP-SEND ( ^u8 n -- ) {: bytes:^ len:n :}
+: TCP-SEND ( str -- ) {: bytes:^ len:n :}
    len 0 = if exit then
    SELF-CONNECTION bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
    MATCH TCP4:status

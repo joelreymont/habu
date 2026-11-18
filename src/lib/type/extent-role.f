@@ -1,3 +1,4 @@
+split-str
 \ extent-role.f - converters for the core extent-index families ix<e>,
 \ extprod<free,inner> and redx<e>, registered by the engine in the global package
 \ (src/core/type-family.f). Like deftype.f, it has no package.

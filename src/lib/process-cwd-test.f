@@ -1,3 +1,4 @@
+split-str
 \ process-cwd-test.f - focused tests for src/lib/process-cwd.f.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/process-cwd.f src/lib/process-cwd-test.f
 
@@ -46,12 +47,12 @@ variable PCT-I
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: PCT-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+: PCT-CAPTURE ( str str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu cwd:^ cwdu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN cwd cwdu >LEN out outcap >LEN err errcap >LEN timeout >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCT-CAPTURE>N ;
 
-: PCT-STDIN-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+: PCT-STDIN-CAPTURE ( str str str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu cwd:^ cwdu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN cwd cwdu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
@@ -97,10 +98,10 @@ variable PCT-I
    s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
    PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;
 
-: PCT-EARLY-EOF$ ( -- ^u8 n )   \ writes ok, closes 1 and 2, spins 60 s, so only its deadline ends it
+: PCT-EARLY-EOF$ ( -- str )   \ writes ok, closes 1 and 2, spins 60 s, so only its deadline ends it
    s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 60000000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
 
-: PCT-SELF-EOF$ ( -- ^u8 n )   \ writes ok, closes 1 and 2, spins 50 ms, then ends
+: PCT-SELF-EOF$ ( -- str )   \ writes ok, closes 1 and 2, spins 50 ms, then ends
    s" 111 emit 107 emit 1 close 2 close : PCT-WAIT ( -- ) mono-ns 50000000 + begin dup mono-ns > while repeat drop ; PCT-WAIT" ;
 
 : PCT-OUT-CLEAR ( -- )   \ so no assertion passes on an earlier capture's bytes
@@ -123,7 +124,7 @@ variable PCT-I
    s" bin/hb" s" ." PCT-EARLY-EOF$ PCT-OUT PCT-CAP PCT-ERR PCT-CAP 300
    PCT-STDIN-CAPTURE drop 2drop ;
 
-: PCT-OUTCOME ( ^u8 n ms -- len len PROCESS:ending )
+: PCT-OUTCOME ( str ms -- len len PROCESS:ending )
    {: src:^ srcu:n deadline:ms :}
    PCT-RESET
    PCT-OUT-CLEAR

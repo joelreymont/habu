@@ -1,3 +1,4 @@
+split-str
 \ The bounded callback is a checked value whose ceiling is the parent's scope.
 \ Load this file with the candidate native image; its definitions are the artifact.
 

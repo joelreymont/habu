@@ -1,3 +1,4 @@
+split-str
 \ gate-pool-orphan-test.f - pool children die on parent death: the production
 \ death-pipe reaper kills a spawned child's group when its pool parent is
 \ SIGKILLed, the case the pool's own GT-POOL-KILL-ALL cleanup never reaches.

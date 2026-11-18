@@ -1,3 +1,4 @@
+split-str
 \ link-data.f - a build's DATA: the link's copy of the open space's cells, each
 \ declared cell given its value at DATA-VA, appended to A64ICODE's code buffer
 \ after the routine band as its non-zero runs, then the DATA list, the offset
@@ -203,7 +204,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    {: k:n slot:n :}
    NATIVE:CODE LDICT LABEL-OFFSET +  k DREC * +  slot cells +  LE:U64@ ;
 
-: PRIM-NAME$ ( n -- ^u8 n )
+: PRIM-NAME$ ( n -- str )
    {: k:n :}
    k 2 PRIM@ {: flags:n :}
    flags DNAME-EXT and 0<> if
@@ -513,7 +514,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ Write the linked image and sign it, a Mach-O one when macho, else an ELF one.
-: EMIT-IMAGE ( ^u8 n ^u8 n bool -- )
+: EMIT-IMAGE ( str str bool -- )
    {: sig:^ sigu:n path:^ pathu:n macho:bool :}
    macho if
       sig sigu MACHO:SET-SIGID
@@ -540,7 +541,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 \ after every file, where no file's literal can name one. The program goes to
 \ a sibling renamed over the path: macOS kills a signed program rewritten in
 \ place.
-: WRITE-PROGRAM ( ^u8 n bool -- )
+: WRITE-PROGRAM ( str bool -- )
    {: path:^ pathu:n macho:bool :}
    ENGINE? @ if 0 PLACE-FACTS then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then

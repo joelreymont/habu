@@ -1,3 +1,4 @@
+split-str
 \ parts-root-2.f - parts-root-1.f's MAIN over other files: flip.f's require of flip-a.f cuts no part,
 \ cut-stack.f's of cut-stack-a.f does, and inside-i.f loads at top level.
 

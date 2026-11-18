@@ -1,3 +1,4 @@
+split-str
 \ binding.f - a compiler target contract and a numerical policy bound together.
 \
 \ Only rules that need both halves live here: a policy may not allow multiply-add

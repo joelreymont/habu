@@ -1,3 +1,4 @@
+split-str
 \ chain-run.f - the checked generation-chain driver.
 \ Run: bin/hb --load tools/chain-run-build.f -- host gen1 gen2 gen3 TMPDIR
 \ Each child inherits only the caller's environment plus the private TMPDIR and
@@ -36,7 +37,7 @@ DYNAMIC-BUFFER FILES u8
    s" chain-run: hb-build stderr: " type CMD:ERR$ type cr
    E-BUILD-STATUS throw ;
 
-: BUILD-IN ( ^u8 n ^u8 n ^u8 n CMD:command -- CMD:command )
+: BUILD-IN ( str str str CMD:command -- CMD:command )
    >r {: host:^ hostu out:^ outu tmp:^ tmpu :} r>
    s" --load" CMD:ARG+
    s" tools/hb-build.f" CMD:ARG+
@@ -57,7 +58,7 @@ DYNAMIC-BUFFER FILES u8
 
 \ Both files, A's bytes then B's. The byte reserved past them keeps index AU
 \ inside the reserve when B is empty.
-: READ-FILES ( ^u8 n ^u8 n -- ^u8 n ^u8 n ) {: a:^ au:n b:^ bu:n :}
+: READ-FILES ( str str -- str str ) {: a:^ au:n b:^ bu:n :}
    a au FS:FILE-SIZE {: as:n :}
    b bu FS:FILE-SIZE {: bs:n :}
    as bs + 1 + FILES-RESERVE
@@ -68,7 +69,7 @@ DYNAMIC-BUFFER FILES u8
 public
 
 \ Two files hold the same image: CODESIGN:SAME-IMAGE? of their whole bytes.
-: SAME-FILES? ( ^u8 n ^u8 n -- bool )
+: SAME-FILES? ( str str -- bool )
    [: READ-FILES CODESIGN:SAME-IMAGE? ;] [: FILES-RELEASE ;] finally ;
 
 private

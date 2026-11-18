@@ -1,3 +1,4 @@
+split-str
 \ affine-test.f - rotations about a line and their composition with a
 \ transform, against closed-form matrices.
 

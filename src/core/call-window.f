@@ -1,3 +1,4 @@
+split-str
 \ call-window.f - the checked call-window store.
 
 \ checker.f reads the store through CWIN-STATE; this package only installs it.

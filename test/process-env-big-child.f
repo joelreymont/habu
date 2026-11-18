@@ -1,3 +1,4 @@
+split-str
 \ process-env-big-child.f - child for the large-inherited-environment test.
 \ The parent sets HABU_BIG_001..HABU_BIG_600. This prints "big-env-child <own>
 \ <seen>": the prefixed entries in its own envp, and those reported by
@@ -18,7 +19,7 @@ create BIG-OUT BIG-CAP allot
 create BIG-ERR BIG-CAP allot
 variable BIG-I
 
-: BIG-NAME$ ( -- ^u8 n )
+: BIG-NAME$ ( -- str )
    s" HABU_BIG_" ;
 
 : BIG-U-TYPE ( n -- ) {: n:n :}
@@ -34,11 +35,11 @@ variable BIG-I
 
 \ A prefixed entry starts a capture line only at a line boundary, so a value
 \ that happens to contain the prefix is not counted.
-: BIG-LINE-AT? ( ^u8 n n -- bool ) {: a:^ u:n i:n :}
+: BIG-LINE-AT? ( str n -- bool ) {: a:^ u:n i:n :}
    i 0 > if a i 1 - + c@ $0A = 0= if 0 0= 0= exit then then
    a i + u i - BIG-NAME$ STARTS-WITH? ;
 
-: BIG-SEEN ( ^u8 n -- n ) {: a:^ u:n :}
+: BIG-SEEN ( str -- n ) {: a:^ u:n :}
    0
    0 BIG-I !
    begin BIG-I @ u < while

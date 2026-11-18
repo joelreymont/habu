@@ -1,3 +1,4 @@
+split-str
 \ A definition its definer opened stays open while text is evaluated into it:
 \ the text's own refusal reaches its catch before the definer's `;`.
 require src/lib/test.f
@@ -14,19 +15,19 @@ variable IS-CODE
 : >N ( -- EFFECT:type ) EFFECT:EMPTY EFFECT:N EFFECT:OUT ;
 
 \ : NAME ( -- n ) 5 ; where a text that names no word is refused first.
-: MAKE-BAD ( ^u8 n -- )
+: MAKE-BAD ( str -- )
    >N define-word
    [: s" NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch BAD-CODE !
    s" 5" evaluate-closed postpone ; ;
 
 \ : NAME ( -- n ) 5 ; where a tick of no word is refused first.
-: MAKE-BAD-TICK ( ^u8 n -- )
+: MAKE-BAD-TICK ( str -- )
    >N define-word
    [: s" ['] NATIVE-EVAL-NO-TARGET" evaluate-closed ;] catch TICK-CODE !
    s" 5" evaluate-closed postpone ; ;
 
 \ : NAME ( -- n ) 5 ; where an `is` of no word is refused first.
-: MAKE-BAD-IS ( ^u8 n -- )
+: MAKE-BAD-IS ( str -- )
    >N define-word
    [: s" is NATIVE-EVAL-NO-TARGET" evaluate-closed ;] catch IS-CODE !
    s" 5" evaluate-closed postpone ; ;
@@ -39,11 +40,11 @@ variable IS-CODE
    code 0= if s" NEP-BAD-HOST 5 T=" evaluate-closed then ;
 
 \ : NAME E TEXT ; with the definition opened by define-word.
-: MAKE-TEXT ( ^u8 n EFFECT:type ^u8 n -- ) {: ta:^ tu:n :}
+: MAKE-TEXT ( str EFFECT:type str -- ) {: ta:^ tu:n :}
    define-word ta tu evaluate-closed postpone ; ;
 
 \ : NAME ( n -- n ) 1 + ; where the text's refusal is caught.
-: MAKE-PART ( ^u8 n -- )
+: MAKE-PART ( str -- )
    N>N define-word
    [: s" 1 + NATIVE-EVAL-NO-WORD" evaluate-closed ;] catch PART-CODE !
    postpone ; ;

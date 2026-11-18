@@ -1,3 +1,4 @@
+split-str
 \ request-test.f - the browser request protocol under bun:
 \ src/lib/browser/host-cli.mjs runs test/browser/request.f's module, built by
 \ tools/hb-build.f, through src/lib/browser/turn.js. test/wasm/device.f runs
@@ -37,29 +38,29 @@ PATH-CAP BUFFER: FILE
 
 \ The fixture's request IDs, 2^53 + 1 to 2^53 + 3: past JavaScript's safe
 \ integers, so only an exact BigInt keeps them apart.
-: ID1$ ( -- ^u8 n )  s" 9007199254740993" ;
-: ID2$ ( -- ^u8 n )  s" 9007199254740994" ;
-: ID3$ ( -- ^u8 n )  s" 9007199254740995" ;
+: ID1$ ( -- str )  s" 9007199254740993" ;
+: ID2$ ( -- str )  s" 9007199254740994" ;
+: ID3$ ( -- str )  s" 9007199254740995" ;
 
-: NONE$ ( -- ^u8 n )  s" " ;
-: ONE$ ( -- ^u8 n )  s\" \x01" ;
-: TWO$ ( -- ^u8 n )  s\" \x02" ;
-: THREE$ ( -- ^u8 n )  s\" \x03" ;
-: ZFF$ ( -- ^u8 n )  s\" \x00\xFF" ;
+: NONE$ ( -- str )  s" " ;
+: ONE$ ( -- str )  s\" \x01" ;
+: TWO$ ( -- str )  s\" \x02" ;
+: THREE$ ( -- str )  s\" \x03" ;
+: ZFF$ ( -- str )  s\" \x00\xFF" ;
 
-: KIND99$ ( -- ^u8 n )  s" a record of kind 99, which names no record" ;
+: KIND99$ ( -- str )  s" a record of kind 99, which names no record" ;
 
 : OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ^u8 n )  ERR ERR-U @ ;
 
-: TRAP$ ( -- ^u8 n )  TRAP TRAP-U @ ;
+: TRAP$ ( -- str )  TRAP TRAP-U @ ;
 
 : FILE! ( ^u8 n ^u8 n -- )
    {: a:^ u:n name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu a u FS:WRITE-ALL ;
 
-: SUBDIR ( ^u8 n ^u8 -- n )
+: SUBDIR ( str ^u8 -- n )
    {: name:^ nu:n dst:^ :}
    DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
    dst u FS:MAKE-DIR
@@ -83,7 +84,7 @@ PATH-CAP BUFFER: FILE
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
-: FILE-ARG+ ( ^u8 n -- )
+: FILE-ARG+ ( str -- )
    {: name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
@@ -106,18 +107,18 @@ PATH-CAP BUFFER: FILE
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
 
-: TYPED+ ( ^u8 n -- )
+: TYPED+ ( str -- )
    s" --typed" ARG+  ARG+ ;
 
 \ Answers the oldest waiting request with the status and DIR's file of this
 \ name. request.f's replies: 470 leaves a record of no kind, 471 traps, and 202
 \ to a legacy post posts /followup.
-: ANSWER+ ( n ^u8 n -- )
+: ANSWER+ ( n str -- )
    {: status:n name:^ nu:n :}
    s" --answer" ARG+  status N-ARG+  name nu FILE-ARG+ ;
 
 \ The waiting tagged request with this ID answered, ahead of older ones.
-: ANSWER-ID+ ( ^u8 n n ^u8 n -- )
+: ANSWER-ID+ ( str n str -- )
    {: id:^ iu:n status:n name:^ nu:n :}
    s" --answer-id" ARG+  id iu ARG+  status N-ARG+  name nu FILE-ARG+ ;
 
@@ -146,14 +147,14 @@ PATH-CAP BUFFER: FILE
 
 \ A tagged request as the host makes it: method and path, the ID, then the
 \ body's length and hex.
-: REQUEST-LINE ( ^u8 n ^u8 n ^u8 n -- )
+: REQUEST-LINE ( str str str -- )
    {: what:^ wu:n id:^ iu:n body:^ bu:n :}
    s" request " SB-APPEND  what wu SB-APPEND  32 SB-APPEND-C
    id iu SB-APPEND  32 SB-APPEND-C  body bu LINE ;
 
 \ The fixture's requests: POST /state and PUT /view with the body 00 ff, and
 \ GET /projects with none.
-: STATE-LINE ( ^u8 n -- )
+: STATE-LINE ( str -- )
    {: id:^ iu:n :}
    s" POST /state" id iu s" 2 00ff" REQUEST-LINE ;
 
@@ -165,18 +166,18 @@ PATH-CAP BUFFER: FILE
 
 \ The text a reply's run answers: the ID, the status and drawing size, then
 \ the body's bytes.
-: REPLY-LINE ( ^u8 n ^u8 n ^u8 n -- )
+: REPLY-LINE ( str str str -- )
    {: id:^ iu:n what:^ wu:n body:^ bu:n :}
    s" text " SB-APPEND  id iu SB-APPEND  32 SB-APPEND-C
    what wu SB-APPEND  32 SB-APPEND-C  body bu DECIMALS  10 SB-APPEND-C ;
 
-: ERR-LINE$ ( -- ^u8 n )
+: ERR-LINE$ ( -- str )
    ERR ERR-U @ 10 INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
 
-: ENDED-LINE ( ^u8 n -- )
+: ENDED-LINE ( str -- )
    s" the module trapped and has ended: Error: " SB-APPEND  LINE ;
 
 \ Writes the expected text and the actual bytes as this name in DIR's expected

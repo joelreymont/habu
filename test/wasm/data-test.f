@@ -1,3 +1,4 @@
+split-str
 \ A module `hb-build --target wasm` builds under a foreign Wasm host that grows
 \ its memory before the run. The peer,
 \ test/wasm/data-peer.mjs, only dumps the module's memory before and after its
@@ -78,7 +79,7 @@ DYNAMIC-BUFFER AFTER u8
    HOST-OFFSET NUM-ARG HOST-BYTE NUM-ARG
    s" bun" SPAWN ;
 
-: READ-DUMP ( ^u8 n ^u8 n -- )
+: READ-DUMP ( str str -- )
    {: pa:^ pu:n dst:^ u:n :}
    pa pu dst u FS:READ-ALL u <> if E-FS-IO throw then ;
 
@@ -90,14 +91,14 @@ DYNAMIC-BUFFER AFTER u8
    AFTER-PATH AFTER-PATH-U @ 0 AFTER au READ-DUMP
    BEFORE-PATH BEFORE-PATH-U @ FS:FILE-SIZE ;
 
-: LAST-LINE ( ^u8 n -- ^u8 n )
+: LAST-LINE ( str -- str )
    RTRIM {: a:^ u:n :}
    u begin dup 0 > while
       a over 1- + c@ STR-LF = if a over + u rot - exit then
       1-
    repeat drop a u ;
 
-: NO-BASE ( ^u8 n -- )
+: NO-BASE ( str -- )
    type cr
    s" wasm data test: OUT's last line is not the dynamic buffer's address" EXIT-STATUS:FAILURE die ;
 

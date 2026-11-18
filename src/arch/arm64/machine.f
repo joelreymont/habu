@@ -1,3 +1,4 @@
+split-str
 \ machine.f - A64M, the ARM64 machine description every ARM64 pass and routine
 \ contract is written against; src/compiler/native-effect.f is the
 \ target-neutral schema. Every bound is read off

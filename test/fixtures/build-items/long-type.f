@@ -1,3 +1,4 @@
+split-str
 \ long-type.f - a definer whose stray built local has a type text longer than
 \ the token buffers' first capacity, so its rejection grows them.
 
@@ -16,7 +17,7 @@ private
 : LONG$ ( -- ^u8 n )
    0 TEXT-U !  s" [ " ADD  228 0 ?do ELEM loop  s" -- ]" ADD  TEXT$ ;
 
-: MAKE-LONG ( ^u8 n -- )
+: MAKE-LONG ( str -- )
    EFFECT:EMPTY define-word  LONG$ EFFECT:READ-TYPE EFFECT:LOCAL drop
    postpone ; ;
 

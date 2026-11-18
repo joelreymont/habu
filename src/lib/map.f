@@ -1,3 +1,4 @@
+split-str
 \ map.f - package MAP's INIT. A target with no OS generator (wasm) requires
 \ src/lib/map-core.f, the rest of MAP, and makes its maps with INIT-KEYED.
 \ STORAGE CLASS. CALLER-OWNED: the caller's cells; no module state.

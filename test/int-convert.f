@@ -1,3 +1,4 @@
+split-str
 \ int-convert.f — the integer conversion words >U8, >U16, >U32 and >I64, through
 \ the engine's own `:`.
 
@@ -9,7 +10,7 @@ package INT-CONVERT-TEST
 
 \ Captures the rejection record of one evaluated definition, in prose, which
 \ SAYS reads; answers its throw code, 0 when the definition loaded.
-: DEF-RC ( ^u8 n -- n )
+: DEF-RC ( str -- n )
    REJECTION:CAPTURE
    REJECTION:JSON @ {: was:n :}
    false REJECTION:JSON !  TEST-EVAL:RC

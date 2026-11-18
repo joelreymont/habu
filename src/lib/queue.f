@@ -1,3 +1,4 @@
+split-str
 \ queue.f - a bounded cell queue for many producers and many consumers.
 \
 \ STORAGE CLASS. PROCESS-WIDE: every queue is shared by all tasks, the main

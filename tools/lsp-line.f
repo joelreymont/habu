@@ -1,3 +1,4 @@
+split-str
 \ lsp-line.f - the language server's line readers: the LF-ended lines of a
 \ text, and the top-level members of a line that holds one JSON object, as each
 \ of the checker's packets does.
@@ -27,13 +28,13 @@ TYPED-VARIABLE JSON-ST JSON:cursor
 
 public
 
-: EACH-LINE ( ^u8 n [ ^u8 n -- ] -- )
+: EACH-LINE ( str [ str -- ] -- )
    {: a:^ u:n q :}
    0 begin dup u < while
       a u rot LINE >r q execute r>
    repeat drop ;
 
-: HAS-LINE? ( ^u8 n ^u8 n -- bool )
+: HAS-LINE? ( str str -- bool )
    {: a:^ u:n k:^ ku:n :}
    0 begin dup u < while
       a u rot LINE >r k ku STR= if r> drop true exit then r>
@@ -49,11 +50,11 @@ public
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ -1 exit then
    JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> ;
 
-: STRING-MEMBER ( ^u8 n ^u8 n -- ^u8 n bool )
+: STRING-MEMBER ( str str -- str bool )
    MEMBER JSON:T-STR = ;
 
 \ A member that is an integer a cell holds; any other is as good as absent.
-: INT-MEMBER ( ^u8 n ^u8 n -- n bool )
+: INT-MEMBER ( str str -- n bool )
    MEMBER JSON:T-INT <> if 2drop 0 false exit then
    STR>NUMBER? MATCH option
       none OF 0 false ENDOF

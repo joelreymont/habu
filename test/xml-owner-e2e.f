@@ -1,3 +1,4 @@
+split-str
 \ Run one public XML owner consumer from source; its deterministic edited XML
 \ artifacts go in a temporary tree the process removes at exit.
 require src/lib/test.f
@@ -26,10 +27,10 @@ create EXPECTED FILE-CAP allot
 variable RC
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: FILE$ ( ^u8 n -- ^u8 n ) {: rel:^ size:n :}
+: FILE$ ( str -- str ) {: rel:^ size:n :}
    ROOT$ rel size PATH FS:JOIN-PATH PATH swap ;
 
-: RUN-INPUT ( ^u8 n ^u8 n -- )
+: RUN-INPUT ( str str -- )
    {: program size:n input input-size:n :}
    PROC-ENV-INHERIT-MISSING
    program size >LEN SOURCE-ROOT:CWD$ >LEN input input-size >LEN
@@ -44,7 +45,7 @@ variable RC
 : MARKER ( ^u8 n -- ) {: marker size:n :}
    OUT OUT-U @ marker size CONTAINS? TTRUE ;
 
-: ENTRY$ ( -- ^u8 n ) s" source-run.f" FILE$ ;
+: ENTRY$ ( -- str ) s" source-run.f" FILE$ ;
 
 : SOURCE-ARGS ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -70,7 +71,7 @@ variable RC
    s" the source token mint stays private" T-LABEL
    s" : BAD ( ^n -- XML:source ) XML:SRC-MINT ;" TEST-EVAL:RC 70 T= ;
 
-: FILE-READ ( ^u8 n -- n )
+: FILE-READ ( str -- n )
    FILE$ FILE-BYTES FILE-CAP FS:READ-ALL ;
 
 : UTF8-ARTIFACT ( -- )
@@ -89,14 +90,14 @@ variable RC
    then
    at 2 + ;
 
-: PUT-ASCII ( ^u8 n bool n -- n )
+: PUT-ASCII ( str bool n -- n )
    {: chars size:n little:bool at:n :}
    size 0 ?do
       chars i + c@ little at i 2 * + PUT-UNIT drop
    loop
    at size 2 * + ;
 
-: EXPECT16 ( bool -- ^u8 n )
+: EXPECT16 ( bool -- str )
    {: little:bool :}
    little if $FF EXPECTED c! $FE EXPECTED 1+ c!
    else $FE EXPECTED c! $FF EXPECTED 1+ c! then

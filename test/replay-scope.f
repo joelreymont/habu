@@ -1,3 +1,4 @@
+split-str
 \ replay-scope.f - the check tool's replay scope for a test that binds names
 \ only the checker holds. A row CHECK!, CHECK-UNJUDGED! or a declaration replay
 \ records has no engine record, so compiled code binds nothing to its name

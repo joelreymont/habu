@@ -1,3 +1,4 @@
+split-str
 \ xattr.f - extended attributes of an open file, through libc's fgetxattr,
 \ fsetxattr and fremovexattr. A name is the whole attribute name, namespace
 \ included (`user.origin`); a value is bytes. An empty name, or one over 255
@@ -45,7 +46,7 @@ FUNCTION: REMOVE-CALL fremovexattr ( n ^u8 -- i32 ) ;FUNCTION
 
 \ The kernel answers ERANGE for these names too, which GET would read as a
 \ value too long for its buffer.
-: NAMEZ ( ^u8 n -- ^u8 )
+: NAMEZ ( str -- ^u8 )
    {: name:^ size:n :}
    size 0=  size NAME-MAX >  or if FS:ERANGE FS:CAUSE! E-XATTR throw then
    name size 0 NAME-ROW NAME-MAX FFI:CSTR-ROOM SPAN:MAKE FFI:CSTR ;
@@ -64,7 +65,7 @@ FUNCTION: REMOVE-CALL fremovexattr ( n ^u8 -- i32 ) ;FUNCTION
    k cap > if XATTR-GOT:OVERSIZE exit then
    k XATTR-GOT:VALUE ;
 
-: GET-ERROR ( ^u8 n -- got )
+: GET-ERROR ( str -- got )
    {: name:^ nu:n :}
    FFI:ERRNO {: e:n :}
    e FS:ENODATA = if XATTR-GOT:ABSENT exit then
@@ -72,7 +73,7 @@ FUNCTION: REMOVE-CALL fremovexattr ( n ^u8 -- i32 ) ;FUNCTION
    e s" fgetxattr" name nu FAIL ;
 
 \ fsetxattr's answer: 0, or -1 with errno set.
-: SETX ( fd ^u8 n ^u8 n n -- n )
+: SETX ( fd str str n -- n )
    {: f:fd name:^ nu:n val:^ vu:n flags:n :}
    f FD>N name nu NAMEZ val vu flags SET-CALL ;
 

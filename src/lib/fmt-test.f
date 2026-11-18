@@ -1,3 +1,4 @@
+split-str
 \ fmt-test.f - checked number formatting coverage.
 \ Run: bin/hb --load src/lib/fmt-test.f
 
@@ -11,19 +12,19 @@ require src/lib/ieee754.f
 package FMT-TEST
 using FMT
 
-: T-U ( n ^u8 n -- ) {: a:^ u :}
+: T-U ( n str -- ) {: a:^ u :}
    SB-RESET SB-U  SB$ a u T$= ;
-: T-HEX ( n ^u8 n -- ) {: a:^ u :}
+: T-HEX ( n str -- ) {: a:^ u :}
    SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ a u T$= ;
-: T-HEXW ( n n ^u8 n -- ) {: a:^ u :}       \ ( value width expect )
+: T-HEXW ( n n str -- ) {: a:^ u :}       \ ( value width expect )
    SB-RESET s" pre:" SB-APPEND SB-HEX-WIDTH  SB$ a u T$= ;
 : T-INT ( n ^u8 n -- ) {: a:^ u :}
    SB-RESET SB-INT  SB$ a u T$= ;
-: T-SCALED ( n n ^u8 n -- ) {: a:^ u :}
+: T-SCALED ( n n str -- ) {: a:^ u :}
    SB-RESET s" pre:" SB-APPEND SB-SCALED  SB$ a u T$= ;
-: T-FIX ( r n ^u8 n -- ) {: a:^ u :}        \ ( value places expect )
+: T-FIX ( r n str -- ) {: a:^ u :}        \ ( value places expect )
    SB-RESET SB-FIX  SB$ a u T$= ;
-: T-SCI ( r n ^u8 n -- ) {: a:^ u :}
+: T-SCI ( r n str -- ) {: a:^ u :}
    SB-RESET SB-SCI SB$ a u T$= ;
 
 \ .U and .INT render the same bytes SB-U / SB-INT append -- one renderer, one
@@ -36,15 +37,15 @@ using FMT
 : T-PINT ( n -- )
    SB-RESET s" sb-sentinel" SB-APPEND
    .INT  SB$ s" sb-sentinel" T$= ;
-: T-INT$ ( n ^u8 n -- )
+: T-INT$ ( n str -- )
    {: a:^ u:n :}
    SB-RESET s" sb-sentinel" SB-APPEND
    INT$ a u T$=  SB$ s" sb-sentinel" T$= ;
-: T-OCT ( n n ^u8 n -- ) {: a:^ u:n :}       \ ( value width expect )
+: T-OCT ( n n str -- ) {: a:^ u:n :}       \ ( value width expect )
    OCT-WIDTH$ a u T$= ;
 \ F.N has no bounded width and does build in the shared builder, so its text is
 \ still readable through SB$ after the call.
-: T-PFN ( r n ^u8 n -- ) {: a:^ u:n :}      \ ( value places expect )
+: T-PFN ( r n str -- ) {: a:^ u:n :}      \ ( value places expect )
    F.N   SB$ a u T$= ;
 
 : NEG-U-CASE ( -- )        SB-RESET -1 SB-U ;

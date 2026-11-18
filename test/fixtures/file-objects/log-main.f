@@ -1,3 +1,4 @@
+split-str
 \ log-main.f - the log program, built by tools/hb-build.f: log-first.f, then a
 \ MAIN that logs a line of its own through LOG's facility and takes and
 \ releases the facility the build left held.

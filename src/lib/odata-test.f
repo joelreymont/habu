@@ -1,3 +1,4 @@
+split-str
 \ odata-test.f - ODATA over the hand-written documents and responses in
 \ test/fixtures/odata/: each model printed as one canonical text and compared
 \ with the expected text beside it; a V2 and a V4 page and record of the same
@@ -41,11 +42,11 @@ LINK-CAP BUFFER: LINK
    len DESC-LEN +! ;
 
 : NL ( -- ) s\" \n" ADD ;
-: DESC$ ( -- ^u8 n ) DESC DESC-LEN @ ;
+: DESC$ ( -- str ) DESC DESC-LEN @ ;
 
-: SAP$ ( -- ^u8 n ) s" http://www.sap.com/Protocols/SAPData" ;
-: COMMON$ ( -- ^u8 n ) s" com.sap.vocabularies.Common.v1" ;
-: CORE$ ( -- ^u8 n ) s" Org.OData.Core.V1" ;
+: SAP$ ( -- str ) s" http://www.sap.com/Protocols/SAPData" ;
+: COMMON$ ( -- str ) s" com.sap.vocabularies.Common.v1" ;
+: CORE$ ( -- str ) s" Org.OData.Core.V1" ;
 
 \ ` LABEL=text` when the annotation is there.
 : SHOW ( ^u8 n bool ^u8 n -- )
@@ -89,7 +90,7 @@ LINK-CAP BUFFER: LINK
    t [: SHOW-NAVIGATION ;] ODATA:EACH-NAVIGATION ;
 
 \ `NAME none` for a name ENTITY-SET does not answer as a set.
-: SHOW-LOOKUP ( ^ODATA:metadata ^u8 n -- )
+: SHOW-LOOKUP ( ^ODATA:metadata str -- )
    {: m:^ name:^ len:n :}
    name len ADD s"  " ADD
    m name len ODATA:ENTITY-SET SHOW-TARGET NL ;
@@ -158,7 +159,7 @@ LINK-CAP BUFFER: LINK
    a ARENA:RELEASE ;
 
 \ The document at PATH is rejected with CODE and TEXT.
-: REJECTS-CODE ( ^u8 n ^u8 n n -- )
+: REJECTS-CODE ( str str n -- )
    {: path:^ len:n text:^ tl:n code:n :}
    ARENA:NEW {: a:^ :}
    [: a path len MODEL drop ;] code TTHROWSQ
@@ -311,13 +312,13 @@ LINK-CAP BUFFER: LINK
    s" 6:9: expected one `Annotation` of term `Label` of `T` per target, found a second; remove one of the two"
    REJECTS ;
 
-: SET-NAMED ( ^ODATA:metadata ^u8 n -- ^ODATA:entity-set )
+: SET-NAMED ( ^ODATA:metadata str -- ^ODATA:entity-set )
    ODATA:ENTITY-SET MATCH nullable
       none OF s" odata-test: no such set" 1 die ENDOF
       some OF ENDOF
    ;MATCH ;
 
-: SET-TYPE ( ^ODATA:metadata ^u8 n -- ^ODATA:entity-type )
+: SET-TYPE ( ^ODATA:metadata str -- ^ODATA:entity-type )
    SET-NAMED ODATA:ENTITY-TYPE ;
 
 : BODY ( ^u8 n -- ^u8 n ) SRC READ ;
@@ -342,7 +343,7 @@ LINK-CAP BUFFER: LINK
 
 \ A page of Customers: its count, its next link and its records written
 \ plain, against page.txt.
-: PAGE-OF ( ^u8 n ^u8 n -- )
+: PAGE-OF ( str str -- )
    {: xml:^ xl:n body:^ bl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
@@ -371,7 +372,7 @@ LINK-CAP BUFFER: LINK
    a ARENA:RELEASE ;
 
 \ The record of the single-entity response BODY written plain as one of SET.
-: COPY-AS ( ^ODATA:metadata ^u8 n ^u8 n -- ^u8 n )
+: COPY-AS ( ^ODATA:metadata str str -- str )
    {: m:^ set:^ sl:n body:^ bl:n :}
    m set sl SET-TYPE {: t:^ :}
    m body bl CURSOR ODATA:RECORD$ {: rt:^ rl:n :}
@@ -381,7 +382,7 @@ LINK-CAP BUFFER: LINK
    JSON:READ-FINISH w wl ;
 
 \ A record of Orders written plain, against record.txt.
-: RECORD-OF ( ^u8 n ^u8 n -- )
+: RECORD-OF ( str str -- )
    {: xml:^ xl:n body:^ bl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL s" Orders" body bl BODY COPY-AS
@@ -394,12 +395,12 @@ LINK-CAP BUFFER: LINK
 
 \ E-RESPONSE's text is WANT, then released, so a later case's plain throw
 \ cannot match it.
-: SAID ( ^u8 n -- )
+: SAID ( str -- )
    {: want:^ wl:n :}
    ODATA:E-RESPONSE REASON:TEXT$ want wl T$=
    REASON:RELEASE ;
 
-: PAGE-REJECTS ( ^u8 n ^u8 n ^u8 n -- )
+: PAGE-REJECTS ( str str str -- )
    {: xml:^ xl:n path:^ len:n want:^ wl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
@@ -410,7 +411,7 @@ LINK-CAP BUFFER: LINK
 
 \ PAGE takes the page of the set; COPY-ENTITY rejects one of its records,
 \ placed in the records array PAGE answers.
-: COPY-REJECTS ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: COPY-REJECTS ( str str str str -- )
    {: xml:^ xl:n set:^ sl:n path:^ len:n want:^ wl:n :}
    ARENA:NEW {: a:^ :}
    a xml xl MODEL {: m:^ :}
@@ -422,9 +423,9 @@ LINK-CAP BUFFER: LINK
    CURSOR JSON:READ-DISPOSE
    a ARENA:RELEASE ;
 
-: V2$ ( -- ^u8 n ) s" test/fixtures/odata/v2.xml" ;
-: V2-BASE-ROLE$ ( -- ^u8 n ) s" test/fixtures/odata/v2-base-role.xml" ;
-: V4$ ( -- ^u8 n ) s" test/fixtures/odata/v4.xml" ;
+: V2$ ( -- str ) s" test/fixtures/odata/v2.xml" ;
+: V2-BASE-ROLE$ ( -- str ) s" test/fixtures/odata/v2-base-role.xml" ;
+: V4$ ( -- str ) s" test/fixtures/odata/v4.xml" ;
 
 : TEST-RESPONSE-REJECTIONS ( -- )
    V2$ s" test/fixtures/odata/repeated-next.json"
@@ -534,10 +535,10 @@ CAP BUFFER: KEY-OUT
 PTR-VARIABLE VALUE-AT
 variable VALUE-LEN
 
-: VALUE$ ( -- ^u8 n ) VALUE-AT @ VALUE-LEN @ ;
+: VALUE$ ( -- str ) VALUE-AT @ VALUE-LEN @ ;
 
 \ The key predicate of the set's type when its one key's value is VALUE.
-: PREDICATE$ ( ^ODATA:metadata ^u8 n ^u8 n -- ^u8 n )
+: PREDICATE$ ( ^ODATA:metadata str str -- str )
    VALUE-LEN ! VALUE-AT ! SET-TYPE
    [: drop VALUE$ ;] KEY-OUT CAP SPAN:MAKE ODATA:KEY
    KEY-OUT swap ;
@@ -546,7 +547,7 @@ variable VALUE-LEN
    {: m:^ set:^ sl:n v:^ vl:n want:^ wl:n :}
    m set sl v vl PREDICATE$ want wl T$= ;
 
-: REJECTS-KEY ( ^ODATA:metadata ^u8 n ^u8 n ^u8 n -- )
+: REJECTS-KEY ( ^ODATA:metadata str str str -- )
    {: m:^ set:^ sl:n v:^ vl:n want:^ wl:n :}
    [: m set sl v vl PREDICATE$ 2drop ;] ODATA:E-KEY TTHROWSQ
    ODATA:E-KEY REASON:TEXT$ want wl T$=
@@ -621,7 +622,7 @@ variable VALUE-LEN
    s" expected a `Edm.Guid` value for key property `K`, found `{0050568d-393c-1ed4-9d97-e2a6e1c...`; give `K` a value in that type's form"
    REJECTS-KEY ;
 
-: ORDER-VALUE ( ^ODATA:property -- ^u8 n )
+: ORDER-VALUE ( ^ODATA:property -- str )
    ODATA:PROPERTY-NAME$ s" Year" STR= if s" 2024" else s" it's a/b" then ;
 
 : MULTI-KEY ( ^ODATA:metadata -- )
@@ -637,8 +638,8 @@ variable VALUE-LEN
 
 \ shared-names.xml: B and A both declare Stamp, B as Edm.String and A as
 \ Edm.DateTime; BB derives from B, AA from A, and C declares no Stamp.
-: SHARED$ ( -- ^u8 n ) s\" {\"d\":{\"Id\":\"1\",\"Stamp\":\"/Date(0)/\"}}" ;
-: SENT$ ( -- ^u8 n ) s\" {\"Id\":\"1\",\"Stamp\":\"/Date(0)/\"}" ;
+: SHARED$ ( -- str ) s\" {\"d\":{\"Id\":\"1\",\"Stamp\":\"/Date(0)/\"}}" ;
+: SENT$ ( -- str ) s\" {\"Id\":\"1\",\"Stamp\":\"/Date(0)/\"}" ;
 
 : TEST-SHARED-NAMES ( -- )
    ARENA:NEW {: a:^ :}

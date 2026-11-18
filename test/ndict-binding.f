@@ -1,3 +1,4 @@
+split-str
 \ Indexed compiler lookup follows live scope and definition changes.
 require src/lib/test.f
 require src/habu/fnv.f
@@ -87,7 +88,7 @@ variable ROLL-OCC
    s" using NDB-LEFT : NDB-USED ( -- n ) SOLO ; ;using NDB-USED 29 T=" EV ;
 
 
-: HASH-SLOT ( ^u8 n -- n )
+: HASH-SLOT ( str -- n )
    {: name:^ size:n :}
    FNV:BASIS
    size 0 ?do name i + c@ XREF-FOLD-C FNV:STEP loop

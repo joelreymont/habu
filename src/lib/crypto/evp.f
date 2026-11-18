@@ -1,3 +1,4 @@
+split-str
 \ crypto/evp.f - AES-256-GCM sealing, HMAC-SHA-256/SHA-1 and RS256 over OpenSSL
 \ 3's libcrypto. No key management: derivation, rotation, storage format, nonce
 \ counters, JWS serialization and key selection belong above it.
@@ -176,7 +177,7 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
    u 0 MAX-SPAN WITHIN-RANGE ;
 
 
-: SPAN-ZERO ( ^u8 n -- ) {: target u:n :}
+: SPAN-ZERO ( str -- ) {: target u:n :}
    u 0 ?do 0 target i + c! loop ;
 
 
@@ -214,19 +215,19 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ Associated data is authenticated, not encrypted, so the update takes a NULL
 \ output. Empty associated data needs no call at all.
-: SEAL-AAD ( ^u8 n -- ) {: aad au:n :}
+: SEAL-AAD ( str -- ) {: aad au:n :}
    au 0= if exit then
    CTX@ 0 OUTL-BUF aad au ENC-AAD OSSL-OK <> if E-SEAL throw then ;
 
 
-: UNSEAL-AAD ( ^u8 n -- ) {: aad au:n :}
+: UNSEAL-AAD ( str -- ) {: aad au:n :}
    au 0= if exit then
    CTX@ 0 OUTL-BUF aad au DEC-AAD OSSL-OK <> if E-OPEN throw then ;
 
 
 \ GCM is a stream cipher: one update consumes the whole plaintext and emits
 \ exactly as many bytes, so a short write is a broken library, not a partial call.
-: SEAL-TEXT ( ^u8 n ^u8 -- ) {: plain pu:n out :}
+: SEAL-TEXT ( str ^u8 -- ) {: plain pu:n out :}
    pu 0= if exit then
    CTX@ out OUTL-BUF plain pu ENC-UPDATE OSSL-OK <> if E-SEAL throw then
    OUTL@ pu <> if E-SEAL throw then ;
@@ -234,14 +235,14 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ The final call emits nothing for GCM; it only closes the GHASH. The tag then
 \ lands directly past the ciphertext, which is where the sealed record carries it.
-: SEAL-FINISH ( ^u8 n -- n ) {: out pu:n :}
+: SEAL-FINISH ( str -- n ) {: out pu:n :}
    CTX@ FINAL-BUF OUTL-BUF ENC-FINAL OSSL-OK <> if E-SEAL throw then
    OUTL@ 0 <> if E-SEAL throw then
    CTX@ CTRL-GET-TAG TAG-BYTES out pu + CTL-TAG-OUT OSSL-OK <> if E-SEAL throw then
    pu TAG-BYTES + ;
 
 
-: SEAL-RUN ( ^u8 ^u8 ^u8 n ^u8 n ^u8 -- n )
+: SEAL-RUN ( ^u8 ^u8 str str ^u8 -- n )
    {: key nonce aad au:n plain pu:n out :}
    key nonce SEAL-BEGIN
    aad au SEAL-AAD
@@ -251,12 +252,12 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ A refused record never leaves plaintext behind: the bytes the caller would have
 \ read as the message are cleared before the failure is answered.
-: UNSEAL-REFUSED ( ^u8 n n -- unseal-result ) {: out pu:n failure:n :}
+: UNSEAL-REFUSED ( str n -- unseal-result ) {: out pu:n failure:n :}
    out pu SPAN-ZERO
    failure >CODE CRYPTO-UNSEAL--RESULT:FAILED ;
 
 
-: TEXT-DECRYPTED? ( ^u8 n ^u8 -- bool ) {: cipher pu:n out :}
+: TEXT-DECRYPTED? ( str ^u8 -- bool ) {: cipher pu:n out :}
    pu 0= if true exit then
    CTX@ out OUTL-BUF cipher pu DEC-UPDATE OSSL-OK <> if false exit then
    OUTL@ pu <> if E-OPEN throw then
@@ -265,14 +266,14 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
 
 \ The tag the record carries is installed before the final call, and that call is
 \ the whole authentication decision.
-: TAG-VERIFIED? ( ^u8 n -- bool ) {: cipher pu:n :}
+: TAG-VERIFIED? ( str -- bool ) {: cipher pu:n :}
    CTX@ CTRL-SET-TAG TAG-BYTES cipher pu + CTL-TAG-IN OSSL-OK <> if E-OPEN throw then
    CTX@ FINAL-BUF OUTL-BUF DEC-FINAL OSSL-OK <> if false exit then
    OUTL@ 0 <> if E-OPEN throw then
    true ;
 
 
-: UNSEAL-RUN ( ^u8 ^u8 ^u8 n ^u8 n ^u8 -- unseal-result )
+: UNSEAL-RUN ( ^u8 ^u8 str str ^u8 -- unseal-result )
    {: key nonce aad au:n cipher cu:n out :}
    cu TAG-BYTES - {: pu:n :}
    key nonce UNSEAL-BEGIN
@@ -394,7 +395,7 @@ CAST: RS>BYTES ( n -- ^u8 )
    RS-N RS@ BN-FREE
    RS-RECORD-BYTES 0 ?do 0 i RS-SLOT ! 8 +loop ;
 
-: RS-SPAN ( ^u8 n -- )
+: RS-SPAN ( str -- )
    {: source u:n :}
    u SPAN-LEN
    source FFI:>CELL {: start:n :}
@@ -402,18 +403,18 @@ CAST: RS>BYTES ( n -- ^u8 )
    u 0 > start 0= and if E-OPERAND throw then
    u RS-MAX-ADDRESS start - > if E-OPERAND throw then ;
 
-: RS-OVERLAP? ( ^u8 n ^u8 n -- bool )
+: RS-OVERLAP? ( str str -- bool )
    {: a au:n b bu:n :}
    au 0= bu 0= or if false exit then
    a FFI:>CELL b FFI:>CELL bu + <
    b FFI:>CELL a FFI:>CELL au + < and ;
 
-: RS-JWK-INT ( ^u8 n -- )
+: RS-JWK-INT ( str -- )
    {: bytes u:n :}
    u 0= if E-KEY throw then
    bytes c@ 0= if E-KEY throw then ;
 
-: RS-JWK-CHECK ( ^u8 n ^u8 n -- )
+: RS-JWK-CHECK ( str str -- )
    {: modulus nu:n exponent eu:n :}
    modulus nu RS-JWK-INT
    exponent eu RS-JWK-INT
@@ -422,7 +423,7 @@ CAST: RS>BYTES ( n -- ^u8 )
    exponent eu 1- + c@ 1 and 0= if E-KEY throw then
    eu 1 = if exponent c@ 3 < if E-KEY throw then then ;
 
-: RS-PUBLIC-IMPORT ( ^u8 n ^u8 n -- n )
+: RS-PUBLIC-IMPORT ( str str -- n )
    {: modulus nu:n exponent eu:n :}
    modulus nu 0 BN-FROM-BYTES dup RS-N RS! 0= if E-KEY throw then
    exponent eu 0 BN-FROM-BYTES dup RS-E RS! 0= if E-KEY throw then
@@ -461,7 +462,7 @@ CAST: RS>BYTES ( n -- ^u8 )
    {: c:n :}
    c 32 = c 9 = or c 10 = or c 13 = or ;
 
-: RS-SKIP-SPACE ( ^u8 n n -- n )
+: RS-SKIP-SPACE ( str n -- n )
    {: source u:n at:n :}
    at
    begin dup u < while
@@ -469,13 +470,13 @@ CAST: RS>BYTES ( n -- ^u8 )
       1+
    repeat ;
 
-: RS-MATCH-AT? ( ^u8 n n ^u8 n -- bool )
+: RS-MATCH-AT? ( str n str -- bool )
    {: source u:n at:n want wu:n :}
    at 0 < if false exit then
    wu u at - > if false exit then
    source at + wu want wu STR= ;
 
-: RS-PEM-LF ( ^u8 n n -- n )
+: RS-PEM-LF ( str n -- n )
    {: pem u:n at:n :}
    u at ?do
       pem i + c@ 10 = if i unloop exit then
@@ -492,7 +493,7 @@ CAST: RS>BYTES ( n -- ^u8 )
 \ OpenSSL ONLY_B64 discards a line's suffix at its first invalid byte.
 \ Its 254-byte line read also needs room for CRLF. Validate complete raw
 \ lines before the decoder can hide any payload.
-: RS-PEM-B64-LINE ( ^u8 n n -- n )
+: RS-PEM-B64-LINE ( str n -- n )
    {: pem u:n at:n :}
    pem u at RS-PEM-LF {: lf:n :}
    lf at - dup 0= if E-KEY throw then
@@ -514,7 +515,7 @@ CAST: RS>BYTES ( n -- ^u8 )
    then
    lf 1+ ;
 
-: RS-PEM-LINE ( ^u8 n n -- n bool )
+: RS-PEM-LINE ( str n -- n bool )
    {: pem u:n at:n :}
    pem u at s" -----END PRIVATE KEY-----" RS-MATCH-AT? if
       at s" -----END PRIVATE KEY-----" nip + {: tail:n :}
@@ -524,7 +525,7 @@ CAST: RS>BYTES ( n -- ^u8 )
    pem u at RS-PEM-B64-LINE false ;
 
 \ Check the full caller span, then pass only its original armor bytes to OpenSSL.
-: RS-PEM-SHAPE ( ^u8 n -- ^u8 n )
+: RS-PEM-SHAPE ( str -- str )
    {: pem u:n :}
    pem u 0 RS-SKIP-SPACE {: start:n :}
    pem u start s" -----BEGIN PRIVATE KEY-----" RS-MATCH-AT? 0= if E-KEY throw then
@@ -550,7 +551,7 @@ CAST: RS>BYTES ( n -- ^u8 )
 \ d2i advances the caller's DER cursor. The OpenSSL 3.0 provider decoder
 \ imports a parsed PrivateKeyInfo without comparing that cursor to its end:
 \ https://github.com/openssl/openssl/blob/openssl-3.0.18/providers/implementations/encode_decode/decode_der2key.c
-: RS-PRIVATE-IMPORT ( ^u8 n -- )
+: RS-PRIVATE-IMPORT ( str -- )
    {: pem u:n :}
    pem u BIO-FROM-DATA dup RS-BIO RS! 0= if E-KEY throw then
    RS-BIO RS@ RS-PEM-LABEL RS-BUF RS-PEM-HEADER RS-BUF
@@ -658,7 +659,7 @@ CAST: RS>BYTES ( n -- ^u8 )
       dup 0= if drop false exit then
    again ;
 
-: RS-VERIFY-RUN ( ^u8 n ^u8 n ^u8 n ^u8 n -- bool )
+: RS-VERIFY-RUN ( str str str str -- bool )
    {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
    modulus nu exponent eu RS-PUBLIC-IMPORT {: k:n :}
    false RS-KEY-CHECK k <> if E-KEY throw then
@@ -675,7 +676,7 @@ CAST: RS>BYTES ( n -- ^u8 )
    then
    drop ERROR-CLEAR E-VERIFY throw ;
 
-: RS-SIGN-RUN ( ^u8 n ^u8 n ^u8 n -- n )
+: RS-SIGN-RUN ( str str ^u8 n -- n )
    {: pem pu:n msg mu:n out cap:n :}
    pem pu RS-PRIVATE-IMPORT
    RS-PRIVATE-PARAMS
@@ -719,7 +720,7 @@ public
 \ plaintext is TAG-BYTES shorter and the output span must hold that much. A
 \ record whose tag does not authenticate its ciphertext and associated data
 \ answers `failed` with the output cleared; no partial plaintext is ever visible.
-: UNSEAL ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- unseal-result )
+: UNSEAL ( str str str str str -- unseal-result )
    {: key ku:n nonce nu:n aad au:n cipher cu:n out ou:n :}
    ku nu au cu ou UNSEAL-OPERANDS
    E-OPEN CTX-OPEN
@@ -729,7 +730,7 @@ public
 
 \ HMAC-SHA-256 of the message under the key, into a span of at least MAC-BYTES.
 \ The key may be any length; libcrypto folds a long one with SHA-256 itself.
-: HMAC-SHA256 ( ^u8 n ^u8 n ^u8 n -- ) {: key ku:n msg mu:n out ou:n :}
+: HMAC-SHA256 ( str str str -- ) {: key ku:n msg mu:n out ou:n :}
    ku SPAN-LEN
    mu SPAN-LEN
    ou MAC-BYTES < if E-OPERAND throw then
@@ -737,7 +738,7 @@ public
    MAC-LEN@ MAC-BYTES <> if E-MAC throw then ;
 
 \ HMAC-SHA-1 has the same span contract, with a MAC1-BYTES digest.
-: HMAC-SHA1 ( ^u8 n ^u8 n ^u8 n -- ) {: key ku:n msg mu:n out ou:n :}
+: HMAC-SHA1 ( str str str -- ) {: key ku:n msg mu:n out ou:n :}
    ku SPAN-LEN
    mu SPAN-LEN
    ou MAC1-BYTES < if E-OPERAND throw then
@@ -746,7 +747,7 @@ public
 
 \ Verify PKCS#1 v1.5 SHA-256 over exact message bytes. JWK integers are
 \ canonical unsigned big-endian byte strings. A wrong signature is false.
-: RS256-VERIFY? ( ^u8 n ^u8 n ^u8 n ^u8 n -- bool )
+: RS256-VERIFY? ( str str str str -- bool )
    {: modulus nu:n exponent eu:n msg mu:n sig su:n :}
    modulus nu RS-SPAN exponent eu RS-SPAN
    msg mu RS-SPAN sig su RS-SPAN
@@ -757,7 +758,7 @@ public
 
 \ Sign with one unencrypted PKCS#8 RSA PRIVATE KEY PEM. The caller owns the
 \ output; on success exactly the modulus width is written and returned.
-: RS256-SIGN ( ^u8 n ^u8 n ^u8 n -- n )
+: RS256-SIGN ( str str str -- n )
    {: pem pu:n msg mu:n out cap:n :}
    pem pu RS-SPAN msg mu RS-SPAN out cap RS-SPAN
    out cap pem pu RS-OVERLAP? if E-OPERAND throw then

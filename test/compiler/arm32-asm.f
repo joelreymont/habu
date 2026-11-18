@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 require src/arch/arm32/asm.f
 

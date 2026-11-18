@@ -1,3 +1,4 @@
+split-str
 \ compile-floor.f - the tier-0 per-definition compile floor: its mean and least.
 \   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS: refuse
 \   a larger trivial-t0 mean, E-FLOOR-EXCEEDED. One line, us per definition:
@@ -43,7 +44,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 \ ---- refusal ----------------------------------------------------------------
 
-: EMIT-ERR ( ^u8 n -- ) {: msg:^ mu :}
+: EMIT-ERR ( str -- ) {: msg:^ mu :}
    FD:STDERR FD>N msg mu write mu <> if
       s" compile-floor: stderr write failed" EXIT-STATUS:IOERR die
    then ;
@@ -56,14 +57,14 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 \ The built set and its teardown load through `evaluate-closed`: definitions
 \ and undefines leave no cell.
 
-: SRC+ ( ^u8 n n -- ) {: a:^ u ix :}
+: SRC+ ( str n -- ) {: a:^ u ix :}
    SRC-FILL @ u + SRC-CAP > if E-FLOOR-CAPACITY throw then
    SRC-FILL @ SRC-OFF ix cells + !
    u SRC-LEN ix cells + !
    a SRC SRC-FILL @ + u BYTE-COPY
    SRC-FILL @ u + SRC-FILL ! ;
 
-: BUILD-SET ( ^u8 n ^u8 n -- ) {: px:^ pu tx:^ tu :}
+: BUILD-SET ( str str -- ) {: px:^ pu tx:^ tu :}
    pu PREFIX-CAP > if E-FLOOR-CAPACITY throw then
    px LIVE-PREFIX pu BYTE-COPY
    pu PREFIX-U !
@@ -74,7 +75,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
       SB$ i SRC+
    loop ;
 
-: DEF$ ( n -- ^u8 n ) {: ix :}
+: DEF$ ( n -- str ) {: ix :}
    SRC SRC-OFF ix cells + @ +  SRC-LEN ix cells + @ ;
 
 \ ---- the measured window ----------------------------------------------------
@@ -118,7 +119,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 \ COMPILE-SET defines every name in the set or throws, so TEARDOWN's count is
 \ exact; a throw leaves SET-LIVE? clear and the partial set in the dictionary,
 \ reachable only if compiling `1 +` fails, which kills the run anyway.
-: MEASURE ( ^u8 n ^u8 n -- ) {: px:^ pu tx:^ tu :}
+: MEASURE ( str str -- ) {: px:^ pu tx:^ tu :}
    TEARDOWN
    px pu tx tu BUILD-SET
    COMPILE-SET
@@ -136,7 +137,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 \ ---- the ratchet ------------------------------------------------------------
 \ The mean carries the cores, so ratchet on a quiet machine.
 
-: FLOOR-US ( ^u8 n -- n )       \ "0.5" -> 500
+: FLOOR-US ( str -- n )       \ "0.5" -> 500
    STR>FLOAT MATCH option
      none OF s" floor must be a decimal number of milliseconds" ARGV:FAIL ENDOF
      some OF US-PER-MS s>f f* f>s ENDOF

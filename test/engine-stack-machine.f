@@ -1,3 +1,4 @@
+split-str
 \ A machine-stack overflow ends named, as a VM stack's does: the record `the
 \ machine stack ran past its bounds` on fd 2 and the exit
 \ status 102, from the crash handler on the thread's alternate signal stack. Control:
@@ -22,31 +23,31 @@ create IMAGE PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 
-: SUBJECT$ ( -- ^u8 n ) SUBJECT SUBJECT-U @ ;
-: IMAGE$ ( -- ^u8 n ) IMAGE IMAGE-U @ ;
+: SUBJECT$ ( -- str ) SUBJECT SUBJECT-U @ ;
+: IMAGE$ ( -- str ) IMAGE IMAGE-U @ ;
 
-: MACHINE$ ( -- ^u8 n )
+: MACHINE$ ( -- str )
    S\" error[E-STACK-BOUNDS]: the machine stack ran past its bounds\n" ;
 
-: SELF$ ( -- ^u8 n ) S\" TRUSTED: R ( -- ) recurse recurse ;\nR\n" ;
-: CELLS$ ( -- ^u8 n ) S\" : R ( n -- n ) 1 + recurse 1 + ;\n0 R\n" ;
-: SELF-CATCH$ ( -- ^u8 n )
+: SELF$ ( -- str ) S\" TRUSTED: R ( -- ) recurse recurse ;\nR\n" ;
+: CELLS$ ( -- str ) S\" : R ( n -- n ) 1 + recurse 1 + ;\n0 R\n" ;
+: SELF-CATCH$ ( -- str )
    S\" TRUSTED: R ( -- ) recurse recurse ;\n: T ( -- n ) ['] R catch ;\nT\n" ;
-: CELLS-CATCH$ ( -- ^u8 n )
+: CELLS-CATCH$ ( -- str )
    S\" : R ( n -- n ) 1 + recurse 1 + ;\n: T ( -- n n ) 0 [: R ;] catch ;\nT\n" ;
 
-: TASK$ ( -- ^u8 n )
+: TASK$ ( -- str )
    S\" require src/lib/task.f\nTRUSTED: R ( -- ) recurse recurse ;\n: R0 ( -- ) R ;\nTASK:MIN-STACK TASK:TASK WORKER\n: GO ( -- ) ['] R0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ;\nGO\n" ;
 
 \ stderr starts with the record's first line.
-: EXPECT-LINE ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
+: EXPECT-LINE ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
    GT-ERR$ want wantu STARTS-WITH? 0= if label labelu GE-FAIL then ;
 
-: RUN-SRC ( ^u8 n -- ) {: src:^ srcu:n :}
+: RUN-SRC ( str -- ) {: src:^ srcu:n :}
    GE-HB-RESET
    GE-HB$ src srcu PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
 
-: MACHINE-EXIT ( ^u8 n -- ) {: label:^ labelu:n :}
+: MACHINE-EXIT ( str -- ) {: label:^ labelu:n :}
    102 label labelu GE-EXPECT-RC
    MACHINE$ label labelu EXPECT-LINE ;
 
@@ -67,14 +68,14 @@ variable IMAGE-U
 
 \ MAIN catches a load from address 0, prints its code and overflows the machine
 \ stack; given an argument, it leaves the load uncaught.
-: STRIPPED-SRC$ ( -- ^u8 n )
+: STRIPPED-SRC$ ( -- str )
    S\" TRUSTED: R ( -- ) recurse recurse ;\n: W ( -- ) NULL-PTR BYTE-VIEW c@ drop ;\n: MAIN ( -- ) ARGC 1 > if W then ['] W catch . R ;\n" ;
 
 \ The fault record's first line, written on fd 2 at the fault, caught or not.
-: FAULT-LINE$ ( -- ^u8 n )
+: FAULT-LINE$ ( -- str )
    S\" error[E-MEMORY-FAULT]: a read or write faulted\n" ;
 
-: FAULT-LINE ( ^u8 n -- ) {: label:^ labelu:n :}
+: FAULT-LINE ( str -- ) {: label:^ labelu:n :}
    GT-ERR$ FAULT-LINE$ STARTS-WITH? 0= if label labelu GE-FAIL then ;
 
 \ The stripped application's own startup registers the alternate stack before it
@@ -104,11 +105,11 @@ variable IMAGE-U
    s" a stripped application's uncaught fault" FAULT-LINE
    s" PASS: a stripped application, its fault caught and uncaught" type cr ;
 
-: OVERFLOW$ ( -- ^u8 n ) S\" : X ( n -- ) begin dup recurse again ;\n0 X\n" ;
+: OVERFLOW$ ( -- str ) S\" : X ( n -- ) begin dup recurse again ;\n0 X\n" ;
 
 \ The record REJECTION writes for a data-stack overflow in X, as JSON when json
 \ is set.
-: RECORD$ ( bool -- ^u8 n ) {: json:bool :}
+: RECORD$ ( bool -- str ) {: json:bool :}
    REJECTION:JSON @ {: was:n :}
    json REJECTION:JSON !  REJECTION:CAPTURE
    s" E-STACK-BOUNDS" REJECTION:OPEN
@@ -131,11 +132,11 @@ variable IMAGE-U
    SB$ true s" a data-stack overflow under REJECTION:JSON" CONTROL
    s" PASS: the data-stack control, in prose and in JSON" type cr ;
 
-: FAULT$ ( -- ^u8 n )
+: FAULT$ ( -- str )
    S\" -1 REJECTION:JSON !\n: W ( -- ) NULL-PTR BYTE-VIEW c@ drop ;\nW\n" ;
 
 \ The JSON record REJECTION writes for a load from address 0 in W.
-: FAULT-RECORD$ ( -- ^u8 n )
+: FAULT-RECORD$ ( -- str )
    REJECTION:JSON @ {: was:n :}
    -1 REJECTION:JSON !  REJECTION:CAPTURE
    s" E-MEMORY-FAULT" REJECTION:OPEN

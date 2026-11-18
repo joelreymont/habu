@@ -1,3 +1,4 @@
+split-str
 \ http-test.f - the HTTP/1.1 server answered over a real loopback port.
 \ CURL is the client for ordinary responses; raw TCP4 sends what a well-behaved
 \ client cannot and reads heads CURL does not hand back. A pinned raw head is
@@ -135,15 +136,15 @@ variable PARKED
    ROOT-BUF ROOT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: RES$ ( -- ^u8 n )
+: RES$ ( -- str )
    RES-BUF RES-U @ ;
 
 
-: REQ$ ( -- ^u8 n )
+: REQ$ ( -- str )
    REQ-BUF REQ-U @ SPAN:TAKE SPAN:$ ;
 
 
-: ETAG$ ( -- ^u8 n )
+: ETAG$ ( -- str )
    ETAG-BUF ETAG-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -204,12 +205,12 @@ variable ITEM-HOST-N
 create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
 
 
-: PARAM-TEXT ( ^u8 n -- )
+: PARAM-TEXT ( str -- )
    BUF:N>BLEN PARAM-BUF BUF:APPEND-SPAN ;
 
 
 \ `key=[value] true`, or `key=[] false` for a parameter the query lacks.
-: PARAM-ONE ( HTTP:request ^u8 n -- )
+: PARAM-ONE ( HTTP:request str -- )
    {: asked:HTTP:request key:^ keyu:n :}
    key keyu PARAM-TEXT
    s" =[" PARAM-TEXT
@@ -494,7 +495,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
    JSON:WRITE-OBJECT-END ;
 
 
-: JSON-ERROR ( HTTP:response n ^u8 n ^u8 n -- )
+: JSON-ERROR ( HTTP:response n str str -- )
    {: answer:HTTP:response status:n code:^ codelen:n message:^ messagelen:n :}
    HTTP:WORKER-SLOT {: idx:n :}
    answer idx ERR-ANSWER !
@@ -507,13 +508,13 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 
 \ Only a path the build hashes may be cached for a year.
-: IMMUTABLE-CACHE ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
+: IMMUTABLE-CACHE ( str -- str ) {: path:^ len:n :}
    path len s" /_app/immutable/" STARTS-WITH?
    if s" public, max-age=31536000, immutable" exit then
    s" no-cache" ;
 
 
-: EXTENSION? ( ^u8 n -- bool ) {: path:^ len:n :}
+: EXTENSION? ( str -- bool ) {: path:^ len:n :}
    len 0 ?do
       path len 1- i - + c@ {: byte:n :}
       byte SLASH = if false unloop exit then
@@ -524,7 +525,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 \ A single-page application's client routes: anything outside /api/ whose last
 \ segment names no file extension is answered with the one page.
-: CLIENT-ROUTE ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
+: CLIENT-ROUTE ( str -- str ) {: path:^ len:n :}
    path len s" /api/" STARTS-WITH? if path 0 exit then
    path len EXTENSION? if path 0 exit then
    s" /index.html" ;
@@ -541,7 +542,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 \ the status it was owed and nothing of the header this hook added.
 variable RENDERS
 
-: RENDER-THROWS ( HTTP:response n ^u8 n ^u8 n -- )
+: RENDER-THROWS ( HTTP:response n str str -- )
    {: answer:HTTP:response status:n code:^ codelen:n message:^ messagelen:n :}
    1 RENDERS atomic-add drop
    answer s" X-Hook" s" partial" HTTP:HEADER!
@@ -570,7 +571,7 @@ SLOTS TYPED-BUFFER TRACE-U n
    TRACE-CAP * TRACE-ROWS + ;
 
 
-: TRACE$ ( n -- ^u8 n ) {: slot:n :}
+: TRACE$ ( n -- str ) {: slot:n :}
    slot TRACE-AT slot TRACE-U @ ;
 
 
@@ -724,15 +725,15 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/gate" [: GATED ;] HTTP:ROUTE ;
 
 
-: UNDER-ROOT ( ^u8 n -- n ) {: name:^ len:n :}
+: UNDER-ROOT ( str -- n ) {: name:^ len:n :}
    ROOT$ name len PATH-BUF FS:JOIN-PATH ;
 
 
-: INDEX-TEXT$ ( -- ^u8 n )
+: INDEX-TEXT$ ( -- str )
    S\" <!doctype html><title>http-test</title>\n" ;
 
 
-: ASSET-TEXT$ ( -- ^u8 n )
+: ASSET-TEXT$ ( -- str )
    S\" export const build = 1;\n" ;
 
 
@@ -766,7 +767,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    ;MATCH ;
 
 
-: URL-FOR ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
+: URL-FOR ( str -- str ) {: path:^ len:n :}
    SB-RESET
    s" http://127.0.0.1:" SB-APPEND
    HTTP:PORT FMT:SB-U
@@ -813,7 +814,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-: FETCH-IF-NONE-MATCH ( ^u8 n ^u8 n -- n )
+: FETCH-IF-NONE-MATCH ( str str -- n )
    {: path:^ pathlen:n etag:^ etaglen:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathlen URL-FOR CURL:URL! DROP-CURL-STATUS
@@ -826,7 +827,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-: POST-JSON ( ^u8 n ^u8 n -- n ) {: body:^ bodylen:n path:^ pathlen:n :}
+: POST-JSON ( str str -- n ) {: body:^ bodylen:n path:^ pathlen:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathlen URL-FOR CURL:URL! DROP-CURL-STATUS
    subject s" Content-Type: application/json" CURL:HEADER+ DROP-CURL-STATUS
@@ -846,7 +847,7 @@ $2710 constant PARK-MS            \ far past every stop bound
 
 \ A refused request may be answered and the connection closed before the whole
 \ request has been sent, so a short write is part of the case, not a failure.
-: RAW-SEND ( TCP4:connection ^u8 n -- )
+: RAW-SEND ( TCP4:connection str -- )
    {: conn:TCP4:connection bytes:^ len:n :}
    conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS ;
 
@@ -870,7 +871,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    again ;
 
 
-: RAW-EXCHANGE ( ^u8 n -- ) {: bytes:^ len:n :}
+: RAW-EXCHANGE ( str -- ) {: bytes:^ len:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes len RAW-SEND
    conn RAW-DRAIN
@@ -890,7 +891,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    drop ;
 
 
-: RAW-COLLECT ( TCP4:connection ^u8 n -- bool )
+: RAW-COLLECT ( TCP4:connection str -- bool )
    {: conn:TCP4:connection want:^ len:n :}
    0 RES-U !
    begin
@@ -901,7 +902,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    again ;
 
 
-: RAW-ASK ( ^u8 n ^u8 n -- bool ) {: bytes:^ len:n want:^ wantlen:n :}
+: RAW-ASK ( str str -- bool ) {: bytes:^ len:n want:^ wantlen:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes len RAW-SEND
    conn want wantlen RAW-COLLECT
@@ -912,7 +913,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    0 REQ-U ! ;
 
 
-: REQ+ ( ^u8 n -- ) {: bytes:^ len:n :}
+: REQ+ ( str -- ) {: bytes:^ len:n :}
    bytes len REQ-BUF REQ-U @ SPAN:SKIP SPAN:COPY
    REQ-U @ len + REQ-U ! ;
 
@@ -923,7 +924,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    REQ-U @ count + REQ-U ! ;
 
 
-: RAW-ONE ( ^u8 n -- )
+: RAW-ONE ( str -- )
    REQ-RESET REQ+ REQ$ RAW-EXCHANGE ;
 
 
@@ -931,7 +932,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 \ The pause makes the server read the request in two fills.
-: RAW-SPLIT ( ^u8 n n -- )
+: RAW-SPLIT ( str n -- )
    {: bytes:^ len:n cut:n :}
    RAW-OPEN {: conn:TCP4:connection :}
    conn bytes cut RAW-SEND
@@ -941,7 +942,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    conn TCP4:CLOSE DROP-TCP-STATUS ;
 
 
-: BEGINS? ( ^u8 n -- bool ) {: want:^ len:n :}
+: BEGINS? ( str -- bool ) {: want:^ len:n :}
    RES$ want len STARTS-WITH? ;
 
 
@@ -973,11 +974,11 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    len ETAG-U ! ;
 
 
-: SCRIPT$ ( -- ^u8 n )
+: SCRIPT$ ( -- str )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: SCRIPT+ ( ^u8 n -- ) {: bytes:^ len:n :}
+: SCRIPT+ ( str -- ) {: bytes:^ len:n :}
    bytes len SCRIPT-BUF SCRIPT-U @ SPAN:SKIP SPAN:COPY
    SCRIPT-U @ len + SCRIPT-U ! ;
 
@@ -994,7 +995,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    loop ;
 
 
-: BLANK-LINE$ ( -- ^u8 n )
+: BLANK-LINE$ ( -- str )
    S\" \r\n\r\n" ;
 
 
@@ -1016,7 +1017,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 \ The case's name, then the status line and headers of every response the last
 \ raw exchange read, each followed by a blank line.
-: TRANSCRIBE ( ^u8 n -- ) {: name:^ len:n :}
+: TRANSCRIBE ( str -- ) {: name:^ len:n :}
    s" == " SCRIPT+ name len SCRIPT+ LF SCRIPT+C
    0
    begin
@@ -1030,7 +1031,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    again ;
 
 
-: WANT$ ( -- ^u8 n )
+: WANT$ ( -- str )
    WANT-BUF WANT-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -1209,7 +1210,7 @@ create ERR-PATH-BUF PATH-CAP allot
 ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
-: ERR-PATH$ ( -- ^u8 n )
+: ERR-PATH$ ( -- str )
    ERR-PATH-BUF ERR-PATH-U @ ;
 
 
@@ -1294,7 +1295,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 \ A JSON body past 1 MiB arrives whole, and the worker answers the next
 \ request from a cleared writer.
-: BIG-ANSWER? ( ^u8 n -- bool ) {: bytes:^ len:n :}
+: BIG-ANSWER? ( str -- bool ) {: bytes:^ len:n :}
    len BIG-ANSWER-BYTES <> if false exit then
    bytes 8 S\" {\qbig\q:\q" STR= 0= if false exit then
    bytes len + 2 - 2 S\" \q}" STR= 0= if false exit then
@@ -1405,7 +1406,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" bad-request" TRANSCRIBE ;
 
 
-: PING-LINE ( ^u8 n -- )
+: PING-LINE ( str -- )
    {: line:^ lu:n :}
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\n" REQ+
@@ -2051,7 +2052,7 @@ $C8 constant STALL-MARGIN-MS
    s" partial" HAS? TFALSE ;
 
 
-: SPLIT-PING ( n ^u8 n -- )
+: SPLIT-PING ( n str -- )
    {: taken:n name:^ nu:n :}
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" {: head:^ len:n :}
    head len len BLANK-LINE$ nip - taken + RAW-SPLIT
@@ -2256,7 +2257,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 
 \ Writes the bytes over and over until a write fails: the reset a close sends
 \ a peer whose bytes are still unread.
-: KEEP-SENDING ( ^u8 n -- ) {: bytes:^ len:n :}
+: KEEP-SENDING ( str -- ) {: bytes:^ len:n :}
    0 SENDER-CONN @ {: conn:TCP4:connection :}
    begin
       conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
@@ -2581,7 +2582,7 @@ variable REFUSED-CODE
 \ A start at that address and port with fd 2 captured, then the want text: the
 \ line's part after the stamp, up to the errno, built in the string builder
 \ once the capture and the start no longer use it.
-: REFUSED-START ( n n ^u8 n -- ) {: address:n port:n dotted:^ dottedlen:n :}
+: REFUSED-START ( n n str -- ) {: address:n port:n dotted:^ dottedlen:n :}
    address REFUSED-ADDRESS !
    port REFUSED-PORT !
    ERR-PATH-MAKE
@@ -2650,7 +2651,7 @@ $400001 constant BIG-FILE-BYTES
 BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 
 
-: TREE$ ( -- ^u8 n )
+: TREE$ ( -- str )
    TREE-BUF TREE-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -2661,7 +2662,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    u TREE-U ! ;
 
 
-: TREE-UNDER ( ^u8 n -- n ) {: name:^ len:n :}
+: TREE-UNDER ( str -- n ) {: name:^ len:n :}
    TREE$ name len PATH-BUF FS:JOIN-PATH ;
 
 
@@ -2726,17 +2727,17 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 \ A directory whose identity matches an ancestor's is a cycle and refuses the
 \ root; links that reach a directory by another path are served under it.
 
-: TREE-FILE ( ^u8 n ^u8 n -- ) {: name:^ namelen:n text:^ textlen:n :}
+: TREE-FILE ( str str -- ) {: name:^ namelen:n text:^ textlen:n :}
    name namelen TREE-UNDER {: len:n :}
    PATH-BUF len text textlen FS:WRITE-ALL ;
 
 
-: TREE-DIR ( ^u8 n -- )
+: TREE-DIR ( str -- )
    TREE-UNDER {: len:n :}
    PATH-BUF len FS:MAKE-DIR ;
 
 
-: TREE-LINK ( ^u8 n ^u8 n -- ) {: target:^ targetlen:n name:^ namelen:n :}
+: TREE-LINK ( str str -- ) {: target:^ targetlen:n name:^ namelen:n :}
    name namelen TREE-UNDER {: len:n :}
    target targetlen PATH-BUF len FS:MAKE-SYMLINK ;
 
@@ -2819,7 +2820,7 @@ LATER-CAP SPAN-BUFFER: LATER-BUF
 SB-CAP SPAN-BUFFER: LONG-TYPE
 
 
-: LATER$ ( -- ^u8 n )
+: LATER$ ( -- str )
    LATER-BUF LATER-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -2832,7 +2833,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    ;MATCH ;
 
 
-: LATER-TYPE$ ( -- ^u8 n )
+: LATER-TYPE$ ( -- str )
    LATER-LONG @ 0<> if LONG-TYPE SPAN:$ exit then
    s" application/json" ;
 
@@ -2893,11 +2894,11 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    [: LATER-REPLY ;] LATER-ASK ;
 
 
-: LATER-OK$ ( -- ^u8 n )
+: LATER-OK$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\qlater\q:true}" ;
 
 
-: LATER-EMPTY$ ( -- ^u8 n )
+: LATER-EMPTY$ ( -- str )
    S\" HTTP/1.1 204 No Content\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" ;
 
 

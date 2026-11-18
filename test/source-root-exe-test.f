@@ -1,3 +1,4 @@
+split-str
 \ source-root-exe-test.f - the engine finds its source root from its executable
 \ (src/core/include.f SOURCE-ROOT:ENGINE$), with no environment variable: an
 \ editor starts a language server in a working directory it cannot choose. The
@@ -55,35 +56,35 @@ variable OUT-U
 variable ERR-U
 variable RC
 
-: GATE$ ( -- ^u8 n ) GATE GATE-U @ ;
-: TOP$ ( -- ^u8 n ) TOP TOP-U @ ;
-: FOREIGN$ ( -- ^u8 n ) FOREIGN FOREIGN-U @ ;
-: HB$ ( -- ^u8 n ) HB HB-U @ ;
-: B-ROOT$ ( -- ^u8 n ) B-ROOT B-ROOT-U @ ;
+: GATE$ ( -- str ) GATE GATE-U @ ;
+: TOP$ ( -- str ) TOP TOP-U @ ;
+: FOREIGN$ ( -- str ) FOREIGN FOREIGN-U @ ;
+: HB$ ( -- str ) HB HB-U @ ;
+: B-ROOT$ ( -- str ) B-ROOT B-ROOT-U @ ;
 : OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
-: COPY! ( ^u8 n ^u8 ^n -- )
+: COPY! ( str ^u8 ^n -- )
    {: a:^ u:n dst:^ lenp:^ :}
    u CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY u lenp ! ;
 
 \ <tmp>/<rel> in one of three buffers, so a call can hold an engine and two
 \ paths at once.
-: A$ ( ^u8 n -- ^u8 n )
+: A$ ( str -- str )
    {: rel:^ relu:n :}
    TOP$ rel relu PA FS:JOIN-PATH PA swap ;
 
-: B$ ( ^u8 n -- ^u8 n )
+: B$ ( str -- str )
    {: rel:^ relu:n :}
    TOP$ rel relu PB FS:JOIN-PATH PB swap ;
 
-: HB-AT$ ( ^u8 n -- ^u8 n )
+: HB-AT$ ( str -- str )
    {: rel:^ relu:n :}
    TOP$ rel relu PE FS:JOIN-PATH PE swap ;
 
 \ <gate tree>/<rel>
-: GATE-B$ ( ^u8 n -- ^u8 n )
+: GATE-B$ ( str -- str )
    {: rel:^ relu:n :}
    GATE$ rel relu PB FS:JOIN-PATH PB swap ;
 
@@ -91,20 +92,20 @@ variable RC
 
 : PROG-RESET ( -- ) 0 PROG-U ! ;
 
-: PLINE ( ^u8 n -- )
+: PLINE ( str -- )
    {: a:^ u:n :}
    PROG-U @ u + 1+ PROG-CAP > if E-STR-CAPACITY throw then
    a PROG PROG-U @ + u BYTE-COPY
    10 PROG PROG-U @ u + + c!
    PROG-U @ u + 1+ PROG-U ! ;
 
-: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
+: PROG$ ( -- str ) PROG PROG-U @ ;
 
 : YN-LINE ( -- )
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" PLINE ;
 
 \ `<word> <tmp>/<rel>` as a program line.
-: PATH-LINE ( ^u8 n ^u8 n -- )
+: PATH-LINE ( str str -- )
    {: word:^ wordu:n rel:^ relu:n :}
    SB-RESET word wordu SB-APPEND s"  " SB-APPEND rel relu A$ SB-APPEND SB$ PLINE ;
 
@@ -113,20 +114,20 @@ variable RC
    name nameu A$ text textu FS:WRITE-ALL ;
 
 \ <tmp>/<link> names <gate tree>/<sub>.
-: GATE-LINK ( ^u8 n ^u8 n -- )
+: GATE-LINK ( str str -- )
    {: sub:^ subu:n link:^ linku:n :}
    sub subu GATE-B$ link linku A$ FS:MAKE-SYMLINK ;
 
 \ <tmp>/<rel> is a copy of the engine under test: a symlink would resolve to
 \ the candidate's own location.
-: PLACE-ENGINE ( ^u8 n -- )
+: PLACE-ENGINE ( str -- )
    {: rel:^ relu:n :}
    HB$ rel relu A$ FS:COPY-FILE-STREAM
    rel relu A$ FS:CHMOD-X ;
 
 \ <tmp>/b/<path> is a real copy of the gate tree's file: a symlink back would
 \ resolve to the gate tree.
-: B-COPY ( ^u8 n -- )
+: B-COPY ( str -- )
    {: a:^ u:n :}
    a u FS:FILE? 0= if exit then
    B-ROOT$ a u CWD$ RELATIVE COPY-DST FS:JOIN-PATH {: size:n :}
@@ -269,14 +270,14 @@ variable DEEP-U
    tmpu 0= if exit then
    s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET ;
 
-: RUN-ARGS ( ^u8 n ^u8 n -- )
+: RUN-ARGS ( str str -- )
    {: exe:^ exeu:n cwd:^ cwdu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT! ;
 
-: RUN-EXE ( ^u8 n ^u8 n ^u8 n -- )
+: RUN-EXE ( str str str -- )
    {: exe:^ exeu:n cwd:^ cwdu:n in:^ inu:n :}
    CHILD-ENV
    exe exeu >LEN cwd cwdu >LEN in inu >LEN
@@ -308,7 +309,7 @@ variable DEEP-U
 
 \ The loader's rejection of the missing request name, which it looked for at
 \ <dir>/<name> among others, a rejection.
-: CANNOT-OPEN ( ^u8 n ^u8 n -- )
+: CANNOT-OPEN ( str str -- )
    {: dir:^ diru:n name:^ nameu:n :}
    SB-RESET s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND
    name nameu SB-APPEND 96 SB-APPEND-C
@@ -344,7 +345,7 @@ variable DEEP-U
    s" ;package" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE ;
 
-: FROM-FOREIGN ( ^u8 n -- )
+: FROM-FOREIGN ( str -- )
    {: exe:^ exeu:n :}
    PROC-ARGV-RESET
    ROOT-PROGRAM
@@ -545,17 +546,17 @@ variable DEEP-U
    SB-RESET 96 SB-APPEND-C s" foreign/x.f" A$ SB-APPEND
    s" ` is a boot file outside the engine root" SB-APPEND SB$ SAYS ;
 
-: CD-PROG ( ^u8 n -- ) {: rel:^ relu:n :}
+: CD-PROG ( str -- ) {: rel:^ relu:n :}
    PROG-RESET s" source-root:cd" rel relu PATH-LINE ;
 
 \ CD's rejection naming <tmp>/<rel>, and why.
-: CD-WANT ( ^u8 n ^u8 n -- )
+: CD-WANT ( str str -- )
    {: rel:^ relu:n want:^ wantu:n :}
    s" error[E-SOURCE-ROOT]" REJECTED
    SB-RESET s" `source-root:cd` got `" SB-APPEND rel relu A$ SB-APPEND 96 SB-APPEND-C SB$ SAYS
    want wantu SAYS ;
 
-: CD-REFUSED ( ^u8 n ^u8 n ^u8 n -- )
+: CD-REFUSED ( str str str -- )
    {: label:^ labelu:n rel:^ relu:n want:^ wantu:n :}
    label labelu T-LABEL
    rel relu CD-PROG

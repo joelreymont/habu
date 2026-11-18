@@ -1,3 +1,4 @@
+split-str
 \ code-window.f - the code region's RX view is never writable. The region is
 \ mapped twice (src/habu/habu2.f EM-MMAP-CODE-REGION): code runs from DBASE and
 \ every store goes to the RW alias at DBASE plus REGION-ALIAS:DELTA-CELL. A
@@ -18,7 +19,7 @@ package CODE-WINDOW-TEST
 
 $800 constant CAP
 \ The uncaught fault's record up to its address.
-: FAULT-RECORD$ ( -- ^u8 n )
+: FAULT-RECORD$ ( -- str )
    S\" error[E-MEMORY-FAULT]: a read or write faulted\n  = address: 0x" ;
 
 create OUT CAP allot

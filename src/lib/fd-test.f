@@ -1,3 +1,4 @@
+split-str
 \ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes,
 \ a write with SIGPIPE held off, how far a tried write got, one write that never
 \ waits; a temp file cut back and appended to, a directory synced, and a temp

@@ -1,3 +1,4 @@
+split-str
 \ jsonl.f - JSONL framing: a caller-owned file cursor and a memory splitter.
 \ Between OPEN and the end of input or CLOSE a cursor owns its descriptor, line
 \ BUF, 8192-byte block mapping and JSON:cursor record; at the end of input and
@@ -155,7 +156,7 @@ public
 
 \ The physical line at pos, the position after its LF (u when unterminated)
 \ and true; at or past the end an empty span at pos, pos and false.
-: SPLIT-LINE ( ^u8 n n -- ^u8 n n bool )
+: SPLIT-LINE ( str n -- str n bool )
    {: a:^ u:n pos:n :}
    u 0 < if E-SOURCE throw then
    u 0 > a 0= and if E-SOURCE throw then

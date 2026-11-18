@@ -1,3 +1,4 @@
+split-str
 \ interpreter-loop-on.f - files after it on a --load line are read by
 \ INTERPRETER:EVAL-FRAMED-RANGE, so arm64 exercises the entry a sealed x86-64
 \ engine reads every loaded file through.

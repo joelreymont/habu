@@ -1,3 +1,4 @@
+split-str
 \ take-test.f - test/browser/take.f's module under bun: a delivery a turn takes
 \ with BROWSER-EVENT:TAKE (src/lib/browser/event.f) outlives the turn, and the
 \ module frees it in a later one. The module is built by tools/hb-build.f and

@@ -1,3 +1,4 @@
+split-str
 \ postpone-stored.f - a file that stores a definer's type, which
 \ test/fixtures/postpone-stored-use.f requires; rejected at HELD.
 

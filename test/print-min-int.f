@@ -1,3 +1,4 @@
+split-str
 \ `.` and `u.` over MIN-N ($8000000000000000), whose negation is itself. The
 \ engine's signed printer (src/habu/rt.f G-PRINT9) negates and then divides
 \ unsigned, which reads the negated pattern as its magnitude; a signed divide
@@ -36,7 +37,7 @@ variable SINK-DEV
    c SINK SINK-N @ + c!
    SINK-N @ 1+ SINK-N ! ;
 
-: SINK-WRITE ( ^u8 n -- ) {: a:^ u:n :}
+: SINK-WRITE ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ SINK-PUT loop ;
 
 : SINK-KEY ( -- n )
@@ -88,12 +89,12 @@ variable SINK-DEV
    TERMINATOR LF T=
    SINK-OVER @ 0 T= ;
 
-: T-DOT ( n ^u8 n -- ) {: v:n wa:^ wu:n :}
+: T-DOT ( n str -- ) {: v:n wa:^ wu:n :}
    wa wu T-LABEL
    v DOT-CAPTURED
    wa wu CHECKED ;
 
-: T-U. ( n ^u8 n -- ) {: v:n wa:^ wu:n :}
+: T-U. ( n str -- ) {: v:n wa:^ wu:n :}
    wa wu T-LABEL
    v U-CAPTURED
    wa wu CHECKED ;

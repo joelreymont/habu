@@ -1,3 +1,4 @@
+split-str
 \ code-dump-core.f - decode the exact live code span of a dictionary word.
 
 require src/habu/boot-cells.f
@@ -60,7 +61,7 @@ public
 \ Evaluates caller source through the real compiler before lookup. The program
 \ defines words and leaves nothing: a text that leaves or takes cells is
 \ rejected with a record and 70.
-: LOAD-PROGRAM ( ^u8 n -- )
+: LOAD-PROGRAM ( str -- )
    evaluate-closed ;
 
 : MAIN ( -- )

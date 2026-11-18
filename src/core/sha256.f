@@ -1,3 +1,4 @@
+split-str
 \ sha256.f — SHA-256 (FIPS-180) in the standalone's Forth ($hex constants,
 \ DO/LOOP, no move/fill/hex), used to self-sign the standalone's Mach-O. A digest
 \ runs in a context span the caller owns (SHA256-CTX-BYTES; a file context is
@@ -58,12 +59,12 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 : BE64! ( n ^u8 -- ) {: w:n p :}
    8 0 DO  w 56 i 8 * - rshift $FF and  p i ZBYTE!  LOOP ;
 
-: ZFILL ( ^u8 n -- ) {: p n:n :}
+: ZFILL ( str -- ) {: p n:n :}
    n 0 DO  0 p i ZBYTE!  LOOP ;
 
 \ NB: the standalone's plain DO is do-while (0 0 DO runs once), so every loop that
 \ can have zero trips is guarded with `0 > if ... then`.
-: BMOVE ( ^u8 ^u8 n -- ) {: src dst n:n :}
+: BMOVE ( ^u8 str -- ) {: src dst n:n :}
    n 0 > if
       n 0 DO  src i ZBYTE@  dst i ZBYTE!  LOOP
    then ;
@@ -141,7 +142,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 
 \ The CPU's SHA-256 instructions compress what blocks they can (sha256-blocks
 \ answers 0 on a machine without them); SHA-BLOCK compresses the rest.
-: SHA-COMPRESS ( ^u8 ^u8 n -- )
+: SHA-COMPRESS ( ^u8 str -- )
    {: ctx blk n:n :}
    ctx CELL-VIEW blk n sha256-blocks {: done:n :}
    n done - 0 > if
@@ -154,13 +155,13 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    0 cv SHA-TAIL-U!
    0 cv SHA-TOTAL! ;
 
-: SHA-TAKE-TAIL ( ^u8 ^u8 n -- ) {: ctx a n:n :}
+: SHA-TAKE-TAIL ( ^u8 str -- ) {: ctx a n:n :}
    ctx CELL-VIEW {: cv :}
    a  ctx SHA-TAIL-A cv SHA-TAIL-U@ ZPTR+  n BMOVE
    cv SHA-TAIL-U@ n + cv SHA-TAIL-U! ;
 
 \ top the tail up from [a,u) and compress it when it fills; answers what is left
-: SHA-FILL-TAIL ( ^u8 ^u8 n -- ^u8 n ) {: ctx a u:n :}
+: SHA-FILL-TAIL ( ^u8 str -- ^u8 n ) {: ctx a u:n :}
    ctx CELL-VIEW {: cv :}
    cv SHA-TAIL-U@ 0 = if a u exit then
    u 0 = if a u exit then
@@ -181,7 +182,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    ctx a nb SHA-COMPRESS
    a nb $40 * ZPTR+  u nb $40 * - ;
 
-: SHA256-FEED ( ^u8 ^u8 n -- ) {: ctx a u:n :}
+: SHA256-FEED ( ^u8 str -- ) {: ctx a u:n :}
    ctx CELL-VIEW {: cv :}
    cv SHA-TOTAL@ u + cv SHA-TOTAL!
    ctx a u SHA-FILL-TAIL {: a1 u1:n :}
@@ -190,7 +191,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 
 \ pad the context's live tail, as the end of a ub-byte message, into its PBLK;
 \ returns the block count (1|2)
-: SHA-PAD ( ^u8 n -- n ) {: ctx ub:n :}
+: SHA-PAD ( str -- n ) {: ctx ub:n :}
    ctx CELL-VIEW SHA-TAIL-U@ {: tl:n :}
    ctx SHA-PBLK-A {: pblk :}
    pblk $80 ZFILL  ctx SHA-TAIL-A pblk tl BMOVE  $80 pblk tl ZBYTE!
@@ -262,7 +263,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    fd close
    rc ;
 
-: SHA256-FILE-HEX-IN ( ^u8 ^u8 n ^u8 -- n ) {: fctx a u:n out :}
+: SHA256-FILE-HEX-IN ( ^u8 str ^u8 -- n ) {: fctx a u:n out :}
    fctx SHA-FILE-DG {: dg :}
    fctx a u dg SHA256-FILE-IN {: rc:n :}
    rc 0 <> if rc exit then

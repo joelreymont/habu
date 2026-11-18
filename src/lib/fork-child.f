@@ -1,3 +1,4 @@
+split-str
 \ fork-child.f - the resets a process forked through PROC-FORK:RAW runs first:
 \ fork copies only the calling thread, so process-wide state another task was
 \ part way through (a lock it held, a setup it had begun) would wait for ever in

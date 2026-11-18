@@ -1,3 +1,4 @@
+split-str
 \ habu2.f — engine-builder part 2: the kernel's routines (definition writers,
 \ snapshot relocation, compile-error tails), the primitive sections and kernel
 \ emission. Needs habu1.f (part 1). Emission is split into phase words sharing
@@ -54,7 +55,7 @@ public
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
 private
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
-: UNCMSG$ ( -- ^u8 n )   s" hb: uncaught throw code " ;
+: UNCMSG$ ( -- str )   s" hb: uncaught throw code " ;
 : UNCMSG-LEN ( -- n )   UNCMSG$ nip ;
 public
 
@@ -80,7 +81,7 @@ public
 
 variable LPLACEEND            \ ": " — what LPLACE writes after <path> or <path>:<line>
 private
-: PLACEEND$ ( -- ^u8 n )   s" : " ;
+: PLACEEND$ ( -- str )   s" : " ;
 : PLACEEND-LEN ( -- n )   PLACEEND$ nip ;
 
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
@@ -351,7 +352,7 @@ private
 
 package ENGINE-EMIT
 private
-: RECWPUB$ ( -- ^u8 n )      s" rec-wide-publish" ;
+: RECWPUB$ ( -- str )      s" rec-wide-publish" ;
 ;package
 
 \ The baked `trust-raw` and `trust-decl` strings a missing checker word names.
@@ -360,10 +361,10 @@ package KWDATA
 public
 
 variable LKWTRUSTRAW
-: TRUSTRAW$ ( -- ^u8 n )   s" trust-raw" ;
+: TRUSTRAW$ ( -- str )   s" trust-raw" ;
 
 variable LKWTRUSTDECL
-: TRUSTDECL$ ( -- ^u8 n )   s" trust-decl" ;
+: TRUSTDECL$ ( -- str )   s" trust-decl" ;
 
 : EMIT ( -- )
    LKWTRUSTDECL LABEL@ LBL, TRUSTDECL$ BYTES,      LKWTRUSTRAW LABEL@ LBL, TRUSTRAW$ BYTES, ;
@@ -484,7 +485,7 @@ public
 \ x11 = the operation at OFF in the source owner's record. An owner whose record
 \ ends before OFF (its byte size at [record-8]) or holds 0 there writes the line
 \ MA MU to fd 2 and exits EXIT-STATUS:INTERNAL.
-: C-OWNER-FIELD ( n ^u8 n -- ) {: off:n ma:^ mu:n :}
+: C-OWNER-FIELD ( n str -- ) {: off:n ma:^ mu:n :}
    LBL LBL LBL {: absent:label msg:label ready:label :}
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
    10 11 8 SUBI,  10 10 0 LDR,
@@ -588,10 +589,10 @@ public
 
 private
 
-: NONE-CLASS$ ( -- ^u8 n )
+: NONE-CLASS$ ( -- str )
    s" E-DOES-UNCREATED habu: " ;
 
-: NONE$ ( -- ^u8 n )
+: NONE$ ( -- str )
    s" does> has no created word" ;
 
 \ A LASTC of zero names no record: none was created since boot, or the one it
@@ -815,7 +816,7 @@ package DEFWRITE
 
 \ The refusal at the label: the text and the primitive's lr, which BLs in the
 \ body replace and the frame keeps.
-: REFUSE-AT ( ^u8 n label n -- ) {: a:^ u:n at:label rc:n :}
+: REFUSE-AT ( str label n -- ) {: a:^ u:n at:label rc:n :}
    at LBL,  0 CALLER-LR,  a u rc DIE-LINE, ;
 
 \ x<dst> = the address of record x<ix>; dst and ix differ.
@@ -1302,7 +1303,7 @@ variable LREPLAYTRAP
 
 \ ( ^u8 n -- ): the span into the cells aoff and uoff while a
 \ definition is pending.
-: PENDING-SPAN ( ^u8 n n n -- ) {: a:^ u:n aoff:n uoff:n :}
+: PENDING-SPAN ( str n n -- ) {: a:^ u:n aoff:n uoff:n :}
    LBL LBL {: bad done :}
    12 G-POP  11 G-POP
    9 DATA PEND-CELL LDR,  9 bad CBZ,

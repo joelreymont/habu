@@ -1,3 +1,4 @@
+split-str
 \ pg-rows-test.f - package PG's row readers and statements against a live
 \ PostgreSQL server.
 \
@@ -41,10 +42,10 @@ $5000 constant LONG-TEXT          \ a text longer than an arena's first chunk
 TYPED-VARIABLE CONN PG:connection
 
 
-: CONNINFO$ ( -- ^u8 n )
+: CONNINFO$ ( -- str )
    0 SCRIPT-ARGV$ ;
 
-: PERSON-SQL$ ( -- ^u8 n )
+: PERSON-SQL$ ( -- str )
    s" select id, name, nick, score, boss, active from person where id = $1" ;
 
 
@@ -58,17 +59,17 @@ TYPED-VARIABLE CONN PG:connection
    s" insert into person values (1, 'Ada', 'ada', 0.5, null, true), (2, 'Grace', null, null, 1, false)" RUN ;
 
 
-: NAMES-ROW ( PG:result -- ^u8 n ^u8 n bool PG:result )
+: NAMES-ROW ( PG:result -- str str bool PG:result )
    1 PG:COL-TEXT rot
    2 PG:COL-TEXT? {: ka:^ ku:n given:bool :}
    ka ku rot given swap ;
 
 
-: NAMES-OF ( PG:connection n -- ^u8 n ^u8 n bool )
+: NAMES-OF ( PG:connection n -- str str bool )
    PERSON-SQL$ [: NAMES-ROW ;] PG:BY-ID ;
 
 
-: CHURNED ( ^u8 n ^u8 n bool PG:result -- PG:result )
+: CHURNED ( str str bool PG:result -- PG:result )
    >r {: na:^ nu:n ka:^ ku:n given:bool :}
    s" name after clear" T-LABEL
    na nu s" Ada" T$=
@@ -155,7 +156,7 @@ TYPED-VARIABLE CONN PG:connection
    CONN @ s" select count(*) from person" PG:ONE-INT 2 T= ;
 
 
-: LONG-SQL$ ( -- ^u8 n )
+: LONG-SQL$ ( -- str )
    s" select $1::int, 'head', repeat('a', $1::int), repeat('b', 3 * $1::int)" ;
 
 
@@ -167,7 +168,7 @@ TYPED-VARIABLE CONN PG:connection
 
 \ The short text stays in the arena's first chunk while each long one chains
 \ another.
-: LONG-CHURNED ( ^u8 n ^u8 n ^u8 n PG:result -- PG:result )
+: LONG-CHURNED ( str str str PG:result -- PG:result )
    >r {: ha:^ hu:n aa:^ au:n ba:^ bu:n :}
    s" a short text beside long ones" T-LABEL
    ha hu s" head" T$=
@@ -250,7 +251,7 @@ TYPED-VARIABLE CONN PG:connection
    [: BINARY-BOOL ;] PG:E-TYPE EACH-REFUSES ;
 
 
-: REFUSAL-NAMES ( ^u8 n -- ) {: a:^ u:n :}
+: REFUSAL-NAMES ( str -- ) {: a:^ u:n :}
    PG:REFUSED$ s" 42P01: " STARTS-WITH? TTRUE
    PG:REFUSED$ a u CONTAINS? TTRUE ;
 
@@ -259,12 +260,12 @@ TYPED-VARIABLE CONN PG:connection
    PG:REFUSED$ nip 0 T= ;
 
 
-: EXEC-ON ( ^u8 n -- ) {: a:^ u:n :}
+: EXEC-ON ( str -- ) {: a:^ u:n :}
    CONN @ PG:PARAMS
    CONN @ a u PG:EXEC ;
 
 
-: QUERY-ON ( ^u8 n -- ) {: a:^ u:n :}
+: QUERY-ON ( str -- ) {: a:^ u:n :}
    CONN @ PG:PARAMS
    CONN @ a u [: ;] PG:QUERY ;
 
@@ -483,15 +484,15 @@ TASK:MIN-STACK TASK:TASK SIDE-B
 TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
-: NAME-ROW ( PG:result -- ^u8 n PG:result )
+: NAME-ROW ( PG:result -- str PG:result )
    1 PG:COL-TEXT rot ;
 
 
-: NAME-OF ( PG:connection n -- ^u8 n )
+: NAME-OF ( PG:connection n -- str )
    PERSON-SQL$ [: NAME-ROW ;] PG:BY-ID ;
 
 
-: SIDE-NAME$ ( n -- ^u8 n )
+: SIDE-NAME$ ( n -- str )
    0= if s" Ada" exit then
    s" Grace" ;
 

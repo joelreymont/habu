@@ -1,3 +1,4 @@
+split-str
 \ checker-soundness-suite.f - a certified body must not exceed its declared effect.
 
 require src/lib/adt/option.f
@@ -79,7 +80,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 
 \ CS-K90's literal leaves 40 values of that type, so its escape refusal renders
 \ about 10 KB as the inferred effect and as much again as the actual callable.
-: CAPTURE-PAST$ ( -- ^u8 n )
+: CAPTURE-PAST$ ( -- str )
    s" CS-K90 ( -- ) [: 0 CHECKER-SOUNDNESS:>WIDE dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup ;] CHECKER-SOUNDNESS:TAIL-ONCE" ;
 
 

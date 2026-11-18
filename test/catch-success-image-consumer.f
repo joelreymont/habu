@@ -1,3 +1,4 @@
+split-str
 \ Fresh guarded source compiled against the zero-test summary the built hb carries.
 
 require src/core/exit-status.f

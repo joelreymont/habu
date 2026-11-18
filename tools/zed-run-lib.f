@@ -1,3 +1,4 @@
+split-str
 \ zed-run-lib.f - checked remote device-run harness over argv-spawned ssh/scp/rsync
 \ (src/lib/process-command.f), never a shell. Remote commands are built from
 \ controlled path tokens only; test data travels as files. Failures throw E-ZED-*;
@@ -40,19 +41,19 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 
 \ ---- env-driven configuration ------------------------------------------------
 
-: ENV-OR ( ^u8 n ^u8 n -- ^u8 n ) {: da:^ du:n name:^ nameu:n :}
+: ENV-OR ( str str -- str ) {: da:^ du:n name:^ nameu:n :}
    name nameu GETENV dup 0= if 2drop da du then ;
 
-: HOST$ ( -- ^u8 n )
+: HOST$ ( -- str )
    s" zed" s" ZED_HOST" ENV-OR ;
 
-: SSH$ ( -- ^u8 n )
+: SSH$ ( -- str )
    s" /usr/bin/ssh" s" ZED_SSH" ENV-OR ;
 
-: SCP$ ( -- ^u8 n )
+: SCP$ ( -- str )
    s" /usr/bin/scp" s" ZED_SCP" ENV-OR ;
 
-: RSYNC$ ( -- ^u8 n )
+: RSYNC$ ( -- str )
    s" /usr/bin/rsync" s" ZED_RSYNC" ENV-OR ;
 
 \ ---- remote-command string builder (space-separated tokens) ------------------
@@ -60,21 +61,21 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 : CMD-RESET ( -- )
    0 CMD-U ! ;
 
-: CMD-RAW ( ^u8 n -- ) {: a:^ u:n :}
+: CMD-RAW ( str -- ) {: a:^ u:n :}
    CMD-U @ u + CMD-CAP > if E-ZED-ARG throw then
    a CMD-BUF CMD-U @ + u BYTE-COPY
    CMD-U @ u + CMD-U ! ;
 
-: CMD-TOK ( ^u8 n -- )
+: CMD-TOK ( str -- )
    CMD-U @ 0 > if s"  " CMD-RAW then
    CMD-RAW ;
 
-: CMD$ ( -- ^u8 n )
+: CMD$ ( -- str )
    CMD-BUF CMD-U @ ;
 
 \ ---- rsync/scp destination: host:scratch/ ------------------------------------
 
-: DEST+ ( ^u8 n -- ) {: a:^ u:n :}
+: DEST+ ( str -- ) {: a:^ u:n :}
    DEST-U @ u + DEST-CAP > if E-ZED-ARG throw then
    a DEST-BUF DEST-U @ + u BYTE-COPY
    DEST-U @ u + DEST-U ! ;
@@ -83,7 +84,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    0 DEST-U !
    HOST$ DEST+  s" :" DEST+  SCRATCH-BUF SCRATCH-U @ DEST+  s" /" DEST+ ;
 
-: DEST$ ( -- ^u8 n )
+: DEST$ ( -- str )
    DEST-BUF DEST-U @ ;
 
 \ ---- ssh/scp/rsync argv runners (capture stdout/stderr/rc) -------------------
@@ -92,7 +93,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
    s" -o" CMD:ARG+  s" ConnectTimeout=10" CMD:ARG+ ;
 
-: SSH-RUN ( CMD:command ^u8 n -- CMD:command rc )
+: SSH-RUN ( CMD:command str -- CMD:command rc )
    {: a:^ u:n :}
    BATCH-OPTS
    HOST$ CMD:ARG+
@@ -102,32 +103,32 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
      err OF >RC ENDOF
    ;MATCH ;
 
-: EXEC-BODY ( ^u8 n CMD:command -- rc CMD:command )
+: EXEC-BODY ( str CMD:command -- rc CMD:command )
    >r {: a:^ u:n :} r>
    a u SSH-RUN swap ;
 
-: SSH-EXEC ( ^u8 n -- rc )   \ the rc alone; the captures end with the scope
+: SSH-EXEC ( str -- rc )   \ the rc alone; the captures end with the scope
    [: EXEC-BODY ;] CMD:WITH-COMMAND ;
 
-: WITH-RUN-BODY ( R ^u8 n [ R rc CMD:command -- S CMD:command ] CMD:command -- S CMD:command )
+: WITH-RUN-BODY ( R str [ R rc CMD:command -- S CMD:command ] CMD:command -- S CMD:command )
    >r {: a:^ u:n body :} r>
    a u SSH-RUN swap body execute ;
 
 \ Run the upload's argv and throw E-ZED-PUT for a nonzero completion.
-: PUT-RUN ( CMD:command ^u8 n -- CMD:command )
+: PUT-RUN ( CMD:command str -- CMD:command )
    TIMEOUT-MS @ >MS CMD:RUN-RC MATCH result
      ok  OF drop ENDOF
      err OF drop E-ZED-PUT throw ENDOF
    ;MATCH ;
 
-: PUT-DIR-BODY ( ^u8 n CMD:command -- CMD:command )
+: PUT-DIR-BODY ( str CMD:command -- CMD:command )
    >r {: a:^ u:n :} r>
    s" -rlt" CMD:ARG+
    a u CMD:ARG+
    DEST$ CMD:ARG+
    RSYNC$ PUT-RUN ;
 
-: PUT-FILE-BODY ( ^u8 n CMD:command -- CMD:command )
+: PUT-FILE-BODY ( str CMD:command -- CMD:command )
    >r {: a:^ u:n :} r>
    s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
    a u CMD:ARG+
@@ -139,7 +140,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 : WS-BYTE? ( n -- bool ) {: c:n :}   \ trailing whitespace: LF $0A, CR $0D, space $20
    c $0A = c $0D = or c $20 = or ;
 
-: TRIM-TRAIL ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: TRIM-TRAIL ( str -- str ) {: a:^ u:n :}
    u TRIM-N !
    begin
       TRIM-N @ 0 > if a TRIM-N @ 1- + c@ WS-BYTE? else NO then
@@ -148,7 +149,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    repeat
    a TRIM-N @ ;
 
-: SCRATCH! ( ^u8 n -- ) {: a:^ u:n :}
+: SCRATCH! ( str -- ) {: a:^ u:n :}
    u SCRATCH-CAP > if E-ZED-ARG throw then
    a SCRATCH-BUF u BYTE-COPY
    u SCRATCH-U ! ;
@@ -157,7 +158,7 @@ public
 
 \ ---- availability / skip policy ----------------------------------------------
 
-: ENV-AVAILABLE? ( ^u8 n -- bool ) {: a:^ u:n :}
+: ENV-AVAILABLE? ( str -- bool ) {: a:^ u:n :}
    u 0= if NO exit then
    a u s" 0" STR= if NO exit then
    YES ;
@@ -197,10 +198,10 @@ public
 \ Run one remote command string and hand the body its rc and the command, whose
 \ CMD:OUT$ and CMD:ERR$ hold the run's whole stdout and stderr until the body
 \ returns or throws.
-: WITH-RUN ( R ^u8 n [ R rc CMD:command -- S CMD:command ] -- S )
+: WITH-RUN ( R str [ R rc CMD:command -- S CMD:command ] -- S )
    [: WITH-RUN-BODY ;] CMD:WITH-COMMAND ;
 
-: RUN-IN ( ^u8 n -- rc ) {: a:^ u:n :}   \ run with cwd = scratch
+: RUN-IN ( str -- rc ) {: a:^ u:n :}   \ run with cwd = scratch
    CMD-RESET
    s" cd" CMD-TOK  SCRATCH-BUF SCRATCH-U @ CMD-TOK  s" &&" CMD-TOK  a u CMD-TOK
    CMD$ SSH-EXEC ;
@@ -208,7 +209,7 @@ public
 : PING ( -- )   \ reachability probe: throws E-ZED-UNREACH if the host is down
    s" true" RUN UNREACH-OK ;
 
-: SCRATCH$ ( -- ^u8 n )
+: SCRATCH$ ( -- str )
    SCRATCH-BUF SCRATCH-U @ ;
 
 private
@@ -238,12 +239,12 @@ public
    DEST-BUILD
    [: PUT-FILE-BODY ;] CMD:WITH-COMMAND ;
 
-: HAVE-TOOL? ( ^u8 n -- bool ) {: a:^ u:n :}   \ remote `command -v <tool>`
+: HAVE-TOOL? ( str -- bool ) {: a:^ u:n :}   \ remote `command -v <tool>`
    CMD-RESET
    s" command -v" CMD-TOK  a u CMD-TOK  s" >/dev/null 2>&1" CMD-TOK
    CMD$ SSH-EXEC RC>N 0= ;
 
-: NEED-TOOL ( ^u8 n -- )   \ fail-closed if a required remote tool is absent
+: NEED-TOOL ( str -- )   \ fail-closed if a required remote tool is absent
    2dup HAVE-TOOL? if 2drop exit then
    2drop E-ZED-TOOLCHAIN throw ;
 

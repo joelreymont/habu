@@ -1,3 +1,4 @@
+split-str
 \ Supply an output path and an unusable TMPDIR: OPEN refuses with E-FS-DIR.
 require src/lib/zip.f
 require src/lib/zip-test-fixture.f
@@ -7,7 +8,7 @@ require src/lib/test.f
 
 package ZIP-TEST
 
-: TRY-TEMP ( ^u8 n -- ^u8 n )
+: TRY-TEMP ( str -- str )
    2dup ZIP:OPEN ZIP:CLOSE ;
 
 public

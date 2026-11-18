@@ -1,3 +1,4 @@
+split-str
 \ stack-abi.f - physical VM stack extents, shared by the runtime (rt.f), the
 \ x86-64 kernel (kernel-x64.f) and the task library. Every VM stack is a
 \ guarded mapping [base - PAGE-BYTES, base + CAP + PAGE-BYTES), so compiled

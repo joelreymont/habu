@@ -1,3 +1,4 @@
+split-str
 \ process-reaper-main.f - a pool's reaper: reads fd 3 until a read answers no
 \ bytes or fails, kills its group's other processes and exits 0, writing nothing.
 

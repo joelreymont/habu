@@ -1,3 +1,4 @@
+split-str
 \ key.f - KEY, an entity's key predicate; part of package ODATA
 \ (src/lib/odata.f), which states the contract.
 \ Each value's text is read by scanners over ( ^u8 n at ): each answers the
@@ -32,7 +33,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 : FITS ( bool -- ) 0= if E-KEY throw then ;
 
-: PEEK? ( ^u8 n n u8 -- bool )
+: PEEK? ( str n u8 -- bool )
    {: a:^ u:n at:n c:u8 :}
    at u < if a at + c@ c = else false then ;
 
@@ -41,13 +42,13 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    a u at c PEEK? FITS a u at 1+ ;
 
 \ The index after the digits at AT, AT itself for none.
-: DIGIT-END ( ^u8 n n -- n )
+: DIGIT-END ( str n -- n )
    {: a:^ u:n at:n :}
    at begin
       dup u < if dup a + c@ STR-DIGIT? else false then
    while 1+ repeat ;
 
-: DIGIT-RUN ( ^u8 n n -- ^u8 n n )
+: DIGIT-RUN ( str n -- str n )
    {: a:^ u:n at:n :}
    a u at DIGIT-END {: end:n :}
    end at > FITS a u end ;
@@ -85,7 +86,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 : STAMP ( ^u8 n n -- ^u8 n n ) s" dddd-dd-ddTdd:dd:dd" SHAPE FRACTION ;
 
 \ `Z`, or an offset `+hh:mm` or `-hh:mm`.
-: ZONE ( ^u8 n n -- ^u8 n n )
+: ZONE ( str n -- str n )
    {: a:^ u:n at:n :}
    a u at [char] Z PEEK? if a u at 1+ exit then
    a u at [char] - PEEK? a u at [char] + PEEK? or FITS
@@ -126,11 +127,11 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 : DECIMAL ( ^u8 n -- ) 0 SIGN DIGIT-RUN FRACTION WHOLE ;
 : FLOAT ( ^u8 n -- ) 0 SIGN DIGIT-RUN FRACTION EXPONENT WHOLE ;
 : UTC ( ^u8 n -- ) 0 STAMP [char] Z PAST WHOLE ;
-: DATE-OFFSET ( ^u8 n -- ) 0 STAMP ZONE WHOLE ;
+: DATE-OFFSET ( str -- ) 0 STAMP ZONE WHOLE ;
 : DATE ( ^u8 n -- ) 0 s" dddd-dd-dd" SHAPE WHOLE ;
 : TIME ( ^u8 n -- ) 0 [char] P PAST CLOCK WHOLE ;
 
-: TIME-OF-DAY ( ^u8 n -- )
+: TIME-OF-DAY ( str -- )
    0 s" dd:dd" SHAPE {: a:^ u:n at:n :}
    a u at [char] : PEEK? if
       a u at 1+ s" dd" SHAPE FRACTION
@@ -172,11 +173,11 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    {: p:^ tag:^ tl:n v:^ vl:n :}
    p tag tl RAW p s" '" RAW p v vl ESCAPED p s" '" RAW ;
 
-: V2-TAGGED ( ^predicate ^u8 n ^u8 n -- )
+: V2-TAGGED ( ^predicate str str -- )
    {: p:^ tag:^ tl:n v:^ vl:n :}
    p PREDICATE-V2 @ if p tag tl v vl TAGGED else p v vl ESCAPED then ;
 
-: V2-SUFFIXED ( ^predicate ^u8 n ^u8 n -- )
+: V2-SUFFIXED ( ^predicate str str -- )
    {: p:^ v:^ vl:n suffix:^ sl:n :}
    p v vl ESCAPED p PREDICATE-V2 @ if p suffix sl RAW then ;
 
@@ -185,7 +186,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    p s" 0123456789ABCDEF" drop k + 1 RAW ;
 
 \ A base64 failure in the value is E-KEY; any other code throws on.
-: DECODED-LEN ( ^u8 n SPAN:span<u8> [ ^u8 n SPAN:span<u8> -- n ] -- n )
+: DECODED-LEN ( str SPAN:span<u8> [ str SPAN:span<u8> -- n ] -- n )
    {: a:^ u:n s dec :}
    0 [: drop a u s dec execute ;] catch {: len:n code:n :}
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and if E-KEY throw then
@@ -203,13 +204,13 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    loop
    p s" '" RAW ;
 
-: URL-CHECK ( ^u8 n ^u8 NUM:alloc-byte-len -- )
+: URL-CHECK ( str ^u8 NUM:alloc-byte-len -- )
    MEM:ALLOCATION>SPAN [: BASE64:DECODE-URL ;] DECODED-LEN drop ;
 
 \ Room for what base64 text of N bytes decodes to.
 : DECODE-ROOM ( n -- NUM:alloc-byte-len ) 4 / 3 * 3 + MEM:BYTES-ALLOC-LEN ;
 
-: UNPAD ( ^u8 n -- ^u8 n ) 2dup + 1- c@ [char] = = if 1- then ;
+: UNPAD ( str -- str ) 2dup + 1- c@ [char] = = if 1- then ;
 
 \ V2 writes the base64 value's bytes as `X'hex'`; V4 writes the base64url
 \ value as `binary'value'`, its `=` padding optional.
@@ -223,7 +224,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    p s" binary" v vl TAGGED ;
 
 \ Whether TYPE is `Edm.` and NAME.
-: EDM? ( ^u8 n ^u8 n -- bool )
+: EDM? ( str str -- bool )
    {: t:^ tl:n name:^ nl:n :}
    tl nl 4 + = 0= if false exit then
    t 4 s" Edm." STR= t 4 + nl name nl STR= and ;
@@ -242,14 +243,14 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 \ Each row checks the value, then writes its literal, and answers whether
 \ TYPE is its type.
-: INTEGRAL ( ^predicate ^u8 n ^u8 n -- bool )
+: INTEGRAL ( ^predicate str str -- bool )
    {: p:^ t:^ tl:n v:^ vl:n :}
    t tl RANGE 0= if 2drop false exit then
    v vl 2swap INTEGER
    p v vl t tl s" Int64" EDM? if s" L" else s" " then V2-SUFFIXED
    true ;
 
-: TEXTUAL ( ^predicate ^u8 n ^u8 n -- bool )
+: TEXTUAL ( ^predicate str str -- bool )
    {: p:^ t:^ tl:n v:^ vl:n :}
    t tl s" String" EDM? if p v vl QUOTED true exit then
    t tl s" Boolean" EDM? if v vl BOOLEAN p v vl ESCAPED true exit then
@@ -273,7 +274,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    false ;
 
 \ The text is ISO 8601 UTC; V2's datetime literal drops its `Z`.
-: V2-TEMPORAL ( ^predicate ^u8 n ^u8 n -- bool )
+: V2-TEMPORAL ( ^predicate str str -- bool )
    {: p:^ t:^ tl:n v:^ vl:n :}
    t tl s" DateTime" EDM? if
       v vl UTC p s" datetime" v vl 1- TAGGED true exit
@@ -286,7 +287,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    then
    false ;
 
-: V4-TEMPORAL ( ^predicate ^u8 n ^u8 n -- bool )
+: V4-TEMPORAL ( ^predicate str str -- bool )
    {: p:^ t:^ tl:n v:^ vl:n :}
    t tl s" DateTimeOffset" EDM? if
       v vl DATE-OFFSET p v vl ESCAPED true exit
@@ -318,7 +319,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    {: p:^ a:^ u:n :}
    a u BUF:N>BLEN p PREDICATE-TEXT @ BUF:APPEND-SPAN ;
 
-: SAY-QUOTED ( ^predicate ^u8 n bool -- )
+: SAY-QUOTED ( ^predicate str bool -- )
    {: p:^ a:^ u:n cut:bool :}
    p s" `" SAY p a u SAY
    cut if p s" ..." SAY then
@@ -331,7 +332,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    PROPERTY-TYPE$ false SAY-QUOTED ;
 
 \ The property's type has a row, which the value does not fit.
-: VALUE-TEXT ( ^predicate ^property ^u8 n -- )
+: VALUE-TEXT ( ^predicate ^property str -- )
    {: p:^ pr:^ v:^ vl:n :}
    p s" expected a " SAY p pr SAY-TYPE
    p s"  value for key property " SAY p pr SAY-NAME
@@ -359,7 +360,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 \ The value's literal; a value LITERAL throws E-KEY for, or a type no row
 \ takes, is E-KEY with its text, any other code thrown on.
-: CHECKED-LITERAL ( ^predicate ^property ^u8 n -- )
+: CHECKED-LITERAL ( ^predicate ^property str -- )
    {: p:^ pr:^ v:^ vl:n :}
    false [: drop p pr PROPERTY-TYPE$ v vl LITERAL ;] catch
    {: taken code:n :}
@@ -369,7 +370,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 \ The separator and the name go before the callback, so E-KEY follows the
 \ callback that gave the value with nothing written between.
-: KEY-PART ( ^property ^predicate [ ^property -- ^u8 n ] -- )
+: KEY-PART ( ^property ^predicate [ ^property -- str ] -- )
    {: pr:^ p:^ q :}
    p PREDICATE-WRITTEN @ 0 > if p s" ," RAW then
    p PREDICATE-KEYS @ 1 > if

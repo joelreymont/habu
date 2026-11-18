@@ -1,3 +1,4 @@
+split-str
 \ checker-completion.f - the spellings that bind at a cursor, as the checker
 \ selects them.
 \   bin/hb --load test/checker-completion.f
@@ -46,11 +47,11 @@ variable KEPT-OVER
 variable CALLS
 PTR-VARIABLE FILTER-A   variable FILTER-U
 
-: KEPT-RESET ( ^u8 n -- )
+: KEPT-RESET ( str -- )
    FILTER-U !  FILTER-A !
    0 KEPT-N !  0 KEPT-OVER !  0 CALLS ! ;
 
-: FILTERED? ( ^u8 n -- bool )
+: FILTERED? ( str -- bool )
    {: a:^ u:n :}
    u FILTER-U @ < IF false EXIT THEN
    a FILTER-U @ FILTER-A @ FILTER-U @ CORE-STR=CI ;
@@ -67,25 +68,25 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
    e  KEPT-ENDS KEPT-N @ cells + !
    1 KEPT-N +! ;
 
-: KEPT$ ( n -- ^u8 n )
+: KEPT$ ( n -- str )
    {: i:n :}
    KEPT-NAMES i KEPT-W * +  KEPT-LENS i cells + @ ;
 
-: KEPT-AT ( ^u8 n -- n )
+: KEPT-AT ( str -- n )
    {: a:^ u:n :}
    KEPT-N @ 0 ?DO
       a u i KEPT$ CORE-STR= IF i UNLOOP EXIT THEN
    LOOP
    -1 ;
 
-: KEPT-CI ( ^u8 n -- n )
+: KEPT-CI ( str -- n )
    {: a:^ u:n :}
    0  KEPT-N @ 0 ?DO
       a u i KEPT$ CORE-STR=CI IF 1 + THEN
    LOOP ;
 
 \ For a word whose case the store does not keep, so no case pins one.
-: KEPT-CI-AT ( ^u8 n -- n )
+: KEPT-CI-AT ( str -- n )
    {: a:^ u:n :}
    KEPT-N @ 0 ?DO
       a u i KEPT$ CORE-STR=CI IF i UNLOOP EXIT THEN
@@ -160,7 +161,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 
 \ Replay TEXT with NAME's declaration armed at visit V, bytes S to E, as the
 \ verifier arms a registrar call in a file it visits.
-: NAMED-AT ( ^u8 n ^u8 n n n n -- n )
+: NAMED-AT ( str str n n n -- n )
    {: na:^ nu:n a:^ u:n v:n s:n e:n :}
    na nu v s e ARM
    a u PLAIN
@@ -174,7 +175,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 : DECLARED ( ^u8 n ^u8 n n [ ^u8 n n n n -- ] -- n )
    CURSOR!  NAMED ;
 
-: FIND$ ( ^u8 n ^u8 n -- n )
+: FIND$ ( str str -- n )
    {: a:^ u:n b:^ v:n :}
    u v - 1 + 0 ?DO
       a i + v b v CORE-STR= IF i UNLOOP EXIT THEN
@@ -253,7 +254,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 \ spelling, so no case here pins one.
 
 \ 1. A body token.
-: PARTIAL$ ( -- ^u8 n ) s" : CMPC ( -- n ) CMPA CMPB + ;" ;
+: PARTIAL$ ( -- str ) s" : CMPC ( -- n ) CMPA CMPB + ;" ;
 
 : CASE-PARTIAL ( -- )
    s" cmp" KEPT-RESET
@@ -487,7 +488,7 @@ variable NEST-ARM   variable NEST-ENUM
 
 \ Whether XT stopped with the checker's status after an E-CURSOR-NESTED record
 \ that opens with the line L and says to leave the visitor.
-: NESTED? ( [ -- ] ^u8 n -- bool ) {: l:^ lu:n :}
+: NESTED? ( [ -- ] str -- bool ) {: l:^ lu:n :}
    REJECTION:CAPTURE  catch 70 =
    REJECTION:BUFFER$ l lu STARTS-WITH? and
    REJECTION:BUFFER$
@@ -614,10 +615,10 @@ variable DOES-USES
 
 : NAMED-USES ( -- ) [: USE-NAMES ;] [: REPLAY ;] WITH-USES ;
 
-: NAMED-TEXT$ ( -- ^u8 n )
+: NAMED-TEXT$ ( -- str )
    s\" : HELPER ( -- ) ;\n: BAD ( ^ -- ) HELPER c\" xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" drop ;\n: LATER ( -- ) BAD ;\n" ;
 
-: NAMED-RECORDS$ ( -- ^u8 n )
+: NAMED-RECORDS$ ( -- str )
    S\" error[E-COUNTED-STRING-TOO-LONG]: the counted string `c\"` opens is longer than its count byte holds\n --> <input>:2:23\n  |\n2 | : BAD ( ^ -- ) HELPER c\" xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...\n  |                       ^^ too long\n  = limit: 255 bytes\n  = help: shorten the text, or write it with `s\"`, which has no count byte\n\nerror[E-UNDEFINED]: cannot find word `BAD`\n --> <input>:3:16\n  |\n3 | : LATER ( -- ) BAD ;\n  |                ^^^ not found\n  = help: define `BAD` before this point, or check its spelling\n\n" ;
 
 : CASE-USE-NAMES ( -- )
@@ -637,7 +638,7 @@ variable DOES-USES
 \ dscitem: the local and the package's word are offered, each as written, and
 \ the global the package's word hides lends neither its spelling nor its
 \ location.
-: DISC$ ( -- ^u8 n )
+: DISC$ ( -- str )
    s" package DSCP : DSCB ( n -- n ) {: dscitem:n :} dscitem DSCITEM + ; ;package" ;
 
 : CASE-DISCRIMINATOR ( -- )
@@ -657,7 +658,7 @@ variable DOES-USES
 \ The open package's byte-copy, declared with no spelling armed, hides the
 \ engine's BYTE-COPY: what is offered is the package's word, with no location,
 \ and the hidden engine record does not lend it its spelling.
-: HIDE$ ( -- ^u8 n ) s" package DSCQ : DSCH ( -- n ) BYTE-COPY ; ;package" ;
+: HIDE$ ( -- str ) s" package DSCQ : DSCH ( -- n ) BYTE-COPY ; ;package" ;
 
 : CASE-HIDDEN ( -- )
    s" byte-c" KEPT-RESET
@@ -682,7 +683,7 @@ variable DOES-USES
 \ Composed with a visit, the verifier arms each declaration as it reads it: a
 \ DEFTYPE's two converters each by its own name and a qualified EXPORT by the
 \ tail it is kept under.
-: VISITED$ ( -- ^u8 n )
+: VISITED$ ( -- str )
    s\" DEFTYPE CmpCol\npackage CMPEA public : CMPEXA ( -- n ) 15 ; ;package\npackage CMPEB public EXPORT CMPEA:CMPEXA ;package\n" ;
 
 : COMPOSED ( -- ) VISITED$ s" cmp-visited.f" 2dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
@@ -708,7 +709,7 @@ variable DOES-USES
 \ A required file's declaration keeps the spelling it was armed with after the
 \ loader unmaps that file's bytes, when its scan ends: the cursor sits in the
 \ body of the subject that required it.
-: DEP-SUBJECT$ ( -- ^u8 n )
+: DEP-SUBJECT$ ( -- str )
    s\" require test/checker-completion-dep.f\n: CMPDU ( -- n ) CmpDep ;\n" ;
 
 : DEP-COMPOSED ( -- )
@@ -721,7 +722,7 @@ variable DOES-USES
    s" the subject's composition runs through" T-LABEL
    [: DEP-COMPOSED ;] catch 0 T=
    KEPT-ALL
-   s" CmpDep" 3 337 343 PLACED ;
+   s" CmpDep" 3 347 353 PLACED ;
 
 \ 10. A neutral scope's rewind takes a located row back; the next word, declared
 \ unarmed, is offered with no location, and the rewound one not.
@@ -764,11 +765,11 @@ variable DOES-USES
    s" QALP:QALGONE" ABSENT
    s" QALP:QALPRI" ABSENT ;
 
-: SELF$ ( -- ^u8 n ) s" package QALP public : QALSELF ( -- n ) QALP:QALPUB ; ;package" ;
+: SELF$ ( -- str ) s" package QALP public : QALSELF ( -- n ) QALP:QALPUB ; ;package" ;
 
 \ Inside a package its name qualifies a global too, as the walk binds it: the
 \ prefix K bytes into TEXT's QALP:CMPA offers that spelling, the global's own.
-: ALIAS-AT ( ^u8 n n -- )
+: ALIAS-AT ( str n -- )
    {: a:^ u:n k:n :}
    s" qalp:cmpa" KEPT-RESET
    a u  a u s" QALP:CMPA" k AT  [: KEEP ;] ARMED
@@ -819,7 +820,7 @@ variable DOES-USES
 \ Inside CMQA a qualifier CmqB names its part, which shadows the top-level
 \ CMQB there: the part's public is offered behind the part's name, as its row
 \ spells it, and neither the part's private nor CMQB's public is.
-: PART-IN ( ^u8 n n -- )
+: PART-IN ( str n -- )
    {: a:^ u:n k:n :}
    s" cmqb:" KEPT-RESET
    a u  a u s" CmqB:QPW" k AT  [: KEEP ;] ARMED
@@ -842,7 +843,7 @@ variable DOES-USES
    s" CMQB:QPV" ABSENT ;
 
 \ The prefix K bytes into TEXT's CMQB:QPT, in a body of CMQC.
-: PART-OTHER ( ^u8 n n -- )
+: PART-OTHER ( str n -- )
    {: a:^ u:n k:n :}
    s" cmqb:" KEPT-RESET
    a u  a u s" CMQB:QPT" k AT  [: KEEP ;] ARMED
@@ -850,7 +851,7 @@ variable DOES-USES
    PART-OUT ;
 
 \ Neither CMQA: nor its path to the part offers anything at top level.
-: PART-PATH ( ^u8 n -- )
+: PART-PATH ( str -- )
    s" cmqa:" KEPT-RESET  TOP
    KEPT-ALL
    s" nothing behind CMQA" T-LABEL

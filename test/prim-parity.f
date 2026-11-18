@@ -1,3 +1,4 @@
+split-str
 \ prim-parity.f - the engine primitive parity gate: the case sets of
 \ test/prim-cases.f and test/prim-float-cases.f, in target-free checked Habu,
 \ run against the backend's own body and, where a src/habu/prims.f row carries
@@ -80,7 +81,7 @@ $3A constant COLON-B
    a SUBJ-BUF u BYTE-COPY
    u SUBJ-U ! ;
 
-: FIND-ROW ( ^u8 n n -- n ) {: a:^ u:n overload:n :}
+: FIND-ROW ( str n -- n ) {: a:^ u:n overload:n :}
    0
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:NAME$ a u STR= if
@@ -89,7 +90,7 @@ $3A constant COLON-B
       then
    loop drop -1 ;
 
-: NO-ARM ( ^u8 n ^u8 n -- ) {: ka:^ ku:n na:^ nu:n :}
+: NO-ARM ( str str -- ) {: ka:^ ku:n na:^ nu:n :}
    s" prim-parity: no " type ka ku type s"  arm for " type na nu type cr
    s" prim-parity: unwired primitive" EXIT-STATUS:FAILURE die ;
 
@@ -120,7 +121,7 @@ $3A constant COLON-B
 \ Sentinels 1 2 3 4 in; the case is the digit spelling of the whole window left,
 \ untouched cells included (`swap` 1243, `2over` 123412, `drop` 123), so a
 \ shuffler that reaches too deep fails.
-: SHUF-PRIM ( ^u8 n -- n ) {: na:^ nu:n :}
+: SHUF-PRIM ( str -- n ) {: na:^ nu:n :}
    na nu s" dup"   STR= IF 1 2 3 4 dup   ENC5 EXIT THEN
    na nu s" drop"  STR= IF 1 2 3 4 drop  ENC3 EXIT THEN
    na nu s" swap"  STR= IF 1 2 3 4 swap  ENC4 EXIT THEN
@@ -135,7 +136,7 @@ $3A constant COLON-B
    na nu s" 2over" STR= IF 1 2 3 4 2over ENC6 EXIT THEN
    s" shuffler" na nu NO-ARM ;
 
-: SHUF-REF ( ^u8 n -- n ) {: na:^ nu:n :}
+: SHUF-REF ( str -- n ) {: na:^ nu:n :}
    na nu s" dup"   STR= IF 1 2 3 4 PRIM-REF:S-DUP   ENC5 EXIT THEN
    na nu s" drop"  STR= IF 1 2 3 4 PRIM-REF:S-DROP  ENC3 EXIT THEN
    na nu s" swap"  STR= IF 1 2 3 4 PRIM-REF:S-SWAP  ENC4 EXIT THEN
@@ -150,7 +151,7 @@ $3A constant COLON-B
    na nu s" 2over" STR= IF 1 2 3 4 PRIM-REF:S-2OVER ENC6 EXIT THEN
    s" shuffler reference" na nu NO-ARM ;
 
-: NN-N-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: NN-N-PRIM ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" +"      STR= IF a b +      EXIT THEN
    na nu s" -"      STR= IF a b -      EXIT THEN
    na nu s" *"      STR= IF a b *      EXIT THEN
@@ -169,7 +170,7 @@ $3A constant COLON-B
    na nu s" f/"     STR= IF a s>f b s>f f/ f>s EXIT THEN
    s" binary" na nu NO-ARM ;
 
-: NN-N-REF ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: NN-N-REF ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" +"      STR= IF a b PRIM-REF:ADD     EXIT THEN
    na nu s" -"      STR= IF a b PRIM-REF:SUB     EXIT THEN
    na nu s" *"      STR= IF a b PRIM-REF:MUL     EXIT THEN
@@ -184,7 +185,7 @@ $3A constant COLON-B
    na nu s" rshift" STR= IF a b PRIM-REF:SHR     EXIT THEN
    s" binary reference" na nu NO-ARM ;
 
-: N-N-PRIM ( n ^u8 n -- n ) {: a:n na:^ nu:n :}
+: N-N-PRIM ( n str -- n ) {: a:n na:^ nu:n :}
    na nu s" 1+"      STR= IF a 1+     EXIT THEN
    na nu s" 1-"      STR= IF a 1-     EXIT THEN
    na nu s" negate"  STR= IF a negate EXIT THEN
@@ -201,7 +202,7 @@ $3A constant COLON-B
    na nu s" f>s"     STR= IF a s>f f>s EXIT THEN
    s" unary" na nu NO-ARM ;
 
-: N-N-REF ( n ^u8 n -- n ) {: a:n na:^ nu:n :}
+: N-N-REF ( n str -- n ) {: a:n na:^ nu:n :}
    na nu s" 1+"     STR= IF a PRIM-REF:INC        EXIT THEN
    na nu s" 1-"     STR= IF a PRIM-REF:DEC        EXIT THEN
    na nu s" negate" STR= IF a PRIM-REF:NEG        EXIT THEN
@@ -213,7 +214,7 @@ $3A constant COLON-B
    na nu s" char+"  STR= IF a PRIM-REF:CHAR-STEP  EXIT THEN
    s" unary reference" na nu NO-ARM ;
 
-: NN-F-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: NN-F-PRIM ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" ="   STR= IF a b =  B>N EXIT THEN
    na nu s" <>"  STR= IF a b <> B>N EXIT THEN
    na nu s" <"   STR= IF a b <  B>N EXIT THEN
@@ -227,7 +228,7 @@ $3A constant COLON-B
    na nu s" f>=" STR= IF a s>f b s>f f>= B>N EXIT THEN
    s" order" na nu NO-ARM ;
 
-: NN-F-REF ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: NN-F-REF ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" ="  STR= IF a b PRIM-REF:EQ  B>N EXIT THEN
    na nu s" <>" STR= IF a b PRIM-REF:NEQ B>N EXIT THEN
    na nu s" <"  STR= IF a b PRIM-REF:LT  B>N EXIT THEN
@@ -236,36 +237,36 @@ $3A constant COLON-B
    na nu s" >=" STR= IF a b PRIM-REF:GE  B>N EXIT THEN
    s" order reference" na nu NO-ARM ;
 
-: N-F-PRIM ( n ^u8 n -- n ) {: a:n na:^ nu:n :}
+: N-F-PRIM ( n str -- n ) {: a:n na:^ nu:n :}
    na nu s" 0="  STR= IF a 0= B>N EXIT THEN
    na nu s" 0<"  STR= IF a 0< B>N EXIT THEN
    na nu s" f0=" STR= IF a s>f f0= B>N EXIT THEN
    na nu s" f0<" STR= IF a s>f f0< B>N EXIT THEN
    s" predicate" na nu NO-ARM ;
 
-: N-F-REF ( n ^u8 n -- n ) {: a:n na:^ nu:n :}
+: N-F-REF ( n str -- n ) {: a:n na:^ nu:n :}
    na nu s" 0<" STR= IF a PRIM-REF:ZERO-NEG? B>N EXIT THEN
    s" predicate reference" na nu NO-ARM ;
 
 \ The boolean rows of `and`, `or` and `xor` are separate rows from their numeric
 \ ones.
-: FF-F-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: FF-F-PRIM ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" and" STR= IF a 0= 0= b 0= 0= and B>N EXIT THEN
    na nu s" or"  STR= IF a 0= 0= b 0= 0= or  B>N EXIT THEN
    na nu s" xor" STR= IF a 0= 0= b 0= 0= xor B>N EXIT THEN
    s" flag" na nu NO-ARM ;
 
-: FF-F-REF ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: FF-F-REF ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" and" STR= IF a 0= 0= b 0= 0= PRIM-REF:BAND-F B>N EXIT THEN
    na nu s" or"  STR= IF a 0= 0= b 0= 0= PRIM-REF:BOR-F  B>N EXIT THEN
    na nu s" xor" STR= IF a 0= 0= b 0= 0= PRIM-REF:BXOR-F B>N EXIT THEN
    s" flag reference" na nu NO-ARM ;
 
-: NN-NN-PRIM ( n n ^u8 n -- n n ) {: a:n b:n na:^ nu:n :}
+: NN-NN-PRIM ( n n str -- n n ) {: a:n b:n na:^ nu:n :}
    na nu s" /mod" STR= IF a b /mod EXIT THEN
    s" divmod" na nu NO-ARM ;
 
-: NN-NN-REF ( n n ^u8 n -- n n ) {: a:n b:n na:^ nu:n :}
+: NN-NN-REF ( n n str -- n n ) {: a:n b:n na:^ nu:n :}
    na nu s" /mod" STR= IF a b PRIM-REF:DIVREM EXIT THEN
    s" divmod reference" na nu NO-ARM ;
 
@@ -274,7 +275,7 @@ $3A constant COLON-B
 \ src/lib/float-test.f). RR-R, RR-F and R-R cast a double's bits instead,
 \ reaching infinities, NaN and signed zeros.
 \ No row of these has a reference, so the shapes run the primitive alone.
-: RR-R-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: RR-R-PRIM ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    a IEEE754:BITS>F64 b IEEE754:BITS>F64 {: x:r y:r :}
    na nu s" f+" STR= IF x y f+ IEEE754:F64>BITS EXIT THEN
    na nu s" f-" STR= IF x y f- IEEE754:F64>BITS EXIT THEN
@@ -282,7 +283,7 @@ $3A constant COLON-B
    na nu s" f/" STR= IF x y f/ IEEE754:F64>BITS EXIT THEN
    s" binary bits" na nu NO-ARM ;
 
-: RR-F-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: RR-F-PRIM ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    a IEEE754:BITS>F64 b IEEE754:BITS>F64 {: x:r y:r :}
    na nu s" f<"  STR= IF x y f<  B>N EXIT THEN
    na nu s" f>"  STR= IF x y f>  B>N EXIT THEN
@@ -291,19 +292,19 @@ $3A constant COLON-B
    na nu s" f>=" STR= IF x y f>= B>N EXIT THEN
    s" order bits" na nu NO-ARM ;
 
-: R-R-PRIM ( n ^u8 n -- n ) {: a:n na:^ nu:n :}
+: R-R-PRIM ( n str -- n ) {: a:n na:^ nu:n :}
    na nu s" fsqrt" STR= IF a IEEE754:BITS>F64 fsqrt IEEE754:F64>BITS EXIT THEN
    s" unary bits" na nu NO-ARM ;
 
 \ A refusal is pinned by its code, the reference's held to the same; each arm
 \ drops what the body left, so a wrong answer fails the code comparison.
-: NN-THROW-PRIM ( ^u8 n -- n ) {: na:^ nu:n :}
+: NN-THROW-PRIM ( str -- n ) {: na:^ nu:n :}
    na nu s" /"    STR= IF [: DV-A @ DV-B @ /    drop  ;] catch EXIT THEN
    na nu s" mod"  STR= IF [: DV-A @ DV-B @ mod  drop  ;] catch EXIT THEN
    na nu s" /mod" STR= IF [: DV-A @ DV-B @ /mod 2drop ;] catch EXIT THEN
    s" refusing binary" na nu NO-ARM ;
 
-: NN-THROW-REF ( ^u8 n -- n ) {: na:^ nu:n :}
+: NN-THROW-REF ( str -- n ) {: na:^ nu:n :}
    na nu s" /"    STR= IF [: DV-A @ DV-B @ PRIM-REF:DIV    drop  ;] catch EXIT THEN
    na nu s" mod"  STR= IF [: DV-A @ DV-B @ PRIM-REF:REM    drop  ;] catch EXIT THEN
    na nu s" /mod" STR= IF [: DV-A @ DV-B @ PRIM-REF:DIVREM 2drop ;] catch EXIT THEN
@@ -325,27 +326,27 @@ $3A constant COLON-B
    na nu s" PTR>N"     STR= IF FIX-CELLS v + PTR>N  FIX-CELLS NULL-PTR - - EXIT THEN
    s" memory" na nu NO-ARM ;
 
-: MEM-REF ( n ^u8 n -- n ) {: v:n na:^ nu:n :}
+: MEM-REF ( n str -- n ) {: v:n na:^ nu:n :}
    na nu s" +!"    STR= IF v FIX-CELLS ! BUMP FIX-CELLS PRIM-REF:ADD-TO FIX-CELLS @ EXIT THEN
    na nu s" count" STR= IF v FIX-BYTES c! FIX-BYTES PRIM-REF:COUNTED$ nip EXIT THEN
    s" memory reference" na nu NO-ARM ;
 
 \ Pointer columns are offsets into FIX-BYTES, or into FIX-PTRS for `ptr-field`;
 \ results are offsets or distances. All accesses stay within those fixtures. Each arm has the row's checked types.
-: PN-P-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: PN-P-PRIM ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" +" STR= IF FIX-BYTES a + b + FIX-BYTES - EXIT THEN
    na nu s" -" STR= IF FIX-BYTES a + b - FIX-BYTES - EXIT THEN
    na nu s" ptr-field" STR= IF FIX-PTRS a + b ptr-field NULL-PTR - FIX-PTRS NULL-PTR - - EXIT THEN
    s" pointer step" na nu NO-ARM ;
 
-: P-P-PRIM ( n ^u8 n -- n ) {: a:n na:^ nu:n :}
+: P-P-PRIM ( n str -- n ) {: a:n na:^ nu:n :}
    na nu s" 1+"    STR= IF FIX-BYTES a + 1+    FIX-BYTES - EXIT THEN
    na nu s" 1-"    STR= IF FIX-BYTES a + 1-    FIX-BYTES - EXIT THEN
    na nu s" cell+" STR= IF FIX-BYTES a + cell+ FIX-BYTES - EXIT THEN
    na nu s" char+" STR= IF FIX-BYTES a + char+ FIX-BYTES - EXIT THEN
    s" pointer unary" na nu NO-ARM ;
 
-: PP-F-PRIM ( n n ^u8 n -- n ) {: a:n b:n na:^ nu:n :}
+: PP-F-PRIM ( n n str -- n ) {: a:n b:n na:^ nu:n :}
    na nu s" ="  STR= IF FIX-BYTES a + FIX-BYTES b + =  B>N EXIT THEN
    na nu s" <>" STR= IF FIX-BYTES a + FIX-BYTES b + <> B>N EXIT THEN
    na nu s" <"  STR= IF FIX-BYTES a + FIX-BYTES b + <  B>N EXIT THEN
@@ -378,7 +379,7 @@ $3A constant COLON-B
 : COVERED? ( n -- bool )
    COVERED swap + c@ 0= 0= ;
 
-: MARK-PAIRED ( ^u8 n -- )
+: MARK-PAIRED ( str -- )
    0 FIND-ROW dup 0 < IF
       s" prim-parity: missing paired primitive" EXIT-STATUS:FAILURE die
    THEN
@@ -497,7 +498,7 @@ public
 
 private
 
-: COLON-AT ( ^u8 n -- n ) {: a:^ u:n :}   \ first colon, or -1
+: COLON-AT ( str -- n ) {: a:^ u:n :}   \ first colon, or -1
    0 SI !
    BEGIN SI @ u < WHILE
       a SI @ + c@ COLON-B = IF SI @ EXIT THEN

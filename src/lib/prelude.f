@@ -1,3 +1,4 @@
+split-str
 \ prelude.f - checked boolean, flag and float-stack conveniences core leaves
 \ out. Core only; load early.
 \ It is the one sanctioned global surface (docs/forth.md package-first rule): its

@@ -1,3 +1,4 @@
+split-str
 \ process-command.f - scoped child-process commands under a linear token.
 \ CMD:WITH-COMMAND allocates one command context, hands the body a linear
 \ CMD:command naming it and releases the context with everything it grew when
@@ -222,7 +223,7 @@ public
 
 private
 
-: CSTR+ ( ^u8 n ^n -- )
+: CSTR+ ( str ^n -- )
    {: a:^ u:n buf:^ :}
    a u  buf u FFI:CSTR-ROOM BUF:N>BLEN BUF:GROW  FFI:CSTR drop ;
 
@@ -242,7 +243,7 @@ public
    u 0 < if E-PROC-OUTPUT throw then
    h ARG-BUF h ARG-OFF @ [: a u h ARG-BUF CSTR+ ;] ENTRY ;
 
-: ENV-ENTRY+ ( CMD:command ^u8 n -- CMD:command ) {: a:^ u:n :}
+: ENV-ENTRY+ ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    u 0 < if E-PROC-ENV throw then
    a u >LEN PROC-ENV-CHECK-ENTRY
@@ -267,7 +268,7 @@ public
 \ with the same name (ENV+, ENV-ENTRY+) still reaches the child: explicit beats
 \ unset. Under ENV-HERMETIC nothing is inherited, so UNSETENV changes nothing.
 \ An empty name, a name holding `=` or NUL, or a negative length: E-PROC-ENV.
-: UNSETENV ( CMD:command ^u8 n -- CMD:command )
+: UNSETENV ( CMD:command str -- CMD:command )
    {: a:^ u:n :}
    CTX {: h:^ :}
    a u >LEN PROC-ENV-CHECK-NAME
@@ -275,7 +276,7 @@ public
 
 private
 
-: CWD-CHECK ( ^u8 n -- )
+: CWD-CHECK ( str -- )
    {: a:^ u:n :}
    u 0 <= if E-PROC-PATH throw then
    u PATHZ-CAP 1 - > if E-PROC-PATH throw then
@@ -285,13 +286,13 @@ public
 
 \ Run the child from this directory instead of the loader's. A missing path or a
 \ non-directory is refused here, before anything is spawned; RESET clears it.
-: CWD! ( CMD:command ^u8 n -- CMD:command ) {: a:^ u:n :}
+: CWD! ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    a u CWD-CHECK
    a u >LEN h CWDZ PATHZ-CAP >LEN PROCESS:ZCOPY drop
    u h CWD-LEN ! ;
 
-: IN! ( CMD:command ^u8 n -- CMD:command ) {: a:^ u:n :}
+: IN! ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    u 0 < if E-PROC-OUTPUT throw then
    a u BUF:N>BLEN h IN-BUF BUF:REPLACE ;
@@ -390,7 +391,7 @@ private
    h INHERIT @ 0<> if h INHERIT-DEFAULTS h INHERIT-PARENT then
    NULL-PTR h ENVP-VEC @ VEC:PUSH ! ;
 
-: CHECK-RUN ( ^u8 n ms -- )
+: CHECK-RUN ( str ms -- )
    {: path:^ pathu:n timeout:ms :}
    path pathu >LEN PROC-ARGV-CHECK-PATH
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;

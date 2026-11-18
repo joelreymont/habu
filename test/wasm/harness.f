@@ -1,3 +1,4 @@
+split-str
 \ harness.f - WASM-HARNESS: a module file checked by two engines independent of
 \ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs.
 \ Both are found on PATH and run from the tree's root; a missing tool throws.
@@ -52,7 +53,7 @@ variable MEM-END
    >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u RUN-AT ;
 
-: FIRST-LINE ( -- ^u8 n )
+: FIRST-LINE ( -- str )
    ERR ERR-U @ RTRIM {: a:^ u:n :}
    a u 10 INDEX-OF MATCH option
       some OF IDX>N a swap ENDOF
@@ -61,7 +62,7 @@ variable MEM-END
 
 \ run.mjs's first stderr line for status 1 is its throw line; bun's own failures
 \ exit 1 as well, so any other text ends the check.
-: NO-THROW-LINE ( ^u8 n -- )
+: NO-THROW-LINE ( str -- )
    type cr
    s" wasm harness: bun exited 1 without a `throw <i64>` line" EXIT-STATUS:FAILURE die ;
 
@@ -75,12 +76,12 @@ variable MEM-END
 
 \ run.mjs's stderr line after its memory line for status 2 is its fault line;
 \ bun's own failures may exit 2 as well, so any other text ends the check.
-: NO-FAULT-LINE ( ^u8 n -- )
+: NO-FAULT-LINE ( str -- )
    type cr
    s" wasm harness: bun's memory line is not followed by a `fault <kind> <addr>` line"
    EXIT-STATUS:FAILURE die ;
 
-: FAULT-FIELD ( ^u8 n ^u8 n -- n )
+: FAULT-FIELD ( str str -- n )
    {: line:^ lu:n a:^ u:n :}
    a u STR>NUMBER? MATCH option
       some OF ENDOF
@@ -100,11 +101,11 @@ variable MEM-END
 
 \ run.mjs writes `memory <start> <end>` on a stderr line of its own; any other
 \ text after `memory ` ends the check.
-: NO-MEMORY-LINE ( ^u8 n -- )
+: NO-MEMORY-LINE ( str -- )
    type cr
    s" wasm harness: run.mjs wrote a `memory` line without two numbers" EXIT-STATUS:FAILURE die ;
 
-: MEMORY-FIELD ( ^u8 n ^u8 n -- n )
+: MEMORY-FIELD ( str str -- n )
    {: line:^ lu:n a:^ u:n :}
    a u STR>NUMBER? MATCH option
       some OF ENDOF
@@ -112,7 +113,7 @@ variable MEM-END
    ;MATCH ;
 
 \ True at run.mjs's memory line, whose next line starts at next: TAIL moves there.
-: MEMORY? ( ^u8 n n -- bool )
+: MEMORY? ( str n -- bool )
    {: a:^ u:n next:n :}
    a u s" memory " STARTS-WITH? 0= if false exit then
    a 7 + u 7 - 32 INDEX-OF MATCH option
@@ -159,7 +160,7 @@ public
 : VALID? ( ^u8 n -- bool )  false VALIDATE ;
 
 \ W05 probes one missing required feature on the same generated module.
-: VALID-WITHOUT-SAT? ( ^u8 n -- bool )  true VALIDATE ;
+: VALID-WITHOUT-SAT? ( str -- bool )  true VALIDATE ;
 
 : RUN ( ^u8 n -- n )
    {: path:^ u:n :}

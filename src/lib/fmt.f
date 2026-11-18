@@ -1,3 +1,4 @@
+split-str
 \ fmt.f - checked number formatting, package FMT: appenders into src/lib/string.f's
 \ SB and direct printers. Integers render through a private buffer, so FMT:.U,
 \ FMT:.INT and FMT:INT$ leave SB alone; FMT:F.N has no bounded width and resets
@@ -53,7 +54,7 @@ BAND-AGREE
    FMT-NUM-BUF FMT-NUM-U @ + c!
    FMT-NUM-U @ 1+ FMT-NUM-U ! ;
 
-: NUM$ ( -- ^u8 n )
+: NUM$ ( -- str )
    FMT-NUM-BUF FMT-NUM-U @ ;
 
 : DIGITS>NUM ( n -- )                      \ nonnegative magnitude, most significant digit first
@@ -322,10 +323,10 @@ public
 : .INT ( n -- )   INT>NUM NUM$ type ;          \ signed, no trailing space, SB untouched
 : INT$ ( n -- ^u8 n )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
 \ Value then width; SB untouched, valid until FMT's next render.
-: OCT-WIDTH$ ( n n -- ^u8 n )   OCT-WIDTH>NUM NUM$ ;
+: OCT-WIDTH$ ( n n -- str )   OCT-WIDTH>NUM NUM$ ;
 \ Value then width: exactly width upper-case digits; SB untouched, valid until
 \ FMT's next render.
-: HEX-WIDTH$ ( n n -- ^u8 n )   HEX-WIDTH>NUM NUM$ ;
+: HEX-WIDTH$ ( n n -- str )   HEX-WIDTH>NUM NUM$ ;
 : F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;   \ unbounded width: assembled in the shared builder
 
 ;package

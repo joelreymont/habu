@@ -1,3 +1,4 @@
+split-str
 \ ws-test.f - RFC 6455 connections over a real loopback port: a Habu client on
 \ TCP4 shakes hands with src/lib/net/ws.f inside an HTTP server and speaks frames
 \ built and read with src/lib/net/ws-frame.f. One handler, NOTE, serves every
@@ -213,7 +214,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       drop POLL-MS >MS TASK:SLEEP
    repeat ;
 
-: SCRIPT$ ( -- ^u8 n )
+: SCRIPT$ ( -- str )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
 
 : LOG ( ^u8 n -- ) {: a u:n :}
@@ -224,29 +225,29 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    c SCRIPT-BUF SCRIPT-U @ SPAN:U8!
    1 SCRIPT-U +! ;
 
-: LOG-LINE ( ^u8 n -- )
+: LOG-LINE ( str -- )
    LOG LF LOG-C ;
 
 : LOG-N ( n -- ) {: v:n :}
    v 10 >= if v 10 / RECURSE then
    v 10 mod [char] 0 + LOG-C ;
 
-: LOG-HEX ( ^u8 n -- ) {: a u:n :}
+: LOG-HEX ( str -- ) {: a u:n :}
    u 0 ?do
       a i + c@ HEX-PAIR SPAN:$ drop BYTE>HEX
       HEX-PAIR SPAN:$ LOG
    loop ;
 
-: BYTE-SUM ( ^u8 n -- n ) {: a u:n :}
+: BYTE-SUM ( str -- n ) {: a u:n :}
    0 u 0 ?do a i + c@ + loop ;
 
-: LOG-PAYLOAD ( ^u8 n -- ) {: a u:n :}
+: LOG-PAYLOAD ( str -- ) {: a u:n :}
    u 0= if exit then
    SP LOG-C
    u HEX-MAX <= if a u LOG-HEX exit then
    s" sum " LOG a u BYTE-SUM LOG-N ;
 
-: OP$ ( WS:opcode -- ^u8 n )
+: OP$ ( WS:opcode -- str )
    MATCH WS:opcode
       continuation OF s" continuation" ENDOF
       text OF s" text" ENDOF
@@ -256,7 +257,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       pong OF s" pong" ENDOF
    ;MATCH ;
 
-: LOG-FRAME ( ^u8 n bool WS:opcode ^u8 n -- ) {: dir du:n fin:bool op a u:n :}
+: LOG-FRAME ( str bool WS:opcode str -- ) {: dir du:n fin:bool op a u:n :}
    dir du LOG op OP$ LOG
    fin 0= if [char] + LOG-C then
    SP LOG-C u LOG-N a u LOG-PAYLOAD LF LOG-C ;
@@ -322,7 +323,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn CONNECTED? 0= if conn TCP4:CLOSE DROP-STATUS E-DIAL throw then
    conn ;
 
-: SEND-RAW ( TCP4:connection ^u8 n -- ) {: conn:TCP4:connection a u:n :}
+: SEND-RAW ( TCP4:connection str -- ) {: conn:TCP4:connection a u:n :}
    conn a u TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS ;
 
 : AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
@@ -370,28 +371,28 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       1 HEAD-U +!
    again ;
 
-: REQ$ ( -- ^u8 n )
+: REQ$ ( -- str )
    REQ-BUF REQ-U @ SPAN:TAKE SPAN:$ ;
 
-: REQ+ ( ^u8 n -- ) {: a u:n :}
+: REQ+ ( str -- ) {: a u:n :}
    a u REQ-BUF REQ-U @ SPAN:SKIP SPAN:COPY
    u REQ-U +! ;
 
-: LINE+ ( ^u8 n ^u8 n -- ) {: name nu:n value vu:n :}
+: LINE+ ( str str -- ) {: name nu:n value vu:n :}
    name nu REQ+ s" : " REQ+ value vu REQ+ S\" \r\n" REQ+ ;
 
-: REQ-BARE ( ^u8 n ^u8 n ^u8 n -- ) {: method mu:n path pu:n version vu:n :}
+: REQ-BARE ( str str str -- ) {: method mu:n path pu:n version vu:n :}
    0 REQ-U !
    method mu REQ+ s"  " REQ+ path pu REQ+ s"  " REQ+ version vu REQ+ S\" \r\n" REQ+ ;
 
 : HOST+ ( -- )
    s" Host" s" ws-test" LINE+ ;
 
-: REQ-START ( ^u8 n ^u8 n -- ) {: method mu:n path pu:n :}
+: REQ-START ( str str -- ) {: method mu:n path pu:n :}
    method mu path pu s" HTTP/1.1" REQ-BARE
    HOST+ ;
 
-: KEY$ ( -- ^u8 n )
+: KEY$ ( -- str )
    s" dGhlIHNhbXBsZSBub25jZQ==" ;
 
 : GOOD-LINES ( -- )
@@ -408,7 +409,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : REQ-SEND ( -- TCP4:connection )
    DIAL REQ-OVER ;
 
-: UPGRADE-OVER ( TCP4:connection ^u8 n -- TCP4:connection ) {: conn:TCP4:connection path pu:n :}
+: UPGRADE-OVER ( TCP4:connection str -- TCP4:connection ) {: conn:TCP4:connection path pu:n :}
    s" GET" path pu REQ-START GOOD-LINES S\" \r\n" REQ+
    conn REQ-OVER
    HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE ;
@@ -416,7 +417,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : UPGRADE ( ^u8 n -- TCP4:connection )
    DIAL -rot UPGRADE-OVER ;
 
-: FRAME$ ( bool WS:opcode ^u8 n -- ^u8 n ) {: fin:bool op a u:n :}
+: FRAME$ ( bool WS:opcode str -- str ) {: fin:bool op a u:n :}
    fin op u MASK-KEY WS-HEADER:MAKE WS-SENDER:CLIENT CLIENT-TX WS:ENCODE-HEADER {: size:n :}
    a u CLIENT-TX size SPAN:SKIP SPAN:COPY
    MASK-KEY CLIENT-TX size u SPAN:SUB WS:MASK
@@ -440,11 +441,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    loop
    RAW-BUF k SPAN:TAKE SPAN:$ ;
 
-: SAY-RAW ( TCP4:connection ^u8 n -- ) {: conn:TCP4:connection a u:n :}
+: SAY-RAW ( TCP4:connection str -- ) {: conn:TCP4:connection a u:n :}
    s" > raw " LOG a u LOG-LINE
    conn a u BYTES SEND-RAW ;
 
-: STATUS$ ( n -- ^u8 n ) {: code:n :}
+: STATUS$ ( n -- str ) {: code:n :}
    code 8 rshift $FF and STATUS-BUF 0 SPAN:U8!
    code $FF and STATUS-BUF 1 SPAN:U8!
    STATUS-BUF SPAN:$ ;
@@ -475,7 +476,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn READ-HEADER 0= if 1 RX-EOF ! exit then
    conn CLIENT-RX RX-LEN @ SPAN:TAKE READ-N 0= if 1 RX-EOF ! then ;
 
-: RX$ ( -- ^u8 n )
+: RX$ ( -- str )
    CLIENT-RX RX-LEN @ SPAN:TAKE SPAN:$ ;
 
 : HEARD ( -- )
@@ -525,14 +526,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a u T-LABEL
    s" == " LOG a u LOG-LINE ;
 
-: PATTERN$ ( n -- ^u8 n )
+: PATTERN$ ( n -- str )
    PATTERN swap SPAN:TAKE SPAN:$ ;
 
 : LOG-HEAD ( -- )
    HEAD$ {: a u:n :}
    u 0 ?do a i + c@ dup CR = if drop else LOG-C then loop ;
 
-: FIRST-LINE ( ^u8 n -- ^u8 n ) {: a u:n :}
+: FIRST-LINE ( str -- str ) {: a u:n :}
    u 0 ?do a i + c@ CR = if a i unloop exit then loop
    a u ;
 
@@ -607,7 +608,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    PROBE-END atomic!
    0 PROBING atomic! ;
 
-: TEXT-IN ( ^u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
+: TEXT-IN ( str WS:socket -- ) {: a u:n sock:WS:socket :}
    sock 0 NOTED !
    a u s" throw" STR= if E-HANDLER throw then
    a u s" stop" STR= if [: WS:STOP ;] catch HANDLER-STOP atomic! exit then
@@ -621,11 +622,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    a u s" next" STR= if FIRST-DONE atomic@ NEXT-SAW atomic! then
    sock a u WS:SEND-TEXT ;
 
-: BINARY-IN ( ^u8 n WS:socket -- ) {: a u:n sock:WS:socket :}
+: BINARY-IN ( str WS:socket -- ) {: a u:n sock:WS:socket :}
    sock a u WS:SEND-BINARY ;
 
 \ The file the cases below open on descriptors the stop gave back.
-: STRAY$ ( -- ^u8 n )
+: STRAY$ ( -- str )
    s" build/ws-stray.txt" ;
 
 : THROW-IN-CLOSED ( -- )
@@ -783,7 +784,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn TCP4:CLOSE DROP-STATUS
    REFUSED-WITH @ status T= ;
 
-: BAD$ ( -- ^u8 n )
+: BAD$ ( -- str )
    s" HTTP/1.1 400 Bad Request" ;
 
 \ Section 4.2.1's first two items: the handshake is an HTTP/1.1 GET carrying
@@ -1144,16 +1145,16 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ WS reports each handler fault on fd 2. For THROW-CASE fd 2 is a file, read
 \ back after it.
-: ERR-PATH$ ( -- ^u8 n )
+: ERR-PATH$ ( -- str )
    s" build/ws-stderr.txt" ;
 
 : ERR$ ( -- ^u8 n )
    ERR-BUF ERR-U @ SPAN:TAKE SPAN:$ ;
 
-: ERR-WANT$ ( -- ^u8 n )
+: ERR-WANT$ ( -- str )
    ERR-WANT ERR-WANT-U @ SPAN:TAKE SPAN:$ ;
 
-: ERR-W ( ^u8 n -- ) {: a u:n :}
+: ERR-W ( str -- ) {: a u:n :}
    a u ERR-WANT ERR-WANT-U @ SPAN:SKIP SPAN:COPY
    u ERR-WANT-U +! ;
 
@@ -1264,7 +1265,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn HEAR WS-OPCODE:TEXT s" pushed" GOT
    conn FAREWELL ;
 
-: PUSH-ONE ( ^u8 n -- ^u8 n ) {: a u:n :}
+: PUSH-ONE ( str -- str ) {: a u:n :}
    0 PUSHED-TO @ a u WS:SEND-BINARY
    a u ;
 
@@ -1278,7 +1279,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    loop
    0 ;
 
-: UNIFORM? ( ^u8 n -- bool ) {: a u:n :}
+: UNIFORM? ( str -- bool ) {: a u:n :}
    u 0 ?do a i + c@ a c@ <> if false unloop exit then loop
    true ;
 
@@ -1721,7 +1722,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    WS:STOP ;
 
 
-: WANT$ ( -- ^u8 n )
+: WANT$ ( -- str )
    WANT-BUF WANT-U @ SPAN:TAKE SPAN:$ ;
 
 : W ( ^u8 n -- ) {: a u:n :}
@@ -1735,7 +1736,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" < close 2 03e8" W
    s" < end of stream" W ;
 
-: W-FAILED ( ^u8 n -- )
+: W-FAILED ( str -- )
    W
    s" < end of stream" W ;
 

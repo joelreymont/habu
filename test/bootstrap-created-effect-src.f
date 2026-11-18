@@ -1,3 +1,4 @@
+split-str
 \ bootstrap-created-effect-src.f - a created word's published effect is enforced.
 \
 \ `variable` publishes `-- ^a` from its definer. The caller below declares

@@ -1,3 +1,4 @@
+split-str
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb). A
 \ failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
 \
@@ -245,9 +246,9 @@ here 10 over ! 5 over +! @ 15 T=
 
 create TESC-S-WANT
    $41 c, $5C c, $42 c, $22 c, $0A c, $09 c, $0D c, $00 c, $41 c,
-: TESC-S-WANT$ ( -- ^u8 n )
+: TESC-S-WANT$ ( -- str )
    TESC-S-WANT 9 ;
-: TESC-S-COMPILED$ ( -- ^u8 n )
+: TESC-S-COMPILED$ ( -- str )
    S\" A\\B\"\n\t\r\z\x41" ;
 S\" A\\B\"\n\t\r\z\x41" TESC-S-WANT$ T$=
 TESC-S-COMPILED$ TESC-S-WANT$ T$=
@@ -255,9 +256,9 @@ TESC-S-COMPILED$ TESC-S-WANT$ T$=
 create TESC-S-MULTILINE-WANT
    $7B c, $0A c, $20 c, $22 c, $6B c, $22 c, $3A c,
    $20 c, $22 c, $76 c, $22 c, $0A c, $7D c, $0A c,
-: TESC-S-MULTILINE-WANT$ ( -- ^u8 n )
+: TESC-S-MULTILINE-WANT$ ( -- str )
    TESC-S-MULTILINE-WANT 14 ;
-: TESC-S-MULTILINE$ ( -- ^u8 n )
+: TESC-S-MULTILINE$ ( -- str )
    S\" {
  \"k\": \"v\"
 }
@@ -266,9 +267,9 @@ TESC-S-MULTILINE$ TESC-S-MULTILINE-WANT$ T$=
 
 create TESC-C-WANT
    $41 c, $22 c, $0A c, $42 c,
-: TESC-C-WANT$ ( -- ^u8 n )
+: TESC-C-WANT$ ( -- str )
    TESC-C-WANT 4 ;
-: TESC-C-COMPILED$ ( -- ^u8 n )
+: TESC-C-COMPILED$ ( -- str )
    C\" A\q\n\x42" count ;
 C\" A\q\n\x42" count TESC-C-WANT$ T$=
 TESC-C-COMPILED$ TESC-C-WANT$ T$=
@@ -294,11 +295,11 @@ TFOLD 6 T=
 : TMAP ( -- ) IARR 3 [: 1+ ;] MAP ;
 TMAP
 TFOLD 9 T=
-: T-CHECK-REJECTS ( ^u8 n -- )
+: T-CHECK-REJECTS ( str -- )
    2dup T-LABEL
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: T-CHECK-PASSES ( ^u8 n -- )
+: T-CHECK-PASSES ( str -- )
    2dup T-LABEL
    CHECK! -1 T= ;
 
@@ -499,7 +500,7 @@ TYPED-VARIABLE ESB-BYTE-P ^u8
 : ESB-BYTE-HEAD ( -- ^u8 ) ESB-BYTE-P @ ;
 s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
-: T-CHECK-SAYS ( ^u8 n ^u8 n -- )
+: T-CHECK-SAYS ( str str -- )
    {: ta:^ tu:n :}
    REJECTION:CAPTURE
    2dup T-LABEL
@@ -635,7 +636,7 @@ defer T-MK-SPAN= ( n -- span<space-global,f32,fresh-extent-n> span<space-global,
 \ 3000 ` 1 +` bind more trail entries than the checker's trail first holds.
 12064 constant TRAIL-SRC-CAP
 create TRAIL-SRC TRAIL-SRC-CAP allot
-: TRAIL-SRC$ ( ^u8 n -- ^u8 n )
+: TRAIL-SRC$ ( str -- str )
    {: h:^ hu:n :}
    h TRAIL-SRC hu BYTE-COPY
    3000 0 ?do s"  1 +" drop TRAIL-SRC hu + i 4 * + 4 BYTE-COPY loop
@@ -663,7 +664,7 @@ variable LOCG-U
       s" engine-suite: generated definition too long" EXIT-STATUS:FAILURE die
    then
    LOCG-BUF LOCG-U @ + c!  LOCG-U @ 1 + LOCG-U ! ;
-: LOCG+ ( ^u8 n -- )
+: LOCG+ ( str -- )
    {: a:^ u:n :}
    0 begin dup u < while  dup a + c@ LOCG-C  1 + repeat drop ;
 : LOCG-NAME ( n -- )
@@ -677,8 +678,8 @@ variable LOCG-U
    s"  {:" LOCG+  100 0 ?do  i LOCG-NAME  loop  s"  :}" LOCG+
    99 LOCG-NAME  0 LOCG-NAME  s"  - ;" LOCG+ ;
 \ The definition without its leading ": " and trailing " ;".
-: LOCG-DEF$ ( -- ^u8 n ) LOCG-BUF 2 + LOCG-U @ 4 - ;
-: LOCG-SRC$ ( -- ^u8 n ) LOCG-BUF LOCG-U @ ;
+: LOCG-DEF$ ( -- str ) LOCG-BUF 2 + LOCG-U @ 4 - ;
+: LOCG-SRC$ ( -- str ) LOCG-BUF LOCG-U @ ;
 LOCG-BUILD
 s" 100 locals with long names certify" T-LABEL
 LOCG-DEF$ CHECK-CANDIDATE! -1 T=
@@ -1218,7 +1219,7 @@ variable ES-R1  variable ES-W1  variable ES-R2  variable ES-W2
 variable ES-FA  variable ES-FB
 : ES-ADDR ( ^a -- n ) NULL-PTR - ;
 : ES-REQ! ( n n -- ) ES-SFREQ + ! ;               \ ( value field -- )
-: ES-SFZ! ( ^u8 n n -- ) {: a:^ u:n off:n :}
+: ES-SFZ! ( str n -- ) {: a:^ u:n off:n :}
    0 begin dup u < while  dup a + c@  over off + ES-SFZ + c!  1 + repeat drop
    0 ES-SFZ off u + + c! ;
 : ES-SFDIGIT ( n n -- ) {: fd:n off:n :}  fd 48 +  ES-SFZ ES-SF-SCRIPT off + + c! ;
@@ -1239,11 +1240,11 @@ variable ES-FA  variable ES-FB
 : ES-SFMAP! ( n n -- ) cells ES-SFMAP + ! ;       \ ( parent-fd slot -- )
 : ES-SFUNMAP ( n -- ) {: n:n :}                    \ slots 0 .. n-1 closed
    0 begin dup n < while  -1 over ES-SFMAP!  1+ repeat drop ;
-: ES-SFSCRIPT ( ^u8 n -- ) ES-SF-SCRIPT ES-SFZ! ;
+: ES-SFSCRIPT ( str -- ) ES-SF-SCRIPT ES-SFZ! ;
 : ES-SFSPAWN ( n -- n ) SPAWN-ABI:NFDS ES-REQ!  ES-SFREQ spawn-fds ;
 : ES-FREE-FD ( n -- n ) begin dup ES-F-GETFD 0 fcntl 0 < 0= while 1+ repeat ;
 : ES-SFREAD ( n -- n ) ES-SFBUF 16 read ;
-: ES-SFLINE? ( ^u8 n n -- bool ) {: a:^ u:n got:n :}
+: ES-SFLINE? ( str n -- bool ) {: a:^ u:n got:n :}
    got u 1+ =  ES-SFBUF u a u T-STR= and  ES-SFBUF u + c@ 10 = and ;
 ES-SFSETUP
 
@@ -1323,9 +1324,9 @@ create DIRBASE 8 allot
 create ES-ROOT PATH-CAP allot
 variable ES-ROOT-U
 create ES-JOIN PATH-CAP allot
-: ES-ROOT$ ( -- ^u8 n ) ES-ROOT ES-ROOT-U @ ;
-: ES-ROOT! ( ^u8 n -- ) {: a:^ u:n :}  a ES-ROOT u BYTE-COPY  u ES-ROOT-U ! ;
-: ES-TMPZ ( ^u8 n -- ^u8 ) {: name:^ nameu:n :}
+: ES-ROOT$ ( -- str ) ES-ROOT ES-ROOT-U @ ;
+: ES-ROOT! ( str -- ) {: a:^ u:n :}  a ES-ROOT u BYTE-COPY  u ES-ROOT-U ! ;
+: ES-TMPZ ( str -- ^u8 ) {: name:^ nameu:n :}
    ES-ROOT$ name nameu ES-JOIN FS:JOIN-PATH {: u:n :}  ES-JOIN u FS:>PATHZ ;
 variable DFD
 : U16@ ( ^u8 -- n ) {: a:^ :} a c@ a 1 + c@ 8 lshift or ;
@@ -1509,10 +1510,10 @@ TFG TTRUE
 variable ES-CPX-CP
 variable ES-CPX-ND
 \ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
-: ES-CPX-BAD$ ( -- ^u8 n ) s" : CPX-BAD evaluate ;" ;
+: ES-CPX-BAD$ ( -- str ) s" : CPX-BAD evaluate ;" ;
 \ a name longer than DNAME-INL: the definer copies it into code space before
 \ the entry, so the reject rollback must reclaim the name bytes too
-: ES-CPX-BAD-EXT$ ( -- ^u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
+: ES-CPX-BAD-EXT$ ( -- str ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
 TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
 TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
 : ES-CPX-BAD-RUN ( -- )
@@ -1638,8 +1639,8 @@ s" ESNP-FETCH-N-2 ( ^n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 \ x18 is Darwin-reserved: XNU zeroes it on any trap return, so an escaped
 \ literal whose copy crosses a DATA page or a code page must not depend on it.
 \ The fixtures sit at top level: evaluate cannot carry escaped literals.
-: TX18-CHK ( ^u8 n -- ) 150 T=  c@ [char] A T= ;
-: TX18-QCHK ( ^u8 n -- ) 180 T=  c@ [char] B T= ;
+: TX18-CHK ( str -- ) 150 T=  c@ [char] A T= ;
+: TX18-QCHK ( str -- ) 180 T=  c@ [char] B T= ;
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK
 S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" TX18-CHK

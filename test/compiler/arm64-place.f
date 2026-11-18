@@ -1,3 +1,4 @@
+split-str
 \ arm64-place.f - LINKER:WRITE's placement of a build's code, checked on the
 \ stripped programs one build writes after loading
 \ test/compiler/arm64-place-fixture.f, each run in its own process. run prints
@@ -39,7 +40,7 @@ FILE-CAP BUFFER: FILE-B
 
 : ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
 
-: PROG$ ( ^u8 n -- ^u8 n )
+: PROG$ ( str -- str )
    {: name:^ name-n:n :}
    ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
@@ -52,12 +53,12 @@ FILE-CAP BUFFER: FILE-B
    s" : PL-GO-FIVE ( -- ) PL-FIVE . ;" evaluate-closed ;
 
 
-: STORE-ENTRY ( ^u8 n -- )
+: STORE-ENTRY ( str -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base APP-ENTRY:XT-CELL + xt! ;
 
 
-: WRITE-PROG ( ^u8 n ^u8 n -- )
+: WRITE-PROG ( str str -- )
    {: word:^ word-n:n file:^ file-n:n :}
    word word-n STORE-ENTRY
    file file-n PROG$ LINKER:WRITE ;
@@ -72,7 +73,7 @@ FILE-CAP BUFFER: FILE-B
    s" PL-GO-RUN" s" run-again" WRITE-PROG ;
 
 
-: RUN-PROG ( CMD:command ^u8 n ^u8 n -- CMD:command )
+: RUN-PROG ( CMD:command str str -- CMD:command )
    {: file:^ file-n:n out:^ out-n:n :}
    file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ out out-n STR=  rc 0=  and 0= if
@@ -88,7 +89,7 @@ FILE-CAP BUFFER: FILE-B
 
 
 \ Whether the map has a row for the word: a row's name stands between spaces.
-: ROW? ( ^u8 n ^u8 n -- bool )
+: ROW? ( str str -- bool )
    {: map:^ map-n:n name:^ name-n:n :}
    map map-n PROG$ FILE-A FILE-CAP FS:READ-ALL {: u:n :}
    FILE-A u name name-n CONTAINS? ;

@@ -1,3 +1,4 @@
+split-str
 \ ARENA records come from the real definer and runtime: NAME-NEW's records are
 \ zeroed, cell-aligned and distinct, NAME-NEW-DISPOSE's actions run once,
 \ newest first, at the arena's reset or release, a public declaration publishes
@@ -65,11 +66,11 @@ variable EVAL-U
 : EVAL ( ^u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
 
 \ EVAL with its rejection record unprinted.
-: QUIET-EVAL ( ^u8 n -- n ) 1 REJECTION:QUIET +! EVAL -1 REJECTION:QUIET +! ;
+: QUIET-EVAL ( str -- n ) 1 REJECTION:QUIET +! EVAL -1 REJECTION:QUIET +! ;
 
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
-: MULTI ( ^u8 n -- n n ) CHECK:MULTI-ERR-BEGIN EVAL CHECK:MULTI-ERR-END ;
+: MULTI ( str -- n n ) CHECK:MULTI-ERR-BEGIN EVAL CHECK:MULTI-ERR-END ;
 
 : ABSENT ( ^u8 n ^u8 n -- )
    {: name:^ nameu:n sfx:^ sfxu:n :}
@@ -77,7 +78,7 @@ variable EVAL-U
    SB$ get-current search-wl 0= TTRUE ;
 
 
-: NO-WORDS ( ^u8 n -- )
+: NO-WORDS ( str -- )
    {: name:^ nameu:n :}
    name nameu s" -NEW" ABSENT
    name nameu s" -NEW-DISPOSE" ABSENT ;
@@ -177,10 +178,10 @@ variable EVAL-U
 
 \ Whether NAME+SFX (PUB-ABSENT) or each of NAME's two words (PUB-NO-WORDS) is
 \ absent from ARENA-TEST's public section; the caller is in its private one.
-: PUB-ABSENT ( ^u8 n ^u8 n -- )
+: PUB-ABSENT ( str str -- )
    {: name:^ nameu:n sfx:^ sfxu:n :}
    s" public" EVAL 0 T=  name nameu sfx sfxu ABSENT  s" private" EVAL 0 T= ;
-: PUB-NO-WORDS ( ^u8 n -- )
+: PUB-NO-WORDS ( str -- )
    {: name:^ nameu:n :}
    s" public" EVAL 0 T=  name nameu NO-WORDS  s" private" EVAL 0 T= ;
 
@@ -234,19 +235,19 @@ private
    s" ARENA ARENA-FIX:PRECS n" QUIET-EVAL 70 T= ;
 
 
-: VERIFY-USES-SRC$ ( -- ^u8 n )
+: VERIFY-USES-SRC$ ( -- str )
    S\" require src/lib/arena.f\npackage Q public\nSTRUCTURE rec DERIVE addr FIELD id n ;STRUCTURE\nARENA X rec\n: INSIDE ( ^ARENA:arena -- ^rec ) [: drop ;] X-NEW-DISPOSE ;\n;package\npackage R public\n: U ( ^ARENA:arena -- ^Q:rec ) dup Q:X-NEW drop [: drop ;] Q:X-NEW-DISPOSE ;\n;package\npackage P\nprivate\nARENA X n\npublic\n: MK ( ^ARENA:arena -- ^n ) X-NEW ;\n;package\n" ;
 
-: VERIFY-WRONG-SRC$ ( -- ^u8 n )
+: VERIFY-WRONG-SRC$ ( -- str )
    S\" require src/lib/arena.f\npackage Q public\nARENA X n\n;package\npackage R public\n: U ( ^ARENA:arena -- ^u8 ) Q:X-NEW ;\n: V ( ^ARENA:arena -- ^n ) [: c@ drop ;] Q:X-NEW-DISPOSE ;\n;package\n" ;
 
-: VERIFY-TAKEN-SRC$ ( -- ^u8 n )
+: VERIFY-TAKEN-SRC$ ( -- str )
    S\" require src/lib/arena.f\npackage Q\nprivate\n: X-NEW ( -- ) ;\n;package\nARENA Q:X n\n" ;
 
-: VERIFY-QUAL-SRC$ ( -- ^u8 n )
+: VERIFY-QUAL-SRC$ ( -- str )
    S\" require src/lib/arena.f\npackage Q public\n;package\nARENA Q:Y n\npackage R public\n: U ( ^ARENA:arena -- ^n ) Q:Y-NEW ;\n;package\n" ;
 
-: VERIFY-FILE ( ^u8 n -- )
+: VERIFY-FILE ( str -- )
    {: rel:^ relu:n :}
    s" tools/check.f" E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+

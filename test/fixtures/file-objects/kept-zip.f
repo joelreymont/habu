@@ -1,3 +1,4 @@
+split-str
 \ kept-zip.f - the file kept-main.f requires.
 
 require src/lib/string.f

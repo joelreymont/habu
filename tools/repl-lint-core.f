@@ -1,3 +1,4 @@
+split-str
 \ repl-lint-core.f -- REPL-baked code must never exit the interactive session.
 
 require tools/lint/text.f
@@ -58,7 +59,7 @@ variable REPL-ROOT-U
 : REPL-OUT-FD! ( fd -- )
    REPL-OUT-FD ! ;
 
-: REPL-OUT ( ^u8 n -- )
+: REPL-OUT ( str -- )
    REPL-OUT-FD @ -rot LINT-OUT-WRITE ;
 
 : REPL-C! ( n -- )
@@ -85,7 +86,7 @@ variable REPL-ROOT-U
       REPL-NUM REPL-NUM-L @ + c@ REPL-C
    repeat ;
 
-: REPL-ROOT! ( ^u8 n -- ) {: a:^ u:n :}
+: REPL-ROOT! ( str -- ) {: a:^ u:n :}
    a REPL-ROOT-A!
    u REPL-ROOT-U ! ;
 
@@ -93,7 +94,7 @@ variable REPL-ROOT-U
    REPL-ROOT-U @ 0= if LINT-TRUE exit then
    REPL-ROOT-A@ REPL-ROOT-U @ s" ." LINT-STR= ;
 
-: REPL-ROOTED$ ( ^u8 n -- ^u8 n )
+: REPL-ROOTED$ ( str -- str )
    {: a:^ u:n :}
    REPL-ROOT-SELF? if a u exit then
    REPL-PATH-BUF  REPL-ROOT-A@ REPL-ROOT-U @ a u REPL-PATH-BUF FS:JOIN-PATH ;
@@ -101,7 +102,7 @@ variable REPL-ROOT-U
 : PATH-ID@  ( n -- n )  REPL-PATH-IDS swap cells + @ ;
 : PATH-ID!  ( n n -- )  REPL-PATH-IDS swap cells + ! ;
 
-: ADD-REPL-PATH  ( ^u8 n -- ) {: a:^ u:n :}
+: ADD-REPL-PATH  ( str -- ) {: a:^ u:n :}
    a u INTERN-FIND dup 0 >= if drop exit then drop
    REPL-PATH# @ REPL-PATH-MAX >= if s" repl-lint: too many source paths" EXIT-STATUS:FULL die then
    a u INTERN  REPL-PATH# @ PATH-ID!
@@ -140,7 +141,7 @@ variable REPL-ROOT-U
    ADD-BACKSTOP-PATHS
    SORT-REPL-PATHS ;
 
-: FATAL-TOK?  ( ^u8 n -- bool ) {: a:^ u:n :}
+: FATAL-TOK?  ( str -- bool ) {: a:^ u:n :}
    a u s" die" LINT-STR=CI if LINT-TRUE exit then
    a u s" bye" LINT-STR=CI ;
 
@@ -208,12 +209,12 @@ variable REPL-ROOT-U
    REPL-TOK-A@ REPL-TOK-U @ SOURCE:NORMAL-STRING-OPENER? if R-SKIP-QUOTE then then
    LINT-TRUE ;
 
-: REPL-FINDING  ( ^u8 n ^u8 n n -- ) {: fa:^ fu:n ta:^ tu:n line:n :}
+: REPL-FINDING  ( str str n -- ) {: fa:^ fu:n ta:^ tu:n line:n :}
    s" FATAL-IN-REPL " REPL-OUT fa fu REPL-OUT 58 REPL-C line REPL-U s" : `" REPL-OUT
    ta tu REPL-OUT s" ` exits the session " REPL-OUT REPL-EM-DASH
    s"  use `throw` (the REPL recovers); `die` is for build-time makers only" REPL-OUT REPL-NL ;
 
-: LINT-REPL-SOURCE  ( ^u8 n ^u8 n -- ) {: fa:^ fu:n a:^ u:n :}
+: LINT-REPL-SOURCE  ( str str -- ) {: fa:^ fu:n a:^ u:n :}
    a REPL-SRC-A!  u REPL-SRC-U !  0 REPL-X !  1 REPL-LINE !
    begin R-NEXT-WORD while
       REPL-TOK-A@ REPL-TOK-U @ FATAL-TOK? if
@@ -222,7 +223,7 @@ variable REPL-ROOT-U
       then
    repeat ;
 
-: LINT-REPL-FILE  ( ^u8 n -- )
+: LINT-REPL-FILE  ( str -- )
    {: pa:^ pu:n :}
    pa pu REPL-ROOTED$ FS:EXISTS? 0= if exit then
    pa pu REPL-ROOTED$ REPL-FB REPL-FILE-CAP READ-FILE  P2U ! P2A!

@@ -1,3 +1,4 @@
+split-str
 \ zip-test.f - public lifecycle and independent archive-preservation checks.
 require src/lib/string.f
 require src/lib/zip.f
@@ -31,14 +32,14 @@ TASK:MIN-STACK TASK:TASK ZIP-READER-B
 TASK:SEMAPHORE ZIP-START
 1000 constant ZIP-TASK-ROUNDS
 
-: BASE$ ( -- ^u8 n ) BASE BASE-LEN @ ;
+: BASE$ ( -- str ) BASE BASE-LEN @ ;
 : PATH$ ( ^u8 n -- ^u8 n )
    BASE$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
-: INPUT$ ( -- ^u8 n ) s" input.zip" PATH$ ;
-: OTHER$ ( -- ^u8 n ) s" other.zip" PATH$ ;
-: MOVED$ ( -- ^u8 n ) s" moved" PATH$ ;
-: OLD-DIR$ ( -- ^u8 n ) s" gone" PATH$ ;
-: FAIL-PATH$ ( -- ^u8 n ) s" gone/edit.zip" PATH$ ;
+: INPUT$ ( -- str ) s" input.zip" PATH$ ;
+: OTHER$ ( -- str ) s" other.zip" PATH$ ;
+: MOVED$ ( -- str ) s" moved" PATH$ ;
+: OLD-DIR$ ( -- str ) s" gone" PATH$ ;
+: FAIL-PATH$ ( -- str ) s" gone/edit.zip" PATH$ ;
 
 : SETUP ( -- )
    s" habu-zip" FS:MKTEMP-DIR {: dir:^ len:n :}
@@ -46,7 +47,7 @@ TASK:SEMAPHORE ZIP-START
    BASE$ FS:CLEANUP-TREE+ INPUT$ ORIGINAL$ FS:WRITE-ALL
    OTHER$ ORIGINAL$ FS:WRITE-ALL ;
 
-: MEMBER= ( ZIP:archive n ^u8 n -- ) {: archive:ZIP:archive idx:n want:^ len:n :}
+: MEMBER= ( ZIP:archive n str -- ) {: archive:ZIP:archive idx:n want:^ len:n :}
    archive idx ENTRY {: member:ZIP:entry :}
    archive member ZIP:READ want len T$= ;
 
@@ -155,7 +156,7 @@ TASK:SEMAPHORE ZIP-START
    archive 4 s" " MEMBER=
    archive ZIP:CLOSE ;
 
-: RAW-HAS ( ^u8 n -- ) {: expected:^ len:n :}
+: RAW-HAS ( str -- ) {: expected:^ len:n :}
    INPUT$ RAW RAW-CAP FS:READ-ALL {: size:n :}
    RAW size expected len CONTAINS? TTRUE ;
 
@@ -210,7 +211,7 @@ TASK:SEMAPHORE ZIP-START
    INPUT$ FS:REMOVE-DIR s" saved.zip" PATH$ {: path:^ len:n :}
    path RAW len BYTE-COPY RAW len INPUT$ FS:RENAME-FILE ;
 
-: NO-TEMP ( ^u8 n -- )
+: NO-TEMP ( str -- )
    FS:BASENAME s" .tmp-" STARTS-WITH? TFALSE ;
 
 : INSTALL-FAILURE ( -- )
@@ -260,7 +261,7 @@ TASK:SEMAPHORE ZIP-START
    archive 1 ENTRY archive swap NAME$ s" raw.txt" T$=
    archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
 
-: FRAMING-CASE ( ^u8 n ^u8 n -- )
+: FRAMING-CASE ( str str -- )
    {: before:^ before-len:n after:^ after-len:n :}
    INPUT$ before before-len FS:WRITE-ALL REPLACE-FIRST
    INPUT$ RAW RAW-CAP FS:READ-ALL {: len:n :}
@@ -338,7 +339,7 @@ $10000 constant WIDE-COUNT
    archive 2 s" " MEMBER=
    archive ZIP:CLOSE ;
 
-: FILE-STREAM-ONE ( ZIP:archive n ^u8 n -- )
+: FILE-STREAM-ONE ( ZIP:archive n str -- )
    {: archive:ZIP:archive idx:n want:^ size:n :}
    archive archive idx ENTRY ZIP:OPEN-ENTRY {: input:ZIP:input :}
    0 begin dup size < while
@@ -503,7 +504,7 @@ $10000 constant WIDE-COUNT
    archive COMMIT
    READ-REPLACED PRESERVED ;
 
-: BOUNDARY-PATH$ ( -- ^u8 n ) s" boundary.zip" PATH$ ;
+: BOUNDARY-PATH$ ( -- str ) s" boundary.zip" PATH$ ;
 : BOUNDARY-BASE ( -- n )
    BOUNDARY-STORE$ {: data:^ len:n :}
    data RAW len BYTE-COPY len ;
@@ -663,7 +664,7 @@ $10000 constant WIDE-COUNT
    WIDE-BOUNDARY-BASE 1 $366 4 BOUNDARY-NUM! BOUNDARY-SAVE WIDE-BOUNDARY-BAD ;
 
 \ Different member sizes expose a concurrent zip_stat_index scratch collision.
-: TASK-READ-ONE ( ^u8 n n ^u8 n ^u8 n -- )
+: TASK-READ-ONE ( str n str str -- )
    {: path:^ path-len:n idx:n name:^ name-len:n data:^ data-len:n :}
    path path-len ZIP:OPEN {: archive:ZIP:archive :}
    archive ZIP:COUNT 5 <> if E-READ throw then
@@ -672,8 +673,8 @@ $10000 constant WIDE-COUNT
    archive member ZIP:READ data data-len STR= 0= if E-READ throw then
    archive ZIP:CLOSE ;
 
-: TASK-PATH-A$ ( -- ^u8 n ) TASK-PATH-A TASK-PATH-A-LEN @ ;
-: TASK-PATH-B$ ( -- ^u8 n ) TASK-PATH-B TASK-PATH-B-LEN @ ;
+: TASK-PATH-A$ ( -- str ) TASK-PATH-A TASK-PATH-A-LEN @ ;
+: TASK-PATH-B$ ( -- str ) TASK-PATH-B TASK-PATH-B-LEN @ ;
 
 : TASK-READ-A ( -- )
    ZIP-START TASK:WAIT-SEM

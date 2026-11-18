@@ -1,3 +1,4 @@
+split-str
 \ copy.f - COPY-VALUE, one value from a reader into a writer.
 \
 \ COPY-VALUE walks the reader's tokens in one loop, counting containers opened
@@ -53,7 +54,7 @@ private
    drop depth 1 - true ;
 
 \ Rejects the reader's current token, which starts no value, with the fix.
-: COPY-REJECT ( JSON:reader ^u8 n -- JSON:reader ) {: fa:^ fu:n :}
+: COPY-REJECT ( JSON:reader str -- JSON:reader ) {: fa:^ fu:n :}
    READER>STATE s" a value" fa fu E-JSON-READ-STATE REJECT-TOKEN ;
 
 \ Write the reader's current token, of kind kind, and answer the new depth

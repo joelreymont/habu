@@ -1,3 +1,4 @@
+split-str
 \ app.f - real Wasm fixture for the turn protocol's rpc, after and read records
 \ and its notified, tick, file and chunk events, built by `tools/hb-build.f --
 \ --target wasm`, whose entry is MAIN. Each event it reads answers a text record
@@ -92,7 +93,7 @@ variable FILE-SIZE
    12 file offset length RECORD ;
 
 
-: IS? ( n n ^u8 n -- bool )
+: IS? ( n n str -- bool )
    {: at:n u:n t:^ tu:n :}
    u tu <> if false exit then
    tu 0 ?do at i + >BYTES c@ t i + c@ <> if false unloop exit then loop

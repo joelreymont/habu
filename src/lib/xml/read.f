@@ -1,3 +1,4 @@
+split-str
 \ read.f - the XML event scanner: NEXT, CONTENT and TEXT.
 
 require src/lib/xml/names.f
@@ -95,7 +96,7 @@ private
    state XML-KIND:START EVENT-FINISH ;
 
 \ The expected text `</NAME>` names the open element, cut as a found token is.
-: END-TAG-SCOPE ( ^n n ^u8 n n ^u8 n n ^u8 NUM:alloc-byte-len -- )
+: END-TAG-SCOPE ( ^n n str n str n ^u8 NUM:alloc-byte-len -- )
    drop {: state off:n fa:^ fu:n code:n name:^ len:n form:n buf:^ :}
    buf 0 s" `</" PUT name len PUT
    form FOUND-CUT = if CUT$ PUT then
@@ -103,7 +104,7 @@ private
    state off buf size fa fu code REJECT ;
 
 \ Rejects the reader at off, expecting the open element's end tag.
-: END-TAG-REJECT ( ^n n ^u8 n n -- )
+: END-TAG-REJECT ( ^n n str n -- )
    {: state off:n fa:^ fu:n code:n :}
    state CURRENT-FRAME {: frame :}
    state frame FRAME-NAME + @ frame FRAME-NAME-U + @ SPAN$ {: name:^ u:n :}
@@ -242,11 +243,11 @@ private
       E-MALFORMED REJECT
    then ;
 
-: DECLARATION-NAME? ( ^n n ^u8 n -- bool )
+: DECLARATION-NAME? ( ^n n str -- bool )
    {: state index:n name size:n :}
    state state index ATTRIBUTE name size NAME-MATCH? ;
 
-: DECLARATION-VALUE$ ( ^n n -- ^u8 n )
+: DECLARATION-VALUE$ ( ^n n -- str )
    {: state index:n :}
    state state index ATTRIBUTE ATTRIBUTE-VALUE$ ;
 
@@ -307,7 +308,7 @@ private
 
 \ The expected text and the fix of a declared encoding the reader's mode does
 \ not take.
-: ENCODING-TEXTS ( n -- ^u8 n ^u8 n ) {: mode:n :}
+: ENCODING-TEXTS ( n -- str str ) {: mode:n :}
    mode SOURCE-UTF16-LE-BOM = mode SOURCE-UTF16-BE-BOM = or if
       s" `UTF-16`, as the byte order mark shows"
       s\" declare `encoding=\qUTF-16\q`" exit

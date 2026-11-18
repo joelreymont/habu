@@ -1,3 +1,4 @@
+split-str
 \ XML 1.0 scalar/entity decoding retains byte offsets in its input view.
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
@@ -34,7 +35,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 \ A numeric address view is needed solely for extent and alias checks.
 : BYTE-ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
-: SPAN-CHECK ( ^u8 n -- )
+: SPAN-CHECK ( str -- )
    {: source size:n :}
    size 0 < if E-RANGE throw then
    source BYTE-ADDRESS {: start:n :}
@@ -42,7 +43,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    size 0 > start 0= and if E-RANGE throw then
    size MAX-SIZE start - > if E-RANGE throw then ;
 
-: OVERLAP? ( ^u8 n ^u8 n -- bool )
+: OVERLAP? ( str str -- bool )
    {: first first-len:n second second-len:n :}
    first-len 0= second-len 0= or if false exit then
    first BYTE-ADDRESS second BYTE-ADDRESS second-len + <
@@ -59,7 +60,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    then
    source index + c@ ;
 
-: BYTES= ( ^u8 n ^u8 n -- bool )
+: BYTES= ( str str -- bool )
    {: first first-len:n second second-len:n :}
    first-len second-len <> if false exit then
    first-len 0 ?do
@@ -77,12 +78,12 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    scalar $E000 >= scalar $FFFD <= and or
    scalar $10000 >= scalar $10FFFF <= and or ;
 
-: SCALAR-EXPECTED$ ( -- ^u8 n ) s" a character XML 1.0 allows" ;
-: SCALAR-FIX$ ( -- ^u8 n )
+: SCALAR-EXPECTED$ ( -- str ) s" a character XML 1.0 allows" ;
+: SCALAR-FIX$ ( -- str )
    s" remove the character, or write one XML 1.0 allows" ;
 
 \ Rejects the scalar at off in the span unless XML 1.0 allows it.
-: REQUIRE-SCALAR ( ^u8 n place n n -- )
+: REQUIRE-SCALAR ( str place n n -- )
    {: source size:n at:place off:n scalar:n :}
    scalar XML-SCALAR? 0= if
       source size at off SCALAR-EXPECTED$ SCALAR-FIX$ E-SCALAR
@@ -95,11 +96,11 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    size 0 ?do source i + c@ $7F > if i unloop exit then loop
    size ;
 
-: ASCII-EXPECTED$ ( -- ^u8 n ) s" a US-ASCII character" ;
-: ASCII-FIX$ ( -- ^u8 n )
+: ASCII-EXPECTED$ ( -- str ) s" a US-ASCII character" ;
+: ASCII-FIX$ ( -- str )
    s\" write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" ;
 
-: ASCII-WIRE ( ^u8 n -- )
+: ASCII-WIRE ( str -- )
    {: source size:n :}
    source size HIGH-BYTE {: off:n :}
    off size < if
@@ -107,7 +108,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
       REJECT-FROM
    then ;
 
-: SCALAR-AT ( ^u8 n place n -- n n )
+: SCALAR-AT ( str place n -- n n )
    {: source size:n at:place cursor:n :}
    source size at cursor BYTE@ drop
    source size cursor
@@ -122,14 +123,14 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    source size at cursor scalar REQUIRE-SCALAR
    scalar next ;
 
-: DIGIT-REJECT ( ^u8 n place n -- )
+: DIGIT-REJECT ( str place n -- )
    {: source size:n at:place amp:n :}
    source size at amp
    s" a character reference such as `&#65;` or `&#x41;`"
    s" write the character's number in decimal after `&#`, or in hex after `&#x`, and end the reference with `;`"
    E-ENTITY REJECT-FROM ;
 
-: NAME-REJECT ( ^u8 n place n -- )
+: NAME-REJECT ( str place n -- )
    {: source size:n at:place amp:n :}
    source size at amp
    s" `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`"
@@ -143,7 +144,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    byte STR-HEX-DIGIT-VALUE ;
 
 \ The value of the reference at amp after one more digit.
-: NUMERIC-STEP ( ^u8 n place n n n n -- n )
+: NUMERIC-STEP ( str place n n n n -- n )
    {: source size:n at:place amp:n value:n digit:n radix:n :}
    digit radix >= if source size at amp DIGIT-REJECT then
    value $10FFFF digit - radix / > if
@@ -153,7 +154,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    value radix * digit + ;
 
 \ The scalar of the character reference at amp and the offset after its `;`.
-: NUMERIC-ENTITY ( ^u8 n place n -- n n )
+: NUMERIC-ENTITY ( str place n -- n n )
    {: source size:n at:place amp:n :}
    source size at amp 2 + BYTE@ $78 = if
       amp 3 + $10
@@ -177,7 +178,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 
 \ The scalar a predefined entity names, given the reference at amp and its `;`
 \ at end.
-: NAMED-SCALAR ( ^u8 n place n n -- n )
+: NAMED-SCALAR ( str place n n -- n )
    {: source size:n at:place amp:n end:n :}
    source amp 1+ + end amp - 1- {: name len:n :}
    name len s" lt" BYTES= if $3C exit then
@@ -187,11 +188,11 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    name len s" quot" BYTES= if $22 exit then
    source size at amp NAME-REJECT ;
 
-: SEMICOLON? ( n ^u8 n place -- bool )
+: SEMICOLON? ( n str place -- bool )
    {: cursor:n source size:n at:place :}
    source size at cursor BYTE@ $3B = ;
 
-: ENTITY-AT ( ^u8 n place n -- n n )
+: ENTITY-AT ( str place n -- n n )
    {: source size:n at:place start:n :}
    source size at start 1+ BYTE@ $23 = if
       source size at start NUMERIC-ENTITY exit
@@ -220,7 +221,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
       $20 after
    else value after then ;
 
-: DECODE-AT ( ^u8 n place n n -- n n )
+: DECODE-AT ( str place n n -- n n )
    {: source size:n at:place cursor:n mode:n :}
    mode DECODE-RAW <> if
       source size at cursor BYTE@ $26 = if
@@ -234,7 +235,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    dup $800 < if drop 2 exit then
    $10000 < if 3 else 4 then ;
 
-: DECODED-SIZE ( ^u8 n n -- n )
+: DECODED-SIZE ( str n -- n )
    {: source size:n mode:n :}
    source size SPAN-CHECK
    0 0
@@ -274,7 +275,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    {: last :}
    scalar last PUT-CONTINUATION ;
 
-: DECODE-WRITE ( ^u8 n n ^u8 -- )
+: DECODE-WRITE ( str n ^u8 -- )
    {: source size:n mode:n destination :}
    destination 0
    begin dup size < while
@@ -286,7 +287,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    2drop ;
 
 \ A reader's value was checked when NEXT read it, so it rejects nothing here.
-: DECODE-INTO ( ^u8 n n ^u8 n -- n )
+: DECODE-INTO ( str n str -- n )
    {: source size:n mode:n destination cap:n :}
    source size mode DECODED-SIZE {: needed:n :}
    destination cap SPAN-CHECK
@@ -295,7 +296,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    source size mode destination DECODE-WRITE
    needed ;
 
-: NORMAL-EQUAL? ( ^u8 n ^u8 n -- bool )
+: NORMAL-EQUAL? ( str str -- bool )
    {: first first-len:n second second-len:n :}
    0 0
    begin

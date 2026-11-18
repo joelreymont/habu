@@ -1,3 +1,4 @@
+split-str
 \ image-size-lib.f - where the bytes of a program the linker wrote went, read
 \ from its container and the <program>.map beside it, whose rows tile the code
 \ from its first byte. Each byte falls in one class, and
@@ -41,7 +42,7 @@ variable OTHER-SIZE
 : IMG@ ( -- ^u8 )
    0 IMG BYTE-VIEW ;
 
-: READ-IMAGE ( ^u8 n -- )
+: READ-IMAGE ( str -- )
    {: path:^ pathu:n :}
    path pathu FS:FILE-SIZE {: size:n :}
    size CELL < if s" image-size: image too small" EXIT-STATUS:DATAERR die then
@@ -53,7 +54,7 @@ variable OTHER-SIZE
 
 : ELF? ( -- bool ) IMG@ ILEN @ ELF:MAGIC? ;
 
-: REFUSAL$ ( -- ^u8 n )
+: REFUSAL$ ( -- str )
    IMG@ LE:U32@ $6D736100 = if
       s" image-size: a Wasm module, which this report does not read" exit
    then
@@ -66,7 +67,7 @@ variable OTHER-SIZE
    ELF? if IMG@ ILEN @ ELF:OPEN exit then
    IMG@ ILEN @ MACHO:OPEN ;
 
-: MAP-CHECK ( ^u8 n -- )
+: MAP-CHECK ( str -- )
    IMAGE-NAMES:MAP$ 0= if
       2drop s" image-size: the program path is too long for its map path" EXIT-STATUS:FULL die
    then {: map:^ mapu:n :}
@@ -186,7 +187,7 @@ variable OTHER-SIZE
 
 public
 
-: MEASURE ( ^u8 n -- )
+: MEASURE ( str -- )
    {: path:^ pathu:n :}
    path pathu READ-IMAGE
    REFUSE
@@ -216,7 +217,7 @@ public
    s" total" TOTAL-BYTES ROW
    IMAGE-NAMES:REPORT-CODE ;
 
-: .SUMMARY ( ^u8 n -- )
+: .SUMMARY ( str -- )
    {: name:^ nameu:n :}
    s" size: " type name nameu type
    s"  " type TOTAL-BYTES FMT:.U s"  bytes = code " type CODE-BYTES FMT:.U

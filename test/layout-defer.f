@@ -1,3 +1,4 @@
+split-str
 \ layout-defer.f - DEFER-LAYOUT-BUFFER, a layout column whose offset and count
 \ cells are bound at run time: its accessor checks like LAYOUT-BUFFER's,
 \ NAME-BIND sizes from the counted need reusing the largest region, and
@@ -128,7 +129,7 @@ SUMTYPE dfl-owned
 TYPED-VARIABLE DFL-EVAL-A ^u8
 variable DFL-EVAL-U
 : DFL-EVAL-RUN ( -- )  DFL-EVAL-A @ DFL-EVAL-U @ evaluate-closed ;
-: DFL-EVAL ( ^u8 n -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
+: DFL-EVAL ( str -- n )  DFL-EVAL-U ! DFL-EVAL-A !  [: DFL-EVAL-RUN ;] catch ;
 
 s" DEFER-LAYOUT-BUFFER DC-OPEN dfl-owned" DFL-EVAL 70 T=
 \ A second declaration of the column redefines its accessor.

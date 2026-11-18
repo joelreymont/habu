@@ -1,3 +1,4 @@
+split-str
 \ XMODEM packet framing after the XMODEM/YMODEM Protocol Reference: single file,
 \ 1K and CAN, no YMODEM batch; no transport, file or device policy (peer tests:
 \ test/xmodem.py). CRC: polynomial $1021, initial zero, no reflection or final
@@ -61,7 +62,7 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    loop ;
 
 
-: CHECK-VALUE ( ^u8 n n -- n ) {: data size:n kind:n :}
+: CHECK-VALUE ( str n -- n ) {: data size:n kind:n :}
    0 size 0 ?do
       data i + c@ kind 1 = if CRC-BYTE else + $FF and then
    loop ;
@@ -101,7 +102,7 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    data c@ kind 1 = if 8 lshift data 1 + c@ or then ;
 
 
-: CHECK-DECODE ( ^u8 n n -- n ) {: data size:n kind:n :}
+: CHECK-DECODE ( str n -- n ) {: data size:n kind:n :}
    kind CHECK-KIND
    size 4 < if E-FRAME throw then
    data c@ WIRE-BLOCK {: block:n :}

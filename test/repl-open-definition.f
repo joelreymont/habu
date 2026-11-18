@@ -1,3 +1,4 @@
+split-str
 \ A definition held open across tty lines. The line reader is compiled code
 \ that runs between the lines, and the open definition holds the compile
 \ loop's bands RW; its end of input is a rejection, rc 70, since no input

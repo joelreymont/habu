@@ -1,3 +1,4 @@
+split-str
 \ capture-tree-test.f - a capture that ends its child early ends what the
 \ child started. An overflow ends the sleeper the child started
 \ (test/check-signal-subject.f), which leads its own process group as every
@@ -40,7 +41,7 @@ PROCESS:NO-FD FIFO-RD !
 \ neither is left. A FIFO no writer has opened reads end of file too, so end of
 \ file counts only after the subject's report.
 
-: FIFO$ ( -- ^u8 n )
+: FIFO$ ( -- str )
    FIFO FIFO-U @ ;
 
 \ A new FIFO for the case, its read end open before the capture starts, so the

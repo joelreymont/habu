@@ -1,3 +1,4 @@
+split-str
 \ kernel-map.f - WKMAP, the map from an engine word's name to the word that
 \ provides it in a Wasm module.
 
@@ -7,7 +8,7 @@ package WKMAP
 public
 
 \ The kernel-words word answering an engine name, or an empty spelling.
-: WORD-OF ( ^u8 n -- ^u8 n )
+: WORD-OF ( str -- str )
    {: a:^ u:n :}
    a u s" ." STR=CI if s" WKWORDS:DOT" exit then
    a u s" .s" STR=CI if s" WKWORDS:DOT-S" exit then

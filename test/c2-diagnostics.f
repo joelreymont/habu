@@ -1,3 +1,4 @@
+split-str
 \ C2 refusals retain the operation and the logical owner or loan in both
 \ diagnostic formats. Every candidate runs through the real evaluator.
 require src/lib/string.f

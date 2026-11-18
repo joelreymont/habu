@@ -1,3 +1,4 @@
+split-str
 \ escape.f - decoding an escaped string literal's span, package ESCAPE.
 \
 \ A literal (`s\"`, `c\"`, `.\"`) runs to a closing double quote; LETTER

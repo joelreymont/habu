@@ -1,3 +1,4 @@
+split-str
 \ bearer-test.f - BEARER:ADMIT? over a real loopback port: ADMIT? before
 \ ISSUER! and ISSUER! or METADATA! while serving, the 503 of a key set that
 \ cannot be fetched, key selection among an EC key, an encryption key and the
@@ -96,9 +97,9 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    off u + ;
 
 
-: SET+ ( ^u8 n n -- n ) SETS swap PUT ;
+: SET+ ( str n -- n ) SETS swap PUT ;
 
-: RSA-KEY+ ( ^u8 n n -- n )
+: RSA-KEY+ ( str n -- n )
    {: kid:^ ku:n off:n :}
    S\" {\"kty\":\"RSA\",\"kid\":\"" off SET+
    kid ku rot SET+
@@ -123,8 +124,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" b" rot RSA-KEY+
    s" ]}" rot SET+ SET-CAP - TWO-U ! ;
 
-: SET-ONE$ ( -- ^u8 n ) SETS 0 ONE-U @ SPAN:SUB SPAN:$ ;
-: SET-TWO$ ( -- ^u8 n ) SETS SET-CAP TWO-U @ SPAN:SUB SPAN:$ ;
+: SET-ONE$ ( -- str ) SETS 0 ONE-U @ SPAN:SUB SPAN:$ ;
+: SET-TWO$ ( -- str ) SETS SET-CAP TWO-U @ SPAN:SUB SPAN:$ ;
 
 
 : CLAIM ( ^JSON:writer ^u8 n -- ^JSON:writer )
@@ -155,11 +156,11 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    if [char] t else [char] f then
    HELD at 1 SPAN:SUB SPAN:$ drop c! ;
 
-: HELD! ( ^u8 n ^u8 n n -- )
+: HELD! ( str str n -- )
    {: at:n :}
    BEARER:CLAIM-HOLDS? at FLAG! ;
 
-: APP-1? ( ^u8 n bool -- bool )
+: APP-1? ( str bool -- bool )
    if s" app-1" STR= else 2drop false then ;
 
 : ROLES-ROUTE ( HTTP:request HTTP:response -- )
@@ -293,11 +294,11 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    status 200 T= ;
 
 
-: TOKEN+ ( ^u8 n -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
+: TOKEN+ ( str -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
 : DOT+ ( -- ) s" ." TOKEN+ ;
 : TOKEN$ ( -- ^u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
 
-: ENCODED+ ( ^u8 n -- )
+: ENCODED+ ( str -- )
    TOKEN TOKEN-U @ TOKEN-CAP TOKEN-U @ - SPAN:SUB BASE64:ENCODE-URL
    TOKEN-U @ + TOKEN-U ! ;
 
@@ -319,14 +320,14 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    {: su:n :}
    DOT+ SIGNATURE su ENCODED+ AUTHORIZE ;
 
-: HS-MINT ( ^u8 n ^u8 n -- )
+: HS-MINT ( str str -- )
    SIGNED
    JWS-FIXTURE:MODULUS$ TOKEN$ SIGNATURE HS256-BYTES CRYPTO:HMAC-SHA256
    DOT+ SIGNATURE HS256-BYTES ENCODED+ AUTHORIZE ;
 
 : UNSIGNED ( ^u8 n ^u8 n -- ) SIGNED DOT+ AUTHORIZE ;
 
-: RAW-TOKEN ( ^u8 n -- ) 0 TOKEN-U ! TOKEN+ AUTHORIZE ;
+: RAW-TOKEN ( str -- ) 0 TOKEN-U ! TOKEN+ AUTHORIZE ;
 
 \ One signature byte changed, away from the last character's padding bits.
 : FLIP ( -- )
@@ -338,14 +339,14 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    {: pre:^ pu:n exp:n post:^ postu:n :}
    SB-RESET pre pu SB-APPEND exp FMT:SB-INT post postu SB-APPEND SB$ ;
 
-: ISS-AUD ( -- ^u8 n )
+: ISS-AUD ( -- str )
    S\" {\"iss\":\"https://issuer.test\",\"aud\":\"api://bearer-test\",\"exp\":" ;
-: WHO ( -- ^u8 n ) S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
-: WANT-WHO ( -- ^u8 n ) S\" {\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
+: WHO ( -- str ) S\" ,\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
+: WANT-WHO ( -- str ) S\" {\"azp\":\"app-1\",\"oid\":\"o-1\",\"tid\":\"t-1\"}" ;
 : LATER ( -- n ) epoch-seconds LIFE-S + ;
 : CURRENT ( -- ^u8 n ) ISS-AUD LATER WHO CLAIMS ;
-: KID-A ( -- ^u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ;
-: KID-B ( -- ^u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"b\"}" ;
+: KID-A ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ;
+: KID-B ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"b\"}" ;
 : FETCHED ( -- ) mono-ns FETCHED-BY ! ;
 
 
@@ -556,10 +557,10 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    WAITED
    HITS atomic@ 4 T= ;
 
-: METADATA$ ( -- ^u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
-: MCP$ ( -- ^u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource/mcp" ;
-: REPLACED$ ( -- ^u8 n ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
-: SCOPE$ ( -- ^u8 n ) s" tender.read tender.write" ;
+: METADATA$ ( -- str ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
+: MCP$ ( -- str ) s" https://bearer-test.example/.well-known/oauth-protected-resource/mcp" ;
+: REPLACED$ ( -- str ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
+: SCOPE$ ( -- str ) s" tender.read tender.write" ;
 
 : METADATA-SCOPE ( -- )
    s" with a URL and a scope no Authorization challenges Bearer naming both" T-LABEL
@@ -587,17 +588,17 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    S\" {\"resource\":\"https://bearer-test.example\",\"authorization_servers\":[\"https://issuer.test\"]}"
    ANSWERED ;
 
-: NAMED-HOST$ ( -- ^u8 n ) s" http://bearer-test.example/keys" ;
-: LOCALHOST$ ( -- ^u8 n ) s" http://localhost:8080/keys" ;
-: V4$ ( -- ^u8 n ) s" http://127.0.0.1:8080/keys" ;
-: V6$ ( -- ^u8 n ) s" http://[::1]:8080/keys" ;
-: SECURE$ ( -- ^u8 n ) s" https://bearer-test.example/keys" ;
+: NAMED-HOST$ ( -- str ) s" http://bearer-test.example/keys" ;
+: LOCALHOST$ ( -- str ) s" http://localhost:8080/keys" ;
+: V4$ ( -- str ) s" http://127.0.0.1:8080/keys" ;
+: V6$ ( -- str ) s" http://[::1]:8080/keys" ;
+: SECURE$ ( -- str ) s" https://bearer-test.example/keys" ;
 
-: ISSUED-AT ( ^u8 n -- )
+: ISSUED-AT ( str -- )
    {: url:^ uu:n :}
    s" https://issuer.test" s" api://bearer-test" url uu BEARER:ISSUER! ;
 
-: CLIENT-AT ( ^u8 n -- ) s" app" s" " BEARER:CLIENT! ;
+: CLIENT-AT ( str -- ) s" app" s" " BEARER:CLIENT! ;
 
 \ Leaves ISSUER! and CLIENT! stating SECURE$.
 : URL-CASES ( -- )
@@ -618,7 +619,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    V4$ ISSUED-AT V6$ ISSUED-AT SECURE$ ISSUED-AT
    V4$ CLIENT-AT V6$ CLIENT-AT SECURE$ CLIENT-AT ;
 
-: METADATA-AT ( ^u8 n -- ) SCOPE$ BEARER:METADATA! ;
+: METADATA-AT ( str -- ) SCOPE$ BEARER:METADATA! ;
 
 : METADATA-ACCEPTS ( -- )
    s" METADATA! accepts http to 127.0.0.1 and [::1]" T-LABEL

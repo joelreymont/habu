@@ -1,3 +1,4 @@
+split-str
 \ diff.f - package DIFF: a line diff of two byte texts, written in git's unified
 \ form for one path, and diff3's three-way merge of base, ours and theirs.
 \ A line ends at LF, and a last line without one is a line too: "x" and "x\n"
@@ -112,12 +113,12 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    a i 1- + c@ LF = ;
 
 
-: COUNT-LINES ( ^u8 n -- n )
+: COUNT-LINES ( str -- n )
    {: a u :}
    0 u 0 ?do a i LINE-START? if 1+ then loop ;
 
 
-: >TEXT ( ^u8 n -- text )
+: >TEXT ( str -- text )
    {: a u :}
    a u a u COUNT-LINES TEXT-MAKE ;
 
@@ -140,14 +141,14 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    w WORK-IDS @ g NTH@ ;
 
 
-: LINE$ ( ^work n -- ^u8 n )
+: LINE$ ( ^work n -- str )
    {: w g :}
    w g START@ {: s :}
    w WORK-TEXT @ s +
    w g 1+ START@ s - ;
 
 
-: ENDS-LF? ( ^u8 n -- bool )
+: ENDS-LF? ( str -- bool )
    {: a u :}
    u 0= if false exit then
    a u 1- + c@ LF = ;
@@ -550,7 +551,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    c w WORK-OUT @ BUF:APPEND-BYTE ;
 
 
-: OUT-LINE ( ^work ^u8 n -- )
+: OUT-LINE ( ^work str -- )
    {: w a u :}
    w a u OUT$ w LF OUT-BYTE ;
 
@@ -666,7 +667,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 \ Paths. git C-quotes a path holding a control byte, `"`, `\`, DEL or a byte
 \ past ASCII (core.quotePath), so no path byte can start a patch line.
 
-: ANY-BYTE? ( ^u8 n [ n -- bool ] -- bool )
+: ANY-BYTE? ( str [ n -- bool ] -- bool )
    {: a u pred :}
    u 0 ?do a i + c@ pred execute if true unloop exit then loop false ;
 
@@ -690,7 +691,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 
 \ Prefix pre and path p as git names a side, quoted whole when p needs it.
-: OUT-NAME ( ^work ^u8 n ^u8 n -- )
+: OUT-NAME ( ^work str str -- )
    {: w pre pu p u :}
    p u [: QUOTE-BYTE? ;] ANY-BYTE? 0= if w pre pu OUT$ w p u OUT$ exit then
    w [char] " OUT-BYTE w pre pu OUT$
@@ -700,14 +701,14 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 \ The rest of a `---` or `+++` line naming a side, which ends in a tab when the
 \ path holds a space.
-: OUT-SIDE ( ^work ^u8 n ^u8 n -- )
+: OUT-SIDE ( ^work str str -- )
    {: w pre pu p u :}
    w pre pu p u OUT-NAME
    p u [: STR-SPACE = ;] ANY-BYTE? if w STR-TAB OUT-BYTE then
    w LF OUT-BYTE ;
 
 
-: OUT-NAMES ( ^work ^u8 n kind -- )
+: OUT-NAMES ( ^work str kind -- )
    {: w p u k :}
    k MATCH kind
       edit OF
@@ -725,7 +726,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 \ Nothing for an edit that changes no line. An added or deleted file always
 \ has its mode line, as git writes for a regular file, and like git no names
 \ when it is empty.
-: OUT-PATCH ( ^work ^script ^u8 n kind -- )
+: OUT-PATCH ( ^work ^script str kind -- )
    {: w s p u k :}
    s SCRIPT-COUNT @ 0= k EDIT? and if exit then
    w s" diff --git " OUT$ w s" a/" p u OUT-NAME
@@ -740,7 +741,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    repeat ;
 
 
-: PATCH-BODY ( ^u8 n text text kind ^n ^u8 NUM:alloc-byte-len -- )
+: PATCH-BODY ( str text text kind ^n ^u8 NUM:alloc-byte-len -- )
    {: p u a b k out base size :}
    a TEXT-LINES {: la :}
    la b TEXT-LINES + {: lines :}
@@ -927,21 +928,21 @@ public
 \ `--- a/P`, `+++ b/P` and hunks with three lines of context, joined when
 \ their context touches; nothing when the texts have the same lines. P is
 \ quoted and hunk headers name a function line as git's are.
-: WRITE-EDIT ( ^u8 n ^u8 n ^u8 n ^n -- )
+: WRITE-EDIT ( str str str ^n -- )
    {: p u a au b bu out :}
    p u a au >TEXT b bu >TEXT construct kind edit out PATCH ;
 
 
 \ The patch adding path P with this text: `new file mode 100644`, then
 \ `--- /dev/null` and one hunk, which an empty text leaves out.
-: WRITE-ADD ( ^u8 n ^u8 n ^n -- )
+: WRITE-ADD ( str str ^n -- )
    {: p u b bu out :}
    p u s" " >TEXT b bu >TEXT construct kind add out PATCH ;
 
 
 \ The patch deleting path P, whose text this was: `deleted file mode 100644`,
 \ then `+++ /dev/null` and one hunk, which an empty text leaves out.
-: WRITE-DELETE ( ^u8 n ^u8 n ^n -- )
+: WRITE-DELETE ( str str ^n -- )
    {: p u a au out :}
    p u a au >TEXT s" " >TEXT construct kind delete out PATCH ;
 

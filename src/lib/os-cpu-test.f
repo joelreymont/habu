@@ -1,3 +1,4 @@
+split-str
 \ os-cpu-test.f - the processor facts against the host's own report.
 \ Run: bin/hb --load src/lib/os-cpu-test.f
 \ Failure modes: a sysconf name wrong for the target, so ONLINE answers another
@@ -25,7 +26,7 @@ create ERR OUT-CAP allot
 \ The program's stdout for the argv already staged, newline trimmed; a failed
 \ run answers an empty string, which no number parses from, so the case fails
 \ once.
-: CAPTURE$ ( ^u8 n -- ^u8 n )
+: CAPTURE$ ( str -- str )
    >LEN OUT OUT-CAP >LEN ERR OUT-CAP >LEN
    CAPTURE-MS >MS RUN-ARGV-CAPTURE MATCH result
       ok OF PCAP-CAPTURED:UNMAKE drop LEN>N ENDOF
@@ -33,14 +34,14 @@ create ERR OUT-CAP allot
    ;MATCH {: outu:n :}
    OUT outu TRIM ;
 
-: GETCONF$ ( -- ^u8 n )
+: GETCONF$ ( -- str )
    PROC-ARGV-RESET
    s" _NPROCESSORS_ONLN" >LEN PROC-ARGV+
    s" /usr/bin/getconf" CAPTURE$ ;
 
 
 \ macOS prints `{ 1.23 1.10 0.98 }`, Linux `1.23 1.10 0.98 2/345 6789`.
-: HOST-LOAD$ ( -- ^u8 n )
+: HOST-LOAD$ ( -- str )
    PROC-ARGV-RESET
    HB-TARGET-MACOS? if
       s" -n" >LEN PROC-ARGV+  s" vm.loadavg" >LEN PROC-ARGV+

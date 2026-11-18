@@ -1,3 +1,4 @@
+split-str
 \ closed-source-suite.f - generated source runs as a closed program.
 require src/lib/codegen.f
 require src/lib/error.f
@@ -9,7 +10,7 @@ private
 
 CODEGEN:BUFFER GEN
 
-: GEN+ ( ^u8 n -- ) GEN CODEGEN:APPEND-STRING ;
+: GEN+ ( str -- ) GEN CODEGEN:APPEND-STRING ;
 
 \ The declaration every definer here means: `: <name> ( -- n ) <v> ;`.
 : RENDER ( n ^u8 n -- ) {: v:n a:^ u:n :}
@@ -26,10 +27,10 @@ CODEGEN:BUFFER GEN
 \ throws 70 with the caller's cells intact.
 : SOUND ( n ^u8 n -- ) RENDER CROSS ;
 
-: LEAKY ( n ^u8 n -- ) {: v:n a:^ u:n :}
+: LEAKY ( n str -- ) {: v:n a:^ u:n :}
    v a u RENDER  s"  " GEN+  v GEN CODEGEN:APPEND-DECIMAL  CROSS ;
 
-: GREEDY ( n ^u8 n -- ) RENDER  s"  drop" GEN+  CROSS ;
+: GREEDY ( n str -- ) RENDER  s"  drop" GEN+  CROSS ;
 
 : CERTIFIES ( -- )
    s" a sound definer's text loads" T-LABEL

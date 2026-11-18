@@ -1,3 +1,4 @@
+split-str
 \ proc-watch.f -- Linux exact process-lifetime watch primitive emitter.
 \ Linux already returns -errno.
 

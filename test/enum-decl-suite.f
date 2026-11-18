@@ -1,3 +1,4 @@
+split-str
 \ enum-decl-suite.f - behavior and rollback suite for the ENUM declaration front
 \ end, driven through the global `ENUM`. It asserts reject codes, rendered
 \ diagnostics, field-row counts and the generated constructors.
@@ -146,7 +147,7 @@ public
 
 \ REJECT-CODE asserts a declaration's reject code, public so section 24
 \ (control-word names) reuses it.
-: REJECT-CODE ( ^u8 n n -- ) {: a:^ u:n want:n :}
+: REJECT-CODE ( str n -- ) {: a:^ u:n want:n :}
    a u TEST-EVAL:RC want T= ;
 
 DECL-DIAG:PROSE
@@ -332,7 +333,7 @@ variable CT-DICT   variable CT-CP
 
 \ A generation failure must leave the native dictionary byte-identical: what
 \ the generator had defined is truncated with the rest of the declaration.
-: CTOR-REJECT ( ^u8 n n -- ) {: a:^ u:n want:n :}
+: CTOR-REJECT ( str n -- ) {: a:^ u:n want:n :}
    DICT-MARK
    a u TEST-EVAL:RC want T=
    DICT-SAME ;
@@ -772,8 +773,8 @@ s" reason two" s" fix two" 990002 DECL-REJECT:EXPLAIN
 package enum-replay-test
 public
 
-: RP-EV ( ^u8 n ^u8 n -- ) TYPE-DECL:REPLAY-ENUM TFALSE 2drop ;
-: RP-TRY ( ^u8 n ^u8 n -- n )
+: RP-EV ( str str -- ) TYPE-DECL:REPLAY-ENUM TFALSE 2drop ;
+: RP-TRY ( str str -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 
 \ A replayed ENUM's family serves candidates in the scope it was replayed in.
@@ -885,7 +886,7 @@ variable LI
 : PUT-C ( n -- ) {: c:n :}
    SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" EXIT-STATUS:FAILURE die THEN
    c SRC-BUF SRC-U @ + c!  SRC-U @ 1 + SRC-U ! ;
-: PUT$ ( ^u8 n -- ) {: a:^ u:n :}
+: PUT$ ( str -- ) {: a:^ u:n :}
    0 LI !
    BEGIN LI @ u < WHILE  a LI @ + c@ PUT-C  LI @ 1 + LI !  REPEAT ;
 : PUT-DIGIT ( n -- ) 48 + PUT-C ;

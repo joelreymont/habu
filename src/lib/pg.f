@@ -1,3 +1,4 @@
+split-str
 \ pg.f - PostgreSQL over libpq, bound through the FFI FUNCTION: declarer;
 \ src/lib/pg-rows.f reopens PG with OPEN, EXEC, QUERY and the row readers.
 \ A connection handle and a linear PG:result token name a slot in a process-wide
@@ -277,7 +278,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 
 \ libpq gives its strings no extent: each ends at its NUL.
-: CSTR$ ( ^u8 -- ^u8 n )
+: CSTR$ ( ^u8 -- str )
    dup ZLEN ;
 
 
@@ -437,7 +438,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 
-: RELEASE-ARENA ( ^u8 n -- )
+: RELEASE-ARENA ( str -- )
    MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 
@@ -488,7 +489,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 
 \ Reserve first: an impossible length must fail without reading source bytes.
-: ARENA-CSTR ( ^u8 n n -- n )
+: ARENA-CSTR ( str n -- n )
    {: a u:n slot:n :}
    u 0 < if E-CAPACITY throw then
    u FFI:CSTR-ROOM {: room:n :}
@@ -499,7 +500,7 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    off ;
 
 
-: ARENA-BYTES ( ^u8 n n -- n )
+: ARENA-BYTES ( str n -- n )
    {: a u:n slot:n :}
    slot u ARENA-ENSURE
    slot ARENA-U@ {: off:n :}
@@ -874,7 +875,7 @@ REGISTER-CHILD-RESET
    0 slot CONN-LIVE! ;
 
 
-: FILL-RES-SLOT ( ^u8 n n -- n ) {: pg conn:n slot:n :}
+: FILL-RES-SLOT ( str n -- n ) {: pg conn:n slot:n :}
    pg slot RES-PG!
    slot BUMP-RES-GEN
    TASK:SELF-N slot RES-OWNER!
@@ -939,12 +940,12 @@ REGISTER-CHILD-RESET
    slot CLOSE-SLOT drop ;
 
 
-: FIELD$ ( ^u8 -- ^u8 n ) {: p :}
+: FIELD$ ( ^u8 -- str ) {: p :}
    p NULL-ADDR? if NULL-ARG 0 exit then
    p CSTR$ ;
 
 
-: -TRAILING-LF ( ^u8 n -- ^u8 n )
+: -TRAILING-LF ( str -- str )
    {: a:^ u:n :}
    u 0 > if a u 1- + c@ STR-LF = if a u 1- exit then then
    a u ;
@@ -961,7 +962,7 @@ $7FFFFFFF constant NOTICE-MAX
    while 1 + repeat ;
 
 
-: NOTICE-DROPPED? ( ^u8 n -- bool ) {: a:^ u:n :}
+: NOTICE-DROPPED? ( str -- bool ) {: a:^ u:n :}
    a u s" NOTICE:" STARTS-WITH?
    a u s" INFO:" STARTS-WITH? or
    a u s" DEBUG:" STARTS-WITH? or
@@ -984,17 +985,17 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ PQresultErrorMessage ends with a newline, is empty for an empty query, and
 \ holds the connection's message for a result libpq made without the server.
-: REPORT$ ( ^u8 -- ^u8 n )
+: REPORT$ ( ^u8 -- str )
    LIB-RESULT-ERROR-MESSAGE FIELD$ -TRAILING-LF ;
 
 
-: COPY-REFUSAL-Z ( -- ^u8 n )   S\" COPY is not supported\z" ;
-: COPY-REFUSAL$ ( -- ^u8 n )   COPY-REFUSAL-Z 1- ;
+: COPY-REFUSAL-Z ( -- str )   S\" COPY is not supported\z" ;
+: COPY-REFUSAL$ ( -- str )   COPY-REFUSAL-Z 1- ;
 
 
 \ A COPY_OUT result, kept for a COPY TO STDOUT (KEEP-RESULT), has no server
 \ report: its spans are feature_not_supported's SQLSTATE and COPY-REFUSAL$.
-: FAILED-SPANS ( ^u8 -- ^u8 n ^u8 n ) {: res :}
+: FAILED-SPANS ( ^u8 -- str str ) {: res :}
    res LIB-RESULT-STATUS PGRES-COPY-OUT = if s" 0A000" COPY-REFUSAL$ exit then
    res PG-DIAG-SQLSTATE LIB-RESULT-ERROR-FIELD FIELD$
    res REPORT$ ;
@@ -1258,11 +1259,11 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 \ libpq NUL-ends a notification's channel and payload.
-: NOTIFY-TEXT ( ^u8 n -- ^u8 n ) {: note idx:n :}
+: NOTIFY-TEXT ( ^u8 n -- str ) {: note idx:n :}
    note idx ptr-field @ CSTR$ ;
 
 
-: HAND-NOTIFY ( ^u8 [ ^u8 n ^u8 n -- ] -- )
+: HAND-NOTIFY ( ^u8 [ str str -- ] -- )
    {: note act :}
    [: note NOTIFY-RELNAME NOTIFY-TEXT
       note NOTIFY-EXTRA NOTIFY-TEXT act execute ;]
@@ -1279,7 +1280,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ The cleanup frees what a throw from act left queued; after a whole pass
 \ libpq holds none, so it frees nothing.
-: DRAIN-NOTIFIES ( n [ ^u8 n ^u8 n -- ] -- bool )
+: DRAIN-NOTIFIES ( n [ str str -- ] -- bool )
    {: slot:n act :}
    [: false
       begin slot CONN-PG@ LIB-NOTIFIES dup NULL-ADDR? 0= while
@@ -1289,7 +1290,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    [: slot FREE-NOTIFIES ;] finally ;
 
 
-: TAKE-NOTIFIES ( n [ ^u8 n ^u8 n -- ] -- bool )
+: TAKE-NOTIFIES ( n [ str str -- ] -- bool )
    {: slot:n act :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0= if slot CONN-LOST then
    slot act DRAIN-NOTIFIES ;
@@ -1310,7 +1311,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ Readable bytes need not hold a notification (a notice, a parameter status, a
 \ partial message), so the wait goes on until one arrives or the deadline.
-: NOTIFY-WAIT ( n n [ ^u8 n ^u8 n -- ] -- bool )
+: NOTIFY-WAIT ( n n [ str str -- ] -- bool )
    {: slot:n deadline:n act :}
    begin deadline LEFT-MS WAIT-MAX min dup 0 > while
       slot swap READABLE-WITHIN if
@@ -1333,7 +1334,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot CONN-LOST ;
 
 
-: EXEC-START ( n ^u8 n -- )
+: EXEC-START ( n str -- )
    {: slot:n a u:n :}
    OP-START
    slot IDLE-CHECK
@@ -1349,7 +1350,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot RESET-STAGED ;
 
 
-: PREPARED-START ( n ^u8 n -- )
+: PREPARED-START ( n str -- )
    {: slot:n a u:n :}
    OP-START
    slot IDLE-CHECK
@@ -1366,7 +1367,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 \ The empty name is the unnamed statement, which only DESCRIBE sends.
-: PREPARE-SEND ( n ^u8 n ^u8 n -- )
+: PREPARE-SEND ( n str str -- )
    {: slot:n na nu:n sa su:n :}
    OP-START
    slot IDLE-CHECK
@@ -1381,7 +1382,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    slot RESET-STAGED ;
 
 
-: PREPARE-START ( n ^u8 n ^u8 n -- )
+: PREPARE-START ( n str str -- )
    {: slot:n na nu:n sa su:n :}
    nu 0 <= if E-STATEMENT throw then
    slot na nu sa su PREPARE-SEND ;
@@ -1401,7 +1402,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ The simple-query protocol. It takes no parameters at all, so a pending
 \ parameter list is a caller error with nowhere to go.
-: SCRIPT-START ( n ^u8 n -- ) {: slot:n a u:n :}
+: SCRIPT-START ( n str -- ) {: slot:n a u:n :}
    OP-START
    slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
@@ -1428,14 +1429,14 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 \ the arena. That is what lets a caller build parameters BEFORE
 \ WITH-TRANSACTION and spend them inside the body, which is the only way into a
 \ quotation that may not read the caller's locals.
-: VERB-TEXT! ( n ^u8 n -- ^u8 )
+: VERB-TEXT! ( n str -- ^u8 )
    {: slot:n a u:n :}
    u 0 <= if E-STATEMENT throw then
    u VERB-CAP 1 - > if E-CAPACITY throw then
    a u slot VERB-BUF VERB-CAP SPAN:MAKE FFI:CSTR ;
 
 
-: RUN-VERB ( n ^u8 n -- n )
+: RUN-VERB ( n str -- n )
    {: slot:n a u:n :}
    slot OP-DEADLINE {: deadline:n :}
    OP-START
@@ -1488,7 +1489,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 \ The cell CELL-AT answered, its slot read without checking it again.
-: VALUE$ ( n n n -- ^u8 n ) {: slot:n ri:n ci:n :}
+: VALUE$ ( n n n -- str ) {: slot:n ri:n ci:n :}
    slot RES-PG @ {: res :}
    res ri ci LIB-GETVALUE
    res ri ci LIB-GETLENGTH ;
@@ -1505,7 +1506,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 
 \ The slot is RESULT-SLOT's answer, so its fields are read unchecked.
-: COLUMN-AT ( n col -- ^u8 n )
+: COLUMN-AT ( n col -- str )
    {: slot:n c:col :}
    slot RES-PG @ {: res :}
    c COL>N {: ci:n :}
@@ -1562,7 +1563,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ The new arena starts at offset zero, so the staging helper can preserve its
 \ catch input row.
-: STAGE-CONNINFO ( ^u8 n n -- ^u8 n n ) {: a u:n slot:n :}
+: STAGE-CONNINFO ( str n -- str n ) {: a u:n slot:n :}
    a u slot ARENA-CSTR drop
    a u slot ;
 
@@ -1581,7 +1582,7 @@ public
 \ connection.
 \ A conninfo libpq cannot parse throws E-CONNECT and keeps no text, because
 \ libpq's parse message can quote the conninfo's values, a password among them.
-: CONNECT-START ( ^u8 n -- connection )
+: CONNECT-START ( str -- connection )
    {: a u:n :}
    OP-START
    NOTICE TASK:CALLER-CONTEXT FFI-CB:ENTRY {: proc:n :}
@@ -1765,16 +1766,16 @@ public
    handle CONN-SLOT a u EXEC-START ;
 
 
-: SEND-SCRIPT ( connection ^u8 n -- ) {: handle:connection a u:n :}
+: SEND-SCRIPT ( connection str -- ) {: handle:connection a u:n :}
    handle CONN-SLOT a u SCRIPT-START ;
 
 
-: SEND-PREPARE ( connection ^u8 n ^u8 n -- )
+: SEND-PREPARE ( connection str str -- )
    {: handle:connection na nu:n sa su:n :}
    handle CONN-SLOT na nu sa su PREPARE-START ;
 
 
-: SEND-PREPARED ( connection ^u8 n -- ) {: handle:connection a u:n :}
+: SEND-PREPARED ( connection str -- ) {: handle:connection a u:n :}
    handle CONN-SLOT a u PREPARED-START ;
 
 
@@ -1782,7 +1783,7 @@ public
 \ report "COPY is not supported" though its whole script ran and stands.
 
 \ WITH-RESULT runs exactly one statement on the extended protocol.
-: WITH-RESULT ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-RESULT ( R connection str [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1795,7 +1796,7 @@ public
 
 \ The script is one implicit transaction: a failure rolls it back, stops it and
 \ is the outcome, else the last result is, or a COPY TO STDOUT's.
-: WITH-SCRIPT ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-SCRIPT ( R connection str [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1803,7 +1804,7 @@ public
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-: WITH-PREPARE ( R connection ^u8 n ^u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-PREPARE ( R connection str str [ R PG:result -- S PG:result ] -- S )
    {: handle:connection na nu:n sa su:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1811,7 +1812,7 @@ public
    slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-: WITH-PREPARED ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-PREPARED ( R connection str [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1823,7 +1824,7 @@ public
 \ without running it: the result answers COLS, NAME$ and OID and has no rows. A
 \ rejected prepare is the body's result, with its `failed` outcome. A pending
 \ parameter list is E-STATEMENT.
-: WITH-DESCRIPTION ( R connection ^u8 n [ R PG:result -- S PG:result ] -- S )
+: WITH-DESCRIPTION ( R connection str [ R PG:result -- S PG:result ] -- S )
    {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
@@ -1865,7 +1866,7 @@ public
 
 private
 
-: WAIT-NOTIFIES ( connection ms [ ^u8 n ^u8 n -- ] -- bool )
+: WAIT-NOTIFIES ( connection ms [ str str -- ] -- bool )
    {: handle:connection timeout:ms act :}
    handle CONN-SLOT {: slot:n :}
    timeout MS>N {: limit:n :}

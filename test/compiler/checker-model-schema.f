@@ -1,3 +1,4 @@
+split-str
 \ checker-model-schema.f - Accepted and rejected checker programs.
 
 require src/lib/error.f
@@ -21,7 +22,7 @@ variable STR-N
 \ Every text below is interned once and referred to by handle, so a table row is
 \ a run of cells and the data blocks stay readable as data.
 
-: STR+ ( ^u8 n -- n ) {: a:^ u:n :}
+: STR+ ( str -- n ) {: a:^ u:n :}
    STR-N @ STR-MAX >= if E-CMP-POOL throw then
    POOL-U @ u + POOL-CAP > if E-CMP-POOL throw then
    a POOL POOL-U @ + u BYTE-COPY
@@ -32,7 +33,7 @@ variable STR-N
 
 public
 
-: STR$ ( n -- ^u8 n ) {: h:n :}
+: STR$ ( n -- str ) {: h:n :}
    h 0 < h STR-N @ >= or if E-CMP-ROW throw then
    POOL h cells SOFF + @ + h cells SLEN + @ ;
 
@@ -62,7 +63,7 @@ public
 1 constant V-UNCK
 2 constant V-REJECT
 
-: VERDICT-NAME$ ( n -- ^u8 n )
+: VERDICT-NAME$ ( n -- str )
    case
       V-CERT of s" VCert" endof
       V-UNCK of s" VUncheckable" endof
@@ -72,7 +73,7 @@ public
 
 private
 
-: VEC-ROW ( ^u8 n ^u8 n n -- )
+: VEC-ROW ( str str n -- )
    {: na:^ nu:n sa:^ su:n verd:n :}
    na nu STR+ VEC-NAME VEC-N @ COL!
    sa su STR+ VEC-SRC VEC-N @ COL!
@@ -104,10 +105,10 @@ private
 : +OPENERS ( n -- ) {: opens:n :}
    opens 0 ?do s"  begin" SB-APPEND loop ;
 
-: OPENERS$ ( ^u8 n n -- ^u8 n ) {: a:^ u:n opens:n :}
+: OPENERS$ ( str n -- str ) {: a:^ u:n opens:n :}
    SB-RESET a u SB-APPEND opens +OPENERS SB$ ;
 
-: FRAME-CAP-ROW ( ^u8 n ^u8 n n n -- )
+: FRAME-CAP-ROW ( str str n n -- )
    {: na:^ nu:n sa:^ su:n opens:n verd:n :}
    na nu STR+ VEC-NAME VEC-N @ COL!
    sa su opens OPENERS$ STR+ VEC-SRC VEC-N @ COL!
@@ -135,10 +136,10 @@ private
 2 constant MATCH-FRAMES               \ the form's frame, and one branch's
 FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 
-: MATCH-SRC$ ( ^u8 n n ^u8 n -- ^u8 n ) {: ha:^ hu:n opens:n ta:^ tu:n :}
+: MATCH-SRC$ ( str n str -- str ) {: ha:^ hu:n opens:n ta:^ tu:n :}
    SB-RESET ha hu SB-APPEND opens +OPENERS s"  " SB-APPEND ta tu SB-APPEND SB$ ;
 
-: MATCH-DEPTH-ROW ( ^u8 n ^u8 n n ^u8 n n -- )
+: MATCH-DEPTH-ROW ( str str n str n -- )
    {: na:^ nu:n sa:^ su:n opens:n ha:^ hu:n verd:n :}
    na nu STR+ VEC-NAME VEC-N @ COL!
    sa su opens ha hu MATCH-SRC$ STR+ VEC-SRC VEC-N @ COL!
@@ -482,8 +483,8 @@ BUILD-VECTORS
 public
 
 : VECTORS ( -- n )      VEC-N @ ;
-: VEC-NAME$ ( n -- ^u8 n )    VEC-NAME swap VEC-N @ COL@ STR$ ;
-: VEC-SRC$ ( n -- ^u8 n )     VEC-SRC swap VEC-N @ COL@ STR$ ;
+: VEC-NAME$ ( n -- str )    VEC-NAME swap VEC-N @ COL@ STR$ ;
+: VEC-SRC$ ( n -- str )     VEC-SRC swap VEC-N @ COL@ STR$ ;
 : VEC-VERD@ ( n -- n )           VEC-VERD swap VEC-N @ COL@ ;
 
 ;package

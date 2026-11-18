@@ -1,3 +1,4 @@
+split-str
 \ A word reusing a trimmed or rewound ordinal or code address gets fresh profiler
 \ counters, and deferred samples survive a trim; the child emits JSON as the artifact.
 

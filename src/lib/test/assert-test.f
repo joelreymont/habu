@@ -1,3 +1,4 @@
+split-str
 \ assert-test.f - focused tests for src/lib/test/assert.f through src/lib/test.f.
 \ Run: bin/hb --load src/lib/test.f src/lib/test/assert-test.f
 
@@ -78,10 +79,10 @@ variable TAT-SCRIPT-U
 : TAT-LF ( -- )
    10 SB-APPEND-C ;
 
-: TAT-SCRIPT$ ( -- ^u8 n )
+: TAT-SCRIPT$ ( -- str )
    TAT-SCRIPT-PATH TAT-SCRIPT-U @ ;
 
-: TAT-FAIL-SRC$ ( -- ^u8 n )
+: TAT-FAIL-SRC$ ( -- str )
    SB-RESET
    s" require src/lib/test.f" SB-APPEND TAT-LF
    s" T-RESET" SB-APPEND TAT-LF
@@ -89,7 +90,7 @@ variable TAT-SCRIPT-U
    s" T-REPORT" SB-APPEND TAT-LF
    SB$ ;
 
-: TAT-PREPARE ( ^u8 n ^u8 n -- )
+: TAT-PREPARE ( str str -- )
    {: prefix:^ prefixu:n name:^ nameu:n :}
    prefix prefixu GT-START
    name nameu TAT-SCRIPT-PATH GT-PATH TAT-SCRIPT-U ! ;

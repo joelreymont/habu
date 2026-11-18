@@ -1,3 +1,4 @@
+split-str
 \ A caught declaration with an unfinished quotation must leave the parser
 \ usable for the next declaration.
 require src/lib/test.f

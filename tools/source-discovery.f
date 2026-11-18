@@ -1,3 +1,4 @@
+split-str
 \ source-discovery.f - whole-file ordered source-composition discovery pass.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f
 \ src/lib/fs.f src/lib/source.f tools/source-discovery.f
@@ -164,12 +165,12 @@ variable SD-SCOPES
 
 : SD-BYTE ( n -- u8 )   SD-BUF + c@ ;
 : SD-AT? ( n -- bool )  SD-U @ < ;
-: SD-PATH$ ( -- ^u8 n )  0 SD-PATH SD-PATH-U @ ;
-: SD-TOK$ ( n n -- ^u8 n ) {: off:n len:n :}  off SD-BUF + len ;
+: SD-PATH$ ( -- str )  0 SD-PATH SD-PATH-U @ ;
+: SD-TOK$ ( n n -- str ) {: off:n len:n :}  off SD-BUF + len ;
 
 \ A stop's record stands at the token read last if the caller armed BYTES$. A
 \ harvest throws the kind bare: the expansion after it meets the form again.
-: SD-LAST$ ( -- ^u8 n )  SD-TOK-OFF @ SD-TOK-LEN @ SD-TOK$ ;
+: SD-LAST$ ( -- str )  SD-TOK-OFF @ SD-TOK-LEN @ SD-TOK$ ;
 : SD-HARVEST-THROW ( n -- ) {: code:n :}
    SD-HARVESTING @ if code throw then ;
 : SD-SHADOW-STOP ( -- )
@@ -189,18 +190,18 @@ variable SD-SCOPES
    E-DISC-UNTERM SD-HARVEST-THROW
    SD-LAST$ INTERPRETER:LITERAL-REJECT  E-DISC-UNTERM VERIFY:DISCOVERY-STOP ;
 \ A path past SD-PATH-CAP that a caller gives, in no source the walk reads.
-: SD-PATH-STOP ( ^u8 n -- )
+: SD-PATH-STOP ( str -- )
    E-DISC-CAPACITY SD-HARVEST-THROW
    VERIFY:CAPACITY-REJECT  E-DISC-CAPACITY VERIFY:DISCOVERY-STOP ;
 
-: SD-R-COPY ( ^u8 n -- n ) {: a:^ u:n :}
+: SD-R-COPY ( str -- n ) {: a:^ u:n :}
    SD-R-BYTES-U @ {: at:n :}
    at u + 1+ SD-R-BYTES-RESERVE
    a at SD-R-BYTES u BYTE-COPY
    at u + SD-R-BYTES-U !
    at ;
 
-: SD-FILE-FIND ( ^u8 n -- n ) {: a:^ u:n :}
+: SD-FILE-FIND ( str -- n ) {: a:^ u:n :}
    SD-F-N @ 0 ?do
       a u i SD-F-AT @ SD-R-BYTES i SD-F-U @ STR= if i unloop exit then
    loop
@@ -216,13 +217,13 @@ variable SD-SCOPES
    id 1+ SD-F-N !
    id ;
 
-: SD-R-NAME$ ( n -- ^u8 n ) {: r:n :}
+: SD-R-NAME$ ( n -- str ) {: r:n :}
    r SD-R-NAME @ SD-R-BYTES r SD-R-NAME-U @ ;
 
-: SD-R-PKG$ ( n -- ^u8 n ) {: r:n :}
+: SD-R-PKG$ ( n -- str ) {: r:n :}
    r SD-R-PKG @ SD-R-BYTES r SD-R-PKG-U @ ;
 
-: SD-R-OUTER$ ( n -- ^u8 n ) {: r:n :}
+: SD-R-OUTER$ ( n -- str ) {: r:n :}
    r SD-R-OUTER @ SD-R-BYTES r SD-R-OUTER-U @ ;
 
 : SD-C-NAME ( n -- n n ) {: row:n :}
@@ -317,7 +318,7 @@ variable SD-X-N
 
 \ Exactly one non-edge colon qualifies a name. The tail is the word defined
 \ or called, irrespective of the spelling's package prefix.
-: SD-QCOLON ( ^u8 n -- n ) {: a:^ u:n :}
+: SD-QCOLON ( str -- n ) {: a:^ u:n :}
    u 2 < if -1 exit then
    -1
    u 1- 1 ?do
@@ -327,12 +328,12 @@ variable SD-X-N
       then
    loop ;
 
-: SD-TAIL$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: SD-TAIL$ ( str -- str ) {: a:^ u:n :}
    a u SD-QCOLON {: col:n :}
    col 0 < if a u exit then
    a col 1+ + u col 1+ - ;
 
-: SD-R-KEY$ ( n -- ^u8 n ^u8 n ) {: r:n :}
+: SD-R-KEY$ ( n -- str str ) {: r:n :}
    r SD-R-NAME$ {: a:^ u:n :}
    a u SD-QCOLON {: col:n :}
    col 0 >= if a col a col 1+ + u col 1+ - exit then
@@ -340,18 +341,18 @@ variable SD-X-N
 
 \ No package row, outside every package, spells as empty: a declaration made
 \ there is reached from every package.
-: SD-C-PKG$ ( n -- ^u8 n ) {: row:n :}
+: SD-C-PKG$ ( n -- str ) {: row:n :}
    row 0 < if 0 SD-R-BYTES 0 exit then
    row SD-R-NAME$ ;
 
 \ A bare name reaches package (outer, name) open here and, inside part A:B,
 \ (none, A) as well.
-: SD-C-OPEN? ( ^u8 n ^u8 n -- bool ) {: out:^ outu:n pkg:^ pkgu:n :}
+: SD-C-OPEN? ( str str -- bool ) {: out:^ outu:n pkg:^ pkgu:n :}
    pkg pkgu SD-C-PKG @ SD-C-PKG$ STR=CI
    out outu SD-C-OUTER @ SD-C-PKG$ STR=CI and if true exit then
    outu 0= pkg pkgu SD-C-OUTER @ SD-C-PKG$ STR=CI and ;
 
-: SD-R-TOP$ ( n -- ^u8 n ) {: r:n :}
+: SD-R-TOP$ ( n -- str ) {: r:n :}
    r SD-R-OUTER-U @ 0<> if r SD-R-OUTER$ exit then
    r SD-R-PKG$ ;
 
@@ -363,7 +364,7 @@ variable SD-X-N
    2 ;
 
 \ The record's Kth package as its outer and name, each empty for none.
-: SD-R-ID ( n n -- ^u8 n ^u8 n ) {: r:n k:n :}
+: SD-R-ID ( n n -- str str ) {: r:n k:n :}
    r SD-R-NAME$ {: a:^ u:n :}
    a u SD-QCOLON {: col:n :}
    col 0 < if r SD-R-OUTER$ r SD-R-PKG$ exit then
@@ -378,7 +379,7 @@ variable SD-X-N
    ids 0 ?do r i SD-R-ID SD-C-OPEN? or loop
    dup ids 1 > and if SD-SHADOW-STOP then ;
 
-: SD-R-KEY-MATCH? ( ^u8 n n -- bool ) {: a:^ u:n r:n :}
+: SD-R-KEY-MATCH? ( str n -- bool ) {: a:^ u:n r:n :}
    r SD-R-KEY$ {: pkg:^ pkgu:n tail:^ tailu:n :}
    pkgu 0= if a u tail tailu STR=CI exit then
    a u SD-QCOLON 0 < if
@@ -500,14 +501,14 @@ variable SD-X-N
 
 \ Two packages share a bare scope when either is global, they are one package,
 \ or one is the other's outer; two parts of one package share none.
-: SD-SHARE? ( ^u8 n ^u8 n ^u8 n ^u8 n -- bool )
+: SD-SHARE? ( str str str str -- bool )
    {: ao:^ aou:n an:^ anu:n bo:^ bou:n bn:^ bnu:n :}
    anu 0= bnu 0= or if true exit then
    an anu bn bnu STR=CI ao aou bo bou STR=CI and if true exit then
    aou 0= bo bou an anu STR=CI and if true exit then
    bou 0= ao aou bn bnu STR=CI and ;
 
-: SD-R-SHARES-ID? ( ^u8 n ^u8 n n -- bool ) {: o:^ ou:n p:^ pu:n r:n :}
+: SD-R-SHARES-ID? ( str str n -- bool ) {: o:^ ou:n p:^ pu:n r:n :}
    r SD-R-IDS 0 ?do
       o ou p pu r i SD-R-ID SD-SHARE? if true unloop exit then
    loop
@@ -797,7 +798,7 @@ variable SD-TERM-END
    0 ;
 
 \ One byte more than the path, so an empty one still has a byte 0.
-: SD-PATH-FILL ( ^u8 n -- ) {: a:^ u:n :}
+: SD-PATH-FILL ( str -- ) {: a:^ u:n :}
    a SD-PATH-SRC !
    u 1+ SD-PATH-RESERVE
    a 0 SD-PATH u BYTE-COPY
@@ -805,7 +806,7 @@ variable SD-TERM-END
 
 \ Fills the path from a u, the payload of the literal SD-PATH-AT and
 \ SD-PATH-SPAN place or its decode, and records a u, which the loader is given, as that literal's copy.
-: SD-LITERAL-FILL ( ^u8 n -- )
+: SD-LITERAL-FILL ( str -- )
    SD-PATH-FILL
    SD-PATH-SRC @ SD-PATH-U @  SD-PATH-AT @ SD-BUF +  SD-PATH-SPAN @  SRCLOC:LITERAL! ;
 
@@ -821,7 +822,7 @@ DYNAMIC-BUFFER SD-DEC u8
 
 \ An escaped literal's path is what the engine's literal makes of its payload,
 \ the payload decoded by the engine's escape table, unless an escape is bad.
-: SD-DECODE-PATH ( ^u8 n -- ) {: a:^ u:n :}
+: SD-DECODE-PATH ( str -- ) {: a:^ u:n :}
    u 1+ SD-DEC-RESERVE
    0 SD-DEC {: dst:^ :}
    a u dst ESCAPE:DECODE {: k:n ok:bool :}
@@ -853,7 +854,7 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" provided" STR=CI if SD-K-PROVIDED exit then
    0 ;
 
-: SD-NAME-BIT ( ^u8 n -- n ) {: a:^ u:n :}
+: SD-NAME-BIT ( str -- n ) {: a:^ u:n :}
    a u s" include" STR=CI if $01 exit then
    a u s" included" STR=CI if $02 exit then
    a u s" require" STR=CI if $04 exit then
@@ -867,10 +868,10 @@ DYNAMIC-BUFFER SD-DEC u8
 
 \ A definition or retirement of a loader or family name refuses nothing, but
 \ a later use with that spelling is ambiguous (SD-CHECK-USE).
-: SD-SHADOW ( ^u8 n -- )
+: SD-SHADOW ( str -- )
    SD-TAIL$ SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
 
-: SD-RETIRE ( ^u8 n -- )
+: SD-RETIRE ( str -- )
    SD-TAIL$ SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
 
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
@@ -1189,11 +1190,11 @@ DYNAMIC-BUFFER SD-DEC u8
       off len SD-STEP
    again ;
 
-: SD-READ-ENTRY ( ^u8 n -- ) {: pa:^ pu:n :}
+: SD-READ-ENTRY ( str -- ) {: pa:^ pu:n :}
    pa pu  pa pu FS:FILE-SIZE  [: SD-ROOM ;] READ-WHOLE-SAMPLED SD-U !
    SD-STORAGE @ SPAN:$ drop SD-A ! ;
 
-: SD-KIND-NAME ( n -- ^u8 n ) {: kind:n :}
+: SD-KIND-NAME ( n -- str ) {: kind:n :}
    kind EV-INCLUDED = if s" included" exit then
    kind EV-REQUIRED = if s" required" exit then
    s" provided" ;
@@ -1209,7 +1210,7 @@ DYNAMIC-BUFFER SD-DEC u8
 : SD-WALK-IN ( -- )
    SD-ROOT SD-ROOT-U @ [: SD-WALK ;] WITH ;
 
-: SELECT-ENTRY ( ^u8 n ^u8 n -- ) {: pa:^ pu:n root:^ rootu:n :}
+: SELECT-ENTRY ( str str -- ) {: pa:^ pu:n root:^ rootu:n :}
    0 VERIFY:DISCOVERY-STOPPED !
    pu SD-PATH-CAP > if pa pu SD-PATH-STOP then
    rootu SD-PATH-CAP > if root rootu SD-PATH-STOP then
@@ -1289,7 +1290,7 @@ public
 \ of PATH resolves to it whether a file is there or not, never to another file
 \ a fallback root finds. It lasts until the next LOADING!; an empty PATH sets
 \ none.
-: LOADING! ( ^u8 n -- )
+: LOADING! ( str -- )
    {: a:^ u:n :}
    u SD-PATH-CAP > if a u SD-PATH-STOP then
    a SD-LOADING u BYTE-COPY
@@ -1304,14 +1305,14 @@ public
 : RUN-READ ( -- )
    RUN-SELECTED ;
 
-: RUN-BYTES ( ^u8 n ^u8 n ^u8 n -- )
+: RUN-BYTES ( str str str -- )
    {: pa:^ pu:n root:^ rootu:n bytes:^ size:n :}
    pa pu root rootu SELECT-ENTRY
    bytes SD-A ! size SD-U !
    RUN-SELECTED ;
 
 \ The bytes the last run read.
-: BYTES$ ( -- ^u8 n )
+: BYTES$ ( -- str )
    SD-BUF SD-U @ ;
 
 : EMIT ( ^u8 n -- n ) {: dst:^ cap:n :}

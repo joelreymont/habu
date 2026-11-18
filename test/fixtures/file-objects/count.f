@@ -1,3 +1,4 @@
+split-str
 \ count.f - a counter and a greeting the other fixture files use, LATER, which
 \ reopen.f stores an xt into, MARKED, the cell reopen.f marks, and SPARE, which
 \ mark.f stores an xt into.

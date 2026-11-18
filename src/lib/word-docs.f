@@ -1,3 +1,4 @@
+split-str
 \ word-docs.f - package WORD-DOCS: the words a Habu source text defines, each
 \ with its package, section, stack effect and the comment above it, read through
 \ the shared lexer (src/lib/source-lex.f, package LINT-LEX).
@@ -228,7 +229,7 @@ variable IN-GLOBAL                            \ the open section is `global`
    k 1+ LINT-LEX:COUNT >= if E-SOURCE throw then
    k 1+ ;
 
-: NO-TEXT ( -- ^u8 n )
+: NO-TEXT ( -- str )
    SRC@ 0 ;
 
 \ The effect after name token j: a `( ... )` comment that is the next token,
@@ -308,7 +309,7 @@ public
    0 USED ! ;
 
 \ Empty at top level; `A:B` inside part B of A.
-: PACKAGE$ ( n -- ^u8 n )
+: PACKAGE$ ( n -- str )
    0 TEXT$ ;
 
 \ For EXPORT, its operand as written (`MAKI-SKETCH:XY`), whose tail the package
@@ -318,13 +319,13 @@ public
 
 \ The trimmed body of the `( ... )` comment EFFECT finds after the name, as the
 \ checker reads a declared effect; empty without one, and for EXPORT.
-: EFFECT$ ( n -- ^u8 n )
+: EFFECT$ ( n -- str )
    2 TEXT$ ;
 
 \ The whole `\` comment lines that end on the line above the definition, each
 \ without its `\` and one space after it and trimmed at its end, joined by
 \ newlines; a blank line or code ends them. Empty without one.
-: COMMENT$ ( n -- ^u8 n )
+: COMMENT$ ( n -- str )
    3 TEXT$ ;
 
 : PUBLIC? ( n -- bool )

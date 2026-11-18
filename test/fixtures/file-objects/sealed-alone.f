@@ -1,3 +1,4 @@
+split-str
 \ sealed-alone.f - sealed-root.f without sealed-seal.f.
 
 require test/fixtures/file-objects/sealed-pkg.f

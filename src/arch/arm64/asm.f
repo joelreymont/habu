@@ -1,3 +1,4 @@
+split-str
 \ asm.f — ARM64 instruction encoders, package A64ASM (operands -> u32).
 \ Every encoder screens its operands before packing a bit: an operand dies with
 \ EXIT-STATUS:ENCODE, a branch or ADR distance throws E-A64EMIT-REACH.

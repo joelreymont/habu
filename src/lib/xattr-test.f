@@ -1,3 +1,4 @@
+split-str
 \ xattr-test.f - XATTR's words on a file under the test's temporary directory,
 \ through `user.` attributes.
 \ Run: bin/hb --load src/lib/xattr-test.f
@@ -29,7 +30,7 @@ variable FILE-FD
 variable CLOSED-FD
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: FILE$ ( -- ^u8 n ) FILE FILE-U @ ;
+: FILE$ ( -- str ) FILE FILE-U @ ;
 : FD@ ( -- fd ) FILE-FD @ >FD ;
 : NAME$ ( -- ^u8 n ) s" user.hb-xattr-test" ;
 
@@ -72,7 +73,7 @@ variable CLOSED-FD
    FD@ NAME$ s" second!" XATTR:SET
    s" second!" HOLDS ;
 
-: FRESH$ ( -- ^u8 n ) s" user.hb-xattr-fresh" ;
+: FRESH$ ( -- str ) s" user.hb-xattr-fresh" ;
 
 : FRESH-SET ( -- )
    s" set of a fresh name" T-LABEL
@@ -80,7 +81,7 @@ variable CLOSED-FD
    FD@ FRESH$ BUF XATTR:GET GOT>N 4 T=
    BUF SPAN:$ drop 4 s" made" T$= ;
 
-: NAME-255$ ( -- ^u8 n ) LONG 255 SPAN:TAKE SPAN:$ ;
+: NAME-255$ ( -- str ) LONG 255 SPAN:TAKE SPAN:$ ;
 
 : NAME-MAX-USE ( -- )
    s" 255-byte name, empty value" T-LABEL

@@ -1,3 +1,4 @@
+split-str
 \ http-static.f - one directory tree served from memory. STATIC-ROOT reads the
 \ whole tree before the server starts, so the tables are written while no task
 \ is live and a request costs no file system call; only a path wider than
@@ -72,20 +73,20 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
    at TEXT-ROW len ;
 
 
-: FILE-PATH$ ( n -- ^u8 n ) {: at:n :}
+: FILE-PATH$ ( n -- str ) {: at:n :}
    at FILE-PATH-AT @ at FILE-PATH-N @ TEXT$ ;
 
 
-: FILE-ETAG$ ( n -- ^u8 n ) {: at:n :}
+: FILE-ETAG$ ( n -- str ) {: at:n :}
    at FILE-ETAG-AT @ at FILE-ETAG-N @ TEXT$ ;
 
 
-: FILE-BODY$ ( n -- ^u8 n ) {: at:n :}
+: FILE-BODY$ ( n -- str ) {: at:n :}
    at FILE-BODY @ at FILE-BODY-N @ SPAN:TAKE SPAN:$ ;
 
 
 
-: CONTENT-TYPE$ ( ^u8 n -- ^u8 n ) {: path:^ len:n :}
+: CONTENT-TYPE$ ( str -- str ) {: path:^ len:n :}
    path len s" .html" ENDS-WITH? if s" text/html; charset=utf-8" exit then
    path len s" .js" ENDS-WITH? if s" text/javascript; charset=utf-8" exit then
    path len s" .css" ENDS-WITH? if s" text/css; charset=utf-8" exit then
@@ -110,7 +111,7 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
    2drop s" no-cache" ;
 
 
-: NO-FALLBACK ( ^u8 n -- ^u8 n )
+: NO-FALLBACK ( str -- str )
    drop 0 ;
 
 
@@ -121,26 +122,26 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
 DEFAULT-RULES
 
 
-: CACHE$ ( ^u8 n -- ^u8 n )
+: CACHE$ ( str -- str )
    0 CACHE-HOOK @ execute ;
 
 
 
-: UNDER-ROOT ( ^u8 n -- n ) {: rel:^ len:n :}
+: UNDER-ROOT ( str -- n ) {: rel:^ len:n :}
    len 0= if ROOT$ {: base:^ baselen:n :} base baselen PATH-BUF SPAN:COPY baselen exit then
    \ FS:JOIN-PATH checks its own PATH-CAP and takes no capacity: the bound is
    \ src/lib/fs.f's, and PATH-BUF is that wide.
    ROOT$ rel 1+ len 1- PATH-BUF SPAN:$ drop FS:JOIN-PATH ;
 
 
-: ETAG-HASH-IN ( ^u8 n ^u8 -- ^u8 n ^u8 )
+: ETAG-HASH-IN ( str ^u8 -- str ^u8 )
    {: bytes len:n hash :}
    hash bytes len DIGEST-RAW SHA256-IN
    DIGEST-RAW DIGEST-HEX SHA256>HEX
    bytes len hash ;
 
 
-: ETAG-HASH ( ^u8 n -- )
+: ETAG-HASH ( str -- )
    {: bytes len:n :}
    SHA256-CTX-BYTES BYTES-ALLOC-LEN ALLOC-BYTES drop {: hash :}
    bytes len hash [: ETAG-HASH-IN ;] catch {: code:n :}
@@ -149,7 +150,7 @@ DEFAULT-RULES
    code 0<> if code throw then ;
 
 
-: ETAG-FOR ( ^u8 n -- n n ) {: bytes:^ len:n :}
+: ETAG-FOR ( str -- n n ) {: bytes:^ len:n :}
    bytes len ETAG-HASH
    S\" \q" TEXT+ {: at:n :}
    DIGEST-HEX DIGEST-HEX-BYTES TEXT+ drop
@@ -168,7 +169,7 @@ DEFAULT-RULES
 
 \ Reads the file into body and records all of entry at but the body itself.
 \ The stack is kept, so the catch around it can give the body back.
-: FILE-ENTRY ( ^u8 n n SPAN:span<u8> n -- ^u8 n n SPAN:span<u8> n )
+: FILE-ENTRY ( str n SPAN:span<u8> n -- str n SPAN:span<u8> n )
    {: url:^ urllen:n pathlen:n body at:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ body SPAN:$ FS:READ-ALL {: got:n :}
    url urllen TEXT+ at FILE-PATH-AT !
@@ -182,7 +183,7 @@ DEFAULT-RULES
 
 \ The entry counts only once it owns its body, so STATIC-CLOSE frees each body
 \ once and a failed read frees its own.
-: LOAD-FILE ( ^u8 n -- ) {: url:^ urllen:n :}
+: LOAD-FILE ( str -- ) {: url:^ urllen:n :}
    FILE-COUNT @ {: at:n :}
    at 1+ FILE-ROWS
    url urllen UNDER-ROOT {: pathlen:n :}
@@ -205,7 +206,7 @@ DEFAULT-RULES
 \ served under its link's path. One whose device and inode match an ancestor's
 \ is a cycle and refuses the root before it is walked; two links to one
 \ directory that is not an ancestor are both served.
-: DIR+ ( ^u8 n n -- ) {: url:^ urllen:n up:n :}
+: DIR+ ( str n -- ) {: url:^ urllen:n up:n :}
    url urllen UNDER-ROOT {: pathlen:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:PATH-IDENTITY {: device:n inode:n :}
    up device inode ANCESTOR? if E-STATIC throw then
@@ -223,11 +224,11 @@ DEFAULT-RULES
    at 1+ DIR-TAIL ! ;
 
 
-: DIR$ ( n -- ^u8 n ) {: at:n :}
+: DIR$ ( n -- str ) {: at:n :}
    at DIR-AT @ at DIR-N @ TEXT$ ;
 
 
-: URL-JOIN ( ^u8 n ^u8 n -- n ) {: base:^ baselen:n name:^ namelen:n :}
+: URL-JOIN ( str str -- n ) {: base:^ baselen:n name:^ namelen:n :}
    baselen namelen + 1+ PATH-CAP > if E-STATIC throw then
    base baselen URL-BUF SPAN:COPY
    SLASH URL-BUF baselen SPAN:U8!
@@ -246,7 +247,7 @@ DEFAULT-RULES
 
 \ One name in the directory DIR-HEAD names. Its url is taken again for every
 \ name, because the entry before may have grown TEXT-ROW and moved it.
-: NAME-ENTRY ( ^u8 n -- ) {: name:^ namelen:n :}
+: NAME-ENTRY ( str -- ) {: name:^ namelen:n :}
    DIR-HEAD @ DIR$ name namelen ENTRY ;
 
 
@@ -266,7 +267,7 @@ DEFAULT-RULES
 
 
 
-: DOT-DOT-AT? ( ^u8 n n -- bool ) {: path:^ len:n at:n :}
+: DOT-DOT-AT? ( str n -- bool ) {: path:^ len:n at:n :}
    at 2 + len > if false exit then
    path at + c@ DOT-BYTE <> if false exit then
    path at 1+ + c@ DOT-BYTE <> if false exit then
@@ -275,20 +276,20 @@ DEFAULT-RULES
    path at 2 + + c@ SLASH = ;
 
 
-: TRAVERSAL? ( ^u8 n -- bool ) {: path:^ len:n :}
+: TRAVERSAL? ( str -- bool ) {: path:^ len:n :}
    len 0 ?do
       path len i DOT-DOT-AT? if true unloop exit then
    loop
    false ;
 
 
-: SERVED-PATH$ ( n -- ^u8 n ) {: idx:n :}
+: SERVED-PATH$ ( n -- str ) {: idx:n :}
    idx SLOT-PATH$ {: path:^ len:n :}
    path len s" /" STR= if s" /index.html" exit then
    path len ;
 
 
-: FIND-FILE ( ^u8 n -- n ) {: path:^ len:n :}
+: FIND-FILE ( str -- n ) {: path:^ len:n :}
    FILE-COUNT @ 0 ?do
       i FILE-PATH$ path len STR= if i unloop exit then
    loop
@@ -369,7 +370,7 @@ public
 \ starts. A failure while reading it gives back what was read and is rethrown.
 \ STOP and failures opening worker resources or starting tasks empty the
 \ table. Rejected arguments/context and listener-open failures retain it.
-: STATIC-ROOT ( ^u8 n -- ) {: root:^ len:n :}
+: STATIC-ROOT ( str -- ) {: root:^ len:n :}
    len 0 <= if E-STATIC throw then
    len PATH-CAP >= if E-STATIC throw then
    FILE-COUNT @ 0 <> if E-STATE throw then

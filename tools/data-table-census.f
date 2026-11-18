@@ -1,3 +1,4 @@
+split-str
 \ data-table-census.f - attributes every byte of the boot DATA heap [0, DP0) to
 \ the `create`d or `variable` word that owns it.
 \   printf 'require tools/data-table-census.f\nDATA-CENSUS:RUN\n' | bin/hb

@@ -1,3 +1,4 @@
+split-str
 \ check-signal-test.f - a stopped check.f, and a check run past its deadline,
 \ leave no process and no scratch behind; a verifier that writes past its
 \ capture, and a path the run cannot quote, each end check.f with one record.
@@ -67,13 +68,13 @@ PROCESS:NO-FD FIFO-RD !
 PROCESS:NO-FD CHECK-WATCH !
 PROCESS:NO-FD FEED-WR !
 
-: TMP$ ( -- ^u8 n )    TMP TMP-U @ ;
-: LOG$ ( -- ^u8 n )    LOG LOG-U @ ;
+: TMP$ ( -- str )    TMP TMP-U @ ;
+: LOG$ ( -- str )    LOG LOG-U @ ;
 : OUT$ ( -- ^u8 n )    OUT OUT-U @ ;
-: STANDIN$ ( -- ^u8 n )   STANDIN STANDIN-U @ ;
-: QUOTED$ ( -- ^u8 n )   QUOTED QUOTED-U @ ;
-: BAD-TMP$ ( -- ^u8 n )   BAD-TMP BAD-TMP-U @ ;
-: FIFO$ ( -- ^u8 n )   FIFO FIFO-U @ ;
+: STANDIN$ ( -- str )   STANDIN STANDIN-U @ ;
+: QUOTED$ ( -- str )   QUOTED QUOTED-U @ ;
+: BAD-TMP$ ( -- str )   BAD-TMP BAD-TMP-U @ ;
+: FIFO$ ( -- str )   FIFO FIFO-U @ ;
 
 \ A process is started with its caller's ignored signals still ignored, and a
 \ check.f that inherited one would never see it. RELEASE restores the default
@@ -96,7 +97,7 @@ PROCESS:NO-FD FEED-WR !
    GT-ROOT s\" t\"d" BAD-TMP FS:JOIN-PATH BAD-TMP-U !
    TMP$ FS:MAKE-DIRS ;
 
-: ENTRY+ ( ^u8 n -- )
+: ENTRY+ ( str -- )
    2drop ENTRY-N @ 1+ ENTRY-N ! ;
 
 : TMP-ENTRIES ( -- n )
@@ -117,7 +118,7 @@ PROCESS:NO-FD FEED-WR !
    0 REPORT-U !
    false FIFO-DONE ! ;
 
-: FD-TEXT$ ( n -- ^u8 n )
+: FD-TEXT$ ( n -- str )
    SB-RESET FMT:SB-INT SB$ ;
 
 \ fd within ms: a positive count once it answers one of the poll events, 0 when
@@ -163,7 +164,7 @@ PROCESS:NO-FD FEED-WR !
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-: OPEN-LOG ( ^u8 n -- n )
+: OPEN-LOG ( str -- n )
    FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
@@ -175,7 +176,7 @@ PROCESS:NO-FD FEED-WR !
 
 \ check.f with stdin in, stderr into LOG and stdout into OUT. The watch opens
 \ while check.f is alive: macOS cannot register a process that has exited.
-: CHECK-SPAWN-TMP ( ^u8 n n -- ) {: tmp:^ tmpu:n in:n :}
+: CHECK-SPAWN-TMP ( str n -- ) {: tmp:^ tmpu:n in:n :}
    s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    LOG$ OPEN-LOG {: log:n :}
@@ -191,7 +192,7 @@ PROCESS:NO-FD FEED-WR !
 : CHECK-SPAWN ( n -- ) {: in:n :}
    TMP$ in CHECK-SPAWN-TMP ;
 
-: SUBJECT$ ( -- ^u8 n )
+: SUBJECT$ ( -- str )
    s" test/check-signal-subject.f" ;
 
 \ The subject and its report FIFO, after whatever options check.f is given
@@ -231,7 +232,7 @@ PROCESS:NO-FD FEED-WR !
 \ u bytes at a into check.f's stdin once the pipe has room for them. u is at
 \ most FEED-CHUNK, so the write cannot block. A short write or a failed poll
 \ answers false.
-: FEED? ( ^u8 n -- bool )
+: FEED? ( str -- bool )
    {: a:^ u:n :}
    FEED-WR @ FD:POLLOUT -1 POLL-WITHIN {: ready:n :}
    ready 0 < if false exit then
@@ -352,7 +353,7 @@ PROCESS:NO-FD FEED-WR !
 \ The record check.f ends a run past its deadline with, in --json-errors mode or
 \ its default. It names the subject by its canonical path, as each of its
 \ reports does.
-: LATE-RECORD$ ( bool -- ^u8 n ) {: json:bool :}
+: LATE-RECORD$ ( bool -- str ) {: json:bool :}
    SB-RESET
    json if
       s\" {\"severity\":\"error\",\"code\":\"E-PROC-TIMEOUT\",\"message\":\"" SB-APPEND
@@ -409,7 +410,7 @@ PROCESS:NO-FD FEED-WR !
    STANDIN$ SB$ FS:WRITE-ALL
    STANDIN$ FS:CHMOD-X ;
 
-: TRUNCATED-RECORD$ ( -- ^u8 n )
+: TRUNCATED-RECORD$ ( -- str )
    SUBJECT$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
    SB-RESET
    s" error[E-PROC-TRUNCATED]: " SB-APPEND  p pu SB-APPEND
@@ -443,7 +444,7 @@ PROCESS:NO-FD FEED-WR !
    LOG$ size ru - 1- LOG-TEXT 1 FS:READ-AT
    LOG-TEXT c@ 10 T= ;
 
-: QUOTED-RECORD$ ( -- ^u8 n )
+: QUOTED-RECORD$ ( -- str )
    QUOTED$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
    SB-RESET
    s" error[E-FS-PATH-UNSAFE]: the path `" SB-APPEND  p pu 4 - SB-APPEND  s" \nx.f" SB-APPEND

@@ -1,3 +1,4 @@
+split-str
 \ sort.f - package SORT: in-place checked heapsort of cell arrays, O(n log n)
 \ with no scratch buffer, and binary search. SORT! takes a less-than comparator
 \ ([: f< ;] for floats, [: < ;] for ints, the reversed test for descending).

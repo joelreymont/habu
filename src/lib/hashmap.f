@@ -1,3 +1,4 @@
+split-str
 \ hashmap.f - open-addressing hash probe (package HM) for keys of one cell or
 \ a pair, over caller-owned key and used[] cell arrays (0 = empty) of cap cells.
 \ PROBE answers the slot a key lives in or the first empty one, and throws

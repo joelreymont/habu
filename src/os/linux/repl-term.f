@@ -1,3 +1,4 @@
+split-str
 \ repl-term.f - Linux/aarch64 terminal constants for the baked Habu REPL.
 
 $5401 constant HBR-TIO-GET

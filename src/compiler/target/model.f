@@ -1,3 +1,4 @@
+split-str
 \ Fixed build target and action values. CTARGET remains the wire and digest owner.
 require src/core/exit-status.f
 require src/lib/string.f
@@ -83,7 +84,7 @@ ENUM core-result
 ;ENUM
 
 \ A target's platform name, one per target; empty for a profile with none.
-: PLATFORM-NAME ( profile-id -- ^u8 n )
+: PLATFORM-NAME ( profile-id -- str )
    MATCH profile-id
       aarch64-apple-darwin OF s" macos-aarch64" ENDOF
       aarch64-unknown-linux-gnu OF s" linux-aarch64" ENDOF
@@ -187,7 +188,7 @@ private
       wasm64-unknown-unknown OF s" wasm64-unknown-unknown" ENDOF
    ;MATCH ;
 
-: NAME? ( ^u8 n ^u8 n -- bool ) STR= ;
+: NAME? ( str str -- bool ) STR= ;
 
 \ Q runs on each profile, in declaration order.
 : EACH-PROFILE ( R [ R profile-id -- R ] -- R )
@@ -201,7 +202,7 @@ private
    RTARGET-PROFILE--ID:WASM64-UNKNOWN-UNKNOWN q execute ;
 
 \ The profile found and true; else p and true when NAMES spells p as the name.
-: FIND-STEP ( profile-id bool profile-id ^u8 n [ profile-id -- ^u8 n ] -- profile-id bool )
+: FIND-STEP ( profile-id bool profile-id str [ profile-id -- str ] -- profile-id bool )
    {: found:profile-id hit:bool p:profile-id name:^ size:n names :}
    hit if found true exit then
    p names execute {: a:^ u:n :}
@@ -215,7 +216,7 @@ private
    [: name size names FIND-STEP ;] EACH-PROFILE ;
 
 \ A platform name's profile and true; else false over a filler profile the caller drops.
-: PLATFORM ( ^u8 n -- profile-id bool )
+: PLATFORM ( str -- profile-id bool )
    ['] PLATFORM-NAME FIND ;
 
 \ A platform name's or a triple's profile and true; else false over a filler.
@@ -225,7 +226,7 @@ private
    name size ['] LABEL FIND ;
 
 \ Writes a comma before the name unless it is the first; an empty name is skipped.
-: SAY-ITEM ( bool ^u8 n -- bool )
+: SAY-ITEM ( bool str -- bool )
    {: more:bool a:^ u:n :}
    u 0= if more exit then
    more if s" , " REJECTION:EMIT-STR then
@@ -282,10 +283,10 @@ private
 
 public
 
-: KNOWN? ( ^u8 n -- bool ) PROFILE nip ;
+: KNOWN? ( str -- bool ) PROFILE nip ;
 
 \ True for a platform name, one per target; false for a triple.
-: PLATFORM? ( ^u8 n -- bool ) PLATFORM nip ;
+: PLATFORM? ( str -- bool ) PLATFORM nip ;
 
 : RESOLVE ( ^u8 n -- resolved-target )
    {: name:^ size:n :}
@@ -305,7 +306,7 @@ public
 : IMAGE@ ( resolved-target -- image )
    PROFILE@ PROFILE-IMAGE ;
 
-: PROFILE$ ( resolved-target -- ^u8 n )
+: PROFILE$ ( resolved-target -- str )
    PROFILE@ LABEL ;
 
 : SAME? ( resolved-target resolved-target -- bool )

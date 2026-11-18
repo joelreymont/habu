@@ -1,3 +1,4 @@
+split-str
 \ span-test.f - src/lib/span.f: the reach travels with the pointer. Every E-SPAN
 \ code is reached through the public word that owes it, at the boundary and one
 \ past it. The file also pins the measurement the type's shape rests on: a
@@ -30,10 +31,10 @@ public
 
 private
 
-: SRC8 ( -- ^u8 n )
+: SRC8 ( -- str )
    s" abcdefgh" ;
 
-: SRC9 ( -- ^u8 n )
+: SRC9 ( -- str )
    s" abcdefghi" ;
 
 : T-PRODUCERS ( -- )

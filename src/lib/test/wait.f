@@ -1,3 +1,4 @@
+split-str
 \ wait.f - a test's own waits; neither has a deadline, so a hang shows as the
 \ test's WAIT line. EXPIRED names a library call's own timeout no case expects:
 \ it throws E-PROC-TIMEOUT, so the test ends as a timeout and not as a FAIL.

@@ -1,3 +1,4 @@
+split-str
 \ typed-storage-test.f - TYPED-VARIABLE and TYPED-BUFFER for nominal scalars,
 \ closed layout families, closed typed pointers and quotations: same-family
 \ round-trips certify and execute, other uses reject with a named E-* code, a
@@ -51,7 +52,7 @@ CAST: TSK>N ( tsk -- n )
 TYPED-VARIABLE TS-EVAL-A ^u8
 variable TS-EVAL-U
 : TS-EVAL-RUN ( -- ) TS-EVAL-A @ TS-EVAL-U @ evaluate-closed ;
-: TS-EVAL ( ^u8 n -- n ) TS-EVAL-U ! TS-EVAL-A ! [: TS-EVAL-RUN ;] catch ;
+: TS-EVAL ( str -- n ) TS-EVAL-U ! TS-EVAL-A ! [: TS-EVAL-RUN ;] catch ;
 
 \ 1. TYPED-VARIABLE: single nominal cell — checker seam + live round-trip
 TYPED-VARIABLE TSV tsk

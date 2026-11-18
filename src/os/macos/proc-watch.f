@@ -1,3 +1,4 @@
+split-str
 \ proc-watch.f -- macOS exact process-lifetime watch primitive emitter.
 
 require src/arch/arm64/icode.f

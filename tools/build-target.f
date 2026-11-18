@@ -1,3 +1,4 @@
+split-str
 \ Pending target selection and the one active native build action.
 require src/core/exit-status.f
 require src/compiler/target/model.f
@@ -44,7 +45,7 @@ public
    REJECT-ACTIVE
    RTARGET:HOST-TARGET PENDING ! ;
 
-: SELECT? ( ^u8 n -- bool )
+: SELECT? ( str -- bool )
    {: name:^ size:n :}
    REJECT-ACTIVE
    name size RTARGET:KNOWN? 0= if false exit then

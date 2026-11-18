@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/fsm.f
@@ -79,7 +80,7 @@ DEFINE GETAFIX ( ^line ) entry key
 ;using
 
 
-: GETAFIX$ ( ^u8 n -- ^u8 n )
+: GETAFIX$ ( str -- str )
    {: a:^ u:n :}
    LINE-REC {: l :}
    a l FSM--TEST-LINE:TEXT !
@@ -341,7 +342,7 @@ DEFINE PEEK ( ^n ) tally pulse
 DYNAMIC-BUFFER SRC u8
 variable SRC-LEN
 
-: SRC+ ( ^u8 n -- ) {: a:^ u:n :}
+: SRC+ ( str -- ) {: a:^ u:n :}
    u 0= if exit then
    SRC-LEN @ u + SRC-RESERVE
    a SRC-LEN @ SRC u BYTE-COPY
@@ -405,10 +406,10 @@ variable SRC-LEN
 
 
 \ Each line LINES hands, as `state input next;`.
-: SEEN+ ( ^u8 n ^u8 n ^u8 n -- ) {: s:^ su:n i:^ iu:n x:^ xu:n :}
+: SEEN+ ( str str str -- ) {: s:^ su:n i:^ iu:n x:^ xu:n :}
    s su SRC+ s"  " SRC+ i iu SRC+ s"  " SRC+ x xu SRC+ s" ;" SRC+ ;
 
-: SEEN$ ( ^u8 n -- ^u8 n ) 0 SRC-LEN !  [: SEEN+ ;] FSM:LINES  SRC$ ;
+: SEEN$ ( str -- str ) 0 SRC-LEN !  [: SEEN+ ;] FSM:LINES  SRC$ ;
 
 \ LINES hands each IN row's lines, NEXT as written, though no package holds S
 \ or PICK; a broken table throws E-SYNTAX and the next DEFINE still loads.
@@ -425,7 +426,7 @@ variable SRC-LEN
 \ A table word's undefined ACTION is placed at the ACTION's own line.
 : PLACED-ACTION ( -- )
    s" include test/fixtures/fsm/undefined-action.f" 70
-   s" undefined-action.f:14" SUBJECT:REFUSED? TTRUE ;
+   s" undefined-action.f:15" SUBJECT:REFUSED? TTRUE ;
 
 \ A wrong action is named as the table spells it, not as it was defined, at
 \ the action's own line.
@@ -434,12 +435,12 @@ variable SRC-LEN
    {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" `bump`" CONTAINS? TTRUE
-   e eu s" wrong-effect.f:15" CONTAINS? TTRUE ;
+   e eu s" wrong-effect.f:16" CONTAINS? TTRUE ;
 
 \ An unknown states type is placed at the header's states token.
 : PLACED-STATES ( -- )
    s" include test/fixtures/fsm/unknown-states.f" 70
-   s" unknown-states.f:11" SUBJECT:REFUSED? TTRUE ;
+   s" unknown-states.f:12" SUBJECT:REFUSED? TTRUE ;
 
 \ The corrected twin loads; the checker rejects each faulty table at load, 70.
 : REJECTED ( -- )
@@ -574,7 +575,7 @@ $100000 constant MIB
    loop ;
 
 
-: BIG$ ( -- ^u8 n )
+: BIG$ ( -- str )
    BIG-HEAD
    STATES 1- 0 ?do i BIG-ROW loop
    s"  FINAL s" SRC+ STATES 1- N+ s"  -" SRC+

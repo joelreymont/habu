@@ -1,3 +1,4 @@
+split-str
 \ Bounds checks for a live declaration-owner record. Loaded after the prefix
 \ checker, so the shared ABI remains a constants-only pre-hook dependency.
 require src/core/checker-owner-abi.f
@@ -9,7 +10,7 @@ public
 \ The checker that owns the source published a declaration-owner record
 \ without the operation op opu, needed at t tu. An empty op names none; a
 \ NULL-PTR t leaves the record unplaced.
-: MISSING-OP ( ^u8 n ^u8 n -- ) {: op:^ opu:n t:^ tu:n :}
+: MISSING-OP ( str str -- ) {: op:^ opu:n t:^ tu:n :}
    s" E-COMP-OWNER" REJECTION:OPEN
    s" the checker that owns the source carries no " REJECTION:EMIT-STR
    opu 0= IF

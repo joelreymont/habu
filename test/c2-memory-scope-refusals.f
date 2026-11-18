@@ -1,3 +1,4 @@
+split-str
 \ Checker boundaries for the public C2 owner and shared loan entries.
 
 require src/lib/string.f
@@ -17,7 +18,7 @@ create ERR CAP allot
 
 \ Run the source in a child: the lengths of what it wrote to OUT and ERR, and
 \ whether it exited with the expected status.
-: EXITED? ( ^u8 n n -- len len bool )
+: EXITED? ( str n -- len len bool )
    {: src:^ srcu:n expected:n :}
    src srcu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
@@ -29,14 +30,14 @@ create ERR CAP allot
    ;MATCH ;
 
 \ Exited with the expected status, WHY in the diagnostic and SAID in the output.
-: REPORTED? ( ^u8 n n ^u8 n ^u8 n -- bool )
+: REPORTED? ( str n str str -- bool )
    {: expected:n why:^ whyu:n said:^ saidu:n :}
    expected EXITED? {: outu:len erru:len exited:bool :}
    exited ERR erru LEN>N why whyu CONTAINS? and
    OUT outu LEN>N said saidu CONTAINS? and ;
 
 \ Exited with the expected status, FIELDS and HELP in its JSON rejection.
-: JSON-REPORTED? ( ^u8 n n ^u8 n ^u8 n -- bool )
+: JSON-REPORTED? ( str n str str -- bool )
    {: expected:n fields:^ fieldsu:n help:^ helpu:n :}
    expected EXITED? {: outu:len erru:len exited:bool :}
    exited ERR erru LEN>N fields fieldsu CONTAINS? and

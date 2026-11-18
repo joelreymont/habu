@@ -1,3 +1,4 @@
+split-str
 \ test-issuer.f - a token issuer for tests on Habu's HTTP server, never a
 \ production one: it answers on loopback as Entra v2 does, with OIDC discovery,
 \ a JWK Set and a token endpoint for client credentials, On-Behalf-Of and the
@@ -35,8 +36,8 @@ private
 3600 constant LIFE-S
 $100 constant FIRST-CAP
 
-: KID$ ( -- ^u8 n ) s" test-issuer" ;
-: TENANT$ ( -- ^u8 n ) s" test-tenant" ;
+: KID$ ( -- str ) s" test-issuer" ;
+: TENANT$ ( -- str ) s" test-tenant" ;
 
 \ The fixture key's n and e as unsigned big-endian bytes; decoded base64url is
 \ shorter than its text.
@@ -52,10 +53,10 @@ variable EXPONENT-U
 JWS-FIXTURE:MODULUS$ MODULUS-ROW JWS-FIXTURE:MODULUS$ nip RAW MODULUS-U !
 JWS-FIXTURE:EXPONENT$ EXPONENT-ROW JWS-FIXTURE:EXPONENT$ nip RAW EXPONENT-U !
 
-: HEADER$ ( -- ^u8 n ) S\" {\"alg\":\"RS256\",\"kid\":\"test-issuer\",\"typ\":\"JWT\"}" ;
+: HEADER$ ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"test-issuer\",\"typ\":\"JWT\"}" ;
 
 : BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
-: BUF+ ( ^u8 n ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+: BUF+ ( str ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 
 \ The clients: each id's offset in CLIENTS, its secret right after it.
 create CLIENTS-HEAD BUF:HDR-BYTES allot
@@ -69,11 +70,11 @@ DYNAMIC-BUFFER SECRET-LEN n
    {: k:n :}
    CLIENTS BUF$ drop k CLIENT-AT @ + k ID-LEN @ ;
 
-: SECRET$ ( n -- ^u8 n )
+: SECRET$ ( n -- str )
    {: k:n :}
    CLIENTS BUF$ drop k CLIENT-AT @ + k ID-LEN @ + k SECRET-LEN @ ;
 
-: KNOWN? ( ^u8 n ^u8 n -- bool )
+: KNOWN? ( str str -- bool )
    {: id:^ iu:n secret:^ su:n :}
    CLIENT-COUNT @ 0 ?do
       i ID$ id iu STR= i SECRET$ secret su STR= and if true unloop exit then
@@ -156,7 +157,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    true ;
 
 \ False for a form naming a wanted field twice.
-: FORM! ( ^u8 n -- bool )
+: FORM! ( str -- bool )
    {: b:^ bu:n :}
    FORM BUF-OF BUF:CLEAR
    FIELDS 0 ?do -1 i SLOT-FIELD FIELD-AT ! loop
@@ -169,13 +170,13 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 
 \ A field's decoded value, borrowed from FORM; false when the form lacks it.
-: FIELD$ ( n -- ^u8 n bool )
+: FIELD$ ( n -- str bool )
    SLOT-FIELD {: f:n :}
    f FIELD-AT @ {: at:n :}
    at 0< if s" " false exit then
    FORM BUF-OF BUF$ drop at + f FIELD-LEN @ true ;
 
-: FIELD= ( n ^u8 n -- bool )
+: FIELD= ( n str -- bool )
    {: k:n w:^ wu:n :}
    k FIELD$ 0= if 2drop false exit then
    w wu STR= ;
@@ -194,7 +195,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    TOKEN-USE s" on_behalf_of" FIELD= and ;
 
 \ The scope without a trailing /.default, as Entra names the audience.
-: AUDIENCE$ ( -- ^u8 n )
+: AUDIENCE$ ( -- str )
    SCOPE FIELD$ drop {: s:^ su:n :}
    s su s" /.default" ENDS-WITH? if s su 9 - exit then
    s su ;
@@ -221,39 +222,39 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    JSON:READ-NEXT JSON:T-OBJ <> if false exit then
    k ku JSON:READ-FIND-KEY ;
 
-: MEMBER-IS? ( ^u8 n ^u8 n ^u8 n -- bool )
+: MEMBER-IS? ( str str str -- bool )
    {: t:^ tu:n k:^ ku:n w:^ wu:n :}
    t tu k ku MEMBER 0= if JSON:READ-CLOSE false exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE false exit then
    w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
 
 
-: MEMBER-INT ( ^u8 n ^u8 n -- n bool )
+: MEMBER-INT ( str str -- n bool )
    MEMBER 0= if JSON:READ-CLOSE 0 false exit then
    JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
 \ A string member as sent, quotes and escapes included; false when absent or
 \ not a string.
-: MEMBER-RAW ( ^u8 n ^u8 n -- ^u8 n bool )
+: MEMBER-RAW ( str str -- str bool )
    MEMBER 0= if JSON:READ-CLOSE s" " false exit then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
    JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a 1- u 2 + true ;
 
 \ Whether a text is one JSON object; malformed JSON throws the reader's code.
-: OBJECT? ( ^u8 n -- bool )
+: OBJECT? ( str -- bool )
    CURSOR -rot JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ = if JSON:READ-FINISH true exit then
    JSON:READ-CLOSE false ;
 
 
 \ This server's URL with the path; borrowed from the task's SB.
-: URL$ ( ^u8 n -- ^u8 n )
+: URL$ ( str -- str )
    {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
 
 \ The bytes appended as unpadded base64url, whose length is exactly (4u+2)/3.
-: SEGMENT+ ( ^u8 n ^n -- )
+: SEGMENT+ ( str ^n -- )
    {: a:^ u:n buf:^ :}
    buf u 4 * 2 + 3 / BUF:N>BLEN BUF:GROW {: room :}
    a u room BASE64:ENCODE-URL drop ;
@@ -281,7 +282,7 @@ public
 
 private
 
-: ASSERTED$ ( -- ^u8 n ) SLOT ASSERTED @ SPAN:$ ;
+: ASSERTED$ ( -- str ) SLOT ASSERTED @ SPAN:$ ;
 
 \ The assertion's or refresh token's claims and signature decoded into
 \ SCRATCH, the claims kept in ASSERTED: the signed text's length and the

@@ -1,3 +1,4 @@
+split-str
 \ float.f - checked decimal string -> IEEE-double parsing of
 \ [+|-] digits [. digits] [ (e|E) [+|-] digits ]. It keeps 18 significant digits
 \ and folds the rest into the exponent before scaling; binary64 arithmetic
@@ -81,7 +82,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    then ;
 
 
-: FL-KEEP-DIGITS ( ^u8 n -- ) {: a:^ u:n :}
+: FL-KEEP-DIGITS ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ STR-DIGIT-VALUE FL-KEEP-DIGIT loop ;
 
 
@@ -90,12 +91,12 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    FL-MANT @ s>f swap FL-SCALE-F ;
 
 \ ---- field splitting ------------------------------------------------------
-: FL-STRIP-SIGN ( ^u8 n -- ^u8 n bool ) {: a:^ u :}
+: FL-STRIP-SIGN ( str -- str bool ) {: a:^ u :}
    u 0= if a 0 0 0= 0= exit then
    a c@ STR-MINUS = if a 1+ u 1- 0 0= exit then
    a c@ STR-PLUS  = if a 1+ u 1- 0 0= 0= exit then
    a u 0 0= 0= ;
-: FL-FIND-E ( ^u8 n -- option<idx> ) {: a:^ u:n :}
+: FL-FIND-E ( str -- option<idx> ) {: a:^ u:n :}
    a u FL-E-LOWER INDEX-OF MATCH option
      none OF a u FL-E-UPPER INDEX-OF ENDOF
      some OF OPTION:SOME ENDOF
@@ -104,7 +105,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 \ STR>FLOAT accepts signs, exponent notation and a trailing dot beyond the
 \ engine literal grammar. For the spellings that are engine-shaped decimals,
 \ ask the engine's own reader whether its cell accumulators admit the value.
-: FL-ENGINE-DECIMAL? ( ^u8 n -- bool ) {: a:^ u:n :}
+: FL-ENGINE-DECIMAL? ( str -- bool ) {: a:^ u:n :}
    u 0= if 0 0= 0= exit then
    a c@ STR-PLUS = if 0 0= 0= exit then
    a u FL-FIND-E MATCH option
@@ -120,7 +121,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 \ numerator must fit signed i64, and the 10^fraction scale must fit too. The
 \ scale admits at most 18 fractional digits. A native literal's overflow is
 \ rejected even when STR>FLOAT's more general exponent parser could scale it.
-: FL-ADMIT-INT? ( ^u8 n -- bool )
+: FL-ADMIT-INT? ( str -- bool )
    {: a:^ u:n :}
    0
    u 0 ?do
@@ -131,7 +132,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
       10 * digit +
    loop drop true ;
 
-: FL-ENGINE-DECIMAL-ADMITTED? ( ^u8 n -- bool )
+: FL-ENGINE-DECIMAL-ADMITTED? ( str -- bool )
    {: a0:^ u0:n :}
    a0 u0 FL-ENGINE-DECIMAL? 0= if true exit then
    a0 u0 FL-STRIP-SIGN drop {: a:^ u:n :}
@@ -145,7 +146,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    a dot 1+ + frac FL-ADMIT-INT? ;
 
 \ ---- significand (no sign, no exponent) -----------------------------------
-: FL-SCALED-SIG ( ^u8 n n -- option<r> ) {: a:^ u:n exponent:n :}
+: FL-SCALED-SIG ( str n -- option<r> ) {: a:^ u:n exponent:n :}
    a u FL-DOT INDEX-OF MATCH option                  \ split at the dot: ilen fa flen
      none OF u  a u +  0 ENDOF                        \ no dot: int = whole string, empty fraction
      some OF IDX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
@@ -159,20 +160,20 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    exponent FL-SIG-VALUE OPTION:SOME ;
 
 \ ---- exponent -------------------------------------------------------------
-: FL-EXP-AT ( ^u8 n n -- n ) {: a:^ u epos :}
+: FL-EXP-AT ( str n -- n ) {: a:^ u epos :}
    a epos 1+ + u epos 1+ - STR>NUMBER? MATCH option
      none OF 0 FL-VALID ! ENDOF
      some OF FL-EXPV ! ENDOF
    ;MATCH
    epos ;
-: FL-PARSE-EXP ( ^u8 n -- n ) {: a:^ u:n :}
+: FL-PARSE-EXP ( str -- n ) {: a:^ u:n :}
    a u FL-FIND-E MATCH option
      none OF 0 FL-EXPV ! u ENDOF                    \ no exponent: exp 0, mantissa = whole string
      some OF IDX>N {: epos:n :} a u epos FL-EXP-AT ENDOF
    ;MATCH ;
 
 \ ---- public entry ---------------------------------------------------------
-: STR>FLOAT ( ^u8 n -- option<r> ) {: a0:^ u0:n :}
+: STR>FLOAT ( str -- option<r> ) {: a0:^ u0:n :}
    a0 u0 FL-ENGINE-DECIMAL-ADMITTED? {: admitted:bool :}
    -1 FL-VALID !
    a0 u0 FL-STRIP-SIGN {: a:^ u neg :}

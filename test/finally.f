@@ -1,3 +1,4 @@
+split-str
 \ Generic cleanup through the native engine, including both exception paths.
 require src/lib/test.f
 

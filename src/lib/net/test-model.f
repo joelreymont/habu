@@ -1,3 +1,4 @@
+split-str
 \ test-model.f - a model server's replies for tests, never a production one:
 \ each public word answers one request on Habu's HTTP server as OpenAI's
 \ Responses API does. COMPLETED!, INCOMPLETE!, REFUSAL! and OUTPUT! answer a
@@ -39,7 +40,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 
 \ Opens the data of an event of the type numbered n, after its type and number.
-: EVENT-OPEN ( ^JSON:writer ^u8 n n -- ^JSON:writer )
+: EVENT-OPEN ( ^JSON:writer str n -- ^JSON:writer )
    {: type:^ type-u:n seq:n :}
    s" event: " JSON:WRITE-RAW type type-u JSON:WRITE-RAW
    S\" \ndata: {" JSON:WRITE-RAW
@@ -52,7 +53,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 
 \ EVENT-OPEN for an event that carries a response, which comes next.
-: RESPONSE-OPEN ( ^JSON:writer ^u8 n n -- ^JSON:writer )
+: RESPONSE-OPEN ( ^JSON:writer str n -- ^JSON:writer )
    EVENT-OPEN S\" ,\qresponse\q:" JSON:WRITE-RAW ;
 
 
@@ -64,7 +65,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 
 \ A reply object's members through its first output item, a reasoning item.
-: REPLY-HEAD ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: REPLY-HEAD ( ^JSON:writer str -- ^JSON:writer )
    {: status:^ status-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
    s" status" status status-u JSON:WRITE-FIELD-S
@@ -85,7 +86,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    s" }" JSON:WRITE-RAW ;
 
 
-: COMPLETED-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: COMPLETED-REPLY ( ^JSON:writer str -- ^JSON:writer )
    {: text:^ text-u:n :}
    s" completed" REPLY-HEAD MESSAGE-OPEN
    S\" \qtype\q:\qoutput_text\q," JSON:WRITE-RAW
@@ -94,7 +95,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    MESSAGE-CLOSE ;
 
 
-: INCOMPLETE-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: INCOMPLETE-REPLY ( ^JSON:writer str -- ^JSON:writer )
    {: reason:^ reason-u:n :}
    s" incomplete" REPLY-HEAD
    S\" ],\qincomplete_details\q:{" JSON:WRITE-RAW
@@ -103,7 +104,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    s" }" JSON:WRITE-RAW ;
 
 
-: REFUSAL-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: REFUSAL-REPLY ( ^JSON:writer str -- ^JSON:writer )
    {: text:^ text-u:n :}
    s" completed" REPLY-HEAD MESSAGE-OPEN
    S\" \qtype\q:\qrefusal\q," JSON:WRITE-RAW
@@ -111,7 +112,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    MESSAGE-CLOSE ;
 
 
-: OUTPUT-REPLY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: OUTPUT-REPLY ( ^JSON:writer str -- ^JSON:writer )
    {: items:^ items-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:" JSON:WRITE-RAW
    items items-u JSON:WRITE-RAW
@@ -142,12 +143,12 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 public
 
 \ A stream ending in a completed reply whose message holds the text.
-: COMPLETED! ( HTTP:response ^u8 n -- )
+: COMPLETED! ( HTTP:response str -- )
    [: COMPLETED-REPLY ;] s" response.completed" STREAMED ;
 
 
 \ A stream ending in an incomplete reply with the reason.
-: INCOMPLETE! ( HTTP:response ^u8 n -- )
+: INCOMPLETE! ( HTTP:response str -- )
    [: INCOMPLETE-REPLY ;] s" response.incomplete" STREAMED ;
 
 
@@ -159,7 +160,7 @@ public
 
 \ A stream ending in a completed reply whose message part is a refusal with
 \ the text.
-: REFUSAL! ( HTTP:response ^u8 n -- )
+: REFUSAL! ( HTTP:response str -- )
    [: REFUSAL-REPLY ;] s" response.completed" STREAMED ;
 
 
@@ -184,7 +185,7 @@ public
 \ A compaction of the request's input, the reply OpenAI gives at
 \ /responses/compact: one JSON object, no event stream, whose output is
 \ exactly the JSON array and whose usage is the terminal replies' own.
-: COMPACTION! ( HTTP:response ^u8 n -- )
+: COMPACTION! ( HTTP:response str -- )
    {: answer:HTTP:response items:^ items-u:n :}
    READY
    SLOT WRITER ROW JSON:WRITE-OPEN-BUF

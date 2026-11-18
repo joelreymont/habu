@@ -1,3 +1,4 @@
+split-str
 \ os-cpu.f - processor facts the running host reports. ONLINE reads
 \ sysconf(_SC_NPROCESSORS_ONLN); below one is E-ONLINE. LOAD1 is getloadavg(3)'s
 \ first sample as binary64; a return below one is E-LOAD.

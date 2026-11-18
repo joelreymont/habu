@@ -1,3 +1,4 @@
+split-str
 \ take.f - TAKE-TURN, a browser host module that keeps a delivery past its turn
 \ with BROWSER-EVENT:TAKE, built by `tools/hb-build.f -- --target wasm`, whose
 \ entry is MAIN; test/browser/take-test.f runs it under
@@ -35,7 +36,7 @@ variable HELD-U
    {: t:^ u:n :}
    u 0 ?do  t i + c@  TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U !  loop ;
 
-: TEXT-RECORD ( ^u8 n -- )
+: TEXT-RECORD ( str -- )
    {: t:^ u:n :}
    3 t BYTES>N u 0 RECORD ;
 

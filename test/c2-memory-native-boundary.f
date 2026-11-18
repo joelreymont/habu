@@ -1,3 +1,4 @@
+split-str
 \ The C2 writer admits only the public runtime entries.
 require src/core/exit-status.f
 require src/lib/test.f

@@ -1,3 +1,4 @@
+split-str
 include test/gate-entry-guard-target.f
 
 package ENTRY-GUARD-INCLUDE-FIXTURE

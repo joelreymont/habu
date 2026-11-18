@@ -1,3 +1,4 @@
+split-str
 \ process-reaper-fixture.f - the pool src/lib/process-reaper-test.f kills.
 \ With no argument it starts a reaper, spawns two REAPED children, writes each
 \ child's pid on stdout and waits. The hb child (`child`) spawns a sleeper that
@@ -33,15 +34,15 @@ private
    rp PROCESS:REAPED PROCESS:SPAWN ;
 
 \ The sleeper's stdout is /dev/null, so only the report holds the pipe.
-: SH-RUNS ( -- ^u8 n )
+: SH-RUNS ( -- str )
    s" ps -o pgid= -p $$; exec /bin/sleep 30 >/dev/null" ;
 
 \ A subshell reports once ps shows the sh stopped, so the pool dies with a
 \ stopped member.
-: SH-STOPS ( -- ^u8 n )
+: SH-STOPS ( -- str )
    s" (until ps -o stat= -p $$ | grep -q T; do :; done; ps -o pgid= -p $$) & kill -s STOP $$; exec /bin/sleep 30 >/dev/null" ;
 
-: SH-CHILD ( PROCESS:reaper ^u8 n -- pid )
+: SH-CHILD ( PROCESS:reaper str -- pid )
    {: rp script:^ scriptu :}
    s" /bin/sh" PROCESS:NEW
    s" -c" PROCESS:ARG

@@ -1,3 +1,4 @@
+split-str
 \ log.f - lines on fd 2 that say why a program failed, and, at info, what a
 \ service did, package LOG. A failure caused outside the program (a provider,
 \ the network, the OS) is logged once, with its text, by the library that saw
@@ -78,7 +79,7 @@ variable TAIL
 
 
 \ The line written for a lost one: a stamp, then the text.
-: NOTICE-TEXT$ ( -- ^u8 n )  S\"  error log: out of memory, a line was lost\n" ;
+: NOTICE-TEXT$ ( -- str )  S\"  error log: out of memory, a line was lost\n" ;
 DATE:TIME-LEN NOTICE-TEXT$ nip + constant NOTICE-U
 NOTICE-U BUFFER: NOTICE
 NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
@@ -127,7 +128,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    STAMP ;
 
 
-: LEVEL$ ( level -- ^u8 n )
+: LEVEL$ ( level -- str )
    LEVEL>N {: n:n :}
    n ERROR-N = if s" error" exit then
    n WARN-N = if s" warn" exit then
@@ -158,7 +159,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 \ TEXT+'s contract: the row's first growth, to hold the text unescaped, comes
 \ before any byte of the text is read.
-: ESCAPED+ ( ^u8 n -- )
+: ESCAPED+ ( str -- )
    {: at:^ u:n :}
    0 ROW  0 ROW BUF:LEN@ BUF:BLEN>N u BUF:N>BLEN BUF:BLEN>N + BUF:N>BLEN  BUF:ENSURE
    0 u 0 ?do
@@ -171,7 +172,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    at swap u RUN+ ;
 
 
-: LF$ ( -- ^u8 n )  S\" \n" ;
+: LF$ ( -- str )  S\" \n" ;
 
 
 \ One lone LF to fd 2, under the caller's SIGPIPE hold. A one-byte write that

@@ -1,3 +1,4 @@
+split-str
 \ Dictionary code lengths retain the legacy body-before-final-slot convention.
 \ Bit 31 marks an exact span instead: no instruction follows the recorded body.
 \ An exact span is any byte count from 1 to MASK, because an x86-64 routine may
@@ -39,7 +40,7 @@ private
    s" ` first and pass only one it accepts" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: LENGTH-CK ( n ^u8 n -- ) {: raw:n w:^ wu:n :}
+: LENGTH-CK ( n str -- ) {: raw:n w:^ wu:n :}
    raw VALID? 0= if
       raw w wu s" a dictionary code length"
       s" whole 4-byte instructions, or bit 31 set over 1 to 2147483647 bytes"

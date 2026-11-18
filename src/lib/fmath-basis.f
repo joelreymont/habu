@@ -1,3 +1,4 @@
+split-str
 \ fmath-basis.f - exact binary64 basis scaling in `package FBASIS`: SCALE3 maps p
 \ to o + A diag(s) A^-1 (p-o) and rounds each coordinate once, to nearest even.
 \ The frame is twelve bit patterns by rows [a00 a01 a02 o0, ...], axes in the

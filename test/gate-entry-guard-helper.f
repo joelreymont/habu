@@ -1,3 +1,4 @@
+split-str
 \ require test/gate-entry-guard-target.f is only documentation here.
 \ s" test/gate-entry-guard-target.f" is also inert in this comment.
 require src/lib/string.f

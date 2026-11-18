@@ -1,3 +1,4 @@
+split-str
 \ process-pty-io-smoke.f - the checked PTY process supervisor
 \ (src/lib/process-pty-io.f) through its public PROCESS-PTY:* lifecycle.
 
@@ -29,7 +30,7 @@ variable IN-SCOPE                         \ set by the halted task's body once i
 TASK:MIN-STACK TASK:TASK HALTEE
 
 \ A real short-lived executable available on both OSes.
-: TRUE-PATH ( -- ^u8 n )
+: TRUE-PATH ( -- str )
    s" /usr/bin/true" ;
 
 : SAVE-TGT ( pid -- )

@@ -1,3 +1,4 @@
+split-str
 \ structure-decl-suite.f - behavior and rollback suite for the STRUCTURE
 \ declaration front end (src/core/structure-decl.f, package STRUCTURE-DECL).
 \ It asserts reject codes, rendered diagnostics, field-row counts and the
@@ -895,8 +896,8 @@ public
 
 \ The replay entry under `catch` on copies of both strings, so a reject answers
 \ its code as TEST-EVAL:RC does for the live entry.
-: RP-EV ( ^u8 n ^u8 n -- ) TYPE-DECL:REPLAY-STRUCTURE TFALSE 2drop ;
-: RP-TRY ( ^u8 n ^u8 n -- n )
+: RP-EV ( str str -- ) TYPE-DECL:REPLAY-STRUCTURE TFALSE 2drop ;
+: RP-TRY ( str str -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
 : DICT-RECS ( -- n ) ndict@ ;
 
@@ -1147,7 +1148,7 @@ STRUCTURE sdaddr
 SDADDR:BYTES 24 T=                                    \ the size words BEGIN-STRUCTURE published
 SDADDR:CELLS 3 T=
 
-: SDA-W ( n ^u8 n n -- ) {: av:n pv:^ cv:n i:n :} av pv cv SDADDR:MAKE i SDA-BUF ! ;
+: SDA-W ( n str n -- ) {: av:n pv:^ cv:n i:n :} av pv cv SDADDR:MAKE i SDA-BUF ! ;
 : SDA-A ( n -- n ) SDA-BUF SDADDR:A @ ;
 : SDA-C ( n -- n ) SDA-BUF SDADDR:C @ ;
 : SDA-P ( n -- ^u8 ) SDA-BUF SDADDR:P @ ;
@@ -1556,7 +1557,7 @@ SDBUF:CELLS 4 T=                                      \ a, ceil(13 / CELL) for b
 SDBUF:BYTES SDBUF:CELLS CELL * T=
 : SDB-GAP ( -- n ) 0 SDB-BUF SDBUF:C NULL-PTR -  0 SDB-BUF SDBUF:A NULL-PTR -  - ;
 SDB-GAP 3 CELL * T=                                   \ c lies 3 cells after a
-: SDB-BYTES ( -- ^u8 n ) 0 SDB-BUF SDBUF:B SPAN:$ ;
+: SDB-BYTES ( -- str ) 0 SDB-BUF SDBUF:B SPAN:$ ;
 : SDB-N ( -- n ) 0 SDB-BUF SDBUF:B SPAN:LEN ;
 SDB-N 13 T=
 : SDB-AT ( -- n ) SDB-BYTES drop NULL-PTR -  0 SDB-BUF NULL-PTR - - ;
@@ -1623,7 +1624,7 @@ package SDBIG
 $10000 constant CAP            \ bytes: 4097 fields of 13 bytes and the head
 create SRC CAP allot
 TYPED-VARIABLE SRC-U len
-: S+ ( ^u8 n -- ) SRC CAP SRC-U BUF-APPEND ;
+: S+ ( str -- ) SRC CAP SRC-U BUF-APPEND ;
 : S+C ( n -- ) SRC CAP SRC-U BUF-APPEND-C ;
 : S+LETTER ( n -- ) 26 mod 97 + S+C ;
 \ Field I is `fXYZ`, I in base 26 as three letters.
@@ -1637,7 +1638,7 @@ public
    {: na:^ nu:n k:n :}
    SRC-U BUF-RESET  s" STRUCTURE " S+  na nu S+
    k 0 ?do i S+FIELD loop ;
-: SRC+ ( ^u8 n -- ) S+ ;
+: SRC+ ( str -- ) S+ ;
 : SRC$ ( -- ^u8 n ) SRC SRC-U @ LEN>N ;
 ;package
 

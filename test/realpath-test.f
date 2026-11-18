@@ -1,3 +1,4 @@
+split-str
 \ The OS bridge copies only a complete canonical C string into caller storage.
 require src/lib/test.f
 require src/lib/fs.f

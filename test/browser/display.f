@@ -1,3 +1,4 @@
+split-str
 \ display.f - checked Wasm peer for SVG images and typed-input control. It
 \ echoes a load, focus or highlight event as a text record: the kind's name,
 \ a space and the event's bytes in lowercase hex. Typed "fetch" fetches the
@@ -125,7 +126,7 @@ TYPED-VARIABLE SHOWN held
    8 a BYTES>N u 0 RECORD
    HELD-NONE SHOWN ! ;
 
-: IMAGE+ ( ^u8 n -- )
+: IMAGE+ ( str -- )
    {: a:^ u:n :}
    a IMAGE IMAGE-U @ + u BYTE-COPY
    u IMAGE-U +! ;
@@ -148,7 +149,7 @@ TYPED-VARIABLE SHOWN held
    {: bits:n dst:^ :}
    4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
-: VERTEX ( ^u8 n n n n -- )
+: VERTEX ( str n n n -- )
    \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
    {: m:^ k:n x:n y:n face:n :}
    m 20 + k 12 * + {: at:^ :}
@@ -163,7 +164,7 @@ TYPED-VARIABLE SHOWN held
    m 3 1 0 1 VERTEX  m 4 1 1 1 VERTEX  m 5 0 1 1 VERTEX
    6 0 do i m 92 + i 2 * + U16! loop ;
 
-: TRIANGLE ( ^u8 n n -- )
+: TRIANGLE ( str n -- )
    \ The unit square's lower-left half as face 34, whose highlight bit is bit
    \ 2 of the second word; the indices end at byte 62.
    {: m:^ ox:n oy:n :}
@@ -177,14 +178,14 @@ TYPED-VARIABLE SHOWN held
    {: m:^ x:n y:n z:n :}
    x m 8 + U32!  y m 12 + U32!  z m 16 + U32! ;
 
-: CORNER ( ^u8 n n n n -- )
+: CORNER ( str n n n -- )
    \ Vertex k of the mesh at m at x, y and z on its grid, of face 0, its
    \ normal +z, octahedral 0, 0.
    {: m:^ k:n x:n y:n z:n :}
    m 20 + k 12 * + {: at:^ :}
    x at U16!  y at 2 + U16!  z at 4 + U16! ;
 
-: QUAD ( ^u8 n n n n n -- )
+: QUAD ( str n n n n -- )
    \ The mesh at m, the rectangle x0..x1 by y0..y1 at z on its grid: vertices
    \ 0 to 3 counterclockwise from x0, y0 and triangles 0 1 2 and 0 2 3, so
    \ each side is a whole triangle edge; the indices end at byte 80.
@@ -404,7 +405,7 @@ TYPED-VARIABLE SHOWN held
 
 \ The name and the event's bytes in ECHO-BUF; refuses an echo past the
 \ buffer.
-: ECHOED ( ^u8 n -- )
+: ECHOED ( str -- )
    {: a:^ u:n :}
    u 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
    a u NAMED
@@ -478,7 +479,7 @@ TYPED-VARIABLE SHOWN held
    VOLUME-MATRIX 0 VOLUME-MATRIX RENDER
    VOLUME-TEXT ;
 
-: IS? ( ^u8 n -- bool )
+: IS? ( str -- bool )
    {: a:^ u:n :}
    2 EVENT@ u <> if false exit then
    u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop

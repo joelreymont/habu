@@ -1,3 +1,4 @@
+split-str
 \ num-types-test.f - the NUM boundary and static-rejection matrix.
 \ Run: bin/hb --load src/lib/num-types-test.f; test/gate-stdlib-cases.f
 \ schedules it. option<a> has no polymorphic eliminator (only whole-bundle

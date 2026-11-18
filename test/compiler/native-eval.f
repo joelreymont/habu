@@ -1,3 +1,4 @@
+split-str
 \ The closed evaluation boundary: `evaluate-closed` runs source on a data
 \ stack of its own and rejects residue with a record, which is what lets a
 \ checked word evaluate source.
@@ -86,7 +87,7 @@ private
    [: s" NATIVE-EVAL-TEST:INNER-RESIDUE$ evaluate-closed" evaluate-closed ;]
    70 TTHROWSQ ;
 
-: OUTER-BASE$ ( -- ^u8 n )
+: OUTER-BASE$ ( -- str )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-BASE$ evaluate-closed" ;
 
 : STACK-BASE ( -- n ) data-base STACK-ABI:BASE-CELL + @ ;
@@ -105,7 +106,7 @@ private
    OUTER-BASE$ evaluate-closed
    OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
 
-: OUTER-THROW$ ( -- ^u8 n )
+: OUTER-THROW$ ( -- str )
    s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-THROW$ evaluate-closed" ;
 
 \ A throw out of a nested pair gives both stacks back. The caught delivery runs
@@ -220,7 +221,7 @@ private
 \ into that definition and ends with it still open, which is not a definition
 \ the text opened, so it is not refused.
 : BUMP ( -- ) SEEN @ 1 + SEEN ! ;
-: MAKE-BUMPED ( ^u8 n -- ) EFFECT:EMPTY define-word s" BUMP" evaluate-closed postpone ; ;
+: MAKE-BUMPED ( str -- ) EFFECT:EMPTY define-word s" BUMP" evaluate-closed postpone ; ;
 s" BUMPED" MAKE-BUMPED
 
 : CALLER-OPEN ( -- )
@@ -272,7 +273,7 @@ create ERR IO-CAP allot
 \ RATCHET grows the stack one cell per level (recurse consumes the declared
 \ input and nothing pops it), so the text pushes until a push crosses the top
 \ of its stack's mapping.
-: OVERFLOW$ ( -- ^u8 n )
+: OVERFLOW$ ( -- str )
    S\" : RATCHET ( n -- ) begin dup recurse again ; s\" 1 RATCHET\" evaluate-closed" ;
 
 : OVERFLOW ( -- )
@@ -296,7 +297,7 @@ create ERR IO-CAP allot
 
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
-: TOP-LEVEL$ ( -- ^u8 n )
+: TOP-LEVEL$ ( -- str )
    s" TRUSTED: NATIVE-EVAL-W ( n -- n ) + ; 1 ' NATIVE-EVAL-W execute" ;
 
 : TOP-LEVEL ( -- )
@@ -311,7 +312,7 @@ create ERR IO-CAP allot
 
 \ UNFINISHED's text with no catch around it. The child inherits this
 \ process's dictionary, which UNFINISHED left holding NATIVE-EVAL-D.
-: UNFINISHED-LINE$ ( -- ^u8 n )
+: UNFINISHED-LINE$ ( -- str )
    S\" s\" : NATIVE-EVAL-F ( -- n ) 42\" evaluate-closed" ;
 
 : UNFINISHED-LINE ( -- )

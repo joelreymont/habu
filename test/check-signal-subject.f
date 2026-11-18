@@ -1,3 +1,4 @@
+split-str
 \ check-signal-subject.f - the program test/check-signal-test.f has check.f
 \ check (in its run stage's child) and test/capture-tree-test.f captures. It
 \ starts a SLEEPER (/bin/sh becoming `sleep 20`, in its own process group as
@@ -38,7 +39,7 @@ create REPORT 1 cells allot
    PROC-ENV-INHERIT-MISSING
    s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD w TEST-FIFO:SPAWN ;
 
-: LINE$ ( -- ^u8 n )
+: LINE$ ( -- str )
    s\" check-signal-subject: up\n" ;
 
 public

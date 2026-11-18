@@ -1,3 +1,4 @@
+split-str
 \ combinators.f — higher-order library words baked into bin/hb.
 
 : DIP ( R a [ R -- S ] -- S a )

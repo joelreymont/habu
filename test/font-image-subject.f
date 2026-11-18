@@ -1,3 +1,4 @@
+split-str
 \ font-image-subject.f - live FONT handles are retired before hb-build writes hb.
 \ Build: bin/hb --load tools/hb-build.f -- --repl test/font-image-subject.f -o build/font-image
 \ Run: build/font-image
@@ -12,7 +13,7 @@ private
 TYPED-VARIABLE OLD-FONT FONT:font
 TYPED-VARIABLE OLD-IMAGE FONT:image
 
-: FONT-PATH$ ( -- ^u8 n )
+: FONT-PATH$ ( -- str )
    s" /System/Library/Fonts/Supplemental/Arial.ttf" ;
 
 : LOAD-FONT ( -- FONT:font )

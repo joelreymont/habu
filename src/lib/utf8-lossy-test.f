@@ -1,3 +1,4 @@
+split-str
 \ utf8-lossy-test.f - UTF8-LOSSY:REPAIR against Rust's String::from_utf8_lossy:
 \ each expected span is that function's output over the same input.
 
@@ -7,7 +8,7 @@ require src/lib/utf8-lossy.f
 
 package UTF8-LOSSY-TEST
 
-: ASSERT-REPAIR ( ^u8 n ^u8 n -- )
+: ASSERT-REPAIR ( str str -- )
    {: in:^ inlen:n want:^ wantlen:n :}
    ARENA:NEW {: a:^ :}
    in inlen a UTF8-LOSSY:REPAIR {: out:^ outlen:n :}
@@ -15,7 +16,7 @@ package UTF8-LOSSY-TEST
    out in <> TTRUE
    a ARENA:RELEASE ;
 
-: ASSERT-UNCOPIED ( ^u8 n -- ) {: in:^ inlen:n :}
+: ASSERT-UNCOPIED ( str -- ) {: in:^ inlen:n :}
    ARENA:NEW {: a:^ :}
    in inlen a UTF8-LOSSY:REPAIR {: out:^ outlen:n :}
    out in = TTRUE

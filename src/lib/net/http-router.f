@@ -1,3 +1,4 @@
+split-str
 \ http-router.f - routes keyed on a method and a path pattern with named
 \ segments, as in /items/{id}. A pattern segment written {name} matches one
 \ nonempty path segment and binds its decoded text; every other segment
@@ -33,11 +34,11 @@ variable ROUTE-COUNT
    route ;
 
 
-: ROUTE-METHOD$ ( n -- ^u8 n ) {: route:n :}
+: ROUTE-METHOD$ ( n -- str ) {: route:n :}
    route ROUTE-BOUNDED ROUTE-METHOD-A @ route ROUTE-METHOD-N @ ;
 
 
-: ROUTE-PATTERN$ ( n -- ^u8 n ) {: route:n :}
+: ROUTE-PATTERN$ ( n -- str ) {: route:n :}
    route ROUTE-BOUNDED ROUTE-PATTERN-A @ route ROUTE-PATTERN-N @ ;
 
 
@@ -50,7 +51,7 @@ variable ROUTE-COUNT
 
 \ ---- segments ---------------------------------------------------------------
 
-: SEG-END ( ^u8 n n -- n ) {: bytes:^ len:n from:n :}
+: SEG-END ( str n -- n ) {: bytes:^ len:n from:n :}
    len from ?do
       bytes i + c@ SLASH = if i unloop exit then
    loop
@@ -63,13 +64,13 @@ variable ROUTE-COUNT
    bytes len + 1- c@ RBRACE = ;
 
 
-: SEGMENT-NAME$ ( ^u8 n -- ^u8 n ) {: bytes:^ len:n :}
+: SEGMENT-NAME$ ( str -- str ) {: bytes:^ len:n :}
    bytes 1+ len 2 - ;
 
 
 \ The escapes were validated when the request line was parsed, so a percent
 \ always carries the two hex digits this reads.
-: COPY-SEGMENT ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
+: COPY-SEGMENT ( str n -- ) {: bytes:^ len:n idx:n :}
    0
    begin
       {: at:n :}
@@ -85,7 +86,7 @@ variable ROUTE-COUNT
    again ;
 
 
-: BIND-SEGMENT ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
+: BIND-SEGMENT ( str n -- ) {: bytes:^ len:n idx:n :}
    idx SEGMENT-OPEN {: start:n :}
    bytes len idx COPY-SEGMENT
    start idx SEGMENT-CLOSE ;
@@ -156,7 +157,7 @@ variable ROUTE-COUNT
    false ;
 
 
-: NAMED-INDEX ( n ^u8 n -- n ) {: route:n name:^ namelen:n :}
+: NAMED-INDEX ( n str -- n ) {: route:n name:^ namelen:n :}
    route ROUTE-PATTERN$ {: pat:^ patlen:n :}
    0 0
    begin
@@ -202,7 +203,7 @@ variable ROUTE-COUNT
    s" this path does not answer that method" ERROR! ;
 
 
-: ADD-ROUTE ( ^u8 n ^u8 n n [ request response -- ] -- )
+: ADD-ROUTE ( str str n [ request response -- ] -- )
    {: method:^ methodlen:n pattern:^ patternlen:n cap:n handler :}
    ROUTE-COUNT @ MAX-ROUTES >= if E-ROUTE throw then
    methodlen 0 <= if E-ROUTE throw then
@@ -228,7 +229,7 @@ public
 
 
 \ An explicit byte limit for this route, including zero for an empty body.
-: ROUTE-CAPPED ( ^u8 n ^u8 n n [ request response -- ] -- )
+: ROUTE-CAPPED ( str str n [ request response -- ] -- )
    {: method:^ methodlen:n pattern:^ patternlen:n cap:n handler :}
    cap 0 < if E-CAPACITY throw then
    method methodlen pattern patternlen cap handler ADD-ROUTE ;
@@ -240,7 +241,7 @@ public
 
 \ The text a named pattern segment bound, decoded. False when this request
 \ matched no route, or that route names no such segment.
-: SEGMENT-OF$ ( request ^u8 n -- ^u8 n bool )
+: SEGMENT-OF$ ( request str -- str bool )
    {: subject:request name:^ namelen:n :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx ROUTE-AT@ {: route:n :}

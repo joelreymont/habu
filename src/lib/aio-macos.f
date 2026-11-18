@@ -1,3 +1,4 @@
+split-str
 \ aio-macos.f - Darwin backend for src/lib/aio.f's records (fields in REC.HOST).
 \ One poll thread services all records; a nonblocking pipe wakes it when a
 \ submission changes the descriptor set or the nearest deadline. The caller

@@ -1,2 +1,3 @@
+split-str
 FILE-OBJECTS-ORDER-HC:GETC drop
 : ORDER-X2-WORD ( -- ) ;

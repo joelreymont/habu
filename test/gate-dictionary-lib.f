@@ -1,3 +1,4 @@
+split-str
 \ gate-dictionary-lib.f - dictionary and checker contracts, run by
 \ test/gate-dictionary.f.
 
@@ -26,7 +27,7 @@ variable INC-DUP-U
 TYPED-VARIABLE LABEL-A ^u8
 variable LABEL-U
 
-: LABEL$ ( -- ^u8 n )
+: LABEL$ ( -- str )
    LABEL-A @ LABEL-U @ ;
 
 : LABEL! ( ^u8 n -- ) {: a:^ u:n :}
@@ -43,33 +44,33 @@ variable LABEL-U
    EMIT-LONG-NAME
    GE-DQ GE-SRC-C ;
 
-: SRC-DOTQ ( ^u8 n -- ) {: a:^ u:n :}
+: SRC-DOTQ ( str -- ) {: a:^ u:n :}
    DOT-CHAR GE-SRC-C
    GE-DQ GE-SRC-C
    GE-SRC-SP
    a u GE-SRC+
    GE-DQ GE-SRC-C ;
 
-: SRC-CQ ( ^u8 n -- ) {: a:^ u:n :}
+: SRC-CQ ( str -- ) {: a:^ u:n :}
    C-LOWER-CHAR GE-SRC-C
    GE-DQ GE-SRC-C
    GE-SRC-SP
    a u GE-SRC+
    GE-DQ GE-SRC-C ;
 
-: INC-CORE$ ( -- ^u8 n )
+: INC-CORE$ ( -- str )
    INC-CORE INC-CORE-U @ ;
 
-: INC-API$ ( -- ^u8 n )
+: INC-API$ ( -- str )
    INC-API INC-API-U @ ;
 
-: INC-MAIN$ ( -- ^u8 n )
+: INC-MAIN$ ( -- str )
    INC-MAIN INC-MAIN-U @ ;
 
-: INC-DUP$ ( -- ^u8 n )
+: INC-DUP$ ( -- str )
    INC-DUP INC-DUP-U @ ;
 
-: INC-PATH! ( ^u8 n ^u8 ^n -- ) {: name:^ nameu:n dst:^ up:^ :}
+: INC-PATH! ( str ^u8 ^n -- ) {: name:^ nameu:n dst:^ up:^ :}
    GT-ROOT name nameu dst FS:JOIN-PATH up ! ;
 
 : INC-PATHS ( -- )
@@ -78,16 +79,16 @@ variable LABEL-U
    s" app-main.f" INC-MAIN INC-MAIN-U INC-PATH!
    s" app-dup.f" INC-DUP INC-DUP-U INC-PATH! ;
 
-: SB-LINE ( ^u8 n -- )
+: SB-LINE ( str -- )
    SB-APPEND
    GE-LF SB-APPEND-C ;
 
-: SB-INCLUDE-LINE ( ^u8 n -- )
+: SB-INCLUDE-LINE ( str -- )
    s" include " SB-APPEND
    SB-APPEND
    GE-LF SB-APPEND-C ;
 
-: SB-S" ( ^u8 n -- )
+: SB-S" ( str -- )
    s" s" SB-APPEND
    GE-DQ SB-APPEND-C
    GE-SP SB-APPEND-C
@@ -512,25 +513,25 @@ variable LABEL-U
 : CHECK-BUF-ACT ( -- )
    LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS:BUF ;
 
-: CHECK-BUF-RUN ( ^u8 n -- ) {: label:^ labelu:n :}
+: CHECK-BUF-RUN ( str -- ) {: label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
    label labelu LABEL!
    false REJECTION:JSON !
    [: CHECK-BUF-ACT ;] GE-CAPTURE-ACTION ;
 
-: CHECK-BUF-BAD ( n ^u8 n ^u8 n -- )
+: CHECK-BUF-BAD ( n str str -- )
    {: rc:n needle:^ needleu:n label:^ labelu:n :}
    label labelu CHECK-BUF-RUN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS
    label labelu GT-PROGRESS-PASS ;
 
-: CHECK-BAD-ALL ( ^u8 n -- ) {: label:^ labelu:n :}
+: CHECK-BAD-ALL ( str -- ) {: label:^ labelu:n :}
    label labelu CHECK-BUF-RUN
    70 label labelu GE-EXPECT-RC
    label labelu GT-PROGRESS-PASS ;
 
-: CHECK-BUF-GOOD ( ^u8 n -- ) {: label:^ labelu:n :}
+: CHECK-BUF-GOOD ( str -- ) {: label:^ labelu:n :}
    label labelu CHECK-BUF-RUN
    label labelu GE-EXPECT-OK
    label labelu GE-EXPECT-SILENT
@@ -585,10 +586,10 @@ variable LABEL-U
    $46 s" E-DEAD-CODE" s" package undefine keeps other no-return symbol" CHECK-BUF-BAD
    s" `GD-NRA:STOP`" s" package undefine keeps GD-NRA:STOP no-return" GE-EXPECT-ERR-HAS ;
 
-: RUN-BAD-SOURCE ( n ^u8 n ^u8 n -- )
+: RUN-BAD-SOURCE ( n str str -- )
    GE-EVAL-FORK-BAD ;
 
-: RUN-BAD-CHILD ( n ^u8 n ^u8 n -- )
+: RUN-BAD-CHILD ( n str str -- )
    {: rc:n needle:^ needleu:n label:^ labelu:n :}
    GE-HB$ GE-SRC-BUF GE-SRC-U @
    PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
@@ -679,7 +680,7 @@ variable LABEL-U
    s" -4332462841530417152" GE-OUT-LINE
    SB$ s" hb last safe decimal value" GE-EXPECT-OUT ;
 
-: LITERAL-FLOAT-BAD-INTERPRETED ( ^u8 n ^u8 n -- )
+: LITERAL-FLOAT-BAD-INTERPRETED ( str str -- )
    {: lit:^ litu:n label:^ labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -687,7 +688,7 @@ variable LABEL-U
    s"  ." GE-SRC-LINE
    70 lit litu label labelu GE-EVAL-FORK-BAD ;
 
-: LITERAL-FLOAT-BAD-CHECKED ( ^u8 n ^u8 n -- )
+: LITERAL-FLOAT-BAD-CHECKED ( str str -- )
    {: lit:^ litu:n label:^ labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -696,7 +697,7 @@ variable LABEL-U
    s"  ;" GE-SRC-LINE
    70 lit litu label labelu GE-EVAL-FORK-BAD ;
 
-: LITERAL-FLOAT-HOSTILE ( ^u8 n -- ) {: lit:^ litu:n :}
+: LITERAL-FLOAT-HOSTILE ( str -- ) {: lit:^ litu:n :}
    GE-HB-RESET
    GE-SRC-RESET
    s" : " GE-SRC+ lit litu GE-SRC+
@@ -755,7 +756,7 @@ variable LABEL-U
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    70 s" RESET" s" package rejects duplicate public word" RUN-BAD-SOURCE
-   s" /test/gate-dictionary.f:11:1" s" package duplicate public word placed at the evaluating word" GE-EXPECT-ERR-HAS
+   s" /test/gate-dictionary.f:12:1" s" package duplicate public word placed at the evaluating word" GE-EXPECT-ERR-HAS
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
@@ -936,7 +937,7 @@ variable LABEL-U
    s" ;package" GE-SRC-LINE
    $46 s" error[E-DUPLICATE-DEFINITION]" s" checker rejects package duplicate definition" CHECK-BUF-BAD ;
 
-: RUN-LOAD-ONE ( ^u8 n ^u8 n -- ) {: path:^ pathu:n label:^ labelu:n :}
+: RUN-LOAD-ONE ( str str -- ) {: path:^ pathu:n label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
    path pathu GE-ARG+
@@ -946,7 +947,7 @@ variable LABEL-U
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
-: RUN-LOAD-THREE ( ^u8 n -- ) {: label:^ labelu:n :}
+: RUN-LOAD-THREE ( str -- ) {: label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
    INC-CORE$ GE-ARG+
@@ -958,7 +959,7 @@ variable LABEL-U
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
-: RUN-LOAD-BAD ( n ^u8 n ^u8 n -- )
+: RUN-LOAD-BAD ( n str str -- )
    {: rc:n needle:^ needleu:n label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -968,7 +969,7 @@ variable LABEL-U
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
-: EXPECT-GET9 ( ^u8 n -- ) {: label:^ labelu:n :}
+: EXPECT-GET9 ( str -- ) {: label:^ labelu:n :}
    SB-RESET
    s" 9" GE-OUT-LINE
    SB$ label labelu GE-EXPECT-OUT ;
@@ -1363,7 +1364,7 @@ variable LABEL-U
    s" hb native xref words" GE-EVAL-RUN-STDIN
    s" xref-test: ok" s" hb native xref words output" GE-EXPECT-OUT-HAS ;
 
-: NDICT-BAD-COUNT ( ^u8 n -- ) {: lit:^ litu:n :}
+: NDICT-BAD-COUNT ( str -- ) {: lit:^ litu:n :}
    GE-SRC-RESET
    lit litu GE-SRC+ s"  ndict!" GE-SRC-LINE
    SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND

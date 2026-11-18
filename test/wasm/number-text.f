@@ -1,3 +1,4 @@
+split-str
 \ Native/Wasm numeric text fixture. Differential runner loads this source and
 \ reaches STEP through its checked entry, including JSON's float accessor.
 require src/lib/string.f
@@ -12,7 +13,7 @@ private
 
 TYPED-VARIABLE READER-SPACE JSON:cursor
 
-: PARSED? ( ^u8 n -- bool )
+: PARSED? ( str -- bool )
    STR>FLOAT MATCH option
       none OF false ENDOF
       some OF drop true ENDOF

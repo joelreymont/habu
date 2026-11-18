@@ -1,3 +1,4 @@
+split-str
 \ stepper.f - the REPL token stepper: `step <code>` runs the rest of the line one
 \ token at a time, echoing each token and the data stack after it. While
 \ stepping the REPL hook returns one token per call, so the engine's interpret
@@ -60,7 +61,7 @@ variable SLEN  variable SPOS  variable STEPPING
 
 \ A word the REPL runs from what this hands out may STEP, which rewrites SBUF
 \ and can move it, so the REPL reads a copy that only this writes.
-: S-OUT ( n n -- ^u8 n )
+: S-OUT ( n n -- str )
    {: at u :}
    u SOUT-RESERVE
    u 0 ?do at i + SBUF c@ i SOUT c! loop
@@ -69,7 +70,7 @@ variable SLEN  variable SPOS  variable STEPPING
 
 \ Stepping is over and the last token it handed out is spent, so both mappings
 \ can go before the next line.
-: S-LINE ( -- ^u8 n )
+: S-LINE ( -- str )
    SBUF-RELEASE SOUT-RELEASE RD-LINE ;
 
 
@@ -78,7 +79,7 @@ variable SLEN  variable SPOS  variable STEPPING
    s" watch:" type cr
    BPW. ;
 
-: S-NEXT-TOK ( -- ^u8 n )
+: S-NEXT-TOK ( -- str )
    .s
    BPW-DUMP
    S-SKIP
@@ -90,7 +91,7 @@ variable SLEN  variable SPOS  variable STEPPING
       S-OUT  s" step> " type  over over type  s"  " type
    THEN ;
 
-: SRD-LINE ( -- ^u8 n )  STEPPING @ IF S-NEXT-TOK ELSE S-LINE THEN ;
+: SRD-LINE ( -- str )  STEPPING @ IF S-NEXT-TOK ELSE S-LINE THEN ;
 
 public
 

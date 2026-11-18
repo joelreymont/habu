@@ -1,3 +1,4 @@
+split-str
 \ pg-hold.f - the case file test/db/pg-kill-test.f has the pg harness run. It
 \ connects with the conninfo of its one script argument and writes two lines on
 \ the FIFO PG_HOLD_FIFO names: the server's socket directory, and line 7 of its
@@ -38,7 +39,7 @@ variable HOLD                       \ the FIFO's write end
    loop
    drop -1 ;
 
-: LINE$ ( n n -- ^u8 n ) {: line:n u:n :}
+: LINE$ ( n n -- str ) {: line:n u:n :}
    line u LINE-AT {: at:n :}
    at 0 < if s" pg-hold: postmaster.pid is short" EXIT-STATUS:FAILURE die then
    at begin dup u < if TEXT over + c@ NEWLINE <> else false then while 1+ repeat
@@ -55,7 +56,7 @@ using PG
    ;MATCH ;
 
 \ The one value a one-row, one-column query answers, reported.
-: REPORT-SHOW ( PG:connection ^u8 n -- ) {: c:PG:connection q:^ qu:n :}
+: REPORT-SHOW ( PG:connection str -- ) {: c:PG:connection q:^ qu:n :}
    c q qu [: 0 >ROW 0 >COL TEXT$ REPORT ;] WITH-RESULT ;
 
 : REPORT-SEGMENT ( PG:connection -- ) {: c:PG:connection :}

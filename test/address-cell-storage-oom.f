@@ -1,3 +1,4 @@
+split-str
 \ A real OS refusal to grow the address-cell table runs in a child: its zero
 \ address-space limit is process-wide and its uncaught throw ends it.
 require src/lib/string.f

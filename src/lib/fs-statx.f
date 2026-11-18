@@ -1,3 +1,4 @@
+split-str
 \ fs-statx.f - an open descriptor's birth time, subvolume and permissions, by
 \ statx(2) on the descriptor itself (AT_EMPTY_PATH), package FS-STATX. Birth
 \ and subvolume carry whether stx_mask reports the field; a field the

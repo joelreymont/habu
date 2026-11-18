@@ -1,3 +1,4 @@
+split-str
 \ queue-test.f - bounded queue shapes, blocking, refusals and a producer soak.
 
 require src/lib/error.f
@@ -137,7 +138,7 @@ variable Q-POOL-RC
 \ A definer parses the name it defines, so a refusal at a definition aborts the
 \ load that carries it: these two are reachable only through a child engine.
 
-: Q-SRC+ ( ^u8 n -- )
+: Q-SRC+ ( str -- )
    Q-SRC CODEGEN:APPEND-STRING ;
 
 : Q-SRC-LF ( -- )
@@ -152,7 +153,7 @@ variable Q-POOL-RC
    ix Q-SRC CODEGEN:APPEND-DECIMAL
    Q-SRC-LF ;
 
-: Q-RUN-STDIN ( ^u8 n -- len len PROCESS:ending ) {: src:^ srcu:n :}
+: Q-RUN-STDIN ( str -- len len PROCESS:ending ) {: src:^ srcu:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
    Q-OUT Q-CAPTURE-CAP >LEN Q-ERR Q-CAPTURE-CAP >LEN

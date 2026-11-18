@@ -1,3 +1,4 @@
+split-str
 \ crash.f - the in-binary signal handlers the native engine bakes: the crash
 \ handler, the raw sa_tramp, and EMIT-SIGNAL-HANDLER, the async-signal-safe
 \ stub a program installs for an ordinary signal. Encoders are package A64ASM
@@ -531,12 +532,12 @@ variable CRS-THROW
 
 \ The record of a stack's overflow, x3, x4 and x6 as FAULT-IN, reads them.
 \ Never returns.
-: C-CRASH-GUARD-RECORD ( ^u8 n -- ) {: a:^ u:n :}
+: C-CRASH-GUARD-RECORD ( str -- ) {: a:^ u:n :}
    s" E-STACK-BOUNDS" a u FAULT-OPEN,  FAULT-IN,
    CRS-HELP$ EXIT-STATUS:STACK-BOUNDS FAULT-STOP, ;
 
 \ The record for the guard page hit at the label, which Habu code hit.
-: C-CRASH-GUARD-REPORT ( ^u8 n label -- )
+: C-CRASH-GUARD-REPORT ( str label -- )
    {: a:^ u:n hit:label :}
    hit LBL,  C-CRASH-OWNER>R3  a u C-CRASH-GUARD-RECORD ;
 

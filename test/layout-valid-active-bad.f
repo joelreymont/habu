@@ -1,3 +1,4 @@
+split-str
 \ layout-valid-active-bad.f — an active nested invalid tag rejects.
 
 require test/layout-valid-guard-base.f

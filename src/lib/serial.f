@@ -1,3 +1,4 @@
+split-str
 \ serial.f - raw serial byte streams on Linux and macOS through bounded libc
 \ bindings. OS failures, a bad handle's included, are result variants; a baud,
 \ length or timeout out of range and an impossible foreign result throw. Calls
@@ -118,7 +119,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ The OS answers a path too long for it; the copy's mapping is released on
 \ every exit, the refusal of a 0 byte included.
-: PATH-OPEN ( ^u8 n -- n )
+: PATH-OPEN ( str -- n )
    {: text size:n :}
    size 1 < if E-OPERAND throw then
    text size size FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN
@@ -224,7 +225,7 @@ public
 \ speeds), keeps HUPCL, and reads the settings back: anything short of that is
 \ `unsupported`. A failed configure restores the old settings best-effort and
 \ closes. The caller uses CLOSE exactly once.
-: OPEN8N1 ( ^u8 n baud -- open-result ) {: path size:n baud:baud :}
+: OPEN8N1 ( str baud -- open-result ) {: path size:n baud:baud :}
    baud BAUD>N 1 $FFFFFFFF RANGE
    path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:FAILED exit then
    >HANDLE {: handle:handle :}

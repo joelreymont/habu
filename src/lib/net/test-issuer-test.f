@@ -1,3 +1,4 @@
+split-str
 \ test-issuer-test.f - TEST-ISSUER over a real loopback port: discovery, the key
 \ set, client credentials verified against the served key, invalid_client for
 \ a confidential client without its secret and for a public client asking for
@@ -133,8 +134,8 @@ PAST-CAP BUFFER: OVERSIZE
 
 : BODY$ ( -- ^u8 n ) BODY BODY-U @ ;
 : TOKEN$ ( -- ^u8 n ) TOKEN TOKEN-U @ ;
-: CLAIMS$ ( -- ^u8 n ) CLAIMS CLAIMS-U @ ;
-: ASSERTION$ ( -- ^u8 n ) ASSERTION ASSERTION-U @ ;
+: CLAIMS$ ( -- str ) CLAIMS CLAIMS-U @ ;
+: ASSERTION$ ( -- str ) ASSERTION ASSERTION-U @ ;
 
 \ The text copied into a row, answering its length.
 : COPY ( ^u8 n ^u8 -- n )
@@ -143,7 +144,7 @@ PAST-CAP BUFFER: OVERSIZE
 
 
 \ A string member of an object text as sent, empty when absent.
-: MEMBER$ ( ^u8 n ^u8 n -- ^u8 n )
+: MEMBER$ ( str str -- str )
    {: t:^ tu:n k:^ ku:n :}
    READER t tu JSON:READ-INIT JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " exit then
@@ -151,7 +152,7 @@ PAST-CAP BUFFER: OVERSIZE
    JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
 
 \ An integer member of an object text, -1 when absent.
-: MEMBER-INT ( ^u8 n ^u8 n -- n )
+: MEMBER-INT ( str str -- n )
    {: t:^ tu:n k:^ ku:n :}
    READER t tu JSON:READ-INIT JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -1 exit then
@@ -159,7 +160,7 @@ PAST-CAP BUFFER: OVERSIZE
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v ;
 
 \ A string member of the body's first key, as sent.
-: KEY$ ( ^u8 n -- ^u8 n )
+: KEY$ ( str -- str )
    {: k:^ ku:n :}
    READER BODY$ JSON:READ-INIT JSON:READ-NEXT drop
    s" keys" JSON:READ-FIND-KEY drop JSON:READ-NEXT drop
@@ -176,7 +177,7 @@ PAST-CAP BUFFER: OVERSIZE
    {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
 
-: OPEN-AT ( ^u8 n -- CURL:handle )
+: OPEN-AT ( str -- CURL:handle )
    {: url:^ uu:n :}
    CURL:INIT
    MATCH CURL:init-result
@@ -211,11 +212,11 @@ PAST-CAP BUFFER: OVERSIZE
    h b bu CURL:BODY! OK
    h FINISH ;
 
-: FORM-TYPE ( -- ^u8 n ) s" Content-Type: application/x-www-form-urlencoded" ;
+: FORM-TYPE ( -- str ) s" Content-Type: application/x-www-form-urlencoded" ;
 
 : FORM-RESET ( -- ) 0 FORM-U ! ;
-: FORM+ ( ^u8 n -- ) FORM FORM-U @ + COPY FORM-U +! ;
-: FORM$ ( -- ^u8 n ) FORM FORM-U @ ;
+: FORM+ ( str -- ) FORM FORM-U @ + COPY FORM-U +! ;
+: FORM$ ( -- str ) FORM FORM-U @ ;
 : ASK ( -- n ) s" /token" FORM-TYPE FORM$ POST ;
 
 \ The client's credentials, its secret percent-encoded.
@@ -391,10 +392,10 @@ PAST-CAP BUFFER: OVERSIZE
    BODY$ c cu MINTED TEST-ISSUER:MINT T$= ;
 
 
-: ISSUER$ ( -- ^u8 n ) ISSUER-URL ISSUER-URL-U @ ;
-: KEYS-URL$ ( -- ^u8 n ) KEYS-URL KEYS-URL-U @ ;
-: ENDPOINT$ ( -- ^u8 n ) ENDPOINT ENDPOINT-U @ ;
-: FAULT-URL$ ( -- ^u8 n ) FAULT-URL FAULT-URL-U @ ;
+: ISSUER$ ( -- str ) ISSUER-URL ISSUER-URL-U @ ;
+: KEYS-URL$ ( -- str ) KEYS-URL KEYS-URL-U @ ;
+: ENDPOINT$ ( -- str ) ENDPOINT ENDPOINT-U @ ;
+: FAULT-URL$ ( -- str ) FAULT-URL FAULT-URL-U @ ;
 
 \ The running server's port and URLs, kept for its restart and stop.
 : ADDRESSES ( -- )
@@ -439,7 +440,7 @@ OVERSIZE-FILL
    asked HTTP:BODY$ POSTED COPY POSTED-U !
    answer S\" {\"expires_in\":60,\"access_token\":\"fault\\/token\"}" HTTP:BODY! ;
 
-: AUTH+ ( ^u8 n -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
+: AUTH+ ( str -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
 
 \ The token presented to /claim, asking for the named claim: the status, the
 \ claim in BODY.
@@ -453,9 +454,9 @@ OVERSIZE-FILL
    h FINISH ;
 
 : UP ( -- ^u8 n ) s" api://up/.default" ;
-: OWN-TOKEN ( -- ^u8 n n ) UP BEARER-GRANT:OWN GOT BEARER:TOKEN ;
-: ZEN ( -- ^u8 n ) s" api://zen/.default" ;
-: FAULT-TOKEN ( -- ^u8 n n )
+: OWN-TOKEN ( -- str n ) UP BEARER-GRANT:OWN GOT BEARER:TOKEN ;
+: ZEN ( -- str ) s" api://zen/.default" ;
+: FAULT-TOKEN ( -- str n )
    ZEN s" a.b-c_d~e" BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN ;
 \ /token-fault answering as the mode makes TOKEN throw the code.
 : FAULT-THROWS ( n n -- )
@@ -468,7 +469,7 @@ variable LOG-PATH-U
 create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
 $A constant LF
 
-: LOG-PATH$ ( -- ^u8 n ) LOG-PATH LOG-PATH-U @ ;
+: LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ ;
 
 : LOG-INIT ( -- )
    s" test-issuer-test" FS:MKTEMP-DIR {: dir:^ dir-u:n :}
@@ -477,7 +478,7 @@ $A constant LF
    LOG-B 1 BUF:N>BLEN BUF:INIT ;
 
 \ The whole capture file, valid until the next read.
-: LOG$ ( -- ^u8 n )
+: LOG$ ( -- str )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B BUF:CLEAR
    LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
@@ -492,7 +493,7 @@ $A constant LF
    [: STDERR:;CAPTURE ;] finally ;
 
 \ The one captured line after its stamp, empty when the capture is shorter.
-: LINE$ ( -- ^u8 n )
+: LINE$ ( -- str )
    LOG$ {: a:^ u:n :}
    u DATE:TIME-LEN < if a 0 exit then
    a DATE:TIME-LEN + u DATE:TIME-LEN - ;
@@ -664,7 +665,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    false ;
 
 \ The URL the issuer line names, empty when the child printed none.
-: CHILD-URL ( -- ^u8 n )
+: CHILD-URL ( -- str )
    LINE LINE-U @ s" issuer " STARTS-WITH? TTRUE
    LINE-U @ 8 - {: u:n :}
    u 0 > if LINE 7 + u exit then

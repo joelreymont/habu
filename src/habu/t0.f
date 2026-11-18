@@ -1,3 +1,4 @@
+split-str
 \ t0.f - the tier 0 compiler's front end, package COMP.
 \
 \ Compiles one definition's body text (layout.f BODY-TEXT's block at `;`,
@@ -104,7 +105,7 @@ variable CUT                         \ the byte just past `does> `, or 0
    TXT$ k ROW-OFF @ +  k ROW-LEN @ ;
 
 \ The row the walk reads next, which it then passes.
-: NEXT$ ( -- ^u8 n )
+: NEXT$ ( -- str )
    ORD @ ROW$
    ORD @ ROWS @ < if 1 ORD +! then ;
 
@@ -141,7 +142,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
 : CONTROL-FAULT ( -- ) ORD @ 1- ROW$ STRAY ;
 
 \ A loop word outside the loops it reads.
-: NO-LOOP ( ^u8 n -- ) {: a:^ u:n :}
+: NO-LOOP ( str -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    a u TICKS  s"  is outside the loops it needs" SAY
    a u REJECTION:AT  s" not inside enough loops" SAY
@@ -167,7 +168,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECT ;
 
 \ A `does>` the head's walk does not end at.
-: SPLIT-AWAY ( ^u8 n -- ) {: a:^ u:n :}
+: SPLIT-AWAY ( str -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    a u TICKS  s"  is not at the top level of the definer's body" SAY
    a u REJECTION:AT  s" inside a nested unit" SAY
@@ -176,7 +177,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECT ;
 
 \ A record with no compiled reference: retired, or never given code.
-: NO-CODE ( ^u8 n -- ) {: a:^ u:n :}
+: NO-CODE ( str -- ) {: a:^ u:n :}
    s" E-T0-UNSUPPORTED" REJECTION:OPEN
    a u TICKS  s"  has no compiled code to call" SAY
    a u REJECTION:AT  s" no compiled code" SAY
@@ -184,7 +185,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    s"  before this point: a word `undefine` retired has no code" SAY
    REJECT ;
 
-: NO-LOCAL ( ^u8 n -- ) {: a:^ u:n :}
+: NO-LOCAL ( str -- ) {: a:^ u:n :}
    s" E-T0-UNSUPPORTED" REJECTION:OPEN
    s" the quotation cannot reach the local read at " SAY  a u TICKS
    a u REJECTION:AT  s" not in the quotation's record" SAY
@@ -193,7 +194,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECT ;
 
 \ A token whose event the walk has no case for.
-: NO-EVENT ( ^u8 n -- ) {: a:^ u:n :}
+: NO-EVENT ( str -- ) {: a:^ u:n :}
    s" E-T0-UNSUPPORTED" REJECTION:OPEN
    s" the compiler has no code for " SAY  a u TICKS
    a u REJECTION:AT  s" not compiled" SAY
@@ -207,7 +208,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    a u d du UNDEFINED-RECORD REJECT ;
 
 \ Rejects a tick of an engine-internal record or a scope entry.
-: NO-TICK ( ^u8 n -- ) {: a:^ u:n :}
+: NO-TICK ( str -- ) {: a:^ u:n :}
    s" E-UNDEFINED" REJECTION:OPEN
    s" compiled code cannot call " SAY  a u TICKS
    a u REJECTION:AT  s" no tick of this word" SAY
@@ -224,14 +225,14 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECT ;
 
 \ `is` with no operand before the body's end.
-: IS-ALONE ( ^u8 n -- ) {: a:^ u:n :}
+: IS-ALONE ( str -- ) {: a:^ u:n :}
    s" E-T0-DEFER" REJECTION:OPEN
    a u TICKS  s"  names no deferred word" SAY
    a u REJECTION:AT  s" no operand follows" SAY
    REJECTION:HELP  s" name the deferred word after it, as `[: IMPL ;] is W`" SAY
    REJECT ;
 
-: NO-DEFER ( ^u8 n -- ) {: a:^ u:n :}
+: NO-DEFER ( str -- ) {: a:^ u:n :}
    s" E-T0-DEFER" REJECTION:OPEN
    s" cannot find deferred word " SAY  a u TICKS
    a u REJECTION:AT  s" not found" SAY
@@ -239,7 +240,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    s"  with `defer` before this point, or check its spelling" SAY
    REJECT ;
 
-: NOT-DEFER ( ^u8 n -- ) {: a:^ u:n :}
+: NOT-DEFER ( str -- ) {: a:^ u:n :}
    s" E-T0-DEFER" REJECTION:OPEN
    a u TICKS  s"  is not a deferred word" SAY
    a u REJECTION:AT  s" `is` needs a deferred word" SAY
@@ -248,7 +249,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECT ;
 
 \ A MATCH or construct token whose facts are missing or disagree.
-: NO-FACTS ( ^u8 n -- ) {: a:^ u:n :}
+: NO-FACTS ( str -- ) {: a:^ u:n :}
    s" E-T0-MATCH" REJECTION:OPEN
    s" the compiler has no family facts for " SAY  a u TICKS
    a u REJECTION:AT  s" no proved family or variant" SAY
@@ -257,7 +258,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECT ;
 
 \ The token in place of a MATCH arm's `of`.
-: NO-OF ( ^u8 n -- ) {: a:^ u:n :}
+: NO-OF ( str -- ) {: a:^ u:n :}
    s" E-T0-MATCH" REJECTION:OPEN
    s" a `MATCH` arm's variant is not followed by `of` at " SAY  a u TICKS
    a u REJECTION:AT  s" `of` expected here" SAY
@@ -1285,7 +1286,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    then
    to loc EMIT-CALL ;
 
-: MOVE-OP ( ^u8 n ^u8 n -- ) {: a:^ k:n outs:^ u:n :}
+: MOVE-OP ( str str -- ) {: a:^ k:n outs:^ u:n :}
    a k WIDTHS  outs u MOVE-WIDE ;
 
 \ ---- whole-width memory ------------------------------------------------------
@@ -1310,7 +1311,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 \ The wide store's calls never leave as a tail: each stores a copy of one cell,
 \ so the w cells and the address are still on the stack after the last.
-: DO-STORE ( ^u8 n -- ) {: a:^ to:n :}
+: DO-STORE ( str -- ) {: a:^ to:n :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
    a TXT$ - {: loc:n :}
@@ -1677,7 +1678,7 @@ variable OP-HITS                     \ the seeded records OP-MAP found by the na
 variable OP-REC                      \ the last of them
 
 \ End the process: a u, a word T0 lowers itself, names no single seeded record.
-: OP-DIE ( ^u8 n -- )
+: OP-DIE ( str -- )
    {: a:^ u:n :}
    s" : T0: a word it lowers itself names no single seeded record" {: m:^ k:n :}
    u k + STR-BUF-RESERVE
@@ -1695,7 +1696,7 @@ variable OP-REC                      \ the last of them
    OP-HITS @ 1 <> if a u OP-DIE then
    OP-REC @ ;
 
-: OP-MAP ( ^u8 n n -- )
+: OP-MAP ( str n -- )
    {: a:^ u:n code:n :}
    code  a u SEEDED OP-OF ! ;
 
@@ -1919,7 +1920,7 @@ EXPORT CHECK:WF-N@
 \ A token no path reaches (K-UNREACHED) is E-T0-CONTROL.
 \
 \ T0 passes over an immediate the body admits and rejects any other.
-: IMM-TOKEN ( ^u8 n -- ) {: a:^ u:n :}
+: IMM-TOKEN ( str -- ) {: a:^ u:n :}
    a u NAME-IMM-READS 0 >= if exit then
    a u UNMODELED ;
 
@@ -1949,7 +1950,7 @@ EXPORT CHECK:WF-N@
    at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
    to loc DO-CALL ;
 
-: CALL-TOKEN ( ^u8 n n n -- )
+: CALL-TOKEN ( str n n -- )
    {: a:^ u:n r:n loc:n :}
    r 0< if a u NDEFINITION:NAME$ NOT-FOUND then
    r XREF-REC {: rec:^ :}
@@ -1967,7 +1968,7 @@ EXPORT CHECK:WF-N@
    to flags DKIND:MASK and r loc WORD-CALL
    k ROW-A1 @ 0=  s 0< 0= and if s loc KEEP-COUNT then ;
 
-: NAME-TOKEN ( ^u8 n n n -- )
+: NAME-TOKEN ( str n n -- )
    {: a:^ u:n r:n loc:n :}
    r 0 >= if
       r XREF-REC XREF-FLAGS DNAME-IMM and 0<> if a u IMM-TOKEN exit then
@@ -2034,7 +2035,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 
 \ The token that ended a body short of a `;]`: the split's `does>`, or `;` past
 \ the last row.
-: END$ ( -- ^u8 n )
+: END$ ( -- str )
    ORD @ ROWS @ >= if NDEFINITION:CLOSE$ exit then
    ORD @ ROW$ ;
 
@@ -2142,14 +2143,14 @@ variable SCAN-LO                     \ the ordinal of its first row
    m ROWS !
    k ;
 
-: KEEP-BODY ( ^u8 n n -- ) {: a:^ u:n k:n :}
+: KEEP-BODY ( str n -- ) {: a:^ u:n k:n :}
    BODIES-N @ {: at:n :}
    at u + BODIES-RESERVE
    a at BODIES u BYTE-COPY
    at k ROW-AT !
    at u + BODIES-N ! ;
 
-: ON-SCAN ( ^u8 n -- )
+: ON-SCAN ( str -- )
    drop {: a:^ :}
    a SCAN-TXT !
    a SRC$ drop - {: base:n :}
@@ -2165,7 +2166,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 \ An escaped string's body is copied: it is not the text at its offset. Row 0,
 \ the definition's name, names the unit from here on.
-: ON-TOKEN ( ^u8 n n n n n -- )
+: ON-TOKEN ( str n n n n -- )
    drop {: a:^ u:n off:n ru:n kind:n :}
    SCAN-TXT @ off + {: at:^ :}
    SCAN-BASE @ off + ru LAY-ROW {: k:n :}
@@ -2231,7 +2232,7 @@ EXPORT CHECK:LOST-TOK-U
 EXPORT CHECKER-TAPE:EVENT
 
 \ Offsets are made whole by the scan's base.
-: ON-DONE ( ^u8 n n -- )
+: ON-DONE ( str n -- )
    SCAN-VERDICT !  2drop
    SCAN-INCOMPLETE @ 0<> if LOST-KEEP then
    ROWS @ SCAN-LO @ ?do
@@ -2504,7 +2505,7 @@ EXPORT CHECKER-TAPE:DISARM
    FORGET-MEASURES
    rc SETTLE-UNIT  rc 0<> if rc throw then ;
 
-: DISPATCH! ( [ ^u8 n -- ] -- )
+: DISPATCH! ( [ str -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
 
 public

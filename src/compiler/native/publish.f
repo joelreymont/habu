@@ -1,3 +1,4 @@
+split-str
 \ publish.f - commit one sealed native emission to its pending dictionary record.
 \ Every refusal precedes the code window; the commit only copies accepted bytes,
 \ records relocation sites and publishes the record. The code region is the
@@ -31,7 +32,7 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 \ checked caller is refused by name: code-publish, xref-retarget and
 \ does-record are undefined there, and the global rows of callmap-set and
 \ addrmap-set are trusted-only.
-: CODE-WINDOW ( ^u8 n n -- )
+: CODE-WINDOW ( str n -- )
    code-publish ;
 
 : RELOC-EXTERNAL ( n -- )
@@ -257,7 +258,7 @@ private
 
 \ Place a prepared body after the pending row's checks; `pad` is room the
 \ caller writes past the body.
-: IMPORT-CODE ( ^u8 n n ^n n ^n n n -- n n )
+: IMPORT-CODE ( str n ^n n ^n n n -- n n )
    {: code:^ size:n recorded:n calls:^ calln:n
       addrs:^ addrn:n pad:n :}
    PENDING-IDX {: idx:n :}
@@ -290,7 +291,7 @@ public
 \ A prepared definition reuses the interpreter's pending row, whose name and
 \ wordlist the source definition wrote. All references are prepared before
 \ this call.
-: IMPORT-PENDING ( ^u8 n n ^n n ^n n bool -- n )
+: IMPORT-PENDING ( str n ^n n ^n n bool -- n )
    {: code:^ size:n recorded:n calls:^ calln:n
       addrs:^ addrn:n wide:bool :}
    code size recorded calls calln addrs addrn 0 IMPORT-CODE drop {: idx:n :}
@@ -302,7 +303,7 @@ public
 \ body and publishes as the next record, as PUBLISH-PENDING-DOES lays it out.
 \ The checker slice installed beside it carries the clause's checker facts.
 \ PART-FRESH? links a part only when its records fit, so the clause has its record.
-: IMPORT-PENDING-DOES ( ^u8 n n ^n n ^n n bool n -- n )
+: IMPORT-PENDING-DOES ( str n ^n n ^n n bool n -- n )
    {: code:^ size:n recorded:n calls:^ calln:n
       addrs:^ addrn:n wide:bool off:n :}
    off 0 <= off size >= or off IMPORT-ALIGNED? 0= or
@@ -317,7 +318,7 @@ public
    at ;
 
 \ The trailer follows the host's aligned code slot, as for a fresh defer.
-: IMPORT-PENDING-DEFER ( ^u8 n ^n n ^n n bool n -- n )
+: IMPORT-PENDING-DEFER ( str ^n n ^n n bool n -- n )
    {: code:^ size:n calls:^ calln:n
       addrs:^ addrn:n wide:bool cell:n :}
    code size  size CODE-SPAN:EXACT  calls calln addrs addrn TRAILER-BYTES IMPORT-CODE

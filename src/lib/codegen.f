@@ -1,3 +1,4 @@
+split-str
 \ codegen.f - a shared growing byte buffer for building text: a generated word's
 \ name, or a generator tool's output. STORAGE CLASS. CALLER-OWNED: each buffer's
 \ header is its definer's dictionary storage and its text a dynamic mapping that

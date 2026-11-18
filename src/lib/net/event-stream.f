@@ -1,3 +1,4 @@
+split-str
 \ event-stream.f - incremental Server-Sent Events framing over arbitrary bytes, by
 \ the HTML "Parsing an event stream" algorithm (9.2.6); no socket, reconnect or
 \ queue, and comments, unknown fields, id and retry are ignored. FEED's callback
@@ -117,12 +118,12 @@ CAST: DECODER>STATE ( decoder -- ^n )
    state RESET-EVENT
    LIVE state ST! ;
 
-: COLON-AT ( ^u8 n -- n )
+: COLON-AT ( str -- n )
    {: src:^ u:n :}
    u 0 ?do src i + c@ COLON = if i unloop exit then loop
    u ;
 
-: SPLIT-FIELD ( ^u8 n -- ^u8 n ^u8 n )
+: SPLIT-FIELD ( str -- str str )
    {: src:^ u:n :}
    src u COLON-AT {: at:n :}
    at u = if src u src u + 0 exit then
@@ -146,7 +147,7 @@ CAST: DECODER>STATE ( decoder -- ^n )
       value vu BUF:N>BLEN state EVENT-BUF BUF:REPLACE
    then ;
 
-: END-LINE ( ^n a [ a ^u8 n ^u8 n -- ] -- )
+: END-LINE ( ^n a [ a str str -- ] -- )
    {: state:^ ctx:a cb :}
    state LINE-BUF BUF:LEN@ BUF:BLEN>N 0= if
       state ctx cb DISPATCH
@@ -169,7 +170,7 @@ CAST: DECODER>STATE ( decoder -- ^n )
    byte LF = if state ctx cb END-LINE exit then
    byte state LINE-BUF BUF:APPEND-BYTE ;
 
-: BOM-BYTE ( ^n n a [ a ^u8 n ^u8 n -- ] -- )
+: BOM-BYTE ( ^n n a [ a str str -- ] -- )
    {: state:^ byte:n ctx:a cb :}
    state BOM@ BOM-START = if
       byte BOM-FIRST = if BOM-EF state BOM! exit then
@@ -192,7 +193,7 @@ CAST: DECODER>STATE ( decoder -- ^n )
    state byte ctx cb BYTE ;
 
 \ The offset of the first CR or LF in the span, else its length.
-: TERM-AT ( ^u8 n -- n )
+: TERM-AT ( str -- n )
    {: src:^ u:n :}
    0 begin dup u < while
       dup src + c@ dup LF = swap CR = or if exit then

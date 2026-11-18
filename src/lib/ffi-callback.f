@@ -1,3 +1,4 @@
+split-str
 \ ffi-callback.f - C callbacks into checked Habu: CALLBACK: NAME ( in -- out )
 \ clauses ;CALLBACK declares a C entry; FFI-CB:ENTRY binds it to a context
 \ (src/lib/task.f CONTEXT-BIND) and answers the C function pointer.
@@ -241,7 +242,7 @@ TYPED-VARIABLE FFB-VALUE r
 variable OPEN
 
 \ A message that ends quoting the token the user wrote.
-: TOKEN-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+: TOKEN-REJECT ( str str str -- )
    {: m:^ mu:n t:^ tu:n h:^ hu:n :}
    FFI:SYNTAX-OPEN  m mu REJECTION:EMIT-STR
    s" '" REJECTION:EMIT-STR  t tu REJECTION:EMIT-STR
@@ -249,7 +250,7 @@ variable OPEN
 
 \ The next token. parse-name's bytes stay valid until the next parse, and each
 \ token is matched or copied before then, so it lives on the stack.
-: TOK@ ( -- ^u8 n )
+: TOK@ ( -- str )
    parse-name {: a:^ u:n :}
    u 0= if
       s" the text ends inside the callback declaration"
@@ -258,7 +259,7 @@ variable OPEN
    then
    a u ;
 
-: TOO-MANY ( n ^u8 n -- )
+: TOO-MANY ( n str -- )
    {: cap:n k:^ ku:n :}
    FFI:ARITY-OPEN
    s" a callback takes at most " REJECTION:EMIT-STR
@@ -267,15 +268,15 @@ variable OPEN
    FFI:HELP-STOP ;
 
 \ A ':' at either end of the name, with nothing on one side.
-: EDGE-COLON? ( ^u8 n -- bool ) {: a:^ u:n :}
+: EDGE-COLON? ( str -- bool ) {: a:^ u:n :}
    a c@ [char] : =  a u + 1 - c@ [char] : = or ;
 
-: COLON-HELP$ ( -- ^u8 n )
+: COLON-HELP$ ( -- str )
    s" name it NAME, or PACKAGE:NAME for a word in package PACKAGE" ;
 
 \ The name's words are NAME, NAME-BODY and the like: one ':' between a
 \ package and a word makes them the package's; any other ':' names nothing.
-: NAME! ( ^u8 n -- ) {: a:^ u:n :}
+: NAME! ( str -- ) {: a:^ u:n :}
    a u [char] : COUNT-CHAR 1 > if
       s" more than one ':' in callback name " a u COLON-HELP$
       TOKEN-REJECT
@@ -309,7 +310,7 @@ variable OPEN
    i by ARG+
    i 1 + f ;
 
-: IN-TOKEN ( n n ^u8 n -- n n )
+: IN-TOKEN ( n n str -- n n )
    {: i:n f:n a:^ u:n :}
    a u s" n" STR= if i f BY-N INT+ exit then
    a u s" i32" STR= if i f BY-I32 INT+ exit then
@@ -329,7 +330,7 @@ variable OPEN
    s" unknown argument type " a u
    s" an argument is n, i32, u32, r or ^u8" TOKEN-REJECT ;
 
-: OUT-TOKEN ( ^u8 n -- )
+: OUT-TOKEN ( str -- )
    {: a:^ u:n :}
    RES-KIND @ R-NONE <> if
       s" a callback has at most one result"

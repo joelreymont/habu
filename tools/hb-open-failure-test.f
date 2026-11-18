@@ -1,3 +1,4 @@
+split-str
 \ hb-open-failure-test.f - from a directory that is not a checkout, the seeded
 \ product boots silently and opens no prefix source. tools/load-argv-test.f owns
 \ --load.
@@ -30,10 +31,10 @@ create HOF-ERR  HOF-CAP allot
 variable HOF-ROOT-U
 variable HOF-EXE-U
 
-: HOF-ROOT$ ( -- ^u8 n )
+: HOF-ROOT$ ( -- str )
    HOF-ROOT HOF-ROOT-U @ ;
 
-: HOF-EXE$ ( -- ^u8 n )
+: HOF-EXE$ ( -- str )
    HOF-EXE HOF-EXE-U @ ;
 
 : HOF-SETUP ( -- )

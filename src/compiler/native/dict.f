@@ -1,3 +1,4 @@
+split-str
 \ dict.f - what the running engine's dictionary says a spelling denotes, and
 \ what the chain may do with that record. The binding is the engine's own
 \ `scope-find` (habu2.f LSCOPEREC). A `create`d or `constant` word's value is in
@@ -57,7 +58,7 @@ public
 \ The bound record whatever its flags, or none. Two used publics that both
 \ export the tail, with nothing earlier binding it, are the ambiguity the engine
 \ refuses.
-: SCOPE-REC ( ^u8 n -- ^n )
+: SCOPE-REC ( str -- ^n )
    scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= flags SCOPE-FIND-AMBIGUOUS and 0<> and if E-USING-AMBIGUOUS throw then
    rec ;
@@ -67,7 +68,7 @@ public
 \ used public also exports the tail a global binds (E-USING-SHADOW-GLOBAL, or
 \ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
 \ lookup and the checker's binder refuse the same two shapes.
-: USING-REFUSED? ( ^u8 n -- bool )
+: USING-REFUSED? ( str -- bool )
    scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then
    rec XREF-WORDLIST WL:GLOBAL?  used XREF-FOUND?  and ;
@@ -76,7 +77,7 @@ public
 \ seeded primitive of that spelling, or nothing at all (a keyword such as `>r`
 \ has no record). A package word, an EXPORT alias and a redefinition after
 \ `undefine` each bind a record of their own, and the call path reaches it.
-: SPELL-PRIM? ( ^u8 n -- bool )
+: SPELL-PRIM? ( str -- bool )
    scope-find {: rec:^ used:^ used2:^ flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> if false exit then
    rec XREF-FOUND? 0= if true exit then
@@ -88,7 +89,7 @@ private
 \ One it may not is refused where it binds, so the spelling is never handed on
 \ to a later scope. An internal record needs the TRUSTED: cell here even when
 \ owned: only a call binds an owned primitive (CALL-BINDING).
-: SPELL-REC ( ^u8 n -- ^n )
+: SPELL-REC ( str -- ^n )
    SCOPE-REC {: rec:^ :}
    rec XREF-FOUND? 0= if rec exit then
    rec VISIBLE-RECORD? 0= if XREF-NULL exit then
@@ -140,7 +141,7 @@ private
 
 public
 
-: SPELL-FIXED ( ^u8 n -- COMP:body )
+: SPELL-FIXED ( str -- COMP:body )
    {: a u:n :}
    a u SPELL-REC REC-FIXED ;
 
@@ -177,7 +178,7 @@ public
 
 \ A fixed DATA literal keeps the exact declaration that produced its address.
 \ -1 means the fixed value is a scalar and has no DATA owner.
-: FIXED-OWNER ( ^u8 n -- n )
+: FIXED-OWNER ( str -- n )
    SPELL-REC {: rec:^ :}
    rec REC-FIXED COMP-BODY:ADDRESS COMP-BODY:EQ 0= if -1 exit then
    rec XREF-A>U8 NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
@@ -215,7 +216,7 @@ public
 \ ---- and how many cells a call to it moves --------------------------------
 \ CELLS and not terms: `^u8 n` is two terms and two cells, while one term of
 \ a three-cell family is one term and three cells. The checker publishes cells.
-: EFF-CELLS ( ^u8 n -- n n )
+: EFF-CELLS ( str -- n n )
    EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
 
 private
@@ -260,7 +261,7 @@ private
 \ A `PACKAGE:WORD` spelling's record among the publics of the top-level package
 \ BOOT:NAMESPACE-WL holds, whatever its visibility, which REC-CALL checks; any
 \ other spelling binds none.
-: TOP-REC ( ^u8 n -- ^n )
+: TOP-REC ( str -- ^n )
    {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < if XREF-NULL exit then
@@ -270,19 +271,19 @@ private
 
 public
 
-: CALL-BINDING ( ^u8 n -- n n ) SCOPE-REC REC-CALL ;
+: CALL-BINDING ( str -- n n ) SCOPE-REC REC-CALL ;
 
 \ A caller that needs definer semantics captures them with the same resolved
 \ entry. Most call sites only need the target address.
-: CALL-TARGET ( ^u8 n -- n ) CALL-BINDING drop ;
+: CALL-TARGET ( str -- n ) CALL-BINDING drop ;
 
 \ CALL-TARGET for a runtime word the compiler itself calls: bound at the top
 \ level, so no part or using of the code being compiled can stand in for it.
-: TOP-TARGET ( ^u8 n -- n ) TOP-REC REC-CALL drop ;
+: TOP-TARGET ( str -- n ) TOP-REC REC-CALL drop ;
 
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
 \ is handed, so a tick binds no record TICK-REFUSED? refuses, owned or not.
-: TICK-TARGET ( ^u8 n -- n )
+: TICK-TARGET ( str -- n )
    SPELL-REC {: rec:^ :}
    rec XREF-FOUND? if rec TICK-REFUSED? if 0 exit then then
    rec false REC-CODE drop ;
@@ -291,7 +292,7 @@ public
 
 \ Absent is tested as "not a count", not as a particular number: a width is a
 \ count of cells and never negative, whichever vocabulary spelled the absence.
-: SPELL-ARITY ( ^u8 n -- n n )
+: SPELL-ARITY ( str -- n n )
    EFF-CELLS {: din:n dout:n :}
    din 0 < if ARITY-NONE ARITY-NONE exit then
    dout 0 < if ARITY-NONE ARITY-NONE exit then

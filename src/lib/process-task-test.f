@@ -1,3 +1,4 @@
+split-str
 \ process-task-test.f - two tasks through the per-task process row.
 
 require src/lib/error.f
@@ -191,25 +192,25 @@ TASK:MIN-STACK TASK:TASK PTT-T1
 TASK:MIN-STACK TASK:TASK PTT-T2
 TASK:MIN-STACK TASK:TASK PTT-T3
 
-: PTT-VALUE$ ( n -- ^u8 n ) {: ix:n :}
+: PTT-VALUE$ ( n -- str ) {: ix:n :}
    ix 0 = if s" zero" exit then
    ix 1 = if s" one" exit then
    ix 2 = if s" two" exit then
    s" three" ;
 
-: PTT-ENV-OUT$ ( n -- ^u8 n ) {: ix:n :}
+: PTT-ENV-OUT$ ( n -- str ) {: ix:n :}
    ix 0 = if S\" HABU_CMD_TASK=zero\n" exit then
    ix 1 = if S\" HABU_CMD_TASK=one\n" exit then
    ix 2 = if S\" HABU_CMD_TASK=two\n" exit then
    S\" HABU_CMD_TASK=three\n" ;
 
-: PTT-STDIN$ ( n -- ^u8 n ) {: ix:n :}
+: PTT-STDIN$ ( n -- str ) {: ix:n :}
    ix 0 = if s" stdin for zero" exit then
    ix 1 = if s" stdin for one" exit then
    ix 2 = if s" stdin for two" exit then
    s" stdin for three" ;
 
-: PTT-RUN-OK ( CMD:command ^u8 n -- CMD:command )
+: PTT-RUN-OK ( CMD:command str -- CMD:command )
    PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    rc 0<> if rc throw then ;
 
@@ -268,13 +269,13 @@ variable PTT-SLEEPER                     \ exits 22 a fifth of a second after it
 variable PTT-HELD                        \ exits 21 once its stdin closes
 variable PTT-HELD-W                      \ that stdin's write end
 
-: PTT-SH-ARGS ( ^u8 n -- )
+: PTT-SH-ARGS ( str -- )
    {: s:^ su:n :}
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s su >LEN PROC-ARGV+ ;
 
-: PTT-HOLD-SCRIPT ( -- ^u8 n )
+: PTT-HOLD-SCRIPT ( -- str )
    s" read x; exit 21" ;
 
 \ Both pipe ends are close-on-exec, so the held child's stdin is the one copy
@@ -295,7 +296,7 @@ variable PTT-HELD-W                      \ that stdin's write end
    PROCESS:STATUS>RC RC>N TASK:RETURN ;
 
 \ 0 when `/bin/sh -c script` printed exactly want, else 1.
-: PTT-SH-PRINTS ( CMD:command ^u8 n ^u8 n -- n CMD:command )
+: PTT-SH-PRINTS ( CMD:command str str -- n CMD:command )
    {: script:^ scriptu:n want:^ wantu:n :}
    s" -c" CMD:ARG+
    script scriptu CMD:ARG+
@@ -333,7 +334,7 @@ variable PTT-GROW-B-BAD
 TASK:MIN-STACK TASK:TASK PTT-GROW-TA
 TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 
-: PTT-GROW-STAGE ( CMD:command ^u8 n ^u8 n -- CMD:command )
+: PTT-GROW-STAGE ( CMD:command str str -- CMD:command )
    {: v:^ vu:n script:^ scriptu:n :}
    CMD:ENV-HERMETIC
    s" PTT_MARK" v vu CMD:ENV+
@@ -346,7 +347,7 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    s" /bin/sh" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 \ 0 when stdout is the mark line followed by the whole stdin at in, else 1.
-: PTT-GROW-BAD ( CMD:command ^u8 n ^u8 -- CMD:command n )
+: PTT-GROW-BAD ( CMD:command str ^u8 -- CMD:command n )
    {: mark:^ marku:n in:^ :}
    CMD:OUT$ {: out:^ outu:n :}
    outu marku PTT-GROW-U + <> if 1 exit then
@@ -500,7 +501,7 @@ variable PTT-CANCEL-CODE
 variable PTT-CANCEL-PID
 create PTT-CANCEL-BYTE 99 c,
 
-: PTT-CANCEL-SCRIPT ( -- ^u8 n )
+: PTT-CANCEL-SCRIPT ( -- str )
    PTT-CANCEL-MODE @ 1 = if
       s" sleep 10 & printf out; printf err >&2; wait" exit
    then
@@ -584,7 +585,7 @@ create PTT-CANCEL-BYTE 99 c,
 create PTT-CANCEL-MARK PATH-CAP allot
 variable PTT-CANCEL-MARK-U
 
-: PTT-CANCEL-MARK$ ( -- ^u8 n )
+: PTT-CANCEL-MARK$ ( -- str )
    PTT-CANCEL-MARK PTT-CANCEL-MARK-U @ ;
 
 : PTT-CANCEL-PRE-RUN ( CMD:command -- CMD:command )

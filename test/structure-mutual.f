@@ -1,3 +1,4 @@
+split-str
 \ structure-mutual.f - MUTUAL (src/core/structure-decl.f): two structures that
 \ point at each other load and run, and each MUTUAL rule rejects one program
 \ with its code, reason and token. A rejected MUTUAL leaves its names free, and
@@ -57,12 +58,12 @@ TYPED-VARIABLE LINK-V smlink
    CHECK:MULTI-ERR-BEGIN a u TEST-EVAL:RC drop CHECK:MULTI-ERR-END ;
 
 \ The rejections a multi-error verifier scan of the text tallies.
-: SCAN-TALLY ( ^u8 n -- n ) {: a:^ u:n :}
+: SCAN-TALLY ( str -- n ) {: a:^ u:n :}
    CHECK:MULTI-ERR-BEGIN [: a u VERIFY:SOURCE-BUF ;] catch drop CHECK:MULTI-ERR-END ;
 
 \ Definitions after the pair call both members' MAKE and an accessor. Both
 \ members hold a `next`: a field name repeats across members.
-: SMV-SRC ( -- ^u8 n )
+: SMV-SRC ( -- str )
    s" MUTUAL smvna smvlb STRUCTURE smvna DERIVE addr FIELD id n FIELD next ^smvlb ;STRUCTURE STRUCTURE smvlb DERIVE addr FIELD owner ^smvna FIELD next ^smvlb ;STRUCTURE ;MUTUAL : SMV-MK ( n ^smvlb -- smvna ) SMVNA-MAKE ; : SMV-MKB ( ^smvna ^smvlb -- smvlb ) SMVLB-MAKE ; : SMV-ID ( ^smvlb -- n ) SMVLB-OWNER @ SMVNA-ID @ ;" ;
 : SMV-SCAN ( -- ) SMV-SRC VERIFY:SOURCE-BUF ;
 \ Within one member a field name is still a duplicate.
@@ -73,7 +74,7 @@ TYPED-VARIABLE LINK-V smlink
 \ The list is ordered against the bodies: smoentry holds smokey by value and
 \ both derive eq, so smoentry's EQ calls smokey's, which the close generates
 \ first because its ;STRUCTURE was read first.
-: SMO-SRC ( -- ^u8 n )
+: SMO-SRC ( -- str )
    s" MUTUAL smoentry smokey smotree STRUCTURE smokey DERIVE eq FIELD id n ;STRUCTURE STRUCTURE smoentry DERIVE eq FIELD k smokey ;STRUCTURE STRUCTURE smotree FIELD e smoentry FIELD up ^smotree ;STRUCTURE ;MUTUAL : SMO-SAME ( -- bool ) 5 SMOKEY-MAKE SMOENTRY-MAKE 5 SMOKEY-MAKE SMOENTRY-MAKE SMOENTRY-EQ ;" ;
 
 : RUN ( -- )

@@ -1,3 +1,4 @@
+split-str
 \ build-profile.f - build hb, or a program, under Habu's own profiler, which
 \ names the words the build runs (perf sees one anonymous mapping).
 \ Run: bin/hb --load tools/build-profile.f -- [--target name] (--engine | source.f) <out> <text-report> <json-report>
@@ -39,9 +40,9 @@ variable REPORT-FD
 : SOURCE$ ( -- ^u8 n )   FIRST SCRIPT-ARGV$ ;
 : OUT$    ( -- ^u8 n )   SCRIPT-ARGC 3 - SCRIPT-ARGV$ ;
 : TEXT$   ( -- ^u8 n )   SCRIPT-ARGC 2 - SCRIPT-ARGV$ ;
-: JSON$   ( -- ^u8 n )   SCRIPT-ARGC 1 - SCRIPT-ARGV$ ;
+: JSON$   ( -- str )   SCRIPT-ARGC 1 - SCRIPT-ARGV$ ;
 
-: DASHED? ( ^u8 n -- bool )   s" -" STARTS-WITH? ;
+: DASHED? ( str -- bool )   s" -" STARTS-WITH? ;
 
 : ARGS-OK? ( -- bool )
    OPERANDS 4 <> if false exit then

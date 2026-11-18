@@ -1,3 +1,4 @@
+split-str
 \ A scope whose cleanup quotation reads the scope word's local, on return, on
 \ throw, nested, recursive and in two tasks at once.
 require src/lib/test.f

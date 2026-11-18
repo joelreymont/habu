@@ -1,3 +1,4 @@
+split-str
 \ postpone-define.f - a definer builds a definition with define-word,
 \ literal, compile, and postpone, and each postponed or compiled word binds
 \ the word the definer found when it was compiled, whatever the building
@@ -31,28 +32,28 @@ public
    s" nullable" EFFECT:NAMED ;
 
 \ : NAME ( n -- n ) 3 * ;
-: MAKE-TRIPLER ( ^u8 n -- )
+: MAKE-TRIPLER ( str -- )
    N>N define-word
    3 literal
    postpone *
    postpone ; ;
 
 \ : NAME ( n -- n ) BUMP DOUBLE ;
-: MAKE-STEPPER ( ^u8 n -- )
+: MAKE-STEPPER ( str -- )
    N>N define-word
    postpone BUMP
    postpone DOUBLE
    postpone ; ;
 
 \ MAKE-STEPPER through compile,.
-: MAKE-STEPPER2 ( ^u8 n -- )
+: MAKE-STEPPER2 ( str -- )
    N>N define-word
    ['] BUMP compile,
    ['] DOUBLE compile,
    postpone ; ;
 
 \ : NAME ( -- n ) -6 7 * ;
-: MAKE-NEG-ANSWER ( ^u8 n -- )
+: MAKE-NEG-ANSWER ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    -6 literal  7 literal
    postpone *
@@ -60,14 +61,14 @@ public
 
 \ : NAME ( nullable<a> -- nullable<a> nullable<a> ) dup ; one type value in
 \ all three places.
-: MAKE-DUP ( ^u8 n -- )
+: MAKE-DUP ( str -- )
    NULLABLE-T {: t :}
    EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  t EFFECT:OUT  define-word
    postpone dup
    postpone ; ;
 
 \ : NAME ( nullable<a> nullable<b> ... -- ) drop drop ... ; K inputs.
-: MAKE-WIDE ( ^u8 n n -- ) {: k:n :}
+: MAKE-WIDE ( str n -- ) {: k:n :}
    EFFECT:EMPTY  k 0 ?do NULLABLE-T EFFECT:IN loop  define-word
    k 0 ?do postpone drop loop
    postpone ; ;
@@ -78,31 +79,31 @@ public
 : .HALF ( n -- n ) 2 / ;
 
 \ : NAME ( n -- n ) CUBE ;
-: MAKE-CUBER ( ^u8 n -- )
+: MAKE-CUBER ( str -- )
    N>N define-word
    postpone CUBE
    postpone ; ;
 
 \ : NAME ( n -- n ) .HALF ;
-: MAKE-HALVER ( ^u8 n -- )
+: MAKE-HALVER ( str -- )
    N>N define-word
    postpone .HALF
    postpone ; ;
 
 \ : NAME ( -- n ) drop ;, an underflow the checker rejects.
-: MAKE-BROKEN ( ^u8 n -- )
+: MAKE-BROKEN ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone drop
    postpone ; ;
 
 \ : NAME ( -- n ) CUBE ;, an underflow the checker rejects.
-: MAKE-SHORT-CUBER ( ^u8 n -- )
+: MAKE-SHORT-CUBER ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone CUBE
    postpone ; ;
 
 \ : NAME ( -- read-view<a,b,c> ) 1 throw ;, a view no input supplies.
-: MAKE-RV ( ^u8 n -- )
+: MAKE-RV ( str -- )
    EFFECT:EMPTY s" read-view" EFFECT:NAMED EFFECT:OUT define-word
    1 literal
    postpone throw

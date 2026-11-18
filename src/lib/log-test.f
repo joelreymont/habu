@@ -1,3 +1,4 @@
+split-str
 \ log-test.f - LOG's lines as fd 2 receives them. A case writes under
 \ STDERR:CAPTURE into a file in a private temp directory and reads it back, or
 \ points fd 2 at a pipe a reader task drains.
@@ -89,7 +90,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ The whole file, valid until the next read.
-: FILE$ ( -- ^u8 n )
+: FILE$ ( -- str )
    PATH$ FS:FILE-SIZE {: size:n :}
    FILE-B BUF:CLEAR
    PATH$ FILE-B size BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
@@ -142,7 +143,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ The file holds exactly a stamp followed by the rest, for each rest in turn.
-: LINE-OK ( ^u8 n ^u8 n -- ^u8 n )
+: LINE-OK ( str str -- str )
    {: at:^ u:n rest:^ ru:n :}
    at STAMP-OK
    at DATE:TIME-LEN + ru rest ru T$=
@@ -155,9 +156,9 @@ TASK:MIN-STACK TASK:TASK RELEASER
    LOG:INFO s" mcp" LOG:LINE s" ping" LOG:TEXT+ LOG:;LINE ;
 
 
-: MODEL-REST$ ( -- ^u8 n )  S\"  error model: refused -42\n" ;
-: MIN-REST$ ( -- ^u8 n )  S\"  warn crew: min -9223372036854775808\n" ;
-: PING-REST$ ( -- ^u8 n )  S\"  info mcp: ping\n" ;
+: MODEL-REST$ ( -- str )  S\"  error model: refused -42\n" ;
+: MIN-REST$ ( -- str )  S\"  warn crew: min -9223372036854775808\n" ;
+: PING-REST$ ( -- str )  S\"  info mcp: ping\n" ;
 
 
 : LEVELS-CASE ( -- )
@@ -175,15 +176,15 @@ TASK:MIN-STACK TASK:TASK RELEASER
    u 0 ?do i 26 mod [char] a + at i + c! loop ;
 
 
-: BIG$ ( -- ^u8 n )  BIG-B BUF:SPAN$ BUF:BLEN>N ;
-: BIG-HEAD$ ( -- ^u8 n )  s"  error big: " ;
+: BIG$ ( -- str )  BIG-B BUF:SPAN$ BUF:BLEN>N ;
+: BIG-HEAD$ ( -- str )  s"  error big: " ;
 
 
 : BIG-LINE ( -- )
    LOG:ERROR s" big" LOG:LINE BIG$ LOG:TEXT+ LOG:;LINE ;
 
 
-: BIG-OK ( ^u8 n -- )
+: BIG-OK ( str -- )
    {: at:^ u:n :}
    u DATE:TIME-LEN BIG-HEAD$ nip + BIG-U + 1 + T=
    at STAMP-OK
@@ -232,7 +233,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    [: KEPT-LINE ;] catch CODE-B ! ;
 
 
-: KEPT-REST$ ( -- ^u8 n )  S\"  warn t: kept\n" ;
+: KEPT-REST$ ( -- str )  S\"  warn t: kept\n" ;
 
 
 : ABANDON-CASE ( -- )
@@ -284,7 +285,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    LOG:ERROR s" t" LOG:LINE S\" a\nb\x1b\x7f\\x0a" LOG:TEXT+ LOG:;LINE ;
 
 
-: CONTROL-REST$ ( -- ^u8 n )  S\"  error t: a\\x0ab\\x1b\\x7f\\x5cx0a\n" ;
+: CONTROL-REST$ ( -- str )  S\"  error t: a\\x0ab\\x1b\\x7f\\x5cx0a\n" ;
 
 
 : CONTROL-CASE ( -- )
@@ -302,7 +303,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    [: KEPT-LINE ;] catch CODE-B ! ;
 
 
-: NOTICE-REST$ ( -- ^u8 n )  S\"  error log: out of memory, a line was lost\n" ;
+: NOTICE-REST$ ( -- str )  S\"  error log: out of memory, a line was lost\n" ;
 
 
 : NOTICE-THEN-KEPT ( -- )
@@ -441,12 +442,12 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : NEXT ( n -- ^n )  [char] a - NEXTS ;
 
 
-: PAD$ ( -- ^u8 n )  BIG$ drop PAD-U ;
+: PAD$ ( -- str )  BIG$ drop PAD-U ;
 
 
 \ Each writer's lines arrive whole and in its own order: `<stamp> warn a: line
 \ <k> <pad>` with k counting from 0.
-: TASK-LINE-OK ( ^u8 n -- )
+: TASK-LINE-OK ( str -- )
    {: at:^ u:n :}
    1 LINES +!
    u DATE:TIME-LEN 8 + < if 1 BAD +! exit then
@@ -463,7 +464,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    1 tag NEXT +! ;
 
 
-: TASK-LINES-OK ( ^u8 n -- )
+: TASK-LINES-OK ( str -- )
    {: at:^ u:n :}
    0 START !  0 LINES !  0 BAD !  0 0 NEXTS !  0 1 NEXTS !
    u 0 ?do
@@ -475,7 +476,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    START @ u <> if 1 BAD +! then ;
 
 
-: WRITE-LINES ( ^u8 n -- )
+: WRITE-LINES ( str -- )
    {: tag:^ tu:n :}
    1 READY atomic-add drop
    begin READY atomic@ 2 < while TASK:PAUSE repeat
@@ -634,8 +635,8 @@ TASK:MIN-STACK TASK:TASK RELEASER
    LOG:ERROR s" t" LOG:LINE UNDECLARED LOG:CODE+ LOG:;LINE ;
 
 
-: CODE-REST$ ( -- ^u8 n )  S\"  error t: -9672 LOG-TEST:E-LOG-CODE: the log test's code\n" ;
-: BARE-REST$ ( -- ^u8 n )  S\"  error t: -9678\n" ;
+: CODE-REST$ ( -- str )  S\"  error t: -9672 LOG-TEST:E-LOG-CODE: the log test's code\n" ;
+: BARE-REST$ ( -- str )  S\"  error t: -9678\n" ;
 
 
 : CODE-CASE ( -- )

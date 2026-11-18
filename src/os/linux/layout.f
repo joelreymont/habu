@@ -1,3 +1,4 @@
+split-str
 \ layout.f -- the executable and data layout constants of both Linux targets
 \ (linux-aarch64, linux-x86-64), loaded at boot before `require` exists.
 \ The image offsets are ELF64 format facts: IMAGE-TEXT-SIZE-OFF is the first

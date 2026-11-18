@@ -1,3 +1,4 @@
+split-str
 \ allocator-cases.f - test-only: the cases every allocator meets, in the
 \ allocator test's package; another allocator's test calls TURNS and ZEROED.
 \ STORAGE CLASS. None.

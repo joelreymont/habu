@@ -1,3 +1,4 @@
+split-str
 \ install.f - installs the tree in the working directory as the current Habu.
 \ Run from the root of a tree with its own bin/hb and bin/hb.map:
 \ bin/hb --load tools/install.f
@@ -40,23 +41,23 @@ create TO PATH-CAP allot            variable TO-U
 create FROM PATH-CAP allot          variable FROM-U
 create MSG 64 allot
 
-: LIB$ ( -- ^u8 n ) LIB LIB-U @ ;
-: LIB-TREES$ ( -- ^u8 n ) LIB-TREES LIB-TREES-U @ ;
-: LINK$ ( -- ^u8 n ) LINK LINK-U @ ;
-: NEXT$ ( -- ^u8 n ) NEXT NEXT-U @ ;
-: TREE$ ( -- ^u8 n ) TREE TREE-U @ ;
-: ENTRY$ ( -- ^u8 n ) ENTRY ENTRY-U @ ;
-: ENTRY-HB$ ( -- ^u8 n ) ENTRY-HB ENTRY-HB-U @ ;
-: TO$ ( -- ^u8 n ) TO TO-U @ ;
-: FROM$ ( -- ^u8 n ) FROM FROM-U @ ;
+: LIB$ ( -- str ) LIB LIB-U @ ;
+: LIB-TREES$ ( -- str ) LIB-TREES LIB-TREES-U @ ;
+: LINK$ ( -- str ) LINK LINK-U @ ;
+: NEXT$ ( -- str ) NEXT NEXT-U @ ;
+: TREE$ ( -- str ) TREE TREE-U @ ;
+: ENTRY$ ( -- str ) ENTRY ENTRY-U @ ;
+: ENTRY-HB$ ( -- str ) ENTRY-HB ENTRY-HB-U @ ;
+: TO$ ( -- str ) TO TO-U @ ;
+: FROM$ ( -- str ) FROM FROM-U @ ;
 
 
 \ A tree-relative name as a path in the new tree and as a working-directory
 \ path.
-: TO! ( ^u8 n -- ) {: r:^ ru:n :}
+: TO! ( str -- ) {: r:^ ru:n :}
    TREE$ r ru TO FS:JOIN-PATH TO-U ! ;
 
-: FROM! ( ^u8 n -- ) {: r:^ ru:n :}
+: FROM! ( str -- ) {: r:^ ru:n :}
    SOURCE-ROOT:CWD$ r ru FROM FS:JOIN-PATH FROM-U ! ;
 
 
@@ -80,15 +81,15 @@ create MSG 64 allot
    a MSG pu + u BYTE-COPY
    MSG pu u + EXIT-STATUS:NOINPUT die ;
 
-: PLAIN-DIR? ( ^u8 n -- bool )
+: PLAIN-DIR? ( str -- bool )
    2dup FS:SYMLINK? if 2drop false exit then
    FS:DIR? ;
 
-: NEED-FILE ( ^u8 n -- )
+: NEED-FILE ( str -- )
    2dup FROM! FROM$ FS:FILE? if 2drop exit then
    MISSING ;
 
-: NEED-DIR ( ^u8 n -- )
+: NEED-DIR ( str -- )
    2dup FROM! FROM$ PLAIN-DIR? if 2drop exit then
    MISSING ;
 
@@ -107,11 +108,11 @@ create MSG 64 allot
 
 
 \ Whether a process runs the hb of the tree at path p.
-: RUN? ( ^u8 n -- bool )
+: RUN? ( str -- bool )
    s" bin/hb" ENTRY-HB FS:JOIN-PATH ENTRY-HB-U !
    ENTRY-HB$ FS:FILE? if ENTRY-HB$ PROC-TREE:RUNS? else false then ;
 
-: SWEEP-ONE ( ^u8 n -- ) {: a:^ u:n :}
+: SWEEP-ONE ( str -- ) {: a:^ u:n :}
    LIB-TREES$ a u ENTRY FS:JOIN-PATH ENTRY-U !
    ENTRY$ LINK$ FS:SAMEFILE if exit then
    ENTRY$ RUN? if exit then
@@ -124,7 +125,7 @@ create MSG 64 allot
 
 \ The copy walk's filter: symlinks are not carried, and a directory exists in
 \ the new tree before its files are written.
-: CARRY? ( ^u8 n -- bool ) {: p:^ u:n :}
+: CARRY? ( str -- bool ) {: p:^ u:n :}
    p u FS:SYMLINK? if false exit then
    p u FS:DIR? if p u SOURCE-ROOT:CWD$ nip BELOW TO! TO$ FS:MAKE-DIRS then
    true ;
@@ -133,7 +134,7 @@ create MSG 64 allot
    p u SOURCE-ROOT:CWD$ nip BELOW TO!
    p u TO$ FS:COPY-FILE-STREAM ;
 
-: CARRY-TREE ( ^u8 n -- )
+: CARRY-TREE ( str -- )
    FROM! FROM$ [: CARRY? ;] [: CARRY ;] FS:WALK-FILES-IF ;
 
 

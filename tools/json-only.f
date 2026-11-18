@@ -1,3 +1,4 @@
+split-str
 \ json-only.f - CLI wrapper for JSON diagnostic line filtering.
 \ Run: bin/hb --load tools/json-only.f -- stderr-file
 
@@ -39,7 +40,7 @@ variable JSON-ONLY-IN-A
 : JSON-ONLY-READ-CHUNK ( -- )
    JSON-ONLY-FD @ JSON-ONLY-DST JSON-ONLY-ROOM read JSON-ONLY-RD ! ;
 
-: JSON-ONLY-READ-FILE ( ^u8 n -- ^u8 n )
+: JSON-ONLY-READ-FILE ( str -- str )
    {: a:^ u :}
    a u FS:>PATHZ 0 0 open JSON-ONLY-FD !
    JSON-ONLY-FD @ 0 < IF s" json-only: cannot open input" EXIT-STATUS:IOERR die THEN
@@ -66,7 +67,7 @@ variable JSON-ONLY-IN-A
    2 JSON-ONLY-LF$ JSON-ONLY-WRITE
    EXIT-STATUS:USAGE throw ;
 
-: JSON-ONLY-INPUT$ ( -- ^u8 n )
+: JSON-ONLY-INPUT$ ( -- str )
    ARGV:COUNT 1 <> IF JSON-ONLY-USAGE THEN
    0 ARGV:TOK$ ;
 

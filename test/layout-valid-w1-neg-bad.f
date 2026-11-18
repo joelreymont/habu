@@ -1,3 +1,4 @@
+split-str
 \ layout-valid-w1-neg-bad.f — W1 enum fetch rejects a forged negative tag.
 
 package LAYOUT-VALID-W1-NEG

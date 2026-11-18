@@ -1,3 +1,4 @@
+split-str
 \ signature-nesting.f - a signature nested past the parser's limits is rejected
 \ by name through the real load path: a 33rd nested binder, and pointees or
 \ quotations nested past EFFECT-DEPTH-MAX. An effect with more than 64
@@ -43,13 +44,13 @@ TYPED-VARIABLE SRC-U len
 
 : SRC-RESET ( -- )
    SRC-U BUF-RESET ;
-: S+ ( ^u8 n -- )
+: S+ ( str -- )
    SRC-BUF CAP SRC-U BUF-APPEND ;
 : SRC$ ( -- ^u8 n )
    SRC-BUF SRC-U @ LEN>N ;
 
 
-: S+N ( ^u8 n n -- )
+: S+N ( str n -- )
    {: a:^ u:n k:n :}
    k 0 ?do a u S+ loop ;
 
@@ -104,11 +105,11 @@ TYPED-VARIABLE SRC-U len
    s" : SN-LOCAL-DEEP ( n -- ) {: x:" S+  s" [" k S+N  s"  :} ;" S+ ;
 
 \ A definition NAME whose body nests k `IF`s, from its name to its last token.
-: IFS-TEXT ( ^u8 n n -- )
+: IFS-TEXT ( str n -- )
    {: name:^ nameu:n k:n :}
    name nameu S+  s"  ( bool -- ) " S+  s" dup IF " k S+N  s" THEN " k S+N  s" drop" S+ ;
 
-: NESTED-IFS ( ^u8 n n -- )
+: NESTED-IFS ( str n -- )
    {: name:^ nameu:n k:n :}
    SRC-RESET  s" : " S+  name nameu k IFS-TEXT  s"  ;" S+ ;
 
@@ -192,7 +193,7 @@ variable ERR-U
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
 
 \ The last REFUSES's stderr also holds this text, gutters dropped.
-: SAID ( ^u8 n -- )
+: SAID ( str -- )
    {: a:^ u:n :}
    ERR ERR-U @ a u REJECTION-TEXT:HAS? TTRUE ;
 
@@ -206,7 +207,7 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 \ The packet the text in SRC-BUF writes, checked in this process with JSON
 \ diagnostics captured; it stays in REJECTION's capture until the next one.
-: PACKET$ ( -- ^u8 n )
+: PACKET$ ( -- str )
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! drop
    0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF  REJECTION:BUFFER$ ;
 
@@ -217,7 +218,7 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 \ A caller passes CODE, TOKEN and WHY as packet fields in text; SRC-BUF's packet
 \ holds all three: checked as a candidate, or compiled to walk a does> clause.
-: PACKET-HOLDS ( ^u8 n ^u8 n ^u8 n -- )
+: PACKET-HOLDS ( str str str -- )
    {: code:^ codeu:n token:^ tokenu:n why:^ whyu:n :}
    REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
    REJECTION:BUFFER$ token tokenu CONTAINS? TTRUE
@@ -226,12 +227,12 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 
 
 \ CHECK-CANDIDATE! also answers ANSWER: VERDICT-REFUSED or VERDICT-UNCHECKABLE.
-: PACKET-HAS ( ^u8 n ^u8 n ^u8 n n -- )
+: PACKET-HAS ( str str str n -- )
    {: answer:n :}
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! answer T=  PACKET-HOLDS ;
 
 
-: CLAUSE-PACKET-HAS ( ^u8 n ^u8 n ^u8 n -- )
+: CLAUSE-PACKET-HAS ( str str str -- )
    PACKET-OPEN  SRC$ TEST-EVAL:RC drop  PACKET-HOLDS ;
 
 public

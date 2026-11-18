@@ -1,3 +1,4 @@
+split-str
 \ argv-test.f -- focused tests for src/lib/argv.f.
 \ Run mocks:  cat src/lib/error.f src/lib/string.f src/lib/argv.f src/lib/argv-test.f | bin/hb
 
@@ -23,7 +24,7 @@ variable TEST-FAIL
 
 : ASSERT= ( n n -- )  = ASSERT ;
 
-: ASSERT$ ( ^u8 n ^u8 n -- )  STR= ASSERT ;
+: ASSERT$ ( str str -- )  STR= ASSERT ;
 
 : ASSERT-RC ( n n -- )
    0 QUIET!

@@ -1,3 +1,4 @@
+split-str
 \ A two-member public ZIP consumer for source and native builds.
 require src/lib/string.f
 require src/lib/zip.f
@@ -15,21 +16,21 @@ create PATH PATH-CAP allot
 create BACKUP PATH-CAP allot
 variable FILL-CALLS
 
-: STORED$ ( -- ^u8 n )
+: STORED$ ( -- str )
    S\" PK\x03\x04\x14\x00\x00\x00\x00\x00\x00\x00!P\xE2/\x8Ay\x90\x00\x00\x00\x90\x00\x00\x00\x08\x00\x00\x00keep.txtkept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes PK\x03\x04\x14\x00\x00\x00\x00\x00\x00\x00!PY\xEF\xACI\x22\x00\x00\x00\x22\x00\x00\x00\x0B\x00\x00\x00preview.binZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6PK\x01\x02\x14\x03\x14\x00\x00\x00\x00\x00\x00\x00!P\xE2/\x8Ay\x90\x00\x00\x00\x90\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x01\x00\x00\x00\x00keep.txtPK\x01\x02\x14\x03\x14\x00\x00\x00\x00\x00\x00\x00!PY\xEF\xACI\x22\x00\x00\x00\x22\x00\x00\x00\x0B\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x01\xB6\x00\x00\x00preview.binPK\x05\x06\x00\x00\x00\x00\x02\x00\x02\x00o\x00\x00\x00\x01\x01\x00\x00\x00\x00" ;
 
-: DEFLATED$ ( -- ^u8 n )
+: DEFLATED$ ( -- str )
    S\" PK\x03\x04\x14\x00\x00\x00\x08\x00\x00\x00!P\xE2/\x8Ay\x17\x00\x00\x00\x90\x00\x00\x00\x08\x00\x00\x00keep.txt\xCBN-(Q\xC8M\xCDMJ-RH\xAA,I-V\xC8\x1EP\x11\x00PK\x03\x04\x14\x00\x00\x00\x00\x00\x00\x00!PY\xEF\xACI\x22\x00\x00\x00\x22\x00\x00\x00\x0B\x00\x00\x00preview.binZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6PK\x01\x02\x14\x03\x14\x00\x00\x00\x08\x00\x00\x00!P\xE2/\x8Ay\x17\x00\x00\x00\x90\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x01\x00\x00\x00\x00keep.txtPK\x01\x02\x14\x03\x14\x00\x00\x00\x00\x00\x00\x00!PY\xEF\xACI\x22\x00\x00\x00\x22\x00\x00\x00\x0B\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80\x01=\x00\x00\x00preview.binPK\x05\x06\x00\x00\x00\x00\x02\x00\x02\x00o\x00\x00\x00\x88\x00\x00\x00\x00\x00" ;
 
 \ Original first local record lengths, including their compressed payloads.
-: STORED-LOCAL$ ( -- ^u8 n ) STORED$ drop $B6 ;
-: DEFLATED-LOCAL$ ( -- ^u8 n ) DEFLATED$ drop $3D ;
+: STORED-LOCAL$ ( -- str ) STORED$ drop $B6 ;
+: DEFLATED-LOCAL$ ( -- str ) DEFLATED$ drop $3D ;
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-LEN @ ;
-: FILE$ ( ^u8 n -- ^u8 n ) ROOT$ 2swap PATH FS:JOIN-PATH PATH swap ;
-: ARCHIVE$ ( -- ^u8 n ) s" cleaned.zip" FILE$ ;
-: SAVED$ ( -- ^u8 n ) ROOT$ s" saved.zip" BACKUP FS:JOIN-PATH BACKUP swap ;
-: KEPT$ ( -- ^u8 n )
+: FILE$ ( str -- str ) ROOT$ 2swap PATH FS:JOIN-PATH PATH swap ;
+: ARCHIVE$ ( -- str ) s" cleaned.zip" FILE$ ;
+: SAVED$ ( -- str ) ROOT$ s" saved.zip" BACKUP FS:JOIN-PATH BACKUP swap ;
+: KEPT$ ( -- str )
    s" kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes kept member bytes " ;
 
 : SETUP ( -- )
@@ -44,9 +45,9 @@ variable FILL-CALLS
 : TRY-REMOVE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup ZIP:REMOVE ;
 : TRY-COMMIT ( ZIP:archive -- ZIP:archive ) dup ZIP:COMMIT ;
-: NO-TEMP ( ^u8 n -- ) FS:BASENAME s" .tmp-" STARTS-WITH? TFALSE ;
+: NO-TEMP ( str -- ) FS:BASENAME s" .tmp-" STARTS-WITH? TFALSE ;
 
-: CHECK-ARTIFACT ( ^u8 n -- ) {: local:^ local-len:n :}
+: CHECK-ARTIFACT ( str -- ) {: local:^ local-len:n :}
    ARCHIVE$ RAW RAW-CAP FS:READ-ALL {: size:n :}
    RAW local-len local local-len T$=
    RAW size s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" CONTAINS? TFALSE
@@ -58,7 +59,7 @@ variable FILL-CALLS
    archive entry ZIP:READ KEPT$ T$=
    archive ZIP:CLOSE ;
 
-: REMOVE-ONE ( ^u8 n ^u8 n -- )
+: REMOVE-ONE ( str str -- )
    {: fixture:^ fixture-len:n local:^ local-len:n :}
    ARCHIVE$ fixture fixture-len FS:WRITE-ALL
    ARCHIVE$ ZIP:EDIT {: archive:ZIP:archive :}

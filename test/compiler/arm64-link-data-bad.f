@@ -1,3 +1,4 @@
+split-str
 \ arm64-link-data-bad.f - a program whose link LINKER:WRITE refuses, one per
 \ process, chosen by the first script argument: `data`, a cell declared as a
 \ DATA pointer that holds an address outside the build's space, read by the
@@ -21,7 +22,7 @@ package ARM64-LINK-DATA-BAD
 
 CAST: ENTRY-XT ( n -- [ -- ] )
 
-: WORD-XT ( ^u8 n -- [ -- ] ) XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT ;
+: WORD-XT ( str -- [ -- ] ) XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT ;
 
 : WRITE ( -- )
    s" ARM64-LINK-DATA-BAD-ARMED" type cr

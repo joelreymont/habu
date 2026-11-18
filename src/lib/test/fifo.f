@@ -1,3 +1,4 @@
+split-str
 \ fifo.f - a FIFO a test reads to learn when every process of a tree is gone. A
 \ spawned child holds only the descriptors its spawn maps (src/lib/spawn.f), so
 \ the test names the FIFO's path in an environment variable; each test-code
@@ -45,7 +46,7 @@ FUNCTION: READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
 : SLOT ( PROCESS:request n fd -- PROCESS:request ) {: child:n parent:fd :}
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
 
-: READ-END ( ^u8 n -- fd ) {: a:^ u:n :}
+: READ-END ( str -- fd ) {: a:^ u:n :}
    a u FS:>PATHZ FS:O-NONBLOCK 0 open {: rd:n :}
    rd 0 < if E-FS-OPEN throw then
    rd >FD {: r:fd :}

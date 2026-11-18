@@ -1,3 +1,4 @@
+split-str
 \ font-native.f - native HarfBuzz FONT test on each platform's installed fonts:
 \ on Linux, DejaVu Sans, URW's Nimbus Roman and Noto Color Emoji, each found
 \ by its file name under fontconfig's default directories: /usr/share/fonts,
@@ -17,7 +18,7 @@ TYPED-VARIABLE IMAGE FONT:image
 
 PATH-CAP BUFFER: USER-ROOT
 
-: USER-ROOT$ ( -- ^u8 n )
+: USER-ROOT$ ( -- str )
    s" XDG_DATA_HOME" GETENV dup 0 > if
       s" fonts"
    else
@@ -31,23 +32,23 @@ variable FOUND-U
 PTR-VARIABLE WANT-P
 variable WANT-U
 
-: FOUND$ ( -- ^u8 n ) FOUND FOUND-U @ ;
-: WANT$ ( -- ^u8 n ) WANT-P @ WANT-U @ ;
+: FOUND$ ( -- str ) FOUND FOUND-U @ ;
+: WANT$ ( -- str ) WANT-P @ WANT-U @ ;
 
 \ A walk callback has no context, so the file name is read from WANT$.
-: KEEP-MATCH ( ^u8 n -- )
+: KEEP-MATCH ( str -- )
    {: a:^ u:n :}
    a u FS:BASENAME WANT$ STR= 0= if exit then
    a FOUND u BYTE-COPY u FOUND-U ! ;
 
-: WALK-ROOT ( ^u8 n -- ) {: a:^ u:n :}
+: WALK-ROOT ( str -- ) {: a:^ u:n :}
    FOUND-U @ 0<> if exit then
    a u FS:DIR? 0= if exit then
    a u [: KEEP-MATCH ;] FS:WALK-FILES ;
 
 \ The path is valid until the next FIND-FONT. A file under no root is not
 \ found: a case labelled with the file's name fails, the path is empty.
-: FIND-FONT ( ^u8 n -- ^u8 n )
+: FIND-FONT ( str -- str )
    {: name:^ len:n :}
    name WANT-P ! len WANT-U ! 0 FOUND-U !
    s" /usr/share/fonts" WALK-ROOT
@@ -58,25 +59,25 @@ variable WANT-U
    then
    FOUND$ ;
 
-: FONT-PATH$ ( -- ^u8 n )
+: FONT-PATH$ ( -- str )
    HB-TARGET-MACOS? if
       s" /System/Library/Fonts/Supplemental/Arial.ttf" exit
    then
    s" DejaVuSans.ttf" FIND-FONT ;
 
-: LIGATURE-PATH$ ( -- ^u8 n )
+: LIGATURE-PATH$ ( -- str )
    HB-TARGET-MACOS? if
       s" /System/Library/Fonts/Supplemental/Baskerville.ttc" exit
    then
    s" DejaVuSans.ttf" FIND-FONT ;
 
-: CFF-PATH$ ( -- ^u8 n )
+: CFF-PATH$ ( -- str )
    HB-TARGET-MACOS? if
       s" /System/Library/Fonts/Supplemental/STIXGeneral.otf" exit
    then
    s" NimbusRoman-Regular.otf" FIND-FONT ;
 
-: COLOR-PATH$ ( -- ^u8 n )
+: COLOR-PATH$ ( -- str )
    HB-TARGET-MACOS? if
       s" /System/Library/Fonts/Apple Color Emoji.ttc" exit
    then
@@ -84,7 +85,7 @@ variable WANT-U
 
 \ The accents' binary32 ink left, top and right edges from HarfBuzz, the top
 \ past the em as the accents stack, then the viewBox that rounds them outward.
-: ACCENT-BOX ( -- r r r ^u8 n )
+: ACCENT-BOX ( -- r r r str )
    HB-TARGET-MACOS? if
       -1.4648 -1581.5273 668.457
       s\" viewBox=\"-2 -1582 671 1582\"" exit
@@ -93,11 +94,11 @@ variable WANT-U
 
 \ HarfBuzz's ink box of `o` ends at -9 in Arial at 17, at -14 in DejaVu Sans
 \ at 25; the emitted path reaches -9.0146 or -14.0015, and the viewBox holds it.
-: ROUND-CASE ( -- n ^u8 n )
+: ROUND-CASE ( -- n str )
    HB-TARGET-MACOS? if 17 s\" viewBox=\"0 -10 9 11\"" exit then
    25 s\" viewBox=\"1 -15 13 16\"" ;
 
-: READ-FONT ( ^u8 n -- ^u8 n )
+: READ-FONT ( str -- ^u8 n )
    {: path:^ len:n :}
    \ An empty path is a font FIND-FONT did not find: its case has failed.
    len 0= if path 0 exit then
@@ -108,7 +109,7 @@ variable WANT-U
 
 : INPUT-FONT ( -- ^u8 n ) FONT-PATH$ READ-FONT ;
 
-: PATH-COUNT ( ^u8 n -- n ) {: svg:^ size:n :}
+: PATH-COUNT ( str -- n ) {: svg:^ size:n :}
    size 5 < if 0 exit then
    0 size 4 - 0 ?do
       svg i + 5 s" <path" STR= if 1+ then

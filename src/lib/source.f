@@ -1,3 +1,4 @@
+split-str
 \ source.f - checked source materialization helpers. Callers supply output
 \ buffers: appending past one throws E-FS-CAPACITY, and file or stdin failures
 \ throw named filesystem errors. READ-STDIN-ALL probes one byte past a full
@@ -88,7 +89,7 @@ public
 private
 
 \ The file at a path opened for a whole read, recorded as one the compile read.
-: SOURCE-OPEN ( ^u8 n -- n )
+: SOURCE-OPEN ( str -- n )
    {: path:^ pathu:n :}
    path pathu FS:>PATHZ {: z:^ :}
    path pathu z COMPILE-READS:FILE+
@@ -98,7 +99,7 @@ private
 
 \ The file at a path, read as SOURCE-READ-LOOP reads; stack-preserving under
 \ `catch`, the count replacing the zero, so its descriptor is always closed.
-: SOURCE-READ-PATH ( ^u8 n n n [ n -- ^u8 ] -- n )
+: SOURCE-READ-PATH ( str n n [ n -- ^u8 ] -- n )
    {: path:^ pathu:n first:n cap:n room :}
    path pathu SOURCE-OPEN {: fd:n :}
    0 [: drop fd first cap room SOURCE-READ-LOOP ;] catch {: rc:n :}
@@ -109,13 +110,13 @@ public
 
 \ The file at a path, whole, from a size the caller sampled (FS:FILE-SIZE makes a
 \ missing file E-FS-STAT); a file holding more bytes than the sample is E-FS-CHANGED.
-: READ-WHOLE-SAMPLED ( ^u8 n n [ n -- ^u8 ] -- n )
+: READ-WHOLE-SAMPLED ( str n [ n -- ^u8 ] -- n )
    {: path:^ pathu:n first:n room :}
    path pathu first first room SOURCE-READ-PATH ;
 
 \ The file at a path, whole: a regular file's size bounds the read, and a path
 \ that names no regular file gives no sample and is read to its end.
-: READ-WHOLE-FILE ( ^u8 n [ n -- ^u8 ] -- n )
+: READ-WHOLE-FILE ( str [ n -- ^u8 ] -- n )
    {: path:^ pathu:n room :}
    path pathu FS:FILE? if
       path pathu  path pathu FS:FILE-SIZE  room READ-WHOLE-SAMPLED exit
@@ -152,7 +153,7 @@ private
    c SOURCE-CR = if STR-FALSE exit then
    STR-TRUE ;
 
-: SOURCE-PATH-SAFE? ( ^u8 n -- bool ) {: a:^ u:n :}
+: SOURCE-PATH-SAFE? ( str -- bool ) {: a:^ u:n :}
    0 begin dup u < while
       a over + c@ SOURCE-PATH-BYTE-SAFE? 0= if drop STR-FALSE exit then
       1+
@@ -162,7 +163,7 @@ public
 
 \ E-FS-PATH-UNSAFE for a path SOURCE-APPEND-QPATH cannot quote. A caller that
 \ quotes a spelling only late judges it early with this.
-: SOURCE-QPATH-CHECK ( ^u8 n -- )
+: SOURCE-QPATH-CHECK ( str -- )
    SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;
 
 : SOURCE-APPEND-QPATH ( ^u8 len ^u8 len ^len -- )
@@ -180,12 +181,12 @@ public
 
 \ At top level `char` and `'` parse, and `[char]` and `[']`, E-UNDEFINED there,
 \ take their token too; a body asks SOURCE-SYNTAX:BODY-PARSING-KEYWORD?.
-: PARSING-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: PARSING-KEYWORD? ( str -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
 
 \ Keywords only while the engine interprets: in a body `create` is a call and
 \ the others are undefined, so a scanner asks these outside a definition.
-: DEFINER-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: DEFINER-KEYWORD? ( str -- bool ) {: a:^ u:n :}
    a u s" cast:" STR=CI if STR-TRUE exit then
    a u s" linear:" STR=CI if STR-TRUE exit then
    a u s" defer" STR=CI if STR-TRUE exit then
@@ -193,17 +194,17 @@ public
    a u s" variable" STR=CI if STR-TRUE exit then
    a u s" constant" STR=CI ;
 
-: PACKAGE-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: PACKAGE-KEYWORD? ( str -- bool ) {: a:^ u:n :}
    a u s" package" STR=CI if STR-TRUE exit then
    a u s" using" STR=CI if STR-TRUE exit then
    a u s" export" STR=CI ;
 
 \ A local a block declares ends with the block, and `else` ends the true arm's.
 \ A local of a control word's name is that local: ask after the local lookup.
-: BLOCK-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BLOCK-OPENER? ( str -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BLOCK-OPENER? ;
 
-: BLOCK-CLOSER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BLOCK-CLOSER? ( str -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BLOCK-CLOSER? ;
 
 private
@@ -217,13 +218,13 @@ public
 \ The words that open a string literal, matched case-folded as the dictionary
 \ is: `s"`, `c"` and `."` take the bytes up to the next `"`, and `s\"`, `c\"`
 \ and `.\"` the same with a backslash escaping the byte after it.
-: NORMAL-STRING-OPENER? ( ^u8 n -- bool )
+: NORMAL-STRING-OPENER? ( str -- bool )
    {: a:^ u:n :}
    u 2 <> if STR-FALSE exit then
    a 1 BYTE@ $22 <> if STR-FALSE exit then
    a 0 BYTE@ STRING-LEAD? ;
 
-: ESC-STRING-OPENER? ( ^u8 n -- bool )
+: ESC-STRING-OPENER? ( str -- bool )
    {: a:^ u:n :}
    u 3 <> if STR-FALSE exit then
    a 1 BYTE@ $5C <> if STR-FALSE exit then

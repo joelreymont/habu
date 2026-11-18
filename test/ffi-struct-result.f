@@ -1,3 +1,4 @@
+split-str
 \ ffi-struct-result.f - C structs returned by value through FUNCTION:.
 \ Loaded by src/lib/ffi-test.f inside package FFI-TEST.
 \

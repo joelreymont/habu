@@ -1,3 +1,4 @@
+split-str
 \ load-graph.f - the load graph of the registry's rows: every file a row loads
 \ and every file those load, each read once and named by its canonical path,
 \ with the imports and launches it makes.
@@ -30,11 +31,11 @@ variable FILE-N
 variable EDGE-N
 variable PROBE
 
-: FILE$ ( n -- ^u8 n ) {: id:n :}
+: FILE$ ( n -- str ) {: id:n :}
    0 PATH-BYTES id PATH-OFF @ +
    id PATH-LEN @ ;
 
-: FILE-ADD ( ^u8 n -- n ) {: a:^ u:n :}
+: FILE-ADD ( str -- n ) {: a:^ u:n :}
    FILE-N @ {: id:n :}
    PATH-U @ u + PATH-BYTES-RESERVE
    id 1+ PATH-OFF-RESERVE
@@ -58,7 +59,7 @@ variable PROBE
 
 \ Probe from a canonical path's hash to the slot holding it, or to the empty
 \ slot it would take.
-: PROBE! ( ^u8 n -- ) {: a:^ u:n :}
+: PROBE! ( str -- ) {: a:^ u:n :}
    FNV:BASIS a u FNV:BYTES HASH-CAP 1- and PROBE !
    begin SLOT-ID 0<> while
       SLOT-ID 1- FILE$ a u STR= if exit then
@@ -116,7 +117,7 @@ variable PROBE
    EDGE-N @ id EDGE-OFF @ - id EDGE-CNT ! ;
 
 \ A file a row loads; a path that names no file is not read.
-: ROW-FILE ( n bool ^u8 n -- )
+: ROW-FILE ( n bool str -- )
    {: row:n entry:bool a:^ u:n :}
    a u FS:FILE? if a u SOURCE-ROOT:CANONICAL drop INTERN drop then ;
 
@@ -139,7 +140,7 @@ public
 
 \ The id of a file READ read, by any path naming it. Any other path is refused:
 \ a file the walk never read has no loads to trust.
-: FILE-ID ( ^u8 n -- n ) {: a:^ u:n :}
+: FILE-ID ( str -- n ) {: a:^ u:n :}
    a u SOURCE-ROOT:CANONICAL drop PROBE!
    SLOT-ID 0<> if SLOT-ID 1- exit then
    s" load graph: not a file of the load graph: " type a u type cr

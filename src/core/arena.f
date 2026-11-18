@@ -1,3 +1,4 @@
+split-str
 \ arena.f — the ARENA definer.
 \
 \ `ARENA NAME t` declares two words that make zeroed records of `t` in an arena
@@ -31,7 +32,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 
 \ Whether neither of NAME's words is taken in the current section; a taken one
 \ is rejected at NAME.
-: FREE? ( ^u8 n -- bool )
+: FREE? ( str -- bool )
    {: name:^ nameu:n :}
    name nameu s" -NEW" LBUF:LBUF-SUFFIX-OK? dup 0= if exit then drop
    name nameu s" -NEW-DISPOSE" LBUF:LBUF-SUFFIX-OK? ;
@@ -42,7 +43,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
    data-base + @ ;
 
 \ NAME+SFX taken in the wordlist WID is rejected at NAME.
-: OTHER-FREE ( ^u8 n ^u8 n n -- )
+: OTHER-FREE ( str str n -- )
    {: name:^ nameu:n sfx:^ sfxu:n wid:n :}
    name nameu sfx sfxu LBUF:LBUF-SUFFIXED {: a:^ u:n :}
    a u wid search-wl 0 <> if a u name nameu REJECT-DUPLICATE then ;
@@ -60,7 +61,7 @@ EXPORT CHECK:INTRINSIC-DECLARATION
 EXPORT CHECK:STG-NO-NAME
 \ TAIL+SFX taken in Q's private section, for NAME Q:TAIL, is rejected at
 \ NAME.
-: PRIVATE-FREE ( ^u8 n ^u8 n -- )
+: PRIVATE-FREE ( str str -- )
    {: name:^ nameu:n sfx:^ sfxu:n :}
    name nameu CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
@@ -70,7 +71,7 @@ EXPORT CHECK:STG-NO-NAME
 
 \ NAME's words taken in the section the declaration does not write are
 \ rejected at NAME: a qualified Q:TAIL writes Q's public one.
-: OTHERS-FREE ( ^u8 n -- ) {: name:^ nameu:n :}
+: OTHERS-FREE ( str -- ) {: name:^ nameu:n :}
    name nameu CHECKER-QUALIFIED? if
       name nameu s" -NEW" PRIVATE-FREE
       name nameu s" -NEW-DISPOSE" PRIVATE-FREE exit

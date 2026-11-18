@@ -1,3 +1,4 @@
+split-str
 \ A `defer` holds DEFER-UNSET until `is` installs a word in it. Loads after
 \ rejection.f, which prints the rejection, and before checker.f, the first file
 \ that declares a `defer`.

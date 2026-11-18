@@ -1,3 +1,4 @@
+split-str
 \ Fixed storage binds the accessor that owns its allocation, and the binding
 \ marks cells by their stored type: a quotation cell as code, a nullable cell as
 \ a DATA address whether it holds an address or zero.

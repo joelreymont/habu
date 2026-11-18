@@ -1,3 +1,4 @@
+split-str
 \ memory.f - checked OS-backed mappings for runtime-sized storage; `create ...
 \ allot` is for dictionary-sized static storage. A refused mmap throws
 \ E-MEM-MAP; a kernel munmap refusal writes "memory: unmap failed" and exits 78,
@@ -48,13 +49,13 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 : MEM-ALLOC-CELLS ( count -- ^a )
    MEM-CELLS>BYTES MEM-ALLOC-PTR ;
 
-: MEM-ALLOC-64K-BUFFERS ( n -- ^u8 n )
+: MEM-ALLOC-64K-BUFFERS ( n -- str )
    MEM-64K-BYTES MEM-ALLOC-BYTES ;
 
-: MEM-ALLOC-64K-SPAN ( n -- ^u8 n )
+: MEM-ALLOC-64K-SPAN ( n -- str )
    MEM-64K-SPAN-BYTES MEM-ALLOC-BYTES ;
 
-: MEM-ALLOC-64K ( -- ^u8 n )
+: MEM-ALLOC-64K ( -- str )
    1 MEM-ALLOC-64K-BUFFERS ;
 
 \ Package MEM's allocation sinks take only alloc-* roles, so a role swap never

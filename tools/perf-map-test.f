@@ -1,3 +1,4 @@
+split-str
 \ perf-map-test.f - PERF-MAP:LINE$ against `perf script` output captured verbatim
 \ (perf 7.2.5-1, aarch64) from
 \   perf record -g -o perf.data -- bin/hb --load <program>; perf script -i perf.data
@@ -54,13 +55,13 @@ variable ACC
    ACC @ ;
 
 \ ---- the captured lines -------------------------------------------------------
-: HEADER$ ( -- ^u8 n )
+: HEADER$ ( -- str )
    s" H 1880406 1097390.792320:     284641  apple_blizzard_pmu/cycles/Pu: " ;
 
-: FOREIGN-FRAME$ ( -- ^u8 n )
+: FOREIGN-FRAME$ ( -- str )
    S\" \tfffeffa417e0 __ctype_init+0x0 (/usr/lib/libc.so.6)" ;
 
-: ENGINE-FRAME$ ( -- ^u8 n )
+: ENGINE-FRAME$ ( -- str )
    S\" \t          401680 [unknown] (/tmp/hz-prof/H)" ;
 
 \ ---- cases --------------------------------------------------------------------
@@ -87,7 +88,7 @@ variable ACC
 
 \ A live address resolves to its package-qualified word, and the rest of the
 \ line - symbol column and dso - is left alone.
-: LIVE-FRAME$ ( -- ^u8 n )
+: LIVE-FRAME$ ( -- str )
    s" MARKER" FIND-REC {: idx:n :}
    idx 0 < if s" perf-map-test: MARKER is not in the dictionary" EXIT-STATUS:FAILURE die then
    SB-RESET

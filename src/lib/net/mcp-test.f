@@ -1,3 +1,4 @@
+split-str
 \ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras'
 \ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
 \ Mcp-Name checks, the transport check, unknown methods and tools, an unknown tool's
@@ -81,7 +82,7 @@ variable WANT-U
    WANT-U @ u + CAP > if s" W+ past WANT" T-FAIL-AS exit then
    a WANT WANT-U @ + u BYTE-COPY
    WANT-U @ u + WANT-U ! ;
-: W$ ( -- ^u8 n ) WANT WANT-U @ ;
+: W$ ( -- str ) WANT WANT-U @ ;
 
 \ A route's body, built in the HTTP worker.
 $100 constant NB-CAP
@@ -147,7 +148,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    h a u CURL:HEADER+ OK h ;
 
 
-: OPEN-PATH ( ^u8 n ^u8 n ^u8 n -- CURL:handle )
+: OPEN-PATH ( str str str -- CURL:handle )
    {: path:^ pu:n kind:^ ku:n accept:^ au:n :}
    CURL:INIT
    MATCH CURL:init-result
@@ -158,7 +159,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    h SB$ CURL:URL! OK
    h kind ku ADD accept au ADD ;
 
-: OPEN-WITH ( ^u8 n ^u8 n -- CURL:handle )
+: OPEN-WITH ( str str -- CURL:handle )
    {: kind:^ ku:n accept:^ au:n :}
    s" /mcp" kind ku accept au OPEN-PATH ;
 
@@ -199,7 +200,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" \"_meta\":{\"io.modelcontextprotocol/serverInfo\":" SB-APPEND
    S\" {\"name\":\"test-server\",\"version\":\"1.0\"}}" SB-APPEND ;
 
-: GUIDE$ ( -- ^u8 n ) S\" Echo text back.\n\"raw\" answers as given." ;
+: GUIDE$ ( -- str ) S\" Echo text back.\n\"raw\" answers as given." ;
 
 : GUIDE ( -- )
    S\" ,\"instructions\":\"Echo text back.\\n\\\"raw\\\" answers as given.\"" SB-APPEND ;
@@ -274,7 +275,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ Reply 6 to a call of an unknown tool, for the name it names, in WANT.
-: UNKNOWN-REPLY ( ^u8 n -- ^u8 n )
+: UNKNOWN-REPLY ( str -- str )
    {: name:^ nu:n :}
    W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602," W+
    S\" \"message\":\"Unknown tool: " W+ name nu W+
@@ -309,7 +310,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ A modern call of echo with {"a":1}, in SB.
-: ECHO-A1 ( -- ^u8 n )
+: ECHO-A1 ( -- str )
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":" SB-APPEND
    S\" {\"name\":\"echo\",\"arguments\":{\"a\":1}," SB-APPEND
    META S\" }}" SB-APPEND SB$ ;
@@ -355,7 +356,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : SPACED ( -- ^u8 n ) S\" { \"a\":1, \"b\":[2] }" ;
 
 
-: LEGACY-FRAMED ( n ^u8 n -- n )
+: LEGACY-FRAMED ( n str -- n )
    {: id:n args:^ au:n :}
    LEGACY
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
@@ -363,7 +364,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    args au SB-APPEND S\" }}" SB-APPEND SB$ POST ;
 
 
-: MODERN-FRAMED ( n ^u8 n -- n )
+: MODERN-FRAMED ( n str -- n )
    {: id:n args:^ au:n :}
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: framed" ADD
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
@@ -430,10 +431,10 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" [{\"type\":\"image\",\"data\":\"iVBORw0KGgo=\",\"mimeType\":\"image/png\"}, {\"type\":\"resource\",\"resource\":{\"uri\":\"zen://versions/7/original\",\"mimeType\":\"application/pdf\",\"blob\":\"JVBERi0=\"}} ]" ;
 
 \ PAIR's objects after the text block, as content holds them.
-: PAIR-CONTENT ( -- ^u8 n ) PAIR {: a:^ u:n :} a 1+ u 2 - ;
+: PAIR-CONTENT ( -- str ) PAIR {: a:^ u:n :} a 1+ u 2 - ;
 
 
-: PICTURED-CALL ( n ^u8 n bool -- n )
+: PICTURED-CALL ( n str bool -- n )
    {: id:n args:^ au:n modern:bool :}
    modern if MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: pictured" ADD else LEGACY then
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
@@ -478,7 +479,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 SB$ ANSWERED ;
 
 
-: BLOCKS-REFUSED ( ^u8 n ^u8 n -- )
+: BLOCKS-REFUSED ( str str -- )
    {: label:^ lu:n args:^ au:n :}
    label lu T-LABEL
    0 BLOCKS-CODE atomic!
@@ -529,7 +530,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" {\"name\":\"widget\",\"description\":\"Show the widget.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"openWorldHint\":false},\"_meta\":{\"ui\":{\"resourceUri\":\"ui://test/widget.html\",\"visibility\":[\"model\",\"app\"]},\"openai/fileParams\":[\"file\"]}}" ;
 
 \ A tool whose escaped outputSchema key and non-object schema sit between members.
-: PICKER ( -- ^u8 n )
+: PICKER ( -- str )
    S\" {\"name\":\"pick\",\"title\": \"Pick one\",\"n\": 1.5e0,\"tags\": [ \"a\" ],\"ok\": true,\"outputSch\\u0065ma\":{\"type\":\"string\"},\"inputSchema\":{\"type\":\"object\"},\"_meta\":{\"ui\":{\"visibility\":[\"app\"]}}}" ;
 
 \ pick's entry, members as registered and the wrapper in its schema's place.
@@ -603,7 +604,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 W$ ANSWERED ;
 
 
-: ECHO-CALL ( n -- CURL:handle ^u8 n )
+: ECHO-CALL ( n -- CURL:handle str )
    {: id:n :}
    MODERN s" Mcp-Method: tools/call" ADD
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
@@ -701,7 +702,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ The widget resource's descriptor, as resources/list answers it.
-: WIDGET-RESOURCE ( -- ^u8 n )
+: WIDGET-RESOURCE ( -- str )
    S\" {\"uri\":\"ui://test/widget.html\",\"name\":\"widget\",\"mimeType\":\"text/html;profile=mcp-app\",\"description\":\"A test widget.\",\"_meta\":{\"ui\":{\"csp\":{\"resourceDomains\":[\"https://cdn.test\"]}}}}" ;
 
 \ A resource without _meta, as resources/list answers it.
@@ -755,7 +756,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 W$ ANSWERED ;
 
 
-: WIDGET-READ ( n ^u8 n -- n )
+: WIDGET-READ ( n str -- n )
    {: id:n name:^ nu:n :}
    MODERN s" Mcp-Method: resources/read" ADD name nu ADD
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
@@ -835,7 +836,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
-: SHAPE-TRY ( ^u8 n -- )
+: SHAPE-TRY ( str -- )
    [: 2dup MCP:RESULT ;] catch {: code:n :} 2drop
    code SHAPE-CODE atomic!
    code 0<> if code throw then ;
@@ -849,10 +850,10 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : ADD-WIDGET ( -- ) WIDGET [: MCP:RESULT ;] MCP:ADD-TOOL ;
 : ADD-PICK ( -- ) PICKER [: MCP:RESULT ;] MCP:ADD-TOOL ;
-: ADD-DESCRIBED ( ^u8 n -- ) [: MCP:RESULT ;] MCP:ADD-TOOL ;
+: ADD-DESCRIBED ( str -- ) [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
-: META-TRY ( ^u8 n -- )
+: META-TRY ( str -- )
    [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-META ;] catch {: code:n :} 2drop
    code META-CODE atomic!
    code 0<> if code throw then ;
@@ -862,13 +863,13 @@ TASK:MIN-STACK TASK:TASK STALLER
    FRAMED [: 2dup s" flat" CONTAINS? if 2drop s" []" then META-TRY ;] MCP:ADD-TOOL ;
 
 
-: BLOCKS-TRY ( ^u8 n -- )
+: BLOCKS-TRY ( str -- )
    [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-CONTENT ;] catch {: code:n :} 2drop
    code BLOCKS-CODE atomic!
    code 0<> if code throw then ;
 
 
-: BLOCKS-OF ( ^u8 n -- ^u8 n )
+: BLOCKS-OF ( str -- str )
    {: args:^ au:n :}
    args au s" pair" CONTAINS? if PAIR exit then
    args au s" none" CONTAINS? if s" [ ]" exit then
@@ -883,7 +884,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : ADD-PICTURED ( -- ) PICTURED [: BLOCKS-OF BLOCKS-TRY ;] MCP:ADD-TOOL ;
 
 
-: ADD-PAGE ( ^u8 n -- ) s" <p></p>" MCP:ADD-RESOURCE ;
+: ADD-PAGE ( str -- ) s" <p></p>" MCP:ADD-RESOURCE ;
 
 : RESOURCE-REFUSALS ( -- )
    s" ADD-RESOURCE refuses a descriptor without a uri" T-LABEL
@@ -1038,7 +1039,7 @@ variable LOG-PATH-U
 create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
 $A constant LF
 
-: LOG-PATH$ ( -- ^u8 n ) LOG-PATH LOG-PATH-U @ ;
+: LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ ;
 
 : LOG-INIT ( -- )
    s" mcp-test" FS:MKTEMP-DIR {: dir:^ dir-u:n :}
@@ -1047,7 +1048,7 @@ $A constant LF
    LOG-B 1 BUF:N>BLEN BUF:INIT ;
 
 \ The whole capture file, valid until the next read.
-: LOG$ ( -- ^u8 n )
+: LOG$ ( -- str )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B BUF:CLEAR
    LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
@@ -1071,7 +1072,7 @@ $A constant LF
 
 \ The capture holds one line: MCP's account of a reply from this server, with
 \ the rest after the host.
-: REPLY-LOGGED ( ^u8 n -- )
+: REPLY-LOGGED ( str -- )
    {: rest:^ ru:n :}
    LINES 1 T=
    SB-RESET s"  error mcp: reply from 127.0.0.1:" SB-APPEND
@@ -1111,14 +1112,14 @@ $A constant LF
 
 \ The capture of one call on a client of the URL, which must fail with one
 \ logged line; valid until the next read.
-: FAILED-ON ( ^u8 n -- ^u8 n )
+: FAILED-ON ( str -- str )
    MCP:OPEN ROUTE-CLIENT !
    [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;]
       MCP:E-TRANSFER TTHROWSQ ;] CAPTURED
    ROUTE-CLIENT @ MCP:CLOSE
    LINES 1 T=  LOG$ ;
 
-: SECRET-CUT ( ^u8 n -- )
+: SECRET-CUT ( str -- )
    {: a:^ u:n :}
    a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl " CONTAINS? TTRUE
    a u s" user" CONTAINS? TFALSE
@@ -1126,7 +1127,7 @@ $A constant LF
    a u s" api_key" CONTAINS? TFALSE
    a u s" /mcp" CONTAINS? TFALSE ;
 
-: HOST-HIDDEN ( ^u8 n -- )
+: HOST-HIDDEN ( str -- )
    {: a:^ u:n :}
    a u s"  error mcp: exchange failed: curl " CONTAINS? TTRUE
    a u s" user" CONTAINS? TFALSE
@@ -1354,8 +1355,8 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    a row off u SPAN:SUB SPAN:$ drop u BYTE-COPY
    off u + ;
 
-: KEY-SET+ ( ^u8 n -- ) KEY-SET KEY-SET-U @ PUT KEY-SET-U ! ;
-: KEY-SET$ ( -- ^u8 n ) KEY-SET 0 KEY-SET-U @ SPAN:SUB SPAN:$ ;
+: KEY-SET+ ( str -- ) KEY-SET KEY-SET-U @ PUT KEY-SET-U ! ;
+: KEY-SET$ ( -- str ) KEY-SET 0 KEY-SET-U @ SPAN:SUB SPAN:$ ;
 
 : KEY-SET-FILL ( -- )
    0 KEY-SET-U !
@@ -1364,10 +1365,10 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    S\" \",\"e\":\"" KEY-SET+ JWS-FIXTURE:EXPONENT$ KEY-SET+
    S\" \"}]}" KEY-SET+ ;
 
-: TOKEN+ ( ^u8 n -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
+: TOKEN+ ( str -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
 : TOKEN$ ( -- ^u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
 
-: ENCODED+ ( ^u8 n -- )
+: ENCODED+ ( str -- )
    TOKEN TOKEN-U @ TOKEN-CAP TOKEN-U @ - SPAN:SUB BASE64:ENCODE-URL
    TOKEN-U @ + TOKEN-U ! ;
 
@@ -1415,7 +1416,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    [: 2drop s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 \ A claim the caller lacks shows as an empty string.
-: CLAIM+ ( ^u8 n -- ) BEARER:CLAIM$ drop NB+ ;
+: CLAIM+ ( str -- ) BEARER:CLAIM$ drop NB+ ;
 
 : ADD-WHOAMI ( -- )
    S\" {\"name\":\"whoami\",\"description\":\"Answer the caller's claims.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
@@ -1467,14 +1468,14 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 
 \ A call on a client of the URL throws the code and logs one line, the rest
 \ after the host.
-: URL-THROWS ( ^u8 n n ^u8 n -- )
+: URL-THROWS ( str n str -- )
    {: a:^ u:n code:n rest:^ ru:n :}
    a u MCP:OPEN CLIENT !
    ['] CAPTURED-CALL code TTHROWSQ
    CLIENT @ MCP:CLOSE
    rest ru REPLY-LOGGED ;
 
-: PATH-THROWS ( ^u8 n n ^u8 n -- )
+: PATH-THROWS ( str n str -- )
    {: a:^ u:n code:n rest:^ ru:n :}
    a u URL code rest ru URL-THROWS ;
 
@@ -1618,7 +1619,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    idx [: WAKE ;] HTTP:SUBMIT ;
 
 \ "now" answers at once, "fail" throws after HOLD, anything else HOLDs.
-: WAIT-BODY ( ^u8 n -- )
+: WAIT-BODY ( str -- )
    {: args:^ au:n :}
    args au s" now" CONTAINS? if WAIT-RESULT exit then
    args au s" fail" CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
@@ -1628,12 +1629,12 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    S\" {\"name\":\"wait\",\"description\":\"Answer once woken.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: WAIT-BODY ;] MCP:ADD-TOOL ;
 
-: WAIT-LEGACY ( ^u8 n -- ^u8 n )
+: WAIT-LEGACY ( str -- str )
    {: args:^ au:n :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
    S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND S\" }}" SB-APPEND SB$ ;
 
-: WAIT-MODERN ( ^u8 n -- ^u8 n )
+: WAIT-MODERN ( str -- str )
    {: args:^ au:n :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"method\":\"tools/call\",\"params\":" SB-APPEND
    S\" {\"name\":\"wait\",\"arguments\":" SB-APPEND args au SB-APPEND

@@ -1,3 +1,4 @@
+split-str
 \ ieee754.f - IEEE-754 bit casts and the round-to-nearest-even right shift used
 \ by the F32, F16 and BF16 encoders. F64>BITS and BITS>F64 are bit casts: every
 \ bit survives, signed zero and NaN payloads included; they wrap private CASTs

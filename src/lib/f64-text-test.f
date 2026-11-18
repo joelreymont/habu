@@ -1,3 +1,4 @@
+split-str
 require src/lib/string.f
 require src/lib/f64-text.f
 require src/lib/test.f
@@ -14,9 +15,9 @@ create OUTPUT MAX-BYTES allot
       ok OF ENDOF err OF drop -9899 throw ENDOF
    ;MATCH ;
 
-: PARSE-OK ( ^u8 n -- r )
+: PARSE-OK ( str -- r )
    PARSE MATCH result ok OF ENDOF err OF drop -9899 throw ENDOF ;MATCH ;
-: PARSE-BITS ( ^u8 n -- n ) PARSE-OK F64>BITS ;
+: PARSE-BITS ( str -- n ) PARSE-OK F64>BITS ;
 
 : EXPECT ( n ^u8 n -- ) {: bits:n expected:^ len:n :}
    bits BITS>F64 FORMAT-OK {: actual:n :}
@@ -33,7 +34,7 @@ create LONG 8192 allot
    LONG head-len count + tail-len + ;
 
 \ In LONG: count nines, then tail.
-: NINES ( n ^u8 n -- ^u8 n ) {: count:n tail:^ tail-len:n :}
+: NINES ( n str -- str ) {: count:n tail:^ tail-len:n :}
    count 0 ?do $39 LONG i + c! loop
    tail LONG count + tail-len BYTE-COPY LONG count tail-len + ;
 

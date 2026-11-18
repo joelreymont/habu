@@ -1,3 +1,4 @@
+split-str
 \ Loop exits: unloop and exit forms run to their values, and the checker refuses
 \ each unbalanced form. test/loop-obligations.f loads it and reads its output.
 

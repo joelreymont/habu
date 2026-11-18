@@ -1,3 +1,4 @@
+split-str
 \ A breakpoint may interrupt a valid guarded allocation.
 require test/engine-stack-lifecycle-lib.f
 require src/lib/string.f

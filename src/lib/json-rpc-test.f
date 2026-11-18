@@ -1,3 +1,4 @@
+split-str
 \ json-rpc-test.f - the JSON-RPC 2.0 envelope, through src/lib/json-rpc.f.
 \ Run: bin/hb --load src/lib/json-rpc-test.f
 
@@ -22,7 +23,7 @@ TYPED-VARIABLE W JSON:writer
 
 : SB-SP ( -- )  s"  " SB-APPEND ;
 
-: SHOW$ ( JSON-RPC:message -- ^u8 n )
+: SHOW$ ( JSON-RPC:message -- str )
    SB-RESET
    MATCH JSON-RPC:message
       request OF {: i m:^ mu:n p:^ pu:n :}
@@ -87,10 +88,10 @@ TYPED-VARIABLE W JSON:writer
    s\" {\"jsonrpc\":\"2.0\",\"id\":10,\"error\":{\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}}"
    s\" failure 10 {\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}" SORTS ;
 
-: PARSE-HEAD$ ( -- ^u8 n )  s" invalid -32700 null " ;
+: PARSE-HEAD$ ( -- str )  s" invalid -32700 null " ;
 
 \ The body sorts as PARSE-ERROR with the null id.
-: NOT-JSON ( ^u8 n -- )
+: NOT-JSON ( str -- )
    SORTED SHOW$ {: s:^ su:n :}
    PARSE-HEAD$ nip su min {: hu:n :}
    s hu PARSE-HEAD$ T$= ;
@@ -142,7 +143,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"x\",\"params\":\"p\"}"
    s" invalid -32600 null params that are not an object or array" SORTS ;
 
-: BAD-ID ( ^u8 n -- )
+: BAD-ID ( str -- )
    s" invalid -32600 null an id that is not a number, string or null" SORTS ;
 
 \ An id that is an object, array or boolean: INVALID-REQUEST, id null; an id
@@ -154,7 +155,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"id\":2,\"method\":\"x\"}"
    s\" request 2 \"x\" " SORTS ;
 
-: NOT-ERROR ( ^u8 n -- )
+: NOT-ERROR ( str -- )
    s" invalid -32600 null an error that is not an error object" SORTS ;
 
 \ No method and no id; a result without an id; both result and error; neither;
@@ -175,7 +176,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1.5,\"message\":\"m\"}}" NOT-ERROR
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1,\"message\":false}}" NOT-ERROR ;
 
-: NAMES? ( ^u8 n ^u8 n -- bool )
+: NAMES? ( str str -- bool )
    {: m:^ mu:n name:^ nu:n :}
    ST m mu name nu METHOD? ;
 
@@ -191,7 +192,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 : WRITER ( -- ^JSON:writer )
    W OUT 256 WRITE-OPEN ;
 
-: CLOSED$ ( ^JSON:writer -- ^u8 n )
+: CLOSED$ ( ^JSON:writer -- str )
    {: w :}
    w WRITTEN$ {: a:^ u:n :}
    w WRITE-CLOSE

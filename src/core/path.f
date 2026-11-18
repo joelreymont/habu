@@ -1,3 +1,4 @@
+split-str
 \ path.f - the engine's C paths: one capacity, one copier, one shared scratch.
 \
 \ PATH-CAP is the tree's one path capacity, in bytes without the NUL: a path one

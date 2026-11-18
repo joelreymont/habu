@@ -1,3 +1,4 @@
+split-str
 \ lsp-check.f - the language server's check of one open document through
 \ VERIFY-BYTES-AT (tools/check-verify-core.f), which runs none of the text.
 \ Every check reads each other open document in place of its file on disk,
@@ -45,7 +46,7 @@ variable BATCH-K
    {: a:^ u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
 
-: NUMBER$ ( n -- ^u8 n )  SB-RESET FMT:SB-INT SB$ ;
+: NUMBER$ ( n -- str )  SB-RESET FMT:SB-INT SB$ ;
 
 \ A check that did not complete says why on one stderr line; the verifier's prose
 \ follows it verbatim, as it follows a completed check's verdict line:
@@ -97,12 +98,12 @@ variable BATCH-K
       deferred OF s" deferred" COMPLETED ENDOF
    ;MATCH ;
 
-: OUTCOME! ( ^u8 n -- )
+: OUTCOME! ( str -- )
    {: a:^ u:n :}
    a OUTCOME-B u BYTE-COPY
    u OUTCOME-U ! ;
 
-: COMPLETE-OUTCOME ( ^u8 n -- )
+: COMPLETE-OUTCOME ( str -- )
    true PUBLISHABLE ! OUTCOME! ;
 
 \ The check of the bytes as the file at the path, for the uses of the tail,
@@ -188,10 +189,10 @@ public
 
 \ Primitive references can check a bounded group in one isolated child.
 \ Each result is exposed as the usual single probe while GATHER runs.
-: USES-BATCH-BEGIN ( ^u8 n -- )
+: USES-BATCH-BEGIN ( str -- )
    0 BATCH-CODE ! VERIFY-REF-BATCH-BEGIN ;
 
-: USES-BATCH-ADD ( ^u8 n ^u8 n -- )
+: USES-BATCH-ADD ( str str -- )
    [: -1 swap DOC-EACH-BUT ;] VERIFY-BATCH-ADD ;
 
 : USES-BATCH-RUN ( -- )
@@ -228,7 +229,7 @@ public
    true ;
 
 \ What the last USES check came to: its verdict's name, or `throw N`.
-: OUTCOME$ ( -- ^u8 n )  OUTCOME-B OUTCOME-U @ ;
+: OUTCOME$ ( -- str )  OUTCOME-B OUTCOME-U @ ;
 
 ;using
 ;package

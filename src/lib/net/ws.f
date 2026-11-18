@@ -1,3 +1,4 @@
+split-str
 \ ws.f - RFC 6455 WebSocket connections on the HTTP/1.1 server.
 \ ACCEPT takes a route handler's connection (HTTP:TAKE-OVER) for WS's one task,
 \ the only reader and writer of every socket, which waits on one AIO group: a
@@ -388,7 +389,7 @@ RUN-IDLE RUN !
    idx OUT-U +! ;
 
 
-: FRAME-OUT ( n opcode ^u8 n -- ) {: idx:n op a u:n :}
+: FRAME-OUT ( n opcode str -- ) {: idx:n op a u:n :}
    idx op u HEADER-OUT
    idx a u QUEUE ;
 
@@ -429,7 +430,7 @@ RUN-IDLE RUN !
    phase PHASE-CLOSING = op CONTROL? and ;
 
 
-: SHIP ( n n ^u8 n -- n ) {: h:n wire:n a u:n :}
+: SHIP ( n n str -- n ) {: h:n wire:n a u:n :}
    h CURRENT? 0= if 0 exit then
    h >SLOT {: idx:n :}
    idx wire WIRE>OPCODE TAKES? 0= if 0 exit then
@@ -894,7 +895,7 @@ RUN-IDLE RUN !
    construct progress through ;
 
 
-: MESSAGE$ ( n -- ^u8 n ) {: idx:n :}
+: MESSAGE$ ( n -- str ) {: idx:n :}
    idx MSG-BUF idx MSG-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -1250,12 +1251,12 @@ ENUM course
    code throw ;
 
 
-: SOLE ( HTTP:request ^u8 n -- ^u8 n bool ) {: asked:HTTP:request name nu:n :}
+: SOLE ( HTTP:request str -- str bool ) {: asked:HTTP:request name nu:n :}
    asked name nu HTTP:HEADER-COUNT-OF 1 <> if name 0 false exit then
    asked name nu HTTP:HEADER-OF$ ;
 
 
-: LISTS? ( HTTP:request ^u8 n ^u8 n -- bool )
+: LISTS? ( HTTP:request str str -- bool )
    {: asked:HTTP:request name nu:n token tu:n :}
    asked name nu SOLE {: va vu:n found:bool :}
    found 0= if false exit then
@@ -1320,7 +1321,7 @@ ENUM course
    400 WS-ACCEPTED:REFUSED ;
 
 
-: GUID$ ( -- ^u8 n )
+: GUID$ ( -- str )
    s" 258EAFA5-E914-47DA-95CA-C5AB0DC85B11" ;
 
 
@@ -1366,7 +1367,7 @@ ENUM course
    0 idx MSG-WIRE ! ;
 
 
-: FILL-INPUT ( n ^u8 n -- n ^u8 n ) {: idx:n early eu:n :}
+: FILL-INPUT ( n str -- n str ) {: idx:n early eu:n :}
    RX-CAP eu max NEW-SPAN idx IN !
    early eu idx IN @ SPAN:COPY
    0 idx IN-AT !
@@ -1682,7 +1683,7 @@ public
    sock SOCKET>N WS-OPCODE:TEXT OPCODE>WIRE a u SEND ;
 
 
-: SEND-BINARY ( socket ^u8 n -- ) {: sock a u:n :}
+: SEND-BINARY ( socket str -- ) {: sock a u:n :}
    sock SOCKET>N WS-OPCODE:BINARY OPCODE>WIRE a u SEND ;
 
 

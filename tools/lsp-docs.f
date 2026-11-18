@@ -1,3 +1,4 @@
+split-str
 \ lsp-docs.f - the documents a language client has open: URI, path, text and
 \ version as the client last sent them, and what the server's checks keep.
 \ A closed document frees its buffers and its slot; an open takes the first free
@@ -34,7 +35,7 @@ variable NEXT-ID
 
 : SLOT-CELL ( n n -- ^n )  swap SLOT-CELLS * + SLOTS ;
 : LIVE? ( n -- bool )  LIVE-AT SLOT-CELL @ 0<> ;
-: BYTES$ ( n n -- ^u8 n )  SLOT-CELL SPAN$ BLEN>N ;
+: BYTES$ ( n n -- str )  SLOT-CELL SPAN$ BLEN>N ;
 
 : KEEP ( ^u8 n n n -- )
    {: a:^ u:n slot:n at:n :}
@@ -66,8 +67,8 @@ public
 
 : DOC-LIVE? ( n -- bool )  LIVE? ;
 
-: DOC-URI$ ( n -- ^u8 n )  URI-AT BYTES$ ;
-: DOC-PATH$ ( n -- ^u8 n )  PATH-AT BYTES$ ;
+: DOC-URI$ ( n -- str )  URI-AT BYTES$ ;
+: DOC-PATH$ ( n -- str )  PATH-AT BYTES$ ;
 : DOC-TEXT$ ( n -- ^u8 n )  TEXT-AT BYTES$ ;
 : DOC-VERSION@ ( n -- n )  VERSION-AT SLOT-CELL @ ;
 : DOC-ID@ ( n -- n )  ID-AT SLOT-CELL @ ;
@@ -76,13 +77,13 @@ public
 : DOC-CANON$ ( n -- ^u8 n )  CANON-AT BYTES$ ;
 
 \ Each path ended by LF.
-: DOC-DEPS$ ( n -- ^u8 n )  DEPS-AT BYTES$ ;
-: DOC-DEPS! ( ^u8 n n -- )  DEPS-AT STORE ;
+: DOC-DEPS$ ( n -- str )  DEPS-AT BYTES$ ;
+: DOC-DEPS! ( str n -- )  DEPS-AT STORE ;
 
 \ The loads the last completed check reported, one JSON object per line as
 \ LSP-CHECK:VERIFY-LOADS$ gives them.
-: DOC-LOADS$ ( n -- ^u8 n )  LOADS-AT BYTES$ ;
-: DOC-LOADS! ( ^u8 n n -- )  LOADS-AT STORE ;
+: DOC-LOADS$ ( n -- str )  LOADS-AT BYTES$ ;
+: DOC-LOADS! ( str n -- )  LOADS-AT STORE ;
 
 : DOC-DIRTY ( n -- )  1 swap DIRTY-AT SLOT-CELL ! ;
 : DOC-CLEAN ( n -- )  0 swap DIRTY-AT SLOT-CELL ! ;
@@ -104,7 +105,7 @@ public
    OPTION:NONE ;
 
 \ In slot order, skipping slot N; -1 skips none.
-: DOC-EACH-BUT ( n [ ^u8 n ^u8 n -- ] -- )
+: DOC-EACH-BUT ( n [ str str -- ] -- )
    {: but:n each :}
    SLOT-COUNT @ 0 ?do
       i LIVE? i but <> and if i DOC-CANON$ i DOC-TEXT$ each execute then
@@ -112,9 +113,9 @@ public
 
 : DOC-FIND ( ^u8 n -- option<n> )  URI-AT HOLDER ;
 
-: DOC-HOLDING ( ^u8 n -- option<n> )  CANON-AT HOLDER ;
+: DOC-HOLDING ( str -- option<n> )  CANON-AT HOLDER ;
 
-: DOC-OPENED-AS ( ^u8 n -- option<n> )  PATH-AT HOLDER ;
+: DOC-OPENED-AS ( str -- option<n> )  PATH-AT HOLDER ;
 
 : DOC-CLOSE ( n -- )
    {: slot:n :}

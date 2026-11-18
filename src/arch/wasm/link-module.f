@@ -1,3 +1,4 @@
+split-str
 \ link-module.f - LINKER's Wasm writer: a stripped program's placed emissions and
 \ the link's copy of its data, handed to WLINK and written as one module. It
 \ rejects by name every kernel word the program reaches that no kernel-words.f
@@ -60,7 +61,7 @@ variable KERNEL-N                    \ the kernel routines this link added
    drop false ;
 
 \ No locals, then `unreachable`.
-: DEAD-BODY$ ( -- ^u8 n )
+: DEAD-BODY$ ( -- str )
    3 DEAD-BODY-RESERVE
    0 0 DEAD-BODY c!  WCODE:OP-UNREACHABLE 1 DEAD-BODY c!  WCODE:OP-END 2 DEAD-BODY c!
    0 DEAD-BODY 3 ;
@@ -264,7 +265,7 @@ public
 
 \ Link the open space's stripped program into one Wasm module at the path, its reserve
 \ calling map-anon; the header's DP, bounds and heap start stay as the copy holds them.
-: WRITE-MODULE ( ^u8 n -- )
+: WRITE-MODULE ( str -- )
    {: path:^ pathu:n :}
    false GOING
    APP-ENTRY:XT-CELL SPACE-AT @ {: entry:n :}

@@ -1,3 +1,4 @@
+split-str
 require src/lib/process-argv.f
 
 package ENTRY-GUARD-SELF-LAUNCH

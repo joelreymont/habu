@@ -1,3 +1,4 @@
+split-str
 \ runtime-arm64.f - COMP and its arm64, x86-64 and Wasm T0 emitters. The
 \ selected target chooses the emitter for live and shadow compilation
 \ (src/habu/t0.f THE WALKS): COMP is an engine package, and a

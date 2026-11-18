@@ -1,3 +1,4 @@
+split-str
 \ response.f - PAGE, RECORD$ and COPY-ENTITY; part of package ODATA
 \ (src/lib/odata.f), which states the contract.
 \ PAGE and RECORD$ walk the envelope's members, every token through NEXT,
@@ -25,7 +26,7 @@ private
 
 \ Rejects the current token as E-RESPONSE, the reader's text giving its
 \ place in the bytes the reader was given and the token found.
-: RESPONSE-REJECT ( JSON:reader ^u8 n ^u8 n -- )
+: RESPONSE-REJECT ( JSON:reader str str -- )
    {: ea:^ eu:n fa:^ fu:n :}
    [: ea eu fa fu JSON:READ-REJECT ;] catch {: code:n :}
    code JSON:E-MEMBER = if
@@ -33,9 +34,9 @@ private
    then
    code throw ;
 
-: KIND-FIX$ ( -- ^u8 n ) s" write that kind of value here" ;
-: REPEAT-FIX$ ( -- ^u8 n ) s" remove the repeated member, keeping one" ;
-: MISSING-FIX$ ( -- ^u8 n ) s" add the member to the object" ;
+: KIND-FIX$ ( -- str ) s" write that kind of value here" ;
+: REPEAT-FIX$ ( -- str ) s" remove the repeated member, keeping one" ;
+: MISSING-FIX$ ( -- str ) s" add the member to the object" ;
 
 : PUT ( ^u8 n ^u8 n -- ^u8 n )
    {: buf:^ at:n a:^ u:n :}
@@ -45,14 +46,14 @@ private
 \ Never returns; declared to answer the reader because MEM:WITH-BYTES must
 \ hand its linear value back. REPEAT-SCOPE is declared the same way.
 : JOINED-SCOPE
-   ( JSON:reader ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n ^u8 NUM:alloc-byte-len
+   ( JSON:reader str str str str str ^u8 NUM:alloc-byte-len
      -- JSON:reader )
    drop {: a:^ an:n b:^ bn:n c:^ cn:n d:^ dn:n fa:^ fu:n buf:^ :}
    buf 0 a an PUT b bn PUT c cn PUT d dn PUT fa fu RESPONSE-REJECT ;
 
 \ RESPONSE-REJECT with the four spans joined as the expected text. The last
 \ throw is never reached: it shows the checker it never returns.
-: JOINED-REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: JOINED-REJECT ( JSON:reader str str str str str -- )
    {: a:^ an:n b:^ bn:n c:^ cn:n d:^ dn:n fa:^ fu:n :}
    a an b bn c cn d dn fa fu
    an bn + cn + dn + 1 max MEM:BYTES-ALLOC-LEN
@@ -139,7 +140,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    e ENVELOPE-RECORDS ! ;
 
 \ On the `}` of the object that holds the records.
-: NEED-RECORDS ( JSON:reader ^envelope ^u8 n -- JSON:reader )
+: NEED-RECORDS ( JSON:reader ^envelope str -- JSON:reader )
    {: e:^ name:^ nl:n :}
    e RECORDS? if exit then
    s" the member `" name nl s" ` in the envelope" s" "
@@ -159,7 +160,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    [: MEM:ALLOCATION>SPAN SPAN:$ over >r JSON:READ-STR
       r> swap q execute ;] MEM:WITH-BYTES ;
 
-: TAKE-COUNT ( JSON:reader ^u8 n ^envelope ^u8 n -- JSON:reader )
+: TAKE-COUNT ( JSON:reader str ^envelope str -- JSON:reader )
    {: text:^ len:n e:^ what:^ wl:n :}
    text len DIGITS MATCH option
       none OF
@@ -171,7 +172,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
       ENDOF
    ;MATCH ;
 
-: COUNT-ONCE ( JSON:reader ^envelope ^u8 n -- JSON:reader n )
+: COUNT-ONCE ( JSON:reader ^envelope str -- JSON:reader n )
    {: e:^ what:^ wl:n :}
    e ENVELOPE-COUNTED @ if what wl TWICE then
    e NEXT ;
@@ -185,7 +186,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
       s" member `__count`" s" a string of digits" UNEXPECTED
    then ;
 
-: V4-COUNT ( JSON:reader ^envelope ^u8 n -- JSON:reader )
+: V4-COUNT ( JSON:reader ^envelope str -- JSON:reader )
    {: e:^ what:^ wl:n :}
    e what wl COUNT-ONCE {: kind:n :}
    kind JSON:T-INT = if
@@ -194,14 +195,14 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
       what wl s" an integer" UNEXPECTED
    then ;
 
-: LINK-TEXT ( JSON:reader ^u8 n ^envelope -- JSON:reader )
+: LINK-TEXT ( JSON:reader str ^envelope -- JSON:reader )
    {: text:^ len:n e:^ :}
    e ENVELOPE-LINK @ {: link:SPAN:span<u8> :}
    len link SPAN:LEN > if E-SPAN-CAPACITY throw then
    text len link SPAN:COPY
    len e ENVELOPE-LINK-LEN ! ;
 
-: NEXT-LINK ( JSON:reader ^envelope ^u8 n -- JSON:reader )
+: NEXT-LINK ( JSON:reader ^envelope str -- JSON:reader )
    {: e:^ what:^ wl:n :}
    e ENVELOPE-LINKED @ if what wl TWICE then
    true e ENVELOPE-LINKED !
@@ -212,7 +213,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
       what wl s" a string" UNEXPECTED
    then ;
 
-: ARRAY-MEMBER ( JSON:reader ^envelope ^u8 n -- JSON:reader )
+: ARRAY-MEMBER ( JSON:reader ^envelope str -- JSON:reader )
    {: e:^ what:^ wl:n :}
    e RECORDS? if what wl TWICE then
    e NEXT {: kind:n :}
@@ -301,7 +302,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 
 : ENVELOPE-V2? ( ^envelope -- bool ) ENVELOPE-VERSION @ V2-VERSION? ;
 
-: PAGE-WALK ( ^envelope ^JSON:cursor ^u8 n -- )
+: PAGE-WALK ( ^envelope ^JSON:cursor str -- )
    {: e:^ cur:^ body:^ len:n :}
    cur body len JSON:READ-INIT
    e TOP-OBJECT drop
@@ -312,7 +313,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    then
    e FINISH ;
 
-: RECORD-WALK ( ^envelope ^JSON:cursor ^u8 n -- )
+: RECORD-WALK ( ^envelope ^JSON:cursor str -- )
    {: e:^ cur:^ body:^ len:n :}
    cur body len JSON:READ-INIT
    e TOP-OBJECT {: kind:n :}
@@ -349,14 +350,14 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    e ENVELOPE-COUNTED @ if e ENVELOPE-COUNT @ OPTION:SOME exit then
    OPTION:NONE ;
 
-: PAGE-IN ( ^u8 ^metadata ^u8 n ^JSON:cursor SPAN:span<u8> -- ^u8 n n option<n> )
+: PAGE-IN ( ^u8 ^metadata str ^JSON:cursor SPAN:span<u8> -- str n option<n> )
    {: room:^ m:^ body:^ len:n cur:^ link:SPAN:span<u8> :}
    room m body link NEW-ENVELOPE {: e:^ :}
    cur [: e cur body len PAGE-WALK ;] GUARDED
    e ENVELOPE-RECORDS @ SPAN:$
    e ENVELOPE-LINK-LEN @ e COUNT-OF ;
 
-: RECORD-IN ( ^u8 ^metadata ^u8 n ^JSON:cursor -- ^u8 n )
+: RECORD-IN ( ^u8 ^metadata str ^JSON:cursor -- str )
    {: room:^ m:^ body:^ len:n cur:^ :}
    room m body body 0 SPAN:MAKE NEW-ENVELOPE {: e:^ :}
    cur [: e cur body len RECORD-WALK ;] GUARDED
@@ -462,7 +463,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    + {: at:^ :}
    at cell+ at CELL-VIEW @ ;
 
-: ADD-NAME ( ^copy ^u8 n -- )
+: ADD-NAME ( ^copy str -- )
    {: c:^ name:^ len:n :}
    len NAME-SIZE {: size:n :}
    c size NAMES-ROOM
@@ -486,13 +487,13 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    base i NAME$ base j NAME$ STR< ;
 
 \ The name in the slot the order holds at I.
-: NTH-NAME ( ^n n ^u8 -- ^u8 n )
+: NTH-NAME ( ^n n ^u8 -- str )
    {: order:^ i:n base:^ :}
    base order i cells + @ NAME$ ;
 
 \ A name equal to the one before it in the order and true, else an empty
 \ span and false.
-: SAME-NEIGHBOUR? ( ^n n ^u8 -- ^u8 n bool )
+: SAME-NEIGHBOUR? ( ^n n ^u8 -- str bool )
    {: order:^ k:n base:^ :}
    k 1 ?do
       order i 1- base NTH-NAME  order i base NTH-NAME STR=
@@ -502,7 +503,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 \ The member the top entity repeats and true, else an empty span and false:
 \ its names sorted by their bytes in an order of their slots, past the
 \ names, equal names are neighbours.
-: REPEATED? ( ^copy -- ^u8 n bool )
+: REPEATED? ( ^copy -- str bool )
    {: c:^ :}
    c TOP FRAME-NAMES @ {: from:n :}
    c COPY-NAMES-USED @ {: past:n :}
@@ -602,7 +603,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    SKIP-VALUE ADVANCE ;
 
 \ V2's `__metadata` and every V4 member whose name holds `@`.
-: DROPPED? ( ^entity-type ^u8 n -- bool )
+: DROPPED? ( ^entity-type str -- bool )
    {: t:^ name:^ len:n :}
    t TYPE-V2? if name len s" __metadata" STR= exit then
    len 0 ?do name i + c@ [char] @ = if unloop true exit then loop
@@ -619,7 +620,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 10000 1 1 DATE:YMD>DAYS MS-DAY * constant MS-END
 
 \ Ends in a sign and four digits, with ticks before them.
-: ZONED? ( ^u8 n -- bool )
+: ZONED? ( str -- bool )
    {: a:^ u:n :}
    u 6 < if false exit then
    a u + 5 - c@ {: sign:n :}
@@ -627,7 +628,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    a u + 4 - 4 STR-DIGITS? ;
 
 \ The offset of `+mmmm` or `-mmmm` in milliseconds, 0 when there is none.
-: ZONE-MS ( ^u8 n -- n )
+: ZONE-MS ( str -- n )
    {: a:^ u:n :}
    a u ZONED? 0= if 0 exit then
    a u + 4 - 4 DIGITS MATCH option
@@ -667,7 +668,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    n r - d / r ;
 
 \ ISO 8601 UTC: the time of day formatted on day 0, then the day over it.
-: ISO ( n ^copy -- ^u8 n )
+: ISO ( n ^copy -- str )
    {: ms:n c:^ :}
    c COPY-TEXT SPAN:$ drop {: out:^ :}
    ms MS-DAY FLOORED {: day:n rest:n :}
@@ -704,12 +705,12 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: n:^ :}
    JSON:WRITE-COMMA n NAVIGATION-NAME @ SPAN:$ JSON:WRITE-KEY ;
 
-: NAV-REJECT ( JSON:reader ^JSON:writer ^navigation ^u8 n -- )
+: NAV-REJECT ( JSON:reader ^JSON:writer ^navigation str -- )
    {: n:^ want:^ wl:n :}
    drop want wl s"  for navigation `" n NAVIGATION-NAME @ SPAN:$ s" `"
    KIND-FIX$ JOINED-REJECT ;
 
-: COMPLEX-REJECT ( JSON:reader ^JSON:writer ^property ^u8 n -- )
+: COMPLEX-REJECT ( JSON:reader ^JSON:writer ^property str -- )
    {: p:^ want:^ wl:n :}
    drop want wl s"  for member `" p PROPERTY-NAME @ SPAN:$ s" `"
    KIND-FIX$ JOINED-REJECT ;
@@ -773,17 +774,17 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    kind JSON:T-NULL = if n NAV-KEY JSON:WRITE-NULL ADVANCE exit then
    kind n c n TO-MANY? if NAV-MANY else NAV-ONE then ;
 
-: REMOVE$ ( -- ^u8 n ) s" remove the repeated member `" ;
-: KEEP-ONE$ ( -- ^u8 n ) s" `, keeping one" ;
+: REMOVE$ ( -- str ) s" remove the repeated member `" ;
+: KEEP-ONE$ ( -- str ) s" `, keeping one" ;
 
-: REPEAT-SCOPE ( JSON:reader ^u8 n ^u8 NUM:alloc-byte-len -- JSON:reader )
+: REPEAT-SCOPE ( JSON:reader str ^u8 NUM:alloc-byte-len -- JSON:reader )
    drop {: na:^ nu:n buf:^ :}
    buf 0 REMOVE$ PUT na nu PUT KEEP-ONE$ PUT {: fa:^ fu:n :}
    s" each member of the record once" fa fu RESPONSE-REJECT ;
 
 \ Rejects the record whose `}` is current for repeating the member named.
 \ The last throw is never reached: it shows the checker it never returns.
-: REPEAT-REJECT ( JSON:reader ^u8 n -- )
+: REPEAT-REJECT ( JSON:reader str -- )
    {: na:^ nu:n :}
    na nu  REMOVE$ nip nu + KEEP-ONE$ nip + MEM:BYTES-ALLOC-LEN
    [: REPEAT-SCOPE ;] MEM:WITH-BYTES
@@ -864,14 +865,14 @@ public
    [: drop m body len cur link PAGE-IN ;] MEM:WITH-BYTES ;
 
 \ The query option that asks the service for the count PAGE answers.
-: COUNT-OPTION$ ( ^metadata -- ^u8 n )
+: COUNT-OPTION$ ( ^metadata -- str )
    METADATA-VERSION @ MATCH version
       v2 OF s" $inlinecount=allpages" ENDOF
       v4 OF s" $count=true" ENDOF
    ;MATCH ;
 
 \ The record of a single-entity response.
-: RECORD$ ( ^metadata ^u8 n ^JSON:cursor -- ^u8 n )
+: RECORD$ ( ^metadata str ^JSON:cursor -- str )
    {: m:^ body:^ len:n cur:^ :}
    ENVELOPE-CELLS cells MEM:BYTES-ALLOC-LEN
    [: drop m body len cur RECORD-IN ;] MEM:WITH-BYTES ;

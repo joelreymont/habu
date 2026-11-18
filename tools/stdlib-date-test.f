@@ -1,3 +1,4 @@
+split-str
 \ stdlib-date-test.f - focused tests for src/lib/date.f on src/lib/test.f's assert
 \ words: the test shares one dictionary with the loaded framework, so a private
 \ T= here is a duplicate definition.
@@ -20,7 +21,7 @@ TASK:SEMAPHORE DATE-READY
 TASK:SEMAPHORE DATE-START
 20000 constant DATE-ROUNDS
 
-: DATE-ROUND ( n n n n ^u8 n n ^u8 n ^u8 -- bool )
+: DATE-ROUND ( n n n n str n str ^u8 -- bool )
    {: y:n m:n d:n days:n datea:^ dateu:n seconds:n timea:^ timeu:n buf:^ :}
    y m d DATE:YMD>DAYS days <> if 0 0= 0= exit then
    days DATE:DAYS>YMD {: goty:n gotm:n gotd:n :}
@@ -78,7 +79,7 @@ TASK:SEMAPHORE DATE-START
      some OF days T= ENDOF
    ;MATCH ;
 
-: DATE-PARSE-BAD ( ^u8 n -- )
+: DATE-PARSE-BAD ( str -- )
    DATE:PARSE-YMD MATCH option
      none OF 0 0= TTRUE ENDOF
      some OF drop 0 0= 0= TTRUE ENDOF                 \ an unexpected SOME fails
@@ -101,22 +102,22 @@ TASK:SEMAPHORE DATE-START
 : DATE-YEAR-AT ( n -- n )   \ epoch seconds of June 1st of a year
    6 1 DATE:YMD>DAYS DATE:SECONDS-DAY * ;
 
-: DATE-HTTP-AT= ( ^u8 n n n -- )
+: DATE-HTTP-AT= ( str n n -- )
    {: a:^ u:n now:n want:n :}
    a u now DATE:PARSE-HTTP MATCH option
      none OF false TTRUE ENDOF                        \ an unexpected NONE fails
      some OF want T= ENDOF
    ;MATCH ;
 
-: DATE-HTTP= ( ^u8 n n -- ) 2026 DATE-YEAR-AT swap DATE-HTTP-AT= ;
+: DATE-HTTP= ( str n -- ) 2026 DATE-YEAR-AT swap DATE-HTTP-AT= ;
 
-: DATE-HTTP-BAD-AT ( ^u8 n n -- )
+: DATE-HTTP-BAD-AT ( str n -- )
    DATE:PARSE-HTTP MATCH option
      none OF true TTRUE ENDOF
      some OF drop false TTRUE ENDOF                   \ an unexpected SOME fails
    ;MATCH ;
 
-: DATE-HTTP-BAD ( ^u8 n -- ) 2026 DATE-YEAR-AT DATE-HTTP-BAD-AT ;
+: DATE-HTTP-BAD ( str -- ) 2026 DATE-YEAR-AT DATE-HTTP-BAD-AT ;
 
 T-RESET
 

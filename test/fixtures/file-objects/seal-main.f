@@ -1,3 +1,4 @@
+split-str
 \ seal-main.f - the sealed program, built by tools/hb-build.f: after
 \ seal-second.f seals its package, a definition into that package is refused.
 

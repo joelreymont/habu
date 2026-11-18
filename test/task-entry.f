@@ -1,3 +1,4 @@
+split-str
 \ Starting and restarting workers must not append process code to the image.
 require src/lib/test.f
 require src/lib/task.f

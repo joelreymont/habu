@@ -1,3 +1,4 @@
+split-str
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
 \ It names no machine's code package, so it compiles the same under every
 \ target writer and links as any file does; the writer sizes the buffer.
@@ -89,7 +90,7 @@ create M-FAIL-NL 1 allot
 
 \ Reports before throwing: the drivers exit with the raw throw code, so an
 \ unreported overrun exits 75 silently. The write's rc has nowhere to go.
-: M-FAIL ( ^u8 n -- ) {: a:^ u:n :}
+: M-FAIL ( str -- ) {: a:^ u:n :}
    2 a u write drop
    10 M-FAIL-NL c!
    2 M-FAIL-NL 1 write drop
@@ -164,7 +165,7 @@ public
    2drop $10 M-N @ - M-ZEROS ;
 
 private
-: M-NAME16 ( ^u8 n -- )
+: M-NAME16 ( str -- )
    M-LEN M-NAME16-LEN ;
 
 public
@@ -234,6 +235,6 @@ public
    u M-BE-SKIP ;
 
 private
-: M-BE-BYTES ( ^u8 n -- )
+: M-BE-BYTES ( str -- )
    M-LEN M-BE-BYTES-LEN ;
 ;package

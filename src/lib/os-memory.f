@@ -1,3 +1,4 @@
+split-str
 \ os-memory.f - process memory facts that are not image ABI constants.
 \ PAGE-SIZE reports the running host's page size for OS mappings; Habu's guard
 \ window uses the fixed STACK-ABI:PAGE-BYTES and PROT-PAGE-MAX instead.

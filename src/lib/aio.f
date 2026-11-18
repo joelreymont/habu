@@ -1,3 +1,4 @@
+split-str
 \ aio.f - asynchronous I/O, package AIO: a task submits one operation, gets a
 \ ticket and AWAITs it; one loop task drains the ring and TASK:WAKEs each owner.
 \ START the loop before the first wait; main keeps compiling while it runs.
@@ -310,7 +311,7 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 
 \ Logs a refused system call's errno before it throws, so the errno the kernel
 \ gave is not lost behind a named code.
-: DIAG-ERRNO ( ^u8 n -- ) {: label:^ labelu:n :}
+: DIAG-ERRNO ( str -- ) {: label:^ labelu:n :}
    FFI:ERRNO {: errno:n :}
    LOG:ERROR s" aio" LOG:LINE
    label labelu LOG:TEXT+
@@ -734,7 +735,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 \ Releases the first `mapped` regions and the ring's fd after logging, since
 \ munmap and close overwrite the errno the refused mmap left.
-: MAP-REFUSED ( ^u8 n n -- ) {: label:^ labelu:n mapped:n :}
+: MAP-REFUSED ( str n -- ) {: label:^ labelu:n mapped:n :}
    label labelu DIAG-ERRNO
    mapped 1 > if CQ-BASE @ CQ-LEN @ munmap drop then
    mapped 0 > if SQ-BASE @ SQ-LEN @ munmap drop then

@@ -1,3 +1,4 @@
+split-str
 \ undefined-action.f - the ACTION on line 14 names no word; DEFINE builds the
 \ line's word after reading the whole table, and its rejection names that line,
 \ not the `;DEFINE` below it.

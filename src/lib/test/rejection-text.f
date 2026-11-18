@@ -1,3 +1,4 @@
+split-str
 \ rejection-text.f - rejection records as text a test compares, package
 \ REJECTION-TEXT. FLAT drops each record's gutter, so expected text holds no
 \ width that moves when lines are added above the record. A record runs from a
@@ -17,13 +18,13 @@ variable GUTTER
 \ true from a record's header to the empty line after it
 variable IN-RECORD
 
-: EMIT+ ( ^u8 n -- ) BUF:N>BLEN OUT BUF:APPEND-SPAN ;
+: EMIT+ ( str -- ) BUF:N>BLEN OUT BUF:APPEND-SPAN ;
 
-: HEADER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: HEADER? ( str -- bool ) {: a:^ u:n :}
    a u s" error[" STARTS-WITH?  a u s" warning[" STARTS-WITH? or ;
 
 \ Whether a u begins with the gutter: GUTTER blanks or digits, then a blank.
-: GUTTERED? ( ^u8 n -- bool ) {: a:^ u:n :}
+: GUTTERED? ( str -- bool ) {: a:^ u:n :}
    GUTTER @ {: g:n :}
    u g <= IF false EXIT THEN
    a g + c@ 32 <> IF false EXIT THEN
@@ -33,7 +34,7 @@ variable IN-RECORD
    LOOP true ;
 
 \ The line a u, its newline excluded, onto OUT, its record's gutter dropped.
-: LINE+ ( ^u8 n -- ) {: a:^ u:n :}
+: LINE+ ( str -- ) {: a:^ u:n :}
    a u HEADER? IF 1 GUTTER !  true IN-RECORD !  a u EMIT+ EXIT THEN
    IN-RECORD @ 0= IF a u EMIT+ EXIT THEN
    u 0= IF false IN-RECORD ! EXIT THEN

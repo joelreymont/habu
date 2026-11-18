@@ -1,3 +1,4 @@
+split-str
 \ dictionary-full-test.f - a definition, a storage declaration, a does> clause,
 \ a package, a qualified head's namespace, an EXPORT, a declaration and a
 \ replayed definition that find no dictionary record left are rejected as
@@ -17,11 +18,11 @@ private
 
 \ Lines 1-3 of each child: LEAVE-FREE ( n -- ) creates words until n records
 \ are free.
-: PRELUDE$ ( -- ^u8 n )
+: PRELUDE$ ( -- str )
    S\" require src/lib/fmt.f\ncreate NB 32 allot\n: LEAVE-FREE ( n -- ) DICT-CAP ndict@ - swap - 0 ?do s\" create F\" NB swap BYTE-COPY  i FMT:INT$ {: a:^ u:n :}  a NB 8 + u BYTE-COPY  NB 8 u + evaluate-closed loop ;\n" ;
 
 \ Runs the prelude, then the case's lines from line 4.
-: RUN-CASE ( ^u8 n -- ) {: a:^ u:n :}
+: RUN-CASE ( str -- ) {: a:^ u:n :}
    GE-SRC-RESET  PRELUDE$ GE-SRC+  a u GE-SRC+
    GE-HB-RESET
    GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;

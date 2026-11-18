@@ -1,3 +1,4 @@
+split-str
 \ tail-parity.f - direct/subject result parity shared by the tail gates.
 
 require src/lib/test.f
@@ -15,7 +16,7 @@ variable SAVED-OUT-U
 variable SAVED-ERR-U
 variable SAVED-RC
 
-: SAVE-BYTES ( ^u8 n ^u8 ^n -- )
+: SAVE-BYTES ( str ^u8 ^n -- )
    {: src:^ u:n dst:^ used:^ :}
    u CAP > if E-STR-CAPACITY throw then
    src dst u BYTE-COPY
@@ -27,7 +28,7 @@ create SAVED-KEPT CAP allot
 variable GOT-KEPT-U
 variable SAVED-KEPT-U
 
-: PAST-CARETS ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: PAST-CARETS ( str -- str ) {: a:^ u:n :}
    0 begin
       dup u < if dup a + c@ 94 = else false then
    while 1+ repeat
@@ -35,19 +36,19 @@ variable SAVED-KEPT-U
 
 \ A line, its gutter indent dropped, that tells where a record is: the place
 \ line, a source line or an `= evaluated:` note.
-: PLACE? ( ^u8 n -- bool ) {: a:^ u:n :}
+: PLACE? ( str -- bool ) {: a:^ u:n :}
    a u s" -->" STARTS-WITH?
    a u s" = evaluated:" STARTS-WITH? or
    u 0 > if a c@ STR-DIGIT? else false then or ;
 
-: KEEP+ ( ^u8 n ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
+: KEEP+ ( str ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
    a u dst CAP lenp BUF-APPEND
    10 dst CAP lenp BUF-APPEND-C ;
 
 \ A gutter line, or the caret line of an `= evaluated:` note, keeps only the
 \ label past its carets; the carets, and an evaluating call's label
 \ `evaluates the text below`, only tell where the record is.
-: LINE+ ( ^u8 n ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
+: LINE+ ( str ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
    a u LTRIM {: t:^ tu:n :}
    t tu PLACE? if exit then
    t tu s" |" STARTS-WITH?  t tu s" ^" STARTS-WITH? or if
@@ -72,7 +73,7 @@ variable SAVED-KEPT-U
 \ Short of a trailing ` lr 0x<16 hex>` and newline: a kernel exit line ends in
 \ its trapping code's return address, which ASLR moves between runs.
 23 constant LR-TAIL
-: PAST-LR ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: PAST-LR ( str -- str ) {: a:^ u:n :}
    u LR-TAIL < if a u exit then
    a u + LR-TAIL - 6 s"  lr 0x" STR= if a u LR-TAIL - else a u then ;
 
@@ -94,7 +95,7 @@ public
 \ it in the file it reads, a subject run at the test file's word that ran the
 \ text, with an `= evaluated:` note. Its code, message, label and other notes
 \ agree.
-: SAME-UNLOCATED ( ^u8 n ^u8 n n -- )
+: SAME-UNLOCATED ( str str n -- )
    {: out:^ outu:n err:^ erru:n rc:n :}
    rc SAVED-RC @ T=
    out outu SAVED-OUT SAVED-OUT-U @ T$=

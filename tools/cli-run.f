@@ -1,3 +1,4 @@
+split-str
 \ cli-run.f - checked helpers for explicitly installed CLI fixture subprocesses.
 
 require src/lib/error.f
@@ -16,34 +17,34 @@ variable CLI-TOOLS-TRUST-U
 create CLI-TOOLS-BUF PATH-CAP allot
 create CLI-TOOLS-TRUST-BUF PATH-CAP allot
 
-: CLI-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
+: CLI-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
    u 0 < if E-FS-PATH throw then
    u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u up ! ;
 
-: CLI-TOOLS! ( ^u8 n ^u8 n -- ) {: exe:^ exeu:n ta:^ tu:n :}
+: CLI-TOOLS! ( str str -- ) {: exe:^ exeu:n ta:^ tu:n :}
    exe exeu CLI-TOOLS-BUF CLI-TOOLS-U CLI-COPY!
    ta tu CLI-TOOLS-TRUST-BUF CLI-TOOLS-TRUST-U CLI-COPY! ;
 
 : CLI-TOOLS-OVERRIDE? ( -- bool )
    CLI-TOOLS-U @ 0 > ;
 
-: CLI-ARG+ ( ^u8 n -- )
+: CLI-ARG+ ( str -- )
    >LEN PROC-ARGV+ ;
 
 : CLI-TOOLS? ( -- bool )
    CLI-TOOLS-OVERRIDE? ;
 
-: CLI-TOOLS$ ( -- ^u8 n )
+: CLI-TOOLS$ ( -- str )
    CLI-TOOLS-OVERRIDE? if CLI-TOOLS-BUF CLI-TOOLS-U @ exit then
    s" bin/hb" ;
 
-: CLI-TOOLS-TRUST$ ( -- ^u8 n )
+: CLI-TOOLS-TRUST$ ( -- str )
    CLI-TOOLS-OVERRIDE? if CLI-TOOLS-TRUST-BUF CLI-TOOLS-TRUST-U @ exit then
    E-FS-OPEN throw ;
 
-: CLI-TOOLS-LOAD ( ^u8 n -- bool ) {: entry:^ entryu:n :}
+: CLI-TOOLS-LOAD ( str -- bool ) {: entry:^ entryu:n :}
    CLI-TOOLS? if
       s" --load" CLI-ARG+
       CLI-TOOLS-TRUST$ CLI-ARG+
@@ -53,7 +54,7 @@ create CLI-TOOLS-TRUST-BUF PATH-CAP allot
    then
    CLI-FALSE ;
 
-: CLI-TOOLS-LOAD2 ( ^u8 n ^u8 n -- bool )
+: CLI-TOOLS-LOAD2 ( str str -- bool )
    {: first:^ firstu:n second:^ secondu:n :}
    CLI-TOOLS? if
       s" --load" CLI-ARG+

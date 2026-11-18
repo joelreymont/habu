@@ -1,3 +1,4 @@
+split-str
 \ string-roles.f - the string words over NUM's numeric roles (package STR). A
 \ file of its own because the engine bakes src/lib/string.f for the compiler and
 \ the REPL, which use only the raw words, while STR requires
@@ -22,13 +23,13 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
 
 \ Bound before the public STR words shadow the global names, so a bare
 \ FIND-SUB, INDEX-OF, SPLIT-NEXT or BUF-* here is the raw word.
-: RAW-FIND-SUB ( ^u8 n ^u8 n -- option<idx> )    FIND-SUB ;
-: RAW-INDEX-OF ( ^u8 n n -- option<idx> )           INDEX-OF ;
-: RAW-SPLIT-NEXT ( ^u8 n n n -- ^u8 n n bool )   SPLIT-NEXT ;
+: RAW-FIND-SUB ( str str -- option<idx> )    FIND-SUB ;
+: RAW-INDEX-OF ( str n -- option<idx> )           INDEX-OF ;
+: RAW-SPLIT-NEXT ( str n n -- str n bool )   SPLIT-NEXT ;
 : RAW-BUF-RESET ( ^len -- )                         BUF-RESET ;
 : RAW-BUF-LEN@ ( ^len -- n )                        BUF-LEN@ ;
-: RAW-BUF-APPEND ( ^u8 n ^u8 n ^len -- )      BUF-APPEND ;
-: RAW-BUF-APPEND-C ( n ^u8 n ^len -- )           BUF-APPEND-C ;
+: RAW-BUF-APPEND ( str str ^len -- )      BUF-APPEND ;
+: RAW-BUF-APPEND-C ( n str ^len -- )           BUF-APPEND-C ;
 
 : N>BYTE-LEN ( n -- NUM:byte-len )
    NUM:BYTE-LEN MATCH option

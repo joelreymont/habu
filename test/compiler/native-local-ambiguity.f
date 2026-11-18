@@ -1,3 +1,4 @@
+split-str
 \ A local binding must win over equally named public words imported from two
 \ packages.
 require src/lib/error.f
@@ -27,7 +28,7 @@ variable EXITED
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN-SOURCE ( ^u8 n -- ) {: src:^ u:n :}
+: RUN-SOURCE ( str -- ) {: src:^ u:n :}
    src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN src u STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
@@ -35,7 +36,7 @@ variable EXITED
    EXITED @ TTRUE
    RC @ want T= ;
 
-: EXPECT-OUT ( ^u8 n -- ) {: exp:^ expu:u :}
+: EXPECT-OUT ( str -- ) {: exp:^ expu:u :}
    0 EXPECT-RC
    ERR-U @ 0 T=
    OUT$ exp expu STR= TTRUE ;

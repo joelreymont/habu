@@ -1,3 +1,4 @@
+split-str
 \ gate-signal-root.f - the native gate's own driver on a one-row registry.
 
 require src/lib/error.f

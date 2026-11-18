@@ -1,3 +1,4 @@
+split-str
 \ t0-wasm.f - the Wasm generator of the tier 0 compiler, part WASM of package
 \ COMP.
 \

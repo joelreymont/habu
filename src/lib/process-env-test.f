@@ -1,3 +1,4 @@
+split-str
 \ process-env-test.f - focused tests for src/lib/process-env.f.
 \ Run: bin/hb --load src/lib/process-env-test.f
 
@@ -67,36 +68,36 @@ TASK:SEMAPHORE PET-ENV-START
      some OF LEN>N 0 0= ENDOF
    ;MATCH ;
 
-: PET-ENV+ ( ^u8 n ^u8 n -- )
+: PET-ENV+ ( str str -- )
    {: name:^ nameu val:^ valu :}
    name nameu >LEN val valu >LEN PROC-ENV+ ;
 
-: PET-CAPTURE ( ^u8 n ^u8 n ^u8 n n -- n n n )
+: PET-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
-: PET-OUTCOME ( ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+: PET-OUTCOME ( str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-: PET-STDIN-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+: PET-STDIN-CAPTURE ( str str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PET-CAPTURE>N ;
 
-: PET-STDIN-OUTCOME ( ^u8 n ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+: PET-STDIN-OUTCOME ( str str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
 
-: PET-FIND-IN-PATH ( ^u8 n ^u8 n ^u8 -- n bool )
+: PET-FIND-IN-PATH ( str str ^u8 -- n bool )
    {: cmd:^ cmdu path:^ pathu dst:^ :}
    cmd cmdu >LEN path pathu >LEN dst FIND-EXECUTABLE-IN-PATH
    PET-FIND>N ;
 
-: PET-RESOLVE ( ^u8 n ^u8 -- n )
+: PET-RESOLVE ( str ^u8 -- n )
    {: cmd:^ cmdu dst:^ :}
    cmd cmdu >LEN dst RESOLVE-EXECUTABLE LEN>N ;
 
@@ -107,23 +108,23 @@ TASK:SEMAPHORE PET-ENV-START
 
 \ HABU_BIG_001 .. HABU_BIG_600: fixed width, so the child can count them by
 \ prefix and the parent never has to parse the name back.
-: PET-BIG-NAME$ ( n -- ^u8 n ) {: i:n :}
+: PET-BIG-NAME$ ( n -- str ) {: i:n :}
    s" HABU_BIG_" PET-BIG-NAME swap BYTE-COPY
    i 100 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U + c!
    i 100 mod 10 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 1 + + c!
    i 10 mod STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 2 + + c!
    PET-BIG-NAME PET-BIG-NAME-U ;
 
-: PET-ENV-CMD$ ( -- ^u8 n )
+: PET-ENV-CMD$ ( -- str )
    s" /usr/bin/env" ;
 
-: PET-ALPHA-LINE$ ( -- ^u8 n )
+: PET-ALPHA-LINE$ ( -- str )
    SB-RESET
    s" HABU_PROC_ENV_TEST=alpha" SB-APPEND
    $0A SB-APPEND-C
    SB$ ;
 
-: PET-CASE ( ^u8 n [ -- ] -- ) {: label:^ labelu:n q :}
+: PET-CASE ( str [ -- ] -- ) {: label:^ labelu:n q :}
    mono-ns PET-START-NS !
    q execute
    s" PASS: " type label labelu type
@@ -144,7 +145,7 @@ TASK:SEMAPHORE PET-ENV-START
    0 T= 0 T= 0 T= ;
 
 : PET-HAS-ENV-LINE-BODY
-   ( ^u8 n ^u8 n ^u8 n n ^u8 NUM:alloc-byte-len -- bool )
+   ( str str str n ^u8 NUM:alloc-byte-len -- bool )
    drop
    {: out:^ outu:n name:^ nameu:n val:^ valu:n lineu:n expected:^ :}
    $0A expected c!
@@ -155,13 +156,13 @@ TASK:SEMAPHORE PET-ENV-START
    out outu expected 1+ lineu STARTS-WITH?
    out outu expected lineu 1+ CONTAINS? or ;
 
-: PET-HAS-ENV-LINE? ( ^u8 n ^u8 n ^u8 n -- bool )
+: PET-HAS-ENV-LINE? ( str str str -- bool )
    {: out:^ outu:n name:^ nameu:n val:^ valu:n :}
    nameu valu + 2 + {: lineu:n :}
    out outu name nameu val valu lineu
    lineu 1+ MEM:BYTES-ALLOC-LEN [: PET-HAS-ENV-LINE-BODY ;] MEM:WITH-BYTES ;
 
-: PET-EXPECT-INHERITED ( n ^u8 n -- ) {: outu:n name:^ nameu:n :}
+: PET-EXPECT-INHERITED ( n str -- ) {: outu:n name:^ nameu:n :}
    name nameu GETENV {: val:^ valu:n :}
    valu 0= if exit then
    PET-OUT outu name nameu val valu PET-HAS-ENV-LINE? TTRUE ;
@@ -173,7 +174,7 @@ TASK:SEMAPHORE PET-ENV-START
    S\" OTHER=HOME=alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE
    S\" HOME=prefix-alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE ;
 
-: PET-GETENV-CHECK ( ^u8 n ^u8 n -- n )
+: PET-GETENV-CHECK ( str str -- n )
    {: name:^ nameu:n expected:^ expectedu:n :}
    PET-ENV-ROUNDS 0 ?do
       name nameu GETENV expected expectedu STR= 0= if unloop 0 exit then
@@ -497,7 +498,7 @@ public
    repeat
    PROC-ENV-INHERIT-MISSING ;
 
-: PET-BIG-EXPECT$ ( -- ^u8 n )
+: PET-BIG-EXPECT$ ( -- str )
    SB-RESET
    s" big-env-child " SB-APPEND
    PET-BIG-N PET-SB-N

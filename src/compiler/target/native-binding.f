@@ -1,3 +1,4 @@
+split-str
 require src/core/exit-status.f
 require src/compiler/target/model.f
 require src/compiler/numeric-policy.f
@@ -7,7 +8,7 @@ package RTARGET
 private
 
 \ The target's name when CORE supports it, else empty.
-: SUPPORTED-LABEL ( profile-id -- ^u8 n )
+: SUPPORTED-LABEL ( profile-id -- str )
    {: p:profile-id :}
    p dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE CORE
    MATCH core-result

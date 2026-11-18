@@ -1,3 +1,4 @@
+split-str
 \ imgdump.f - habu image inspector.
 \ Run: bin/hb --load tools/imgdump.f -- <image> [image2]; --pc takes one or more
 \ addresses. One line per word: name $start $len (namespace rows carry their
@@ -87,12 +88,12 @@ CAST: MAP>BYTES ( n -- ^u8 )
    s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc [pc ...] | --wid image name"
    EXIT-STATUS:USAGE die ;
 
-: IMG-PATH$ ( -- ^u8 n )
+: IMG-PATH$ ( -- str )
    SCRIPT-ARGC 1 < if IMG-USAGE then
    SCRIPT-ARGC 2 > if IMG-USAGE then
    0 SCRIPT-ARGV$ ;
 
-: READ-IMG-PATH ( ^u8 n -- )
+: READ-IMG-PATH ( str -- )
    FS:OPEN-SIZED 0= IF 2drop s" imgdump: open failed" EXIT-STATUS:IOERR die THEN
    ISZ !  FD>N IFD !
    ISZ @ 0 > 0= IF IFD @ close s" imgdump: empty image" EXIT-STATUS:DATAERR die THEN
@@ -259,7 +260,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    off IL @ > if -1 exit then
    o E-L IL @ off - > if -1 exit then
    off ;
-: E-NAME ( n -- ^u8 n )
+: E-NAME ( n -- str )
    {: o:n :}
    o E-NAME-OFF dup 0 < if s" imgdump: name out of range" EXIT-STATUS:DATAERR die then
    IB@ +  o E-L ;
@@ -383,7 +384,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    READ-XTBASE XTBASE !
    FIND-DICT ;
 
-: A-NAME-P! ( ^u8 n -- ) A-NAME-P-SLOT ! ;
+: A-NAME-P! ( str -- ) A-NAME-P-SLOT ! ;
 : A-NAME-U! ( n n -- ) cells A-NAME-U + ! ;
 : A-START! ( n n -- ) cells A-START + ! ;
 : A-LEN! ( n n -- ) cells A-LEN + ! ;
@@ -402,12 +403,12 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    c 48 >= c 57 <= and if c 48 - OPTION:SOME exit then
    OPTION:NONE ;
 
-: HEX-BODY ( ^u8 n -- ^u8 n bool ) {: a:^ u :}
+: HEX-BODY ( str -- str bool ) {: a:^ u :}
    u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
    u 2 > if a c@ 48 = a 1 + c@ 120 = and if a 2 + u 2 - 0 0= exit then then
    a u 0 0= 0= ;
 
-: PARSE-HEX ( ^u8 n -- option<n> ) {: a:^ u:n :}   \ SOME parsed hex value, else NONE
+: PARSE-HEX ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed hex value, else NONE
    u 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
@@ -421,7 +422,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    repeat
    NUM-ACC @ OPTION:SOME ;
 
-: PARSE-DEC ( ^u8 n -- option<n> ) {: a:^ u:n :}   \ SOME parsed decimal value, else NONE
+: PARSE-DEC ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed decimal value, else NONE
    u 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
@@ -435,7 +436,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
    repeat
    NUM-ACC @ OPTION:SOME ;
 
-: IMG>NUMBER? ( ^u8 n -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
+: IMG>NUMBER? ( str -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
    HEX-BODY if PARSE-HEX exit then
    PARSE-DEC ;
 

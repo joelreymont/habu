@@ -1,3 +1,4 @@
+split-str
 \ process-tree-test.f - a walk the kernel refuses says so; a big tree dies whole.
 \ KILL-TREE decides who is in a tree from what the kernel answers, so a refusal
 \ must never read as "nobody there". On macOS libproc answers a refused listing
@@ -98,7 +99,7 @@ variable TARGET
    s" /bin/sleep" >LEN OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME T-ENDING-TIMEOUT 2drop ;
 
-: SLEEPER-REAPED ( ^u8 n -- )
+: SLEEPER-REAPED ( str -- )
    {: label:^ labelu:n :}
    label labelu T-LABEL
    PROCESS:PID @ PROCESS:NO-PID T=
@@ -154,7 +155,7 @@ PROCESS:NO-PID ROOT !
 PROCESS:NO-FD CROWD-RD !
 PROCESS:NO-FD CROWD-WR !
 
-: CROWD-SCRIPT$ ( -- ^u8 n )
+: CROWD-SCRIPT$ ( -- str )
    SB-RESET
    s" i=0; while [ $i -lt " SB-APPEND
    DESCENDANTS FMT:SB-INT
@@ -256,7 +257,7 @@ PROCESS:NO-FD PING-WR !
 
 \ The pinger writes its line after its first SIGCONT lands and stops when its
 \ own half-second sleep ends; it leads its own group, as any spawned child does.
-: PINGER-SCRIPT$ ( -- ^u8 n )
+: PINGER-SCRIPT$ ( -- str )
    SB-RESET
    s" sleep 0.5 >/dev/null & t=$!; kill -CONT " SB-APPEND
    RESUMED @ FMT:SB-INT
@@ -340,8 +341,8 @@ variable RUNS-DIR-U
 create IDLE-COPY PATH-CAP allot
 variable IDLE-COPY-U
 
-: RUNS-DIR$ ( -- ^u8 n ) RUNS-DIR RUNS-DIR-U @ ;
-: IDLE-COPY$ ( -- ^u8 n ) IDLE-COPY IDLE-COPY-U @ ;
+: RUNS-DIR$ ( -- str ) RUNS-DIR RUNS-DIR-U @ ;
+: IDLE-COPY$ ( -- str ) IDLE-COPY IDLE-COPY-U @ ;
 
 : RUNS-BODY ( -- )
    RUNS-DIR$ s" hb" IDLE-COPY FS:JOIN-PATH IDLE-COPY-U !
@@ -358,7 +359,7 @@ variable IDLE-COPY-U
    diru RUNS-DIR-U !
    [: RUNS-BODY ;] [: RUNS-DIR$ FS:REMOVE-TREE ;] finally ;
 
-: SANDBOX$ ( -- ^u8 n )
+: SANDBOX$ ( -- str )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" process-tree-test: required executable missing on PATH: sandbox-exec"
          EXIT-STATUS:UNAVAILABLE die ENDOF
@@ -374,7 +375,7 @@ variable IDLE-COPY-U
 
 \ This file again as the walker named mode, under a profile that denies one
 \ operation: its stdout and stderr lengths and its exit code.
-: SANDBOXED ( ^u8 n ^u8 n -- n n n )
+: SANDBOXED ( str str -- n n n )
    {: profile:^ profileu:n mode:^ modeu:n :}
    PROC-ARGV-RESET
    s" -p" >LEN PROC-ARGV+
@@ -402,7 +403,7 @@ variable IDLE-COPY-U
    profile profileu s" walker" SANDBOXED label labelu VERDICT ;
 
 \ What stderr gets from src/lib/process.f for n walks the kernel refused.
-: WALK-LINES$ ( n -- ^u8 n ) {: walks:n :}
+: WALK-LINES$ ( n -- str ) {: walks:n :}
    SB-RESET
    walks 0 ?do
       s" process: process tree of a killed child not walked, throw " SB-APPEND

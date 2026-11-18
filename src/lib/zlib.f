@@ -1,3 +1,4 @@
+split-str
 \ zlib.f - raw DEFLATE (RFC 1951), zlib-framed DEFLATE (RFC 1950) and CRC-32
 \ by libz. A codec word borrows both buffers, keeps nothing and answers the
 \ bytes it wrote; libz allocates from init to the matching *End, which every
@@ -78,17 +79,17 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 : ADDRESS ( ^u8 -- n ) NULL-PTR - ;
 
 \ libz counts lengths in 32 bits.
-: SPAN-CHECK ( ^u8 n -- ) {: p:^ u:n :}
+: SPAN-CHECK ( str -- ) {: p:^ u:n :}
    u 0 < if E-SIZE throw then
    u U32-MAX > if E-SIZE throw then
    u 0<> p ADDRESS 0= and if E-SIZE throw then ;
 
-: DISJOINT-CHECK ( ^u8 n ^u8 n -- )
+: DISJOINT-CHECK ( str str -- )
    {: a:^ au:n b:^ bu:n :}
    au 0= bu 0= or if exit then
    a ADDRESS b ADDRESS bu + < b ADDRESS a ADDRESS au + < and if E-SIZE throw then ;
 
-: PAIR-CHECK ( ^u8 n ^u8 n -- )
+: PAIR-CHECK ( str str -- )
    {: src:^ srcu:n dst:^ cap:n :}
    src srcu SPAN-CHECK dst cap SPAN-CHECK
    src srcu dst cap DISJOINT-CHECK ;
@@ -203,13 +204,13 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup U32-MAX > if E-SIZE throw then ;
 
 \ Every stream is at least one byte, so zero capacity cannot hold one.
-: DEFLATE-FOR ( ^u8 n ^u8 n n -- n )
+: DEFLATE-FOR ( str ^u8 n n -- n )
    {: src:^ srcu:n dst:^ cap:n window:n :}
    src srcu dst cap PAIR-CHECK
    cap 0= if E-CAPACITY throw then
    window src srcu dst cap [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
 
-: INFLATE-FOR ( ^u8 n ^u8 n n -- n )
+: INFLATE-FOR ( str ^u8 n n -- n )
    {: src:^ srcu:n dst:^ cap:n window:n :}
    src srcu dst cap PAIR-CHECK
    window src srcu dst cap [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;
@@ -226,21 +227,21 @@ public
 
 \ Default compression, method 8, window bits -15, memory level 8, default
 \ strategy.
-: DEFLATE-RAW ( ^u8 n ^u8 n -- n ) RAW-WINDOW DEFLATE-FOR ;
+: DEFLATE-RAW ( str str -- n ) RAW-WINDOW DEFLATE-FOR ;
 
 \ Exactly one complete raw stream that uses the whole source.
-: INFLATE-RAW ( ^u8 n ^u8 n -- n ) RAW-WINDOW INFLATE-FOR ;
+: INFLATE-RAW ( str str -- n ) RAW-WINDOW INFLATE-FOR ;
 
 \ A capacity DEFLATE-FRAMED always completes in, for n source bytes.
 : FRAMED-BOUND ( n -- n ) FRAMED-WINDOW BOUND-FOR ;
 
 \ DEFLATE-RAW's settings in the zlib wrapper, window bits +15: a 78 header,
 \ no dictionary and a big-endian Adler-32 trailer.
-: DEFLATE-FRAMED ( ^u8 n ^u8 n -- n ) FRAMED-WINDOW DEFLATE-FOR ;
+: DEFLATE-FRAMED ( str str -- n ) FRAMED-WINDOW DEFLATE-FOR ;
 
 \ Exactly one complete zlib stream that uses the whole source; libz checks
 \ its method, window, header check and Adler-32. A preset dictionary is
 \ refused.
-: INFLATE-FRAMED ( ^u8 n ^u8 n -- n ) FRAMED-WINDOW INFLATE-FOR ;
+: INFLATE-FRAMED ( str str -- n ) FRAMED-WINDOW INFLATE-FOR ;
 
 ;package

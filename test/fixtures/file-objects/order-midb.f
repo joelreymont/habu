@@ -1,3 +1,4 @@
+split-str
 \ order-midb.f - order-mida.f with its two storers swapped.
 
 require test/fixtures/file-objects/order-q2.f

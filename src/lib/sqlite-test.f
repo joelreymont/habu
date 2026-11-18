@@ -1,3 +1,4 @@
+split-str
 \ sqlite-test.f - package SQLITE on database files under the test's own
 \ temporary directory.
 \ Run: bin/hb --load src/lib/sqlite-test.f
@@ -44,15 +45,15 @@ create HELD 3 allot
    ROOT$ name nu buf FS:JOIN-PATH {: u:n :}
    buf u ;
 
-: MAIN$ ( -- ^u8 n ) s" main.db" MAIN-PATH AT ;
-: LINK$ ( -- ^u8 n ) s" link.db" LINK-PATH AT ;
-: LOG$ ( -- ^u8 n ) s" log.txt" LOG-PATH AT ;
+: MAIN$ ( -- str ) s" main.db" MAIN-PATH AT ;
+: LINK$ ( -- str ) s" link.db" LINK-PATH AT ;
+: LOG$ ( -- str ) s" log.txt" LOG-PATH AT ;
 : HELD$ ( -- ^u8 n ) HELD 3 ;
 
 \ A blob with a 0 byte inside: its length crosses the FFI, never a NUL.
-: BLOB$ ( -- ^u8 n ) S\" a\x00b\xff" ;
+: BLOB$ ( -- str ) S\" a\x00b\xff" ;
 
-: GARBAGE$ ( -- ^u8 n )
+: GARBAGE$ ( -- str )
    s" plain text where SQLite expects its header" ;
 
 \ The answer of a one-row, one-column query.

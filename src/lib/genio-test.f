@@ -1,3 +1,4 @@
+split-str
 \ genio-test.f - a TCP device hands back lines of any length.
 \ One process holds both ends of a loopback connection. The client writes every
 \ line and shuts its sending side before the server reads, so no read waits on a
@@ -137,7 +138,7 @@ TASK:MIN-STACK TASK:TASK READER
    -1 GOT-LEN !  false GOT-SAME !  0 GOT-CODE !  c WANT-CH !
    DEV@ GENIO:TERMINAL body GENIO:WITH-IO ;
 
-: T-LINE ( n n ^u8 n -- ) {: want:n c:n la:^ lu:n :}
+: T-LINE ( n n str -- ) {: want:n c:n la:^ lu:n :}
    la lu T-LABEL
    [: LINE-ROW ;] c ROW
    GOT-CODE @ 0 T=
@@ -147,12 +148,12 @@ TASK:MIN-STACK TASK:TASK READER
 \ ---- a device write that faults ---------------------------------------------
 \ The sink appends what it is written; the faulty device's write reads address 0.
 
-: SINK-WRITE ( ^u8 n -- ) {: a:^ u:n :}
+: SINK-WRITE ( str -- ) {: a:^ u:n :}
    u 0 ?do
       SINK-N @ SINK-CAP < if a i + c@ SINK SINK-N @ + c!  SINK-N @ 1+ SINK-N ! then
    loop ;
 
-: FAULTY-WRITE ( ^u8 n -- ) {: a:^ u:n :}
+: FAULTY-WRITE ( str -- ) {: a:^ u:n :}
    NULL-PTR BYTE-VIEW c@ drop ;
 
 : NO-EMIT ( n -- ) drop ;
@@ -161,7 +162,7 @@ TASK:MIN-STACK TASK:TASK READER
 : NO-READ ( ^u8 n -- n ) {: a:^ cap:n :} 0 ;
 : NOTHING ( -- ) ;
 
-: OUT-DEVICE ( [ ^u8 n -- ] -- GENIO:device ) {: qwrite :}
+: OUT-DEVICE ( [ str -- ] -- GENIO:device ) {: qwrite :}
    [: NO-EMIT ;] [: NO-KEY ;] [: NO-READY? ;] [: NO-READ ;]
    qwrite [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;
 

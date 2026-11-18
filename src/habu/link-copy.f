@@ -1,3 +1,4 @@
+split-str
 \ link-copy.f - the data a program reaches and the link's copy of the open
 \ space: REACH-DATA marks the units and address rows a stripped program reads
 \ and lays its data out; the copy is that data, its kept rows listed in cell

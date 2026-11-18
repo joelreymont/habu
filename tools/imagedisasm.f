@@ -1,3 +1,4 @@
+split-str
 \ imagedisasm.f - disassemble a raw executable slice with Habu's ARM64 decoder.
 \ Run: bin/hb --load tools/imagedisasm.f -- image offset count
 
@@ -39,7 +40,7 @@ CAST: MAP>BYTES ( n -- ^u8 )
 : IMGD-MMAP-PTR ( n -- ^u8 )
    dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" EXIT-STATUS:SYSTEM die THEN MAP>BYTES ;
 
-: IMGD-READ ( ^u8 n -- )
+: IMGD-READ ( str -- )
    FS:OPEN-SIZED 0= IF 2drop s" imagedisasm: open failed" EXIT-STATUS:IOERR die THEN
    IMGD-LEN !  FD>N IMGD-FD !
    IMGD-LEN @ 0 > 0= IF IMGD-FD @ close s" imagedisasm: empty image" EXIT-STATUS:DATAERR die THEN
@@ -58,7 +59,7 @@ CAST: MAP>BYTES ( n -- ^u8 )
    acc IMGD-HEX-MAX-PRE > IF OPTION:NONE EXIT THEN
    acc 16 * digit + OPTION:SOME ;
 
-: IMGD-PARSE-HEX ( ^u8 n -- option<n> )
+: IMGD-PARSE-HEX ( str -- option<n> )
    {: a:^ u:n :}
    u 0= IF OPTION:NONE EXIT THEN
    0 IMGD-HEX-I !
@@ -76,7 +77,7 @@ CAST: MAP>BYTES ( n -- ^u8 )
    REPEAT
    IMGD-HEX-ACC @ OPTION:SOME ;
 
-: IMGD-HEX-BODY ( ^u8 n -- ^u8 n bool )
+: IMGD-HEX-BODY ( str -- str bool )
    {: a:^ u :}
    u 1 > IF
       a c@ 36 = IF a 1 + u 1 - STR-TRUE EXIT THEN
@@ -90,13 +91,13 @@ CAST: MAP>BYTES ( n -- ^u8 )
 
 public
 
-: IMGD>NUMBER? ( ^u8 n -- option<n> )   \ accepts $hex, 0xhex and decimal
+: IMGD>NUMBER? ( str -- option<n> )   \ accepts $hex, 0xhex and decimal
    IMGD-HEX-BODY IF IMGD-PARSE-HEX EXIT THEN
    STR>NUMBER? ;
 
 private
 
-: IMGD-POS-NUM ( ^u8 n -- n )
+: IMGD-POS-NUM ( str -- n )
    IMGD>NUMBER? MATCH option
      none OF IMGD-USAGE ENDOF
      some OF ENDOF

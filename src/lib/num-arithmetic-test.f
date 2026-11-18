@@ -1,3 +1,4 @@
+split-str
 \ num-arithmetic-test.f - the NUM arithmetic boundary and static rejection
 \ matrix, suite `num-arithmetic` in the standard-library gate.
 \ Run: bin/hb --load src/lib/num-arithmetic-test.f

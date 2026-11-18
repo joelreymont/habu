@@ -1,3 +1,4 @@
+split-str
 \ content-length-test.f - Content-Length framing over real pipes, through
 \ src/lib/content-length.f. Each TEST- word names the failures it covers.
 \ Run: bin/hb --load src/lib/content-length-test.f
@@ -44,7 +45,7 @@ variable CHILD-CODE
 
 \ A pipe that holds these bytes and then ends; a reader taking bodies up to the
 \ maximum reads its read end.
-: FEED-MAX ( ^u8 n n -- )
+: FEED-MAX ( str n -- )
    {: a:^ u:n max:n :}
    FD:PIPE-PAIR {: r:fd w:fd :}
    w a u WRITE-FULL
@@ -120,7 +121,7 @@ variable CHILD-CODE
    NEXT-LEN -1 T=
    DONE ;
 
-: TRUNCATED-HEADER ( ^u8 n -- )
+: TRUNCATED-HEADER ( str -- )
    FEED
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-TRUNCATED TTHROWSQ
    SPENT
@@ -149,7 +150,7 @@ $1000 constant PAD-CAP
 PAD-CAP BUFFER: PAD-BUF
 TYPED-VARIABLE PAD-LEN len
 
-: PAD-LINE$ ( n -- ^u8 n )
+: PAD-LINE$ ( n -- str )
    {: u:n :}
    PAD-LEN BUF-RESET
    s" X-Pad: " PAD-BUF PAD-CAP PAD-LEN BUF-APPEND
@@ -321,7 +322,7 @@ TYPED-VARIABLE PAD-LEN len
    DONE ;
 
 
-: SENT$ ( fd n -- ^u8 n )
+: SENT$ ( fd n -- str )
    {: r:fd u:n :}
    r SMALL u TAKE READ-EXACT MATCH FD:fill
       full OF ENDOF

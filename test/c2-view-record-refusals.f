@@ -1,3 +1,4 @@
+split-str
 \ Refusals through fresh evaluators in the native C2 image.
 require src/lib/test.f
 require src/lib/test/subject.f

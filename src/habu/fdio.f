@@ -1,3 +1,4 @@
+split-str
 \ fdio.f - write a whole span to a file descriptor, or die naming the failure.
 \ Its own file so a booted engine can require it: driver-io.f reaches MBUF and
 \ the image writer. A short write is retried; a write returning zero or an

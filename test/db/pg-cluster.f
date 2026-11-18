@@ -1,3 +1,4 @@
+split-str
 \ pg-cluster.f - src/lib/pg-test.f and src/lib/pg-rows-test.f against a private
 \ PostgreSQL cluster.
 \
@@ -63,16 +64,16 @@ NO-FD HOLD !
 false UP !
 false STOPPED !
 
-: INITDB$ ( -- ^u8 n )    INITDB INITDB-U @ ;
-: POSTGRES$ ( -- ^u8 n )  POSTGRES POSTGRES-U @ ;
+: INITDB$ ( -- str )    INITDB INITDB-U @ ;
+: POSTGRES$ ( -- str )  POSTGRES POSTGRES-U @ ;
 : ROOT$ ( -- ^u8 n )      ROOT ROOT-U @ ;
-: SOCKETS$ ( -- ^u8 n )   SOCKETS SOCKETS-U @ ;
-: DATA$ ( -- ^u8 n )      DATA DATA-U @ ;
-: LOG$ ( -- ^u8 n )       LOG LOG-U @ ;
-: INITDB-LOG$ ( -- ^u8 n ) INITDB-LOG INITDB-LOG-U @ ;
-: PIDFILE$ ( -- ^u8 n )   PIDFILE PIDFILE-U @ ;
-: CONNINFO$ ( -- ^u8 n )  CONNINFO CONNINFO-U @ ;
-: CONNINFO+ ( ^u8 n -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
+: SOCKETS$ ( -- str )   SOCKETS SOCKETS-U @ ;
+: DATA$ ( -- str )      DATA DATA-U @ ;
+: LOG$ ( -- str )       LOG LOG-U @ ;
+: INITDB-LOG$ ( -- str ) INITDB-LOG INITDB-LOG-U @ ;
+: PIDFILE$ ( -- str )   PIDFILE PIDFILE-U @ ;
+: CONNINFO$ ( -- str )  CONNINFO CONNINFO-U @ ;
+: CONNINFO+ ( str -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
 : ARG+ ( ^u8 n -- )       >LEN PROC-ARGV+ ;
 
 \ initdb and postgres on PATH are a gate requirement on every host
@@ -88,7 +89,7 @@ false STOPPED !
       some OF LEN>N ENDOF
    ;MATCH ;
 
-: SOCKETS! ( ^u8 n -- ) {: a:^ u:n :}
+: SOCKETS! ( str -- ) {: a:^ u:n :}
    u PATH-CAP > if E-FS-PATH throw then
    a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
 
@@ -128,7 +129,7 @@ false STOPPED !
    PROC-ENV-INHERIT-MISSING
    s" LC_ALL" >LEN s" C" >LEN PROC-ENV-SET ;
 
-: EXITED-0? ( PROCESS:ending ^u8 n -- bool )
+: EXITED-0? ( PROCESS:ending str -- bool )
    {: what:^ whatu:n :}
    MATCH PROCESS:ending
       exited OF
@@ -146,7 +147,7 @@ false STOPPED !
    ;MATCH
    cr false ;
 
-: SHOW-LOG ( ^u8 n -- ) {: path:^ pathu:n :}
+: SHOW-LOG ( str -- ) {: path:^ pathu:n :}
    path pathu FS:EXISTS? 0= if exit then
    path pathu OUT CAPTURE-CAP FS:READ-ALL {: n:n :}
    OUT n type ;
@@ -169,7 +170,7 @@ false STOPPED !
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-: OPEN-LOG ( ^u8 n -- n )
+: OPEN-LOG ( str -- n )
    FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: fd:n :}
    fd 0 < if E-FS-OPEN throw then
    fd ;
@@ -246,7 +247,7 @@ false STOPPED !
 
 \ The engine's stdout and stderr are this process's, so its report reaches the
 \ row's log as it runs.
-: CASE-SPAWN ( ^u8 n -- ) {: file:^ fileu:n :}
+: CASE-SPAWN ( str -- ) {: file:^ fileu:n :}
    PROC-ARGV-ENV-RESET
    s" --load" ARG+ file fileu ARG+
    s" --" ARG+ CONNINFO$ ARG+
@@ -326,7 +327,7 @@ false STOPPED !
 \ outlives such a SIGKILL, logging to <root>/initdb.log: wait for it or SIGTERM
 \ it (it then removes <root>/data), then remove the directories.
 
-: SAY-THROW ( ^u8 n n -- ) {: what:^ whatu:n code:n :}
+: SAY-THROW ( str n -- ) {: what:^ whatu:n code:n :}
    code 0= if exit then
    s" pg-cluster: " type what whatu type s"  threw " type code FMT:.INT cr ;
 
@@ -353,7 +354,7 @@ false STOPPED !
    ;MATCH ;
 
 \ A failed run exits 1. A caught signal is answered first.
-: FAIL-ROW ( ^u8 n -- ) {: msg:^ msgu:n :}
+: FAIL-ROW ( str -- ) {: msg:^ msgu:n :}
    SIGNAL-CHECK
    msg msgu EXIT-STATUS:FAILURE die ;
 

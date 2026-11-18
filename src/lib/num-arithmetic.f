@@ -1,3 +1,4 @@
+split-str
 \ num-arithmetic.f - closed, dimensionally valid arithmetic: reopens package NUM
 \ after src/lib/num-types.f and adds no roles or overloads. These words are the
 \ whole admitted role algebra; an omitted, reversed or cross-unit pair is

@@ -1,3 +1,4 @@
+split-str
 \ structures.f - checked structure and field defining words. Each field name is
 \ a child word sumtype.f's TDECL-CELL-CHILD, TDECL-PTR-CHILD or TDECL-BYTE-CHILD
 \ makes: a fixed body that adds the field's offset, and a typed effect. A field
@@ -18,7 +19,7 @@ variable STRUCT-OPEN
    swap BYTE-VIEW swap + ;
 
 \ w names the word that runs, for the rejection.
-: STRUCT-REQUIRE-OPEN ( ^u8 n -- ) {: w:^ wu:n :}
+: STRUCT-REQUIRE-OPEN ( str -- ) {: w:^ wu:n :}
    STRUCT-OPEN @ 0 <> if exit then
    s" E-BAD-DECLARATION" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
@@ -30,7 +31,7 @@ variable STRUCT-OPEN
 
 \ The field word w, at the source token t tu, has no name after it. It is
 \ written through its help, and the caller stops it.
-: STRUCT-NO-NAME ( ^u8 n ^u8 n -- ) {: w:^ wu:n t:^ tu:n :}
+: STRUCT-NO-NAME ( str str -- ) {: w:^ wu:n t:^ tu:n :}
    w wu s" a field name" t tu s" no name follows"
    REJECTION:MISSING-OPERAND
    s" write the field's name after the word, as `" REJECTION:EMIT-STR
@@ -38,12 +39,12 @@ variable STRUCT-OPEN
 
 \ The field's name, which the live input holds next; with none left the
 \ source token is the field word, as the source spells it.
-: STRUCT-NAME ( -- ^u8 n )
+: STRUCT-NAME ( -- str )
    parse-name dup 0= if
       SRCLOC:TOKEN$ SRCLOC:TOKEN$ STRUCT-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
 
-: STRUCT-UNALIGNED ( n ^u8 n -- ) {: off:n fa:^ fu:n :}
+: STRUCT-UNALIGNED ( n str -- ) {: off:n fa:^ fu:n :}
    s" E-BAD-DECLARATION" REJECTION:OPEN
    s" pointer field `" REJECTION:EMIT-STR  fa fu REJECTION:EMIT-STR
    s" ` starts at byte " REJECTION:EMIT-STR  off REJECTION:EMIT-U

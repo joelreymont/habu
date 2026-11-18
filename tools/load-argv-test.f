@@ -1,3 +1,4 @@
+split-str
 \ load-argv-test.f - the `bin/hb --load` argv loader contract: each path becomes
 \ `s" <path>" required`, so src/core/include.f decides and a path the engine
 \ already carries loads once. Every case forks the real bin/hb: the contract
@@ -22,7 +23,7 @@ $4000 constant LA-CAP
 \ A path the boot prefix already carries, and one it does not. Both are read
 \ from the engine's own behaviour by the first two cases below rather than
 \ asserted here, so this file does not have to track the prefix table.
-: LA-SEEDED$ ( -- ^u8 n )   s" src/lib/error.f" ;
+: LA-SEEDED$ ( -- str )   s" src/lib/error.f" ;
 
 create LA-ROOT   PATH-CAP allot
 create LA-PROBE  PATH-CAP allot
@@ -42,26 +43,26 @@ variable LA-MISS-U
 variable LA-DANGLING-U
 variable LA-DANGLING-LINK-U
 
-: LA-ROOT$ ( -- ^u8 n )    LA-ROOT LA-ROOT-U @ ;
-: LA-PROBE$ ( -- ^u8 n )   LA-PROBE LA-PROBE-U @ ;
-: LA-THROW$ ( -- ^u8 n )   LA-THROW LA-THROW-U @ ;
-: LA-DECOY$ ( -- ^u8 n )   LA-DECOY LA-DECOY-U @ ;
-: LA-MISS$ ( -- ^u8 n )    LA-MISS LA-MISS-U @ ;
-: LA-DANGLING$ ( -- ^u8 n ) LA-DANGLING LA-DANGLING-U @ ;
-: LA-DANGLING-LINK$ ( -- ^u8 n ) LA-DANGLING-LINK LA-DANGLING-LINK-U @ ;
+: LA-ROOT$ ( -- str )    LA-ROOT LA-ROOT-U @ ;
+: LA-PROBE$ ( -- str )   LA-PROBE LA-PROBE-U @ ;
+: LA-THROW$ ( -- str )   LA-THROW LA-THROW-U @ ;
+: LA-DECOY$ ( -- str )   LA-DECOY LA-DECOY-U @ ;
+: LA-MISS$ ( -- str )    LA-MISS LA-MISS-U @ ;
+: LA-DANGLING$ ( -- str ) LA-DANGLING LA-DANGLING-U @ ;
+: LA-DANGLING-LINK$ ( -- str ) LA-DANGLING-LINK LA-DANGLING-LINK-U @ ;
 
 \ The probe both proves the run reached user source AND proves the seeded
 \ module is usable, so a case cannot pass by loading nothing at all.
-: LA-PROBE-SRC$ ( -- ^u8 n )
+: LA-PROBE-SRC$ ( -- str )
    s\" E-A-FIRST . cr\ns\" load-argv: reached\" type cr\n" ;
 
-: LA-THROW-SRC$ ( -- ^u8 n )
+: LA-THROW-SRC$ ( -- str )
    s\" : LA-T ( -- ) 7141 throw ;\nLA-T\n" ;
 
 \ Adversarial fixture: a file that merely MENTIONS a seeded path, in a comment
 \ and in a string, and defines a word of its own. A loader that matched on text
 \ rather than on the registry key would skip it; it must load.
-: LA-DECOY-SRC$ ( -- ^u8 n )
+: LA-DECOY-SRC$ ( -- str )
    s\" \\ mentions src/lib/error.f in a comment\n: LA-D ( -- ^u8 n ) s\" src/lib/error.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
 
 : LA-SETUP ( -- )
@@ -87,7 +88,7 @@ variable LA-DANGLING-LINK-U
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+ ;
 
-: LA-ARG ( ^u8 n -- )   >LEN PROC-ARGV+ ;
+: LA-ARG ( str -- )   >LEN PROC-ARGV+ ;
 
 : LA-RUN ( -- n n n )                              \ -> outu erru rc
    s" bin/hb" >LEN LA-OUT LA-CAP >LEN LA-ERR LA-CAP >LEN LA-TIMEOUT-MS >MS
@@ -97,8 +98,8 @@ variable LA-DANGLING-LINK-U
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: LA-OUT$ ( n -- ^u8 n ) {: u:n :}   LA-OUT u ;
-: LA-ERR$ ( n -- ^u8 n ) {: u:n :}   LA-ERR u ;
+: LA-OUT$ ( n -- str ) {: u:n :}   LA-OUT u ;
+: LA-ERR$ ( n -- str ) {: u:n :}   LA-ERR u ;
 
 \ ---- cases -----------------------------------------------------------------
 

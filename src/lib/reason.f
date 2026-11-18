@@ -1,3 +1,4 @@
+split-str
 \ reason.f - a failure's stated text, package REASON. A throw code's ERROR:TEXT$
 \ is one static text; REASON:THROW throws a code together with a text the
 \ thrower composed, the numbers that made it fail, and REASON:TEXT$ answers it

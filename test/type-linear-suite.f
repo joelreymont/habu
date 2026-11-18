@@ -1,3 +1,4 @@
+split-str
 \ type-linear-suite.f - whole-bundle linear accounting for layout values
 \ (docs/design.md "Families and layout policies"). Run by the engine over stdin:
 \     bin/hb < test/type-linear-suite.f

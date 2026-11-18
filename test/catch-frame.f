@@ -1,3 +1,4 @@
+split-str
 \ catch-frame.f - a caught throw restores the whole caller frame: data SP, user
 \ return-stack depth (RSP-CELL), loop-stack depth (LOOPSP-CELL) and the handler
 \ chain.

@@ -1,3 +1,4 @@
+split-str
 \ image-bytes-test.f - shared executable image byte writer regression.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f tools/image-bytes-test.f
 
@@ -10,7 +11,7 @@ require src/os/image-bytes.f
 using A64ICODE
 using IMAGE-BYTES
 
-: IBT-CHECK-REJECTS ( ^u8 n -- )
+: IBT-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ A size rounds up to 64 KiB. A larger one maps a fresh, zeroed buffer at the

@@ -1,3 +1,4 @@
+split-str
 \ unknown-states.f - the header's states token on line 11 names no type; DEFINE
 \ reads it as a type after reading the whole table, and its rejection names that
 \ line, not the `;DEFINE` below it.

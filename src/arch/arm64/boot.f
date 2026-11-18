@@ -1,3 +1,4 @@
+split-str
 \ boot.f - the arm64 start-up at offset 0 of a product's code. START, maps the
 \ stacks and DATA, stores the DATA image's runs in it, adds the load offset to
 \ each cell the DATA list names, writes the run-time cells and calls the entry

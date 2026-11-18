@@ -1,3 +1,4 @@
+split-str
 \ address-carrier.f - pure address shapes and value codecs, shared by capture,
 \ link and file inspection without capture buffers or assembler state. A matching
 \ shape grants no provenance: callers still need the declared site map or a
@@ -46,7 +47,7 @@ public
 
 \ Re-encode a full 64-bit value into an existing chain, keeping each word's
 \ opcode and destination register, so it rewrites a chain in any register.
-: SET-CHAIN ( ^u8 n -- ) {: p:^ val:n :}
+: SET-CHAIN ( str -- ) {: p:^ val:n :}
    4 0 ?do
       p i 4 * + W32@ ADDR-OPC-MASK and
       val i 16 * rshift ADDR-IMM-MASK and ADDR-RD-BITS lshift or
@@ -75,7 +76,7 @@ public
 
 \ Live carriers hold absolute addresses; captured DATA sites hold window
 \ coordinates until the boot rebase. The same fields carry either number.
-: CHAIN-VALUE ( ^u8 n -- n ) {: p:^ size:n :}
+: CHAIN-VALUE ( str -- n ) {: p:^ size:n :}
    size ADDR-CHAIN-BYTES = if p CHAINV exit then
    size DATA-CHAIN-BYTES <> if
       s" E-ADDRESS-CHAIN" REJECTION:OPEN
@@ -90,7 +91,7 @@ public
       2 i - 16 * lshift or
    loop ;
 
-: SET-CHAIN-VALUE ( ^u8 n n -- ) {: p:^ val:n size:n :}
+: SET-CHAIN-VALUE ( str n -- ) {: p:^ val:n size:n :}
    size ADDR-CHAIN-BYTES = if p val SET-CHAIN exit then
    size DATA-CHAIN-BYTES <> if s" address chain: invalid size" EXIT-STATUS:INTERNAL die then
    val 0 < val $FFFFFFFFFFFF > or if

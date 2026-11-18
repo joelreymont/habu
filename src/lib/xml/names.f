@@ -1,3 +1,4 @@
+split-str
 \ names.f - XML names, namespace scopes and PREFIX-URI; part of package XML
 \ (src/lib/xml.f). Name spans keep their prefix; URI and ATTR-URI answer the
 \ resolved, decoded namespace URI. A default namespace applies to elements, not
@@ -100,7 +101,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    {: state :}
    state HASH-K0 + @ state HASH-K1 + @ ;
 
-: BYTES-HASH ( ^n ^u8 n -- n )
+: BYTES-HASH ( ^n str -- n )
    {: state source size:n :}
    state KEY@ source size SIPHASH:BYTES ;
 
@@ -159,22 +160,22 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state SKIP-WHITE
    state name size state SCAN-VALUE SAVE-ATTRIBUTE ;
 
-: ATTRIBUTE-NAME$ ( ^n ^n -- ^u8 n )
+: ATTRIBUTE-NAME$ ( ^n ^n -- str )
    {: state attr :}
    state attr ATTRIBUTE-NAME + @ attr ATTRIBUTE-NAME-U + @ SPAN$ ;
 
-: ATTRIBUTE-VALUE$ ( ^n ^n -- ^u8 n )
+: ATTRIBUTE-VALUE$ ( ^n ^n -- str )
    {: state attr :}
    state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$ ;
 
-: PREFIX-SIZE ( ^u8 n -- n )
+: PREFIX-SIZE ( str -- n )
    {: source size:n :}
    size 0 ?do
       source i + c@ $3A = if i unloop exit then
    loop
    0 ;
 
-: NAME-MATCH? ( ^n ^n ^u8 n -- bool )
+: NAME-MATCH? ( ^n ^n str -- bool )
    {: state attr expected size:n :}
    state attr ATTRIBUTE-NAME$ expected size BYTES= ;
 
@@ -195,7 +196,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state attr ATTRIBUTE-VALUE$
    state uri 0 URI$ NORMAL-EQUAL? ;
 
-: XMLNS-CHECK ( ^n ^n ^u8 n -- )
+: XMLNS-CHECK ( ^n ^n str -- )
    {: state attr prefix size:n :}
    attr ATTRIBUTE-NAME + @ {: at:n :}
    prefix size s" xmlns" BYTES= if
@@ -210,7 +211,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
       E-NAMESPACE REJECT
    then ;
 
-: XML-PREFIX-CHECK ( ^n ^n ^u8 n -- )
+: XML-PREFIX-CHECK ( ^n ^n str -- )
    {: state attr prefix size:n :}
    attr ATTRIBUTE-NAME + @ {: at:n :}
    prefix size s" xml" BYTES= if
@@ -242,7 +243,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 
 \ A URI hashes its decoded scalars, one word each: the units NORMAL-EQUAL?
 \ compares, so URIs it calls equal hash equal however they are spelled.
-: URI-HASH ( ^n ^u8 n -- n )
+: URI-HASH ( ^n str -- n )
    {: state source size:n :}
    state HASH-START {: sip :}
    0
@@ -258,7 +259,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 \ An expanded name hashes its URI's hash, then its local name's bytes. Each
 \ binding keeps its URI's hash, so an attribute costs its local name, not its
 \ URI, and equal expanded names hash equal.
-: EXPANDED-HASH ( ^n n ^u8 n -- n )
+: EXPANDED-HASH ( ^n n str -- n )
    {: state uri:n local size:n :}
    state HASH-START {: sip :}
    sip uri SIPHASH:ABSORB-WORD
@@ -267,12 +268,12 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
 
 : EMPTY-URI-HASH ( ^n -- n ) s" " URI-HASH ;
 
-: PREFIX-HEAD ( ^n ^u8 n -- ^n )
+: PREFIX-HEAD ( ^n str -- ^n )
    {: state prefix size:n :}
    state state prefix size BYTES-HASH state NS-CAP + @ BUCKET
    NAMESPACE BINDING-HEAD + ;
 
-: BINDING-PREFIX$ ( ^n ^n -- ^u8 n )
+: BINDING-PREFIX$ ( ^n ^n -- str )
    {: state binding :}
    state binding BINDING-PREFIX + @ binding BINDING-PREFIX-U + @ SPAN$ ;
 
@@ -359,7 +360,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
       state attr NS-ATTRIBUTE? if state attr SAVE-NAMESPACE then
    loop ;
 
-: BINDING-INDEX ( ^n ^u8 n -- n )
+: BINDING-INDEX ( ^n str -- n )
    {: state prefix size:n :}
    state prefix size PREFIX-HEAD @
    begin dup 0 >= while
@@ -368,7 +369,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
       drop binding BINDING-LINK + @
    repeat ;
 
-: PREFIX-BINDING ( ^n ^u8 n -- n n n bool )
+: PREFIX-BINDING ( ^n str -- n n n bool )
    {: state prefix size:n :}
    prefix size s" xml" BYTES= if
       XML-URI 0 state state XML-URI 0 URI$ URI-HASH true exit
@@ -381,7 +382,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    then
    0 0 state EMPTY-URI-HASH size 0= ;
 
-: BOUND-URI ( ^n ^u8 n -- n n bool )
+: BOUND-URI ( ^n str -- n n bool )
    PREFIX-BINDING {: start:n size:n hash:n bound:bool :}
    start size bound ;
 
@@ -415,7 +416,7 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    size attr ATTRIBUTE-URI-U + !
    hash ;
 
-: ATTRIBUTE-URI$ ( ^n ^n -- ^u8 n )
+: ATTRIBUTE-URI$ ( ^n ^n -- str )
    {: state attr :}
    state attr ATTRIBUTE-URI + @ attr ATTRIBUTE-URI-U + @ URI$ ;
 
@@ -442,11 +443,11 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state URI-LEN + ! state URI-OFF + !
    state RESOLVE-ATTRIBUTES ;
 
-: PREFIX-URI-ARGS ( XML:reader ^u8 n ^u8 n -- XML:reader ^n ^u8 n ^u8 n )
+: PREFIX-URI-ARGS ( XML:reader str ^u8 n -- XML:reader ^n str ^u8 n )
    {: prefix size:n destination cap:n :}
    STATE prefix size destination cap ;
 
-: PREFIX-URI-STATE ( ^n ^u8 n ^u8 n -- n bool )
+: PREFIX-URI-STATE ( ^n str ^u8 n -- n bool )
    {: state prefix size:n destination cap:n :}
    state LIVE
    state OPEN-DEPTH + @ 0= if E-STATE throw then
@@ -464,7 +465,7 @@ public
 \ without writing, `xml` its implicit URI, the empty prefix the default (zero
 \ bytes when none). Before the root, past its end, at EOF or on a failed reader
 \ it is E-STATE; a short or aliasing output throws and leaves the reader alone.
-: PREFIX-URI ( XML:reader ^u8 n ^u8 n -- XML:reader n bool )
+: PREFIX-URI ( XML:reader str ^u8 n -- XML:reader n bool )
    PREFIX-URI-ARGS PREFIX-URI-STATE ;
 
 ;package

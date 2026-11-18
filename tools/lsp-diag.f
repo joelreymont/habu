@@ -1,3 +1,4 @@
+split-str
 \ lsp-diag.f - the checker's packets (tools/check-verify-core.f schema-1 JSON,
 \ one per line, each naming its file by canonical absolute path) published as LSP
 \ diagnostics for the checked document and each other file they name. A line
@@ -50,8 +51,8 @@ TYPED-VARIABLE LIST-A ^u8             \ the file the list being written is for,
 variable LIST-U
 variable ITEMS                           \ and the diagnostics in it so far
 
-: NEW$ ( -- ^u8 n )  NEW-B BUF:SPAN$ BUF:BLEN>N ;
-: FILE$ ( -- ^u8 n )  FILE-BUF FILE-U @ ;
+: NEW$ ( -- str )  NEW-B BUF:SPAN$ BUF:BLEN>N ;
+: FILE$ ( -- str )  FILE-BUF FILE-U @ ;
 
 : ERR ( ^u8 n -- )
    {: a:^ u:n :}
@@ -109,12 +110,12 @@ variable ITEMS                           \ and the diagnostics in it so far
    v vu s" error" STR= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
    v vu s" warning" STR= if WRITE-COMMA s" severity" WARNING-SEVERITY WRITE-FIELD-U then ;
 
-: CODE-FIELD ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: CODE-FIELD ( ^JSON:writer str -- ^JSON:writer )
    s" code" STRING-MEMBER 0= if 2drop exit then
    {: c:^ cu:n :}
    WRITE-COMMA s" code" WRITE-KEY c cu QUOTED ;
 
-: HELP-LINE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: HELP-LINE ( ^JSON:writer str -- ^JSON:writer )
    s" help" STRING-MEMBER over 0 > and 0= if 2drop exit then
    {: s:^ su:n :}
    s" \nhelp: " WRITE-RAW s su WRITE-RAW ;
@@ -137,7 +138,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    begin READ-NEXT T-KEY = while w NOTE-LINE repeat
    READ-CLOSE w ;
 
-: EVALUATED-LINE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: EVALUATED-LINE ( ^JSON:writer str -- ^JSON:writer )
    {: w a:^ u:n :}
    JSON-ST a u READ-INIT
    READ-NEXT drop
@@ -208,7 +209,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    PKTS-A @ PKTS-U @ [: ITEM ;] EACH-LINE
    W CLOSING ;
 
-: LIST-URI ( -- ^u8 n )
+: LIST-URI ( -- str )
    LIST-A @ LIST-U @ URI-SPAN URI:PATH>FILE {: n:n :}
    URI-SPAN SPAN:$ drop n ;
 
@@ -228,15 +229,15 @@ variable ITEMS                           \ and the diagnostics in it so far
    ;MATCH ;
 
 \ Whether an open document is the file the checker names by this path.
-: HELD-OPEN? ( ^u8 n -- bool )  DOC-HOLDING SLOT? ;
+: HELD-OPEN? ( str -- bool )  DOC-HOLDING SLOT? ;
 
 \ Whether an open document's own list is at this path's file URI: the client
 \ opened it by this path.
-: SHOWN? ( ^u8 n -- bool )  DOC-OPENED-AS SLOT? ;
+: SHOWN? ( str -- bool )  DOC-OPENED-AS SLOT? ;
 
 \ Whether another open document's last check published a list for this path;
 \ each such document waits for a check again.
-: CLAIMED? ( ^u8 n -- bool )
+: CLAIMED? ( str -- bool )
    {: f:^ fu:n :}
    false
    DOC-SLOTS 0 ?do
@@ -247,7 +248,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ Appends the path, LF-ended, to the files published; answers that copy, which
 \ outlives FILE-BUF.
-: KEEP-NEW ( ^u8 n -- ^u8 n )
+: KEEP-NEW ( str -- str )
    {: f:^ fu:n :}
    NEW$ nip {: at:n :}
    f fu BUF:N>BLEN NEW-B BUF:APPEND-SPAN
@@ -264,7 +265,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    LIST-A @ LIST-U @ FILE-SNAPSHOT!
    LIST-URI OPTION:NONE LIST ;
 
-: WITHDRAW ( ^u8 n -- )
+: WITHDRAW ( str -- )
    {: f:^ fu:n :}
    NEW$ f fu HAS-LINE? if exit then
    f fu SHOWN? if exit then

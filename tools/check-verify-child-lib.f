@@ -1,3 +1,4 @@
+split-str
 \ check-verify-child-lib.f - the verifier child's body. tools/check-verify-child.f
 \ states the contract, loads this file from its own tree and runs
 \ CHECK-VERIFY-CHILD:MAIN.
@@ -66,7 +67,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    fd NL 1 WRITE ;
 
 
-: U$ ( n -- ^u8 n )
+: U$ ( n -- str )
    NUM-CAP NUM-I !
    begin
       dup 10 mod 48 + NUM-I @ 1- dup NUM-I ! NUM + c!
@@ -145,28 +146,28 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    POS @ 1+ SUBJECT-AT ! ;
 
 
-: OPEN-PATH$ ( n -- ^u8 n )
+: OPEN-PATH$ ( n -- str )
    4 * {: at:n :}
    at OPEN-AT @ IN at 1+ OPEN-AT @ ;
 
-: OPEN-TEXT$ ( n -- ^u8 n )
+: OPEN-TEXT$ ( n -- str )
    4 * {: at:n :}
    at 2 + OPEN-AT @ IN at 3 + OPEN-AT @ ;
 
 
 \ The text of the first open document at this canonical path and true, else
 \ false (VERIFY:SUPPLIED).
-: OPEN-TEXT ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
+: OPEN-TEXT ( str -- str bool ) {: a:^ u:n :}
    OPEN-N @ 0 ?do
       i OPEN-PATH$ a u CORE-STR= if i OPEN-TEXT$ true unloop exit then
    loop
    NULL$ false ;
 
 
-: SUBJECT$ ( -- ^u8 n )
+: SUBJECT$ ( -- str )
    SUBJECT-AT @ IN SUBJECT-U @ ;
 
-: SUBJECT-PATH$ ( -- ^u8 n )
+: SUBJECT-PATH$ ( -- str )
    BATCH? @ if SUBJECT-PATH-AT @ IN SUBJECT-PATH-U @ exit then
    0 SCRIPT-ARGV$ ;
 
@@ -191,7 +192,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    dup 10 < if 48 + exit then 87 + ;
 
 
-: CONTROL-ESC ( n -- ^u8 n )
+: CONTROL-ESC ( n -- str )
    {: c:n :}
    92 ESC c!  117 ESC 1 + c!  48 ESC 2 + c!  48 ESC 3 + c!
    c 16 / HEX-DIGIT ESC 4 + c!
@@ -201,7 +202,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 \ RFC 8259's string escapes: quotation mark, reverse solidus and control bytes;
 \ empty for none.
-: ESCAPE$ ( n -- ^u8 n )
+: ESCAPE$ ( n -- str )
    {: c:n :}
    c 34 = if s\" \\\"" exit then
    c 92 = if s\" \\\\" exit then
@@ -219,7 +220,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    i 1+ RUN-AT ! ;
 
 
-: JSON-STR ( ^u8 n -- )
+: JSON-STR ( str -- )
    {: a:^ u:n :}
    OUT-FD s\" \"" WRITE
    0 RUN-AT !
@@ -231,18 +232,18 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ The package span, copied out of the checker's symbol pool before anything
 \ else runs: the next intern can move it. The storage holds a byte at least,
 \ so a global's empty package has an address.
-: DEF-PKG! ( ^u8 n -- )
+: DEF-PKG! ( str -- )
    {: pkg:^ pkgu:n :}
    pkgu 1 max DEF-PKG-RESERVE
    pkg 0 DEF-PKG pkgu BYTE-COPY
    pkgu DEF-PKG-U ! ;
 
 
-: DEF-PKG$ ( -- ^u8 n )
+: DEF-PKG$ ( -- str )
    0 DEF-PKG DEF-PKG-U @ ;
 
 
-: VISIBILITY$ ( n -- ^u8 n )
+: VISIBILITY$ ( n -- str )
    {: vis:n :}
    vis SYM-GLOBAL = if s" global" exit then
    vis SYM-PRIVATE = if s" private" exit then
@@ -250,7 +251,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    s" check-verify: unknown visibility" EXIT-STATUS:INTERNAL die ;
 
 
-: CLASS$ ( n -- ^u8 n )
+: CLASS$ ( n -- str )
    {: class:n :}
    class VERIFY:DEF-WORD = if s" word" exit then
    class VERIFY:DEF-CONSTANT = if s" constant" exit then
@@ -263,7 +264,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ A definition the first form retained, as its definition line: the name as
 \ the event gives it, the package and visibility the checker recorded it
 \ under. The tail it recorded is its lookup key, not a name to show.
-: DEFINITION-LINE ( ^u8 n ^u8 n n ^u8 n n n n n -- )
+: DEFINITION-LINE ( str str n str n n n n -- )
    {: kind:^ kindu:n name:^ nameu:n sym:n eff:^ effu:n at:n end:n class:n visit:n :}
    REF-BATCH? @ if exit then
    sym VERIFY:SYM-IDENTITY {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
@@ -296,7 +297,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    OUT-FD NEWLINE ;
 
 \ Index records are selected before the candidate scope destroys its symbols.
-: IDX-DEFINITION ( ^u8 n ^u8 n n ^u8 n n n n n -- )
+: IDX-DEFINITION ( str str n str n n n n -- )
    {: kind:^ kindu:n name:^ nameu:n sym:n eff:^ effu:n at:n end:n class:n visit:n :}
    IDX-N @ 1+ 3 * IDX-EVENTS-RESERVE
    IDX-N @ 3 * {: row:n :}
@@ -335,7 +336,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 \ A file visit, with the source of the bytes ON-FILE was handed. Disk metadata
 \ comes from the quiet reader, never from a stat after verification.
-: FILE-LINE ( ^u8 n ^u8 n -- )
+: FILE-LINE ( str str -- )
    {: f:^ fu:n a:^ u:n :}
    f fu SUBJECT-PATH$ CORE-STR= {: subject:bool :}
    f fu OPEN-TEXT {: open:bool :} 2drop
@@ -378,7 +379,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    then ;
 
 
-: USE-LINE ( n n ^u8 n n n n n -- )
+: USE-LINE ( n n str n n n n -- )
    {: at:n end:n path:^ pathu:n tat:n tend:n sym:n visit:n :}
    sym pathu 0<> USE-WRITTEN? 0= if exit then
    sym VERIFY:SYM-IDENTITY {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
@@ -407,7 +408,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    OUT-FD NEWLINE ;
 
 
-: LOAD-OUTCOME$ ( n -- ^u8 n )
+: LOAD-OUTCOME$ ( n -- str )
    {: outcome:n :}
    outcome VERIFY:LOAD-READ = if s" read" exit then
    outcome VERIFY:LOAD-HELD = if s" held" exit then
@@ -416,7 +417,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 \ A top-level loader of the first form's subject whose load reached a file, as
 \ its load line.
-: LOAD-LINE ( n n ^u8 n n -- )
+: LOAD-LINE ( n n str n -- )
    {: at:n end:n path:^ pathu:n outcome:n :}
    OUT-FD s\" check-verify: load {\"byte_start\":" WRITE
    OUT-FD at FD-N
@@ -431,7 +432,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 
 \ A spelling the third form's cursor offers, as its candidate line.
-: CANDIDATE-LINE ( ^u8 n ^u8 n n n -- )
+: CANDIDATE-LINE ( str str n n -- )
    {: w:^ wu:n path:^ pathu:n tat:n tend:n :}
    OUT-FD s\" check-verify: candidate {\"word\":" WRITE
    w wu JSON-STR
@@ -476,7 +477,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 \ ANSWER, then after a space the file the composition could not load
 \ (VERIFY:FAULT-TARGET$), when it names one.
-: TARGET-RESULT ( ^u8 n -- ) {: a:^ u:n :}
+: TARGET-RESULT ( str -- ) {: a:^ u:n :}
    VERIFY:FAULT-TARGET$ {: t:^ tu:n :}
    OUT-FD s" check-verify: " WRITE
    OUT-FD a u WRITE

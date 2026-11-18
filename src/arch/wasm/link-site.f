@@ -1,3 +1,4 @@
+split-str
 \ link-site.f - the Wasm part of the linker's address values
 \ (src/habu/t0-wasm.f "THE ROWS"). An address site is `i64.const` and a padded
 \ ten-byte s64 after it, for a code or a data address alike.
@@ -11,7 +12,7 @@ private
 package WASM
 
 \ Whether emission bytes b, s of them, hold the opcode and its whole field at site.
-: SITE? ( ^u8 n n -- bool )
+: SITE? ( str n -- bool )
    {: b:^ s:n site:n :}
    site 0<  site s 11 - >  or if false exit then
    b site + c@ WCODE:OP-I64-CONST = ;

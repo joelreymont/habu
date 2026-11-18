@@ -1,3 +1,4 @@
+split-str
 \ numeric-policy.f - the explicit numerical policy a compilation carries. No
 \ floating-point or integer rewrite is justified by commutativity or an ambient
 \ fast-math switch: each rewrite rule declares which policies admit it. The five

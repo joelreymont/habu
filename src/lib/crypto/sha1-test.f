@@ -1,3 +1,4 @@
+split-str
 \ sha1-test.f - SHA-1 against the FIPS 180 vectors, the lengths where padding
 \ changes shape, and the context contract.
 \ Run: bin/hb --load src/lib/crypto/sha1-test.f
@@ -30,7 +31,7 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
 : FILL-A ( -- )
    [char] a A-BYTES SPAN:FILL ;
 
-: A$ ( n -- ^u8 n )
+: A$ ( n -- str )
    A-BYTES SPAN:$ drop swap ;
 
 : HEX$ ( SHA1:digest -- ^u8 n )
@@ -40,7 +41,7 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
    SHA1:DIGEST-BYTES 0 do d i + c@ h i 2 * + BYTE>HEX loop
    h 40 ;
 
-: DIGEST= ( SHA1:digest ^u8 n -- ) {: got want wu:n :}
+: DIGEST= ( SHA1:digest str -- ) {: got want wu:n :}
    got HEX$ want wu T$= ;
 
 : FIPS ( -- )

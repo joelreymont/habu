@@ -1,3 +1,4 @@
+split-str
 \ Snapshot wire format and the baked loader's immutable capability.
 \ Keep this separate from the address-cell storage ABI: an old donor may load
 \ current source while its native startup still understands only an older

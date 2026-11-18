@@ -1,3 +1,4 @@
+split-str
 \ name-length-test.f - every checker word source can call with a name or a text
 \ rejects a length that describes no memory, -1 and the maximum cell. A query
 \ answers no; a declaring word ends with its own rejection. A name has no
@@ -49,7 +50,7 @@ NAMES!
 \ The name the next case hands its word: LEN bytes of q ending at the guard
 \ page, or for a length no span has, its two last bytes.
 variable LEN
-: BAD$ ( -- ^u8 n )
+: BAD$ ( -- str )
    LEN @ {: u:n :}
    u 0 < u ROOM > or IF 2 TAIL drop u EXIT THEN
    u TAIL ;
@@ -93,7 +94,7 @@ TEXTS!
 128 constant LBL-CAP
 create LBL LBL-CAP allot
 variable LBL-U
-: LBL+ ( ^u8 n -- )
+: LBL+ ( str -- )
    {: a:^ u:n :}
    u LBL-CAP LBL-U @ - min {: k:n :}
    k 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
@@ -111,7 +112,7 @@ variable LBL-U
    src srcu OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN ;
 
 \ The child prints that its word refused, and nothing else, and exits 0.
-: RETURNS-AT ( n ^u8 n ^u8 n -- )
+: RETURNS-AT ( n str str -- )
    {: u:n at:^ atu:n src:^ srcu:n :}
    at atu src srcu LABEL-AT
    u src srcu RUN-AT {: outu:len erru:len oc :}
@@ -120,7 +121,7 @@ variable LBL-U
    RELABEL OUT outu LEN>N S\" refused\n" T$= ;
 
 \ The child ends with the word's own refusal: `rc` and its one-line message.
-: DIES-AT ( n ^u8 n ^u8 n n ^u8 n -- )
+: DIES-AT ( n str str n str -- )
    {: u:n at:^ atu:n src:^ srcu:n rc:n want:^ wantu:n :}
    at atu src srcu LABEL-AT
    u src srcu RUN-AT {: outu:len erru:len oc :}
@@ -130,7 +131,7 @@ variable LBL-U
 
 \ The child ends with one rejection record: `rc`, a record that, its gutter
 \ dropped, starts with `head`, holds `note` and is followed by no other.
-: REJECTS-AT ( n ^u8 n ^u8 n n ^u8 n ^u8 n -- )
+: REJECTS-AT ( n str str n str str -- )
    {: u:n at:^ atu:n src:^ srcu:n rc:n head:^ headu:n note:^ noteu:n :}
    at atu src srcu LABEL-AT
    u src srcu RUN-AT {: outu:len erru:len oc :}
@@ -161,7 +162,7 @@ variable LBL-U
 
 \ The family lookups copy the name into the checker's token buffer, which
 \ refuses a maximum-cell length by ending the process.
-: FAM-DIES-AT-MAX ( ^u8 n -- )
+: FAM-DIES-AT-MAX ( str -- )
    {: src:^ srcu:n :}
    -1 s" -1" src srcu RETURNS-AT
    MAX-CELL s" max" src srcu 76 S\" checker: token buffer too large\n" DIES-AT ;
@@ -172,7 +173,7 @@ variable LBL-U
 
 \ A definition's source text is no name either: only -1 and the maximum cell
 \ describe none of it, and each dies at the token buffer's limit.
-: TOO-LARGE$ ( -- ^u8 n ) S\" checker: token buffer too large\n" ;
+: TOO-LARGE$ ( -- str ) S\" checker: token buffer too large\n" ;
 : TEST-TEXTS ( -- )
    s" CHECK!-IT" 76 TOO-LARGE$ DIES
    s" CANDIDATE-IT" 76 TOO-LARGE$ DIES
@@ -180,7 +181,7 @@ variable LBL-U
 
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.
-: DEF-SRC ( n n -- ^u8 n )
+: DEF-SRC ( n n -- str )
    {: u:n c:n :}
    u 4 + MEM-ALLOC-BYTES drop {: p:^ :}
    58 p c!  32 p 1 + c!
@@ -190,8 +191,8 @@ variable LBL-U
 
 \ `: <u bytes of c> ( -- ) 82 emit ; <u bytes of c>`, in a fresh mapping: a
 \ definition and its one call, which prints R.
-: RAN$ ( -- ^u8 n ) s"  ( -- ) 82 emit ; " ;
-: RUN-SRC ( n n -- ^u8 n )
+: RAN$ ( -- str ) s"  ( -- ) 82 emit ; " ;
+: RUN-SRC ( n n -- str )
    {: u:n c:n :}
    RAN$ {: b:^ bu:n :}
    u 2 * bu + 2 + {: su:n :}
@@ -220,7 +221,7 @@ variable LBL-U
 
 \ A LONG-LEN package and part, a word in each and a SUMTYPE whose constructor
 \ package is longer still: each runs, qualified and under `using`; prints PWWS.
-: PKG-SRC$ ( -- ^u8 n )
+: PKG-SRC$ ( -- str )
    LONG-LEN 81 LETTERS {: l:^ lu:n :}
    LONG-LEN 82 LETTERS {: r:^ ru:n :}
    s" package " l lu JOIN
@@ -251,7 +252,7 @@ variable LBL-U
    E2E-TREE:NEED-OK ;
 
 \ A candidate that calls the word with a long name.
-: CALL-LONG$ ( -- ^u8 n ) s" NLT-CALL ( -- ) " LONG$ JOIN ;
+: CALL-LONG$ ( -- str ) s" NLT-CALL ( -- ) " LONG$ JOIN ;
 
 \ The body text grows with the definition: on the load path a child's `:`
 \ defines a word with a long name, whose body text passes 20000 bytes, and

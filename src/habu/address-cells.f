@@ -1,3 +1,4 @@
+split-str
 \ The engine owns address-cell declarations. Readers acquire a fresh span:
 \ appending a row may move its backing storage, but never changes a row's index.
 
@@ -154,7 +155,7 @@ public
    first first bytes + [: REMOVE-LOCKED ;] WITH-LOCK ;
 
 \ Reads a complete snapshot DATA copy.
-: DATA-SPAN ( ^u8 n -- ^n n ) {: data:^ bytes:n :}
+: DATA-SPAN ( str -- ^n n ) {: data:^ bytes:n :}
    bytes SNAP-RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
    data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
    h MAGIC-FIELD + @ MAGIC <> if REFUSE then

@@ -1,3 +1,4 @@
+split-str
 \ top-row.f - the typed top level: the checker's row over the interpret stream.
 \ The interpreter calls TOP-LEVEL with ( token-a token-u class ) per
 \ interpreted token, a word's before the word runs, or TOP-MOVE in its place
@@ -26,7 +27,7 @@ package CHECK
 
 \ Before keyword a u takes the top cell for the name w v: an empty stack, a
 \ multi-cell value or a cell its row rejects is rejected, rc 70, before it is taken.
-: TOP-TAKE ( ^u8 n ^u8 n -- )
+: TOP-TAKE ( str str -- )
    {: a:^ u:n w:^ v:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
    depth {: live:n :}

@@ -1,3 +1,4 @@
+split-str
 \ gate-signal-test.f - a stopped gate leaves no process and no scratch behind.
 \ The subject is test/gate-signal-root.f, test/run.f's adapter on a one-row
 \ registry, started as a child with a private TMPDIR; its row
@@ -64,8 +65,8 @@ false CASE-NOHUP !
 PROCESS:NO-FD FIFO-RD !
 PROCESS:NO-FD ROOT-WATCH !
 
-: TMP$ ( -- ^u8 n )    TMP TMP-U @ ;
-: LOG$ ( -- ^u8 n )    LOG LOG-U @ ;
+: TMP$ ( -- str )    TMP TMP-U @ ;
+: LOG$ ( -- str )    LOG LOG-U @ ;
 
 : PAUSE ( n -- ) {: ms:n :}
    PAUSE-PFD 0 ms poll drop ;
@@ -88,7 +89,7 @@ PROCESS:NO-FD ROOT-WATCH !
    GT-ROOT s" root.log" LOG FS:JOIN-PATH LOG-U !
    TMP$ FS:MAKE-DIRS ;
 
-: ENTRY+ ( ^u8 n -- )
+: ENTRY+ ( str -- )
    2drop ENTRY-N @ 1+ ENTRY-N ! ;
 
 : TMP-ENTRIES ( -- n )
@@ -102,7 +103,7 @@ PROCESS:NO-FD ROOT-WATCH !
 
 \ ---- the report FIFO --------------------------------------------------------
 
-: FIFO$ ( -- ^u8 n )
+: FIFO$ ( -- str )
    FIFO FIFO-U @ ;
 
 \ A new FIFO for the case, its read end open before the row starts, so the
@@ -115,7 +116,7 @@ PROCESS:NO-FD ROOT-WATCH !
    REPORT-N 0 ?do 0 i cells STARTS + ! loop
    false FIFO-DONE ! ;
 
-: FD-TEXT$ ( n -- ^u8 n )
+: FD-TEXT$ ( n -- str )
    SB-RESET FMT:SB-INT SB$ ;
 
 \ ---- who reported -----------------------------------------------------------
@@ -152,7 +153,7 @@ variable STAT-PATH-U
    pid BSD-FLAVOR 0 BSD BSD-BYTES PID-INFO BSD-BYTES <> if 0 exit then
    BSD BSD-START-S + LE:U64@ US-PER-S * BSD BSD-START-US + LE:U64@ + ;
 
-: STAT-PATH+ ( ^u8 n -- )
+: STAT-PATH+ ( str -- )
    STAT-PATH PATH-CAP STAT-PATH-U BUF-APPEND ;
 
 \ The first index from at, below end, that is not a space; then that is one.
@@ -295,7 +296,7 @@ variable STAT-PATH-U
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-: NOHUP$ ( -- ^u8 n )
+: NOHUP$ ( -- str )
    s" nohup" >LEN NOHUP FIND-EXECUTABLE MATCH option
       none OF s" gate-signal-test: required executable missing on PATH: nohup"
          EXIT-STATUS:UNAVAILABLE die ENDOF
@@ -306,7 +307,7 @@ variable STAT-PATH-U
 \ Stages the root's argv and answers the executable: the engine, or nohup with
 \ the engine as its first argument. nohup sets SIGHUP to ignored and becomes
 \ the engine, so the pid spawned is the root's either way.
-: ROOT-ARGV ( -- ^u8 n )
+: ROOT-ARGV ( -- str )
    PROC-ARGV-ENV-RESET
    CASE-NOHUP @ if ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV+ then
    s" --load" >LEN PROC-ARGV+

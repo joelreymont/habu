@@ -1,3 +1,4 @@
+split-str
 \ hb-cli-contracts-test.f - checked coverage for hb startup/data-stdin contracts and tools/check.f's usage record.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-cli-contracts-test.f
 
@@ -29,21 +30,21 @@ create HCT-OUT HCT-CAP allot
 create HCT-ERR HCT-CAP allot
 create HCT-EMPTY 1 allot   \ zero-length stdin
 
-: HCT-COPY! ( ^u8 n ^u8 ^n -- ) {: src:^ u dst:^ lenp:^ :}
+: HCT-COPY! ( str ^u8 ^n -- ) {: src:^ u dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
-: HCT-ROOT ( -- ^u8 n )
+: HCT-ROOT ( -- str )
    HCT-ROOT-BUF HCT-ROOT-U @ ;
 
-: HCT-CHILD ( -- ^u8 n )
+: HCT-CHILD ( -- str )
    HCT-CHILD-BUF HCT-CHILD-U @ ;
 
 : HCT-LF ( -- )
    10 SB-APPEND-C ;
 
-: HCT-CHILD$ ( -- ^u8 n )
+: HCT-CHILD$ ( -- str )
    SB-RESET
    s" create HCT-BUF 32 allot" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
@@ -52,14 +53,14 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" MAIN" SB-APPEND HCT-LF
    SB$ ;
 
-: HCT-WANT$ ( -- ^u8 n )
+: HCT-WANT$ ( -- str )
    SB-RESET
    s" 4" SB-APPEND HCT-LF
    s" DATA" SB-APPEND HCT-LF
    SB$ ;
 
 
-: HCT-ARGV$ ( -- ^u8 n )
+: HCT-ARGV$ ( -- str )
    SB-RESET
    s" : HCT-ARGV-NEG ( -- ) [: -1 SCRIPT-ARGV$ 2drop ;] catch . ;" SB-APPEND HCT-LF
    s" : HCT-ARGV-ZERO ( -- ) [: 0 SCRIPT-ARGV$ 2drop ;] catch . ;" SB-APPEND HCT-LF
@@ -76,7 +77,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    SB$ ;
 
 
-: HCT-ARGV-NONE-WANT$ ( -- ^u8 n )
+: HCT-ARGV-NONE-WANT$ ( -- str )
    SB-RESET
    s" 0" SB-APPEND HCT-LF
    s" 7180" SB-APPEND HCT-LF
@@ -84,7 +85,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    SB$ ;
 
 
-: HCT-ARGV-VALUES-WANT$ ( -- ^u8 n )
+: HCT-ARGV-VALUES-WANT$ ( -- str )
    SB-RESET
    s" 3" SB-APPEND HCT-LF
    s" 7180" SB-APPEND HCT-LF
@@ -103,7 +104,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF FS:JOIN-PATH HCT-CHILD-U !
    HCT-CHILD HCT-CHILD$ FS:WRITE-ALL ;
 
-: HCT-STORE! ( len len PROCESS:ending ^u8 n -- )
+: HCT-STORE! ( len len PROCESS:ending str -- )
    {: outu:len erru:len oc src:^ srcu:n :}
    outu LEN>N HCT-OUT-U !  erru LEN>N HCT-ERR-U !
    oc MATCH PROCESS:ending

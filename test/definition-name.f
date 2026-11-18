@@ -1,3 +1,4 @@
+split-str
 \ definition-name.f - the post-seal checker bridge, and a definition no
 \ authority can place in a package failing closed with exit status 70 and
 \ naming the refused state on fd 2. The suite runs it on HABU_UNDER_TEST.
@@ -29,16 +30,16 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 \ The engine under test: the gate's freshly built candidate when it exported
 \ one, else the running engine itself (src/lib/engine-candidate.f).
-: HB$ ( -- ^u8 n )       ENGINE-CANDIDATE:PATH$ ;
+: HB$ ( -- str )       ENGINE-CANDIDATE:PATH$ ;
 
-: RUN-SOURCE ( ^u8 n ^u8 n -- n ) {: exe:^ exeu:n src:^ srcu:n :}
+: RUN-SOURCE ( str str -- n ) {: exe:^ exeu:n src:^ srcu:n :}
    PROC-ARGV-RESET
    exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN
    PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :} outu OUT-U ! erru ERR-U ! rc ;
 
-: PACKAGE-SOURCE$ ( -- ^u8 n )
+: PACKAGE-SOURCE$ ( -- str )
    s" package BRIDGE public : W ( -- n ) 1 ; ;package BRIDGE:W drop" ;
 
 : PACKAGE-RC ( -- n )
@@ -64,14 +65,14 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    ERR$ s" error[E-MISSING-NAME]: `TYPED-VARIABLE` needs a name" CONTAINS? TTRUE
    ERR$ s" a comment, not a name" CONTAINS? TTRUE ;
 
-: KEYWORD-SOURCE$ ( ^u8 n -- ^u8 n ) {: tok:^ toku:n :}
+: KEYWORD-SOURCE$ ( str -- str ) {: tok:^ toku:n :}
    SB-RESET
    s" package KW-NAME private : " SB-APPEND
    tok toku SB-APPEND
    S\"  ( -- ) ; s\" AFTER\" type ;package" SB-APPEND
    SB$ ;
 
-: KEYWORD-REJECT ( ^u8 n -- ) {: tok:^ toku:n :}
+: KEYWORD-REJECT ( str -- ) {: tok:^ toku:n :}
    tok toku KEYWORD-SOURCE$ {: src:^ srcu:n :}
    s" keyword definition rejects at its name" T-LABEL
    HB$ src srcu RUN-SOURCE 70 T=
@@ -82,7 +83,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" keyword definition stops before later source" T-LABEL
    OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
 
-: DEFINER-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+: DEFINER-REJECT ( str str str -- )
    {: src:^ srcu:n msg:^ msgu:n at:^ atu:n :}
    s" a definer's own keyword or number name rejects at the name" T-LABEL
    HB$ src srcu RUN-SOURCE 70 T=

@@ -1,3 +1,4 @@
+split-str
 \ xt-effect-test.f - xt<effect> value regressions (docs/design.md "Typed top
 \ level"). `['] W` is xt<effect(W)>, a T-QUOT of W's certified effect;
 \ execute, catch and is fit-check it by quotation unification
@@ -33,17 +34,17 @@ create XE-OUT XE-CAP allot
 create XE-ERR XE-CAP allot
 create XE-EMPTY 1 allot
 
-: XE-COPY! ( ^u8 n ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
+: XE-COPY! ( str ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
-: XE-ROOT ( -- ^u8 n ) XE-ROOT-BUF XE-ROOT-U @ ;
-: XE-CHILD ( -- ^u8 n ) XE-CHILD-BUF XE-CHILD-U @ ;
-: XE-OUT$ ( -- ^u8 n ) XE-OUT XE-OUT-U @ ;
-: XE-ERR$ ( -- ^u8 n ) XE-ERR XE-ERR-U @ ;
+: XE-ROOT ( -- str ) XE-ROOT-BUF XE-ROOT-U @ ;
+: XE-CHILD ( -- str ) XE-CHILD-BUF XE-CHILD-U @ ;
+: XE-OUT$ ( -- str ) XE-OUT XE-OUT-U @ ;
+: XE-ERR$ ( -- str ) XE-ERR XE-ERR-U @ ;
 
-: XE-STORE! ( len len PROCESS:ending ^u8 n -- )
+: XE-STORE! ( len len PROCESS:ending str -- )
    {: outu:len erru:len oc src:^ srcu:n :}
    outu LEN>N XE-OUT-U !  erru LEN>N XE-ERR-U !
    oc MATCH PROCESS:ending
@@ -52,7 +53,7 @@ create XE-EMPTY 1 allot
      timeout OF src srcu XE-OUT$ XE-ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: XE-RUN ( ^u8 n -- ) {: src:^ srcu:n :}
+: XE-RUN ( str -- ) {: src:^ srcu:n :}
    XE-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -62,7 +63,7 @@ create XE-EMPTY 1 allot
    src srcu XE-STORE! ;
 
 : XE-LF ( -- ) 10 SB-APPEND-C ;
-: XE-LINE ( ^u8 n -- ) SB-APPEND XE-LF ;
+: XE-LINE ( str -- ) SB-APPEND XE-LF ;
 
 \ ---- candidate program prelude + emitter -------------------------------------
 \ A: a net-+1 word; SP: a stack-preserving word; ACT: a deferred ( n -- n ). The
@@ -81,12 +82,12 @@ create XE-EMPTY 1 allot
    S\" drop .\" <<UNCK>>\" cr ;" XE-LINE ;
 
 \ The child prints "<tag><<CERT>>" or "<tag><<REJ>>"; cand must hold no '"'.
-: XE-CASE-LINE ( ^u8 n ^u8 n -- ) {: ta:^ tu:n ca:^ cu:n :}
+: XE-CASE-LINE ( str str -- ) {: ta:^ tu:n ca:^ cu:n :}
    S\" .\" " SB-APPEND  ta tu SB-APPEND  S\" \"  " SB-APPEND
    S\" s\" " SB-APPEND  ca cu SB-APPEND  S\" \" CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
 
 \ All value cases run in one child; the parent reads "<tag><verdict>" back.
-: XE-VALUES-PROG$ ( -- ^u8 n )
+: XE-VALUES-PROG$ ( -- str )
    XE-PRELUDE
    s" v1:" s" B ( n -- n n ) ['] A execute"     XE-CASE-LINE
    s" v2:" s" C ( -- n ) ['] A execute"         XE-CASE-LINE
@@ -100,7 +101,7 @@ create XE-EMPTY 1 allot
    SB$ ;
 
 \ ---- assertions --------------------------------------------------------------
-: XE-HAS ( ^u8 n -- ) XE-OUT$ 2swap CONTAINS? TTRUE ;
+: XE-HAS ( str -- ) XE-OUT$ 2swap CONTAINS? TTRUE ;
 
 \ v9 (`['] A +`) is the scalar-sink case: the retype has no consumer lookahead, so
 \ the tick is a T-QUOT that cannot unify with +'s `n` input and the body REJECTS.
@@ -144,7 +145,7 @@ create XE-EMPTY 1 allot
    s" using XEU-P" XE-LINE ;
 
 \ Each row prints "<tag>:<value>".
-: XE-USING-PROG$ ( -- ^u8 n )
+: XE-USING-PROG$ ( -- str )
    XE-USING-PRELUDE
    s" package XEU-T" XE-LINE
    s" : XEU-BARE ( n -- n ) ['] XEU-W execute ;" XE-LINE
@@ -166,7 +167,7 @@ create XE-EMPTY 1 allot
 
 \ Two used packages exporting one tail, and one body line to compile against
 \ them: the refusals a tick shares with a call.
-: XE-AMB-PROG$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: XE-AMB-PROG$ ( str -- str ) {: a:^ u:n :}
    SB-RESET
    s" require src/lib/error.f" XE-LINE
    s" package XEU-A  public  : XEU-W ( n -- n ) 1 + ;  ;package" XE-LINE

@@ -1,3 +1,4 @@
+split-str
 \ HEAP records come from the real definer and runtime: each is zero-filled,
 \ typed through its STRUCTURE's accessors, distinct from the next, and keeps
 \ its contents across another record's NEW and RELEASE; a record holding a
@@ -62,7 +63,7 @@ variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
 : EVAL ( ^u8 n -- n ) EVAL-U ! EVAL-A ! [: EVAL-RUN ;] catch ;
 
-: UNDEFINED? ( ^u8 n -- bool ) get-current search-wl 0= ;
+: UNDEFINED? ( str -- bool ) get-current search-wl 0= ;
 
 
 : RECORDS ( -- )
@@ -137,7 +138,7 @@ variable EVAL-U
 
 \ tools/check.f --verify-only checks a file without running it, so it gets its
 \ own child over a scratch tree's copy.
-: VERIFY-SRC$ ( -- ^u8 n )
+: VERIFY-SRC$ ( -- str )
    S\" package HEAP-VERIFY\nSTRUCTURE item DERIVE addr FIELD count n ;STRUCTURE\nHEAP ITEMS item\n: USE ( -- n ) ITEMS-NEW {: p:^ :} 5 p ITEM-COUNT ! p ITEM-COUNT @ p ITEMS-RELEASE ;\n;package\n" ;
 
 : VERIFY ( -- )

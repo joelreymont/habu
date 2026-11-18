@@ -1,3 +1,4 @@
+split-str
 \ app-test.f - the turn protocol's rpc, after and read records and its notified,
 \ tick, file and chunk events under bun: src/lib/browser/host-cli.mjs runs
 \ test/browser/app.f's module through src/lib/browser/turn.js.
@@ -50,16 +51,16 @@ BUF:HDR-BYTES BUFFER: CODE
 CAP BUFFER: BEFORE
 variable BEFORE-U
 
-: RESULT$ ( -- ^u8 n )  s\" {\"result\":{\"content\":[]}}" ;
-: ERROR$ ( -- ^u8 n )  s\" {\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}" ;
-: PARAMS$ ( -- ^u8 n )  s\" {\"structuredContent\":{\"name\":\"Zürich ✓\"}}" ;
+: RESULT$ ( -- str )  s\" {\"result\":{\"content\":[]}}" ;
+: ERROR$ ( -- str )  s\" {\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}" ;
+: PARAMS$ ( -- str )  s\" {\"structuredContent\":{\"name\":\"Zürich ✓\"}}" ;
 \ A method of non-ASCII text, so its length counts bytes, not characters.
-: METHOD$ ( -- ^u8 n )  s" ui/notifications/tool-résult" ;
-: DATA$ ( -- ^u8 n )  s\" \x00\x01\x02\x03\x04\x05\x06\xFD\xFE\xFF" ;
+: METHOD$ ( -- str )  s" ui/notifications/tool-résult" ;
+: DATA$ ( -- str )  s\" \x00\x01\x02\x03\x04\x05\x06\xFD\xFE\xFF" ;
 : NAME$ ( -- ^u8 n )  s" naïve.bin" ;
 \ The composed page's title, which HTML must escape and the view must pass
 \ to the host as it is, with its space run, LF and CR.
-: TITLE$ ( -- ^u8 n )  s\" Zürich  <part>\x0A& \"co\"\x0D" ;
+: TITLE$ ( -- str )  s\" Zürich  <part>\x0A& \"co\"\x0D" ;
 
 : OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ^u8 n )  ERR ERR-U @ ;
@@ -70,7 +71,7 @@ variable BEFORE-U
    FILE fu a u FS:WRITE-ALL ;
 
 
-: SUBDIR ( ^u8 n ^u8 -- n )
+: SUBDIR ( str ^u8 -- n )
    {: name:^ nu:n dst:^ :}
    DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
    dst u FS:MAKE-DIR
@@ -92,7 +93,7 @@ variable BEFORE-U
 
 : ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
-: FILE-ARG+ ( ^u8 n -- )
+: FILE-ARG+ ( str -- )
    {: name:^ nu:n :}
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
@@ -125,14 +126,14 @@ variable BEFORE-U
    EXE u SPAWN ;
 
 
-: TYPED+ ( ^u8 n -- )  s" --typed" ARG+  ARG+ ;
+: TYPED+ ( str -- )  s" --typed" ARG+  ARG+ ;
 
-: ANSWER-RPC+ ( ^u8 n ^u8 n -- )
+: ANSWER-RPC+ ( str str -- )
    {: id:^ iu:n name:^ nu:n :}
    s" --answer-rpc" ARG+  id iu ARG+  name nu FILE-ARG+ ;
 
 
-: FAIL-RPC+ ( ^u8 n -- )  s" --fail-rpc" ARG+  ARG+ ;
+: FAIL-RPC+ ( str -- )  s" --fail-rpc" ARG+  ARG+ ;
 : TICK+ ( -- )  s" --tick" ARG+ ;
 : NOTIFY+ ( -- )  s" --notify" ARG+  METHOD$ ARG+  s" params.json" FILE-ARG+ ;
 : FILE+ ( -- )  s" --file" ARG+  NAME$ ARG+  s" data.bin" FILE-ARG+ ;
@@ -144,20 +145,20 @@ variable BEFORE-U
 : HELLO ( -- )
    SB-RESET  s" hello" LINE ;
 
-: CALL-LINE ( ^u8 n -- )
+: CALL-LINE ( str -- )
    {: id:^ iu:n :}
    s" rpc tools/call " SB-APPEND  id iu SB-APPEND
    s\"  {\"name\":\"get_project\"}" LINE ;
 
 
-: ANSWERED-LINE ( ^u8 n ^u8 n ^u8 n -- )
+: ANSWERED-LINE ( str str str -- )
    {: c:^ cu:n id:^ iu:n body:^ bu:n :}
    s" text answered " SB-APPEND  c cu SB-APPEND  32 SB-APPEND-C
    id iu SB-APPEND  32 SB-APPEND-C  body bu LINE ;
 
 
-: RESULT-BODY$ ( -- ^u8 n )  s\" {\"content\":[]}" ;
-: ERROR-BODY$ ( -- ^u8 n )  s\" {\"code\":-32601,\"message\":\"Method not found\"}" ;
+: RESULT-BODY$ ( -- str )  s\" {\"content\":[]}" ;
+: ERROR-BODY$ ( -- str )  s\" {\"code\":-32601,\"message\":\"Method not found\"}" ;
 
 : SAME ( ^u8 n ^u8 n -- )
    {: got:^ gu:n name:^ nu:n :}
@@ -261,7 +262,7 @@ variable BEFORE-U
 
 
 \ A read after the file event: its line is printed before the refusal.
-: REJECT-READ ( ^u8 n ^u8 n -- )
+: REJECT-READ ( str str -- )
    {: cmd:^ cu:n why:^ wu:n :}
    HELLO  FILE-LINE
    SB$ {: a:^ u:n :}
@@ -287,7 +288,7 @@ variable BEFORE-U
    ERR$ s" Invalid byte sequence" CONTAINS?
    ERR$ s" encoded data was not valid" CONTAINS?  or TTRUE ;
 
-: MAC-CHROME ( -- ^u8 n )
+: MAC-CHROME ( -- str )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
 : CHROME-ASKED? ( -- bool )

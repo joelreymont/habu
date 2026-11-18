@@ -1,3 +1,4 @@
+split-str
 \ heap-test.f - src/lib/test/heap-churn.f through HEAP:ALLOCATOR in a module
 \ `hb-build --target wasm` builds, validated by wasm-tools and run by bun
 \ (test/wasm/harness.f): it must print no block taken or grown with a nonzero
@@ -40,7 +41,7 @@ variable SRC-U
 
 
 \ RUN's answers but the last, one a line, as `.` prints them in the module.
-: WANT$ ( -- ^u8 n )
+: WANT$ ( -- str )
    SB-RESET  S\" 0\n0\n" SB-APPEND
    E-MEM-MAP FMT:SB-INT  10 SB-APPEND-C  SB$ ;
 

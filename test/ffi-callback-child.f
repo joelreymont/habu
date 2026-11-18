@@ -1,3 +1,4 @@
+split-str
 \ ffi-callback-child.f - one scenario per run, since a refusal ends the process;
 \ the released case runs two that exit 0, and grown-bind exits 0 unless its
 \ binding was lost.
@@ -158,7 +159,7 @@ CALLBACK: CMP-GROWN ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' ROW-ORDER CMP-GROWN-BODY !
 variable GROWN-FN                     \ the C entry the thrown text answered
 
-: GROWN$ ( -- ^u8 n )
+: GROWN$ ( -- str )
    s" CALLBACK: CBC-GROW ( -- ) ;CALLBACK  CMP-GROWN TASK:SELF-CONTEXT FFI-CB:ENTRY GROWN-FN !  1 throw" ;
 
 : GROWN-BIND ( -- )
@@ -170,7 +171,7 @@ variable GROWN-FN                     \ the C entry the thrown text answered
    OUTER BYTE-VIEW ROW-N CELL GROWN-FN @ QSORT
    OUTER 10 ROW-SORTED? if s" grown-bind: sorted" type cr then ;
 
-: CASE? ( ^u8 n -- bool )
+: CASE? ( str -- bool )
    0 SCRIPT-ARGV$ STR= ;
 
 : DISPATCH ( -- )

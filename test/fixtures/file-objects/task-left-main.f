@@ -1,3 +1,4 @@
+split-str
 \ task-left-main.f - its top level starts a task that waits forever, so the
 \ task still runs at the file's end and the build refuses the file.
 

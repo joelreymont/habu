@@ -1,3 +1,4 @@
+split-str
 \ big-decl.f - large declarations: a 200-variant SUMTYPE whose body is 4.7 KB
 \ and a STRUCTURE of 240 fields whose 40-byte names come to 9.6 KB.
 package BIG

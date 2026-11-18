@@ -1,3 +1,4 @@
+split-str
 \ vector-test.f - focused tests for the typed vector<t>: its elements, its
 \ growth through its allocator, and the frees DELETE and a refused NEW make.
 \ Run: bin/hb --load src/lib/vector-test.f
@@ -9,7 +10,7 @@ require src/lib/span.f
 require src/lib/vector.f
 require src/lib/arena.f
 
-: VECT-CHECK-REJECTS ( ^u8 n -- )
+: VECT-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 DEFLINEAR vect-lin
@@ -145,13 +146,13 @@ variable LAST-N
 10 TYPED-BUFFER FREED n
 TYPED-VARIABLE AL ALLOC:allocator
 
-: P-ALLOC ( ^u8 n -- ^u8 )
+: P-ALLOC ( str -- ^u8 )
    {: st:^ len:n :}
    1 ALLOCS +!  len LAST-N !
    len 2000 >  TOP @ len + POOL-BYTES >  or if E-MEM-SIZE throw then
    st TOP @ +  len 7 + -8 and TOP +! ;
 
-: P-RESIZE ( ^u8 ^u8 n n -- ^u8 )
+: P-RESIZE ( ^u8 str n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    1 RESIZE-CALLS +!
    st new P-ALLOC {: moved:^ :}

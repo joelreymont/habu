@@ -1,3 +1,4 @@
+split-str
 \ ffi-struct-arg.f - C structs passed by value through FUNCTION:.
 \ Loaded by src/lib/ffi-test.f inside package FFI-TEST, after
 \ test/ffi-struct-result.f, whose canaried destination and fixture it reuses.
@@ -189,7 +190,7 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    32 FFI-T-SR-CANARIES ;
 
 \ Sixteen record inputs whose payloads sum, modulo 2^64, to almost nothing.
-: FFI-T-SA-WRAP$ ( -- ^u8 n )
+: FFI-T-SA-WRAP$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s" FUNCTION: FFI-T-SA-WRAP hb_none ( " FFI-T-SRC+
    16 0 ?do s" ^u8 " FFI-T-SRC+ loop
@@ -202,7 +203,7 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 \ The record is captured, so stderr carries none.
-: FFI-T-SA-ARITY ( [ -- ] ^u8 n ^u8 n -- )
+: FFI-T-SA-ARITY ( [ -- ] str str -- )
    {: h:^ hu:n p:^ pu:n :}
    DECL-DIAG:PROSE
    70 TTHROWSQ

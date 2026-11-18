@@ -1,3 +1,4 @@
+split-str
 \ process-argv-test.f - focused tests for src/lib/process-argv.f.
 \ Run: bin/hb --load src/lib/error.f src/lib/test.f src/lib/process.f src/lib/process-argv.f src/lib/process-argv-test.f
 
@@ -63,23 +64,23 @@ variable PAT-I
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: PAT-LTRIM-SPACES ( ^u8 n -- ^u8 n ) {: a:^ u :}
+: PAT-LTRIM-SPACES ( str -- str ) {: a:^ u :}
    0 begin dup u < while
       dup a + c@ PAT-SPACE <> if dup a + u rot - exit then
       1+
    repeat drop a 0 ;
 
-: PAT-CAPTURE ( ^u8 n ^u8 n ^u8 n n -- n n n )
+: PAT-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PAT-CAPTURE>N ;
 
-: PAT-STDIN-CAPTURE ( ^u8 n ^u8 n ^u8 n ^u8 n n -- n n n )
+: PAT-STDIN-CAPTURE ( str str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE
    PAT-CAPTURE>N ;
 
-: PAT-STDIN-CAPTURE-OUTCOME ( ^u8 n ^u8 n ^u8 n ^u8 n n -- len len PROCESS:ending )
+: PAT-STDIN-CAPTURE-OUTCOME ( str str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
@@ -137,7 +138,7 @@ variable PAT-I
 
 
 \ The output at PAT-AT is these bytes and a comma; PAT-AT moves past them.
-: PAT-NEXT ( ^u8 n -- )
+: PAT-NEXT ( str -- )
    {: a:^ u:n :}
    PAT-BIG-OUT PAT-AT @ + u a u T$=
    PAT-BIG-OUT PAT-AT @ u + + c@ 44 T=

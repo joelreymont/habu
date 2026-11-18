@@ -1,3 +1,4 @@
+split-str
 \ word-read-main.f - its top level runs a word that reads a file through the
 \ loader's reader, so the build refuses the read.
 

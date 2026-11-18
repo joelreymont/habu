@@ -1,3 +1,4 @@
+split-str
 \ checker-dead-path-suite.f - which calls end a path.
 \
 \ The checker ends a path after a call by the control flags of the word the

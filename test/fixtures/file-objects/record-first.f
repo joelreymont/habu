@@ -1,3 +1,4 @@
+split-str
 \ record-first.f - the record program's first file: its top level prints a
 \ record through REJECTION, so the build maps the text the record is built in.
 

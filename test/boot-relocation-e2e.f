@@ -1,3 +1,4 @@
+split-str
 \ A copied engine and its source tree recognize baked modules when the
 \ invocation directory is the copied tree's parent: the copy holds the first
 \ boot file, src/core/exit-status.f, so it is the engine's root (src/core/include.f
@@ -32,18 +33,18 @@ variable ERR-U
 variable RC
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: TREE$ ( -- ^u8 n ) TREE TREE-U @ ;
+: TREE$ ( -- str ) TREE TREE-U @ ;
 : ENGINE$ ( -- ^u8 n ) ENGINE ENGINE-U @ ;
 
 : PATH! ( ^u8 n -- )
    TREE$ 2swap PATH FS:JOIN-PATH PATH-U ! ;
 
-: COPY-SOURCE ( ^u8 n -- ) {: rel:^ relu:n :}
+: COPY-SOURCE ( str -- ) {: rel:^ relu:n :}
    rel relu PATH!
    SOURCE-ROOT:CWD$ rel relu SRC FS:JOIN-PATH SRC-U !
    SRC SRC-U @ PATH PATH-U @ FS:COPY-FILE-STREAM ;
 
-: ENTRY+ ( ^u8 n -- ) {: a:^ u:n :}
+: ENTRY+ ( str -- ) {: a:^ u:n :}
    PATH PATH-U @ a u FS:APPEND-FILE ;
 
 \ With the argument `refused` the child first asserts that the kernel refused
@@ -80,7 +81,7 @@ variable RC
    s" --load" >LEN PROC-ARGV+
    s" tree/entry.f" >LEN PROC-ARGV+ ;
 
-: RUN-CHILD ( ^u8 n -- ) {: exe:^ exeu:n :}
+: RUN-CHILD ( str -- ) {: exe:^ exeu:n :}
    PROC-ENV-INHERIT-MISSING
    exe exeu >LEN ROOT$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
@@ -104,7 +105,7 @@ variable RC
    s" child.out" s" child.err"
    s" the copied engine recognizes its baked module from a foreign cwd" VERDICT ;
 
-: SANDBOX$ ( -- ^u8 n )
+: SANDBOX$ ( -- str )
    s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" boot-relocation: required executable missing on PATH: sandbox-exec"
          EXIT-STATUS:UNAVAILABLE die ENDOF

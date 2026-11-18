@@ -1,3 +1,4 @@
+split-str
 \ base85.f - Adobe Ascii85, the data between `<~` and `~>` without those marks.
 \ Five digits `!`..`u` are one 32-bit value written as four bytes, most
 \ significant first; `z` between groups is four zero bytes; white space is

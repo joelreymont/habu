@@ -1,3 +1,4 @@
+split-str
 require src/lib/elf32.f
 require src/lib/test.f
 

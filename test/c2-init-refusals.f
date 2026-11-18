@@ -1,3 +1,4 @@
+split-str
 \ Initialization admits only a complete, non-owning record and a live byte view.
 require src/lib/test.f
 require src/lib/test/subject.f

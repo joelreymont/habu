@@ -1,3 +1,4 @@
+split-str
 \ An absolute server entry must load its own implementation when the client
 \ starts it from a project directory containing older Habu tool sources.
 \ The printed artifact keeps both server conversations and their fixtures.
@@ -28,11 +29,11 @@ create BODY 4096 allot
 : RC>N ( result<n,n> -- n )
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-: PROJECT-PATH ( ^u8 n -- ^u8 n )
+: PROJECT-PATH ( str -- str )
    PROJECT PROJECT-U @ 2swap PATH FS:JOIN-PATH PATH-U !
    PATH PATH-U @ ;
 
-: SERVER-ENTRY ( ^u8 n -- ^u8 n )
+: SERVER-ENTRY ( str -- str )
    SOURCE-ROOT:ENGINE$ 2swap SERVER FS:JOIN-PATH SERVER-U !
    SERVER SERVER-U @ ;
 
@@ -113,14 +114,14 @@ create BODY 4096 allot
    s\" {\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"textDocument/documentLink\",\"params\":{\"textDocument\":{\"uri\":\"" SB-APPEND
    URI+ s\" \"}}}" SB-APPEND FRAME ;
 
-: STREAM-PATH ( ^u8 n ^u8 n -- ^u8 n )
+: STREAM-PATH ( str str -- str )
    {: name:^ nameu:n suffix:^ suffixu:n :}
    SB-RESET name nameu SB-APPEND suffix suffixu SB-APPEND
    SB$ PROJECT-PATH ;
 
 \ A child has no deadline: its cold image build takes as long as the host's
 \ load makes it, and a hung row is named by its WAIT line.
-: SERVER-RUN ( ^u8 n ^u8 n CMD:command -- CMD:command )
+: SERVER-RUN ( str str CMD:command -- CMD:command )
    >r {: entry:^ entryu:n name:^ nameu:n :} r>
    entry entryu STAGE
    CONVERSATION
@@ -138,7 +139,7 @@ create BODY 4096 allot
    out outu s\" \"id\":3,\"result\":[{\"range\":" CONTAINS? TTRUE
    out outu s" dep.f" PROJECT-PATH CONTAINS? TTRUE ;
 
-: SERVER-CASE ( ^u8 n ^u8 n -- )
+: SERVER-CASE ( str str -- )
    [: SERVER-RUN ;] CMD:WITH-COMMAND ;
 
 : CHILD-RUN ( ^u8 n CMD:command -- CMD:command )
@@ -151,7 +152,7 @@ create BODY 4096 allot
    rc 0 <> if CMD:ERR$ type cr then rc 0 T=
    CMD:OUT$ s" check-verify: verified" CONTAINS? TTRUE ;
 
-: CHILD-CASE ( ^u8 n -- )
+: CHILD-CASE ( str -- )
    [: CHILD-RUN ;] CMD:WITH-COMMAND ;
 
 public

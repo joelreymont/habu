@@ -1,3 +1,4 @@
+split-str
 \ arm64-link-run.f - LINKER:WRITE's stripped programs, run, their kernel the
 \ tree's kernel object. One build stores each of four entries and writes a
 \ program for it: LR-HI prints `Hi` and exits 0; LR-THROW prints nothing and
@@ -36,7 +37,7 @@ create PROG-BUF PATH-CAP allot
 
 : ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
 
-: PROG$ ( ^u8 n -- ^u8 n )
+: PROG$ ( str -- str )
    {: name:^ name-n:n :}
    ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
@@ -51,12 +52,12 @@ create PROG-BUF PATH-CAP allot
    s" : LR-DEEP ( -- ) 0 LR-REC drop ;" evaluate-closed ;
 
 
-: STORE-ENTRY ( ^u8 n -- )
+: STORE-ENTRY ( str -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base APP-ENTRY:XT-CELL + xt! ;
 
 
-: WRITE-PROG ( ^u8 n ^u8 n -- )
+: WRITE-PROG ( str str -- )
    {: word:^ word-n:n file:^ file-n:n :}
    word word-n STORE-ENTRY
    file file-n PROG$ LINKER:WRITE ;
@@ -70,7 +71,7 @@ create PROG-BUF PATH-CAP allot
    s" LR-DEEP" s" deep" WRITE-PROG ;
 
 
-: RUN-PROG ( CMD:command ^u8 n ^u8 n n -- CMD:command )
+: RUN-PROG ( CMD:command str ^u8 n n -- CMD:command )
    {: file:^ file-n:n out:^ out-n:n want:n :}
    file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ out out-n STR=  rc want =  and 0= if
@@ -175,7 +176,7 @@ variable DEPTH-LR                    \ the scan's open loads
    repeat ;
 
 \ LOG-LR with its bytes from the first offset to the second replaced, in EDIT-LR.
-: SPLICE-LR ( n n ^u8 n -- )
+: SPLICE-LR ( n n str -- )
    {: at0:n at1:n new:^ newu:n :}
    0 LOG-LR {: log:^ :}
    0 EDIT-LR {: edit:^ :}
@@ -200,7 +201,7 @@ variable DEPTH-LR                    \ the scan's open loads
    RESUMED-LR @ 8 + {: c:n :}
    c  c FIELD-LR 24 +  0 LOG-LR b +  b FIELD-LR 24 + b -  SPLICE-LR ;
 
-: HOLD-LR ( ^u8 n -- )
+: HOLD-LR ( str -- )
    {: a:^ u:n :}
    false HELD-LR !
    [: a u LINKER:INPUTS-HOLD? HELD-LR ! ;] catch RC-LR ! ;

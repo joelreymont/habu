@@ -1,3 +1,4 @@
+split-str
 \ reopen.f - wordlists minted out of record order: count.f's FILE-OBJECTS-LATE
 \ and then this file's FILE-OBJECTS-SOLO gain their private wordlists after
 \ their records, so SOLO's is not its public id plus one; an unused `does>`

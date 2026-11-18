@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
@@ -34,13 +35,13 @@ variable WIDE-BAD
 CAST: KIND>N ( XML:kind -- n )
 CAST: ENCODING>N ( XML:encoding -- n )
 
-: LE$ ( -- ^u8 n )
+: LE$ ( -- str )
    s\" \xFF\xFE<\za\z \zq\z=\z'\zx\z'\z>\z&\za\zm\zp\z;\z<\z/\za\z>\z" ;
 
-: BE$ ( -- ^u8 n )
+: BE$ ( -- str )
    s\" \xFE\xFF\z<\za\z>\zx\z<\z/\za\z>" ;
 
-: ASCII>UTF16 ( ^u8 n bool -- ^u8 n )
+: ASCII>UTF16 ( str bool -- str )
    {: ascii size:n little:bool :}
    size 0 ?do
       ascii i + c@ {: byte:n :}
@@ -54,7 +55,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    loop
    BOMLESS size 2 * ;
 
-: BOM-ASCII ( ^u8 n bool -- ^u8 n )
+: BOM-ASCII ( str bool -- str )
    {: ascii size:n little:bool :}
    ascii size little ASCII>UTF16 {: encoded count:n :}
    little if
@@ -250,20 +251,20 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
-: BAD-NEXT ( ^u8 n n -- )
+: BAD-NEXT ( str n -- )
    {: want:n :}
    OPEN READER
    ['] DRAIN catch want T=
    ['] DRAIN catch XML:E-STATE T=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
-: BAD-INIT ( ^u8 n n -- )
+: BAD-INIT ( str n -- )
    {: want:n :}
    [: 2dup SOURCE-STORE SOURCE-CAP 2swap XML:SOURCE-INIT XML:SOURCE-CLOSE ;]
    catch want T= 2drop ;
 
 \ A rejection's text: the place, what was expected, the token found and the fix.
-: SAID ( n ^u8 n -- ) {: code:n wa:^ wu:n :}
+: SAID ( n str -- ) {: code:n wa:^ wu:n :}
    code REASON:TEXT$ wa wu T$=
    REASON:RELEASE ;
 
@@ -542,11 +543,11 @@ CAST: ENCODING>N ( XML:encoding -- n )
    LEN>N 0 T= OFF>N 13 T=
    XML:SOURCE-CLOSE ;
 
-: OPEN-SMALL ( ^u8 n -- )
+: OPEN-SMALL ( str -- )
    2dup XML:SOURCE-BYTES 1- {: cap:n :}
    SOURCE-STORE cap 2swap XML:SOURCE-INIT XML:SOURCE-CLOSE ;
 
-: SMALL-SOURCE ( ^u8 n -- )
+: SMALL-SOURCE ( str -- )
    [: 2dup OPEN-SMALL ;] catch XML:E-CAPACITY T= 2drop ;
 
 : SHORT-CURSOR ( -- )
@@ -604,7 +605,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    pair $3FF and $DC00 + little MARK-UNIT ;
 
 
-: MARK-ASCII ( ^u8 n bool -- )
+: MARK-ASCII ( str bool -- )
    {: text size:n little:bool :}
    size 0 ?do text i + c@ 1 little MARK-SCALAR loop ;
 
@@ -612,7 +613,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 \ <a>, 64 turns of 😀éx中x, </a>: 711 lexical bytes. A turn is 11 bytes, so
 \ each scalar of each width starts at every residue modulo any power of two up
 \ to 64, and the multibyte ones straddle every such boundary.
-: MARKED-BUILD ( bool -- ^u8 n )
+: MARKED-BUILD ( bool -- str )
    {: little:bool :}
    0 MARKED-LEX ! 0 MARKED-WIRE !
    $FEFF little MARK-UNIT
@@ -660,7 +661,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    store alloc MEM:RELEASE-BYTES ;
 
 
-: WIDE-PUT ( ^u8 n ^u8 n -- n )
+: WIDE-PUT ( ^u8 n str -- n )
    {: wire at:n text size:n :}
    size 0 ?do
       text i + c@ wire at i 2 * + + c!
@@ -714,7 +715,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 
 \ A source reader's rejection: its code and its text, read at the catch.
-: SAID-NEXT ( ^u8 n n ^u8 n -- )
+: SAID-NEXT ( str n str -- )
    {: want:n wa:^ wu:n :}
    OPEN READER
    ['] DRAIN catch want T=

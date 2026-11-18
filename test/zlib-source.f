@@ -1,3 +1,4 @@
+split-str
 \ ZLIB cases. Refusals are made before C is called; each failure after libz has
 \ a live stream is followed by a successful operation. The 10 MiB original.bin,
 \ compressed.bin (raw DEFLATE) and decoded.bin go in a temporary directory
@@ -20,15 +21,15 @@ create SMALL-OUT SMALL-CAP allot
 create ROOT PATH-CAP allot variable ROOT-U
 create PATH PATH-CAP allot
 
-: CHECK$ ( -- ^u8 n ) s" 123456789" ;
+: CHECK$ ( -- str ) s" 123456789" ;
 : HELLO$ ( -- ^u8 n ) s" hello" ;
-: EMPTY-STREAM$ ( -- ^u8 n ) s\" \x03\x00" ;
-: STORED-HELLO$ ( -- ^u8 n ) s\" \x01\x05\x00\xFA\xFFhello" ;
-: FIXED-HELLO$ ( -- ^u8 n ) s\" \xCB\x48\xCD\xC9\xC9\x07\x00" ;
+: EMPTY-STREAM$ ( -- str ) s\" \x03\x00" ;
+: STORED-HELLO$ ( -- str ) s\" \x01\x05\x00\xFA\xFFhello" ;
+: FIXED-HELLO$ ( -- str ) s\" \xCB\x48\xCD\xC9\xC9\x07\x00" ;
 \ FIXED-HELLO$ in the zlib wrapper: header 78 9C, then the big-endian Adler-32
 \ of "hello", 062C0215.
-: FRAMED-HELLO$ ( -- ^u8 n ) s\" \x78\x9C\xCB\x48\xCD\xC9\xC9\x07\x00\x06\x2C\x02\x15" ;
-: EMPTY-FRAMED$ ( -- ^u8 n ) s\" \x78\x9C\x03\x00\x00\x00\x00\x01" ;
+: FRAMED-HELLO$ ( -- str ) s\" \x78\x9C\xCB\x48\xCD\xC9\xC9\x07\x00\x06\x2C\x02\x15" ;
+: EMPTY-FRAMED$ ( -- str ) s\" \x78\x9C\x03\x00\x00\x00\x00\x01" ;
 
 : OUT$ ( n -- ^u8 n ) SMALL-OUT swap ;
 
@@ -133,7 +134,7 @@ $100000000 constant U32-OVER
 PTR-VARIABLE FIT-SRC variable FIT-SRC-U
 PTR-VARIABLE FIT-DST variable FIT-CAP
 
-defer FIT-CODEC ( ^u8 n ^u8 n -- n )
+defer FIT-CODEC ( str str -- n )
 
 : FIT ( n -- n ) {: cap:n :}
    FIT-SRC @ FIT-SRC-U @ FIT-DST @ cap FIT-CODEC ;
@@ -143,7 +144,7 @@ defer FIT-CODEC ( ^u8 n ^u8 n -- n )
 \ destination of exactly that size, which it then holds, and not one byte less.
 \ The destination is zeroed before the exact call, so the caller's decode
 \ checks bytes that call wrote, not an earlier call's.
-: EXACT-FIT ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- n ] -- )
+: EXACT-FIT ( str str [ str str -- n ] -- )
    is FIT-CODEC {: src:^ srcu:n dst:^ packed:n :}
    src FIT-SRC ! srcu FIT-SRC-U ! dst FIT-DST ! packed FIT-CAP !
    [: FIT-SHORT ;] ZLIB:E-CAPACITY TTHROWSQ
@@ -176,12 +177,12 @@ defer FIT-CODEC ( ^u8 n ^u8 n -- n )
    s" the empty bound holds the empty stream" T-LABEL
    0 ZLIB:RAW-BOUND 2 >= TTRUE ;
 
-: FRAMED-DECODE ( ^u8 n n -- n ) {: src:^ srcu:n cap:n :}
+: FRAMED-DECODE ( str n -- n ) {: src:^ srcu:n cap:n :}
    src srcu SMALL-OUT cap ZLIB:INFLATE-FRAMED ;
 
 \ Compress text, then compress it again at exactly its compressed size, then
 \ decode it back; lit is its literal framed stream, whose trailer it shares.
-: FRAMED-ROUND ( ^u8 n ^u8 n -- ) {: src:^ srcu:n lit:^ litu:n :}
+: FRAMED-ROUND ( str str -- ) {: src:^ srcu:n lit:^ litu:n :}
    src srcu SMALL-OUT srcu ZLIB:FRAMED-BOUND ZLIB:DEFLATE-FRAMED {: packed:n :}
    SMALL-OUT c@ $78 T=
    SMALL-OUT packed + 4 - 4 lit litu + 4 - 4 T$=
@@ -247,7 +248,7 @@ defer FIT-CODEC ( ^u8 n ^u8 n -- n )
       p i + c!
    loop drop ;
 
-: ARTIFACT$ ( ^u8 n -- ^u8 n ) {: name:^ nameu:n :}
+: ARTIFACT$ ( str -- str ) {: name:^ nameu:n :}
    ROOT ROOT-U @ name nameu PATH FS:JOIN-PATH PATH swap ;
 
 PTR-VARIABLE PLAIN
@@ -257,9 +258,9 @@ variable PACKED-BOUND
 variable PACKED-CAP
 variable PACKED-SIZE
 
-: PLAIN$ ( -- ^u8 n ) PLAIN @ PAYLOAD-BYTES ;
-: PACKED$ ( -- ^u8 n ) PACKED @ PACKED-SIZE @ ;
-: BACK$ ( -- ^u8 n ) BACK @ PAYLOAD-BYTES ;
+: PLAIN$ ( -- str ) PLAIN @ PAYLOAD-BYTES ;
+: PACKED$ ( -- str ) PACKED @ PACKED-SIZE @ ;
+: BACK$ ( -- str ) BACK @ PAYLOAD-BYTES ;
 : RELEASE ( ^u8 n -- ) MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 : BACK-CLEAR ( -- )

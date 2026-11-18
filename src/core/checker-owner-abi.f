@@ -1,3 +1,4 @@
+split-str
 \ checker-owner-abi.f - callable fields in one declaration owner.
 \ Loaded after the source extension and before checker.f; no engine DATA slots
 \ live here.

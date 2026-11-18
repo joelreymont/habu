@@ -1,3 +1,4 @@
+split-str
 \ process.f - spawn, capture, poll and reap child processes.
 \ The path buffer, pollfd array and capture slots are one TASK:+USERS row of
 \ STORAGE-BYTES bytes per task, so any number of tasks run children at once; the
@@ -458,7 +459,7 @@ private
    v -10 <= if v 10 / RECURSE then
    s" 0123456789" drop v 10 mod negate + 1 DIAG ;
 
-: CODE-REPORT ( ^u8 n n -- )
+: CODE-REPORT ( str n -- )
    {: what:^ whatu:n code:n :}
    code 0= if exit then
    what whatu DIAG

@@ -1,3 +1,4 @@
+split-str
 \ Observe OS thread identities independently of Habu's task registry.
 require src/core/exit-status.f
 require src/lib/ffi-abi.f
@@ -24,7 +25,7 @@ FUNCTION: PID-THREADS proc_pidinfo ( n n n ^u8 n -- i32 )
    id OUT-IDS @ THREAD-N @ THREAD-ID-BYTES * + LE:U64!
    1 THREAD-N +! ;
 
-: ADD-NAME ( ^u8 n -- )
+: ADD-NAME ( str -- )
    STR>NUMBER? MATCH option
       some OF ADD-ID ENDOF
       none OF s" thread snapshot: invalid task name" EXIT-STATUS:FAILURE die ENDOF

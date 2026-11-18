@@ -1,3 +1,4 @@
+split-str
 \ Independent buffers grow and release on four native tasks at once, and the
 \ allocation registry returns to its base count once they end.
 require src/lib/test.f

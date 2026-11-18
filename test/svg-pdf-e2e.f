@@ -1,3 +1,4 @@
+split-str
 \ SVG bytes -> native librsvg/Cairo -> staged PDF -> independent PDF readers.
 require src/core/exit-status.f
 require src/lib/svg-pdf.f
@@ -49,21 +50,21 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : AT ( ^u8 n -- ^u8 n )
    {: name:^ size:n :}
    ROOT$ name size PATH FS:JOIN-PATH PATH swap ;
-: DEST$ ( -- ^u8 n ) s" pages.pdf" AT ;
-: FIRST-QDF$ ( -- ^u8 n ) s" first-qdf.pdf" AT ;
-: SECOND-QDF$ ( -- ^u8 n ) s" second-qdf.pdf" AT ;
-: THIRD-QDF$ ( -- ^u8 n ) s" third-qdf.pdf" AT ;
-: SINGLE$ ( -- ^u8 n ) s" fractional.pdf" AT ;
-: SINGLE-QDF$ ( -- ^u8 n ) s" fractional-qdf.pdf" AT ;
-: PHYSICAL$ ( -- ^u8 n ) s" physical.pdf" AT ;
-: PHYSICAL-QDF$ ( -- ^u8 n ) s" physical-qdf.pdf" AT ;
-: MAX-PAGE$ ( -- ^u8 n ) s" max-page.pdf" AT ;
-: MAX-PAGE-QDF$ ( -- ^u8 n ) s" max-page-qdf.pdf" AT ;
+: DEST$ ( -- str ) s" pages.pdf" AT ;
+: FIRST-QDF$ ( -- str ) s" first-qdf.pdf" AT ;
+: SECOND-QDF$ ( -- str ) s" second-qdf.pdf" AT ;
+: THIRD-QDF$ ( -- str ) s" third-qdf.pdf" AT ;
+: SINGLE$ ( -- str ) s" fractional.pdf" AT ;
+: SINGLE-QDF$ ( -- str ) s" fractional-qdf.pdf" AT ;
+: PHYSICAL$ ( -- str ) s" physical.pdf" AT ;
+: PHYSICAL-QDF$ ( -- str ) s" physical-qdf.pdf" AT ;
+: MAX-PAGE$ ( -- str ) s" max-page.pdf" AT ;
+: MAX-PAGE-QDF$ ( -- str ) s" max-page-qdf.pdf" AT ;
 
-: SVG$ ( -- ^u8 n )
+: SVG$ ( -- str )
    s" <svg xmlns='http://www.w3.org/2000/svg' width='96.375' height='48.625' overflow='visible'><path d='M1.125 2.375L95.25 47.5M-10 -10L110 60' fill='none' stroke='black' stroke-width='.25'/></svg>" ;
 
-: SECOND-SVG$ ( -- ^u8 n )
+: SECOND-SVG$ ( -- str )
    s" <svg xmlns='http://www.w3.org/2000/svg' width='144.5' height='72.25'><path d='M8.5 4.25L140.125 70.75' fill='none' stroke='red' stroke-width='.5'/></svg>" ;
 : SECOND! ( ^u8 n -- )
    {: data:^ size:n :}
@@ -102,7 +103,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : BAD-RENAME ( -- )
    s" directory" AT 0 PAGES 2 SVG-PDF:WRITE-PAGES ;
 
-: PDF-READ ( ^u8 n -- ^u8 n )
+: PDF-READ ( str -- str )
    PDF CAP FS:READ-ALL dup PDF-U ! PDF swap ;
 
 : LIMIT-ON ( -- )
@@ -150,7 +151,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    \ the creation date, so two writes a second apart differ by a few bytes.
    DEST$ PDF-READ nip 16 - FINISH-LIMIT !
    RESET-COMMAND s" --check" ARG DEST$ ARG s" qpdf" COMMAND 2drop ;
-: COUNT-FILE ( ^u8 n -- ) 2drop 1 FILES +! ;
+: COUNT-FILE ( str -- ) 2drop 1 FILES +! ;
 : FILES# ( -- n )
    0 FILES ! ROOT$ [: COUNT-FILE ;] FS:WALK-FILES FILES @ ;
 : PRESERVED ( [ -- ] n -- )
@@ -169,13 +170,13 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
       some OF IDX>N keyu + {: off:n :} data off + size off - ENDOF
    ;MATCH ;
 : SPACE? ( n -- bool ) dup 32 <= swap 0 >= and ;
-: SKIP-SPACE ( ^u8 n -- ^u8 n )
+: SKIP-SPACE ( str -- str )
    {: text:^ size:n :}
    0 begin dup size < while
       text over + c@ SPACE? 0= if text over + swap size swap - exit then
       1+
    repeat text swap size swap - ;
-: TOKEN-SIZE ( ^u8 n -- n )
+: TOKEN-SIZE ( str -- n )
    {: text:^ size:n :}
    0 begin dup size < while
       text over + c@ SPACE? if exit then 1+
@@ -190,13 +191,13 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : NEAR ( r r r -- )
    {: actual:r expected:r epsilon:r :}
    actual expected f- fabs epsilon f<= TTRUE ;
-: PAGE-SIZE ( ^u8 n r r -- )
+: PAGE-SIZE ( str r r -- )
    {: data:^ size:n width:r height:r :}
    data size s" /MediaBox [" AFTER
    NUMBER 0.0 0.0 NEAR NUMBER 0.0 0.0 NEAR
    NUMBER width 0.000001 NEAR NUMBER height 0.000001 NEAR 2drop ;
 
-: LINE-AT ( ^u8 n ^u8 n -- ^u8 n )
+: LINE-AT ( str str -- str )
    {: data:^ size:n key:^ keyu:n :}
    data size key keyu FIND-SUB MATCH option
       none OF s" PDF path missing" EXIT-STATUS:FAILURE die ENDOF
@@ -226,11 +227,11 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    FILES# before T=
    RETRY ;
 
-: VECTOR-ONLY ( ^u8 n -- )
+: VECTOR-ONLY ( str -- )
    {: path:^ size:n :}
    RESET-COMMAND s" -list" ARG path size ARG
    s" pdfimages" COMMAND s\" \n" AFTER s\" \n" AFTER nip 0 T= ;
-: PAGE-QDF ( ^u8 n [ -- ^u8 n ] -- )
+: PAGE-QDF ( str [ -- str ] -- )
    {: page:^ pageu:n output :}
    RESET-COMMAND s" --qdf" ARG s" --object-streams=disable" ARG
    s" --stream-data=uncompress" ARG DEST$ ARG

@@ -1,3 +1,4 @@
+split-str
 \ unbound.f - a definer whose built body drops from an empty stack, then
 \ reads local 9, which no `{:` group bound, called on line 13. The read
 \ takes the pin after the drop's failure: unbound.f:13.

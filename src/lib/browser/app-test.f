@@ -1,3 +1,4 @@
+split-str
 \ app-test.f - MCP-APP:PAGE+ into a BUF holding a prefix, with a title holding
 \ <&"', and MCP-APP:CODE+ of a small module. The prefix is kept; the page after
 \ it is valid UTF-8, holds the escaped title, the page id and app.js's base64,
@@ -32,23 +33,23 @@ BUF:HDR-BYTES BUFFER: PAGE
 BUF:HDR-BYTES BUFFER: CODE
 BUF:HDR-BYTES BUFFER: FILE
 
-: PREFIX$ ( -- ^u8 n )  s" HTTP/1.1 200 OK prefix|" ;
-: MODULE$ ( -- ^u8 n )  s\" \x00asm\x01\x00\x00\x00\xFF\xFE" ;
-: TITLE$ ( -- ^u8 n )  s\" Zürich <&\"'" ;
-: ESCAPED$ ( -- ^u8 n )  s\" <title>Zürich &lt;&amp;\"'</title>" ;
+: PREFIX$ ( -- str )  s" HTTP/1.1 200 OK prefix|" ;
+: MODULE$ ( -- str )  s\" \x00asm\x01\x00\x00\x00\xFF\xFE" ;
+: TITLE$ ( -- str )  s\" Zürich <&\"'" ;
+: ESCAPED$ ( -- str )  s\" <title>Zürich &lt;&amp;\"'</title>" ;
 
-: PAGE$ ( -- ^u8 n )  PAGE BUF:SPAN$ BUF:BLEN>N ;
-: CODE$ ( -- ^u8 n )  CODE BUF:SPAN$ BUF:BLEN>N ;
-: FILE$ ( -- ^u8 n )  FILE BUF:SPAN$ BUF:BLEN>N ;
+: PAGE$ ( -- str )  PAGE BUF:SPAN$ BUF:BLEN>N ;
+: CODE$ ( -- str )  CODE BUF:SPAN$ BUF:BLEN>N ;
+: FILE$ ( -- str )  FILE BUF:SPAN$ BUF:BLEN>N ;
 
-: AFTER$ ( -- ^u8 n )
+: AFTER$ ( -- str )
    PAGE$ {: a:^ u:n :}
    PREFIX$ nip {: pu:n :}
    a pu + u pu - ;
 
 
 \ FILE+'s member, after the prefix.
-: MEMBER-AFTER$ ( -- ^u8 n )
+: MEMBER-AFTER$ ( -- str )
    FILE$ {: a:^ u:n :}
    PREFIX$ nip {: pu:n :}
    a pu + u pu - ;
@@ -56,7 +57,7 @@ BUF:HDR-BYTES BUFFER: FILE
 
 \ The text in the span after the first opener and before the next closer,
 \ empty when either is missing.
-: BETWEEN$ ( ^u8 n ^u8 n ^u8 n -- ^u8 n )
+: BETWEEN$ ( str str str -- str )
    {: a:^ u:n o:^ ou:n c:^ cu:n :}
    a u o ou FIND-SUB MATCH option
       none OF a 0 ENDOF
@@ -71,14 +72,14 @@ BUF:HDR-BYTES BUFFER: FILE
 
 
 \ The text of the page's element of this id.
-: SCRIPT$ ( ^u8 n -- ^u8 n )
+: SCRIPT$ ( str -- str )
    {: id:^ iu:n :}
    SB-RESET  s\" id=\"" SB-APPEND  id iu SB-APPEND  s\" \">" SB-APPEND
    AFTER$ SB$ s" </script>" BETWEEN$ ;
 
 
 \ The string of CODE+'s member of this name.
-: MEMBER$ ( ^u8 n -- ^u8 n )
+: MEMBER$ ( str -- str )
    {: name:^ nu:n :}
    SB-RESET  s\" \"" SB-APPEND  name nu SB-APPEND  s\" \":\"" SB-APPEND
    CODE$ SB$ s\" \"" BETWEEN$ ;

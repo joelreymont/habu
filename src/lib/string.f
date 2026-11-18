@@ -1,3 +1,4 @@
+split-str
 \ string.f - checked byte-string helpers over pointer and length; no word assumes
 \ NUL termination. The builders throw E-STR-CAPACITY instead of truncating.
 \ STORAGE CLASS: the SB builder is TASK-LOCAL (SB-BUF); the BUF-* family is
@@ -87,7 +88,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    repeat drop 0 0= ;
 
 \ Unsigned byte order, a shorter equal prefix first; no case, locale or UTF-8.
-: STR< ( ^u8 n ^u8 n -- bool )
+: STR< ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    0 begin dup u v min < while
       dup a + c@ over b + c@
@@ -95,7 +96,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       2drop 1+
    repeat drop u v < ;
 
-: STR=CI ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
+: STR=CI ( str str -- bool ) {: a:^ u:n b:^ v:n :}
    u v <> if 0 0= 0= exit then
    0 begin dup u < while
       dup a + c@ ASCII-LOWER over b + c@ ASCII-LOWER <> if
@@ -104,16 +105,16 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop 0 0= ;
 
-: STARTS-WITH? ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: STARTS-WITH? ( str str -- bool ) {: a:^ u b:^ v :}
    u v < if 0 0= 0= exit then
    a v b v STR= ;
 
-: ENDS-WITH? ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: ENDS-WITH? ( str str -- bool ) {: a:^ u b:^ v :}
    u v < if 0 0= 0= exit then
    a u v - + v b v STR= ;
 
 \ An offset into the whole text; NONE for a start outside [0, length].
-: FIND-SUB-FROM ( ^u8 n ^u8 n n -- option<idx> )   \ SOME first offset of b in a at or after start, else NONE
+: FIND-SUB-FROM ( str str n -- option<idx> )   \ SOME first offset of b in a at or after start, else NONE
    {: a:^ u:n b:^ v:n start:n :}
    start 0 < start u > or if OPTION:NONE exit then
    v 0= if start >IDX OPTION:SOME exit then
@@ -137,7 +138,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop OPTION:NONE ;
 
-: COUNT-CHAR ( ^u8 n n -- n ) {: a:^ u c :}
+: COUNT-CHAR ( str n -- n ) {: a:^ u c :}
    0 0 begin dup u < while
       dup a + c@ c = if swap 1+ swap then
       1+
@@ -150,7 +151,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       dup a + v b v STR= if swap 1+ swap v + else 1+ then
    repeat drop ;
 
-: LTRIM ( ^u8 n -- ^u8 n ) {: a:^ u :}
+: LTRIM ( str -- str ) {: a:^ u :}
    0 begin dup u < while
       dup a + c@
       dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or
@@ -158,7 +159,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop a 0 ;
 
-: RTRIM ( ^u8 n -- ^u8 n ) {: a:^ u :}
+: RTRIM ( str -- str ) {: a:^ u :}
    u begin dup 0 > while
       a over 1- + c@
       dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or
@@ -210,7 +211,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    src dst lenp @ LEN>N + u BYTE-COPY-LEN
    lenp @ LEN>N u LEN>N + >LEN lenp ! ;
 
-: BUF-APPEND ( ^u8 n ^u8 n ^len -- )
+: BUF-APPEND ( str ^u8 n ^len -- )
    {: src:^ u dst:^ cap lenp:^ :}
    src u STR-LEN dst cap STR-LEN lenp BUF-APPEND-LEN ;
 
@@ -250,14 +251,14 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    dup STR-DIGIT? if STR-DIGIT-VALUE exit then
    ASCII-LOWER STR-LOWER-A - STR-BASE + ;
 
-: STR-DIGITS? ( ^u8 n -- bool ) {: a:^ u :}
+: STR-DIGITS? ( str -- bool ) {: a:^ u :}
    u 0= if STR-FALSE exit then
    0 begin dup u < while
       dup a + c@ STR-DIGIT? 0= if drop STR-FALSE exit then
       1+
    repeat drop STR-TRUE ;
 
-: STR-DIGITS<= ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: STR-DIGITS<= ( str str -- bool ) {: a:^ u b:^ v :}
    u v < if STR-TRUE exit then
    u v > if STR-FALSE exit then
    0 begin dup u < while
@@ -267,7 +268,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop STR-TRUE ;
 
-: STR-PARSE-POS ( ^u8 n -- option<n> ) {: a:^ u:n :}   \ SOME parsed nonnegative bounded i64, else NONE
+: STR-PARSE-POS ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed nonnegative bounded i64, else NONE
    a u STR-DIGITS? 0= if OPTION:NONE exit then
    a u STR-MAX-I64$ STR-I64-DIGITS STR-DIGITS<= 0= if OPTION:NONE exit then
    0 0 begin dup u < while
@@ -275,7 +276,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop OPTION:SOME ;
 
-: STR-PARSE-NEG ( ^u8 n -- option<n> ) {: a:^ u:n :}   \ SOME parsed negative bounded i64, else NONE
+: STR-PARSE-NEG ( str -- option<n> ) {: a:^ u:n :}   \ SOME parsed negative bounded i64, else NONE
    a u STR-DIGITS? 0= if OPTION:NONE exit then
    a u STR-MIN-I64$ STR-I64-DIGITS STR-DIGITS<= 0= if OPTION:NONE exit then
    0 0 begin dup u < while
@@ -283,7 +284,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop OPTION:SOME ;
 
-: STR>NUMBER? ( ^u8 n -- option<n> ) {: a:^ u:n :}   \ SOME optional-sign bounded i64, else NONE
+: STR>NUMBER? ( str -- option<n> ) {: a:^ u:n :}   \ SOME optional-sign bounded i64, else NONE
    u 0= if OPTION:NONE exit then
    a c@ STR-MINUS = if
       u 1 = if OPTION:NONE exit then
@@ -297,7 +298,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 
 \ Sixteen digits fill the cell, so the top digit sets the sign bit and
 \ FFFFFFFFFFFFFFFF is -1: the bit pattern, not a bounded magnitude.
-: HEX>NUMBER? ( ^u8 n -- option<n> )   \ SOME the cell the 1..16 hex digits spell, else NONE
+: HEX>NUMBER? ( str -- option<n> )   \ SOME the cell the 1..16 hex digits spell, else NONE
    {: a:^ u:n :}
    u 0= if OPTION:NONE exit then
    u STR-HEX-MAX-DIGITS > if OPTION:NONE exit then

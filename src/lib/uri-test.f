@@ -1,3 +1,4 @@
+split-str
 \ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, bytes
 \ encoded as a web form or a query component and decoded from a form, request
 \ paths checked for a dot segment, and http(s) URLs resolved, compared and
@@ -50,7 +51,7 @@ create DECODED BUF:HDR-BYTES allot
    s" file:///a%3Fb%23c" s" /a?b#c" PATH=
    s\" file:///\xC3\xA9" s\" /\xC3\xA9" PATH= ;
 
-: DECODE-DROP ( ^u8 n -- )
+: DECODE-DROP ( str -- )
    DST URI:FILE>PATH drop ;
 
 : SCHEMES ( -- )
@@ -109,11 +110,11 @@ create DECODED BUF:HDR-BYTES allot
    s" file:///abcd" DST 5 TAKE URI:FILE>PATH 5 T=
    DST $ drop 5 s" /abcd" T$= ;
 
-: URI$ ( ^u8 n -- ^u8 n )
+: URI$ ( str -- str )
    URI-DST URI:PATH>FILE {: u:n :}
    URI-DST $ drop u ;
 
-: URI= ( ^u8 n ^u8 n -- )
+: URI= ( str str -- )
    {: a:^ u:n b:^ v:n :}
    a u URI$ b v T$= ;
 
@@ -132,7 +133,7 @@ create DECODED BUF:HDR-BYTES allot
    s" /%?#:@+()" s" file:///%25%3F%23%3A%40%2B%28%29" URI=
    s\" /a\x00b\xFF" s" file:///a%00b%FF" URI= ;
 
-: ENCODE-DROP ( ^u8 n -- )
+: ENCODE-DROP ( str -- )
    URI-DST URI:PATH>FILE drop ;
 
 \ A path that is not absolute: relative, empty, or a URI already.
@@ -174,11 +175,11 @@ create DECODED BUF:HDR-BYTES allot
 : ROUND-TRIP ( -- )
    256 0 do i TRIP loop ;
 
-: FORM$ ( ^u8 n -- ^u8 n )
+: FORM$ ( str -- str )
    URI-DST URI:FORM-ENCODE {: u:n :}
    URI-DST $ drop u ;
 
-: FORM-SAFE$ ( -- ^u8 n )
+: FORM-SAFE$ ( -- str )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*-._" ;
 
 : HEX$ ( -- ^u8 n ) s" 0123456789ABCDEF" ;
@@ -188,7 +189,7 @@ create DECODED BUF:HDR-BYTES allot
    FORM-SAFE$ {: a:^ u:n :}
    false u 0 ?do a i + c@ c = or loop ;
 
-: FORM-WANT ( n -- ^u8 n )
+: FORM-WANT ( n -- str )
    {: b:n :}
    b FORM-SAFE? if b WANT c! WANT 1 exit then
    b STR-SPACE = if [char] + WANT c! WANT 1 exit then
@@ -200,7 +201,7 @@ create DECODED BUF:HDR-BYTES allot
 : FORM-BYTES ( -- )
    256 0 do i ONE c! ONE 1 FORM$ i FORM-WANT T$= loop ;
 
-: DECODED$ ( ^u8 n -- ^u8 n )
+: DECODED$ ( str -- str )
    DECODED BUF:CLEAR
    DECODED URI:FORM-DECODE+
    DECODED BUF:SPAN$ BUF:BLEN>N ;
@@ -267,21 +268,21 @@ create DECODED BUF:HDR-BYTES allot
    s" /a/%252e%252e/b" URI:DOT-SEGMENT? TFALSE
    s" " URI:DOT-SEGMENT? TFALSE ;
 
-: RESOLVED$ ( ^u8 n ^u8 n -- ^u8 n )
+: RESOLVED$ ( str str -- str )
    URL-DST URI:RESOLVE {: u:n :}
    URL-DST $ drop u ;
 
-: RESOLVE= ( ^u8 n ^u8 n ^u8 n -- )   \ base, reference, target
+: RESOLVE= ( str str str -- )   \ base, reference, target
    {: b:^ bu:n r:^ ru:n t:^ tu:n :}
    b bu r ru RESOLVED$ t tu T$= ;
 
-: CATALOG$ ( -- ^u8 n )
+: CATALOG$ ( -- str )
    s" https://h/sap/opu/odata4/iwfnd/config/default/iwfnd/catalog/0002/ServiceGroups?$expand=X&$top=3" ;
 
-: SERVICE$ ( -- ^u8 n )
+: SERVICE$ ( -- str )
    s" https://h/sap/opu/odata/iwfnd/CATALOGSERVICE;v=0002/ServiceCollection?$skiptoken=2" ;
 
-: NEXT$ ( -- ^u8 n )
+: NEXT$ ( -- str )
    s" https://h/sap/opu/odata4/iwfnd/config/default/iwfnd/catalog/0002/ServiceGroups?$expand=X&$skiptoken=100" ;
 
 \ The four pages an OData server linked: relative, absolute with a segment
@@ -294,11 +295,11 @@ create DECODED BUF:HDR-BYTES allot
    s" https://h/sap/opu/odata/sap/X/A?$skiptoken=5" RESOLVE=
    CATALOG$ s" https://other/x" s" https://other/x" RESOLVE= ;
 
-: RFC= ( ^u8 n ^u8 n -- )   \ reference, target
+: RFC= ( str str -- )   \ reference, target
    {: r:^ ru:n t:^ tu:n :}
    s" http://a/b/c/d;p?q" r ru t tu RESOLVE= ;
 
-: RFC-DROP ( ^u8 n -- )
+: RFC-DROP ( str -- )
    {: r:^ ru:n :}
    s" http://a/b/c/d;p?q" r ru URL-DST URI:RESOLVE drop ;
 
@@ -350,7 +351,7 @@ create DECODED BUF:HDR-BYTES allot
    s" g#s/../x" s" http://a/b/c/g#s/../x" RFC=
    [: s" http:g" RFC-DROP ;] E-URI-HTTP TTHROWSQ ;
 
-: BASE-DROP ( ^u8 n -- )
+: BASE-DROP ( str -- )
    s" g" URL-DST URI:RESOLVE drop ;
 
 \ User information, a `\` before it, and a port over 65535 or an unclosed

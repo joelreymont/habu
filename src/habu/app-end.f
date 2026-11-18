@@ -1,3 +1,4 @@
+split-str
 \ app-end.f - a stripped program's entry, loaded after the program's source.
 require src/core/exit-status.f
 require src/lib/error.f

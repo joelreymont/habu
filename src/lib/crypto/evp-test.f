@@ -1,3 +1,4 @@
+split-str
 \ evp-test.f - focused tests for src/lib/crypto/evp.f against published vectors.
 \ Run: bin/hb --load src/lib/crypto/evp-test.f
 \ AES-256-GCM: Test Cases 13 and 16 of McGrew and Viega's GCM specification (the
@@ -154,12 +155,12 @@ variable FILL-N
    FILLED WANT-N ! ;
 
 
-: KEY$ ( -- ^u8 n )     KEY-BUF KEY-N @ ;
-: NONCE$ ( -- ^u8 n )   NONCE-BUF NONCE-N @ ;
-: AAD$ ( -- ^u8 n )     AAD-BUF AAD-N @ ;
-: PLAIN$ ( -- ^u8 n )   PLAIN-BUF PLAIN-N @ ;
-: SEALED$ ( -- ^u8 n )  SEALED-BUF SEALED-N @ ;
-: WANT$ ( -- ^u8 n )    WANT-BUF WANT-N @ ;
+: KEY$ ( -- str )     KEY-BUF KEY-N @ ;
+: NONCE$ ( -- str )   NONCE-BUF NONCE-N @ ;
+: AAD$ ( -- str )     AAD-BUF AAD-N @ ;
+: PLAIN$ ( -- str )   PLAIN-BUF PLAIN-N @ ;
+: SEALED$ ( -- str )  SEALED-BUF SEALED-N @ ;
+: WANT$ ( -- str )    WANT-BUF WANT-N @ ;
 
 : SEAL-VECTOR ( -- )
    KEY$ NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL SEALED-N ! ;
@@ -173,7 +174,7 @@ variable FILL-N
       failed OF CRYPTO:CODE>N negate ENDOF
    ;MATCH ;
 
-: BACK$ ( -- ^u8 n )
+: BACK$ ( -- str )
    BACK-BUF PLAIN-N @ ;
 
 : PAINT-BACK ( -- )
@@ -191,10 +192,10 @@ variable FILL-N
 
 \ RFC 4231 HMAC-SHA-256.
 
-: MAC-KEY$ ( -- ^u8 n )   MAC-KEY-BUF MAC-KEY-N @ ;
-: MSG$ ( -- ^u8 n )       MSG-BUF MSG-N @ ;
-: MAC$ ( -- ^u8 n )       MAC-BUF CRYPTO:MAC-BYTES ;
-: MAC-WANT$ ( -- ^u8 n )  MAC-WANT-BUF MAC-WANT-N @ ;
+: MAC-KEY$ ( -- str )   MAC-KEY-BUF MAC-KEY-N @ ;
+: MSG$ ( -- str )       MSG-BUF MSG-N @ ;
+: MAC$ ( -- str )       MAC-BUF CRYPTO:MAC-BYTES ;
+: MAC-WANT$ ( -- str )  MAC-WANT-BUF MAC-WANT-N @ ;
 
 : MAC-VECTOR ( -- )
    MAC-KEY$ MSG$ MAC-BUF MAC-CAP CRYPTO:HMAC-SHA256 ;
@@ -305,7 +306,7 @@ create DRAW-B DRAW-CAP allot
 : PAINT-DRAWS ( -- )
    DRAW-CAP 0 ?do 0 DRAW-A i + c! 0 DRAW-B i + c! loop ;
 
-: ALL-ZERO? ( ^u8 n -- bool ) {: span u:n :}
+: ALL-ZERO? ( str -- bool ) {: span u:n :}
    u 0 ?do span i + c@ 0 <> if false unloop exit then loop
    true ;
 
@@ -526,7 +527,7 @@ variable JWS-N
 : ASCII, ( ^u8 n -- ) {: p u:n :}
    u 0 ?do p i + c@ BYTE, loop ;
 
-: PEM-LINE ( ^u8 n -- ) ASCII, 10 BYTE, ;
+: PEM-LINE ( str -- ) ASCII, 10 BYTE, ;
 
 : RFC-RSA ( -- )
    JWS-FIXTURE:MODULUS$ RSA-N RSA-BYTES SPAN:MAKE BASE64:DECODE-URL RSA-BYTES T=

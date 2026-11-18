@@ -1,3 +1,4 @@
+split-str
 \ runtime.f - the Habu loop's installs, one list for every machine:
 \ interpreter.f is the engine's `evaluate`, `create` and definition policy,
 \ main.f its command line and T0 its compiler, after the declaration cells,

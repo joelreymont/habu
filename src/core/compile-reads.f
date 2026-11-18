@@ -1,3 +1,4 @@
+split-str
 \ compile-reads.f - what a compile reads besides its source: the roots it looked
 \ up and what they resolved to, the environment variables it read, the texts it
 \ spells and the files it read.
@@ -113,7 +114,7 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
 : VACANT ( n -- n )
    HOME begin dup SLOT @ 0= 0= while NEXT repeat ;
 
-: STOP? ( n n ^u8 n ^u8 n -- bool )
+: STOP? ( n n str str -- bool )
    {: i:n kind:n a:^ u:n b:^ v:n :}
    i SLOT @ {: s:n :}
    s 0= if 0 0= exit then
@@ -227,7 +228,7 @@ public
 : UNRECORDED ( [ -- ] -- ) {: q :} ST-OFF q SCOPE ;
 
 \ The active recording's bytes, valid until its next append or its end.
-: READS$ ( -- ^u8 n )
+: READS$ ( -- str )
    STATUS @ ST-OFF = if NULL-PTR 0 exit then
    MAP @ USED @ ;
 
@@ -275,7 +276,7 @@ public
 
 private
 
-: STAMP+ ( ^u8 n n ^u8 n n n n -- )
+: STAMP+ ( str n str n n n -- )
    {: w:^ wu:n kind:n a:^ u:n sec:n ns:n size:n :}
    sec STAMP-BUF CELL-VIEW !
    ns STAMP-BUF CELL + CELL-VIEW !

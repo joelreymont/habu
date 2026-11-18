@@ -1,3 +1,4 @@
+split-str
 \ The checker owner's later fields. This module loads before the checker owner
 \ is published.
 

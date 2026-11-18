@@ -1,3 +1,4 @@
+split-str
 \ A mutable view owns one linear capability even when its element type is
 \ linear. A record also owns each separate linear field it contains.
 

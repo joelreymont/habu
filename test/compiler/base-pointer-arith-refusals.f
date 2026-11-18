@@ -1,3 +1,4 @@
+split-str
 \ base-pointer-arith-refusals.f - rejected programs and controls for "a pointer
 \ derived from a base address (data-base, NULL-PTR) holds a plain value". Each
 \ base refusal answers E-RAW-CELL-PTR with a reason per base. TVK-NULL is fenced
@@ -52,58 +53,58 @@ private
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: CODE$ ( -- ^u8 n )
+: CODE$ ( -- str )
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
-: DB-REASON$ ( -- ^u8 n )
+: DB-REASON$ ( -- str )
    S\" \"message\":\"base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
 
-: NULL-REASON$ ( -- ^u8 n )
+: NULL-REASON$ ( -- str )
    S\" \"message\":\"null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one\"" ;
 
 \ The raw-storage rule's reason. No base fixture may answer it: they name no
 \ `variable`, `create`, `constant` or `here`.
-: RAW-REASON$ ( -- ^u8 n )
+: RAW-REASON$ ( -- str )
    S\" \"message\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
 
 \ An executable value reached through either base or an undeclared cell answers
 \ the raw rule's reason for code: declare the cell that holds the xt.
-: EXEC-REASON$ ( -- ^u8 n )
+: EXEC-REASON$ ( -- str )
    S\" \"message\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
 
-: NP-CODE$ ( -- ^u8 n )
+: NP-CODE$ ( -- str )
    S\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" ;
 
-: NP-SUGGEST$ ( -- ^u8 n )
+: NP-SUGGEST$ ( -- str )
    s" declare the pointee the base address reaches" ;
 
 : HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: LACKS? ( ^u8 n -- )
+: LACKS? ( str -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
 \ Asserting the reason, not only the code, keeps each rule's prose its own.
-: REFUSED-CODE ( ^u8 n -- )   \ leaves the diagnostic armed for the reason assertions
+: REFUSED-CODE ( str -- )   \ leaves the diagnostic armed for the reason assertions
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  RAW-REASON$ LACKS? ;
 
-: DB-REFUSED ( ^u8 n -- )
+: DB-REFUSED ( str -- )
    REFUSED-CODE  DB-REASON$ HAS?  NULL-REASON$ LACKS?  DISARM ;
 
-: NULL-REFUSED ( ^u8 n -- )
+: NULL-REFUSED ( str -- )
    REFUSED-CODE  NULL-REASON$ HAS?  DB-REASON$ LACKS?  DISARM ;
 
 \ The raw-cell rule answers its own prose for the same shape over an undeclared
 \ cell.
-: RAW-REFUSED ( ^u8 n -- )
+: RAW-REFUSED ( str -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  RAW-REASON$ HAS?  DB-REASON$ LACKS?  NULL-REASON$ LACKS?
    DISARM ;
 
-: EXEC-REFUSED ( ^u8 n -- )
+: EXEC-REFUSED ( str -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    CODE$ HAS?  EXEC-REASON$ HAS?
@@ -554,7 +555,7 @@ private
 \ EPRIM: row at a call, and no row rides its xt. NULL-PTR is a primitive, so
 \ `['] NULL-PTR execute` is refused like `['] dup execute`; a quotation
 \ that calls it carries the row.
-: OPAQUE-REFUSED ( ^u8 n -- )
+: OPAQUE-REFUSED ( str -- )
    ARM
    CHECK-CANDIDATE! 0 T=
    S\" \"code\":\"E-EXEC-OPAQUE-XT\"" HAS?

@@ -1,3 +1,4 @@
+split-str
 \ array.f - checked cell-array helpers (package ARRAY); there is no linked-list module.
 \ A-LEN, A-IDX and A-COUNT throw E-A-BOUNDS on a negative integer, as does every
 \ out-of-range index; a range may be empty at either end. A-MIN, A-MAX, A-ARGMAX

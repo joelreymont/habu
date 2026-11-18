@@ -1,3 +1,4 @@
+split-str
 \ tier0-profile.f - where tier-0 compile time goes, as a sampling profile
 \ (docs/debugging.md "Sampling profiler"). Prints `P <mode> defs <n> ns <n>
 \ ns-per-def <n>`, then the profiler's own report. Measure on a quiet, pinned
@@ -33,7 +34,7 @@ variable SRC-N
    c CHB c!
    CHB 1 type ;
 
-: EMIT$ ( ^u8 n -- ) {: a:^ u :}
+: EMIT$ ( str -- ) {: a:^ u :}
    u 0 ?do a i + c@ EMIT-C loop ;
 
 : EMIT-DEC ( n -- )
@@ -59,7 +60,7 @@ variable SRC-N
    c SRC SRC-N @ + c!
    SRC-N @ 1 + SRC-N ! ;
 
-: SRC$+ ( ^u8 n -- ) {: a:^ u :}
+: SRC$+ ( str -- ) {: a:^ u :}
    u 0 ?do a i + c@ SRC-C+ loop ;
 
 : SRC-DEC+ ( n -- )
@@ -94,7 +95,7 @@ variable SRC-N
    s" usage: bin/hb --load tools/tier0-profile.f -- corpus|trivial <usec> <arg>..."
    EXIT-STATUS:USAGE die ;
 
-: ARG>N ( ^u8 n -- n ) {: a:^ u :}
+: ARG>N ( str -- n ) {: a:^ u :}
    u 0= if USAGE then
    0 {: acc :}
    acc u 0 ?do
@@ -113,7 +114,7 @@ variable SRC-N
 : COMPILE-TRIVIAL ( n -- ) {: n :}
    n 0 ?do i 1 + TRIVIAL-SRC  SRC SRC-N @ evaluate-closed loop ;
 
-: REPORT-HEAD ( ^u8 n n n -- ) {: name:^ nu defs ns :}
+: REPORT-HEAD ( str n n -- ) {: name:^ nu defs ns :}
    s" P " EMIT$  name nu EMIT$
    s"  defs" EMIT$  defs EMIT-FIELD
    s"  ns" EMIT$  ns EMIT-FIELD

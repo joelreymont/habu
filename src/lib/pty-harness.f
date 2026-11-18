@@ -1,3 +1,4 @@
+split-str
 \ pty-harness.f - the pseudo-terminal harness the engine's PTY suites drive: a
 \ child engine on the other side of a terminal (the pair from src/lib/pty.f),
 \ read into one buffer a suite makes claims about.
@@ -51,7 +52,7 @@ variable WATCH-N
    w cells NEEDLE-SEEN + cell-view ;
 
 
-: NEEDLE$ ( n -- ^u8 n ) {: w:n :}
+: NEEDLE$ ( n -- str ) {: w:n :}
    NEEDLE w NEEDLE-CAP * +  w NEEDLE-LEN-AT @ ;
 
 
@@ -124,7 +125,7 @@ public
 
 \ Write room for a reader this module does not own, compacted first so the span
 \ is never empty; the reader hands back what it wrote with TOOK.
-: ROOM$ ( -- ^u8 n )
+: ROOM$ ( -- str )
    KEEP-TAIL!
    RBUF RN @ +  BUF-CAP RN @ - ;
 
@@ -175,7 +176,7 @@ public
    f OUTB 1 WRITE-ALL ;
 
 
-: WRITE-LINE ( fd ^u8 n -- ) {: f:fd a:^ u:n :}
+: WRITE-LINE ( fd str -- ) {: f:fd a:^ u:n :}
    f a u WRITE-ALL
    f LF WRITE-BYTE ;
 
@@ -225,7 +226,7 @@ private
 
 \ The transaction below cannot read a local, so the path it execs travels
 \ through storage.
-: STORE-PATH ( ^u8 n -- ) {: a:^ u:n :}
+: STORE-PATH ( str -- ) {: a:^ u:n :}
    u 0 < u PATH-CAP > or if E-PTY-CAPACITY throw then
    a PATH-BUF u BYTE-COPY
    u PATH-U ! ;
@@ -267,7 +268,7 @@ public
 
 \ Offset of the first occurrence at or after `from` in the bytes read so far,
 \ or -1.
-: FIND-FROM ( n ^u8 n -- n ) {: from:n a:^ u:n :}
+: FIND-FROM ( n str -- n ) {: from:n a:^ u:n :}
    from 0 < from RN @ > or if -1 exit then
    RBUF from +  RN @ from -  a u FIND-SUB MATCH option
      none OF -1 ENDOF
@@ -283,13 +284,13 @@ public
 \ markers in that order, which is what tells a prompt the child printed after its
 \ answer from one the line editor redrew before it. An empty head puts the tail
 \ anywhere.
-: FIND-AFTER ( ^u8 n ^u8 n -- n ) {: ha:^ hu:n ta:^ tu:n :}
+: FIND-AFTER ( str str -- n ) {: ha:^ hu:n ta:^ tu:n :}
    0 ha hu FIND-FROM {: at:n :}
    at 0 < if -1 exit then
    at hu + ta tu FIND-FROM ;
 
 
-: AFTER? ( ^u8 n ^u8 n -- bool )
+: AFTER? ( str str -- bool )
    FIND-AFTER 0 >= ;
 
 
@@ -306,7 +307,7 @@ public
 
 \ The editor redraws "habu> " per key, so only a prompt after the answer shows
 \ the child raw again; a ^D sent before it is read cooked and dropped as a NUL.
-: WAIT-AFTER ( ^u8 n ^u8 n -- bool ) {: ha:^ hu:n ta:^ tu:n :}
+: WAIT-AFTER ( str str -- bool ) {: ha:^ hu:n ta:^ tu:n :}
    [: ha hu ta tu AFTER? ;] WAIT-UNTIL ;
 
 
@@ -328,7 +329,7 @@ public
 \ has to be one the child prints PAST the point where the rejected text could
 \ have appeared. The window retires before the wait, so a wait the child hangs
 \ up on leaves none, and the claim behind it is refused as well.
-: WAIT-BARRIER ( ^u8 n -- bool ) {: a:^ u:n :}
+: WAIT-BARRIER ( str -- bool ) {: a:^ u:n :}
    -1 WEND !
    a u WAIT-FOR 0= if false exit then
    0 a u FIND-FROM {: at:n :}
@@ -340,7 +341,7 @@ public
 \ An absence claim reads the window a barrier closed, never the whole buffer, so
 \ it reads the child's answer instead of a buffer that is merely still empty.
 \ With no window there is no claim and the answer is false.
-: WINDOW-ABSENT? ( ^u8 n -- bool ) {: a:^ u:n :}
+: WINDOW-ABSENT? ( str -- bool ) {: a:^ u:n :}
    WEND @ 0 < if false exit then
    RBUF WEND @ a u CONTAINS? 0= ;
 
@@ -349,7 +350,7 @@ public
 \ every compaction and every BUF-CLEAR, which is what a negative claim over a
 \ whole run needs; a match that straddles the registration point counts as seen,
 \ so the fact can only refuse a claim, never grant one wrongly.
-: WATCH+ ( ^u8 n -- watch ) {: a:^ u:n :}
+: WATCH+ ( str -- watch ) {: a:^ u:n :}
    WATCH-N @ WATCH-CAP >= if E-PTY-CAPACITY throw then
    u 0 <= u NEEDLE-CAP > or if E-PTY-CAPACITY throw then
    WATCH-N @ {: w:n :}

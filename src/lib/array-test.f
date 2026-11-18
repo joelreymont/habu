@@ -1,3 +1,4 @@
+split-str
 \ array-test.f - focused tests for checked stdlib array helpers.
 \ Run: bin/hb --load src/lib/array-test.f
 
@@ -28,7 +29,7 @@ create AT-WORK 5 cells allot
    AT-WORK cell+ !
    AT-WORK ! ;
 
-: AT-CHECK-REJECTS ( ^u8 n -- )
+: AT-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : AT-CHECK-INDEX ( n n -- ) {: len ix :}

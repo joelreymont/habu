@@ -1,3 +1,4 @@
+split-str
 \ secret/linux.f - SECRET:READ and SECRET:WRITE through libsecret's Secret
 \ Service, loaded by src/lib/secret.f on a Linux target. An item is the one
 \ whose two attributes hold the service and the account, with no schema, as
@@ -58,7 +59,7 @@ false ITEM-BOUND !
    REQUEST-SERVICE-OBJ @ >BYTES ;
 
 \ Copies the name to offset at with its NUL; answers the offset after it.
-: ITEM-PUT ( ^u8 n n -- n )
+: ITEM-PUT ( str n -- n )
    {: a:^ u:n at:n :}
    a at ITEM-NAMES u BYTE-COPY
    0 at u + ITEM-NAMES c!
@@ -80,7 +81,7 @@ false ITEM-BOUND !
 : ID-ALLOC ( n -- n )
    FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop FFI:>CELL ;
 
-: ID-COPY ( ^u8 n n -- )
+: ID-COPY ( str n -- )
    {: text u:n cell:n :}
    text u cell u ID-SPAN FFI:CSTR drop ;
 
@@ -103,11 +104,11 @@ false ITEM-BOUND !
    req REQUEST-QUERY @ ACCOUNT-KEY req REQUEST-ACCOUNT-OBJ @ HASH-INSERT drop ;
 
 \ A GError's message follows its two 32-bit fields, domain and code.
-: ERROR-TEXT ( n -- ^u8 n )
+: ERROR-TEXT ( n -- str )
    >BYTES 8 + CELL-VIEW @ >BYTES dup ZLEN ;
 
 \ Logs the request's GError after the text, then throws E-ACCESS.
-: GERROR-FAILED ( ^request ^u8 n -- )
+: GERROR-FAILED ( ^request str -- )
    {: req:^ what:^ wu:n :}
    LOG:ERROR s" secret" LOG:LINE
    what wu LOG:TEXT+ s" : " LOG:TEXT+
@@ -167,7 +168,7 @@ public
 \ tasks call SECRET races. Unbound they are `service`, `account` and the
 \ service. A name that is empty, holds a NUL or is malformed UTF-8, or two
 \ equal keys, throw E-CONFIG and bind nothing.
-: LINUX-ITEM! ( ^u8 n ^u8 n ^u8 n -- )
+: LINUX-ITEM! ( str str str -- )
    {: sk:^ su:n ak:^ au:n label:^ lu:n :}
    sk su INPUT ak au INPUT label lu INPUT
    sk su ak au STR= if E-CONFIG throw then

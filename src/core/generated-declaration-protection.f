@@ -1,10 +1,11 @@
+split-str
 \ generated-declaration-protection.f - the runner DECLARATION-TRANSACTION:RUN.
 
 package TYPE-DECL
 private
 package DECLARATION-TRANSACTION
 
-: PLAN-PREFLIGHT ( ^u8 n n -- ) {: a:^ u:n words:n :}
+: PLAN-PREFLIGHT ( str n -- ) {: a:^ u:n words:n :}
    a u  a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
    GENERATED-DECL-DICTIONARY:PREFLIGHT ;
 

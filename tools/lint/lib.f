@@ -1,3 +1,4 @@
+split-str
 \ lib.f - shared scanner foundation for native lint tools.
 
 require tools/lint/text.f
@@ -19,7 +20,7 @@ create LINT-MAIN-NBUF LINT-MAIN-NCAP allot
 create LINT-MAIN-LFB 1 allot
 variable LINT-MAIN-NI
 
-: LINT-MAIN-N$ ( n -- ^u8 n ) {: v:n :}
+: LINT-MAIN-N$ ( n -- str ) {: v:n :}
    LINT-MAIN-NCAP LINT-MAIN-NI !
    v 0= IF s" 0" exit THEN
    v 0 < IF 0 v - ELSE v THEN
@@ -35,7 +36,7 @@ variable LINT-MAIN-NI
    THEN
    LINT-MAIN-NBUF LINT-MAIN-NI @ +  LINT-MAIN-NCAP LINT-MAIN-NI @ - ;
 
-: LINT-MAIN-OUT ( ^u8 n -- ) {: a:^ u:n :}
+: LINT-MAIN-OUT ( str -- ) {: a:^ u:n :}
    1 a u LINT-OUT-WRITE ;
 
 : LINT-MAIN-LF ( -- )
@@ -48,7 +49,7 @@ variable LINT-MAIN-NI
    LINT-CODE-NAME$ LINT-MAIN-OUT
    s" )" LINT-MAIN-OUT ;
 
-: LINT-MAIN ( ^u8 n n -- ) {: name:^ nu:n code:n :}
+: LINT-MAIN ( str n -- ) {: name:^ nu:n code:n :}
    code 0= IF exit THEN
    name nu LINT-MAIN-OUT
    s" : threw " LINT-MAIN-OUT

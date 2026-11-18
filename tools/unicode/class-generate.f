@@ -1,3 +1,4 @@
+split-str
 \ class-generate.f - deterministic Unicode character-class source generator.
 
 require src/lib/prelude.f
@@ -18,28 +19,28 @@ CODEGEN:BUFFER OUTPUT
 create INPUT-DIGEST SHA256-HEX-LENGTH allot
 create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
-: UNICODE-PATH$ ( -- ^u8 n )
+: UNICODE-PATH$ ( -- str )
    s" data/unicode/16.0.0/UnicodeData.txt" ;
 
-: PROPERTIES-PATH$ ( -- ^u8 n )
+: PROPERTIES-PATH$ ( -- str )
    s" data/unicode/16.0.0/PropList.txt" ;
 
-: BRACKETS-PATH$ ( -- ^u8 n )
+: BRACKETS-PATH$ ( -- str )
    s" data/unicode/16.0.0/BidiBrackets.txt" ;
 
-: OUTPUT-PATH$ ( -- ^u8 n )
+: OUTPUT-PATH$ ( -- str )
    s" src/lib/unicode/class-data.f" ;
 
-: EXPECTED-UNICODE-DIGEST$ ( -- ^u8 n )
+: EXPECTED-UNICODE-DIGEST$ ( -- str )
    s" ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f" ;
 
-: EXPECTED-PROPERTIES-DIGEST$ ( -- ^u8 n )
+: EXPECTED-PROPERTIES-DIGEST$ ( -- str )
    s" 53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583" ;
 
-: EXPECTED-BRACKETS-DIGEST$ ( -- ^u8 n )
+: EXPECTED-BRACKETS-DIGEST$ ( -- str )
    s" b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67" ;
 
-: VERIFY-FILE-DIGEST ( ^u8 n ^u8 n -- ) {: path:^ pathu:n want:^ wantu:n :}
+: VERIFY-FILE-DIGEST ( str str -- ) {: path:^ pathu:n want:^ wantu:n :}
    wantu SHA256-HEX-LENGTH <> if E-DIGEST throw then
    UC-FSHA-CTX path pathu INPUT-DIGEST SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
    INPUT-DIGEST SHA256-HEX-LENGTH want wantu STR= 0= if E-DIGEST throw then ;
@@ -70,7 +71,7 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : OUT-N ( n -- )
    OUTPUT CODEGEN:APPEND-DECIMAL ;
 
-: OUT-LINE ( ^u8 n -- )
+: OUT-LINE ( str -- )
    OUT$
    OUTPUT-LINE-FEED OUTPUT CODEGEN:APPEND-BYTE ;
 
@@ -83,7 +84,7 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
       1+
    repeat drop ;
 
-: OUT-TABLE ( ^u8 n n [ n -- n n ] -- )
+: OUT-TABLE ( str n [ n -- n n ] -- )
    {: name:^ nameu:n count:n getter :}
    count OUT-N s"  constant " OUT$ name nameu OUT$ s" -TABLE-COUNT" OUT-LINE
    \ Empty logical tables still need a valid private typed buffer.
@@ -116,14 +117,14 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    s" " OUT-LINE ;
 
 \ An accessor answers its table's first cell and pair count together.
-: OUT-ACCESSOR-AS ( ^u8 n ^u8 n -- )
+: OUT-ACCESSOR-AS ( str str -- )
    {: name:^ nameu:n suffix:^ suffixu:n :}
    s" : " OUT$ name nameu OUT$ suffix suffixu OUT$ s"  ( -- ^n n )" OUT-LINE
    s"    0 " OUT$ name nameu OUT$ s" -TABLE " OUT$
    name nameu OUT$ s" -TABLE-COUNT ;" OUT-LINE
    s" " OUT-LINE ;
 
-: OUT-ACCESSOR ( ^u8 n -- )
+: OUT-ACCESSOR ( str -- )
    s" -RANGES" OUT-ACCESSOR-AS ;
 
 : OUT-ACCESSORS ( -- )
@@ -143,7 +144,7 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 public
 
-: CHECK-FILE-DIGEST ( ^u8 n ^u8 n -- )
+: CHECK-FILE-DIGEST ( str str -- )
    VERIFY-FILE-DIGEST ;
 
 : LOAD-PINNED ( -- )

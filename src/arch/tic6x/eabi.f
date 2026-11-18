@@ -1,3 +1,4 @@
+split-str
 \ eabi.f - the C6000 EABI helpers TI's reused libraries need, emitted as C66x
 \ instruction words from the constructors in src/arch/tic6x/asm.f: the integer
 \ division family within SPRAB89's Table 8-9 register sets, memcpy/memset under
@@ -785,7 +786,7 @@ PERMITTED!
 
 public
 
-: HELPER-NAME$ ( n -- ^u8 n ) {: idx:n :}
+: HELPER-NAME$ ( n -- str ) {: idx:n :}
    idx 0 = if s" __c6xabi_divi" exit then
    idx 1 = if s" __c6xabi_divu" exit then
    idx 2 = if s" __c6xabi_remi" exit then

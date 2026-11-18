@@ -1,3 +1,4 @@
+split-str
 \ The complete C2 image authenticates the exact field-loan code entry.
 require src/core/exit-status.f
 require src/lib/test.f

@@ -1,3 +1,4 @@
+split-str
 \ input-underflow-refusals.f - rejected programs for "a definition may not
 \ consume below its declared inputs". The refusal names the consuming token and
 \ both counts. Controls: a short and mistyped call keeps its own mismatch, and a
@@ -29,30 +30,30 @@ private
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: CODE$ ( -- ^u8 n )
+: CODE$ ( -- str )
    S\" \"code\":\"E-INPUT-UNDERFLOW\"" ;
 
-: MISMATCH$ ( -- ^u8 n )
+: MISMATCH$ ( -- str )
    S\" \"code\":\"E-MISMATCH\"" ;
 
 : HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: LACKS? ( ^u8 n -- )
+: LACKS? ( str -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
-: TOKEN=? ( ^u8 n -- bool )
+: TOKEN=? ( str -- bool )
    SB-RESET
    S\" \"token\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    REJECTION:BUFFER$ SB$ CONTAINS? ;
 
-: TOKEN? ( ^u8 n -- )
+: TOKEN? ( str -- )
    TOKEN=? TTRUE ;
 
-: NOT-TOKEN? ( ^u8 n -- )
+: NOT-TOKEN? ( str -- )
    TOKEN=? TFALSE ;
 
-: SHORT-BY? ( ^u8 n ^u8 n -- ) {: needs:^ needsu:n has:^ hasu:n :}
+: SHORT-BY? ( str str -- ) {: needs:^ needsu:n has:^ hasu:n :}
    SB-RESET
    s" input underflow: the call takes more cells than the definition's declared inputs leave (needs " SB-APPEND
    needs needsu SB-APPEND  s" , has " SB-APPEND  has hasu SB-APPEND  s" )" SB-APPEND
@@ -61,12 +62,12 @@ private
 : NAMED ( -- )
    CODE$ HAS? ;
 
-: DECLARED? ( ^u8 n -- )   \ the record's declared note
+: DECLARED? ( str -- )   \ the record's declared note
    SB-RESET
    S\" \"declared\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;
 
-: ROWS? ( ^u8 n ^u8 n -- )   \ the record's expected and found notes
+: ROWS? ( str str -- )   \ the record's expected and found notes
    {: e:^ eu:n a:^ au:n :}
    SB-RESET
    S\" \"expected\":\"" SB-APPEND  e eu SB-APPEND

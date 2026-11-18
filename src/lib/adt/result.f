@@ -1,3 +1,4 @@
+split-str
 \ result.f - result<ok,err>: a success value (ok) or an error value (err).
 \ Returning result<T,E> instead of a value+rc sentinel makes every caller MATCH
 \ both arms at check time.

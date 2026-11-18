@@ -1,3 +1,4 @@
+split-str
 \ lsp-source-index.f - locate an image word in current engine source. The verifier
 \ child scans the supplied bytes (LSP-CHECK:INDEX-BYTES) and returns surviving
 \ declaration identities; this file matches them to the path and name span
@@ -36,7 +37,7 @@ variable START
 variable END
 variable RESULT-SYM
 
-: ID! ( ^u8 n ^u8 n n -- )
+: ID! ( str str n -- )
    {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    pkgu 1 max ID-PKG-RESERVE
    tailu 1 max ID-TAIL-RESERVE
@@ -44,7 +45,7 @@ variable RESULT-SYM
    tail 0 ID-TAIL tailu BYTE-COPY  tailu ID-TAIL-U !
    vis ID-VIS ! ;
 
-: ID=? ( ^u8 n ^u8 n n -- bool )
+: ID=? ( str str n -- bool )
    {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    vis ID-VIS @ = pkgu ID-PKG-U @ = and tailu ID-TAIL-U @ = and
    pkg pkgu 0 ID-PKG ID-PKG-U @ CORE-STR= and
@@ -95,7 +96,7 @@ variable RESULT-SYM
    ROW-TAIL-U @ 0 > and ROW-START @ 0 >= and
    ROW-END @ ROW-START @ > and ;
 
-: ROW-ID ( -- ^u8 n ^u8 n n )
+: ROW-ID ( -- str str n )
    0 ROW-PKG ROW-PKG-U @ 0 ROW-TAIL ROW-TAIL-U @ ROW-VIS @ ;
 
 : ROW-SELECT ( -- )
@@ -165,7 +166,7 @@ public
 \ clause body the scanner skips; structural native declarations and literal
 \ openers still scan. A prefix file with a top-level dictionary call has no
 \ source locations.
-: TARGET-IN ( n ^u8 n ^u8 n -- n n bool )
+: TARGET-IN ( n str str -- n n bool )
    {: sym:n path:^ pathu:n src:^ srcu:n :}
    sym ENGINE-ORIGIN:TARGET
    {: rel:^ relu:n old:n old-end:n name:^ nameu:n live:bool :}
@@ -178,7 +179,7 @@ public
    src srcu path pathu SCAN
    COUNT @ 1 = if START @ END @ true else 0 0 false then ;
 
-: SYMBOL-IN ( ^u8 n n ^u8 n -- n bool )
+: SYMBOL-IN ( str n str -- n bool )
    {: path:^ pathu:n byte:n src:^ srcu:n :}
    path pathu RELATIVE {: rel:^ relu:n in-root:bool :}
    in-root 0= if 0 false exit then

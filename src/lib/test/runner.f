@@ -1,3 +1,4 @@
+split-str
 \ runner.f - checked process-fixture helpers for native test scripts: GT-START
 \ makes a cleanup-tracked root under TMPDIR, GT-RUN captures a child's whole
 \ output, GT-FAIL+ records a named failure and GT-REPORT exits
@@ -55,7 +56,7 @@ variable GT-PROGRESS-START-NS
    idx GT-FAIL-MAX >= if E-TBL-BOUNDS throw then
    idx cells GT-FAIL-US + ;
 
-: GT-FAIL-NAME$ ( n -- ^u8 n ) {: idx :}
+: GT-FAIL-NAME$ ( n -- str ) {: idx :}
    idx GT-FAIL-SLOT
    idx GT-FAIL-U-PTR @ ;
 
@@ -67,13 +68,13 @@ variable GT-PROGRESS-START-NS
    0 GT-CODE !
    0 GT-FAIL# ! ;
 
-: GT-ROOT ( -- ^u8 n )
+: GT-ROOT ( -- str )
    GT-ROOT-BUF GT-ROOT-U @ ;
 
 : GT-OUT$ ( -- ^u8 n )
    0 GT-OUT-BYTES GT-OUT-U @ ;
 
-: GT-ERR$ ( -- ^u8 n )
+: GT-ERR$ ( -- str )
    0 GT-ERR-BYTES GT-ERR-U @ ;
 
 \ A growing capture's sinks: room for n bytes of stdout or stderr, the bytes
@@ -90,7 +91,7 @@ variable GT-PROGRESS-START-NS
 : GT-EXPECT-ROOT ( -- )
    GT-ROOT-U @ 0 <= if E-FS-PATH throw then ;
 
-: GT-COPY-ROOT! ( ^u8 n -- ) {: a:^ u :}
+: GT-COPY-ROOT! ( str -- ) {: a:^ u :}
    u 0 < if E-FS-PATH throw then
    u PATH-CAP > if E-FS-PATH throw then
    a GT-ROOT-BUF u BYTE-COPY
@@ -99,7 +100,7 @@ variable GT-PROGRESS-START-NS
 : GT-CLEANUP ( -- )
    FS:CLEANUP-RUN ;
 
-: GT-PATH ( ^u8 n ^u8 -- n ) {: name:^ nameu dst:^ :}
+: GT-PATH ( str ^u8 -- n ) {: name:^ nameu dst:^ :}
    GT-EXPECT-ROOT
    nameu GT-NAME-MAX > if E-FS-CAPACITY throw then
    GT-ROOT name nameu dst FS:JOIN-PATH ;
@@ -108,24 +109,24 @@ variable GT-PROGRESS-START-NS
    GT-FAIL# @ GT-FAIL-MAX > if GT-FAIL-MAX exit then
    GT-FAIL# @ ;
 
-: GT-FAIL-NAME! ( ^u8 n -- ) {: name:^ nameu:n :}
+: GT-FAIL-NAME! ( str -- ) {: name:^ nameu:n :}
    GT-FAIL# @ GT-FAIL-MAX >= if exit then
    name GT-FAIL# @ GT-FAIL-SLOT nameu BYTE-COPY
    nameu GT-FAIL# @ GT-FAIL-U-PTR ! ;
 
-: GT-FAIL+ ( ^u8 n -- ) {: name:^ nameu:n :}
+: GT-FAIL+ ( str -- ) {: name:^ nameu:n :}
    nameu 0 < if E-TBL-FIELD throw then
    nameu GT-FAIL-NAME-CAP > if E-TBL-FIELD throw then
    name nameu GT-FAIL-NAME!
    GT-FAIL# @ 1+ GT-FAIL# !
    s" runner" GT-FAIL# @ name nameu TREC-FAIL ;
 
-: GT-CHECK ( bool ^u8 n -- ) {: ok name:^ nameu :}
+: GT-CHECK ( bool str -- ) {: ok name:^ nameu :}
    ok 0= if name nameu GT-FAIL+ then ;
 
 \ A failure prints both sides, the evidence a bool would lose, on one line
 \ after the TFAIL record: FMT:.INT, since `.` ends its text with a newline.
-: GT-CHECK-N ( n n ^u8 n -- ) {: got:n want:n name:^ nameu:n :}
+: GT-CHECK-N ( n n str -- ) {: got:n want:n name:^ nameu:n :}
    got want <> if
       name nameu GT-FAIL+
       s" runner: expected " type want FMT:.INT
@@ -155,7 +156,7 @@ variable GT-PROGRESS-START-NS
 \ A test's child: path with the argv the caller staged. The child inherits this
 \ process's environment, so the scratch it makes lies under the TMPDIR this run
 \ was given.
-: GT-RUN ( ^u8 n n -- ) {: path:^ pathu timeout :}
+: GT-RUN ( str n -- ) {: path:^ pathu timeout :}
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    path pathu >LEN s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] timeout >MS
    RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
@@ -202,7 +203,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 \ A new empty file named name under dir, open for appending (the writer) and,
 \ held, for reading from its start (the reader). It is unlinked before either
 \ comes back; on a throw nothing is held.
-: GT-CAP-FILE ( ^u8 n ^u8 n -- n n )
+: GT-CAP-FILE ( str str -- n n )
    {: dir:^ diru:n name:^ nameu:n :}
    dir diru name nameu GT-CAP-PATH FS:JOIN-PATH {: pathu:n :}
    GT-CAP-PATH pathu FS:>PATHZ
@@ -219,7 +220,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 
 \ fd writes to a new file named name under dir; fd's row keeps the stream fd
 \ held before and the file's reader.
-: GT-CAP-REDIRECT ( ^u8 n ^u8 n n -- )
+: GT-CAP-REDIRECT ( str str n -- )
    {: dir:^ diru:n name:^ nameu:n fd:n :}
    fd GT-CAP-DUP {: kept:n :}
    kept 0 < if E-PROC-OUTPUT throw then
@@ -282,7 +283,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 
 \ The files are read with the action's streams still on them; GT-CAP-LEAVE
 \ gives the streams back after the read, on its path and on every throw.
-: GT-CAP-RUN ( [ -- ] ^u8 n [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
+: GT-CAP-RUN ( [ -- ] str [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
    {: q dir:^ diru:n out err :}
    dir diru s" capture-out.txt" FD:STDOUT FD>N GT-CAP-REDIRECT
    dir diru s" capture-err.txt" FD:STDERR FD>N GT-CAP-REDIRECT
@@ -293,14 +294,14 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 
 \ Runs the quotation in this process, its stdout and stderr captured through the
 \ two sinks; a child's capture is GT-RUN.
-: GT-CAPTURE-ACTION ( [ -- ] ^u8 n [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
+: GT-CAPTURE-ACTION ( [ -- ] str [ n -- ^u8 ] [ n -- ^u8 ] -- len len n )
    {: q dir:^ diru:n out err :}
    diru 0 <= if E-FS-PATH throw then
    GT-CAP-ENTER
    q dir diru out err [: GT-CAP-RUN ;] [: GT-CAP-LEAVE ;] finally ;
 
 \ Call before a long subcheck and GT-PROGRESS-PASS after it.
-: GT-PROGRESS-RUN ( ^u8 n -- ) {: label:^ labelu :}
+: GT-PROGRESS-RUN ( str -- ) {: label:^ labelu :}
    mono-ns GT-PROGRESS-START-NS !
    s" RUN: " type label labelu type cr ;
 
@@ -312,7 +313,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR-ZERO + emit ;
 
-: GT-PROGRESS-PASS ( ^u8 n -- ) {: label:^ labelu :}
+: GT-PROGRESS-PASS ( str -- ) {: label:^ labelu :}
    s" PASS: " type label labelu type
    s"  (" type
    GT-PROGRESS-ELAPSED-MS GT-U-TYPE
@@ -321,10 +322,10 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 : GT-RC@ ( -- n )
    GT-OUTCOME@ PROCESS:ENDING>RC RC>N ;
 
-: GT-RC= ( n ^u8 n -- ) {: want name:^ nameu :}
+: GT-RC= ( n str -- ) {: want name:^ nameu :}
    GT-RC@ want name nameu GT-CHECK-N ;
 
-: GT-STDOUT-HAS ( ^u8 n ^u8 n -- ) {: needle:^ needleu name:^ nameu :}
+: GT-STDOUT-HAS ( str str -- ) {: needle:^ needleu name:^ nameu :}
    GT-OUT$ needle needleu CONTAINS? name nameu GT-CHECK ;
 
 : GT-REPORT-OVERFLOW ( -- )

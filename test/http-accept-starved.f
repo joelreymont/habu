@@ -1,3 +1,4 @@
+split-str
 \ The HTTP listener keeps listening through an accept that fails for want of
 \ descriptors (src/lib/net/http.f ACCEPT-FAILED). Its own process: it lowers
 \ RLIMIT_NOFILE, fills the descriptor table and pipes stderr, process-wide
@@ -104,12 +105,12 @@ variable READ-ERRNO
    PIPE-R @ close ;
 
 
-: LINE$ ( -- ^u8 n )
+: LINE$ ( -- str )
    LINE-BUF LINE-U @ ;
 
 
 \ The line after its LOG stamp, or all of it when it is shorter than one.
-: UNSTAMPED$ ( -- ^u8 n )
+: UNSTAMPED$ ( -- str )
    LINE-U @ DATE:TIME-LEN < if LINE$ exit then
    LINE-BUF DATE:TIME-LEN + LINE-U @ DATE:TIME-LEN - ;
 
@@ -148,7 +149,7 @@ variable READ-ERRNO
 
 \ The answer's first bytes, once some have arrived. A refused read answers none
 \ and leaves its errno in READ-ERRNO.
-: ANSWER$ ( TCP4:connection -- ^u8 n ) {: conn:TCP4:connection :}
+: ANSWER$ ( TCP4:connection -- str ) {: conn:TCP4:connection :}
    0 READ-ERRNO !
    conn -1 >MS TCP4:READABLE-WITHIN?
    MATCH TCP4:ready-result

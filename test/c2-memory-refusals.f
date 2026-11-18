@@ -1,3 +1,4 @@
+split-str
 \ Refusal cases run in fresh evaluators of the admitted native C2 image.
 require src/lib/test.f
 require src/lib/test/subject.f

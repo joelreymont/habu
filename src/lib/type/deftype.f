@@ -1,3 +1,4 @@
+split-str
 \ deftype.f - `DEFTYPE NAME` mints a value-nominal integer type in the active
 \ package with converters `>NAME ( n -- NAME )` and `NAME>N ( NAME -- n )`, the
 \ only way across; `DEFTYPE NAME base` mints one over the base, with `>NAME` and
@@ -18,7 +19,7 @@ EXPORT CHECK:INTRINSIC-DECLARATION
 
 DYNAMIC-BUFFER TAIL u8
 
-: MANGLE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: MANGLE ( str -- str ) {: a:^ u:n :}
    u TAIL-RESERVE
    u 0 ?do  a i + c@ ASCII-LOWER i TAIL c!  loop
    0 TAIL u ;
@@ -39,7 +40,7 @@ public
 
 \ Mints NAME over BASE, one name: a family as wide as the base, with
 \ >NAME ( base -- name ) and NAME>BASE ( name -- base ).
-: MINT-OVER ( ^u8 n ^u8 n -- ) {: sa:^ su:n ba:^ bu:n :}
+: MINT-OVER ( str str -- ) {: sa:^ su:n ba:^ bu:n :}
    sa su ba bu TYPE-DECL:SD-ONE-NAME 0= IF EXIT THEN
    sa su MANGLE {: ta:^ tu:n :}
    ta tu sa su ba bu s" deftype" SD-WRAP {: fam:n :}

@@ -1,3 +1,4 @@
+split-str
 \ Fresh engine in a checkout whose lib, src and test directories are symlinks.
 require src/lib/test.f
 

@@ -1,3 +1,4 @@
+split-str
 \ base64.f - RFC 4648 standard base64 and unpadded base64url (section 5's -_).
 \ DECODE accepts exactly what ENCODE writes, so every byte string has one
 \ encoding: no whitespace or wrapping, padding only at the end of the last group
@@ -24,7 +25,7 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 : ALPHABET ( -- ^u8 n )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" ;
 
-: URL-ALPHABET ( -- ^u8 n )
+: URL-ALPHABET ( -- str )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" ;
 
 : SEXTET>CHAR ( n -- n ) {: v:n :}
@@ -91,7 +92,7 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
    u 4 / {: groups:n :}
    0 groups 0 ?do a i 4 * + i 1+ groups = GROUP + loop ;
 
-: URL-CHECKED ( ^u8 n -- ) {: a u:n :}
+: URL-CHECKED ( str -- ) {: a u:n :}
    u 0 ?do a i + c@ URL-CHAR>SEXTET drop loop
    u 3 and 2 = if
       a u 1- + c@ URL-CHAR>SEXTET ONE-BYTE-SPARE and
@@ -105,7 +106,7 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 : BITS ( ^u8 n -- n ) {: g k:n :}
    0 k 1+ 0 ?do g i + c@ CHAR>SEXTET 18 i 6 * - lshift or loop ;
 
-: URL-BITS ( ^u8 n -- n ) {: g k:n :}
+: URL-BITS ( str -- n ) {: g k:n :}
    0 k 1+ 0 ?do g i + c@ URL-CHAR>SEXTET 18 i 6 * - lshift or loop ;
 
 : PUT ( n ^u8 n -- ) {: v out k:n :}
@@ -152,7 +153,7 @@ public
    loop
    len ;
 
-: ENCODE-URL ( ^u8 n SPAN:span<u8> -- n ) {: a u:n s :}
+: ENCODE-URL ( str SPAN:span<u8> -- n ) {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    s SPAN:$ nip u swap URL-ENCODE-LEN {: len:n :}
    s SPAN:$ drop {: out :}
@@ -162,7 +163,7 @@ public
    loop
    len ;
 
-: DECODE-URL ( ^u8 n SPAN:span<u8> -- n ) {: a u:n s :}
+: DECODE-URL ( str SPAN:span<u8> -- n ) {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    u 3 and 1 = if E-BASE64-LENGTH throw then
    u 4 / 3 * u 3 and dup 0<> if 1- then + {: len:n :}

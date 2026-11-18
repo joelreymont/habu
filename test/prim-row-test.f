@@ -1,3 +1,4 @@
+split-str
 \ prim-row-test.f - verify-source reads a row's header and body by the row rule.
 
 require src/lib/test.f

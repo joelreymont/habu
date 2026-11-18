@@ -1,3 +1,4 @@
+split-str
 \ secret.f - credential storage, package SECRET: the native desktop store
 \ (src/lib/secret/macos.f; src/lib/secret/linux.f reads and writes, its ERASE
 \ throws E-CONFIG) unless the host binds its own with STORE!. No
@@ -83,7 +84,7 @@ INSTALL-DEFAULT
 
 
 \ A zeroed request for checked identifiers; REQ-FREE releases it.
-: REQ-OPEN ( ^u8 n ^u8 n -- ^request )
+: REQ-OPEN ( str str -- ^request )
    {: service:^ su:n account:^ au:n :}
    REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop >REQUEST {: req:^ :}
    service req REQUEST-SERVICE ! su req REQUEST-SERVICE-LEN !
@@ -112,7 +113,7 @@ INSTALL-DEFAULT
 \ E-MEM-MAP, Habu's code for a failed allocation. On Linux the search is by the
 \ item's two attributes, so a dismissed unlock is an access failure, and the
 \ value is read by length, keeping NULs.
-: OS-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
+: OS-READ ( str str SPAN:span<u8> -- n bool )
    {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}
    service su account au REQ-OPEN {: req:^ :}
    dest SPAN:$ req REQUEST-CAPACITY ! req REQUEST-DATA !
@@ -124,7 +125,7 @@ INSTALL-DEFAULT
    error 0 <> if 2drop error throw then ;
 
 
-: OS-WRITE ( ^u8 n ^u8 n ^u8 n -- )
+: OS-WRITE ( str str str -- )
    {: service:^ su:n account:^ au:n value:^ vu:n :}
    service su account au REQ-OPEN {: req:^ :}
    value req REQUEST-DATA ! vu req REQUEST-CAPACITY !
@@ -135,7 +136,7 @@ INSTALL-DEFAULT
    error 0 <> if error throw then ;
 
 
-: OS-ERASE ( ^u8 n ^u8 n -- bool )
+: OS-ERASE ( str str -- bool )
    REQ-OPEN {: req:^ :}
    req [: dup NATIVE-ERASE ;] catch {: code:n :}
    drop
@@ -162,7 +163,7 @@ public
 \ which a person must fix; E-ACCESS for a failed or refused access; E-UNAVAILABLE
 \ for a store that did not answer and may answer later; E-CAPACITY before any
 \ byte is copied. It may log the detail first, never key material.
-: STORE! ( [ ^u8 n ^u8 n SPAN:span<u8> -- n bool ] [ ^u8 n ^u8 n ^u8 n -- ] [ ^u8 n ^u8 n -- bool ] -- )
+: STORE! ( [ str str SPAN:span<u8> -- n bool ] [ str str str -- ] [ str str -- bool ] -- )
    STORE-ERASE ! STORE-WRITE ! STORE-READ ! ;
 
 

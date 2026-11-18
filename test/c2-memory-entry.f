@@ -1,3 +1,4 @@
+split-str
 \ Scoped C2 entries reject a prompt callback before it runs; an ordinary one runs.
 require src/lib/test.f
 require src/lib/test/subject.f

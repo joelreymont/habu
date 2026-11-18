@@ -1,3 +1,4 @@
+split-str
 \ navigation.f - Wasm fixture for the browser navigation, tree, highlight,
 \ pick and occlude protocol, built by `tools/hb-build.f -- --target wasm`,
 \ whose entry is MAIN. Typed "pick" picks pixel 5, 6 with id 9; a picked
@@ -179,7 +180,7 @@ variable PRESS-MODS
    32 CHAR+ 6 EVENT@ SIGNED
    TEXT-RECORD ;
 
-: IS? ( ^u8 n -- bool )
+: IS? ( str -- bool )
    {: a:^ u:n :}
    2 EVENT@ u <> if false exit then
    u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop

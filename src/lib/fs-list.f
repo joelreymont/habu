@@ -1,3 +1,4 @@
+split-str
 \ fs-list.f - the entries of one directory, through raw open-rd or an openat of
 \ "." under the caller's descriptor, getdirentries64 and close; record decoding
 \ is shared with the walker in src/lib/fs.f.
@@ -125,7 +126,7 @@ FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
    again ;
 
 
-: BEFORE? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
+: BEFORE? ( str str -- bool ) {: a:^ u:n b:^ v:n :}
    u v min {: shared:n :}
    shared 0 ?do
       a i + c@ b i + c@ <> if a i + c@ b i + c@ < unloop exit then
@@ -133,11 +134,11 @@ FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
    u v < ;
 
 
-: LINE-END ( ^u8 n n -- n ) {: dst:^ len:n at:n :}
+: LINE-END ( str n -- n ) {: dst:^ len:n at:n :}
    at begin dup len < if dup dst + c@ LF <> else false then while 1+ repeat ;
 
 
-: INSERT-AT ( ^u8 n ^u8 n -- n ) {: name:^ size:n dst:^ len:n :}
+: INSERT-AT ( str str -- n ) {: name:^ size:n dst:^ len:n :}
    0 begin dup len < while
       {: at:n :}
       dst len at LINE-END {: stop:n :}
@@ -166,25 +167,25 @@ FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
    len size + separator + ;
 
 
-: TYPED-LOOP ( ^u8 [ ^u8 n u8 -- ] -- ) {: ls:^ q :}
+: TYPED-LOOP ( ^u8 [ str u8 -- ] -- ) {: ls:^ q :}
    0 0 begin ls NEXT while q execute repeat drop 2drop 2drop ;
 
 \ The listing runs on the stack into these preserving words, so the catch
 \ around each gives the mapping back however it leaves - a quotation-typed
 \ local cannot be caught (src/lib/fs.f WALK-RUN).
-: EACH-RUN ( ^u8 ^u8 n [ ^u8 n -- ] -- ^u8 ^u8 n [ ^u8 n -- ] )
+: EACH-RUN ( ^u8 str [ str -- ] -- ^u8 str [ str -- ] )
    {: ls:^ path:^ size:n q :}
    ls path size OPEN
    0 0 begin ls NEXT while drop q execute repeat drop 2drop 2drop
    ls path size q ;
 
-: EACH-TYPED-RUN ( ^u8 ^u8 n [ ^u8 n u8 -- ] -- ^u8 ^u8 n [ ^u8 n u8 -- ] )
+: EACH-TYPED-RUN ( ^u8 str [ str u8 -- ] -- ^u8 str [ str u8 -- ] )
    {: ls:^ path:^ size:n q :}
    ls path size OPEN
    ls q TYPED-LOOP
    ls path size q ;
 
-: EACH-TYPED-AT-RUN ( ^u8 fd [ ^u8 n u8 -- ] -- ^u8 fd [ ^u8 n u8 -- ] )
+: EACH-TYPED-AT-RUN ( ^u8 fd [ str u8 -- ] -- ^u8 fd [ str u8 -- ] )
    {: ls:^ dir:fd q :}
    ls dir OPEN-AT
    ls q TYPED-LOOP
@@ -198,7 +199,7 @@ FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
       drop 2drop len -rot false
    then ;
 
-: NAMES-RUN ( ^u8 ^u8 n ^u8 n n -- ^u8 ^u8 n ^u8 n n )
+: NAMES-RUN ( ^u8 str ^u8 n n -- ^u8 str str n )
    {: ls:^ path:^ size:n dst:^ cap:n len:n :}
    ls path size OPEN
    len 0 0 begin ls dst cap NAMES-STEP while repeat 2drop
@@ -219,7 +220,7 @@ public
    0 ls BASE-CELL !
    ls >CONTEXT ;
 
-: EACH-IN ( context ^u8 n [ ^u8 n -- ] -- )
+: EACH-IN ( context str [ str -- ] -- )
    {: ctx path:^ size:n q :}
    ctx CONTEXT>PTR {: ls:^ :}
    ls ACQUIRE
@@ -228,7 +229,7 @@ public
    ls FINISH
    code 0<> if code throw then ;
 
-: EACH-TYPED-IN ( context ^u8 n [ ^u8 n u8 -- ] -- )
+: EACH-TYPED-IN ( context str [ str u8 -- ] -- )
    {: ctx path:^ size:n q :}
    ctx CONTEXT>PTR {: ls:^ :}
    ls ACQUIRE
@@ -239,7 +240,7 @@ public
 
 \ EACH-TYPED-IN over a directory the caller opened and may search; the
 \ caller's descriptor and offset are untouched. A refused "." is E-FS-LIST-OPEN.
-: EACH-TYPED-AT ( context fd [ ^u8 n u8 -- ] -- )
+: EACH-TYPED-AT ( context fd [ str u8 -- ] -- )
    {: ctx dir:fd q :}
    ctx CONTEXT>PTR {: ls:^ :}
    ls ACQUIRE
@@ -248,7 +249,7 @@ public
    ls FINISH
    code 0<> if code throw then ;
 
-: NAMES-IN ( context ^u8 n ^u8 n -- n )
+: NAMES-IN ( context str ^u8 n -- n )
    {: ctx path:^ size:n dst:^ cap:n :}
    cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
    ctx CONTEXT>PTR {: ls:^ :}
@@ -271,7 +272,7 @@ public
 \ d_type passes unchanged: a filesystem may omit it, so a caller handles
 \ DT-UNKNOWN. The name is borrowed from the listing's block only for the
 \ callback.
-: EACH-TYPED ( ^u8 n [ ^u8 n u8 -- ] -- ) {: path:^ size:n q :}
+: EACH-TYPED ( str [ str u8 -- ] -- ) {: path:^ size:n q :}
    MAP {: ls:^ lsu :}
    CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
    ls path size q [: EACH-TYPED-RUN ;] catch {: code:n :}

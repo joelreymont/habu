@@ -1,3 +1,4 @@
+split-str
 \ The task control block and the offsets the engine's task entry loads from it,
 \ shared by the engine and the TASK library.
 package TASK-ABI

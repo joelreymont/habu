@@ -1,3 +1,4 @@
+split-str
 \ Body capture keeps local and parser-operand scope lexical: a failed
 \ nested parser operand rolls back its opener before capture resumes; a local
 \ spelled like a control word, the string opener or a parser word is a local

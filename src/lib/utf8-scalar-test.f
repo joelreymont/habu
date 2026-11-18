@@ -1,3 +1,4 @@
+split-str
 \ utf8-scalar-test.f - direct and property tests for UTF8:NEXT, the
 \ whole-span check UTF8:VALID? built on it, the boundary cut UTF8:FIT and the
 \ cut-character check UTF8:CUT?.
@@ -52,7 +53,7 @@ create CASE-BUF 6 allot
    CASE-BUF c@ CANARY T=
    CASE-BUF 5 + c@ CANARY T= ;
 
-: ASSERT-SCALAR ( ^u8 n n n n -- )
+: ASSERT-SCALAR ( str n n n -- )
    {: source:^ length:n cursor:n want-scalar:n want-next:n :}
    source length cursor UTF8:NEXT
    MATCH UTF8:scalar-step
@@ -64,7 +65,7 @@ create CASE-BUF 6 allot
       ENDOF
    ;MATCH ;
 
-: ASSERT-RAW ( ^u8 n n n n -- )
+: ASSERT-RAW ( str n n n -- )
    {: source:^ length:n cursor:n want-byte:n want-next:n :}
    source length cursor UTF8:NEXT
    MATCH UTF8:scalar-step
@@ -294,14 +295,14 @@ variable STATE-B-CURSOR
 : CONTINUATION? ( n -- bool )
    CONTINUATION-MASK and CONTINUATION-TAG = ;
 
-: CONTINUATION-AT? ( ^u8 n n -- bool )
+: CONTINUATION-AT? ( str n -- bool )
    {: source:^ length:n index:n :}
    index length >= if
       NO exit
    then
    source index + c@ CONTINUATION? ;
 
-: SECOND-IN? ( ^u8 n n n -- bool )
+: SECOND-IN? ( str n n -- bool )
    {: source:^ length:n first:n last:n :}
    length 2 < if
       NO exit
@@ -309,7 +310,7 @@ variable STATE-B-CURSOR
    source 1+ c@ first >=
    source 1+ c@ last <= and ;
 
-: ORACLE-THREE? ( ^u8 n n -- bool )
+: ORACLE-THREE? ( str n -- bool )
    {: source:^ length:n lead:n :}
    source length 1 CONTINUATION-AT?
    source length 2 CONTINUATION-AT? and
@@ -320,7 +321,7 @@ variable STATE-B-CURSOR
       source length $80 ED-SECOND-LAST SECOND-IN? and
    then ;
 
-: ORACLE-FOUR? ( ^u8 n n -- bool )
+: ORACLE-FOUR? ( str n -- bool )
    {: source:^ length:n lead:n :}
    source length 1 CONTINUATION-AT?
    source length 2 CONTINUATION-AT? and
@@ -332,7 +333,7 @@ variable STATE-B-CURSOR
       source length $80 F4-SECOND-LAST SECOND-IN? and
    then ;
 
-: ORACLE-VALID? ( ^u8 n -- bool ) {: source:^ length:n :}
+: ORACLE-VALID? ( str -- bool ) {: source:^ length:n :}
    length 0 <= if
       NO exit
    then
@@ -354,28 +355,28 @@ variable STATE-B-CURSOR
    then
    NO ;
 
-: REF-BYTE ( ^u8 n n -- n ) {: source:^ length:n index:n :}
+: REF-BYTE ( str n -- n ) {: source:^ length:n index:n :}
    index length >= if
       E-STR-BOUNDS throw
    then
    source index + c@ ;
 
-: REF-TWO ( ^u8 n -- n ) {: source:^ length:n :}
+: REF-TWO ( str -- n ) {: source:^ length:n :}
    source length 0 REF-BYTE TWO-LEAD-MASK and CONTINUATION-SHIFT lshift
    source length 1 REF-BYTE PAYLOAD-MASK and or ;
 
-: REF-THREE ( ^u8 n -- n ) {: source:^ length:n :}
+: REF-THREE ( str -- n ) {: source:^ length:n :}
    source length 0 REF-BYTE THREE-LEAD-MASK and CONTINUATION-SHIFT lshift
    source length 1 REF-BYTE PAYLOAD-MASK and or CONTINUATION-SHIFT lshift
    source length 2 REF-BYTE PAYLOAD-MASK and or ;
 
-: REF-FOUR ( ^u8 n -- n ) {: source:^ length:n :}
+: REF-FOUR ( str -- n ) {: source:^ length:n :}
    source length 0 REF-BYTE FOUR-LEAD-MASK and CONTINUATION-SHIFT lshift
    source length 1 REF-BYTE PAYLOAD-MASK and or CONTINUATION-SHIFT lshift
    source length 2 REF-BYTE PAYLOAD-MASK and or CONTINUATION-SHIFT lshift
    source length 3 REF-BYTE PAYLOAD-MASK and or ;
 
-: REFERENCE-SCALAR ( ^u8 n n -- n )
+: REFERENCE-SCALAR ( str n -- n )
    {: source:^ length:n width:n :}
    width 1 = if
       source length 0 REF-BYTE exit
@@ -396,7 +397,7 @@ variable STATE-B-CURSOR
    scalar SCALAR-LAST <= and
    scalar SURROGATE-FIRST < scalar SURROGATE-LAST > or and ;
 
-: PROPERTY-SCALAR ( n n ^u8 n -- )
+: PROPERTY-SCALAR ( n n str -- )
    {: scalar:n next:n source:^ length:n :}
    source length ORACLE-VALID? TTRUE
    next 1 >= TTRUE
@@ -404,13 +405,13 @@ variable STATE-B-CURSOR
    source length next REFERENCE-SCALAR scalar T=
    scalar TEST-SCALAR? TTRUE ;
 
-: PROPERTY-RAW ( n n ^u8 n -- )
+: PROPERTY-RAW ( n n str -- )
    {: byte:n next:n source:^ length:n :}
    source length ORACLE-VALID? TFALSE
    next 1 T=
    byte source c@ T= ;
 
-: PROPERTY-CASE ( ^u8 n -- ) {: source:^ length:n :}
+: PROPERTY-CASE ( str -- ) {: source:^ length:n :}
    source length 0 UTF8:NEXT
    MATCH UTF8:scalar-step
       scalar OF
@@ -427,7 +428,7 @@ variable STATE-B-CURSOR
    $E0 $A0 $80 0 PREP4 3 PROPERTY-CASE
    $F0 $90 $80 $80 PREP4 4 PROPERTY-CASE ;
 
-: RANDOM-CASE ( -- ^u8 n )
+: RANDOM-CASE ( -- str )
    256 PROP:RND% 256 PROP:RND%
    256 PROP:RND% 256 PROP:RND% PREP4
    4 PROP:RND% 1+ ;

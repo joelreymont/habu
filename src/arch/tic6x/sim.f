@@ -1,3 +1,4 @@
+split-str
 \ sim.f - host interpreter for the C66x subset src/arch/tic6x/asm.f constructs,
 \ run on emitted helper programs against an oracle before the board. It refuses
 \ what SPRUGH7 3.8 forbids: two instructions on one unit, two registers through

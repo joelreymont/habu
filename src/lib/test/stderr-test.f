@@ -1,3 +1,4 @@
+split-str
 \ stderr-test.f - STDERR:CAPTURE holds one capture at a time, and
 \ STDERR:CAPTURING reads a capture whole past a throw.
 \ Run: bin/hb --load src/lib/test/stderr-test.f
@@ -30,10 +31,10 @@ variable CODE-B
    dir dirlen s" err.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
 
-: FILE$ ( -- ^u8 n )  FILE-BUF  PATH$ FILE-BUF FILE-CAP FS:READ-ALL ;
+: FILE$ ( -- str )  FILE-BUF  PATH$ FILE-BUF FILE-CAP FS:READ-ALL ;
 
 
-: ERR-OUT ( ^u8 n -- )
+: ERR-OUT ( str -- )
    {: at:^ u:n :}
    FD:STDERR at u FD:WRITE-FULL ;
 
@@ -64,7 +65,7 @@ variable CODE-B
 
 
 \ 40 bytes: two pass FILE-CAP.
-: LINE$ ( -- ^u8 n )
+: LINE$ ( -- str )
    S\" a regression logs this line twice .....\n" ;
 
 

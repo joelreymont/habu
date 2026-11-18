@@ -1,3 +1,4 @@
+split-str
 \ icode.f — A64ICODE, the ARM64 single-pass assembler: EMITW appends asm.f
 \ encodings to the CODE window; labels resolve B/BL, B.cond, CBZ/CBNZ, ADR and
 \ LOFF, sites, backward at once and forward by backpatch. ASM-CP counts words;
@@ -294,7 +295,7 @@ variable IDEC-N                     \ fill cursor: digits land backwards from th
    IDEC-V @ 0 < IF  0 IDEC-V @ 1 + -  IDEC-V !  1 IDEC-CY !  1 IDEC-NEG !
    ELSE  0 IDEC-CY !  0 IDEC-NEG !  THEN ;
 
-: IDEC$ ( n -- ^u8 n )
+: IDEC$ ( n -- str )
    IDEC-SET
    BEGIN IDEC-DIGIT  IDEC-V @ 0 = IDEC-CY @ 0 = and UNTIL
    IDEC-NEG @ 0 <> IF IDEC-MINUS IDEC-PUT THEN
@@ -315,7 +316,7 @@ variable IMSG-V
 
 : IMSG-A@ ( -- ^u8 ) IMSG-A @ ;
 
-: IMSG+ ( ^u8 n -- )
+: IMSG+ ( str -- )
    IMSG-U ! IMSG-A !
    \ Any source can call IMSG+, so the length is compared with the room left: in
    \ a sum, a length near the maximum cell wraps back under the capacity.
@@ -328,10 +329,10 @@ variable IMSG-V
       1 +
    REPEAT drop ;
 
-: IMSG-FIELD ( ^u8 n n -- )
+: IMSG-FIELD ( str n -- )
    IMSG-V !  IMSG+  IMSG-V @ IDEC$ IMSG+ ;
 
-: REACH-DIE ( ^u8 n -- )
+: REACH-DIE ( str -- )
    0 IMSG-N !  IMSG+
    s"  site="   I-RSITE   @ IMSG-FIELD
    s"  target=" I-RTARGET @ IMSG-FIELD
@@ -688,7 +689,7 @@ variable BYU
 : BYP@ ( -- ^u8 ) BYP @ ;
 : BYA@ ( -- ^u8 ) BYA @ ;
 
-: BYTES-ARGS ( ^u8 n -- )
+: BYTES-ARGS ( str -- )
    BYU !  BYA ! ;
 
 : BYTES-CAP ( -- )

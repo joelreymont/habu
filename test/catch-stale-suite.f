@@ -1,3 +1,4 @@
+split-str
 \ catch-stale-suite.f - the cells a caught throw leaves stale.
 \     bin/hb --load test/catch-stale-suite.f
 \
@@ -72,10 +73,10 @@ variable CS-TICK
 : ORDINARY-ZERO ( -- n ) 0 ;
 : ANY-ZERO? ( n -- bool ) drop true ;
 
-: CS-CODE< ( ^u8 n -- )
+: CS-CODE< ( str -- )
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: CS-CODE? ( ^u8 n -- )
+: CS-CODE? ( str -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 : CS-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 \ A body's stale read is the catch's, never the interpret row's unknown cell,
@@ -198,9 +199,9 @@ create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
 create CS-PRODUCT-PATH PATH-CAP allot
 
-: CS-HB$ ( -- ^u8 n ) s" bin/hb" ;
+: CS-HB$ ( -- str ) s" bin/hb" ;
 
-: CS-PRODUCT$ ( -- ^u8 n )
+: CS-PRODUCT$ ( -- str )
    SOURCE-ROOT:CWD$ CS-HB$ CS-PRODUCT-PATH FS:JOIN-PATH {: u:n :}
    CS-PRODUCT-PATH u ;
 
@@ -219,8 +220,8 @@ variable CS-IMAGE-PATH-U
 variable CS-CHILD-OUT-U
 variable CS-CHILD-ERR-U
 
-: CS-IMAGE-ROOT$ ( -- ^u8 n ) CS-IMAGE-ROOT-BUF CS-IMAGE-ROOT-U @ ;
-: CS-IMAGE$ ( -- ^u8 n ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ ;
+: CS-IMAGE-ROOT$ ( -- str ) CS-IMAGE-ROOT-BUF CS-IMAGE-ROOT-U @ ;
+: CS-IMAGE$ ( -- str ) CS-IMAGE-PATH-BUF CS-IMAGE-PATH-U @ ;
 
 : CS-IMAGE-PREPARE ( -- )
    s" habu-catch-success" FS:MKTEMP-DIR {: path:^ size:n :}
@@ -256,7 +257,7 @@ variable CS-CHILD-ERR-U
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-fresh: ok" CONTAINS? TTRUE ;
 
-: CS-SAVED-REFUSAL ( ^u8 n ^u8 n -- )
+: CS-SAVED-REFUSAL ( str str -- )
    {: src:^ size:n want:^ wantu:n :}
    PROC-ARGV-RESET
    CS-ENV!
@@ -271,9 +272,9 @@ variable CS-CHILD-ERR-U
    CS-IMAGE-BUILD
    CS-IMAGE-RUN
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-wrong-status.f\" included\n"
-      s" catch-success-wrong-status.f:10:18" CS-SAVED-REFUSAL
+      s" catch-success-wrong-status.f:11:18" CS-SAVED-REFUSAL
    S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-override.f\" included\n"
-      s" catch-success-override.f:11:24" CS-SAVED-REFUSAL ;
+      s" catch-success-override.f:12:24" CS-SAVED-REFUSAL ;
 
 : CS-SECTION-IMAGE ( -- )
    s" a built hb executes a guarded catch and still refuses forged proof" T-LABEL
@@ -446,9 +447,9 @@ STRUCTURE cspt
 \ A4's shape, run: the caught body reads the address and throws, and the catch
 \ hands back the SAME address with the throw code on top.
 16 BUFFER: CS-BUF
-: CS-RT ( ^u8 -- ^u8 n ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
+: CS-RT ( ^u8 -- str ) [: dup c@ drop E-CS-BOOM throw ;] catch ;
 
-: CS-CRT ( ^u8 -- ^u8 n ) [: WMAYBE ;] catch ;
+: CS-CRT ( ^u8 -- str ) [: WMAYBE ;] catch ;
 
 : CS-SECTION-RUNTIME ( -- )
    CS-BUF CS-RT {: p code:n :}
@@ -475,7 +476,7 @@ STRUCTURE cspt
 : WREPL ( ^u8 -- ^u8 ) drop CS-BUF E-CS-BOOM throw ;
 TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
 : CS-CATCHP ( ^u8 [ ^u8 -- ^u8 ] -- ^u8 n ) catch ;
-: CS-TRT ( ^u8 -- ^u8 n ) ['] WMAYBE catch ;
+: CS-TRT ( ^u8 -- str ) ['] WMAYBE catch ;
 
 : CS-SECTION-TICK ( -- )
    \ R1's twin with the body as a callee: the tick carries its evidence

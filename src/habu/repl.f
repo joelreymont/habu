@@ -1,3 +1,4 @@
+split-str
 \ repl.f - the terminal line reader for the REPL
 \ (src/habu/interpreter.f). INSTALL makes RD-LINE the default REPL-READ defer;
 \ genio may replace the defer, so the REPL calls it again before each
@@ -29,7 +30,7 @@ variable DONE                   \ 0 editing, 1 accepted, 2 eof
 \ name (LINE-FULL): dropping keys silently lost a pasted definition's `;`.
 255 constant LLINE-MAX
 
-defer REPL-READ ( -- ^u8 n )
+defer REPL-READ ( -- str )
 
 : HS@ ( -- ^u8 )
    HS @ ;
@@ -166,7 +167,7 @@ defer REPL-READ ( -- ^u8 n )
       10 /
    repeat drop ;
 
-: LDEC$ ( -- ^u8 n )
+: LDEC$ ( -- str )
    LDEC LDEC-I @ +  24 LDEC-I @ - ;
 
 \ One line on descriptor 2: what filled up, the ceiling and the length the line
@@ -183,7 +184,7 @@ defer REPL-READ ( -- ^u8 n )
 
 \ A refused line stays out of the history ring; the outer session sees only
 \ whole lines.
-: RD-LINE ( -- ^u8 n )
+: RD-LINE ( -- str )
    TTY? 0= IF NULL$ exit THEN
    0 HBR-TIO-GET TIOB0 ioctl drop
    begin

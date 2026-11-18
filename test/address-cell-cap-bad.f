@@ -1,3 +1,4 @@
+split-str
 \ Reject an overflowing header capacity before multiplying or reading a row.
 require src/lib/error.f
 require src/habu/address-cells.f

@@ -1,3 +1,4 @@
+split-str
 \ postpone-effect.f - an effect a definer builds renders as the signature its
 \ built word records, naming a private family by its package, and its nodes
 \ are transient: no persistent schema root takes one. A multi-error load that
@@ -22,7 +23,7 @@ private
 : PK-ONE ( -- n ) 1 ;
 
 \ : NAME ( -- n ) PK-ONE ; over effect E.
-: MAKE-ONE ( EFFECT:type ^u8 n -- )
+: MAKE-ONE ( EFFECT:type str -- )
    rot define-word  postpone PK-ONE  postpone ; ;
 
 EFFECT:EMPTY EFFECT:N EFFECT:OUT
@@ -101,7 +102,7 @@ s" PE-XT-A ( xt -- xt ) PE-XT-W" CHECK-QUIET-CANDIDATE! -1 T=
 s" PE-XT-B ( n -- n ) PE-XT-W" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ The captured record opens with the line L and gives the transient-node help.
-: SAID-BAD ( ^u8 n -- ) {: l:^ lu:n :}
+: SAID-BAD ( str -- ) {: l:^ lu:n :}
    REJECTION:BUFFER$ l lu STARTS-WITH? TTRUE
    REJECTION:BUFFER$
    S\" = help: pass a node made outside transient mode\n"
@@ -129,7 +130,7 @@ variable EVAL-U
 : EVAL-RUN ( -- ) EVAL-A @ EVAL-U @ evaluate-closed ;
 \ The refusals counted and the throw code when the text is evaluated under the
 \ multi-error load state.
-: MULTI ( ^u8 n -- n n )
+: MULTI ( str -- n n )
    EVAL-U ! EVAL-A !  CHECK:MULTI-ERR-BEGIN [: EVAL-RUN ;] catch CHECK:MULTI-ERR-END ;
 
 \ The refused built word keeps its effect: its caller certifies, one refusal.
@@ -142,7 +143,7 @@ CAST: N>R ( n -- r )
 CAST: R>N ( r -- n )
 
 \ : NAME ( t -- t ) ;
-: MAKE-ID ( ^u8 n EFFECT:type -- ) {: t :}
+: MAKE-ID ( str EFFECT:type -- ) {: t :}
    EFFECT:EMPTY t EFFECT:IN  t EFFECT:OUT  define-word
    postpone ; ;
 

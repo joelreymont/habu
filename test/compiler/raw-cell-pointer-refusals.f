@@ -1,3 +1,4 @@
+split-str
 \ raw-cell-pointer-refusals.f - rejected programs for "a raw storage cell never
 \ holds an address". Every mention of a raw storage word (variable, create,
 \ constant, here) re-freshens its published `-- ^a`, so an `n` stored through
@@ -35,27 +36,27 @@ private
 : DISARM ( -- )
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
-: CODE$ ( -- ^u8 n )
+: CODE$ ( -- str )
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
-: VALUE-REASON$ ( -- ^u8 n )
+: VALUE-REASON$ ( -- str )
    S\" \"message\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" ;
 
-: FIELD-REASON$ ( -- ^u8 n )
+: FIELD-REASON$ ( -- str )
    S\" \"message\":\"ptr-field: base is an undeclared raw storage cell, not a declared pointer cell\"" ;
 
 \ An EXECUTABLE value through the same cell answers the same code with its own
 \ reason: a declared CODE cell, not a declared pointer cell.
-: EXEC-REASON$ ( -- ^u8 n )
+: EXEC-REASON$ ( -- str )
    S\" \"message\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" ;
 
-: RETURN-REASON$ ( -- ^u8 n )
+: RETURN-REASON$ ( -- str )
    S\" \"message\":\"return stack: the return row does not balance at exit\"" ;
 
 : HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: LACKS? ( ^u8 n -- )
+: LACKS? ( str -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
 
 \ Each shape is refused with its own named diagnostic (the code and the prose

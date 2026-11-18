@@ -1,3 +1,4 @@
+split-str
 \ process-command-run-child.f - child for the CMD:RUN failure row of
 \ src/lib/process-command-test.f: a run that exits 3 throws the caller's code,
 \ and the child's captured stderr reaches this process's stderr.

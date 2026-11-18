@@ -1,3 +1,4 @@
+split-str
 \ reason-test.f - a failure's stated text through REASON:THROW and REASON:TEXT$,
 \ on the main task and on two tasks stating the same code at once.
 \ Run: bin/hb --load src/lib/reason-test.f

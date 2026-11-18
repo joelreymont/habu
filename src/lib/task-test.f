@@ -1,3 +1,4 @@
+split-str
 \ task-test.f - CPU tasking smoke, isolation, and exit fixtures.
 \
 \ The claim TASK:SLEEP makes is not "it waited" - a PAUSE loop waits too - but
@@ -330,7 +331,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    loop ;
 
 \ MAIN COMPILES WHILE A TASK RUNS.
-: TASK-MAIN-COMPILES$ ( -- ^u8 n )
+: TASK-MAIN-COMPILES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/queue.f" SB-APPEND TASK-LF
@@ -362,7 +363,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ LOWERING IS REFUSED WHILE A TASK IS LIVE. Main defines and prints beside a
 \ parked worker, then `ndict!` exits $4F naming it: lowering frees records a
 \ task may hold. The printed word proves main compiled beside the live task.
-: TASK-LOWER-LIVE$ ( -- ^u8 n )
+: TASK-LOWER-LIVE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" : TLL-IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
@@ -377,7 +378,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ evaluates a colon definition: exit $4F before the text is read, naming
 \ evaluate-closed.
 \ A worker that survived it would say so in TTC-DONE, and main would exit 0.
-: TASK-COMPILES$ ( -- ^u8 n )
+: TASK-COMPILES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" variable TTC-GO" SB-APPEND TASK-LF
@@ -393,7 +394,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 \ A worker calling INTERPRETER:EVAL-FRAMED exits $4F, naming the refusal,
 \ before a token of the text is read.
-: TASK-FRAMED-COMPILES$ ( -- ^u8 n )
+: TASK-FRAMED-COMPILES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" variable TFC-GO" SB-APPEND TASK-LF
@@ -411,7 +412,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ parses a name.
 \ The worker runs a definer once main has defined and printed; one that got
 \ past the guard would branch through the startup's create cell.
-: TASK-CREATES$ ( -- ^u8 n )
+: TASK-CREATES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" package TTK" SB-APPEND TASK-LF
@@ -433,7 +434,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ SPIN by name and keeps its code, so the counter still advances, `' SPIN` is
 \ undefined, and the next four definitions land above the task's code instead
 \ of over it.
-: TASK-ROLLBACK-LIVE$ ( -- ^u8 n )
+: TASK-ROLLBACK-LIVE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" package RW" SB-APPEND TASK-LF
@@ -451,7 +452,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-DIE$ ( -- ^u8 n )
+: TASK-DIE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" : TASK-DIE-WORK ( -- ) s" SB-APPEND TASK-DQ
@@ -489,7 +490,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" RUN GOT @ . LAST @ ." SB-APPEND TASK-LF ;
 
 \ 1024 cells: more than the band in a region's header holds.
-: TASK-USER-BIG$ ( -- ^u8 n )
+: TASK-USER-BIG$ ( -- str )
    SB-RESET
    TASK-USER-HEAD
    1024 TASK-USER-SLOT
@@ -499,7 +500,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 \ W's region is made before the 64 KiB claim outgrows its area: ACTIVATE must
 \ give W a new region, else BIG lies past the old one.
-: TASK-USER-LATE$ ( -- ^u8 n )
+: TASK-USER-LATE$ ( -- str )
    SB-RESET
    TASK-USER-HEAD
    s" variable OLD  W TASK:PREPARE W BYTE-VIEW TASK-ABI:REGION-OFF + CELL-VIEW @ OLD !" SB-APPEND TASK-LF
@@ -511,7 +512,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 \ The largest row the ceiling admits alone, $20000 under MEM-MAX-N: past the
 \ slots before it, its end is refused.
-: TASK-USER-WRAP$ ( -- ^u8 n )
+: TASK-USER-WRAP$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" $7FFFFFFFFFFDFFFF TASK:+USERS PW u8" SB-APPEND TASK-LF
@@ -521,7 +522,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ count whose bytes wrap, a refused type, then SCRATCH-ALLOT's own huge and
 \ negative sizes: each prints its refusal, and the slots declared around them
 \ lie next to each other in a task's region.
-: TASK-USER-HUGE$ ( -- ^u8 n )
+: TASK-USER-HUGE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/test.f" SB-APPEND TASK-LF
@@ -540,7 +541,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 \ A live task's area cannot grow, so a claim while one runs is refused and
 \ leaves no word.
-: TASK-USER-LIVE$ ( -- ^u8 n )
+: TASK-USER-LIVE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/test.f" SB-APPEND TASK-LF
@@ -553,7 +554,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 \ Slots (one above a raised DATA floor) and a TASK made in texts that throw, each
 \ under later data: PA and PC keep apart, PC follows PA, the chain skips TB.
-: TASK-ROLLBACK-SLOT$ ( -- ^u8 n )
+: TASK-ROLLBACK-SLOT$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" require src/lib/test.f" SB-APPEND TASK-LF
@@ -585,18 +586,18 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" TRC:HEAD TRC:LINK TRC:LINK H0 @ = bool>n ." SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-SPAWN-EXITS ( ^u8 n n -- len len ) {: src:^ srcu:n want:n :}
+: TASK-SPAWN-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
-: TASK-RUN-EXITS ( ^u8 n n -- len len )
+: TASK-RUN-EXITS ( str n -- len len )
    PROC-ARGV-RESET TASK-SPAWN-EXITS ;
 
 \ The pre-run check of the source, read from stdin as task-rx.f.
-: TASK-CHECK-EXITS ( ^u8 n n -- len len )
+: TASK-CHECK-EXITS ( str n -- len len )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+  s" --verify-only" >LEN PROC-ARGV+
@@ -609,19 +610,19 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    erru LEN>N 0 T= ;
 
 \ The record's first line, which names the primitive; answers stderr's length.
-: TASK-REJECTED-ERR ( ^u8 n ^u8 n -- len )
+: TASK-REJECTED-ERR ( str str -- len )
    {: src:^ srcu:n line:^ lineu:n :}
    src srcu 79 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
    TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE
    erru ;
 
-: TASK-EXPECT-REFUSED-EXIT ( ^u8 n ^u8 n -- )
+: TASK-EXPECT-REFUSED-EXIT ( str str -- )
    TASK-REJECTED-ERR drop ;
 
 \ The record's first line and its note `in`, the word that called the
 \ primitive.
-: TASK-EXPECT-REJECTED-IN ( ^u8 n ^u8 n ^u8 n -- )
+: TASK-EXPECT-REJECTED-IN ( str str str -- )
    {: src:^ srcu:n line:^ lineu:n in:^ inu:n :}
    src srcu line lineu TASK-REJECTED-ERR {: erru:len :}
    TASK-ERR erru LEN>N in inu CONTAINS? TTRUE ;
@@ -636,7 +637,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" error[E-TASK-COMPILE]: `evaluate-closed` ran on a task's thread"
    S\" \n  = in: TTC-BODY\n" TASK-EXPECT-REJECTED-IN ;
 
-: TASK-FRAMED-REFUSAL$ ( -- ^u8 n )
+: TASK-FRAMED-REFUSAL$ ( -- str )
    s" error[E-TASK-COMPILE]: source is read on a task's thread" ;
 
 : TASK-TEST-FRAMED-COMPILES ( -- )
@@ -654,7 +655,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
    TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" CONTAINS? TTRUE ;
 
-: TASK-EXPECT-FAIL ( ^u8 n n ^u8 n -- ) {: src:^ srcu:n want:n needle:^ needleu:n :}
+: TASK-EXPECT-FAIL ( str n str -- ) {: src:^ srcu:n want:n needle:^ needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N needle needleu CONTAINS? TTRUE ;
@@ -712,7 +713,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    BUILD-B TASK:JOIN 0 JOIN-OK=
    BUILD-BAD @ 0 T= ;
 
-: TASK-EXPECT-SILENT-OK ( ^u8 n -- ) {: src:^ srcu:n :}
+: TASK-EXPECT-SILENT-OK ( str -- ) {: src:^ srcu:n :}
    src srcu 0 TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
@@ -739,7 +740,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-OUT outu LEN>N S\" 1\n1\n5\n7\n0\n1\n-1\n-1\n-1\n" T$=
    erru LEN>N 0 T= ;
 
-: TASK-USER-REEXPORT$ ( -- ^u8 n )
+: TASK-USER-REEXPORT$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" package TASK-RX" SB-APPEND TASK-LF
@@ -2272,7 +2273,7 @@ variable BIND-PAIR-Q-WON
 \ worker counts there: counted in its own region, the inner task would be
 \ invisible once the outer one is released, and main could free code beside a
 \ running thread.
-: TASK-WORKER-ACTIVATES$ ( -- ^u8 n )
+: TASK-WORKER-ACTIVATES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK TWW-OUTER" SB-APPEND TASK-LF

@@ -1,3 +1,4 @@
+split-str
 \ Evaluate definition-only fixture source with one result on either path.
 require src/lib/prelude.f
 
@@ -14,7 +15,7 @@ variable LENGTH
 public
 
 
-: DEFINE-RC ( ^u8 n -- n )
+: DEFINE-RC ( str -- n )
    LENGTH ! SOURCE !
    [: EVALUATE-SOURCE ;] catch ;
 

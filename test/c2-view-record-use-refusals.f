@@ -1,3 +1,4 @@
+split-str
 \ A phantom element type must stay separate from a value or fetched cell.
 require src/lib/test.f
 require src/lib/test/subject.f

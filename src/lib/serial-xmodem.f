@@ -1,3 +1,4 @@
+split-str
 \ serial-xmodem.f - bounded XMODEM transfers over an already-open raw serial
 \ stream. Each SEND or RECEIVE takes one overall deadline that negotiation,
 \ retries and draining share. Only `completed` means done: a failure may leave
@@ -98,7 +99,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-: WRITE-CHUNK ( n ^u8 n ^a -- n ) {: offset:n data size:n session:^ :}
+: WRITE-CHUNK ( n str ^a -- n ) {: offset:n data size:n session:^ :}
    session CHECK-TIME
    session HANDLE-FIELD @ SERIAL:>HANDLE data offset + size offset - SERIAL:BYTES
    session DEADLINE-FIELD @ >NS REMAINING SERIAL:WRITE
@@ -139,7 +140,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    again ;
 
 
-: READ-CHUNK ( n ^u8 n ^a -- n ) {: offset:n data size:n session:^ :}
+: READ-CHUNK ( n str ^a -- n ) {: offset:n data size:n session:^ :}
    session HANDLE-FIELD @ SERIAL:>HANDLE data offset + size offset - SERIAL:BYTES
    session RECEIVE-WINDOW REMAINING SERIAL:READ
    MATCH SERIAL:io-result
@@ -152,7 +153,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ A partial frame may continue while each chunk arrives within the configured
 \ wait. The overall transfer deadline still bounds every chunk and drain.
-: READ-REST ( ^u8 n ^a -- bool ) {: data size:n session:^ :}
+: READ-REST ( str ^a -- bool ) {: data size:n session:^ :}
    0 begin dup size < while
       data size session READ-CHUNK dup 0 < if drop FALSE exit then
    repeat drop TRUE ;

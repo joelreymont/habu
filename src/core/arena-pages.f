@@ -1,3 +1,4 @@
+split-str
 \ arena-pages.f - growable stores on fresh anonymous pages: allocation, copy,
 \ zeroing, growth and release.
 
@@ -14,7 +15,7 @@
 \ An address's DATA offset, measured from the null so neither pointer is viewed.
 : DATA-OFF ( ^a -- n ) NULL-PTR - data-base NULL-PTR - - ;
 
-: ARENA-COPY ( ^u8 ^u8 n -- ) {: src:^ dst:^ n:n :}
+: ARENA-COPY ( ^u8 str -- ) {: src:^ dst:^ n:n :}
    0
    begin dup CELL + n <= while
       src over + CELL-VIEW @  over dst swap + CELL-VIEW !
@@ -26,7 +27,7 @@
    repeat
    drop ;
 
-: ARENA-ZERO ( ^u8 n -- ) {: dst:^ u:n :}
+: ARENA-ZERO ( str -- ) {: dst:^ u:n :}
    u CELL / CELL * {: bulk:n :}
    0
    begin dup bulk < while

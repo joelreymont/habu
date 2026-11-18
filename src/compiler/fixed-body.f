@@ -1,3 +1,4 @@
+split-str
 \ fixed-body.f - COMP:body, which pattern a fixed body uses. A fixed body is the
 \ machine code the compiler stamps from a pattern for a word with no source
 \ text: a constant pushes its number, create and variable push their data

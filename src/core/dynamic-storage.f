@@ -1,3 +1,4 @@
+split-str
 \ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER
 \ and HEAP. A buffer record is a head cell holding the mapping (`^^a`)
 \ and the control block right behind it (capacity and registry slot + 1;

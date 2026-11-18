@@ -1,3 +1,4 @@
+split-str
 \ event-stream-test.f - checked native SSE framing cases.
 \ Run: bin/hb --load src/lib/net/event-stream-test.f
 
@@ -125,7 +126,7 @@ variable CALLS
    d SSE:CLOSE
    1 CHECK ;
 
-: BOM-CUT ( ^u8 n n -- )
+: BOM-CUT ( str n -- )
    {: src:^ u:n cut:n :}
    A-OPEN {: d:SSE:decoder :}
    d src cut SEND

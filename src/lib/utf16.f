@@ -1,3 +1,4 @@
+split-str
 \ utf16.f - UTF-16 code units of UTF-8 text (UNITS and OFFSET, the measure LSP
 \ positions take by default) and strict UTF-16LE conversion. UTF-8 is read with
 \ UTF8:NEXT (src/lib/utf8-scalar.f): each byte it answers as `raw-byte` is one
@@ -113,7 +114,7 @@ private
    scalar FOUR-LEAD 3 buf APPEND-ENCODED ;
 
 
-: APPEND-PAIR ( n n ^u8 n ^a -- n )
+: APPEND-PAIR ( n n str ^a -- n )
    {: high:n at:n a:^ u:n buf:^ :}
    at UNIT-BYTES + u >= if E-UTF16 throw then
    a at UNIT-BYTES + + LE:U16@ {: low:n :}
@@ -122,7 +123,7 @@ private
    at UNIT-BYTES 2 * + ;
 
 
-: DECODE-STEP ( n ^u8 n ^a -- n )
+: DECODE-STEP ( n str ^a -- n )
    {: at:n a:^ u:n buf:^ :}
    a at + LE:U16@ {: unit:n :}
    unit HIGH? if unit at a u buf APPEND-PAIR exit then
@@ -143,7 +144,7 @@ private
    high buf APPEND-UNIT  low buf APPEND-UNIT ;
 
 
-: ENCODE-STEP ( n ^u8 n ^a -- n )
+: ENCODE-STEP ( n str ^a -- n )
    {: at:n a:^ u:n buf:^ :}
    a u at UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF swap buf APPEND-SCALAR-LE ENDOF
@@ -160,7 +161,7 @@ public
 \ Two-byte little-endian units; a high-then-low pair is one scalar. An odd byte
 \ length or an unpaired surrogate, high (at the span's end included) or low, is
 \ E-UTF16.
-: APPEND-LE>UTF8 ( ^u8 n ^a -- )
+: APPEND-LE>UTF8 ( str ^a -- )
    {: a:^ u:n buf:^ :}
    u 0 < if E-STR-BOUNDS throw then
    u UNIT-BYTES mod 0<> if E-UTF16 throw then
@@ -170,7 +171,7 @@ public
 \ A scalar at or above U+10000 becomes a surrogate pair; every raw byte -
 \ malformed, overlong, an encoded surrogate, past U+10FFFF or truncated - is
 \ E-UTF8.
-: APPEND-UTF8>LE ( ^u8 n ^a -- )
+: APPEND-UTF8>LE ( str ^a -- )
    {: a:^ u:n buf:^ :}
    u 0 < if E-STR-BOUNDS throw then
    0 begin dup u < while a u buf ENCODE-STEP repeat

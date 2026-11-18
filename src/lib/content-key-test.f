@@ -1,3 +1,4 @@
+split-str
 \ content-key-test.f - focused tests for content-key folds and file keys.
 \ Run: bin/hb --load src/lib/content-key-test.f
 
@@ -29,18 +30,18 @@ create CKT-INT-A 80 allot
 create CKT-INT-B 80 allot
 
 
-: CKT-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
+: CKT-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CKT-PATH! ( ^u8 n ^u8 n ^u8 ^n -- )
+: CKT-PATH! ( str str ^u8 ^n -- )
    {: pa:^ pu:n na:^ nu:n dst:^ lenp:^ :}
    pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
-: CKT-ROOT$ ( -- ^u8 n )
+: CKT-ROOT$ ( -- str )
    CKT-ROOT CKT-ROOT-U @ ;
 
-: CKT-SRC$ ( -- ^u8 n )
+: CKT-SRC$ ( -- str )
    CKT-SRC CKT-SRC-U @ ;
 
 : CKT-SETUP ( -- )
@@ -186,18 +187,18 @@ CKT-NEST-INSTALL
    s" CKT-C-DROP ( CONTENT-KEY:fold -- ) CKT-SEQ-A 1 TEXT+ drop"
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: CKT-NAMED-BODY ( ^u8 n ^u8 n ^u8 CONTENT-KEY:fold -- )
+: CKT-NAMED-BODY ( str str ^u8 CONTENT-KEY:fold -- )
    >r {: a:^ u:n name:^ size:n key:^ :} r>
    a u name size FILE-NAMED+ key FINAL-HEX ;
 
-: CKT-NAMED-KEY ( ^u8 n ^u8 n ^u8 -- )
+: CKT-NAMED-KEY ( str str ^u8 -- )
    [: CKT-NAMED-BODY ;] WITH-FOLD ;
 
-: CKT-FILE-BODY ( ^u8 n ^u8 CONTENT-KEY:fold -- )
+: CKT-FILE-BODY ( str ^u8 CONTENT-KEY:fold -- )
    >r {: a:^ u:n key:^ :} r>
    a u FILE+ key FINAL-HEX ;
 
-: CKT-FILE-KEY ( ^u8 n ^u8 -- )
+: CKT-FILE-KEY ( str ^u8 -- )
    [: CKT-FILE-BODY ;] WITH-FOLD ;
 
 : CKT-LOGICAL-NAME ( -- )

@@ -1,3 +1,4 @@
+split-str
 \ elf32.f - bounded ELF32 little-endian header and program-segment reader, in
 \ `package ELF32`; it never allocates, loads code, reads sections or relocations
 \ or picks an ABI. The caller supplies the input's real readable extent;
@@ -88,20 +89,20 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    data $28 + LE16@ dup HEADER-BYTES < if E-FORMAT throw then
    size 0 rot CHECK-RANGE ;
 
-: CHECK-TABLE ( ^u8 n -- ) {: data size:n :}
+: CHECK-TABLE ( str -- ) {: data size:n :}
    data PH-COUNT dup $FFFF = if E-UNSUPPORTED throw then
    dup 0= if drop exit then
    data PH-STRIDE dup PROGRAM-BYTES < if E-FORMAT throw then
    * size data PH-OFFSET rot CHECK-RANGE
    data PH-OFFSET 0= if E-FORMAT throw then ;
 
-: HEADER-CHECKED ( ^u8 n -- )
+: HEADER-CHECKED ( str -- )
    2dup CHECK-HEADER CHECK-TABLE ;
 
 : PROGRAM-ROW ( ^u8 n -- ^u8 ) {: data index:n :}
    data data PH-OFFSET + index data PH-STRIDE * + ;
 
-: CHECK-INDEX ( ^u8 n -- ) {: data index:n :}
+: CHECK-INDEX ( str -- ) {: data index:n :}
    index 0 < index data PH-COUNT >= or if E-BOUNDS throw then ;
 
 : CHECK-LOAD-EXTENT ( ^u8 -- ) {: row :}

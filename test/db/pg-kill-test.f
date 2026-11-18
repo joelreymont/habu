@@ -1,3 +1,4 @@
+split-str
 \ pg-kill-test.f - a pg row the pool kills leaves no server process, no
 \ shared-memory segment and no socket directory behind. It runs
 \ test/db/pg-cluster.f as a pool's one row with test/db/pg-hold.f as its case
@@ -47,9 +48,9 @@ false REPORTED !
 true FIFO-DONE !
 PROCESS:NO-FD FIFO-RD !
 
-: SOCKETS$ ( -- ^u8 n )  LINE LINE-U @ ;
+: SOCKETS$ ( -- str )  LINE LINE-U @ ;
 
-: FIFO$ ( -- ^u8 n )    FIFO FIFO-U @ ;
+: FIFO$ ( -- str )    FIFO FIFO-U @ ;
 
 \ A new FIFO for the case, its read end open before the row starts, so the
 \ harness's open of the write end does not wait. The harness and the case

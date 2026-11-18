@@ -1,3 +1,4 @@
+split-str
 \ fault-record.f - the text of the fault records a rejection's machine code
 \ writes. A fault record is the bytes package REJECTION writes for an unplaced
 \ rejection of the same parts, in prose or, when the main DATA's
@@ -34,14 +35,14 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
    THEN
    u 0 ?do  a i + c@  buf len @ + i + c!  loop
    len @ u + len ! ;
-: PROSE+ ( ^u8 n -- )  FAULT-PROSE FAULT-PROSE-U TEXT+ ;
-: JSON+ ( ^u8 n -- )  FAULT-JSON FAULT-JSON-U TEXT+ ;
-: BOTH+ ( ^u8 n -- ) {: a:^ u:n :}  a u PROSE+  a u JSON+ ;
+: PROSE+ ( str -- )  FAULT-PROSE FAULT-PROSE-U TEXT+ ;
+: JSON+ ( str -- )  FAULT-JSON FAULT-JSON-U TEXT+ ;
+: BOTH+ ( str -- ) {: a:^ u:n :}  a u PROSE+  a u JSON+ ;
 
 \ A site's text is laid as is in a JSON string, so it holds no byte JSON escapes.
 : PLAIN? ( n -- bool ) {: c:n :}
    c 32 >=  c 34 <> and  c 92 <> and ;
-: CHECK-TEXT ( ^u8 n -- ) {: a:^ u:n :}
+: CHECK-TEXT ( str -- ) {: a:^ u:n :}
    u 0 ?do
       a i + c@ PLAIN? 0= IF
          s" crash: a fault record's text holds a byte JSON escapes" EXIT-STATUS:INTERNAL die
@@ -126,7 +127,7 @@ private
 128 constant GUARD-MSG-CAP
 create GUARD-MSG GUARD-MSG-CAP allot
 TYPED-VARIABLE GUARD-MSG-U len
-: GUARD-MSG+ ( ^u8 n -- )
+: GUARD-MSG+ ( str -- )
    GUARD-MSG GUARD-MSG-CAP GUARD-MSG-U BUF-APPEND ;
 public
 \ "`<name>` <rest>", held in GUARD-MSG until the next call.

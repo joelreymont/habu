@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
@@ -18,7 +19,7 @@ create RANDOM-BUF BYTE-CAP allot
 variable TEMPLATE
 TYPED-VARIABLE RD XML:cursor
 
-: ORIGINAL$ ( -- ^u8 n )
+: ORIGINAL$ ( -- str )
    TEMPLATE @ case
       0 of s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q='old'>old</p:a><!--keep-->" endof
       1 of s\" <?xml version=\"1.0\"?><p:a xmlns:p=\"urn:p\" q=\"&amp;\">&#65;</p:a><!--keep-->" endof
@@ -77,7 +78,7 @@ TYPED-VARIABLE RD XML:cursor
 
 \ Chunks include every XML escape, whitespace normalization, multi-byte
 \ offsets, combining text, and expanding Unicode casefold inputs.
-: CHUNK$ ( -- ^u8 n )
+: CHUNK$ ( -- str )
    12 PROP:RND% case
       0 of s" <" endof
       1 of s" &" endof
@@ -93,7 +94,7 @@ TYPED-VARIABLE RD XML:cursor
       s" abc 019" rot
    endcase ;
 
-: RANDOM-VALUE$ ( -- ^u8 n )
+: RANDOM-VALUE$ ( -- str )
    0
    32 PROP:RND% 1+ 0 ?do
       {: size:n :}

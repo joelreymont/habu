@@ -1,3 +1,4 @@
+split-str
 \ check-hook.f - the checks the compiler calls: CHECK:DEFINITION on each
 \ definition's source, IMMEDIATE-CHECK before an immediate word inside one, and
 \ the facts text each record takes.
@@ -16,7 +17,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 
 \ Arms the source map from the capture's rows when a u is the pending
 \ definition's text and its name lies in file text; answers whether it did.
-: ROWS-ARM ( ^u8 n -- bool )
+: ROWS-ARM ( str -- bool )
    {: a:^ u:n :}
    REJECTION:SOURCE$ nip 0 <> if RES-FALSE exit then
    REJECTION:FILE-BUFFER? 0= if RES-FALSE exit then
@@ -41,7 +42,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ closed: text that ends where the body text ends closes at the `;` the engine
 \ read last; text that ends sooner is a definer's head, closed by the `does>`
 \ just past it, placed in the armed source by the rows, else in the body text.
-: CLOSER-ARM ( ^u8 n -- )
+: CLOSER-ARM ( str -- )
    {: a:^ u:n :}
    REJECTION:CLOSER-OFF
    data-base PEND-CELL + @ 0= if exit then
@@ -67,7 +68,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 
 \ An immediate word met inside a definition, before it runs: one the checker
 \ has no model for is refused unless it parses nothing.
-: IMMEDIATE-CHECK ( ^u8 n ^u8 n bool -- )
+: IMMEDIATE-CHECK ( str str bool -- )
    drop
    {: ba:^ bu:n ta:^ tu:n :}
    ta tu NAME-IMM-READS 0 >= if exit then
@@ -79,7 +80,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 
 \ The name as written, which is what the wall prints: the first token of the
 \ source the engine hands the hook.
-: FIRST-TOKEN ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: FIRST-TOKEN ( str -- str ) {: a:^ u:n :}
    0 begin dup u < if a over + c@ 32 > else 0 0= 0= then while 1 + repeat
    a swap ;
 
@@ -108,7 +109,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ Dies naming na nu, a u saying what is wrong with the facts text written for
 \ it, which REJECTION:TEXT holds. The sentence goes after the text in TEXT,
 \ which may move as it grows, so the text is copied by offset.
-: FACTS-DIE ( ^u8 n ^u8 n -- )
+: FACTS-DIE ( str str -- )
    {: na:^ nu:n a:^ u:n :}
    REJECTION:TEXT-LEN @ {: t:n :}
    1 REJECTION:DEST !
@@ -120,7 +121,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 
 \ Dies naming na nu: its amended effect has no record, or no facts text that
 \ says it.
-: AMENDED-DIE ( ^u8 n -- )
+: AMENDED-DIE ( str -- )
    {: na:^ nu:n :}
    0 REJECTION:TEXT-LEN !  1 REJECTION:DEST !
    s" no facts text says the amended effect of `" REJECTION:EMIT-STR
@@ -129,7 +130,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 
 \ Only a record this check published, at or above MARK and still active, is
 \ asked: a duplicate or an unrecorded effect publishes none.
-: CHECK-FACTS ( ^u8 n n -- )
+: CHECK-FACTS ( str n -- )
    {: na:^ nu:n mark:n :}
    na nu CHECKER-RECORD-SYM? {: sym:n :}
    sym 0= if exit then
@@ -163,7 +164,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 \ A does> clause's publication, once the definer's record ndict@ 1 - is
 \ appended: it refuses nothing and writes facts only there, as `: PKG:X` hands
 \ it the tail X.
-: DOES-PUBLISHED ( ^u8 n bool -- )
+: DOES-PUBLISHED ( str bool -- )
    {: a:^ u:n committed:bool :}
    a u committed CHECKER-NATIVE-DOES-FINISH
    committed 0= if exit then
@@ -189,7 +190,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 
 \ The raw registrar's field entry: a created word or constant takes its text
 \ through FIND-FACTS!, or 0 when none says its effect.
-: RAW-DECLARED ( ^u8 n ^u8 n -- )
+: RAW-DECLARED ( str str -- )
    {: na:^ nu:n sa:^ su:n :}
    na nu sa su RAW-REG @ REG-XT execute
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> CHK-CAND @ 0 <> or if exit then
@@ -205,7 +206,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 
 \ The pending record's facts once a registrar recorded the live window for this
 \ name; an unsaid text stores 0, so no earlier registrar's text stays.
-: PENDING-FACTS ( ^u8 n -- )
+: PENDING-FACTS ( str -- )
    {: a:^ u:n :}
    CK-LIVE-PEND? 0= if exit then
    CK-CLOSED-OPEN @ 0= if exit then
@@ -235,7 +236,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 
 \ A refused type is reported, naming the child, before the throw. A NODE other
 \ than 0 is the type, which TYPE does not spell.
-: STORED-ROWS ( ^u8 n ^u8 n n n -- n n )
+: STORED-ROWS ( str str n n -- n n )
    {: na:^ nu:n ta:^ tu:n shape:n node:n :}
    node 0 <> if node LBUF:NODE-STORAGE-TERM else ta tu CHECKER-STORAGE-TERM then
    0= if
@@ -255,7 +256,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 
 \ A storage declaration's name, stored type and that type's bytes; 0 bytes
 \ when it keeps a rejection of a missing name, a name it cannot take or the type.
-: DECL-LINE ( ^u8 n bool -- ^u8 n ^u8 n n )
+: DECL-LINE ( str bool -- str str n )
    {: da:^ du:n whole:bool :}
    LBUF:STORAGE-LINE-TOKEN {: na:^ nu:n :}
    nu 0= if da du CHECKER-STORAGE-NAME-REFUSE na 0 na 0 0 exit then
@@ -290,12 +291,12 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    val h ;
 
 \ The line of a definer whose element may be a byte.
-: STORAGE-LINE ( ^u8 n -- ^u8 n ^u8 n n ) RES-FALSE DECL-LINE ;
+: STORAGE-LINE ( str -- str str n ) RES-FALSE DECL-LINE ;
 
 \ The line of a definer whose element is whole cells.
-: CELL-LINE ( ^u8 n -- ^u8 n ^u8 n n ) RES-TRUE DECL-LINE ;
+: CELL-LINE ( str -- str str n ) RES-TRUE DECL-LINE ;
 
-: DEFINER-AT ( ^u8 n -- )
+: DEFINER-AT ( str -- )
    REJECTION:AT  s" the definer was reading here" REJECTION:EMIT-STR ;
 
 \ Places the rejection at the token read last, the definer's own or
@@ -316,7 +317,7 @@ using SCHEMA-REG
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: UNKNOWN-HELP$ ( -- ^u8 n )
+: UNKNOWN-HELP$ ( -- str )
    s" name n, bool, r or a family the package running the definer can name" ;
 
 \ An effect; any other type is rejected.
@@ -351,7 +352,7 @@ CAST: >BYTES ( n -- ^u8 )
    a >BYTES u CON-OF ;
 
 \ EFFECT:NAMED's family tail a u is public in more than one used package.
-: NAMED-AMBIG ( ^u8 n -- ) {: a:^ u:n :}
+: NAMED-AMBIG ( str -- ) {: a:^ u:n :}
    s" E-USING-AMBIGUOUS" REJECTION:OPEN
    s" EFFECT:NAMED found type family '" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR
@@ -381,7 +382,7 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ A rejected READ of the type xa xu, naming the token, or the type when the
 \ reason names none; why is the STG- reason no stored form holds it, else 0.
-: TEXT-TYPE-REFUSE ( ^u8 n ^u8 n n n ^u8 n -- )
+: TEXT-TYPE-REFUSE ( str str n n str -- )
    {: ta:^ tu:n wa:^ wu:n code:n why:n xa:^ xu:n :}
    tu 0= if xa xu else ta tu then {: na:^ nu:n :}
    code TYPE-DECL:E-TDECL-PAYLOAD = {: unknown:bool :}
@@ -408,7 +409,7 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ Rejects a type variable's or region's letter in a type EFFECT:READ-TYPE was
 \ given, placed at the token the engine read last, which ran the definer.
-: TEXT-LETTER-REFUSE ( ^u8 n ^u8 n -- ) {: la:^ lu:n xa:^ xu:n :}
+: TEXT-LETTER-REFUSE ( str str -- ) {: la:^ lu:n xa:^ xu:n :}
    s" E-BAD-SIGNATURE" REJECTION:OPEN
    s" the type '" REJECTION:EMIT-STR
    xa xu REJECTION:EMIT-STR  s" ' has the letter '" REJECTION:EMIT-STR
@@ -527,7 +528,7 @@ variable DENSE-N
 ;using
 
 \ The span through its first `)`.
-: THROUGH-CLOSE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: THROUGH-CLOSE ( str -- str ) {: a:^ u:n :}
    0 begin dup u < if a over + c@ 41 <> else RES-FALSE then while 1 + repeat
    {: k:n :}
    a  k 1 + u min ;
@@ -547,12 +548,12 @@ variable DENSE-N
    a u CHECKER-DEFER  a u PENDING-FACTS ;
 
 
-: CAST-DECLARED ( ^u8 n ^u8 n -- )
+: CAST-DECLARED ( str str -- )
    {: na:^ nu:n sa:^ su:n :}
    na nu sa su DEFCAST-REG @ REG-XT execute  na nu PENDING-FACTS ;
 
 
-: LINEAR-DECLARED ( ^u8 n ^u8 n -- )
+: LINEAR-DECLARED ( str str -- )
    {: na:^ nu:n sa:^ su:n :}
    na nu sa su CHECKER-LINEAR  na nu PENDING-FACTS ;
 
@@ -629,7 +630,7 @@ private
 
 \ Stops the build at primitive sym, whose rows REJECTION:TEXT cannot say in part
 \ pa pu: an engine without that text would reject every call of it as undefined.
-: ROWS-UNSAID ( ^u8 n n -- )
+: ROWS-UNSAID ( str n -- )
    {: pa:^ pu:n sym:n :}
    s" checker: facts text does not say " ERROR-TEXT:TYPE  pa pu ERROR-TEXT:TYPE
    s"  of primitive " ERROR-TEXT:TYPE
@@ -659,20 +660,20 @@ private
 
 \ Sym's rows as one facts text (ROWS-TEXT?), empty for sym 0 or when no text
 \ can say them. The text lies in REJECTION:TEXT, which the next render reuses.
-: ROWS-FACTS ( n -- ^u8 n )
+: ROWS-FACTS ( n -- str )
    {: sym:n :}
    sym 0= if NULL-PTR 0 exit then
    sym ROWS-TEXT? if REJECTION:TEXT REJECTION:TEXT-LEN @ else NULL-PTR 0 then ;
 
 \ A linked engine's facts text for primitive na nu: what the open build's rows
 \ say of its global symbol, empty when no text can.
-: PRIMITIVE-FACTS ( ^u8 n -- ^u8 n )
+: PRIMITIVE-FACTS ( str -- str )
    CHECKER-GLOBAL-SYM? ROWS-FACTS ;
 
 \ The facts text the open build's rows give the primitive named na nu that
 \ package pa pu owns (src/habu/prims.f EPPRIM:), for the record a build lays
 \ for it in that package's private wordlist; empty when no text can.
-: OWNED-FACTS ( ^u8 n ^u8 n -- ^u8 n )
+: OWNED-FACTS ( str str -- str )
    {: pa:^ pu:n na:^ nu:n :}
    pa pu SYM-PRIVATE na nu CHECKER-PKG-SYM? ROWS-FACTS ;
 

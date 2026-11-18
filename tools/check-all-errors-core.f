@@ -1,3 +1,4 @@
+split-str
 \ check-all-errors-core.f - the --all-errors checker core: checks sources as a
 \ load runs them, in one checker scope and one multi-error session, and reports
 \ every rejected definition and lexer defect, one record each through package
@@ -63,7 +64,7 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 : CA-FILE-A! ( ^u8 -- )
    CA-FILE-A ! ;
 
-: CA-ERR ( ^u8 n -- ) {: a:^ u:n :}
+: CA-ERR ( str -- ) {: a:^ u:n :}
    u 0= IF exit THEN
    CA-OUT-FD @ a u write u <> IF E-FS-IO throw THEN ;
 
@@ -93,16 +94,16 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 
 \ Each read takes a region of its own, so the bytes an earlier read or the
 \ caller left (CA-SOURCE-BUF!) stay where they are.
-: CA-READ-SOURCE ( ^u8 n -- ) {: path:^ pu:n :}
+: CA-READ-SOURCE ( str -- ) {: path:^ pu:n :}
    0 CA-SRC-CAP !
    path pu  path pu FS:FILE-SIZE  [: CA-SRC-ROOM ;] SOURCE:READ-WHOLE-SAMPLED CA-SRC-U ! ;
 
-: CA-SOURCE-BUF! ( ^u8 n -- ) {: a:^ u:n :}
+: CA-SOURCE-BUF! ( str -- ) {: a:^ u:n :}
    u CA-SRC-CAP !
    u CA-SRC-U !
    a CA-SRC-A! ;
 
-: CA-START ( ^u8 n -- ) {: labela:^ labelu:n :}
+: CA-START ( str -- ) {: labela:^ labelu:n :}
    labelu CA-FILE-U !
    labela CA-FILE-A! ;
 
@@ -121,7 +122,7 @@ TYPED-VARIABLE CA-COMPOSE-ENTRY bool    \ the composed bytes are entry text
 
 \ The token a lexer defect sits at, read out of the source at its own width: a
 \ string's opener, the token a row's rule rejects, or empty at the source's end.
-: CA-LEX-TOKEN$ ( -- ^u8 n )
+: CA-LEX-TOKEN$ ( -- str )
    LINT-LEX:ERROR-BYTE@ {: at:n :}
    CA-SRC-A@ at +  at CA-WORD-END at - ;
 
@@ -217,7 +218,7 @@ private
    compose CA-COMPOSING !
    [: report CA-RUN-BODY ;] SESSION ;
 
-: CA-COMPOSE-AT ( ^u8 n bool -- ) {: path:^ pathu:n entry:bool :}
+: CA-COMPOSE-AT ( str bool -- ) {: path:^ pathu:n entry:bool :}
    entry CA-COMPOSE-ENTRY !
    path CA-COMPOSE-PATH-A !  pathu CA-COMPOSE-PATH-U !
    CA-FILE-A@ CA-COMPOSE-LABEL-A !  CA-FILE-U @ CA-COMPOSE-LABEL-U ! ;
@@ -238,7 +239,7 @@ public
 \ loader statement loads where it stands, under its own path, in one session,
 \ and rejects a loader form discovery rejects, or a file it cannot read, where
 \ it meets it.
-: COMPOSE-BUF ( ^u8 n ^u8 n ^u8 n -- )
+: COMPOSE-BUF ( str str str -- )
    {: src:^ srcu:n path:^ pathu:n label:^ labelu:n :}
    [: label labelu CA-START
       src srcu CA-SOURCE-BUF!
@@ -246,7 +247,7 @@ public
       true false CA-RUN ;] REJECTION:PRESERVE-LABEL ;
 
 \ COMPOSE-BUF of entry text, whose records name REJECTION:NO-FILE$.
-: COMPOSE-ENTRY ( ^u8 n ^u8 n -- )
+: COMPOSE-ENTRY ( str str -- )
    {: src:^ srcu:n path:^ pathu:n :}
    [: REJECTION:NO-FILE$ CA-START
       src srcu CA-SOURCE-BUF!

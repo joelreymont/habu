@@ -1,3 +1,4 @@
+split-str
 \ Throw and task halt close one frame for an entire initialized table.
 require src/lib/test.f
 require src/lib/memory.f

@@ -1,3 +1,4 @@
+split-str
 \ json-rpc.f - the JSON-RPC 2.0 envelope: >MESSAGE sorts one body into a message
 \ and the writers build replies on a caller's JSON writer. Every part of a
 \ message is the body's own JSON text, borrowed: an id, a method or a string
@@ -218,7 +219,7 @@ STRUCTURE envelope
    e SORT ;
 
 \ Reads the body once; text that is not JSON throws the JSON reader's code.
-: READ-BODY ( message ^JSON:cursor ^u8 n -- message ^JSON:cursor ^u8 n )
+: READ-BODY ( message ^JSON:cursor str -- message ^JSON:cursor str )
    {: prior st:^ body:^ len:n :}
    st body len READ-INIT
    READ-NEXT {: root:n :}
@@ -243,7 +244,7 @@ public
 
 private
 
-: ID-TEXT$ ( id -- ^u8 n )
+: ID-TEXT$ ( id -- str )
    ID$ {: a:^ u:n :}
    u 0 <= if E-JSON-RPC-ID throw then
    a u ;
@@ -251,7 +252,7 @@ private
 : HEAD ( ^JSON:writer -- ^JSON:writer )
    WRITE-OBJECT-START  s" jsonrpc" s" 2.0" WRITE-FIELD-S ;
 
-: ID-FIELD ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: ID-FIELD ( ^JSON:writer str -- ^JSON:writer )
    {: a:^ u:n :}
    WRITE-COMMA  s" id" a u WRITE-FIELD-RAW ;
 

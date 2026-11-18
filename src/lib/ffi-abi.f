@@ -1,3 +1,4 @@
+split-str
 \ ffi-abi.f - checked AAPCS64 and SysV FFI calls, package FFI. AAPCS64 passes
 \ eight integer and eight float registers, SysV six and eight. FUNCTION: is the
 \ only call surface: its word names a row, never an address, and the row and
@@ -325,7 +326,7 @@ public
 
 private
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
-: LIB-ROW@ ( n -- ^u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
+: LIB-ROW@ ( n -- str ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
 
 \ A load failure reports when a call first resolves its symbol, in any task:
 \ one write of a record built in the caller's own bytes.
@@ -334,16 +335,16 @@ private
    s line at + su BYTE-COPY
    line at su + ;
 
-: HELP-LEAD$ ( -- ^u8 n ) s\" \n  = help: " ;
+: HELP-LEAD$ ( -- str ) s\" \n  = help: " ;
 
 \ The help line h ends a record; HELP-LEN is its length.
-: HELP-PUT ( ^u8 n ^u8 n -- ^u8 n )
+: HELP-PUT ( ^u8 n str -- str )
    {: line:^ at:n h:^ hu:n :}
    line at HELP-LEAD$ PUT h hu PUT s\" \n" PUT ;
 
 : HELP-LEN ( n -- n ) HELP-LEAD$ nip + 1+ ;
 
-: RECORD-BODY ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- )
+: RECORD-BODY ( str str str str str str ^u8 NUM:alloc-byte-len -- )
    {: a:^ au:n b:^ bu:n c:^ cu:n d:^ du:n e:^ eu:n h:^ hu:n line:^ extent:NUM:alloc-byte-len :}
    line 0 a au PUT b bu PUT c cu PUT d du PUT e eu PUT
    h hu HELP-PUT ERROR-TEXT:TYPE ;
@@ -355,17 +356,17 @@ private
    au bu + cu + du + eu + hu HELP-LEN + MEM:BYTES-ALLOC-LEN
    [: RECORD-BODY ;] MEM:WITH-BYTES ;
 
-: OPEN-HEAD$ ( -- ^u8 n )
+: OPEN-HEAD$ ( -- str )
    s" error[E-FFI-DLOPEN]: cannot open library '" ;
 
-: NOTE$ ( -- ^u8 n ) s\" \n  = note: tried '" ;
+: NOTE$ ( -- str ) s\" \n  = note: tried '" ;
 
-: OPEN-HELP$ ( -- ^u8 n )
+: OPEN-HELP$ ( -- str )
    s" install the library, or name a path the loader finds" ;
 
 \ why, the loader's reason, goes on tried's note only: a later loader call
 \ replaces it, and dlerror's NULL means it kept none.
-: REASON$ ( n n n -- ^u8 n ^u8 n )
+: REASON$ ( n n n -- str str )
    {: why:n tried:n lib:n :}
    why 0 <> lib tried = and if s" : " why CELL>PTR dup ZLEN exit then
    s" " s" " ;
@@ -382,13 +383,13 @@ private
    why tried lib NOTE-LEN
    why tried lib 1 - LIB-NEXT@ RECURSE + ;
 
-: NOTE-PUT ( ^u8 n n n n -- ^u8 n )
+: NOTE-PUT ( ^u8 n n n n -- str )
    {: line:^ at:n why:n tried:n lib:n :}
    why tried lib REASON$ {: s:^ su:n r:^ ru:n :}
    line at NOTE$ PUT lib LIB-ROW@ PUT s" '" PUT s su PUT r ru PUT ;
 
 \ One note per library from lib along next.
-: NOTES-PUT ( ^u8 n n n n -- ^u8 n )
+: NOTES-PUT ( ^u8 n n n n -- str )
    {: line:^ at:n why:n tried:n lib:n :}
    lib 0= if line at exit then
    line at why tried lib NOTE-PUT
@@ -438,13 +439,13 @@ private
    tried 0 <> if dlerr tried lib OPEN-REPORT then
    E-FFI-DLOPEN throw ;
 
-: SYMBOL-HEAD$ ( -- ^u8 n )
+: SYMBOL-HEAD$ ( -- str )
    s" error[E-FFI-DLSYM]: no C symbol '" ;
 
-: PROCESS-HELP$ ( -- ^u8 n )
+: PROCESS-HELP$ ( -- str )
    s" name the library that defines it with LIBRARY, or open it with FFI:PROCESS-WIDE" ;
 
-: LIBRARY-HELP$ ( -- ^u8 n )
+: LIBRARY-HELP$ ( -- str )
    s" check the symbol's spelling against the library's exports" ;
 
 \ lib 0 is the process's own symbols.
@@ -506,7 +507,7 @@ public
 \ FFI is the only library code that writes a terminator.
 private
 \ A 0 byte among the u bytes at b would end the C string early.
-: NUL-CHECK ( ^u8 n -- )
+: NUL-CHECK ( str -- )
    {: b u :}
    u 0 ?do b i + c@ 0= if E-FFI-NUL throw then loop ;
 
@@ -542,7 +543,7 @@ public
 private
 
 \ ?TARGET, at the head of this file, admits only macOS and the Linux kernel.
-: ERRNO-SYMBOL$ ( -- ^u8 n )
+: ERRNO-SYMBOL$ ( -- str )
    HB-TARGET-MACOS? if s" __error" exit then
    s" __errno_location" ;
 
@@ -563,7 +564,7 @@ private
 : STACK-CELLS ( -- n ) FFI-MAX-ARGS ;
 
 \ Render into the caller's CODEGEN buffer; the caller owns the returned span.
-: LIBRARY-NAME$ ( ^u8 n n ^n -- ^u8 n ) {: base:^ u:n version:n buf:^ :}
+: LIBRARY-NAME$ ( str n ^n -- str ) {: base:^ u:n version:n buf:^ :}
    buf CODEGEN:RESET
    s" lib" buf CODEGEN:APPEND-STRING
    base u buf CODEGEN:APPEND-STRING
@@ -579,7 +580,7 @@ private
 
 : PROCESS ( -- n ) 0 ;
 
-: LIB-INDEX ( ^u8 n n -- n )
+: LIB-INDEX ( str n -- n )
    {: path:^ u:n next:n :}
    LIB-N @ 0 ?do
       i LIB-LEN@ u = i LIB-NEXT@ next = and if
@@ -588,7 +589,7 @@ private
    loop
    0 ;
 
-: LIBRARY-PATH-OR ( ^u8 n n -- n )
+: LIBRARY-PATH-OR ( str n -- n )
    {: path:^ u:n next:n :}
    path u next LIB-INDEX dup 0<> if exit then drop
    LIB-NEW
@@ -601,7 +602,7 @@ private
    next row 1- LIB-NEXT!
    row ;
 
-: LIBRARY-PATH ( ^u8 n -- n ) 0 LIBRARY-PATH-OR ;
+: LIBRARY-PATH ( str -- n ) 0 LIBRARY-PATH-OR ;
 
 \ Row idx's function called with argc integer arguments staged in FFI-BUF;
 \ argc is its declaration's count, a literal where it is called.
@@ -634,17 +635,17 @@ private
 
 : CALL-STRUCT-PTR ( n -- ^u8 ) CALL-STRUCT drop CELL>PTR ;
 
-: REG-STORE ( n ^u8 n -- ) {: v:n dst:^ len:n :}
+: REG-STORE ( n str -- ) {: v:n dst:^ len:n :}
    len 0 ?do v i 8 * rshift $FF and dst i + c! loop ;
 
 \ A by-value record is read at exactly its width: cell k holds bytes
 \ 8k..8k+7, little-endian, and the last cell's bytes past len are zero.
-: RECORD-CELL ( ^u8 n n -- n ) {: src:^ len:n k:n :}
+: RECORD-CELL ( str n -- n ) {: src:^ len:n k:n :}
    0 len k 8 * - 8 min 0 ?do src k 8 * + i + c@ i 8 * lshift or loop ;
 
 : RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
 
-: RECORD-COPY ( ^u8 n n -- n )
+: RECORD-COPY ( str n -- n )
    {: src:^ len:n pay:n :}
    len RECORD-WORDS 0 ?do
       src len i RECORD-CELL pay i + cells STACK-VALUE!
@@ -656,24 +657,24 @@ private
 \ does a larger one on SysV, always in stack cells. A larger one on AAPCS64 is
 \ copied into stack cells from cell pay and passed by address in register reg
 \ or the stack cell at byte offset pos.
-: STRUCT-REGS! ( ^u8 n n -- ) {: src:^ len:n reg:n :}
+: STRUCT-REGS! ( str n -- ) {: src:^ len:n reg:n :}
    len RECORD-WORDS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
 
-: STRUCT-STACK! ( ^u8 n n -- )
+: STRUCT-STACK! ( str n -- )
    {: src:^ len:n pos:n :}
    len RECORD-WORDS 0 ?do
       src len i RECORD-CELL pos i cells + STACK-VALUE!
    loop ;
 
-: STRUCT-COPY-REG! ( ^u8 n n n -- ) {: src:^ len:n pay:n reg:n :}
+: STRUCT-COPY-REG! ( str n n -- ) {: src:^ len:n pay:n reg:n :}
    src len pay RECORD-COPY reg VALUE! ;
 
-: STRUCT-COPY-STACK! ( ^u8 n n n -- ) {: src:^ len:n pay:n pos:n :}
+: STRUCT-COPY-STACK! ( str n n -- ) {: src:^ len:n pay:n pos:n :}
    src len pay RECORD-COPY pos STACK-VALUE! ;
 
 \ A record of len bytes returned in two registers lands at exactly its width;
 \ one larger than 16 bytes is already in place through the hidden pointer.
-: STORE-RESULT ( n n ^u8 n -- ) {: lo:n hi:n dst:^ len:n :}
+: STORE-RESULT ( n n str -- ) {: lo:n hi:n dst:^ len:n :}
    len 16 > if exit then
    lo dst len 8 min REG-STORE
    len 8 > if hi dst 8 + len 8 - REG-STORE then ;
@@ -682,7 +683,7 @@ private
 \ cells and relocation mask reloc, a row's identity: no call reads an
 \ argument count from its row. The stored symbol's length decides along with
 \ its bytes, so neither a prefix nor a name holding a 0 byte matches a row.
-: SAME-FN? ( ^u8 n n n n n -- bool )
+: SAME-FN? ( str n n n n -- bool )
    {: name:^ u:n lib:n spills:n reloc:n idx:n :}
    idx FN-LIB@ lib <> if false exit then
    idx FN-SPILL@ spills <> if false exit then
@@ -692,7 +693,7 @@ private
 
 \ The symbol and its 0 byte are allotted where the declaration is accepted and
 \ never move; the row's pointer cell reaches them across a save or a link.
-: NAME-STORE ( ^u8 n n -- ) {: name:^ u:n idx:n :}
+: NAME-STORE ( str n -- ) {: name:^ u:n idx:n :}
    name u NUL-CHECK
    here BYTE-VIEW {: b:^ :}
    u 1+ allot
@@ -702,7 +703,7 @@ private
    u idx FN-NAME-LEN-OFF FN-FIELD ! ;
 
 \ The row of name in library lib with spills and reloc, or -1 for none.
-: FN-INDEX ( ^u8 n n n n -- n )
+: FN-INDEX ( str n n n -- n )
    {: name:^ u:n lib:n spills:n reloc:n :}
    FN-N @ 0 ?do
       name u lib spills reloc i SAME-FN? if i unloop exit then
@@ -711,7 +712,7 @@ private
 
 \ The row of name in library lib with spills and reloc: the existing one, else
 \ a new unresolved row.
-: DECLARE-ROW ( ^u8 n n n n -- n )
+: DECLARE-ROW ( str n n n -- n )
    {: name:^ u:n lib:n spills:n reloc:n :}
    name u lib spills reloc FN-INDEX dup 0 >= if exit then drop
    FN-NEW
@@ -846,7 +847,7 @@ $10 constant TYPE-CAP
 3 constant K-FLOAT32
 
 \ An input type's C size in bytes.
-: TYPE-SIZE ( ^u8 n -- n )
+: TYPE-SIZE ( str -- n )
    {: a:^ u:n :}
    a u s" u8" STR= a u s" char" STR= or if 1 exit then
    a u s" u16" STR= if 2 exit then
@@ -958,7 +959,7 @@ SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
    OPEN? if SOURCE-ROOT:CLOSED then  CLOSED!
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: HELP-END ( ^u8 n -- )
+: HELP-END ( str -- )
    {: h:^ hu:n :}
    REJECTION:HELP  h hu REJECTION:EMIT-STR  STOP-REJECTION ;
 
@@ -970,10 +971,10 @@ public
 : ARITY-OPEN ( -- )
    s" E-FFI-ARITY" REJECTION:OPEN ;
 
-: HELP-STOP ( ^u8 n -- )
+: HELP-STOP ( str -- )
    DEFINER-PLACE HELP-END ;
 
-: SYNTAX-REJECT ( ^u8 n ^u8 n -- )
+: SYNTAX-REJECT ( str str -- )
    {: m:^ mu:n h:^ hu:n :}
    SYNTAX-OPEN  m mu REJECTION:EMIT-STR  h hu HELP-STOP ;
 
@@ -985,10 +986,10 @@ private
 \ reads the copy. A declaration's effect is on its line, so its types are
 \ read from their spans.
 
-: TOK$ ( -- ^u8 n )
+: TOK$ ( -- str )
    0 TOK-BUF TOK-U @ ;
 
-: TOK! ( ^u8 n -- ) {: a:^ u:n :}
+: TOK! ( str -- ) {: a:^ u:n :}
    u 0= if
       s" the line ended before the declaration did"
       s" write FUNCTION: NAME symbol ( inputs -- output ) on one line"
@@ -998,13 +999,13 @@ private
    a 0 TOK-BUF u BYTE-COPY
    u TOK-U ! ;
 
-: TOK@ ( [ -- ^u8 n ] -- )
+: TOK@ ( [ -- str ] -- )
    execute TOK! ;
 
-: TOK-SPAN ( [ -- ^u8 n ] -- ^u8 n )
+: TOK-SPAN ( [ -- str ] -- str )
    execute 2dup TOK! ;
 
-: TOK-IS? ( ^u8 n -- bool )
+: TOK-IS? ( str -- bool )
    TOK$ STR= ;
 
 : NAME! ( -- )
@@ -1021,7 +1022,7 @@ private
 
 \ The base's length before a target's suffix in it: `.dylib` or `.so` at its
 \ end, else `.so.` within it; its whole length when it holds none.
-: SUFFIX-CUT ( ^u8 n -- n ) {: a:^ u:n :}
+: SUFFIX-CUT ( str -- n ) {: a:^ u:n :}
    a u s" .dylib" ENDS-WITH? if u 6 - exit then
    a u s" .so" ENDS-WITH? if u 3 - exit then
    a u s" .so." FIND-SUB MATCH option
@@ -1031,7 +1032,7 @@ private
 
 \ The base the source spells t tu is copied out of the token buffer because
 \ reading the version token overwrites it.
-: BASE! ( ^u8 n -- ) {: t:^ tu:n :}
+: BASE! ( str -- ) {: t:^ tu:n :}
    TOK$ {: a:^ u:n :}
    a u SUFFIX-CUT {: cut:n :}
    cut u < if
@@ -1046,7 +1047,7 @@ private
    a 0 BASE-BUF u BYTE-COPY
    u BASE-U ! ;
 
-: >VERSION ( ^u8 n -- n )
+: >VERSION ( str -- n )
    STR-PARSE-POS MATCH option
       none OF
          s" a library version is not a number"
@@ -1057,12 +1058,12 @@ private
    ;MATCH ;
 
 \ The name the base and version make, held in LIB-NAME until the next is made.
-: VERSION-NAME$ ( n -- ^u8 n ) {: version:n :}
+: VERSION-NAME$ ( n -- str ) {: version:n :}
    0 BASE-BUF BASE-U @ version LIB-NAME LIBRARY-NAME$ ;
 
 \ Rejects the version's name, at the base the source spells t tu, when a
 \ library path's field cannot hold it.
-: CHECK-NAME ( ^u8 n n -- ) {: t:^ tu:n version:n :}
+: CHECK-NAME ( str n -- ) {: t:^ tu:n version:n :}
    version VERSION-NAME$ {: name:^ nu:n :}
    nu LIB-PATH-CAP 1 - > if
       s" E-FFI-SYNTAX" s" the library name made from this base is longer than a path holds"
@@ -1076,7 +1077,7 @@ private
 
 \ The list's rows, made from the last version to the first; the answer is the
 \ first version's row. Every name is checked before a row is added.
-: VERSION-ROWS ( ^u8 n ^u8 n -- n )
+: VERSION-ROWS ( str str -- n )
    {: t:^ tu:n list:^ u:n :}
    list u [char] , INDEX-OF MATCH option
       none OF u ENDOF
@@ -1099,16 +1100,16 @@ private
 : ARG-PAY@ ( n -- n ) {: i:n :} ARG-PAY i cells + @ ;
 : ARG-PAY! ( n n -- ) {: v:n i:n :} v ARG-PAY i cells + ! ;
 
-: ARG-TEXT$ ( n -- ^u8 n ) {: i:n :}
+: ARG-TEXT$ ( n -- str ) {: i:n :}
    ARG-TEXT i TYPE-CAP * +  ARG-TEXT-U i cells + @ ;
 
 \ Records the type text of the input ARG+ added last.
-: IN-TEXT ( ^u8 n -- ) {: a:^ u:n :}
+: IN-TEXT ( str -- ) {: a:^ u:n :}
    ARG-N @ 1 - {: i:n :}
    a ARG-TEXT i TYPE-CAP * + u BYTE-COPY
    u ARG-TEXT-U i cells + ! ;
 
-: RES-TEXT! ( ^u8 n -- ) {: a:^ u:n :}
+: RES-TEXT! ( str -- ) {: a:^ u:n :}
    a RES-TEXT u BYTE-COPY
    u RES-TEXT-U ! ;
 
@@ -1146,7 +1147,7 @@ private
 
 \ A declaration spells the C prototype's types; a role, a bool, an enum or a
 \ sum is Habu's, so the caller converts it.
-: TYPE-REJECT ( ^u8 n ^u8 n -- )
+: TYPE-REJECT ( str str -- )
    {: w:^ wu:n l:^ lu:n :}
    SYNTAX-OPEN  s" '" REJECTION:EMIT-STR  TOK$ REJECTION:EMIT-STR
    s" ' is not " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
@@ -1167,7 +1168,7 @@ private
 
 \ Each type is read where it is written, so a rejected one names its token;
 \ DECLARED-EFFECT reads the recorded text again.
-: IN-TOKEN ( ^u8 n -- )
+: IN-TOKEN ( str -- )
    {: a:^ u:n :}
    a u TYPE-SIZE {: size:n :}
    PTR-TOK? if
@@ -1191,7 +1192,7 @@ private
    s" u8" TOK-IS? s" char" TOK-IS? or if R-U8 exit then
    R-VALUE ;
 
-: OUT-TOKEN ( ^u8 n -- )
+: OUT-TOKEN ( str -- )
    {: a:^ u:n :}
    RES-KIND @ R-NONE <> if
       s" a FUNCTION: declaration has at most one output"
@@ -1480,7 +1481,7 @@ private
 \ A library name spelled in the other target's convention is rejected where it
 \ is stated, not at the first call in whatever module declared it. A rendered
 \ name passes by construction.
-: TARGET-HELP$ ( -- ^u8 n )
+: TARGET-HELP$ ( -- str )
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
       s" name it with VERSIONED-LIBRARY, which spells it for linux" exit
    then
@@ -1489,13 +1490,13 @@ private
    then
    E-FFI-LIBRARY throw ;
 
-: SPELLED$ ( -- ^u8 n ) s" ' is spelled for the other target" ;
+: SPELLED$ ( -- str ) s" ' is spelled for the other target" ;
 
-: BASENAME ( ^u8 n -- ^u8 n ) {: path:^ u:n :}
+: BASENAME ( str -- str ) {: path:^ u:n :}
    0 u 0 ?do path i + c@ [char] / = if drop i 1+ then loop
    {: start:n :} path start + u start - ;
 
-: FOREIGN-SPELLING? ( ^u8 n -- bool )
+: FOREIGN-SPELLING? ( str -- bool )
    BASENAME {: path:^ u:n :}
    HB-TARGET-MACOS? if
       path u s" .dylib" ENDS-WITH? if false exit then
@@ -1507,18 +1508,18 @@ private
    E-FFI-LIBRARY throw ;
 
 \ A path in the other target's spelling.
-: SPELLING-REJECT ( ^u8 n -- ) {: path:^ u:n :}
+: SPELLING-REJECT ( str -- ) {: path:^ u:n :}
    s" E-FFI-LIBRARY" REJECTION:OPEN
    s" library '" REJECTION:EMIT-STR  path u REJECTION:EMIT-STR
    SPELLED$ REJECTION:EMIT-STR
    TARGET-HELP$ HELP-STOP ;
 
-: CHECK-SPELLING ( ^u8 n -- ) {: path:^ u:n :}
+: CHECK-SPELLING ( str -- ) {: path:^ u:n :}
    path u FOREIGN-SPELLING? if path u SPELLING-REJECT then ;
 
 \ A path stands where `LIBRARY` read it. One the source does not hold, which a
 \ caller passed, stands at the token being run, and its bytes are not read.
-: CHECK-PATH ( ^u8 n -- ) {: path:^ u:n :}
+: CHECK-PATH ( str -- ) {: path:^ u:n :}
    u 0 <= if
       s" E-FFI-SYNTAX" s" the library path is empty"
       SRCLOC:TOKEN$ s" expected a library path after this" REJECTION:OPEN-AT
@@ -1645,7 +1646,7 @@ private
 
 \ The record is placed at the declaration's FUNCTION: token, which the
 \ declaration was read past.
-: SCOPE-REJECT ( ^u8 n -- )
+: SCOPE-REJECT ( str -- )
    {: m:^ mu:n :}
    OPENER-A @ OPENER-U @ SRCLOC:TOKEN!
    s" E-FFI-LIBRARY" REJECTION:OPEN  m mu REJECTION:EMIT-STR
@@ -1678,13 +1679,13 @@ public
 
 \ The token that opened the declaration still open or skipped, as its reader
 \ gave it; empty when none is.
-: OPENER$ ( -- ^u8 n )
+: OPENER$ ( -- str )
    OPENER-A @ OPENER-U @ ;
 
 \ The read-head transition: answers the name token as the source gave it.
 \ SRCLOC:TOKEN$ is the FUNCTION: token as it starts. A declaration still open
 \ is rejected at its opener, and abandoned.
-: READ-FUNCTION ( [ -- ^u8 n ] -- ^u8 n )
+: READ-FUNCTION ( [ -- str ] -- str )
    {: src :}
    SRCLOC:TOKEN$ {: t:^ tu:n :}
    [: OPEN? if
@@ -1721,7 +1722,7 @@ public
    [: CLOSED! ;] KEEP-REST ;
 
 \ The texts DECLARED-EFFECT reads, in its order, with -- before the output.
-: DECLARED-TEXTS ( [ ^u8 n -- ] -- )
+: DECLARED-TEXTS ( [ str -- ] -- )
    {: put :}
    ARG-N @ 0 ?do i ARG-TEXT$ put execute loop
    s" --" put execute
@@ -1834,7 +1835,7 @@ private
 
 \ VERSIONED-LIBRARY's next operand from src, copied; with none left the record
 \ stands at the token read last, which why labels.
-: LIB-OPERAND ( [ -- ^u8 n ] ^u8 n -- ^u8 n ) {: src why:^ whyu:n :}
+: LIB-OPERAND ( [ -- str ] str -- str ) {: src why:^ whyu:n :}
    src execute {: a:^ u:n :}
    u 0= if
       s" VERSIONED-LIBRARY" s" a base and a version list"

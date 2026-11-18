@@ -1,3 +1,4 @@
+split-str
 \ A throwing or halted field callback closes the borrowed span and its owners.
 require src/lib/test.f
 require src/lib/memory.f

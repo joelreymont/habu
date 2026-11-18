@@ -1,3 +1,4 @@
+split-str
 \ script-argv.f - bin/hb source-list script argument convention.
 
 7180 constant E-SCRIPT-ARGV-RANGE   \ logical index outside [0, SCRIPT-ARGC)

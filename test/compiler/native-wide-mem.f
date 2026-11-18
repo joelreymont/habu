@@ -1,3 +1,4 @@
+split-str
 \ native-wide-mem.f - production multi-cell typed loads and stores.
 
 require test/compiler/native-eval-fixture.f
@@ -126,10 +127,10 @@ CAST: W2>CELLS ( ^w2 -- ^n )
    k E-L3 ;
 
 \ ---- a column store's three rows -------------------------------------------
-: E-COL+ ( ^u8 n n n -- )
+: E-COL+ ( str n n -- )
    {: h:^ u:n al:n k:n :} h u al NWM-COL:MAKE k COL-AT ! ;
 
-: E-COL-HDR ( n -- ^u8 n )
+: E-COL-HDR ( n -- str )
    COL-AT @ NWM-COL:UNMAKE drop ;
 
 : E-COL-AL ( n -- n )
@@ -198,7 +199,7 @@ CAST: W2>CELLS ( ^w2 -- ^n )
 
 
 \ Dynamic compilation is needed only for the checker-refusal probe.
-: EV-RC ( ^u8 n -- n )
+: EV-RC ( str -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
 : LOAD-CASE ( -- )

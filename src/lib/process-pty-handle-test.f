@@ -1,3 +1,4 @@
+split-str
 \ process-pty-handle-test.f - PTY authority lifecycle coverage.
 
 require src/lib/process-pty-handle.f
@@ -215,7 +216,7 @@ variable BAD-GATE
    s" BAD-TEARDOWN ( process-pty-teardown -- process-pty-teardown process-pty-teardown ) dup"
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: PRIVATE? ( ^u8 n -- )
+: PRIVATE? ( str -- )
    XREF-FIND XREF-FOUND? TFALSE ;
 
 : CHECK-PRIVATE ( -- )

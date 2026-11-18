@@ -1,3 +1,4 @@
+split-str
 \ tcp4.f - Linux and Darwin IPv4 stream sockets through exact, bounded libc
 \ bindings; no protocol, framing, name resolution or connection policy. Every
 \ connection this module makes is non-blocking.
@@ -312,11 +313,11 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    fd SOCKADDR ADDRLEN LOCAL-CALL ;
 
 
-: RECEIVE-RAW ( n ^u8 n -- n ) {: fd:n bytes size:n :}
+: RECEIVE-RAW ( n str -- n ) {: fd:n bytes size:n :}
    fd bytes size 0 RECEIVE-CALL ;
 
 
-: SEND-RAW ( n ^u8 n -- n ) {: fd:n bytes size:n :}
+: SEND-RAW ( n str -- n ) {: fd:n bytes size:n :}
    fd bytes size MSG-NOSIGNAL SEND-CALL ;
 
 
@@ -387,7 +388,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 \ A stream read of zero bytes is the peer's orderly end of stream, never an
 \ empty message.
-: TRY-CHUNK ( n ^u8 n -- try-read-result ) {: fd:n bytes size:n :}
+: TRY-CHUNK ( n str -- try-read-result ) {: fd:n bytes size:n :}
    begin
       fd bytes size RECEIVE-RAW dup 0 > if N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
       0= if 0 N>BLEN TCP4-TRY--READ--RESULT:CLOSED exit then
@@ -399,7 +400,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ One receive, tried again after a wait for data while there is nothing to
 \ receive yet, so a read on a non-blocking connection still blocks until the
 \ stream answers.
-: READ-CHUNK ( n ^u8 n -- read-result ) {: fd:n bytes size:n :}
+: READ-CHUNK ( n str -- read-result ) {: fd:n bytes size:n :}
    begin
       fd bytes size TRY-CHUNK
       MATCH try-read-result
@@ -425,7 +426,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ `failed`. An interrupt retries it until the mono-ns deadline has passed and
 \ is `empty` after that, so no retry carries a slice past it; NO-DEADLINE
 \ retries every interrupt.
-: SEND-BY ( n ^u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
+: SEND-BY ( n str n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    begin
       fd bytes size SEND-RAW
       dup 0 > if N>BLEN TCP4-SLICE--RESULT:MOVED exit then
@@ -462,7 +463,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    again ;
 
 
-: AFTER-ROOM ( n ^u8 n n -- slice-result ) {: fd:n bytes size:n deadline:n :}
+: AFTER-ROOM ( n str n -- slice-result ) {: fd:n bytes size:n deadline:n :}
    fd deadline ROOM-BY
    MATCH ready-result
       ready OF fd bytes size deadline SEND-BY ENDOF

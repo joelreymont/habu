@@ -1,3 +1,4 @@
+split-str
 \ product-host-identity.f - the same target tree built by its ordinary
 \ engine and by a host with one extra primitive must produce identical
 \ executable and name map. The variant is built from a private source copy.
@@ -38,16 +39,16 @@ create ERR CAP allot                   variable ERR-U
 variable RC
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: TREE$ ( -- ^u8 n ) TREE TREE-U @ ;
-: VARIANT$ ( -- ^u8 n ) VARIANT-ROOT VARIANT-ROOT-U @ ;
-: TMP$ ( -- ^u8 n ) TMP TMP-U @ ;
-: BASE$ ( -- ^u8 n ) BASE BASE-U @ ;
-: REF$ ( -- ^u8 n ) REF REF-U @ ;
-: HOST$ ( -- ^u8 n ) HOST HOST-U @ ;
-: REBUILT$ ( -- ^u8 n ) REBUILT REBUILT-U @ ;
-: DEST$ ( -- ^u8 n ) DEST DEST-U @ ;
+: TREE$ ( -- str ) TREE TREE-U @ ;
+: VARIANT$ ( -- str ) VARIANT-ROOT VARIANT-ROOT-U @ ;
+: TMP$ ( -- str ) TMP TMP-U @ ;
+: BASE$ ( -- str ) BASE BASE-U @ ;
+: REF$ ( -- str ) REF REF-U @ ;
+: HOST$ ( -- str ) HOST HOST-U @ ;
+: REBUILT$ ( -- str ) REBUILT REBUILT-U @ ;
+: DEST$ ( -- str ) DEST DEST-U @ ;
 
-: ROOT-PATH! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
+: ROOT-PATH! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
    ROOT$ a u dst FS:JOIN-PATH up ! ;
 
 : SETUP ( -- )
@@ -64,12 +65,12 @@ variable RC
 \ A variant with one additional ARM primitive, built from copied sources.
 \ The specification row and ARM body are both required by the kernel's
 \ completeness check. The body reuses BCR because the new word is never run.
-: SPEC-ANCHOR$ ( -- ^u8 n ) s" \ Primitives whose effect" ;
-: SPEC-ROW$ ( -- ^u8 n ) S\" EPRIM: host-extra EPRIM;\n\n" ;
-: ARM-ANCHOR$ ( -- ^u8 n ) S\" \n   s\" type\" ['] BTYPE  FPRIM-L ;" ;
-: ARM-ROW$ ( -- ^u8 n ) S\" \n   s\" host-extra\" ['] BCR FPRIM-L" ;
+: SPEC-ANCHOR$ ( -- str ) s" \ Primitives whose effect" ;
+: SPEC-ROW$ ( -- str ) S\" EPRIM: host-extra EPRIM;\n\n" ;
+: ARM-ANCHOR$ ( -- str ) S\" \n   s\" type\" ['] BTYPE  FPRIM-L ;" ;
+: ARM-ROW$ ( -- str ) S\" \n   s\" host-extra\" ['] BCR FPRIM-L" ;
 
-: INSERT-ROW ( ^u8 n ^u8 n ^u8 n -- )
+: INSERT-ROW ( str str str -- )
    {: path:^ pathu:n anchor:^ anchoru:n row:^ rowu:n :}
    VARIANT$ path pathu DEST FS:JOIN-PATH DEST-U !
    DEST$ FS:FILE-SIZE {: size:n :}
@@ -105,7 +106,7 @@ variable RC
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T= ;
 
-: ARGV+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
+: ARGV+ ( str -- ) >LEN PROC-ARGV+ ;
 
 : ENV! ( -- )
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
@@ -127,14 +128,14 @@ variable RC
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
    SUCCESS ;
 
-: NAMES! ( ^u8 n ^u8 ^n -- )
+: NAMES! ( str ^u8 ^n -- )
    {: path:^ pathu:n dst:^ up:^ :}
    pathu s" .map" nip + PATH-CAP > if E-FS-PATH throw then
    path dst pathu BYTE-COPY
    s" .map" dst pathu + swap BYTE-COPY
    pathu s" .map" nip + up ! ;
 
-: SAME-PRODUCT ( ^u8 n ^u8 n -- )
+: SAME-PRODUCT ( str str -- )
    {: a:^ au:n b:^ bu:n :}
    a au b bu CHAIN-RUN:SAME-FILES? TTRUE
    a au NAME-A NAME-A-U NAMES!

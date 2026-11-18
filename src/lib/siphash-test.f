@@ -1,3 +1,4 @@
+split-str
 \ siphash-test.f - SIPHASH against the SipHash-2-4 reference vectors, and
 \ ENTROPY:FILL against the OS generator. SIPT-VEC is vectors_sip64 of
 \ github.com/veorq/SipHash vectors.h: entry i hashes bytes 00..i-1 under key
@@ -87,17 +88,17 @@ create SIPT-A SIPT-SMALL allot
 create SIPT-B SIPT-SMALL allot
 create SIPT-BIG SIPT-BIG-N allot
 
-: SIPT-ZERO ( ^u8 n -- )
+: SIPT-ZERO ( str -- )
    {: p len:n :}
    len 0 ?do 0 p i + c! loop ;
 
 
-: SIPT-DIFFS ( ^u8 ^u8 n -- n )
+: SIPT-DIFFS ( ^u8 str -- n )
    {: p q len:n :}
    0 len 0 ?do p i + c@ q i + c@ <> if 1+ then loop ;
 
 
-: SIPT-NONZERO ( ^u8 n -- n )
+: SIPT-NONZERO ( str -- n )
    {: p len:n :}
    0 len 0 ?do p i + c@ 0<> if 1+ then loop ;
 

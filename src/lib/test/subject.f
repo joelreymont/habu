@@ -1,3 +1,4 @@
+split-str
 \ subject.f - isolated evaluation of the running test subject (package SUBJECT).
 \ RUN evaluates one counted source in a fork child, its own process root
 \ (PROC-FORK:CHILD-MAIN), captures bounded stdout and stderr into the caller's
@@ -23,7 +24,7 @@ create STATUS-ERR STATUS-CAP allot
 \ RUN is synchronous in the parent. The child inherits these cells by COW and
 \ exits before the next RUN, so no source state is shared across cases.
 
-: SRC! ( ^u8 n -- )
+: SRC! ( str -- )
    SRC-U !
    SRC-A ! ;
 
@@ -88,7 +89,7 @@ public
 \ exits 124. Its parent passes the program, the captured stdout and
 \ stderr and the exit code; on that code TIMED-OUT prints them and throws
 \ E-PROC-TIMEOUT. Any other code is the caller's to assert.
-: RC-TIMED-OUT ( ^u8 n ^u8 n ^u8 n n -- )
+: RC-TIMED-OUT ( str str str n -- )
    {: src:^ srcu:n out:^ outu:n err:^ erru:n rc:n :}
    rc 124 = if src srcu out outu err erru TIMED-OUT then ;
 
@@ -112,7 +113,7 @@ public
 
 \ The capture is kept only for this answer; a case that reads the child's
 \ streams runs RUN itself, or REJECTED for stderr when stdout stays empty.
-: EXITED? ( ^u8 n n -- bool )
+: EXITED? ( str n -- bool )
    STATUS >r 2drop r> ;
 
 \ src's stderr, valid until the next run, and whether src, run as the subject,

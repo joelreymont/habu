@@ -1,3 +1,4 @@
+split-str
 \ curl-test.f - focused tests for src/lib/net/curl.f over loopback HTTP. One
 \ process holds both peers: a server task binds a TCP4 listener on a free
 \ loopback port, publishes the port in a shared cell and accepts one connection
@@ -200,52 +201,52 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : ROOT$ ( -- ^u8 n )       ROOT-BUF ROOT-U @ ;
-: FILE$ ( -- ^u8 n )       FILE-BUF FILE-U @ ;
-: JAR$ ( -- ^u8 n )        JAR-BUF JAR-U @ ;
+: FILE$ ( -- str )       FILE-BUF FILE-U @ ;
+: JAR$ ( -- str )        JAR-BUF JAR-U @ ;
 : HELLO$ ( -- ^u8 n )      S\" hello\n" ;
-: PROXY-BODY$ ( -- ^u8 n ) S\" proxy\n" ;
-: COOKIE-PAIR$ ( -- ^u8 n ) s" probe=value1" ;
-: NO-COOKIE$ ( -- ^u8 n )  s" none" ;
-: PATH-HELLO$ ( -- ^u8 n ) s" /hello.txt" ;
-: PATH-COOKIE$ ( -- ^u8 n ) s" /cookie" ;
-: PATH-STALL$ ( -- ^u8 n ) s" /stall" ;
-: PATH-DRIBBLE$ ( -- ^u8 n ) s" /dribble" ;
-: PATH-TRICKLE$ ( -- ^u8 n ) s" /trickle" ;
-: PATH-STREAM$ ( -- ^u8 n ) s" /stream" ;
-: PATH-STREAM-SHORT$ ( -- ^u8 n ) s" /stream-short" ;
-: PATH-HEADERS$ ( -- ^u8 n ) s" /headers" ;
-: PATH-HEADERS-B$ ( -- ^u8 n ) s" /headers-b" ;
-: PATH-REDIRECT$ ( -- ^u8 n ) s" /redirect" ;
-: PATH-INTERIM$ ( -- ^u8 n ) s" /interim" ;
-: PATH-RETRY$ ( -- ^u8 n ) s" /retry" ;
-: PATH-ECHO$ ( -- ^u8 n ) s" /echo" ;
-: PATH-COUNT$ ( -- ^u8 n ) s" /count" ;
-: PATH-FOUND$ ( -- ^u8 n ) s" /found" ;
-: PATH-SEE-OTHER$ ( -- ^u8 n ) s" /see-other" ;
-: PATH-TEMPORARY$ ( -- ^u8 n ) s" /temporary" ;
-: PATH-HUGE$ ( -- ^u8 n ) s" /huge" ;
-: PATH-CHUNKED$ ( -- ^u8 n ) s" /chunked" ;
-: PATH-BODIED-REDIRECT$ ( -- ^u8 n ) s" /bodied-redirect" ;
-: PATH-CUT-HEAD$ ( -- ^u8 n ) s" /cut-head" ;
-: PATH-CR-END$ ( -- ^u8 n ) s" /cr-end" ;
-: PATH-HINT-CUT$ ( -- ^u8 n ) s" /hint-cut" ;
-: PATH-BAD-CHUNK$ ( -- ^u8 n ) s" /bad-chunk" ;
+: PROXY-BODY$ ( -- str ) S\" proxy\n" ;
+: COOKIE-PAIR$ ( -- str ) s" probe=value1" ;
+: NO-COOKIE$ ( -- str )  s" none" ;
+: PATH-HELLO$ ( -- str ) s" /hello.txt" ;
+: PATH-COOKIE$ ( -- str ) s" /cookie" ;
+: PATH-STALL$ ( -- str ) s" /stall" ;
+: PATH-DRIBBLE$ ( -- str ) s" /dribble" ;
+: PATH-TRICKLE$ ( -- str ) s" /trickle" ;
+: PATH-STREAM$ ( -- str ) s" /stream" ;
+: PATH-STREAM-SHORT$ ( -- str ) s" /stream-short" ;
+: PATH-HEADERS$ ( -- str ) s" /headers" ;
+: PATH-HEADERS-B$ ( -- str ) s" /headers-b" ;
+: PATH-REDIRECT$ ( -- str ) s" /redirect" ;
+: PATH-INTERIM$ ( -- str ) s" /interim" ;
+: PATH-RETRY$ ( -- str ) s" /retry" ;
+: PATH-ECHO$ ( -- str ) s" /echo" ;
+: PATH-COUNT$ ( -- str ) s" /count" ;
+: PATH-FOUND$ ( -- str ) s" /found" ;
+: PATH-SEE-OTHER$ ( -- str ) s" /see-other" ;
+: PATH-TEMPORARY$ ( -- str ) s" /temporary" ;
+: PATH-HUGE$ ( -- str ) s" /huge" ;
+: PATH-CHUNKED$ ( -- str ) s" /chunked" ;
+: PATH-BODIED-REDIRECT$ ( -- str ) s" /bodied-redirect" ;
+: PATH-CUT-HEAD$ ( -- str ) s" /cut-head" ;
+: PATH-CR-END$ ( -- str ) s" /cr-end" ;
+: PATH-HINT-CUT$ ( -- str ) s" /hint-cut" ;
+: PATH-BAD-CHUNK$ ( -- str ) s" /bad-chunk" ;
 : SENT-BYTES ( -- ^u8 ) HUGE-SENT @ ;
 : GOT-BYTES ( -- ^u8 ) HUGE-GOT @ ;
-: FORM$ ( -- ^u8 n ) s" a=1" ;
-: JSON$ ( -- ^u8 n ) s" {}" ;
-: HEADERS$ ( -- ^u8 n )
+: FORM$ ( -- str ) s" a=1" ;
+: JSON$ ( -- str ) s" {}" ;
+: HEADERS$ ( -- str )
    S\" HTTP/1.0 200 OK\r\nCache-Control: max-age=60\r\nExpires: Wed, 21 Oct 2030 07:28:00 GMT\r\nAge: 7\r\nRetry-After: 9\r\nX-Duplicate: first\r\nX-Duplicate: second\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
-: HEADERS-B$ ( -- ^u8 n )
+: HEADERS-B$ ( -- str )
    S\" HTTP/1.0 200 OK\r\nX-Generation: two\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
-: CR-END$ ( -- ^u8 n )
+: CR-END$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\rX\r\n" ;
-: CR-BODY$ ( -- ^u8 n ) s" abc" ;
-: INTERIM-FINAL$ ( -- ^u8 n )
+: CR-BODY$ ( -- str ) s" abc" ;
+: INTERIM-FINAL$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Cache-Control\r\nConnection: close\r\n\r\n" ;
-: BAD-CHUNK-HEAD$ ( -- ^u8 n )
+: BAD-CHUNK-HEAD$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" ;
-: DRIBBLE$ ( -- ^u8 n ) DRIBBLE-BUF DRIBBLE-U ;
+: DRIBBLE$ ( -- str ) DRIBBLE-BUF DRIBBLE-U ;
 
 
 : DRIBBLE-FILL ( -- )
@@ -262,27 +263,27 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 \ Header names are matched without case because HTTP does not fix it; the path
 \ and the method are matched exactly because HTTP does.
-: REQ-AT? ( ^u8 n n -- bool ) {: needle:^ needleu:n at:n :}
+: REQ-AT? ( str n -- bool ) {: needle:^ needleu:n at:n :}
    at needleu + HEAD-U @ > if false exit then
    REQ-BUF at + needleu needle needleu STR= ;
 
 
-: REQ-AT-CI? ( ^u8 n n -- bool ) {: needle:^ needleu:n at:n :}
+: REQ-AT-CI? ( str n -- bool ) {: needle:^ needleu:n at:n :}
    at needleu + HEAD-U @ > if false exit then
    REQ-BUF at + needleu needle needleu STR=CI ;
 
 
-: REQ-HAS? ( ^u8 n -- bool ) {: needle:^ needleu:n :}
+: REQ-HAS? ( str -- bool ) {: needle:^ needleu:n :}
    HEAD-U @ 0 ?do needle needleu i REQ-AT? if true unloop exit then loop
    false ;
 
 
-: REQ-HAS-CI? ( ^u8 n -- bool ) {: needle:^ needleu:n :}
+: REQ-HAS-CI? ( str -- bool ) {: needle:^ needleu:n :}
    HEAD-U @ 0 ?do needle needleu i REQ-AT-CI? if true unloop exit then loop
    false ;
 
 
-: BLANK-LINE$ ( -- ^u8 n )
+: BLANK-LINE$ ( -- str )
    S\" \r\n\r\n" ;
 
 
@@ -310,7 +311,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    repeat ;
 
 
-: METHOD$ ( -- ^u8 n )
+: METHOD$ ( -- str )
    REQ-BUF 0 TOKEN-END ;
 
 
@@ -319,11 +320,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    REQ-BUF at + at TOKEN-END at - ;
 
 
-: METHOD-IS? ( ^u8 n -- bool ) {: want:^ wantu:n :}
+: METHOD-IS? ( str -- bool ) {: want:^ wantu:n :}
    METHOD$ want wantu STR= ;
 
 
-: PATH-IS? ( ^u8 n -- bool ) {: want:^ wantu:n :}
+: PATH-IS? ( str -- bool ) {: want:^ wantu:n :}
    PATH$ want wantu STR= ;
 
 
@@ -337,7 +338,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    RES-U @ 1+ RES-U ! ;
 
 
-: RES+ ( ^u8 n -- ) {: text:^ u:n :}
+: RES+ ( str -- ) {: text:^ u:n :}
    RES-U @ u + RES-CAP > if E-STR-CAPACITY throw then
    text RES-BUF RES-U @ + u BYTE-COPY
    RES-U @ u + RES-U ! ;
@@ -362,7 +363,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    NUM-N @ 0 ?do NUM-BUF NUM-N @ 1- i - + c@ RES-C+ loop ;
 
 
-: STATUS-LINE ( ^u8 n -- ) {: text:^ u:n :}
+: STATUS-LINE ( str -- ) {: text:^ u:n :}
    s" HTTP/1.0 " RES+ text u RES+ CRLF+ ;
 
 
@@ -373,7 +374,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 \ Content-Length plus the close makes the body length unambiguous to the client
 \ either way, which is what the exact-bytes assertions rest on.
-: RESPOND ( ^u8 n ^u8 n -- ) {: text:^ u:n body:^ bodyu:n :}
+: RESPOND ( str str -- ) {: text:^ u:n body:^ bodyu:n :}
    RES-RESET
    text u STATUS-LINE
    s" Content-Type: text/plain" RES+ CRLF+
@@ -383,7 +384,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    body bodyu RES+ ;
 
 
-: RESPOND-EMPTY ( ^u8 n -- ) {: text:^ u:n :}
+: RESPOND-EMPTY ( str -- ) {: text:^ u:n :}
    RES-RESET
    text u STATUS-LINE
    s" Connection: close" RES+ CRLF+ CRLF+ ;
@@ -696,7 +697,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    COOKIE-PAIR$ REQ-HAS? ;
 
 
-: COOKIE-BODY$ ( -- ^u8 n )
+: COOKIE-BODY$ ( -- str )
    COOKIE-SENT? if COOKIE-PAIR$ exit then
    NO-COOKIE$ ;
 
@@ -736,7 +737,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    REDIRECT-RESPONSE conn SEND-RESPONSE ;
 
 
-: SERVE-MOVED ( TCP4:connection ^u8 n -- ) {: conn:TCP4:connection text:^ u:n :}
+: SERVE-MOVED ( TCP4:connection str -- ) {: conn:TCP4:connection text:^ u:n :}
    RES-RESET
    text u STATUS-LINE
    s" Location: " RES+ PATH-ECHO$ RES+ CRLF+
@@ -1012,7 +1013,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    SILENT-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER SERVER-STATUS ;
 
 
-: UNDER-ROOT ( ^u8 n ^u8 -- n ) {: name:^ nameu:n dst:^ :}
+: UNDER-ROOT ( str ^u8 -- n ) {: name:^ nameu:n dst:^ :}
    ROOT$ name nameu dst FS:JOIN-PATH ;
 
 
@@ -1029,14 +1030,14 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    FILE$ HELLO$ FS:WRITE-ALL ;
 
 
-: FILE-URL$ ( -- ^u8 n )
+: FILE-URL$ ( -- str )
    SB-RESET
    s" file://" SB-APPEND
    FILE$ SB-APPEND
    SB$ ;
 
 
-: SCHEME-URL ( ^u8 n n ^u8 n -- ^u8 n )
+: SCHEME-URL ( str n str -- str )
    {: scheme:^ schemeu:n port:n path:^ pathu:n :}
    SB-RESET
    scheme schemeu SB-APPEND
@@ -1046,11 +1047,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    SB$ ;
 
 
-: URL-AT ( n ^u8 n -- ^u8 n ) {: port:n path:^ pathu:n :}
+: URL-AT ( n str -- str ) {: port:n path:^ pathu:n :}
    s" http" port path pathu SCHEME-URL ;
 
 
-: URL-FOR ( ^u8 n -- ^u8 n ) {: path:^ pathu:n :}
+: URL-FOR ( str -- str ) {: path:^ pathu:n :}
    SERVER-PORT @ path pathu URL-AT ;
 
 
@@ -1139,7 +1140,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ;MATCH ;
 
 
-: HEADER-EXACT ( CURL:handle ^u8 n -- )
+: HEADER-EXACT ( CURL:handle str -- )
    {: subject:CURL:handle want:^ u:n :}
    subject u HEADER-COPY
    HEADER-KIND @ 0 T=
@@ -1181,7 +1182,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    TRANSCRIPT-BUF TRANSCRIPT-U @ SB$ T$= ;
 
 
-: TEXT-AT? ( ^u8 n ^u8 n n -- bool )
+: TEXT-AT? ( str str n -- bool )
    {: text:^ u:n needle:^ needleu:n at:n :}
    at needleu + u > if false exit then
    text at + needleu needle needleu STR= ;
@@ -1190,13 +1191,13 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 \ The jar is libcurl's Netscape format, where the name and the value are two
 \ tab-separated fields, so each is looked for on its own. The jar is read into
 \ its own buffer: REQ-BUF belongs to the server task.
-: JAR-HAS? ( ^u8 n -- bool ) {: needle:^ needleu:n :}
+: JAR-HAS? ( str -- bool ) {: needle:^ needleu:n :}
    JAR$ JAR-TEXT-BUF RES-CAP FS:READ-ALL {: u:n :}
    u 0 ?do JAR-TEXT-BUF u needle needleu i TEXT-AT? if true unloop exit then loop
    false ;
 
 
-: GET-READY ( ^u8 n -- CURL:handle ) {: path:^ pathu:n :}
+: GET-READY ( str -- CURL:handle ) {: path:^ pathu:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathu URL-FOR CURL:URL! EXPECT-OK
    subject ;
@@ -1214,7 +1215,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : NO-PROXY-UP-Z ( -- ^u8 ) S\" NO_PROXY\z" drop ;
 
 
-: PROXY-URL$ ( -- ^u8 n )
+: PROXY-URL$ ( -- str )
    SERVER-PORT @ s" " URL-AT ;
 
 
@@ -1223,7 +1224,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ENV-DUP dup 0= if E-FS-IO throw then ;
 
 
-: ENV-RESTORE ( ^u8 n -- )
+: ENV-RESTORE ( str -- )
    {: name old:n :}
    old 0= if
       name ENV-UNSET
@@ -1349,16 +1350,16 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 501 T= ;
 
 
-: ECHO-HAS? ( ^u8 n -- bool ) {: needle:^ needleu:n :}
+: ECHO-HAS? ( str -- bool ) {: needle:^ needleu:n :}
    LAST-LEN @ 0 ?do BODY$ needle needleu i TEXT-AT? if true unloop exit then loop
    false ;
 
 
-: ECHO-STARTS? ( ^u8 n -- bool ) {: line:^ lineu:n :}
+: ECHO-STARTS? ( str -- bool ) {: line:^ lineu:n :}
    BODY$ line lineu STARTS-WITH? ;
 
 
-: FORM-TO ( CURL:handle ^u8 n -- ) {: subject:CURL:handle path:^ pathu:n :}
+: FORM-TO ( CURL:handle str -- ) {: subject:CURL:handle path:^ pathu:n :}
    subject path pathu URL-FOR CURL:URL! EXPECT-OK
    subject FORM$ CURL:BODY! EXPECT-OK ;
 
@@ -1654,7 +1655,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    TASK:THROW@ RETHROW ;
 
 
-: PLAIN-ANSWER$ ( -- ^u8 n )
+: PLAIN-ANSWER$ ( -- str )
    S\" HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n" ;
 
 
@@ -1820,7 +1821,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    0 CURL:>HANDLE CURL:CLEANUP ;
 
 
-: SPLIT-HEADER ( ^u8 n -- )
+: SPLIT-HEADER ( str -- )
    {: line:^ lu:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject line lu CURL:HEADER+ EXPECT-OK
@@ -1892,7 +1893,7 @@ PTR-VARIABLE LONG-PTR
 variable LONG-U
 variable LONG-ANSWER
 
-: LONG-TEXT ( -- ^u8 n )
+: LONG-TEXT ( -- str )
    LONG-PTR @ LONG-U @ ;
 
 : LONG-OPEN ( n -- ) {: u:n :}
@@ -2031,7 +2032,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:CLEANUP ;
 
 
-: SPAN-FETCH ( ^u8 n n bool -- ) {: path:^ pathu:n capacity:n multi:bool :}
+: SPAN-FETCH ( str n bool -- ) {: path:^ pathu:n capacity:n multi:bool :}
    path pathu GET-READY capacity multi SPAN-RUN ;
 
 

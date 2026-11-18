@@ -1,3 +1,4 @@
+split-str
 \ arena.f - an arena a program holds by pointer: zeroed allocations that never
 \ move, release actions and child arenas, all released together. The arena's
 \ header sits at the start of its first chunk; each later chunk is the larger
@@ -122,7 +123,7 @@ CAST: >ACTION ( ^u8 -- ^action )
 
 
 \ Answers the chunk before `base`, and E-MEM-UNMAP when the unmap was refused.
-: UNMAP-CHUNK ( ^u8 -- ^u8 n )
+: UNMAP-CHUNK ( ^u8 -- str )
    {: base:^ :}
    base >CHUNK {: c:^ :}
    c CHUNK-PREV @
@@ -165,26 +166,26 @@ CAST: >ACTION ( ^u8 -- ^action )
 
 
 \ The arena's allocator: its state is the arena's own first-chunk bytes.
-: SELF-ALLOC ( ^u8 n -- ^u8 ) swap >ARENA swap EXTENT BUMP ;
+: SELF-ALLOC ( str -- ^u8 ) swap >ARENA swap EXTENT BUMP ;
 
 
 \ A shrink zeroes the cut bytes before a later growth reads them or the
 \ newest block gives them back to its chunk.
-: ZERO-TAIL ( ^u8 n n -- )
+: ZERO-TAIL ( str n -- )
    {: block:^ old:n new:n :}
    new old < if 0 block new + old new - SPAN:MAKE SPAN:FILL then ;
 
 
 \ True when the block is the newest allocation and its chunk has `more` bytes
 \ after it; `more` is below zero when the block shrinks.
-: IN-PLACE? ( ^arena ^u8 n n -- bool )
+: IN-PLACE? ( ^arena str n -- bool )
    {: a:^ block:^ extent:n more:n :}
    a NEWEST {: base:^ size:n :}
    block extent + base a ARENA-TOP @ + =
    size a ARENA-TOP @ - more >= and ;
 
 
-: SELF-RESIZE ( ^u8 ^u8 n n -- ^u8 )
+: SELF-RESIZE ( ^u8 str n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    st >ARENA {: a:^ :}
    old EXTENT {: oe:n :}

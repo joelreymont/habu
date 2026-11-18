@@ -1,3 +1,4 @@
+split-str
 \ http-request.f - one HTTP/1.1 request read off a connection into a worker's
 \ slot. Every span the parser records addresses the slot's own input buffer and
 \ lives until the worker starts the next request.
@@ -397,28 +398,28 @@ private
    idx end 2 + PARSE-HEADERS-FROM ;
 
 
-: HEADER-MATCH ( n n ^u8 n -- n ) {: idx:n at:n name:^ len:n :}
+: HEADER-MATCH ( n n str -- n ) {: idx:n at:n name:^ len:n :}
    at idx HEADER-N@ >= if -1 exit then
    idx at HEADER-NAME$ name len STR=CI if at exit then
    idx at 1+ name len RECURSE ;
 
 
-: FIND-HEADER ( n ^u8 n -- n ) {: idx:n name:^ len:n :}
+: FIND-HEADER ( n str -- n ) {: idx:n name:^ len:n :}
    idx 0 name len HEADER-MATCH ;
 
 
-: COUNT-FROM ( n n ^u8 n -- n ) {: idx:n at:n name:^ len:n :}
+: COUNT-FROM ( n n str -- n ) {: idx:n at:n name:^ len:n :}
    at idx HEADER-N@ >= if 0 exit then
    idx at 1+ name len RECURSE {: rest:n :}
    idx at HEADER-NAME$ name len STR=CI if rest 1+ exit then
    rest ;
 
 
-: COUNT-HEADER ( n ^u8 n -- n ) {: idx:n name:^ len:n :}
+: COUNT-HEADER ( n str -- n ) {: idx:n name:^ len:n :}
    idx 0 name len COUNT-FROM ;
 
 
-: HEADER$ ( n ^u8 n -- ^u8 n bool ) {: idx:n name:^ len:n :}
+: HEADER$ ( n str -- str bool ) {: idx:n name:^ len:n :}
    idx name len FIND-HEADER {: at:n :}
    at 0 < if idx 0 0 SPAN$ false exit then
    idx at HEADER-VALUE$ true ;
@@ -439,7 +440,7 @@ $5D constant CLOSE-BRACKET
 
 
 \ True when every byte passes the test; an empty run passes.
-: EVERY? ( ^u8 n [ n -- bool ] -- bool )
+: EVERY? ( str [ n -- bool ] -- bool )
    {: a u:n test :}
    u 0 ?do
       a i + c@ test execute 0= if false unloop exit then
@@ -457,7 +458,7 @@ $5D constant CLOSE-BRACKET
 
 
 \ The "%" at that offset begins an escape: two hex digits follow it.
-: ESCAPE? ( ^u8 n n -- bool )
+: ESCAPE? ( str n -- bool )
    {: a u:n at:n :}
    at 2 + u >= if false exit then
    a at + 1+ 2 [: STR-HEX-DIGIT? ;] EVERY? ;
@@ -465,7 +466,7 @@ $5D constant CLOSE-BRACKET
 
 \ reg-name (RFC 3986 3.2.2), which an IPv4address is too, never empty (RFC
 \ 9110 4.2.1).
-: REG-NAME? ( ^u8 n -- bool )
+: REG-NAME? ( str -- bool )
    {: a u:n :}
    u 0= if false exit then
    u 0 ?do
@@ -480,7 +481,7 @@ $5D constant CLOSE-BRACKET
 
 \ What follows the host: nothing, or ":" and a port, whose digits may be none
 \ (RFC 3986 3.2.3).
-: PORT-PART? ( ^u8 n -- bool )
+: PORT-PART? ( str -- bool )
    {: a u:n :}
    u 0= if true exit then
    a c@ COLON <> if false exit then
@@ -488,14 +489,14 @@ $5D constant CLOSE-BRACKET
 
 
 \ h16: one to four hex digits.
-: HEX16? ( ^u8 n -- bool )
+: HEX16? ( str -- bool )
    {: a u:n :}
    u 1 < u 4 > or if false exit then
    a u [: STR-HEX-DIGIT? ;] EVERY? ;
 
 
 \ dec-octet: 0 to 255, with no leading zero.
-: DEC-OCTET? ( ^u8 n -- bool )
+: DEC-OCTET? ( str -- bool )
    {: a u:n :}
    u 1 < u 3 > or if false exit then
    a u STR-DIGITS? 0= if false exit then
@@ -504,7 +505,7 @@ $5D constant CLOSE-BRACKET
 
 
 \ IPv4address: four dec-octets split by ".".
-: IPV4? ( ^u8 n -- bool )
+: IPV4? ( str -- bool )
    {: a u:n :}
    a u DOT COUNT-CHAR 3 <> if false exit then
    0
@@ -519,7 +520,7 @@ $5D constant CLOSE-BRACKET
 
 \ The total with a run's last group added: an h16 counts one and a dotted quad
 \ two; -1 when it is neither.
-: LAST-GROUP ( n ^u8 n -- n )
+: LAST-GROUP ( n str -- n )
    {: total:n a u:n :}
    a u HEX16? if total 1+ exit then
    a u IPV4? if total 2 + exit then
@@ -543,7 +544,7 @@ $5D constant CLOSE-BRACKET
 
 \ The groups on each side of the "::" at that offset: fewer than eight in all,
 \ since it stands for one at least, and no dotted quad before it.
-: ELIDED? ( ^u8 n n -- bool )
+: ELIDED? ( str n -- bool )
    {: a u:n at:n :}
    a at DOT COUNT-CHAR 0 <> if false exit then
    a at GROUPS {: left:n :}
@@ -554,7 +555,7 @@ $5D constant CLOSE-BRACKET
 
 \ IPv6address (RFC 3986 3.2.2): eight 16-bit groups, or fewer around the one
 \ "::" that stands for the rest.
-: IPV6? ( ^u8 n -- bool )
+: IPV6? ( str -- bool )
    {: a u:n :}
    a u s" ::" FIND-SUB
    MATCH option
@@ -571,7 +572,7 @@ $5D constant CLOSE-BRACKET
 
 \ IPvFuture past its "v": a hex version, ".", then at least one unreserved,
 \ sub-delims or ":" byte.
-: FUTURE? ( ^u8 n -- bool )
+: FUTURE? ( str -- bool )
    {: a u:n :}
    a u DOT BEFORE {: k:n :}
    k 0= k 1+ u >= or if false exit then
@@ -580,7 +581,7 @@ $5D constant CLOSE-BRACKET
 
 
 \ What an IP-literal's brackets hold: IPvFuture after a "v", else IPv6.
-: IP-LITERAL? ( ^u8 n -- bool )
+: IP-LITERAL? ( str -- bool )
    {: a u:n :}
    u 0= if false exit then
    a 1 s" v" STR=CI if a 1+ u 1- FUTURE? exit then
@@ -588,7 +589,7 @@ $5D constant CLOSE-BRACKET
 
 
 \ An IP-literal past its "[": the literal up to the "]", then the port part.
-: LITERAL-HOST? ( ^u8 n -- bool )
+: LITERAL-HOST? ( str -- bool )
    {: a u:n :}
    a u CLOSE-BRACKET BEFORE {: k:n :}
    k u = if false exit then
@@ -598,7 +599,7 @@ $5D constant CLOSE-BRACKET
 
 \ Host = uri-host [ ":" port ] (RFC 9110 7.2): an IP-literal in brackets, else
 \ a reg-name up to the first ":".
-: HOST-VALUE? ( ^u8 n -- bool )
+: HOST-VALUE? ( str -- bool )
    {: a u:n :}
    a u s" [" STARTS-WITH? if a 1+ u 1- LITERAL-HOST? exit then
    a u COLON BEFORE {: k:n :}
@@ -620,7 +621,7 @@ public
 
 \ True when a comma-separated header value (RFC 9110 5.6.1) holds the token,
 \ each element trimmed and compared case-insensitively.
-: LIST-HAS? ( ^u8 n ^u8 n -- bool )
+: LIST-HAS? ( str str -- bool )
    {: list:^ listu:n token:^ tokenu:n :}
    0 begin {: start:n :}
       list listu CH-COMMA start SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
@@ -920,7 +921,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
    va vu s" 100-continue" STR=CI ;
 
 
-: WRITE-SPAN ( TCP4:connection ^u8 n -- bool )
+: WRITE-SPAN ( TCP4:connection str -- bool )
    {: conn:TCP4:connection bytes:^ len:n :}
    len 0= if true exit then
    conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
@@ -970,7 +971,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
 
 public
 
-: METHOD$ ( request -- ^u8 n )
+: METHOD$ ( request -- str )
    SLOT-OF-REQUEST SLOT-METHOD$ ;
 
 
@@ -987,7 +988,7 @@ public
 \ has it. Names and values decode as a web form; a pair with no "=" has the
 \ empty value. The parser checked every escape (ESCAPES-OK?), so each one
 \ decodes.
-: PARAM+ ( request ^u8 n ^a -- bool )
+: PARAM+ ( request str ^a -- bool )
    {: subject:request key:^ keyu:n buf:^ :}
    subject QUERY$ {: q:^ qu:n :}
    0 begin {: start:n :}
@@ -1000,7 +1001,7 @@ public
 
 
 \ The version as sent: `HTTP/1.1`, `HTTP/1.0`.
-: VERSION$ ( request -- ^u8 n )
+: VERSION$ ( request -- str )
    SLOT-OF-REQUEST SLOT-VERSION$ ;
 
 
@@ -1017,12 +1018,12 @@ public
    idx SLOT-BODY$ ;
 
 
-: HEADER-OF$ ( request ^u8 n -- ^u8 n bool ) {: subject:request name:^ len:n :}
+: HEADER-OF$ ( request str -- str bool ) {: subject:request name:^ len:n :}
    subject SLOT-OF-REQUEST name len HEADER$ ;
 
 
 \ A header whose value is trusted is read only when exactly one arrived.
-: HEADER-COUNT-OF ( request ^u8 n -- n ) {: subject:request name:^ len:n :}
+: HEADER-COUNT-OF ( request str -- n ) {: subject:request name:^ len:n :}
    subject SLOT-OF-REQUEST name len COUNT-HEADER ;
 
 

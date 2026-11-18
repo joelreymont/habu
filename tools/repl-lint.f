@@ -1,3 +1,4 @@
+split-str
 \ repl-lint.f -- CLI wrapper for REPL exit lint.
 
 require src/lib/error.f

@@ -1,3 +1,4 @@
+split-str
 \ codesign-test.f - focused tests for src/lib/codesign.f.
 \ Run: bin/hb --load src/lib/codesign-test.f
 
@@ -34,36 +35,36 @@ create CST-ELF-BUF PATH-CAP allot
 create CST-UNSIGNED-BUF PATH-CAP allot
 create CST-IN-BUF PATH-CAP allot
 
-: CST-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
+: CST-COPY! ( str ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CST-PATH! ( ^u8 n ^u8 n ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
+: CST-PATH! ( str str ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
    pa pu na nu dst FS:JOIN-PATH lenp ! ;
 
-: CST-ROOT ( -- ^u8 n )
+: CST-ROOT ( -- str )
    CST-ROOT-BUF CST-ROOT-U @ ;
 
-: CST-SIGN ( -- ^u8 n )
+: CST-SIGN ( -- str )
    CST-SIGN-BUF CST-SIGN-U @ ;
 
-: CST-ENSURE ( -- ^u8 n )
+: CST-ENSURE ( -- str )
    CST-ENSURE-BUF CST-ENSURE-U @ ;
 
-: CST-RESIGN ( -- ^u8 n )
+: CST-RESIGN ( -- str )
    CST-RESIGN-BUF CST-RESIGN-U @ ;
 
-: CST-KEEP ( -- ^u8 n )
+: CST-KEEP ( -- str )
    CST-KEEP-BUF CST-KEEP-U @ ;
 
-: CST-ELF ( -- ^u8 n )
+: CST-ELF ( -- str )
    CST-ELF-BUF CST-ELF-U @ ;
 
-: CST-UNSIGNED ( -- ^u8 n )
+: CST-UNSIGNED ( -- str )
    CST-UNSIGNED-BUF CST-UNSIGNED-U @ ;
 
-: CST-IN ( -- ^u8 n )
+: CST-IN ( -- str )
    CST-IN-BUF CST-IN-U @ ;
 
 : CST-PREPARE ( -- )
@@ -78,7 +79,7 @@ create CST-IN-BUF PATH-CAP allot
    CST-ROOT s" elf" CST-ELF-BUF CST-ELF-U CST-PATH!
    CST-ROOT s" unsigned-script" CST-UNSIGNED-BUF CST-UNSIGNED-U CST-PATH! ;
 
-: CST-CP ( ^u8 n ^u8 n -- ) {: src:^ srcu dst:^ dstu :}
+: CST-CP ( str str -- ) {: src:^ srcu dst:^ dstu :}
    PROC-ARGV-RESET
    src srcu  >LEN PROC-ARGV+
    dst dstu  >LEN PROC-ARGV+
@@ -87,7 +88,7 @@ create CST-IN-BUF PATH-CAP allot
 : CST-TOOL-RC ( -- n )
    CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-: CST-TEAM ( -- ^u8 n )
+: CST-TEAM ( -- str )
    s" 8TW82D98K7" ;
 
 DYNAMIC-BUFFER CST-OUT u8
@@ -105,7 +106,7 @@ variable CST-ERR-U
    CST-ERR-RELEASE ;
 
 \ Runs tool with PROC-ARGV and stdin in; its stderr stays in CST-ERR.
-: CST-CAPTURE ( ^u8 n ^u8 n -- n ) {: tool:^ toolu:n in:^ inu:n :}
+: CST-CAPTURE ( str str -- n ) {: tool:^ toolu:n in:^ inu:n :}
    PROC-ENV-RESET
    tool toolu >LEN in inu >LEN
    [: CST-OUT-ROOM ;] [: CST-ERR-ROOM ;]
@@ -114,7 +115,7 @@ variable CST-ERR-U
    e LEN>N CST-ERR-U !
    oc PROCESS:ENDING>RC RC>N ;
 
-: CST-TEAM-REQ ( ^u8 n -- ^u8 n ) {: id:^ idu :}
+: CST-TEAM-REQ ( str -- str ) {: id:^ idu :}
    SB-RESET
    s\" =anchor apple generic and identifier \"" SB-APPEND
    id idu SB-APPEND
@@ -124,7 +125,7 @@ variable CST-ERR-U
    SB-BUF SB-LEN @ ;
 
 \ codesign -v exits 3 for a valid signature of another signer, ad hoc included.
-: CST-EXPECT-TEAM ( ^u8 n ^u8 n -- ) {: a:^ u id:^ idu :}
+: CST-EXPECT-TEAM ( str str -- ) {: a:^ u id:^ idu :}
    HB-TARGET-MACOS? 0= if exit then
    id idu CST-TEAM-REQ CST-IN-BUF CST-IN-U CST-COPY!
    PROC-ARGV-RESET
@@ -209,11 +210,11 @@ variable CST-ERR-U
    PROC-ARGV-RESET
    PROCESS:OWN-PATH CST-IN CST-CAPTURE ;
 
-: CST-ERR-HAS? ( ^u8 n -- bool )
+: CST-ERR-HAS? ( str -- bool )
    {: a:^ u :}
    0 CST-ERR CST-ERR-U @ a u CONTAINS? ;
 
-: CST-UNSIGNED-CHILD ( ^u8 n -- n ) {: w:^ wu :}
+: CST-UNSIGNED-CHILD ( str -- n ) {: w:^ wu :}
    SB-RESET
    s\" require src/lib/codesign.f\ns\" " SB-APPEND
    CST-UNSIGNED SB-APPEND
@@ -282,7 +283,7 @@ create CST-IMG-B 128 allot
 
 \ The command is CST-LC-SIGNATURE for a signed image, another for an unsigned
 \ one; the signature offset is the command's, so it may lie past the image.
-: CST-IMAGE ( ^u8 n n -- ) {: a:^ cmd:n sig:n :}
+: CST-IMAGE ( str n -- ) {: a:^ cmd:n sig:n :}
    128 0 ?do 0 a i + c! loop
    CST-MACHO-MAGIC a LE:U32!
    1 a 16 + LE:U32!

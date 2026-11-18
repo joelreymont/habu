@@ -1,3 +1,4 @@
+split-str
 \ shadow.f - a second machine's routine for every definition the native driver
 \ publishes, mapped from its dictionary record. A cross-build runs the target's
 \ prefix on the host and a body's names bind as it compiles, so while a shadow

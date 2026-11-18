@@ -1,3 +1,4 @@
+split-str
 \ eval.f - typed values and throw codes out of evaluated test text, package
 \ TEST-EVAL, loaded by src/lib/test.f. N, FLAG and RC take one cell, a flag or the
 \ throw code out of a source text under `evaluate-closed`, so a test needs no
@@ -18,7 +19,7 @@ variable SRC-U
 variable N-CELL
 TYPED-VARIABLE FLAG-CELL bool
 
-: SRC! ( ^u8 n -- )
+: SRC! ( str -- )
    SRC-U !
    SRC-A ! ;
 
@@ -27,7 +28,7 @@ $400 constant HEAD-CAP
 HEAD-CAP BUFFER: HEAD-BUF
 variable HEAD-LEN
 
-: HEAD+ ( ^u8 n -- )
+: HEAD+ ( str -- )
    HEAD-BUF HEAD-CAP HEAD-LEN BUF-APPEND ;
 
 public
@@ -68,7 +69,7 @@ public
 \ The head line, without its line feed, of the record the engine prints for a
 \ throw of code c that nothing caught. It is built in a buffer of its own, so a
 \ caller's SB survives it; the next call overwrites it.
-: THROWN-HEAD$ ( n -- ^u8 n )
+: THROWN-HEAD$ ( n -- str )
    {: c:n :}
    c ERROR:NAME$ {: name:^ nameu:n :}
    c ERROR:TEXT$ {: text:^ textu:n :}

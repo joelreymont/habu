@@ -1,3 +1,4 @@
+split-str
 \ token.f - token table projected from the shared source lexer.
 require tools/lint/text.f
 require src/lib/source.f
@@ -17,7 +18,7 @@ variable PARENS?
 : T-OFF@ ( n -- ^u8 )
    TOFF @ ;
 
-: T-OFF! ( ^u8 n -- ) {: a:^ k :}
+: T-OFF! ( str -- ) {: a:^ k :}
    a k TOFF ! ;
 
 : T-LEN@ ( n -- n )
@@ -37,7 +38,7 @@ variable PARENS?
       s" lint: token table full (TMAX); grow tools/lint/token.f" EXIT-STATUS:FULL die
    then ;
 
-: TOKEN+ ( ^u8 n -- ) {: a:^ u :}
+: TOKEN+ ( str -- ) {: a:^ u :}
    TOKEN-ENSURE
    a TN# @ T-OFF!
    u TN# @ T-LEN!
@@ -46,7 +47,7 @@ variable PARENS?
 : TOK ( n -- ^u8 n ) {: k :}
    k T-OFF@ k T-LEN@ ;
 
-: TOK= ( n ^u8 n -- bool ) {: k a:^ u :}
+: TOK= ( n str -- bool ) {: k a:^ u :}
    k TOK a u LINT-STR= ;
 
 \ Primitive-name and REPL-path consumers expect an opener followed by its
@@ -61,7 +62,7 @@ variable PARENS?
       k LINT-LEX:CONTENT 1+ TOKEN+
    then ;
 
-: TOKENIZE ( ^u8 n -- )
+: TOKENIZE ( str -- )
    0 TN# !
    LINT-LEX:SOURCE
    LINT-LEX:ERROR? if E-LINT-TOKEN-SOURCE throw then

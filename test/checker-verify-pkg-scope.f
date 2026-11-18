@@ -1,3 +1,4 @@
+split-str
 \ checker-verify-pkg-scope.f - the checker's verifier package scope hands the
 \ caller's package back byte for byte. VERIFY:SOURCE-BUF-IN-SCOPE saves the
 \ caller's package name, length and mode and restores them on leaving; entering
@@ -33,14 +34,14 @@ public
    [: ACT ;] catch ;
 
 \ Replay in a neutral scope, which starts at top level with no imports.
-: REPLAY-NEUTRAL ( ^u8 n -- n ) {: a:^ u:n :}
+: REPLAY-NEUTRAL ( str -- n ) {: a:^ u:n :}
    a SRC-A !
    u SRC-U !
    [: [: ACT ;] CHECK:SCOPED ;] catch ;
 
 \ Diagnostics are collected in prose, not printed, so the rejecting case reports
 \ its own text instead of leaving a rejection on the gate's stderr.
-: REPLAY-QUIET ( ^u8 n -- n ) {: a:^ u:n :}
+: REPLAY-QUIET ( str -- n ) {: a:^ u:n :}
    REJECTION:CAPTURE
    REJECTION:JSON @ {: was:n :}
    false REJECTION:JSON !
@@ -49,7 +50,7 @@ public
    REJECTION:BUFFER-OFF
    rc ;
 
-: DIAG$ ( -- ^u8 n )
+: DIAG$ ( -- str )
    REJECTION:BUFFER$ ;
 
 ;package

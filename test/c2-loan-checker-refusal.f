@@ -1,3 +1,4 @@
+split-str
 \ Syntax and authority refusals through the real evaluator load path.
 require src/lib/test.f
 require src/lib/test/subject.f

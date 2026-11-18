@@ -1,3 +1,4 @@
+split-str
 \ checker-redefinition-order-suite.f - which record of a redefined word its
 \ callers are checked against: the newest wins, and a deletion is an absence.
 

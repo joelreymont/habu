@@ -1,3 +1,4 @@
+split-str
 \ udp4.f - Linux and Darwin IPv4 datagrams through exact, bounded libc
 \ bindings; no protocol, sequencing or retry policy. Calls must not nest within
 \ one task; close sockets before image capture: they are process resources.
@@ -142,13 +143,13 @@ FUNCTION: LOCAL-CALL getsockname ( n ^u8 ^u8 -- i32 ) ;FUNCTION
    ;MATCH ;
 
 
-: OCTET-LENGTH ( ^u8 n -- n ) {: text size:n :}
+: OCTET-LENGTH ( str -- n ) {: text size:n :}
    0 begin dup size < while
       dup text + c@ $2E = if exit then 1 +
    repeat ;
 
 
-: OCTET-VALUE ( ^u8 n -- n ) {: text size:n :}
+: OCTET-VALUE ( str -- n ) {: text size:n :}
    size 1 3 WITHIN-RANGE
    size 1 > text c@ $30 = and if E-OPERAND throw then
    0 size 0 do
@@ -156,12 +157,12 @@ FUNCTION: LOCAL-CALL getsockname ( n ^u8 ^u8 -- i32 ) ;FUNCTION
    loop dup 0 $FF WITHIN-RANGE ;
 
 
-: OCTET ( ^u8 n -- ^u8 n n ) {: text size:n :}
+: OCTET ( str -- str n ) {: text size:n :}
    text size OCTET-LENGTH {: length:n :}
    text length + size length - text length OCTET-VALUE ;
 
 
-: FOLLOWING-OCTET ( n ^u8 n -- n ^u8 n ) {: address:n text size:n :}
+: FOLLOWING-OCTET ( n str -- n str ) {: address:n text size:n :}
    size 1 < if E-OPERAND throw then
    text c@ $2E <> if E-OPERAND throw then
    text $01 + size 1 - OCTET {: next remaining:n octet:n :}
@@ -176,7 +177,7 @@ public
 
 
 \ Strict dotted decimal: four octets, no signs, padding, or leading zeros.
-: ADDRESS$ ( ^u8 n -- address ) {: text size:n :}
+: ADDRESS$ ( str -- address ) {: text size:n :}
    size 7 15 WITHIN-RANGE
    text size OCTET {: next remaining:n first:n :}
    first next remaining FOLLOWING-OCTET FOLLOWING-OCTET FOLLOWING-OCTET

@@ -1,3 +1,4 @@
+split-str
 \ ws-frame-test.f - the RFC 6455 frame codec: section 5.7's examples byte for
 \ byte, every length form at its edges, round trips, short headers, refusals.
 \ Run: bin/hb --load src/lib/net/ws-frame-test.f
@@ -45,7 +46,7 @@ TYPED-VARIABLE WHO WS:sender
    who WHO !
    max BOUND ! ;
 
-: STAGED$ ( -- ^u8 n )
+: STAGED$ ( -- str )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 : DECODE-STAGED ( -- WS:decoded )

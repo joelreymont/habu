@@ -1,3 +1,4 @@
+split-str
 \ again.f - loaded twice by src/lib/error-test.f: the second load declares the
 \ same name again, which is rejected as E-DUPLICATE-DEFINITION.
 

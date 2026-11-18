@@ -1,3 +1,4 @@
+split-str
 \ c2-bytes.f - a program that requires src/lib/c2-memory.f, whose package a
 \ build seals before program source, and copies a byte into owned bytes.
 
@@ -7,7 +8,7 @@ require src/lib/c2-bytes.f
 
 package BITEM-C2-BYTES
 private
-: DOC$ ( -- ^u8 n ) s" a" ;
+: DOC$ ( -- str ) s" a" ;
 
 : TYPE-BYTES ( read-view<p,q,u8> -- )
    C2-BYTES:LENGTH swap  0 ?do  i C2-MEM:BYTE@ swap emit  loop  drop ;

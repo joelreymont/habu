@@ -1,3 +1,4 @@
+split-str
 \ string-test.f - focused tests for checked stdlib string helpers.
 \ Run: bin/hb --load src/lib/string-test.f
 
@@ -44,13 +45,13 @@ variable STR-TEST-BUF2-LEN
 : STR-ASSERT= ( n n -- )
    = STR-ASSERT ;
 
-: STR-ASSERT$ ( ^u8 n ^u8 n -- )
+: STR-ASSERT$ ( str str -- )
    STR= STR-ASSERT ;
 
-: STR-CHECK-REJECTS ( ^u8 n -- )
+: STR-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 STR-ASSERT= ;
 
-: STR-SPLIT-CHECK ( ^u8 n n n ^u8 n n bool -- ) {: a:^ u sep start exp:^ exp-u exp-next exp-ok :}
+: STR-SPLIT-CHECK ( str n n str n bool -- ) {: a:^ u sep start exp:^ exp-u exp-next exp-ok :}
    a u sep start SPLIT-NEXT
    STR-TEST-SPLIT-OK !
    STR-TEST-SPLIT-NEXT !
@@ -64,7 +65,7 @@ variable STR-TEST-BUF2-LEN
       STR-TEST-SPLIT-OK @ 0= STR-ASSERT
    then ;
 
-: STR-PARSE-CHECK ( ^u8 n n bool -- ) {: a:^ u want ok :}
+: STR-PARSE-CHECK ( str n bool -- ) {: a:^ u want ok :}
    a u STR>NUMBER? MATCH option
      none OF ok 0= STR-ASSERT ENDOF
      some OF ok STR-ASSERT want STR-ASSERT= ENDOF
@@ -146,12 +147,12 @@ variable STR-TEST-BUF2-LEN
    s" 9223372036854775808" 0 STR-FALSE STR-PARSE-CHECK
    s" -9223372036854775809" 0 STR-FALSE STR-PARSE-CHECK ;
 
-: STR-PARSE-SOME ( ^u8 n n [ ^u8 n -- option<n> ] -- ) {: a:^ u:n want:n q :}
+: STR-PARSE-SOME ( str n [ str -- option<n> ] -- ) {: a:^ u:n want:n q :}
    a u q execute MATCH option
      none OF 0 0= 0= ENDOF
      some OF want = ENDOF
    ;MATCH STR-ASSERT ;
-: STR-PARSE-NONE ( ^u8 n [ ^u8 n -- option<n> ] -- ) {: a:^ u:n q :}
+: STR-PARSE-NONE ( str [ str -- option<n> ] -- ) {: a:^ u:n q :}
    a u q execute MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
@@ -222,9 +223,9 @@ variable STR-TEST-BUF2-LEN
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: STR-INDEX-OF>N ( ^u8 n n -- n ) INDEX-OF STR-IDX>N ;
-: STR-FIND-SUB>N ( ^u8 n ^u8 n -- n ) FIND-SUB STR-IDX>N ;
-: STR-FIND-SUB-FROM>N ( ^u8 n ^u8 n n -- n ) FIND-SUB-FROM STR-IDX>N ;
+: STR-INDEX-OF>N ( str n -- n ) INDEX-OF STR-IDX>N ;
+: STR-FIND-SUB>N ( str str -- n ) FIND-SUB STR-IDX>N ;
+: STR-FIND-SUB-FROM>N ( str str n -- n ) FIND-SUB-FROM STR-IDX>N ;
 
 : STR-TEST-FIND-SUB-OPTION ( -- )
    s" abcdef" s" bcd" FIND-SUB MATCH option
@@ -292,20 +293,20 @@ CAST: STR-T-BL>RAW ( NUM:byte-len -- n )
 CAST: STR-T-BO>RAW ( NUM:byte-off -- n )
 CAST: STR-T-IC>RAW ( NUM:item-count -- n )
 
-: STR-T-FIND ( ^u8 n ^u8 n -- n ) {: a:^ u:n b:^ v:n :}
+: STR-T-FIND ( str str -- n ) {: a:^ u:n b:^ v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB
    MATCH option
       none OF -1 ENDOF
       some OF NUM:ORDINAL ENDOF
    ;MATCH ;
-: STR-T-INDEX ( ^u8 n n -- n ) {: a:^ u:n c:n :}
+: STR-T-INDEX ( str n -- n ) {: a:^ u:n c:n :}
    a u STR:LENGTH c STR:INDEX-OF
    MATCH option
       none OF -1 ENDOF
       some OF NUM:ORDINAL ENDOF
    ;MATCH ;
 
-: STR-T-SPLIT-CHECK ( ^u8 n n n ^u8 n n bool -- )
+: STR-T-SPLIT-CHECK ( str n n str n bool -- )
    {: a:^ u:n sep:n start:n exp:^ exp-u:n exp-next:n exp-ok:bool :}
    a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT MATCH option
      none OF exp-ok 0= STR-ASSERT ENDOF

@@ -1,3 +1,4 @@
+split-str
 \ import-names.f - an image's imports, which a target writer's BUILD-IMAGE is
 \ given: the C names its GOT binds, in row order, each ending in a NUL.
 
@@ -7,17 +8,17 @@ variable NAMES-U
 variable NAMES-N
 
 public
-: SPAN! ( ^u8 n -- )
+: SPAN! ( str -- )
    {: a:^ u:n :}
    a NAMES !  u NAMES-U !
    0  u 0 ?do a i + c@ 0= if 1 + then loop  NAMES-N ! ;
 
-: SPAN@ ( -- ^u8 n ) NAMES @ NAMES-U @ ;
+: SPAN@ ( -- str ) NAMES @ NAMES-U @ ;
 
 : COUNT ( -- n ) NAMES-N @ ;
 
 \ The name at a byte offset in the span.
-: NAME-AT ( n -- ^u8 n )
+: NAME-AT ( n -- str )
    {: at:n :}
    NAMES @ at +  0
    begin 2dup + c@ 0<> while 1 + repeat ;

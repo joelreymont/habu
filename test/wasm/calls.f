@@ -1,3 +1,4 @@
+split-str
 \ calls.f - WCALLS: execute, catch and finally through xts, quotations and rows,
 \ and quotations that read their word's locals.
 \ CHECKS throws the number of the first entry whose code is not the one it throws

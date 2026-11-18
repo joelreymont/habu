@@ -1,3 +1,4 @@
+split-str
 \ link.f - an arm64 shadow emission patched in place for its link-time address:
 \ calls become bl/b and code addresses adrp+add relative to where the code runs,
 \ data address chains take the value a data resolver gives. Words visible only
@@ -77,7 +78,7 @@ private
 
 \ The size of the chain a row of kind holds at site in emission bytes b, s of them: a code
 \ chain is ADDR-CHAIN-BYTES long, a data chain whole; 0 when no such chain is there.
-: SITE-SIZE ( ^u8 n n n -- n )
+: SITE-SIZE ( str n n -- n )
    {: b:^ s:n site:n kind:n :}
    site 0<  site 3 and 0<>  or  site s >=  or if 0 exit then
    b site +  b s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}

@@ -1,3 +1,4 @@
+split-str
 \ font.f - one selected font face and one LTR SVG glyph run through HarfBuzz
 \ 14.2+ (libharfbuzz and libharfbuzz-vector), in `package FONT`. FONT never
 \ searches for a font, replaces a missing glyph or splits a run. The font file
@@ -171,7 +172,7 @@ TASK:+USER OPEN-CELL ^u8
    IMAGES @ node LINK ! node IMAGES !
    UNLOCK ident >IMAGE ;
 
-: OPEN-BLOB ( ^u8 n n -- ^u8 )
+: OPEN-BLOB ( str n -- ^u8 )
    {: data:^ size:n index:n :}
    data size 0 NULL-PTR NULL-PTR BLOB-CREATE {: blob:^ :}
    blob NULL? if E-OPEN throw then
@@ -210,7 +211,7 @@ TASK:+USER OPEN-CELL ^u8
    selected script <> if E-TEXT throw then
    selected visible ;
 
-: TEXT-STEP ( n n ^u8 n n -- n n n )
+: TEXT-STEP ( n n str n -- n n n )
    {: script:n ink:n data:^ size:n cursor:n :}
    data size cursor UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF {: codepoint:n next:n :}
@@ -219,18 +220,18 @@ TASK:+USER OPEN-CELL ^u8
       raw-byte OF 2drop E-TEXT throw ENDOF
    ;MATCH ;
 
-: STEP-IN ( n n n ^u8 n -- n n n )
+: STEP-IN ( n n n str -- n n n )
    {: script:n ink:n cursor:n data:^ size:n :}
    script ink data size cursor TEXT-STEP ;
 
-: TEXT-CHECK ( ^u8 n -- n ) {: data:^ size:n :}
+: TEXT-CHECK ( str -- n ) {: data:^ size:n :}
    size 0 < size MAX-TEXT > or if E-TEXT throw then
    0 0 0 begin dup size < while data size STEP-IN repeat drop nip ;
 
 : BLOB-PRESENT? ( ^u8 -- bool )
    dup BLOB-LEN 0<> swap BLOB-DESTROY ;
 
-: COLOR-GLYPH? ( ^u8 n -- bool ) {: font:^ glyph:n :}
+: COLOR-GLYPH? ( str -- bool ) {: font:^ glyph:n :}
    REF-CELL @ glyph 0 NULL-PTR NULL-PTR COLOR-LAYERS 0<>
    REF-CELL @ glyph COLOR-PAINT 0<> or
    REF-CELL @ glyph COLOR-SVG BLOB-PRESENT? or
@@ -262,24 +263,24 @@ TASK:+USER OPEN-CELL ^u8
    char $5A = or char $2C = or char $20 = or ;
 : PATH-DELIM? ( n -- bool )
    dup PATH-SKIP? swap $22 = or ;
-: TOKEN-END ( ^u8 n n -- n )
+: TOKEN-END ( str n -- n )
    {: svg:^ size:n start:n :}
    start begin dup size < while
       svg over + c@ PATH-DELIM? if exit then
       1+
    repeat E-RENDER throw ;
-: PATH-NUMBER ( ^u8 n -- r )
+: PATH-NUMBER ( str -- r )
    F64-TEXT:PARSE MATCH result
       ok OF ENDOF
       err OF drop E-RENDER throw ENDOF
    ;MATCH ;
-: SCAN-NUMBER ( ^u8 n n -- n )
+: SCAN-NUMBER ( str n -- n )
    {: svg:^ size:n start:n :}
    svg size start TOKEN-END {: stop:n :}
    stop start = if E-RENDER throw then
    svg start + stop start - PATH-NUMBER HULL-VALUE
    stop ;
-: SCAN-PATH ( ^u8 n n -- n )
+: SCAN-PATH ( str n -- n )
    {: svg:^ size:n start:n :}
    start begin dup size < while
       svg over + c@ dup $22 = if
@@ -290,13 +291,13 @@ TASK:+USER OPEN-CELL ^u8
          drop svg size rot SCAN-NUMBER
       then
    repeat E-RENDER throw ;
-: FIND-PATH-AT ( ^u8 n n -- n )
+: FIND-PATH-AT ( str n -- n )
    {: svg:^ size:n start:n :}
    svg start + size start - s" <path d=" FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N start + ENDOF
    ;MATCH ;
-: SCAN-SVG ( ^u8 n -- ) {: svg:^ size:n :}
+: SCAN-SVG ( str -- ) {: svg:^ size:n :}
    HULL-RESET
    0 begin dup size < while
       dup svg size rot FIND-PATH-AT dup 0< if 2drop exit then
@@ -342,7 +343,7 @@ TASK:+USER OPEN-CELL ^u8
    value whole s>f f> if whole 1+ else whole then ;
 : F32@ ( ^u8 -- r ) LE:U32@ F32:WIDEN ;
 : F32! ( r ^u8 -- ) swap F32:NARROW swap LE:U32! ;
-: EMPTY-SVG$ ( -- ^u8 n )
+: EMPTY-SVG$ ( -- str )
    s" <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 0 0' width='0' height='0'/>" ;
 
 : HULL-EDGES ( -- n n n n )
@@ -361,7 +362,7 @@ TASK:+USER OPEN-CELL ^u8
    bottom top - MAX-EXACT-F32 <= and 0= if E-EXTENT throw then
    right left - 0 > bottom top - 0 > and 0= if E-RENDER throw then
    left top right bottom ;
-: FINAL-BOX? ( ^u8 n n n n -- bool )
+: FINAL-BOX? ( str n n n -- bool )
    {: draw:^ x0:n y0:n x1:n y1:n :}
    EXTENTS-BYTES MEM-ALLOC-BYTES {: box:^ cap:n :}
    draw box DRAW-EXTENTS 0= if
@@ -375,7 +376,7 @@ TASK:+USER OPEN-CELL ^u8
    box cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    exact ;
 
-: BOX-RENDER ( ^u8 ^u8 ^u8 n -- ^u8 r r r r )
+: BOX-RENDER ( ^u8 ^u8 str -- ^u8 r r r r )
    {: font:^ buf:^ draw:^ ink:n :}
    EXTENTS-BYTES MEM-ALLOC-BYTES {: box:^ cap:n :}
    draw box DRAW-EXTENTS 0= if
@@ -411,7 +412,7 @@ TASK:+USER OPEN-CELL ^u8
    draw DRAW-RENDER
    x0 s>f y1 negate s>f x1 x0 - s>f y1 y0 - s>f ;
 
-: DRAW-RUN ( ^u8 ^u8 ^u8 ^u8 n n n -- ^u8 r r r r )
+: DRAW-RUN ( ^u8 ^u8 ^u8 str n n -- ^u8 r r r r )
    {: font:^ buf:^ draw:^ data:^ size:n em:n ink:n :}
    font em 64 * dup FONT-SCALE
    buf data size 0 size BUF-ADD
@@ -434,7 +435,7 @@ TASK:+USER OPEN-CELL ^u8
    REF-CELL @ dup NULL? 0= if FACE-DESTROY else drop then
    CLEAR-STATE ;
 
-: RENDER-BODY ( ^u8 n n n -- image )
+: RENDER-BODY ( str n n -- image )
    {: data:^ size:n em:n ink:n :}
    REF-CELL @ FONT-CREATE dup NULL? if E-RENDER throw then FONT-CELL !
    BUF-CREATE dup NULL? if E-RENDER throw then BUF-CELL !
@@ -446,7 +447,7 @@ TASK:+USER OPEN-CELL ^u8
    blob x y w h KEEP-IMAGE
    NULL-PTR BLOB-CELL ! ;
 
-: RENDER-REF ( ^u8 ^u8 n n n -- image )
+: RENDER-REF ( ^u8 str n n -- image )
    {: face:^ data:^ size:n em:n ink:n :}
    CLEAR-STATE
    face REF-CELL !
@@ -483,7 +484,7 @@ public
    em EM-CHECK drop
    handle FONT-REF data size em ink RENDER-REF ;
 \ The bytes are the image's, valid until FREE.
-: SVG$ ( image -- ^u8 n )
+: SVG$ ( image -- str )
    LOCK
    [: IMAGE-NODE OBJECT @
       dup NULL-PTR BLOB-DATA swap BLOB-LEN

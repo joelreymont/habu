@@ -1,3 +1,4 @@
+split-str
 \ request.f - real Wasm fixture for the browser request/reply protocol.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 
@@ -44,7 +45,7 @@ variable TEXT-U
 : REQ-CELL ( n -- )
    8 0 do dup $FF and REQ-C 8 rshift loop drop ;
 
-: REQ+ ( ^u8 n -- )
+: REQ+ ( str -- )
    {: a:^ u:n :}
    u 0 ?do a i + c@ REQ-C loop ;
 
@@ -55,7 +56,7 @@ variable TEXT-U
    {: id:n :}
    7 REQ BYTES>N REQ-U @ id RECORD ;
 
-: IS? ( n n ^u8 n -- bool )
+: IS? ( n n str -- bool )
    {: at:n u:n t:^ tu:n :}
    u tu <> if false exit then
    tu 0 ?do at i + >BYTES c@ t i + c@ <> if false unloop exit then loop

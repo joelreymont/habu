@@ -1,3 +1,4 @@
+split-str
 \ structure-opaque-fixture.f - the OPAQUE family test/structure-opaque-e2e.f
 \ loads: its generated BOX-MAKE / BOX-UNMAKE are OP's private words. WRAP and
 \ PEEK are the only construction surface another package gets.

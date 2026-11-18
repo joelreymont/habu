@@ -1,3 +1,4 @@
+split-str
 \ echo.f - ECHO, the browser host's fixture module (src/lib/browser/host.f),
 \ built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN;
 \ test/browser/echo-test.f runs it under src/lib/browser/host-cli.mjs. Every
@@ -83,7 +84,7 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    TEXT-RECORD ;
 
 \ The u bytes at at are the text t.
-: IS? ( n n ^u8 n -- bool )
+: IS? ( n n str -- bool )
    {: at:n u:n t:^ tu:n :}
    u tu <> if false exit then
    tu 0 ?do  at i + >BYTES c@  t i + c@ <> if false unloop exit then  loop

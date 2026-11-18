@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 require src/lib/byte-edit.f
 
@@ -20,7 +21,7 @@ create ODD-STORE CAP STORAGE-BYTES 1+ allot
 : OPEN ( ^u8 n -- EDIT:editor )
    STORAGE CAP STORAGE-BYTES 2swap INIT ;
 
-: RESULT= ( EDIT:editor ^u8 n -- EDIT:editor )
+: RESULT= ( EDIT:editor str -- EDIT:editor )
    {: expected size:n :}
    OUTPUT OUTPUT-CAP EDIT:WRITE
    OUTPUT swap expected size T$= ;

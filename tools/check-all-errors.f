@@ -1,3 +1,4 @@
+split-str
 \ check-all-errors.f - CLI wrapper for all-errors checker diagnostics.
 
 require src/lib/argv.f

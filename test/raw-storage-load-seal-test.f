@@ -1,3 +1,4 @@
+split-str
 \ raw-storage-load-seal-test.f - the raw-storage nominal seal on the native
 \ `bin/hb --load` definer path.
 \ The engine creates every cell as this file loads, so the checker sees only the

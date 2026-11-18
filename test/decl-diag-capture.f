@@ -1,3 +1,4 @@
+split-str
 \ Shared declaration-rejection capture for the declaration suites: a suite reads
 \ the declaration's record from REJECTION's capture, the channel the check tool
 \ reads, as prose or as JSON. It pins the channel, not a check-tool run. A
@@ -15,11 +16,11 @@ package DECL-DIAG
 : CAPTURE-OFF ( -- )
    REJECTION:BUFFER-OFF
    false REJECTION:JSON ! ;
-: CAPTURED$ ( -- ^u8 n ) REJECTION:BUFFER$ ;
+: CAPTURED$ ( -- str ) REJECTION:BUFFER$ ;
 
 variable SI
 
-: AT? ( ^u8 n ^u8 n -- bool )     \ haystack tail, needle: needle starts here?
+: AT? ( str str -- bool )     \ haystack tail, needle: needle starts here?
    {: ha:^ hu:n na:^ nu:n :}
    nu hu > IF 0 0= 0= EXIT THEN
    0 BEGIN dup nu < WHILE
@@ -28,7 +29,7 @@ variable SI
    REPEAT drop 0 0= ;
 
 \ The offset of the first newline at or after from, else u.
-: EOL ( ^u8 n n -- n )
+: EOL ( str n -- n )
    {: a:^ u:n from:n :}
    from begin dup u < while
       dup a + c@ 10 = if exit then
@@ -36,7 +37,7 @@ variable SI
    repeat ;
 
 \ The offset just past the newline that ends the line before at, else 0.
-: BOL ( ^u8 n n -- n )
+: BOL ( str n -- n )
    {: a:^ u:n at:n :}
    at begin dup 0 > while
       dup 1- a + c@ 10 = if exit then
@@ -44,7 +45,7 @@ variable SI
    repeat ;
 
 \ How many bytes from at on equal c.
-: RUN-OF ( ^u8 n n n -- n )
+: RUN-OF ( str n n -- n )
    {: a:^ u:n at:n c:n :}
    at begin dup u < while
       dup a + c@ c <> if at - exit then
@@ -52,7 +53,7 @@ variable SI
    repeat at - ;
 
 \ The bytes at i read `^ LABEL` and end their line.
-: LABEL-AT? ( n ^u8 n ^u8 n -- bool )
+: LABEL-AT? ( n str str -- bool )
    {: i:n ha:^ hu:n la:^ lu:n :}
    i lu + 3 + hu > if false exit then
    ha i + c@ 94 =  ha i 1+ + c@ 32 = and
@@ -60,7 +61,7 @@ variable SI
    ha i 2 + lu + + c@ 10 = and ;
 
 \ A caret line of the record ends in `^ LABEL`.
-: LABEL? ( ^u8 n -- bool )
+: LABEL? ( str -- bool )
    {: la:^ lu:n :}
    CAPTURED$ {: ha:^ hu:n :}
    0 begin dup hu < while
@@ -77,7 +78,7 @@ variable SI
 
 \ The caret line under the note at e marks ta tu in the note's text; an
 \ empty token is one caret just past the text.
-: MARKS? ( n ^u8 n -- bool )
+: MARKS? ( n str -- bool )
    {: e:n ta:^ tu:n :}
    CAPTURED$ {: ha:^ hu:n :}
    e 13 + {: t:n :}

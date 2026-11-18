@@ -1,3 +1,4 @@
+split-str
 \ process-command-test.f - focused tests for src/lib/process-command.f.
 \ Run: bin/hb --load src/lib/process-command-test.f
 
@@ -32,10 +33,10 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 : RESULT-CODE ( result<n,n> -- n )   \ 0 on clean exit, else the completion code
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
-: RUN# ( CMD:command ^u8 n n -- CMD:command n )
+: RUN# ( CMD:command str n -- CMD:command n )
    >MS CMD:RUN-RC RESULT-CODE ;
 
-: CHECK-LINE ( ^u8 n ^u8 n -- ^u8 n )
+: CHECK-LINE ( str str -- str )
    {: out:^ outu:n expected:^ expectedu:n :}
    outu expectedu 1+ < if
       outu expectedu 1+ T=
@@ -45,7 +46,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    out expectedu + c@ 10 T=
    out expectedu 1+ + outu expectedu 1+ - ;
 
-: LF-COUNT ( ^u8 n -- n ) {: a:^ u:n :}
+: LF-COUNT ( str -- n ) {: a:^ u:n :}
    0 u 0 ?do a i + c@ 10 = if 1 + then loop ;
 
 : PRINTF ( CMD:command -- CMD:command )
@@ -213,7 +214,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 
 \ A deadline, path or closed placed fd refused before the run starts throws its
 \ own code and keeps the previous run's outcome and capture.
-: EXIT3$ ( -- ^u8 n )  s" printf x; exit 3" ;
+: EXIT3$ ( -- str )  s" printf x; exit 3" ;
 
 : EXIT3-KEPT ( CMD:command -- CMD:command )
    CMD:OUTCOME@ {: oc :}
@@ -243,7 +244,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 \ before any spawn.
 create DIR PATH-CAP allot   variable DIR-U
 create REL PATH-CAP allot   variable REL-U
-: CWD-BODY$ ( -- ^u8 n )  s" from the private directory" ;
+: CWD-BODY$ ( -- str )  s" from the private directory" ;
 
 : CWD-RUN ( CMD:command -- CMD:command )
    DIR DIR-U @ CMD:CWD!
@@ -395,15 +396,15 @@ create PIPE-BUF PIPE-CAP allot
 \ The parent writes `|parent` through its own fd, which throws if a run closed it,
 \ then one read takes all the pipe holds; the pipe is never empty, so it never
 \ blocks. A refused read throws E-FS-IO, as FD's reads do.
-: DRAIN$ ( ^n ^n -- ^u8 n )
+: DRAIN$ ( ^n ^n -- str )
    {: r:^ w:^ :}
    w @ >FD s" |parent" FD:WRITE-FULL
    r @ PIPE-BUF PIPE-CAP read
    dup 0 < if E-FS-IO throw then
    PIPE-BUF swap ;
 
-: PIPE$ ( -- ^u8 n ) PIPE-R PIPE-W DRAIN$ ;
-: PIPE4$ ( -- ^u8 n ) PIPE4-R PIPE4-W DRAIN$ ;
+: PIPE$ ( -- str ) PIPE-R PIPE-W DRAIN$ ;
+: PIPE4$ ( -- str ) PIPE4-R PIPE4-W DRAIN$ ;
 
 \ rc 0 when the child's fd 3 takes the write, 7 when fd 3 is closed.
 : FD3-RUN ( CMD:command -- CMD:command n )
@@ -551,7 +552,7 @@ TASK:MIN-STACK TASK:TASK TASK-A
 TASK:MIN-STACK TASK:TASK TASK-B
 
 \ Bytes that break `yes ch`'s pattern: ch at even offsets, LF at odd ones.
-: BAD-YES ( ^u8 n n -- n ) {: a:^ u:n ch:n :}
+: BAD-YES ( str n -- n ) {: a:^ u:n ch:n :}
    0 u 0 ?do i 1 and 0<> if 10 else ch then a i + c@ <> if 1 + then loop ;
 
 : YES ( CMD:command ^u8 n -- CMD:command n ) {: a:^ u:n :}

@@ -1,3 +1,4 @@
+split-str
 \ xt-cell-test.f - xt<effect> storage cells.
 \ `TYPED-VARIABLE NAME [ in -- out ]` declares a code cell whose @ recovers
 \ xt<E> as a T-QUOT: a typed store fit-checks W's certified effect against E,
@@ -30,7 +31,7 @@ TYPED-VARIABLE HKN [ [ n -- n ] -- n ]
 \ define-time reject verdicts (evaluate-closed under catch)
 TYPED-VARIABLE XC-A ^u8  variable XC-U
 : XC-RUN ( -- ) XC-A @ XC-U @ evaluate-closed ;
-: XC-EVAL ( ^u8 n -- n ) XC-U ! XC-A ! [: XC-RUN ;] catch ;
+: XC-EVAL ( str -- n ) XC-U ! XC-A ! [: XC-RUN ;] catch ;
 
 \ ---- checker seam: store / fetch / execute fit-checks ------------------------
 : XC-SECTION-CHECKER ( -- )
@@ -117,10 +118,10 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 \ Executing an xt fetched from untyped memory (a raw variable or create cell) is
 \ refused at RSEXEC's T-VAR branch: its stack effect is not statically known.
 \ The typed xt cell above is the sound alternative.
-: XC-CODE< ( ^u8 n -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
+: XC-CODE< ( str -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: XC-CODE? ( ^u8 n -- )   \ assert the captured diagnostic names this code
+: XC-CODE? ( str -- )   \ assert the captured diagnostic names this code
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 : XC-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
@@ -158,7 +159,7 @@ defer XC-DF ( n -- n )
 \ ---- the `xt` type: the token `'` pushes for a word with no stack effect -------
 \ XE declares it. A cast may take it but never yields one, and no storage holds
 \ one, directly or in a field; a quotation row may name it.
-: XC-EVAL< ( ^u8 n -- )   \ evaluate with JSON diags captured; assert reject
+: XC-EVAL< ( str -- )   \ evaluate with JSON diags captured; assert reject
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    XC-EVAL 70 T= ;
 : XC-STORE-XT? ( -- )   \ the captured refusal is the stored-xt one

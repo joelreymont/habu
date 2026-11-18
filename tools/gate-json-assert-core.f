@@ -1,3 +1,4 @@
+split-str
 \ gate-json-assert-core.f - native JSON assertion library for gate tests.
 
 require src/lib/error.f
@@ -27,22 +28,22 @@ variable GJA-LX
 : GJA-LINE-A@ ( n -- ^u8 )
    GJA-LINE-A @ ;
 
-: GJA-LINE-A! ( ^u8 n -- )
+: GJA-LINE-A! ( str -- )
    GJA-LINE-A ! ;
 
-: GJA-FAIL ( ^u8 n -- )
+: GJA-FAIL ( str -- )
    EXIT-STATUS:FAILURE die ;
 
-: GJA-LINE! ( ^u8 n n -- )
+: GJA-LINE! ( str n -- )
    {: a:^ u k :}
    a k GJA-LINE-A!
    u k cells GJA-LINE-U + ! ;
 
-: GJA-LINE$ ( n -- ^u8 n )
+: GJA-LINE$ ( n -- str )
    dup GJA-LINE-A@
    swap cells GJA-LINE-U + @ ;
 
-: GJA-LINE+ ( ^u8 n -- )
+: GJA-LINE+ ( str -- )
    GJA-LINE# @ GJA-LINE-MAX >= IF s" too many JSON lines" GJA-FAIL THEN
    dup 0 > IF
       2dup + 1- c@ 13 = IF 1- THEN
@@ -50,7 +51,7 @@ variable GJA-LX
    GJA-LINE# @ GJA-LINE!
    GJA-LINE# @ 1+ GJA-LINE# ! ;
 
-: GJA-SPLIT-LINES ( ^u8 n -- )
+: GJA-SPLIT-LINES ( str -- )
    {: a:^ u :}
    0 GJA-LINE# !
    0 GJA-LS !
@@ -78,7 +79,7 @@ variable GJA-LX
    kind JSON:T-STR = if a 1- u 2 + SPAN:MAKE exit then
    a u SPAN:MAKE ;
 
-: GJA-PARSE ( ^u8 n -- SPAN:span<u8> )
+: GJA-PARSE ( str -- SPAN:span<u8> )
    {: a:^ u:n :}
    GJA-CURSOR a u JSON:READ-INIT JSON:READ-NEXT drop
    JSON:READ-SKIP-VALUE JSON:READ-FINISH
@@ -87,13 +88,13 @@ variable GJA-LX
 : GJA-KIND ( SPAN:span<u8> -- n )
    GJA-OPEN JSON:READ-TOKEN swap JSON:READ-CLOSE ;
 
-: GJA-FIELD? ( SPAN:span<u8> ^u8 n -- SPAN:span<u8> bool )
+: GJA-FIELD? ( SPAN:span<u8> str -- SPAN:span<u8> bool )
    {: value:SPAN:span<u8> key:^ keyu:n :}
    value GJA-OPEN key keyu JSON:READ-FIND-KEY
    if GJA-VALUE swap JSON:READ-CLOSE true exit then
    JSON:READ-CLOSE value false ;
 
-: GJA-REQ ( SPAN:span<u8> ^u8 n -- SPAN:span<u8> )
+: GJA-REQ ( SPAN:span<u8> str -- SPAN:span<u8> )
    GJA-FIELD? 0= if drop s" missing JSON field" GJA-FAIL then ;
 
 : GJA-OBJ ( SPAN:span<u8> -- )
@@ -105,39 +106,39 @@ variable GJA-LX
    value 0 < if s" expected unsigned JSON integer" GJA-FAIL then value ;
 
 
-: GJA-STR= ( SPAN:span<u8> ^u8 n -- bool )
+: GJA-STR= ( SPAN:span<u8> str -- bool )
    {: value:SPAN:span<u8> want:^ wantu:n :}
    value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE GJA-FALSE exit then
    want wantu JSON:READ-STR-EQ? swap JSON:READ-CLOSE ;
 
-: GJA-ASSERT-STR ( SPAN:span<u8> ^u8 n -- )
+: GJA-ASSERT-STR ( SPAN:span<u8> str -- )
    GJA-STR= 0= IF s" unexpected JSON string" GJA-FAIL THEN ;
 
-: GJA-STRING-INTO ( SPAN:span<u8> ^u8 n -- ^u8 n )
+: GJA-STRING-INTO ( SPAN:span<u8> ^u8 n -- str )
    {: value:SPAN:span<u8> dst:^ cap:n :}
    value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" expected JSON string" GJA-FAIL then
    dst cap JSON:READ-STR {: u:n :} JSON:READ-CLOSE dst u ;
 
-: GJA-STRING$ ( SPAN:span<u8> -- ^u8 n )
+: GJA-STRING$ ( SPAN:span<u8> -- str )
    GJA-STR-BUF GJA-IN-CAP GJA-STRING-INTO ;
 
 : GJA-NONEMPTY-STR ( SPAN:span<u8> -- )
    GJA-STRING$ nip 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
 
-: GJA-REQ-STRF ( SPAN:span<u8> ^u8 n -- )
+: GJA-REQ-STRF ( SPAN:span<u8> str -- )
    GJA-REQ GJA-STRING$ 2drop ;
 
-: GJA-REQ-INTF ( SPAN:span<u8> ^u8 n -- )
+: GJA-REQ-INTF ( SPAN:span<u8> str -- )
    GJA-REQ GJA-INT drop ;
 
-: GJA-ASSERT-INT-FIELD ( SPAN:span<u8> ^u8 n n -- )
+: GJA-ASSERT-INT-FIELD ( SPAN:span<u8> str n -- )
    {: root:SPAN:span<u8> key:^ keyu want :}
    root key keyu GJA-REQ GJA-INT want <> IF s" unexpected JSON integer field" GJA-FAIL THEN ;
 
-: GJA-HAS? ( SPAN:span<u8> ^u8 n -- bool )
+: GJA-HAS? ( SPAN:span<u8> str -- bool )
    GJA-FIELD? {: value:SPAN:span<u8> found:bool :} found ;
 
-: GJA-NO-FIELD ( SPAN:span<u8> ^u8 n -- )
+: GJA-NO-FIELD ( SPAN:span<u8> str -- )
    GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
 
 : GJA-FORM-KEY? ( JSON:reader -- JSON:reader bool )

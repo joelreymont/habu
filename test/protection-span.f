@@ -1,3 +1,4 @@
+split-str
 \ protection-span.f - code-area bounds and long-body regressions.
 
 require src/lib/error.f
@@ -44,11 +45,11 @@ create ERR CAP allot
 $6000 constant LONG-CAP
 create LONG-SRC LONG-CAP allot
 variable LONG-U
-: LONG+ ( ^u8 n -- )
+: LONG+ ( str -- )
    {: a:^ u:n :}
    u 0 ?do a i + c@ LONG-SRC LONG-U @ + i + c! loop
    LONG-U @ u + LONG-U ! ;
-: STEP$ ( -- ^u8 n )
+: STEP$ ( -- str )
    s" PST-ADD-ONE-TO-THE-COUNT-OF-STEPS-IN-A-LONG-DEFINITION-BODY" ;
 : LONG$ ( -- ^u8 n )
    0 LONG-U !

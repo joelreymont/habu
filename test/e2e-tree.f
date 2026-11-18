@@ -1,3 +1,4 @@
+split-str
 \ e2e-tree.f - a scratch source tree for an end-to-end row: the checkout's src/
 \ and tools/ linked in, a test/ directory for the sources the row copies, and
 \ children run in it with their stdout, stderr and exit code kept for the
@@ -43,7 +44,7 @@ public
    SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
    TARGET TARGET-U @ rel relu AT-A FS:MAKE-SYMLINK ;
 
-: COPY-TEST ( ^u8 n -- ) {: rel:^ relu:n :}
+: COPY-TEST ( str -- ) {: rel:^ relu:n :}
    SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
    TARGET TARGET-U @ rel relu AT-A FS:COPY-FILE-STREAM ;
 
@@ -65,14 +66,14 @@ public
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
-: RUN-INPUT ( ^u8 n ^u8 n -- )
+: RUN-INPUT ( str str -- )
    {: engine:^ engineu:n input:^ inputu:n :}
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN ROOT$ >LEN input inputu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
 
-: SAVE-LOG ( ^u8 n ^u8 n -- )
+: SAVE-LOG ( str str -- )
    {: outpath:^ outu:n errpath:^ erru:n :}
    outpath outu AT-A OUT$ FS:WRITE-ALL
    errpath erru AT-A ERR$ FS:WRITE-ALL ;

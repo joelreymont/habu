@@ -1,3 +1,4 @@
+split-str
 \ main.f - the program's entry, RUN. Its top level stores a quotation into its
 \ own cell and 5 into count.f's counter; RUN bumps twice, to 7, prints Hi when
 \ the count is 7 and ok when DOUBLE agrees. AT-EDGE answers shape.f's EDGE,

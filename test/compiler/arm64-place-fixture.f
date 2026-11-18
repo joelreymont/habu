@@ -1,3 +1,4 @@
+split-str
 \ arm64-place-fixture.f - the words test/compiler/arm64-place.f and
 \ test/compiler/arm64-place-unsafe-bad.f include in a stripped build's body
 \ before they write a program. PL-RUN's shadow emission holds a call, a tail

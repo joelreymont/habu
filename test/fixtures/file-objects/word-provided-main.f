@@ -1,3 +1,4 @@
+split-str
 \ word-provided-main.f - its top level runs a word that marks a file provided,
 \ so the build refuses it.
 

@@ -1,3 +1,4 @@
+split-str
 \ num-types.f - package NUM: one-cell nominal numeric roles and their checked
 \ validators. A role value comes from its validator, or from a cast declared by a
 \ package that has shown the cell is the role. The arithmetic is

@@ -1,3 +1,4 @@
+split-str
 \ utf16-test.f - UTF-16 code units of UTF-8 spans, the byte back from a unit,
 \ and strict UTF-16LE conversion, through src/lib/utf16.f.
 \ Run: bin/hb --load src/lib/utf16-test.f
@@ -23,13 +24,13 @@ CAST: BL>N ( NUM:byte-len -- n )
    {: buf:^ :}
    buf BUF:DISPOSE  buf BUF-CAP0 BUF:N>BLEN BUF:INIT ;
 
-: GOT$ ( ^a -- ^u8 n )  BUF:SPAN$ BL>N ;
+: GOT$ ( ^a -- str )  BUF:SPAN$ BL>N ;
 
-: UNITS= ( ^u8 n n -- )
+: UNITS= ( str n -- )
    {: a:^ u:n want:n :}
    a u UTF16:UNITS want T= ;
 
-: OFFSET= ( ^u8 n n n -- )
+: OFFSET= ( str n n -- )
    {: a:^ u:n unit:n want:n :}
    a u unit UTF16:OFFSET want T= ;
 
@@ -140,19 +141,19 @@ CAST: BL>N ( NUM:byte-len -- n )
    [: OFFSET-NEGATIVE-INDEX ;] E-STR-BOUNDS TTHROWSQ
    [: OFFSET-EMPTY-NEGATIVE ;] E-STR-BOUNDS TTHROWSQ ;
 
-: LE>UTF8= ( ^u8 n ^u8 n -- )
+: LE>UTF8= ( str str -- )
    {: le:^ lu:n want:^ wu:n :}
    LE-BUF BUF:CLEAR
    le lu LE-BUF UTF16:APPEND-LE>UTF8
    LE-BUF GOT$ want wu T$= ;
 
-: UTF8>LE= ( ^u8 n ^u8 n -- )
+: UTF8>LE= ( str str -- )
    {: text:^ tu:n want:^ wu:n :}
    LE-BUF BUF:CLEAR
    text tu LE-BUF UTF16:APPEND-UTF8>LE
    LE-BUF GOT$ want wu T$= ;
 
-: BOTH= ( ^u8 n ^u8 n -- )
+: BOTH= ( str str -- )
    {: le:^ lu:n text:^ tu:n :}
    le lu text tu LE>UTF8=
    text tu le lu UTF8>LE= ;

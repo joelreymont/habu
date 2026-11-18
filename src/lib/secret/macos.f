@@ -1,3 +1,4 @@
+split-str
 \ secret/macos.f - SECRET:READ, WRITE and ERASE through the Security framework's
 \ generic passwords, loaded by src/lib/secret.f on macOS. Contract:
 \ src/lib/secret.f.

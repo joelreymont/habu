@@ -1,3 +1,4 @@
+split-str
 \ leb.f - WLEB, the Wasm backend's LEB128: the shortest LEB of each integer type
 \ at the edges of its byte counts and its range, the padded call and address
 \ fields read at their offsets and rewritten in place, round trips across every
@@ -54,7 +55,7 @@ variable STAGED-LEN
    loop
    k STAGED-LEN ! ;
 
-: STAGED$ ( -- ^u8 n )
+: STAGED$ ( -- str )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 : STAGED-SPAN ( -- SPAN:span<u8> )
@@ -75,15 +76,15 @@ variable STAGED-LEN
    want wu T-LABEL k T=
    want wu T-LABEL v T= ;
 
-: U32-IS ( n ^u8 n -- )
+: U32-IS ( n str -- )
    {: v:n a u:n :}
    v [: WLEB:U32! ;] [: WLEB:U32@ ;] a u SHORTEST ;
 
-: S32-IS ( n ^u8 n -- )
+: S32-IS ( n str -- )
    {: v:n a u:n :}
    v [: WLEB:S32! ;] [: WLEB:S32@ ;] a u SHORTEST ;
 
-: S64-IS ( n ^u8 n -- )
+: S64-IS ( n str -- )
    {: v:n a u:n :}
    v [: WLEB:S64! ;] [: WLEB:S64@ ;] a u SHORTEST ;
 
@@ -139,7 +140,7 @@ variable STAGED-LEN
    a OUT ADDR-AT SPAN:SKIP WLEB:S64-PAD! drop
    END-OP OUT CODE-LEN 1- SPAN:U8! ;
 
-: CODE$ ( -- ^u8 n )
+: CODE$ ( -- str )
    CODE-LEN OUT$ ;
 
 \ Each field reads back at its offset and takes a patch in place: the opcodes
@@ -178,11 +179,11 @@ variable STAGED-LEN
    want wu T-LABEL
    k OUT$ 0 get execute v T= ;
 
-: U32-PADS ( n ^u8 n -- )
+: U32-PADS ( n str -- )
    {: v:n a u:n :}
    v [: WLEB:U32-PAD! ;] [: WLEB:U32-PAD@ ;] a u PADDED ;
 
-: S64-PADS ( n ^u8 n -- )
+: S64-PADS ( n str -- )
    {: v:n a u:n :}
    v [: WLEB:S64-PAD! ;] [: WLEB:S64-PAD@ ;] a u PADDED ;
 
@@ -253,7 +254,7 @@ variable STAGED-LEN
 \ ---- refused writes --------------------------------------------------------
 \ fail, writing into OUT, refuses with code, and leaves the whole of OUT as the
 \ canaries it was filled with.
-: WRITE-REFUSES ( ^u8 n [ -- ] n -- )
+: WRITE-REFUSES ( str [ -- ] n -- )
    {: a u:n fail code:n :}
    CANARY OUT SPAN:FILL
    a u T-LABEL
@@ -297,7 +298,7 @@ variable STAGED-LEN
 
 \ patch, run on the staged code, refuses with code, and leaves the code as it
 \ was and the canaries past it.
-: PATCH-REFUSES ( ^u8 n [ -- ] n -- )
+: PATCH-REFUSES ( str [ -- ] n -- )
    {: a u:n patch code:n :}
    a u patch code REFUSES
    a u T-LABEL
@@ -326,7 +327,7 @@ variable STAGED-LEN
    v OUT put execute {: k:n :}
    k OUT$ get execute k T= v T= ;
 
-: PAD-BACK ( n [ n SPAN:span<u8> -- n ] [ ^u8 n n -- n ] -- )
+: PAD-BACK ( n [ n SPAN:span<u8> -- n ] [ str n -- n ] -- )
    {: v:n put get :}
    v OUT put execute {: k:n :}
    k OUT$ 0 get execute v T= ;

@@ -1,3 +1,4 @@
+split-str
 \ power/macos.f - POWER:KEEP-AWAKE and ALLOW-SLEEP through IOKit power
 \ assertions, loaded on macOS.
 require src/lib/power.f
@@ -24,7 +25,7 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
 255 constant LEVEL-ON        \ kIOPMAssertionLevelOn
 
 \ An owned CFString of the bytes, 0 when they are not UTF-8.
-: CF-TEXT ( ^u8 n -- n )
+: CF-TEXT ( str -- n )
    {: p:^ u:n :}
    0 p u UTF8 0 CF-STRING ;
 
@@ -40,7 +41,7 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
 
 
 \ Nothing that can throw runs between creating the strings and releasing them.
-: CREATE-ID ( ^u8 n ^u8 NUM:alloc-byte-len -- n )
+: CREATE-ID ( str ^u8 NUM:alloc-byte-len -- n )
    drop {: name:^ len:n id:^ :}
    s" PreventUserIdleSystemSleep" CF-TEXT {: kind:n :}
    name len CF-TEXT {: label:n :}
@@ -51,7 +52,7 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
    id LE:U32@ ;
 
 
-: MAC-KEEP ( ^u8 n -- n )
+: MAC-KEEP ( str -- n )
    ID-BYTES MEM:BYTES-ALLOC-LEN [: CREATE-ID ;] MEM:WITH-BYTES ;
 
 : MAC-ALLOW ( n -- )

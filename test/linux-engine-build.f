@@ -1,3 +1,4 @@
+split-str
 \ linux-engine-build.f - `hb-build --target linux-aarch64` of the engine and of
 \ a program with a callback, spawned from the tree's root because hb-build.f
 \ reads its argv. Neither file it writes is run. A program whose top level binds
@@ -26,13 +27,13 @@ PATH-CAP BUFFER: SRC      variable SRC-U
 PATH-CAP BUFFER: PROG     variable PROG-U
 20 SPAN-BUFFER: HEAD
 
-: DIR$ ( -- ^u8 n ) DIR DIR-U @ ;
-: OUT-DIR$ ( -- ^u8 n ) OUT-DIR OUT-DIR-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ ;
+: OUT-DIR$ ( -- str ) OUT-DIR OUT-DIR-U @ ;
 : EXE$ ( -- ^u8 n ) EXE EXE-U @ ;
 : SRC$ ( -- ^u8 n ) SRC SRC-U @ ;
-: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
+: PROG$ ( -- str ) PROG PROG-U @ ;
 
-: ELF-MAG ( -- ^u8 n ) s\" \x7FELF" ;
+: ELF-MAG ( -- str ) s\" \x7FELF" ;
 
 : SHOW ( CMD:command n -- CMD:command )
    {: rc:n :}
@@ -56,7 +57,7 @@ PATH-CAP BUFFER: PROG     variable PROG-U
       eof OF drop false ENDOF
    ;MATCH ;
 
-: READ-HEAD ( ^u8 n -- bool )
+: READ-HEAD ( str -- bool )
    FS:OPEN-SIZED {: f:fd size:n found:bool :}
    found 0= if false exit then
    [: f HEAD-READ ;] [: f FD>N close ;] finally ;
@@ -74,7 +75,7 @@ PATH-CAP BUFFER: PROG     variable PROG-U
 
 \ A callback's accessor compiles under the target's shadow only in a program:
 \ the engine declares no CALLBACK:.
-: PROGRAM-SOURCE$ ( -- ^u8 n )
+: PROGRAM-SOURCE$ ( -- str )
    S\" require src/lib/ffi-callback.f\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n: MAIN ( -- ) ;\n" ;
 
 : PROGRAM-CASE ( CMD:command -- CMD:command )
@@ -89,7 +90,7 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    HEAD SPAN:$ drop 4 ELF-MAG T$= ;
 
 \ The same program, binding its callback on line 3.
-: BIND-SOURCE$ ( -- ^u8 n )
+: BIND-SOURCE$ ( -- str )
    S\" require src/lib/ffi-callback.f\nCALLBACK: CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\nCMP TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n: MAIN ( -- ) ;\n" ;
 
 : BIND-CASE ( CMD:command -- CMD:command )

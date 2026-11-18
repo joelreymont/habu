@@ -1,3 +1,4 @@
+split-str
 \ primitive-registry.f - build-side primitive metadata shared by every backend's
 \ engine builder: checks each registered body's name against the specification
 \ table, answers the seed dictionary's name and wid cells, and refuses a kept row
@@ -36,7 +37,7 @@ variable NAME-BYTES
    USED @ 1+ ROW-CELLS * ROWS-RESERVE
    NAME-BYTES @ size + CELL 1- + CELL / NAMES-RESERVE ;
 
-: SPEC-MISSING ( ^u8 n -- )
+: SPEC-MISSING ( str -- )
    s" prims: primitive with no row in src/habu/prims.f: " type type cr
    s" prims: engine primitive absent from the specification table" EXIT-STATUS:INTERNAL die ;
 
@@ -93,7 +94,7 @@ private
 \ Whether a package row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states the
 \ primitive's effect. An internal primitive with one is its owner's to call, so
 \ DNAME stamps it DNAME-OWNED (src/habu/layout.f).
-: OWNED? ( ^u8 n -- bool ) {: name:^ size:n :}
+: OWNED? ( str -- bool ) {: name:^ size:n :}
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if
          i PRIM-SPEC:NAME$ name size CORE-STR= if unloop 0 0= exit then
@@ -102,7 +103,7 @@ private
    0 0= 0= ;
 
 \ DNAME-IMM for an immediate row.
-: IMM-BIT ( ^u8 n -- n )
+: IMM-BIT ( str -- n )
    PRIM-SPEC:FIND {: row:n :}
    row 0 < if 0 exit then
    row PRIM-SPEC:IMMEDIATE? if DNAME-IMM else 0 then ;
@@ -125,13 +126,13 @@ public
 private
 
 \ The registered body of the name, or -1.
-: BODY-ROW ( ^u8 n -- n ) {: name:^ size:n :}
+: BODY-ROW ( str -- n ) {: name:^ size:n :}
    USED @ 0 ?do
       i NAME$ name size CORE-STR= if i unloop exit then
    loop
    -1 ;
 
-: NO-BODY ( ^u8 n -- )
+: NO-BODY ( str -- )
    s" prims: no backend body for specified primitive " type type cr
    s" prims: specification row without a backend body" EXIT-STATUS:INTERNAL die ;
 

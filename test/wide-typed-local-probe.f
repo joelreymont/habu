@@ -1,3 +1,4 @@
+split-str
 \ wide-typed-local-probe.f - a wide arity-0 layout value bound to a typed local
 \ survives whole at runtime.
 \ The annotation records the layout's TOP (tag) hidden term, the bind records

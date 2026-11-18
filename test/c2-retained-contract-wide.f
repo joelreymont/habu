@@ -1,3 +1,4 @@
+split-str
 \ A retained generic quotation with 33 independent record field variables.
 VALUE-RECORD box value a END-VALUE-RECORD
 defer C2V-D ( box box box box box box box box box box box box box box box box box box box box box box box box box box box box box box box box box -- )

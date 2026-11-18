@@ -1,3 +1,4 @@
+split-str
 \ engine-private-test.f - a program cannot name the engine's private words.
 \ Each case's source is rejected with the same error line by `--load`'s
 \ evaluate-closed and by tools/check.f over that source written to a file.
@@ -24,14 +25,14 @@ create TCE-OUT TCE-CAP allot
 create TCE-ERR TCE-CAP allot
 create TCE-NONE 1 allot
 
-: TCE-FILE ( -- ^u8 n )  TCE-PATH TCE-PATH-U @ ;
+: TCE-FILE ( -- str )  TCE-PATH TCE-PATH-U @ ;
 
 FS:CLEANUP-RESET
 s" habu-engine-private" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" case.f" TCE-PATH FS:JOIN-PATH TCE-PATH-U !
 
 \ One tools/check.f process per case: it stops at a file's first rejection.
-: TCE-CHECK ( ^u8 n ^u8 n -- ) {: src:^ srcu:n wa:^ wu:n :}
+: TCE-CHECK ( str str -- ) {: src:^ srcu:n wa:^ wu:n :}
    TCE-FILE src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
@@ -48,7 +49,7 @@ public
 \ TCE-REJECTS asserts the string stops with the checker's status after a record
 \ that starts with the text given, under evaluate-closed, and holds it under
 \ tools/check.f. The record quotes the calling line, which holds the text.
-: TCE-REJECTS ( ^u8 n ^u8 n -- ) {: src:^ srcu:n wa:^ wu:n :}
+: TCE-REJECTS ( str str -- ) {: src:^ srcu:n wa:^ wu:n :}
    src TCE-A !  srcu TCE-U !
    REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF
    70 T=  REJECTION:BUFFER$ wa wu STARTS-WITH? TTRUE

@@ -1,3 +1,4 @@
+split-str
 \ structure-certify-suite.f — the checker's construct/access contract for
 \ STRUCTURE through real STRUCTURE syntax. The definer parses the live input and
 \ resolves only at top-level interpret, so the engine runs it over stdin, like
@@ -12,10 +13,10 @@ T-RESET
 
 \ Diagnostic capture as in test/type-match-suite.f: a JSON-mode render into
 \ REJECTION's capture, asserted by substring.
-: SCG< ( ^u8 n -- )   \ run one candidate with JSON diags captured; assert rejected
+: SCG< ( str -- )   \ run one candidate with JSON diags captured; assert rejected
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
-: SCG? ( ^u8 n -- )   \ assert the captured diag contains the needle
+: SCG? ( str -- )   \ assert the captured diag contains the needle
    T-NEXT
    REJECTION:BUFFER$ 2swap CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
@@ -105,7 +106,7 @@ SCG-END
 \ 7. The derived package is closed but callable: reopening it (any case),
 \    undefining a generated word or deferring a new word into it is rejected
 \    with E-CTOR-PROTECTED, as for sum and product constructors.
-: SC-PROTECTED ( ^u8 n -- )   \ the text is rejected with E-CTOR-PROTECTED
+: SC-PROTECTED ( str -- )   \ the text is rejected with E-CTOR-PROTECTED
    REJECTION:CAPTURE  TEST-EVAL:RC 70 T=
    REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;

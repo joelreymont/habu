@@ -1,3 +1,4 @@
+split-str
 \ underdepth-gate.f - a bare top-level call on a shallower stack than its
 \ word's effect states (a certified `:`, TRUSTED:, defer, does> clause,
 \ engine-prefix word or primitive) is rejected by the checker before the word
@@ -41,27 +42,27 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 create UDG-AT PATH-CAP allot
 TYPED-VARIABLE UDG-AT-U len
 
-: UDG-COPY! ( ^u8 n ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
+: UDG-COPY! ( str ^u8 ^n -- ) {: src:^ u:n dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
    u lenp ! ;
 
-: UDG-ROOT ( -- ^u8 n )
+: UDG-ROOT ( -- str )
    UDG-ROOT-BUF UDG-ROOT-U @ ;
 
-: UDG-CHILD ( -- ^u8 n )
+: UDG-CHILD ( -- str )
    UDG-CHILD-BUF UDG-CHILD-U @ ;
 
-: UDG-IN$ ( -- ^u8 n )
+: UDG-IN$ ( -- str )
    UDG-IN UDG-IN-U @ ;
 
-: UDG-OUT$ ( -- ^u8 n )
+: UDG-OUT$ ( -- str )
    UDG-OUT UDG-OUT-U @ ;
 
-: UDG-ERR$ ( -- ^u8 n )
+: UDG-ERR$ ( -- str )
    UDG-ERR UDG-ERR-U @ ;
 
-: UDG-STORE! ( len len PROCESS:ending ^u8 n -- ) {: outu:len erru:len oc src:^ u:n :}
+: UDG-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N UDG-ERR-U !  outu LEN>N UDG-OUT-U !
    oc MATCH PROCESS:ending
      exited OF UDG-RC ! 0 0= UDG-EXITED ! ENDOF
@@ -69,14 +70,14 @@ TYPED-VARIABLE UDG-AT-U len
      timeout OF src u UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: UDG-IN! ( ^u8 n -- ) {: a:^ u:n :}
+: UDG-IN! ( str -- ) {: a:^ u:n :}
    u UDG-CAP > if E-FS-CAPACITY throw then
    a UDG-IN u BYTE-COPY
    u UDG-IN-U ! ;
 
 \ Cases run in SUBJECT forks; output parity keeps direct --load and stdin
 \ representatives.
-: UDG-RUN-LOAD ( ^u8 n -- ) {: src:^ u:n :}
+: UDG-RUN-LOAD ( str -- ) {: src:^ u:n :}
    UDG-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -86,7 +87,7 @@ TYPED-VARIABLE UDG-AT-U len
    src u UDG-STORE! ;
 
 \ The other cold-prefix path: the program on stdin, no --load.
-: UDG-RUN-STDIN ( ^u8 n -- )
+: UDG-RUN-STDIN ( str -- )
    UDG-IN!
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
@@ -106,20 +107,20 @@ public
 : UDG-LF ( -- )
    10 SB-APPEND-C ;
 
-: UDG-LINE ( ^u8 n -- )
+: UDG-LINE ( str -- )
    SB-APPEND UDG-LF ;
 
-: UDG-FOO2$ ( ^u8 n -- ^u8 n )     \ program = FOO2 definition + the given tail line
+: UDG-FOO2$ ( str -- str )     \ program = FOO2 definition + the given tail line
    SB-RESET
    s" : FOO2 ( n -- n n ) dup ;" UDG-LINE
    UDG-LINE
    SB$ ;
 
-: UDG-AT+ ( ^u8 n -- )
+: UDG-AT+ ( str -- )
    UDG-AT PATH-CAP UDG-AT-U BUF-APPEND ;
 
 \ The caret run under a word of u bytes, then its label l lu.
-: UDG-CARETS$ ( n ^u8 n -- ^u8 n ) {: u:n l:^ lu:n :}
+: UDG-CARETS$ ( n str -- str ) {: u:n l:^ lu:n :}
    UDG-AT-U BUF-RESET
    s"  " UDG-AT+  u 0 ?do s" ^" UDG-AT+ loop
    s"  " UDG-AT+  l lu UDG-AT+
@@ -128,31 +129,31 @@ public
 \ The rejection opens with h hu, and carets labelled l lu stand under the word
 \ a u; in a subject run they stand in its `= evaluated:` note, whose primary
 \ place is the test's own line.
-: UDG-ASSERT-AT ( ^u8 n ^u8 n ^u8 n -- ) {: h:^ hu:n a:^ u:n l:^ lu:n :}
+: UDG-ASSERT-AT ( str str str -- ) {: h:^ hu:n a:^ u:n l:^ lu:n :}
    UDG-EXITED @ TTRUE
    UDG-RC @ 70 T=
    UDG-ERR$ h hu CONTAINS? TTRUE
    UDG-ERR$ a u CONTAINS? TTRUE
    UDG-ERR$ u l lu UDG-CARETS$ CONTAINS? TTRUE ;
 
-: UDG-UNDERFLOW$ ( -- ^u8 n )
+: UDG-UNDERFLOW$ ( -- str )
    s" error[E-INPUT-UNDERFLOW]: input underflow" ;
 
 \ The checker's rejection of the word a u, in a direct or subject run: an input
 \ underflow at it, below the stack or below the inputs.
-: UDG-ASSERT-UNDERDEPTH ( ^u8 n -- ) {: a:^ u:n :}
+: UDG-ASSERT-UNDERDEPTH ( str -- ) {: a:^ u:n :}
    UDG-UNDERFLOW$ a u s" reaches below the" UDG-ASSERT-AT ;
 
 : UDG-ASSERT-OK ( -- )
    UDG-EXITED @ TTRUE
    UDG-RC @ 0 T= ;
 
-: UDG-ASSERT-OUT ( ^u8 n -- ) {: a:^ u:n :}
+: UDG-ASSERT-OUT ( str -- ) {: a:^ u:n :}
    UDG-OUT$ a u CONTAINS? TTRUE ;
 
 package UDG-MINIMUM
 
-: MIN-SIG$ ( n -- ^u8 n ) {: width:n :}
+: MIN-SIG$ ( n -- str ) {: width:n :}
    SB-RESET
    s" defer MINIMUM-PROBE ( " SB-APPEND
    0 begin dup width < while
@@ -180,38 +181,38 @@ public
    s" FOO2" UDG-FOO2$ UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH ;
 
-: UDG-PARTIAL$ ( -- ^u8 n )           \ depth 1 < declared 2: still underdepth
+: UDG-PARTIAL$ ( -- str )           \ depth 1 < declared 2: still underdepth
    SB-RESET
    s" : TP2 ( n n -- n ) + ;" UDG-LINE
    s" 1 TP2" UDG-LINE
    SB$ ;
 
-: UDG-TRUSTED$ ( -- ^u8 n )           \ TRUSTED: declared sig is guarded too
+: UDG-TRUSTED$ ( -- str )           \ TRUSTED: declared sig is guarded too
    SB-RESET
    s" TRUSTED: UDG-T ( n -- n n ) dup ;" UDG-LINE
    s" UDG-T" UDG-LINE
    SB$ ;
 
-: UDG-DEFER$ ( -- ^u8 n )             \ defer's required sig is guarded too
+: UDG-DEFER$ ( -- str )             \ defer's required sig is guarded too
    SB-RESET
    s" defer UDG-D ( n -- n n )" UDG-LINE
    s" UDG-D" UDG-LINE
    SB$ ;
 
-: UDG-SIGLESS$ ( -- ^u8 n )           \ certified sig-less definition: inferred effect guards
+: UDG-SIGLESS$ ( -- str )           \ certified sig-less definition: inferred effect guards
    SB-RESET
    s" : UDG-SQ dup * ;" UDG-LINE
    s" UDG-SQ" UDG-LINE
    SB$ ;
 
-: UDG-DOES$ ( -- ^u8 n )              \ a does> clause's declared inputs are guarded too: the
+: UDG-DOES$ ( -- str )              \ a does> clause's declared inputs are guarded too: the
    SB-RESET                              \ created record takes the same publish tail a `:` word takes
    s" : UDG-MQ: ( -- ) create 5 , does> ( n -- n ) nip @ ;" UDG-LINE
    s" UDG-MQ: UDG-MQA" UDG-LINE
    s" UDG-MQA" UDG-LINE
    SB$ ;
 
-: UDG-ENGINE$ ( -- ^u8 n )            \ an engine-prefix word
+: UDG-ENGINE$ ( -- str )            \ an engine-prefix word
    SB-RESET
    s" CORE-STR=" UDG-LINE
    SB$ ;
@@ -240,12 +241,12 @@ public
 \ A bare primitive checked code may call takes the same rejection on a shallow
 \ stack, a row with no input atoms (2>r) included.
 
-: UDG-BARE$ ( ^u8 n -- ^u8 n )     \ program = the bare token on one line
+: UDG-BARE$ ( str -- str )     \ program = the bare token on one line
    SB-RESET
    UDG-LINE
    SB$ ;
 
-: UDG-PRIM-ROW ( ^u8 n -- ) {: a:^ u:n :}
+: UDG-PRIM-ROW ( str -- ) {: a:^ u:n :}
    a u UDG-BARE$ UDG-EXEC:SUBJECT
    a u UDG-ASSERT-UNDERDEPTH ;
 
@@ -262,7 +263,7 @@ public
 
 \ --- body negatives: a primitive's input is measured as any word's ----------
 
-: UDG-BODY-UNDER ( ^u8 n ^u8 n -- ) {: src:^ u:n at:^ atu:n :}
+: UDG-BODY-UNDER ( str str -- ) {: src:^ u:n at:^ atu:n :}
    src u UDG-BARE$ UDG-EXEC:SUBJECT
    at atu UDG-ASSERT-UNDERDEPTH ;
 
@@ -280,32 +281,32 @@ public
 
 \ --- positives: the public top-level surface is untouched -------------------
 
-: UDG-EXACT$ ( -- ^u8 n )
+: UDG-EXACT$ ( -- str )
    SB-RESET
    s" : FOO2 ( n -- n n ) dup ;" UDG-LINE
    s" 5 FOO2 + . cr" UDG-LINE
    SB$ ;
 
-: UDG-OVER$ ( -- ^u8 n )
+: UDG-OVER$ ( -- str )
    SB-RESET
    s" : FOO2 ( n -- n n ) dup ;" UDG-LINE
    s" 1 2 3 FOO2 + + + . cr" UDG-LINE
    SB$ ;
 
-: UDG-COMPILED$ ( -- ^u8 n )          \ checked calling checked: checker-proven, no guard
+: UDG-COMPILED$ ( -- str )          \ checked calling checked: checker-proven, no guard
    SB-RESET
    s" : UDG-A ( n -- n ) 1 + ;" UDG-LINE
    s" : UDG-B ( n -- n ) UDG-A UDG-A ;" UDG-LINE
    s" 7 UDG-B . cr" UDG-LINE
    SB$ ;
 
-: UDG-RAW$ ( -- ^u8 n )               \ an ordinary inferred word remains executable
+: UDG-RAW$ ( -- str )               \ an ordinary inferred word remains executable
    SB-RESET
    s" : UDG-RAW 42 . cr ;" UDG-LINE
    s" UDG-RAW" UDG-LINE
    SB$ ;
 
-: UDG-CATCH$ ( -- ^u8 n )             \ evaluate delivers the reject as a catchable rc-70 throw
+: UDG-CATCH$ ( -- str )             \ evaluate delivers the reject as a catchable rc-70 throw
    SB-RESET
    s" : FOO2 ( n -- n n ) dup ;" UDG-LINE
    S\" TRUSTED: UDG-TRY ( -- ) s\" FOO2\" evaluate ;" UDG-LINE
@@ -313,7 +314,7 @@ public
    S\" s\" after\" type cr" UDG-LINE
    SB$ ;
 
-: UDG-PROBE$ ( -- ^u8 n )             \ satisfied-depth CHECK! probing idiom still works
+: UDG-PROBE$ ( -- str )             \ satisfied-depth CHECK! probing idiom still works
    SB-RESET
    S\" s\" : UDG-G ( n -- n ) 1 + ;\" CHECK! . cr" UDG-LINE
    SB$ ;
@@ -343,7 +344,7 @@ package UDG-PARITY
 : RESULT ( -- ^u8 n ^u8 n n )
    UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ UDG-RC @ ;
 
-: NEG-LOAD ( ^u8 n -- )
+: NEG-LOAD ( str -- )
    2dup UDG-RUN-LOAD
    s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SNAPSHOT
@@ -351,7 +352,7 @@ package UDG-PARITY
    s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SAME-UNLOCATED ;
 
-: NEG-STDIN ( ^u8 n -- )
+: NEG-STDIN ( str -- )
    2dup UDG-RUN-STDIN
    s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SNAPSHOT
@@ -359,7 +360,7 @@ package UDG-PARITY
    s" FOO2" UDG-ASSERT-UNDERDEPTH
    RESULT TAIL-PARITY:SAME-UNLOCATED ;
 
-: POS-LOAD ( ^u8 n -- )
+: POS-LOAD ( str -- )
    2dup UDG-RUN-LOAD UDG-ASSERT-OK
    RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT UDG-ASSERT-OK

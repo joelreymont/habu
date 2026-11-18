@@ -1,3 +1,4 @@
+split-str
 \ asm.f - C6XASM, C66x instructions encoded from TI's SPRUGH7 as values, each a
 \ little-endian u32; nothing here schedules packets or emits memory. Unit,
 \ cross-path and packet constraints and the latencies (four delay slots after

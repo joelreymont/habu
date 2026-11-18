@@ -1,3 +1,4 @@
+split-str
 \ svg-pdf.f - completed in-memory SVGs become PDF pages through native
 \ librsvg 2.52+/Cairo, in `package SVG-PDF`. Each SVG loads with no base URI:
 \ data: resources resolve, external files do not, and librsvg may omit a missing
@@ -100,7 +101,7 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    value FMATH:FINITE?
    value 0.0 f> and ;
 
-: OPEN-SVG ( ^u8 n -- )
+: OPEN-SVG ( str -- )
    {: data:^ size:n :}
    size 0 < if E-OPEN throw then
    data size ERROR-CELL BYTE-VIEW SVG-OPEN SVG-CELL !
@@ -111,7 +112,7 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    WIDTH 0.75 f* MAX-PAGE-PT s>f f>
    HEIGHT 0.75 f* MAX-PAGE-PT s>f f> or if E-SIZE throw then ;
 
-: OPEN-PDF ( ^u8 n -- )
+: OPEN-PDF ( str -- )
    FS:>PATHZ WIDTH 0.75 f* HEIGHT 0.75 f* PDF-OPEN SURFACE-CELL !
    SURFACE-CELL @ SURFACE-STATUS 0<> if E-RENDER throw then ;
 
@@ -129,7 +130,7 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    SURFACE-CELL @ SURFACE-FINISH
    SURFACE-CELL @ SURFACE-STATUS 0<> if E-FINISH throw then ;
 
-: RENDER-PDF ( ^u8 n -- ) OPEN-PDF RENDER-PAGE FINISH-PDF ;
+: RENDER-PDF ( str -- ) OPEN-PDF RENDER-PAGE FINISH-PDF ;
 
 : PAGE-AT ( ^SPAN:span<u8> n -- SPAN:span<u8> ) 2 * record-at @ ;
 
@@ -138,7 +139,7 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    CONTEXT-CELL @ CONTEXT-STATUS 0<>
    SURFACE-CELL @ SURFACE-STATUS 0<> or if E-FINISH throw then ;
 
-: RENDER-PAGES ( ^SPAN:span<u8> n ^u8 n -- ^SPAN:span<u8> n )
+: RENDER-PAGES ( ^SPAN:span<u8> n str -- ^SPAN:span<u8> n )
    {: pages:^ count:n path:^ pathu:n :}
    path pathu OPEN-PDF
    count 0 do
@@ -156,12 +157,12 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    FINISH-PDF
    pages count ;
 
-: WRITE-BODY ( ^u8 n ^u8 n -- )
+: WRITE-BODY ( str str -- )
    {: path:^ pathu:n data:^ size:n :}
    data size OPEN-SVG
    path pathu [: RENDER-PDF ;] FS:REPLACE-STAGED ;
 
-: WRITE-PAGES-BODY ( ^u8 n ^SPAN:span<u8> n -- )
+: WRITE-PAGES-BODY ( str ^SPAN:span<u8> n -- )
    {: path:^ pathu:n pages:^ count:n :}
    count 0 <= if E-OPEN throw then
    pages 0 PAGE-AT SPAN:$ OPEN-SVG
@@ -173,7 +174,7 @@ public
    CLEAR
    [: WRITE-BODY ;] [: RELEASE ;] finally ;
 
-: WRITE-PAGES ( ^u8 n ^SPAN:span<u8> n -- )
+: WRITE-PAGES ( str ^SPAN:span<u8> n -- )
    CLEAR
    [: WRITE-PAGES-BODY ;] [: RELEASE ;] finally ;
 

@@ -1,3 +1,4 @@
+split-str
 \ class-verify.f - independent exhaustive verifier for Unicode class tables.
 
 require src/lib/prelude.f
@@ -46,25 +47,25 @@ variable VERIFY-PENDING-BIT
 create DIGEST-HEX 64 allot
 create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
-: UNICODE-PATH$ ( -- ^u8 n )
+: UNICODE-PATH$ ( -- str )
    s" data/unicode/16.0.0/UnicodeData.txt" ;
 
-: PROPERTIES-PATH$ ( -- ^u8 n )
+: PROPERTIES-PATH$ ( -- str )
    s" data/unicode/16.0.0/PropList.txt" ;
 
-: BRACKETS-PATH$ ( -- ^u8 n )
+: BRACKETS-PATH$ ( -- str )
    s" data/unicode/16.0.0/BidiBrackets.txt" ;
 
-: DATA-PATH$ ( -- ^u8 n )
+: DATA-PATH$ ( -- str )
    s" src/lib/unicode/class-data.f" ;
 
-: EXPECTED-UNICODE-DIGEST$ ( -- ^u8 n )
+: EXPECTED-UNICODE-DIGEST$ ( -- str )
    s" ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f" ;
 
-: EXPECTED-PROPERTIES-DIGEST$ ( -- ^u8 n )
+: EXPECTED-PROPERTIES-DIGEST$ ( -- str )
    s" 53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583" ;
 
-: EXPECTED-BRACKETS-DIGEST$ ( -- ^u8 n )
+: EXPECTED-BRACKETS-DIGEST$ ( -- str )
    s" b8f32554c6f658821fb0ee742d21c5b1f2086b9bf13071fed04894b022f93d67" ;
 
 : HEX-DIGIT ( n -- n bool ) {: c:n :}
@@ -73,27 +74,27 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    c 97 >= c 102 <= and if c 87 - true exit then
    0 false ;
 
-: HEX-FOLD ( ^u8 n n n -- n ) {: a:^ u:n pos:n acc:n :}
+: HEX-FOLD ( str n n -- n ) {: a:^ u:n pos:n acc:n :}
    pos u >= if acc exit then
    a pos + c@ HEX-DIGIT 0= if drop E-MISMATCH throw then {: digit:n :}
    a u pos 1+ acc 16 * digit + recurse ;
 
-: PARSE-HEX ( ^u8 n -- n ) {: a:^ u:n :}
+: PARSE-HEX ( str -- n ) {: a:^ u:n :}
    u 0= u 6 > or if E-MISMATCH throw then
    a u 0 0 HEX-FOLD ;
 
-: BYTE-INDEX ( ^u8 n n -- n ) {: a:^ u:n c:n :}
+: BYTE-INDEX ( str n -- n ) {: a:^ u:n c:n :}
    0 begin dup u < while
       dup a + c@ c = if exit then
       1+
    repeat ;
 
-: NEXT-FIELD ( ^u8 n n -- ^u8 n n ) {: a:^ u:n start:n :}
+: NEXT-FIELD ( str n -- str n ) {: a:^ u:n start:n :}
    a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
    valid 0= next u > or if E-MISMATCH throw then
    fa fu next ;
 
-: CATEGORY-SECOND? ( n ^u8 n -- bool ) {: c:n allowed:^ allowedu:n :}
+: CATEGORY-SECOND? ( n str -- bool ) {: c:n allowed:^ allowedu:n :}
    allowed allowedu c BYTE-INDEX allowedu < ;
 
 : SYMBOL-BIT ( n -- n ) {: c:n :}
@@ -102,7 +103,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    c 111 = if OTHER-SYMBOL-BIT exit then
    0 ;
 
-: CLASS-BIT ( ^u8 n -- n ) {: a:^ u:n :}
+: CLASS-BIT ( str -- n ) {: a:^ u:n :}
    u 2 <> if E-MISMATCH throw then
    a c@ 76 = if
       a 1+ c@ s" ultmo" CATEGORY-SECOND? 0= if E-MISMATCH throw then
@@ -119,10 +120,10 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    a c@ 67 = if a 1+ c@ s" cfson" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
    E-MISMATCH throw ;
 
-: FIRST-NAME? ( ^u8 n -- bool )
+: FIRST-NAME? ( str -- bool )
    s" , First>" ENDS-WITH? ;
 
-: LAST-NAME? ( ^u8 n -- bool )
+: LAST-NAME? ( str -- bool )
    s" , Last>" ENDS-WITH? ;
 
 : SCALAR ( n -- n ) {: cp:n :}
@@ -146,7 +147,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    lo SURROGATE-LAST <= hi SURROGATE-FIRST >= and if E-MISMATCH throw then
    lo hi bit MARK-RANGE-AT ;
 
-: VERIFY-UNICODE-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
+: VERIFY-UNICODE-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
    row rowu SEMICOLON COUNT-CHAR 14 <> if E-MISMATCH throw then
@@ -172,7 +173,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    then
    cp bit TRUTH+ ;
 
-: VERIFY-UNICODE-BYTES ( ^u8 n -- ) {: a:^ u:n :}
+: VERIFY-UNICODE-BYTES ( str -- ) {: a:^ u:n :}
    false VERIFY-PENDING !
    0 begin dup u <= while
       {: start:n :}
@@ -183,7 +184,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    repeat drop
    VERIFY-PENDING @ if E-MISMATCH throw then ;
 
-: RANGE-PART ( ^u8 n -- n n ) {: a:^ u:n :}
+: RANGE-PART ( str -- n n ) {: a:^ u:n :}
    a u DOT BYTE-INDEX {: pos:n :}
    pos u = if a u TRIM PARSE-HEX dup exit then
    pos 0= pos 1+ u >= or if E-MISMATCH throw then
@@ -191,7 +192,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    a pos TRIM PARSE-HEX
    a pos 2 + + u pos 2 + - TRIM PARSE-HEX ;
 
-: VERIFY-PROP-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
+: VERIFY-PROP-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu HASH BYTE-INDEX {: comment:n :}
    line comment TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
@@ -204,7 +205,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    then {: bit:n :}
    range rangeu TRIM RANGE-PART bit MARK-RANGE ;
 
-: VERIFY-PROPS-BYTES ( ^u8 n -- ) {: a:^ u:n :}
+: VERIFY-PROPS-BYTES ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
       a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
@@ -213,7 +214,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
       next
    repeat drop ;
 
-: BRACKET-BIT ( ^u8 n -- n ) {: a:^ u:n :}
+: BRACKET-BIT ( str -- n ) {: a:^ u:n :}
    u 1 <> if E-MISMATCH throw then
    a c@ OPEN-TYPE = if OPEN-BIT exit then
    a c@ CLOSE-TYPE = if CLOSE-BIT exit then
@@ -224,7 +225,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    at @ 0<> if E-MISMATCH throw then
    pair SCALAR at ! ;
 
-: VERIFY-BRACKET-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
+: VERIFY-BRACKET-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu HASH BYTE-INDEX {: comment:n :}
    line comment TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
@@ -235,7 +236,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    cp pa pu TRIM PARSE-HEX PAIR+
    cp bit TRUTH+ ;
 
-: VERIFY-BRACKETS-BYTES ( ^u8 n -- ) {: a:^ u:n :}
+: VERIFY-BRACKETS-BYTES ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
       a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
@@ -259,7 +260,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got VERIFY-BRACKETS-BYTES ;
 
-: CHECK-DIGEST ( ^u8 n ^u8 n -- ) {: path:^ pathu:n want:^ wantu:n :}
+: CHECK-DIGEST ( str str -- ) {: path:^ pathu:n want:^ wantu:n :}
    wantu 64 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
    UCV-FSHA-CTX path pathu DIGEST-HEX SHA256-FILE-HEX-IN 0 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
    DIGEST-HEX 64 want wantu STR= 0= if UNICODE-CLASS-TOOL:E-DIGEST throw then ;

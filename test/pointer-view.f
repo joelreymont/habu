@@ -1,3 +1,4 @@
+split-str
 \ Explicit representation views preserve addresses and define access width.
 require src/lib/test.f
 require src/lib/memory.f

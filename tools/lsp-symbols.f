@@ -1,3 +1,4 @@
+split-str
 \ lsp-symbols.f - workspace/symbol: the definitions the open documents' last
 \ completed checks retained (tools/lsp-defs.f). Document symbols
 \ (tools/lsp-outline.f) answer with SYMBOL.
@@ -26,28 +27,28 @@ variable COLON-AT                        \ where its first colon is, -1 for none
 variable SHOWN-N                         \ and the symbols it lists so far
 DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 
-: CONTAINS-CI? ( ^u8 n ^u8 n -- bool )
+: CONTAINS-CI? ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    u v - 1+ 0 ?do
       a i + v b v STR=CI if unloop true exit then
    loop
    false ;
 
-: COLON-IN ( ^u8 n -- n )
+: COLON-IN ( str -- n )
    [char] : INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
 
-: PACKAGE$ ( -- ^u8 n )  QUERY-A @ COLON-AT @ ;
-: TAIL$ ( -- ^u8 n )
+: PACKAGE$ ( -- str )  QUERY-A @ COLON-AT @ ;
+: TAIL$ ( -- str )
    COLON-AT @ 1+ {: at:n :}
    QUERY-A @ at + QUERY-U @ at - ;
 
 \ The text after the word's first colon when that colon is neither its first
 \ nor its last byte, else the whole word: what a caller writes after a
 \ package's colon, also for a word re-exported by EXPORT PKG:WORD.
-: REC-TAIL$ ( n -- ^u8 n )
+: REC-TAIL$ ( n -- str )
    REC-WORD$ {: w:^ wu:n :}
    w wu COLON-IN {: at:n :}
    at 0 > at wu 1- < and if w at 1+ + wu at 1+ - exit then

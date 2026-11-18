@@ -1,3 +1,4 @@
+split-str
 \ Observable exact basis maps, final rounding, and rejected domains.
 require src/lib/test.f
 require src/lib/fmath-basis.f

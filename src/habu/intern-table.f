@@ -1,3 +1,4 @@
+split-str
 \ intern-table.f - the string tables, package INTERN's first part: a build
 \ space's and hb's own. Loaded before checker.f by each core prefix so the
 \ checker can reach it; src/habu/intern.f reopens INTERN.
@@ -45,7 +46,7 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
    body CELL - 0 CELL-AT @ ;
 
 
-: SLOT-ENDS? ( n ^n ^u8 n -- bool )
+: SLOT-ENDS? ( n ^n str -- bool )
    {: k:n t:^ a:^ u:n :}
    t k SLOT-CELL @ {: body:n :}
    body 0= if 0 0= exit then
@@ -54,7 +55,7 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 \ The slot holding the body equal to a u, else the empty slot it goes in: one
 \ exists, since a table is never more than half full (LAY).
-: SLOT-FOR ( ^n ^u8 n -- n )
+: SLOT-FOR ( ^n str -- n )
    {: t:^ a:^ u:n :}
    t SIZE-CELL @ 1- {: mask:n :}
    FNV:BASIS32 a u FNV:BYTES32 mask and
@@ -222,7 +223,7 @@ public
 private
 
 \ src/habu/intern.f STRING's entry while SPACE? holds.
-: SPACE-STRING ( ^u8 n -- n ) TEXT ;
+: SPACE-STRING ( str -- n ) TEXT ;
 
 
 \ src/habu/intern.f ADOPT's entry while SPACE? holds: puts a body the space's data

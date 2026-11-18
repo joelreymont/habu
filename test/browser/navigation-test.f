@@ -1,3 +1,4 @@
+split-str
 \ navigation-test.f - Wasm end-to-end browser input, tree, highlight, pick and
 \ occlude records.
 \ The printed directory keeps the module and expected/actual CLI output.
@@ -59,11 +60,11 @@ PATH-CAP BUFFER: FILE
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
-: STEP+ ( ^u8 n n n n n -- )
+: STEP+ ( str n n n n -- )
    {: flag:^ u:n x:n y:n buttons:n mods:n :}
    flag u ARG+ x N-ARG+ y N-ARG+ buttons N-ARG+ mods N-ARG+ ;
 
-: TYPED+ ( ^u8 n -- )
+: TYPED+ ( str -- )
    s" --typed" ARG+ ARG+ ;
 
 : LINE ( ^u8 n -- )

@@ -1,3 +1,4 @@
+split-str
 \ app.f - MCP-APP: an MCP App's view (ext-apps "2026-01-26") of a Habu Wasm
 \ module, in two parts. The kept page, PAGE+, is app.html and app.js, all a
 \ host keeps between its reads of the ui:// resource: app.html with the title
@@ -102,9 +103,9 @@ DIGEST ID SHA256>HEX
    ;MATCH ;
 
 
-: TITLE-MARK ( -- ^u8 n )  s" <!--title-->" ;
-: ID-MARK ( -- ^u8 n )  s" <!--page-id-->" ;
-: APP-MARK ( -- ^u8 n )  s" <!--app.js-->" ;
+: TITLE-MARK ( -- str )  s" <!--title-->" ;
+: ID-MARK ( -- str )  s" <!--page-id-->" ;
+: APP-MARK ( -- str )  s" <!--app.js-->" ;
 
 TITLE-MARK 0 MARK constant TITLE-AT
 TITLE-AT TITLE-MARK nip + constant TITLE-END
@@ -126,7 +127,7 @@ APP-AT APP-MARK nip + constant APP-END
    HTML from + to from - buf SPAN+ ;
 
 
-: BASE64+ ( ^u8 n ^a -- )
+: BASE64+ ( str ^a -- )
    {: a:^ u:n buf:^ :}
    u 2 + 3 / 4 * {: len:n :}
    buf len BUF:N>BLEN BUF:GROW {: out :}
@@ -188,7 +189,7 @@ public
 
 \ The title and the BUF the page is appended to; a title that is not XML text
 \ is refused.
-: PAGE+ ( ^u8 n ^a -- )
+: PAGE+ ( str ^a -- )
    {: t:^ tu:n buf:^ :}
    \ An allocation is never empty, so an empty title takes one escape's room.
    tu 1 max WIDEST * {: cap:n :}
@@ -196,17 +197,17 @@ public
 
 
 \ The app-only tool the page calls, with arguments {}, for its code.
-: CODE-TOOL$ ( -- ^u8 n )  s" view_code" ;
+: CODE-TOOL$ ( -- str )  s" view_code" ;
 
 \ The app-only tool the view calls, with arguments {}, for its socket; its
 \ result's _meta is {"url":"<the socket's ws: or wss: URL>","seconds":<n>},
 \ the seconds after which the view asks for the URL again.
-: SOCKET-TOOL$ ( -- ^u8 n )  s" view_socket" ;
+: SOCKET-TOOL$ ( -- str )  s" view_socket" ;
 
 \ The module's bytes and the BUF their code id is appended to: the SHA-256,
 \ as 64 lowercase hex digits, of the module's bytes, then view.html's,
 \ view.js's, turn.js's, viewport.js's, page.js's and socket.js's.
-: CODE-ID+ ( ^u8 n ^a -- )
+: CODE-ID+ ( str ^a -- )
    SHA256-CTX-BYTES $20 + MEM:BYTES-ALLOC-LEN
    [: HASHED ;] MEM:WITH-BYTES ;
 

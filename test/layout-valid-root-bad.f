@@ -1,3 +1,4 @@
+split-str
 \ layout-valid-root-bad.f — an invalid root tag rejects before payload checks.
 
 require test/layout-valid-guard-base.f

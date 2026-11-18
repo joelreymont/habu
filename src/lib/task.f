@@ -1,3 +1,4 @@
+split-str
 \ task.f - checked CPU tasking over pthread, package TASK: an xt runs on its own
 \ thread, TCB, data stack and TASK:+USER region. THE MAIN THREAD COMPILES; TASKS
 \ RUN COMPILED CODE. A definition, `allot`, `,`, `c,`, `align`, an
@@ -920,7 +921,7 @@ ROW-N ROLLBACK-CELLS:MARK
 : TASK-LIVE- ( -- )
    -1 MAIN-BASE TASKS-LIVE-CELL + atomic-add drop ;
 
-: TASK-MUNMAP-SPAN ( ^u8 n -- )
+: TASK-MUNMAP-SPAN ( str -- )
    MUNMAP-CALL TASK-RC-ERRNO ;
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives every
@@ -1584,7 +1585,7 @@ CAST: AS-SLOTS-ENTRY ( [ n ^n -- ^n ] -- n )
 
 \ Every refusal comes before the child word exists. The child's body calls the
 \ routine at entry.
-: USER-ROW ( n n n ^u8 n -- )
+: USER-ROW ( n n n str -- )
    {: count:n shape:n entry:n da:^ du:n :}
    da du data-base PROVIDED-XT:STORAGE-LINE-CELL + @
    AS-STORAGE-LINE execute {: na:^ nu:n ta:^ tu:n bytes:n :}

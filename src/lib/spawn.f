@@ -1,3 +1,4 @@
+split-str
 \ spawn.f - a child-process request, built word by word and spawned once:
 \ PROCESS:NEW starts one for a program path, the builders add to it, PROCESS:SPAWN
 \ spawns it through the engine's spawn-fds (src/habu/spawn-abi.f lays out what it
@@ -100,7 +101,7 @@ HERM-AT 1+ constant RECORD-CELLS
 \ A C-string copy of the bytes in the request's own chunks. This and ADD-ENV's
 \ FFI:CSTR! refuse a path, argument, row or directory holding a 0 byte:
 \ E-FFI-NUL.
-: CHUNK-ZCOPY ( ^u8 n ^n -- ^u8 )
+: CHUNK-ZCOPY ( str ^n -- ^u8 )
    {: src:^ len h:^ :}
    len FFI:CSTR-ROOM {: need :}
    src len need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE FFI:CSTR ;
@@ -128,7 +129,7 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ argv[0] is the path unless the first rows came from ARGV-ROWS.
-: ADD-ARG ( ^n ^u8 n -- ^n ^u8 n )
+: ADD-ARG ( ^n str -- ^n str )
    {: h:^ a:^ len :}
    len 0 < if E-PROC-OUTPUT throw then
    h ARGS @ VEC:COUNT 0= if h PATH-CELL @ h ARGS @ VEC:PUSH ! then
@@ -137,7 +138,7 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ process-env.f mirrors this check and SAME-NAME?.
-: CHECK-NAME ( ^u8 n -- )
+: CHECK-NAME ( str -- )
    {: a:^ len :}
    len 0= if E-PROC-ENV throw then
    0 begin dup len < while
@@ -147,7 +148,7 @@ HERM-AT 1+ constant RECORD-CELLS
 
 
 \ A C-string name=value copy in the request's own chunks.
-: ADD-ENV ( ^n ^u8 n ^u8 n -- ^n ^u8 n ^u8 n )
+: ADD-ENV ( ^n str str -- ^n str str )
    {: h:^ name:^ namelen val:^ vallen :}
    namelen 0 < vallen 0 < or if E-PROC-ENV throw then
    name namelen CHECK-NAME
@@ -168,7 +169,7 @@ HERM-AT 1+ constant RECORD-CELLS
    2dup swap dup ENVS @ ROWS+ ;
 
 
-: SET-CWD ( ^n ^u8 n -- ^n ^u8 n )
+: SET-CWD ( ^n str -- ^n str )
    {: h:^ dir:^ len :}
    len 0 <= if E-PROC-PATH throw then
    dir len h CHUNK-ZCOPY h CWD-CELL !

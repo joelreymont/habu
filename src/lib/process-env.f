@@ -1,3 +1,4 @@
+split-str
 \ process-env.f - checked argv/env process helpers and PATH lookup. The prepared
 \ environment and the inherited defaults are tables of row addresses plus row
 \ bytes in chunks of max(row size, $1000), grown without a ceiling.

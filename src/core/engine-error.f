@@ -1,3 +1,4 @@
+split-str
 \ engine-error.f - the dictionary occurrence and OS-backed memory codes.
 
 \ Dictionary occurrence failures belong to DEF-OCC.

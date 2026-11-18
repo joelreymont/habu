@@ -1,3 +1,4 @@
+split-str
 \ process-fork.f - checked fork wrappers (package PROC-FORK) and the reaper
 \ that kills a spawned pool child's process group when its pool parent dies.
 \ CHECKED and SET-PGID are not named FORK and SETPGID: those tails would
@@ -85,7 +86,7 @@ FUNCTION: SIGDEL-CALL sigdelset ( ^u8 n -- i32 )
 : MASK-OK ( n -- )
    0 <> if E-PROC-SPAWN throw then ;
 
-: UNBLOCK ( ^u8 n -- )
+: UNBLOCK ( str -- )
    SIGDEL-CALL MASK-OK ;
 
 \ The engine's crash and breakpoint handlers stay reachable: a fault raised

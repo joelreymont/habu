@@ -1,3 +1,4 @@
+split-str
 \ bearer.f - OAuth bearer tokens (RFC 6750) on Habu's HTTP server. A route
 \ admits a request whose Authorization carries a compact JWS that one issuer
 \ signed RS256 with a key of its JWK Set, whose iss and aud name that issuer
@@ -91,10 +92,10 @@ variable RESOURCE-U   RESOURCE-U scratch-cell-mark
 : NAMED-SPAN ( -- SPAN:span<u8> ) NAMED @ NAMED-LEN @ SPAN:MAKE ;
 : CHALLENGES ( -- SPAN:span<u8> ) NAMED-SPAN CHALLENGES-U @ SPAN:TAKE ;
 
-: RESOURCE$ ( -- ^u8 n )
+: RESOURCE$ ( -- str )
    NAMED-SPAN CHALLENGES-U @ SPAN:SKIP RESOURCE-U @ SPAN:TAKE SPAN:$ ;
 
-: SCOPE$ ( -- ^u8 n )
+: SCOPE$ ( -- str )
    NAMED-SPAN CHALLENGES-U @ RESOURCE-U @ + SPAN:SKIP SPAN:$ ;
 
 \ The key set's text, under KEYS-LOCK (never held across the network) with
@@ -143,8 +144,8 @@ TASK:+USER FROM n
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : CURSOR ( -- ^JSON:cursor ) SLOT READER ;
 : OUTER-CURSOR ( -- ^JSON:cursor ) SLOT OUTER ;
-: HEADER$ ( -- ^u8 n ) SLOT HEADER @ SPAN:$ ;
-: CLAIMS$ ( -- ^u8 n ) SLOT CLAIMS @ SPAN:$ ;
+: HEADER$ ( -- str ) SLOT HEADER @ SPAN:$ ;
+: CLAIMS$ ( -- str ) SLOT CLAIMS @ SPAN:$ ;
 
 : ROOM ( n n -- SPAN:span<u8> )
    {: off:n len:n :}
@@ -179,20 +180,20 @@ TASK:+USER FROM n
    k ku JSON:READ-FIND-KEY 0= if -1 exit then
    JSON:READ-TOKEN ;
 
-: KIND-OF ( ^u8 n ^u8 n -- n ) MEMBER {: kind:n :} JSON:READ-CLOSE kind ;
+: KIND-OF ( str str -- n ) MEMBER {: kind:n :} JSON:READ-CLOSE kind ;
 
-: MEMBER-IS? ( ^u8 n ^u8 n ^u8 n bool -- bool )
+: MEMBER-IS? ( str str str bool -- bool )
    {: t:^ tu:n k:^ ku:n w:^ wu:n absent:bool :}
    t tu k ku MEMBER {: kind:n :}
    kind -1 = if JSON:READ-CLOSE absent exit then
    kind JSON:T-STR <> if JSON:READ-CLOSE false exit then
    w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
 
-: MEMBER$ ( ^u8 n ^u8 n -- ^u8 n )
+: MEMBER$ ( str str -- str )
    MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
    JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
 
-: MEMBER-INT ( ^u8 n ^u8 n -- n bool )
+: MEMBER-INT ( str str -- n bool )
    MEMBER JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
@@ -203,7 +204,7 @@ TASK:+USER FROM n
    room SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE
    room SPAN:$ drop got true ;
 
-: NOTE$ ( ^u8 n ^u8 n -- ^u8 n bool )
+: NOTE$ ( str str -- str bool )
    NOTE-OFF HTTP:HEAD-CAP ROOM DECODED$ ;
 
 
@@ -259,7 +260,7 @@ TASK:+USER FROM n
 
 \ Its n and e are decoded into the worker's scratch; ones that will not decode
 \ throw, since a key the issuer publishes broken is not the caller's.
-: PICK? ( ^u8 n -- bool )
+: PICK? ( str -- bool )
    {: m:^ mu:n :}
    m mu s" kid" SLOT KID @ SPAN:$ false MEMBER-IS? 0= if false exit then
    m mu s" kty" s" RSA" false MEMBER-IS? 0= if false exit then
@@ -411,7 +412,7 @@ ENUM lookup-step
    kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ 2drop then
    0 ;
 
-: HOLDS? ( ^u8 n ^u8 n ^u8 n -- bool )
+: HOLDS? ( str str str -- bool )
    {: t:^ tu:n k:^ ku:n w:^ wu:n :}
    t tu k ku MEMBER {: kind:n :}
    kind JSON:T-STR = if
@@ -424,13 +425,13 @@ ENUM lookup-step
 : AUDIENCE? ( -- bool ) CLAIMS$ s" aud" AUDIENCE SPAN:$ HOLDS? ;
 
 \ The offset of the first space at or after from, or the end.
-: SPACE-AT ( ^u8 n n -- n )
+: SPACE-AT ( str n -- n )
    {: t:^ u:n from:n :}
    u from ?do t i + c@ $20 = if i unloop exit then loop u ;
 
 \ Whether the name is one of the text's words from the offset on, runs of
 \ bytes but spaces.
-: WORD-FROM? ( ^u8 n ^u8 n n -- bool )
+: WORD-FROM? ( str str n -- bool )
    {: t:^ u:n w:^ wu:n from:n :}
    from begin {: at:n :} at u < while
       t u at SPACE-AT {: to:n :}
@@ -472,7 +473,7 @@ ENUM lookup-step
    answer s" WWW-Authenticate" value vu HTTP:HEADER! ;
 
 \ The challenge for NO-TOKEN or INVALID.
-: CHALLENGE$ ( n -- ^u8 n )
+: CHALLENGE$ ( n -- str )
    {: outcome:n :}
    CHALLENGES {: named :}
    named SPAN:LEN 0= if
@@ -487,10 +488,10 @@ ENUM lookup-step
    outcome UNAVAILABLE = if answer 503 HTTP:STATUS! exit then
    answer outcome CHALLENGE$ CHALLENGE ;
 
-: NAMED-PREFIX ( -- ^u8 n ) s" Bearer " ;
-: INVALID-PREFIX ( -- ^u8 n ) S\" Bearer error=\"invalid_token\", " ;
-: METADATA-NAME ( -- ^u8 n ) s" resource_metadata" ;
-: SCOPE-NAME ( -- ^u8 n ) s" scope" ;
+: NAMED-PREFIX ( -- str ) s" Bearer " ;
+: INVALID-PREFIX ( -- str ) S\" Bearer error=\"invalid_token\", " ;
+: METADATA-NAME ( -- str ) s" resource_metadata" ;
+: SCOPE-NAME ( -- str ) s" scope" ;
 : SEPARATOR ( -- ^u8 n ) s" , " ;
 
 : PUT ( ^u8 n SPAN:span<u8> n -- n )
@@ -538,7 +539,7 @@ ENUM lookup-step
 : RESOURCE-LEN ( n -- n ) dup 0= if exit then WELL-KNOWN nip - ;
 
 \ The resource the URL names, its bytes but the well-known segment at end.
-: RESOURCE+ ( ^u8 n n SPAN:span<u8> n -- n )
+: RESOURCE+ ( str n SPAN:span<u8> n -- n )
    {: url:^ uu:n end:n row off:n :}
    uu 0= if off exit then
    url end row off PUT {: past:n :}
@@ -561,7 +562,7 @@ ENUM lookup-step
 
 \ HTTP writes a header value as it is: a quote or backslash would end the
 \ quoted resource_metadata early, and a CR or LF would start a line of its own.
-: QUOTABLE ( ^u8 n -- )
+: QUOTABLE ( str -- )
    {: text u:n :}
    u 0 ?do
       text i + c@ {: c :}
@@ -571,7 +572,7 @@ ENUM lookup-step
 
 \ RFC 6749 3.3: tokens of NQCHAR (%x21, %x23-5B, %x5D-7E), each one space
 \ from the next. An empty scope names none.
-: SCOPE-TOKENS ( ^u8 n -- )
+: SCOPE-TOKENS ( str -- )
    {: text u:n :}
    u 0= if exit then
    text c@ $20 = text u 1- + c@ $20 = or if E-OPERAND throw then
@@ -588,11 +589,11 @@ ENUM lookup-step
    PASSED @ 0= if false exit then
    FROM @ HTTP:>REQUEST HTTP:SERVING? ;
 
-: V6-LOOPBACK ( -- ^u8 n ) s" [::1]" ;
+: V6-LOOPBACK ( -- str ) s" [::1]" ;
 
 \ Decimal 0 to 255 without a leading zero, which a resolver may read as
 \ octal.
-: OCTET? ( ^u8 n -- bool )
+: OCTET? ( str -- bool )
    {: a:^ u:n :}
    u 1 < u 3 > or if false exit then
    a u STR-DIGITS? 0= if false exit then
@@ -600,7 +601,7 @@ ENUM lookup-step
    a u s" 255" STR-DIGITS<= ;
 
 \ A dotted-quad IPv4 literal in 127.0.0.0/8.
-: LOOPBACK-V4? ( ^u8 n -- bool )
+: LOOPBACK-V4? ( str -- bool )
    {: h:^ hu:n :}
    h hu s" 127." STARTS-WITH? 0= if false exit then
    h hu 4 DOT {: d1:n :}
@@ -613,14 +614,14 @@ ENUM lookup-step
 
 \ E-OPERAND for an http URL whose host is no loopback IP literal; URI:ORIGIN's
 \ rejection for one it cannot read.
-: SECURE ( ^u8 n -- )
+: SECURE ( str -- )
    URI:ORIGIN drop {: s:^ su:n h:^ hu:n :}
    s su s" https" STR=CI if exit then
    h hu V6-LOOPBACK STR= if exit then
    h hu LOOPBACK-V4? 0= if E-OPERAND throw then ;
 
 \ The resource's path: nothing, or `/` and no query or fragment.
-: PATH? ( ^u8 n -- bool )
+: PATH? ( str -- bool )
    {: p:^ pu:n :}
    pu 0= if true exit then
    p c@ [char] / <> if false exit then
@@ -628,7 +629,7 @@ ENUM lookup-step
 
 \ Where the well-known segment starts in METADATA!'s URL, 0 for an empty
 \ URL; SECURE's rejection, or E-OPERAND for a URL not of RFC 9728 3.1's form.
-: WELL-KNOWN-AT ( ^u8 n -- n )
+: WELL-KNOWN-AT ( str -- n )
    {: url:^ uu:n :}
    uu 0= if 0 exit then
    url uu SECURE
@@ -789,7 +790,7 @@ ENUM grant
 
 private
 
-: PAIR+ ( ^u8 n ^u8 n ^n -- )
+: PAIR+ ( str str ^n -- )
    {: k:^ ku:n v:^ vu:n buf:^ :}
    buf BUF:LEN@ BUF:BLEN>N 0 > if [char] & buf BUF:APPEND-BYTE then
    k ku BUF:N>BLEN buf BUF:APPEND-SPAN
@@ -824,7 +825,7 @@ private
          s" requested_token_use" s" on_behalf_of" buf PAIR+ ENDOF
    ;MATCH ;
 
-: REFRESH-FORM ( ^u8 n ^u8 n ^n -- )
+: REFRESH-FORM ( str str ^n -- )
    {: scope:^ su:n r:^ ru:n buf:^ :}
    buf EMPTIED
    s" grant_type" s" refresh_token" buf PAIR+
@@ -909,7 +910,7 @@ private
 \ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's
 \ value, and its token kind, -1 when the text is no object or lacks the member;
 \ the caller reads and closes it.
-: ANSWER-MEMBER ( SPAN:span<u8> ^u8 n -- JSON:reader n )
+: ANSWER-MEMBER ( SPAN:span<u8> str -- JSON:reader n )
    {: text k:^ ku:n :}
    ANSWER-CURSOR text SPAN:$ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if -1 exit then

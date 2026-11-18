@@ -1,3 +1,4 @@
+split-str
 \ create-axiom-test.f - `create`'s effect row (src/habu/prims.f `EPRIM: create
 \ EPRIM;`) is empty: `create` parses a name and defines it (src/habu/habu1.f
 \ BCREATE); the word gets `-- ^a` from its definer (src/habu/interpreter.f

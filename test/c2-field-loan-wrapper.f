@@ -1,3 +1,4 @@
+split-str
 \ An explicit child and projected-region callback scheme survives image saving.
 require src/lib/c2-memory.f
 

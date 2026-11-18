@@ -1,3 +1,4 @@
+split-str
 \ postpone-refuse.f - a definition a definer builds is refused for compile, of
 \ a quotation literal and for a postponed word since undefined, and the next
 \ definition compiles; a definer is refused for postponing a word its tick is
@@ -16,14 +17,14 @@ package POSTPONE-REFUSE
 private
 
 \ : NAME ( n -- n ) 1 + ; through compile, of a quotation.
-: MAKE-QUOT-CALL ( ^u8 n -- )
+: MAKE-QUOT-CALL ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    [: 1 + ;] compile,
    postpone ; ;
 
 : ONE ( -- n ) 1 ;
 \ : NAME ( -- n ) ONE ;
-: MAKE-ONE ( ^u8 n -- )
+: MAKE-ONE ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    postpone ONE
    postpone ; ;
@@ -42,13 +43,13 @@ QUOT-CALL 70 T=
 RETIRED 70 T=
 
 \ A throw between define-word and `;` leaves no definition open past its catch.
-: MAKE-THROWN ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word 99 throw ;
+: MAKE-THROWN ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word 99 throw ;
 : THROWN ( -- n ) [: s" THROWN-DEF" MAKE-THROWN ;] catch ;
 THROWN 99 T=
 
 \ A rejection inside an evaluate the definer runs abandons the definer's definition.
 : NESTED-IMM ( -- ) [: 1 + ;] compile, ; immediate
-: MAKE-NESTED ( ^u8 n -- )
+: MAKE-NESTED ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" NESTED-IMM" evaluate-closed
    postpone ; ;
@@ -57,7 +58,7 @@ REJECTION:CAPTURE  NESTED 70 T=  REJECTION:BUFFER-OFF
 REJECTION:BUFFER$ s" error[E-UNMODELED-IMMEDIATE]: `NESTED-IMM` runs while the definition compiles and may define words or add to a definition" CONTAINS? TTRUE
 
 \ : NAME ( -- n ) 5 ; after a refusal the definer catches.
-: MAKE-KEPT ( ^u8 n -- )
+: MAKE-KEPT ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
    [: [: 1 + ;] compile, ;] catch 70 T=
    s" 5" evaluate-closed
@@ -71,7 +72,7 @@ package CUT
 : CUT-TWO ( n -- n ) 2 + ;
 public
 : CUT-IMM ( -- ) postpone CUT-TWO postpone CUT-TWO ; immediate
-: MAKE-CUT ( ^u8 n -- )
+: MAKE-CUT ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    REJECTION:CAPTURE  [: s" CUT:CUT-IMM" evaluate-closed ;] catch 70 T=  REJECTION:BUFFER-OFF
    REJECTION:BUFFER$ s" `CUT:CUT-IMM` runs while the definition compiles and may define words or add to a definition" CONTAINS? TTRUE

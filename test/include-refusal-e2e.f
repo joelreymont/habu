@@ -1,3 +1,4 @@
+split-str
 \ include-refusal-e2e.f - a loader rejection that ends the process names itself:
 \ each case pins the record's exit status, an empty stdout and a stderr record
 \ carrying the rejection's code, the word or path it names and why. Children run the engine under test
@@ -29,7 +30,7 @@ create ERR IO-CAP allot variable ERR-U
 variable RC
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
+: PROG$ ( -- str ) PROG PROG-U @ ;
 : ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 
 \ <root>/<rel>, until the next call.
@@ -45,13 +46,13 @@ variable RC
    s" cases" AT FS:MAKE-DIR
    s" plain.f" AT s" \ a file, not a directory" FS:WRITE-ALL ;
 
-: PROG+ ( ^u8 n -- )
+: PROG+ ( str -- )
    {: a:^ u:n :}
    u IO-CAP PROG-U @ - > if E-STR-CAPACITY throw then
    a PROG PROG-U @ + u BYTE-COPY
    u PROG-U +! ;
 
-: PLINE ( ^u8 n -- ) PROG+ S\" \n" PROG+ ;
+: PLINE ( str -- ) PROG+ S\" \n" PROG+ ;
 
 \ <root>/cases/<name><suffix>.
 : NAMED ( ^u8 n ^u8 n -- ^u8 n )
@@ -68,7 +69,7 @@ variable RC
    name nameu s" .err" NAMED ERR$ FS:WRITE-ALL ;
 
 \ The engine under test runs the program as <root>/cases/<name>.f with --load.
-: LOAD-CASE ( ^u8 n -- )
+: LOAD-CASE ( str -- )
    {: name:^ nameu:n :}
    name nameu s" .f" NAMED PROG$ FS:WRITE-ALL
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -84,16 +85,16 @@ variable RC
    RC @ rc T=
    OUT-U @ 0 T= ;
 
-: ERR-HAS ( ^u8 n -- ) {: a:^ u:n :}
+: ERR-HAS ( str -- ) {: a:^ u:n :}
    ERR$ a u CONTAINS? TTRUE ;
 
 \ The string builder holds <pre><root>/<rel>`.
-: SB-NAMES ( ^u8 n ^u8 n -- )
+: SB-NAMES ( str str -- )
    {: pre:^ preu:n rel:^ relu:n :}
    SB-RESET pre preu SB-APPEND rel relu AT SB-APPEND 96 SB-APPEND-C ;
 
 \ A program that scopes the root <root>/<rel>, and the rejection naming that path.
-: WITH-AT ( ^u8 n ^u8 n -- )
+: WITH-AT ( str str -- )
    {: name:^ nameu:n rel:^ relu:n :}
    0 PROG-U !
    s" package INCLUDE-REFUSAL-WITH" PLINE
@@ -175,7 +176,7 @@ variable RC
 
 \ A program whose one line requires the absolute path <root>/<rel>, and the
 \ loader's missing-source rejection naming that path.
-: REQUIRE-AT ( ^u8 n ^u8 n -- )
+: REQUIRE-AT ( str str -- )
    {: name:^ nameu:n rel:^ relu:n :}
    0 PROG-U !
    s" require " PROG+ rel relu AT PLINE

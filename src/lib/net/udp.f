@@ -1,3 +1,4 @@
+split-str
 \ udp.f - unix-domain datagram sockets named by a path or, on Linux, an
 \ abstract name written @name. Linux and macOS. CLOSE does not remove a
 \ path's socket file.
@@ -75,12 +76,12 @@ SOCKADDR-BYTES TASK:+USERS ADDRESS-ROW u8
 
 \ A NUL, then the name after its @, and no NUL that the length counts: Linux
 \ reads an abstract name, macOS answers ENOENT.
-: ABSTRACT! ( ^u8 n -- n ) {: name size:n :}
+: ABSTRACT! ( str -- n ) {: name size:n :}
    name 1+ size 1- 1 PATH-SPAN SPAN:COPY
    0 SOCKADDR 2 + c! size 2 + ;
 
 
-: NAME! ( ^u8 n -- n ) {: name size:n :}
+: NAME! ( str -- n ) {: name size:n :}
    size 0= if 2 exit then
    name c@ AT-SIGN = if name size ABSTRACT! exit then
    name size PATH! ;

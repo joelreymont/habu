@@ -1,3 +1,4 @@
+split-str
 \ byte-buffer-test.f - focused tests for the owned growable byte buffer.
 
 require src/lib/error.f
@@ -22,7 +23,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-TLEN ( ^a -- n )  BUF:LEN@ BUFT-BL>RAW ;
 : BUFT-TCAP ( ^a -- n )  BUF:CAP@ BUFT-BL>RAW ;
 
-: BUFT-CHECK-REJECTS ( ^u8 n -- )
+: BUFT-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ Re-init of a live header would leak its mapping, so each test opens from a

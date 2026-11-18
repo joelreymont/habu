@@ -1,3 +1,4 @@
+split-str
 \ date.f - Gregorian UTC dates, in `package DATE`, the one date module for the
 \ stdlib and the tool CLIs. PARSE-YMD accepts exactly YYYY-MM-DD.
 \ PARSE-HTTP accepts the three forms RFC 9110 section 5.6.7 makes a recipient
@@ -138,7 +139,7 @@ public
       DATE-ZERO - swap DATE-BASE * +
    loop OPTION:SOME ;
 
-: PARSE-YMD ( ^u8 n -- option<n> )
+: PARSE-YMD ( str -- option<n> )
    {: a:^ u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
    u LEN <> IF OPTION:NONE exit THEN
    a DATE-YEAR-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
@@ -171,7 +172,7 @@ public
       DATE-BASE /
    loop drop ;
 
-: FORMAT-YMD ( n ^u8 n -- ^u8 n )
+: FORMAT-YMD ( n ^u8 n -- str )
    {: days:n dst:^ cap:n :}
    cap LEN < IF E-TIME-CAPACITY throw THEN
    days DAYS>YMD {: y:n m:n d:n :}
@@ -183,7 +184,7 @@ public
    d DATE-PART-LEN dst DATE-MONTH-DASH 1+ WIDTH!
    dst LEN ;
 
-: FORMAT-EPOCH-UTC ( n ^u8 n -- ^u8 n )
+: FORMAT-EPOCH-UTC ( n ^u8 n -- str )
    {: seconds:n dst:^ cap:n :}
    cap TIME-LEN < IF E-TIME-CAPACITY throw THEN
    seconds 0 < IF E-TIME-RANGE throw THEN
@@ -220,11 +221,11 @@ private
 11 constant DATE-ASCTIME-CLOCK
 20 constant DATE-ASCTIME-YEAR
 
-: IMF-TEMPLATE ( -- ^u8 n ) s" ___, __ ___ ____ __:__:__ GMT" ;
-: RFC850-TEMPLATE ( -- ^u8 n ) s" , __-___-__ __:__:__ GMT" ;
-: ASCTIME-TEMPLATE ( -- ^u8 n ) s" ___ ___ __ __:__:__ ____" ;
+: IMF-TEMPLATE ( -- str ) s" ___, __ ___ ____ __:__:__ GMT" ;
+: RFC850-TEMPLATE ( -- str ) s" , __-___-__ __:__:__ GMT" ;
+: ASCTIME-TEMPLATE ( -- str ) s" ___ ___ __ __:__:__ ____" ;
 
-: TEMPLATE? ( ^u8 n n ^u8 n -- bool )
+: TEMPLATE? ( str n str -- bool )
    {: a:^ u:n k:n t:^ tu:n :}   \ t matches the text from byte k on
    k 0 <  u k tu + <> or IF false exit THEN
    tu 0 ?do
@@ -232,12 +233,12 @@ private
       swap a k + i + c@ <> and IF unloop false exit THEN
    loop true ;
 
-: DAY-NAME= ( ^u8 n bool ^u8 n -- bool )
+: DAY-NAME= ( str bool str -- bool )
    {: a:^ u:n short:bool name:^ len:n :}
    short IF a u name DATE-NAME-LEN STR= exit THEN
    a u name len STR= ;
 
-: DAY-NAME? ( ^u8 n bool -- bool )
+: DAY-NAME? ( str bool -- bool )
    {: a:^ u:n short:bool :}   \ short: the name's first three bytes
    a u short s" Monday" DAY-NAME=
    a u short s" Tuesday" DAY-NAME= or
@@ -341,7 +342,7 @@ private
    a DATE-NAME-LEN true DAY-NAME? 0= IF OPTION:NONE exit THEN
    a DATE-NAME-LEN DATE-YEAR-LEN 0 [: 2drop 2drop ;] STAMP ;
 
-: RFC850 ( ^u8 n n -- option<n> )
+: RFC850 ( str n -- option<n> )
    {: a:^ k:n now:n :}   \ k bytes of day name
    a k false DAY-NAME? 0= IF OPTION:NONE exit THEN
    a k DATE-PART-LEN now [: FULL-YEAR ;] STAMP ;
@@ -380,7 +381,7 @@ private
 
 public
 
-: PARSE-HTTP ( ^u8 n n -- option<n> )
+: PARSE-HTTP ( str n -- option<n> )
    {: a:^ u:n now:n :}   \ SOME epoch seconds; now serves RFC 850's year
    a u 0 IMF-TEMPLATE TEMPLATE? IF a IMF exit THEN
    a u 0 ASCTIME-TEMPLATE TEMPLATE? IF a ASCTIME exit THEN

@@ -1,3 +1,4 @@
+split-str
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
 \ and the deliveries src/lib/browser/host-cli.mjs reserves through the module
 \ share one allocator (src/lib/browser/event.f). The module is built by

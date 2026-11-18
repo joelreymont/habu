@@ -1,3 +1,4 @@
+split-str
 \ reopen-binding-late.f - the second file of package REOPEN-ORDER: the reopen
 \ that gives the package its own `@`. The definition's own body is compiled
 \ before the tail exists, so the fetch inside it is the engine's.

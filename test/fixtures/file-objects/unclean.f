@@ -1,3 +1,4 @@
+split-str
 \ unclean.f - a request inside a package (an unclean cut), then one at top level (a clean one):
 \ the first two parts compile in every build, and the third links once its object exists.
 

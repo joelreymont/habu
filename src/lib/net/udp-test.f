@@ -1,3 +1,4 @@
+split-str
 \ udp-test.f - unix datagram sockets bound in the pool's short HB_SOCK_TMP,
 \ else under TMPDIR, and abstract names.
 \
@@ -34,7 +35,7 @@ create NAME NAME-CAP allot   variable NAME-U
 variable SOCK-R
 variable SOCK-S
 
-: DIR$ ( -- ^u8 n ) DIR DIR-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ ;
 : PATH$ ( -- ^u8 n ) PATH PATH-U @ ;
 : NAME$ ( -- ^u8 n ) NAME NAME-U @ ;
 
@@ -86,7 +87,7 @@ variable SOCK-S
    SB$ {: a:^ u:n :} a NAME u BYTE-COPY u NAME-U ! ;
 
 
-: BIND-RECEIVER ( ^u8 n -- )
+: BIND-RECEIVER ( str -- )
    UDP:BIND SOCKET-OF dup 0 >= TTRUE SOCK-R ! ;
 
 
@@ -111,7 +112,7 @@ variable SOCK-S
    loop true ;
 
 
-: SEND-TO ( ^u8 n -- ) {: name:^ size:n :}
+: SEND-TO ( str -- ) {: name:^ size:n :}
    SOCK-S @ UDP:>SOCKET name size SEND-BUF PAYLOAD-N STR:LENGTH UDP:SEND
    STATUS-ERRNO 0 T= ;
 
@@ -189,7 +190,7 @@ HB-TARGET-MACOS? [if]
    [: BIND-LONG ;] E-SPAN-CAPACITY TTHROWSQ ;
 
 
-: DIR! ( ^u8 n -- ) {: a:^ u:n :}
+: DIR! ( str -- ) {: a:^ u:n :}
    a DIR u BYTE-COPY u DIR-U ! ;
 
 

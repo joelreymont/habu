@@ -1,3 +1,4 @@
+split-str
 \ The language server whole-source-read-test.f runs in a fork child: with a
 \ subject open, it publishes one packet about another file, which it reads from
 \ disk to range the packet.
@@ -19,19 +20,19 @@ PATH-CAP 256 + constant PKT-CAP
 create PKT PKT-CAP allot
 variable PKT-U
 
-: SUBJECT$ ( -- ^u8 n )
+: SUBJECT$ ( -- str )
    SUBJECT-PATH SUBJECT-PATH-U @ ;
 
-: FILE$ ( -- ^u8 n )
+: FILE$ ( -- str )
    FILE-PATH FILE-PATH-U @ ;
 
 \ dst receives a's bytes and u its length, refused past cap.
-: KEEP! ( ^u8 n ^u8 ^n n -- ) {: a:^ u:n dst:^ up:^ cap:n :}
+: KEEP! ( str ^u8 ^n n -- ) {: a:^ u:n dst:^ up:^ cap:n :}
    u cap > if E-STR-CAPACITY throw then
    a dst u BYTE-COPY
    u up ! ;
 
-: PKT+ ( ^u8 n -- )
+: PKT+ ( str -- )
    {: a:^ u:n :}
    PKT-U @ u + PKT-CAP > if E-STR-CAPACITY throw then
    a PKT PKT-U @ + u BYTE-COPY
@@ -40,7 +41,7 @@ variable PKT-U
 public
 
 \ SUBJECT is the open document, FILE the file the packet names.
-: CASE! ( ^u8 n ^u8 n -- )
+: CASE! ( str str -- )
    {: subj:^ subju:n file:^ fileu:n :}
    subj subju SUBJECT-PATH SUBJECT-PATH-U PATH-CAP KEEP!
    file fileu FILE-PATH FILE-PATH-U PATH-CAP KEEP! ;

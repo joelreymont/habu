@@ -1,3 +1,4 @@
+split-str
 \ zip-raw.f - byte-preserving ZIP framing; libzip only decompresses members.
 \ STORAGE CLASS. CALLER-OWNED: works on the archive handle's own buffers; no
 \ module state.
@@ -204,23 +205,23 @@ $14 constant LOCATOR-BYTES
    node MEMBERS @ idx MEMBER-CELLS * cells + ;
 : CENTRAL-PTR ( ^n ^n -- ^u8 )
    CENTRAL-OFF @ CENTRAL-BYTES RAW-SPAN ;
-: CENTRAL-NAME ( ^n ^n -- ^u8 n )
+: CENTRAL-NAME ( ^n ^n -- str )
    CENTRAL-PTR dup CENTRAL-BYTES + swap $1C + U16@ ;
-: EXTRA-SPAN ( ^n ^n -- ^u8 n )
+: EXTRA-SPAN ( ^n ^n -- str )
    CENTRAL-PTR {: data:^ :}
    data CENTRAL-BYTES + data $1C + U16@ + data $1E + U16@ ;
 
-: EXTRA-CHECK ( ^u8 n -- ) {: data:^ len:n :}
+: EXTRA-CHECK ( str -- ) {: data:^ len:n :}
    len 4 < if E-READ throw then
    data 2 + U16@ len 4 - > if E-READ throw then ;
-: EXTRA-VALIDATE ( ^u8 n -- )
+: EXTRA-VALIDATE ( str -- )
    begin dup 0 > while
       dup 4 < if E-OPEN throw then
       over 2 + U16@ over 4 - > if E-OPEN throw then
       over 2 + U16@ 4 + {: step:n :}
       swap step + swap step -
    repeat 2drop ;
-: EXTRA-FIND ( ^u8 n n -- ^u8 n ) {: data:^ len:n tag:n :}
+: EXTRA-FIND ( str n -- str ) {: data:^ len:n tag:n :}
    data len begin dup 0 > while
       2dup EXTRA-CHECK over U16@ tag = if exit then
       over 2 + U16@ 4 + {: step:n :}
@@ -230,7 +231,7 @@ $14 constant LOCATOR-BYTES
 : WIDE-FIELD ( ^u8 n -- ^u8 n n ) {: data:^ len:n :}
    len 8 < if E-READ throw then
    data 8 + len 8 - data U64@ ;
-: WIDE-DISK ( ^u8 n -- ^u8 n ) {: data:^ len:n :}
+: WIDE-DISK ( str -- str ) {: data:^ len:n :}
    len 4 < if E-READ throw then
    data U32@ 0 <> if E-READ throw then
    data 4 + len 4 - ;
@@ -347,7 +348,7 @@ $14 constant LOCATOR-BYTES
 : CRC32 ( ^u8 n -- n ) {: data:^ len:n :}
    U32-MAX len 0 ?do data i + c@ CRC-BYTE loop U32-MAX xor ;
 
-: EMIT-BYTES ( ^n ^u8 n -- )
+: EMIT-BYTES ( ^n str -- )
    {: node:^ data:^ len:n :}
    node OUT-LEN @ len SAFE+ {: next:n :}
    node TEMP-FD @ >FD data len FD:WRITE-FULL next node OUT-LEN ! ;
@@ -399,7 +400,7 @@ $14 constant LOCATOR-BYTES
 : OFFSET64? ( ^n -- bool ) NEW-LOCAL @ U32-MAX >= ;
 : CENTRAL64? ( ^n -- bool ) dup SIZE64? swap OFFSET64? or ;
 
-: EMIT-EXTRAS ( ^n ^u8 n -- ) {: node:^ data:^ len:n :}
+: EMIT-EXTRAS ( ^n str -- ) {: node:^ data:^ len:n :}
    data len begin dup 0 > while
       2dup EXTRA-CHECK over 2 + U16@ 4 + {: step:n :}
       over U16@ 1 <> if over node swap step EMIT-BYTES then
@@ -585,7 +586,7 @@ $14 constant LOCATOR-BYTES
 : TEMP-WRITE ( ^n -- )
    {: node:^ :}
    node TEMP-FD @ -1 node TEMP-FD ! C-CLOSE-FD 0 <> if E-COMMIT throw then ;
-: FILL-SIBLING ( ^n ^u8 n -- ^n )
+: FILL-SIBLING ( ^n str -- ^n )
    {: node:^ tmp:^ tmpu :}
    tmp tmpu FS:>PATHZ FS:O-RDWR 0 open
    dup 0 < if E-COMMIT throw then node TEMP-FD !

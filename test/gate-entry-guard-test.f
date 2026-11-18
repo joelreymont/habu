@@ -1,3 +1,4 @@
+split-str
 \ Focused registry/load-path acceptance for the stdlib gate entry guard.
 
 require src/lib/test.f

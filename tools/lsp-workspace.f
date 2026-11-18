@@ -1,3 +1,4 @@
+split-str
 \ lsp-workspace.f - the workspace files whose loads reach a file, for the LSP
 \ server. Subjects are the .f files under the ROOT+ folders, outside repository
 \ and tool state, and the open documents. A node is a path and a root: a load
@@ -87,21 +88,21 @@ variable CUR-ROOT                        \ and the root being walked
 : ROOT@ ( n n -- n )  swap ROOT-CELLS * + ROOTS @ ;
 : ROOT! ( n n n -- )  swap ROOT-CELLS * + ROOTS ! ;
 
-: POOL$ ( n n -- ^u8 n )
+: POOL$ ( n n -- str )
    {: at:n u:n :}
    at POOL u ;
 
 : PATH$ ( n -- ^u8 n )  dup N-PATH NODE@ swap N-PATH-U NODE@ POOL$ ;
-: DIR$ ( n -- ^u8 n )  dup N-ROOT NODE@ swap N-ROOT-U NODE@ POOL$ ;
-: F$ ( -- ^u8 n )  F-AT @ F-U @ POOL$ ;
+: DIR$ ( n -- str )  dup N-ROOT NODE@ swap N-ROOT-U NODE@ POOL$ ;
+: F$ ( -- str )  F-AT @ F-U @ POOL$ ;
 
-: ROOT-PATH$ ( n -- ^u8 n )
+: ROOT-PATH$ ( n -- str )
    {: r:n :}
    r R-PATH ROOT@ ROOT-BYTES r R-PATH-U ROOT@ ;
 
 \ The bytes appended to POOL: their offset there. They never lie in POOL,
 \ which the append may move.
-: POOL+ ( ^u8 n -- n )
+: POOL+ ( str -- n )
    {: a:^ u:n :}
    POOL-U @ {: at:n :}
    at u + 1+ POOL-RESERVE
@@ -111,7 +112,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ The name of a code that keeps a file's loads from being found, as
 \ src/lib/error.f names a discovery's kind, and whether RC is one.
-: FAULT$ ( n -- ^u8 n bool )
+: FAULT$ ( n -- str bool )
    {: rc:n :}
    rc LSP-TEXT:FS-RC? if s" cannot be read" true exit then
    rc E-DISC-SHADOW = if s" E-DISC-SHADOW" true exit then
@@ -169,7 +170,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ The node of this path under this root, made when there is none. Neither
 \ string lies in POOL.
-: NODE-OF ( ^u8 n ^u8 n -- n )
+: NODE-OF ( str str -- n )
    {: a:^ u:n r:^ ru:n :}
    NODE-N @ 1+ 2 * SLOT-CAP @ > if GROW then
    a u r ru KEY {: h:n :}
@@ -207,7 +208,7 @@ variable CUR-ROOT                        \ and the root being walked
    1 id N-SUBJECT NODE!
    id ;
 
-: OPEN+ ( ^u8 n ^u8 n -- )
+: OPEN+ ( str str -- )
    {: p:^ pu:n t:^ tu:n :}
    p pu SUBJECT {: id:n :}
    OPEN-N @ {: o:n :}
@@ -223,7 +224,7 @@ variable CUR-ROOT                        \ and the root being walked
    a u SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
 
 \ Repository and tool state is not workspace source.
-: WALKED? ( ^u8 n -- bool )
+: WALKED? ( str -- bool )
    FS:BASENAME {: a:^ u:n :}
    a u s" .jj" STR= a u s" .jj-ws.noindex" STR= or a u s" .git" STR= or
    a u s" .out" STR= or a u s" .dots" STR= or 0= ;
@@ -398,7 +399,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 public
 
-: PATH< ( ^u8 n ^u8 n -- bool )
+: PATH< ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    u v min 0 ?do
       a i + c@ b i + c@ <> if a i + c@ b i + c@ < unloop exit then
@@ -475,7 +476,7 @@ public
 
 \ Inventory every workspace .f file and open document. Primitive bindings
 \ need no load graph: the engine supplies them in each independent check.
-: ALL-SUBJECTS ( [ [ ^u8 n ^u8 n -- ] -- ] -- )
+: ALL-SUBJECTS ( [ [ str str -- ] -- ] -- )
    {: each :}
    RESET
    0 F-AT ! 0 F-U !
@@ -487,7 +488,7 @@ public
 
 \ REACHING for another F over the last REACHING's graph and document: nothing
 \ is walked or discovered, so UNREADABLE stays as that REACHING left it.
-: REACHING-AGAIN ( ^u8 n -- )
+: REACHING-AGAIN ( str -- )
    {: f:^ fu:n :}
    f fu POOL+ F-AT !
    fu F-U !
@@ -503,13 +504,13 @@ public
 : BLOCKED$ ( -- ^u8 n )  0 BLOCK-B BLOCK-U @ ;
 
 : SUBJECTS ( -- n )  HIT-N @ ;
-: SUBJECT$ ( n -- ^u8 n )  HITS @ PATH$ ;
+: SUBJECT$ ( n -- str )  HITS @ PATH$ ;
 
 \ The files whose loads the last REACHING could not find, in the byte order
 \ of their paths: each one's path, and why, a discovery's kind as
 \ src/lib/error.f names it or "cannot be read".
 : UNREADABLE ( -- n )  BAD-N @ ;
-: UNREADABLE$ ( n -- ^u8 n ^u8 n )
+: UNREADABLE$ ( n -- str str )
    BAD @ {: k:n :}
    k PATH$ k N-FAULT NODE@ FAULT$ drop ;
 

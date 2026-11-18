@@ -1,3 +1,4 @@
+split-str
 \ source-lex.f - package LINT-LEX: the one shared lexer for Habu source, for the
 \ lint, checker and codegen tooling and applications that read source by its
 \ tokens. Tokens point into the span SOURCE was given, so that span stays in
@@ -299,7 +300,7 @@ private
    begin 41 CUR-NOT? while ADV drop repeat ;
 
 \ The span from the token start the main loop recorded to the current position.
-: CUR$ ( -- ^u8 n )
+: CUR$ ( -- str )
    SRC@ START @ + POS @ START @ - ;
 
 : GAP? ( -- bool )
@@ -337,7 +338,7 @@ private
 \ an ordinary word, as `(CMP)` is. Its body becomes a COMMENT token whose CONTENT
 \ is the body: read word at a time, the body would yield a declaration the
 \ engine never performs.
-: PRINT-OPEN? ( ^u8 n -- bool )
+: PRINT-OPEN? ( str -- bool )
    s" .(" STR= ;
 
 \ Primitive-axiom rows. The engine reads a row's name (and a package row's
@@ -356,7 +357,7 @@ private
 : SKIP-RAW-WS ( -- )
    begin GAP? while ADV drop repeat ;
 
-: F$ ( -- ^u8 n )
+: F$ ( -- str )
    SRC@ FOFF @ + FLEN @ ;
 
 \ FLEN 0 means end of input: no field was left to read.
@@ -369,7 +370,7 @@ private
    POS @ FOFF @ - FLEN ! ;
 
 \ The family of the row an opener opens.
-: ROW-FAMILY ( ^u8 n -- n )
+: ROW-FAMILY ( str -- n )
    s" EPPRIM:" STR=CI if ROW-PKG exit then ROW-BARE ;
 
 \ A package row names its package before the primitive.
@@ -428,7 +429,7 @@ private
 \ After a body opener or `undefine` the engine consumes the next word as a parsed
 \ name and never executes it, so `: EPRIM: ( -- )` declares the opener rather
 \ than opening a row.
-: NAMER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: NAMER? ( str -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BODY-OPENER? if true exit then
    a u s" undefine" STR=CI ;
 
@@ -447,7 +448,7 @@ private
 \ is that local (src/habu/interpreter.f BODY-LOCAL?); a rescan reads locals
 \ from tokens.
 
-: LOCAL$ ( n -- ^u8 n ) {: k:n :}
+: LOCAL$ ( n -- str ) {: k:n :}
    k TOKEN {: a:^ u:n :}
    0 begin dup u < if a over + c@ $3A <> else false then while 1+ repeat
    a swap ;
@@ -457,7 +458,7 @@ private
    v NULL-PTR = if 0 exit then
    v VEC:COUNT ;
 
-: LOCAL? ( ^u8 n -- bool ) {: a:^ u:n :}
+: LOCAL? ( str -- bool ) {: a:^ u:n :}
    LIVE 0 ?do
       a u LOCAL-V TABLE@ i VEC:AT @ LOCAL$ STR= if true unloop exit then
    loop
@@ -481,11 +482,11 @@ private
    repeat ;
 
 \ Block word k acts unless it is a name or names a live local.
-: BLOCK-WORD? ( n ^u8 n -- bool ) {: k:n a:^ u:n :}
+: BLOCK-WORD? ( n str -- bool ) {: k:n a:^ u:n :}
    k NAMED-AT? if false exit then
    a u LOCAL? 0= ;
 
-: BLOCK-STEP ( n ^u8 n -- ) {: k:n a:^ u:n :}
+: BLOCK-STEP ( n str -- ) {: k:n a:^ u:n :}
    a u SOURCE:BLOCK-OPENER? if
       k a u BLOCK-WORD? if DEPTH @ 1+ DEPTH ! then exit
    then
@@ -536,7 +537,7 @@ public
 
 \ Name a u is a live local at token k: declared in the tokens before k, so a
 \ group's own name is live from the token after it.
-: LIVE-LOCAL? ( n ^u8 n -- bool )
+: LIVE-LOCAL? ( n str -- bool )
    {: k:n a:^ u:n :}
    k LOCALS-TO
    a u LOCAL? ;
@@ -606,18 +607,18 @@ private
 \ followed by exactly one delimiter; it ends at the byte before the closing
 \ quote, which is where POS now sits minus one. An unterminated literal has no
 \ payload to report.
-: STRING-PAYLOAD ( bool -- ^u8 n bool ) {: esc:bool :}
+: STRING-PAYLOAD ( bool -- str bool ) {: esc:bool :}
    POS @ 1+ {: pstart:n :}
    esc if SKIP-ESC-QUOTE else SKIP-QUOTE then {: closed:bool :}
    closed 0= if SRC@ 0 closed exit then
    SRC@ pstart + POS @ 1- pstart - closed ;
 
-: STRING-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: STRING-OPENER? ( str -- bool ) {: a:^ u:n :}
    a u SOURCE:ESC-STRING-OPENER? if true exit then
    a u SOURCE:NORMAL-STRING-OPENER? ;
 
 \ A string opener opens a literal unless a live local has its spelling.
-: LITERAL-START? ( ^u8 n -- bool )
+: LITERAL-START? ( str -- bool )
    STRING-OPENER? 0= if false exit then
    LOCAL-START? 0= ;
 

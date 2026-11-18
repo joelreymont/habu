@@ -1,3 +1,4 @@
+split-str
 \ fnv.f - package FNV: the FNV-1a hash in 64 and 32 bits. The 32-bit pair
 \ folds in a whole cell, so its top bits can run into the sign.
 
@@ -14,7 +15,7 @@ $1000193 constant PRIME32
 
 : BYTES ( n ^u8 n -- n ) {: h:n a:^ u:n :}
    h  u 0 ?do a i + c@ STEP loop ;
-: BYTES32 ( n ^u8 n -- n ) {: h:n a:^ u:n :}
+: BYTES32 ( n str -- n ) {: h:n a:^ u:n :}
    h  u 0 ?do a i + c@ STEP32 loop ;
 
 ;package

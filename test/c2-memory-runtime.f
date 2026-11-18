@@ -1,3 +1,4 @@
+split-str
 \ Real allocation and scoped-invocation runtime through the native source load path.
 require src/lib/test.f
 require src/lib/memory.f
@@ -6,7 +7,7 @@ require src/lib/c2-memory.f
 package C2-MEM-RUNTIME
 private
 
-: CHANGE-ROW ( n ^u8 n -- n ^u8 n ) {: seed:n p:^ len:n :}
+: CHANGE-ROW ( n str -- n str ) {: seed:n p:^ len:n :}
    73 p c!
    seed 1+ p 1+ len 1- ;
 

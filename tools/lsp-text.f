@@ -1,3 +1,4 @@
+split-str
 \ lsp-text.f - offsets in a text as the language server counts positions: the line
 \ by LF and the character in UTF-16 units. LINE-CHARACTER moves a cursor: forward
 \ reads only the bytes between, back within the line keeps the line, further back
@@ -56,7 +57,7 @@ variable DISK-VALID
    DISK-RESERVE 0 DISK ;
 
 \ The file at this path read into DISK, its length in DISK-U.
-: SLURP ( ^u8 n -- ^u8 n )
+: SLURP ( str -- str )
    {: f:^ fu:n :}
    f fu FS:FILE-META {: size:n msec:n mns:n csec:n cns:n :}
    f fu  f fu FS:FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
@@ -94,7 +95,7 @@ private
 \ Keep every byte acquired by a completed read, even when its metadata changed.
 \ The validity flag separately tells navigation whether the read stayed stable.
 \ A file that cannot be read says so on stderr and counts as empty.
-: READ-TEXT? ( ^u8 n -- bool )
+: READ-TEXT? ( str -- bool )
    {: f:^ fu:n :}
    false DISK-VALID !
    f fu [: SLURP ;] catch {: code:n :} 2drop
@@ -115,12 +116,12 @@ public
 
 \ Diagnostic positions count in the complete acquired snapshot. Changed
 \ metadata grants no freshness: DISK-META and DISK-CURRENT? remain false.
-: FILE-SNAPSHOT! ( ^u8 n -- )
+: FILE-SNAPSHOT! ( str -- )
    READ-TEXT? drop ;
 
 \ Navigation requires a stable read. Take the buffer after reading, since
 \ growth may move it; a missing or changed file counts as empty text.
-: FILE-TEXT! ( ^u8 n -- )
+: FILE-TEXT! ( str -- )
    {: f:^ fu:n :}
    f fu READ-TEXT? 0= if exit then
    DISK-VALID @ 0= if
@@ -133,7 +134,7 @@ public
 : DISK-META ( -- n n n n n bool )
    DISK-SIZE @ DISK-MSEC @ DISK-MNS @ DISK-CSEC @ DISK-CNS @ DISK-VALID @ 0<> ;
 
-: DISK-CURRENT? ( ^u8 n -- bool )
+: DISK-CURRENT? ( str -- bool )
    DISK-VALID @ 0= if 2drop false exit then
    FS:TRY-STAT 0= if false exit then
    FS:STAT-MODE@ FS:S-IFMT and FS:S-IFREG <> if false exit then

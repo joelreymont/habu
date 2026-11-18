@@ -1,3 +1,4 @@
+split-str
 \ cell-grid.f - a span of DATA cells in image form. Emitted reader:
 \ snap-decode-x64.f DECODE,, which refuses a malformed grid.
 

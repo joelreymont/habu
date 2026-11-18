@@ -1,3 +1,4 @@
+split-str
 \ primitive-source.f - locate engine primitive names in the raw source of the
 \ specification the running checker retained. The lexer keeps registry rows
 \ whole, so the name is read from each row's header after matching the ordered
@@ -46,7 +47,7 @@ variable VALID
       got SOURCE-U +!
    again ;
 
-: READ-FILE ( ^u8 n -- bool )
+: READ-FILE ( str -- bool )
    {: path:^ pathu:n :}
    pathu 0 <= pathu PATH-CAP > or if false exit then
    path pathu ZPATH PATH-CAP 1+ PATHZ
@@ -111,7 +112,7 @@ variable VALID
    end row ENDS !
    true ;
 
-: SCAN-IN ( ^u8 n -- bool )
+: SCAN-IN ( str -- bool )
    LINT-LEX:SOURCE
    LINT-LEX:ERROR? if false exit then
    PRIM-SPEC:COUNT STARTS-RESERVE
@@ -160,16 +161,16 @@ variable VALID
 public
 
 \ The bytes are borrowed until another read through this package.
-: FILE-BYTES ( ^u8 n -- ^u8 n bool )
+: FILE-BYTES ( str -- str bool )
    READ-FILE if 0 SOURCE-B SOURCE-U @ true exit then
    NULL$ false ;
 
-: ENGINE-PATH$ ( -- ^u8 n bool )
+: ENGINE-PATH$ ( -- str bool )
    ENGINE-PATH
    PATH$ rot ;
 
 \ Match the entire raw specification before trusting a target in it.
-: TARGET-IN ( ^u8 n n -- n n bool )
+: TARGET-IN ( str n -- n n bool )
    {: a:^ u:n row:n :}
    0 READY ! 0 VALID !
    a u SCAN-IN VALID !
@@ -182,7 +183,7 @@ public
 
 \ Reverse lookup in raw or supplied source, after validating the whole table.
 \ Overload names map to the first row, the same marker a checker use carries.
-: MARKER-IN ( ^u8 n n -- n n n bool )
+: MARKER-IN ( str n -- n n n bool )
    {: a:^ u:n byte:n :}
    0 READY ! 0 VALID !
    a u SCAN-IN 0= if 0 0 0 false exit then

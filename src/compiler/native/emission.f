@@ -1,3 +1,4 @@
+split-str
 \ emission.f - one sealed transient emission: bytes, function starts, call and
 \ address sites and the trailing return, in no machine's terms. publish.f reads
 \ the rows while they stand sealed and decodes nothing; the backend decodes its

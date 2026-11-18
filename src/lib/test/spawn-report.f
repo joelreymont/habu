@@ -1,3 +1,4 @@
+split-str
 \ spawn-report.f - launch-context and child-outcome reporter for process fixtures.
 \ CONTEXT prints the launch shape (pid, script argv, cwd markers, fds 0/1/2, the
 \ environment), each line starting `ctx `, so reports taken under different
@@ -31,7 +32,7 @@ variable MARK-U
 : TRUE ( -- bool )
    0 0= ;
 
-: YN$ ( bool -- ^u8 n )
+: YN$ ( bool -- str )
    if s" yes" else s" no" then ;
 
 \ `.` ends the line; a report line carries several fields, so print digits
@@ -48,10 +49,10 @@ variable MARK-U
 : KEY ( ^u8 n -- ) {: a:^ u:n :}
    s" ctx " type a u type s"  " type ;
 
-: LINE$ ( ^u8 n ^u8 n -- ) {: ka:^ ku:n va:^ vu:n :}
+: LINE$ ( str str -- ) {: ka:^ ku:n va:^ vu:n :}
    ka ku KEY va vu type cr ;
 
-: LINE# ( ^u8 n n -- ) {: ka:^ ku:n v:n :}
+: LINE# ( str n -- ) {: ka:^ ku:n v:n :}
    ka ku KEY v N-TYPE cr ;
 
 : FD-OPEN? ( n -- bool ) {: fd:n :}
@@ -66,7 +67,7 @@ variable MARK-U
 : FD-TTY? ( n -- bool ) {: fd:n :}
    fd TIO-GET TIO-BUF ioctl 0 = ;
 
-: FD-LINE ( ^u8 n n -- ) {: ka:^ ku:n fd:n :}
+: FD-LINE ( str n -- ) {: ka:^ ku:n fd:n :}
    ka ku KEY
    s" open " type fd FD-OPEN? YN$ type
    s"  flags " type fd FD-FLAGS N-TYPE
@@ -96,10 +97,10 @@ variable MARK-U
       1+
    repeat drop ;
 
-: ENGINE-REL$ ( -- ^u8 n )
+: ENGINE-REL$ ( -- str )
    s" bin/hb" ;
 
-: MARK$ ( ^u8 n ^u8 n -- ^u8 n ) {: ba:^ bu:n ra:^ ru:n :}
+: MARK$ ( str str -- str ) {: ba:^ bu:n ra:^ ru:n :}
    ba bu ra ru MARK-BUF FS:JOIN-PATH MARK-U !
    MARK-BUF MARK-U @ ;
 

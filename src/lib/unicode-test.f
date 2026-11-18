@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 require src/lib/property.f
 require src/lib/unicode.f
@@ -9,13 +10,13 @@ using PROP
 create OUTPUT CAPACITY allot
 create SECOND-BUF CAPACITY allot
 
-: FOLDED= ( ^u8 n ^u8 n -- )
+: FOLDED= ( str str -- )
    {: expected:^ expected-size:n :}
    2dup FOLDED-BYTES expected-size T=
    OUTPUT CAPACITY UNICODE:FOLD
    OUTPUT swap expected expected-size T$= ;
 
-: LOWERED= ( ^u8 n ^u8 n -- )
+: LOWERED= ( str str -- )
    {: expected:^ expected-size:n :}
    2dup expected expected-size LOWERS-TO? TTRUE
    2dup LOWERED-BYTES expected-size T=
@@ -46,7 +47,7 @@ create SECOND-BUF CAPACITY allot
    [: s\" x\xFF" s" x" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ
    [: s" x" s\" x\xFF" LOWERS-TO? drop ;] E-UTF8 TTHROWSQ ;
 
-: CHUNK$ ( -- ^u8 n )
+: CHUNK$ ( -- str )
    8 RND% case
       0 of s" ẞ" endof
       1 of s" İ" endof

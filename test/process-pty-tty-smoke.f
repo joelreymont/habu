@@ -1,3 +1,4 @@
+split-str
 \ process-pty-tty-smoke.f - the supervisor's pseudo-terminal mode and its public
 \ write/await surface, driven through PROCESS-PTY:WRITE-LINE / AWAIT-BYTES from
 \ outside the package.
@@ -23,10 +24,10 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ The engine under test: the gate's freshly built candidate when it exported
 \ one, else the running engine itself (src/lib/engine-candidate.f).
-: HB$ ( -- ^u8 n )        ENGINE-CANDIDATE:PATH$ ;
+: HB$ ( -- str )        ENGINE-CANDIDATE:PATH$ ;
 
-: PROMPT$ ( -- ^u8 n )    s" habu> " ;
-: ANYWHERE$ ( -- ^u8 n )  s" " ;      \ an empty head: the tail may be anywhere
+: PROMPT$ ( -- str )    s" habu> " ;
+: ANYWHERE$ ( -- str )  s" " ;      \ an empty head: the tail may be anywhere
 
 \ The buffer, compaction, span search and never-seen facts are
 \ src/lib/pty-harness.f's. The reads and waits are this file's: the bytes come
@@ -47,7 +48,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    BUF$ {: ra:^ ru:n :}
    s" read so far (" type ru FMT:.INT s"  bytes):" type cr ra ru type cr ;
 
-: WAIT-SHOW ( ^u8 n ^u8 n -- ) {: ha:^ hu:n ta:^ tu:n :}
+: WAIT-SHOW ( str str -- ) {: ha:^ hu:n ta:^ tu:n :}
    s" expected: " type ta tu type
    hu 0 > if s"  after " type ha hu type then
    cr ;
@@ -58,7 +59,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ every keystroke, a loaded box splits one echo across dozens of reads), so no
 \ count of reads or quiet polls bounds the wait. The hang-up answers whether the
 \ tail came before it.
-: EXPECT-AFTER ( process-pty-handle ^u8 n ^u8 n -- process-pty-handle bool )
+: EXPECT-AFTER ( process-pty-handle str str -- process-pty-handle bool )
    {: ha:^ hu:n ta:^ tu:n :}
    begin
       ha hu ta tu AFTER? if true exit then
@@ -78,11 +79,11 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ A wait the target hung up on fails its case with what it waited for and what
 \ the target said.
-: EXPECT-AFTER! ( process-pty-handle ^u8 n ^u8 n -- process-pty-handle )
+: EXPECT-AFTER! ( process-pty-handle str str -- process-pty-handle )
    {: ha:^ hu:n ta:^ tu:n :}
    ha hu ta tu EXPECT-AFTER 0= if ha hu ta tu WAIT-SHOW READ-SO-FAR false TTRUE then ;
 
-: EXPECT! ( process-pty-handle ^u8 n -- process-pty-handle ) {: ta:^ tu:n :}
+: EXPECT! ( process-pty-handle str -- process-pty-handle ) {: ta:^ tu:n :}
    ANYWHERE$ ta tu EXPECT-AFTER! ;
 
 \ A prompt proves the REPL came back only when it FOLLOWS the answer. The line
@@ -90,7 +91,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ one byte per KEY1), so the echo of the line just typed carries prompts of its
 \ own, printed before the child evaluated anything: a bare wait for the prompt
 \ is answered by the echo and proves nothing about the line it was typed for.
-: PROMPT-AFTER! ( process-pty-handle ^u8 n -- process-pty-handle ) {: na:^ nu:n :}
+: PROMPT-AFTER! ( process-pty-handle str -- process-pty-handle ) {: na:^ nu:n :}
    na nu PROMPT$ EXPECT-AFTER! ;
 
 \ The barrier before a line is typed: wait for the prompt that follows the
@@ -108,8 +109,8 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : TELL ( process-pty-handle ^u8 n -- process-pty-handle )
    PROCESS-PTY:WRITE-LINE ;
 
-: BAD-DEF$ ( -- ^u8 n )  s" : TTY-BAD ( -- n ) drop ;" ;
-: ARITH$ ( -- ^u8 n )    s" 6 7 * . cr" ;
+: BAD-DEF$ ( -- str )  s" : TTY-BAD ( -- n ) drop ;" ;
+: ARITH$ ( -- str )    s" 6 7 * . cr" ;
 
 \ PIPE-STOPS: under WITH-TARGET a refused definition ends the child and the next
 \ line is never evaluated (the batch contract).
@@ -172,7 +173,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ The target starts a sleeper on its own terminal and prints 48879, then the
 \ sleeper's pid. The sleeper leads a group of its own; it ends with the target,
 \ and init reaps it.
-: SLEEPER$ ( -- ^u8 n )
+: SLEEPER$ ( -- str )
    s\" PROC-ARGV-RESET s\" 30\" >LEN PROC-ARGV+ s\" /bin/sleep\" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N $BEEF . . cr" ;
 
 \ The number the target printed on the line after 48879, or -1 when there is

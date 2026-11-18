@@ -1,3 +1,4 @@
+split-str
 \ jsonl-test.f - the JSONL file cursor and memory splitter through the public API.
 \ Run: bin/hb --load src/lib/jsonl-test.f
 
@@ -29,7 +30,7 @@ $100 constant CAP
 CAP BUFFER: CAP-OUT
 CAP BUFFER: CAP-ERR
 
-: TMP$ ( -- ^u8 n )
+: TMP$ ( -- str )
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then ;
 
 PATH-CAP BUFFER: PATH-A
@@ -38,7 +39,7 @@ PATH-CAP BUFFER: PATH-B
 variable PATH-B-U
 
 : PATH$ ( -- ^u8 n ) PATH-A PATH-A-U @ ;
-: PATH-B$ ( -- ^u8 n ) PATH-B PATH-B-U @ ;
+: PATH-B$ ( -- str ) PATH-B PATH-B-U @ ;
 
 \ A fresh FS:MKTEMP file with its descriptor closed: the cases rewrite and reopen
 \ it by path. Its path is copied out because the next FS:MKTEMP reuses the span.
@@ -53,7 +54,7 @@ variable PATH-B-U
    PATH-B FIXTURE-MAKE PATH-B-U ! ;
 
 \ Write a JSON string line of n bytes, "a...a", followed by the tail bytes.
-: STRING-FIXTURE ( n ^u8 n -- )
+: STRING-FIXTURE ( n str -- )
    {: n:n tail:^ tu:n :}
    [char] " FIXTURE c!
    n 1- 1 ?do [char] a FIXTURE i + c! loop
@@ -81,14 +82,14 @@ variable PATH-B-U
    fd ;
 
 \ The line at pos is want, and the position after it is next.
-: SPLIT= ( ^u8 n n ^u8 n n -- )
+: SPLIT= ( str n str n -- )
    {: a:^ u:n pos:n want:^ wu:n next:n :}
    a u pos JSONL:SPLIT-LINE TTRUE {: la:^ lu:n got:n :}
    la lu want wu T$=
    got next T= ;
 
 \ No line starts at pos.
-: SPLIT-END ( ^u8 n n -- )
+: SPLIT-END ( str n -- )
    {: a:^ u:n pos:n :}
    a u pos JSONL:SPLIT-LINE TFALSE {: la:^ lu:n got:n :}
    lu 0 T=

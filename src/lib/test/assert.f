@@ -1,3 +1,4 @@
+split-str
 \ assert.f - checked test assertions, loaded by src/lib/test.f. An assertion counts
 \ one case and never throws on a mismatch: it prints `F<case>`, the label, a TFAIL
 \ record (src/lib/test/record.f) and an `assert:` line, and the run continues; a
@@ -39,7 +40,7 @@ variable T-LABEL-U
 : T-LABEL-CLEAR ( -- )
    0 T-LABEL-U ! ;
 
-: T-LABEL$ ( -- ^u8 n )
+: T-LABEL$ ( -- str )
    T-LABEL-BUF T-LABEL-U @ ;
 
 : T-LABEL ( ^u8 n -- ) {: a:^ u:n :}
@@ -56,7 +57,7 @@ variable T-LABEL-U
 : T-FAIL+ ( -- )
    1 T-FAIL# atomic-add drop ;
 
-: T-FAIL-AS ( ^u8 n -- ) {: la:^ lu:n :}
+: T-FAIL-AS ( str -- ) {: la:^ lu:n :}
    [char] F emit T-CASE# @ .
    T-LABEL.
    la lu T-CASE# @ T-LABEL$ TREC-FAIL
@@ -65,7 +66,7 @@ variable T-LABEL-U
 : T-FAIL ( -- )
    s" assert" T-FAIL-AS ;
 
-: T-ASSERT-DETAIL ( ^u8 n -- ) {: msg:^ msgu:n :}
+: T-ASSERT-DETAIL ( str -- ) {: msg:^ msgu:n :}
    T-FAIL
    s" assert: " type msg msgu type cr ;
 
@@ -98,7 +99,7 @@ variable T-LABEL-U
    T-NEXT
    if s" expected false got true" T-ASSERT-DETAIL then ;
 
-: T-STR= ( ^u8 n ^u8 n -- bool ) {: a:^ u:n b:^ v:n :}
+: T-STR= ( str str -- bool ) {: a:^ u:n b:^ v:n :}
    u v <> if 0 0= 0= exit then
    0 begin dup u < while
       dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
@@ -116,7 +117,7 @@ variable T-LABEL-U
       a u type cr
    then ;
 
-: T$<> ( ^u8 n ^u8 n -- )
+: T$<> ( str str -- )
    {: a:^ u:n b:^ v:n :}
    T-NEXT
    a u b v T-STR= if
@@ -125,26 +126,26 @@ variable T-LABEL-U
       a u type cr
    then ;
 
-: T-DIGITS-END ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+: T-DIGITS-END ( str n -- n ) {: a:^ u:n i:n :}
    i begin dup u < while
       dup a + c@ STR-DIGIT? 0= if exit then
       1+
    repeat ;
 
-: T-LINE-END ( ^u8 n n -- n ) {: a:^ u:n i:n :}
+: T-LINE-END ( str n -- n ) {: a:^ u:n i:n :}
    i begin dup u < while
       dup a + c@ 10 = if exit then
       1+
    repeat ;
 
-: T-FROM ( ^u8 n ^u8 n n -- n )
+: T-FROM ( str str n -- n )
    FIND-SUB-FROM MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
 
 \ The offset of the line number after `f:` in the ` --> ` line of r, else -1.
-: T-PLACE-LINE ( ^u8 n ^u8 n -- n ) {: r:^ ru:n f:^ fu:n :}
+: T-PLACE-LINE ( str str -- n ) {: r:^ ru:n f:^ fu:n :}
    r ru s"  --> " 0 T-FROM {: a:n :}
    a 0< if -1 exit then
    r  r ru a T-LINE-END  f fu a T-FROM {: t:n :}
@@ -154,7 +155,7 @@ variable T-LABEL-U
    -1 ;
 
 \ Whether r holds, at h, a line `d | ` whose rest contains c.
-: T-GUTTER-AT? ( ^u8 n ^u8 n ^u8 n n -- bool )
+: T-GUTTER-AT? ( str str str n -- bool )
    {: r:^ ru:n d:^ du:n c:^ cu:n h:n :}
    h du + 3 + {: s:n :}
    s ru > if STR-FALSE exit then
@@ -162,7 +163,7 @@ variable T-LABEL-U
    h du + r + 3 s"  | " STR= 0= if STR-FALSE exit then
    s r +  r ru s T-LINE-END s -  c cu CONTAINS? ;
 
-: T-GUTTER? ( ^u8 n ^u8 n ^u8 n -- bool )
+: T-GUTTER? ( str str str -- bool )
    {: r:^ ru:n d:^ du:n c:^ cu:n :}
    du 0= if STR-FALSE exit then
    1 begin

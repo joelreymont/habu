@@ -1,3 +1,4 @@
+split-str
 \ ffi-abi-test.f - target-independent FFI ABI and marshalling tests.
 \ Run: bin/hb --load src/lib/ffi-abi-test.f
 
@@ -40,18 +41,18 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
    FFI-T-OUT @ num FFI:>CELL 2 + T= ;
 
 \ The table these declarations grow lies in the storage the rollback cuts.
-: FFI-T-CUT-TEXT$ ( -- ^u8 n )
+: FFI-T-CUT-TEXT$ ( -- str )
    s" include test/fixtures/ffi-grow.f  1 throw" ;
 
-: FFI-T-AFTER-TEXT$ ( -- ^u8 n )
+: FFI-T-AFTER-TEXT$ ( -- str )
    s\" FUNCTION: FFI-T-LLABS llabs ( n -- n ) ;FUNCTION  -7 FFI-T-LLABS" ;
 
 : FFI-T-FILL ( n -- ) 0 ?do 777 , loop ;
 
-: FFI-T-SELECT-TEXT$ ( -- ^u8 n )
+: FFI-T-SELECT-TEXT$ ( -- str )
    s" VERSIONED-LIBRARY habu-no-such 1  1 throw" ;
 
-: FFI-T-ABS-TEXT$ ( -- ^u8 n )
+: FFI-T-ABS-TEXT$ ( -- str )
    s" FUNCTION: FFI-T-ABS abs ( n -- i32 ) ;FUNCTION  -9 FFI-T-ABS" ;
 
 \ Calls through rows declared before and after a rolled-back declaration.
@@ -67,7 +68,7 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
    FFI-T-ABS-TEXT$ TEST-EVAL:N 9 T= ;
 
 \ A declaration's syntax error prints a record naming the token it read last.
-: FFI-T-NO-DASHES$ ( -- ^u8 n )
+: FFI-T-NO-DASHES$ ( -- str )
    s" FUNCTION: FFI-T-NO-DASHES labs ( n n ) ;FUNCTION" ;
 
 : FFI-T-NO-DASHES ( -- )
@@ -91,18 +92,18 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
    DECL-DIAG:OFF ;
 
 \ A library name spelled in the other target's convention.
-: FFI-T-FOREIGN$ ( -- ^u8 n )
+: FFI-T-FOREIGN$ ( -- str )
    HB-TARGET-MACOS? if s" LIBRARY libx.so.5" exit then
    s" LIBRARY libx.5.dylib" ;
 
-: FFI-T-FOREIGN-HEAD$ ( -- ^u8 n )
+: FFI-T-FOREIGN-HEAD$ ( -- str )
    HB-TARGET-MACOS? if
       s" error[E-FFI-LIBRARY]: library 'libx.so.5' is spelled for the other target"
       exit
    then
    s" error[E-FFI-LIBRARY]: library 'libx.5.dylib' is spelled for the other target" ;
 
-: FFI-T-FOREIGN-HELP$ ( -- ^u8 n )
+: FFI-T-FOREIGN-HELP$ ( -- str )
    HB-TARGET-MACOS? if
       s" = help: name it with VERSIONED-LIBRARY, which spells it for macos" exit
    then

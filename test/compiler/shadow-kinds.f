@@ -1,3 +1,4 @@
+split-str
 \ shadow-kinds.f - each kind of definition, loaded by the typed loop at tier 0
 \ under a native arm64 shadow: its shadow routine against T0's host routine.
 
@@ -79,7 +80,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
    at MARK? 0= if s" requires" type exit then
    SRC at 5 + +  at LINE-END at 5 + -  type ;
 
-: FAIL-HEAD ( ^u8 n -- )
+: FAIL-HEAD ( str -- )
    s" FAIL " type type s" : " type
    1 FAILS +! ;
 

@@ -1,3 +1,4 @@
+split-str
 \ kept-docs.f - the file kept-main.f requires.
 
 require src/lib/memory.f
@@ -8,7 +9,7 @@ require src/lib/word-docs.f
 package FILE-OBJECTS-KEPT-DOCS
 private
 
-: FIRST$ ( -- ^u8 n )
+: FIRST$ ( -- str )
    s" package P public : A ( -- ) ; : B ( n -- n ) ; ;package" ;
 
 \ The text lies in memory the build does not own, as a program's input does.

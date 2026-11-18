@@ -1,3 +1,4 @@
+split-str
 \ process-reaper-test.f - a reaper kills what its pool spawned REAPED, a
 \ grandchild leading its own group included, when the pool dies by SIGKILL or
 \ stops it; REAPER-STOP names a reaper that did not exit 0. A test reads the
@@ -96,7 +97,7 @@ variable ACC
    1 >FD w PROCESS:FD ;
 
 \ A pool's SIGKILL closes the write end only it held.
-: POOL-DEATH ( fd fd pid ^u8 n -- )
+: POOL-DEATH ( fd fd pid str -- )
    {: r:fd w:fd p:pid label:^ labelu :}
    w FD>N close
    r REPORTS READ-LINES

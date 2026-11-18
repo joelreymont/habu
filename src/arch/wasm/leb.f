@@ -1,3 +1,4 @@
+split-str
 \ leb.f - WLEB, the Wasm backend's LEB128 (docs/xcomp.md "Linking"). Writers
 \ write the shortest LEB at the start of the caller's span and answer its length;
 \ padded writers always write the widest (5 bytes for a u32, 10 for an s64) so a
@@ -125,10 +126,10 @@ public
 : U32@ ( ^u8 n -- u32 n )
    32 false DECODE ;
 
-: S32@ ( ^u8 n -- n n )
+: S32@ ( str -- n n )
    32 true DECODE ;
 
-: S64@ ( ^u8 n -- n n )
+: S64@ ( str -- n n )
    64 true DECODE ;
 
 \ ---- padded fields ------------------------------------------------------
@@ -143,10 +144,10 @@ public
    {: v:n s :}
    v true 64 WIDEST s PUT ;
 
-: U32-PAD@ ( ^u8 n n -- u32 )
+: U32-PAD@ ( str n -- u32 )
    32 false FIELD ;
 
-: S64-PAD@ ( ^u8 n n -- n )
+: S64-PAD@ ( str n -- n )
    64 true FIELD ;
 
 : U32-PATCH ( n SPAN:span<u8> n -- )

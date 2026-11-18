@@ -1,3 +1,4 @@
+split-str
 \ imagedisasm-test.f - fixture coverage for native raw image disassembly.
 
 require src/lib/error.f
@@ -30,24 +31,24 @@ variable IMDT-RET-U
 variable IMDT-LDRB-U
 variable IMDT-FORMS-U
 
-: IMDT-COPY! ( ^u8 n ^u8 ^n -- )
+: IMDT-COPY! ( str ^u8 ^n -- )
    {: a:^ u dst:^ lenp:^ :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: IMDT-ROOT$ ( -- ^u8 n )
+: IMDT-ROOT$ ( -- str )
    IMDT-ROOT IMDT-ROOT-U @ ;
 
-: IMDT-RET$ ( -- ^u8 n )
+: IMDT-RET$ ( -- str )
    IMDT-RET IMDT-RET-U @ ;
 
-: IMDT-LDRB$ ( -- ^u8 n )
+: IMDT-LDRB$ ( -- str )
    IMDT-LDRB IMDT-LDRB-U @ ;
 
-: IMDT-FORMS$ ( -- ^u8 n )
+: IMDT-FORMS$ ( -- str )
    IMDT-FORMS IMDT-FORMS-U @ ;
 
-: IMDT-ARG+ ( ^u8 n -- )
+: IMDT-ARG+ ( str -- )
    >LEN PROC-ARGV+ ;
 
 : IMDT-WRITE-RET ( -- )
@@ -109,7 +110,7 @@ variable IMDT-FORMS-U
    s" tools/imagedisasm.f" IMDT-ARG+
    s" --" IMDT-ARG+ ;
 
-: IMDT-RUN ( ^u8 n ^u8 n ^u8 n -- len len PROCESS:ending )
+: IMDT-RUN ( str str str -- len len PROCESS:ending )
    {: path:^ pathu off:^ offu count:^ countu :}
    IMDT-ARGV-BASE
    path pathu IMDT-ARG+
@@ -166,7 +167,7 @@ variable IMDT-FORMS-U
    IMDT-ERR erru s" imagedisasm: range outside image" CONTAINS? TTRUE ;
 
 \ Invalid digits and overflowing hex inputs are absent from the CLI fixtures.
-: IMDT-NUM-NONE ( ^u8 n -- ) {: a:^ u:n :}
+: IMDT-NUM-NONE ( str -- ) {: a:^ u:n :}
    a u IMAGE-DISASM:IMGD>NUMBER? MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF

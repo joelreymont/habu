@@ -1,3 +1,4 @@
+split-str
 \ studio.f - STUDIO: the key light's volume, the bodies a module sends so the
 \ host's ground shadow is the whole model's. KEY-VOLUME computes, in binary64:
 \ - the view's axes as viewport.js's viewer gives them, then studio's (up the
@@ -83,7 +84,7 @@ STRUCTURE vec FIELD x r FIELD y r FIELD z r ;STRUCTURE
 : SIGN ( r -- r ) f0< if -1.0 else 1.0 then ;
 
 \ The k-th f32 of the span, widened.
-: F32@ ( ^u8 n -- r ) 4 * + F32-BUF:LOAD F32:WIDEN ;
+: F32@ ( str -- r ) 4 * + F32-BUF:LOAD F32:WIDEN ;
 
 \ Row r of the column-major matrix m's 3x3 part, and its translation.
 : ROW ( ^u8 n -- vec )

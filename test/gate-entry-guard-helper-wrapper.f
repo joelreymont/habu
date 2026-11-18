@@ -1,3 +1,4 @@
+split-str
 require test/gate-entry-guard-helper-import.f
 
 package ENTRY-GUARD-HELPER-WRAPPER

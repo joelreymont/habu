@@ -1,3 +1,4 @@
+split-str
 \ proc-control.f -- Linux exact process-control primitive emitters.
 \
 \ Both report success as 0 and failure as the NEGATED errno, so the supervisor

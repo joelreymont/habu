@@ -1,3 +1,4 @@
+split-str
 \ Loads test/loop-obligations-subject.f on the engine under test at its default
 \ tier, through the normal load path.
 require src/lib/test.f

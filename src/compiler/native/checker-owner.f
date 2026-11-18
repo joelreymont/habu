@@ -1,3 +1,4 @@
+split-str
 \ checker-owner.f - the checker this compiler asks.
 
 require src/lib/prelude.f
@@ -21,7 +22,7 @@ public
 : BIND-REGIME! ( n -- ) BIND-UNJUDGED ! ;
 
 \ A TRUSTED: parent's clause is scanned unjudged, as its body was.
-: DOES-CHECK ( ^u8 n ^u8 n -- n )
+: DOES-CHECK ( str str -- n )
    BIND-UNJUDGED @ 0<> if CHECK-DOES-UNJUDGED! exit then
    CHECK-DOES! ;
 

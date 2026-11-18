@@ -1,3 +1,4 @@
+split-str
 \ http-arena.f - per-worker storage for the HTTP/1.1 server
 \ (src/lib/net/http.f): one OS-backed span per worker, carved into the input
 \ buffer, the fixed buffers and the headers of four growing ones; the request
@@ -258,7 +259,7 @@ private
    BODY-HDR BODY-START-CAP BUF:N>BLEN BUF:INIT ;
 
 
-: BODY-APPEND ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
+: BODY-APPEND ( str n -- ) {: bytes:^ len:n idx:n :}
    bytes len BUF:N>BLEN idx BODY-HDR BUF:APPEND-SPAN ;
 
 
@@ -301,7 +302,7 @@ private
 : BODY-PTR@ ( n -- ^u8 ) BOUNDED BODY-PTR @ ;
 
 
-: RESPONSE-BODY! ( ^u8 n n -- ) {: bytes:^ len:n idx:n :}
+: RESPONSE-BODY! ( str n -- ) {: bytes:^ len:n idx:n :}
    len 0 < if E-CAPACITY throw then
    idx CLOSE-FILE
    bytes idx BOUNDED BODY-PTR !
@@ -340,27 +341,27 @@ private
    at idx BOUNDED VERSION-AT ! len idx VERSION-N ! ;
 
 
-: SLOT-METHOD$ ( n -- ^u8 n ) {: idx:n :}
+: SLOT-METHOD$ ( n -- str ) {: idx:n :}
    idx IN-BUF idx BOUNDED METHOD-AT @ idx METHOD-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-PATH$ ( n -- ^u8 n ) {: idx:n :}
+: SLOT-PATH$ ( n -- str ) {: idx:n :}
    idx IN-BUF idx BOUNDED PATH-AT @ idx PATH-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-QUERY$ ( n -- ^u8 n ) {: idx:n :}
+: SLOT-QUERY$ ( n -- str ) {: idx:n :}
    idx IN-BUF idx BOUNDED QUERY-AT @ idx QUERY-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-VERSION$ ( n -- ^u8 n ) {: idx:n :}
+: SLOT-VERSION$ ( n -- str ) {: idx:n :}
    idx IN-BUF idx BOUNDED VERSION-AT @ idx VERSION-N @ SPAN:SUB SPAN:$ ;
 
 
-: SLOT-BODY$ ( n -- ^u8 n ) {: idx:n :}
+: SLOT-BODY$ ( n -- str ) {: idx:n :}
    idx BODY-HDR BUF:SPAN$ BUF:BLEN>N ;
 
 
-: SLOT-ID$ ( n -- ^u8 n ) {: idx:n :}
+: SLOT-ID$ ( n -- str ) {: idx:n :}
    idx ID-BUF idx ID-U@ SPAN:TAKE SPAN:$ ;
 
 
@@ -381,12 +382,12 @@ private
    at 1+ idx HEADER-N! ;
 
 
-: HEADER-NAME$ ( n n -- ^u8 n ) {: idx:n at:n :}
+: HEADER-NAME$ ( n n -- str ) {: idx:n at:n :}
    idx at HEADER-ROW {: row:n :}
    idx IN-BUF row HEADER-NAME-AT @ row HEADER-NAME-N @ SPAN:SUB SPAN:$ ;
 
 
-: HEADER-VALUE$ ( n n -- ^u8 n ) {: idx:n at:n :}
+: HEADER-VALUE$ ( n n -- str ) {: idx:n at:n :}
    idx at HEADER-ROW {: row:n :}
    idx IN-BUF row HEADER-VALUE-AT @ row HEADER-VALUE-N @ SPAN:SUB SPAN:$ ;
 
@@ -417,7 +418,7 @@ private
    count 1+ idx SEGMENT-N! ;
 
 
-: SEGMENT$ ( n n -- ^u8 n ) {: idx:n at:n :}
+: SEGMENT$ ( n n -- str ) {: idx:n at:n :}
    idx at SEGMENT-ROW {: row:n :}
    idx SEG-BUF row SEGMENT-AT @ row SEGMENT-LEN @ SPAN:SUB SPAN:$ ;
 

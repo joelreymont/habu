@@ -1,3 +1,4 @@
+split-str
 \ E2E against the real desktop credential store via the public SECRET words, dummy
 \ items only, removed even when a case fails; then with no native store bound for
 \ one case; a host store bound with SECRET:STORE! then replaces it. Fails on: a
@@ -31,8 +32,8 @@ CODEGEN:BUFFER TEST-SERVICE
 CODEGEN:BUFFER TEST-OTHER
 64 SPAN-BUFFER: TEST-OUT
 
-: TEST-SERVICE$ ( -- ^u8 n ) TEST-SERVICE CODEGEN:CONTENTS ;
-: TEST-OTHER$ ( -- ^u8 n ) TEST-OTHER CODEGEN:CONTENTS ;
+: TEST-SERVICE$ ( -- str ) TEST-SERVICE CODEGEN:CONTENTS ;
+: TEST-OTHER$ ( -- str ) TEST-OTHER CODEGEN:CONTENTS ;
 
 
 : TEST-NAMES ( -- )
@@ -47,7 +48,7 @@ CODEGEN:BUFFER TEST-OTHER
 
 
 \ Attempts one erase whatever came before; keeps the first failure code.
-: TEST-ERASE-KEEP ( n ^u8 n ^u8 n -- n )
+: TEST-ERASE-KEEP ( n str str -- n )
    [: 2over 2over SECRET:ERASE drop ;] catch {: code:n :}
    2drop 2drop {: first:n :}
    first 0 <> if first else code then ;
@@ -65,7 +66,7 @@ CODEGEN:BUFFER TEST-OTHER
    first 0 <> if first throw then ;
 
 
-: TEST-FOUND ( ^u8 n ^u8 n ^u8 n -- )
+: TEST-FOUND ( str str str -- )
    {: service:^ su:n account:^ au:n expected:^ eu:n :}
    service su account au TEST-OUT SECRET:READ TTRUE
    {: got:n :}
@@ -74,7 +75,7 @@ CODEGEN:BUFFER TEST-OTHER
    0 TEST-OUT SPAN:FILL ;
 
 
-: TEST-MISSING ( ^u8 n ^u8 n -- )
+: TEST-MISSING ( str str -- )
    TEST-OUT SECRET:READ TFALSE 0 T= ;
 
 : TEST-UNTOUCHED ( -- )
@@ -164,16 +165,16 @@ CODEGEN:BUFFER HOST-ACCOUNT
 CODEGEN:BUFFER HOST-VALUE
 variable HOST-CALLS
 
-: HOST-VALUE$ ( -- ^u8 n ) HOST-VALUE CODEGEN:CONTENTS ;
+: HOST-VALUE$ ( -- str ) HOST-VALUE CODEGEN:CONTENTS ;
 
 
-: HOST-HELD? ( ^u8 n ^u8 n -- bool )
+: HOST-HELD? ( str str -- bool )
    {: service:^ su:n account:^ au:n :}
    service su HOST-SERVICE CODEGEN:CONTENTS STR=
    account au HOST-ACCOUNT CODEGEN:CONTENTS STR= and ;
 
 
-: HOST-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
+: HOST-READ ( str str SPAN:span<u8> -- n bool )
    {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}
    1 HOST-CALLS +!
    service su account au HOST-HELD? 0= if 0 false exit then
@@ -183,7 +184,7 @@ variable HOST-CALLS
    vu true ;
 
 
-: HOST-WRITE ( ^u8 n ^u8 n ^u8 n -- )
+: HOST-WRITE ( str str str -- )
    {: service:^ su:n account:^ au:n value:^ vu:n :}
    1 HOST-CALLS +!
    HOST-SERVICE CODEGEN:RESET service su HOST-SERVICE CODEGEN:APPEND-STRING
@@ -191,7 +192,7 @@ variable HOST-CALLS
    HOST-VALUE CODEGEN:RESET value vu HOST-VALUE CODEGEN:APPEND-STRING ;
 
 
-: HOST-ERASE ( ^u8 n ^u8 n -- bool )
+: HOST-ERASE ( str str -- bool )
    1 HOST-CALLS +!
    HOST-HELD? dup if HOST-SERVICE CODEGEN:RESET then ;
 

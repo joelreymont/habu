@@ -1,3 +1,4 @@
+split-str
 \ Loaded inside the child REPL before a line deliberately fails.
 require src/habu/address-cells.f
 package REPL-ROWS

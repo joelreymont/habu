@@ -1,3 +1,4 @@
+split-str
 \ link-map.f - the target's names for a build's records: each record's wordlist
 \ id as the target numbers it, and <program>.map, which LINKER:WRITE writes
 \ beside the program in the format tools/image-names.f reads (habu-names 1). Its
@@ -190,7 +191,7 @@ variable REGION-N
    loop ;
 
 
-: MAP+ ( ^u8 n -- ) MAP-TEXT SPAN+ ;
+: MAP+ ( str -- ) MAP-TEXT SPAN+ ;
 : MAP-NL ( -- ) S\" \n" MAP+ ;
 
 : MAP-INT+ ( n -- )
@@ -200,7 +201,7 @@ variable REGION-N
 : MAP-HEX+ ( n -- ) s" 0123456789ABCDEF" drop swap + 1 MAP+ ;
 
 \ A path, its bytes at or below a space and its '%' as %XX, and none as `-`.
-: MAP-ESC+ ( ^u8 n -- )
+: MAP-ESC+ ( str -- )
    {: a:^ u:n :}
    u 0= if s" -" MAP+ exit then
    u 0 ?do
@@ -210,7 +211,7 @@ variable REGION-N
       else a i + 1 MAP+ then
    loop ;
 
-: MAP-NAME+ ( ^u8 n -- )
+: MAP-NAME+ ( str -- )
    {: a:^ u:n :}
    u 0= if s" -" MAP+ else a u MAP+ then ;
 
@@ -230,14 +231,14 @@ variable REGION-N
 
 : NAMED ( -- n ) ENGINE? @ if 1 else 0 then ;
 
-: MAP-KIND$ ( n -- ^u8 n ) MAP-ALIAS @ 0<> if s"  alias " else s"  word " then ;
+: MAP-KIND$ ( n -- str ) MAP-ALIAS @ 0<> if s"  alias " else s"  word " then ;
 
 \ An engine's records are baked into the program it writes; a stripped program's
 \ are loaded on the kernel's.
-: ORIGIN$ ( -- ^u8 n ) ENGINE? @ if s" baked " else s" loaded " then ;
+: ORIGIN$ ( -- str ) ENGINE? @ if s" baked " else s" loaded " then ;
 
 \ BUILT row's path below the root that resolved its file; none for -1.
-: FILE-PATH$ ( n -- ^u8 n )
+: FILE-PATH$ ( n -- str )
    {: row:n :}
    row 0 < if s" " exit then
    LOAD-PATHS BYTES$ drop  row BUILT-PATHS @ + {: at:^ :}
@@ -323,7 +324,7 @@ variable REGION-N
    i 1 + REGION-N ! ;
 
 \ The bytes [at, end) the link appended after the code, if any, of the kind.
-: TAIL-ROW+ ( ^u8 n n n -- )
+: TAIL-ROW+ ( str n n -- )
    {: kind:^ kindu:n at:n end:n :}
    end at > if
       REC+ 0 at  end at - CODE-SPAN:EXACT  -1 MAP-HEAD
@@ -349,7 +350,7 @@ variable REGION-N
    loop ;
 
 
-: MAP-WRITE ( ^u8 n n -- )
+: MAP-WRITE ( str n -- )
    {: path:^ pathu:n end:n :}
    MAP-TEXT 4096 BUF:N>BLEN BUF:INIT  MAP-PATH 256 BUF:N>BLEN BUF:INIT
    MAP-FILL MAP-SORT MAP-ENDS MAP-ALIASES
@@ -366,6 +367,6 @@ variable REGION-N
 
 \ The linked program's map to <path>.map, its code ending at offset end, after
 \ the link placed its code and REGION+ recorded what it appended.
-: WRITE-MAP ( ^u8 n n -- ) ['] MAP-WRITE ['] MAP-RELEASE finally ;
+: WRITE-MAP ( str n -- ) ['] MAP-WRITE ['] MAP-RELEASE finally ;
 
 ;package

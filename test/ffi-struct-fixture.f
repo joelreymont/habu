@@ -1,3 +1,4 @@
+split-str
 \ ffi-struct-fixture.f - the C library the struct-by-value FFI cases call.
 \ test/ffi-struct-result.f and test/ffi-struct-arg.f select it, and the first
 \ SELECT builds it with the system compiler: no system library takes integer
@@ -19,7 +20,7 @@ create LIB-PATH PATH-CAP allot
 variable SRC-U
 variable LIB-U                    \ 0 until BUILD makes the library
 
-: L+ ( ^u8 n -- )
+: L+ ( str -- )
    SRC CODEGEN:APPEND-STRING
    10 SRC CODEGEN:APPEND-BYTE ;
 
@@ -113,12 +114,12 @@ variable LIB-U                    \ 0 until BUILD makes the library
    s"    s32 r = { (i64)MIX(MIX(MIX(MIX(1, a), b), c), d), hb_sum16(s), t, -99 }; return r; }" L+
    TIMES ;
 
-: LIB-NAME$ ( -- ^u8 n )
+: LIB-NAME$ ( -- str )
    HB-TARGET-MACOS? if s" libhbstruct.dylib" exit then
    s" libhbstruct.so" ;
 
 : SRC$ ( -- ^u8 n ) SRC-PATH SRC-U @ ;
-: LIB$ ( -- ^u8 n ) LIB-PATH LIB-U @ ;
+: LIB$ ( -- str ) LIB-PATH LIB-U @ ;
 
 : PATHS ( ^u8 n -- )
    {: dir:^ diru :}

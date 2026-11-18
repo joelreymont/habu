@@ -1,3 +1,4 @@
+split-str
 \ power-test.f - POWER's hold, as the OS itself lists it.
 \ Run: bin/hb --load src/lib/power-test.f
 \ Failure modes: a hold the OS never lists, or still lists after ALLOW-SLEEP; a

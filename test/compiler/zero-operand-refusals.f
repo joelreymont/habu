@@ -1,3 +1,4 @@
+split-str
 \ zero-operand-refusals.f - rejected programs for "a literal 0 is rejected
 \ where it reaches an input the callee always divides by or throws": the
 \ engine's `/`, `mod`, `/mod` and `throw`, and a word that divides by or throws
@@ -27,7 +28,7 @@ private
 : HAS? ( ^u8 n -- )
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
-: TOKEN? ( ^u8 n -- )
+: TOKEN? ( str -- )
    SB-RESET
    S\" \"token\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
    SB$ HAS? ;

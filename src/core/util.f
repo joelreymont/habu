@@ -1,3 +1,4 @@
+split-str
 \ util.f — shared helpers for the checked core. Load before src/core/checker.f.
 
 \ First source-prefix record. Its dictionary index is resolved
@@ -65,7 +66,7 @@ public
 
 \ A number's digits without its sign, from the end of DIGITS: taken on the
 \ non-positive side, so MIN-N has them too, as / and mod truncate toward zero.
-: DIGITS$ ( n -- ^u8 n )
+: DIGITS$ ( n -- str )
    DIGITS-CAP DIGIT-AT !
    dup 0 > if negate then
    begin dup 10 mod negate $30 + DIGIT+ 10 / dup 0= until drop

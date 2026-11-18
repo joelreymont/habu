@@ -1,3 +1,4 @@
+split-str
 \ xref-test-fixture.f - focused tests for live dictionary xref words.
 
 require src/lib/test.f
@@ -32,7 +33,7 @@ public
 
 \ A record is `^n`; declaring the pointee parametric here specializes the
 \ quantifier in the body and is refused.
-: XRT-EXPECT-FOUND ( ^u8 n -- ^n )
+: XRT-EXPECT-FOUND ( str -- ^n )
    XREF-FIND dup XREF-FOUND? TTRUE ;
 
 : XRT-FOUND ( -- )

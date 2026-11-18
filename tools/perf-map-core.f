@@ -1,3 +1,4 @@
+split-str
 \ perf-map-core.f - rewrite the addresses in `perf script` output as Habu words,
 \ which perf prints as [unknown]: they live in one anonymous mapping.
 \   perf record -g <engine> --load prog.f
@@ -92,19 +93,19 @@ variable MAPPED    \ has this line's address column been rewritten already
    c [char] A >= c [char] F <= and if c [char] A - 10 + exit then
    -1 ;
 
-: HEX@ ( ^u8 n -- n ) {: a:^ u:n :}
+: HEX@ ( str -- n ) {: a:^ u:n :}
    0 ACC !
    u 0 ?do ACC @ 16 * a i + c@ HEX-DIGIT + ACC ! loop
    ACC @ ;
 
-: HEX? ( ^u8 n -- bool ) {: a:^ u:n :}
+: HEX? ( str -- bool ) {: a:^ u:n :}
    u ADDR-MIN < if STR-FALSE exit then
    u ADDR-MAX > if STR-FALSE exit then
    1 OK !
    u 0 ?do a i + c@ HEX-DIGIT 0 < if 0 OK ! then loop
    OK @ 0<> ;
 
-: ADDR+ ( ^u8 n -- ) {: a:^ u:n :}
+: ADDR+ ( str -- ) {: a:^ u:n :}
    a u HEX@ {: addr:n :}
    addr prof-pc>rec {: idx:n :}
    idx 0 < if a u OUT+ exit then
@@ -116,14 +117,14 @@ variable MAPPED    \ has this line's address column been rewritten already
 : SEP? ( n -- bool ) {: c:n :}
    c STR-SPACE = c TAB = or ;
 
-: INDENTED? ( ^u8 n -- bool ) {: a:^ u:n :}
+: INDENTED? ( str -- bool ) {: a:^ u:n :}
    u 0= if STR-FALSE exit then
    a 0 + c@ SEP? ;
 
 \ The address column is the first token of an indented line, and only that
 \ one: a sample's unindented header holds a decimal pid and period that are
 \ also valid hex.
-: ADDR-HERE? ( ^u8 n -- bool ) {: a:^ u:n :}
+: ADDR-HERE? ( str -- bool ) {: a:^ u:n :}
    MAPPED @ 0<> if STR-FALSE exit then
    a u HEX? ;
 
@@ -133,7 +134,7 @@ public
 \ internal profiler's deferred bucket. The dso column is not read: an address
 \ outside this dictionary's code range (every shared library sits above it) is
 \ left alone.
-: LINE$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: LINE$ ( str -- str ) {: a:^ u:n :}
    OUT-U BUF-RESET
    0 CUR !
    a u INDENTED? 0= if 1 else 0 then MAPPED !

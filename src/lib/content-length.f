@@ -1,3 +1,4 @@
+split-str
 \ content-length.f - LSP/DAP Content-Length message framing over a blocking
 \ descriptor; the module knows nothing of what a body holds. NEXT-LENGTH reads a
 \ header block and BODY the body into the caller's span, so the module allocates
@@ -144,7 +145,7 @@ private
    ;MATCH ;
 
 \ Whether a header name is a token: one tchar or more.
-: TOKEN? ( ^u8 n -- bool )
+: TOKEN? ( str -- bool )
    {: a:^ u:n :}
    u 0= if false exit then
    u 0 ?do a i + c@ TCHAR? 0= if false unloop exit then loop
@@ -169,7 +170,7 @@ private
    dup r MAX@ > if r MALFORMED then ;
 
 \ A parameter value without the quotes around a quoted string.
-: UNQUOTE ( ^u8 n -- ^u8 n )
+: UNQUOTE ( str -- str )
    {: a:^ u:n :}
    u 2 < if a u exit then
    a c@ DQ <> if a u exit then
@@ -179,7 +180,7 @@ private
 \ Whether one `name=value` parameter of a Content-Type is a charset other than
 \ UTF-8: utf-8, or utf8 as older LSP clients send it, in any case, bare or
 \ quoted.
-: FOREIGN? ( ^u8 n -- bool )
+: FOREIGN? ( str -- bool )
    {: a:^ u:n :}
    a u EQUALS INDEX-OF MATCH option
       none OF -1 ENDOF
@@ -249,7 +250,7 @@ HEADER-CAP TASK:+USERS HEADER-ROW u8
    j 1+ ;
 
 \ The header for a body of u bytes, built in this task's header row.
-: HEADER$ ( n -- ^u8 n )
+: HEADER$ ( n -- str )
    {: u:n :}
    0 HEADER-ROW {: h:^ :}
    s" Content-Length: " {: p:^ pu:n :}

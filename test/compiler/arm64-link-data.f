@@ -1,3 +1,4 @@
+split-str
 \ arm64-link-data.f - a stripped program's DATA, written by LINKER:WRITE and
 \ run, its kernel the tree's kernel object. One build writes two programs. main
 \ prints `12 6 0 11 11 ld-text`: the word an xt cell holds, which reads a
@@ -46,14 +47,14 @@ create PROG-BUF PATH-CAP allot
 
 : ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
 
-: PROG$ ( ^u8 n -- ^u8 n )
+: PROG$ ( str -- str )
    {: name:^ name-n:n :}
    ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
 
 
 \ The build's wordlists hold no BOOT, so its cell offsets go in as numbers.
-: OVER-SRC ( -- ^u8 n )
+: OVER-SRC ( -- str )
    SB-RESET
    s" : LD-OVER ( -- ) data-base " SB-APPEND  BOOT:DP-FLOOR-CELL FMT:SB-INT
    s"  + @ {: floor:n :}  data-base " SB-APPEND  BOOT:DP-CEILING-CELL FMT:SB-INT
@@ -91,14 +92,14 @@ variable OVER-CEILING
    data-base BOOT:DP-CEILING-CELL + @ base - OVER-CEILING ! ;
 
 
-: STORE-ENTRY ( ^u8 n -- )
+: STORE-ENTRY ( str -- )
    XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base APP-ENTRY:XT-CELL + xt! ;
 
 
 DYNAMIC-BUFFER FIRST-LINK u8
 
-: FILE-BYTES ( ^u8 n -- ^u8 n )
+: FILE-BYTES ( str -- str )
    {: path:^ path-n:n :}
    path path-n FS:FILE-SIZE {: size:n :}
    size FIRST-LINK-RESERVE
@@ -127,7 +128,7 @@ DYNAMIC-BUFFER SECOND-LINK u8
    SECOND-CASE ;
 
 
-: RUN-PROG ( CMD:command ^u8 n -- CMD:command n )
+: RUN-PROG ( CMD:command str -- CMD:command n )
    {: file:^ file-n:n :}
    file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
@@ -147,12 +148,12 @@ DYNAMIC-BUFFER SECOND-LINK u8
    s" over exits 67" T-LABEL  rc 67 T= ;
 
 
-: CHILD-LABEL ( ^u8 n ^u8 n -- )
+: CHILD-LABEL ( str str -- )
    {: name:^ name-n:n what:^ what-n:n :}
    SB-RESET  s" refusal, " SB-APPEND  name name-n SB-APPEND
    s" : " SB-APPEND  what what-n SB-APPEND  SB$ T-LABEL ;
 
-: CHILD-RC ( CMD:command ^u8 n ^u8 n -- CMD:command n )
+: CHILD-RC ( CMD:command str str -- CMD:command n )
    {: name:^ name-n:n obj:^ obj-n:n :}
    s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
    s" --" CMD:ARG+  name name-n CMD:ARG+  obj obj-n CMD:ARG+
@@ -161,7 +162,7 @@ DYNAMIC-BUFFER SECOND-LINK u8
 
 \ name's child on the object at obj arms, its link is refused for the reason
 \ err, and it exits with status want; label names the case.
-: BAD-LINK ( CMD:command ^u8 n ^u8 n ^u8 n ^u8 n n -- CMD:command )
+: BAD-LINK ( CMD:command str str str str n -- CMD:command )
    {: name:^ name-n:n obj:^ obj-n:n label:^ label-n:n err:^ err-n:n want:n :}
    name name-n obj obj-n CHILD-RC {: rc:n :}
    label label-n s" the child arms before the link" CHILD-LABEL
@@ -170,11 +171,11 @@ DYNAMIC-BUFFER SECOND-LINK u8
    CMD:ERR$ err err-n CONTAINS? TTRUE
    label label-n s" the link's status" CHILD-LABEL  rc want T= ;
 
-: BAD-CHILD ( CMD:command ^u8 n ^u8 n n -- CMD:command )
+: BAD-CHILD ( CMD:command str str n -- CMD:command )
    {: name:^ name-n:n err:^ err-n:n want:n :}
    name name-n HB-BUILD-CORE:KERNEL$ name name-n err err-n want BAD-LINK ;
 
-: NAMES-LABEL ( ^u8 n -- ) s" the link names what it refuses" CHILD-LABEL ;
+: NAMES-LABEL ( str -- ) s" the link names what it refuses" CHILD-LABEL ;
 
 : BAD-DATA ( CMD:command -- CMD:command )
    s" data"  s" error[E-LINK-DATA-POINTER]" 70 BAD-CHILD
@@ -200,7 +201,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 \ The offset of the value of the symbol named name, at most 16 bytes, in the
 \ object, -1 if none: the name is padded to a cell.
-: START-AT ( ^u8 n ^u8 n -- n )
+: START-AT ( str str -- n )
    {: a:^ u:n name:^ name-n:n :}
    name-n START-SYM LE:U64!  name START-SYM 8 + name-n BYTE-COPY
    a u START-SYM name-n 8 + FIND-SUB MATCH option
@@ -209,7 +210,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    ;MATCH ;
 
 \ The checksum, bytes 8-40, as the SHA-256 of the object's bytes 40 on.
-: RESUM ( ^u8 n -- )
+: RESUM ( str -- )
    {: a:^ u:n :}
    SHA-CTX  a 40 +  u 40 -  a 8 + SHA256-IN ;
 
@@ -260,7 +261,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 \ The data child on the object at name, refused by its read for the reason err
 \ before it arms, exits 65.
-: BAD-OBJECT ( CMD:command ^u8 n ^u8 n -- CMD:command )
+: BAD-OBJECT ( CMD:command str str -- CMD:command )
    {: name:^ name-n:n err:^ err-n:n :}
    s" data"  name name-n PROG$ CHILD-RC {: rc:n :}
    name name-n s" nothing on stdout" CHILD-LABEL  CMD:OUT$ nip 0 T=

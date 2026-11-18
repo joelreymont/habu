@@ -1,3 +1,4 @@
+split-str
 \ require-cap-test.f - the require inventory grows past 512 entries (the first
 \ case) and through another growth step (the second). Each case forks a SUBJECT
 \ child that resets the require registry, flips DISCOVERY so synthetic paths
@@ -26,14 +27,14 @@ variable EXITED?
 
 \ A child program that fills the require table to K entries.
 
-: FORGE$ ( -- ^u8 n )  FORGE-BUF FORGE-U @ ;
+: FORGE$ ( -- str )  FORGE-BUF FORGE-U @ ;
 
 : FORGE-C ( n -- ) {: c:n :}
    FORGE-U @ 1+ FORGE-CAP > if s" require-cap: forge overflow" EXIT-STATUS:FAILURE die then
    c FORGE-BUF FORGE-U @ + c!
    FORGE-U @ 1+ FORGE-U ! ;
 
-: FORGE-APPEND ( ^u8 n -- ) {: a:^ u:n :}
+: FORGE-APPEND ( str -- ) {: a:^ u:n :}
    FORGE-U @ u + FORGE-CAP > if s" require-cap: forge overflow" EXIT-STATUS:FAILURE die then
    a FORGE-BUF FORGE-U @ + u BYTE-COPY
    FORGE-U @ u + FORGE-U ! ;
@@ -46,7 +47,7 @@ variable EXITED?
 
 \ After the last growth every row must still be found: requiring them all again
 \ leaves the count alone, so each path and length survived the copies.
-: FORGE-GEN ( n -- ^u8 n ) {: k:n :}
+: FORGE-GEN ( n -- str ) {: k:n :}
    0 FORGE-U !
    s" 0 REQUIRE-REG:TRUNCATE 0 REQUIRE-BASE ! DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
    0 begin dup k < while dup FORGE-LINE 1+ repeat drop

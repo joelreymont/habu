@@ -1,3 +1,4 @@
+split-str
 \ include.f: checked source loading. SOURCE-ROOT resolves paths against the owner
 \ root, REQUIRE-REG records loaded files (engine rows frozen at boot), the event
 \ log feeds a discovery pass, and the frames hold each open file. `include` only
@@ -98,14 +99,14 @@ public
 
 ;package
 
-: TOKEN-SPELLS? ( ^u8 n -- bool )
+: TOKEN-SPELLS? ( str -- bool )
    SRCLOC:SPELLED nip nip ;
 
 \ The place of a record of loader word w, given the path a u: the source a u
 \ stands for, else the token the engine read last where it spells w, which it
 \ does only when source calls w directly: called from a definition at run
 \ time, that token is another word. Else no place, NULL-PTR 0.
-: LOADER-PLACE$ ( ^u8 n ^u8 n -- ^u8 n ) {: w:^ wu:n a:^ u:n :}
+: LOADER-PLACE$ ( str str -- str ) {: w:^ wu:n a:^ u:n :}
    a u SRCLOC:ORIGIN$ {: t:^ tu:n :}
    t NULL-PTR <> if t tu exit then
    w wu TOKEN-SPELLS? if SRCLOC:TOKEN$ exit then
@@ -114,7 +115,7 @@ public
 \ Places the record of word w, given the path a u, and opens its label, true;
 \ the caller writes the rest, which reads after the path or after "that". With
 \ no place the record has no label, false.
-: LOADER-PATH-AT ( ^u8 n ^u8 n -- bool ) {: w:^ wu:n a:^ u:n :}
+: LOADER-PATH-AT ( str str -- bool ) {: w:^ wu:n a:^ u:n :}
    w wu a u LOADER-PLACE$ {: t:^ tu:n :}
    t NULL-PTR = if 0 0= 0= exit then
    t tu REJECTION:AT
@@ -123,7 +124,7 @@ public
 
 \ Word w's record for the path a u, kind E-PATH-NUL or E-PATH-RANGE: len 0 when empty,
 \ -1 if too long once resolved, else the length over cap. Empty w names no word.
-: LOADER-PATH-RECORD ( ^u8 n ^u8 n n n n -- )
+: LOADER-PATH-RECORD ( str str n n n -- )
    {: w:^ wu:n a:^ u:n kind:n len:n cap:n :}
    w wu SRCLOC:SPELLED drop {: name:^ nameu:n :}
    kind E-PATH-NUL = if
@@ -158,12 +159,12 @@ public
    then ;
 
 \ Stops with word w's record for the path a u it cannot take.
-: LOADER-PATH-STOP ( ^u8 n ^u8 n n n -- )
+: LOADER-PATH-STOP ( str str n n -- )
    INCLUDE-PATH-CAP LOADER-PATH-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Whether a loader or ROOT! can take the path a u before resolving it: 0 0, else
 \ the kind and len LOADER-PATH-STOP takes. Length is the resolver's to judge.
-: LOADER-PATH-FAULT ( ^u8 n -- n n ) {: a:^ u:n :}
+: LOADER-PATH-FAULT ( str -- n n ) {: a:^ u:n :}
    u 0 <= if E-PATH-RANGE 0 exit then
    0 begin dup u < while
       dup a + c@ 0= if drop E-PATH-NUL 0 exit then
@@ -172,14 +173,14 @@ public
    drop 0 0 ;
 
 \ Word w's path a u, placed at p pu: one no file name holds stops with w's record.
-: LOADER-PATH-CHECK ( ^u8 n ^u8 n ^u8 n -- ) {: w:^ wu:n p:^ pu:n a:^ u:n :}
+: LOADER-PATH-CHECK ( str str str -- ) {: w:^ wu:n p:^ pu:n a:^ u:n :}
    a u LOADER-PATH-FAULT {: kind:n len:n :}
    kind 0 <> if w wu p pu kind len LOADER-PATH-STOP then ;
 
 \ The path a u that loader w takes, found by q, which is given a u and the
 \ place of w's record; one it cannot take stops with that record. An empty w
 \ is a command-line entry, whose record has no place.
-: LOADER-RESOLVE ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- ^u8 n bool ] -- ^u8 n bool )
+: LOADER-RESOLVE ( str str [ str str -- str bool ] -- str bool )
    {: w:^ wu:n a:^ u:n q :}
    wu 0= if NULL-PTR 0 else a u then {: p:^ pu:n :}
    wu 0= if NULL-PTR 0 else w wu a u LOADER-PLACE$ then {: t:^ tu:n :}
@@ -197,7 +198,7 @@ private
 
 \ Word w's path a u, judged as spelled: one no file name holds, or one longer
 \ than PATH-CAP, stops with w's record.
-: GIVEN-CHECK ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
+: GIVEN-CHECK ( str str -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u a u LOADER-PATH-CHECK
    u INCLUDE-PATH-CAP > if w wu a u E-PATH-RANGE u LOADER-PATH-STOP then ;
 
@@ -232,7 +233,7 @@ PTR-VARIABLE REQUEST-P  SCRATCH-VARIABLE REQUEST-CAP
 : DENIED-FIT ( n -- ) DENIED-P DENIED-CAP rot PATH-FIT ;
 : REQUEST-FIT ( n -- ) REQUEST-P REQUEST-CAP rot PATH-FIT ;
 \ The u-byte path a as a C path in ZBUF.
-: ZPATH-OF ( ^u8 n -- ^u8 ) {: a:^ u:n :}
+: ZPATH-OF ( str -- ^u8 ) {: a:^ u:n :}
    u 1+ Z-FIT  a u ZBUF u 1+ PATHZ  ZBUF ;
 variable REQUEST-U
 variable CWD-U
@@ -271,19 +272,19 @@ variable SLOT-BASE
 : CURRENT-PTR ( -- ^u8 ) CURRENT-A @ ;
 
 
-: CURRENT! ( ^u8 n -- )
+: CURRENT! ( str -- )
    CURRENT-U ! CURRENT-A ! ;
 
 \ The current path as set, null for the top-level root, which a scope saves
 \ and restores: CURRENT$ would hand back CWD-BUF, which no top-level path may
 \ hold (CD and POPPATH release the path they replace).
-: CURRENT@ ( -- ^u8 n )
+: CURRENT@ ( -- str )
    CURRENT-PTR CURRENT-U @ ;
 
 \ Throws kind, E-PATH-RANGE or E-PATH-NUL, carrying the record of the path a
 \ u, which names no word, since its callers serve many public words: len and
 \ cap as LOADER-PATH-RECORD takes them. Callers catch either code and go on.
-: PATH-PASS ( ^u8 n n n n -- )
+: PATH-PASS ( str n n n -- )
    {: a:^ u:n kind:n len:n cap:n :}
    NULL-PTR 0 a u kind len cap LOADER-PATH-RECORD
    REJECTION:SAVE  kind REJECTION:PASS ;
@@ -295,7 +296,7 @@ variable SLOT-BASE
 
 \ realpath of a path of any written length into CANON-BUF: its length, below 0
 \ if it does not resolve; realpath fails on a result CANON-BUF cannot hold.
-: CANON-N ( ^u8 n -- n )
+: CANON-N ( str -- n )
    {: a:^ u:n :}
    a u CHECK
    a u LOADER-PATH-FAULT {: kind:n len:n :}
@@ -314,7 +315,7 @@ private
 
 \ Opens word w's record of the path it got: w is a word the program called or
 \ SOURCE-INPUT:CANON, for the canon it supplied; why follows "which".
-: PATH-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+: PATH-REJECT ( str str str -- )
    {: w:^ wu:n path:^ pathu:n why:^ whyu:n :}
    s" E-SOURCE-ROOT" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR  s" ` got `" REJECTION:EMIT-STR
@@ -323,14 +324,14 @@ private
 
 \ Word w got the path a u, shown as p pu: why reads after "which" and "that";
 \ help says what the program should pass, or its canon answer.
-: PATH-DIE ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: PATH-DIE ( str str str str str -- )
    {: w:^ wu:n a:^ u:n p:^ pu:n why:^ whyu:n help:^ helpu:n :}
    w wu SRCLOC:SPELLED drop p pu why whyu PATH-REJECT
    w wu a u LOADER-PATH-AT if why whyu REJECTION:EMIT-STR then
    REJECTION:HELP  help helpu REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: TRY-CANON ( ^u8 n -- bool )
+: TRY-CANON ( str -- bool )
    {: p:^ pu:n :}
    p pu SOURCE-INPUT:CANON {: a:^ u:n found:bool :}
    u PATH-BYTES >= if p pu E-PATH-RANGE -1 PATH-BYTES 1- PATH-PASS then
@@ -352,7 +353,7 @@ private
    found ;
 
 
-: CANON$ ( -- ^u8 n ) CANON-BUF CANON-U @ ;
+: CANON$ ( -- str ) CANON-BUF CANON-U @ ;
 
 
 \ The working directory must fit PATH-CAP as every root does; every path below
@@ -394,7 +395,7 @@ public
 
 private
 
-: PARENT-U ( ^u8 n -- n ) {: a:^ u:n :}
+: PARENT-U ( str -- n ) {: a:^ u:n :}
    u
    begin dup 1 > while
       1- dup a + c@ 47 = if exit then
@@ -424,7 +425,7 @@ variable PROGRAM-U
 
 \ Whether a canonical path is the program file. A fresh discovery registry
 \ (REQUIRE-SNAPSHOT) hides it, as it hides every row recorded before it.
-: PROGRAM? ( ^u8 n -- bool ) {: a:^ u:n :}
+: PROGRAM? ( str -- bool ) {: a:^ u:n :}
    REQUIRE-BASE @ 0= 0= if INCLUDE-FALSE exit then
    PROGRAM-INIT
    PROGRAM-U @ 0= if INCLUDE-FALSE exit then
@@ -434,7 +435,7 @@ variable PROGRAM-U
 \ work belong to the process that derived them, so their cells are scratch: a
 \ saved program, a cross-built one included, starts with none and derives its
 \ own instead of resolving against its builder's directory.
-: SCRATCH-BYTES ( ^u8 n -- ) {: a:^ u:n :}
+: SCRATCH-BYTES ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + scratch-cell-mark 1 cells +loop ;
 
 CWD-BUF PATH-BYTES SCRATCH-BYTES        CWD-U scratch-cell-mark
@@ -461,7 +462,7 @@ private
 
 \ The root length is the caller's: one below 0, or whose sum with u wraps, is
 \ rejected. Built in WORK-BUF, so a root or name in JOIN-BUF is read first.
-: JOIN! ( ^u8 n ^u8 n -- ) {: root:^ rootu:n a:^ u:n :}
+: JOIN! ( str str -- ) {: root:^ rootu:n a:^ u:n :}
    rootu 0 < if root 0 E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then
    rootu u + 1+ {: n:n :}
    n 0 < if root 0 E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then
@@ -474,7 +475,7 @@ private
    WORK-BUF JOIN-BUF n BYTE-COPY ;
 
 
-: ABSOLUTE! ( ^u8 n -- ) {: a:^ u:n :}
+: ABSOLUTE! ( str -- ) {: a:^ u:n :}
    a u CHECK
    a c@ 47 = if
       u JOIN-FIT  a JOIN-BUF u BYTE-COPY u JOIN-U ! exit
@@ -483,13 +484,13 @@ private
 
 
 \ p pu is the path being normalized.
-: NORMAL-ROOM ( ^u8 n n n -- )
+: NORMAL-ROOM ( str n n -- )
    {: p:^ pu:n n:n limit:n :}
    NORMAL-U @ n + limit > if p pu E-PATH-RANGE -1 limit PATH-PASS then
    NORMAL-U @ n + NORMAL-FIT ;
 
 
-: NORMAL-PUT ( ^u8 n ^u8 n n -- )
+: NORMAL-PUT ( str str n -- )
    {: p:^ pu:n a:^ u:n limit:n :}
    NORMAL-U @ 1 > if
       p pu 1 limit NORMAL-ROOM
@@ -501,7 +502,7 @@ private
    u NORMAL-U +! ;
 
 
-: NORMAL-SEG ( ^u8 n ^u8 n n -- )
+: NORMAL-SEG ( str str n -- )
    {: p:^ pu:n a:^ u:n limit:n :}
    u 0= if exit then
    a u s" ." CORE-STR= if exit then
@@ -511,7 +512,7 @@ private
    p pu a u limit NORMAL-PUT ;
 
 
-: SEG-END ( ^u8 n n -- n ) {: a:^ u:n start:n :}
+: SEG-END ( str n -- n ) {: a:^ u:n start:n :}
    start
    begin dup u < while
       dup a + c@ 47 = if exit then
@@ -519,7 +520,7 @@ private
    repeat ;
 
 
-: NORMALIZE-LIMIT ( ^u8 n n -- )
+: NORMALIZE-LIMIT ( str n -- )
    {: a:^ u:n limit:n :}
    1 NORMAL-FIT  47 NORMAL-BUF c! 1 NORMAL-U !
    0 begin dup u < while
@@ -529,7 +530,7 @@ private
    repeat drop ;
 
 
-: NORMALIZE ( ^u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
+: NORMALIZE ( str -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
 
 \ A build compiles a second copy of this file into the program it builds, and
 \ there LOADER answers hb's record: the copy's loading words would run its own
@@ -544,7 +545,7 @@ public
 \ Public so provided, which this file defines outside
 \ SOURCE-ROOT, refuses here too: its row would lie outside the build's space,
 \ which only the linker would catch. w is the word the program called.
-: BUILD-REFUSE ( ^u8 n ^u8 n -- ) {: w:^ wu:n path:^ pathu:n :}
+: BUILD-REFUSE ( str str -- ) {: w:^ wu:n path:^ pathu:n :}
    OWN-LOADER? if exit then
    w wu path pathu path pathu
    s" a word may not load or provide while a build runs"
@@ -554,12 +555,12 @@ public
 private
 
 \ Whether the bytes a s..e are an empty or `.` segment.
-: DOT-SEG? ( ^u8 n n -- bool ) {: a:^ s:n e:n :}
+: DOT-SEG? ( str n -- bool ) {: a:^ s:n e:n :}
    e s = if INCLUDE-TRUE exit then
    e s - 1 =  a s + c@ 46 =  and ;
 
 \ The end of the run of empty and `.` segments of a u after end e; e if none.
-: DOT-RUN-END ( ^u8 n n -- n ) {: a:^ u:n e:n :}
+: DOT-RUN-END ( str n -- n ) {: a:^ u:n e:n :}
    e begin dup u < while
       dup a u rot 1+ SEG-END {: d:n f:n :}
       a d 1+ f DOT-SEG? 0= if d exit then
@@ -567,7 +568,7 @@ private
    repeat ;
 
 \ The real path in CANON-BUF, `/` and the segment p u, in WORK-BUF: its length.
-: SEG-PATH ( ^u8 n -- n ) {: p:^ u:n :}
+: SEG-PATH ( str -- n ) {: p:^ u:n :}
    CANON-U @ {: r:n :}
    r u + 1+ WORK-FIT
    CANON-BUF WORK-BUF r BYTE-COPY
@@ -577,7 +578,7 @@ private
 
 \ The end of the segment of a u after end e, or of the run of empty and `.` ones
 \ there, if the canon resolves it under CANON-BUF's real path; else e.
-: CANON-STEP ( ^u8 n n -- n ) {: a:^ u:n e:n :}
+: CANON-STEP ( str n -- n ) {: a:^ u:n e:n :}
    a u e DOT-RUN-END {: d:n :}
    CANON-U @ {: r:n :}
    d e > if
@@ -591,7 +592,7 @@ private
 
 \ The length of the longest prefix of the absolute a u, cut at a segment end,
 \ the canon resolves segment by segment, its real path in CANON-BUF; 0 if none.
-: CANON-PREFIX ( ^u8 n -- n )
+: CANON-PREFIX ( str -- n )
    {: a:^ u:n :}
    a 1 TRY-CANON 0= if 0 exit then
    0 begin dup u < while
@@ -663,7 +664,7 @@ public
    JOIN-BUF JOIN-U @ ;
 
 
-: BELOW? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n root:^ rootu:n :}
+: BELOW? ( str str -- bool ) {: a:^ u:n root:^ rootu:n :}
    u rootu < if INCLUDE-FALSE exit then
    a rootu root rootu CORE-STR= 0= if INCLUDE-FALSE exit then
    u rootu = if INCLUDE-TRUE exit then
@@ -682,7 +683,7 @@ public
 
 private
 
-: OWNER! ( ^u8 n -- ) {: a:^ u:n :}
+: OWNER! ( str -- ) {: a:^ u:n :}
    u INCLUDE-PATH-CAP > if E-PATH-RANGE throw then
    a OWNER-BUF u BYTE-COPY u OWNER-U ! ;
 
@@ -703,7 +704,7 @@ private
 
 \ A root's lookup: the canonical length in CANON-BUF of the spelling, -1 when it
 \ does not resolve, -3 when ENGINE-DIR? rejects it.
-: ROOT-N ( ^u8 n -- n )
+: ROOT-N ( str -- n )
    CANON-N {: n:n :}
    n 0 < if -1 exit then
    n ENGINE-DIR? 0= if -3 exit then
@@ -713,20 +714,20 @@ private
 \ Neither says why a path fails, so the rejection names the absolute spelling
 \ tried and what a missing, unsearchable or long directory and a file all are
 \ not. w is the word the program called.
-: ROOT-DIE ( ^u8 n -- )
+: ROOT-DIE ( str -- )
    JOIN-BUF JOIN-U @ JOIN-BUF JOIN-U @
    s" does not resolve to a searchable directory within PATH-CAP bytes"
    s" name an existing directory this process can search"
    PATH-DIE ;
 
-: ROOT-CANON ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
+: ROOT-CANON ( str str -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u GIVEN-CHECK
    a u ABSOLUTE!
    JOIN-BUF JOIN-U @ ROOT-N {: n:n :}
    n 0 < if w wu ROOT-DIE then
    n CANON-U ! ;
 
-: OUTSIDE-ROOT ( ^u8 n ^u8 n -- ) {: a:^ u:n p:^ pu:n :}
+: OUTSIDE-ROOT ( str str -- ) {: a:^ u:n p:^ pu:n :}
    s" E-POLICY" REJECTION:OPEN
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR
    s" ` lies outside the source root" REJECTION:EMIT-STR
@@ -740,7 +741,7 @@ private
 
 \ CONFINE of a path a program asked for as req, which a rejection names and
 \ places at p, or nowhere when pu is 0.
-: CONFINE-AS ( ^u8 n ^u8 n ^u8 n -- ^u8 n )
+: CONFINE-AS ( str str str -- str )
    {: a:^ u:n req:^ requ:n p:^ pu:n :}
    data-base POLICY-REQUIRE-CELL + @ 0= if a u exit then
    a u CANONICAL drop {: path:^ pathu:n :}
@@ -751,19 +752,19 @@ public
 
 \ ROOT-N's lookup, `.` being the working directory: the canonical directory and
 \ true; false too for an empty spelling. Lasts until the next canon.
-: ROOT? ( ^u8 n -- ^u8 n bool )
+: ROOT? ( str -- str bool )
    {: a:^ u:n :}
    u 1 < if CANON-BUF 0 INCLUDE-FALSE exit then
    a u ROOT-N {: n:n :}
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
    CANON-BUF n INCLUDE-TRUE ;
 
-: CONFINE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: CONFINE ( str -- str ) {: a:^ u:n :}
    a u a u NULL-PTR 0 CONFINE-AS ;
 
 \ Prints the record of n bytes the system refused for w wu while loading f fu,
 \ if any, and throws SYSTEM, which a program may catch: map before publishing.
-: MAP-DIE ( n ^u8 n ^u8 n -- ) {: bytes:n w:^ wu:n f:^ fu:n :}
+: MAP-DIE ( n str str -- ) {: bytes:n w:^ wu:n f:^ fu:n :}
    bytes w wu REJECTION:MAP-REFUSED
    fu 0 > if s" file" REJECTION:NOTE  f fu REJECTION:EMIT-STR then
    REJECTION:HELP
@@ -773,7 +774,7 @@ public
 
 private
 
-: MAP-COPY ( ^u8 n -- ^u8 )
+: MAP-COPY ( str -- ^u8 )
    {: a:^ u:n :}
    u 1+ map-anon 0= 0= if drop u 1+ s" a path copy" s" " MAP-DIE then
    {: fresh:^ :}
@@ -801,7 +802,7 @@ private
    NULL$ drop ix SLOT-FIELD !
    0 ix SLOT-U! ;
 
-: ROOT-ENTER ( ^u8 n ^u8 n -- ^u8 n n )
+: ROOT-ENTER ( str str -- str n )
    ROOT-CANON
    CANON-U @ {: u:n :}
    CANON-BUF u MAP-COPY {: fresh:^ :}
@@ -811,7 +812,7 @@ private
 
 \ The scope's current path at exit (its own, or one ROOT!, CD or POPPATH set) and
 \ each path PUSHPATH saved in the scope are released once the caller's root is back.
-: ROOT-LEAVE ( ^u8 n n -- )
+: ROOT-LEAVE ( str n -- )
    {: old:^ oldu:n base:n :}
    CURRENT@ {: cur:^ curu:n :}
    old oldu CURRENT!
@@ -824,7 +825,7 @@ private
 
 \ Clears the token read last and answers it, so no record a scope's callback
 \ makes stands at the call that opened the scope.
-: TOKEN-CLEAR ( -- ^u8 n )
+: TOKEN-CLEAR ( -- str )
    SRCLOC:TOKEN$ {: a:^ u:n :}
    NULL-PTR 0 SRCLOC:TOKEN!
    a u ;
@@ -879,7 +880,7 @@ INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
 
 \ Word w got the path a u that, alone or joined to the current root, is len bytes,
 \ more than PATH-CAP.
-: ROOT-LONG ( ^u8 n ^u8 n n -- ) {: w:^ wu:n a:^ u:n len:n :}
+: ROOT-LONG ( str str n -- ) {: w:^ wu:n a:^ u:n len:n :}
    w wu SRCLOC:SPELLED drop len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
    w wu a u LOADER-PATH-AT if
       len u = if
@@ -894,7 +895,7 @@ INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ ROOT! for word w, the one the program called.
-: ROOT-SET ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
+: ROOT-SET ( str str -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u a u LOADER-PATH-CHECK
    u INCLUDE-PATH-CAP > if w wu a u u ROOT-LONG then
    CURRENT$ a u JOIN {: p:^ pu:n :}
@@ -960,7 +961,7 @@ ROOT-MOVER
 
 using SOURCE-ROOT
 
-: INCLUDE-DIE ( ^u8 n -- )
+: INCLUDE-DIE ( str -- )
    EXIT-STATUS:IOERR die ;
 
 : INCLUDE-CLOSE ( -- )
@@ -973,7 +974,7 @@ using SOURCE-ROOT
 
 \ The loader word, the source token t tu, has no path after it. It is written
 \ through its help, and the caller stops it.
-: INCLUDE-NO-PATH ( ^u8 n -- ) {: t:^ tu:n :}
+: INCLUDE-NO-PATH ( str -- ) {: t:^ tu:n :}
    t tu s" a path" t tu s" no path follows"
    REJECTION:MISSING-OPERAND
    s" write the file's path after the word, as " REJECTION:EMIT-STR
@@ -1124,11 +1125,11 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    path chunk CHUNK-DATA - {: off:n :}
    off 0 >= off chunk CHUNK-ROOM@ < and ;
 
-: CHUNK-TRIM-TO ( ^^u8 ^u8 n -- ) {: chunk:^ path:^ u:n :}
+: CHUNK-TRIM-TO ( ^^u8 str -- ) {: chunk:^ path:^ u:n :}
    path chunk CHUNK-DATA - u + chunk CHUNK-USED!
    chunk CHUNK ! ;
 
-: CHUNKS-TRIM ( ^u8 n -- ) {: path:^ u:n :}
+: CHUNKS-TRIM ( str -- ) {: path:^ u:n :}
    CHUNK @ begin dup NULL-PTR <> while
       dup path CHUNK-CONTAINS? if path u CHUNK-TRIM-TO exit then
       dup CHUNK-PREV@ swap dup CHUNK-BYTES munmap 0 < if
@@ -1274,14 +1275,14 @@ public
 : REQUIRE-BYTE= ( ^u8 n n -- bool ) {: a:^ idx:n i:n :}
    a i ZBYTE@ idx REQUIRE-SLOT i ZBYTE@ = ;
 
-: REQUIRE-PATH= ( ^u8 n n -- bool ) {: a:^ u:n idx:n :}
+: REQUIRE-PATH= ( str n -- bool ) {: a:^ u:n idx:n :}
    idx REQUIRE-LEN@ u <> if INCLUDE-FALSE exit then
    0 begin dup u < while
       dup a idx rot REQUIRE-BYTE= 0= if drop INCLUDE-FALSE exit then
       1+
    repeat drop INCLUDE-TRUE ;
 
-: REQUIRE-KNOWN? ( ^u8 n -- bool ) {: a:^ u:n :}
+: REQUIRE-KNOWN? ( str -- bool ) {: a:^ u:n :}
    REQUIRE-BASE @ begin dup REQUIRE-N @ < while
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
@@ -1290,7 +1291,7 @@ public
 package SOURCE-ROOT
 private
 
-: LOADED? ( ^u8 n -- bool ) {: a:^ u:n :}
+: LOADED? ( str -- bool ) {: a:^ u:n :}
    a u PROGRAM? if INCLUDE-TRUE exit then
    a u REQUIRE-KNOWN? ;
 
@@ -1302,7 +1303,7 @@ private
    0 begin dup ENVP 0= 0= while 1+ repeat 1+ ;
 
 \ Apple strings can be empty, so the scan ends at the null pointer.
-: APPLE-EXE ( -- ^u8 n )
+: APPLE-EXE ( -- str )
    ENVP-BASE 0= if NULL$ exit then
    ENVP-END begin dup ENVP 0= 0= while
       dup ENVP s" executable_path" ENV=? if
@@ -1314,17 +1315,17 @@ private
 \ `%` in CANON-BUF, as a length. 0 when there is no path, it is longer than
 \ PATH-CAP or realpath rejects it; never a throw: the length is checked before
 \ CANON-N, and neither path holds a NUL.
-: EXE-ROOT ( ^u8 n -- n ) {: a:^ u:n :}
+: EXE-ROOT ( str -- n ) {: a:^ u:n :}
    u 0= u INCLUDE-PATH-CAP > or if 0 exit then
    a u CANON-N {: n:n :}
    n 0 <= if 0 exit then
    CANON-BUF CANON-BUF n PARENT-U PARENT-U ;
 
-: TREE? ( ^u8 n -- bool )
+: TREE? ( str -- bool )
    0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZPATH-OF 0 access 0= ;
 
 \ The root's length in CANON-BUF, 0 for the working directory.
-: ENGINE-FIND-FOR ( ^u8 n -- n )
+: ENGINE-FIND-FOR ( str -- n )
    REQUIRE-BOOT-LIMIT 0= if 2drop 0 exit then
    CWD$ TREE? if 2drop 0 exit then
    EXE-ROOT {: n:n :}
@@ -1366,22 +1367,22 @@ ROOT-MOVER
 
 private
 
-: REQUEST! ( ^u8 n -- ) {: a:^ u:n :}
+: REQUEST! ( str -- ) {: a:^ u:n :}
    a u CHECK
    u REQUEST-FIT  a REQUEST-BUF u BYTE-COPY u REQUEST-U ! ;
 
-: REQUEST$ ( -- ^u8 n ) REQUEST-BUF REQUEST-U @ ;
+: REQUEST$ ( -- str ) REQUEST-BUF REQUEST-U @ ;
 
 \ Portable names describe only frozen engine facts, and a boot row IS its
 \ portable name, so this reads the registry itself. Ordinary application facts
 \ retain their canonical identity so identical names in distinct roots coexist.
-: BOOT-KNOWN? ( ^u8 n n -- bool ) {: a:^ u:n first:n :}
+: BOOT-KNOWN? ( str n -- bool ) {: a:^ u:n first:n :}
    first begin dup REQUIRE-BOOT-LIMIT < while
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
    repeat drop INCLUDE-FALSE ;
 
-: CANDIDATE$ ( -- ^u8 n ) CANDIDATE-BUF CANDIDATE-U @ ;
+: CANDIDATE$ ( -- str ) CANDIDATE-BUF CANDIDATE-U @ ;
 
 \ A request spelled under a root, normalized but not resolved, in NORMAL-BUF: no
 \ longer than the join and a leading `/`, which may outrun PATH-CAP.
@@ -1397,7 +1398,7 @@ private
 \ only when it resolves to the same physical candidate: symlink/.. can name
 \ another file. Spelling the request reuses NORMAL-BUF, which holds the
 \ candidate, so the candidate is copied first.
-: BOOT-CANDIDATE ( ^u8 n ^u8 n ^u8 n n -- ^u8 n bool )
+: BOOT-CANDIDATE ( str str str n -- str bool )
    {: a:^ u:n root:^ rootu:n req:^ requ:n first:n :}
    first REQUIRE-BOOT-LIMIT >= if a u INCLUDE-FALSE exit then
    a u root rootu RELATIVE first BOOT-KNOWN? if a u INCLUDE-TRUE exit then
@@ -1438,7 +1439,7 @@ private
 \ working directory holds, and the working directory answers only what neither
 \ holds: an application's entry below its tree, run from the tree, requires the
 \ tree's files by their tree-relative names.
-: SEARCH-ROOTS ( n -- ^u8 n bool bool )
+: SEARCH-ROOTS ( n -- str bool bool )
    {: first:n :}
    CURRENT$ first CANDIDATE dup if exit then 2drop 2drop
    ENGINE-SEARCHED? if
@@ -1451,7 +1452,7 @@ private
 
 \ A missing file's directory need not be a root at all (missing, a file,
 \ unsearchable), so its answer keeps the current root.
-: ABS-OWNER ( ^u8 n bool -- )
+: ABS-OWNER ( str bool -- )
    {: a:^ u:n exists:bool :}
    a u CURRENT$ BELOW? if CURRENT$ OWNER! exit then
    a u ENGINE$ BELOW? if ENGINE$ OWNER! exit then
@@ -1480,14 +1481,14 @@ private
 \ previous one back when the load ends.
 PTR-VARIABLE REQUEST-AT-A
 variable REQUEST-AT-U
-: REQUEST-AT! ( ^u8 n -- ) REQUEST-AT-U ! REQUEST-AT-A ! ;
-: REQUEST-AT$ ( -- ^u8 n ) REQUEST-AT-A @ REQUEST-AT-U @ ;
+: REQUEST-AT! ( str -- ) REQUEST-AT-U ! REQUEST-AT-A ! ;
+: REQUEST-AT$ ( -- str ) REQUEST-AT-A @ REQUEST-AT-U @ ;
 
 public
 
 \ The label of errno e, and the os error its record names: e where the label
 \ does not name e, else 0.
-: ERRNO-WHY$ ( n -- ^u8 n n ) {: e:n :}
+: ERRNO-WHY$ ( n -- str n ) {: e:n :}
    e 2 = if s" no such file" 0 exit then
    e 13 = if s" permission denied" 0 exit then
    e 20 = if s" a directory in the path is a file" 0 exit then
@@ -1498,7 +1499,7 @@ public
    s" the system call failed" e ;
 
 \ Writes why, then os error e unless e is 0, as Rust names an OS error.
-: UNREAD-WHY ( ^u8 n n -- ) {: why:^ whyu:n e:n :}
+: UNREAD-WHY ( str n -- ) {: why:^ whyu:n e:n :}
    why whyu REJECTION:EMIT-STR
    e 0= if exit then
    s"  (os error " REJECTION:EMIT-STR  e REJECTION:EMIT-N  41 REJECTION:EMIT1 ;
@@ -1507,7 +1508,7 @@ private
 
 \ Writes a u as one single-quoted shell word: each `'` in it closes the quote,
 \ is written escaped and reopens it, so no path byte acts in a shell.
-: SH-QUOTED ( ^u8 n -- ) {: a:^ u:n :}
+: SH-QUOTED ( str -- ) {: a:^ u:n :}
    39 REJECTION:EMIT1
    u 0 ?do
       a i + c@ dup 39 = if drop s" '\''" REJECTION:EMIT-STR else REJECTION:EMIT1 then
@@ -1516,7 +1517,7 @@ private
 
 \ The help for path, whose open or read failed with errno e. EACCES's names no
 \ owner: Habu looks none up, and the reader knows whose file it is.
-: OPEN-HELP ( ^u8 n n -- ) {: path:^ pathu:n e:n :}
+: OPEN-HELP ( str n -- ) {: path:^ pathu:n e:n :}
    e 2 = if s" create the file or correct the path" REJECTION:EMIT-STR exit then
    e 13 = if
       s" if the file is yours, make it readable with `chmod u+r " REJECTION:EMIT-STR
@@ -1537,7 +1538,7 @@ private
 
 \ The record of path, not read to its end, labelled why and os error e; at t tu
 \ with path in a note labelled note, else unplaced; written through its help.
-: UNREAD-OS-RECORD ( ^u8 n ^u8 n ^u8 n n ^u8 n -- )
+: UNREAD-OS-RECORD ( str str str n str -- )
    {: t:^ tu:n path:^ pathu:n why:^ whyu:n e:n note:^ noteu:n :}
    s" E-UNREADABLE-SOURCE" REJECTION:OPEN
    s" cannot read `" REJECTION:EMIT-STR
@@ -1550,11 +1551,11 @@ private
    note noteu REJECTION:NOTE  path pathu REJECTION:EMIT-STR
    REJECTION:HELP ;
 
-: UNREAD-RECORD ( ^u8 n ^u8 n ^u8 n -- ) 0 s" resolved" UNREAD-OS-RECORD ;
+: UNREAD-RECORD ( str str str -- ) 0 s" resolved" UNREAD-OS-RECORD ;
 
 \ EISDIR for a path that names a directory, else e: an open of a directory
 \ without read permission fails EACCES, but a stat of it succeeds.
-: SOURCE-ERRNO ( ^u8 n n -- n )
+: SOURCE-ERRNO ( str n -- n )
    {: path:^ pathu:n e:n :}
    path pathu ZPATH-OF COMPILE-READS:STAMP drop nip 32 rshift
    FS-ABI:S-IFDIR = if 21 exit then e ;
@@ -1563,7 +1564,7 @@ public
 
 \ Rejects path, found but failing its open or a read with errno e, at t tu, else
 \ unplaced. Public so a walk that reads a found file rejects it with its record.
-: UNREADABLE-SOURCE ( ^u8 n ^u8 n n -- )
+: UNREADABLE-SOURCE ( str str n -- )
    {: t:^ tu:n path:^ pathu:n e:n :}
    path pathu e SOURCE-ERRNO {: why:n :}
    t tu path pathu why ERRNO-WHY$ s" resolved" UNREAD-OS-RECORD
@@ -1572,14 +1573,14 @@ public
 
 \ The file path changed while it was read, so its bytes may be no single
 \ version of it. Placed as UNREADABLE-SOURCE places its record.
-: CHANGED-SOURCE ( ^u8 n ^u8 n -- )
+: CHANGED-SOURCE ( str str -- )
    s" changed while it was read" UNREAD-RECORD
    s" load it again once nothing is writing it" REJECTION:EMIT-STR
    EXIT-STATUS:IOERR REJECTION:STOP ;
 
 \ The file path is a stream, not a regular file, so a reader that stamps what
 \ it reads cannot stamp it. Placed as UNREADABLE-SOURCE places its record.
-: UNSTAMPED-SOURCE ( ^u8 n ^u8 n -- )
+: UNSTAMPED-SOURCE ( str str -- )
    s" is not a regular file" UNREAD-RECORD
    s" load a regular file, whose bytes a stamp can name" REJECTION:EMIT-STR
    EXIT-STATUS:IOERR REJECTION:STOP ;
@@ -1621,7 +1622,7 @@ private
 
 \ The walk of the w-byte DENIED-PATH after links links: the longest prefix the
 \ canon resolves either denies search or is followed by the link to replace.
-: DENIED-FROM ( n n -- ^u8 n ) {: w:n links:n :}
+: DENIED-FROM ( n n -- str ) {: w:n links:n :}
    w RESOLVED-U {: k:n :}
    k 0= if DENIED-PATH 0 exit then
    CANON-U @ {: r:n :}
@@ -1635,13 +1636,13 @@ private
 
 \ The real directory whose search denied a lookup of path, symlinks followed;
 \ 0 when no lookup is denied or the walk cannot reach that directory.
-: SEARCH-DENIED ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: SEARCH-DENIED ( str -- str ) {: a:^ u:n :}
    u DENIED-FIT  a DENIED-PATH u BYTE-COPY
    u 0 DENIED-FROM ;
 
 \ Rejects the joined path a denied lookup searched, at t tu, else unplaced, by
 \ its CANONICAL name; the help names dir, in DENIED-PATH, that CANONICAL spares.
-: UNSEARCHABLE-SOURCE ( ^u8 n ^u8 n -- ) {: t:^ tu:n path:^ pathu:n :}
+: UNSEARCHABLE-SOURCE ( str str -- ) {: t:^ tu:n path:^ pathu:n :}
    path pathu SEARCH-DENIED {: dir:^ diru:n :}
    diru 0= if exit then
    t tu path pathu CANONICAL drop 13 ERRNO-WHY$ s" searched" UNREAD-OS-RECORD
@@ -1656,7 +1657,7 @@ public
 \ Rejects request a u, which no root holds, at p, unplaced when pu is 0; as
 \ unreadable where a denied lookup hides it. An entry is searched for and
 \ helped as a command-line path. Public for check.f's and the verifier's walks.
-: MISSING-SOURCE ( ^u8 n ^u8 n bool -- )
+: MISSING-SOURCE ( str str bool -- )
    {: a:^ u:n p:^ pu:n entry:bool :}
    entry  a c@ 47 =  or if
       p pu CWD$ a u JOIN UNSEARCHABLE-SOURCE
@@ -1697,7 +1698,7 @@ public
 \ RESOLVE of a u whose rejection stands at t tu, unplaced when tu is 0. SELECT
 \ and CANONICAL may reuse the buffer a u lies in, so a rejection names
 \ REQUEST$, the request's copy.
-: RESOLVE-AT ( ^u8 n ^u8 n -- ^u8 n bool ) {: a:^ u:n t:^ tu:n :}
+: RESOLVE-AT ( str str -- ^u8 n bool ) {: a:^ u:n t:^ tu:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT drop
    >r REQUEST$ t tu CONFINE-AS r> ;
 
@@ -1707,7 +1708,7 @@ public
 
 private
 
-: LOAD-RESOLVE ( ^u8 n ^u8 n -- ^u8 n bool ) {: a:^ u:n t:^ tu:n :}
+: LOAD-RESOLVE ( str str -- str bool ) {: a:^ u:n t:^ tu:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT {: found:bool :}
    found 0= if REQUEST$ t tu INCLUDE-FALSE MISSING-SOURCE then
    >r REQUEST$ t tu CONFINE-AS r> ;
@@ -1716,7 +1717,7 @@ public
 
 \ Command-line entries are relative to the invocation directory only;
 \ dependencies beneath them inherit the entry directory as their primary root.
-: ENTRY-RESOLVE ( ^u8 n -- ^u8 n bool ) {: a:^ u:n :}
+: ENTRY-RESOLVE ( str -- str bool ) {: a:^ u:n :}
    a u REQUEST!
    CWD$ REQUIRE-BASE @ CANDIDATE
    {: path:^ pathu:n known:bool found:bool :}
@@ -1727,7 +1728,7 @@ public
 \ The selection counts every frozen row whatever REQUIRE-BASE is, so a frozen
 \ row is the engine's even where its file is missing. RESOLVED-ROOT$ stays as
 \ the caller's own RESOLVE left it.
-: ENGINE-KNOWN? ( ^u8 n -- bool )
+: ENGINE-KNOWN? ( str -- bool )
    OWNER-BUF OWNER-SAVE OWNER-U @ BYTE-COPY
    OWNER-U @ {: owner:n :}
    REQUEST! 0 SELECT 2drop
@@ -1735,7 +1736,7 @@ public
    OWNER-SAVE OWNER-BUF owner BYTE-COPY
    owner OWNER-U ! ;
 
-: BOOT-REJECT ( ^u8 n -- ) {: root:^ rootu:n :}
+: BOOT-REJECT ( str -- ) {: root:^ rootu:n :}
    s" E-SOURCE-ROOT" REJECTION:OPEN
    96 REJECTION:EMIT1  REQUEST$ REJECTION:EMIT-STR
    s" ` is a boot file outside the engine root" REJECTION:EMIT-STR
@@ -1752,7 +1753,7 @@ public
 \ Any other file is rejected by name: its row could only be its canonical path,
 \ and an engine carrying one takes that file for a stranger under every other
 \ root.
-: BOOT-ROW ( ^u8 n -- ^u8 n ^u8 n ) {: a:^ u:n :}
+: BOOT-ROW ( str -- str str ) {: a:^ u:n :}
    u CANDIDATE-U ! a CANDIDATE-BUF u BYTE-COPY
    ENGINE$ {: root:^ rootu:n :}
    CANDIDATE$ root rootu BELOW? if
@@ -1776,11 +1777,11 @@ public
 \ the two cannot collide, as a canonical name begins with `/` and a portable
 \ one never does. The path comes back in storage the store did not reuse, for
 \ the caller's load.
-: REQUIRE-STORE ( ^u8 n -- ^u8 n )
+: REQUIRE-STORE ( str -- str )
    REQUIRE-BOOT-OPEN? if BOOT-ROW else 2dup then
    REQUIRE-REG:APPEND ;
 
-: INCLUDE-PATH0 ( ^u8 n -- ^u8 )
+: INCLUDE-PATH0 ( str -- ^u8 )
    {: a:^ u:n :}
    a u INCLUDE-PATH INCLUDE-PATH-CAP 1+ PATHZ
    u INCLUDE-PATH-U !
@@ -1860,7 +1861,7 @@ variable DISC-PATH-U
 : EVENT-RECS@ ( -- ^u8 ) EVENT-RECS @ ;
 : EVENT-POOL@ ( -- ^u8 ) EVENT-POOL @ ;
 
-: EVENT-UNMAP ( ^u8 n -- ) {: a:^ u:n :}
+: EVENT-UNMAP ( str -- ) {: a:^ u:n :}
    u 0= if exit then
    a u munmap 0 < if s" events: cannot release an event table" INCLUDE-DIE then ;
 
@@ -1925,7 +1926,7 @@ variable DISC-PATH-U
    EVENT-POOL !
    cap EVENT-POOL-CAP ! ;
 
-: EVENT-COPY-PATH ( ^u8 n -- n n ) {: a:^ u:n :}
+: EVENT-COPY-PATH ( str -- n n ) {: a:^ u:n :}
    u EVENT-POOL-ROOM
    EVENT-POOL-N @ {: off:n :}
    a off EVENT-POOL-AT u BYTE-COPY
@@ -1935,16 +1936,16 @@ variable DISC-PATH-U
 package SOURCE-EVENT
 public
 
-: ROOT@ ( n -- ^u8 n ) {: ix:n :}
+: ROOT@ ( n -- str ) {: ix:n :}
    ix 6 EVENT-FIELD@ EVENT-POOL-AT ix 7 EVENT-FIELD@ ;
 
 \ The current root when the event was recorded.
-: CURRENT@ ( n -- ^u8 n ) {: ix:n :}
+: CURRENT@ ( n -- str ) {: ix:n :}
    ix 11 EVENT-FIELD@ EVENT-POOL-AT ix 12 EVENT-FIELD@ ;
 
 private
 
-: COPY-SHARED ( ^u8 n -- n n ) {: a:^ u:n :}
+: COPY-SHARED ( str -- n n ) {: a:^ u:n :}
    0 begin dup EVENT-N @ < while
       dup ROOT@ a u CORE-STR= if
          dup 6 EVENT-FIELD@ swap 7 EVENT-FIELD@ exit
@@ -1968,7 +1969,7 @@ public
 
 ;package
 
-: EVENT-RECORD ( ^u8 n ^u8 n n n -- )
+: EVENT-RECORD ( str str n n -- )
    {: a:^ u:n path:^ pathu:n kd:n st:n :}
    EVENT-ON? 0= if exit then
    EVENT-RECS-ROOM
@@ -1997,10 +1998,10 @@ public
 : EVENT-COUNT ( -- n )       EVENT-N @ ;
 : EVENT-KIND@ ( n -- n )     0 EVENT-FIELD@ ;
 : EVENT-STATE@ ( n -- n )    5 EVENT-FIELD@ ;
-: EVENT-PATH@ ( n -- ^u8 n ) {: ix:n :}
+: EVENT-PATH@ ( n -- str ) {: ix:n :}
    ix 1 EVENT-FIELD@ EVENT-POOL-AT
    ix 2 EVENT-FIELD@ ;
-: EVENT-SPELLED@ ( n -- ^u8 n ) {: ix:n :}
+: EVENT-SPELLED@ ( n -- str ) {: ix:n :}
    ix 8 EVENT-FIELD@ EVENT-POOL-AT
    ix 9 EVENT-FIELD@ ;
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
@@ -2057,7 +2058,7 @@ variable LAST-LOAD-EVAL-OK
 : TOP! ( ^u8 -- ) TOP ! ;
 
 \ w is the word the program called.
-: CHECK-ACTIVE ( ^u8 n -- ) {: w:^ wu:n :}
+: CHECK-ACTIVE ( str -- ) {: w:^ wu:n :}
    TOP@ 0= 0= if exit then
    s" E-SOURCE-ROOT" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
@@ -2105,7 +2106,7 @@ variable LAST-LOAD-EVAL-OK
 
 : ROOM ( -- n ) TOP@ FR-ROOM + CELL-VIEW @ ;
 
-: TOP-PATH$ ( -- ^u8 n )
+: TOP-PATH$ ( -- str )
    TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ ;
 
@@ -2177,7 +2178,7 @@ variable LAST-LOAD-EVAL-OK
 
 \ Rejects PATH unless the top frame awaits its bytes, FR-SIZE -1 from PUSH to HOLD:
 \ a word's read finds its own file's frame held, or no frame; in a build, hb's.
-: READ-REFUSE ( ^u8 n -- ) {: path:^ pathu:n :}
+: READ-REFUSE ( str -- ) {: path:^ pathu:n :}
    TOP@ 0= 0= if TOP@ FR-SIZE + CELL-VIEW @ -1 = if exit then then
    s" SOURCE-ROOT:READ-OS" path pathu path pathu
    s" is not the file a load is opening"
@@ -2186,32 +2187,32 @@ variable LAST-LOAD-EVAL-OK
 
 \ Where a rejection of the file being opened stands: at the request in the file
 \ that asked for it; an entry's has no place.
-: ASKED-AT$ ( -- ^u8 n )
+: ASKED-AT$ ( -- str )
    TOP@ FRAME-PREV @ {: prev:^ :}
    prev 0= if NULL-PTR 0 else prev PUBLISH-FRAME REQUEST-AT$ then ;
 
 \ The file a u the resolver found would not open or read, the system's last
 \ call failing with errno e.
-: INCLUDE-UNREADABLE ( ^u8 n n -- ) {: a:^ u:n e:n :}
+: INCLUDE-UNREADABLE ( str n -- ) {: a:^ u:n e:n :}
    INCLUDE-CLOSE
    ASKED-AT$ a u e UNREADABLE-SOURCE ;
 
 \ The file a u the resolver found is a stream (a FIFO, device or socket), whose
 \ open would block or whose bytes no stamp names.
-: INCLUDE-UNSTAMPED ( ^u8 n -- ) {: a:^ u:n :}
+: INCLUDE-UNSTAMPED ( str -- ) {: a:^ u:n :}
    ASKED-AT$ a u UNSTAMPED-SOURCE ;
 
 \ The file a u the resolver found holds more bytes than its stamp's size.
-: INCLUDE-CHANGED ( ^u8 n -- ) {: a:^ u:n :}
+: INCLUDE-CHANGED ( str -- ) {: a:^ u:n :}
    INCLUDE-CLOSE
    ASKED-AT$ a u CHANGED-SOURCE ;
 
-: INCLUDE-OPEN ( ^u8 n -- ) {: a:^ u:n :}
+: INCLUDE-OPEN ( str -- ) {: a:^ u:n :}
    a u INCLUDE-PATH0 open-rd INCLUDE-FD !
    INCLUDE-FD @ 0 < if a u INCLUDE-ERRNO INCLUDE-UNREADABLE then ;
 
 \ A read stops once it holds more than SIZE bytes, the stamp's size.
-: INCLUDE-READ-DONE? ( ^u8 n n -- bool ) {: a:^ u:n size:n :}
+: INCLUDE-READ-DONE? ( str n -- bool ) {: a:^ u:n size:n :}
    INCLUDE-U @ ROOM = if INCLUDE-U @ 1+ INCLUDE-U @ GROW then
    INCLUDE-FD @ SOURCE INCLUDE-U @ + ROOM INCLUDE-U @ - read INCLUDE-RD !
    INCLUDE-RD @ 0 < if a u INCLUDE-ERRNO INCLUDE-UNREADABLE then
@@ -2220,7 +2221,7 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-U @ size > if a u INCLUDE-CHANGED then
    INCLUDE-FALSE ;
 
-: INCLUDE-READ-ALL ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: INCLUDE-READ-ALL ( str -- str ) {: a:^ u:n :}
    a u INCLUDE-PATH0 COMPILE-READS:STAMP {: sec:n ns:n size:n :}
    sec ns size STAMP!
    sec ns size COMPILE-READS:STABLE? 0= if a u INCLUDE-UNSTAMPED then
@@ -2267,7 +2268,7 @@ private
 
 \ A leading `#!` line reads as a comment: its two bytes become `\ `, so every
 \ line and column stays the file's own.
-: SHEBANG-COMMENT ( ^u8 n -- ) {: a:^ u:n :}
+: SHEBANG-COMMENT ( str -- ) {: a:^ u:n :}
    u 2 < if exit then
    a c@ $23 <> if exit then
    a 1 + c@ $21 <> if exit then
@@ -2275,7 +2276,7 @@ private
    $20 a 1 + c! ;
 
 \ The loop LOAD-UNIT runs a loaded file's bytes through; USE-INTERPRETER swaps it.
-defer INCLUDE-INTERPRET ( ^u8 n n n -- )
+defer INCLUDE-INTERPRET ( str n n -- )
 
 \ The design seal is read where the engine's loop reads a token, and the loop
 \ written in Habu reads it nowhere, so a file loaded once the seal is set is read
@@ -2297,7 +2298,7 @@ defer INCLUDE-INTERPRET ( ^u8 n n n -- )
    PUBLISH-LOCATION
    SOURCE u ;
 
-: READ-SOURCE ( -- ^u8 n )
+: READ-SOURCE ( -- str )
    INCLUDE-PATH INCLUDE-PATH-U @ SOURCE-INPUT:READ HOLD ;
 
 \ The original bytes remain in the frame while a shebang is rewritten in a
@@ -2333,7 +2334,7 @@ INTERPRET-INSTALL
 
 public
 
-: USE-INTERPRETER ( [ ^u8 n n n -- ] -- ) is INCLUDE-INTERPRET ;
+: USE-INTERPRETER ( [ str n n -- ] -- ) is INCLUDE-INTERPRET ;
 
 \ The process's root stream (stdin, or the `--load` stream) runs open, as the
 \ engine's own loop runs it: it may leave cells on the stack and the process
@@ -2346,7 +2347,7 @@ public
    frame FR-ROOT-RUNS + CELL-VIEW @ k + frame FR-ROOT-RUNS + CELL-VIEW !
    PUBLISH-LOCATION ;
 
-: RUN-ROOT ( ^u8 n -- ) {: a:^ u:n :}
+: RUN-ROOT ( str -- ) {: a:^ u:n :}
    REJECTION:ROOT-TEXT$ {: sa:^ su:n :}
    a u REJECTION:ROOT-TEXT!
    1 ROOT-RUNS+
@@ -2440,12 +2441,12 @@ variable DECL-SERIAL
 
 \ Opens the E-UNCLOSED record of the declaration t tu opened, through "is still
 \ open ".
-: UNCLOSED-HEAD ( ^u8 n -- ) {: t:^ tu:n :}
+: UNCLOSED-HEAD ( str -- ) {: t:^ tu:n :}
    s" E-UNCLOSED" REJECTION:OPEN
    t tu TICKED  s"  is still open " REJECTION:EMIT-STR ;
 
 \ Places the record at t tu and opens its help, through "close it with `c` ".
-: UNCLOSED-HELP ( ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n :}
+: UNCLOSED-HELP ( str str -- ) {: t:^ tu:n c:^ cu:n :}
    t tu REJECTION:AT  s" opened here" REJECTION:EMIT-STR
    REJECTION:HELP  s" close it with " REJECTION:EMIT-STR
    c cu TICKED  32 REJECTION:EMIT1 ;
@@ -2471,7 +2472,7 @@ public
 
 \ The record of the declaration t tu opened, which c cu closes, still open when
 \ the load word w wu loads a file; not stopped.
-: UNCLOSED-LOAD ( ^u8 n ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n w:^ wu:n :}
+: UNCLOSED-LOAD ( str str str -- ) {: t:^ tu:n c:^ cu:n w:^ wu:n :}
    t tu UNCLOSED-HEAD
    s" when " REJECTION:EMIT-STR  w wu TICKED  s"  loads a file" REJECTION:EMIT-STR
    t tu c cu UNCLOSED-HELP
@@ -2504,7 +2505,7 @@ public
 
 \ Load word w wu begins a load: a declaration still open is rejected at its
 \ opener, so none spans a load.
-: LOAD-BEGINS ( ^u8 n -- ) {: w:^ wu:n :}
+: LOAD-BEGINS ( str -- ) {: w:^ wu:n :}
    CLOSER-U @ 0= if exit then
    OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @  w wu SRCLOC:SPELLED drop
    UNCLOSED-LOAD
@@ -2563,17 +2564,17 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ the interpreter. The callback receives bytes owned by the frame and its
 \ canonical path; both remain valid throughout the callback, including nested
 \ loads.
-: READ-FOR ( [ ^u8 n ^u8 n -- ] -- [ ^u8 n ^u8 n -- ] )
+: READ-FOR ( [ str str -- ] -- [ str str -- ] )
    {: q :}
    READ-SOURCE TOP-PATH$ q execute
    q ;
 
-: COPY-FOR ( ^u8 n [ ^u8 n ^u8 n -- ] -- ^u8 n [ ^u8 n ^u8 n -- ] )
+: COPY-FOR ( str [ str str -- ] -- str [ str str -- ] )
    {: a:^ u:n q :}
    a u HOLD TOP-PATH$ q execute
    a u q ;
 
-: WITH-BYTES-CURRENT ( [ ^u8 n ^u8 n -- ] -- [ ^u8 n ^u8 n -- ] ) {: q :}
+: WITH-BYTES-CURRENT ( [ str str -- ] -- [ str str -- ] ) {: q :}
    PUSH
    q
    [: READ-FOR ;] catch {: rc:n :}
@@ -2583,7 +2584,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0= 0= if rc throw then
    q ;
 
-: WITH-SUPPLIED-CURRENT ( ^u8 n [ ^u8 n ^u8 n -- ] -- ^u8 n [ ^u8 n ^u8 n -- ] )
+: WITH-SUPPLIED-CURRENT ( str [ str str -- ] -- str [ str str -- ] )
    {: a:^ u:n q :}
    PUSH a u q
    [: COPY-FOR ;] catch {: rc:n :}
@@ -2593,7 +2594,7 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    rc 0= 0= if rc throw then
    a u q ;
 
-: LOAD-RAW ( ^u8 n ^u8 n -- ) {: w:^ wu:n a:^ u:n :}
+: LOAD-RAW ( str str -- ) {: w:^ wu:n a:^ u:n :}
    a u CONFINE
    INCLUDE-PATH0 drop
    w wu RESOLVED-ROOT$ ROOT-ENTER {: old:^ oldu:n base:n :}
@@ -2622,7 +2623,7 @@ private
 
 \ Loads a u for loader word w, the word the program called; t tu is the
 \ request token an open of a u that fails stands at, or empty.
-: LOAD-RUN ( ^u8 n ^u8 n ^u8 n -- )
+: LOAD-RUN ( str str str -- )
    {: t:^ tu:n w:^ wu:n a:^ u:n :}
    w wu a u BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
@@ -2694,14 +2695,14 @@ private
 
 \ A discovery pass reads source and opens no file, so it records a missing
 \ file's request like any other; the reader that opens the file rejects it.
-: LOADER-FIND ( ^u8 n ^u8 n -- ^u8 n bool )
+: LOADER-FIND ( str str -- str bool )
    DISCOVERY? if RESOLVE-AT exit then
    LOAD-RESOLVE ;
 
 \ A path the registry already holds is skipped, so the pending flag has to be
 \ cleared on every exit or it would leak into the next unrelated load. w is the
 \ word the program called.
-: REQUIRE-BODY ( ^u8 n ^u8 n ^u8 n bool -- )
+: REQUIRE-BODY ( str str str bool -- )
    {: w:^ wu:n a:^ u:n path:^ pathu:n known:bool :}
    a u path pathu EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
@@ -2718,7 +2719,7 @@ private
 public
 
 \ `included` of a u for loader word w, the word the program called.
-: INCLUDED-AS ( ^u8 n ^u8 n -- )
+: INCLUDED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
    w wu a u [: LOADER-FIND ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
    a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
@@ -2727,12 +2728,12 @@ public
    w wu path pathu LOAD-RUN ;
 
 \ `required` of a u for loader word w, the word the program called.
-: REQUIRED-AS ( ^u8 n ^u8 n -- )
+: REQUIRED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
    w wu a u  w wu a u [: LOADER-FIND ;] LOADER-RESOLVE  REQUIRE-BODY ;
 
-: ENTRY-REQUIRED ( ^u8 n -- )
+: ENTRY-REQUIRED ( str -- )
    {: a:^ u:n :}
    s" script-required" LOAD-BEGINS
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
@@ -2815,7 +2816,7 @@ public
    entry SOURCE-ORIGINAL-REQUIRED-ENTRY @ = or if STACK-PATH exit then
    NONE ;
 
-: LOAD-PATH ( n ^u8 n -- ) {: mode:n path:^ size:n :}
+: LOAD-PATH ( n str -- ) {: mode:n path:^ size:n :}
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop 2drop
    mode LOAD-INCLUDE = if path size included exit then
    mode LOAD-REQUIRE = if path size required exit then
@@ -2838,7 +2839,7 @@ private
    CANON-BUF POLICY-ROOT-BUF CANON-U @ BYTE-COPY
    CANON-U @ POLICY-ROOT-U ! ;
 
-: POLICY-ROOT-RELEASE ( ^u8 n -- )
+: POLICY-ROOT-RELEASE ( str -- )
    1+ munmap 0 < if s" policy: cannot release a root copy" EXIT-STATUS:IOERR die then ;
 
 public

@@ -1,3 +1,4 @@
+split-str
 \ check-verify-child.f - the verifier child LSP-CHECK:VERIFY-BYTES,
 \ LSP-CHECK:VERIFY-BYTES-AT and LSP-CHECK:PREVERIFY-BYTES run. Only
 \ tools/check-verify-core.f spawns it, on the engine src/lib/engine-candidate.f

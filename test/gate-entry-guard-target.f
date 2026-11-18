@@ -1,3 +1,4 @@
+split-str
 package ENTRY-GUARD-TARGET
 public
 : VALUE ( -- n ) 7 ;

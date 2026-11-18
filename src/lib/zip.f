@@ -1,3 +1,4 @@
+split-str
 \ zip.f - indexed ZIP reading and byte-preserving replacement; libzip
 \ (src/lib/zip-ffi.f) decompresses. Every word checks that the archive is live
 \ (ZIP:E-HANDLE) and the entry its own (ZIP:E-ENTRY). No error quotes a member.
@@ -70,7 +71,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
       central $A + U16@ 0<> or if false unloop exit then
    loop true ;
 
-: OPEN-WORK ( ^n ^u8 n n -- ^n ^u8 n n )
+: OPEN-WORK ( ^n str n -- ^n str n )
    {: node:^ path:^ len:n flags:n :}
    flags node MODE !
    len CSTR-ROOM {: room:n :}
@@ -96,10 +97,10 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    0 MAPPED>RAW node RAW-PTR !
    node path len flags ;
 
-: OPEN-ATTEMPT ( ^n ^u8 n n -- n )
+: OPEN-ATTEMPT ( ^n str n -- n )
    [: OPEN-WORK ;] catch >r 2drop 2drop r> ;
 
-: OPEN-CHECKED ( ^u8 n n -- archive )
+: OPEN-CHECKED ( str n -- archive )
    {: path:^ len:n flags:n :}
    len PATH-CHECK REGISTER {: archive:archive :}
    archive ARCHIVE-NODE {: node:^ :}
@@ -120,7 +121,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    ident node ID ! idx node INDEX ! node archive ENTRIES ADD-NODE
    ident >ENTRY ;
 
-: NAME-COPY ( ^n n -- ^u8 n )
+: NAME-COPY ( ^n n -- str )
    {: node:^ idx:n :}
    node idx MEMBER-AT {: member:^ :}
    node member CENTRAL-NAME {: name:^ len:n :}
@@ -133,7 +134,7 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
    STAT-DATA @ STAT-SIZE-VALID and 0= if E-READ throw then
    STAT-DATA STAT-SIZE-CELL cells + @ dup SIZE-CHECK ;
 
-: CRC-FEED ( n ^u8 n -- n ) {: crc:n data:^ len:n :}
+: CRC-FEED ( n str -- n ) {: crc:n data:^ len:n :}
    crc len 0 ?do data i + c@ CRC-BYTE loop ;
 
 : OPEN-INPUT ( ^n n -- input ) {: owner:^ idx:n :}
@@ -250,7 +251,7 @@ $7FFFFFFF constant PIECE-MAX
    code 0<> if code throw then
    close-code 0<> if close-code throw then ;
 
-: COPY-INPUT ( ^n ^u8 n -- ^n ^u8 n )
+: COPY-INPUT ( ^n str -- ^n str )
    {: node:^ buf:^ len:n :}
    0 begin dup len < while
       dup {: off:n :}
@@ -260,10 +261,10 @@ $7FFFFFFF constant PIECE-MAX
    node buf 1 SPAN:MAKE READ-INNER 0<> if E-READ throw then
    node buf len ;
 
-: COPY-ATTEMPT ( ^n ^u8 n -- n )
+: COPY-ATTEMPT ( ^n str -- n )
    [: COPY-INPUT ;] catch >r 2drop drop r> ;
 
-: READ-COPY ( ^n n -- ^u8 n ) {: node:^ idx:n :}
+: READ-COPY ( ^n n -- str ) {: node:^ idx:n :}
    node idx MEMBER-AT {: member:^ :}
    member REPLACED? if member REPLACEMENT @ member REPLACE-LEN @ exit then
    node idx MEMBER-SIZE {: len:n :}
@@ -278,7 +279,7 @@ $7FFFFFFF constant PIECE-MAX
 : WRITABLE ( ^n -- )
    MODE @ READONLY-FLAG and 0 <> if E-READONLY throw then ;
 
-: REPLACE-COPY ( ^n n ^u8 n -- ) {: node:^ idx:n data:^ len:n :}
+: REPLACE-COPY ( ^n n str -- ) {: node:^ idx:n data:^ len:n :}
    node WRITABLE
    node idx MEMBER-AT {: member:^ :}
    member REMOVED? if E-ENTRY throw then
@@ -286,7 +287,7 @@ $7FFFFFFF constant PIECE-MAX
    buf member REPLACEMENT ! size member REPLACE-LEN !
    buf size CRC32 member REPLACE-CRC ! 1 node DIRTY ! ;
 
-: FILL-BUFFER ( a ^u8 n [ a SPAN:span<u8> -- ] -- a ^u8 n [ a SPAN:span<u8> -- ] )
+: FILL-BUFFER ( a str [ a SPAN:span<u8> -- ] -- a str [ a SPAN:span<u8> -- ] )
    {: ctx buf:^ len:n fill :}
    ctx buf len SPAN:MAKE fill execute
    ctx buf len fill ;
@@ -312,7 +313,7 @@ public
 : OPEN ( ^u8 n -- archive ) READONLY-FLAG OPEN-CHECKED ;
 : EDIT ( ^u8 n -- archive ) 0 OPEN-CHECKED ;
 : OPEN-FILE ( ^u8 n -- archive ) OPEN ;
-: EDIT-FILE ( ^u8 n -- archive ) EDIT ;
+: EDIT-FILE ( str -- archive ) EDIT ;
 \ The original snapshot, which pending changes do not alter. SOURCE$, NAME$ and
 \ READ answer archive-owned copies valid until a successful COMMIT or CLOSE.
 : SOURCE$ ( archive -- ^u8 n )

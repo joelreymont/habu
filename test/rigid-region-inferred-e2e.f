@@ -1,3 +1,4 @@
+split-str
 \ A definition whose effect is inferred from a fresh-region producer mints a new
 \ region per call, exactly as a declared producer does: two calls never share an
 \ allocation, one call's shared outputs still do. Each refused program runs in
@@ -14,7 +15,7 @@ $1000 constant PROG-CAP
 create PROG PROG-CAP allot
 variable PROG-U
 
-: PRELUDE$ ( -- ^u8 n )
+: PRELUDE$ ( -- str )
    s" -1 REJECTION:JSON ! package RQ public defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) : SAME-ID ( x x -- ) 2drop ; : USE-INF RG-ONE ; : USE-PAIR RG-PAIR ; : USE-DIFF RG-DIFF ; : NEST USE-INF ; " ;
 
 : PROGRAM ( ^u8 n -- ^u8 n )

@@ -1,3 +1,4 @@
+split-str
 \ native-rstack-input.f - no signature written in source declares a return-stack
 \ cell: a written `|` clause carries one row variable, the same on both sides
 \ (docs/forth.md "The return-stack clause"), and the checker refuses any other

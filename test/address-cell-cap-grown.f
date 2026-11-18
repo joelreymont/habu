@@ -1,3 +1,4 @@
+split-str
 \ Grow past the fixed band without losing either old or new declarations.
 require src/core/exit-status.f
 require src/lib/test.f

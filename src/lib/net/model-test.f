@@ -1,3 +1,4 @@
+split-str
 \ model-test.f - MODEL's HTTP transport, input bounds and journal against one
 \ in-process OpenAI- and Ollama-shaped peer on a loopback port. Its key and
 \ settings items live in a store the test binds with SECRET:STORE!, so no item
@@ -44,9 +45,9 @@ ITEMS TYPED-BUFFER ACCOUNT-US n
 ITEMS TYPED-BUFFER VALUE-US n
 variable READ-FAULT    \ the code each read throws, 0 for none
 
-: SERVICE-AT ( n -- ^u8 n ) {: i:n :} SERVICES i ID-CAP * + i SERVICE-US @ ;
-: ACCOUNT-AT ( n -- ^u8 n ) {: i:n :} ACCOUNTS i ID-CAP * + i ACCOUNT-US @ ;
-: VALUE-AT ( n -- ^u8 n ) {: i:n :} VALUES i VALUE-CAP * + i VALUE-US @ ;
+: SERVICE-AT ( n -- str ) {: i:n :} SERVICES i ID-CAP * + i SERVICE-US @ ;
+: ACCOUNT-AT ( n -- str ) {: i:n :} ACCOUNTS i ID-CAP * + i ACCOUNT-US @ ;
+: VALUE-AT ( n -- str ) {: i:n :} VALUES i VALUE-CAP * + i VALUE-US @ ;
 
 
 \ The index of the item filed under service and account, or -1.
@@ -63,7 +64,7 @@ variable READ-FAULT    \ the code each read throws, 0 for none
    -1 ;
 
 
-: STORE-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
+: STORE-READ ( str str SPAN:span<u8> -- n bool )
    {: s:^ su:n a:^ au:n dest:SPAN:span<u8> :}
    READ-FAULT @ {: fault:n :}
    fault 0<> if fault throw then
@@ -75,7 +76,7 @@ variable READ-FAULT    \ the code each read throws, 0 for none
    vu true ;
 
 
-: STORE-WRITE ( ^u8 n ^u8 n ^u8 n -- )
+: STORE-WRITE ( str str str -- )
    {: s:^ su:n a:^ au:n v:^ vu:n :}
    s su a au FIND dup 0< if drop FREE then {: i:n :}
    i 0< su ID-CAP > or au ID-CAP > or vu VALUE-CAP > or
@@ -85,7 +86,7 @@ variable READ-FAULT    \ the code each read throws, 0 for none
    v VALUES i VALUE-CAP * + vu BYTE-COPY vu i VALUE-US ! ;
 
 
-: STORE-ERASE ( ^u8 n ^u8 n -- bool )
+: STORE-ERASE ( str str -- bool )
    FIND {: i:n :}
    i 0< if false exit then
    0 i SERVICE-US ! true ;
@@ -97,10 +98,10 @@ public
 
 \ Each store read throws the code until it is 0 again.
 : READ-FAULT! ( n -- ) READ-FAULT ! ;
-: KEY-SERVICE$ ( -- ^u8 n ) s" habu-test" ;
-: KEY-ACCOUNT$ ( -- ^u8 n ) s" model" ;
-: KEY$ ( -- ^u8 n ) s" local-test-key" ;
-: SETTINGS-SERVICE$ ( -- ^u8 n ) s" habu-test-settings" ;
+: KEY-SERVICE$ ( -- str ) s" habu-test" ;
+: KEY-ACCOUNT$ ( -- str ) s" model" ;
+: KEY$ ( -- str ) s" local-test-key" ;
+: SETTINGS-SERVICE$ ( -- str ) s" habu-test-settings" ;
 
 
 \ Binds the store for the process and files KEY$ under the key's service and
@@ -111,7 +112,7 @@ public
 
 
 \ Files model, base-url base and api-key KEY$ under SETTINGS-SERVICE$.
-: SETTINGS! ( ^u8 n ^u8 n -- )
+: SETTINGS! ( str str -- )
    {: m:^ mu:n b:^ bu:n :}
    SETTINGS-SERVICE$ s" model" m mu SECRET:WRITE
    SETTINGS-SERVICE$ s" base-url" b bu SECRET:WRITE
@@ -161,12 +162,12 @@ variable RECEIVED-U
 variable RECEIVED-N
 \ Three mebibytes of content: a reply grows with its data, whatever its size.
 $300000 constant BIG-U
-: BIG$ ( -- ^u8 n ) BIG @ BIG-U ;
-: ECHO$ ( -- ^u8 n ) ECHO ECHO-U @ ;
-: RECEIVED$ ( -- ^u8 n ) RECEIVED RECEIVED-U @ ;
+: BIG$ ( -- str ) BIG @ BIG-U ;
+: ECHO$ ( -- str ) ECHO ECHO-U @ ;
+: RECEIVED$ ( -- str ) RECEIVED RECEIVED-U @ ;
 
 
-: ECHO+ ( ^u8 n -- )
+: ECHO+ ( str -- )
    {: a:^ u:n :}
    ECHO-U @ u + 256 <= ASSERT
    a u ECHO ECHO-U @ + 256 ECHO-U @ - SPAN:MAKE SPAN:COPY
@@ -193,7 +194,7 @@ $300000 constant BIG-U
 
 
 \ A reader at the value of the request body's member `key`.
-: BODY-MEMBER ( HTTP:request ^u8 n -- JSON:reader )
+: BODY-MEMBER ( HTTP:request str -- JSON:reader )
    {: r:HTTP:request key:^ key-u:n :}
    PARSER r HTTP:BODY$ key key-u MEMBER ;
 
@@ -215,7 +216,7 @@ $300000 constant BIG-U
 
 
 \ The text of a chat request's first part.
-: FIRST-TEXT ( HTTP:request -- ^u8 n )
+: FIRST-TEXT ( HTTP:request -- str )
    CONTENT
    JSON:READ-NEXT JSON:T-OBJ = ASSERT
    s" text" JSON:READ-FIND-KEY ASSERT
@@ -242,7 +243,7 @@ $300000 constant BIG-U
 
 
 \ Echoes the decoded url of the content part a u when its type is input_image.
-: PART+ ( ^u8 n -- )
+: PART+ ( str -- )
    {: a:^ u:n :}
    PART a u s" type" MEMBER
    s" input_image" JSON:READ-STR-EQ? {: image:bool :}
@@ -279,7 +280,7 @@ $300000 constant BIG-U
 
 
 \ Opens the data of an event of the type numbered n, after its type and number.
-: EVENT-OPEN ( ^JSON:writer ^u8 n n -- ^JSON:writer )
+: EVENT-OPEN ( ^JSON:writer str n -- ^JSON:writer )
    {: type:^ type-u:n seq:n :}
    s" event: " JSON:WRITE-RAW type type-u JSON:WRITE-RAW
    S\" \ndata: {" JSON:WRITE-RAW
@@ -292,7 +293,7 @@ $300000 constant BIG-U
 
 
 \ EVENT-OPEN for an event that carries a response, which comes next.
-: RESPONSE-OPEN ( ^JSON:writer ^u8 n n -- ^JSON:writer )
+: RESPONSE-OPEN ( ^JSON:writer str n -- ^JSON:writer )
    EVENT-OPEN S\" ,\qresponse\q:" JSON:WRITE-RAW ;
 
 
@@ -302,7 +303,7 @@ $300000 constant BIG-U
    s" response.created" 0 RESPONSE-OPEN id id-u s" queued" PENDING EVENT-CLOSE ;
 
 
-: GOING ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: GOING ( ^JSON:writer str -- ^JSON:writer )
    {: id:^ id-u:n :}
    s" response.in_progress" 1 RESPONSE-OPEN id id-u s" in_progress" PENDING EVENT-CLOSE ;
 
@@ -315,7 +316,7 @@ $300000 constant BIG-U
 
 \ OPENING, a delta numbered LAST-SEQ, then a keepalive.
 2 constant LAST-SEQ
-: PRELUDE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: PRELUDE ( ^JSON:writer str -- ^JSON:writer )
    OPENING
    s" response.output_text.delta" LAST-SEQ EVENT-OPEN
    S\" ,\qdelta\q:\q{\\\qans\q" JSON:WRITE-RAW EVENT-CLOSE
@@ -323,7 +324,7 @@ $300000 constant BIG-U
 
 
 : STREAM-OPEN ( -- ^JSON:writer ) STREAM-W STREAM-B JSON:WRITE-OPEN-BUF ;
-: STREAM$ ( -- ^u8 n ) STREAM-B BUF:SPAN$ BUF:BLEN>N ;
+: STREAM$ ( -- str ) STREAM-B BUF:SPAN$ BUF:BLEN>N ;
 
 
 \ Answers with the written events as the whole body.
@@ -342,7 +343,7 @@ $300000 constant BIG-U
    response swap STREAM! ;
 
 
-: RAW-WRITE ( TCP4:connection ^u8 n -- )
+: RAW-WRITE ( TCP4:connection str -- )
    TCP4:TRANSFER-BYTES TCP4:WRITE
    MATCH TCP4:status
       ok OF ENDOF
@@ -398,7 +399,7 @@ $300000 constant BIG-U
 
 
 \ A reply object's members through its first output item, a reasoning item.
-: REPLY-HEAD ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: REPLY-HEAD ( ^JSON:writer str -- ^JSON:writer )
    {: status:^ status-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
    s" status" status status-u JSON:WRITE-FIELD-S
@@ -441,7 +442,7 @@ $300000 constant BIG-U
 
 
 \ A 40-byte reason; the call names a reason of any length whole.
-: LONG-FINISH$ ( -- ^u8 n ) s" finish-reason-forty-bytes-long-for-tests" ;
+: LONG-FINISH$ ( -- str ) s" finish-reason-forty-bytes-long-for-tests" ;
 
 
 : CHAT-RESPONSE ( ^JSON:writer -- ^JSON:writer )
@@ -464,7 +465,7 @@ $300000 constant BIG-U
 
 
 \ A response whose service_tier member is the JSON value text.
-: TIERED-RESPONSE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: TIERED-RESPONSE ( ^JSON:writer str -- ^JSON:writer )
    {: tier:^ tier-u:n :}
    TRUE-HEAD
    S\" ,\qservice_tier\q:" JSON:WRITE-RAW
@@ -474,17 +475,17 @@ $300000 constant BIG-U
 
 \ A reply cut at the output limit, its message holding the text streamed
 \ before the cut.
-: CUT$ ( -- ^u8 n )
+: CUT$ ( -- str )
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qincomplete\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qstatus\q:\qincomplete\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\q{\\\qans\q,\qannotations\q:[]}]}],\qincomplete_details\q:{\qreason\q:\qmax_output_tokens\q},\qerror\q:null}" ;
 
 
 \ A completed reply whose message part is a refusal.
-: REFUSAL$ ( -- ^u8 n )
+: REFUSAL$ ( -- str )
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qrefusal\q,\qrefusal\q:\qcannot comply\q}]}],\qincomplete_details\q:null,\qerror\q:null}" ;
 
 
 \ A completed reply whose content is not JSON.
-: BAD-CONTENT$ ( -- ^u8 n )
+: BAD-CONTENT$ ( -- str )
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\qnot JSON\q,\qannotations\q:[]}]}],\qincomplete_details\q:null,\qerror\q:null}" ;
 
 
@@ -494,15 +495,15 @@ $300000 constant BIG-U
 
 \ Tool reply output items: reasoning with encrypted content, a function call,
 \ a plain message, a refusal message and an item of a type no tools call reads.
-: REASONING$ ( -- ^u8 n )
+: REASONING$ ( -- str )
    S\" {\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[],\qencrypted_content\q:\qgAAAAB\q}" ;
-: FUNCTION-CALL$ ( -- ^u8 n )
+: FUNCTION-CALL$ ( -- str )
    S\" {\qtype\q:\qfunction_call\q,\qid\q:\qfc_1\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{\\\qq\\\q:\\\qx\\\q}\q,\qstatus\q:\qcompleted\q}" ;
-: TEXT-ITEM$ ( -- ^u8 n )
+: TEXT-ITEM$ ( -- str )
    S\" {\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\q{\\\qanswer\\\q:true}\q,\qannotations\q:[]}]}" ;
-: REFUSAL-ITEM$ ( -- ^u8 n )
+: REFUSAL-ITEM$ ( -- str )
    S\" {\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qrefusal\q,\qrefusal\q:\qcannot comply\q}]}" ;
-: OTHER-ITEM$ ( -- ^u8 n )
+: OTHER-ITEM$ ( -- str )
    S\" {\qtype\q:\qweb_search_call\q,\qid\q:\qws_1\q,\qstatus\q:\qcompleted\q}" ;
 
 
@@ -510,14 +511,14 @@ $300000 constant BIG-U
 : TOOL-HEAD ( ^JSON:writer -- ^JSON:writer )
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[" JSON:WRITE-RAW
    REASONING$ JSON:WRITE-RAW ;
-: NEXT-ITEM ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: NEXT-ITEM ( ^JSON:writer str -- ^JSON:writer )
    {: a:^ u:n :}
    s" ," JSON:WRITE-RAW a u JSON:WRITE-RAW ;
 
 
 \ A message whose output_text holds the content and whose phase member, after
 \ its content as the provider sends it, is the JSON value text.
-: PHASED ( ^JSON:writer ^u8 n ^u8 n -- ^JSON:writer )
+: PHASED ( ^JSON:writer str str -- ^JSON:writer )
    {: content:^ content-u:n phase:^ phase-u:n :}
    S\" ,{\qid\q:\qmsg_1\q,\qtype\q:\qmessage\q,\qstatus\q:\qcompleted\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qannotations\q:[]," JSON:WRITE-RAW
    s" text" content content-u JSON:WRITE-FIELD-S
@@ -536,20 +537,20 @@ $300000 constant BIG-U
 
 \ A completed reply whose one message holds {"answer":true} under the phase,
 \ a JSON value text.
-: ONE-PHASE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: ONE-PHASE ( ^JSON:writer str -- ^JSON:writer )
    {: phase:^ phase-u:n :}
    s" completed" REPLY-HEAD
    S\" {\qanswer\q:true}" phase phase-u PHASED
    REPLY-TAIL ;
 
 
-: COMPLETED$ ( -- ^u8 n ) s" response.completed" ;
-: INCOMPLETE$ ( -- ^u8 n ) s" response.incomplete" ;
-: FAILED$ ( -- ^u8 n ) s" response.failed" ;
+: COMPLETED$ ( -- str ) s" response.completed" ;
+: INCOMPLETE$ ( -- str ) s" response.incomplete" ;
+: FAILED$ ( -- str ) s" response.failed" ;
 
 
 \ Answers a tool scenario by its name, or answers false.
-: TOOL-REPLY? ( HTTP:response ^u8 n -- bool )
+: TOOL-REPLY? ( HTTP:response str -- bool )
    {: response:HTTP:response t:^ t-u:n :}
    t t-u s" tool-call" STR= if
       response [: TOOL-HEAD FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;] COMPLETED$ STREAMED
@@ -578,33 +579,33 @@ $300000 constant BIG-U
 
 
 \ A 200 reply that is JSON, not an event stream.
-: PLAIN$ ( -- ^u8 n )
+: PLAIN$ ( -- str )
    S\" {\qid\q:\qresp_1\q,\qstatus\q:\qcompleted\q,\qoutput\q:[]}" ;
 \ Event data the call cannot read: a type that is not a string, and a response
 \ with no id.
-: BAD-TYPE$ ( -- ^u8 n ) S\" {\qtype\q:5,\qsequence_number\q:2}" ;
-: NO-ID$ ( -- ^u8 n )
+: BAD-TYPE$ ( -- str ) S\" {\qtype\q:5,\qsequence_number\q:2}" ;
+: NO-ID$ ( -- str )
    S\" {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qstatus\q:\qqueued\q,\qoutput\q:[]}}" ;
 \ An error event's data with its code and message at its top, and under error.
-: FLAT-ERROR$ ( -- ^u8 n )
+: FLAT-ERROR$ ( -- str )
    S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}" ;
-: NESTED-ERROR$ ( -- ^u8 n )
+: NESTED-ERROR$ ( -- str )
    S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qerror\q:{\qtype\q:\qserver_error\q,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}}" ;
 \ OpenAI's error event when its servers are overloaded.
-: OVERLOADED$ ( -- ^u8 n )
+: OVERLOADED$ ( -- str )
    S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qservice_unavailable_error\q,\qcode\q:\qserver_is_overloaded\q,\qheaders\q:{\qx-retry-metadata\q:\qNO_MORE_RETRY\q,\qretry-after\q:\q6\q,\qretry-after-ms\q:\q6000\q},\qmessage\q:\qOur servers are currently overloaded. Please try again later.\q,\qparam\q:null},\qsequence_number\q:2}" ;
 \ OpenAI's error event when the flex tier has no room for the request.
-: FLEX-OUT$ ( -- ^u8 n )
+: FLEX-OUT$ ( -- str )
    S\" {\qtype\q:\qerror\q,\qerror\q:{\qtype\q:\qresource_unavailable\q,\qcode\q:\qflex_unavailable\q,\qheaders\q:{\qretry-after\q:\q300\q,\qretry-after-ms\q:\q300000\q,\qx-retry-metadata\q:\qNO_MORE_RETRY\q},\qmessage\q:\qFlex processing is temporarily unavailable. Please try again later or use standard processing.\q,\qparam\q:null},\qsequence_number\q:2}" ;
 \ resp_1's created event, then an event whose data is not UTF-8. MODEL-TEST
 \ writes the line logging it.
-: BAD-UTF8$ ( -- ^u8 n )
+: BAD-UTF8$ ( -- str )
    S\" event: response.created\ndata: {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qid\q:\qresp_1\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}}\n\ndata: \xff\n\n" ;
 
 
 \ A stream whose last event's data is the text, after resp_1's opening events
 \ when asked.
-: BAD-STREAM ( HTTP:response ^u8 n bool -- )
+: BAD-STREAM ( HTTP:response str bool -- )
    {: response:HTTP:response a:^ u:n opened:bool :}
    STREAM-OPEN
    opened if s" resp_1" OPENING then
@@ -826,7 +827,7 @@ variable COUNTED-U    \ the byte length of the last count request's body
 variable COMPACTED-U    \ the byte length of the last compaction request's body
 create KEPT 64 allot    \ the last compaction request's first text
 variable KEPT-U
-: KEPT$ ( -- ^u8 n ) KEPT KEPT-U @ ;
+: KEPT$ ( -- str ) KEPT KEPT-U @ ;
 
 
 \ A compaction reply's members through its output's opener.
@@ -937,7 +938,7 @@ variable KEPT-U
 
 
 \ A reply of one vector at index 0 whose embedding is the JSON text v.
-: ONE-VECTOR ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: ONE-VECTOR ( ^JSON:writer str -- ^JSON:writer )
    {: v:^ v-u:n :}
    S\" {\qobject\q:\qlist\q,\qdata\q:" JSON:WRITE-RAW
    S\" [{\qindex\q:0,\qembedding\q:" JSON:WRITE-RAW
@@ -946,7 +947,7 @@ variable KEPT-U
 
 
 \ Answers the base64 vector a reply case names, true, or false for none.
-: BASE64-CASE? ( HTTP:response ^u8 n -- bool )
+: BASE64-CASE? ( HTTP:response str -- bool )
    {: response:HTTP:response i:^ i-u:n :}
    \ The first z escaped as \u007a: 0.1 0.2 0.3.
    i i-u s" escaped" STR= if
@@ -1062,7 +1063,7 @@ variable KEPT-U
    response 400 HTTP:STATUS! ;
 
 
-: URL! ( ^u8 ^u8 n -- n )
+: URL! ( ^u8 str -- n )
    {: dst:^ path:^ path-u:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-INT path path-u SB-APPEND
    SB$ {: a:^ u:n :}
@@ -1091,17 +1092,17 @@ EXPORT NESTED-ERROR$
 EXPORT FLEX-OUT$
 EXPORT NO-ID$
 EXPORT WIDE-DIMS
-: BASE-URL$ ( -- ^u8 n ) BASE-URL BASE-URL-U @ ;
-: OLLAMA-URL$ ( -- ^u8 n ) OLLAMA-URL OLLAMA-URL-U @ ;
+: BASE-URL$ ( -- str ) BASE-URL BASE-URL-U @ ;
+: OLLAMA-URL$ ( -- str ) OLLAMA-URL OLLAMA-URL-U @ ;
 \ Requests the peer received, refused or served.
 : CALLS@ ( -- n ) CALLS atomic@ ;
 \ The last chat, count, compaction or embedding request the peer received;
 \ one past SENT-CAP fails the test.
-: SENT$ ( -- ^u8 n ) SENT-U @ dup 0< if FAIL then SENT-BODY swap ;
+: SENT$ ( -- str ) SENT-U @ dup 0< if FAIL then SENT-BODY swap ;
 \ Answers the next chat, count, compaction or OpenAI embedding request as the
 \ chat scenario named, whatever its text, as a provider outage does; the request
 \ after it as its own text says.
-: FAIL-NEXT ( ^u8 n -- )
+: FAIL-NEXT ( str -- )
    {: a:^ u:n :}
    u 0= u FAILURE-CAP > or if FAIL exit then
    a u FAILURE FAILURE-CAP SPAN:MAKE SPAN:COPY
@@ -1166,16 +1167,16 @@ variable JOURNAL-READY
 \ Random dimension counts between their deterministic bounds.
 32 constant BOUND-TRIALS
 \ A strict schema for {"answer":true}.
-: SCHEMA$ ( -- ^u8 n )
+: SCHEMA$ ( -- str )
    S\" {\qtype\q:\qobject\q,\qadditionalProperties\q:false,\qproperties\q:{\qanswer\q:{\qtype\q:\qboolean\q}},\qrequired\q:[\qanswer\q]}" ;
 : M ( -- ^MODEL:call ) 0 CALL ;
-: TRUE-CONTENT$ ( -- ^u8 n ) S\" {\qanswer\q:true}" ;
+: TRUE-CONTENT$ ( -- str ) S\" {\qanswer\q:true}" ;
 : CODE-OF ( n [ n -- n ] -- n ) catch {: code:n :} drop code ;
 variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
 : CHAT-CODE ( -- n ) TIME:MONO-NS CHAT-NS ! M [: dup MODEL:CHAT 2drop ;] catch {: code:n :} drop code ;
 : EMBED-CODE ( -- n ) M [: dup MODEL:EMBED ;] catch {: code:n :} drop code ;
 : VECTOR-CODE ( -- n ) 0 [: drop 0 M MODEL:VECTOR@ 2drop 0 ;] CODE-OF ;
-: PREP ( ^u8 n -- ) M MODEL:PARTS-RESET M MODEL:TEXT+ ;
+: PREP ( str -- ) M MODEL:PARTS-RESET M MODEL:TEXT+ ;
 : INPUTS ( ^u8 n -- ) M MODEL:INPUT-RESET M MODEL:INPUT+ ;
 : CHAT ( -- ) s" valid" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;
 : FAILS ( ^u8 n n -- ) {: a:^ u:n want:n :} a u PREP CHAT-CODE want = ASSERT ;
@@ -1193,8 +1194,8 @@ create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
 create REFUSED-BASE 64 allot        \ a base URL whose port nothing listens on
 variable REFUSED-BASE-U
 
-: LOG-PATH$ ( -- ^u8 n ) LOG-PATH LOG-PATH-U @ ;
-: REFUSED-BASE$ ( -- ^u8 n ) REFUSED-BASE REFUSED-BASE-U @ ;
+: LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ ;
+: REFUSED-BASE$ ( -- str ) REFUSED-BASE REFUSED-BASE-U @ ;
 
 
 : LOG-INIT ( -- )
@@ -1205,7 +1206,7 @@ variable REFUSED-BASE-U
 
 
 \ The whole capture file, valid until the next read.
-: LOG$ ( -- ^u8 n )
+: LOG$ ( -- str )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
    LOG-B BUF:CLEAR
    LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size = ASSERT
@@ -1218,14 +1219,14 @@ variable REFUSED-BASE-U
 
 
 \ Whether a captured line, after its stamp, is exactly the text.
-: LINE? ( ^u8 n ^u8 n -- bool )
+: LINE? ( str str -- bool )
    {: line:^ line-u:n want:^ want-u:n :}
    line-u DATE:TIME-LEN < if false exit then
    line DATE:TIME-LEN + line-u DATE:TIME-LEN - want want-u STR= ;
 
 
 \ Whether a captured line, after its stamp, passes the test against the text.
-: LOGGED-BY? ( ^u8 n [ ^u8 n ^u8 n -- bool ] -- bool )
+: LOGGED-BY? ( str [ str str -- bool ] -- bool )
    {: want:^ want-u:n pred :}
    LOG$ {: a:^ u:n :}
    0 u 0 ?do
@@ -1236,30 +1237,30 @@ variable REFUSED-BASE-U
    loop drop false ;
 
 
-: LOGGED? ( ^u8 n -- bool ) [: LINE? ;] LOGGED-BY? ;
+: LOGGED? ( str -- bool ) [: LINE? ;] LOGGED-BY? ;
 
 
 \ SB holds a log line's text up to its code: ` <level> model: <kind> <model>
 \ <base><path> `.
-: SB-LINE ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: SB-LINE ( str str str str -- )
    {: level:^ level-u:n who:^ who-u:n base:^ base-u:n path:^ path-u:n :}
    SB-RESET s"  " SB-APPEND level level-u SB-APPEND s"  model: " SB-APPEND
    who who-u SB-APPEND s"  " SB-APPEND
    base base-u SB-APPEND path path-u SB-APPEND s"  " SB-APPEND ;
 
 
-: CHAT-LINE ( ^u8 n -- )
+: CHAT-LINE ( str -- )
    {: level:^ level-u:n :}
    level level-u s" chat test-generation" MODEL-PEER:BASE-URL$ s" /responses" SB-LINE ;
 
 
-: EMBED-LINE ( ^u8 n -- )
+: EMBED-LINE ( str -- )
    {: level:^ level-u:n :}
    level level-u s" embed test-embedding" MODEL-PEER:BASE-URL$ s" /embeddings" SB-LINE ;
 
 
 \ CHAT-LINE for a reply that named its response id.
-: CHAT-ID-LINE ( ^u8 n -- )
+: CHAT-ID-LINE ( str -- )
    {: level:^ level-u:n :}
    level level-u s" chat test-generation" MODEL-PEER:BASE-URL$ s" /responses resp_1" SB-LINE ;
 
@@ -1271,7 +1272,7 @@ variable REFUSED-BASE-U
 
 \ Whether a captured line, after its stamp, is the text, a count of at most the
 \ milliseconds since CHAT-CODE began and " ms".
-: MS-LINE? ( ^u8 n ^u8 n -- bool )
+: MS-LINE? ( str str -- bool )
    {: line:^ line-u:n want:^ want-u:n :}
    line-u DATE:TIME-LEN - want-u - 3 - {: digits:n :}
    digits 1 < if false exit then
@@ -1290,32 +1291,32 @@ variable REFUSED-BASE-U
    SB$ [: MS-LINE? ;] LOGGED-BY? dup 0= if SB$ type cr LOG$ type then ASSERT ;
 
 
-: CHAT-LOGGED ( ^u8 n ^u8 n -- )
+: CHAT-LOGGED ( str str -- )
    {: level:^ level-u:n tail:^ tail-u:n :}
    level level-u CHAT-LINE tail tail-u SB-APPEND SB-LOGGED ;
 
 
 \ CHAT-LOGGED for a reply that named its response id.
-: CHAT-ID-LOGGED ( ^u8 n ^u8 n -- )
+: CHAT-ID-LOGGED ( str str -- )
    {: level:^ level-u:n tail:^ tail-u:n :}
    level level-u CHAT-ID-LINE tail tail-u SB-APPEND SB-LOGGED ;
 
 
 \ The event counts of a stream PRELUDE wrote.
-: PRELUDE-EVENTS$ ( -- ^u8 n )
+: PRELUDE-EVENTS$ ( -- str )
    s" ; events response.created=1 response.in_progress=1 response.output_text.delta=1 keepalive=1" ;
 
 
 \ Appends to SB the events of a stream STREAMED wrote, which ends with an
 \ event of the type, up to the count of milliseconds.
-: STREAM-TAIL ( ^u8 n -- )
+: STREAM-TAIL ( str -- )
    {: type:^ type-u:n :}
    PRELUDE-EVENTS$ SB-APPEND s"  " SB-APPEND type type-u SB-APPEND
    s" =1; first output after " SB-APPEND ;
 
 
 \ SB-MS-LOGGED for a stream STREAMED wrote, which ends with an event of the type.
-: STREAMED-LOGGED ( ^u8 n -- ) STREAM-TAIL SB-MS-LOGGED ;
+: STREAMED-LOGGED ( str -- ) STREAM-TAIL SB-MS-LOGGED ;
 
 
 \ The body logs no line.
@@ -1349,16 +1350,16 @@ variable REFUSED-BASE-U
    M MODEL:CHAT S\" {\qimages\q:[\qdata:image/png;base64,aGVsbG8=\q]}" STR= ASSERT ;
 
 
-: SERVICE$ ( -- ^u8 n ) KEY-SERVICE$ ;
+: SERVICE$ ( -- str ) KEY-SERVICE$ ;
 \ The second key item's account.
-: ACCOUNT$ ( -- ^u8 n ) s" model-store" ;
+: ACCOUNT$ ( -- str ) s" model-store" ;
 : STORE ( ^u8 n -- ) {: v:^ vu:n :} SERVICE$ ACCOUNT$ v vu SECRET:WRITE ;
-: STORED-FAILS ( ^u8 n -- ) STORE s" valid" MODEL:E-KEY FAILS ;
+: STORED-FAILS ( str -- ) STORE s" valid" MODEL:E-KEY FAILS ;
 
 
 \ A line for a failed key read: the code's name, then the key's service and
 \ account and why.
-: KEY-LOGGED ( ^u8 n ^u8 n -- )
+: KEY-LOGGED ( str str -- )
    {: code:^ code-u:n why:^ why-u:n :}
    s" error" CHAT-LINE code code-u SB-APPEND
    s"  key service " SB-APPEND SERVICE$ SB-APPEND
@@ -1368,7 +1369,7 @@ variable REFUSED-BASE-U
 
 \ The store refuses the key read with the code, which the call throws and its
 \ line names.
-: REFUSED-READ ( n ^u8 n ^u8 n -- )
+: REFUSED-READ ( n str str -- )
    {: code:n name:^ name-u:n why:^ why-u:n :}
    code READ-FAULT!
    s" valid" code FAILS
@@ -1532,7 +1533,7 @@ variable REFUSED-BASE-U
 
 \ SB holds the log line's text up to its code; the line has the unusable
 \ reply's status 200, the whole body and then the tail.
-: BODY-LOGGED ( ^u8 n ^u8 n -- )
+: BODY-LOGGED ( str str -- )
    {: a:^ u:n tail:^ tail-u:n :}
    s" MODEL:E-RESPONSE status 200 body: " SB-APPEND a u SB-APPEND
    tail tail-u SB-APPEND SB-LOGGED ;
@@ -1668,7 +1669,7 @@ variable REFUSED-BASE-U
 
 
 \ The vector is three binary32 values with these bits.
-: VECTOR-IS ( ^u8 n n n n -- )
+: VECTOR-IS ( str n n n -- )
    {: v:^ v-u:n x:n y:n z:n :}
    v-u 12 = ASSERT
    v F32-BUF:LOAD x = ASSERT
@@ -1801,7 +1802,7 @@ variable REFUSED-BASE-U
 
 create KEPT 65536 allot    \ the request body the peer received before a resend
 variable KEPT-U
-: KEPT$ ( -- ^u8 n ) KEPT KEPT-U @ ;
+: KEPT$ ( -- str ) KEPT KEPT-U @ ;
 \ Keeps the body of the last request the peer received.
 : KEEP-SENT ( -- )
    MODEL-PEER:SENT$ {: a:^ u:n :}
@@ -1814,7 +1815,7 @@ variable KEPT-U
 \ The chat request built under RETRY, which the peer answers as `scenario`,
 \ throws `code`; then RETRY and CHAT send the same body once more, and the
 \ peer's reply to it is returned.
-: RESENT ( ^u8 n n -- )
+: RESENT ( str n -- )
    {: a:^ u:n code:n :}
    MODEL-PEER:CALLS@ {: before:n :}
    a u MODEL-PEER:FAIL-NEXT
@@ -1929,7 +1930,7 @@ variable KEPT-U
    SERVE-CODE MODEL:E-STATE = ASSERT ;
 
 
-: START-CHAT ( ^u8 n ^MODEL:call -- )
+: START-CHAT ( str ^MODEL:call -- )
    {: a:^ u:n c:^ :}
    c MODEL:PARTS-RESET
    a u c MODEL:TEXT+
@@ -1992,7 +1993,7 @@ variable LANDED
 
 
 \ A malformed embeddings reply fails the call and leaves no vectors.
-: EMBED-ERROR ( ^u8 n -- )
+: EMBED-ERROR ( str -- )
    INPUTS
    EMBED-CODE MODEL:E-RESPONSE = ASSERT
    VECTOR-CODE MODEL:E-STATE = ASSERT ;
@@ -2070,7 +2071,7 @@ variable LANDED
 
 
 \ The vector is the WIDE-VECTOR components, 0 up, as binary32 values.
-: WIDE-IS ( ^u8 n -- )
+: WIDE-IS ( str -- )
    {: v:^ v-u:n :}
    v-u MODEL-PEER:WIDE-DIMS 4 * = ASSERT
    MODEL-PEER:WIDE-DIMS 0 ?do
@@ -2122,7 +2123,7 @@ variable LANDED
 
 
 \ A hit requires the stored journal input, so a hit is that exact request.
-: JOURNAL-GET ( n ^u8 n ^n -- bool )
+: JOURNAL-GET ( n str ^n -- bool )
    {: ctx:n input:^ input-u:n out:^ :}
    JOURNAL-READY @ 0= if false exit then
    input input-u JOURNAL-INPUT JOURNAL-INPUT-U @ STR= ASSERT
@@ -2130,7 +2131,7 @@ variable LANDED
    true ;
 
 
-: JOURNAL-PUT ( n ^u8 n ^u8 n -- )
+: JOURNAL-PUT ( n str str -- )
    {: ctx:n input:^ input-u:n record:^ record-u:n :}
    JOURNAL-READY @ 0= ASSERT
    input-u 32768 <= record-u 65536 <= and ASSERT
@@ -2142,10 +2143,10 @@ variable LANDED
 
 
 \ A journal that never hits and keeps the last input and record put.
-: CAPTURE-GET ( n ^u8 n ^n -- bool ) 2drop 2drop false ;
+: CAPTURE-GET ( n str ^n -- bool ) 2drop 2drop false ;
 
 
-: CAPTURE-PUT ( n ^u8 n ^u8 n -- )
+: CAPTURE-PUT ( n str str -- )
    {: ctx:n input:^ input-u:n record:^ record-u:n :}
    input-u 32768 <= record-u 65536 <= and ASSERT
    input input-u JOURNAL-INPUT 32768 SPAN:MAKE SPAN:COPY
@@ -2157,8 +2158,8 @@ variable LANDED
 : CAPTURE ( -- )
    0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
    0 JOURNAL-RECORD-U ! ;
-: RECORD$ ( -- ^u8 n ) JOURNAL-RECORD JOURNAL-RECORD-U @ ;
-: INPUT$ ( -- ^u8 n ) JOURNAL-INPUT JOURNAL-INPUT-U @ ;
+: RECORD$ ( -- str ) JOURNAL-RECORD JOURNAL-RECORD-U @ ;
+: INPUT$ ( -- str ) JOURNAL-INPUT JOURNAL-INPUT-U @ ;
 
 
 TYPED-VARIABLE PARSER JSON:cursor
@@ -2183,7 +2184,7 @@ TYPED-VARIABLE PARSER JSON:cursor
    RECORD$ s" usage" MEMBER key key-u JSON:READ-FIND-KEY ASSERT ;
 
 
-: STR-IS ( JSON:reader ^u8 n -- ) JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE ;
+: STR-IS ( JSON:reader str -- ) JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE ;
 : INT-IS ( JSON:reader n -- ) {: want:n :} JSON:READ-INT want = ASSERT JSON:READ-CLOSE ;
 : NULL-IS ( JSON:reader -- ) JSON:READ-TOKEN JSON:T-NULL = ASSERT JSON:READ-CLOSE ;
 : NO-USAGE ( -- ) RECORD$ READER s" usage" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
@@ -2199,7 +2200,7 @@ variable REJECTED-ROW
 variable ROW-FAIL
 
 
-: TEST-RECORD ( n ^u8 n -- n )
+: TEST-RECORD ( n str -- n )
    {: ctx:n record:^ record-u:n :}
    ROW-FAIL @ if E-RECORDER throw then
    record-u 65536 <= ASSERT
@@ -2235,8 +2236,8 @@ create HASH 64 allot
    until ;
 
 
-: LOCKED-PUT ( n ^u8 n ^u8 n -- ) 2drop 2drop drop LOCK-WAIT ;
-: LOCKED-RECORD ( n ^u8 n -- n ) 2drop drop LOCK-WAIT 1 ;
+: LOCKED-PUT ( n str str -- ) 2drop 2drop drop LOCK-WAIT ;
+: LOCKED-RECORD ( n str -- n ) 2drop drop LOCK-WAIT 1 ;
 
 
 \ A halt of the worker's chat while a locked callback waits ends it within
@@ -2274,7 +2275,7 @@ create HASH 64 allot
 
 
 variable PAUSED-ROWS
-: PAUSE-RECORD ( n ^u8 n -- n ) 2drop drop TASK:PAUSE 1 PAUSED-ROWS +! 1 ;
+: PAUSE-RECORD ( n str -- n ) 2drop drop TASK:PAUSE 1 PAUSED-ROWS +! 1 ;
 
 
 \ A halt that came during the transfer ends the recorder at its first pause;
@@ -2553,12 +2554,12 @@ variable ROWS-AT     \ ROWS-MADE at RESEND-MARK
 : SENDS-SINCE ( -- n ) MODEL-PEER:CALLS@ SENDS-AT @ - ;
 : ROWS-SINCE ( -- n ) ROWS-MADE @ ROWS-AT @ - ;
 \ A recorder that stops the call as it records.
-: STOP-RECORD ( n ^u8 n -- n ) TEST-RECORD M MODEL:REQUEST-STOP ;
+: STOP-RECORD ( n str -- n ) TEST-RECORD M MODEL:REQUEST-STOP ;
 \ A recorder that records one row and fails every one after it.
-: ONCE-RECORD ( n ^u8 n -- n ) TEST-RECORD true ROW-FAIL ! ;
+: ONCE-RECORD ( n str -- n ) TEST-RECORD true ROW-FAIL ! ;
 variable LOOKUPS    \ COUNT-GET's lookups
 \ A journal that never hits and counts its lookups.
-: COUNT-GET ( n ^u8 n ^n -- bool ) CAPTURE-GET 1 LOOKUPS +! ;
+: COUNT-GET ( n str ^n -- bool ) CAPTURE-GET 1 LOOKUPS +! ;
 
 
 \ Serves M, each SERVE answering false, until the peer has had n requests
@@ -2818,7 +2819,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" " M MODEL:SERVICE-TIER! ;
 
 
-: FAILING-PUT ( n ^u8 n ^u8 n -- ) 2drop 2drop drop E-RECORDER throw ;
+: FAILING-PUT ( n str str -- ) 2drop 2drop drop E-RECORDER throw ;
 
 
 \ A journal put that throws while journaling a refusal is the call's fault.
@@ -2830,7 +2831,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
 
 create ASKED 32768 allot    \ the journal input JOURNAL-INPUT$ last answered
 variable ASKED-U
-: ASKED$ ( -- ^u8 n ) ASKED ASKED-U @ ;
+: ASKED$ ( -- str ) ASKED ASKED-U @ ;
 \ Finishes the request for `text` and keeps the journal input it answers.
 : ASK ( ^u8 n -- )
    PREP M MODEL:JOURNAL-INPUT$ {: a:^ u:n :}
@@ -2888,9 +2889,9 @@ variable ASKED-U
 create GOT 32768 allot    \ the journal input KEEP-GET last received
 variable GOT-U
 variable GOT-NS           \ TIME:MONO-NS as KEEP-GET last ran
-: GOT$ ( -- ^u8 n ) GOT GOT-U @ ;
+: GOT$ ( -- str ) GOT GOT-U @ ;
 \ A journal getter that never hits and keeps the input it receives and when.
-: KEEP-GET ( n ^u8 n ^n -- bool )
+: KEEP-GET ( n str ^n -- bool )
    {: ctx:n input:^ input-u:n out:^ :}
    input-u 32768 <= ASSERT
    input input-u GOT 32768 SPAN:MAKE SPAN:COPY input-u GOT-U !
@@ -2978,7 +2979,7 @@ variable ACTED-NS   \ mono-ns as CANCEL-WORK or STOP-WORK-LATER acted
 
 variable MATCHES   \ COUNT-BY's count
 \ How many captured lines, after their stamps, pass the test against SB.
-: COUNT-BY ( [ ^u8 n ^u8 n -- bool ] -- n )
+: COUNT-BY ( [ str str -- bool ] -- n )
    {: pred :}
    0 MATCHES !
    LOG$ {: a:^ u:n :}
@@ -3009,7 +3010,7 @@ variable MATCHES   \ COUNT-BY's count
    SB-COUNT same before 1 NEW-LINES ;
 
 
-: NOTE$ ( -- ^u8 n ) s" job 9 assemble" ;
+: NOTE$ ( -- str ) s" job 9 assemble" ;
 
 
 \ SB holds a chat line at the level naming NOTE$, then the text.
@@ -3020,7 +3021,7 @@ variable MATCHES   \ COUNT-BY's count
 
 
 \ NOTED for a reply that named its response id.
-: ID-NOTED ( ^u8 n ^u8 n -- )
+: ID-NOTED ( str str -- )
    {: level:^ level-u:n tail:^ tail-u:n :}
    level level-u CHAT-ID-LINE NOTE$ SB-APPEND s" : " SB-APPEND
    tail tail-u SB-APPEND ;
@@ -3129,7 +3130,7 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
 \ A recorder that records the row, then CANCELs M after the first row since
 \ RESEND-MARK: it runs in ACCOUNT, after the send has landed and before the
 \ tier and resend machines sense it.
-: CANCEL-ROW ( n ^u8 n -- n )
+: CANCEL-ROW ( n str -- n )
    TEST-RECORD
    ROWS-SINCE 1 = if M MODEL:CANCEL LANDED-CANCELLED ! then ;
 
@@ -3400,7 +3401,7 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    0 M MODEL:RESEND-WAIT! ;
 
 
-: UNAVAILABLE-GET ( n ^u8 n ^n -- bool )
+: UNAVAILABLE-GET ( n str ^n -- bool )
    2drop 2drop SECRET:E-UNAVAILABLE throw ;
 
 
@@ -3423,7 +3424,7 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
    0 [: CAPTURE-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL! ;
 
 
-: UNAVAILABLE-PUT ( n ^u8 n ^u8 n -- )
+: UNAVAILABLE-PUT ( n str str -- )
    2drop 2drop drop SECRET:E-UNAVAILABLE throw ;
 
 
@@ -3445,7 +3446,7 @@ variable SAVED-ERR   \ fd 2's capture file while the pipe holds fd 2
 
 variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ A journal getter that CANCELs M, started with nothing sent, and misses.
-: CANCEL-GET ( n ^u8 n ^n -- bool )
+: CANCEL-GET ( n str ^n -- bool )
    2drop 2drop M MODEL:CANCEL GET-CANCELLED ! false ;
 
 
@@ -3512,7 +3513,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ Starts M's chat of the text with a 60 s RESEND-WAIT!. Its one send lands
 \ with the code and does not rest; its one line passes the counter's test
 \ against SB.
-: SETTLES-ON ( ^u8 n n [ -- n ] -- )
+: SETTLES-ON ( str n [ -- n ] -- )
    {: a:^ u:n code:n counted :}
    TIME:MONO-NS CHAT-NS !
    counted execute LINES {: same:n before:n :}
@@ -3527,7 +3528,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 \ NOTED, then the fixture key's service and ", account ": a key fault's line
 \ up to the account.
-: KEY-NOTED ( ^u8 n ^u8 n -- )
+: KEY-NOTED ( str str -- )
    NOTED KEY-SERVICE$ SB-APPEND s" , account " SB-APPEND ;
 
 
@@ -3598,7 +3599,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 \ A recorder that records the row, then has the peer answer the next send
 \ 503 after the first row since RESEND-MARK.
-: BUSY-ROW ( n ^u8 n -- n )
+: BUSY-ROW ( n str -- n )
    TEST-RECORD
    ROWS-SINCE 1 = if s" http-busy" MODEL-PEER:FAIL-NEXT then ;
 
@@ -3746,7 +3747,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ A recorder that records the row, then, at the first row since RESEND-MARK,
 \ signals STOP-READY and waits for STOP-GO in the kernel, where a halt is not
 \ served: the starter's halt is pending as ACCOUNT returns.
-: HALT-ROW ( n ^u8 n -- n )
+: HALT-ROW ( n str -- n )
    TEST-RECORD
    ROWS-SINCE 1 = if STOP-READY TASK:SIGNAL-SEM STOP-GO TASK:WAIT-SEM then ;
 
@@ -3781,7 +3782,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    false M MODEL:TIER-RESEND! ;
 
 
-: TIER-PUT ( n ^u8 n ^u8 n -- )
+: TIER-PUT ( n str str -- )
    2drop 2drop drop MODEL:E-TIER throw ;
 
 
@@ -3808,7 +3809,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 \ A journal input's members through its instructions and the key naming its
 \ form, into SB.
-: INPUT-HEAD ( ^u8 n -- )
+: INPUT-HEAD ( str -- )
    {: key:^ key-u:n :}
    SB-RESET
    S\" {\qkind\q:\qgeneration\q,\qconfiguration\q:{\qbackend\q:\qopenai-responses\q," SB-APPEND
@@ -3819,7 +3820,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ A request's members through its head message of the one text part, into SB.
-: REQUEST-HEAD ( ^u8 n -- )
+: REQUEST-HEAD ( str -- )
    {: t:^ t-u:n :}
    SB-RESET
    S\" {\qmodel\q:\qtest-generation\q,\qstore\q:false,\qstream\q:true," SB-APPEND
@@ -3850,20 +3851,20 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ History items in OpenAI's shapes; OUTPUT$ keeps a space between members.
-: CALLED$ ( -- ^u8 n )
+: CALLED$ ( -- str )
    S\" {\qtype\q:\qfunction_call\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{}\q}" ;
-: OUTPUT$ ( -- ^u8 n )
+: OUTPUT$ ( -- str )
    S\" {\qtype\q:\qfunction_call_output\q, \qcall_id\q:\qcall_1\q,\qoutput\q:\qfound\q}" ;
-: USER-ITEM$ ( -- ^u8 n )
+: USER-ITEM$ ( -- str )
    S\" {\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" ;
 : ITEM ( ^u8 n -- ) M MODEL:ITEM+ ;
-: ADD-ITEM ( ^u8 n ^MODEL:call -- ^u8 n ^MODEL:call )
+: ADD-ITEM ( str ^MODEL:call -- str ^MODEL:call )
    {: a:^ u:n c :}
    a u c MODEL:ITEM+ a u c ;
-: ITEM-CODE ( ^u8 n -- n )
+: ITEM-CODE ( str -- n )
    M [: ADD-ITEM ;] catch {: code:n :} drop 2drop code ;
 \ The array or object the reader is on is exactly these source bytes.
-: RAW-IS ( JSON:reader ^u8 n -- )
+: RAW-IS ( JSON:reader str -- )
    {: want:^ want-u:n :}
    JSON:READ-VALUE-SPAN$ want want-u STR= ASSERT JSON:READ-CLOSE ;
 
@@ -3926,7 +3927,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ One strict function tool in OpenAI's shape.
-: TOOLS$ ( -- ^u8 n )
+: TOOLS$ ( -- str )
    S\" [{\qtype\q:\qfunction\q,\qname\q:\qlookup\q,\qdescription\q:\qLooks a term up.\q,\qparameters\q:{\qtype\q:\qobject\q,\qproperties\q:{\qq\q:{\qtype\q:\qstring\q}},\qrequired\q:[\qq\q],\qadditionalProperties\q:false},\qstrict\q:true}]" ;
 : TOOLS ( -- ) TOOLS$ M MODEL:TOOLS! ;
 
@@ -3961,7 +3962,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    SCHEMA-REQUEST MODEL-PEER:SENT$ SB$ STR= ASSERT ;
 
 
-: TOOLS-CODE ( ^u8 n -- n ) M MODEL:TOOLS! s" tool-call" PREP CHAT-CODE ;
+: TOOLS-CODE ( str -- n ) M MODEL:TOOLS! s" tool-call" PREP CHAT-CODE ;
 
 
 \ Tools other than one non-empty JSON array of objects, and neither schema nor
@@ -4033,7 +4034,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 \ A count body's members through its instructions and the head message of the
 \ one text part, the effort high, into SB.
-: COUNT-HEAD ( ^u8 n -- )
+: COUNT-HEAD ( str -- )
    {: t:^ t-u:n :}
    SB-RESET
    S\" {\qmodel\q:\qtest-generation\q,\qreasoning\q:{\qeffort\q:\qhigh\q}," SB-APPEND
@@ -4072,7 +4073,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 create COUNTED 32768 allot    \ the input member of the last count body kept
 variable COUNTED-U
-: COUNTED$ ( -- ^u8 n ) COUNTED COUNTED-U @ ;
+: COUNTED$ ( -- str ) COUNTED COUNTED-U @ ;
 
 
 \ A count leaves its request built: the CHAT after it sends the counted input
@@ -4344,7 +4345,7 @@ variable COUNTED-U
 
 
 \ A compaction of the text whose reply is E-RESPONSE leaves the input as built.
-: BAD-WINDOW ( ^u8 n -- )
+: BAD-WINDOW ( str -- )
    {: t:^ t-u:n :}
    t t-u PREP
    M COMPACT-CODE MODEL:E-RESPONSE = ASSERT
@@ -4379,13 +4380,13 @@ variable COUNTED-U
 
 
 \ Both producer configurations name this base.
-: BASE-IS ( ^u8 n -- )
+: BASE-IS ( str -- )
    {: want:^ want-u:n :}
    M MODEL:GENERATION-CONFIG$ s" base_url" MEMBER want want-u STR-IS
    M MODEL:EMBEDDING-CONFIG$ s" base_url" MEMBER want want-u STR-IS ;
 
 
-: OPENAI-GET ( n ^u8 n ^n -- bool )
+: OPENAI-GET ( n str ^n -- bool )
    {: ctx:n input:^ input-u:n out:^ :}
    input input-u s" configuration" MEMBER
    s" endpoint" JSON:READ-FIND-KEY ASSERT
@@ -4414,7 +4415,7 @@ variable COUNTED-U
    MODEL-PEER:CALLS@ calls = ASSERT ;
 
 
-: IDENTITY$ ( -- ^u8 n ) s" 7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab" ;
+: IDENTITY$ ( -- str ) s" 7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab" ;
 
 
 : OLLAMA-AT ( n n -- )
@@ -4455,15 +4456,15 @@ variable COUNTED-U
 
 
 : ST ( -- ^MODEL:settings ) 0 SETS ;
-: SVC$ ( -- ^u8 n ) SETTINGS-SERVICE$ ;
+: SVC$ ( -- str ) SETTINGS-SERVICE$ ;
 : FILE ( ^u8 n ^u8 n -- ) {: a:^ u:n v:^ vu:n :} SVC$ a u v vu SECRET:WRITE ;
-: UNFILE ( ^u8 n -- ) {: a:^ u:n :} SVC$ a u SECRET:ERASE drop ;
+: UNFILE ( str -- ) {: a:^ u:n :} SVC$ a u SECRET:ERASE drop ;
 : ST-OPEN ( n -- n ) SVC$ ST MODEL:SETTINGS-OPEN ;
 : ST-APPLY ( n -- n ) ST M MODEL:SETTINGS-APPLY ;
 : ST-SERVICE ( n -- n ) ST MODEL:SETTINGS-SERVICE$ 2drop ;
 : ST-MODEL ( n -- n ) ST MODEL:SETTINGS-MODEL$ 2drop ;
 : ST-BASE ( n -- n ) ST MODEL:SETTINGS-BASE$ 2drop ;
-: GEN-IS ( ^u8 n ^u8 n -- )
+: GEN-IS ( str str -- )
    {: k:^ ku:n want:^ want-u:n :}
    M MODEL:GENERATION-CONFIG$ k ku MEMBER want want-u STR-IS ;
 

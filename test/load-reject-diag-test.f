@@ -1,3 +1,4 @@
+split-str
 \ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself: a
 \ checked load refusal exits 70 with a named diagnostic on stderr; an
 \ unmodeled immediate in a TRUSTED: body is refused by the checker's preflight
@@ -101,103 +102,103 @@ variable ERR-U
 variable EXITED
 variable RC
 
-: BASE$ ( -- ^u8 n )
+: BASE$ ( -- str )
    BASE BASE-U @ ;
 
-: UNDEF$ ( -- ^u8 n )
+: UNDEF$ ( -- str )
    UNDEF-P UNDEF-U @ ;
 
 : BODY$ ( -- ^u8 n )
    BODY-P BODY-U @ ;
 
-: OUTER$ ( -- ^u8 n )
+: OUTER$ ( -- str )
    OUTER-P OUTER-U @ ;
 
-: FRAG$ ( -- ^u8 n )
+: FRAG$ ( -- str )
    FRAG-P FRAG-U @ ;
 
-: SIDE$ ( -- ^u8 n )
+: SIDE$ ( -- str )
    SIDE-P SIDE-U @ ;
 
-: INC$ ( -- ^u8 n )
+: INC$ ( -- str )
    INC-P INC-U @ ;
 
-: REQ$ ( -- ^u8 n )
+: REQ$ ( -- str )
    REQ-P REQ-U @ ;
 
-: CALLER$ ( -- ^u8 n )
+: CALLER$ ( -- str )
    CALLER-P CALLER-U @ ;
 
-: MISS$ ( -- ^u8 n )
+: MISS$ ( -- str )
    MISS-P MISS-U @ ;
 
-: REBOUND$ ( -- ^u8 n )
+: REBOUND$ ( -- str )
    REBOUND-P REBOUND-U @ ;
 
-: TOP-INC$ ( -- ^u8 n )
+: TOP-INC$ ( -- str )
    TOP-INC-P TOP-INC-U @ ;
 
-: TOP-REQ$ ( -- ^u8 n )
+: TOP-REQ$ ( -- str )
    TOP-REQ-P TOP-REQ-U @ ;
 
-: RUNTIME$ ( -- ^u8 n )
+: RUNTIME$ ( -- str )
    RUNTIME-P RUNTIME-U @ ;
 
-: MODELED$ ( -- ^u8 n )
+: MODELED$ ( -- str )
    MODELED-P MODELED-U @ ;
 
-: TRUSTED$ ( -- ^u8 n )
+: TRUSTED$ ( -- str )
    TRUSTED-P TRUSTED-U @ ;
 
-: BPS$ ( -- ^u8 n )
+: BPS$ ( -- str )
    BPS-P BPS-U @ ;
 
-: BPF$ ( -- ^u8 n )
+: BPF$ ( -- str )
    BPF-P BPF-U @ ;
 
-: RES$ ( -- ^u8 n )
+: RES$ ( -- str )
    RES-P RES-U @ ;
 
-: RTYPE$ ( -- ^u8 n )
+: RTYPE$ ( -- str )
    RTYPE-P RTYPE-U @ ;
 
-: RNEST$ ( -- ^u8 n )
+: RNEST$ ( -- str )
    RNEST-P RNEST-U @ ;
 
-: RCATCH$ ( -- ^u8 n )
+: RCATCH$ ( -- str )
    RCATCH-P RCATCH-U @ ;
 
-: CF$ ( -- ^u8 n )
+: CF$ ( -- str )
    CF-P CF-U @ ;
 
-: TARGET$ ( -- ^u8 n )
+: TARGET$ ( -- str )
    TARGET-P TARGET-U @ ;
 
-: TARGET-JSON$ ( -- ^u8 n )
+: TARGET-JSON$ ( -- str )
    TARGET-JSON-P TARGET-JSON-U @ ;
 
-: TARGET-DEF$ ( -- ^u8 n )
+: TARGET-DEF$ ( -- str )
    TARGET-DEF-P TARGET-DEF-U @ ;
 
-: ONCE$ ( -- ^u8 n )
+: ONCE$ ( -- str )
    ONCE-P ONCE-U @ ;
 
-: ONCE-UNDEF$ ( -- ^u8 n )
+: ONCE-UNDEF$ ( -- str )
    ONCE-UNDEF-P ONCE-UNDEF-U @ ;
 
-: CAPTURE$ ( -- ^u8 n )
+: CAPTURE$ ( -- str )
    CAPTURE-P CAPTURE-U @ ;
 
-: ONCE-JSON$ ( -- ^u8 n )
+: ONCE-JSON$ ( -- str )
    ONCE-JSON-P ONCE-JSON-U @ ;
 
-: SHADOW$ ( -- ^u8 n )
+: SHADOW$ ( -- str )
    SHADOW-P SHADOW-U @ ;
 
-: MARK$ ( -- ^u8 n )
+: MARK$ ( -- str )
    MARK-P MARK-U @ ;
 
-: FRAG-FIXTURE! ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: FRAG-FIXTURE! ( str str str str -- )
    {: pre:^ preu:n frag:^ fragu:n post:^ postu:n path:^ pathu:n :}
    SB-RESET
    pre preu SB-APPEND
@@ -292,7 +293,7 @@ undefine include
 " FS:WRITE-ALL ;
 
 \ One definition per append: SB holds one path and its text, not three.
-: RUNTIME-DEF+ ( ^u8 n ^u8 n -- ) {: pre:^ preu:n post:^ postu:n :}
+: RUNTIME-DEF+ ( str str -- ) {: pre:^ preu:n post:^ postu:n :}
    SB-RESET
    pre preu SB-APPEND FRAG$ SB-APPEND post postu SB-APPEND
    RUNTIME$ SB$ FS:APPEND-FILE ;
@@ -328,7 +329,7 @@ undefine include
    PATHS!
    FIXTURES! ;
 
-: STORE! ( len len PROCESS:ending ^u8 n -- )
+: STORE! ( len len PROCESS:ending str -- )
    {: outu:len erru:len oc src:^ srcu:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
@@ -338,7 +339,7 @@ undefine include
    ;MATCH ;
 
 \ Runs the engine under test on the arguments built for PATH.
-: LAUNCH ( ^u8 n -- ) {: path:^ pathu:n :}
+: LAUNCH ( str -- ) {: path:^ pathu:n :}
    ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
    ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    path pathu STORE! ;
@@ -349,13 +350,13 @@ undefine include
    path pathu >LEN PROC-ARGV+
    path pathu LAUNCH ;
 
-: CHECK-RUN ( ^u8 n -- ) {: path:^ pathu:n :}
+: CHECK-RUN ( str -- ) {: path:^ pathu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+  path pathu >LEN PROC-ARGV+
    path pathu LAUNCH ;
 
-: CHECK-ALL-RUN ( ^u8 n -- ) {: path:^ pathu:n :}
+: CHECK-ALL-RUN ( str -- ) {: path:^ pathu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
@@ -370,7 +371,7 @@ undefine include
 
 \ Every rejecting load: NON-EMPTY stderr that names the failing token, EMPTY
 \ stdout, exit-kind EXIT, rc 70 — the silent-exit-70 red/green discriminator.
-: ASSERT-NAMED ( ^u8 n -- ) {: name:^ nameu:n :}
+: ASSERT-NAMED ( str -- ) {: name:^ nameu:n :}
    ERR-U @ 0 > TTRUE
    ERR$ name nameu CONTAINS? TTRUE
    OUT-U @ 0 T=
@@ -382,23 +383,23 @@ undefine include
    RC @ 0 T=
    ERR-U @ 0 T= ;
 
-: ASSERT-OK-OUT ( ^u8 n -- )
+: ASSERT-OK-OUT ( str -- )
    {: a:^ u:n :}
    ASSERT-OK
    OUT$ a u CONTAINS? TTRUE ;
 
 \ stderr places the record at PATH's PLACE, `:line:column`.
-: ASSERT-AT ( ^u8 n ^u8 n -- ) {: path:^ pathu:n place:^ placeu:n :}
+: ASSERT-AT ( str str -- ) {: path:^ pathu:n place:^ placeu:n :}
    SB-RESET  s"  --> " SB-APPEND  path pathu SB-APPEND  place placeu SB-APPEND
    10 SB-APPEND-C
    ERR$ SB$ CONTAINS? TTRUE ;
 
 \ body.f is rejected with the record HEAD at PLACE.
-: BODY-REJECT-AT ( ^u8 n ^u8 n -- ) {: head:^ headu:n place:^ placeu:n :}
+: BODY-REJECT-AT ( str str -- ) {: head:^ headu:n place:^ placeu:n :}
    head headu ASSERT-NAMED
    BODY$ place placeu ASSERT-AT ;
 
-: ASSERT-IMM-DIAG ( n n ^u8 n ^u8 n -- )
+: ASSERT-IMM-DIAG ( n n str str -- )
    {: line:n col:n token:^ tokenu:n help:^ helpu:n :}
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
@@ -445,7 +446,7 @@ undefine include
 
 \ Each control-flow case is a load of its own: a load stops at its first refusal.
 \ Its record HEAD names the reason, placed at the token at PLACE.
-: CF-RUN ( ^u8 n ^u8 n ^u8 n -- )
+: CF-RUN ( str str str -- )
    {: src:^ srcu:n head:^ headu:n place:^ placeu:n :}
    CF$ src srcu FS:WRITE-ALL
    CF$ RUN
@@ -510,7 +511,7 @@ undefine include
 \ body.f holding the one line SRC is rejected with this whole record: MSG, the
 \ token at column COL marked by MARK (its carets and label), then TAIL (notes
 \ and help).
-: PARAMETRIC-REJECT ( ^u8 n ^u8 n n ^u8 n ^u8 n -- )
+: PARAMETRIC-REJECT ( str str n str str -- )
    {: src:^ srcu:n msg:^ msgu:n col:n mark:^ marku:n tail:^ tailu:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
@@ -657,7 +658,7 @@ undefine include
 
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal, named for the declared word in HEAD and placed at the unknown type.
-: STORAGE-REJECT ( ^u8 n ^u8 n -- ) {: src:^ srcu:n head:^ headu:n :}
+: STORAGE-REJECT ( str str -- ) {: src:^ srcu:n head:^ headu:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    head headu ASSERT-NAMED
@@ -678,7 +679,7 @@ undefine include
 
 \ SRC stores a SCRATCH-ONLY family where a build saves it: the record HEAD
 \ holds HELP.
-: SCRATCH-REJECT ( ^u8 n ^u8 n ^u8 n -- )
+: SCRATCH-REJECT ( str str str -- )
    {: src:^ srcu:n head:^ headu:n help:^ helpu:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
@@ -697,7 +698,7 @@ undefine include
       SCRATCH-REJECT ;
 
 \ SRC as the body exits RC, its stderr holding the record HEAD placed at PLACE.
-: CODE-REJECT-AT ( ^u8 n ^u8 n ^u8 n n -- )
+: CODE-REJECT-AT ( str str str n -- )
    {: src:^ srcu:n head:^ headu:n place:^ placeu:n rc:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
@@ -751,7 +752,7 @@ undefine include
 \ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
 \ the file's bytes, so its rejection is placed at that `evaluate`, with the
 \ string in an evaluated note.
-: ASSERT-EVALUATED ( ^u8 n ^u8 n -- )
+: ASSERT-EVALUATED ( str str -- )
    {: text:^ textu:n label:^ labelu:n :}
    SB-RESET s" = evaluated: " SB-APPEND text textu SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE
@@ -821,7 +822,7 @@ undefine include
 
 \ A structure the checker finds open at a body's closing `;`, a plain body's or
 \ a does> clause's, is placed at that `;` (column 1 of PLACE's line).
-: ASSERT-CLOSE-LINE ( ^u8 n -- ) {: place:^ placeu:n :}
+: ASSERT-CLOSE-LINE ( str -- ) {: place:^ placeu:n :}
    BODY$ RUN
    s" error[E-CONTROL-OPEN]: a control structure is still open at the end of the definition"
       place placeu BODY-REJECT-AT ;
@@ -965,7 +966,7 @@ undefine include
    ERR$ s" help: a locals list begins with `{:` and this `:}` closes none: delete it, or write `{:` where the list begins"
       CONTAINS? TTRUE ;
 
-: ASSERT-CONSTANT-KEYWORD ( ^u8 n -- ) {: at:^ atu:n :}
+: ASSERT-CONSTANT-KEYWORD ( str -- ) {: at:^ atu:n :}
    s" error[E-UNDEFINED]: `constant` is a top-level keyword, not a word"
       at atu BODY-REJECT-AT
    ERR$ s" outside any definition" CONTAINS? TTRUE ;
@@ -991,7 +992,7 @@ undefine include
 \ placed at the token that pushed the bottom cell, in the innermost file. Paths
 \ are matched by their file names: the temporary root may resolve through a
 \ symbolic link.
-: ASSERT-RESIDUE ( ^u8 n ^u8 n -- ) {: msg:^ msgu:n at:^ atu:n :}
+: ASSERT-RESIDUE ( str str -- ) {: msg:^ msgu:n at:^ atu:n :}
    EXITED @ TTRUE
    RC @ 70 T=
    OUT-U @ 0 T=
@@ -1183,7 +1184,7 @@ undefine include
    70 ASSERT-REJECTED ;
 
 \ The keyword starts line 1, which holds LINE.
-: BODY-ONLY-EXPECT ( ^u8 n ^u8 n -- ) {: word:^ wordu:n line:^ lineu:n :}
+: BODY-ONLY-EXPECT ( str str -- ) {: word:^ wordu:n line:^ lineu:n :}
    SB-RESET
    s" error[E-UNDEFINED]: `" SB-APPEND  word wordu SB-APPEND
    s" ` works only inside a definition" SB-APPEND
@@ -1267,7 +1268,7 @@ undefine include
    s" is" s" is ( c ) zzq" BODY-ONLY-EXPECT  70 ASSERT-REJECTED ;
 
 \ The record of keyword KW named at column COL of the one line SRC.
-: KEYWORD-EXPECT ( ^u8 n ^u8 n n -- )
+: KEYWORD-EXPECT ( str str n -- )
    {: kw:^ kwu:n src:^ srcu:n col:n :}
    SB-RESET
    s" error[E-UNDEFINED]: `" SB-APPEND  kw kwu SB-APPEND
@@ -1282,7 +1283,7 @@ undefine include
 
 \ The load and tools/check.f give SRC, which names keyword KW at column COL
 \ where a word is needed, KEYWORD-EXPECT's record.
-: KEYWORD-REJECT ( ^u8 n ^u8 n n -- )
+: KEYWORD-REJECT ( str str n -- )
    {: kw:^ kwu:n src:^ srcu:n col:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
@@ -1353,7 +1354,7 @@ undefine include
 
 \ SRC as the body exits 67, its stderr opening with the line
 \ SB holds and then its help: the record has no place.
-: PATH-PASS-NOWHERE ( ^u8 n -- ) {: src:^ srcu:n :}
+: PATH-PASS-NOWHERE ( str -- ) {: src:^ srcu:n :}
    S\" \n  = help: " SB-APPEND
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
@@ -1372,7 +1373,7 @@ undefine include
 create LONG LONG-QS 64 + allot
 variable LONG-U
 
-: LONG+ ( ^u8 n -- )
+: LONG+ ( str -- )
    {: a:^ u:n :}
    a LONG LONG-U @ + u BYTE-COPY  u LONG-U +! ;
 

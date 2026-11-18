@@ -1,3 +1,4 @@
+split-str
 \ fs-lock.f - advisory exclusive flock on caller-held descriptors, binding only
 \ cooperating processes on one kernel. TRY never waits and answers false only
 \ when another holder blocks it; WAIT retries EINTR. RELEASE unlocks the open
@@ -43,7 +44,7 @@ FUNCTION: FLOCK-CALL flock ( n n -- i32 ) ;FUNCTION
 
 public
 
-: OPEN-DIR ( ^u8 n -- fd )
+: OPEN-DIR ( str -- fd )
    FS:>PATHZ OPEN-FLAGS OPEN-CALL {: opened:n :}
    opened 0 < if E-FS-OPEN throw then
    opened >FD ;

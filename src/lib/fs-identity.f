@@ -1,3 +1,4 @@
+split-str
 \ fs-identity.f - file identity through symlinks. SAMEFILE is true when both paths
 \ exist and name one device and inode; an ENOENT path is not the same file, any
 \ other stat failure is E-FS-STAT. SAME-OPEN-FILE? compares open descriptors,
@@ -39,7 +40,7 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
    right buffer FD-IDENTITY inode = swap device = and ;
 
 
-: CHECK-PATH ( ^u8 n -- )
+: CHECK-PATH ( str -- )
    {: text bytes:n :}
    bytes 0 <= bytes PATH-CAP > or if E-FS-PATH throw then ;
 
@@ -75,18 +76,18 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
    errno ;
 
 
-: COMPARE-IDENTITIES ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- bool )
+: COMPARE-IDENTITIES ( str str ^u8 NUM:alloc-byte-len -- bool )
    ALLOCATION>SPAN {: left left-bytes:n right right-bytes:n work :}
    left left-bytes work IDENTITY STAT-EXISTS? {: left-device:n left-inode:n left-exists:bool :}
    right right-bytes work IDENTITY STAT-EXISTS? {: right-device:n right-inode:n right-exists:bool :}
    left-exists right-exists and left-device right-device = and left-inode right-inode = and ;
 
 
-: LOOKUP-IDENTITY ( ^u8 n ^u8 NUM:alloc-byte-len -- n n )
+: LOOKUP-IDENTITY ( str ^u8 NUM:alloc-byte-len -- n n )
    ALLOCATION>SPAN {: text bytes:n work :}
    text bytes work IDENTITY 0<> if E-FS-STAT throw then ;
 
-: INSPECT-IDENTITY ( ^u8 n ^u8 NUM:alloc-byte-len -- n n bool )
+: INSPECT-IDENTITY ( str ^u8 NUM:alloc-byte-len -- n n bool )
    ALLOCATION>SPAN {: text bytes:n work :}
    text bytes work IDENTITY STAT-INSPECTED? ;
 
@@ -99,10 +100,10 @@ public
 : SAMEFILE ( ^u8 n ^u8 n -- bool )
    WORK-BYTES BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] WITH-BYTES ;
 
-: PATH-IDENTITY ( ^u8 n -- n n )
+: PATH-IDENTITY ( str -- n n )
    WORK-BYTES BYTES-ALLOC-LEN [: LOOKUP-IDENTITY ;] WITH-BYTES ;
 
-: TRY-PATH-IDENTITY ( ^u8 n -- n n bool )
+: TRY-PATH-IDENTITY ( str -- n n bool )
    WORK-BYTES BYTES-ALLOC-LEN [: INSPECT-IDENTITY ;] WITH-BYTES ;
 
 ;using

@@ -1,3 +1,4 @@
+split-str
 \ mapped.f - test-only witness: is a byte span still mapped? A growth path proves
 \ its release by the old span's absence: write(2) from an unmapped source answers
 \ EFAULT, from a mapped one the byte count. Capture the base before growth, ask
@@ -16,7 +17,7 @@ create SINK-DIR PATH-CAP allot
 create SINK-PATH PATH-CAP allot
 variable SINK-FD
 
-: DIR! ( ^u8 n -- n ) {: a:^ u:n :}
+: DIR! ( str -- n ) {: a:^ u:n :}
    a SINK-DIR u BYTE-COPY
    u ;
 

@@ -1,3 +1,4 @@
+split-str
 \ linear-suite.f - `LINEAR:` mints and erases a DEFLINEAR token in its owner alone.
 \ In its owner's private section `LINEAR: NAME ( payload -- PKG:tok )` mints and
 \ `( PKG:tok -- payload )` erases once CHECKER-LINEAR certifies the row; nothing
@@ -49,7 +50,7 @@ variable SRC-U
    REJECTION:BUFFER$ c cu CONTAINS? TTRUE
    REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
 \ REJECTS, and the record quotes the evaluated text and labels its cause.
-: REJECTS-AT ( n ^u8 n ^u8 n ^u8 n -- )
+: REJECTS-AT ( n str str str -- )
    {: rc:n c:^ cu:n w:^ wu:n l:^ lu:n :}
    rc c cu w wu REJECTS
    REJECTION:BUFFER$ s" = evaluated: " CONTAINS? TTRUE
@@ -62,7 +63,7 @@ T-RESET
 package LIN-OWN
 variable WID
 get-current WID !
-: ABSENT? ( ^u8 n -- bool ) WID @ search-wl 0= ;
+: ABSENT? ( str -- bool ) WID @ search-wl 0= ;
 s" the owner's private section declares a mint and an erase" T-LABEL
 s" LINEAR: MINT ( ^n -- LIN-OWN:tok )"  LIN-RUN:DECL 0 T=
 s" LINEAR: ERASE ( LIN-OWN:tok -- ^n )" LIN-RUN:DECL 0 T=
@@ -284,11 +285,11 @@ variable PROG-U
 : OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 : PATH$ ( -- ^u8 n ) PATH-BUF PATH-U @ ;
-: IMAGE$ ( -- ^u8 n ) IMAGE-BUF IMAGE-U @ ;
-: OBJ$ ( -- ^u8 n ) OBJ-BUF OBJ-U @ ;
-: PROG$ ( -- ^u8 n ) PROG PROG-U @ ;
+: IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ ;
+: OBJ$ ( -- str ) OBJ-BUF OBJ-U @ ;
+: PROG$ ( -- str ) PROG PROG-U @ ;
 
-: PROG+ ( ^u8 n -- ) {: a:^ u:n :}
+: PROG+ ( str -- ) {: a:^ u:n :}
    a PROG PROG-U @ + u BYTE-COPY
    PROG-U @ u + PROG-U ! ;
 : PROG-C+ ( n -- )
@@ -339,7 +340,7 @@ variable PROG-U
    rc RC !  erru LEN>N ERR-U !  outu LEN>N OUT-U ! ;
 
 : CHECK ( ^u8 n -- )  s" CHECK-CHILD" CHECK-IN ;
-: CHECK-PROSE ( ^u8 n -- )  s" PROSE-CHILD" CHECK-IN ;
+: CHECK-PROSE ( str -- )  s" PROSE-CHILD" CHECK-IN ;
 
 : OK-FIXTURE ( -- )
    0 PROG-U !
@@ -395,13 +396,13 @@ variable PROG-U
    PROC-ARGV-ENV-RESET
    IMAGE$ IMAGE-MS RUN ;
 
-: AT-ROOT ( ^u8 n -- ) {: name:^ nameu:n :}
+: AT-ROOT ( str -- ) {: name:^ nameu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U ! ;
 
-: WRITE-PROG ( ^u8 n -- )
+: WRITE-PROG ( str -- )
    AT-ROOT  PATH$ PROG$ FS:WRITE-ALL  0 PROG-U ! ;
 
-: LOAD-LINE+ ( ^u8 n ^u8 n -- ) {: word:^ wordu:n name:^ nameu:n :}
+: LOAD-LINE+ ( str str -- ) {: word:^ wordu:n name:^ nameu:n :}
    name nameu AT-ROOT
    word wordu PROG+  s"  " PROG+  PATH$ PROG+  10 PROG-C+ ;
 
@@ -437,7 +438,7 @@ variable PROG-U
 
 \ Builds a source under ROOT to ROOT/lb over the objects directory ROOT/<objs>. Each build is a
 \ fresh hb because the build of a program is what is under test.
-: LINK-BUILD ( ^u8 n ^u8 n -- ) {: src:^ srcu:n objs:^ objsu:n :}
+: LINK-BUILD ( str str -- ) {: src:^ srcu:n objs:^ objsu:n :}
    ROOT-BUF ROOT-U @ objs objsu OBJ-BUF FS:JOIN-PATH OBJ-U !
    ROOT-BUF ROOT-U @ s" lb" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
    src srcu AT-ROOT
@@ -464,11 +465,11 @@ SLOTS TYPED-BUFFER KEPT-SIZE n
 SLOTS TYPED-BUFFER KEPT-S n
 SLOTS TYPED-BUFFER KEPT-NS n
 
-: TAIL$ ( -- ^u8 n ) TAIL-BUF TAIL-U @ ;
+: TAIL$ ( -- str ) TAIL-BUF TAIL-U @ ;
 : KEPT-PATH ( n -- ^u8 ) PATH-CAP * KEPT-BUF swap + ;
-: KEPT$ ( n -- ^u8 n ) {: i:n :} i KEPT-PATH i KEPT-U @ ;
+: KEPT$ ( n -- str ) {: i:n :} i KEPT-PATH i KEPT-U @ ;
 
-: TAIL-SEEN ( ^u8 n -- ) {: p:^ pu:n :}
+: TAIL-SEEN ( str -- ) {: p:^ pu:n :}
    p pu TAIL$ ENDS-WITH? 0= if exit then
    1 FOUND-N +!  p FOUND-BUF pu BYTE-COPY  pu FOUND-U ! ;
 

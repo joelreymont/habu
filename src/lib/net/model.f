@@ -1,3 +1,4 @@
+split-str
 \ model.f - package MODEL, a Habu library: a client for model providers over
 \ CURL. Chat speaks OpenAI's Responses protocol; embeddings go to an
 \ OpenAI-shaped provider or Ollama's native route. A chat call answers a
@@ -556,7 +557,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 \ A sha256 context, then the digest, then its hex.
 : HASH-WORK ( ^call -- ^u8 )
    HASH-AT SHA256-CTX-BYTES 96 + REGION SPAN:$ drop ;
-: LABEL$ ( ^call -- ^u8 n )
+: LABEL$ ( ^call -- str )
    {: c :}
    c PURPOSE-BUF HELD c LEDGER LEDGER-LABEL-U @ SPAN:TAKE SPAN:$ ;
 \ The request is leaving for the backend: from here on the call is recorded.
@@ -599,13 +600,13 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    c ROW-TEXT-BUF BUF:SPAN
    idx field 2 * c ROW-CELL idx field 2 * 1+ c ROW-CELL SPAN:SUB SPAN:$ ;
 \ Adds field k of the row being added to the row text.
-: ROW-TEXT+ ( ^u8 n n ^call -- )
+: ROW-TEXT+ ( str n ^call -- )
    {: a:^ u:n k:n c :}
    c ROW-TEXT-BUF BUF:LEN@ BUF:BLEN>N k 2 * c ROW-NEW !
    u k 2 * 1+ c ROW-NEW !
    a u BUF:N>BLEN c ROW-TEXT-BUF BUF:APPEND-SPAN ;
 \ The row of the purpose, plus one; 0 is none.
-: ROW-OF ( ^u8 n ^call -- n )
+: ROW-OF ( str ^call -- n )
    {: a:^ u:n c :}
    c ROW-COUNT 0 ?do
       i 0 c ROW$ a u STR= if i 1+ unloop exit then
@@ -618,12 +619,12 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    {: idx:n k:n c :}
    c EVENT-ROWS-BUF BUF:SPAN idx EVENT-ROW-BYTES * k cells + 1 cells SPAN:SUB
    SPAN:$ drop CELL-VIEW ;
-: EVENT-TYPE$ ( n ^call -- ^u8 n )
+: EVENT-TYPE$ ( n ^call -- str )
    {: idx:n c :}
    c EVENT-TEXT-BUF BUF:SPAN idx 0 c EVENT-CELL @ idx 1 c EVENT-CELL @ SPAN:SUB
    SPAN:$ ;
 \ Counts one event of the type, adding its row the first time it is seen.
-: COUNT-EVENT ( ^u8 n ^call -- )
+: COUNT-EVENT ( str ^call -- )
    {: a:^ u:n c :}
    c EVENT-ROW-COUNT {: rows:n :}
    rows rows 0 ?do i c EVENT-TYPE$ a u STR= if drop i leave then loop {: idx:n :}
@@ -639,27 +640,27 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : BUFFER$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 \ The generation model, effort and tier: the purpose row's when the latest call
 \ or JOURNAL-INPUT$ selected one, else the call's own.
-: GEN$ ( ^call -- ^u8 n )
+: GEN$ ( ^call -- str )
    {: c :}
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 1 c ROW$ exit then
    c GEN-BUF BUFFER$ ;
-: EMBED-MODEL$ ( ^call -- ^u8 n ) EMBED-BUF BUFFER$ ;
-: KEY-SPEC$ ( ^call -- ^u8 n ) KEY-SPEC-BUF BUFFER$ ;
-: SYSTEM$ ( ^call -- ^u8 n ) SYSTEM-BUF BUFFER$ ;
-: FORM$ ( ^call -- ^u8 n ) FORM-BUF BUFFER$ ;
-: PARTS$ ( ^call -- ^u8 n ) PARTS-BUF BUFFER$ ;
-: JOURNAL-PARTS$ ( ^call -- ^u8 n ) JOURNAL-PARTS-BUF BUFFER$ ;
-: ITEMS$ ( ^call -- ^u8 n ) ITEMS-BUF BUFFER$ ;
+: EMBED-MODEL$ ( ^call -- str ) EMBED-BUF BUFFER$ ;
+: KEY-SPEC$ ( ^call -- str ) KEY-SPEC-BUF BUFFER$ ;
+: SYSTEM$ ( ^call -- str ) SYSTEM-BUF BUFFER$ ;
+: FORM$ ( ^call -- str ) FORM-BUF BUFFER$ ;
+: PARTS$ ( ^call -- str ) PARTS-BUF BUFFER$ ;
+: JOURNAL-PARTS$ ( ^call -- str ) JOURNAL-PARTS-BUF BUFFER$ ;
+: ITEMS$ ( ^call -- str ) ITEMS-BUF BUFFER$ ;
 : BODY$ ( ^call -- ^u8 n ) BODY-BUF BUFFER$ ;
-: EFFORT$ ( ^call -- ^u8 n )
+: EFFORT$ ( ^call -- str )
    {: c :}
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 2 c ROW$ exit then
    c EFFORT-BUF BUFFER$ ;
-: CACHE-KEY$ ( ^call -- ^u8 n ) CACHE-KEY-BUF BUFFER$ ;
-: RESPONSE-ID$ ( ^call -- ^u8 n ) RESPONSE-ID-BUF BUFFER$ ;
-: NOTE$ ( ^call -- ^u8 n ) NOTE-BUF BUFFER$ ;
+: CACHE-KEY$ ( ^call -- str ) CACHE-KEY-BUF BUFFER$ ;
+: RESPONSE-ID$ ( ^call -- str ) RESPONSE-ID-BUF BUFFER$ ;
+: NOTE$ ( ^call -- str ) NOTE-BUF BUFFER$ ;
 \ Whether the call's sends name its tier: not once its tier machine sends at
 \ the standard tier or is done.
 : TIER-NAMED? ( ^call -- bool )
@@ -669,23 +670,23 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
       standard OF false ENDOF
       done OF false ENDOF
    ;MATCH ;
-: TIER$ ( ^call -- ^u8 n )
+: TIER$ ( ^call -- str )
    {: c :}
    c TIER-NAMED? 0= if s" " exit then
    c PICK-CELL @ {: r:n :}
    r 0<> if r 1- 3 c ROW$ exit then
    c TIER-BUF BUFFER$ ;
-: SERVED$ ( ^call -- ^u8 n ) SERVED-BUF BUFFER$ ;
-: ENDPOINT$ ( ^call -- ^u8 n ) ENDPOINT-BUF BUFFER$ ;
-: IDENTITY$ ( ^call -- ^u8 n ) IDENTITY-BUF BUFFER$ ;
-: BASE-URL$ ( ^call -- ^u8 n ) BASE-URL-BUF BUFFER$ ;
-: GEN-CONFIG$ ( ^call -- ^u8 n ) GEN-CONFIG-BUF BUFFER$ ;
-: EMBED-CONFIG$ ( ^call -- ^u8 n ) EMBED-CONFIG-BUF BUFFER$ ;
-: JOURNAL-INPUT-SPAN$ ( ^call -- ^u8 n ) JOURNAL-INPUT-BUF BUFFER$ ;
-: JOURNAL-RECORD$ ( ^call -- ^u8 n ) JOURNAL-RECORD-BUF BUFFER$ ;
-: JOURNAL-OUT$ ( ^call -- ^u8 n ) JOURNAL-OUT-BUF BUFFER$ ;
-: REPLAY-CONTENT$ ( ^call -- ^u8 n ) REPLAY-CONTENT-BUF BUFFER$ ;
-: RESPONSE$ ( ^call -- ^u8 n )
+: SERVED$ ( ^call -- str ) SERVED-BUF BUFFER$ ;
+: ENDPOINT$ ( ^call -- str ) ENDPOINT-BUF BUFFER$ ;
+: IDENTITY$ ( ^call -- str ) IDENTITY-BUF BUFFER$ ;
+: BASE-URL$ ( ^call -- str ) BASE-URL-BUF BUFFER$ ;
+: GEN-CONFIG$ ( ^call -- str ) GEN-CONFIG-BUF BUFFER$ ;
+: EMBED-CONFIG$ ( ^call -- str ) EMBED-CONFIG-BUF BUFFER$ ;
+: JOURNAL-INPUT-SPAN$ ( ^call -- str ) JOURNAL-INPUT-BUF BUFFER$ ;
+: JOURNAL-RECORD$ ( ^call -- str ) JOURNAL-RECORD-BUF BUFFER$ ;
+: JOURNAL-OUT$ ( ^call -- str ) JOURNAL-OUT-BUF BUFFER$ ;
+: REPLAY-CONTENT$ ( ^call -- str ) REPLAY-CONTENT-BUF BUFFER$ ;
+: RESPONSE$ ( ^call -- str )
    {: c :}
    c RESPONSE-BUF HELD c MODEL-CALL:RESPONSE-U @ SPAN:TAKE SPAN:$ ;
 
@@ -792,7 +793,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    then ;
 
 
-: REPLACE-SOME ( ^u8 n ^n -- )
+: REPLACE-SOME ( str ^n -- )
    {: a:^ u:n buf:^ :}
    u 0 <= if E-CONFIG throw then
    a u BUF:N>BLEN buf BUF:REPLACE ;
@@ -875,7 +876,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    NULL-PTR c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE !
    0 c MODEL-CALL:ARENA MODEL-ALLOCATION:SIZE ! ;
 
-: SCHEME-LEN ( ^u8 n -- n )
+: SCHEME-LEN ( str -- n )
    {: a:^ u:n :}
    a u s" https://" STARTS-WITH? if 8 exit then
    a u s" http://" STARTS-WITH? if 7 exit then
@@ -889,38 +890,38 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    b [char] @ <> and b [char] ? <> and b [char] # <> and ;
 
 \ The provider base every OpenAI-compatible route extends when none is set.
-: OPENAI-BASE$ ( -- ^u8 n ) s" https://api.openai.com/v1" ;
+: OPENAI-BASE$ ( -- str ) s" https://api.openai.com/v1" ;
 
 \ The configured base, or OpenAI's when none is set.
-: BASE$ ( ^call -- ^u8 n )
+: BASE$ ( ^call -- str )
    BASE-URL$ {: base:^ base-u:n :}
    base-u 0= if OPENAI-BASE$ else base base-u then ;
 
 \ The base followed by the route; valid until the next rendering.
-: URL$ ( ^u8 n ^call -- ^u8 n )
+: URL$ ( str ^call -- str )
    {: route:^ route-u:n c :}
    c URL-BUF BUF:CLEAR
    c BASE$ BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
    route route-u BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
    c URL-BUF BUFFER$ ;
 
-: CHAT-URL$ ( ^call -- ^u8 n )
+: CHAT-URL$ ( ^call -- str )
    {: c :}
    s" /responses" c URL$ ;
 
-: EMBED-URL$ ( ^call -- ^u8 n )
+: EMBED-URL$ ( ^call -- str )
    {: c :}
    s" /embeddings" c URL$ ;
 
-: COUNT-URL$ ( ^call -- ^u8 n )
+: COUNT-URL$ ( ^call -- str )
    {: c :}
    s" /responses/input_tokens" c URL$ ;
 
-: COMPACT-URL$ ( ^call -- ^u8 n )
+: COMPACT-URL$ ( ^call -- str )
    {: c :}
    s" /responses/compact" c URL$ ;
 
-: REQUEST-URL$ ( ^call -- ^u8 n )
+: REQUEST-URL$ ( ^call -- str )
    {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c CHAT-URL$ ENDOF
@@ -971,7 +972,7 @@ public
 
 \ Installs the journal, which resumes completed calls from the caller's
 \ durable store through get and put under the header's rules. OPEN disables it.
-: JOURNAL! ( n [ n ^u8 n ^n -- bool ] [ n ^u8 n ^u8 n -- ] ^call -- )
+: JOURNAL! ( n [ n str ^n -- bool ] [ n str str -- ] ^call -- )
    {: ctx:n get put c :}
    c REQUIRE-REST
    ctx c MODEL-CALL:JOURNAL-CONTEXT !
@@ -981,7 +982,7 @@ public
 
 \ Installs the recorder, which records each request a backend receives through
 \ record and each rejected reply through reject, under the header's rules.
-: RECORDER! ( n [ n ^u8 n -- n ] [ n n -- ] ^call -- )
+: RECORDER! ( n [ n str -- n ] [ n n -- ] ^call -- )
    {: ctx:n record reject c :}
    c REQUIRE-REST
    c LEDGER {: l :}
@@ -993,12 +994,12 @@ public
 \ What the next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED or REPLAY
 \ is for: nonblank.
 \ Each consumes it; with a recorder installed, one without a purpose is E-STATE.
-: PURPOSE? ( ^u8 n -- bool )
+: PURPOSE? ( str -- bool )
    {: a:^ u:n :}
    u 0= if false exit then
    false u 0 ?do a i + c@ 32 > or loop ;
 
-: PURPOSE! ( ^u8 n ^call -- )
+: PURPOSE! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    a u PURPOSE? 0= if E-CONFIG throw then
@@ -1009,13 +1010,13 @@ public
 \ call and put into each of its failure lines; empty clears it. It changes no
 \ request, journal input, cache key or record. An idle or prepared call is
 \ required, else E-STATE; a negative length is E-CONFIG.
-: LOG-NOTE! ( ^u8 n ^call -- )
+: LOG-NOTE! ( str ^call -- )
    {: a:^ u:n c :}
    c REQUIRE-REST
    u 0< if E-CONFIG throw then
    a u BUF:N>BLEN c NOTE-BUF BUF:REPLACE ;
 
-: BASE-URL? ( ^u8 n -- bool )
+: BASE-URL? ( str -- bool )
    {: a:^ u:n :}
    u 0< if false exit then
    a u SCHEME-LEN {: scheme-u:n :}
@@ -1025,7 +1026,7 @@ public
 
 \ The OpenAI-compatible base the chat, count, compaction and embedding routes
 \ extend; empty restores OpenAI's.
-: BASE-URL! ( ^u8 n ^call -- )
+: BASE-URL! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    u 0<> if a u BASE-URL? 0= if E-CONFIG throw then then
@@ -1033,7 +1034,7 @@ public
    u 0= if c BASE-URL-BUF BUF:CLEAR exit then
    a u c BASE-URL-BUF REPLACE-SOME ;
 
-: GENERATION-MODEL! ( ^u8 n ^call -- )
+: GENERATION-MODEL! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    a u c GEN-BUF REPLACE-SOME
@@ -1041,7 +1042,7 @@ public
 
 \ The reasoning effort of every chat and count without a purpose row; empty
 \ sends none.
-: EFFORT! ( ^u8 n ^call -- )
+: EFFORT! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    u 0= if c EFFORT-BUF BUF:CLEAR else a u c EFFORT-BUF REPLACE-SOME then
@@ -1050,7 +1051,7 @@ public
 \ The provider's prompt cache key of every later generation call: requests
 \ sharing a key share cache routing. Empty sends none. It leaves the reply,
 \ so the journal input and replay, unchanged.
-: CACHE-KEY! ( ^u8 n ^call -- )
+: CACHE-KEY! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    u 0= if c CACHE-KEY-BUF BUF:CLEAR else a u c CACHE-KEY-BUF REPLACE-SOME then ;
@@ -1067,7 +1068,7 @@ public
 \ such as flex; empty sends none, so the provider serves its default.
 \ Embedding requests carry none. The tier changes no content, so replay does
 \ not depend on it.
-: SERVICE-TIER! ( ^u8 n ^call -- )
+: SERVICE-TIER! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    u 0= if c TIER-BUF BUF:CLEAR else a u c TIER-BUF REPLACE-SOME then ;
@@ -1095,7 +1096,7 @@ public
 \ purpose, in place of the call's own; empty effort or tier sends none, even
 \ when SERVICE-TIER! set one. A purpose takes one row: a repeated purpose is
 \ E-CONFIG.
-: PURPOSE-MODEL! ( ^u8 n ^u8 n ^u8 n ^u8 n ^call -- )
+: PURPOSE-MODEL! ( str str str str ^call -- )
    {: p:^ p-u:n m:^ m-u:n e:^ e-u:n t:^ t-u:n c :}
    c UNPREPARE drop
    p p-u PURPOSE? 0= if E-CONFIG throw then
@@ -1110,7 +1111,7 @@ public
 
 \ The embedding model, its dimensions and the deadline in milliseconds that
 \ ends each embedding call, connect included.
-: EMBEDDING-MODEL! ( ^u8 n n n ^call -- )
+: EMBEDDING-MODEL! ( str n n ^call -- )
    {: a:^ u:n dims:n deadline:n c :}
    c REQUIRE-REST
    dims deadline DIMS-DEADLINE?
@@ -1130,7 +1131,7 @@ public
 \ and SECRET:E-UNAVAILABLE pass through; a call with no item named fails there
 \ with E-CONFIG. The key spec holds the service, then the account from byte
 \ key-split.
-: API-KEY! ( ^u8 n ^u8 n ^call -- )
+: API-KEY! ( str str ^call -- )
    {: svc:^ su:n acct:^ au:n c :}
    c REQUIRE-REST
    su 0 <= au 0 <= or if E-CONFIG throw then
@@ -1138,12 +1139,12 @@ public
    acct au BUF:N>BLEN c KEY-SPEC-BUF BUF:APPEND-SPAN
    su c MODEL-CALL:KEY-SPLIT ! ;
 
-: SYSTEM! ( ^u8 n ^call -- )
+: SYSTEM! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    a u c SYSTEM-BUF REPLACE-SOME ;
 
-: SCHEMA! ( ^u8 n ^call -- )
+: SCHEMA! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    a u c FORM-BUF REPLACE-SOME
@@ -1151,7 +1152,7 @@ public
 
 \ The tools a call offers, a JSON array of OpenAI function tools checked when
 \ the request is finished; the last of SCHEMA! and TOOLS! decides its form.
-: TOOLS! ( ^u8 n ^call -- )
+: TOOLS! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    a u c FORM-BUF REPLACE-SOME
@@ -1183,14 +1184,14 @@ private
    {: s idx:n :}
    s MODEL-SETTINGS:BUFS @ idx BUF:HDR-BYTES * + CELL-VIEW ;
 
-: SETTING-ACCOUNT$ ( n -- ^u8 n )
+: SETTING-ACCOUNT$ ( n -- str )
    case
       SETTING-MODEL of s" model" endof
       SETTING-BASE of s" base-url" endof
       E-STATE throw
    endcase ;
 
-: SETTING$ ( ^settings n n -- ^u8 n )
+: SETTING$ ( ^settings n n -- str )
    {: s idx:n u:n :}
    s idx SETTING-BUF HELD u SPAN:TAKE SPAN:$ ;
 
@@ -1220,7 +1221,7 @@ private
    again ;
 
 
-: SETTINGS-FILL ( ^u8 n ^settings -- ^u8 n ^settings )
+: SETTINGS-FILL ( str ^settings -- str ^settings )
    {: svc:^ su:n s :}
    SETTING-BUFFERS 0 ?do
       s i SETTING-BUF SETTING-INITIAL BUF:N>BLEN BUF:INIT
@@ -1256,7 +1257,7 @@ public
 \ non-empty base-url item BASE-URL! refuses is E-CONFIG; SECRET:E-CONFIG,
 \ SECRET:E-ACCESS and SECRET:E-UNAVAILABLE pass through. A failed open
 \ leaves s closed.
-: SETTINGS-OPEN ( ^u8 n ^settings -- )
+: SETTINGS-OPEN ( str ^settings -- )
    {: svc:^ su:n s :}
    s SETTINGS-OPEN? if E-STATE throw then
    su 0 <= if E-CONFIG throw then
@@ -1276,17 +1277,17 @@ public
 \ The open settings' service, model and base URL (empty when its item is
 \ absent or empty). The bytes stay owned by the settings until SETTINGS-CLOSE.
 \ Closed settings are E-STATE.
-: SETTINGS-SERVICE$ ( ^settings -- ^u8 n )
+: SETTINGS-SERVICE$ ( ^settings -- str )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
    s SETTING-SERVICE SETTING-BUF BUFFER$ ;
 
-: SETTINGS-MODEL$ ( ^settings -- ^u8 n )
+: SETTINGS-MODEL$ ( ^settings -- str )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
    s SETTING-MODEL s MODEL-SETTINGS:MODEL-U @ SETTING$ ;
 
-: SETTINGS-BASE$ ( ^settings -- ^u8 n )
+: SETTINGS-BASE$ ( ^settings -- str )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
    s SETTING-BASE s MODEL-SETTINGS:BASE-U @ SETTING$ ;
@@ -1341,13 +1342,13 @@ private
 
 public
 
-: GENERATION-CONFIG$ ( ^call -- ^u8 n )
+: GENERATION-CONFIG$ ( ^call -- str )
    {: c :}
    c REQUIRE-REST
    construct call-kind chat c REPLAYED? 0= if true c BUILD-GEN-CONFIG then
    c GEN-CONFIG$ ;
 
-: EMBEDDING-CONFIG$ ( ^call -- ^u8 n )
+: EMBEDDING-CONFIG$ ( ^call -- str )
    {: c :}
    c REQUIRE-REST
    construct call-kind embed c REPLAYED? 0= if c BUILD-EMBED-CONFIG then
@@ -1359,7 +1360,7 @@ public
 \ producer input outside it. Requests send truncate:false because Ollama
 \ truncates by default; a context overflow fails the call. dims and the
 \ deadline in milliseconds are as EMBEDDING-MODEL! takes them.
-: OLLAMA! ( ^u8 n ^u8 n ^u8 n n n ^call -- )
+: OLLAMA! ( str str str n n ^call -- )
    {: endpoint:^ endpoint-u:n model:^ model-u:n identity:^ identity-u:n dims:n deadline:n c :}
    c REQUIRE-REST
    dims deadline DIMS-DEADLINE?
@@ -1412,7 +1413,7 @@ private
    c MODEL-CALL:PARTS-COUNT @ 1+ c MODEL-CALL:PARTS-COUNT !
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
 
-: TEXT-PART ( ^u8 n ^JSON:writer -- )
+: TEXT-PART ( str ^JSON:writer -- )
    {: a:^ u:n w :}
    w JSON:WRITE-OBJECT-START
    s" type" s" input_text" JSON:WRITE-FIELD-S
@@ -1451,14 +1452,14 @@ public
 
 private
 
-: IMAGE-MIME? ( ^u8 n -- bool )
+: IMAGE-MIME? ( str -- bool )
    {: a:^ u:n :}
    a u s" image/png" STR= if true exit then
    a u s" image/jpeg" STR= if true exit then
    a u s" image/webp" STR= if true exit then
    a u s" image/gif" STR= ;
 
-: DIGEST-KEEP ( ^u8 n ^call -- ^u8 n ^call )
+: DIGEST-KEEP ( str ^call -- str ^call )
    {: data:^ du:n c :}
    data du du 4 / 3 * c URI-BUF ROOM BASE64:DECODE {: n:n :}
    c HASH-WORK {: w:^ :}
@@ -1468,7 +1469,7 @@ private
 
 \ The SHA-256 hex, in HASH-WORK, of the bytes base64 data encodes. Data that
 \ is not base64 as BASE64:ENCODE writes it is E-CONFIG.
-: IMAGE-DIGEST ( ^u8 n ^call -- ^u8 n )
+: IMAGE-DIGEST ( str ^call -- str )
    {: data:^ du:n c :}
    du 0= if E-CONFIG throw then
    data du c [: DIGEST-KEEP ;] catch {: code:n :} drop 2drop
@@ -1482,7 +1483,7 @@ public
 \ The request carries the image inline; the journal input names it by media
 \ type and the SHA-256 of its bytes, so a saved step stays small and the same
 \ image replays it.
-: IMAGE+ ( ^u8 n ^u8 n ^call -- )
+: IMAGE+ ( str str ^call -- )
    {: mime:^ mu:n data:^ du:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
@@ -1518,7 +1519,7 @@ private
    {: code:n :}
    code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and ;
 
-: JSON-OBJECT? ( ^u8 n ^call -- bool )
+: JSON-OBJECT? ( str ^call -- bool )
    {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ = if
@@ -1528,19 +1529,19 @@ private
    then
    JSON:READ-CLOSE false ;
 
-: OBJECT-STEP ( ^u8 n ^call -- ^u8 n ^call )
+: OBJECT-STEP ( str ^call -- str ^call )
    {: a:^ u:n c :}
    a u c JSON-OBJECT? 0= if E-CONFIG throw then
    a u c ;
 
 \ Bytes that are not exactly one JSON object, a reader fault included, are
 \ E-CONFIG.
-: CHECK-OBJECT ( ^u8 n ^call -- )
+: CHECK-OBJECT ( str ^call -- )
    [: OBJECT-STEP ;] catch {: code:n :} drop 2drop
    code JSON-FAULT? if E-CONFIG throw then
    code 0<> if code throw then ;
 
-: JSON-TOOLS? ( ^u8 n ^call -- bool )
+: JSON-TOOLS? ( str ^call -- bool )
    {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-ARR <> if JSON:READ-CLOSE false exit then
@@ -1550,21 +1551,21 @@ private
    {: valid:bool :}
    JSON:READ-CLOSE valid ;
 
-: TOOLS-STEP ( ^u8 n ^call -- ^u8 n ^call )
+: TOOLS-STEP ( str ^call -- str ^call )
    {: a:^ u:n c :}
    a u c JSON-TOOLS? 0= if E-CONFIG throw then
    a u c ;
 
 \ Bytes that are not one non-empty JSON array of objects, a reader fault
 \ included, are E-CONFIG.
-: CHECK-TOOLS ( ^u8 n ^call -- )
+: CHECK-TOOLS ( str ^call -- )
    [: TOOLS-STEP ;] catch {: code:n :} drop 2drop
    code JSON-FAULT? if E-CONFIG throw then
    code 0<> if code throw then ;
 
 \ Appends an item's bytes to the items, after a single comma once there are
 \ any.
-: ITEM-JOIN ( ^u8 n ^call -- )
+: ITEM-JOIN ( str ^call -- )
    {: a:^ u:n c :}
    c ITEMS-BUF BUF:LEN@ BUF:BLEN>N 0<> if
       s" ," BUF:N>BLEN c ITEMS-BUF BUF:APPEND-SPAN
@@ -1575,7 +1576,7 @@ public
 
 \ One history item in OpenAI's shape; E-CONFIG unless one JSON object. Items
 \ follow the parts' message, in the order added, verbatim in body and journal.
-: ITEM+ ( ^u8 n ^call -- )
+: ITEM+ ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
@@ -1746,7 +1747,7 @@ private
    JSON:WRITE-OBJECT-END drop
    c BODY-DONE ;
 
-: INPUT$ ( n ^call -- ^u8 n )
+: INPUT$ ( n ^call -- str )
    {: idx:n c :}
    c INPUT-BUF BUF:SPAN
    c idx INPUT-OFF @ c idx INPUT-LEN @ SPAN:SUB SPAN:$ ;
@@ -1817,7 +1818,7 @@ public
 private
 
 \ The member that carries the form's text in a chat's journal input.
-: FORM-KEY$ ( ^call -- ^u8 n )
+: FORM-KEY$ ( ^call -- str )
    MODEL-CALL:FORM @ MATCH reply-form
       none OF E-CONFIG throw ENDOF
       schema OF s" schema" ENDOF
@@ -1826,7 +1827,7 @@ private
 
 \ A generation kind's journal kind and its endpoint; an embedding's is
 \ JOURNAL-EMBED-INPUT.
-: GEN-INPUT-KIND ( call-kind ^call -- ^u8 n ^u8 n )
+: GEN-INPUT-KIND ( call-kind ^call -- str str )
    {: k:call-kind c :}
    k MATCH call-kind
       chat OF s" generation" c CHAT-URL$ ENDOF
@@ -1921,7 +1922,7 @@ private
    c HEADER-WIPE
    fault 0<> if fault throw then ;
 
-: KEY-PREFIX$ ( -- ^u8 n ) s" Authorization: Bearer " ;
+: KEY-PREFIX$ ( -- str ) s" Authorization: Bearer " ;
 
 \ Room in the header for its prefix and then a key of n bytes, with the
 \ prefix written. The whole header is wiped before it is resized, so released
@@ -1940,7 +1941,7 @@ private
 : KEY-REFUSE ( key-fault ^call -- ) KEY-FAULT! E-KEY throw ;
 
 \ A key is one or more bytes from ! to ~.
-: KEY-CHECK ( ^u8 n ^call -- )
+: KEY-CHECK ( str ^call -- )
    {: a:^ u:n c :}
    u 0= if construct key-fault empty c KEY-REFUSE then
    u 0 ?do
@@ -1991,7 +1992,7 @@ private
    again ;
 
 
-: KEY-LINE ( ^call -- ^u8 n )
+: KEY-LINE ( ^call -- str )
    {: c :}
    c KEY-SPEC$ nip 0= if E-CONFIG throw then
    c KEY-PREFIX$ nip KEY-FETCH {: line-u:n :}
@@ -2061,13 +2062,13 @@ private
 
 \ The reply's current string, decoded into the content buffer, which a failed
 \ call leaves unused.
-: REPLY-STR ( JSON:reader ^call -- JSON:reader ^u8 n )
+: REPLY-STR ( JSON:reader ^call -- JSON:reader str )
    {: c :}
    c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR {: u:n :}
    c CONTENT-BUF HELD u SPAN:TAKE SPAN:$ ;
 
 \ Ollama's error text for an input longer than the model's context.
-: OLLAMA-SIZE? ( ^u8 n -- bool )
+: OLLAMA-SIZE? ( str -- bool )
    {: a:^ u:n :}
    a u s" exceeds the context length" CONTAINS?
    a u s" exceeds maximum context length" CONTAINS? or ;
@@ -2075,7 +2076,7 @@ private
 \ Whether a member of OpenAI's error object, the reader at its value, names a
 \ refusal for size: by its code, or by its message where the code is null, as
 \ in an embeddings refusal.
-: SIZE-MEMBER? ( JSON:reader ^u8 n ^call -- JSON:reader bool )
+: SIZE-MEMBER? ( JSON:reader str ^call -- JSON:reader bool )
    {: key:^ key-u:n c :}
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-SKIP-VALUE false exit then
    key key-u s" code" STR= if
@@ -2209,7 +2210,7 @@ private
    ;MATCH ;
 
 \ Sets the next exchange: a POST of the body to the url.
-: AS-POST ( ^u8 n ^u8 n ^call -- )
+: AS-POST ( str str ^call -- )
    {: url:^ url-u:n body:^ body-u:n c :}
    c CALL-HANDLE {: h:CURL:handle :}
    h url url-u CURL:URL! c CHECK-STATUS
@@ -2220,12 +2221,12 @@ private
    {: want:n :}
    JSON:READ-NEXT want <> if JSON:READ-CLOSE E-RESPONSE throw then ;
 
-: DESCEND ( JSON:reader ^u8 n -- JSON:reader )
+: DESCEND ( JSON:reader str -- JSON:reader )
    {: key:^ key-u:n :}
    key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then ;
 
 \ The reader at the reply's member under the key.
-: REPLY-AT ( ^u8 n ^call -- JSON:reader )
+: REPLY-AT ( str ^call -- JSON:reader )
    {: key:^ key-u:n c :}
    c WIRE-READER
    JSON:T-OBJ EXPECT
@@ -2481,7 +2482,7 @@ private
 
 \ Decodes base64 a u into the vector's room, answering the decoded length in
 \ place of the n under it, so a catch keeps the shape.
-: DECODE-VECTOR ( n ^u8 n ^call -- n ^u8 n ^call )
+: DECODE-VECTOR ( n str ^call -- n ^u8 n ^call )
    {: a:^ u:n c :}
    drop
    a u c VECTORS-BUF BUF:SPAN c MODEL-CALL:VECTOR-AT @ c VECTOR-BYTES SPAN:SUB
@@ -2513,7 +2514,7 @@ private
    true c MODEL-CALL:VECTOR-SEEN ! ;
 
 
-: EMBED-MEMBER ( JSON:reader ^u8 n ^call -- JSON:reader )
+: EMBED-MEMBER ( JSON:reader str ^call -- JSON:reader )
    {: key:^ key-u:n c :}
    key key-u s" index" STR= if
       c MODEL-CALL:PARSED-INDEX @ -1 <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2575,7 +2576,7 @@ private
 
 \ The reader at the reply's top object, under no usage bytes, no usage member
 \ and no vectors read. Kept usage has a length: an object's bytes are not empty.
-: REPLY-START ( ^call -- ^u8 n bool bool JSON:reader )
+: REPLY-START ( ^call -- str bool bool JSON:reader )
    {: c :}
    c VECTORS-RESET
    0 c MODEL-CALL:DATA-COUNT !
@@ -2584,7 +2585,7 @@ private
 
 \ Whether the reader's key is the first under these bytes, which leaves it at
 \ the value; the flag under the reader says whether one came.
-: FIRST-KEY? ( bool JSON:reader ^u8 n -- bool JSON:reader bool )
+: FIRST-KEY? ( bool JSON:reader str -- bool JSON:reader bool )
    {: key:^ key-u:n :}
    >r {: seen:bool :} r>
    key key-u JSON:READ-STR-EQ? seen 0= and {: hit:bool :}
@@ -2593,7 +2594,7 @@ private
 
 \ The reader at a member's key, under the usage bytes and whether a usage member
 \ came: the first one is kept there when an object; any other is skipped.
-: USAGE-MEMBER ( ^u8 n bool bool JSON:reader -- ^u8 n bool bool JSON:reader )
+: USAGE-MEMBER ( str bool bool JSON:reader -- str bool bool JSON:reader )
    >r {: o:^ o-u:n came:bool seen:bool :} r>
    s" usage" JSON:READ-STR-EQ? came 0= and {: first:bool :}
    JSON:READ-NEXT JSON:T-OBJ = first and if
@@ -2605,7 +2606,7 @@ private
 
 \ The usage bytes and whether there are any, once the reader has closed the
 \ top object; a reply with no vectors, or not one per input, is refused.
-: REPLY-END ( ^u8 n bool bool JSON:reader ^call -- ^u8 n bool )
+: REPLY-END ( str bool bool JSON:reader ^call -- str bool )
    {: c :}
    JSON:READ-FINISH
    0= if E-RESPONSE throw then
@@ -2616,7 +2617,7 @@ private
 
 \ An embeddings reply's vectors, and the bytes of its usage object and whether
 \ it has one, in one walk of its top object.
-: ACCEPT-EMBED ( ^call -- ^u8 n bool )
+: ACCEPT-EMBED ( ^call -- str bool )
    {: c :}
    c REPLY-START
    begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
@@ -2625,7 +2626,7 @@ private
    repeat
    drop c REPLY-END ;
 
-: ACCEPT-OLLAMA ( ^call -- ^u8 n bool )
+: ACCEPT-OLLAMA ( ^call -- str bool )
    {: c :}
    c REPLY-START
    begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
@@ -2669,14 +2670,14 @@ private
    ;MATCH ;
 
 \ The usage count at the key: none when the key is absent or null.
-: COUNT-AT ( JSON:reader ^u8 n -- JSON:reader option<n> )
+: COUNT-AT ( JSON:reader str -- JSON:reader option<n> )
    JSON:READ-FIND-KEY 0= if OPTION:NONE exit then
    USAGE-COUNT ;
 
 \ The count at the key of the JSON object the bytes hold, such as a usage
 \ object. Each count reads the object again, as providers order its members
 \ freely.
-: USAGE-AT ( ^u8 n ^call ^u8 n -- option<n> )
+: USAGE-AT ( str ^call str -- option<n> )
    {: a:^ u:n c key:^ key-u:n :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
@@ -2685,7 +2686,7 @@ private
 
 \ The count at the key of a member object of the usage object the bytes hold;
 \ none when that member is absent or not an object.
-: DETAIL-AT ( ^u8 n ^call ^u8 n ^u8 n -- option<n> )
+: DETAIL-AT ( str ^call str str -- option<n> )
    {: a:^ u:n c detail:^ detail-u:n key:^ key-u:n :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
@@ -2696,7 +2697,7 @@ private
 
 \ The bytes' usage object and whether they carry one; marks the call's usage
 \ seen.
-: USAGE? ( ^u8 n ^call -- ^u8 n bool )
+: USAGE? ( str ^call -- str bool )
    {: a:^ u:n c :}
    a u c USAGE {: o:^ o-u:n present:bool :}
    present if true c TOKENS TOKENS-SEEN ! then
@@ -2718,7 +2719,7 @@ private
    c TOKENS TOKENS-REASONING ! ;
 
 \ An embeddings reply's prompt_tokens, from its usage object's bytes.
-: EMBED-TOKENS ( ^u8 n ^call -- ^u8 n ^call )
+: EMBED-TOKENS ( str ^call -- str ^call )
    {: a:^ u:n c :}
    a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
    a u c ;
@@ -2755,7 +2756,7 @@ private
 
 \ The reply's vectors, and its usage object's bytes and whether it has one.
 \ One catch: a code merged from two catches proves nothing, E-STALE-READ.
-: PARSE-EMBED ( ^call -- ^u8 n bool )
+: PARSE-EMBED ( ^call -- str bool )
    {: c :}
    s" " false c
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
@@ -2877,13 +2878,13 @@ private
 
 
 \ The text becomes the call's reply.
-: KEEP-REPLY ( ^u8 n ^call -- )
+: KEEP-REPLY ( str ^call -- )
    {: a:^ u:n c :}
    a u BUF:N>BLEN c RESPONSE-BUF BUF:REPLACE
    u c MODEL-CALL:RESPONSE-U ! ;
 
 \ The reader at the event data's member under the key, and whether it is there.
-: DATA-AT ( ^u8 n ^u8 n ^call -- JSON:reader bool )
+: DATA-AT ( str str ^call -- JSON:reader bool )
    {: a:^ u:n key:^ key-u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
@@ -2914,7 +2915,7 @@ private
 \ An event carrying the response object makes it the reply; the first names
 \ the response's id, and a status other than queued or in_progress ends the
 \ stream.
-: RESPONSE-EVENT ( ^u8 n ^call -- )
+: RESPONSE-EVENT ( str ^call -- )
    {: a:^ u:n c :}
    a u s" response" c DATA-AT 0= if JSON:READ-CLOSE exit then
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2926,7 +2927,7 @@ private
 
 \ One event, its data a JSON object with a string type, counted by type; the
 \ call's first event starts its reply afresh, and a keepalive is skipped.
-: READ-EVENT ( ^call ^u8 n -- ^call ^u8 n )
+: READ-EVENT ( ^call str -- ^call str )
    {: c a:^ u:n :}
    c STREAM {: s :}
    s STREAM-HEARD @ 0= if
@@ -3008,7 +3009,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ The response buffer's room past the bytes received: an embed, count or
 \ compaction read lands there, and appending it from where it lies adds it to
 \ them.
-: REPLY-ROOM ( ^call -- ^u8 n )
+: REPLY-ROOM ( ^call -- str )
    RESPONSE-BUF {: buf:^ :}
    buf HELD buf BUF:LEN@ BUF:BLEN>N SPAN:SKIP SPAN:$ ;
 
@@ -3221,18 +3222,18 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The reader past the window's next item, an object, and the item's bytes;
 \ false past the last.
-: NEXT-ITEM ( JSON:reader -- JSON:reader ^u8 n bool )
+: NEXT-ITEM ( JSON:reader -- JSON:reader str bool )
    JSON:READ-NEXT dup JSON:T-ARR-END = if drop s" " false exit then
    JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-VALUE-SPAN$ true ;
 
 \ Keeps the item's bytes under the reader in place of the item before it.
-: KEEP-LAST ( ^u8 n JSON:reader ^u8 n -- ^u8 n JSON:reader )
+: KEEP-LAST ( str JSON:reader str -- str JSON:reader )
    {: a:^ u:n :}
    >r 2drop a u r> ;
 
 \ Whether the item's bytes are a compaction item.
-: COMPACTION? ( ^u8 n ^call -- bool )
+: COMPACTION? ( str ^call -- bool )
    {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT TYPE-AT
@@ -3287,7 +3288,7 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-OUT-BUF c MODEL-CALL:JOURNAL-GET @ execute ;
 
-: JOURNAL-FIELD ( ^u8 n ^call -- ^u8 n )
+: JOURNAL-FIELD ( str ^call -- str )
    {: key:^ key-u:n c :}
    c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -3301,14 +3302,14 @@ ENUM poll none fed spoiled done ;ENUM
    then
    JSON:READ-CLOSE E-RESPONSE throw ;
 
-: JOURNAL-DECODE ( ^u8 n SPAN:span<u8> ^call -- n )
+: JOURNAL-DECODE ( str SPAN:span<u8> ^call -- n )
    {: raw:^ raw-u:n target:SPAN:span<u8> c :}
    c MODEL-CALL:READER raw raw-u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
    target SPAN:$ JSON:READ-STR {: got:n :}
    JSON:READ-CLOSE got ;
 
-: JOURNAL-STRING-BUF ( ^u8 n ^n ^call -- )
+: JOURNAL-STRING-BUF ( str ^n ^call -- )
    {: key:^ key-u:n buf:^ c :}
    key key-u c JOURNAL-FIELD {: raw:^ raw-u:n :}
    buf raw-u c RESET-SIZED
@@ -3393,7 +3394,7 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:KIND @ OPTION:SOME c MODEL-CALL:REPLAY-KIND ! ;
 
 \ A usage count, null when the reply omitted it.
-: COUNT-FIELD ( ^JSON:writer ^u8 n option<n> -- ^JSON:writer )
+: COUNT-FIELD ( ^JSON:writer str option<n> -- ^JSON:writer )
    MATCH option
       none OF JSON:WRITE-FIELD-NULL ENDOF
       some OF JSON:WRITE-FIELD-INT ENDOF
@@ -3463,7 +3464,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ A nonzero count, else none.
 : NONZERO ( n -- option<n> ) dup 0<> if OPTION:SOME else drop OPTION:NONE then ;
 
-: BACKEND$ ( ^call -- ^u8 n )
+: BACKEND$ ( ^call -- str )
    {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" openai" ENDOF
@@ -3478,7 +3479,7 @@ ENUM poll none fed spoiled done ;ENUM
 
 \ The sha256 hex of the model, system text and schema or tools every
 \ generation request of a purpose starts with, NUL-separated.
-: PREFIX-HASH$ ( ^call -- ^u8 n )
+: PREFIX-HASH$ ( ^call -- str )
    {: c :}
    c HASH-WORK {: w :}
    w SHA256-BEGIN
@@ -3681,7 +3682,7 @@ public
    c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ ;
 \ The last call's provider message from its refused HTTP reply or failed
 \ response; empty when none.
-: ERROR$ ( ^call -- ^u8 n ) ERROR-BUF BUFFER$ ;
+: ERROR$ ( ^call -- str ) ERROR-BUF BUFFER$ ;
 
 private
 
@@ -3739,7 +3740,7 @@ private
    s"  " LOG:TEXT+ a u LOG:TEXT+ s" :" LOG:TEXT+ ;
 
 
-: KEY-REASON$ ( key-fault -- ^u8 n )
+: KEY-REASON$ ( key-fault -- str )
    MATCH key-fault
       none OF s" " ENDOF
       missing OF s" not found" ENDOF
@@ -4896,7 +4897,7 @@ public
 
 \ The output array of the chat reply last awaited or replayed, its own bytes,
 \ read and borrowed as CONTENT$ is; ITEM+ takes each item for the next turn.
-: OUTPUT$ ( ^call -- ^u8 n )
+: OUTPUT$ ( ^call -- str )
    {: c :}
    c CONTENT$ 2drop
    s" output" c REPLY-AT JSON:READ-VALUE-SPAN$ {: a:^ u:n :}
@@ -4916,7 +4917,7 @@ public
 \ finished and only PARTS-RESET discards it: PURPOSE! then JOURNAL-INPUT$, CHAT
 \ or START answer or send it again under the settings then in force, the same
 \ input when none changed.
-: JOURNAL-INPUT$ ( ^call -- ^u8 n )
+: JOURNAL-INPUT$ ( ^call -- str )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
@@ -5041,8 +5042,8 @@ public
    idx 0 < idx c MODEL-CALL:INPUT-COUNT @ >= or if E-CONFIG throw then
    c VECTORS-BUF BUF:SPAN c idx VECTOR-OFF @ c idx VECTOR-LEN @ SPAN:SUB SPAN:$ ;
 
-: GENERATION-MODEL$ ( ^call -- ^u8 n ) GEN$ ;
-: EMBEDDING-MODEL$ ( ^call -- ^u8 n ) EMBED-MODEL$ ;
+: GENERATION-MODEL$ ( ^call -- str ) GEN$ ;
+: EMBEDDING-MODEL$ ( ^call -- str ) EMBED-MODEL$ ;
 : HTTP-STATUS ( ^call -- n ) MODEL-CALL:HTTP-STATUS @ ;
 : INPUT-TOKENS ( ^call -- n ) MODEL-CALL:INPUT-TOKENS @ ;
 \ The last call's recorded id: its own row, or for a replayed reply the row

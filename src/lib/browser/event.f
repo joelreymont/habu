@@ -1,3 +1,4 @@
+split-str
 \ event.f - BROWSER-EVENT: a browser module's side of the turn protocol's events
 \ (src/lib/browser/turn.js). A module built by tools/hb-build.f answers hello
 \ with EVENT's address and the turn protocol revision its events and records

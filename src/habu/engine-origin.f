@@ -1,3 +1,4 @@
+split-str
 \ Where an engine word's source is. No record carries a source location yet,
 \ so each word answers not found.
 
@@ -11,11 +12,11 @@ public
    drop NULL$ 0 0 NULL$ INCLUDE-FALSE ;
 
 \ The symbol defined at a byte of a file.
-: SYMBOL-AT ( ^u8 n n -- n bool )
+: SYMBOL-AT ( str n -- n bool )
    drop 2drop 0 INCLUDE-FALSE ;
 
 \ Visit the symbols one engine-relative file defines.
-: EACH-IN ( ^u8 n [ n -- ] -- )
+: EACH-IN ( str [ n -- ] -- )
    drop 2drop ;
 
 ;package

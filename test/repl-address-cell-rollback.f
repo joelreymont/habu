@@ -1,3 +1,4 @@
+split-str
 \ Exercise the tty line boundary, not evaluate-closed's separate recovery.
 require src/lib/test.f
 require src/lib/pty-harness.f
@@ -13,7 +14,7 @@ using PTY-HARNESS
 \ the answer. ^D sent on the echoed prompt lands
 \ in the cooked window and is read as a NUL, never as the end of file STOP means.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
-: PROMPT-AFTER ( ^u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
+: PROMPT-AFTER ( str -- ) s" habu> " WAIT-AFTER TTRUE ;
 : STEP ( ^u8 n -- )
    BUF-CLEAR SEND-LINE WAIT-ANSWER TTRUE ;
 \ The terminal carries both of the child's streams, so BUF$ is its stdout and
@@ -24,7 +25,7 @@ using PTY-HARNESS
    ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-ENDING-EXITED=
    CLOSE-MASTER ;
 
-: REUSE-CASE ( ^u8 n ^u8 n -- ) {: bad:^ badu:n next:^ nextu:n :}
+: REUSE-CASE ( str str -- ) {: bad:^ badu:n next:^ nextu:n :}
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY PROMPT
    s" require test/repl-address-cell-probe.f" STEP
    s" REPL-ROWS:SAVE" STEP

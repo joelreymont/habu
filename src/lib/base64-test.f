@@ -1,3 +1,4 @@
+split-str
 \ base64-test.f - RFC 4648 base64: the section 10 vectors, the whole alphabet,
 \ every refusal, and the RFC 6455 handshake it exists to answer.
 \ Run: bin/hb --load src/lib/base64-test.f
@@ -50,17 +51,17 @@ variable STAGED-LEN
    a u b v ENCODES
    b v a u DECODES ;
 
-: URL-ENCODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
+: URL-ENCODES ( str str -- ) {: a u:n want wu:n :}
    a u OUT BASE64:ENCODE-URL {: k:n :}
    want wu T-LABEL
    k OUT$ want wu T$= ;
 
-: URL-DECODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
+: URL-DECODES ( str str -- ) {: a u:n want wu:n :}
    a u OUT BASE64:DECODE-URL {: k:n :}
    a u T-LABEL
    k OUT$ want wu T$= ;
 
-: URL-BOTH ( ^u8 n ^u8 n -- ) {: a u:n b v:n :}
+: URL-BOTH ( str str -- ) {: a u:n b v:n :}
    a u b v URL-ENCODES
    b v a u URL-DECODES ;
 
@@ -145,7 +146,7 @@ variable STAGED-LEN
    a u STAGED SPAN:COPY
    u STAGED-LEN ! ;
 
-: STAGED$ ( -- ^u8 n )
+: STAGED$ ( -- str )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 : REFUSES ( ^u8 n n -- ) {: a u:n code:n :}
@@ -153,7 +154,7 @@ variable STAGED-LEN
    a u T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] code TTHROWSQ ;
 
-: URL-REFUSES ( ^u8 n n -- ) {: a u:n code:n :}
+: URL-REFUSES ( str n -- ) {: a u:n code:n :}
    a u STAGE
    a u T-LABEL
    [: STAGED$ OUT BASE64:DECODE-URL drop ;] code TTHROWSQ ;

@@ -1,3 +1,4 @@
+split-str
 \ tmp-path-child.f - one TMP-PATH call.
 \
 \ Run: TMPDIR=<root> bin/hb --load test/tmp-path-child.f -- <case>

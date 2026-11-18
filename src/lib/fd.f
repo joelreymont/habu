@@ -1,3 +1,4 @@
+split-str
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
 \ as a failed call), one write that never waits on a non-blocking descriptor,
@@ -171,7 +172,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 public
 
 \ One write to a descriptor the caller made non-blocking: the bytes it moved.
-: TRY-WRITE ( fd ^u8 n -- n )
+: TRY-WRITE ( fd str -- n )
    {: f:fd src:^ u:n :}
    u 0 < if E-SPAN-LENGTH throw then
    u 0= if 0 exit then
@@ -186,13 +187,13 @@ public
 private
 
 \ A positive result advances; a 0 waits for POLLOUT against the same deadline.
-: SEND-UNTIL ( fd ^u8 n n n -- n )
+: SEND-UNTIL ( fd str n n -- n )
    {: f:fd src:^ u:n done:n deadline:n :}
    f src done + u done - TRY-WRITE {: k:n :}
    k 0= if f deadline WAIT-OUT then
    k ;
 
-: SEND-ALL-UNTIL ( fd ^u8 n n -- )
+: SEND-ALL-UNTIL ( fd str n -- )
    {: f:fd src:^ u:n deadline:n :}
    0 begin dup u < while
       mono-ns deadline >= if E-FS-TIMEOUT throw then
@@ -200,7 +201,7 @@ private
       f src u done deadline SEND-UNTIL +
    repeat drop ;
 
-: SEND-KEEP ( fd ^u8 n n -- fd ^u8 n n )
+: SEND-KEEP ( fd str n -- fd str n )
    {: f:fd src:^ u:n deadline:n :}
    f src u deadline SEND-ALL-UNTIL
    f src u deadline ;
@@ -248,7 +249,7 @@ public
 \ with no reader raises SIGPIPE, which ends the process unless the caller armed
 \ FD-NOSIGPIPE! or writes inside WITH-NOSIGPIPE; then the write is refused. A
 \ count past the asked one is `part`: bytes moved, but not the ones asked.
-: TRY-WRITE-FULL ( fd ^u8 n -- wrote )
+: TRY-WRITE-FULL ( fd str -- wrote )
    {: f:fd src:^ u:n :}
    u 0 < if E-SPAN-LENGTH throw then
    0 begin dup u < while
@@ -274,7 +275,7 @@ public
 \ flags are restored before success or a catchable failure is reported. On
 \ timeout or failure some bytes may have reached the peer; the caller decides
 \ whether to discard that conversation.
-: WRITE-FULL-UNTIL ( fd ^u8 n n -- )
+: WRITE-FULL-UNTIL ( fd str n -- )
    {: f:fd src:^ u:n deadline:n :}
    u 0 < if E-SPAN-LENGTH throw then
    u 0= if exit then
@@ -334,7 +335,7 @@ public
 \ the open throw E-FS-OPEN; a descriptor whose O_NONBLOCK cannot be cleared is
 \ closed and throws E-FS-IO. It neither sleeps nor polls: the caller owns the
 \ deadline and the retries.
-: TRY-FIFO-WRITER ( ^u8 n -- option<fd> )
+: TRY-FIFO-WRITER ( str -- option<fd> )
    {: pa:^ pu:n :}
    pa pu FS:FIFO? 0= if E-FS-OPEN throw then
    pa pu FS:>PATHZ FS:O-WRONLY O-NONBLOCK or OPEN-CALL {: opened:n :}

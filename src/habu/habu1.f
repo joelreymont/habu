@@ -1,3 +1,4 @@
+split-str
 \ habu1.f, engine builder part 1: emits the native engine's primitive bodies,
 \ helper routines and seed dictionary for arm64 (Linux and macOS).
 \ Requests run before any package or `using` opens, so each file links
@@ -70,7 +71,7 @@ defer FP-EMIT ( -- )
 
 variable FPL  variable FPE
 
-: FP-ARGS ( ^u8 n [ -- ] -- )
+: FP-ARGS ( str [ -- ] -- )
    is FP-EMIT  FP-U !  FP-A !
    FP-A@ FP-U @ ENGINE-PRIMS:SPEC-CHECK ;
 
@@ -96,7 +97,7 @@ public
 private
 variable FP-WID
 
-: FPRIM-WID ( ^u8 n [ -- ] n -- )
+: FPRIM-WID ( str [ -- ] n -- )
    FP-WID !
    FP-ARGS
    LBL FPL !  LBL FPE !
@@ -1310,7 +1311,7 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 
 private
 \ x3 = the lr, copied before FAULT-OPEN,'s calls replace x30.
-: GUARD-RECORD, ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: GUARD-RECORD, ( str str str str -- )
    {: c:^ cu:n p:^ pu:n r:^ ru:n h:^ hu:n :}
    3 30 0 ADDI,
    c cu  p pu r ru FAULT-RECORD:GUARD-MSG$  FAULT-OPEN,
@@ -1326,7 +1327,7 @@ public
 \ may reference. Each takes the code and the primitive's name and prints a
 \ record naming the primitive, its note `in` the word whose code holds the
 \ lr, so it runs before the body's first BL. Clobbers x9.
-: B-TASK-GUARD ( ^u8 n ^u8 n -- )
+: B-TASK-GUARD ( str str -- )
    {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
@@ -1335,7 +1336,7 @@ public
    ok LBL, ;
 
 private
-: B-LOWER-GUARD ( ^u8 n ^u8 n -- )
+: B-LOWER-GUARD ( str str -- )
    {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
@@ -2164,7 +2165,7 @@ $58 constant CBT-LR                     \ C's x30
 \ A callback rejection at the label, sp at the thunk's frame: its record with
 \ the slot and C's lr, which no word owns, then exit EXIT-STATUS:CALLBACK.
 \ FAULT-OPEN, moves sp and the record writes no x3 or x4, so both are read first.
-: CBT-DIE, ( ^u8 n ^u8 n label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
+: CBT-DIE, ( str str label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
    at LBL,
    3 SP CBT-SLOT LDR,  4 SP CBT-LR LDR,
    s" E-CALLBACK" msg mu FAULT-OPEN,
@@ -2421,7 +2422,7 @@ package LIBC-OS
 \ x16 = the address the loader bound to the named import, from x16 = this
 \ run's __text base. Read on every call: an image saves no libc address.
 \ Clobbers x15, x17.
-: SLOT-AT, ( ^u8 n -- ) {: name:^ u:n :}
+: SLOT-AT, ( str -- ) {: name:^ u:n :}
    15 CODE-OFF LIT64,  16 16 15 SUB,
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
    HB-TARGET-LINUX? if
@@ -2455,7 +2456,7 @@ package LIBC-OS
    loop ;
 
 \ Clobbers x0-x2, x9 and the system call's registers.
-: ERR-TEXT, ( ^u8 n -- )
+: ERR-TEXT, ( str -- )
    {: a:^ u:n :}
    u 15 + -16 and {: frame:n :}
    SP SP frame SUBI,
@@ -3738,7 +3739,7 @@ private
 \ it loads the design; once POLICY-NDICT-CELL is set either prim writes the
 \ sealed record and exits EXIT-STATUS:POLICY, so nothing the design can reach
 \ widens its own vocabulary.
-: POLICY-BOUND$ ( -- ^u8 n ) s" E-POLICY habu: policy: package wid above the bound" ;
+: POLICY-BOUND$ ( -- str ) s" E-POLICY habu: policy: package wid above the bound" ;
 
 \ x3 = the caller's lr, read from FPRIM's frame.
 : POLICY-LR, ( -- )  3 SP 0 LDR, ;

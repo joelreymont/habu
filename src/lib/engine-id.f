@@ -1,3 +1,4 @@
+split-str
 \ engine-id.f - the running program's path, OWN-PATH, as the kernel reports
 \ it, and the running engine's stamp, KEY$. KEY$ is decimal
 \ `<ctime seconds>.<nanoseconds>-<size>`, read by fstat from a descriptor bound
@@ -128,7 +129,7 @@ private
 
 public
 
-: KEY$ ( -- ^u8 n )
+: KEY$ ( -- str )
    EID-KEY-DONE @ 0= if
       OPEN-RUNNING {: fd:n :}
       fd 0 < if E-ENGINE-KEY throw then

@@ -1,3 +1,4 @@
+split-str
 \ hb-build.f - `hb-build --target wasm` run by its command line, each module it
 \ writes validated by wasm-tools and run by bun (test/wasm/harness.f). A program
 \ whose build status, output or trap is under test has its own build process; the
@@ -68,10 +69,10 @@ variable MOD-U
 
 \ `hb-build --engine --target wasm`, and `--repl --target wasm` of the source,
 \ each writing to the name and answering its exit status.
-: BUILD-ENGINE ( ^u8 n -- n )
+: BUILD-ENGINE ( str -- n )
    START  s" --engine" ARG+  WASM+  MOD+  DRIVER ;
 
-: BUILD-REPL ( ^u8 n -- n )
+: BUILD-REPL ( str -- n )
    START  s" --repl" ARG+  WASM+  SRC+  MOD+  DRIVER ;
 
 : RAN ( -- n )
@@ -89,7 +90,7 @@ variable TEXT-U
    TEXT-U @ u + CAP > if E-STR-CAPACITY throw then
    a TEXT TEXT-U @ + u BYTE-COPY  u TEXT-U +! ;
 
-: REQUIRE+ ( ^u8 n -- )
+: REQUIRE+ ( str -- )
    {: name:^ nu:n :}
    s" require " TEXT+  DIR DIR-U @ TEXT+  s" /" TEXT+  name nu TEXT+  S\" \n" TEXT+ ;
 
@@ -101,14 +102,14 @@ variable TEXT-U
    RAN 0 T=
    WASM-HARNESS:OUT$ s" 5" T$= ;
 
-: EMITS! ( n ^u8 n -- )
+: EMITS! ( n str -- )
    {: reps:n name:^ nu:n :}
    SB-RESET
    s" : MAIN ( -- ) " SB-APPEND  reps FMT:SB-U  s"  0 do 120 emit loop ;" SB-APPEND
    SB$ name nu SOURCE! ;
 
 \ Every byte of the span is EMITS!'s x, 120.
-: ALL-X? ( ^u8 n -- bool )
+: ALL-X? ( str -- bool )
    {: a:^ u:n :}
    u 0 ?do  a i + c@ 120 <> if false unloop exit then  loop
    true ;
@@ -147,7 +148,7 @@ variable TEXT-U
 
 
 \ Package K at the name, its first test comparing 5 FACT with want.
-: K! ( n ^u8 n -- )
+: K! ( n str -- )
    {: want:n name:^ nu:n :}
    SB-RESET
    S\" package K\nprivate\nvariable SEED\n9 SEED !\n" SB-APPEND
@@ -251,7 +252,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ What F!'s MAIN prints on the host: the square root of -4 is a NaN, which
 \ truncates to 0 and equals nothing; 1e30 and -1e30 truncate to MAX-N and MIN-N.
-: F-HOST$ ( -- ^u8 n )
+: F-HOST$ ( -- str )
    SB-RESET
    S\" 3.750000\n-0.750000\n3.375000\n6.000000\n1.414213\n0\n0\n2.500000\n2.500000\n" SB-APPEND
    S\" -1\n0\n-1\n0\n-1\n0\n0\n0\n-1\n-1\n-1\n0\n" SB-APPEND
@@ -279,7 +280,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\" : MAIN ( -- ) STEP3 . DOWN . NONE . OUTER . 7 PEEK . QUIT5 . UNTIL3 . AGAIN4 . ;\n" SB-APPEND
    SB$ s" loops.f" SOURCE! ;
 
-: LOOPS-HOST$ ( -- ^u8 n )  S\" 18\n15\n0\n12\n14\n5\n3\n4\n" ;
+: LOOPS-HOST$ ( -- str )  S\" 18\n15\n0\n12\n14\n5\n3\n4\n" ;
 
 : LOOP-CASE ( -- )
    LOOPS!
@@ -301,7 +302,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\"    200 0 do 97 AS i + c! loop  AS 200 SHOW ;\n" SB-APPEND
    SB$ s" sha.f" SOURCE! ;
 
-: SHA-HOST$ ( -- ^u8 n )
+: SHA-HOST$ ( -- str )
    SB-RESET
    S\" ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n" SB-APPEND
    S\" 248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1\n" SB-APPEND
@@ -330,7 +331,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\"    1 ODD ROOT BITS . ;\n;package\n: MAIN ( -- ) N:MAIN ;\n" SB-APPEND
    SB$ s" nan.f" SOURCE! ;
 
-: NAN-HOST$ ( -- ^u8 n )
+: NAN-HOST$ ( -- str )
    SB-RESET
    S\" 9221120237041090560\n9221120237041090561\n9221120237041090562\n" SB-APPEND
    S\" 9221120237041090561\n9221120237041090561\n" SB-APPEND
@@ -414,7 +415,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    WASM-HARNESS:OUT$ s" " T$= ;
 
 
-: ERR-HAS ( ^u8 n -- )
+: ERR-HAS ( str -- )
    {: a:^ u:n :}
    ERR ERR-U @ a u CONTAINS? TTRUE ;
 
@@ -698,7 +699,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 variable POS                         \ the byte offset in MODULE read next
 DYNAMIC-BUFFER MODULE u8
 
-: ACCESS! ( n bool ^u8 n -- )
+: ACCESS! ( n bool str -- )
    {: a:n cell:bool name:^ nu:n :}
    SB-RESET
    S\" package WASM-MEMORY\nprivate\nCAST: >CELL ( n -- ^n )\n" SB-APPEND
@@ -712,7 +713,7 @@ DYNAMIC-BUFFER MODULE u8
    BUILD 0 T=
    RAN ;
 
-: U32> ( ^u8 n -- n )
+: U32> ( str -- n )
    {: m:^ u:n :}
    m POS @ +  u POS @ -  WLEB:U32@ POS +! ;
 

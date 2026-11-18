@@ -1,3 +1,4 @@
+split-str
 \ shadow-kinds-fixture.f - one definition of each kind, read by
 \ test/compiler/shadow-kinds.f through the typed interpret loop at tier 0 while
 \ an arm64 shadow is open. Each `\ ==` line starts a section the driver reads
@@ -53,7 +54,7 @@ package KINDS-FIXTURE
 
 \ == colon word with an s" literal
 package KINDS-FIXTURE
-: KD-TEXT ( -- ^u8 n ) s" kinds" ;
+: KD-TEXT ( -- str ) s" kinds" ;
 ;package
 
 \ == colon word with a quotation

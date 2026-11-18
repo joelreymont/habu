@@ -1,3 +1,4 @@
+split-str
 \ gate-stdlib-lib.f - adapter from the native suite registry to bin/hb.
 
 require src/core/exit-status.f
@@ -30,10 +31,10 @@ package STDLIB-GATE
 
 \ The spawn path is relative, as the gate runs in the checkout; the variable is
 \ absolute: ENGINE-CANDIDATE:PATH$ joins a relative one to its reader's own CWD.
-: PRODUCT-SPAWN$ ( -- ^u8 n )
+: PRODUCT-SPAWN$ ( -- str )
    s" bin/hb" ;
 
-: PRODUCT-ENGINE$ ( -- ^u8 n )
+: PRODUCT-ENGINE$ ( -- str )
    PROCESS:OWN-PATH ;
 
 \ HABU_UNDER_TEST (read first by src/lib/engine-candidate.f) names the product engine to an
@@ -50,14 +51,14 @@ package STDLIB-GATE
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+ ;
 
-: ROW-ARG+ ( ^u8 n -- )
+: ROW-ARG+ ( str -- )
    >LEN PROC-ARGV+ ;
 
-: SUITE-HB-RUN ( ^u8 n -- ) {: label:^ labelu:n :}
+: SUITE-HB-RUN ( str -- ) {: label:^ labelu:n :}
    SUITE-ENV
    PRODUCT-SPAWN$ label labelu GT-POOL-START ;
 
-: SUITE-HB-RUN-STDIN ( ^u8 n ^u8 n -- ) {: in:^ inu:n label:^ labelu:n :}
+: SUITE-HB-RUN-STDIN ( str str -- ) {: in:^ inu:n label:^ labelu:n :}
    SUITE-ENV
    PRODUCT-SPAWN$ label labelu in inu GT-POOL-START-STDIN ;
 

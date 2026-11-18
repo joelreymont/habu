@@ -1,3 +1,4 @@
+split-str
 \ Stored source and decoded views keep their independent owner dependencies.
 \ A nested cursor scope closes before an element getter reads both fields.
 require src/lib/test.f

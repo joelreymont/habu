@@ -1,3 +1,4 @@
+split-str
 \ map-test.f - map operations, removal, ownership, capacity and corrupt-state
 \ refusals.
 \ Run: bin/hb --load src/lib/map-test.f
@@ -105,7 +106,7 @@ create MT-KEY-Z 122 c,
 : MT-MAP-INIT ( ^a n -- ) {: m:^ cap :}
    m cap >COUNT INIT ;
 
-: MT-MAP-HASH ( ^a ^u8 n -- n ) {: m:^ a:^ u :}
+: MT-MAP-HASH ( ^a str -- n ) {: m:^ a:^ u :}
    m a u >LEN HASH ;
 
 : MT-MAP-INDEX ( n n -- n ) {: hash cap :}
@@ -114,7 +115,7 @@ create MT-KEY-Z 122 c,
 : MT-MAP-PROBE ( n n n -- n ) {: hash step cap :}
    hash step >COUNT cap >COUNT PROBE IDX>N ;
 
-: MT-MAP-LOCATE ( ^a n ^u8 n -- loc n ) {: m:^ cap:n key:^ len:n :}
+: MT-MAP-LOCATE ( ^a n str -- loc n ) {: m:^ cap:n key:^ len:n :}
    m cap >COUNT key len >LEN LOCATE ;
 
 : MT-LOC-KIND ( loc -- n )                           \ 0 full, 1 free, 2 found
@@ -131,19 +132,19 @@ create MT-KEY-Z 122 c,
      found OF IDX>N ENDOF
    ;MATCH ;
 
-: MT-MAP-GET ( ^n n ^u8 n -- option<n> ) {: m:^ cap:n key:^ len:n :}
+: MT-MAP-GET ( ^n n str -- option<n> ) {: m:^ cap:n key:^ len:n :}
    m cap >COUNT key len >LEN GET ;
 
-: MT-MAP-HAS? ( ^n n ^u8 n -- bool ) {: m:^ cap key:^ len :}
+: MT-MAP-HAS? ( ^n n str -- bool ) {: m:^ cap key:^ len :}
    m cap >COUNT key len >LEN HAS? ;
 
-: MT-MAP-SET ( n ^n n ^u8 n -- ) {: value m:^ cap key:^ len :}
+: MT-MAP-SET ( n ^n n str -- ) {: value m:^ cap key:^ len :}
    value m cap >COUNT key len >LEN SET ;
 
 : MT-MAP-EACH ( ^n n [ ^u8 len n -- ] -- ) {: m:^ cap q :}
    m cap >COUNT q EACH ;
 
-: MT-MAP-REMOVE ( ^n n ^u8 n -- bool ) {: m:^ cap key:^ len :}
+: MT-MAP-REMOVE ( ^n n str -- bool ) {: m:^ cap key:^ len :}
    m cap >COUNT key len >LEN REMOVE ;
 
 : MT-FILL-STORAGE ( -- )
@@ -278,14 +279,14 @@ create MT-KEY-Z 122 c,
    loop
    0 0= 0= MT-ASSERT ;
 
-: MT-ASSERT-HIT ( ^n n ^u8 n n -- ) {: m:^ cap:n key:^ len:n want:n :}
+: MT-ASSERT-HIT ( ^n n str n -- ) {: m:^ cap:n key:^ len:n want:n :}
    m cap key len MT-MAP-HAS? MT-ASSERT
    m cap key len MT-MAP-GET MATCH option
      none OF 0 0= 0= MT-ASSERT ENDOF
      some OF want MT= ENDOF
    ;MATCH ;
 
-: MT-ASSERT-MISS ( ^n n ^u8 n -- ) {: m:^ cap:n key:^ len:n :}
+: MT-ASSERT-MISS ( ^n n str -- ) {: m:^ cap:n key:^ len:n :}
    m cap key len MT-MAP-HAS? 0= MT-ASSERT
    m cap key len MT-MAP-GET MATCH option
      none OF ENDOF

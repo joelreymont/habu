@@ -1,3 +1,4 @@
+split-str
 \ metadata.f - METADATA and the model's accessors; part of package ODATA
 \ (src/lib/odata.f), which states the contract. METADATA reads the document
 \ in one pass of phases; an element it does not read is skipped whole,
@@ -294,17 +295,17 @@ CAST: >TYPES ( ^u8 -- ^^entity-type )
 \ A record's address a map holds.
 CAST: >RECORD ( n -- ^t )
 
-: EDMX2$ ( -- ^u8 n ) s" http://schemas.microsoft.com/ado/2007/06/edmx" ;
-: EDMX4$ ( -- ^u8 n ) s" http://docs.oasis-open.org/odata/ns/edmx" ;
-: EDM4$ ( -- ^u8 n ) s" http://docs.oasis-open.org/odata/ns/edm" ;
+: EDMX2$ ( -- str ) s" http://schemas.microsoft.com/ado/2007/06/edmx" ;
+: EDMX4$ ( -- str ) s" http://docs.oasis-open.org/odata/ns/edmx" ;
+: EDM4$ ( -- str ) s" http://docs.oasis-open.org/odata/ns/edm" ;
 
-: EDM2? ( ^u8 n -- bool )
+: EDM2? ( str -- bool )
    {: uri:^ len:n :}
    uri len s" http://schemas.microsoft.com/ado/2008/09/edm" STR=
    uri len s" http://schemas.microsoft.com/ado/2007/05/edm" STR= or
    uri len s" http://schemas.microsoft.com/ado/2006/04/edm" STR= or ;
 
-: SPACE-OF ( ^u8 n -- space )
+: SPACE-OF ( str -- space )
    {: uri:^ len:n :}
    uri len EDMX2$ STR= if SPACE-EDMX2 exit then
    uri len EDMX4$ STR= if SPACE-EDMX4 exit then
@@ -348,7 +349,7 @@ CAST: >RECORD ( n -- ^t )
    {: text:^ len:n i:n :}
    text i text i + 1+ len i - 1- ;
 
-: HAS-SLASH? ( ^u8 n -- bool ) SLASH 0 >= ;
+: HAS-SLASH? ( str -- bool ) SLASH 0 >= ;
 
 \ CUT keeps the part of a name or value from the document a rejection shows:
 \ CUT-MAX bytes back to a character's first byte, and true for `...` after it.
@@ -397,7 +398,7 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ found:^ fl:n fix:^ xl:n :}
    d s" , found " ADD d found fl ADD d fix xl FIX ;
 
-: FOUND-QUOTED ( ^doc ^u8 n ^u8 n -- )
+: FOUND-QUOTED ( ^doc str str -- )
    {: d:^ found:^ fl:n fix:^ xl:n :}
    d s" , found " ADD d found fl QUOTE d fix xl FIX ;
 
@@ -405,14 +406,14 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ :}
    d d DOC-OFFSET @ PLACE ;
 
-: NONE$ ( -- ^u8 n ) s" none" ;
+: NONE$ ( -- str ) s" none" ;
 : SAME? ( ^t ^t -- bool ) NULL-PTR - swap NULL-PTR - = ;
-: SPAN= ( SPAN:span<u8> ^u8 n -- bool )
+: SPAN= ( SPAN:span<u8> str -- bool )
    {: s:SPAN:span<u8> t:^ tl:n :}
    s SPAN:$ t tl STR= ;
 
 \ Attributes. Each answer is a view of scratch, overwritten by the next.
-: FIND-ATTR ( XML:reader ^u8 n -- XML:reader bool )
+: FIND-ATTR ( XML:reader str -- XML:reader bool )
    {: name:^ len:n :}
    XML:ATTR-RESET
    begin XML:ATTR-NEXT while
@@ -420,17 +421,17 @@ CAST: >RECORD ( n -- ^t )
    repeat
    false ;
 
-: ATTR-TEXT$ ( XML:reader ^doc -- XML:reader ^u8 n )
+: ATTR-TEXT$ ( XML:reader ^doc -- XML:reader str )
    {: d:^ :}
    d DOC-SCRATCH @ d DOC-ROOM @ XML:ATTR-TEXT {: got:n :}
    d DOC-SCRATCH @ got ;
 
-: ATTR$ ( XML:reader ^doc ^u8 n -- XML:reader ^u8 n bool )
+: ATTR$ ( XML:reader ^doc str -- XML:reader str bool )
    {: d:^ name:^ len:n :}
    name len FIND-ATTR if d ATTR-TEXT$ true exit then
    d DOC-SCRATCH @ 0 false ;
 
-: NEED$ ( XML:reader ^doc ^u8 n -- XML:reader ^u8 n )
+: NEED$ ( XML:reader ^doc str -- XML:reader str )
    {: d:^ name:^ len:n :}
    d name len ATTR$ if exit then 2drop
    d PLACE-HERE XML:LOCAL$ {: el:^ el-len:n :}
@@ -452,7 +453,7 @@ CAST: >RECORD ( n -- ^t )
    d name len ATTR$ drop {: v:^ vl:n :} d v vl KEEP ;
 
 \ Whether the current start tag is NAME in the namespace SPACE.
-: IS? ( XML:reader ^doc space ^u8 n -- XML:reader bool )
+: IS? ( XML:reader ^doc space str -- XML:reader bool )
    {: d:^ sp:space name:^ len:n :}
    d DOC-SPACE @ sp SPACE-EQ 0= if false exit then
    XML:LOCAL$ name len STR= ;
@@ -502,7 +503,7 @@ CAST: >RECORD ( n -- ^t )
    buf d DOC-KEY !
    room d DOC-KEY-ROOM ! ;
 
-: KEY+ ( ^doc ^u8 n -- )
+: KEY+ ( ^doc str -- )
    {: d:^ src:^ len:n :}
    d len KEY-ROOM
    src d DOC-KEY @ d DOC-KEY-LEN @ + len BYTE-COPY
@@ -523,19 +524,19 @@ CAST: >RECORD ( n -- ^t )
    k KIND-TAG d DOC-KEY @ c!
    1 d DOC-KEY-LEN ! ;
 
-: KEY$ ( ^doc -- ^u8 n ) dup DOC-KEY @ swap DOC-KEY-LEN @ ;
+: KEY$ ( ^doc -- str ) dup DOC-KEY @ swap DOC-KEY-LEN @ ;
 
 \ A name in a namespace.
-: QUALIFIED-KEY ( ^doc kind ^u8 n ^u8 n -- )
+: QUALIFIED-KEY ( ^doc kind str str -- )
    {: d:^ k:kind ns:^ nl:n name:^ len:n :}
    d k KEY-NEW d nl KEY-CELL+ d ns nl KEY+ d name len KEY+ ;
 
 \ A name of the record at an address.
-: OWNED-KEY ( ^doc kind ^t ^u8 n -- )
+: OWNED-KEY ( ^doc kind ^t str -- )
    {: d:^ k:kind at:^ name:^ len:n :}
    d k KEY-NEW d at KEY-AT+ d name len KEY+ ;
 
-: NAME-KEY ( ^doc kind ^u8 n -- )
+: NAME-KEY ( ^doc kind str -- )
    {: d:^ k:kind name:^ len:n :}
    d k KEY-NEW d name len KEY+ ;
 
@@ -605,17 +606,17 @@ CAST: >RECORD ( n -- ^t )
    a ALIAS-NAMESPACE @ SPAN:$ ;
 
 \ A qualified name, its qualifier an alias or a namespace, as a key of K.
-: REFERENCE-KEY ( ^doc kind ^u8 n -- )
+: REFERENCE-KEY ( ^doc kind str -- )
    {: d:^ k:kind name:^ len:n :}
    name len QUALIFIER {: q:^ ql:n tail:^ tl:n :}
    d q ql ALIAS {: ns:^ nl:n :}
    d k ns nl tail tl QUALIFIED-KEY ;
 
-: FIND-TYPE ( ^doc ^u8 n -- ^entity-type )
+: FIND-TYPE ( ^doc str -- ^entity-type )
    {: d:^ name:^ len:n :}
    d KIND-TYPE-NAME name len REFERENCE-KEY d FIND ;
 
-: FIND-ASSOCIATION ( ^doc ^u8 n -- ^association )
+: FIND-ASSOCIATION ( ^doc str -- ^association )
    {: d:^ name:^ len:n :}
    d KIND-ASSOCIATION-NAME name len REFERENCE-KEY d FIND ;
 
@@ -623,15 +624,15 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ a:^ role:SPAN:span<u8> :}
    d KIND-END-ROLE a role SPAN:$ OWNED-KEY d FIND ;
 
-: FIND-SET ( ^doc ^u8 n -- ^entity-set )
+: FIND-SET ( ^doc str -- ^entity-set )
    {: d:^ name:^ len:n :}
    d KIND-SET-NAME name len NAME-KEY d FIND ;
 
-: MEMBER? ( ^doc ^u8 n -- bool )
+: MEMBER? ( ^doc str -- bool )
    {: d:^ name:^ len:n :}
    d KIND-MEMBER-NAME name len NAME-KEY d HELD? ;
 
-: SINGLETON? ( ^doc ^u8 n -- bool )
+: SINGLETON? ( ^doc str -- bool )
    {: d:^ name:^ len:n :}
    d KIND-SINGLETON-NAME name len NAME-KEY d HELD? ;
 
@@ -653,7 +654,7 @@ CAST: >RECORD ( n -- ^t )
    repeat drop ;
 
 \ T's or a base type's member NAME, null for none.
-: FIND-PROPERTY ( ^entity-type ^u8 n -- ^property )
+: FIND-PROPERTY ( ^entity-type str -- ^property )
    {: t:^ name:^ len:n :}
    t ENTITY-TYPE-MODEL @ name len INDEXED {: x:^named :}
    x NULL-PTR = if NULL-PTR exit then
@@ -668,7 +669,7 @@ CAST: >RECORD ( n -- ^t )
    then
    p ;
 
-: FIND-NAVIGATION ( ^entity-type ^u8 n -- ^navigation )
+: FIND-NAVIGATION ( ^entity-type str -- ^navigation )
    {: t:^ name:^ len:n :}
    t ENTITY-TYPE-MODEL @ name len INDEXED {: x:^named :}
    x NULL-PTR = if NULL-PTR exit then
@@ -685,13 +686,13 @@ CAST: >RECORD ( n -- ^t )
 
 \ Annotations: a V2 attribute outside the CSDL, XML and xmlns namespaces, or
 \ a V4 Annotation whose value is one constant or path attribute.
-: XMLNS? ( ^u8 n -- bool )
+: XMLNS? ( str -- bool )
    {: name:^ len:n :}
    name len s" xmlns" STR=
    name len s" xmlns:" STARTS-WITH? or
    name len s" xml:" STARTS-WITH? or ;
 
-: PREFIXED? ( ^u8 n -- bool )
+: PREFIXED? ( str -- bool )
    {: name:^ len:n :}
    len 0 ?do name i + c@ [char] : = if true unloop exit then loop
    false ;
@@ -706,7 +707,7 @@ CAST: >RECORD ( n -- ^t )
    list @ a ANNOTATION-NEXT !
    a list ! ;
 
-: FOREIGN? ( ^u8 n -- bool )
+: FOREIGN? ( str -- bool )
    SPACE-OF {: sp:space :}
    sp SPACE-OTHER SPACE-EQ ;
 
@@ -731,7 +732,7 @@ CAST: >RECORD ( n -- ^t )
       d list ATTR-ANNOTATION
    repeat ;
 
-: VALUE-NAME? ( ^u8 n -- bool )
+: VALUE-NAME? ( str -- bool )
    {: name:^ len:n :}
    name len s" String" STR= name len s" Bool" STR= or
    name len s" Int" STR= or name len s" Decimal" STR= or
@@ -770,7 +771,7 @@ CAST: >RECORD ( n -- ^t )
    d SKIP-START ;
 
 \ The document's root fixes the version.
-: VERSION-OK? ( ^doc ^u8 n -- bool )
+: VERSION-OK? ( ^doc str -- bool )
    {: d:^ v:^ vl:n :}
    d V2? if v vl s" 1.0" STR= exit then
    v vl s" 4.0" STR= v vl s" 4.01" STR= or ;
@@ -790,17 +791,17 @@ CAST: >RECORD ( n -- ^t )
    then
    d PHASE-EDMX ENTER ;
 
-: URI$ ( ^doc -- ^u8 n ) dup DOC-SCRATCH @ swap DOC-URI-LEN @ ;
+: URI$ ( ^doc -- str ) dup DOC-SCRATCH @ swap DOC-URI-LEN @ ;
 
 \ A namespace URI in backticks, whole, as CUT would make V2's and V3's
 \ the same; or no namespace.
-: NAMESPACE+ ( ^doc ^u8 n -- )
+: NAMESPACE+ ( ^doc str -- )
    {: d:^ uri:^ ul:n :}
    ul 0= if d s" no namespace" ADD exit then
    d s" `" ADD d uri ul ADD d s" `" ADD ;
 
 \ The element's namespace as found.
-: NAMESPACE-FOUND ( ^doc ^u8 n ^u8 n -- )
+: NAMESPACE-FOUND ( ^doc str str -- )
    {: d:^ uri:^ ul:n fix:^ xl:n :}
    d s" , found " ADD d uri ul NAMESPACE+ d fix xl FIX ;
 
@@ -861,7 +862,7 @@ CAST: >RECORD ( n -- ^t )
    d d URI$ s" put the `Schema` in that namespace" NAMESPACE-FOUND ;
 
 \ Duplicate names are rejected where the second is read.
-: NOT-NEW ( ^doc ^u8 n SPAN:span<u8> -- )
+: NOT-NEW ( ^doc str SPAN:span<u8> -- )
    {: d:^ el:^ el-len:n name:SPAN:span<u8> :}
    d s" `" ADD d el el-len ADD d s" ` to have a name not declared before" ADD
    d name SPAN:$ s" rename or remove it" FOUND-QUOTED ;
@@ -1025,7 +1026,7 @@ CAST: >RECORD ( n -- ^t )
    d v vl s" set `Multiplicity` to 1, 0..1 or *" FOUND-QUOTED ;
 
 \ The two `End` elements of EL NAME share ROLE.
-: ROLE-TWICE ( ^doc ^u8 n SPAN:span<u8> SPAN:span<u8> -- )
+: ROLE-TWICE ( ^doc str SPAN:span<u8> SPAN:span<u8> -- )
    {: d:^ el:^ el-len:n name:SPAN:span<u8> role:SPAN:span<u8> :}
    d s" the two `End` elements of `" ADD d el el-len ADD d s" ` " ADD
    d name QUOTE-SPAN d s"  to have different roles" ADD
@@ -1245,7 +1246,7 @@ CAST: >RECORD ( n -- ^t )
 
 \ RESOLVE: every name the document gives resolves to its record, or the
 \ document is rejected at the element that holds the name.
-: TYPE-ELEMENT$ ( ^entity-type -- ^u8 n )
+: TYPE-ELEMENT$ ( ^entity-type -- str )
    ENTITY-TYPE-COMPLEX @ if s" ComplexType" exit then s" EntityType" ;
 
 \ Opens the text at the type T with its `BaseType`.
@@ -1266,7 +1267,7 @@ CAST: >RECORD ( n -- ^t )
    then
    t ENTITY-TYPE-BASE ! ;
 
-: REDECLARED ( ^doc n SPAN:span<u8> ^u8 n -- )
+: REDECLARED ( ^doc n SPAN:span<u8> str -- )
    {: d:^ at:n name:SPAN:span<u8> el:^ el-len:n :}
    d at PLACE d el el-len name NOT-NEW ;
 
@@ -1493,7 +1494,7 @@ CAST: >RECORD ( n -- ^t )
 
 \ The found and fix of NAME where an entity type is expected, T what it
 \ resolves to.
-: ENTITY-FOUND ( ^doc ^entity-type ^u8 n -- )
+: ENTITY-FOUND ( ^doc ^entity-type str -- )
    {: d:^ t:^ name:^ len:n :}
    t NULL-PTR = if
       d name len
@@ -1564,7 +1565,7 @@ CAST: >RECORD ( n -- ^t )
    repeat drop ;
 
 \ Opens the text with ATTR of the navigation property N.
-: NAVIGATION-PLACE ( ^doc ^navigation ^u8 n -- )
+: NAVIGATION-PLACE ( ^doc ^navigation str -- )
    {: d:^ n:^ attr:^ al:n :}
    d n NAVIGATION-OFFSET @ PLACE
    d s" `" ADD d attr al ADD d s" ` of `NavigationProperty` " ADD
@@ -1766,7 +1767,7 @@ CAST: >RECORD ( n -- ^t )
 
 \ A binding Target is a set or singleton, alone or after the container's name;
 \ a containment path (a slash and navigations after it) leads to no set.
-: CONTAINER-PATH? ( ^doc ^u8 n -- bool )
+: CONTAINER-PATH? ( ^doc str -- bool )
    {: d:^ p:^ pl:n :}
    p pl d DOC-CONTAINER @ SPAN:$ STR= if true exit then
    p pl QUALIFIER {: q:^ ql:n tail:^ tl:n :}
@@ -2130,7 +2131,7 @@ public
    code 0<> if code throw then
    d DOC-MODEL @ ;
 
-: ENTITY-SET ( ^metadata ^u8 n -- nullable<entity-set> )
+: ENTITY-SET ( ^metadata str -- nullable<entity-set> )
    INDEXED {: x:^named :}
    x NULL-PTR = if NULLABLE:NONE exit then
    x NAMED-SET @ NULLABLE:SOME ;
@@ -2141,7 +2142,7 @@ public
       dup q execute ENTITY-SET-NEXT @
    repeat drop ;
 
-: ENTITY-SET-NAME$ ( ^entity-set -- ^u8 n ) ENTITY-SET-NAME @ SPAN:$ ;
+: ENTITY-SET-NAME$ ( ^entity-set -- str ) ENTITY-SET-NAME @ SPAN:$ ;
 
 : ENTITY-TYPE ( ^entity-set -- ^entity-type ) ENTITY-SET-TYPE @ ;
 
@@ -2155,14 +2156,14 @@ public
       dup KEY-REF-PROPERTY @ q execute KEY-REF-NEXT @
    repeat drop ;
 
-: PROPERTY-NAME$ ( ^property -- ^u8 n ) PROPERTY-NAME @ SPAN:$ ;
-: PROPERTY-TYPE$ ( ^property -- ^u8 n ) PROPERTY-TYPE @ SPAN:$ ;
+: PROPERTY-NAME$ ( ^property -- str ) PROPERTY-NAME @ SPAN:$ ;
+: PROPERTY-TYPE$ ( ^property -- str ) PROPERTY-TYPE @ SPAN:$ ;
 : NULLABLE? ( ^property -- bool ) PROPERTY-NULLABLE @ ;
 
 \ The base type's navigation properties first, then the type's own.
 : EACH-NAVIGATION ( ^entity-type [ ^navigation -- ] -- ) NAVIGATIONS-OF ;
 
-: NAVIGATION-NAME$ ( ^navigation -- ^u8 n ) NAVIGATION-NAME @ SPAN:$ ;
+: NAVIGATION-NAME$ ( ^navigation -- str ) NAVIGATION-NAME @ SPAN:$ ;
 : TO-MANY? ( ^navigation -- bool ) NAVIGATION-MANY @ ;
 
 \ The set the navigation leads to from SET; none when SET's type lacks it or no
@@ -2175,11 +2176,11 @@ public
 
 \ The text of the type's annotation of the term NAMESPACE, NAME, and whether
 \ it has one.
-: TYPE-ANNOTATION$ ( ^entity-type ^u8 n ^u8 n -- ^u8 n bool )
+: TYPE-ANNOTATION$ ( ^entity-type str str -- str bool )
    {: t:^ ns:^ nl:n name:^ len:n :}
    t ENTITY-TYPE-ANNOTATIONS @ ns nl name len ANNOTATION ;
 
-: PROPERTY-ANNOTATION$ ( ^property ^u8 n ^u8 n -- ^u8 n bool )
+: PROPERTY-ANNOTATION$ ( ^property str str -- str bool )
    {: p:^ ns:^ nl:n name:^ len:n :}
    p PROPERTY-ANNOTATIONS @ ns nl name len ANNOTATION ;
 

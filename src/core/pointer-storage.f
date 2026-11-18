@@ -1,3 +1,4 @@
+split-str
 \ pointer-storage.f - scratch storage and the global cells that hold an address.
 
 \ Reserves n bytes at a cell-aligned `here`, rounded up to cells, as scratch

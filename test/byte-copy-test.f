@@ -1,3 +1,4 @@
+split-str
 require src/lib/test.f
 
 package BYTE-COPY-TEST

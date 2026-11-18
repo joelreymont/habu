@@ -1,3 +1,4 @@
+split-str
 \ mapped-test.f - the mapped-span witness must answer both ways.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \ src/lib/test/mapped.f src/lib/test/mapped-test.f

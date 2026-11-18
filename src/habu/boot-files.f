@@ -1,3 +1,4 @@
+split-str
 \ boot-files.f - the files every engine loads at startup below the checker, in
 \ load order. A build walks this one list for the provide rows and the loads,
 \ each phase projecting the rows of its parts.
@@ -137,7 +138,7 @@ here ROWS - constant ROWS-LEN
 : KIND@ ( n -- n ) ROWS + 1 cells + @ ;
 
 
-: PATH@ ( n -- ^u8 n )
+: PATH@ ( n -- str )
    {: off:n :}
    ROWS off + 3 cells +  ROWS off + 2 cells + @ ;
 

@@ -1,3 +1,4 @@
+split-str
 \ zip-lifecycle-test.f - an archive's snapshot goes with CLOSE, a host fault
 \ during CLOSE keeps the host's code and still retires the archive, and a halt
 \ during disposal takes effect after the archive's node is freed.
@@ -31,7 +32,7 @@ TASK:MIN-STACK TASK:TASK ZIP-CLOSER
 TASK:SEMAPHORE LOCK-RELEASE
 
 
-: INPUT$ ( -- ^u8 n )
+: INPUT$ ( -- str )
    BASE BASE-LEN @ s" input.zip" PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 
 

@@ -1,3 +1,4 @@
+split-str
 \ process-pty-handle.f - linear PTY target authority registry.
 \
 \ STORAGE CLASS. PROCESS-WIDE: one table of SLOT-CAP target slots for the

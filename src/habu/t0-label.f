@@ -1,3 +1,4 @@
+split-str
 \ t0-label.f - the control labels of the tier 0 compiler, part LABEL of
 \ package COMP.
 \

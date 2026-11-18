@@ -1,3 +1,4 @@
+split-str
 \ curl.f - HTTPS client over libcurl's easy interface: one request and one
 \ response, with no retry policy, authentication, payload format or URL
 \ construction; TLS, redirects, proxies and the CA bundle are libcurl's. Every
@@ -293,19 +294,19 @@ CAST: >BYTES ( n -- ^u8 )
    subject HANDLE-CELL option value SETOPT-NUM ;
 
 
-: TEXT-SETOPT ( n n ^u8 n SPAN:span<u8> -- n )
+: TEXT-SETOPT ( n n str SPAN:span<u8> -- n )
    {: easy:n option:n text u:n copy :}
    easy option text u copy FFI:CSTR FFI:>CELL SETOPT-NUM
    copy TEXT-WIPE ;
 
 
-: SET-TEXT-RAW ( handle n ^u8 n -- n )
+: SET-TEXT-RAW ( handle n str -- n )
    {: subject:handle option:n text u:n :}
    subject HANDLE-CELL option text u u TEXT-ROOM
    [: MEM:ALLOCATION>SPAN TEXT-SETOPT ;] MEM:WITH-BYTES ;
 
 
-: SET-TEXT ( handle n ^u8 n -- status )
+: SET-TEXT ( handle n str -- status )
    SET-TEXT-RAW CODE>STATUS ;
 
 
@@ -371,13 +372,13 @@ CAST: >BYTES ( n -- ^u8 )
 
 
 \ curl_slist_append duplicates the line into the node it adds.
-: TEXT-APPEND ( n ^u8 n SPAN:span<u8> -- n )
+: TEXT-APPEND ( n str SPAN:span<u8> -- n )
    {: old:n text u:n copy :}
    old text u copy FFI:CSTR FFI:>CELL SLIST-APPEND
    copy TEXT-WIPE ;
 
 
-: HEADER-APPEND ( n ^u8 n -- status )
+: HEADER-APPEND ( n str -- status )
    {: easy:n text u:n :}
    easy STATE-GET {: state:n :}
    state STATE-LIST@ {: old:n :}
@@ -389,7 +390,7 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ libcurl sends a header line as it is: a CR or LF inside it would end the line
 \ early and send the rest as a line of its own.
-: ONE-LINE ( ^u8 n -- )
+: ONE-LINE ( str -- )
    {: text u:n :}
    u 0 ?do
       text i + c@ dup $0D = swap $0A = or if E-OPERAND throw then
@@ -466,7 +467,7 @@ CAST: >BYTES ( n -- ^u8 )
    true ;
 
 
-: BODY-COPY ( ^u8 n n -- ) {: target source:n u:n :}
+: BODY-COPY ( str n -- ) {: target source:n u:n :}
    u 0= if exit then
    source 0= if E-RESULT throw then
    target source u COPY-OUT drop ;
@@ -534,13 +535,13 @@ public
    easy >HANDLE CURL-INIT--RESULT:READY ;
 
 
-: URL! ( handle ^u8 n -- status ) {: subject:handle text u:n :}
+: URL! ( handle str -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
    subject OPT-URL text u SET-TEXT ;
 
 
 \ An empty proxy disables proxies, including those named by the environment.
-: PROXY! ( handle ^u8 n -- status )
+: PROXY! ( handle str -- status )
    {: subject:handle text u:n :}
    subject OPT-PROXY text u SET-TEXT ;
 
@@ -563,7 +564,7 @@ public
    subject OPT-METHOD 0 SET-NUM-RAW CODE>STATUS ;
 
 
-: HEADER+ ( handle ^u8 n -- status ) {: subject:handle text u:n :}
+: HEADER+ ( handle str -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
    text u ONE-LINE
    subject HANDLE-CELL text u HEADER-APPEND ;
@@ -571,7 +572,7 @@ public
 
 \ The span is borrowed for this call: libcurl copies the body out of it, and its
 \ declared length is set first because the copy reads that length.
-: BODY! ( handle ^u8 n -- status ) {: subject:handle bytes u:n :}
+: BODY! ( handle str -- status ) {: subject:handle bytes u:n :}
    u 0 AT-LEAST
    subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
    subject HANDLE-CELL OPT-COPY-BODY bytes SETOPT-SPAN CODE>STATUS ;
@@ -579,12 +580,12 @@ public
 
 \ Cookies read at request time. An empty path starts the cookie engine with no
 \ stored cookies, which is libcurl's own spelling for "keep session cookies".
-: COOKIE-FILE! ( handle ^u8 n -- status ) {: subject:handle path u:n :}
+: COOKIE-FILE! ( handle str -- status ) {: subject:handle path u:n :}
    subject OPT-COOKIE-FILE path u SET-TEXT ;
 
 
 \ Cookies written back when the handle is cleaned up.
-: COOKIE-JAR! ( handle ^u8 n -- status ) {: subject:handle path u:n :}
+: COOKIE-JAR! ( handle str -- status ) {: subject:handle path u:n :}
    u 1 AT-LEAST
    subject OPT-COOKIE-JAR path u SET-TEXT ;
 
@@ -621,7 +622,7 @@ public
 
 \ libcurl's static text for the code, never freed and valid for the process;
 \ "Unknown error" for a code libcurl does not know.
-: ERROR$ ( code -- ^u8 n )
+: ERROR$ ( code -- str )
    CODE>N EASY-STRERROR dup ZLEN ;
 
 
@@ -814,7 +815,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 : REC-OWNER@ ( n -- ^n ) REC R.OWNER OWNER-SLOT @ ;
 
 
-: REC-TARGET! ( ^u8 n -- ) {: target idx:n :}
+: REC-TARGET! ( str -- ) {: target idx:n :}
    target idx REC R.TARGET TARGET-SLOT ! ;
 
 
@@ -1055,7 +1056,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 \ Task-local scratch. True when the last status line's block reaches a line led
 \ by CR or LF, as libcurl ends one; LEN-CELL holds its start, HBUF-CELL its end.
-: FINAL-BLOCK? ( ^u8 n -- bool ) {: source u:n :}
+: FINAL-BLOCK? ( str -- bool ) {: source u:n :}
    0 BUF-CELL LE:U64!
    0 LEN-CELL LE:U64!
    0 HBUF-CELL LE:U64!
@@ -1079,7 +1080,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 \ Only a capture FINAL-BLOCK? accepts is published, so a peer's bytes never
 \ reach this E-RESULT.
-: FINAL-BLOCK ( ^u8 n -- n n )
+: FINAL-BLOCK ( str -- n n )
    FINAL-BLOCK? 0= if E-RESULT throw then
    LEN-CELL LE:U64@ HBUF-CELL LE:U64@ ;
 
@@ -1659,7 +1660,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    STATE-CANCEL idx REC-STATE! ;
 
 
-: LOOP-LINE ( ^u8 n -- )
+: LOOP-LINE ( str -- )
    LOG:ERROR s" curl" LOG:LINE LOG:TEXT+ ;
 
 

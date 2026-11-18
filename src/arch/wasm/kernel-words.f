@@ -1,3 +1,4 @@
+split-str
 \ kernel-words.f - WKWORDS, kernel words a Wasm module calls, written in checked
 \ Habu over the module's routines (src/arch/wasm/link-routines.f); WKMAP
 \ (src/arch/wasm/kernel-map.f) names each by the kernel word it answers for. A

@@ -1,3 +1,4 @@
+split-str
 \ http.f - the HTTP/1.1 server: a listener task on an IPv4 address, a fixed pool
 \ of workers taking connections, and the calls SUBMIT queues, from one queue,
 \ one handler per request in a catch boundary (a throw answers 500 with the
@@ -980,7 +981,7 @@ variable EXIT-HOOK-N
 
 \ The step of BIND-LISTENER the OS refused, logged as
 \ `<step> <a.b.c.d>:<port> failed, errno <n>` before E-SOCKET.
-: REPORT-UNBOUND ( TCP4:errno n n ^u8 n -- )
+: REPORT-UNBOUND ( TCP4:errno n n str -- )
    {: cause:TCP4:errno address:n port:n step:^ stepn:n :}
    LOG:ERROR s" http" LOG:LINE
    step stepn LOG:TEXT+  s"  " LOG:TEXT+
@@ -1218,7 +1219,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    0 LINGER-SCRATCH LINGER-CAP SPAN:MAKE ;
 
 
-: REPLY-HEAD ( n ^u8 n n -- ) {: status:n type:^ type-n:n body-n:n :}
+: REPLY-HEAD ( n str n -- ) {: status:n type:^ type-n:n body-n:n :}
    SB-RESET
    s" HTTP/1.1 " SB-APPEND
    status FMT:SB-U
@@ -1239,7 +1240,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    REPLYING @ TCP4:>CONNECTION CLOSE-CONNECTION ;
 
 
-: SEND-REPLY ( n ^u8 n ^u8 n -- bool )
+: SEND-REPLY ( n str str -- bool )
    {: status:n type:^ type-n:n body:^ body-n:n :}
    status type type-n body-n REPLY-HEAD
    REPLYING @ TCP4:>CONNECTION {: conn:TCP4:connection :}
@@ -1307,14 +1308,14 @@ public
 \ throws there is reported on stderr under the request id, and the client gets
 \ the plain-text default with code error_hook and the status it was owed, so
 \ the worker answers and takes the next connection.
-: ON-ERROR ( [ response n ^u8 n ^u8 n -- ] -- ) {: q :}
+: ON-ERROR ( [ response n str str -- ] -- ) {: q :}
    HOOKS-OPEN
    q 0 ERROR-HOOK ! ;
 
 
 \ The Cache-Control value a static file is sent with, given its path. It
 \ replaces the default, `no-cache` for every file.
-: CACHE-RULE! ( [ ^u8 n -- ^u8 n ] -- ) {: q :}
+: CACHE-RULE! ( [ str -- str ] -- ) {: q :}
    HOOKS-OPEN
    q 0 CACHE-HOOK ! ;
 
@@ -1323,7 +1324,7 @@ public
 \ given that path; an empty answer is no fallback, which is the default. A
 \ single-page application answers its client routes with its one page this
 \ way.
-: FALLBACK-RULE! ( [ ^u8 n -- ^u8 n ] -- ) {: q :}
+: FALLBACK-RULE! ( [ str -- str ] -- ) {: q :}
    HOOKS-OPEN
    q 0 FALLBACK-HOOK ! ;
 

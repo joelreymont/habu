@@ -1,3 +1,4 @@
+split-str
 \ unicode.f - Unicode whitespace, locale-independent full casefold equality
 \ and full lowercasing. CASEFOLD= compares whole UTF-8 spans by full case
 \ folding (Straße equals STRASSE), with no normalization, keeping embedded
@@ -36,7 +37,7 @@ private
 : VALID-LENGTH ( n -- )
    0 < if E-UTF8 throw then ;
 
-: VALID-UTF8 ( ^u8 n -- )
+: VALID-UTF8 ( str -- )
    {: source:^ size:n :}
    size VALID-LENGTH
    source size UTF8:VALID? 0= if E-UTF8 throw then ;
@@ -71,7 +72,7 @@ $82 constant FINAL-TAIL
 : IGNORABLE? ( n -- bool ) IGNORABLE-CALL 0<> ;
 
 \ The scalar at a cursor of valid UTF-8 and the cursor after it.
-: SCALAR@ ( ^u8 n n -- n n )
+: SCALAR@ ( str n -- n n )
    UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF ENDOF
       raw-byte OF ENDOF
@@ -79,7 +80,7 @@ $82 constant FINAL-TAIL
 
 \ Whether the first scalar from a cursor that is not Case_Ignorable is
 \ Cased; false at the end.
-: CASED-AFTER? ( ^u8 n n -- bool )
+: CASED-AFTER? ( str n -- bool )
    {: text:^ size:n at:n :}
    at begin dup size < while
       text size rot SCALAR@ {: cp:n next:n :}
@@ -91,7 +92,7 @@ $82 constant FINAL-TAIL
 \ Writes the sigma of the U+03A3 at a cursor: final when, past
 \ Case_Ignorable scalars by libunistring's tests, a Cased one precedes
 \ it and none follows. A scalar both Cased and Case_Ignorable is passed.
-: SIGMA! ( bool ^u8 n n -- )
+: SIGMA! ( bool str n -- )
    {: before:bool text:^ size:n at:n :}
    before text size at 2 + CASED-AFTER? 0= and
    if FINAL-TAIL else SMALL-TAIL then
@@ -100,7 +101,7 @@ $82 constant FINAL-TAIL
 
 \ Lowers every U+03A3 in valid UTF-8 in place. The flag carried
 \ between turns is whether the last scalar not Case_Ignorable is Cased.
-: SIGMAS! ( ^u8 n -- )
+: SIGMAS! ( str -- )
    {: text:^ size:n :}
    false 0 begin dup size < while
       {: before:bool at:n :}
@@ -113,7 +114,7 @@ $82 constant FINAL-TAIL
 \ u8_tolower's schema. With no language, Final_Sigma is u8_tolower's
 \ one context-dependent mapping, so a copy whose capital sigmas are
 \ already lowered leaves it none to apply.
-: SIGMA-LOWER ( ^u8 n n n n ^u8 -- ^u8 )
+: SIGMA-LOWER ( str n n n ^u8 -- ^u8 )
    {: text:^ size:n lang:n form:n buf:n out:^ :}
    text size s" Σ" CONTAINS? 0= if
       text size lang form buf out LOWER-CALL exit
@@ -129,7 +130,7 @@ $82 constant FINAL-TAIL
 
 \ Runs MAP, FOLD-CALL or SIGMA-LOWER, on a valid span and answers its
 \ owned result and that result's length.
-: ALLOCATE-MAP ( ^u8 n [ ^u8 n n n n ^u8 -- ^u8 ] -- ^u8 n )
+: ALLOCATE-MAP ( str [ str n n n ^u8 -- ^u8 ] -- str )
    {: source:^ size:n map :}
    source size VALID-UTF8
    0 RESULT !
@@ -138,16 +139,16 @@ $82 constant FINAL-TAIL
    RESULT @ ;
 
 \ Keep the same stack shape on success and failure for the cleanup path.
-: COPY-MAPPED ( ^u8 n ^u8 n -- ^u8 n ^u8 n )
+: COPY-MAPPED ( str ^u8 n -- str ^u8 n )
    {: source:^ size:n out:^ capacity:n :}
    capacity size < if E-CAPACITY throw then
    source out size BYTE-COPY
    source size out capacity ;
 
-: MAPPED-BYTES ( ^u8 n [ ^u8 n n n n ^u8 -- ^u8 ] -- n )
+: MAPPED-BYTES ( str [ str n n n ^u8 -- ^u8 ] -- n )
    ALLOCATE-MAP swap RELEASE ;
 
-: MAP-INTO ( ^u8 n ^u8 n [ ^u8 n n n n ^u8 -- ^u8 ] -- n )
+: MAP-INTO ( str ^u8 n [ str n n n ^u8 -- ^u8 ] -- n )
    {: out:^ capacity:n map :}
    map ALLOCATE-MAP {: mapped:^ size:n :}
    mapped size out capacity [: COPY-MAPPED ;] catch
@@ -168,13 +169,13 @@ public
    0<> if E-CASEFOLD throw then
    RESULT @ 0= ;
 
-: FOLDED-BYTES ( ^u8 n -- n )
+: FOLDED-BYTES ( str -- n )
    [: FOLD-CALL ;] MAPPED-BYTES ;
 
 : FOLD ( ^u8 n ^u8 n -- n )
    [: FOLD-CALL ;] MAP-INTO ;
 
-: LOWERED-BYTES ( ^u8 n -- n )
+: LOWERED-BYTES ( str -- n )
    [: SIGMA-LOWER ;] MAPPED-BYTES ;
 
 : LOWER ( ^u8 n ^u8 n -- n )
@@ -182,7 +183,7 @@ public
 
 \ The second span is checked before the first is lowered, so nothing after
 \ ALLOCATE-MAP can throw and the owned result is always released.
-: LOWERS-TO? ( ^u8 n ^u8 n -- bool )
+: LOWERS-TO? ( str str -- bool )
    {: source:^ size:n target:^ target-size:n :}
    target target-size VALID-UTF8
    source size [: SIGMA-LOWER ;] ALLOCATE-MAP

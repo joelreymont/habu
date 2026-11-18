@@ -1,3 +1,4 @@
+split-str
 \ main-routing.f - exercise the emitted engine's stdin and argv routing.
 \ Needs HABU_UNDER_TEST set to the emitted candidate.
 
@@ -13,16 +14,16 @@ private
 
 create PATH-BUF PATH-CAP allot
 
-: FILE$ ( -- ^u8 n )
+: FILE$ ( -- str )
    s" route.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
-: READ$ ( -- ^u8 n )
+: READ$ ( -- str )
    s" read.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
-: STACK$ ( -- ^u8 n )
+: STACK$ ( -- str )
    s" stack.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
-: ODD$ ( -- ^u8 n )
+: ODD$ ( -- str )
    S\" q\"\\\nd.f" PATH-BUF GT-PATH PATH-BUF swap ;
 
 \ A stdin program of several MiB, which the stream grows many times to hold.

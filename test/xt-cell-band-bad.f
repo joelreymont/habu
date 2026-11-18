@@ -1,3 +1,4 @@
+split-str
 \ xt-cell-band-bad.f - `xt!` refuses a cell outside DATA, before the store.
 \ The persisted-address-cell table is keyed by a cell's DATA offset, and its
 \ three consumers (the declaration, the snapshot writer's canonicalise, the

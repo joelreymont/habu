@@ -1,3 +1,4 @@
+split-str
 \ storage-test.f - test/wasm/storage.f's entries, each the MAIN of a module
 \ `hb-build --target wasm` builds, validated by wasm-tools and run by bun
 \ (test/wasm/harness.f); each module's output must be its entry's lines and its
@@ -50,7 +51,7 @@ variable FILE-U
 \ The entry's module, the file name with .wasm, builds, validates and runs to
 \ status, printing want; want and the output stay as name-expected.txt and
 \ name-actual.txt.
-: ENTRY-CASE ( ^u8 n ^u8 n ^u8 n n -- )
+: ENTRY-CASE ( str str str n -- )
    {: entry:^ eu:n name:^ nu:n want:^ wu:n status:n :}
    SB-RESET name nu SB-APPEND s" -expected.txt" SB-APPEND
    want wu SB$ FILE!
@@ -65,22 +66,22 @@ variable FILE-U
 : BUFFER$ ( -- ^u8 n )
    S\" 77\n88\n312\n1\n7138\n7138\n77\n88\n1\n0\n0\n" ;
 
-: HOLES$ ( -- ^u8 n )
+: HOLES$ ( -- str )
    S\" 1\n0\n1\n1\n" ;
 
-: FRACTIONAL$ ( -- ^u8 n )
+: FRACTIONAL$ ( -- str )
    S\" 7\n" ;
 
 \ Each map's and free's ior, and INSIDE's pages' distance, up to the trap.
-: TWICE$ ( -- ^u8 n )
+: TWICE$ ( -- str )
    S\" 0\n0\n" ;
 
-: INSIDE$ ( -- ^u8 n )
+: INSIDE$ ( -- str )
    S\" 0\n0\n65536\n0\n0\n" ;
 
 \ The map's ior, the five refused frees', the free's, the map back's, that it
 \ handed out the same page, and the last free's.
-: REFUSED$ ( -- ^u8 n )
+: REFUSED$ ( -- str )
    S\" 0\n-1\n-1\n-1\n-1\n-1\n0\n0\n1\n0\n" ;
 
 public
@@ -106,7 +107,7 @@ public
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ BOUNDS's lines: one per refused index or reserve.
-: BOUNDS$ ( -- ^u8 n )
+: BOUNDS$ ( -- str )
    S\" 7122\n7121\n7122\n7121\n7122\n7122\n7122\n7122\n7122\n" ;
 
 : RUN-BOUNDS ( -- )

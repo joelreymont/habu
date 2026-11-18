@@ -1,3 +1,4 @@
+split-str
 \ float-test.f - checked STR>FLOAT coverage.
 \ Run: bin/hb --load src/lib/float-test.f
 
@@ -11,17 +12,17 @@ require src/core/bytes.f
 
 : FL-NEAR ( r r -- bool ) f- fabs 0.000001 f< ;
 
-: T-FL ( ^u8 n r -- ) {: want:r :}
+: T-FL ( str r -- ) {: want:r :}
    STR>FLOAT MATCH option
      none OF 0 0= 0= ENDOF
      some OF want FL-NEAR ENDOF
    ;MATCH T-ASSERT ;
-: T-FL-BAD ( ^u8 n -- )
+: T-FL-BAD ( str -- )
    STR>FLOAT MATCH option
      none OF 0 0= ENDOF
      some OF drop 0 0= 0= ENDOF
    ;MATCH T-ASSERT ;
-: T-FL-OK ( ^u8 n -- )
+: T-FL-OK ( str -- )
    STR>FLOAT MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
@@ -93,7 +94,7 @@ package DECIMAL-FLOAT-TEST
    got want - abs ulps <= ;
 
 
-: CHECK-BITS ( ^u8 n n n -- ) {: a:^ u:n want:n ulps:n :}
+: CHECK-BITS ( str n n -- ) {: a:^ u:n want:n ulps:n :}
    a u 80 min T-LABEL
    a u STR>FLOAT MATCH option
      none OF false ENDOF

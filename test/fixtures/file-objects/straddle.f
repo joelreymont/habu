@@ -1,3 +1,4 @@
+split-str
 \ straddle.f - a build's first file: stores an xt into a cell straddling the
 \ header's APP-ENTRY:XT-CELL ($43A0) and the next, which its object cannot
 \ place: the build refuses it E-COMP-STATE.

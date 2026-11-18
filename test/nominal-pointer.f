@@ -1,3 +1,4 @@
+split-str
 \ Existing nominal pointers instantiate checked generic inputs without minting identities.
 require src/lib/test.f
 

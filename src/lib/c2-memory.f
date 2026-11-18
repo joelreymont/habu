@@ -1,3 +1,4 @@
+split-str
 \ Scoped C2 allocation, nonowning loans, and append-only byte allocations owned
 \ by an explicit checked owner handle (rules in docs/design.md "Ownership"). The
 \ WITH- scope words declare raw effects until their exact native image entries
@@ -213,7 +214,7 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
 
 CAST: >NODE-CELL ( ^u8 -- ^^n )
 
-: BIND-STATE ( ^u8 n -- ^u8 n )
+: BIND-STATE ( str -- str )
    {: base:^ bound:n :}
    base ROOT-FRAME base >NODE-CELL !
    base bound ;
@@ -237,7 +238,7 @@ CAST: >NODE-CELL ( ^u8 -- ^^n )
    chunk APPEND-HEADER-BYTES + frame APPEND-CURSOR-CELL !
    length INIT-LEN>N APPEND-HEADER-BYTES - frame APPEND-REMAIN-CELL ! ;
 
-: APPEND-BODY ( ^n NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- ^u8 n )
+: APPEND-BODY ( ^n NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- str )
    {: frame:^ size:NUM:alloc-byte-len dispose :}
    size INIT-LEN>N {: bytes:n :}
    bytes MAX-APPEND > if E-MEM-SIZE throw then
@@ -261,11 +262,11 @@ CAST: >NODE-CELL ( ^u8 -- ^^n )
 \ c2-init-stow is the narrow machine transfer: it validates the byte view and
 \ descriptors, arms the clear-only frame, then moves the fixed cell bundle.
 \ INIT-RUN's c2-invoke body catches a rejection and retires the pending frame.
-: INIT-STOW ( R ^u8 n n [ R ^u8 n -- S ^u8 n | U -- U ] stow-layout | U -- R ^u8 n [ R ^u8 n -- S ^u8 n | U -- U ] | U )
+: INIT-STOW ( R str n [ R str -- S str | U -- U ] stow-layout | U -- R str [ R str -- S str | U -- U ] | U )
    HEAD-FRAME c2-init-stow
    TASK:DEFER-LEAVE ;
 
-: RECORDS-STOW ( R ^u8 n n n [ R ^u8 n -- S ^u8 n | U -- U ] stow-layout | U -- R ^u8 n [ R ^u8 n -- S ^u8 n | U -- U ] | U )
+: RECORDS-STOW ( R str n n [ R str -- S str | U -- U ] stow-layout | U -- R str [ R str -- S str | U -- U ] | U )
    HEAD-FRAME c2-records-stow
    TASK:DEFER-LEAVE ;
 
@@ -273,7 +274,7 @@ CAST: >NODE-CELL ( ^u8 -- ^^n )
    HEAD-FRAME ORIGINAL-BOUND-CELL @ INIT-BOUND-CELL !
    CLOSE ;
 
-: INIT-RESTORE ( R ^u8 n -- R ^u8 n )
+: INIT-RESTORE ( R str -- R str )
    drop INIT-BOUND-CELL @ ;
 
 : ACQUIRE-BYTES ( NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- ^u8 NUM:alloc-byte-len )
@@ -291,12 +292,12 @@ CAST: >NODE-CELL ( ^u8 -- ^^n )
 : FINISH ( n -- )
    HEAD-CELL @ 0= if TASK:HALT-UNWIND else drop then ;
 
-: INIT-RUN ( R ^u8 n n [ R ^u8 n -- S ^u8 n | U -- U ] stow-layout | U -- S ^u8 n | U )
+: INIT-RUN ( R str n [ R str -- S str | U -- U ] stow-layout | U -- S str | U )
    INIT-OPEN
    [: INIT-STOW RUN-BODY ;] [: INIT-CLOSE ;] [: FINISH ;] c2-invoke
    INIT-RESTORE ;
 
-: RECORDS-RUN ( R ^u8 n n n [ R ^u8 n -- S ^u8 n | U -- U ] stow-layout | U -- S ^u8 n | U )
+: RECORDS-RUN ( R str n n [ R str -- S str | U -- U ] stow-layout | U -- S str | U )
    INIT-OPEN
    [: RECORDS-STOW RUN-BODY ;] [: INIT-CLOSE ;] [: FINISH ;] c2-invoke
    INIT-RESTORE ;
@@ -310,16 +311,16 @@ CAST: >NODE-CELL ( ^u8 -- ^^n )
 
 CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 
-: ALLOC-RUN ( R NUM:alloc-byte-len [ R ^u8 n -- S ^u8 n | U -- U ] | U -- S | U )
+: ALLOC-RUN ( R NUM:alloc-byte-len [ R str -- S str | U -- U ] | U -- S | U )
    {: body :}
    [: MEM:RELEASE-BYTES ;] ACQUIRE-BYTES {: resource:^ size:NUM:alloc-byte-len :}
    resource size ALLOC-LEN>N body execute 2drop ;
 
 \ A child callback's returned control cells carry no disposal authority.
-: LOAN-BODY ( R ^u8 n [ R ^u8 n -- S ^u8 n ] -- S ^u8 n )
+: LOAN-BODY ( R str [ R str -- S str ] -- S str )
    execute ;
 
-: LOAN-RUN ( R ^u8 n [ R ^u8 n -- S ^u8 n | U -- U ] | U -- S ^u8 n | U )
+: LOAN-RUN ( R str [ R str -- S str | U -- U ] | U -- S str | U )
    LOAN-ENTER
    [: LOAN-BODY ;] [: LOAN-LEAVE ;] finally ;
 

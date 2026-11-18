@@ -1,3 +1,4 @@
+split-str
 \ arm64-place-unsafe-bad.f - a stripped program rooted at PL-MAKE, whose own body
 \ calls `create`, which a stripped program cannot run: its link exits 70 before
 \ it writes. The script arguments are the kernel object the link adopts and the

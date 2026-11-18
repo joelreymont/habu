@@ -1,3 +1,4 @@
+split-str
 \ secret/dir.f - SECRET:DIR-BIND, a read-only store over a directory holding
 \ one file per item, as systemd's CREDENTIALS_DIRECTORY holds a unit's
 \ credentials. Which store SECRET reads is the host's choice (STORE!); this
@@ -35,13 +36,13 @@ TASK:FACILITY DIR-LOCK
 \ access(2) R_OK | X_OK: the directory can be listed and searched.
 5 constant DIR-ACCESS
 
-: DIR-PATH$ ( -- ^u8 n ) DIR-PATH SPAN:$ drop DIR-PATH-U @ ;
-: DIR-SERVICE$ ( -- ^u8 n ) 0 DIR-SERVICE DIR-SERVICE-U @ ;
-: DIR-ITEM$ ( -- ^u8 n ) DIR-ITEM SPAN:$ drop DIR-ITEM-U @ ;
+: DIR-PATH$ ( -- str ) DIR-PATH SPAN:$ drop DIR-PATH-U @ ;
+: DIR-SERVICE$ ( -- str ) 0 DIR-SERVICE DIR-SERVICE-U @ ;
+: DIR-ITEM$ ( -- str ) DIR-ITEM SPAN:$ drop DIR-ITEM-U @ ;
 
 
 \ A file name in the directory: no slash, neither . nor ..
-: DIR-PLAIN? ( ^u8 n -- bool )
+: DIR-PLAIN? ( str -- bool )
    {: a:^ u:n :}
    a u FS:SKIP-SELF-ENTRY? if false exit then
    u 0 ?do a i + c@ FS:SLASH = if unloop false exit then loop
@@ -64,7 +65,7 @@ TASK:FACILITY DIR-LOCK
 
 \ The cause's errno text; with none, what FS refused: a file not regular
 \ (E-FS-STAT) or a size that changed while read (E-FS-IO).
-: DIR-CAUSE$ ( n n -- ^u8 n )
+: DIR-CAUSE$ ( n n -- str )
    {: code:n cause:n :}
    cause 0<> if cause FS:ERRNO$ exit then
    code E-FS-STAT = if s" not a regular file" exit then
@@ -101,7 +102,7 @@ TASK:FACILITY DIR-LOCK
    [: DIR-READ-ITEM ;] catch FS:ERRNO DIR-REJECT ;
 
 
-: DIR-READ-STAGED ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
+: DIR-READ-STAGED ( str str SPAN:span<u8> -- n bool )
    {: sa:^ su:n aa:^ au:n dst:SPAN:span<u8> :}
    sa su DIR-SERVICE$ STR= 0= if E-CONFIG throw then
    aa au DIR-PLAIN? 0= if E-CONFIG throw then
@@ -124,21 +125,21 @@ TASK:FACILITY DIR-LOCK
 : DIR-UNLOCK ( -- ) DIR-WIPE DIR-LOCK TASK:RELEASE ;
 
 
-: DIR-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
+: DIR-READ ( str str SPAN:span<u8> -- n bool )
    DIR-LOCK TASK:GET
    [: DIR-READ-STAGED ;] [: DIR-UNLOCK ;] finally ;
 
 
-: DIR-WRITE ( ^u8 n ^u8 n ^u8 n -- )
+: DIR-WRITE ( str str str -- )
    2drop 2drop 2drop E-ACCESS throw ;
 
 
-: DIR-ERASE ( ^u8 n ^u8 n -- bool )
+: DIR-ERASE ( str str -- bool )
    2drop 2drop E-ACCESS throw ;
 
 
 \ Within PATH-CAP and holding no NUL: a path the host takes and a line shows.
-: DIR-TEXT? ( ^u8 n -- bool )
+: DIR-TEXT? ( str -- bool )
    {: dir:^ dir-u:n :}
    dir-u 0 < dir-u PATH-CAP > or if false exit then
    dir-u 0 ?do dir i + c@ 0= if unloop false exit then loop
@@ -146,7 +147,7 @@ TASK:FACILITY DIR-LOCK
 
 
 \ Opens a refused bind's ERROR line up to its reason, which DIR-REFUSED ends.
-: DIR-REFUSING ( ^u8 n -- )
+: DIR-REFUSING ( str -- )
    {: dir:^ dir-u:n :}
    LOG:ERROR s" secret" LOG:LINE
    s" cannot bind the directory store" LOG:TEXT+
@@ -154,12 +155,12 @@ TASK:FACILITY DIR-LOCK
    s" : " LOG:TEXT+ ;
 
 
-: DIR-REFUSED ( ^u8 n -- ) LOG:TEXT+ LOG:;LINE E-CONFIG throw ;
+: DIR-REFUSED ( str -- ) LOG:TEXT+ LOG:;LINE E-CONFIG throw ;
 
 
 \ A directory past PATH-CAP or holding a NUL, or one this process cannot list
 \ and search, is E-CONFIG, logged as one ERROR line tagged secret.
-: DIR-CHECK ( ^u8 n -- )
+: DIR-CHECK ( str -- )
    {: dir:^ dir-u:n :}
    dir-u 0 < dir-u PATH-CAP > or if
       dir dir-u DIR-REFUSING s" a path of " LOG:TEXT+
@@ -179,7 +180,7 @@ public
 
 \ Binds with STORE! the store over the directory for the service, once, before
 \ any read; a refusal binds nothing: E-CONFIG, one ERROR line tagged secret.
-: DIR-BIND ( ^u8 n ^u8 n -- )
+: DIR-BIND ( str str -- )
    {: dir:^ dir-u:n svc:^ svc-u:n :}
    [: svc svc-u INPUT ;] catch {: code:n :}
    code E-CONFIG = if

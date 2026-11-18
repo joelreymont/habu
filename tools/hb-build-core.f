@@ -1,3 +1,4 @@
+split-str
 \ hb-build-core.f - builds this tree's native hb, hb with a program's files
 \ (--repl), or a stripped program, as a cross-build in the running hb and writes
 \ it with its map beside it. A native build first compiles the target's
@@ -67,14 +68,14 @@ DYNAMIC-BUFFER RECORD u8                \ an inputs file's bytes while KERNEL-WR
 variable RECORD-U                       \ the inputs file's size once INPUTS-READ read it
 variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS:READ-SIZED owns it, else -1
 
-: END$ ( -- ^u8 n ) END-PATH END-U @ ;
+: END$ ( -- str ) END-PATH END-U @ ;
 : SRC$ ( -- ^u8 n ) SRC-PATH @ SRC-LEN @ ;
 : OUT$ ( -- ^u8 n ) OUT-Q @ execute ;
 
 : STAGE! ( stage -- ) 0 STAGE-BUF ! ;
 : STAGE@ ( -- stage ) 0 STAGE-BUF @ ;
-: MODE$ ( -- ^u8 n ) MODE-PATH @ MODE-LEN @ ;
-: FILE$ ( -- ^u8 n ) FILE-PATH @ FILE-LEN @ ;
+: MODE$ ( -- str ) MODE-PATH @ MODE-LEN @ ;
+: FILE$ ( -- str ) FILE-PATH @ FILE-LEN @ ;
 
 : OPENING ( ^u8 n -- )
    {: a:^ u:n :}
@@ -88,13 +89,13 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : BETWEEN ( -- ) construct stage between STAGE! ;
 
-: WHERE+ ( ^u8 n -- )
+: WHERE+ ( str -- )
    {: a:^ u:n :}
    a  WHERE-BUF WHERE-U @ +  u BYTE-COPY
    u WHERE-U +! ;
 
 \ "the <mode> build" and the tail.
-: BUILD$ ( ^u8 n -- ^u8 n )
+: BUILD$ ( str -- str )
    {: a:^ u:n :}
    0 WHERE-U !
    s" the " WHERE+  MODE$ WHERE+  s"  build" WHERE+  a u WHERE+
@@ -102,7 +103,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 
 \ True when the file at the path holds exactly the bytes; false when it is missing.
-: SAME-FILE? ( ^u8 n ^u8 n -- bool )
+: SAME-FILE? ( str str -- bool )
    {: pa:^ pu:n a:^ u:n :}
    pa pu FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
@@ -115,7 +116,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 \ A file the build loads keeps its inode and change time while its bytes stay
 \ the same, so a later build that stamps it sees it unchanged.
-: WRITE-CHANGED ( ^u8 n ^u8 n -- )
+: WRITE-CHANGED ( str str -- )
    {: pa:^ pu:n a:^ u:n :}
    pa pu a u SAME-FILE? if exit then
    pa pu a u FS:ATOMIC-WRITE-FILE ;
@@ -149,7 +150,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    endcase ;
 
 
-: INCLUDE-FILE ( ^u8 n -- )
+: INCLUDE-FILE ( str -- )
    {: a:^ u:n :}
    a u LOADING
    a u included
@@ -166,7 +167,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    {: idx:n kind:n a:^ u:n :}
    kind LOAD? if a u provided then ;
 
-: REQUIRE-FILE ( ^u8 n -- )
+: REQUIRE-FILE ( str -- )
    {: a:^ u:n :}
    a u LOADING
    a u required
@@ -193,7 +194,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    BOOT-FILES:TOPROW ['] ROW BOOT-FILES:EACH ;
 
 
-: REPL-TERM$ ( -- ^u8 n )
+: REPL-TERM$ ( -- str )
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN TARGET? if s" src/os/macos/repl-term.f" exit then
    RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU TARGET? if s" src/os/linux-x86-64/repl-term.f" exit then
    s" src/os/linux/repl-term.f" ;
@@ -221,7 +222,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    u TEXT-U +! ;
 
 \ A row's bytes inside the end file's s\" literal: `"` and `\` take a backslash.
-: ROW+ ( ^u8 n -- )
+: ROW+ ( str -- )
    {: a:^ u:n :}
    u 0 ?do
       a i + c@ dup 34 = swap 92 = or if s" \" TEXT+ then
@@ -230,7 +231,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 \ A registry row below the tree root by its tree-relative name. A program's row
 \ outside it keeps its canonical path; hb's is refused.
-: REG-ROW ( ^u8 n bool -- )
+: REG-ROW ( str bool -- )
    {: a:^ u:n engine:bool :}
    SOURCE-ROOT:CWD$ {: c:^ cu:n :}
    u cu 1 + > if a cu c cu STR= a cu + c@ FS:SLASH = and else false then
@@ -370,7 +371,7 @@ SUM-U 32 + constant HEAD-U
 \ damaged, and ADOPT? maps no buffer of its size.
 16 1024 * 1024 * constant INPUTS-CAP
 
-: KNAME+ ( ^u8 n -- )
+: KNAME+ ( str -- )
    {: a:^ u:n :}
    KNAME-U @ u + PATH-CAP > if E-FS-CAPACITY throw then
    a  KNAME KNAME-U @ +  u BYTE-COPY
@@ -412,7 +413,7 @@ SUM-U 32 + constant HEAD-U
 \ Writes the object whole at the path its checksum names, then the inputs file
 \ whole, unless the object's stamp cannot be read. The stamp fails an object
 \ changed in place since. Nothing older is deleted.
-: KERNEL-WRITE ( ^u8 n -- )
+: KERNEL-WRITE ( str -- )
    {: a:^ u:n :}
    u 40 < if s" hb-build: the kernel object is too short" EXIT-STATUS:INTERNAL die then
    KERNEL-DIR KERNEL-DIR-U @ FS:MAKE-DIRS
@@ -531,16 +532,16 @@ public
 
 \ The path of the kernel object the last KERNEL-BUILD wrote or adopted, which
 \ names its checksum, so a later read of it reads the bytes the build linked.
-: KERNEL$ ( -- ^u8 n ) KERNEL-PATH KERNEL-U @ ;
+: KERNEL$ ( -- str ) KERNEL-PATH KERNEL-U @ ;
 
 \ The tree's inputs file for the last KERNEL-BUILD's profile and kind; any
 \ kernel build of this tree may replace it with a log that holds as well, read
 \ from the tree's root.
-: KERNEL-INPUTS$ ( -- ^u8 n ) INPUTS-PATH INPUTS-U @ ;
+: KERNEL-INPUTS$ ( -- str ) INPUTS-PATH INPUTS-U @ ;
 
 \ Where a build that ended was: loading answers its file; opening "the <mode>
 \ build's open"; between "the <mode> build outside its files"; idle empty.
-: WHERE$ ( -- ^u8 n )
+: WHERE$ ( -- str )
    STAGE@ MATCH stage
       idle OF WHERE-BUF 0 ENDOF
       opening OF s" 's open" BUILD$ ENDOF

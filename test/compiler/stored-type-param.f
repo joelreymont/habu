@@ -1,3 +1,4 @@
+split-str
 \ stored-type-param.f - a type variable that occurs only where a type is stored,
 \ behind a pointer or in a family slot the family's width does not read, stands
 \ for any stored type, a two-cell record included, while the word's body needs
@@ -168,7 +169,7 @@ private
    REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
 
 \ The refusal is a mismatch at the call token the string names.
-: MISMATCH-AT ( ^u8 n -- )
+: MISMATCH-AT ( str -- )
    HAS?  S\" \"code\":\"E-MISMATCH\"" HAS? ;
 
 : CASE-PASS ( -- )
@@ -362,7 +363,7 @@ private
    ELEM-N TTRUE  ELEM-R TTRUE  ELEM-U8 TTRUE  ELEM-PTR TTRUE  ELEM-TURN TTRUE ;
 
 \ The refusal is the code the string names, at the call of STORED:AT.
-: CAST-AT ( ^u8 n -- )
+: CAST-AT ( str -- )
    HAS?  S\" \"token\":\"STORED:AT\"" HAS? ;
 
 : CASE-ELEM-LINEAR ( -- )
@@ -408,14 +409,14 @@ variable RC-LEN
 
 \ The texts below are joined from pieces that each fit a line; RC-CAP holds
 \ the longest.
-: RC+ ( ^u8 n -- )
+: RC+ ( str -- )
    {: a:^ u:n :}
    a  RC-SRC RC-LEN @ +  u BYTE-COPY
    RC-LEN @ u + RC-LEN ! ;
 
 \ A word in RC-CAST whose recursive call's instance of t the step word binds,
 \ before the body hands t to the cast >ELEM.
-: RC-RECURSE$ ( ^u8 n ^u8 n -- ^u8 n )
+: RC-RECURSE$ ( str str -- str )
    {: na:^ nu:n sa:^ su:n :}
    0 RC-LEN !
    s" package RC-CAST : " RC+  na nu RC+
@@ -423,7 +424,7 @@ variable RC-LEN
    s"  THEN >ELEM ; ;package" RC+
    RC-SRC RC-LEN @ ;
 
-: RC-OTHER$ ( -- ^u8 n )
+: RC-OTHER$ ( -- str )
    0 RC-LEN !
    s" : RC-OTHER ( ^t n -- ^t ) dup 0 = IF drop EXIT THEN " RC+
    s" drop RC-CAST:NV 0 RECURSE drop ;" RC+

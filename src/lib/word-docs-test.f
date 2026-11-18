@@ -1,3 +1,4 @@
+split-str
 \ word-docs-test.f - package WORD-DOCS through its public API: an inline fixture
 \ for each recording rule, the refusals, storage beyond one chunk, and a real
 \ source file.
@@ -25,7 +26,7 @@ variable FIX-U
 : FIX@ ( -- ^u8 )
    FIX @ ;
 
-: FIX$ ( -- ^u8 n )
+: FIX$ ( -- str )
    FIX@ FIX-U @ ;
 
 : FIX-OPEN ( -- )
@@ -35,7 +36,7 @@ variable FIX-U
 : FIX-CLOSE ( -- )
    FIX@ FIX-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
-: +FIX ( ^u8 n -- ) {: a:^ u:n :}
+: +FIX ( str -- ) {: a:^ u:n :}
    FIX-U @ u + FIX-CAP > if E-STR-CAPACITY throw then
    a FIX@ FIX-U @ + u BYTE-COPY
    FIX-U @ u + FIX-U ! ;
@@ -46,7 +47,7 @@ variable FIX-U
 : DOCS ( ^u8 n -- )
    WORD-DOCS:RESET WORD-DOCS:FILE ;
 
-: REC= ( n ^u8 n ^u8 n ^u8 n -- ) {: k:n a:^ u:n p:^ pu:n e:^ eu:n :}
+: REC= ( n str str str -- ) {: k:n a:^ u:n p:^ pu:n e:^ eu:n :}
    k WORD-DOCS:NAME$ a u T$=
    k WORD-DOCS:PACKAGE$ p pu T$=
    k WORD-DOCS:EFFECT$ e eu T$= ;
@@ -192,7 +193,7 @@ variable FIX-U
    c cu + 1- c@ X-BYTE T=
    WORD-DOCS:RESET ;
 
-: READ-FILE ( ^u8 n -- ) {: pa:^ pu:n :}
+: READ-FILE ( str -- ) {: pa:^ pu:n :}
    pa pu FS:OPEN-SIZED {: fd size:n ok :}
    ok TTRUE
    size FIX-CAP > if E-STR-CAPACITY throw then

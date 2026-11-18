@@ -1,3 +1,4 @@
+split-str
 \ macho.f - the Mach-O writer for macOS ARM64: the canonical unsigned image of
 \ the program in icode's CODE (BUILD-IMAGE), which src/os/macos/sign2.f then
 \ signs ad hoc.
@@ -84,11 +85,11 @@ private
    s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
 
 \ A name's symbol is an underscore, the name, then the suffix.
-: SYMBOL-LEN ( ^u8 n -- n )
+: SYMBOL-LEN ( str -- n )
    {: a:^ u:n :}
    a u SUFFIX$ nip u + 1 + ;
 
-: SYMBOL, ( ^u8 n -- )
+: SYMBOL, ( str -- )
    {: a:^ u:n :}
    s" _" M-BYTES  a u M-BYTES  a u SUFFIX$ M-BYTES ;
 
@@ -185,16 +186,16 @@ variable NCMDS
 : VA+ ( n -- n )
    VMBASE @ + ;
 
-: SEGX, ( ^u8 n n n n n n n n n -- ) {: a:^ u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
+: SEGX, ( str n n n n n n n n -- ) {: a:^ u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
    LC-SEG64 IMG-M32   72 extra + IMG-M32
    a u M-LEN M-NAME16-LEN
    vma IMG-M64  vmsz IMG-M64  foff IMG-M64  fsz IMG-M64
    prot IMG-M32  prot IMG-M32  nsects IMG-M32  flags IMG-M32 ;
 
-: SEG, ( ^u8 n n n n n n n n -- )
+: SEG, ( str n n n n n n n -- )
    0 SEGX, ;
 
-: SECT, ( ^u8 n ^u8 n n n n n n -- ) {: na:^ nu:n sa:^ su:n addr:n size:n off:n al:n fl:n :}
+: SECT, ( str str n n n n n -- ) {: na:^ nu:n sa:^ su:n addr:n size:n off:n al:n fl:n :}
    na nu M-LEN M-NAME16-LEN   sa su M-LEN M-NAME16-LEN
    addr IMG-M64  size IMG-M64  off IMG-M32  al IMG-M32
    0 IMG-M32  0 IMG-M32  fl IMG-M32  0 IMG-M32 0 IMG-M32 0 IMG-M32 ;
@@ -217,7 +218,7 @@ variable NCMDS
 
 \ dyld searches these runpaths for basename dlopen calls. System libraries keep
 \ their normal dyld-cache lookup; Homebrew's arm64 prefix is outside that path.
-: RPATH, ( ^u8 n -- ) {: path:^ u:n :}
+: RPATH, ( str -- ) {: path:^ u:n :}
    u 13 + 7 + -8 and {: size:n :}
    LC-RPATH IMG-M32 size IMG-M32 12 IMG-M32
    path u M-BYTES
@@ -362,7 +363,7 @@ variable CURSOR
 : U32@ ( n -- n ) 4 AT LE:U32@ ;
 : U64@ ( n -- n ) 8 AT LE:U64@ ;
 
-: NAME? ( n ^u8 n -- bool ) {: off:n name:^ size:n :}
+: NAME? ( n str -- bool ) {: off:n name:^ size:n :}
    off 16 AT size name size STR= 0= if false exit then
    size 16 < if off size + 1 AT c@ 0= else true then ;
 
@@ -386,7 +387,7 @@ variable CURSOR
 
 public
 
-: MAGIC? ( ^u8 n -- bool ) {: image:^ size:n :}
+: MAGIC? ( str -- bool ) {: image:^ size:n :}
    size MH-HDR-SZ < if false exit then
    image LE:U32@ MH-MAGIC64 = ;
 

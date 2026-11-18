@@ -1,3 +1,4 @@
+split-str
 \ echo-test.f - the browser host's turns under bun: src/lib/browser/host-cli.mjs
 \ runs test/browser/echo.f's module through src/lib/browser/turn.js
 \ (src/lib/browser/host.f), and test/browser/stale.f's, whose hello states
@@ -36,10 +37,10 @@ variable STALE-MOD-U
 PATH-CAP BUFFER: FILE
 DYNAMIC-BUFFER PAYLOAD u8
 
-: SMALL$ ( -- ^u8 n )  s" the fixture's bytes" ;
-: LANDED$ ( -- ^u8 n )  s" landed: plate/top is 6 mm deep" ;
-: REFUSED$ ( -- ^u8 n )  s" refused: no extrusion ends at that face" ;
-: DROPPED$ ( -- ^u8 n )  s" dropped" ;
+: SMALL$ ( -- str )  s" the fixture's bytes" ;
+: LANDED$ ( -- str )  s" landed: plate/top is 6 mm deep" ;
+: REFUSED$ ( -- str )  s" refused: no extrusion ends at that face" ;
+: DROPPED$ ( -- str )  s" dropped" ;
 
 : FILE! ( ^u8 n ^u8 n -- )
    {: a:^ u:n name:^ nu:n :}
@@ -86,16 +87,16 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
 
 \ A step at x and y: --pointer, --move or --release.
-: AT+ ( ^u8 n n n n -- )
+: AT+ ( str n n n -- )
    {: flag:^ fu:n x:n y:n buttons:n :}
    flag fu ARG+  x N-ARG+  y N-ARG+  buttons N-ARG+  0 N-ARG+ ;
 
-: TYPED+ ( ^u8 n -- )
+: TYPED+ ( str -- )
    s" --typed" ARG+  ARG+ ;
 
 \ The oldest waiting request answered with the status and the file of this
 \ name in DIR.
-: ANSWER+ ( n ^u8 n -- )
+: ANSWER+ ( n str -- )
    {: status:n name:^ nu:n :}
    s" --answer" ARG+  status N-ARG+
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
@@ -109,7 +110,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 : LINE ( ^u8 n -- )
    SB-APPEND  10 SB-APPEND-C ;
 
-: TEXT-LINE ( ^u8 n -- )
+: TEXT-LINE ( str -- )
    s" text " SB-APPEND  LINE ;
 
 \ The checksum echo.f's module answers for bytes.
@@ -117,7 +118,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    {: a:^ u:n :}
    0  u 0 ?do  31 *  a i + c@ +  $FFFFFFFF and  loop ;
 
-: SUM-LINE ( ^u8 n -- )
+: SUM-LINE ( str -- )
    SUM  s" text " SB-APPEND  FMT:SB-U  10 SB-APPEND-C ;
 
 \ Start's lines, printed before its fetch is answered.
@@ -133,7 +134,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    u 0 ?do  a i + c@ dup 4 rshift NIBBLE $F and NIBBLE  loop ;
 
 \ The line of a post typed text T makes: its path T, its body T twice.
-: POST-LINE ( ^u8 n -- )
+: POST-LINE ( str -- )
    {: t:^ u:n :}
    s" post " SB-APPEND  t u SB-APPEND  32 SB-APPEND-C
    u 2 * FMT:SB-U  32 SB-APPEND-C  t u HEX  t u HEX  10 SB-APPEND-C ;
@@ -197,13 +198,13 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" chained: a post's answer fetches, and that fetch goes before the second post" T-LABEL
    OUT OUT-U @ SB$ T$= ;
 
-: TRAP$ ( -- ^u8 n )
+: TRAP$ ( -- str )
    ERR ERR-U @ 10 INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
 
-: ENDED-LINE ( ^u8 n -- )
+: ENDED-LINE ( str -- )
    s" the module trapped and has ended: Error: " SB-APPEND  LINE ;
 
 : TRAPPED-CASE ( -- )

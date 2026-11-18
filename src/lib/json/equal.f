@@ -1,3 +1,4 @@
+split-str
 \ equal.f - VALUE=, whether two JSON texts hold the same value. A file of
 \ package JSON (src/lib/json.f).
 \
@@ -52,7 +53,7 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
 
 \ The offsets of the first and the last significant digit and of the point,
 \ each -1 without one, then the mantissa's end: the exponent marker or u.
-: MANTISSA ( ^u8 n -- n n n n )
+: MANTISSA ( str -- n n n n )
    {: p:^ u:n :}
    -1 -1 -1 0
    begin dup u < if dup p + c@ EXP-MARK? 0= else false then
@@ -70,7 +71,7 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
 
 \ The exponent the lexeme states after its mantissa's end m, 0 without one;
 \ one a signed cell cannot hold is E-JSON-READ-NUMBER.
-: STATED-EXP ( ^u8 n n -- n )
+: STATED-EXP ( str n -- n )
    {: p:^ u:n m:n :}
    m 1+ {: at:n :}
    at u > if 0 exit then
@@ -120,7 +121,7 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
 
 \ Whether count significant digits from a and from b are the same, byte for
 \ byte, each side stepping over its point.
-: SAME-DIGITS? ( ^u8 ^u8 n -- bool )
+: SAME-DIGITS? ( ^u8 str -- bool )
    {: a:^ b:^ count:n :}
    0 0  count 0 ?do
       over a + c@  over b + c@  <> if 2drop false unloop exit then
@@ -135,7 +136,7 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
 
 \ Whether two lexemes have one value, each given by its bytes and what DIGITS
 \ answers for it.
-: NUMBER= ( ^u8 n n n ^u8 n n n -- bool )
+: NUMBER= ( str n n str n n -- bool )
    {: a:^ xa:n fa:n na:n b:^ xb:n fb:n nb:n :}
    na 0=  nb 0= {: za:bool zb:bool :}
    za zb and if true exit then
@@ -284,7 +285,7 @@ CAST: >WALK ( ^n -- ^walk )
    {: u:n v:n :}
    WALK-BYTES  v TAIL-0 +  v +  u + ;
 
-: WALK-INIT ( ^u8 n n -- ^walk )
+: WALK-INIT ( str n -- ^walk )
    {: base:^ u:n v:n :}
    base CELL-VIEW >WALK {: w:^ :}
    base WALK-BYTES + {: rows:^ :}
@@ -353,14 +354,14 @@ CAST: >WALK ( ^n -- ^walk )
 
 \ ---- b's members -------------------------------------------------------------
 
-: LIST-CELL ( ^u8 n -- ^n )
+: LIST-CELL ( str -- ^n )
    cells + CELL-VIEW ;
 
 : MEMBER@ ( ^walk n -- n )
    {: w:^ i:n :}
    w WALK-MEMBERS @ i LIST-CELL @ ;
 
-: MEMBER-KEY$ ( ^walk n -- ^u8 n )
+: MEMBER-KEY$ ( ^walk n -- str )
    {: w:^ r:n :}
    w r ROW {: row:^ :}
    w WALK-KEYS @ row ROW-KEY-AT @ +  row ROW-KEY-LEN @ ;
@@ -397,7 +398,7 @@ CAST: >WALK ( ^n -- ^walk )
    2drop ;
 
 
-: MERGE-PASS ( ^walk ^u8 ^u8 n n -- )
+: MERGE-PASS ( ^walk ^u8 str n -- )
    {: w:^ src:^ dst:^ n:n width:n :}
    n 0 ?do
       w src dst  i  i width + n min  i width 2 * + n min  MERGE-RUNS
@@ -429,7 +430,7 @@ CAST: >WALK ( ^n -- ^walk )
 
 \ Object row obj's member whose key decodes to key, or -1. The first of equal keys is found each
 \ time, so a key a repeats meets a member already matched and a key b repeats leaves one unmatched.
-: FIND-MEMBER ( ^walk n ^u8 n -- n )
+: FIND-MEMBER ( ^walk n str -- n )
    {: w:^ obj:n key:^ len:n :}
    w obj ROW {: o:^ :}
    o ROW-FIRST @  dup o ROW-COUNT @ + {: lo:n hi:n :}
@@ -671,7 +672,7 @@ CAST: >WALK ( ^n -- ^walk )
 
 
 \ The answer stands only once record a has read a to its end.
-: EQUAL-SLOT ( bool ^walk ^u8 n ^u8 n -- bool ^walk ^u8 n ^u8 n )
+: EQUAL-SLOT ( bool ^walk str str -- bool ^walk str str )
    {: w:^ a:^ u:n b:^ v:n :}
    drop
    w b v INDEX
@@ -686,7 +687,7 @@ CAST: >WALK ( ^n -- ^walk )
 
 \ VALUE= over the block at base; a throw leaves no reader stack or tail
 \ mapping behind.
-: EQUAL-IN ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- bool )
+: EQUAL-IN ( str str ^u8 NUM:alloc-byte-len -- bool )
    drop {: a:^ u:n b:^ v:n base:^ :}
    base u v WALK-INIT {: w:^ :}
    false w a u b v [: EQUAL-SLOT ;] catch
@@ -696,7 +697,7 @@ CAST: >WALK ( ^n -- ^walk )
    code throw ;
 
 
-: EQUAL-RUN ( ^u8 n ^u8 n -- bool )
+: EQUAL-RUN ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    a u b v  u v WALK-LEN MEM:BYTES-ALLOC-LEN
    [: EQUAL-IN ;] MEM:WITH-BYTES ;

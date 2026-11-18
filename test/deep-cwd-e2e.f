@@ -1,3 +1,4 @@
+split-str
 \ An engine started from a long working directory within PATH-CAP loads its
 \ entry, and from that directory and a short one an entry written as a `./`
 \ chain past 8 KB that resolves within PATH-CAP, through `hb P`, `--load`, an
@@ -35,12 +36,12 @@ variable ERR-U
 variable RC
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: ENTRY$ ( -- ^u8 n ) ENTRY ENTRY-U @ ;
+: ENTRY$ ( -- str ) ENTRY ENTRY-U @ ;
 : ENGINE$ ( -- ^u8 n ) ENGINE ENGINE-U @ ;
-: MID$ ( -- ^u8 n ) MID MID-U @ ;
-: GONE$ ( -- ^u8 n ) GONE GONE-U @ ;
+: MID$ ( -- str ) MID MID-U @ ;
+: GONE$ ( -- str ) GONE GONE-U @ ;
 
-: CHILD$ ( -- ^u8 n )
+: CHILD$ ( -- str )
    S\" package DEEP-CWD-CHILD\npublic\n: RUN ( -- ) s\q deep cwd: ok\q type cr ;\n;package\nDEEP-CWD-CHILD:RUN\n" ;
 
 \ CHAIN is 4200 `./` segments before entry.f: 8407 bytes written, the entry's
@@ -51,7 +52,7 @@ create CHAIN CHAIN-BYTES allot
 create SRC CHAIN-BYTES 16 + allot variable SRC-U
 create CHECKER PATH-CAP allot variable CHECKER-U
 
-: CHAIN$ ( -- ^u8 n ) CHAIN CHAIN-BYTES ;
+: CHAIN$ ( -- str ) CHAIN CHAIN-BYTES ;
 
 : CHAIN! ( -- )
    DOTS 0 ?do
@@ -60,17 +61,17 @@ create CHECKER PATH-CAP allot variable CHECKER-U
    s" entry.f" {: a:^ u:n :}  a CHAIN DOTS 2 * + u BYTE-COPY
    SOURCE-ROOT:CWD$ s" tools/check.f" CHECKER FS:JOIN-PATH CHECKER-U ! ;
 
-: SRC+ ( ^u8 n -- ) {: a:^ u:n :}
+: SRC+ ( str -- ) {: a:^ u:n :}
    a SRC SRC-U @ + u BYTE-COPY  u SRC-U +! ;
 
 \ Writes the file name in dir, a word w and the chain its one line.
-: LOADER! ( ^u8 n ^u8 n ^u8 n -- )
+: LOADER! ( str str str -- )
    {: dir:^ diru:n name:^ nameu:n w:^ wu:n :}
    0 SRC-U !  w wu SRC+  s"  " SRC+  CHAIN$ SRC+  S\" \n" SRC+
    dir diru name nameu PATH FS:JOIN-PATH {: pathu:n :}
    PATH pathu SRC SRC-U @ FS:WRITE-ALL ;
 
-: LOADERS! ( ^u8 n -- ) {: dir:^ diru:n :}
+: LOADERS! ( str -- ) {: dir:^ diru:n :}
    dir diru s" inc.f" s" include" LOADER!
    dir diru s" req.f" s" require" LOADER! ;
 
@@ -79,7 +80,7 @@ create CHECKER PATH-CAP allot variable CHECKER-U
 SEG-BYTES 1 + 3 * 1 - constant TAIL-BYTES
 create TAIL TAIL-BYTES allot
 
-: TAIL$ ( -- ^u8 n ) TAIL TAIL-BYTES ;
+: TAIL$ ( -- str ) TAIL TAIL-BYTES ;
 
 : TAIL! ( -- )
    TAIL-BYTES 0 ?do
@@ -112,7 +113,7 @@ create TAIL TAIL-BYTES allot
    s" --load" >LEN PROC-ARGV+
    ENTRY$ >LEN PROC-ARGV+ ;
 
-: RUN-CHILD ( ^u8 n ^u8 n -- )
+: RUN-CHILD ( str str -- )
    {: prog:^ progu:n cwd:^ cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN cwd cwdu >LEN
@@ -136,7 +137,7 @@ create TAIL TAIL-BYTES allot
 
 \ Each child is its own engine: each reader resolves the chain at its start.
 : ARGV ( -- ) PROC-CWD:ARGV-ENV-CWD-RESET  ENGINE$ >LEN PROC-ARGV+ ;
-: LOAD-ARGV ( ^u8 n -- ) ARGV  s" --load" >LEN PROC-ARGV+  >LEN PROC-ARGV+ ;
+: LOAD-ARGV ( str -- ) ARGV  s" --load" >LEN PROC-ARGV+  >LEN PROC-ARGV+ ;
 
 : RAN ( ^u8 n ^u8 n -- ) {: cwd:^ cwdu:n what:^ whatu:n :}
    s" /usr/bin/env" cwd cwdu RUN-CHILD
@@ -164,7 +165,7 @@ create TAIL TAIL-BYTES allot
 \ The record of a working directory that does not resolve, PATH-CAP its limit.
 create WANT IO-CAP allot variable WANT-U
 
-: WANT+ ( ^u8 n -- ) {: a:^ u:n :}
+: WANT+ ( str -- ) {: a:^ u:n :}
    a WANT WANT-U @ + u BYTE-COPY  u WANT-U +! ;
 
 : DIGITS+ ( n -- ) {: v:n :}

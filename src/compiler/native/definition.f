@@ -1,3 +1,4 @@
+split-str
 \ definition.f - the compiler-neutral step around one pending definition's
 \ lowering: staging, the checker scan and verdict, name and arity checks,
 \ publication by kind, the pending callback stub, and retraction on refusal.
@@ -129,10 +130,10 @@ private
 : TRUST-SIG-A-FIELD ( -- ^^u8 )
    data-base TSIG-A-CELL CELL / ptr-field ;
 
-: TRUST-SIG$ ( -- ^u8 n )
+: TRUST-SIG$ ( -- str )
    TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
 
-: CHECK-PARENT ( ^u8 n -- n )
+: CHECK-PARENT ( str -- n )
    {: a:^ u:n :}
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
       a u CHECK-UNJUDGED! exit then
@@ -149,7 +150,7 @@ private
 \ A refused clause is reported as CHECK:DEFINITION reports a refused body: the
 \ checker's reason, then its reject status, which the run names the
 \ definition under. The clause is named by the caller, from its open unit.
-: CLAUSE-CK ( n ^u8 n -- )
+: CLAUSE-CK ( n str -- )
    CHECKER-OWNER:DOES-REPORT -1 <> if EXIT-STATUS:REJECTED throw then ;
 
 \ The engine records the split just past the `does> ` it consumed, so a cut
@@ -181,7 +182,7 @@ public
 
 \ The `does>` clause, named for a refusal by the unit's name. The checker's
 \ token ordinal first steps past the `does>` keyword between the two bodies.
-: CHECK-DOES-CLAUSE ( ^u8 n -- n )
+: CHECK-DOES-CLAUSE ( str -- n )
    {: na:^ nu:n :}
    ADVANCE
    M-DOES @ {: cut:n :}
@@ -240,14 +241,14 @@ private
 
 EXPORT CHECKER-RESOLVE:HEAD-ROW
 
-: QUALIFIED-RECORD-NAME? ( ^n ^u8 n n -- bool )
+: QUALIFIED-RECORD-NAME? ( ^n str n -- bool )
    {: rec:^ a:^ u:n split:n :}
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
    a split HEAD-ROW
    dup XREF-FOUND? 0= if drop false exit then
    XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 
-: RECORD-NAME? ( ^n ^u8 n -- bool )
+: RECORD-NAME? ( ^n str -- bool )
    {: rec:^ a:^ u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
    split 0 < if rec a u XREF-MATCH? exit then
@@ -348,7 +349,7 @@ public
 
 \ The `;` that ends the definition: the token the engine read last, whose
 \ address in the input places a refusal there on its line.
-: CLOSE$ ( -- ^u8 n ) READ-AT @ data-base TKL-CELL + @ ;
+: CLOSE$ ( -- str ) READ-AT @ data-base TKL-CELL + @ ;
 
 private
 
@@ -375,7 +376,7 @@ public
    then
    rc 0 <> if RETRACT then ;
 
-: STAGE-UNIT ( ^u8 n -- )
+: STAGE-UNIT ( str -- )
    {: sa su:n :}
    0 CHECKER-OWNER:BIND-REGIME!
    sa M-SRC ! su M-SRC-U !

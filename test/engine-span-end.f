@@ -1,3 +1,4 @@
+split-str
 \ engine-span-end.f - the engine's source scanners read only the text they get.
 \ CHECK! (src/core/checker.f) scans a caller's text; a guard
 \ joining the bound and byte tests with `and` evaluates both and reads past the

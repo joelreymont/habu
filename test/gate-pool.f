@@ -1,3 +1,4 @@
+split-str
 \ gate-pool.f - checked bounded process pool for native tests.
 \
 \ A caller starts rows - an executable spawned with the argv and environment it
@@ -197,7 +198,7 @@ GT-POOL-ABORT-BARE!
    v 10 >= if v 10 / RECURSE then
    v 10 mod STR-ZERO + GT-POOL-NUM-C+ ;
 
-: GT-POOL-NUM$ ( n -- ^u8 n ) {: v:n :}
+: GT-POOL-NUM$ ( n -- str ) {: v:n :}
    v 0 < if E-STR-BOUNDS GT-POOL-ABORT then
    0 GT-POOL-NUM-U !
    v GT-POOL-NUM+
@@ -206,16 +207,16 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-NAME-RESET ( -- )
    0 GT-POOL-NAME-U ! ;
 
-: GT-POOL-NAME+ ( ^u8 n -- ) {: a:^ u:n :}
+: GT-POOL-NAME+ ( str -- ) {: a:^ u:n :}
    u 0 < if E-STR-BOUNDS GT-POOL-ABORT then
    GT-POOL-NAME-U @ u + GT-POOL-NAME-CAP > if E-STR-CAPACITY GT-POOL-ABORT then
    a GT-POOL-NAME-BUF GT-POOL-NAME-U @ + u BYTE-COPY
    GT-POOL-NAME-U @ u + GT-POOL-NAME-U ! ;
 
-: GT-POOL-NAME$ ( -- ^u8 n )
+: GT-POOL-NAME$ ( -- str )
    GT-POOL-NAME-BUF GT-POOL-NAME-U @ ;
 
-: GT-POOL-CAPTURE-NAME ( n ^u8 n -- ^u8 n ) {: seq:n suf:^ sufu:n :}
+: GT-POOL-CAPTURE-NAME ( n str -- str ) {: seq:n suf:^ sufu:n :}
    GT-POOL-NAME-RESET
    s" pool-" GT-POOL-NAME+
    getpid GT-POOL-NUM$ GT-POOL-NAME+
@@ -327,7 +328,7 @@ GT-POOL-ABORT-BARE!
 
 \ The scratch directory this pool made for the slot's child, empty when the
 \ caller chose the child's TMPDIR (GT-POOL-ENV-TMPDIR-OWN?).
-: GT-POOL-TMP$ ( idx -- ^u8 n ) {: idx:idx :}
+: GT-POOL-TMP$ ( idx -- str ) {: idx:idx :}
    idx GT-POOL-TMP-PATH-BUF idx GT-POOL-TMP-PATH-U-PTR @ ;
 
 : GT-POOL-SOCK-PATH-BUF ( idx -- ^u8 )
@@ -358,13 +359,13 @@ GT-POOL-ABORT-BARE!
 
 \ The short directory this pool made for the slot's child's sockets
 \ (GT-POOL-CHILD-SOCK!).
-: GT-POOL-SOCK$ ( idx -- ^u8 n ) {: idx:idx :}
+: GT-POOL-SOCK$ ( idx -- str ) {: idx:idx :}
    idx GT-POOL-SOCK-PATH-BUF idx GT-POOL-SOCK-PATH-U-PTR @ ;
 
-: GT-POOL-OUT-FILE$ ( idx -- ^u8 n ) {: idx:idx :}
+: GT-POOL-OUT-FILE$ ( idx -- str ) {: idx:idx :}
    idx GT-POOL-OUT-PATH-BUF idx GT-POOL-OUT-PATH-U-PTR @ ;
 
-: GT-POOL-ERR-FILE$ ( idx -- ^u8 n ) {: idx:idx :}
+: GT-POOL-ERR-FILE$ ( idx -- str ) {: idx:idx :}
    idx GT-POOL-ERR-PATH-BUF idx GT-POOL-ERR-PATH-U-PTR @ ;
 
 : GT-POOL-PID@ ( idx -- pid )
@@ -391,11 +392,11 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-LABEL-BUF ( idx -- ^u8 )
    IDX>N GT-FAIL-NAME-CAP * GT-POOL-LABELS + ;
 
-: GT-POOL-LABEL$ ( idx -- ^u8 n ) {: idx :}
+: GT-POOL-LABEL$ ( idx -- str ) {: idx :}
    idx GT-POOL-LABEL-BUF
    idx GT-POOL-LABEL-U-PTR @ ;
 
-: GT-POOL-LABEL! ( ^u8 n idx -- ) {: a:^ u idx :}
+: GT-POOL-LABEL! ( str idx -- ) {: a:^ u idx :}
    u 0 < if E-TBL-FIELD throw then
    u GT-FAIL-NAME-CAP > if E-TBL-FIELD throw then
    a idx GT-POOL-LABEL-BUF u BYTE-COPY
@@ -476,7 +477,7 @@ GT-POOL-ABORT-BARE!
 
 \ Absence is tolerated: a directory is gone already when a child removed it
 \ itself, and a slot whose caller chose its TMPDIR never had one.
-: GT-POOL-TREE-REMOVE ( ^u8 n -- ) {: a:^ u:n :}
+: GT-POOL-TREE-REMOVE ( str -- ) {: a:^ u:n :}
    u 0 <= if exit then
    a u FS:EXISTS? 0= if exit then
    a u FS:REMOVE-TREE ;
@@ -484,7 +485,7 @@ GT-POOL-ABORT-BARE!
 \ A removal that throws - a tree its child left with a directory it locked - is
 \ named, and the code is the slot's (GT-POOL-OK?): the row fails and the pool
 \ goes on.
-: GT-POOL-SCRATCH-REMOVE ( ^u8 n idx -- ) {: a:^ u:n idx:idx :}
+: GT-POOL-SCRATCH-REMOVE ( str idx -- ) {: a:^ u:n idx:idx :}
    a u [: 2dup GT-POOL-TREE-REMOVE ;] catch {: code:n :}
    2drop
    code 0= if exit then
@@ -518,17 +519,17 @@ variable GT-POOL-SOCK-ROOT-U
 0 GT-POOL-SOCK-ROOT-U !
 
 \ The root this pool made; empty when it was given one or has made none yet.
-: GT-POOL-SOCK-ROOT$ ( -- ^u8 n )
+: GT-POOL-SOCK-ROOT$ ( -- str )
    GT-POOL-SOCK-ROOT-BUF GT-POOL-SOCK-ROOT-U @ ;
 
 : GT-POOL-SOCK-ROOT-REMOVE ( -- )
    GT-POOL-SOCK-ROOT$ GT-POOL-TREE-REMOVE
    0 GT-POOL-SOCK-ROOT-U ! ;
 
-: GT-POOL-SOCK-ROOT-NEW ( -- ^u8 n )
+: GT-POOL-SOCK-ROOT-NEW ( -- str )
    s" /tmp" SOURCE-ROOT:CANONICAL drop s" hb-sock" FS:MKTEMP-DIR-IN ;
 
-: GT-POOL-SOCK-ROOT-MAKE ( -- ^u8 n )
+: GT-POOL-SOCK-ROOT-MAKE ( -- str )
    s" HB_SOCK_TMP" GETENV dup 0 > if exit then 2drop
    GT-POOL-SOCK-ROOT-U @ 0 > if
       GT-POOL-SOCK-ROOT$ FS:EXISTS? if GT-POOL-SOCK-ROOT$ exit then
@@ -799,20 +800,20 @@ variable GT-POOL-CPU-NS
       idx GT-POOL-WAIT.
    then ;
 
-: GT-POOL-LINE$ ( ^u8 n ^u8 n -- ) {: name:^ nameu:n val:^ valu:n :}
+: GT-POOL-LINE$ ( str str -- ) {: name:^ nameu:n val:^ valu:n :}
    name nameu type s" : " type val valu type cr ;
 
 : GT-POOL-N-TYPE ( n -- ) {: val:n :}
    val 0 < if $2D emit val negate GT-U-TYPE exit then
    val GT-U-TYPE ;
 
-: GT-POOL-LINE-N ( ^u8 n n -- ) {: name:^ nameu:n val:n :}
+: GT-POOL-LINE-N ( str n -- ) {: name:^ nameu:n val:n :}
    name nameu type s" : " type val GT-POOL-N-TYPE cr ;
 
-: GT-POOL-LINE-FD ( ^u8 n fd -- ) {: name:^ nameu:n val:fd :}
+: GT-POOL-LINE-FD ( str fd -- ) {: name:^ nameu:n val:fd :}
    name nameu type s" : " type val FD>N GT-POOL-N-TYPE cr ;
 
-: GT-POOL-SPAWN-FAIL. ( idx ^u8 n -- ) {: idx:idx path:^ pathu:n :}
+: GT-POOL-SPAWN-FAIL. ( idx str -- ) {: idx:idx path:^ pathu:n :}
    s" FAIL: test pool spawn" type cr
    s" test" idx GT-POOL-LABEL$ GT-POOL-LINE$
    s" path" path pathu GT-POOL-LINE$
@@ -844,7 +845,7 @@ variable GT-POOL-CPU-NS
    w PROCESS:ESRCH# negate = if true idx GT-POOL-ENDED-PTR ! exit then
    E-PROC-OUTPUT GT-POOL-THROW ;
 
-: GT-POOL-LAUNCH ( idx ^u8 n fd -- idx ^u8 n fd ) {: idx:idx path:^ pathu:n stdin:fd :}
+: GT-POOL-LAUNCH ( idx str fd -- idx str fd ) {: idx:idx path:^ pathu:n stdin:fd :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
    pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
@@ -856,7 +857,7 @@ variable GT-POOL-CPU-NS
    PROCESS:SPAWN idx GT-POOL-PID-PTR !
    idx path pathu stdin ;
 
-: GT-POOL-SPAWN-FD ( idx ^u8 n fd -- ) {: idx:idx path:^ pathu:n stdin:fd :}
+: GT-POOL-SPAWN-FD ( idx str fd -- ) {: idx:idx path:^ pathu:n stdin:fd :}
    path pathu >LEN PROC-ARGV-CHECK-PATH
    idx path pathu stdin [: GT-POOL-LAUNCH ;] catch {: code:n :}
    drop drop drop drop
@@ -870,7 +871,7 @@ variable GT-POOL-CPU-NS
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
 
-: GT-POOL-SPAWN ( idx ^u8 n -- )
+: GT-POOL-SPAWN ( idx str -- )
    -1 >FD GT-POOL-SPAWN-FD ;
 
 : GT-POOL-STREAM-FILE-FD-PTR ( idx n -- ^fd ) {: idx:idx stream:n :}
@@ -881,11 +882,11 @@ variable GT-POOL-CPU-NS
    stream 0= if idx GT-POOL-OUT-TOTAL-PTR exit then
    idx GT-POOL-ERR-TOTAL-PTR ;
 
-: GT-POOL-STREAM-FILE$ ( idx n -- ^u8 n ) {: idx:idx stream:n :}
+: GT-POOL-STREAM-FILE$ ( idx n -- str ) {: idx:idx stream:n :}
    stream 0= if idx GT-POOL-OUT-FILE$ exit then
    idx GT-POOL-ERR-FILE$ ;
 
-: GT-POOL-STREAM-SUFFIX$ ( n -- ^u8 n ) {: stream:n :}
+: GT-POOL-STREAM-SUFFIX$ ( n -- str ) {: stream:n :}
    stream 0= if s" -out.log" exit then
    s" -err.log" ;
 
@@ -898,7 +899,7 @@ variable GT-POOL-CPU-NS
    idx GT-POOL-ERR-PATH-U-PTR ;
 
 \ The path is copied out because the task's next temp reuses the span.
-: GT-POOL-TEMP-DIR$ ( ^u8 n ^u8 ^n -- ^u8 n )
+: GT-POOL-TEMP-DIR$ ( str ^u8 ^n -- str )
    {: pre:^ preu:n buf:^ up:^ :}
    up @ 0 > if buf up @ exit then
    pre preu FS:MKTEMP-DIR {: a:^ u:n :}
@@ -907,11 +908,11 @@ variable GT-POOL-CPU-NS
 
 \ Suite-less pool users get one capture directory so parallel runs sharing
 \ TMPDIR cannot clobber each other's capture files.
-: GT-POOL-FALLBACK-ROOT$ ( -- ^u8 n )
+: GT-POOL-FALLBACK-ROOT$ ( -- str )
    s" hb-pool" GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U
    GT-POOL-TEMP-DIR$ ;
 
-: GT-POOL-CAPTURE-ROOT$ ( -- ^u8 n )
+: GT-POOL-CAPTURE-ROOT$ ( -- str )
    GT-ROOT-U @ 0 > if GT-ROOT exit then
    GT-POOL-FALLBACK-ROOT$ ;
 
@@ -935,7 +936,7 @@ variable GT-POOL-CPU-NS
    idx stream GT-POOL-STREAM-PATH-BUF FS:JOIN-PATH
    idx stream GT-POOL-STREAM-PATH-U-PTR ! ;
 
-: GT-POOL-CAPTURE-OPEN-FD ( ^u8 n -- fd ) {: pa:^ pu:n :}
+: GT-POOL-CAPTURE-OPEN-FD ( str -- fd ) {: pa:^ pu:n :}
    pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open {: raw:n :}
    raw 0 < if E-FS-OPEN GT-POOL-THROW then
    raw >FD ;
@@ -1074,12 +1075,12 @@ variable GT-POOL-CPU-NS
 : GT-POOL-RED-MOVED-PTR ( n -- ^n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-MOVEDS + ;
 
-: GT-POOL-RED-LABEL$ ( n -- ^u8 n ) {: i:n :}
+: GT-POOL-RED-LABEL$ ( n -- str ) {: i:n :}
    i GT-POOL-RED-LABEL-BUF i GT-POOL-RED-LABEL-U-PTR @ ;
 
 \ A red test's captures move here, out of the capture root the cleanup removes;
 \ nothing registers this directory for cleanup, so the logs outlive the process.
-: GT-POOL-RED-DIR$ ( -- ^u8 n )
+: GT-POOL-RED-DIR$ ( -- str )
    s" habu-red" GT-POOL-RED-DIR-BUF GT-POOL-RED-DIR-U
    GT-POOL-TEMP-DIR$ ;
 
@@ -1094,21 +1095,21 @@ variable GT-POOL-CPU-NS
 
 \ A moved capture lies in the red directory, whose path its move memoised; an
 \ unmoved one lies in the capture root, which the cleanup removes after this.
-: GT-POOL-RED-STREAM$ ( n n -- ^u8 n ) {: i:n stream:n :}
+: GT-POOL-RED-STREAM$ ( n n -- str ) {: i:n stream:n :}
    stream i GT-POOL-RED-MOVED-PTR @ < if GT-POOL-RED-DIR$ else GT-POOL-CAPTURE-ROOT$ then
    i GT-POOL-RED-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
    GT-POOL-RED-PATH-BUF FS:JOIN-PATH GT-POOL-RED-PATH-U !
    GT-POOL-RED-PATH-BUF GT-POOL-RED-PATH-U @ ;
 
-: GT-POOL-RED-OUT$ ( n -- ^u8 n )
+: GT-POOL-RED-OUT$ ( n -- str )
    0 GT-POOL-RED-STREAM$ ;
 
-: GT-POOL-RED-ERR$ ( n -- ^u8 n )
+: GT-POOL-RED-ERR$ ( n -- str )
    1 GT-POOL-RED-STREAM$ ;
 
 
 
-: GT-POOL-RED-COPY$ ( ^u8 n ^u8 ^n n -- ) {: a:^ u:n dst:^ up:^ cap:n :}
+: GT-POOL-RED-COPY$ ( str ^u8 ^n n -- ) {: a:^ u:n dst:^ up:^ cap:n :}
    u 0 < if E-TBL-FIELD throw then
    u cap > if E-TBL-FIELD throw then
    a dst u BYTE-COPY
@@ -1176,7 +1177,7 @@ variable GT-POOL-CPU-NS
    repeat drop
    GT-POOL-RED-OVERFLOW-LINE ;
 
-: GT-POOL-OPEN-SLOT ( ^u8 n idx -- ) {: label:^ labelu idx :}
+: GT-POOL-OPEN-SLOT ( str idx -- ) {: label:^ labelu idx :}
    idx GT-POOL-DONE@ 0= if
       s" test pool: fixed slot already active" type cr
       E-TBL-FIELD GT-POOL-THROW
@@ -1189,7 +1190,7 @@ variable GT-POOL-CPU-NS
    mono-ns idx GT-POOL-START-PTR !
    idx GT-POOL-START-PTR @ idx GT-POOL-LAST-PTR ! ;
 
-: GT-POOL-START-SLOT ( ^u8 n ^u8 n idx -- ) {: path:^ pathu label:^ labelu idx :}
+: GT-POOL-START-SLOT ( str str idx -- ) {: path:^ pathu label:^ labelu idx :}
    label labelu idx GT-POOL-OPEN-SLOT
    idx GT-POOL-CHILD-TMP!
    idx path pathu GT-POOL-SPAWN
@@ -1201,7 +1202,7 @@ variable GT-POOL-CPU-NS
 \ any slot's, makes the row red.
 4096 constant GT-POOL-STDIN-CAP
 
-: GT-POOL-FEED-STDIN ( fd ^u8 n -- ) {: w:fd bytes:^ byten:n :}
+: GT-POOL-FEED-STDIN ( fd str -- ) {: w:fd bytes:^ byten:n :}
    byten GT-POOL-STDIN-CAP > if E-TBL-BOUNDS GT-POOL-THROW then
    byten 0 > if
       w FD>N bytes byten write {: wrote:n :}
@@ -1209,7 +1210,7 @@ variable GT-POOL-CPU-NS
    then
    w FD>N close ;
 
-: GT-POOL-START-STDIN-SLOT ( ^u8 n ^u8 n ^u8 n idx -- )
+: GT-POOL-START-STDIN-SLOT ( str str str idx -- )
    {: path:^ pathu label:^ labelu bytes:^ byten idx :}
    label labelu idx GT-POOL-OPEN-SLOT
    idx GT-POOL-CHILD-TMP!
@@ -1280,7 +1281,7 @@ variable GT-POOL-CPU-NS
    stream 0= if idx GT-POOL-OUT-BUF exit then
    idx GT-POOL-ERR-BUF ;
 
-: GT-POOL-FILE-WRITE ( fd ^u8 n -- ) {: fd:fd a:^ u:n :}
+: GT-POOL-FILE-WRITE ( fd str -- ) {: fd:fd a:^ u:n :}
    0 GT-POOL-WR-OFF !
    begin GT-POOL-WR-OFF @ u < while
       fd FD>N a GT-POOL-WR-OFF @ + u GT-POOL-WR-OFF @ - write GT-POOL-WR !
@@ -1289,7 +1290,7 @@ variable GT-POOL-CPU-NS
       GT-POOL-WR-OFF @ GT-POOL-WR @ + GT-POOL-WR-OFF !
    repeat ;
 
-: GT-POOL-TAIL+ ( idx n ^u8 n -- ) {: idx:idx stream:n a:^ u:n :}
+: GT-POOL-TAIL+ ( idx n str -- ) {: idx:idx stream:n a:^ u:n :}
    idx stream GT-POOL-STREAM-U-PTR {: up:^ :}
    idx stream GT-POOL-STREAM-BUF {: buf:^ :}
    GT-POOL-TAIL-CAP {: cap:n :}
@@ -1483,12 +1484,12 @@ variable GT-POOL-CPU-NS
       GT-POOL-STEP
    repeat ;
 
-: GT-POOL-START ( ^u8 n ^u8 n -- ) {: path:^ pathu label:^ labelu :}
+: GT-POOL-START ( str str -- ) {: path:^ pathu label:^ labelu :}
    GT-POOL-WAIT-FREE
    GT-POOL-FIND-FREE {: idx :}
    path pathu label labelu idx GT-POOL-START-SLOT ;
 
-: GT-POOL-START-STDIN ( ^u8 n ^u8 n ^u8 n -- )
+: GT-POOL-START-STDIN ( str str str -- )
    {: path:^ pathu label:^ labelu bytes:^ byten :}
    GT-POOL-WAIT-FREE
    GT-POOL-FIND-FREE {: idx :}

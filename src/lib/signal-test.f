@@ -1,3 +1,4 @@
+split-str
 \ signal-test.f - package SIGNAL against real deliveries. This process raises
 \ only SIGUSR1 and SIGUSR2: SIGTERM and SIGINT would end the run on any path
 \ that reaches them before their disposition is installed. SIGSTOP and SIGCONT
@@ -214,7 +215,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" ... and so does SIGCONT" T-LABEL
    SIGNAL:SIGCONT EXPECT-SIGCONT T= ;
 
-: READER-PATH ( -- ^u8 n )
+: READER-PATH ( -- str )
    s" /bin/cat" ;
 
 : CLOSE-END ( ^n -- )
@@ -618,7 +619,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 
 \ A file under the scratch root, made by this process, so the child only
 \ registers it.
-: DIE-FILE ( ^u8 n ^u8 -- n )
+: DIE-FILE ( str ^u8 -- n )
    {: name:^ nameu dst:^ :}
    DIE-ROOT DIE-ROOT-U @ name nameu dst FS:JOIN-PATH {: u :}
    dst u s" made" FS:ATOMIC-WRITE-FILE

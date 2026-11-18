@@ -1,3 +1,4 @@
+split-str
 \ class-parse.f - checked parser for pinned Unicode character-class inputs.
 
 require src/lib/prelude.f
@@ -96,12 +97,12 @@ variable PENDING-NAME-U
    c 97 >= c 102 <= and if c 87 - TRUE-VALUE exit then
    0 FALSE-VALUE ;
 
-: HEX-FOLD ( ^u8 n n n -- n ) {: a:^ u:n pos:n acc:n :}
+: HEX-FOLD ( str n n -- n ) {: a:^ u:n pos:n acc:n :}
    pos u >= if acc exit then
    a pos + c@ HEX-DIGIT 0= if drop E-SYNTAX throw then {: digit:n :}
    a u pos 1+ acc 16 * digit + recurse ;
 
-: PARSE-HEX ( ^u8 n -- n ) {: a:^ u:n :}
+: PARSE-HEX ( str -- n ) {: a:^ u:n :}
    u 0= u 6 > or if E-SYNTAX throw then
    a u 0 0 HEX-FOLD ;
 
@@ -109,18 +110,18 @@ variable PENDING-NAME-U
    lo 0 < hi lo < or hi SCALAR-MAX > or if E-RANGE throw then
    lo SURROGATE-LAST <= hi SURROGATE-FIRST >= and if E-RANGE throw then ;
 
-: BYTE-INDEX ( ^u8 n n -- n ) {: a:^ u:n c:n :}
+: BYTE-INDEX ( str n -- n ) {: a:^ u:n c:n :}
    0 begin dup u < while
       dup a + c@ c = if exit then
       1+
    repeat ;
 
-: NEXT-FIELD ( ^u8 n n -- ^u8 n n ) {: a:^ u:n start:n :}
+: NEXT-FIELD ( str n -- str n ) {: a:^ u:n start:n :}
    a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
    valid 0= next u > or if E-SYNTAX throw then
    fa fu next ;
 
-: CATEGORY-SECOND? ( n ^u8 n -- bool ) {: c:n allowed:^ allowedu:n :}
+: CATEGORY-SECOND? ( n str -- bool ) {: c:n allowed:^ allowedu:n :}
    allowed allowedu c BYTE-INDEX allowedu < ;
 
 : SYMBOL-CLASS ( n -- n ) {: c:n :}
@@ -129,7 +130,7 @@ variable PENDING-NAME-U
    c 111 = if CLASS-OTHER-SYMBOL exit then
    0 ;
 
-: CATEGORY ( ^u8 n -- n ) {: a:^ u:n :}
+: CATEGORY ( str -- n ) {: a:^ u:n :}
    u 2 <> if E-SYNTAX throw then
    a c@ 76 = if
       a 1+ c@ s" ultmo" CATEGORY-SECOND? 0= if E-SYNTAX throw then
@@ -146,13 +147,13 @@ variable PENDING-NAME-U
    a c@ 67 = if a 1+ c@ s" cfson" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    E-SYNTAX throw ;
 
-: FIRST-NAME? ( ^u8 n -- bool )
+: FIRST-NAME? ( str -- bool )
    s" , First>" ENDS-WITH? ;
 
-: LAST-NAME? ( ^u8 n -- bool )
+: LAST-NAME? ( str -- bool )
    s" , Last>" ENDS-WITH? ;
 
-: SAME-RANGE-NAME? ( ^u8 n -- bool ) {: a:^ u:n :}
+: SAME-RANGE-NAME? ( str -- bool ) {: a:^ u:n :}
    u 7 < PENDING-NAME-U @ 8 < or if FALSE-VALUE exit then
    a u 7 - PENDING-NAME-A @ PENDING-NAME-U @ 8 - STR= ;
 
@@ -203,7 +204,7 @@ variable PENDING-NAME-U
    cp 0 < cp SCALAR-MAX > or if E-RANGE throw then
    cp SOURCE-PREV @ <= if E-RANGE throw then ;
 
-: OPEN-RANGE ( n ^u8 n n -- ) {: cp:n name:^ nameu:n class:n :}
+: OPEN-RANGE ( n str n -- ) {: cp:n name:^ nameu:n class:n :}
    cp SOURCE-ORDER
    cp SOURCE-PREV !
    TRUE-VALUE PENDING !
@@ -212,7 +213,7 @@ variable PENDING-NAME-U
    name PENDING-NAME-A !
    nameu PENDING-NAME-U ! ;
 
-: CLOSE-RANGE ( n ^u8 n n -- ) {: cp:n name:^ nameu:n class:n :}
+: CLOSE-RANGE ( n str n -- ) {: cp:n name:^ nameu:n class:n :}
    PENDING @ 0= if E-SYNTAX throw then
    cp SOURCE-ORDER
    name nameu SAME-RANGE-NAME? 0= if E-SYNTAX throw then
@@ -221,7 +222,7 @@ variable PENDING-NAME-U
    cp SOURCE-PREV !
    FALSE-VALUE PENDING ! ;
 
-: UNICODE-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
+: UNICODE-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
    row rowu SEMICOLON COUNT-CHAR 14 <> if E-SYNTAX throw then
@@ -245,7 +246,7 @@ variable PENDING-NAME-U
    cp SOURCE-PREV !
    cp cp class CLASS+ ;
 
-: SCAN-UNICODE ( ^u8 n -- ) {: a:^ u:n :}
+: SCAN-UNICODE ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
       a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
@@ -255,7 +256,7 @@ variable PENDING-NAME-U
    repeat drop
    PENDING @ if E-SYNTAX throw then ;
 
-: RANGE-PART ( ^u8 n -- n n ) {: a:^ u:n :}
+: RANGE-PART ( str -- n n ) {: a:^ u:n :}
    a u DOT BYTE-INDEX {: pos:n :}
    pos u = if a u TRIM PARSE-HEX dup exit then
    pos 0= pos 1+ u >= or if E-SYNTAX throw then
@@ -263,7 +264,7 @@ variable PENDING-NAME-U
    a pos TRIM PARSE-HEX
    a pos 2 + + u pos 2 + - TRIM PARSE-HEX ;
 
-: RANGE-ROW ( ^u8 n [ n n ^u8 n -- ] -- )
+: RANGE-ROW ( str [ n n str -- ] -- )
    {: line:^ lineu:n q :}
    line lineu HASH BYTE-INDEX {: comment:n :}
    line comment TRIM {: row:^ rowu:n :}
@@ -277,7 +278,7 @@ public
 \ Calls q with the first and last scalar and the trimmed value of each
 \ `XXXX ; Value` or `XXXX..YYYY ; Value` row of a UCD file, skipping blank
 \ and comment text.
-: RANGE-ROWS ( ^u8 n [ n n ^u8 n -- ] -- ) {: a:^ u:n q :}
+: RANGE-ROWS ( str [ n n str -- ] -- ) {: a:^ u:n q :}
    0 begin dup u <= while
       {: start:n :}
       a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
@@ -288,10 +289,10 @@ public
 
 private
 
-: SPACE-PROPERTY? ( ^u8 n -- bool )
+: SPACE-PROPERTY? ( str -- bool )
    TRIM s" White_Space" STR= ;
 
-: PROP+ ( n n ^u8 n -- ) {: lo:n hi:n prop:^ propu:n :}
+: PROP+ ( n n str -- ) {: lo:n hi:n prop:^ propu:n :}
    prop propu s" Other_Uppercase" STR= if
       lo hi 0 OTHER-UPPER-LO 0 OTHER-UPPER-HI OTHER-UPPER-N RANGE-APPEND exit
    then
@@ -301,7 +302,7 @@ private
    prop propu SPACE-PROPERTY? 0= if lo hi SCALAR-RANGE exit then
    lo hi 0 SPACE-LO 0 SPACE-HI SPACE-N RANGE-APPEND ;
 
-: SCAN-PROPS ( ^u8 n -- )
+: SCAN-PROPS ( str -- )
    [: PROP+ ;] RANGE-ROWS ;
 
 \ A table of scalar and paired-bracket cells, kept strictly ascending by scalar.
@@ -327,7 +328,7 @@ private
    then
    E-SYNTAX throw ;
 
-: BRACKET-ROW ( ^u8 n -- ) {: line:^ lineu:n :}
+: BRACKET-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu HASH BYTE-INDEX {: comment:n :}
    line comment TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
@@ -337,7 +338,7 @@ private
    tu 1 <> if E-SYNTAX throw then
    cpa cpu TRIM PARSE-HEX pa pu TRIM PARSE-HEX ta c@ BRACKET+ ;
 
-: SCAN-BRACKETS ( ^u8 n -- ) {: a:^ u:n :}
+: SCAN-BRACKETS ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
       a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
@@ -366,7 +367,7 @@ public
    0 MATH-N ! 0 SO-N !
    0 OPEN-N ! 0 CLOSE-N ! ;
 
-: PARSE-UNICODE ( ^u8 n -- )
+: PARSE-UNICODE ( str -- )
    FALSE-VALUE UNICODE-READY !
    0 LETTER-N ! 0 NUMBER-N ! 0 NL-N ! 0 UPPER-N ! 0 MARK-N !
    0 MATH-N ! 0 SO-N !
@@ -374,13 +375,13 @@ public
    SCAN-UNICODE
    TRUE-VALUE UNICODE-READY ! ;
 
-: PARSE-PROPERTIES ( ^u8 n -- )
+: PARSE-PROPERTIES ( str -- )
    FALSE-VALUE SPACE-READY !
    0 SPACE-N ! 0 OTHER-N ! 0 OTHER-UPPER-N !
    SCAN-PROPS
    TRUE-VALUE SPACE-READY ! ;
 
-: PARSE-BRACKETS ( ^u8 n -- )
+: PARSE-BRACKETS ( str -- )
    FALSE-VALUE BRACKETS-READY !
    0 OPEN-N ! 0 CLOSE-N !
    SCAN-BRACKETS

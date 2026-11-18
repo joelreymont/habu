@@ -1,3 +1,4 @@
+split-str
 \ numeric.f - runs the numeric golden rows of test/wasm/numeric-rows.f natively.
 \ Each row runs in a fork of this process (SUBJECT:RUN), which captures the
 \ child's stdout and stderr: each row will be its own module on Wasm, so no row

@@ -1,3 +1,4 @@
+split-str
 \ differential.f - W31: a program runs natively under bin/hb and as a module
 \ `hb-build --target wasm` builds, wasm-tools validates and bun runs
 \ (test/wasm/harness.f), both held to the same bytes. The rows that return are
@@ -58,11 +59,11 @@ variable THROWN-U
    a  buf len @ +  u BYTE-COPY
    u len +! ;
 
-: ALL+ ( ^u8 n -- )  ALL ALL-U TEXT+ ;
-: CALLS+ ( ^u8 n -- )  CALLS CALLS-U TEXT+ ;
-: WANT+ ( ^u8 n -- )  WANT WANT-U TEXT+ ;
-: PROG+ ( ^u8 n -- )  PROG PROG-U TEXT+ ;
-: THROWN+ ( ^u8 n -- )  THROWN THROWN-U TEXT+ ;
+: ALL+ ( str -- )  ALL ALL-U TEXT+ ;
+: CALLS+ ( str -- )  CALLS CALLS-U TEXT+ ;
+: WANT+ ( str -- )  WANT WANT-U TEXT+ ;
+: PROG+ ( str -- )  PROG PROG-U TEXT+ ;
+: THROWN+ ( str -- )  THROWN THROWN-U TEXT+ ;
 
 : NAME$ ( -- ^u8 n )  NAME-A @ NAME-U @ ;
 
@@ -102,12 +103,12 @@ variable THROWN-U
 
 \ The first line of the engine's record of an uncaught throw of code c, with its
 \ line feed.
-: THROWN-LINE$ ( n -- ^u8 n )
+: THROWN-LINE$ ( n -- str )
    SB-RESET TEST-EVAL:THROWN-HEAD$ SB-APPEND  10 SB-APPEND-C  SB$ ;
 
 \ The program natively: it prints want and exits rc; answers its stderr's
 \ length.
-: NATIVE-RUN ( ^u8 n n -- n )
+: NATIVE-RUN ( str n -- n )
    {: want:^ wu:n rc:n :}
    want wu s" -expected.txt" KEEP
    PROC-ARGV-RESET
@@ -148,7 +149,7 @@ variable THROWN-U
 \ every answer into the cell it takes; W03 runs the groups from 0.
 12 constant SHAPES
 
-: G+ ( ^u8 n -- )
+: G+ ( str -- )
    {: a:^ u:n :}
    GEN-U @ u + GEN-RESERVE
    a  GEN-U @ GEN  u BYTE-COPY
@@ -188,7 +189,7 @@ variable THROWN-U
 
 public
 
-: W03$ ( -- ^u8 n )
+: W03$ ( -- str )
    0 GEN-U !
    SHAPES SHAPES * 0 ?do  i WORD+  loop
    SHAPES 0 ?do  i GROUP+  loop
@@ -222,7 +223,7 @@ public
 \ THROW-ROW's program throws a code uncaught: natively the engine's record names
 \ it; the module writes the record, with no place, to ERR and throws
 \ 67.
-: THROW-ROW ( ^u8 n ^u8 n ^u8 n n -- )
+: THROW-ROW ( str str str n -- )
    {: name:^ nu:n src:^ su:n want:^ wu:n code:n :}
    name nu src su name nu FILES
    want wu 67 code NATIVE
@@ -235,12 +236,12 @@ public
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Stderr is the native engine's record of a caught memory fault.
-: FAULT-RECORD? ( ^u8 n -- bool )
+: FAULT-RECORD? ( str -- bool )
    S\" error[E-MEMORY-FAULT]: a read or write faulted\n" STARTS-WITH? ;
 
 \ FAULT-ROW's program catches a memory fault and ends with status 0; natively
 \ the engine reports the fault on stderr, the module reports nothing.
-: FAULT-ROW ( ^u8 n ^u8 n ^u8 n -- )
+: FAULT-ROW ( str str str -- )
    {: name:^ nu:n src:^ su:n want:^ wu:n :}
    name nu src su name nu FILES
    want wu 0 NATIVE-RUN {: e:n :}

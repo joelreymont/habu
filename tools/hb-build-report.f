@@ -1,3 +1,4 @@
+split-str
 \ hb-build-report.f - typed in-process and wire-format hb-build reports.
 \ The JSON writer keeps no state, so this module owns the report bytes: REPORT-W
 \ writes into REPORT-BUF, and a span one report word answers stays valid until the
@@ -110,7 +111,7 @@ public
    REQUIRE-COMPLETE
    ELAPSED-VALUE @ ;
 
-: REPORT$ ( -- ^u8 n )
+: REPORT$ ( -- str )
    REPORT-OPEN
    JSON:WRITE-OBJECT-START
    s" schema" s" hb-build-report" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -131,7 +132,7 @@ public
    JSON:WRITE-OBJECT-END
    JSON:WRITTEN$ ;
 
-: PATH-ERROR$ ( -- ^u8 n )
+: PATH-ERROR$ ( -- str )
    REPORT-OPEN
    JSON:WRITE-OBJECT-START
    s" schema" s" hb-build-error" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -140,7 +141,7 @@ public
    JSON:WRITE-OBJECT-END
    JSON:WRITTEN$ ;
 
-: PATH-ERROR-TEXT$ ( -- ^u8 n )
+: PATH-ERROR-TEXT$ ( -- str )
    s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH" ;
 
 ;package

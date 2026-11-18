@@ -1,3 +1,4 @@
+split-str
 \ allocator.f - an allocator: a record of functions over bytes and the state
 \ they act on, each function taking the state first. A container takes one when
 \ made and keeps it, so the same container code runs on any allocator. Every

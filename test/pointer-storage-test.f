@@ -1,3 +1,4 @@
+split-str
 \ pointer-storage-test.f - focused pointer-slot ownership and effect regression.
 
 require src/lib/error.f

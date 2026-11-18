@@ -1,3 +1,4 @@
+split-str
 \ prof.f - the in-binary sampling profiler for the native engine (prof-on,
 \ prof-off, prof-reset, prof-report, prof-json, prof-row, prof-rate, prof-pc>rec).
 \ Load after habu1.f, before habu2.f. Handler and report state live in the
@@ -263,7 +264,7 @@ public
    10 PROF-CALLER-NONE LIT64,  LPROFEDGE LABEL@ BL,
    wret LBL, ;
 
-: C-PROF-SAY ( ^u8 n -- ) {: a:^ u:n :}
+: C-PROF-SAY ( str -- ) {: a:^ u:n :}
    LBL LBL {: skip txt :}
    skip B,
    txt LBL,  a u BYTES,
@@ -278,7 +279,7 @@ public
 : C-PROF-NL ( -- )  s\" \n" C-PROF-SAY ;
 : C-PROF-DQ ( -- )  s\" \q" C-PROF-SAY ;
 
-: C-PROF-FIELD ( ^u8 n n -- ) {: a:^ u:n reg:n :}
+: C-PROF-FIELD ( str n -- ) {: a:^ u:n reg:n :}
    a u C-PROF-SAY
    9 reg 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL, ;
 
@@ -936,7 +937,7 @@ private
       7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA STR,
    have LBL, ;
 
-: C-PROF-DIE ( ^u8 n -- ) {: a:^ u:n :}
+: C-PROF-DIE ( str -- ) {: a:^ u:n :}
    LBL {: msg :}
    0 2 MOVZ,  1 msg ADR,  2 u LIT64,  NR-WRITE SYS,
    0 EXIT-STATUS:SYSTEM MOVZ,  NR-EXIT-GROUP SYS,

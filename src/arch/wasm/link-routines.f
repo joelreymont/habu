@@ -1,3 +1,4 @@
+split-str
 \ link-routines.f - the kernel routines a Wasm module carries, each laid when the
 \ program reaches its word and shaped as tier 0's code is (src/habu/t0-wasm.f).
 require src/lib/string.f
@@ -712,7 +713,7 @@ public
 
 \ The named kernel word's routine body, as WLINK:FUNCTION+ takes one and valid
 \ until the next call, and true; an empty span and false when it has none.
-: ROUTINE-BODY ( ^u8 n -- ^u8 n bool )
+: ROUTINE-BODY ( str -- str bool )
    {: name:^ u:n :}
    0 BUF-U !  0 SITES-N !
    name u s" emit" STR=CI if EMIT-BODY BODY$ true exit then

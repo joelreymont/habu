@@ -1,3 +1,4 @@
+split-str
 \ intern.f - checked growable string interner for native lint tools.
 
 require src/lib/error.f
@@ -71,14 +72,14 @@ public
    0 INTERN-CHUNK-I !
    INTERN-RESET-CHUNKS ;
 
-: INTERN$ ( n -- ^u8 n ) {: id :}
+: INTERN$ ( n -- str ) {: id :}
    INTERN-INIT-ONCE
    id 0 < IF EXIT-STATUS:FULL throw THEN
    id INTERN# >= IF EXIT-STATUS:FULL throw THEN
    INTERN-ADDR-V @ id VEC:AT @
    INTERN-LEN-V @ id VEC:AT @ ;
 
-: INTERN-FIND ( ^u8 n -- n ) {: a:^ u :}
+: INTERN-FIND ( str -- n ) {: a:^ u :}
    INTERN-INIT-ONCE
    0 begin dup INTERN# < while
       dup INTERN$ a u STR= IF exit THEN
@@ -125,14 +126,14 @@ private
    u INTERN-ENSURE-CHUNK
    u INTERN-CHUNK-I @ INTERN-ALLOC-IN-CHUNK ;
 
-: INTERN-COPY-TO ( ^u8 n ^u8 -- ^u8 ) {: a:^ u dst:^ :}
+: INTERN-COPY-TO ( str ^u8 -- ^u8 ) {: a:^ u dst:^ :}
    a dst u LINT-BMOVE
    dst ;
 
-: INTERN-COPY$ ( ^u8 n -- ^u8 ) {: a:^ u :}
+: INTERN-COPY$ ( str -- ^u8 ) {: a:^ u :}
    a u u INTERN-ALLOC-SPAN INTERN-COPY-TO ;
 
-: INTERN-STORE-NEW ( ^u8 n n -- n ) {: a:^ u id :}
+: INTERN-STORE-NEW ( str n -- n ) {: a:^ u id :}
    a u INTERN-COPY$ INTERN-ADDR-V @ VEC:PUSH !
    u INTERN-LEN-V @ VEC:PUSH !
    id ;

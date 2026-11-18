@@ -1,3 +1,4 @@
+split-str
 \ process-argv.f - checked argv process helpers; how they spawn is src/lib/process.f
 \ "SPAWN". These spawns pass the child no variables: to inherit, prepare an
 \ environment (src/lib/process-env.f) and spawn through its *-ARGV-ENV-* words.
@@ -79,7 +80,7 @@ public
 \ Appends exe and the staged arguments as one command line, then `stdin:` and
 \ the stdin text when there is any: the program a report names for a rerun.
 \ Call it before the spawn, which resets the table.
-: PROC-ARGV-PROGRAM+ ( ^u8 n ^u8 n ^u8 n ^len -- )
+: PROC-ARGV-PROGRAM+ ( str str ^u8 n ^len -- )
    {: exe:^ exeu:n stdin:^ stdinu:n dst:^ cap:n lenp:^ :}
    exe exeu dst cap lenp BUF-APPEND
    PROC-ARGV-N @ COUNT>N 0 ?do

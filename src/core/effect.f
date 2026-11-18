@@ -1,3 +1,4 @@
+split-str
 \ effect.f - the type and effect values a definer builds a definition from: a
 \ type is a schema node, an effect a type whose node is a quotation, its
 \ inputs and outputs deepest first, and `define-word` opens a definition from a
@@ -70,7 +71,7 @@ public
 : OPERAND ( ^u8 n -- ) 0 ITEM-ABI:OPERAND ITEM ;
 
 \ Appends type T, shown in the listing as the string spells it.
-: TYPE-ITEM ( ^u8 n type -- ) TYPE>N ITEM-ABI:TYPE ITEM ;
+: TYPE-ITEM ( str type -- ) TYPE>N ITEM-ABI:TYPE ITEM ;
 
 \ Appends a call of the word the name binds where the definer runs.
 : CALL ( ^u8 n -- ) 0 ITEM-ABI:CALL ITEM ;

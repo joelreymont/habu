@@ -1,3 +1,4 @@
+split-str
 \ code-owner.f - turn a live code address into the records that own it. Runs inside
 \ the engine under study: code-region addresses have no external symbols, and each
 \ record holds its routine's start and length. Every owner is reported, as an

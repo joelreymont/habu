@@ -1,3 +1,4 @@
+split-str
 \ ffi-c-calls.f - FUNCTION: calls against C functions the run builds.
 \ Loaded by src/lib/ffi-test.f on macOS and Linux arm64, inside package
 \ FFI-TEST. No system function takes nine longs and a double, or returns a
@@ -19,7 +20,7 @@ create FFI-T-CC-LIB-PATH PATH-CAP allot
 variable FFI-T-CC-SRC-U
 variable FFI-T-CC-LIB-U
 
-: FFI-T-CC-L+ ( ^u8 n -- )
+: FFI-T-CC-L+ ( str -- )
    FFI-T-CC-SRC CODEGEN:APPEND-STRING
    10 FFI-T-CC-SRC CODEGEN:APPEND-BYTE ;
 
@@ -66,12 +67,12 @@ variable FFI-T-CC-LIB-U
    s"    return a + 2*b + 3*c + 4*d + 5*e + 6*f + 7*g + 8*h + 9*i + 10*j; }"
    FFI-T-CC-L+ ;
 
-: FFI-T-CC-LIB$ ( -- ^u8 n )
+: FFI-T-CC-LIB$ ( -- str )
    HB-TARGET-MACOS? if s" libhbccalls.dylib" exit then
    s" libhbccalls.so" ;
 
-: FFI-T-CC-SRC$ ( -- ^u8 n ) FFI-T-CC-SRC-PATH FFI-T-CC-SRC-U @ ;
-: FFI-T-CC-LIB-PATH$ ( -- ^u8 n ) FFI-T-CC-LIB-PATH FFI-T-CC-LIB-U @ ;
+: FFI-T-CC-SRC$ ( -- str ) FFI-T-CC-SRC-PATH FFI-T-CC-SRC-U @ ;
+: FFI-T-CC-LIB-PATH$ ( -- str ) FFI-T-CC-LIB-PATH FFI-T-CC-LIB-U @ ;
 
 : FFI-T-CC-BUILD ( -- )
    s" habu-ffi-c-calls" FS:MKTEMP-DIR {: dir:^ diru :}

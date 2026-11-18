@@ -1,3 +1,4 @@
+split-str
 \ process-tree.f - end a process and every process descended from it
 \ (KILL-TREE), read the CPU time they have run (CPU-NS), or ask whether any
 \ process runs a file (RUNS?). macOS asks libproc; Linux reads /proc, written
@@ -150,7 +151,7 @@ FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 
 \ TRUE with the record of the given flavor and size filled, FALSE when pid is
 \ not there - or, asked LIVE-ONLY, is a zombie.
-: RECORD? ( n n n ^u8 n -- bool ) {: pid:n flavor:n arg:n buf:^ size:n :}
+: RECORD? ( n n n str -- bool ) {: pid:n flavor:n arg:n buf:^ size:n :}
    FFI:ERRNO-CLEAR
    pid flavor arg buf size PID-INFO size = if true exit then
    FFI:ERRNO ESRCH = if false exit then
@@ -270,10 +271,10 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
    FS:ERRNO FS:ENOENT = FS:ERRNO ESRCH = or
    if LOAD-GONE else LOAD-REFUSED then ;
 
-: PATH+ ( ^u8 n -- )
+: PATH+ ( str -- )
    STAT-PATH STAT-PATH-CAP STAT-PATH-U BUF-APPEND ;
 
-: STAT-PATHZ ( ^u8 n -- ^u8 )
+: STAT-PATHZ ( str -- ^u8 )
    {: name:^ nameu:n :}
    STAT-PATH-U BUF-RESET
    s" /proc/" PATH+
@@ -339,13 +340,13 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
    GROUP @ 0 > pgid GROUP @ = and or
    if pid MEMBER+ then ;
 
-: PROCESS-ROW ( ^u8 n n -- ) {: name:^ nameu:n pid:n :}
+: PROCESS-ROW ( str n -- ) {: name:^ nameu:n pid:n :}
    name nameu STAT-PATHZ LOAD-STAT LOAD-LOADED LOAD-EQ 0= if exit then
    TAKE-STATE drop
    TAKE-INT TAKE-INT {: ppid:n pgid:n :}
    pid ppid pgid VISIT ;
 
-: VISIT-LINUX ( ^u8 n -- ) {: name:^ nameu:n :}
+: VISIT-LINUX ( str -- ) {: name:^ nameu:n :}
    name nameu STR>NUMBER? MATCH option
       none OF ENDOF
       some OF name nameu rot PROCESS-ROW ENDOF
@@ -354,7 +355,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
 : SETTLED-STATE? ( n -- bool ) {: c:n :}
    c [char] T = c [char] t = or c [char] Z = or c [char] X = or ;
 
-: TASK-DIR+ ( ^u8 n -- )
+: TASK-DIR+ ( str -- )
    TASK-DIR TASK-DIR-CAP TASK-DIR-U BUF-APPEND ;
 
 : DIGITS+ ( n -- ) {: pid:n :}
@@ -364,7 +365,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
       RADIX /
    repeat drop ;
 
-: THREAD-VISIT ( ^u8 n -- )
+: THREAD-VISIT ( str -- )
    {: tid:^ tidu:n :}
    STAT-PATH-U BUF-RESET
    TASK-DIR TASK-DIR-U BUF-LEN@ PATH+
@@ -627,7 +628,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
    9 0 ?do TAKE-INT drop loop
    TAKE-INT TAKE-INT + TAKE-INT + TAKE-INT + ;
 
-: CPU-ROW ( ^u8 n n -- ) {: name:^ nameu:n pid:n :}
+: CPU-ROW ( str n -- ) {: name:^ nameu:n pid:n :}
    pid MEMBER? if exit then
    name nameu STAT-PATHZ LOAD-STAT LOAD-LOADED LOAD-EQ 0= if exit then
    TAKE-STATE drop
@@ -635,7 +636,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
    pid JOIN
    TAKE-TIMES TICKS @ + TICKS ! ;
 
-: CPU-VISIT-LINUX ( ^u8 n -- ) {: name:^ nameu:n :}
+: CPU-VISIT-LINUX ( str -- ) {: name:^ nameu:n :}
    name nameu STR>NUMBER? MATCH option
       none OF ENDOF
       some OF name nameu rot CPU-ROW ENDOF
@@ -685,13 +686,13 @@ variable RUN-INODE
 variable RUN-N
 
 \ An executable the caller may not stat (on Linux, another user's) is skipped.
-: EXE-MATCH ( ^u8 n -- )
+: EXE-MATCH ( str -- )
    FS:TRY-PATH-IDENTITY 0= if 2drop exit then
    RUN-INODE @ = swap RUN-DEVICE @ = and if 1 RUN-N +! then ;
 
 \ The NUL-terminated path, empty for a pid that ended (errno ESRCH, cleared
 \ first) or that names no executable.
-: EXE-PATH-MACOS ( n -- ^u8 n ) {: pid:n :}
+: EXE-PATH-MACOS ( n -- str ) {: pid:n :}
    0 EXE-PATH c!
    FFI:ERRNO-CLEAR
    pid PATH-FLAVOR 0 EXE-PATH EXE-PATH-BYTES PID-INFO drop
@@ -705,14 +706,14 @@ variable RUN-N
       pathu 0 > if path pathu EXE-MATCH then
    loop ;
 
-: EXE-PATH-LINUX ( ^u8 n -- ^u8 n ) {: name:^ nameu:n :}
+: EXE-PATH-LINUX ( str -- str ) {: name:^ nameu:n :}
    TASK-DIR-U BUF-RESET
    s" /proc/" TASK-DIR+
    name nameu TASK-DIR+
    s" /exe" TASK-DIR+
    TASK-DIR TASK-DIR-U BUF-LEN@ ;
 
-: EXE-VISIT-LINUX ( ^u8 n -- ) {: name:^ nameu:n :}
+: EXE-VISIT-LINUX ( str -- ) {: name:^ nameu:n :}
    name nameu STR>NUMBER? MATCH option
       none OF ENDOF
       some OF drop name nameu EXE-PATH-LINUX EXE-MATCH ENDOF
@@ -773,7 +774,7 @@ public
 
 \ TRUE when a process the caller may inspect, itself included, runs the path's
 \ file (device and inode). E-FS-STAT: no stat; E-PROC-OUTPUT: no process list.
-: RUNS? ( ^u8 n -- bool )
+: RUNS? ( str -- bool )
    FS:PATH-IDENTITY {: device:n inode:n :}
    WALK-GET
    device inode [: RUNS-READ ;] [: WALK-RELEASE ;] finally ;

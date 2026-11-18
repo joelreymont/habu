@@ -1,3 +1,4 @@
+split-str
 \ enums.f - numeric enum counter definers. The bare ENUM token belongs to the
 \ block-style ENUM ... ;ENUM type family (src/core/enum-decl.f).
 

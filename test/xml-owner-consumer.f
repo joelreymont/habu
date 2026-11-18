@@ -1,3 +1,4 @@
+split-str
 \ A document opens a runtime-sized set of wire parts, retains only owners and
 \ lexical ranges, closes its parsing cursors, then edits those parts later.
 require src/lib/test.f
@@ -49,7 +50,7 @@ variable INVALID-LAST
 CAST: KIND>N ( XML:kind -- n )
 CAST: ENCODING>N ( XML:encoding -- n )
 
-: UTF16$ ( ^u8 n bool -- ^u8 n )
+: UTF16$ ( str bool -- str )
    {: ascii size:n little:bool :}
    size WIRE-CAP 2 - 2 / > if XML:E-CAPACITY throw then
    little if $FF WIRE c! $FE WIRE 1+ c!
@@ -64,7 +65,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    loop
    WIRE size 2 * 2 + ;
 
-: PART$ ( n bool -- ^u8 n )
+: PART$ ( n bool -- str )
    {: index:n malformed:bool :}
    index COUNT @ 1- = INVALID-LAST @ 0<> and if
       s\" <r>\xC0\x80</r>" exit
@@ -79,7 +80,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    KIND>N {: want:n :}
    XML:NEXT KIND>N want T= ;
 
-: STREAM$ ( -- ^u8 n )
+: STREAM$ ( -- str )
    s" <a xmlns:p='urn:x'><p:b q='&amp;'>Aé&amp;Z</p:b></a>" ;
 
 : STREAM-FILL ( ^n SPAN:span<u8> -- n )

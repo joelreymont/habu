@@ -1,3 +1,4 @@
+split-str
 \ le.f - fixed-width little-endian integers in a caller's bytes: io_uring ring
 \ fields, a C `int` out-parameter, a socklen, a compiler data slot, at the
 \ contract's width and any alignment.

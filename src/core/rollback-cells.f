@@ -1,3 +1,4 @@
+split-str
 \ rollback-cells.f - the cells an evaluate's or a REPL line's rollback puts
 \ back as they were when its text began, each marked once by its owner. A
 \ mark is dictionary data, so a rollback that cuts it drops it. DATA-SPACE

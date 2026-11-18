@@ -1,3 +1,4 @@
+split-str
 \ byte-edit.f - ordered replacement spans over arbitrary bytes (package EDIT).
 \ Storage capacity is the edit count; source, borrowed replacements and storage
 \ stay live until CLOSE. Edits are sorted and nonoverlapping, insertions at one
@@ -39,7 +40,7 @@ LINEAR: ERASE ( EDIT:editor -- ^n )
 : STATE ( EDIT:editor -- EDIT:editor ^n )
    ERASE dup MINT swap ;
 
-: REQUIRE-SPAN ( ^u8 n -- )
+: REQUIRE-SPAN ( str -- )
    {: source:^ size:n :}
    size 0 < if E-RANGE throw then
    source ADDRESS {: start:n :}
@@ -47,7 +48,7 @@ LINEAR: ERASE ( EDIT:editor -- ^n )
    size 0 > start 0= and if E-RANGE throw then
    size MAX-SIZE start - > if E-RANGE throw then ;
 
-: OVERLAPS? ( ^u8 n ^u8 n -- bool )
+: OVERLAPS? ( str str -- bool )
    {: first:^ first-len:n second:^ second-len:n :}
    first-len 0= second-len 0= or if false exit then
    first ADDRESS second ADDRESS second-len + <
@@ -61,7 +62,7 @@ LINEAR: ERASE ( EDIT:editor -- ^n )
    {: state :}
    state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
 
-: ROW-SOURCE ( ^n -- ^u8 n )
+: ROW-SOURCE ( ^n -- str )
    {: row :}
    row 2 ptr-field @ row 3 cells + @ ;
 
@@ -77,14 +78,14 @@ public
    ROW-CELLS * HEADER-CELLS + cells ;
 
 private
-: STORAGE-CHECK ( ^n n ^u8 n -- )
+: STORAGE-CHECK ( ^n n str -- )
    {: storage cap:n source size:n :}
    storage BYTE-VIEW cap REQUIRE-SPAN
    cap 0 STORAGE-BYTES < if E-CAPACITY throw then
    source size REQUIRE-SPAN
    storage BYTE-VIEW cap source size OVERLAPS? if E-ALIAS throw then ;
 
-: INIT-STATE ( ^n n ^u8 n -- )
+: INIT-STATE ( ^n n str -- )
    {: storage cap:n source size:n :}
    source storage SOURCE-IDX ptr-field !
    size storage SOURCE-LEN + !
@@ -105,7 +106,7 @@ public
    ERASE drop ;
 
 private
-: EDIT-CHECK ( ^n n n ^u8 n -- )
+: EDIT-CHECK ( ^n n n str -- )
    {: state start:n removed:n replacement added:n :}
    replacement added REQUIRE-SPAN
    start 0 < removed 0 < or if E-RANGE throw then
@@ -120,7 +121,7 @@ private
       E-ALIAS throw
    then ;
 
-: SAVE-EDIT ( ^n n n ^u8 n -- )
+: SAVE-EDIT ( ^n n n str -- )
    {: state start:n removed:n replacement added:n :}
    state state USED + @ ROW {: row :}
    start row !
@@ -131,11 +132,11 @@ private
    state RESULT-LEN + @ removed - added + state RESULT-LEN + !
    1 state USED + +! ;
 
-: REPLACE-ARGS ( EDIT:editor off len ^u8 n -- EDIT:editor ^n n n ^u8 n )
+: REPLACE-ARGS ( EDIT:editor off len str -- EDIT:editor ^n n n str )
    {: start:off removed:len replacement added:n :}
    STATE start OFF>N removed LEN>N replacement added ;
 
-: APPLY-EDIT ( ^n n n ^u8 n -- )
+: APPLY-EDIT ( ^n n n str -- )
    {: state start:n removed:n replacement added:n :}
    state start removed replacement added EDIT-CHECK
    state start removed replacement added SAVE-EDIT ;
@@ -147,7 +148,7 @@ public
    REPLACE-ARGS APPLY-EDIT ;
 
 private
-: DESTINATION-CHECK ( ^n ^u8 n -- )
+: DESTINATION-CHECK ( ^n str -- )
    {: state destination cap:n :}
    destination cap REQUIRE-SPAN
    state RESULT-LEN + @ cap > if E-CAPACITY throw then
@@ -159,7 +160,7 @@ private
       state i ROW ROW-SOURCE destination cap OVERLAPS? if E-ALIAS throw then
    loop ;
 
-: COPY-SPAN ( ^u8 n ^u8 -- ^u8 )
+: COPY-SPAN ( str ^u8 -- ^u8 )
    {: source size:n destination :}
    source destination size >LEN BYTE-COPY-LEN
    destination size + ;

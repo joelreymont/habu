@@ -1,3 +1,4 @@
+split-str
 \ fs-atomic-faults.f - atomic writes under host failures a preloaded shim makes.
 \ A directory fsync the host accepted fails with EIO: the file's sync passes,
 \ the rename lands and the reopened directory's sync fails, so the write is
@@ -45,19 +46,19 @@ create GOT IO-CAP allot
 variable SIBLINGS
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: SHIM-C$ ( -- ^u8 n ) SHIM-C SHIM-C-U @ ;
-: SHIM-SO$ ( -- ^u8 n ) SHIM-SO SHIM-SO-U @ ;
-: TARGET$ ( -- ^u8 n ) TARGET TARGET-U @ ;
-: FREE$ ( -- ^u8 n ) FREE FREE-U @ ;
-: STAGED$ ( -- ^u8 n ) STAGED STAGED-U @ ;
-: CACHED$ ( -- ^u8 n ) CACHED CACHED-U @ ;
-: MANY$ ( -- ^u8 n ) MANY MANY-U @ ;
+: SHIM-C$ ( -- str ) SHIM-C SHIM-C-U @ ;
+: SHIM-SO$ ( -- str ) SHIM-SO SHIM-SO-U @ ;
+: TARGET$ ( -- str ) TARGET TARGET-U @ ;
+: FREE$ ( -- str ) FREE FREE-U @ ;
+: STAGED$ ( -- str ) STAGED STAGED-U @ ;
+: CACHED$ ( -- str ) CACHED CACHED-U @ ;
+: MANY$ ( -- str ) MANY MANY-U @ ;
 
 : C+ ( ^u8 n -- )
    SHIM CODEGEN:APPEND-STRING
    10 SHIM CODEGEN:APPEND-BYTE ;
 
-: P+ ( ^u8 n -- )
+: P+ ( str -- )
    PROG CODEGEN:APPEND-STRING
    10 PROG CODEGEN:APPEND-BYTE ;
 
@@ -155,7 +156,7 @@ variable SIBLINGS
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
 
-: WANT$ ( -- ^u8 n )
+: WANT$ ( -- str )
    SB-RESET
    E-FS-SYNC FMT:SB-INT 10 SB-APPEND-C
    EIO FMT:SB-INT 10 SB-APPEND-C
@@ -169,7 +170,7 @@ variable SIBLINGS
    EINVAL FMT:SB-INT 10 SB-APPEND-C
    SB$ ;
 
-: FILE-WANT$ ( -- ^u8 n )
+: FILE-WANT$ ( -- str )
    SB-RESET
    5 0 ?do
       E-FS-IO FMT:SB-INT 10 SB-APPEND-C
@@ -177,7 +178,7 @@ variable SIBLINGS
    loop
    SB$ ;
 
-: COUNT-SIBLING ( ^u8 n -- )
+: COUNT-SIBLING ( str -- )
    s" .tmp-" STARTS-WITH? if 1 SIBLINGS +! then ;
 
 : NO-LEFTOVER ( -- )
@@ -218,7 +219,7 @@ variable SIBLINGS
    MANY-NONE
    NO-LEFTOVER ;
 
-: HOLDS-OLD ( ^u8 n -- )
+: HOLDS-OLD ( str -- )
    GOT IO-CAP FS:READ-ALL {: gotu:n :}
    GOT gotu s" old bytes" T$= ;
 

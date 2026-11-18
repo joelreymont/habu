@@ -1,3 +1,4 @@
+split-str
 \ w03.f - WASM-W03: W03's module, which test/wasm/link.f walks and
 \ test/wasm/device.f validates and runs, and the bodies both files build.
 \

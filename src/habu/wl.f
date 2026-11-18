@@ -1,3 +1,4 @@
+split-str
 \ wl.f - the wordlist ids the engine gives a meaning. Its startup row loads it
 \ after boot-cells.f and before checker.f, which reads it.
 package WL

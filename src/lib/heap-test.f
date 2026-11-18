@@ -1,3 +1,4 @@
+split-str
 \ ALLOC through the heap's allocator: the cases every allocator meets; bytes
 \ come back zeroed where a freed block's were dirty; small records share
 \ pages; RESIZE keeps a block's bytes as it grows and shrinks and zeroes the

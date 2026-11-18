@@ -1,3 +1,4 @@
+split-str
 \ decl-event.f: the event log of the one open STRUCTURE or ENUM declaration
 \ (package DECL-EVENT); the front ends only recognise tokens. Both emit the same
 \ DEV-K-FIELD event; only the variant selector, held here, differs. The runner
@@ -182,7 +183,7 @@ public
 
 \ A pointer does not own (TFCL-NODE? stops at it), so `^<linear>` would let
 \ its family copy and drop a linear value.
-: REQUIRE-POINTEE ( n ^u8 n -- n )
+: REQUIRE-POINTEE ( n str -- n )
    {: node:n why:^ whyu:n :}
    node TFCL-NODE? IF
       why whyu s" hold the linear value in the field itself, never beneath `^`"
@@ -192,7 +193,7 @@ public
 
 \ REQUIRE-POINTEE on each pointee in a field type, as SCH-STORE-MASK walks it;
 \ again at close, as a pointee naming the declared family was judged fieldless.
-: REQUIRE-POINTEES ( n ^u8 n -- )
+: REQUIRE-POINTEES ( n str -- )
    {: node:n why:^ whyu:n :}
    node SCHEMA-PTR? IF
       node SCHEMA-A@ why whyu REQUIRE-POINTEE why whyu RECURSE EXIT THEN

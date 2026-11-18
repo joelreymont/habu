@@ -1,3 +1,4 @@
+split-str
 \ workspace.f - fixed compiler working storage in one transient mapping. Capture
 \ releases it; the next access maps a fresh one and stores the defaults (OPEN).
 \ The mapping's record is laid by hand, head then control cells, both scratch.
@@ -65,7 +66,7 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 CAST: AS-WORK-ENTRY ( [ ^n -- ^u8 ] -- n )
 CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
 
-: DEFINER$ ( n -- ^u8 n ) {: kind:n :}
+: DEFINER$ ( n -- str ) {: kind:n :}
    kind BUFFER-KIND = if s" CWORK-BUFFER" exit then
    kind SPAN-KIND = if s" CWORK-SPAN" exit then
    s" CWORK-VARIABLE" ;

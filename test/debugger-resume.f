@@ -1,3 +1,4 @@
+split-str
 \ debugger-resume.f - one-shot restoration across code protection pages.
 require test/gate-common.f
 

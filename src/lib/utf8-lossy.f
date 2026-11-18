@@ -1,3 +1,4 @@
+split-str
 \ utf8-lossy.f - bytes as UTF-8, each ill-formed part replaced. REPAIR answers
 \ valid input itself, uncopied; otherwise a copy in the caller's arena with each
 \ maximal subpart of an ill-formed sequence (Unicode 3.9, Table 3-8) replaced by
@@ -47,19 +48,19 @@ package UTF8-LOSSY
       dst REPLACED
    then ;
 
-: COPY-SIZE ( ^u8 n -- n ) {: source:^ length:n :}
+: COPY-SIZE ( str -- n ) {: source:^ length:n :}
    0 0 begin dup length < while
       source length rot PIECE
    repeat drop ;
 
-: COPY-FILL ( ^u8 ^u8 n -- ) {: out:^ source:^ length:n :}
+: COPY-FILL ( ^u8 str -- ) {: out:^ source:^ length:n :}
    out 0 begin dup length < while
       source length rot PUT
    repeat 2drop ;
 
 public
 
-: REPAIR ( ^u8 n ^ARENA:arena -- ^u8 n )
+: REPAIR ( str ^ARENA:arena -- str )
    {: source:^ length:n a:^ :}
    source length UTF8:VALID? if source length exit then
    a source length COPY-SIZE ARENA:ALLOC {: out:^ size:n :}

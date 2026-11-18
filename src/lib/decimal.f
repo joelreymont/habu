@@ -1,3 +1,4 @@
+split-str
 \ decimal.f - exact signed i64 conversion of decimal text (package DECIMAL),
 \ with no float or allocation. EXACT takes single interior underscores, an
 \ optional point with a digit on one side (`1.`, `.5`) and an optional signed

@@ -1,3 +1,4 @@
+split-str
 \ systemd.f - tells systemd's service manager a service is ready, by the
 \ sd_notify(3) protocol: the datagram READY=1 to the unix datagram socket
 \ NOTIFY_SOCKET names, a leading @ naming an abstract socket. With the variable
@@ -30,7 +31,7 @@ private
 
 \ libsystemd's bounds: at least two bytes, and room for a NUL after them
 \ in sun_path.
-: NAME? ( ^u8 n -- bool )
+: NAME? ( str -- bool )
    {: name:^ size:n :}
    size 2 <  size PATH-BYTES >=  or if false exit then
    name c@ $2F =  name c@ $40 =  or ;

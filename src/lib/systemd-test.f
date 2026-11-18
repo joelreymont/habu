@@ -1,3 +1,4 @@
+split-str
 \ systemd-test.f - SYSTEMD:NOTIFY-READY against unix datagram sockets this
 \ test binds.
 HB-TARGET-LINUX? ?TARGET
@@ -37,12 +38,12 @@ create GOT GOT-CAP allot
 variable BOUND-FD
 variable ABSTRACT-FD
 
-: SOCKETS$ ( -- ^u8 n ) SOCKETS SOCKETS-U @ ;
-: BOUND$ ( -- ^u8 n ) BOUND BOUND-U @ ;
-: MISSING$ ( -- ^u8 n ) MISSING MISSING-U @ ;
-: ABSTRACT$ ( -- ^u8 n ) ABSTRACT ABSTRACT-U @ ;
+: SOCKETS$ ( -- str ) SOCKETS SOCKETS-U @ ;
+: BOUND$ ( -- str ) BOUND BOUND-U @ ;
+: MISSING$ ( -- str ) MISSING MISSING-U @ ;
+: ABSTRACT$ ( -- str ) ABSTRACT ABSTRACT-U @ ;
 
-: P+ ( ^u8 n -- )
+: P+ ( str -- )
    PROG CODEGEN:APPEND-STRING
    10 PROG CODEGEN:APPEND-BYTE ;
 
@@ -57,7 +58,7 @@ variable ABSTRACT-FD
    s"    ;MATCH FMT:INT$ type cr ;" P+
    s" GO" P+ ;
 
-: BIND-AT ( ^u8 n -- n )
+: BIND-AT ( str -- n )
    UDP:BIND MATCH UDP:open-result
       opened OF UDP:SOCKET>N ENDOF
       failed OF
@@ -70,7 +71,7 @@ variable ABSTRACT-FD
    SB-RESET prefix prefixu SB-APPEND getpid FMT:SB-INT
    SB$ {: a:^ u:n :} a dst u BYTE-COPY u ;
 
-: SOCKETS! ( ^u8 n -- )
+: SOCKETS! ( str -- )
    {: a:^ u:n :}
    u PATH-CAP > if E-FS-PATH throw then
    a SOCKETS u BYTE-COPY  u SOCKETS-U ! ;
@@ -107,7 +108,7 @@ variable ABSTRACT-FD
    rc 0 <> if ERR erru LEN>N type cr then
    outu LEN>N rc ;
 
-: WANT$ ( n -- ^u8 n )
+: WANT$ ( n -- str )
    SB-RESET FMT:SB-INT 10 SB-APPEND-C SB$ ;
 
 : ANSWERS ( ^u8 n n -- )
@@ -118,7 +119,7 @@ variable ABSTRACT-FD
    rc 0 T= ;
 
 \ A unix datagram is queued before sendto returns, so nothing waits.
-: RECEIVED$ ( n -- ^u8 n )
+: RECEIVED$ ( n -- str )
    UDP:>SOCKET GOT GOT-CAP STR:LENGTH 0 >MS UDP:RECEIVE
    MATCH UDP:receive-result
       packet OF BLEN>N ENDOF

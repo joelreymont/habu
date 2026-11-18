@@ -1,3 +1,4 @@
+split-str
 \ utf8-scalar.f - strict reentrant UTF-8 scalar decoding with byte fallback. NEXT
 \ answers SCALAR and the next cursor for a canonical sequence, else RAW-BYTE with
 \ the lead byte and cursor+1: malformed, truncated, non-shortest, surrogate and
@@ -78,7 +79,7 @@ $8F constant F4-SECOND-MOST
       E-STR-BOUNDS throw
    then ;
 
-: LEAD@ ( ^u8 n n -- n ) {: source:^ length:n cursor:n :}
+: LEAD@ ( str n -- n ) {: source:^ length:n cursor:n :}
    length cursor CURSOR-CHECK
    source cursor + c@ ;
 
@@ -118,7 +119,7 @@ $8F constant F4-SECOND-MOST
    then
    E-STR-BOUNDS throw ;
 
-: FOLD-CONTINUATIONS ( ^u8 n n n n -- n bool )
+: FOLD-CONTINUATIONS ( str n n n -- n bool )
    {: source:^ remaining:n width:n index:n scalar:n :}
    index width = if
       scalar YES exit
@@ -148,7 +149,7 @@ $8F constant F4-SECOND-MOST
       lead cursor >RAW-BYTE
    then ;
 
-: DECODE-MULTIBYTE ( ^u8 n n n n -- scalar-step )
+: DECODE-MULTIBYTE ( str n n n -- scalar-step )
    {: source:^ remaining:n cursor:n lead:n width:n :}
    source remaining width RAW-WIDTH lead width LEAD-SEED
    FOLD-CONTINUATIONS if
@@ -157,7 +158,7 @@ $8F constant F4-SECOND-MOST
       drop lead cursor >RAW-BYTE
    then ;
 
-: DECODE-LEAD ( ^u8 n n n -- scalar-step )
+: DECODE-LEAD ( str n n -- scalar-step )
    {: source:^ remaining:n cursor:n lead:n :}
    lead ASCII-LIMIT < if
       lead cursor RAW-WIDTH >SCALAR exit
@@ -231,13 +232,13 @@ public
    repeat
    drop YES ;
 
-: SUBPART-END ( ^u8 n n -- n ) {: source:^ length:n cursor:n :}
+: SUBPART-END ( str n -- n ) {: source:^ length:n cursor:n :}
    source length cursor LEAD@ {: lead:n :}
    source cursor + {: at:^ :}
    lead LEAD-WIDTH length cursor - min {: limit:n :}
    cursor at limit lead 1 SUBPART + ;
 
-: CUT? ( ^u8 n n -- bool ) {: source:^ length:n cursor:n :}
+: CUT? ( str n -- bool ) {: source:^ length:n cursor:n :}
    length NONNEGATIVE
    cursor length = if NO exit then
    source length cursor LEAD@ LEAD-WIDTH length cursor - > if

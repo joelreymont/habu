@@ -1,3 +1,4 @@
+split-str
 \ checker-dup-record.f - a duplicate the checker refuses in the caller's scope
 \ (VERIFY:SOURCE-BUF-IN-SCOPE) leaves the record it collided with intact. CHECK
 \ refuses before its record step's first write: a later-wins entry without the
@@ -31,7 +32,7 @@ create ERR $1000 allot
 \ A scan at top level, under no checker scope, then the scanned name defined:
 \ the scan's rows must not outlive it. A child, since a leaked row ends the
 \ load that holds it.
-: TOP-SCAN$ ( -- ^u8 n )
+: TOP-SCAN$ ( -- str )
    SB-RESET
    S\" : CDR-NOP ( -- ) ;\n" SB-APPEND
    S\" s\\\" : CDR-Q ( -- ) parse-name 2drop ; immediate parses: CDR-Q 1\" ' CDR-NOP VERIFY:SOURCE-BUF-THEN-IN-SCOPE\n" SB-APPEND
@@ -42,7 +43,7 @@ public
 
 \ Verify one span in the caller's scope with the checker's diagnostics
 \ collected; 0 when it certified, else the throw code.
-: VERIFY-QUIET ( ^u8 n -- n )
+: VERIFY-QUIET ( str -- n )
    {: a:^ u:n :}
    a SRC-A !
    u SRC-U !
@@ -64,13 +65,13 @@ public
 
 \ The same span in multi-error mode, where a rejection's record is kept instead
 \ of thrown: the throw code, then the rejections counted.
-: MULTI-QUIET ( ^u8 n -- n n )
+: MULTI-QUIET ( str -- n n )
    {: a:^ u:n :}
    CHECK:MULTI-ERR-BEGIN
    a u VERIFY-QUIET
    CHECK:MULTI-ERR-END ;
 
-: DIAG$ ( -- ^u8 n )
+: DIAG$ ( -- str )
    REJECTION:BUFFER$ ;
 
 ;package

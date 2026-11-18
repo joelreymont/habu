@@ -1,3 +1,4 @@
+split-str
 \ Initialized storage keeps its scope and nominal element type through the real
 \ checker load path.
 

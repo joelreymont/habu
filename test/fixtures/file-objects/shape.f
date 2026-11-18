@@ -1,3 +1,4 @@
+split-str
 \ shape.f - loaded after count.f.
 
 package FILE-OBJECTS-SHAPE

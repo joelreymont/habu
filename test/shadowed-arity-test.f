@@ -1,3 +1,4 @@
+split-str
 \ shadowed-arity-test.f - a package public whose own bare tail a private word of
 \ the same package claims. A bare tail binds the open package's private wordlist
 \ first and the native compiler reads the contract from that binding, so effects
@@ -22,10 +23,10 @@ public
 \ One source string per case, answering its throw code (0 = accepted): the code
 \ comes back from the string that carried the second definition, so the refusal
 \ is seen at the definition, not at the build.
-: SAE-CATCH ( ^u8 n -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
+: SAE-CATCH ( str -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
 
 \ The captured rejection record contains the text.
-: SAID ( ^u8 n -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
 
 ;package
 

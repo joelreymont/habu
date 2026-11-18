@@ -1,3 +1,4 @@
+split-str
 \ A declared mutable view can move through a by-value record. No typed
 \ address, constructor for the view, or mutable field access is introduced.
 require src/lib/test.f

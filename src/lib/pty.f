@@ -1,3 +1,4 @@
+split-str
 \ pty.f - pseudoterminal pairs, and the one place a pair is opened: tests,
 \ src/lib/pty-harness.f and src/lib/process-pty-io.f open pairs here and open
 \ the slave themselves (src/lib/serial.f opens it like any serial device). Only

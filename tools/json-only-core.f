@@ -1,3 +1,4 @@
+split-str
 \ json-only-core.f - JSON diagnostic line filter core.
 
 require src/lib/error.f
@@ -27,15 +28,15 @@ variable JSON-ONLY-ROW-OBJECT
 : JSON-ONLY-DEFAULT-FDS ( -- )
    FD:STDOUT FD:STDERR JSON-ONLY-FDS! ;
 
-: JSON-ONLY-WRITE ( n ^u8 n -- ) {: fd a:^ u :}
+: JSON-ONLY-WRITE ( n str -- ) {: fd a:^ u :}
    u 0= IF exit THEN
    fd a u write u <> IF s" json-only: write failed" EXIT-STATUS:IOERR die THEN ;
 
-: JSON-ONLY-LF$ ( -- ^u8 n )
+: JSON-ONLY-LF$ ( -- str )
    JSON-ONLY-LF-C JSON-ONLY-LF c!
    JSON-ONLY-LF 1 ;
 
-: JSON-ONLY-PROSE ( ^u8 n -- )
+: JSON-ONLY-PROSE ( str -- )
    {: a:^ u :}
    JSON-ONLY-PROSE-FD @ a u JSON-ONLY-WRITE ;
 
@@ -69,7 +70,7 @@ variable JSON-ONLY-ROW-OBJECT
       JSON-ONLY-LINE-U @ 0 > if JSON-ONLY-OBJECT? if true exit then then
    again ;
 
-: JSON-ONLY-START? ( ^u8 n -- bool )
+: JSON-ONLY-START? ( str -- bool )
    JSON-ONLY-SOURCE-U ! JSON-ONLY-SOURCE !
    0 JSON-ONLY-POS !
    JSON-ONLY-NEXT? ;
@@ -80,7 +81,7 @@ variable JSON-ONLY-ROW-OBJECT
       JSON-ONLY-NEXT? 0=
    until ;
 
-: JSON-ONLY-FILTER ( ^u8 n -- )
+: JSON-ONLY-FILTER ( str -- )
    2dup JSON-ONLY-START? IF
       2drop
       JSON-ONLY-EMIT-FOUND

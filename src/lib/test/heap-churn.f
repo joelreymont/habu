@@ -1,3 +1,4 @@
+split-str
 \ heap-churn.f - test-only: an allocator takes 100000 blocks of 100 B to 1 MiB,
 \ an octave as likely as another, in an order a seeded draw of 512 slots sets:
 \ an empty slot takes a block, and a full one frees its block or resizes it to
@@ -60,26 +61,26 @@ variable HIGHEST
 
 
 \ Whether the STRIDE-th cells MARK writes for n bytes hold the mark.
-: STRIDED? ( ^u8 n n -- bool )
+: STRIDED? ( str n -- bool )
    {: p:^ len:n w:n :}
    len CLEAR 0 ?do
       p i + CELL-VIEW @ w <> if unloop false exit then
    STRIDE +loop true ;
 
 
-: MARKED? ( ^u8 n n -- bool )
+: MARKED? ( str n -- bool )
    {: p:^ len:n w:n :}
    p len + CELL - CELL-VIEW @ w =  p len w STRIDED?  and ;
 
 
-: ZEROED? ( ^u8 n -- bool )
+: ZEROED? ( str -- bool )
    {: p:^ len:n :}
    len CELL >= if p len 0 MARKED? exit then
    true  len 0 ?do p i + c@ 0= and loop ;
 
 
 \ Whether a block resized from the first size to the second keeps its marks.
-: KEPT? ( ^u8 n n n -- bool )
+: KEPT? ( str n n -- bool )
    {: p:^ old:n new:n w:n :}
    new old >= if p old w MARKED? exit then
    p new w STRIDED? ;
@@ -89,7 +90,7 @@ variable HIGHEST
 
 
 \ Marks a block with a new mark and puts it in a slot.
-: SET-SLOT ( ^u8 n n -- )
+: SET-SLOT ( str n -- )
    {: p:^ len:n i:n :}
    1 STAMPS +!  STAMPS @ {: w:n :}
    p len w MARK

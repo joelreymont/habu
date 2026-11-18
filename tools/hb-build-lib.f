@@ -1,3 +1,4 @@
+split-str
 \ hb-build-lib.f - hb-build's command line, package HB-BUILD-CLI:
 \ private but for the export block at the end. The name HB-BUILD belongs to the
 \ report module, tools/hb-build-report.f.
@@ -59,20 +60,20 @@ variable HBB-ELAPSED-NS
    s" usage: tools/hb-build.f [--engine | --repl | --json-errors] [--target name] [options] [source.f] -o out"
    EXIT-STATUS:USAGE die ;
 
-: HBB-COPY-PATH! ( ^u8 n ^u8 ^n -- ) {: a:^ u dst:^ up:^ :}
+: HBB-COPY-PATH! ( str ^u8 ^n -- ) {: a:^ u dst:^ up:^ :}
    u PATH-CAP > if E-BUILD-PATH throw then
    a dst u BYTE-COPY
    u up ! ;
 
-: HBB-SRC! ( ^u8 n -- )
+: HBB-SRC! ( str -- )
    HBB-SRC-PATH HBB-SRC-U HBB-COPY-PATH! ;
 
-: HBB-OUT! ( ^u8 n -- )
+: HBB-OUT! ( str -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
 
 \ The source path is held in PATH-CAP bytes, so the CLI refuses a longer
 \ one by name, before it builds anything.
-: HBB-SRC-ARG! ( ^u8 n -- )
+: HBB-SRC-ARG! ( str -- )
    {: a:^ u:n :}
    u PATH-CAP > if s" hb-build: source path too long" EXIT-STATUS:USAGE die then
    a u HBB-SRC! ;
@@ -83,7 +84,7 @@ variable HBB-ELAPSED-NS
 \ one in a directory that is not there, and one that is a directory, which a
 \ rename cannot replace. The host alone judges the last name's length. An -o
 \ with no directory part goes in the working directory.
-: HBB-OUT-ARG! ( ^u8 n -- )
+: HBB-OUT-ARG! ( str -- )
    {: a:^ u:n :}
    u PATH-CAP > if s" hb-build: output path too long" EXIT-STATUS:USAGE die then
    a u FS:BASENAME nip {: nameu:n :}
@@ -95,33 +96,33 @@ variable HBB-ELAPSED-NS
    a u FS:DIR? if s" hb-build: output path is a directory" EXIT-STATUS:USAGE die then
    a u HBB-OUT! ;
 
-: HBB-SRC$ ( -- ^u8 n )
+: HBB-SRC$ ( -- str )
    HBB-SRC-PATH HBB-SRC-U @ ;
 
-: HBB-OUT$ ( -- ^u8 n )
+: HBB-OUT$ ( -- str )
    HBB-OUT-PATH HBB-OUT-U @ ;
 
-: HBB-MAP-SRC! ( ^u8 n -- )
+: HBB-MAP-SRC! ( str -- )
    HBB-MAP-SRC IMAGE-NAMES:MAP-PATH! 0= if E-BUILD-PATH throw then
    HBB-MAP-SRC-U ! ;
 
-: HBB-MAP-DST! ( ^u8 n -- )
+: HBB-MAP-DST! ( str -- )
    HBB-MAP-DST IMAGE-NAMES:MAP-PATH! 0= if E-BUILD-PATH throw then
    HBB-MAP-DST-U ! ;
 
-: HBB-MAP-SRC$ ( -- ^u8 n ) HBB-MAP-SRC HBB-MAP-SRC-U @ ;
-: HBB-MAP-DST$ ( -- ^u8 n ) HBB-MAP-DST HBB-MAP-DST-U @ ;
+: HBB-MAP-SRC$ ( -- str ) HBB-MAP-SRC HBB-MAP-SRC-U @ ;
+: HBB-MAP-DST$ ( -- str ) HBB-MAP-DST HBB-MAP-DST-U @ ;
 
-: HBB-MAP-FILL ( ^u8 n -- ) HBB-MAP-SRC$ 2swap FS:COPY-FILE-STREAM ;
+: HBB-MAP-FILL ( str -- ) HBB-MAP-SRC$ 2swap FS:COPY-FILE-STREAM ;
 
-: HBB-WERR ( ^u8 n -- ) {: a:^ u :}
+: HBB-WERR ( str -- ) {: a:^ u :}
    u 0= if exit then
    2 a u write u <> if s" hb-build: stderr write failed" EXIT-STATUS:IOERR die then ;
 
 : HBB-WERR-LF ( -- )
    HBB-LF-BUF 1 HBB-WERR ;
 
-: HBB-PATH-HAS-DQ? ( ^u8 n -- bool )
+: HBB-PATH-HAS-DQ? ( str -- bool )
    STR:LENGTH HBB-DQ STR:INDEX-OF MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
@@ -138,10 +139,10 @@ variable HBB-ELAPSED-NS
 : HBB-INC-I ( -- )
    HBB-I @ 1+ HBB-I ! ;
 
-: HBB-ARG$ ( n -- ^u8 n )
+: HBB-ARG$ ( n -- str )
    SCRIPT-ARGV$ ;
 
-: HBB-ARG= ( n ^u8 n -- bool ) {: idx pat:^ patu :}
+: HBB-ARG= ( n str -- bool ) {: idx pat:^ patu :}
    idx HBB-ARG$ pat patu STR= ;
 
 : HBB-TARGET-OPTION ( -- )
@@ -191,12 +192,12 @@ variable HBB-ELAPSED-NS
       s" hb-build: source path contains a double quote" EXIT-STATUS:USAGE die
    then ;
 
-: HBB-GOT-NAME$ ( -- ^u8 n )
+: HBB-GOT-NAME$ ( -- str )
    HBB-ENGINE @ if s" hb-engine-got" exit then
    HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
 
 \ The program a build writes, with its .map beside it.
-: HBB-GOT$ ( -- ^u8 n )
+: HBB-GOT$ ( -- str )
    HBB-GOT-PATH HBB-GOT-U @ ;
 
 \ Every build gets a private directory under the caller's TMPDIR: a build
@@ -234,13 +235,13 @@ variable HBB-ELAPSED-NS
    rc E-FS-OPEN = rc E-FS-IO = or if E-BUILD-INSTALL throw then
    rc throw ;
 
-: HBB-REPLACE ( ^u8 n [ ^u8 n -- ] -- )
+: HBB-REPLACE ( str [ str -- ] -- )
    {: a:^ u:n fill :}
    [: a u fill FS:REPLACE-STAGED ;] catch HBB-REPLACE-ERROR ;
 
 \ The program a build wrote under TMPDIR may be on another filesystem, so it is
 \ copied; the copy keeps the team signature the product already carries.
-: HBB-INSTALL-FILL ( ^u8 n -- )
+: HBB-INSTALL-FILL ( str -- )
    {: tmp:^ tmpu:n :}
    HBB-GOT$ tmp tmpu FS:COPY-FILE-STREAM
    tmp tmpu FS:CHMOD-X ;
@@ -251,7 +252,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 
 \ The file read whole into the buffer the reserve and buffer words name; its
 \ length, 0 when it is missing.
-: HBB-READ ( ^u8 n [ n -- ] [ n -- ^u8 ] -- n )
+: HBB-READ ( str [ n -- ] [ n -- ^u8 ] -- n )
    {: a:^ u:n reserve buf :}
    a u FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if 0 exit then
@@ -261,7 +262,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 
 \ True when the built file and the installed one, a regular file and no
 \ symlink, compare equal by the quotation. HBB-SAME-OUT? releases the buffers.
-: HBB-SAME-FILE? ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- bool ] -- bool )
+: HBB-SAME-FILE? ( str str [ str str -- bool ] -- bool )
    {: a:^ u:n b:^ bu:n same :}
    b bu FS:FILE? 0= b bu FS:SYMLINK? or if false exit then
    a u [: HBB-BUILT-RESERVE ;] [: HBB-BUILT ;] HBB-READ {: au:n :}
@@ -284,7 +285,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    rc 0= HBB-SAME-OUT @ and ;
 
 \ A Wasm module is copied with no execute bit, and no map is written beside it.
-: HBB-MODULE-FILL ( ^u8 n -- )
+: HBB-MODULE-FILL ( str -- )
    {: tmp:^ tmpu:n :}
    HBB-GOT$ tmp tmpu FS:COPY-FILE-STREAM ;
 

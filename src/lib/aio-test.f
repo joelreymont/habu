@@ -1,3 +1,4 @@
+split-str
 \ aio-test.f - the io_uring loop: readiness, timers, cancellation, grouped
 \ waits, the completion operations, the per-task cleanup and every refusal.
 \ Pipes, one regular file under the test's own temporary directory, and one
@@ -481,7 +482,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : XFER-TICKET-DROP ( AIO:xfer -- )
    drop ;
 
-: XFER-PATH ( -- ^u8 n )
+: XFER-PATH ( -- str )
    XFER-PATH-BUF XFER-PATH-U @ ;
 
 : XFER-FILE! ( -- )

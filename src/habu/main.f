@@ -1,3 +1,4 @@
+split-str
 \ main.f - the engine's command line in Habu.
 \ `--load` and stdin build one source stream, interpreted once, open, through
 \ SOURCE-ROOT:RUN-ROOT; the program file of `hb prog.f` is a loaded file the
@@ -32,8 +33,8 @@ create NL $0A c,
 
 ENUM route load plain ;ENUM
 
-: LOAD$ ( -- ^u8 n ) s" --load" ;
-: SEP$ ( -- ^u8 n ) s" --" ;
+: LOAD$ ( -- str ) s" --load" ;
+: SEP$ ( -- str ) s" --" ;
 
 \ Argument idx of an argv vector, a NUL-terminated string.
 : ARG ( ^^u8 n -- ^u8 n )
@@ -144,7 +145,7 @@ $10000 constant READ-SIZE
    got 0 = ;
 
 \ A file that starts `#!` starts a line comment instead.
-: SHEBANG ( ^u8 n -- ) {: a:^ u:n :}
+: SHEBANG ( str -- ) {: a:^ u:n :}
    u 2 < if exit then
    a c@ HASH <> if exit then
    a 1 + c@ BANG <> if exit then
@@ -176,7 +177,7 @@ $10000 constant READ-SIZE
 
 \ The root stream runs open, as the engine's loop runs it: a stream that
 \ leaves cells still exits 0 (src/core/include.f SOURCE-ROOT:RUN-ROOT).
-: RUN-TEXT ( ^u8 n -- ) SOURCE-ROOT:RUN-ROOT ;
+: RUN-TEXT ( str -- ) SOURCE-ROOT:RUN-ROOT ;
 
 \ APP-ENTRY holds an executable token supplied by the image writer. Keep the
 \ cell intact: SCRIPT-ARGC uses its nonzero value to choose the app convention.

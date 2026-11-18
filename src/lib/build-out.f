@@ -1,3 +1,4 @@
+split-str
 \ build-out.f - where a build writes what it makes, under <out>: $HABU_OUT when set
 \ and non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working
 \ directory. <out>/obj/<hb's stamp>/ holds the objects that hb wrote, each under the
@@ -33,7 +34,7 @@ PATH-CAP SCRATCH-BUFFER: PATH-BUF
 
 public
 
-: BASE$ ( -- ^u8 n )
+: BASE$ ( -- str )
    OUT-U @ 0= if
       OUT-ROOT {: outu:n :}
       OUT-BUF outu FS:MAKE-DIRS
@@ -41,7 +42,7 @@ public
    then
    OUT-BUF OUT-U @ ;
 
-: OBJ$ ( ^u8 n -- ^u8 n )
+: OBJ$ ( str -- str )
    {: name:^ nameu:n :}
    nameu 0 <= if E-FS-PATH throw then
    OBJ-U @ 0= if

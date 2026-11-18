@@ -1,3 +1,4 @@
+split-str
 \ datagram.f - datagram sockets of any address family, on Linux and macOS,
 \ through exact libc bindings. A socket is blocking and close-on-exec; a
 \ receive try never blocks, and RECEIVE waits between tries on the AIO loop.

@@ -1,3 +1,4 @@
+split-str
 \ A two-cell value met where a word's effect makes a variable one cell or steps
 \ a pointer to it: each record names the variable, that word and the value.
 package PROGRAM-DIAG-CELL

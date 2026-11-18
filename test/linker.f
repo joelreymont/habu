@@ -1,3 +1,4 @@
+split-str
 \ linker.f - LINKER:WITH opens a build's data space, runs the body in it and
 \ closes it on every exit: the space's words and strings live there, and after
 \ the close hb's dictionary, code, data and header are as before. One process:
@@ -132,11 +133,11 @@ variable LOW-DP
 
 \ The address a string word of the space answers, read with its length cell
 \ and bytes while the space is mapped.
-: CALL$ ( ^u8 n -- ^u8 n ) LOOKUP XREF-REC XREF-START STRING-XT execute ;
+: CALL$ ( str -- str ) LOOKUP XREF-REC XREF-START STRING-XT execute ;
 
 : LEN-AT ( n -- ^n ) NULL-PTR BYTE-VIEW swap + CELL - CELL-VIEW ;
 
-: MAIN$ ( -- ^u8 n ) s" MAIN" ;
+: MAIN$ ( -- str ) s" MAIN" ;
 
 : BODY-A ( -- )
    s" : MAIN ( -- ) 72 emit 105 emit cr ;" evaluate-closed
@@ -162,8 +163,8 @@ variable LOW-DP
    HOST-CHECK
    s" b: after the close hb's dictionary, code, data and header are as before" SAY ;
 
-: C1$ ( -- ^u8 n ) s" LK-C1" ;
-: C2$ ( -- ^u8 n ) s" LK-C2" ;
+: C1$ ( -- str ) s" LK-C1" ;
+: C2$ ( -- str ) s" LK-C2" ;
 
 : BODY-C ( -- )
    s\" : LK-C1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
@@ -183,7 +184,7 @@ variable LOW-DP
    HOST-CHECK
    s" c: two words' equal strings share one address in the space" SAY ;
 
-: D1$ ( -- ^u8 n ) s" LK-D1" ;
+: D1$ ( -- str ) s" LK-D1" ;
 
 \ A decoy where case c's string sat: a table the last build left would find it.
 : DECOY ( -- )
@@ -238,7 +239,7 @@ variable LOW-DP
    HOST-CHECK
    s" f: after a rollback in the space a new string is refused" SAY ;
 
-: G1$ ( -- ^u8 n ) s" LK-G1" ;
+: G1$ ( -- str ) s" LK-G1" ;
 
 : INNER ( -- ) s" engine" RTARGET:HOST-TARGET [: ;] LINKER:WITH ;
 
@@ -450,7 +451,7 @@ CASE-R
 
 TYPED-VARIABLE SEALED-S bool
 
-: S$ ( -- ^u8 n ) s" LK-S" ;
+: S$ ( -- str ) s" LK-S" ;
 
 \ LK-S's row in the namespace wordlist BOOT:NAMESPACE-WL names, the build's
 \ inside a body.

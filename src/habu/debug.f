@@ -1,3 +1,4 @@
+split-str
 \ debug.f - breakpoints on compiled words: a trap at a word's entry (BRK #0 on
 \ arm64, int3 on x86-64), served by the engine's SIGTRAP handler, which prints
 \ habu-bp:, pc and the stack top, then removes (one-shot) or re-arms
@@ -110,7 +111,7 @@ $FFFFFF00 constant ABOVE-BYTE0
 
 \ Whether X64DIS decodes the instruction at code; a throw from outside the
 \ decoder's block throws on.
-: DECODES? ( ^u8 n -- bool ) {: code:^ u:n :}
+: DECODES? ( str -- bool ) {: code:^ u:n :}
    [: code u X64DIS:SPAN 2drop ;] catch {: rc:n :}
    rc 0= if true exit then
    rc X64DIS:E-LAST < rc X64DIS:E-FIRST > or if rc throw then
@@ -118,13 +119,13 @@ $FFFFFF00 constant ABOVE-BYTE0
 
 \ Byte k of the trampoline for the len-byte instruction at code: the
 \ instruction, `jmp rel32` back to the byte after it, then int3.
-: TRAMP-BYTE ( ^u8 n n n -- n ) {: code:^ len:n rel:n k:n :}
+: TRAMP-BYTE ( str n n -- n ) {: code:^ len:n rel:n k:n :}
    k len < if code k + c@ exit then
    k len = if $E9 exit then
    k len 5 + < if rel k len - 1- 8 * rshift $FF and exit then
    INT3 ;
 
-: TRAMP-WORD ( ^u8 n n n -- n ) {: code:^ len:n rel:n k:n :}
+: TRAMP-WORD ( str n n -- n ) {: code:^ len:n rel:n k:n :}
    0  4 0 ?do  code len rel k i + TRAMP-BYTE  i 8 * lshift or  loop ;
 
 \ Slot idx's trampoline for the instruction at `at`; the jmp at t + len reaches
@@ -159,7 +160,7 @@ $FFFFFF00 constant ABOVE-BYTE0
 
 \ BPADD ( xt ctrl -- ) : record + plant. ctrl = (skip << 1) | persistent; a
 \ persistent breakpoint whose instruction gets no trampoline is one-shot.
-: BP-SET-SLOT ( ^u8 n n -- ) {: xt:^ ctrl idx :}
+: BP-SET-SLOT ( str n -- ) {: xt:^ ctrl idx :}
    xt idx BP-SLOT-ADDR !
    xt W32@ idx BP-SLOT-INSTR !
    0 idx BP-SLOT-HITS !

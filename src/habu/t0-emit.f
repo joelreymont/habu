@@ -1,3 +1,4 @@
+split-str
 \ t0-emit.f - the emitter seam of the tier 0 compiler, package COMP.
 \
 \ src/habu/t0.f drives the EMIT- operations below; an emitter part per target
@@ -190,7 +191,7 @@ CAST: CALLABLE>N ( [ R -- S ] -- n )
    dup CALLABLE>N 0= if E-T0-UNFILLED throw then ;
 
 \ The finished emission, once the last unit is closed.
-: EMIT-BYTES ( -- ^u8 n ) CUR @ EMIT-BYTES-XT @ execute ;
+: EMIT-BYTES ( -- str ) CUR @ EMIT-BYTES-XT @ execute ;
 
 \ Write every call row's displacement and every quotation address row for the
 \ emission placed at address n.

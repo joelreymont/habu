@@ -1,3 +1,4 @@
+split-str
 \ zip-state.f - checked archive identities and owned storage.
 \ Copies returned by NAME$/READ, and copied replacement inputs, remain owned by
 \ the archive until COMMIT or CLOSE. Failed COMMIT stays live.
@@ -82,7 +83,7 @@ variable SERIAL
 
 : NODE-ALLOC ( -- ^n ) NODE-CELLS >COUNT MEM-ALLOC-CELLS ;
 : ARCHIVE-ALLOC ( -- ^n ) ARCHIVE-CELLS >COUNT MEM-ALLOC-CELLS ;
-: BYTES-FREE ( ^u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
+: BYTES-FREE ( str -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
 : NODE-FREE ( ^n -- ) BYTE-VIEW NODE-CELLS cells BYTES-FREE ;
 : ARCHIVE-FREE ( ^n -- ) BYTE-VIEW ARCHIVE-CELLS cells BYTES-FREE ;
 
@@ -233,7 +234,7 @@ variable SERIAL
    repeat
    drop E-READ throw ;
 
-: COPY-IN ( ^n ^u8 n -- ^u8 n ) {: archive:^ src:^ len:n :}
+: COPY-IN ( ^n str -- str ) {: archive:^ src:^ len:n :}
    archive len BUFFER-ALLOC {: dst:^ :}
    src dst len BYTE-COPY dst len ;
 

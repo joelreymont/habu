@@ -1,3 +1,4 @@
+split-str
 \ generated-declaration-dictionary.f - a declaration's dictionary savepoint
 \ (record count, code and data high-waters), rolled back on reject. Declarations
 \ never nest, so the savepoint is three cells. WIDN is never rolled back

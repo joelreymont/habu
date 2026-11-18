@@ -1,3 +1,4 @@
+split-str
 \ file-objects.f - builds of the files in test/fixtures/file-objects/, each in a fresh hb: an object must be
 \ a function of the files, not of the process.
 
@@ -118,23 +119,23 @@ variable REPORT-FILES                   \ and files_reused plus files_compiled
 variable CLASS-N                        \ the class CLASS+ read
 
 
-: A$ ( -- ^u8 n ) OUT-A OUT-A-U @ ;
-: B$ ( -- ^u8 n ) OUT-B OUT-B-U @ ;
-: C$ ( -- ^u8 n ) OUT-C OUT-C-U @ ;
-: D$ ( -- ^u8 n ) OUT-D OUT-D-U @ ;
-: E$ ( -- ^u8 n ) OUT-E OUT-E-U @ ;
-: L$ ( -- ^u8 n ) OUT-L OUT-L-U @ ;
-: F$ ( -- ^u8 n ) OUT-F OUT-F-U @ ;
+: A$ ( -- str ) OUT-A OUT-A-U @ ;
+: B$ ( -- str ) OUT-B OUT-B-U @ ;
+: C$ ( -- str ) OUT-C OUT-C-U @ ;
+: D$ ( -- str ) OUT-D OUT-D-U @ ;
+: E$ ( -- str ) OUT-E OUT-E-U @ ;
+: L$ ( -- str ) OUT-L OUT-L-U @ ;
+: F$ ( -- str ) OUT-F OUT-F-U @ ;
 
-: IN$ ( ^u8 n ^u8 n -- ^u8 n ) {: out:^ outu:n name:^ nameu:n :}
+: IN$ ( str str -- str ) {: out:^ outu:n name:^ nameu:n :}
    out outu name nameu JOINED FS:JOIN-PATH {: u:n :}
    JOINED u ;
 
-: WHICH! ( ^u8 n -- ) {: a:^ u:n :}
+: WHICH! ( str -- ) {: a:^ u:n :}
    a WHICH u BYTE-COPY  u WHICH-U ! ;
 
 \ The build's name, ": " and the text, as the next label.
-: LABEL-AS ( ^u8 n ^u8 n -- )
+: LABEL-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
    w LABEL-BUF wu BYTE-COPY
    s" : " {: c:^ cu:n :}
@@ -145,7 +146,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : LABEL ( ^u8 n -- ) {: a:^ u:n :}  WHICH WHICH-U @ a u LABEL-AS ;
 
 \ The text, another build's name and more text, as the next label.
-: LABEL-NAMING ( ^u8 n ^u8 n ^u8 n -- )
+: LABEL-NAMING ( str str str -- )
    {: a:^ au:n b:^ bu:n c:^ cu:n :}
    a TEXT-BUF au BYTE-COPY
    b TEXT-BUF au + bu BYTE-COPY
@@ -159,7 +160,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
 
 \ The length of the text before its last line.
-: BEFORE-LAST ( ^u8 n -- n ) {: a:^ u:n :}
+: BEFORE-LAST ( str -- n ) {: a:^ u:n :}
    u 2 < if 0 exit then
    0 u 2 - ?do
       a i + c@ $0A = if i 1 + unloop exit then
@@ -190,7 +191,7 @@ variable CLASS-N                        \ the class CLASS+ read
    o dst u BYTE-COPY  u ;
 
 \ A's program, run in its own process: the boundary under test is the written file.
-: RUN-PROG ( CMD:command ^u8 n -- CMD:command ) {: out:^ outu:n :}
+: RUN-PROG ( CMD:command str -- CMD:command ) {: out:^ outu:n :}
    CMD:RESET
    out outu s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ s\" Hi\nok\n" STR=  rc 0 =  and 0= if rc SHOW then
@@ -199,7 +200,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 
 \ The tail of object i's path: 0 to 6 A's files in load order, 7 pad.f's, then the named tails'.
-: TAIL$ ( n -- ^u8 n )
+: TAIL$ ( n -- str )
    {: i:n :}
    i 0 = if s" /test/fixtures/file-objects/count.f.hfo" exit then
    i 1 = if s" /test/fixtures/file-objects/shape.f.hfo" exit then
@@ -250,9 +251,9 @@ variable CLASS-N                        \ the class CLASS+ read
 : ROOT! ( ^u8 n -- ) {: out:^ outu:n :}
    out outu s" obj" ROOT FS:JOIN-PATH ROOT-U ! ;
 
-: OBJ-SEEN ( ^u8 n -- ) s" .hfo" ENDS-WITH? if 1 OBJ-N +! then ;
+: OBJ-SEEN ( str -- ) s" .hfo" ENDS-WITH? if 1 OBJ-N +! then ;
 
-: TAIL-SEEN ( ^u8 n -- )
+: TAIL-SEEN ( str -- )
    {: p:^ pu:n :}
    p pu TAIL-I @ TAIL$ ENDS-WITH? 0= if exit then
    1 TAIL-N +!  p FOUND pu BYTE-COPY  pu FOUND-U ! ;
@@ -278,7 +279,7 @@ variable CLASS-N                        \ the class CLASS+ read
    name nameu s" the build wrote that object" LABEL-AS  one TTRUE
    one ;
 
-: FOUND$ ( -- ^u8 n ) FOUND FOUND-U @ ;
+: FOUND$ ( -- str ) FOUND FOUND-U @ ;
 
 \ Whether BYTES-A's first au bytes and BYTES-B's first bu have one length, one PIECES offset and
 \ the same bytes from it on.
@@ -293,7 +294,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ A's object of tail i equals the peer's from PIECES on. The head before PIECES is not compared:
 \ it holds the pieces' times, which differ between out roots.
-: SAME-OBJECT ( ^u8 n ^u8 n n -- )
+: SAME-OBJECT ( str str n -- )
    {: out:^ outu:n peer:^ peeru:n i:n :}
    A$ s" A" i FOUND? 0= if exit then
    FOUND$ BYTES-A CAP FS:READ-ALL {: au:n :}
@@ -308,7 +309,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : SAME-AS-B ( -- ) FILES-B 0 ?do B$ s" B" i SAME-OBJECT loop ;
 
 \ Whether the first out root's file holds the bytes of the second's.
-: SAME-FILE? ( ^u8 n ^u8 n ^u8 n ^u8 n -- bool )
+: SAME-FILE? ( str str str str -- bool )
    {: a:^ au:n an:^ anu:n b:^ bu:n bn:^ bnu:n :}
    a au an anu IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
    b bu bn bnu IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
@@ -316,7 +317,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ EXPECT: the regular file's stamp, its change time seconds, its type over its change time nanoseconds
 \ and its size, each low byte first.
-: EXPECT! ( ^u8 n -- )
+: EXPECT! ( str -- )
    FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    cs EXPECT LE:U64!  cns FS:S-IFREG 32 lshift or EXPECT 8 + LE:U64!  size EXPECT 16 + LE:U64! ;
 
@@ -385,7 +386,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ Whether A's printed state holds the line, a record's name line with its newlines, followed
 \ by a fields line that ends in the text, the record's facts text.
-: FACTS-OF? ( ^u8 n ^u8 n -- bool )
+: FACTS-OF? ( str str -- bool )
    {: name:^ nameu:n text:^ textu:n :}
    STATE-A STATE-A-U @ {: s:^ su:n :}
    s su name nameu FIND-SUB MATCH option
@@ -434,7 +435,7 @@ variable CLASS-N                        \ the class CLASS+ read
    e ERR-E u BYTE-COPY  u ERR-E-U ! ;
 
 \ Whether E's output before its last line holds the line, newline-ended, as a test.
-: E-LINE ( ^u8 n -- )
+: E-LINE ( str -- )
    {: a:^ u:n :}
    s" the build prints " a u 1 - s" " LABEL-NAMING
    STATE-E STATE-E-U @ a u CONTAINS? TTRUE ;
@@ -549,13 +550,13 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:RESET  s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+ ;
 
 \ The TMPDIR of run TMP-N, in JOINED.
-: TMP$ ( -- ^u8 n )
+: TMP$ ( -- str )
    SB-RESET  s" tmp-" SB-APPEND  TMP-N @ FMT:SB-U
    L$ SB$ IN$ ;
 
 \ After TOOL-ARGS and its options, builds the fixture to L's prog in the shared fixture out root.
 \ Its TMPDIR is a fresh directory per run, where the build leaves nothing.
-: TOOL-RUN ( CMD:command ^u8 n -- CMD:command n )
+: TOOL-RUN ( CMD:command str -- CMD:command n )
    CMD:ARG+
    s" -o" CMD:ARG+  L$ s" prog" IN$ CMD:ARG+
    1 TMP-N +!  TMP$ FS:MAKE-DIR
@@ -568,7 +569,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ Builds a fixture by tools/hb-build.f (TOOL-RUN), since log.f requires and creates through does>
 \ (build.f's files may not); --repl and --report-json when the flag is true.
-: BUILD-RC ( CMD:command ^u8 n bool -- CMD:command n )
+: BUILD-RC ( CMD:command str bool -- CMD:command n )
    {: src:^ src-u:n repl:bool :}
    TOOL-ARGS
    repl if
@@ -582,19 +583,19 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build exits 0" LABEL  rc 0 T=
    rc 0 = ;
 
-: TOOL-BUILD ( CMD:command ^u8 n bool -- CMD:command bool ) BUILD-RC BUILT? ;
+: TOOL-BUILD ( CMD:command str bool -- CMD:command bool ) BUILD-RC BUILT? ;
 
-: FIXTURE-BUILD ( CMD:command ^u8 n -- CMD:command bool ) false TOOL-BUILD ;
-: REPL-BUILD ( CMD:command ^u8 n -- CMD:command bool ) true TOOL-BUILD ;
+: FIXTURE-BUILD ( CMD:command str -- CMD:command bool ) false TOOL-BUILD ;
+: REPL-BUILD ( CMD:command str -- CMD:command bool ) true TOOL-BUILD ;
 
-: SIZE-BUILD ( CMD:command ^u8 n -- CMD:command bool )
+: SIZE-BUILD ( CMD:command str -- CMD:command bool )
    {: src:^ src-u:n :}
    TOOL-ARGS
    s" --size-report" CMD:ARG+
    src src-u TOOL-RUN BUILT? ;
 
 \ Builds a fixture the build refuses and answers its exit code.
-: FAILING-BUILD ( CMD:command ^u8 n -- CMD:command n ) false BUILD-RC ;
+: FAILING-BUILD ( CMD:command str -- CMD:command n ) false BUILD-RC ;
 
 \ The linker refuses task-left-main.f at its end.
 : TASK-LEFT-BUILD ( CMD:command -- CMD:command )
@@ -610,7 +611,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ The loader's rejection TEXT, then word-load-inc.f's canonical path, as the
 \ next build of a fixture whose word reaches that file should say it.
-: REFUSAL! ( ^u8 n -- ) {: a:^ u:n :}
+: REFUSAL! ( str -- ) {: a:^ u:n :}
    a REFUSAL u BYTE-COPY
    s" test/fixtures/file-objects/word-load-inc.f" SOURCE-ROOT:CANONICAL drop {: p:^ pu:n :}
    p REFUSAL u + pu BYTE-COPY
@@ -618,7 +619,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ The loader refuses word-load-inc.f, which the fixture's word reaches at its
 \ top level.
-: REFUSED-BUILD ( CMD:command ^u8 n -- CMD:command ) {: src:^ srcu:n :}
+: REFUSED-BUILD ( CMD:command str -- CMD:command ) {: src:^ srcu:n :}
    src srcu FAILING-BUILD {: rc:n :}
    CMD:ERR$ REFUSAL REFUSAL-U @ CONTAINS? {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
@@ -663,7 +664,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ Whether KEEP and FOUND? each found the build's object of tail i; a miss fails the label, else the
 \ label names the caller's next assertion.
-: KEPT-FOUND? ( ^u8 n n -- bool ) {: a:^ u:n i:n :}
+: KEPT-FOUND? ( str n -- bool ) {: a:^ u:n i:n :}
    i KEPT-SIZE @ 0 < if a u LABEL false TTRUE false exit then
    F$ WHICH WHICH-U @ i FOUND? {: one:bool :}
    a u LABEL
@@ -679,14 +680,14 @@ variable CLASS-N                        \ the class CLASS+ read
 : LATER? ( n n -- bool ) {: sec:n nsec:n :}
    sec MARK-S @ >  sec MARK-S @ =  nsec MARK-NS @ >  and  or ;
 
-: MARK-SEEN ( ^u8 n -- )
+: MARK-SEEN ( str -- )
    {: p:^ pu:n :}
    p pu s" .hfo" ENDS-WITH? 0= if exit then
    p pu FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    cs cns LATER? 0= if exit then
    cs MARK-S !  cns MARK-NS ! ;
 
-: NEWER-SEEN ( ^u8 n -- )
+: NEWER-SEEN ( str -- )
    {: p:^ pu:n :}
    p pu s" .hfo" ENDS-WITH? 0= if exit then
    p pu FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
@@ -746,13 +747,13 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:OUT$ s\" zip refused\ndocs 2 1\n" T$= ;
 
 \ Stores the member's integer in the cell; false when the object has no such member.
-: MEMBER! ( JSON:reader ^u8 n ^n -- JSON:reader bool )
+: MEMBER! ( JSON:reader str ^n -- JSON:reader bool )
    {: key:^ keyu:n dst:^ :}
    key keyu JSON:READ-FIND-KEY 0= if false exit then
    JSON:READ-TOKEN JSON:T-INT <> if false exit then
    JSON:READ-INT dst ! true ;
 
-: CLASS+ ( JSON:reader ^u8 n -- JSON:reader bool )
+: CLASS+ ( JSON:reader str -- JSON:reader bool )
    CLASS-N MEMBER! dup if CLASS-N @ REPORT-SUM +! then ;
 
 \ The members are read in the order the report writes them: READ-FIND-KEY reads forward.
@@ -784,7 +785,7 @@ variable CLASS-N                        \ the class CLASS+ read
    JSON:READ-NEXT JSON:T-END = ;
 
 \ Fills the REPORT- cells from the report; true when it reads whole.
-: REPORT-READ ( ^u8 n -- bool )
+: REPORT-READ ( str -- bool )
    {: a:^ u:n :}
    REPORT-CURSOR a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ = if COUNTS else false then
@@ -816,7 +817,7 @@ variable CLASS-N                        \ the class CLASS+ read
 
 \ L's program, run in its own process: the boundary under test is the written file. The label
 \ holds when its stdout is the wanted text.
-: PRINTS-RUN ( CMD:command ^u8 n ^u8 n -- CMD:command )
+: PRINTS-RUN ( CMD:command str str -- CMD:command )
    {: want:^ wantu:n label:^ labelu:n :}
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
@@ -947,7 +948,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ The offset of the text in the fixture out root's object of tail i, -1 if it holds none or there
 \ is not one.
-: OBJECT-TEXT-AT ( n ^u8 n -- n )
+: OBJECT-TEXT-AT ( n str -- n )
    {: i:n a:^ u:n :}
    i FIXTURE-OBJECT {: ou:n :}
    ou 0 < if -1 exit then
@@ -957,12 +958,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    ;MATCH ;
 
 \ Whether the fixture out root's object of tail i holds the text, as it holds each path it names.
-: OBJECT-HOLDS? ( n ^u8 n -- bool ) OBJECT-TEXT-AT 0 >= ;
+: OBJECT-HOLDS? ( n str -- bool ) OBJECT-TEXT-AT 0 >= ;
 
 
 \ Whether order-x2.f's object holds the first path before the second: it lays the paths of the
 \ storers it read in the order they linked.
-: X2-BEFORE? ( ^u8 n ^u8 n -- bool )
+: X2-BEFORE? ( str str -- bool )
    {: a:^ au:n b:^ bu:n :}
    ORDER-X2 a au OBJECT-TEXT-AT {: x:n :}
    ORDER-X2 b bu OBJECT-TEXT-AT {: y:n :}
@@ -1069,7 +1070,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" error[E-BAD-STORAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" the type of `OLD` holds a value valid only in the process that made it" CONTAINS? classed and
    {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:7" CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:8" CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build rejects OLD" LABEL  named TTRUE
    s" the rejection names kept-aio.f's line 7" LABEL  placed TTRUE
@@ -1097,7 +1098,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:6" CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:7" CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
@@ -1115,7 +1116,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/fixtures/file-objects/squat-main.f" repl BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:4" CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:5" CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
@@ -1147,7 +1148,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CTOR-REFUSED ( CMD:command -- CMD:command n )
    s" test/fixtures/file-objects/ctor-main.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-CTOR-PROTECTED]" CONTAINS? {: coded:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/ctor-main.f:6:" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/ctor-main.f:7:" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the build refuses with E-CTOR-PROTECTED" LABEL  named TTRUE
@@ -1195,21 +1196,21 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 
 \ The path of U's source of that name.
-: NEST-PATH$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: NEST-PATH$ ( str -- str ) {: a:^ u:n :}
    NEST-DIR NEST-DIR-U @ a u NEST-PATH FS:JOIN-PATH {: v:n :}
    NEST-PATH v ;
 
-: SRC+ ( ^u8 n -- ) {: a:^ u:n :}
+: SRC+ ( str -- ) {: a:^ u:n :}
    a NEST-SRC NEST-SRC-U @ + u BYTE-COPY  u NEST-SRC-U +! ;
 
 \ A line that requires U's source of that name by its absolute path.
-: REQUIRE+ ( ^u8 n -- ) s" require " SRC+  NEST-PATH$ SRC+  s\" \n" SRC+ ;
+: REQUIRE+ ( str -- ) s" require " SRC+  NEST-PATH$ SRC+  s\" \n" SRC+ ;
 
 \ Writes the text to U's source of that name and starts the next text.
-: NEST-WRITE ( ^u8 n -- ) NEST-PATH$ NEST-SRC NEST-SRC-U @ FS:WRITE-ALL  0 NEST-SRC-U ! ;
+: NEST-WRITE ( str -- ) NEST-PATH$ NEST-SRC NEST-SRC-U @ FS:WRITE-ALL  0 NEST-SRC-U ! ;
 
 \ x.f: FILE-OBJECTS-NESTED:K, whose value is the text, then a require of y.f, then a second package.
-: WRITE-X ( ^u8 n -- ) {: k:^ ku:n :}
+: WRITE-X ( str -- ) {: k:^ ku:n :}
    s" package FILE-OBJECTS-NESTED public " SRC+  k ku SRC+  s\"  constant K ;package\n" SRC+
    s" y.f" REQUIRE+
    s\" package FILE-OBJECTS-NESTED-X public : X ( -- ) ; ;package\n" SRC+
@@ -1225,7 +1226,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ tools/hb-build.f's build of a NEST-DIR source to the program of that name, in a fresh hb with L's
 \ directory as its out root: the boundary under test is the object another build wrote. Answers its
 \ exit code.
-: NEST-RC ( CMD:command ^u8 n ^u8 n -- CMD:command n )
+: NEST-RC ( CMD:command str str -- CMD:command n )
    {: src:^ srcu:n prog:^ progu:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
@@ -1236,7 +1237,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    PROCESS:ENDING>RC RC>N ;
 
 \ NEST-RC's build, true when it exits 0.
-: NEST-BUILD ( CMD:command ^u8 n ^u8 n -- CMD:command bool )
+: NEST-BUILD ( CMD:command str str -- CMD:command bool )
    NEST-RC {: rc:n :}
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T=
@@ -1244,7 +1245,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ L's program of that name, run in its own process: the boundary under test is the written file.
 \ The label holds when its stdout is the wanted text.
-: NEST-RUN ( CMD:command ^u8 n ^u8 n ^u8 n -- CMD:command )
+: NEST-RUN ( CMD:command str str str -- CMD:command )
    {: prog:^ progu:n want:^ wantu:n label:^ labelu:n :}
    CMD:RESET
    L$ prog progu IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
@@ -1396,7 +1397,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build exits as CL does" LABEL  warm cold T= ;
 
 \ The read sequence's d.txt, the text f.f reads as it loads.
-: WRITE-DATA ( ^u8 n -- ) SRC+  s" d.txt" NEST-WRITE ;
+: WRITE-DATA ( str -- ) SRC+  s" d.txt" NEST-WRITE ;
 
 \ f.f's K is d.txt's first byte, which it reads by its absolute path through FS:READ-ALL.
 : WRITE-READ ( -- )
@@ -1640,7 +1641,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ The main's build, refused at link naming the fixture and the cell that holds the address. Answers
 \ its exit code.
-: ARENA-REFUSED ( CMD:command ^u8 n ^u8 n ^u8 n -- CMD:command n )
+: ARENA-REFUSED ( CMD:command str str str -- CMD:command n )
    {: main:^ mainu:n f:^ fu:n cell:^ cellu:n :}
    main mainu s" prog-ar" NEST-RC {: rc:n :}
    CMD:ERR$ f fu NEST-PATH$ CONTAINS? {: named:bool :}
@@ -1687,7 +1688,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ The +FIELD sequence: pf.f's package publishes PF.X and PF.Y; pf-main.f's
 \ MAIN stores x and its successor through them and prints both.
-: WRITE-PF-MAIN ( ^u8 n -- ) {: x:^ xu:n :}
+: WRITE-PF-MAIN ( str -- ) {: x:^ xu:n :}
    s" pf.f" REQUIRE+  s\" create PF-BUF FILE-OBJECTS-PFIELD:PF-SIZE allot\n" SRC+
    s" : MAIN ( -- ) " SRC+  x xu SRC+
    s\"  dup PF-BUF FILE-OBJECTS-PFIELD:PF.X ! 1 + PF-BUF FILE-OBJECTS-PFIELD:PF.Y !\n" SRC+
@@ -1715,7 +1716,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ The MUTUAL sequence: mt.f's package declares mtnode and mtlink, which point at
 \ each other, mtlink holding the closed mtnode by value; mt-main.f's mtuser holds
 \ an mtlink by value, its MAIN prints 7, and the text given follows.
-: WRITE-MT-MAIN ( ^u8 n -- ) {: c:^ cu:n :}
+: WRITE-MT-MAIN ( str -- ) {: c:^ cu:n :}
    s" mt.f" REQUIRE+  s\" using FILE-OBJECTS-MUTUAL\n" SRC+
    s\" STRUCTURE mtuser DERIVE addr\n   FIELD l mtlink\n;STRUCTURE\n" SRC+
    s\" : MAIN ( -- ) 7 . ;\n" SRC+  c cu SRC+  s" mt-main.f" NEST-WRITE ;
@@ -1766,7 +1767,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\"  ;\n;package\n" SRC+  s" dz-callee.f" NEST-WRITE ;
 
 \ dz-main.f's MAIN prints 7 D H2, D the text given.
-: WRITE-DZ-MAIN ( ^u8 n -- ) {: d:^ du:n :}
+: WRITE-DZ-MAIN ( str -- ) {: d:^ du:n :}
    s" dz-mid.f" REQUIRE+
    s" : MAIN ( -- ) 7 " SRC+  d du SRC+  s\"  H2 . ;\n" SRC+
    s" dz-main.f" NEST-WRITE ;
@@ -2096,7 +2097,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ A directory of L's of that name, holding the cast sequence's a.f: package
 \ FILE-OBJECTS-CAST's private generic cast >ELEM and its public generic AT.
-: WRITE-CAST ( ^u8 n -- )
+: WRITE-CAST ( str -- )
    {: a:^ u:n :}
    L$ a u NEST-DIR FS:JOIN-PATH NEST-DIR-U !
    NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
@@ -2175,7 +2176,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/fixtures/file-objects/target-run.f" TOOL-RUN {: rc:n :}
    CMD:ERR$ s" error[E-TARGET-WORD]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" target word `FO-TAIL`" CONTAINS? {: tail:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:8:" CONTAINS? tail and {: placed:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:9:" CONTAINS? tail and {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the refusal is E-TARGET-WORD" LABEL  classed TTRUE

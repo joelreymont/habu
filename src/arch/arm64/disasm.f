@@ -1,3 +1,4 @@
+split-str
 \ disasm.f - table-driven ARM64 disassembler. DIS1 prints one u32 as one line, no
 \ newline: the mnemonic and each operand after one space, or ? and 8 hex digits.
 
@@ -160,12 +161,12 @@ create CHB 4 allot
 : OP? ( n n -- bool ) {: w val :} w $FFC00000 and val = ;
 
 
-: DLS1 ( n ^u8 n -- )
+: DLS1 ( n str -- )
    {: w name:^ u :}
    name u type  w FRD DOUT w FRN DOUT w FI12 DOUT ;
 
 
-: DLS4 ( n ^u8 n -- )
+: DLS4 ( n str -- )
    {: w name:^ u :}
    name u type  w FRD DOUT w FRN DOUT w FI12 4 * DOUT ;
 
@@ -224,7 +225,7 @@ create CHB 4 allot
    2drop w DUNKNOWN ;
 
 
-: DISASM ( ^u8 n -- )
+: DISASM ( str -- )
    {: a:^ n :}
    0 BEGIN dup n < WHILE
       a over 4 * + U32@ DIS1 cr

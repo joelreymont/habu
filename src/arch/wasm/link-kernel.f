@@ -1,3 +1,4 @@
+split-str
 \ link-kernel.f - the Wasm part of the linker. A Wasm module has no hb kernel:
 \ a kernel word it calls is either provided by a word of
 \ src/arch/wasm/kernel-words.f, which WKMAP names, or left to the write step.
@@ -13,7 +14,7 @@ package WASM
 
 \ The name of the dictionary's first record entering at host address a, or an
 \ empty spelling.
-: NAME-AT ( n -- ^u8 n )
+: NAME-AT ( n -- str )
    {: a:n :}
    ndict@ 0 ?do
       i XREF-REC XREF-START a = if i XREF-REC XREF-NAME$ unloop exit then
@@ -23,7 +24,7 @@ package WASM
 
 \ NAME-AT's reverse: the host entry of the dictionary's first record so named,
 \ or 0.
-: NAMED-ENTRY ( ^u8 n -- n )
+: NAMED-ENTRY ( str -- n )
    {: name:^ u:n :}
    ndict@ 0 ?do
       i XREF-REC XREF-NAME$ name u STR=CI if i XREF-REC XREF-START unloop exit then
@@ -33,7 +34,7 @@ package WASM
 
 \ The host entry of the public word tail of the package named p, or 0. A build
 \ that never loaded the package provides nothing.
-: PUBLIC-ENTRY ( ^u8 n ^u8 n -- n )
+: PUBLIC-ENTRY ( str str -- n )
    {: p:^ pu:n t:^ tu:n :}
    p pu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    pkg XREF-FOUND? 0= if 0 exit then

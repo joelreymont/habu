@@ -1,3 +1,4 @@
+split-str
 \ root-set.f - sets its source root to its own directory, then requests root-mid.f by the tree's name and
 \ root-dep.f by a name only that root resolves: every part links when warm.
 

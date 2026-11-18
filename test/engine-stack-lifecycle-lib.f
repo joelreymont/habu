@@ -1,3 +1,4 @@
+split-str
 \ engine-stack-lifecycle-lib.f - the active stack allocation follows stack
 \ switches and nonlocal frame restoration.
 require src/habu/stack-abi.f
@@ -43,7 +44,7 @@ variable OUTLEN
 variable ERRLEN
 variable STATUS
 
-: CHILD-CAPTURE ( ^u8 n -- ) {: src:^ size:n :}
+: CHILD-CAPTURE ( str -- ) {: src:^ size:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
@@ -55,7 +56,7 @@ variable STATUS
    T-NEXT s" child output exceeded the capture" T-ASSERT-DETAIL
    0 OUTLEN ! 0 ERRLEN ! -1 ;
 
-: CHILD-RC ( ^u8 n -- n ) {: src:^ size:n :}
+: CHILD-RC ( str -- n ) {: src:^ size:n :}
    [: src size CHILD-CAPTURE ;] catch {: code:n :}
    code 0= if STATUS @ exit then
    code E-PROC-TRUNCATED = if CHILD-TRUNCATED exit then
@@ -67,7 +68,7 @@ variable STATUS
 
 \ GOT need only start with WANT: the guard-page record's first line names the
 \ stack that faulted, and the word its note names varies.
-: T-PREFIX= ( ^u8 n ^u8 n -- ) {: g:^ gu:n w:^ wu:n :}
+: T-PREFIX= ( str str -- ) {: g:^ gu:n w:^ wu:n :}
    T-NEXT
    g gu w wu PREFIX? 0= if
       T-FAIL
@@ -79,17 +80,17 @@ variable STATUS
 \ A push past the capacity and a return/loop frame past its region both exit
 \ 102; only the message says which, so every call
 \ site names the stack it expects.
-: REFUSED-DATA ( ^u8 n -- )
+: REFUSED-DATA ( str -- )
    CHILD-RC 102 T=
    ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
    T-PREFIX= ;
 
-: REFUSED-RETURN ( ^u8 n -- )
+: REFUSED-RETURN ( str -- )
    CHILD-RC 102 T=
    ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the return stack ran past its bounds\n"
    T-PREFIX= ;
 
-: REFUSED-LOOP ( ^u8 n -- )
+: REFUSED-LOOP ( str -- )
    CHILD-RC 102 T=
    ERR ERRLEN @ S\" error[E-STACK-BOUNDS]: the loop stack ran past its bounds\n"
    T-PREFIX= ;
@@ -97,7 +98,7 @@ variable STATUS
 \ A data request below the base is the one rejection with a name: the checker
 \ rejects a bare call on a shallower stack before the body runs, names the token
 \ and exits 70.
-: NAMED-UNDERDEPTH ( ^u8 n ^u8 n -- ) {: src:^ size:n diag:^ diagu:n :}
+: NAMED-UNDERDEPTH ( str str -- ) {: src:^ size:n diag:^ diagu:n :}
    src size CHILD-RC 70 T=
    ERR ERRLEN @ diag diagu CONTAINS? TTRUE ;
 

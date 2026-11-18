@@ -1,3 +1,4 @@
+split-str
 \ local-spelling-suite.f - a local answers to its DECLARED SPELLING, and a word
 \ written in its own case is that word.
 \ The checker (src/core/checker.f LOC-REF?) and tier 0 (src/habu/t0.f DO-LOCAL)
@@ -34,7 +35,7 @@ public
 
 \ A field writer with its local spelled `key`:
 \ `key keyu KEY` is the local, the local, and then the WORD.
-: FIELD-S ( ^u8 n ^u8 n -- ) {: key:^ keyu:n v:^ vu:n :}
+: FIELD-S ( str str -- ) {: key:^ keyu:n v:^ vu:n :}
    0 OUT-N !
    key keyu KEY
    vu 0 ?do v i + c@ PUTC loop ;

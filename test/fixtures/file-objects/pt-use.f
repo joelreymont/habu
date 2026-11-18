@@ -1,3 +1,4 @@
+split-str
 \ pt-use.f - a top-level BLK whose operands the check reads through ;BLK, then the word MAIN calls.
 
 require test/fixtures/file-objects/pt-def.f

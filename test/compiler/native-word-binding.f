@@ -1,3 +1,4 @@
+split-str
 \ Intrinsic spellings keep the dictionary binding chosen by their package.
 require src/lib/test.f
 

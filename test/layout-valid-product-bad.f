@@ -1,3 +1,4 @@
+split-str
 \ layout-valid-product-bad.f — nested product enum tag is validated on fetch.
 
 package LAYOUT-VALID-PRODUCT

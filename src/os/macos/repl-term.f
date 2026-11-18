@@ -1,3 +1,4 @@
+split-str
 \ repl-term.f - macOS/arm64 terminal constants for the baked Habu REPL.
 
 $40487413 constant HBR-TIO-GET

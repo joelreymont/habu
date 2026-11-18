@@ -1,3 +1,4 @@
+split-str
 \ xref.f - live dictionary inspection words for the REPL and debug path, read
 \ through dbase@/ndict@; load after boot-cells.f, wl.f and layout.f. It requires
 \ none: the arm64 cold prefix loads it before it records the files it loaded,
@@ -100,7 +101,7 @@ public
 
 \ The private wid of the package the string names, 0 for no such package or
 \ no private section.
-: XREF-PRIVATE-WL ( ^u8 n -- n )
+: XREF-PRIVATE-WL ( str -- n )
    BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = if 0 exit then
    rec XREF-PKG-PRIVATE ;
@@ -199,7 +200,7 @@ variable XREF-NV
 : XREF-FN! ( ^u8 -- )
    XREF-FN ! ;
 
-: XREF-STR=CI ( ^u8 n ^u8 n -- bool )
+: XREF-STR=CI ( str str -- bool )
    XREF-V ! XREF-B! XREF-U ! XREF-A!
    XREF-U @ XREF-V @ <> if XREF-FALSE exit then
    0 begin dup XREF-U @ < while
@@ -209,14 +210,14 @@ variable XREF-NV
    repeat drop
    XREF-TRUE ;
 
-: XREF-MATCH? ( ^n ^u8 n -- bool )
+: XREF-MATCH? ( ^n str -- bool )
    XREF-U ! XREF-A!
    XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
 
 package PKG-AUTH
 private
 
-: NAME-OUT ( ^n -- ^u8 n bool ) {: rec:^ :}
+: NAME-OUT ( ^n -- str bool ) {: rec:^ :}
    rec XREF-NAME$ dup 0= if
       2drop s" " XREF-FALSE exit
    then
@@ -235,7 +236,7 @@ private
 \ exact all-zero tuple. A package must name a live namespace record whose two
 \ WIDs equal the protected engine cells. Which of them current is, if either,
 \ is the checker's question (src/core/checker.f CHECKER-RESOLVE:AUTHORITY).
-: LIVE-PKG ( n n n -- ^u8 n bool )
+: LIVE-PKG ( n n n -- str bool )
    {: recn:n pub:n pri:n :}
    recn 0= if
       s" " pub 0= pri 0= and exit
@@ -269,7 +270,7 @@ private
 : NS-PUB? ( ^n n -- bool ) {: rec:^ wid:n :}
    rec XREF-WORDLIST BOOT:NAMESPACE-WL =  rec XREF-PKG-PUBLIC wid =  and ;
 
-: WID-PKG ( n -- ^u8 n bool ) {: wid:n :}
+: WID-PKG ( n -- str bool ) {: wid:n :}
    ndict@ 1-
    begin dup 0 >= while
       dup XREF-REC wid NS-PUB? if XREF-REC XREF-NAME$ XREF-TRUE exit then
@@ -278,7 +279,7 @@ private
    s" " XREF-FALSE ;
 
 \ The package the engine's using slot n imports (layout.f USE-WIDS-OFF).
-: USE-SLOT ( n -- ^u8 n bool )
+: USE-SLOT ( n -- str bool )
    cells USE-WIDS-OFF + data-base + @ WID-PKG ;
 
 EXPORT CHECK:PKG-LIVE-XT
@@ -290,7 +291,7 @@ INSTALL
 
 ;package
 
-: XREF-FIND-WL ( ^u8 n n -- ^n ) {: a:^ u:n wid:n :}
+: XREF-FIND-WL ( str n -- ^n ) {: a:^ u:n wid:n :}
    \ A retired row stays indexed under the wordlist it left, so WL:RETIRED takes
    \ the descending scan.
    wid 0 >= wid BOOT:NAMESPACE-WL = or if
@@ -322,7 +323,7 @@ INSTALL
 
 variable XREF-QI
 
-: XREF-QUAL-INDEX ( ^u8 n -- n )
+: XREF-QUAL-INDEX ( str -- n )
    XREF-SU ! XREF-SN!
    -1 XREF-QI !
    0 begin dup XREF-SU @ < while
@@ -336,14 +337,14 @@ variable XREF-QI
    XREF-QI @ dup 0 < if exit then
    dup XREF-SU @ 1- = if drop -1 exit then ;
 
-: XREF-FIND-QUALIFIED ( ^u8 n n -- ^n )
+: XREF-FIND-QUALIFIED ( str n -- ^n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
    XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
-: XREF-FIND-QUALIFIED-INDEX ( ^u8 n n -- n )
+: XREF-FIND-QUALIFIED-INDEX ( str n -- n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop -1 exit then
@@ -368,7 +369,7 @@ names: XREF-FIND
    XREF-FIND-WL-INDEX ;
 names: XREF-FIND-INDEX
 
-: XREF-FIND-CURRENT-INDEX ( ^u8 n -- n )
+: XREF-FIND-CURRENT-INDEX ( str -- n )
    get-current XREF-FIND-WL-INDEX ;
 
 package XREF
@@ -377,7 +378,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 
 \ A qualified head resolves as the checker's does, a part of the open package
 \ first, so `undefine` finds the word the checker's guard then judges.
-: XREF-FIND-TARGET-INDEX ( ^u8 n -- n ) {: a:^ u:n :}
+: XREF-FIND-TARGET-INDEX ( str -- n ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = if -1 exit then
    q 0 < if a u XREF-FIND-CURRENT-INDEX exit then
@@ -485,12 +486,12 @@ public
 ;package
 
 \ A rejection's name between backticks.
-: XREF-EMIT-TICKS ( ^u8 n -- ) {: a:^ u:n :}
+: XREF-EMIT-TICKS ( str -- ) {: a:^ u:n :}
    96 REJECTION:EMIT1  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
 \ The scope a lookup of the name a u searched: a qualified name its package's
 \ public words, a bare one wid.
-: XREF-EMIT-SCOPE ( ^u8 n n -- ) {: a:^ u:n wid:n :}
+: XREF-EMIT-SCOPE ( str n -- ) {: a:^ u:n wid:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = if s" none: the name holds more than one `:`" REJECTION:EMIT-STR exit then
    q 0 >= if
@@ -504,7 +505,7 @@ public
    row XREF-NAME$ XREF-EMIT-TICKS ;
 
 \ A call of the word w wu, which takes a name: `s" MY-WORD" W`.
-: XREF-EMIT-CALL ( ^u8 n -- ) {: w:^ wu:n :}
+: XREF-EMIT-CALL ( str -- ) {: w:^ wu:n :}
    96 REJECTION:EMIT1  115 REJECTION:EMIT1  34 REJECTION:EMIT1
    s"  MY-WORD" REJECTION:EMIT-STR  34 REJECTION:EMIT1  32 REJECTION:EMIT1
    w wu REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
@@ -516,16 +517,16 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 EXPORT CHECKER-RESOLVE:SOURCE-SEALED?
 
 \ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
-: NAMESPACE-EXISTS? ( ^u8 n -- bool ) {: a:^ u:n :}
+: NAMESPACE-EXISTS? ( str -- bool ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
    a split HEAD-ROW XREF-FOUND? ;
 
 \ A generated declaration is qualified exactly when it reserves a constructor
 \ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
-: NAMESPACED? ( ^u8 n -- bool )
+: NAMESPACED? ( str -- bool )
    XREF-QUAL-INDEX 0 >= ;
 
-: SEALED-STOP ( ^u8 n -- )
+: SEALED-STOP ( str -- )
    s" " s" " TYPE-DECL:E-TDECL-SEALED TYPE-DECL:TDECL-THROW-AT ;
 
 \ A family or generated name is the declaration's error where SEALED-TARGET?
@@ -541,7 +542,7 @@ EXPORT CHECKER-RESOLVE:SOURCE-SEALED?
 public
 
 \ words, the count a declaration generates, is at least 1.
-: DICTIONARY-RECORDS ( ^u8 n n -- n ) {: a:^ u:n words:n :}
+: DICTIONARY-RECORDS ( str n -- n ) {: a:^ u:n words:n :}
    a u NAMESPACED? 0= IF words EXIT THEN
    a u NAMESPACE-EXISTS? IF words EXIT THEN
    words 1 + ;
@@ -558,7 +559,7 @@ seal-package
 
 ;package
 
-: XREF-RETIRE-WL ( ^u8 n n -- ) {: a:^ u:n wid:n :}
+: XREF-RETIRE-WL ( str n -- ) {: a:^ u:n wid:n :}
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
@@ -624,7 +625,7 @@ DOES-COMPANION-INSTALL
 \ anything changes. Both loops run these words; a replayed `undefine` never
 \ reaches them, since the checker's source pass retires through the overlay
 \ (src/core/checker.f CHECKER-OVERLAY:RETIRE).
-: XREF-UNDEFINE-GUARD ( ^u8 n -- ) {: a:^ u:n :}
+: XREF-UNDEFINE-GUARD ( str -- ) {: a:^ u:n :}
    data-base REPLAY-SCOPE:LATCH + @ 0= if exit then
    s" E-OVERLAY-OPEN" REJECTION:OPEN
    s" `undefine` " REJECTION:EMIT-STR  a u XREF-EMIT-TICKS
@@ -635,7 +636,7 @@ DOES-COMPANION-INSTALL
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: XREF-REQUIRE-UNDEFINE ( n ^u8 n -- n ) {: idx:n a:^ u:n :}
+: XREF-REQUIRE-UNDEFINE ( n str -- n ) {: idx:n a:^ u:n :}
    idx 0 < if
       s" E-UNDEFINED" REJECTION:OPEN
       a u XREF-EMIT-TICKS
@@ -653,15 +654,15 @@ package XREF
 public
 \ The index `undefine` would retire for a u, negative for none; a
 \ malformed name is rejected.
-: UNDEFINE-FIND ( ^u8 n -- n ) {: a:^ u:n :}
+: UNDEFINE-FIND ( str -- n ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX -2 = if a u a u REJECT-QUALIFIED then
    a u XREF-FIND-TARGET-INDEX ;
 
 \ The index `undefine` retires for a u, rejecting one this scope does not define.
-: UNDEFINE-INDEX ( ^u8 n -- n ) {: a:^ u:n :}
+: UNDEFINE-INDEX ( str -- n ) {: a:^ u:n :}
    a u UNDEFINE-FIND  a u XREF-REQUIRE-UNDEFINE ;
 
-: UNDEFINE-NAME ( ^u8 n -- )
+: UNDEFINE-NAME ( str -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-UNDEFINE-GUARD
    XREF-SN@ XREF-SU @ UNDEFINE-INDEX XREF-IDX !
@@ -679,7 +680,7 @@ public
 
 \ idx is the record FORGET-DEFS-FROM or HIDE-DEFS-FROM, the word w wu, found
 \ for the name a u, -1 for none; a name that is not defined is rejected.
-: XREF-REQUIRE-DEFINED ( n ^u8 n ^u8 n -- n )
+: XREF-REQUIRE-DEFINED ( n str str -- n )
    {: idx:n a:^ u:n w:^ wu:n :}
    idx 0 < if
       s" E-UNDEFINED" REJECTION:OPEN
@@ -698,7 +699,7 @@ public
 \ a u at index idx is rejected. A zero watermark is the open build namespace;
 \ post-seal marks at or above the watermark pass. The floor is hb's own, in a
 \ build too.
-: SEAL-DICT-GUARD ( n ^u8 n ^u8 n -- n )
+: SEAL-DICT-GUARD ( n str str -- n )
    {: idx:n a:^ u:n w:^ wu:n :}
    data-base SEAL-NDICT-CELL + @ {: floor:n :}
    floor 0= 0=  idx floor <  and if
@@ -875,7 +876,7 @@ public
 : XREF-NAME. ( ^n -- )
    XREF-NAME$ type ;
 
-: XREF-N. ( ^u8 n n -- )
+: XREF-N. ( str n -- )
    XREF-NV ! XREF-FU ! XREF-FN!
    XREF-FN@ XREF-FU @ type
    XREF-SP emit
@@ -897,7 +898,7 @@ public
 
 \ `undefine`, the source token t tu, has no name after it. It is written
 \ through its help, and the caller stops it.
-: UNDEFINE-NO-NAME ( ^u8 n -- ) {: t:^ tu:n :}
+: UNDEFINE-NO-NAME ( str -- ) {: t:^ tu:n :}
    t tu s" the name of the word to retire"
    t tu s" no name follows" REJECTION:MISSING-OPERAND
    s" write the word after it, as in `undefine NAME`" REJECTION:EMIT-STR ;

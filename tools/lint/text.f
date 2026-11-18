@@ -1,3 +1,4 @@
+split-str
 \ text.f — checked text/file helpers for native lint tools.
 
 require src/lib/string.f
@@ -39,14 +40,14 @@ variable LINT-OUT-ON
 : LINT-OUT-BUFFER-OFF ( -- )
    LINT-FALSE LINT-OUT-ON ! ;
 
-: LINT-OUT$ ( -- ^u8 n )
+: LINT-OUT$ ( -- str )
    LINT-OUT-A@ LINT-OUT-U @ ;
 
-: LINT-FD-WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
+: LINT-FD-WRITE ( n str -- ) {: fd:n a:^ u:n :}
    u 0= IF exit THEN
    fd a u write u <> IF s" lint: write failed" EXIT-STATUS:IOERR die THEN ;
 
-: LINT-OUT-WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
+: LINT-OUT-WRITE ( n str -- ) {: fd:n a:^ u:n :}
    LINT-OUT-ON @ IF
       a u STR:LENGTH LINT-OUT-A@ LINT-OUT-CAP @ STR:LENGTH LINT-OUT-U STR:BUF-APPEND
       exit
@@ -55,13 +56,13 @@ variable LINT-OUT-ON
 
 \ capacity/IO exits must name the offending file — a bare "file exceeds buffer"
 \ hides which source outgrew which lint buffer.
-: LINT-READ-DIE ( ^u8 n ^u8 n n -- )
+: LINT-READ-DIE ( str str n -- )
    {: msg:^ msgu:n path:^ pathu:n rc:n :}
    2 msg msgu LINT-FD-WRITE
    path pathu rc die ;
 
 \ open takes a NUL-terminated path, so FS:>PATHZ copies the Habu path first.
-: READ-FILE ( ^u8 n ^u8 n -- ^u8 n )
+: READ-FILE ( str ^u8 n -- str )
    {: a:^ u buf:^ cap :}
    a u FS:>PATHZ 0 0 open  RFD !
    RFD @ 0 < IF s" lint: cannot open file: " a u EXIT-STATUS:IOERR LINT-READ-DIE THEN
@@ -126,7 +127,7 @@ $1000000 constant MAX-BYTES
    s" lint-slab: have " type MAX-BYTES .
    E-FS-CAPACITY throw ;
 
-: ENSURE-CAPACITY ( ^u8 n n ^n -- ) {: path:^ pathu:n size:n s:^ :}
+: ENSURE-CAPACITY ( str n ^n -- ) {: path:^ pathu:n size:n s:^ :}
    size MAX-BYTES > IF path pathu size TOO-LARGE THEN
    s BUF@ 0= size s CAP@ > or IF size s ALLOC THEN ;
 
@@ -163,39 +164,39 @@ public
 ;package
 
 \ ---- string ops ------------------------------------------------------------
-: LINT-STR= ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: LINT-STR= ( str str -- bool ) {: a:^ u b:^ v :}
    u v <> IF LINT-FALSE exit THEN
    0 begin dup u < while
       dup a + c@ over b + c@ <> IF drop LINT-FALSE exit THEN
       1+
    repeat drop LINT-TRUE ;
 
-: LINT-PREFIX? ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: LINT-PREFIX? ( str str -- bool ) {: a:^ u b:^ v :}
    u v < IF LINT-FALSE exit THEN
    a v b v LINT-STR= ;
 
-: LINT-FIND-SUB ( ^u8 n ^u8 n -- option<n> ) {: a:^ u:n sa:^ su:n :}
+: LINT-FIND-SUB ( str str -- option<n> ) {: a:^ u:n sa:^ su:n :}
    su 0= IF 0 OPTION:SOME exit THEN
    0 begin dup u su - <= while
       dup a +  su  sa su LINT-STR= IF OPTION:SOME exit THEN  1+
    repeat  drop  OPTION:NONE ;
 
 \ ---- more string ops for the linters ----
-: LINT-BMOVE ( ^u8 ^u8 n -- )
+: LINT-BMOVE ( ^u8 str -- )
    \ A negative length copies nothing.
    0 max BYTE-COPY ;
 
 : LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
 
-: LINT-STR=CI ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: LINT-STR=CI ( str str -- bool ) {: a:^ u b:^ v :}
    u v <> IF LINT-FALSE exit THEN
    0 begin dup u < while
       dup a + c@ LINT-FOLD over b + c@ LINT-FOLD <> IF drop LINT-FALSE exit THEN
       1+
    repeat drop LINT-TRUE ;
 
-: FOLD-TO ( ^u8 n ^u8 -- ) {: a:^ u dst:^ :}
+: FOLD-TO ( str ^u8 -- ) {: a:^ u dst:^ :}
    0 begin dup u < while  dup a + c@ LINT-FOLD  over dst + c!  1+  repeat  drop ;
 
 \ ---- bounded string helpers for source tools ------------------------------
@@ -208,32 +209,32 @@ public
 \ or is whitespace (LINT-GAP-AT?). Each reads the byte only when i is inside
 \ the span: `and` evaluates both operands, and the byte past a span that fills
 \ its mapping is unmapped.
-: LINT-INK-AT? ( ^u8 n n -- bool )
+: LINT-INK-AT? ( str n -- bool )
    {: a:^ u:n i:n :}
    i u >= IF LINT-FALSE exit THEN
    a i + c@ LINT-WS? 0= ;
-: LINT-GAP-AT? ( ^u8 n n -- bool )
+: LINT-GAP-AT? ( str n -- bool )
    {: a:^ u:n i:n :}
    i u >= IF LINT-FALSE exit THEN
    a i + c@ LINT-WS? ;
-: LINT-LTRIM ( ^u8 n -- ^u8 n ) {: a:^ u :}
+: LINT-LTRIM ( str -- str ) {: a:^ u :}
    0 begin dup u < while
       dup a + c@ LINT-WS? 0= IF dup a +  u rot -  exit THEN  1+
    repeat  drop  a 0 ;
-: LINT-RTRIM ( ^u8 n -- ^u8 n ) {: a:^ u :}
+: LINT-RTRIM ( str -- str ) {: a:^ u :}
    u RLEN !
    begin RLEN @ 0 > while
       a RLEN @ 1- + c@ LINT-WS? IF RLEN @ 1- RLEN ! ELSE a RLEN @ exit THEN
    repeat  a 0 ;
-: LINT-TRIM ( ^u8 n -- ^u8 n )  LINT-LTRIM LINT-RTRIM ;
-: LINT-STARTS-WITH? ( ^u8 n ^u8 n -- bool )  LINT-PREFIX? ;
-: LINT-SUFFIX? ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: LINT-TRIM ( str -- str )  LINT-LTRIM LINT-RTRIM ;
+: LINT-STARTS-WITH? ( str str -- bool )  LINT-PREFIX? ;
+: LINT-SUFFIX? ( str str -- bool ) {: a:^ u b:^ v :}
    u v < IF LINT-FALSE exit THEN
    a u v - + v b v LINT-STR= ;
-: LINT-ENDS-WITH? ( ^u8 n ^u8 n -- bool )  LINT-SUFFIX? ;
-: LINT-INDEX-OF ( ^u8 n n -- option<n> ) {: a:^ u:n c:n :}   \ SOME first byte offset, NONE if absent
+: LINT-ENDS-WITH? ( str str -- bool )  LINT-SUFFIX? ;
+: LINT-INDEX-OF ( str n -- option<n> ) {: a:^ u:n c:n :}   \ SOME first byte offset, NONE if absent
    0 begin dup u < while  dup a + c@ c = IF OPTION:SOME exit THEN  1+  repeat  drop OPTION:NONE ;
-: LINT-COUNT-CHAR ( ^u8 n n -- n ) {: a:^ u c :}
+: LINT-COUNT-CHAR ( str n -- n ) {: a:^ u c :}
    0  0 begin dup u < while
       dup a + c@ c = IF swap 1+ swap THEN  1+
    repeat  drop ;
@@ -257,20 +258,20 @@ public
 
 variable SN#
 : SPLIT-CLEAR  ( -- )  0 SN# ! ;
-: SPLIT+ ( ^u8 n -- ) {: a:^ u:n :}
+: SPLIT+ ( str -- ) {: a:^ u:n :}
    SN# @ SMAX >= IF s" lint: split result overflow" EXIT-STATUS:FULL die THEN
    a SN# @ SOFF !  u SLEN SN# @ cells + !  SN# @ 1+ SN# ! ;
-: S@ ( n -- ^u8 n )  dup SOFF @  swap cells SLEN + @ ;
+: S@ ( n -- str )  dup SOFF @  swap cells SLEN + @ ;
 
 private
 
-: ADD-LINE ( ^u8 n -- ) {: a:^ u:n :}              \ one line, trailing CR dropped
+: ADD-LINE ( str -- ) {: a:^ u:n :}              \ one line, trailing CR dropped
    u 0 > IF a u 1- + c@ LINT-CR = IF a u 1- SPLIT+ exit THEN THEN
    a u SPLIT+ ;
 
 public
 
-: SPLIT-LINES ( ^u8 n -- ) {: a:^ u:n :}
+: SPLIT-LINES ( str -- ) {: a:^ u:n :}
    SPLIT-CLEAR  0 MARK !  0 CUR !
    begin CUR @ u < while
       a CUR @ + c@ 10 = IF
@@ -280,7 +281,7 @@ public
       CUR @ 1+ CUR !
    repeat
    MARK @ u < IF a MARK @ +  u MARK @ -  ADD-LINE THEN ;
-: SPLIT-WHITESPACE ( ^u8 n -- ) {: a:^ u:n :}
+: SPLIT-WHITESPACE ( str -- ) {: a:^ u:n :}
    SPLIT-CLEAR  0 CUR !
    begin CUR @ u < while
       begin a u CUR @ LINT-GAP-AT? while CUR @ 1+ CUR ! repeat
@@ -290,7 +291,7 @@ public
          a MARK @ +  CUR @ MARK @ -  SPLIT+
       THEN
    repeat ;
-: JOIN-SPLIT ( ^u8 n ^u8 n ^len -- ) {: sep:^ su:n dst:^ cap:n lp:^ :}
+: JOIN-SPLIT ( str ^u8 n ^len -- ) {: sep:^ su:n dst:^ cap:n lp:^ :}
    lp STR:BUF-RESET
    0 begin dup SN# @ < while
       dup 0 > IF sep su STR:LENGTH dst cap STR:LENGTH lp STR:BUF-APPEND THEN
@@ -298,7 +299,7 @@ public
    repeat  drop ;
 
 ;package
-: HAS-EXT? ( ^u8 n ^u8 n -- bool )  LINT-SUFFIX? ;
+: HAS-EXT? ( str str -- bool )  LINT-SUFFIX? ;
 \ ---- throw-code name registry for CLI failure attribution ------------------
 \ The table names the codes LINT-MAIN (tools/lint/lib.f) can name in its
 \ attribution line: the intern and token tables' EXIT-STATUS:FULL.
@@ -309,14 +310,14 @@ create LINT-CODE-NAME-BUF LINT-CODE-MAX LINT-CODE-NAME-CAP * allot
 create LINT-CODE-NAME-US LINT-CODE-MAX cells allot
 variable LINT-CODE#
 
-: LINT-CODE-NAME$ ( n -- ^u8 n ) {: i:n :}
+: LINT-CODE-NAME$ ( n -- str ) {: i:n :}
    LINT-CODE-NAME-BUF i LINT-CODE-NAME-CAP * +
    LINT-CODE-NAME-US i cells + @ ;
 
 : LINT-CODE-VAL@ ( n -- n )
    cells LINT-CODE-VALS + @ ;
 
-: LINT-CODE-NAME+ ( ^u8 n n -- ) {: a:^ u:n code:n :}
+: LINT-CODE-NAME+ ( str n -- ) {: a:^ u:n code:n :}
    LINT-CODE# @ LINT-CODE-MAX >= IF s" lint: code-name table full" EXIT-STATUS:INTERNAL die THEN
    u LINT-CODE-NAME-CAP > IF s" lint: code name too long" EXIT-STATUS:INTERNAL die THEN
    code LINT-CODE-VALS LINT-CODE# @ cells + !

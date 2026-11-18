@@ -1,3 +1,4 @@
+split-str
 \ diag-json-escape.f - a --json-errors packet escapes every control byte. RFC
 \ 8259 section 7 forbids a raw byte below 0x20 in a JSON string, and a client
 \ refuses the whole packet for one. A control byte is a blank inside a stack
@@ -48,7 +49,7 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
 
 \ "token" precedes "source_line" in the packet, and READ-FIND-KEY only reads
 \ forward.
-: TOKEN-AND-SOURCE ( ^u8 n -- )
+: TOKEN-AND-SOURCE ( str -- )
    READER-STORAGE -rot JSON:READ-INIT JSON:READ-NEXT drop
    s" token" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" packet has no token field" FAIL then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" packet token field is not a string" FAIL then
@@ -68,7 +69,7 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
       s" packet source_line field does not decode to the line written" FAIL
    then JSON:READ-CLOSE ;
 
-: BLANK? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BLANK? ( str -- bool ) {: a:^ u:n :}
    u 0 ?do
       a i + c@ dup 32 = over 9 = or over 13 = or swap 10 = or
       0= if false unloop exit then

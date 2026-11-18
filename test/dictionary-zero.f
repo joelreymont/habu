@@ -1,3 +1,4 @@
+split-str
 \ `create … allot` reads zero after each engine path that lowers the data
 \ pointer over written bytes: a negative allot, a caught throw out of either
 \ interpret loop's evaluate, and a failed REPL line.
@@ -25,7 +26,7 @@ using PTY-HARNESS
 PTR-VARIABLE OUTER-A
 variable OUTER-U
 
-: OUTER-RC ( ^u8 n -- n )
+: OUTER-RC ( str -- n )
    OUTER-U !  OUTER-A !
    [: OUTER-A @ OUTER-U @ INTERPRETER:EVAL-FRAMED ;] catch ;
 
@@ -57,7 +58,7 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
 \ After a line the prompt that proves the child holds the terminal raw again is
 \ the one AFTER the answer.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
-: PROMPT-AFTER ( ^u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
+: PROMPT-AFTER ( str -- ) s" habu> " WAIT-AFTER TTRUE ;
 : STEP ( ^u8 n -- )
    BUF-CLEAR SEND-LINE WAIT-ANSWER TTRUE ;
 : STOP ( -- )

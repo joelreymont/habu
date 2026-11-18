@@ -1,3 +1,4 @@
+split-str
 \ zed-run.f - CLI probe over the ZED remote harness (tools/zed-run-lib.f).
 \ Usage: bin/hb --load tools/zed-run.f -- <remote command words...>
 \ Exits nonzero if the host is unreachable or the remote command failed. With

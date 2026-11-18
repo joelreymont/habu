@@ -1,3 +1,4 @@
+split-str
 \ lsp-completion.f - textDocument/completion: one item per spelling the checker
 \ offered at the cursor (LSP-CHECK:RUN-AT; LSP-CHECK:VERIFY-CANDIDATES$ lines as
 \ tools/check-verify-child.f states them), in its order, never incomplete: every
@@ -31,10 +32,10 @@ TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable ASKED                           \ the slot of the document asked about,
 variable SHOWN-N                         \ and the items written so far
 
-: WORD$ ( -- ^u8 n )  0 WORD-B WORD-U @ ;
-: FILE$ ( -- ^u8 n )  0 FILE-B FILE-U @ ;
-: D+ ( ^u8 n -- )  BUF:N>BLEN DETAIL-B BUF:APPEND-SPAN ;
-: DETAIL$ ( -- ^u8 n )  DETAIL-B BUF:SPAN$ BUF:BLEN>N ;
+: WORD$ ( -- str )  0 WORD-B WORD-U @ ;
+: FILE$ ( -- str )  0 FILE-B FILE-U @ ;
+: D+ ( str -- )  BUF:N>BLEN DETAIL-B BUF:APPEND-SPAN ;
+: DETAIL$ ( -- str )  DETAIL-B BUF:SPAN$ BUF:BLEN>N ;
 
 : STRING>WORD ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}

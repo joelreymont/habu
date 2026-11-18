@@ -1,3 +1,4 @@
+split-str
 \ load-refs.f - the files a source names as loaded, read from its tokens.
 \ REQUIRES loads into the image once (a file the image holds loads nothing),
 \ INCLUDES reads again, LAUNCHES runs in a child (a literal a load helper
@@ -21,7 +22,7 @@ private
 \ EACH's visitor takes path, line, kind.
 TYPED-VARIABLE VISIT [ ^u8 n n n -- ]
 
-: IMPORT? ( ^u8 n -- bool ) {: a:^ u:n :}
+: IMPORT? ( str -- bool ) {: a:^ u:n :}
    a u s" require" STR=CI
    a u s" include" STR=CI or ;
 
@@ -31,11 +32,11 @@ TYPED-VARIABLE VISIT [ ^u8 n n n -- ]
    idx LINT-LEX:LITERAL? 0= if false exit then
    idx LINT-LEX:TOKEN drop c@ dup 115 = swap 83 = or ;
 
-: STRING-IMPORT? ( ^u8 n -- bool ) {: a:^ u:n :}
+: STRING-IMPORT? ( str -- bool ) {: a:^ u:n :}
    a u s" required" STR=CI
    a u s" included" STR=CI or ;
 
-: IMPORT-KIND ( ^u8 n -- n )
+: IMPORT-KIND ( str -- n )
    {: a:^ u:n :}
    a u s" require" STR=CI
    a u s" required" STR=CI or if REQUIRES else INCLUDES then ;
@@ -95,7 +96,7 @@ private
 
 \ These consumers take the path span directly. A later consumer is not proof
 \ that an earlier string survived the words between them.
-: DIRECT-LOAD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: DIRECT-LOAD? ( str -- bool ) {: a:^ u:n :}
    a u s" GE-SRC-FILE+" STR=CI
    a u s" GE-ARG+" STR=CI or
    a u s" ARG" STR=CI or
@@ -103,7 +104,7 @@ private
    a u s" ARGS" STR=CI or
    a u s" CHILD-RUN" STR=CI or ;
 
-: DIAGNOSTIC-LOAD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: DIAGNOSTIC-LOAD? ( str -- bool ) {: a:^ u:n :}
    a u s" DIAGNOSTIC" STR=CI
    a u s" DIAGNOSTIC-WB" STR=CI or ;
 

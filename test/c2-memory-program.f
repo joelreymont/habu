@@ -1,3 +1,4 @@
+split-str
 \ Real unique C2 storage exercised through the dedicated native image.
 require src/lib/test.f
 require src/lib/memory.f

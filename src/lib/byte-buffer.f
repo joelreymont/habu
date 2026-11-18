@@ -1,3 +1,4 @@
+split-str
 \ byte-buffer.f - one package-owned growable byte buffer, package BUF.
 \ The caller embeds a three-cell header (BUF:HDR-BYTES); the buffer owns the one
 \ OS mapping at its storage pointer. The capacity cell is the ownership token:
@@ -128,7 +129,7 @@ private
    v  buf BUF-SPAN buf LEN-RAW@ SPAN:U8!
    buf LEN-RAW@ 1 + buf SET-LEN ;
 
-: APPEND-SPAN-RAW ( ^u8 n ^a -- )
+: APPEND-SPAN-RAW ( str ^a -- )
    {: src:^ u:n buf:^ :}
    buf LEN-RAW@ u + {: need:n :}
    need CHECK-NEED
@@ -146,7 +147,7 @@ private
    then
    need buf SET-LEN ;
 
-: REPLACE-RAW ( ^u8 n ^a -- ) {: src:^ u:n buf:^ :}
+: REPLACE-RAW ( str ^a -- ) {: src:^ u:n buf:^ :}
    buf u RESERVE-RAW
    src u buf BUF-SPAN SPAN:COPY
    u buf SET-LEN ;
@@ -154,7 +155,7 @@ private
 \ Appends text[at, hit) and new for the first old at or after at and answers
 \ the offset past that old and true; with no old left, appends the rest and
 \ answers at and false.
-: APPEND-UNTIL-OLD ( ^u8 n ^u8 n ^u8 n ^a n -- n bool )
+: APPEND-UNTIL-OLD ( str str str ^a n -- n bool )
    {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ at:n :}
    text tu old ou at FIND-SUB-FROM MATCH option
       none OF text at + tu at - buf APPEND-SPAN-RAW at false ENDOF

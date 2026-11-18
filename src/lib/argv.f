@@ -1,3 +1,4 @@
+split-str
 \ argv.f - checked argv parser for `bin/hb script.f args...` scripts (ARGV).
 \ PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$, which start after the `--` ending
 \ `bin/hb --load a.f -- args` (file-source mode leaves non-tty stdin to the
@@ -38,7 +39,7 @@ variable ARGV-QUIET
 
 : ARGV-TRUE ( -- bool )  0 0= ;
 
-: >SPAN ( ^u8 n -- span )
+: >SPAN ( str -- span )
    dup 0 < if EXIT-STATUS:INTERNAL throw then
    >LEN SPAN-MAKE ;
 
@@ -51,25 +52,25 @@ variable ARGV-QUIET
       explicit OF drop ARGV-TRUE ENDOF
    ;MATCH ;
 
-: VALUE$ ( configured-value -- ^u8 n )
+: VALUE$ ( configured-value -- str )
    MATCH configured-value
       defaulted OF SPAN$ ENDOF
       explicit OF SPAN$ ENDOF
    ;MATCH ;
 
-: ARGV-BYTES= ( ^u8 n ^u8 n -- bool ) {: a:^ u b:^ v :}
+: ARGV-BYTES= ( str str -- bool ) {: a:^ u b:^ v :}
    u v <> if ARGV-FALSE exit then
    0 begin dup u < while
       dup a + c@  over b + c@  <> if drop ARGV-FALSE exit then
       1 +
    repeat drop ARGV-TRUE ;
 
-: ARGV-ERR ( ^u8 n -- ) {: a:^ u:n :}   \ one piece of a refusal line
+: ARGV-ERR ( str -- ) {: a:^ u:n :}   \ one piece of a refusal line
    ARGV-QUIET @ 0 = if 2 a u write drop then ;
 
 public
 
-: USAGE! ( ^u8 n -- )
+: USAGE! ( str -- )
    >SPAN ARGV-USAGE ! ;
 
 : QUIET! ( n -- )  ARGV-QUIET ! ;
@@ -91,12 +92,12 @@ public
 
 private
 
-: ARGV-UNKNOWN ( ^u8 n -- ) {: a:^ u :}
+: ARGV-UNKNOWN ( str -- ) {: a:^ u :}
    s" unknown option: " ARGV-ERR
    a u ARGV-ERR
    ARGV-FAIL-DONE ;
 
-: ARGV-MISSING ( ^u8 n -- ) {: a:^ u :}
+: ARGV-MISSING ( str -- ) {: a:^ u :}
    s" missing value for " ARGV-ERR
    a u ARGV-ERR
    ARGV-FAIL-DONE ;
@@ -116,7 +117,7 @@ public
    -1 ARGV-USE-MOCK? !
    0 ARGV-MOCK# ! ;
 
-: MOCK+ ( ^u8 n -- )
+: MOCK+ ( str -- )
    >SPAN {: arg:span :}
    ARGV-MOCK# @ 1+ ARGV-MOCK-RESERVE
    arg ARGV-MOCK# @ ARGV-MOCK !
@@ -137,15 +138,15 @@ private
 
 public
 
-: TOK$ ( n -- ^u8 n )
+: TOK$ ( n -- str )
    ARGV-TOKEN SPAN$ ;
 
-: TOK= ( n ^u8 n -- bool ) {: idx:n a:^ u:n :}
+: TOK= ( n str -- bool ) {: idx:n a:^ u:n :}
    idx TOK$ a u ARGV-BYTES= ;
 
 private
 
-: ARGV-DASH? ( ^u8 n -- bool ) {: a:^ u :}
+: ARGV-DASH? ( str -- bool ) {: a:^ u :}
    u 1 > if a c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
 
 : ARGV-POS+ ( span bool -- ) {: arg:span dry:bool :}
@@ -156,7 +157,7 @@ public
 
 : POS# ( -- n )  ARGV-NPOS @ ;
 
-: POS$ ( n -- ^u8 n ) {: idx:n :}
+: POS$ ( n -- str ) {: idx:n :}
    idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" FAIL then
    idx ARGV-POS @ SPAN$ ;
 
@@ -166,7 +167,7 @@ public
 : LABEL? ( -- bool )
    ARGV-LABEL @ EXPLICIT? ;
 
-: LABEL$ ( -- ^u8 n )
+: LABEL$ ( -- str )
    ARGV-LABEL @ VALUE$ ;
 
 : OUT! ( ^u8 n -- )

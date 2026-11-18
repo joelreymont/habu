@@ -1,3 +1,4 @@
+split-str
 \ intern.f - the permanent address of a string literal's bytes; equal bodies
 \ within a segment share one. Bodies live in DATA, since a DATA address means the
 \ same after a snapshot restore and an mmap one does not. Tier 0 interns
@@ -50,7 +51,7 @@ ROWS-MAX 2 * constant SLOTS          \ a power of two
 
 ROWS-MAX cells 2 * OWNER-BYTES + constant OWNER-SIZE
 
-: CLEAR-CELLS ( ^u8 n -- )
+: CLEAR-CELLS ( str -- )
    {: buf:^ bytes:n :}
    bytes CELL / 0 ?do 0 buf i cells + CELL-VIEW ! loop ;
 
@@ -102,7 +103,7 @@ variable PROBE
 : SLOT@ ( -- n )
    PROBE @ cells SLOT + @ ;
 
-: ROW-FIND ( ^u8 n -- n ) {: a:^ u:n :}
+: ROW-FIND ( str -- n ) {: a:^ u:n :}
    a u HASH PROBE !
    begin SLOT@ 0<> while
       SLOT@ 1- ROW$ a u STR= if SLOT@ 1- exit then
@@ -112,7 +113,7 @@ variable PROBE
 
 \ Ends at an empty slot: a body is placed only while the segment holds fewer
 \ than ROWS-MAX rows (ROOM?), and SLOTS is twice ROWS-MAX.
-: FREE-SLOT ( ^u8 n -- n )
+: FREE-SLOT ( str -- n )
    HASH PROBE !
    begin SLOT@ 0= 0= while PROBE-NEXT repeat
    PROBE @ ;
@@ -175,7 +176,7 @@ public
    BASE row ROW-OFF + ;
 
 \ The second result is the origin its callers file beside the address: -1, none.
-: INTERN-SOURCE ( ^u8 n -- n n )
+: INTERN-SOURCE ( str -- n n )
    STRING -1 ;
 
 seal-package

@@ -1,3 +1,4 @@
+split-str
 \ lsp-links.f - textDocument/documentLink: one DocumentLink per load the
 \ document's last completed check reported (LSP-DOCS:DOC-LOADS$), in order. Range:
 \ the loader's operand (LSP-TEXT:RANGE); target: the open document holding the
@@ -26,8 +27,8 @@ TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable SHOWN-N                         \ and the links written so far
 
 : PATH$ ( -- ^u8 n )  0 PATH-B PATH-U @ ;
-: T+ ( ^u8 n -- )  BUF:N>BLEN TIP-B BUF:APPEND-SPAN ;
-: TIP$ ( -- ^u8 n )  TIP-B BUF:SPAN$ BUF:BLEN>N ;
+: T+ ( str -- )  BUF:N>BLEN TIP-B BUF:APPEND-SPAN ;
+: TIP$ ( -- str )  TIP-B BUF:SPAN$ BUF:BLEN>N ;
 
 : STRING>PATH ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}
@@ -53,7 +54,7 @@ variable SHOWN-N                         \ and the links written so far
 \ A loader that held its file (the engine provided it, or a load before recorded
 \ it) says so, naming the file as hover does: relative to the server's working
 \ directory when inside it, else by its path.
-: HELD-TIP ( -- ^u8 n )
+: HELD-TIP ( -- str )
    TIP-B BUF:CLEAR
    s" held " T+
    PATH$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE T+

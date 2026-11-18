@@ -1,3 +1,4 @@
+split-str
 \ memory.f - BROWSER-MEMORY-TEST: the memory src/lib/browser/host-cli.mjs's
 \ --memory line reports, for the browser tests that check a module frees its
 \ deliveries. FREED runs a module once and four times with the same steps and
@@ -41,7 +42,7 @@ private
 \ The memory after host-cli runs the module at the path with the steps staged
 \ count times; the run's exit is checked under the label, its stderr shown when
 \ it failed.
-: MEMORY-AFTER ( ^u8 n ^u8 n [ -- ] n -- n )
+: MEMORY-AFTER ( str str [ -- ] n -- n )
    {: label:^ lu:n mod:^ mu:n steps count:n :}
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+ mod mu ARG+

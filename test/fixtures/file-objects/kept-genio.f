@@ -1,3 +1,4 @@
+split-str
 \ kept-genio.f - a program built by tools/hb-build.f with --repl, since
 \ genio-core.f calls the REPL's KEY1: its top level builds a device and keeps
 \ its handle in OLD; MAIN builds another device and closes OLD, which
@@ -13,8 +14,8 @@ private
 : NO-KEY ( -- n ) GENIO:E-IO throw ;
 : READY? ( -- bool ) 0 0= ;
 : NO-READ ( ^u8 n -- n ) {: a:^ u:n :} 0 ;
-: DROP-BYTES ( ^u8 n -- ) {: a:^ u:n :} ;
-: NO-ACCEPT ( ^u8 n -- n ) {: a:^ u:n :} 0 ;
+: DROP-BYTES ( str -- ) {: a:^ u:n :} ;
+: NO-ACCEPT ( str -- n ) {: a:^ u:n :} 0 ;
 
 : BUILD ( -- GENIO:device )
    [: DROP-CHAR ;] [: NO-KEY ;] [: READY? ;] [: NO-READ ;]

@@ -1,3 +1,4 @@
+split-str
 \ base85-test.f - Adobe Ascii85: whole groups, every tail length, `z`, each
 \ white-space byte, the largest group and every refusal.
 \ Run: bin/hb --load src/lib/base85-test.f
@@ -43,7 +44,7 @@ variable STAGED-LEN
    u STAGED-LEN ! ;
 
 
-: STAGED$ ( -- ^u8 n )
+: STAGED$ ( -- str )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 

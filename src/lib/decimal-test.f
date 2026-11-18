@@ -1,3 +1,4 @@
+split-str
 \ Run: bin/hb --load src/lib/decimal-test.f
 
 require src/lib/string.f
@@ -27,18 +28,18 @@ create LONG-SRC 1048600 allot
       some OF drop false TTRUE ENDOF
    ;MATCH ;
 
-: EXACT= ( ^u8 n i64 -- )
+: EXACT= ( str i64 -- )
    {: a:^ u:n want:i64 :}
    a u DECIMAL:EXACT want SOME= ;
 
-: EXACT-NONE ( ^u8 n -- )
+: EXACT-NONE ( str -- )
    DECIMAL:EXACT NONE? ;
 
-: INTEGER= ( ^u8 n i64 -- )
+: INTEGER= ( str i64 -- )
    {: a:^ u:n want:i64 :}
    a u DECIMAL:INTEGER want SOME= ;
 
-: INTEGER-NONE ( ^u8 n -- )
+: INTEGER-NONE ( str -- )
    DECIMAL:INTEGER NONE? ;
 
 : PRIORITY ( ^u8 n -- option<i64> )
@@ -48,7 +49,7 @@ create LONG-SRC 1048600 allot
       some OF OPTION:SOME ENDOF
    ;MATCH ;
 
-: STRING= ( ^u8 n i64 -- )
+: STRING= ( str i64 -- )
    {: a:^ u:n want:i64 :}
    READER-SPACE a u JSON:READ-INIT
    JSON:READ-NEXT JSON:T-STR T=

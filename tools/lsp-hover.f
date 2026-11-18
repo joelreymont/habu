@@ -1,3 +1,4 @@
+split-str
 \ lsp-hover.f - textDocument/hover: the declaration a token in an open document
 \ declares or binds to, as the document's last completed check stated it.
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
@@ -23,11 +24,11 @@ create VALUE-B BUF:HDR-BYTES allot       \ the contents' text, grown as it is wr
 TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable TARGET-G                        \ and the group of the record it shows
 
-: V+ ( ^u8 n -- )  BUF:N>BLEN VALUE-B BUF:APPEND-SPAN ;
+: V+ ( str -- )  BUF:N>BLEN VALUE-B BUF:APPEND-SPAN ;
 : NL ( -- )  LF VALUE-B BUF:APPEND-BYTE ;
-: VALUE$ ( -- ^u8 n )  VALUE-B BUF:SPAN$ BUF:BLEN>N ;
+: VALUE$ ( -- str )  VALUE-B BUF:SPAN$ BUF:BLEN>N ;
 
-: WHERE+ ( ^u8 n -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE V+ ;
+: WHERE+ ( str -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE V+ ;
 
 : OPEN ( bool -- )
    if s" ```habu" V+ NL then ;
@@ -47,7 +48,7 @@ variable TARGET-G                        \ and the group of the record it shows
    g GROUP-PATH$ WHERE+ s" :" V+
    r REC-RANGE 2drop drop 1+ SB-RESET FMT:SB-INT SB$ V+ ;
 
-: USE-LINES ( ^u8 n n -- )
+: USE-LINES ( str n -- )
    {: t:^ tu:n u:n :}
    t tu u USE-WORD$ V+
    NL s" \ " V+ u USE-GROUP GROUP-PATH$ WHERE+ ;
@@ -63,12 +64,12 @@ variable TARGET-G                        \ and the group of the record it shows
    WRITE-OBJECT-END WRITE-COMMA ;
 
 \ Leaves the record's group in TARGET-G.
-: TARGET-REC ( ^u8 n n -- option<n> )
+: TARGET-REC ( str n -- option<n> )
    {: t:^ tu:n u:n :}
    u USE-GROUP dup TARGET-G !
    u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
 
-: USE-HOVER ( ^u8 n n bool -- )
+: USE-HOVER ( str n bool -- )
    {: t:^ tu:n u:n md:bool :}
    md OPEN
    t tu u TARGET-REC MATCH option

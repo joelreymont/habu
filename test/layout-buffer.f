@@ -1,3 +1,4 @@
+split-str
 \ layout-buffer.f - generative typed ADT storage and provenance regressions.
 
 require src/lib/test.f
@@ -71,7 +72,7 @@ variable LB-EVAL-U
 : LB-EVAL-RUN ( -- )
    LB-EVAL-A @ LB-EVAL-U @ evaluate-closed ;
 
-: LB-EVAL ( ^u8 n -- n )
+: LB-EVAL ( str -- n )
    LB-EVAL-U ! LB-EVAL-A !
    [: LB-EVAL-RUN ;] catch ;
 

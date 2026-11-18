@@ -1,3 +1,4 @@
+split-str
 \ rt.f - native runtime routines for the ARM64 engine builder: data-stack ops,
 \ guarded stack mapping and the output and printer sequences. Encoders are
 \ package A64ASM (src/arch/arm64/asm.f).

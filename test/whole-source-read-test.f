@@ -1,3 +1,4 @@
+split-str
 \ whole-source-read-test.f - a whole-source read (src/lib/source.f
 \ READ-WHOLE-SAMPLED, which READ-WHOLE-FILE and every reader that takes a size
 \ itself call) rejects a file that yields more bytes than a short size sample,
@@ -29,8 +30,8 @@ create ERR IO-CAP allot
 DYNAMIC-BUFFER READ-BUF u8
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: SUBJECT$ ( -- ^u8 n ) SUBJECT SUBJECT-U @ ;
-: MISSING$ ( -- ^u8 n ) MISSING MISSING-U @ ;
+: SUBJECT$ ( -- str ) SUBJECT SUBJECT-U @ ;
+: MISSING$ ( -- str ) MISSING MISSING-U @ ;
 
 : READ-ROOM ( n -- ^u8 )
    READ-BUF-RESERVE 0 READ-BUF ;
@@ -52,7 +53,7 @@ DYNAMIC-BUFFER READ-BUF u8
 
 
 \ The bytes are taken after the read, which may move the buffer.
-: SAMPLE-CASE ( n ^u8 n -- )
+: SAMPLE-CASE ( n str -- )
    {: first:n label:^ labelu:n :}
    SUBJECT$ first [: READ-ROOM ;] SOURCE:READ-WHOLE-SAMPLED {: u:n :}
    label labelu T-LABEL

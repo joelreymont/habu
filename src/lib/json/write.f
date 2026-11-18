@@ -1,3 +1,4 @@
+split-str
 \ write.f - the emit-only JSON writer, WRITE-OPEN through WRITE-FIELD-NULL.
 \ A file of package JSON (src/lib/json.f).
 \
@@ -124,14 +125,14 @@ create JW-ESC-W
    w JW-ASCII@ {: ascii:bool :}
    vp cap used NULL-PTR indent ascii depth layout JSON-WRITER:MAKE w ! ;
 
-: JW-SPAN ( ^u8 n -- ) {: a:^ u:n :}
+: JW-SPAN ( str -- ) {: a:^ u:n :}
    u 0 < if E-JSON-WRITE-SOURCE throw then
    u 0 > a 0= and if E-JSON-WRITE-SOURCE throw then ;
 
 \ A span's offset in a growable writer's output, or -1 for fixed output or
 \ outside its capacity; one inside the capacity but past the written bytes is
 \ E-JSON-WRITE-SOURCE.
-: JW-ALIAS ( ^writer ^u8 n -- n ) {: w a:^ u:n :}
+: JW-ALIAS ( ^writer str -- n ) {: w a:^ u:n :}
    w JW-BUF@ 0= if -1 exit then
    w JW-LIVE {: base:^ cap:n used:n :}
    a base < if -1 exit then
@@ -335,7 +336,7 @@ private
 \ A width is at most six, so the sum fits a cell for any span in memory; the
 \ checked adds of the delimiters and separator refuse it exactly when a running
 \ checked sum would.
-: JW-ESC-N ( ^u8 n -- n ) {: a:^ u:n :}
+: JW-ESC-N ( str -- n ) {: a:^ u:n :}
    JW-ESC-W BYTE-VIEW {: w:^ :}
    0 u 0 ?do a i + c@ w + c@ + loop ;
 
@@ -371,12 +372,12 @@ private
    at 2 + ;
 
 \ The offset of the first byte at or after start that escapes, or u.
-: JW-RUN-END ( ^u8 n n -- n ) {: a:^ u:n start:n :}
+: JW-RUN-END ( str n -- n ) {: a:^ u:n start:n :}
    JW-ESC-W BYTE-VIEW {: w:^ :}
    u start ?do a i + c@ w + c@ JW-PLAIN-N <> if i unloop exit then loop
    u ;
 
-: JW-ESC-STEP ( n n ^u8 n SPAN:span<u8> -- n n )
+: JW-ESC-STEP ( n n str SPAN:span<u8> -- n n )
    {: at:n i:n a:^ u:n s :}
    a u i JW-RUN-END {: e:n :}
    e i - {: run:n :}
@@ -385,7 +386,7 @@ private
    s at run + a e + c@ JW-ESC  e 1+ ;
 
 \ Write the escaped source into s, which is exactly its escaped width.
-: JW-ESC-INTO ( ^u8 n SPAN:span<u8> -- )
+: JW-ESC-INTO ( str SPAN:span<u8> -- )
    {: a:^ u:n s :}
    s SPAN:LEN u = if a u s SPAN:COPY exit then
    0 0 begin dup u < while a u s JW-ESC-STEP repeat 2drop ;
@@ -399,7 +400,7 @@ private
    u JW-RADIX mod JW-ZERO + JW-C ;
 
 \ The scalar at cursor i of valid UTF-8, and the cursor after it.
-: JW-SCALAR@ ( ^u8 n n -- n n )
+: JW-SCALAR@ ( str n -- n n )
    UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF ENDOF
       raw-byte OF 2drop E-JSON-WRITE-BYTE throw ENDOF
@@ -411,13 +412,13 @@ private
    c JW-DEL >= if JW-U-N exit then
    c JW-ESC-W@ ;
 
-: JW-ASCII-N-STEP ( n n ^u8 n -- n n )
+: JW-ASCII-N-STEP ( n n str -- n n )
    {: sum:n i:n a:^ u:n :}
    a u i JW-SCALAR@ {: c:n next:n :}
    sum c JW-ASCII-W + next ;
 
 \ At most six per source byte, as the byte table's widths.
-: JW-ASCII-N ( ^u8 n -- n ) {: a:^ u:n :}
+: JW-ASCII-N ( str -- n ) {: a:^ u:n :}
    0 0 begin dup u < while a u JW-ASCII-N-STEP repeat drop ;
 
 : JW-PAIR ( SPAN:span<u8> n n -- n ) {: s at:n c:n :}
@@ -432,19 +433,19 @@ private
    c JW-ESC-W@ JW-PLAIN-N > if s at c JW-ESC exit then
    c s at SPAN:U8! at 1+ ;
 
-: JW-ASCII-STEP ( n n ^u8 n SPAN:span<u8> -- n n )
+: JW-ASCII-STEP ( n n str SPAN:span<u8> -- n n )
    {: at:n i:n a:^ u:n s :}
    a u i JW-SCALAR@ {: c:n next:n :}
    s at c JW-ASCII-ESC next ;
 
-: JW-ASCII-INTO ( ^u8 n SPAN:span<u8> -- )
+: JW-ASCII-INTO ( str SPAN:span<u8> -- )
    {: a:^ u:n s :}
    0 0 begin dup u < while a u s JW-ASCII-STEP repeat 2drop ;
 
-: JW-BODY-N ( ^writer ^u8 n -- n ) {: w a:^ u:n :}
+: JW-BODY-N ( ^writer str -- n ) {: w a:^ u:n :}
    w JW-ASCII@ if a u JW-ASCII-N else a u JW-ESC-N then ;
 
-: JW-BODY-INTO ( ^writer ^u8 n SPAN:span<u8> -- )
+: JW-BODY-INTO ( ^writer str SPAN:span<u8> -- )
    {: w a:^ u:n s :}
    w JW-ASCII@ if a u s JW-ASCII-INTO exit then
    a u s JW-ESC-INTO ;
@@ -453,7 +454,7 @@ private
 \ span before reading it, then text that is not UTF-8. A quoted string or key is
 \ a token, so its width reserves any due break with it; a string part never
 \ breaks.
-: JW-QUOTED ( ^writer ^u8 n bool n -- ^writer )
+: JW-QUOTED ( ^writer str bool n -- ^writer )
    {: w a:^ u:n quoted:bool sep:n :}
    a u JW-SPAN
    w a u JW-ALIAS {: off:n :}
@@ -476,7 +477,7 @@ private
 
 public
 
-: WRITE-STRING ( ^writer ^u8 n -- ^writer )
+: WRITE-STRING ( ^writer str -- ^writer )
    true 0 JW-QUOTED ;
 
 : WRITE-KEY ( ^writer ^u8 n -- ^writer ) {: w a:^ u:n :}
@@ -486,7 +487,7 @@ public
 : WRITE-STRING-START ( ^writer -- ^writer )
    1 JW-TOKEN JW-DQ JW-C construct writer-layout quoting JW-MARK ;
 
-: WRITE-STRING-PART ( ^writer ^u8 n -- ^writer )
+: WRITE-STRING-PART ( ^writer str -- ^writer )
    {: w a:^ u:n :}
    w JW-QUOTING a u false 0 JW-QUOTED ;
 
@@ -562,7 +563,7 @@ public
    m JW-DIGITS ;
 
 \ Only for a known-valid JSON fragment.
-: WRITE-FIELD-RAW ( ^writer ^u8 n ^u8 n -- ^writer )
+: WRITE-FIELD-RAW ( ^writer str str -- ^writer )
    {: kp:^ keyu:n vp:^ valu:n :}
    dup vp valu JW-ALIAS {: off:n :}
    kp keyu WRITE-KEY
@@ -588,7 +589,7 @@ public
    kp keyu WRITE-KEY
    val WRITE-BOOL ;
 
-: WRITE-FIELD-NULL ( ^writer ^u8 n -- ^writer )
+: WRITE-FIELD-NULL ( ^writer str -- ^writer )
    WRITE-KEY
    WRITE-NULL ;
 

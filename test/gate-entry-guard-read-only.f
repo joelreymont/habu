@@ -1,3 +1,4 @@
+split-str
 package ENTRY-GUARD-READ-ONLY
 
 : ARG ( ^u8 n -- ) 2drop ;

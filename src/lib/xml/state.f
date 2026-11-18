@@ -1,3 +1,4 @@
+split-str
 \ state.f - XML reader state: INIT, INIT-INPUT, INIT-SOURCE, CLOSE, DISPOSE and the
 \ accessors; part of package XML (src/lib/xml.f). Offsets are absolute bytes of the
 \ stream, a BOM included. Open frames' names and live bindings are copied once into
@@ -218,7 +219,7 @@ CAST: STREAM>BYTES ( ^stream -- ^u8 )
 : BUF-LEN ( ^a -- n ) BUF:LEN@ BUF:BLEN>N ;
 : BUF-CAP ( ^a -- n ) BUF:CAP@ BUF:BLEN>N ;
 
-: SCOPE$ ( ^n -- ^u8 n )
+: SCOPE$ ( ^n -- str )
    STREAM@ SCOPE-BUF BUF:SPAN$ BUF:BLEN>N ;
 
 : STREAM-CLOSE ( ^stream -- )
@@ -384,7 +385,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
    then
    state SOURCE-IDX ptr-field @ start + size ;
 
-: MATCH$ ( ^n ^u8 n -- bool )
+: MATCH$ ( ^n str -- bool )
    {: state value size:n :}
    size 0 ?do
       state INPUT? if
@@ -557,14 +558,14 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-BASE @ consumed + stream STREAM-BASE !
    0 state POSITION + ! ;
 
-: URI$ ( ^n n n -- ^u8 n )
+: URI$ ( ^n n n -- str )
    {: state start:n size:n :}
    start XML-URI = if s" http://www.w3.org/XML/1998/namespace" exit then
    start XMLNS-URI = if s" http://www.w3.org/2000/xmlns/" exit then
    state start size SPAN$ ;
 
 \ A value of bytes $20..$7F other than `&` decodes to itself.
-: PLAIN-VALUE? ( ^u8 n -- bool )
+: PLAIN-VALUE? ( str -- bool )
    {: source size:n :}
    size 0 ?do
       source i + c@ {: byte:n :}
@@ -574,7 +575,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 
 \ Decode a URI into destination, copying a plain one directly, with
 \ DECODE-INTO's refusals in its order.
-: URI-INTO ( ^u8 n ^u8 n -- n )
+: URI-INTO ( str str -- n )
    {: source size:n destination cap:n :}
    source size PLAIN-VALUE? 0= if
       source size DECODE-ATTR destination cap DECODE-INTO exit
@@ -604,7 +605,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 
 
 \ Refuse bytes that overlap the record: the reader writes it on every event.
-: RECORD-CHECK ( ^n ^u8 n -- )
+: RECORD-CHECK ( ^n str -- )
    {: state bytes size:n :}
    state BYTE-VIEW CURSOR-BYTES bytes size OVERLAP? if E-ALIAS throw then ;
 
@@ -644,7 +645,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
    then
    state s\" \xEF\xBB\xBF" MATCH$ if state 3 ADVANCE-N then ;
 
-: INIT-BODY ( ^n ^u8 n -- ^n ^u8 n )
+: INIT-BODY ( ^n str -- ^n str )
    {: state source size:n :}
    source state SOURCE-IDX ptr-field !
    size state SOURCE-LEN + !
@@ -758,7 +759,7 @@ CAST: BYTES>CURSOR ( ^u8 -- ^cursor )
 public
 \ A record over the first CURSOR-BYTES of a caller's bytes, zero-filled so it
 \ owns nothing; a shorter span is E-CAPACITY. A live record there leaks its tables.
-: EMPTY-CURSOR ( ^u8 n -- ^cursor )
+: EMPTY-CURSOR ( str -- ^cursor )
    {: bytes size:n :}
    bytes size SPAN-CHECK
    size CURSOR-BYTES < if E-CAPACITY throw then
@@ -782,7 +783,7 @@ private
    index 0 < index state ATTR-COUNT + @ >= or if E-STATE throw then
    state index ATTRIBUTE ;
 
-: LOCAL-SPAN ( ^u8 n -- ^u8 n )
+: LOCAL-SPAN ( str -- str )
    {: name size:n :}
    size 0 ?do
       name i + c@ $3A = if
@@ -791,7 +792,7 @@ private
    loop
    name size ;
 
-: OUTPUT-CHECK ( ^n ^u8 n -- )
+: OUTPUT-CHECK ( ^n str -- )
    {: state destination cap:n :}
    destination cap SPAN-CHECK
    state SOURCE$ destination cap OVERLAP? if E-ALIAS throw then
@@ -819,12 +820,12 @@ private
    state LIVE
    state state RAW-OFF + @ ABS-OFF >OFF state RAW-LEN + @ >LEN ;
 
-: RAW$-STATE ( ^n -- ^u8 n )
+: RAW$-STATE ( ^n -- str )
    {: state :}
    state LIVE
    state state RAW-OFF + @ state RAW-LEN + @ SPAN$ ;
 
-: NAME$-STATE ( ^n -- ^u8 n )
+: NAME$-STATE ( ^n -- str )
    {: state :}
    state NAMED
    state state NAME-OFF + @ state NAME-LEN + @ SPAN$ ;
@@ -859,12 +860,12 @@ private
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr ATTRIBUTE-RAW + @ ABS-OFF >OFF attr ATTRIBUTE-RAW-U + @ >LEN ;
 
-: ATTR-NAME$-STATE ( ^n -- ^u8 n )
+: ATTR-NAME$-STATE ( ^n -- str )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr ATTRIBUTE-NAME + @ attr ATTRIBUTE-NAME-U + @ SPAN$ ;
 
-: ATTR-VALUE$-STATE ( ^n -- ^u8 n )
+: ATTR-VALUE$-STATE ( ^n -- str )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$ ;
@@ -895,13 +896,13 @@ public
 : RAW ( XML:reader -- XML:reader off len )
    STATE RAW-STATE ;
 
-: RAW$ ( XML:reader -- XML:reader ^u8 n )
+: RAW$ ( XML:reader -- XML:reader str )
    STATE RAW$-STATE ;
 
 : NAME$ ( XML:reader -- XML:reader ^u8 n )
    STATE NAME$-STATE ;
 
-: LOCAL$ ( XML:reader -- XML:reader ^u8 n )
+: LOCAL$ ( XML:reader -- XML:reader str )
    NAME$ LOCAL-SPAN ;
 
 : DEPTH ( XML:reader -- XML:reader n )
@@ -922,13 +923,13 @@ public
 : ATTR-RAW ( XML:reader -- XML:reader off len )
    STATE ATTR-RAW-STATE ;
 
-: ATTR-NAME$ ( XML:reader -- XML:reader ^u8 n )
+: ATTR-NAME$ ( XML:reader -- XML:reader str )
    STATE ATTR-NAME$-STATE ;
 
-: ATTR-LOCAL$ ( XML:reader -- XML:reader ^u8 n )
+: ATTR-LOCAL$ ( XML:reader -- XML:reader str )
    ATTR-NAME$ LOCAL-SPAN ;
 
-: ATTR-VALUE$ ( XML:reader -- XML:reader ^u8 n )
+: ATTR-VALUE$ ( XML:reader -- XML:reader str )
    STATE ATTR-VALUE$-STATE ;
 
 : ATTR-VALUE ( XML:reader -- XML:reader off len )

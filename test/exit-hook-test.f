@@ -1,3 +1,4 @@
+split-str
 \ Process exit and the build boundary, one child per case: the exit actions
 \ (src/lib/at-exit.f) and the cleanup registry on each exit path, and what a
 \ built program keeps from its build, a queue its build defined included. A
@@ -33,8 +34,8 @@ variable SCRIPT-U
 variable TREE-U
 
 : ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
-: SCRIPT$ ( -- ^u8 n ) SCRIPT-BUF SCRIPT-U @ ;
-: TREE$ ( -- ^u8 n ) TREE-BUF TREE-U @ ;
+: SCRIPT$ ( -- str ) SCRIPT-BUF SCRIPT-U @ ;
+: TREE$ ( -- str ) TREE-BUF TREE-U @ ;
 : TEXT$ ( -- ^u8 n ) TEXT-BUF TEXT-U @ ;
 
 \ Child sources are built a line at a time: one 255-byte source line of this
@@ -50,12 +51,12 @@ variable TREE-U
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
    ROOT$ FS:CLEANUP-TREE+ ;
 
-: TREE-PATH ( ^u8 n -- ) {: name:^ nameu :}
+: TREE-PATH ( str -- ) {: name:^ nameu :}
    ROOT$ name nameu TREE-BUF FS:JOIN-PATH TREE-U ! ;
 
 \ The script path, the directory the child is told to register, and the two
 \ lines every child script starts with.
-: CASE-PATHS ( ^u8 n ^u8 n -- ) {: script:^ scriptu tree:^ treeu :}
+: CASE-PATHS ( str str -- ) {: script:^ scriptu tree:^ treeu :}
    ROOT$ script scriptu SCRIPT-BUF FS:JOIN-PATH SCRIPT-U !
    tree treeu TREE-PATH
    0 TEXT-U !
@@ -77,7 +78,7 @@ variable TREE-U
 \ with this process's environment, so TMPDIR and the working directory are the
 \ ones the suite itself runs with. Capture gives the child no stdin, so the
 \ program's own exit is what the case measures.
-: RUN-PATH ( ^u8 n -- n n n ) {: path:^ pathu :}
+: RUN-PATH ( str -- n n n ) {: path:^ pathu :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -99,7 +100,7 @@ variable TREE-U
 
 \ hb-build with the flag, if any, the script as its source and the case's path
 \ as its -o.
-: RUN-BUILD-AS ( ^u8 n -- n n n ) {: flag:^ flagu :}
+: RUN-BUILD-AS ( str -- n n n ) {: flag:^ flagu :}
    SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -266,9 +267,9 @@ create STAGED-OUT-BUF PATH-CAP allot
 variable STAGED-OUT-U
 variable STAGED-FILES
 
-: STAGED-OUT$ ( -- ^u8 n ) STAGED-OUT-BUF STAGED-OUT-U @ ;
+: STAGED-OUT$ ( -- str ) STAGED-OUT-BUF STAGED-OUT-U @ ;
 
-: STAGED-COUNT ( ^u8 n -- )
+: STAGED-COUNT ( str -- )
    2drop STAGED-FILES @ 1+ STAGED-FILES ! ;
 
 : STAGED-FILES# ( -- n )
@@ -424,7 +425,7 @@ variable STAGED-FILES
 create RUN-FILE-BUF PATH-CAP allot
 variable RUN-FILE-U
 
-: RUN-FILE$ ( -- ^u8 n ) RUN-FILE-BUF RUN-FILE-U @ ;
+: RUN-FILE$ ( -- str ) RUN-FILE-BUF RUN-FILE-U @ ;
 
 \ It builds and runs a program because the build boundary is under test: the
 \ exit actions and cleanups its source's top level registers run when the

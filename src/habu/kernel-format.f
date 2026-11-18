@@ -1,3 +1,4 @@
+split-str
 \ kernel-format.f - the native kernel object's framing, shared by the arm64
 \ and x86-64 writers.
 \
@@ -42,7 +43,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT OUT-U @ + LE:U64!
    8 OUT-U +! ;
 
-: BYTES+ ( ^u8 n -- )
+: BYTES+ ( str -- )
    {: a:^ u:n :}
    OUT-U @ u + OUT-RESERVE
    a  0 OUT OUT-U @ +  u BYTE-COPY

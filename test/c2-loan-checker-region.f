@@ -1,3 +1,4 @@
+split-str
 \ A scope and a region binder can prefix one checked quotation.
 package C2-LOAN-CHECKER-REGION
 public

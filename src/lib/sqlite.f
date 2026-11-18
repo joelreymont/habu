@@ -1,3 +1,4 @@
+split-str
 \ sqlite.f - SQLite through libsqlite3, bound through the FFI FUNCTION:
 \ declarer, package SQLITE. A connection is the sqlite3 pointer; only the task
 \ that opened it uses it. A statement is a linear token that lives inside
@@ -147,14 +148,14 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
 
 \ ---- opening -------------------------------------------------------------
 
-: NUL? ( ^u8 n -- bool )
+: NUL? ( str -- bool )
    {: a:^ u:n :}
    u 0 ?do a i + c@ 0= if true unloop exit then loop
    false ;
 
 \ sqlite3_open_v2 answers a handle even when it fails, NULL only when out of
 \ memory; only its close frees it.
-: OPEN-AT ( ^u8 n n ^u8 NUM:alloc-byte-len -- connection )
+: OPEN-AT ( str n ^u8 NUM:alloc-byte-len -- connection )
    drop {: a:^ u:n flags:n z:^ :}
    a z u BYTE-COPY  0 z u + c!
    z OUT-CELL BYTE-VIEW flags NULL-ARG LIB-OPEN
@@ -162,7 +163,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    rc OK <> if db REPORT db LIB-CLOSE drop rc CLASS throw then
    db >CONNECTION ;
 
-: OPEN-WITH ( ^u8 n n -- connection )
+: OPEN-WITH ( str n -- connection )
    {: a:^ u:n flags:n :}
    a u NUL? if s" a path holds a NUL byte" MISUSE then
    a u flags u 1+ MEM:BYTES-ALLOC-LEN [: OPEN-AT ;] MEM:WITH-BYTES ;
@@ -197,7 +198,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    {: stmt:^ :}
    [: stmt DRAIN ;] [: stmt FINALIZE ;] finally ;
 
-: EXEC-NEXT ( ^u8 n connection -- ^u8 n )
+: EXEC-NEXT ( str connection -- str )
    {: a:^ u:n c:connection :}
    c a u PREPARE {: stmt:^ tail:^ :}
    stmt NULL-ADDR? if a u + 0 exit then
@@ -224,7 +225,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
 
 : RUN-BODY
    ( R SQLITE:statement [ R SQLITE:statement -- S SQLITE:statement ]
-     connection ^u8 n -- S ^u8 )
+     connection str -- S ^u8 )
    ALONE execute STATEMENT>PTR ;
 
 \ A zero-length value needs a base: SQLite binds NULL for a NULL one.
@@ -247,7 +248,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    stmt LIB-STMT-DB {: db:^ :}
    db LIB-EXTENDED PRIMARY-MASK and NOMEM = if NOMEM db FAIL then ;
 
-: COL-BYTES ( ^u8 n ^u8 -- ^u8 n )
+: COL-BYTES ( ^u8 n ^u8 -- str )
    {: stmt:^ col:n p:^ :}
    p stmt BYTES-CHECK
    p stmt col LIB-COL-BYTES ;
@@ -259,7 +260,7 @@ public
 : OPEN ( ^u8 n -- connection )
    READWRITE OPEN-CREATE or NOFOLLOW or OPEN-WITH ;
 
-: OPEN-READ ( ^u8 n -- connection )
+: OPEN-READ ( str -- connection )
    READONLY NOFOLLOW or OPEN-WITH ;
 
 \ SQLite refuses to close a connection with a live statement.
@@ -301,7 +302,7 @@ public
 
 \ The text's one statement, prepared for the body.
 : WITH-STATEMENT
-   ( R connection ^u8 n [ R SQLITE:statement -- S SQLITE:statement ] -- S )
+   ( R connection str [ R SQLITE:statement -- S SQLITE:statement ] -- S )
    {: c:connection a:^ u:n body :}
    c a u FIRST {: stmt:^ tail:^ :}
    stmt >STATEMENT body c tail a u + tail -
@@ -339,13 +340,13 @@ public
    PEEK {: stmt:^ :}
    stmt idx C-INT v LIB-BIND-INT stmt STMT-CHECK ;
 
-: BIND-TEXT ( SQLITE:statement ^u8 n n -- SQLITE:statement )
+: BIND-TEXT ( SQLITE:statement str n -- SQLITE:statement )
    {: a:^ u:n idx:n :}
    PEEK {: stmt:^ :}
    stmt idx C-INT a u BASE u C-INT TRANSIENT LIB-BIND-TEXT
    stmt STMT-CHECK ;
 
-: BIND-BLOB ( SQLITE:statement ^u8 n n -- SQLITE:statement )
+: BIND-BLOB ( SQLITE:statement str n -- SQLITE:statement )
    {: a:^ u:n idx:n :}
    PEEK {: stmt:^ :}
    stmt idx C-INT a u BASE u C-INT TRANSIENT LIB-BIND-BLOB
@@ -370,7 +371,7 @@ public
    stmt col COL-CHECK
    stmt col stmt col LIB-COL-TEXT COL-BYTES ;
 
-: COL-BLOB ( SQLITE:statement n -- SQLITE:statement ^u8 n )
+: COL-BLOB ( SQLITE:statement n -- SQLITE:statement str )
    {: col:n :}
    PEEK {: stmt:^ :}
    stmt col COL-CHECK

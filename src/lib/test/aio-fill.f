@@ -1,3 +1,4 @@
+split-str
 \ aio-fill.f - AIO held at its ceiling, package AIO-FILL. FILL submits polls that
 \ never fire until AIO refuses one, and answers that refusal's code; UNFILL
 \ cancels and awaits each and closes its pipe. CEILING is the code AIO refuses

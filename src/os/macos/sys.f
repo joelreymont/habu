@@ -1,3 +1,4 @@
+split-str
 \ sys.f — the darwin-arm64 OS seam: syscall numbers + the SVC emitter.
 \ Engine emitters say
 \ `NR-WRITE SYS,`; porting to another OS/arch swaps this file.

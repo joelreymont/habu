@@ -1,3 +1,4 @@
+split-str
 \ sumtype-front.f: SUMTYPE's front end, in package TYPE-DECL.
 \ It loads after the declaration runner so each declaration runs inside
 \ DECLARATION-TRANSACTION:RUN, where SUMTYPE's words come from the constructor

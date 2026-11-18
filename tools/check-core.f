@@ -1,3 +1,4 @@
+split-str
 \ check-core.f - the checked engine core behind tools/check.f: the pre-pass
 \ (tools/check-verify-core.f) and the run stage in a child on the engine
 \ src/lib/engine-candidate.f names, its output captured and replayed under the
@@ -146,7 +147,7 @@ variable CHK-EXP-OUT-U
 : CHK-SRC-READ ( ^u8 n -- n )
    [: CHK-SRC-ROOM drop ;] READ-WHOLE-FILE ;
 
-: CHK-RUN-ROOM ( n -- ^u8 n )
+: CHK-RUN-ROOM ( n -- str )
    1 max dup CHK-RUN-MEM-RESERVE 0 CHK-RUN-MEM swap ;
 
 : CHK-RUN-BUF ( -- ^u8 )
@@ -160,20 +161,20 @@ variable CHK-EXP-OUT-U
    CHK-ERR-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-ERR-BUF-A ! then
    CHK-ERR-BUF-A @ ;
 
-: CHK-SEL-SRC-ROOM ( n -- ^u8 n )
+: CHK-SEL-SRC-ROOM ( n -- str )
    1 max dup CHK-SEL-SRC-MEM-RESERVE 0 CHK-SEL-SRC-MEM swap ;
 
 : CHK-SEL-SRC-BUF ( -- ^u8 )
    1 CHK-SEL-SRC-ROOM drop ;
 
-: CHK-WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
+: CHK-WRITE ( n str -- ) {: fd:n a:^ u:n :}
    u 0= if exit then
    fd a u write u <> if E-FS-IO throw then ;
 
-: CHK-OUT ( ^u8 n -- )
+: CHK-OUT ( str -- )
    1 -rot CHK-WRITE ;
 
-: CHK-ERR ( ^u8 n -- )
+: CHK-ERR ( str -- )
    2 -rot CHK-WRITE ;
 
 : CHK-C! ( n -- )
@@ -183,7 +184,7 @@ variable CHK-EXP-OUT-U
    CHK-C!
    2 CHK-ONE 1 CHK-WRITE ;
 
-: CHK-ERR-LN ( ^u8 n -- )
+: CHK-ERR-LN ( str -- )
    CHK-ERR
    CHK-LF CHK-ERR-C ;
 
@@ -191,7 +192,7 @@ variable CHK-EXP-OUT-U
    CHK-C!
    1 CHK-ONE 1 CHK-WRITE ;
 
-: CHK-OUT-LN ( ^u8 n -- )
+: CHK-OUT-LN ( str -- )
    CHK-OUT
    CHK-LF CHK-OUT-C ;
 
@@ -201,10 +202,10 @@ variable CHK-EXP-OUT-U
 : CHK-PROSE-OUT? ( -- bool )
    CHK-VERIFY @ CHK-JSON @ or 0<> ;
 
-: CHK-EXPLAIN ( ^u8 n -- )
+: CHK-EXPLAIN ( str -- )
    CHK-PROSE-OUT? if CHK-OUT else CHK-ERR then ;
 
-: CHK-EXPLAIN-LN ( ^u8 n -- )
+: CHK-EXPLAIN-LN ( str -- )
    CHK-PROSE-OUT? if CHK-OUT-LN else CHK-ERR-LN then ;
 
 \ A rejected command line is one record with no place: no source holds an
@@ -213,11 +214,11 @@ variable CHK-EXP-OUT-U
    CHK-JSON @ 0<> REJECTION:JSON !
    s" E-CHECK-USAGE" REJECTION:OPEN ;
 
-: CHK-USAGE-ARG ( ^u8 n -- )
+: CHK-USAGE-ARG ( str -- )
    96 REJECTION:EMIT1  REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
 \ Opens the record with the message pre, the argument a u, then post.
-: CHK-USAGE-SAY ( ^u8 n ^u8 n ^u8 n -- ) {: pre:^ preu:n a:^ u:n post:^ postu:n :}
+: CHK-USAGE-SAY ( str str str -- ) {: pre:^ preu:n a:^ u:n post:^ postu:n :}
    CHK-USAGE-OPEN
    pre preu REJECTION:EMIT-STR  a u CHK-USAGE-ARG  post postu REJECTION:EMIT-STR ;
 
@@ -226,22 +227,22 @@ variable CHK-EXP-OUT-U
    s" usage: tools/check.f [--json-errors] [--all-errors] [--deadline-ms ms] [--verify-only [--stdin-path path]] [--source-list file ... | prog.f]" REJECTION:EMIT-STR
    EXIT-STATUS:USAGE REJECTION:STOP ;
 
-: CHK-REJECT-ARG ( ^u8 n ^u8 n ^u8 n -- )
+: CHK-REJECT-ARG ( str str str -- )
    CHK-USAGE-SAY CHK-USAGE ;
 
-: CHK-TWICE ( ^u8 n -- )
+: CHK-TWICE ( str -- )
    NULL$ 2swap s"  is given twice" CHK-REJECT-ARG ;
 
-: CHK-NO-VALUE ( ^u8 n -- )
+: CHK-NO-VALUE ( str -- )
    NULL$ 2swap s"  takes a value, and none follows it" CHK-REJECT-ARG ;
 
 : CHK-THROW ( n -- )
    throw ;
 
-: CHK-ARG$ ( n -- ^u8 n )
+: CHK-ARG$ ( n -- str )
    SCRIPT-ARGV$ ;
 
-: CHK-ARG= ( n ^u8 n -- bool ) {: idx:n a:^ u:n :}
+: CHK-ARG= ( n str -- bool ) {: idx:n a:^ u:n :}
    idx CHK-ARG$ a u LINT-STR= ;
 
 \ --stdin-path and --deadline-ms each consume the next token as their value.
@@ -251,7 +252,7 @@ variable CHK-EXP-OUT-U
 \ Establish the output stream before parsing can reject an earlier argument:
 \ whether option a u is given. A valued option's value is skipped; -- ends
 \ option parsing.
-: CHK-OPT? ( ^u8 n -- bool )
+: CHK-OPT? ( str -- bool )
    {: a:^ u:n :}
    0 begin dup SCRIPT-ARGC < while
       dup s" --" CHK-ARG= if drop false exit then
@@ -263,15 +264,15 @@ variable CHK-EXP-OUT-U
       then
    repeat drop false ;
 
-: CHK-DASH? ( ^u8 n -- bool ) {: a:^ u:n :}
+: CHK-DASH? ( str -- bool ) {: a:^ u:n :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
 \ Positional path idx; every caller passes an idx from 0 below CHK-POS-N.
-: CHK-POS$ ( n -- ^u8 n ) {: idx:n :}
+: CHK-POS$ ( n -- str ) {: idx:n :}
    idx 2 * CHK-POS-ROWS @ CHK-POS-MEM
    idx 2 * 1+ CHK-POS-ROWS @ ;
 
-: CHK-POS-SET ( ^u8 n n -- ) {: a:^ u:n idx:n :}
+: CHK-POS-SET ( str n -- ) {: a:^ u:n idx:n :}
    CHK-POS-U @ {: off:n :}
    off u + 1+ CHK-POS-MEM-RESERVE
    a off CHK-POS-MEM u BYTE-COPY
@@ -280,12 +281,12 @@ variable CHK-EXP-OUT-U
    row 2 + CHK-POS-ROWS-RESERVE
    off row CHK-POS-ROWS !  u row 1+ CHK-POS-ROWS ! ;
 
-: CHK-ADD-POS ( ^u8 n -- )
+: CHK-ADD-POS ( str -- )
    CHK-POS-N @ CHK-POS-SET
    CHK-POS-N @ 1+ CHK-POS-N ! ;
 
 \ The program a u comes after the one selected before it.
-: CHK-SECOND ( ^u8 n -- )
+: CHK-SECOND ( str -- )
    s" a second program " 2swap s" ; check.f checks one, or the files a `--source-list` names"
    CHK-USAGE-SAY
    CHK-SEL-MODE @ CHK-SEL-FILE = if s" first" REJECTION:NOTE  0 CHK-POS$ REJECTION:EMIT-STR then
@@ -304,7 +305,7 @@ variable CHK-EXP-OUT-U
       CHK-REJECT-ARG
    endcase ;
 
-: CHK-OPT ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-OPT ( str -- ) {: a:^ u:n :}
    a u s" json-errors" LINT-STR= if LINT-TRUE CHK-JSON ! exit then
    a u s" all-errors" LINT-STR= if LINT-TRUE CHK-ALL ! exit then
    a u s" source-list" LINT-STR= if CHK-LIST-OPT exit then
@@ -329,7 +330,7 @@ public
 
 private
 
-: CHK-PARSE-ONE ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-PARSE-ONE ( str -- ) {: a:^ u:n :}
    a u s" --json-errors" LINT-STR= if s" json-errors" OPT exit then
    a u s" --all-errors" LINT-STR= if s" all-errors" OPT exit then
    a u s" --source-list" LINT-STR= if s" source-list" OPT exit then
@@ -343,7 +344,7 @@ private
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
-: CHK-STDIN-PATH$ ( -- ^u8 n )
+: CHK-STDIN-PATH$ ( -- str )
    CHK-STDIN-PATH-A CHK-PTR-U8@ CHK-STDIN-PATH-U @ ;
 
 \ The path stdin's text stands for under --verify-only, given once.
@@ -356,13 +357,13 @@ private
    a CHK-STDIN-PATH-A CHK-PTR-U8!
    u CHK-STDIN-PATH-U ! ;
 
-: CHK-BAD-DEADLINE ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-BAD-DEADLINE ( str -- ) {: a:^ u:n :}
    CHK-USAGE-OPEN
    s" `--deadline-ms` takes a whole number of milliseconds from 1 to " REJECTION:EMIT-STR
    CHK-DEADLINE-MAX REJECTION:EMIT-U  s" , not " REJECTION:EMIT-STR  a u CHK-USAGE-ARG
    CHK-USAGE ;
 
-: CHK-DEADLINE-SET ( ^u8 n n -- ) {: a:^ u:n ms:n :}
+: CHK-DEADLINE-SET ( str n -- ) {: a:^ u:n ms:n :}
    ms 1 < ms CHK-DEADLINE-MAX > or if a u CHK-BAD-DEADLINE then
    ms CHK-DEADLINE ! ;
 
@@ -424,30 +425,30 @@ private
    CHK-SELECT-CLEAR
    CHK-RUN-TEMP-CLEAR ;
 
-: CHK-COPY! ( ^u8 n ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
+: CHK-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CHK-ROOT ( -- ^u8 n )
+: CHK-ROOT ( -- str )
    CHK-ROOT-BUF CHK-ROOT-U @ ;
 
-: CHK-SRC-PATH ( -- ^u8 n )
+: CHK-SRC-PATH ( -- str )
    CHK-SRC-PATH-BUF CHK-SRC-PATH-U @ ;
 
-: CHK-RUN-PATH ( -- ^u8 n )
+: CHK-RUN-PATH ( -- str )
    CHK-RUN-PATH-BUF CHK-RUN-PATH-U @ ;
 
-: CHK-SUBJECT-PATH ( -- ^u8 n )
+: CHK-SUBJECT-PATH ( -- str )
    CHK-SUBJECT-PATH-BUF CHK-SUBJECT-PATH-U @ ;
 
-: CHK-REPORT-PATH ( -- ^u8 n )
+: CHK-REPORT-PATH ( -- str )
    CHK-REPORT-PATH-BUF CHK-REPORT-PATH-U @ ;
 
-: CHK-SUBJ$ ( -- ^u8 n )
+: CHK-SUBJ$ ( -- str )
    CHK-SUBJ-BUF CHK-SUBJ-U @ ;
 
-: CHK-SUBJ! ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-SUBJ! ( str -- ) {: a:^ u:n :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    a CHK-SUBJ-BUF u BYTE-COPY
    u CHK-SUBJ-U ! ;
@@ -477,25 +478,25 @@ private
 : CHK-LABEL-STDIN ( -- )
    s" <stdin>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8! ;
 
-: CHK-LABEL ( -- ^u8 n )
+: CHK-LABEL ( -- str )
    CHK-LABEL-A CHK-PTR-U8@ CHK-LABEL-U @ ;
 
-: CHK-SOURCE ( -- ^u8 n )
+: CHK-SOURCE ( -- str )
    CHK-SRC-A CHK-PTR-U8@ CHK-SRC-U @ ;
 
-: CHK-SOURCE-BYTES ( -- ^u8 n )
+: CHK-SOURCE-BYTES ( -- str )
    CHK-SRC-PATH CHK-SRC-READ
    CHK-SRC-BUF swap ;
 
-: CHK-LABEL! ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-LABEL! ( str -- ) {: a:^ u:n :}
    u CHK-LABEL-U !
    a CHK-LABEL-A CHK-PTR-U8! ;
 
-: CHK-SOURCE! ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-SOURCE! ( str -- ) {: a:^ u:n :}
    u CHK-SRC-U !
    a CHK-SRC-A CHK-PTR-U8! ;
 
-: CHK-ENTRY$ ( ^u8 n -- ^u8 n )
+: CHK-ENTRY$ ( str -- str )
    ENTRY-RESOLVE drop ;
 
 \ The --all-errors core writes its records into a new report file, in the run's
@@ -510,7 +511,7 @@ private
    CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N FS:WRITE-ALL
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
-: CHK-EXP-APP ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-EXP-APP ( str -- ) {: a:^ u:n :}
    a u >LEN
    CHK-EXP-OUT-U @ LEN>N u + CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-BYTES ;
 
@@ -519,7 +520,7 @@ private
 
 \ A record of check.f's own stands in no source: it names the file NO-FILE$, as the loader
 \ names a missing entry, and is in the run's mode.
-: CHK-OPEN ( ^u8 n -- ) {: code:^ codeu:n :}
+: CHK-OPEN ( str -- ) {: code:^ codeu:n :}
    CHK-JSON @ REJECTION:JSON !
    REJECTION:NO-FILE$ REJECTION:FILE!
    code codeu REJECTION:OPEN ;
@@ -543,7 +544,7 @@ private
    false ;
 
 \ The offset of the first byte of a u SOURCE-QPATH-CHECK rejects, else u.
-: CHK-UNSAFE-AT ( ^u8 n -- n ) {: a:^ u:n :}
+: CHK-UNSAFE-AT ( str -- n ) {: a:^ u:n :}
    u 0 ?do  a i + CHK-UNSAFE-BYTE? if i unloop exit then  loop
    u ;
 
@@ -556,7 +557,7 @@ private
    s" the byte " REJECTION:EMIT-STR  c REJECTION:EMIT-U ;
 
 \ w wu is what was judged, a path or a label; h hu says how to change it.
-: CHK-PATH-UNSAFE ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n w:^ wu:n h:^ hu:n :}
+: CHK-PATH-UNSAFE ( str str str -- ) {: a:^ u:n w:^ wu:n h:^ hu:n :}
    a u CHK-UNSAFE-AT {: at:n :}
    s" E-FS-PATH-UNSAFE" CHK-OPEN
    s" the " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR
@@ -568,13 +569,13 @@ private
    REJECTION:KEEP
    EXIT-STATUS:USAGE CHK-THROW ;
 
-: CHK-QPATH-JUDGE ( ^u8 n ^u8 n ^u8 n -- ) {: a:^ u:n w:^ wu:n h:^ hu:n :}
+: CHK-QPATH-JUDGE ( str str str -- ) {: a:^ u:n w:^ wu:n h:^ hu:n :}
    [: a u SOURCE-QPATH-CHECK ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-FS-PATH-UNSAFE = if a u w wu h hu CHK-PATH-UNSAFE then
    rc throw ;
 
-: CHK-EXP-QPATH ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-EXP-QPATH ( str -- ) {: a:^ u:n :}
    a u s" path" s" rename or move the file so its path holds none of them" CHK-QPATH-JUDGE
    a u >LEN
    CHK-EXP-OUT-U @ LEN>N u SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
@@ -587,7 +588,7 @@ private
 \ working directory does not matter. The child's own JSON diagnostics for a file
 \ it loads by path carry that file's line and column, which the engine counts
 \ itself.
-: CHK-APPEND-ENTRY ( ^u8 n -- )
+: CHK-APPEND-ENTRY ( str -- )
    CHK-EXP-QPATH
    CHK-SP CHK-EXP-C
    s" script-required" CHK-EXP-APP
@@ -601,7 +602,7 @@ private
 \ Materializing their canonical absolute spelling makes the child miss its boot
 \ row and reload a family such as option; paths outside the tree remain
 \ absolute and retain their distinct application identity.
-: CHK-APPEND-LISTED ( ^u8 n -- )
+: CHK-APPEND-LISTED ( str -- )
    SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CHK-APPEND-ENTRY ;
 
 \ Standard input holds a source of any size, read to its end into CHK-SRC with
@@ -622,7 +623,7 @@ private
 
 \ Whether q holds for every position. An input set that is all sources the
 \ engine provides is rejected at each input: a run loads nothing from one.
-: CHK-INPUTS-ALL? ( [ ^u8 n -- bool ] -- bool ) {: q :}
+: CHK-INPUTS-ALL? ( [ str -- bool ] -- bool ) {: q :}
    CHK-POS-N @ 0 ?do
       i CHK-POS$ q execute 0= if unloop false exit then
    loop
@@ -638,10 +639,10 @@ private
 
 \ An existing input that is no file gets the load's record: a directory's
 \ EISDIR, or for any other non-file the stamping reader's.
-: CHK-NO-INPUT ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-NO-INPUT ( str -- ) {: a:^ u:n :}
    NULL-PTR 0 a u CHK-IRREGULAR ;
 
-: CHK-ENGINE-PROVIDED ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-ENGINE-PROVIDED ( str -- ) {: a:^ u:n :}
    s" E-ENGINE-PROVIDED" CHK-OPEN
    s" the engine provides `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR
    s" `, so a check loads nothing from it" REJECTION:EMIT-STR
@@ -735,7 +736,7 @@ private
 : CHK-RUN-RESET ( -- )
    0 CHK-RUN-U ! ;
 
-: CHK-RUN+ ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-RUN+ ( str -- ) {: a:^ u:n :}
    CHK-RUN-U @ u + CHK-RUN-ROOM 2drop
    a CHK-RUN-BUF CHK-RUN-U @ + u BYTE-COPY
    CHK-RUN-U @ u + CHK-RUN-U ! ;
@@ -745,15 +746,15 @@ private
    c CHK-RUN-BUF CHK-RUN-U @ + c!
    CHK-RUN-U @ 1+ CHK-RUN-U ! ;
 
-: CHK-RUN-SP ( ^u8 n -- )
+: CHK-RUN-SP ( str -- )
    CHK-RUN+
    CHK-SP CHK-RUN-C ;
 
-: CHK-RUN-LN ( ^u8 n -- )
+: CHK-RUN-LN ( str -- )
    CHK-RUN+
    CHK-LF CHK-RUN-C ;
 
-: CHK-RUN-QPATH+ ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-RUN-QPATH+ ( str -- ) {: a:^ u:n :}
    a u >LEN
    CHK-RUN-U @ u SOURCE-QPATH-BYTES + CHK-RUN-ROOM >LEN
    CHK-RUN-U SOURCE-APPEND-QPATH ;
@@ -772,7 +773,7 @@ private
    then
    CHK-JSON @ if s" -1 REJECTION:JSON !" CHK-RUN-SP then ;
 
-: CHK-RUN-SOURCE+ ( ^u8 n -- )
+: CHK-RUN-SOURCE+ ( str -- )
    CHK-SRC-READ {: len:n :}
    CHK-SRC-BUF len CHK-RUN+ ;
 
@@ -835,7 +836,7 @@ private
              outu LEN>N CHK-OUT-U ! ENDOF
    ;MATCH ;
 
-: CHK-SUBJECT ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-SUBJECT ( str -- ) {: a:^ u:n :}
    CHK-LABEL REJECTION:EMIT-STR  s" : " REJECTION:EMIT-STR  a u REJECTION:EMIT-STR ;
 
 \ The run's output is captured to be replayed, CHK-OUT-CAP bytes of standard
@@ -855,7 +856,7 @@ private
    EXIT-STATUS:REJECTED CHK-THROW ;
 
 \ A child still going at its deadline: what a u names, the run or the verifier.
-: CHK-LATE ( ^u8 n -- ) {: a:^ u:n :}
+: CHK-LATE ( str -- ) {: a:^ u:n :}
    s" E-PROC-TIMEOUT" CHK-OPEN
    a u CHK-SUBJECT  s"  passed its deadline" REJECTION:EMIT-STR
    s" deadline" REJECTION:NOTE
@@ -896,7 +897,7 @@ private
    then
    CHK-SOURCE-BYTES CHK-SRC-PATH CHK-LABEL CHECK-ALL-ERRORS:COMPOSE-BUF ;
 
-: CHK-REPORT-ROOM ( n -- ^u8 n )
+: CHK-REPORT-ROOM ( n -- str )
    1 max dup CHK-REPORT-MEM-RESERVE 0 CHK-REPORT-MEM swap ;
 
 : CHK-REPORT-SEND ( -- )
@@ -904,7 +905,7 @@ private
    1 CHK-REPORT-ROOM drop len CHK-ERR ;
 
 \ A verifier child that exited or died of a signal before it answered.
-: CHK-VERIFIER-ENDED ( ^u8 n n -- ) {: a:^ u:n v:n :}
+: CHK-VERIFIER-ENDED ( str n -- ) {: a:^ u:n v:n :}
    s" E-VERIFIER-ENDED" CHK-OPEN
    s" the verifier ended with " CHK-SUBJECT  a u REJECTION:EMIT-STR  v REJECTION:EMIT-U
    s"  before it answered" REJECTION:EMIT-STR
@@ -1030,7 +1031,7 @@ private
 
 \ A named file the file system refuses to read is the loader's rejection at its
 \ canonical path; a missing one is the load's, named as written.
-: CHK-VERIFY-FILE ( -- ^u8 n )
+: CHK-VERIFY-FILE ( -- str )
    0 CHK-RESOLVE-POS 0= if 0 CHK-POS$ NULL-PTR 0 true SOURCE-ROOT:MISSING-SOURCE then
    0 CHK-POS$ {: a:^ u:n :}
    a u FS:FILE? 0= if a u CHK-NO-INPUT then
@@ -1039,7 +1040,7 @@ private
    a u ;
 
 \ stdin's path need not exist.
-: CHK-VERIFY-STDIN ( -- ^u8 n )
+: CHK-VERIFY-STDIN ( -- str )
    CHK-STDIN-PATH-U @ 0= if
       NULL$ s" --verify-only" s"  names no program, and no `--stdin-path` for one on stdin"
       CHK-REJECT-ARG
@@ -1049,7 +1050,7 @@ private
    CHK-STDIN-PATH$ ;
 
 \ Read the bytes into the source buffer: the path they stand for.
-: CHK-VERIFY-SELECT ( -- ^u8 n )
+: CHK-VERIFY-SELECT ( -- str )
    CHK-SEL-MODE @ CHK-SEL-FILE = if
       CHK-STDIN-PATH-U @ 0<> if
          s" both the program " 0 CHK-POS$ s"  and `--stdin-path`; `--verify-only` checks one"
@@ -1068,7 +1069,7 @@ private
    then
    CHK-VERIFY-STDIN ;
 
-: CHK-VERIFY-REPORT ( verdict ^u8 n -- ) {: path:^ pathu:n :}
+: CHK-VERIFY-REPORT ( verdict str -- ) {: path:^ pathu:n :}
    CHK-VERIFIER-RELAY
    MATCH verdict
       verified OF ENDOF
@@ -1143,7 +1144,7 @@ private
 \ directory and dies of the signal; a step that throws is named and the answer goes on. A run
 \ that ended before its child started leaves its pid 0 or PROCESS:NO-PID, and PROCESS:KILL-CAPTURE
 \ kills nothing for either: kill(0) is check.f's own process group.
-: CHK-SAY-THROW ( ^u8 n n -- ) {: what:^ whatu:n code:n :}
+: CHK-SAY-THROW ( str n -- ) {: what:^ whatu:n code:n :}
    code 0= if exit then
    s" check: " CHK-ERR what whatu CHK-ERR s"  threw " CHK-ERR
    SB-RESET code FMT:SB-INT SB$ CHK-ERR-LN ;

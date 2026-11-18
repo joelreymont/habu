@@ -1,3 +1,4 @@
+split-str
 \ ffi-test.f - checked C-ABI FFI tests against libc.
 \ Run: bin/hb --load src/lib/ffi-test.f
 
@@ -50,7 +51,7 @@ variable FFI-T-MATH
    FFI-T-LIBM ;
 : FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH FFI:NOW FFI:DLOPEN ;
 : FFI-T-SYM ( ^u8 -- n ) {: name:^ :}  FFI-T-LIB @ name FFI:DLSYM ;
-: FFI-T-SYM$ ( ^u8 n -- n )
+: FFI-T-SYM$ ( str -- n )
    {: name:^ nameu:n :}
    name nameu FFI-T-SYM-BUF FFI:CSTR {: sym:^ :}
    FFI-T-LIB @ sym FFI:DLSYM ;
@@ -212,7 +213,7 @@ create FFI-T-OUT FFI-T-CAP allot
 create FFI-T-ERR FFI-T-CAP allot
 create FFI-T-LONG-PATH PATH-CAP allot
 
-: FFI-T-SRC+ ( ^u8 n -- )
+: FFI-T-SRC+ ( str -- )
    FFI-T-SRC CODEGEN:APPEND-STRING ;
 
 : FFI-T-FILL-SRC+ ( -- )
@@ -241,7 +242,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" : ZZ-LIB-CHECK ( -- )\n" FFI-T-SRC+
    s\"    ZZ-LATE 0 <= if s\" late library call\" 1 die then ;\n" FFI-T-SRC+ ;
 
-: FFI-T-GROW-SRC$ ( -- ^u8 n )
+: FFI-T-GROW-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    FFI-T-FILL-SRC+
    s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
@@ -251,11 +252,11 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    ZZ-LIB-CHECK\n" FFI-T-SRC+
    s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
-: FFI-T-ERR$ ( len -- ^u8 n ) {: u:len :}
+: FFI-T-ERR$ ( len -- str ) {: u:len :}
    FFI-T-ERR u LEN>N ;
 
 \ Runs the source on a fresh engine's stdin and asserts its exit code.
-: FFI-T-RUN-EXITS ( ^u8 n n -- len len ) {: src:^ srcu:n want:n :}
+: FFI-T-RUN-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
@@ -269,7 +270,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    {: outu:len erru:len :}
    FFI-T-OUT outu LEN>N s\" growth-alias:ok\n" T$=
    erru LEN>N 0 T= ;
-: FFI-T-LIBRARY-SHARED-SRC$ ( -- ^u8 n )
+: FFI-T-LIBRARY-SHARED-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\n" FFI-T-SRC+
    s\" CODEGEN:BUFFER ZZ-NAME\npackage ZZ-LIB-A\npublic\n" FFI-T-SRC+
@@ -307,7 +308,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 
 \ Runs a rejected case with its record captured, so stderr carries none,
 \ and asserts the record's header line.
-: FFI-T-RECORD ( [ -- ] ^u8 n -- )
+: FFI-T-RECORD ( [ -- ] str -- )
    {: h:^ hu:n :}
    DECL-DIAG:PROSE
    70 TTHROWSQ
@@ -351,7 +352,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    HB-TARGET-MACOS? if s\" libz.1.dylib\z" drop exit then s\" libz.so.1\z" drop ;
 
 \ The miss prints its record, so it runs in a child whose stderr is asserted.
-: FFI-T-LOCAL-SRC$ ( -- ^u8 n )
+: FFI-T-LOCAL-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-PROBE crc32 ( n ^u8 n -- n ) ;FUNCTION\n: ZZ-MISS ( -- )\n" FFI-T-SRC+
@@ -387,10 +388,10 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-GLOBAL-LIB$ FFI:NOW FFI:PROCESS-WIDE or FFI:DLOPEN 0 T<>
    0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T= ;
 
-: FFI-T-CHECK-PASSES ( ^u8 n -- )
+: FFI-T-CHECK-PASSES ( str -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
-: FFI-T-CHECK-REJECTS ( ^u8 n -- )
+: FFI-T-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ The libm rows ride the ABI call: sqrt a float argument and a float result,
@@ -508,25 +509,25 @@ PROCESS-SYMBOLS
 : FFI-T-LISTED-CALL ( -- )
    0 s" a" FFI-T-LISTED-CRC $E8B7BE43 T= ;
 
-: FFI-T-NO-SUCH2-NAME$ ( -- ^u8 n )
+: FFI-T-NO-SUCH2-NAME$ ( -- str )
    HB-TARGET-MACOS? if s" libhabu-no-such.2.dylib" exit then
    s" libhabu-no-such.so.2" ;
 
-: FFI-T-NO-SUCH1-NAME$ ( -- ^u8 n )
+: FFI-T-NO-SUCH1-NAME$ ( -- str )
    HB-TARGET-MACOS? if s" libhabu-no-such.1.dylib" exit then
    s" libhabu-no-such.so.1" ;
 
-: FFI-T-Z1-NAME$ ( -- ^u8 n )
+: FFI-T-Z1-NAME$ ( -- str )
    HB-TARGET-MACOS? if s" libz.1.dylib" exit then s" libz.so.1" ;
 
-: FFI-T-Z9999-NAME$ ( -- ^u8 n )
+: FFI-T-Z9999-NAME$ ( -- str )
    HB-TARGET-MACOS? if s" libz.9999.dylib" exit then s" libz.so.9999" ;
 
 \ A 100-byte name no library has, for a symbol, a token and a base name.
 100 constant FFI-T-LONG-U
 create FFI-T-LONG FFI-T-LONG-U allot
 
-: FFI-T-LONG$ ( -- ^u8 n )
+: FFI-T-LONG$ ( -- str )
    FFI-T-LONG-U 0 ?do [char] x FFI-T-LONG i + c! loop
    s" habu-ffi-long-" {: p:^ pu:n :}
    p FFI-T-LONG pu BYTE-COPY
@@ -549,13 +550,13 @@ create FFI-T-LONG FFI-T-LONG-U allot
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer rejects it where it is stated. The rejection ends the load, which is
 \ why it is measured in a child like the growth case.
-: FFI-T-FOREIGN-NAME$ ( -- ^u8 n )
+: FFI-T-FOREIGN-NAME$ ( -- str )
    HB-TARGET-MACOS? if s" libx.so.5" exit then s" libx.5.dylib" ;
 
-: FFI-T-TARGET$ ( -- ^u8 n )
+: FFI-T-TARGET$ ( -- str )
    HB-TARGET-MACOS? if s" macos" exit then s" linux" ;
 
-: FFI-T-FOREIGN-SRC$ ( -- ^u8 n )
+: FFI-T-FOREIGN-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\n" FFI-T-SRC+
    s\" : ZZ-FOREIGN ( -- ) s\" LIBRARY " FFI-T-SRC+
@@ -579,7 +580,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 \ A fresh engine has made no selection, which this file's PROCESS-SYMBOLS has,
 \ and the rejection ends the load: the case runs in a child.
-: FFI-T-UNSELECTED-SRC$ ( -- ^u8 n )
+: FFI-T-UNSELECTED-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-PID getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
@@ -592,7 +593,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: FUNCTION: with no library selected" CONTAINS? TTRUE ;
 
-: FFI-T-LONG-FOREIGN-SRC$ ( -- ^u8 n )
+: FFI-T-LONG-FOREIGN-SRC$ ( -- str )
    FFI-T-LONG-SRC!
    s\" : ZZ-FOREIGN ( -- ) ZZ-LONG {: path:^ u:n :}\n" FFI-T-SRC+
    s\" HB-TARGET-MACOS? if s\" .so\" else s\" .dylib\" then {: ext:^ eu:n :}\n" FFI-T-SRC+
@@ -614,17 +615,17 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-TARGET$ SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
-: FFI-T-NO-LIB$ ( -- ^u8 n )
+: FFI-T-NO-LIB$ ( -- str )
    HB-TARGET-MACOS? if s" libhabu-no-such-library.dylib" exit then
    s" libhabu-no-such-library.so" ;
 
-: FFI-T-LIBC$ ( -- ^u8 n )
+: FFI-T-LIBC$ ( -- str )
    HB-TARGET-MACOS? if s" /usr/lib/libSystem.B.dylib" exit then
    s" libc.so.6" ;
 
 \ Missing symbols and a missing library fail at the first call, never at the
 \ declaration; the final uncaught error ends the load, so the case runs in a child.
-: FFI-T-NO-LIB-SRC$ ( -- ^u8 n )
+: FFI-T-NO-LIB-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION\nLIBRARY " FFI-T-SRC+
@@ -679,7 +680,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 \ No version of the list exists, so the first call reports every name and a
 \ second call nothing; the final uncaught error ends the load, so it runs in a child.
 \ A symbol missing from a list whose second version opens names that version.
-: FFI-T-NO-VERSION-SRC$ ( -- ^u8 n )
+: FFI-T-NO-VERSION-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 9999,1\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-LISTED-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION\n" FFI-T-SRC+
@@ -693,7 +694,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    s\"    ZZ-NO-VERSION drop ;\nZZ-CALL\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
-: FFI-T-HUGE-BASE-SRC$ ( n -- ^u8 n ) {: u:n :}
+: FFI-T-HUGE-BASE-SRC$ ( n -- str ) {: u:n :}
    FFI-T-LONG-PATH!
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY " FFI-T-SRC+
@@ -723,7 +724,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    erru FFI-T-ERR$ s" error[" COUNT-SUB 1 T= ;
 
 \ LIBRARY's path one byte past the path cap: its record names the length found.
-: FFI-T-HUGE-PATH-SRC$ ( -- ^u8 n )
+: FFI-T-HUGE-PATH-SRC$ ( -- str )
    FFI-T-LONG-PATH!
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nLIBRARY " FFI-T-SRC+

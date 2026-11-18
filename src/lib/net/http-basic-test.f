@@ -1,3 +1,4 @@
+split-str
 \ http-basic-test.f - HTTP:BASIC-CREDENTIALS: RFC 7617's example, a UTF-8
 \ password, every place the `:` can fall in a base64 group, the user, password
 \ and capacity rejections, and no copy of the password left in the span.
@@ -36,7 +37,7 @@ $A5 constant BASIC-CANARY
    s" a UTF-8 password is no control character" T-LABEL
    k OUT$ s" Basic YTrDqQ==" T$= ;
 
-: WANT$ ( ^u8 n ^u8 n -- ^u8 n ) {: user:^ u:n pass:^ p:n :}
+: WANT$ ( str str -- str ) {: user:^ u:n pass:^ p:n :}
    user u BASIC-JOINED SPAN:COPY
    [char] : BASIC-JOINED u SPAN:U8!
    pass p BASIC-JOINED u 1+ SPAN:SKIP SPAN:COPY

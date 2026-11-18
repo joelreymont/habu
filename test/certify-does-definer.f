@@ -1,3 +1,4 @@
+split-str
 \ certify-does-definer.f - certification knows what a `does>` definer publishes.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f \
 \   src/habu/verify-source.f test/certify-does-definer.f
@@ -93,11 +94,11 @@ package CERTIFY-DOES-DEFINER
 
 \ A scanned word binds through the checker overlay only while the neutral scope
 \ holding its scan is open, so its probes ask the certify path inside it.
-: CDD-VERDICT ( ^u8 n -- n )
+: CDD-VERDICT ( str -- n )
    VERIFY:CANDIDATE-IN-SCOPE ;
 
 \ A word the engine created (section 4) is asked by the engine's lookup.
-: CDD-LIVE-VERDICT ( ^u8 n -- n )
+: CDD-LIVE-VERDICT ( str -- n )
    CHECK-QUIET-CANDIDATE! ;
 
 \ Section 1: the definer the scanner read and the word it creates.
@@ -345,17 +346,17 @@ variable CDD-SRC-U
 : CDD-READ ( -- )
    CDD-SRC-A @ CDD-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-: CDD-SPAN! ( ^u8 n -- )
+: CDD-SPAN! ( str -- )
    {: a:^ u:n :}
    a CDD-SRC-A !
    u CDD-SRC-U ! ;
 
 \ A neutral scope that pops, as tools/check.f reads a source.
-: CDD-SCOPED ( ^u8 n -- n )
+: CDD-SCOPED ( str -- n )
    CDD-SPAN!
    [: [: CDD-READ ;] CHECK:SCOPED ;] catch ;
 
-: CDD-REPLAY$ ( -- ^u8 n )
+: CDD-REPLAY$ ( -- str )
    s\" : CDD-SG ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-SG ( -- ^n )\n5 CDD-SG CDD-SGM\n: CDD-SGU ( -- ^n ) CDD-SGM ;\n" ;
 
 \ The stale pair's E-UNDEFINED line on stderr is the refusal being measured.
@@ -372,7 +373,7 @@ variable CDD-SRC-U
 \ record that names the row's word and why. A row on a word that reads no name
 \ after it, `evaluate` or a deferred word is rejected too: kept, it makes the
 \ pre-pass take the token after a call as a made name the load never makes.
-: CDD-ROW-REJECTED ( [ -- ] ^u8 n -- )
+: CDD-ROW-REJECTED ( [ -- ] str -- )
    {: wa:^ wu:n :}
    REJECTION:CAPTURE
    70 TTHROWSQ
@@ -408,14 +409,14 @@ variable CDD-SRC-U
 \ CHECK-DOES-RUN); refused clauses' diagnostics are captured, not printed.
 defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
 
-: CDD-NOT-CERTIFIED ( ^u8 n ^u8 n -- )
+: CDD-NOT-CERTIFIED ( str str -- )
    {: sa:^ su:n wa:^ wu:n :}
    REJECTION:CAPTURE
    sa su TEST-EVAL:RC  70 T=
    REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
-: CDD-NP-REFUSED ( ^u8 n -- )
+: CDD-NP-REFUSED ( str -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
 
 : CDD-SECTION-CLAUSE-TAIL ( -- )
@@ -450,7 +451,7 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
 
 \ Section 14: a clause naming a type a reached renderer may declare is deferred
 \ unwalked at that type, as its colon twin is (verify-source.f NOMINAL-MARK).
-: CDD-QUIET$ ( -- ^u8 n )
+: CDD-QUIET$ ( -- str )
    s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" evaluate-closed ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
 
 : CDD-SECTION-QUIET-CLAUSE ( -- )

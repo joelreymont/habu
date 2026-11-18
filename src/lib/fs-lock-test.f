@@ -1,3 +1,4 @@
+split-str
 \ fs-lock-test.f - advisory directory ownership across processes.
 \ Run: bin/hb --load src/lib/fs-lock-test.f
 \ Failure modes: a second process can take a live hold; close or process death

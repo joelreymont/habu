@@ -1,3 +1,4 @@
+split-str
 \ Pure source token classes shared by the loader and the interpreter's reader.
 \ STORAGE CLASS. CALLER-OWNED: pure predicates over the caller's bytes; no
 \ module state.
@@ -6,7 +7,7 @@ require src/lib/string.f
 package SOURCE-SYNTAX
 public
 
-: PARSING-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: PARSING-KEYWORD? ( str -- bool ) {: a:^ u:n :}
    a u s" char" STR=CI if STR-TRUE exit then
    a u s" [char]" STR=CI if STR-TRUE exit then
    a u s" '" STR= if STR-TRUE exit then
@@ -14,19 +15,19 @@ public
 
 \ In a body only the bracketed keywords and `postpone` parse, once no live
 \ local claims the token; `char` and `'` there are names.
-: BODY-PARSING-KEYWORD? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BODY-PARSING-KEYWORD? ( str -- bool ) {: a:^ u:n :}
    a u s" [char]" STR=CI if STR-TRUE exit then
    a u s" postpone" STR=CI if STR-TRUE exit then
    a u s" [']" STR= ;
 
 \ The engine opens a definition body at these.
-: BODY-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BODY-OPENER? ( str -- bool ) {: a:^ u:n :}
    a u s" :" STR= if STR-TRUE exit then
    a u s" TRUSTED:" STR=CI if STR-TRUE exit then
    a u s" kernel:" STR=CI ;
 
 \ Block tokens alter local lifetime only after byte-exact local lookup.
-: BLOCK-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BLOCK-OPENER? ( str -- bool ) {: a:^ u:n :}
    a u s" if" STR=CI if STR-TRUE exit then
    a u s" begin" STR=CI if STR-TRUE exit then
    a u s" do" STR=CI if STR-TRUE exit then
@@ -36,7 +37,7 @@ public
    a u s" match" STR=CI if STR-TRUE exit then
    a u s" [:" STR= ;
 
-: BLOCK-CLOSER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BLOCK-CLOSER? ( str -- bool ) {: a:^ u:n :}
    a u s" then" STR=CI if STR-TRUE exit then
    a u s" until" STR=CI if STR-TRUE exit then
    a u s" repeat" STR=CI if STR-TRUE exit then
@@ -48,20 +49,20 @@ public
    a u s" ;match" STR=CI if STR-TRUE exit then
    a u s" ;]" STR= ;
 
-: ROW-OPENER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: ROW-OPENER? ( str -- bool ) {: a:^ u:n :}
    a u s" EPRIM:" STR=CI if STR-TRUE exit then
    a u s" EPPRIM:" STR=CI ;
 
 \ Both closers write the open row, so either ends a row of either family.
-: ROW-CLOSER? ( ^u8 n -- bool ) {: a:^ u:n :}
+: ROW-CLOSER? ( str -- bool ) {: a:^ u:n :}
    a u s" EPRIM;" STR=CI if STR-TRUE exit then
    a u s" ECLOSE-PRIVATE" STR=CI ;
 
-: ROW-ATOM? ( ^u8 n -- bool ) {: a:^ u:n :}
+: ROW-ATOM? ( str -- bool ) {: a:^ u:n :}
    u 3 >= if a 3 s" PE-" STR=CI if STR-TRUE exit then then
    u 4 >= if a 4 s" ;PE-" STR=CI exit then
    STR-FALSE ;
 
-: ROW-REF? ( ^u8 n -- bool ) s" REF" STR=CI ;
+: ROW-REF? ( str -- bool ) s" REF" STR=CI ;
 
 ;package

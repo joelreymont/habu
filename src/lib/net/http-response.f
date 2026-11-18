@@ -1,3 +1,4 @@
+split-str
 \ http-response.f - the response a handler builds in its worker's slot: a
 \ status, header lines, a borrowed body span or a filed document, and the error
 \ answer every refusal shares, rendered by the one hook ON-ERROR installs
@@ -24,7 +25,7 @@ MAX-WORKERS TYPED-BUFFER FILE-OFFSET n
 MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 
 
-: OUT+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
+: OUT+ ( str n -- ) {: src:^ len:n idx:n :}
    src len BUF:N>BLEN idx OUT-BUF BUF:APPEND-SPAN ;
 
 
@@ -32,7 +33,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    byte idx OUT-BUF BUF:APPEND-BYTE ;
 
 
-: HDR+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
+: HDR+ ( str n -- ) {: src:^ len:n idx:n :}
    src len BUF:N>BLEN idx HDR-BUF BUF:APPEND-SPAN ;
 
 
@@ -53,7 +54,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 
 \ One nonnegative number as text in the slot's number scratch, which the next
 \ number in the same slot overwrites.
-: NUM$ ( n n -- ^u8 n ) {: value:n idx:n :}
+: NUM$ ( n n -- str ) {: value:n idx:n :}
    value 0 < if E-CAPACITY throw then
    value idx 0 NUM-DIGITS {: len:n :}
    idx NUM-BUF len SPAN:TAKE SPAN:$ ;
@@ -64,7 +65,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    idx ID-U@ 1+ idx ID-U! ;
 
 
-: ID+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
+: ID+ ( str n -- ) {: src:^ len:n idx:n :}
    src len idx ID-BUF idx ID-U@ SPAN:SKIP SPAN:COPY
    idx ID-U@ len + idx ID-U! ;
 
@@ -81,7 +82,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 
 \ The reason phrase of each code in IANA's HTTP status code registry. An
 \ unregistered code gets an empty phrase, which RFC 9112 section 4 allows.
-: REASON$ ( n -- ^u8 n )
+: REASON$ ( n -- str )
    case
       100 of s" Continue" endof
       101 of s" Switching Protocols" endof
@@ -276,7 +277,7 @@ public
 
 
 \ One header line. The caller owns the name and the value only for this call.
-: HEADER! ( response ^u8 n ^u8 n -- )
+: HEADER! ( response str str -- )
    {: subject:response name:^ namelen:n value:^ valuelen:n :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    name namelen idx HDR+
@@ -289,7 +290,7 @@ public
 
 \ The body is BORROWED: it must stay valid until the response has been sent,
 \ which a literal, a loaded static file and the slot's own JSON buffer all are.
-: BODY! ( response ^u8 n -- ) {: subject:response bytes:^ len:n :}
+: BODY! ( response str -- ) {: subject:response bytes:^ len:n :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    bytes len idx RESPONSE-BODY! ;
 
@@ -329,11 +330,11 @@ private
 
 \ The whole error answer as text in the slot's JSON buffer: the code, the
 \ message and the request id the fault was reported under, on one line.
-: ERROR-TEXT+ ( ^u8 n n -- ) {: src:^ len:n idx:n :}
+: ERROR-TEXT+ ( str n -- ) {: src:^ len:n idx:n :}
    src len BUF:N>BLEN idx JSON-BUF BUF:APPEND-SPAN ;
 
 
-: PLAIN-ERROR ( response n ^u8 n ^u8 n -- )
+: PLAIN-ERROR ( response n str str -- )
    {: subject:response status:n code:^ codelen:n message:^ messagelen:n :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
@@ -365,14 +366,14 @@ public
 
 \ The id this request is reported under, which is what an error answer quotes
 \ so a client's report and the server's own line name one request.
-: REQUEST-ID$ ( response -- ^u8 n )
+: REQUEST-ID$ ( response -- str )
    SLOT-OF-RESPONSE SLOT-ID$ ;
 
 
 \ Every refusal and fault this server answers, and any a handler answers
 \ itself, as the installed hook renders it; plain text until ON-ERROR says
 \ otherwise.
-: ERROR! ( response n ^u8 n ^u8 n -- )
+: ERROR! ( response n str str -- )
    0 ERROR-HOOK @ execute ;
 
 

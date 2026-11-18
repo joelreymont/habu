@@ -1,3 +1,4 @@
+split-str
 \ The guard-page contract itself: filling a guarded stack to its real
 \ capacity, the three named overflow faults, and a task's own guarded stack.
 require test/engine-stack-lifecycle-lib.f
@@ -14,7 +15,7 @@ package STACK-LIFECYCLE-TEST
 STACK-ABI:BOOT-BYTES 8 / 2 * constant LIT-SRC-CAP   \ "1 " per cell of the page
 create LIT-SRC LIT-SRC-CAP allot
 
-: FILL-LITERALS$ ( n -- ^u8 n ) {: count:n :}
+: FILL-LITERALS$ ( n -- str ) {: count:n :}
    count 2 * LIT-SRC-CAP > if E-STR-CAPACITY throw then
    count 0 do
       $31 LIT-SRC i 2 * + c!

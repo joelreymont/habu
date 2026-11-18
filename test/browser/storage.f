@@ -1,3 +1,4 @@
+split-str
 \ storage.f - STORAGE-TURN, a browser host module whose dynamic buffer shares
 \ the module's allocator with the deliveries the host reserves through it, built
 \ by `tools/hb-build.f -- --target wasm`, whose entry is MAIN;

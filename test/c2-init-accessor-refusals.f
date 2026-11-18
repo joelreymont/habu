@@ -1,3 +1,4 @@
+split-str
 \ Generated initialized-field words keep their receiver and value boundaries
 \ through ordinary source evaluation.
 require src/lib/string.f

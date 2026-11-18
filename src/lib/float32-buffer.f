@@ -1,3 +1,4 @@
+split-str
 \ float32-buffer.f - raw little-endian F32 byte-buffer conversion.
 \
 \ STORE, LOAD, PACK and UNPACK trust the caller for the capacity each needs.

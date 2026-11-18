@@ -1,3 +1,4 @@
+split-str
 \ calls-test.f - test/wasm/calls.f's CHECKS run in this process, then as the
 \ MAIN of a module `hb-build --target wasm` builds, validated by wasm-tools and
 \ run by bun. A trap or an uncaught throw ends a run, so each such entry is the

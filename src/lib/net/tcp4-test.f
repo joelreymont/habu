@@ -1,3 +1,4 @@
+split-str
 \ tcp4-test.f - a loopback TCP connection carries bytes both ways.
 \ One process holds both peers: a listener task blocks in ACCEPT while the main
 \ task connects, writes and reads back. Every timed wait runs on the AIO loop,
@@ -93,10 +94,10 @@ TASK:MIN-STACK TASK:TASK PARK-TASK
 TASK:MIN-STACK TASK:TASK DRAIN-TASK
 TASK:MIN-STACK TASK:TASK WRITER-TASK
 
-: PING$ ( -- ^u8 n )
+: PING$ ( -- str )
    s" ping" ;
 
-: CHAT$ ( -- ^u8 n )
+: CHAT$ ( -- str )
    s" hey" ;
 
 : PING-BYTES ( -- n )
@@ -361,7 +362,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    1 DRAIN-DONE atomic-add drop ;
 
 
-: FILL-PATTERN ( ^u8 n -- ) {: bytes size:n :}
+: FILL-PATTERN ( str -- ) {: bytes size:n :}
    size 0 ?do i PATTERN-MOD mod bytes i + c! loop ;
 
 

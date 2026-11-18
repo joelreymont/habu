@@ -1,3 +1,4 @@
+split-str
 \ serial-test.f - package SERIAL over a pseudoterminal pair, in one process: the
 \ master is the peer, the slave opened by SERIAL:OPEN8N1 at 115200 as
 \ test/serial.py's host does. Pinned here, not by the host: a parked READ is not
@@ -84,7 +85,7 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ One chunk at a time until the master has handed over every byte, so a split
 \ answer from the terminal is not read as a short transfer.
-: PEER-EXACT ( ^u8 n -- ) {: bytes size:n :}
+: PEER-EXACT ( str -- ) {: bytes size:n :}
    0 begin dup size < while
       dup {: offset:n :}
       PEER bytes offset + size offset - -1 >MS PTY:READ {: got:n :}

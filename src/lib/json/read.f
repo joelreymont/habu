@@ -1,3 +1,4 @@
+split-str
 \ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEATS?,
 \ READ-MEMBER$, READ-MEMBERS and READ-REJECT. A file of package JSON
 \ (src/lib/json.f).
@@ -198,7 +199,7 @@ LINEAR: ERASE-READER ( JSON:reader -- ^n )
 : READER>STATE ( JSON:reader -- JSON:reader ^cursor )
    ERASE-READER dup MINT-READER swap >CURSOR ;
 
-: INIT-STATE ( ^cursor ^u8 n -- ) {: state:^ source:^ len:n :}
+: INIT-STATE ( ^cursor str -- ) {: state:^ source:^ len:n :}
    source state CURSOR-SRC !
    len state CURSOR-SRC-LEN !
    0 state CURSOR-POS !
@@ -263,14 +264,14 @@ $7F constant DEL
 2 constant FOUND-TOKEN
 3 constant FOUND-CUT
 
-: END$ ( -- ^u8 n ) s" the end of the input" ;
-: BYTE$ ( -- ^u8 n ) s" byte $" ;
-: CUT$ ( -- ^u8 n ) s" ..." ;
-: TICK$ ( -- ^u8 n ) s" `" ;
-: LINE-SEP$ ( -- ^u8 n ) s" :" ;
-: EXPECTED-SEP$ ( -- ^u8 n ) s" : expected " ;
-: FOUND-SEP$ ( -- ^u8 n ) s" , found " ;
-: FIX-SEP$ ( -- ^u8 n ) s" ; " ;
+: END$ ( -- str ) s" the end of the input" ;
+: BYTE$ ( -- str ) s" byte $" ;
+: CUT$ ( -- str ) s" ..." ;
+: TICK$ ( -- str ) s" `" ;
+: LINE-SEP$ ( -- str ) s" :" ;
+: EXPECTED-SEP$ ( -- str ) s" : expected " ;
+: FOUND-SEP$ ( -- str ) s" , found " ;
+: FIX-SEP$ ( -- str ) s" ; " ;
 
 : SHOWN? ( n -- bool )
    dup SP >= swap DEL < and ;
@@ -378,7 +379,7 @@ $7F constant DEL
    a buf at + u BYTE-COPY
    buf at u + ;
 
-: PUT-FOUND ( ^u8 n ^cursor n n n -- ^u8 n )
+: PUT-FOUND ( ^u8 n ^cursor n n n -- str )
    {: buf:^ at:n state:^ off:n len:n form:n :}
    form FOUND-END = if buf at END$ PUT exit then
    form FOUND-BYTE = if
@@ -404,7 +405,7 @@ $7F constant DEL
    EXPECTED-SEP$ nip + FOUND-SEP$ nip + FIX-SEP$ nip + eu + fu +
    state off code IN-STRING? FOUND-FORM FOUND-SIZE + ;
 
-: REJECT-SCOPE ( ^cursor n ^u8 n ^u8 n n ^u8 NUM:alloc-byte-len -- )
+: REJECT-SCOPE ( ^cursor n str str n ^u8 NUM:alloc-byte-len -- )
    drop {: state:^ off:n ea:^ eu:n fa:^ fu:n code:n buf:^ :}
    state off PLACE {: line:n col:n :}
    buf 0 line FMT:INT$ PUT LINE-SEP$ PUT col FMT:INT$ PUT
@@ -427,12 +428,12 @@ $7F constant DEL
    state CURSOR-TOK-AT @
    state CURSOR-KIND @ dup T-STR = swap T-KEY = or if 1- then ;
 
-: REJECT-TOKEN ( ^cursor ^u8 n ^u8 n n -- )
+: REJECT-TOKEN ( ^cursor str str n -- )
    {: state:^ ea:^ eu:n fa:^ fu:n code:n :}
    state state TOKEN-START ea eu fa fu code REJECT ;
 
 \ Rejects the current token for its kind, given the kind expected.
-: KIND-REJECT ( ^cursor ^u8 n -- ) {: state:^ ea:^ eu:n :}
+: KIND-REJECT ( ^cursor str -- ) {: state:^ ea:^ eu:n :}
    state ea eu
    s" write that kind of value here, or read this token with the word for its kind"
    E-JSON-READ-STATE REJECT-TOKEN ;
@@ -445,7 +446,7 @@ $7F constant DEL
    state EOF? if -1 exit then
    state PEEK ;
 
-: STATE-EXPECTED ( n -- ^u8 n ) {: st:n :}
+: STATE-EXPECTED ( n -- str ) {: st:n :}
    st ST-ELEM = if s" a value or `]`" exit then
    st ST-KEY = if s" a member name or `}`" exit then
    st ST-MEMBER = if s" a member name" exit then
@@ -457,7 +458,7 @@ $7F constant DEL
 : LITERAL? ( n -- bool )
    dup CH-T = over CH-F = or swap CH-N = or ;
 
-: LITERAL$ ( n -- ^u8 n ) {: b:n :}
+: LITERAL$ ( n -- str ) {: b:n :}
    b CH-T = if s" `true`" exit then
    b CH-F = if s" `false`" exit then
    s" `null`" ;
@@ -471,12 +472,12 @@ $7F constant DEL
    at 0= if -1 exit then
    state at 1- AT ;
 
-: VALUE-FIX ( n -- ^u8 n ) {: prior:n :}
+: VALUE-FIX ( n -- str ) {: prior:n :}
    prior COMMA = if s" write a value, or remove a trailing comma" exit then
    prior COLON = if s" write the member's value" exit then
    s" write a JSON value" ;
 
-: MALFORMED-FIX ( n n n -- ^u8 n ) {: st:n b:n prior:n :}
+: MALFORMED-FIX ( n n n -- str ) {: st:n b:n prior:n :}
    st ST-ELEM = if s" write a value, or close the array with `]`" exit then
    st ST-KEY = if
       s" write the member's name in double quotes, or close the object with `}`"
@@ -491,7 +492,7 @@ $7F constant DEL
 
 \ READ-VALUE sends only t, f and n to READ-LIT, so a value phase rejected at
 \ one of them rejected a misspelt literal.
-: MALFORMED-ADVICE ( n n n -- ^u8 n ^u8 n ) {: st:n b:n prior:n :}
+: MALFORMED-ADVICE ( n n n -- str str ) {: st:n b:n prior:n :}
    st ST-VALUE = st ST-ELEM = or b LITERAL? and if
       b LITERAL$
       s" write the word in full and in lower case, or quote the text as a string"
@@ -499,7 +500,7 @@ $7F constant DEL
    then
    st STATE-EXPECTED st b prior MALFORMED-FIX ;
 
-: STRING-ADVICE ( n -- ^u8 n ^u8 n ) {: b:n :}
+: STRING-ADVICE ( n -- str str ) {: b:n :}
    b 0 < if
       s\" the closing `\"` of the string" s\" close the string with `\"`" exit
    then
@@ -509,7 +510,7 @@ $7F constant DEL
    then
    s" a UTF-8 character" s" write the text in UTF-8" ;
 
-: ESCAPE-ADVICE ( n -- ^u8 n ^u8 n ) {: code:n :}
+: ESCAPE-ADVICE ( n -- str str ) {: code:n :}
    code E-JSON-READ-ESCAPE = if
       s\" an escape letter from `\"\\/bfnrt`, or `u` and four hex digits"
       s\" write a valid escape, or `\\\\` for a backslash itself" exit
@@ -521,7 +522,7 @@ $7F constant DEL
    then
    s" JSON text" s" correct the text here" ;
 
-: SYNTAX-ADVICE ( n -- ^u8 n ^u8 n ) {: code:n :}
+: SYNTAX-ADVICE ( n -- str str ) {: code:n :}
    code E-JSON-READ-COLON = if
       s" `:` after the member name" s" write `:` between the name and its value"
       exit
@@ -540,7 +541,7 @@ $7F constant DEL
 
 \ The expected text and fix of a reader code, from its phase and the source at
 \ the place; the container stack is released by then, so a close names either.
-: ADVICE ( ^cursor n -- ^u8 n ^u8 n ) {: state:^ code:n :}
+: ADVICE ( ^cursor n -- str str ) {: state:^ code:n :}
    state CURSOR-STATE @ {: st:n :}
    state PLACE-BYTE {: b:n :}
    code E-JSON-READ-MALFORMED = if
@@ -574,7 +575,7 @@ $7F constant DEL
 : REQUIRE-SOUND ( ^cursor -- ) {: state:^ :}
    state CURSOR-FAIL @ 0<> if state THROW-FAILURE then ;
 
-: REQUIRE-SOURCE ( ^u8 n -- ) {: source:^ len:n :}
+: REQUIRE-SOURCE ( str -- ) {: source:^ len:n :}
    len 0 < if E-READ-SOURCE throw then
    len 0 > source 0= and if E-READ-SOURCE throw then ;
 
@@ -750,7 +751,7 @@ create UNESC-MAP
 \ check - a quote, a control byte, a UTF-8 lead, or the backslash of a \u,
 \ invalid or unfinished escape - or the source length. Printable ASCII and
 \ one-letter escapes need no other check.
-: PLAIN-END ( ^u8 n n -- n ) {: a:^ len:n pos:n :}
+: PLAIN-END ( str n -- n ) {: a:^ len:n pos:n :}
    len pos ?do
       a i + c@ {: c:n :}
       c BACKSLASH = if
@@ -836,11 +837,11 @@ create UNESC-MAP
    at end at - end int-end > if T-FLOAT else T-INT then ;
 
 
-: RAW-SPAN$ ( ^cursor -- ^u8 n ) {: state:^ :}
+: RAW-SPAN$ ( ^cursor -- str ) {: state:^ :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
    state CURSOR-TOK-LEN @ ;
 
-: MATCH-LIT? ( ^cursor ^u8 n -- bool ) {: state:^ la:^ lu:n :}
+: MATCH-LIT? ( ^cursor str -- bool ) {: state:^ la:^ lu:n :}
    state CURSOR-POS @ lu + state CURSOR-SRC-LEN @ > if false exit then
    0 begin dup lu < while
       dup la + c@
@@ -858,7 +859,7 @@ create UNESC-MAP
    len state CURSOR-TOK-LEN !
    kind state CURSOR-KIND ! ;
 
-: READ-LIT ( ^cursor ^u8 n n -- n ) {: state:^ la:^ lu:n kind:n :}
+: READ-LIT ( ^cursor str n -- n ) {: state:^ la:^ lu:n kind:n :}
    state la lu MATCH-LIT? 0= if E-JSON-READ-MALFORMED throw then
    state state CURSOR-POS @ lu kind PUBLISH
    state CURSOR-POS dup @ lu + swap !
@@ -1106,7 +1107,7 @@ private
    then
    state CURSOR-OUT dup @ 1+ swap ! ;
 
-: HEX-NEXT ( ^cursor ^u8 n -- n ) {: state:^ a:^ value:n :}
+: HEX-NEXT ( ^cursor str -- n ) {: state:^ a:^ value:n :}
    value HEX-BASE *
    a state CURSOR-IN @ + c@ STR-HEX-DIGIT-VALUE
    +
@@ -1146,7 +1147,7 @@ private
 \ one-letter escape writes or matches one byte as EMIT-BYTE would, with out on
 \ the stack. A \u escape returns with in at its backslash; the registers hold
 \ in and out on return.
-: UNESC-RUN ( ^cursor ^u8 n -- ) {: state:^ a:^ len:n :}
+: UNESC-RUN ( ^cursor str -- ) {: state:^ a:^ len:n :}
    state CURSOR-DST @ {: d:^ :}
    state CURSOR-DST-CAP @ {: cap:n :}
    state CURSOR-MODE @ UMODE-MATCH = {: match:bool :}
@@ -1213,7 +1214,7 @@ private
    state UNESC-ALL
    state CURSOR-OUT @ ;
 
-: MATCH-INNER ( ^cursor ^u8 n -- bool )
+: MATCH-INNER ( ^cursor str -- bool )
    {: state:^ key:^ len:n :}
    state REQUIRE-STRING
    state key len UMODE-MATCH UNESC-RESET
@@ -1269,7 +1270,7 @@ private
 : FIND-PHASE? ( n -- bool )
    dup ST-KEY = swap ST-SEP = or ;
 
-: REQUIRE-KEY-SPAN ( ^cursor ^u8 n -- ) {: state:^ key:^ len:n :}
+: REQUIRE-KEY-SPAN ( ^cursor str -- ) {: state:^ key:^ len:n :}
    len 0 <  len 0 > key 0= and  or if
       state s" a key of 0 or more bytes at a non-null address"
       s" pass the key's address and its length"
@@ -1292,7 +1293,7 @@ private
    s" keep the reader in that object while READ-FIND-KEY reads it"
    E-JSON-READ-STATE REJECT-TOKEN ;
 
-: FIND-INNER ( ^cursor ^u8 n -- bool ) {: state:^ key:^ len:n :}
+: FIND-INNER ( ^cursor str -- bool ) {: state:^ key:^ len:n :}
    state key len REQUIRE-KEY-SPAN
    state REQUIRE-SOUND
    state FIND-ANCHOR {: depth:n :}
@@ -1331,14 +1332,14 @@ public
 
 private
 
-: VALUE-SPAN-INNER ( ^cursor -- ^u8 n ) {: state:^ :}
+: VALUE-SPAN-INNER ( ^cursor -- str ) {: state:^ :}
    state CURSOR-KIND @ OPENER? 0= if state s" an object or an array" KIND-REJECT then
    state CURSOR-TOK-AT @ {: start:n :}
    state SKIP-INNER
    state CURSOR-SRC @ start +
    state CURSOR-POS @ start - ;
 
-: ANY-SPAN-INNER ( ^cursor -- ^u8 n )
+: ANY-SPAN-INNER ( ^cursor -- str )
    {: state:^ :}
    state CURSOR-KIND @ OPENER? if state VALUE-SPAN-INNER exit then
    state CURSOR-KIND @ SCALAR? 0= if state s" a value" KIND-REJECT then
@@ -1398,12 +1399,12 @@ private
 
 \ READ-MEMBERS's names are separated by single blanks; an empty list holds
 \ none.
-: NAME-COUNT ( ^u8 n -- n ) {: a:^ u:n :}
+: NAME-COUNT ( str -- n ) {: a:^ u:n :}
    u 0= if 0 exit then
    1 u 0 ?do a i + c@ SP = if 1+ then loop ;
 
 \ The name that starts at start, and the next name's start.
-: NAME-AT ( ^u8 n n -- ^u8 n n ) {: a:^ u:n start:n :}
+: NAME-AT ( str n -- str n ) {: a:^ u:n start:n :}
    a u SP start SPLIT-NEXT drop ;
 
 : NAME ( ^u8 n n -- ^u8 n ) {: a:^ u:n idx:n :}
@@ -1411,21 +1412,21 @@ private
    a u rot NAME-AT drop ;
 
 \ Whether the current key matches the name at start, and the next start.
-: NAME-MATCH? ( n ^cursor ^u8 n -- n bool )
+: NAME-MATCH? ( n ^cursor str -- n bool )
    {: start:n state:^ a:^ u:n :}
    a u start NAME-AT {: na:^ nu:n next:n :}
    next state na nu MATCH-INNER ;
 
 \ The index of the name the current key decodes to, or -1.
-: KEY-INDEX ( ^cursor ^u8 n n -- n ) {: state:^ a:^ u:n count:n :}
+: KEY-INDEX ( ^cursor str n -- n ) {: state:^ a:^ u:n count:n :}
    0 0 begin dup count < while
       swap state a u NAME-MATCH? if drop exit then
       swap 1+
    repeat 2drop -1 ;
 
-: ONE-OF$ ( -- ^u8 n ) s" one of " ;
-: LIST-SEP$ ( -- ^u8 n ) s" , " ;
-: MEMBER-OF$ ( -- ^u8 n ) s" the member `" ;
+: ONE-OF$ ( -- str ) s" one of " ;
+: LIST-SEP$ ( -- str ) s" , " ;
+: MEMBER-OF$ ( -- str ) s" the member `" ;
 
 \ The size of `one of ` and each name in backticks, LIST-SEP$ between them,
 \ for a list of count names in u bytes.
@@ -1433,16 +1434,16 @@ private
    ONE-OF$ nip  u count 1- -  +  count 2 * +
    count 1- LIST-SEP$ nip * + ;
 
-: PUT-NAME ( ^u8 n ^u8 n n n -- ^u8 n n )
+: PUT-NAME ( ^u8 n str n n -- str n )
    {: buf:^ at:n a:^ u:n start:n idx:n :}
    a u start NAME-AT {: na:^ nu:n next:n :}
    buf at idx 0<> if LIST-SEP$ PUT then
    TICK$ PUT na nu PUT TICK$ PUT next ;
 
-: UNKNOWN-FIX$ ( -- ^u8 n )
+: UNKNOWN-FIX$ ( -- str )
    s" rename the member to one of those, or remove it" ;
 
-: UNKNOWN-SCOPE ( ^cursor ^u8 n n ^u8 NUM:alloc-byte-len -- )
+: UNKNOWN-SCOPE ( ^cursor str n ^u8 NUM:alloc-byte-len -- )
    drop {: state:^ a:^ u:n count:n buf:^ :}
    buf 0 ONE-OF$ PUT
    0 count 0 ?do a u rot i PUT-NAME loop drop
@@ -1450,7 +1451,7 @@ private
    state state TOKEN-START ea eu UNKNOWN-FIX$ E-MEMBER REJECT ;
 
 \ Rejects the current key, which no listed name matches.
-: UNKNOWN-REJECT ( ^cursor ^u8 n n -- ) {: state:^ a:^ u:n count:n :}
+: UNKNOWN-REJECT ( ^cursor str n -- ) {: state:^ a:^ u:n count:n :}
    count 0= if
       state s" the object's `}`" s" remove the member"
       E-MEMBER REJECT-TOKEN
@@ -1458,14 +1459,14 @@ private
    state a u count  u count LIST-SIZE MEM:BYTES-ALLOC-LEN
    [: UNKNOWN-SCOPE ;] MEM:WITH-BYTES ;
 
-: MISSING-SCOPE ( ^cursor ^u8 n ^u8 NUM:alloc-byte-len -- )
+: MISSING-SCOPE ( ^cursor str ^u8 NUM:alloc-byte-len -- )
    drop {: state:^ na:^ nu:n buf:^ :}
    buf 0 MEMBER-OF$ PUT na nu PUT TICK$ PUT {: ea:^ eu:n :}
    state state TOKEN-START ea eu s" add the member to the object"
    E-MEMBER REJECT ;
 
 \ At the object's `}`: rejects the first listed name not seen.
-: REQUIRE-ALL ( ^cursor ^u8 n n ^u8 -- )
+: REQUIRE-ALL ( ^cursor str n ^u8 -- )
    {: state:^ a:^ u:n count:n seen:^ :}
    0 begin
       dup count < if seen over + c@ 0<> else false then
@@ -1477,7 +1478,7 @@ private
 
 \ The index of the current key's name, marked seen, with the reader advanced
 \ to the member's value. After a key the reader yields a value or throws.
-: MEMBER-INDEX ( ^cursor ^u8 n n ^u8 -- n )
+: MEMBER-INDEX ( ^cursor str n ^u8 -- n )
    {: state:^ a:^ u:n count:n seen:^ :}
    state a u count KEY-INDEX {: idx:n :}
    idx 0< if state a u count UNKNOWN-REJECT then
@@ -1497,7 +1498,7 @@ private
    E-JSON-READ-STATE REJECT-TOKEN ;
 
 \ seen holds a byte per listed name, nonzero once its member was read.
-: MEMBERS-SCOPE ( JSON:reader ^u8 n n [ JSON:reader n -- JSON:reader ] ^u8 NUM:alloc-byte-len -- JSON:reader )
+: MEMBERS-SCOPE ( JSON:reader str n [ JSON:reader n -- JSON:reader ] ^u8 NUM:alloc-byte-len -- JSON:reader )
    drop {: a:^ u:n count:n handler seen:^ :}
    READER>STATE {: state:^ :}
    state CURSOR-DEPTH @ {: depth:n :}
@@ -1573,14 +1574,14 @@ private
    OFFSET-AT @ ;
 
 
-: KEY$ ( ^n ^u8 n -- ^u8 n )
+: KEY$ ( ^n ^u8 n -- str )
    {: table:^ room:^ idx:n :}
    table idx OFFSET {: from:n :}
    room from +  table idx 1+ OFFSET from - ;
 
 
 \ On a top-level key of the record: decodes it as key k, after the k before it.
-: RECORD-KEY ( ^u8 n -- )
+: RECORD-KEY ( str -- )
    {: base:^ u:n :}
    base TABLE {: table:^ :}
    base u ROOM {: room:^ :}
@@ -1591,7 +1592,7 @@ private
    k 1+ table ! ;
 
 
-: RECORD-KEYS ( ^u8 n -- )
+: RECORD-KEYS ( str -- )
    {: base:^ u:n :}
    base RECORD {: a:^ :}
    begin a NEXT-INNER T-KEY = while
@@ -1611,7 +1612,7 @@ private
    k 0 ?do i order i cells + ! loop ;
 
 
-: RANKED$ ( ^n ^n ^u8 n -- ^u8 n )
+: RANKED$ ( ^n ^n ^u8 n -- str )
    {: order:^ table:^ room:^ idx:n :}
    table room order idx cells + @ KEY$ ;
 
@@ -1627,7 +1628,7 @@ private
 
 \ Whether two recorded keys decode the same: sorted by their
 \ bytes, equal keys are neighbours.
-: REPEAT-RECORDED? ( ^u8 n -- bool )
+: REPEAT-RECORDED? ( str -- bool )
    {: base:^ u:n :}
    base TABLE {: table:^ :}
    base u ROOM {: room:^ :}
@@ -1639,7 +1640,7 @@ private
 
 
 \ The answer stands only once the whole text has read as well formed.
-: REPEATS-IN ( ^u8 ^u8 n -- bool )
+: REPEATS-IN ( ^u8 str -- bool )
    {: base:^ text:^ u:n :}
    base RECORD {: a:^ :}
    a text u INIT-STATE
@@ -1652,7 +1653,7 @@ private
    base u REPEAT-RECORDED? ;
 
 
-: REPEATS-SLOT ( bool SPAN:span<u8> ^u8 n -- bool SPAN:span<u8> ^u8 n )
+: REPEATS-SLOT ( bool SPAN:span<u8> str -- bool SPAN:span<u8> str )
    {: scratch text:^ u:n :}
    drop scratch SPAN:$ drop text u REPEATS-IN
    scratch text u ;

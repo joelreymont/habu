@@ -1,3 +1,4 @@
+split-str
 \ reject.f - the text of an XML rejection, thrown with its code; part of package
 \ XML (src/lib/xml.f). The text is `L:C: expected <expected>, found <found>;
 \ <fix>`, L and C counting bytes from the first byte of the span given, which
@@ -45,15 +46,15 @@ STRUCTURE place
 4 constant FOUND-UNIT-LE
 5 constant FOUND-UNIT-BE
 
-: END$ ( -- ^u8 n ) s" the end of the input" ;
-: BYTE$ ( -- ^u8 n ) s" byte $" ;
-: UNIT$ ( -- ^u8 n ) s" unit $" ;
-: CUT$ ( -- ^u8 n ) s" ..." ;
-: TICK$ ( -- ^u8 n ) s" `" ;
-: LINE-SEP$ ( -- ^u8 n ) s" :" ;
-: EXPECTED-SEP$ ( -- ^u8 n ) s" : expected " ;
-: FOUND-SEP$ ( -- ^u8 n ) s" , found " ;
-: FIX-SEP$ ( -- ^u8 n ) s" ; " ;
+: END$ ( -- str ) s" the end of the input" ;
+: BYTE$ ( -- str ) s" byte $" ;
+: UNIT$ ( -- str ) s" unit $" ;
+: CUT$ ( -- str ) s" ..." ;
+: TICK$ ( -- str ) s" `" ;
+: LINE-SEP$ ( -- str ) s" :" ;
+: EXPECTED-SEP$ ( -- str ) s" : expected " ;
+: FOUND-SEP$ ( -- str ) s" , found " ;
+: FIX-SEP$ ( -- str ) s" ; " ;
 
 : MARKUP? ( n -- bool )
    dup $3C = over $3E = or over $26 = or over $3B = or over $3D = or
@@ -70,7 +71,7 @@ STRUCTURE place
    a u FOUND-CAP UTF8:FIT FOUND-CUT ;
 
 \ The end of the run's character at off, or off when no run character is there.
-: RUN-STEP ( ^u8 n n -- n ) {: a:^ u:n off:n :}
+: RUN-STEP ( str n -- n ) {: a:^ u:n off:n :}
    a off + c@ {: b:n :}
    b $80 < if b RUN? if off 1+ else off then exit then
    a u off UTF8:NEXT
@@ -81,31 +82,31 @@ STRUCTURE place
 
 \ The end of the run from start; the scan stops FOUND-CAP + 1 bytes past off,
 \ and the run's last character may end past that.
-: RUN-END ( ^u8 n n n -- n ) {: a:^ u:n off:n start:n :}
+: RUN-END ( str n n -- n ) {: a:^ u:n off:n start:n :}
    off FOUND-CAP + 1+ u min {: lim:n :}
    start begin
       dup lim < if dup a u rot RUN-STEP tuck < else false then
    while repeat ;
 
 \ The token from off to end, whose run ends at run.
-: FOUND-SPAN ( ^u8 n n n n bool -- n n )
+: FOUND-SPAN ( str n n n bool -- n n )
    {: a:^ u:n off:n run:n end:n more:bool :}
    a off + end off - CAPPED {: len:n form:n :}
    more run u = a u run UTF8:CUT? or and if len FOUND-CUT exit then
    len form ;
 
-: FOUND-RUN ( ^u8 n n bool -- n n ) {: a:^ u:n off:n more:bool :}
+: FOUND-RUN ( str n bool -- n n ) {: a:^ u:n off:n more:bool :}
    a u off off RUN-END {: run:n :}
    a u off run run more FOUND-SPAN ;
 
-: FOUND-REF ( ^u8 n n bool -- n n ) {: a:^ u:n off:n more:bool :}
+: FOUND-REF ( str n bool -- n n ) {: a:^ u:n off:n more:bool :}
    a u off off 1+ RUN-END {: run:n :}
    run u < if a run + c@ $3B = else false then
    if run 1+ else run then {: end:n :}
    a u off run end more FOUND-SPAN ;
 
 \ The length and form of the token at off.
-: FOUND-FORM ( ^u8 n n bool -- n n ) {: a:^ u:n off:n more:bool :}
+: FOUND-FORM ( str n bool -- n n ) {: a:^ u:n off:n more:bool :}
    off u >= if 0 FOUND-END exit then
    more a u off UTF8:CUT? and if 0 FOUND-CUT exit then
    a off + c@ {: b:n :}
@@ -125,9 +126,9 @@ STRUCTURE place
    a buf at + u BYTE-COPY
    buf at u + ;
 
-: PUT-HEX ( ^u8 n n -- ^u8 n )   2 FMT:HEX-WIDTH$ PUT ;
+: PUT-HEX ( str n -- str )   2 FMT:HEX-WIDTH$ PUT ;
 
-: PUT-FOUND ( ^u8 n ^u8 n n n -- ^u8 n )
+: PUT-FOUND ( ^u8 n ^u8 n n n -- str )
    {: buf:^ at:n a:^ off:n len:n form:n :}
    form FOUND-END = if buf at END$ PUT exit then
    form FOUND-BYTE = if buf at BYTE$ PUT a off + c@ PUT-HEX exit then
@@ -147,7 +148,7 @@ STRUCTURE place
    len form FOUND-SIZE + ;
 
 : REJECT-SCOPE
-   ( n n ^u8 n n n ^u8 n ^u8 n n ^u8 NUM:alloc-byte-len -- )
+   ( n n str n n str str n ^u8 NUM:alloc-byte-len -- )
    drop {: line:n col:n a:^ off:n len:n form:n
       ea:^ eu:n fa:^ fu:n code:n buf:^ :}
    buf 0 line FMT:INT$ PUT LINE-SEP$ PUT col FMT:INT$ PUT
@@ -158,7 +159,7 @@ STRUCTURE place
 
 \ The last throw is never reached: it shows the checker that the word never
 \ returns, so a branch that calls it needs no result.
-: REJECT-WRITE ( n n ^u8 n n n ^u8 n ^u8 n n -- )
+: REJECT-WRITE ( n n ^u8 n n n str str n -- )
    {: line:n col:n a:^ off:n len:n form:n ea:^ eu:n fa:^ fu:n code:n :}
    line col a off len form ea eu fa fu code
    line col len form eu fu TEXT-SIZE MEM:BYTES-ALLOC-LEN
@@ -166,7 +167,7 @@ STRUCTURE place
    code throw ;
 
 \ Rejects at off in the span a u, whose first byte sits at the place at.
-: REJECT-FROM ( ^u8 n place n ^u8 n ^u8 n n -- )
+: REJECT-FROM ( str place n str str n -- )
    {: a:^ u:n at:place off:n ea:^ eu:n fa:^ fu:n code:n :}
    at PLACE-UNMAKE {: bl:n bc:n more:bool :}
    a a off + bl bc 0 REJECTION:POSITION drop {: line:n col:n :}
@@ -182,7 +183,7 @@ STRUCTURE place
    2 +loop ;
 
 \ Rejects at byte off of the UTF-16 bytes a u, big-endian when be is set.
-: REJECT-UNITS ( ^u8 n n bool ^u8 n ^u8 n n -- )
+: REJECT-UNITS ( str n bool str str n -- )
    {: a:^ u:n off:n be:bool ea:^ eu:n fa:^ fu:n code:n :}
    a off be UNIT-POSITION {: line:n col:n :}
    off u >= if 0 FOUND-END else

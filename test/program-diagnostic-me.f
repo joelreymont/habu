@@ -1,3 +1,4 @@
+split-str
 \ A recovered declaration still reports the word that failed checking.
 package PROGRAM-DIAG-ME
 public

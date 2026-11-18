@@ -1,3 +1,4 @@
+split-str
 \ src/arch/wasm/kernel-words.f on the host: a SAME case runs an engine name and the word WKMAP
 \ (kernel-map.f) answers for it, each in a child of its own; both print and exit alike.
 
@@ -19,7 +20,7 @@ CAP BUFFER: OUT-K
 CAP BUFFER: ERR-K
 
 \ The word the map names for an engine name; an empty spelling is a failed case.
-: WORD$ ( ^u8 n -- ^u8 n )
+: WORD$ ( str -- str )
    WKMAP:WORD-OF {: w:^ wu:n :}
    wu 0= if  s" the map answers a word" T-LABEL  false TTRUE  then
    w wu ;

@@ -1,3 +1,4 @@
+split-str
 \ fs-rename-noreplace-test.f - FS:ATOMIC-CREATE-PRIVATE claims only a free name:
 \ a taken one, a live link's target or a directory answers false untouched, a
 \ dangling link is E-FS-STAT, and of two racing claims exactly one wins.
@@ -37,10 +38,10 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 : CLAIM ( ^u8 n -- bool ) s" new bytes" FS:ATOMIC-CREATE-PRIVATE ;
 
-: COUNT-ENTRY ( ^u8 n -- )
+: COUNT-ENTRY ( str -- )
    1 ENTRIES +!
    s" .tmp-" STARTS-WITH? if 1 SIBLINGS +! then ;
-: COUNT-ENTRIES ( ^u8 n -- )
+: COUNT-ENTRIES ( str -- )
    0 ENTRIES !  0 SIBLINGS !
    [: COUNT-ENTRY ;] FS-LIST:EACH ;
 

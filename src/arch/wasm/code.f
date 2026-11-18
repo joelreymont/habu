@@ -1,3 +1,4 @@
+split-str
 \ code.f - WCODE, the bytes and addresses Wasm code is written with.
 
 require src/arch/wasm/profile.f

@@ -1,3 +1,4 @@
+split-str
 \ arena-test.f - package ARENA through its public words, in one loaded program.
 \ The cases catch an arena that: hands out bytes not zeroed, not cell-aligned
 \ or overlapping; moves or clobbers earlier bytes when it maps a chunk; serves
@@ -31,10 +32,10 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 
 : CHECK ( bool -- ) 0= if 1 BAD +! then ;
 : ALIGNED? ( ^u8 -- bool ) NULL-PTR - CELL mod 0= ;
-: FILL-FF ( ^u8 n -- ) SPAN:MAKE $FF swap SPAN:FILL ;
+: FILL-FF ( str -- ) SPAN:MAKE $FF swap SPAN:FILL ;
 
 
-: ZEROED? ( ^u8 n -- bool )
+: ZEROED? ( str -- bool )
    {: p:^ len:n :}
    true len 0 ?do p i + c@ 0<> if drop false then loop ;
 
@@ -262,7 +263,7 @@ CAP BUFFER: CAP-OUT
 CAP BUFFER: CAP-ERR
 
 
-: EXPECT-FAULT ( ^u8 n -- )
+: EXPECT-FAULT ( str -- )
    {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}

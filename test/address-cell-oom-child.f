@@ -1,3 +1,4 @@
+split-str
 \ Fill the inline table, then deny every further mapping (Linux only; the
 \ parent test skips elsewhere). The mark that must grow the table throws
 \ E-XTCELL-GROW: caught, the table still takes marks; uncaught, it ends the child.

@@ -1,3 +1,4 @@
+split-str
 \ memory-test.f - focused tests for OS-backed memory buffers.
 
 require src/core/exit-status.f
@@ -26,26 +27,26 @@ variable MEMT-HERE
 : MEMT-SPAN-TOTAL ( -- n )
    MEMT-SPAN-BUFS MEM-64K * ;
 
-: MEMT-END ( ^u8 n -- ^u8 ) {: a:^ u :}
+: MEMT-END ( str -- ^u8 ) {: a:^ u :}
    a u 1 - + ;
 
-: MEMT-TOUCH-ENDS ( ^u8 n -- ) {: a:^ u :}
+: MEMT-TOUCH-ENDS ( str -- ) {: a:^ u :}
    MEMT-MARK-A a c!
    MEMT-MARK-Z a u MEMT-END c!
    a c@ MEMT-MARK-A T=
    a u MEMT-END c@ MEMT-MARK-Z T= ;
 
-: MEMT-TOUCH-SLOTS ( ^u8 n n -- ) {: a:^ u count :}
+: MEMT-TOUCH-SLOTS ( str n -- ) {: a:^ u count :}
    count MEM-64K * u T=
    count 0 ?do
       MEMT-MARK-A i + a i MEM-64K * + c!
       a i MEM-64K * + c@ MEMT-MARK-A i + T=
    loop ;
 
-: MEMT-TOUCH-64K-SLOTS ( ^u8 n -- )
+: MEMT-TOUCH-64K-SLOTS ( str -- )
    MEMT-BUFS MEMT-TOUCH-SLOTS ;
 
-: MEMT-TOUCH-SPAN-SLOTS ( ^u8 n -- )
+: MEMT-TOUCH-SPAN-SLOTS ( str -- )
    MEMT-SPAN-BUFS MEMT-TOUCH-SLOTS ;
 
 : MEMT-CELL-SPAN ( -- )
@@ -69,7 +70,7 @@ variable MEMT-HERE
    MEM-ALLOC-64K 2drop
    here data-base - MEMT-HERE @ T= ;
 
-: MEMT-LIVE-SPAN-FRAME ( ^u8 n n -- ) {: a:^ u remaining :}
+: MEMT-LIVE-SPAN-FRAME ( str n -- ) {: a:^ u remaining :}
    u MEMT-SPAN-TOTAL T=
    a u MEMT-TOUCH-SPAN-SLOTS
    remaining 0 > if
@@ -195,22 +196,22 @@ create RBT-ERR RBT-CAP allot
 : RBT-RELEASE-LAST ( -- )
    RBT-RELEASED-BASE MEM-64K 2 * 1 - + c@ drop ;
 
-: RBT-RELEASE-FIRST-SRC ( -- ^u8 n )
+: RBT-RELEASE-FIRST-SRC ( -- str )
    s" package MEMT RBT-RELEASE-FIRST ;package" ;
 
-: RBT-RELEASE-LAST-SRC ( -- ^u8 n )
+: RBT-RELEASE-LAST-SRC ( -- str )
    s" package MEMT RBT-RELEASE-LAST ;package" ;
 
 \ Runs the source in a subject child and asserts its exit code, leaving the
 \ stdout and stderr lengths.
-: RBT-EXITS ( ^u8 n n -- n n ) {: src:^ srcu:n want:n :}
+: RBT-EXITS ( str n -- n n ) {: src:^ srcu:n want:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 \ A child that touches released memory exits 110 after the fault's line on fd 2.
-: RBT-EXPECT-FAULT ( ^u8 n -- )
+: RBT-EXPECT-FAULT ( str -- )
    110 RBT-EXITS
    0 > TTRUE
    0 T= ;
@@ -261,14 +262,14 @@ $100 constant CAP
 create CAP-OUT CAP allot
 create CAP-ERR CAP allot
 
-: EXPECT-FATAL ( ^u8 n -- ) {: src:^ srcu:n :}
+: EXPECT-FATAL ( str -- ) {: src:^ srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc 78 T-ENDING-EXITED=
    outu LEN>N 0 T=
    CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
-: RELEASE-SRC ( -- ^u8 n )
+: RELEASE-SRC ( -- str )
    s" package MFR : RUN ( -- ) MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;
 
 public

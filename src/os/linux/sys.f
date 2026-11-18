@@ -1,3 +1,4 @@
+split-str
 \ sys.f -- linux-aarch64 OS seam: syscall numbers + SVC emitter.
 \ Linux returns -errno in x0 rather than setting Darwin's carry flag. SYS,
 \ restores the existing convention by comparing x0 with -4095 after svc:

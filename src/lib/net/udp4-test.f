@@ -1,3 +1,4 @@
+split-str
 \ udp4-test.f - loopback datagrams.
 \
 \ Two sockets in one process talk over 127.0.0.1, so the suite needs no peer and

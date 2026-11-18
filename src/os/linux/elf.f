@@ -1,3 +1,4 @@
+split-str
 \ elf.f - the ELF writer for Linux arm64 and x86-64. The kernel object
 \ supplies the libc names its GOT binds.
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
@@ -47,7 +48,7 @@ variable VMBASE
 $B0 constant ELF-DYNAMIC-SZ
 $120 constant ELF-INTERP-OFF
 TYPED-VARIABLE X64 bool
-: INTERPRETER$ ( -- ^u8 n )
+: INTERPRETER$ ( -- str )
    X64 @ if s" /lib64/ld-linux-x86-64.so.2" else s" /lib/ld-linux-aarch64.so.1" then ;
 : ELF-INTERP-SZ ( -- n ) INTERPRETER$ nip 1+ ;
 $140 constant ELF-HASH-OFF
@@ -94,7 +95,7 @@ public
 : SLOT-OFF ( n -- n ) 8 * ELF-GOT-OFF + ;
 private
 
-: LIBC$ ( -- ^u8 n ) s" libc.so.6" ;
+: LIBC$ ( -- str ) s" libc.so.6" ;
 
 : ELF-ALIGN8 ( n -- n ) 7 + -8 and ;
 
@@ -295,7 +296,7 @@ public
    IMG-PHASE ;
 
 \ The same ELF layout, with the x86-64 loader and relocation number.
-: BUILD-X64 ( ^u8 n n ^u8 n -- img )
+: BUILD-X64 ( str n str -- img )
    IMPORT-NAMES:SPAN!
    CODE-OFF - VMBASE ! CODELEN ! TEXT ! true X64 !
    BUILD-ELF IMG-PHASE ;
@@ -349,7 +350,7 @@ variable RELA-BYTES
 
 public
 
-: MAGIC? ( ^u8 n -- bool ) {: image:^ size:n :}
+: MAGIC? ( str -- bool ) {: image:^ size:n :}
    size ELF-HDR-SZ < if false exit then
    image LE:U32@ $464C457F = ;
 
