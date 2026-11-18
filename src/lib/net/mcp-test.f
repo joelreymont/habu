@@ -8,8 +8,10 @@ split-str
 \ refusals, an image and an embedded resource after the text from RESULT-CONTENT in both
 \ eras, an empty array of them and the refusals, bodies that give a bad result or none, malformed envelopes, arguments and JSON,
 \ ping, tools/list showing each descriptor as registered (annotations and _meta raw) with
-\ a non-object output schema's wrapper in its place, and ADD-TOOL's refusals of a bad
-\ descriptor. ui:// resources: the resources capability, resources/list and
+\ a non-object output schema's wrapper in its place, and ADD-TOOL's rejections of a bad
+\ descriptor or inputSchema. A tools/call whose arguments, given or absent, break the
+\ inputSchema is a tool error that runs no body, from HANDLE and from ANSWER. ui://
+\ resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
 \ refusals. The info line a tools/call and a resources/read log, without arguments.
@@ -110,6 +112,7 @@ variable ENTERED
 variable SHAPE-CODE                 \ what shape's RESULT threw, 0 for nothing
 variable META-CODE                  \ what framed's RESULT-META threw, 0 for nothing
 variable BLOCKS-CODE                \ what pictured's RESULT-CONTENT threw, 0 for nothing
+variable STRICT-RAN                 \ set once strict's body runs
 \ Each code's text, kept from the body's task beside the code.
 $100 constant KEPT-CAP
 KEPT-CAP BUFFER: SHAPE-TEXT
@@ -319,6 +322,45 @@ TASK:MIN-STACK TASK:TASK STALLER
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"content\":" SB-APPEND
    S\" [{\"type\":\"text\",\"text\":\"nope\"}],\"isError\":true}}" SB-APPEND
    200 SB$ ANSWERED ;
+
+
+\ A tools/call of strict with id n and the params after its name, in SB.
+: STRICT-CALL ( n ^u8 n -- ^u8 n )
+   {: id:n rest:^ ru:n :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"strict\"" SB-APPEND
+   rest ru SB-APPEND S\" }}" SB-APPEND SB$ ;
+
+: FILTERS ( -- ^u8 n ) S\" ,\"arguments\":{\"filters\":\"x\"}" ;
+
+\ strict's tool error for a filters member.
+: FILTERS-TEXT ( -- ^u8 n )
+   s" arguments: expected only the member `filter`, found `filters`; rename it to `filter` or remove it" ;
+
+\ A legacy tool error with id n and the text.
+: ERROR-REPLY ( n ^u8 n -- ^u8 n )
+   {: id:n text:^ tu:n :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" SB-APPEND
+   text tu SB-APPEND S\" \"}],\"isError\":true}}" SB-APPEND SB$ ;
+
+: STRICT-REFUSED ( -- )
+   s" arguments outside the inputSchema are a tool error and the body does not run" T-LABEL
+   LEGACY 70 FILTERS STRICT-CALL POST
+   200 70 FILTERS-TEXT ERROR-REPLY ANSWERED
+   STRICT-RAN atomic@ 0 T=
+   s" absent arguments are checked as an empty object" T-LABEL
+   LEGACY 71 s" " STRICT-CALL POST
+   200 71 s" arguments: expected a member `filter`, found none; add `filter`" ERROR-REPLY
+   ANSWERED
+   STRICT-RAN atomic@ 0 T=
+   s" arguments the inputSchema admits run the body" T-LABEL
+   LEGACY 72 S\" ,\"arguments\":{\"filter\":\"x\"}" STRICT-CALL POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":72,\"result\":{\"content\":" SB-APPEND
+   S\" [{\"type\":\"text\",\"text\":\"{\\\"ran\\\":true}\"}]," SB-APPEND
+   S\" \"structuredContent\":{\"data\":{\"ran\":true}},\"isError\":false}}" SB-APPEND
+   200 SB$ ANSWERED
+   STRICT-RAN atomic@ 1 T= ;
 
 
 \ A modern call of echo with {"a":1}, in SB.
@@ -613,6 +655,10 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" ," W+ FRAMED W+ s" ," W+ PICTURED W+
    S\" ,{\"name\":\"wait\",\"description\":\"Answer once woken.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"}," W+
+   s" {}" OUTPUT s" true}},{" W+
+   S\" \"name\":\"strict\",\"description\":\"Answer a filter.\",\"inputSchema\":" W+
+   S\" {\"type\":\"object\",\"properties\":{\"filter\":{\"type\":\"string\"}}," W+
+   S\" \"required\":[\"filter\"],\"additionalProperties\":false}," W+
    s" {}" OUTPUT s" true}}" W+ ;
 
 \ Every tool the open phase registers, as tools/list answers them, before the
@@ -867,6 +913,11 @@ TASK:MIN-STACK TASK:TASK STALLER
       [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
       1 LEFT atomic!
       s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
+
+\ A tool whose arguments are one string filter.
+: ADD-STRICT ( -- )
+   S\" {\"name\":\"strict\",\"description\":\"Answer a filter.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"filter\":{\"type\":\"string\"}},\"required\":[\"filter\"],\"additionalProperties\":false},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
+   [: 2drop 1 STRICT-RAN atomic! S\" {\"ran\":true}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 : ADD-LATE ( -- )
    S\" {\"name\":\"late\",\"description\":\"Registered while serving.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
@@ -1626,6 +1677,26 @@ BUF:HDR-BYTES BUFFER: REPLIES
    ANSWER-OPEN ECHO-A1 POST
    200 W$ ANSWERED ;
 
+\ A modern call of strict with a filters member, in SB.
+: STRICT-MODERN ( -- ^u8 n )
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":73,\"method\":\"tools/call\",\"params\":" SB-APPEND
+   S\" {\"name\":\"strict\"" SB-APPEND FILTERS SB-APPEND s" ," SB-APPEND
+   META S\" }}" SB-APPEND SB$ ;
+
+: ANSWER-STRICT ( -- )
+   s" ANSWER of a call whose arguments break the inputSchema writes HANDLE's tool error" T-LABEL
+   0 STRICT-RAN atomic!
+   MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: strict" ADD
+   STRICT-MODERN POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":73,\"result\":{\"resultType\":\"complete\"," SB-APPEND
+   S\" \"content\":[{\"type\":\"text\",\"text\":\"" SB-APPEND FILTERS-TEXT SB-APPEND
+   S\" \"}],\"isError\":true," SB-APPEND SERVER S\" }}" SB-APPEND
+   W-RESET SB$ W+
+   200 W$ ANSWERED
+   ANSWER-OPEN STRICT-MODERN POST
+   200 W$ ANSWERED
+   STRICT-RAN atomic@ 0 T= ;
+
 : ANSWER-NOTIFIED ( -- )
    s" ANSWER of a notification clears the BUF's old text" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST
@@ -1652,7 +1723,7 @@ BUF:HDR-BYTES BUFFER: REPLIES
    [: s" {}" REPLIES MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
 
 : ANSWER-CASES ( -- )
-   ANSWER-CALL ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-OFF-WORKER ;
+   ANSWER-CALL ANSWER-STRICT ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-OFF-WORKER ;
 
 
 \ The wait tool's held calls, by their rows.
@@ -1755,7 +1826,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
    ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE ADD-WIDGET ADD-PICK
-   ADD-FRAMED ADD-PICTURED ADD-WAIT
+   ADD-FRAMED ADD-PICTURED ADD-WAIT ADD-STRICT
    s" ADD-TOOL refuses a descriptor without a name" T-LABEL
    [: S\" {\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" descriptor 1:36: expected a member `name`, found `}`; add `name`" SAID
@@ -1788,6 +1859,20 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s" ADD-TOOL refuses an outputSchema repeating a top-level key" T-LABEL
    [: S\" {\"name\":\"t\",\"inputSchema\":{},\"outputSchema\":{\"type\":\"object\",\"type\":\"string\"}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    S\" outputSchema 1:18: expected each top-level member once, found `\"type\"`; remove the repeated member, keeping one" SAID
+   s" ADD-TOOL rejects an inputSchema JSON-SCHEMA:COMPILE does not take" T-LABEL
+   [: S\" {\"name\":\"t\",\"inputSchema\":{\"type\":\"object\",\"multipleOf\":2},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   SB-RESET s" inputSchema 1:18: expected one of `$schema`, `type`, `enum`, `minimum`, `maximum`, " SB-APPEND
+   s" `minLength`, `maxLength`, `pattern`, `properties`, `required`, `additionalProperties`, " SB-APPEND
+   s" `maxProperties`, `items`, `minItems`, `maxItems`, `uniqueItems`, `anyOf`, `oneOf`, " SB-APPEND
+   s" `description`, `title`, `default`, `examples`, `deprecated`, `readOnly`, `writeOnly`, " SB-APPEND
+   S\" `$comment`, `format`, found `\"multipleOf\"`; rename the member to one of those, or remove it" SB-APPEND
+   SB$ SAID
+   s" ADD-TOOL rejects an inputSchema without a type" T-LABEL
+   [: S\" {\"name\":\"t\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   S\" inputSchema 1:2: expected a member `type`, found `}`; add `\"type\":\"object\"`" SAID
+   s" ADD-TOOL rejects an inputSchema typed other than object" T-LABEL
+   [: S\" {\"name\":\"t\",\"inputSchema\":{\"type\":\"array\"},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   S\" inputSchema 1:9: expected `type` as `\"object\"`, found `\"array\"`; write `type` as `\"object\"`" SAID
    WIDGET-RESOURCE PAGE MCP:ADD-RESOURCE
    PLAIN ADD-PAGE
    RESOURCE-REFUSALS
@@ -1801,6 +1886,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    [: GUIDE$ MCP:INSTRUCTIONS! ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
    METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL LONG-UNKNOWN TOOL-ERROR
+   STRICT-REFUSED
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
    BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE BAD-JSON LIST PING
