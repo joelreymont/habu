@@ -319,6 +319,74 @@ create XE-EMPTY 1 allot
    s" : A ( [ -- ] -- ) execute ;" XE-LINE  s" : R ( -- ) ['] EVC A ;" XE-LINE
    SB$ XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
 
+: XE-FACT-ACCEPTED ( str -- )
+   XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
+
+: XE-RUN-LINE ( -- ) s" : RUN ( [ -- ] -- ) execute ;" XE-LINE ;
+
+\ A kept quotation does what each quotation its slot hands it and it only runs
+\ does, so the slot's type states those facts too; installing it charges nobody.
+: XE-RUN-FACTS ( -- )
+   s" a defer keeps a runner only if its effect states what the runner runs" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" defer DX ( [ -- renders ] -- )" XE-LINE
+   s" : INST ( -- ) [: RUN ;] is DX ;" XE-LINE
+   SB$ s" state `renders`" XE-FACT-REJECTED
+   s" a defer keeps a ticked runner only if its effect states what it runs" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" defer DX ( [ -- renders ] -- )" XE-LINE
+   s" : INST ( -- ) ['] RUN is DX ;" XE-LINE
+   SB$ s" state `renders`" XE-FACT-REJECTED
+   s" a defer whose effect states what the runner runs keeps it" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" defer DX ( [ -- renders ] -- renders )" XE-LINE
+   s" : INST ( -- ) [: RUN ;] is DX ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED
+   s" a defer whose effect states what the ticked runner runs keeps it" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" defer DX ( [ -- renders ] -- renders )" XE-LINE
+   s" : INST ( -- ) ['] RUN is DX ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED
+   s" a typed cell keeps a runner only if its type states what the runner runs" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" TYPED-VARIABLE XC [ [ -- renders ] -- ]" XE-LINE
+   s" : S ( -- ) [: RUN ;] XC ! ;" XE-LINE
+   SB$ s" state `renders`" XE-FACT-REJECTED
+   s" a typed cell keeps a ticked runner only if its type states what it runs" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" TYPED-VARIABLE XC [ [ -- renders ] -- ]" XE-LINE
+   s" : S ( -- ) ['] RUN XC ! ;" XE-LINE
+   SB$ s" state `renders`" XE-FACT-REJECTED
+   s" a typed cell whose type states what the runner runs keeps it" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" TYPED-VARIABLE XC [ [ -- renders ] -- renders ]" XE-LINE
+   s" : S ( -- ) [: RUN ;] XC ! ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED
+   s" a typed cell whose type states what the ticked runner runs keeps it" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" TYPED-VARIABLE XC [ [ -- renders ] -- renders ]" XE-LINE
+   s" : S ( -- ) ['] RUN XC ! ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED
+   s" installing a runner charges the installer nothing" T-LABEL
+   SB-RESET  XE-RUN-LINE  s" defer DX ( [ -- renders ] -- renders )" XE-LINE
+   s" : INST ( -- ) [: RUN ;] is DX ;" XE-LINE
+   s" TYPED-VARIABLE XV [ -- ]" XE-LINE  s" : S ( -- ) ['] INST XV ! ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED
+   s" a declared output whose type states what the runner runs keeps it" T-LABEL
+   SB-RESET  XE-RUN-LINE
+   s" : MK2 ( -- [ [ -- renders ] -- renders ] ) [: RUN ;] ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED
+   s" a declared output whose type states what the ticked runner runs keeps it" T-LABEL
+   SB-RESET  XE-RUN-LINE
+   s" : MK2 ( -- [ [ -- renders ] -- renders ] ) ['] RUN ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED
+   s" a declared output keeps a runner only if its type states what it runs" T-LABEL
+   SB-RESET  XE-RUN-LINE
+   s" : MK2 ( -- [ [ -- renders ] -- ] ) [: RUN ;] ;" XE-LINE
+   SB$ s" state `renders`" XE-FACT-REJECTED
+   s" a bodyless defer's output keeps what it is handed" T-LABEL
+   SB-RESET
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" TYPED-VARIABLE SV [ [ -- renders ] -- renders ]" XE-LINE
+   s" defer DQ ( -- [ [ -- ] -- ] )" XE-LINE
+   s" : MKK3 ( -- [ [ -- ] -- ] ) [: KV ! ;] ;" XE-LINE
+   s" : INST ( -- ) ['] MKK3 is DQ ;" XE-LINE
+   s" : S1 ( -- ) DQ SV ! ;" XE-LINE
+   SB$ s" state `renders`" XE-FACT-REJECTED
+   XE-ERR$ s" : S1 ( -- ) DQ SV ! ;" CONTAINS? TTRUE ;
+
 : XE-PREPARE ( -- )
    FS:CLEANUP-RESET
    s" habu-xe" FS:MKTEMP-DIR {: a:^ u:n :}
@@ -339,6 +407,7 @@ create XE-EMPTY 1 allot
    XE-FACT-WORDS
    XE-DEFER-FACTS
    XE-KEPT-FACTS
+   XE-RUN-FACTS
    XE-CLEANUP
    T-REPORT
    s" xt-effect: ok" type cr ;

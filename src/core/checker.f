@@ -2344,6 +2344,9 @@ variable CUR-ROLE
 \ none or when the wanted side's chain is provided (U-TYPE); LIT-FITS? reads it.
 variable CUR-LIT
 1 constant ROLE-D1   2 constant ROLE-D2
+\ Set on a pair inside a quotation's inputs: its first term comes from the
+\ quotation's runner. A quotation pair's input pairs toggle it.
+4 constant ROLE-NEG
 variable CALL-DIN   variable CALL-DOUT
 SCRATCH{
 variable CALL-ARMED   variable CALL-HIT
@@ -3289,8 +3292,8 @@ variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotati
    PTR>INNER NO-SCOPE? ;
 
 \ A kept quotation may outlive its caller, so its block reads no local (NSCOPE). A signature
-\ with no checked body cannot show a use, so each quotation in its inputs counts as kept; a
-\ primitive's row says which it keeps (PE-QANY).
+\ with no checked body cannot show a use, so each quotation in its inputs and outputs counts
+\ as kept; a primitive's row says which it keeps (PE-QANY).
 : KEEP-QUOTS* ( n -- ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -4453,7 +4456,7 @@ variable XT-DECL
       a b PAY TV!
    ELSE
       CUR-ARG @ >r 0 CUR-ARG !   CUR-ROLE @ >r
-      fam slot TFAM-STORE-SLOT-XT IF ROLE-D1 ROLE-D2 or CUR-ROLE ! THEN
+      fam slot TFAM-STORE-SLOT-XT IF CUR-ROLE @ ROLE-NEG and ROLE-D1 or ROLE-D2 or CUR-ROLE ! THEN
       fam slot TFAM-SCOPE-SLOT-XT  fam slot TFAM-REGION-SLOT-XT or
       fam slot TFAM-TYPE-SLOT-XT or IF a b PAIR-STRICT ELSE a b PAIR THEN
       r> CUR-ROLE !  r> CUR-ARG !
@@ -4726,7 +4729,8 @@ EXPORT CHECKER-QUOT-FRESH:START
    HOLD-N @ 1 + HOLD-FRAME * HOLD-ENSURE
    HOLD-N @ {: f:n :}   1 HOLD-N +!
    TRAIL-N @ f 0 HF !   FV @ f 1 HF !   0 f HF-NK HF !   HOLD-I-N @ f HF-IS HF !
-   role ROLE-D1 and 0 <> {: d1:bool :}   role ROLE-D2 and 0 <> {: d2:bool :}   role 0= {: join:bool :}
+   role ROLE-D1 and 0 <> {: d1:bool :}   role ROLE-D2 and 0 <> {: d2:bool :}
+   role ROLE-D1 ROLE-D2 or and 0= {: join:bool :}
    \ demanded sides first, so a tail both sides share is held rigid
    d1 IF got RES-TRUE join HOLD-SIDE THEN
    d2 IF want RES-TRUE join HOLD-SIDE THEN
@@ -4794,7 +4798,8 @@ EXPORT CHECKER-QUOT-FRESH:START
 \ A quotation pair's input rows flow into the quotation from whoever executes
 \ it, so their pairs are pushed flipped.
 defer U-DRAIN-XT ( n -- )
-: ROLE-FLIP ( n -- n ) dup 1 and 2 * swap 1 rshift 1 and or 3 xor ;
+: ROLE-FLIP ( n -- n )
+   dup 1 and 2 *  over 1 rshift 1 and or  3 xor  swap ROLE-NEG and ROLE-NEG xor or ;
 
 
 \ A block part that must read no local refuses a block's scope as a local's
@@ -4815,16 +4820,23 @@ defer U-DRAIN-XT ( n -- )
    a b <> IF 3 SCOPE-HIT ! a b U-FAIL THEN ;
 
 
+\ The innermost kept quotation pair's role, 0 while none is open, and the facts
+\ of the quotations its slot hands that quotation to run.
+variable KEPT-ROLE   variable KEPT-RUN
+
 : QUOT-PAIR ( n n -- )
    {: got:n want:n :}
    CUR-ROLE @ {: role:n :}   role ROLE-FLIP {: flip:n :}
    TRAIL-N @ {: mark:n :}   USP @ {: base:n :}   CUR-UPOS @ {: upos:n :}
    \ A demanded slot keeps the quotation: a definition's declared output, or a
-   \ block that keeps its scope. It states every fact the quotation has.
+   \ block that keeps its scope. It states every fact the quotation has and
+   \ every fact of a quotation the slot hands it to run.
    want Q>BLOCK T-RES {: b:n :}
    role ROLE-D2 and 0 <> IF
-      UNIFY-KIND @ UK-COERCE =  b ISVAR IF b PAY NSCOPE@ or THEN
+      role ROLE-NEG and 0= UNIFY-KIND @ UK-COERCE = and  b ISVAR IF b PAY NSCOPE@ or THEN
    ELSE RES-FALSE THEN {: kept:bool :}
+   KEPT-ROLE @ {: kr0:n :}   KEPT-RUN @ {: kn0:n :}
+   kept IF role KEPT-ROLE !  0 KEPT-RUN ! THEN
    got want role HOLD-PUSH {: g:n w:n :}
    w Q>DIN g Q>DIN flip PAIR-QUOT
    g Q>DOUT w Q>DOUT role PAIR-QUOT
@@ -4832,14 +4844,22 @@ defer U-DRAIN-XT ( n -- )
    g Q>ROUT w Q>ROUT role PAIR-QUOT
    g w BLOCK-PAIR
    base U-DRAIN-XT
+   kept IF KEPT-RUN @  kr0 KEPT-ROLE !  kn0 KEPT-RUN ! ELSE 0 THEN {: run:n :}
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
-   got Q>FACTS CTL-STATABLE and want Q>FACTS invert and {: lack:n :}
-   UOK @ IF kept IF lack 0 <> IF lack FACT-HIT !  got want U-FAIL THEN THEN THEN
+   got Q>FACTS run or {: has:n :}
+   has CTL-STATABLE and want Q>FACTS invert and {: lack:n :}
+   \ The record's found side shows the facts its help asks to state.
+   UOK @ IF kept IF lack 0 <> IF
+      has got Q-FACTS!  lack FACT-HIT !  got want U-FAIL
+   THEN THEN THEN
    \ The fact union is not trailed: a rolled-back trial can only add facts. A
-   \ quotation a callee only runs charges the caller with its facts.
+   \ quotation a callee only runs charges the caller with its facts; one the
+   \ open kept pair's slot hands its quotation charges that quotation instead.
+   KEPT-ROLE @ 0 <>  role KEPT-ROLE @ xor ROLE-NEG and 0 <> and {: handed:bool :}
    TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE kept 0= IF
+      handed IF got Q>FACTS KEPT-RUN @ or KEPT-RUN ! THEN
       g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS!
-      role ROLE-D2 and 0 <> UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
+      handed 0=  role ROLE-D2 and 0 <> and  UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
    THEN THEN
    -1 HOLD-N +! ;
 
@@ -4877,7 +4897,7 @@ defer U-DRAIN-XT ( n -- )
      QUOT-PAIR ELSE
    \ a pointee is read and written: both sides demanded
    over TAG T-PTR =  over TAG T-PTR =  and IF
-     CUR-ARG @ >r 0 CUR-ARG !   CUR-ROLE @ >r  ROLE-D1 ROLE-D2 or CUR-ROLE !
+     CUR-ARG @ >r 0 CUR-ARG !   CUR-ROLE @ >r  CUR-ROLE @ ROLE-NEG and ROLE-D1 or ROLE-D2 or CUR-ROLE !
      over PTR>INNER T-RES over PTR>INNER T-RES PAIR-STRICT
      r> CUR-ROLE !  r> CUR-ARG ! 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
@@ -5091,6 +5111,7 @@ U-DRAIN-INSTALL
    CALL-ARMED @ CUR-CALL !
    0 UF-ACT !  0 UF-EXP !  0 UF-SET !  0 TAIL-HIT !  0 LIT-HIT !  0 CUR-LIT !
    UNIFY-KIND @ UK-JOIN = IF 0 ELSE ROLE-D2 THEN CUR-ROLE !   0 HOLD-N !   0 HOLD-I-N !
+   0 KEPT-ROLE !
    -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
    PAIR  0 U-DRAIN
    UOK @ ;
@@ -11877,7 +11898,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    SIG-UNRES @ IF CHECKER-ROW:QUIET EXIT THEN
    sa su din dout rin rout SGBAD-UNFIT!
    SGBAD @ if sa su at atu USIG-ADD-BAD CHECKER-ROW:REJECTED exit then
-   din KEEP-QUOTS
+   din KEEP-QUOTS  dout KEEP-QUOTS
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    CHECKER-ROW:KEPT ;
 
@@ -16171,7 +16192,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?
    {: sa:^ su:n na:^ nu:n din:n dout:n rin:n rout:n hasr:bool :}
    na nu na nu USIG-CERT-ADMIT
    sa su na nu  din dout rin rout  USIG-DEPTH-FITS? 0= IF DL-TAKE EXIT THEN
-   din KEEP-QUOTS
+   din KEEP-QUOTS  dout KEEP-QUOTS
    din dout rin rout hasr RES-TRUE E-ADD-EFFECT DL-TAKE ;
 
 \ Publishes a cast's certified rows as parsed: a reparse refuses a view pack
@@ -16857,7 +16878,7 @@ private
    sa su din dout rin rout SGBAD-UNFIT!
    SGBAD @ IF was CHECKER-REC-SYM !  0 EXIT THEN
    \ This parse holds nothing a clause's check learned of a quotation input.
-   din KEEP-QUOTS
+   din KEEP-QUOTS  dout KEEP-QUOTS
    din dout rin rout SGHASR @ E-BUILD-EFFECT
    {: off:n :}
    was CHECKER-REC-SYM !

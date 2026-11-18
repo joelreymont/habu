@@ -1420,7 +1420,7 @@ private
 
 
 \ TYPE-DECL's parts install the transaction runner at load.
-defer TDECL-TXN-XT ( [ -- renders parses nominal ] -- renders nominal )
+defer TDECL-TXN-XT ( [ -- renders parses nominal ] -- renders parses nominal )
 
 : CHECKER-DEFFAMILY-BODY ( -- )
    s" write a name after `NEWTYPE`, as in `NEWTYPE meters`" TDECL-HEADER! {: ar:n :}

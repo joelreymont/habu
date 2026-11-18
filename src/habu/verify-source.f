@@ -1223,9 +1223,9 @@ CAST: RENDERS-ACTION ( n -- [ ^u8 n n -- bool ] )
 CAST: REACH-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
 CAST: CLAUSE-ACTION ( n -- [ ^u8 n -- ] )
 CAST: DECL-ACTION ( n -- [ ^u8 n ^u8 n -- bool ] )
-CAST: TICK-ORDER-ACTION ( n -- [ ^u8 n n ^u8 [ -- ] -- n ] )
+CAST: TICK-ORDER-ACTION ( n -- [ ^u8 n n ^u8 [ -- nominal ] -- n nominal ] )
 
-: WITH-BODY-TICK-ORDER ( str [ -- ] -- bool )
+: WITH-BODY-TICK-ORDER ( str [ -- nominal ] -- bool )
    {: a:^ u:n q :}
    a u DEF-TICK-ORDER @ DEF-TICK-OWNER @ q
    NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute 0<> ;
@@ -1233,7 +1233,7 @@ CAST: TICK-ORDER-ACTION ( n -- [ ^u8 n n ^u8 [ -- ] -- n ] )
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
 CAST: ARM-ACTION ( n -- [ ^u8 n n n n -- ] )
 CAST: CTOR-DECL-ACTION ( n -- [ n ^u8 n n n n -- ] )
-CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
+CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- renders parses nominal ] -- renders parses nominal ] )
 
 \ Each file the composition scans is a visit, numbered from one counter that
 \ never goes back: no number names two files in one process, so a declaration
@@ -1353,7 +1353,7 @@ CAST: VISIBLE-ACTION ( n -- [ ^u8 n n [ ^u8 n n n n -- ] -- ] )
 
 \ Run Q with H receiving each use Q's checks bind: one scope at a time, closed
 \ on either exit.
-: WITH-USES ( [ n n n n n n -- ] [ -- ] -- )
+: WITH-USES ( [ n n n n n n -- ] [ -- renders parses nominal ] -- )
    NCOMP-DISPATCH:DECL-VERIFY-USES-OFF OWNER-XT USES-ACTION execute ;
 
 \ The scope's two questions about a name, asked of the checker that owns the
@@ -3207,7 +3207,7 @@ private
    COMPOSE-PEND-PATH-A @ COMPOSE-PEND-PATH-U @ COMPOSE-FILE ;
 
 \ The owner record's file field holds a raw execution token.
-CAST: FILE-ACTION ( n -- [ [ -- ] -- ] )
+CAST: FILE-ACTION ( n -- [ [ -- renders parses nominal ] -- renders parses nominal ] )
 
 \ The operand span LOAD-AT to LOAD-END of the subject's top-level loader whose
 \ load runs; LOAD-END 0 for none (an operand ends past the file's first byte).
