@@ -8,10 +8,8 @@ require src/habu/sign-id.f
 require src/arch/x86-64/icode.f
 require src/os/linux-flags.f
 
-\ The production image writer loads at top level, as every production path
-\ loads it: elf.f requires src/os/linux-x86-64/target-layout.f, which opens
-\ package X64LAYOUT, which a file required inside a package cannot.
-require src/os/linux-x86-64/target-layout.f
+\ The production image writer loads at top level, as every production path loads it.
+require src/os/linux/layout.f
 require src/os/linux-x86-64/elf.f
 
 package X64HARNESS
@@ -45,7 +43,7 @@ s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
 using DRIVER
 s" src/os/linux-x86-64/sys.f" required
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 : IMM ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
@@ -82,7 +80,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 public
 
 \ The address the next routine appended lands at, so the one it is emitted at.
-: POSITION ( -- n ) VMBASE X64LAYOUT:CODE-OFF + ASM-LEN + ;
+: POSITION ( -- n ) VMBASE LINUX-LAYOUT:CODE-OFF + ASM-LEN + ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry.
 : WRITE ( ^u8 n -- ) {: path:^ pathu:n :}
@@ -91,11 +89,11 @@ public
    path pathu DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
    $12 M-OFF M-LE32@ $FFFF and 62 T=
-   $18 M-OFF M-LE32@ VMBASE X64LAYOUT:CODE-OFF + T=
+   $18 M-OFF M-LE32@ VMBASE LINUX-LAYOUT:CODE-OFF + T=
    $1C M-OFF M-LE32@ 0 T= ;
 
 \ The sink every image is staged in, held across the images of one run.
 : INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT ;
 : DISPOSE ( -- ) ASM-SINK BUF:DISPOSE ;
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;package

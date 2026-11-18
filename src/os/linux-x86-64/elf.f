@@ -14,19 +14,18 @@ split-str
 \ segments"). Its six program headers end at $190, where the metadata starts.
 \ Everything else here is ELF64 format, and reads the same under both machines.
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f).
-\ CODE-OFF is the target's, read qualified from
-\ package X64LAYOUT (src/os/linux-x86-64/target-layout.f), whose `using` below
-\ is the guard that refuses a bare one and closes before this file ends. The
-\ require below opens a top-level package, and a `package` inside an open one
-\ opens a part of it, so this file loads at top level.
+\ CODE-OFF is the target's, LINUX-LAYOUT:CODE-OFF, which the `using` below keeps
+\ from reading bare; it closes before this file ends. Its requires open top-level
+\ packages, and a `package` inside an open one opens a part of it, so this file
+\ loads at top level.
 require src/core/exit-status.f
 require src/arch/x86-64/icode.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 require src/os/image-bytes.f
 
 using X64CODE
 using IMAGE-BYTES
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
@@ -80,7 +79,7 @@ $228 constant ELF-RELA-OFF
 \ header page it sits at. It is DERIVED from X64CODE's window rather than
 \ written out again, because the two are one fact and a second spelling of one
 \ fact is a drift waiting for an editor.
-CODE-CAP-BYTES X64LAYOUT:CODE-OFF + constant MPAGE
+CODE-CAP-BYTES LINUX-LAYOUT:CODE-OFF + constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 VMBASE REGION-OFF + constant ELF-REGION-VA
@@ -91,7 +90,7 @@ VMBASE REGION-OFF + constant ELF-REGION-VA
 ELF-REGION-VA REGION + constant ELF-CARRIER-VA
 \ The carrier ends below DATA-VA, where the boot maps DATA, so it holds at
 \ most this many bytes.
-X64LAYOUT:DATA-VA ELF-CARRIER-VA - constant ELF-CARRIER-CAP
+LINUX-LAYOUT:DATA-VA ELF-CARRIER-VA - constant ELF-CARRIER-CAP
 
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
@@ -115,11 +114,11 @@ ELF-FIXED-CHECK
 \ Assembly ends by linking the stream's labels at the address the text loads
 \ at, so no image is written with a label site still zero.
 : ASM-CODE ( -- asm )
-   VMBASE X64LAYOUT:CODE-OFF + ASM-LINK
+   VMBASE LINUX-LAYOUT:CODE-OFF + ASM-LINK
    ASM-CODELEN!
    ASM-PHASE ;
 
-: TEXTSZ ( -- n )  X64LAYOUT:CODE-OFF CODELEN @ + ELF-PAGE-UP ;
+: TEXTSZ ( -- n )  LINUX-LAYOUT:CODE-OFF CODELEN @ + ELF-PAGE-UP ;
 
 : ELF-VA ( n -- n )
    VMBASE + ;
@@ -141,7 +140,7 @@ ELF-FIXED-CHECK
 : ELF-HDR, ( -- )
    ELF-IDENT
    ET-EXEC IMG-M16  EM-X86-64 IMG-M16  EV-CURRENT IMG-M32
-   VMBASE X64LAYOUT:CODE-OFF + IMG-M64
+   VMBASE LINUX-LAYOUT:CODE-OFF + IMG-M64
    ELF-HDR-SZ IMG-M64
    0 IMG-M64
    0 IMG-M32
@@ -244,7 +243,7 @@ variable ELF-DATA-BYTES
    ELF-DYNSYM,
    ELF-DYNSTR,
    ELF-RELA,
-   X64LAYOUT:CODE-OFF M-OFF M-PAD-OFF ;
+   LINUX-LAYOUT:CODE-OFF M-OFF M-PAD-OFF ;
 
 : ELF-DYN, ( n n -- ) {: tag val :}
    tag IMG-M64
@@ -290,13 +289,13 @@ variable ELF-DATA-BYTES
    M-HERE MLEN! ;
 
 : SNAP-EXTRA-PTR ( -- ^u8 )
-   MBUF X64LAYOUT:CODE-OFF + ;
+   MBUF LINUX-LAYOUT:CODE-OFF + ;
 
 ELF-RW-SZ constant SNAP-EXTRA-SIZE
 
 : ELF-BUILD-SPAN ( ^u8 n -- ) {: text:^ bytes:n :}
    bytes CODELEN !  M-RESET
-   CODELEN @  MPAGE X64LAYOUT:CODE-OFF -  > IF
+   CODELEN @  MPAGE LINUX-LAYOUT:CODE-OFF -  > IF
       s" elf: code exceeds text window" EXIT-STATUS:IMAGE die
    THEN
    TEXTSZ ELF-TEXT-SIZE !
@@ -318,13 +317,13 @@ ELF-RW-SZ constant SNAP-EXTRA-SIZE
    IMG-PHASE ;
 
 : BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
-   X64LAYOUT:CODE-OFF snl + ELF-PAGE-UP {: sfts:n :}
+   LINUX-LAYOUT:CODE-OFF snl + ELF-PAGE-UP {: sfts:n :}
    sfts ELF-TEXT-SIZE !
    M-RESET
    ELF-HDR,
    ELF-PHDRS,
    ELF-RX-META,
-   X64LAYOUT:CODE-OFF ELF-RW-AT,
+   LINUX-LAYOUT:CODE-OFF ELF-RW-AT,
    SNAP-PHASE sfts ;
 
 \ ---------------------------------------------------------------------------
@@ -345,6 +344,6 @@ ELF-RW-SZ constant SNAP-EXTRA-SIZE
    i 0 = if ELF-RW-SZ exit then
    s" elf: size tail index out of range" EXIT-STATUS:IMAGE die ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;using
 ;using

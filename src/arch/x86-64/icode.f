@@ -10,7 +10,7 @@ require src/lib/error.f
 require src/lib/byte-buffer.f
 require src/core/roles.f
 require src/arch/x86-64/asm.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 require src/habu/layout.f
 
 package X64CODE
@@ -19,7 +19,7 @@ public
 
 \ The linked text and ELF's writable tail end below the runtime code region.
 \ Reserve one protection page for the tail and its alignment.
-REGION-OFF PROT-PAGE-MAX - X64LAYOUT:CODE-OFF - constant CODE-CAP-BYTES
+REGION-OFF PROT-PAGE-MAX - LINUX-LAYOUT:CODE-OFF - constant CODE-CAP-BYTES
 
 private
 

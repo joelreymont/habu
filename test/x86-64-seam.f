@@ -12,13 +12,8 @@ require src/lib/byte-buffer.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 \ The writer brings src/os/image-bytes.f in under `using X64CODE`, so its shared
-\ buffer uses the x86-64 capacity. The ARM64 code layer below has its own
-\ package. The seam's layout.f and the host's both define CODE-OFF, which the
-\ engine refuses twice, so the writer reads CODE-OFF qualified from X64LAYOUT
-\ (target-layout.f) and the host's identical PROT-PAGE-MAX, REGION and
-\ REGION-OFF. buffer uses the x86-64 capacity. The ARM64 code layer below has
-\ its own package.
-require src/os/linux-x86-64/target-layout.f
+\ buffer uses the x86-64 capacity. The ARM64 code layer below has its own package.
+require src/os/linux/layout.f
 s" src/os/linux-x86-64/elf.f" required
 require src/os/image-bytes.f
 
@@ -29,7 +24,7 @@ require src/compiler/target.f
 
 package X64-SEAM-TEST
 using IMAGE-BYTES
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 \ ---- reading the written image ----------------------------------------------
 : U8@ ( n -- n )
@@ -353,5 +348,5 @@ create NEAR 16 allot
    T-REPORT ;
 
 RUN
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;package

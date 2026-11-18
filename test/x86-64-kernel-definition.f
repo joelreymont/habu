@@ -435,7 +435,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 \ The long name's two slots end exactly at the ceiling.
 : CEILING, ( -- )
-   X64KERNEL:CODE-CEILING PAST-LONG DICT-SIZE - - CP-AT,
+   CODE-CEILING PAST-LONG DICT-SIZE - - CP-AT,
    LONG$ 0 0 DEF-OPEN, ;
 
 \ BODYLEN past the capacity, which no growth answers.

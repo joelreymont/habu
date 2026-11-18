@@ -687,7 +687,7 @@ public
 : NAME-ROOM ( label -- ) {: full:label :}
    LBL {: fits:label :}
    12 DNAME-INL CMPI,  C-LS fits BCOND,
-   11 REGION $4000 - LIT64,  11 DBASE 11 ADD,
+   11 CODE-CEILING LIT64,  11 DBASE 11 ADD,
    CP 11 CMP,  C-CS full BCOND,                       \ CP is already at the ceiling
    11 11 CP SUB,                                      \ x11 = the room below it
    12 11 CMP,  C-CS full BCOND,                       \ the bytes alone reach it
@@ -1262,7 +1262,7 @@ variable LREPLAYTRAP
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,
-   9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-CS bad BCOND,
+   9 CODE-CEILING LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-CS bad BCOND,
    bad DICT-ROOM,
    bad NAME-SIZE,
    13 4 0 ADDI,

@@ -33,7 +33,7 @@ public
    text-len 0 <
    region-len REGION > or
    region-len 0 < or
-   data-len X64LAYOUT:DATA-SIZE > or
+   data-len LINUX-LAYOUT:DATA-SIZE > or
    data-len ELF-CARRIER-CAP > or
    data-len 0 < or if
       s" x64image: initialized span exceeds segment" EXIT-STATUS:IMAGE die
@@ -47,7 +47,7 @@ public
    CLEAR-ZEROS
    fd MBUF MLEN@ FDIO:WALL
    fd text text-len FDIO:WALL
-   fd X64LAYOUT:CODE-OFF text-len + ELF-TEXT-SIZE @ PAD-TO
+   fd LINUX-LAYOUT:CODE-OFF text-len + ELF-TEXT-SIZE @ PAD-TO
    ELF-RW-TAIL
    fd MBUF MLEN@ FDIO:WALL
    fd ELF-TEXT-SIZE @ ELF-RW-SZ + ELF-REGION-AT PAD-TO

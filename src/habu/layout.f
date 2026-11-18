@@ -51,6 +51,9 @@ constant X64-MASK
 \ Fixed budget for dictionary and code, including the retained build host and
 \ its replacement core.
 $2300000 constant REGION
+\ A definition's CP and name slots stay below this offset above DBASE, so the
+\ region's last $4000 bytes stay the runtime's protected tail.
+REGION $4000 - constant CODE-CEILING
 \ The code region's offset past the largest text and its read-write tail: from
 \ the image's base where Linux reserves it, from __text where macOS hints it.
 $2000000 constant REGION-OFF

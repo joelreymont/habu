@@ -1,6 +1,10 @@
 split-str
 \ layout.f -- the executable and data layout constants of both Linux targets
-\ (linux-aarch64, linux-x86-64), loaded at boot before `require` exists.
+\ (linux-aarch64, linux-x86-64), as package LINUX-LAYOUT any host can load: a
+\ Linux engine loads it at boot before `require` exists. A host's bare layout
+\ names are its own (a macOS host's DATA-VA differs), so x86-64 code reads these
+\ qualified, LINUX-LAYOUT:DATA-VA, under the guard `using LINUX-LAYOUT`, which
+\ rejects a bare name a host global also owns.
 \ The image offsets are ELF64 format facts: IMAGE-TEXT-SIZE-OFF is the first
 \ program header's p_filesz (64-byte header, then type, flags, offset, vaddr and
 \ paddr). DATA-VA is a Linux fixed mapping, not an architecture
@@ -24,6 +28,8 @@ split-str
 \ setarch -L or an unlimited stack) maps the loader and libraries from
 \ TASK_SIZE/4 = 128 GiB up, inside it.
 
+package LINUX-LAYOUT
+public
 96 constant IMAGE-TEXT-SIZE-OFF
 $1000 constant IMAGE-TEXT-CONTENT-ADJ
 0 constant IMAGE-TEXT-TRAILER-ADJ
@@ -31,3 +37,4 @@ $340000000 constant DATA-VA
 $4000000000 constant DATA-SIZE
 $1000 constant CODE-OFF
 $400000 constant IMAGE-VA
+;package

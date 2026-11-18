@@ -1,0 +1,11 @@
+split-str
+\ host-layout.f -- a Linux engine's bare layout names: copies of package
+\ LINUX-LAYOUT's constants (src/os/linux/layout.f).
+
+LINUX-LAYOUT:IMAGE-TEXT-SIZE-OFF constant IMAGE-TEXT-SIZE-OFF
+LINUX-LAYOUT:IMAGE-TEXT-CONTENT-ADJ constant IMAGE-TEXT-CONTENT-ADJ
+LINUX-LAYOUT:IMAGE-TEXT-TRAILER-ADJ constant IMAGE-TEXT-TRAILER-ADJ
+LINUX-LAYOUT:DATA-VA constant DATA-VA
+LINUX-LAYOUT:DATA-SIZE constant DATA-SIZE
+LINUX-LAYOUT:CODE-OFF constant CODE-OFF
+LINUX-LAYOUT:IMAGE-VA constant IMAGE-VA

@@ -6,13 +6,13 @@ split-str
 \ that stack intact. The emitted ELFs remain in TMPDIR as hb-x64-kernel-token,
 \ -tok-imm and -create.
 require test/x86-64-boot-harness.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 
 package X64K-TOKEN-TEST
 using X64ASM
 using X64CODE
 using X64RT
-using X64LAYOUT
+using LINUX-LAYOUT
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 

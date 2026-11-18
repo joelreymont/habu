@@ -3,33 +3,19 @@ split-str
 \ Run: bin/hb --load tools/imgdump.f -- <image> [image2]; --pc takes one or more
 \ addresses. One line per word: name $start $len (namespace rows carry their
 \ public/private WIDs). Two images: name and length compared first, then
-\ offset-only shifts. The target executable layout loads on demand; the common
-\ dictionary layout is already in the native cold prefix.
+\ offset-only shifts.
 
 require src/lib/adt/option.f                 \ option<n> for the number parsers
 require src/lib/fs.f
 require src/habu/code-span.f
 require src/os/macos/macho.f
 require src/core/exit-status.f
+\ An x86 image maps DATA at LINUX-LAYOUT:DATA-VA on every host; a macOS host's
+\ DATA-VA is elsewhere.
+require src/os/linux/layout.f
 
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
-
-: IMG-LOAD-TARGET-LAYOUT ( -- )
-   s" DATA-SIZE" XREF-FIND 0= if
-      HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
-         s" src/os/linux/layout.f" included exit then
-      HB-TARGET-MACOS? if s" src/os/macos/layout.f" included exit then
-      s" imgdump: unknown target" EXIT-STATUS:INTERNAL die
-   then ;
-
-IMG-LOAD-TARGET-LAYOUT
-undefine IMG-LOAD-TARGET-LAYOUT
-
-\ An x86 image is a linux-x86-64 image on any host, so its paths read that
-\ target's layout, qualified, under the guards below; the host's DATA-VA is not
-\ where an x86 image maps DATA on a macOS host.
-require src/os/linux-x86-64/target-layout.f
 
 package IMAGE-DUMP
 
@@ -231,16 +217,16 @@ variable OKV
    repeat drop
    OKV @ ;
 
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 : X64-PTR-SPAN>OFF ( n n -- n ) {: p:n len:n :}
    len 1 max {: size:n :}
-   p X64LAYOUT:DATA-VA >= p X64LAYOUT:DATA-VA X64LAYOUT:DATA-SIZE + < and if
-      p X64LAYOUT:DATA-VA - size X64-DATA-SPAN>OFF exit
+   p LINUX-LAYOUT:DATA-VA >= p LINUX-LAYOUT:DATA-VA LINUX-LAYOUT:DATA-SIZE + < and if
+      p LINUX-LAYOUT:DATA-VA - size X64-DATA-SPAN>OFF exit
    then
    p size ELF-VA-SPAN>OFF ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 
 \ An external name's cell holds a text-relative offset in an arm64 image and a
 \ fixed VA, which a PT_LOAD maps, in an x86 one.

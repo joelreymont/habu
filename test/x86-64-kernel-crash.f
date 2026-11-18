@@ -8,14 +8,14 @@ split-str
 require src/lib/string.f
 require src/habu/stack-abi.f
 require test/x86-64-boot-harness.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 require src/lib/fd.f
 
 package X64K-CRASH
 using X64ASM
 using X64CODE
 using X64RT
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 \ Scratch the harness hands out (PUSH-SCRATCH,): the pipe's two ends and the
 \ expected text's address, then the bytes the parent reads.
@@ -159,13 +159,13 @@ $1716151413121110 constant CELL-C
 \ rip at its target.
 : REGION-CHILD ( -- )
    CELL-A CP-VA CELL - POKE,  CELL-B CP-VA POKE,  CELL-C CP-VA CELL + POKE,
-   X64LAYOUT:DATA-VA REGS,  CP-VA JUMP,
-   SIGSEGV X64LAYOUT:DATA-VA CP-VA CELL-A CELL-B CELL-C DUMP-TEXT ;
+   LINUX-LAYOUT:DATA-VA REGS,  CP-VA JUMP,
+   SIGSEGV LINUX-LAYOUT:DATA-VA CP-VA CELL-A CELL-B CELL-C DUMP-TEXT ;
 
 : REGION-END-CHILD ( -- )
    CELL-A LAST-VA CELL - POKE,  CELL-B LAST-VA POKE,
-   X64LAYOUT:DATA-VA REGS,  LAST-VA JUMP,
-   SIGSEGV X64LAYOUT:DATA-VA LAST-VA CELL-A CELL-B 0 DUMP-TEXT ;
+   LINUX-LAYOUT:DATA-VA REGS,  LAST-VA JUMP,
+   SIGSEGV LINUX-LAYOUT:DATA-VA LAST-VA CELL-A CELL-B 0 DUMP-TEXT ;
 
 \ A push with r12 at the data stack's base plus the capacity the boot
 \ published: the first byte of its high guard page.
@@ -223,10 +223,10 @@ $1716151413121110 constant CELL-C
 \ guard page would stand were zero a base. A zero base is no stack: the dump.
 : ZERO-BASE-CHILD ( -- )
    0 STACK-ABI:LOOP-BASE-CELL X64HARNESS:CELL!,
-   X64LAYOUT:DATA-VA REGS,
+   LINUX-LAYOUT:DATA-VA REGS,
    X64HARNESS:POSITION {: rip:n :}
    RAX  STACK-ABI:LOOP-BYTES rip RIP-STORE-BYTES + -  MEM-RIP ASM-SINK ENC-MOV-MR
-   SIGSEGV X64LAYOUT:DATA-VA rip 0 0 0 DUMP-TEXT ;
+   SIGSEGV LINUX-LAYOUT:DATA-VA rip 0 0 0 DUMP-TEXT ;
 
 \ ---- the image ---------------------------------------------------------------
 \ After fork: the child, whose answer is 0, takes the pipe's write end as fd 2
@@ -339,7 +339,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;using
 ;using
 ;using

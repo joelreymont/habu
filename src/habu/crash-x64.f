@@ -17,13 +17,13 @@ require src/habu/fault-record.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/sys.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 
 package X64CRASH
 using X64ASM
 using X64CODE
 using FAULT-RECORD
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 2 constant STDERR
 
@@ -253,7 +253,7 @@ public
    FAULT-OPEN
    RSP FAULT-FRAME >IMM32 ASM-SINK ENC-SUB-RI32
    FRAME-REG RSP MOV,  CUR-REG RSP MOV,
-   JSON-REG X64LAYOUT:DATA-VA VA>N REJECTION-JSON-CELL + IMM,
+   JSON-REG LINUX-LAYOUT:DATA-VA VA>N REJECTION-JSON-CELL + IMM,
    JSON-REG JSON-REG MEM-AT LOAD,
    PIECE, ;
 
@@ -313,7 +313,7 @@ public
    LBL PUT-CELL !  LBL OWNER-CELL !  LBL DEC-CELL !  LBL DIE-CELL !
    EMIT-FAULT-PUT  EMIT-FAULT-OWNER  EMIT-FAULT-DEC  EMIT-DIE-LINE ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;using
 ;using
 ;using

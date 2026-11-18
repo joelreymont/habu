@@ -10,7 +10,7 @@ require src/habu/layout.f
 require src/habu/wl.f
 require src/habu/stack-abi.f
 require src/habu/prof-abi.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 require src/habu/xref.f
 require test/x86-64-boot-harness.f
 require src/lib/fd.f
@@ -29,10 +29,10 @@ using X64ASM
 using X64CODE
 using X64RT
 using PROF-ABI
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 \ The band at the top of the target's DATA, and the counters after its cells.
-X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND
+LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND
 BAND PROF-STATE-BYTES + constant COUNTERS
 0 constant A-REC                        \ the records' indices, in seeding order
 1 constant B-REC
@@ -851,7 +851,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;using
 ;using
 ;using

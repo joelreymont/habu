@@ -2,12 +2,12 @@ split-str
 \ Real x86-64 kernel images exercise scope-find with and without the name
 \ index. The emitted ELFs remain in TMPDIR for replay on the x86-64 peer.
 require test/x86-64-boot-harness.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 
 package X64K-SCOPE-TEST
 using X64ASM
 using X64CODE
-using X64LAYOUT
+using LINUX-LAYOUT
 
 : ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 : SCOPE, ( ^u8 n -- ) X64HARNESS:PUSH-TEXT,  s" scope-find" ROW ;

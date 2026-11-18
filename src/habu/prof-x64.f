@@ -16,7 +16,7 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
 require src/os/linux-x86-64/sys.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 require src/habu/boot-x64.f
 
 package X64PROF
@@ -24,12 +24,12 @@ using X64ASM
 using X64CODE
 using X64RT
 using PROF-ABI
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 \ The band, absolute: the x86-64 boot maps DATA fixed at DATA-VA.
-X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND-VA
+LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE PROF-BAND-AT constant BAND-VA
 BAND-VA PROF-STATE-BYTES + constant CNT-VA      \ one counter per record
-X64LAYOUT:DATA-VA VA>N MAIN-STACK-TOP-CELL + constant TOP-VA
+LINUX-LAYOUT:DATA-VA VA>N MAIN-STACK-TOP-CELL + constant TOP-VA
 1000 constant DEFAULT-USEC                      \ the interval prof-on arms when prof-rate set none
 1 constant STDOUT
 2 constant STDERR
@@ -748,7 +748,7 @@ variable SESSION-CELL
    LBL LBL LBL {: noarena:label foreign:label total:label :}
    LBL LBL {: lost:label ftotal:label :}
    RAX RDX DATA-SLOT MEM-OFF LOAD,
-   RCX X64LAYOUT:DATA-VA VA>N IMM,  RAX RCX CMP-REG,  C-NE foreign JCC,   \ rbp must be DATA
+   RCX LINUX-LAYOUT:DATA-VA VA>N IMM,  RAX RCX CMP-REG,  C-NE foreign JCC,   \ rbp must be DATA
    RAX RDX DBASE-SLOT MEM-OFF LOAD,
    RCX BAND-VA IMM,
    RAX RCX PROF-DBASE MEM-OFF CMP-MEM,  C-NE foreign JCC,       \ r13 must be the recorded DBASE
@@ -1458,7 +1458,7 @@ public
    ROW-LBL CALL,
    RESUME, ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;using
 ;using
 ;using

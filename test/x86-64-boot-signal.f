@@ -6,14 +6,14 @@ split-str
 \ DATA register instead of its absolute address writes nothing. The host checks
 \ each ELF header; the peer runs the images.
 require test/x86-64-boot-harness.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 
 package X64K-SIGNAL
 using X64ASM
 using X64CODE
 using X64RT
 using X64BOOT
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 10 constant SIGUSR1
 0 constant NO-FLAGS                     \ a plain `void (int)` handler
@@ -87,7 +87,7 @@ $1000 constant WINDOW
    want ANSWER, ;
 
 : ARMED-CASE ( -- )
-   X64LAYOUT:DATA-VA SIGNAL-ABI:FD-CELL +  SIGNAL-ABI:FD-PTR-CELL
+   LINUX-LAYOUT:DATA-VA SIGNAL-ABI:FD-CELL +  SIGNAL-ABI:FD-PTR-CELL
    X64HARNESS:EXPECT-CELL,
    INSTALL,  PIPE,  ARM,  RAISE,
    SIGNO-BYTES DRAIN,
@@ -123,7 +123,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;using
 ;using
 ;using

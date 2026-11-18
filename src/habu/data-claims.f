@@ -12,9 +12,9 @@ require src/habu/prof-abi.f
 \
 \ The map holds every claim with a declared extent, the profiler band among
 \ them: the top PROF-CNT-BYTES of DATA, as src/habu/prof-abi.f PROF-BAND-AT
-\ places it for the global DATA-SIZE. An x86-64 build's
-\ X64LAYOUT:DATA-SIZE differs on a macOS host, so kernel-x64.f places the band
-\ again through BAND-ASSERT.
+\ places it for the global DATA-SIZE. On a macOS host that is not an x86-64
+\ build's LINUX-LAYOUT:DATA-SIZE, so kernel-x64.f places the band again through
+\ BAND-ASSERT.
 \
 \ Deliberate aliases are one row: VVAL-STACK of VSMAX cells, inside which
 \ DEF-TKA-CELL and DEF-TKL-CELL live at $250/$258 because they are live only while the virtual stack is empty (the

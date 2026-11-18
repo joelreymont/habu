@@ -42,7 +42,7 @@ require src/arch/x86-64/rt.f
 require src/os/linux-x86-64/sys.f
 require src/os/linux-x86-64/proc-watch.f
 require src/os/linux-x86-64/proc-control.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 require src/os/linux/elf.f
 require src/compiler/fixed-body.f
 
@@ -50,7 +50,7 @@ package X64KERNEL
 using X64ASM
 using X64CODE
 using X64RT
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 public
 
@@ -64,25 +64,21 @@ variable UNCAUGHT-ENTRY
    true FLOORREC-PENDING ! ;
 
 \ The highest DP offset the heap rows admit, as habu1.f DP-CHECK bounds it.
-X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
+LINUX-LAYOUT:DATA-SIZE PROF-CNT-BYTES - constant DP-CEILING
 
 \ The DATA claims place that band for the host's DATA-SIZE, which differs from
 \ the target's on a macOS host: check them with the target's band.
-X64LAYOUT:DATA-SIZE DATA-CLAIMS:BAND-ASSERT
+LINUX-LAYOUT:DATA-SIZE DATA-CLAIMS:BAND-ASSERT
 
 \ Every CP is a multiple of the code slot.
 16 constant CODE-SLOT
-
-\ The definition writers refuse a CP, or a long name's slots at CP, that reach
-\ it, as habu2.f bounds `:` at REGION - $4000 above DBASE.
-X64LAYOUT:CODE-CEILING constant CODE-CEILING
 
 private
 
 2 constant STDERR
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
-: SHARED-DATA, ( r64 -- ) X64LAYOUT:DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64 ;
+: SHARED-DATA, ( r64 -- ) LINUX-LAYOUT:DATA-VA VA>N >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
 : CELL@, ( r64 n -- )
    {: r:r64 off:n :}
@@ -843,8 +839,8 @@ private
 : LIBC-ENTRY, ( str -- )
    ELF:IMPORT-ROW ELF:SLOT-OFF {: slot:n :}
    RAX DATA-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
-   RAX RAX X64LAYOUT:IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX LINUX-LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX RAX LINUX-LAYOUT:IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-ADD-RM
    RAX RAX slot MEM-OFF ASM-SINK ENC-MOV-RM ;
 
 public
@@ -3686,13 +3682,13 @@ variable MARK-CELL
    RCX BOOT:IMAGE-BASE-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E selected JCC,
    RDX RDI ASM-SINK ENC-MOV-RR  RDX RCX ASM-SINK ENC-SUB-RR
-   R8 X64LAYOUT:DATA-SIZE IMM64,
+   R8 LINUX-LAYOUT:DATA-SIZE IMM64,
    RDX R8 ASM-SINK ENC-CMP-RR  C-AE selected JCC,
    RAX RCX ASM-SINK ENC-MOV-RR
    selected X64CODE:LBL,
    RAX RSP 56 MOV-STORE,
    RDI RAX ASM-SINK ENC-SUB-RR
-   RAX X64LAYOUT:DATA-SIZE CELL - IMM64,
+   RAX LINUX-LAYOUT:DATA-SIZE CELL - IMM64,
    RDI RAX ASM-SINK ENC-CMP-RR  C-A band JCC,
    RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
    RSI RSP 8 MEM-OFF ASM-SINK ENC-MOV-MR
@@ -3716,7 +3712,7 @@ variable MARK-CELL
    R10 R11 ADDRESS-CELLS:MODE-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
    R10 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E mapped JCC,
    R10 R10 ASM-SINK ENC-TEST-RR  C-NE shape JCC,
-   RAX X64LAYOUT:DATA-SIZE IMM64,
+   RAX LINUX-LAYOUT:DATA-SIZE IMM64,
    RDX RAX ASM-SINK ENC-CMP-RR  C-A shape JCC,
    RAX RDX ASM-SINK ENC-SUB-RR
    RAX 3 >IMM8 ASM-SINK ENC-SHR-RI8
@@ -5741,7 +5737,7 @@ public
    ASM-SINK ENC-RET
    SCOPE-SEED-END-LBL X64CODE:LBL, ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;using
 ;using
 ;using

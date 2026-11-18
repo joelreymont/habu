@@ -224,8 +224,7 @@ copies in the bytes the image carries. Where the code runs is the linker's rule
 - No `LOAD` reserves DATA, so the kernel neither commit-charges it nor starts
   the brk inside it.
 - The target's layout is not the host's: a macOS host places its own DATA
-  elsewhere, so x86 code reads the target's layout from
-  `src/os/linux-x86-64/target-layout.f`, qualified.
+  elsewhere, so x86 code reads the target's layout qualified.
 
 ### Live-region sites
 

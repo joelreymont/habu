@@ -9,7 +9,7 @@ require src/habu/snapshot-format.f
 require src/habu/layout.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 
 package X64SNAP
 using X64ASM
@@ -17,7 +17,7 @@ using X64CODE
 private
 
 : SINK ( -- ^u8 ) ASM-SINK ;
-: HEAP-VA ( -- n ) X64LAYOUT:DATA-VA VA>N DATA-START + ;
+: HEAP-VA ( -- n ) LINUX-LAYOUT:DATA-VA VA>N DATA-START + ;
 : MOV, ( r64 r64 -- ) SINK ENC-MOV-RR ;
 : LIT, ( r64 n -- ) >IMM64 SINK ENC-MOV-RI64 ;
 : ADD, ( r64 r64 -- ) SINK ENC-ADD-RR ;
@@ -57,7 +57,7 @@ public
    R8 R9 CMP,  C-A fail JCC,
    RAX HEAP-VA LIT,
    R10 RAX CMP,  C-B fail JCC,
-   RAX X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE + LIT,
+   RAX LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE + LIT,
    R10 RAX CMP,  C-A fail JCC,
    R11 SNAPSHOT-FORMAT:HEAP-RAW CMPI,  C-E raw JCC,
    R11 SNAPSHOT-FORMAT:HEAP-GRID CMPI,  C-E grid JCC,

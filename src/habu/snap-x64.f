@@ -11,9 +11,9 @@ package SNAP
 \ carrier the snapshot boot copies into DATA; the heap is decoded by that boot.
 : X64-FRAME ( -- )
    STSZ @ SHL @ + SNAP-TRL-BYTES + {: bytes:n :}
-   X64LAYOUT:CODE-OFF bytes + PROT-PAGE-MAX 1- +
+   LINUX-LAYOUT:CODE-OFF bytes + PROT-PAGE-MAX 1- +
       PROT-PAGE-MAX 1- invert and
-      X64LAYOUT:CODE-OFF bytes + - SPAD !
+      LINUX-LAYOUT:CODE-OFF bytes + - SPAD !
    DATA-START SHL @ + SPAD @ + SDW !
    bytes SPAD @ + SNL ! ;
 

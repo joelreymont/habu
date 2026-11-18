@@ -7,10 +7,10 @@ split-str
 require src/habu/snapshot-format.f
 require src/habu/address-cells.f
 require test/x86-64-boot-harness.f
-require src/os/linux-x86-64/target-layout.f
+require src/os/linux/layout.f
 
 package X64K-ENGINE
-using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+using LINUX-LAYOUT   \ the guard
 
 PROT-PAGE-MAX constant FILL-BYTES
 create FILL FILL-BYTES allot
@@ -251,7 +251,7 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    s" cp@" ROW  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    s" dbase@" ROW  0 X64HARNESS:EXPECT-POP-REGION,
    s" data-base" ROW  0 X64HARNESS:EXPECT-POP-DATA,
-   s" rbase" ROW  X64LAYOUT:CODE-OFF REGION-OFF - X64HARNESS:EXPECT-POP-REGION,
+   s" rbase" ROW  LINUX-LAYOUT:CODE-OFF REGION-OFF - X64HARNESS:EXPECT-POP-REGION,
    s" ndict@" ROW  0 X64HARNESS:EXPECT-POP,
    FIRST-WID WIDN-CELL X64HARNESS:CELL!,
    s" wordlist" ROW  s" wordlist" ROW
@@ -455,7 +455,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
 : BUILD-ADDR-BAND ( str -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    ADDRESS-CELLS:BOOT-CAP ADDRESS-HEADER,
-   X64LAYOUT:DATA-SIZE CELL - 1+ X64HARNESS:PUSH-DATA, s" ptr-cell-mark" ROW
+   LINUX-LAYOUT:DATA-SIZE CELL - 1+ X64HARNESS:PUSH-DATA, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ A ptr-cell-mark with no address-cell header exits 96 with E-XTCELL on fd 2.
@@ -584,7 +584,7 @@ public
    X64HARNESS:DISPOSE
    T-REPORT ;
 
-;using   \ X64LAYOUT
+;using   \ LINUX-LAYOUT
 ;package
 
 X64K-ENGINE:RUN
