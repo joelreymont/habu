@@ -11337,8 +11337,10 @@ ON-USE-DEFAULT
 
 \ A body's uses wait in the pending table until the entry that walked it
 \ publishes them (NAV-PUBLISH): CHECK! its body's, CHECKER-SOURCE-DOES!
-\ a clause's. A row keeps its record's offset so a rewind drops it.
+\ a clause's. A row keeps its record's offset so a rewind drops it. Outside a
+\ uses scope nothing reads a use, so none is looked up.
 : NAV-USE ( n str -- )
+   USES-OPEN @ 0= IF 2drop drop EXIT THEN
    NAV-USE-AT 0= IF 2drop 2drop 2drop drop EXIT THEN
    {: s:n e:n rec1:n sym:n v:n ds:n de:n :}
    PU-P PU-CAP PU-N @ 1 + PU-ROW ARENA-ROWS-ENSURE
@@ -11349,6 +11351,7 @@ ON-USE-DEFAULT
 
 \ A use outside a body is published at once.
 : NAV-USE-NOW ( n str -- )
+   USES-OPEN @ 0= IF 2drop drop EXIT THEN
    NAV-USE-AT 0= IF 2drop 2drop 2drop drop EXIT THEN
    {: s:n e:n rec1:n sym:n v:n ds:n de:n :}
    s e sym v ds de CHECKER-ON-USE ;
