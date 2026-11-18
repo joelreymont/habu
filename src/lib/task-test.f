@@ -533,8 +533,8 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s\" s\" ' LIVE drop\" TEST-EVAL:RC drop" SB-APPEND TASK-LF
    SB$ ;
 
-\ Slots (one above a raised DATA floor) and a TASK made in texts that throw, each
-\ under later data: PA and PC keep apart, PC follows PA, the chain skips TB.
+\ Slots (one above a raised DATA floor) made in texts that throw, each under later
+\ data: PA and PC keep apart, PC follows PA.
 : TASK-ROLLBACK-SLOT$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -549,22 +549,6 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" 5 W PA TASK:HIS !  7 W PC TASK:HIS !" SB-APPEND TASK-LF
    s" W PA TASK:HIS @ .  W PC TASK:HIS @ ." SB-APPEND TASK-LF
    s" W PC TASK:HIS W PA TASK:HIS - CELL - ." SB-APPEND TASK-LF
-   s" require src/habu/task-abi.f" SB-APPEND TASK-LF
-   s" package TRC" SB-APPEND TASK-LF
-   s" CAST: N>P ( n -- ^n )" SB-APPEND TASK-LF
-   s" public" SB-APPEND TASK-LF
-   s" : HEAD ( -- n ) data-base NULL-PTR - TASK-CHAIN-CELL + N>P @ N>P @ ;" SB-APPEND TASK-LF
-   s" : LINK ( n -- n ) TASK-ABI:TCB-BYTES + N>P @ ;" SB-APPEND TASK-LF
-   s" : FILL ( n -- ) 0 ?do 777 , loop ;" SB-APPEND TASK-LF
-   s" ;package" SB-APPEND TASK-LF
-   s" variable H0  TRC:HEAD H0 !" SB-APPEND TASK-LF
-   s" TASK:MIN-STACK TASK:TASK TA" SB-APPEND TASK-LF
-   s\" s\" TASK:MIN-STACK TASK:TASK TB  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF
-   s" create JUNK3 TASK-ABI:TCB-BYTES CELL / 4 + TRC:FILL" SB-APPEND TASK-LF
-   s" TASK:MIN-STACK TASK:TASK TC" SB-APPEND TASK-LF
-   s" TRC:HEAD TC FFI:>CELL = bool>n ." SB-APPEND TASK-LF
-   s" TRC:HEAD TRC:LINK TA FFI:>CELL = bool>n ." SB-APPEND TASK-LF
-   s" TRC:HEAD TRC:LINK TRC:LINK H0 @ = bool>n ." SB-APPEND TASK-LF
    SB$ ;
 
 : TASK-SPAWN-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
@@ -651,8 +635,8 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ The FMT phase renders in a tight loop with no yield, because nothing inside a
 \ render yields and the window is one preemption wide. A busy machine can miss
 \ it, so the phase is a regression net, not the proof. The proof is that the
-\ data claims hold FMT-ABI disjoint from every other claim and both fmt
-\ accessors read `data-base`, the running task's region.
+\ data claims hold FMT-ABI disjoint from every other claim and every fmt
+\ accessor reads the running task's region.
 : BUILD-BAD+ ( -- )
    1 BUILD-BAD atomic-add drop ;
 
@@ -717,7 +701,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 : TASK-TEST-ROLLBACK-SLOT ( -- )
    TASK-ROLLBACK-SLOT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 1\n1\n5\n7\n0\n1\n-1\n-1\n-1\n" T$=
+   TASK-OUT outu LEN>N S\" 1\n1\n5\n7\n0\n" T$=
    erru LEN>N 0 T= ;
 
 : TASK-USER-REEXPORT$ ( -- str )
@@ -1738,28 +1722,29 @@ variable ENTRY-RACE-PENDING
 \ cannot be forced, so the case takes many short rounds instead of one timed one.
 400 constant ENTRY-RACE-ROUNDS
 
-\ The count dictionary mutation is refused on. A task a KILL failed to release
-\ stays in it for the life of the image.
-: TASK-LIVE-COUNT ( -- n )
-   data-base TASKS-LIVE-CELL + @ ;
+\ A failed evaluate gives its space back only while no task is live: a task a KILL
+\ failed to release keeps every later rollback's space for the life of the image.
+: NO-TASK-LIVE? ( -- bool )
+   here NULL-PTR - {: before:n :}
+   s" create TASK-TEST-NTL 1 , 2 , 3 ,  1 throw" TEST-EVAL:RC drop
+   here NULL-PTR - before = ;
 
 : ENDED-WORK ( -- )
    1 ENDED-RAN atomic-add drop ;
 
 : TASK-TEST-KILL-ENDED ( -- )
    0 ENDED-RAN !
-   TASK-LIVE-COUNT {: base:n :}
    ['] ENDED-WORK KILL-ENDED TASK:ACTIVATE
    KILL-ENDED APP-WAIT-DONE
    KILL-ENDED TASK:DONE? TTRUE
    KILL-ENDED TASK:KILL
    KILL-ENDED TASK:DONE? TFALSE
-   TASK-LIVE-COUNT base T=
+   NO-TASK-LIVE? TTRUE
    ['] ENDED-WORK KILL-ENDED TASK:ACTIVATE
    KILL-ENDED APP-WAIT-DONE
    KILL-ENDED TASK:KILL
    KILL-ENDED TASK:DONE? TFALSE
-   TASK-LIVE-COUNT base T=
+   NO-TASK-LIVE? TTRUE
    ENDED-RAN @ 2 T= ;
 
 \ Halting a task that has ended is a no-op, not a throw: it has no PAUSE left to
@@ -1806,11 +1791,10 @@ variable ENTRY-RACE-PENDING
 : TASK-TEST-KILL-RACE ( -- )
    0 KILL-RACE-THREW !
    0 KILL-RACE-LEFT !
-   TASK-LIVE-COUNT {: base:n :}
    KILL-RACE-ROUNDS 0 do KILL-RACE-ROUND loop
    KILL-RACE-THREW @ 0 T=
    KILL-RACE-LEFT @ 0 T=
-   TASK-LIVE-COUNT base T= ;
+   NO-TASK-LIVE? TTRUE ;
 
 \ From the HALT's return until the DONE store the state must read HALT-REQ or
 \ DONE; a RUNNING there is a store that landed after the request. The HALT-REQ
@@ -1836,11 +1820,10 @@ variable ENTRY-RACE-PENDING
 : TASK-TEST-ENTRY-RACE ( -- )
    0 ENTRY-RACE-RUNNING !
    0 ENTRY-RACE-PENDING !
-   TASK-LIVE-COUNT {: base:n :}
    ENTRY-RACE-ROUNDS 0 do ENTRY-RACE-ROUND loop
    ENTRY-RACE-RUNNING @ 0 T=
    ENTRY-RACE-PENDING @ 0 <> TTRUE
-   TASK-LIVE-COUNT base T= ;
+   NO-TASK-LIVE? TTRUE ;
 
 \ A task ends by publishing DONE with release ordering or an owner that only
 \ polls TASK:DONE? has no edge to the body's writes. ARM emits STLR and x86-64
@@ -1957,11 +1940,10 @@ variable DONE-PUB-MISSES
 
 : TASK-TEST-DONE-PUBLISH ( -- )
    0 DONE-PUB-MISSES !
-   TASK-LIVE-COUNT {: base:n :}
    ENTRY-RACE-ROUNDS 0 do i 1 + DONE-PUB-ROUND loop
    s" a body's write is visible to an owner that only polled DONE?" T-LABEL
    DONE-PUB-MISSES @ 0 T=
-   TASK-LIVE-COUNT base T= ;
+   NO-TASK-LIVE? TTRUE ;
 
 TASK:MIN-STACK TASK:TASK CTX-BUSY
 
@@ -2065,7 +2047,6 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
    begin TASK:HALTED? if exit then TASK:WAIT again ;
 
 : TASK-TEST-WAKE-RACE ( -- )
-   TASK-LIVE-COUNT {: base:n :}
    0 WAKE-RACE-OK atomic!
    0 WAKE-RACE-REFUSED atomic!
    0 WAKE-RACE-ODD atomic!
@@ -2083,8 +2064,8 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
    WAKE-RACE-ODD atomic@ 0 T=
    s" the wakers landed on both sides of the KILL" T-LABEL
    WAKE-RACE-OK atomic@ 0 <> WAKE-RACE-REFUSED atomic@ 0 <> and TTRUE
-   s" the race gives the live count back" T-LABEL
-   TASK-LIVE-COUNT base T= ;
+   s" the race leaves no task live" T-LABEL
+   NO-TASK-LIVE? TTRUE ;
 
 \ A request made on this run comes before what HALTED? reads, so the state then
 \ says HALT-REQ, and RUNNING means a HALT whose CAS met an earlier run. Runs the
@@ -2144,7 +2125,6 @@ variable HALT-RACE-ROUND
    HALT-RACE-TASK TASK:KILL ;
 
 : TASK-TEST-HALT-RACE ( -- )
-   TASK-LIVE-COUNT {: base:n :}
    0 HALT-RACE-STALE atomic!
    0 HALT-RACE-ENDED atomic!
    0 HALT-RACE-SPINS atomic!
@@ -2158,8 +2138,8 @@ variable HALT-RACE-ROUND
    HALT-RACE-ENDED atomic@ 0 <> TTRUE
    s" the halter's own run ended clean" T-LABEL
    HALT-RACE-H TASK:THROW@ 0 T=
-   s" the race gives the live count back" T-LABEL
-   TASK-LIVE-COUNT base T= ;
+   s" the race leaves no task live" T-LABEL
+   NO-TASK-LIVE? TTRUE ;
 
 \ CONTEXT-BIND reads the row free and only then moves it to BUSY, so a bind that
 \ read it before another bind named it, and moved it after that bind handed it
@@ -2225,7 +2205,6 @@ variable BIND-PAIR-Q-WON
    q 0= p E-TASK-STATE = and if 1 BIND-PAIR-Q-WON +! then ;
 
 : TASK-TEST-BIND-PAIR ( -- )
-   TASK-LIVE-COUNT {: base:n :}
    0 BIND-PAIR-GO atomic!
    0 BIND-PAIR-P-DONE atomic!
    0 BIND-PAIR-Q-DONE atomic!
@@ -2246,8 +2225,8 @@ variable BIND-PAIR-Q-WON
    BIND-PAIR-P-WON @ - BIND-PAIR-Q-WON @ - 0 T=
    s" each binder won rounds alone" T-LABEL
    BIND-PAIR-P-WON @ 0 <> BIND-PAIR-Q-WON @ 0 <> and TTRUE
-   s" the race gives the live count back" T-LABEL
-   TASK-LIVE-COUNT base T= ;
+   s" the race leaves no task live" T-LABEL
+   NO-TASK-LIVE? TTRUE ;
 
 \ A task a worker activated counts in main's live count: with TWW-OUTER killed,
 \ only that count keeps the rollback from lowering the code TWW-INNER is running.
@@ -2318,7 +2297,6 @@ variable NEW-STRAY
    TASK:RETURN ;
 
 : TASK-TEST-NEW-LIVE ( -- )
-   TASK-LIVE-COUNT {: base:n :}
    0 NEW-UP !
    0 NEW-GATE TASK:SEMAPHORE-INIT
    NEW-N 0 ?do
@@ -2327,7 +2305,7 @@ variable NEW-STRAY
    loop
    [: NEW-UP atomic@ NEW-N = ;] NEW-WAIT
    s" TASK:NEW tasks run beside each other" T-LABEL
-   TASK-LIVE-COUNT base NEW-N + T=
+   NO-TASK-LIVE? TFALSE
    s" a task makes, joins and frees a TASK:NEW task while others run" T-LABEL
    ['] NEW-MAKER-BODY NEW-MAKER TASK:ACTIVATE
    NEW-MAKER TASK:JOIN 9 JOIN-OK=
@@ -2335,8 +2313,8 @@ variable NEW-STRAY
    s" each TASK:NEW task answers its own TCB" T-LABEL
    NEW-N 0 ?do i NEW-TASKS @ TASK:JOIN i NEW-TASKS @ FFI:>CELL JOIN-OK= loop
    NEW-N 0 ?do i NEW-TASKS @ TASK:FREE loop
-   s" giving the tasks back returns the live count" T-LABEL
-   TASK-LIVE-COUNT base T=
+   s" giving the tasks back leaves no task live" T-LABEL
+   NO-TASK-LIVE? TTRUE
    NEW-GATE TASK:SEMAPHORE-DESTROY ;
 
 : NEW-SELF-BODY ( -- )
@@ -2360,7 +2338,6 @@ variable NEW-STRAY
 \ record, a TASK:FREE handing out a record still in use or a TCB-GROW losing a
 \ push shows as a task answering another's TCB, a refused FREE or a hang.
 : TASK-TEST-NEW-RACE ( -- )
-   TASK-LIVE-COUNT {: base:n :}
    [: 0 NEW-RACE-RUN ;] NEW-RACER-0 TASK:ACTIVATE
    [: 1 NEW-RACE-RUN ;] NEW-RACER-1 TASK:ACTIVATE
    [: 2 NEW-RACE-RUN ;] NEW-RACER-2 TASK:ACTIVATE
@@ -2370,8 +2347,8 @@ variable NEW-STRAY
    NEW-RACER-1 TASK:JOIN 0 JOIN-OK=
    NEW-RACER-2 TASK:JOIN 0 JOIN-OK=
    NEW-RACER-3 TASK:JOIN 0 JOIN-OK=
-   s" the racers give the live count back" T-LABEL
-   TASK-LIVE-COUNT base T= ;
+   s" the racers leave no task live" T-LABEL
+   NO-TASK-LIVE? TTRUE ;
 
 : NEW-CLEAN ( -- )
    1 NEW-CLEANED atomic-add drop ;

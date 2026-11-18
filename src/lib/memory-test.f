@@ -66,9 +66,9 @@ variable MEMT-HERE
    MEMT-TOUCH-64K-SLOTS ;
 
 : MEMT-DATA-UNCHANGED ( -- )
-   here data-base - MEMT-HERE !
+   here NULL-PTR - MEMT-HERE !
    MEM-ALLOC-64K 2drop
-   here data-base - MEMT-HERE @ T= ;
+   here NULL-PTR - MEMT-HERE @ T= ;
 
 : MEMT-LIVE-SPAN-FRAME ( str n -- ) {: a:^ u remaining :}
    u MEMT-SPAN-TOTAL T=
@@ -80,10 +80,10 @@ variable MEMT-HERE
    a u MEMT-TOUCH-SPAN-SLOTS ;
 
 : MEMT-MANY-LIVE-SPANS ( -- )
-   here data-base - MEMT-HERE !
+   here NULL-PTR - MEMT-HERE !
    MEMT-SPAN-BUFS MEM-ALLOC-64K-BUFFERS
    MEMT-SPANS 1 - MEMT-LIVE-SPAN-FRAME
-   here data-base - MEMT-HERE @ T= ;
+   here NULL-PTR - MEMT-HERE @ T= ;
 
 
 T-RESET
