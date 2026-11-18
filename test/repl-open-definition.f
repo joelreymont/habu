@@ -172,9 +172,9 @@ using PTY-HARNESS
 \ hook's throw ends the process with its code.
 : HOOK-CASE ( -- )
    OPEN dup TTRUE if
+      s" require src/lib/at-exit.f" STEP TTRUE
       S\" : RV-HOOK ( -- ) s\" HOOK\" type cr 91 throw ;" STEP TTRUE
-      s" TRUSTED: RV-ARM ( -- ) ['] RV-HOOK data-base EXIT-HOOK-CELL + ! ;" STEP TTRUE
-      s" RV-ARM" STEP TTRUE
+      s" ' RV-HOOK AT-EXIT:ADD" STEP TTRUE
       4 SEND-BYTE
    then
    91 EXIT=
@@ -187,9 +187,9 @@ using PTY-HARNESS
 \ the process with its code and no prompt follows die's message.
 : DIE-HOOK-CASE ( -- )
    OPEN dup TTRUE if
+      s" require src/lib/at-exit.f" STEP TTRUE
       s" : CHILD-HOOK ( -- ) 9 throw ;" STEP TTRUE
-      s" TRUSTED: CHILD-ARM ( -- ) ['] CHILD-HOOK data-base EXIT-HOOK-CELL + ! ;" STEP TTRUE
-      s" CHILD-ARM" STEP TTRUE
+      s" ' CHILD-HOOK AT-EXIT:ADD" STEP TTRUE
       S\" : CHILD-DIE ( n -- ) 0< if s\q neg\q 3 die then ;" STEP TTRUE
       s" : CHILD-MAIN ( -- n ) [: -1 CHILD-DIE ;] catch ;" STEP TTRUE
       BUF-CLEAR s" CHILD-MAIN" SEND-LINE

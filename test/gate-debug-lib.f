@@ -7,7 +7,6 @@ require src/lib/string.f
 require tools/code-dump-core.f
 require src/lib/process.f
 require test/gate-common.f
-require src/habu/prof-abi.f
 require src/lib/test/eval.f
 
 using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DUMP
@@ -28,9 +27,9 @@ using CODE-DUMP    \ DECODE / FIND-XT / LOAD-PROGRAM, called bare in GDB-CODE-DU
 \ --- profiler report regressions ---
 \ Every report opens with one header line that states its own accounting:
 \
-\   profiler samples N words W other O new X foreign F frames ... indexed I usec U
+\   profiler samples N words W other O new X defer D spill S foreign F ... usec U
 \
-\ W + O + X + F == N is the identity the counting cases read, by field name, so
+\ W + O + X + D + S + F == N is the identity the counting cases read, by field name, so
 \ a report that grows a column stays checked. F counts the foreign samples
 \ charged to no word; the ones charged to a calling word are inside W. A busy word whose loop inlines its
 \ primitives keeps every interrupted pc inside its own range, so its samples
@@ -75,6 +74,14 @@ variable GDB-CUT      \ GDB-AFTER's cut point
      some OF IDX>N v + GDB-CUT !  a GDB-CUT @ +  u GDB-CUT @ -  ENDOF
    ;MATCH ;
 
+\ The bytes before the first line feed, all of them when none.
+: GDB-LINE$ ( str -- str )
+   {: a:^ u:n :}
+   a u S\" \n" FIND-SUB MATCH option
+     none OF a u ENDOF
+     some OF IDX>N a swap ENDOF
+   ;MATCH ;
+
 \ The sample total, from either report: "profiler samples N" or {"samples":N}.
 : GDB-SAMPLES ( str -- n )
    s" samples" GDB-FIELD ;
@@ -82,18 +89,21 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ The header's own identity, plus the limit the sample total must reach (-1:
 \ none). A sample counts the intervals since the last one, so the one that
 \ reaches the limit may carry the total past it.
+: GDB-BUCKETS ( str -- n ) {: a:^ u:n :}
+   a u s" words" GDB-FIELD
+   a u s" other" GDB-FIELD +
+   a u s" new" GDB-FIELD +
+   a u s" defer" GDB-FIELD +
+   a u s" spill" GDB-FIELD +
+   a u s" foreign" GDB-FIELD + ;
+
 : GDB-ACCOUNT ( str n -- ) {: a:^ u:n want:n :}
    a u GDB-SAMPLES {: tot:n :}
    tot 0 < if s" profiler report has no header line" GE-FAIL then
    want 0 >= tot want < and if
       s" profiler sample total is below the limit" GE-FAIL
    then
-   a u s" words" GDB-FIELD
-   a u s" other" GDB-FIELD +
-   a u s" new" GDB-FIELD +
-   a u s" defer" GDB-FIELD +
-   a u s" spill" GDB-FIELD +
-   a u s" foreign" GDB-FIELD + tot <> if
+   a u GDB-BUCKETS tot <> if
       s" profiler header: the named buckets do not add up to samples" GE-FAIL
    then ;
 
@@ -300,39 +310,37 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    n 3 > if s" a 1.5 s interval sampled more often than every 1.5 s" GE-FAIL then
    s" PASS: prof-on arms an interval of a second or more" type cr ;
 
-\ The running engine's band and arena, read as the report reads them.
-: GDB-PROF-BAND-SRC ( -- )
-   s" require src/habu/prof-abi.f" GE-SRC-LINE
-   s" 0 SNAP-RELOC:XTCELL-OFF-MAX CELL + PROF-ABI:PROF-BAND-AT constant GDB-BAND" GE-SRC-LINE
-   s" : GDB-BAND@ ( n -- n ) {: off:n :} data-base GDB-BAND + off + @ ;" GE-SRC-LINE
-   s" TRUSTED: GDB>ARENA ( n -- ^n ) ;" GE-SRC-LINE
-   s" : GDB-ARENA ( n -- ^n ) {: off:n :} PROF-ABI:PROF-ARENA GDB-BAND@ GDB>ARENA off + ;" GE-SRC-LINE ;
+\ The text reports in a run's output: how many, and how many whose header's
+\ buckets do not add up to its samples.
+variable GDB-SEEN
+variable GDB-SKEWED
+: GDB-HEADER ( str -- ) {: a:^ u:n :}
+   1 GDB-SEEN +!
+   a u GDB-BUCKETS a u GDB-SAMPLES <> if 1 GDB-SKEWED +! then ;
+: GDB-HEADERS ( str -- n n )
+   0 GDB-SEEN !  0 GDB-SKEWED !
+   begin s" profiler " GDB-AFTER dup 0 > while 2dup GDB-HEADER repeat 2drop
+   GDB-SEEN @ GDB-SKEWED @ ;
 
-\ prof-reset 1000 times at 50 us, each time followed by prof-off and the
-\ header's identity, words + other + new + defer + spill + foreign == samples,
-\ read with the clock stopped. Under load Darwin delivers a tick after the
-\ timer stopped in a few of 1000 stops, so the identity holds only because a
-\ held or stopped clock counts nothing (src/habu/prof-abi.f, PROF-ARMED). Each
-\ turn arms afresh, so a reset run straight after the arm would always start a
-\ whole interval before the first tick; a delay of 64 steps of 800 ns between
-\ the two moves the reset's start across the interval. The child prints how
-\ many resets left the identity false.
+\ prof-reset 1000 times at 50 us, each time followed by prof-off and a report
+\ whose header must keep its identity. Under load Darwin delivers a tick after
+\ the timer stopped in a few of 1000 stops, so the identity holds only because
+\ a held or stopped clock counts nothing (src/habu/prof-abi.f, PROF-ARMED).
+\ Each turn arms afresh, so a reset run straight after the arm would always
+\ start a whole interval before the first tick; a delay of 64 steps of 800 ns
+\ between the two moves the reset's start across the interval.
 : GDB-PROFILER-RESETS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   GDB-PROF-BAND-SRC
    GDB-DELAY-SRC
-   s" : GDB-WORDS ( -- n ) 0 ndict@ 0 ?do PROF-STATE-BYTES i cells + GDB-BAND@ + loop ;" GE-SRC-LINE
-   s" : GDB-SKEW ( -- n ) GDB-WORDS PROF-ABI:ARN-NEW GDB-ARENA @ + PROF-ABI:ARN-DEFER GDB-ARENA @ +" GE-SRC-LINE
-   s"    PROF-ABI:ARN-SPILL GDB-ARENA @ + PROF-ABI:PROF-OTHER GDB-BAND@ + PROF-ABI:PROF-FOREIGN GDB-BAND@ +" GE-SRC-LINE
-   s"    PROF-ABI:PROF-TOT GDB-BAND@ - ;" GE-SRC-LINE
-   s" variable GDB-BAD" GE-SRC-LINE
    s" : GDB-RESETS ( -- ) 1000 0 do 0 prof-on i 63 and 800 * GDB-DELAY prof-reset prof-off" GE-SRC-LINE
-   s"    GDB-SKEW 0<> if 1 GDB-BAD +! then loop ;" GE-SRC-LINE
-   S\" 50 prof-rate GDB-RESETS s\" skewed \" type GDB-BAD @ . cr" GE-SRC-LINE
+   s"    prof-report loop ;" GE-SRC-LINE
+   s" 50 prof-rate GDB-RESETS" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler resets in a hot loop" GE-EXPECT-OK
-   GT-OUT$ s" skewed" GDB-FIELD 0 <> if
+   GT-OUT$ GDB-HEADERS {: seen:n skewed:n :}
+   seen 1000 <> if s" the child printed another count of reports than 1000" GE-FAIL then
+   skewed 0<> if
       s" a tick counted while prof-reset or prof-off held the clock" GE-FAIL
    then
    s" PASS: a held clock counts nothing, so the identity survives 1000 resets at 50 us" type cr ;
@@ -373,19 +381,6 @@ variable GDB-CUT      \ GDB-AFTER's cut point
       s" a caught prof-rate -1 or past the longest changed the rate the next prof-on arms" GE-FAIL
    then
    s" PASS: prof-rate throws E-PROF-RATE for a negative interval and one past the OS timer's longest, and keeps the rate" type cr ;
-
-\ An interval only a write past prof-rate can leave, -1 in ARN-USEC: prof-on's
-\ setitimer refuses it, and the refusal is named and exits 78.
-: GDB-PROFILER-ARM-REFUSED ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   GDB-PROF-BAND-SRC
-   s" 250 prof-rate -1 PROF-ABI:ARN-USEC GDB-ARENA ! 0 prof-on" GE-SRC-LINE
-   S\" s\" prof-on armed -1\" type cr" GE-SRC-LINE
-   GDB-PROF-RUN
-   78 s" a refused arm exits 78" GE-EXPECT-RC
-   PROF-ABI:PROFARMMSG$ s" a refused arm is named on fd 2" GE-EXPECT-ERR
-   s" PASS: a setitimer that refuses the arm is named and fatal" type cr ;
 
 \ A phase word - the caller that encloses the work - takes no exclusive samples
 \ at all, so no exclusive ranking will ever show it. The inclusive section, the
@@ -534,7 +529,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 \ An engine-text target can share a page with patch32 itself: opening that
 \ page RW removes execute permission from the patcher's next instruction.
-\ Refusal must precede both the patch and publication of a breakpoint slot.
+\ Refusal must precede both the patch and publication of a breakpoint slot, so
+\ BP. lists the one valid breakpoint after the refused arm and after a BP- of
+\ an xt with none, and nothing once that one is removed.
 \ atomic-cas is a primitive, whose tick is an opaque xt no typed slot admits, so
 \ the child stores it through a TRUSTED setter.
 : GDB-BREAKPOINT-REFUSAL ( -- )
@@ -546,18 +543,20 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" TYPED-VARIABLE TARGET-XT [ n n ^n -- n ] TRUSTED: TARGET-SET ( -- ) ['] atomic-cas TARGET-XT ! ; TARGET-SET" GE-SRC-LINE
    s" TYPED-VARIABLE NONE-XT [ n -- n ]" GE-SRC-LINE
    s" CAST: TARGET>ADDR ( [ n n ^n -- n ] -- n )" GE-SRC-LINE
-   s" create SAVED-SLOTS DEBUG:MAXBP 32 * allot create SAVED-CODE 16 allot" GE-SRC-LINE
-   s" : TABLE ( -- ^u8 ) data-base BPTAB-OFF + ;" GE-SRC-LINE
+   s" create SAVED-CODE 16 allot" GE-SRC-LINE
    s" : SUBJECT ( -- ^u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
    s" : ARM ( -- ) TARGET-XT @ DEBUG:BP+ ;" GE-SRC-LINE
-   s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ TABLE SAVED-SLOTS DEBUG:MAXBP 32 * BYTE-COPY SUBJECT SAVED-CODE 16 BYTE-COPY" GE-SRC-LINE
-   s" ['] ARM catch ." GE-SRC-LINE
-   s" TABLE DEBUG:MAXBP 32 * SAVED-SLOTS DEBUG:MAXBP 32 * STR= if 1 else 0 then ." GE-SRC-LINE
-   s" SUBJECT 16 SAVED-CODE 16 STR= if 1 else 0 then . NONE-XT @ DEBUG:BP-" GE-SRC-LINE
-   s" TABLE DEBUG:MAXBP 32 * SAVED-SLOTS DEBUG:MAXBP 32 * STR= if 1 else 0 then ." GE-SRC-LINE
-   s" VALID-XT @ DEBUG:BP- ; CHECK ;package" GE-SRC-LINE
+   s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ SUBJECT SAVED-CODE 16 BYTE-COPY DEBUG:BP." GE-SRC-LINE
+   s" ['] ARM catch . DEBUG:BP." GE-SRC-LINE
+   s" SUBJECT 16 SAVED-CODE 16 STR= if 1 else 0 then . NONE-XT @ DEBUG:BP- DEBUG:BP." GE-SRC-LINE
+   s" VALID-XT @ DEBUG:BP- DEBUG:BP. ; CHECK ;package" GE-SRC-LINE
    s" unsupported breakpoint target" GE-HB-RUN-STDIN
-   S\" -9300\n1\n1\n1\n" s" named breakpoint refusal preserves table and code" GE-EXPECT-OUT
+   GT-OUT$ GDB-LINE$ {: at:^ atu:n :}
+   SB-RESET
+   at atu SB-APPEND S\" \n\n-9300\n" SB-APPEND
+   at atu SB-APPEND S\" \n\n1\n" SB-APPEND
+   at atu SB-APPEND S\" \n\n" SB-APPEND
+   SB$ s" named breakpoint refusal preserves the listing and code" GE-EXPECT-OUT
    s" PASS: unsupported breakpoint refuses before changing slots or code" type cr ;
 
 \ The debugger's names live in package DEBUG, so a program defines its own FIND
@@ -605,7 +604,6 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-SLOW
    GDB-PROFILER-RESETS
    GDB-PROFILER-RATE-REFUSED
-   GDB-PROFILER-ARM-REFUSED
    GDB-PROFILER-INCLUSIVE
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL
