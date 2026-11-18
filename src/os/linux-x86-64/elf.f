@@ -7,12 +7,10 @@
 \ What differs from the aarch64 writer is what the architecture owns - e_machine,
 \ the interpreter the dynamic loader is named by (one byte longer, which is why
 \ ELF-INTERP-SZ is 28 and not 27) and the GOT relocation type - and two fixed
-\ segments: this image maps its code region by PT_LOAD, where the aarch64 boot
-\ maps it itself, and carries DATA's initialized bytes in a read-only PT_LOAD
-\ at the region's end, which the boot copies into the DATA it maps itself, as
-\ the aarch64 boot does (docs/xcomp.md "Fixed segments"). Its six program
-\ headers end at $190, so the metadata behind them starts there and not at the
-\ aarch64 writer's $120.
+\ segments: the code region's PT_LOAD carries a linked image's region bytes,
+\ and a read-only PT_LOAD at the region's end carries DATA's initialized bytes,
+\ which the boot copies into the DATA it maps itself (docs/xcomp.md "Fixed
+\ segments"). Its six program headers end at $190, where the metadata starts.
 \ Everything else here is ELF64 format, and reads the same under both machines.
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f).
 \ CODE-OFF is the target's, read qualified from

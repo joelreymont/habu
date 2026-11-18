@@ -62,6 +62,19 @@ variable I-W
 
 private
 
+\ The code region lies past the largest text and its tail, and its far end
+\ within BL reach of __text.
+: REGION-CHECK ( -- )
+   CODE-OFF CODE-CAP-BYTES + PROT-PAGE-MAX + REGION-OFF > if
+      s" layout: the largest text and its tail pass REGION-OFF"
+      EXIT-STATUS:IMAGE die
+   then
+   REGION-OFF REGION + BL-REACH > if
+      s" layout: the code region's end passes BL reach of the image"
+      EXIT-STATUS:BL-RANGE die
+   then ;
+REGION-CHECK
+
 \ One record per label reference: REF-SITES its first word, REF-LABELS LABEL>N
 \ of its label, REF-KINDS its kind. ARESET empties them with the code buffer.
 DYNAMIC-BUFFER REF-SITES n

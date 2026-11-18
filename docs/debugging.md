@@ -162,7 +162,7 @@ answer:
 ```
 
 The argument is a **region offset**, not an address: ASLR moves the region
-every boot, and `region-off=` is what one run can hand another. Run it inside
+on macOS, and `region-off=` is what one run can hand another. Run it inside
 the engine under study, the only process where those records exist.
 
 ## Dictionary / xref inspection

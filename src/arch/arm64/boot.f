@@ -168,9 +168,7 @@ public
    APP-ENTRY:XT-CELL CALL-EXIT, ;
 
 \ An engine's start-up: START,'s labels, then the record image's and the record
-\ list's start and end. The region's two views come first: EM-MMAP-CODE-REGION
-\ reads the image headers through x20 = the text base and leaves
-\ x21 = alias - base, which x17 keeps for REGION-ALIAS:DELTA-CELL.
+\ list's start and end; x17 keeps alias - base for REGION-ALIAS:DELTA-CELL.
 : ENGINE-START, ( n label label label label label label label label -- )
    {: linked:n image:label image-end:label list:label list-end:label
       recs:label recs-end:label rlist:label rlist-end:label :}

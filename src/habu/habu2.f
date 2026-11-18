@@ -1454,72 +1454,15 @@ public
    10 DATA STACK-ABI:LOOP-BASE-CELL STR, ;
 
 : EM-MMAP-CODE-REGION ( -- )
-   LBL LBL {: rok:label rvok:label :}
-   \ Hint the region at __text (XREG-RBASE/x20) + REGION-OFF and take the base
-   \ the kernel returns. A fixed address cannot be reserved. Region-to-text call
-   \ displacements are relocated, so the base only has to lie within BL reach of
-   \ __text, which the assertion below checks. PROT-PAGE-MAX extra bytes and a
-   \ round-up keep the base PROT-PAGE-MAX aligned when the kernel returns an
-   \ address only page aligned.
-   6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,
-   9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,
-   9 PROT-PAGE-MAX negate LIT64,  6 6 9 AND,       \ x6 = page-aligned canonical hint
-   \ Clamp the hint after the last segment described by the loaded image.
-   9 CODE-OFF MOVZ,  9 XREG-RBASE 9 SUB,           \ x9 = this run's image base
+   \ Leaves x0 = the base code runs from and x21 = the RW alias - base; x13-x15
+   \ (argc, argv, envp), x19 and x20 survive.
    HB-TARGET-LINUX? IF
-      7 9 136 LDR,  8 9 80 LDR,  7 7 8 SUB,
-      8 9 160 LDR,
-   ELSE
-      7 9 $1B0 LDR,  8 9 $80 LDR,  7 7 8 SUB,
-      8 9 $1B8 LDR,
-   THEN
-   7 7 8 ADD,                                      \ x7 = final segment end offset
-   7 9 7 ADD,
-   8 PROT-PAGE-MAX 1 - MOVZ,  7 7 8 ADD,
-   8 PROT-PAGE-MAX negate LIT64,  7 7 8 AND,
-   6 7 CMP,  6 6 7 C-HI CSEL,                      \ x6 = the higher of hint and image end
-   0 6 0 ADDI,  1 REGION PROT-PAGE-MAX + LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
-   NR-MMAP SYS,
-   \ SYS, leaves the same syscall-error convention on both targets -- Darwin sets the
-   \ carry flag, and the Linux emitter reconciles -errno into it -- so a failed mapping
-   \ is read from the flag the kernel set, not guessed from the shape of x0.
-   C-CC rok BCOND,
-      3 REGION PROT-PAGE-MAX + LIT64,
-      s" hb: the system refused the code region; raise the address-space limit (ulimit -v) above its size in bytes:"
-      EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
-   rok LBL,
-   9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
-   9 PROT-PAGE-MAX negate LIT64,  0 0 9 AND,       \ page-aligned region base
-   \ Boot BL-range assertion: the whole region must lie within +/-128 MiB of
-   \ __text. x0 (region base) survives.
-   9 REGION LIT64,  9 0 9 ADD,  9 9 XREG-RBASE SUB,
-   5 BL-REACH LIT64,  9 5 CMP,
-   C-CC rvok BCOND,
-      s" E-BL-RANGE habu: code region out of BL range" EXIT-STATUS:BL-RANGE DIE-LINE,
-   rvok LBL,
-   \ The region's two views: code runs from this base, which turns RX here, and
-   \ stores go through a RW alias of [base, base+REGION). x21 carries alias -
-   \ base to the start-up that publishes it; nothing from here to there uses
-   \ x21. The calls keep x19/x20 and argc/argv/envp. macOS remaps the anonymous
-   \ pages; Linux maps one memfd twice, the RX view over the reservation, whose
-   \ slack on both sides of [base, base+REGION), below the rounded-up base and
-   \ past its end, stays anonymous RW.
-   HB-TARGET-MACOS? IF
-      LBL LBL {: afail:label adone:label :}
-      SP SP 32 SUBI,  13 SP 0 STR,  14 SP 8 STR,  15 SP 16 STR,  0 SP 24 STR,
-      16 XREG-RBASE 0 ADDI,  false afail LIBC-OS:REGION-REMAP
-      21 0 0 ADDI,
-      0 SP 24 LDR,  1 REGION LIT64,  2 5 MOVZ,  NR-MPROTECT SYS,
-      C-CS afail BCOND,
-      13 SP 0 LDR,  14 SP 8 LDR,  15 SP 16 LDR,  0 SP 24 LDR,  SP SP 32 ADDI,
-      adone B,
-      afail LBL,
-         s" hb: the system refused the code region's writable alias; raise the address-space limit (ulimit -v)"
-         EXIT-STATUS:SYSTEM DIE-LINE,
-      adone LBL,
-   ELSE
+      \ The RX view maps fixed over the image's own load of the region, at its
+      \ base plus REGION-OFF; the RW alias goes where the kernel puts it.
       LBL LBL {: vfail:label vdone:label :}
-      9 0 0 ADDI,  vfail LIBC-OS:REGION-MEMFD  10 0 0 ADDI,   \ x9 = base, x10 = fd
+      9 CODE-OFF MOVZ,  9 XREG-RBASE 9 SUB,           \ x9 = this run's image base
+      10 REGION-OFF LIT64,  9 9 10 ADD,               \ x9 = region base
+      vfail LIBC-OS:REGION-MEMFD  10 0 0 ADDI,        \ x10 = fd
       0 9 0 ADDI,  1 REGION LIT64,  2 5 MOVZ,  3 MAP-SHARED-FIXED LIT64,
       4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS vfail BCOND,
       0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED LIT64,
@@ -1531,6 +1474,54 @@ public
          s" hb: the system refused the code region's views; raise the open-file limit (ulimit -n) or the address-space limit (ulimit -v)"
          EXIT-STATUS:SYSTEM DIE-LINE,
       vdone LBL,
+   ELSE
+      \ A macOS image is placed by ASLR and reserves no region: hint it at
+      \ __text + REGION-OFF, past the image's last segment, and take any base.
+      LBL LBL LBL LBL {: rok:label rvok:label afail:label adone:label :}
+      6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,
+      9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,
+      9 PROT-PAGE-MAX negate LIT64,  6 6 9 AND,    \ x6 = page-aligned canonical hint
+      9 CODE-OFF MOVZ,  9 XREG-RBASE 9 SUB,        \ x9 = this run's image base
+      7 9 $1B0 LDR,  8 9 $80 LDR,  7 7 8 SUB,
+      8 9 $1B8 LDR,
+      7 7 8 ADD,                                   \ x7 = final segment end offset
+      7 9 7 ADD,
+      8 PROT-PAGE-MAX 1 - MOVZ,  7 7 8 ADD,
+      8 PROT-PAGE-MAX negate LIT64,  7 7 8 AND,
+      6 7 CMP,  6 6 7 C-HI CSEL,                   \ x6 = the higher of hint and image end
+      \ PROT-PAGE-MAX spare bytes let the base round up to PROT-PAGE-MAX when
+      \ the kernel aligns it only to a page.
+      0 6 0 ADDI,  1 REGION PROT-PAGE-MAX + LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
+      NR-MMAP SYS,
+      \ Darwin sets the carry flag on a failed call, so a failed mapping is
+      \ read from the flag, not guessed from the shape of x0.
+      C-CC rok BCOND,
+         3 REGION PROT-PAGE-MAX + LIT64,
+         s" hb: the system refused the code region; raise the address-space limit (ulimit -v) above its size in bytes:"
+         EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE,
+      rok LBL,
+      9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
+      9 PROT-PAGE-MAX negate LIT64,  0 0 9 AND,    \ page-aligned region base
+      \ Region-to-text calls are relocated, so any base serves whose region
+      \ lies within BL-REACH of __text. x0 (region base) survives.
+      9 REGION LIT64,  9 0 9 ADD,  9 9 XREG-RBASE SUB,
+      5 BL-REACH LIT64,  9 5 CMP,
+      C-CC rvok BCOND,
+         s" E-BL-RANGE habu: code region out of BL range" EXIT-STATUS:BL-RANGE DIE-LINE,
+      rvok LBL,
+      \ The anonymous pages become the RX view, and the RW alias is remapped
+      \ from them.
+      SP SP 32 SUBI,  13 SP 0 STR,  14 SP 8 STR,  15 SP 16 STR,  0 SP 24 STR,
+      16 XREG-RBASE 0 ADDI,  false afail LIBC-OS:REGION-REMAP
+      21 0 0 ADDI,
+      0 SP 24 LDR,  1 REGION LIT64,  2 5 MOVZ,  NR-MPROTECT SYS,
+      C-CS afail BCOND,
+      13 SP 0 LDR,  14 SP 8 LDR,  15 SP 16 LDR,  0 SP 24 LDR,  SP SP 32 ADDI,
+      adone B,
+      afail LBL,
+         s" hb: the system refused the code region's writable alias; raise the address-space limit (ulimit -v)"
+         EXIT-STATUS:SYSTEM DIE-LINE,
+      adone LBL,
    THEN ;
 
 ;package

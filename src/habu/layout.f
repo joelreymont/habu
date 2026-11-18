@@ -51,12 +51,11 @@ constant X64-MASK
 \ Fixed budget for dictionary and code, including the retained build host and
 \ its replacement core.
 $2300000 constant REGION
-\ Canonical code-region hint past __text. The engine clamps it after the loaded
-\ image and checks the resulting mapping against BL-REACH at boot.
-$1000000 constant REGION-OFF
-\ BL-REACH: AArch64 BL imm26 reach (+/-128 MiB). The boot dies
-\ EXIT-STATUS:BL-RANGE when the mapped region falls outside it from __text;
-\ direct-BL emission relies on it.
+\ The code region's offset past the largest text and its read-write tail: from
+\ the image's base where Linux reserves it, from __text where macOS hints it.
+$2000000 constant REGION-OFF
+\ AArch64 BL imm26 reach (+/-128 MiB): direct-BL emission relies on the code
+\ region lying within it of __text.
 $8000000 constant BL-REACH
 $48425350414E5321 constant SNAP-MAGIC
 

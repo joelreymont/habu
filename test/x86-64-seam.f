@@ -56,9 +56,9 @@ $1000 constant WANT-CODE-OFF
 56 constant PHENT
 6 constant WANT-PHNUM
 $10000 constant WANT-PAGE-MAX
-$1400000 constant WANT-REGION-VA        \ VMBASE plus REGION-OFF
+$2400000 constant WANT-REGION-VA        \ VMBASE plus REGION-OFF
 $2300000 constant WANT-REGION
-$3700000 constant WANT-CARRIER-VA       \ the region's end
+$4700000 constant WANT-CARRIER-VA       \ the region's end
 \ The metadata past the six program headers, which end at $190.
 $190 constant WANT-INTERP-OFF
 $1B0 constant WANT-HASH-OFF

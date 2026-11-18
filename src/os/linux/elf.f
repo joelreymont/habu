@@ -4,13 +4,18 @@ split-str
 \ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
 \ tail never share a kernel page on any supported page size.
 \
-\ OPEN reads the extents of such an executable: the ELF header, its four
-\ program headers (the text's PT_LOAD, the read-write tail's PT_LOAD, PT_INTERP
-\ and PT_DYNAMIC), the interpreter path and the hash, symbol, string and
-\ relocation tables the dynamic section names. The code starts at the entry,
-\ and the text's PT_LOAD maps the file from offset 0, so a file offset is an
-\ address less that load's. Offsets come from these headers, never from the
-\ inspecting host.
+\ The code region is a PT_LOAD of REGION bytes at the image's base plus
+\ REGION-OFF that holds no file bytes: the kernel reserves it at exec, so the
+\ brk heap starts above it and nothing mapped before entry takes its range, and
+\ the boot maps the region's views over it.
+\
+\ OPEN reads the extents of such an executable: the ELF header, its five
+\ program headers (the text's PT_LOAD, the read-write tail's PT_LOAD, PT_INTERP,
+\ PT_DYNAMIC and the code region's PT_LOAD), the interpreter path and the hash,
+\ symbol, string and relocation tables the dynamic section names. The code
+\ starts at the entry, and the text's PT_LOAD maps the file from offset 0, so a
+\ file offset is an address less that load's. Offsets come from these headers,
+\ never from the inspecting host.
 
 require src/core/exit-status.f
 require src/arch/arm64/icode.f
@@ -42,16 +47,16 @@ $B7 constant EM-AARCH64
 6 constant PF-RW
 64 constant ELF-HDR-SZ
 56 constant ELF-PHDR-SZ
-4 constant ELF-PHDR-N
+5 constant ELF-PHDR-N
 \ Where the file's first byte maps.
 variable VMBASE
 $B0 constant ELF-DYNAMIC-SZ
-$120 constant ELF-INTERP-OFF
+$158 constant ELF-INTERP-OFF
 TYPED-VARIABLE X64 bool
 : INTERPRETER$ ( -- str )
    X64 @ if s" /lib64/ld-linux-x86-64.so.2" else s" /lib/ld-linux-aarch64.so.1" then ;
 : ELF-INTERP-SZ ( -- n ) INTERPRETER$ nip 1+ ;
-$140 constant ELF-HASH-OFF
+$178 constant ELF-HASH-OFF
 24 constant ELF-SYM-SZ
 24 constant ELF-RELA-ENT-SZ
 $401 constant ELF-R-AARCH64-GLOB-DAT
@@ -159,34 +164,40 @@ private
    ELF-HDR-SZ IMG-M16  ELF-PHDR-SZ IMG-M16  ELF-PHDR-N IMG-M16
    0 IMG-M16  0 IMG-M16  0 IMG-M16 ;
 
-: ELF-PHDR, ( n n n n n n -- ) {: typ flags off va filesz align :}
+: ELF-PHDR, ( n n n n n n n -- ) {: typ flags off va filesz memsz align :}
    typ IMG-M32
    flags IMG-M32
    off IMG-M64
    va IMG-M64
    va IMG-M64
    filesz IMG-M64
-   filesz IMG-M64
+   memsz IMG-M64
    align IMG-M64 ;
 
 : ELF-RX-PHDR, ( -- )
-   PT-LOAD PF-RX 0 VMBASE @ ELF-TEXT-SIZE @ PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD PF-RX 0 VMBASE @ ELF-TEXT-SIZE @ dup PROT-PAGE-MAX ELF-PHDR, ;
 
 : ELF-RW-PHDR, ( -- )
-   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ dup PROT-PAGE-MAX
+   ELF-PHDR, ;
 
 : ELF-INTERP-PHDR, ( -- )
-   PT-INTERP PF-R ELF-INTERP-OFF ELF-INTERP-OFF ELF-VA ELF-INTERP-SZ 1
+   PT-INTERP PF-R ELF-INTERP-OFF ELF-INTERP-OFF ELF-VA ELF-INTERP-SZ dup 1
    ELF-PHDR, ;
 
 : ELF-DYNAMIC-PHDR, ( -- )
-   PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ 8 ELF-PHDR, ;
+   PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ dup 8 ELF-PHDR, ;
 
+: ELF-REGION-PHDR, ( -- )
+   PT-LOAD PF-RW 0 REGION-OFF ELF-VA 0 REGION PROT-PAGE-MAX ELF-PHDR, ;
+
+\ The loads ascend by address: text, read-write tail, code region.
 : ELF-PHDRS, ( -- )
    ELF-RX-PHDR,
    ELF-RW-PHDR,
    ELF-INTERP-PHDR,
-   ELF-DYNAMIC-PHDR, ;
+   ELF-DYNAMIC-PHDR,
+   ELF-REGION-PHDR, ;
 
 : ELF-INTERP, ( -- )
    ELF-INTERP-OFF M-OFF M-PAD-OFF
@@ -265,10 +276,8 @@ private
 
 : BUILD-ELF ( -- )
    ELF-MSIZE! M-RESET
-   X64 @ if
-      TEXTSZ ELF-RW-SZ + REGION-OFF > if
-         s" elf: x86 text overlaps the runtime code region" EXIT-STATUS:IMAGE die
-      then
+   TEXTSZ ELF-RW-SZ + REGION-OFF > if
+      s" elf: the text overlaps the runtime code region" EXIT-STATUS:IMAGE die
    then
    ELF-TABLES-END CODE-OFF > if
       SB-RESET  s" elf: " SB-APPEND  IMPORT-NAMES:COUNT FMT:SB-U
@@ -307,6 +316,7 @@ PTR-VARIABLE IMAGE
 variable BYTES
 variable RX-HDR
 variable RW-HDR
+variable REGION-HDR
 variable INTERP-HDR
 variable DYN-HDR
 variable HASH-AT
@@ -374,7 +384,7 @@ private
    s" elf: not a supported 64-bit little-endian executable" CHECK
    32 U64@ 52 U16@ = 52 U16@ ELF-HDR-SZ = and 54 U16@ ELF-PHDR-SZ = and
    56 U16@ ELF-PHDR-N = and
-   s" elf: not four program headers after the header" CHECK
+   s" elf: not five program headers after the header" CHECK
    40 U64@ 0= 60 U16@ 0= and
    s" elf: a section header table the linker does not write" CHECK ;
 
@@ -385,18 +395,26 @@ private
 : PHDR ( n -- ) {: off:n :}
    off U32@ off 4 + U32@ {: kind:n flags:n :}
    kind PT-LOAD = flags PF-RX = and if off RX-HDR UNIQUE! exit then
-   kind PT-LOAD = flags PF-RW = and if off RW-HDR UNIQUE! exit then
+   kind PT-LOAD = flags PF-RW = and if
+      off  off P-FILESZ 0= if REGION-HDR else RW-HDR then  UNIQUE! exit
+   then
    kind PT-INTERP = flags PF-R = and if off INTERP-HDR UNIQUE! exit then
    kind PT-DYNAMIC = flags PF-RW = and
    s" elf: a program header the linker does not write" CHECK
    off DYN-HDR UNIQUE! ;
 
 : PHDRS ( -- )
-   0 RX-HDR ! 0 RW-HDR ! 0 INTERP-HDR ! 0 DYN-HDR !
+   0 RX-HDR ! 0 RW-HDR ! 0 REGION-HDR ! 0 INTERP-HDR ! 0 DYN-HDR !
    56 U16@ 0 ?do 32 U64@ i ELF-PHDR-SZ * + PHDR loop ;
 
 : POW2? ( n -- bool ) {: n:n :}
    n 0 > n n 1- and 0= and ;
+
+: CHECK-REGION ( -- )
+   REGION-HDR @ {: r:n :}
+   r P-VA RX-VA REGION-OFF + = r P-MEMSZ REGION = and
+   r P-ALIGN TEXT-ALIGN = and  r P-VA RW-HDR @ P-VA RW-BYTES + >= and
+   s" elf: the code region's load is not REGION bytes at REGION-OFF past the text" CHECK ;
 
 \ The text's load maps the file from its first byte to a page boundary, and
 \ the read-write load maps the rest at the address that follows it.
@@ -410,6 +428,7 @@ private
    RW-HDR @ P-VA RX-VA RW-OFF + = and
    RW-BYTES RW-HDR @ P-MEMSZ = and RW-HDR @ P-ALIGN TEXT-ALIGN = and
    s" elf: the read-write load does not end the file" CHECK
+   CHECK-REGION
    TEXT-OFF HEADERS-BYTES > TEXT-OFF TEXT-LIMIT <= and
    s" elf: the entry is not in the text's load past the headers" CHECK ;
 
