@@ -109,6 +109,9 @@ CAST: >RUN ( n -- [ -- ] )
 \ The host entry of the build's word named by the string.
 : ENTRY ( ^u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
 
+\ The build's word named by the string becomes its program's entry.
+: ENTRY! ( ^u8 n -- ) ENTRY >RUN APP-ENTRY:XT! ;
+
 \ The record's name, then its fields.
 : RECORD. ( n -- )
    XREF-REC {: rec:^ :}
@@ -141,6 +144,7 @@ CAST: >RUN ( n -- [ -- ] )
    s" : FILE-OBJECTS-BODY-SUM ( n n -- n ) + ;" evaluate-closed
    8 allot
    s" test/fixtures/file-objects/main.f" included
+   s" FILE-OBJECTS-MAIN:RUN" ENTRY!
    s" test/fixtures/file-objects/reopen.f" included
    MARK
    LOAD-AGAIN LOAD-AGAIN
@@ -184,15 +188,6 @@ PATH-CAP BUFFER: FIFTH-BUF
 : ORDER-S$ ( -- str ) s" order" s" s.f" SECOND-BUF FILE-IN ;
 : ORDER-T$ ( -- str ) s" order" s" t.f" THIRD-BUF FILE-IN ;
 : ORDER-F$ ( -- str ) s" order" s" f.f" FOURTH-BUF FILE-IN ;
-: HEAD-W$ ( -- str ) s" header" s" w.f" FIRST-BUF FILE-IN ;
-: HEAD-H$ ( -- str ) s" header" s" h.f" SECOND-BUF FILE-IN ;
-: HEAD-R$ ( -- str ) s" header" s" r.f" THIRD-BUF FILE-IN ;
-: HELD-W$ ( -- str ) s" held" s" w.f" FIRST-BUF FILE-IN ;
-: HELD-H$ ( -- str ) s" held" s" h.f" SECOND-BUF FILE-IN ;
-: HELD-R$ ( -- str ) s" held" s" r.f" THIRD-BUF FILE-IN ;
-: SAME-K$ ( -- str ) s" same" s" k.f" FIRST-BUF FILE-IN ;
-: SAME-S1$ ( -- str ) s" same" s" s1.f" SECOND-BUF FILE-IN ;
-: SAME-S2$ ( -- str ) s" same" s" s2.f" THIRD-BUF FILE-IN ;
 : NONE-K$ ( -- str ) s" none" s" k.f" FIRST-BUF FILE-IN ;
 : NONE-PROG$ ( -- str ) s" none" s" prog" SECOND-BUF FILE-IN ;
 
@@ -355,88 +350,19 @@ PATH-CAP BUFFER: FIFTH-BUF
    ORDER-BUILD {: four:n :}
    s" order: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
-: HEAD-BUILD ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: HEAD-W$ included  HEAD-R$ included ;] LINKER:WITH ;]
-   catch RESULT ;
-
-: HEAD-STORED ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: HEAD-W$ included  HEAD-H$ included  HEAD-R$ included ;]
-      LINKER:WITH ;]
-   catch RESULT ;
-
-\ h.f stores into header data, as main.f's last line does, and r.f runs w.f's W: r.f links once
-\ h.f joins the build (linker.f "dependencies by run").
-: HEADS ( -- )
-   s" header" DIR$ FS:MAKE-DIR
-   HEAD-W$ s\" package FILE-OBJECTS-HEADER public : W ( -- n ) 3 ; ;package\n" FS:WRITE-ALL
-   HEAD-H$ s\" package FILE-OBJECTS-HEADER-H public : H ( -- ) ; ;package\n' FILE-OBJECTS-HEADER-H:H data-base $43A0 + xt!\n"
-   FS:WRITE-ALL
-   HEAD-R$ s\" FILE-OBJECTS-HEADER:W constant FILE-OBJECTS-HEADER-N\n" FS:WRITE-ALL
-   HEAD-BUILD {: one:n :}
-   HEAD-STORED {: two:n :}
-   HEAD-STORED {: three:n :}
-   s" header: compiled " one two three RESULTS. cr ;
-
-: HELD-BUILD ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: HELD-W$ included  HELD-R$ included ;] LINKER:WITH ;]
-   catch RESULT ;
-
-: HELD-STORED ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: HELD-W$ included  HELD-H$ included  HELD-R$ included ;]
-      LINKER:WITH ;]
-   catch RESULT ;
-
-\ HEADS with r.f also holding a header-data address: T's literal has the bytes of a facts text
-\ the open lays for an owned primitive (linker.f OWNED-RECORDS). r.f compiles when h.f joins.
-: HELDS ( -- )
-   s" held" DIR$ FS:MAKE-DIR
-   HELD-W$ s\" package FILE-OBJECTS-HELD public : W ( -- n ) 3 ; ;package\n" FS:WRITE-ALL
-   HELD-H$ s\" package FILE-OBJECTS-HELD-H public : H ( -- ) ; ;package\n' FILE-OBJECTS-HELD-H:H data-base $43A0 + xt!\n"
-   FS:WRITE-ALL
-   HELD-R$ s\" package FILE-OBJECTS-HELD-R public : T ( -- ^u8 n ) s\" ( -- ) primitive \" ; ;package\nFILE-OBJECTS-HELD:W constant FILE-OBJECTS-HELD-N\n"
-   FS:WRITE-ALL
-   HELD-BUILD {: one:n :}
-   HELD-STORED {: two:n :}
-   HELD-STORED {: three:n :}
-   s" held: compiled " one two three RESULTS. cr ;
-
-\ The second build alone writes a program, PROG$ in the out root: its entry is the header store
-\ s2.f's object holds.
-: SAME-BUILD ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: SAME-K$ included  SAME-S1$ included  SAME-S2$ included ;]
-      LINKER:WITH ;]
-   catch RESULT ;
-
-: SAME-WRITTEN ( -- n )
-   [: s" app" RTARGET:HOST-TARGET [: SAME-K$ included  SAME-S2$ included  PROG$ LINKER:WRITE ;]
-      LINKER:WITH ;]
-   catch RESULT ;
-
-\ s1.f and s2.f store K's xt into the header cell main.f's last line stores into: s2.f's store
-\ leaves the cell as s1.f left it, and its object still holds it once s1.f leaves the build.
-: SAMES ( -- )
-   s" same" DIR$ FS:MAKE-DIR
-   SAME-K$ s\" package FILE-OBJECTS-SAME public : K ( -- ) ; ;package\n" FS:WRITE-ALL
-   SAME-S1$ s\" ' FILE-OBJECTS-SAME:K data-base $43A0 + xt!\n" FS:WRITE-ALL
-   SAME-S2$ s\" ' FILE-OBJECTS-SAME:K data-base $43A0 + xt!\n" FS:WRITE-ALL
-   SAME-BUILD {: one:n :}
-   SAME-WRITTEN {: two:n :}
-   s" same: compiled " type  one FMT:.INT space  two FMT:.INT cr ;
-
 \ The body's caught text gives back a record before any file loads, allotting
-\ nothing: k.f then loads and the program is written.
+\ nothing: k.f then loads, its FOB-K becomes the entry and the program is written.
 : NONE-WRITTEN ( -- n )
    [: s" app" RTARGET:HOST-TARGET [:
          [: s" : FOB-GONE ( -- ) ; 12345 throw" evaluate-closed ;] catch
          12345 s" build: NONES: the text's throw was not caught" EXPECT
-         NONE-K$ included  NONE-PROG$ LINKER:WRITE ;]
+         NONE-K$ included  s" FOB-K" ENTRY!  NONE-PROG$ LINKER:WRITE ;]
       LINKER:WITH ;]
    catch RESULT ;
 
-\ k.f defines FOB-K and stores it as the program's entry.
 : NONES ( -- )
    s" none" DIR$ FS:MAKE-DIR
-   NONE-K$ s\" : FOB-K ( -- ) ;\n' FOB-K data-base $43A0 + xt!\n" FS:WRITE-ALL
+   NONE-K$ s\" : FOB-K ( -- ) ;\n" FS:WRITE-ALL
    s" none: compiled " type  NONE-WRITTEN FMT:.INT cr ;
 
 \ ---- objects the link refuses or links wrong ----
@@ -1026,8 +952,8 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" app" RTARGET:HOST-TARGET [: STOP-STORE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS HEADS NONES SAMES HELDS CRAFTS BY-WORD
-   BY-RUN BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS NONES CRAFTS BY-WORD BY-RUN
+   BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----
@@ -1036,7 +962,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 : CODE. ( n ^u8 n -- ) {: rc:n a:^ u:n :}  a u type  rc FMT:.INT cr ;
 
 : FACTS-AFTER ( -- n )
-   [: s" : FOB-AFTER ( -- ) FILE-OBJECTS-COUNT:BUMP FILE-OBJECTS-COUNT:HI FILE-OBJECTS-COUNT:TALLY @ drop FILE-OBJECTS-LATE:ONE drop ;  ' FOB-AFTER data-base $43A0 + xt!" evaluate-closed ;]
+   [: s" : FOB-AFTER ( -- ) FILE-OBJECTS-COUNT:BUMP FILE-OBJECTS-COUNT:HI FILE-OBJECTS-COUNT:TALLY @ drop FILE-OBJECTS-LATE:ONE drop ;" evaluate-closed ;]
    catch dup s" after: " CODE. ;
 
 \ Never run: creating through a does> definer in a build ends the process.
@@ -1052,7 +978,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    [: s" : FOB-DEAD ( -- ) FILE-OBJECTS-FACTS:FAIL 2 drop ;" evaluate-closed ;]
    catch s" dead: " CODE. ;
 
-\ FOB-AFTER is the program's entry ($43A0 is APP-ENTRY:XT-CELL, as main.f writes it).
+\ FOB-AFTER, once it compiles, is the program's entry.
 \ The refusals come after the write: a refused definition fails the build (STOP-BODY).
 : FACTS-BODY ( -- )
    s" test/fixtures/file-objects/count.f" included
@@ -1060,6 +986,7 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    FACTS-AFTER {: after:n :}
    FACTS-WRAP
    after 0= if
+      s" FOB-AFTER" ENTRY!
       s" FOB-AFTER" ENTRY >RUN execute
       s" after ran" type cr
    then

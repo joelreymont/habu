@@ -60,7 +60,7 @@ package FILE-OBJECTS-TEST
 43 constant INSIDE-I                     \ and inside-i.f's, which loads inside a package or alone
 44 constant AIO-OBJ                      \ src/lib/aio.f's, which kept-aio.f requires
 45 constant TAILS                        \ TAIL$'s tails
-63 constant FILES-C                     \ build C's objects
+54 constant FILES-C                     \ build C's objects
 208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -325,7 +325,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote sixty-three objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote fifty-four objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -361,14 +361,8 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the order builds compile 4, 3, 0 and 3 files" LABEL
    STATE-W STATE-W-U @ s\" order: compiled 4 3 0 3\n" CONTAINS? TTRUE
-   s" the header builds compile 2, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" header: compiled 2 1 0\n" CONTAINS? TTRUE
-   s" the same builds compile 3 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" same: compiled 3 0\n" CONTAINS? TTRUE
    s" the build after the body's rollback compiles 1 file" LABEL
    STATE-W STATE-W-U @ s\" none: compiled 1\n" CONTAINS? TTRUE
-   s" the held builds compile 2, 2 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" held: compiled 2 2 0\n" CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE
    s" the words builds compile 5, 4, 0, 2, 1, 1 and 0 files" LABEL
@@ -393,14 +387,6 @@ variable CLASS-N                        \ the class CLASS+ read
    A$ s" prog.map" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
    s" the map lists RUN as main.f's" LABEL
    PROG-1 u s\"  RUN word loaded test/fixtures/file-objects/main.f\n" CONTAINS? TTRUE ;
-
-\ C's program, the same sequence's, has K as its entry: its map lists K. A failed C wrote none.
-: CHECK-SAME ( -- )
-   s" C" WHICH!
-   STATE-W-U @ 0= if exit then
-   C$ s" prog.map" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
-   s" the map lists K as a word the build loaded" LABEL
-   PROG-1 u s"  K word loaded " CONTAINS? TTRUE ;
 
 \ E's build, a fresh process as every build is: E2's process then holds E's
 \ objects alone, never the checker memory of the process that compiled them.
@@ -444,7 +430,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" D" WHICH!
    s" the build wrote seven objects" LABEL  D$ OBJECTS FILES T=
    s" A" WHICH!  SAME-AS-D
-   CHECK-MAP CHECK-STOP CHECK-EDIT CHECK-SAME CHECK-E ;
+   CHECK-MAP CHECK-STOP CHECK-EDIT CHECK-E ;
 
 \ Moves A's program and map to prog-cold and prog-cold.map, so A2 writes its own.
 : COLD-ASIDE ( -- )

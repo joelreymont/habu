@@ -5,9 +5,7 @@ split-str
 \ which build.f's cell parts from main.f's data. The top level also lays a data
 \ cell naming its own Q, one naming count.f's TALLY, a scratch cell and a data
 \ cell holding 0; COLORS holds three strings. HI-TEXT's literal has the bytes of
-\ count.f's facts text, so it names that text in count.f's span. After the
-\ package the top level stores RUN as the program's entry, as APP-ENTRY:XT!
-\ does.
+\ count.f's facts text, so it names that text in count.f's span.
 
 package FILE-OBJECTS-MAIN
 private
@@ -32,6 +30,3 @@ public
    FILE-OBJECTS-COUNT:TALLY @ 7 = if FILE-OBJECTS-COUNT:HI then
    21 FILE-OBJECTS-SHAPE:DOUBLE 42 = if ." ok" cr then ;
 ;package
-
-\ $43A0 is APP-ENTRY:XT-CELL, E-UNDEFINED in a build's file.
-' FILE-OBJECTS-MAIN:RUN data-base $43A0 + xt!
