@@ -183,6 +183,7 @@ EXPORT TFAM:SUMV-CTOR-SYM@
 EXPORT TFAM:SUMV-NAME$
 EXPORT TFAM:TFAM-N@
 EXPORT TFAM:TFAM-VAR-START@
+EXPORT REQUIRE-REG:REQUIRE-KNOWN?
 
 public
 
@@ -1173,7 +1174,7 @@ variable GROUP-AT
 : LOADER-OPERAND ( n -- str ) {: wu:n :}
    NEXT-RAW {: p:^ pu:n :}
    pu 0= IF
-      SOURCE@ TOKEN-BYTE @ + wu INCLUDE-NO-PATH  E-DISC-DYNAMIC DISCOVERY-STOP
+      SOURCE@ TOKEN-BYTE @ + wu LOADER:NO-PATH  E-DISC-DYNAMIC DISCOVERY-STOP
    THEN
    p pu ;
 
@@ -3279,27 +3280,27 @@ variable LOAD-END
 \ the resolver's answer comes through the loader's, which writes its records.
 : COMPOSE-INCLUDED ( str str -- )
    {: w:^ wu:n a:^ u:n :}
-   w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
+   w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER:RESOLVE drop {: path:^ pathu:n :}
    SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
    a u path pathu root rootu COMPOSE-OPEN ;
 
 : COMPOSE-REQUIRED ( str str -- )
    {: w:^ wu:n a:^ u:n :}
-   w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   w wu a u [: SOURCE-ROOT:RESOLVE-AT ;] LOADER:RESOLVE IF LOAD-HELD LOADED EXIT THEN
    SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
-   REQUIRE-STORE {: path:^ pathu:n :}
+   REQUIRE-REG:STORE {: path:^ pathu:n :}
    a u path pathu root rootu COMPOSE-OPEN ;
 
 : COMPOSE-SCRIPT-REQUIRED ( str -- )
    {: a:^ u:n :}
-   NULL-PTR 0 a u [: 2drop SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER-RESOLVE IF LOAD-HELD LOADED EXIT THEN
+   NULL-PTR 0 a u [: 2drop SOURCE-ROOT:ENTRY-RESOLVE ;] LOADER:RESOLVE IF LOAD-HELD LOADED EXIT THEN
    SOURCE-ROOT:RESOLVED-ROOT$ {: root:^ rootu:n :}
-   REQUIRE-STORE {: path:^ pathu:n :}
+   REQUIRE-REG:STORE {: path:^ pathu:n :}
    a u path pathu root rootu COMPOSE-OPEN ;
 
 : COMPOSE-PROVIDED ( str str -- )
-   [: SOURCE-ROOT:RESOLVE-AT ;] LOADER-RESOLVE IF 2drop EXIT THEN
-   REQUIRE-STORE 2drop ;
+   [: SOURCE-ROOT:RESOLVE-AT ;] LOADER:RESOLVE IF 2drop EXIT THEN
+   REQUIRE-REG:STORE 2drop ;
 
 PTR-VARIABLE LOAD-A                           \ the path a top-level load loads
 variable LOAD-U
@@ -4377,7 +4378,7 @@ private
    0 PRIM-OPEN-READY !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
-      COMPOSE-SUBJ-PATH pathu REQUIRE-STORE 2drop
+      COMPOSE-SUBJ-PATH pathu REQUIRE-REG:STORE 2drop
    THEN
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}

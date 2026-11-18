@@ -32,7 +32,6 @@ create SDT-WANT SDT-WANT-CAP allot
 variable SDT-WANT-U
 variable SDT-ROOT-U
 variable SDT-ENTRY-U
-variable SDT-SRC-U
 
 : SDT-ROOT$ ( -- str )   SDT-ROOT SDT-ROOT-U @ ;
 public
@@ -68,18 +67,18 @@ private
 : SDT-TEST-MIXED ( -- )
    s" mixed.f" SDT-MIXED$ SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 7 T=
-   0 EVENT-KIND@ EV-REQUIRED T=
-   0 EVENT-STATE@ EV-STATE-FRESH T=
-   1 EVENT-KIND@ EV-INCLUDED T=
-   2 EVENT-KIND@ EV-INCLUDED T=
-   1 EVENT-PATH@ s" sd-b.f" SDT-PATH T$=
-   3 EVENT-KIND@ EV-REQUIRED T=
-   3 EVENT-STATE@ EV-STATE-FRESH T=
-   4 EVENT-STATE@ EV-STATE-KNOWN T=
-   5 EVENT-KIND@ EV-PROVIDED T=
-   6 EVENT-KIND@ EV-REQUIRED T=
-   6 EVENT-PATH@ s" sd-e.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 7 T=
+   0 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   0 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH T=
+   1 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED T=
+   2 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED T=
+   1 SOURCE-EVENT:PATH@ s" sd-b.f" SDT-PATH T$=
+   3 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   3 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH T=
+   4 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN T=
+   5 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-PROVIDED T=
+   6 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   6 SOURCE-EVENT:PATH@ s" sd-e.f" SDT-PATH T$= ;
 
 : SDT-SPELLING$ ( -- str )
    S\" s\" ./sd-f.f\" required\ns\" sd-f.f\" required\n" ;
@@ -87,26 +86,26 @@ private
 : SDT-TEST-SPELLING ( -- )
    s" spelling.f" SDT-SPELLING$ SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 2 T=
-   0 EVENT-STATE@ EV-STATE-FRESH T=
-   1 EVENT-STATE@ EV-STATE-KNOWN T=
-   0 EVENT-PATH@ s" sd-f.f" SDT-PATH T$=
-   1 EVENT-PATH@ s" sd-f.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 2 T=
+   0 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH T=
+   1 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN T=
+   0 SOURCE-EVENT:PATH@ s" sd-f.f" SDT-PATH T$=
+   1 SOURCE-EVENT:PATH@ s" sd-f.f" SDT-PATH T$= ;
 
 : SDT-FRESH$ ( -- str )
    S\" s\" sd-tool.f\" required\ns\" sd-user.f\" required\n" ;
 
 : SDT-TEST-FRESH ( -- )
-   REQUIRE-N @ {: save-n:n :}
+   REQUIRE-REG:COUNT {: save-n:n :}
    s" sd-tool.f" SDT-PATH provided
    s" fresh.f" SDT-FRESH$ SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 2 T=
-   0 EVENT-KIND@ EV-REQUIRED T=
-   0 EVENT-STATE@ EV-STATE-FRESH T=
-   0 EVENT-PATH@ s" sd-tool.f" SDT-PATH T$=
-   1 EVENT-STATE@ EV-STATE-FRESH T=
-   save-n REQUIRE-N ! ;
+   SOURCE-EVENT:COUNT 2 T=
+   0 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   0 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH T=
+   0 SOURCE-EVENT:PATH@ s" sd-tool.f" SDT-PATH T$=
+   1 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH T=
+   save-n REQUIRE-REG:TRUNCATE ;
 
 \ More than 256 direct dependencies: one event per require, in order. Line k
 \ requires sd-wXY.f, XY spelling k in two letters (line 256 requires sd-wjw.f).
@@ -124,16 +123,16 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    k 26 mod $61 + at 13 + c! ;
 
 : SDT-TEST-WIDE ( -- )
-   REQUIRE-N @ {: save-n:n :}
+   REQUIRE-REG:COUNT {: save-n:n :}
    SDT-WIDE-N 0 ?do i SDT-WIDE-LINE! loop
    s" wide.f" SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT SDT-WIDE-N T=
-   256 EVENT-KIND@ EV-REQUIRED T=
-   256 EVENT-STATE@ EV-STATE-FRESH T=
-   256 EVENT-PATH@ s" sd-wjw.f" SDT-PATH T$=
-   0 EVENT-PATH@ s" sd-waa.f" SDT-PATH T$=
-   save-n REQUIRE-N ! ;
+   SOURCE-EVENT:COUNT SDT-WIDE-N T=
+   256 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   256 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH T=
+   256 SOURCE-EVENT:PATH@ s" sd-wjw.f" SDT-PATH T$=
+   0 SOURCE-EVENT:PATH@ s" sd-waa.f" SDT-PATH T$=
+   save-n REQUIRE-REG:TRUNCATE ;
 
 : SDT-TEST-EMIT ( -- )
    s" emit.f" S\" require sd-x.f\ns\" sd-y.f\" provided\n" SDT-WRITE-ENTRY
@@ -181,7 +180,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" opener.f" S\" C\\\" sd-g.f\" required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-OPENER SDT-STOPS ;
 
-\ --- whole-file scan: colon-body loaders are events, spans byte-exact --------
+\ --- whole-file scan: colon-body loaders are events --------------------------
 
 : SDT-COLON$ ( -- str )
    S\" : MAYBE ( -- ) s\" sd-h.f\" required ;\nMAYBE\n" ;
@@ -189,21 +188,10 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 : SDT-TEST-COLON-BODY ( -- )
    s" colon.f" SDT-COLON$ SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 1 T=
-   0 EVENT-KIND@ EV-REQUIRED T=
-   0 EVENT-STATE@ EV-STATE-FRESH T=
-   0 EVENT-PATH@ s" sd-h.f" SDT-PATH T$= ;
-
-: SDT-EVENT-TOK$ ( n -- str ) {: ix:n :}
-   ix EVENT-TOK@ {: off:n len:n :}
-   SDT-SRC off + len ;
-
-: SDT-TEST-COLON-SPAN ( -- )
-   s" colon-span.f" SDT-COLON$ SDT-WRITE-ENTRY
-   SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:READ-ALL SDT-SRC-U !
-   SDT-DISCOVER
-   EVENT-COUNT 1 T=
-   0 SDT-EVENT-TOK$ s" required" T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   0 SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH T=
+   0 SOURCE-EVENT:PATH@ s" sd-h.f" SDT-PATH T$= ;
 
 \ --- only the definition openers open a definition ---------------------------
 
@@ -217,9 +205,9 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" require sd-j.f\n64 SPAN-BUFFER: SB\n: EXAMPLE ( n -- ) {: required:n :} SB SPAN:LEN drop required drop ;\ns\" sd-k.f\" required\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 2 T=
-   0 EVENT-PATH@ s" sd-j.f" SDT-PATH T$=
-   1 EVENT-PATH@ s" sd-k.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 2 T=
+   0 SOURCE-EVENT:PATH@ s" sd-j.f" SDT-PATH T$=
+   1 SOURCE-EVENT:PATH@ s" sd-k.f" SDT-PATH T$= ;
 
 \ An unclosed string is the walk's one refusal about text rather than a loader
 \ (E-DISC-UNTERM). hb-build reads an application through this walk, so the
@@ -235,8 +223,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 : SDT-RAW-ONE ( str -- ) {: a:^ u:n :}
    s" raw.f" a u SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-raw.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:PATH@ s" sd-raw.f" SDT-PATH T$= ;
 
 : SDT-TEST-PARSED-OPERAND ( -- )
    S\" char s\" constant SDT-SQ\nrequire sd-raw.f\n" SDT-RAW-ONE
@@ -250,19 +238,17 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ --- a comment keeps a literal path ------------------------------------------
 
 \ The loader skips a comment as it skips blanks: a literal path, a `( … )` or `\`
-\ comment and the loader word are the literal load, its event at the loader word.
+\ comment and the loader word are the literal load.
 \ A `c"` across a comment is still an opener (E-DISC-OPENER); a non-comment token
 \ between makes the path dynamic (E-DISC-DYNAMIC). A refused walk leaves no
 \ event: reading one past the log faults, so read one only when the walk left it.
 : SDT-COMMENTED-ONE ( str -- )
    {: a:^ u:n :}
    s" commented.f" a u SDT-WRITE-ENTRY
-   SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:READ-ALL SDT-SRC-U !
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 1 T=
-   EVENT-COUNT 1 <> if exit then
-   0 EVENT-PATH@ s" sd-commented.f" SDT-PATH T$=
-   0 SDT-EVENT-TOK$ s" required" T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   SOURCE-EVENT:COUNT 1 <> if exit then
+   0 SOURCE-EVENT:PATH@ s" sd-commented.f" SDT-PATH T$= ;
 
 : SDT-TEST-COMMENTED-LITERAL ( -- )
    S\" s\" sd-commented.f\" ( kept ) required\n" SDT-COMMENTED-ONE
@@ -277,9 +263,9 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ The walk refuses nothing and records one event, the load of PATH.
 : SDT-ONE-LOAD ( str -- ) {: pa:^ pu:n :}
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 1 T=
-   EVENT-COUNT 1 <> if exit then
-   0 EVENT-PATH@ pa pu SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   SOURCE-EVENT:COUNT 1 <> if exit then
+   0 SOURCE-EVENT:PATH@ pa pu SDT-PATH T$= ;
 
 \ SDT-ONE-LOAD of an entry holding SOURCE.
 : SDT-ONE-EVENT ( str str -- ) {: a:^ u:n pa:^ pu:n :}
@@ -292,7 +278,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 : SDT-TEST-BODY-DYNAMIC ( -- )
    s" body-dyn.f" S\" : L ( ^u8 n -- ) included ;\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T=
+   SOURCE-EVENT:COUNT 0 T=
    S\" : L ( ^u8 n -- ) included ;\nrequire sd-top.f\n" s" sd-top.f" SDT-ONE-EVENT
    S\" : L ( ^u8 n -- ) included s\" sd-body.f\" required ;\n" s" sd-body.f" SDT-ONE-EVENT
    s" body-dyn-top.f" S\" : L ( ^u8 n -- ) included ;\nrequired\n" SDT-WRITE-ENTRY
@@ -301,7 +287,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 : SDT-TEST-BODY-OPENER ( -- )
    s" body-opener.f" S\" : L ( -- ) C\\\" sd-i.f\" required ;\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T= ;
+   SOURCE-EVENT:COUNT 0 T= ;
 
 \ --- a name is data, a loader word's too --------------------------------------
 
@@ -362,11 +348,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" STRUCTURE box FIELD include n FIELD required n ;STRUCTURE\nENUM choice VARIANT require FIELD included n ;VARIANT ;ENUM\nSUMTYPE outcome VARIANT provided n ;VARIANT ;SUMTYPE\nENUM colors include require ;ENUM\nMUTUAL include required STRUCTURE include FIELD require ^required ;STRUCTURE STRUCTURE required FIELD provided ^include ;STRUCTURE ;MUTUAL\ninclude sd-a.f\nrequire sd-raw.f\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 2 T=
-   0 EVENT-KIND@ EV-INCLUDED T=
-   0 EVENT-PATH@ s" sd-a.f" SDT-PATH T$=
-   1 EVENT-KIND@ EV-REQUIRED T=
-   1 EVENT-PATH@ s" sd-raw.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 2 T=
+   0 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED T=
+   0 SOURCE-EVENT:PATH@ s" sd-a.f" SDT-PATH T$=
+   1 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   1 SOURCE-EVENT:PATH@ s" sd-raw.f" SDT-PATH T$= ;
 
 \ A package word may replace a family opener. The file really loads dep.f;
 \ discovery must include it or refuse at the ambiguous opener.
@@ -447,7 +433,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 : SDT-TEST-BIG-STRING-DATA ( -- )
    s" big-ok.f" S\" s\" " SDT-BIG SDT-X16$ S\" \" 2drop\n" SDT-WRITE-BIG
    SDT-DISCOVER
-   EVENT-COUNT 0 T= ;
+   SOURCE-EVENT:COUNT 0 T= ;
 
 \ The entry's top-level `required` of a path that resolves past the cap: the
 \ loader's E-PATH-RANGE record, status 70.
@@ -469,10 +455,10 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 : SDT-TEST-BIG-STRING-BODY ( -- )
    s" big-body.f" S\" : L ( -- ) s\" " SDT-BIG SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T=
+   SOURCE-EVENT:COUNT 0 T=
    s" big-body-resolved.f" S\" : L ( -- ) s\" " SDT-FIT SDT-X16$ S\" \" required ;\n" SDT-WRITE-BIG
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
-   EVENT-COUNT 0 T= ;
+   SOURCE-EVENT:COUNT 0 T= ;
 
 \ A path over PATH-CAP as written that the resolver takes is a load the walk
 \ follows, at top level and in a body.
@@ -486,29 +472,26 @@ PATH-CAP 16 / 16 * constant SDT-FIT
 \ smaller fixtures after this see no stale text.
 : SDT-TEST-LARGE-SOURCE ( -- )
    s" large.f" s" " SDT-WRITE-ENTRY
-   SDT-DISCOVER EVENT-COUNT 0 T=
+   SDT-DISCOVER SOURCE-EVENT:COUNT 0 T=
    SDT-SRC-CAP 0 ?do 32 SDT-SRC i + c! loop
    $100 0 ?do SDT-ENTRY$ SDT-SRC SDT-SRC-CAP FS:APPEND-FILE loop
    SDT-ENTRY$ S\" require sd-large-a.f\n" FS:APPEND-FILE
    SDT-DISCOVER
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-large-a.f" SDT-PATH T$=
-   0 EVENT-TOK@ 7 T= $100000 T=
-   SDT-ENTRY$ FS:FILE-SIZE {: end:n :}
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:PATH@ s" sd-large-a.f" SDT-PATH T$=
    SDT-ENTRY$ S\" include sd-large-b.f\n" FS:APPEND-FILE
    SDT-DISCOVER
-   EVENT-COUNT 2 T=
-   0 EVENT-KIND@ EV-REQUIRED T=
-   1 EVENT-KIND@ EV-INCLUDED T=
-   1 EVENT-PATH@ s" sd-large-b.f" SDT-PATH T$=
-   1 EVENT-TOK@ 7 T= end T= ;
+   SOURCE-EVENT:COUNT 2 T=
+   0 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED T=
+   1 SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED T=
+   1 SOURCE-EVENT:PATH@ s" sd-large-b.f" SDT-PATH T$= ;
 
 \ --- a tree file: the loader's own definitions ---------------------------------
 
 : SDT-TEST-LOADER-SITE ( -- )
    s" src/core/include.f" ENTRY-RESOLVE drop RESOLVED-ROOT$
    DISCOVER:READ-IN DISCOVER:RUN-READ
-   EVENT-COUNT 0 T= ;
+   SOURCE-EVENT:COUNT 0 T= ;
 
 : SDT-RUN-EMIT-SMALL ( -- )
    SDT-DISCOVER
@@ -523,8 +506,8 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    S\" : EXAMPLE ( n n n n n -- n n n n n ) {: include:n included:n require:n required:n provided:n :} include included require required provided ;\nrequire sd-after.f\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-after.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:PATH@ s" sd-after.f" SDT-PATH T$= ;
 
 
 : SDT-TEST-LOCAL-SCOPES ( -- )
@@ -532,10 +515,10 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    S\" : EXAMPLE ( n -- ) dup if {: required:n :} required drop else drop s\" sd-else.f\" required then 1 0 ?do 1 {: required:n :} required drop loop s\" sd-loop.f\" required 1 case 1 of 2 {: required:n :} required drop endof endcase s\" sd-case.f\" required ;\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 3 T=
-   0 EVENT-PATH@ s" sd-else.f" SDT-PATH T$=
-   1 EVENT-PATH@ s" sd-loop.f" SDT-PATH T$=
-   2 EVENT-PATH@ s" sd-case.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 3 T=
+   0 SOURCE-EVENT:PATH@ s" sd-else.f" SDT-PATH T$=
+   1 SOURCE-EVENT:PATH@ s" sd-loop.f" SDT-PATH T$=
+   2 SOURCE-EVENT:PATH@ s" sd-case.f" SDT-PATH T$= ;
 
 
 : SDT-TEST-LOCAL-QUOTATION ( -- )
@@ -543,8 +526,8 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    S\" : EXAMPLE ( n -- n ) {: required:n :} [: s\" sd-quote.f\" required ;] execute required ;\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-quote.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:PATH@ s" sd-quote.f" SDT-PATH T$= ;
 
 
 : SDT-TEST-LOCAL-CASE ( -- )
@@ -552,8 +535,8 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    S\" : EXAMPLE ( n -- n ) {: required:n :} s\" sd-uppercase.f\" REQUIRED required ;\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-uppercase.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:PATH@ s" sd-uppercase.f" SDT-PATH T$= ;
 
 
 \ A local of a loader word's name is the local from its group's closer to the
@@ -570,8 +553,8 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    S\" : EXAMPLE ( n -- n ) {: then:n :} 1 if 1 {: required:n :} required drop then drop ELSE s\" sd-control.f\" required THEN then ;\n"
    SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-control.f" SDT-PATH T$= ;
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:PATH@ s" sd-control.f" SDT-PATH T$= ;
 
 
 \ A parsing word's raw operands are data even when they spell loaders or
@@ -686,7 +669,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" sub/lib.f" s" : SDT-LIB ( -- ) ;" SDT-WRITE-ENTRY
    s" root-move.f" S\" s\" sub\" SOURCE-ROOT:ROOT!\nrequire lib.f\n" SDT-WRITE-ENTRY
    SDT-DISCOVER
-   EVENT-COUNT 0 T= ;
+   SOURCE-EVENT:COUNT 0 T= ;
 
 : SDT-HARVEST-MISSING ( -- )
    s" never-existing.f" SDT-PATH SDT-ROOT$ DISCOVER:READ-IN
@@ -698,10 +681,10 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    DISCOVER:ROWS-RESET
    s" harvest-fault.f" S\" require sd-first.f\nrequired\n" SDT-WRITE-ENTRY
    [: SDT-DISCOVER ;] DISCOVER:HARVEST
-   EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-first.f" SDT-PATH T$=
+   SOURCE-EVENT:COUNT 1 T=
+   0 SOURCE-EVENT:PATH@ s" sd-first.f" SDT-PATH T$=
    [: SDT-HARVEST-MISSING ;] DISCOVER:HARVEST
-   EVENT-COUNT 0 T=
+   SOURCE-EVENT:COUNT 0 T=
    [: [: SDT-HARVEST-OTHER ;] DISCOVER:HARVEST ;] E-TBL-BOUNDS TTHROWSQ ;
 
 \ A compiled parsing call does not consume the definition's source text, and a
@@ -724,7 +707,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" row-use.f" S\" require row-lib.f\npackage SDT-R\nSDT-R:W : W ; required SDT-R:;W\n;package\n"
    SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
    [: SDT-DISCOVER ;] 0 TTHROWSQ
-   EVENT-COUNT 1 T=
+   SOURCE-EVENT:COUNT 1 T=
    DISCOVER:ROWS-RESET
    SDT-ROW-LIB
    s" row-real.f" S\" require row-lib.f\nSDT-R:W required SDT-R:;W\npackage SDT-R : W ( -- ) ; ;package\n"
@@ -759,13 +742,13 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    DISCOVER:ROWS-RESET
    false SDT-CROSS-SETTLE
    s" cross-a.f" SDT-SELECT-NAMED [: SDT-DISCOVER ;] 0 TTHROWSQ
-   EVENT-COUNT 2 T=
+   SOURCE-EVENT:COUNT 2 T=
    s" cross-b.f" SDT-SELECT-NAMED [: SDT-DISCOVER ;] 0 TTHROWSQ
-   EVENT-COUNT 2 T=
+   SOURCE-EVENT:COUNT 2 T=
    DISCOVER:ROWS-RESET
    true SDT-CROSS-SETTLE
    s" cross-a.f" SDT-SELECT-NAMED [: SDT-DISCOVER ;] 0 TTHROWSQ
-   EVENT-COUNT 2 T= ;
+   SOURCE-EVENT:COUNT 2 T= ;
 
 : SDT-CASCADE-PASS ( -- )
    DISCOVER:ROWS-PASS-BEGIN
@@ -805,7 +788,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    s" repeat-b.f" s" parses: SDT-REP:W 2" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
    s" repeat-use.f" S\" SDT-REP:W required\nrequire repeat-dep.f\n" SDT-WRITE-ENTRY
    [: SDT-DISCOVER ;] 0 TTHROWSQ
-   EVENT-COUNT 1 T=
+   SOURCE-EVENT:COUNT 1 T=
    DISCOVER:ROWS-VERSION
    10 0 ?do
       s" repeat-a.f" SDT-HARVEST-NAMED
@@ -814,7 +797,7 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    DISCOVER:ROWS-VERSION T=
    s" repeat-use.f" SDT-SELECT-NAMED
    [: SDT-DISCOVER ;] 0 TTHROWSQ
-   EVENT-COUNT 1 T= ;
+   SOURCE-EVENT:COUNT 1 T= ;
 
 : SDT-CYCLE-PASS ( -- )
    DISCOVER:ROWS-PASS-BEGIN
@@ -859,7 +842,6 @@ public
    SDT-TEST-DYNAMIC
    SDT-TEST-OPENER
    SDT-TEST-COLON-BODY
-   SDT-TEST-COLON-SPAN
    SDT-TEST-USER-DEFINER
    SDT-TEST-UNTERM-STRING
    SDT-TEST-PARSED-OPERAND
@@ -898,7 +880,7 @@ public
    SDT-TEST-ROW-CASCADE
    SDT-TEST-ROW-REPEAT
    SDT-TEST-ROW-CYCLE
-   EVENT-OFF DISCOVERY-OFF EVENTS-RESET
+   SOURCE-EVENT:OFF SOURCE-EVENT:DISCOVERY-OFF SOURCE-EVENT:RESET
    FS:CLEANUP-RUN
    T-REPORT
    s" source-discovery-test: ok" type cr ;

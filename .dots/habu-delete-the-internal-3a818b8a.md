@@ -15,7 +15,7 @@ Files: src/habu/layout.f (DNAME-* bits), src/core/internal-mark.f, src/habu/prim
 Verify: full suite on the built hb; product probes for formerly internal names answer E-UNDEFINED.
 Depends: the dot moving internal primitives into the system package. Ownership: lead. Claim: unassigned.
 
-Acceptance case: inside a build (LINKER:WITH), after the product's src/core/internal-mark.f has run, the startup driver's top-level REQUIRE-BOOT-FREEZE (src/core/include.f; tools/hb-build-core.f queues it) is refused "internal engine word" (rc 70), so a build cannot finish hb's startup list. With the marks deleted, the build's driver completes the list's freeze step.
+Acceptance case: inside a build (LINKER:WITH), after the product's src/core/internal-mark.f has run, the startup driver's top-level REQUIRE-REG:BOOT-FREEZE (src/core/include.f; tools/hb-build-core.f END-WRITE writes it) is refused "internal engine word" (rc 70), so a build cannot finish hb's startup list. With the marks deleted, the build's driver completes the list's freeze step.
 
 Acceptance case: a linked hb carries no DNAME-INT mark, so the strip has to make an engine variable absent instead: source cannot store into the reserved view family `-1 C2-READ-FAM !` (src/core/checker.f:1713, a global variable read by checker.f, type-family.f and sumtype.f; the suite once asserted "source cannot replace the reserved view family identity"). C2-READ-FAM needs a package's private section before the strip can remove it.
 

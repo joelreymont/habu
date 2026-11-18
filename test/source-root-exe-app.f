@@ -15,7 +15,7 @@ require src/lib/error.f
 using SOURCE-ROOT
 package SOURCE-ROOT-EXE-APP
 
-create PATH-BUF INCLUDE-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 variable PATH-U
 
 : INVOKED$ ( -- str ) 0 SCRIPT-ARGV$ ;
@@ -36,19 +36,19 @@ variable PATH-U
    s" the app's own src/lib/error.f loaded at its owner" T-LABEL
    SOURCE-ROOT-EXE-APP-ERRORS:MARK 1 T=
    s" the app's own src/lib/error.f is not engine-provided" T-LABEL
-   s" src/lib/error.f" ENGINE-PROVIDES? TFALSE
+   s" src/lib/error.f" REQUIRE-REG:ENGINE-PROVIDES? TFALSE
    s" a baked file found at the engine root is engine-provided" T-LABEL
-   s" src/lib/string.f" ENGINE-PROVIDES? TTRUE
+   s" src/lib/string.f" REQUIRE-REG:ENGINE-PROVIDES? TTRUE
    s" the engine's copy named by its absolute path is engine-provided" T-LABEL
-   ENGINE-COPY$ ENGINE-PROVIDES? TTRUE
+   ENGINE-COPY$ REQUIRE-REG:ENGINE-PROVIDES? TTRUE
    \ A second copy of src/lib/error.f would exit 78 on its first definition.
    ENGINE-COPY$ required
    s" a library the engine does not bake is not engine-provided" T-LABEL
-   s" test/fixtures/source-root-exe/inner.f" ENGINE-PROVIDES? TFALSE
+   s" test/fixtures/source-root-exe/inner.f" REQUIRE-REG:ENGINE-PROVIDES? TFALSE
    s" a discovery base does not hide the frozen rows" T-LABEL
-   REQUIRE-SNAPSHOT
-   s" src/lib/string.f" ENGINE-PROVIDES? TTRUE
-   REQUIRE-RESTORE
+   REQUIRE-REG:SNAPSHOT
+   s" src/lib/string.f" REQUIRE-REG:ENGINE-PROVIDES? TTRUE
+   REQUIRE-REG:RESTORE
    T-REPORT ;
 
 RUN

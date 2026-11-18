@@ -62,6 +62,10 @@ EXPORT CHECK:OWNED-FACTS
 EXPORT CHECK:WORDLIST-PACKAGE
 EXPORT INTERPRETER:PUBLISH-ALIAS
 EXPORT CODE-RECLAIM:TRUNCATE
+EXPORT REQUIRE-REG:REQUIRE-KNOWN?
+EXPORT SOURCE-EVENT:EVENT-DEPTH@
+EXPORT SOURCE-EVENT:EVENT-SPELLED@
+EXPORT SOURCE-EVENT:EVENT-TOK@
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
@@ -374,7 +378,7 @@ DYNAMIC-BUFFER ROW-EDGES n           \ the same by BUILT row, for its STORES val
 DYNAMIC-BUFFER EXT-EDGES n           \ the same by build-table row, for its cell rows
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR, WIDN-CELL,
-\ the loader's EVENT-COUNT and INTERPRETER:RUN-COUNT as a file's load or its piece after a request starts (MARKS).
+\ the loader's SOURCE-EVENT:COUNT and INTERPRETER:RUN-COUNT as a file's load or its piece after a request starts (MARKS).
 variable FILE-REC
 variable FILE-HELD
 variable FILE-TFAM                   \ TFAM-N@ as the running piece starts
@@ -2506,18 +2510,18 @@ EXPORT CHECK:HELD-AMENDED
 \ provide.
 : ACT? ( n -- bool )
    {: ev:n :}
-   ev EVENT-KIND@ EV-PROVIDED =
-   ev EVENT-KIND@ EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and  or ;
+   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-PROVIDED =
+   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-REQUIRED =  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN =  and  or ;
 
 \ ACTS from the loader's log (include.f EVENT-RECORD); req >= 0 leaves out the newest event, the ending request's own.
 \ Any other event is a load the source caught before the build's runner ran it, which a link cannot repeat: UNLINKABLE.
 : ACTS+ ( n -- )
    {: req:n :}
-   EVENT-COUNT  req 0 >= if 1 - then {: end:n :}
+   SOURCE-EVENT:COUNT  req 0 >= if 1 - then {: end:n :}
    0  end FILE-EVENT @ ?do i ACT? if 1 + then loop  PIECES U64+
    end FILE-EVENT @ ?do
       i ACT? if
-         i EVENT-KIND@ PIECES U64+  i EVENT-SPELLED@ PIECES FIELD+  i SOURCE-EVENT:CURRENT@ PIECES FIELD+
+         i SOURCE-EVENT:KIND@ PIECES U64+  i EVENT-SPELLED@ PIECES FIELD+  i SOURCE-EVENT:CURRENT@ PIECES FIELD+
       else
          true UNLINKABLE !
       then
@@ -3723,12 +3727,12 @@ EXPORT CHECK:HELD-UNDEFINE
    loop drop ;
 
 
-\ ACTS (ACTS+): each row a kind, EV-REQUIRED or EV-PROVIDED, a path and the root current as it was spelled.
+\ ACTS (ACTS+): each row a kind, SOURCE-EVENT:KIND-REQUIRED or SOURCE-EVENT:KIND-PROVIDED, a path and the root current as it was spelled.
 : ACTS-CK ( -- )
    RD-AT @ ACTS-AT !
    24 RD-COUNT 0 ?do
       RD-U64 {: kind:n :}
-      kind EV-REQUIRED <>  kind EV-PROVIDED <>  and if BAD then
+      kind SOURCE-EVENT:KIND-REQUIRED <>  kind SOURCE-EVENT:KIND-PROVIDED <>  and if BAD then
       NAME-CK NAME-CK
    loop ;
 
@@ -4173,7 +4177,7 @@ variable PRIOR-STORES-SIZE
       RD-U64 {: kind:n :}
       RD-NAME RD-NAME ACT-RESOLVE {: canon:^ canonu:n known:bool stands:bool :}
       stands 0= if BAD unloop exit then
-      kind EV-PROVIDED = if
+      kind SOURCE-EVENT:KIND-PROVIDED = if
          canon canonu PENDING-PATHS FIELD+
       else
          canon canonu known REGISTERED? 0= if BAD unloop exit then
@@ -4232,7 +4236,7 @@ variable PRIOR-STORES-SIZE
 : TOP-LOG ( -- )
    TOP-EV @ {: ev:n :}
    ev 0< if ev INPUTS U64+  0 INPUTS U64+  0 INPUTS U64+ exit then
-   ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then INPUTS U64+
+   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then INPUTS U64+
    ev SOURCE-EVENT:CURRENT@ INPUTS FIELD+  ev EVENT-SPELLED@ INPUTS FIELD+ ;
 
 \ The running part's INPUTS record, from OBJECT once HEADER-CK and ACTS-CK read it or WRITE-OBJECT laid it, and from
@@ -4258,9 +4262,9 @@ variable PRIOR-STORES-SIZE
 \ other, a load no LOAD started, which never holds.
 : EV-INPUT ( n -- n )
    {: ev:n :}
-   ev EVENT-KIND@ {: kind:n :}
-   kind EV-PROVIDED = if INPUT-PROVIDE exit then
-   kind EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and if INPUT-SKIP exit then
+   ev SOURCE-EVENT:KIND@ {: kind:n :}
+   kind SOURCE-EVENT:KIND-PROVIDED = if INPUT-PROVIDE exit then
+   kind SOURCE-EVENT:KIND-REQUIRED =  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-KNOWN =  and if INPUT-SKIP exit then
    -1 ;
 
 \ The loader's events from LOGGED-EV to the one before end in INPUTS, each one made while no load was open.
@@ -4268,7 +4272,7 @@ variable PRIOR-STORES-SIZE
    {: end:n :}
    end LOGGED-EV @ ?do
       i EV-INPUT INPUTS U64+
-      i SOURCE-EVENT:CURRENT@ INPUTS FIELD+  i EVENT-SPELLED@ INPUTS FIELD+  i EVENT-PATH@ INPUTS FIELD+
+      i SOURCE-EVENT:CURRENT@ INPUTS FIELD+  i EVENT-SPELLED@ INPUTS FIELD+  i SOURCE-EVENT:PATH@ INPUTS FIELD+
    loop
    end LOGGED-EV ! ;
 
@@ -4278,7 +4282,7 @@ variable PRIOR-STORES-SIZE
 \ current root (LOG-ROOT); the path of the innermost open load's file (LOG-PART); the roots the open loads restore,
 \ innermost last, each with LOG-PART as the load began, the requesting file's for a nested load (LOG-ROOTS: LOAD-RAW's ROOT-ENTER saves CURRENT@ and its
 \ ROOT-LEAVE restores it, as WITH's pair does); the build's registry, which every resolve consults:
-\ the process's own made empty as a build's open makes it (REQUIRE-SNAPSHOT), restored at the end (REQUIRE-RESTORE).
+\ the process's own made empty as a build's open makes it (REQUIRE-REG:SNAPSHOT), restored at the end (REQUIRE-REG:RESTORE).
 \ Inputs: the records in order. Transitions:
 \ - outside, an event: made from the current root, its spelling resolves (RESOLVE: SELECT, SEARCH-ROOTS, ABS-OWNER) to
 \   its path, which a skipped require finds registered (REQUIRE-BODY) and a provide registers (provided); outside.
@@ -4367,7 +4371,7 @@ create LOG-ROOTS BUF:HDR-BYTES allot
 \ The resolved path into the build's registry once, as `provided` stores it.
 : REG+ ( str -- )
    2dup REQUIRE-KNOWN? if 2drop exit then
-   REQUIRE-STORE 2drop ;
+   REQUIRE-REG:STORE 2drop ;
 
 : LOAD-KIND? ( n -- bool )
    {: kind:n :}
@@ -4426,10 +4430,10 @@ create LOG-ROOTS BUF:HDR-BYTES allot
    p pu at2 LOG-PATH {: r:^ ru:n at3:n :}
    p pu at3 LOG-PATH {: c:^ cu:n at4:n :}
    at4 0<  su 0=  or if -1 exit then
-   kind EV-REQUIRED <>  kind EV-PROVIDED <>  and if -1 exit then
+   kind SOURCE-EVENT:KIND-REQUIRED <>  kind SOURCE-EVENT:KIND-PROVIDED <>  and if -1 exit then
    s su r ru ACT-RESOLVE {: a:^ au:n known:bool stands:bool :}
    stands  a au c cu STR=  and 0= if -1 exit then
-   kind EV-PROVIDED = if c cu REG+ at4 exit then
+   kind SOURCE-EVENT:KIND-PROVIDED = if c cu REG+ at4 exit then
    c cu REQUIRE-KNOWN? if at4 else -1 then ;
 
 \ An act takes at least 32 bytes, so a count the bytes cannot hold is -1 before any act is read.
@@ -4504,9 +4508,9 @@ create LOG-ROOTS BUF:HDR-BYTES allot
    LOG-ROOTS 256 BUF:N>BLEN BUF:INIT
    -1 LOG-ROOT !  0 LOG-ROOT-U !  0 LOG-PART !  0 LOG-PART-U !  -1 LOG-REQ !
    construct expect outside NEXT-REC !
-   REQUIRE-SNAPSHOT ;
+   REQUIRE-REG:SNAPSHOT ;
 
-: HOLD-CLOSE ( -- ) REQUIRE-RESTORE  LOG-ROOTS BUF:DISPOSE ;
+: HOLD-CLOSE ( -- ) REQUIRE-REG:RESTORE  LOG-ROOTS BUF:DISPOSE ;
 
 \ Whether every record from the log's start holds and the machine ends outside at its end.
 : HOLD-ALL ( str -- bool )
@@ -5164,10 +5168,10 @@ EXPORT CHECK:STORES-OPEN
    SAVED-CEILING @ STORES-OPEN
    construct step checked PROGRESS ! ;
 
-\ The build's registry starts empty (include.f REQUIRE-SNAPSHOT), the loader logs each act,
+\ The build's registry starts empty, the loader logs each act,
 \ which a compiling file's object carries (ACTS+), and INTERPRETER logs each word run (RAN+).
 : REQUIRE-FRESH ( -- )
-   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON  0 LOGGED-EV !  INTERPRETER:RECORD-RUNS
+   REQUIRE-REG:SNAPSHOT  SOURCE-EVENT:RESET SOURCE-EVENT:ON  0 LOGGED-EV !  INTERPRETER:RECORD-RUNS
    construct step required PROGRESS ! ;
 
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
@@ -5222,19 +5226,19 @@ EXPORT CHECK:TYPE-END
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
-   EVENT-COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !
+   SOURCE-EVENT:COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !
    SOURCE-ROOT:CURRENT$ BUF:N>BLEN ENTRY-ROOT BUF:REPLACE ;
 
 \ The loader's log event of the request no part made that loads the path, as LOAD starts: the newest event, an
 \ include or a require the registry did not hold for the path; -2 when it is not one.
 : TOP-REQUEST ( str -- n )
    {: path:^ pathu:n :}
-   EVENT-COUNT 1 - {: ev:n :}
+   SOURCE-EVENT:COUNT 1 - {: ev:n :}
    ev 0< if -2 exit then
-   ev EVENT-KIND@ {: kind:n :}
-   kind EV-INCLUDED =
-   kind EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-FRESH =  and  or
-   ev EVENT-PATH@ path pathu STR=  and  if ev else -2 then ;
+   ev SOURCE-EVENT:KIND@ {: kind:n :}
+   kind SOURCE-EVENT:KIND-INCLUDED =
+   kind SOURCE-EVENT:KIND-REQUIRED =  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH =  and  or
+   ev SOURCE-EVENT:PATH@ path pathu STR=  and  if ev else -2 then ;
 
 
 \ The scope a build's top-level file starts in: no package or part open, the build's global
@@ -5256,7 +5260,7 @@ EXPORT CHECK:TYPE-END
       RD-U64 {: kind:n :}
       RD-NAME RD-NAME {: a:^ u:n root:^ rootu:n :}
       GOOD? 0= if E-COMP-STATE throw then
-      kind EV-PROVIDED = if
+      kind SOURCE-EVENT:KIND-PROVIDED = if
          root rootu SOURCE-ROOT:CURRENT$ STR= if
             a u provided
          else
@@ -5456,7 +5460,7 @@ EXPORT CHECK:DROP-FACTS
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
    LOADER$ nip 0= {: outer:bool :}
    outer if path pathu TOP-REQUEST else -1 then {: top:n :}
-   outer if  top 0 >= if top else EVENT-COUNT then EVENTS-LOG  then
+   outer if  top 0 >= if top else SOURCE-EVENT:COUNT then EVENTS-LOG  then
    path pathu KEY!
    path pathu PATH!
    path pathu root rootu PATH+
@@ -5521,7 +5525,7 @@ EXPORT CHECK:DROP-FACTS
          cut OF E-COMP-STATE throw ENDOF
       ;MATCH
    until
-   outer if EVENT-COUNT LOGGED-EV ! then
+   outer if SOURCE-EVENT:COUNT LOGGED-EV ! then
    if 1 COMPILED-N +! else 1 LINKED-N +! then ;
 
 
@@ -5548,8 +5552,8 @@ EXPORT CHECK:DROP-FACTS
 \ At a clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
 : NEST ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
-   EVENT-COUNT 1 - {: ev:n :}
-   ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
+   SOURCE-EVENT:COUNT 1 - {: ev:n :}
+   ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
    ev RESUME {: resume:n :}
    resume 0< if true UNLINKABLE ! then
    END-CK READS-KEEP              \ NEST runs inside the requesting part's RUN-UNIT, so the recording is its
@@ -5800,7 +5804,7 @@ EXPORT CHECK:STORES-CLOSE
          STORES-CLOSE construct step moved PROGRESS ! true
       ENDOF
       required OF
-         INTERPRETER:;RECORD-RUNS  EVENT-OFF EVENTS-RESET REQUIRE-RESTORE construct step checked PROGRESS ! true
+         INTERPRETER:;RECORD-RUNS  SOURCE-EVENT:OFF SOURCE-EVENT:RESET REQUIRE-REG:RESTORE construct step checked PROGRESS ! true
       ENDOF
       objects OF
          DISPOSE-OBJECTS construct step required PROGRESS ! true
@@ -5865,7 +5869,7 @@ public
 \ The open build's INPUTS log, with the events made since its last load no load held ended (EVENTS-LOG) when no load
 \ is open; valid until the next part or event is logged or the build closes.
 : INPUTS$ ( -- str )
-   LOADER$ nip 0= if EVENT-COUNT EVENTS-LOG then
+   LOADER$ nip 0= if SOURCE-EVENT:COUNT EVENTS-LOG then
    INPUTS BYTES$ ;
 
 \ The false beneath the catch keeps the stack's shape.

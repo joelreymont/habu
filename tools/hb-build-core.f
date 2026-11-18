@@ -265,9 +265,9 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 : END-WRITE ( n bool -- )
    {: app:n entry:bool :}
    0 TEXT-U !
-   s\" REQUIRE-BOOT-OPEN\n" TEXT+
-   REQUIRE-N @ REQUIRE-BASE @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ i app < REG-ROW loop
-   s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
+   s\" REQUIRE-REG:BOOT-OPEN\n" TEXT+
+   REQUIRE-REG:COUNT REQUIRE-REG:BASE ?do i REQUIRE-REG:SLOT i REQUIRE-REG:LEN i app < REG-ROW loop
+   s\" REQUIRE-REG:BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
    END$ 0 TEXT TEXT-U @ WRITE-CHANGED
    TEXT-RELEASE ;
@@ -298,7 +298,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    RUNTIME-FILES
    s" tools/hb-build-lib.f" REQUIRE-FILE
    SEAL-ENGINE
-   REQUIRE-N @ false END-WRITE
+   REQUIRE-REG:COUNT false END-WRITE
    END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
@@ -325,7 +325,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    STARTUP
    RUNTIME-FILES
    SEAL-ENGINE
-   REQUIRE-N @ {: app:n :}
+   REQUIRE-REG:COUNT {: app:n :}
    ENTRY-OPEN
    SRC$ REQUIRE-FILE
    ENTRY-CLOSE

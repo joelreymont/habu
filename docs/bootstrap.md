@@ -162,7 +162,7 @@ load normally from disk. Use the convergence check for changes baked into the
 engine.
 
 The engine knows the files it carries by path only (`src/core/include.f`
-ENGINE-PROVIDES?). Once the tree renames one that is not a start-up file, a
+REQUIRE-REG:ENGINE-PROVIDES?). Once the tree renames one that is not a start-up file, a
 tool the previous engine runs that requires the new path loads the file a
 second time and stops at its first definition (`E-DUPLICATE-DEFINITION`), and
 an engine built from the tree stops at a `require` of the old path. While the

@@ -296,7 +296,7 @@ $2C48 constant SOURCE-CELL
 2 cells constant FR-PATHLEN
 4 cells constant FR-SIZE
 6 cells constant FR-EXEC-COPY
-19 cells constant FR-PATH
+18 cells constant FR-PATH
 FR-PATH PATH-CAP + 1 cells + constant FR-ROOT
 FR-ROOT PATH-CAP + 1 cells + constant HEADER-BYTES
 \ READS-CELL: the process's compile-reads record (src/core/compile-reads.f), as

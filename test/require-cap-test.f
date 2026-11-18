@@ -49,7 +49,7 @@ variable EXITED?
 \ leaves the count alone, so each path and length survived the copies.
 : FORGE-GEN ( n -- str ) {: k:n :}
    0 FORGE-U !
-   s" 0 REQUIRE-REG:TRUNCATE 0 REQUIRE-BASE ! DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
+   s" 0 REQUIRE-REG:TRUNCATE SOURCE-EVENT:DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
    0 begin dup k < while dup FORGE-LINE 1+ repeat drop
    S\" : SAME-COUNT ( n -- ) REQUIRE-REG:COUNT <> if s\" require-cap: a row was lost\" 3 die then ;" FORGE-APPEND  10 FORGE-C
    s" REQUIRE-REG:COUNT" FORGE-APPEND  10 FORGE-C

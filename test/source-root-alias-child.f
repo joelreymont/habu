@@ -6,7 +6,7 @@ using SOURCE-ROOT
 package SOURCE-ROOT-ALIAS-CHILD
 
 variable LOADED
-create PATH-BUF INCLUDE-PATH-CAP allot
+create PATH-BUF PATH-CAP allot
 variable PATH-U
 
 public
@@ -16,7 +16,7 @@ private
 : ROOT$ ( -- ^u8 n ) 0 SCRIPT-ARGV$ ;
 
 : PATH! ( str -- ) {: a:^ u:n :}
-   u INCLUDE-PATH-CAP > if E-FS-CAPACITY throw then
+   u PATH-CAP > if E-FS-CAPACITY throw then
    a PATH-BUF u BYTE-COPY u PATH-U ! ;
 
 : PATH$ ( -- ^u8 n ) PATH-BUF PATH-U @ ;
@@ -25,18 +25,18 @@ private
 \ requested spelling so every consumer sees the same original bytes.
 : KNOWN ( ^u8 n -- )
    PATH!
-   PATH$ ENGINE-PROVIDES? TTRUE
+   PATH$ REQUIRE-REG:ENGINE-PROVIDES? TTRUE
    PATH$ RESOLVE TTRUE 2drop
    PATH$ ENTRY-RESOLVE TTRUE 2drop
    PATH$ required ;
 
 : UNKNOWN ( ^u8 n -- )
    PATH!
-   PATH$ ENGINE-PROVIDES? TFALSE
+   PATH$ REQUIRE-REG:ENGINE-PROVIDES? TFALSE
    PATH$ RESOLVE TFALSE 2drop ;
 
 : PORTABLE ( -- )
-   REQUIRE-N @ {: before:n :}
+   REQUIRE-REG:COUNT {: before:n :}
    s" src/lib/error.f" KNOWN
    s" ./src/lib/error.f" KNOWN
    s" src/lib/../lib/error.f" KNOWN
@@ -44,11 +44,11 @@ private
    CWD$ s" ./src/lib/../lib/error.f" JOIN KNOWN
    \ src is a link too, so this checkout is a tree and the engine root.
    s" src/core/util.f" KNOWN
-   REQUIRE-N @ before T=
-   REQUIRE-SNAPSHOT
-   s" src/lib/error.f" ENGINE-PROVIDES? TTRUE
+   REQUIRE-REG:COUNT before T=
+   REQUIRE-REG:SNAPSHOT
+   s" src/lib/error.f" REQUIRE-REG:ENGINE-PROVIDES? TTRUE
    s" src/lib/error.f" RESOLVE TFALSE 2drop
-   REQUIRE-RESTORE ;
+   REQUIRE-REG:RESTORE ;
 
 : OWNED ( ^u8 n -- )
    [: s" src/lib/error.f" required ;] WITH ;

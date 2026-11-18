@@ -261,8 +261,8 @@ variable CUR-ROOT                        \ and the root being walked
 
 : LOADS ( n -- )
    {: k:n :}
-   EVENT-COUNT 0 ?do
-      k i EVENT-PATH@ i SOURCE-EVENT:ROOT@ NODE-OF EDGE+
+   SOURCE-EVENT:COUNT 0 ?do
+      k i SOURCE-EVENT:PATH@ i SOURCE-EVENT:ROOT@ NODE-OF EDGE+
    loop ;
 
 : NAMED? ( ^u8 n -- bool )
@@ -327,8 +327,8 @@ variable CUR-ROOT                        \ and the root being walked
       k PATH$ FS:FILE? 0= if exit then
       [: DISK-TEXT ;] DISCOVER:HARVEST
    then
-   EVENT-COUNT 0 ?do
-      i EVENT-PATH@ i SOURCE-EVENT:ROOT@ NODE-OF drop
+   SOURCE-EVENT:COUNT 0 ?do
+      i SOURCE-EVENT:PATH@ i SOURCE-EVENT:ROOT@ NODE-OF drop
    loop ;
 
 \ A newly found dependency may declare the row needed to read a previous

@@ -340,7 +340,7 @@ variable DEEP-U
    YN-LINE
    s" : RUN ( -- )" PLINE
    s"    SOURCE-ROOT:ENGINE$ type cr" PLINE
-   S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN ;" PLINE
+   S\"    s\q src/lib/string.f\q REQUIRE-REG:ENGINE-PROVIDES? YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE ;
@@ -395,10 +395,10 @@ variable DEEP-U
    YN-LINE
    s" : RUN ( -- )" PLINE
    s"    SOURCE-ROOT:ENGINE$ type cr" PLINE
-   S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN" PLINE
-   s"    REQUIRE-SNAPSHOT" PLINE
-   S\"    s\q src/lib/string.f\q ENGINE-PROVIDES? YN" PLINE
-   s"    REQUIRE-RESTORE ;" PLINE
+   S\"    s\q src/lib/string.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   s"    REQUIRE-REG:SNAPSHOT" PLINE
+   S\"    s\q src/lib/string.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   s"    REQUIRE-REG:RESTORE ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE
@@ -490,9 +490,9 @@ variable DEEP-U
    s" package SOURCE-ROOT-EXE-ALIAS" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   S\"    s\q src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
-   S\"    s\q src/core/util.f\q ENGINE-PROVIDES? YN" PLINE
-   S\"    s\q branch/../src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/error.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/core/util.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q branch/../src/lib/error.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT-EXE-OTHER:MARK 3 = YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -517,14 +517,14 @@ variable DEEP-U
 \ The working directory's src/lib/error.f is provided by its absolute path, so a
 \ require of src/lib/error.f stops there, at the application's fact.
 : FIX-2 ( -- )
-   s" an application fact steers ENGINE-PROVIDES? and leaves the resolved root" T-LABEL
+   s" an application fact steers REQUIRE-REG:ENGINE-PROVIDES? and leaves the resolved root" T-LABEL
    PROG-RESET
    s" package SOURCE-ROOT-EXE-FACT" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
    S\"    SOURCE-ROOT:CWD$ s\q src/lib/error.f\q SOURCE-ROOT:JOIN provided" PLINE
    S\"    s\q test/fixtures/source-root-exe/inner.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
-   S\"    s\q src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/error.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT:RESOLVED-ROOT$ type cr ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -536,7 +536,7 @@ variable DEEP-U
    PROG-RESET
    s" package SOURCE-ROOT-EXE-BOOT" PLINE
    s" : RUN ( -- )" PLINE
-   s"    REQUIRE-BOOT-OPEN" PLINE
+   s"    REQUIRE-REG:BOOT-OPEN" PLINE
    S\"    SOURCE-ROOT:CWD$ s\q x.f\q SOURCE-ROOT:JOIN required ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE

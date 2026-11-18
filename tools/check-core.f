@@ -633,7 +633,7 @@ private
 \ as written, so the composition meets it in its place, as the load does.
 : CHK-RESOLVE-POS ( n -- bool ) {: idx:n :}
    idx CHK-POS$ {: a:^ u:n :}
-   NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
+   NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER:RESOLVE {: path:^ pathu:n exists:bool :}
    exists if path pathu idx CHK-POS-SET then
    exists ;
 
@@ -652,7 +652,7 @@ private
 
 : CHK-CHECK-INPUTS ( -- )
    CHK-POS-N @ 0 ?do  i CHK-RESOLVE-POS drop  loop
-   [: ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
+   [: REQUIRE-REG:ENGINE-PROVIDES? ;] CHK-INPUTS-ALL? 0= if exit then
    CHK-POS-N @ 0 ?do  i CHK-POS$ CHK-ENGINE-PROVIDED  loop
    EXIT-STATUS:REJECTED CHK-THROW ;
 
@@ -1046,7 +1046,7 @@ private
       CHK-REJECT-ARG
    then
    CHK-READ-STDIN CHK-SRC-U !
-   NULL-PTR 0 CHK-STDIN-PATH$ [: 2drop CANONICAL ;] LOADER-RESOLVE drop 2drop
+   NULL-PTR 0 CHK-STDIN-PATH$ [: 2drop CANONICAL ;] LOADER:RESOLVE drop 2drop
    CHK-STDIN-PATH$ ;
 
 \ Read the bytes into the source buffer: the path they stand for.

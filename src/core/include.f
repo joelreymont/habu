@@ -15,8 +15,13 @@ split-str
 \ SOURCE-INPUT: it is a fact of this process. Deriving touches only JOIN, WORK,
 \ Z and CANON scratch, so NORMAL-BUF and CANDIDATE-BUF survive.
 
-PATH-CAP constant INCLUDE-PATH-CAP
-create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
+package LOADER
+
+private
+
+create INCLUDE-PATH PATH-CAP 1 + allot
+
+;package
 
 package REQUIRE-REG
 private
@@ -33,19 +38,14 @@ variable PREFIX-N
 
 ;package
 
+package LOADER
+
 variable INCLUDE-FD
 variable INCLUDE-U
 variable INCLUDE-RD
 variable INCLUDE-PATH-U
-variable REQUIRE-N
-variable REQUIRE-BOOT-N
-variable REQUIRE-BOOT-V
-variable REQUIRE-BASE
-variable REQUIRE-SAVE-N
-variable REQUIRE-SAVE-BASE
 
 -1 INCLUDE-FD !
--1 REQUIRE-SAVE-N !                                \ no snapshot in effect
 
 : INCLUDE-FALSE ( -- bool )
    0 0= 0= ;
@@ -53,13 +53,38 @@ variable REQUIRE-SAVE-BASE
 : INCLUDE-TRUE ( -- bool )
    0 0= ;
 
+;package
+
+package REQUIRE-REG
+EXPORT LOADER:INCLUDE-FALSE
+EXPORT LOADER:INCLUDE-TRUE
+
+variable REQUIRE-N
+variable REQUIRE-BOOT-N
+variable REQUIRE-BOOT-V
+variable REQUIRE-BASE
+variable REQUIRE-SAVE-N
+variable REQUIRE-SAVE-BASE
+
+-1 REQUIRE-SAVE-N !                                \ no snapshot in effect
+
+public
+
 \ Rows recorded while the boot registry is open describe what the ENGINE
 \ carries; every other row, what a process loaded. Only the boot prefix opens
 \ it. Loading this file is not the signal: a build
 \ re-loads it into a booted engine, which would then record every later require
 \ portably and stop recognising its own canonical rows.
-: REQUIRE-BOOT-OPEN ( -- )
+: BOOT-OPEN ( -- )
    INCLUDE-TRUE REQUIRE-BOOT-V ! ;
+
+global
+
+\ The name an installed hb's end.f calls.
+: REQUIRE-BOOT-OPEN ( -- )
+   BOOT-OPEN ;
+
+private
 
 : REQUIRE-BOOT-OPEN? ( -- bool )
    REQUIRE-BOOT-V @ 0= 0= ;
@@ -69,6 +94,8 @@ variable REQUIRE-SAVE-BASE
 : REQUIRE-BOOT-LIMIT ( -- n )
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
+
+;package
 
 \ An invocation that owns source bytes supplies both filesystem answers through
 \ this loader-local pair. A newly source-loaded target gets its own pair, so its
@@ -98,6 +125,8 @@ public
    rc 0 <> if rc throw then ;
 
 ;package
+
+package LOADER
 
 : TOKEN-SPELLS? ( str -- bool )
    SRCLOC:SPELLED nip nip ;
@@ -169,11 +198,13 @@ public
 
 \ Stops with word w's record for the path a u it cannot take.
 : LOADER-PATH-STOP ( str str n n bool -- )
-   INCLUDE-PATH-CAP LOADER-PATH-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP ;
+   PATH-CAP LOADER-PATH-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP ;
+
+public
 
 \ Whether a loader or ROOT! can take the path a u before resolving it: 0 0, else
 \ the kind and len LOADER-PATH-STOP takes. Length is the resolver's to judge.
-: LOADER-PATH-FAULT ( str -- n n ) {: a:^ u:n :}
+: PATH-FAULT ( str -- n n ) {: a:^ u:n :}
    u 0 <= if E-PATH-RANGE u exit then
    0 begin dup u < while
       dup a + c@ 0= if drop E-PATH-NUL 0 exit then
@@ -181,15 +212,19 @@ public
    repeat
    drop 0 0 ;
 
+private
+
 \ Word w's path a u, placed at p pu: one no file name holds stops with w's record.
 : LOADER-PATH-CHECK ( str str str -- ) {: w:^ wu:n p:^ pu:n a:^ u:n :}
-   a u LOADER-PATH-FAULT {: kind:n len:n :}
+   a u PATH-FAULT {: kind:n len:n :}
    kind 0 <> if w wu p pu kind len INCLUDE-FALSE LOADER-PATH-STOP then ;
+
+public
 
 \ The path a u that loader w takes, found by q, which is given a u and the
 \ place of w's record; one it cannot take stops with that record. An empty w
 \ is a command-line entry, whose record has no place.
-: LOADER-RESOLVE ( str str [ str str -- str bool ] -- str bool )
+: RESOLVE ( str str [ str str -- str bool ] -- str bool )
    {: w:^ wu:n a:^ u:n q :}
    wu 0= if NULL-PTR 0 else a u then {: p:^ pu:n :}
    wu 0= if NULL-PTR 0 else w wu a u LOADER-PLACE$ then {: t:^ tu:n :}
@@ -199,19 +234,28 @@ public
    rc 0= if exit then
    rc throw ;
 
+;package
+
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
 package SOURCE-ROOT
 EXPORT CHECK:ROOT-MOVER
+EXPORT LOADER:INCLUDE-FALSE
+EXPORT LOADER:INCLUDE-TRUE
+EXPORT LOADER:LOADER-PATH-AT
+EXPORT LOADER:LOADER-PATH-CHECK
+EXPORT LOADER:LOADER-PATH-RECORD
+EXPORT LOADER:LOADER-PATH-STOP
+EXPORT REQUIRE-REG:REQUIRE-BASE
 private
 
 \ Word w's path a u, judged as spelled: one no file name holds, or one longer
 \ than PATH-CAP, stops with w's record.
 : GIVEN-CHECK ( str str -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u a u LOADER-PATH-CHECK
-   u INCLUDE-PATH-CAP > if w wu a u E-PATH-RANGE u INCLUDE-FALSE LOADER-PATH-STOP then ;
+   u PATH-CAP > if w wu a u E-PATH-RANGE u INCLUDE-FALSE LOADER-PATH-STOP then ;
 
-INCLUDE-PATH-CAP 1+ constant PATH-BYTES
+PATH-CAP 1+ constant PATH-BYTES
 create CWD-BUF PATH-BYTES allot
 create CANON-BUF PATH-BYTES allot
 create CANDIDATE-BUF PATH-BYTES allot
@@ -302,7 +346,7 @@ variable SLOT-BASE
 
 : CHECK ( ^u8 n -- )
    {: a:^ u:n :}
-   u 0 <= if a u E-PATH-RANGE u INCLUDE-FALSE INCLUDE-PATH-CAP PATH-PASS then ;
+   u 0 <= if a u E-PATH-RANGE u INCLUDE-FALSE PATH-CAP PATH-PASS then ;
 
 
 \ realpath of a path of any written length into CANON-BUF: its length, below 0
@@ -310,8 +354,8 @@ variable SLOT-BASE
 : CANON-N ( str -- n )
    {: a:^ u:n :}
    a u CHECK
-   a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if a u kind len INCLUDE-FALSE INCLUDE-PATH-CAP PATH-PASS then
+   a u LOADER:PATH-FAULT {: kind:n len:n :}
+   kind 0 <> if a u kind len INCLUDE-FALSE PATH-CAP PATH-PASS then
    a u ZPATH-OF CANON-BUF PATH-BYTES realpath ;
 
 public
@@ -347,7 +391,7 @@ private
    p pu SOURCE-INPUT:CANON {: a:^ u:n found:bool :}
    u PATH-BYTES >= if p pu E-PATH-RANGE 0 INCLUDE-TRUE PATH-BYTES 1- PATH-PASS then
    found if
-      a u LOADER-PATH-FAULT drop {: kind:n :}
+      a u LOADER:PATH-FAULT drop {: kind:n :}
       kind 0 <> if INCLUDE-TRUE else a c@ [char] / <> then if
          s" SOURCE-INPUT:CANON" p pu p pu
          kind E-PATH-NUL = if
@@ -435,7 +479,7 @@ variable PROGRAM-U
    n PROGRAM-U ! ;
 
 \ Whether a canonical path is the program file. A fresh discovery registry
-\ (REQUIRE-SNAPSHOT) hides it, as it hides every row recorded before it.
+\ (REQUIRE-REG:SNAPSHOT) hides it, as it hides every row recorded before it.
 : PROGRAM? ( str -- bool ) {: a:^ u:n :}
    REQUIRE-BASE @ 0= 0= if INCLUDE-FALSE exit then
    PROGRAM-INIT
@@ -475,9 +519,9 @@ private
 \ with u wraps is a joined path too long. Built in WORK-BUF, so a root or name
 \ in JOIN-BUF is read first.
 : JOIN! ( str str -- ) {: root:^ rootu:n a:^ u:n :}
-   rootu 0 < if root 0 E-PATH-RANGE rootu INCLUDE-FALSE INCLUDE-PATH-CAP PATH-PASS then
+   rootu 0 < if root 0 E-PATH-RANGE rootu INCLUDE-FALSE PATH-CAP PATH-PASS then
    rootu u + 1+ {: n:n :}
-   n 0 < if root 0 E-PATH-RANGE 0 INCLUDE-TRUE INCLUDE-PATH-CAP PATH-PASS then
+   n 0 < if root 0 E-PATH-RANGE 0 INCLUDE-TRUE PATH-CAP PATH-PASS then
    n WORK-FIT
    root WORK-BUF rootu BYTE-COPY
    47 WORK-BUF rootu + c!
@@ -542,7 +586,7 @@ private
    repeat drop ;
 
 
-: NORMALIZE ( str -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
+: NORMALIZE ( str -- ) PATH-CAP NORMALIZE-LIMIT ;
 
 \ A build compiles a second copy of this file into the program it builds, and
 \ there LOADER answers hb's record: the copy's loading words would run its own
@@ -638,13 +682,13 @@ private
    CANON-U @ begin dup total < while
       dup WORK-BUF total rot SEG-END {: start:n end:n :}
       WORK-BUF start end DOT-SEG? 0= if
-         WORK-BUF total  WORK-BUF start +  end start -  INCLUDE-PATH-CAP NORMAL-PUT
+         WORK-BUF total  WORK-BUF start +  end start -  PATH-CAP NORMAL-PUT
       then
       end 1+
    repeat drop
    \ A rest of only empty and `.` segments follows a file the lookup cannot
    \ enter: one `.` stays, so the answer is never that file's own path.
-   NORMAL-U @ base = if WORK-BUF total s" ." INCLUDE-PATH-CAP NORMAL-PUT then ;
+   NORMAL-U @ base = if WORK-BUF total s" ." PATH-CAP NORMAL-PUT then ;
 
 public
 
@@ -696,7 +740,7 @@ public
 private
 
 : OWNER! ( str -- ) {: a:^ u:n :}
-   u INCLUDE-PATH-CAP > if E-PATH-RANGE throw then
+   u PATH-CAP > if E-PATH-RANGE throw then
    a OWNER-BUF u BYTE-COPY u OWNER-U ! ;
 
 
@@ -883,7 +927,7 @@ INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
 \ Word w got the path a u that, alone or joined to the current root, is len bytes,
 \ more than PATH-CAP.
 : ROOT-LONG ( str str n -- ) {: w:^ wu:n a:^ u:n len:n :}
-   w wu SRCLOC:SPELLED drop len INCLUDE-PATH-CAP REJECTION:PATH-RANGE
+   w wu SRCLOC:SPELLED drop len PATH-CAP REJECTION:PATH-RANGE
    w wu a u LOADER-PATH-AT if
       len u = if
          s" is too long"
@@ -893,15 +937,15 @@ INP-CELL RESERVED-PTR-U8-CELL INPUT-AT
    then
    REJECTION:HELP
    s" name a directory whose full path is at most " REJECTION:EMIT-STR
-   INCLUDE-PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   PATH-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ ROOT! for word w, the one the program called.
 : ROOT-SET ( str str -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u a u LOADER-PATH-CHECK
-   u INCLUDE-PATH-CAP > if w wu a u u ROOT-LONG then
+   u PATH-CAP > if w wu a u u ROOT-LONG then
    CURRENT$ a u JOIN {: p:^ pu:n :}
-   pu INCLUDE-PATH-CAP > if w wu a u pu ROOT-LONG then
+   pu PATH-CAP > if w wu a u pu ROOT-LONG then
    p pu ROOT-N {: n:n :}
    n -1 = if
       w wu a u p pu s" does not resolve to a directory"
@@ -963,6 +1007,8 @@ ROOT-MOVER
 
 using SOURCE-ROOT
 
+package LOADER
+
 : INCLUDE-DIE ( str -- )
    EXIT-STATUS:IOERR die ;
 
@@ -974,22 +1020,29 @@ using SOURCE-ROOT
    then
    -1 INCLUDE-FD ! ;
 
+public
+
 \ The loader word, the source token t tu, has no path after it. It is written
 \ through its help, and the caller stops it.
-: INCLUDE-NO-PATH ( str -- ) {: t:^ tu:n :}
+: NO-PATH ( str -- ) {: t:^ tu:n :}
    t tu s" a path" t tu s" no path follows"
    REJECTION:MISSING-OPERAND
    s" write the file's path after the word, as " REJECTION:EMIT-STR
    s" `require src/lib/fs.f`" REJECTION:EMIT-STR ;
 
+private
+
 \ A loader word's parsed path of length u: a missing one is rejected at the word.
 : INCLUDE-CHECK-PATH ( n -- ) {: u:n :}
    u 0 <= if
-      SRCLOC:TOKEN$ INCLUDE-NO-PATH  EXIT-STATUS:REJECTED REJECTION:STOP
+      SRCLOC:TOKEN$ NO-PATH  EXIT-STATUS:REJECTED REJECTION:STOP
    then ;
+
+;package
 
 package REQUIRE-REG
 private
+EXPORT LOADER:INCLUDE-DIE
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
 $7FFFFFFFFFFFFFFF 2 cells / constant ROW-LIMIT
@@ -1178,7 +1231,7 @@ public
    idx PREFIX-N @ < if idx FROZEN-LEN else idx ROW-LEN@ then ;
 
 : APPEND ( ^u8 n -- ) {: a:^ u:n :}
-   u 0 <= u INCLUDE-PATH-CAP > or if
+   u 0 <= u PATH-CAP > or if
       s" require: invalid path length" EXIT-STATUS:INTERNAL die
    then
    REQUIRE-N @ {: idx:n :}
@@ -1266,19 +1319,13 @@ public
    fresh FROZEN !
    REQUIRE-N @ PREFIX-N ! ;
 
-;package
-
-: REQUIRE-LEN@ ( n -- n )
-   REQUIRE-REG:LEN ;
-
-: REQUIRE-SLOT ( n -- ^u8 )
-   REQUIRE-REG:SLOT ;
+private
 
 : REQUIRE-BYTE= ( ^u8 n n -- bool ) {: a:^ idx:n i:n :}
-   a i ZBYTE@ idx REQUIRE-SLOT i ZBYTE@ = ;
+   a i ZBYTE@ idx SLOT i ZBYTE@ = ;
 
 : REQUIRE-PATH= ( str n -- bool ) {: a:^ u:n idx:n :}
-   idx REQUIRE-LEN@ u <> if INCLUDE-FALSE exit then
+   idx LEN u <> if INCLUDE-FALSE exit then
    0 begin dup u < while
       dup a idx rot REQUIRE-BYTE= 0= if drop INCLUDE-FALSE exit then
       1+
@@ -1290,7 +1337,12 @@ public
       1+
    repeat drop INCLUDE-FALSE ;
 
+;package
+
 package SOURCE-ROOT
+EXPORT REQUIRE-REG:REQUIRE-BOOT-LIMIT
+EXPORT REQUIRE-REG:REQUIRE-KNOWN?
+EXPORT REQUIRE-REG:REQUIRE-PATH=
 private
 
 : LOADED? ( str -- bool ) {: a:^ u:n :}
@@ -1318,13 +1370,13 @@ private
 \ PATH-CAP or realpath rejects it; never a throw: the length is checked before
 \ CANON-N, and neither path holds a NUL.
 : EXE-ROOT ( str -- n ) {: a:^ u:n :}
-   u 0= u INCLUDE-PATH-CAP > or if 0 exit then
+   u 0= u PATH-CAP > or if 0 exit then
    a u CANON-N {: n:n :}
    n 0 <= if 0 exit then
    CANON-BUF CANON-BUF n PARENT-U PARENT-U ;
 
 : TREE? ( str -- bool )
-   0 REQUIRE-SLOT 0 REQUIRE-LEN@ JOIN ZPATH-OF 0 access 0= ;
+   0 REQUIRE-REG:SLOT 0 REQUIRE-REG:LEN JOIN ZPATH-OF 0 access 0= ;
 
 \ The root's length in CANON-BUF, 0 for the working directory.
 : ENGINE-FIND-FOR ( str -- n )
@@ -1744,7 +1796,7 @@ public
    s" ` is a boot file outside the engine root" REJECTION:EMIT-STR
    s" root" REJECTION:NOTE  root rootu REJECTION:EMIT-STR
    REJECTION:HELP
-   s" require it after `REQUIRE-BOOT-FREEZE`, or move it under `" REJECTION:EMIT-STR
+   s" require it after `REQUIRE-REG:BOOT-FREEZE`, or move it under `" REJECTION:EMIT-STR
    root rootu REJECTION:EMIT-STR  96 REJECTION:EMIT1
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
@@ -1769,6 +1821,9 @@ public
 
 ;package
 
+package REQUIRE-REG
+public
+
 \ A boot row is recorded portably, in the one spelling BOOT-KNOWN? asks for,
 \ relative to the engine root; a build's fresh registry makes that root the
 \ working directory. Against the load's own owner root a require issued by a
@@ -1779,21 +1834,21 @@ public
 \ the two cannot collide, as a canonical name begins with `/` and a portable
 \ one never does. The path comes back in storage the store did not reuse, for
 \ the caller's load.
-: REQUIRE-STORE ( str -- str )
+: STORE ( str -- str )
    REQUIRE-BOOT-OPEN? if BOOT-ROW else 2dup then
-   REQUIRE-REG:APPEND ;
+   APPEND ;
+
+;package
+
+package LOADER
 
 : INCLUDE-PATH0 ( str -- ^u8 )
    {: a:^ u:n :}
-   a u INCLUDE-PATH INCLUDE-PATH-CAP 1+ PATHZ
+   a u INCLUDE-PATH PATH-CAP 1+ PATHZ
    u INCLUDE-PATH-U !
    INCLUDE-PATH ;
 
-variable SCRIPT-NAMED-PEND
-
-: SCRIPT-NAMED-PEND! ( bool -- )
-   SCRIPT-NAMED-PEND ! ;
-
+;package
 
 \ Every source load runs through the bound runner. The ordinary one keeps the
 \ frame and scope behavior; a build binds its own once the loader has loaded.
@@ -1819,23 +1874,33 @@ public
 
 SOURCE-UNIT:RESET
 
-\ Source-composition event log: one event per loader act, the request as spelled
-\ and the path it resolved to, so a restricted discovery pass can rebuild include
-\ multiplicity and require/provided registry state in order, and a build's
-\ linker can carry the acts in a file's object.
-\ During discovery the walker runs DISCOVERY-ON and passes the loader-token span
-\ to DISC-TOK! and the span where the path is written to DISC-PATH!. A build's
-\ linker reads the depth to tell a request made with cells on the stack.
+package LOADER
 
-15 constant EVENT-FIELDS
+: LOADER-TOK-A ( -- n )   data-base TKA-CELL + @ ;
+: LOADER-TOK-U ( -- n )   data-base TKL-CELL + @ ;
+: LOADER-TOKEN-SPAN ( -- n n )  LOADER-TOK-A LOADER-TOK-U ;
+
+;package
+
+\ One event per loader act: the request as spelled and the path it resolved to,
+\ which a discovery pass replays in order and a build's linker carries per file.
+package SOURCE-EVENT
+EXPORT LOADER:INCLUDE-DIE
+EXPORT LOADER:LOADER-TOKEN-SPAN
+
+13 constant EVENT-FIELDS
 EVENT-FIELDS cells constant EVENT-BYTES
 $1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 
-0 constant EV-INCLUDED
-1 constant EV-REQUIRED
-2 constant EV-PROVIDED
-0 constant EV-STATE-FRESH
-1 constant EV-STATE-KNOWN
+public
+
+0 constant KIND-INCLUDED
+1 constant KIND-REQUIRED
+2 constant KIND-PROVIDED
+0 constant STATE-FRESH
+1 constant STATE-KNOWN
+
+private
 
 \ Mappings that grow as events arrive; the pool holds each event's paths and
 \ roots, a root stored once. Each CAP counts its mapping's bytes, 0 unmapped.
@@ -1847,19 +1912,19 @@ variable EVENT-N
 variable EVENT-POOL-N
 variable EVENT-ON-V
 variable EVENT-DISC-V
-variable DISC-TOK-A
-variable DISC-TOK-U
-variable DISC-PATH-A
-variable DISC-PATH-U
 
 : EVENT-ON? ( -- bool )   EVENT-ON-V @ 0= 0= ;
 : DISCOVERY? ( -- bool )  EVENT-DISC-V @ 0= 0= ;
-: EVENT-ON ( -- )         1 EVENT-ON-V ! ;
-: EVENT-OFF ( -- )        0 EVENT-ON-V ! ;
+
+public
+
+: ON ( -- )               1 EVENT-ON-V ! ;
+: OFF ( -- )              0 EVENT-ON-V ! ;
 : DISCOVERY-ON ( -- )     1 EVENT-DISC-V ! ;
 : DISCOVERY-OFF ( -- )    0 EVENT-DISC-V ! ;
-: DISC-TOK! ( n n -- )    DISC-TOK-U ! DISC-TOK-A ! ;
-: DISC-PATH! ( n n -- )   DISC-PATH-U ! DISC-PATH-A ! ;
+
+private
+
 : EVENT-RECS@ ( -- ^u8 ) EVENT-RECS @ ;
 : EVENT-POOL@ ( -- ^u8 ) EVENT-POOL @ ;
 
@@ -1877,26 +1942,17 @@ variable DISC-PATH-U
    old oldcap EVENT-UNMAP
    fresh ;
 
+public
+
 \ Reset releases both mappings, so snapshot preparation leaves a captured image
 \ no path of the machine that recorded them and no address of a mapping.
-: EVENTS-RESET ( -- )
+: RESET ( -- )
    EVENT-RECS@ EVENT-RECS-CAP @ EVENT-UNMAP
    NULL-PTR EVENT-RECS !  0 EVENT-RECS-CAP !  0 EVENT-N !
    EVENT-POOL@ EVENT-POOL-CAP @ EVENT-UNMAP
    NULL-PTR EVENT-POOL !  0 EVENT-POOL-CAP !  0 EVENT-POOL-N ! ;
 
-: LOADER-TOK-A ( -- n )   data-base TKA-CELL + @ ;
-: LOADER-TOK-U ( -- n )   data-base TKL-CELL + @ ;
-: LOADER-TOKEN-SPAN ( -- n n )  LOADER-TOK-A LOADER-TOK-U ;
-
-: EVENT-SPAN ( -- n n )
-   DISCOVERY? if DISC-TOK-A @ DISC-TOK-U @ exit then
-   LOADER-TOKEN-SPAN ;
-
-\ Outside discovery no reader takes the path's span: it is the loader token's.
-: EVENT-PATH-SPAN ( -- n n )
-   DISCOVERY? if DISC-PATH-A @ DISC-PATH-U @ exit then
-   LOADER-TOKEN-SPAN ;
+private
 
 : EVENT-SLOT ( n n -- ^n )
    swap EVENT-FIELDS * + cells EVENT-RECS@ + CELL-VIEW ;
@@ -1935,7 +1991,6 @@ variable DISC-PATH-U
    off u + EVENT-POOL-N !
    off u ;
 
-package SOURCE-EVENT
 public
 
 : ROOT@ ( n -- str ) {: ix:n :}
@@ -1969,15 +2024,14 @@ public
    coff ix 11 EVENT-FIELD!
    clen ix 12 EVENT-FIELD! ;
 
-;package
+private
 
 : EVENT-RECORD ( str str n n -- )
    {: a:^ u:n path:^ pathu:n kd:n st:n :}
    EVENT-ON? 0= if exit then
    EVENT-RECS-ROOM
    EVENT-N @ {: ix:n :}
-   EVENT-SPAN {: toka:n toku:n :}
-   EVENT-PATH-SPAN {: pat:n plen:n :}
+   LOADER-TOKEN-SPAN {: toka:n toku:n :}
    path pathu EVENT-COPY-PATH {: off:n len:n :}
    a u EVENT-COPY-PATH {: soff:n slen:n :}
    kd    ix 0 EVENT-FIELD!
@@ -1989,33 +2043,48 @@ public
    soff  ix 8 EVENT-FIELD!
    slen  ix 9 EVENT-FIELD!
    depth ix 10 EVENT-FIELD!     \ the callers hold their arguments in locals: the requester's depth
-   pat   ix 13 EVENT-FIELD!
-   plen  ix 14 EVENT-FIELD!
-   ix SOURCE-EVENT:STORE-ROOT
+   ix STORE-ROOT
    ix 1 + EVENT-N ! ;
 
-: REQUIRE-STATE ( bool -- n )
-   if EV-STATE-KNOWN exit then EV-STATE-FRESH ;
+public
 
-: EVENT-COUNT ( -- n )       EVENT-N @ ;
-: EVENT-KIND@ ( n -- n )     0 EVENT-FIELD@ ;
-: EVENT-STATE@ ( n -- n )    5 EVENT-FIELD@ ;
-: EVENT-PATH@ ( n -- str ) {: ix:n :}
+: COUNT ( -- n )             EVENT-N @ ;
+: KIND@ ( n -- n )           0 EVENT-FIELD@ ;
+: STATE@ ( n -- n )          5 EVENT-FIELD@ ;
+: PATH@ ( n -- str ) {: ix:n :}
    ix 1 EVENT-FIELD@ EVENT-POOL-AT
    ix 2 EVENT-FIELD@ ;
+
+private
+
 : EVENT-SPELLED@ ( n -- str ) {: ix:n :}
    ix 8 EVENT-FIELD@ EVENT-POOL-AT
    ix 9 EVENT-FIELD@ ;
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
-: EVENT-PATH-TOK@ ( n -- n n ) {: ix:n :}
-   ix 13 EVENT-FIELD@ ix 14 EVENT-FIELD@ ;
 : EVENT-DEPTH@ ( n -- n )    10 EVENT-FIELD@ ;
+
+;package
+
+package REQUIRE-REG
+
+: REQUIRE-STATE ( bool -- n )
+   if SOURCE-EVENT:STATE-KNOWN exit then SOURCE-EVENT:STATE-FRESH ;
+
+;package
 
 package SOURCE-ROOT
 EXPORT CHECK:FILE-POS-CLEAR
 EXPORT SCHEMA-REG:TRANSIENT-MARK
 EXPORT SCHEMA-REG:TRANSIENT-RELEASE
+EXPORT LOADER:INCLUDE-CLOSE
+EXPORT LOADER:INCLUDE-DIE
+EXPORT LOADER:INCLUDE-FD
+EXPORT LOADER:INCLUDE-PATH
+EXPORT LOADER:INCLUDE-PATH-U
+EXPORT LOADER:INCLUDE-PATH0
+EXPORT LOADER:INCLUDE-RD
+EXPORT LOADER:INCLUDE-U
 private
 
 \ A frame carries its own resolved path: a nested include overwrites
@@ -2023,27 +2092,26 @@ private
 \ file to an inner rejection or a POP. Its mapping is sized to the file:
 \ FR-ROOM counts the source bytes it can hold, FR-SIZE the file's.
 SRCLOC:FR-PREV constant FR-PREV
-CELL constant FR-NAMED
 SRCLOC:FR-PATHLEN constant FR-PATHLEN
-3 cells constant FR-ROOM
+1 cells constant FR-ROOM
 SRCLOC:FR-SIZE constant FR-SIZE
-5 cells constant FR-ROOTLEN
+3 cells constant FR-ROOTLEN
 SRCLOC:FR-EXEC-COPY constant FR-EXEC-COPY
-7 cells constant FR-EVAL-OK
-8 cells constant FR-EVAL-PTR
-9 cells constant FR-EVAL-SIZE
-10 cells constant FR-EVAL-FIRST
-11 cells constant FR-EVAL-END
+5 cells constant FR-EVAL-OK
+7 cells constant FR-EVAL-PTR
+8 cells constant FR-EVAL-SIZE
+9 cells constant FR-EVAL-FIRST
+10 cells constant FR-EVAL-END
 \ How many root programs are being read while this frame is the top.
-12 cells constant FR-ROOT-RUNS
+11 cells constant FR-ROOT-RUNS
 \ The file's stamp: change time seconds, nanoseconds and size.
-13 cells constant FR-CTIME-SEC
-14 cells constant FR-CTIME-NS
-15 cells constant FR-STAMP-SIZE
+12 cells constant FR-CTIME-SEC
+13 cells constant FR-CTIME-NS
+14 cells constant FR-STAMP-SIZE
 \ The transient schema mark the file's load took (SCHEMA-REG:TRANSIENT-MARK).
-16 cells constant FR-T-NODES
-17 cells constant FR-T-ROOTS
-18 cells constant FR-T-PARAMS
+15 cells constant FR-T-NODES
+16 cells constant FR-T-ROOTS
+17 cells constant FR-T-PARAMS
 SRCLOC:FR-PATH constant FR-PATH
 SRCLOC:FR-ROOT constant FR-ROOT
 SRCLOC:HEADER-BYTES constant HEADER-BYTES
@@ -2121,7 +2189,6 @@ variable LAST-LOAD-EVAL-OK
    then
    {: frame:^ :}
    TOP@ frame FRAME-PREV !
-   SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
    INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
    ROOM-MIN frame FR-ROOM + CELL-VIEW !
    -1 frame FR-SIZE + CELL-VIEW !
@@ -2140,7 +2207,6 @@ variable LAST-LOAD-EVAL-OK
    rootu frame FR-ROOTLEN + CELL-VIEW !
    root frame FR-ROOT + rootu BYTE-COPY
    frame TOP!
-   INCLUDE-FALSE SCRIPT-NAMED-PEND!
    PUBLISH-LOCATION ;
 
 : POP ( -- )
@@ -2612,7 +2678,7 @@ public
 \ program's directory.
 : RUN-PROGRAM ( ^u8 n -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
-   NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER-RESOLVE {: path:^ pathu:n exists:bool :}
+   NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER:RESOLVE {: path:^ pathu:n exists:bool :}
    path pathu a u NULL-PTR 0 CONFINE-AS INCLUDE-PATH0 drop
    exists 0= if a u NULL-PTR 0 INCLUDE-TRUE MISSING-SOURCE then
    PUSH
@@ -2644,10 +2710,6 @@ public
 \ keeps its row in that case.
 : COMMITTED? ( -- bool )
    LAST-LOAD-EVAL-OK @ 0 <> ;
-
-: NAMED? ( -- bool )
-   TOP@ 0= if INCLUDE-FALSE exit then
-   TOP@ FR-NAMED + c@ 0= 0= ;
 
 \ PATH has already been resolved by the loader's resolver, under ROOT. This
 \ opens a source frame and makes ROOT current until the callback returns.
@@ -2695,6 +2757,9 @@ public
 ;package
 
 package SOURCE-ROOT
+EXPORT SOURCE-EVENT:DISCOVERY?
+EXPORT SOURCE-EVENT:EVENT-RECORD
+EXPORT REQUIRE-REG:REQUIRE-STATE
 private
 
 \ A discovery pass reads source and opens no file, so it records a missing
@@ -2703,16 +2768,14 @@ private
    DISCOVERY? if RESOLVE-AT exit then
    LOAD-RESOLVE ;
 
-\ A path the registry already holds is skipped, so the pending flag has to be
-\ cleared on every exit or it would leak into the next unrelated load. w is the
-\ word the program called.
+\ A path the registry already holds is skipped. w is the word the program called.
 : REQUIRE-BODY ( str str str bool -- )
    {: w:^ wu:n a:^ u:n path:^ pathu:n known:bool :}
-   a u path pathu EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
-   known if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
+   a u path pathu SOURCE-EVENT:KIND-REQUIRED known REQUIRE-STATE EVENT-RECORD
+   known if exit then
    REQUIRE-REG:MARK {: row:n :}
-   path pathu REQUIRE-STORE {: row-path:^ row-pathu:n :}
-   DISCOVERY? if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
+   path pathu REQUIRE-REG:STORE {: row-path:^ row-pathu:n :}
+   DISCOVERY? if exit then
    a u SRCLOC:ORIGIN$ {: t:^ tu:n :}
    [: t tu w wu row-path row-pathu LOAD-RUN ;] catch {: rc:n :}
    rc 0 <> if
@@ -2725,8 +2788,8 @@ public
 \ `included` of a u for loader word w, the word the program called.
 : INCLUDED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
-   w wu a u [: LOADER-FIND ;] LOADER-RESOLVE drop {: path:^ pathu:n :}
-   a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
+   w wu a u [: LOADER-FIND ;] LOADER:RESOLVE drop {: path:^ pathu:n :}
+   a u path pathu SOURCE-EVENT:KIND-INCLUDED SOURCE-EVENT:STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    a u SRCLOC:ORIGIN$
    w wu path pathu LOAD-RUN ;
@@ -2734,51 +2797,57 @@ public
 \ `required` of a u for loader word w, the word the program called.
 : REQUIRED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
-   INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   w wu a u  w wu a u [: LOADER-FIND ;] LOADER-RESOLVE  REQUIRE-BODY ;
+   w wu a u  w wu a u [: LOADER-FIND ;] LOADER:RESOLVE  REQUIRE-BODY ;
 
 : ENTRY-REQUIRED ( str -- )
    {: a:^ u:n :}
    s" script-required" LOAD-BEGINS
-   INCLUDE-TRUE SCRIPT-NAMED-PEND!
    s" script-required" a u
-   NULL-PTR 0 a u [: 2drop ENTRY-RESOLVE ;] LOADER-RESOLVE  REQUIRE-BODY ;
+   NULL-PTR 0 a u [: 2drop ENTRY-RESOLVE ;] LOADER:RESOLVE  REQUIRE-BODY ;
 
 ;package
+
+package LOADER
+EXPORT SOURCE-EVENT:EVENT-RECORD
+EXPORT REQUIRE-REG:REQUIRE-STATE
+
+global
 
 : included ( ^u8 n -- )
    {: a:^ u:n :}
    s" included" SOURCE-ROOT:LOAD-BEGINS
    s" included" a u INCLUDED-AS ;
 
-create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
-' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
-
 : required ( ^u8 n -- )
    {: a:^ u:n :}
    s" required" SOURCE-ROOT:LOAD-BEGINS
    s" required" a u REQUIRED-AS ;
 
-create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
-' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
-
 \ The `--load` argv row.
 : script-required ( ^u8 n -- ) ENTRY-REQUIRED ;
 
-: SCRIPT-NAMED-LOAD? ( -- bool )
-   SOURCE-ROOT:NAMED? ;
-
 : provided ( ^u8 n -- )
    {: a:^ u:n :}
-   s" provided" a u [: RESOLVE-AT ;] LOADER-RESOLVE {: path:^ pathu:n known:bool :}
+   s" provided" a u [: RESOLVE-AT ;] RESOLVE {: path:^ pathu:n known:bool :}
    s" provided" path pathu SOURCE-ROOT:BUILD-REFUSE
-   a u path pathu EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
+   a u path pathu SOURCE-EVENT:KIND-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if exit then
-   path pathu REQUIRE-STORE 2drop ;
+   path pathu REQUIRE-REG:STORE 2drop ;
+
+private
+
+create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
+' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
+
+create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
+' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
+
+;package
 
 \ Defined in CHECK's global section, as operand-rows.f defines `parses:`, so
 \ INTRINSIC and the loader ids, which are CHECK's, tag them.
 package CHECK
+EXPORT LOADER:INCLUDE-CHECK-PATH
 global
 : include ( -- )
    s" include" SOURCE-ROOT:LOAD-BEGINS
@@ -2806,6 +2875,8 @@ create SOURCE-ORIGINAL-REQUIRE-ENTRY 0 ,
 ;package
 
 package SOURCE-UNIT
+EXPORT LOADER:SOURCE-ORIGINAL-INCLUDED-ENTRY
+EXPORT LOADER:SOURCE-ORIGINAL-REQUIRED-ENTRY
 public
 0 constant LOAD-INCLUDE
 1 constant LOAD-REQUIRE
@@ -2894,8 +2965,10 @@ public
 \ A restricted discovery pass sees a fresh require/provided registry, so a tool's
 \ preloaded paths cannot dedup-hide a later user require. One snapshot is in
 \ effect at a time, since one pair is saved: a second would lose the first.
+package REQUIRE-REG
+public
 
-: REQUIRE-SNAPSHOT ( -- )
+: SNAPSHOT ( -- )
    REQUIRE-SAVE-N @ 0 >= if
       s" require: a registry snapshot is already in effect" EXIT-STATUS:INTERNAL die
    then
@@ -2903,31 +2976,40 @@ public
    REQUIRE-BASE @ REQUIRE-SAVE-BASE !
    REQUIRE-N @ REQUIRE-BASE ! ;
 
-: REQUIRE-RESTORE ( -- )
+: RESTORE ( -- )
    REQUIRE-SAVE-N @ 0< if s" require: no registry snapshot to restore" EXIT-STATUS:INTERNAL die then
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
-   REQUIRE-SAVE-N @ REQUIRE-REG:REWIND
+   REQUIRE-SAVE-N @ REWIND
    -1 REQUIRE-SAVE-N ! ;
-
-package REQUIRE-REG
-
-public
 
 : COUNT ( -- n )
    REQUIRE-N @ ;
 
-;package
+\ The first row the registry counts as known; SNAPSHOT sets it to the count.
+: BASE ( -- n )
+   REQUIRE-BASE @ ;
 
 \ What the ENGINE provides, as opposed to what this process loaded: the boot
 \ prefix marks its own files `provided` before any user token runs, and freezing
 \ the count at its end separates the two, which REQUIRE-KNOWN? cannot once a
 \ tool's own dependencies are in the registry.
-: REQUIRE-BOOT-FREEZE ( -- )
+: BOOT-FREEZE ( -- )
    REQUIRE-N @ REQUIRE-BOOT-N !
    INCLUDE-FALSE REQUIRE-BOOT-V ! ;
 
 : ENGINE-PROVIDES? ( ^u8 n -- bool )
    ENGINE-KNOWN? ;
+
+global
+
+\ The name an installed hb's end.f calls.
+: REQUIRE-BOOT-FREEZE ( -- )
+   BOOT-FREEZE ;
+
+;package
+
+package LOADER
+global
 
 \ A file that builds for some targets only states them on its first code line,
 \ before its requires; on another target its load stops there.
@@ -2943,5 +3025,6 @@ public
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
+;package
 
 ;using

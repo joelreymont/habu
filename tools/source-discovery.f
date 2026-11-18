@@ -890,11 +890,9 @@ DYNAMIC-BUFFER SD-DEC u8
    a u provided ;
 
 \ The loader word at off len, read last as on the native path, takes the path
-\ written at poff plen. A path the loader rejects is out with its record.
-: SD-CALL-LOADER ( n n n n n -- )
-   {: off:n len:n poff:n plen:n kind:n :}
-   off len DISC-TOK!
-   poff plen DISC-PATH!
+\ in SD-PATH-SRC. A path the loader rejects is out with its record.
+: SD-CALL-LOADER ( n n n -- )
+   {: off:n len:n kind:n :}
    SRCLOC:TOKEN$ {: oa:^ ou:n :}
    off len SD-TOK$ SRCLOC:TOKEN!
    [: off len kind SD-CALL-ACT ;] [: oa ou SRCLOC:TOKEN! ;] finally
@@ -904,7 +902,7 @@ DYNAMIC-BUFFER SD-DEC u8
 \ with nothing written, for one that is empty, holds a NUL byte or resolves
 \ past the cap.
 : SD-BODY-PATH? ( -- bool )
-   SD-PATH$ LOADER-PATH-FAULT drop 0<> if false exit then
+   SD-PATH$ LOADER:PATH-FAULT drop 0<> if false exit then
    SD-PATH$ false [: drop SOURCE-ROOT:RESOLVE ;] catch {: rc:n :}
    drop 2drop
    rc 0= if true exit then
@@ -918,13 +916,13 @@ DYNAMIC-BUFFER SD-DEC u8
       pend SD-PEND-PATH = 0= if exit then
       off len SD-CHECK-USE
       SD-BODY-PATH? 0= if exit then
-      off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER
+      off len kind SD-CALL-LOADER
       exit
    then
    off len SD-CHECK-USE
    pend SD-PEND-OTHER = if SD-OPENER-STOP then
    pend SD-PEND-PATH = 0= if SD-DYNAMIC-STOP then
-   off len SD-PATH-AT @ SD-PATH-SPAN @ kind SD-CALL-LOADER ;
+   off len kind SD-CALL-LOADER ;
 
 \ In a body the engine rejects `include` and `require` (E-UNMODELED-IMMEDIATE)
 \ and loads nothing, so the walk reads their path past.
@@ -934,10 +932,10 @@ DYNAMIC-BUFFER SD-DEC u8
    SD-BODY? if exit then
    plen 0= if
       E-DISC-DYNAMIC SD-HARVEST-THROW
-      toff tlen SD-TOK$ INCLUDE-NO-PATH  E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP
+      toff tlen SD-TOK$ LOADER:NO-PATH  E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP
    then
    poff plen SD-TOK$ SD-PATH-FILL
-   toff tlen poff plen kind SD-CALL-LOADER ;
+   toff tlen kind SD-CALL-LOADER ;
 
 
 : SD-LOCALS-RESET ( -- )
@@ -1195,16 +1193,16 @@ DYNAMIC-BUFFER SD-DEC u8
    SD-STORAGE @ SPAN:$ drop SD-A ! ;
 
 : SD-KIND-NAME ( n -- str ) {: kind:n :}
-   kind EV-INCLUDED = if s" included" exit then
-   kind EV-REQUIRED = if s" required" exit then
+   kind SOURCE-EVENT:KIND-INCLUDED = if s" included" exit then
+   kind SOURCE-EVENT:KIND-REQUIRED = if s" required" exit then
    s" provided" ;
 
 : SD-EMIT-EVENT ( n ^u8 len ^len -- ) {: ix:n dst:^ cap:len lenp:^ :}
-   ix EVENT-KIND@ SD-KIND-NAME >LEN dst cap lenp SOURCE-APPEND-BYTES
+   ix SOURCE-EVENT:KIND@ SD-KIND-NAME >LEN dst cap lenp SOURCE-APPEND-BYTES
    SD-SP dst cap lenp SOURCE-APPEND-C
-   ix EVENT-STATE@ $30 + dst cap lenp SOURCE-APPEND-C
+   ix SOURCE-EVENT:STATE@ $30 + dst cap lenp SOURCE-APPEND-C
    SD-SP dst cap lenp SOURCE-APPEND-C
-   ix EVENT-PATH@ >LEN dst cap lenp SOURCE-APPEND-QPATH
+   ix SOURCE-EVENT:PATH@ >LEN dst cap lenp SOURCE-APPEND-QPATH
    SD-LF dst cap lenp SOURCE-APPEND-C ;
 
 : SD-WALK-IN ( -- )
@@ -1225,13 +1223,13 @@ DYNAMIC-BUFFER SD-DEC u8
    else
       SD-ENTRY SD-ENTRY-U @ SD-FILE-FIND SD-FILE-ID !
    then
-   REQUIRE-SNAPSHOT
-   SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-STORE 2drop then
-   EVENTS-RESET EVENT-ON DISCOVERY-ON
+   REQUIRE-REG:SNAPSHOT
+   SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-REG:STORE 2drop then
+   SOURCE-EVENT:RESET SOURCE-EVENT:ON SOURCE-EVENT:DISCOVERY-ON
    [: SD-WALK-IN ;] catch {: rc:n :}
    pkg SD-C-PKG ! outer SD-C-OUTER ! top SD-C-GLOBAL !
-   DISCOVERY-OFF EVENT-OFF
-   REQUIRE-RESTORE
+   SOURCE-EVENT:DISCOVERY-OFF SOURCE-EVENT:OFF
+   REQUIRE-REG:RESTORE
    SD-HARVESTING @ if SD-R-END then
    SD-LOCALS-RELEASE
    SD-PATH-RELEASE
@@ -1276,13 +1274,13 @@ public
 \ The caller's discovery run keeps its events up to a source refusal. They
 \ give consumers a closure to harvest before their final expansion.
 : HARVEST ( [ -- ] -- ) {: q :}
-   EVENTS-RESET
+   SOURCE-EVENT:RESET
    1 SD-HARVESTING !
    q catch {: rc:n :}
    0 SD-HARVESTING !
    rc 0= if exit then
    rc E-DISC-FIRST <= rc E-DISC-LAST >= and if exit then
-   rc E-FS-FIRST <= rc E-FS-LAST >= and if EVENTS-RESET exit then
+   rc E-FS-FIRST <= rc E-FS-LAST >= and if SOURCE-EVENT:RESET exit then
    rc throw ;
 
 \ Discovery takes the canonical PATH as a file the loader has begun, as
@@ -1318,7 +1316,7 @@ public
 : EMIT ( ^u8 n -- n ) {: dst:^ cap:n :}
    0 >LEN SD-EMIT-LEN !
    cap >LEN {: clen:len :}
-   0 begin dup EVENT-COUNT < while
+   0 begin dup SOURCE-EVENT:COUNT < while
       dup dst clen SD-EMIT-LEN SD-EMIT-EVENT
       1+
    repeat drop

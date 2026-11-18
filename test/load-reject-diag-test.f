@@ -1338,10 +1338,10 @@ undefine include
    EXITED @ TTRUE
    RC @ 67 T= ;
 
-\ The record on stderr helps with a path of 1 to INCLUDE-PATH-CAP bytes.
+\ The record on stderr helps with a path of 1 to PATH-CAP bytes.
 : HELP-MOST ( -- )
    SB-RESET  s" = help: pass a path of 1 to " SB-APPEND
-   INCLUDE-PATH-CAP FMT:SB-INT  S\"  bytes\n" SB-APPEND
+   PATH-CAP FMT:SB-INT  S\"  bytes\n" SB-APPEND
    ERR$ SB$ CONTAINS? TTRUE ;
 
 4220 constant LONG-QS
