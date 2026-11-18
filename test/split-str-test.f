@@ -39,7 +39,7 @@ s" split-str" TEST-EVAL:RC 70 T=
 REJECTION:BUFFER$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" CONTAINS? TTRUE
 REJECTION:BUFFER$ s" split-str-test.f" 15 s\" s\" split-str\" TEST-EVAL:RC" T-PLACED
 REJECTION:BUFFER$ s\"   = evaluated: split-str\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" = help: write `split-str` in lower case, alone on its file's first line, or delete it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" CONTAINS? TTRUE
 
 \ tools/check.f's verifier places it at split-str with its help, as the load does.
 : SPC-RUN ( -- )
@@ -54,8 +54,8 @@ SPC-RUN
 E2E-TREE:RC@ 70 T=
 E2E-TREE:ERR$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" CONTAINS? TTRUE
 E2E-TREE:ERR$ s" split-str-late.f" 1 s" split-str" T-PLACED
-E2E-TREE:ERR$ s" ^^^^^^^^^ its file's first line is not `split-str` alone" CONTAINS? TTRUE
-E2E-TREE:ERR$ s" = help: write `split-str` in lower case, alone on its file's first line, or delete it" CONTAINS? TTRUE
+E2E-TREE:ERR$ s" ^^^^^^^^^ it takes effect only alone on the first line of a file loaded by name" CONTAINS? TTRUE
+E2E-TREE:ERR$ s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" CONTAINS? TTRUE
 
 \ The verifier reads the marker as the load does.
 : SPW-ON ( -- )

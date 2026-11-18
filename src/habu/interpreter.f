@@ -922,15 +922,16 @@ public
    t tu REJECTION:AT  s" out of context" SAY
    REJECTION:HELP  s" write " SAY  t tu TICKS  s"  only after " SAY
    s" package NAME" TICKS  s"  opens a package" SAY ;
-\ Writes the record of a split-str token t tu in a file whose first line is
-\ not split-str alone, through its help; the caller ends it.
+\ Writes the record of a split-str token t tu anywhere but alone on the first
+\ line of a file loaded by name, through its help; the caller ends it.
 : SPLIT-STR-REJECT ( str -- ) {: t:^ tu:n :}
    s" E-SPLIT-STR-LINE" REJECTION:OPEN
    t tu TICKS  s"  is not allowed in this context" SAY
-   t tu REJECTION:AT  s" its file's first line is not " SAY  s" split-str" TICKS
-   s"  alone" SAY
-   REJECTION:HELP  s" write " SAY  s" split-str" TICKS
-   s"  in lower case, alone on its file's first line, or delete it" SAY ;
+   t tu REJECTION:AT  s" it takes effect only alone on " SAY
+   s" the first line of a file loaded by name" SAY
+   REJECTION:HELP  s" move " SAY  s" split-str" TICKS
+   s" , in lower case, alone to the first line of " SAY
+   s" a file loaded by name, or delete it" SAY ;
 private
 
 : PKG-CONTEXT-FAIL ( -- )
