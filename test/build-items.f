@@ -281,6 +281,10 @@ BI-BAD-ENDED 8 T=
    22 0 ?do postpone drop loop
    postpone ; ;
 
+\ TYPED-VARIABLE NAME [ nullable<a> ... -- ] with 24 parameters.
+: MAKE-VWIDE ( str -- )
+   EFFECT:EMPTY  24 0 ?do NUL EFFECT:IN loop  EFFECT:VARIABLE-OF ;
+
 \ : NAME ( -- ) [ EFFECT:N EFFECT:LOCAL drop ] ; as text, which no
 \ define-word effect numbers; LOCAL-READ-NOW reads local 0 the same way.
 public
@@ -306,7 +310,8 @@ BI-QSTORE
 BAD-QSTORE 70 T=
 5 BI-QVAR @ execute 6 T=
 
-\ TYPED-VARIABLE NAME [ n -- option<a> ]
+\ TYPED-VARIABLE NAME [ n -- option<a> ]: its parameter follows the file's
+\ earlier ones, and the variable numbers it first.
 : MAKE-OVAR ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN s" option" EFFECT:NAMED EFFECT:OUT
    EFFECT:VARIABLE-OF ;
@@ -539,6 +544,7 @@ public
 : ENDED-TEXT-GO ( -- ) s" BI-ENDED-TEXT" ENDED-OPEN ;
 : UNREAD-GO ( -- ) s" BI-UNREAD-TEXT" UNREAD-OPEN ;
 : WIDE-GO ( -- ) s" BI-WIDE" MAKE-WIDE ;
+: VWIDE-GO ( -- ) s" BI-VWIDE" MAKE-VWIDE ;
 : TEXT-GO ( -- ) s" : BI-TEXT ( -- ) BITEM:LOCAL-NOW ;" evaluate-closed ;
 : TEXT-REF-GO ( -- )
    s" : BI-TEXT-REF ( -- ) BITEM:LOCAL-READ-NOW ;" evaluate-closed ;
@@ -611,6 +617,9 @@ JSON-FORM
 \ A rejection's text goes to fd 2, which a child's capture reads.
 s" BITEM:WIDE-GO" 70
 s" the effect `define-word` got for `BI-WIDE` has too many type parameters"
+SUBJECT:REFUSED? TTRUE
+s" BITEM:VWIDE-GO" 70
+s" the type `EFFECT:VARIABLE-OF` got for `BI-VWIDE` has too many type parameters"
 SUBJECT:REFUSED? TTRUE
 s" BITEM:TEXT-GO" 70
 s" EFFECT:LOCAL needs a definition define-word opened" SUBJECT:REFUSED? TTRUE

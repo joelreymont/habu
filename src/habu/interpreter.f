@@ -2308,6 +2308,27 @@ variable LIT-AT
    BODY-ITEM-KIND:LOCAL dense i i LOCAL$ ITEM+
    i 1 + BODY-ITEMS:LOCALS-CELL CELL! ;
 
+\ Rejects variable a u, whose type has more distinct type parameters than the
+\ cap.
+: VARIABLE-WIDE ( str -- ) {: a:^ u:n :}
+   s" E-BAD-STORAGE" REJECTION:OPEN
+   s" the type `EFFECT:VARIABLE-OF` got for `" REJECTION:EMIT-STR
+   a u REJECTION:EMIT-STR  s" ` has too many type parameters" REJECTION:EMIT-STR
+   a u REJECTION:AT  s" type rejected for this name" REJECTION:EMIT-STR
+   TFAM:TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
+   REJECTION:HELP
+   s" use fewer distinct type parameters in the variable's type"
+   REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
+\ Declares variable a u of type node T. T's parameters carry the file's
+\ numbering, so they are numbered 0, 1 ... as define-word numbers an effect's;
+\ an empty name is rejected as one first.
+: VARIABLE-RUN ( str n -- ) {: a:^ u:n t:n :}
+   u 0 <> if t EFFECT-DENSE 0= if a u VARIABLE-WIDE then else t then
+   {: dense:n :}
+   a u dense LBUF:TYPED-VARIABLE-NODE ;
+
 \ Runs a definer's item: ITEM-ABI op OP, one-token spelling A U, and V, a
 \ TYPE's or LOCAL's schema node or a LOCAL-REF's index.
 : ITEM-RUN ( str n n -- ) {: a:^ u:n v:n op:n :}
@@ -3338,7 +3359,7 @@ public
    ['] CELL-LINE data-base PROVIDED-XT:CELL-LINE-CELL + xt!
    ['] LITERAL-RUN data-base PROVIDED-XT:LITERAL-CELL + xt!
    ['] TYPE-OP data-base PROVIDED-XT:TYPE-OP-CELL + xt!
-   ['] LBUF:TYPED-VARIABLE-NODE data-base PROVIDED-XT:VARIABLE-CELL + xt! ;
+   ['] VARIABLE-RUN data-base PROVIDED-XT:VARIABLE-CELL + xt! ;
 
 ;package
 
