@@ -29,12 +29,12 @@ package AIO
 \ answers to, so its completion is dropped once some submission takes it.
 : AIO-TEST:PLANT-NOP ( -- )
    AIO-LOCK TASK:GET
-   SQ-SLOT dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
+   0 RINGS dup SQ-SLOT 2dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
    AIO-LOCK TASK:RELEASE ;
 
 \ The entries in the submission ring the kernel has not consumed.
 : AIO-TEST:PENDING ( -- n )
-   SQ-PENDING ;
+   0 RINGS SQ-PENDING ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ The record a handle names, so a case can say two handles share a record

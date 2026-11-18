@@ -5,7 +5,7 @@ split-str
 \ A submission with no loop is E-AIO-STATE. Linux uses
 \ io_uring from 5.10, the first long-term kernel with every opcode used and
 \ IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
-\ STORAGE CLASS. PROCESS-WIDE: ring, records and loop, under one TASK:FACILITY.
+\ STORAGE CLASS. PROCESS-WIDE: rings, records and loop, under one TASK:FACILITY.
 \ SINK, outside it, which every waker's task writes and none reads.
 \ TASK-LOCAL: AIO-REGISTERED and AIO-PARKED, a submitting task's own cells.
 
@@ -84,6 +84,13 @@ CAST: AIO-N>PTR ( n -- ^n )
 $100 constant AIO-ENTRIES
 $1000 constant AIO-RECS-MAX
 AIO-RECS-MAX 2 * constant AIO-CQ-ENTRIES
+$80 constant CQ-FIRST               \ the smallest ring's completion entries
+
+: DOUBLINGS ( n n -- n ) {: from:n to:n :}
+   0 from begin dup to < while 2 * swap 1 + swap repeat drop ;
+
+\ The doublings from CQ-FIRST to AIO-CQ-ENTRIES, plus one.
+CQ-FIRST AIO-CQ-ENTRIES DOUBLINGS 1 + constant RINGS-MAX
 
 8 constant SETUP-CQSIZE
 1 constant ENTER-GETEVENTS
@@ -198,6 +205,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.HOLD
    CELL +FIELD REC.GEN              \ bumped each time the record goes free
    CELL +FIELD REC.OWNER            \ the submitting task, as TASK:WAKE takes it
+   CELL +FIELD REC.RING             \ the ring it was claimed on, or 0 while free
    \ The allocation a transfer holds: the pointer MEM:ALLOC-BYTES answered and
    \ its extent. REC.HOLD says the pair is this record's to give back. It is
    \ set with the pair, before the entry is published, because once an entry
@@ -255,27 +263,43 @@ SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed: URING-C
 : REC-CAP ( -- n ) REC-GROWN atomic@ RECS-FIRST + ;
 
 variable GROUP-N
-variable RING-FD
 variable RING-LIVE                  \ the loop is running
 variable RING-STOP
 variable RING-READY                 \ the facility has been initialized once
-variable SQ-LEN
-variable CQ-LEN
-variable SQES-LEN
-variable SQ-ENTRIES-N
-variable SQ-MASK
-variable SQ-TAIL-OFF
-variable SQ-HEAD-OFF
-variable SQ-ARRAY-OFF
-variable CQ-MASK
-variable CQ-ENTRIES-N
-variable CQ-HEAD-OFF
-variable CQ-TAIL-OFF
-variable CQ-CQES-OFF
 
-PTR-VARIABLE SQ-BASE
-PTR-VARIABLE CQ-BASE
-PTR-VARIABLE SQE-BASE
+\ An io_uring: its fd, the lengths its three regions were mapped with, its
+\ entry counts and masks, the offsets io_uring_params reported, and the
+\ mapped bases. state is RING-FREE, RING-ACTIVE or RING-RETIRED; recs-live
+\ counts the records claimed on it and not yet freed.
+STRUCTURE ring DERIVE addr
+   FIELD fd n
+   FIELD state n
+   FIELD recs-live n
+   FIELD sq-len n
+   FIELD cq-len n
+   FIELD sqes-len n
+   FIELD sq-entries n
+   FIELD sq-mask n
+   FIELD sq-tail-off n
+   FIELD sq-head-off n
+   FIELD sq-array-off n
+   FIELD cq-entries n
+   FIELD cq-mask n
+   FIELD cq-head-off n
+   FIELD cq-tail-off n
+   FIELD cq-cqes-off n
+   FIELD sq-base ^u8
+   FIELD cq-base ^u8
+   FIELD sqe-base ^u8
+;STRUCTURE
+
+0 constant RING-FREE
+1 constant RING-ACTIVE
+2 constant RING-RETIRED             \ takes no new records
+
+RINGS-MAX TYPED-BUFFER RINGS ring SCRATCH-ONLY
+
+CAST: RING-SLOT ( ^n -- ^^ring )
 
 TASK:FACILITY AIO-LOCK
 TASK:MIN-STACK TASK:TASK AIO-LOOP
@@ -329,37 +353,38 @@ FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 \ length the mapping was given.
 CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
-: SQ-AT ( n -- ^u8 ) {: off:n :}
-   SQ-BASE @ off + ;
+: SQ-AT ( ^ring n -- ^u8 ) {: rg:^ off:n :}
+   rg RING-SQ-BASE @ off + ;
 
-: CQ-AT ( n -- ^u8 ) {: off:n :}
-   CQ-BASE @ off + ;
+: CQ-AT ( ^ring n -- ^u8 ) {: rg:^ off:n :}
+   rg RING-CQ-BASE @ off + ;
 
-: SQE-AT ( n -- ^u8 ) {: slot:n :}
-   SQE-BASE @ slot SQE-BYTES * + ;
+: SQE-AT ( ^ring n -- ^u8 ) {: rg:^ slot:n :}
+   rg RING-SQE-BASE @ slot SQE-BYTES * + ;
 
-: SQ-TAIL@ ( -- n )
-   SQ-TAIL-OFF @ SQ-AT LE:U32@ ;
+: SQ-TAIL@ ( ^ring -- n ) {: rg:^ :}
+   rg rg RING-SQ-TAIL-OFF @ SQ-AT LE:U32@ ;
 
-: SQ-TAIL! ( n -- )
-   SQ-TAIL-OFF @ SQ-AT LE:U32! ;
+: SQ-TAIL! ( ^ring n -- ) {: rg:^ tail:n :}
+   tail rg rg RING-SQ-TAIL-OFF @ SQ-AT LE:U32! ;
 
-: SQ-HEAD@ ( -- n )
-   SQ-HEAD-OFF @ SQ-AT LE:U32@ ;
+: SQ-HEAD@ ( ^ring -- n ) {: rg:^ :}
+   rg rg RING-SQ-HEAD-OFF @ SQ-AT LE:U32@ ;
 
-: CQ-HEAD@ ( -- n )
-   CQ-HEAD-OFF @ CQ-AT LE:U32@ ;
+: CQ-HEAD@ ( ^ring -- n ) {: rg:^ :}
+   rg rg RING-CQ-HEAD-OFF @ CQ-AT LE:U32@ ;
 
-: CQ-HEAD! ( n -- )
-   CQ-HEAD-OFF @ CQ-AT LE:U32! ;
+: CQ-HEAD! ( ^ring n -- ) {: rg:^ head:n :}
+   head rg rg RING-CQ-HEAD-OFF @ CQ-AT LE:U32! ;
 
 \ The fence after the read is what makes the entries below it visible to this
 \ thread.
-: CQ-TAIL-ACQUIRE ( -- n )
-   CQ-TAIL-OFF @ CQ-AT LE:U32@ fence ;
+: CQ-TAIL-ACQUIRE ( ^ring -- n ) {: rg:^ :}
+   rg rg RING-CQ-TAIL-OFF @ CQ-AT LE:U32@ fence ;
 
-: CQE-AT ( n -- ^u8 ) {: head:n :}
-   CQ-CQES-OFF @ head CQ-MASK @ and CQE-BYTES * + CQ-AT ;
+: CQE-AT ( ^ring n -- ^u8 ) {: rg:^ head:n :}
+   head rg RING-CQ-MASK @ and CQE-BYTES *
+   rg RING-CQ-CQES-OFF @ + rg swap CQ-AT ;
 
 \ ---- records -----------------------------------------------------------------
 : CHUNK-FIRST ( -- n )
@@ -399,6 +424,9 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 : REC-BUF-LEN@ ( n -- NUM:alloc-byte-len )
    REC REC.BUF-LEN @ MEM:BYTES-ALLOC-LEN ;
+
+: REC-RING ( n -- ^^ring )
+   REC REC.RING RING-SLOT ;
 
 \ ---- group entries -----------------------------------------------------------
 : GROUPS-HEAD ( -- n )
@@ -466,10 +494,16 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    r REC.GEN @ 1 + r REC.GEN !
    AIO-NULL-BYTES idx REC-BUF !
    AIO-NULL idx REC-OWNER !
+   0 r REC.RING !
    STATE-FREE r REC.STATE atomic! ;
 
-: REC-FREE ( n -- )
-   REC-RESET
+: RING-UNCOUNT ( ^ring -- ) {: rg:^ :}
+   rg RING-RECS-LIVE @ 1 - rg RING-RECS-LIVE ! ;
+
+\ A record names no ring on Darwin.
+: REC-FREE ( n -- ) {: idx:n :}
+   idx REC REC.RING @ 0<> if idx REC-RING @ RING-UNCOUNT then
+   idx REC-RESET
    REC-LIVE @ 1 - REC-LIVE atomic! ;
 
 \ THE ONLY PLACE THIS MODULE RELEASES A TRANSFER'S ALLOCATION, and only after the
@@ -542,28 +576,30 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ 32-bit and wrap, so the difference is taken in 32 bits too. The tail is
 \ written only by submitters, which hold AIO-LOCK, and the head only by the
 \ kernel, so a submitter under the facility reads an exact count.
-: SQ-PENDING ( -- n )
-   SQ-TAIL@ SQ-HEAD@ - $FFFFFFFF and ;
+: SQ-PENDING ( ^ring -- n ) {: rg:^ :}
+   rg SQ-TAIL@ rg SQ-HEAD@ - $FFFFFFFF and ;
 
-: SQ-ROOM? ( n -- bool ) {: want:n :}
-   SQ-PENDING want + SQ-ENTRIES-N @ <= ;
+: SQ-ROOM? ( ^ring n -- bool ) {: rg:^ want:n :}
+   rg SQ-PENDING want + rg RING-SQ-ENTRIES @ <= ;
 
-: SQ-SLOT ( -- n )
-   SQ-TAIL@ SQ-MASK @ and ;
+: SQ-SLOT ( ^ring -- n ) {: rg:^ :}
+   rg SQ-TAIL@ rg RING-SQ-MASK @ and ;
 
-: SQE-CLEAR ( n -- ) {: slot:n :}
-   SQE-BYTES 0 ?do 0 slot SQE-AT i + c! loop ;
+: SQE-CLEAR ( ^ring n -- ) {: rg:^ slot:n :}
+   SQE-BYTES 0 ?do 0 rg slot SQE-AT i + c! loop ;
 
 \ The array entry and the SQE are both written before the tail moves, and the
 \ fence between them is what makes the kernel see a whole entry when it sees the
 \ new tail.
-: SQ-PUBLISH ( n -- ) {: slot:n :}
-   slot SQ-ARRAY-OFF @ slot 4 * + SQ-AT LE:U32!
+: SQ-PUBLISH ( ^ring n -- ) {: rg:^ slot:n :}
+   slot rg rg RING-SQ-ARRAY-OFF @ slot 4 * + SQ-AT LE:U32!
    fence
-   SQ-TAIL@ 1 + $FFFFFFFF and SQ-TAIL! ;
+   rg rg SQ-TAIL@ 1 + $FFFFFFFF and SQ-TAIL! ;
 
-: ENTER-CALL ( n n n -- n ) {: submit:n least:n flags:n :}
-   NR-ENTER RING-FD @ submit least flags 0 0 URING-ENTER-CALL ;
+: ENTER-CALL ( ^ring n n n -- n )
+   {: rg:^ submit:n least:n flags:n :}
+   NR-ENTER rg RING-FD @ submit least flags 0 0
+   URING-ENTER-CALL ;
 
 \ Asks for every entry still in the ring: the kernel takes entries from the
 \ head, so one an earlier enter left behind is this call's to submit, and asking
@@ -571,9 +607,9 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ says this submission reached the kernel; a short take is E-AIO-ENTER, with the
 \ errno line only when the call itself was refused. Every caller holds AIO-LOCK,
 \ so no other submitter moves the tail across the call.
-: ENTER-SUBMIT ( -- n )
-   SQ-PENDING 0 0 ENTER-CALL {: rc:n :}
-   SQ-PENDING 0= if 0 exit then
+: ENTER-SUBMIT ( ^ring -- n ) {: rg:^ :}
+   rg rg SQ-PENDING 0 0 ENTER-CALL {: rc:n :}
+   rg SQ-PENDING 0= if 0 exit then
    rc 0 < if s" io_uring_enter errno " DIAG-ERRNO then
    E-AIO-ENTER ;
 
@@ -582,17 +618,17 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ completion that still arrives releases it, and nothing reuses a record the
 \ kernel may still own. What stays behind goes in with the next enter from
 \ anyone, so a forgotten record's operation may yet run.
-: SUBMIT-OR-FORGET ( n -- n ) {: idx:n :}
-   ENTER-SUBMIT dup 0= if exit then
+: SUBMIT-OR-FORGET ( ^ring n -- n ) {: rg:^ idx:n :}
+   rg ENTER-SUBMIT dup 0= if exit then
    STATE-FORGET idx REC REC.STATE atomic! ;
 
 \ The loop's wait. It submits nothing and does not hold the facility: draining
 \ what is published is the submitter's job, and the loop only collects. A signal
 \ cuts the wait short without completing anything, so EINTR is retried rather
 \ than reported.
-: ENTER-WAIT ( -- )
+: ENTER-WAIT ( ^ring -- ) {: rg:^ :}
    begin
-      0 1 ENTER-GETEVENTS ENTER-CALL 0 >= if exit then
+      rg 0 1 ENTER-GETEVENTS ENTER-CALL 0 >= if exit then
       FFI:ERRNO ERR-INTR <> if
          s" io_uring_enter errno " DIAG-ERRNO
          E-AIO-ENTER throw
@@ -605,38 +641,40 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 \ ---- the operations, as SQEs --------------------------------------------
 \ None of these can throw: the slot and the record index are already checked.
-: SQE-COMMON ( n n n -- ) {: slot:n op:n id:n :}
-   slot SQE-CLEAR
-   op slot SQE-AT c!
-   id slot SQE-AT SQE-USER-DATA + LE:U64! ;
+: SQE-COMMON ( ^ring n n n -- ) {: rg:^ slot:n op:n id:n :}
+   rg slot SQE-CLEAR
+   op rg slot SQE-AT c!
+   id rg slot SQE-AT SQE-USER-DATA + LE:U64! ;
 
-: SQE-POLL ( n n n n -- ) {: slot:n id:n f:n events:n :}
-   slot OP-POLL-ADD id SQE-COMMON
-   f slot SQE-AT SQE-FD + LE:U32!
-   events slot SQE-AT SQE-OPFLAGS + LE:U32! ;
+: SQE-POLL ( ^ring n n n n -- )
+   {: rg:^ slot:n id:n f:n events:n :}
+   rg slot OP-POLL-ADD id SQE-COMMON
+   f rg slot SQE-AT SQE-FD + LE:U32!
+   events rg slot SQE-AT SQE-OPFLAGS + LE:U32! ;
 
-: SQE-TIMEOUT ( n n n n -- ) {: slot:n id:n ms:n op:n :}
-   slot op id SQE-COMMON
+: SQE-TIMEOUT ( ^ring n n n n -- ) {: rg:^ slot:n id:n ms:n op:n :}
+   rg slot op id SQE-COMMON
    ms id REC REC.SPEC BYTE-VIEW SPEC!
-   id REC REC.SPEC FFI:>CELL slot SQE-AT SQE-ADDR + LE:U64!
-   1 slot SQE-AT SQE-LEN + LE:U32! ;
+   id REC REC.SPEC FFI:>CELL rg slot SQE-AT SQE-ADDR + LE:U64!
+   1 rg slot SQE-AT SQE-LEN + LE:U32! ;
 
-: SQE-CANCEL ( n n n -- ) {: slot:n id:n target:n :}
-   slot OP-ASYNC-CANCEL id SQE-COMMON
-   -1 slot SQE-AT SQE-FD + LE:U32!
-   target slot SQE-AT SQE-ADDR + LE:U64! ;
+: SQE-CANCEL ( ^ring n n n -- ) {: rg:^ slot:n id:n target:n :}
+   rg slot OP-ASYNC-CANCEL id SQE-COMMON
+   -1 rg slot SQE-AT SQE-FD + LE:U32!
+   target rg slot SQE-AT SQE-ADDR + LE:U64! ;
 
-: SQE-LINK! ( n -- ) {: slot:n :}
-   SQE-IO-LINK slot SQE-AT SQE-FLAGS + c! ;
+: SQE-LINK! ( ^ring n -- ) {: rg:^ slot:n :}
+   SQE-IO-LINK rg slot SQE-AT SQE-FLAGS + c! ;
 
-: SQE-RW ( n n n n n n -- ) {: slot:n id:n op:n f:n count:n off:n :}
-   slot op id SQE-COMMON
-   f slot SQE-AT SQE-FD + LE:U32!
-   count slot SQE-AT SQE-LEN + LE:U32!
-   off slot SQE-AT SQE-OFF + LE:U64! ;
+: SQE-RW ( ^ring n n n n n n -- )
+   {: rg:^ slot:n id:n op:n f:n count:n off:n :}
+   rg slot op id SQE-COMMON
+   f rg slot SQE-AT SQE-FD + LE:U32!
+   count rg slot SQE-AT SQE-LEN + LE:U32!
+   off rg slot SQE-AT SQE-OFF + LE:U64! ;
 
-: SQE-BUF! ( n ^u8 -- ) {: slot:n buf :}
-   buf FFI:>CELL slot SQE-AT SQE-ADDR + LE:U64! ;
+: SQE-BUF! ( ^ring n ^u8 -- ) {: rg:^ slot:n buf :}
+   buf FFI:>CELL rg slot SQE-AT SQE-ADDR + LE:U64! ;
 
 \ ---- completion --------------------------------------------------------------
 \ The count is exact: the kernel posts both CQEs of a linked pair (POLL-LINKED)
@@ -672,19 +710,19 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 \ The head store follows a fence, so the kernel never sees a slot released
 \ before this thread has read it.
-: DRAIN ( -- )
-   CQ-TAIL-ACQUIRE {: tail:n :}
-   begin CQ-HEAD@ tail <> while
-      CQ-HEAD@ CQE-AT COMPLETE
+: DRAIN ( ^ring -- ) {: rg:^ :}
+   rg CQ-TAIL-ACQUIRE {: tail:n :}
+   begin rg CQ-HEAD@ tail <> while
+      rg rg CQ-HEAD@ CQE-AT COMPLETE
       fence
-      CQ-HEAD@ 1 + $FFFFFFFF and CQ-HEAD!
+      rg rg CQ-HEAD@ 1 + $FFFFFFFF and CQ-HEAD!
    repeat ;
 
-: LOOP-RUN ( -- )
+: LOOP-RUN ( ^ring -- ) {: rg:^ :}
    begin
-      ENTER-WAIT
+      rg ENTER-WAIT
       AIO-LOCK TASK:GET
-      DRAIN
+      rg DRAIN
       AIO-LOCK TASK:RELEASE
       RING-STOP atomic@ 0 <> if exit then
    again ;
@@ -703,8 +741,9 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 : P-CQ@ ( n -- n ) {: off:n :}
    PARAMS P-CQ-OFF + off + LE:U32@ ;
 
-: RING-MAP ( n n -- n ) {: bytes:n off:n :}
-   MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-SHARED RING-FD @ off mmap ;
+: RING-MAP ( ^ring n n -- n ) {: rg:^ bytes:n off:n :}
+   MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-SHARED
+   rg RING-FD @ off mmap ;
 
 : P-SQ-N ( -- n )
    PARAMS P-SQ-ENTRIES + LE:U32@ ;
@@ -714,63 +753,70 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 \ The masks live in the rings themselves, so they are read once the mappings
 \ exist.
-: RING-OFFSETS ( -- )
-   RO-MASK P-SQ@ SQ-AT LE:U32@ SQ-MASK !
-   RO-MASK P-CQ@ CQ-AT LE:U32@ CQ-MASK ! ;
+: RING-OFFSETS ( ^ring -- ) {: rg:^ :}
+   rg RO-MASK P-SQ@ SQ-AT LE:U32@ rg RING-SQ-MASK !
+   rg RO-MASK P-CQ@ CQ-AT LE:U32@ rg RING-CQ-MASK ! ;
 
-: RING-LENGTHS ( -- )
-   P-SQ-N SQ-ENTRIES-N !
-   P-CQ-N CQ-ENTRIES-N !
-   SQO-ARRAY P-SQ@ P-SQ-N 4 * + SQ-LEN !
-   CQO-CQES P-CQ@ P-CQ-N CQE-BYTES * + CQ-LEN !
-   P-SQ-N SQE-BYTES * SQES-LEN !
-   RO-TAIL P-SQ@ SQ-TAIL-OFF !
-   0 P-SQ@ SQ-HEAD-OFF !
-   SQO-ARRAY P-SQ@ SQ-ARRAY-OFF !
-   0 P-CQ@ CQ-HEAD-OFF !
-   RO-TAIL P-CQ@ CQ-TAIL-OFF !
-   CQO-CQES P-CQ@ CQ-CQES-OFF ! ;
+: RING-LENGTHS ( ^ring -- ) {: rg:^ :}
+   P-SQ-N rg RING-SQ-ENTRIES !
+   P-CQ-N rg RING-CQ-ENTRIES !
+   SQO-ARRAY P-SQ@ P-SQ-N 4 * + rg RING-SQ-LEN !
+   CQO-CQES P-CQ@ P-CQ-N CQE-BYTES * + rg RING-CQ-LEN !
+   P-SQ-N SQE-BYTES * rg RING-SQES-LEN !
+   RO-TAIL P-SQ@ rg RING-SQ-TAIL-OFF !
+   0 P-SQ@ rg RING-SQ-HEAD-OFF !
+   SQO-ARRAY P-SQ@ rg RING-SQ-ARRAY-OFF !
+   0 P-CQ@ rg RING-CQ-HEAD-OFF !
+   RO-TAIL P-CQ@ rg RING-CQ-TAIL-OFF !
+   CQO-CQES P-CQ@ rg RING-CQ-CQES-OFF ! ;
 
 \ Releases the first `mapped` regions and the ring's fd after logging, since
 \ munmap and close overwrite the errno the refused mmap left.
-: MAP-REFUSED ( str n -- ) {: label:^ labelu:n mapped:n :}
+: MAP-REFUSED ( ^ring str n -- )
+   {: rg:^ label:^ labelu:n mapped:n :}
    label labelu DIAG-ERRNO
-   mapped 1 > if CQ-BASE @ CQ-LEN @ munmap drop then
-   mapped 0 > if SQ-BASE @ SQ-LEN @ munmap drop then
-   RING-FD @ close-rc drop
-   0 RING-FD ! ;
+   mapped 1 > if
+      rg RING-CQ-BASE @ rg RING-CQ-LEN @ munmap drop
+   then
+   mapped 0 > if
+      rg RING-SQ-BASE @ rg RING-SQ-LEN @ munmap drop
+   then
+   rg RING-FD @ close-rc drop
+   0 rg RING-FD ! ;
 
-: RING-MAPS ( -- )
-   SQ-LEN @ OFF-SQ-RING RING-MAP dup 0 < if
-      drop s" mmap of the submission ring errno " 0 MAP-REFUSED
+: RING-MAPS ( ^ring -- ) {: rg:^ :}
+   rg rg RING-SQ-LEN @ OFF-SQ-RING RING-MAP dup 0 < if
+      drop rg s" mmap of the submission ring errno " 0 MAP-REFUSED
       E-AIO-SETUP throw then
-   AIO-MAPPED>PTR SQ-BASE !
-   CQ-LEN @ OFF-CQ-RING RING-MAP dup 0 < if
-      drop s" mmap of the completion ring errno " 1 MAP-REFUSED
+   AIO-MAPPED>PTR rg RING-SQ-BASE !
+   rg rg RING-CQ-LEN @ OFF-CQ-RING RING-MAP dup 0 < if
+      drop rg s" mmap of the completion ring errno " 1 MAP-REFUSED
       E-AIO-SETUP throw then
-   AIO-MAPPED>PTR CQ-BASE !
-   SQES-LEN @ OFF-SQES RING-MAP dup 0 < if
-      drop s" mmap of the submission entries errno " 2 MAP-REFUSED
+   AIO-MAPPED>PTR rg RING-CQ-BASE !
+   rg rg RING-SQES-LEN @ OFF-SQES RING-MAP dup 0 < if
+      drop rg s" mmap of the submission entries errno " 2 MAP-REFUSED
       E-AIO-SETUP throw then
-   AIO-MAPPED>PTR SQE-BASE ! ;
+   AIO-MAPPED>PTR rg RING-SQE-BASE ! ;
 
-: RING-SETUP ( -- )
+\ Opens a ring of `cq` completion entries, holding no records.
+: RING-SETUP ( ^ring n -- ) {: rg:^ cq:n :}
    PARAMS-CLEAR
    SETUP-CQSIZE PARAMS P-FLAGS + LE:U32!
-   AIO-CQ-ENTRIES PARAMS P-CQ-ENTRIES + LE:U32!
+   cq PARAMS P-CQ-ENTRIES + LE:U32!
    NR-SETUP AIO-ENTRIES PARAMS URING-SETUP-CALL {: fd:n :}
    fd 0 < if s" io_uring_setup errno " DIAG-ERRNO E-AIO-SETUP throw then
-   fd RING-FD !
-   RING-LENGTHS
-   RING-MAPS
-   RING-OFFSETS ;
+   fd rg RING-FD !
+   rg RING-LENGTHS rg RING-MAPS rg RING-OFFSETS
+   0 rg RING-RECS-LIVE !
+   RING-ACTIVE rg RING-STATE ! ;
 
-: RING-UNMAP ( -- )
-   SQ-BASE @ SQ-LEN @ munmap drop
-   CQ-BASE @ CQ-LEN @ munmap drop
-   SQE-BASE @ SQES-LEN @ munmap drop
-   RING-FD @ close-rc drop
-   0 RING-FD ! ;
+: RING-UNMAP ( ^ring -- ) {: rg:^ :}
+   rg RING-SQ-BASE @ rg RING-SQ-LEN @ munmap drop
+   rg RING-CQ-BASE @ rg RING-CQ-LEN @ munmap drop
+   rg RING-SQE-BASE @ rg RING-SQES-LEN @ munmap drop
+   rg RING-FD @ close-rc drop
+   0 rg RING-FD !
+   RING-FREE rg RING-STATE ! ;
 
 : RECS-CLEAR ( -- )
    REC-CAP 0 ?do i REC-RESET loop
@@ -780,91 +826,112 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ Each answers a code instead of throwing, because it runs with the facility
 \ held and a throw would leave it locked. The caller releases and then throws.
 
-: URING-CLAIM ( -- n n )
-   REC-LIVE @ CQ-ENTRIES-N @ 2 / >= if E-AIO-FULL -1 exit then
-   REC-CLAIM ;
+: URING-CLAIM ( ^ring -- n n ) {: rg:^ :}
+   REC-LIVE @ rg RING-CQ-ENTRIES @ 2 / >= if E-AIO-FULL -1 exit then
+   REC-CLAIM {: rc:n idx:n :}
+   rc 0<> if rc idx exit then
+   rg idx REC-RING !
+   rg RING-RECS-LIVE @ 1 + rg RING-RECS-LIVE !
+   0 idx ;
 
 \ Answers a code and the index, as REC-CLAIM; a stage that cannot claim has
 \ claimed nothing.
-: CLAIM-ONE ( -- n n )
-   1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
-   URING-CLAIM ;
+: CLAIM-ONE ( ^ring -- n n ) {: rg:^ :}
+   rg 1 SQ-ROOM? 0= if E-AIO-FULL -1 exit then
+   rg URING-CLAIM ;
 
 \ A poll with no deadline is one SQE on one record. A poll with one carries an
 \ IORING_OP_LINK_TIMEOUT behind IOSQE_IO_LINK, on a second record whose only job
 \ is to say which of the two ended the wait.
-: POLL-LINKED ( n n n n -- n n ) {: f:n events:n ms:n idx:n :}
-   URING-CLAIM {: rc:n link:n :}
+: POLL-LINKED ( ^ring n n n n -- n n )
+   {: rg:^ f:n events:n ms:n idx:n :}
+   rg URING-CLAIM {: rc:n link:n :}
    rc 0<> if idx REC-FREE rc -1 exit then
-   2 SQ-ROOM? 0= if idx REC-FREE link REC-FREE E-AIO-FULL -1 exit then
+   rg 2 SQ-ROOM? 0= if
+      idx REC-FREE link REC-FREE E-AIO-FULL -1 exit
+   then
    idx KIND-POLL 2 REC-ARM
    link KIND-LINK 1 REC-ARM
    idx link REC REC.PEER !
    link idx REC REC.PEER !
-   SQ-SLOT dup idx f events SQE-POLL dup SQE-LINK! SQ-PUBLISH
-   SQ-SLOT dup link ms OP-LINK-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
-   idx SUBMIT-OR-FORGET idx ;
+   rg dup SQ-SLOT 2dup idx f events SQE-POLL 2dup SQE-LINK!
+   SQ-PUBLISH
+   rg dup SQ-SLOT 2dup link ms OP-LINK-TIMEOUT SQE-TIMEOUT
+   SQ-PUBLISH
+   rg idx SUBMIT-OR-FORGET idx ;
 
-: POLL-STAGE ( n n n -- n n ) {: f:n events:n ms:n :}
-   CLAIM-ONE {: rc:n idx:n :}
+: POLL-STAGE ( ^ring n n n -- n n ) {: rg:^ f:n events:n ms:n :}
+   rg CLAIM-ONE {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
    ms 0 < if
       idx KIND-POLL 1 REC-ARM
-      SQ-SLOT dup idx f events SQE-POLL SQ-PUBLISH
-      idx SUBMIT-OR-FORGET idx exit
+      rg dup SQ-SLOT 2dup idx f events SQE-POLL SQ-PUBLISH
+      rg idx SUBMIT-OR-FORGET idx exit
    then
-   f events ms idx POLL-LINKED ;
+   rg f events ms idx POLL-LINKED ;
 
-: TIMEOUT-STAGE ( n -- n n ) {: ms:n :}
-   CLAIM-ONE {: rc:n idx:n :}
+: TIMEOUT-STAGE ( ^ring n -- n n ) {: rg:^ ms:n :}
+   rg CLAIM-ONE {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
    idx KIND-TIMEOUT 1 REC-ARM
-   SQ-SLOT dup idx ms OP-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
-   idx SUBMIT-OR-FORGET idx ;
+   rg dup SQ-SLOT 2dup idx ms OP-TIMEOUT SQE-TIMEOUT SQ-PUBLISH
+   rg idx SUBMIT-OR-FORGET idx ;
 
 \ The record takes the caller's allocation: the pair and REC.HOLD are written
 \ before the entry is published, and a refused claim writes no entry, so there
 \ the allocation is still the caller's.
-: XFER-STAGE ( n ^u8 NUM:alloc-byte-len n n n -- n n )
-   {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
-   CLAIM-ONE {: rc:n idx:n :}
+: XFER-STAGE ( ^ring n ^u8 NUM:alloc-byte-len n n n -- n n )
+   {: rg:^ f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
+   rg CLAIM-ONE {: rc:n idx:n :}
    rc 0<> if rc -1 exit then
    idx kind 1 REC-ARM
    buf idx REC-BUF !
    cap idx REC-BUF-LEN!
    1 idx REC REC.HOLD !
-   SQ-SLOT dup idx kind KIND>OP f count off SQE-RW
-   dup buf SQE-BUF!
+   rg dup SQ-SLOT 2dup idx kind KIND>OP f count off SQE-RW
+   2dup buf SQE-BUF!
    SQ-PUBLISH
-   idx SUBMIT-OR-FORGET idx ;
+   rg idx SUBMIT-OR-FORGET idx ;
 
 \ A link (its poll's cancel ends it), an ended or a cancelled record answers 0.
+\ The cancel goes on the target's ring.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
    target REC {: r:^ :}
    r REC.STATE atomic@ {: st:n :}
    st STATE-SUBMITTED <> st STATE-FORGET <> and if 0 exit then
    r REC.KIND @ KIND-LINK = if 0 exit then
    r REC.CANCELING @ 0<> if 0 exit then
-   1 SQ-ROOM? 0= if E-AIO-FULL exit then
+   target REC-RING @ {: rg:^ :}
+   rg 1 SQ-ROOM? 0= if E-AIO-FULL exit then
    r REC.PENDING @ 1 + r REC.PENDING !
    1 r REC.CANCELING !
-   SQ-SLOT dup target CANCEL-BIT or target SQE-CANCEL SQ-PUBLISH
-   ENTER-SUBMIT ;
+   rg dup SQ-SLOT 2dup target CANCEL-BIT or target SQE-CANCEL
+   SQ-PUBLISH
+   rg ENTER-SUBMIT ;
 
-: NOP-STAGE ( -- n )
-   1 SQ-ROOM? 0= if E-AIO-FULL exit then
-   SQ-SLOT dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
-   ENTER-SUBMIT ;
+: NOP-STAGE ( ^ring -- n ) {: rg:^ :}
+   rg 1 SQ-ROOM? 0= if E-AIO-FULL exit then
+   rg dup SQ-SLOT 2dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
+   rg ENTER-SUBMIT ;
+
+\ The host words on the one ring there is, entry 0, which START opens with
+\ AIO-CQ-ENTRIES completion entries.
+: URING-POLL ( n n n -- n n ) {: f:n events:n ms:n :}
+   0 RINGS f events ms POLL-STAGE ;
+
+: URING-XFER ( n ^u8 NUM:alloc-byte-len n n n -- n n )
+   {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
+   0 RINGS f buf cap count off kind XFER-STAGE ;
 
 : INSTALL-HOST ( -- )
-   ['] POLL-STAGE is HOST-POLL
-   ['] TIMEOUT-STAGE is HOST-TIMEOUT
-   ['] XFER-STAGE is HOST-XFER
+   ['] URING-POLL is HOST-POLL
+   [: 0 RINGS swap TIMEOUT-STAGE ;] is HOST-TIMEOUT
+   ['] URING-XFER is HOST-XFER
    ['] CANCEL-STAGE is HOST-CANCEL
-   ['] NOP-STAGE is HOST-WAKE
-   ['] RING-SETUP is HOST-SETUP
-   ['] RING-UNMAP is HOST-CLOSE
-   ['] LOOP-RUN is HOST-LOOP ;
+   [: 0 RINGS NOP-STAGE ;] is HOST-WAKE
+   [: 0 RINGS AIO-CQ-ENTRIES RING-SETUP ;] is HOST-SETUP
+   [: 0 RINGS RING-UNMAP ;] is HOST-CLOSE
+   [: 0 RINGS LOOP-RUN ;] is HOST-LOOP ;
 INSTALL-HOST
 
 \ ---- the cleanup a submitting task registers ---------------------------------
