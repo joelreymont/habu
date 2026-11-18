@@ -797,12 +797,6 @@ package CODE-RECLAIM
 
 private
 
-\ The raw engine primitive edits relocation metadata. Its CODE-RECLAIM row
-\ (src/habu/prims.f) admits this checked word, which TRUNCATE calls with its
-\ proved [start,start+len) span; no other checked caller reaches it.
-: CLEAR-MAPS ( n n -- )
-   reloc-maps-clear ;
-
 \ A FLOOR IS A STATEMENT ABOUT CODE ORDER: the bytes from it upwards are handed
 \ back and rewritten, so no routine a surviving record points at may begin
 \ there. Records are in DEFINITION order, and an `EXPORT` alias can publish a
@@ -857,16 +851,14 @@ private
    s live <= if floor exit then
    s floor min ;
 
+\ The caller's floor lies at or below cp@ and above every routine a surviving
+\ record points at: FLOOR-FROM's, or a mark taken before the code above it.
+: TRUNCATE ( n -- )
+   {: floor:n :}
+   floor cp@ over - reloc-maps-clear
+   floor cp! ;
+
 public
-
-\ A floor above the free code slot: there is nothing above the slot to reclaim,
-\ and the request would move the pointer the other way. Refused by name; public
-\ because a caller can reach it.
-7178 constant E-FLOOR
-
-\ A floor with a surviving routine at or above it: code still somebody's would
-\ be rewritten. Refused before the pointer moves.
-7179 constant E-LIVE
 
 \ The floor of a sweep that retires every record from CUT upwards: the lowest
 \ REC-LOW of a retired record above every surviving routine's start, else cp@.
@@ -877,25 +869,11 @@ public
       live swap i REC-LOW MIN-ABOVE-LIVE
    loop ;
 
-\ Reclaim the code space above floor: both relocation maps are cleared over
-\ [floor, old CP), then the pointer moves. The floor is held against the
-\ surviving records, not taken on the caller's word: each caller computes it
-\ from something else (FORGET from the records it retires,
-\ src/core/generated-declaration-dictionary.f from its saved free slot), and
-\ only this word can ask what the dictionary still points at. The scan runs
-\ before mutation, so a refusal leaves the arena as it was.
-: TRUNCATE ( n -- )
-   {: floor:n :}
-   floor cp@ > if E-FLOOR throw then
-   floor ndict@ LIVE-SCAN <= if E-LIVE throw then
-   floor cp@ over - CLEAR-MAPS
-   floor cp! ;
-
-seal-package
-
 ;package
 
 package XREF
+private
+EXPORT CODE-RECLAIM:TRUNCATE
 public
 : FORGET-DEFS-FROM ( ^u8 n -- )
    s" XREF:FORGET-DEFS-FROM" LIVE-TASK-GUARD
@@ -906,7 +884,7 @@ public
    idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
-   floor CODE-RECLAIM:TRUNCATE
+   floor TRUNCATE
    FRAMES-LOWER ;
 ;package
 

@@ -12,6 +12,8 @@ variable NDICT-MARK
 variable CP-MARK
 PTR-VARIABLE DP-MARK
 
+EXPORT CODE-RECLAIM:TRUNCATE
+
 public
 
 : SNAPSHOT ( -- )
@@ -22,7 +24,7 @@ public
 : ROLLBACK ( -- )
    NDICT-MARK @ retire-from IF EXIT THEN
    NDICT-MARK @ ndict!
-   CP-MARK @ CODE-RECLAIM:TRUNCATE
+   CP-MARK @ TRUNCATE
    \ A literal segment opened inside the transaction outlives its rollback: DP
    \ stops at the DATA floor.
    data-base NULL-PTR - {: base:n :}

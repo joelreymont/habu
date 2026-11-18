@@ -879,8 +879,6 @@ private
 7122 s" an index outside the entries a buffer holds: pass an index from 0 to one below its count" false MINTED E-LAYOUT-BOUNDS
 7134 s" a path is empty, of negative length, or longer than the bytes a path buffer holds: pass a nonempty path of at most `PATH-CAP` bytes" false MINTED E-PATH-RANGE
 7165 s" a path holds a 0 byte, which would end it early: remove the 0 byte from the path" false MINTED E-PATH-NUL
-7178 s" a code reclaim's floor is above the free code slot: pass a floor at or below `cp@`" false MINTED CODE-RECLAIM:E-FLOOR
-7179 s" a code reclaim's floor is at or below code a surviving definition still holds: retire the definitions above the floor first, or pass a higher floor" false MINTED CODE-RECLAIM:E-LIVE
 7180 s" a script argument index is negative or not below `SCRIPT-ARGC`: pass an index from 0 to one below `SCRIPT-ARGC`" false MINTED E-SCRIPT-ARGV-RANGE
 -7231 s" a slot and occurrence name no live definition, retired or reissued since they were selected: select the word again with `DEF-OCC:SELECT`" false MINTED DEF-OCC:E-STALE
 -7232 s" the address given to select names no published dictionary record: pass the record of a word the dictionary holds" false MINTED DEF-OCC:E-SELECT

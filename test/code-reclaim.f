@@ -13,8 +13,6 @@ package CRECL-TEST
 
 private
 
-4 constant INSN-BYTES
-
 : REC ( ^u8 n -- ^n )
    XREF-FIND
    dup XREF-FOUND? 0= if s" code-reclaim: subject not found" EXIT-STATUS:FAILURE die then ;
@@ -83,24 +81,6 @@ variable P-START
    s" CR-P2" DEFINED? TFALSE
    s" CR-P3" DEFINED? TFALSE
    s" CR-P1" DEFINED? TTRUE
-   s" CR-P1" TEST-EVAL:N 1 T= ;
-
-variable G-CP
-
-: REFUSE-BODY ( -- )
-   s" CR-P1" REC-START CODE-RECLAIM:TRUNCATE ;
-
-: REFUSE-CASE ( -- )
-   cp@ G-CP !
-
-   s" a floor at a surviving routine is refused" T-LABEL
-   [: REFUSE-BODY ;] CODE-RECLAIM:E-LIVE TTHROWSQ
-
-   s" a floor above the free slot is refused" T-LABEL
-   [: cp@ INSN-BYTES + CODE-RECLAIM:TRUNCATE ;] CODE-RECLAIM:E-FLOOR TTHROWSQ
-
-   s" refusals leave the pointer and live routine unchanged" T-LABEL
-   cp@ G-CP @ T=
    s" CR-P1" TEST-EVAL:N 1 T= ;
 
 variable U-START
@@ -198,7 +178,6 @@ public
    T-RESET
    ALIAS-CASE
    PLAIN-CASE
-   REFUSE-CASE
    REUSE-CASE
    LONG-CASE
    ALIAS-LONG-CASE

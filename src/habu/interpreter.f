@@ -2860,6 +2860,8 @@ package INTERPRETER
 
 private
 
+EXPORT CODE-RECLAIM:TRUNCATE
+
 \ A number is pushed and a word run, each under the floor: the token's effect
 \ on the stack is the program's, so this row, and every row here that
 \ runs program code, states none of it.
@@ -3101,7 +3103,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    \ A buffer may start a task and throw without allocating a definition.
    \ Only changed cursors need their guarded mutation sinks during recovery.
    f EVAL-FRAME:NDICT FR@ dup ndict@ <> if ndict! else drop then
-   f EVAL-FRAME:CP FR@ dup cp@ <> if CODE-RECLAIM:TRUNCATE else drop then
+   f EVAL-FRAME:CP FR@ dup cp@ <> if TRUNCATE else drop then
    f FRAME-CUT DATA-SPACE:REWIND ;
 
 
@@ -3110,7 +3112,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOKDEPTH-CELL CELL@ CAPDEPTH-CELL CELL!
    TOKRAW-CELL CELL@ RAWNEXT-CELL CELL!
-   dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
+   dbase@ TOKCP-CELL CELL@ + TRUNCATE
    TOKVSP-CELL CELL@ VSP-CELL CELL! ;
 
 : FRAME-RESTORE-SCOPE ( ^u8 -- ) {: f:^ :}

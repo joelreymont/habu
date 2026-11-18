@@ -61,6 +61,7 @@ EXPORT CHECK:PRIMITIVE-FACTS
 EXPORT CHECK:OWNED-FACTS
 EXPORT CHECK:WORDLIST-PACKAGE
 EXPORT INTERPRETER:PUBLISH-ALIAS
+EXPORT CODE-RECLAIM:TRUNCATE
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
@@ -5761,7 +5762,7 @@ EXPORT CHECK:DROP-FACTS
    FIRST-REC @ retire-from IF EXIT THEN
    FIRST-REC @ CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    FIRST-REC @ ndict!
-   floor CODE-RECLAIM:TRUNCATE ;
+   floor TRUNCATE ;
 
 \ Undo IMAGE-IN after open or a file's step: run the space's exit actions for a part that
 \ threw before END-CK, whatever they answer, then zero the space's cell for EXITED.

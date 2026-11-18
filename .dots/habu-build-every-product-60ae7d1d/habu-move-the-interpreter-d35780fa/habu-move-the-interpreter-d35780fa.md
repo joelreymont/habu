@@ -19,7 +19,7 @@ Goal: one interpreter, written in checked Habu (src/habu/interpreter.f), on ever
 Campaign lane only; do not dispatch. It lists its leaves under blocks: so it stays off dot ready until they close. Each case below is a disagreement between two implementations of one thing: it closes when this dot removes the second implementation, never by patching that copy.
 
 Acceptance cases:
-- a failed evaluate rolls back fully: a caught throw after `create` (`create LK-Y 0 0 / drop`, in a LINKER:WITH body or outside a build) leaves the ADDRMAP bit of the created body above the code pointer habu2.f LEVALREC restores (EM-EVAL-THROW-RECOVER), so FORGET-SPACE's CODE-RECLAIM:TRUNCATE never reaches it.
+- a failed evaluate rolls back fully: a caught throw after `create` (`create LK-Y 0 0 / drop`, in a LINKER:WITH body or outside a build) leaves the ADDRMAP bit of the created body above the code pointer habu2.f LEVALREC restores (EM-EVAL-THROW-RECOVER), so FORGET-SPACE's TRUNCATE never reaches it.
 - removing a word of a sealed package is refused by the one interpreter.
 - habu2.f:1610 encodes bl at run time with its own BL-REACH window and opcode; the checked interpreter calls A64ASM:ENC-BL and keeps no reach check of its own.
 - habu2.f EM-PKG-RESYNC (:2004-2008) says a missing resync refuses E-PKG-CONTEXT; once xref.f installs LIVE the checker reads the engine's package cells, so the resync and its mirror are unread and go.
