@@ -466,16 +466,14 @@ STRUCTURE cspt
 \ definition proved, as the `[: W ;]` literal's term does. A recorded bit counts
 \ from the top of W's declared input row, which is the pushed term's window; T4
 \ and T5 are the two halves of that orientation. A word with no throw edge
-\ records nothing and its tick carries nothing. The edge is not part of the
-\ quotation type, so a route whose term is a fresh instance of a declared type
-\ keeps the window typed even when the target throws: the typed `xt<effect>`
-\ cell (T9), the quotation parameter (T10) and a `defer`, whose symbol records
-\ no body's evidence; the direct tick of that callee (T3) is refused beside
-\ them. A tick bound to a local in the same body is the term the tick pushed
-\ and keeps its edge (T7, T8).
+\ records nothing and its tick carries nothing. A term made from a declared
+\ type, and a `defer`'s tick, may throw, so a catch of the typed `xt<effect>`
+\ cell (T9) or of the quotation parameter (T10) is rejected as the direct tick
+\ of a thrower (T3) is.
+\ A tick bound to a local in the same body is the term the tick pushed and
+\ keeps its edge (T7, T8).
 : WREPL ( ^u8 -- ^u8 ) drop CS-BUF E-CS-BOOM throw ;
 TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
-: CS-CATCHP ( ^u8 [ ^u8 -- ^u8 ] -- ^u8 n ) catch ;
 : CS-TRT ( ^u8 -- str ) ['] WMAYBE catch ;
 
 : CS-SECTION-TICK ( -- )
@@ -500,12 +498,12 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    s" T7 ( ^u8 -- ^u8 n ) ['] WREPL {: x :} x catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    s" T8 ( ^u8 -- ^u8 n ) ['] WMAYBE {: x :} x catch" CHECK-QUIET-CANDIDATE! -1 T=
-   \ the boundary: the cell read and the parameter are fresh instances of the
-   \ declared xt type, which carries no edge, so both still certify
+   \ the cell read and the parameter are terms of the declared xt type, which
+   \ may throw, so the cell each catch keeps is stale
    s" T9 ( ^u8 -- n ) ['] WREPL CS-XT ! CS-XT @ catch {: v code:n :} v c@"
-      CHECK-QUIET-CANDIDATE! -1 T=
-   s" T10 ( ^u8 -- n ) ['] WREPL CS-CATCHP {: v code:n :} v c@"
-      CHECK-QUIET-CANDIDATE! -1 T=
+      CS-CODE<  CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
+   s" T10 ( ^u8 [ ^u8 -- ^u8 ] -- ^u8 n ) catch" CS-CODE<
+   CS-STALE?  CS-CODE-END
    \ a callee that never returns is fit-checked against its declared output row:
    \ WBOOM leaves nothing where its window was, and that is the refusal, not the
    \ stale rule, which would need the dead flag the tick does not take

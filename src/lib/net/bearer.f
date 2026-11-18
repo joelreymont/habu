@@ -166,7 +166,7 @@ TASK:+USER FROM n
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and or ;
 
 : STEP ( [ bool -- bool ] -- bool )
-   false swap catch {: ok:bool code:n :}
+   false swap catch {: ok code:n :}
    code 0= if ok exit then
    code MALFORMED? if false exit then
    code throw ;

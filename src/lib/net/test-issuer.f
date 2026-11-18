@@ -209,7 +209,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 \ One step over untrusted text: malformed is false, any other throw passes.
 : STEP ( [ bool -- bool ] -- bool )
-   false swap catch {: ok:bool code:n :}
+   false swap catch {: ok code:n :}
    code 0= if ok exit then
    code MALFORMED? if false exit then
    code throw ;

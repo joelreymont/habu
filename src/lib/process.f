@@ -749,7 +749,7 @@ $10000 constant GROW-CHUNK
 
 : READ-GROWING ( ^n ^n [ n -- ^u8 ] -- )
    {: fdp:^ lenp:^ sink :}
-   NULL$ drop sink lenp [: SINK-ROOM ;] catch {: buf:^ s lp:^ code:n :}
+   NULL$ drop sink lenp [: SINK-ROOM ;] catch {: buf s lp code:n :}
    code 0= if fdp buf lp READ-INTO-ROOM exit then
    code THROW-CAPTURE ;
 

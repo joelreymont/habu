@@ -1392,18 +1392,19 @@ variable TCMP                            \ path-compression walk cursor
 256 constant MAXQE-INIT
 SCRATCH{
 variable QEN
-PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P   PTR-VARIABLE QXHA-P   PTR-VARIABLE QXNA-P
+PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P   PTR-VARIABLE QXNA-P
 PTR-VARIABLE QXBA-P   PTR-VARIABLE QXFA-P
 variable QE-CAP
 }SCRATCH
 : QEA ( -- ^n ) QEA-P @ ;
 : QXDA ( -- ^n ) QXDA-P @ ;   : QXRA ( -- ^n ) QXRA-P @ ;
-: QXHA ( -- ^n ) QXHA-P @ ;   : QXNA ( -- ^n ) QXNA-P @ ;
+: QXNA ( -- ^n ) QXNA-P @ ;
 \ QXBA: each quotation's block part, a type variable: unbound, it may read locals or not;
 \ NSCOPE@, it reads none; bound to a T-SCOPE term, it reads that block's locals.
 : QXBA ( -- ^n ) QXBA-P @ ;
-\ QXFA: the CTL-INHERITED facts running each quotation adds to its body's: 0 for a literal, which
-\ the walk read inline; the ticked word's for `['] W`; else CTL-UNSEEN. Two terms unified share their union.
+\ QXFA: each quotation's facts: the CTL-INHERITED ones running it adds to its body's (none for a literal,
+\ which the walk read inline; the ticked word's for `['] W`; else CTL-UNSEEN), and CTL-THROW if it may
+\ throw, as a term made from a type may. Two terms unified share their union.
 : QXFA ( -- ^n ) QXFA-P @ ;
 
 : QE-ENSURE ( n -- ) {: need:n :}
@@ -1412,7 +1413,6 @@ variable QE-CAP
    QEA-P @ QE-CAP @ 32 * nc 32 * SR-GROW QEA-P !
    QXDA-P @ QE-CAP @ cells nc cells SR-GROW QXDA-P !
    QXRA-P @ QE-CAP @ cells nc cells SR-GROW QXRA-P !
-   QXHA-P @ QE-CAP @ cells nc cells SR-GROW QXHA-P !
    QXNA-P @ QE-CAP @ cells nc cells SR-GROW QXNA-P !
    QXBA-P @ QE-CAP @ cells nc cells SR-GROW QXBA-P !
    QXFA-P @ QE-CAP @ cells nc cells SR-GROW QXFA-P !
@@ -1425,6 +1425,11 @@ variable FV   0 FV !   \ the next var id FRESH hands out
    FV @ 1 + TV-ENSURE
    FV @ dup 1 + FV ! ;
 
+\ Control-effect flags are append-only and later-wins. CTL-DEAD: a call has no
+\ normal continuation. CTL-THROW: a call may reach a catchable throw edge.
+1 constant CTL-DEAD
+2 constant CTL-THROW
+4 constant CTL-BARRIER
 \ CTL-OPAQUE: a call may run a body the check deferred, which the load reads.
 1 61 lshift constant CTL-OPAQUE
 \ CTL-UNSEEN: a call may run words no reader can see: a deferred word's, an xt the walk did not make.
@@ -1436,11 +1441,10 @@ variable FV   0 FV !   \ the next var id FRESH hands out
    QEN @ 1 + QE-ENSURE
    QEN @ 32 * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
-   0 QEN @ cells QXHA + !
    0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
-   CTL-UNSEEN QEN @ cells QXFA + !
+   CTL-UNSEEN CTL-THROW or QEN @ cells QXFA + !
    FRESH MK-VAR QEN @ cells QXBA + !
    QEN @ TAG-SHIFT lshift T-QUOT or  QEN @ 1 + QEN ! ;
 \ A scheme owns one quotation term. Bound scope variables use lexical depth,
@@ -1474,7 +1478,6 @@ $10000 constant BVAR-REGION-BIT
 : Q-BLOCK! ( n n -- ) PAY cells QXBA + ! ;
 : Q>FACTS ( n -- n ) PAY cells QXFA + @ ;
 : Q-FACTS! ( n n -- ) PAY cells QXFA + ! ;
-: Q>XHAS ( n -- bool ) PAY cells QXHA + @ 0 <> ;
 : Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 
 \ A slot holds the window's intact mask (THROW-EDGE) tagged XMASK-MARK, a zero
@@ -1488,8 +1491,7 @@ T-QUOT constant XMASK-MARK
 : Q>XDMASK ( n -- n ) Q>XDFIELD XMASK> ;      \ window cells every throw path left intact
 : Q>XRMASK ( n -- n ) Q>XRFIELD XMASK> ;
 : Q-FLAG>N ( bool -- n ) IF -1 ELSE 0 THEN ;
-: QX! ( n bool bool n n -- ) {: q:n xhas:bool xdead:bool xd:n xr:n :}
-   xhas Q-FLAG>N q PAY cells QXHA + !
+: QX! ( n bool n n -- ) {: q:n xdead:bool xd:n xr:n :}
    xdead Q-FLAG>N q PAY cells QXNA + !
    xd XMASK> 0 = IF 0 ELSE xd THEN q PAY cells QXDA + !
    xr XMASK> 0 = IF 0 ELSE xr THEN q PAY cells QXRA + ! ;
@@ -1744,7 +1746,8 @@ DEFAULT
 
 : ENFORCED? ( -- bool ) ABI-DEPTH @ 0 = ;
 : SCAN ( n [ n -- n ] -- n n )
-   1 ABI-DEPTH +! catch -1 ABI-DEPTH +! ;
+   1 ABI-DEPTH +! catch {: v rc:n :} -1 ABI-DEPTH +!
+   rc 0= IF v ELSE 0 THEN rc ;
 : PUBLISH ( n bool -- ) PUBLISH-XT ;
 
 \ A run may borrow failed declarations for diagnostics, never for executable
@@ -3337,7 +3340,6 @@ EXPORT CHECK:Q>RIN
 EXPORT CHECK:Q>ROUT
 EXPORT CHECK:Q>XDEAD
 EXPORT CHECK:Q>XDFIELD
-EXPORT CHECK:Q>XHAS
 EXPORT CHECK:Q>XRFIELD
 EXPORT CHECK:QX!
 EXPORT CHECK:R-RES
@@ -3546,7 +3548,7 @@ EXPORT CHECK:TWALK-SHALLOWER
    din x Q>DIN =  dout x Q>DOUT = and  rin x Q>RIN = and  rout x Q>ROUT = and IF t EXIT THEN
    din dout rin rout MK-QUOT {: copy:n :}
    x Q>BLOCK copy Q-BLOCK!
-   copy x Q>XHAS x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
+   copy x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
    x Q>FACTS copy Q-FACTS!
    copy ;
 
@@ -4666,7 +4668,7 @@ EXPORT CHECKER-QUOT-FRESH:START
    q Q>DIN pair? QAPP-ROW  q Q>DOUT pair? QAPP-ROW
    q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
    q Q>BLOCK fresh Q-BLOCK!
-   fresh q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   fresh q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
    q Q>FACTS fresh Q-FACTS!
    fresh ;
 
@@ -5753,11 +5755,7 @@ $7FFFF 1 60 lshift or 1 61 lshift or 1 62 lshift or constant XFER-FLAG-MASK
    n XFER-MASK-ALL and
    n NONZERO-INPUTS rshift XFER-MASK-ALL and ;
 
-\ Control-effect flags are append-only and later-wins. CTL-DEAD: a call has no
-\ normal continuation. CTL-THROW: a call may reach a catchable throw edge.
-1 constant CTL-DEAD
-2 constant CTL-THROW
-4 constant CTL-BARRIER
+: Q>XHAS ( n -- bool ) Q>FACTS CTL-THROW and 0 <> ;
 global
 \ Positive provenance: this binding's effect was explicitly declared or its
 \ check was enforced.
@@ -6387,7 +6385,7 @@ variable QUOT-LOSS
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
-     QTT @ Q>FACTS INHSET @ or INHSET !
+     QTT @ Q>FACTS CTL-INHERITED and INHSET @ or INHSET !
      QUOT-WINDOW
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
@@ -6463,7 +6461,7 @@ variable QUOT-LOSS
      QTT @ Q>XDEAD QTT @ Q>XHAS 0= and 0=
    ELSE RES-TRUE THEN {: returns:bool :}
    QTT @ TAG T-QUOT = IF
-     QTT @ Q>FACTS INHSET @ or INHSET !
+     QTT @ Q>FACTS CTL-INHERITED and INHSET @ or INHSET !
      QUOT-WINDOW
      CATCH-N @ 1 + CATCH-N !
      QTT @ QUOT-STEP-IN
@@ -6525,7 +6523,7 @@ variable QUOT-LOSS
    OK @ borrows and IF STEP-UNDERFLOW! THEN
    tv T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
-   cleanup Q>FACTS INHSET @ or INHSET !
+   cleanup Q>FACTS CTL-INHERITED and INHSET @ or INHSET !
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -6554,7 +6552,7 @@ variable QUOT-LOSS
    body-row DCUR !
    clean-term T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
-   finish-term T-RES Q>FACTS cleanup Q>FACTS or INHSET @ or INHSET !
+   finish-term T-RES Q>FACTS cleanup Q>FACTS or CTL-INHERITED and INHSET @ or INHSET !
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -6927,7 +6925,6 @@ variable VRC-RVN
          x VREC-RES Q>DOUT RECURSE node VN.B!
          x VREC-RES Q>RIN RECURSE node VN.C!
          x VREC-RES Q>ROUT RECURSE node VN.D!
-         x VREC-RES Q>XHAS Q-FLAG>N node VN.E!
          x VREC-RES Q>XDEAD Q-FLAG>N node VN.F!
          x VREC-RES Q>XDFIELD node VN.G!
          x VREC-RES Q>XRFIELD node VN.H!
@@ -7046,7 +7043,7 @@ variable VRC-RVN
          node VN.C@ RECURSE
          node VN.D@ RECURSE
          MK-QUOT
-         dup node VN.E@ 0 <> node VN.F@ 0 <> node VN.G@ node VN.H@ QX!
+         dup node VN.F@ 0 <> node VN.G@ node VN.H@ QX!
          node VN.I@ RECURSE over Q-BLOCK!
       endof
       VR-FORALL of
@@ -10579,7 +10576,6 @@ UIX-RESET
          x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.B !
          x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.C !
          x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.D !
-         x E-RES Q>XHAS Q-FLAG>N r@ E-WPTR EN.E !
          x E-RES Q>XDEAD Q-FLAG>N r@ E-WPTR EN.F !
          x E-RES Q>XDFIELD r@ E-WPTR EN.G !
          x E-RES Q>XRFIELD r@ E-WPTR EN.H !
@@ -12034,7 +12030,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          r@ EN.C @ pool RECURSE
          r@ EN.D @ pool RECURSE
          MK-QUOT
-         dup r@ EN.E @ 0 <> r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
+         dup r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
          r@ EN.I @ pool RECURSE over Q-BLOCK!
          r> drop
       endof
@@ -12392,7 +12388,7 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
    q Q>DIN din =  q Q>DOUT dout = and  q Q>RIN rin = and  q Q>ROUT rout = and
    IF t0 EXIT THEN
    din dout rin rout MK-QUOT {: nq:n :}
-   nq q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   nq q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
    q Q>FACTS nq Q-FACTS!
    q Q>BLOCK nq Q-BLOCK!
    nq ;
@@ -15283,7 +15279,7 @@ variable EFFQ-DOUT          \ dout row offset
 : EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
 : EFF-C@   ( n -- n )   E-PTR EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
-: EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: has a throw edge)
+: EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: 0)
 
 \ Without it `( option<n> n -- )` and `( a b n -- )` agree on term count, cell
 \ count and every family.
@@ -15665,7 +15661,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    q Q>DIN CALL-SPINE-COPY q Q>DOUT CALL-SPINE-COPY
    q Q>RIN q Q>ROUT MK-QUOT {: copy:n :}
    q Q>BLOCK copy Q-BLOCK!
-   copy q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   copy q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
    q Q>FACTS copy Q-FACTS!
    copy ;
 
@@ -20852,8 +20848,8 @@ variable QTMP
      \ A literal infers its fixed window before its implicit tails generalize.
      QTMP @ QUOT-ROWS-GENERALIZE
      QTMP @ MARK
-     QTMP @ THSET @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
-     0 QTMP @ Q-FACTS!
+     QTMP @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
+     THSET @ IF CTL-THROW ELSE 0 THEN QTMP @ Q-FACTS!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XFA @ XFACT !
      CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !
@@ -22310,9 +22306,10 @@ EXPORT CHECKER-TAPE:K-IS
 \ edge, not its dead flag: with it `['] WDEAD catch` would certify code `hb` cannot compile.
 : BTICK-EDGE ( n n -- n ) {: q:n sym:n :}
    sym CTL-WORD-SYM {: ctl:n :}
-   ctl CTL-INHERITED and  sym DFER-FIND-SYM IF CTL-UNSEEN or THEN  q Q-FACTS!
+   ctl CTL-INHERITED and  sym DFER-FIND-SYM IF CTL-UNSEEN or THEN
+   ctl XFER-FLAGS CTL-THROW and or  q Q-FACTS!
    ctl XFER-FLAGS CTL-THROW and 0= IF q EXIT THEN
-   q RES-TRUE  RES-FALSE
+   q RES-FALSE
    \ a mask bit counts from the top of W's declared input row, the term's din
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
