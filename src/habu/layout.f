@@ -1223,7 +1223,7 @@ package APP-ENTRY
 public
 $43A0 constant XT-CELL
 
-: XT! ( [ -- ] -- )
+: XT! ( [ -- renders parses creates nominal roots ] -- )
    data-base XT-CELL + xt! ;
 ;package
 
