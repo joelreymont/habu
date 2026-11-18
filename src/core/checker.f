@@ -1402,9 +1402,9 @@ variable QE-CAP
 \ QXBA: each quotation's block part, a type variable: unbound, it may read locals or not;
 \ NSCOPE@, it reads none; bound to a T-SCOPE term, it reads that block's locals.
 : QXBA ( -- ^n ) QXBA-P @ ;
-\ QXFA: each quotation's facts: the CTL-INHERITED ones running it adds to its body's (none for a literal,
-\ which the walk read inline; the ticked word's for `['] W`; else CTL-UNSEEN), and CTL-THROW if it may
-\ throw, as a term made from a type may. Two terms unified share their union.
+\ QXFA: each quotation's facts: the CTL-INHERITED ones running it adds to its runner's (a literal's
+\ body's; the ticked word's for `['] W`; else CTL-UNSEEN), and CTL-THROW if it may throw, as a term made
+\ from a type may. Two terms unified share their union.
 : QXFA ( -- ^n ) QXFA-P @ ;
 
 : QE-ENSURE ( n -- ) {: need:n :}
@@ -5100,7 +5100,8 @@ U-DRAIN-INSTALL
 SCRATCH{
 variable THDMASK  variable THRMASK  variable THSET
 \ INHSET: the CTL-INHERITED facts of what the body calls or runs, CTL-UNSEEN for what it
-\ cannot see. Sticky per body: a call on any path is enough for the may-claim.
+\ cannot see; an open literal's body has its own. Sticky per body: a call on any path is
+\ enough for the may-claim.
 variable INHSET
 }SCRATCH
 variable XROW  variable XRROW
@@ -5822,6 +5823,8 @@ private
 CHECKER-OWNER-ABI:BINDING-ROOTS constant CTL-ROOTS
 CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or CTL-OPAQUE or
    CTL-UNSEEN or constant CTL-INHERITED
+\ Running a quotation charges the runner with its facts.
+: INH-CHARGE ( n -- ) Q>FACTS CTL-INHERITED and INHSET @ or INHSET ! ;
 \ CTL-NAMES means the word looks its top string operand up, so a string literal
 \ just before a call of it is a use of the word it names.
 CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
@@ -6396,7 +6399,7 @@ variable QUOT-LOSS
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
-     QTT @ Q>FACTS CTL-INHERITED and INHSET @ or INHSET !
+     QTT @ INH-CHARGE
      QUOT-WINDOW
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
@@ -6472,7 +6475,7 @@ variable QUOT-LOSS
      QTT @ Q>XDEAD QTT @ Q>XHAS 0= and 0=
    ELSE RES-TRUE THEN {: returns:bool :}
    QTT @ TAG T-QUOT = IF
-     QTT @ Q>FACTS CTL-INHERITED and INHSET @ or INHSET !
+     QTT @ INH-CHARGE
      QUOT-WINDOW
      CATCH-N @ 1 + CATCH-N !
      QTT @ QUOT-STEP-IN
@@ -6534,7 +6537,7 @@ variable QUOT-LOSS
    OK @ borrows and IF STEP-UNDERFLOW! THEN
    tv T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
-   cleanup Q>FACTS CTL-INHERITED and INHSET @ or INHSET !
+   cleanup INH-CHARGE
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -6563,7 +6566,7 @@ variable QUOT-LOSS
    body-row DCUR !
    clean-term T-RES {: cleanup:n :}
    cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
-   finish-term T-RES Q>FACTS cleanup Q>FACTS or CTL-INHERITED and INHSET @ or INHSET !
+   finish-term T-RES INH-CHARGE  cleanup INH-CHARGE
    RSEXEC
    OK @ 0= IF EXIT THEN
    QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
@@ -18433,6 +18436,8 @@ private
       x Q>ROUT depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
       MK-QUOT {: copy:n :}
       x Q>BLOCK copy Q-BLOCK!
+      copy x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
+      x Q>FACTS copy Q-FACTS!
       copy EXIT
    THEN
    x TAG T-PARAM = IF
@@ -18662,6 +18667,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    \ has no body that could prove it cannot throw.
    supplied TAG T-QUOT = IF supplied Q>XHAS ELSE RES-TRUE THEN
    {: callback-throws:bool :}
+   supplied TAG T-QUOT = IF supplied INH-CHARGE THEN
    P>REST R-RES dup TAG S-PUSH <> IF drop 3 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: parent-cell:n :}
    P>REST {: rest:n :}
@@ -19953,7 +19959,8 @@ $98 constant CF.FT-OFF
 $A0 constant CF.XFA-OFF
 $A8 constant CF.LSC-OFF
 $B0 constant CF.QRD-OFF
-$B8 constant CFS-REC
+$B8 constant CF.TXI-OFF
+$C0 constant CFS-REC
 : CF.KND ( ^a -- ^a ) CF.KND-OFF + ;
 : CF.SA ( ^a -- ^a ) CF.SA-OFF + ;
 : CF.SB ( ^a -- ^a ) CF.SB-OFF + ;
@@ -19968,6 +19975,7 @@ $B8 constant CFS-REC
 : CF.TXD ( ^a -- ^a ) CF.TXD-OFF + ;
 : CF.TXR ( ^a -- ^a ) CF.TXR-OFF + ;
 : CF.TXS ( ^a -- ^a ) CF.TXS-OFF + ;
+: CF.TXI ( ^a -- ^a ) CF.TXI-OFF + ;
 \ CF.UNI: nonzero when the frame is a branch whose condition is provably
 \ block-uniform (a uniform<bool> predicate). A block collective or barrier is
 \ sound only when every open frame is uniform (ALL-CF-UNIFORM?).
@@ -20819,8 +20827,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    XFACT @ CF-TOP CF.XFA !
    XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
    THDMASK @ CF-TOP CF.TXD !  THRMASK @ CF-TOP CF.TXR !
-   THSET @ CF-TOP CF.TXS !
-   0 XSET !  0 XFACT !  0 DEADP !  0 THSET !  0 FACTS !
+   THSET @ CF-TOP CF.TXS !  INHSET @ CF-TOP CF.TXI !
+   0 XSET !  0 XFACT !  0 DEADP !  0 THSET !  0 INHSET !  0 FACTS !
    QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -20868,12 +20876,12 @@ variable QTMP
      QTMP @ QUOT-ROWS-GENERALIZE
      QTMP @ MARK
      QTMP @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
-     THSET @ IF CTL-THROW ELSE 0 THEN QTMP @ Q-FACTS!
+     INHSET @ CTL-INHERITED and  THSET @ IF CTL-THROW or THEN  QTMP @ Q-FACTS!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XFA @ XFACT !
      CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !
      CF-TOP CF.TXD @ THDMASK !  CF-TOP CF.TXR @ THRMASK !
-     CF-TOP CF.TXS @ THSET !
+     CF-TOP CF.TXS @ THSET !  CF-TOP CF.TXI @ INHSET !
      CF@LA CF-LOOPS !
      QDEPTH @ 1 - QDEPTH !
      CF@B BROW !  CF@RB RBROW !

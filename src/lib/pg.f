@@ -1939,7 +1939,7 @@ public
    handle CONN-SLOT {: slot:n :}
    slot CONN-TX@ 0 <> if E-TRANSACTION throw then
    slot BEGIN-TX
-   handle body catch {: leftover:connection code:n :}
+   handle body catch nip {: code:n :}
    code 0= if handle CONN-SLOT COMMIT-TX exit then
    handle ABORT-TX
    code throw ;

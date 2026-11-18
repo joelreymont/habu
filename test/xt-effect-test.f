@@ -239,7 +239,19 @@ create XE-EMPTY 1 allot
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
    s" : MKR ['] EVC ;" XE-LINE
    s" : XH ( -- n ) MKR ;" XE-LINE
-   SB$ s" found: [ -- renders ]" XE-FACT-REJECTED ;
+   SB$ s" found: [ -- renders ]" XE-FACT-REJECTED
+   s" a literal's term carries its body's facts" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" : MKL [: EVC ;] ;" XE-LINE
+   s" : XH ( -- n ) MKL ;" XE-LINE
+   SB$ s" found: [ -- renders ]" XE-FACT-REJECTED
+   s" a literal that is never run charges nothing" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" : DR [: EVC ;] drop ;" XE-LINE
+   s" : XH ( -- n ) ['] DR ;" XE-LINE
+   SB$ s" found: [ -- ]" XE-FACT-REJECTED ;
 
 : XE-DEFER-FACTS ( -- )
    s" a defer's effect states facts after its outputs" T-LABEL

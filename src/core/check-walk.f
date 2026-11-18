@@ -181,6 +181,7 @@ package CHECK
    DCUR @ R-RES dup TAG S-PUSH <> IF drop 3 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: supplied:n :}
    supplied SCOPE-FIELD-MAY-THROW? {: may-throw:bool :}
+   supplied TAG T-QUOT = IF supplied INH-CHARGE THEN
    P>REST R-RES dup TAG S-PUSH <> IF drop 3 C2-UNDERFLOW EXIT THEN
    dup P>TYPE T-RES {: parent-cell:n :}
    P>REST {: rest:n :}
