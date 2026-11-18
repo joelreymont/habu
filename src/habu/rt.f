@@ -38,9 +38,7 @@ public
 \
 \ It runs before any crash handler exists and, for the boot data stack, before
 \ any region does: its line's text is laid inline and the exit is 78, as for the
-\ two fixed-region mappings. The engine (habu2.f
-\ EM-RUNTIME-STACK/EM-FRAME-STACKS) and a product's start-up
-\ (src/arch/arm64/boot.f ENTRY,) both emit it.
+\ two fixed-region mappings.
 : EMIT-MAP ( n n -- )
    MAP-DST !  MAP-CAP !
    LBL MAP-OK !  LBL MAP-ROK !  LBL MAP-BAD !  LBL MAP-DONE !
