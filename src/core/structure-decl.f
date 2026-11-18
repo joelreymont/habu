@@ -95,8 +95,8 @@ variable MEM-CLOSED                   \ its members closed so far: the next rank
 : MEM-LISTED? ( n -- bool )
    MEM-OF {: i:n :}  i 0 < IF NO EXIT THEN  i MEM-LISTED@ ;
 
-$100 constant SD-ARG-CAP
-create SD-ARGS SD-ARG-CAP cells allot
+PTR-VARIABLE SD-ARGS
+SCRATCH-VARIABLE SD-ARGS-CAP          \ in rows
 variable SD-ARG-N
 
 \ The first pointee naming the open member while it takes no scope or region,
@@ -369,12 +369,10 @@ EXPORT CHECK:WIDTH-FAM
    idx SCHEMA-PARAM ;
 
 : SD-ARG+ ( n -- )
-   SD-ARG-N @ SD-ARG-CAP >= IF
-      s" " s" application is too deep"
-      s" nest fewer than 256 type arguments in one type"
-      TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
-   SD-ARG-N @ cells SD-ARGS + !
-   SD-ARG-N @ 1 + SD-ARG-N ! ;
+   SD-ARG-N @ {: i:n :}
+   SD-ARGS SD-ARGS-CAP i 1 + 1 ARENA-ROWS-ENSURE
+   i cells SD-ARGS @ + !
+   i 1 + SD-ARG-N ! ;
 
 : SD-BLANK? ( n -- bool ) 33 < ;
 : SD-DELIM? ( n -- bool ) dup SD-BLANK? swap SIG-DELIM-CHAR? or ;
@@ -496,7 +494,7 @@ defer SD-PARSE-NODE ( str n n -- n n nominal )
    FIELD-MISS @ IF base SD-ARG-N ! 0 j EXIT THEN
    SCHEMA-ROOT-N@ {: start:n :}
    base BEGIN dup SD-ARG-N @ < WHILE
-      dup cells SD-ARGS + @ SCHEMA-ROOT+ drop 1 +
+      dup cells SD-ARGS @ + @ SCHEMA-ROOT+ drop 1 +
    REPEAT drop
    base SD-ARG-N !
    fam start k SCHEMA-APP j ;

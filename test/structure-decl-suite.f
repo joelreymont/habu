@@ -1686,6 +1686,17 @@ s" qqqq`, which takes a scope or region" DECL-DIAG:HAS? TTRUE
 7109 DECL-REJECT:REASON$ nip
 s" a pointer cannot reach `" nip SDGW-U +  s" `, which takes a scope or region" nip + T=
 DECL-DIAG:OFF
+\ An application's arguments wait while a later one is read: the field type
+\ `sdnest<n,sdnest<n,…n>>` nested 300 deep holds 300 at once.
+s" STRUCTURE sdnest<a,b> DERIVE addr FIELD x a FIELD y b ;STRUCTURE" TEST-EVAL:RC 0 T=
+300 constant SDNEST-K
+: SDNEST-ARGS ( -- )
+   SDNEST-K 0 ?do s" sdnest<n," SDBIG:SRC+ loop  s" n" SDBIG:SRC+
+   SDNEST-K 0 ?do s" >" SDBIG:SRC+ loop ;
+s" sdndeep DERIVE addr FIELD d " 0 SDBIG:FIELDS  SDNEST-ARGS  s"  ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+: SDND-GO ( n ^sdndeep -- n )
+   dup >r SDNDEEP:D SDNEST:Y SDNEST:X !  r> SDNDEEP:D SDNEST:Y SDNEST:X @ ;
 
 ' struct-replay-test:RP-SDBUF CHECK:SCOPED
 
