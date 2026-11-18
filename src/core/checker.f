@@ -12341,18 +12341,25 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
 
 \ A row with each str value, and each in a quotation row it holds, as ^u8 under n.
 \ One word walks rows and the cell types in them, so a quotation's rows recurse.
+\ Each level holds its parts in locals and no data-stack cell across a RECURSE,
+\ so a row as deep as EFFECT-DEPTH-MAX, or the one its parse cut there, fits.
 : SPLIT-ROW ( n -- n ) {: x0:n :}
    x0 R-RES {: s:n :}
    s TAG S-PUSH = IF
-      x0 s  s P>TYPE RECURSE  s P>REST RECURSE  SPLIT-PUSH EXIT
+      s P>TYPE RECURSE {: ty:n :}
+      s P>REST RECURSE {: rest:n :}
+      x0 s ty rest SPLIT-PUSH EXIT
    THEN
    x0 T-RES {: t:n :}
    t STR-CELL? IF t STR-CELL-SPLIT EXIT THEN
    t TAG T-QUOT = IF
-      x0 t  t Q>DIN RECURSE  t Q>DOUT RECURSE  t Q>RIN RECURSE  t Q>ROUT RECURSE
-      SPLIT-QUOT EXIT
+      t Q>DIN RECURSE {: din:n :}
+      t Q>DOUT RECURSE {: dout:n :}
+      t Q>RIN RECURSE {: rin:n :}
+      t Q>ROUT RECURSE {: rout:n :}
+      x0 t din dout rin rout SPLIT-QUOT EXIT
    THEN
-   t TAG T-FORALL = IF x0 t  t F>BODY RECURSE  SPLIT-FORALL EXIT THEN
+   t TAG T-FORALL = IF t F>BODY RECURSE {: body:n :}  x0 t body SPLIT-FORALL EXIT THEN
    x0 ;
 
 \ A row as the file reading it sees it: split under split-str.

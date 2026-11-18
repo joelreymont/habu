@@ -9,6 +9,9 @@ require src/lib/process-argv.f
 require src/lib/engine-candidate.f
 require src/lib/fs-mutate.f
 require test/e2e-tree.f
+require src/lib/string.f
+require src/lib/test/subject.f
+require src/lib/test/ending.f
 
 T-RESET
 
@@ -72,5 +75,7 @@ E2E-TREE:ERR$ s" = help: write `split-str` in lower case, alone on its file's fi
    s\" include test/split-str-nested.f\n: SPZ ( ^u8 n -- n ) SPL ;\n"
    s" test/spz-subject.f" 2dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 ' SPZ-RUN catch 70 T=
+
+include test/split-str-deep.f
 
 T-REPORT
