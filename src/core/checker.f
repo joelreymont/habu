@@ -4851,21 +4851,29 @@ defer U-DRAIN-XT ( n -- )
 \ of the quotations its slot hands that quotation to run.
 variable KEPT-ROLE   variable KEPT-RUN
 
+\ A quotation pair is one of five kinds, decided before its rows are paired.
+\ Invariant: demanded on both sides (a pointee, a store slot); both state the
+\ same facts. Kept: a demanded slot that keeps the quotation (a declared output,
+\ a block that keeps its scope); it states every fact the quotation has and
+\ every fact of a quotation the slot hands it to run, and the quotation is
+\ charged with them. Handed: an input the open kept pair's slot hands its
+\ quotation; its facts charge that quotation. Join: neither side demanded; each
+\ takes both sides' facts. Run: the rest; a callee that only runs the quotation
+\ charges the caller.
 : QUOT-PAIR ( n n -- )
    {: got:n want:n :}
    CUR-ROLE @ {: role:n :}   role ROLE-FLIP {: flip:n :}
    TRAIL-N @ {: mark:n :}   USP @ {: base:n :}   CUR-UPOS @ {: upos:n :}
-   \ A demanded slot keeps the quotation: a definition's declared output, or a
-   \ block that keeps its scope. It states every fact the quotation has and
-   \ every fact of a quotation the slot hands it to run.
+   KEPT-ROLE @ {: kr0:n :}   KEPT-RUN @ {: kn0:n :}
+   role ROLE-D1 ROLE-D2 or and {: dem:n :}
+   dem ROLE-D1 ROLE-D2 or = {: inv:bool :}
    want Q>BLOCK T-RES {: b:n :}
-   role ROLE-D2 and 0 <> IF
+   inv 0=  role ROLE-D2 and 0 <> and IF
       role ROLE-NEG and 0= UNIFY-KIND @ UK-COERCE = and  b ISVAR IF b PAY NSCOPE@ or THEN
    ELSE RES-FALSE THEN {: kept:bool :}
-   \ A pair demanded on both sides (a pointee, a store slot, a join's inputs)
-   \ is invariant: its two quotations state the same facts.
-   role ROLE-D1 ROLE-D2 or and  ROLE-D1 ROLE-D2 or = {: inv:bool :}
-   KEPT-ROLE @ {: kr0:n :}   KEPT-RUN @ {: kn0:n :}
+   inv kept or 0=  kr0 0 <> and  role kr0 xor ROLE-NEG and 0 <> and {: handed:bool :}
+   inv kept or handed or 0=  dem 0= and {: join:bool :}
+   inv kept or handed or join or 0= {: runs:bool :}
    kept IF role KEPT-ROLE !  0 KEPT-RUN ! THEN
    got want role HOLD-PUSH {: g:n w:n :}
    w Q>DIN g Q>DIN flip PAIR-QUOT
@@ -4874,24 +4882,21 @@ variable KEPT-ROLE   variable KEPT-RUN
    g Q>ROUT w Q>ROUT role PAIR-QUOT
    g w BLOCK-PAIR
    base U-DRAIN-XT
-   kept IF KEPT-RUN @  kr0 KEPT-ROLE !  kn0 KEPT-RUN ! ELSE 0 THEN {: run:n :}
+   kept IF KEPT-RUN @  kr0 KEPT-ROLE !  kn0 KEPT-RUN ! ELSE 0 THEN
+   got Q>FACTS or {: has:n :}
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
-   got Q>FACTS run or {: has:n :}
    has CTL-STATABLE and want Q>FACTS invert and {: lack:n :}
-   \ The record's found side shows the facts its help asks to state.
-   UOK @ IF kept inv or IF lack 0 <> IF
-      has got Q-FACTS!  lack FACT-HIT !  got want U-FAIL
-   ELSE inv IF want Q>FACTS CTL-STATABLE and has invert and 0 <> IF got want U-FAIL THEN THEN
-   THEN THEN THEN
-   \ The fact union is not trailed: a rolled-back trial can only add facts. A
-   \ quotation a callee only runs charges the caller with its facts; one the
-   \ open kept pair's slot hands its quotation charges that quotation instead.
-   KEPT-ROLE @ 0 <>  role KEPT-ROLE @ xor ROLE-NEG and 0 <> and {: handed:bool :}
-   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE kept inv or 0= IF
+   UOK @ IF
+      inv IF got Q>FACTS want Q>FACTS xor CTL-STATABLE and 0 <> IF got want U-FAIL THEN THEN
+      kept lack 0 <> and IF has got Q-FACTS!  lack FACT-HIT !  got want U-FAIL THEN
+   THEN
+   \ Facts are not trailed: a rolled-back trial can only add facts.
+   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE
+      kept IF has got Q-FACTS! THEN
       handed IF got Q>FACTS KEPT-RUN @ or KEPT-RUN ! THEN
-      g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS!
-      handed 0=  role ROLE-D2 and 0 <> and  UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
-   THEN THEN
+      join IF g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS! THEN
+      runs  role ROLE-D2 and 0 <> and  UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
+   THEN
    -1 HOLD-N +! ;
 
 

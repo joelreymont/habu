@@ -331,6 +331,15 @@ create XE-EMPTY 1 allot
    s" : K2 ( [ -- renders ] -- ) execute ;" XE-LINE
    s" : JN ( bool -- ) ['] EVC swap if ['] K2 else ['] K1 then execute ;" XE-LINE
    SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   XE-ERR$ s" does more than the type that keeps it states" CONTAINS? TFALSE
+   s" a join keeps its branches' quotation inputs apart in either branch order" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE XV [ -- ]" XE-LINE  s" : K1 ( [ -- ] -- ) XV ! ;" XE-LINE
+   s" : K2 ( [ -- renders ] -- ) execute ;" XE-LINE
+   s" : JN ( bool -- ) ['] EVC swap if ['] K1 else ['] K2 then execute ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   XE-ERR$ s" does more than the type that keeps it states" CONTAINS? TFALSE
    s" a word compile, keeps states no facts" T-LABEL
    SB-RESET
    s" : V ( -- ) parse-name 2drop ;" XE-LINE  s" : C ( -- ) ['] V compile, ;" XE-LINE
@@ -425,6 +434,13 @@ create XE-EMPTY 1 allot
    s" : C10 ( -- ) MKK [: EVC ;] W2R ;" XE-LINE
    SB$ s" E-MISMATCH" XE-FACT-REJECTED
    XE-ERR$ s" : C10 ( -- ) MKK [: EVC ;] W2R ;" CONTAINS? TTRUE
+   s" a quotation kept twice is charged at each keeping" T-LABEL
+   SB-RESET  XE-RUN-LINE
+   s" TYPED-VARIABLE SV [ [ -- renders ] -- renders ]" XE-LINE
+   s" TYPED-VARIABLE XN [ [ -- renders ] -- ]" XE-LINE
+   s" : S ( -- ) [: RUN ;] dup SV ! XN ! ;" XE-LINE
+   SB$ s" state `renders`" XE-FACT-REJECTED
+   XE-ERR$ s" : S ( -- ) [: RUN ;] dup SV ! XN ! ;" CONTAINS? TTRUE
    s" a bodyless defer's output keeps what it is handed" T-LABEL
    SB-RESET
    s" TYPED-VARIABLE KV [ -- ]" XE-LINE
