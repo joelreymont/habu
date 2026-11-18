@@ -16196,9 +16196,33 @@ private
 EXPORT CHECKER-EFFECT-AUTHORITY:CERTIFIED?
 EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?
 
+SCRATCH{
+\ (term, facts) of each declared quotation; a body's join widens a term in
+\ place, and the word is saved with the facts its signature states.
+PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
+}SCRATCH
+
+: OWNQ+ ( n -- ) {: q:n :}
+   OWNQ-N @ 1+ OWNQ-CAP @ > IF
+      OWNQ-CAP @ 2 * 8 max {: nc:n :}
+      OWNQ-P @ OWNQ-CAP @ 2 * cells nc 2 * cells SR-GROW OWNQ-P !
+      nc OWNQ-CAP !
+   THEN
+   OWNQ-N @ 2 * cells OWNQ-P @ + {: rec:^ :}
+   q rec !  q Q>FACTS rec CELL + !
+   OWNQ-N @ 1+ OWNQ-N ! ;
+
+: OWNQ-RESTORE ( -- )
+   0 BEGIN dup OWNQ-N @ < WHILE
+      dup 2 * cells OWNQ-P @ + dup CELL + @ swap @ Q-FACTS!
+      1 +
+   REPEAT drop ;
+
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
+\ The boundary checks before it read the terms as the body widened them.
 : CHECKER-PUBLISH-PARSED ( -- )
+   OWNQ-RESTORE
    SGWIN @ SGWOUT @ SGWRIN @ SGWROUT @ SGHASR @
    CERTIFIED? E-ADD-EFFECT DL-TAKE
    RECOVERY-USED? IF RECOVERY-RECORD THEN ;
@@ -20436,6 +20460,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
+      x OWNQ+
       x Q>BLOCK E-RES dup ISVAR IF dup PAY E-TV-ID swap OWNB+ ELSE drop THEN
       x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
       x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
@@ -20474,7 +20499,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 \ The record carries sym 0 so signature lookup never sees it. The declared rows
 \ are measured here, before the body binds their tails.
 : SIG-EFF-CACHE!
-   0 OWNB-N !
+   0 OWNB-N !  0 OWNQ-N !
    SGBAD @ IF EXIT THEN
    SGIN @ SGOUT @ SGRIN @ SGROUT @ ROWS-FIT? 0= IF EXIT THEN
    UEND @ RECEFF-UEND !

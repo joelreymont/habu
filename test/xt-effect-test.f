@@ -441,6 +441,27 @@ create XE-EMPTY 1 allot
    s" : S ( -- ) [: RUN ;] dup SV ! XN ! ;" XE-LINE
    SB$ s" state `renders`" XE-FACT-REJECTED
    XE-ERR$ s" : S ( -- ) [: RUN ;] dup SV ! XN ! ;" CONTAINS? TTRUE
+   s" a signed word is saved with the facts its signature states" T-LABEL
+   SB-RESET  XE-RUN-LINE
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" : K2 ( bool [ -- ] -- ) dup KV ! swap if drop [: EVC ;] then RUN ;" XE-LINE
+   s" : C ( -- ) false ['] EVC K2 ;" XE-LINE
+   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   XE-ERR$ s" : C ( -- ) false ['] EVC K2 ;" CONTAINS? TTRUE
+   s" a signed word is saved with the facts its signature states" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" : SAME ( a a -- ) 2drop ;" XE-LINE  s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" : K5 ( [ -- ] -- ) dup KV ! [: EVC ;] SAME ;" XE-LINE
+   s" : C ( -- ) ['] EVC K5 ;" XE-LINE
+   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   XE-ERR$ s" : C ( -- ) ['] EVC K5 ;" CONTAINS? TTRUE
+   s" a body's join still reaches its output" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" : KJ ( bool [ -- ] -- [ -- ] ) swap if drop [: EVC ;] then ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
    s" a bodyless defer's output keeps what it is handed" T-LABEL
    SB-RESET
    s" TYPED-VARIABLE KV [ -- ]" XE-LINE
