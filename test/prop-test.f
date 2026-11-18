@@ -637,9 +637,6 @@ variable CASE-EXP
    s" : PROP-PC ( -- n ) cp@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) dbase@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) ndict@ ; " s" " 1 CHECK-CASE
-   \ data-base's pointee is a base address, which no definition may publish
-   \ under a type variable; the case is about its arity, so it names a pointee.
-   s" : PROP-PC ( -- ^n ) data-base ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n -- r ) s>f ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- ) emit ; " s" 7 " 0 CHECK-CASE

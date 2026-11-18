@@ -49,7 +49,6 @@ create LB-RAW-WIDE 2 cells allot
 s" LB-CAST ( ^a -- ^lb-res<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-VAR-P ( -- ^lb-res<n,n> ) LB-RAW" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-CREATE-P ( -- ^lb-res<n,n> ) LB-RAW-WIDE" CHECK-QUIET-CANDIDATE! 0 T=
-s" LB-DATA-P ( -- ^lb-res<n,n> ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-CELL+ ( ^lb-res<n,n> -- ^lb-res<n,n> ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-BYTE ( ^lb-res<n,n> -- ^u8 )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-WRONG-STORE ( lb-other<n> ^lb-res<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
@@ -151,7 +150,6 @@ s" LBTK-WRONG-FETCH ( ^lbtk -- lbtk2 ) @" CHECK-QUIET-CANDIDATE! 0 T=
 variable LBTK-RAW-CELL
 s" LBTK-VAR-P ( -- ^lbtk ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-VAR-P2 ( -- ^lbtk2 ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-DATA-P ( -- ^lbtk ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-CAST ( ^a -- ^lbtk )" CHECK-QUIET-CANDIDATE! 0 T=
 \ Arithmetic transports an existing nominal pointer; it does not introduce one.
 s" LBTK-CELL+ ( ^lbtk -- ^lbtk ) cell+" CHECK-QUIET-CANDIDATE! -1 T=

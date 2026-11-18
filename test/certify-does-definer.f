@@ -26,12 +26,13 @@ public
 EXPORT CDD-RESP:CDD-RP-D
 ;package
 
-\ The text-writing definer of sections 9-12, the shape of src/lib/task.f
-\ +USER: MAKE builds `: NAME ( -- ^n ) data-base OFF + ;` for the next name
-\ and evaluates it, so its word has no `does>` clause for a checker to read.
+\ The text-writing definer of sections 9-12: MAKE builds `: NAME ( -- ^n )
+\ CDD-GEN:AREA OFF + ;` for the next name and evaluates it, so its word has no
+\ `does>` clause for a checker to read.
 package CDD-GEN
 CODEGEN:BUFFER TEXT
 public
+create AREA 2 cells allot
 : MAKE ( n -- )
    {: off:n :}
    parse-name
@@ -39,7 +40,7 @@ public
    TEXT CODEGEN:RESET
    s" : " TEXT CODEGEN:APPEND-STRING
    name nameu TEXT CODEGEN:APPEND-STRING
-   s"  ( -- ^n ) data-base " TEXT CODEGEN:APPEND-STRING
+   s"  ( -- ^n ) CDD-GEN:AREA " TEXT CODEGEN:APPEND-STRING
    off TEXT CODEGEN:APPEND-DECIMAL
    s"  + ;" TEXT CODEGEN:APPEND-STRING
    TEXT CODEGEN:CONTENTS evaluate-closed ;

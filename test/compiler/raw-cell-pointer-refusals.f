@@ -262,8 +262,7 @@ private
 \ index). Its token opens the window, and it is the only token that does.
 : CASE-XT-STORE ( -- )
    s" xt! declares the cell it writes, so it keeps certifying" T-LABEL
-   [: s" : RCP-XTPUT ( -- ) [: 1 ;] RCP-V xt! ;" evaluate-closed ;] 0 TTHROWSQ
-   [: s" : RCP-XTPUTD ( -- ) [: 1 ;] data-base 8 + xt! ;" evaluate-closed ;] 0 TTHROWSQ ;
+   [: s" : RCP-XTPUT ( -- ) [: 1 ;] RCP-V xt! ;" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ The window closes with the token: the next mention of the same cell is judged
 \ by the rule again.
