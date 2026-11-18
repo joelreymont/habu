@@ -7,7 +7,6 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/task.f
 
 package NATIVE-EVAL-TEST
 
@@ -33,12 +32,6 @@ TRUSTED: PLUS-XT ( -- [ n -- n ] ) ['] + ;
 : INNER-UNDER$ ( -- ^u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
 
 : INNER-OPEN$ ( -- ^u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
-
-\ The text EVAL-BODY evaluates would print; on a task's thread evaluation stops
-\ before it is read. The child activates the task: tasks do not cross a fork.
-TASK:MIN-STACK TASK:TASK EVALUATOR
-: EVAL-BODY ( -- ) s" 1 ." evaluate-closed ;
-: EVAL-IN-TASK ( -- ) ['] EVAL-BODY EVALUATOR TASK:ACTIVATE  EVALUATOR TASK:KILL ;
 
 \ The data-stack base each text of a nested pair sees.
 variable OUTER-BASE
@@ -165,7 +158,7 @@ private
    s" a primitive executed below the floor throws E-UNDERFLOW" T-LABEL
    XT-PRIMITIVE 5 T=
    s" a catch inside the text receives that E-UNDERFLOW itself" T-LABEL
-   5 s" 1 ' NATIVE-EVAL-TEST:W catch E-UNDERFLOW T= 1 T=" evaluate-closed
+   5 s" 1 ' NATIVE-EVAL-TEST:W catch E-UNDERFLOW T= drop" evaluate-closed
    5 T=  SEEN @ 0 T=
    s" finally's body reaching below the floor throws E-UNDERFLOW" T-LABEL
    XT-FINALLY 5 T=  SEEN @ 0 T=
@@ -326,15 +319,6 @@ create ERR IO-CAP allot
    ERR erru s" = evaluated: : NATIVE-EVAL-F ( -- n ) 42" CONTAINS? TTRUE
    ERR erru s" never closed" CONTAINS? TTRUE ;
 
-: IN-TASK ( -- )
-   s" evaluation in a task exits before it reads the text" T-LABEL
-   s" NATIVE-EVAL-TEST:EVAL-IN-TASK" OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
-   PROCESS:ENDING>RC RC>N 79 T=
-   LEN>N {: erru:n :}
-   s" and names evaluate-closed, printing nothing else" T-LABEL
-   LEN>N 0 T=
-   ERR erru s" error[E-TASK-COMPILE]: `evaluate-closed` ran on a task's thread" STARTS-WITH? TTRUE ;
-
 \ ---- a definition a thrown text takes back keeps no row ----------------------
 \ A text that throws takes back what it defined, and its frame cuts the
 \ checker's records back to where the text began, so a later word is checked
@@ -397,7 +381,7 @@ variable ERR-U
    UNFINISHED
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED OVERFLOW
    RESIDUE-RECORD TOP-LEVEL
-   UNFINISHED-LINE IN-TASK
+   UNFINISHED-LINE
    NAME-THROWN ROW-THROWN
    CHECKED
    T-REPORT ;

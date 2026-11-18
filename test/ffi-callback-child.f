@@ -62,29 +62,6 @@ using FFI-CB
    SORT-STALE
    s" ffi-callback-child: worker-stale was not refused" EXIT-STATUS:FAILURE die ;
 
-\ Defines once with no task live, so the definition is admitted. The thunk
-\ restores C's callee-saved registers, the caller's record count and code
-\ pointer among them, so it ends the process rather than lose what the
-\ definition moved.
-CALLBACK: CMP-DEFINE ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
-
-variable DEFINED                        \ 1 once CMP-DEFINE has defined
-
-: CMP-DEFINE-IMPL ( ^u8 ^u8 -- n ) {: a b :}
-   DEFINED @ 0= if
-      1 DEFINED !
-      s" variable CBC-INSIDE" evaluate-closed
-   then
-   a b ROW-ORDER ;
-
-' CMP-DEFINE-IMPL CMP-DEFINE-BODY !
-
-: BODY-DEFINES ( -- )
-   CMP-DEFINE TASK:SELF-CONTEXT ENTRY {: fn:n :}
-   OUTER 10 ROW-FILL
-   OUTER BYTE-VIEW ROW-N CELL fn QSORT
-   s" ffi-callback-child: body-defines was not refused" EXIT-STATUS:FAILURE die ;
-
 \ PARK sees the halt and returns; TASK:PAUSE only yields while a comparison
 \ runs, so qsort completes and the worker ends after C returns; KILL joins it.
 CALLBACK: CMP-PARK ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
@@ -180,7 +157,6 @@ variable GROWN-FN                     \ the C entry the thrown text answered
    s" sleeping" CASE? if SLEEPING then
    s" unbound" CASE? if UNBOUND then
    s" worker-stale" CASE? if WORKER-STALE then
-   s" body-defines" CASE? if BODY-DEFINES then
    s" caller-thread" CASE? if CALLER-THREAD then
    s" released" CASE? if HALTED KILLED exit then
    s" grown-bind" CASE? if GROWN-BIND exit then

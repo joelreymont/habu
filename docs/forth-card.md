@@ -590,20 +590,14 @@ holds an address**.
   (`^u8 n n --`, a real message and exit code) ends the process and is
   no-return (§ 3). `throw` for recoverable and interactive paths, `die` for
   build makers and CLI boundaries.
-- Exit 79 (`$4F`) is compilation from a task: a definition, `create`, `allot`,
-  `,`, `evaluate`, a load or a package keyword run on a task's or a
-  callback's thread. The kernel's guard prints the record
-  ``error[E-TASK-COMPILE]: `<primitive>` ran on a task's thread, and only the
-  main thread defines and allots`` with the note `in`; `evaluate`,
-  `evaluate-closed`, a load, `create`, `,`, `c,`, `align` and `allot` reach it
-  first, so a definition or keyword in a text is rejected before the text is
-  read. Calling `INTERPRETER:EVAL-FRAMED` or `INTERPRETER:EVAL-FRAMED-RANGE`
-  on a task's thread is rejected as `E-TASK-COMPILE` too.
-  The main thread compiles while tasks run; `cp!` and `ndict!` exit 79 on it
-  too while any task is live (``error[E-TASK-COMPILE]: `cp!` ran while a task
-  is live``).
-  `NSHADOW:OPEN` and `NSHADOW:CLOSE`, which `LINKER:WITH` reaches, reject a
-  call on a task's thread as `E-TASK-COMPILE`, status 70.
+- A task's body and a callback's are kept by quotation types that state no
+  facts (`TASK:ACTIVATE`'s `[ -- ]`, a `CALLBACK:` body cell typed from its
+  effect): a body that defines a word, creates, evaluates or loads is
+  rejected where it is kept (`E-MISMATCH`). A body that allots (`allot`, `,`,
+  `c,`, `align`) is kept and exits 79 (`$4F`) on the task's thread
+  (``error[E-TASK-COMPILE]: `allot` ran on a task's thread``, note `in`). The
+  main thread compiles while tasks run; `cp!` and `ndict!` exit 79 on it while
+  any task is live (``error[E-TASK-COMPILE]: `cp!` ran while a task is live``).
 - A literal `0 throw` is rejected (`E-THROW-ZERO`): 0 means no error; so is a
   literal 0 at an input a word with a signature throws with only stack words,
   locals, integer and string literals and calls before it. A computed 0

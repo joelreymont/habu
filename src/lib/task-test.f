@@ -375,59 +375,53 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" ndict@ ndict!" SB-APPEND TASK-LF
    SB$ ;
 
-\ A TASK MAY NOT COMPILE. The worker waits for main to define and print, then
-\ evaluates a colon definition: exit $4F before the text is read, naming
-\ evaluate-closed.
-\ A worker that survived it would say so in TTC-DONE, and main would exit 0.
+\ A TASK MAY NOT COMPILE: a body that evaluates a colon definition renders, so
+\ the program is rejected where it activates the task, before anything runs.
 : TASK-COMPILES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" variable TTC-GO" SB-APPEND TASK-LF
-   s" variable TTC-DONE" SB-APPEND TASK-LF
-   S\" : TTC-BODY ( -- ) begin TTC-GO atomic@ 0= while TASK:PAUSE repeat s\" : TTC-IN ( -- ) ;\" evaluate-closed 1 TTC-DONE atomic! ;" SB-APPEND TASK-LF
-   s" : TTC-RUN ( -- ) 1 TTC-GO atomic! begin TTC-DONE atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   S\" : TTC-BODY ( -- ) s\" : TTC-IN ( -- ) ;\" evaluate-closed ;" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK TTC-WORKER" SB-APPEND TASK-LF
    s" ' TTC-BODY TTC-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" : TTC-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
-   s" TTC-AFTER ." SB-APPEND TASK-LF
-   s" TTC-RUN" SB-APPEND TASK-LF
    SB$ ;
 
-\ A worker calling INTERPRETER:EVAL-FRAMED exits $4F, naming the refusal,
-\ before a token of the text is read.
+\ A body calling INTERPRETER:EVAL-FRAMED is rejected the same way.
 : TASK-FRAMED-COMPILES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" variable TFC-GO" SB-APPEND TASK-LF
-   s" variable TFC-DONE" SB-APPEND TASK-LF
-   S\" : TFC-BODY ( -- ) begin TFC-GO atomic@ 0= while TASK:PAUSE repeat s\" : TFC-IN ( -- ) ;\" INTERPRETER:EVAL-FRAMED 1 TFC-DONE atomic! ;" SB-APPEND TASK-LF
-   s" : TFC-RUN ( -- ) 1 TFC-GO atomic! begin TFC-DONE atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   S\" : TFC-BODY ( -- ) s\" : TFC-IN ( -- ) ;\" INTERPRETER:EVAL-FRAMED ;" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK TFC-WORKER" SB-APPEND TASK-LF
    s" ' TFC-BODY TFC-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" : TFC-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
-   s" TFC-AFTER ." SB-APPEND TASK-LF
-   s" TFC-RUN" SB-APPEND TASK-LF
    SB$ ;
 
-\ `create` IN A TASK exits $4F naming it, like any other definer, before it
-\ parses a name.
-\ The worker runs a definer once main has defined and printed; one that got
-\ past the guard would branch through the startup's create cell.
+\ A body reaching `create` through a word is rejected where the task keeps it,
+\ like a body reaching any other definer.
 : TASK-CREATES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" package TTK" SB-APPEND TASK-LF
-   s" variable GO" SB-APPEND TASK-LF
-   s" variable DONE" SB-APPEND TASK-LF
    s" : DEF ( -- ) create ;" SB-APPEND TASK-LF
-   s" : BODY ( -- ) begin GO atomic@ 0= while TASK:PAUSE repeat DEF 1 DONE atomic! ;" SB-APPEND TASK-LF
-   s" : RUN ( -- ) 1 GO atomic! begin DONE atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   s" : BODY ( -- ) DEF ;" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK WORKER" SB-APPEND TASK-LF
    s" ' BODY WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" : AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
-   s" AFTER ." SB-APPEND TASK-LF
-   s" RUN" SB-APPEND TASK-LF
    s" ;package" SB-APPEND TASK-LF
+   SB$ ;
+
+\ A TASK MAY NOT ALLOT. No fact states data space, so a body that allots is
+\ kept; it exits $4F on the task's thread, naming `allot` and its caller. The
+\ worker allots once main has defined and printed.
+: TASK-ALLOTS$ ( -- str )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" variable TTA-GO" SB-APPEND TASK-LF
+   s" variable TTA-DONE" SB-APPEND TASK-LF
+   s" : TTA-BODY ( -- ) begin TTA-GO atomic@ 0= while TASK:PAUSE repeat 8 allot 1 TTA-DONE atomic! ;" SB-APPEND TASK-LF
+   s" : TTA-RUN ( -- ) 1 TTA-GO atomic! begin TTA-DONE atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TTA-WORKER" SB-APPEND TASK-LF
+   s" ' TTA-BODY TTA-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" : TTA-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
+   s" TTA-AFTER ." SB-APPEND TASK-LF
+   s" TTA-RUN" SB-APPEND TASK-LF
    SB$ ;
 
 \ A FAILED TEXT RETIRES ITS WORDS WHILE A TASK RUNS THEM. The text defines
@@ -628,28 +622,35 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    src srcu line lineu TASK-REJECTED-ERR {: erru:len :}
    TASK-ERR erru LEN>N in inu CONTAINS? TTRUE ;
 
+\ A body kept by TASK:ACTIVATE that does more than its type states: status
+\ 70 at the keeping site, before the program prints.
+: TASK-EXPECT-KEPT ( str str -- )
+   {: src:^ srcu:n site:^ siteu:n :}
+   src srcu 70 TASK-RUN-EXITS {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   TASK-ERR erru LEN>N
+   s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
+   STARTS-WITH? TTRUE
+   TASK-ERR erru LEN>N site siteu CONTAINS? TTRUE ;
+
 : TASK-TEST-LOWER-LIVE ( -- )
    TASK-LOWER-LIVE$
    s" error[E-TASK-COMPILE]: `ndict!` ran while a task is live"
    TASK-EXPECT-REFUSED-EXIT ;
 
 : TASK-TEST-TASK-COMPILES ( -- )
-   TASK-COMPILES$
-   s" error[E-TASK-COMPILE]: `evaluate-closed` ran on a task's thread"
-   S\" \n  = in: TTC-BODY\n" TASK-EXPECT-REJECTED-IN ;
-
-: TASK-FRAMED-REFUSAL$ ( -- str )
-   s" error[E-TASK-COMPILE]: source is read on a task's thread" ;
+   TASK-COMPILES$ s" --> <input>:4:23" TASK-EXPECT-KEPT ;
 
 : TASK-TEST-FRAMED-COMPILES ( -- )
-   TASK-FRAMED-COMPILES$ 79 TASK-RUN-EXITS {: outu:len erru:len :}
-   TASK-OUT outu LEN>N S\" 7\n" T$=
-   TASK-ERR erru LEN>N TASK-FRAMED-REFUSAL$ CONTAINS? TTRUE ;
+   TASK-FRAMED-COMPILES$ s" --> <input>:4:23" TASK-EXPECT-KEPT ;
 
 : TASK-TEST-TASK-CREATES ( -- )
-   TASK-CREATES$
-   s" error[E-TASK-COMPILE]: `create` ran on a task's thread"
-   S\" \n  = in: DEF\n" TASK-EXPECT-REJECTED-IN ;
+   TASK-CREATES$ s" --> <input>:6:15" TASK-EXPECT-KEPT ;
+
+: TASK-TEST-TASK-ALLOTS ( -- )
+   TASK-ALLOTS$
+   s" error[E-TASK-COMPILE]: `allot` ran on a task's thread"
+   S\" \n  = in: TTA-BODY\n" TASK-EXPECT-REJECTED-IN ;
 
 : TASK-TEST-ROLLBACK-LIVE ( -- )
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
@@ -2537,6 +2538,7 @@ variable NEW-STRAY
    TASK-TEST-TASK-COMPILES
    TASK-TEST-FRAMED-COMPILES
    TASK-TEST-TASK-CREATES
+   TASK-TEST-TASK-ALLOTS
    TASK-TEST-ROLLBACK-LIVE
    TASK-TEST-APP-SOAK
    TASK-TEST-USER-SLOTS

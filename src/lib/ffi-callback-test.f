@@ -429,6 +429,17 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" == a callback declared beside a part named FFI-CB" SAY
    [: PART$ evaluate-closed ;] catch 0= s" the declaration loads" FACT ;
 
+\ A body that defines a word renders, so the body cell rejects it.
+: DEFINES$ ( -- str )
+   S\" : CBT-DEF-ORDER ( ^u8 ^u8 -- n ) 2drop s\" variable CBT-INSIDE\" evaluate-closed 0 ;\nCALLBACK: CBT-DEF-CMP ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK\n' CBT-DEF-ORDER CBT-DEF-CMP-BODY !\n" ;
+
+: CASE-BODY-DEFINES ( -- )
+   s" == a callback body that defines a word" SAY
+   [: DEFINES$ evaluate-closed ;]
+      s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
+      s" = help: state `renders` in the type that keeps it" RECORD?
+      s" it is rejected where the body cell keeps it" FACT ;
+
 \ A callback's record notes C's lr as `caller`, which varies with the build,
 \ and ends with help the case does not pin: the transcript keeps both keys and
 \ drops their values.
@@ -474,7 +485,6 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" sleeping" CHILD-CASE
    s" unbound" CHILD-CASE
    s" worker-stale" CHILD-CASE
-   s" body-defines" CHILD-CASE
    s" caller-thread" CHILD-CASE
    s" released" CHILD-CASE
    s" grown-bind" CHILD-CASE ;
@@ -630,6 +640,10 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" == a callback declared beside a part named FFI-CB" W
    s" ok   the declaration loads" W ;
 
+: WANT-BODY-DEFINES ( -- )
+   s" == a callback body that defines a word" W
+   s" ok   it is rejected where the body cell keeps it" W ;
+
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W
    s" outside: a thread is parked on its own context" W
@@ -651,10 +665,6 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" --" W
    s" error[E-CALLBACK]: C called a callback whose slot is not bound" W
    s"   = slot: 0" W  WANT-RECORD-END
-   s" == child body-defines: exit 106" W
-   s" --" W
-   s" error[E-CALLBACK]: the callback's body defined a word" W
-   s"   = slot: 11" W  WANT-RECORD-END
    s" == child caller-thread: exit 106" W
    s" caller-thread: the slot is bound to the caller's context" W
    s" --" W
@@ -679,7 +689,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
    WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-ROLLBACK WANT-CAPTURE
-   WANT-QUALIFIED WANT-PART WANT-CHILDREN ;
+   WANT-QUALIFIED WANT-PART WANT-BODY-DEFINES WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
 \ compared whole.
@@ -708,6 +718,7 @@ public
    CASE-CAPTURE
    CASE-QUALIFIED
    CASE-PART
+   CASE-BODY-DEFINES
    CASE-CHILDREN
    CASE-STRIPPED
    TRANSCRIPT-CASE
