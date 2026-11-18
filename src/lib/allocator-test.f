@@ -60,7 +60,7 @@ package ALLOC-TEST
    al NEW-TURN {: t1:^ :}
    7 t1 TURN-ID !  8 t1 TURN-STEP !
    a ARENA:RESET
-   a ARENA:ALLOCATOR NULL-PTR - al NULL-PTR - T=
+   a ARENA:ALLOCATOR al = TTRUE
    al NEW-TURN TURN-ZERO
    a ARENA:RELEASE ;
 
@@ -70,7 +70,7 @@ package ALLOC-TEST
    ARENA:NEW {: a:^ :}
    a ARENA:NEW-IN {: c:^ :}
    c ARENA:ALLOCATOR {: cl:^ :}
-   cl NULL-PTR - a ARENA:ALLOCATOR NULL-PTR - <> TTRUE
+   cl a ARENA:ALLOCATOR <> TTRUE
    cl NEW-TURN TURN-ZERO
    a ARENA:RELEASE ;
 

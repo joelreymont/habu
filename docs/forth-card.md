@@ -140,8 +140,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 - A type var named only behind `^`, or in a family argument the family's
   width does not read, takes any stored type: `: SAME ( ^t -- ^t ) ;`
   takes `^turn`. Fetching, storing or stepping through it, or passing it to
-  a `defer`, `RECURSE` or any primitive but a distance and `PTR>N`, makes it
-  one cell: a record is `E-MISMATCH` at the call.
+  a `defer`, `RECURSE` or any primitive but a distance, a pointer comparison
+  and `PTR>N`, makes it one cell: a record is `E-MISMATCH` at the call.
 - A type var named only on the stack, whose body only moves it (stack words,
   locals, calls of words that only move theirs), also takes a
   one-cell enum, sum or structure; passing it to a primitive, a `defer` or

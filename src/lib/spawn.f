@@ -110,7 +110,7 @@ HERM-AT 1+ constant RECORD-CELLS
 \ Pushes a copy of every string before the array's NULL.
 : ROWS+ ( ^^u8 ^n ^VEC:vector<^u8> -- )
    {: rows:^ h:^ vec:^ :}
-   0 begin rows over cells + @ dup NULL-PTR - 0<> while
+   0 begin rows over cells + @ dup NULL-PTR <> while
       dup ZLEN h CHUNK-ZCOPY vec VEC:PUSH !
       1+
    repeat 2drop ;
@@ -246,7 +246,7 @@ HERM-AT 1+ constant RECORD-CELLS
 
 : INHERIT-PARENT ( ^n -- )
    {: h:^ :}
-   0 begin dup ENVP NULL-PTR - 0<> while
+   0 begin dup ENVP NULL-PTR <> while
       h over ENVP INHERIT-ROW
       1+
    repeat drop ;

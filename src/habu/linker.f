@@ -3326,8 +3326,8 @@ variable RD-END
 : ENV-HOLDS? ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    a u ENV-INPUT:CURRENT$ {: e:^ eu:n :}
-   b NULL-PTR - 0= if e NULL-PTR - 0= exit then
-   e NULL-PTR - 0= if false exit then
+   b NULL-PTR = if e NULL-PTR = exit then
+   e NULL-PTR = if false exit then
    e eu b v STR= ;
 
 : NUL-FREE? ( str -- bool )

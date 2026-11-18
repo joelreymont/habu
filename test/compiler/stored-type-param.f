@@ -100,9 +100,7 @@ TYPED-VARIABLE RN run<n>
    {: p:^ :}
    p ;
 
-\ A `=` over two `^turn` is refused: the pointer row of `=` takes one cell.
-: ADDR ( ^turn -- n ) NULL-PTR - ;
-: TV? ( ^turn -- bool ) ADDR  TV ADDR = ;
+: TV? ( ^turn -- bool ) TV = ;
 
 CAST: QC->ELEM ( ^u8 -- ^t )
 public
@@ -154,7 +152,7 @@ private
    0 HELDS 1 STORED-HELD:AT {: h :}
    h STORED-HELD:SET @  h STORED-HELD:VALUE TURN?  and ;
 : HELD-ADDR ( ^held<turn> -- n ) NULL-PTR - ;
-: HELD-STEP ( -- bool ) 0 HELDS 1 STORED-HELD:AT HELD-ADDR  1 HELDS HELD-ADDR = ;
+: HELD-STEP ( -- bool ) 0 HELDS 1 STORED-HELD:AT  1 HELDS = ;
 \ The offset of mark's span in a held<turn>.
 : MARK-AT ( -- n ) 0 HELDS STORED-HELD:MARK SPAN:$ drop NULL-PTR -  0 HELDS HELD-ADDR - ;
 

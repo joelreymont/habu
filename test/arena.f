@@ -163,14 +163,14 @@ variable EVAL-U
    HOLDERS-NEW {: h:^ :}
    a h HOLDER-ARENA !
    h HOLDER-ARENA @ {: b:^ :}
-   b NULL-PTR - a NULL-PTR - T=
+   b a = TTRUE
    b ARENA-FIX:RECS-NEW ARENA--FIX-REC:ID @ 0 T=
    h HOLDERS-RELEASE
    s" and so does a DYNAMIC-BUFFER element" T-LABEL
    2 HOLDBUF-RESERVE
    a 1 HOLDBUF HOLDER-ARENA !
    1 HOLDBUF HOLDER-ARENA @ {: c:^ :}
-   c NULL-PTR - a NULL-PTR - T=
+   c a = TTRUE
    c ARENA-FIX:RECS-NEW ARENA--FIX-REC:ID @ 0 T=
    HOLDBUF-RELEASE
    a ARENA:RELEASE ;

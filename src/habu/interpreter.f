@@ -2948,7 +2948,7 @@ private
 \ A definition this source opened ends inside its locals group.
 : GROUP-SOURCE-END ( -- )
    GROUP-OPEN @ {: at:^ :}
-   at NULL-PTR - 0= if exit then
+   at NULL-PTR = if exit then
    PEND-CELL CELL@ ENTRY-PEND @ = if exit then
    at 2 GROUP-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP ;
 

@@ -82,7 +82,7 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 : SPAN-CHECK ( str -- ) {: p:^ u:n :}
    u 0 < if E-SIZE throw then
    u U32-MAX > if E-SIZE throw then
-   u 0<> p ADDRESS 0= and if E-SIZE throw then ;
+   u 0<> p NULL-PTR = and if E-SIZE throw then ;
 
 : DISJOINT-CHECK ( str str -- )
    {: a:^ au:n b:^ bu:n :}

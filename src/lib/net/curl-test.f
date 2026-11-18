@@ -1483,7 +1483,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : HUGE-FREE ( ^u8 -- ) {: p :}
-   p NULL-PTR - 0= if exit then
+   p NULL-PTR = if exit then
    p HUGE-U MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 

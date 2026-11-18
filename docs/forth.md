@@ -1289,8 +1289,9 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   it stands for any stored type, a two-cell record included: `: SAME ( ^t --
   ^t ) ;` takes `^turn`. A body that fetches, stores or steps through the
   pointer, or hands the var to a word whose var stands for one cell (a
-  primitive such as `=`, a `defer`, the word's own `RECURSE`), makes it one
-  cell again, and a record is refused at the call (`E-MISMATCH`). A var a
+  primitive other than a distance, a pointer comparison or `PTR>N`, a
+  `defer`, the word's own `RECURSE`), makes it one cell again, and a record
+  is refused at the call (`E-MISMATCH`). A var a
   checked `:` definition's effect names only on the stack, and whose body only
   moves it (stack words, locals, calls of words that only move
   theirs), takes a one-cell enum, sum or structure too; handing it to any other
@@ -1465,10 +1466,13 @@ New records use `STRUCTURE`.
 
 `^τ` records the element addressed. Arithmetic is pointee-polymorphic: `+`,
 `-`, `1+`, `1-`, `cell+` and `char+` step a `^τ` by an integer and keep `τ`;
-`n + ^a` is `^a`; `^a - ^a` is the distance `n`. Adding two
+`n + ^a` is `^a`; `^a - ^a` is the distance `n`. `=`, `<>`, `<`, `>`, `<=`
+and `>=` compare two pointers of one pointee type; pointers of two types are
+refused. Adding two
 pointers or scaling one is refused. `PTR>N ( ^a -- n )` gives a pointer's
 address as `n`, for a distance or a hash; no word turns `n` back into a pointer
-outside a package's private `CAST:`. Its pointee, like a distance's, is any
+outside a package's private `CAST:`. Its pointee, like a distance's and a
+comparison's, is any
 type, an open or a linear family included; a declared `^a` still takes only
 a stored type, so a word that measures a family pointer names the family
 (`^option<a>`).

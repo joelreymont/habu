@@ -238,7 +238,7 @@ public
 
 \ An environment variable's name and value; a NULL-PTR value is an absent one.
 : ENV+ ( ^u8 n ^u8 n -- ) {: a:^ u:n b:^ v:n :}
-   b NULL-PTR - 0= if s" COMPILE-READS:ENV+" ENV-ABSENT a u b 0 APPEND exit then
+   b NULL-PTR = if s" COMPILE-READS:ENV+" ENV-ABSENT a u b 0 APPEND exit then
    s" COMPILE-READS:ENV+" ENV-READ a u b v APPEND ;
 
 \ A text whose names the part depends on as if its source spelled them. One of

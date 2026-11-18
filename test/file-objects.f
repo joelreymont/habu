@@ -1647,19 +1647,19 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" require src/lib/arena.f\npackage FILE-OBJECTS-ARENA\npublic\n" SRC+
    s\" TYPED-VARIABLE A ^ARENA:arena\nARENA:NEW A !\n;package\n" SRC+  s" kt.f" NEST-WRITE
    s" kt.f" REQUIRE+
-   s\" : MAIN ( -- ) FILE-OBJECTS-ARENA:A @ NULL-PTR - 0 = bool>n . ;\n" SRC+
+   s\" : MAIN ( -- ) FILE-OBJECTS-ARENA:A @ NULL-PTR = bool>n . ;\n" SRC+
    s" kt-main.f" NEST-WRITE
    s\" require src/lib/arena.f\npackage FILE-OBJECTS-ARENA\npublic\n" SRC+
    s\" PTR-VARIABLE A\nARENA:NEW 8 ARENA:ALLOC drop A !\n;package\n" SRC+  s" kb.f" NEST-WRITE
    s" kb.f" REQUIRE+  s\" : KEPT ( -- ^u8 ) FILE-OBJECTS-ARENA:A @ ;\n" SRC+
-   s\" : MAIN ( -- ) KEPT NULL-PTR - 0 = bool>n . ;\n" SRC+  s" kb-main.f" NEST-WRITE
+   s\" : MAIN ( -- ) KEPT NULL-PTR = bool>n . ;\n" SRC+  s" kb-main.f" NEST-WRITE
    s\" require src/lib/arena.f\npackage FILE-OBJECTS-DROPPED\nARENA:NEW drop\n;package\n" SRC+
    s" da.f" NEST-WRITE
    s" da.f" REQUIRE+  s\" : MAIN ( -- ) 0 . ;\n" SRC+  s" da-main.f" NEST-WRITE
    s\" package FILE-OBJECTS-HEAP\nHEAP H n\npublic\nTYPED-VARIABLE Q ^n\nH-NEW Q !\n;package\n"
    SRC+  s" ht.f" NEST-WRITE
    s" ht.f" REQUIRE+
-   s\" : MAIN ( -- ) FILE-OBJECTS-HEAP:Q @ NULL-PTR - 0 = bool>n . ;\n" SRC+
+   s\" : MAIN ( -- ) FILE-OBJECTS-HEAP:Q @ NULL-PTR = bool>n . ;\n" SRC+
    s" ht-main.f" NEST-WRITE
    s\" : MAIN ( -- ) ;\n" SRC+  s" o.f" NEST-WRITE ;
 

@@ -443,7 +443,6 @@ CAST: >RECORD ( n -- ^t )
    d d DOC-OFFSET @ PLACE ;
 
 : NONE$ ( -- str ) s" none" ;
-: SAME? ( ^t ^t -- bool ) NULL-PTR - swap NULL-PTR - = ;
 : SPAN= ( SPAN:span<u8> str -- bool )
    {: s:SPAN:span<u8> t:^ tl:n :}
    s SPAN:$ t tl STR= ;
@@ -1940,7 +1939,7 @@ CAST: >RECORD ( n -- ^t )
    x ASSOCIATION-SET-ENDS @ {: e:^ :}
    e SET-END-NEXT @ {: f:^ :}
    e d a SET-END f d a SET-END
-   e SET-END-END @ f SET-END-END @ SAME? if
+   e SET-END-END @ f SET-END-END @ = if
       d x ASSOCIATION-SET-PLACE
       d s" AssociationSet" x ASSOCIATION-SET-NAME @ e SET-END-ROLE @
       ROLE-TWICE
@@ -2272,7 +2271,7 @@ CAST: >RECORD ( n -- ^t )
 : END-SET ( ^association-set ^association-end -- ^entity-set )
    {: x:^ e:^ :}
    x ASSOCIATION-SET-ENDS @ begin dup NULL-PTR <> while
-      dup SET-END-END @ e SAME? if SET-END-SET @ exit then
+      dup SET-END-END @ e = if SET-END-SET @ exit then
       SET-END-NEXT @
    repeat drop NULL-PTR ;
 

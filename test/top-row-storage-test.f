@@ -73,7 +73,7 @@ variable ERR-U
    0 TS-V !  0 TS-BN !  NULL-PTR TS-PV ! ;
 
 : UNTOUCHED ( -- )
-   TS-V @ 0 T=  TS-BN @ 0 T=  TS-BC c@ 0 T=  TS-PV @ NULL-PTR - 0 T= ;
+   TS-V @ 0 T=  TS-BN @ 0 T=  TS-BC c@ 0 T=  TS-PV @ NULL-PTR = TTRUE ;
 
 : HERE-N ( -- n )
    here NULL-PTR - ;
@@ -460,7 +460,7 @@ variable ERR-U
    s" a PTR-VARIABLE takes a pointer and a TYPED-VARIABLE [ -- ] an xt" T-LABEL
    CLEAR
    [: s" here TS-PV !  ' TS-X TS-HK !" evaluate-closed ;] 0 TTHROWSQ
-   TS-PV @ NULL-PTR - 0 T<> ;
+   TS-PV @ NULL-PTR <> TTRUE ;
 
 : CASE-NESTED-EVAL ( -- )
    s" a nested closed evaluation answers its own cell" T-LABEL
@@ -497,13 +497,13 @@ variable ERR-U
    s" a pointer kept across a : definition is stored typed" T-LABEL
    CLEAR
    [: s" here : TS-MID ( -- ) ; TS-PV !" evaluate-closed ;] 0 TTHROWSQ
-   TS-PV @ NULL-PTR - 0 T<> ;
+   TS-PV @ NULL-PTR <> TTRUE ;
 
 : CASE-ACROSS-REQUIRE ( -- )
    s" a pointer kept across require is stored typed" T-LABEL
    CLEAR
    [: s" here require src/lib/le.f TS-PV !" evaluate-closed ;] 0 TTHROWSQ
-   TS-PV @ NULL-PTR - 0 T<> ;
+   TS-PV @ NULL-PTR <> TTRUE ;
 
 : SIBLINGS ( -- )
    [: s" here 9 throw" evaluate-closed ;] catch SIB-RC T=
@@ -513,7 +513,7 @@ variable ERR-U
    s" two sibling closed evaluations in one word, the first throwing" T-LABEL
    CLEAR
    ['] SIBLINGS 0 TTHROWSQ
-   TS-PV @ NULL-PTR - 0 T<> ;
+   TS-PV @ NULL-PTR <> TTRUE ;
 
 \ The first text's row ends `^^n` when it throws; its sibling starts on
 \ the same stack base with no cells, so its literals replace that row: a row

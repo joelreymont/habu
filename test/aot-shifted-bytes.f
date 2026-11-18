@@ -253,7 +253,7 @@ variable WANT-U
    {: val:^ valu:n fresh:bool want:^ wantu:n :}
    GE-HB-RESET
    s" HABU_OUT" >LEN ENVTOP-OUT$ >LEN PROC-ENV-SET
-   val NULL-PTR - 0<> if s" HABU_TEST_SIDE" >LEN val valu >LEN PROC-ENV-SET then
+   val NULL-PTR <> if s" HABU_TEST_SIDE" >LEN val valu >LEN PROC-ENV-SET then
    ENVTOP$ ENVTOP-IMAGE$ BUILD-ARGV BUILD-RUN
    s" build of a file whose top level reads HABU_TEST_SIDE" GE-EXPECT-OK
    GT-OUT$ s" envtop top level" CONTAINS? {: seen:bool :}
