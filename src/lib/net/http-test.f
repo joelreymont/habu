@@ -55,6 +55,8 @@ package HTTP
 \ answers once the server has stopped.
 : HTTP-TEST:LATE-UNTAKEN? ( -- bool ) 0 LATE-LEFT@ UNTAKEN = ;
 : HTTP-TEST:BODY-TAKEN ( -- n ) 0 BODY-U@ ;
+\ LOG has no public undoing: the cases after ACCESS-LOG-CASE run without it.
+: HTTP-TEST:UNLOG ( -- ) 0 LOGGING ! ;
 ;package
 
 \ Holding the facility AIO's loop task takes to deliver a completion stalls every
@@ -2551,6 +2553,87 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    RENDERS @ 3 T= ;
 
 
+\ The span past the decimal digits a span starts with.
+: DIGITS-SKIP ( str -- str ) {: a:^ u:n :}
+   u 0 ?do
+      a i + c@ {: c:n :}
+      c [char] 0 < c [char] 9 > or if a i + u i - unloop exit then
+   loop
+   a u + 0 ;
+
+
+\ True when `<want><digits> ms` and its LF start at a.
+: ACCESS-AT? ( ^u8 n str -- bool ) {: a:^ u:n want:^ wantlen:n :}
+   a u want wantlen STARTS-WITH? 0= if false exit then
+   a wantlen + u wantlen - DIGITS-SKIP {: rest:^ restlen:n :}
+   restlen u wantlen - = if false exit then
+   rest restlen S\"  ms\n" STARTS-WITH? ;
+
+
+\ True when fd 2 holds `<want><ms> ms` and its LF.
+: ACCESS? ( str -- bool ) {: want:^ wantlen:n :}
+   ERR$ {: err:^ errlen:n :}
+   errlen 0 ?do
+      err i + errlen i - want wantlen ACCESS-AT? if true unloop exit then
+   loop
+   false ;
+
+
+: ACCESS-LINES ( -- n )
+   ERR$ {: err:^ errlen:n :}
+   0
+   errlen 0 ?do
+      err i + errlen i - s"  info http: " STARTS-WITH? if 1+ then
+   loop ;
+
+
+: LOGGED-SERVER ( -- )
+   TRACE-RESET
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   s\" GET /api/ping?token=q-secret HTTP/1.1\r\nHost: x\r\nX-Secret: h-secret\r\nConnection: close\r\n\r\n" RAW-ONE
+   s\" GET /api/nothing HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s\" GET\r\nHost: x\r\n\r\n" RAW-ONE
+   s\" POST /api/uploads HTTP/1.1\r\nHost: x\r\nContent-Length: 9\r\nConnection: close\r\n\r\n" RAW-ONE
+   s\" POST /api/body-probe HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nok" RAW-ONE
+   s\" HEAD /api/nothing HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s\" POST /api/uploads HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\nabcd\r\n5\r\n" RAW-ONE
+   \ Its body stalls past the deadline, which is answered with nothing.
+   s\" POST /api/uploads HTTP/1.1\r\nHost: x\r\nContent-Length: 6\r\n\r\nabc" RAW-ONE
+   HTTP:STOP ;
+
+
+: UNLOGGED-CASE ( -- )
+   s" without HTTP:LOG a request writes no access line" T-LABEL
+   ERR-PATH-MAKE
+   ERR-PATH$ STDERR:CAPTURE
+   [: LOGGED-SERVER ;] [: STDERR:;CAPTURE ;] finally
+   READ-STDERR
+   ACCESS-LINES 0 T= ;
+
+
+\ LOG is set only while no server runs: this case's own one-worker server
+\ numbers the requests from 1, and the error bodies are JSON-ERROR's.
+: ACCESS-LOG-CASE ( -- )
+   [: JSON-ERROR ;] HTTP:ON-ERROR
+   UNLOGGED-CASE
+   HTTP:LOG
+   ERR-PATH-MAKE
+   ERR-PATH$ STDERR:CAPTURE
+   [: LOGGED-SERVER ;] [: STDERR:;CAPTURE HTTP-TEST:UNLOG ;] finally
+   READ-STDERR
+   s" after HTTP:LOG every request read writes one access line" T-LABEL
+   ACCESS-LINES 8 T=
+   s" req r0-1 GET /api/ping 200 23 B " ACCESS? TTRUE
+   s" req r0-2 GET /api/nothing 404 79 B " ACCESS? TTRUE
+   s" req r0-3 - - 400 101 B " ACCESS? TTRUE
+   s" req r0-4 POST /api/uploads 413 109 B " ACCESS? TTRUE
+   s" req r0-5 POST /api/body-probe taken " ACCESS? TTRUE
+   s" req r0-6 HEAD /api/nothing 404 0 B " ACCESS? TTRUE
+   s" req r0-7 POST /api/uploads 413 109 B " ACCESS? TTRUE
+   s" req r0-8 POST /api/uploads unanswered " ACCESS? TTRUE
+   ERR$ s" secret" CONTAINS? TFALSE ;
+
+
 $C0000201 constant TEST-NET-1     \ 192.0.2.1, reserved for documentation: no host holds it
 
 variable HELD
@@ -3243,6 +3326,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
    FLOOD-CASE
+   ACCESS-LOG-CASE
    ERROR-HOOK-CASE
    REFUSED-LISTEN-CASE
    SETUP-REFUSAL-CASE

@@ -7,10 +7,12 @@ split-str
 \ a newly accepted one waits for its first request on a worker, up to IDLE-MS.
 \ A handler runs once the head is read; the body is read when the handler asks
 \ for it (BODY$), and one it leaves unread closes the connection after the
-\ answer. Requires http-arena.f, http-request.f, http-response.f, http-router.f
-\ and http-static.f.
-\ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables are written
-\ before START, and per-request state is each worker's slot row (http-arena.f).
+\ answer. After LOG, every request read writes one LOG INFO access line.
+\ Requires http-arena.f, http-request.f, http-response.f, http-router.f and
+\ http-static.f.
+\ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables and the LOG
+\ flag are written before START, and per-request state is each worker's slot
+\ row (http-arena.f).
 \ TASK-LOCAL: REPLY's connection and drain room, per-task slots.
 require src/lib/net/http-static.f
 require src/lib/task.f
@@ -142,6 +144,7 @@ variable KILLED-COUNT             \ tasks a stop had to kill past its bound
 variable START-ERROR              \ first failed start hook's actual throw code
 variable STARTED                  \ workers successfully activated this start
 variable ACCEPTED-COUNT           \ connections the listener has taken since START
+variable LOGGING                  \ set by LOG: each request read writes its line
 
 \ REPLY's drain room: its task has no worker slot, whose input buffer a worker
 \ drains into. REPLYING is the connection REPLY's close takes on every way out.
@@ -341,6 +344,63 @@ private
    0 idx HEAD-U! ;
 
 
+\ A parsed method or path is never empty: an empty one was not given.
+: FIELD+ ( str -- ) {: bytes:^ len:n :}
+   len 0= if s" -" LOG:TEXT+ exit then
+   bytes len LOG:TEXT+ ;
+
+
+: ACCESS-LINE ( n -- ) {: idx:n :}
+   LOG:INFO s" http" LOG:LINE
+   s" req " LOG:TEXT+  idx SLOT-ID$ LOG:TEXT+
+   s"  " LOG:TEXT+  idx SLOT-METHOD$ FIELD+
+   s"  " LOG:TEXT+  idx SLOT-PATH$ FIELD+
+   s"  " LOG:TEXT+ ;
+
+
+: ;ACCESS-LINE ( n -- ) {: idx:n :}
+   s"  " LOG:TEXT+
+   mono-ns idx START-NS@ - NS-PER-MS / LOG:INT+
+   s"  ms" LOG:TEXT+
+   LOG:;LINE ;
+
+
+\ Writes the line owed to a request given an id and makes the slot unrequested;
+\ SENT moves it to undelivered, then delivered, and TAKE-OVER to handed-off.
+: ACCESS-LOG ( n -- ) {: idx:n :}
+   LOGGING @ 0<> if
+      idx ACCESS-STATE@
+      MATCH access
+         unrequested OF ENDOF
+         unanswered OF
+            idx ACCESS-LINE  s" unanswered" LOG:TEXT+  idx ;ACCESS-LINE
+         ENDOF
+         undelivered OF
+            idx ACCESS-LINE
+            idx SLOT-STATUS@ LOG:INT+  s"  unsent" LOG:TEXT+
+            idx ;ACCESS-LINE
+         ENDOF
+         delivered OF
+            idx ACCESS-LINE
+            idx SLOT-STATUS@ LOG:INT+  s"  " LOG:TEXT+
+            idx NO-BODY? if 0 else idx BODY-LEN@ then LOG:INT+  s"  B" LOG:TEXT+
+            idx ;ACCESS-LINE
+         ENDOF
+         handed-off OF
+            idx ACCESS-LINE  s" taken" LOG:TEXT+  idx ;ACCESS-LINE
+         ENDOF
+      ;MATCH
+   then
+   construct access unrequested idx ACCESS-STATE! ;
+
+
+: SENT ( TCP4:connection n -- bool ) {: conn:TCP4:connection idx:n :}
+   construct access undelivered idx ACCESS-STATE!
+   conn idx RESPONSE-OF SEND {: sent:bool :}
+   sent if construct access delivered idx ACCESS-STATE! then
+   sent ;
+
+
 \ The refusal REFUSE stored as the slot's status: x86-64 refuses a quotation
 \ that reads a local.
 : RENDER-REFUSAL ( -- )
@@ -366,7 +426,7 @@ private
    status idx SLOT-STATUS!
    [: RENDER-REFUSAL ;] catch {: failed:n :}
    idx failed HOOK-FAULT
-   conn idx RESPONSE-OF SEND 0= if construct served silent exit then
+   conn idx SENT 0= if construct served silent exit then
    construct served answered ;
 
 
@@ -376,10 +436,12 @@ private
 \ on the connection, which is closed after the answer.
 : ANSWER ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
    idx MAKE-ID
-   idx HANDLE-REQUEST if construct served taken exit then
+   idx HANDLE-REQUEST if
+      construct served taken exit
+   then
    idx BODY-REFUSED? if conn idx idx READ-RESULT @ REFUSAL-STATUS REFUSE exit then
    idx BODY-UNREAD? if 0 idx KEEP-ALIVE! then
-   conn idx RESPONSE-OF SEND 0= if construct served silent exit then
+   conn idx SENT 0= if construct served silent exit then
    idx KEEP-ALIVE@ 0 <> if construct served keep-open exit then
    construct served answered ;
 
@@ -402,7 +464,7 @@ private
    500 idx SLOT-STATUS!
    [: RENDER-FAULT ;] catch {: failed:n :}
    idx failed HOOK-FAULT
-   conn idx RESPONSE-OF SEND if construct served answered exit then
+   conn idx SENT if construct served answered exit then
    construct served silent ;
 
 
@@ -417,9 +479,10 @@ private
    conn idx status REFUSE ;
 
 
-\ n is the worker's own slot, finished on every way out, a throw included.
+\ n is the worker's own slot, whose access line is written and which is
+\ finished on every way out, a throw or a halt included.
 : SERVE-ONE ( TCP4:connection n -- served )
-   [: SERVE-ONE-RUN ;] [: SELF-SLOT SLOT-FINISH ;] finally ;
+   [: SERVE-ONE-RUN ;] [: SELF-SLOT ACCESS-LOG  SELF-SLOT SLOT-FINISH ;] finally ;
 
 
 : PARK-UNLOCK ( -- )
@@ -1254,6 +1317,18 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 public
 
+\ From the next START on, every request the server reads writes one LOG INFO
+\ line, tag http: `req <id> <method> <path> <status> <n> B <ms> ms`, id the
+\ REQUEST-ID$, path without its query, n the body bytes sent and ms the whole
+\ milliseconds from the end of the head's read to the line. A method or path
+\ the request did not give is `-`. In place of `<status> <n> B`, a send that
+\ failed writes `<status> unsent`, a connection its handler took `taken`, and
+\ a request given no answer `unanswered`. No header value is written. It
+\ lasts across STOP; E-STATE while running.
+: LOG ( -- )
+   RUNNING @ 0 <> if E-STATE throw then
+   1 LOGGING ! ;
+
 \ Configure the incoming body bound before START. Zero accepts only empty
 \ bodies; the setting persists across STOP and a failed START.
 : BODY-CAP! ( n -- ) {: limit:n :}
@@ -1349,6 +1424,7 @@ public
    subject SLOT-OF-REQUEST {: idx:n :}
    idx HOLDING
    TAKEN idx HOLDER !
+   construct access handed-off idx ACCESS-STATE!
    0 idx SERVING-LIVE !
    idx SERVING @
    idx idx IN-AT@ idx AVAIL SPAN$ ;

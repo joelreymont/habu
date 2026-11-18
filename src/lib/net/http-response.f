@@ -73,6 +73,8 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 \ The identity one request is reported under: the worker that served it and how
 \ many requests that worker has served, which no two live requests share.
 : MAKE-ID ( n -- ) {: idx:n :}
+   mono-ns idx START-NS!
+   construct access unanswered idx ACCESS-STATE!
    0 idx ID-U!
    s" r" idx ID+
    idx idx NUM$ idx ID+
@@ -226,15 +228,21 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    true ;
 
 
-\ The head is followed by either a borrowed span or a streamed file. HEAD has
-\ the same length as GET and sends no body. A short file or a failed read closes
-\ the connection rather than presenting a truncated document as complete.
+\ An answer sent as its head alone: a bodyless status, or HEAD, which has the
+\ same length as GET.
+: NO-BODY? ( n -- bool ) {: idx:n :}
+   idx SLOT-STATUS@ BODYLESS? if true exit then
+   idx SLOT-METHOD$ s" HEAD" STR= ;
+
+
+\ The head is followed by either a borrowed span or a streamed file. A short
+\ file or a failed read closes the connection rather than presenting a
+\ truncated document as complete.
 : SEND-BODY ( TCP4:connection response -- bool ) {: conn:TCP4:connection subject:response :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx HEAD-BYTES
    conn idx OUT-BUF BUF$ WRITE-SPAN 0= if false exit then
-   idx SLOT-STATUS@ BODYLESS? if true exit then
-   idx SLOT-METHOD$ s" HEAD" STR= if true exit then
+   idx NO-BODY? if true exit then
    idx FILE-LIVE @ 0<> if conn idx SEND-FILE exit then
    conn idx BODY-PTR@ idx BODY-LEN@ WRITE-SPAN ;
 

@@ -75,6 +75,9 @@ NUM-OFF NUM-CAP + constant SPAN-BYTES
 8 constant GEN-SHIFT
 $FF constant SLOT-MASK
 
+\ Where a slot's access line stands: a zeroed row reads unrequested.
+ENUM access unrequested unanswered undelivered delivered handed-off ;ENUM
+
 MAX-WORKERS TYPED-BUFFER SLOT-REGION SPAN:span<u8>
 MAX-WORKERS TYPED-BUFFER SLOT-GEN n
 MAX-WORKERS TYPED-BUFFER SLOT-LIVE n
@@ -110,6 +113,8 @@ MAX-WORKERS TYPED-BUFFER FILE-OWNED n
 MAX-WORKERS TYPED-BUFFER SEG-U n          \ bytes of decoded segment text
 MAX-WORKERS TYPED-BUFFER ID-U n           \ bytes of the current request id
 MAX-WORKERS TYPED-BUFFER SEQ n            \ requests this worker has answered
+MAX-WORKERS TYPED-BUFFER START-NS n       \ mono-ns at the current request's id
+MAX-WORKERS TYPED-BUFFER ACCESS-STATE access
 MAX-WORKERS TYPED-BUFFER LATE-LEFT n      \ bytes a request may still read past its deadline
 
 \ One JSON reader record per worker, for its request body. A handler's throw
@@ -297,6 +302,10 @@ private
 : ID-U@ ( n -- n )        BOUNDED ID-U @ ;
 : ID-U! ( n n -- )        BOUNDED ID-U ! ;
 : BODY-LEN@ ( n -- n )    BOUNDED BODY-LEN @ ;
+: START-NS@ ( n -- n )    BOUNDED START-NS @ ;
+: START-NS! ( n n -- )    BOUNDED START-NS ! ;
+: ACCESS-STATE@ ( n -- access ) BOUNDED ACCESS-STATE @ ;
+: ACCESS-STATE! ( access n -- ) BOUNDED ACCESS-STATE ! ;
 : LATE-LEFT@ ( n -- n )   BOUNDED LATE-LEFT @ ;
 : LATE-LEFT! ( n n -- )   BOUNDED LATE-LEFT ! ;
 : BODY-PTR@ ( n -- ^u8 ) BOUNDED BODY-PTR @ ;
