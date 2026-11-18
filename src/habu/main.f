@@ -106,16 +106,8 @@ variable USED
 \ Bytes one read asks for: a Linux pipe's default capacity.
 $10000 constant READ-SIZE
 
-\ The engine cannot run without its stream: a refused reserve sends its record
-\ and throws SYSTEM.
-: RESERVE ( n -- ) {: bytes:n :}
-   [: bytes TEXT-RESERVE ;] catch {: code:n :}
-   code 0= if exit then
-   code DYNAMIC-STORAGE:E-MAP = if REJECTION:SEND-SAVED  EXIT-STATUS:SYSTEM throw then
-   code throw ;
-
 : APPEND ( ^u8 n -- ) {: a:^ u:n :}
-   USED @ u + RESERVE
+   USED @ u + TEXT-RESERVE
    a USED @ TEXT u BYTE-COPY
    USED @ u + USED ! ;
 
@@ -138,7 +130,7 @@ $10000 constant READ-SIZE
 
 \ One read past USED; whether the file has ended.
 : STEP ( n -- bool ) {: fd:n :}
-   USED @ READ-SIZE + RESERVE
+   USED @ READ-SIZE + TEXT-RESERVE
    fd USED @ TEXT READ-SIZE read {: got:n :}
    got 0 < if FS:ERRNO CANNOT-READ then
    USED @ got + USED !

@@ -4,7 +4,7 @@ split-str
 
 \ `map-anon` answers a pointer whose element type the caller picks.
 : ARENA-ALLOC ( n -- ^a )
-   dup map-anon 0 <> IF drop s" a checker arena" REJECTION:MAP-STOP THEN nip ;
+   dup map-anon 0 <> IF drop s" a checker arena" REJECTION:MAP-PASS THEN nip ;
 
 : ARENA-ALLOC-BYTES ( n -- ^u8 ) ARENA-ALLOC ;
 

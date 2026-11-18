@@ -243,11 +243,11 @@ public
 : STATUS>RC ( status -- rc )
    STATUS>ENDING ENDING>RC ;
 
-\ A throw code does not cross a process boundary: `die` and the uncaught-throw
-\ exit turn every negative code into EXIT-STATUS:UNCAUGHT. A tool whose work
-\ can end on a deadline exits EXIT-STATUS:TIMEOUT for E-PROC-TIMEOUT, and the
-\ process that runs it throws E-PROC-TIMEOUT again on that status, so the
-\ verdict reaches the top of a chain of tools.
+\ A throw code does not cross a process boundary: the uncaught-throw exit turns
+\ a negative code into EXIT-STATUS:UNCAUGHT, or SYSTEM for a refused map. A tool
+\ whose work can end on a deadline exits EXIT-STATUS:TIMEOUT for E-PROC-TIMEOUT,
+\ and the process that runs it throws E-PROC-TIMEOUT again on that status, so
+\ the verdict reaches the top of a chain of tools.
 : EXIT-RC ( n n -- n ) {: code:n fail:n :}
    code 0= if 0 exit then
    code E-PROC-TIMEOUT = if EXIT-STATUS:TIMEOUT exit then

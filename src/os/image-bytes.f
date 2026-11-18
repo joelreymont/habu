@@ -23,7 +23,7 @@ PTR-VARIABLE M-A
 variable M-N
 variable M-O
 : M-ALLOC-BUF ( -- ^u8 )
-   MSIZE map-anon 0 <> if drop MSIZE s" the image buffer" REJECTION:MAP-STOP then ;
+   MSIZE map-anon 0 <> if drop MSIZE s" the image buffer" REJECTION:MAP-PASS then ;
 
 : MBUF-A@ ( -- ^u8 )
    MBUF-A @ ;

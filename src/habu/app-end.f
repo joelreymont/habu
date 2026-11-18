@@ -12,7 +12,7 @@ private
    REJECTION:RELEASE
    rc 0 >  rc 256 <  and if rc throw then
    rc ERROR:UNCAUGHT
-   EXIT-STATUS:UNCAUGHT throw ;
+   rc ERROR:STATUS throw ;
 
 ' ENTRY APP-ENTRY:XT!
 ;package

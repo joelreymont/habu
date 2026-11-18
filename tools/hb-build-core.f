@@ -453,7 +453,7 @@ SUM-U 32 + constant HEAD-U
    false ['] INPUTS-KEEPING catch {: ok code:n :}
    code 0= if ok exit then
    code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or
-   code DYNAMIC-STORAGE:E-MAP = or  if false exit then
+   code E-MEM-MAP = or  if false exit then
    code throw ;
 
 \ Whether the log runs exactly to the file's end, and the object the checksum

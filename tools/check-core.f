@@ -1179,7 +1179,7 @@ private
    rc 0 >= rc 256 < and if rc exit then
    s" --json-errors" CHK-OPT? REJECTION:JSON !
    rc ERROR:UNCAUGHT
-   EXIT-STATUS:UNCAUGHT ;
+   rc ERROR:STATUS ;
 
 public
 

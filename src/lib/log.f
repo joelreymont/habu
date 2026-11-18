@@ -108,7 +108,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 : MAP-REFUSED ( n -- )
    {: code:n :}
    code 0= if exit then
-   code E-MEM-MAP = code DYNAMIC-STORAGE:E-MAP = or if LOST PHASE ! exit then
+   code E-MEM-MAP = if LOST PHASE ! exit then
    code throw ;
 
 

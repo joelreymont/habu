@@ -92,6 +92,7 @@ public
    SOURCE-OK? 0= if s" build-profile: no such source" EXIT-STATUS:NOINPUT die then
    TICK-US prof-rate  0 prof-on
    ['] BUILD catch {: rc:n :}
+   rc 0<>  rc 1 <  rc 255 > or  and if rc ERROR:UNCAUGHT then
    prof-off
    TEXT-REPORT
    JSON-REPORT
@@ -101,7 +102,7 @@ public
       \ its record out, or one the program's own top-level code threw.
       rc 1 >= rc 255 <= and if s" " rc die then
       s" build-profile: the build threw " type rc . s" at " type HB-BUILD-CORE:WHERE$ type cr
-      s" " EXIT-STATUS:UNCAUGHT die
+      s" " rc ERROR:STATUS die
    then ;
 ;package
 

@@ -5076,9 +5076,20 @@ EXPORT CHECK:PLACE-FACTS
    LAYOUT-SIZE {: size:n :}
    HINT size ROUTED-BYTES + MEM-PROT-RW MEM-MAP-PRIVATE-ANON NORESERVE or
    MEM-ANON-FD MEM-OFF-ZERO mmap {: at:n :}
-   at 0 < if E-MEM-MAP throw then
+   at 0 < if size ROUTED-BYTES + s" the linker's space" REJECTION:MAP-PASS then
    at ROUTED-BYTES + BASE !  size SPACE-SIZE !
-   at HINT < if UNMAP E-MEM-MAP throw then
+   at HINT < if
+      UNMAP
+      s" E-MEM-MAP" REJECTION:OPEN
+      s" the system placed the linker's space of " REJECTION:EMIT-STR
+      size ROUTED-BYTES + REJECTION:EMIT-U
+      s"  bytes below hb's data, where the checker refuses its stores"
+      REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" free that much address space above hb's data, which other mappings fill"
+      REJECTION:EMIT-STR
+      REJECTION:SAVE  E-MEM-MAP REJECTION:PASS
+   then
    construct step mapped PROGRESS !
    LAY-ADDRESS-HEADER ;
 

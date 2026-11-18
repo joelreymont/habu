@@ -50,6 +50,17 @@ threw it; out of a program's MAIN that record has no place. Both exit 67. A
 rejection prints its record and exits 70. A one-byte diagnostic and a
 clean exit means a raw engine capacity path, not a throw.
 
+## Refusing the system's memory
+
+`strace -f -qq -o /dev/null -e trace=mmap -e inject=mmap:error=ENOMEM:when=K bin/hb ...`
+refuses the K-th mmap of each process the run starts: strace counts per
+process, so a spawned verifier or build child has its K-th refused too. hb is
+dynamically linked, and up to K = 7 the refusal lands in glibc's loader before
+hb's code runs: it crashes with SIGSEGV or fails to map libc and exits 127.
+Past those the refusal is hb's, which exits 78 and names the bytes and what
+they were for. The same run with no inject and `-o FILE` counts the maps, the
+range of K to sweep.
+
 ## `.s` and `.` — stack inspection
 
 `.s` prints the whole data stack (base..top), one signed decimal per line,

@@ -130,13 +130,13 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
    {: off:n :}
    off 1+  off HASH-AT VACANT SLOT ! ;
 
-\ A refused map marks the recording missed and throws SYSTEM after its E-MAP
-\ record, which a program may catch.
+\ A refused map marks the recording missed and throws E-MEM-MAP carrying its
+\ record.
 : FRESH ( n ^u8 n -- ^u8 )
    {: bytes:n m:^ mu:n :}
    bytes map-anon 0= 0= if
       ST-MISSED STATUS !
-      drop bytes m mu REJECTION:MAP-STOP
+      drop bytes m mu REJECTION:MAP-PASS
    then ;
 
 \ APPEND grows the index before a read would fill over half its slots, so

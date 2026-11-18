@@ -12,9 +12,6 @@ split-str
 package DYNAMIC-STORAGE
 public
 
-\ The code of a map the system refused.
-7138 constant E-MAP
-
 2 constant CONTROL-CELLS
 
 private
@@ -64,18 +61,11 @@ variable MUTEX
 \ The control block's cell after the capacity, which is its first cell.
 : SLOT ( ^n -- ^n ) CELL + ;
 
-\ The record of a map of n bytes the system refused, thrown as E-MAP: a caller
-\ that can go on without the storage catches it, and nothing prints.
-: MAP-REJECT ( n -- ) {: bytes:n :}
-   bytes s" " REJECTION:MAP-REFUSED
-   REJECTION:HELP
-   s" raise the process's address-space limit (ulimit -v), or reserve less storage"
-   REJECTION:EMIT-STR
-   REJECTION:SAVE  E-MAP REJECTION:PASS ;
-
 : REG-MAP ( n -- ^^u8 )
    REG-BYTES {: bytes:n :}
-   bytes map-anon 0< if drop bytes MAP-REJECT then ;
+   bytes map-anon 0< if
+      drop bytes s" the dynamic storage registry" REJECTION:MAP-PASS
+   then ;
 
 \ Capacity is secured before RESERVE publishes either mapping or membership.
 \ A failed grow leaves the old registry and every handle intact.
@@ -130,7 +120,9 @@ variable MUTEX
 : GROW ( n ^^a ^n n -- )
    {: need:n cb:^ ctl:^ old:n :}
    need old CAPACITY {: cap:n :}
-   cap map-anon 0< if drop cap MAP-REJECT then {: fresh:^ :}
+   cap map-anon 0< if
+      drop cap s" a dynamic buffer" REJECTION:MAP-PASS
+   then {: fresh:^ :}
    old 0= if
       \ Distinct controls may allocate concurrently. Keep their mapping work
       \ outside the lock; registry room and publication form one commit.
@@ -217,7 +209,9 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 \ bytes last: a zero-filled record on its own mapping, and its unmap.
 : MAP-RECORD ( ^n -- ^a )
    @ {: bytes:n :}
-   bytes map-anon 0< if drop bytes MAP-REJECT then ;
+   bytes map-anon 0< if
+      drop bytes s" a heap record" REJECTION:MAP-PASS
+   then ;
 
 : UNMAP-RECORD ( ^a ^n -- )
    @ munmap 0< if

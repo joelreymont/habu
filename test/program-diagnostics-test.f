@@ -238,24 +238,24 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : MAP-HELP$ ( -- str )
    s" = help: raise the process's address-space limit (ulimit -v), or reserve less storage" ;
 
-\ A refused storage mapping stops the load with one E-MAP record, which has no
-\ place, as no run-time record has one.
+\ A refused storage mapping throws E-MEM-MAP carrying its one record, which
+\ has no place, as no run-time record has one.
 : MAP-REJECT-CASE ( str str -- )
    {: path:^ pathu:n count:^ countu:n :}
    path pathu RUN-LOAD
-   67 path pathu GE-EXPECT-RC
+   EXIT-STATUS:SYSTEM path pathu GE-EXPECT-RC
    RECORDS 1 <> if path pathu GE-FAIL then
-   s" error[E-MAP]: the system refused " path pathu GE-EXPECT-ERR-HAS
+   s" error[E-MEM-MAP]: the system refused " path pathu GE-EXPECT-ERR-HAS
    count countu path pathu GE-EXPECT-ERR-HAS
    MAP-HELP$ path pathu GE-EXPECT-ERR-HAS
    s"  --> " path pathu GE-EXPECT-ERR-LACKS ;
 
 : MAP-REJECTS ( -- )
    s" test/program-diagnostic-map-size.f"
-      S\" refused 9223372036854775808 bytes of storage\n  = bytes: 9223372036854775808\n"
+      S\" refused 9223372036854775808 bytes of storage for a dynamic buffer\n"
       MAP-REJECT-CASE
    s" test/program-diagnostic-map-big.f"
-      S\" refused 2305843009213693952 bytes of storage\n  = bytes: 2305843009213693952\n"
+      S\" refused 2305843009213693952 bytes of storage for a dynamic buffer\n"
       MAP-REJECT-CASE ;
 
 create BIG-PATH PATH-CAP allot
@@ -282,7 +282,7 @@ variable BIG-U
 
 \ The address space, in kB, a child hb peaks at loading src/lib/fs.f.
 : PROBE-PEAK ( -- n )
-   s" map-die-probe" {: label:^ labelu:n :}
+   s" map-probe" {: label:^ labelu:n :}
    GE-HB-RESET  GE-SRC-RESET
    s" require src/lib/fs.f" GE-SRC-LINE
    s" 4096 BUFFER: PD-STATUS" GE-SRC-LINE
@@ -303,15 +303,15 @@ variable BIG-U
    path pathu GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL
    $2000000 GE-SRC-CAP / 1- 0 ?do path pathu GE-SRC-BUF GE-SRC-U @ FS:APPEND-FILE loop ;
 
-\ A refused source frame is one E-MAP record naming the file.
-: MAP-DIE-FRAME ( n -- ) {: limit:n :}
-   s" map-die-frame" {: label:^ labelu:n :}
+\ A refused source frame is one E-MEM-MAP record naming the file.
+: MAP-FRAME ( n -- ) {: limit:n :}
+   s" map-frame" {: label:^ labelu:n :}
    SB-RESET  s" ulimit -v " SB-APPEND  limit FMT:SB-U
    s" ; exec bin/hb --load '" SB-APPEND  BIG$ SB-APPEND  s" '" SB-APPEND
    GE-HB-RESET  s" -c" GE-ARG+  SB$ GE-ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    RECORDS 1 <> if label labelu GE-FAIL then
-   s" error[E-MAP]: the system refused " label labelu GE-EXPECT-ERR-HAS
+   s" error[E-MEM-MAP]: the system refused " label labelu GE-EXPECT-ERR-HAS
    s"  for a source frame" label labelu GE-EXPECT-ERR-HAS
    SB-RESET  S\" \n  = file: " SB-APPEND  BIG$ SB-APPEND  S\" \n" SB-APPEND
    SB$ label labelu GE-EXPECT-ERR-HAS
@@ -327,27 +327,28 @@ variable BIG-U
    s" = help: give `PDC-LEN` str: convert or replace the value before it" path pathu GE-EXPECT-ERR-HAS
    s" = help: give `PDC-TWO` n n: convert or replace the value before it" path pathu GE-EXPECT-ERR-HAS ;
 
-\ A refused reserve of the engine's own, the stdin stream's text, is one E-MAP
-\ record whose help holds though the program reserved nothing, and exits SYSTEM.
-: MAP-DIE-STREAM ( n -- ) {: limit:n :}
-   s" map-die-stream" {: label:^ labelu:n :}
+\ A refused reserve of the engine's own, the stdin stream's text, is one
+\ E-MEM-MAP record whose help holds though the program reserved nothing, and
+\ exits SYSTEM.
+: MAP-STREAM ( n -- ) {: limit:n :}
+   s" map-stream" {: label:^ labelu:n :}
    SB-RESET  s" ulimit -v " SB-APPEND  limit FMT:SB-U
    s" ; exec bin/hb < '" SB-APPEND  BIG$ SB-APPEND  s" '" SB-APPEND
    GE-HB-RESET  s" -c" GE-ARG+  SB$ GE-ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
    RECORDS 1 <> if label labelu GE-FAIL then
-   s" error[E-MAP]: the system refused " label labelu GE-EXPECT-ERR-HAS
+   s" error[E-MEM-MAP]: the system refused " label labelu GE-EXPECT-ERR-HAS
    MAP-HELP$ label labelu GE-EXPECT-ERR-HAS
    EXIT-STATUS:SYSTEM label labelu GE-EXPECT-RC ;
 
 \ Linux's ulimit -v: 8 MB over the probe's peak holds hb, not what a 32 MB
 \ source grows to.
-: MAP-DIES ( -- )
+: MAP-LIMITED ( -- )
    PROBE-PEAK 8192 + {: limit:n :}
-   s" map-die-big.f" BIG-PATH GT-PATH BIG-U !
+   s" map-limit-big.f" BIG-PATH GT-PATH BIG-U !
    BIG$ BIG-SOURCE
-   limit MAP-DIE-FRAME
-   limit MAP-DIE-STREAM ;
+   limit MAP-FRAME
+   limit MAP-STREAM ;
 
 : DIAGNOSTICS ( -- )
    BADSIG-ONCE
@@ -358,7 +359,7 @@ variable BIG-U
    PUBLIC-DUPLICATE
    QUIET-COUNT-ONCE
    MAP-REJECTS
-   HB-TARGET-LINUX? if MAP-DIES then
+   HB-TARGET-LINUX? if MAP-LIMITED then
    s" test/program-diagnostic-long-row.f" 70 s" LONG-ROW-ARMED"
       s" error[E-MISMATCH]: LONG-ROW ends with (904 more) n n" NEGATIVE
    s" test/program-diagnostic-long-quot.f" 70 s" LONG-QUOT-ARMED"

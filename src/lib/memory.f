@@ -40,8 +40,8 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 
 \ Fresh storage gets its element type from the caller. The engine owns only
 \ the OS mapping and its pointer/error result.
-: MEM-ALLOC-PTR ( n -- ^a )
-   map-anon 0<> if drop E-MEM-MAP throw then ;
+: MEM-ALLOC-PTR ( n -- ^a ) {: bytes:n :}
+   bytes map-anon 0<> if drop bytes s" " REJECTION:MAP-PASS then ;
 
 : MEM-ALLOC-BYTES ( n -- ^u8 n ) {: bytes :}
    bytes MEM-ALLOC-PTR bytes ;
@@ -292,7 +292,7 @@ public
 : ALLOC-GUARDED ( n -- ^u8 n ) {: cap:n :}
    cap GUARDED-SPAN-BYTES {: span-bytes:n :}
    MEM-ADDR-ANY span-bytes MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap {: span:n :}
-   span 0 < if E-MEM-MAP throw then
+   span 0 < if span-bytes s" a guarded stack" REJECTION:MAP-PASS then
    span cap GUARDED-BASE {: base:n :}
    base STACK-ABI:PAGE-BYTES - {: lo:n :}
    base cap + STACK-ABI:PAGE-BYTES + {: hi:n :}
@@ -302,7 +302,7 @@ public
       \ The reserve still owns [lo, hi) when the fixed writable remap fails.
       \ Report a refusing cleanup rather than losing that mapping too.
       lo cap STACK-ABI:PAGE-BYTES 2 * + UNMAP-SLIVER
-      E-MEM-MAP throw
+      cap s" a guarded stack" REJECTION:MAP-PASS
    then
    base MAPPED>PTR cap ;
 

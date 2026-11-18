@@ -23,7 +23,7 @@ FUNCTION: FREE-CALL free ( ^u8 -- ) ;FUNCTION
 : ALLOC-BYTES ( ^u8 n -- ^u8 )
    {: st:^ len:n :}
    1 len CALLOC-CALL {: p:^ :}
-   p NULL-PTR = if E-MEM-MAP throw then
+   p NULL-PTR = if len s" a heap block" REJECTION:MAP-PASS then
    p ;
 
 
@@ -31,7 +31,7 @@ FUNCTION: FREE-CALL free ( ^u8 -- ) ;FUNCTION
 : RESIZE-BYTES ( ^u8 str n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    block new REALLOC-CALL {: moved:^ :}
-   moved NULL-PTR = if E-MEM-MAP throw then
+   moved NULL-PTR = if new s" a heap block" REJECTION:MAP-PASS then
    new old > if 0 moved old + new old - SPAN:MAKE SPAN:FILL then
    moved ;
 

@@ -1,6 +1,6 @@
 split-str
-\ Four tasks take refused reserves at once: each refusal builds an E-MAP record
-\ (DYNAMIC-STORAGE MAP-REJECT), and each task captures every record it catches
+\ Four tasks take refused reserves at once: each refusal builds an E-MEM-MAP
+\ record (REJECTION MAP-PASS), and each task captures every record it catches
 \ and checks it is the whole record its own request names, as the main thread
 \ built it alone. Task k asks for 8 * (2^58 + k) bytes, so a record names the
 \ task that built it. The race runs in a child, so its stdout is checked: a
@@ -51,12 +51,12 @@ $400000000000000 constant BIG-N
    1 READY atomic-add drop
    begin START atomic@ 0= while TASK:PAUSE repeat ;
 
-\ One round: a caught E-MAP whose sent record is exp counts in caught, any
+\ One round: a caught E-MEM-MAP whose sent record is exp counts in caught, any
 \ other outcome in odd.
 : ONE ( [ -- ] ^u8 n ^n ^n -- ) {: try exp:^ expu:n caught:^ odd:^ :}
    REJECTION:CAPTURE
    try catch {: rc:n :}
-   rc DYNAMIC-STORAGE:E-MAP = if
+   rc E-MEM-MAP = if
       REJECTION:SEND-SAVED
       REJECTION:BUFFER$ exp expu T-STR= if 1 caught atomic-add drop exit then
    then

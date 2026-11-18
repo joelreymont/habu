@@ -74,7 +74,7 @@ variable DB-EVAL-U
    1 WIDE-RESERVE                         \ capacity 64, two complete elements
    7 0 WIDE TRIPLE-A byte-view 63 + c!    \ fractional tail belongs to mapping
    1 WIDE drop
-   ['] WIDE-MAP-FAIL 7138 TTHROWS
+   ['] WIDE-MAP-FAIL E-MEM-MAP TTHROWS
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
    3 WIDE-RESERVE                         \ capacity doubles to 128
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=

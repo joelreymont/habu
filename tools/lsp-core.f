@@ -1067,8 +1067,9 @@ public
 
 : MAIN ( -- )
    [: SERVE ;] catch {: code:n :}
+   REJECTION:CARRIED? if REJECTION:SEND-SAVED then
    SB-RESET s" lsp: stopped by throw " SB-APPEND code FMT:SB-INT
-   SB$ EXIT-STATUS:UNCAUGHT die ;
+   SB$ code ERROR:STATUS die ;
 
 ;using
 ;using

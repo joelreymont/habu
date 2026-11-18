@@ -388,7 +388,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    {: rc:n :}
    rc 1 >= rc 255 <= and if HBB-CLEANUP rc HBB-EXIT then
    REJECTION:CARRIED? if
-      rc ERROR:UNCAUGHT  HBB-CLEANUP  EXIT-STATUS:UNCAUGHT HBB-EXIT
+      rc ERROR:UNCAUGHT  HBB-CLEANUP  rc ERROR:STATUS HBB-EXIT
    then
    HBB-JSON @ 0= if
       s" hb-build: " HBB-WERR  HB-BUILD-CORE:WHERE$ HBB-WERR
@@ -399,7 +399,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
       HBB-WERR-LF
    then
    HBB-CLEANUP
-   EXIT-STATUS:UNCAUGHT HBB-EXIT ;
+   rc ERROR:STATUS HBB-EXIT ;
 
 \ Exit action in a build: names where, keeps -o as it was (not --json-errors).
 : HBB-EXITED ( -- )

@@ -191,7 +191,8 @@ variable FL-MAP                     \ the first levels not empty
    b ;
 
 
-: CHECK ( n -- ) MOST > if E-MEM-MAP throw then ;
+: CHECK ( n -- ) {: len:n :}
+   len MOST > if len s" a heap block" REJECTION:MAP-PASS then ;
 
 
 : ALLOC-BYTES ( ^u8 n -- ^u8 )

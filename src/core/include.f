@@ -773,21 +773,11 @@ public
 : CONFINE ( str -- str ) {: a:^ u:n :}
    a u a u NULL-PTR 0 CONFINE-AS ;
 
-\ Prints the record of n bytes the system refused for w wu while loading f fu,
-\ if any, and throws SYSTEM, which a program may catch: map before publishing.
-: MAP-DIE ( n str str -- ) {: bytes:n w:^ wu:n f:^ fu:n :}
-   bytes w wu REJECTION:MAP-REFUSED
-   fu 0 > if s" file" REJECTION:NOTE  f fu REJECTION:EMIT-STR then
-   REJECTION:HELP
-   s" raise the process's address-space limit (ulimit -v), or load smaller sources"
-   REJECTION:EMIT-STR
-   EXIT-STATUS:SYSTEM REJECTION:STOP ;
-
 private
 
 : MAP-COPY ( str -- ^u8 )
    {: a:^ u:n :}
-   u 1+ map-anon 0= 0= if drop u 1+ s" a path copy" s" " MAP-DIE then
+   u 1+ map-anon 0= 0= if drop u 1+ s" a path copy" s" " REJECTION:MAP-PASS-FILE then
    {: fresh:^ :}
    a fresh u 1+ BYTE-COPY
    fresh ;
@@ -1043,7 +1033,7 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 : COLS-MAP ( n -- ^^u8 )
    2 * cells {: bytes:n :}
    bytes map-anon 0 <> if
-      drop bytes s" the loader's row table" s" " MAP-DIE
+      drop bytes s" the loader's row table" s" " REJECTION:MAP-PASS-FILE
    then ;
 
 : COLS-UNMAP ( ^^u8 n -- ) {: rows:^ cap:n :}
@@ -1105,7 +1095,7 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    room CHUNK-LIMIT > if SIZE-DIE then
    CHUNK @ {: prev:^ :}
    room CHUNK-HEAD + map-anon 0 <> if
-      drop room CHUNK-HEAD + s" a path chunk" s" " MAP-DIE
+      drop room CHUNK-HEAD + s" a path chunk" s" " REJECTION:MAP-PASS-FILE
    then
    {: fresh:^ :}
    fresh CHUNK !
@@ -1880,7 +1870,7 @@ variable DISC-PATH-U
 \ throws while OLD is still the one published.
 : EVENT-REMAP ( ^u8 n n n -- ^u8 )
    {: old:^ oldcap:n used:n cap:n :}
-   cap map-anon 0= 0= if drop cap s" an event table" s" " MAP-DIE then
+   cap map-anon 0= 0= if drop cap s" an event table" s" " REJECTION:MAP-PASS-FILE then
    {: fresh:^ :}
    old fresh used BYTE-COPY
    old oldcap EVENT-UNMAP
@@ -2124,7 +2114,7 @@ variable LAST-LOAD-EVAL-OK
 : PUSH ( -- )
    HEADER-BYTES ROOM-MIN + {: bytes:n :}
    bytes map-anon 0= 0= if
-      drop bytes s" a source frame" INCLUDE-PATH INCLUDE-PATH-U @ MAP-DIE
+      drop bytes s" a source frame" INCLUDE-PATH INCLUDE-PATH-U @ REJECTION:MAP-PASS-FILE
    then
    {: frame:^ :}
    TOP@ frame FRAME-PREV !
@@ -2170,7 +2160,7 @@ variable LAST-LOAD-EVAL-OK
    TOP@ {: frame:^ :}
    ROOM 2 * want max {: room:n :}
    HEADER-BYTES room + map-anon 0= 0= if
-      drop HEADER-BYTES room + s" a source frame" TOP-PATH$ MAP-DIE
+      drop HEADER-BYTES room + s" a source frame" TOP-PATH$ REJECTION:MAP-PASS-FILE
    then
    {: fresh:^ :}
    frame fresh HEADER-BYTES keep + BYTE-COPY
@@ -2372,7 +2362,7 @@ private
    u 2 >= if
       a c@ $23 = a 1 + c@ $21 = and if
          u 1 max map-anon 0= 0= if
-            drop u 1 max s" a copy of the source" TOP-PATH$ MAP-DIE
+            drop u 1 max s" a copy of the source" TOP-PATH$ REJECTION:MAP-PASS-FILE
          then
          {: copy:^ :}
          a copy u BYTE-COPY

@@ -1042,9 +1042,12 @@ public
    SAVED-U @ 0= IF EXIT THEN
    SAVED-P @ SAVED-U @  0 SAVED-U !  BUF-APPEND ;
 
-\ Throws n as the throw that carries the kept record.
+\ Throws n as the throw that carries the kept record, if SAVE kept one.
 : PASS ( n -- )
-   data-base THROWS-CELL + @ 1 +  data-base STAMP-CELL + !  throw ;
+   SAVED-U @ 0 <> IF
+      data-base THROWS-CELL + @ 1 +  data-base STAMP-CELL + !
+   THEN
+   throw ;
 
 \ Whether the newest throw this thread began carries the kept record.
 : CARRIED? ( -- bool )
@@ -1153,20 +1156,23 @@ public
    THEN
    cap EMIT-U  s"  bytes a path may have" EMIT-STR ;
 
-\ Opens the E-MAP record of n bytes the system refused for what a u names, if
-\ anything; the caller adds its notes and help and ends the record.
-: MAP-REFUSED ( n str -- ) {: bytes:n a:^ u:n :}
-   s" E-MAP" OPEN
+\ Throws E-MEM-MAP carrying the record of n bytes the system refused for what
+\ the first str names, while loading the file the second names, if any.
+: MAP-PASS-FILE ( n str str -- ) {: bytes:n a:^ u:n f:^ fu:n :}
+   s" E-MEM-MAP" OPEN
    s" the system refused " EMIT-STR  bytes EMIT-U
    s"  bytes of storage" EMIT-STR
    u 0 > if s"  for " EMIT-STR  a u EMIT-STR then
-   s" bytes" NOTE  bytes EMIT-U ;
+   fu 0 > if s" file" NOTE  f fu EMIT-STR then
+   HELP
+   s" raise the process's address-space limit (ulimit -v), or reserve less storage"
+   EMIT-STR
+   SAVE  E-MEM-MAP PASS ;
 
-\ Throws SYSTEM after the E-MAP record of n bytes the system refused for what a u names.
-: MAP-STOP ( n str -- )
-   MAP-REFUSED
-   HELP  s" raise the process's address-space limit (ulimit -v)" EMIT-STR
-   EXIT-STATUS:SYSTEM STOP ;
+\ Throws E-MEM-MAP carrying the record of n bytes the system refused for what
+\ a u names, if anything.
+: MAP-PASS ( n str -- )
+   s" " MAP-PASS-FILE ;
 
 private
 : DUPLICATE-OPEN ( str str -- ) {: a:^ u:n t:^ tu:n :}

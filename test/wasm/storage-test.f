@@ -64,7 +64,7 @@ variable FILE-U
 
 \ GROW's lines, REFUSE's and REUSE's.
 : BUFFER$ ( -- ^u8 n )
-   S\" 77\n88\n312\n1\n7138\n7138\n77\n88\n1\n0\n0\n" ;
+   S\" 77\n88\n312\n1\n-3201\n-3201\n77\n88\n1\n0\n0\n" ;
 
 : HOLES$ ( -- str )
    S\" 1\n0\n1\n1\n" ;
