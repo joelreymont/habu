@@ -971,6 +971,8 @@ variable MDV-I   variable MDV-F
       MD-ONE-CELL   of s" E-MISMATCH" endof
       MD-OFF-STEP   of s" E-MISMATCH" endof
       MD-FACT-UNSTATED of s" E-MISMATCH" endof
+      MD-FACT-INPUT of s" E-MISMATCH" endof
+      MD-FACT-PASSED of s" E-MISMATCH" endof
       MD-CONSTRUCT-WIDE of s" E-CONSTRUCT-WIDE" endof
       MD-C2-BINDER    of s" E-C2-BINDER" endof
       MD-C2-RECORDS-BINDER of s" E-C2-BINDER" endof
@@ -1089,6 +1091,8 @@ variable MDV-I   variable MDV-F
       MD-MEMBER-TOP of s" move the call inside a definition, which uses the receiver's layout" endof
       MD-ONE-CELL   of s" call it with a plain one-cell type (`n`, a pointer), or do the work in a word whose effect names" endof
       MD-FACT-UNSTATED of s" state" endof
+      MD-FACT-INPUT of s" state" endof
+      MD-FACT-PASSED of s" state" endof
       MD-CONSTRUCT-WIDE of s" declare the widest variant over the type argument, or hold the argument through a one-cell `^`" endof
       MD-C2-BINDER    of s" declare the callback `forall<i inside [l,T],[ mut-view<p,i,a,init<i,T>> -- … ]>`, with `l` the view's scope and `T` the record" endof
       MD-C2-RECORDS-BINDER of s" declare the callback `forall<i inside [l,T],[ records<p,i,a,T> -- … ]>`, with `l` the view's scope and `T` the record" endof
@@ -1193,6 +1197,8 @@ variable MDV-I   variable MDV-F
       MD-ONE-CELL   of s"  is one cell" endof
       MD-OFF-STEP   of s"  is stepped by an offset" endof
       MD-FACT-UNSTATED of s" this quotation does more than the type that keeps it states" endof
+      MD-FACT-INPUT of s" the type that keeps this quotation hands it a quotation its input type does not allow" endof
+      MD-FACT-PASSED of s" the type this quotation is passed as hands it a quotation its input type does not allow" endof
       MD-CONSTRUCT-WIDE of s" the variant is wider than the declared widest variant once its type argument is filled in" endof
       MD-C2-BINDER    of s" the callback's binder does not fit this entry's scope and record" endof
       MD-C2-RECORDS-BINDER of s" the callback's binder does not fit this entry's scope and record" endof
@@ -1273,6 +1279,8 @@ variable MDV-I   variable MDV-F
       MD-ONE-CELL   of s" takes one cell" endof
       MD-OFF-STEP   of s" steps by an offset" endof
       MD-FACT-UNSTATED of s" kept here" endof
+      MD-FACT-INPUT of s" kept here" endof
+      MD-FACT-PASSED of s" passed here" endof
       MD-CONSTRUCT-WIDE of s" variant wider than declared" endof
       MD-LINEAR-DROP  of s" linear value dropped" endof
       MD-LINEAR-COPY  of s" linear value copied" endof
@@ -1933,6 +1941,11 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    k RF-REASON =  MDIAG @ MD-NONEXH = and IF
       s" missing" REJECTION:NOTE  0 0= MDIAG-MISSING-WALK
    THEN
+   k RF-REASON =  MDIAG @ MD-FACT-UNSTATED = and  MDIAG-CELL-VAR @ 0 <> and IF
+      s" note" REJECTION:NOTE  s" it may run the `" EMIT-STR
+      AT-PIN  MDIAG-CELL-VAR @ REND-TYPE  ;AT-PIN
+      s" ` the type that keeps it hands it" EMIT-STR
+   THEN
    k EFFECT-NOTES? IF EFFECT-NOTES THEN ;
 
 \ The help for a body whose end does not fit its signature: the row it should
@@ -2152,8 +2165,15 @@ PTR-VARIABLE HOLDER-FIRST
 \ The type that keeps it may be a primitive's row (`compile,`), which no program
 \ changes, so the help names the other fix too.
 : FACT-HELP ( -- )
-   MD-FACT-UNSTATED MD-SUGGEST$ EMIT-STR  s"  `" EMIT-STR  FACT-NAMES
-   s" ` in the type that keeps it, or keep a word without `" EMIT-STR
+   MDIAG @ MD-SUGGEST$ EMIT-STR  s"  `" EMIT-STR  FACT-NAMES
+   MDIAG @ MD-FACT-UNSTATED = IF
+      s" ` in the type that keeps it, or keep a word without `" EMIT-STR
+   ELSE
+      s" ` in the input `" EMIT-STR  AT-PIN  MDIAG-CELL-VAR @ REND-TYPE  ;AT-PIN
+      s" ` of the quotation's type, or " EMIT-STR
+      MDIAG @ MD-FACT-INPUT = IF s" keep it in" ELSE s" pass it as" THEN EMIT-STR
+      s"  a type whose input states no `" EMIT-STR
+   THEN
    FACT-NAMES  s" `" EMIT-STR ;
 
 : LINLOCAL-HELP ( -- )
@@ -2217,7 +2237,9 @@ PTR-VARIABLE HOLDER-FIRST
       MDIAG @ MD-SCOPED-TICK = IF SCOPED-TICK-HELP EXIT THEN
       MDIAG @ MD-ONE-CELL = IF ONE-CELL-HELP EXIT THEN
       MDIAG @ MD-OFF-STEP = IF OFF-STEP-HELP EXIT THEN
-      MDIAG @ MD-FACT-UNSTATED = IF FACT-HELP EXIT THEN
+      MDIAG @ MD-FACT-UNSTATED =  MDIAG @ MD-FACT-INPUT = or  MDIAG @ MD-FACT-PASSED = or IF
+         FACT-HELP EXIT
+      THEN
       MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
    THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN

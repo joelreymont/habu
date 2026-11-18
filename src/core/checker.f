@@ -24,6 +24,17 @@ split-str
 \ declared quantifier reach no instance. RECUR-CHECK meets each instance with
 \ them after the body and pins a failure on the RECURSE that made it.
 \
+\ Quotation pairs: each is one of five kinds, decided before its rows are paired.
+\ Invariant: demanded on both sides (a pointee, a store slot); both state the
+\ same facts. Kept: a demanded slot that keeps the quotation (a declared output,
+\ a block that keeps its scope); it states every fact the quotation has and
+\ every fact of a quotation the slot hands it to run, and the quotation is
+\ charged with them. Handed: an input the open kept pair's slot hands its
+\ quotation; its facts charge that quotation. Join: neither side demanded; each
+\ takes both sides' facts. Run: the rest; the wanted side takes the quotation's
+\ facts, as a literal's input term is also its output, and a callee that only
+\ runs the quotation charges the caller.
+\
 \ Divisor inputs: SIG-INSTALL seeds each of the top NONZERO-INPUTS declared
 \ inputs that is one integer cell with a CP-ARG fact, its id the input's index
 \ j from the top. A machine over the body's tokens then learns which seeded
@@ -4266,6 +4277,15 @@ variable STEP-HIT
 variable ONE-CELL-VAR
 \ The facts a kept quotation has and its slot's type lacks.
 variable FACT-HIT
+\ The type the fact record names, 0 for none: the kept quotation's input type
+\ that lacks FACT-HIT's facts, or a quotation its slot hands it to run.
+variable FACT-TERM
+\ The kinds of fact record FACT-KIND holds, numbered with the MD- block below.
+104 constant MD-FACT-UNSTATED \ a kept quotation has facts its slot's type does not state (FACT-HIT); E-MISMATCH
+105 constant MD-FACT-INPUT   \ a kept quotation is handed facts its input type does not state (FACT-HIT, FACT-TERM); E-MISMATCH
+106 constant MD-FACT-PASSED  \ a quotation is passed a quotation its input type does not state, with no type that keeps it (FACT-HIT, FACT-TERM); E-MISMATCH
+\ The fact record's kind, set with FACT-HIT.
+variable FACT-KIND
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
@@ -4821,9 +4841,8 @@ EXPORT CHECKER-QUOT-FRESH:START
    RES-FALSE ;
 
 
-\ A quotation pair's input rows flow into the quotation from whoever executes
-\ it, so their pairs are pushed flipped; a pair demanded on both sides stays so
-\ at every depth.
+\ A quotation's input rows flow in from whoever executes it, so their pairs are
+\ pushed flipped; a pair demanded on both sides stays so at every depth.
 defer U-DRAIN-XT ( n -- )
 : ROLE-FLIP ( n -- n )
    dup 3 and  dup 0= IF drop 3 THEN  swap ROLE-NEG and ROLE-NEG xor or ;
@@ -4847,24 +4866,16 @@ defer U-DRAIN-XT ( n -- )
    a b <> IF 3 SCOPE-HIT ! a b U-FAIL THEN ;
 
 
-\ The innermost kept quotation pair's role, 0 while none is open, and the facts
-\ of the quotations its slot hands that quotation to run.
-variable KEPT-ROLE   variable KEPT-RUN
+\ The innermost open kept pair's role, 0 for none, and its wanted facts; the facts
+\ of the quotations its slot hands it to run; the last of those with a fact it lacks.
+variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-T
 
-\ A quotation pair is one of five kinds, decided before its rows are paired.
-\ Invariant: demanded on both sides (a pointee, a store slot); both state the
-\ same facts. Kept: a demanded slot that keeps the quotation (a declared output,
-\ a block that keeps its scope); it states every fact the quotation has and
-\ every fact of a quotation the slot hands it to run, and the quotation is
-\ charged with them. Handed: an input the open kept pair's slot hands its
-\ quotation; its facts charge that quotation. Join: neither side demanded; each
-\ takes both sides' facts. Run: the rest; a callee that only runs the quotation
-\ charges the caller.
 : QUOT-PAIR ( n n -- )
    {: got:n want:n :}
    CUR-ROLE @ {: role:n :}   role ROLE-FLIP {: flip:n :}
    TRAIL-N @ {: mark:n :}   USP @ {: base:n :}   CUR-UPOS @ {: upos:n :}
-   KEPT-ROLE @ {: kr0:n :}   KEPT-RUN @ {: kn0:n :}
+   KEPT-ROLE @ {: kr0:n :}   KEPT-WANT @ {: kw0:n :}
+   KEPT-RUN @ {: kn0:n :}   KEPT-RUN-T @ {: kt0:n :}
    role ROLE-D1 ROLE-D2 or and {: dem:n :}
    dem ROLE-D1 ROLE-D2 or = {: inv:bool :}
    want Q>BLOCK T-RES {: b:n :}
@@ -4874,7 +4885,7 @@ variable KEPT-ROLE   variable KEPT-RUN
    inv kept or 0=  kr0 0 <> and  role kr0 xor ROLE-NEG and 0 <> and {: handed:bool :}
    inv kept or handed or 0=  dem 0= and {: join:bool :}
    inv kept or handed or join or 0= {: runs:bool :}
-   kept IF role KEPT-ROLE !  0 KEPT-RUN ! THEN
+   kept IF role KEPT-ROLE !  want Q>FACTS KEPT-WANT !  0 KEPT-RUN !  0 KEPT-RUN-T ! THEN
    got want role HOLD-PUSH {: g:n w:n :}
    w Q>DIN g Q>DIN flip PAIR-QUOT
    g Q>DOUT w Q>DOUT role PAIR-QUOT
@@ -4882,19 +4893,32 @@ variable KEPT-ROLE   variable KEPT-RUN
    g Q>ROUT w Q>ROUT role PAIR-QUOT
    g w BLOCK-PAIR
    base U-DRAIN-XT
-   kept IF KEPT-RUN @  kr0 KEPT-ROLE !  kn0 KEPT-RUN ! ELSE 0 THEN
+   kept IF
+      KEPT-RUN @ KEPT-RUN-T @
+      kr0 KEPT-ROLE !  kw0 KEPT-WANT !  kn0 KEPT-RUN !  kt0 KEPT-RUN-T !
+   ELSE 0 0 THEN {: run-t:n :}
    got Q>FACTS or {: has:n :}
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
    has CTL-STATABLE and want Q>FACTS invert and {: lack:n :}
    UOK @ IF
       inv IF got Q>FACTS want Q>FACTS xor CTL-STATABLE and 0 <> IF got want U-FAIL THEN THEN
-      kept lack 0 <> and IF has got Q-FACTS!  lack FACT-HIT !  got want U-FAIL THEN
+      kept lack 0 <> and IF
+         role ROLE-NEG and 0 <> {: input:bool :}
+         input IF want ELSE got Q>FACTS lack and 0= IF run-t ELSE 0 THEN THEN FACT-TERM !
+         input IF kr0 0 <> IF MD-FACT-INPUT ELSE MD-FACT-PASSED THEN
+         ELSE MD-FACT-UNSTATED THEN FACT-KIND !
+         has got Q-FACTS!  lack FACT-HIT !  got want U-FAIL
+      THEN
    THEN
    \ Facts are not trailed: a rolled-back trial can only add facts.
    TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE
       kept IF has got Q-FACTS! THEN
-      handed IF got Q>FACTS KEPT-RUN @ or KEPT-RUN ! THEN
+      handed IF
+         got Q>FACTS KEPT-RUN @ or KEPT-RUN !
+         got Q>FACTS CTL-STATABLE and KEPT-WANT @ invert and 0 <> IF got KEPT-RUN-T ! THEN
+      THEN
       join IF g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS! THEN
+      runs IF got Q>FACTS w Q>FACTS or w Q-FACTS! THEN
       runs  role ROLE-D2 and 0 <> and  UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
    THEN
    -1 HOLD-N +! ;
@@ -5461,7 +5485,6 @@ private
 101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?); E-LAYOUT-VALUE
 102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type (ONE-CELL-HIT); E-MISMATCH
 103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type (STEP-HIT); E-MISMATCH
-104 constant MD-FACT-UNSTATED \ a kept quotation has facts its slot's type does not state (FACT-HIT); E-MISMATCH
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; each other reason has its own code (MD-CODE$).
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5519,8 +5542,8 @@ variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
 variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from the top
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
-variable MDIAG-CELL   \ one-cell and step rules: the layout type a variable met; fact rule: FACT-HIT
-variable MDIAG-CELL-VAR   \ one-cell and step rules: that variable's id
+variable MDIAG-CELL   \ one-cell and step rules: the layout type a variable met; fact rules: FACT-HIT
+variable MDIAG-CELL-VAR   \ one-cell and step rules: that variable's id; fact rules: FACT-TERM
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
 
@@ -5614,7 +5637,9 @@ TAIL-CAPTURE-DEFAULT
       THEN
    THEN
    FACT-HIT @ 0 <> IF   \ the facts copied only when this refusal latches the reason
-      MDIAG @  MD-FACT-UNSTATED MDIAG!  MDIAG @ <> IF FACT-HIT @ MDIAG-CELL ! THEN
+      MDIAG @  FACT-KIND @ MDIAG!  MDIAG @ <> IF
+         FACT-HIT @ MDIAG-CELL !  FACT-TERM @ MDIAG-CELL-VAR !
+      THEN
    THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN
    BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN
@@ -16212,6 +16237,7 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
    q rec !  q Q>FACTS rec CELL + !
    OWNQ-N @ 1+ OWNQ-N ! ;
 
+\ Runs after the boundary checks: they read the terms as the body widened them.
 : OWNQ-RESTORE ( -- )
    0 BEGIN dup OWNQ-N @ < WHILE
       dup 2 * cells OWNQ-P @ + dup CELL + @ swap @ Q-FACTS!
@@ -16220,7 +16246,6 @@ PTR-VARIABLE OWNQ-P   variable OWNQ-CAP   variable OWNQ-N
 
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
-\ The boundary checks before it read the terms as the body widened them.
 : CHECKER-PUBLISH-PARSED ( -- )
    OWNQ-RESTORE
    SGWIN @ SGWOUT @ SGWRIN @ SGWROUT @ SGHASR @

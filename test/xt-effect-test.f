@@ -373,6 +373,7 @@ create XE-EMPTY 1 allot
    SB-RESET  XE-RUN-LINE  s" defer DX ( [ -- renders ] -- )" XE-LINE
    s" : INST ( -- ) [: RUN ;] is DX ;" XE-LINE
    SB$ s" state `renders`" XE-FACT-REJECTED
+   XE-ERR$ s" = note: it may run the `[ -- renders ]` the type that keeps it hands it" CONTAINS? TTRUE
    s" a defer keeps a ticked runner only if its effect states what it runs" T-LABEL
    SB-RESET  XE-RUN-LINE  s" defer DX ( [ -- renders ] -- )" XE-LINE
    s" : INST ( -- ) ['] RUN is DX ;" XE-LINE
@@ -418,7 +419,7 @@ create XE-EMPTY 1 allot
    SB-RESET  XE-RUN-LINE
    s" : MK2 ( -- [ [ -- renders ] -- ] ) [: RUN ;] ;" XE-LINE
    SB$ s" state `renders`" XE-FACT-REJECTED
-   s" a quotation type inside a quotation type keeps what it is handed, in either order" T-LABEL
+   s" a quotation type inside a quotation type keeps what it is handed" T-LABEL
    SB-RESET
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
    s" TYPED-VARIABLE KV [ -- ]" XE-LINE
@@ -426,14 +427,6 @@ create XE-EMPTY 1 allot
    s" : C7 ( -- ) [: KV ! ;] [: EVC ;] W2R ;" XE-LINE
    SB$ s" E-MISMATCH" XE-FACT-REJECTED
    XE-ERR$ s" : C7 ( -- ) [: KV ! ;] [: EVC ;] W2R ;" CONTAINS? TTRUE
-   SB-RESET
-   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
-   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
-   s" : MKK ( -- [ [ -- ] -- ] ) [: KV ! ;] ;" XE-LINE
-   s" : W2R ( [ [ -- ] -- ] [ -- ] -- ) swap execute ;" XE-LINE
-   s" : C10 ( -- ) MKK [: EVC ;] W2R ;" XE-LINE
-   SB$ s" E-MISMATCH" XE-FACT-REJECTED
-   XE-ERR$ s" : C10 ( -- ) MKK [: EVC ;] W2R ;" CONTAINS? TTRUE
    s" a quotation kept twice is charged at each keeping" T-LABEL
    SB-RESET  XE-RUN-LINE
    s" TYPED-VARIABLE SV [ [ -- renders ] -- renders ]" XE-LINE
@@ -441,6 +434,22 @@ create XE-EMPTY 1 allot
    s" : S ( -- ) [: RUN ;] dup SV ! XN ! ;" XE-LINE
    SB$ s" state `renders`" XE-FACT-REJECTED
    XE-ERR$ s" : S ( -- ) [: RUN ;] dup SV ! XN ! ;" CONTAINS? TTRUE
+   s" a keeping that hands its quotation more than its input type allows names that input" T-LABEL
+   SB-RESET
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" TYPED-VARIABLE SV [ [ -- renders ] -- renders ]" XE-LINE
+   s" : MKK2 ( -- [ [ -- ] -- ] ) [: KV ! ;] ;" XE-LINE
+   s" : ST2 ( -- ) MKK2 SV ! ;" XE-LINE
+   SB$ s" hands it a quotation its input type does not allow" XE-FACT-REJECTED
+   XE-ERR$ s" : ST2 ( -- ) MKK2 SV ! ;" CONTAINS? TTRUE
+   XE-ERR$ s" state `renders` in the input `[ -- ]` of the quotation's type" CONTAINS? TTRUE
+   s" a parameter kept with more than its input type allows is rejected in its own word" T-LABEL
+   SB-RESET
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" TYPED-VARIABLE SV [ [ -- renders ] -- renders ]" XE-LINE
+   s" : ST3 ( [ [ -- ] -- ] -- ) SV ! ;" XE-LINE
+   SB$ s" hands it a quotation its input type does not allow" XE-FACT-REJECTED
+   XE-ERR$ s" : ST3 ( [ [ -- ] -- ] -- ) SV ! ;" CONTAINS? TTRUE
    s" a signed word is saved with the facts its signature states" T-LABEL
    SB-RESET  XE-RUN-LINE
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
@@ -449,14 +458,6 @@ create XE-EMPTY 1 allot
    s" : C ( -- ) false ['] EVC K2 ;" XE-LINE
    SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
    XE-ERR$ s" : C ( -- ) false ['] EVC K2 ;" CONTAINS? TTRUE
-   s" a signed word is saved with the facts its signature states" T-LABEL
-   SB-RESET
-   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
-   s" : SAME ( a a -- ) 2drop ;" XE-LINE  s" TYPED-VARIABLE KV [ -- ]" XE-LINE
-   s" : K5 ( [ -- ] -- ) dup KV ! [: EVC ;] SAME ;" XE-LINE
-   s" : C ( -- ) ['] EVC K5 ;" XE-LINE
-   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
-   XE-ERR$ s" : C ( -- ) ['] EVC K5 ;" CONTAINS? TTRUE
    s" a body's join still reaches its output" T-LABEL
    SB-RESET
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
@@ -470,8 +471,30 @@ create XE-EMPTY 1 allot
    s" : MKK3 ( -- [ [ -- ] -- ] ) [: KV ! ;] ;" XE-LINE
    s" : INST ( -- ) ['] MKK3 is DQ ;" XE-LINE
    s" : S1 ( -- ) DQ SV ! ;" XE-LINE
-   SB$ s" state `renders`" XE-FACT-REJECTED
-   XE-ERR$ s" : S1 ( -- ) DQ SV ! ;" CONTAINS? TTRUE ;
+   SB$ s" hands it a quotation its input type does not allow" XE-FACT-REJECTED
+   XE-ERR$ s" : S1 ( -- ) DQ SV ! ;" CONTAINS? TTRUE
+   s" a quotation run where it is made hands on the facts of what it passes on" T-LABEL
+   SB-RESET  XE-RUN-LINE
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" : GO ( -- ) ['] EVC [: dup RUN ;] execute KV ! ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   XE-ERR$ s" : GO ( -- ) ['] EVC [: dup RUN ;] execute KV ! ;" CONTAINS? TTRUE
+   s" the note names only a handed quotation with a fact the keeping type lacks" T-LABEL
+   SB-RESET
+   s" : RUN2 ( [ -- ] [ -- ] -- ) execute execute ;" XE-LINE
+   s" TYPED-VARIABLE SB [ [ -- parses ] [ -- renders ] -- parses ]" XE-LINE
+   s" : B ( -- ) [: RUN2 ;] SB ! ;" XE-LINE
+   SB$ s" it may run the `[ -- renders ]`" XE-FACT-REJECTED
+   XE-ERR$ s" it may run the `[ -- parses ]`" CONTAINS? TFALSE
+   s" a quotation passed one its input type does not state, kept by no type, names the passing" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE KV [ -- ]" XE-LINE
+   s" : W ( [ [ -- renders ] -- ] -- ) ['] EVC swap execute ;" XE-LINE
+   s" : C ( -- ) [: KV ! ;] W ;" XE-LINE
+   SB$ s" the type this quotation is passed as hands it" XE-FACT-REJECTED
+   XE-ERR$ s" pass it as a type whose input states no `renders`" CONTAINS? TTRUE ;
 
 : XE-PREPARE ( -- )
    FS:CLEANUP-RESET
