@@ -36,12 +36,14 @@
 // view_socket, neither view/code nor a pushed view/alive reaches the module
 // and a pushed notification does, view/resume is kept and answered {}, a
 // close answers the outstanding call -32000 and the view reopens after its
-// backoff, a view/code naming other code fetches view_code over the socket
-// and restarts the view through app.js, carrying the resume and the session,
-// a file dropped on the restarted view reaches its module once and no
-// listener of the old view throws, and a close under 4403 makes the view ask
-// view_socket again before it reopens, and the restarted view asks for no
-// display mode. An eighth frame's sockets are closed
+// backoff, a view/code naming other code fetches view_code over the socket,
+// then notifies the old module view/restart and, once that turn has settled,
+// restarts the view through app.js, carrying the resume the module told in it
+// and the session, the new canvas has the focus the old one had, a file
+// dropped on the restarted view reaches its module once and no listener of
+// the old view throws, and a close under 4403 makes the view ask view_socket
+// again before it reopens, and the restarted view
+// asks for no display mode. An eighth frame's sockets are closed
 // right after they open: the delays between its reopens double, and its
 // first view/alive resets them to 1 s. A ninth frame, once running, is pushed
 // a view/code naming other code, and its view_code over the socket is
@@ -597,14 +599,22 @@ try {
 
   view.codes.live = CODE_B;
   const before = (await liveShown()).length;
+  const canvasFocused = () => evaluate("live.frame.contentDocument.activeElement?.localName === 'canvas'");
+  await evaluate("live.frame.contentDocument.querySelector('canvas').focus()");
+  assert.equal(await canvasFocused(), true, "the canvas has focus before the restart");
   drop("live");
-  const resumed = `notified view/resume ${JSON.stringify({ project: "p1" })}`;
-  const after = [opened, resumed, opened];
+  // The old module, told view/restart once view_code is answered, tells
+  // view/resume {"project":"p2"} over the p1 it told before; its turn settles
+  // with that rpc's answer, and the new module receives p2.
+  const restarting = "notified view/restart {}";
+  const resumed = `notified view/resume ${JSON.stringify({ project: "p2" })}`;
+  const after = [opened, restarting, "answered 1 5 {}", resumed, opened];
   await until(async () => (await liveShown()).length >= before + after.length).catch(async (error) => {
     throw new Error(`the live frame showed ${JSON.stringify((await liveShown()).slice(before))}; it told ${JSON.stringify(await told("live"))}`, { cause: error });
   });
   assert.deepEqual((await liveShown()).slice(before), after,
-    "the old module sees the reopen, the new one its resume, then its own socket's open");
+    "the old module sees the reopen, then view/restart and its resume's answer; the new one its resume, then its own socket's open");
+  assert.equal(await canvasFocused(), true, "the restarted view's canvas has the focus the old one had");
   assert.deepEqual(view.log.live.at(-1), { jsonrpc: "2.0", id: 3, method: "tools/call", params: view_code },
     "view_code is fetched over the socket");
   // The new view's socket brought view/code before this call's answer.
@@ -617,7 +627,7 @@ try {
   assert.deepEqual(await told("live"), [], "the restart does not fail");
   assert.equal((await liveMethods()).filter((m) => m === "ui/request-display-mode").length, 1,
     "the restarted view does not ask for full screen again");
-  console.log("Headless Chrome: socket: view/code naming other code fetches view_code over the socket and app.js restarts the view; the new module receives view/resume {\"project\":\"p1\"} and its socket reuses the session");
+  console.log("Headless Chrome: socket: view/code naming other code fetches view_code over the socket and app.js restarts the view; the old module is notified view/restart {} first, and the new module receives the view/resume {\"project\":\"p2\"} it told then; its socket reuses the session, and its canvas has the focus the old one had");
 
   // A drop on the restarted page reaches only the new view's listener; an old
   // view's would hand the file to its disposed viewport, which throws.

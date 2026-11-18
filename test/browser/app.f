@@ -6,7 +6,8 @@ split-str
 \ key <text> <mods>, so a page control's key turn shows; typed "svg" sends an
 \ svg record and "draw" a draw of 0 rows, which removes it, so a page shows
 \ what it does while a drawing stands in the canvas's place. Typed "tree" sends
-\ a tree of 40 rows with its last pressed, more than a 700 px frame shows.
+\ a tree of 40 rows with its last pressed, more than a 700 px frame shows. A
+\ view/restart notification also tells view/resume {"project":"p2"}.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -169,7 +170,9 @@ variable FILE-SIZE
    at LE@ {: mu:n :}
    0 TEXT-U !
    s" notified " SAY  at 8 + mu SAY-AT  32 SAY-C
-   at 8 + mu +  2 EVENT@ 8 - mu -  SAY-AT  TEXT-RECORD ;
+   at 8 + mu +  2 EVENT@ 8 - mu -  SAY-AT  TEXT-RECORD
+   at 8 + mu s" view/restart" IS? if
+      s" view/resume" s\" {\"project\":\"p2\"}" MAKE  5 RPC then ;
 
 
 \ key <KeyboardEvent.key> <mods>
