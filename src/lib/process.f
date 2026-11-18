@@ -17,6 +17,13 @@ split-str
 \ and keeps across exec those not marked close-on-exec: mark parent-only pipe
 \ and pty ends close-on-exec, or that child holds a writer and the parent never
 \ sees EOF. src/lib/fd-lock.f orders the mark against forks.
+\
+\ CAPTURE. A pipe, /dev/null or fcntl refused before the child exists throws
+\ E-PROC-SPAWN; a read or poll that fails once it runs, E-PROC-OUTPUT. A
+\ child that closes its input, or ends, before taking all of a stdin capture
+\ is no error: the capture stops writing, reads both streams to their end
+\ and answers the exit status, since whether the child read the bytes the
+\ pipe took cannot be seen.
 
 require src/lib/engine-id.f
 require src/core/exit-status.f
@@ -545,7 +552,7 @@ public
 
 private
 : CLOEXEC-CELL ( ^n -- ) {: p:^ :}
-   p @ FD:F-SETFD FD:FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT THROW-CAPTURE then ;
+   p @ FD:F-SETFD FD:FD-CLOEXEC fcntl 0 <> if E-PROC-SPAWN THROW-CAPTURE then ;
 
 : PIPE-CELLS ( ^n ^n -- ^n ^n ) {: rp:^ wp:^ :}
    FD:PIPE FD>N wp ! FD>N rp !
@@ -553,11 +560,11 @@ private
 
 : OPEN-PIPE ( ^n ^n -- )
    [: PIPE-CELLS ;] catch {: code:n :} 2drop
-   code 0<> if E-PROC-OUTPUT THROW-CAPTURE then ;
+   code 0<> if E-PROC-SPAWN THROW-CAPTURE then ;
 
 : CAPTURE-NULL-INPUT-HELD ( -- )
    s\" /dev/null\z" drop open-rd
-   dup 0 < if drop E-PROC-OUTPUT THROW-CAPTURE then
+   dup 0 < if drop E-PROC-SPAWN THROW-CAPTURE then
    IN-R !
    IN-R CLOEXEC-CELL ;
 
@@ -568,16 +575,20 @@ public
    [: CAPTURE-NULL-INPUT-HELD ;] FD-LOCK:WITH
    IN-R @ >FD ;
 
-: NONBLOCK! ( fd -- ) {: fd :}
+private
+: NONBLOCK-OR ( fd n -- ) {: fd code:n :}
    fd FD>N FD:F-GETFL 0 fcntl {: flags :}
-   flags 0 < if E-PROC-OUTPUT THROW-CAPTURE then
-   fd FD>N FD:F-SETFL flags FD:O-NONBLOCK or fcntl 0 <> if E-PROC-OUTPUT THROW-CAPTURE then ;
+   flags 0 < if code THROW-CAPTURE then
+   fd FD>N FD:F-SETFL flags FD:O-NONBLOCK or fcntl
+   0 <> if code THROW-CAPTURE then ;
 
+public
+: NONBLOCK! ( fd -- ) E-PROC-OUTPUT NONBLOCK-OR ;
 
 private
 : NOSIGPIPE! ( fd -- )
    {: fd :}
-   fd FD>N FD:F-SETNOSIGPIPE 1 fcntl 0 <> if E-PROC-OUTPUT THROW-CAPTURE then ;
+   fd FD>N FD:F-SETNOSIGPIPE 1 fcntl 0 <> if E-PROC-SPAWN THROW-CAPTURE then ;
 
 
 public
@@ -588,7 +599,7 @@ public
 : SETUP-STDIN-FDS ( -- )
    IN-R IN-W OPEN-PIPE
    IN-W @ >FD NOSIGPIPE!
-   IN-W @ >FD NONBLOCK! ;
+   IN-W @ >FD E-PROC-SPAWN NONBLOCK-OR ;
 
 : WAIT-FOREVER ( -- ms ) MEM-MAX-N >MS ;
 
@@ -789,7 +800,7 @@ private
 : BROKEN-STDIN? ( n -- bool ) {: events :}
    events FD:POLLERR and 0= 0= if 0 0= exit then
    events FD:POLLHUP and 0= 0= if 0 0= exit then
-   events FD:POLLNVAL and 0= 0= if 0 0= exit then
+   events FD:POLLNVAL and 0= 0= if E-PROC-OUTPUT THROW-CAPTURE then
    0 0= 0= ;
 
 \ A refused write on the non-blocking end is back pressure: the child stopped

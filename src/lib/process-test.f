@@ -770,6 +770,33 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    PROCESS:OUT-R @ PROCESS:NO-FD T=  PROCESS:OUT-W @ PROCESS:NO-FD T=
    PROCESS:ERR-R @ PROCESS:NO-FD T=  PROCESS:ERR-W @ PROCESS:NO-FD T= ;
 
+PROCESS-SYMBOLS
+FUNCTION: PT-GET-LIMIT getrlimit ( n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: PT-SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
+: PT-RLIMIT-NOFILE ( -- n ) HB-TARGET-MACOS? if 8 else 7 then ;
+create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
+
+: PT-SOFT-LIMIT! ( n -- ) {: soft:n :}
+   PT-RLIMIT-NOFILE PT-LIMITS PT-GET-LIMIT 0 T=
+   soft PT-LIMITS !
+   PT-RLIMIT-NOFILE PT-LIMITS PT-SET-LIMIT 0 T= ;
+
+: PT-NO-FD-CAPTURE ( -- )
+   s" /usr/bin/true" PT-OUT 32 PT-ERR 32 PROCESS:WAIT-FOREVER MS>N
+   PT-RUN-CAPTURE drop 2drop ;
+
+\ With a descriptor limit of 0 the capture's first pipe cannot open: the child
+\ never starts, and nothing the capture opened stays open.
+: TEST-CAPTURE-SETUP-REFUSED ( -- )
+   PT-RLIMIT-NOFILE PT-LIMITS PT-GET-LIMIT 0 T=
+   PT-LIMITS @ {: saved:n :}
+   0 PT-SOFT-LIMIT!
+   [: PT-NO-FD-CAPTURE ;] catch {: code:n :}
+   saved PT-SOFT-LIMIT!
+   code E-PROC-SPAWN T=
+   PROCESS:PID @ PROCESS:NO-PID T=
+   PROCESS:OUT-R @ PROCESS:NO-FD T=  PROCESS:OUT-W @ PROCESS:NO-FD T= ;
+
 \ test/process-term-child.f removes the marker only in its SIGTERM answer.
 10000 constant PT-TERM-GRACE-MS          \ src/lib/process.f END-GRACE-MS
 5 constant PT-READY-U                    \ the child's `ready`
@@ -887,6 +914,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    TEST-STARVED-TIMEOUT
    TEST-RUN-CAPTURE-FD-CLEANUP
    TEST-CAPTURE-SPAWN-THROWS
+   TEST-CAPTURE-SETUP-REFUSED
    TEST-RUN-IO-CAT
    TEST-RUN-IO-FALSE
    TEST-RUN-CAPTURE-RESULT-OK
