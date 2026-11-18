@@ -27,11 +27,6 @@ private
 EXPORT CHECK:DOES-PUBLISHED
 EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
-\ Inside NPUB the publication primitives bind this package's private rows
-\ (src/habu/prims.f), so their callers here are checked. Anywhere else a
-\ checked caller is refused by name: code-publish, xref-retarget and
-\ does-record are undefined there, and the global rows of callmap-set and
-\ addrmap-set are trusted-only.
 : CODE-WINDOW ( str n -- )
    code-publish ;
 

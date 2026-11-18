@@ -7352,7 +7352,7 @@ variable UNDEFERR
 variable UNSEEN               \ an undefined token a rendering statement in scope may define (UNSEEN-COVERS?)
 variable UNFIT                \ the effect a record would hold is too deep (ROWS-FIT?)
 variable QUALBAD
-variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
+variable CAPREQ              \ checked code calls or ticks a word it lacks the authority for: ffi-call or an ABI-only row (RF-CAP, E-CAP-TRUSTED)
 }SCRATCH
 0 constant TORDER-CHECKING
 1 constant TORDER-GATE
@@ -18684,30 +18684,6 @@ private
    rec @ SCOPE-CODE-KIND ;
 : SCOPE-AUTH-SYM? ( n -- bool ) SCOPE-KIND-SYM 2 >= ;
 
-\ ---- the global record a package-private row reaches --------------------------
-\ The engine binds that spelling in the owner's private wordlist, then its
-\ public one, then the global one.
-: PE-GLOBAL-REACH? ( n -- bool ) {: sym:n :}
-   sym SYM-PKG$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
-   rec NULL-PTR = IF RES-TRUE EXIT THEN
-   sym SYM-NAME$ rec @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF RES-FALSE EXIT THEN
-   rec CELL + @ {: pri:n :}
-   pri 0= IF RES-TRUE EXIT THEN
-   sym SYM-NAME$ pri CHECKER-RESOLVE:WL-PROBE NULL-PTR = ;
-
-: PE-OWNS-GLOBAL? ( str n -- bool ) {: a:^ u:n i:n :}
-   i PE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   i PE-SYM@ {: sym:n :}
-   sym SYM-ROW SYM.VIS @ SYM-PRIVATE <> IF RES-FALSE EXIT THEN
-   sym SYM-NAME$ a u SYM-STR=CI 0= IF RES-FALSE EXIT THEN
-   sym PE-GLOBAL-REACH? ;
-
-: PE-OWNER-ROW ( str -- n ) {: a:^ u:n :}
-   #PE @ 0 ?do
-      a u i PE-OWNS-GLOBAL? IF i unloop EXIT THEN
-   loop
-   -1 ;
-
 \ Eliminate one lexical binder. A bound reference at this binder's depth
 \ becomes the fresh scope; references to outer binders shift down one level.
 : SCOPE-INST* ( n n n -- n ) {: t:n depth:n scope:n :}
@@ -22672,11 +22648,18 @@ EXPORT CHECKER-TAPE:K-IS
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
 
+\ The walk bound a primitive's record (WL:PRIMITIVES) to no symbol: its rows are
+\ other packages' private ones. A does> clause's record also binds to none and
+\ stays tickable.
+: HIDDEN-REC? ( n -- bool ) {: sym:n :}
+   sym 0 <>  WALK-REC @ 0=  or IF RES-FALSE EXIT THEN
+   BIND-REC @ CK-REC-WID WL:PRIMITIVES = ;
+
 \ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY: an ABI-only row cannot
 \ authorize the quotation any more than a direct call. Inside the owner its
 \ private row binds and CALL-AUTHORITY admits the tick. Outside, a bound ABI
-\ row refuses E-CAP-TRUSTED, an EXPORT alias included; with no row, only an
-\ owner-private primitive target needs the named E-UNDEFINED refusal here.
+\ row refuses E-CAP-TRUSTED, an EXPORT alias included, and a hidden record
+\ E-UNDEFINED.
 : OWNED-TICK-REFUSED? ( n -- bool ) {: sym:n :}
    FEP-HIT? IF
       sym CALL-AUTHORITY CALL-REFUSED = IF
@@ -22686,8 +22669,7 @@ EXPORT CHECKER-TAPE:K-IS
       THEN
       RES-FALSE EXIT
    THEN
-   sym PRIM-FIRST-IDX 0 <> IF RES-FALSE EXIT THEN
-   TKF TKFU @ EXPORT-TAIL$ PE-OWNER-ROW 0 < IF RES-FALSE EXIT THEN
+   sym HIDDEN-REC? 0= IF RES-FALSE EXIT THEN
    TICK-PIN
    TKF TKFU @ CALL-UNDEFINED drop
    PE-N BTICK-PUSH

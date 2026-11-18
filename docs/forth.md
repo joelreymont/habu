@@ -19,12 +19,9 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   path. Renaming a Forth algorithm or unchecked wrapper, or asserting its
   effect, does not make it a primitive.
 - An `EPPRIM:` row belongs to its package: only that package's checked bodies
-  call the primitive. Outside it, a call of a primitive whose one row is the
-  private one (`xref-retarget`) is `E-UNDEFINED`, in a body and at top level,
-  and a top-level `'` of it yields the xt; a call of one that also keeps a
-  global trusted-only row (`reloc-maps-clear`) is `E-CAP-TRUSTED`, in a body
-  and at top level. A checked `[']` of it is admitted and refused exactly where
-  that call is.
+  call or tick the primitive. Outside the packages its rows belong to, a call,
+  `'` or `[']` of it (`patch32`) is `E-UNDEFINED`, in a body and at top
+  level.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ^u8 n -- )`: the text runs on a guarded data stack of

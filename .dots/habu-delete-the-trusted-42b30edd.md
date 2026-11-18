@@ -30,7 +30,7 @@ Checker, src/core/checker.f:
 - The use of PRIM-TRUSTED-ONLY! in PRIM-CLOSE (26588).
 - The verifier-window comment (13328).
 
-src/habu/prims.f: FL-TRUSTED-ONLY (88), ETRUSTED-ONLY! (237), TRUSTED-ONLY? (317) and the 45 ETRUSTED-ONLY! row marks (366-1026).
+src/habu/prims.f: FL-TRUSTED-ONLY (88), ETRUSTED-ONLY! (237), TRUSTED-ONLY? (317) and ffi-call's ETRUSTED-ONLY! row mark.
 
 src/core/render.f: the trusted_boundary_required text in REPAIR-CLASS (1569; 1578).
 
@@ -38,7 +38,6 @@ Docs: `rg -n -i trusted` finds 27 lines in docs/forth.md and 8 in docs/forth-car
 
 Counts at fc8fa94a:
 - TRUSTED: definitions in .f files under src, tools and test: 64 (src 37, of them src/lib 13; tools 0; test 27).
-- Trusted-only rows: 45, all in prims.f.
 
 ### Also part of the definer, outside the list above
 

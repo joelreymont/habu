@@ -195,7 +195,7 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-UNSAFE-FORGE$ ( -- str )           \ trusted primitive rejects (E-EXPORT-UNSAFE)
+: XPK-PRIVATE-PRIM-FORGE$ ( -- str )      \ a primitive private to other packages is not found (E-EXPORT-UNDEFINED)
    SB-RESET
    s" package TICK-ALIAS" XPK-LINE
    s" public" XPK-LINE
@@ -734,9 +734,9 @@ create XPK-EMPTY 1 allot
    s" a primitive spelled as a keyword rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-CREATE-FORGE$ s" error[E-EXPORT-PRIM]" s" `create` is a primitive"
    XPK-REJECT-ALL
-   s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
-   XPK-UNSAFE-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
-   s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `patch32`" XPK-ERR?
+   s" exporting a primitive private to other packages is not found (E-EXPORT-UNDEFINED)" T-LABEL
+   XPK-PRIVATE-PRIM-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
+   s" error[E-EXPORT-UNDEFINED]" XPK-ERR?  s" `patch32`" XPK-ERR?
    s" exporting a declaration names it (E-EXPORT-UNSAFE)" T-LABEL
    XPK-DECL-EXPORT-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" error[E-EXPORT-UNSAFE]" XPK-ERR?  s" `ENUM` is a declaration" XPK-ERR?

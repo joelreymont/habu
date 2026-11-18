@@ -505,9 +505,9 @@ public
    SRC-RESET  s" defer SN-ARD (option)" S+
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `SN-ARD` cannot be recorded" REFUSES
    S\" = help: give `option` 1 type argument\n" SAID
-   s" a trust-boundary primitive in a checked body is rejected by name" T-LABEL
-   SRC-RESET  s" : SN-CAP ( -- ) reloc-maps-clear ;" S+
-   s" error[E-CAP-TRUSTED]: `reloc-maps-clear` is a trust-boundary primitive" REFUSES ;
+   s" a body's tick of another package's private primitive is rejected as undefined" T-LABEL
+   SRC-RESET  s" : SN-TICK ( -- ) ['] xref-retarget drop ;" S+
+   s" error[E-UNDEFINED]: cannot find word `xref-retarget`" REFUSES ;
 
 \ Run while a package holding a rendering statement's mark is open, so MADE is
 \ a name the run may define to these texts and to no other.

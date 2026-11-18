@@ -107,6 +107,11 @@ s\" : FOOB ( -- n ) 1 ; s\q FOOB\q s\q -- n n\q TRUST : T ( -- n ) FOOB + ;"
 s" ' CHECKER-RESOLVE:EACH-VISIBLE drop"
    s" error[E-UNDEFINED]: cannot find word `CHECKER-RESOLVE:EACH-VISIBLE`" ENGINE-PRIVATE:TCE-REJECTS
 
+\ A tick of a primitive whose rows are other packages' private ones is
+\ undefined, as its call is.
+s" ' patch32 drop"
+   s" error[E-UNDEFINED]: cannot find word `patch32`" ENGINE-PRIVATE:TCE-REJECTS
+
 \ The child makers are private: a child a program makes with one faults at
 \ run time.
 s\" s\q FOO\q s\q ^u8\q TYPE-DECL:TDECL-STORED-CHILD drop"

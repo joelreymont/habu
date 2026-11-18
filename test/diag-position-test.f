@@ -383,18 +383,24 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" " CHECK
    s" E-MISMATCH" s" +" 1 8 7 8 FX-PATH$ FX$ TOP-AT ;
 
-: TEST-TOP-TRUSTED ( -- )
-   s" a top-level call of a trusted-only primitive is rejected" T-LABEL
+: TEST-TOP-PRIVATE ( -- )
+   s" a top-level call of a primitive whose rows are private is undefined" T-LABEL
    SB-RESET
    s" 0 execute-floor drop" SB-APPEND LF+
-   s" top-trusted.f" FIXTURE!
+   s" top-private.f" FIXTURE!
    s" " CHECK
-   s" E-CAP-TRUSTED" s" execute-floor" 1 3 2 15
+   s" E-UNDEFINED" s" execute-floor" 1 3 2 15
    FX-PATH$ FX$ TOP-AT
-   0 s" label" s" not callable from checked code" FIELD=
-   0 s" help"
-   s" call a checked word that wraps `execute-floor` in place of calling it here"
-   FIELD= ;
+   0 s" message" s" cannot find word `execute-floor`" FIELD= ;
+
+: TEST-TOP-PRIVATE-TICK ( -- )
+   s" a top-level tick of a primitive whose rows are private is undefined to the verifier" T-LABEL
+   SB-RESET
+   s" ' patch32 drop" SB-APPEND LF+
+   s" top-private-tick.f" FIXTURE!
+   s" --verify-only" CHECK
+   s" E-UNDEFINED" s" patch32" 1 3 2 9
+   FX-PATH$ FX$ TOP-AT ;
 
 : SHADOW-FIXTURE ( str str -- )
    {: decl:^ declu:n body:^ bodyu:n :}
@@ -3866,7 +3872,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-LATER
    TEST-TOP-LINE
    TEST-TOP-DEP
-   TEST-TOP-TRUSTED
+   TEST-TOP-PRIVATE
+   TEST-TOP-PRIVATE-TICK
    TEST-UNDEF-HOLDER
    TEST-CLOSE-OUTER
    TEST-SHADOW

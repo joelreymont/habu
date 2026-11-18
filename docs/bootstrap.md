@@ -149,7 +149,7 @@ names`.
 A change in one commit that no revision can stage leaves a host whose hb
 predates it unable to build the tree: a package renamed together with the owner
 rows that name it makes an hb built before the rename refuse
-src/habu/interpreter.f with `E-CAP-TRUSTED`. Seed that host with an engine a
+src/habu/interpreter.f with `E-UNDEFINED`. Seed that host with an engine a
 current host cross-builds for it, such as `hb --load tools/hb-build.f --
 --engine --target linux-aarch64 -o "$OUT"` for Linux arm64, copied there with
 its `.map`; it then builds the tree as any trusted hb does.

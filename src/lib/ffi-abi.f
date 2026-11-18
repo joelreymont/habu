@@ -606,7 +606,7 @@ private
 
 \ CALL-k ( x1 .. xk n -- n ): row n's function called with the k integer
 \ arguments x1..xk, x1 the first, from the data stack. A FUNCTION: word
-\ calls these, never ffi-call-k, whose global row rejects it E-CAP-TRUSTED.
+\ calls these, never ffi-call-k, which is undefined outside FFI.
 : CALL-0 ( n -- n ) CALLEE ffi-call-0 ;
 : CALL-1 ( n n -- n ) CALLEE ffi-call-1 ;
 : CALL-2 ( n n n -- n ) CALLEE ffi-call-2 ;

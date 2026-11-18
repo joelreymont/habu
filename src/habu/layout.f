@@ -142,8 +142,7 @@ $8000000000000000 constant DNAME-INT
 \ DNAME-OWNED (bit 49): an internal primitive its owner's rows type. It opens
 \ nothing DNAME-INT closes: the prompt, `'`, search-wl and `[']` still refuse
 \ the record. With it a compiled call is the checker's decision through the
-\ rows: the owner's checked callers compile, and the global trusted-only row
-\ refuses a checked caller elsewhere.
+\ rows: the owner's checked callers compile.
 $0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots.
 131072 constant DICT-CAP

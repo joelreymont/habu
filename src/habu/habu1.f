@@ -3988,7 +3988,7 @@ package ENGINE-EMIT
    done LBL,  11 G-PUSH ;
 
 \ xref-search-wl ( ^u8 n n -- ^n ): the same lookup's record result.
-\ DNAME-INT and a trusted-only checker row restrict it to a trusted boundary;
+\ DNAME-INT and its checker rows restrict its callers;
 \ NDICT checks live callee visibility after resolving namespace records.
 : BCOMPILERSWL ( -- )
    2 G-POP  1 G-POP  0 G-POP

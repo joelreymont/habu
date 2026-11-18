@@ -2441,16 +2441,18 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 \ false. The answer is -1 when it resolves, or 2 when it resolves to a word that
 \ may read the source after it; 3 when it resolves nowhere but a rendering
 \ statement in scope may define it, the run's to judge; and 0 when the load
-\ refuses it.
+\ refuses it. A tick needs no row, but one of a primitive whose rows are other
+\ packages' private ones is refused as its call is.
 : TOP-ANSWER ( str bool -- n )
    {: a:^ u:n runs:bool :}
    runs  a u LITERAL-RANGE?  and IF a u REJECTION:LITERAL-RANGE  TOP-END EXIT THEN
    a u WALK {: sym:n why:n :}
+   sym HIDDEN-REC? {: hidden:bool :}
    why 0 <> IF a u why RAISE THEN
    CHECKER-QBAD-TOK @ 0= IF
       a u sym TOP-BOUND-SYM IF
          dup TOP-CONTROL {: flags:n deferred:bool :}
-         runs 0=  over a u TOP-ROW?  or IF
+         runs 0=  hidden 0=  and  over a u TOP-ROW?  or IF
             dup a u NAV-USE-NOW drop
             flags deferred runs TOP-RUNS EXIT
          THEN
@@ -3114,12 +3116,14 @@ EXPORT CHECKER-REG:TS-PTR
       TKF TKFU @ DO-TOK
    THEN ;
 
-\ `' W` pushes W's quotation when W has a row, else an opaque xt, as `['] W`
-\ does in a body. W is the word the load's own find selects. A declaration's
-\ tick is opaque, so no cell can carry it into a body.
+\ `' W` pushes W's quotation when W has a row, else an opaque xt, and rejects
+\ a primitive whose rows are other packages' private ones, as `['] W` does in a
+\ body. W is the word the load's own find selects. A declaration's tick is
+\ opaque, so no cell can carry it into a body.
 : TOP-TICK-STEP ( -- )
    TOP-BEGIN
    TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
+   hit IF sym HIDDEN-REC? IF TKF TKFU @ CALL-UNDEFINED drop EXIT THEN THEN
    hit IF sym DECLARATION-SYM? IF OPAQUE-XT TOP-PUSH EXIT THEN THEN
    FEP-CLEAR
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN

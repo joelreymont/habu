@@ -324,8 +324,6 @@ EPPRIM: C2-MEM c2-records-stow
    PE-STOW-LAYOUT PE-IN PE-PTR-N PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT ECLOSE-PRIVATE
 
-EPRIM: source-file-run PE-Q ;PE-Q PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ runs a file the loader opened as its own source unit
 EPPRIM: SOURCE-ROOT source-file-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
 
 EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM; REACH stack
@@ -442,8 +440,6 @@ EPRIM: fence      EPRIM; REACH memory
 \ its net effect is ( -- ) and the row states the string alone. `evaluate`,
 \ whose effect is the text's, stays elaborated below and unsafe in a body.
 EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH run
-EPRIM: evaluate-range PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: SOURCE-ROOT evaluate-range
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM; REACH memory
@@ -502,8 +498,6 @@ EPRIM: spawn-argv-env-cwd-io
 EPRIM: spawn-fds  PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;   \ ( request -- pid|-errno )
 EPRIM: fork          PE-N PE-OUT EPRIM;
 EPRIM: wait-status   PE-N PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: patch32       PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code
 \ Rewriting a write-protected dictionary record cell is package XREF's to do.
 EPPRIM: XREF patch32 PE-N PE-IN PE-PTR-N PE-IN ECLOSE-PRIVATE
 \ Planting and clearing a breakpoint instruction is package DEBUG's.
@@ -543,27 +537,14 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ name to the next slot, x86-64 padding with zeros.
 \ An `addr` outside the region, or on ARM64 not a whole instruction, exits
 \ EXIT-STATUS:SEAL-VIOLATION.
-\
-\ THE PUBLISHER OWNS ITS PRIMITIVES. The rows closed ECLOSE-PRIVATE for NPUB
-\ resolve only inside that package, so the publisher's own words are checked
-\ code, and a checked caller anywhere else is refused by name. code-publish,
-\ xref-retarget and does-record (below) are that row alone: outside NPUB the
-\ name is undefined to a checked caller. A global trusted-only row beside an
-\ owner's row rejects every other checked caller.
 EPPRIM: NPUB code-publish PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: callmap-set   PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ relocation metadata for code the publisher just wrote
 EPPRIM: NPUB callmap-set PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: addrmap-set   PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ Setting DNAME-REP on one live CAST: record is the checker's.
 EPPRIM: CHECK rep-mark PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
 EPPRIM: CHECK wide-mark ECLOSE-PRIVATE
-EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ The native defining-word runtime patch is package NDICT's.
 EPPRIM: NDICT does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE REACH dict
@@ -600,13 +581,9 @@ EFIXED-ABI!
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: retire-from    PE-N PE-IN PE-F PE-OUT EPRIM;
-EPRIM: ndict-append   PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!                       \ native pending-record publication
 EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECK def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
-EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE
 \ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
 \ and `defer` change is sealed state after the seal: CUR, WIDN, DEF-WL, TSIG,
@@ -630,23 +607,14 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ answer its index: [0] a fresh wid, [8] a second fresh wid when the flag is
 \ set and else 0, [40] WL:NAMESPACE. It refuses a colon at an edge of the
 \ name and a second colon: a name with one is a part's path, `A:B`.
-EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-\ The owner-private rows of these writers: inside package CHECKER-OVERLAY or
-\ INTERPRETER a row wins, so that owner's
-\ checked code calls the writer, and each record carries DNAME-INT|DNAME-OWNED.
 EPPRIM: CHECKER-OVERLAY namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: INTERPRETER namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
 \ private wid. It refuses an index at or above NDICT, unsigned, a row that is
 \ not a namespace row and one that already has a private wid.
-EPRIM: namespace-private PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER namespace-private PE-N PE-IN ECLOSE-PRIVATE
 \ alias-record ( ^u8 n n n -- ) name, source index, wid: a record for the source's code, as
 \ `export` makes. It refuses a negative wid and a source at or above NDICT, unsigned.
-EPRIM: alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
@@ -657,8 +625,6 @@ EPPRIM: INTERPRETER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-I
 \ a part when no package or a part is open.
 \ It has no task guard of its own: the package keywords refuse one, and a throw
 \ puts the scope back through this row.
-EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-open ( ^u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
@@ -669,16 +635,12 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ waits for the body (def-close). It refuses a kind with a bit
 \ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, a negative wid, and CP at or
 \ past the code ceiling.
-EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ body-capture ( ^u8 n -- ): append the bytes and one space to the body text
 \ through the capture routine `:` uses, which grows the text block when they do
 \ not fit and throws E-BODY-TEXT when it cannot. It refuses BODYLEN past the
 \ text capacity and a BODYLEN + u + 1 that wraps, with BODYLEN and u both
 \ unsigned.
-EPRIM: body-capture PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER body-capture PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ literal ( n -- ): append n to the definition `define-word` opened, which the
 \ checker reads as that number; it refuses when no definition is open.
@@ -698,8 +660,6 @@ EPPRIM: INTERPRETER trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
 \ copy in the body text. It refuses when no definition is
 \ pending.
-EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled:
 \ the state def-open set clears:
@@ -708,26 +668,18 @@ EPPRIM: INTERPRETER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ DKIND:CAST, the record `does-patch` reads. It refuses when
 \ no definition is pending and when the pending one is not a native compiler's
 \ (COMP-LATCH-CELL zero), as ndict-append does.
-EPRIM: def-close EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-close ECLOSE-PRIVATE
 \ def-abort ( -- ): close an abandoned definition's writable code region
 \ and compile-only state after a caught source error. The
 \ catch's handler, return and loop stacks remain live for the caller.
-EPRIM: def-abort EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER def-abort ECLOSE-PRIVATE
 \ stack-clear ( -- ): the REPL's caught-line boundary discards the user's
 \ arbitrary stack residue after a refusal. It leaves handler, return and loop
 \ state intact so the catching interpreter can continue.
-EPRIM: stack-clear EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER stack-clear ECLOSE-PRIVATE
 \ imm-mark ( -- ): set DNAME-IMM on the newest record, as the engine's
 \ `immediate` sets it. Like that keyword it checks
 \ nothing and refuses nothing.
-EPRIM: imm-mark EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ Only CHECKER-OVERLAY types these six: elsewhere a checked call is E-UNDEFINED
 \ and a TRUSTED: one binds at tier 0 only. Refusals exit 79 on a task, else 83.
@@ -793,8 +745,6 @@ EPRIM: policy-seal    EPRIM;
 EPRIM: wordlist       PE-N PE-OUT EPRIM; REACH dict
 EPRIM: get-current    PE-N PE-OUT EPRIM; REACH dict
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
@@ -815,55 +765,15 @@ EPRIM: record-facts! PE-N PE-IN PE-N PE-IN EPRIM;
 EPRIM: sha256-blocks PE-PTR-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM; REACH memory
 EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EPRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-\ ffi-call-k ( x1 .. xk fn -- n ): a C call of fn with k integer arguments
-\ taken from the stack, x1 the first.
-EPRIM: ffi-call-0     PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-1     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-2     PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-3     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-4     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-5     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-6     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-7     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-8     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: task-entry PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: dlopen-entry PE-N PE-OUT EPRIM;
 EPRIM: dlsym-entry PE-N PE-OUT EPRIM;
 \ callback-entry answers the shared raw C thunk a compiler-owned stub branches to.
-EPRIM: callback-entry PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 EPPRIM: FFI callback-entry PE-N PE-OUT ECLOSE-PRIVATE
-EPRIM: ffi-call-abi    PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-abi-r  PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-R PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: ffi-call-struct PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
-                      PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
 
-\ FFI's checked words call these by its private rows; the global trusted-only
-\ rows above reject any other checked caller.
 EPPRIM: FFI ffi-call-n PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+\ ffi-call-k ( x1 .. xk fn -- n ): a C call of fn with k integer arguments
+\ taken from the stack, x1 the first.
 EPPRIM: FFI ffi-call-0 PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-1 PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-2 PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
@@ -922,8 +832,6 @@ EPRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( addr len -- 
 \ written in Habu can use to observe a token that underflowed. The row states
 \ no effect for the xt, so the xt travels as a number: outside package
 \ INTERPRETER, that loop, a checked caller is refused.
-EPRIM: execute-floor PE-N PE-IN  PE-F PE-OUT EPRIM;
-ETRUSTED-ONLY!
 EPPRIM: INTERPRETER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 
 \ Primitives whose effect the checker elaborates.
