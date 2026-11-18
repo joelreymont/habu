@@ -4796,10 +4796,11 @@ EXPORT CHECKER-QUOT-FRESH:START
 
 
 \ A quotation pair's input rows flow into the quotation from whoever executes
-\ it, so their pairs are pushed flipped.
+\ it, so their pairs are pushed flipped; a pair demanded on both sides stays so
+\ at every depth.
 defer U-DRAIN-XT ( n -- )
 : ROLE-FLIP ( n -- n )
-   dup 1 and 2 *  over 1 rshift 1 and or  3 xor  swap ROLE-NEG and ROLE-NEG xor or ;
+   dup 3 and  dup 0= IF drop 3 THEN  swap ROLE-NEG and ROLE-NEG xor or ;
 
 
 \ A block part that must read no local refuses a block's scope as a local's

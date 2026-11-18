@@ -315,6 +315,15 @@ create XE-EMPTY 1 allot
    s" TYPED-VARIABLE XV [ -- ]" XE-LINE
    s" : W ( ^[ -- renders ] -- ) ['] EVC swap ! ;" XE-LINE  s" : C ( -- ) XV W ;" XE-LINE
    SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   s" a pointer to a cell of quotations that take quotations keeps their inputs' facts" T-LABEL
+   SB-RESET
+   s" TYPED-VARIABLE D [ -- ]" XE-LINE
+   s" TYPED-VARIABLE C [ [ -- renders ] -- ]" XE-LINE
+   s" : KEEPD ( [ -- ] -- ) D ! ;" XE-LINE
+   s" : W ( ^[ [ -- ] -- ] -- ) ['] KEEPD swap ! ;" XE-LINE
+   s" : P ( -- ) C W ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   XE-ERR$ s" : P ( -- ) C W ;" CONTAINS? TTRUE
    s" a join keeps its branches' quotation inputs apart" T-LABEL
    SB-RESET
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
