@@ -13525,9 +13525,6 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    a CELL-VIEW @   a CELL + CELL-VIEW @ ;
 \ Keeps the first n entries.
 : DROP-FACTS ( n -- ) dup HELD-N @ 1+ HELD-RANGE HELD-KEEP ;
-\ A rollback's cut: keeps the first n entries, or all when fewer remain, as when
-\ the linker placed a loaded file's facts while the rolled-back buffer ran.
-: CUT-FACTS ( n -- ) HELD-N @ min DROP-FACTS ;
 \ A created word's text is laid too: the linker places where no created body is
 \ open.
 : PLACE-FACTS ( n -- )

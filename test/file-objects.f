@@ -60,7 +60,7 @@ package FILE-OBJECTS-TEST
 43 constant INSIDE-I                     \ and inside-i.f's, which loads inside a package or alone
 44 constant AIO-OBJ                      \ src/lib/aio.f's, which kept-aio.f requires
 45 constant TAILS                        \ TAIL$'s tails
-54 constant FILES-C                     \ build C's objects
+53 constant FILES-C                     \ build C's objects
 208 constant HEADER-BYTES                \ an object's header, INPUT right after it (linker.f)
 192 constant PIECES-FIELD               \ the header's PIECES offset (linker.f WRITE-OBJECT)
 72 constant FILES-LEN-FIELD              \ the header's FILES length offset (linker.f WRITE-OBJECT)
@@ -327,7 +327,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ writes; a refused file writes none, and count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote fifty-four objects" LABEL  C$ OBJECTS FILES-C T=
+   s" the build wrote fifty-three objects" LABEL  C$ OBJECTS FILES-C T=
    C$ s" C" 0 SAME-OBJECT  C$ s" C" 1 SAME-OBJECT
    C$ s" C" 0 FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: u:n :}
@@ -363,8 +363,8 @@ variable CLASS-N                        \ the class CLASS+ read
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the order builds compile 4, 3, 0 and 3 files" LABEL
    STATE-W STATE-W-U @ s\" order: compiled 4 3 0 3\n" CONTAINS? TTRUE
-   s" the build after the body's rollback compiles 1 file" LABEL
-   STATE-W STATE-W-U @ s\" none: compiled 1\n" CONTAINS? TTRUE
+   s" the build after the body's caught text that left a record is rejected E-FAILED" LABEL
+   STATE-W STATE-W-U @ s\" none: compiled -9690\n" CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE
    s" the words builds compile 5, 4, 0, 2, 1, 1 and 0 files" LABEL
@@ -1067,10 +1067,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
    CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" CONTAINS? classed and {: named:bool :}
    CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:7" CONTAINS? {: placed:bool :}
-   named placed and  rc 70 =  and 0= if rc SHOW then
+   CMD:ERR$ s" E-FAILED" CONTAINS? {: failed:bool :}
+   named placed and  rc 70 =  and  failed 0= and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
-   s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE ;
+   s" the refusal names seal-main.f's line 6" LABEL  placed TTRUE
+   s" the uncaught failure's rollbacks print no E-FAILED" LABEL  failed TFALSE ;
 
 \ Guards a seal a link carries: F2 links seal-second.f's object and is refused as F is.
 : SEAL-CASE ( CMD:command -- CMD:command )
@@ -1100,16 +1102,52 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : SPAWN-REPL-CASE ( CMD:command -- CMD:command )
    s" SR" WHICH!  s" test/fixtures/file-objects/spawn-main.f" REPL-BUILD drop ;
 
-\ rollback.f's build, which catches texts whose rollback moves DP back: it exits 67
-\ and the linker says the file gave back data space.
+\ Whether the build's output holds an E-FAILED rejection, its place p pu with
+\ the line that ran the failed text, and the caught code's note c cu.
+: FAILED-AT? ( CMD:command str str -- CMD:command bool )
+   {: p:^ pu:n c:^ cu:n :}
+   CMD:ERR$ s" error[E-FAILED]: a text failed and its failure was caught" CONTAINS? {: coded:bool :}
+   CMD:ERR$ p pu CONTAINS? {: placed:bool :}
+   CMD:ERR$ c cu CONTAINS? {: caught:bool :}
+   coded placed and  caught and ;
+
+\ Whether the build's output holds a record or line of the failed throw beside
+\ its E-FAILED rejection, which that throw carries.
+: THREW? ( CMD:command -- CMD:command bool )
+   CMD:ERR$ s" this threw" CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" threw -" CONTAINS?  placed or ;
+
+\ rollback.f's build, which catches texts that leave words and data: it exits 67,
+\ rejected E-FAILED at line 11, which ran the newest of them, and its code 70.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
    s" CF" WHICH!
    s" test/fixtures/file-objects/rollback.f" FAILING-BUILD {: rc:n :}
-   CMD:ERR$ s" test/fixtures/file-objects/rollback.f: it gave back data space"
-   CONTAINS? {: said:bool :}
-   rc 67 =  said and 0= if rc SHOW then
+   s\" rollback.f:11:1\n   |\n11 | FOB-TRY\n   | ^^^^^^^ this ran the text\n"
+   s" = code: 70" FAILED-AT? {: placed:bool :}
+   THREW? {: threw:bool :}
+   rc 67 =  placed and  threw 0= and 0= if rc SHOW then
    s" the build exits 67" LABEL  rc 67 T=
-   s" the build says rollback.f gave back data space" LABEL  said TTRUE ;
+   s" the build is rejected E-FAILED at rollback.f's line 11 with code 70" LABEL  placed TTRUE
+   s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
+
+\ rollback-load.f's build, whose text catches rollback-fail.f's failed load: it exits 67,
+\ rejected E-FAILED at the line that ran the text, which requested the load, with a note for
+\ rollback-dep.f, which rollback-fail.f required, and not as a load that failed before its text ran.
+: CAUGHT-LOAD-CASE ( CMD:command -- CMD:command )
+   s" LF" WHICH!
+   s" test/fixtures/file-objects/rollback-load.f" FAILING-BUILD {: rc:n :}
+   s\" rollback-load.f:6:1\n  |\n6 | FOB-LOAD\n  | ^^^^^^^^ this ran the text\n"
+   s" = code: 12345" FAILED-AT? {: placed:bool :}
+   \ The note prints the path absolute.
+   CMD:ERR$ s\" /test/fixtures/file-objects/rollback-dep.f\n" CONTAINS? {: noted:bool :}
+   CMD:ERR$ s" its load failed and the failure was caught" CONTAINS? {: unplaced:bool :}
+   THREW? {: threw:bool :}
+   rc 67 =  placed and  noted and  unplaced 0= and  threw 0= and 0= if rc SHOW then
+   s" the build exits 67" LABEL  rc 67 T=
+   s" the build is rejected E-FAILED at rollback-load.f's line 6 with code 12345" LABEL  placed TTRUE
+   s" the rejection names rollback-dep.f as required" LABEL  noted TTRUE
+   s" the build prints no rejection without a place" LABEL  unplaced TFALSE
+   s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
 
 \ rollback-none.f's build, which catches a failing evaluate of a text that allots
 \ nothing at its top level: it links, and its program prints what MAIN prints.
@@ -1117,21 +1155,30 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" CN" WHICH!  s" test/fixtures/file-objects/rollback-none.f" FIXTURE-BUILD 0= if exit then
    s\" 1\n\n" s" the program prints MAIN's 1" PRINTS-RUN ;
 
-\ DF's program, read into the arena before DF2's build replaces it, then DF2's.
+\ DF's rejection, copied into the arena before DF2's build replaces it, then DF2's.
 : DEFINE-AGAIN ( CMD:command ^ARENA:arena -- CMD:command )
    {: m:^ :}
-   m L$ s" prog" IN$ WHOLE-FILE {: p1:^ u1:n :}
-   s" DF2" WHICH!  s" test/fixtures/file-objects/rollback-define.f" FIXTURE-BUILD 0= if exit then
-   s\" 1\n3\n2\n\n" s" the program prints 1, then the 3 and 2 of the words on given-back records" PRINTS-RUN
-   m L$ s" prog" IN$ WHOLE-FILE {: p2:^ u2:n :}
-   s" the program has DF's bytes" LABEL  p1 u1 p2 u2 STR= TTRUE ;
+   CMD:ERR$ {: e:^ eu:n :}
+   m eu ARENA:ALLOC {: buf:^ cap:n :}
+   e buf eu BYTE-COPY
+   s" DF2" WHICH!
+   s" test/fixtures/file-objects/rollback-define.f" FAILING-BUILD {: rc2:n :}
+   s" the warm rebuild exits 67" LABEL  rc2 67 T=
+   s" the warm rebuild prints DF's text" LABEL  CMD:ERR$ buf eu STR= TTRUE ;
 
-\ rollback-define.f's build (DF) and its warm rebuild (DF2), whose top level gives
-\ back a definition's record before a definition, a require and the file's end: each
-\ program prints what MAIN prints, and DF2's has DF's bytes.
+\ rollback-define.f's build (DF) and its warm rebuild (DF2), whose top level catches
+\ texts that define a word: DF is rejected E-FAILED at line 8, the newest such text
+\ before the require on line 9, with its code 12345, and DF2 with DF's text.
 : DEFINE-CASE ( CMD:command -- CMD:command )
-   s" DF" WHICH!  s" test/fixtures/file-objects/rollback-define.f" FIXTURE-BUILD 0= if exit then
-   s\" 1\n3\n2\n\n" s" the program prints 1, then the 3 and 2 of the words on given-back records" PRINTS-RUN
+   s" DF" WHICH!
+   s" test/fixtures/file-objects/rollback-define.f" FAILING-BUILD {: rc:n :}
+   s\" rollback-define.f:8:1\n  |\n8 | FOB-PROBE drop\n  | ^^^^^^^^^ this ran the text\n"
+   s" = code: 12345" FAILED-AT? {: placed:bool :}
+   THREW? {: threw:bool :}
+   rc 67 =  placed and  threw 0= and 0= if rc SHOW then
+   s" the build exits 67" LABEL  rc 67 T=
+   s" the build is rejected E-FAILED at rollback-define.f's line 8 with code 12345" LABEL  placed TTRUE
+   s" the build prints no record of the throw beside it" LABEL  threw TFALSE
    [: DEFINE-AGAIN ;] ARENA:WITH ;
 
 \ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with
@@ -2284,7 +2331,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
-      CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
+      CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE
       TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE

@@ -350,8 +350,8 @@ PATH-CAP BUFFER: FIFTH-BUF
    ORDER-BUILD {: four:n :}
    s" order: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
-\ The body's caught text gives back a record before any file loads, allotting
-\ nothing: k.f then loads, its FOB-K becomes the entry and the program is written.
+\ The body's caught text leaves a record before any file loads, allotting
+\ nothing: k.f's load then answers E-FAILED and nothing is written.
 : NONE-WRITTEN ( -- n )
    [: s" app" RTARGET:HOST-TARGET [:
          [: s" : FOB-GONE ( -- ) ; 12345 throw" evaluate-closed ;] catch

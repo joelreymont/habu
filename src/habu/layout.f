@@ -617,11 +617,10 @@ CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
 \ The rest are called by the engine and the source verifier.
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
-\ The cuts back to the store end a definition or buffer began at and the held
-\ facts count a buffer began at, and those ends.
+\ The cut back to the store end a definition or buffer began at, that end, and
+\ the held facts count.
 CHECKER-OWNER-ABI:RETRACT-ROWS-OFF constant DECL-RETRACT-ROWS-OFF
 CHECKER-OWNER-ABI:ROWS-END-OFF constant DECL-ROWS-END-OFF
-CHECKER-OWNER-ABI:HELD-CUT-OFF constant DECL-HELD-CUT-OFF
 CHECKER-OWNER-ABI:HELD-END-OFF constant DECL-HELD-END-OFF
 CHECKER-OWNER-ABI:VERIFY-RECORD-SYM-OFF constant DECL-VERIFY-RECORD-SYM-OFF
 CHECKER-OWNER-ABI:VERIFY-FIND-SYM-OFF constant DECL-VERIFY-FIND-SYM-OFF

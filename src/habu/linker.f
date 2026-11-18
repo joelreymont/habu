@@ -61,6 +61,7 @@ EXPORT CHECK:PRIMITIVE-FACTS
 EXPORT CHECK:OWNED-FACTS
 EXPORT CHECK:WORDLIST-PACKAGE
 EXPORT INTERPRETER:PUBLISH-ALIAS
+EXPORT INTERPRETER:FAILED-TEXT
 EXPORT CODE-RECLAIM:TRUNCATE
 EXPORT REQUIRE-REG:REQUIRE-KNOWN?
 EXPORT SOURCE-EVENT:EVENT-DEPTH@
@@ -5200,6 +5201,16 @@ EXPORT CHECK:STORES-OPEN
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
+\ Fails the build with the rejection of a caught text that failed and left words or data, carried by
+\ its throw; a caught text that left nothing links, so its rejection is dropped.
+: CAUGHT-CK ( -- )
+   FAILED-TEXT @ if
+      E-FAILED REJECTION:PASS-PENDING
+      s" linker: a caught text failed and left words or data, so the build writes nothing" SAY SAY-CR
+      E-FAILED throw
+   then
+   REJECTION:DROP-PENDING ;
+
 \ nested: a load another file's load requested, or a compiling file's tail. DP given back while open
 \ was given back outside the build's files (END-CK refuses it in one); DPHW-CELL stays nonzero to the close.
 : GOING ( bool -- )
@@ -5215,6 +5226,7 @@ EXPORT CHECK:STORES-OPEN
       objects OF E-COMP-STATE throw ENDOF
       routed OF E-COMP-STATE throw ENDOF
       open OF
+         CAUGHT-CK
          DPHW-CELL HOST@ 0<> if
             s" linker: data space was given back outside the build's files" SAY
             s"  (a caught failure or a negative allot)" SAY
@@ -5225,6 +5237,7 @@ EXPORT CHECK:STORES-OPEN
       loading OF nested 0= if E-COMP-STATE throw then ENDOF
       returned OF E-COMP-STATE throw ENDOF
       failed OF
+         E-FAILED REJECTION:PASS-PENDING
          REFUSAL s" its load failed and the failure was caught" SAY
          s" , so the build loads and writes nothing more" SAY SAY-CR
          E-FAILED throw
@@ -5364,11 +5377,13 @@ EXPORT CHECK:LINEAR-TEXT$
    repeat
    drop ;
 
-\ The part's exit actions run first, then E-FAILED once DP moved back, then E-LIVE-TASK for a task left running.
+\ The part's exit actions run first, then E-FAILED for a caught text that left words or data or once DP moved
+\ back, then E-LIVE-TASK for a task left running.
 \ All run before READS-KEEP, so a task cannot read after the part's reads are kept and end before the refusal.
 : END-CK ( -- )
    SPACE-EXIT {: rc:n :}
    rc 0<> if rc throw then
+   CAUGHT-CK
    DPHW-CELL HOST@ 0<> if
       REFUSAL s" it gave back data space" SAY
       s"  (a caught failure or a negative allot)" SAY
@@ -5656,8 +5671,13 @@ EXPORT CHECK:DROP-FACTS
    [: RUN-FILE ;] SOURCE-UNIT:USE
    construct step routed PROGRESS ! ;
 
+\ The interpreter's caught-failure state is the build's alone: IMAGE-OUT drops it too.
+: CAUGHT-CLEAR ( -- )
+   false FAILED-TEXT !  REJECTION:DROP-PENDING ;
+
 \ From here header stores go to the space (habu2.f ROUTE-HEADER).
 : IMAGE-IN ( -- )
+   CAUGHT-CLEAR
    BASE @ BOOT:IMAGE-BASE-CELL HOST!
    construct step open PROGRESS ! ;
 
@@ -5805,7 +5825,7 @@ EXPORT CHECK:DROP-FACTS
 \ threw before END-CK, whatever they answer, then zero the space's cell for EXITED.
 : IMAGE-OUT ( -- bool )
    SPACE-EXIT drop  0 EXIT-HOOK-CELL SPACE-AT !
-   0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
+   0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP  CAUGHT-CLEAR
    construct step routed PROGRESS ! true ;
 
 EXPORT CHECK:STORES-CLOSE

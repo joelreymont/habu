@@ -268,6 +268,7 @@ EXPORT CHECK:UNDEFINED-RECORD
 EXPORT CHECK:KEYWORD-RECORD
 EXPORT CHECKER-TAPE:COUNTED-MAX
 EXPORT XREF:RETIRE-ABOVE
+EXPORT CHECK:BUILDING?
 
 32 constant BLANK                \ every byte at or below it separates tokens
 $0A constant NEWLINE
@@ -285,8 +286,9 @@ create NL NEWLINE c,
 : CELL! ( n n -- )
    data-base + ! ;
 
-\ The input cells hold byte addresses. These two are the file's one crossing
-\ between such a cell and a byte pointer.
+\ The input cells, and a frame's saved copies of them, hold byte addresses.
+\ ADDR@, ADDR! and FR-ADDR@ are the file's crossings between such a cell and a
+\ byte pointer.
 : ADDR@ ( n -- ^u8 ) data-base + 0 ptr-field @ ;
 : ADDR! ( str -- ) data-base + 0 ptr-field ! ;
 
@@ -296,6 +298,9 @@ create NL NEWLINE c,
 
 : FR@ ( ^u8 n -- n )
    + CELL-VIEW @ ;
+
+: FR-ADDR@ ( ^u8 n -- ^u8 )
+   + 0 ptr-field @ ;
 
 : TOKEN$ ( -- ^u8 n )
    TKA-CELL ADDR@ TKL-CELL CELL@ ;
@@ -3007,21 +3012,11 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    xt 0= if exit then
    mark 1- xt AS-ROWS-CUT execute ;
 
-\ The checker's held facts count as a buffer begins, plus one, or 0 when no
-\ owner holds facts.
+\ The checker's held facts count, plus one, or 0 when no owner holds facts.
 : HELD-MARK ( -- n )
    SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-HELD-END-OFF PKG-OPERATION {: xt:n :}
    xt 0= if 0 exit then
    xt AS-ROWS-END execute 1+ ;
-
-\ Cut the held facts to the frame's mark, so no record the rollback drops keeps
-\ one, unless a load the buffer ran placed facts: the build then refuses it.
-: HELD-CUT ( ^u8 -- ) {: f:^ :}
-   f EVAL-FRAME:HELD FR@ {: mark:n :}
-   mark 0= if exit then
-   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-HELD-CUT-OFF PKG-OPERATION {: xt:n :}
-   xt 0= if exit then
-   mark 1- xt AS-ROWS-CUT execute ;
 
 \ Past the frame, its mapping holds the mapping's length, then the saved cells.
 : FRAME-CELLS ( ^u8 -- ^u8 ) EVAL-FRAME-SIZE CELL + + ;
@@ -3093,14 +3088,47 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
 
+\ Set while a build holds the rejection of a caught text that failed and left
+\ words or data (FAILED-PEND); the linker reads it.
+TYPED-VARIABLE FAILED-TEXT bool
+
+\ Whether frame f's text left records above its mark, moved DP from its own or
+\ left held facts above its mark.
+: REMAINS? ( ^u8 -- bool ) {: f:^ :}
+   ndict@ f EVAL-FRAME:NDICT FR@ >  DP-CELL CELL@ f FR-DP FR@ <>  or
+   f EVAL-FRAME:HELD FR@ {: mark:n :}
+   mark 0<>  HELD-MARK mark >  and  or ;
+
+\ In a build, pends the rejection of frame f's text, which failed with code c,
+\ at the line that ran it, naming the files it required; the build is failed
+\ when the text left something. A text that left nothing never replaces the
+\ record of one that did, so the rollback nearest the catch names the line.
+: FAILED-PEND ( n ^u8 -- ) {: c:n f:^ :}
+   f REMAINS? {: left:bool :}
+   left 0=  FAILED-TEXT @  and if exit then
+   s" E-FAILED" REJECTION:OPEN
+   s" a text failed and its failure was caught, so the build writes nothing" SAY
+   f EVAL-TKA FR-ADDR@ f EVAL-TKL FR@ REJECTION:AT  s" this ran the text" SAY
+   s" code" REJECTION:NOTE  c REJECTION:EMIT-N
+   c ERROR:NAME$ {: na:^ nu:n :}
+   nu 0<> if  s"  (" SAY  na nu SAY  s" )" SAY  then
+   REQUIRE-REG:MARK f EVAL-FRAME:REQUIRES FR@ ?do
+      s" required" REJECTION:NOTE  i REQUIRE-REG:SLOT i REQUIRE-REG:LEN SAY
+   loop
+   REJECTION:HELP
+   s" let the failure end the build, or keep a text that can fail from defining, allotting or undefining" SAY
+   REJECTION:PEND
+   left if true FAILED-TEXT ! then ;
+
 \ A failed text keeps its code, records and data, which older data may point
 \ into: its records lose their names, its texts leave the string table and
 \ its files leave the require registry, so a later require loads them again.
-: FRAME-ROLLBACK-CODE ( ^u8 -- )
-   {: f:^ :}
+\ c is the code the text failed with.
+: FRAME-ROLLBACK-CODE ( n ^u8 -- )
+   {: c:n f:^ :}
    DEF-ABORT
    f ROWS-CUT
-   f HELD-CUT
+   BUILDING? if c f FAILED-PEND then
    f EVAL-FRAME:NDICT FR@ RETIRE-ABOVE
    f FRAME-CUT INTERN:KEEP-BELOW
    0 COMMA-RUN-CELL CELL!
@@ -3125,8 +3153,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    snap PKGSNAP-REC FR@ snap PKGSNAP-PARENT FR@
    snap PKGSNAP-CUR FR@ snap PKGSNAP:FLOOR FR@ PKG-RECOVER ;
 
-: FRAME-RECOVER ( ^u8 -- ) {: f:^ :}
-   f EVAL-FRAME:PEND FR@ 0= if f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
+: FRAME-RECOVER ( n ^u8 -- ) {: c:n f:^ :}
+   f EVAL-FRAME:PEND FR@ 0= if c f FRAME-ROLLBACK-CODE else FRAME-ROLLBACK-TOKEN then
    f EVAL-INP FR@ INP-CELL CELL!
    f EVAL-INE FR@ INE-CELL CELL!
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
@@ -3168,8 +3196,8 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
 : REPL-STACK-CLEAR ( -- )
    stack-clear ;
 
-: REPL-RECOVER ( str ^n -- ) {: f:^ prior:n found:^ :}
-   f FRAME-ROLLBACK-CODE
+: REPL-RECOVER ( n ^u8 n ^n -- ) {: c:n f:^ prior:n found:^ :}
+   c f FRAME-ROLLBACK-CODE
    f EVAL-INP FR@ INP-CELL CELL!
    f EVAL-INE FR@ INE-CELL CELL!
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL!
@@ -3222,7 +3250,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
       endof
       FRAME-LINKED of
          f FRAME-UNLINK
-         f prior found REPL-RECOVER
+         code f prior found REPL-RECOVER
          f FRAME-CELLS-RESTORE
       endof
    endcase
@@ -3285,7 +3313,7 @@ public
    out case
       FRAME-DONE of f FRAME-LEAVE endof
       FRAME-LINKED of
-         f FRAME-RECOVER
+         code f FRAME-RECOVER
          f FRAME-CELLS-RESTORE
          entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
       endof
