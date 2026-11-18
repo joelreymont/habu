@@ -133,6 +133,44 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s\" = found: [ C -- C n ]\n" SUBJECT:REFUSED? TTRUE
    s" : CS-K11 ( -- n ) [: ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s\" = found: [ C -- C ]\n" SUBJECT:REFUSED? TTRUE
+   s" a callable left under its own copy names the row that would contain itself" T-LABEL
+   s" : CS-K98 ( R [ R -- R ] -- R ) dup execute ;" 70 SUBJECT:REJECTED {: e:^ eu:n ok:bool :}
+   ok TTRUE
+   e eu s" error[E-MISMATCH]: `execute` would make a stack row contain itself" CONTAINS? TTRUE
+   \ the rendering indents each note by the width of the line number's gutter
+   e eu s\" = expected: A\n" CONTAINS? TTRUE
+   e eu s\" = found: A [ A -- A ]\n" CONTAINS? TTRUE
+   s" a named word's input names the row that would contain itself" T-LABEL
+   s" : CS-TAKE ( R [ R -- R ] -- R ) execute ; : CS-K105 ( R [ R -- R ] -- R ) dup CS-TAKE ;" 70
+   s" error[E-MISMATCH]: `CS-TAKE` would make a stack row contain itself"
+      SUBJECT:REFUSED? TTRUE
+   s" a recursive call's input names the row that would contain itself" T-LABEL
+   s" : CS-K106 ( R [ R -- R ] bool -- R ) IF dup true RECURSE EXIT THEN execute ;" 70
+   s" error[E-MISMATCH]: `RECURSE` would make a stack row contain itself"
+      SUBJECT:REFUSED? TTRUE
+   s" a callable copy left at the body's end is a value left over" T-LABEL
+   s" : CS-K99 ( R [ R -- R ] -- R ) dup >r execute r> ;" 70
+   s" error[E-MISMATCH]: CS-K99 ends with [ -- ] on the stack; its signature promises nothing"
+      SUBJECT:REFUSED? TTRUE
+   s" a callable copy met at an exit's join, not a call's input, keeps the mismatch text" T-LABEL
+   s" : W ( S -- S [ S -- S ] ) [: ;] ; : XE ( R bool -- R [ R -- R ] ) IF W EXIT THEN W W nip ;" 70
+   s" error[E-MISMATCH]: `nip` takes [ [ -- ] -- [ -- ] ]; the stack holds [ -- ]"
+      SUBJECT:REFUSED? TTRUE
+   s" `catch` running a callable that drops a callable on its own row keeps the mismatch text" T-LABEL
+   s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-K101 ( R [ R -- R ] -- R n ) [: drop ;] catch ;" 70
+   s" error[E-MISMATCH]: `catch` takes [ -- ]; the stack holds nothing"
+      SUBJECT:REFUSED? TTRUE
+   s" a callable argument that leaves a callable on its own row keeps the mismatch text" T-LABEL
+   s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-T ( [ A -- A ] -- ) drop ;  : CS-K103 ( -- ) [: W ;] CS-T ;" 70
+   s" error[E-MISMATCH]: `CS-T` takes [ -- ]; the stack holds [ -- [ -- ] ]"
+      SUBJECT:REFUSED? TTRUE
+   s" a call missing the argument its callable takes keeps the mismatch text" T-LABEL
+   s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-K104 ( R [ R [ R -- R ] -- R ] -- R ) execute ;" 70
+   s" error[E-MISMATCH]: `execute` takes [ -- ]; the stack holds nothing"
+      SUBJECT:REFUSED? TTRUE
+   s" a callable copy on the return row it runs on is a return-stack rejection" T-LABEL
+   s" : CS-K100 ( R [ R -- R | U -- U ] -- R ) dup >r execute r> drop ;" 70
+   s" error[E-RETURN-STACK]" SUBJECT:REFUSED? TTRUE
    s" the refusal reads the same whatever the definition holds beneath it" T-LABEL
    s" : CS-K19 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s" error[E-MISMATCH]: callable row escape" SUBJECT:REFUSED? TTRUE

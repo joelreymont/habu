@@ -1979,8 +1979,10 @@ variable VERIFY-FLOOR0
 1 constant UK-INPUT
 2 constant UK-COERCE
 3 constant UK-JOIN     \ two branches' stacks meet: both sides are provided
+4 constant UK-CALL     \ a call's input: UK-INPUT's rules, and a row cycle is named (CALL-CYCLE?)
 variable UNIFY-KIND
 UK-EXACT UNIFY-KIND !
+: INPUT-KIND? ( -- bool ) UNIFY-KIND @ dup UK-INPUT = swap UK-CALL = or ;
 
 : PARAMA-FIELD ( n -- ^n )
    cells PARAMA + ;
@@ -2358,6 +2360,7 @@ variable TAIL-HIT   \ this unify let a declared callable's implicit tail escape
 variable TAIL-SKOLEM   variable TAIL-ROW   \ TAIL-HIT: the held tail and the row it escaped into (HOLD-ESCAPE?)
 variable LIT-HIT   \ this unify met a literal that does not fit its type
 variable LIT-V   variable LIT-T   \ LIT-HIT: the literal's value and the type code it did not fit
+variable CYCLE-HIT   \ this unify met a row cycle at a call's input (U-ROW CALL-CYCLE?)
 \ Row cell 2. Strict pairs (pointer pointees) unify by equality/var-binding
 \ only, so a concrete `^u8` never satisfies `^cell`/`^u32`.
 variable CUR-STRICT
@@ -2553,6 +2556,15 @@ CWIN-BOOT-DEFAULT
 
 
 : ROW-OCC? ( n n -- bool ) RES-TRUE OCC-WALK ;
+
+\ Whether row var r occurs within one of row x's cells, not only as its tail.
+: CELL-OCC? ( n n -- bool ) {: r:n x:n :}
+   x R-RES
+   BEGIN dup TAG S-PUSH = WHILE
+      r over P>TYPE RES-FALSE OCC-WALK IF drop RES-TRUE EXIT THEN
+      P>REST R-RES
+   REPEAT
+   drop RES-FALSE ;
 
 global
 1 constant CC-N
@@ -3059,7 +3071,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    got CT-WIDTH@ want CT-WIDTH@ < and ;
 
 : UNIFY-WIDEN? ( -- bool )
-   UNIFY-KIND @ UK-INPUT = IF RES-TRUE EXIT THEN
+   INPUT-KIND? IF RES-TRUE EXIT THEN
    UNIFY-KIND @ UK-COERCE = ;
 
 : LIT-HI ( n -- n ) {: code:n :}
@@ -4237,7 +4249,7 @@ variable NMOFF                           \ its token's offset in the checked tex
 \ The reasons LAYOUT-MEM-WHY answers, numbered with the MD- block below.
 33 constant MD-SCOPE-STORE    \ a scope dependency reached an ordinary pointer/location
 82 constant MD-LINEAR-MEMORY \ a value that may be linear reached `@` or `!`
-83 constant MD-MEMORY-ARG    \ a family argument may be linear or exclusive; E-LINEAR-MEMORY
+83 constant MD-MEMORY-ARG    \ a family argument may be linear or exclusive
 84 constant MD-MEMORY-EMPTY  \ a value of width 0 reached `@` or `!`
 
 \ W=1 uses scalar lowering; W>1 lowers from the token's WF fact. W=0 products
@@ -4271,7 +4283,7 @@ variable NMOFF                           \ its token's offset in the checked tex
 : NOMPTR-BLOCK? ( n n -- bool ) {: actual:n expected:n :}
    CUR-STRICT @ 0= IF RES-FALSE EXIT THEN
    actual NOM-SCALAR? expected ISVAR and IF
-      UNIFY-KIND @ UK-INPUT = IF
+      INPUT-KIND? IF
          expected PAY TVK-RAW? 0= IF RES-FALSE EXIT THEN
       THEN
       RES-TRUE EXIT
@@ -4303,9 +4315,9 @@ variable FACT-HIT
 \ that lacks FACT-HIT's facts, or a quotation its slot hands it to run.
 variable FACT-TERM
 \ The kinds of fact record FACT-KIND holds, numbered with the MD- block below.
-104 constant MD-FACT-UNSTATED \ a kept quotation has facts its slot's type does not state (FACT-HIT); E-MISMATCH
-105 constant MD-FACT-INPUT   \ a kept quotation is handed facts its input type does not state (FACT-HIT, FACT-TERM); E-MISMATCH
-106 constant MD-FACT-PASSED  \ a quotation is passed a quotation its input type does not state, with no type that keeps it (FACT-HIT, FACT-TERM); E-MISMATCH
+104 constant MD-FACT-UNSTATED \ a kept quotation has facts its slot's type does not state (FACT-HIT)
+105 constant MD-FACT-INPUT   \ a kept quotation is handed facts its input type does not state (FACT-HIT, FACT-TERM)
+106 constant MD-FACT-PASSED  \ a quotation is passed a quotation its input type does not state, with no type that keeps it (FACT-HIT, FACT-TERM)
 \ The fact record's kind, set with FACT-HIT.
 variable FACT-KIND
 \ Which base address refused a nominal or a pointer in this token's unify:
@@ -4941,7 +4953,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
       THEN
       join IF g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS! THEN
       runs IF got Q>FACTS w Q>FACTS or w Q-FACTS! THEN
-      runs  role ROLE-D2 and 0 <> and  UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
+      runs  role ROLE-D2 and 0 <> and  INPUT-KIND? and IF got INH-CHARGE THEN
    THEN
    -1 HOLD-N +! ;
 
@@ -5149,6 +5161,11 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    row ISROW 0= ;
 
 
+\ Whether row var r sits in a cell of row x while a call's input binds r to x;
+\ inside a callable argument's own effect it is that effect's mismatch.
+: CALL-CYCLE? ( n n -- bool )
+   CELL-OCC?  UNIFY-KIND @ UK-CALL = and  CUR-QUOT @ 0= and ;
+
 : U-ROW ( n n -- )
    R-RES swap R-RES swap 2dup U-CALL-TAIL
    2dup = IF 2drop EXIT THEN
@@ -5162,7 +5179,9 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    dup ISROW IF
       over ROW-VALUE? 0= IF U-FAIL EXIT THEN
       2dup swap QUOT-ROW-BLOCK? IF U-FAIL ELSE
-         2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN
+         2dup swap ROW-OCC? IF
+            2dup swap CALL-CYCLE? IF U-FAIL  -1 CYCLE-HIT ! ELSE 2drop RES-FALSE UOK ! THEN
+         ELSE PAY RV! THEN
       THEN EXIT
    THEN
    \ Zero terminates a closed evaluator row; it has no cell to descend into.
@@ -5189,9 +5208,9 @@ U-DRAIN-INSTALL
    over FORALL-INPUT-ROOT !
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  0 CUR-QUOT !
    0 FORALL-OPEN-N !
-   SCOPE-INTRO-ON @ UNIFY-KIND @ UK-INPUT = and CUR-ARG !
+   SCOPE-INTRO-ON @ INPUT-KIND? and CUR-ARG !
    CALL-ARMED @ CUR-CALL !
-   0 UF-ACT !  0 UF-EXP !  0 UF-SET !  0 TAIL-HIT !  0 LIT-HIT !  0 CUR-LIT !
+   0 UF-ACT !  0 UF-EXP !  0 UF-SET !  0 TAIL-HIT !  0 LIT-HIT !  0 CYCLE-HIT !  0 CUR-LIT !
    UNIFY-KIND @ UK-JOIN = IF 0 ELSE ROLE-D2 THEN CUR-ROLE !   0 HOLD-N !   0 HOLD-I-N !
    0 KEPT-ROLE !
    -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
@@ -5205,6 +5224,11 @@ U-DRAIN-INSTALL
 
 : UNIFY-IN ( n n -- bool )
    UK-INPUT UNIFY-KIND !
+   UNIFY FORALL-OPEN-CHECK and
+   UK-EXACT UNIFY-KIND ! ;
+
+: UNIFY-CALL ( n n -- bool )
+   UK-CALL UNIFY-KIND !
    UNIFY FORALL-OPEN-CHECK and
    UK-EXACT UNIFY-KIND ! ;
 
@@ -5457,33 +5481,34 @@ private
 18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
 19 constant MD-DIVBAR         \ block collective/barrier reached under divergent control
 20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt: fetched from untyped memory (RSEXEC T-VAR) or the `xt` atom
-21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt (RSCATCH, as RSEXEC); same E-EXEC-OPAQUE-XT code, prose names 'catch'
+21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt (RSCATCH, as RSEXEC)
 22 constant MD-RIGID-REGION   \ two host allocations differ in host region (which allocation)
 23 constant MD-RIGID-EXTENT   \ two host allocations differ in extent (bounds)
 24 constant MD-RIGID-GEN      \ stale mutation generation: index outlived the container's epoch
 25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
 26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
-27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base; same E-RAW-CELL-PTR code, prose names 'ptr-field'
+27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base
 28 constant MD-UNDERFLOW      \ a step or transport reached under the definition's declared inputs (STEP-BORROWS?, XPORT-APPLY)
-29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?); same E-RAW-CELL-PTR code, prose names the null
-30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth; same E-RAW-CELL-PTR code, prose names the DATA region
-31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC); same E-RAW-CELL-PTR code, its own prose and repair class
+29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?)
+30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth
+31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC)
 32 constant MD-STALE-READ     \ a token read a cell `catch` left stale (U-TYPE met a T-STALE)
 34 constant MD-SCOPE-KIND     \ a scope identity was used as a value type
 35 constant MD-C2-COPY       \ a C2 exclusive value was copied by a transport
 36 constant MD-C2-DROP       \ a C2 exclusive value was discarded by a transport
 37 constant MD-C2-ESCAPE     \ a C2 owner or loan survived its scope boundary
 38 constant MD-EFFECT-DEPTH  \ an effect deeper than EFFECT-DEPTH-MAX levels (CHECK-DEPTH-FITS)
-40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
-41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
-42 constant MD-LIT-FIT       \ a literal reached a fixed-width type it does not fit (LIT-FITS? LIT-HIT); same E-MISMATCH code, its own prose and suggestion
-45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
+40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN)
+41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT)
+42 constant MD-LIT-FIT       \ a literal reached a fixed-width type it does not fit (LIT-FITS? LIT-HIT)
+43 constant MD-ROW-CYCLE     \ a row would contain itself (U-ROW CELL-OCC? CYCLE-HIT)
+45 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK)
 46 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
-47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code
-67 constant MD-TYPE-FORM     \ a body's `[type]` names no closed type storage holds (TYPE-LIT-TOK); E-BAD-STORAGE
-68 constant MD-STORED-LINEAR \ a type bound to a cast's stored type variable may hold a linear value (TV! STORED-TERM-HIT); E-CAST-LINEAR
-69 constant MD-STORED-CLASS  \ it hands out an atom or a width (TV! STORED-TERM-HIT); E-CAST-CLASS
-70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?); E-CAST-LINEAR
+47 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK)
+67 constant MD-TYPE-FORM     \ a body's `[type]` names no closed type storage holds (TYPE-LIT-TOK)
+68 constant MD-STORED-LINEAR \ a type bound to a cast's stored type variable may hold a linear value (TV! STORED-TERM-HIT)
+69 constant MD-STORED-CLASS  \ it hands out an atom or a width (TV! STORED-TERM-HIT)
+70 constant MD-IS-STORED     \ a callable's cast-stored type variable meets a cell's unrestricted one (QCON-OK?)
 71 constant MD-DIV-ZERO      \ a literal 0 at an input the callee always divides by (ZERO-AT?)
 72 constant MD-THROW-ZERO    \ a literal 0 at an input the callee always throws (ZERO-AT?)
 73 constant MD-FINALLY-CLEANUP \ a cleanup `finally` or a C2 invoke runs is not `[ -- ]` (CLEANUP-QUOT?, C2-FINISH-QUOT?)
@@ -5492,30 +5517,28 @@ private
 77 constant MD-CONSTRUCT-WIDE \ a construct's instantiated variant is wider than the declared widest one
 78 constant MD-LINEAR-DROP   \ a step left fewer linear values than it found (LIN-REJECT)
 79 constant MD-LINEAR-COPY   \ a step left more linear values than it found (LIN-REJECT)
-80 constant MD-LINEAR-TAINT  \ a var copied or dropped while open resolved linear (LIN-TAINT-SCAN); E-LINEAR-COPY
+80 constant MD-LINEAR-TAINT  \ a var copied or dropped while open resolved linear (LIN-TAINT-SCAN)
 81 constant MD-LINEAR-EFFECT \ an applied effect's var bound linear occurs unequally in and out (LIN-EFF-PASS)
-\ A C2 entry's callback binder that does not fit the scope it opens; E-C2-BINDER.
+\ A C2 entry's callback binder that does not fit the scope it opens.
 85 constant MD-C2-BINDER     \ WITH-INIT's callback is not `forall<i inside [l,T],…>` (SCOPE-INIT-STEP)
 86 constant MD-C2-RECORDS-BINDER \ the same for WITH-RECORDS (SCOPE-RECORDS-STEP)
 87 constant MD-C2-CHILD-BINDER \ a child loan's callback is not `forall<j inside l,…>` (SCOPE-CHILD-STEP, SCOPE-RECORD-STEP)
 88 constant MD-C2-FIELD-BINDER \ WITH-FIELD's callback is not `forall<j inside i,forall-region<c,…>>`
 89 constant MD-C2-ROOT-BINDER \ WITH-MUT's callback is not `forall<p,forall-region<a,…>>` (SCOPE-MUT-ROOT-OPEN)
-90 constant MD-FIELD-NAME    \ the body ends after `WITH-FIELD` before its field name; E-MISSING-NAME
+90 constant MD-FIELD-NAME    \ the body ends after `WITH-FIELD` before its field name
 91 constant MD-CALLBACK-NOT-GENERIC \ a scope the call opens occurs in its rows or outside it (SCOPE-INTRO-FENCE)
-92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?); E-UNSAFE
+92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?)
 93 constant MD-C2-INIT-RECORD \ a C2 entry's record operand is no fixed-cell record it can initialize (INIT-VALUE-OK?, INIT-RECORD?)
-94 constant MD-C2-FIELD-UNKNOWN \ WITH-FIELD names no field of the record (SCOPE-FIELD-STEP); E-UNKNOWN-FIELD
+94 constant MD-C2-FIELD-UNKNOWN \ WITH-FIELD names no field of the record (SCOPE-FIELD-STEP)
 95 constant MD-DOES-UNMADE   \ a head reaches `does>` with no straight-line `create` or definer call (DOES-UNMADE-REJECT)
-96 constant MD-LOCAL-ENDED   \ a built definition read a local whose block ended (LOCAL-ENDED); E-UNDEFINED
-97 constant MD-LOCAL-STRAY   \ a built definition appended a local outside a `{:` group (LOCAL-STRAY); E-UNDEFINED
-98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF); E-UNDEFINED
+96 constant MD-LOCAL-ENDED   \ a built definition read a local whose block ended (LOCAL-ENDED)
+97 constant MD-LOCAL-STRAY   \ a built definition appended a local outside a `{:` group (LOCAL-STRAY)
+98 constant MD-LOCAL-UNBOUND \ a built definition read a local no group bound before it (ITEM-LOCAL-REF)
 99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
 100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
-101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?); E-LAYOUT-VALUE
-102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type (ONE-CELL-HIT); E-MISMATCH
-103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type (STEP-HIT); E-MISMATCH
-\ A data depth change is E-MISMATCH and prints the loop's start row and the
-\ row at its back edge or leave; each other reason has its own code (MD-CODE$).
+101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?)
+102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type (ONE-CELL-HIT)
+103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type (STEP-HIT)
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
 49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
 50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose lineage differs or whose proof does not carry the entry's (CP-CARRIES?), at the same depths (CF-CARRIED=)
@@ -5528,7 +5551,7 @@ private
 57 constant MD-UNLOOP-JOIN   \ paths meet with different loops unlooped (CF-LOOPS=)
 58 constant MD-CF-OPEN       \ a control structure open at the definition's end
 
-\ Uncheckable, not refused (UNCK-REASON?): E-UNCHECKABLE.
+\ Uncheckable, not refused (UNCK-REASON?).
 60 constant MD-RECURSE-SIG   \ a RECURSE with no declared effect to instantiate (CF-RECURSE)
 61 constant MD-RECURSE-DOES  \ a RECURSE in a does> clause, which calls the defining word (CF-RECURSE)
 
@@ -5758,6 +5781,11 @@ variable SG-ROWS-PUBLISH
    exp act ROWS-COVER DACT !  DEXP !  ROWS-PIN
    UF>DIAG
    CELL-DIAG!
+   \ a row that would contain itself shows the row variable and the row holding
+   \ it, which the whole rows trim away
+   CYCLE-HIT @ IF
+      MDIAG @  MD-ROW-CYCLE MDIAG!  MDIAG @ <> IF UF-EXP @ DEXP !  UF-ACT @ DACT ! THEN
+   THEN
    -1 FAILSET ! ;
 
 \ The return row's twin latches the reason and RSBAD only: claiming DEXP/DACT
@@ -6206,7 +6234,7 @@ variable UNJ-WF0                    \ the width-fact count before the token
    exp IF 0 ELSE LIN-SNAPSHOT THEN {: bef:n :}
    pre WAS !
    din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
-   DCUR @ din UNIFY-IN {: fit:bool :}
+   DCUR @ din UNIFY-CALL {: fit:bool :}
    fit 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
    fit OK @ and OK !
    OK @ borrows and IF STEP-UNDERFLOW! THEN
@@ -6442,7 +6470,7 @@ variable CWIN-DOUT-TERMS  variable CWIN-ROUT-TERMS
 variable CWIN-DMASK                 \ the callee's intact bits over the live window's cells
 
 : QUOT-WINDOW ( -- )
-   \ Counted before UNIFY-IN: after it the quotation's own tail IS the live row
+   \ Counted before UNIFY-CALL: after it the quotation's own tail IS the live row
    \ and its fixed prefix can no longer be told from the caller's stack.
    QTT @ Q>DIN ROW-TERMS CWIN-DTERMS !
    QTT @ Q>RIN ROW-TERMS CWIN-RTERMS !
@@ -6493,7 +6521,7 @@ variable QUOT-LOSS
 \ settles the token as a call's does and the scan keeps its rows.
 : QUOT-STEP-IN ( n -- ) {: q:n :}
    q Q>DIN STEP-BORROWS? {: borrows:bool :}
-   DCUR @ q Q>DIN UNIFY-IN {: fit:bool :}
+   DCUR @ q Q>DIN UNIFY-CALL {: fit:bool :}
    fit 0=  FAILSET @ 0=  and  OK @ and  IF q Q>DIN DCUR @ UF-CAPTURE THEN
    fit OK @ and OK !
    OK @ borrows and IF
@@ -6526,7 +6554,7 @@ variable QUOT-LOSS
      QTT @ QUOT-APPLY-INST QTT !
      QTT @ INH-CHARGE
      QUOT-WINDOW
-     \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
+     \ Capture explicitness BEFORE UNIFY-CALL: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
      QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
      QTT @ QUOT-STEP-IN
@@ -12694,13 +12722,9 @@ variable CALL-DEAD
 \ Whether row var s occurs in quotation q only as the base of its output row.
 : QUOT-OUT-ONLY? ( n n -- bool ) {: s:n q:n :}
    s q Q>DIN ROW-OCC?  s q Q>RIN ROW-OCC? or  s q Q>ROUT ROW-OCC? or
+   s q Q>DOUT CELL-OCC? or
    IF RES-FALSE EXIT THEN
-   q Q>DOUT R-RES
-   BEGIN dup TAG S-PUSH = WHILE
-      s over P>TYPE RES-FALSE OCC-WALK IF drop RES-FALSE EXIT THEN
-      P>REST R-RES
-   REPEAT
-   s = ;
+   q Q>DOUT ROW-TAIL s = ;
 
 : NZ-PLAIN? ( n -- bool )
    P>TYPE T-RES {: t:n :}
@@ -20533,10 +20557,12 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    OK @ and OK ! ;
 
 
-: SUNI-IN {: s:n :}
-   DCUR @ s UNIFY-IN
+: SUNI-END ( bool n -- ) {: s:n :}
    dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
+
+: SUNI-IN {: s:n :} DCUR @ s UNIFY-IN  s SUNI-END ;
+: SUNI-CALL {: s:n :} DCUR @ s UNIFY-CALL  s SUNI-END ;
 
 : SUNI-COERCE {: s:n :}
    DCUR @ s UNIFY-COERCE
@@ -20713,7 +20739,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    {: rin:n rout:n :}
    RECUR-INST-KEEP
    mark din dout rin rout E-AK-LIST
-   din SUNI-IN
+   din SUNI-CALL
    OK @ IF OWNB-LOCAL? IF MD-LOCAL-ESCAPE CF-FAIL THEN THEN
    dout DCUR !
    hasr 0 <> IF rin RSUNI-IN  rout RCUR ! THEN

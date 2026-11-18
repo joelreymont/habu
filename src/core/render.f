@@ -20,8 +20,8 @@ variable RROW-UNSAID
 \ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
 variable RBIND-FULL
 
-\ RTAILS is set while TAIL-CAPTURE renders: every quotation then shows its row
-\ tails.
+\ RTAILS is set while TAIL-CAPTURE or CYCLE-NOTES renders: every quotation then
+\ shows its row tails.
 variable RTAILS   0 RTAILS !
 \ RNAMES is 1 while the first pass of REND-EFFECT records each row's tail (RPOS)
 \ and 2 while its second pass names the rows that share one; 0 otherwise.
@@ -307,11 +307,8 @@ variable RLOST   \ how many bottom values of the row pushed last RBUF could not 
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
-\ A refusal for an escaped callable tail (MD-TAIL-ESCAPE, TAIL-CAPTURE) names
-\ every quotation's row tails, so the callable that keeps its input stack shows
-\ it: `[ C -- C n ]` against `[ A -- B ]`. Rows letter in their own namespace, A
-\ to Z, then '?'. Facts text (RNAMES) names rows; every other rendering shows
-\ cells only.
+\ Rows letter in their own namespace, A to Z, then '?'. Facts text (RNAMES) and
+\ RTAILS renderings name rows; every other rendering shows cells only.
 26 constant RROW-CAP
 create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 
@@ -852,7 +849,7 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 : TCAP-HELD$ ( -- str ) TCAP TCAP-ACT @ +  TCAP-HELD @ TCAP-ACT @ -  SIG-RTRIM ;
 
 
-: TCAP-ROW ( n -- )   \ the escaped-into row: its tail's letter and cells
+: TCAP-ROW ( n -- )   \ a row: its tail's letter and cells
    {: x:n :}
    x ISVAR IF x REND-TYPE EXIT THEN
    x QTAIL  x DROW ;
@@ -941,6 +938,7 @@ variable MDV-I   variable MDV-F
       MD-TOP-UNKNOWN  of s" E-STALE-READ" endof
       MD-TAIL-ESCAPE  of s" E-MISMATCH" endof
       MD-LIT-FIT      of s" E-MISMATCH" endof
+      MD-ROW-CYCLE    of s" E-MISMATCH" endof
       MD-SCOPE-STORE  of s" E-SCOPED-STORAGE" endof
       MD-SCOPE-KIND   of s" E-SCOPE-TYPE" endof
       MD-C2-COPY      of s" E-C2-COPY" endof
@@ -1053,6 +1051,7 @@ variable MDV-I   variable MDV-F
       MD-TOP-UNKNOWN  of s" push the value while checking is on, or drop the cell" endof
       MD-TAIL-ESCAPE  of TAIL-SUGGEST$ endof
       MD-LIT-FIT      of s" write a literal in the type's range, or declare a wider type" endof
+      MD-ROW-CYCLE    of s" keep callables that run on this stack off it: move them aside with `>r` … `r>` around the call, or drop them first" endof
       MD-SCOPE-STORE  of s" keep the scoped value on the stack or in a local instead of storing it in memory" endof
       MD-SCOPE-KIND   of s" write the scope parameter only in a view type's scope slot, never as a value type" endof
       MD-C2-COPY      of s" move the exclusive value once, or lend it with `WITH-MUT-LOAN`, instead of copying it" endof
@@ -1151,6 +1150,7 @@ variable MDV-I   variable MDV-F
       MD-TOP-UNKNOWN  of s" unknown cell: this reads a cell beneath the cells the interpret row knows (left before checking began)" endof
       MD-TAIL-ESCAPE  of s" callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on" endof
       MD-LIT-FIT      of s" literal" endof
+      MD-ROW-CYCLE    of s"  would make a stack row contain itself" endof
       MD-SCOPE-STORE  of s" scoped storage: ordinary memory cannot retain a scope dependency" endof
       MD-SCOPE-KIND   of s" scope parameter: a scope identity cannot stand in for a value type" endof
       MD-C2-COPY      of s" exclusive value copied" endof
@@ -1270,6 +1270,7 @@ variable MDV-I   variable MDV-F
       MD-TOP-UNKNOWN  of s" cell from before checking" endof
       MD-TAIL-ESCAPE  of s" row escapes the callable" endof
       MD-LIT-FIT      of s" out of the type's range" endof
+      MD-ROW-CYCLE    of s" row would contain itself" endof
       MD-IS-UNKNOWN   of s" not found" endof
       MD-LOCAL-ENDED  of s" local past its block" endof
       MD-LOCAL-STRAY  of s" outside a `{:` group" endof
@@ -1801,7 +1802,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 
 : REASON-MESSAGE ( -- )
    MDIAG @ MD-SCOPED-TICK =  MDIAG @ MD-IS-UNKNOWN = or  MDIAG @ MD-IS-NOT-DEFER = or
-   MDIAG @ MD-LOCAL-STRAY = or
+   MDIAG @ MD-LOCAL-STRAY = or  MDIAG @ MD-ROW-CYCLE = or
    IF TOK-SPAN THEN
    \ A built local's read leads with the type its `{:` group gave it, which a
    \ read of an index no group declared lacks.
@@ -1965,8 +1966,16 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    s" expected" TCAP-EXP$ TEXT-NOTE
    s" found" TCAP-ACT$ TEXT-NOTE
    s" held" TCAP-HELD$ TEXT-NOTE ;
+\ A row that would contain itself (MD-ROW-CYCLE): the row variable and the row
+\ holding it, each with its tail's letter, so both name the one row.
+: CYCLE-NOTES ( -- )
+   AT-PIN  0 RROW-N !  -1 RTAILS !
+   s" expected" REJECTION:NOTE  DEXP @ TCAP-ROW  TRIM-SPACE
+   s" found" REJECTION:NOTE  DACT @ TCAP-ROW  TRIM-SPACE
+   0 RTAILS !  ;AT-PIN ;
 : ROWS-NOTES ( -- )
    MDIAG @ MD-TAIL-ESCAPE = IF ESCAPE-NOTES EXIT THEN
+   MDIAG @ MD-ROW-CYCLE = IF CYCLE-NOTES EXIT THEN
    AT-PIN
    DEXP @ 0 <> IF DEXP @ DACT @ PAIR-NOTES  FAMILY-NOTES THEN
    DF-ACT @ 0 <>  DEXP @ 0= and IF
