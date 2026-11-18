@@ -863,6 +863,13 @@ public
    ENVELOPE-CELLS cells MEM:BYTES-ALLOC-LEN
    [: drop m body len cur link PAGE-IN ;] MEM:WITH-BYTES ;
 
+\ The query option that asks the service for the count PAGE answers.
+: COUNT-OPTION$ ( ^metadata -- ^u8 n )
+   METADATA-VERSION @ MATCH version
+      v2 OF s" $inlinecount=allpages" ENDOF
+      v4 OF s" $count=true" ENDOF
+   ;MATCH ;
+
 \ The record of a single-entity response.
 : RECORD$ ( ^metadata ^u8 n ^JSON:cursor -- ^u8 n )
    {: m:^ body:^ len:n cur:^ :}

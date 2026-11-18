@@ -110,6 +110,7 @@ LINK-CAP BUFFER: LINK
    m [: SHOW-SET ;] ODATA:EACH-ENTITY-SET
    m s" ReleaseOrder" SHOW-LOOKUP
    DESC$ s" test/fixtures/odata/v2.txt" WANT READ T$=
+   m ODATA:COUNT-OPTION$ s" $inlinecount=allpages" T$=
    a ARENA:RELEASE ;
 
 : TEST-V4 ( -- )
@@ -120,6 +121,7 @@ LINK-CAP BUFFER: LINK
    m s" Shop" SHOW-LOOKUP
    m s" RestockAll" SHOW-LOOKUP
    DESC$ s" test/fixtures/odata/v4.txt" WANT READ T$=
+   m ODATA:COUNT-OPTION$ s" $count=true" T$=
    a ARENA:RELEASE ;
 
 \ The sets of the document at XML, printed against the text at TXT.

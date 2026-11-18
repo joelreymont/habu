@@ -35,7 +35,8 @@
 \ `@odata.nextLink`; other members are read past. It answers the records
 \ array's text, borrowed from the body, the decoded next link's length in
 \ the caller's span, 0 for none and E-SPAN-CAPACITY when it does not fit,
-\ and the count, none when absent.
+\ and the count, none when absent. COUNT-OPTION$ answers the query option that
+\ asks for that count: V2 `$inlinecount=allpages`, V4 `$count=true`.
 \ RECORD$ answers the record of a single-entity response: V2 `d`, V4 the
 \ body. Both read the whole body, so they answer only a well-formed one; a
 \ repeated envelope member, a missing records member and a count that is
