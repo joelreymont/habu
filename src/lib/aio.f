@@ -1,6 +1,7 @@
 split-str
 \ aio.f - asynchronous I/O, package AIO: a task submits one operation, gets a
-\ ticket and AWAITs it; one loop task drains the ring and TASK:WAKEs each owner.
+\ ticket and AWAITs it; one loop task waits on the eventfd every ring signals,
+\ drains the rings and TASK:WAKEs each owner.
 \ START the loop before the first wait; main keeps compiling while it runs.
 \ A submission with no loop is E-AIO-STATE. Linux uses
 \ io_uring from 5.10, the first long-term kernel with every opcode used and
@@ -71,9 +72,13 @@ CAST: AIO-N>PTR ( n -- ^n )
 
 \ ---- the kernel ABI ----------------------------------------------------------
 \ Every number below is read from /usr/include/linux/io_uring.h,
-\ /usr/include/asm-generic/unistd.h and /usr/include/asm-generic/errno.h.
+\ /usr/include/asm-generic/unistd.h, /usr/include/asm-generic/errno.h and
+\ /usr/include/asm-generic/fcntl.h.
 425 constant NR-SETUP
 426 constant NR-ENTER
+427 constant NR-REGISTER
+4 constant REGISTER-EVENTFD
+$80000 constant EFD-CLOEXEC         \ O_CLOEXEC
 
 \ The ring's sizes. A record in flight owes at most two completion entries: its
 \ own and one cancel's (a linked poll's second is its link record's own).
@@ -93,7 +98,6 @@ $80 constant CQ-FIRST               \ the smallest ring's completion entries
 CQ-FIRST AIO-CQ-ENTRIES DOUBLINGS 1 + constant RINGS-MAX
 
 8 constant SETUP-CQSIZE
-1 constant ENTER-GETEVENTS
 4 constant SQE-IO-LINK
 
 0 constant OFF-SQ-RING
@@ -153,8 +157,8 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 1000000 constant NS-PER-MS
 
 \ ---- record state and kind ---------------------------------------------------
-\ The user_data of the NOP that wakes the loop for its stop: all ones, which no
-\ record index reaches.
+\ The user_data of a NOP no record owns: all ones, which no record index
+\ reaches.
 -1 constant NOP-ID
 \ Set in a cancel's user_data above the index of the record it cancels; no
 \ record index reaches it.
@@ -253,6 +257,9 @@ END-STRUCTURE
 CHUNK-HEAD RECS-FIRST REC-BYTES * + SCRATCH-BUFFER: AIO-RECS
 CHUNK-HEAD GROUPS-FIRST G-BYTES * + SCRATCH-BUFFER: AIO-GROUPS
 PARAMS-BYTES BUFFER: PARAMS
+4 BUFFER: EVENTFD-ARG               \ io_uring_register's __s32 eventfd
+8 BUFFER: WAKE-IN                   \ the loop's read of WAKE-FD
+8 BUFFER: WAKE-OUT                  \ HOST-WAKE's write, under AIO-LOCK
 
 \ The records the grown chunks hold, so zero is the first chunk alone. Grown
 \ under the facility, after the chunk's link; read with atomic@ by an owner
@@ -266,6 +273,10 @@ variable GROUP-N
 variable RING-LIVE                  \ the loop is running
 variable RING-STOP
 variable RING-READY                 \ the facility has been initialized once
+\ The eventfd every ring signals as it posts a completion, and STOP writes;
+\ -1 while closed.
+variable WAKE-FD
+-1 WAKE-FD !
 
 \ An io_uring: its fd, the lengths its three regions were mapped with, its
 \ entry counts and masks, the offsets io_uring_params reported, and the
@@ -324,7 +335,7 @@ TASK:+USER AIO-REGISTERED n
 \ alone leaves it set for the finally to cancel: a group returns with more live.
 TASK:+USER AIO-PARKED n
 
-\ ---- the two system calls ----------------------------------------------------
+\ ---- the system calls --------------------------------------------------------
 \ Linux passes these integer arguments in ordinary registers, and the x86-64
 \ FFI sets al for every foreign call.
 PROCESS-SYMBOLS
@@ -334,6 +345,13 @@ FUNCTION: URING-SETUP-CALL syscall ( n n ^u8 -- n )
 
 FUNCTION: URING-ENTER-CALL syscall ( n n n n n n n -- n )
 ;FUNCTION
+
+FUNCTION: URING-REGISTER-CALL syscall ( n n n ^u8 n -- n )
+;FUNCTION
+
+FUNCTION: EVENTFD-CALL eventfd ( n n -- i32 ) ;FUNCTION
+FUNCTION: FD-READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: FD-WRITE-CALL write ( n ^u8 n -- n ) ;FUNCTION
 
 \ Logs a refused system call's errno before it throws, so the errno the kernel
 \ gave is not lost behind a named code.
@@ -622,19 +640,6 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rg ENTER-SUBMIT dup 0= if exit then
    STATE-FORGET idx REC REC.STATE atomic! ;
 
-\ The loop's wait. It submits nothing and does not hold the facility: draining
-\ what is published is the submitter's job, and the loop only collects. A signal
-\ cuts the wait short without completing anything, so EINTR is retried rather
-\ than reported.
-: ENTER-WAIT ( ^ring -- ) {: rg:^ :}
-   begin
-      rg 0 1 ENTER-GETEVENTS ENTER-CALL 0 >= if exit then
-      FFI:ERRNO ERR-INTR <> if
-         s" io_uring_enter errno " DIAG-ERRNO
-         E-AIO-ENTER throw
-      then
-   again ;
-
 : SPEC! ( n ^u8 -- ) {: ms:n spec :}
    ms MS-PER-S / spec LE:U64!
    ms MS-PER-S mod NS-PER-MS * spec SPEC-NSEC + LE:U64! ;
@@ -694,8 +699,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    res ERR-TIME negate = if 1 peer REC REC.TIMED-OUT ! then
    peer SETTLE ;
 
-\ user_data is NOP-ID, the stop's wake, or a record's index; a cancel's carries
-\ CANCEL-BIT and only settles.
+\ user_data is NOP-ID or a record's index; a cancel's carries CANCEL-BIT and
+\ only settles.
 : COMPLETE ( ^u8 -- ) {: cqe :}
    cqe LE:U64@ {: id:n :}
    cqe CQE-RES + LE:S32@ {: res:n :}
@@ -718,11 +723,29 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
       rg rg CQ-HEAD@ 1 + $FFFFFFFF and CQ-HEAD!
    repeat ;
 
-: LOOP-RUN ( ^ring -- ) {: rg:^ :}
+\ The loop's wait, on the eventfd every ring signals as it posts a completion
+\ and STOP writes. It submits nothing and does not hold the facility: draining
+\ what is published is the submitter's job, and the loop only collects. A signal
+\ cuts the wait short without completing anything, so EINTR is retried rather
+\ than reported.
+: WAKE-READ ( -- )
    begin
-      rg ENTER-WAIT
+      WAKE-FD @ WAKE-IN 8 FD-READ-CALL 0 >= if exit then
+      FFI:ERRNO ERR-INTR <> if
+         s" eventfd read errno " DIAG-ERRNO
+         E-AIO-ENTER throw
+      then
+   again ;
+
+\ The read zeroes the count before the drains read the tails, so a completion
+\ posted after a drain read its ring's tail ends the next read.
+: LOOP-RUN ( -- )
+   begin
+      WAKE-READ
       AIO-LOCK TASK:GET
-      rg DRAIN
+      RINGS-MAX 0 ?do
+         i RINGS dup RING-STATE @ RING-FREE <> if DRAIN else drop then
+      loop
       AIO-LOCK TASK:RELEASE
       RING-STOP atomic@ 0 <> if exit then
    again ;
@@ -798,7 +821,25 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
       E-AIO-SETUP throw then
    AIO-MAPPED>PTR rg RING-SQE-BASE ! ;
 
-\ Opens a ring of `cq` completion entries, holding no records.
+: RING-UNMAP ( ^ring -- ) {: rg:^ :}
+   rg RING-SQ-BASE @ rg RING-SQ-LEN @ munmap drop
+   rg RING-CQ-BASE @ rg RING-CQ-LEN @ munmap drop
+   rg RING-SQE-BASE @ rg RING-SQES-LEN @ munmap drop
+   rg RING-FD @ close-rc drop
+   0 rg RING-FD !
+   RING-FREE rg RING-STATE ! ;
+
+\ Logs before unmapping, since munmap and close overwrite the errno.
+: RING-EVENTFD ( ^ring -- ) {: rg:^ :}
+   WAKE-FD @ EVENTFD-ARG LE:U32!
+   NR-REGISTER rg RING-FD @ REGISTER-EVENTFD EVENTFD-ARG 1 URING-REGISTER-CALL
+   0 >= if exit then
+   s" io_uring_register errno " DIAG-ERRNO
+   rg RING-UNMAP
+   E-AIO-SETUP throw ;
+
+\ Opens a ring of `cq` completion entries, holding no records, that signals
+\ WAKE-FD.
 : RING-SETUP ( ^ring n -- ) {: rg:^ cq:n :}
    PARAMS-CLEAR
    SETUP-CQSIZE PARAMS P-FLAGS + LE:U32!
@@ -807,16 +848,9 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    fd 0 < if s" io_uring_setup errno " DIAG-ERRNO E-AIO-SETUP throw then
    fd rg RING-FD !
    rg RING-LENGTHS rg RING-MAPS rg RING-OFFSETS
+   rg RING-EVENTFD
    0 rg RING-RECS-LIVE !
    RING-ACTIVE rg RING-STATE ! ;
-
-: RING-UNMAP ( ^ring -- ) {: rg:^ :}
-   rg RING-SQ-BASE @ rg RING-SQ-LEN @ munmap drop
-   rg RING-CQ-BASE @ rg RING-CQ-LEN @ munmap drop
-   rg RING-SQE-BASE @ rg RING-SQES-LEN @ munmap drop
-   rg RING-FD @ close-rc drop
-   0 rg RING-FD !
-   RING-FREE rg RING-STATE ! ;
 
 : RECS-CLEAR ( -- )
    REC-CAP 0 ?do i REC-RESET loop
@@ -909,11 +943,6 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    SQ-PUBLISH
    rg ENTER-SUBMIT ;
 
-: NOP-STAGE ( ^ring -- n ) {: rg:^ :}
-   rg 1 SQ-ROOM? 0= if E-AIO-FULL exit then
-   rg dup SQ-SLOT 2dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
-   rg ENTER-SUBMIT ;
-
 \ The host words on the one ring there is, entry 0, which START opens with
 \ AIO-CQ-ENTRIES completion entries.
 : URING-POLL ( n n n -- n n ) {: f:n events:n ms:n :}
@@ -923,15 +952,40 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    0 RINGS f buf cap count off kind XFER-STAGE ;
 
+: WAKE-CLOSE ( -- )
+   WAKE-FD @ close-rc drop
+   -1 WAKE-FD ! ;
+
+\ Opens WAKE-FD before ring 0, and closes it when the ring is refused.
+: URING-SETUP ( -- )
+   0 EFD-CLOEXEC EVENTFD-CALL {: fd:n :}
+   fd 0 < if s" eventfd errno " DIAG-ERRNO E-AIO-SETUP throw then
+   fd WAKE-FD !
+   [: 0 RINGS AIO-CQ-ENTRIES RING-SETUP ;] catch {: code:n :}
+   code 0 <> if WAKE-CLOSE code throw then ;
+
+: URING-CLOSE ( -- )
+   RINGS-MAX 0 ?do
+      i RINGS dup RING-STATE @ RING-FREE <> if RING-UNMAP else drop then
+   loop
+   WAKE-CLOSE ;
+
+\ Adds 1 to WAKE-FD's count; the caller holds AIO-LOCK, which WAKE-OUT needs.
+: URING-WAKE ( -- n )
+   1 WAKE-OUT LE:U64!
+   WAKE-FD @ WAKE-OUT 8 FD-WRITE-CALL 0 >= if 0 exit then
+   s" eventfd write errno " DIAG-ERRNO
+   E-AIO-ENTER ;
+
 : INSTALL-HOST ( -- )
    ['] URING-POLL is HOST-POLL
    [: 0 RINGS swap TIMEOUT-STAGE ;] is HOST-TIMEOUT
    ['] URING-XFER is HOST-XFER
    ['] CANCEL-STAGE is HOST-CANCEL
-   [: 0 RINGS NOP-STAGE ;] is HOST-WAKE
-   [: 0 RINGS AIO-CQ-ENTRIES RING-SETUP ;] is HOST-SETUP
-   [: 0 RINGS RING-UNMAP ;] is HOST-CLOSE
-   [: 0 RINGS LOOP-RUN ;] is HOST-LOOP ;
+   ['] URING-WAKE is HOST-WAKE
+   ['] URING-SETUP is HOST-SETUP
+   ['] URING-CLOSE is HOST-CLOSE
+   ['] LOOP-RUN is HOST-LOOP ;
 INSTALL-HOST
 
 \ ---- the cleanup a submitting task registers ---------------------------------
