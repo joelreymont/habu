@@ -2863,6 +2863,17 @@ sections above.
   word such as `( a a -- a )` does not let one callable narrow another's
   declared row. Declare `[ R -- S ]` from the word's input row, as in
   `( R [ R -- S ] -- S )`, when the callable may read the stack beneath it.
+- **A quotation a body ran keeps the type it ran at.** Running a quotation
+  (`execute`, `catch`, `finally`) or handing it to a declared callable slot
+  proves only what its type said then. A loop, a literal or an unsigned
+  definition that narrows a quotation it received after running it is
+  rejected: `[: ;] swap 0 ?do dup execute drop [: swap ;] loop` is
+  `E-LOOP-CARRIED`, `this pass narrows a quotation the body ran on any
+  stack`, and the end of a literal or an unsigned definition is
+  `E-MISMATCH`, `the body narrows an input quotation after running it on any
+  stack`. An unsigned word that runs an input quotation on any stack infers
+  `[ -- ]` for it: `: T6 IF drop [: ;] THEN [: ;] swap execute execute ;`
+  takes `[ -- ] bool`, so `5 [: drop 7 ;] false T6` is `E-MISMATCH`.
 - **Return-stack cells never cross a signature or quotation boundary.** The
   only admitted `|` notation is the same single row variable on both sides;
   cell entries, a bar on only one side, and such entries in quotation types

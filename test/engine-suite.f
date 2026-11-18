@@ -739,6 +739,115 @@ s" COK-QL-INNER-BLOCK ( n -- ) 0<> if 7 {: a:n :} [: a . ;] execute then" CHECK-
 REJECTION:CAPTURE
 s" a reading quotation copied and bound to a local certifies" T-LABEL
 s" COK-QL-COPIED ( n -- ) {: a:n :} [: a . ;] dup {: q :} execute q execute" CHECK-CANDIDATE! 0 T<>
+\ A pass that narrows a quotation it carried in and ran rejects at the back
+\ edge, whichever join narrowed it.
+REJECTION:CAPTURE
+s" a do loop narrowing a run quotation at its back edge rejects" T-LABEL
+s" CBAD-QW-DO ( n -- ) [: ;] swap 0 ?do dup execute drop [: swap ;] loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = found: [ B b b -- B b b ]" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a do loop narrowing a quotation finally ran as cleanup rejects at its back edge" T-LABEL
+s" CBAD-QW-FINALLY ( n -- ) [: ;] swap 0 ?do [: ;] over finally drop [: swap ;] loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" an again edge narrowing a run quotation rejects" T-LABEL
+s" CBAD-QW-AGAIN ( -- ) [: ;] begin dup execute drop [: swap ;] again" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a back edge narrowing a quotation catch ran rejects" T-LABEL
+s" CBAD-QW-CATCH ( n -- ) [: ;] swap 0 ?do dup catch drop drop [: swap ;] loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" an until edge narrowing a run quotation carried on the return stack rejects" T-LABEL
+s" CBAD-QW-RET ( n -- ) [: ;] >r begin r> dup execute drop [: swap ;] >r 1- dup 0= until drop r> drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" error[E-LOOP-CARRIED]: this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a repeat edge narrowing a run quotation rejects" T-LABEL
+s" CBAD-QW-REPEAT ( n -- ) [: ;] swap begin dup 0 > while 1- >r dup execute drop [: swap ;] r> repeat 2drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" an until edge narrowing a run quotation rejects" T-LABEL
+s" CBAD-QW-UNTIL ( n -- ) [: ;] swap begin 1- >r dup execute drop [: swap ;] r> dup 0 <= until 2drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a leave join narrowing a run quotation rejects at the loop" T-LABEL
+s" CBAD-QW-LEAVE ( n -- ) [: ;] swap 0 ?do dup execute i 0 > if drop [: swap ;] leave then loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a forward join in a loop narrowing a run quotation rejects at the loop" T-LABEL
+s" CBAD-QW-THEN ( n -- ) [: ;] swap 0 ?do dup execute i 0 > if drop [: swap ;] then loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a back edge narrowing a quotation a carried one returns, after running it, rejects" T-LABEL
+s" CBAD-QW-NESTED ( n -- ) [: [: ;] ;] swap 0 ?do dup execute execute drop [: [: swap ;] ;] loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a back edge tying a run quotation to a declared row rejects" T-LABEL
+s" CBAD-QW-ROW ( [ R -- R ] n -- ) [: ;] swap 0 ?do dup execute dup execute drop dup loop 2drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+STRUCTURE qwbox<a> FIELD v a ;STRUCTURE
+: QW-W2 ( [ n n -- n n ] -- ) drop ;
+: QW-MKS ( -- [ [ n n -- n n ] -- [ n n -- n n ] [ n n -- n n ] ] ) [: drop [: swap ;] [: swap ;] ;] ;
+REJECTION:CAPTURE
+s" a back edge narrowing a run quotation in a family argument rejects" T-LABEL
+s" CBAD-QW-FAMILY ( n -- ) [: ;] QWBOX:MAKE swap 0 ?do dup QWBOX:UNMAKE execute drop [: swap ;] QWBOX:MAKE loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a back edge narrowing a quotation a run bound to a cell, then ran, rejects" T-LABEL
+s" CBAD-QW-V6 ( n -- ) [: dup ;] swap 0 ?do 5 [: ;] rot dup >r execute execute drop . r> drop QW-MKS loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a loop handing a run quotation to a declared slot, then narrowing it at the back edge, rejects" T-LABEL
+s" CBAD-QW-V7 ( n -- ) [: dup ;] swap 0 ?do 5 [: ;] rot dup >r execute execute dup QW-W2 drop . r> drop QW-MKS loop drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a loop inside a quotation literal narrowing a run quotation rejects" T-LABEL
+s" CBAD-QW-V4 ( -- ) 1 2 2 [: swap ;] [: swap 0 ?do i 0= if drop [: ;] then dup execute drop [: swap ;] loop drop ;] execute . ." CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a loop handing a run quotation to a declared slot that never runs it certifies" T-LABEL
+s" COK-QW-CALL ( n -- ) [: ;] swap 0 ?do dup execute dup QW-W2 loop drop" CHECK-CANDIDATE! 0 T<>
+REJECTION:CAPTURE
+s" a loop narrowing a quotation it never runs certifies" T-LABEL
+s" COK-QW-UNRUN ( n -- ) [: ;] swap 0 ?do drop [: 1 + ;] loop 5 swap execute ." CHECK-CANDIDATE! 0 T<>
+REJECTION:CAPTURE
+s" a loop putting back a fresh quotation of its type certifies" T-LABEL
+s" COK-QW-FRESH ( n -- ) [: ;] swap 0 ?do dup execute drop [: ;] loop drop" CHECK-CANDIDATE! 0 T<>
+REJECTION:CAPTURE
+s" a loop running a carried quotation and keeping it certifies" T-LABEL
+s" COK-QW-SAME ( n -- ) [: ;] swap 0 ?do 7 over execute drop loop drop" CHECK-CANDIDATE! 0 T<>
+REJECTION:CAPTURE
+s" a loop swapping two carried quotations it runs certifies" T-LABEL
+s" COK-QW-SWAP ( n -- ) [: ;] [: ;] rot 0 ?do over execute swap loop 2drop" CHECK-CANDIDATE! 0 T<>
+\ A literal or unsigned definition that narrows an input it ran rejects at its
+\ end; one it ran and kept free becomes a callback.
+REJECTION:CAPTURE
+s" an unsigned definition narrowing an input quotation it ran rejects" T-LABEL
+s" CBAD-QW-T7 IF drop [: ;] THEN 5 over execute drop swap IF drop [: swap ;] THEN" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" the body narrows an input quotation after running it on any stack" CONTAINS? TTRUE
+REJECTION:CAPTURE
+s" a literal narrowing an input quotation it ran rejects at its end" T-LABEL
+s" CBAD-QW-LIT ( -- ) [: IF drop [: ;] THEN 5 over execute drop swap IF drop [: swap ;] THEN ;] drop" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" the body narrows an input quotation after running it on any stack" CONTAINS? TTRUE
+: QW-N1 ( [ n -- n ] -- ) drop ;
+: QW-T10 IF drop [: ;] THEN QW-N1 ;
+REJECTION:CAPTURE
+s" a narrower quotation passed where a handed-on input became a callback rejects" T-LABEL
+s" CBAD-QW-T10 ( -- ) [: 1 + ;] false QW-T10" CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" error[E-MISMATCH]: `QW-T10` takes [ -- ] bool" CONTAINS? TTRUE
+: QW-T6O IF drop [: ;] THEN dup [: ;] swap execute drop ;
+REJECTION:CAPTURE
+s" a narrower quotation passed where a run input became a callback rejects" T-LABEL
+s" CBAD-QW-T6O ( -- ) [: 1 + ;] false QW-T6O 5 swap execute ." CHECK-CANDIDATE! 0 T=
+REJECTION:BUFFER$ s" error[E-MISMATCH]: `QW-T6O` takes [ -- ] bool" CONTAINS? TTRUE
+: QW-T6P IF drop [: ;] THEN ;
+REJECTION:CAPTURE
+s" a quotation passed through an input never run certifies" T-LABEL
+s" COK-QW-T6P ( -- ) 5 [: 1 + ;] false QW-T6P execute ." CHECK-CANDIDATE! 0 T<>
+REJECTION:CAPTURE
+s" a signed definition narrowing a quotation it ran certifies" T-LABEL
+s" COK-QW-G ( bool -- ) [: ;] swap IF dup execute drop [: swap ;] THEN 1 2 rot execute . ." CHECK-CANDIDATE! 0 T<>
 \ A keeper reached through a copied effect record refuses as QL-KEEP does: an EXPORT and a created
 \ word, whose every quotation input counts as kept, so it has no runner twin.
 package ES-QL

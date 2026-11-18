@@ -4,6 +4,7 @@ split-str
 require src/lib/adt/option.f
 require src/lib/test.f
 require src/lib/test/subject.f
+require src/lib/test/ending.f
 
 package CHECKER-SOUNDNESS
 public
@@ -79,6 +80,13 @@ defer LTOK-END ( CHECKER-SOUNDNESS:ltok -- )
 : TAIL-DUPAPPLY ( a [ a -- b ] -- a b ) over swap execute ;
 : TAIL-APPLY2 ( a [ a -- b ] -- b b ) over over execute >r execute r> ;
 
+\ An inferred input that is a literal's own callable, met by a caller's.
+: TAIL-T6 IF drop [: ;] THEN [: ;] swap execute execute ;
+: TAIL-F6 IF drop [: ;] THEN [: ;] swap finally ;
+: TAIL-PICK3 ( a a bool -- a ) IF drop ELSE nip THEN ;
+: TAIL-T13 [: ;] true TAIL-PICK3 [: ;] swap execute execute ;
+: TAIL-RERUN ( R [ R -- R ] -- R ) dup >r execute r> execute ;
+
 \ A type whose name is the longest a family tail may be.
 NEWTYPE wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww )
@@ -88,6 +96,20 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 \ about 10 KB as the inferred effect and as much again as the actual callable.
 : CAPTURE-PAST$ ( -- str )
    s" CS-K90 ( -- ) [: 0 CHECKER-SOUNDNESS:>WIDE dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup ;] CHECKER-SOUNDNESS:TAIL-ONCE" ;
+
+
+$1000 constant CAP
+create OUT CAP allot   variable OUT-U
+create ERR CAP allot   variable ERR-U
+: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
+: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+\ Source src, run as the subject, exits with code want; OUT$ and ERR$ hold its
+\ streams until the next run.
+: RUNS ( ^u8 n n -- ) {: src:^ u:n want:n :}
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   {: outu:len erru:len oc :}
+   outu LEN>N OUT-U !  erru LEN>N ERR-U !
+   src u OUT$ ERR$ oc want T-ENDING-EXITED= ;
 
 
 \ CHECK-QUIET-CANDIDATE!: -1 certified, 0 rejected, 1 uncheckable.
@@ -259,7 +281,30 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" error[E-LINEAR-COPY]: a linear value is copied here" SUBJECT:REFUSED? TTRUE
    s" and one that drops it is refused" T-LABEL
    s" : CS-K131 ( CHECKER-SOUNDNESS:ltok -- ) [: ['] CHECKER-SOUNDNESS:LTOK-END CHECKER-SOUNDNESS:TAIL-NAMED ;] execute ;" 70
-   s" error[E-LINEAR-DROP]: a linear value is discarded here" SUBJECT:REFUSED? TTRUE ;
+   s" error[E-LINEAR-DROP]: a linear value is discarded here" SUBJECT:REFUSED? TTRUE
+   s" a literal's callable demanded by a caller's input is held rigid" T-LABEL
+   s" CS-K94 ( -- ) 5 [: drop 7 ;] false CHECKER-SOUNDNESS:TAIL-T6 ." CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K95 ( -- ) 5 [: drop 7 ;] false [: IF drop [: ;] THEN [: ;] swap execute execute ;] execute ." CHECK-QUIET-CANDIDATE! 0 T=
+   s" a literal's cleanup demanded by a caller's input is held rigid" T-LABEL
+   s" CS-K113 ( -- ) [: swap ;] false CHECKER-SOUNDNESS:TAIL-F6" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K114 ( -- ) [: swap ;] false [: IF drop [: ;] THEN [: ;] swap finally ;] execute" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-K96 ( -- ) 5 [: drop 7 ;] CHECKER-SOUNDNESS:TAIL-T13 ." CHECK-QUIET-CANDIDATE! 0 T=
+   s" a back edge tying one tail of a run quotation to another rejects" T-LABEL
+   s" : CS-K115 ( n -- ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] swap 0 ?do [: 1 ;] over execute drop drop [: CHECKER-SOUNDNESS:TAIL-RERUN ;] loop drop ;" 70
+   s" = found: [ C [ C -- C ] -- C ]" SUBJECT:REFUSED? TTRUE
+   s" a callable run through a quotation leaves nothing, so `.` after it underflows" T-LABEL
+   s" : CS-RUN ( R [ R -- S ] -- S ) execute ; : CS-K107 ( -- ) [: ;] [: CS-RUN ;] execute . ; CS-K107" 70
+   s" error[E-INPUT-UNDERFLOW]" SUBJECT:REFUSED? TTRUE
+   s" a quotation kept in a local runs callables of two effects, each on its own" T-LABEL
+   s" : CS-RUN ( R [ R -- S ] -- S ) execute ; : CS-K109 ( -- ) [: CS-RUN ;] {: k :} 1 2 [: + ;] k execute . 5 [: 1 + ;] k execute . ; CS-K109"
+      0 RUNS
+   OUT$ s\" 3\n6\n" T$=
+   s" a literal handed to a word naming its input row is copied, not bound in place" T-LABEL
+   s" : CS-RUN2 ( R [ R -- S ] -- S ) execute ; : CS-K110 ( -- ) [: ;] dup CS-RUN2 drop ; CS-K110" 0
+      SUBJECT:EXITED? TTRUE
+   s" a word's fixed [ -- ] does not meet a declared [ n -- n ] slot" T-LABEL
+   s" : CS-KQ ( -- [ -- ] ) [: ;] ; : CS-QW1 ( [ n -- n ] -- ) drop ; : CS-K111 ( -- ) CS-KQ CS-QW1 ; CS-K111" 70
+   s" error[E-MISMATCH]: `CS-QW1` takes [ n -- n ]; the stack holds [ -- ]" SUBJECT:REFUSED? TTRUE ;
 
 
 : CALLABLE-HOLDS ( -- )

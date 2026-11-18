@@ -163,13 +163,23 @@ split-str
 \ UNIFY share one list, which a popped frame leaves in place. By side role, a
 \ demanded side's declared tails are rigid; a value's own tails (a literal's
 \ or a tick's) are instantiable on either side, since the value runs on any
-\ stack; a provided side's declared tails are instantiated on a copy when the
-\ other side is demanded, never bound in place, since another value may share
-\ the declared var; in a join both sides' declared tails are rigid. A tail
-\ already held keeps its role. Return rows are exempt: a quotation literal's
-\ return rows are its enclosing definition's. execute and catch instantiate
-\ every implicit tail on a copy the same way (QUOT-APPLY-INST) and renew the
-\ per-execution identities in its value types; named rows stay shared.
+\ stack; a provided side's tails, declared or inferred, are instantiated on a
+\ copy when the other side is demanded, never bound in place, since another
+\ value may share the declared var; in a join both sides' declared tails are
+\ rigid. A tail already held keeps its role. Return rows are exempt: a
+\ quotation literal's return rows are its enclosing definition's. execute,
+\ catch, finally and c2-invoke instantiate every implicit tail on a copy the
+\ same way (QUOT-APPLY-INST) and renew the per-execution identities in its
+\ value types; named rows stay shared.
+\
+\ Run records: a quotation run (QUOT-APPLY-INST) or handed to a declared
+\ callable slot is used at a copy of its implicit tails, and QAPP-TAIL records
+\ each copied tail on the trail (tag 4). The use proved only
+\ what the type said then, so a region may not afterwards narrow a used
+\ quotation its entry rows held at the use (RUNS-CHECK): a loop at each live
+\ back edge, a literal at `;]`, an unsigned definition at `;`. A recorded tail
+\ the entry rows still reach there, still free, becomes a declared callback
+\ tail (RUNS-PROMOTE), so callers are held to the type the body ran.
 \
 \ Logical and hidden layout cells: a stored effect keeps a layout value as one
 \ logical cell only when its width reads an open argument. At a boundary, a
@@ -1289,8 +1299,9 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
    nc TRAIL-CAP ! ;
 
 
-\ Tags: 0 TVT, 1 RVT, 2 kind, 3 NLINEAR, 8 NSCOPE, 12 TVT link, 13 RVT link,
-\ 14 TVP. Rollback restores a raise's old kind, not ANY, so fences survive.
+\ Tags: 0 TVT, 1 RVT, 2 kind, 3 NLINEAR, 4 run record (TRAIL-RAN), 8 NSCOPE,
+\ 12 TVT link, 13 RVT link, 14 TVP. Rollback restores a raise's old kind, not
+\ ANY, so fences survive; a run record has no slot to restore.
 : TRAIL-PUSH ( n n -- )
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
@@ -1302,6 +1313,9 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
    {: old:n id:n tag:n :}
    id tag TRAIL-PUSH
    old  TRAIL-N @ 1 - cells TRAIL-OLD + ! ;
+
+\ Quotation term q was run or handed on at a copy of its tail var id.
+: TRAIL-RAN ( n n -- ) 4 TRAIL-LINK ;
 
 
 : TRAIL-SLOT ( n -- ^n )
@@ -1319,6 +1333,7 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
    {: i:n :}
    i cells TRAIL + @ {: e:n :}
    e 15 and {: tag:n :}
+   tag 4 = IF EXIT THEN
    tag 2 =  tag 12 = or  tag 13 = or  tag 14 = or IF
       i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT
    THEN
@@ -1345,9 +1360,10 @@ PTR-VARIABLE PIN-SAVE-P   variable PIN-SAVE-CAP   variable PIN-TOP
 
 : ROWS-PIN ( -- ) TRAIL-N @ 1 + TRAIL-PIN ! ;
 
-: AT-PIN ( -- )
-   TRAIL-PIN @ 0= IF EXIT THEN
-   TRAIL-PIN @ 1 - {: mark:n :}
+\ A view of the bindings before trail index mark: undo the entries at or above
+\ it, saving their slots; ;AT-MARK drops the view's entries and puts them back.
+: AT-MARK ( n -- )
+   {: mark:n :}
    TRAIL-N @ PIN-TOP !
    PIN-TOP @ mark - PIN-SAVE-ENSURE
    PIN-TOP @ BEGIN dup mark > WHILE
@@ -1357,14 +1373,17 @@ PTR-VARIABLE PIN-SAVE-P   variable PIN-SAVE-CAP   variable PIN-TOP
       dup TRAIL-UNDO
    REPEAT drop ;
 
-: ;AT-PIN ( -- )
-   TRAIL-PIN @ 0= IF EXIT THEN
-   TRAIL-PIN @ 1 - {: mark:n :}
+: ;AT-MARK ( n -- )
+   {: mark:n :}
    PIN-TOP @ TRAIL-UNWIND
    mark BEGIN dup PIN-TOP @ < WHILE
       dup mark - cells PIN-SAVE + @  over cells TRAIL + @ TRAIL-SLOT !
       1 +
    REPEAT drop ;
+
+: AT-PIN ( -- ) TRAIL-PIN @ 0= IF EXIT THEN  TRAIL-PIN @ 1 - AT-MARK ;
+: ;AT-PIN ( -- ) TRAIL-PIN @ 0= IF EXIT THEN  TRAIL-PIN @ 1 - ;AT-MARK ;
+
 : TVK-RAISE-TO ( n n -- ) {: id:n kind:n :}
    id TVK@ kind TVK-MEET
    dup id TVK@ = IF drop EXIT THEN
@@ -3790,12 +3809,11 @@ EXPORT CHECK:TWALK-SHALLOWER
       in MK-STALE EXIT
    THEN
    x TAG T-QUOT = IF
-      t x
-      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      REQUOT EXIT
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER {: din:n :}
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER {: dout:n :}
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER {: rin:n :}
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER {: rout:n :}
+      t x din dout rin rout REQUOT EXIT
    THEN
    x TAG T-PARAM <> IF t EXIT THEN
    PARAM-SCR-N @ {: base:n :}
@@ -3818,8 +3836,9 @@ EXPORT CHECK:TWALK-SHALLOWER
 : HELD ( n -- n ) {: t:n :}
    LIST-N @ 0= IF 0 EXIT THEN
    TWALK-RESET t HELD* ;
+: UNLIST ( -- ) 0 PAIR-N !  0 TAILS-N ! ;
 : START ( n -- ) {: q:n :}
-   0 PAIR-N !
+   UNLIST
    LIST-N @ 0= IF EXIT THEN
    TWALK-RESET
    q Q>DIN RES-TRUE OWN*  q Q>DOUT RES-FALSE OWN*
@@ -4920,62 +4939,63 @@ EXPORT CHECKER-QUOT-FRESH:TAIL-COPY?
    row ISROW 0= IF RES-FALSE EXIT THEN
    pair? 0= IF row PAY RVK-IMPLICIT? EXIT THEN
    row PAY {: id:n :}
-   id RVK-QUOT?  id HOLD-OF -1 = and  id HOLD-I? 0= and ;
+   id RVK-IMPLICIT?  id HOLD-OF -1 = and  id HOLD-I? 0= and ;
 
 
 EXPORT CHECKER-QUOT-FRESH:RENEW
 
-\ Row row's pushes copied over tail, each cell renewed unless pair?.
-: QAPP-PUSHES ( n n bool -- n )
-   {: row:n tail:n pair?:bool :}
+\ Row row's pushes copied over tail, each cell renewed.
+: QAPP-PUSHES ( n n -- n )
+   {: row:n tail:n :}
    row R-RES {: r:n :}
    r TAG S-PUSH <> IF tail EXIT THEN
-   r  r P>REST tail pair? RECURSE  P-COPY {: node:n :}
-   pair? IF node EXIT THEN
+   r  r P>REST tail RECURSE  P-COPY {: node:n :}
    node P>TYPE RENEW node P-TYPE!
    node ;
 
 
-\ Tail row, or its one copy per instantiation when QAPP-FRESH?; the copy keeps
-\ the tail's kind: a literal's tail stays inferred, extensible to a window.
-: QAPP-TAIL ( n bool -- n )
-   {: row:n pair?:bool :}
+\ Tail row, or its one copy per instantiation when QAPP-FRESH?, a fresh one
+\ recorded as run in q; a copy keeps the tail's kind: a literal's stays inferred.
+: QAPP-TAIL ( n n bool -- n )
+   {: row:n q:n pair?:bool :}
    row pair? QAPP-FRESH? 0= IF row EXIT THEN
    row TAIL-MAP dup 0 <> IF EXIT THEN drop
    row STALE-ROW? IF
-      row STALE>INNER  dup ROW-TAIL pair? RECURSE  pair? QAPP-PUSHES
+      row STALE>INNER  dup ROW-TAIL q pair? RECURSE  QAPP-PUSHES
       row STALE-ROW-CATCH STALE-NEW
    ELSE
       FRESH dup row PAY TVK@ swap TVK!  MK-ROW
+      q row PAY TRAIL-RAN
    THEN {: copy:n :}
    row copy TAIL-MAP+
    copy ;
 
 
-: QAPP-ROW ( n bool -- n )
-   {: row:n pair?:bool :}
-   row  row ROW-TAIL pair? QAPP-TAIL  pair? QAPP-PUSHES ;
+: QAPP-ROW ( n n bool -- n )
+   {: row:n q:n pair?:bool :}
+   row  row ROW-TAIL q pair? QAPP-TAIL  QAPP-PUSHES ;
 
 
 EXPORT CHECKER-QUOT-FRESH:START
+EXPORT CHECKER-QUOT-FRESH:UNLIST
 
 \ Copy the tail of each of q's rows before any row is copied, so RENEW meets
 \ a tail's copy in a cell of any row.
 : QAPP-REG ( n bool -- ) {: q:n pair?:bool :}
-   q Q>DIN ROW-TAIL pair? QAPP-TAIL drop
-   q Q>DOUT ROW-TAIL pair? QAPP-TAIL drop
-   q Q>RIN ROW-TAIL pair? QAPP-TAIL drop
-   q Q>ROUT ROW-TAIL pair? QAPP-TAIL drop ;
+   q Q>DIN ROW-TAIL q pair? QAPP-TAIL drop
+   q Q>DOUT ROW-TAIL q pair? QAPP-TAIL drop
+   q Q>RIN ROW-TAIL q pair? QAPP-TAIL drop
+   q Q>ROUT ROW-TAIL q pair? QAPP-TAIL drop ;
 
 
-\ A copy of quotation q whose rows end in QAPP-TAIL's copies; unless pair?, its
-\ cells also name those copies and renewed identities (START, RENEW).
+\ A copy of quotation q whose rows end in QAPP-TAIL's copies and whose cells
+\ name them; unless pair?, its cells also renew their identities (START, RENEW).
 : QUOT-INST ( n bool -- n )
    {: q:n pair?:bool :}
-   0 TAILS-N !  pair? 0= IF q START THEN
+   pair? IF UNLIST ELSE q START THEN
    q pair? QAPP-REG
-   q Q>DIN pair? QAPP-ROW  q Q>DOUT pair? QAPP-ROW
-   q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
+   q Q>DIN q pair? QAPP-ROW  q Q>DOUT q pair? QAPP-ROW
+   q Q>RIN q pair? QAPP-ROW  q Q>ROUT q pair? QAPP-ROW  MK-QUOT {: fresh:n :}
    q Q>BLOCK fresh Q-BLOCK!
    fresh q Q>XDFIELD q Q>XRFIELD QX!
    q Q>FACTS fresh Q-FACTS!
@@ -5772,6 +5792,8 @@ private
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
 49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
 50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose lineage differs or whose proof does not carry the entry's (CP-CARRIES?), at the same depths (CF-CARRIED=)
+108 constant MD-LOOP-NARROWED \ a loop's back edge narrows a quotation the body ran on any stack while the entry rows held it (RUNS-CHECK)
+109 constant MD-INPUT-NARROWED \ a literal's or an unsigned definition's body narrows an input quotation it ran on any stack while the entry rows held it (RUNS-CHECK)
 51 constant MD-NO-LOOP       \ i, leave, unloop, loop or +loop with no loop open
 52 constant MD-NO-OUTER-LOOP \ j with fewer than two loops open
 53 constant MD-CLOSES-NOTHING \ a closer over no frame or another kind's (CF-AT?); a loop or +loop only where a DO is open in its body (CF-LOOP-WHY)
@@ -7035,7 +7057,7 @@ variable QUOT-LOSS
    DCUR @ tv rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
    OK @ borrows and IF STEP-UNDERFLOW! THEN
-   tv T-RES {: cleanup:n :}
+   tv T-RES dup TAG T-QUOT = IF QUOT-APPLY-INST THEN {: cleanup:n :}
    cleanup cdead CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
    cleanup INH-CHARGE
    DCUR @ ROW-NORET? {: bdead:bool :}
@@ -7062,14 +7084,15 @@ variable QUOT-LOSS
    FRESH MK-VAR FRESH MK-ROW {: finish-term rest :}
    DCUR @ finish-term rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
-   finish-term T-RES fdead C2-FINISH-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
+   finish-term T-RES dup TAG T-QUOT = IF QUOT-APPLY-INST THEN {: finish:n :}
+   finish fdead C2-FINISH-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
    DCUR @ ROW-NORET? {: cdead:bool :}
    FRESH MK-VAR FRESH MK-ROW {: clean-term body-row :}
    DCUR @ clean-term body-row MK-PUSH UNIFY OK @ and OK !
    body-row DCUR !
-   clean-term T-RES {: cleanup:n :}
+   clean-term T-RES dup TAG T-QUOT = IF QUOT-APPLY-INST THEN {: cleanup:n :}
    cleanup cdead CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
-   finish-term T-RES INH-CHARGE  cleanup INH-CHARGE
+   finish INH-CHARGE  cleanup INH-CHARGE
    DCUR @ ROW-NORET? {: bdead:bool :}
    RSEXEC
    OK @ 0= IF EXIT THEN
@@ -20730,7 +20753,7 @@ $A0 constant CF.XFA-OFF
 $A8 constant CF.LSC-OFF
 $B0 constant CF.QRD-OFF
 $B8 constant CF.TXI-OFF
-$C0 constant CF.QTR-OFF
+$C0 constant CF.TM-OFF
 $C8 constant CFS-REC
 : CF.KND ( ^a -- ^a ) CF.KND-OFF + ;
 : CF.SA ( ^a -- ^a ) CF.SA-OFF + ;
@@ -20747,6 +20770,9 @@ $C8 constant CFS-REC
 : CF.TXR ( ^a -- ^a ) CF.TXR-OFF + ;
 : CF.TXS ( ^a -- ^a ) CF.TXS-OFF + ;
 : CF.TXI ( ^a -- ^a ) CF.TXI-OFF + ;
+\ CF.TM: the trail height at the frame's start; the run records above it are
+\ the region's (RUNS-CHECK).
+: CF.TM ( ^a -- ^a ) CF.TM-OFF + ;
 \ CF.UNI: nonzero when the frame is a branch whose condition is provably
 \ block-uniform (a uniform<bool> predicate). A block collective or barrier is
 \ sound only when every open frame is uniform (ALL-CF-UNIFORM?).
@@ -20761,8 +20787,6 @@ $C8 constant CFS-REC
 : CF.LSC ( ^a -- ^a ) CF.LSC-OFF + ;
 \ CF.QRD: on a quotation frame, 0 until it reads a local, else 2 + the deepest owner (LOC-OWNER) of one.
 : CF.QRD ( ^a -- ^a ) CF.QRD-OFF + ;
-\ CF.QTR: on a quotation frame, the trail height it opened at.
-: CF.QTR ( ^a -- ^a ) CF.QTR-OFF + ;
 
 
 SCRATCH{
@@ -20928,6 +20952,7 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    CF-LOOPS @ rec CF.LA !  0 rec CF.LB !
    FACTS @ rec CF.FA !  0 rec CF.FB !  0 rec CF.FT !
    0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
+   TRAIL-N @ rec CF.TM !
    #CFC @ 1 + #CFC ! ;
 
 : CF@K CF-TOP CF.KND @ ;
@@ -21275,24 +21300,99 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    CF-TOP CF.FA @ FACTS !
    DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
 
-\ Paths that meet at different data depths: the refusal names both rows while
+\ Paths or passes that leave unlike rows: the rejection names both rows while
 \ the pin is open.
-: CF-DEPTH-FAIL ( n n n -- )
+: CF-ROWS-FAIL ( n n n -- )
    {: exp:n act:n why:n :}
    MDIAG @ 0=  FAILSET @ 0=  and IF
       CAPTURE-CLEAR  exp DEXP !  act DACT !  ROWS-PIN
    THEN
    why CF-FAIL ;
 
+: RAN? ( n -- bool ) cells TRAIL + @ 15 and 4 = ;
+: RAN-ID ( n -- n ) cells TRAIL + @ 4 rshift ;
+: RAN-Q ( n -- n ) cells TRAIL-OLD + @ ;
+
+\ Run record j is in record i's run: one quotation's tails, each listed once.
+: RAN-GROUP? ( n n -- bool )
+   {: j:n i:n :}
+   j RAN? 0= IF RES-FALSE EXIT THEN
+   j RAN-Q i RAN-Q =  j RAN-ID i RAN-ID <> and ;
+
+\ An earlier tail of record i's run resolves to r: one run has four rows, which
+\ sit together on the trail, since no path compression runs within QUOT-INST.
+: RAN-TIED? ( n n -- bool )
+   {: i:n r:n :}
+   i BEGIN dup 0 >  over i 3 - > and WHILE
+      1 -
+      dup i RAN-GROUP? 0= IF drop RES-FALSE EXIT THEN
+      dup RAN-ID MK-ROW R-RES r = IF drop RES-TRUE EXIT THEN
+   REPEAT drop RES-FALSE ;
+
+\ Run record i's tail is still free: an unbound open row, not the region's
+\ entry tail in data or ret, nor tied to another tail of its run.
+: RAN-KEPT? ( n n n -- bool )
+   {: i:n data:n ret:n :}
+   i RAN-ID MK-ROW R-RES {: r:n :}
+   r ISROW 0= IF RES-FALSE EXIT THEN
+   r TAIL-OPEN? 0= IF RES-FALSE EXIT THEN
+   r data ROW-TAIL =  r ret ROW-TAIL = or IF RES-FALSE EXIT THEN
+   i r RAN-TIED? 0= ;
+
+\ The quotation as run record i ran it, when the entry rows held its tail
+\ then, else 0: a view of the bindings just after the record.
+: RAN-HELD ( n n n -- n )
+   {: i:n data:n ret:n :}
+   i 1 + AT-MARK
+   i RAN-ID MK-ROW {: t:n :}
+   t data ROW-OCC?  t ret ROW-OCC? or
+   IF i RAN-Q QUOT-APPLY-INST ELSE 0 THEN
+   i 1 + ;AT-MARK ;
+
+\ Rejects run record i's narrowing when the entry rows held its quotation at
+\ the run: expected is the quotation as run, found it now.
+: RAN-NARROWED? ( n n n n -- bool )
+   {: i:n data:n ret:n why:n :}
+   i data ret RAN-KEPT? IF RES-FALSE EXIT THEN
+   i data ret RAN-HELD {: exp:n :}
+   exp 0= IF RES-FALSE EXIT THEN
+   exp FRESH MK-ROW MK-PUSH  i RAN-Q FRESH MK-ROW MK-PUSH
+   why CF-ROWS-FAIL  RES-TRUE ;
+
+\ A region may not narrow a quotation it ran on any stack after the run: the
+\ next pass, or a caller, would run the narrower one.
+: RUNS-CHECK ( n n n n -- )
+   {: data:n ret:n mark:n why:n :}
+   TRAIL-N @ mark ?do
+      i RAN? IF
+         i data ret why RAN-NARROWED? IF unloop EXIT THEN
+      THEN
+   loop ;
+
+\ A kept tail the entry rows still reach becomes a callback tail: the inferred
+\ effect demands a quotation that runs on any stack, as the body used it.
+: RUNS-PROMOTE ( n n n -- )
+   {: data:n ret:n mark:n :}
+   TRAIL-N @ mark ?do
+      i RAN? IF
+         i data ret RAN-KEPT? IF
+            i RAN-ID MK-ROW R-RES
+            dup data ROW-OCC?  over ret ROW-OCC? or IF
+               PAY RVK-QUOT TVK-LOWER-TO
+            ELSE drop THEN
+         THEN
+      THEN
+   loop ;
+
 \ da is the if arm's row, db the other path's and the expected one. Asked before
 \ the join: ROW-CELLS follows the tail the join binds.
 : CF-ARMS-DEPTH ( n n n -- )
    {: da:n db:n why:n :}
-   da ROW-CELLS db ROW-CELLS <> IF db da why CF-DEPTH-FAIL THEN ;
+   da ROW-CELLS db ROW-CELLS <> IF db da why CF-ROWS-FAIL THEN ;
 
 : CF-CARRIED= ( n n n n -- ) {: da:n db:n ra:n rb:n :}
    da db ROW-META=  ra rb ROW-META= and IF EXIT THEN
-   da ROW-CELLS db ROW-CELLS <> IF da db MD-LOOP-DEPTH CF-DEPTH-FAIL EXIT THEN
+   da ROW-CELLS db ROW-CELLS <> IF da db MD-LOOP-DEPTH CF-ROWS-FAIL EXIT THEN
    ra ROW-CELLS rb ROW-CELLS <> IF MD-LOOP-RDEPTH CF-FAIL EXIT THEN
    MD-LOOP-CARRIED CF-FAIL ;
 
@@ -21466,6 +21566,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
+        OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF@LA CF-LOOPS=
@@ -21476,7 +21577,9 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    3 3 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN  CF@LA CF-LOOPS=
+        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
+        OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
+        CF@LA CF-LOOPS=
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF-LOC-REST  CF-DROP  -1 DEADP ! THEN ;
@@ -21496,7 +21599,9 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    4 4 MD-CLOSES-NOTHING CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN  CF@LA CF-LOOPS=
+        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
+        OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
+        CF@LA CF-LOOPS=
      THEN
      CF@B DCUR !  CF@RB RCUR !  CF-LOOP-FACTS
      CF@LB CF-LOOPS !  0 DEADP !
@@ -21537,6 +21642,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
      ELSE
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
         CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
+        OK @ IF CF@A CF@RA CF-TOP CF.TM @ MD-LOOP-NARROWED RUNS-CHECK THEN
         #CFC @ CF-LOOPS=
      THEN
      CF@LA CF-LOOPS !
@@ -21590,7 +21696,6 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
    THDMASK @ CF-TOP CF.TXD !  THRMASK @ CF-TOP CF.TXR !
    THSET @ CF-TOP CF.TXS !  INHSET @ CF-TOP CF.TXI !
-   TRAIL-N @ CF-TOP CF.QTR !
    0 XSET !  0 XFACT !  0 DEADP !  0 THSET !  0 INHSET !  0 FACTS !
    QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -21637,8 +21742,10 @@ variable QTMP
      QUOT-BLOCK-BIND
      \ The fixed window is inferred before the tails generalize. BROW, minted
      \ first at CF-QUOT, is the floor of the vars the literal owns.
-     QTMP @ BROW @ PAY CF-TOP CF.QTR @ QUOT-ROWS-GENERALIZE
+     QTMP @ BROW @ PAY CF-TOP CF.TM @ QUOT-ROWS-GENERALIZE
      QTMP @ MARK
+     BROW @ RBROW @ CF-TOP CF.TM @ MD-INPUT-NARROWED RUNS-CHECK
+     BROW @ RBROW @ CF-TOP CF.TM @ RUNS-PROMOTE
      DEADP @ XSET @ 0= and {: noret:bool :}
      QTMP @ THDMASK @ XMASK THRMASK @ XMASK QX!
      INHSET @ CTL-INHERITED and  THSET @ IF CTL-THROW or THEN  QTMP @ Q-FACTS!

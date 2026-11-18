@@ -1498,6 +1498,8 @@ EXPORT CHECKER-QUOT-FRESH:FITS?
    \ An inferred effect records its data rows only (CHECKER-USIG-CERT-CURRENT);
    \ they hold a binder only where a declared one may (PSIG).
    CHECK-SIG? 0= IF
+      BROW @ RBROW @ 0 MD-INPUT-NARROWED RUNS-CHECK
+      BROW @ RBROW @ 0 RUNS-PROMOTE
       INFER-FRESH-CLAIM
       BROW @ RES-TRUE FORALL-PLACE?  DCUR @ RES-FALSE FORALL-PLACE? and
       0= IF MD-BINDER-PLACE CF-FAIL THEN

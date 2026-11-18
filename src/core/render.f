@@ -26,8 +26,8 @@ variable RROW-UNSAID
 \ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
 variable RBIND-FULL
 
-\ RTAILS is set while TAIL-CAPTURE or CYCLE-NOTES renders: every quotation then
-\ shows its row tails.
+\ RTAILS is set while TAIL-CAPTURE, CYCLE-NOTES or NARROWED-NOTES renders: every
+\ quotation then shows its row tails.
 variable RTAILS   0 RTAILS !
 \ RNAMES is 1 while the first pass of REND-EFFECT records each row's tail (RPOS)
 \ and 2 while its second pass names the rows that share one; 0 otherwise.
@@ -1021,6 +1021,8 @@ variable MDV-I   variable MDV-F
       MD-DOES-UNMADE  of s" E-DOES-UNCREATED" endof
       MD-NO-LOOP      of s" E-NO-LOOP" endof
       MD-LOOP-CARRIED of s" E-LOOP-CARRIED" endof
+      MD-LOOP-NARROWED of s" E-LOOP-CARRIED" endof
+      MD-INPUT-NARROWED of s" E-MISMATCH" endof
       MD-CLOSES-NOTHING of s" E-CONTROL-ORPHAN" endof
       MD-NO-CASE      of s" E-CONTROL-ORPHAN" endof
       MD-NO-OUTER-LOOP of s" E-NO-OUTER-LOOP" endof
@@ -1111,6 +1113,8 @@ variable MDV-I   variable MDV-F
       MD-DEPTH-WIDE   of s" take the wide value apart first, with `MATCH` on concrete arguments or `UNMAKE`, or count the values another way" endof
       MD-LOOP-RDEPTH  of s" pop with `r>` in the loop body every cell it pushes with `>r`" endof
       MD-LOOP-CARRIED of s" make each pass leave the cells it carries with the types and facts it entered with, and keep a value that changes per pass in a variable" endof
+      MD-LOOP-NARROWED of s" carry the quotation with the type it entered with, or give it the narrower type before the loop" endof
+      MD-INPUT-NARROWED of s" narrow the input before the body runs it, or state the word's effect in a signature" endof
       MD-NO-LOOP      of s" write this word only inside a `do` or `?do` loop this definition opened and has not closed" endof
       MD-NO-OUTER-LOOP of s" write `i` for a single loop's index, and `j` only inside a `do` loop nested in another" endof
       MD-CLOSES-NOTHING of s" close each structure with its own word, innermost first: `then` for `if`, `until` or `repeat` for `begin`, `loop` for `do`, `endcase` for `case`, `;]` for `[:`" endof
@@ -1216,6 +1220,8 @@ variable MDV-I   variable MDV-F
       MD-DEPTH-WIDE   of s" cannot count" endof
       MD-LOOP-RDEPTH  of s" the loop body changes the return stack's depth" endof
       MD-LOOP-CARRIED of s" the loop body leaves a carried cell different from the one it entered with" endof
+      MD-LOOP-NARROWED of s" this pass narrows a quotation the body ran on any stack" endof
+      MD-INPUT-NARROWED of s" the body narrows an input quotation after running it on any stack" endof
       MD-NO-LOOP      of s" no loop is open here" endof
       MD-NO-OUTER-LOOP of s" no outer loop is open here" endof
       MD-CLOSES-NOTHING of s" this word closes nothing open here" endof
@@ -1335,6 +1341,8 @@ variable MDV-I   variable MDV-F
       MD-LOOP-DEPTH   of s" depth unlike the loop's start" endof
       MD-LOOP-RDEPTH  of s" return depth unlike the start" endof
       MD-LOOP-CARRIED of s" carried cell changed" endof
+      MD-LOOP-NARROWED of s" the next pass runs the narrower quotation" endof
+      MD-INPUT-NARROWED of s" callers would pass the narrower quotation" endof
       MD-NO-LOOP      of s" no open `do` in this body" endof
       MD-NO-OUTER-LOOP of s" fewer than two loops open" endof
       MD-CLOSES-NOTHING of s" does not close the innermost" endof
@@ -2002,9 +2010,16 @@ EXPORT TFAM:SUMV-PAY-N
    s" expected" REJECTION:NOTE  DEXP @ TCAP-ROW  TRIM-SPACE
    s" found" REJECTION:NOTE  DACT @ TCAP-ROW  TRIM-SPACE
    0 RTAILS !  ;AT-PIN ;
+\ A narrowed quotation (MD-LOOP-NARROWED, MD-INPUT-NARROWED) differs from
+\ what it entered with only in its tails, so both are shown with their letters.
+: NARROWED-NOTES ( -- )
+   AT-PIN  0 RROW-N !  -1 RTAILS !
+   DEXP @ DACT @ PAIR-NOTES
+   0 RTAILS !  ;AT-PIN ;
 : ROWS-NOTES ( -- )
    MDIAG @ MD-TAIL-ESCAPE = IF ESCAPE-NOTES EXIT THEN
    MDIAG @ MD-ROW-CYCLE = IF CYCLE-NOTES EXIT THEN
+   MDIAG @ MD-LOOP-NARROWED =  MDIAG @ MD-INPUT-NARROWED = or IF NARROWED-NOTES EXIT THEN
    AT-PIN
    DEXP @ 0 <> IF DEXP @ DACT @ PAIR-NOTES  FAMILY-NOTES THEN
    DF-ACT @ 0 <>  DEXP @ 0= and IF
