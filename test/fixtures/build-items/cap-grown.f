@@ -13,15 +13,12 @@ STORE
 variable MARKED
 
 : ROWS ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
-: MODE ( -- n )
-   data-base SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:MODE-FIELD + @ ;
 
 public
 : PRINT ( -- )
    1 LAST QS @ execute .
    ROWS ADDRESS-CELLS:BOOT-CAP > bool>n .
-   MODE .
-   MARKED ptr-cell-mark  MODE . ;
+   ROWS {: before:n :}  MARKED ptr-cell-mark  ROWS before - . ;
 ;package
 
 : MAIN ( -- ) BITEM-CAP-GROWN:PRINT ;

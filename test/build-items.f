@@ -701,15 +701,15 @@ PATH-CAP BUFFER: PATH
    0 SHOW {: rc:n :}
    rc 0 T=  rc 0= ;
 
-\ A program keeping more rows than the band holds lists them after its data,
-\ mode 0, and its next row grows the list to mode 1.
+\ A program keeping more rows than the band holds runs with them relocated, and
+\ its next row grows the list by one.
 : CAP-GROWN ( CMD:command -- CMD:command )
    s" cap-grown-cold" CAP-BUILD 0= if exit then
    s" cap-grown-warm" CAP-BUILD 0= if exit then
    s" cap-grown-cold" s" cap-grown-warm" SAME-PROGS
    CMD:RESET  s" cap-grown-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 0 SHOW {: rc:n :}
-   CMD:OUT$ S\" 42\n-1\n0\n1\n" STR= TTRUE
+   CMD:OUT$ S\" 42\n-1\n1\n" STR= TTRUE
    rc 0 T= ;
 
 \ The build's own C2-MEM entries are scoped entries too.
