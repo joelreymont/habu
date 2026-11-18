@@ -11,6 +11,7 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/base64.f
+require src/lib/reason.f
 require src/lib/crypto/sha1.f
 require src/lib/test/guard-page.f
 
@@ -159,16 +160,24 @@ variable STAGED-LEN
    a u T-LABEL
    [: STAGED$ OUT BASE64:DECODE-URL drop ;] code TTHROWSQ ;
 
+: SAID ( n str -- ) {: code:n wa:^ wu:n :}
+   code REASON:TEXT$ wa wu T$=
+   REASON:RELEASE ;
+
 : URL-REFUSALS ( -- )
    s" Z" E-BASE64-LENGTH URL-REFUSES
    s" Zm9vZ" E-BASE64-LENGTH URL-REFUSES
+   E-BASE64-LENGTH s" 1:6: expected a length that leaves 0, 2 or 3 characters in the last group of four, found the end of the input; write the data as BASE64:ENCODE-URL writes it" SAID
    s" Zg=" E-BASE64-PAD URL-REFUSES
    s" Zg==" E-BASE64-PAD URL-REFUSES
+   E-BASE64-PAD s" 1:3: expected a character of A-Z, a-z, 0-9, - or _, found `=`; leave `=` out: DECODE-URL takes no padding" SAID
    s" Zm+v" E-BASE64-CHAR URL-REFUSES
    s" Zm/v" E-BASE64-CHAR URL-REFUSES
    s" Zm9 " E-BASE64-CHAR URL-REFUSES
+   E-BASE64-CHAR s" 1:4: expected a character of A-Z, a-z, 0-9, - or _, found byte $20; write the data as BASE64:ENCODE-URL writes it" SAID
    s" Zh" E-BASE64-PAD URL-REFUSES
    s" Zm9" E-BASE64-PAD URL-REFUSES
+   E-BASE64-PAD s" 1:3: expected a character whose unused low bits are zero, found `9`; write the data as BASE64:ENCODE-URL writes it" SAID
    s" Zm9v" STAGE $80 STAGED 2 SPAN:U8!
    s" URL rejects a byte above ASCII" T-LABEL
    [: STAGED$ OUT BASE64:DECODE-URL drop ;] E-BASE64-CHAR TTHROWSQ ;
@@ -214,10 +223,12 @@ variable STAGED-LEN
 : LENGTHS ( -- )
    s" Z" E-BASE64-LENGTH REFUSES
    s" Zg=" E-BASE64-LENGTH REFUSES
-   s" Zm9vY" E-BASE64-LENGTH REFUSES ;
+   s" Zm9vY" E-BASE64-LENGTH REFUSES
+   E-BASE64-LENGTH s" 1:6: expected a length that is a multiple of four, found the end of the input; write the data as BASE64:ENCODE writes it" SAID ;
 
 : CHARS ( -- )
    s" Zm-v" E-BASE64-CHAR REFUSES
+   E-BASE64-CHAR s" 1:3: expected a character of A-Z, a-z, 0-9, + or /, found `-`; write the data as BASE64:ENCODE writes it" SAID
    s" Zm_v" E-BASE64-CHAR REFUSES
    s" Zm9 " E-BASE64-CHAR REFUSES
    s" Zg=!" E-BASE64-CHAR REFUSES
@@ -261,8 +272,10 @@ variable STAGED-LEN
    s" ====" E-BASE64-PAD REFUSES
    s" Z===" E-BASE64-PAD REFUSES
    s" Zg=v" E-BASE64-PAD REFUSES
+   E-BASE64-PAD s" 1:3: expected a character of A-Z, a-z, 0-9, + or /, found `=`; use `=` only to end the last group" SAID
    s" Zg==Zg==" E-BASE64-PAD REFUSES
    s" Zh==" E-BASE64-PAD REFUSES
+   E-BASE64-PAD s" 1:2: expected a character whose unused low bits are zero, found `h`; write the data as BASE64:ENCODE writes it" SAID
    s" Zm9=" E-BASE64-PAD REFUSES ;
 
 \ A refusal writes nothing: not the valid first group of a bad input, and not
