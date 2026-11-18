@@ -88,6 +88,20 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" SCRIPT-ARGV$\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
+: SLV-FORGET-DOES-FORGE$ ( -- str )
+   SB-RESET
+   s" : SLF-DEF ( n -- ) create , does> ( -- n ) @ ;" SB-APPEND SLV-LF
+   s" 5 SLF-DEF SLF-FIVE" SB-APPEND SLV-LF
+   S\" s\" SLF-DEF;does\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-HIDE-DOES-FORGE$ ( -- str )
+   SB-RESET
+   s" : SLF-DEF ( n -- ) create , does> ( -- n ) @ ;" SB-APPEND SLV-LF
+   s" 5 SLF-DEF SLF-FIVE" SB-APPEND SLV-LF
+   S\" s\" SLF-DEF;does\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
 \ A user mark defined after the seal is above the watermark, so HIDE of it works.
 : SLV-HIDE-USER-FORGE$ ( -- str )
    SB-RESET
@@ -260,7 +274,15 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" HIDE-DEFS-FROM of the script-argv tail is rejected" T-LABEL
    SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT
    S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `XREF:HIDE-DEFS-FROM` cannot remove\n"
-   SLV-HIDE-HELP$ SLV-ASSERT-REJECT ;
+   SLV-HIDE-HELP$ SLV-ASSERT-REJECT
+   s" FORGET-DEFS-FROM of a does> clause is rejected" T-LABEL
+   SLV-FORGET-DOES-FORGE$ SLV-SUBJECT
+   S\" error[E-DOES-CLAUSE]: `SLF-DEF;does` is the does> clause of `SLF-DEF`, which `XREF:FORGET-DEFS-FROM` cannot start from\n"
+   S\" = help: pass the definer, as in `s\" SLF-DEF\" XREF:FORGET-DEFS-FROM`\n" SLV-ASSERT-REJECT
+   s" HIDE-DEFS-FROM of a does> clause is rejected" T-LABEL
+   SLV-HIDE-DOES-FORGE$ SLV-SUBJECT
+   S\" error[E-DOES-CLAUSE]: `SLF-DEF;does` is the does> clause of `SLF-DEF`, which `XREF:HIDE-DEFS-FROM` cannot start from\n"
+   S\" = help: pass the definer, as in `s\" SLF-DEF\" XREF:HIDE-DEFS-FROM`\n" SLV-ASSERT-REJECT ;
 
 \ The child printed SLF-J's value and was rejected at SLF-L, never run.
 : SLV-ASSERT-EVAL-GONE ( -- )

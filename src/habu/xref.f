@@ -504,10 +504,10 @@ public
    else s" the private words of package " then REJECTION:EMIT-STR
    row XREF-NAME$ XREF-EMIT-TICKS ;
 
-\ A call of the word w wu, which takes a name: `s" MY-WORD" W`.
-: XREF-EMIT-CALL ( str -- ) {: w:^ wu:n :}
-   96 REJECTION:EMIT1  115 REJECTION:EMIT1  34 REJECTION:EMIT1
-   s"  MY-WORD" REJECTION:EMIT-STR  34 REJECTION:EMIT1  32 REJECTION:EMIT1
+\ Prints a call of the word w wu on the name a u, in ticks: `s" NAME" W`.
+: XREF-EMIT-CALL ( str str -- ) {: a:^ u:n w:^ wu:n :}
+   96 REJECTION:EMIT1  115 REJECTION:EMIT1  34 REJECTION:EMIT1  32 REJECTION:EMIT1
+   a u REJECTION:EMIT-STR  34 REJECTION:EMIT1  32 REJECTION:EMIT1
    w wu REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
 package GENERATED-DECL-NAME-PREFLIGHT
@@ -689,10 +689,26 @@ public
       w wu XREF-EMIT-TICKS  s"  has no word to start from" REJECTION:EMIT-STR
       s" scope" REJECTION:NOTE  a u BOOT:GLOBAL-WL XREF-EMIT-SCOPE
       REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
-      w wu XREF-EMIT-CALL
+      s" MY-WORD" w wu XREF-EMIT-CALL
       EXIT-STATUS:REJECTED REJECTION:STOP
    then
    idx ;
+
+\ A does> clause starts inside its definer's body: removing definitions from it
+\ would keep the definer and cut its clause, so the word w wu rejects the record
+\ idx it found for a u when it is one.
+: XREF-REQUIRE-WORD ( n str str -- n )
+   {: idx:n a:^ u:n w:^ wu:n :}
+   idx 1 < if idx exit then
+   idx 1- XREF-DOES-COMPANION? 0= if idx exit then
+   idx 1- XREF-REC XREF-NAME$ {: d:^ du:n :}
+   s" E-DOES-CLAUSE" REJECTION:OPEN
+   a u XREF-EMIT-TICKS  s"  is the does> clause of " REJECTION:EMIT-STR
+   d du XREF-EMIT-TICKS  s" , which " REJECTION:EMIT-STR
+   w wu XREF-EMIT-TICKS  s"  cannot start from" REJECTION:EMIT-STR
+   REJECTION:HELP  s" pass the definer, as in " REJECTION:EMIT-STR
+   d du w wu XREF-EMIT-CALL
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Sealed-dictionary truncation guard: once the namespace watermark is set, a
 \ FORGET/HIDE lowering ndict below it would retire engine definitions and
@@ -711,7 +727,7 @@ public
       s" sealed" REJECTION:NOTE  s" records below " REJECTION:EMIT-STR
       floor REJECTION:EMIT-U  s"  belong to the engine" REJECTION:EMIT-STR
       REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
-      w wu XREF-EMIT-CALL
+      s" MY-WORD" w wu XREF-EMIT-CALL
       EXIT-STATUS:REJECTED REJECTION:STOP
    then
    idx ;
@@ -757,6 +773,7 @@ public
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" XREF-REQUIRE-DEFINED
+   XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" XREF-REQUIRE-WORD
    XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
@@ -880,6 +897,7 @@ public
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" XREF-REQUIRE-DEFINED
+   XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" XREF-REQUIRE-WORD
    XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
    idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
