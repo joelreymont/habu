@@ -217,7 +217,7 @@ variable UNDER-PATH-N
 create ENTRY-ROOT BUF:HDR-BYTES allot \ the root current as the part started (MARKS)
 create EXIT-ROOT BUF:HDR-BYTES allot \ the root current as the part ended
 create PART-READS BUF:HDR-BYTES allot \ the reads the part's compile made (READS-KEEP)
-create PART-TEXTS BUF:HDR-BYTES allot \ the texts the part's compile spelled (READS-KEEP)
+create PART-TEXTS BUF:HDR-BYTES allot \ the texts the part's compile spelled and the names it looked up (READS-KEEP)
 create OBJECT BUF:HDR-BYTES allot    \ the object WRITE-OBJECT lays or READ-OBJECT reads
 create PRIOR BUF:HDR-BYTES allot     \ the compiling file's object as the last build left it
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
@@ -5435,9 +5435,18 @@ EXPORT CHECK:DROP-FACTS
       then
    loop ;
 
+\ A name the part looked up in wordlist wid, which it did not spell: a lookup under WL:RETIRED or WL:RETIRED-NAMESPACE makes the
+\ part never link, and one in a package's public or private wordlist opens that package for the name's hit.
+: SPELL-LOOKUP ( str n -- )
+   {: a:^ u:n wid:n :}
+   wid WL:RETIRED =  wid WL:RETIRED-NAMESPACE =  or if true UNLINKABLE ! then
+   wid WORDLIST-PACKAGE {: pkg:n hit:bool :}
+   hit if pkg XREF-REC XREF-NAME$ TOP-NAME NAME-SUM SPELL-OPEN then
+   a u NAME-SUM SPELL-HIT ;
+
 \ The compiling part's NAMES (NAMED!) as it ends, after READS-KEEP, before PIECE-END, so a part after a request hits the file it loaded:
-\ its source from FILE-OFF to end, then PART-TEXTS' texts and, if there are any, both again, so each is scanned with every package one
-\ opened, then its clauses' names (SPELL-CLAUSES).
+\ its source from FILE-OFF to end, then PART-TEXTS' texts and looked-up names (SPELL-LOOKUP) and, if there are any, all again, so
+\ each is scanned with every package one opened, then its clauses' names (SPELL-CLAUSES).
 : PART-NAMES ( n -- )
    {: end:n :}
    HITS-CLEAR
@@ -5448,8 +5457,12 @@ EXPORT CHECK:DROP-FACTS
       i 1 =  pu 0 >  and if src srcu SPELL-TEXT then
       0 begin dup pu < while
          {: at:n :}
-         p at + 8 + LE:U64@  p at + 16 + LE:U64@ {: u:n v:n :}
-         p at + 24 + u SPELL-TEXT
+         p at + LE:U64@  p at + 8 + LE:U64@  p at + 16 + LE:U64@ {: kind:n u:n v:n :}
+         kind COMPILE-READS:NAME-READ = if
+            p at + 24 + u  p at + 24 + u + LE:U64@ SPELL-LOOKUP
+         else
+            p at + 24 + u SPELL-TEXT
+         then
          at 24 + u + v + 7 + 8 / 8 *
       repeat drop
    loop
@@ -5480,8 +5493,8 @@ EXPORT CHECK:DROP-FACTS
    resume ;
 
 
-\ The running recording's reads (COMPILE-READS:READS$), each whole: its texts into PART-TEXTS, the others into
-\ PART-READS; none when no recording is active.
+\ The running recording's reads (COMPILE-READS:READS$), each whole: its texts and looked-up names into PART-TEXTS, the others
+\ into PART-READS; none when no recording is active.
 : READS-KEEP ( -- )
    COMPILE-READS:MISSED? if true UNLINKABLE ! then
    PART-READS BUF:CLEAR  PART-TEXTS BUF:CLEAR
@@ -5490,7 +5503,8 @@ EXPORT CHECK:DROP-FACTS
       {: at:n :}
       p at + 8 + LE:U64@  p at + 16 + LE:U64@ {: u:n v:n :}
       at 24 + u + v + 7 + 8 / 8 * {: next:n :}
-      p at + LE:U64@ COMPILE-READS:TEXT-READ = if
+      p at + LE:U64@ {: kind:n :}
+      kind COMPILE-READS:TEXT-READ =  kind COMPILE-READS:NAME-READ =  or if
          p at + next at - PART-TEXTS SPAN+
       else
          p at + next at - PART-READS SPAN+

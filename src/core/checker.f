@@ -2947,8 +2947,10 @@ ENTRIES-PENDING 0 CELL-ROW+
 ;package
 package CHECKER-RESOLVE
 public
-\ The record a wordlist holds under a name, NULL-PTR for none.
-: WL-PROBE ( str n -- ^n ) xref-search-wl ;
+\ The record a wordlist holds under a name, NULL-PTR for none. The lookup is a
+\ dependency of the part that asks, as if its source spelled the name.
+: WL-PROBE ( str n -- ^n ) {: a:^ u:n wid:n :}
+   a u wid COMPILE-READS:NAME+  a u wid xref-search-wl ;
 ;package
 package CHECK
 

@@ -274,6 +274,7 @@ INSTALL
    wid 0 >= wid BOOT:NAMESPACE-WL = or if
       a u wid CHECKER-RESOLVE:WL-PROBE exit
    then
+   a u wid COMPILE-READS:NAME+
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
@@ -287,6 +288,7 @@ INSTALL
 \ A miss in the global wordlist answers the walk of WL:PRIMITIVES, the
 \ built-ins' wordlist (kernel-x64.f FIND-HELPER, does the same).
 : XREF-FIND-WL-INDEX ( str n -- n ) {: a:^ u:n wid:n :}
+   a u wid COMPILE-READS:NAME+
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
@@ -515,6 +517,7 @@ seal-package
 ;package
 
 : XREF-RETIRE-WL ( str n -- ) {: a:^ u:n wid:n :}
+   a u wid COMPILE-READS:NAME+
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while

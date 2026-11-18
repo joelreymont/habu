@@ -3685,17 +3685,18 @@ EXPORT CHECK:NMAP-SLOT
 EXPORT CHECK:SGBAD-AMBIG!
 EXPORT CHECK:SIG-SCOPE$
 EXPORT CHECKER-RESOLVE:REC-AT
+EXPORT CHECKER-RESOLVE:xref-search-wl
 
 EXPORT BOOT:TYPES-WL
 
 \ The record of family `pkg:tail`'s type entry while one is still to be read,
-\ else NULL-PTR.
+\ else NULL-PTR. The probe is no dependency of the part: a linked piece gave the entry.
 : ER-PROBE ( str str -- ^n )
    {: pa:^ pu:n na:^ nu:n :}
    ENTRIES-PENDING @ 0= IF NULL-PTR EXIT THEN
    TYPES-WL {: wid:n :}
    wid 0= IF NULL-PTR EXIT THEN
-   pa pu na nu EN-NAME wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+   pa pu na nu EN-NAME wid xref-search-wl {: rec:^ :}
    rec NULL-PTR = IF NULL-PTR EXIT THEN
    \ A linear type's entry shares the wordlist; its text starts `linear`, which is no family.
    rec REC>INDEX FACTS@ LINEAR-TEXT? IF NULL-PTR EXIT THEN

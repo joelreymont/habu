@@ -1,15 +1,16 @@
 split-str
 \ compile-reads.f - what a compile reads besides its source: the roots it looked
 \ up and what they resolved to, the environment variables it read, the texts it
-\ spells and the files it read.
+\ spells, the names it looked up and the files it read.
 \ A recording is one mapping of reads. Each read is three cells (kind, first
 \ length, second length), the first bytes, the second bytes, then zero bytes to
 \ the next cell boundary: ROOT-READ holds an absolute spelling and its canonical
 \ directory, ENV-READ a name and its value, ENV-ABSENT a name and no bytes,
 \ TEXT-READ a text the compile spells and no bytes, FILE-READ a path and the
 \ three cells of its file's STAMP, FILE-LREAD a path and the three cells of its
-\ LSTAMP. A recording is indexed by a hash of each read, so a repeated read is
-\ found without a scan.
+\ LSTAMP, NAME-READ a name and the wordlist cell it was looked up in. A
+\ recording is indexed by a hash of each read, so a repeated read is found
+\ without a scan.
 package COMPILE-READS
 public
 
@@ -19,6 +20,7 @@ public
 4 constant TEXT-READ
 5 constant FILE-READ
 6 constant FILE-LREAD
+7 constant NAME-READ
 
 private
 
@@ -85,6 +87,7 @@ create STAT-BUF FS-ABI:STAT-BYTES allot
    m c@  m 1 + c@ 256 * or  FS-ABI:S-IFMT and ;
 
 create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
+create WID-BUF CELL SCRATCH-ALLOT        \ NAME+'s second bytes
 
 \ The bytes from the start of the read at off to the start of the next.
 : SPAN ( n -- n ) {: off:n :}
@@ -248,6 +251,12 @@ public
 : TEXT+ ( ^u8 n -- ) {: a:^ u:n :}
    u 0 <= if exit then
    s" COMPILE-READS:TEXT+" TEXT-READ a u a 0 APPEND ;
+
+\ A name looked up in a wordlist, which the part depends on as if its source
+\ spelled it; the wordlist cell is the second bytes, little-endian.
+: NAME+ ( str n -- ) {: a:^ u:n wid:n :}
+   wid WID-BUF CELL-VIEW !
+   s" COMPILE-READS:NAME+" NAME-READ a u WID-BUF CELL APPEND ;
 
 private
 

@@ -1493,6 +1493,39 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build six rewrites only main.f's first object" LABEL  n6 1 T=
    s" the object it rewrites is main.f's" LABEL  FOUND$ s" /main.f.hfo" ENDS-WITH? TTRUE ;
 
+\ The probe sequence's s.f: a package with no store, then the text.
+: WRITE-PROBE-S ( str -- ) {: t:^ tu:n :}
+   s\" package FILE-OBJECTS-PROBE-S public variable Z ;package\n" SRC+  t tu SRC+
+   s" s.f" NEST-WRITE ;
+
+\ The probe sequence in directory d: r.f's K is 1 when the current wordlist holds the name w as r.f
+\ loads, else 0, by a CHECKER-RESOLVE:WL-PROBE in h.f; no source spells w but s.f's text t.
+: WRITE-PROBE ( str str str -- ) {: d:^ du:n w:^ wu:n t:^ tu:n :}
+   L$ d du NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" package FILE-OBJECTS-PROBE public\n: FOUND ( -- n ) s\" " SRC+  w wu SRC+
+   s\" \" >str get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = if 0 else 1 then ;\n;package\n" SRC+
+   s" h.f" NEST-WRITE
+   t tu WRITE-PROBE-S
+   s\" FILE-OBJECTS-PROBE:FOUND constant FILE-OBJECTS-PROBE-K\n" SRC+  s" r.f" NEST-WRITE
+   s" h.f" REQUIRE+  s" s.f" REQUIRE+  s" r.f" REQUIRE+
+   s\" : MAIN ( -- ) FILE-OBJECTS-PROBE-K . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a lookup of a name no source spells: P2, after s.f stops retiring the engine's CORE-STR=CI, and
+\ Q2, after s.f drops the word h.f probes, must compile r.f again and print what a cold build prints.
+: PROBE-CASE ( CMD:command -- CMD:command )
+   s" probe" s" CORE-STR=CI" s\" undefine CORE-STR=CI\n" WRITE-PROBE
+   s" P" WHICH!  s" main.f" s" prog-p" NEST-BUILD 0= if exit then
+   s" prog-p" s\" 0\n\n" s" the program prints K" NEST-RUN
+   s" " WRITE-PROBE-S
+   s" P2" WHICH!  s" main.f" s" prog-p" NEST-BUILD 0= if exit then
+   s" prog-p" s\" 1\n\n" s" the program prints K" NEST-RUN
+   s" probe-zz" s" FILE-OBJECTS-PROBE-ZZ" s\" : FILE-OBJECTS-PROBE-ZZ ( -- ) ;\n" WRITE-PROBE
+   s" Q" WHICH!  s" main.f" s" prog-q" NEST-BUILD 0= if exit then
+   s" prog-q" s\" 1\n\n" s" the program prints K" NEST-RUN
+   s" " WRITE-PROBE-S
+   s" Q2" WHICH!  s" main.f" s" prog-q" NEST-BUILD 0= if exit then
+   s" prog-q" s\" 0\n\n" s" the program prints K" NEST-RUN ;
+
 \ The clause sequence: h.f's definer FILE-OBJECTS-CL has a does> clause, w.f defines a word of the
 \ clause's name, one.f requires h.f, and two.f w.f then h.f.
 : WRITE-CLAUSE ( -- )
@@ -2344,8 +2377,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
-      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE
-      TASK-CASE
+      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE CLAUSE-CASE READ-CASE LIST-CASE
+      LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE
