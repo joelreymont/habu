@@ -1,9 +1,10 @@
 ---
 title: Check the rejection builder across tasks
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-18T07:27:44.208282+01:00"
+closed-at: "2026-11-18T08:48:12.837173+01:00"
 ---
 
-Problem: src/core/rejection.f's builder state (TEXT, SAVED-P, SAVED-U, :17-47) is process-wide with no lock while the carry stamp is per-thread (src/habu/layout.f:766-774); two tasks writing records at once may interleave or take each other's saved record (inferred by the E-MAP design, not run). Acceptance: a reproducer shows whether two tasks' records interleave; if they do, the builder's state is per task and the reproducer becomes a test. Depends: none. Claim: unassigned.
+Problem: src/core/rejection.f's builder state (TEXT, PART, DEST, the place cells, HELD, SAVED, :14-60, :228-279, :381-409, :1140-1143) is process-wide while the carry stamp is per thread (src/habu/layout.f STAMP-CELL): four tasks taking refused reserves at once interleave records, lose them and send record bytes to stdout (/tmp/jerry-recrace/race.f). Acceptance: each task builds, saves and sends its records in its own builder state; race.f's program is a test that fails on master and passes. Depends: none. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-recfix.

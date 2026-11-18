@@ -30,8 +30,9 @@ split-str
 \ only words whose code is kept.
 \ TASK:NEW defines nothing. Task-local storage: a band in src/habu/layout.f for
 \ a module the engine bakes, else TASK:+USER and TASK:+USERS slots.
-\ STORAGE CLASS. TASK-LOCAL: SLEEP's timespecs (a TASK:+USERS slot). PROCESS-WIDE:
-\ semaphore pool, AT-EXIT rows, TCB chain and pool, callback rows; a CAS per move.
+\ STORAGE CLASS. TASK-LOCAL: REJECTION's block; SLEEP's timespecs (a
+\ TASK:+USERS slot). PROCESS-WIDE: semaphore pool, AT-EXIT rows, TCB chain and
+\ pool, callback rows; a CAS per move.
 \
 \ CLEANUPS. A task's cleanups are a chain of rows. Each quotation is stored AS a
 \ quotation into storage declared to hold one: the checker's proven-quotation
@@ -139,7 +140,8 @@ TASK-ABI:HALT-REQ constant TASK-HALT-REQ
 
 TASK-ABI:TCB-BYTES constant TASK-TCB-BYTES
 
-variable TASK-USER-NEXT
+\ The user area's first REJECTION:BLOCK-BYTES are REJECTION's block.
+variable TASK-USER-NEXT  REJECTION:BLOCK-BYTES TASK-USER-NEXT !
 TASK-USER-NEXT ROLLBACK-CELLS:MARK
 
 \ The band is this file's run of each region's header, with no engine cell.
@@ -148,8 +150,7 @@ USER-BAND:START constant TASK-USER-BASE
 \ cell, not a slot.
 TASK-USER-BASE constant TASK-DEFER-OFF
 
-USER-BAND:END constant TASK-USER-END
-TASK-USER-END CELL - constant TASK-AREA-OFF
+USER-BAND:AREA-OFF constant TASK-AREA-OFF
 
 : TASK-DEFER-DEPTH ( -- ^n )
    data-base TASK-DEFER-OFF + ;
@@ -910,6 +911,7 @@ ROW-N ROLLBACK-CELLS:MARK
    1 TASK-SELF TCB.STOP !
    TASK-RUN-EXIT
    REASON:RELEASE
+   REJECTION:FREE
    data-base FFI:>CELL ROWS-END
    TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
 
@@ -1066,7 +1068,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 
 : TASK-REGION-INIT ( ^n -- ) {: tcb:^ :}
    tcb TCB.REGION @ {: reg:^ :}
-   \ Set even when the area is 0 bytes: a 0 here would select main's copies.
+   \ A 0 here would select main's copies.
    reg TASK-REGION-BYTES + FFI:>CELL reg TASK-AREA-OFF + !
    \ DP-CHECK's bounds: zeroed cells would admit a task's `0 allot`.
    data-base reg BOOT:DP-FLOOR-CELL TASK-COPY-CELL

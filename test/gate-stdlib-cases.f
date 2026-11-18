@@ -1302,6 +1302,10 @@ SUITE dynamic-buffer-tasks
    test/dynamic-buffer-tasks.f
 ;SUITE
 
+SUITE rejection-tasks
+   test/rejection-tasks.f
+;SUITE
+
 SUITE layout-defer
    test/layout-defer.f
 ;SUITE

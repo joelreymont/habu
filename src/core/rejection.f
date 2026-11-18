@@ -4,7 +4,8 @@ split-str
 \ record to a file descriptor or to a capture it grows. It also holds where a
 \ diagnostic's source sits: the armed source, its map and the loader's file
 \ path. Loads before the checker, where no emit exists, so bytes go out through
-\ a one-byte buffer.
+\ a one-byte buffer. Every cell, buffer and first room it writes is the running
+\ task's own: its block, or its region's carry stamp.
 \ A rejection is printed in parts, called in this order: OPEN, or WARN for a
 \ warning, at most one AT, any NOTEs, HELP, then STOP or KEEP. The caller
 \ writes each part's text with EMIT-STR, EMIT-U or EMIT1 before the next part
@@ -14,17 +15,110 @@ split-str
 package REJECTION
 private
 
-create BYTE-BUF 1 allot
+\ Rounds n bytes up to whole cells.
+: ROUND ( n -- n ) 1 cells 1 - +  1 cells negate and ;
 \ TEXT holds the record being built, TEXT-LEN bytes of it. Each growable room
-\ here starts in TEXT-FIRST bytes of its own scratch storage, so a record is
-\ written after the system refuses memory; a larger room is mapped.
+\ here starts in TEXT-FIRST bytes of the block, so a record is written after
+\ the system refuses memory; a larger room is mapped.
 16384 constant TEXT-FIRST                \ bytes of each first room
-create TEXT-BASE TEXT-FIRST SCRATCH-ALLOT
-create HELD-BASE TEXT-FIRST SCRATCH-ALLOT
-create SAVED-BASE TEXT-FIRST SCRATCH-ALLOT
-PTR-VARIABLE TEXT-P
-SCRATCH-VARIABLE TEXT-CAP               \ bytes at TEXT-P, 0 for none
-variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
+\ The block holds every cell, buffer and first room of a record; the cells
+\ come first, each zero at its start, so FREE zeroes them as one run.
+0
+dup constant TEXT-P-OFF  1 cells +
+dup constant TEXT-CAP-OFF  1 cells +
+dup constant TEXT-LEN-OFF  1 cells +
+dup constant DEST-OFF  1 cells +
+dup constant IN-JSON-OFF  1 cells +
+dup constant PART-OFF  1 cells +
+dup constant BUF-ON-OFF  1 cells +
+dup constant BUF-FD-OFF  1 cells +
+dup constant HELD-P-OFF  1 cells +
+dup constant HELD-CAP-OFF  1 cells +
+dup constant HELD-U-OFF  1 cells +
+dup constant SAVED-P-OFF  1 cells +
+dup constant SAVED-CAP-OFF  1 cells +
+dup constant SAVED-U-OFF  1 cells +
+dup constant NUM-V-OFF  1 cells +
+dup constant NUM-N-OFF  1 cells +
+dup constant QUIET-OFF  1 cells +
+dup constant TALLY-OFF  1 cells +
+dup constant FILE-U-OFF  1 cells +
+dup constant LABELED-OFF  1 cells +
+dup constant NAMED-OFF  1 cells +
+dup constant LABEL-U-OFF  1 cells +
+dup constant LABEL-NAME-U-OFF  1 cells +
+dup constant SOURCE-A-OFF  1 cells +
+dup constant SOURCE-U-OFF  1 cells +
+dup constant SOURCE-LINE-OFF  1 cells +
+dup constant SOURCE-COLUMN-OFF  1 cells +
+dup constant SOURCE-BYTE-OFF  1 cells +
+dup constant MAP-A-OFF  1 cells +
+dup constant MAP-U-OFF  1 cells +
+dup constant ROW-A-OFF  1 cells +
+dup constant ROW-N-OFF  1 cells +
+dup constant ROW-BIAS-OFF  1 cells +
+dup constant CLOSER-A-OFF  1 cells +
+dup constant CLOSER-U-OFF  1 cells +
+dup constant CLOSER-BASE-OFF  1 cells +
+dup constant NOTES-OFF  1 cells +
+dup constant GUTTER-OFF  1 cells +
+dup constant PLACED-OFF  1 cells +
+dup constant PLACE-FILE-A-OFF  1 cells +
+dup constant PLACE-FILE-U-OFF  1 cells +
+dup constant AT-LINE-OFF  1 cells +
+dup constant AT-COLUMN-OFF  1 cells +
+dup constant AT-BYTE-OFF  1 cells +
+dup constant AT-END-OFF  1 cells +
+dup constant LINE-A-OFF  1 cells +
+dup constant LINE-U-OFF  1 cells +
+dup constant LEAD-U-OFF  1 cells +
+dup constant LAST-U-OFF  1 cells +
+dup constant LAST-AT-OFF  1 cells +
+dup constant EVALUATED-OFF  1 cells +
+dup constant EVALUATED-A-OFF  1 cells +
+dup constant EVALUATED-U-OFF  1 cells +
+dup constant EVAL-TOKEN-A-OFF  1 cells +
+dup constant EVAL-TOKEN-U-OFF  1 cells +
+dup constant EVAL-LEAD-U-OFF  1 cells +
+dup constant READER-A-OFF  1 cells +
+dup constant READER-U-OFF  1 cells +
+dup constant WORD-A-OFF  1 cells +
+dup constant WORD-U-OFF  1 cells +
+dup constant ROOT-A-OFF  1 cells +
+dup constant ROOT-U-OFF  1 cells +
+dup constant WARNING-OFF  1 cells +
+dup constant LABELS-P-OFF  1 cells +
+dup constant LABELS-CAP-OFF  1 cells +
+dup constant LABELS-U-OFF  1 cells +
+dup constant CELLS-BYTES
+dup constant BYTE-BUF-OFF  1 ROUND +
+dup constant NUM-BUF-OFF  20 ROUND +
+dup constant FILE-BUF-OFF  PATH-CAP 1 + ROUND +
+dup constant LABEL-BUF-OFF  PATH-CAP ROUND +
+dup constant LABEL-NAME-BUF-OFF  PATH-CAP ROUND +
+dup constant LAST-BUF-OFF  PATH-CAP ROUND +
+dup constant TEXT-BASE-OFF  TEXT-FIRST ROUND +
+dup constant HELD-BASE-OFF  TEXT-FIRST ROUND +
+dup constant SAVED-BASE-OFF  TEXT-FIRST ROUND +
+dup constant LABELS-BASE-OFF  TEXT-FIRST ROUND +
+public
+constant BLOCK-BYTES
+private
+create MAIN-BLOCK BLOCK-BYTES SCRATCH-ALLOT
+\ The running task's block, at the start of its user area.
+: BLOCK ( -- ^u8 )
+   USER-BAND:AREA-OFF POINTER-STORAGE:DATA-CELL @
+   dup NULL-PTR = IF drop MAIN-BLOCK THEN ;
+: CELL-AT ( n -- ^n ) BLOCK + cell-view ;
+: PTR-AT ( n -- ^^u8 ) BLOCK + 0 ptr-field ;
+
+: BYTE-BUF ( -- ^u8 ) BLOCK BYTE-BUF-OFF + ;
+: TEXT-BASE ( -- ^u8 ) BLOCK TEXT-BASE-OFF + ;
+: HELD-BASE ( -- ^u8 ) BLOCK HELD-BASE-OFF + ;
+: SAVED-BASE ( -- ^u8 ) BLOCK SAVED-BASE-OFF + ;
+: TEXT-P ( -- ^^u8 ) TEXT-P-OFF PTR-AT ;
+: TEXT-CAP ( -- ^n ) TEXT-CAP-OFF CELL-AT ;               \ bytes at TEXT-P, 0 for none
+: IN-JSON ( -- ^n ) IN-JSON-OFF CELL-AT ;          \ inside a JSON string: EMIT1 escapes
 \ Which text of the record is open. A prose AT opens GAP-PART: the label's
 \ first byte writes the space after the carets and opens LABEL-PART. An AT no
 \ source holds opens DROP-PART, which drops the label: no place carries it.
@@ -36,22 +130,24 @@ variable IN-JSON   0 IN-JSON !          \ inside a JSON string: EMIT1 escapes
 4 constant HELP-PART
 5 constant GAP-PART
 6 constant DROP-PART
-variable PART   NO-PART PART !
-variable BUF-ON
-variable BUF-FD   2 BUF-FD !
+: PART ( -- ^n ) PART-OFF CELL-AT ;
+: BUF-ON ( -- ^n ) BUF-ON-OFF CELL-AT ;
+: BUF-FD ( -- ^n ) BUF-FD-OFF CELL-AT ;   \ the descriptor records go to, xor 2
 \ The capture, grown as TEXT is, holds HELD-U bytes; CAPTURE empties it.
-PERSISTED-PTR-VARIABLE HELD-P   NULL-PTR HELD-P !
-variable HELD-CAP   0 HELD-CAP !        \ bytes at HELD-P, 0 for none
-variable HELD-U   0 HELD-U !
+: HELD-P ( -- ^^u8 ) HELD-P-OFF PTR-AT ;
+: HELD-CAP ( -- ^n ) HELD-CAP-OFF CELL-AT ;        \ bytes at HELD-P, 0 for none
+: HELD-U ( -- ^n ) HELD-U-OFF CELL-AT ;
 \ The record SAVE kept, SAVED-U bytes, in a buffer grown as the capture is.
-PERSISTED-PTR-VARIABLE SAVED-P   NULL-PTR SAVED-P !
-variable SAVED-CAP   0 SAVED-CAP !
-variable SAVED-U   0 SAVED-U !
-create NUM-BUF 20 allot  variable NUM-V  variable NUM-N
+: SAVED-P ( -- ^^u8 ) SAVED-P-OFF PTR-AT ;
+: SAVED-CAP ( -- ^n ) SAVED-CAP-OFF CELL-AT ;
+: SAVED-U ( -- ^n ) SAVED-U-OFF CELL-AT ;
+: NUM-BUF ( -- ^u8 ) BLOCK NUM-BUF-OFF + ;
+: NUM-V ( -- ^n ) NUM-V-OFF CELL-AT ;
+: NUM-N ( -- ^n ) NUM-N-OFF CELL-AT ;
 
 public
-variable DEST   0 DEST !                 \ 0 = stdout, 1 = TEXT (sig recording)
-variable TEXT-LEN
+: DEST ( -- ^n ) DEST-OFF CELL-AT ;   \ 0 = stdout, 1 = TEXT (sig recording)
+: TEXT-LEN ( -- ^n ) TEXT-LEN-OFF CELL-AT ;
 \ The main DATA's REJECTION-JSON-CELL from any thread: a task's region is not
 \ the main one, and main reads data-base because a cross build's host is not
 \ mapped at DATA-VA. No signature: `^n` would reject a stored flag, and the
@@ -59,10 +155,9 @@ variable TEXT-LEN
 : JSON
    data-base TASK-TCB-CELL + @ 0= IF data-base REJECTION-JSON-CELL + EXIT THEN
    data-base  DATA-VA data-base NULL-PTR - -  +  REJECTION-JSON-CELL + ;
-\ QUIET counts nested quiet-check scopes. It is created before the check
-\ hook exists, so no effect is published for it.
-variable QUIET
-variable TALLY   0 TALLY !               \ rejections counted this load
+\ QUIET counts nested quiet-check scopes.
+: QUIET ( -- ^n ) QUIET-OFF CELL-AT ;
+: TALLY ( -- ^n ) TALLY-OFF CELL-AT ;   \ rejections counted this load
 
 private
 : TEXT-MAP ( -- )
@@ -77,7 +172,7 @@ private
 
 
 \ Moves the room of c bytes at p, whose first room is f, to nc fresh bytes that
-\ hold its c bytes. The first room is image storage: it is zeroed, not unmapped.
+\ hold its c bytes. The first room is the block's: it is zeroed, not unmapped.
 : ROOM-GROW ( ^u8 ^u8 n n -- ^u8 ) {: p:^ f:^ c:n nc:n :}
    nc ARENA-ALLOC-BYTES {: q:^ :}
    p q c ARENA-COPY
@@ -113,7 +208,7 @@ private
 public
 : EMIT-RAW ( n -- )
    {: c:n :}
-   DEST @ IF
+   DEST @ 0= 0= IF
      TEXT-LEN @ TEXT-CAP @ 2 - > IF TEXT-GROW THEN
      c TEXT TEXT-LEN @ + c!  TEXT-LEN @ 1 + TEXT-LEN !
    ELSE c BYTE-BUF c! BYTE-BUF 1 type THEN ;
@@ -142,9 +237,13 @@ public
 : EMIT1 {: c :}
    PART @ DROP-PART = IF EXIT THEN
    PART @ GAP-PART = IF  LABEL-PART PART !  32 EMIT-RAW  THEN
-   IN-JSON @ IF c JSON-CHAR ELSE c EMIT-RAW THEN ;
+   IN-JSON @ 0= 0= IF c JSON-CHAR ELSE c EMIT-RAW THEN ;
 : JSON-OPEN ( -- )   34 EMIT-RAW  -1 IN-JSON ! ;
 : JSON-CLOSE ( -- )  0 IN-JSON !  34 EMIT-RAW ;
+
+private
+: FD ( -- n ) BUF-FD @ 2 xor ;
+public
 
 : CAPTURE ( -- )
    0 HELD-U !
@@ -159,11 +258,10 @@ public
 : RELEASE ( -- )
    BUF-ON @ 0= IF EXIT THEN
    0 BUF-ON !
-   BUF-FD @ HELD-P @ HELD-U @ write drop
+   FD HELD-P @ HELD-U @ write drop
    0 HELD-U ! ;
 
-: FD! ( n -- )
-   BUF-FD ! ;
+: FD! ( n -- ) 2 xor BUF-FD ! ;
 
 : BUFFER$ ( -- ^u8 n )
    HELD-P @ HELD-U @ ;
@@ -171,7 +269,7 @@ private
 
 : BUF-APPEND ( str -- )
    {: a:^ u:n :}
-   BUF-ON @ 0= IF BUF-FD @ a u write drop EXIT THEN
+   BUF-ON @ 0= IF FD a u write drop EXIT THEN
    u HELD-ROOM
    a HELD-P @ HELD-U @ + u ARENA-COPY
    HELD-U @ u + HELD-U ! ;
@@ -226,17 +324,23 @@ public
 : NO-FILE$ ( -- str ) s" <input>" ;
 
 private
-create FILE-BUF PATH-CAP 1 + allot   variable FILE-U
+: FILE-BUF ( -- ^u8 ) BLOCK FILE-BUF-OFF + ;
+: FILE-U ( -- ^n ) FILE-U-OFF CELL-AT ;   \ 0 when no file is named
 public
-: FILE$ ( -- str ) FILE-BUF FILE-U @ ;
+\ The file FILE! named, NO-FILE$ when none is.
+: FILE$ ( -- str )
+   FILE-U @ 0= IF NO-FILE$ EXIT THEN
+   FILE-BUF FILE-U @ ;
 private
 \ LABEL-BUF holds the path of the file LABEL! ran in, empty for none, and
 \ LABEL-NAME-BUF the label a top-level step in that file is placed at.
-variable LABELED
+: LABELED ( -- ^n ) LABELED-OFF CELL-AT ;
 \ Whether a tool named a file by FILE!.
-variable NAMED
-create LABEL-BUF PATH-CAP allot   variable LABEL-U
-create LABEL-NAME-BUF PATH-CAP allot   variable LABEL-NAME-U
+: NAMED ( -- ^n ) NAMED-OFF CELL-AT ;
+: LABEL-BUF ( -- ^u8 ) BLOCK LABEL-BUF-OFF + ;
+: LABEL-U ( -- ^n ) LABEL-U-OFF CELL-AT ;
+: LABEL-NAME-BUF ( -- ^u8 ) BLOCK LABEL-NAME-BUF-OFF + ;
+: LABEL-NAME-U ( -- ^n ) LABEL-NAME-U-OFF CELL-AT ;
 : LABEL-NAME$ ( -- str ) LABEL-NAME-BUF LABEL-NAME-U @ ;
 : COPY ( ^u8 ^u8 n -- ) {: a:^ d:^ u:n :}
    0 BEGIN dup u < WHILE
@@ -267,17 +371,23 @@ public
    bb off + ;
 
 private
-PTR-VARIABLE SOURCE-A  variable SOURCE-U
-variable SOURCE-LINE  variable SOURCE-COLUMN
+: SOURCE-A ( -- ^^u8 ) SOURCE-A-OFF PTR-AT ;
+: SOURCE-U ( -- ^n ) SOURCE-U-OFF CELL-AT ;
+: SOURCE-LINE ( -- ^n ) SOURCE-LINE-OFF CELL-AT ;
+: SOURCE-COLUMN ( -- ^n ) SOURCE-COLUMN-OFF CELL-AT ;
 public
-variable SOURCE-BYTE
+: SOURCE-BYTE ( -- ^n ) SOURCE-BYTE-OFF CELL-AT ;
 private
-PTR-VARIABLE MAP-A  variable MAP-U
-PTR-VARIABLE ROW-A  variable ROW-N
+: MAP-A ( -- ^^u8 ) MAP-A-OFF PTR-AT ;
+: MAP-U ( -- ^n ) MAP-U-OFF CELL-AT ;
+: ROW-A ( -- ^^n ) BLOCK ROW-A-OFF + 0 ptr-field ;
+: ROW-N ( -- ^n ) ROW-N-OFF CELL-AT ;
 \ The rows' source offset of the armed source's first byte, subtracted from
 \ each row's: the engine's rows count from the input buffer's start.
-variable ROW-BIAS
-PTR-VARIABLE CLOSER-A  variable CLOSER-U  PTR-VARIABLE CLOSER-BASE
+: ROW-BIAS ( -- ^n ) ROW-BIAS-OFF CELL-AT ;
+: CLOSER-A ( -- ^^u8 ) CLOSER-A-OFF PTR-AT ;
+: CLOSER-U ( -- ^n ) CLOSER-U-OFF CELL-AT ;
+: CLOSER-BASE ( -- ^^u8 ) CLOSER-BASE-OFF PTR-AT ;
 public
 : CLOSER-OFF ( -- )
    NULL-PTR CLOSER-A !  0 CLOSER-U !  NULL-PTR CLOSER-BASE ! ;
@@ -379,8 +489,8 @@ private
 \ The file a top-level step names; empty when no file or label names it.
 : LOAD-FILE$ ( -- str )   PATH$ FILE-NAME$ ;
 
-variable NOTES   0 NOTES !              \ the JSON notes object is open
-variable GUTTER   1 GUTTER !            \ digits of AT's line, 1 unplaced
+: NOTES ( -- ^n ) NOTES-OFF CELL-AT ;              \ the JSON notes object is open
+: GUTTER ( -- ^n ) GUTTER-OFF CELL-AT ;            \ digits of AT's line, 1 unplaced
 SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL OWNED
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
@@ -388,26 +498,39 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
 PENDTKA-CELL RESERVED-PTR-U8-CELL PEND-NAME
 \ AT's place: whether a buffer holds the token, its file, line, column and
 \ byte, the byte after it, and the source line with the bytes before the token.
-variable PLACED
-PTR-VARIABLE PLACE-FILE-A  variable PLACE-FILE-U
-variable AT-LINE  variable AT-COLUMN  variable AT-BYTE  variable AT-END
-PTR-VARIABLE LINE-A  variable LINE-U  variable LEAD-U
-\ The newest record's place as AT copies it: its file's path and first byte.
-\ FILE$, the label and a loading file's path fit PATH-CAP bytes.
-create LAST-BUF PATH-CAP allot   variable LAST-U   0 LAST-U !   variable LAST-AT   -1 LAST-AT !
+: PLACED ( -- ^n ) PLACED-OFF CELL-AT ;
+: PLACE-FILE-A ( -- ^^u8 ) PLACE-FILE-A-OFF PTR-AT ;
+: PLACE-FILE-U ( -- ^n ) PLACE-FILE-U-OFF CELL-AT ;
+: AT-LINE ( -- ^n ) AT-LINE-OFF CELL-AT ;
+: AT-COLUMN ( -- ^n ) AT-COLUMN-OFF CELL-AT ;
+: AT-BYTE ( -- ^n ) AT-BYTE-OFF CELL-AT ;
+: AT-END ( -- ^n ) AT-END-OFF CELL-AT ;
+: LINE-A ( -- ^^u8 ) LINE-A-OFF PTR-AT ;
+: LINE-U ( -- ^n ) LINE-U-OFF CELL-AT ;
+: LEAD-U ( -- ^n ) LEAD-U-OFF CELL-AT ;
+\ The newest record's place as AT copies it: its file's path, PATH-CAP bytes at
+\ most, and its first byte plus one, 0 for none.
+: LAST-BUF ( -- ^u8 ) BLOCK LAST-BUF-OFF + ;
+: LAST-U ( -- ^n ) LAST-U-OFF CELL-AT ;
+: LAST-AT ( -- ^n ) LAST-AT-OFF CELL-AT ;
 \ A token in an evaluated text is placed where the evaluation ran, followed by
 \ the line EVALUATED-A EVALUATED-U, the token EVAL-LEAD-U bytes in.
-variable EVALUATED   0 EVALUATED !
-PTR-VARIABLE EVALUATED-A  variable EVALUATED-U
-PTR-VARIABLE EVAL-TOKEN-A  variable EVAL-TOKEN-U  variable EVAL-LEAD-U
+: EVALUATED ( -- ^n ) EVALUATED-OFF CELL-AT ;
+: EVALUATED-A ( -- ^^u8 ) EVALUATED-A-OFF PTR-AT ;
+: EVALUATED-U ( -- ^n ) EVALUATED-U-OFF CELL-AT ;
+: EVAL-TOKEN-A ( -- ^^u8 ) EVAL-TOKEN-A-OFF PTR-AT ;
+: EVAL-TOKEN-U ( -- ^n ) EVAL-TOKEN-U-OFF CELL-AT ;
+: EVAL-LEAD-U ( -- ^n ) EVAL-LEAD-U-OFF CELL-AT ;
 EVAL-TOP-CELL RESERVED-PTR-U8-CELL EVAL-TOP
 \ A token no source holds is placed at the token READER-A READER-U the reader
 \ walking the subject is on, an empty one for none, else at RUNNING, the token
 \ the engine read last; the label is followed by a `word` note naming the token
 \ WORD-A WORD-U; WORD-U is 0 for no note.
-PTR-VARIABLE READER-A  variable READER-U   0 READER-U !
+: READER-A ( -- ^^u8 ) READER-A-OFF PTR-AT ;
+: READER-U ( -- ^n ) READER-U-OFF CELL-AT ;
 TKA-CELL RESERVED-PTR-U8-CELL RUNNING
-PTR-VARIABLE WORD-A  variable WORD-U   0 WORD-U !
+: WORD-A ( -- ^^u8 ) WORD-A-OFF PTR-AT ;
+: WORD-U ( -- ^n ) WORD-U-OFF CELL-AT ;
 \ Bytes of a prose line or quoted text shown: rustc's width when its output is
 \ not a terminal. A longer one shows a window, `...` in place of each cut end.
 140 constant WIDTH
@@ -466,7 +589,8 @@ private
 : PLACE-FILE! ( str -- ) {: a:^ u:n :}
    a PLACE-FILE-A !  u PLACE-FILE-U ! ;
 : PLACE-FILE$ ( -- str )   PLACE-FILE-A @ PLACE-FILE-U @ ;
-PTR-VARIABLE ROOT-A  variable ROOT-U   0 ROOT-U !
+: ROOT-A ( -- ^^u8 ) ROOT-A-OFF PTR-AT ;
+: ROOT-U ( -- ^n ) ROOT-U-OFF CELL-AT ;
 public
 \ The bytes the loader owns for the active file.
 : OWNED$ ( -- str )   OWNED @ data-base SRCLOC:OWNEDLEN-CELL + @ ;
@@ -668,7 +792,7 @@ private
    INVOKER {: inv:^ :}
    inv NULL-PTR = 0= IF
       t tu inv IN-EVALUATED? nip IF
-         inv INVOKE-PLACE  PLACED @ IF 0 0= EXIT THEN
+         inv INVOKE-PLACE  PLACED @ 0= 0= IF 0 0= EXIT THEN
          0 EVALUATED !
       THEN
    THEN
@@ -778,7 +902,7 @@ private
 \ A note's key; its value follows.
 : NOTE-KEY ( str -- ) {: k:^ ku:n :}
    JSON @ IF
-      NOTES @ IF 44 EMIT1 ELSE s" notes" FIELD  123 EMIT1  -1 NOTES ! THEN
+      NOTES @ 0= 0= IF 44 EMIT1 ELSE s" notes" FIELD  123 EMIT1  -1 NOTES ! THEN
       k ku JSON-KEY  JSON-OPEN
    ELSE
       MARGIN  s" = " EMIT-STR  k ku EMIT-STR  s" : " EMIT-STR
@@ -802,14 +926,14 @@ private
 : CLOSE-PART ( -- )
    END-TEXT
    PART @ LABEL-PART = 0= IF EXIT THEN
-   EVALUATED @ IF  0 EVALUATED !  EVALUATED-JSON  THEN
+   EVALUATED @ 0= 0= IF  0 EVALUATED !  EVALUATED-JSON  THEN
    WORD-U @ 0= IF EXIT THEN
    s" word" NOTE-KEY  WORD-A @ WORD-U @ EMIT-STR  0 WORD-U !  END-TEXT ;
 
 \ Closes a notes object no HELP closed, then the record.
 : CLOSE-RECORD ( -- )
    CLOSE-PART
-   JSON @ IF  NOTES @ IF 125 EMIT1 THEN  125 EMIT1  THEN  10 EMIT1
+   JSON @ IF  NOTES @ 0= 0= IF 125 EMIT1 THEN  125 EMIT1  THEN  10 EMIT1
    NO-PART PART ! ;
 
 \ Ends the record and sends it, or drops it under QUIET.
@@ -817,10 +941,10 @@ private
    CLOSE-RECORD
    QUIET @ 0= IF FLUSH ELSE 0 TEXT-LEN !  0 DEST ! THEN ;
 
-variable WARNING   0 WARNING !           \ the open record is a warning
+: WARNING ( -- ^n ) WARNING-OFF CELL-AT ;           \ the open record is a warning
 : BEGIN-RECORD ( str str -- ) {: sev:^ su:n code:^ cu:n :}
    1 DEST !  0 TEXT-LEN !  0 NOTES !  1 GUTTER !  0 EVALUATED !  0 WORD-U !
-   0 LAST-U !  -1 LAST-AT !
+   0 LAST-U !  0 LAST-AT !
    NO-PART PART !
    JSON @ IF
       123 EMIT1  s" severity" JSON-KEY  sev su JSON-STRING
@@ -846,21 +970,21 @@ public
    t tu PLACE
    PLACED @ 0= IF DROP-PART PART ! EXIT THEN
    PLACE-FILE$ {: f:^ fu:n :}
-   f LAST-BUF fu COPY  fu LAST-U !  AT-BYTE @ LAST-AT !
+   f LAST-BUF fu COPY  fu LAST-U !  AT-BYTE @ 1 + LAST-AT !
    AT-LINE @ DIGITS GUTTER !
    \ The placed bytes as the file holds them: a checked copy stands its tokens
    \ one blank apart, so a span across blanks is not the copy's length.
    LINE-A @ LEAD-U @ +  AT-END @ AT-BYTE @ - {: p:^ pu:n :}
    JSON @ IF p pu PLACE-JSON  LABEL-PART PART !  EXIT THEN
    p pu PLACE-PROSE
-   EVALUATED @ IF
+   EVALUATED @ 0= 0= IF
       0 EVALUATED !
       s"  evaluates the text below" EMIT-STR  10 EMIT1  EVALUATED-PROSE
    THEN
    GAP-PART PART ! ;
 \ The path and first byte of the newest record's place, the byte -1 when it
 \ had none. The path is borrowed until the next record is placed.
-: LAST-PLACE ( -- str n )   LAST-BUF LAST-U @ LAST-AT @ ;
+: LAST-PLACE ( -- str n )   LAST-BUF LAST-U @ LAST-AT @ 1 - ;
 \ Drops the `word` note AT added to its place.
 : NO-WORD ( -- )   0 WORD-U ! ;
 \ A note's key; its value follows.
@@ -883,7 +1007,7 @@ public
 : HELP ( -- )
    CLOSE-PART
    JSON @ IF
-      NOTES @ IF 125 EMIT1  0 NOTES ! THEN
+      NOTES @ 0= 0= IF 125 EMIT1  0 NOTES ! THEN
       s" help" FIELD  JSON-OPEN
    ELSE
       MARGIN  s" = help: " EMIT-STR
@@ -1126,7 +1250,6 @@ private
    a d u COPY  u ;
 : FILE-COPY ( str -- )
    FILE-BUF PATH-COPY FILE-U ! ;
-NO-FILE$ FILE-COPY
 public
 : FILE! ( ^u8 n -- )
    FILE-COPY  -1 NAMED ! ;
@@ -1144,10 +1267,10 @@ private
 \ The bytes of the labels PRESERVE-LABEL holds, innermost last: LABELS-U bytes
 \ at LABELS-P, grown to fit. A save is found by its offset, since a nested
 \ save may move them.
-create LABELS-BASE TEXT-FIRST SCRATCH-ALLOT
-PERSISTED-PTR-VARIABLE LABELS-P   NULL-PTR LABELS-P !
-variable LABELS-CAP   0 LABELS-CAP !
-variable LABELS-U   0 LABELS-U !
+: LABELS-BASE ( -- ^u8 ) BLOCK LABELS-BASE-OFF + ;
+: LABELS-P ( -- ^^u8 ) LABELS-P-OFF PTR-AT ;
+: LABELS-CAP ( -- ^n ) LABELS-CAP-OFF CELL-AT ;
+: LABELS-U ( -- ^n ) LABELS-U-OFF CELL-AT ;
 
 : LABELS-PUSH ( str -- ) {: a:^ u:n :}
    LABELS-P @ LABELS-BASE LABELS-CAP @ LABELS-U @ u FIT  LABELS-CAP !  LABELS-P !
@@ -1157,7 +1280,7 @@ variable LABELS-U   0 LABELS-U !
 \ The label's bytes are saved; where they start, their lengths, LABELED and
 \ NAMED stay on the stack for LABEL-RESTORE.
 : LABEL-SAVE ( -- n n n n n n )
-   LABELS-U @  FILE$ LABELS-PUSH  LABEL-BUF LABEL-U @ LABELS-PUSH
+   LABELS-U @  FILE-BUF FILE-U @ LABELS-PUSH  LABEL-BUF LABEL-U @ LABELS-PUSH
    LABEL-NAME$ LABELS-PUSH
    FILE-U @ LABEL-U @ LABEL-NAME-U @ LABELED @ NAMED @ ;
 
@@ -1182,4 +1305,21 @@ public
    a READER-A !  u READER-U !
    q catch {: rc:n :}
    was READER-A !  wu READER-U !  rc 0 <> IF rc throw THEN ;
+
+private
+\ Unmaps the room of c bytes at p unless it is the first room f or none.
+: ROOM-FREE ( ^u8 ^u8 n -- ) {: p:^ f:^ c:n :}
+   c 0=  p f =  or IF EXIT THEN
+   p c ARENA-UNMAP ;
+public
+
+\ Sends the task's capture, unmaps the rooms it grew and zeroes the block's
+\ cells, so none names an unmapped room; TASK calls it as each activation ends.
+: FREE ( -- )
+   RELEASE
+   TEXT-P @ TEXT-BASE TEXT-CAP @ ROOM-FREE
+   HELD-P @ HELD-BASE HELD-CAP @ ROOM-FREE
+   SAVED-P @ SAVED-BASE SAVED-CAP @ ROOM-FREE
+   LABELS-P @ LABELS-BASE LABELS-CAP @ ROOM-FREE
+   BLOCK CELLS-BYTES ARENA-ZERO ;
 ;package

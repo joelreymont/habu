@@ -941,11 +941,12 @@ $4CA8 constant CLAUSE-CELL
 
 STACK-ABI:PAGE-BYTES constant PROT-PAGE-MAX   \ the mapping alignment
 
-\ USER-BAND is the run of the per-task header src/lib/task.f keeps its own cells
-\ in: two, TASK-DEFER-OFF and TASK-AREA-OFF.
+\ USER-BAND is the per-task header task.f keeps its cells in: TASK-DEFER-OFF,
+\ then AREA-OFF, the running task's user area's address, 0 on the main thread.
 package USER-BAND
 public
 $5000 constant START
+START 1 cells + constant AREA-OFF
 START 2 cells + constant END
 ;package
 
