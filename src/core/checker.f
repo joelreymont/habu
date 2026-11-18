@@ -5970,9 +5970,6 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    f CTL-GENERATES = IF s" generates" EXIT THEN
    f CTL-ROOTS = IF s" roots" EXIT THEN
    f CTL-OPAQUE = IF s" opaque" EXIT THEN
-   \ An hb whose checker still writes `unseen` built the running one: reading it
-   \ sets bit 62, which no rule tests and XFER-FLAG-MASK drops.
-   f 1 62 lshift = IF s" unseen" EXIT THEN
    s" " ;
 
 : TAG>CTL-FLAG ( str -- n )
