@@ -512,7 +512,6 @@ TYPED-VARIABLE REC ^n
       wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
       wid 63 and rshift 1 and 0= if a u a u POLICY-REFUSE then
    then
-   rec XREF-WORDLIST OWNER-API-PRI-WID = if a u a u POLICY-REFUSE then
    rec XREF-START 0= if a u a u POLICY-REFUSE then ;
 
 \ At top level the ordinary `require`'s global record, spelled so, is in the

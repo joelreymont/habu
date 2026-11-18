@@ -33,26 +33,17 @@ private
 
 1 constant SCOPE-SEEDED              \ LSCOPEREC flag: the bound record is a seeded primitive
 
-\ Public search hides internal words; the compiler admits them only while a
-\ TRUSTED: definition is being compiled, and a call to an owned one always
-\ (CALL-BINDING). Re-read that authority on every call.
 : VISIBLE-RECORD? ( ^n -- bool )
    {: rec:^ :}
-   rec XREF-FLAGS DNAME-INT and 0<> if
-      data-base TRUSTED-CELL + @ 0<> exit
-   then
    rec XREF-WORDLIST OWNER-API-PRI-WID <>
    rec XREF-START 0<> and ;
 
 public
 
-\ A tick refuses an internal record outside a TRUSTED: body, and in every body a
-\ scope entry, as interpreter.f SCOPE-ENTRY-GUARD does.
+\ A tick refuses a scope entry in every body, as interpreter.f
+\ SCOPE-ENTRY-GUARD does.
 : TICK-REFUSED? ( ^n -- bool )
    {: rec:^ :}
-   rec XREF-FLAGS DNAME-INT and 0<>  rec VISIBLE-RECORD? 0= and if
-      true exit
-   then
    rec XREF-START CHECK:SCOPE-CODE-KIND 0<> ;
 
 \ The bound record whatever its flags, or none. Two used publics that both
@@ -87,8 +78,7 @@ private
 
 \ The record a compilation may name other than by a call: tick, enter or read.
 \ One it may not is refused where it binds, so the spelling is never handed on
-\ to a later scope. An internal record needs the TRUSTED: cell here even when
-\ owned: only a call binds an owned primitive (CALL-BINDING).
+\ to a later scope.
 : SPELL-REC ( str -- ^n )
    SCOPE-REC {: rec:^ :}
    rec XREF-FOUND? 0= if rec exit then
