@@ -361,9 +361,10 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
-\ LOWERING IS REFUSED WHILE A TASK IS LIVE. Main defines and prints beside a
-\ parked worker, then `ndict!` exits $4F naming it: lowering frees records a
-\ task may hold. The printed word proves main compiled beside the live task.
+\ LOWERING IS REJECTED WHILE A TASK IS LIVE. Main defines and prints beside a
+\ parked worker, then `XREF:FORGET-DEFS-FROM` exits $4F naming itself:
+\ lowering frees records a task may hold. The printed word proves main compiled
+\ beside the live task.
 : TASK-LOWER-LIVE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -635,7 +636,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
 : TASK-TEST-LOWER-LIVE ( -- )
    TASK-LOWER-LIVE$
-   s" error[E-TASK-COMPILE]: `ndict!` ran while a task is live"
+   s" error[E-TASK-COMPILE]: `XREF:FORGET-DEFS-FROM` ran while a task is live"
    TASK-EXPECT-REFUSED-EXIT ;
 
 : TASK-TEST-TASK-COMPILES ( -- )
@@ -2294,7 +2295,7 @@ variable BIND-PAIR-Q-WON
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
    TASK-WORKER-ACTIVATES$
-   s" error[E-TASK-COMPILE]: `ndict!` ran while a task is live"
+   s" error[E-TASK-COMPILE]: `XREF:FORGET-DEFS-FROM` ran while a task is live"
    TASK-EXPECT-REFUSED-EXIT ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records

@@ -737,10 +737,23 @@ private
       then
       EVAL-PREV + CELL-VIEW @
    repeat drop ;
+
+\ Removing definitions frees code a live task may be running and records it
+\ may reference, so the word a u is rejected while any task is live.
+: LIVE-TASK-GUARD ( str -- )
+   {: a:^ u:n :}
+   data-base TASKS-LIVE-CELL + @ 0 <> if
+      s" E-TASK-COMPILE" REJECTION:OPEN
+      a u XREF-EMIT-TICKS  s"  ran while a task is live" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" wait for every task to end before removing definitions" REJECTION:EMIT-STR
+      EXIT-STATUS:TASK-COMPILE REJECTION:STOP
+   then ;
 public
 \ A snapshot builder truncates a refresh tail with HIDE-DEFS-FROM and retires
 \ one word with `undefine NAME`; it never replays baked sources to hide one.
 : HIDE-DEFS-FROM ( ^u8 n -- )
+   s" XREF:HIDE-DEFS-FROM" LIVE-TASK-GUARD
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" XREF-REQUIRE-DEFINED
@@ -885,6 +898,7 @@ seal-package
 package XREF
 public
 : FORGET-DEFS-FROM ( ^u8 n -- )
+   s" XREF:FORGET-DEFS-FROM" LIVE-TASK-GUARD
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" XREF-REQUIRE-DEFINED
