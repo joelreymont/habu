@@ -821,8 +821,8 @@ generates: FAULT ( -- n )
 -9284 s" the self-pipe answered short of the four-byte signal number" ERROR:FAULT E-SIGNAL-READ
 -9285 s" poll refused the self-pipe's read end with an errno" ERROR:FAULT E-SIGNAL-POLL
 -9286 s" closing an end of the self-pipe failed" ERROR:FAULT E-SIGNAL-CLOSE
--9290 s" io_uring_setup or one of the ring mappings was refused" ERROR:FAULT E-AIO-SETUP
--9291 s" io_uring_enter was refused, or took fewer entries than offered" ERROR:FAULT E-AIO-ENTER
+-9290 s" the host's queues could not be set up: io_uring_setup, a ring mapping, the eventfd or its registration on Linux; the self-pipe or its non-blocking mark on Darwin" ERROR:FAULT E-AIO-SETUP
+-9291 s" the host refused a submission or the loop's wait: io_uring_enter refused or took fewer entries than offered, or the eventfd failed, on Linux; the self-pipe write or poll failed on Darwin" ERROR:FAULT E-AIO-ENTER
 -9292 s" no loop running, or a second START" ERROR:CODE E-AIO-STATE
 -9293 s" the kernel's io_uring ring is full: no submission entry free, or as many operations in flight as half the completion ring holds" ERROR:CODE E-AIO-FULL
 -9294 s" STOP with an operation still in flight" ERROR:CODE E-AIO-BUSY

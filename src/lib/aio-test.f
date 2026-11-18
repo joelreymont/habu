@@ -27,14 +27,17 @@ package AIO
 \ One OP-NOP published and nobody entered for: the ring carries an entry the
 \ kernel has not been asked to take. Its user_data is NOP-ID, which no record
 \ answers to, so its completion is dropped once some submission takes it.
-: AIO-TEST:PLANT-NOP ( -- )
+: AIO-TEST:PLANT-NOP-AT ( n -- )
    AIO-LOCK TASK:GET
-   0 RINGS dup SQ-SLOT 2dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
+   RINGS dup SQ-SLOT 2dup OP-NOP NOP-ID SQE-COMMON SQ-PUBLISH
    AIO-LOCK TASK:RELEASE ;
+
+: AIO-TEST:PLANT-NOP ( -- )
+   ACTIVE @ AIO-TEST:PLANT-NOP-AT ;
 
 \ The entries in the submission ring the kernel has not consumed.
 : AIO-TEST:PENDING ( -- n )
-   0 RINGS SQ-PENDING ;
+   ACTIVE @ RINGS SQ-PENDING ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ The record a handle names, so a case can say two handles share a record
@@ -42,6 +45,26 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : AIO-TEST:HANDLE-IDX ( n -- n )
    HANDLE>IDX ;
 [then]
+
+\ A RINGS entry's completion entries, and the active ring's.
+: AIO-TEST:RING-CQ ( n -- n )
+   RINGS RING-CQ-ENTRIES @ ;
+
+\ A RINGS entry's entries the kernel has not consumed, read under the facility.
+: AIO-TEST:RING-PENDING ( n -- n )
+   AIO-LOCK TASK:GET RINGS SQ-PENDING AIO-LOCK TASK:RELEASE ;
+
+: AIO-TEST:ACTIVE-CQ ( -- n )
+   ACTIVE @ AIO-TEST:RING-CQ ;
+
+: AIO-TEST:ACTIVE-SQ ( -- n )
+   ACTIVE @ RINGS RING-SQ-ENTRIES @ ;
+
+\ The RINGS entries that are open, read under the facility.
+: AIO-TEST:RINGS-OPEN ( -- n )
+   AIO-LOCK TASK:GET
+   0 RINGS-MAX 0 ?do i RINGS RING-STATE @ RING-FREE <> if 1 + then loop
+   AIO-LOCK TASK:RELEASE ;
 
 \ The loop's task, so a case can hold it busy and make START's activation fail.
 : AIO-TEST:LOOP-TASK ( -- ^n )
@@ -282,29 +305,49 @@ TASK:MIN-STACK TASK:TASK FAN7
    LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
 
-\ The kernel takes submission entries from the ring's head, not from the
-\ submitter's own slot, so a submission is judged by the ring draining and not
-\ by a return that matches the count this submitter published. The planted NOP
-\ is the entry a refused enter leaves behind: the count has to be zero right
-\ after the next submission, which is what says that submission's own entry
-\ reached the kernel. Both cases assert the count before the await, because a
-\ submission that left its entry in the ring has nobody to submit it and the
-\ await would hang instead of failing.
-: CASE-PLANTED-TIMER ( -- )
-   PENDING 0 T=
-   PLANT-NOP
-   PENDING 1 T=
-   TIMER-MS >MS AIO:TIMEOUT LONE-TICKET !
-   PENDING 0 T=
-   LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T= ;
-
-\ A poll with a deadline publishes two entries, so the stale one leaves three in
-\ the ring and the submitter's count would have covered two of them.
-: CASE-PLANTED-POLL ( -- )
+\ A started loop's first ring has 128 completion entries.
+: CASE-FIRST-RING ( -- )
    P-R P-W PIPE-OPEN
-   PLANT-NOP
-   PENDING 1 T=
-   P-R @ >FD AIO:READABLE SILENT-MS >MS AIO:POLL LONE-TICKET !
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
+   RINGS-OPEN 1 T=
+   0 RING-CQ $80 T=
+   LONE-TICKET @ AIO:CANCEL
+   LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
+   P-R P-W PIPE-CLOSE ;
+
+: RETIRED-POLL ( n -- )
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL swap GROW-TICKETS ! ;
+
+\ A NOP planted on retired ring 0 is what a cancel's short enter leaves there;
+\ the next stage enters it.
+: CASE-RETIRED-ENTER ( -- )
+   P-R P-W PIPE-OPEN
+   0 RING-CQ 2 / {: limit:n :}
+   limit 0 ?do i RETIRED-POLL loop
+   ACTIVE-CQ $80 T=
+   limit RETIRED-POLL
+   ACTIVE-CQ $100 T=
+   0 PLANT-NOP-AT
+   0 RING-PENDING 1 T=
+   limit 1 + RETIRED-POLL
+   0 RING-PENDING 0 T=
+   P-W @ POKE
+   limit 2 + 0 ?do i GROW-TICKETS @ AWAIT>N AIO:READABLE and 0<> TTRUE loop
+   [: RINGS-OPEN 1 = ;] TEST-WAIT:POLL
+   RINGS-OPEN 1 T=
+   P-R P-W PIPE-CLOSE ;
+
+\ Entries short enters left fill the active ring's queue; a cancel and the next
+\ timer still go in, because each enters them first.
+: CASE-FULL-QUEUE ( -- )
+   P-R P-W PIPE-OPEN
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
+   ACTIVE-SQ 0 ?do PLANT-NOP loop
+   LONE-TICKET @ AIO:CANCEL
+   PENDING 0 T=
+   LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
+   ACTIVE-SQ 0 ?do PLANT-NOP loop
+   TIMER-MS >MS AIO:TIMEOUT LONE-TICKET !
    PENDING 0 T=
    LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
    P-R P-W PIPE-CLOSE ;
@@ -337,14 +380,17 @@ TASK:MIN-STACK TASK:TASK FAN7
 
 \ A cancel takes no record of its own, so polls that fill every record can
 \ still be cancelled. A refused cancel pokes the pipe so the awaits end.
+\ The records fill through every doubling to the largest ring; once every
+\ poll is cancelled and awaited, the retired rings close with no further
+\ completion.
 : CASE-CANCEL-FULL ( -- )
    P-R P-W PIPE-OPEN
    FULL-FILL E-AIO-FULL T=
+   ACTIVE-CQ $2000 T=
    FULL-CANCEL dup 0 T= 0<> if P-W @ POKE then
    FULL-CANCELLED FULL-N @ T=
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
-   LONE-TICKET @ AIO:CANCEL
-   LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
+   [: RINGS-OPEN 1 = ;] TEST-WAIT:POLL
+   RINGS-OPEN 1 T=
    P-R P-W PIPE-CLOSE ;
 
 : ANY-DROP? ( -- bool )
@@ -961,14 +1007,15 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-STOPPED-REFUSAL
    AIO:START
    CASE-START-TWICE
+   HB-TARGET-LINUX-KERNEL? if CASE-FIRST-RING then
    CASE-READABLE
    CASE-ALREADY-READY
    CASE-TIMER
    CASE-POLL-DEADLINE
    CASE-CANCEL
    HB-TARGET-LINUX-KERNEL? if
-      CASE-PLANTED-TIMER
-      CASE-PLANTED-POLL
+      CASE-RETIRED-ENTER
+      CASE-FULL-QUEUE
       CASE-CANCEL-FULL
    then
    CASE-AWAIT-ANY

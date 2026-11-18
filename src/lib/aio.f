@@ -4,8 +4,13 @@ split-str
 \ drains the rings and TASK:WAKEs each owner.
 \ START the loop before the first wait; main keeps compiling while it runs.
 \ A submission with no loop is E-AIO-STATE. Linux uses
-\ io_uring from 5.10, the first long-term kernel with every opcode used and
-\ IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
+\ io_uring from 5.10, the first long-term kernel with every opcode used;
+\ Darwin uses src/lib/aio-macos.f.
+\ A ring holds records for at most half its completion entries, so its
+\ completion queue never overflows: 6.17's overflow path can drop a completion.
+\ A stage that would pass that retires the active ring and opens one of double
+\ the completion entries, up to AIO-CQ-ENTRIES; the loop closes a retired ring
+\ once its last record is freed.
 \ STORAGE CLASS. PROCESS-WIDE: rings, records and loop, under one TASK:FACILITY.
 \ SINK, outside it, which every waker's task writes and none reads.
 \ TASK-LOCAL: AIO-REGISTERED and AIO-PARKED, a submitting task's own cells.
@@ -80,10 +85,11 @@ CAST: AIO-N>PTR ( n -- ^n )
 4 constant REGISTER-EVENTFD
 $80000 constant EFD-CLOEXEC         \ O_CLOEXEC
 
-\ The ring's sizes. A record in flight owes at most two completion entries: its
+\ The rings' sizes. A record in flight owes at most two completion entries: its
 \ own and one cancel's (a linked poll's second is its link record's own).
-\ A submission entry is held only from a stage's publish to its enter.
-\ AIO-RECS-MAX is the most live records the process holds, shared by every
+\ A submission entry is held only from a stage's publish to its enter; a ring
+\ has half as many as completion entries, at most AIO-ENTRIES.
+\ AIO-RECS-MAX is the most live records a Linux process holds, shared by every
 \ task: every wait of a server process at once, its sockets, parked
 \ connections and database waits, with room to spare.
 $100 constant AIO-ENTRIES
@@ -94,7 +100,6 @@ $80 constant CQ-FIRST               \ the smallest ring's completion entries
 : DOUBLINGS ( n n -- n ) {: from:n to:n :}
    0 from begin dup to < while 2 * swap 1 + swap repeat drop ;
 
-\ The doublings from CQ-FIRST to AIO-CQ-ENTRIES, plus one.
 CQ-FIRST AIO-CQ-ENTRIES DOUBLINGS 1 + constant RINGS-MAX
 
 8 constant SETUP-CQSIZE
@@ -265,7 +270,7 @@ PARAMS-BYTES BUFFER: PARAMS
 \ under the facility, after the chunk's link; read with atomic@ by an owner
 \ checking a handle.
 SCRATCH-VARIABLE REC-GROWN
-SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed: URING-CLAIM's bound
+SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed, at most AIO-RECS-MAX
 
 : REC-CAP ( -- n ) REC-GROWN atomic@ RECS-FIRST + ;
 
@@ -273,15 +278,13 @@ variable GROUP-N
 variable RING-LIVE                  \ the loop is running
 variable RING-STOP
 variable RING-READY                 \ the facility has been initialized once
-\ The eventfd every ring signals as it posts a completion, and STOP writes;
-\ -1 while closed.
+\ The eventfd every ring signals as it posts a completion, and HOST-WAKE
+\ writes; -1 while closed.
 variable WAKE-FD
 -1 WAKE-FD !
 
-\ An io_uring: its fd, the lengths its three regions were mapped with, its
-\ entry counts and masks, the offsets io_uring_params reported, and the
-\ mapped bases. state is RING-FREE, RING-ACTIVE or RING-RETIRED; recs-live
-\ counts the records claimed on it and not yet freed.
+\ An io_uring, as io_uring_params reported it and as mapped; state is RING-FREE,
+\ RING-ACTIVE or RING-RETIRED, recs-live the records claimed on it and not freed.
 STRUCTURE ring DERIVE addr
    FIELD fd n
    FIELD state n
@@ -309,6 +312,7 @@ STRUCTURE ring DERIVE addr
 2 constant RING-RETIRED             \ takes no new records
 
 RINGS-MAX TYPED-BUFFER RINGS ring SCRATCH-ONLY
+variable ACTIVE                     \ the RINGS entry that takes new records
 
 CAST: RING-SLOT ( ^n -- ^^ring )
 
@@ -518,9 +522,18 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 : RING-UNCOUNT ( ^ring -- ) {: rg:^ :}
    rg RING-RECS-LIVE @ 1 - rg RING-RECS-LIVE ! ;
 
+\ A retired ring no record is claimed on.
+: RING-SPENT? ( ^ring -- bool ) {: rg:^ :}
+   rg RING-STATE @ RING-RETIRED =
+   rg RING-RECS-LIVE @ 0= and ;
+
 \ A record names no ring on Darwin.
+\ A refused wake was logged; the loop's next turn closes the ring anyway.
 : REC-FREE ( n -- ) {: idx:n :}
-   idx REC REC.RING @ 0<> if idx REC-RING @ RING-UNCOUNT then
+   idx REC REC.RING @ 0<> if
+      idx REC-RING @ dup RING-UNCOUNT
+      RING-SPENT? if HOST-WAKE drop then
+   then
    idx REC-RESET
    REC-LIVE @ 1 - REC-LIVE atomic! ;
 
@@ -631,11 +644,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rc 0 < if s" io_uring_enter errno " DIAG-ERRNO then
    E-AIO-ENTER ;
 
-\ An entry the enter did not take is still in the ring, and this record's entry
-\ may or may not be the one, so the record is forgotten rather than freed: a
-\ completion that still arrives releases it, and nothing reuses a record the
-\ kernel may still own. What stays behind goes in with the next enter from
-\ anyone, so a forgotten record's operation may yet run.
+\ A short enter may leave this record's entry in its ring, so the record is
+\ forgotten: a late completion frees it, and the next stage enters what stayed.
 : SUBMIT-OR-FORGET ( ^ring n -- n ) {: rg:^ idx:n :}
    rg ENTER-SUBMIT dup 0= if exit then
    STATE-FORGET idx REC REC.STATE atomic! ;
@@ -723,11 +733,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
       rg rg CQ-HEAD@ 1 + $FFFFFFFF and CQ-HEAD!
    repeat ;
 
-\ The loop's wait, on the eventfd every ring signals as it posts a completion
-\ and STOP writes. It submits nothing and does not hold the facility: draining
-\ what is published is the submitter's job, and the loop only collects. A signal
-\ cuts the wait short without completing anything, so EINTR is retried rather
-\ than reported.
+\ The loop's wait on WAKE-FD, without the facility: submitters enter what they
+\ publish, and the loop only collects. EINTR completes nothing and is retried.
 : WAKE-READ ( -- )
    begin
       WAKE-FD @ WAKE-IN 8 FD-READ-CALL 0 >= if exit then
@@ -735,19 +742,6 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
          s" eventfd read errno " DIAG-ERRNO
          E-AIO-ENTER throw
       then
-   again ;
-
-\ The read zeroes the count before the drains read the tails, so a completion
-\ posted after a drain read its ring's tail ends the next read.
-: LOOP-RUN ( -- )
-   begin
-      WAKE-READ
-      AIO-LOCK TASK:GET
-      RINGS-MAX 0 ?do
-         i RINGS dup RING-STATE @ RING-FREE <> if DRAIN else drop then
-      loop
-      AIO-LOCK TASK:RELEASE
-      RING-STOP atomic@ 0 <> if exit then
    again ;
 
 : LOOP-BODY ( -- )
@@ -844,7 +838,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    PARAMS-CLEAR
    SETUP-CQSIZE PARAMS P-FLAGS + LE:U32!
    cq PARAMS P-CQ-ENTRIES + LE:U32!
-   NR-SETUP AIO-ENTRIES PARAMS URING-SETUP-CALL {: fd:n :}
+   NR-SETUP cq 2 / AIO-ENTRIES min PARAMS URING-SETUP-CALL {: fd:n :}
    fd 0 < if s" io_uring_setup errno " DIAG-ERRNO E-AIO-SETUP throw then
    fd rg RING-FD !
    rg RING-LENGTHS rg RING-MAPS rg RING-OFFSETS
@@ -856,12 +850,65 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    REC-CAP 0 ?do i REC-RESET loop
    0 REC-LIVE atomic! ;
 
+\ Runs after the drains, so a record DRAIN frees never unmaps the ring DRAIN is
+\ reading.
+: RETIRED-CLOSE ( -- )
+   RINGS-MAX 0 ?do
+      i RINGS dup RING-SPENT? if RING-UNMAP else drop then
+   loop ;
+
+\ The read zeroes the count before the drains read the tails, so a completion
+\ posted after a drain read its ring's tail ends the next read.
+: LOOP-RUN ( -- )
+   begin
+      WAKE-READ
+      AIO-LOCK TASK:GET
+      RINGS-MAX 0 ?do
+         i RINGS dup RING-STATE @ RING-FREE <> if DRAIN else drop then
+      loop
+      RETIRED-CLOSE
+      AIO-LOCK TASK:RELEASE
+      RING-STOP atomic@ 0 <> if exit then
+   again ;
+
 \ ---- the public operations' locked bodies ------------------------------------
 \ Each answers a code instead of throwing, because it runs with the facility
 \ held and a throw would leave it locked. The caller releases and then throws.
 
+\ The first RING-FREE entry. One is free whenever the active ring is below
+\ AIO-CQ-ENTRIES: each open ring has its own size, and RINGS-MAX counts them.
+: RING-FREE-AT ( -- n )
+   0 begin dup RINGS RING-STATE @ RING-FREE <> while 1 + repeat ;
+
+\ Retires rg for a new active ring of double its completion entries; answers
+\ that ring and 0, or rg and E-AIO-FULL, rg still active, when the setup is refused.
+: RING-GROW ( ^ring -- ^ring n ) {: rg:^ :}
+   RING-FREE-AT {: k:n :}
+   [: k RINGS rg RING-CQ-ENTRIES @ 2 * RING-SETUP ;] catch {: code:n :}
+   code 0<> if rg E-AIO-FULL exit then
+   RING-RETIRED rg RING-STATE !
+   k ACTIVE !
+   k RINGS 0 ;
+
+\ A stage enters only the ring it publishes on, and a full one takes no stage,
+\ so every stage first enters each open ring's leftovers, retrying a failure.
+: LEFT-ENTER ( -- )
+   RINGS-MAX 0 ?do
+      i RINGS dup RING-STATE @ RING-FREE <> if
+         dup SQ-PENDING 0<> if ENTER-SUBMIT drop else drop then
+      else drop then
+   loop ;
+
+\ The ring a stage claims n records on, and 0, or a code.
+: RING-FOR ( n -- ^ring n ) {: want:n :}
+   LEFT-ENTER
+   ACTIVE @ RINGS {: rg:^ :}
+   REC-LIVE @ want + AIO-RECS-MAX > if rg E-AIO-FULL exit then
+   rg RING-RECS-LIVE @ want + rg RING-CQ-ENTRIES @ 2 / <= if rg 0 exit then
+   rg RING-CQ-ENTRIES @ AIO-CQ-ENTRIES >= if rg E-AIO-FULL exit then
+   rg RING-GROW ;
+
 : URING-CLAIM ( ^ring -- n n ) {: rg:^ :}
-   REC-LIVE @ rg RING-CQ-ENTRIES @ 2 / >= if E-AIO-FULL -1 exit then
    REC-CLAIM {: rc:n idx:n :}
    rc 0<> if rc idx exit then
    rg idx REC-RING !
@@ -928,7 +975,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rg idx SUBMIT-OR-FORGET idx ;
 
 \ A link (its poll's cancel ends it), an ended or a cancelled record answers 0.
-\ The cancel goes on the target's ring.
+\ The kernel finds a cancel's target only on the ring the cancel is submitted to.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
    target REC {: r:^ :}
    r REC.STATE atomic@ {: st:n :}
@@ -936,6 +983,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    r REC.KIND @ KIND-LINK = if 0 exit then
    r REC.CANCELING @ 0<> if 0 exit then
    target REC-RING @ {: rg:^ :}
+   LEFT-ENTER
    rg 1 SQ-ROOM? 0= if E-AIO-FULL exit then
    r REC.PENDING @ 1 + r REC.PENDING !
    1 r REC.CANCELING !
@@ -943,26 +991,36 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    SQ-PUBLISH
    rg ENTER-SUBMIT ;
 
-\ The host words on the one ring there is, entry 0, which START opens with
-\ AIO-CQ-ENTRIES completion entries.
+\ A poll with a deadline claims two records, its own and its link's.
 : URING-POLL ( n n n -- n n ) {: f:n events:n ms:n :}
-   0 RINGS f events ms POLL-STAGE ;
+   ms 0 < if 1 else 2 then RING-FOR {: rg:^ rc:n :}
+   rc 0<> if rc -1 exit then
+   rg f events ms POLL-STAGE ;
+
+: URING-TIMEOUT ( n -- n n ) {: ms:n :}
+   1 RING-FOR {: rg:^ rc:n :}
+   rc 0<> if rc -1 exit then
+   rg ms TIMEOUT-STAGE ;
 
 : URING-XFER ( n ^u8 NUM:alloc-byte-len n n n -- n n )
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
-   0 RINGS f buf cap count off kind XFER-STAGE ;
+   1 RING-FOR {: rg:^ rc:n :}
+   rc 0<> if rc -1 exit then
+   rg f buf cap count off kind XFER-STAGE ;
 
 : WAKE-CLOSE ( -- )
    WAKE-FD @ close-rc drop
    -1 WAKE-FD ! ;
 
-\ Opens WAKE-FD before ring 0, and closes it when the ring is refused.
+\ Opens WAKE-FD before the active ring, entry 0, and closes it when the ring
+\ is refused.
 : URING-SETUP ( -- )
    0 EFD-CLOEXEC EVENTFD-CALL {: fd:n :}
    fd 0 < if s" eventfd errno " DIAG-ERRNO E-AIO-SETUP throw then
    fd WAKE-FD !
-   [: 0 RINGS AIO-CQ-ENTRIES RING-SETUP ;] catch {: code:n :}
-   code 0 <> if WAKE-CLOSE code throw then ;
+   [: 0 RINGS CQ-FIRST RING-SETUP ;] catch {: code:n :}
+   code 0 <> if WAKE-CLOSE code throw then
+   0 ACTIVE ! ;
 
 : URING-CLOSE ( -- )
    RINGS-MAX 0 ?do
@@ -979,7 +1037,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 : INSTALL-HOST ( -- )
    ['] URING-POLL is HOST-POLL
-   [: 0 RINGS swap TIMEOUT-STAGE ;] is HOST-TIMEOUT
+   ['] URING-TIMEOUT is HOST-TIMEOUT
    ['] URING-XFER is HOST-XFER
    ['] CANCEL-STAGE is HOST-CANCEL
    ['] URING-WAKE is HOST-WAKE
@@ -994,8 +1052,8 @@ INSTALL-HOST
 \ entry in that task's exit chain, so a task that submits keeps its own
 \ cleanups: they run beside this one, newest registration first.
 
-\ A cancel is refused only by a failed ring (an SQ full of entries nobody
-\ entered, or a refused enter) or by a failed write to Darwin's wake pipe.
+\ A cancel is refused only by an enter the kernel refused or took short, or by
+\ a failed write to Darwin's wake pipe.
 : TRY-CANCEL ( n -- ) {: target:n :}
    target HOST-CANCEL drop ;
 
@@ -1245,7 +1303,7 @@ public
 : WRITABLE ( -- n )
    EV-WRITABLE ;
 
-\ Opens the ring and starts the completion task. A second start is
+\ Sets up the host's queues and starts the completion task. A second start is
 \ E-AIO-STATE; a START that throws leaves nothing for STOP.
 : START ( -- )
    RING-LIVE @ 0 <> if E-AIO-STATE throw then
@@ -1258,7 +1316,7 @@ public
    code 0 <> if HOST-CLOSE 0 RING-LIVE ! code throw then ;
 
 \ Every ticket must have been awaited or cancelled and drained first: a record
-\ still in flight is E-AIO-BUSY, because unmapping the ring under the kernel is
+\ still in flight is E-AIO-BUSY, because unmapping a ring under the kernel is
 \ not a thing a caller can be allowed to ask for.
 : STOP ( -- )
    RUNNING-CHECK
@@ -1275,7 +1333,7 @@ public
    HOST-CLOSE
    0 RING-LIVE ! ;
 
-\ True between a START that returned and the STOP that gives the ring back.
+\ True between a START that returned and the STOP that gives the host's queues back.
 : RUNNING? ( -- bool )
    RING-LIVE @ 0 <> ;
 
