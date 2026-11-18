@@ -237,6 +237,25 @@ create XE-EMPTY 1 allot
    s" : XH ( -- n ) MKR ;" XE-LINE
    SB$ s" found: [ -- renders ]" XE-FACT-REJECTED ;
 
+: XE-DEFER-FACTS ( -- )
+   s" a defer's effect states facts after its outputs" T-LABEL
+   SB-RESET  s" defer DV ( -- renders )" XE-LINE
+   s" : MKR ['] DV ;" XE-LINE  s" : XH ( -- n ) MKR ;" XE-LINE
+   SB$ s" found: [ -- renders ]" XE-FACT-REJECTED
+   s" a call of a defer may throw and keeps no input intact" T-LABEL
+   SB-RESET  s" defer DT ( n -- n )" XE-LINE
+   s" : R ( n -- n ) ['] DT catch drop 1 + ;" XE-LINE
+   SB$ s" E-STALE-READ" XE-FACT-REJECTED
+   s" a colon word's effect states no facts" T-LABEL
+   SB-RESET  s" : CF ( -- renders ) ;" XE-LINE
+   SB$ s" bad signature at `renders`" XE-FACT-REJECTED
+   s" a defer's inputs state no facts" T-LABEL
+   SB-RESET  s" defer DI ( renders -- )" XE-LINE
+   SB$ s" does not parse" XE-FACT-REJECTED
+   s" a defer's facts follow the last outputs, never a return clause" T-LABEL
+   SB-RESET  s" defer DE ( -- renders | )" XE-LINE
+   SB$ s" does not parse" XE-FACT-REJECTED ;
+
 : XE-PREPARE ( -- )
    FS:CLEANUP-RESET
    s" habu-xe" FS:MKTEMP-DIR {: a:^ u:n :}
@@ -255,6 +274,7 @@ create XE-EMPTY 1 allot
    XE-USING
    XE-USING-REFUSED
    XE-FACT-WORDS
+   XE-DEFER-FACTS
    XE-CLEANUP
    T-REPORT
    s" xt-effect: ok" type cr ;

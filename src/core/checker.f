@@ -7417,6 +7417,9 @@ variable CUSING              \ the using refusal the walk raised at this token; 
 variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 : SIG-RAW-DEFINER! ( bool -- ) SIG-RAW-MODE ! ;
 
+\ While true, a signature's output sides may end in fact words.
+variable SIG-STATES-FACTS   0 SIG-STATES-FACTS !
+
 \ While set, the signature parser reads facts text, `( EFFECT ) TAGS`, never a
 \ source signature.
 variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
@@ -8133,11 +8136,13 @@ variable SQUOT-N   0 SQUOT-N !
 : RCLAUSE-CHECK ( n n -- )
    RCLAUSE-NEUTRAL? 0= IF SB@ SL @ SGBAD-RETURN! THEN ;
 
-\ One token a u of a stack side: a type joins the row, a fact word, when OK lets the side end in
-\ them, joins the facts. A fact word is stated once and only fact words follow it.
+\ One token a u of a stack side: a type joins the row, a fact word joins the facts. A fact word
+\ where OK says the side may not end in facts does not parse; it is stated once and only fact
+\ words follow it.
 : PSTACK-TOK ( n n str bool -- n n ) {: row:n facts:n a:^ u:n ok:bool :}
-   ok IF a u STATED-FLAG ELSE 0 THEN {: flag:n :}
+   a u STATED-FLAG {: flag:n :}
    flag 0 <> IF
+      ok 0= IF a u SGBAD-SYNTAX! row facts EXIT THEN
       facts flag and 0 <> IF a u SGBAD-SYNTAX! THEN
       row facts flag or EXIT
    THEN
@@ -8196,6 +8201,7 @@ SCRATCH{
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
 variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
+variable PD-FACTS                        \ the facts the last signature stated after its outputs
 variable PD-ATOM0                        \ the first atom index this signature parsed
 }SCRATCH
 
@@ -8314,12 +8320,15 @@ variable PD-ATOM0                        \ the first atom index this signature p
    RR-SHARED @ dup 0= IF drop FRESH MK-ROW dup RR-SHARED ! THEN ;
 
 \ No '|' leaves the shared return row so far (0 when no clause anywhere), which
-\ CHECK ignores.
-: PSIDE ( n -- n n ) {: dtail:n :}
-   dtail RES-FALSE PSTACK drop
+\ CHECK ignores. OK says the outputs may end in facts, which follow the last
+\ outputs; answers both rows and the facts stated.
+: PSIDE ( n bool -- n n n ) {: dtail:n ok:bool :}
+   dtail ok PSTACK {: drow:n dfacts:n :}
    NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
-      2drop  -1 SGHASR !  RRTAIL RES-FALSE PSTACK drop
-   ELSE PK! RR-SHARED @ THEN ;
+      dfacts 0 <> IF 2dup SGBAD-SYNTAX! THEN
+      2drop  -1 SGHASR !  RRTAIL ok PSTACK {: rrow:n rfacts:n :}
+      drow rrow dfacts rfacts or
+   ELSE PK! drow RR-SHARED @ dfacts THEN ;
 
 \ The rules a signature's rows pass, parsed or built; a refusal sets SGBAD at
 \ the token A U. HASR says the rows carry a return clause, whose check names
@@ -8344,11 +8353,12 @@ variable PD-ATOM0                        \ the first atom index this signature p
 
 : PSIG ( -- n n n n )
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SQUOT-N !  0 BIND-DEPTH !  0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
+   0 PD-FACTS !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    ATOMN @ PD-ATOM0 !
-   dr PSIDE  PR-IN ! PD-IN !
+   dr RES-FALSE PSIDE drop  PR-IN ! PD-IN !
    s" --" EXPECT-SIG
-   dr PSIDE  PR-OUT ! PD-OUT !
+   dr SIG-STATES-FACTS @ PSIDE  PD-FACTS !  PR-OUT ! PD-OUT !
    NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN
    SB@ SL @ PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ SGHASR @ RES-FALSE
    SIG-ROWS-CHECK
@@ -15965,18 +15975,6 @@ EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
 : CHECKER-RECORD-NAME ( str -- str )
    2dup CHECKER-RECORD-NAME-AT ;
 
-\ A length that describes no memory is rejected with the symbol pool's error
-\ before the constructor scan reads it.
-: CHECKER-DEFER ( str -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
-   a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
-   a u CHECKER-RECORD-NAME DFER-ADD ;
-;package
-package CHECKER-REG
-EXPORT CHECK:CHECKER-DEFER
-' CHECKER-DEFER DECLARATIONS DEFER-OFF + xt!
-;package
-package CHECK
 
 : CHECKER-REC-NAME-AT! ( str str -- )
    CHECKER-RECORD-NAME-AT CHECKER-REC-U ! CHECKER-REC-A ! ;
@@ -21456,18 +21454,22 @@ private
    WRITE-WINDOW-CK                       \ before the does> latch steps
    DOES-EFF-STEP
    0 DL-NEW !
-   na nu sa su TRUST-USIG!
+   RES-TRUE SIG-STATES-FACTS !
+   na nu sa su [: TRUST-USIG! ;] [: RES-FALSE SIG-STATES-FACTS ! ;] finally
    {: row:n :}
    DL-TAKE
    \ A quiet row comes only from the verifier's pre-pass, whose quiet types
    \ QUIET-TYPE-REPORT reports; the run declares the row again.
    row CHECKER-ROW:QUIET = IF row EXIT THEN
+   \ A kept row's stated facts join its control word.
+   PD-FACTS @
    \ The parser filled both input rows. An unchecked body may throw after
    \ replacing a scoped input on either stack; its scan does not prove intact
    \ cells for a later catch.
-   PD-IN @ SCOPED-TYPE? PR-IN @ SCOPED-TYPE? or IF
+   PD-IN @ SCOPED-TYPE? PR-IN @ SCOPED-TYPE? or IF CTL-THROW or THEN {: extra:n :}
+   extra 0 <>  row CHECKER-ROW:KEPT =  and IF
       na nu CHECKER-RECORD-SYM? {: sym:n :}
-      sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
+      sym sym CTL-FLAGS-SYM extra or 0 0 NORET-ADD-SYM
    THEN
    CHECKER-REC-SYM @ CK-CLOSE!                  \ published after this, as a checked one is
    row ;
@@ -21482,6 +21484,23 @@ private
    TRUST-DECL-ROW drop ;
 ' TRUST-DECL CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
 ' TRUST-DECL-REJECTED? CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
+
+\ A length that describes no memory is rejected with the symbol pool's error
+\ before the constructor scan reads it.
+: CHECKER-DEFER ( str -- ) {: a:^ u:n :}
+   a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
+   a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
+   a u CHECKER-RECORD-NAME DFER-ADD
+   \ Any word may be installed, so a call may throw and keeps no input intact.
+   CHECKER-REC-SYM @ {: sym:n :}
+   sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM ;
+;package
+package CHECKER-REG
+EXPORT CHECK:CHECKER-DEFER
+' CHECKER-DEFER DECLARATIONS DEFER-OFF + xt!
+;package
+package CHECK
+private
 
 \ The symbol of the effect the last created record links, 0 when it links none.
 \ A created record starts unlinked.
