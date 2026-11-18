@@ -684,15 +684,14 @@ private
 
 \ A FLOOR IS A STATEMENT ABOUT CODE ORDER: the bytes from it upwards are handed
 \ back and rewritten, so no routine a surviving record points at may begin
-\ there. Records are in DEFINITION order, and an `EXPORT` alias can publish a
-\ late record for an earlier routine, so a floor read off one record's start
-\ can be too low and give back a surviving routine.
-\
-\ THE FLOOR IS A RETIRED RECORD'S OWN START, CHOSEN BY ADDRESS: every
-\ surviving routine lies below it. A start is the one address nameable without
-\ knowing the length of the routine below it (the recorded length excludes a
-\ trailing return). The cost, when the lowest retirement is not the first
-\ routine above the survivors, is a routine's worth of bytes left claimed.
+\ there. THE FLOOR IS A RETIRED RECORD'S OWN START, CHOSEN BY ADDRESS: a
+\ build's records, its aliases included, name its own routines, which lie above
+\ every survivor's, or kernel text below the arena. A start is the one address
+\ nameable without knowing the length of the routine below it (the recorded
+\ length excludes a trailing return). The cost, when the lowest retirement is
+\ not the first routine above the survivors, is a routine's worth of bytes left
+\ claimed. No floor is kept in a cell: an arena address moves with every
+\ launch, and a cell would carry it into a captured image.
 
 \ The first address of the engine's code arena. Below it are the dictionary
 \ records themselves and, lower still, the engine's own loaded text where a
@@ -719,21 +718,9 @@ private
    a ARENA-LO <  a cp@ < 0=  or if s exit then
    a ;
 
-\ The highest address any routine below the cut begins at. A record that is
-\ already RETIRED still counts: `undefine` retires the name and leaves the
-\ routine where it is, and a caller compiled before that retirement still
-\ branches into it.
-\ The scans below carry their running values on the stack, never in a cell: a
-\ routine's start is an arena address, which moves with every launch, and a
-\ cell holding one would carry it into a captured image.
-: LIVE-SCAN ( n -- n ) {: cut:n :}
-   0
-   cut 0 ?do
-      i REC-CODE max
-   loop ;
-
-: MIN-ABOVE-LIVE ( n n n -- n ) {: live:n floor:n s:n :}
-   s live <= if floor exit then
+\ The lower of FLOOR and a record's REC-LOW S, where 0 is no arena byte.
+: LOWER ( n n -- n ) {: floor:n s:n :}
+   s 0 = if floor exit then
    s floor min ;
 
 \ The caller's floor lies at or below cp@ and above every routine a surviving
@@ -745,13 +732,12 @@ private
 
 public
 
-\ The floor of a sweep that retires every record from CUT upwards: the lowest
-\ REC-LOW of a retired record above every surviving routine's start, else cp@.
+\ The floor of a sweep that retires every record from CUT, a build's
+\ first, upwards: the lowest REC-LOW among them, else cp@.
 : FLOOR-FROM ( n -- n ) {: cut:n :}
-   cut LIVE-SCAN {: live:n :}
    cp@
    ndict@ cut ?do
-      live swap i REC-LOW MIN-ABOVE-LIVE
+      i REC-LOW LOWER
    loop ;
 
 ;package
