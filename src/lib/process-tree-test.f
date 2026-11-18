@@ -45,8 +45,7 @@ variable TARGET
 \ It spawns a victim and asks KILL-TREE to end it, against a refused listing
 \ read as no children, a refused record read as an ended process, and a throw
 \ that leaves the named process stopped: KILL-TREE throws E-PROC-OUTPUT and the
-\ victim dies of SIGKILL. The Linux walk reads /proc through open, whose failure
-\ the engine reports with no errno (src/lib/process-tree.f).
+\ victim dies of SIGKILL.
 \ The victim is the walker's own child, so its pid is not handed on before the
 \ walker reaps it. Whatever the walk did, the walker sends it SIGTERM and then
 \ SIGCONT, which end it even if it was left stopped, and reaps it; a victim that
@@ -325,6 +324,17 @@ PROCESS:NO-FD PING-WR !
 : RESUME ( -- )
    [: RESUME-BODY ;] [: RESUME-END ;] finally ;
 
+\ ENDED: a reaped process's /proc files are gone, which CATCHES? and CPU-NS
+\ read as a process that ended, never as a refusal that throws.
+: ENDED ( -- )
+   VICTIM-START
+   VICTIM @ PROCESS:SIGKILL kill drop
+   VICTIM @ >PID PROCESS:WAIT drop
+   s" ended: CATCHES? of a reaped process answers FALSE" T-LABEL
+   VICTIM @ >PID SIGTERM PROC-TREE:CATCHES? TFALSE
+   s" ended: CPU-NS of a reaped process answers 0" T-LABEL
+   VICTIM @ >PID PROC-TREE:CPU-NS 0 T= ;
+
 create RUNS-DIR PATH-CAP allot
 variable RUNS-DIR-U
 create IDLE-COPY PATH-CAP allot
@@ -421,6 +431,7 @@ variable IDLE-COPY-U
    T-RESET
    CROWD
    RESUME
+   ENDED
    RUNS
    HB-TARGET-MACOS? 0= if
       s" process-tree-test: the refusal cases need macOS sandbox-exec" type cr

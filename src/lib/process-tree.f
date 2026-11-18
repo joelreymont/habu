@@ -242,9 +242,11 @@ FUNCTION: PID-INFO proc_pidinfo ( n n n ^u8 n -- i32 ) ;FUNCTION
 \ is already listed; Z and X are a thread that has exited. A member is settled
 \ when every thread of it shows one of the four.
 \
-\ A stat file or a task directory that will not open is taken to be a process
-\ or thread that ended since it was listed, a refusal (/proc mounted with
-\ hidepid, say) included.
+\ A stat file or task directory that is gone (ENOENT or ESRCH) is a process or
+\ thread that ended since it was listed. A refused one (EACCES under hidepid,
+\ say) leaves its member awake, so the walk stops it again and ends at
+\ SETTLE-MS; a listed pid whose stat is refused is not known to be a member
+\ and is passed over.
 
 512 constant STAT-CAP
 64 constant STAT-PATH-CAP           \ /proc/<pid>/task/<tid>/stat, each id at most seven digits
@@ -260,6 +262,14 @@ variable STAT-PATH-U
 variable TASK-DIR-U
 variable CUR
 
+ENUM load DERIVE eq loaded gone refused ;ENUM
+
+\ Called straight after the open-rd or read that failed, or the FS-LIST:E-OPEN
+\ catch, while FS:ERRNO is still that failure's.
+: FAILURE ( -- load )
+   FS:ERRNO FS:ENOENT = FS:ERRNO ESRCH = or
+   if LOAD-GONE else LOAD-REFUSED then ;
+
 : PATH+ ( ^u8 n -- )
    STAT-PATH STAT-PATH-CAP STAT-PATH-U BUF-APPEND ;
 
@@ -271,14 +281,20 @@ variable CUR
    s" /stat" PATH+
    STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ ;
 
-: LOAD-STAT? ( ^u8 -- bool ) {: pathz:^ :}
+\ A live process's /proc file is never empty, so 0 bytes is refused.
+: LOAD-INTO ( ^u8 ^u8 n ^n -- load )
+   {: pathz:^ buf:^ cap:n used:^ :}
    pathz open-rd {: fd:n :}
-   fd 0 < if false exit then
-   fd STAT STAT-CAP read {: got:n :}
+   fd 0 < if FAILURE exit then
+   fd buf cap read {: got:n :}
+   got 0 < if FAILURE fd close exit then
    fd close
-   got 0 <= if false exit then
-   got STAT-U !
-   true ;
+   got 0= if LOAD-REFUSED exit then
+   got used !
+   LOAD-LOADED ;
+
+: LOAD-STAT ( ^u8 -- load )
+   STAT STAT-CAP STAT-U LOAD-INTO ;
 
 : LAST-PAREN ( -- n )
    -1
@@ -324,7 +340,7 @@ variable CUR
    if pid MEMBER+ then ;
 
 : PROCESS-ROW ( ^u8 n n -- ) {: name:^ nameu:n pid:n :}
-   name nameu STAT-PATHZ LOAD-STAT? 0= if exit then
+   name nameu STAT-PATHZ LOAD-STAT LOAD-LOADED LOAD-EQ 0= if exit then
    TAKE-STATE drop
    TAKE-INT TAKE-INT {: ppid:n pgid:n :}
    pid ppid pgid VISIT ;
@@ -355,14 +371,18 @@ variable CUR
    s" /" PATH+
    tid tidu PATH+
    s" /stat" PATH+
-   STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ LOAD-STAT? 0= if exit then
-   TAKE-STATE SETTLED-STATE? 0= if AWAKE @ 1+ AWAKE ! then ;
+   STAT-PATH STAT-PATH-U BUF-LEN@ FS:>PATHZ LOAD-STAT MATCH load
+      loaded OF TAKE-STATE SETTLED-STATE? ENDOF
+      gone OF true ENDOF
+      refused OF false ENDOF
+   ;MATCH 0= if AWAKE @ 1+ AWAKE ! then ;
 
 : THREADS-LIST ( -- )
    TASK-DIR TASK-DIR-U BUF-LEN@ [: THREAD-VISIT ;] FS-LIST:EACH ;
 
 \ A member with a thread awake is stopped again: a SIGCONT can resume it after
-\ it joined. One that ended since it joined has no task directory left to list.
+\ it joined. One whose task directory is gone has ended; one whose task
+\ directory is refused stays awake.
 : MEMBER-SETTLE-LINUX ( n -- ) {: pid:n :}
    AWAKE @ {: before:n :}
    TASK-DIR-U BUF-RESET
@@ -370,8 +390,12 @@ variable CUR
    pid DIGITS+
    s" /task" TASK-DIR+
    [: THREADS-LIST ;] catch {: code:n :}
-   code FS-LIST:E-OPEN = if exit then
-   code 0<> if code throw then
+   code FS-LIST:E-OPEN = if
+      FAILURE LOAD-GONE LOAD-EQ if exit then
+      AWAKE @ 1+ AWAKE !
+   else
+      code 0<> if code throw then
+   then
    AWAKE @ before > if pid SIGSTOP kill drop then ;
 
 : SCAN-LINUX ( -- )
@@ -439,7 +463,9 @@ variable CUR
       getpid SHORT? 0= if E-PROC-OUTPUT throw then
       SHORT SHORT-PGID + LE:U32@ exit
    then
-   s" self" STAT-PATHZ LOAD-STAT? 0= if E-PROC-OUTPUT throw then
+   s" self" STAT-PATHZ LOAD-STAT LOAD-LOADED LOAD-EQ 0= if
+      E-PROC-OUTPUT throw
+   then
    TAKE-STATE drop
    TAKE-INT drop TAKE-INT ;
 
@@ -460,7 +486,8 @@ variable CUR
 \ its clang). A pid nobody has fills nothing and still answers 0.
 \
 \ Linux: /proc/<pid>/status holds the set as the line `SigCgt:` and sixteen hex
-\ digits (proc(5)). A status file that will not open is a process that ended.
+\ digits (proc(5)). A status file that is gone is a process that ended; a
+\ refused one throws E-PROC-OUTPUT.
 
 1 constant CTL-KERN
 14 constant KERN-PROC
@@ -525,12 +552,12 @@ FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
    s" /proc/" TASK-DIR+
    pid DIGITS+
    s" /status" TASK-DIR+
-   TASK-DIR TASK-DIR-U BUF-LEN@ FS:>PATHZ open-rd {: fd:n :}
-   fd 0 < if false exit then
-   fd STATUS STATUS-CAP read {: got:n :}
-   fd close
-   got 0 <= if false exit then
-   got STATUS-U !
+   TASK-DIR TASK-DIR-U BUF-LEN@ FS:>PATHZ
+   STATUS STATUS-CAP STATUS-U LOAD-INTO MATCH load
+      loaded OF ENDOF
+      gone OF false exit ENDOF
+      refused OF E-PROC-OUTPUT throw ENDOF
+   ;MATCH
    SIGCGT-AT HEX-AT sig CAUGHT-BIT? ;
 
 : CATCHES-HOST? ( n n -- bool ) {: pid:n sig:n :}
@@ -602,7 +629,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
 
 : CPU-ROW ( ^u8 n n -- ) {: name:^ nameu:n pid:n :}
    pid MEMBER? if exit then
-   name nameu STAT-PATHZ LOAD-STAT? 0= if exit then
+   name nameu STAT-PATHZ LOAD-STAT LOAD-LOADED LOAD-EQ 0= if exit then
    TAKE-STATE drop
    TAKE-INT MEMBER? 0= if exit then
    pid JOIN
@@ -621,7 +648,11 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
    s" /proc/" TASK-DIR+
    pid DIGITS+
    s" /stat" TASK-DIR+
-   TASK-DIR TASK-DIR-U BUF-LEN@ FS:>PATHZ LOAD-STAT? 0= if 0 exit then
+   TASK-DIR TASK-DIR-U BUF-LEN@ FS:>PATHZ LOAD-STAT MATCH load
+      loaded OF ENDOF
+      gone OF 0 exit ENDOF
+      refused OF E-PROC-OUTPUT throw ENDOF
+   ;MATCH
    TAKE-STATE drop
    TAKE-INT drop
    TAKE-TIMES ;
