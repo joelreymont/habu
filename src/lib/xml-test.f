@@ -1012,6 +1012,15 @@ variable SEEN
    s" a found run cut inside a character ends before it" T-LABEL
    s\" <a></xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\xC3\xA9z>" E-MALFORMED BAD
    E-MALFORMED s" 1:6: expected `</a>`, found `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...`; close elements in the reverse of the order they were opened" SAID
+   s" a found run writes a control or format character as U+XXXX" T-LABEL
+   s\" <a></c\xE2\x80\xAEd\xC2\x85e>" E-MALFORMED BAD
+   E-MALFORMED s" 1:6: expected `</a>`, found `cU+202EdU+0085e`; close elements in the reverse of the order they were opened" SAID
+   s" an expected end tag writes a format character in the open name as U+XXXX" T-LABEL
+   s\" <a\xD8\x9C></b>" E-MALFORMED BAD
+   E-MALFORMED s" 1:8: expected `</aU+061C>`, found `b`; close elements in the reverse of the order they were opened" SAID
+   s" the end tag a truncated document expects writes a tag character as U+XXXX" T-LABEL
+   s\" <a\xF3\xA0\x81\x81>" E-TRUNCATED BAD
+   E-TRUNCATED s" 1:8: expected `</aU+E0041>`, found the end of the input; write the rest of the document, closing each open element" SAID
    s" a document that ends inside an element names its end tag" T-LABEL
    s\" <a>\n<b>" E-TRUNCATED BAD
    E-TRUNCATED s" 2:4: expected `</b>`, found the end of the input; write the rest of the document, closing each open element" SAID

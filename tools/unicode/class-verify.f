@@ -6,6 +6,7 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/unicode/class.f
+require src/lib/unicode/visible.f
 require tools/unicode/class-generate.f
 
 package UNICODE-CLASS-VERIFY
@@ -30,6 +31,7 @@ $DFFF constant SURROGATE-LAST
 128 constant CLOSE-BIT
 256 constant MATH-SYMBOL-BIT
 512 constant OTHER-SYMBOL-BIT
+1024 constant HIDDEN-BIT
 111 constant OPEN-TYPE
 99 constant CLOSE-TYPE
 10 constant LINE-FEED
@@ -58,6 +60,9 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : DATA-PATH$ ( -- str )
    s" src/lib/unicode/class-data.f" ;
+
+: VISIBLE-PATH$ ( -- str )
+   s" src/lib/unicode/visible-data.f" ;
 
 : EXPECTED-UNICODE-DIGEST$ ( -- str )
    s" ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f" ;
@@ -103,6 +108,16 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    c 111 = if OTHER-SYMBOL-BIT exit then
    0 ;
 
+: OTHER-BIT ( n -- n ) {: c:n :}
+   c s" cfson" CATEGORY-SECOND? 0= if E-MISMATCH throw then
+   c 99 = c 102 = or if HIDDEN-BIT exit then
+   0 ;
+
+: SEPARATOR-BIT ( n -- n ) {: c:n :}
+   c s" slp" CATEGORY-SECOND? 0= if E-MISMATCH throw then
+   c 108 = c 112 = or if HIDDEN-BIT exit then
+   0 ;
+
 : CLASS-BIT ( str -- n ) {: a:^ u:n :}
    u 2 <> if E-MISMATCH throw then
    a c@ 76 = if
@@ -116,8 +131,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-MISMATCH throw then MARK-BIT exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
    a c@ 83 = if a 1+ c@ SYMBOL-BIT exit then
-   a c@ 90 = if a 1+ c@ s" slp" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
-   a c@ 67 = if a 1+ c@ s" cfson" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
+   a c@ 90 = if a 1+ c@ SEPARATOR-BIT exit then
+   a c@ 67 = if a 1+ c@ OTHER-BIT exit then
    E-MISMATCH throw ;
 
 : FIRST-NAME? ( str -- bool )
@@ -294,7 +309,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGES CHECK-TABLE
    UNICODE-CLASS-DATA:MARK-RANGES CHECK-TABLE
    UNICODE-CLASS-DATA:MATH-SYMBOL-RANGES CHECK-TABLE
-   UNICODE-CLASS-DATA:OTHER-SYMBOL-RANGES CHECK-TABLE ;
+   UNICODE-CLASS-DATA:OTHER-SYMBOL-RANGES CHECK-TABLE
+   UNICODE-VISIBLE:HIDDEN-RANGES CHECK-TABLE ;
 
 : TRUTH-BIT? ( n n -- bool ) {: cp:n bit:n :}
    cp TRUTH @ bit and 0= 0= ;
@@ -313,7 +329,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    cp UPPERCASE-BIT TRUTH-BIT? cp UNICODE-CLASS:UPPERCASE? AGREE
    cp MARK-BIT TRUTH-BIT? cp UNICODE-CLASS:MARK? AGREE
    cp MATH-SYMBOL-BIT TRUTH-BIT? cp UNICODE-CLASS:MATH-SYMBOL? AGREE
-   cp OTHER-SYMBOL-BIT TRUTH-BIT? cp UNICODE-CLASS:OTHER-SYMBOL? AGREE ;
+   cp OTHER-SYMBOL-BIT TRUTH-BIT? cp UNICODE-CLASS:OTHER-SYMBOL? AGREE
+   cp HIDDEN-BIT TRUTH-BIT? cp UNICODE-VISIBLE:HIDDEN? AGREE ;
 
 : PAIR-TRUTH@ ( n -- n ) {: cp:n :}
    cp PAIR-TRUTH @ {: pair:n :}
@@ -332,7 +349,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    cp UNICODE-CLASS:CLOSE-BRACKET? if E-MISMATCH throw then
    cp UNICODE-CLASS:PAIRED-BRACKET cp <> if E-MISMATCH throw then
    cp UNICODE-CLASS:MATH-SYMBOL? if E-MISMATCH throw then
-   cp UNICODE-CLASS:OTHER-SYMBOL? if E-MISMATCH throw then ;
+   cp UNICODE-CLASS:OTHER-SYMBOL? if E-MISMATCH throw then
+   cp UNICODE-VISIBLE:HIDDEN? if E-MISMATCH throw then ;
 
 : CHECK-ALL-SCALARS ( -- )
    0 begin dup SCALAR-MAX <= while
@@ -341,12 +359,15 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
       1+
    repeat drop ;
 
-: CHECK-REGENERATION ( -- )
-   UNICODE-CLASS-TOOL:LOAD-PINNED
-   UNICODE-CLASS-TOOL:RENDER {: generated:^ generatedu:n :}
-   DATA-PATH$ 2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
+: CHECK-FILE ( str str -- ) {: generated:^ generatedu:n path:^ pathu:n :}
+   path pathu FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
    generated generatedu buf got STR= 0= if E-MISMATCH throw then ;
+
+: CHECK-REGENERATION ( -- )
+   UNICODE-CLASS-TOOL:LOAD-PINNED
+   UNICODE-CLASS-TOOL:RENDER DATA-PATH$ CHECK-FILE
+   UNICODE-CLASS-TOOL:RENDER-VISIBLE VISIBLE-PATH$ CHECK-FILE ;
 
 public
 

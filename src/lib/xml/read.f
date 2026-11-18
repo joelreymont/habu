@@ -2,6 +2,7 @@ split-str
 \ read.f - the XML event scanner: NEXT, CONTENT and TEXT.
 
 require src/lib/xml/names.f
+require src/lib/unicode/visible.f
 
 package XML
 private
@@ -98,7 +99,7 @@ private
 \ The expected text `</NAME>` names the open element, cut as a found token is.
 : END-TAG-SCOPE ( ^n n str n str n ^u8 NUM:alloc-byte-len -- )
    drop {: state off:n fa:^ fu:n code:n name:^ len:n form:n buf:^ :}
-   buf 0 s" `</" PUT name len PUT
+   buf 0 s" `</" PUT over + name len UNICODE-VISIBLE:PUT over -
    form FOUND-CUT = if CUT$ PUT then
    s" >`" PUT {: size:n :} drop
    state off buf size fa fu code REJECT ;
@@ -109,8 +110,9 @@ private
    state CURRENT-FRAME {: frame :}
    state frame FRAME-NAME + @ frame FRAME-NAME-U + @ SPAN$ {: name:^ u:n :}
    name u CAPPED {: len:n form:n :}
+   name len UNICODE-VISIBLE:LEN {: shown:n :}
    state off fa fu code name len form
-   form FOUND-CUT = if len CUT$ nip + else len then 5 + MEM:BYTES-ALLOC-LEN
+   form FOUND-CUT = if shown CUT$ nip + else shown then 5 + MEM:BYTES-ALLOC-LEN
    [: END-TAG-SCOPE ;] MEM:WITH-BYTES ;
 
 : MATCH-END-NAME ( ^n -- )

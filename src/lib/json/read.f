@@ -13,6 +13,7 @@ require src/lib/byte-buffer.f
 require src/lib/sort.f
 require src/lib/utf16.f
 require src/lib/utf8-scalar.f
+require src/lib/unicode/visible.f
 require src/lib/fmt.f
 require src/lib/reason.f
 require src/core/rejection.f
@@ -253,8 +254,8 @@ LINEAR: ERASE-READER ( JSON:reader -- ^n )
    w 0= if state CURSOR-KINDS exit then
    state CURSOR-MORE @ w 1- cells + CELL-VIEW ;
 
-\ <found> is the end of the input, `byte $HH` for a byte no line shows, else
-\ at most FOUND-CAP bytes of the token in backticks, then `...` when cut.
+\ <found>: the input's end, `byte $HH` for a byte no line shows, else up to
+\ FOUND-CAP token bytes, made visible, in backticks, `...` if cut.
 32 constant FOUND-CAP
 $7F constant DEL
 
@@ -368,11 +369,12 @@ $7F constant DEL
    b DQ = inside 0= and if state off FOUND-STRING exit then
    1 FOUND-TOKEN ;
 
-: FOUND-SIZE ( n n -- n ) {: len:n form:n :}
+: FOUND-SIZE ( ^cursor n n n -- n ) {: state:^ off:n len:n form:n :}
    form FOUND-END = if END$ nip exit then
    form FOUND-BYTE = if BYTE$ nip 2 + exit then
-   form FOUND-CUT = if len CUT$ nip + 2 + exit then
-   len 2 + ;
+   state CURSOR-SRC @ off + len UNICODE-VISIBLE:LEN {: shown:n :}
+   form FOUND-CUT = if shown CUT$ nip + 2 + exit then
+   shown 2 + ;
 
 : PUT ( ^u8 n ^u8 n -- ^u8 n ) {: buf:^ at:n a:^ u:n :}
    a buf at + u BYTE-COPY
@@ -384,7 +386,8 @@ $7F constant DEL
    form FOUND-BYTE = if
       buf at BYTE$ PUT  state off AT 2 FMT:HEX-WIDTH$ PUT exit
    then
-   buf at TICK$ PUT state CURSOR-SRC @ off + len PUT
+   buf at TICK$ PUT over +
+   state CURSOR-SRC @ off + len UNICODE-VISIBLE:PUT over -
    form FOUND-CUT = if CUT$ PUT then
    TICK$ PUT ;
 
@@ -402,7 +405,7 @@ $7F constant DEL
    state off PLACE {: line:n col:n :}
    line FMT:INT$ nip col FMT:INT$ nip + LINE-SEP$ nip +
    EXPECTED-SEP$ nip + FOUND-SEP$ nip + FIX-SEP$ nip + eu + fu +
-   state off code IN-STRING? FOUND-FORM FOUND-SIZE + ;
+   state off state off code IN-STRING? FOUND-FORM FOUND-SIZE + ;
 
 : REJECT-SCOPE ( ^cursor n str str n ^u8 NUM:alloc-byte-len -- )
    drop {: state:^ off:n ea:^ eu:n fa:^ fu:n code:n buf:^ :}

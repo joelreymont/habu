@@ -33,6 +33,7 @@ $DFFF constant SURROGATE-LAST
 5 constant CLASS-MARK
 6 constant CLASS-MATH-SYMBOL
 7 constant CLASS-OTHER-SYMBOL
+8 constant CLASS-HIDDEN
 111 constant OPEN-TYPE
 99 constant CLOSE-TYPE
 
@@ -66,6 +67,9 @@ variable MATH-N
 RANGE-CAPACITY TYPED-BUFFER SO-LO n
 RANGE-CAPACITY TYPED-BUFFER SO-HI n
 variable SO-N
+RANGE-CAPACITY TYPED-BUFFER HIDDEN-LO n
+RANGE-CAPACITY TYPED-BUFFER HIDDEN-HI n
+variable HIDDEN-N
 RANGE-CAPACITY TYPED-BUFFER OPEN-CP n
 RANGE-CAPACITY TYPED-BUFFER OPEN-PAIR n
 variable OPEN-N
@@ -130,6 +134,16 @@ variable PENDING-NAME-U
    c 111 = if CLASS-OTHER-SYMBOL exit then
    0 ;
 
+: OTHER-CLASS ( n -- n ) {: c:n :}
+   c s" cfson" CATEGORY-SECOND? 0= if E-SYNTAX throw then
+   c 99 = c 102 = or if CLASS-HIDDEN exit then
+   0 ;
+
+: SEPARATOR-CLASS ( n -- n ) {: c:n :}
+   c s" slp" CATEGORY-SECOND? 0= if E-SYNTAX throw then
+   c 108 = c 112 = or if CLASS-HIDDEN exit then
+   0 ;
+
 : CATEGORY ( str -- n ) {: a:^ u:n :}
    u 2 <> if E-SYNTAX throw then
    a c@ 76 = if
@@ -143,8 +157,8 @@ variable PENDING-NAME-U
    a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-SYNTAX throw then CLASS-MARK exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    a c@ 83 = if a 1+ c@ SYMBOL-CLASS exit then
-   a c@ 90 = if a 1+ c@ s" slp" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
-   a c@ 67 = if a 1+ c@ s" cfson" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
+   a c@ 90 = if a 1+ c@ SEPARATOR-CLASS exit then
+   a c@ 67 = if a 1+ c@ OTHER-CLASS exit then
    E-SYNTAX throw ;
 
 : FIRST-NAME? ( str -- bool )
@@ -191,6 +205,10 @@ variable PENDING-NAME-U
    then
    class CLASS-OTHER-SYMBOL = if
       lo hi 0 SO-LO 0 SO-HI SO-N RANGE-APPEND
+      exit
+   then
+   class CLASS-HIDDEN = if
+      lo hi 0 HIDDEN-LO 0 HIDDEN-HI HIDDEN-N RANGE-APPEND
       exit
    then
    class CLASS-LETTER-NUMBER = if
@@ -364,13 +382,13 @@ public
    0 LETTER-N !
    0 NUMBER-N !
    0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! 0 UPPER-N ! 0 OTHER-UPPER-N ! 0 MARK-N !
-   0 MATH-N ! 0 SO-N !
+   0 MATH-N ! 0 SO-N ! 0 HIDDEN-N !
    0 OPEN-N ! 0 CLOSE-N ! ;
 
 : PARSE-UNICODE ( str -- )
    FALSE-VALUE UNICODE-READY !
    0 LETTER-N ! 0 NUMBER-N ! 0 NL-N ! 0 UPPER-N ! 0 MARK-N !
-   0 MATH-N ! 0 SO-N !
+   0 MATH-N ! 0 SO-N ! 0 HIDDEN-N !
    -1 SOURCE-PREV ! FALSE-VALUE PENDING !
    SCAN-UNICODE
    TRUE-VALUE UNICODE-READY ! ;
@@ -438,6 +456,11 @@ public
 
 : OTHER-SYMBOL-RANGE@ ( n -- n n )
    0 SO-LO 0 SO-HI SO-N @ RANGE@ ;
+
+: HIDDEN-COUNT ( -- n ) HIDDEN-N @ ;
+
+: HIDDEN-RANGE@ ( n -- n n )
+   0 HIDDEN-LO 0 HIDDEN-HI HIDDEN-N @ RANGE@ ;
 
 : OPEN-BRACKET-COUNT ( -- n ) OPEN-N @ ;
 : CLOSE-BRACKET-COUNT ( -- n ) CLOSE-N @ ;

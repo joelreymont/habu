@@ -1601,6 +1601,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    code wa wu JRT-SAID ;
 
 : JRT-TEST-REASON-CODES ( -- )
+   s" a failed advance throws its code with its REASON text" T-LABEL
    s\" [1,\n ]" E-JSON-READ-MALFORMED
    s" 2:2: expected a value, found `]`; write a value, or remove a trailing comma"
    JRT-WHY
@@ -1659,9 +1660,8 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" 1:8: expected a member name, found `}`; write the next member's name in double quotes, or remove a trailing comma"
    JRT-WHY ;
 
-\ A bare run shows whole characters, a long one cut on a character's first
-\ byte; a raw control byte shows as its value; a column counts bytes.
 : JRT-TEST-REASON-FOUND ( -- )
+   s" a rejection's found text shows the token it rejected" T-LABEL
    s\" [\n tru]" E-JSON-READ-MALFORMED
    s" 2:2: expected `true`, found `tru`; write the word in full and in lower case, or quote the text as a string"
    JRT-WHY
@@ -1680,6 +1680,12 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s\" [abcdefghijklmnopqrstuvwxyz01234\xC3\xA9xyz]" E-JSON-READ-MALFORMED
    s" 1:2: expected a value or `]`, found `abcdefghijklmnopqrstuvwxyz01234...`; write a value, or close the array with `]`"
    JRT-WHY
+   s\" [a\xE2\x80\xAEb\xC2\x85c\xF3\xA0\x80\x81d\xE2\x80\xA8e]" E-JSON-READ-MALFORMED
+   s" 1:2: expected a value or `]`, found `aU+202EbU+0085cU+E0001dU+2028e`; write a value, or close the array with `]`"
+   JRT-WHY
+   s\" {\"a\":1\n \"x\xE2\x80\xAEy\xC2\x85z\":2}" E-JSON-READ-COMMA
+   s\" 2:2: expected `,` or the close of the open array or object, found `\"xU+202EyU+0085z\"`; write `,` between the values, or close the open array with `]` or object with `}`"
+   JRT-WHY
    s\" [\n \"a\tb\"]" E-JSON-READ-STRING
    s" 2:4: expected a character or an escape, found byte $09; write the control byte as an escape such as `\t`, `\n` or `\u001F`"
    JRT-WHY
@@ -1697,6 +1703,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
 \ A failed reader advanced again throws its own text, whatever text another
 \ throw of the same code left since.
 : JRT-TEST-REASON-AGAIN ( -- )
+   s" a failed reader advanced again throws its own text" T-LABEL
    s" [1,]" JRT-OPEN-A
    JSON:READ-NEXT drop JSON:READ-NEXT drop
    JRT-CATCH-BAD

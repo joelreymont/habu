@@ -7,18 +7,19 @@ split-str
 \ else in backticks a markup byte, a space, the run of whole characters, each an
 \ ASCII graphic byte but markup or a UTF-8 character above ASCII, or at `&` the
 \ `&`, the run after it and a `;` closing it; at most FOUND-CAP bytes of it cut
-\ on a character's first byte, and then `...` when cut or when the run reaches
-\ the span's end and input follows the span. A character the span's end cuts,
-\ with input after it, counts as reaching the span's end, and alone shows as
-\ `...`. Found counts over the span and never refills. The text's size is
-\ counted before it is written, so it needs no fixed buffer and never touches
-\ SB.
+\ on a character's first byte and made visible, and then `...` when cut or when
+\ the run reaches the span's end and input follows the span. A character the
+\ span's end cuts, with input after it, counts as reaching the span's end, and
+\ alone shows as `...`. Found counts over the span and never refills. The text's
+\ size is counted before it is written, so it needs no fixed buffer and never
+\ touches SB.
 \ REJECT-UNITS places in UTF-16 bytes: a line ends at an LF unit, a column
 \ counts units, and <found> is the end of the input, `byte $HH` for a lone
 \ last byte, or `unit $HHHH`.
 
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
+require src/lib/unicode/visible.f
 require src/lib/utf16.f
 require src/lib/fmt.f
 require src/lib/reason.f
@@ -135,12 +136,13 @@ STRUCTURE place
    b $80 >= b $20 < or b $7F = or if 1 FOUND-BYTE exit then
    1 FOUND-TOKEN ;
 
-: FOUND-SIZE ( n n -- n ) {: len:n form:n :}
+: FOUND-SIZE ( ^u8 n n n -- n ) {: a:^ off:n len:n form:n :}
    form FOUND-END = if END$ nip exit then
    form FOUND-BYTE = if BYTE$ nip 2 + exit then
-   form FOUND-CUT = if len CUT$ nip + 2 + exit then
    form FOUND-UNIT-LE = form FOUND-UNIT-BE = or if UNIT$ nip 4 + exit then
-   len 2 + ;
+   a off + len UNICODE-VISIBLE:LEN {: shown:n :}
+   form FOUND-CUT = if shown CUT$ nip + 2 + exit then
+   shown 2 + ;
 
 : PUT ( ^u8 n ^u8 n -- ^u8 n ) {: buf:^ at:n a:^ u:n :}
    a buf at + u BYTE-COPY
@@ -158,14 +160,15 @@ STRUCTURE place
    form FOUND-UNIT-BE = if
       buf at UNIT$ PUT a off + c@ PUT-HEX a off + 1+ c@ PUT-HEX exit
    then
-   buf at TICK$ PUT a off + len PUT
+   buf at TICK$ PUT over + a off + len UNICODE-VISIBLE:PUT over -
    form FOUND-CUT = if CUT$ PUT then
    TICK$ PUT ;
 
-: TEXT-SIZE ( n n n n n n -- n ) {: line:n col:n len:n form:n eu:n fu:n :}
+: TEXT-SIZE ( n n ^u8 n n n n n -- n )
+   {: line:n col:n a:^ off:n len:n form:n eu:n fu:n :}
    line FMT:INT$ nip col FMT:INT$ nip + LINE-SEP$ nip +
    EXPECTED-SEP$ nip + FOUND-SEP$ nip + FIX-SEP$ nip + eu + fu +
-   len form FOUND-SIZE + ;
+   a off len form FOUND-SIZE + ;
 
 : REJECT-SCOPE
    ( n n str n n str str n ^u8 NUM:alloc-byte-len -- )
@@ -180,7 +183,7 @@ STRUCTURE place
 : REJECT-WRITE ( n n ^u8 n n n str str n -- )
    {: line:n col:n a:^ off:n len:n form:n ea:^ eu:n fa:^ fu:n code:n :}
    line col a off len form ea eu fa fu code
-   line col len form eu fu TEXT-SIZE MEM:BYTES-ALLOC-LEN
+   line col a off len form eu fu TEXT-SIZE MEM:BYTES-ALLOC-LEN
    [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
 
 \ Rejects at off in the span a u, whose first byte sits at the place at.
