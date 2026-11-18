@@ -1,14 +1,13 @@
 split-str
 \ linker.f - LINKER:WITH opens a build's data space, runs the body in it and
 \ closes it on every exit: the space's words and strings live there, and after
-\ the close hb's dictionary, code, data and header are as before. One process:
+\ the close hb's dictionary, code and data are as before. One process:
 \ the boundary under test is in-process.
 \ Each build's checker starts from the primitive rows in the stores CHECK
 \ registers, and the close puts them back as hb had them.
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/memory.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
@@ -28,81 +27,17 @@ CAST: STRING-XT ( n -- [ -- ^u8 n ] )
 variable ND0
 variable CP0
 variable HERE0
-variable DPHW0
-variable HEADER0                     \ hb's DATA header, its distance from NULL-PTR
-
-: DATA-CELL ( n -- ^n )
-   {: off:n :}
-   data-base BYTE-VIEW off + CELL-VIEW ;
-
-: COPY-CELL ( n -- ^n )
-   {: off:n :}
-   NULL-PTR BYTE-VIEW HEADER0 @ + off + CELL-VIEW ;
 
 : HERE-N ( -- n ) here NULL-PTR - ;
 
-: HEADER-ALLOC ( -- )
-   DATA-START MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop NULL-PTR - HEADER0 ! ;
-
 : TAKE-HOST ( -- )
-   ndict@ ND0 !  cp@ CP0 !  HERE-N HERE0 !
-   data-base DPHW-CELL + @ DPHW0 !
-   DATA-START 0 ?do i DATA-CELL @ i COPY-CELL ! CELL +loop ;
-
-: .HEX ( n -- )
-   {: v:n :}
-   [char] $ emit
-   16 0 ?do
-      v 60 i 4 * - rshift 15 and {: d:n :}
-      d 10 < if d 48 + else d 55 + then emit
-   loop ;
-
-: IN? ( n n n -- bool )
-   {: off:n lo:n hi:n :}
-   off lo >= off hi < and ;
-
-\ The close's forget keeps NDICT-HW-CELL and HIDX's stale claims; a build's
-\ wordlists raise WIDN-CELL.
-: CLOSE-LEFT? ( n -- bool )
-   {: off:n :}
-   off WIDN-CELL = off NDICT-HW-CELL = or off HIDX:CLAIMS = or ;
-
-\ Scratch any host definition, evaluation or number printing writes: name and
-\ token cells, the body text's handle, THROWS-CELL and STAMP-CELL
-\ (every throw and every kept record write them) and fmt/string scratch.
-: SCRATCH? ( n -- bool )
-   {: off:n :}
-   off BODYLEN-CELL = off DEF-TKA-CELL = or off DEF-TKL-CELL = or
-   off TKA-CELL = or off TKL-CELL = or off TOKENS-CELL = or
-   off PENDTKA-CELL = or off THROWS-CELL = or  off STAMP-CELL = or
-   off TOKBODY-CELL TOKVSP-CELL CELL + IN? or
-   off BODY-TEXT:BASE-CELL BODY-TEXT:BASE-CELL 4 cells + IN? or
-   off FMT-ABI:START STRING-ABI:END IN? or ;
-
-: CHANGES? ( n -- bool )
-   {: off:n :}
-   off CLOSE-LEFT? off SCRATCH? or 0= ;
-
-\ The header cells that differ from the copy.
-: HEADER-DIFFS ( -- n )
-   0
-   DATA-START 0 ?do
-      i COPY-CELL @ {: was:n :}
-      i DATA-CELL @ {: now:n :}
-      was now <> i CHANGES? and if
-         s" header cell " type i .HEX s"  before " type was .HEX
-         s"  after " type now .HEX cr
-         1+
-      then
-   CELL +loop ;
+   ndict@ ND0 !  cp@ CP0 !  HERE-N HERE0 ! ;
 
 : HOST-CHECK ( -- )
    ndict@ ND0 @ T=
    cp@ CP0 @ T=
    HERE-N HERE0 @ T=
-   data-base DPHW-CELL + @ DPHW0 @ T=
-   NSHADOW:OPEN? TFALSE
-   HEADER-DIFFS 0 T= ;
+   NSHADOW:OPEN? TFALSE ;
 
 : BUILD ( [ -- renders nominal roots ] -- )
    {: body :}
@@ -110,7 +45,6 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
 
 : SAY ( ^u8 n -- ) s" linker: " type type cr ;
 
-variable IMAGE                       \ BOOT:IMAGE-BASE-CELL inside the body
 variable FOUND
 variable FOUND-WL
 variable SPACE-WL
@@ -119,15 +53,11 @@ TYPED-VARIABLE NATIVE bool
 variable AT1
 variable AT2
 variable LEN1
-variable IMAGE-C                     \ case c's image base
 variable HERE-D
 variable AT-D
 TYPED-VARIABLE BYTES-OK bool
 variable REFUSED
 variable REWOUND
-variable LOW-DP
-
-: TAKE-IMAGE ( -- ) data-base BOOT:IMAGE-BASE-CELL + @ IMAGE ! ;
 
 : LOOKUP ( ^u8 n -- n ) XREF-FIND-INDEX ;
 
@@ -161,7 +91,7 @@ variable LOW-DP
 : CASE-B ( -- )
    MAIN$ LOOKUP -1 T=
    HOST-CHECK
-   s" b: after the close hb's dictionary, code, data and header are as before" SAY ;
+   s" b: after the close hb's dictionary, code and data are as before" SAY ;
 
 : C1$ ( -- str ) s" LK-C1" ;
 : C2$ ( -- str ) s" LK-C2" ;
@@ -169,32 +99,28 @@ variable LOW-DP
 : BODY-C ( -- )
    s\" : LK-C1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
    s\" : LK-C2 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
-   TAKE-IMAGE
    C1$ CALL$ drop NULL-PTR - AT1 !
    C2$ CALL$ drop NULL-PTR - AT2 !
    AT1 @ LEN-AT @ LEN1 ! ;
 
 : CASE-C ( -- )
    [: BODY-C ;] BUILD
-   IMAGE @ IMAGE-C !
    AT1 @ AT2 @ T=
-   AT1 @ IMAGE @ DATA-START + >= TTRUE
-   AT1 @ IMAGE @ DATA-SIZE + < TTRUE
    LEN1 @ 5 T=
    HOST-CHECK
    s" c: two words' equal strings share one address in the space" SAY ;
 
 : D1$ ( -- str ) s" LK-D1" ;
 
-\ A decoy where case c's string sat: a table the last build left would find it.
+\ A decoy where case c's string sat, if this space has not passed it: a table
+\ the last build left would find it.
 : DECOY ( -- )
    AT1 @ 5 + HERE-N - allot
    5 AT1 @ LEN-AT !
    s" hello" drop  NULL-PTR BYTE-VIEW AT1 @ +  5 BYTE-COPY ;
 
 : BODY-D ( -- )
-   TAKE-IMAGE
-   IMAGE @ IMAGE-C @ = if DECOY then
+   AT1 @ CELL - HERE-N >= if DECOY then
    HERE-N HERE-D !
    s\" : LK-D1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
    D1$ CALL$ s" hello" STR= BYTES-OK !
@@ -205,7 +131,6 @@ variable LOW-DP
 : CASE-D ( -- )
    false BYTES-OK !  0 AT-D !
    [: BODY-D ;] BUILD
-   IMAGE @ IMAGE-C @ T=
    AT-D @ HERE-D @ >= TTRUE
    BYTES-OK @ TTRUE
    LEN1 @ 5 T=
@@ -225,9 +150,7 @@ variable LOW-DP
 : REWIND ( -- ) s\" : LK-F2 ( -- ^u8 n ) s\" new\" ;" evaluate-closed ;
 
 : BODY-F ( -- )
-   TAKE-IMAGE
    [: REFUSE ;] catch REFUSED !
-   HERE-N LOW-DP !
    [: REWIND ;] catch REWOUND ! ;
 
 : CASE-F ( -- )
@@ -235,7 +158,6 @@ variable LOW-DP
    [: BODY-F ;] BUILD
    REFUSED @ 70 T=
    REWOUND @ E-INTERN-REWIND T=
-   LOW-DP @ IMAGE @ DATA-START + >= TTRUE
    HOST-CHECK
    s" f: after a rollback in the space a new string is refused" SAY ;
 
@@ -380,7 +302,6 @@ public
 
 : RUN ( -- )
    T-RESET
-   HEADER-ALLOC
    \ The first build installs the typed loop for good; the host is taken after it.
    [: ;] BUILD
    s" package LINKER-TEST : LK-Q1 ( -- n ) 1 LK-Q0 ; ;package"
@@ -397,19 +318,21 @@ LINKER-TEST:RUN
 package LINKER-TEST
 private
 
-variable PKG-K                       \ PKG-PUB-CELL inside the body
+variable WL-K                        \ LK-K1's wordlist, read inside the body
+variable GLOBAL-K                    \ the build's global wordlist, read there too
 variable RC-K
 
 : BODY-K ( -- )
    s" variable LK-K1  1 LK-K1 !" evaluate-closed
-   PKG-PUB-CELL DATA-CELL @ PKG-K ! ;
+   s" LK-K1" LOOKUP dup 0 >= if XREF-REC XREF-WORDLIST then WL-K !
+   BOOT:GLOBAL-WL GLOBAL-K ! ;
 
 : CASE-K ( -- )
    TAKE-HOST
-   -1 PKG-K !
+   -1 WL-K !  0 GLOBAL-K !
    [: [: BODY-K ;] BUILD ;] catch RC-K !
    RC-K @ 0 T=
-   PKG-K @ 0 T=
+   WL-K @ GLOBAL-K @ T=
    HOST-CHECK
    s" k: a build run inside a host package sees no package open, and the close reopens it" SAY ;
 

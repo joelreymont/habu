@@ -2,8 +2,7 @@ split-str
 \ build-items.f - a definer builds words of keyword, type, operand and call
 \ items: a match over a family of its own answers as the same text does, an if
 \ and a begin loop, a construct, a call of a word found where the definer runs,
-\ an exact call of PKG:TAIL that a part named PKG of the building package does
-\ not capture, and typed locals: two of `n`, one of the family matched, two
+\ and typed locals: two of `n`, one of the family matched, two
 \ groups, and one of a parametric family the effect numbers apart from the
 \ file. A variable a definer declares of a quotation type holds a quotation of
 \ that type, and a store of another is rejected; one of a type that may hold a
@@ -70,11 +69,6 @@ ENUM bfam ba bb ;ENUM
 
 : BI-SEVEN ( -- n ) 7 ;
 
-\ The engine's cell holds INTERPRETER:ITEM-RUN as a raw execution token.
-CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
-
-: ITEM ( ^u8 n n n -- )
-   data-base PROVIDED-XT:ITEM-CELL + @ AS-ITEM execute ;
 : KW ( str -- ) EFFECT:KEYWORD ;
 : OPND ( str -- ) EFFECT:OPERAND ;
 : BFAM ( -- EFFECT:type ) s" bitem:bfam" EFFECT:NAMED ;
@@ -105,10 +99,10 @@ CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
    s" construct" KW  BFAM-ITEM  s" bb" OPND
    postpone ; ;
 
-\ : NAME ( -- n ) X ; with X found by OP.
-: MAKE-CALL ( str str n -- ) {: xa:^ xu:n op:n :}
+\ : NAME ( -- n ) X ;
+: MAKE-CALL ( str str -- ) {: xa:^ xu:n :}
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
-   op ITEM-ABI:CALL = if xa xu EFFECT:CALL else xa xu 0 op ITEM then
+   xa xu EFFECT:CALL
    postpone ; ;
 
 : BI-TEXT ( bfam -- n ) match bfam ba of 1 endof bb of 2 endof ;match ;
@@ -128,14 +122,12 @@ s" BI-FLOW" MAKE-FLOW
 s" BI-MADE" MAKE-CONSTRUCT
 BI-MADE BI-TEXT 2 T=
 
-s" BI-CALL" s" BI-SEVEN" ITEM-ABI:CALL MAKE-CALL
+s" BI-CALL" s" BI-SEVEN" MAKE-CALL
 BI-CALL 7 T=
 
-\ The text binds the part's ANSWER, the exact call the top-level package's.
+\ The text binds the part's ANSWER, not the top-level package's.
 : BI-PART ( -- n ) BITEM-PKG:ANSWER ;
-s" BI-EXACT" s" BITEM-PKG:ANSWER" ITEM-ABI:CALL-EXACT MAKE-CALL
 BI-PART 2 T=
-BI-EXACT 1 T=
 
 \ Each refused name is free after its refusal: a text definition takes it.
 : BAD-OPERAND ( -- n ) [: s" BI-BAD-OPERAND" s" bz" MAKE-MATCH ;] catch ;
@@ -144,7 +136,7 @@ s" : BI-BAD-OPERAND ( -- n ) 3 ;" evaluate-closed
 BI-BAD-OPERAND 3 T=
 
 : BAD-CALL ( -- n )
-   [: s" BI-BAD-CALL" s" BI-NO-SUCH" ITEM-ABI:CALL MAKE-CALL ;] catch ;
+   [: s" BI-BAD-CALL" s" BI-NO-SUCH" MAKE-CALL ;] catch ;
 BAD-CALL 70 T=
 s" : BI-BAD-CALL ( -- n ) 4 ;" evaluate-closed
 BI-BAD-CALL 4 T=

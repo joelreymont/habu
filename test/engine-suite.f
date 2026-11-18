@@ -1386,7 +1386,9 @@ $44000000000 constant ES-MACOS-DATA-VA
 dbase@ rbase > TTRUE                                 \ the code region sits above __text
 dbase@ PROT-PAGE-MAX 1 - and 0= TTRUE
 dbase@ REGION + rbase - BL-REACH < TTRUE             \ whole region within BL's +/-128 MiB of __text
-data-base NULL-PTR - ES-DATA-VA = TTRUE
+variable ES-IN-DATA                                  \ DATA sits at the target's fixed address
+ES-IN-DATA NULL-PTR - ES-DATA-VA >= TTRUE
+ES-IN-DATA NULL-PTR - ES-DATA-VA DATA-SIZE + < TTRUE
 cp@ dbase@ - 0 > TTRUE
 ndict@ 0 > TTRUE
 

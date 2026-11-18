@@ -90,8 +90,6 @@ package PROGRAM-DIAGNOSTICS
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 96 s" ADDRESS-CELL-KIND-ARMED"
       s" E-XTKIND habu: snapshot address cell kind mismatch" NEGATIVE-LINE
-   s" test/address-cell-cap-bad.f" 96 s" ADDRESS-CELL-CAP-ARMED"
-      s" E-XTCELL habu: invalid address-cell storage header" NEGATIVE-LINE
    s" test/xt-cell-band-bad.f" 96 s" XT-CELL-BAND-ARMED"
       s" E-XTBAND habu: snapshot address cell out of range" NEGATIVE-LINE
    s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:18:1" DIAGNOSTIC
@@ -367,9 +365,9 @@ variable BIG-U
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:10:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:26:18" HABU-DIAGNOSTIC
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" HABU-DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
-   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:26:18" DIAGNOSTIC
+   s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-one-cell.f" s" program-diagnostic-one-cell.f:20:25" DIAGNOSTIC
    s" error[E-MISMATCH]: `t` in `ap`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS

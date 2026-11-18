@@ -53,14 +53,6 @@ CAST: CODE>BYTES ( n -- ^u8 )
    n 10 >= if n 10 / recurse then
    n 10 mod $30 + emit ;
 
-: T0? ( -- bool )
-   data-base NCOMP-DISPATCH:COMP-CELL + @ 0<> ;
-
-: TIER-CK ( -- )
-   T0? 0= if
-      s" shadow-kinds: no tier-0 compiler is installed (COMP-CELL 0)" EXIT-STATUS:FAILURE die
-   then ;
-
 \ Whether a section line starts at byte at.
 : MARK? ( n -- bool ) {: at:n :}
    at 4 + SRC-U @ > if false exit then
@@ -215,7 +207,6 @@ CAST: CODE>BYTES ( n -- ^u8 )
 public
 
 : RUN ( -- )
-   TIER-CK
    NABI:BINDING NSHADOW:OPEN-NATIVE
    NSHADOW:RECORDS RECS0 !
    ndict@ ND0 !

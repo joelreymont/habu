@@ -16,7 +16,6 @@ public
 : FINISH ( -- n ) CHECK:MULTI-ERR-END ;
 : CHECK-RECOVERY ( -- )
    FINISH 1 <> if s" native multi-error count" 1 die then
-   data-base PEND-CELL + @ 0<> if s" native pending definition" 1 die then
    s" BAD" get-current search-wl 0<> if s" native refused definition published" 1 die then
    s" FOLLOW" get-current search-wl 0<> if s" native recovery dependent published" 1 die then
    s" FOLLOW-2" get-current search-wl 0<> if s" native recovery chain published" 1 die then

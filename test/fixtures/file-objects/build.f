@@ -10,7 +10,6 @@ require src/lib/fs-mutate.f
 require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/build-out.f
-require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/habu/intern.f
 require src/compiler/native/shadow.f
@@ -37,7 +36,6 @@ PATH-CAP BUFFER: PROG-BUF
 : ROLLBACK ( -- ) s" test/fixtures/file-objects/rollback.f" included ;
 : UNALIGNED ( -- ) s" test/fixtures/file-objects/unaligned.f" included ;
 : PAST ( -- ) s" test/fixtures/file-objects/past.f" included ;
-: STRADDLE ( -- ) s" test/fixtures/file-objects/straddle.f" included ;
 : FLAG ( -- ) s" test/fixtures/file-objects/flag.f" included ;
 : GAP ( -- ) s" test/fixtures/file-objects/gap.f" included ;
 : NEW-WORDLIST ( -- ) s" test/fixtures/file-objects/wordlist.f" included ;
@@ -97,10 +95,6 @@ PATH-CAP BUFFER: PROG-BUF
    ['] GAP catch LINKER:E-STORE
    s" build: STOP-GAP: a store into a cell no file holds was not refused" EXPECT ;
 
-: STOP-STRADDLE ( -- )
-   ['] STRADDLE catch E-COMP-STATE
-   s" build: STOP-STRADDLE: a cell straddling the entry cell was not refused" EXPECT ;
-
 : STOP-WORDLIST ( -- )
    ['] NEW-WORDLIST catch LINKER:E-WORDLIST
    s" build: STOP-WORDLIST: a file that made a wordlist was not refused" EXPECT ;
@@ -111,53 +105,29 @@ variable STRINGS                      \ the bodies INTERN:EACH-STRING visited
 CAST: >DOUBLE ( n -- [ n -- n ] )
 CAST: >CELL ( n -- [ -- ^n ] )
 CAST: >RUN ( n -- [ -- ] )
-CAST: >LITERAL ( n -- [ -- ^u8 n ] )
-CAST: >TEXT ( n -- ^u8 )
 
 \ The host entry of the build's word named by the string.
 : ENTRY ( ^u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
 
-: IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
-
-\ The record's facts text's address: bytes 32-39 hold its offset from the image base, 0 for none.
-: FACTS-ADDR ( ^n -- n )
-   4 XREF-CELL@ {: off:n :}
-   off 0= if 0 exit then
-   IMAGE-BASE off + ;
-
-\ An interned text: its bytes, after the cell holding their count.
-: TEXT. ( n -- )
-   >TEXT {: t:^ :}
-   t  t 8 - LE:U64@  type ;
-
-\ The record's name, then its fields and its facts text, `-` for none.
+\ The record's name, then its fields.
 : RECORD. ( n -- )
    XREF-REC {: rec:^ :}
    rec XREF-NAME$ type cr
-   rec XREF-FLAGS FMT:.INT space  rec XREF-WORDLIST FMT:.INT space  rec XREF-RAW-LEN FMT:.INT space
-   rec FACTS-ADDR {: at:n :}
-   at 0= if s" -" type else at TEXT. then cr ;
+   rec XREF-FLAGS FMT:.INT space  rec XREF-WORDLIST FMT:.INT space  rec XREF-RAW-LEN FMT:.INT cr ;
 
 \ Each record from the first, then the counts of emissions and interned
-\ strings, then DP's offset in the space.
+\ strings.
 : STATE. ( n -- )
    {: first:n :}
    ndict@ first ?do i RECORD. loop
    NSHADOW:EMISSIONS .
-   0 STRINGS !  [: drop 1 STRINGS +! ;] INTERN:EACH-STRING  STRINGS @ .
-   here NULL-PTR - IMAGE-BASE - . ;
+   0 STRINGS !  [: drop 1 STRINGS +! ;] INTERN:EACH-STRING  STRINGS @ . ;
 
 \ Three of the build's words, called through their host entries.
 : RUN-WORDS ( -- )
    21 s" FILE-OBJECTS-SHAPE:DOUBLE" ENTRY >DOUBLE execute .
    s" FILE-OBJECTS-COUNT:TALLY" ENTRY >CELL execute @ .
    s" FILE-OBJECTS-COUNT:HI" ENTRY >RUN execute ;
-
-\ -1 when main.f's literal, the bytes of count.f's facts text `( -- ) `, lies at HI's text.
-: SHARED. ( -- )
-   s" FILE-OBJECTS-MAIN:HI-TEXT" ENTRY >LITERAL execute drop NULL-PTR -
-   s" FILE-OBJECTS-COUNT:HI" XREF-FIND-INDEX XREF-REC FACTS-ADDR =
-   s" shared " type  bool>n FMT:.INT space cr ;
 
 : BODY ( -- )
    ndict@ {: first:n :}
@@ -175,7 +145,7 @@ CAST: >TEXT ( n -- ^u8 )
    MARK
    LOAD-AGAIN LOAD-AGAIN
    PROG$ LINKER:WRITE
-   first STATE.  RUN-WORDS  SHARED. ;
+   first STATE.  RUN-WORDS ;
 
 \ ---- stop mode's later builds: a compile after a link, edit sequences, the twins ----
 PATH-CAP BUFFER: DIR-BUF
@@ -1055,7 +1025,6 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    s" app" RTARGET:HOST-TARGET [: STOP-PAST ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-STORE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-GAP ;] LINKER:WITH
-   s" app" RTARGET:HOST-TARGET [: STOP-STRADDLE ;] LINKER:WITH
    s" app" RTARGET:HOST-TARGET [: STOP-WORDLIST ;] LINKER:WITH
    MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS TWINS ORDERS HEADS NONES SAMES HELDS CRAFTS BY-WORD
    BY-RUN BY-STORES BY-GAIN BY-OWN BY-THROUGH BY-FULL

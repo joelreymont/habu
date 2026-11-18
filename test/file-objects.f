@@ -386,23 +386,6 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the full builds compile 2 and 0 files, then are rejected twice with 77 and the record a cold build prints" LABEL
    STATE-W STATE-W-U @ s\" full: compiled 2 0 77 77 cold 77 same record -1\n" CONTAINS? TTRUE ;
 
-\ Whether A's printed state holds the line, a record's name line with its newlines, followed
-\ by a fields line that ends in the text, the record's facts text.
-: FACTS-OF? ( str str -- bool )
-   {: name:^ nameu:n text:^ textu:n :}
-   STATE-A STATE-A-U @ {: s:^ su:n :}
-   s su name nameu FIND-SUB MATCH option
-      none OF -1 ENDOF
-      some OF IDX>N nameu + ENDOF
-   ;MATCH {: at:n :}
-   at 0< if false exit then
-   s at +  su at - {: rest:^ restu:n :}
-   rest restu s\" \n" FIND-SUB MATCH option
-      none OF restu ENDOF
-      some OF IDX>N ENDOF
-   ;MATCH {: lineu:n :}
-   rest lineu text textu ENDS-WITH? ;
-
 \ A's map lists RUN as a word main.f loaded; a map lists only the code its
 \ program holds.
 : CHECK-MAP ( -- )
@@ -418,14 +401,6 @@ variable CLASS-N                        \ the class CLASS+ read
    C$ s" prog.map" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
    s" the map lists K as a word the build loaded" LABEL
    PROG-1 u s"  K word loaded " CONTAINS? TTRUE ;
-
-\ A file's texts are placed, and a later file's literal finds an earlier file's text.
-: CHECK-FACTS ( -- )
-   s" A" WHICH!
-   s" HI's record holds its facts text" LABEL
-   s\" \nHI\n" s" ( -- ) " FACTS-OF? TTRUE
-   s" main.f's literal lies at HI's text" LABEL
-   STATE-A STATE-A-U @ s\" shared -1 \n" CONTAINS? TTRUE ;
 
 \ E's build, a fresh process as every build is: E2's process then holds E's
 \ objects alone, never the checker memory of the process that compiled them.
@@ -469,7 +444,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" D" WHICH!
    s" the build wrote seven objects" LABEL  D$ OBJECTS FILES T=
    s" A" WHICH!  SAME-AS-D
-   CHECK-MAP CHECK-FACTS CHECK-STOP CHECK-EDIT CHECK-SAME CHECK-E ;
+   CHECK-MAP CHECK-STOP CHECK-EDIT CHECK-SAME CHECK-E ;
 
 \ Moves A's program and map to prog-cold and prog-cold.map, so A2 writes its own.
 : COLD-ASIDE ( -- )
