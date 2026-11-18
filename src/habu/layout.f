@@ -270,6 +270,8 @@ $98 constant SECTION
 \ All three sit in the $2800..$3000 free header band, below $7FF8 for a
 \ `DATA <off> LDR` and below DATA-START.
 package SRCLOC
+private
+EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 public
 $2800 constant PATH-CELL
 $2808 constant PATHLEN-CELL

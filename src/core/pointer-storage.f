@@ -24,8 +24,13 @@ split-str
 \ from an address to a pointer cell, so no cast stands behind this word. The
 \ null, NULL-PTR, is an engine primitive (src/habu/prims.f) and needs no cell.
 package POINTER-STORAGE
-public
+private
 : DATA-CELL ( n -- ^^u8 ) data-base swap + 0 ptr-field ;
+\ `off RESERVED-PTR-U8-CELL NAME`: NAME gives the DATA cell the engine layout
+\ reserves at `off`, found from data-base on each read, never baked absolute.
+: RESERVED-PTR-U8-CELL ( n -- )
+   create , does> ( -- ^^u8 ) @ DATA-CELL ;
+public
 \ The DATA cell holding the newest datum's address, 0 before the first.
 $3820 constant DATUM-CELL
 \ Aligns here past one byte, so the datum laid next never starts where the data
@@ -76,9 +81,3 @@ $3820 constant DATUM-CELL
 
 : PTR-U8-TABLE-VARIABLE ( -- )
    create 1 cells SCRATCH-ALLOT does> ( -- ^^^u8 ) ;
-
-\ `off RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell
-\ the engine layout reserves at `off`. The offset goes through
-\ POINTER-STORAGE:DATA-CELL on every read, so no absolute address is baked.
-: RESERVED-PTR-U8-CELL ( n -- )
-   create , does> ( -- ^^u8 ) @ POINTER-STORAGE:DATA-CELL ;

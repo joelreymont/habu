@@ -765,6 +765,7 @@ package CHECKER-REG
 \ DECL-CELL is the record the engine certifies through; TARGET-DECL-CELL is the
 \ image's own record: inside a build a store to it reaches the image being
 \ written, never the builder's checker.
+EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 NCOMP-DISPATCH:DECL-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
 NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 CHECKER-OWNER-ABI:RAW-OFF constant RAW-OFF
@@ -10061,7 +10062,8 @@ HIDX-MEM-CLEAR
    HIDX-MEM-CLEAR   0 HIDX-VALID !
    HIDX-EPOCH+ ;
 
-: PTR-CELL ( n -- ^^u8 ) ROW.PTR @ DATA-OFF POINTER-STORAGE:DATA-CELL ;
+EXPORT POINTER-STORAGE:DATA-CELL
+: PTR-CELL ( n -- ^^u8 ) ROW.PTR @ DATA-OFF DATA-CELL ;
 
 
 : ROW-BYTES ( n n -- n )
@@ -14512,6 +14514,7 @@ SCRATCH-VARIABLE PATH-KEY-CAP     \ PATH-KEY-P's room, in cells
 \ The owner record stores raw execution tokens.
 CAST: AS-ACTION ( n -- [ -- ] )
 
+EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 
 \ The target owner's operation at off, skipped when there is no record or the
@@ -19193,6 +19196,7 @@ defer NAMED-OPERAND-XT ( -- )
 \ The items a definition define-word opened records as it is built.
 ;package
 package CHECKER-ITEMS
+EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
 : ITEM-CELL@ ( n n -- n ) {: i:n f:n :}
    ITEM-BLOCK @  i BODY-ITEMS:ROW * f + cells +  cell-view @ ;

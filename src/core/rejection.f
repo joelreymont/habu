@@ -14,6 +14,8 @@ split-str
 
 package REJECTION
 private
+EXPORT POINTER-STORAGE:DATA-CELL
+EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 
 \ Rounds n bytes up to whole cells.
 : ROUND ( n -- n ) 1 cells 1 - +  1 cells negate and ;
@@ -107,7 +109,7 @@ private
 create MAIN-BLOCK BLOCK-BYTES SCRATCH-ALLOT
 \ The running task's block, at the start of its user area.
 : BLOCK ( -- ^u8 )
-   USER-BAND:AREA-OFF POINTER-STORAGE:DATA-CELL @
+   USER-BAND:AREA-OFF DATA-CELL @
    dup NULL-PTR = IF drop MAIN-BLOCK THEN ;
 : CELL-AT ( n -- ^n ) BLOCK + cell-view ;
 : PTR-AT ( n -- ^^u8 ) BLOCK + 0 ptr-field ;

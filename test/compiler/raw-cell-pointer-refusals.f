@@ -284,6 +284,27 @@ private
    CODE$ LACKS?  VALUE-REASON$ LACKS?
    DISARM ;
 
+\ The definer of a reserved DATA cell and the DATA-CELL it reads through are
+\ private to POINTER-STORAGE, so no program mints a `^^u8` at a DATA offset.
+: UNDEFINED$ ( -- str )
+   S\" \"code\":\"E-UNDEFINED\"" ;
+
+: CASE-RESERVED-CELL ( -- )
+   s" a program cannot declare a reserved DATA cell" T-LABEL
+   ARM
+   [: S\" $3800 RESERVED-PTR-U8-CELL RCP-RN  : RCP-RFORGE ( -- ) s\" x\" drop RCP-RN ! ;"
+      evaluate-closed ;] 70 TTHROWSQ
+   UNDEFINED$ HAS?  S\" \"message\":\"cannot find word `RESERVED-PTR-U8-CELL`\"" HAS?
+   DISARM ;
+
+: CASE-DATA-CELL ( -- )
+   s" nor take a DATA cell at an offset" T-LABEL
+   ARM
+   [: s" : RCP-P16 ( ^u8 -- ) $360 POINTER-STORAGE:DATA-CELL ! ;" evaluate-closed ;]
+      70 TTHROWSQ
+   UNDEFINED$ HAS?  S\" \"message\":\"cannot find word `POINTER-STORAGE:DATA-CELL`\"" HAS?
+   DISARM ;
+
 public
 
 : RUN ( -- )
@@ -312,6 +333,8 @@ public
    CASE-XT-STORE
    CASE-XT-WINDOW-CLOSES
    CASE-TASK-SLOT
+   CASE-RESERVED-CELL
+   CASE-DATA-CELL
    T-REPORT ;
 
 ;package

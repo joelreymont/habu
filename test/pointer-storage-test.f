@@ -17,30 +17,11 @@ PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
 SCRATCH-VARIABLE SCR-CELL
 16 SCRATCH-BUFFER: SCR-ROW
 
-\ Two reserved engine-layout cells, named by DATA offset; neither is written and
-\ nothing depends on what lives at either offset.
-0 RESERVED-PTR-U8-CELL RSV-CELL-A
-$18 RESERVED-PTR-U8-CELL RSV-CELL-B
-
 : ZERO-PTR ( -- ^n )
    ZERO-SLOT @ ;
 
 : ADDRESS ( -- ^^n )
    SLOT ;
-
-\ An address is an integer through its distance from NULL-PTR; the offset is the
-\ cell's distance less the DATA base's, so no view of either pointer is taken.
-: DATA-OFF ( ^^u8 -- n ) NULL-PTR - data-base NULL-PTR - - ;
-: RSV-OFF-A ( -- n ) RSV-CELL-A DATA-OFF ;
-: RSV-OFF-B ( -- n ) RSV-CELL-B DATA-OFF ;
-
-\ The definer promises only `data-base + the offset it was given`; the
-\ difference pins that the offset is the created body's, not a constant baked
-\ into the clause.
-: RESERVED-RUNTIME ( -- )
-   RSV-OFF-A 0 T=
-   RSV-OFF-B $18 T=
-   RSV-OFF-B RSV-OFF-A - $18 T= ;
 
 : RUNTIME ( -- )
    ADDRESS @ ZERO-PTR = TTRUE
@@ -98,27 +79,6 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    s" DP-HEAD-WRONG ( ^^n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    ;] CHECK:SCOPED ;
 
-\ RESERVED-PTR-U8-CELL's created word has the effect its does> states.
-: VERIFY-RESERVED-EFFECT ( -- )
-   s" RSV-BASE ( -- ^^u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
-   s" RSV-READ ( -- ^u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
-   s" RSV-BASE-WRONG ( -- ^^n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-READ-WRONG ( -- ^n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-\ The pre-scan publishes the same effect for the word the definer creates, so a
-\ source declaring a reserved cell verifies without being run. The scan compiles
-\ nothing: a candidate binds VSRSV only inside the neutral scope holding the
-\ scan, and once it closes no VSRSV record exists, so a live candidate cannot
-\ bind it (0).
-: REG-RESERVED-CELL ( -- )
-   s" $30 RESERVED-PTR-U8-CELL VSRSV" VERIFY:SOURCE-BUF-IN-SCOPE ;
-: VERIFY-RESERVED-SCAN ( -- ) [:
-   REG-RESERVED-CELL
-   s" VSRSV-BASE ( -- ^^u8 ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" VSRSV-WRONG ( -- ^^n ) VSRSV" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-   ;] CHECK:SCOPED
-   s" VSRSV-BASE ( -- ^^u8 ) VSRSV" CHECK-QUIET-CANDIDATE! 0 T= ;
-
 : RUN ( -- )
    T-RESET
    RUNTIME
@@ -126,9 +86,6 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    TABLE-RUNTIME
    VERIFY-EFFECT
    VERIFY-DECLARED-POINTEE
-   RESERVED-RUNTIME
-   VERIFY-RESERVED-EFFECT
-   VERIFY-RESERVED-SCAN
    T-REPORT ;
 
 RUN
