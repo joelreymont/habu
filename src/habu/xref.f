@@ -459,9 +459,11 @@ private
    data-base PKG-PUB-CELL + @ 0= if XREF-FALSE exit then
    data-base PKG-REC-CELL + @ XREF-ADDR>REC SEALED? ;
 
+EXPORT BOOT:TYPES-WL
+
 : PKG-WID-SEALED? ( n -- bool ) {: wid:n :}
    wid FIRST-DYNAMIC-WID < if XREF-FALSE exit then
-   wid BOOT:GLOBAL-WL =  wid BOOT:TYPES-WL =  or if XREF-FALSE exit then
+   wid BOOT:GLOBAL-WL =  wid TYPES-WL =  or if XREF-FALSE exit then
    data-base PKG-PUB-CELL + @ 0= 0= if
       wid data-base PKG-PUB-CELL + @ =  wid data-base PKG-PRI-CELL + @ =  or if
          PKG-OPEN-SEALED? exit
@@ -514,16 +516,6 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 EXPORT CHECKER-RESOLVE:SOURCE-SEALED?
 EXPORT TYPE-DECL:TDECL-THROW-AT
 
-\ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
-: NAMESPACE-EXISTS? ( str -- bool ) {: a:^ u:n :}
-   a u XREF-QUAL-INDEX {: split:n :}
-   a split HEAD-ROW XREF-FOUND? ;
-
-\ A generated declaration is qualified exactly when it reserves a constructor
-\ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
-: NAMESPACED? ( str -- bool )
-   XREF-QUAL-INDEX 0 >= ;
-
 : SEALED-STOP ( str -- )
    s" " s" " TYPE-DECL:E-TDECL-SEALED TDECL-THROW-AT ;
 
@@ -536,16 +528,6 @@ EXPORT TYPE-DECL:TDECL-THROW-AT
    a q HEAD-ROW {: ns:^ :}
    ns XREF-FOUND? IF ns XREF-NAME$ ELSE a q THEN SOURCE-SEALED? IF a u SEALED-STOP THEN
    ns XREF-FOUND? IF ns XREF-PKG-PUBLIC ELSE 0 THEN XREF:SEALED-TARGET? IF a u SEALED-STOP THEN ;
-
-public
-
-\ words, the count a declaration generates, is at least 1.
-: DICTIONARY-RECORDS ( str n -- n ) {: a:^ u:n words:n :}
-   a u NAMESPACED? 0= IF words EXIT THEN
-   a u NAMESPACE-EXISTS? IF words EXIT THEN
-   words 1 + ;
-
-private
 
 EXPORT TYPE-DECL:TDECL-NAME-PREFLIGHT-XT
 

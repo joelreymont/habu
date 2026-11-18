@@ -972,6 +972,8 @@ PTR-VARIABLE OBJ-BASE
    p XREF-REC XREF-PKG-PRIVATE wid <> if 0 exit then
    p XREF-REC XREF-NAME$ TOP-NAME NAME-SUM ;
 
+EXPORT BOOT:TYPES-WL
+
 \ The record's name into NAMES with the value. A packaged type's entry is named
 \ `A:turn`, but `using A`, `package A` and `A:box<A:turn>` spell only `turn`:
 \ its tail is filed too.
@@ -981,7 +983,7 @@ PTR-VARIABLE OBJ-BASE
    u 0= if exit then
    idx NAME-PKG {: pkg:n :}
    a u NAME-SUM v pkg NAME+
-   idx XREF-REC XREF-WORDLIST BOOT:TYPES-WL <> if exit then
+   idx XREF-REC XREF-WORDLIST TYPES-WL <> if exit then
    a u TAIL-NAME {: t:^ tu:n :}
    tu 0<> if t tu NAME-SUM v pkg NAME+ then ;
 
@@ -1593,7 +1595,7 @@ EXPORT CHECK:HELD-RETIRED@
    wid BOOT:GLOBAL-WL = if 0 PIECES U64+ exit then
    wid WL:PRIMITIVES = if 1 PIECES U64+ exit then
    wid BOOT:NAMESPACE-WL = if 2 PIECES U64+ exit then
-   wid BOOT:TYPES-WL = if 5 PIECES U64+ exit then
+   wid TYPES-WL = if 5 PIECES U64+ exit then
    wid WORDLIST-PACKAGE {: pkg:n hit:bool :}
    hit 0=  pkg FIRST-REC @ <  or  pkg idx >=  or if E-COMP-STATE throw then
    pkg XREF-REC XREF-PKG-PUBLIC wid = if 3 else 4 then PIECES U64+
@@ -1632,7 +1634,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
       row NSHADOW:ENTRY@ 0 > if KIND-DOES else KIND-DEF then exit
    then
    wid BOOT:NAMESPACE-WL = if KIND-PACKAGE exit then
-   wid BOOT:TYPES-WL = if KIND-TYPE exit then
+   wid TYPES-WL = if KIND-TYPE exit then
    KIND-ALIAS ;
 
 
@@ -4621,7 +4623,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    role 0 = if BOOT:GLOBAL-WL exit then
    role 1 = if WL:PRIMITIVES exit then
    role 2 = if BOOT:NAMESPACE-WL exit then
-   role 5 = if BOOT:TYPES-WL exit then
+   role 5 = if TYPES-WL exit then
    role 3 <>  role 4 <>  and if E-COMP-STATE throw then
    RD-U64 RD-U64 RD-U64 ID-REC XREF-REC {: rec:^ :}
    role 3 = if rec XREF-PKG-PUBLIC else rec XREF-PKG-PRIVATE then {: wid:n :}
@@ -5310,7 +5312,7 @@ EXPORT CHECK:LINEAR-TEXT$
    TFAM-N@ FILE-TFAM @ ?do
       i ENTRY? 0= if
          ndict@ {: ix:n :}
-         i ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL PUBLISH-ALIAS
+         i ENTRY-NAME$ TYPE-SOURCE TYPES-WL PUBLISH-ALIAS
          i ENTRY-TEXT$ ix FACTS!
          i ix ENTRY!
       then
@@ -5319,7 +5321,7 @@ EXPORT CHECK:LINEAR-TEXT$
       i LINEAR? if
          i TYPE-NAME$ LINEAR-ENTRY 0 < if
             ndict@ {: ix:n :}
-            i TYPE-NAME$ TYPE-SOURCE BOOT:TYPES-WL PUBLISH-ALIAS
+            i TYPE-NAME$ TYPE-SOURCE TYPES-WL PUBLISH-ALIAS
             i LINEAR-TEXT$ ix FACTS!
          then
       then

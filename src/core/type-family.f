@@ -3686,12 +3686,14 @@ EXPORT CHECK:SGBAD-AMBIG!
 EXPORT CHECK:SIG-SCOPE$
 EXPORT CHECKER-RESOLVE:REC-AT
 
+EXPORT BOOT:TYPES-WL
+
 \ The record of family `pkg:tail`'s type entry while one is still to be read,
 \ else NULL-PTR.
 : ER-PROBE ( str str -- ^n )
    {: pa:^ pu:n na:^ nu:n :}
    ENTRIES-PENDING @ 0= IF NULL-PTR EXIT THEN
-   BOOT:TYPES-WL {: wid:n :}
+   TYPES-WL {: wid:n :}
    wid 0= IF NULL-PTR EXIT THEN
    pa pu na nu EN-NAME wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = IF NULL-PTR EXIT THEN
@@ -3748,7 +3750,7 @@ EXPORT CHECKER-RESOLVE:REC-AT
 \ lookup inside a declaration that follows reads one.
 : READ-PENDING ( -- )
    ENTRIES-PENDING @ 0= IF EXIT THEN
-   BOOT:TYPES-WL {: wid:n :}
+   TYPES-WL {: wid:n :}
    wid 0 <> IF
       ndict@ 0 ?do
          i REC-AT {: rec:^ :}
