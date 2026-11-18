@@ -553,11 +553,9 @@ package DOESPATCH
 \ target's code pointer and DKIND:VAL, and a stale VAL folds the alias into the
 \ value it pushed when it was folded. An alias is made of an existing word, so
 \ every one is newer than its target, and the scan walks only the records above
-\ x11, in every wordlist. It ends at the larger of NDICT and the dictionary
-\ high-water, not at NDICT: an alias a lowered `ndict!` retired keeps its
-\ record, and a later raise re-exposes it with whatever stamp it holds. A record
-\ with no stamp has no alias with one, so it scans nothing. Each match is
-\ rewritten through the alias. Clobbers x0, x5, x10 and x13-x15.
+\ x11, in every wordlist. A record with no stamp has no alias with one, so it
+\ scans nothing. Each match is rewritten through the alias. Clobbers x0, x5, x10
+\ and x13-x15.
 : CLEAR-KIND ( -- )
    LBL LBL LBL {: scan:label next:label done:label :}
    5 DKIND:MASK DNAME-CELL or -1 xor LIT64,

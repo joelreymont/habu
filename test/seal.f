@@ -61,9 +61,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Sealed-dictionary truncation guard: FORGET-DEFS-FROM and HIDE-DEFS-FROM
 \ truncate ndict (FORGET also rewinds CP) to a name's dict index. An index below
-\ the seal-time watermark SEAL-NDICT-CELL (SEAL-CAPTURE, at the end of the
-\ engine source) would retire engine definitions and rewind CP into engine code,
-\ so post-seal source is rejected (E-SEAL-VIOLATION). `WORDS` is an
+\ the seal-time watermark SEAL-NDICT-CELL, the engine's record count, would
+\ retire engine definitions and rewind CP into engine code, so post-seal source
+\ is rejected (E-SEAL-VIOLATION). `WORDS` is an
 \ engine word (xref.f), well below the watermark.
 : SLV-FORGET-ENGINE-FORGE$ ( -- str )
    SB-RESET
@@ -75,9 +75,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" WORDS\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-\ The engine-prefix tail: src/os/script-argv.f loads after xref.f, and
-\ SEAL-CAPTURE sits at the true engine-prefix end, so the tail is rejected like
-\ any engine definition.
+\ The engine-prefix tail: src/os/script-argv.f loads after xref.f, and the
+\ watermark counts every engine-prefix record, so the tail is rejected like any
+\ engine definition.
 : SLV-FORGET-TAIL-FORGE$ ( -- str )
    SB-RESET
    S\" s\" SCRIPT-ARGV$\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF

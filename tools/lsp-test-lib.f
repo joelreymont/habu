@@ -5516,7 +5516,7 @@ variable WS-ROOT-U
    SYMBOLS-END ;
 
 : TEXT-PR-UPPER ( -- str )
-   s\" : A ( -- ) SEAL-CAPTURE ;\n" ;
+   s\" : A ( -- ) NULL-PTR drop ;\n" ;
 
 : PRIM-UPPER-TURNS ( -- )
    s" refs-prim-upper" REFS-DIR s" refs-prim-upper/w" REFS-DIR
@@ -5530,8 +5530,8 @@ variable WS-ROOT-U
    s" 3" s" refs-prim-upper/w/a.f" FIXTURE 0 12 DECL-NOT REFS-ASK
    SAY
    s" 3" SYMBOLS-START
-   s" refs-prim-upper/w/a.f" OPEN-URI 0 11 23 REF+
-   s" refs-prim-upper/w/b.f" DISK-URI 0 11 23 REF+
+   s" refs-prim-upper/w/a.f" OPEN-URI 0 11 19 REF+
+   s" refs-prim-upper/w/b.f" DISK-URI 0 11 19 REF+
    SYMBOLS-END ;
 
 \ The second wave starts after four captures have run together.

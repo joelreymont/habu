@@ -723,8 +723,6 @@ EPPRIM: CHECKER-OVERLAY replay-widn! PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
-EPRIM: SEAL-CAPTURE   EPRIM;
-EPRIM: seal-captured? PE-F PE-OUT EPRIM;
 EPRIM: DRAIN-PRETRUST EPRIM;
 \ data-base is a BASE ADDRESS: the start of the running task's DATA region, not
 \ the address of any declared element. Its pointee is TVK-DBASE, so `data-base

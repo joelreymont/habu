@@ -876,9 +876,7 @@ $2D58 constant DPHW-CELL
 \ NDICT-HW-CELL: the largest record count NDICT was ever lowered from; the
 \ dictionary high-water is the larger of NDICT and this cell. Records are written
 \ only at the head, so only a lowering of NDICT leaves published records above
-\ the count. A raising ndict! re-exposes the retired records below it, so the
-\ does> patch clears alias kinds up to the high-water, not to NDICT. 0 reads as
-\ nothing retired.
+\ the count. 0 reads as nothing retired.
 $2D60 constant NDICT-HW-CELL
 
 package NCOMP-DISPATCH
@@ -1063,7 +1061,7 @@ ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 \ `defer` copies the qualified name and effect signature into a slot here;
 \ DRAIN-PRETRUST, right after both, replays both registrations per slot, so
 \ the table is empty by snapshot time. Overflow or an over-long name or sig dies
-\ at declaration; a non-empty table at SEAL-CAPTURE dies. The table sits after
+\ at declaration. The table sits after
 \ the private engine bands, below DATA-START, so its growth never moves the
 \ using ABI or relocation maps. PD-TABLE-OFF is past the scaled-immediate range,
 \ so slots use a computed base. Slot: [0]=name-len [8]=sig-len

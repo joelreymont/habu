@@ -1321,25 +1321,14 @@ public
 \ The main thread is the compiler: only the thread whose DATA is the main
 \ region, TASK-TCB-CELL 0, defines, allots, evaluates or changes package scope.
 \ A task and a callback thread hold a TCB there, and B-TASK-GUARD exits on
-\ one. B-LOWER-GUARD exits while any task is live, for the sinks that
-\ lower CP or NDICT: lowering frees code a task may be running and records it
-\ may reference. Each takes the code and the primitive's name and prints a
-\ record naming the primitive, its note `in` the word whose code holds the
-\ lr, so it runs before the body's first BL. Clobbers x9.
+\ one. It takes the code and the primitive's name and prints a record naming
+\ the primitive, its note `in` the word whose code holds the lr, so it runs
+\ before the body's first BL. Clobbers x9.
 : B-TASK-GUARD ( str str -- )
    {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
    9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
       c cu p pu  FAULT-RECORD:TASK-GUARD$  FAULT-RECORD:TASK-GUARD-HELP$
-      GUARD-RECORD,
-   ok LBL, ;
-
-private
-: B-LOWER-GUARD ( str str -- )
-   {: c:^ cu:n p:^ pu:n :}
-   LBL {: ok:label :}
-   9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
-      c cu p pu  FAULT-RECORD:LOWER-GUARD$  FAULT-RECORD:LOWER-GUARD-HELP$
       GUARD-RECORD,
    ok LBL, ;
 ;package
@@ -1358,10 +1347,9 @@ variable LDIE
 
 package ENGINE-EMIT
 \ cp! and ndict! are the FORGET sinks: cp! moves emission to the popped CP,
-\ ndict! the next record write to DBASE+n*DREC.
+\ ndict! the next record write to DBASE+n*DREC. Their callers lower only on
+\ the main thread with no task live, to a count or CP read there earlier.
 : BCPSET ( -- )
-   s" E-TASK-COMPILE" s" cp!" B-TASK-GUARD
-   s" E-TASK-COMPILE" s" cp!" B-LOWER-GUARD
    A G-POP
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote;
@@ -1384,35 +1372,11 @@ public
    NDICT t u LASTC-CUT, ;
 
 private
-\ The name lookup reads an empty hash slot as proof a name is absent, which
-\ holds only while every record below NDICT is in the table. Raising NDICT
-\ re-exposes records whose slots later publications may have reused, so a raise
-\ rebuilds the table from [0,NDICT) in place.
 : BNDSET ( -- )                                     \ ( n -- ) set NDICT — forget dict entries past a mark
-   s" E-TASK-COMPILE" s" ndict!" B-TASK-GUARD
-   s" E-TASK-COMPILE" s" ndict!" B-LOWER-GUARD
    A G-POP
-   LBL LBL LBL LBL {: bounded:label floor-ok:label keep:label done:label :}
-   \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
-   14 DICT-CAP LIT64,  A 14 CMP,  C-LS bounded BCOND,
-      s" E-DICT-COUNT habu: dictionary count above DICT-CAP:" EXIT-STATUS:REJECTED A DIE-LINE-VALUE,
-   bounded LBL,
-   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
-   14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
-   A 14 CMP,  C-CS floor-ok BCOND,
-      0 CALLER-LR,
-      s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count:"
-      EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
-   floor-ok LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   A NDICT CMP,  C-LE keep BCOND,
-      EM-DEF-OCC:LCOUNT LABEL@ BL,          \ issue before the raised count is visible
-      HIDX-EMIT:LREBUILD LABEL@ BL,
-      done B,
-   keep LBL,
    EM-DEF-OCC:LCOUNT LABEL@ BL,
    A B LASTC-TRIM,
-   done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ While a task is live, retires the records from n up and answers true: the
@@ -1428,7 +1392,7 @@ private
 \ other row is eligible.
 : BNDAPPEND ( -- )                                  \ ( expected-index -- )
    s" E-TASK-COMPILE" s" ndict-append" B-TASK-GUARD  A G-POP
-   LBL LBL LBL LBL {: owner:label floor-ok:label bad:label done:label :}
+   LBL LBL LBL {: owner:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
    14 DATA NCOMP-DISPATCH:COMP-LATCH-CELL LDR,  14 bad CBZ,
@@ -1438,14 +1402,11 @@ private
    14 14 DREC ADDI,  14 B CMP,  C-NE bad BCOND,
    14 DATA CLAUSE-CELL LDR,  14 bad CBZ,
    owner LBL,
-   14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
-   A 14 CMP,  C-CC bad BCOND,
-   floor-ok LBL,
    EM-DEF-OCC:LAPPEND LABEL@ BL,
    LHIDXADD LABEL@ BL,
    done B,
    bad LBL,  0 CALLER-LR,
-   s" E-SEAL-VIOLATION habu: ndict-append index not NDICT and the pending native record, at or past DICT-CAP, or below the sealed record count:"
+   s" E-SEAL-VIOLATION habu: ndict-append index not NDICT and the pending native record, or at or past DICT-CAP:"
    EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
    done LBL, ;
 
@@ -2585,8 +2546,8 @@ public
       0 SP 8 STR,  12 0 DBASE SUB,                          \ x12 = view - DBASE
       \ The used extent, every region byte a Habu word in the child can reach:
       \ the records below the larger of NDICT + 1 (DEF-OPEN keeps the open
-      \ definition's record at NDICT) and the high-water (a raising ndict!
-      \ re-exposes the retired ones), within DICT-CAP; then the control-flow stack
+      \ definition's record at NDICT) and the high-water (the records a
+      \ lowering retired), within DICT-CAP; then the control-flow stack
       \ and the code up to the larger of CP and the end of every record's span
       \ below the high-water (after a rollback a retired record's code sits above
       \ CP). CP and NDICT are this thread's registers; a task's are the snapshot
@@ -3568,36 +3529,6 @@ private
 ;package
 
 package ENGINE-EMIT
-
-\ Read-only engine state needed while the checker is bootstrapping.
-: BSEALCAPQ ( -- )
-   9 DATA SEAL-NDICT-CELL LDR,  9 0 CMPI,
-   9 C-NE CSET,  9 31 9 SUB,  9 G-PUSH ;
-
-\ Capture the seal-time dictionary-truncation watermark. SEAL-CAPTURE tokens
-\ call it after engine definitions and before any user token. NDICT only grows
-\ once the engine is loaded, so a rerun never lowers the watermark. The
-\ pre-trust defer table must be empty by then. Loop state stays off the
-\ write-clobbered x0-x2/x9 and re-derives the band base each iteration.
-: BSEALCAP ( -- )
-   LBL LBL LBL {: pdok pdloop pdexit :}
-   9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,   \ x10 = pending count; 0 -> drained
-      13 0 MOVZ,                                                     \ x13 = index
-      pdloop LBL,  13 10 CMP,  C-GE pdexit BCOND,
-         9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,
-         15 PD-SLOT MOVZ,  15 13 15 MUL,  14 9 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base
-         SP SP 32 SUBI,  9 $72646E75203A6268 LIT64,  9 SP 0 STR,  9 $72702064656E6961 LIT64,  9 SP 8 STR,  9 $2074737572742D65 LIT64,  9 SP 16 STR,  9 $00203A7265666564 LIT64,  9 SP 24 STR,
-         0 2 MOVZ,  1 SP 0 ADDI,  2 31 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,       \ "hb: undrained pre-trust defer: "
-         0 2 MOVZ,  1 14 PD-NAME-OFF ADDI,  2 14 PD-NLEN-OFF LDR,  NR-WRITE SYS,
-         SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,
-         13 13 1 ADDI,  pdloop B,
-      pdexit LBL,  0 EXIT-STATUS:INTERNAL MOVZ,  NR-EXIT-GROUP SYS,
-   pdok LBL,
-   NDICT DATA SEAL-NDICT-CELL STR, ;
-
-;package
-
-package ENGINE-EMIT
 \ wide-mark ( -- ): set DNAME-WIDE on the newest record: its effect carries a
 \ wider-than-cell layout value, so interpret-mode execute and tick refuse it.
 \ It stores through the region's RW alias: the record's own address is
@@ -3617,24 +3548,13 @@ package ENGINE-EMIT
    C 12 16 LDR,  C C DNAME-REP ORRI,  C 12 16 STR, ;
 
 \ record-facts! ( n n -- ) offset, index: stores the facts offset in bytes 32-39
-\ of a record from the seal floor (as BNDAPPEND tests it) to the pending one.
+\ of a record. Its callers run on the main thread and pass an index from the
+\ seal floor to NDICT.
 : BRECFACTS ( -- )
-   LBL LBL LBL {: done:label bad:label floor-ok:label :}
-   s" E-TASK-COMPILE" s" record-facts!" B-TASK-GUARD
    A G-POP  B G-POP                              \ x9 = record index, x10 = offset
-   A NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
-   14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,  \ slot DICT-CAP is the control-flow band
-   14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
-   A 14 CMP,  C-CC bad BCOND,
-   floor-ok LBL,
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,      \ x9 = &record[n]
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
-   B 12 32 STR,
-   done B,
-   bad LBL,
-   s" E-SEAL-VIOLATION habu: record-facts! index past NDICT, at or past DICT-CAP, or below the sealed record count:"
-   EXIT-STATUS:SEAL-VIOLATION A DIE-LINE-VALUE,
-   done LBL, ;
+   B 12 32 STR, ;
 
 \ SHA-256's 64 round constants (FIPS 180-4, 4.2.2).
 create SHA256-K
@@ -4092,8 +4012,6 @@ package ENGINE-EMIT
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-select" ['] BDEFSELECT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
-   s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" wide-mark" ['] BWIDEMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" record-facts!" ['] BRECFACTS FPRIM
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
@@ -4517,9 +4435,8 @@ private
 \ LHIDXADD inserts record NDICT-1 mid-publish, saving its whole clobber set, and
 \ compacts the table when HIDX:CLAIMS crosses HIDX:LOAD-MAX, sweeping the stale
 \ slots rollback leaves. HIDX-EMIT:LREBUILD zeroes the table and HIDX:CLAIMS and
-\ re-inserts [0,NDICT): the only operation that lowers HIDX:CLAIMS, called by the
-\ raise leg of ndict! (BNDSET). HIDX-EMIT:LFULL is the loud exit for the
-\ unreachable full wrap.
+\ re-inserts [0,NDICT): the only operation that lowers HIDX:CLAIMS.
+\ HIDX-EMIT:LFULL is the loud exit for the unreachable full wrap.
 \ HIDX-EMIT:LREKEY (x3 = record index) re-indexes a record under its current wid
 \ cell unless its chain already holds it, register-transparent.
 \ DEFWRITE:RECORD-WID calls it after rewriting a published record's wid, because
