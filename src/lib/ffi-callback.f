@@ -81,7 +81,7 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
 : FFALLBACKS ( n -- ^r ) ROW FFALLBACK-OFF + >FLOAT-CELL ;
 
 : ALIGNED-ROWS ( n -- ^u8 ) {: size:n :}
-   here data-base - negate 7 and allot
+   align
    here BYTE-VIEW {: rows:^ :}
    size allot
    rows ;

@@ -15,8 +15,6 @@ require src/core/rollback-cells.f
 package FORK-CHILD
 private
 
-\ Atomic cells require native cell alignment.
-here data-base - negate 7 and allot
 PERSISTED-PTR-VARIABLE HEAD
 HEAD ROLLBACK-CELLS:MARK
 

@@ -99,7 +99,6 @@ PTR-VARIABLE IMAGES
 \ Carried into a built program, so no later font or image gets a kept
 \ handle's number.
 variable SERIAL
-here data-base - negate 7 and allot
 SCRATCH-VARIABLE LOCK-CELL
 
 5 TASK:+USERS RENDER-STATE ^u8

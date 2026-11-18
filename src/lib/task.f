@@ -180,10 +180,6 @@ CAST: TASK-CELL>XT-SLOT ( ^n -- ^[ -- ] )
 : TCB.USER-XT ( ^n -- ^[ -- ] )
    TCB.USER-XT-CELL TASK-CELL>XT-SLOT ;
 
-: TASK-ALIGN8 ( -- )
-   here FFI:>CELL 7 and dup 0= if drop exit then
-   8 swap - allot ;
-
 \ ---- host semaphore bindings ----------------------------------------
 \ sem_wait blocks inside the call; that is safe because the generated body
 \ passes its arguments from the calling task's own data stack.
@@ -391,7 +387,6 @@ TASK-SEM-CHUNK-SIZE constant TASK-SEM-CHUNK-BYTES
 : TASK-ZERO-CELLS, ( n -- )
    0 ?do 0 , loop ;
 
-TASK-ALIGN8
 create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 
 \ Chunks are named by address, as n; 0 ends the chain.
@@ -485,9 +480,7 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 \ The main thread has no TCB, so a WAKE of the null TCB posts this record. It
 \ and READY are scratch, so a program starts with no park and its first wake
 \ makes one.
-TASK-ALIGN8
 create MAIN-PARK-REC SEMAPHORE-BYTES SCRATCH-ALLOT
-TASK-ALIGN8
 SCRATCH-VARIABLE MAIN-PARK-READY
 
 : MAIN-PARK ( -- sem )
@@ -558,23 +551,17 @@ SCRATCH-VARIABLE MAIN-PARK-READY
 \ stays valid under a reader.
 $80 constant TASK-EXIT-TABLE-N
 TASK-EXIT-TABLE-N TYPED-BUFFER TASK-EXIT-QT [ -- ]
-TASK-ALIGN8
 create TASK-EXIT-LINK TASK-EXIT-TABLE-N TASK-ZERO-CELLS,
-TASK-ALIGN8
 create TASK-EXIT-OWED TASK-EXIT-TABLE-N cells SCRATCH-ALLOT
 \ The first row never handed out: every row below it has been used, freed
 \ rows included.
-TASK-ALIGN8
 variable TASK-EXIT-N
 \ The first row TASK:FREE gave back, plus one; 0 is none. A free row's link
 \ names the next free row the same way.
-TASK-ALIGN8
 variable TASK-EXIT-FREE
-TASK-ALIGN8
 SCRATCH-VARIABLE TASK-EXIT-LOCK
 \ The newest chunk, as a number; 0 is none. Declared an address cell, so the
 \ linker refuses a file whose top level leaves a chunk mapped.
-TASK-ALIGN8
 variable EXIT-CHUNKS   EXIT-CHUNKS ptr-cell-mark
 $4000 constant EXIT-CHUNK-BYTES
 3 cells constant EXIT-ROW-BYTES
@@ -801,7 +788,7 @@ variable ROW-N
 ROW-N ROLLBACK-CELLS:MARK
 
 : ROW-ALLOC ( n -- ^u8 ) {: size:n :}
-   TASK-ALIGN8
+   align
    here BYTE-VIEW {: rows:^ :}
    size SCRATCH-ALLOT
    rows ;
@@ -995,9 +982,7 @@ TASK-CHAIN-PUBLISH
 \ pool. The x86-64 crash handler walks TASK-CHAIN only, so
 \ a guard-page fetch in a NEW task's stack reaches its generic dump instead of
 \ the stack-bounds report.
-TASK-ALIGN8
 SCRATCH-VARIABLE TCB-POOL
-TASK-ALIGN8
 SCRATCH-VARIABLE TCB-CHUNKS
 TASK-TCB-BYTES 2 cells + constant TCB-REC-BYTES
 $4000 constant TCB-CHUNK-BYTES
@@ -1520,7 +1505,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ so a program starts with each defined task EMPTY.
 : TASK ( n -- )
    dup TASK-CHECK-SIZE
-   TASK-ALIGN8
    create
       here CELL-VIEW >r
       ,  TASK-ABI:EXIT-SLOT-OFF CELL - SCRATCH-ALLOT
@@ -1647,11 +1631,7 @@ CAST: >SLOT-AT ( n -- ^t )
 \ The record is this process's lock and its holder, so every cell is a scratch
 \ cell, which a link writes zero.
 : FACILITY ( -- )
-   TASK-ALIGN8
-   create
-   TASK-FACILITY-BYTES TASK-CELL / 0 ?do here i cells + scratch-cell-mark loop
-   TASK-FACILITY-BYTES allot
-   does> ( -- ^n ) ;
+   create  TASK-FACILITY-BYTES SCRATCH-ALLOT  does> ( -- ^n ) ;
 
 : FACILITY-OWNER ( ^n -- ^n )
    TASK-FACILITY-OWNER-OFF + ;
@@ -1694,7 +1674,6 @@ CAST: >SLOT-AT ( n -- ^t )
    f FACILITY-MUTEX BYTE-VIEW MUTEX-UNLOCK-CALL TASK-RC0 ;
 
 : SEMAPHORE ( -- )
-   TASK-ALIGN8
    create SEMAPHORE-BYTES SCRATCH-ALLOT
    does> ( -- TASK:sem ) FFI:>CELL >SEM ;
 

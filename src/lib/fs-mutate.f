@@ -52,11 +52,9 @@ $2D constant DASH
 PATH-CAP CELL 1- + CELL / 2 + constant CLEANUP-STRIDE
 8 constant CLEANUP-FIRST
 PTR-VARIABLE CLEANUP-ROW
-variable CLEANUP-CAP   CLEANUP-CAP scratch-cell-mark
+SCRATCH-VARIABLE CLEANUP-CAP
 
-\ Atomic cells require native cell alignment.
-here data-base - negate 7 and allot
-variable CLEANUP-N   CLEANUP-N scratch-cell-mark
+SCRATCH-VARIABLE CLEANUP-N
 variable CLEANUP-LOCK
 
 \ The staged paths are task-local, in the FS-MUT-ABI band of the per-task DATA

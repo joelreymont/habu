@@ -64,7 +64,6 @@ SLOTS TYPED-BUFFER SLOT-GEN n
 1 constant LIVE
 2 constant CLOSING
 3 constant CLAIMING
-here data-base - negate 7 and allot   \ atomic cells need native alignment
 create SLOT-STATUS SLOTS cells SCRATCH-ALLOT
 
 \ A handle is its row in the low byte and the row's generation above it; the

@@ -190,7 +190,6 @@ DYNAMIC-BUFFER RES-SCOPED n
 DYNAMIC-BUFFER RES-ROWS n
 DYNAMIC-BUFFER RES-COLS n
 
-here data-base - negate 7 and allot
 variable GENERATION
 SCRATCH-VARIABLE CONFIG-MUTEX
 \ The packed handle of the running task's innermost result scope.

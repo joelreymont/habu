@@ -32,13 +32,11 @@ CAST: ARENA>N ( ^ARENA:arena -- n )
 
 \ The rows' arena, 0 until an ADD makes one, never released: its growth only
 \ maps, so nothing under the lock can die, and no row moves under a TAKE.
-variable POOL   POOL scratch-cell-mark
+SCRATCH-VARIABLE POOL
 
-\ Atomic cells require native cell alignment.
-here data-base - negate 7 and allot
 \ NEWEST is the newest row not yet taken, 0 for none. Both are scratch numbers,
 \ so a built program starts with no actions: a typed address cell is never scratch.
-variable NEWEST   NEWEST scratch-cell-mark
+SCRATCH-VARIABLE NEWEST
 variable MUTEX
 
 : LOCK ( -- )

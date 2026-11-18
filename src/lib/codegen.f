@@ -36,7 +36,7 @@ CAST: CB-HEAD ( ^n -- ^^u8 )
    CELL d CB-LEN@ + 1 + d CB-HEAD d CB-CTL 1 DYNAMIC-STORAGE:RESERVE ;
 
 : CB-HEADER, ( -- )
-   CB-CELLS 0 ?do here scratch-cell-mark 0 , loop ;
+   CB-CELLS cells SCRATCH-ALLOT ;
 
 public
 

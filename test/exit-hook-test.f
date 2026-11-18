@@ -332,7 +332,7 @@ variable STAGED-FILES
 : CASE-TASK-WAIT ( -- )
    s" task-wait.f" s" task-wait-tree" CASE-PATHS
    S\" require src/lib/task.f\nrequire src/lib/at-exit.f\n$10000 TASK:TASK CHILD-TASK\n" TEXT+
-   S\" here data-base - negate 7 and allot\nvariable STARTED\n" TEXT+
+   S\" variable STARTED\n" TEXT+
    S\" : ACT ( -- ) 1 STARTED atomic! 200 >MS TASK:SLEEP\n" TEXT+
    S\"    s\q action: done\q type cr CHILD-TREE FS:REMOVE-TREE ;\n" TEXT+
    S\" : WORK ( -- ) begin STARTED atomic@ 0= while 1 >MS TASK:SLEEP repeat\n" TEXT+

@@ -33,7 +33,6 @@ STAT-BYTES 1+ TASK:+USERS ZIP-SCRATCH u8
 
 \ Only the short registry operations take this lock; decompression and
 \ archive-owned buffers remain independent.
-here data-base - negate 7 and allot
 SCRATCH-VARIABLE STATE-LOCK
 \ A contended PAUSE must not end a task between native disposal and unlinking.
 : STATE-GET ( -- )

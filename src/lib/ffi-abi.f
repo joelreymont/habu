@@ -178,7 +178,7 @@ LIB-N ROLLBACK-CELLS:MARK
 
 : ALIGNED-ROWS ( n -- ^u8 )
    {: size:n :}
-   here data-base - negate 7 and allot
+   align
    here BYTE-VIEW {: rows:^ :}
    size allot
    rows ;
@@ -918,9 +918,8 @@ variable OPENER-U
 : CLOSED! ( -- )
    construct decl-state closed DECL !  NULL-PTR OPENER-A !  0 OPENER-U ! ;
 CLOSED!
-variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
-variable SCOPE-SET
-SCOPE-WID scratch-cell-mark  SCOPE-SET scratch-cell-mark
+SCRATCH-VARIABLE SCOPE-WID   \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
+SCRATCH-VARIABLE SCOPE-SET
 SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : OPEN? ( -- bool )

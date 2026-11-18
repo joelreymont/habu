@@ -84,10 +84,10 @@ PTR-VARIABLE KEYS-URL-AT   SCRATCH-VARIABLE KEYS-URL-LEN
 \ built program starts with the plain challenges: NAMED is a PTR-VARIABLE and
 \ the lengths are scratch cells, each written as 0 in the built program.
 PTR-VARIABLE NAMED
-variable NAMED-LEN   NAMED-LEN scratch-cell-mark
-variable NAMED-U   NAMED-U scratch-cell-mark
-variable CHALLENGES-U   CHALLENGES-U scratch-cell-mark
-variable RESOURCE-U   RESOURCE-U scratch-cell-mark
+SCRATCH-VARIABLE NAMED-LEN
+SCRATCH-VARIABLE NAMED-U
+SCRATCH-VARIABLE CHALLENGES-U
+SCRATCH-VARIABLE RESOURCE-U
 
 : NAMED-SPAN ( -- SPAN:span<u8> ) NAMED @ NAMED-LEN @ SPAN:MAKE ;
 : CHALLENGES ( -- SPAN:span<u8> ) NAMED-SPAN CHALLENGES-U @ SPAN:TAKE ;

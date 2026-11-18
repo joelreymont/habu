@@ -2014,8 +2014,6 @@ create P-NONE PATH-CAP allot  variable P-NONE-U
 create P-NAME PATH-CAP allot
 $10000 TASK:TASK WORKER
 
-\ Atomic cells require native cell alignment.
-here data-base - negate 7 and allot
 variable DONE
 
 : MARK$ ( -- str ) P-MARK P-MARK-U @ ;
