@@ -272,6 +272,9 @@ create XE-EMPTY 1 allot
    SB-RESET  s" defer DE ( -- renders | )" XE-LINE
    SB$ s" does not parse" XE-FACT-REJECTED ;
 
+: XE-FACT-ACCEPTED ( str -- )
+   XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
+
 \ A quotation kept in a slot has only the facts the slot's type states; one a
 \ callee only runs charges the caller.
 : XE-KEPT-FACTS ( -- )
@@ -330,10 +333,11 @@ create XE-EMPTY 1 allot
    SB-RESET
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
    s" : A ( [ -- ] -- ) execute ;" XE-LINE  s" : R ( -- ) ['] EVC A ;" XE-LINE
-   SB$ XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
-
-: XE-FACT-ACCEPTED ( str -- )
-   XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
+   SB$ XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T=
+   s" an unsigned word that returns a throwing quotation loads" T-LABEL
+   SB-RESET
+   s" : T ( n -- n ) drop 7 throw ;" XE-LINE  s" : MK [: T ;] ;" XE-LINE
+   SB$ XE-FACT-ACCEPTED ;
 
 : XE-RUN-LINE ( -- ) s" : RUN ( [ -- ] -- ) execute ;" XE-LINE ;
 

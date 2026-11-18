@@ -6982,9 +6982,6 @@ variable VRC-RVN
          x VREC-RES Q>RIN RECURSE node VN.C!
          x VREC-RES Q>ROUT RECURSE node VN.D!
          x VREC-RES Q>FACTS CTL-STATABLE and node VN.E!
-         x VREC-RES Q>XDEAD Q-FLAG>N node VN.F!
-         x VREC-RES Q>XDFIELD node VN.G!
-         x VREC-RES Q>XRFIELD node VN.H!
          x VREC-RES Q>BLOCK RECURSE node VN.I!
          node
       endof
@@ -7101,7 +7098,6 @@ variable VRC-RVN
          node VN.D@ RECURSE
          MK-QUOT
          dup Q>FACTS node VN.E@ or over Q-FACTS!
-         dup node VN.F@ 0 <> node VN.G@ node VN.H@ QX!
          node VN.I@ RECURSE over Q-BLOCK!
       endof
       VR-FORALL of
@@ -10651,9 +10647,6 @@ UIX-RESET
          x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.C !
          x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.D !
          x E-RES Q>FACTS CTL-STATABLE and r@ E-WPTR EN.E !
-         x E-RES Q>XDEAD Q-FLAG>N r@ E-WPTR EN.F !
-         x E-RES Q>XDFIELD r@ E-WPTR EN.G !
-         x E-RES Q>XRFIELD r@ E-WPTR EN.H !
          x E-RES Q>BLOCK TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.I !
          r>
       endof
@@ -12106,7 +12099,6 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          r@ EN.D @ pool RECURSE
          MK-QUOT
          dup Q>FACTS r@ EN.E @ or over Q-FACTS!
-         dup r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
          r@ EN.I @ pool RECURSE over Q-BLOCK!
          r> drop
       endof
