@@ -20,7 +20,6 @@ require src/lib/process-cwd.f
 package HOF
 
 $2000 constant HOF-CAP
-10000 constant HOF-TIMEOUT-MS
 
 create HOF-ROOT PATH-CAP allot
 create HOF-EXE  PATH-CAP allot
@@ -56,7 +55,7 @@ variable HOF-EXE-U
 \ Run the copied engine with the empty temp dir as cwd; capture stdout/stderr/rc.
 : HOF-RUN ( -- n n n )
    HOF-EXE$ >LEN HOF-ROOT$ >LEN HOF-IN 0 >LEN
-   HOF-OUT HOF-CAP >LEN HOF-ERR HOF-CAP >LEN HOF-TIMEOUT-MS >MS
+   HOF-OUT HOF-CAP >LEN HOF-ERR HOF-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    HOF-CAPTURE>N ;
 

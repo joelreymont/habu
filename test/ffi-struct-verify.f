@@ -18,8 +18,6 @@ split-str
 \ The source under check, copied out of SB, which the verifier also uses.
 DYNAMIC-BUFFER FFI-SV-SRC u8
 variable FFI-SV-SRC-U
-\ A deadlock guard.
-60000 constant FFI-SV-MS
 
 : FFI-SV-SRC$ ( -- str )
    0 FFI-SV-SRC FFI-SV-SRC-U @ ;
@@ -47,7 +45,7 @@ variable FFI-SV-SRC-U
    u 1 max FFI-SV-SRC-RESERVE
    a 0 FFI-SV-SRC u BYTE-COPY
    u FFI-SV-SRC-U !
-   FFI-SV-SRC$ s" test/ffi-sv.f" E2E-TREE:AT-A [: drop ;] FFI-SV-MS >MS
+   FFI-SV-SRC$ s" test/ffi-sv.f" E2E-TREE:AT-A [: drop ;] PROCESS:WAIT-FOREVER
    json LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
 
 : FFI-SV-CHECK ( -- n )

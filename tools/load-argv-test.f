@@ -18,7 +18,6 @@ require src/lib/process-argv.f
 package LOAD-ARGV-TEST
 
 $4000 constant LA-CAP
-30000 constant LA-TIMEOUT-MS
 
 \ A path the boot prefix already carries, and one it does not. Both are read
 \ from the engine's own behaviour by the first two cases below rather than
@@ -91,7 +90,7 @@ variable LA-DANGLING-LINK-U
 : LA-ARG ( str -- )   >LEN PROC-ARGV+ ;
 
 : LA-RUN ( -- n n n )                              \ -> outu erru rc
-   s" bin/hb" >LEN LA-OUT LA-CAP >LEN LA-ERR LA-CAP >LEN LA-TIMEOUT-MS >MS
+   s" bin/hb" >LEN LA-OUT LA-CAP >LEN LA-ERR LA-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF

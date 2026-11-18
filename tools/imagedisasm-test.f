@@ -14,7 +14,6 @@ require src/arch/arm64/disasm.f
 require tools/imagedisasm.f
 
 $4000 constant IMDT-CAP
-10000 constant IMDT-TIMEOUT-MS
 
 create IMDT-OUT IMDT-CAP allot
 create IMDT-ERR IMDT-CAP allot
@@ -117,7 +116,7 @@ variable IMDT-FORMS-U
    off offu IMDT-ARG+
    count countu IMDT-ARG+
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
-   IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
+   PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE-OUTCOME ;
 
 : IMDT-EXPECT-EXIT ( len len PROCESS:ending n -- n n )
    {: outu:len erru:len oc expect:n :}

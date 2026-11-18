@@ -23,7 +23,6 @@ package INSTALL-E2E
 private
 
 $1000 constant IO-CAP
-30000 constant TIMEOUT-MS
 create ROOT PATH-CAP allot variable ROOT-U
 create HOME PATH-CAP allot variable HOME-U
 create TREE-A PATH-CAP allot variable TREE-A-U
@@ -192,15 +191,10 @@ variable TREES-N
    1 >FD out PROCESS:FD
    PROCESS:SPAWN ;
 
-: REAP ( pid -- ) {: child:pid :}
-   child TIMEOUT-MS >MS PROCESS:WAIT-BOUNDED MATCH PROCESS:ending
+: REAP ( pid -- )
+   PROCESS:WAIT MATCH PROCESS:status
       exited OF 0 T= ENDOF
       signaled OF 128 + 0 T= ENDOF
-      timeout OF
-         child PROCESS:SIGKILL PROCESS:KILL-RAW drop
-         child PROCESS:WAIT drop
-         false TTRUE
-      ENDOF
    ;MATCH ;
 
 : READ-SOME ( fd -- n ) {: r:fd :}

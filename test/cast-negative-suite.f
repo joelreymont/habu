@@ -473,12 +473,11 @@ s" CNS1" get-current search-wl 0= TFALSE        \ ... and the cast published any
 package CN-CHILD
 public
 $400 constant CAP
-10000 constant CHILD-MS
 create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 : RUN ( ^u8 n -- n ) {: src:^ u:n :}   \ source -> child exit status (-1 = signal)
-   src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF ENDOF

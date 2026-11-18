@@ -7,7 +7,6 @@ split-str
 package SPLIT-STR-DEEP
 
 $10000 constant CAP            \ bytes: the deepest text
-10000 constant CHILD-MS
 create SRC-BUF CAP allot
 create OUT CAP allot
 create ERR CAP allot
@@ -61,13 +60,13 @@ TYPED-VARIABLE SRC-U len
 
 \ The text in SRC-BUF, run as the subject, exits 70 and names why on stderr.
 : REJECTS ( ^u8 n -- ) {: why:^ whyu:n :}
-   SRC$ OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   SRC$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
    ERR erru LEN>N why whyu CONTAINS? TTRUE ;
 
 : LOADS ( -- )
-   SRC$ OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   SRC$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
 

@@ -236,12 +236,11 @@ REJECTION:BUFFER-OFF
 package LIN-CHILD
 public
 $400 constant CAP
-10000 constant CHILD-MS
 create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 : RUN ( ^u8 n -- n ) {: src:^ u:n :}   \ source -> child exit status (-1 = signal)
-   src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
      exited OF ENDOF
@@ -268,8 +267,6 @@ s" LCM" LIN-CHILD:HAS
 package LIN-FILES
 4096 constant CAP
 $2000 constant PROG-CAP
-60000 constant CHECK-MS
-600000 constant IMAGE-MS
 create OUT CAP allot
 create ERR CAP allot
 variable OUT-U
@@ -297,9 +294,9 @@ variable PROG-U
    PROG-U @ 1 + PROG-U ! ;
 
 \ The caller stages the argv.
-: RUN ( ^u8 n n -- ) {: path:^ pathu:n ms:n :}
+: RUN ( ^u8 n -- ) {: path:^ pathu:n :}
    PROC-ENV-INHERIT-MISSING
-   path pathu >LEN  PROG$ >LEN  OUT CAP >LEN  ERR CAP >LEN  ms >MS
+   path pathu >LEN  PROG$ >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    RC ! ERR-U ! OUT-U ! ;
 
@@ -335,7 +332,7 @@ variable PROG-U
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U !
    PATH$ PROG$ FS:WRITE-ALL
    0 PROG-U !
-   child childu OUT CAP >LEN ERR CAP >LEN CHECK-MS >MS SUBJECT:RUN
+   child childu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    rc RC !  erru LEN>N ERR-U !  outu LEN>N OUT-U ! ;
 
@@ -385,7 +382,7 @@ variable PROG-U
    s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+  s" --repl" >LEN PROC-ARGV+
    PATH$ >LEN PROC-ARGV+  s" -o" >LEN PROC-ARGV+  IMAGE$ >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ IMAGE-MS RUN ;
+   ENGINE-CANDIDATE:PATH$ RUN ;
 
 : REOPEN ( -- )
    0 PROG-U !
@@ -394,7 +391,7 @@ variable PROG-U
    S\" : RT ( n -- n ) MINT ERASE ;\n42 RT .\n;package\n" PROG+
    S\" package LIM-X\nLINEAR: XM ( n -- LIM:tok )\n;package\n" PROG+
    PROC-ARGV-ENV-RESET
-   IMAGE$ IMAGE-MS RUN ;
+   IMAGE$ RUN ;
 
 : AT-ROOT ( str -- ) {: name:^ nameu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U ! ;
@@ -447,12 +444,12 @@ variable PROG-U
    s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+  s" --" >LEN PROC-ARGV+
    PATH$ >LEN PROC-ARGV+  s" -o" >LEN PROC-ARGV+  IMAGE$ >LEN PROC-ARGV+
    s" HABU_OUT" >LEN OBJ$ >LEN PROC-ENV+
-   ENGINE-CANDIDATE:PATH$ IMAGE-MS RUN ;
+   ENGINE-CANDIDATE:PATH$ RUN ;
 
 : LINK-RUN ( -- )
    0 PROG-U !
    PROC-ARGV-ENV-RESET
-   IMAGE$ CHECK-MS RUN ;
+   IMAGE$ RUN ;
 
 \ The tail a walk of OBJ$ looks for, the last path ending with it and how many paths do.
 create TAIL-BUF PATH-CAP allot  variable TAIL-U

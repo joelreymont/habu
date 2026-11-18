@@ -15,7 +15,6 @@ require src/lib/test/ending.f
 package CLI-CONTRACTS
 
 2048 constant HCT-CAP
-10000 constant HCT-TIMEOUT-MS
 
 variable HCT-ROOT-U
 variable HCT-CHILD-U
@@ -126,7 +125,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-CHILD  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
@@ -138,7 +137,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    PROC-ARGV-RESET
    s" --loadx"  >LEN PROC-ARGV+
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    s" bin/hb --loadx" HCT-STORE!
    s" unknown flag exits 64" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
@@ -153,7 +152,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    PROC-ARGV-RESET
    s" --nonsense"  >LEN PROC-ARGV+
    s" bin/hb" >LEN  s" 1 2 + . cr" >LEN  HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    s" bin/hb --nonsense" HCT-STORE!
    s" unknown flag rejected even with a piped program" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
@@ -170,7 +169,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" --deadline-ms"  >LEN PROC-ARGV+
    s" x"  >LEN PROC-ARGV+
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    json if s" bin/hb --load tools/check.f -- --json-errors --deadline-ms x"
    else s" bin/hb --load tools/check.f -- --deadline-ms x" then HCT-STORE!
    s" a bad --deadline-ms exits 64" T-LABEL
@@ -199,7 +198,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" --load"  >LEN PROC-ARGV+
    HCT-CHILD >LEN PROC-ARGV+
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    s" --load of an empty file exits 0" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 0 T= ;
@@ -215,7 +214,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 : HCT-EXPECT-ARGV-NONE ( -- )
    HCT-ARGV-LOAD
    s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    s" zero script args reject negative and zero indexes" T-LABEL
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
@@ -230,7 +229,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" " >LEN PROC-ARGV+
    s" omega" >LEN PROC-ARGV+
    s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    s" script argv preserves first, last, and empty values and rejects bounds" T-LABEL
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=

@@ -54,7 +54,6 @@ private
 
 
 $4000 constant IO-CAP
-10000 constant CHILD-MS
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 variable OUT-U
@@ -282,7 +281,7 @@ variable ERR-U
 \ ---- children -----------------------------------------------------------------
 
 : CHILD ( ^u8 n -- PROCESS:ending ) {: src:^ srcu:n :}
-   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !  oc ;
 
