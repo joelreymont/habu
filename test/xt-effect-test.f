@@ -303,6 +303,19 @@ create XE-EMPTY 1 allot
    s" TYPED-VARIABLE XV [ -- ]" XE-LINE  s" : A ( [ -- ] -- ) execute ;" XE-LINE
    s" : R ( -- ) ['] EVC A ;" XE-LINE  s" : S3 ( -- ) ['] R XV ! ;" XE-LINE
    SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   s" a pointer to a quotation cell keeps the cell's facts" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE XV [ -- ]" XE-LINE
+   s" : W ( ^[ -- renders ] -- ) ['] EVC swap ! ;" XE-LINE  s" : C ( -- ) XV W ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   s" a join keeps its branches' quotation inputs apart" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE XV [ -- ]" XE-LINE  s" : K1 ( [ -- ] -- ) XV ! ;" XE-LINE
+   s" : K2 ( [ -- renders ] -- ) execute ;" XE-LINE
+   s" : JN ( bool -- ) ['] EVC swap if ['] K2 else ['] K1 then execute ;" XE-LINE
+   SB$ s" E-MISMATCH" XE-FACT-REJECTED
    s" a typed cell whose type states the facts keeps the quotation" T-LABEL
    SB-RESET
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE

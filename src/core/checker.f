@@ -4835,6 +4835,9 @@ variable KEPT-ROLE   variable KEPT-RUN
    role ROLE-D2 and 0 <> IF
       role ROLE-NEG and 0= UNIFY-KIND @ UK-COERCE = and  b ISVAR IF b PAY NSCOPE@ or THEN
    ELSE RES-FALSE THEN {: kept:bool :}
+   \ A pair demanded on both sides (a pointee, a store slot, a join's inputs)
+   \ is invariant: its two quotations state the same facts.
+   role ROLE-D1 ROLE-D2 or and  ROLE-D1 ROLE-D2 or = {: inv:bool :}
    KEPT-ROLE @ {: kr0:n :}   KEPT-RUN @ {: kn0:n :}
    kept IF role KEPT-ROLE !  0 KEPT-RUN ! THEN
    got want role HOLD-PUSH {: g:n w:n :}
@@ -4849,14 +4852,15 @@ variable KEPT-ROLE   variable KEPT-RUN
    got Q>FACTS run or {: has:n :}
    has CTL-STATABLE and want Q>FACTS invert and {: lack:n :}
    \ The record's found side shows the facts its help asks to state.
-   UOK @ IF kept IF lack 0 <> IF
+   UOK @ IF kept inv or IF lack 0 <> IF
       has got Q-FACTS!  lack FACT-HIT !  got want U-FAIL
+   ELSE inv IF want Q>FACTS CTL-STATABLE and has invert and 0 <> IF got want U-FAIL THEN THEN
    THEN THEN THEN
    \ The fact union is not trailed: a rolled-back trial can only add facts. A
    \ quotation a callee only runs charges the caller with its facts; one the
    \ open kept pair's slot hands its quotation charges that quotation instead.
    KEPT-ROLE @ 0 <>  role KEPT-ROLE @ xor ROLE-NEG and 0 <> and {: handed:bool :}
-   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE kept 0= IF
+   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE kept inv or 0= IF
       handed IF got Q>FACTS KEPT-RUN @ or KEPT-RUN ! THEN
       g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS!
       handed 0=  role ROLE-D2 and 0 <> and  UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
