@@ -885,8 +885,8 @@ undefine include
    EXITED @ TTRUE
    RC @ 0 T= ;
 
-\ The action SOURCE-BUF-THEN-IN-SCOPE runs inside its window has a type that
-\ states no facts, so a verification kept there is rejected where it is kept.
+\ A verification renders and parses, so one kept as another verification's
+\ action is rejected where it is kept.
 : TEST-WINDOW-KEPT ( -- )
    s" a verification kept as another verification's action is rejected" T-LABEL
    BODY$ S\" require src/habu/verify-source.f\n: LRD-IN ( -- ) s\" : RB ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;\n: LRD-NEST ( -- ) s\" : RA ( -- ) ;\" [: LRD-IN ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;\nLRD-NEST\n" FS:WRITE-ALL

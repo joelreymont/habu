@@ -4162,7 +4162,7 @@ COMPOSE-INIT
 
 variable CAND-VERDICT
 
-TYPED-VARIABLE THEN-ACTION [ -- ]
+TYPED-VARIABLE THEN-ACTION [ -- nominal ]
 
 : VERIFY-THEN ( -- )
    VERIFY-ARMED
@@ -4411,7 +4411,7 @@ public
 \ holds the overlay open, so a caller reading what the scan recorded by name
 \ reads it here. No second verifier scope opens inside this one
 \ (E-VERIFY-WINDOW). A scan that throws runs no action.
-: SOURCE-BUF-THEN-IN-SCOPE ( ^u8 n [ -- ] -- )
+: SOURCE-BUF-THEN-IN-SCOPE ( ^u8 n [ -- nominal ] -- )
    THEN-ACTION !
    SOURCE!
    [: VERIFY-THEN ;] RUN-IN-SCOPE ;
