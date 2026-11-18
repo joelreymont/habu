@@ -817,8 +817,7 @@ ETRUSTED-ONLY!
 EPRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 \ ffi-call-k ( x1 .. xk fn -- n ): a C call of fn with k integer arguments
-\ taken from the stack, x1 the first. No package row types them yet, so no
-\ checked word calls them.
+\ taken from the stack, x1 the first.
 EPRIM: ffi-call-0     PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: ffi-call-1     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
@@ -864,6 +863,21 @@ ETRUSTED-ONLY!
 \ FFI's checked words call these by its private rows; the global trusted-only
 \ rows above reject any other checked caller.
 EPPRIM: FFI ffi-call-n PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-0 PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-1 PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-2 PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-3 PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT
+                       ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-4 PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                       PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-5 PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                       PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-6 PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                       PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-7 PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                       PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: FFI ffi-call-8 PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+                       PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-abi PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                         PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN

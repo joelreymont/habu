@@ -202,7 +202,8 @@ variable BUILD-FMT-READY
 PROCESS-SYMBOLS
 FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 
-\ The pause comes before the call: a FUNCTION: word stages and calls at once.
+\ The pause comes before the call: a FUNCTION: word passes its arguments
+\ and calls at once.
 : TASK-CSTRLEN ( ^u8 -- n ) TASK:PAUSE TASK-STRLEN ;
 
 : APP-BAD+ ( -- )

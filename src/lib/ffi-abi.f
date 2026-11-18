@@ -604,12 +604,18 @@ private
 
 : LIBRARY-PATH ( str -- n ) 0 LIBRARY-PATH-OR ;
 
-\ Row idx's function called with argc integer arguments staged in FFI-BUF;
-\ argc is its declaration's count, a literal where it is called.
-: CALL ( n n -- n ) {: idx:n argc:n :}
-   FFI-BUF argc idx CALLEE ffi-call-n ;
-
-: CALL-PTR ( n n -- ^u8 ) CALL CELL>PTR ;
+\ CALL-k ( x1 .. xk n -- n ): row n's function called with the k integer
+\ arguments x1..xk, x1 the first, from the data stack. A FUNCTION: word
+\ calls these, never ffi-call-k, whose global row rejects it E-CAP-TRUSTED.
+: CALL-0 ( n -- n ) CALLEE ffi-call-0 ;
+: CALL-1 ( n n -- n ) CALLEE ffi-call-1 ;
+: CALL-2 ( n n n -- n ) CALLEE ffi-call-2 ;
+: CALL-3 ( n n n n -- n ) CALLEE ffi-call-3 ;
+: CALL-4 ( n n n n n -- n ) CALLEE ffi-call-4 ;
+: CALL-5 ( n n n n n n -- n ) CALLEE ffi-call-5 ;
+: CALL-6 ( n n n n n n n -- n ) CALLEE ffi-call-6 ;
+: CALL-7 ( n n n n n n n n -- n ) CALLEE ffi-call-7 ;
+: CALL-8 ( n n n n n n n n n -- n ) CALLEE ffi-call-8 ;
 
 \ Row idx's function called through the full ABI, with spill stack cells;
 \ spill is the row's own count, compiled in by the declaration.
@@ -734,11 +740,11 @@ public
 \ defined below it, in this package. libc's location is thread-local and the
 \ value is a four-byte C int.
 : ERRNO ( -- n )
-   ERRNO-FN 0 CALL-PTR LE:U32@ ;
+   ERRNO-FN CALL-0 CELL>PTR LE:U32@ ;
 
 \ Sets errno to 0, for a call whose failure only errno tells.
 : ERRNO-CLEAR ( -- )
-   0 ERRNO-FN 0 CALL-PTR LE:U32! ;
+   0 ERRNO-FN CALL-0 CELL>PTR LE:U32! ;
 
 ERRNO-SYMBOL$ PROCESS 0 0 DECLARE-ROW ERRNO-FN-CELL !
 
@@ -864,11 +870,11 @@ $10 constant TYPE-CAP
 7 constant R-U16
 8 constant R-U8
 
-0 constant C-INT
-1 constant C-POINTER
-2 constant C-ABI
-3 constant C-ABI-R
-4 constant C-STRUCT
+\ C-REG: every argument in an integer register, the result not a float.
+0 constant C-REG
+1 constant C-ABI
+2 constant C-ABI-R
+3 constant C-STRUCT
 
 CODEGEN:BUFFER LIB-NAME
 
@@ -1365,13 +1371,13 @@ private
    loop ;
 
 \ The plan of argc C arguments, variadic from start (-1 for none), into regs
-\ and pays. Answers the integer and float registers and the stack cells taken.
-: PLAN-INPUTS ( ^n ^n ^n n n n ^n ^n -- n n n )
+\ and pays. Answers the float registers and the stack cells taken.
+: PLAN-INPUTS ( ^n ^n ^n n n n ^n ^n -- n n )
    {: kinds:^ sizes:^ sbytes:^ argc:n start:n result:n regs:^ pays:^ :}
-   kinds sizes sbytes argc start result regs PLAN-IN-ORDER {: int:n flt:n off:n :}
+   kinds sizes sbytes argc start result regs PLAN-IN-ORDER rot drop {: flt:n off:n :}
    off 8 ALIGN-UP 8 / {: pos:n :}
-   HB-TARGET-LINUX-X86-64? if int flt pos exit then
-   int flt sbytes argc pos pays PLAN-COPIES ;
+   HB-TARGET-LINUX-X86-64? if flt pos exit then
+   flt sbytes argc pos pays PLAN-COPIES ;
 
 : PLAN-ROOM ( n -- )
    {: stk:n :}
@@ -1388,19 +1394,17 @@ private
    {: flt:n stk:n :}
    RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if C-ABI-R exit then
    stk 0 > flt 0 > or if C-ABI exit then
-   RES-KIND @ R-POINTER = if C-POINTER exit then
-   C-INT ;
+   C-REG ;
 
-\ Answers the integer registers and stack cells the call takes, and the call
-\ it rides.
-: PLAN-CALL ( -- n n n )
+\ Answers the stack cells the call takes and the call it rides.
+: PLAN-CALL ( -- n n )
    ARG-KIND ARG-WIDTH ARG-SBYTES C-ARGS VAR-START @ STRUCT-BYTES @ ARG-REG ARG-PAY
-   PLAN-INPUTS {: int:n flt:n stk:n :}
+   PLAN-INPUTS {: flt:n stk:n :}
    STRUCT-BYTES @ 0 > RECORDS? or if
       stk PLAN-ROOM
-      int stk C-STRUCT exit
+      stk C-STRUCT exit
    then
-   int stk  flt stk CALL-KIND ;
+   stk  flt stk CALL-KIND ;
 
 \ ---- the built definition -------------------------------------------------
 
@@ -1469,12 +1473,49 @@ private
    {: kind:n :}
    RES-KIND @ R-FLOAT32 = if postpone CALL-ABI-F32 exit then
    kind C-ABI-R = if postpone CALL-ABI-R exit then
-   kind C-ABI = if
-      RES-KIND @ R-POINTER = if postpone CALL-ABI-PTR
-      else postpone CALL-ABI then exit
-   then
-   kind C-POINTER = if postpone CALL-PTR exit then
-   postpone CALL ;
+   RES-KIND @ R-POINTER = if postpone CALL-ABI-PTR exit then
+   postpone CALL-ABI ;
+
+\ The deepest pointer argument's index, ARG-N when none is.
+: FIRST-POINTER ( -- n )
+   ARG-N @ 0 ?do
+      i ARG-KIND@ K-POINTER = if i unloop exit then
+   loop
+   ARG-N @ ;
+
+\ Leaves every argument a cell in place: the arguments from the deepest
+\ pointer up are bound to locals and pushed back in order, each pointer as
+\ its cell; those below it stay where they are, with no local.
+: ARG-CELLS ( -- )
+   FIRST-POINTER {: first:n :}
+   first ARG-N @ = if exit then
+   s" {:" EFFECT:KEYWORD
+   ARG-N @ first ?do i LOCAL-TYPE EFFECT:LOCAL drop loop
+   s" :}" EFFECT:KEYWORD
+   ARG-N @ first ?do
+      i first - EFFECT:LOCAL@
+      i ARG-KIND@ K-POINTER = if postpone PTR>CELL then
+   loop ;
+
+\ Appends CALL-k for argc arguments, at most INT-REGS in a C-REG call.
+: REG-CALL-WORD ( n -- ) {: argc:n :}
+   argc 0 = if postpone CALL-0 exit then
+   argc 1 = if postpone CALL-1 exit then
+   argc 2 = if postpone CALL-2 exit then
+   argc 3 = if postpone CALL-3 exit then
+   argc 4 = if postpone CALL-4 exit then
+   argc 5 = if postpone CALL-5 exit then
+   argc 6 = if postpone CALL-6 exit then
+   argc 7 = if postpone CALL-7 exit then
+   postpone CALL-8 ;
+
+\ A C-REG call's body: its arguments as cells in order, then CALL-k of
+\ row slot; a pointer result is the cell CELL>PTR retypes.
+: REG-BODY ( n -- ) {: slot:n :}
+   ARG-CELLS
+   slot literal
+   ARG-N @ REG-CALL-WORD
+   RES-KIND @ R-POINTER = if postpone CELL>PTR then ;
 
 \ ---- the row this declaration takes ----------------------------------------
 
@@ -1617,18 +1658,20 @@ private
    RES-TEXT RES-TEXT-U @ EFFECT:READ-TYPE EFFECT:OUT ;
 
 \ A struct call's definition is STRUCT-BODY's, whose call reads its spill
-\ count and relocation mask from the row. Any other stages its inputs, then
-\ calls its row with the call's count compiled in: int, the integer
-\ arguments, for CALL and CALL-PTR; stk, the spilled stack cells, for an ABI
-\ call.
-: EMIT ( n n n -- )
-   {: int:n stk:n kind:n :}
+\ count and relocation mask from the row; a C-REG call's is REG-BODY's,
+\ its arguments passed on the data stack to CALL-k. Any other stages its
+\ inputs, then calls its row with stk, its spilled stack cells, compiled in.
+: EMIT ( n n -- )
+   {: stk:n kind:n :}
    stk SLOT {: slot:n :}
    0 NAME-BUF NAME-U @ DECLARED-EFFECT define-word
    kind C-STRUCT = if slot STRUCT-BODY postpone ; exit then
+   kind C-REG = if
+      slot REG-BODY  RESULT-TAIL  postpone ; exit
+   then
    STAGE
    slot literal
-   kind C-INT = kind C-POINTER = or if int else stk then literal
+   stk literal
    kind CALL-WORD
    RESULT-TAIL
    postpone ; ;
@@ -1712,7 +1755,7 @@ public
 
 \ The close transition without the word: the plan and its rejections run.
 : PLAN-FUNCTION ( -- )
-   [: CLOSE-STATE if PLAN-CALL drop drop drop then ;] KEEP-REST ;
+   [: CLOSE-STATE if PLAN-CALL 2drop then ;] KEEP-REST ;
 
 \ Sent by a driver that cannot tell what the declaration holds.
 : SKIP-FUNCTION ( -- )

@@ -184,7 +184,7 @@ CAST: TASK-CELL>XT-SLOT ( ^n -- ^[ -- ] )
 
 \ ---- host semaphore bindings ----------------------------------------
 \ sem_wait blocks inside the call; that is safe because the generated body
-\ stages its argument tables in the calling task's own DATA region.
+\ passes its arguments from the calling task's own data stack.
 PROCESS-SYMBOLS
 
 FUNCTION: SEM-INIT-CALL sem_init ( ^u8 n n -- i32 ) ;FUNCTION
