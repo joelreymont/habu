@@ -2443,8 +2443,8 @@ variable LIT-AT
    DEF-ANCHOR 0 COMP-BODY:ADDRESS DEF-FIXED
    DEF-CLOSE ;
 
-\ No record slot left is refused after the name, naming it. CP at the code
-\ ceiling is refused first, naming the keyword, as `:`'s does.
+\ No record slot left is rejected after the name, naming it. A full code
+\ space is rejected first, at the keyword.
 : DEF-ADDR-ROW ( str bool -- ) {: kw:^ ku:n cell?:bool :}
    DEF-CODE-ROOM
    kw ku OPERAND  kw ku TOKEN$ REJECTION:NOT-A-NAME
@@ -2468,7 +2468,9 @@ variable LIT-AT
 \ after the top item is judged and before the constant takes the top cell.
 variable DEF-VALUE
 
+\ Before the name is read, so a full code space is rejected at the keyword.
 : DEF-CONSTANT ( -- )
+   DEF-CODE-ROOM
    TOKEN$ {: kw:^ ku:n :}
    s" constant" OPERAND  s" constant" TOKEN$ REJECTION:NOT-A-NAME
    kw ku TOKEN$ TOP-TAKE

@@ -1,5 +1,6 @@
 split-str
-\ protection-span.f - task user-area bounds and long-body regressions.
+\ protection-span.f - code-ceiling, task user-area bounds and long-body
+\ regressions.
 
 require src/lib/error.f
 require src/lib/test.f
@@ -49,10 +50,19 @@ variable LONG-U
 : TEST-BODY-TEXT ( -- )
    LONG$ ACCEPTS ;
 
+\ Its own process, since the fill leaves the image no code space.
+: TEST-CODE-FULL ( -- )
+   s" require test/fixtures/protection-span-full.f" {: src:^ u:n :}
+   src u CAPTURE {: outu:len erru:len oc :}
+   src u OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
+   ERR erru LEN>N s" the code space is full at `create`" CONTAINS? TTRUE
+   ERR erru LEN>N s" the code space is full at `constant`" CONTAINS? TTRUE ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   TEST-CODE-FULL
    TEST-TASK-USER
    TEST-BODY-TEXT
    T-REPORT
