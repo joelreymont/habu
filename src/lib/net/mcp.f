@@ -65,6 +65,10 @@ require src/lib/log.f
 require src/lib/memory.f
 require src/lib/arena.f
 require src/lib/utf8-scalar.f
+require src/lib/adt/option.f
+require src/lib/fmt.f
+require src/lib/reason.f
+require src/core/rejection.f
 require src/lib/byte-buffer.f
 require src/lib/task.f
 require src/lib/time.f
@@ -84,7 +88,7 @@ public
 -9483 s" a client's request could not be sent or its reply received" ERROR:CODE E-TRANSFER
 -9484 s" the server's reply has a status other than 2xx that is neither E-DENIED's nor E-UNAVAILABLE's, is not a JSON-RPC success for the request, or holds a result without its method's shape"
    ERROR:CODE E-RESPONSE
--9485 s" a descriptor, outputSchema or meta is not one JSON object or repeats a top-level key, a required member is absent or mistyped, meta names serverInfo, a page is not UTF-8, ADD-TOOL refuses a result or RESULT-CONTENT refuses content blocks"
+-9485 s" a descriptor, outputSchema, meta, result, content blocks or a page outside what MCP takes: correct it where its reason text says"
    ERROR:CODE E-SCHEMA
 -9486 s" the server refused a client's call with 401 or 403" ERROR:CODE E-DENIED
 -9487 s" the server answered a status CURL:UNAVAILABLE? accepts" ERROR:CODE E-UNAVAILABLE
@@ -956,6 +960,70 @@ CAST: HELD>N ( held -- n )
    n RESOURCE-TEXT-RESERVE
    n RESOURCE-PAGE-RESERVE ;
 
+\ ---- rejections: E-SCHEMA's text names the text judged (descriptor,
+\ outputSchema, meta, result, content or page), then the place in it.
+
+: PUT ( ^u8 ^u8 n -- ^u8 ) {: dst:^ src:^ u:n :}
+   src dst u BYTE-COPY  dst u + ;
+
+: SAY-SCOPE ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- )
+   drop {: wa:^ wu:n ta:^ tu:n buf:^ :}
+   buf wa wu PUT s"  " PUT ta tu PUT drop
+   buf wu tu + 1+ E-SCHEMA REASON:THROW ;
+
+\ Throws E-SCHEMA with the name of the text judged, then the text.
+: SAY ( ^u8 n ^u8 n -- )
+   {: wa:^ wu:n ta:^ tu:n :}
+   wa wu ta tu  wu tu + 1+ MEM:BYTES-ALLOC-LEN
+   [: SAY-SCOPE ;] MEM:WITH-BYTES ;
+
+\ Rejects the reader's token in the text judged, given the expected text
+\ and the fix: READ-REJECT's E-MEMBER text leaves as E-SCHEMA.
+: REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n -- )
+   {: wa:^ wu:n ea:^ eu:n fa:^ fu:n :}
+   [: ea eu fa fu JSON:READ-REJECT ;] catch {: code:n :}
+   code JSON:E-MEMBER = if wa wu code REASON:TEXT$ SAY then
+   code throw ;
+
+\ Puts the text with the key between its first two backticks, "``".
+: PUT-KEYED ( ^u8 ^u8 n ^u8 n -- ^u8 )
+   {: dst:^ ta:^ tu:n ka:^ ku:n :}
+   ta tu s" ``" FIND-SUB MATCH option
+      none OF tu ENDOF
+      some OF IDX>N 1+ ENDOF
+   ;MATCH {: at:n :}
+   dst ta at PUT ka ku PUT ta at + tu at - PUT ;
+
+: KEY-SCOPE ( JSON:reader ^u8 n ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- JSON:reader )
+   drop {: ka:^ ku:n ea:^ eu:n fa:^ fu:n buf:^ :}
+   buf ea eu ka ku PUT-KEYED {: fix:^ :}
+   fix fa fu ka ku PUT-KEYED drop
+   s" descriptor" buf eu ku + fix fu ku + REJECT ;
+
+\ Rejects the reader's token in a descriptor, the key put in the expected
+\ text and the fix as PUT-KEYED puts it. Never returns: its effect leaves
+\ the reader so that a branch calling it balances one that does not.
+: KEY-REJECT ( JSON:reader ^u8 n ^u8 n ^u8 n -- JSON:reader )
+   {: ka:^ ku:n ea:^ eu:n fa:^ fu:n :}
+   ka ku ea eu fa fu  eu fu + ku 2 * + MEM:BYTES-ALLOC-LEN
+   [: KEY-SCOPE ;] MEM:WITH-BYTES ;
+
+\ A caught code: a reader's E-JSON-READ-* code leaves as E-SCHEMA, its
+\ text after the name of the text judged; E-READ-SOURCE, a caller's wrong
+\ source, and every other code are answered as they are.
+: SCHEMA-CODE ( ^u8 n n -- n )
+   {: wa:^ wu:n code:n :}
+   code E-JSON-READ-FIRST <=  code E-JSON-READ-LAST >=  and
+   code JSON:E-READ-SOURCE <> and if
+      wa wu code REASON:TEXT$ SAY
+   then
+   code ;
+
+\ A reader on the text's first token.
+: FIRST-TOKEN ( ^u8 n ^JSON:cursor -- JSON:reader )
+   {: text:^ u:n reader :}
+   reader text u JSON:READ-INIT JSON:READ-NEXT drop ;
+
 \ Whether a JSON text, read whole by reader, is an object; text that is not one
 \ JSON value throws the reader's E-JSON-READ-* code.
 : OBJECT-TEXT? ( str ^JSON:cursor -- bool )
@@ -964,19 +1032,34 @@ CAST: HELD>N ( held -- n )
    JSON:READ-FINISH object ;
 
 
-\ A caught code, a reader's E-JSON-READ-* code as E-SCHEMA.
-: SCHEMA-CODE ( n -- n )
-   {: code:n :}
-   code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and if E-SCHEMA else code then ;
+\ Rejects the text's k-th top-level key, counted from 0, as a repeat.
+: REPEAT-REJECT ( n ^u8 n ^JSON:cursor ^u8 n -- )
+   {: k:n text:^ u:n reader wa:^ wu:n :}
+   text u reader FIRST-TOKEN
+   k 0 ?do
+      JSON:READ-NEXT drop JSON:READ-NEXT drop JSON:READ-SKIP-VALUE
+   loop JSON:READ-NEXT drop
+   wa wu s" each top-level member once"
+   s" remove the repeated member, keeping one" REJECT ;
 
+: SHAPE-IN ( ^u8 n ^JSON:cursor ^u8 n -- )
+   {: text:^ u:n reader wa:^ wu:n :}
+   text u reader OBJECT-TEXT? 0= if
+      text u reader FIRST-TOKEN wa wu
+      s" a JSON object" s" write it as one object" REJECT
+   then
+   text u JSON:READ-REPEAT MATCH option
+      none OF ENDOF
+      some OF text u reader wa wu REPEAT-REJECT ENDOF
+   ;MATCH ;
 
 \ E-SCHEMA unless one JSON object, read by reader, with no top-level key
 \ repeated once decoded: JSON.parse keeps a repeated key's last value, so a
-\ client would read another.
-: SHAPE ( ^u8 n ^JSON:cursor -- )
-   [: dup >r >r 2dup r> OBJECT-TEXT? 0= if E-SCHEMA throw then
-      2dup JSON:READ-REPEATS? if E-SCHEMA throw then r> ;] catch {: code:n :} drop 2drop
-   code SCHEMA-CODE {: fault:n :}
+\ client would read another. wa wu names the text judged.
+: SHAPE ( ^u8 n ^JSON:cursor ^u8 n -- )
+   {: text:^ u:n reader wa:^ wu:n :}
+   [: text u reader wa wu SHAPE-IN ;] catch {: code:n :}
+   wa wu code SCHEMA-CODE {: fault:n :}
    fault 0<> if fault throw then ;
 
 
@@ -990,24 +1073,68 @@ CAST: HELD>N ( held -- n )
    JSON:READ-FINISH whole ;
 
 
-\ A top-level member of a descriptor SHAPE admitted, raw, else E-SCHEMA.
-: PART ( ^u8 n ^u8 n -- ^u8 n )
+\ The reader on the value of a top-level member of a descriptor SHAPE
+\ admitted; an absent member is rejected at the descriptor's `}`.
+: MEMBER-AT ( ^u8 n ^u8 n -- JSON:reader )
    {: text:^ tu:n key:^ ku:n :}
-   SCHEMA-READER text tu JSON:READ-INIT JSON:READ-NEXT drop
-   key ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-SCHEMA throw then
+   text tu SCHEMA-READER FIRST-TOKEN
+   key ku JSON:READ-FIND-KEY 0= if
+      key ku s" a member ``" s" add ``" KEY-REJECT
+   then ;
+
+: PART ( ^u8 n ^u8 n -- ^u8 n )
+   MEMBER-AT RAW$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
+
+
+: OBJECT-PART ( ^u8 n ^u8 n -- ^u8 n )
+   {: text:^ tu:n key:^ ku:n :}
+   text tu key ku MEMBER-AT
+   JSON:READ-TOKEN JSON:T-OBJ <> if
+      key ku s" `` as a JSON object" s" write `` as an object" KEY-REJECT
+   then
    RAW$ {: a:^ u:n :} JSON:READ-CLOSE a u ;
 
 
-: OBJECT-PART ( str str -- str )
-   PART 2dup SCHEMA-READER OBJECT-TEXT? 0= if E-SCHEMA throw then ;
+\ The reader on a descriptor member's string value.
+: STRING-AT ( ^u8 n ^u8 n -- JSON:reader )
+   {: text:^ tu:n key:^ ku:n :}
+   text tu key ku MEMBER-AT
+   JSON:READ-TOKEN JSON:T-STR <> if
+      key ku s" `` as a string" s" write `` as a JSON string" KEY-REJECT
+   then ;
+
+: REQUIRE-STRING ( ^u8 n ^u8 n -- )
+   STRING-AT JSON:READ-CLOSE ;
 
 
-\ Whether a descriptor member is a JSON string; the descriptor passed SHAPE.
-: STRING-MEMBER? ( str str -- bool )
-   {: text:^ u:n key:^ ku:n :}
-   SCHEMA-READER text u JSON:READ-INIT JSON:READ-NEXT drop
-   key ku JSON:READ-FIND-KEY if JSON:READ-TOKEN JSON:T-STR = else false then {: found:bool :}
-   JSON:READ-CLOSE found ;
+\ The offset of the first byte UTF8:NEXT answers raw-byte for, else -1.
+: BAD-BYTE ( ^u8 n -- n ) {: a:^ u:n :}
+   0 begin dup u < while
+      a u rot UTF8:NEXT MATCH UTF8:scalar-step
+         scalar OF nip ENDOF
+         raw-byte OF nip 1- exit ENDOF
+      ;MATCH
+   repeat drop -1 ;
+
+\ The longest page rejection: two numbers of at most 20 digits and its
+\ literals.
+128 constant PAGE-TEXT-LEN
+
+: PAGE-SCOPE ( ^u8 n ^u8 NUM:alloc-byte-len -- )
+   drop {: page:^ at:n buf:^ :}
+   page page at + 1 1 0 REJECTION:POSITION drop {: line:n col:n :}
+   buf s" page " PUT line FMT:INT$ PUT s" :" PUT col FMT:INT$ PUT
+   s" : expected UTF-8 text, found byte $" PUT
+   page at + c@ 2 FMT:HEX-WIDTH$ PUT
+   s" ; encode the page as UTF-8" PUT
+   buf - {: tu:n :}
+   buf tu E-SCHEMA REASON:THROW ;
+
+: REQUIRE-UTF8 ( ^u8 n -- ) {: page:^ pu:n :}
+   page pu BAD-BYTE {: at:n :}
+   at 0 < if exit then
+   page at PAGE-TEXT-LEN MEM:BYTES-ALLOC-LEN
+   [: PAGE-SCOPE ;] MEM:WITH-BYTES ;
 
 
 : REGISTERED-URI? ( str -- bool )
@@ -1020,10 +1147,11 @@ CAST: HELD>N ( held -- n )
 \ The storage is kept for the process, as the registry is; the descriptor passed SHAPE.
 : DECODED-MEMBER ( str str [ str -- bool ] -- SPAN:span<u8> )
    {: text:^ tu:n key:^ ku:n registered? :}
-   text tu key ku PART {: raw:^ ru:n :}
-   SCHEMA-READER raw ru JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE E-SCHEMA throw then
-   JSON:READ-SPAN$ nip 0= if JSON:READ-CLOSE E-SCHEMA throw then
+   text tu key ku STRING-AT
+   JSON:READ-SPAN$ nip {: ru:n :}
+   ru 0= if
+      key ku s" `` as a non-empty string" s" give `` a value" KEY-REJECT
+   then
    ru MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: room :}
    room SPAN:$ JSON:READ-STR {: u:n :} JSON:READ-CLOSE
    room u SPAN:TAKE {: decoded :}
@@ -1034,16 +1162,29 @@ CAST: HELD>N ( held -- n )
 \ On a content block's open: E-SCHEMA unless it has a string "type" and no
 \ second one, which a client would read instead; the reader moves past its close.
 : BLOCK ( JSON:reader -- JSON:reader )
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-SCHEMA throw then
-   s" type" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-SCHEMA throw then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-SCHEMA throw then
-   s" type" JSON:READ-FIND-KEY if JSON:READ-CLOSE E-SCHEMA throw then ;
+   JSON:READ-TOKEN JSON:T-OBJ <> if
+      s" content" s" a content block object"
+      s" write each block as an object" REJECT
+   then
+   s" type" JSON:READ-FIND-KEY 0= if
+      s" content" s" a member `type`" s" give the block its `type`" REJECT
+   then
+   JSON:READ-TOKEN JSON:T-STR <> if
+      s" content" s" `type` as a string"
+      s" write `type` as a JSON string" REJECT
+   then
+   s" type" JSON:READ-FIND-KEY if
+      s" content" s" one member `type`" s" remove the repeated `type`" REJECT
+   then ;
 
 
 : BLOCKS-IN ( str -- str )
    {: text:^ u:n :}
    CURSOR text u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-ARR <> if JSON:READ-CLOSE E-SCHEMA throw then
+   JSON:READ-NEXT JSON:T-ARR <> if
+      s" content" s" a JSON array of content blocks"
+      s" write the blocks in an array" REJECT
+   then
    JSON:READ-NEXT JSON:T-ARR-END = if JSON:READ-FINISH s" " exit then
    JSON:READ-SPAN$ drop {: first:^ :}
    begin BLOCK JSON:READ-NEXT JSON:T-ARR-END = until
@@ -1056,19 +1197,39 @@ CAST: HELD>N ( held -- n )
 : BLOCKS ( ^u8 n -- ^u8 n )
    [: BLOCKS-IN ;] catch {: code:n :}
    code 0= if exit then
-   2drop code SCHEMA-CODE throw ;
+   2drop s" content" code SCHEMA-CODE throw ;
+
+
+\ A result that is not one JSON object is rejected when the tool's
+\ outputSchema has type object; text that is not JSON throws the reader's code.
+: RESULT-SHAPE ( ^u8 n -- ) {: text:^ u:n :}
+   text u CURSOR OBJECT-TEXT? if exit then
+   SLOT CALLED @ TOOL-WHOLE @ 0= if exit then
+   text u CURSOR FIRST-TOKEN s" result"
+   s" a JSON object, as the tool's outputSchema has type `object`"
+   s" answer one JSON object" REJECT ;
+
+
+\ Rejects meta naming serverInfo at that key; meta passed SHAPE.
+: NO-SERVER-INFO ( ^u8 n -- ) {: meta:^ mu:n :}
+   meta mu CURSOR FIRST-TOKEN
+   begin JSON:READ-NEXT JSON:T-KEY = while
+      s" io.modelcontextprotocol/serverInfo" JSON:READ-STR-EQ? if
+         s" meta" s" no member `io.modelcontextprotocol/serverInfo`"
+         s" remove it: the server writes its own" REJECT
+      then
+      JSON:READ-NEXT drop JSON:READ-SKIP-VALUE
+   repeat JSON:READ-CLOSE ;
 
 
 \ Bodies run on several workers at once, so meta and blocks are read by the worker's CURSOR.
 : RESULT! ( str str str bool -- )
    {: text:^ u:n meta:^ mu:n extra:^ eu:n fault:bool :}
    SLOT STAGE @ CALLING <> if E-STATE throw then
-   fault 0= if
-      text u CURSOR OBJECT-TEXT? 0= SLOT CALLED @ TOOL-WHOLE @ and if E-SCHEMA throw then
-   then
+   fault 0= if text u RESULT-SHAPE then
    mu 0<> if
-      meta mu CURSOR SHAPE
-      meta mu s" io.modelcontextprotocol/serverInfo" FIELD? nip nip if E-SCHEMA throw then
+      meta mu CURSOR s" meta" SHAPE
+      meta mu NO-SERVER-INFO
    then
    extra eu BLOCKS {: blocks:^ bu:n :}
    text u SPAN:MAKE SLOT TEXT !
@@ -1188,10 +1349,10 @@ public
 : ADD-TOOL ( ^u8 n [ ^u8 n -- ] -- )
    {: text:^ tu:n body :}
    HTTP:RUNNING? if E-STATE throw then
-   text tu SCHEMA-READER SHAPE
+   text tu SCHEMA-READER s" descriptor" SHAPE
    text tu s" inputSchema" OBJECT-PART 2drop
    text tu s" outputSchema" PART {: output:^ ou:n :}
-   output ou SCHEMA-READER SHAPE
+   output ou SCHEMA-READER s" outputSchema" SHAPE
    output ou WHOLE? {: whole:bool :}
    text tu s" name" [: REGISTERED? ;] DECODED-MEMBER {: name :}
    TOOL-COUNT @ {: idx:n :}
@@ -1209,10 +1370,10 @@ public
 : ADD-RESOURCE ( ^u8 n ^u8 n -- )
    {: text:^ tu:n page:^ pu:n :}
    HTTP:RUNNING? if E-STATE throw then
-   text tu SCHEMA-READER SHAPE
-   text tu s" name" STRING-MEMBER? 0= if E-SCHEMA throw then
-   text tu s" mimeType" STRING-MEMBER? 0= if E-SCHEMA throw then
-   page pu UTF8:VALID? 0= if E-SCHEMA throw then
+   text tu SCHEMA-READER s" descriptor" SHAPE
+   text tu s" name" REQUIRE-STRING
+   text tu s" mimeType" REQUIRE-STRING
+   page pu REQUIRE-UTF8
    text tu s" uri" [: REGISTERED-URI? ;] DECODED-MEMBER {: uri :}
    RESOURCE-COUNT @ {: idx:n :}
    idx 1+ RESOURCES-RESERVE

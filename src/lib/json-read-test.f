@@ -794,18 +794,31 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    [: JRT-BAD-FIND-KEY-LEN ;] E-JSON-READ-STATE TTHROWSQ
    [: JRT-BAD-FIND-KEY-PTR ;] E-JSON-READ-STATE TTHROWSQ ;
 
+: JRT-REPEAT ( ^u8 n n -- ) {: t:^ u:n want:n :}
+   t u JSON:READ-REPEAT MATCH option
+     none OF false TTRUE ENDOF
+     some OF want T= ENDOF
+   ;MATCH ;
+
+: JRT-UNREPEATED ( ^u8 n -- ) {: t:^ u:n :}
+   t u JSON:READ-REPEAT MATCH option
+     none OF true TTRUE ENDOF
+     some OF drop false TTRUE ENDOF
+   ;MATCH ;
+
 : JRT-TEST-REPEATS ( -- )
-   s" READ-REPEATS? answers whether the top object repeats a key, escaped spellings included" T-LABEL
-   s" {}" JSON:READ-REPEATS? TFALSE
-   s\" {\"a\":1,\"b\":2}" JSON:READ-REPEATS? TFALSE
-   s\" {\"a\":1,\"a\":2}" JSON:READ-REPEATS? TTRUE
-   s\" {\"a\":1,\"b\":2,\"\\u0061\":3}" JSON:READ-REPEATS? TTRUE
-   s\" {\"ab\":1,\"a\":2}" JSON:READ-REPEATS? TFALSE
-   s\" {\"a\":{\"b\":1,\"b\":2}}" JSON:READ-REPEATS? TFALSE
-   s\" {\"a\":{\"x\":[1,{\"a\":3}]},\"a\":2}" JSON:READ-REPEATS? TTRUE
-   s" READ-REPEATS? throws E-JSON-READ-STATE on an array and E-JSON-READ-EOF on a truncated object" T-LABEL
-   [: s" [1]" JSON:READ-REPEATS? drop ;] E-JSON-READ-STATE TTHROWSQ
-   [: s\" {\"a\":1," JSON:READ-REPEATS? drop ;] E-JSON-READ-EOF TTHROWSQ ;
+   s" READ-REPEAT answers the first top-level key that repeats one, escaped spellings included" T-LABEL
+   s" {}" JRT-UNREPEATED
+   s\" {\"a\":1,\"b\":2}" JRT-UNREPEATED
+   s\" {\"a\":1,\"a\":2}" 1 JRT-REPEAT
+   s\" {\"a\":1,\"b\":2,\"\\u0061\":3}" 2 JRT-REPEAT
+   s\" {\"ab\":1,\"a\":2}" JRT-UNREPEATED
+   s\" {\"a\":{\"b\":1,\"b\":2}}" JRT-UNREPEATED
+   s\" {\"a\":{\"x\":[1,{\"a\":3}]},\"a\":2}" 1 JRT-REPEAT
+   s\" {\"b\":1,\"a\":2,\"a\":3,\"b\":4}" 2 JRT-REPEAT
+   s" READ-REPEAT throws E-JSON-READ-STATE on an array and E-JSON-READ-EOF on a truncated object" T-LABEL
+   [: s" [1]" JSON:READ-REPEAT drop ;] E-JSON-READ-STATE TTHROWSQ
+   [: s\" {\"a\":1," JSON:READ-REPEAT drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
 : JRT-MEMBER$ ( str str -- str )
    {: t:^ u:n k:^ ku:n :}
@@ -1122,7 +1135,7 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    depth JRT-DRAIN-ARR
    JSON:READ-CLOSE ;
 
-\ A reader's first stack mapping is 4096 bytes, and READ-REPEATS? holds two
+\ A reader's first stack mapping is 4096 bytes, and READ-REPEAT holds two
 \ mappings at once of at most that size here: its scratch and its record's
 \ stack. Two probes freed and mapped again land at the same addresses only when
 \ nothing took the holes, so a body that leaves such a mapping owned moves a
@@ -1245,8 +1258,8 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
 
 \ The truncated copy throws after the repeat, with the second stack held.
 : JRT-DEEP-REPEATS ( -- )
-   70 JRT-DEEP-REPEAT$ JSON:READ-REPEATS? TTRUE
-   [: 70 JRT-DEEP-REPEAT$ 1- JSON:READ-REPEATS? drop ;] E-JSON-READ-EOF TTHROWSQ ;
+   70 JRT-DEEP-REPEAT$ 2 JRT-REPEAT
+   [: 70 JRT-DEEP-REPEAT$ 1- JSON:READ-REPEAT drop ;] E-JSON-READ-EOF TTHROWSQ ;
 
 \ 70 objects deep, both texts' records grow stacks; a truncated a throws while b's
 \ record holds its stack.
@@ -1282,7 +1295,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    [: JRT-DISPOSE-ZEROES ;] JRT-RELEASES
    s" a record holding a leftover parses again and nothing stays mapped" T-LABEL
    [: JRT-ABANDON-REINIT ;] JRT-RELEASES
-   s" READ-REPEATS? past 64 levels releases both stacks, a throw included" T-LABEL
+   s" READ-REPEAT past 64 levels releases both stacks, a throw included" T-LABEL
    [: JRT-DEEP-REPEATS ;] JRT-RELEASES
    s" VALUE= past 64 levels releases every record's stack, a throw included" T-LABEL
    JRT-WARM-VALUE-EQ
@@ -1869,8 +1882,8 @@ create JRT-NAMES 400 allot
    JRT-TEST-MEMBERS-HUNDRED ;
 
 : JRT-TEST-REASON-WHOLE ( -- )
-   s" READ-REPEATS? rejects a text that is no object at its first token" T-LABEL
-   [: s\" \n \"a\"" JSON:READ-REPEATS? drop ;] E-JSON-READ-STATE TTHROWSQ
+   s" READ-REPEAT rejects a text that is no object at its first token" T-LABEL
+   [: s\" \n \"a\"" JSON:READ-REPEAT drop ;] E-JSON-READ-STATE TTHROWSQ
    E-JSON-READ-STATE
    s\" 2:2: expected an object, found `\"a\"`; write the text as one JSON object"
    JRT-SAID

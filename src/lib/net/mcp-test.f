@@ -47,6 +47,7 @@ require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/task.f
 require src/lib/adt/result.f
+require src/lib/reason.f
 require src/lib/base64.f
 require src/lib/crypto/evp.f
 require src/lib/crypto/jws-fixture.f
@@ -109,6 +110,17 @@ variable ENTERED
 variable SHAPE-CODE                 \ what shape's RESULT threw, 0 for nothing
 variable META-CODE                  \ what framed's RESULT-META threw, 0 for nothing
 variable BLOCKS-CODE                \ what pictured's RESULT-CONTENT threw, 0 for nothing
+\ Each code's text, kept from the body's task beside the code.
+$100 constant KEPT-CAP
+KEPT-CAP BUFFER: SHAPE-TEXT
+variable SHAPE-LEN
+KEPT-CAP BUFFER: META-TEXT
+variable META-LEN
+KEPT-CAP BUFFER: BLOCKS-TEXT
+variable BLOCKS-LEN
+
+: KEPT= ( ^u8 ^n ^u8 n -- ) {: buf:^ len:^ want:^ wu:n :}
+   buf len atomic@ want wu T$= ;
 variable RELEASED
 variable LEFT
 variable CLOSED
@@ -349,7 +361,10 @@ TASK:MIN-STACK TASK:TASK STALLER
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\"," SB-APPEND
    S\" \"params\":{\"name\":\"shape\",\"arguments\":{\"flat\":true}}}" SB-APPEND SB$ POST
    FAULTED
-   SHAPE-CODE atomic@ MCP:E-SCHEMA T= ;
+   SHAPE-CODE atomic@ MCP:E-SCHEMA T=
+   SHAPE-TEXT SHAPE-LEN
+   s" result 1:1: expected a JSON object, as the tool's outputSchema has type `object`, found `[`; answer one JSON object"
+   KEPT= ;
 
 
 \ framed's arguments, its result's _meta, with space a modern result trims.
@@ -409,21 +424,30 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" RESULT-META meta that is not an object faults to the host" T-LABEL
    0 META-CODE atomic!
    27 S\" {\"flat\":true}" LEGACY-FRAMED FAULTED
-   META-CODE atomic@ MCP:E-SCHEMA T= ;
+   META-CODE atomic@ MCP:E-SCHEMA T=
+   META-TEXT META-LEN
+   s" meta 1:1: expected a JSON object, found `[`; write it as one object"
+   KEPT= ;
 
 
 : META-REPEATED ( -- )
    s" RESULT-META meta that repeats a top-level key faults to the host" T-LABEL
    0 META-CODE atomic!
    29 S\" {\"a\":1,\"a\":2}" LEGACY-FRAMED FAULTED
-   META-CODE atomic@ MCP:E-SCHEMA T= ;
+   META-CODE atomic@ MCP:E-SCHEMA T=
+   META-TEXT META-LEN
+   S\" meta 1:8: expected each top-level member once, found `\"a\"`; remove the repeated member, keeping one"
+   KEPT= ;
 
 
 : META-SERVER-INFO ( -- )
    s" RESULT-META meta naming serverInfo, escaped, faults to the host" T-LABEL
    0 META-CODE atomic!
    28 S\" {\"io.modelcontextprotocol\\/serverInfo\":{}}" LEGACY-FRAMED FAULTED
-   META-CODE atomic@ MCP:E-SCHEMA T= ;
+   META-CODE atomic@ MCP:E-SCHEMA T=
+   META-TEXT META-LEN
+   S\" meta 1:2: expected no member `io.modelcontextprotocol/serverInfo`, found `\"io.modelcontextprotocol\\/server...`; remove it: the server writes its own"
+   KEPT= ;
 
 
 \ pictured's blocks: an image and an embedded resource's bytes, spaced as given.
@@ -479,27 +503,40 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 SB$ ANSWERED ;
 
 
-: BLOCKS-REFUSED ( str str -- )
-   {: label:^ lu:n args:^ au:n :}
+: BLOCKS-REFUSED ( str str str -- )
+   {: label:^ lu:n args:^ au:n want:^ wu:n :}
    label lu T-LABEL
    0 BLOCKS-CODE atomic!
    44 args au false PICTURED-CALL FAULTED
-   BLOCKS-CODE atomic@ MCP:E-SCHEMA T= ;
+   BLOCKS-CODE atomic@ MCP:E-SCHEMA T=
+   BLOCKS-TEXT BLOCKS-LEN want wu KEPT= ;
 
 
 : BLOCKS-REFUSALS ( -- )
    s" RESULT-CONTENT of an object, not an array, faults to the host"
-   S\" {\"flat\":1}" BLOCKS-REFUSED
+   S\" {\"flat\":1}"
+   s" content 1:1: expected a JSON array of content blocks, found `{`; write the blocks in an array"
+   BLOCKS-REFUSED
    s" RESULT-CONTENT of an array holding a number after a block faults to the host"
-   S\" {\"scalar\":1}" BLOCKS-REFUSED
+   S\" {\"scalar\":1}"
+   s" content 1:29: expected a content block object, found `1`; write each block as an object"
+   BLOCKS-REFUSED
    s" RESULT-CONTENT of an object without a type faults to the host"
-   S\" {\"untyped\":1}" BLOCKS-REFUSED
+   S\" {\"untyped\":1}"
+   s" content 1:13: expected a member `type`, found `}`; give the block its `type`"
+   BLOCKS-REFUSED
    s" RESULT-CONTENT of an object whose type is a number faults to the host"
-   S\" {\"numbered\":1}" BLOCKS-REFUSED
+   S\" {\"numbered\":1}"
+   s" content 1:10: expected `type` as a string, found `5`; write `type` as a JSON string"
+   BLOCKS-REFUSED
    s" RESULT-CONTENT of an object repeating its type faults to the host"
-   S\" {\"twice\":1}" BLOCKS-REFUSED
+   S\" {\"twice\":1}"
+   s" content 1:24: expected one member `type`, found `5`; remove the repeated `type`"
+   BLOCKS-REFUSED
    s" RESULT-CONTENT of a text that is not JSON faults to the host"
-   S\" {\"broken\":1}" BLOCKS-REFUSED ;
+   S\" {\"broken\":1}"
+   s" content 1:10: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
+   BLOCKS-REFUSED ;
 
 
 : BAD-JSON ( -- )
@@ -836,8 +873,14 @@ TASK:MIN-STACK TASK:TASK STALLER
    [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
+\ Keeps code's text where a case on another task reads it.
+: KEEP ( n ^u8 ^n -- ) {: code:n buf:^ len:^ :}
+   code REASON:TEXT$ KEPT-CAP min {: a:^ u:n :}
+   a buf u BYTE-COPY  u len atomic! ;
+
 : SHAPE-TRY ( str -- )
    [: 2dup MCP:RESULT ;] catch {: code:n :} 2drop
+   code SHAPE-TEXT SHAPE-LEN KEEP
    code SHAPE-CODE atomic!
    code 0<> if code throw then ;
 
@@ -855,6 +898,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : META-TRY ( str -- )
    [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-META ;] catch {: code:n :} 2drop
+   code META-TEXT META-LEN KEEP
    code META-CODE atomic!
    code 0<> if code throw then ;
 
@@ -865,6 +909,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : BLOCKS-TRY ( str -- )
    [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-CONTENT ;] catch {: code:n :} 2drop
+   code BLOCKS-TEXT BLOCKS-LEN KEEP
    code BLOCKS-CODE atomic!
    code 0<> if code throw then ;
 
@@ -886,20 +931,31 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : ADD-PAGE ( str -- ) s" <p></p>" MCP:ADD-RESOURCE ;
 
+\ The last E-SCHEMA's text is exactly the one given.
+: SAID ( ^u8 n -- ) {: want:^ wu:n :}
+   MCP:E-SCHEMA REASON:TEXT$ want wu T$=
+   REASON:RELEASE ;
+
 : RESOURCE-REFUSALS ( -- )
    s" ADD-RESOURCE refuses a descriptor without a uri" T-LABEL
    [: S\" {\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:35: expected a member `uri`, found `}`; add `uri`" SAID
    s" ADD-RESOURCE refuses an empty uri" T-LABEL
    [: S\" {\"uri\":\"\",\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   S\" descriptor 1:8: expected `uri` as a non-empty string, found `\"\"`; give `uri` a value" SAID
    s" ADD-RESOURCE refuses a uri that is no string" T-LABEL
    [: S\" {\"uri\":5,\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:8: expected `uri` as a string, found `5`; write `uri` as a JSON string" SAID
    s" ADD-RESOURCE refuses a descriptor without a name" T-LABEL
    [: S\" {\"uri\":\"ui://x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:39: expected a member `name`, found `}`; add `name`" SAID
    s" ADD-RESOURCE refuses a descriptor without a mimeType" T-LABEL
    [: S\" {\"uri\":\"ui://x\",\"name\":\"x\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:27: expected a member `mimeType`, found `}`; add `mimeType`" SAID
    s" ADD-RESOURCE refuses a text that is not UTF-8" T-LABEL
    [: S\" {\"uri\":\"ui://x\",\"name\":\"x\",\"mimeType\":\"text/html\"}"
       S\" <p>\xff</p>" MCP:ADD-RESOURCE ;] MCP:E-SCHEMA TTHROWSQ
+   s" page 1:4: expected UTF-8 text, found byte $FF; encode the page as UTF-8" SAID
    s" ADD-RESOURCE refuses a registered uri, escaped" T-LABEL
    [: S\" {\"uri\":\"ui://test/widget\\u002ehtml\",\"name\":\"x\",\"mimeType\":\"text/html\"}"
       ADD-PAGE ;] MCP:E-DUPLICATE TTHROWSQ ;
@@ -1702,26 +1758,36 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    ADD-FRAMED ADD-PICTURED ADD-WAIT
    s" ADD-TOOL refuses a descriptor without a name" T-LABEL
    [: S\" {\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:36: expected a member `name`, found `}`; add `name`" SAID
    s" ADD-TOOL refuses a descriptor whose name is not a string" T-LABEL
    [: S\" {\"name\":5,\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:9: expected `name` as a string, found `5`; write `name` as a JSON string" SAID
    s" ADD-TOOL refuses a descriptor without an inputSchema" T-LABEL
    [: S\" {\"name\":\"x\",\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:30: expected a member `inputSchema`, found `}`; add `inputSchema`" SAID
    s" ADD-TOOL refuses a descriptor whose inputSchema is not an object" T-LABEL
    [: S\" {\"name\":\"x\",\"inputSchema\":[],\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:27: expected `inputSchema` as a JSON object, found `[`; write `inputSchema` as an object" SAID
    s" ADD-TOOL refuses a descriptor without an outputSchema" T-LABEL
    [: S\" {\"name\":\"x\",\"inputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:29: expected a member `outputSchema`, found `}`; add `outputSchema`" SAID
    s" ADD-TOOL refuses a descriptor whose outputSchema is not an object" T-LABEL
    [: S\" {\"name\":\"x\",\"inputSchema\":{},\"outputSchema\":[]}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" outputSchema 1:1: expected a JSON object, found `[`; write it as one object" SAID
    s" ADD-TOOL refuses a descriptor repeating a top-level key, escaped" T-LABEL
    [: S\" {\"name\":\"x\",\"n\\u0061me\":\"y\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   S\" descriptor 1:13: expected each top-level member once, found `\"n\\u0061me\"`; remove the repeated member, keeping one" SAID
    s" ADD-TOOL refuses a descriptor that is not JSON" T-LABEL
    [: s" not json" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:1: expected `null`, found `not`; write the word in full and in lower case, or quote the text as a string" SAID
    s" ADD-TOOL refuses a registered name written with an escape" T-LABEL
    [: S\" {\"name\":\"\\u0065cho\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-DUPLICATE TTHROWSQ
    s" ADD-TOOL refuses a descriptor without a top-level name, one nested" T-LABEL
    [: S\" {\"inputSchema\":{\"name\":\"x\"},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" descriptor 1:46: expected a member `name`, found `}`; add `name`" SAID
    s" ADD-TOOL refuses an outputSchema repeating a top-level key" T-LABEL
    [: S\" {\"name\":\"t\",\"inputSchema\":{},\"outputSchema\":{\"type\":\"object\",\"type\":\"string\"}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   S\" outputSchema 1:18: expected each top-level member once, found `\"type\"`; remove the repeated member, keeping one" SAID
    WIDGET-RESOURCE PAGE MCP:ADD-RESOURCE
    PLAIN ADD-PAGE
    RESOURCE-REFUSALS

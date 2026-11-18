@@ -234,6 +234,12 @@ TASK:+USER FROM n
    JSON:READ-NEXT JSON:T-OBJ = if JSON:READ-FINISH true exit then
    JSON:READ-CLOSE false ;
 
+: REPEATS? ( ^u8 n -- bool )
+   JSON:READ-REPEAT MATCH option
+      none OF false ENDOF
+      some OF drop true ENDOF
+   ;MATCH ;
+
 \ The token's three segments decoded into the worker's scratch: a header and
 \ claims that are JSON objects repeating no member name (RFC 7519 §4), the
 \ header naming a kid.
@@ -252,8 +258,8 @@ TASK:+USER FROM n
    body SLOT CLAIMS !
    head OBJECT? 0= if false exit then
    body OBJECT? 0= if false exit then
-   HEADER$ JSON:READ-REPEATS? if false exit then
-   CLAIMS$ JSON:READ-REPEATS? if false exit then
+   HEADER$ REPEATS? if false exit then
+   CLAIMS$ REPEATS? if false exit then
    HEADER$ s" kid" NOTE$ {: k:^ ku:n named:bool :}
    k ku SPAN:MAKE SLOT KID ! named ;
 

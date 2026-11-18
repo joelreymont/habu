@@ -1,5 +1,5 @@
 split-str
-\ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEATS?,
+\ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEAT,
 \ READ-MEMBER$, READ-MEMBERS and READ-REJECT. A file of package JSON
 \ (src/lib/json.f).
 
@@ -1528,11 +1528,8 @@ public
    {: ea:^ eu:n fa:^ fu:n :}
    READER>STATE ea eu fa fu E-MEMBER REJECT-TOKEN ;
 
-\ Reads the object whose `{` is the current token, holding each member the
-\ blank-separated names list once and no other. A name that ends in `?` is
-\ optional and names its member without the `?`. The handler gets a member's
-\ index in the list and the reader on its value's first token, and leaves the
-\ reader on the value's last token. Answers the reader on the `}`.
+\ The handler gets the reader on the member's value's first token and leaves
+\ it on the value's last; answers the reader on the `}`.
 : READ-MEMBERS ( JSON:reader ^u8 n [ JSON:reader n -- JSON:reader ] -- JSON:reader )
    {: a:^ u:n handler :}
    READER>STATE {: state:^ :}
@@ -1559,7 +1556,7 @@ private
 : TABLE-CELLS ( n -- n )
    5 / 3 + ;
 
-\ READ-REPEATS? scratch, zero-filled: the record, the table, the
+\ READ-REPEAT's scratch, zero-filled: the record, the table, the
 \ order, then the room, u bytes, which every decoded key fits.
 : SCRATCH-LEN ( n -- n )
    dup TABLE-CELLS 2 * cells + CURSOR-BYTES + ;
@@ -1614,10 +1611,13 @@ private
       a SKIP-INNER
    repeat ;
 
-
+\ Keys in order of their decoded bytes, equal keys in document order.
 : KEY< ( n n ^n ^u8 -- bool )
    {: i:n j:n table:^ room:^ :}
-   table room i KEY$ table room j KEY$ STR< ;
+   table room i KEY$ table room j KEY$ {: a:^ u:n b:^ v:n :}
+   a u b v STR< if true exit then
+   b v a u STR< if false exit then
+   i j < ;
 
 
 : FILL-ORDER ( ^n n -- )
@@ -1630,18 +1630,19 @@ private
    table room order idx cells + @ KEY$ ;
 
 
-: SAME-NEIGHBOUR? ( ^n n ^n ^u8 -- bool )
+\ The least index ranked after an equal key, k when there is none.
+: LEAST-REPEAT ( ^n n ^n ^u8 -- n )
    {: order:^ k:n table:^ room:^ :}
-   k 1 ?do
+   k  k 1 ?do
       order table room i 1- RANKED$
       order table room i RANKED$ STR=
-      if true unloop exit then
-   loop false ;
+      if order i cells + @ min then
+   loop ;
 
 
-\ Whether two recorded keys decode the same: sorted by their
-\ bytes, equal keys are neighbours.
-: REPEAT-RECORDED? ( str -- bool )
+\ The earliest recorded key that decodes as one before it: sorted,
+\ equal keys are neighbours, the second of a run its earliest repeat.
+: FIRST-REPEAT ( str -- option<n> )
    {: base:^ u:n :}
    base TABLE {: table:^ :}
    base u ROOM {: room:^ :}
@@ -1649,11 +1650,13 @@ private
    table @ {: k:n :}
    order k FILL-ORDER
    order k [: table room KEY< ;] SORT:SORT!
-   order k table room SAME-NEIGHBOUR? ;
+   order k table room LEAST-REPEAT {: at:n :}
+   at k = if OPTION:NONE exit then
+   at OPTION:SOME ;
 
 
 \ The answer stands only once the whole text has read as well formed.
-: REPEATS-IN ( ^u8 str -- bool )
+: REPEAT-IN ( ^u8 str -- option<n> )
    {: base:^ text:^ u:n :}
    base RECORD {: a:^ :}
    a text u INIT-STATE
@@ -1663,12 +1666,12 @@ private
    then
    base u RECORD-KEYS
    begin a NEXT-INNER T-END = until
-   base u REPEAT-RECORDED? ;
+   base u FIRST-REPEAT ;
 
 
-: REPEATS-SLOT ( bool SPAN:span<u8> str -- bool SPAN:span<u8> str )
+: REPEAT-SLOT ( option<n> SPAN:span<u8> str -- option<n> SPAN:span<u8> str )
    {: scratch text:^ u:n :}
-   drop scratch SPAN:$ drop text u REPEATS-IN
+   drop scratch SPAN:$ drop text u REPEAT-IN
    scratch text u ;
 
 
@@ -1679,17 +1682,11 @@ private
 
 public
 
-\ Whether text, one JSON object, has two top-level keys that decode to the same
-\ bytes; nested objects' keys do not count. READ-FIND-KEY takes the first copy
-\ where JSON.parse keeps the last, so a caller checks this before it trusts a
-\ member READ-FIND-KEY reads. A first value other than an object throws
-\ E-JSON-READ-STATE before the rest is read; other malformed text throws the
-\ reader's code.
-: READ-REPEATS? ( ^u8 n -- bool )
+: READ-REPEAT ( ^u8 n -- option<n> )
    {: text:^ u:n :}
    text u REQUIRE-SOURCE
    u SCRATCH-LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
-   false scratch text u [: REPEATS-SLOT ;] catch
+   OPTION:NONE scratch text u [: REPEAT-SLOT ;] catch
    {: found spare at len code:n :}
    scratch SCRATCH-FREE
    code 0= if found exit then
