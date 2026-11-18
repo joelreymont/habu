@@ -983,9 +983,10 @@ $400 constant SB-BUF-BYTES
 8 constant SB-LEN-BYTES
 SB-BUF-BYTES SB-LEN-BYTES + constant BYTES
 FMT-ABI:END constant START
+START BYTES + constant END
+private
 START constant SB-BUF-OFF
 SB-BUF-OFF SB-BUF-BYTES + constant SB-LEN-OFF
-START BYTES + constant END
 ;package
 
 \ FFI-ABI is src/lib/ffi-abi.f's per-task call staging, declared here because

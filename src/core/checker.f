@@ -1855,6 +1855,7 @@ variable SOURCE-FLOOR
 ;package
 package CHECK
 EXPORT BOOT:data-base
+EXPORT ARENA-PAGES:DATA-OFF
 
 \ Import row storage is shared by the live compiler and the verifier window.
 \ Row n holds slot n's folded package name: its offset in SYM-STR, then its

@@ -30,17 +30,20 @@ $7FFFFFFFFFFFFFFF constant STR-MAX-I64
 STR-MAX-I64 negate 1 - constant STR-MIN-I64
 
 package STRING
-private EXPORT BOOT:data-base global
+private EXPORT BOOT:data-base
+EXPORT STRING-ABI:SB-BUF-OFF
+EXPORT STRING-ABI:SB-LEN-OFF
+global
 \ TASK-LOCAL: `data-base` is the running task's DATA region, at STRING-ABI's
 \ offsets (src/habu/layout.f). This module is baked into the engine below
 \ src/lib/ffi-abi.f, which requires it back, so it cannot require
 \ src/lib/task.f (the engine build fails on an undefined STR= in TOK-IS?). A
 \ fresh region is zeroed, so a new task's cursor starts at zero.
 : SB-BUF ( -- ^u8 )
-   data-base STRING-ABI:SB-BUF-OFF + BYTE-VIEW ;
+   data-base SB-BUF-OFF + BYTE-VIEW ;
 
 : SB-LEN ( -- ^n )
-   data-base STRING-ABI:SB-LEN-OFF + ;
+   data-base SB-LEN-OFF + ;
 ;package
 
 : BUFFER: ( n -- )

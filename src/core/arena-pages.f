@@ -7,9 +7,10 @@ split-str
 
 \ --- growable checker arenas --------------------------------------------
 package ARENA-PAGES
-private EXPORT BOOT:data-base global
+private EXPORT BOOT:data-base
 \ An address's DATA offset, measured from the null so neither pointer is viewed.
 : DATA-OFF ( ^a -- n ) NULL-PTR - data-base NULL-PTR - - ;
+global
 
 : ARENA-COPY ( ^u8 str -- ) {: src:^ dst:^ n:n :}
    0
