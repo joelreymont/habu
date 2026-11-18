@@ -68,7 +68,7 @@ variable MUTEX
 : MAP-REJECT ( n -- ) {: bytes:n :}
    bytes s" " REJECTION:MAP-REFUSED
    REJECTION:HELP
-   s" reserve fewer elements, or release storage the program no longer needs"
+   s" raise the process's address-space limit (ulimit -v), or reserve less storage"
    REJECTION:EMIT-STR
    REJECTION:SAVE  E-MAP REJECTION:PASS ;
 

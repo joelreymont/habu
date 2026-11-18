@@ -2490,7 +2490,7 @@ EXPORT CHECKER-TAPE:DISARM
    [: FIXED-RUN ;] catch {: rc:n :}
    0 M-OPEN !
    STUB-END
-   0 rc SETTLE-UNIT ;
+   rc SETTLE-UNIT  rc 0<> if rc throw then ;
 
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ^u8 n -- )
@@ -2502,7 +2502,7 @@ EXPORT CHECKER-TAPE:DISARM
    0 M-OPEN !
    STUB-END
    FORGET-MEASURES
-   0 rc SETTLE-UNIT ;
+   rc SETTLE-UNIT  rc 0<> if rc throw then ;
 
 : DISPATCH! ( [ ^u8 n -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;

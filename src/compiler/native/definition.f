@@ -208,7 +208,7 @@ EXPORT CHECK:CHECKER-ROWS-END
 EXPORT CHECK:MULTI-ERR?
 \ A multi-error run whose reader recovers from E-COMP-RECOVERY: that reader
 \ sets RECOVER-CELL around the compile it calls (layout.f). Under any other
-\ reader a refusal is E-COMP-VERDICT, which SETTLE-UNIT reports.
+\ reader a refusal is E-COMP-VERDICT.
 : RECOVERING? ( -- bool )
    MULTI-ERR?
    data-base NCOMP-DISPATCH:RECOVER-CELL + @ 0<> and ;
@@ -359,13 +359,10 @@ private
 
 public
 
-\ A rejection is printed at its site, before the throw that ends here.
-: SETTLE-UNIT ( n n -- )
-   {: entry-rc:n rc:n :}
-   entry-rc 0<> if
-      M-DOES-FRAME @ 0<> if NULL-PTR 0 false DOES-PUBLISHED then
-      entry-rc throw
-   then
+\ Rolls back a unit whose compile ended with code rc, and throws nothing: the
+\ compile throws rc in its catch's own unit, which keeps a carried record.
+: SETTLE-UNIT ( n -- )
+   {: rc:n :}
    rc E-COMP-RECOVERY = if
       \ A HEAD-MARKED? definer keeps its rows, as a withheld colon word does;
       \ every other withheld definer is rolled back.
@@ -374,9 +371,9 @@ public
          HEAD-MARKED? if CHECKER-NATIVE-DOES-COMMIT then
          0 M-DOES-FRAME !
       then
-      rc throw
+      exit
    then
-   rc 0 <> if RETRACT rc throw then ;
+   rc 0 <> if RETRACT then ;
 
 : STAGE-UNIT ( ^u8 n -- )
    {: sa su:n :}
