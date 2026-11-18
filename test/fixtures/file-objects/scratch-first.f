@@ -4,6 +4,7 @@ private
 variable SLOT   SLOT scratch-cell-mark
 SCRATCH-VARIABLE VAR
 8 SCRATCH-BUFFER: BUF
+1 c,  8 SCRATCH-ALLOT      \ a reserve after an odd byte: SCRATCH-ALLOT aligns before it marks
 TYPED-VARIABLE TVAR n SCRATCH-ONLY
 1 TYPED-BUFFER TBUF n SCRATCH-ONLY
 public

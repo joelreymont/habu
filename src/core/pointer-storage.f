@@ -1,12 +1,11 @@
 split-str
 \ pointer-storage.f - scratch storage and the global cells that hold an address.
 
-\ Reserves n bytes at a cell-aligned `here`, rounded up to cells, as scratch
-\ storage (docs/forth-card.md § 4). allot takes the cells before any is marked, so a size
-\ that does not fit marks nothing; a negative size is asked of allot as the largest one.
+\ Scratch storage (docs/forth-card.md § 4): n bytes, rounded up to cells, at an aligned `here`.
+\ allot runs before any mark, so an unfit size marks nothing; a negative size asks allot for the largest.
 : SCRATCH-ALLOT ( n -- )
    dup 0 < if drop -1 1 rshift then
-   7 + 3 rshift  here over cells allot
+   7 + 3 rshift  align here over cells allot
    swap 0 ?do dup i cells + scratch-cell-mark loop drop ;
 
 \ The clauses are empty on purpose: an empty clause declares the effect only, and
