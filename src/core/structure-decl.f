@@ -277,7 +277,7 @@ EXPORT CHECK:WIDTH-FAM
 \ whose ;STRUCTURE has not been read; a closed member is any family.
 : FIELD-FAM? ( str -- n bool ) {: a:^ u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE {: id:n sr:n :}
-   sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TYPE-DECL:TDECL-AMBIG throw THEN
+   sr SR-AMBIG = IF a u DECL-REJECT:TOKEN!  a u TDECL-AMBIG throw THEN
    sr SR-FOUND <> IF 0 NO EXIT THEN
    id UNSTORED-REASON IF
       a u DECL-REJECT:TOKEN!
@@ -355,13 +355,13 @@ EXPORT CHECK:WIDTH-FAM
    dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
    dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
    dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
-   TYPE-DECL:DECL-PARAM 0= IF
+   DECL-PARAM 0= IF
       drop a u DECL-REJECT:TOKEN!
       s" unknown" s" " SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw THEN
    {: idx:n :}
    want PK-SCOPE = want PK-REGION = or SELF-U @ 0 <> and IF
       SELF-A @ SELF-U @ YES PTR-VIEW-REJECT THEN
-   idx want TYPE-DECL:DECL-PARAM-USE IF a u want PARAM-KIND-REJECT THEN
+   idx want DECL-PARAM-USE IF a u want PARAM-KIND-REJECT THEN
    2drop drop
    want PK-SCOPE = want PK-REGION = or
    want PK-TYPE = or IF
@@ -528,7 +528,7 @@ defer SD-LOOSE-NODE ( str n -- n nominal )
       a c@ dup ASCII-N = over ASCII-F = or over ASCII-R = or
       IF drop EXIT THEN
       TFAM-DECL-CHAR>PARAM IF
-         drop a c@ TYPE-DECL:DECL-PARAM IF drop EXIT THEN
+         drop a c@ DECL-PARAM IF drop EXIT THEN
          drop a u DECL-REJECT:TOKEN!
          s" type parameter is outside the declared arity"
          SD-PARAM-FIX$ TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw
@@ -575,7 +575,7 @@ variable SD-QUOT-AT
    ta NULL-PTR - a NULL-PTR - - {: i:n :}
    POINTEE @ {: outer:n :}
    0 POINTEE !
-   a u i TYPE-DECL:ANY-VALUE SD-PARSE-NODE
+   a u i ANY-VALUE SD-PARSE-NODE
    SD-QUOT-AT !
    outer POINTEE ! ;
 \ A malformed quotation is rejected at the token it stopped at, or at its `[`
@@ -590,7 +590,7 @@ variable SD-QUOT-AT
    [: a u SD-QUOT-NEXT ;]
    [: a u SD-QUOT-ELEM ;]
    [: a k + SD-QUOT-FAIL ;]
-   TYPE-DECL:PARSE-QUOT SD-QUOT-AT @ ;
+   PARSE-QUOT SD-QUOT-AT @ ;
 
 \ Beneath a `^`, judges the family fam named at a u before its arguments, which
 \ a scope or region slot would reject first. A pointee naming a member that
@@ -633,7 +633,7 @@ SD-LOOSE-INSTALL
 : SD-PTR-NODE ( str n -- n n ) {: a:^ u:n k:n :}
    POINTEE @ {: outer:n :}
    -1 POINTEE !
-   a u k TYPE-DECL:ANY-VALUE SD-PARSE-NODE {: node:n e:n :}
+   a u k ANY-VALUE SD-PARSE-NODE {: node:n e:n :}
    outer POINTEE !
    FIELD-MISS @ IF 0 e EXIT THEN
    node TFCL-NODE? IF a k + e k - DECL-REJECT:TOKEN! THEN
@@ -754,7 +754,7 @@ private
    HEADER-ORDER
    NEXT POLICY-CODE {: code:n :}
    code TL-NICHE = IF
-      TYPE-DECL:TDECL-NICHE-MESSAGE$
+      TDECL-NICHE-MESSAGE$
       s" drop `POLICY niche-null`: only an `ENUM` with an empty variant, then one `^` field, can use it"
       TYPE-DECL:E-TDECL-POLICY DECL-REJECT:REJECT throw THEN
    FAM @ code TFAM-LAYOUT!
@@ -858,7 +858,7 @@ private
 : ITEM-ROOM ( -- n ) EFFECT-DEPTH-MAX SD-ITEMS @ - ;
 : FIELD-CLAUSE ( -- )
    FIELD-NAME {: na:^ nu:n :}
-   na nu TYPE-DECL:DECL-FIELD!
+   na nu DECL-FIELD!
    0 FIELD-MISS !
    NEXT {: ta:^ tu:n :}
    ta tu PK-CELL RESOLVE-TYPE {: node:n :}
@@ -921,7 +921,7 @@ private
    {: na:^ nu:n ta:^ tu:n ar:n :}
    ta tu DECL-REJECT:TOKEN!
    s" duplicate family" SD-DUP-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
-   TFAM-ACTIVE-PKG$ TYPE-DECL:TDECL-VIS na nu
+   TFAM-ACTIVE-PKG$ TDECL-VIS na nu
    ar TK-PRODUCT TFAM-DECL ;
 \ Opens family fam's fields: they follow the committed rows and the rows of the
 \ members closed before it.
@@ -1029,7 +1029,7 @@ private
 \ The name and arity of the header token a u, the header's parameters bound.
 : HEADER ( ^u8 n -- ^u8 n n )
    2dup DECL-REJECT:SEAL-FAMILY
-   TYPE-DECL:DECL-HEADER 0= IF
+   DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header"
       s" name each type parameter once in the header, as in `STRUCTURE box<a>` or `STRUCTURE pair<a,b>`"
       TYPE-DECL:E-TDECL-ARITY DECL-REJECT:REJECT throw
@@ -1054,7 +1054,7 @@ private
 \ A header in the MUTUAL list: the member is listed, its family row added.
 : LIST-ENTRY ( str -- )
    2dup DECL-REJECT:FAMILY!
-   2dup TYPE-DECL:DECL-FAMILY-NAME nip 0= IF
+   2dup DECL-FAMILY-NAME nip 0= IF
       2drop s" missing name"
       s" write the family name before its parameters, as in `box<a>`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
@@ -1256,7 +1256,7 @@ EXPORT STRUCTURE-DECL:SD-WRAP
 
 \ The one-cell family NAME, with the SCRATCH-ONLY clause when SCRATCH.
 : NEWTYPE-CELL ( str bool -- ) {: na:^ nu:n scratch:bool :}
-   na nu 2dup s" newtype" TYPE-DECL:TDECL-DEFFAMILY  scratch SCRATCH-MARK ;
+   na nu 2dup s" newtype" TDECL-DEFFAMILY  scratch SCRATCH-MARK ;
 
 public
 
@@ -1287,7 +1287,7 @@ INTRINSIC-DECLARATION INTRINSIC
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: na:^ nu:n :}
    kw ku na nu REJECTION:NOT-A-NAME
-   nu 0= IF na nu kw ku s" newtype" TYPE-DECL:TDECL-DEFFAMILY EXIT THEN
+   nu 0= IF na nu kw ku s" newtype" TDECL-DEFFAMILY EXIT THEN
    0 0= 0= nu 0 ?do na i + c@ 60 = or loop
    IF na nu LBUF:SCRATCH-CLAUSE? NEWTYPE-CELL EXIT THEN
    LBUF:SCRATCH-CLAUSE? IF na nu 0 0= NEWTYPE-CELL EXIT THEN

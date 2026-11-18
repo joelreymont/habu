@@ -512,6 +512,7 @@ package GENERATED-DECL-NAME-PREFLIGHT
 private
 EXPORT CHECKER-RESOLVE:HEAD-ROW
 EXPORT CHECKER-RESOLVE:SOURCE-SEALED?
+EXPORT TYPE-DECL:TDECL-THROW-AT
 
 \ a u is qualified: DICTIONARY-RECORDS asks NAMESPACED? first.
 : NAMESPACE-EXISTS? ( str -- bool ) {: a:^ u:n :}
@@ -524,7 +525,7 @@ EXPORT CHECKER-RESOLVE:SOURCE-SEALED?
    XREF-QUAL-INDEX 0 >= ;
 
 : SEALED-STOP ( str -- )
-   s" " s" " TYPE-DECL:E-TDECL-SEALED TYPE-DECL:TDECL-THROW-AT ;
+   s" " s" " TYPE-DECL:E-TDECL-SEALED TDECL-THROW-AT ;
 
 \ A family or generated name is the declaration's error where SEALED-TARGET?
 \ refuses it, or in a package the verified source sealed. A head resolves as the

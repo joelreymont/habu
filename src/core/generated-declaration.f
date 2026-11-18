@@ -18,6 +18,13 @@ using TYPE-DECL
 package DECL-REJECT
 EXPORT CHECK:TDECL-DIAG
 EXPORT CHECK:DEF-NAME-REJECT?
+EXPORT TYPE-DECL:DECL-FAMILY-NAME
+EXPORT TYPE-DECL:TDECL-AMBIG-DIAG
+EXPORT TYPE-DECL:TDECL-ARM
+EXPORT TYPE-DECL:TDECL-ARMED
+EXPORT TYPE-DECL:TDECL-SEALED-WORD
+EXPORT TYPE-DECL:TDECL-WHY@
+EXPORT TYPE-DECL:TDECL-WORD-NOTE
 
 \ The slots hold copies: the family name is read on a declaration's first
 \ line but rendered after a reject on a later one, and a REPL refills its
@@ -210,7 +217,7 @@ public
 \ The seal of the declaration whose header is a u, judged at its
 \ family name alone, before the header's parameters are parsed.
 : SEAL-FAMILY ( str -- ) {: a:^ u:n :}
-   a u TYPE-DECL:DECL-FAMILY-NAME {: ca:^ cu:n :}
+   a u DECL-FAMILY-NAME {: ca:^ cu:n :}
    cu 0 > IF ca cu FAMILY!  ca cu TDECL-NAME-PREFLIGHT-XT  a u FAMILY! THEN ;
 
 \ Whether a declaration's catch throws code n on: a status in 1..255 was printed

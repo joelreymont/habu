@@ -40,6 +40,7 @@ EXPORT SCHEMA-REG:SCHEMA-ROW-START@
 EXPORT SCHEMA-REG:SCHEMA-ROW?
 EXPORT SCHEMA-REG:TRANSIENT-OFF
 EXPORT SCHEMA-REG:TRANSIENT-ON
+EXPORT TYPE-DECL:READ-TYPE
 
 \ ---- a duplicate only the checker sees ----------------------------------------
 \ A declaration replay publishes a checked effect but defines no word, so the
@@ -453,7 +454,7 @@ CAST: >BYTES ( n -- ^u8 )
 
 : TEXT-TYPE ( n n -- n ) {: a:n u:n :}
    a >BYTES u [: a >BYTES u TEXT-TYPE-REFUSE ;]
-   [: a >BYTES u TEXT-LETTER-REFUSE ;] TYPE-DECL:READ-TYPE ;
+   [: a >BYTES u TEXT-LETTER-REFUSE ;] READ-TYPE ;
 
 : TYPE-NODE ( n n n -- n ) {: code:n a:n b:n :}
    code TYPE-OP-ABI:INT = if CC-N SCHEMA-CON exit then

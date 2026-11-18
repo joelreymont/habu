@@ -173,6 +173,7 @@ EXPORT ROLES:DTC-BUILD-OUT
 EXPORT ROLES:VRDEF-UNCLOSED
 EXPORT TYPE-DECL:CHECKER-DEFFAMILY
 EXPORT TYPE-DECL:CHECKER-NOMINAL-REPLAY
+EXPORT TYPE-DECL:DECL-FAMILY-NAME
 
 public
 
@@ -989,7 +990,7 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 \ first `<`, rejected as SEALED-NAME rejects a name. An empty one is left to
 \ the declaration's missing-name rejection.
 : SEALED-FAMILY ( str n -- ) {: a:^ u:n at:n :}
-   a u TYPE-DECL:DECL-FAMILY-NAME nip {: cut:n :}
+   a u DECL-FAMILY-NAME nip {: cut:n :}
    cut 0= IF EXIT THEN
    a cut at cut SEALED-NAME ;
 
@@ -2552,7 +2553,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
 \ Whether a MUTUAL's first token names a family to seal: a member's STRUCTURE,
 \ ;MUTUAL and a nameless header do not. The replay judges every later entry.
 : MUTUAL-LISTED? ( str -- bool ) {: a:^ u:n :}
-   a u TYPE-DECL:DECL-FAMILY-NAME nip 0<>
+   a u DECL-FAMILY-NAME nip 0<>
    a u s" STRUCTURE" STR=CI 0= and  a u MUTUAL-END? 0= and ;
 
 \ Appends the next MUTUAL body token; answers whether the body ended.

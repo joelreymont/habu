@@ -103,8 +103,6 @@ variable OPEN-FIELD-U
    LOOP ;
 DECL-PARAM-CLEAR
 
-public
-
 \ Declaration-local names bind by list position. The registry and generated
 \ effects still use positional schema indices and the canonical alphabet.
 : DECL-PARAM ( n -- n bool )
@@ -114,7 +112,6 @@ public
       1+
    REPEAT drop 0 RES-FALSE ;
 
-private
 EXPORT CHECK:ARENA-ROWS-ENSURE
 EXPORT CHECK:BIND-DEPTH
 EXPORT CHECK:BYTE-SPAN?
@@ -194,7 +191,6 @@ EXPORT CHECK:TFAM-WIDTH-SLOT-XT
 EXPORT CHECK:UNSTORED-REASON
 EXPORT CHECK:UPKG-HELP
 EXPORT CHECK:WRITE-WINDOW-CK
-public
 
 \ A use any value kind fits: a pointee or a quotation element.
 -1 constant ANY-VALUE
@@ -205,8 +201,6 @@ public
    FIELD-NAMES-U @ u + CELL / 1 +  1 ARENA-ROWS-ENSURE
    FIELD-NAMES-U @ OPEN-FIELD-O !
    u 0 ?DO a i + c@ FIELD-NAMES OPEN-FIELD-O @ + i + c! LOOP u OPEN-FIELD-U ! ;
-
-private
 
 : PARAM-FIELD ( n -- str ) {: idx:n :}
    FIELD-NAMES idx FIELD-O-SLOT @ +  idx FIELD-U-SLOT @ ;
@@ -223,8 +217,6 @@ private
    want was = IF RES-FALSE EXIT THEN
    want ANY-VALUE = IF was NONVALUE? EXIT THEN
    RES-TRUE ;
-
-public
 
 \ Records header parameter idx used as want; answers its state and the field
 \ that set it: before this use and true on a conflict, else after it and false.
@@ -261,8 +253,6 @@ public
       THEN
    LOOP
    a tail count RES-TRUE ;
-
-private
 
 \ Keep names already parsed so a later duplicate still rejects when an earlier
 \ missing type prevented a row.
@@ -336,8 +326,6 @@ variable TDA-CAP   0 TDA-CAP !          \ bytes mapped at TDA-P, 0 for none
    a TDA-P @ u ARENA-COPY
    TDA-P @ TDA-A !  u TDA-U ! ;
 
-public
-
 \ The armed reason is the one store every declaration catcher reads, whichever
 \ front end runs the declaration; it explains only the code it was armed with.
 : TDECL-ARM ( str str n -- )   \ reason, fix, code
@@ -399,19 +387,13 @@ public
 \ high-water mark was right. The schema store's marks go back through
 \ SCHEMA-REG:REWIND, which scrubs what it retires.
 
-private
-
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
 variable TDV-QUOT-N
 variable TDV-QUOT-MISS
 
-public
-
 : QUOT-ROLLBACK ( -- ) 0 TDV-QUOT-N !  0 TDV-QUOT-MISS ! ;
-
-private
 
 variable TDECL-FAM-REG   \ family id the LAST successful NEWTYPE or DEFTYPE registered (-1 = none)
 
@@ -583,15 +565,11 @@ private
          E-TDECL-NAME TDECL-THROW
    THEN ;
 
-public
-
 \ A DERIVE-marked family must not declare a variant spelled like a generated
 \ derived tail: the constructor package would hold two words with one name.
 : TDECL-COLLIDE-WHY ( -- str str )
    s" variant name collides with a derived word"
    s" rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken" ;
-
-private
 
 : TDECL-COLLIDE-THROW ( str -- )
    TDECL-COLLIDE-WHY E-TDECL-NAME TDECL-THROW ;
@@ -608,13 +586,11 @@ private
 \ --- package scope: a declaration registers in the active checker package
 \ (TFAM-ACTIVE-PKG$, type-family.f). `global` places words, not types: a type
 \ declared at top level or in a `global` section is public.
-public
 : TDECL-VIS ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    mode CHECKER-PACKAGE-NONE =  mode CHECKER-PACKAGE-GLOBAL =  or IF
       CHECKER-PACKAGE-PUBLIC EXIT
    THEN mode ;
-private
 
 \ TFAM-DECL's one failure left here is a duplicate, unless a compile callback
 \ declares: the window rejection comes first, under the general reason.
@@ -884,8 +860,6 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
    s" write the quotation type as `[ in -- out ]`"
    E-TDECL-SYNTAX fail execute ;
 
-public
-
 \ Shared by variant payloads and STRUCTURE fields, each supplying its token
 \ stream, element resolver and rejecter, which is given the token it stopped at.
 \ The facts follow the last outputs: the data outputs' when there is no `|`.
@@ -907,8 +881,6 @@ public
       end endu s" ]" fail TDV-QUOT-EXPECT
       din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW RES-FALSE dfacts outer TDV-QUOT-FINISH
    THEN ;
-
-private
 
 : TDECL-QUOT-FAIL ( str str str n str -- )
    {: ta:^ tu:n wa:^ wu:n fa:^ fu:n code:n qa:^ qu:n :}
@@ -1072,8 +1044,6 @@ TERM-SCHEMA-INSTALL
    THEN
    s" bad type" E-TDECL-SYNTAX 0 fail execute ;
 
-public
-
 \ The one type the text spells, read by the signature grammar where the
 \ definer runs. A letter in it runs LETTER with the letter; any other reject,
 \ a name that may arrive later and text past the type included, runs FAIL
@@ -1101,8 +1071,6 @@ public
    term TERM-SCHEMA dup 0 <> IF EXIT THEN drop
    a 0 STG-UNSTORABLE-TYPE STGR-REASON$ E-TDECL-SYNTAX
    STG-UNSTORABLE-TYPE fail execute 0 ;
-
-private
 
 variable TDV-TAG   variable TDV-N    variable TDV-MAX
 variable TDV-SS    variable TDV-PC   variable TDV-PW
@@ -1176,8 +1144,6 @@ create TDV-BADLETTER 1 allot
 \ The reason and fix, both empty when an integer compares by `=` or a family by
 \ its own EQ and HASH; no checked pointer equality exists, and comparing a
 \ linear value consumes it.
-public
-
 : TDECL-DERIVE-WHY ( n n -- str str )
    {: fam:n node:n :}
    node SCHEMA-CON? IF
@@ -1208,8 +1174,6 @@ public
       s" add `DERIVE hash` to the field's family, or drop `hash` from this `DERIVE`"
       EXIT THEN
    s" " s" " ;
-
-private
 
 : TDECL-REQUIRE-DERIVABLE ( str n n -- )
    {: ta:^ tu:n fam:n node:n :}
@@ -1276,8 +1240,6 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    row CELL + @ 0 = IF TDECL-CTOR-FREE EXIT THEN
    TDECL-BY-PART ;
 
-public
-
 \ A part's family makes its constructor package a part with no private wordlist.
 \ TF-INTERN may move the pool TFAM-PKG$ and TFAM-NAME$ read, so it runs last.
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
@@ -1316,8 +1278,6 @@ public
 \ until codegen lowers it. Any other token, `custom` included (the LAY registry
 \ tolerates it), is an unknown policy.
 
-private
-
 : TDECL-POLICY-DEFERRED? ( str -- bool ) {: a:^ u:n :}
    a u s" boxed" CORE-STR=CI ;
 : TDECL-POLICY-SET ( str n -- ) {: a:^ u:n fam:n :}
@@ -1337,8 +1297,6 @@ private
 \ no LAY row (nothing consumes one). Runs inside TDECL-RUN's transaction, so a
 \ later close-stage reject rolls LAY-N back with the family row.
 
-public
-
 : TDECL-LAYOUT-DESC ( n -- ) {: fam:n :}
    fam TFAM-LAYOUT-POLICY@ TL-PACKED-TAG = 0= IF EXIT THEN
    fam TL-PACKED-TAG fam PACKED-DESC LAY-ADD drop ;
@@ -1355,8 +1313,6 @@ public
 \ family is that variant and one holding a single `^` field.
 : TDECL-NICHE-MESSAGE$ ( -- str )
    s" niche-null needs an empty variant, then one pointer field" ;
-
-private
 
 : TDECL-NICHE-THROW ( -- )
    TDN-A @ TDN-U @ TDECL-NICHE-MESSAGE$
@@ -1459,8 +1415,6 @@ defer TDECL-TXN-XT ( [ -- renders parses nominal ] -- renders parses nominal )
    ar TK-CELL TDECL-FAMILY TDECL-FAM-REG ! ;
 
 
-public
-
 \ The family header and the source token that names it, the same bytes up to
 \ case: a DEFTYPE name folds to its header, a NEWTYPE name is its own token.
 \ With no name, the token is the keyword. KIND is the declaration's keyword,
@@ -1470,8 +1424,6 @@ public
    ka ku na nu s" " TDECL-CTX!
    ta tu TDECL-PLACE!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
-
-private
 
 defer TDECL-CAPACITY-PREFLIGHT-XT ( str n -- )
 
@@ -1623,15 +1575,11 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
    cap TDPLAN-ROW-CAP ! ;
 
 
-public
-
 : TDPLAN-BEGIN ( -- )
    0 TDPLAN-U !
    0 TDPLAN-N !
    0 TDPLAN-SYM-HI ! ;
 
-
-private
 
 : TDPLAN-APP ( str -- ) {: a:^ u:n :}
    u TDPLAN-BYTE-NEED {: need:n :}
@@ -1715,14 +1663,10 @@ private
    TDPLAN-P @ off + u ;
 
 
-public
-
 : TDPLAN-NAME$ ( n -- str )
    TDPLAN-ROW {: r:^ :}
    r TDPLAN.NAME-OFF @ r TDPLAN.NAME-U @ TDPLAN-SPAN$ ;
 
-
-private
 
 : TDPLAN-KIND@ ( n -- n ) TDPLAN-ROW TDPLAN.BUILT @ ;
 : TDPLAN-FAM@ ( n -- n ) TDPLAN-ROW TDPLAN.FAM @ ;
@@ -2130,8 +2074,6 @@ EXPORT CHECKER-RESOLVE:PUBLIC-SECTION
 \ variant rows through SUMV-ADD before generating, so the committed view is its
 \ own view.
 
-public
-
 : TDECL-PROD-WORDS ( n -- ) {: fam:n :}
    fam TDECL-PROD-WORDS-BODY ;
 
@@ -2145,8 +2087,6 @@ public
 \ since its width is the instance's. Generation runs at commit: a field id is
 \ an authority only once TYPE-FIELD has committed the row, which the runner's
 \ commit order (DECL-EVENT before the address surface) guarantees.
-
-private
 
 : TDECL-ADDR-NAME ( n str -- str ) {: fam:n ta:^ tu:n :}
    TDGEN-CLEAR  fam ta tu TDGEN-DRV-REF  TDGEN-BUF TDGEN-U @ ;
@@ -2204,8 +2144,6 @@ private
    dup [: TDECL-ADDR-FREE ;] TDECL-ADDR-EACH
    dup [: TDECL-ADDR-REG ;] TDECL-ADDR-EACH ;
 
-public
-
 : TDECL-ADDR-WORDS ( n -- )
    RES-FALSE [: TDECL-ADDR-LIVE ;] TDECL-GEN-PLACED ;
 
@@ -2214,6 +2152,8 @@ public
 \ own record accessors resolves on the pre-scan.
 : TDECL-ADDR-REPLAY ( n -- )
    RES-TRUE [: TDECL-ADDR-REPLAY-REG ;] TDECL-GEN-PLACED ;
+
+public
 
 \ Makes DEFTYPE's converters over FAM, named from surface NA NU and base BA BU:
 \ >NAME then NAME>BASE, the base in upper case. A family refused under a
@@ -2225,6 +2165,8 @@ public
    TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-IN fam  TDECL-CHILD
    TDGEN-CLEAR  na nu TDGEN-APP  [char] > TDGEN-C,  ba bu TDGEN-UPPER
    TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-OUT fam  TDECL-CHILD ;
+
+private
 
 \ Declares DEFTYPE's family, tail TA TU named by surface NA NU, and makes its
 \ converters, >NAME then NAME>N.
@@ -2241,8 +2183,6 @@ public
 \ A getter FIELD@ and a setter FIELD! per field, in the family's own spelling,
 \ each made by the engine's CHILD-RUN from its CHILD-ABI shape and committed
 \ field id: no text, so no word of the declaring package can capture one.
-
-private
 
 : TDINIT-TERM ( n -- n ) TFAM-FRESH-TERM ;
 
@@ -2295,14 +2235,10 @@ private
    [: TDECL-ADDR-FREE ;] TDINIT-CHECK
    dup [: TDECL-ADDR-REG ;] TDINIT-EACH ;
 
-public
-
 : TDECL-INIT-WORDS ( n -- )
    dup TDINIT-REQUIRE  RES-FALSE [: TDINIT-LIVE ;] TDECL-GEN-PLACED ;
 : TDECL-INIT-REPLAY ( n -- )
    dup TDINIT-REQUIRE  RES-TRUE [: TDINIT-REPLAY-REG ;] TDECL-GEN-PLACED ;
-
-private
 
 : TDECL-GEN-PLAN ( n -- n )
    {: fam:n :}
@@ -2325,16 +2261,12 @@ private
    TDECL-GEN-PLAN TDPLAN-PREFLIGHT-NAMES TDPLAN-PREFLIGHT-DEFINITIONS ;
 
 
-public
-
 : TDECL-CTOR-REPLAY ( n -- )
    RES-TRUE [: TDECL-REPLAY-PLAN ;] TDECL-GEN-PLACED ;
 
 : TDECL-CTOR-WORDS-BODY ( n -- ) {: fam:n :}
    fam TDECL-GEN-PLAN TDECL-GEN-EVAL ;
 
-
-private
 
 : TDECL-CLEAR ( -- ) 0 TDECL-U !  0 TDECL-TOK-N ! ;
 : TDECL-BUF-ENSURE ( n -- ) {: need:n :}
