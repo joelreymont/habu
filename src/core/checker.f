@@ -4201,7 +4201,10 @@ SCRATCH{
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
 \ The layout type a one-cell variable met in this token's unify, 0 for none.
 variable ONE-CELL-HIT
-variable ONE-CELL-VAR   \ that variable's id, read only while ONE-CELL-HIT is set
+\ The layout type a variable of a pointee stepped by an offset met, 0 for none.
+variable STEP-HIT
+\ The id of the variable the latest of them met; each latch clears the other.
+variable ONE-CELL-VAR
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
@@ -4235,7 +4238,15 @@ variable XT-DECL
    v PAY TVK@ {: k:n :}
    k TVK-CELL =  k TVK-ANY = or
    k TVK-MOVED =  t T-WIDTH 1 >  and  or 0= IF EXIT THEN
-   t ONE-CELL-HIT !  v PAY ONE-CELL-VAR ! ;
+   t ONE-CELL-HIT !  0 STEP-HIT !  v PAY ONE-CELL-VAR ! ;
+
+\ A stepped pointee's var met layout type t: latch t. A fixed step is one
+\ element of a plain cell type only, never of a layout type.
+: OFF-STEP-MET ( n n -- ) {: v:n t:n :}
+   v ISVAR 0= IF EXIT THEN
+   t TAG T-PARAM <> IF EXIT THEN
+   v PAY TVK@ TVK-OFF <> IF EXIT THEN
+   t STEP-HIT !  0 ONE-CELL-HIT !  v PAY ONE-CELL-VAR ! ;
 
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}
    a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
@@ -4251,6 +4262,7 @@ variable XT-DECL
    a b MOVED-TAKES? IF RES-FALSE EXIT THEN
    b a MOVED-TAKES? IF RES-FALSE EXIT THEN
    a b ONE-CELL-MET  b a ONE-CELL-MET
+   a b OFF-STEP-MET  b a OFF-STEP-MET
    RES-TRUE ;
 
 
@@ -4369,7 +4381,7 @@ variable XT-DECL
       \ A generic ! or atomic! still reads its one-cell value.
       dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
       dup T-WIDTH 1 = IF drop RES-FALSE EXIT THEN
-      ONE-CELL-HIT !  vid ONE-CELL-VAR !  RES-TRUE EXIT
+      ONE-CELL-HIT !  0 STEP-HIT !  vid ONE-CELL-VAR !  RES-TRUE EXIT
    THEN
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
@@ -4862,8 +4874,32 @@ defer U-DRAIN-XT ( n -- )
    rl P>TYPE T-RES {: tl:n :}
    tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
    rh re ;
-: LOGHID-EXPAND ( n n -- ) LOGHID-ROWS PAIR ;
-: LOGHID-EXPAND-REV ( n n -- ) LOGHID-ROWS swap PAIR ;
+\ The open var of logical term l at a width slot where hidden term h's
+\ argument is wider than the var's one cell: latch both, as ONE-CELL-MET does.
+: WIDTH-VAR-MET? ( n n -- bool ) {: l:n h:n :}
+   0 BEGIN dup l PARAM>ARGC < WHILE
+      l PARAM>FAM over TFAM-WIDTH-SLOT-XT IF
+         l over PARAM>ARG T-UNSTALE {: la:n :}
+         h over PARAM>ARG T-UNSTALE {: ha:n :}
+         la T-WIDTH ha T-WIDTH <> IF
+            la ISVAR IF
+               ha ONE-CELL-HIT !  0 STEP-HIT !  la PAY ONE-CELL-VAR !  drop RES-TRUE EXIT
+            THEN
+            la LAYOUT-PARAM?  ha TAG T-PARAM =  and IF
+               la ha TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+            THEN
+         THEN
+      THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+\ A logical term narrower than the hidden group fails the PAIR at its top slot.
+: LOGHID-WIDTH ( n n -- n n ) {: rh:n rl:n :}
+   rl P>TYPE T-UNSTALE {: tl:n :}
+   rh P>TYPE T-UNSTALE {: th:n :}
+   tl T-WIDTH th T-WIDTH <> IF tl th WIDTH-VAR-MET? drop THEN
+   rh rl ;
+: LOGHID-EXPAND ( n n -- ) LOGHID-WIDTH LOGHID-ROWS PAIR ;
+: LOGHID-EXPAND-REV ( n n -- ) LOGHID-WIDTH LOGHID-ROWS swap PAIR ;
 
 : LOGHID-JOIN? ( n n -- bool )
    {: rh:n rl:n :}
@@ -5328,6 +5364,7 @@ private
 100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
 101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?); E-LAYOUT-VALUE
 102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type (ONE-CELL-HIT); E-MISMATCH
+103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type (STEP-HIT); E-MISMATCH
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; each other reason has its own code (MD-CODE$).
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5385,8 +5422,8 @@ variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
 variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from the top
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
-variable MDIAG-CELL   \ one-cell rule: the layout type a one-cell variable met
-variable MDIAG-CELL-VAR   \ one-cell rule: that variable's id
+variable MDIAG-CELL   \ one-cell and step rules: the layout type a variable met
+variable MDIAG-CELL-VAR   \ one-cell and step rules: that variable's id
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
 
@@ -5472,6 +5509,11 @@ TAIL-CAPTURE-DEFAULT
    ONE-CELL-HIT @ 0 <> IF   \ the type copied only when this refusal latches the reason
       MDIAG @  MD-ONE-CELL MDIAG!  MDIAG @ <> IF
          ONE-CELL-HIT @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
+      THEN
+   THEN
+   STEP-HIT @ 0 <> IF
+      MDIAG @  MD-OFF-STEP MDIAG!  MDIAG @ <> IF
+         STEP-HIT @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
       THEN
    THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN
@@ -22662,7 +22704,7 @@ variable POST-A0
    THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
@@ -22677,7 +22719,7 @@ variable POST-A0
    \ The raw-cell and base-address refusals name themselves where they are
    \ raised. The flags are dropped here because TRY-PRIMS applies candidate
    \ rows in turn and the next token must start clean.
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    NZ-STEP
    unj IF
@@ -22927,10 +22969,10 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
    oid NP-OUTVARS-HAS? IF RES-FALSE EXIT THEN
    oid NP-INVARS-HAS? ;
 
-\ TVK-OFF is provenance, not a restriction: `( ^a -- ^a ) 8 +` steps a
-\ pointer of whatever pointee the caller instantiates, and the mark only decides
-\ what a NULL meeting that quantifier becomes. A quantifier that comes back
-\ marked is therefore still preserved.
+\ TVK-OFF is provenance, not a restriction: `( ^a -- ^a ) 8 +` keeps `a`
+\ generic, and the mark only decides what a NULL meeting it becomes, so a
+\ quantifier that comes back marked is still preserved. A call binds it to a
+\ plain cell type only: LAYOUT-BLOCK? rejects a layout type.
 : NP-KIND-SEEN ( n -- n )
    dup TVK-OFF = over ANY-KIND? or IF drop TVK-ANY THEN MOVED>CELL ;
 : NP-CHECK-ONE ( n n -- )   \ preserve the declared quantifier and its kind
@@ -23281,7 +23323,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
    0 UNFIT !
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    0 SGWIN !  0 SGWOUT !  0 SGWRIN !  0 SGWROUT !

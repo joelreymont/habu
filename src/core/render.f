@@ -965,6 +965,7 @@ variable MDV-I   variable MDV-F
       MD-RECORD-AT-WIDE of s" E-RECORD-AT-WIDE" endof
       MD-MEMBER-TOP of s" E-LAYOUT-VALUE" endof
       MD-ONE-CELL   of s" E-MISMATCH" endof
+      MD-OFF-STEP   of s" E-MISMATCH" endof
       MD-CONSTRUCT-WIDE of s" E-CONSTRUCT-WIDE" endof
       MD-C2-BINDER    of s" E-C2-BINDER" endof
       MD-C2-RECORDS-BINDER of s" E-C2-BINDER" endof
@@ -1184,6 +1185,7 @@ variable MDV-I   variable MDV-F
       MD-RECORD-AT-WIDE of s" `record-at` steps by the record's declared width, and this instantiation is wider" endof
       MD-MEMBER-TOP of s" at top level the word runs with its declared layout, and the receiver's instance moves this member" endof
       MD-ONE-CELL   of s"  is one cell" endof
+      MD-OFF-STEP   of s"  is stepped by an offset" endof
       MD-CONSTRUCT-WIDE of s" the variant is wider than the declared widest variant once its type argument is filled in" endof
       MD-C2-BINDER    of s" the callback's binder does not fit this entry's scope and record" endof
       MD-C2-RECORDS-BINDER of s" the callback's binder does not fit this entry's scope and record" endof
@@ -1262,6 +1264,7 @@ variable MDV-I   variable MDV-F
       MD-RECORD-AT-WIDE of s" wide instantiation" endof
       MD-MEMBER-TOP of s" runs with its declared layout" endof
       MD-ONE-CELL   of s" takes one cell" endof
+      MD-OFF-STEP   of s" steps by an offset" endof
       MD-CONSTRUCT-WIDE of s" variant wider than declared" endof
       MD-LINEAR-DROP  of s" linear value dropped" endof
       MD-LINEAR-COPY  of s" linear value copied" endof
@@ -1363,14 +1366,18 @@ variable MDV-I   variable MDV-F
 : CELL-TYPE ( -- n )
    MDIAG-CELL @ dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
 
-\ The one-cell variable and the word whose effect made it, before the reason's
-\ prose. A deferred verdict prints after SIG-EFF-DROP dropped the checked
-\ definition's own records, so there it names the variable alone.
+\ The word whose effect made the one-cell or stepped variable, 0 for none known.
+\ A deferred verdict prints after SIG-EFF-DROP dropped the checked definition's
+\ own records, so there it knows none.
+: CELL-VAR-SYM ( -- n )
+   MDIAG-CELL-VAR @ TVO@ {: org:n :}
+   org 0=  DVERD @ VERDICT-DEFERRED =  or IF 0 EXIT THEN
+   org 1 - E-PTR ER.SYM @ ;
+
+\ The variable and that word, before the reason's prose.
 : ONE-CELL-LEAD ( -- )
    AT-PIN  s" `" EMIT-STR  MDIAG-CELL-VAR @ MK-VAR REND-TYPE  s" `" EMIT-STR  ;AT-PIN
-   MDIAG-CELL-VAR @ TVO@ {: org:n :}
-   org 0=  DVERD @ VERDICT-DEFERRED =  or IF EXIT THEN
-   org 1 - E-PTR ER.SYM @ {: sym:n :}
+   CELL-VAR-SYM {: sym:n :}
    sym 0= IF EXIT THEN
    s"  in `" EMIT-STR  sym SYM-NAME$ EMIT-STR  s" `'s effect" EMIT-STR ;
 
@@ -1387,6 +1394,9 @@ variable MDV-I   variable MDV-F
    THEN
    ;AT-PIN ;
 
+: OFF-STEP-COUNTS ( -- )
+   AT-PIN  s" ; `" EMIT-STR  CELL-TYPE REND-TYPE  s" ` is not a plain cell type" EMIT-STR  ;AT-PIN ;
+
 
 \ What a reason carries after its prose, in text and JSON alike.
 : MDIAG-COUNTS ( -- )
@@ -1398,6 +1408,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-DIV-ZERO =  MDIAG @ MD-THROW-ZERO = or IF ZERO-COUNTS EXIT THEN
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-ONE-CELL = IF ONE-CELL-COUNTS EXIT THEN
+   MDIAG @ MD-OFF-STEP = IF OFF-STEP-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
    MDIAG @ MD-CF-DEPTH = IF CF-FRAMES-MAX 1 + CF-FRAMES-MAX CAP-DEPTH-COUNTS THEN ;
@@ -1705,7 +1716,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    \ read of an index no group declared lacks.
    MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
    PIN-TOK$ nip 0 <>  and IF TOK-SPAN 32 EMIT1 THEN
-   MDIAG @ MD-ONE-CELL = IF ONE-CELL-LEAD THEN
+   MDIAG @ MD-ONE-CELL =  MDIAG @ MD-OFF-STEP = or IF ONE-CELL-LEAD THEN
    MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
    MDIAG-COUNTS ;
@@ -2122,6 +2133,14 @@ PTR-VARIABLE HOLDER-FIRST
    MD-ONE-CELL MD-SUGGEST$ EMIT-STR
    AT-PIN  s"  `" EMIT-STR  CELL-TYPE REND-TYPE  s" `" EMIT-STR  ;AT-PIN ;
 
+: OFF-STEP-HELP ( -- )
+   CELL-VAR-SYM {: sym:n :}
+   sym 0 <> IF
+      s" declare `" EMIT-STR  sym SYM-NAME$ EMIT-STR  s" `" EMIT-STR
+   ELSE s" declare the word" EMIT-STR THEN
+   s"  for the plain cell type it steps, or step `" EMIT-STR
+   AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN  s" ` by its size" EMIT-STR ;
+
 : LINLOCAL-HELP ( -- )
    s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"
    EMIT-STR ;
@@ -2182,6 +2201,7 @@ PTR-VARIABLE HOLDER-FIRST
    k RF-REASON = IF
       MDIAG @ MD-SCOPED-TICK = IF SCOPED-TICK-HELP EXIT THEN
       MDIAG @ MD-ONE-CELL = IF ONE-CELL-HELP EXIT THEN
+      MDIAG @ MD-OFF-STEP = IF OFF-STEP-HELP EXIT THEN
       MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
    THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN
