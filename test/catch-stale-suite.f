@@ -505,8 +505,8 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    s" T10 ( ^u8 [ ^u8 -- ^u8 ] -- ^u8 n ) catch" CS-CODE<
    CS-STALE?  CS-CODE-END
    \ a callee that never returns is fit-checked against its declared output row:
-   \ WBOOM leaves nothing where its window was, and that is the refusal, not the
-   \ stale rule, which would need the dead flag the tick does not take
+   \ WBOOM leaves nothing where its window was, and that is the rejection: only
+   \ a `[: … ;]` literal that never returns skips that fit check, never a tick
    s" T11 ( ^u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
    s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ 2swap CONTAINS? TFALSE
    CS-CODE-END

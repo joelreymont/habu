@@ -2130,7 +2130,7 @@ answers alike.
   newline, so a message never carries its own `\n`; an empty span writes
   nothing, which is what a site passes after ending its own report with `cr`.
 - **A word that never returns ends its branch.** After a call whose body ends in
-  `die` or `throw`, the checker refuses any further token in the same branch,
+  `die` or `throw`, the checker rejects any further token in the same branch,
   `exit` or a balancing value alike, as `E-DEAD-CODE`:
 
   ```forth
@@ -2138,7 +2138,16 @@ answers alike.
   ```
 
   Write `if CHILD-MAIN then`: the rest of the definition runs only on paths that
-  can return.
+  can return. `execute` of a `[: … ;]` literal whose body never returns ends
+  the branch the same way, and so do `finally` when its body or cleanup never
+  returns and `catch` when its body dies (a `throw` returns to `catch`). The
+  checker follows the literal itself through stack words and locals of one
+  definition; a word's result, a `then` joining two different literals and a
+  cell carried into a loop are quotations that may return. A call to a word
+  whose result row its inputs name only as quotations' outputs, such as
+  `MEM:WITH-BYTES`'s `( … [ R ^u8 NUM:alloc-byte-len -- S ] -- S )`, ends the
+  branch when each of those quotations is such a literal:
+  `[: REJECT-SCOPE ;] MEM:WITH-BYTES ;` needs no `throw` after it.
 
 ## Engine limits ordinary source reaches
 

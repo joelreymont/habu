@@ -233,7 +233,7 @@ before the word runs, and `--load` exits 70.
 | a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
 | `( -- n ) [: 1 ;] ONCE` with `ONCE ( R [ -- S ] -- S ) execute`: a callable that names its stack, or keeps it where `[ -- S ]` is declared, passed, stored, installed with `is` or joined | `E-MISMATCH`, `callable row escape: …; held row A would escape into B`; declare `[ R -- S ]` |
 | a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-NO-LOOP`, `no loop is open here`, or `E-EXIT-IN-LOOP`, `exit inside a loop needs unloop first`, both `fix_control_flow` |
-| any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
+| any token after a call to a word whose body ends in `die` or `throw`, or after `execute` of such a `[: … ;]` literal or a word like `MEM:WITH-BYTES` given one for its `[ … -- S ] -- S`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause, rc 70 |
 | a `\` or `( … )` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |

@@ -1403,13 +1403,12 @@ variable TCMP                            \ path-compression walk cursor
 256 constant MAXQE-INIT
 SCRATCH{
 variable QEN
-PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P   PTR-VARIABLE QXNA-P
+PTR-VARIABLE QEA-P   PTR-VARIABLE QXDA-P   PTR-VARIABLE QXRA-P
 PTR-VARIABLE QXBA-P   PTR-VARIABLE QXFA-P
 variable QE-CAP
 }SCRATCH
 : QEA ( -- ^n ) QEA-P @ ;
 : QXDA ( -- ^n ) QXDA-P @ ;   : QXRA ( -- ^n ) QXRA-P @ ;
-: QXNA ( -- ^n ) QXNA-P @ ;
 \ QXBA: each quotation's block part, a type variable: unbound, it may read locals or not;
 \ NSCOPE@, it reads none; bound to a T-SCOPE term, it reads that block's locals.
 : QXBA ( -- ^n ) QXBA-P @ ;
@@ -1423,7 +1422,6 @@ variable QE-CAP
    QEA-P @ QE-CAP @ 32 * nc 32 * SR-GROW QEA-P !
    QXDA-P @ QE-CAP @ cells nc cells SR-GROW QXDA-P !
    QXRA-P @ QE-CAP @ cells nc cells SR-GROW QXRA-P !
-   QXNA-P @ QE-CAP @ cells nc cells SR-GROW QXNA-P !
    QXBA-P @ QE-CAP @ cells nc cells SR-GROW QXBA-P !
    QXFA-P @ QE-CAP @ cells nc cells SR-GROW QXFA-P !
    nc QE-CAP ! ;
@@ -1471,7 +1469,6 @@ CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CT
    QEN @ 1 + QE-ENSURE
    QEN @ 32 * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
-   0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
    CTL-THROW QEN @ cells QXFA + !
@@ -1515,7 +1512,6 @@ variable INHSET
 }SCRATCH
 \ Running a quotation charges the runner with its facts.
 : INH-CHARGE ( n -- ) Q>FACTS CTL-INHERITED and INHSET @ or INHSET ! ;
-: Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 
 \ A slot holds the window's intact mask (THROW-EDGE) tagged XMASK-MARK, a zero
 \ mask as 0; no row term carries T-QUOT's tag, so any other field reads as 0.
@@ -1528,8 +1524,7 @@ T-QUOT constant XMASK-MARK
 : Q>XDMASK ( n -- n ) Q>XDFIELD XMASK> ;      \ window cells every throw path left intact
 : Q>XRMASK ( n -- n ) Q>XRFIELD XMASK> ;
 : Q-FLAG>N ( bool -- n ) IF -1 ELSE 0 THEN ;
-: QX! ( n bool n n -- ) {: q:n xdead:bool xd:n xr:n :}
-   xdead Q-FLAG>N q PAY cells QXNA + !
+: QX! ( n n n -- ) {: q:n xd:n xr:n :}
    xd XMASK> 0 = IF 0 ELSE xd THEN q PAY cells QXDA + !
    xr XMASK> 0 = IF 0 ELSE xr THEN q PAY cells QXRA + ! ;
 
@@ -2072,6 +2067,9 @@ variable CATCH-N  variable FACTS
 \ A declared one-cell integer input's cell holds its index from the top in
 \ CP-ID; the moves that carry a literal carry it, and no store keeps it.
 7 constant CP-ARG
+\ A quotation literal whose body ends dead with no `exit`: the cell holds the
+\ quotation compiled from it, whose term is CP-TYPE, so the cell never returns.
+8 constant CP-NORET
 : CP-BASE ( -- ^n ) CP-P @ ;
 : CP-AT ( n -- ^n ) 1- 32 * CP-BASE + ;
 : CP-KIND ( n -- n ) CP-AT @ ;
@@ -2136,10 +2134,16 @@ private
    pf 0= IF RES-FALSE EXIT THEN
    pf CP-KIND CP-ARG = ;
 
-\ The facts a loop entry drops: a literal's and a declared input's.
-: CP-VALUE? ( n -- bool ) dup CP-LIT? swap CP-ARG? or ;
+: CP-NORET? ( n -- bool ) {: pf:n :}
+   pf 0= IF RES-FALSE EXIT THEN
+   pf CP-KIND CP-NORET = ;
 
-\ A loop's carried-cell comparison reads a literal or input fact as none: a
+\ The facts a loop entry drops: a literal's, a declared input's and a
+\ never-returning quotation's.
+: CP-VALUE? ( n -- bool ) {: pf:n :}
+   pf CP-LIT?  pf CP-ARG? or  pf CP-NORET? or ;
+
+\ A loop's carried-cell comparison reads a CP-VALUE? fact as none: a
 \ loop entry drops every such fact (ROW-NO-LIT).
 : PF-NO-LIT ( n -- n ) dup CP-VALUE? IF drop 0 THEN ;
 
@@ -2289,6 +2293,9 @@ PTX-BARRIER-DEFAULT
    node P>LOST copy P-LOST!
    copy ;
 : ROW-VIEW ( n -- n ) FACTS @ ROW-VIEW-AT ;
+: ROW-NORET? ( n -- bool )
+   R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   P>PROOF CP-NORET? ;
 : ROW-NO-PROOF ( n -- n )
    R-RES {: node:n :}
    node TAG S-PUSH <> IF node EXIT THEN
@@ -3405,7 +3412,6 @@ EXPORT CHECK:Q>DOUT
 EXPORT CHECK:Q>FACTS
 EXPORT CHECK:Q>RIN
 EXPORT CHECK:Q>ROUT
-EXPORT CHECK:Q>XDEAD
 EXPORT CHECK:Q>XDFIELD
 EXPORT CHECK:Q>XRFIELD
 EXPORT CHECK:QX!
@@ -3615,7 +3621,7 @@ EXPORT CHECK:TWALK-SHALLOWER
    din x Q>DIN =  dout x Q>DOUT = and  rin x Q>RIN = and  rout x Q>ROUT = and IF t EXIT THEN
    din dout rin rout MK-QUOT {: copy:n :}
    x Q>BLOCK copy Q-BLOCK!
-   copy x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
+   copy x Q>XDFIELD x Q>XRFIELD QX!
    x Q>FACTS copy Q-FACTS!
    copy ;
 
@@ -4746,7 +4752,7 @@ EXPORT CHECKER-QUOT-FRESH:START
    q Q>DIN pair? QAPP-ROW  q Q>DOUT pair? QAPP-ROW
    q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
    q Q>BLOCK fresh Q-BLOCK!
-   fresh q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   fresh q Q>XDFIELD q Q>XRFIELD QX!
    q Q>FACTS fresh Q-FACTS!
    fresh ;
 
@@ -5054,7 +5060,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
 
 
 \ Loop edge b carries entry row a's proofs and lost lineage; a logical cell
-\ compares with each field of its group, and a literal or input fact is none.
+\ compares with each field of its group, and a CP-VALUE? fact is none.
 : ROW-META= ( n n -- bool )
    {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
@@ -5348,6 +5354,13 @@ PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 
 : TADDR ( n -- ^u8 )
    TBASE@ swap + ;
+
+: DEAD-OWNER! ( str -- )
+   DEADTU !  DEADTA ! ;
+
+\ The path ends at the token TSTART..TI, which E-DEAD-CODE names.
+: TOKEN-DEAD! ( -- )
+   TSTART @ TADDR  TI @ TSTART @ -  DEAD-OWNER!  -1 DEADP ! ;
 
 : TBYTE@ ( n -- n )
    TADDR c@ ;
@@ -6485,6 +6498,7 @@ variable QUOT-LOSS
    THEN ;
 
 : RSEXEC
+   DCUR @ ROW-NORET? {: noret:bool :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: din:n :}
    din STEP-BORROWS? {: borrows:bool :}
@@ -6509,8 +6523,8 @@ variable QUOT-LOSS
         \ reach nothing below them.
         DCUR @ CWIN-DTERMS @ ROW-SKIP  RCUR @ CWIN-RTERMS @ ROW-SKIP  THROW-EDGE-ROWS
      THEN
-     QTT @ Q>XDEAD IF
-        -1 DEADP !
+     noret IF
+        TOKEN-DEAD!
      ELSE
         QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
         DCUR @ CWIN-DOUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
@@ -6559,6 +6573,7 @@ variable QUOT-LOSS
 : RSCATCH
    \ Catchable `throw` is not process no-return. `die` remains separate
    \ no-return metadata because it cannot be recovered by a quotation catch.
+   DCUR @ ROW-NORET? {: noret:bool :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: din:n :}
    din STEP-BORROWS? {: borrows:bool :}
@@ -6568,15 +6583,15 @@ variable QUOT-LOSS
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
-     QTT @ Q>XDEAD QTT @ Q>XHAS 0= and 0=
+     noret QTT @ Q>XHAS 0= and 0=
    ELSE RES-TRUE THEN {: returns:bool :}
    QTT @ TAG T-QUOT = IF
      QTT @ INH-CHARGE
      QUOT-WINDOW
      CATCH-N @ 1 + CATCH-N !
      QTT @ QUOT-STEP-IN
-     QTT @ Q>XDEAD IF
-        QTT @ Q>XHAS 0= IF -1 DEADP ! THEN
+     noret IF
+        QTT @ Q>XHAS 0= IF TOKEN-DEAD! THEN
      ELSE
         \ The body leaves the stack it found: expected is the live row, actual
         \ what the body leaves.
@@ -6595,8 +6610,8 @@ variable QUOT-LOSS
      \ has no exceptional edge of its own. Only consumed-input loss is shared.
      OK @ 0 <> returns and IF
         \ the normal row walks beside the live one, so it is expanded alike
-        QTT @ Q>XDEAD IF 0 ELSE QTT @ Q>DOUT CWIN-DTERMS @ ROW-EXPAND-TERMS THEN {: nd:n :}
-        QTT @ Q>XDEAD IF 0 ELSE QTT @ Q>ROUT THEN {: nr:n :}
+        noret IF 0 ELSE QTT @ Q>DOUT CWIN-DTERMS @ ROW-EXPAND-TERMS THEN {: nd:n :}
+        noret IF 0 ELSE QTT @ Q>ROUT THEN {: nr:n :}
         DCUR @ nd CWIN-DTERMS @ CWIN-DMASK @ QTT @ Q>XHAS ROW-STALE-TOP DCUR !
         RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ROW-STALE-TOP RCUR !
      THEN
@@ -6614,11 +6629,11 @@ variable QUOT-LOSS
 
 \ Cleanup cannot borrow from either the body's input or its result row. Its
 \ own data/return windows must be empty and neutral, unless it never returns.
-: CLEANUP-QUOT? ( n -- bool ) {: q:n :}
+: CLEANUP-QUOT? ( n bool -- bool ) {: q:n noret:bool :}
    q TAG T-QUOT <> IF RES-FALSE EXIT THEN
    q Q>DIN ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
    q Q>RIN ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
-   q Q>XDEAD IF RES-TRUE EXIT THEN
+   noret IF RES-TRUE EXIT THEN
    q Q>DOUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
    q Q>ROUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
    q Q>DIN R-RES q Q>DOUT R-RES =
@@ -6626,26 +6641,28 @@ variable QUOT-LOSS
 
 : RSFINALLY ( -- )
    STEP-AT-BASE? IF 2 UF-NEED !  UF-NEED @ UF-HAVE @ > IF STEP-UNDERFLOW! EXIT THEN THEN   \ the body and the cleanup
+   DCUR @ ROW-NORET? {: cdead:bool :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    FRESH MK-VAR tv rest MK-PUSH MK-PUSH STEP-BORROWS? {: borrows:bool :}
    DCUR @ tv rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
    OK @ borrows and IF STEP-UNDERFLOW! THEN
    tv T-RES {: cleanup:n :}
-   cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
+   cleanup cdead CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
    cleanup INH-CHARGE
+   DCUR @ ROW-NORET? {: bdead:bool :}
    RSEXEC
    OK @ 0= IF EXIT THEN
-   QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
+   bdead QTT @ Q>XHAS 0= and IF EXIT THEN
    cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE-ROWS THEN   \ a cleanup borrows nothing: its own entry row
-   cleanup Q>XDEAD IF -1 DEADP ! THEN ;
+   cdead IF TOKEN-DEAD! THEN ;
 
-: C2-FINISH-QUOT? ( n -- bool ) {: q:n :}
+: C2-FINISH-QUOT? ( n bool -- bool ) {: q:n noret:bool :}
    q TAG T-QUOT <> IF RES-FALSE EXIT THEN
    q Q>DIN ROW-CELLS 1 <> IF RES-FALSE EXIT THEN
    q Q>DIN R-RES P>TYPE CC-N MK-CON UNIFY-EXACT 0= IF RES-FALSE EXIT THEN
    q Q>RIN ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
-   q Q>XDEAD IF RES-TRUE EXIT THEN
+   noret IF RES-TRUE EXIT THEN
    q Q>DOUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
    q Q>ROUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
    q Q>DIN R-RES P>REST R-RES q Q>DOUT R-RES =
@@ -6653,21 +6670,24 @@ variable QUOT-LOSS
 
 : RS-C2-INVOKE ( -- )
    STEP-AT-BASE? IF 3 UF-NEED !  UF-NEED @ UF-HAVE @ > IF STEP-UNDERFLOW! EXIT THEN THEN   \ the body, the cleanup and the finish
+   DCUR @ ROW-NORET? {: fdead:bool :}
    FRESH MK-VAR FRESH MK-ROW {: finish-term rest :}
    DCUR @ finish-term rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR !
-   finish-term T-RES C2-FINISH-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
+   finish-term T-RES fdead C2-FINISH-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
+   DCUR @ ROW-NORET? {: cdead:bool :}
    FRESH MK-VAR FRESH MK-ROW {: clean-term body-row :}
    DCUR @ clean-term body-row MK-PUSH UNIFY OK @ and OK !
    body-row DCUR !
    clean-term T-RES {: cleanup:n :}
-   cleanup CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
+   cleanup cdead CLEANUP-QUOT? 0= IF MD-FINALLY-CLEANUP MDIAG! 0 OK ! EXIT THEN
    finish-term T-RES INH-CHARGE  cleanup INH-CHARGE
+   DCUR @ ROW-NORET? {: bdead:bool :}
    RSEXEC
    OK @ 0= IF EXIT THEN
-   QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
+   bdead QTT @ Q>XHAS 0= and IF EXIT THEN
    cleanup Q>XHAS IF DCUR @ RCUR @ THROW-EDGE-ROWS THEN
-   cleanup Q>XDEAD IF -1 DEADP ! THEN ;
+   cdead IF TOKEN-DEAD! THEN ;
 
 variable RSH
 
@@ -12512,7 +12532,7 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
    q Q>DIN din =  q Q>DOUT dout = and  q Q>RIN rin = and  q Q>ROUT rout = and
    IF t0 EXIT THEN
    din dout rin rout MK-QUOT {: nq:n :}
-   nq q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   nq q Q>XDFIELD q Q>XRFIELD QX!
    q Q>FACTS nq Q-FACTS!
    q Q>BLOCK nq Q-BLOCK!
    nq ;
@@ -12560,6 +12580,73 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
    SGIN @ SPLIT-ROW SGIN !  SGOUT @ SPLIT-ROW SGOUT !
    SGHASR @ IF SGRIN @ SPLIT-ROW SGRIN !  SGROUT @ SPLIT-ROW SGROUT ! THEN ;
 
+\ -1 when the last EFF-APPLY's call has no normal continuation (DEAD-CALL?).
+SCRATCH{
+variable CALL-DEAD
+}SCRATCH
+
+\ Whether row var s occurs in quotation q only as the base of its output row.
+: QUOT-OUT-ONLY? ( n n -- bool ) {: s:n q:n :}
+   s q Q>DIN ROW-OCC?  s q Q>RIN ROW-OCC? or  s q Q>ROUT ROW-OCC? or
+   IF RES-FALSE EXIT THEN
+   q Q>DOUT R-RES
+   BEGIN dup TAG S-PUSH = WHILE
+      s over P>TYPE RES-FALSE OCC-WALK IF drop RES-FALSE EXIT THEN
+      P>REST R-RES
+   REPEAT
+   s = ;
+
+: NZ-PLAIN? ( n -- bool )
+   P>TYPE T-RES {: t:n :}
+   t LAYOUT-PARAM? t HIDDEN-PARAM? or 0= ;
+
+\ 0 for a declared cell want without s; 1 for a quotation reaching s only by
+\ its output's base, paired exactly with a push node holding a literal that
+\ never returns; else -1.
+: DEAD-ARG ( n n n bool -- n ) {: s:n want:n node:n exact:bool :}
+   s want RES-FALSE OCC-WALK 0= IF 0 EXIT THEN
+   want T-RES {: q:n :}
+   q TAG T-QUOT <> IF -1 EXIT THEN
+   s q QUOT-OUT-ONLY? 0= IF -1 EXIT THEN
+   exact 0= IF -1 EXIT THEN
+   node P>PROOF CP-NORET? 0= IF -1 EXIT THEN
+   1 ;
+
+\ Whether DEAD-ARGS' walk goes on: din's row d is a cell and no pair has
+\ disqualified the call.
+: DEAD-MORE? ( n n bool n -- n n bool n bool ) {: d:n p:n exact:bool c:n :}
+   d p exact c
+   d R-RES TAG S-PUSH =  c 0 < 0= and ;
+
+\ One pair of DEAD-ARGS' walk: the next rows and exactness, and the count, -1
+\ once p has no cell or the pair disqualifies the call. A hidden- or
+\ layout-parameter cell takes a different number of row cells on each side.
+: DEAD-STEP ( n n bool n n -- n n bool n ) {: d:n p:n exact:bool c:n s:n :}
+   p R-RES TAG S-PUSH <> IF d p exact -1 EXIT THEN
+   d R-RES {: dn:n :}  p R-RES {: pn:n :}
+   s dn P>TYPE pn exact DEAD-ARG {: k:n :}
+   dn P>REST  pn P>REST
+   exact dn NZ-PLAIN? and  pn NZ-PLAIN? and
+   k 0 < IF -1 ELSE c k + THEN ;
+
+\ The count of din's DEAD-ARG quotations against the row pd, -1 when a cell,
+\ din's base or a cell pd lacks disqualifies the call.
+: DEAD-ARGS ( n n n -- n ) {: s:n din:n pd:n :}
+   din pd RES-TRUE 0
+   BEGIN DEAD-MORE? WHILE s DEAD-STEP REPEAT
+   {: d:n p:n exact:bool c:n :}
+   c 0 < IF -1 EXIT THEN
+   s d R-RES ROW-OCC? IF -1 EXIT THEN
+   c ;
+
+\ Never returns when dout's base S occurs in din only as quotation output bases
+\ and each quotation pd gives there never returns: only running one makes S.
+: DEAD-CALL? ( ^u8 n n n -- bool ) {: h:^ pd:n din:n dout:n :}
+   h E-HASR@ 0 <> IF RES-FALSE EXIT THEN
+   dout ROW-TAIL {: s:n :}
+   s TAG S-ROW <> IF RES-FALSE EXIT THEN
+   s din pd DEAD-ARGS 0 > ;
+
 : EFF-APPLY ( ^u8 -- ) {: h:^ :}
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
@@ -12573,6 +12660,7 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
    h E-RIN@ E-INST SPLIT-MARKED {: rin:n :}
    h E-ROUT@ E-INST SPLIT-MARKED {: rout:n :}
    mark din dout rin rout E-AK-LIST
+   h pd din dout DEAD-CALL? {: noret:bool :}
    -1 SCOPE-INTRO-ON !
    STEP-R @ {: outer-r:n :}
    h E-HASR@ STEP-R !
@@ -12587,7 +12675,8 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
    pd pr DCUR @ RCUR @ TWO-ROW-LOSS {: od:n orow:n :}
    od DCUR !  orow RCUR !
    scope-start bind-region din dout rin rout SCOPE-INTRO-FENCE-XT
-   h LIN-EFF-PASS ;
+   h LIN-EFF-PASS
+   noret Q-FLAG>N CALL-DEAD ! ;
 
 : EFF-QUOT ( ^u8 -- n ) {: h:^ :}
    h E-INST-RESET
@@ -15784,7 +15873,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    q Q>DIN CALL-SPINE-COPY q Q>DOUT CALL-SPINE-COPY
    q Q>RIN q Q>ROUT MK-QUOT {: copy:n :}
    q Q>BLOCK copy Q-BLOCK!
-   copy q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   copy q Q>XDFIELD q Q>XRFIELD QX!
    q Q>FACTS copy Q-FACTS!
    copy ;
 
@@ -17703,10 +17792,6 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
    DCUR @ 0 NZ-SEED-ROW DCUR !
    0 NZ-TAKEN ! ;
 
-: NZ-PLAIN? ( n -- bool )
-   P>TYPE T-RES {: t:n :}
-   t LAYOUT-PARAM? t HIDDEN-PARAM? or 0= ;
-
 \ Whether MARKS has input I always divided by, and always thrown.
 : NZ-MARKS ( n n -- bool bool ) {: i:n marks:n :}
    marks i rshift 1 and 0 <>
@@ -18549,7 +18634,7 @@ private
       x Q>ROUT depth scope TWALK-DEEPER RECURSE TWALK-SHALLOWER
       MK-QUOT {: copy:n :}
       x Q>BLOCK copy Q-BLOCK!
-      copy x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
+      copy x Q>XDFIELD x Q>XRFIELD QX!
       x Q>FACTS copy Q-FACTS!
       copy EXIT
    THEN
@@ -20803,8 +20888,8 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    dup 0 < IF drop MD-NO-LOOP CF-FAIL EXIT THEN
    CF-LOOP-BIT invert CF-LOOPS @ and CF-LOOPS ! ;
 
-\ A loop entry drops every literal and input fact: a carried cell is not a
-\ literal, or the input unchanged, on the second pass.
+\ A loop entry drops every CP-VALUE? fact: on the second pass a carried cell
+\ need not hold the literal, input or quotation it held on the first.
 : CF-LOOP-ENTRY ( -- )
    DCUR @ ROW-NO-LIT DCUR !  RCUR @ ROW-NO-LIT RCUR ! ;
 
@@ -20990,7 +21075,8 @@ variable QTMP
      \ A literal infers its fixed window before its implicit tails generalize.
      QTMP @ QUOT-ROWS-GENERALIZE
      QTMP @ MARK
-     QTMP @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
+     DEADP @ XSET @ 0= and {: noret:bool :}
+     QTMP @ THDMASK @ XMASK THRMASK @ XMASK QX!
      INHSET @ CTL-INHERITED and  THSET @ IF CTL-THROW or THEN  QTMP @ Q-FACTS!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XFA @ XFACT !
@@ -21002,7 +21088,9 @@ variable QTMP
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !
      CF-TOP CF.FA @ FACTS !
-     QTMP @  CF@A  MK-PUSH DCUR !
+     QTMP @  CF@A  MK-PUSH {: lit:n :}
+     noret IF CP-NORET 0 QTMP @ 0 CP-NEW lit P-PROOF! THEN
+     lit DCUR !
      CF-LOC-REST
      CF-DROP THEN ;
 
@@ -21436,9 +21524,6 @@ variable CPAY-ON
       SKIP-PARSE-LIT-PAYLOAD
       CPAY-U @ 0 > CPAY-ON !
    THEN ;
-
-: DEAD-OWNER! ( str -- )
-   DEADTU !  DEADTA ! ;
 
 : DEAD-CLOSE? {: a u :}
    a u s" else"   CORE-STR= IF RES-TRUE EXIT THEN
@@ -22468,13 +22553,13 @@ EXPORT CHECKER-TAPE:K-IS
    DCUR @ MK-PUSH DCUR ! ;
 
 \ `['] W` pushes a term with W's facts and W's throw
-\ edge, not its dead flag: with it `['] WDEAD catch` would certify code `hb` cannot compile.
+\ edge, and its cell no CP-NORET: with one `['] WDEAD catch` would certify code `hb` cannot compile.
 : BTICK-EDGE ( n n -- n ) {: q:n sym:n :}
    sym CTL-WORD-SYM {: ctl:n :}
    ctl CTL-INHERITED and
    ctl XFER-FLAGS CTL-THROW and or  q Q-FACTS!
    ctl XFER-FLAGS CTL-THROW and 0= IF q EXIT THEN
-   q RES-FALSE
+   q
    \ a mask bit counts from the top of W's declared input row, the term's din
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
