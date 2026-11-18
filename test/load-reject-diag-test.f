@@ -788,14 +788,7 @@ undefine include
    BODY$ S\" \n\nparse-name x drop 24 + 29 evaluate\nTRUSTED: LRD-SF ( -- ) 0 if\n;\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-CONTROL]: a control structure is still open at `;`" s" :5:1"
-      BODY-REJECT-AT
-   s" the checker hook places a checker-only duplicate in a slice at its line" T-LABEL
-   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;STRUCTURE\" TYPE-DECL:REPLAY-STRUCTURE drop 2drop ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
-   BODY$ RUN
-   ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
-   BODY$ s" :4:3" ASSERT-AT
-   EXITED @ TTRUE
-   RC @ 70 T= ;
+      BODY-REJECT-AT ;
 
 \ body.f keeps a token of its line 2 and includes mark.f, which writes a
 \ record at it: the record is placed in body.f, not in the text that loaded it.
@@ -852,21 +845,6 @@ undefine include
    BODY$ RUN
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `LRD-BS` cannot be recorded"
       s" :2:8" BODY-REJECT-AT ;
-
-\ A name only the checker holds, a STRUCTURE replay with no word behind it, is
-\ rejected by check-hook.f DEFINITION through src/core/check-walk.f
-\ REJECT-DUPLICATE, placed at the `evaluate` that ran the string, with the
-\ string in an evaluated note.
-: TEST-REPLAY-DUP-PLACE ( -- )
-   s" an evaluated checker-only duplicate is placed at its evaluate" T-LABEL
-   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n ;STRUCTURE\" TYPE-DECL:REPLAY-STRUCTURE drop 2drop ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
-   BODY$ RUN
-   ERR$ s" error[E-DUPLICATE-DEFINITION]: `LRDREP:MAKE` is already defined" CONTAINS? TTRUE
-   BODY$ s" :3:36" ASSERT-AT
-   s" : LRDREP:MAKE ( n -- n ) 1 + ;" s" already defined" ASSERT-EVALUATED
-   OUT-U @ 0 T=
-   EXITED @ TTRUE
-   RC @ 70 T= ;
 
 : TEST-REPLAY-TASK ( -- )
    s" a replay inside a definition while a task is live is rejected" T-LABEL
@@ -1545,7 +1523,6 @@ variable LONG-U
    TEST-EVALUATED-PLACE
    TEST-EVALUATED-SLICE
    TEST-OUTER-FILE-PLACE
-   TEST-REPLAY-DUP-PLACE
    TEST-REPLAY-TASK
    TEST-WINDOW-KEPT
    TEST-COMPOSE-KEPT

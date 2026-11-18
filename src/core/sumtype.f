@@ -2252,8 +2252,6 @@ EXPORT CHECKER-RESOLVE:PUBLIC-SECTION
 : TDECL-ADDR-REPLAY ( n -- )
    RES-TRUE [: TDECL-ADDR-REPLAY-REG ;] TDECL-GEN-PLACED ;
 
-public
-
 \ Makes DEFTYPE's converters over FAM, named from surface NA NU and base BA BU:
 \ >NAME then NAME>BASE, the base in upper case. A family refused under a
 \ multi-error load is -1 and has no converters.
@@ -2264,8 +2262,6 @@ public
    TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-IN fam  TDECL-CHILD
    TDGEN-CLEAR  na nu TDGEN-APP  [char] > TDGEN-C,  ba bu TDGEN-UPPER
    TDGEN-BUF TDGEN-U @  CHILD-ABI:NOMINAL-OUT fam  TDECL-CHILD ;
-
-private
 
 \ Declares DEFTYPE's family, tail TA TU named by surface NA NU, and makes its
 \ converters, >NAME then NAME>N.

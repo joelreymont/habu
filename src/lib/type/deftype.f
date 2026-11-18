@@ -13,6 +13,8 @@ package VNOM
 
 private
 EXPORT TYPE-DECL:SD-WRAP
+EXPORT TYPE-DECL:SD-ONE-NAME
+EXPORT TYPE-DECL:TDECL-CONVERTERS
 EXPORT TYPE-DECL:CHECKER-DEFTYPE
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-DECLARATION
@@ -41,10 +43,10 @@ public
 \ Mints NAME over BASE, one name: a family as wide as the base, with
 \ >NAME ( base -- name ) and NAME>BASE ( name -- base ).
 : MINT-OVER ( str str -- ) {: sa:^ su:n ba:^ bu:n :}
-   sa su ba bu TYPE-DECL:SD-ONE-NAME 0= IF EXIT THEN
+   sa su ba bu SD-ONE-NAME 0= IF EXIT THEN
    sa su MANGLE {: ta:^ tu:n :}
    ta tu sa su ba bu s" deftype" SD-WRAP {: fam:n :}
-   sa su ba bu fam TYPE-DECL:TDECL-CONVERTERS ;
+   sa su ba bu fam TDECL-CONVERTERS ;
 
 global
 

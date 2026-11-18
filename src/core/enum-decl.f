@@ -371,16 +371,13 @@ ED-RESET
 public
 
 \ Registers an ENUM from a body a tool lexed, by DECLARE-ENUM's grammar, defining
-\ no word; a body without ;ENUM is rejected "missing ;ENUM" (enum-decl-suite 23e).
+\ no word; a body without ;ENUM is rejected "missing ;ENUM".
 : REPLAY-ENUM ( str str -- str bool )
    ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 
 ;package
 
 EXPORT ENUM-DECL:DECLARE-ENUM
-
-public
-
 EXPORT ENUM-DECL:REPLAY-ENUM
 
 global

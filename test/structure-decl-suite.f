@@ -5,13 +5,18 @@ split-str
 \ generated words. A failure prints F<index> and detail; T-REPORT exits 1.
 
 require src/habu/verify-source.f
-require test/replay-scope.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/lib/test.f
 require src/lib/test/rejection-text.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test/ending.f
+require src/lib/engine-candidate.f
 
 \ Capture every reject's declaration diagnostic from the start; the last
 \ section asserts the rendered lines.
@@ -887,88 +892,66 @@ s\"   = help: name the structure being declared only beneath `^`, as in `FIELD n
 
 DECL-DIAG:OFF
 
-\ TYPE-DECL:REPLAY-STRUCTURE - registering a STRUCTURE from tokens a tool already lexed
-\ (src/habu/verify-source.f), so a later declaration can name the family as a payload
-\ type. Registration includes the MAKE/UNMAKE variant rows, their constructor
-\ package and checked effects; replay emits no runtime code.
-package struct-replay-test
-public
-
-\ The replay entry under `catch` on copies of both strings, so a reject answers
-\ its code as TEST-EVAL:RC does for the live entry.
-: RP-EV ( str str -- ) TYPE-DECL:REPLAY-STRUCTURE TFALSE 2drop ;
-: RP-TRY ( str str -- n )
-   [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
-: DICT-RECS ( -- n ) ndict@ ;
-
-variable RP-DICT
-: DICT-MARK ( -- ) DICT-RECS RP-DICT ! ;
-: DICT-SAME ( -- ) DICT-RECS RP-DICT @ T= ;
-
-\ A replayed STRUCTURE registers its family: a checked MAKE call resolves in the
-\ scope it was replayed in, and so does a field typed by that family.
-: RP-SD ( -- )
-   s" rpsd" s" FIELD one n FIELD two n ;STRUCTURE" RP-TRY 0 T=
-   s" S1 ( n n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" S1BAD ( n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-   s" rpsdpay" s" FIELD h rpsd ;STRUCTURE" RP-TRY 0 T= ;
-
-\ Header clauses replay too; derived EQ calls rows only the replay recorded, so
-\ it runs in the check tool's replay scope (test/replay-scope.f).
-: RP-SD-HEADER ( -- )
-   s" rpsdh" s" POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
-   RP-TRY 0 T= ;
-
-\ A replayed BUFFER record (src/habu/verify-source.f) has the live one's MAKE.
-: RP-SDBUF ( -- )
-   s" rpsdbuf" s" FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" RP-TRY 0 T=
-   s" SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" SB1BAD ( n n n n n -- rpsdbuf ) RPSDBUF:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
-
+\ tools/check.f's declaration pre-pass replays each STRUCTURE it reads, so the
+\ source after it is checked against the family's generated words. One
+\ --all-errors --verify-only run reports each rejection asserted here, and no
+\ other. The dangling FIELD ends the fixture: its body runs to the end of input.
+package struct-check-test
 private
+
+$2000 constant SC-CAP
+create SC-PATH PATH-CAP allot   variable SC-PATH-U
+create SC-OUT SC-CAP allot
+create SC-ERR SC-CAP allot   variable SC-ERR-U
+create SC-NONE 1 allot
+
+: SC-FILE ( -- str ) SC-PATH SC-PATH-U @ ;
+: SC-ERR$ ( -- str ) SC-ERR SC-ERR-U @ ;
+: SC-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
+
+: SC-SRC$ ( -- str )
+   SB-RESET
+   s" STRUCTURE rpsdh POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE" SC-LINE
+   s" STRUCTURE rpsdbuf FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" SC-LINE
+   s" : SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE ;" SC-LINE
+   s" : SB1BAD ( n n n n n -- rpsdbuf ) RPSDBUF:MAKE ;" SC-LINE
+   s" STRUCTURE rpsdbad FIELD one nope ;STRUCTURE" SC-LINE
+   s" STRUCTURE rpsddangle FIELD" SC-LINE
+   SB$ ;
+
+: SC-RUN ( -- )
+   SC-FILE SC-SRC$ FS:WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
+   s" --verify-only" >LEN PROC-ARGV+  SC-FILE >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN  SC-NONE 0 >LEN  SC-OUT SC-CAP >LEN
+   SC-ERR SC-CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   erru LEN>N SC-ERR-U !
+   SC-SRC$ SC-OUT outu LEN>N SC-ERR$ oc 70 T-ENDING-EXITED= ;
+
+\ The record headed HEAD is placed at the fixture's PLACE, `:line:column`, and
+\ its caret says LABEL.
+: SC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
+   SB-RESET  h hu SB-APPEND  s\" \n --> " SB-APPEND  SC-FILE SB-APPEND
+   p pu SC-LINE
+   SC-ERR$ SB$ CONTAINS? TTRUE
+   SB-RESET  s" ^ " SB-APPEND  l lu SC-LINE
+   SC-ERR$ SB$ CONTAINS? TTRUE ;
+
+s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
+s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
+SC-RUN
+SC-ERR$ s" error[" COUNT-SUB 3 T=
+s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
+   s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
+s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
+   s" :5:29" s" unknown type" SC-RECORD
+s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
+   s" :7:1" s" missing field name" SC-RECORD
+FS:CLEANUP-RUN
 ;package
-
-\ The native dictionary does not move (DICT-SAME).
-struct-replay-test:DICT-MARK
-' struct-replay-test:RP-SD CHECK:SCOPED
-struct-replay-test:DICT-SAME
-
-' struct-replay-test:RP-SD-HEADER TOOL-REPLAY:RUN
-
-\ A malformed replayed STRUCTURE reports through the same renderer as a live one.
-DECL-DIAG:PROSE
-s" rpsdbad" s" FIELD one nope ;STRUCTURE" struct-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ unknown type\n" DECL-DIAG:HAS? TTRUE
-s\" = word: nope\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: name a type declared before this declaration: `n`, `^u8`, a header parameter, a" DECL-DIAG:HAS? TTRUE
-
-\ A buffer with no terminator rejects through the front end's own gate.
-DECL-DIAG:PROSE
-s" rpsdnoend" s" FIELD one n" struct-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsdnoend`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ missing ;STRUCTURE\n" DECL-DIAG:HAS? TTRUE
-s\" = word: rpsdnoend\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: end the declaration with `;STRUCTURE` after its last field\n" DECL-DIAG:HAS? TTRUE
-
-\ A zero-length name reaches the missing-name gate.
-DECL-DIAG:PROSE
-s" " s" FIELD one n ;STRUCTURE" struct-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration\n" DECL-DIAG:HAS? TTRUE
-s\" ^ missing name\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: write the family name after `STRUCTURE`, as in `STRUCTURE point`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:OFF
-
-\ A rejected replay leaves the stream closed, so the next LIVE declaration reads
-\ the input source again.
-DECL-DIAG:PROSE
-DECL-DIAG:PROSE
-s" rpsddangle" s" FIELD" struct-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ missing field name\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: write a name and a type after `FIELD`, as in `FIELD x n`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:OFF
-s" STRUCTURE rpsdafter FIELD one n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ A field may spell a keyword and a family name may contain one, but a public
 \ family's field under DERIVE addr names its accessor and takes the definer rule.
@@ -1696,7 +1679,5 @@ SDBIG:SRC$ TEST-EVAL:RC 0 T=
 \ A buffer of it checks each nested instance once.
 1 TYPED-BUFFER SDND-REC sdndeep
 7 0 SDND-REC SDND-GO 7 T=
-
-' struct-replay-test:RP-SDBUF CHECK:SCOPED
 
 T-REPORT

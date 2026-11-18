@@ -5,11 +5,17 @@ split-str
 
 require src/core/exit-status.f
 require src/habu/verify-source.f
-require test/replay-scope.f
 require test/decl-diag-capture.f
 require src/lib/test.f
 require src/lib/test/rejection-text.f
 require src/lib/adt/option.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-argv.f
+require src/lib/test/ending.f
+require src/lib/engine-candidate.f
 
 DECL-DIAG:PROSE
 
@@ -769,85 +775,69 @@ s" reason two" s" fix two" 990002 DECL-REJECT:EXPLAIN
 990002 DECL-REJECT:REASON$ s" reason two" DECL-DIAG:SAME? TTRUE
 ;package
 
-\ 23. TYPE-DECL:REPLAY-ENUM - registering an ENUM from tokens a tool already lexed.
-package enum-replay-test
-public
-
-: RP-EV ( str str -- ) TYPE-DECL:REPLAY-ENUM TFALSE 2drop ;
-: RP-TRY ( str str -- n )
-   [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
-
-\ A replayed ENUM's family serves candidates in the scope it was replayed in.
-: RP-COMPACT ( -- )
-   s" rpcompact" s" red green blue ;ENUM" RP-TRY 0 T=
-   s" R1 ( -- rpcompact ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" R1BAD ( -- n ) RPCOMPACT:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T= ;
-
-\ POLICY and DERIVE replay; derived EQ calls rows only the replay recorded, so
-\ it runs in the check tool's replay scope (test/replay-scope.f).
-: RP-POLICY ( -- )
-   s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
-   RP-TRY 0 T= ;
-
+\ 23. tools/check.f's declaration pre-pass replays each ENUM it reads, so the
+\     source after it is checked against the family's generated words. One
+\     --all-errors --verify-only run reports each rejection asserted here, and
+\     no other. The dangling VARIANT ends the fixture: its body runs to the end
+\     of input.
+package enum-check-test
 private
-;package
 
-enum-ctor-test:DICT-MARK
-' enum-replay-test:RP-COMPACT CHECK:SCOPED
-enum-ctor-test:DICT-SAME
+$2000 constant EC-CAP
+create EC-PATH PATH-CAP allot   variable EC-PATH-U
+create EC-OUT EC-CAP allot
+create EC-ERR EC-CAP allot   variable EC-ERR-U
+create EC-NONE 1 allot
 
-s" rpfull" s" VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
-enum-replay-test:RP-TRY 0 T=
+: EC-FILE ( -- str ) EC-PATH EC-PATH-U @ ;
+: EC-ERR$ ( -- str ) EC-ERR EC-ERR-U @ ;
+: EC-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
 
-\ 23c. POLICY and DERIVE replay.
-' enum-replay-test:RP-POLICY TOOL-REPLAY:RUN
+: EC-SRC$ ( -- str )
+   SB-RESET
+   s" ENUM rpcompact red green blue ;ENUM" EC-LINE
+   s" : R1 ( -- rpcompact ) RPCOMPACT:RED ;" EC-LINE
+   s" : R1BAD ( -- n ) RPCOMPACT:RED ;" EC-LINE
+   s" ENUM rppol POLICY packed-tag DERIVE eq hash red green ;ENUM" EC-LINE
+   s" ENUM rpbadv VARIANT vv stray ;VARIANT ;ENUM" EC-LINE
+   s" ENUM rpbadname red red ;ENUM" EC-LINE
+   s" ENUM rpdangle VARIANT" EC-LINE
+   SB$ ;
 
-DECL-DIAG:PROSE
-s" rpbadv" s" VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `rpbadv`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ unexpected token in variant block\n" DECL-DIAG:HAS? TTRUE
-s\" = word: stray\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: write only `FIELD name type` clauses before `;VARIANT`, with no comments in the body\n" DECL-DIAG:HAS? TTRUE
+: EC-RUN ( -- )
+   EC-FILE EC-SRC$ FS:WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
+   s" --verify-only" >LEN PROC-ARGV+  EC-FILE >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN  EC-NONE 0 >LEN  EC-OUT EC-CAP >LEN
+   EC-ERR EC-CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   erru LEN>N EC-ERR-U !
+   EC-SRC$ EC-OUT outu LEN>N EC-ERR$ oc 70 T-ENDING-EXITED= ;
 
-DECL-DIAG:PROSE
-s" rpbadname" s" red red ;ENUM" enum-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `rpbadname`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ duplicate variant\n" DECL-DIAG:HAS? TTRUE
-s\" = word: red\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: give each variant of the enum its own name\n" DECL-DIAG:HAS? TTRUE
+\ The record headed HEAD is placed at the fixture's PLACE, `:line:column`, and
+\ its caret says LABEL.
+: EC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
+   SB-RESET  h hu SB-APPEND  s\" \n --> " SB-APPEND  EC-FILE SB-APPEND
+   p pu EC-LINE
+   EC-ERR$ SB$ CONTAINS? TTRUE
+   SB-RESET  s" ^ " SB-APPEND  l lu EC-LINE
+   EC-ERR$ SB$ CONTAINS? TTRUE ;
 
-\ 23e. A buffer missing its terminator rejects through the front end's own
-\      end-of-input gate, as a truncated live declaration does.
-DECL-DIAG:PROSE
-s" rpnoend" s" red green" enum-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `rpnoend`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ missing ;ENUM\n" DECL-DIAG:HAS? TTRUE
-s\" = word: rpnoend\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: end the declaration with `;ENUM`\n" DECL-DIAG:HAS? TTRUE
-
-\ 23f. A zero-length name reaches the missing-name gate instead of silently
-\      promoting the first body token to the family name.
-DECL-DIAG:PROSE
-s" " s" red green ;ENUM" enum-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration\n" DECL-DIAG:HAS? TTRUE
-s\" ^ missing name\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: write the family name after `ENUM`, as in `ENUM color red green ;ENUM`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:OFF
-
-\ 23g. A REJECTED replay leaves the stream closed, so the next LIVE declaration
-\      reads the input source again rather than a spent buffer.
-DECL-DIAG:PROSE
-s" rpdangle" s" VARIANT" enum-replay-test:RP-TRY 70 T=
-s\" error[E-BAD-DECLARATION]: bad enum declaration `rpdangle`\n" DECL-DIAG:HAS? TTRUE
-s\" ^ missing variant name\n" DECL-DIAG:HAS? TTRUE
-s\"   = help: write a name after `VARIANT`, as in `VARIANT quit ;VARIANT`\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:OFF
-s" ENUM rpafterbad VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-
-package rp-copy-test
-public
-s" shape" s" POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM"
-enum-replay-test:RP-TRY 0 T=
+s" habu-enum-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
+s" enum-decl-check.f" EC-PATH FS:JOIN-PATH EC-PATH-U !
+EC-RUN
+EC-ERR$ s" error[" COUNT-SUB 4 T=
+s" error[E-MISMATCH]: R1BAD ends with rpcompact on the stack; its signature promises n"
+   s" :3:18" s" the stack holds rpcompact after this" EC-RECORD
+s" error[E-BAD-DECLARATION]: bad enum declaration `rpbadv`"
+   s" :5:24" s" unexpected token in variant block" EC-RECORD
+s" error[E-BAD-DECLARATION]: bad enum declaration `rpbadname`"
+   s" :6:20" s" duplicate variant" EC-RECORD
+s" error[E-BAD-DECLARATION]: bad enum declaration `rpdangle`"
+   s" :8:1" s" missing variant name" EC-RECORD
+FS:CLEANUP-RUN
 ;package
 
 \ 24. A keyword cannot name a variant: the variant defines a word.
