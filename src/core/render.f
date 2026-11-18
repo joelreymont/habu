@@ -2141,16 +2141,21 @@ PTR-VARIABLE HOLDER-FIRST
    AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN  s" ` by its size" EMIT-STR ;
 
 \ The latched FACT-HIT's facts in bit order, joined by one space.
-: FACT-HELP ( -- )
-   MD-FACT-UNSTATED MD-SUGGEST$ EMIT-STR  s"  `" EMIT-STR
+: FACT-NAMES ( -- )
    MDIAG-CELL @ dup negate and {: low:n :}
    63 0 ?do
       1 i lshift {: f:n :}
       MDIAG-CELL @ f and 0 <> IF
          f low <> IF s"  " EMIT-STR THEN  i CTL-BIT>TAG$ EMIT-STR
       THEN
-   loop
-   s" ` in the type that keeps it" EMIT-STR ;
+   loop ;
+
+\ The type that keeps it may be a primitive's row (`compile,`), which no program
+\ changes, so the help names the other fix too.
+: FACT-HELP ( -- )
+   MD-FACT-UNSTATED MD-SUGGEST$ EMIT-STR  s"  `" EMIT-STR  FACT-NAMES
+   s" ` in the type that keeps it, or keep a word without `" EMIT-STR
+   FACT-NAMES  s" `" EMIT-STR ;
 
 : LINLOCAL-HELP ( -- )
    s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"

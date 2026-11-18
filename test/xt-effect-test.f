@@ -322,6 +322,10 @@ create XE-EMPTY 1 allot
    s" : K2 ( [ -- renders ] -- ) execute ;" XE-LINE
    s" : JN ( bool -- ) ['] EVC swap if ['] K2 else ['] K1 then execute ;" XE-LINE
    SB$ s" E-MISMATCH" XE-FACT-REJECTED
+   s" a word compile, keeps states no facts" T-LABEL
+   SB-RESET
+   s" : V ( -- ) parse-name 2drop ;" XE-LINE  s" : C ( -- ) ['] V compile, ;" XE-LINE
+   SB$ s" or keep a word without `parses`" XE-FACT-REJECTED
    s" a typed cell whose type states the facts keeps the quotation" T-LABEL
    SB-RESET
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
