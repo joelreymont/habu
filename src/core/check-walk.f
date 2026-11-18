@@ -233,7 +233,6 @@ package CHECK
    data-base BODY-ITEMS:EFFECT-CELL + @ 0 <>  and {: built:bool :}
    a u TOK-SYM @ IMM-READS 0 <  POST-ON @ 0 <>  or  built or IF
       TOK-SYM @ CTL-FLAGS-SYM CTL-INHERITED and INHSET @ or INHSET !
-      TOK-SYM @ DFER-FIND-SYM IF INHSET @ CTL-UNSEEN or INHSET ! THEN
    THEN
    id DEFINER-TOK IF EXIT THEN
    id INTRINSIC-CELL-FETCH = IF CELL-FETCH-TOK EXIT THEN
@@ -2558,7 +2557,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    ROW-END ;
 
 \ `already`: what the caller knows of D beyond the checker. D's symbol and the created
-\ record's offset+1, 0 for a refused row; an opaque or unseen D's row stands unjudged.
+\ record's offset+1, 0 for a refused row; an opaque D's row stands unjudged.
 : CHECKER-GENERATES ( str str bool -- n n )
    {: na:^ nu:n sa:^ su:n already:bool :}
    na nu CHECKER-FIND-ACTIVE-SYM
@@ -2567,7 +2566,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    sym na nu NAV-USE-NOW
    already sym NORET-CREATES@ 0 <> or IF na nu sa su GENR-CREATES GENERATES-REFUSE sym 0 EXIT THEN
    sym TOP-CONTROL {: flags:n deferred:bool :}
-   flags CTL-OPAQUE CTL-UNSEEN or and 0= IF
+   flags CTL-OPAQUE and 0= IF
       flags CTL-PARSES and 0= deferred or IF na nu sa su GENR-READS-NONE GENERATES-REFUSE sym 0 EXIT THEN
    THEN
    sa su CREATED-RECORD-BUILD
@@ -2772,20 +2771,20 @@ private
    a u ROW-UNBOUND {: kind:n :}
    kind 0 >= IF ka ku a u kind PARSES-REFUSE THEN ;
 
-\ A row on a deferred or unseen word stands unjudged: what the word runs is unseen. With no
+\ A row on a deferred or opaque word stands unjudged: what the word runs is unseen. With no
 \ checker symbol to key it, a row that stands bounds nothing (NULL-PTR).
 : PARSES-TARGET ( str str -- n n ^n )
    {: ka:^ ku:n a:^ u:n :}
    a u TOP-BINDING-REC {: sym:n eff1:n ctl:n rec:^ :}
    sym 0= IF
       ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF 0 0 NULL-PTR EXIT THEN
-      ctl CTL-OPAQUE CTL-UNSEEN or and 0 <> IF 0 0 NULL-PTR EXIT THEN
+      ctl CTL-OPAQUE and 0 <> IF 0 0 NULL-PTR EXIT THEN
       ctl CTL-PARSES and 0 <> IF 0 0 NULL-PTR EXIT THEN
       ctl 0 <> IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
       ka ku a u PARSES-UNBOUND 0 0 NULL-PTR EXIT
    THEN
    sym a u NAV-USE-NOW
-   ctl CHECKER-OWNER-ABI:BINDING-DEFER CTL-OPAQUE or CTL-UNSEEN or and 0=
+   ctl CHECKER-OWNER-ABI:BINDING-DEFER CTL-OPAQUE or and 0=
    ctl CTL-PARSES and 0= and IF ka ku a u PARSES-READS-NONE PARSES-REFUSE 0 0 NULL-PTR EXIT THEN
    eff1 0= IF 0 0 NULL-PTR EXIT THEN
    sym eff1 rec ;

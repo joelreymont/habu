@@ -1402,9 +1402,8 @@ variable QE-CAP
 \ QXBA: each quotation's block part, a type variable: unbound, it may read locals or not;
 \ NSCOPE@, it reads none; bound to a T-SCOPE term, it reads that block's locals.
 : QXBA ( -- ^n ) QXBA-P @ ;
-\ QXFA: each quotation's facts: the CTL-INHERITED ones running it adds to its runner's (a literal's
-\ body's; the ticked word's for `['] W`; else CTL-UNSEEN), and CTL-THROW if it may throw, as a term made
-\ from a type may. Two terms unified share their union.
+\ QXFA: what running each quotation adds to its runner's facts (a literal's body's, `['] W`'s W's,
+\ else its type's), CTL-THROW if it may throw; unified terms share them unless one keeps the other.
 : QXFA ( -- ^n ) QXFA-P @ ;
 
 : QE-ENSURE ( n -- ) {: need:n :}
@@ -1432,8 +1431,6 @@ variable FV   0 FV !   \ the next var id FRESH hands out
 4 constant CTL-BARRIER
 \ CTL-OPAQUE: a call may run a body the check deferred, which the load reads.
 1 61 lshift constant CTL-OPAQUE
-\ CTL-UNSEEN: a call may run words no reader can see: a deferred word's, an xt the walk did not make.
-1 62 lshift constant CTL-UNSEEN
 global
 \ CTL-RENDERS means a call may define words, or open, add to or close a
 \ definition, at run time that no source text spells.
@@ -1453,8 +1450,7 @@ private
 \ CTL-ROOTS means a call may move the source root, so which files later requires
 \ load cannot be known without running it.
 CHECKER-OWNER-ABI:BINDING-ROOTS constant CTL-ROOTS
-CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or CTL-OPAQUE or
-   CTL-UNSEEN or constant CTL-INHERITED
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or CTL-OPAQUE or constant CTL-INHERITED
 \ The facts a quotation type may state after its outputs.
 CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CTL-STATABLE
 
@@ -1467,7 +1463,7 @@ CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CT
    0 QEN @ cells QXNA + !
    0 QEN @ cells QXDA + !
    0 QEN @ cells QXRA + !
-   CTL-UNSEEN CTL-THROW or QEN @ cells QXFA + !
+   CTL-THROW QEN @ cells QXFA + !
    FRESH MK-VAR QEN @ cells QXBA + !
    QEN @ TAG-SHIFT lshift T-QUOT or  QEN @ 1 + QEN ! ;
 \ A scheme owns one quotation term. Bound scope variables use lexical depth,
@@ -1502,9 +1498,8 @@ $10000 constant BVAR-REGION-BIT
 : Q>FACTS ( n -- n ) PAY cells QXFA + @ ;
 : Q-FACTS! ( n n -- ) PAY cells QXFA + ! ;
 SCRATCH{
-\ INHSET: the CTL-INHERITED facts of what the body calls or runs, CTL-UNSEEN for what it
-\ cannot see; an open literal's body has its own. Sticky per body: a call on any path is
-\ enough for the may-claim.
+\ INHSET: the CTL-INHERITED facts of what the body calls or runs, sticky per body;
+\ an open literal's body has its own.
 variable INHSET
 }SCRATCH
 \ Running a quotation charges the runner with its facts.
@@ -5779,8 +5774,8 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ every window cell intact
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
 40 constant XFER-RMASK-SHIFT
-\ the control flags, the defer bit, CTL-NAMES, CTL-GENERATES, CTL-ROOTS, CTL-OPAQUE and CTL-UNSEEN
-$7FFFF 1 60 lshift or 1 61 lshift or 1 62 lshift or constant XFER-FLAG-MASK
+\ the control flags, the defer bit, CTL-NAMES, CTL-GENERATES, CTL-ROOTS and CTL-OPAQUE
+$7FFFF 1 60 lshift or 1 61 lshift or constant XFER-FLAG-MASK
 
 : XFER-PACK ( n n n -- n ) {: flags:n dmask:n rmask:n :}
    flags XFER-FLAG-MASK and
@@ -5811,7 +5806,7 @@ $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
 
 \ Control word bits: 0-7 and 13-18 flags with 16 the defer bit, 8-12 the INTRINSIC id, 19 the verifier
-\ query's refused-name mark, 20-39 and 40-59 the intact masks, 60 CTL-ROOTS, 61 CTL-OPAQUE, 62 CTL-UNSEEN.
+\ query's refused-name mark, 20-39 and 40-59 the intact masks, 60 CTL-ROOTS, 61 CTL-OPAQUE.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -5893,7 +5888,9 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    f CTL-GENERATES = IF s" generates" EXIT THEN
    f CTL-ROOTS = IF s" roots" EXIT THEN
    f CTL-OPAQUE = IF s" opaque" EXIT THEN
-   f CTL-UNSEEN = IF s" unseen" EXIT THEN
+   \ An hb whose checker still writes `unseen` built the running one: reading it
+   \ sets bit 62, which no rule tests and XFER-FLAG-MASK drops.
+   f 1 62 lshift = IF s" unseen" EXIT THEN
    s" " ;
 
 : TAG>CTL-FLAG ( str -- n )
@@ -21695,7 +21692,6 @@ public
 -2 constant IMM-EFFECT
 -3 constant IMM-WRITES
 -4 constant IMM-UNREAD
--5 constant IMM-UNSEEN
 -6 constant IMM-ROOTS
 private
 
@@ -21705,14 +21701,12 @@ private
    a u sym TOK-SYM-IMM? 0= IF IMM-NONE EXIT THEN
    a u EFFECT-QUERY 0= IF IMM-EFFECT EXIT THEN
    EFFECT-DIN-N 0 <>  EFFECT-DOUT-N 0 <>  or IF IMM-EFFECT EXIT THEN
-   sym CTL-FLAGS-SYM CTL-INHERITED and
-   sym DFER-FIND-SYM IF CTL-UNSEEN or THEN {: facts:n :}
-   facts CTL-PARSES CTL-OPAQUE or CTL-UNSEEN or CTL-ROOTS or invert and 0 <> IF IMM-WRITES EXIT THEN
+   sym CTL-FLAGS-SYM CTL-INHERITED and {: facts:n :}
+   facts CTL-PARSES CTL-OPAQUE or CTL-ROOTS or invert and 0 <> IF IMM-WRITES EXIT THEN
    facts CTL-ROOTS and 0 <> IF IMM-ROOTS EXIT THEN
    facts 0= IF 0 EXIT THEN
    sym PROW-FIND {: cnt:n t:^ tu:n kept:bool :}
    kept  tu 0=  and IF cnt EXIT THEN
-   facts CTL-UNSEEN and 0 <> IF IMM-UNSEEN EXIT THEN
    facts CTL-PARSES and 0 <> IF IMM-UNREAD EXIT THEN
    0 ;
 
@@ -22372,11 +22366,11 @@ EXPORT CHECKER-TAPE:K-IS
 : BTICK-PUSH ( n -- )
    DCUR @ MK-PUSH DCUR ! ;
 
-\ `['] W` pushes a term with W's facts, CTL-UNSEEN too for a deferred W, and W's throw
+\ `['] W` pushes a term with W's facts and W's throw
 \ edge, not its dead flag: with it `['] WDEAD catch` would certify code `hb` cannot compile.
 : BTICK-EDGE ( n n -- n ) {: q:n sym:n :}
    sym CTL-WORD-SYM {: ctl:n :}
-   ctl CTL-INHERITED and  sym DFER-FIND-SYM IF CTL-UNSEEN or THEN
+   ctl CTL-INHERITED and
    ctl XFER-FLAGS CTL-THROW and or  q Q-FACTS!
    ctl XFER-FLAGS CTL-THROW and 0= IF q EXIT THEN
    q RES-FALSE

@@ -2950,35 +2950,37 @@ HB-TARGET-LINUX? 0= [if]
    s" SET" SB-APPEND LF+
    s" : V ( -- ) D ; immediate" SB-APPEND LF+ ;
 
-\ The check with FLAG gives one record, the immediate `V` at 6:14, which calls
-\ words the check cannot see.
-: DC-UNSEEN ( str -- )
-   70 CHECK-EXIT
-   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
-   0 s" V" 6 14 113 114 AT
-   0 s" message"
-   s" `V` runs while the definition compiles and calls words the check cannot see" FIELD= ;
+\ Record K of the check: `is` at 3:20 keeps W, which reads the source, in D,
+\ whose type states no `parses`.
+: DC-KEPT ( n -- ) {: k:n :}
+   k s" code" s" E-MISMATCH" FIELD=
+   k s" is" 3 20 64 66 AT
+   k s" message" s" this quotation does more than the type that keeps it states" FIELD= ;
 
-\ An immediate that calls a deferred word runs what is set in it, which the
-\ check cannot see: only a `parses:` row admits it.
+\ A deferred word's type states what the words set in it may do: setting it to
+\ a reader its type does not state is rejected where it is kept, and a
+\ `parses:` row on the immediate that calls it does not admit it.
 : TEST-IMM-DEFERRED-CALL ( -- )
-   s" an immediate calling a deferred word, with no parses: row" T-LABEL
+   s" an immediate calling a deferred word set to a reader its type does not state" T-LABEL
    DC-LINES
    s" : P ( -- n ) V a 5 ;" SB-APPEND LF+
    s" P ." SB-APPEND LF+
-   s" imm-dc-unseen.f" FIXTURE!
-   s" " DC-UNSEEN
-   s" --verify-only" DC-UNSEEN
-   s" E-UNMODELED-IMMEDIATE" s" :6:14" 70 LOADED-AT
-   GT-ERR$ s" calls words the check cannot see" CONTAINS? TTRUE
-   s" an immediate calling a deferred word, with its parses: row" T-LABEL
+   s" imm-dc-kept.f" FIXTURE!
+   s" " CHECK  GJA-LINE# @ 1 T=  0 DC-KEPT
+   s" --verify-only" CHECK  GJA-LINE# @ 2 T=  0 DC-KEPT
+   1 s" code" s" E-UNDEFINED" FIELD=  1 s" a" 6 16 115 116 AT
+   s" E-MISMATCH" s" :3:20" 70 LOADED-AT
+   s" the same, with a parses: row on the immediate" T-LABEL
    DC-LINES
    s" parses: V 1" SB-APPEND LF+
    s" : P ( -- n ) V a 5 ;" SB-APPEND LF+
    s" P ." SB-APPEND LF+
    s" imm-dc-read.f" FIXTURE!
-   THREE-ADMIT
-   GT-OUT$ s" 5" CONTAINS? TTRUE ;
+   s" " CHECK  GJA-LINE# @ 1 T=  0 DC-KEPT
+   s" --verify-only" CHECK  GJA-LINE# @ 3 T=  0 DC-KEPT
+   1 s" code" s" E-PARSES-ROW" FIELD=  1 s" V" 6 9 108 109 AT
+   2 s" code" s" E-UNDEFINED" FIELD=  2 s" a" 7 16 127 128 AT
+   s" E-MISMATCH" s" :3:20" 70 LOADED-AT ;
 
 \ A parses: count reads the operand on the next line.
 : TEST-IMM-LINE-END ( -- )

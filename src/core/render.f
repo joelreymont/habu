@@ -1775,10 +1775,6 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    why IMM-ROOTS = IF
       s"  runs while the definition compiles and may move the source root" EMIT-STR EXIT
    THEN
-   why IMM-UNSEEN = IF
-      s"  runs while the definition compiles and calls words the check cannot see"
-      EMIT-STR EXIT
-   THEN
    s"  reads the source after it and no `parses:` row says how many tokens" EMIT-STR ;
 
 : DIAG-MESSAGE ( -- )
@@ -2070,12 +2066,6 @@ PTR-VARIABLE HOLDER-FIRST
    THEN
    why IMM-ROOTS = IF
       s" move the root at top level, before the definition" EMIT-STR EXIT
-   THEN
-   why IMM-UNSEEN = IF
-      s" state what " EMIT-STR  t tu CODE-SPAN
-      s"  reads with `parses: " EMIT-STR  t tu EMIT-STR
-      s"  n` after " EMIT-STR  t tu CODE-SPAN
-      s" , or call the words it runs directly" EMIT-STR EXIT
    THEN
    s" state the count with `parses: " EMIT-STR  t tu EMIT-STR
    s"  n` after " EMIT-STR  t tu CODE-SPAN ;
