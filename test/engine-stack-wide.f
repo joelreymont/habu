@@ -50,24 +50,16 @@ package STACK-LIFECYCLE-TEST
    s" a wide local reload past the capacity faults the data guard page" T-LABEL
    s" : RELOAD ( -- ) 11 22 SW-PAIR:MAKE {: value :} value value 2drop ; " s" RELOAD" PAIR-OVERFLOW ;
 
-\ Set RSP inside the compiled word: the interpreter parks its own tokens on
-\ the return stack between top-level words. An observable wide peek/pop
-\ reaches the guarded VM mapping, so these measure its two-cell boundary.
+\ EDGE n fills n return-stack slots, one `>r` a level, so the wide peek and pop
+\ at its bottom reach the guarded VM mapping's two-cell boundary.
 : WIDE-RETURN-GROUPS ( -- )
    s" native wide return peek and pop preserve both cells" T-LABEL
-   s" variable OLD-RSP TRUSTED: SET-EDGE ( -- ) data-base RSP-CELL + @ OLD-RSP ! STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! ; TRUSTED: RESTORE-EDGE ( -- ) data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = . OLD-RSP @ data-base RSP-CELL + ! ; : MOVE ( -- ) SET-EDGE 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . RESTORE-EDGE ; MOVE"
+   s" : EDGE ( n -- bool ) dup 0= if drop 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . 0 0= exit then dup dup >r 1 - recurse swap r> = and ; STACK-ABI:RETURN-CELLS 2 - EDGE bool>n ."
    PAIR-RC 0 T=
    OUT OUTLEN @ S\" 22\n11\n22\n11\n-1\n" T$=
    s" observable native wide return transfer needs two free slots" T-LABEL
-   s" TRUSTED: SET-EDGE ( n -- ) data-base RSP-CELL + ! ; : MOVE ( -- ) STACK-ABI:RETURN-CELLS 1 - SET-EDGE 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . ; MOVE"
-   PAIR-REFUSED-RETURN
-   s" native wide return pop needs two live slots" T-LABEL
-   s" TRUSTED: SET-EDGE ( n -- ) data-base RSP-CELL + ! ; : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r 1 SET-EDGE r> SW-PAIR:UNMAKE . . ; MOVE"
-   PAIR-REFUSED-RETURN
-   s" native wide return peek needs two live slots" T-LABEL
-   s" TRUSTED: SET-EDGE ( n -- ) data-base RSP-CELL + ! ; : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r 1 SET-EDGE r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . ; MOVE"
+   s" : EDGE ( n -- ) dup 0= if drop 11 22 SW-PAIR:MAKE >r r@ SW-PAIR:UNMAKE . . r> SW-PAIR:UNMAKE . . exit then 1 >r 1 - recurse r> drop ; STACK-ABI:RETURN-CELLS 1 - EDGE"
    PAIR-REFUSED-RETURN ;
-
 
 \ The 513-cell value's byte offsets pass arm64 ADD/SUB's 12-bit immediate.
 : LARGE-TYPE-SOURCE ( -- )

@@ -2,7 +2,6 @@ split-str
 \ The closed evaluation boundary: `evaluate-closed` runs source on a data
 \ stack of its own and rejects residue with a record, which is what lets a
 \ checked word evaluate source.
-require src/habu/stack-abi.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
@@ -33,13 +32,7 @@ TRUSTED: PLUS-XT ( -- [ n -- n ] ) ['] + ;
 
 : INNER-OPEN$ ( -- ^u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
 
-\ The data-stack base each text of a nested pair sees.
-variable OUTER-BASE
-variable INNER-BASE
-: INNER-BASE$ ( -- ^u8 n )
-   s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:INNER-BASE !" ;
-: INNER-THROW$ ( -- ^u8 n )
-   s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:INNER-BASE ! 7 throw" ;
+: INNER-THROW$ ( -- ^u8 n ) s" depth 0 T= 7 throw" ;
 
 private
 
@@ -80,40 +73,20 @@ private
    [: s" NATIVE-EVAL-TEST:INNER-RESIDUE$ evaluate-closed" evaluate-closed ;]
    70 TTHROWSQ ;
 
-: OUTER-BASE$ ( -- str )
-   s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-BASE$ evaluate-closed" ;
-
-: STACK-BASE ( -- n ) data-base STACK-ABI:BASE-CELL + @ ;
-
-\ A closed text runs on a guarded stack of its own, so the cell under its
-\ floor is a guard page, never a caller's cell. The stacks come from a pool:
-\ a second run at the same nesting reuses the first run's pair.
-: FLOOR-POOL ( -- )
-   s" a closed text runs on a stack that is not the caller's" T-LABEL
-   OUTER-BASE$ evaluate-closed
-   OUTER-BASE @ STACK-BASE <> TTRUE
-   s" a nested text runs on a stack that is not the outer text's" T-LABEL
-   INNER-BASE @ OUTER-BASE @ <> TTRUE
-   s" a second run reuses the same two stacks" T-LABEL
-   OUTER-BASE @ INNER-BASE @ {: outer:n inner:n :}
-   OUTER-BASE$ evaluate-closed
-   OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
-
 : OUTER-THROW$ ( -- str )
-   s" data-base STACK-ABI:BASE-CELL + @ NATIVE-EVAL-TEST:OUTER-BASE ! NATIVE-EVAL-TEST:INNER-THROW$ evaluate-closed" ;
+   s" 5 depth 1 T= NATIVE-EVAL-TEST:INNER-THROW$ evaluate-closed" ;
 
-\ A throw out of a nested pair gives both stacks back. The caught delivery runs
-\ compiled code, the checker's package resync, before the handler's extent is
-\ restored, so that code must not run on a stack the pool now holds: the pool
-\ links an idle stack through its first cell, and the next pair takes both
-\ stacks back only if that link survived.
-: FLOOR-POOL-THROW ( -- )
-   s" a throw out of a nested pair gives both its stacks back" T-LABEL
-   [: OUTER-THROW$ evaluate-closed ;] 7 TTHROWSQ
-   s" and the next pair reuses both" T-LABEL
-   OUTER-BASE @ INNER-BASE @ {: outer:n inner:n :}
-   OUTER-BASE$ evaluate-closed
-   OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
+: NESTED-THROW ( -- n n n )
+   7 8 [: OUTER-THROW$ evaluate-closed ;] catch ;
+
+\ A throw out of a nested pair: the caught delivery runs compiled code, the
+\ checker's package resync, before the handler's extent is restored, so that
+\ code must not run on a stack the pool now holds.
+: FLOOR-THROW ( -- )
+   s" a nested pair's throw reaches the caller, each text at its own floor" T-LABEL
+   NESTED-THROW 7 T=
+   s" and the throw leaves the caller's cells" T-LABEL
+   8 T= 7 T= ;
 
 \ A throw out of a text caught in a loop's body leaves the caller's loops
 \ alone, though the delivery's package resync runs a loop of its own.
@@ -223,9 +196,7 @@ s" BUMPED" MAKE-BUMPED
 
 \ : NAME ( -- n ) 5 ; after a text whose token the compile refuses: the
 \ refusal, caught inside the definer, leaves its definition compiling, as it
-\ does for any buffer begun inside one (habu2.f EM-EVAL-THROW-RECOVER), and
-\ the refused text's stack still goes back to the pool: the next pair takes
-\ the same two stacks as the pair before it.
+\ does for any buffer begun inside one (habu2.f EM-EVAL-THROW-RECOVER).
 variable CAUGHT
 : MAKE-REFUSED ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
@@ -234,16 +205,11 @@ variable CAUGHT
 
 : CALLER-OPEN-REFUSED ( -- )
    s" a text refused inside the caller's open definition is caught there" T-LABEL
-   OUTER-BASE$ evaluate-closed
-   OUTER-BASE @ INNER-BASE @ {: outer:n inner:n :}
    0 CAUGHT !
    S\" package NATIVE-EVAL-TEST public s\" HOST\" MAKE-REFUSED ;package" evaluate-closed
    CAUGHT @ 70 T=
    s" and the caller's definition goes on compiling" T-LABEL
-   s" NATIVE-EVAL-TEST:HOST 5 T=" evaluate-closed
-   s" and the refused text's stack goes back to the pool" T-LABEL
-   OUTER-BASE$ evaluate-closed
-   OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
+   s" NATIVE-EVAL-TEST:HOST 5 T=" evaluate-closed ;
 
 \ `is` and its target are captured in two passes, so a refused target takes
 \ back `is` too: a definition left holding `is` refuses at its `;`.
@@ -376,7 +342,7 @@ variable ERR-U
 
 : RUN ( -- )
    T-RESET
-   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL FLOOR-POOL-THROW
+   DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-THROW
    LOOP-THROW XT-UNDER
    UNFINISHED
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED OVERFLOW

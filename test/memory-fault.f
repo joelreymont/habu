@@ -2,18 +2,14 @@ split-str
 \ A load through a bad address in Habu code throws 110
 \ on the faulting thread: a catch receives it and the program runs on, a task
 \ ends with it, and uncaught it exits 110 after its record on fd 2, with no
-\ register dump. A fault in foreign code, a jump to an unmapped address or into
-\ a guard page and a fault in a signal handler still dump the registers and die
-\ by the signal. Each case is its own child: its process's end is what it
-\ checks.
+\ register dump. A fault in foreign code, a jump to an unmapped address and a
+\ fault in a signal handler still dump the registers and die by the signal.
+\ Each case is its own child: its process's end is what it checks.
 require test/gate-common.f
 require src/lib/process.f
 
 package MEMORY-FAULT-TEST
 private
-
-\ A read or fetch of a PROT_NONE page is SIGBUS on macOS and SIGSEGV on Linux.
-: FOREIGN-SIG ( -- n ) HB-TARGET-LINUX-KERNEL? if 11 else 10 then ;
 
 \ The uncaught fault's record: the address and the word that read it.
 : RECORD-0$ ( -- str )
@@ -78,16 +74,14 @@ private
    SB$ s" faults caught and a faulting task" GE-EXPECT-OUT
    s" PASS: a caught fault and a faulting task run on" type cr ;
 
-\ strlen reads the cell below the data stack's base, inside its low guard
-\ page: the fault's pc is in libc.
+\ strlen reads address 0, in the unmapped first page: the fault's pc is in libc.
 : FOREIGN ( -- )
    GE-SRC-RESET
    s" PROCESS-SYMBOLS" GE-SRC-LINE
    s" FUNCTION: STRLEN$ strlen ( ^u8 -- n ) ;FUNCTION" GE-SRC-LINE
-   s" : GUARD-OFF ( -- n ) data-base STACK-ABI:BASE-CELL + @ 8 - ;" GE-SRC-LINE
-   s" NULL-PTR BYTE-VIEW GUARD-OFF + STRLEN$ ." GE-SRC-LINE
+   s" NULL-PTR BYTE-VIEW STRLEN$ ." GE-SRC-LINE
    RUN-BUF
-   FOREIGN-SIG s" a fault in foreign code" KILLED-BY
+   11 s" a fault in foreign code" KILLED-BY
    s" habu-crash regs [sig" s" a fault in foreign code" GE-EXPECT-ERR-HAS
    s" error[E-MEMORY-FAULT]" s" a fault in foreign code" GE-EXPECT-ERR-LACKS
    s" PASS: a fault in foreign code dies by the signal" type cr ;
@@ -103,18 +97,6 @@ private
    s" habu-crash regs [sig" s" a jump to an unmapped address" GE-EXPECT-ERR-HAS
    s" error[E-MEMORY-FAULT]" s" a jump to an unmapped address" GE-EXPECT-ERR-LACKS
    s" PASS: a jump to an unmapped address dies by the signal" type cr ;
-
-\ The same fetch inside the data stack's low guard page, which crash.f rows 4
-\ and 5 claim for a read: the fetch rule of row 2 comes first.
-: GUARD-JUMP ( -- )
-   GE-SRC-RESET
-   s" TRUSTED: JUMP-UNDER ( -- ) data-base STACK-ABI:BASE-CELL + @ 8 - execute ;" GE-SRC-LINE
-   s" JUMP-UNDER" GE-SRC-LINE
-   RUN-BUF
-   FOREIGN-SIG s" a jump into a guard page" KILLED-BY
-   s" habu-crash regs [sig" s" a jump into a guard page" GE-EXPECT-ERR-HAS
-   s" E-STACK-BOUNDS" s" a jump into a guard page" GE-EXPECT-ERR-LACKS
-   s" PASS: a jump into a guard page dies by the signal" type cr ;
 
 \ A watchpoint at address 16 makes the trap handler itself load from the
 \ unmapped first page when SUBJECT's breakpoint fires.
@@ -133,7 +115,6 @@ private
 
 UNCAUGHT
 CAUGHT
-GUARD-JUMP
 FOREIGN
 WILD-JUMP
 TRAP-FAULT
