@@ -783,7 +783,7 @@ TYPED-VARIABLE HL-W JSON:writer    \ a highlight written in this process
 TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
 TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
 TYPED-VARIABLE SESSION-INIT [ -- ]
-TYPED-VARIABLE SESSION-CASES [ -- ]
+TYPED-VARIABLE SESSION-CASES [ -- renders nominal roots ]
 32 constant OPEN-CAP
 create OPEN-PATHS OPEN-CAP PATH-CAP * allot
 OPEN-CAP TYPED-BUFFER OPEN-LENS n
@@ -6891,7 +6891,7 @@ variable PROBE-DECLS
    0 SENT !
    CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE ! ;
 
-: SESSION-RUN ( str [ -- ] [ -- ] -- )
+: SESSION-RUN ( str [ -- ] [ -- renders nominal roots ] -- )
    {: a:^ u:n init cases :}
    a u N>BLEN SESSION-B REPLACE
    init SESSION-INIT !

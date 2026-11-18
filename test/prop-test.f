@@ -173,7 +173,7 @@ variable STEPS  variable GI
 variable NCERT  variable PROP-NFC  variable NFR  variable RJ
 variable LAST-MEAS  variable LAST-TRAP
 variable FC-KIND  variable FC-EXP  variable FC-MEAS
-TYPED-VARIABLE HELD [ -- ]
+TYPED-VARIABLE HELD [ -- renders ]
 1001 constant UNDO-RC
 
 public
@@ -186,7 +186,7 @@ private
 
 \ The body runs in a closed text that always throws, so the engine forgets
 \ every word the body defined.
-: TRIAL ( [ -- ] -- )
+: TRIAL ( [ -- renders ] -- )
    HELD !
    [: s" PROP-TEST:RUN-HELD" evaluate-closed ;] catch
    dup UNDO-RC = IF  drop  ELSE  throw  THEN ;
