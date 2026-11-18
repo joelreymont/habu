@@ -656,7 +656,6 @@ variable CASE-EXP
    s" : PROP-PC ( u8 ^u8 -- ) c! ; " s" 7 BUF " 0 CHECK-CASE
    s" : PROP-PC ( ^u8 -- ^u8 n ) count ; " s" BUF " 2 CHECK-CASE
    s" : PROP-PC ( ^u8 n -- ) type ; " s" BUF 0 " 0 CHECK-CASE
-   s" : PROP-PC ( ^u8 n -- bool ) tfam-ctor-word? ; " s" BUF 3 " 1 CHECK-CASE
    s" : PROP-PC ( ^u8 n ^u8 n -- bool ) core-str= ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
    s" : PROP-PC ( ^u8 n ^u8 n -- bool ) core-str=ci ; " s" BUF 3 BUF 3 " 1 CHECK-CASE
    s" : PROP-PC ( ^u8 -- n ) rd32 ; " s" BUF " 1 CHECK-CASE ;

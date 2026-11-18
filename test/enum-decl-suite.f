@@ -1135,7 +1135,6 @@ ENUM edapwide
 3 4 7 EDAPWIDE-SOME 7007 T=
 9 EDAPWIDE-NONE 8999 T=
 5 EDAPWIDE-SMALL 105 T=
-TFAM:TFAM-ACTIVE-PKG$ s" edapwide" TFAM:TFAM-SIG-RESOLVE TFAM:SR-FOUND T= TFAM:TFAM-SLOTS@ 4 T=
 
 \     A payload type's tokens may hold blanks and stand on two lines, as a field
 \     type's do; one left open at `;VARIANT` is unclosed.

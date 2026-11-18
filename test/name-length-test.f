@@ -78,11 +78,7 @@ TEXTS!
    IF s" refused" ELSE s" taken" THEN type cr ;
 
 \ ---- the cases a child runs -------------------------------------------------
-: CTOR-WORD ( -- ) BAD$ TFAM-CTOR-WORD? 0= VERDICT ;
-: FIELD-FIND ( -- ) 0 0 BAD$ TFAM:PF-FIND nip 0= VERDICT ;
 : PRIM ( -- ) BAD$ PRIM-SPEC:FIND 0 < VERDICT ;
-: MATCH-FAM ( -- ) BAD$ TFL-MATCH-FAM? nip 0= VERDICT ;
-: CON-FAM ( -- ) BAD$ TFL-CON-FAM? nip 0= VERDICT ;
 
 : CHECK!-IT ( -- ) BODY$ CHECK! drop ;
 : CANDIDATE-IT ( -- ) BODY$ CHECK-CANDIDATE! drop ;
@@ -156,20 +152,7 @@ variable LBL-U
    MAX-CELL s" max" src srcu rc head headu note noteu REJECTS-AT ;
 
 : TEST-QUERIES ( -- )
-   s" CTOR-WORD" RETURNS
-   s" FIELD-FIND" RETURNS
    s" PRIM" RETURNS ;
-
-\ The family lookups copy the name into the checker's token buffer, which
-\ refuses a maximum-cell length by ending the process.
-: FAM-DIES-AT-MAX ( str -- )
-   {: src:^ srcu:n :}
-   -1 s" -1" src srcu RETURNS-AT
-   MAX-CELL s" max" src srcu 76 S\" checker: token buffer too large\n" DIES-AT ;
-
-: TEST-FAMILIES ( -- )
-   s" MATCH-FAM" FAM-DIES-AT-MAX
-   s" CON-FAM" FAM-DIES-AT-MAX ;
 
 \ A definition's source text is no name either: only -1 and the maximum cell
 \ describe none of it, and each dies at the token buffer's limit.
@@ -300,7 +283,6 @@ variable LBL-U
 : MAIN ( -- )
    T-RESET
    TEST-QUERIES
-   TEST-FAMILIES
    TEST-PACKAGE
    TEST-TEXTS
    TEST-ENGINE

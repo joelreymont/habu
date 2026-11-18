@@ -57,7 +57,7 @@ public
 \ order and rethrows its own code. Type entries are read first.
 : RUN ( [ -- ] -- )
    {: body :}
-   TFAM:READ-PENDING
+   READ-PENDING
    [: SAVEPOINTS ;] catch {: save-rc:n :}
    save-rc 0 <> IF save-rc throw THEN
    body catch {: body-rc:n :}

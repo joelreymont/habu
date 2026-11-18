@@ -174,6 +174,10 @@ EXPORT ROLES:VRDEF-UNCLOSED
 EXPORT TYPE-DECL:CHECKER-DEFFAMILY
 EXPORT TYPE-DECL:CHECKER-NOMINAL-REPLAY
 EXPORT TYPE-DECL:DECL-FAMILY-NAME
+EXPORT TFAM:SUMV-CTOR-SYM@
+EXPORT TFAM:SUMV-NAME$
+EXPORT TFAM:TFAM-N@
+EXPORT TFAM:TFAM-VAR-START@
 
 public
 
@@ -2463,12 +2467,12 @@ variable SUM-VAR-NEXT
 \ source name token, in the same order the declaration registered the variants.
 : SUM-VAR-DEFINED ( n -- )
    {: fam:n :}
-   fam TFAM:TFAM-VAR-START@ {: start:n :}
+   fam TFAM-VAR-START@ {: start:n :}
    SUM-VAR-N @ 0 ?DO
       start i + {: vid:n :}
-      vid TFAM:SUMV-CTOR-SYM@ {: sym:n :}
+      vid SUMV-CTOR-SYM@ {: sym:n :}
       sym 0 <> IF
-         vid TFAM:SUMV-NAME$ {: name:^ nameu:n :}
+         vid SUMV-NAME$ {: name:^ nameu:n :}
          i SUM-VAR-AT @ {: at:n :}
          sym name nameu VISIT-CUR @ at at nameu +
             NCOMP-DISPATCH:DECL-VERIFY-CTOR-DECL-OFF OWNER-XT CTOR-DECL-ACTION execute
@@ -2493,15 +2497,15 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
          2dup SUMTYPE-END? IF 2drop 0 0= ELSE SUM-VAR-STEP 0 0= 0= THEN
       THEN
    UNTIL
-   TFAM:TFAM-N@ {: before:n :}
+   TFAM-N@ {: before:n :}
    \ The front reads its keyword as the token read last, as on the native path.
    SRCLOC:TOKEN$ {: oa:^ ou:n :}
    TOP-CUR-A @ TOP-CUR-U @ SRCLOC:TOKEN!
    name nameu BODY$
    [: [: TDECL-SUMTYPE ;] DECL-REPLAY:RP-RUN ;]
    [: oa ou SRCLOC:TOKEN! ;] finally
-   TFAM:TFAM-N@ before > IF
-      TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
+   TFAM-N@ before > IF
+      TFAM-N@ 1- SUM-VAR-DEFINED
    THEN ;
 
 : RECORD-SUMTYPE ( -- )

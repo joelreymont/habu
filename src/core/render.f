@@ -5,9 +5,15 @@ split-str
 \ rendering only decides whether that effect is declarable
 \ (RQM). Compiles after checker.f and before any src/lib/ file: no emit or
 \ +!; bytes go out through REJECTION.
-using TFAM
 using REJECTION
 package CHECK
+EXPORT TFAM:SUMV-FAM@
+EXPORT TFAM:SUMV-NAME$
+EXPORT TFAM:TFAM-ACTIVE-PKG$
+EXPORT TFAM:TFAM-N@
+EXPORT TFAM:TFAM-NAME$
+EXPORT TFAM:TFAM-PKG$
+EXPORT TFAM:TFAM-VAR-START@
 
 \ RQM: the text cannot say the effect, so REC-SIG does not record it; set where the
 \ text writes `?` and where it meets a type or row no signature spells.
@@ -2484,4 +2490,3 @@ global
 : record-at ( ^a n -- ^a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
 
 ;package
-;using

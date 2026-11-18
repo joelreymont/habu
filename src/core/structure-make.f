@@ -6,7 +6,6 @@ split-str
 \ product bundle is its field cells in slot order, so MAKE and UNMAKE are casts
 \ the checker certifies, with no TRUST, TRUSTED: or set-check.
 
-using TFAM
 using TYPE-DECL
 
 package TYPE-DECL
@@ -103,5 +102,4 @@ public
 ;package
 ;package
 
-;using
 ;using

@@ -4,6 +4,15 @@ split-str
 \ the facts text each record takes.
 
 package CHECK
+EXPORT TFAM:MEMBER-SYM!
+EXPORT TFAM:READ-PENDING
+EXPORT TFAM:TFAM-ARITY@
+EXPORT TFAM:TFAM-CHILD-ROWS
+EXPORT TFAM:TFAM-DECL-PARAM-COUNT
+EXPORT TFAM:TFAM-EXACT-RESOLVE
+EXPORT TFAM:TFAM-PARSE-RESOLVE
+EXPORT TFAM:TFAM-STORED-ROWS
+EXPORT TFAM:TFQ-SPLIT?
 
 private
 
@@ -277,7 +286,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
       node 0 <> if na nu LBUF:NODE-TYPE-REFUSE else na nu ta tu CHECKER-STORAGE-TYPE-REJECT then
       EXIT-STATUS:REJECTED throw
    then
-   shape swap TFAM:TFAM-STORED-ROWS ;
+   shape swap TFAM-STORED-ROWS ;
 
 \ Type t's bytes in storage: whole cells only when WHOLE, else as DYNAMIC
 \ admits, which takes `u8` too.
@@ -317,9 +326,9 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    shape STORED-SHAPE? if
       na nu ta tu shape
       shape CHILD-ABI:STORED = if param else 0 then STORED-ROWS 0
-   else shape param TFAM:TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
+   else shape param TFAM-CHILD-ROWS then {: din:n dout:n val:n :}
    na nu din dout RES-FALSE CHECKER-CHILD-ROWS {: h:n :}
-   shape param  CHECKER-REC-SYM @  TFAM:MEMBER-SYM!
+   shape param  CHECKER-REC-SYM @  MEMBER-SYM!
    na nu PENDING-FACTS
    val h ;
 
@@ -364,7 +373,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 : FAMILY-NODE ( n -- n ) {: fam:n :}
-   fam TFAM:TFAM-ARITY@ {: k:n :}
+   fam TFAM-ARITY@ {: k:n :}
    SCHEMA-ROOT-N@ {: start:n :}
    k 0 ?do FRESH-PARAM SCHEMA-ROOT+ drop loop
    fam start k SCHEMA-APP ;
@@ -398,9 +407,9 @@ CAST: >BYTES ( n -- ^u8 )
    {: a:n u:n :}
    a u BUILT-IN dup 0 <> if 0 exit then drop
    SGBAD-CLEAR
-   TFAM:TFAM-ACTIVE-PKG$ a >BYTES u
-   a >BYTES u TFAM:TFQ-SPLIT? if TFAM:TFAM-EXACT-RESOLVE
-   else TFAM:TFAM-PARSE-RESOLVE then
+   TFAM-ACTIVE-PKG$ a >BYTES u
+   a >BYTES u TFQ-SPLIT? if TFAM-EXACT-RESOLVE
+   else TFAM-PARSE-RESOLVE then
    if 0 swap exit then
    drop
    SGBAD-AMBIG? if a >BYTES u NAMED-AMBIG then
@@ -483,7 +492,7 @@ CAST: >BYTES ( n -- ^u8 )
 : TYPE-OP ( n n n -- n )
    {: code:n a:n b:n :}
    code TYPE-OP-ABI:NAMED = if a b NAMED-FAMILY else a b then {: x:n y:n :}
-   code TYPE-OP-ABI:READ = if TFAM:READ-PENDING then
+   code TYPE-OP-ABI:READ = if READ-PENDING then
    TRANSIENT-ON
    [: code x y TYPE-NODE ;] [: TRANSIENT-OFF ;] finally ;
 
@@ -497,16 +506,16 @@ CAST: >BYTES ( n -- ^u8 )
 
 \ EFFECT-DENSE's map: the raw index of each parameter it numbered, at that
 \ parameter's dense index, and how many it met.
-create DENSE-RAW TFAM:TFAM-DECL-PARAM-COUNT cells allot
+create DENSE-RAW TFAM-DECL-PARAM-COUNT cells allot
 variable DENSE-N
 
 \ The dense index of raw parameter index RAW, the next one when RAW is new.
 \ Past the map's entries a new parameter is counted, not kept.
 : DENSE-INDEX ( n -- n ) {: raw:n :}
-   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT min 0 ?do
+   DENSE-N @ TFAM-DECL-PARAM-COUNT min 0 ?do
       i cells DENSE-RAW + @ raw = if i unloop exit then
    loop
-   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT < if
+   DENSE-N @ TFAM-DECL-PARAM-COUNT < if
       raw DENSE-N @ cells DENSE-RAW + !
    then
    DENSE-N @  1 DENSE-N +! ;
@@ -549,7 +558,7 @@ variable DENSE-N
 : TYPE-DENSE ( n -- n bool ) {: node:n :}
    TRANSIENT-ON
    [: node DENSE-COPY ;] [: TRANSIENT-OFF ;] finally
-   DENSE-N @ TFAM:TFAM-DECL-PARAM-COUNT > if drop 0 RES-FALSE exit then
+   DENSE-N @ TFAM-DECL-PARAM-COUNT > if drop 0 RES-FALSE exit then
    RES-TRUE ;
 
 \ A transient copy of effect node, its parameters numbered 0, 1 ... by first

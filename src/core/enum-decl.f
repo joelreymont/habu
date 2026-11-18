@@ -6,7 +6,6 @@ split-str
 \ (generated-declaration.f) builds constructors at commit, so a reject publishes
 \ none. Loads after decl-event.f and structure-decl.f.
 
-using TFAM
 using TYPE-DECL
 
 package TYPE-DECL
@@ -39,11 +38,11 @@ ED-RESET
       s" missing name"
       s" write the family name after `ENUM`, as in `ENUM color red green ;ENUM`"
       E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN
+   2dup DEF-NAME-BAD? IF 2drop s" " s" " TFAM:E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail"
       s" write the family name as a lowercase tail with no package qualifier, as in `color`"
-      E-TFAM-CASE DECL-REJECT:REJECT throw THEN
+      TFAM:E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    TYPE-NAME:FAMILY-RESERVED? IF
       s" reserved name"
       s" rename the family: single letters, `ptr` and value records are reserved"
@@ -148,7 +147,7 @@ ED-RESET
    sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
    s" duplicate field name"
-   ED-FIELD-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
+   ED-FIELD-FIX$ TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ -rot sch
    VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD
@@ -184,7 +183,7 @@ ED-RESET
       TDECL-COLLIDE-WHY E-TDECL-NAME DECL-REJECT:REJECT throw THEN
    s" duplicate variant"
    s" give each variant of the enum its own name"
-   E-TFAM-DUP DECL-REJECT:EXPECT
+   TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ na nu DECL-EVENT:VARIANT ;
 : OPEN-VARIANT ( -- )
    SEEN-CLEAR
@@ -247,7 +246,7 @@ ED-RESET
    na nu DECL-REJECT:TOKEN!
    s" duplicate family"
    s" rename the enum: this package already declares a family by that name"
-   E-TFAM-DUP DECL-REJECT:EXPECT
+   TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ TDECL-VIS na nu
    ar TK-SUM TFAM-DECL FAM !
    OPEN-TX ;
@@ -256,7 +255,7 @@ ED-RESET
    na nu DECL-REJECT:TOKEN!
    s" duplicate family"
    s" rename the enum: this package already declares a family by that name"
-   E-TFAM-DUP DECL-REJECT:EXPECT
+   TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ TDECL-VIS na nu
    0 TK-ENUM TFAM-DECL FAM !
    OPEN-TX ;
@@ -395,5 +394,4 @@ global
 INTRINSIC-DECLARATION INTRINSIC
 ;package
 
-;using
 ;using

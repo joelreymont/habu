@@ -5,12 +5,13 @@ split-str
 \ names are byte offsets into one string pool, so records hold only integers.
 \ Registries roll back through RBF-PUSH / RBF-POP.
 
-\ A name referenced outside this package is public, everything else private;
-\ outside includes the inner packages this file opens (TYPE-NAME, TYPE-FIELD,
-\ CHECKER-DECL-FRAME, SCHEMA-REG). These are top-level packages, not parts of
-\ TFAM, and a `package` inside an open one opens a part of it, so each inner
-\ block closes TFAM, reopens it after, and reads publics through `using TFAM`.
+\ TFAM's words are private except its error codes; an engine package takes one
+\ with `EXPORT TFAM:NAME`. The inner packages this file opens (TYPE-NAME,
+\ TYPE-FIELD, CHECKER-DECL-FRAME, SCHEMA-REG) are top-level packages, not
+\ parts of TFAM, since a `package` inside an open one opens a part of it: each
+\ inner block closes TFAM, reopens it after, and EXPORTs what it calls.
 package TFAM
+private
 EXPORT SCHEMA-REG:SCH-APP
 EXPORT SCHEMA-REG:SCH-CON
 EXPORT SCHEMA-REG:SCH-PARAM
@@ -54,21 +55,15 @@ EXPORT SCHEMA-REG:SCHEMA-XT?
 
 \ --- kind of a family (what its values are).
 
-public
-
 0 constant TK-CELL          \ scalar-cell family (no ADT layout)
 1 constant TK-PRODUCT       \ record / struct
 2 constant TK-SUM           \ tagged sum
 3 constant TK-ENUM          \ payload-free sum
 
-private
-
 4 constant TK-EVIDENCE      \ compile-only evidence family
 4 constant TK-MAX
 
 \ --- layout policy (physical representation); the default is TL-STACK-CELL-TAG.
-
-public
 
 0 constant TL-STACK-CELL-TAG
 1 constant TL-PACKED-TAG
@@ -76,13 +71,9 @@ public
 3 constant TL-BOXED
 4 constant TL-CUSTOM
 
-private
-
 4 constant TL-MAX
 
 \ --- parameter kind (kind of each of a family's `arity` parameters).
-
-public
 
 0 constant PK-CELL
 1 constant PK-LAYOUT
@@ -90,17 +81,15 @@ public
 4 constant PK-SCOPE        \ non-value lexical scope identity
 5 constant PK-REGION       \ non-value host allocation identity
 
-private
-
 3 constant PK-EVIDENCE
 5 constant PK-MAX
-
-public
 
 CELL constant TAGW-CELL     \ default tag width: one stack cell
 
 \ Visibility reuses the checker's package modes so registry and package scope
 \ never diverge: CHECKER-PACKAGE-PRIVATE (1) / CHECKER-PACKAGE-PUBLIC (2).
+
+public
 
 \ --- named reject codes (thrown, caught by parser/CHECK path or unit `catch`).
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
@@ -123,11 +112,7 @@ variable TF-PUB               \ private first-public-match accumulator (-1 = non
 \ The registry may store wider internal schemas; this count bounds only the
 \ source-language spelling of positional declaration parameters.
 
-public
-
 23 constant TFAM-DECL-PARAM-COUNT
-
-private
 
 create TFAM-DECL-PARAM-ALPHABET
    97 c,  98 c,  99 c,  100 c, 101 c,
@@ -135,8 +120,6 @@ create TFAM-DECL-PARAM-ALPHABET
    108 c, 109 c, 111 c, 112 c, 113 c,
    115 c, 116 c, 117 c, 118 c, 119 c,
    120 c, 121 c, 122 c,
-
-public
 
 : TFAM-DECL-PARAM>CHAR ( n -- n bool ) {: index:n :}
    index 0 < index TFAM-DECL-PARAM-COUNT >= or IF 0 RES-FALSE EXIT THEN
@@ -151,8 +134,6 @@ public
 
 \ shared string pool. Names are interned as byte offsets; offsets stay valid
 \ across a pool grow, so no stored offset ever needs rebasing.
-
-private
 
 512 constant TF-STR-INIT         \ bytes; holds the built-ins' names (TF-CAP-INIT)
 variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !
@@ -175,8 +156,6 @@ EXPORT CHECKER-REG:GROW
 : TF-STR-SCRUB ( n n -- ) {: lo:n hi:n :} \ zero the pool bytes [lo,hi); see PF-SCRUB
    hi lo ?do 0 TF-STR i + c! loop ;
 
-public
-
 : TF-INTERN ( str -- n ) {: a:^ u:n :}
    u TF-STR-ENSURE                        \ grow first, then cache a stable base
    TF-STR-U @ {: off:n :}
@@ -193,8 +172,6 @@ public
 \ canonical tail validation. Declarations accept only lowercase tokens; the
 \ registry never folds case, so an uppercase/mixed-case token is rejected here.
 
-private
-
 : TF-LOWER? ( n -- bool ) {: c:n :} c 97 >= c 122 <= and ;   \ a-z
 : TF-DIGIT? ( n -- bool ) {: c:n :} c 48 >= c 57 <= and ;    \ 0-9
 : TF-TAILBYTE? ( n -- bool ) {: c:n :}   \ lowercase, digit, or internal hyphen
@@ -202,13 +179,9 @@ private
    c TF-DIGIT? IF RES-TRUE EXIT THEN
    c 45 = ;                                                  \ '-'
 
-public
-
 : TF-HIDDEN? ( str -- bool ) {: a:^ u:n :}   \ compaction-hidden field name
    u 0= IF RES-FALSE EXIT THEN
    a c@ 64 = ;                                              \ leading '@'
-
-private
 
 : TF-HYPHEN-BAD? ( str n -- bool ) {: a:^ u:n i:n :}   \ '-' at an edge or doubled
    i 0 = IF RES-TRUE EXIT THEN                      \ leading '-a'
@@ -347,7 +320,6 @@ EXPORT CHECK:TYPE-REP-CLOSED?
 EXPORT CHECK:UNMAKE-SEED-LAYOUT
 EXPORT CHECK:WIDTH-FAM
 EXPORT CHECK:WRITE-WINDOW-CK
-public
 
 : TF-CANON? ( str -- bool ) {: a:^ u:n :}    \ tailbytes + internal single '-' + >=1 letter
    u 0= IF RES-FALSE EXIT THEN
@@ -370,8 +342,6 @@ public
    TF-CANON? 0= IF E-TFAM-CASE throw THEN ;
 
 \ param-kind pool (one PK-* cell per parameter of every family, contiguous).
-
-private
 
 128 constant TF-PK-INIT          \ holds the built-ins' param kinds (TF-CAP-INIT)
 variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !
@@ -432,21 +402,14 @@ variable TF-PK-N   0 TF-PK-N !
 \ TF.AT-SYM: the checker symbol of the family's generated AT, 0 when it has none.
 21 cells constant TF.AT-SYM-OFF
 
-public
-
 22 cells constant TF-REC
-private
 
 : TF.PKG-OFF ( ^a -- ^a ) TF.PKG-OFF-AT + ;
 : TF.PKG-U ( ^a -- ^a ) TF.PKG-U-OFF + ;
 : TF.VIS ( ^a -- ^a ) TF.VIS-OFF + ;
 
-public
-
 : TF.NAME-OFF ( ^a -- ^a ) TF.NAME-OFF-AT + ;
 : TF.NAME-U ( ^a -- ^a ) TF.NAME-U-OFF + ;
-
-private
 
 : TF.ARITY ( ^a -- ^a ) TF.ARITY-OFF + ;
 : TF.KIND ( ^a -- ^a ) TF.KIND-OFF + ;
@@ -493,8 +456,6 @@ variable TFAM-N   0 TFAM-N !
    id TFAM-N @ >= IF s" tfam: bad family id" EXIT-STATUS:INTERNAL die THEN
    id TF-REC * TF-BASE + ;
 
-public
-
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
 
 \ --- read-only queries.
@@ -503,17 +464,11 @@ public
 
 ;package
 
-using TFAM
-
 package TFAM
+private
 
-\ Global: the engine names TFAM-NAME$, TFL-CON-FAM?, TFL-MATCH-FAM? and
-\ TFAM-CTOR-WORD? bare, from packages that do not use TFAM.
-global
 : TFAM-NAME$ ( n -- str ) {: id:n :}
    id TF-REC@ {: r:^ :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
-
-public
 
 : TFAM-VIS@ ( n -- n ) TF-REC@ TF.VIS @ ;
 : TFAM-ARITY@ ( n -- n ) TF-REC@ TF.ARITY @ ;
@@ -547,11 +502,7 @@ public
 8 constant DRV-INIT              \ initialized-record field accessors
 16 constant DRV-TAG              \ checked conversion from a tag, TAG>
 
-private
-
 : TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
-
-public
 
 : TFAM-DERIVE-EQ! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-EQ or swap ! ;
 : TFAM-DERIVE-EQ? ( n -- bool ) TFAM-DERIVE@ DRV-EQ and 0 <> ;
@@ -584,8 +535,6 @@ public
 \ folded into the payload, so the width branch keys on the policy before the
 \ kind. Only TFAM-LAYOUT! reaches them (the POLICY clause refuses boxed).
 
-private
-
 : TFAM-BOXED-OR-NICHE? ( n -- bool ) {: id:n :}   \ policy collapses the value to one cell
    id TFAM-LAYOUT-POLICY@ {: p:n :}
    p TL-BOXED = p TL-NICHE = or ;
@@ -604,8 +553,6 @@ private
 \ logical cell. A sum whose payload may be linear is linear. render.f compacts a
 \ hidden run back to family<args>.
 
-public
-
 : TFAM-WIDTH@ ( n -- n ) {: id:n :}
    id TFAM-BOXED-OR-NICHE? IF 1 EXIT THEN
    id TFAM-SUM? id TFAM-ENUM? or IF id TFAM-SLOTS@ 1 + EXIT THEN
@@ -619,15 +566,9 @@ public
 \ answer stamped with the current epoch is still the answer a walk would give.
 \ It starts at 1 so a zeroed memo cell never looks current.
 
-private
-
 variable TFM-EPOCH   1 TFM-EPOCH !
 
-public
-
 : TFM-EPOCH+ ( -- ) TFM-EPOCH @ 1 + TFM-EPOCH ! ;
-
-private
 
 \ --- field mutators.
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
@@ -636,12 +577,8 @@ private
    TFM-EPOCH+ ;
 : TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
 
-public
-
 \ A STRUCTURE learns its kind at its close: one with no field is a cell family.
 : TFAM-KIND! ( n n -- ) swap TF-REC@ TF.KIND !  TFM-EPOCH+ ;
-
-private
 
 \ An empty range (count 0) is stored as start 0 count 0, never at the
 \ store's high-water: it names no row, so its start is the same whatever
@@ -654,11 +591,8 @@ private
    c 0= IF 0 ELSE s THEN id TF-REC@ TF.FLD-START !
    c id TF-REC@ TF.FLD-COUNT !
    TFM-EPOCH+ ;
-public
 
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
-
-private
 
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" EXIT-STATUS:INTERNAL die THEN
@@ -679,19 +613,11 @@ private
 \ follows the record arena's capacity; a capacity change or a rewind outside the
 \ retire seam rebuilds the whole index.
 
-public
-
 128 constant TFX-SLOTS-INIT             \ power of two; grown to keep load <= 1/2
-
-private
 
 variable TFX-SLOTS-V   TFX-SLOTS-INIT TFX-SLOTS-V !
 
-public
-
 : TFX-SLOTS ( -- n ) TFX-SLOTS-V @ ;
-
-private
 
 create TFX-A-BOOT   TFX-SLOTS-INIT cells allot
 PERSISTED-PTR-VARIABLE TFX-A-P   TFX-A-BOOT TFX-A-P !
@@ -791,8 +717,6 @@ variable TFX-CUR              \ private bucket-walk cursor
 
 \ exact (package,tail) — the qualified-lookup and duplicate-detection primitive.
 
-public
-
 : TFAM-FIND-IN ( ^u8 n ^u8 n -- n bool )
    {: pa:^ pu:n na:^ nu:n :}
    TFX-ENSURE
@@ -807,8 +731,6 @@ public
    0 RES-FALSE ;
 
 \ --- declaration. Storage only ever sees canonical lowercase tails.
-
-private
 
 : TFAM-KIND-VALID? ( n -- bool ) {: k:n :} k 0 >= k TK-MAX <= and ;
 : TFAM-PK-RESERVE ( n -- ) {: k:n :}        \ default every parameter to PK-CELL
@@ -866,10 +788,7 @@ NOMINAL-PROVIDER
 8 cells constant SV.CTOR-PKG-OFF-AT
 9 cells constant SV.CTOR-PKG-U-OFF
 
-public
-
 10 cells constant SUMV-REC
-private
 
 : SV.FAM ( ^a -- ^a ) SV.FAM-OFF + ;
 : SV.NAME-OFF ( ^a -- ^a ) SV.NAME-OFF-AT + ;
@@ -906,8 +825,6 @@ variable SUMV-N   0 SUMV-N !
    id SUMV-N @ >= IF s" tfam: bad variant id" EXIT-STATUS:INTERNAL die THEN
    id SUMV-REC * SUMV-BASE + ;
 
-public
-
 : SUMV-FAM@ ( n -- n ) SUMV-REC@ SV.FAM @ ;
 : SUMV-NAME$ ( n -- str ) {: id:n :}
    id SUMV-REC@ {: r:^ :}  r SV.NAME-OFF @ r SV.NAME-U @ TF-OFF$ ;
@@ -915,11 +832,7 @@ public
 : SUMV-SCH-START@ ( n -- n ) SUMV-REC@ SV.SCH-START @ ;
 : SUMV-SCH-COUNT@ ( n -- n ) SUMV-REC@ SV.SCH-COUNT @ ;
 
-private
-
 : SUMV-RAW-PAYCELLS@ ( n -- n ) SUMV-REC@ SV.PAYCELLS @ ;
-
-public
 
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
@@ -945,16 +858,11 @@ public
 \ catches a rewind outside those seams. SVX-GEN catches the shared mapping being
 \ dropped or re-laid out.
 
-private
-
 variable SVX-GEN
 variable SVX-HI
 0 SVX-GEN !   0 SVX-HI !
-public
 
 : SVX@ ( n -- n ) HT-SVX IDX-HEAD@ ;
-
-private
 
 : SVX! ( n n -- ) HT-SVX IDX-HEAD! ;
 
@@ -977,8 +885,6 @@ private
    SVX-STAMP
    HIDX-GEN @ SVX-GEN ! ;
 
-public
-
 : SVX-ENSURE ( -- )
    HIDX-ENSURE
    SVX-SYNC
@@ -992,8 +898,6 @@ public
 \ SVX-SYNC to catch (SVX-GEN already forces SVX-BUILD), so its mark follows the
 \ store: a cache hit leaves the index stale where a cold load leaves it current,
 \ and both must end at the same SVX-HI.
-
-private
 
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
    SVX-GEN @ HIDX-GEN @ <> IF newn SVX-HI ! EXIT THEN
@@ -1011,8 +915,6 @@ private
 \ A variant owns exactly one generated constructor. Rewriting the cell would
 \ strand the old symbol's head on a row that no longer carries it, so the second
 \ write is refused rather than silently indexed wrong.
-
-public
 
 : SUMV-CTOR-SYM! ( n n -- ) {: vid:n sym:n :}
    vid SUMV-CTOR-SYM@ 0 <> IF
@@ -1033,8 +935,6 @@ public
 \ are process-local: a capture drops them and a capacity change rebuilds them. A
 \ store that moved outside those seams is rebuilt by the next lookup, and
 \ refused by a rewind that comes first (VNX-RETIRE).
-
-private
 
 8 constant VNX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
 variable VNX-SLOTS-V   VNX-SLOTS-INIT VNX-SLOTS-V !
@@ -1118,14 +1018,11 @@ variable VNX-CUR              \ private bucket-walk cursor
    BEGIN dup newn >= WHILE dup VNX-POP 1 - REPEAT drop
    newn VNX-HI ! ;
 
-public
-
 \ Generated-constructor protection: a split name's head matches the recorded
 \ SV.CTOR-PKG spelling of the package it resolves to here, case-insensitively,
 \ so neither a folded alias nor a part's own name can reopen a constructor
 \ package, extend it with a new tail, or undefine a generated word. Installed
 \ into the checker's CTOR-*-XT friend cells at the end of this file.
-private
 
 variable TF-CW-COL          \ first-colon split position
 PTR-VARIABLE TF-CW-HEAD-A   variable TF-CW-HEAD-U   \ the split head, resolved
@@ -1153,16 +1050,12 @@ PTR-VARIABLE TF-CW-HEAD-A   variable TF-CW-HEAD-U   \ the split head, resolved
       THEN
    loop a 0 a 0 RES-FALSE ;
 
-public
-
 : TFAM-CTOR-PKG? ( str -- bool )
    TFAM-CTOR-OWNER {: pa:^ pu:n na:^ nu:n owned:bool :} owned ;
 
-private
 EXPORT CHECKER-RESOLVE:CK-REC-NAME$
 EXPORT CHECKER-RESOLVE:HEAD-ROW
 
-public
 \ The package a qualifier's head names here, as a word's qualifier does: the
 \ open package's part first, then a top-level package; a head no record holds
 \ stays as given.
@@ -1182,12 +1075,8 @@ public
    TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 -  id SUMV-NAME$ CORE-STR=CI ;
 
-private
-
 : TF-CW-TAIL$ ( str -- str ) {: a:^ u:n :}   \ name tail after the split colon
    a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 - ;
-
-public
 
 : TFAM-DERIVED-TAIL? ( str -- bool ) {: a:^ u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -1195,16 +1084,12 @@ public
    a u s" tag>" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI ;
 
-private
-
 : TFAM-DERIVED-KIND-TAIL? ( str n -- bool ) {: a:^ u:n fam:n :}   \ derived tail the FAMILY generates
    a u s" eq" CORE-STR=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
    a u s" hash" CORE-STR=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
    a u s" tag>" CORE-STR=CI IF fam TFAM-DERIVE-TAG? EXIT THEN   \ enums only
    fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
    a u s" tag" CORE-STR=CI ;                  \ tag rides ANY derive on sum/enum
-
-public
 
 : TFAM-DERIVED-AT? ( str n -- bool ) {: a:^ u:n id:n :}   \ split name = id-family derived word?
    id SUMV-FAM@ TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
@@ -1234,12 +1119,11 @@ public
 ;package
 
 package TFAM
+private
 
 : SUMV-MATCH? ( n str n -- bool ) {: fam:n na:^ nu:n id:n :}
    id SUMV-FAM@ fam = 0= IF RES-FALSE EXIT THEN
    id SUMV-NAME$ na nu CORE-STR= ;
-
-public
 
 \ The lowest matching row: a chain runs newest first, so the last match it meets
 \ is the lowest.
@@ -1286,18 +1170,12 @@ public
 \ top-level `a-b-c` derives `A--B--C`; top level derives the bare escaped tail
 \ (`result` -> `RESULT`).
 
-private
-
 PTR-VARIABLE TF-CTOR-P           \ the derived name, grown on demand
 SCRATCH-VARIABLE TF-CTOR-CAP     \ TF-CTOR-P's room, in cells
 variable TF-CTOR-U               \ derived-name length
 : TF-CTOR-BUF ( -- ^u8 ) TF-CTOR-P @ ;
 
-public
-
 : TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
-
-private
 
 : TF-CTOR-C, ( n -- )
    TF-CTOR-P TF-CTOR-CAP  TF-CTOR-U @ CELL / 1 +  1 ARENA-ROWS-ENSURE
@@ -1325,8 +1203,6 @@ private
 
 \ The tail must already be canonical lowercase.
 
-public
-
 : TF-CTOR-PKG$ ( str str -- str )
    {: pa:^ pu:n ta:^ tu:n :}
    pa pu ta tu TF-CTOR-BUILD-ESCAPED
@@ -1352,8 +1228,6 @@ public
    45 TF-CTOR-C,
    ma mu TF-CTOR-TAIL
    TF-CTOR-BUF TF-CTOR-U @ ;
-
-private
 
 \ A private family's generated words are its rows' private spellings, a
 \ product's make and unmake rows included, and its derived words: the
@@ -1384,14 +1258,10 @@ private
    a u fam TF-PRIV-NAME? IF RES-TRUE EXIT THEN
    a u fam TF-PRIV-DERIVED? ;
 
-public
-
 : TF-CTOR-PRIV-FIND ( str -- n bool ) {: a:^ u:n :}   \ family, found
    TFAM-N @ 0 ?do
       a u i TF-CTOR-PRIV-FAM? IF i RES-TRUE unloop EXIT THEN
    loop 0 RES-FALSE ;
-
-private
 
 \ `DERIVE addr` and `init` members are recognized from the field registry,
 \ declared further down, so the scan is an xt bound there.
@@ -1408,7 +1278,6 @@ defer TFAM-ADDR-FIND-XT ( str -- n bool )
    THEN
    drop  a u TFAM-ADDR-FIND-XT ;
 
-global
 : TFAM-CTOR-WORD? ( ^u8 n -- bool )   \ exact generated word?
    TF-GEN-FIND nip ;
 
@@ -1426,6 +1295,7 @@ global
 ;package
 
 package TFAM
+private
 
 \ A private family reserves no namespace, so it has no package for a stray tail
 \ to extend and this stays the qualified rule alone.
@@ -1438,8 +1308,6 @@ package TFAM
    a u TFAM-CTOR-WORD? IF RES-FALSE EXIT THEN
    ha hu TFAM-CTOR-PKG? ;
 
-public
-
 \ shared fields, keyed by (family-id, optional-variant-id, field tail).
 \ PF-N includes the open declaration's provisional rows; PF-COMMIT-N is the
 \ reflection high-water. PF-ADD returns no row id, so an id becomes observable
@@ -1448,8 +1316,6 @@ public
 \ A buffer row (STRUCTURE `BUFFER name N`) holds N bytes inline from a whole-cell
 \ slot: its schema is the element, u8, and its cells, ceil(N / CELL), its width.
 1 constant PF-FLAG-BUFFER
-
-private
 
 0 cells constant PF.FAM-OFF
 1 cells constant PF.VAR-OFF
@@ -1466,8 +1332,6 @@ private
 \ it has none.
 11 cells constant PF.ACCESSOR-SYM-OFF
 
-public
-
 12 cells constant PF-REC
 : PF.FAM ( ^a -- ^a ) PF.FAM-OFF + ;
 : PF.VAR ( ^a -- ^a ) PF.VAR-OFF + ;
@@ -1481,27 +1345,17 @@ public
 : PF.ALIGN ( ^a -- ^a ) PF.ALIGN-OFF + ;
 : PF.FLAGS ( ^a -- ^a ) PF.FLAGS-OFF + ;
 
-private
-
 : PF.ACCESSOR-SYM ( ^a -- ^a ) PF.ACCESSOR-SYM-OFF + ;
 
 16 constant PF-CAP-INIT            \ holds the built-ins' fields (TF-CAP-INIT)
 variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
 
-public
-
 : PF-CAP ( -- n ) PF-CAP-V @ ;
-
-private
 
 create PF-A-BOOT   PF-CAP-INIT PF-REC * allot
 PERSISTED-PTR-VARIABLE PF-A-P   PF-A-BOOT PF-A-P !
 
-public
-
 : PF-BASE ( -- ^n ) PF-A-P @ ;
-
-private
 
 variable PF-N   0 PF-N !
 variable PF-COMMIT-N   0 PF-COMMIT-N !
@@ -1512,26 +1366,18 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
 \ offsets, so a zeroed row is the canonical absent row and retired rows leave no
 \ bytes in reflection or snapshot/fixpoint identity.
 
-public
-
 : PF-SCRUB ( n n -- ) {: lo:n hi:n :}
    hi lo <= IF EXIT THEN
    PF-BASE  lo PF-REC-CELLS *  hi PF-REC-CELLS *  ARENA-CELLS-ZERO ;
-
-private
 
 : PF-GROW ( n -- ) {: need:n :}
    need PF-CAP-V @ 2 * max {: nc:n :}
    PF-A-P  PF-CAP-V @ PF-REC *  nc PF-REC *  GROW
    nc PF-CAP-V ! ;
 
-public
-
 : PF-ENSURE ( -- )
    PF-N @ PF-CAP-V @ < IF exit THEN
    PF-N @ 1 + PF-GROW ;
-
-private
 
 : ID-REQUIRE ( n n -- ) {: id:n n:n :}
    id 0 <  id n >=  or IF s" pf: field id names no field" EXIT-STATUS:INTERNAL die THEN ;
@@ -1553,11 +1399,7 @@ private
    id PF-REC@ {: r:^ :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
 : PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
 
-public
-
 : PF-PENDING-SCH@ ( n -- n ) PF-ROW PF.SCH @ ;
-
-private
 
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-CELLS@ ( n -- n ) PF-REC@ PF.CELLS @ ;
@@ -1565,8 +1407,6 @@ private
 : PF-BYTES@ ( n -- n ) PF-REC@ PF.BYTES @ ;
 : PF-ALIGN@ ( n -- n ) PF-REC@ PF.ALIGN @ ;
 : PF-FLAGS@ ( n -- n ) PF-REC@ PF.FLAGS @ ;
-
-public
 
 : PF-N@ ( -- n ) PF-COMMIT-N @ ;
 
@@ -1579,8 +1419,6 @@ public
 \ PF-REWIND pops retired rows newest first while their owner cells are intact.
 \ Buckets and links are process-local: a capture drops them, and a capacity
 \ change or a store moved outside those seams rebuilds them.
-
-private
 
 32 constant FVX-SLOTS-INIT              \ power of two; grown to keep load <= 1/2
 variable FVX-SLOTS-V   FVX-SLOTS-INIT FVX-SLOTS-V !
@@ -1667,8 +1505,6 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    fam var FVX-HASH FVX-BKT @ ;
 : FVX-NEXT ( n -- n ) 1 - FVX-LINK @ ;
 
-public
-
 \ PF-LINK ( n -- ) : chain row id, which PF-ADD has written and is about to
 \ publish as PF-N's next value.
 : PF-LINK ( n -- ) {: id:n :}
@@ -1695,8 +1531,6 @@ public
 \ Each answer is memoized per family under TFM-EPOCH: a cell stamped with the
 \ current epoch holds the answer a walk would give. A refusal is a throw and is
 \ never memoized. Process-local, like VNX.
-
-private
 
 0 constant TFM-NAMED
 1 constant TFM-LINEAR
@@ -1733,8 +1567,6 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 : TFM-FLAG! ( bool n n -- ) {: b:bool fam:n k:n :}
    b IF 1 ELSE 0 THEN fam k TFM! ;
 
-public
-
 \ A variant has one declared-payload source: SUMTYPE stores positional roots in
 \ the SUMV schema range; ENUM stores named rows in TYPE-FIELD and leaves that
 \ range empty. The accessors below are the one seam for both. A sum/enum family
@@ -1744,8 +1576,6 @@ public
 \ for its make/unmake variants. An all-empty family has no payload either way.
 \ Only a bounded, committed, variant-owned field slice is a valid named
 \ representation.
-
-private
 
 \ A family's variant range (TFAM-VAR-RANGE!) or field range (TFAM-FLD-RANGE!)
 \ holds rows that are not its variants' payload; both setters store it unchecked.
@@ -1973,14 +1803,10 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
 : TFW-FAM-INSTALL ( -- ) [: TFW-FAM-IMPL ;] is TFW-FAM ;
 TFW-FAM-INSTALL
 
-public
-
 : TFAM-SCH-WIDTH ( n n -- n ) {: fam:n node:n :}   \ declared width of a schema node of fam: each parameter one cell
    fam TFAM-ARITY@ {: ar:n :}
    ar 0 ?do 1 i TFW! loop
    node 0 ar TFW-NODE ;
-
-private
 
 \ Every argument is measured before any frame cell is written: T-WIDTH of an
 \ argument re-enters this walk at cell 0.
@@ -2131,8 +1957,6 @@ TFAM-STORE-MASK-INSTALL
    fam var r PF-ROW-OWNER? 0= IF RES-FALSE EXIT THEN
    r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu CORE-STR= ;
 
-public
-
 : PF-FIND ( n n str -- n bool ) {: fam:n var:n na:^ nu:n :}
    0 BEGIN dup PF-COMMIT-N @ < WHILE
       {: i:n :}
@@ -2141,13 +1965,9 @@ public
    REPEAT drop
    0 RES-FALSE ;
 
-private
-
 \ PF-ADD validation. Field rows carry explicit logical-cell and memory-layout
 \ metadata under every policy; no policy implies CELL-sized storage.
 $7FFFFFFFFFFFFFFF constant PF-MAX-N
-
-public
 
 0 constant PF-FLAGS-NONE
 
@@ -2198,6 +2018,10 @@ EXPORT CHECK:VREC-FIND
 EXPORT CHECK:VREC-N
 EXPORT CHECK:VREC-NAME$
 EXPORT CHECK:XT-TOK?
+EXPORT TFAM:TF-GRAMMAR-KEYWORD?
+EXPORT TFAM:TF-HIDDEN?
+EXPORT TFAM:TF-REQUIRE-CANON
+EXPORT TFAM:TFAM-FIND-IN
 : RESERVED? ( str -- bool ) {: a:^ u:n :}
    u 1 = IF RES-TRUE EXIT THEN
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
@@ -2260,7 +2084,7 @@ public
 \ A variant defines a word in its family's package, so no keyword may name it.
 : VARIANT-REQUIRE ( str -- ) {: a:^ u:n :}
    u 0= IF E-TDECL-SYNTAX throw THEN
-   a u DEF-NAME-BAD? IF E-TDECL-DEF-NAME throw THEN
+   a u DEF-NAME-BAD? IF TFAM:E-TDECL-DEF-NAME throw THEN
    a u TF-REQUIRE-CANON
    a u RESERVED? IF E-TDECL-NAME throw THEN
    a u FAMILY-TAKEN? IF E-TDECL-NAME throw THEN ;
@@ -2270,6 +2094,7 @@ seal-package
 ;package
 
 package TFAM
+private
 
 \ A field tail may not spell a declaration word (TF-GRAMMAR-KEYWORD?) or a
 \ generated-operation name, on every path that registers a field row: the
@@ -2285,8 +2110,6 @@ package TFAM
    a u s" encode" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" decode" CORE-STR=CI ;
 
-public
-
 : PF-NAME-REQUIRE ( str -- ) {: a:^ u:n :}
    a u TF-REQUIRE-CANON
    a u PF-RESERVED? IF E-PF-NAME throw THEN ;
@@ -2298,8 +2121,6 @@ public
    var 0 < var SUMV-N @ >= or IF RES-FALSE EXIT THEN
    var SUMV-FAM@ fam =
    fam TFAM-SUM? fam TFAM-ENUM? or and ;
-
-private
 
 EXPORT CHECKER-RESOLVE:TOP$
 
@@ -2316,8 +2137,6 @@ EXPORT CHECKER-RESOLVE:TOP$
 : PF-NONVALUE? ( n -- bool )
    dup PK-SCOPE = swap PK-REGION = or ;
 
-public
-
 \ A family with a scope or region parameter.
 : TFAM-NONVALUE-PARAM? ( n -- bool ) {: fam:n :}
    fam TFAM-ARITY@ 0 ?do
@@ -2333,13 +2152,9 @@ public
    want PK-CELL = got PK-LAYOUT = and IF RES-TRUE EXIT THEN
    got want = ;
 
-private
-
 \ Deferred so PF-NODE-KIND?'s SCH-QUOT case can reach it before its body, which
 \ calls PF-NODE-KIND? back, is defined.
 defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
-
-public
 
 : PF-NODE-KIND? ( n n -- n bool ) {: owner:n node:n :}
    node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
@@ -2406,8 +2221,6 @@ public
    THEN
    0 RES-FALSE ;
 
-private
-
 \ Elements are built before their row (parser order), so each must sit below the
 \ row id: the acyclic guard PF-NODE-KIND? applies to APP/PTR children.
 : PF-QUOT-ROW-OK-IMPL ( n n -- bool ) {: owner:n rownode:n :}
@@ -2451,8 +2264,6 @@ PF-QUOT-ROW-INSTALL
 \ 0..22).
 defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward ref for the SCH-QUOT recursion
 
-public
-
 : TFAM-SCH-ARITY ( n n -- n ) {: owner:n node:n :}   \ first out-of-arity SCH-PARAM index in node's subtree, else -1
    node SCHEMA-NODE-OK? 0= IF -1 EXIT THEN
    node SCHEMA-PARAM? IF
@@ -2476,8 +2287,6 @@ public
       REPEAT drop -1 EXIT
    THEN
    -1 ;
-
-private
 
 : TFAM-SCH-ROW-ARITY-IMPL ( n n -- n ) {: owner:n rownode:n :}   \ first out-of-arity index in a SCH-ROW's elements, else -1
    rownode SCHEMA-ROW? 0= IF -1 EXIT THEN
@@ -2550,8 +2359,6 @@ variable ER-MARK    0 ER-MARK !
       THEN
    loop ;
 
-public
-
 : PF-OVERLAP? ( n n n n n n -- bool )
    {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
    fam var FVX-FIRST
@@ -2600,8 +2407,6 @@ public
    REPEAT
    drop RES-FALSE ;
 
-public
-
 : PF-ADD ( n n ^u8 n n n n n n n n -- )
    {: fam:n var:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    WRITE-WINDOW-CK
@@ -2637,8 +2442,6 @@ public
 \ written to, field id * 2 + 2 or family id * 2 + 1, and is believed only
 \ while that row is live and still holds the symbol: a retired row is out of
 \ range and a row added again starts with none, so a rewind unlinks nothing.
-
-private
 
 variable MBX-GEN   0 MBX-GEN !
 
@@ -2682,16 +2485,12 @@ variable MBX-GEN   0 MBX-GEN !
    MBX-ENSURE
    fam 2 * 1 + sym MBX-LINK ;
 
-public
-
 \ Records SYM as the generated word of member SHAPE PARAM: a field's accessor
 \ (FIELD, SPAN, PARAM its field id) or a family's AT (INDEX, PARAM its id). Any
 \ other shape is no member.
 : MEMBER-SYM! ( n n n -- ) {: shape:n param:n sym:n :}
    shape CHILD-ABI:FIELD =  shape CHILD-ABI:SPAN = or IF param sym FIELD-SYM! EXIT THEN
    shape CHILD-ABI:INDEX = IF param sym AT-SYM! THEN ;
-
-private
 
 \ The shape and param of the member whose generated word is SYM; false for
 \ any other symbol.
@@ -2719,6 +2518,8 @@ private
 ;package
 
 package TYPE-FIELD
+EXPORT TFAM:PF-N@
+EXPORT TFAM:PF-NO-VARIANT
 
 public
 
@@ -2738,7 +2539,6 @@ seal-package
 \ declaration is provisional (MAKE/UNMAKE generation in the body phase) sees no
 \ uncommitted row.
 package TFAM
-
 private
 
 : TFAM-ADDR-FIELD-TAIL? ( str n -- bool ) {: a:^ u:n fam:n :}   \ tail names a COMMITTED field of fam
@@ -2750,8 +2550,6 @@ private
       THEN
    loop RES-FALSE ;
 
-public
-
 : TFAM-ADDR-FIXED-TAIL? ( str -- bool ) {: a:^ u:n :}   \ a fixed addr member tail
    a u s" at" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" bytes" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -2761,8 +2559,6 @@ public
    fam TFAM-DERIVE-ADDR? 0= IF RES-FALSE EXIT THEN
    a u TFAM-ADDR-FIXED-TAIL? IF RES-TRUE EXIT THEN
    a u fam TFAM-ADDR-FIELD-TAIL? ;
-
-private
 
 : TFAM-ADDR-AT? ( str n -- bool ) {: a:^ u:n id:n :}   \ split name = id-family accessor?
    TF-CW-HEAD$ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
@@ -2809,13 +2605,9 @@ private
       j 1 +
    REPEAT drop 0 RES-FALSE ;
 
-public
-
 : TFAM-ADDR-FIND ( str -- n bool ) {: a:^ u:n :}   \ accessor family
    a u TF-CW-SPLIT? IF a u TFAM-ADDR-QUAL-FIND EXIT THEN
    a u TFAM-ADDR-PRIV-FIND ;
-
-private
 
 \ A FIELD name is canonical, while the two public initialized members add a
 \ final @ or !. Keep the suffix in its own buffer: TF-CTOR-PRIV$ builds into
@@ -2824,16 +2616,12 @@ PTR-VARIABLE TF-INIT-P
 SCRATCH-VARIABLE TF-INIT-CAP     \ TF-INIT-P's room, in cells
 : TF-INIT-TAIL ( -- ^u8 ) TF-INIT-P @ ;
 
-public
-
 : TFAM-INIT-MEMBER$ ( n bool -- str ) {: fid:n store:bool :}
    fid PF-NAME$ {: a:^ u:n :}
    TF-INIT-P TF-INIT-CAP  u CELL / 1 +  1 ARENA-ROWS-ENSURE
    u 0 ?do a i + c@ TF-UPPER-C TF-INIT-TAIL i + c! loop
    store IF 33 ELSE 64 THEN TF-INIT-TAIL u + c!
    TF-INIT-TAIL u 1 + ;
-
-private
 
 : TFAM-INIT-TAIL? ( str n -- bool ) {: a:^ u:n fam:n :}
    fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
@@ -2884,13 +2672,10 @@ private
       j 1 +
    REPEAT drop 0 RES-FALSE ;
 
-public
-
 : TFAM-INIT-FIND ( str -- n bool ) {: a:^ u:n :}
    a u TF-CW-SPLIT? IF a u TFAM-INIT-QUAL-FIND EXIT THEN
    a u TFAM-INIT-PRIV-FIND ;
 
-private
 : TFAM-ADDR-FIND-INSTALL ( -- )
    [: 2dup TFAM-ADDR-FIND IF nip nip RES-TRUE EXIT THEN
       drop TFAM-INIT-FIND ;] is TFAM-ADDR-FIND-XT ;
@@ -2899,6 +2684,7 @@ TFAM-ADDR-FIND-INSTALL
 ;package
 
 package TFAM
+private
 
 \ Conservative schema linearity for declaration and cast fences. Exact value
 \ counts below instantiate fields, including repeated parameter occurrences.
@@ -2928,8 +2714,6 @@ defer TFCL-NODE-XT ( n -- bool )
    THEN
    RES-FALSE ;
 
-public
-
 : TFAM-CONCRETE-LINEAR? ( n -- bool ) {: fam:n :}
    fam C2-MUT-FAM @ = IF RES-TRUE EXIT THEN
    fam C2-RECORDS-FAM @ = IF RES-TRUE EXIT THEN
@@ -2951,8 +2735,6 @@ public
    THEN
    RES-FALSE ;
 
-private
-
 : TFCL-NODE-INSTALL ( -- )
    [: TFCL-NODE? ;] is TFCL-NODE-XT
    [: TFAM-CONCRETE-LINEAR? ;] is TFAM-CON-LIN-XT ;
@@ -2965,10 +2747,7 @@ TFCL-NODE-INSTALL
 3 cells constant LAY.ALIGN-OFF
 4 cells constant LAY.TAGW-OFF
 
-public
-
 5 cells constant LAY-REC
-private
 
 : LAY.FAM ( ^a -- ^a ) LAY.FAM-OFF + ;
 : LAY.POLICY ( ^a -- ^a ) LAY.POLICY-OFF + ;
@@ -3000,8 +2779,6 @@ variable LAY-N   0 LAY-N !
    id LAY-N @ >= IF s" tfam: bad layout id" EXIT-STATUS:INTERNAL die THEN
    id LAY-REC * LAY-BASE + ;
 
-public
-
 : LAY-FAM@ ( n -- n ) LAY-REC@ LAY.FAM @ ;
 : LAY-POLICY@ ( n -- n ) LAY-REC@ LAY.POLICY @ ;
 : LAY-SIZE@ ( n -- n ) LAY-REC@ LAY.SIZE @ ;
@@ -3015,8 +2792,6 @@ public
       i 1 +
    REPEAT drop
    0 RES-FALSE ;
-
-private
 
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
    WRITE-WINDOW-CK
@@ -3042,8 +2817,6 @@ private
 : PACKED-ALIGN-UP ( n n -- n ) {: v:n a:n :}   \ round v up to a multiple of pow2 a
    v a 1- + a 1- invert and ;
 
-public
-
 : PACKED-NARROW ( n -- n )   \ smallest byte width 1/2/4/8 holding tags [0,count); 0 if none
    {: count:n :}
    count 0 <= IF 0 EXIT THEN
@@ -3052,8 +2825,6 @@ public
    count 1 32 lshift <= IF 4 EXIT THEN
    8 ;
 
-private
-
 : PACKED-TAGW ( n -- n ) {: fam:n :}   \ narrowed tag byte width (0 for tag-less products)
    fam TFAM-SUM? fam TFAM-ENUM? or 0= IF 0 EXIT THEN
    fam TFAM-VAR-COUNT@ PACKED-NARROW ;
@@ -3061,8 +2832,6 @@ private
    pay 0 > IF CELL EXIT THEN     \ any cell payload -> cell alignment
    tw 0 > IF tw EXIT THEN        \ tag-only -> tag alignment
    1 ;                           \ defensive empty -> byte
-
-public
 
 : PACKED-DESC ( n -- n n n ) {: fam:n :}   \ ( fam -- size align tagw ) packed ABI descriptor
    fam PACKED-TAGW {: tw:n :}
@@ -3073,7 +2842,6 @@ public
 \ The committed init field carries T's schema and stack width. Its field row is
 \ canonical cell storage, while the value being initialized may have a narrower
 \ packed memory descriptor.
-private
 : INIT-ELEM-LAYOUT? ( n -- n n bool ) {: term:n :}   \ T -> bytes, alignment, known?
    term T-RES {: elem:n :}
    elem TAG T-CON = IF CELL CELL RES-TRUE EXIT THEN
@@ -3110,8 +2878,6 @@ private
    0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    -1 FIELD-FAM !  -1 LOAN-FIELD-FAM ! ;
 TFAM-RESET
-
-public
 
 \ The registry rewind: every caller that puts the family and variant stores or
 \ the name pool back to an earlier mark goes through here. Three indexes chain
@@ -3152,8 +2918,6 @@ public
 \ restore (TFX-RETIRE, SVX-TRUNCATE, VNX-RETIRE) and the field owner index from
 \ the PF-REWIND that follows (FVX-RETIRE).
 
-private
-
 0 cells constant TFRB.TFAMN-OFF
 1 cells constant TFRB.STRU-OFF
 2 cells constant TFRB.PKN-OFF
@@ -3161,8 +2925,6 @@ private
 4 cells constant TFRB.PFN-OFF
 5 cells constant TFRB.LAYN-OFF
 6 cells constant TFRB.PFCOMMITN-OFF
-
-public
 
 7 cells constant TF-RBF-REC
 : TFRB.TFAMN ( ^a -- ^a ) TFRB.TFAMN-OFF + ;
@@ -3173,8 +2935,6 @@ public
 : TFRB.LAYN ( ^a -- ^a ) TFRB.LAYN-OFF + ;
 : TFRB.PFCOMMITN ( ^a -- ^a ) TFRB.PFCOMMITN-OFF + ;
 
-
-private
 
 16 constant TF-RBF-CAP-INIT
 variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
@@ -3191,8 +2951,6 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    TF-RBF-P  TF-RBF-CAP-V @ TF-RBF-REC *  nc TF-RBF-REC *  GROW
    nc TF-RBF-CAP-V ! ;
 
-public
-
 : TF-RBF-ENSURE ( -- )
    TF-RBF-DEPTH @ TF-RBF-CAP-V @ < IF exit THEN
    TF-RBF-GROW ;
@@ -3207,11 +2965,23 @@ package CHECKER-DECL-FRAME
 EXPORT TFAM:LAY-N
 EXPORT TFAM:PF-COMMIT-N
 EXPORT TFAM:PF-N
+EXPORT TFAM:PF-REWIND
 EXPORT TFAM:SUMV-N
 EXPORT TFAM:TF-PK-N
+EXPORT TFAM:TF-RBF-CUR
 EXPORT TFAM:TF-RBF-DEPTH
+EXPORT TFAM:TF-RBF-ENSURE
+EXPORT TFAM:TF-RBF-TOP
 EXPORT TFAM:TF-STR-U
 EXPORT TFAM:TFAM-N
+EXPORT TFAM:TFAM-REWIND
+EXPORT TFAM:TFRB.LAYN
+EXPORT TFAM:TFRB.PFCOMMITN
+EXPORT TFAM:TFRB.PFN
+EXPORT TFAM:TFRB.PKN
+EXPORT TFAM:TFRB.STRU
+EXPORT TFAM:TFRB.SUMVN
+EXPORT TFAM:TFRB.TFAMN
 EXPORT SCHEMA-REG:SCH-RBF-DEPTH
 EXPORT SCHEMA-REG:SCHEMA-ROLLBACK-FINALIZE
 EXPORT SCHEMA-REG:SCHEMA-ROLLBACK-RESTORE
@@ -3274,7 +3044,6 @@ EXPORT SCHEMA-REG:SCHEMA-ROLLBACK-SAVE
 ;package
 
 package TFAM
-
 private
 
 : REG-EXT-AOT-INSTALL ( -- )
@@ -3285,8 +3054,6 @@ REG-EXT-AOT-INSTALL
 \ Each is public and global (empty package), so a bare `span<...>` resolves
 \ through TFAM-RESOLVE from any scope. Registration runs at prefix load in every
 \ context (preverify parent and runtime child), so both see identical families.
-
-public
 
 : TFAM-REG-CELL ( str n -- )
    {: na:^ nu:n ar:n :}
@@ -3350,8 +3117,6 @@ s" redx"       1 TFAM-REG-CELL
 \ PTX-BARRIER-ROWS?/BARRIER-CUR?). Runs in every load context, so the parent
 \ verifier and runtime child agree.
 
-private
-
 : PTX-FAM-ID ( str -- n )   \ resolve a GLOBAL family name to its id (0 if none)
    {: na:^ nu:n :}
    s" " na nu TFAM-FIND-IN IF ELSE drop 0 THEN ;
@@ -3384,7 +3149,6 @@ LOAN-FIELD-FAM @ 1 PK-TYPE TFAM-PK!
 \ They are family records rather than STRUCTURE declarations: no constructor,
 \ destructor, or address accessor is published. The fields describe their ABI
 \ for width-aware transport and image replay; checked code cannot project them.
-private
 variable READ-FAM
 variable MUT-FAM
 variable INIT-FAM
@@ -3521,8 +3285,6 @@ REGISTER-STR
 \ for none. A node is `P index`, `C con`, `* node`, `A family count node...`,
 \ `Q hasr node node node node` or `R count node...`.
 
-public
-
 \ The word every type entry's record runs. A type entry lives in the types
 \ wordlist, which no search order holds, so only the engine could run one.
 : TYPE-WORD ( -- ) s" tfam: a type entry ran as a word" EXIT-STATUS:INTERNAL die ;
@@ -3532,8 +3294,6 @@ public
 : ENTRY! ( n n -- ) {: id:n ix:n :} ix 1 + id TF-REC@ TF.ENTRY ! ;
 \ The linker made a type entry the registry lacks.
 : ENTRY-LINKED ( -- ) -1 ENTRIES-PENDING ! ;
-
-private
 
 PTR-VARIABLE ET-BUF   SCRATCH-VARIABLE ET-CAP   variable ET-N    \ the text being written
 PTR-VARIABLE EN-BUF   SCRATCH-VARIABLE EN-CAP   variable EN-N    \ an entry's name
@@ -3676,8 +3436,6 @@ create ET-CH 8 allot
 : ET-LAY ( n -- ) {: l:n :}
    l LAY-POLICY@ ET-NUM  l LAY-SIZE@ ET-NUM  l LAY-ALIGN@ ET-NUM  l LAY-TAGW@ ET-NUM ;
 
-public
-
 \ Family id's entry name.
 : ENTRY-NAME$ ( n -- str ) {: id:n :} id TFAM-PKG$ id TFAM-NAME$ EN-NAME ;
 
@@ -3699,8 +3457,6 @@ public
    id TFAM-FLD-COUNT@ 0 ?do id TFAM-FLD-START@ i + id TFAM-VAR-START@ ET-FIELD loop
    id LAY-FIND IF 1 ET-NUM ET-LAY ELSE drop 0 ET-NUM THEN
    ET-BUF @ ET-N @ ;
-
-private
 
 PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
 PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
@@ -3968,8 +3724,6 @@ EXPORT CHECKER-RESOLVE:REC-AT
    sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
    id ;
 
-public
-
 \ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry
 \ (ER-READ), the outermost read moving ER-STATE.
 : TFAM-FIND ( str str -- n bool )
@@ -4012,8 +3766,6 @@ public
    0 ENTRIES-PENDING ! ;
 
 
-private
-
 \ A `using` import names its package's public families: the family tail na nu
 \ names in the package of using slot ix.
 : TFAM-USED-FIND ( n str -- n bool ) {: ix:n na:^ nu:n :}
@@ -4033,8 +3785,6 @@ private
       ELSE drop THEN
    LOOP
    TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
-
-public
 
 \ Bit i set when using slot i offers the family tail na nu.
 : TFAM-USED-MASK ( str -- n ) {: na:^ nu:n :}
@@ -4062,13 +3812,9 @@ public
    THEN
    na nu TFAM-FIND-USED ;
 
-public
-
-private
 PTR-VARIABLE TFQ-P
 SCRATCH-VARIABLE TFQ-CAP          \ TFQ-P's room, in cells
 
-public
 : TFQ-BUF ( -- ^u8 ) TFQ-P @ ;
 variable TFQ-U
 PTR-VARIABLE TFQ-TA   variable TFQ-TU  \ qualified tail token
@@ -4110,8 +3856,6 @@ variable TFQ-COLON
 2 constant SR-AMBIG
 3 constant SR-HIDDEN
 
-private
-
 \ The split tail's family in package qa, seen from package pa.
 : TFAM-QUAL-IN ( str str -- n n )
    {: qa:^ qu:n pa:^ pu:n :}
@@ -4121,8 +3865,6 @@ private
    id TFAM-PUBLIC? IF id SR-FOUND EXIT THEN
    qa qu pa pu CORE-STR=CI IF id SR-FOUND EXIT THEN   \ own private rows
    0 SR-HIDDEN ;
-
-public
 
 : TFAM-QUAL-RESOLVE ( str -- n n ) {: pa:^ pu:n :}
    TFQ-BUF TFQ-U @ TFQ-HEAD$ pa pu TFAM-QUAL-IN ;
@@ -4167,7 +3909,6 @@ public
    ELSE a u TF-CANON? THEN
    IF a u CHECKER-TYPE-MARK-COVERS? ELSE RES-FALSE THEN ;
 
-private
 : TFAM-MAY-ARRIVE-INSTALL ( -- )
    [: TFAM-MAY-ARRIVE? ;] is TYPE-MAY-ARRIVE-XT ;
 TFAM-MAY-ARRIVE-INSTALL
@@ -4203,8 +3944,6 @@ TFAM-MAY-ARRIVE-INSTALL
 create TFC-VARS TFC-VAR-CAP cells allot
 variable TFC-I   variable TFC-J   variable TFC-ROW
 
-public
-
 \ Construct form (docs/forth.md "Structures And Enums"): the checker's reserved
 \ `construct family variant` token. A family constructs only inside its own
 \ active checker package (top level owns the global "" package), public or
@@ -4214,8 +3953,6 @@ public
 \ any word call. A result of known width expands to hidden fields at the step;
 \ a parametric result whose width reads an open argument (checker.f
 \ LAYOUT-WIDTH-OPEN?) stays one logical cell and expands at the boundary.
-
-private
 
 : TFC-MINT-VARS ( n -- ) {: ar:n :}
    ar TFC-VAR-CAP > IF s" tfam: construct arity over cap" EXIT-STATUS:INTERNAL die THEN
@@ -4363,8 +4100,6 @@ TFC-QUOT-ROW-INSTALL
    fid PF-BYTES@ width CELL * <> IF 0 RES-FALSE EXIT THEN
    width RES-TRUE ;
 
-public
-
 : INIT-RECORD? ( n -- n n n bool ) {: term:n :}
    term T-RES {: record:n :}
    record TAG T-PARAM <> IF INIT-NO-RECORD EXIT THEN
@@ -4465,12 +4200,10 @@ public
 : TFAM-INST-LIN ( n -- n ) RES-FALSE TFAM-INST-LIN-N ;
 : TFAM-INST-MAY ( n -- bool ) RES-TRUE TFAM-INST-LIN-N 0= 0= ;
 
-private
 : TFAM-INST-LIN-INSTALL ( -- )
    [: TFAM-INST-LIN ;] is TFAM-LIN-N-XT
    [: TFAM-INST-MAY ;] is TFAM-MAY-LIN-XT ;
 TFAM-INST-LIN-INSTALL
-public
 
 \ Instantiate one field schema against its owning family value. The lowering
 \ certificate can run while construct still uses TFC-VARS and TFC-I, so keep
@@ -4493,14 +4226,12 @@ public
    old-i TFC-I !
    term ;
 
-private
-
 \ The type variable an effect's parameter I is, in the NMAP slot of the I-th
 \ variable letter.
 : EFFECT-VAR ( n -- n ) {: i:n :}
    i TFAM-DECL-PARAM>CHAR drop 97 - SLOT>VAR ;
 
-\ The arguments EFFECT-ROWS reads parameters 0 to SPAN - 1 from.
+\ The arguments EFFECT-ROWS-ON reads parameters 0 to SPAN - 1 from.
 : EFFECT-OWNER ( n -- n ) {: span:n :}
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup span < WHILE dup EFFECT-VAR PARAM-SCR+ 1 + REPEAT drop
@@ -4558,23 +4289,19 @@ private
       owner side i SCHEMA-ROW-ELEM@ TFC-USE SCHEMA-TERM-FOR swap PUSH-LOGICAL
    loop ;
 
-public
-
 \ The input and output rows of effect node NODE on row BASE.
-: EFFECT-ROWS ( n n -- n n ) {: node:n base:n :}
+: EFFECT-ROWS-ON ( n n -- n n ) {: node:n base:n :}
    node PARAM-SPAN EFFECT-OWNER {: owner:n :}
    node EFFECT-KINDS
    owner node SCHEMA-QUOT-DIN@ base EFFECT-SIDE
    owner node SCHEMA-QUOT-DOUT@ base EFFECT-SIDE ;
 
 \ The term type node NODE gives, its parameters the effect's variables, as
-\ EFFECT-ROWS gives a side's type.
+\ EFFECT-ROWS-ON gives a side's type.
 : EFFECT-TYPE ( n -- n ) {: node:n :}
    node PARAM-SPAN EFFECT-OWNER {: owner:n :}
    node EFFECT-KINDS
    owner node TFC-USE SCHEMA-TERM-FOR ;
-
-private
 
 \ A layout value's members for checker.f's CAST: walks (CAST-INTRO? and
 \ CAST-MAY-LINEAR?): every product field and every variant payload, in either
@@ -4627,16 +4354,12 @@ TFAM-MEMBERS-INSTALL
 
 : FRESH-PARAM ( n n -- n ) dup FRESH-LETTERED ;
 
-public
-
 \ The family FAM over fresh type variables, one per parameter and lettered as
 \ it: a built row's stored kinds are decided for lettered variables only.
 : TFAM-FRESH-TERM ( n -- n ) {: fam:n :}
    PARAM-SCR-N @ {: base:n :}
    fam TFAM-ARITY@ 0 ?do fam i FRESH-PARAM PARAM-SCR+ loop
    base fam TFAM-NAME$ fam MK-PARAM ;
-
-private
 
 \ A field accessor's input row over a fresh row BASE, `^F<..>`, from the
 \ committed field id FID with the flags FLAGS, and its family term TERM, whose
@@ -4761,8 +4484,6 @@ private
    shape CHILD-ABI:ARENA-DISPOSE = IF term  base ARENA-ARG  ACTION-ARG EXIT THEN
    CC-N MK-CON base MK-PUSH ;
 
-public
-
 \ A typed storage child's input and output rows over the stored type's term T:
 \ STORED, SLOT, WORK and HEAP-NEW answer `( -- ^T )`, the indexed shapes
 \ `( n -- ^T )`, HEAP-RELEASE `( ^T -- )`, ARENA-NEW
@@ -4776,8 +4497,6 @@ public
    THEN
    shape term base STORED-IN
    term MK-PTR base MK-PUSH ;
-
-private
 
 \ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
 \ every closed layout to its hidden physical fields, including a width-one enum,
@@ -4830,8 +4549,6 @@ private
    shape CHILD-ABI:NOMINAL-IN = IF val nom ELSE nom val THEN
    0 ;
 
-public
-
 \ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
 \ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
 \ cleared with it: a stale letter would name a fresh variable.
@@ -4849,8 +4566,6 @@ public
    shape CHILD-ABI:NOMINAL-OUT = IF shape param NOMINAL-ROWS EXIT THEN
    shape COMPANION? IF shape COMPANION-ROWS EXIT THEN
    shape param OFFSET-ROWS ;
-
-private
 
 \ Width-aware construct/MATCH lowering. For a wide closed instantiation (a
 \ multi-cell layout argument, flat or nested) the checker records an extra-pad
@@ -4928,12 +4643,8 @@ EXPORT CHECK:OK
    vid TFC-VAR-PAYCELLS -
    MWIN-CELLS! ;
 
-public
-
 : TFAM-ACTIVE-PKG$ ( -- str )        \ authenticated package ("" at top level)
    CHECKER-AUTH-PACKAGE$ ;
-
-public
 
 \ The family a schema node applies, else 0 false.
 : TFAM-NODE-FAM ( n -- n bool ) {: node:n :}
@@ -4956,8 +4667,6 @@ public
    {: id:n :}
    TFAM-ACTIVE-PKG$ id TFAM-PKG-MATCH? 0= IF MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id TFAM-CONSTRUCT-KIND ;
-
-private
 
 \ Whether ROW's top cell is the unstale hidden slot SLOT of family FAM.
 : TFC-GROUP-CELL? ( n n n -- bool )
@@ -5053,8 +4762,6 @@ private
       dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open value/row: stay staged fail-closed
    THEN ;
 
-public
-
 : TFAM-CONSTRUCT-STEP ( str n -- bool ) {: na:^ nu:n fam:n :}
    fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
    {: vid:n :}
@@ -5069,8 +4776,6 @@ public
    SVX-ENSURE
    sym SVX@ dup 0= IF RES-FALSE EXIT THEN          \ 0 head = no variant with this symbol
    1 - RES-TRUE ;
-
-private
 
 \ A product's two generated rows are make then unmake, the order sumtype.f
 \ TDECL-PROD-PLAN generates their words in.
@@ -5094,8 +4799,6 @@ private
    dt TYPE-REP-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN
    RES-TRUE ;
 
-public
-
 : TFAM-CTOR-STEP? ( n -- bool ) {: sym:n :}
    sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
    {: vid:n :}
@@ -5105,8 +4808,6 @@ public
    seeded 0= IF RES-FALSE EXIT THEN
    fam vid dt seeded TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
-
-private
 
 \ The family term of the `^F<..>` DEPTH cells below the live top; false for
 \ any other cell, an open or stale one included.
@@ -5166,8 +4867,6 @@ private
    term PARAM>ARGC 0 ?do
       shape param i MEMBER-READS? IF term i PARAM>ARG WIDTH-SPELLED THEN
    loop ;
-
-public
 
 \ At top level the word runs with its declared number, so a moved one is rejected
 \ and a kept one still makes the part depend on the widths it reads.
@@ -5297,20 +4996,14 @@ public
    THEN drop
    RES-FALSE ;
 
-private
-
 \ What tier 0's construct and MATCH resolve: the checker's registry and scope
 \ rules, but no diagnostic latch or checker row; the checker judges at `;`.
-
-public
 
 : TFL-SUMKIND? ( n -- bool ) {: id:n :}   \ constructible/matchable kind
    id TFAM-SUM? id TFAM-ENUM? or ;
 
 : TFL-FOLD$ ( str -- str )      \ fold a raw engine token (shared TKF buffer)
    TOKFOLD drop TKF TKFU @ ;
-
-;package
 
 : TFL-CON-FAM? ( str -- n bool ) {: na:^ nu:n :}   \ owner-only scope
    TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
@@ -5324,14 +5017,8 @@ public
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-package TFAM
-
-public
-
 : TFL-VPADS ( n n -- n ) {: fam:n vid:n :}   \ zero pads M-p for a variant's construct
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - ;
-
-private
 
 \ The checker's friend hooks: checker.f loads before this file and reaches
 \ family resolution and arities through these defers during signature parsing.
@@ -5358,13 +5045,12 @@ TFAM-HOOK-INSTALL
 
 ;package
 
-;using
-
 \ A build's registries start with the families above, which every program
 \ starts with; a product declares the rest for itself (CHECK:STORES-OPEN), so
 \ its SPAN:span never meets hb's. The tail indexes and the memo start empty, and
 \ their first use rebuilds them.
 package TFAM
+private
 EXPORT CHECK:STORE+
 EXPORT CHECK:TABLE+
 EXPORT CHECK:CELL-ROW+

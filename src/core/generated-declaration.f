@@ -12,7 +12,6 @@ split-str
 \ code raised with no reason armed for it arrives bare, and PICK-REASON reads the
 \ rows each code's owner lays with EXPLAIN. Declarations never nest, so the
 \ record is one frame.
-using TFAM
 using TYPE-DECL
 
 package DECL-REJECT
@@ -207,7 +206,7 @@ private
    TOKEN-SPAN@ {: ta:^ tu:n :}
    code E-USING-AMBIGUOUS = IF KIND$ FAMILY$ ta tu TDECL-AMBIG-DIAG EXIT THEN
    code E-TDECL-SEALED = IF FAMILY$ TDECL-SEALED-WORD AT-FAMILY TOKEN-SPAN@ REJECTION:SEALED EXIT THEN
-   code E-TDECL-DEF-NAME = IF FAMILY$ ta tu DEF-NAME-REJECT? 0= IF ta tu ta tu DEF-NAME-REJECT? drop THEN EXIT THEN
+   code TFAM:E-TDECL-DEF-NAME = IF FAMILY$ ta tu DEF-NAME-REJECT? 0= IF ta tu ta tu DEF-NAME-REJECT? drop THEN EXIT THEN
    KIND$ FAMILY$ ta tu  code PICK-REASON  ta tu code TDECL-WORD-NOTE  TDECL-DIAG ;
 
 EXPORT CHECK:MULTI-ERR?
@@ -289,16 +288,16 @@ s" rename it so it is no reserved word and no word this declaration generates"
 E-TDECL-NAME EXPLAIN
 s" name must be a lowercase tail"
 s" write the name as a lowercase tail with no package qualifier, as in `point`"
-E-TFAM-CASE EXPLAIN
+TFAM:E-TFAM-CASE EXPLAIN
 s" duplicate name in this package"
 s" give each family, variant and field a name no other declaration in this package uses"
-E-TFAM-DUP EXPLAIN
+TFAM:E-TFAM-DUP EXPLAIN
 s" reserved field name"
 s" rename the field: a declaration word such as `field` or a generated word such as `make`, `tag` or `eq` is taken"
-E-PF-NAME EXPLAIN
+TFAM:E-PF-NAME EXPLAIN
 s" name is a keyword or reads as a number"
 s" rename it: a keyword or a number names no definition"
-E-TDECL-DEF-NAME EXPLAIN
+TFAM:E-TDECL-DEF-NAME EXPLAIN
 
 ;package
 
@@ -649,9 +648,9 @@ public
 : NAME-CHECK ( str str -- )
    {: a:^ u:n f:^ fu:n :}
    a u DECL-REJECT:TOKEN!
-   s" duplicate field name" f fu E-TFAM-DUP DECL-REJECT:EXPECT
+   s" duplicate field name" f fu TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    a u PF-NAME-REQUIRE
-   a u SEEN? IF E-TFAM-DUP throw THEN
+   a u SEEN? IF TFAM:E-TFAM-DUP throw THEN
    SEEN-P SEEN-CAP  SEEN-U @ u SEEN-REC + CELL /  1 ARENA-ROWS-ENSURE
    u SEEN-U @ SEEN-LEN !
    0 SEEN-I !
@@ -739,5 +738,4 @@ RESET MISS-CLEAR
 ;package
 ;package
 
-;using
 ;using

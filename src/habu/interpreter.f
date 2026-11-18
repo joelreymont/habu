@@ -2086,12 +2086,14 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    s" ` " REJECTION:EMIT-STR  execute
    a u REJECTION:AT  s" effect rejected for this name" REJECTION:EMIT-STR ;
 
+EXPORT TFAM:TFAM-DECL-PARAM-COUNT
+
 \ Rejects the definition a u, whose effect and locals' types have more
 \ distinct type parameters than the cap.
 : DEF-WIDE ( str -- ) {: a:^ u:n :}
    [: s" has too many type parameters" REJECTION:EMIT-STR ;]
    a u DEF-NOT-EFFECT
-   TFAM:TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
+   TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
    REJECTION:HELP
    s" use fewer distinct type parameters in the effect and the locals' types"
    REJECTION:EMIT-STR
@@ -2303,7 +2305,7 @@ variable LIT-AT
    s" the type `EFFECT:VARIABLE-OF` got for `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" ` has too many type parameters" REJECTION:EMIT-STR
    a u REJECTION:AT  s" type rejected for this name" REJECTION:EMIT-STR
-   TFAM:TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
+   TFAM-DECL-PARAM-COUNT s" " REJECTION:LIMIT
    REJECTION:HELP
    s" use fewer distinct type parameters in the variable's type"
    REJECTION:EMIT-STR

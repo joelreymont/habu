@@ -5,8 +5,6 @@ split-str
 \ opens one declaration at a time: PART-SNAPSHOT starts an empty log, and the
 \ checker frame's rollback rewinds the declaration's field rows.
 
-using TFAM
-
 package TYPE-DECL
 private
 package DECL-EVENT
@@ -218,5 +216,3 @@ public
 
 ;package
 ;package
-
-;using

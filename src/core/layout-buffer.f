@@ -17,7 +17,19 @@ package LBUF
 EXPORT CHECK:ARENA-BYTES-ENSURE
 EXPORT CHECK:REJECT-DUPLICATE
 EXPORT CHECK:TYPE-TEXT
+EXPORT TFAM:EFFECT-TYPE
+EXPORT TFAM:HAS-ADDRESS?
+EXPORT TFAM:HOLDS-SCRATCH?
 EXPORT TFAM:SUMV-PAY-N
+EXPORT TFAM:TFAM-FLD-COUNT@
+EXPORT TFAM:TFAM-FLD-START@
+EXPORT TFAM:TFAM-NICHE?
+EXPORT TFAM:TFAM-STORAGE-FIELD
+EXPORT TFAM:TFAM-STORAGE-PAY
+EXPORT TFAM:TFAM-STORAGE-PRODUCT?
+EXPORT TFAM:TFAM-STORAGE-QUOT?
+EXPORT TFAM:TFAM-STORAGE-SUM?
+EXPORT TFAM:TFAM-STORAGE-VARIANT
 
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 0 constant LBUF-FALSE
@@ -164,28 +176,28 @@ PTR-VARIABLE STGT-START
 \ cell while it holds a quotation and an address cell while it holds a pointer.
 \ A niche value has no tag: its one cell is an address cell, zero or not.
 : STORAGE-MARK-TERM ( ^n n -- ) {: base:^ term:n :}
-   term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
+   term TFAM-STORAGE-QUOT? if base @ base xt! exit then
    term T-RES TAG T-PTR = if base ptr-cell-mark exit then
-   term TFAM:TFAM-STORAGE-PRODUCT? if
+   term TFAM-STORAGE-PRODUCT? if
       {: fam:n :}
       0
-      fam TFAM:TFAM-FLD-COUNT@ 0 ?do
-         fam TFAM:TFAM-FLD-START@ i + {: field:n :}
-         term field TFAM:TFAM-STORAGE-FIELD {: child:n width:n :}
+      fam TFAM-FLD-COUNT@ 0 ?do
+         fam TFAM-FLD-START@ i + {: field:n :}
+         term field TFAM-STORAGE-FIELD {: child:n width:n :}
          base over cells + child recurse
          width +
       loop drop
       exit
    then drop
-   term TFAM:TFAM-STORAGE-SUM? if
+   term TFAM-STORAGE-SUM? if
       {: fam:n :}
-      fam TFAM:TFAM-NICHE? if base ptr-cell-mark exit then
+      fam TFAM-NICHE? if base ptr-cell-mark exit then
       \ The block is fresh, so its tag is 0, which every sum's first variant has.
       base term T-WIDTH 1- cells + @
-      fam swap TFAM:TFAM-STORAGE-VARIANT drop {: vid:n :}
+      fam swap TFAM-STORAGE-VARIANT drop {: vid:n :}
       0
       vid SUMV-PAY-N 0 ?do
-         term vid i TFAM:TFAM-STORAGE-PAY {: child:n width:n :}
+         term vid i TFAM-STORAGE-PAY {: child:n width:n :}
          base over cells + child recurse
          width +
       loop drop
@@ -200,7 +212,7 @@ PTR-VARIABLE STGT-START
 \ LBI-T, live as long; a rejection shows the type as a diagnostic renders it.
 : NODE-READ ( n -- ) {: node:n :}
    STORAGE-RESET
-   node TFAM:EFFECT-TYPE T-RES LBI-T !  0 LBI-BAD ! ;
+   node EFFECT-TYPE T-RES LBI-T !  0 LBI-BAD ! ;
 
 public
 
@@ -217,9 +229,9 @@ private
 
 : NODE-TERM ( n -- n ) NODE-STORAGE-TERM drop ;
 
-: STORAGE-HAS-ADDRESS? ( str -- bool ) TYPE-TERM TFAM:HAS-ADDRESS? ;
+: STORAGE-HAS-ADDRESS? ( str -- bool ) TYPE-TERM HAS-ADDRESS? ;
 
-: NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM TFAM:HAS-ADDRESS? ;
+: NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM HAS-ADDRESS? ;
 
 : NODE-SCRATCH-REJECT ( str -- ) {: name:^ nameu:n :}
    LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
@@ -276,7 +288,7 @@ public
 : SCRATCH-HELD? ( str str n -- bool )
    {: name:^ nameu:n type:^ typeu:n why:n :}
    type typeu CHECKER-STORAGE-TERM 0= if drop LBUF-FALSE exit then
-   TFAM:HOLDS-SCRATCH? 0= if LBUF-FALSE exit then
+   HOLDS-SCRATCH? 0= if LBUF-FALSE exit then
    name nameu type typeu why CHECKER-STORAGE-REJECT LBUF-TRUE ;
 
 private
@@ -552,7 +564,7 @@ public
    nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu node NODE-VALIDATE 0= if exit then
-   node NODE-TERM TFAM:HOLDS-SCRATCH? if name nameu NODE-SCRATCH-REJECT exit then
+   node NODE-TERM HOLDS-SCRATCH? if name nameu NODE-SCRATCH-REJECT exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu node TDECL-NODE-CHILD {: handle:n :}
    here {: v:^ :}

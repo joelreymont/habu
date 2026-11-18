@@ -7,8 +7,6 @@ split-str
 
 require src/lib/test.f
 
-using TFAM
-
 T-RESET
 
 \ layout families under test: width 2 (1 payload slot + tag), width 4
@@ -169,5 +167,3 @@ TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
 0 TLPX-BROUTER 1 T= 93 T= 92 T= 91 T=
 
 T-REPORT
-
-;using

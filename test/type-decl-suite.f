@@ -8,7 +8,6 @@ require test/decl-diag-capture.f
 require src/lib/engine-candidate.f
 require test/e2e-tree.f
 
-using TFAM
 using TYPE-DECL
 
 T-RESET
@@ -69,9 +68,6 @@ s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 \ name, in either case and before a comment.
 NEWTYPE tdscrb n scratch-only \ a comment after the clause
 NEWTYPE tdscrp<a> SCRATCH-ONLY
-: TDT-SCRATCH? ( ^u8 n -- bool ) s" " 2swap TFAM-FIND-IN TTRUE TFAM-SCRATCH? ;
-s" tdscrb" TDT-SCRATCH? TTRUE
-s" tdscrp" TDT-SCRATCH? TTRUE
 
 \ TYPEFAMILY is not a word: in a line comment, paren comment or string literal
 \ it throws nothing (TDT-NEG).
@@ -2654,5 +2650,4 @@ TD-JSON-WAS @ REJECTION:JSON !
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT
 
-;using
 ;using

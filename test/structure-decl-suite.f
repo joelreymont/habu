@@ -24,7 +24,7 @@ variable PFB
 \ 6. A duplicate field name rejects through the field record (E-TFAM-DUP 7102)
 \    and the provisional field rows roll back. hb's own type entries are read
 \    first: a declaration reads every pending one before it opens.
-TFAM:READ-PENDING
+STRUCTURE sdpend FIELD a n ;STRUCTURE
 TYPE-FIELD:COUNT PFB !
 DECL-DIAG:PROSE
 s" STRUCTURE dupf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 70 T=

@@ -377,7 +377,7 @@ DYNAMIC-BUFFER EXT-EDGES n           \ the same by build-table row, for its cell
 \ the loader's EVENT-COUNT and INTERPRETER:RUN-COUNT as a file's load or its piece after a request starts (MARKS).
 variable FILE-REC
 variable FILE-HELD
-variable FILE-TFAM                   \ TFAM:TFAM-N@ as the running piece starts
+variable FILE-TFAM                   \ TFAM-N@ as the running piece starts
 variable FILE-TYPES                  \ CHECK:TYPE-END as the running piece starts
 variable FILE-ROW
 variable FILE-EM
@@ -1658,15 +1658,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
 
-\ The build's TYPE-WORD in TFAM, the word every type entry's record runs: a
-\ private word, or a public one in a source from before it went private.
+\ The build's TYPE-WORD in TFAM, the word every type entry's record runs.
 : TYPE-SOURCE ( -- n )
    s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    -1  pkg XREF-FOUND? if
-      drop  s" TYPE-WORD" pkg XREF-PKG-PRIVATE CHECKER-RESOLVE:WL-PROBE
-      dup XREF-FOUND? 0= if
-         drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE
-      then  REC>INDEX
+      drop  s" TYPE-WORD" pkg XREF-PKG-PRIVATE CHECKER-RESOLVE:WL-PROBE  REC>INDEX
    then {: src:n :}
    src FIRST-REC @ < if
       REFUSAL  s" a type entry needs the build's own TYPE-WORD in package TFAM" SAY SAY-CR  E-COMP-STATE throw
@@ -4689,6 +4685,13 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    want ALIASES-N @ ALIASES !  src ALIASES-N @ 1 + ALIASES !  2 ALIASES-N +! ;
 
 
+EXPORT TFAM:ENTRY!
+EXPORT TFAM:ENTRY-LINKED
+EXPORT TFAM:ENTRY-NAME$
+EXPORT TFAM:ENTRY-TEXT$
+EXPORT TFAM:ENTRY?
+EXPORT TFAM:TFAM-N@
+
 \ Entry i, a type entry (RECORD+), as the next record; LINK-FACTS gives it its text.
 : LINK-TYPE ( n -- )
    {: i:n :}
@@ -4704,7 +4707,7 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
    flags want SET-FLAGS
    EDGES-N @ {: start:n :}
    src 0 >= if src REC-EDGE+ then  want start REC-EDGES!
-   TFAM:ENTRY-LINKED ;
+   ENTRY-LINKED ;
 
 \ ---- linking code --------------------------------------------------------------
 \ A definition's code entries: its record, its shadow emission as the compile filed it, and its
@@ -5213,7 +5216,7 @@ EXPORT CHECK:TYPE-END
 : MARKS ( -- )
    -1 TOP-EV !
    ndict@ FILE-REC !  HELD-FACTS FILE-HELD !  0 RETIRED-N !  false HOLDS-HEADER !
-   TFAM:TFAM-N@ FILE-TFAM !  TYPE-END FILE-TYPES !
+   TFAM-N@ FILE-TFAM !  TYPE-END FILE-TYPES !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
@@ -5304,12 +5307,12 @@ EXPORT CHECK:LINEAR-TEXT$
 \ A type entry for each family and linear type the piece declared, none for a linear type
 \ its compile read from an entry; its name sits at CP, so `here` stays.
 : TYPE-ENTRIES ( -- )
-   TFAM:TFAM-N@ FILE-TFAM @ ?do
-      i TFAM:ENTRY? 0= if
+   TFAM-N@ FILE-TFAM @ ?do
+      i ENTRY? 0= if
          ndict@ {: ix:n :}
-         i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL PUBLISH-ALIAS
-         i TFAM:ENTRY-TEXT$ ix FACTS!
-         i ix TFAM:ENTRY!
+         i ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL PUBLISH-ALIAS
+         i ENTRY-TEXT$ ix FACTS!
+         i ix ENTRY!
       then
    loop
    TYPE-END FILE-TYPES @ ?do

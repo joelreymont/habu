@@ -20,7 +20,6 @@ T-RESET
 
 \ A registered engine helper is sealed system-private so no checked program can
 \ name or call it.
-using TFAM
 
 package ENGINE-SUITE
 
@@ -2197,5 +2196,3 @@ s" align: leaves an aligned data pointer in place" T-LABEL
 align here align here - 0 T=
 
 T-REPORT
-
-;using

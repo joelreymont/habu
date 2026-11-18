@@ -1617,12 +1617,16 @@ EXPORT CHECKER-TAPE:K-MATCH-ARM
    [: 0<> bool>n ;] CC-NE CMP0
    [: negate ;] [: EMIT-NEG ;] UNARY ;
 
+EXPORT TFAM:TFAM-NICHE?
+EXPORT TFAM:TFAM-SLOTS@
+EXPORT TFAM:TFL-CON-FAM?
+
 : DO-MATCH ( n n -- ) {: fam:n at:n :}
    fam 0 >= MATCH-CK
    at NDICT:MATCH-CELLS {: w0:n :}
    w0 NDICT:MATCH-NONE <> MATCH-CK
-   fam TFAM:TFAM-NICHE? if NICHE-TAG w0 1+ else w0 then {: w:n :}
-   w fam TFAM:TFAM-SLOTS@ 1+ >= MATCH-CK
+   fam TFAM-NICHE? if NICHE-TAG w0 1+ else w0 then {: w:n :}
+   w fam TFAM-SLOTS@ 1+ >= MATCH-CK
    EMIT-CASE,
    CS-N @ {: k:n :}
    CS-MATCH L-N @ CS-PUSH
@@ -1648,7 +1652,7 @@ EXPORT CHECKER-TAPE:K-NAME
    at CHECKER-OWNER:CALL-CELLS drop 0 >= MATCH-CK
    at 1- ROW$ TFL-CON-FAM? MATCH-CK {: fam:n :}
    pads at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
-   fam TFAM:TFAM-NICHE? if exit then
+   fam TFAM-NICHE? if exit then
    tag PUSH-CONST ;
 
 \ ---- the inlined operations --------------------------------------------------
@@ -2194,6 +2198,7 @@ variable LOST-AT-FAM                  \ the value's family id, -1 for none
 EXPORT CHECK:LOST-FAM
 EXPORT CHECK:LOST-TOK-A
 EXPORT CHECK:LOST-TOK-U
+EXPORT TFAM:TFAM-NAME$
 
 : LOST-KEEP ( -- )
    LOST-OFF @ 0< 0= if exit then

@@ -7,10 +7,31 @@ split-str
 $100 constant GENR-SIG-CAP
 
 package CHECK
+EXPORT TFAM:EFFECT-ROWS-ON
+EXPORT TFAM:EFFECT-TYPE
+EXPORT TFAM:TFAM-GENERATOR
+EXPORT TFAM:INIT-FIELD-NAME?
+EXPORT TFAM:INIT-RECORD?
+EXPORT TFAM:SUMV-FROM-CTOR-SYM
+EXPORT TFAM:SUMV-TAG@
+EXPORT TFAM:TFAM-CONSTRUCT-FAM
+EXPORT TFAM:TFAM-CONSTRUCT-NODE
+EXPORT TFAM:TFAM-CONSTRUCT-STEP
+EXPORT TFAM:TFAM-CTOR-STEP?
+EXPORT TFAM:TFAM-ENUM?
+EXPORT TFAM:TFAM-MATCH-FAM
+EXPORT TFAM:TFAM-MATCH-NODE
+EXPORT TFAM:TFAM-MATCH-PAY
+EXPORT TFAM:TFAM-MATCH-VARIANT
+EXPORT TFAM:TFAM-MEMBER-STEP?
+EXPORT TFAM:TFAM-NICHE?
+EXPORT TFAM:TFAM-SUM?
+EXPORT TFAM:TFAM-VAR-COUNT@
+EXPORT TFAM:TFL-VPADS
 
 : EV-VARIANT ( n n n -- )
    {: kind:n fam:n vid:n :}
-   kind  vid TFAM:SUMV-TAG@  fam vid TFAM:TFL-VPADS  EVENT! ;
+   kind  vid SUMV-TAG@  fam vid TFL-VPADS  EVENT! ;
 
 \ WITH-INIT is the only public entry that changes a byte view's element.
 \ Its dictionary code entry authenticates this transition.
@@ -23,7 +44,7 @@ package CHECK
    value-node P>TYPE T-RES {: value-cell:n :}
    value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
    value INIT-VALUE-OK? 0= IF value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
-   value TFAM:INIT-RECORD? 0= IF
+   value INIT-RECORD? 0= IF
       drop drop drop value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    {: width:n bytes:n align:n :}
    value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
@@ -78,7 +99,7 @@ package CHECK
    value-node P>TYPE T-RES {: value-cell:n :}
    value-cell HIDDEN-PARAM? IF value-cell MK-LOGICAL ELSE value-cell THEN {: value:n :}
    value INIT-VALUE-OK? 0= IF value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
-   value TFAM:INIT-RECORD? 0= IF
+   value INIT-RECORD? 0= IF
       drop drop drop value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    {: width:n bytes:n align:n :}
    value-node P>REST width 1- SCOPE-INIT-DROP R-RES dup TAG S-PUSH <> IF
@@ -139,7 +160,7 @@ package CHECK
       C2-WANT-RECORDS parent C2-PARENT-MISMATCH EXIT THEN
    parent 3 PARAM>ARG {: value:n :}
    value INIT-VALUE-OK? 0= IF value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
-   value TFAM:INIT-RECORD? 0= IF
+   value INIT-RECORD? 0= IF
       drop drop drop value MD-C2-INIT-RECORD C2-REJECT EXIT THEN
    {: width:n bytes:n align:n :}
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
@@ -195,9 +216,9 @@ package CHECK
    initialized 0 PARAM>ARG T-RES {: init-scope:n :}
    initialized 1 PARAM>ARG T-RES {: record:n :}
    record INIT-VALUE-OK? 0= IF record MD-C2-INIT-RECORD C2-REJECT EXIT THEN
-   record TFAM:INIT-RECORD? nip nip nip 0= IF
+   record INIT-RECORD? nip nip nip 0= IF
       record MD-C2-INIT-RECORD C2-REJECT EXIT THEN
-   record name size TFAM:INIT-FIELD-NAME? 0= IF
+   record name size INIT-FIELD-NAME? 0= IF
       2drop drop record MD-C2-FIELD-UNKNOWN C2-REJECT EXIT THEN
    {: descriptor:n off:n bytes:n :}
    descriptor FIELD-INNER {: field:n :}
@@ -259,8 +280,8 @@ package CHECK
    THEN
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
-   CURSYM @ TFAM:TFAM-CTOR-STEP? IF EXIT THEN
-   CURSYM @ TFAM:TFAM-MEMBER-STEP? IF EXIT THEN
+   CURSYM @ TFAM-CTOR-STEP? IF EXIT THEN
+   CURSYM @ TFAM-MEMBER-STEP? IF EXIT THEN
    FEP-HIT? IF
       CURSYM @ CALL-AUTHORITY
       dup CALL-REFUSED = IF drop -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
@@ -305,7 +326,7 @@ package CHECK
    MTCH-ROW @ r MF.BASE !
    RCUR @ r MF.RBASE !
    0 r MF.OUT !  0 r MF.ROUT !  0 r MF.HAS !
-   fam TFAM:TFAM-VAR-COUNT@ dup r MF.VCNT !
+   fam TFAM-VAR-COUNT@ dup r MF.VCNT !
    MSEEN-ALLOC r MF.SEEN !
    TOKIX @ r MF.TIX !
    MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
@@ -340,7 +361,7 @@ EXPORT CHECKER-TAPE:K-MATCH
 
 : MATCH-FAM-TOK ( str -- )
    {: a:^ u:n :}
-   a u TFAM:TFAM-MATCH-FAM MATCH-FAM-FOUND ;
+   a u TFAM-MATCH-FAM MATCH-FAM-FOUND ;
 
 EXPORT CHECKER-TAPE:K-MATCH-END
 
@@ -357,11 +378,11 @@ EXPORT CHECKER-TAPE:K-MATCH-ARM
 
 : MATCH-VARIANT ( str -- )
    {: a:^ u:n :}
-   a u MF-CUR MF.FAM @ TFAM:TFAM-MATCH-VARIANT 0= IF
+   a u MF-CUR MF.FAM @ TFAM-MATCH-VARIANT 0= IF
       drop MATCH-VARIANT-NONE EXIT THEN
    {: vid:n :}
    K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
-   vid TFAM:SUMV-TAG@ {: tag:n :}
+   vid SUMV-TAG@ {: tag:n :}
    MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN
    MF-CUR MF.SEEN @ tag MSEEN-SET
    vid MPEND !
@@ -383,7 +404,7 @@ EXPORT CHECKER-TAPE:K-MATCH-OF
    r MF.RBASE @ RCUR !
    CF-ENTRY-FACTS
    MPEND @ 0 < 0=  r MF.TERM @ 0 <>  and IF
-      MPEND @  r MF.TERM @  DCUR @  TFAM:TFAM-MATCH-PAY DCUR !
+      MPEND @  r MF.TERM @  DCUR @  TFAM-MATCH-PAY DCUR !
       CF-TOP CF.FT @ 0 <> IF
          DCUR @ ROW-TERMS r MF.BASE @ ROW-TERMS - 0 max {: count:n :}
          DCUR @ count -1 ROW-TOP-OUTPUT-LOSS DCUR !
@@ -412,12 +433,12 @@ EXPORT CHECKER-TAPE:K-MATCH-OF
 : CONSTRUCT-TOK ( str -- )
    {: a:^ u:n :}
    EV-OPERAND                          \ the family compiles nothing, nor does a variant of no family
-   CONM @ 1 = IF a u TFAM:TFAM-CONSTRUCT-FAM CONSTRUCT-FAM-FOUND EXIT THEN
+   CONM @ 1 = IF a u TFAM-CONSTRUCT-FAM CONSTRUCT-FAM-FOUND EXIT THEN
    CONFAM @ 0 < 0= IF
-      a u CONFAM @ TFAM:TFAM-MATCH-VARIANT IF                           \ latch variant SUMV id for the mismatch capture
+      a u CONFAM @ TFAM-MATCH-VARIANT IF                           \ latch variant SUMV id for the mismatch capture
          dup CVLIVE !  K-CONSTRUCT CONFAM @ rot EV-VARIANT
       ELSE drop CONSTRUCT-NONE THEN
-      a u CONFAM @ TFAM:TFAM-CONSTRUCT-STEP 0= IF 0 OK ! THEN
+      a u CONFAM @ TFAM-CONSTRUCT-STEP 0= IF 0 OK ! THEN
       -1 CVLIVE !                                                      \ variant leaves scope with the step
    THEN
    0 CONM ! ;
@@ -531,7 +552,7 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    0 SIG-LEVEL !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    ATOMN @ PD-ATOM0 !
-   node dr TFAM:EFFECT-ROWS
+   node dr EFFECT-ROWS-ON
    PD-OUT !  PD-IN !  0 PR-IN !  0 PR-OUT !
    PD-IN @ PD-OUT @ 0 0 ;
 
@@ -545,7 +566,7 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 
 \ Whether A U names a generated variant constructor.
 : CTOR-NAME? ( str -- bool )
-   CHECKER-RECORD-SYM? TFAM:SUMV-FROM-CTOR-SYM nip ;
+   CHECKER-RECORD-SYM? SUMV-FROM-CTOR-SYM nip ;
 
 \ Whether NODE's rows pass the rules word A U's signature must pass.
 : EFFECT-RULES? ( str n -- bool ) {: a:^ u:n node:n :}
@@ -681,7 +702,7 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
       CONSTRUCT-VARIANT-NONE EXIT
    THEN
    EV-OPERAND
-   kind BODY-ITEM-KIND:TYPE = IF v TFAM:TFAM-CONSTRUCT-NODE
+   kind BODY-ITEM-KIND:TYPE = IF v TFAM-CONSTRUCT-NODE
    ELSE MD-CON-FAM MDIAG-COMPILE!  0 RES-FALSE THEN
    CONSTRUCT-FAM-FOUND ;
 
@@ -691,7 +712,7 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
    CHECKER-MATCH-MODE @ {: m:n :}
    kind BODY-ITEM-KIND:KEYWORD = {: kw:bool :}
    m 1 = IF
-      kind BODY-ITEM-KIND:TYPE = IF v TFAM:TFAM-MATCH-NODE
+      kind BODY-ITEM-KIND:TYPE = IF v TFAM-MATCH-NODE
       ELSE MD-FAM-UNKNOWN MDIAG-COMPILE!  0 RES-FALSE THEN
       MATCH-FAM-FOUND EXIT
    THEN
@@ -743,7 +764,7 @@ EXPORT CHECKER-ITEMS:ITEM-CELL@
    NZ-MOVED
    kind BODY-ITEM-KIND:LOCAL = IF
       a u LOC-OPEN
-      a u  v TFAM:EFFECT-TYPE LOC-TYPED
+      a u  v EFFECT-TYPE LOC-TYPED
       #LOC @ 1 + #LOC ! EXIT
    THEN
    kind BODY-ITEM-KIND:KEYWORD =  TKF TKFU @ s" :}" CORE-STR= and IF LOC-CLOSE EXIT THEN
@@ -796,7 +817,7 @@ EXPORT CHECKER-ITEMS:ITEM-COUNT
 \ definer gave it; a read of an index no LOCAL item declared names none.
 : ITEM-FAIL-SPELL ( n -- )
    ITEM-LOCAL-NODE 0= IF drop 0 FAILTU ! EXIT THEN
-   TFAM:EFFECT-TYPE TYPE-TEXT {: a:^ u:n :}
+   EFFECT-TYPE TYPE-TEXT {: a:^ u:n :}
    u TOKBUF-ENSURE  a FAILTK u CCOPY  u FAILTU ! ;
 
 : ITEM-STEP ( n -- ) {: i:n :}
@@ -1077,8 +1098,8 @@ variable TAGGED-FAM
    THEN
    u LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    u PARAM>FAM {: fam:n :}
-   fam TFAM:TFAM-ENUM? fam TFAM:TFAM-SUM? or
-   fam TFAM:TFAM-NICHE? 0= and
+   fam TFAM-ENUM? fam TFAM-SUM? or
+   fam TFAM-NICHE? 0= and
    dup IF fam TAGGED-FAM ! THEN ;
 
 \ Rejects the enum or sum TAGGED-HIT? found on the output when true, else the

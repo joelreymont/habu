@@ -9,8 +9,6 @@ split-str
 \ after decl-event.f and structure-make.f, whose GENERATE and ARM ;STRUCTURE calls,
 \ or ;MUTUAL for each of its members.
 
-using TFAM
-
 package TYPE-DECL
 private
 package STRUCTURE-DECL
@@ -249,11 +247,11 @@ variable HELP-U
 
 : REQUIRE-NAME ( str -- )
    dup 0= IF 2drop s" missing name" SD-NAME-FIX$ TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN
+   2dup DEF-NAME-BAD? IF 2drop s" " s" " TFAM:E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail"
       s" write the name as a lowercase tail with no package qualifier, as in `point`"
-      E-TFAM-CASE DECL-REJECT:REJECT throw THEN
+      TFAM:E-TFAM-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name"
       s" pick another name: a built-in type such as `n` cannot name a family"
       TYPE-DECL:E-TDECL-NAME DECL-REJECT:REJECT throw THEN ;
@@ -816,7 +814,7 @@ private
    FAM @ sch SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!
    s" duplicate field name"
-   SD-FIELD-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
+   SD-FIELD-FIX$ TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ -rot sch
    SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD
@@ -834,7 +832,7 @@ private
 \ so its field name takes the definer name rule; a private family's is `POINT-X`.
 : REQUIRE-FIELD-NAME ( str -- )    \ consumes the copy; throws on a member clash or a keyword accessor
    FAM @ TFAM-DERIVE-ADDR? 0= IF 2drop EXIT THEN
-   FAM @ TFAM-GEN-PUBLIC? IF 2dup DEF-NAME-BAD? IF 2drop s" " s" " E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN THEN
+   FAM @ TFAM-GEN-PUBLIC? IF 2dup DEF-NAME-BAD? IF 2drop s" " s" " TFAM:E-TDECL-DEF-NAME DECL-REJECT:REJECT throw THEN THEN
    MEMBER-CLASH? IF
       s" field name is a generated member name"
       s" rename the field: under `DERIVE addr` the names `make`, `unmake`, `at`, `bytes`, `cells`, `eq`, `hash` and `tag` are taken"
@@ -888,7 +886,7 @@ private
    CC-U8 SCHEMA-CON SCHEMA-ROOT+ {: sch:n :}
    na nu DECL-REJECT:TOKEN!
    s" duplicate field name"
-   SD-FIELD-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
+   SD-FIELD-FIX$ TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    FAM @ na nu sch
    SD-CELLS @  fw  SD-CELLS @ CELL *  bytes  CELL  PF-FLAG-BUFFER
    DECL-EVENT:FIELD
@@ -920,7 +918,7 @@ private
 : SD-DECL ( str str n -- n )
    {: na:^ nu:n ta:^ tu:n ar:n :}
    ta tu DECL-REJECT:TOKEN!
-   s" duplicate family" SD-DUP-FIX$ E-TFAM-DUP DECL-REJECT:EXPECT
+   s" duplicate family" SD-DUP-FIX$ TFAM:E-TFAM-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ TDECL-VIS na nu
    ar TK-PRODUCT TFAM-DECL ;
 \ Opens family fam's fields: they follow the committed rows and the rows of the
@@ -1087,7 +1085,7 @@ private
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    i MEM-LISTED@ 0= IF
       na nu DECL-REJECT:TOKEN!
-      s" duplicate family" SD-DUP-FIX$ E-TFAM-DUP DECL-REJECT:REJECT throw THEN
+      s" duplicate family" SD-DUP-FIX$ TFAM:E-TFAM-DUP DECL-REJECT:REJECT throw THEN
    i M.FAM MEM-CELL @ TFAM-ARITY@ ar <> IF
       s" header differs from its MUTUAL entry"
       s" give the header the type parameters its `MUTUAL` entry lists"
@@ -1300,5 +1298,3 @@ INTRINSIC-DECLARATION INTRINSIC
 INTRINSIC-DECLARATION INTRINSIC
 
 ;package
-
-;using
