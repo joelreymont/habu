@@ -32,6 +32,7 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/time.f
+require src/lib/unicode/visible.f
 
 \ One exclusive call context per worker. Results borrow its arena until the
 \ next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or CLOSE.
@@ -833,7 +834,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : REJECT-SCOPE ( str str str ^u8 NUM:alloc-byte-len -- )
    drop {: ea:^ eu:n fa:^ fu:n xa:^ xu:n buf:^ :}
    buf EXPECTED$ PUT$ ea eu PUT$ FOUND$ PUT$
-   fu 0= if EMPTY$ PUT$ else s" `" PUT$ fa fu PUT$ s" `" PUT$ then
+   fu 0= if EMPTY$ PUT$
+   else s" `" PUT$ fa fu UNICODE-VISIBLE:PUT s" `" PUT$ then
    FIX-SEP$ PUT$ xa xu PUT$
    buf - {: tu:n :}
    buf tu E-CONFIG REASON:THROW ;
@@ -844,7 +846,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    {: ea:^ eu:n fa:^ fu:n xa:^ xu:n :}
    ea eu fa fu xa xu
    EXPECTED$ nip eu + FOUND$ nip +  fu 0= if EMPTY$ nip else 2 then +
-   fu + FIX-SEP$ nip + xu + MEM:BYTES-ALLOC-LEN
+   fa fu UNICODE-VISIBLE:LEN + FIX-SEP$ nip + xu + MEM:BYTES-ALLOC-LEN
    [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
 
 : NAMED-SCOPE ( str str ^u8 NUM:alloc-byte-len -- )

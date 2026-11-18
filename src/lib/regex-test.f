@@ -115,6 +115,9 @@ NESTED-LEN BUFFER: NESTED
    s" (a)\1"
    s" 4: expected an escape other than a backreference, found `\1`; repeat the group's pattern in place of the reference"
    REJECTS
+   S\" a\\\xE2\x80\xAEb"
+   s" 2: expected an escape the dialect takes, found `\U+202E`; write the character itself or as `\uXXXX`"
+   REJECTS
    s" a(?=b)"
    s" 2: expected a group other than a lookahead, found `(?=`; rewrite the pattern without it"
    REJECTS

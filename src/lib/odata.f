@@ -16,8 +16,9 @@ split-str
 \ kept, nor one whose value is a Record, a Collection or an element.
 \ A rejected document is E-METADATA with REASON text `L:C: expected X, found
 \ Y; fix`: L:C is the line and byte column in the document, from 1, counted
-\ as the XML reader counts its own, and a name or value from the document is
-\ cut at 32 bytes, with `...` after it, a namespace URI aside, shown whole.
+\ as the XML reader counts its own, and a name, value or namespace URI from the
+\ document is made visible, a name or value cut at 32 bytes with `...` after
+\ it.
 \ Duplicate names, names that resolve to nothing, an entity set whose type
 \ has no Key and a key property of a type the version's key predicate cannot
 \ hold are rejected; V4's holds an enumeration type and a type definition over

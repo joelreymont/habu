@@ -158,14 +158,19 @@ LINK-CAP BUFFER: LINK
    DESC$ S\"  navigation Household to-many none\n" T$=
    a ARENA:RELEASE ;
 
-\ The document at PATH is rejected with CODE and TEXT.
-: REJECTS-CODE ( str str n -- )
-   {: path:^ len:n text:^ tl:n code:n :}
+\ The document SOURCE is rejected with CODE and TEXT.
+: SOURCE-REJECTS ( str str n -- )
+   {: src:^ sl:n text:^ tl:n code:n :}
    ARENA:NEW {: a:^ :}
-   [: a path len MODEL drop ;] code TTHROWSQ
+   [: a src sl ODATA:METADATA drop ;] code TTHROWSQ
    code REASON:TEXT$ text tl T$=
    REASON:RELEASE
    a ARENA:RELEASE ;
+
+\ The document at PATH is rejected with CODE and TEXT.
+: REJECTS-CODE ( str str n -- )
+   {: path:^ len:n text:^ tl:n code:n :}
+   path len SRC READ text tl code SOURCE-REJECTS ;
 
 : REJECTS ( ^u8 n ^u8 n -- ) ODATA:E-METADATA REJECTS-CODE ;
 
@@ -241,6 +246,12 @@ LINK-CAP BUFFER: LINK
    s" test/fixtures/odata/enum-definition-name.xml"
    s" 5:7: expected `EnumType` to have a name not declared before, found `Color`; rename or remove it"
    REJECTS
+   s\" <edmx:Edmx Version=\"4.0\" xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\">\n<edmx:DataServices>\n<Schema Namespace=\"N\" xmlns=\"http://docs.oasis-open.org/odata/ns/edm\">\n<TypeDefinition Name=\"Co\xE2\x80\xAElor\" UnderlyingType=\"Edm.String\"/>\n<EnumType Name=\"Co\xE2\x80\xAElor\"><Member Name=\"Red\"/></EnumType>\n</Schema>\n</edmx:DataServices>\n</edmx:Edmx>\n"
+   s" 5:1: expected `EnumType` to have a name not declared before, found `CoU+202Elor`; rename or remove it"
+   ODATA:E-METADATA SOURCE-REJECTS
+   s\" <edmx:Edmx Version=\"4.0\" xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\">\n<edmx:DataServices>\n<Schema Namespace=\"N\" xmlns=\"http://x\xE2\x80\xAEy\">\n</Schema>\n</edmx:DataServices>\n</edmx:Edmx>\n"
+   s" 3:1: expected `Schema` in the CSDL namespace of OData V4, found `http://xU+202Ey`; put the `Schema` in that namespace"
+   ODATA:E-METADATA SOURCE-REJECTS
    s" test/fixtures/odata/enum-is-flags.xml"
    s" 4:7: expected `IsFlags` of `EnumType` to be true or false, found `yes`; set `IsFlags` to true or false"
    REJECTS
@@ -602,6 +613,9 @@ variable VALUE-LEN
    m s" Binary" s" AQL/" s" (X'0102FF')" WRITES
    m s" Int32" s" 4.2"
    s" expected a `Edm.Int32` value for key property `K`, found `4.2`; give `K` a value in that type's form"
+   REJECTS-KEY
+   m s" Int32" s\" 4\xE2\x80\xAE2"
+   s" expected a `Edm.Int32` value for key property `K`, found `4U+202E2`; give `K` a value in that type's form"
    REJECTS-KEY
    m s" Guid" s" 0050568d393c1ed49d97e2a6e1c5e8a1"
    s" expected a `Edm.Guid` value for key property `K`, found `0050568d393c1ed49d97e2a6e1c5e8a1`; give `K` a value in that type's form"

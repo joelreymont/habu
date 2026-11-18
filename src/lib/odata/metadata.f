@@ -35,6 +35,7 @@ require src/lib/map.f
 require src/lib/adt/option.f
 require src/lib/adt/nullable.f
 require src/lib/sort.f
+require src/lib/unicode/visible.f
 
 package ODATA
 public
@@ -408,7 +409,7 @@ CAST: >RECORD ( n -- ^t )
 : QUOTE ( ^doc ^u8 n -- )
    {: d:^ text:^ len:n :}
    text len CUT {: kept:^ kl:n cut:bool :}
-   d s" `" ADD d kept kl ADD
+   d s" `" ADD kept kl d DOC-TEXT @ UNICODE-VISIBLE:APPEND
    cut if d s" ..." ADD then
    d s" `" ADD ;
 
@@ -837,12 +838,12 @@ CAST: >RECORD ( n -- ^t )
 
 : URI$ ( ^doc -- str ) dup DOC-SCRATCH @ swap DOC-URI-LEN @ ;
 
-\ A namespace URI in backticks, whole, as CUT would make V2's and V3's
-\ the same; or no namespace.
+\ A namespace URI in backticks, whole and made visible, as CUT would make
+\ V2's and V3's the same; or no namespace.
 : NAMESPACE+ ( ^doc str -- )
    {: d:^ uri:^ ul:n :}
    ul 0= if d s" no namespace" ADD exit then
-   d s" `" ADD d uri ul ADD d s" `" ADD ;
+   d s" `" ADD uri ul d DOC-TEXT @ UNICODE-VISIBLE:APPEND d s" `" ADD ;
 
 \ The element's namespace as found.
 : NAMESPACE-FOUND ( ^doc str str -- )

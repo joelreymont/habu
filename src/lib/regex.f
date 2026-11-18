@@ -33,8 +33,8 @@ split-str
 \
 \ CONTRACT. A rejected pattern throws E-PATTERN through REASON:THROW with the
 \ text `C: expected X, found Y; fix`, C the 1-based byte column of Y. Y is
-\ one character, a run cut at 32 bytes with `...`, a byte that is no UTF-8
-\ character as `byte $HH`, or `the end of the pattern`. A text byte that
+\ one character or a run cut at 32 bytes with `...`, made visible; a byte
+\ that is no UTF-8 character as `byte $HH`; or `the end of the pattern`. A text byte that
 \ starts no valid UTF-8 sequence reads as U+FFFD. A counted repetition
 \ repeats its operand's code, so a program's size is the product of its
 \ nested counts; memory COMPILE or MATCH? cannot have throws its code.
@@ -48,6 +48,7 @@ require src/lib/arena.f
 require src/lib/utf8-scalar.f
 require src/lib/reason.f
 require src/lib/sort.f
+require src/lib/unicode/visible.f
 
 package REGEX
 private
@@ -88,8 +89,9 @@ $5C constant BACKSLASH
 MEM-MAX-N INST-BYTES / 4 / constant SIZE-CAP
 \ The most pairs one class byte adds: `\S` adds 11 for its 2 bytes.
 6 constant PAIRS-PER-BYTE
-\ The column's digits, the fixed words and the longest found text.
-80 constant TEXT-SLACK
+\ The column's 19 digits at most, the fixed words and the found text's own
+\ words, `the end of the pattern` the longest.
+64 constant TEXT-SLACK
 32 constant FOUND-MOST
 
 CAST: >INSTS ( ^u8 -- ^inst )
@@ -184,9 +186,12 @@ ARENA PARSERS parser
 \ A byte a found text never shows as itself.
 : RAW? ( n -- bool ) {: b:n :} b $20 < b $7F >= or ;
 
+\ The bytes of the token a found text keeps.
+: KEPT ( ^u8 n -- ^u8 n ) over swap FOUND-MOST UTF8:FIT ;
+
 : PUT-TOKEN ( ^u8 ^u8 n -- ^u8 ) {: dst:^ tok:^ u:n :}
-   tok u FOUND-MOST UTF8:FIT {: cut:n :}
-   dst s" `" PUT tok cut PUT
+   tok u KEPT {: kept:^ cut:n :}
+   dst s" `" PUT kept cut UNICODE-VISIBLE:PUT
    cut u < if s" ..." PUT then
    s" `" PUT ;
 
@@ -200,7 +205,8 @@ ARENA PARSERS parser
 \ in the scratch arena, which the throw releases after REASON:THROW copied it.
 : REJECT ( ^parser n n ^u8 n ^u8 n -- )
    {: p:^ at:n u:n e:^ eu:n f:^ fu:n :}
-   p PARSER-SCRATCH @ eu fu + TEXT-SLACK + ARENA:ALLOC drop
+   p PARSER-SRC @ at + u KEPT UNICODE-VISIBLE:LEN {: vu:n :}
+   p PARSER-SCRATCH @ eu fu + vu + TEXT-SLACK + ARENA:ALLOC drop
    {: base:^ :}
    base at 1+ PUT-DEC  s" : expected " PUT  e eu PUT
    s" , found " PUT  p at u PUT-FOUND  s" ; " PUT  f fu PUT

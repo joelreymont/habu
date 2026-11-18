@@ -244,6 +244,10 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    s\" {\"additionalProperties\":false}" s\" {\"a\":1}"
    s" : expected no members, found `a`; remove it"
    FAILS
+   s" VALID? shows a hidden character in a member name" T-LABEL
+   s\" {\"additionalProperties\":false}" s\" {\"a\\u202eb\":1}"
+   s" : expected no members, found `aU+202Eb`; remove it"
+   FAILS
    s" VALID? names the one member properties allows" T-LABEL
    s\" {\"properties\":{\"filter\":{}},\"additionalProperties\":false}"
    s\" {\"filtre\":1}"

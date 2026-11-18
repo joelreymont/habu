@@ -15,6 +15,7 @@ require src/lib/base64.f
 require src/lib/byte-buffer.f
 require src/lib/reason.f
 require src/lib/odata/metadata.f
+require src/lib/unicode/visible.f
 
 package ODATA
 private
@@ -307,7 +308,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 : SAY-QUOTED ( ^predicate str bool -- )
    {: p:^ a:^ u:n cut:bool :}
-   p s" `" SAY p a u SAY
+   p s" `" SAY a u p PREDICATE-TEXT @ UNICODE-VISIBLE:APPEND
    cut if p s" ..." SAY then
    p s" `" SAY ;
 

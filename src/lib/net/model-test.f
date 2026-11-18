@@ -1461,6 +1461,7 @@ variable REFUSED-BASE-U
 : BAD-IMAGE ( n -- n ) s" image/png" s" invalid!" M MODEL:IMAGE+ ;
 : EMPTY-IMAGE ( n -- n ) s" image/png" s" " M MODEL:IMAGE+ ;
 : TEXT-IMAGE ( n -- n ) s" text/plain" s" aGVsbG8=" M MODEL:IMAGE+ ;
+: HIDDEN-IMAGE ( n -- n ) S\" text/\xE2\x80\xAEplain" s" aGVsbG8=" M MODEL:IMAGE+ ;
 : NEGATIVE-MIME ( n -- n ) s" image/png" drop -50 s" aGVsbG8=" M MODEL:IMAGE+ ;
 : NEGATIVE-DATA ( n -- n ) s" image/png" s" aGVsbG8=" drop -8 M MODEL:IMAGE+ ;
 
@@ -1475,6 +1476,9 @@ variable REFUSED-BASE-U
    CONFIG-SAYS
    0 [: TEXT-IMAGE ;]
    s" expected IMAGE+'s media type image/png, image/jpeg, image/webp or image/gif, found `text/plain`; pass one of those media types"
+   CONFIG-SAYS
+   0 [: HIDDEN-IMAGE ;]
+   s" expected IMAGE+'s media type image/png, image/jpeg, image/webp or image/gif, found `text/U+202Eplain`; pass one of those media types"
    CONFIG-SAYS
    0 [: NEGATIVE-MIME ;]
    s" expected IMAGE+'s media type, found `-50`; pass the text with its length in bytes"

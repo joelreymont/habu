@@ -54,6 +54,7 @@ require src/lib/regex.f
 require src/lib/byte-buffer.f
 require src/lib/utf8-scalar.f
 require src/core/rejection.f
+require src/lib/unicode/visible.f
 
 package JSON-SCHEMA
 private
@@ -789,7 +790,8 @@ ARENA PASSES pass
 
 : ADD-CUT ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
    s u CUT UTF8:FIT {: k:n :}
-   s k pl ADD  k u < if s" ..." pl ADD then ;
+   s k pl PLACE-WALK @ WALK-BUF @ UNICODE-VISIBLE:APPEND
+   k u < if s" ..." pl ADD then ;
 
 : QUOTE ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
    s" `" pl ADD  s u pl ADD-CUT  s" `" pl ADD ;

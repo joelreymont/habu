@@ -6,6 +6,7 @@ split-str
 \ STORAGE CLASS. PROCESS-WIDE read-only table (src/lib/unicode/visible-data.f,
 \ generated); any task may call.
 
+require src/lib/byte-buffer.f
 require src/lib/sort.f
 require src/lib/utf8-scalar.f
 require src/lib/unicode/visible-data.f
@@ -79,5 +80,10 @@ public
 \ Writes the text at the address; answers the address after it.
 : PUT ( ^u8 str -- ^u8 ) {: dst:^ a:^ u:n :}
    dst 0 begin dup u < while a u rot STEP-PUT repeat drop ;
+
+\ Writes the text's visible form at the BUF's end; the text may not lie in
+\ the BUF, whose growth releases it.
+: APPEND ( ^u8 n ^a -- ) {: a:^ u:n buf:^ :}
+   buf a u LEN BUF:N>BLEN BUF:GROW SPAN:$ drop a u PUT drop ;
 
 ;package
