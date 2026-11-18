@@ -71,7 +71,7 @@ PATH-CAP BUFFER: PROG-BUF
    s" build: STOP-FILE: a write after a refused file ran" EXPECT ;
 
 : STOP-BODY ( -- )
-   [: s" : FOB-BAD ( -- n ) dup ;" evaluate-closed ;] catch
+   [: s" 16 allot : FOB-BAD ( -- n ) dup ;" evaluate-closed ;] catch
    70 s" build: STOP-BODY: the definition was not refused" EXPECT
    [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED s" build: STOP-BODY: a write after a rollback ran" EXPECT
    ['] RESIDUE catch LINKER:E-FAILED s" build: STOP-BODY: a load after a rollback ran" EXPECT ;

@@ -221,7 +221,7 @@ variable LOW-DP
    HOST-CHECK
    s" e: a throw in the body is rethrown after the close" SAY ;
 
-: REFUSE ( -- ) s\" : LK-F1 ( -- n ) s\" gone\" ;" evaluate-closed ;
+: REFUSE ( -- ) s\" 16 allot : LK-F1 ( -- n ) s\" gone\" ;" evaluate-closed ;
 : REWIND ( -- ) s\" : LK-F2 ( -- ^u8 n ) s\" new\" ;" evaluate-closed ;
 
 : BODY-F ( -- )

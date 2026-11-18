@@ -1133,7 +1133,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : SPAWN-REPL-CASE ( CMD:command -- CMD:command )
    s" SR" WHICH!  s" test/fixtures/file-objects/spawn-main.f" REPL-BUILD drop ;
 
-\ rollback.f's build, which catches a refused definition at its top level: it exits 67
+\ rollback.f's build, which catches a refused text that allotted data: it exits 67
 \ and the linker says the file gave back data space.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
    s" CF" WHICH!
@@ -1143,6 +1143,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    rc 67 =  said and 0= if rc SHOW then
    s" the build exits 67" LABEL  rc 67 T=
    s" the build says rollback.f gave back data space" LABEL  said TTRUE ;
+
+\ rollback-none.f's build, which catches a failing evaluate of a text that allots
+\ nothing at its top level: it links, and its program prints what MAIN prints.
+: CAUGHT-NONE-CASE ( CMD:command -- CMD:command )
+   s" CN" WHICH!  s" test/fixtures/file-objects/rollback-none.f" FIXTURE-BUILD 0= if exit then
+   s\" 1\n\n" s" the program prints MAIN's 1" PRINTS-RUN ;
 
 \ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with
 \ E-CTOR-PROTECTED at ctor-main.f's line 6. Answers its exit code.
@@ -2214,7 +2220,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
-      CTOR-CASE EXPORT-CASE
+      CAUGHT-NONE-CASE CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE

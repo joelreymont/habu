@@ -61,15 +61,17 @@ package DATA-SPACE
 public
 
 \ Rewinds DATA to cut, in DP-CELL's units: the address-cell rows and interned
-\ texts at or above it go. The release high-water rises to the DP this lowers
-\ from, so `allot` zeroes the reused space it hands out again, and the `,` run
-\ ends.
+\ texts at or above it go, the `,` run ends, and the release high-water is at
+\ least the DP this lowers from when that is above cut.
 : REWIND ( n -- )
    {: cut:n :}
    data-base NULL-PTR - {: base:n :}
    cut base - ADDRESS-CELLS:KEEP-BELOW
    cut INTERN:KEEP-BELOW
-   data-base DP-CELL + @ base -  data-base DPHW-CELL + @ max  data-base DPHW-CELL + !
+   data-base DP-CELL + @ {: from:n :}
+   from cut > if
+      from base -  data-base DPHW-CELL + @ max  data-base DPHW-CELL + !
+   then
    0 data-base COMMA-RUN-CELL + !
    cut data-base DP-CELL + ! ;
 

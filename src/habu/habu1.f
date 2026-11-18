@@ -1736,14 +1736,15 @@ public
    DP-HIGH LABEL@ LBL, ;
 
 private
-\ Before a path lowers DP, raise the release high-water to the DP it lowers
-\ from, which the DP cell still holds; `allot` zeroes the reused space when it
-\ hands it out again. Clobbers the two scratch registers.
-: DP-LOWER, ( n n -- )
-   {: t:n u:n :}
+\ Runs before a path stores the new DP held in register new: the `,` run has
+\ ended, and the release high-water is at least the DP the DP cell holds when
+\ that is above new. Clobbers the two scratch registers.
+: DP-LOWER, ( n n n -- )
+   {: new:n t:n u:n :}
    LBL {: done:label :}
-   31 DATA COMMA-RUN-CELL STR,                     \ a `,` run ends where DP lowers
-   t DATA DP-CELL LDR,  t t DATA SUB,
+   31 DATA COMMA-RUN-CELL STR,
+   t DATA DP-CELL LDR,  t new CMP,  C-LS done BCOND,
+   t t DATA SUB,
    u DATA DPHW-CELL LDR,  t u CMP,  C-LS done BCOND,
    t DATA DPHW-CELL STR,
    done LBL, ;
@@ -3079,7 +3080,7 @@ private
    9 7 DATA SUB,  9 G-PUSH  11 BLR,
    no-owner LBL,
    7 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
-   10 11 DP-LOWER,  store B,
+   7 10 11 DP-LOWER,  store B,
    grow LBL,
    10 7 A SUB,                                     \ x10 = old DP
    11 DATA DPHW-CELL LDR,  11 11 DATA ADD,  11 7 CMP,  11 11 7 C-LS CSEL,  \ x11 = min(high-water, new DP)
