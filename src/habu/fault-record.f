@@ -119,9 +119,6 @@ public
    s" ran on a task's thread, and only the main thread defines and allots" ;
 : TASK-GUARD-HELP$ ( -- str )
    s" define and allot on the main thread before the task starts" ;
-: LOWER-GUARD$ ( -- str ) s" ran while a task is live" ;
-: LOWER-GUARD-HELP$ ( -- str )
-   s" wait for every task to end before forgetting definitions" ;
 
 private
 128 constant GUARD-MSG-CAP

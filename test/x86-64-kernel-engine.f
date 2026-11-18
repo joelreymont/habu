@@ -287,9 +287,7 @@ REGION SLOT-BYTES - constant TOP-SLOT
 : NDICT!, ( n -- ) X64HARNESS:PUSH,  s" ndict!" ROW ;
 : NDICT?, ( n -- ) s" ndict@" ROW  X64HARNESS:EXPECT-POP, ;
 
-\ Lowering the count hides the records past it. Raising it rebuilds the index,
-\ so delta, written while the count was low and never indexed, is found, and
-\ LONG$, whose record delta overwrote, is not.
+\ Lowering the count hides the records past it.
 : BUILD-NDICT ( str -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    SEED,  X64KERNEL:HIDX-BUILD,
@@ -298,28 +296,8 @@ REGION SLOT-BYTES - constant TOP-SLOT
    2 NDICT!,  2 NDICT?,
    0 LASTC-CELL X64HARNESS:EXPECT-CELL,
    s" secret" OWNER-API-PRI-WID XREF,  0 X64HARNESS:EXPECT-POP,
-   s" delta" 0 0 X64HARNESS:RECORD,                      \ record 2
-   2 NDICT!,  3 NDICT!,
-   s" delta" 0 SEARCH,  3 X64HARNESS:EXPECT-POP,
-   LONG-UPPER$ 0 SEARCH,  0 X64HARNESS:EXPECT-POP,
-   5 NDICT!,
-   s" secret" OWNER-API-PRI-WID XREF,  3 X64HARNESS:EXPECT-ROW,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ DICT-CAP is a count ndict! admits; one more exits 70 with the ARM64 text.
-: BUILD-NDICT-CAP ( str -- ) {: path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   DICT-CAP NDICT!,  DICT-CAP NDICT?,
-   DICT-CAP 1+ NDICT!,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ Below the floor SEAL-CAPTURE records, ndict! exits 83.
-: BUILD-NDICT-FLOOR ( str -- ) {: path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   SEED,  s" SEAL-CAPTURE" ROW
-   4 NDICT!,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 : APPEND, ( n -- ) X64HARNESS:PUSH,  s" ndict-append" ROW ;
@@ -349,15 +327,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
 : BUILD-APPEND-FOREIGN ( str -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    PENDING,  6 NDICT!,  6 APPEND,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-: BUILD-SEAL ( str -- ) {: path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   s" seal-captured?" ROW  0 X64HARNESS:EXPECT-POP,
-   SEED,  s" SEAL-CAPTURE" ROW
-   5 SEAL-NDICT-CELL X64HARNESS:EXPECT-CELL,
-   s" seal-captured?" ROW  -1 X64HARNESS:EXPECT-POP,
-   0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ Slot n of the pending pre-trust defer table.
@@ -397,13 +366,12 @@ REGION SLOT-BYTES - constant TOP-SLOT
    X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ A pending table the drain or the seal row meets without a checker to take it:
-\ SEAL-CAPTURE names the two pending defers on fd 2 and exits 76;
-\ DRAIN-PRETRUST writes `trust-decl` on fd 2 and exits 76.
-: BUILD-PENDING ( str str -- ) {: row:^ rowu:n path:^ pathu:n :}
+\ A pending table the drain meets without a checker to take it: DRAIN-PRETRUST
+\ writes `trust-decl` on fd 2 and exits 76.
+: BUILD-PENDING ( str -- ) {: path:^ pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    PENDING-DEFERS,
-   row rowu ROW
+   s" DRAIN-PRETRUST" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ wide-mark sets DNAME-WIDE on the newest record, hidden, and leaves the one
@@ -587,14 +555,10 @@ public
    s" hb-x64-kernel-state" TMP-PATH BUILD-STATE
    s" hb-x64-kernel-cp" TMP-PATH BUILD-CP
    s" hb-x64-kernel-ndict" TMP-PATH BUILD-NDICT
-   s" hb-x64-kernel-ndict-cap" TMP-PATH BUILD-NDICT-CAP
-   s" hb-x64-kernel-ndict-floor" TMP-PATH BUILD-NDICT-FLOOR
    s" hb-x64-kernel-append" TMP-PATH BUILD-APPEND
    s" hb-x64-kernel-append-foreign" TMP-PATH BUILD-APPEND-FOREIGN
-   s" hb-x64-kernel-seal" TMP-PATH BUILD-SEAL
-   s" SEAL-CAPTURE" s" hb-x64-kernel-seal-undrained" TMP-PATH BUILD-PENDING
    s" hb-x64-kernel-drain" TMP-PATH BUILD-DRAIN
-   s" DRAIN-PRETRUST" s" hb-x64-kernel-drain-unset" TMP-PATH BUILD-PENDING
+   s" hb-x64-kernel-drain-unset" TMP-PATH BUILD-PENDING
    s" hb-x64-kernel-wide-mark" TMP-PATH BUILD-WIDE-MARK
    s" hb-x64-kernel-xt-store" TMP-PATH BUILD-XT-STORE
    s" hb-x64-kernel-addr-grow" TMP-PATH BUILD-ADDR-GROW

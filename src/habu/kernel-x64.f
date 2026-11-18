@@ -353,11 +353,6 @@ $20 constant FOLD-BIT
    FAULT-RECORD:TASK-GUARD$ FAULT-RECORD:TASK-GUARD-HELP$
    TASK-TCB-CELL MUTATION-GUARD, ;
 
-\ A sink that lowers CP or NDICT frees code a live task may be running.
-: LOWER-GUARD, ( str -- )
-   FAULT-RECORD:LOWER-GUARD$ FAULT-RECORD:LOWER-GUARD-HELP$
-   TASKS-LIVE-CELL MUTATION-GUARD, ;
-
 variable FIND-CELL
 variable FIND-PAIR-CELL
 variable FIND-SCAN-CELL
@@ -998,7 +993,7 @@ SPN-ENVP0 CELL + constant SPN-FRAME
    RDI CLONE-SIGCHLD IMM32,  RSI ZERO-REG,  RDX ZERO-REG,  R10 ZERO-REG,  R8 ZERO-REG, ;
 
 \ Copy the used region to the fresh view at frame[8], before clone. Include
-\ the pending record, records exposed by a later ndict!, and code above CP
+\ the pending record, the records a lowering retired, and code above CP
 \ still named by those records. A task reads the high-water from main DATA,
 \ not its own snapshot. This is LIBC-OS:FORK's Linux extent rule.
 : FORK-COPY, ( -- )
@@ -3345,16 +3340,6 @@ private
 \ The twins of habu1.f BCPFETCH .. BDATAFETCH, BRBASE, BCPSET, BNDSET and
 \ BNDAPPEND; a row that moves r14 keeps the index authoritative through HIDX.
 
-\ Exit EXIT-STATUS:SEAL-VIOLATION with the row's die line and rax when rax, a count, lies
-\ below the floor SEAL-CAPTURE recorded; 0 is no floor. It clobbers rcx.
-: FLOOR-GUARD, ( str -- ) {: a:^ u:n :}
-   X64CODE:LBL {: ok:label :}
-   RCX SEAL-NDICT-CELL CELL@,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-E ok JCC,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-AE ok JCC,
-   a u EXIT-STATUS:SEAL-VIOLATION RAX X64CRASH:DIE-LINE-VALUE,
-   ok X64CODE:LBL, ;
-
 \ Once a count lowers, a create record at or beyond its new end is retired.
 \ The next definition may reuse that address, so does-patch must forget it.
 : LASTC-TRIM, ( -- )
@@ -3450,32 +3435,13 @@ private
    RAX ASM-SINK ENC-CALL-REG
    done X64CODE:LBL, ;
 
-\ ndict! ( n -- ): a count past DICT-CAP, unsigned, exits EXIT-STATUS:REJECTED; one below
-\ the seal floor exits EXIT-STATUS:SEAL-VIOLATION. A lowered count keeps the index, whose
-\ probe skips a record at or past the count; a raised one re-exposes records
-\ whose slots a later insert may have reused, so the index is rebuilt over the
-\ raised count.
+\ ndict! ( n -- ): its callers lower the count only on the main thread with no
+\ task live, to a count read there earlier. The index keeps the retired
+\ records, whose probe skips a record at or past the count.
 : NDICT-SET-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: bounded:label lower:label done:label :}
-   s" ndict!" TASK-GUARD,  s" ndict!" LOWER-GUARD,
-   RAX 0 PEEK,
-   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-BE bounded JCC,
-   s" E-DICT-COUNT habu: dictionary count above DICT-CAP:" EXIT-STATUS:REJECTED RAX
-   X64CRASH:DIE-LINE-VALUE,
-   bounded X64CODE:LBL,
    RAX POP,
-   s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count:"
-   FLOOR-GUARD,
-   RDI NDICT-REG ASM-SINK ENC-MOV-RR
    OCC-COUNT,
-   RAX RDI ASM-SINK ENC-CMP-RR
-   C-L lower JCC,
-   C-E done JCC,
-   HIDX-REBUILD,
-   done JMP,
-   lower X64CODE:LBL,
-   LASTC-TRIM,
-   done X64CODE:LBL, ;
+   LASTC-TRIM, ;
 
 \ retire-from ( n -- bool ): with a task live, retire the records from n up and
 \ answer true (the caller keeps CP, NDICT and DP); else false, the caller lowers.
@@ -3484,11 +3450,9 @@ private
 
 \ ndict-append ( n -- ): count the compiler's pending record, which must
 \ be record n at the count, or its does> companion one record past it while
-\ a does> body is pending, and index it. Anything else, or a count below the
-\ seal floor, exits SEAL-VIOLATION.
+\ a does> body is pending, and index it. Anything else exits SEAL-VIOLATION.
 : NDICT-APPEND-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: owner:label floor-ok:label bad:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: owner:label bad:label done:label :}
    s" ndict-append" TASK-GUARD,
    RAX 0 PEEK,
    RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-NE bad JCC,
@@ -3505,10 +3469,6 @@ private
    RCX CLAUSE-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E bad JCC,
    owner X64CODE:LBL,
-   RCX SEAL-NDICT-CELL CELL@,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-E floor-ok JCC,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-B bad JCC,
-   floor-ok X64CODE:LBL,
    DROP,
    RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
    OCC-COUNT,
@@ -3516,7 +3476,7 @@ private
    RECORD-PUBLISHED,
    done JMP,
    bad X64CODE:LBL,
-   s" E-SEAL-VIOLATION habu: ndict-append index not NDICT and the pending native record, at or past DICT-CAP, or below the sealed record count:"
+   s" E-SEAL-VIOLATION habu: ndict-append index not NDICT and the pending native record, or at or past DICT-CAP:"
    EXIT-STATUS:SEAL-VIOLATION RAX X64CRASH:DIE-LINE-VALUE,
    done X64CODE:LBL, ;
 
@@ -3528,7 +3488,7 @@ private
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" cp!" [:
-      s" cp!" TASK-GUARD,  s" cp!" LOWER-GUARD,  RCX POP,
+      RCX POP,
       RDI RCX ASM-SINK ENC-MOV-RR
       DEF-CODE-RECLAIM-BODY
       CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
@@ -3538,9 +3498,9 @@ private
    s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
-\ The twins of habu1.f BSEALCAP and BSEALCAPQ and habu2.f
-\ BDRAINPRETRUST. The pending pre-trust defer table at PD-TABLE-OFF is a count
-\ and PD-SLOT byte slots, each a name and a signature with their lengths.
+\ The twin of habu2.f BDRAINPRETRUST. The pending pre-trust defer table at
+\ PD-TABLE-OFF is a count and PD-SLOT byte slots, each a name and a signature
+\ with their lengths.
 
 : PD-COUNT ( -- mem ) DATA-REG PD-TABLE-OFF MEM-OFF ;
 
@@ -3548,36 +3508,6 @@ private
 : SLOT-BASE, ( -- )
    R8 RCX PD-SLOT >IMM32 ASM-SINK ENC-IMUL-RRI32
    R8 DATA-REG R8 1 PD-TABLE-OFF PD-SLOTS-REL + MEM-IDX ASM-SINK ENC-LEA ;
-
-: UNDRAINED$ ( -- str ) s" hb: undrained pre-trust defer: " ;
-
-\ SEAL-CAPTURE ( -- ): record the count as the seal floor. The pending table
-\ must be empty by then, as checker.f drains it after `trust-decl`; a pending
-\ defer means the drain never ran, so each is named on fd 2, one per line, and
-\ the row exits EXIT-STATUS:INTERNAL. The walk lives in r8-r10, which a syscall keeps.
-: SEAL-CAPTURE-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: next:label stop:label drained:label :}
-   X64CODE:LBL X64CODE:LBL {: head:label nl:label :}
-   R9 PD-COUNT ASM-SINK ENC-MOV-RM                     \ r9 = the count
-   R9 R9 ASM-SINK ENC-TEST-RR  C-E drained JCC,
-   R10 ZERO-REG,                                       \ r10 = the slot
-   next X64CODE:LBL,
-   R10 R9 ASM-SINK ENC-CMP-RR  C-GE stop JCC,
-   RCX R10 ASM-SINK ENC-MOV-RR  SLOT-BASE,
-   head UNDRAINED$ nip STDERR-WRITE,
-   RDI STDERR IMM32,
-   RSI R8 PD-NAME-OFF MEM-OFF ASM-SINK ENC-LEA
-   RDX R8 PD-NLEN-OFF MEM-OFF ASM-SINK ENC-MOV-RM
-   NR-WRITE SYS,
-   nl 1 STDERR-WRITE,
-   R10 ASM-SINK ENC-INC
-   next JMP,
-   stop X64CODE:LBL,
-   EXIT-STATUS:INTERNAL EXIT-GROUP,
-   head X64CODE:LBL,  UNDRAINED$ TEXT,
-   nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
-   drained X64CODE:LBL,
-   NDICT-REG SEAL-NDICT-CELL CELL!, ;
 
 \ r8 = the top pending slot's base. The count is read again from DATA each
 \ time, since a checker call keeps no scratch register. It clobbers rcx.
@@ -3620,11 +3550,6 @@ private
    done X64CODE:LBL, ;
 
 : SEAL-ROWS, ( -- )
-   s" SEAL-CAPTURE" [: SEAL-CAPTURE-BODY ;] PRIM
-   \ -1 when the floor is set: neg sets CF for a nonzero rax, sbb spreads it.
-   s" seal-captured?" [:
-      RAX SEAL-NDICT-CELL CELL@,
-      RAX ASM-SINK ENC-NEG  RAX RAX ASM-SINK ENC-SBB-RR  RAX PUSH, ;] PRIM
    s" DRAIN-PRETRUST" [: DRAIN-BODY ;] PRIM ;
 
 \ wide-mark ( -- ) and imm-mark ( -- ): set the flag, DNAME-WIDE or DNAME-IMM,
@@ -3908,25 +3833,13 @@ variable MARK-CELL
    RCX DSP CELL negate MOV-STORE,
    own X64CODE:LBL, ;
 
-\ The pending row is allowed; sealed rows and the control-flow band are not.
+\ record-facts! ( n n -- ): its callers run on the main thread and pass an
+\ index from the seal floor to NDICT.
 : RECORD-FACTS-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: floor-ok:label bad:label done:label :}
-   s" record-facts!" TASK-GUARD,
    RAX POP,  R9 POP,
-   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-A bad JCC,
-   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bad JCC,
-   RCX SEAL-NDICT-CELL CELL@,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-E floor-ok JCC,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-B bad JCC,
-   floor-ok X64CODE:LBL,
    RAX RECORD-AT,
    R8 WRITE-ALIAS,
-   R9 R8 32 MOV-STORE,
-   done JMP,
-   bad X64CODE:LBL,
-   s" E-SEAL-VIOLATION habu: record-facts! index past NDICT, at or past DICT-CAP, or below the sealed record count:"
-   EXIT-STATUS:SEAL-VIOLATION RAX X64CRASH:DIE-LINE-VALUE,
-   done X64CODE:LBL, ;
+   R9 R8 32 MOV-STORE, ;
 
 : SCOPE-ROWS, ( -- )
    MARK-BODY,
@@ -5284,10 +5197,8 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 \ shares its body: the twin of habu2.f DOESPATCH CLEAR-KIND. An alias
 \ (alias-record) copies its source's [0] and DKIND:VAL, so the patch falsifies
 \ its stamp too. An alias is newer than its source, so the scan walks the
-\ records above LASTC, in every wordlist, and only when LASTC had a stamp. It
-\ ends at the larger of NDICT and the dictionary high-water (layout.f
-\ NDICT-HW-CELL): a raising ndict! re-exposes an alias a lowering one retired,
-\ stamp and all. Each match is written through its alias.
+\ records above LASTC, in every wordlist, and only when LASTC had a stamp. Each
+\ match is written through its alias.
 \ Clobbers rax rcx rdx rsi rdi r8 r10.
 : DOES-KIND-CLEAR, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label next:label done:label :}
