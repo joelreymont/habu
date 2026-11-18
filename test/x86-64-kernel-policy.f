@@ -88,7 +88,7 @@ using X64RT
    s" NOPE" ADMIT, ;
 
 : BOUND, ( -- )
-   s" PBIG" PROT-WID-MAX READY,
+   s" PBIG" POLICY-WID-MAX READY,
    s" PBIG" ADMIT, ;
 
 : KEYWORD, ( -- )

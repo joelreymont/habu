@@ -2841,31 +2841,23 @@ variable SITE-TRAP-CELL
    SEAL-TRAP-LBL X64CODE:LBL,  EXIT-STATUS:SEAL-VIOLATION EXIT-GROUP,
    SITE-TRAP-LBL X64CODE:LBL,  EXIT-STATUS:SITE EXIT-GROUP, ;
 
-\ Over the bounded wid in rdi: rsi = the selected bitmap's containing cell,
+\ Over the bounded wid in rdi: rsi = the policy bitmap's containing cell,
 \ rdx = its bit. It clobbers rcx; shl takes the wid's low six bits.
-: WID-BITS, ( n -- ) {: off:n :}
+: POLICY-BITS, ( -- )
    RSI RDI ASM-SINK ENC-MOV-RR
    RSI 6 >IMM8 ASM-SINK ENC-SHR-RI8
-   RSI DATA-REG RSI CELL off MEM-IDX ASM-SINK ENC-LEA
+   RSI DATA-REG RSI CELL POLICY-BITS-OFF MEM-IDX ASM-SINK ENC-LEA
    RCX RDI ASM-SINK ENC-MOV-RR
    RDX 1 IMM32,  RDX ASM-SINK ENC-SHL-CL ;
 
-: PROT-BITS, ( -- ) PROT-BITS-OFF WID-BITS, ;
-: POLICY-BITS, ( -- ) POLICY-BITS-OFF WID-BITS, ;
-
-\ With the seal set, branch when rdx names a protected wordlist.
-\ A wid beyond the bitmap bound has no bit, as on ARM64.
+\ With the seal set, branch when rdx names an OWNER-API wordlist, the
+\ protected ones.
 : OPEN-WID, ( label -- ) {: prot:label :}
    X64CODE:LBL {: open:label :}
    RAX DATA-REG SEAL-NDICT-CELL MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E open JCC,
    RDX OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
    RDX OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E prot JCC,
-   RDX PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-AE open JCC,
-   RDI RDX ASM-SINK ENC-MOV-RR
-   PROT-BITS,
-   RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
-   RAX RDX ASM-SINK ENC-TEST-RR  C-NE prot JCC,
    open X64CODE:LBL, ;
 
 \ patch32 ( n n -- ): write through the alias of the RX target.
@@ -3635,38 +3627,6 @@ private
       RAX ASM-SINK ENC-NEG  RAX RAX ASM-SINK ENC-SBB-RR  RAX PUSH, ;] PRIM
    s" DRAIN-PRETRUST" [: DRAIN-BODY ;] PRIM ;
 
-\ prot-wid-add ( n -- ): protect the wid, once. The two engine-reserved wids
-\ are protected already, as habu1.f LPROTWIDQ pins them, and a set bit is
-\ left alone; a wid at or above PROT-WID-MAX has no bit, so it exits
-\ EXIT-STATUS:SEAL-WORDLIST naming it rather than write past the band. The set bit is
-\ published by a plain store, which x86-64 total store order releases as
-\ habu1.f's STLR does.
-: PROT-WID-ADD-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL {: bounded:label done:label :}
-   RDI POP,
-   RDI OWNER-API-PUB-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
-   RDI OWNER-API-PRI-WID >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
-   RDI PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
-   s" E-SEAL-WORDLIST habu: wid at or above PROT-WID-MAX:" EXIT-STATUS:SEAL-WORDLIST RDI
-   X64CRASH:DIE-LINE-VALUE,
-   bounded X64CODE:LBL,
-   PROT-BITS,
-   RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
-   RAX RDX ASM-SINK ENC-TEST-RR  C-NE done JCC,
-   RAX RDX ASM-SINK ENC-OR-RR
-   RAX RSI MEM-AT ASM-SINK ENC-MOV-MR
-   done X64CODE:LBL, ;
-
-\ prot-wid-room ( -- n ): PROT-WID-MAX less WIDN-CELL, or 0 once WIDN-CELL
-\ reaches the bound.
-: PROT-WID-ROOM-BODY ( -- )
-   RCX ZERO-REG,
-   RAX PROT-WID-MAX IMM32,
-   RAX DATA-REG WIDN-CELL MEM-OFF ASM-SINK ENC-SUB-RM
-   RAX RAX ASM-SINK ENC-TEST-RR
-   C-L RAX RCX ASM-SINK ENC-CMOVCC
-   RAX PUSH, ;
-
 \ wide-mark ( -- ) and imm-mark ( -- ): set the flag, DNAME-WIDE or DNAME-IMM,
 \ on the newest record, r14 - 1, through the alias, like BWIDEMARK and
 \ C-IMMEDIATE on ARM.
@@ -3718,7 +3678,7 @@ private
       s" admit a package the program defines" 16 POLICY-STOP,
    found X64CODE:LBL,
    RAX RAX REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX PROT-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
+   RAX POLICY-WID-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-B bounded JCC,
       s" E-POLICY habu: policy: package wid above the bound" EXIT-STATUS:POLICY
       X64CRASH:DIE-LINE,
    bounded X64CODE:LBL,
@@ -3753,8 +3713,6 @@ private
       RAX WIDN-CELL CELL@,  RAX PUSH,
       RAX ASM-SINK ENC-INC  RAX WIDN-CELL CELL!, ;] PRIM
    s" get-current" [: RAX CUR-CELL CELL@,  RAX PUSH, ;] PRIM
-   s" prot-wid-add" [: PROT-WID-ADD-BODY ;] PRIM
-   s" prot-wid-room" [: PROT-WID-ROOM-BODY ;] PRIM
    s" policy-admit" [: POLICY-ADMIT-BODY ;] PRIM
    s" policy-seal" [: POLICY-SEAL-BODY ;] PRIM
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;

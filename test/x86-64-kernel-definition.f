@@ -14,7 +14,6 @@ using X64RT
 
 5 constant WID                         \ a public wordlist past the fixed ones
 6 constant OTHER-WID
-8 constant GUARDED-WID                 \ protected: ALIAS-WID's bitmap cell
 9 constant ALIAS-WID
 12 constant PARENT-WID
 20 constant FIRST-WID                  \ WIDN-CELL before a namespace row takes its wids
@@ -112,7 +111,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,
    s" xref-search-wl" X64HARNESS:CALL-ROW, ;
 
-: PROTECT, ( n -- ) X64HARNESS:PUSH,  s" prot-wid-add" X64HARNESS:CALL-ROW, ;
 : AFTER-SEAL, ( -- ) 1 SEAL-NDICT-CELL X64HARNESS:CELL!, ;
 \ The writers reject on a task's or callback's DATA, not on main with tasks live.
 : LIVE, ( -- ) 1 TASK-TCB-CELL X64HARNESS:CELL!, ;
@@ -227,7 +225,6 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    SOURCE$ 0 SOURCE-FLAGS X64HARNESS:RECORD,          \ record 0, its code cell 1
    REC-AUX X64HARNESS:POKE,                           \ its length cell -1
    AFTER-SEAL,
-   GUARDED-WID PROTECT,
    s" Al" 0 ALIAS-WID ALIAS,
    1 1 X64KERNEL:REC-CODE X64HARNESS:EXPECT-RECORD,
    -1 1 REC-AUX X64HARNESS:EXPECT-RECORD,
@@ -406,9 +403,9 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 \   def-close with nothing pending (-trust-sig-armed, -created-sig-armed,
 \   -def-close-armed), and def-close on a definition opened with no compiler
 \   (-def-close-tier-armed).
-\ - 84, EXIT-STATUS:SEAL-WORDLIST, after the seal: alias-record into a wid
-\   whose bit is set (-alias-record-prot-armed) and def-open into
-\   OWNER-API-PUB-WID, always protected (-def-open-prot-armed).
+\ - 84, EXIT-STATUS:SEAL-WORDLIST, after the seal: alias-record into
+\   OWNER-API-PRI-WID (-alias-record-prot-armed) and def-open into
+\   OWNER-API-PUB-WID (-def-open-prot-armed), the protected wordlists.
 \ Each call but for its refusal is one the row admits.
 : NAMESPACE-LIVE, ( -- ) LIVE,  s" ns" BOTH-WIDS NAMESPACE, ;
 
@@ -449,8 +446,8 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
 : ALIAS-PROT, ( -- )
    SOURCE$ 0 0 X64HARNESS:RECORD,
-   AFTER-SEAL,  ALIAS-WID PROTECT,
-   s" al" 0 ALIAS-WID ALIAS, ;
+   AFTER-SEAL,
+   s" al" 0 OWNER-API-PRI-WID ALIAS, ;
 
 \ A pending definition def-open opened with no compiler.
 : NO-COMP-CLOSE, ( -- )

@@ -406,33 +406,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    row rowu ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: PROT-WID!, ( n -- ) X64HARNESS:PUSH,  s" prot-wid-add" ROW ;
-: BITS ( n -- n ) CELL * PROT-BITS-OFF + ;   \ the bitmap's cell n
-
-\ Wid 70's bit is bit 6 of cell 1 and 71's the next; a second add is inert,
-\ an engine-reserved wid counts as protected and keeps its bit clear, and the
-\ last wid below PROT-WID-MAX is the last cell's top bit. prot-wid-room
-\ answers the wids left below the bound, and 0 past it.
-: BUILD-PROT-WID ( str -- ) {: path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   70 PROT-WID!,  $40 1 BITS X64HARNESS:EXPECT-CELL,
-   71 PROT-WID!,  70 PROT-WID!,  $C0 1 BITS X64HARNESS:EXPECT-CELL,
-   OWNER-API-PUB-WID PROT-WID!,  0 0 BITS X64HARNESS:EXPECT-CELL,
-   PROT-WID-MAX 1- PROT-WID!,
-   MIN-CELL PROT-BITS-BYTES CELL / 1- BITS X64HARNESS:EXPECT-CELL,
-   FIRST-WID WIDN-CELL X64HARNESS:CELL!,
-   s" prot-wid-room" ROW  PROT-WID-MAX FIRST-WID - X64HARNESS:EXPECT-POP,
-   PROT-WID-MAX 1+ WIDN-CELL X64HARNESS:CELL!,
-   s" prot-wid-room" ROW  0 X64HARNESS:EXPECT-POP,
-   0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ A wid with no bit exits 84 with the ARM64 text.
-: BUILD-PROT-WID-BOUND ( str -- ) {: path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   PROT-WID-MAX PROT-WID!,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 \ wide-mark sets DNAME-WIDE on the newest record, hidden, and leaves the one
 \ before it alone. The record's pages start read and execute only, as a
 \ published record's are, so the row writes only through its alias.
@@ -622,8 +595,6 @@ public
    s" SEAL-CAPTURE" s" hb-x64-kernel-seal-undrained" TMP-PATH BUILD-PENDING
    s" hb-x64-kernel-drain" TMP-PATH BUILD-DRAIN
    s" DRAIN-PRETRUST" s" hb-x64-kernel-drain-unset" TMP-PATH BUILD-PENDING
-   s" hb-x64-kernel-prot-wid" TMP-PATH BUILD-PROT-WID
-   s" hb-x64-kernel-prot-wid-bound" TMP-PATH BUILD-PROT-WID-BOUND
    s" hb-x64-kernel-wide-mark" TMP-PATH BUILD-WIDE-MARK
    s" hb-x64-kernel-xt-store" TMP-PATH BUILD-XT-STORE
    s" hb-x64-kernel-addr-grow" TMP-PATH BUILD-ADDR-GROW
