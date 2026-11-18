@@ -1750,6 +1750,20 @@ variable JRT-COUNT
 : JRT-FIRST ( str -- JSON:reader )
    JRT-OPEN-A JSON:READ-NEXT drop ;
 
+create JRT-SEEN 100 allot
+create JRT-INNER-SEEN 2 allot   \ the nested object's, while JRT-SEEN is in use
+
+: JRT-UNSEEN ( -- )
+   100 0 ?do 0 JRT-SEEN i + c! loop ;
+
+\ Reads every listed member with READ-LISTED, seen cleared first, calling the
+\ handler on each member's value with its index.
+: JRT-LISTED-EACH
+   ( JSON:reader str ^u8 [ JSON:reader n -- JSON:reader ] -- JSON:reader )
+   {: a:^ u:n seen:^ h :}
+   a u JSON:READ-NAME-COUNT 0 ?do 0 seen i + c! loop
+   begin a u seen JSON:READ-LISTED dup -1 <> while h execute repeat drop ;
+
 : JRT-TLS-H ( JSON:reader n -- JSON:reader ) {: idx:n :}
    idx JRT-SAW
    idx 0 = if s" k" JSON:READ-STR-EQ? TTRUE exit then
@@ -1759,7 +1773,7 @@ variable JRT-COUNT
    idx JRT-SAW
    idx 0 = if s" a" JSON:READ-STR-EQ? TTRUE exit then
    idx 1 = if JSON:READ-INT 8080 T= exit then
-   s" key on" [: JRT-TLS-H ;] JSON:READ-MEMBERS ;
+   s" key on" JRT-INNER-SEEN [: JRT-TLS-H ;] JRT-LISTED-EACH ;
 
 : JRT-TOP-NAMES$ ( -- str ) s" host port tls" ;
 
@@ -1774,52 +1788,85 @@ variable JRT-COUNT
    then
    JSON:READ-SKIP-VALUE ;
 
-\ READ-MEMBERS on the text, with the names and the handler, throws E-MEMBER
+\ READ-LISTED over the text, with the names and the handler, throws E-MEMBER
 \ with the text wa wu.
-: JRT-MEMBERS-SAY
+: JRT-LISTED-H-SAY
    ( str str [ JSON:reader n -- JSON:reader ] str -- )
    {: t:^ u:n na:^ nu:n h wa:^ wu:n :}
-   [: t u JRT-FIRST na nu h JSON:READ-MEMBERS JSON:READ-FINISH ;]
+   [: t u JRT-FIRST na nu JRT-SEEN h JRT-LISTED-EACH JSON:READ-FINISH ;]
    JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER wa wu JRT-SAID ;
 
-: JRT-TEST-MEMBERS-READ ( -- )
-   s" READ-MEMBERS reads each listed member once, in any order, and a nested object" T-LABEL
+\ JRT-LISTED-H-SAY, skipping each value.
+: JRT-LISTED-SAY ( str str str -- )
+   {: t:^ u:n na:^ nu:n wa:^ wu:n :}
+   t u na nu [: JRT-SKIP-H ;] wa wu JRT-LISTED-H-SAY ;
+
+: JRT-PORT-HOST$ ( -- str ) s" host port?" ;
+
+: JRT-TEST-LISTED-READ ( -- )
+   s" READ-LISTED answers each listed member's index, then -1 at the `}`" T-LABEL
+   JRT-UNSEEN
+   s\" {\"port\":1,\"host\":\"a\"}" JRT-FIRST
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 1 T=
+   JSON:READ-INT 1 T=
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
+   s" a" JSON:READ-STR-EQ? TTRUE
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   s" READ-LISTED reads an object without an optional member" T-LABEL
+   JRT-UNSEEN
+   s\" {\"host\":\"a\"}" JRT-FIRST
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   s" READ-LISTED reads each listed member once, in any order, and a nested object" T-LABEL
    0 JRT-ORDER !
    s\" {\"port\":8080,\"host\":\"a\",\"tls\":{\"on\":true,\"key\":\"k\"}}"
-   JRT-FIRST JRT-TOP-NAMES$ [: JRT-TOP-H ;] JSON:READ-MEMBERS
+   JRT-FIRST JRT-TOP-NAMES$ JRT-SEEN [: JRT-TOP-H ;] JRT-LISTED-EACH
    JSON:READ-TOKEN JSON:T-OBJ-END T=
    JSON:READ-FINISH
    JRT-ORDER @ 21321 T= ;
 
-: JRT-TEST-MEMBERS-REJECTED ( -- )
-   s" READ-MEMBERS rejects a value that is no object at its first token" T-LABEL
-   s" [1]" s" host" [: JRT-SKIP-H ;]
-   s" 1:1: expected an object, found `[`; write an object here"
-   JRT-MEMBERS-SAY
-   s" READ-MEMBERS rejects an unknown key, listing the names" T-LABEL
-   s\" {\"host\":\"a\",\n \"colour\":1}" s" host user system" [: JRT-SKIP-H ;]
-   s\" 2:2: expected one of `host`, `user`, `system`, found `\"colour\"`; rename the member to one of those, or remove it"
-   JRT-MEMBERS-SAY
-   s" READ-MEMBERS rejects a repeated key at its second key" T-LABEL
-   s\" {\"host\":\"a\",\"host\":\"b\"}" s" host" [: JRT-SKIP-H ;]
-   s\" 1:13: expected each member once, found `\"host\"`; remove the repeated member, keeping one"
-   JRT-MEMBERS-SAY
-   s" READ-MEMBERS rejects a missing member at the object's close" T-LABEL
-   s\" {\"host\":\"a\"}" s" host user" [: JRT-SKIP-H ;]
-   s" 1:12: expected the member `user`, found `}`; add the member to the object"
-   JRT-MEMBERS-SAY ;
+: JRT-BAD-LISTED-NESTED ( -- )
+   JRT-UNSEEN
+   s\" {\"a\":[1,2]}" JRT-FIRST
+   s" a" JRT-SEEN JSON:READ-LISTED drop
+   JSON:READ-NEXT drop
+   s" a" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
 
-: JRT-TEST-MEMBERS-HANDLER ( -- )
-   s" READ-REJECT rejects a member value at its token" T-LABEL
+: JRT-TEST-LISTED-REJECTED ( -- )
+   s" READ-LISTED rejects an unknown key, listing the names" T-LABEL
+   s\" {\"host\":\"a\",\n \"colour\":1}" s" host user system"
+   s\" 2:2: expected one of `host`, `user`, `system`, found `\"colour\"`; rename the member to one of those, or remove it"
+   JRT-LISTED-SAY
+   s" READ-LISTED rejects a repeated key at its second key" T-LABEL
+   s\" {\"host\":\"a\",\"host\":\"b\"}" s" host"
+   s\" 1:13: expected each member once, found `\"host\"`; remove the repeated member, keeping one"
+   JRT-LISTED-SAY
+   s" READ-LISTED rejects a missing member at the object's close" T-LABEL
+   s\" {\"host\":\"a\"}" s" host user"
+   s" 1:12: expected the member `user`, found `}`; add the member to the object"
+   JRT-LISTED-SAY
+   s" READ-LISTED rejects a value that is no object at its first token" T-LABEL
+   s" [1]" s" host"
+   s" 1:1: expected an object, found `[`; write an object here"
+   JRT-LISTED-SAY
+   s" READ-LISTED rejects a call from inside a member's array" T-LABEL
+   [: JRT-BAD-LISTED-NESTED ;] E-JSON-READ-STATE TTHROWSQ ;
+
+: JRT-TEST-LISTED-HANDLER ( -- )
+   s" READ-REJECT rejects a READ-LISTED member's value at its token" T-LABEL
    s\" {\"host\":\"a\",\n \"port\":70000}" s" host port" [: JRT-PORT-H ;]
    s" 2:9: expected a port from 1 to 65535, found `70000`; write the port as an integer from 1 to 65535"
-   JRT-MEMBERS-SAY
-   s" a nested READ-MEMBERS rejects its own unknown key at its place" T-LABEL
+   JRT-LISTED-H-SAY
+   s" a nested READ-LISTED rejects its own unknown key at its place" T-LABEL
    s\" {\"host\":\"a\",\n \"tls\":{\"on\":true,\"pin\":1}}"
    JRT-TOP-NAMES$ [: JRT-TOP-H ;]
    s\" 2:19: expected one of `key`, `on`, found `\"pin\"`; rename the member to one of those, or remove it"
-   JRT-MEMBERS-SAY ;
+   JRT-LISTED-H-SAY ;
 
 create JRT-NAMES 400 allot
 
@@ -1851,97 +1898,23 @@ create JRT-NAMES 400 allot
    JSON:READ-INT idx T=
    JRT-COUNT @ 1+ JRT-COUNT ! ;
 
-: JRT-TEST-MEMBERS-HUNDRED ( -- )
-   s" READ-MEMBERS reads every member of a list of 100 names" T-LABEL
+: JRT-TEST-LISTED-HUNDRED ( -- )
+   s" READ-LISTED reads every member of a list of 100 names" T-LABEL
    0 JRT-COUNT !
    JRT-HUNDRED$ JRT-FIRST
-   JRT-HUNDRED-NAMES$ [: JRT-HUNDRED-H ;] JSON:READ-MEMBERS
+   JRT-HUNDRED-NAMES$ JRT-SEEN [: JRT-HUNDRED-H ;] JRT-LISTED-EACH
    JSON:READ-FINISH
    JRT-COUNT @ 100 T= ;
 
-: JRT-TEST-MEMBERS-OPTIONAL ( -- )
-   s" READ-MEMBERS reads an object without an optional member" T-LABEL
-   s\" {\"host\":\"a\"}" JRT-FIRST
-   s" host port?" [: JRT-SKIP-H ;] JSON:READ-MEMBERS
-   JSON:READ-TOKEN JSON:T-OBJ-END T=
-   JSON:READ-FINISH
-   s" READ-MEMBERS rejects an optional member repeated at its second key" T-LABEL
-   s\" {\"port\":1,\"port\":2}" s" host? port?" [: JRT-SKIP-H ;]
+: JRT-TEST-LISTED-OPTIONAL ( -- )
+   s" READ-LISTED rejects an optional member repeated at its second key" T-LABEL
+   s\" {\"port\":1,\"port\":2}" s" host? port?"
    s\" 1:11: expected each member once, found `\"port\"`; remove the repeated member, keeping one"
-   JRT-MEMBERS-SAY
-   s" READ-MEMBERS lists an optional name without its `?`" T-LABEL
-   s\" {\"colour\":1}" s" host port?" [: JRT-SKIP-H ;]
+   JRT-LISTED-SAY
+   s" READ-LISTED lists an optional name without its `?`" T-LABEL
+   s\" {\"colour\":1}" JRT-PORT-HOST$
    s\" 1:2: expected one of `host`, `port`, found `\"colour\"`; rename the member to one of those, or remove it"
-   JRT-MEMBERS-SAY ;
-
-: JRT-TEST-READ-MEMBERS ( -- )
-   JRT-TEST-MEMBERS-READ
-   JRT-TEST-MEMBERS-REJECTED
-   JRT-TEST-MEMBERS-OPTIONAL
-   JRT-TEST-MEMBERS-HANDLER
-   JRT-TEST-MEMBERS-HUNDRED ;
-
-create JRT-SEEN 8 allot
-
-: JRT-UNSEEN ( -- )
-   8 0 ?do 0 JRT-SEEN i + c! loop ;
-
-\ Reads every listed member with READ-LISTED, skipping each value.
-: JRT-LISTED-ALL ( JSON:reader str -- JSON:reader ) {: a:^ u:n :}
-   JRT-UNSEEN
-   begin a u JRT-SEEN JSON:READ-LISTED -1 <> while JSON:READ-SKIP-VALUE repeat ;
-
-\ READ-LISTED over the text, with the names, throws E-MEMBER with the text
-\ wa wu.
-: JRT-LISTED-SAY ( str str str -- )
-   {: t:^ u:n na:^ nu:n wa:^ wu:n :}
-   [: t u JRT-FIRST na nu JRT-LISTED-ALL JSON:READ-FINISH ;]
-   JSON:E-MEMBER TTHROWSQ
-   JSON:E-MEMBER wa wu JRT-SAID ;
-
-: JRT-PORT-HOST$ ( -- str ) s" host port?" ;
-
-: JRT-TEST-LISTED-READ ( -- )
-   s" READ-LISTED answers each listed member's index, then -1 at the `}`" T-LABEL
-   JRT-UNSEEN
-   s\" {\"port\":1,\"host\":\"a\"}" JRT-FIRST
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 1 T=
-   JSON:READ-INT 1 T=
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
-   s" a" JSON:READ-STR-EQ? TTRUE
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
-   JSON:READ-TOKEN JSON:T-OBJ-END T=
-   JSON:READ-FINISH
-   s" READ-LISTED reads an object without an optional member" T-LABEL
-   JRT-UNSEEN
-   s\" {\"host\":\"a\"}" JRT-FIRST
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
-   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
-   JSON:READ-TOKEN JSON:T-OBJ-END T=
-   JSON:READ-FINISH ;
-
-: JRT-BAD-LISTED-NESTED ( -- )
-   JRT-UNSEEN
-   s\" {\"a\":[1,2]}" JRT-FIRST
-   s" a" JRT-SEEN JSON:READ-LISTED drop
-   JSON:READ-NEXT drop
-   s" a" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
-
-: JRT-TEST-LISTED-REJECTED ( -- )
-   s" READ-LISTED rejects an unknown key, listing the names" T-LABEL
-   s\" {\"host\":\"a\",\n \"colour\":1}" s" host user system"
-   s\" 2:2: expected one of `host`, `user`, `system`, found `\"colour\"`; rename the member to one of those, or remove it"
-   JRT-LISTED-SAY
-   s" READ-LISTED rejects a repeated key at its second key" T-LABEL
-   s\" {\"host\":\"a\",\"host\":\"b\"}" s" host"
-   s\" 1:13: expected each member once, found `\"host\"`; remove the repeated member, keeping one"
-   JRT-LISTED-SAY
-   s" READ-LISTED rejects a missing member at the object's close" T-LABEL
-   s\" {\"host\":\"a\"}" s" host user"
-   s" 1:12: expected the member `user`, found `}`; add the member to the object"
-   JRT-LISTED-SAY
-   s" READ-LISTED rejects a call from inside a member's array" T-LABEL
-   [: JRT-BAD-LISTED-NESTED ;] E-JSON-READ-STATE TTHROWSQ ;
+   JRT-LISTED-SAY ;
 
 \ READ-ANY-SPAN$ of the value the reader is on, rewound and read again to the
 \ same span.
@@ -2001,6 +1974,9 @@ create JRT-SEEN 8 allot
 : JRT-TEST-READ-LISTED ( -- )
    JRT-TEST-LISTED-READ
    JRT-TEST-LISTED-REJECTED
+   JRT-TEST-LISTED-HANDLER
+   JRT-TEST-LISTED-HUNDRED
+   JRT-TEST-LISTED-OPTIONAL
    JRT-TEST-REWIND
    JRT-TEST-NAME-COUNT ;
 
@@ -2089,7 +2065,6 @@ create JRT-SEEN 8 allot
    JRT-TEST-REASON-AGAIN
    JRT-TEST-REASON-ACCESSORS
    JRT-TEST-REASON-MEMBER
-   JRT-TEST-READ-MEMBERS
    JRT-TEST-READ-LISTED
    JRT-TEST-REASON-WHOLE ;
 

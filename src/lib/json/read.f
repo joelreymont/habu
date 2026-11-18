@@ -1395,8 +1395,8 @@ public
    then
    v vu ;
 
-\ The names READ-MEMBERS and READ-LISTED take are separated by single blanks;
-\ an empty list holds none.
+\ The names READ-LISTED takes are separated by single blanks; an empty
+\ list holds none.
 : READ-NAME-COUNT ( ^u8 n -- n ) {: a:^ u:n :}
    u 0= if 0 exit then
    1 u 0 ?do a i + c@ SP = if 1+ then loop ;
@@ -1522,25 +1522,6 @@ private
       E-JSON-READ-STATE REJECT-TOKEN
    then ;
 
-\ The handler left the reader on its value's last token.
-: REQUIRE-VALUE-READ ( ^cursor n -- ) {: state:^ depth:n :}
-   state CURSOR-DEPTH @ depth =
-   state CURSOR-STATE @ ST-SEP = and if exit then
-   state s" the last token of the member's value"
-   s" leave the reader on the value's last token, with READ-SKIP-VALUE for a value the handler does not read"
-   E-JSON-READ-STATE REJECT-TOKEN ;
-
-\ seen holds a byte per listed name, nonzero once its member was read.
-: MEMBERS-SCOPE ( JSON:reader str n [ JSON:reader n -- JSON:reader ] ^u8 NUM:alloc-byte-len -- JSON:reader )
-   drop {: a:^ u:n count:n handler seen:^ :}
-   READER>STATE {: state:^ :}
-   state CURSOR-DEPTH @ {: depth:n :}
-   begin state NEXT-INNER T-OBJ-END <> while
-      state a u count seen MEMBER-INDEX handler execute
-      state depth REQUIRE-VALUE-READ
-   repeat
-   state a u count seen REQUIRE-ALL ;
-
 public
 
 \ Rejects the current token with E-MEMBER at its place, given the expected
@@ -1548,16 +1529,6 @@ public
 : READ-REJECT ( JSON:reader ^u8 n ^u8 n -- )
    {: ea:^ eu:n fa:^ fu:n :}
    READER>STATE ea eu fa fu E-MEMBER REJECT-TOKEN ;
-
-\ The handler gets the reader on the member's value's first token and leaves
-\ it on the value's last; answers the reader on the `}`.
-: READ-MEMBERS ( JSON:reader ^u8 n [ JSON:reader n -- JSON:reader ] -- JSON:reader )
-   {: a:^ u:n handler :}
-   READER>STATE {: state:^ :}
-   state REQUIRE-OBJECT
-   a u READ-NAME-COUNT {: count:n :}
-   a u count handler  count MEM:BYTES-ALLOC-LEN
-   [: MEMBERS-SCOPE ;] MEM:WITH-BYTES ;
 
 \ seen holds a byte per listed name, zero before the object's first call.
 : READ-LISTED ( JSON:reader ^u8 n ^u8 -- JSON:reader n )
