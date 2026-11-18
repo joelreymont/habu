@@ -78,12 +78,6 @@ public
 : BOOT-OPEN ( -- )
    INCLUDE-TRUE REQUIRE-BOOT-V ! ;
 
-global
-
-\ The name an installed hb's end.f calls.
-: REQUIRE-BOOT-OPEN ( -- )
-   BOOT-OPEN ;
-
 private
 
 : REQUIRE-BOOT-OPEN? ( -- bool )
@@ -3004,12 +2998,6 @@ public
 
 : ENGINE-PROVIDES? ( ^u8 n -- bool )
    ENGINE-KNOWN? ;
-
-global
-
-\ The name an installed hb's end.f calls.
-: REQUIRE-BOOT-FREEZE ( -- )
-   BOOT-FREEZE ;
 
 ;package
 
