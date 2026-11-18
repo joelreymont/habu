@@ -1669,33 +1669,32 @@ EXPORT CHECKER-TAPE:K-NAME
 variable OP-N                        \ the records OP-OF holds, once mapped
 SCRATCH-VARIABLE OP-MAPPED
 DYNAMIC-BUFFER OP-OF n
-variable OP-HITS                     \ the seeded records OP-MAP found by the name
-variable OP-REC                      \ the last of them
 
-\ End the process: a u, a word T0 lowers itself, names no single seeded record.
+\ End the process: a u, a word T0 lowers itself, names no seeded primitive.
 : OP-DIE ( str -- )
    {: a:^ u:n :}
-   s" : T0: a word it lowers itself names no single seeded record" {: m:^ k:n :}
+   s" : T0: a word it lowers itself names no seeded primitive" {: m:^ k:n :}
    u k + STR-BUF-RESERVE
    a 0 STR-BUF u BYTE-COPY
    m u STR-BUF k BYTE-COPY
    0 STR-BUF u k + EXIT-STATUS:INTERNAL die ;
 
-\ The index of the seeded record named a u.
+\ The index of the kernel's record named a u, retired or not: the boot lays the
+\ kernel's records first, so it is the lowest of that name below OP-N.
 : SEEDED ( ^u8 n -- n )
    {: a:^ u:n :}
-   0 OP-HITS !
    OP-N @ 0 ?do
-      i XREF-REC a u XREF-MATCH? if 1 OP-HITS +!  i OP-REC ! then
+      i XREF-REC dup XREF-WORDLIST dup WL:PRIMITIVES =  swap WL:RETIRED =  or
+      swap a u XREF-MATCH?  and if i unloop exit then
    loop
-   OP-HITS @ 1 <> if a u OP-DIE then
-   OP-REC @ ;
+   a u OP-DIE ;
 
 : OP-MAP ( str n -- )
    {: a:^ u:n code:n :}
    code  a u SEEDED OP-OF ! ;
 
-variable BASE-REC                    \ data-base's, which THE THROW ON calls
+\ data-base's kernel record, which THROWS-AT calls.
+variable BASE-REC
 variable STORE-REC                   \ !'s
 
 : OPS-MAP ( -- )

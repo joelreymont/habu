@@ -732,6 +732,7 @@ EPRIM: DRAIN-PRETRUST EPRIM;
 \ A cell of the region that really holds an address
 \ is reached with `ptr-field`, the declared door.
 EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
+EPPRIM: BOOT data-base PE-PTR-A-DBASE PE-OUT ECLOSE-PRIVATE
 \ NULL-PTR is the language's null: a pointer of any pointee, and the address OF
 \ nothing. Its value is zero, so the body pushes zero and reads no memory.
 \ TVK-NULL keeps every honest use: storing a null into a declared pointer cell,

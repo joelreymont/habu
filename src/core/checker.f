@@ -12933,8 +12933,8 @@ variable PRM-FIRST
    repeat
    PRM-FIRST @ ;
 
-\ PRIM-FIRST-IDX ( n -- n ) : first PES slot for sym + 1, 0 = none. The prim
-\ table is immutable after load, so the cached slot needs no arena watermark.
+\ PRIM-FIRST-IDX ( n -- n ) : first PES slot for sym + 1, 0 = none.
+\ Cached until PE-TRUNCATE moves the epoch or PE-CLOSE-SYM adds a row for sym.
 : PRIM-FIRST-IDX {: sym:n :}
    sym 0= IF 0 EXIT THEN
    HIDX-ENSURE
@@ -13054,10 +13054,11 @@ variable PE-EFF-ID
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
    PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD
-   \ A post-table row replaces a user declaration too. Forget that symbol's
-   \ old answer; publishing a user hit here would hide initial prim overloads.
+   \ A post-table row replaces a user declaration too. Forget the symbol's old
+   \ effect and first-row answers; a user hit kept would hide initial overloads.
    HIDX-VALID @ IF
       HIDX-EPOCH @ 1- PE-SYM-ID @ HT-EFF-E HIDX-CELL !
+      HIDX-EPOCH @ 1- PE-SYM-ID @ HT-PRM-E HIDX-CELL !
    THEN ;
 
 : PE-CLOSE ( -- )
@@ -18142,11 +18143,13 @@ EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
    a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
    a u EXPORT-UNDEFINED ;
 
-: EXPORT-RESOLVE ( str n -- ) {: a:^ u:n sym:n :}
+: EXPORT-RESOLVE ( str n ^n -- ) {: a:^ u:n sym:n priv:^ :}
    sym HOST-DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
    sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? WALK-USED @ 0= and IF sym a u NAV-USE-NOW EXIT THEN
+   \ A primitive a package owns is one of its private words; a global one is not.
+   priv NULL-PTR <>  sym PRIM-FIRST-IDX 0 <>  and IF sym a u NAV-USE-NOW EXIT THEN
    a u sym EXPORT-MISS ;
 
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
@@ -18210,7 +18213,7 @@ EXPORT CHECKER-OVERLAY:EXPORT-ROOM
 \ inside a replay the operand's spelling can bind the published tail after.
 : CHECKER-EXPORT-SOURCE ( str -- n ^n ) {: a:^ u:n :}
    a u EXPORT-SYM {: src:n priv:^ :}
-   a u src EXPORT-RESOLVE
+   a u src priv EXPORT-RESOLVE
    src priv ;
 
 : CHECKER-EXPORT-ROW ( str n ^n bool -- )

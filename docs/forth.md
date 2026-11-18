@@ -348,10 +348,12 @@ public
   `EXPORT HELPER` in the public section promotes the private `HELPER`.
   `EXPORT PKG:NAME` also takes a private `NAME` of a package that is not
   sealed; an engine package imports a private checker word into its own private
-  section this way. Rejected: an undefined source (`E-EXPORT-UNDEFINED`), a
+  section this way. A primitive a package owns is one of its private words:
+  `EXPORT BOOT:data-base` takes it while `BOOT` is open, its calls typed by the
+  primitive's rows. Rejected: an undefined source (`E-EXPORT-UNDEFINED`), a
   keyword (`E-EXPORT-UNDEFINED`), a bare name only a `using` brings in
   (`E-EXPORT-UNDEFINED`: write `EXPORT U:NAME`), a private word of a sealed package
-  (`E-SEALED-PACKAGE`), a primitive (`E-EXPORT-PRIM`), a word the checker
+  (`E-SEALED-PACKAGE`), a global primitive such as `dup` (`E-EXPORT-PRIM`), a word the checker
   judges at each use such as `execute` (`E-EXPORT-PRIM`), an internal engine
   word (`E-EXPORT-UNSAFE`), a declaration hb runs under its own name such as
   `ENUM` (`E-EXPORT-UNSAFE`) and a duplicate tail in the target section
