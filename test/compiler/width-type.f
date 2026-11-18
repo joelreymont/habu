@@ -78,6 +78,22 @@ private
    S\" \"expected\":\"n n\",\"found\":\"width<n> n\"" MISMATCH
    DISARM ;
 
+: ONE-CELL-REJECTED ( ^u8 n -- )
+   {: a:^ u:n :}
+   ARM
+   [: a u evaluate-closed ;] 70 TTHROWSQ
+   S\" \"found\":\"str ^str\"" MISMATCH
+   DISARM ;
+
+: CASE-ONE-CELL-STORE ( -- )
+   s" a one-cell store takes no value wider than a cell" T-LABEL
+   S\" TYPED-VARIABLE WPV str : WPS ( -- ) s\" abcde\" >str WPV ptr-cell! ;"
+   ONE-CELL-REJECTED
+   S\" TYPED-VARIABLE WAV str : WAS ( -- ) s\" abcde\" >str WAV atomic! ;"
+   ONE-CELL-REJECTED
+   S\" TYPED-VARIABLE WXV str : WXS ( -- ) s\" abcde\" >str WXV xt! ;"
+   ONE-CELL-REJECTED ;
+
 : CASE-STORAGE ( -- )
    s" no storage holds a width" T-LABEL
    ARM
@@ -164,6 +180,7 @@ public
    CASE-RECORD
    CASE-OTHER-TYPE
    CASE-NOT-N
+   CASE-ONE-CELL-STORE
    CASE-STORAGE
    CASE-MEMBER
    CASE-TYPE-FORM
