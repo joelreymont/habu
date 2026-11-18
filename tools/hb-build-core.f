@@ -4,13 +4,12 @@ split-str
 \ it with its map beside it. A native build first compiles the target's
 \ kernel writer and writes the kernel object the build then links
 \ (KERNEL-BUILD); a Wasm program builds none. Each loads hb's startup files in
-\ hb's own order (STARTUP); hb then loads the runtime's files, --repl the
-\ program's source, and both their registry and installs; a stripped program
-\ loads the library files whose packages the build's open makes unless it is
-\ Wasm (APP-FILES), then its source and its entry. Before any program source
-\ the build seals every package it holds (SEAL-ENGINE). The build loads
-\ src/core/source-reset.f and src/habu/app-end.f from the tree; a stripped
-\ program's build loads nothing from under the out. Under
+\ hb's own order (STARTUP); hb and --repl then load the runtime's files. Every
+\ build loads the engine-library list (ENGINE-LIB-FILES) and seals every package
+\ it holds (SEAL-ENGINE); then --repl loads the program's source, hb and --repl
+\ their registry and installs, and a stripped program its source and its
+\ entry. The build loads src/core/source-reset.f and src/habu/app-end.f from
+\ the tree; a stripped program's build loads nothing from under the out. Under
 \ <out>/hb-build/<target>/ it writes hb's end file, its registry and installs,
 \ which it loads like a source, so a warm build links the end file's object.
 \ Kernel objects and their inputs files sit in hb's object directory, one
@@ -202,10 +201,8 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    s" src/habu/debug-watch.f" REQUIRE-FILE
    s" src/habu/stepper.f" REQUIRE-FILE
    s" src/habu/debug.f" REQUIRE-FILE
-   s" src/lib/c2-memory.f" REQUIRE-FILE
    s" src/habu/link-data.f" REQUIRE-FILE
    s" src/habu/verify-source.f" REQUIRE-FILE
-   s" src/lib/fs-anchored.f" REQUIRE-FILE
    s" src/habu/runtime.f" REQUIRE-FILE ;
 
 
@@ -274,13 +271,19 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    loop
    CHECK:SCOPE-ENTRIES! ;
 
-\ Their package-private primitive rows make FFI, TASK and C2-MEM when the build
-\ opens, so their files load before the seal. None compiles for Wasm.
-: APP-FILES ( -- )
+\ Loaded before the seal in every build: past it no code reaches a private word
+\ of these files' packages. Of them only fmt.f compiles for Wasm.
+: ENGINE-LIB-FILES ( -- )
+   s" src/lib/fmt.f" REQUIRE-FILE
    WASM? if exit then
    s" src/lib/ffi-abi.f" REQUIRE-FILE
    s" src/lib/task.f" REQUIRE-FILE
-   s" src/lib/c2-memory.f" REQUIRE-FILE ;
+   s" src/lib/c2-memory.f" REQUIRE-FILE
+   s" src/lib/fs-anchored.f" REQUIRE-FILE
+   s" src/lib/fork-child.f" REQUIRE-FILE
+   s" src/lib/codegen.f" REQUIRE-FILE
+   s" src/lib/ffi-callback.f" REQUIRE-FILE
+   s" src/lib/genio-core.f" REQUIRE-FILE ;
 
 
 \ hb carries the build command's files, so `hb --load tools/hb-build.f`
@@ -290,6 +293,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    STARTUP
    RUNTIME-FILES
    s" tools/hb-build-lib.f" REQUIRE-FILE
+   ENGINE-LIB-FILES
    SEAL-ENGINE
    REQUIRE-REG:COUNT false END-WRITE
    END$ INCLUDE-FILE
@@ -317,6 +321,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    BETWEEN
    STARTUP
    RUNTIME-FILES
+   ENGINE-LIB-FILES
    SEAL-ENGINE
    REQUIRE-REG:COUNT {: app:n :}
    ENTRY-OPEN
@@ -333,7 +338,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    BETWEEN
    STARTUP
    WASM? if s" src/arch/wasm/kernel-words.f" REQUIRE-FILE then
-   APP-FILES
+   ENGINE-LIB-FILES
    SEAL-ENGINE
    ENTRY-OPEN
    SRC$ INCLUDE-FILE
