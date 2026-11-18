@@ -1697,6 +1697,9 @@ s" sdndeep DERIVE addr FIELD d " 0 SDBIG:FIELDS  SDNEST-ARGS  s"  ;STRUCTURE" SD
 SDBIG:SRC$ TEST-EVAL:RC 0 T=
 : SDND-GO ( n ^sdndeep -- n )
    dup >r SDNDEEP:D SDNEST:Y SDNEST:X !  r> SDNDEEP:D SDNEST:Y SDNEST:X @ ;
+\ A buffer of it checks each nested instance once.
+1 TYPED-BUFFER SDND-REC sdndeep
+7 0 SDND-REC SDND-GO 7 T=
 
 ' struct-replay-test:RP-SDBUF CHECK:SCOPED
 

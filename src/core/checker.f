@@ -713,13 +713,14 @@ split-str
 \
 \ The cast walk: CAST-INTRO? and CAST-MAY-LINEAR? walk a cast's terms through
 \ pointees, quotation rows and layout members. A layout's members can name the
-\ layout again (an ENUM variant may hold a pointer to its own family), so the
-\ walk keeps the path of layouts it is expanding, outermost first, each with the
-\ sign it was reached at, and expands an instance once per path: the same family
-\ over the same argument terms, reached at the same sign, has the same members
-\ and gives the same answer. A member is instantiated over its owner's own
-\ argument terms, so a recursive member names the same terms, not copies. An
-\ expansion pops what it pushed; CAST-WALK-RESET empties the path after a throw.
+\ layout again (an ENUM variant may hold a pointer to its own family), and they
+\ are built over the layout's own argument terms, which the walk visits too. So
+\ each walk keeps every instance it has expanded, with the sign it was reached
+\ at, and expands an instance once: the same family over the same argument
+\ terms, reached at the same sign, has the same members and gives the same
+\ answer, and a walk ends at its first hit, so an instance met again adds
+\ nothing. A member is instantiated over its owner's own argument terms, so a
+\ recursive member names the same terms, not copies. Each walk starts empty.
 \ CAST-MAY-LINEAR? counts a type variable without NLINEAR, as TV! checks each
 \ binding of one with it, and walks pointees, quotation rows and layout
 \ members, since a projection hands out what they reach; cell-family arguments
@@ -3736,15 +3737,16 @@ package CHECK
 \ its callers.
 : MINT-HIT? ( n -- bool ) {: t:n :}
    t TAG T-PTR =  t TAG T-QUOT =  or ;
-\ One row per layout on the path: its term and the sign it was reached at.
+\ One row per layout instance the walk has expanded: its term and the sign it
+\ was reached at.
 SCRATCH{
-PTR-VARIABLE CAST-PATH-P   variable CAST-PATH-CAP
+PTR-VARIABLE CAST-SEEN-P   variable CAST-SEEN-CAP
 }SCRATCH
-variable CAST-PATH-N
-2 constant CAST-PATH-ROW
-: CAST-PATH-TERM ( n -- ^n ) CAST-PATH-ROW * cells CAST-PATH-P @ + ;
-: CAST-PATH-SIGN ( n -- ^n ) CAST-PATH-ROW * 1 + cells CAST-PATH-P @ + ;
-: CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
+variable CAST-SEEN-N
+2 constant CAST-SEEN-ROW
+: CAST-SEEN-TERM ( n -- ^n ) CAST-SEEN-ROW * cells CAST-SEEN-P @ + ;
+: CAST-SEEN-SIGN ( n -- ^n ) CAST-SEEN-ROW * 1 + cells CAST-SEEN-P @ + ;
+: CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-SEEN-N ! ;
 : CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
    a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
    a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
@@ -3764,23 +3766,22 @@ variable CAST-PATH-N
       dup CAST-POS = IF drop CAST-NEG THEN
    THEN
    sign CAST-ARG and or ;
-: CAST-ON-PATH? ( n n -- bool ) {: t:n sign:n :}
-   0 BEGIN dup CAST-PATH-N @ < WHILE
-      dup CAST-PATH-SIGN @ sign = IF
-         dup CAST-PATH-TERM @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
+: CAST-SEEN? ( n n -- bool ) {: t:n sign:n :}
+   0 BEGIN dup CAST-SEEN-N @ < WHILE
+      dup CAST-SEEN-SIGN @ sign = IF
+         dup CAST-SEEN-TERM @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
       THEN
       1 +
    REPEAT drop RES-FALSE ;
-: CAST-PATH-PUSH ( n n -- ) {: t:n sign:n :}
-   CAST-PATH-P CAST-PATH-CAP CAST-PATH-N @ 1 + CAST-PATH-ROW ARENA-ROWS-ENSURE
-   t CAST-PATH-N @ CAST-PATH-TERM !
-   sign CAST-PATH-N @ CAST-PATH-SIGN !
-   CAST-PATH-N @ 1 + CAST-PATH-N ! ;
-: CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
+: CAST-SEEN+ ( n n -- ) {: t:n sign:n :}
+   CAST-SEEN-P CAST-SEEN-CAP CAST-SEEN-N @ 1 + CAST-SEEN-ROW ARENA-ROWS-ENSURE
+   t CAST-SEEN-N @ CAST-SEEN-TERM !
+   sign CAST-SEEN-N @ CAST-SEEN-SIGN !
+   CAST-SEEN-N @ 1 + CAST-SEEN-N ! ;
 \ A destination position introduces unless negative; consumed rows flip the sign
 \ and a pointee counts at both. Cell-family arguments and row bases yield none.
 \ A layout argument is walked with CAST-ARG set.
-: CAST-INTRO? ( n n [ n n -- bool ] -- bool ) {: t0:n sign:n hit :}
+: CAST-INTRO* ( n n [ n n -- bool ] -- bool ) {: t0:n sign:n hit :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
          dup P>TYPE sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
@@ -3799,22 +3800,21 @@ variable CAST-PATH-N
       t Q>ROUT sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   t sign CAST-SEEN? IF RES-FALSE EXIT THEN
+   t sign CAST-SEEN+
    0 BEGIN dup t PARAM>ARGC < WHILE               \ data-stack index (RECURSE-safe)
       t over PARAM>ARG sign CAST-ARG or hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop
-   t sign CAST-ON-PATH? IF RES-FALSE EXIT THEN
-   t sign CAST-PATH-PUSH
-   t TFAM-MEMBERS-XT sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER
-   CAST-PATH-POP ;
-: CAST-INTRODUCES? ( n [ n n -- bool ] -- bool ) {: t:n hit :}
-   CAST-WALK-RESET t CAST-POS hit CAST-INTRO? ;
+   t TFAM-MEMBERS-XT sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER ;
+: CAST-INTRO? ( n n [ n n -- bool ] -- bool ) CAST-WALK-RESET CAST-INTRO* ;
+: CAST-INTRODUCES? ( n [ n n -- bool ] -- bool ) {: t:n hit :} t CAST-POS hit CAST-INTRO? ;
 \ Two rows are the same stack only if they share this tail.
 : ROW-TAIL ( n -- n )
    R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
 \ Whether term t may hold a linear value; it fails closed, as a cast is an
 \ authority boundary, and with split counts a quotation whose tails differ.
-: CAST-MAY-LINEAR? ( n bool -- bool ) {: t0:n split:bool :}
+: CAST-MAY-LINEAR* ( n bool -- bool ) {: t0:n split:bool :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
          dup P>TYPE split TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
@@ -3844,16 +3844,15 @@ variable CAST-PATH-N
       t PARAM>FAM dup 0 < IF drop RES-TRUE EXIT THEN
       TFAM-CON-LIN-XT IF RES-TRUE EXIT THEN
       t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+      t CAST-POS CAST-SEEN? IF RES-FALSE EXIT THEN  t CAST-POS CAST-SEEN+
       0 BEGIN dup t PARAM>ARGC < WHILE
          t over PARAM>ARG split TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
-      t CAST-POS CAST-ON-PATH? IF RES-FALSE EXIT THEN
-      t CAST-POS CAST-PATH-PUSH
-      t TFAM-MEMBERS-XT split TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      CAST-PATH-POP EXIT
+      t TFAM-MEMBERS-XT split TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    RES-FALSE ;
+: CAST-MAY-LINEAR? ( n bool -- bool ) CAST-WALK-RESET CAST-MAY-LINEAR* ;
 \ Whether term t holds a row variable the signature names; a quotation's
 \ unnamed tail is closed.
 : CAST-HOLDS-ROW? ( n -- bool ) {: t0:n :}
@@ -3919,9 +3918,9 @@ variable CAST-PATH-N
 \ 0 when a cast's stored position may name term t, 4 when t may hold a linear
 \ value, 5 when it hands out an atom or a width (SCOPE-HIT's codes).
 : STORED-TERM-HIT ( n -- n ) {: t:n :}
-   CAST-WALK-RESET t RES-TRUE CAST-MAY-LINEAR? IF 4 EXIT THEN
-   CAST-WALK-RESET t CAST-BOTH [: drop ATOM-HIT? ;] CAST-INTRO? IF 5 EXIT THEN
-   CAST-WALK-RESET t CAST-BOTH [: drop WIDTH-HIT? ;] CAST-INTRO? IF 5 EXIT THEN
+   t RES-TRUE CAST-MAY-LINEAR? IF 4 EXIT THEN
+   t CAST-BOTH [: drop ATOM-HIT? ;] CAST-INTRO? IF 5 EXIT THEN
+   t CAST-BOTH [: drop WIDTH-HIT? ;] CAST-INTRO? IF 5 EXIT THEN
    0 ;
 
 \ Whether variable id is a body-supplied fresh name's (SIG-BODY-FRESH).

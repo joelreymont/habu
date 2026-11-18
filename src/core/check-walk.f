@@ -1138,13 +1138,11 @@ variable TAGGED-FAM
    \ The source's consumed rows and pointees introduce values too: what the
    \ result is fed or has written through it reaches the source's code as the
    \ source's type.
-   CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-NEG [: drop ATOM-HIT? ;] CAST-INTRO? IF
       s" the input is handed an atom, a phantom index"
       s" write a cell type such as `n` where the input's pointees or its quotations' inputs name an atom"
       E-CAST-CLASS CAST-ERROR:RAISE
    THEN
-   CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-NEG [: drop WIDTH-HIT? ;] CAST-INTRO? IF
       s" the input is handed a width, which no cast yields"
       s" write `n` where the input's pointees or its quotations' inputs name a `width<t>`"
@@ -1156,7 +1154,6 @@ variable TAGGED-FAM
    \ A caller feeds the source's consumed rows only by calling a quotation the
    \ output hands out by value.
    SGOUT @ CAST-ROW-TERM [: QUOT-HIT? ;] CAST-INTRODUCES? IF
-      CAST-WALK-RESET
       SGIN @ CAST-ROW-TERM CAST-NEG [: TAGGED-HIT? ;] CAST-INTRO? IF
          RES-FALSE TAGGED-RAISE
       THEN
@@ -1167,14 +1164,12 @@ variable TAGGED-FAM
       s" end each output quotation row in the input's row variable at the same place, with as many cells, as `( [ R n -- R ] -- [ R ^n -- R ] )`"
       E-CAST-CLASS CAST-ERROR:RAISE
    THEN THEN
-   CAST-WALK-RESET
    \ The input is only read, so a quotation whose tails differ is any quotation.
    SGIN @ CAST-ROW-TERM RES-FALSE CAST-MAY-LINEAR? IF
       s" the input may hold a linear value"
       s" write a closed non-linear type in place of the input's linear type or type variable; a token is erased only by its owner's `linear:` row"
       E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
-   CAST-WALK-RESET
    SGOUT @ CAST-ROW-TERM RES-TRUE CAST-MAY-LINEAR? IF
       s" the output may hold a linear value"
       s" write a closed non-linear type in place of the output's linear type, type variable or `[ R -- S ]` quotation; a token is minted only by its owner's `linear:` row"
@@ -1265,7 +1260,6 @@ variable TAGGED-FAM
       E-CAST-SCOPE CAST-ERROR:RAISE
    THEN
    side CAST-ROW-TERM T-RES {: view:n :}
-   CAST-WALK-RESET
    view view PARAM>ARGC 1 - PARAM>ARG RES-TRUE CAST-MAY-LINEAR? IF
       s" the view's element may hold a linear value"
       s" write a closed non-linear element type, such as `u8`, in place of the view element's type variable or linear type"
