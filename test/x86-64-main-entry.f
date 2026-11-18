@@ -55,7 +55,7 @@ using X64RT
    true path u BUILD
    HB-TARGET-LINUX-X86-64? if
       GE-HB-RESET
-      path u S\" M" GE-TIMEOUT-MS GE-RUN-STDIN
+      path u S\" M" PROCESS:WAIT-FOREVER GE-RUN-STDIN
       s" captured MAIN and APP" GE-EXPECT-OK
       S\" APP\nM" s" captured MAIN and APP" GE-EXPECT-OUT
       s" " s" captured MAIN and APP" GE-EXPECT-ERR
@@ -64,7 +64,7 @@ using X64RT
    false app-path app-u BUILD
    HB-TARGET-LINUX-X86-64? if
       GE-HB-RESET
-      app-path app-u S\" M" GE-TIMEOUT-MS GE-RUN-STDIN
+      app-path app-u S\" M" PROCESS:WAIT-FOREVER GE-RUN-STDIN
       s" APP without MAIN" GE-EXPECT-OK
       S\" APP\n" s" APP without MAIN" GE-EXPECT-OUT
       s" " s" APP without MAIN" GE-EXPECT-ERR

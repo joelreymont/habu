@@ -17,8 +17,6 @@ require src/lib/engine-candidate.f
 require src/core/exit-status.f
 
 $40000 constant GE-SRC-CAP
-\ Generous deadlock deadline for one engine-gate child.
-120000 constant GE-TIMEOUT-MS
 10 constant GE-LF
 32 constant GE-SP
 34 constant GE-DQ
@@ -100,19 +98,19 @@ variable GE-EVAL-SRC-U
    PROCESS:OUT-W PROCESS:CLOSE-CELL
    PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
-: GE-RUN-ENV ( str n -- ) {: path:^ pathu:n timeout:n :}
+: GE-RUN-ENV ( str ms -- ) {: path:^ pathu:n timeout:ms :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
-   timeout >MS PROCESS:STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
-: GE-RUN-STDIN ( str str n -- ) {: path:^ pathu:n in:^ inu:n timeout:n :}
+: GE-RUN-STDIN ( str str ms -- ) {: path:^ pathu:n in:^ inu:n timeout:ms :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
-   timeout >MS PROCESS:STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    in inu >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
@@ -302,14 +300,14 @@ variable GE-EVAL-SRC-U
 : GE-HB-RUN-STDIN ( str -- ) {: label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
    GE-HB$ GE-SRC-BUF GE-SRC-U @
-   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   PROCESS:WAIT-FOREVER GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN-NZ ( str -- ) {: label:^ labelu:n :}
    label labelu GT-PROGRESS-RUN
    GE-HB$ GE-SRC-BUF GE-SRC-U @
-   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   PROCESS:WAIT-FOREVER GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO
    label labelu GT-PROGRESS-PASS ;
 

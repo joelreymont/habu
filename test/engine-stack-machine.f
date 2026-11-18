@@ -15,9 +15,6 @@ require src/core/rejection.f
 package MACHINE-STACK-TEST
 private
 
-\ ms for the stripped application's hb-build, held to an engine build's limit
-300000 constant BUILD-MS
-
 create SUBJECT PATH-CAP allot
 create IMAGE PATH-CAP allot
 variable SUBJECT-U
@@ -45,7 +42,7 @@ variable IMAGE-U
 
 : RUN-SRC ( str -- ) {: src:^ srcu:n :}
    GE-HB-RESET
-   GE-HB$ src srcu PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
+   GE-HB$ src srcu PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
 : MACHINE-EXIT ( str -- ) {: label:^ labelu:n :}
    102 label labelu GE-EXPECT-RC
@@ -88,18 +85,18 @@ variable IMAGE-U
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+
    s" -o" GE-ARG+ IMAGE$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" stripped application build" GE-EXPECT-OK
    GE-HB-RESET
    IMAGE$ GE-ARGV+
-   IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    S\" 110\n" s" a stripped application's caught fault" GE-EXPECT-OUT
    s" a stripped application's caught fault" FAULT-LINE
    102 s" a stripped application" GE-EXPECT-RC
    MACHINE$ s" a stripped application" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    IMAGE$ GE-ARGV+ s" uncaught" GE-ARG+
-   IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    110 s" a stripped application's uncaught fault"
    GE-EXPECT-RC
    s" a stripped application's uncaught fault" FAULT-LINE

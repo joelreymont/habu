@@ -592,7 +592,7 @@ variable LABEL-U
 : RUN-BAD-CHILD ( n str str -- )
    {: rc:n needle:^ needleu:n label:^ labelu:n :}
    GE-HB$ GE-SRC-BUF GE-SRC-U @
-   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   PROCESS:WAIT-FOREVER GE-RUN-STDIN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
@@ -943,7 +943,7 @@ variable LABEL-U
    path pathu GE-ARG+
    s" --" GE-ARG+
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -955,7 +955,7 @@ variable LABEL-U
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -965,7 +965,7 @@ variable LABEL-U
    s" --load" GE-ARG+
    INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
-   s" bin/hb" PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   s" bin/hb" PROCESS:WAIT-FOREVER GE-RUN-ENV
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 

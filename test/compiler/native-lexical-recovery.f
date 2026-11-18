@@ -50,7 +50,7 @@ package NATIVE-LEXICAL-RECOVERY
    s"    ['] LEXBAD catch .  LEXREST evaluate-closed  postpone ; ;" GE-SRC-LINE
    s" MAKE-LEXWORD" GE-SRC-LINE
    s" LEXWORD ." GE-SRC-LINE
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
    s" caught parser operand refusal" GE-EXPECT-OK
    S\" 70\n7\n" s" caught parser operand refusal" GE-EXPECT-OUT
    s" NEVER-BOUND" s" caught parser operand refusal" GE-EXPECT-ERR-HAS ;

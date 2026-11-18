@@ -161,7 +161,7 @@ variable WANT-U
    s" -o" GE-ARG+ out outu GE-ARG+ ;
 
 : BUILD-RUN ( -- )
-   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV ;
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER GE-RUN-ENV ;
 
 : HB-BUILD ( ^u8 n ^u8 n -- )
    GE-HB-RESET BUILD-ARGV BUILD-RUN ;
@@ -174,7 +174,7 @@ variable WANT-U
 : RUN-IMAGE ( -- )
    GE-HB-RESET
    IMAGE$ GE-ARGV+
-   IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the stripped application" GE-EXPECT-OK
    S\" ok\n" s" the stripped application's output" GE-EXPECT-OUT ;
 
@@ -201,7 +201,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ PROBE$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" hb --load of a file whose loads read the loader" GE-EXPECT-OK
    GT-OUT$ {: a:^ u:n :}
    u LOADED-CAP > if s" the probe's --load output fits its buffer" GE-FAIL then
@@ -215,7 +215,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    PROBE$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" hb probe.f, a program file whose loads read the loader" GE-EXPECT-OK
    LOADED$ s" the loader's lines under hb probe.f, as under hb --load" GE-EXPECT-OUT-HAS ;
 
@@ -233,7 +233,7 @@ variable WANT-U
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ RESOLVES$ GE-ARG+
-   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" hb --load of a file whose word resolves its own path" GE-EXPECT-OK
    s" resolves dir " s" " WANT!
    WANT$ s" the directory the word resolves under hb --load" GE-EXPECT-OUT-HAS ;
@@ -262,7 +262,7 @@ variable WANT-U
    then
    GE-HB-RESET
    ENVTOP-IMAGE$ GE-ARGV+
-   ENVTOP-IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   ENVTOP-IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from envtop.f" GE-EXPECT-OK
    want wantu s" the length of HABU_TEST_SIDE the program's compile read" GE-EXPECT-OUT ;
 
@@ -285,7 +285,7 @@ variable WANT-U
 : ROOTED-RUN ( str -- ) {: want:^ wantu:n :}
    GE-HB-RESET
    ROOTED-IMAGE$ GE-ARGV+
-   ROOTED-IMAGE$ PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   ROOTED-IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from a file whose ROOT! reaches its require" GE-EXPECT-OK
    want wantu s" MAIN's line, from the words the ROOT!-reached files define" GE-EXPECT-OUT ;
 
@@ -396,7 +396,7 @@ variable LBL-U
 : CASE-RUN ( str str -- ) {: image:^ imageu:n want:^ wantu:n :}
    GE-HB-RESET
    image imageu GE-ARGV+
-   image imageu PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   image imageu PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from main.f" LABEL GE-EXPECT-OK
    want wantu s" the program prints the value of the helper its root reaches" LABEL GE-EXPECT-OUT ;
 
@@ -469,7 +469,7 @@ variable G-IMAGE-U
    out outu image imageu CASE-BUILD
    GE-HB-RESET
    image imageu GE-ARGV+
-   image imageu PROCESS:WAIT-FOREVER MS>N GE-RUN-ENV
+   image imageu PROCESS:WAIT-FOREVER GE-RUN-ENV
    s" the program built from main.f" LABEL GE-EXPECT-OK
    S\" 7\n9\n" s" the program prints LIVE-V and the cell below STK-END's pointer" LABEL GE-EXPECT-OUT ;
 

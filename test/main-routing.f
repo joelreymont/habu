@@ -33,7 +33,7 @@ DYNAMIC-BUFFER PADDED u8
 : RUN ( ^u8 n [ -- ] -- ) {: input:^ u:n args :}
    GE-HB-RESET
    args execute
-   GE-HB$ input u PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
+   GE-HB$ input u PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
 : PASS ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
    label labelu GE-EXPECT-OK
@@ -85,7 +85,7 @@ DYNAMIC-BUFFER PADDED u8
 : LONG-STDIN ( -- )
    LONG-TEXT
    GE-HB-RESET
-   GE-HB$ 0 PADDED LONG-SIZE PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
+   GE-HB$ 0 PADDED LONG-SIZE PROCESS:WAIT-FOREVER GE-RUN-STDIN
    PADDED-RELEASE
    S\" AB\n" s" a stdin program past the stream's first sizes" GE-EXPECT-OUT
    s" " s" a stdin program past the stream's first sizes" GE-EXPECT-ERR

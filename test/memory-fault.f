@@ -24,7 +24,7 @@ private
 
 : RUN-BUF ( -- )
    GE-HB-RESET
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
 \ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
 \ re-raises it after the dump. An exit of 128 + n is no signal death.

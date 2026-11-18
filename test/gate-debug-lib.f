@@ -105,7 +105,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 : GDB-PROF-RUN ( -- )   \ run the accumulated GE-SRC through the candidate over stdin
    GE-HB$ GE-SRC-BUF GE-SRC-U @
-   PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
+   PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
 \ A package whose inner word is only ever reached through the outer one, so the
 \ caller rows under the inner word's row have exactly one right answer.

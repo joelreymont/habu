@@ -25,7 +25,7 @@ private
 : RUN-CASE ( str -- ) {: a:^ u:n :}
    GE-SRC-RESET  PRELUDE$ GE-SRC+  a u GE-SRC+
    GE-HB-RESET
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN ;
 
 : EXPECT ( ^u8 n ^u8 n ^u8 n -- )
    {: src:^ srcu:n want:^ wantu:n label:^ labelu:n :}
