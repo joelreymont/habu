@@ -279,6 +279,7 @@ TYPED-VARIABLE ENTRY-TEXT bool
 3 constant CSR-PLACED                    \ at CSR-BODY in the body being read
 4 constant CSR-DONE                      \ answered, or nothing to answer
 variable CSR-AT                          \ the subject byte, -1 for none
+variable CSR-NEXT                        \ the next composition's subject byte, -1 for none
 variable CSR-STATE
 variable CSR-TOK                         \ where that token starts; -1 for the next one read
 variable CSR-BODY
@@ -287,7 +288,13 @@ variable CSR-SUBJ                        \ the file being scanned is the subject
 : CSR-RESET ( -- )
    -1 CSR-AT !  CSR-DONE CSR-STATE !  0 CSR-SUBJ ! ;
 
+: CSR-TAKE ( -- )
+   CSR-NEXT @ dup CSR-AT !
+   0 < IF CSR-DONE ELSE CSR-WAIT THEN CSR-STATE !
+   -1 CSR-NEXT ! ;
+
 CSR-RESET
+-1 CSR-NEXT !
 
 : CSR-HIT? ( -- bool )
    CSR-STATE @ CSR-SPACE =  CSR-STATE @ CSR-PART =  or ;
@@ -4332,12 +4339,11 @@ public
 : CENSUS ( -- n n )
    CERTIFIED-N @ DEFERRED-N @ ;
 
-\ The next composition's completion cursor, subject byte N: the spellings its
-\ place offers go to ON-CANDIDATE. A negative N is none, and the composition's
-\ end drops it.
+\ The completion cursor of the composition that starts next, which takes it:
+\ subject byte N, whose place's spellings go to ON-CANDIDATE. A negative N is
+\ none; the composition's end drops the cursor it took.
 : CURSOR! ( n -- )
-   dup CSR-AT !
-   0 < IF CSR-DONE ELSE CSR-WAIT THEN CSR-STATE ! ;
+   CSR-NEXT ! ;
 
 private
 
@@ -4386,6 +4392,7 @@ private
    COMPOSE-SUBJ-PATH pathu REQUIRE-KNOWN? 0= IF
       COMPOSE-SUBJ-PATH pathu REQUIRE-REG:STORE 2drop
    THEN
+   CSR-TAKE
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}
    VISITS-DROP

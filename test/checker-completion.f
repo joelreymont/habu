@@ -273,6 +273,8 @@ PTR-VARIABLE RUN-A   variable RUN-U
 \ - a cursor outlives its composition, after a refused body, a visitor's throw,
 \   a use handler's throw or a scan stopped before the cursor, so the next
 \   composition offers with none set or the next cursor is refused;
+\ - a cursor a visitor sets fires in the open composition, or the next one
+\   loses it;
 \ - a refused body misses what binds;
 \ - a local is missed inside a quotation, or offered for a tick or `is` target;
 \ - two locals that differ only in case merge, or a spelling a local holds is
@@ -515,6 +517,42 @@ variable THROW-AT
    s" before its cursor" T-LABEL
    CALLS @ 0 T=
    NEXT-UNARMED ;
+
+TYPED-VARIABLE NEST-TRIED bool
+variable NEST-AT
+
+\ A visitor that sets the cursor at NEST-AT, once.
+: NEST-CURSOR ( ^u8 n ^u8 n n n -- )
+   NEST-TRIED @ IF KEEP EXIT THEN  true NEST-TRIED !  NEST-AT @ VERIFY:CURSOR!  KEEP ;
+
+: NEST-TEXT$ ( -- str )
+   s" : CMPJ ( -- n ) CMPA ; : CMPJ2 ( -- n ) CMPB ;" SUBJECT-OF ;
+
+\ The throw code and how many candidates NEST-TEXT$ offers with the cursor at
+\ CMPA, through visitor V.
+: NESTED-CALLS ( [ ^u8 n ^u8 n n n -- ] -- n n )
+   {: v :}
+   s" cmp" KEPT-RESET  false NEST-TRIED !
+   NEST-TEXT$ 2dup s" CMPA ;" 2 CURSOR-AT VERIFY:CURSOR!
+   ['] SUBJECT-COMPOSE v COMPOSE-RUN  CALLS @ ;
+
+: CASE-NESTED ( -- )
+   ['] KEEP NESTED-CALLS {: rc0:n n0:n :}
+   s" the plain visitor's composition runs through" T-LABEL rc0 0 T=
+   NEST-TEXT$ s" CMPB ;" 2 CURSOR-AT NEST-AT !
+   ['] NEST-CURSOR NESTED-CALLS {: rc2:n n2:n :}
+   s" the cursor-setting visitor's composition runs through" T-LABEL rc2 0 T=
+   s" the outer cursor is unchanged" T-LABEL
+   n2 n0 T=
+   KEPT-ALL
+   s" CMPA" PLACED
+   s" CMPB" PLACED
+   s" cmp" KEPT-RESET
+   NEST-TEXT$ COMPOSE-KEPT
+   s" the next composition runs through" T-LABEL 0 T=
+   KEPT-ALL
+   s" CMPB" PLACED
+   s" CMPJ" PLACED ;
 
 variable USE-N   variable USE-SUM
 
@@ -846,6 +884,7 @@ DEP-CAP BUFFER: DEP-BUF
    CASE-TOP
    CASE-RELEASE
    CASE-OUTLIVE
+   CASE-NESTED
    CASE-OBSERVER
    CASE-DISCRIMINATOR
    CASE-HIDDEN
