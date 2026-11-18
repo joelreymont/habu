@@ -1,6 +1,5 @@
 split-str
-\ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEAT,
-\ READ-MEMBER$, READ-MEMBERS and READ-REJECT. A file of package JSON
+\ read.f - the JSON pull/cursor reader. A file of package JSON
 \ (src/lib/json.f).
 
 require src/lib/error.f
@@ -1279,7 +1278,7 @@ private
 
 : ANCHOR-REJECT ( ^cursor -- ) {: state:^ :}
    state s" an object's `{` or a member's value"
-   s" write an object here, or call READ-FIND-KEY at an object's `{` or after a member's value"
+   s" write an object here, or read members only at an object's `{` or after a member's value"
    E-JSON-READ-STATE REJECT-TOKEN ;
 
 : FIND-ANCHOR ( ^cursor -- n ) {: state:^ :}
@@ -1293,6 +1292,11 @@ private
    s" keep the reader in that object while READ-FIND-KEY reads it"
    E-JSON-READ-STATE REJECT-TOKEN ;
 
+: MEMBER-NAME-REJECT ( ^cursor -- ) {: state:^ :}
+   state s" a member name or the object's `}`"
+   s" write the next member's name in double quotes, or close the object with `}`"
+   E-JSON-READ-STATE REJECT-TOKEN ;
+
 : FIND-INNER ( ^cursor str -- bool ) {: state:^ key:^ len:n :}
    state key len REQUIRE-KEY-SPAN
    state REQUIRE-SOUND
@@ -1303,11 +1307,7 @@ private
          state depth 1- REQUIRE-KEY-DEPTH
          false exit
       then
-      token T-KEY <> if
-         state s" a member name or the object's `}`"
-         s" write the next member's name in double quotes, or close the object with `}`"
-         E-JSON-READ-STATE REJECT-TOKEN
-      then
+      token T-KEY <> if state MEMBER-NAME-REJECT then
       state depth REQUIRE-KEY-DEPTH
       state key len MATCH-INNER {: found:bool :}
       state NEXT-INNER {: value:n :}
@@ -1395,13 +1395,13 @@ public
    then
    v vu ;
 
-private
-
-\ READ-MEMBERS's names are separated by single blanks; an empty list holds
-\ none.
-: NAME-COUNT ( str -- n ) {: a:^ u:n :}
+\ The names READ-MEMBERS and READ-LISTED take are separated by single blanks;
+\ an empty list holds none.
+: READ-NAME-COUNT ( ^u8 n -- n ) {: a:^ u:n :}
    u 0= if 0 exit then
    1 u 0 ?do a i + c@ SP = if 1+ then loop ;
+
+private
 
 \ The name that starts at start, as listed, and the next name's start.
 : NAME-AT ( str n -- str n ) {: a:^ u:n start:n :}
@@ -1501,6 +1501,27 @@ private
    1 seen idx + c!
    state NEXT-INNER drop idx ;
 
+\ Whether no listed member was read yet: the object's first call.
+: UNREAD? ( ^u8 n -- bool ) {: seen:^ count:n :}
+   count 0 ?do seen i + c@ 0<> if false unloop exit then loop true ;
+
+: REQUIRE-OBJECT ( ^cursor -- ) {: state:^ :}
+   state CURSOR-KIND @ T-OBJ = if exit then
+   state s" an object" s" write an object here" E-MEMBER REJECT-TOKEN ;
+
+\ A value's span holds at least one byte and ends at the reader's position, and
+\ the reader is on its last token: at depth 0 that is ST-DONE before T-END.
+: REQUIRE-VALUE-SPAN ( ^cursor str -- ) {: state:^ a:^ u:n :}
+   state CURSOR-POS @ {: pos:n :}
+   a state CURSOR-SRC @ - {: off:n :}
+   state CURSOR-STATE @ {: st:n :}
+   st ST-SEP =  st ST-DONE =  state CURSOR-KIND @ T-END <> and  or 0=
+   off 0 < or  u 1 < or  pos off - u <> or if
+      state s" the span of the value the reader just read"
+      s" pass READ-ANY-SPAN$'s answer for that value before the reader moves past it"
+      E-JSON-READ-STATE REJECT-TOKEN
+   then ;
+
 \ The handler left the reader on its value's last token.
 : REQUIRE-VALUE-READ ( ^cursor n -- ) {: state:^ depth:n :}
    state CURSOR-DEPTH @ depth =
@@ -1533,12 +1554,36 @@ public
 : READ-MEMBERS ( JSON:reader ^u8 n [ JSON:reader n -- JSON:reader ] -- JSON:reader )
    {: a:^ u:n handler :}
    READER>STATE {: state:^ :}
-   state CURSOR-KIND @ T-OBJ <> if
-      state s" an object" s" write an object here" E-MEMBER REJECT-TOKEN
-   then
-   a u NAME-COUNT {: count:n :}
+   state REQUIRE-OBJECT
+   a u READ-NAME-COUNT {: count:n :}
    a u count handler  count MEM:BYTES-ALLOC-LEN
    [: MEMBERS-SCOPE ;] MEM:WITH-BYTES ;
+
+\ seen holds a byte per listed name, zero before the object's first call.
+: READ-LISTED ( JSON:reader ^u8 n ^u8 -- JSON:reader n )
+   {: a:^ u:n seen:^ :}
+   READER>STATE {: state:^ :}
+   state REQUIRE-SOUND
+   a u READ-NAME-COUNT {: count:n :}
+   seen count UNREAD? if
+      state REQUIRE-OBJECT
+   else
+      state CURSOR-STATE @ ST-SEP <> if state ANCHOR-REJECT then
+   then
+   state FIND-ANCHOR drop
+   state NEXT-INNER {: token:n :}
+   token T-OBJ-END = if state a u count seen REQUIRE-ALL -1 exit then
+   token T-KEY <> if state MEMBER-NAME-REJECT then
+   state a u count seen MEMBER-INDEX ;
+
+\ A container's opener is read again, so the depth counts it as before.
+: READ-REWIND ( JSON:reader ^u8 n -- JSON:reader ) {: a:^ u:n :}
+   READER>STATE {: state:^ :}
+   state REQUIRE-SOUND
+   state a u REQUIRE-VALUE-SPAN
+   a state CURSOR-SRC @ - state CURSOR-POS !
+   ST-VALUE state CURSOR-STATE !
+   state NEXT-INNER drop ;
 
 \ Whether the current string or key decodes to exactly these bytes. The bytes
 \ stream through READ-STR's decoder, so no buffer bounds the string, and the

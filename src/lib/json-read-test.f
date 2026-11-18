@@ -1881,6 +1881,129 @@ create JRT-NAMES 400 allot
    JRT-TEST-MEMBERS-HANDLER
    JRT-TEST-MEMBERS-HUNDRED ;
 
+create JRT-SEEN 8 allot
+
+: JRT-UNSEEN ( -- )
+   8 0 ?do 0 JRT-SEEN i + c! loop ;
+
+\ Reads every listed member with READ-LISTED, skipping each value.
+: JRT-LISTED-ALL ( JSON:reader str -- JSON:reader ) {: a:^ u:n :}
+   JRT-UNSEEN
+   begin a u JRT-SEEN JSON:READ-LISTED -1 <> while JSON:READ-SKIP-VALUE repeat ;
+
+\ READ-LISTED over the text, with the names, throws E-MEMBER with the text
+\ wa wu.
+: JRT-LISTED-SAY ( str str str -- )
+   {: t:^ u:n na:^ nu:n wa:^ wu:n :}
+   [: t u JRT-FIRST na nu JRT-LISTED-ALL JSON:READ-FINISH ;]
+   JSON:E-MEMBER TTHROWSQ
+   JSON:E-MEMBER wa wu JRT-SAID ;
+
+: JRT-PORT-HOST$ ( -- str ) s" host port?" ;
+
+: JRT-TEST-LISTED-READ ( -- )
+   s" READ-LISTED answers each listed member's index, then -1 at the `}`" T-LABEL
+   JRT-UNSEEN
+   s\" {\"port\":1,\"host\":\"a\"}" JRT-FIRST
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 1 T=
+   JSON:READ-INT 1 T=
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
+   s" a" JSON:READ-STR-EQ? TTRUE
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   s" READ-LISTED reads an object without an optional member" T-LABEL
+   JRT-UNSEEN
+   s\" {\"host\":\"a\"}" JRT-FIRST
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED 0 T=
+   JRT-PORT-HOST$ JRT-SEEN JSON:READ-LISTED -1 T=
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH ;
+
+: JRT-BAD-LISTED-NESTED ( -- )
+   JRT-UNSEEN
+   s\" {\"a\":[1,2]}" JRT-FIRST
+   s" a" JRT-SEEN JSON:READ-LISTED drop
+   JSON:READ-NEXT drop
+   s" a" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
+
+: JRT-TEST-LISTED-REJECTED ( -- )
+   s" READ-LISTED rejects an unknown key, listing the names" T-LABEL
+   s\" {\"host\":\"a\",\n \"colour\":1}" s" host user system"
+   s\" 2:2: expected one of `host`, `user`, `system`, found `\"colour\"`; rename the member to one of those, or remove it"
+   JRT-LISTED-SAY
+   s" READ-LISTED rejects a repeated key at its second key" T-LABEL
+   s\" {\"host\":\"a\",\"host\":\"b\"}" s" host"
+   s\" 1:13: expected each member once, found `\"host\"`; remove the repeated member, keeping one"
+   JRT-LISTED-SAY
+   s" READ-LISTED rejects a missing member at the object's close" T-LABEL
+   s\" {\"host\":\"a\"}" s" host user"
+   s" 1:12: expected the member `user`, found `}`; add the member to the object"
+   JRT-LISTED-SAY
+   s" READ-LISTED rejects a call from inside a member's array" T-LABEL
+   [: JRT-BAD-LISTED-NESTED ;] E-JSON-READ-STATE TTHROWSQ ;
+
+\ READ-ANY-SPAN$ of the value the reader is on, rewound and read again to the
+\ same span.
+: JRT-REWOUND ( JSON:reader -- JSON:reader )
+   JSON:READ-ANY-SPAN$ {: a:^ u:n :}
+   a u JSON:READ-REWIND
+   JSON:READ-ANY-SPAN$ {: a2:^ u2:n :}
+   a2 a - 0 T=
+   u2 u T= ;
+
+: JRT-BAD-REWIND-SPAN ( -- )
+   s\" {\"a\":[1],\"b\":2}" JRT-FIRST
+   s" a" JSON:READ-FIND-KEY drop
+   JSON:READ-ANY-SPAN$ {: a:^ u:n :}
+   s" b" JSON:READ-FIND-KEY drop
+   a u JSON:READ-REWIND JSON:READ-CLOSE ;
+
+: JRT-BAD-REWIND-END ( -- )
+   s" [1]" JRT-FIRST
+   JSON:READ-ANY-SPAN$ {: a:^ u:n :}
+   JSON:READ-NEXT JSON:T-END T=
+   a u JSON:READ-REWIND JSON:READ-CLOSE ;
+
+: JRT-TEST-REWIND ( -- )
+   s" READ-REWIND reads a nested object and a string again to the same span" T-LABEL
+   s\" {\"a\":{\"b\":[1,{}]},\"c\":\"x\\\"y\"}" JRT-FIRST
+   s" a" JSON:READ-FIND-KEY TTRUE
+   JRT-REWOUND
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   s" c" JSON:READ-FIND-KEY TTRUE
+   JRT-REWOUND
+   JSON:READ-TOKEN JSON:T-STR T=
+   JSON:READ-NEXT JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   s" READ-REWIND rejects a span that does not end at the reader" T-LABEL
+   [: JRT-BAD-REWIND-SPAN ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s" 1:14: expected the span of the value the reader just read, found `2`; pass READ-ANY-SPAN$'s answer for that value before the reader moves past it"
+   JRT-SAID
+   s" READ-REWIND reads a top-level array again to the same span" T-LABEL
+   s" [1,2]" JRT-FIRST
+   JRT-REWOUND
+   JSON:READ-TOKEN JSON:T-ARR-END T=
+   JSON:READ-NEXT JSON:T-END T=
+   JSON:READ-FINISH
+   s" READ-REWIND rejects a top-level value once the text's end was read" T-LABEL
+   [: JRT-BAD-REWIND-END ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s" 1:4: expected the span of the value the reader just read, found the end of the input; pass READ-ANY-SPAN$'s answer for that value before the reader moves past it"
+   JRT-SAID ;
+
+: JRT-TEST-NAME-COUNT ( -- )
+   s" READ-NAME-COUNT counts the listed names, an optional one included" T-LABEL
+   s" a b? c" JSON:READ-NAME-COUNT 3 T=
+   s" " JSON:READ-NAME-COUNT 0 T= ;
+
+: JRT-TEST-READ-LISTED ( -- )
+   JRT-TEST-LISTED-READ
+   JRT-TEST-LISTED-REJECTED
+   JRT-TEST-REWIND
+   JRT-TEST-NAME-COUNT ;
+
 : JRT-TEST-REASON-WHOLE ( -- )
    s" READ-REPEAT rejects a text that is no object at its first token" T-LABEL
    [: s\" \n \"a\"" JSON:READ-REPEAT drop ;] E-JSON-READ-STATE TTHROWSQ
@@ -1967,6 +2090,7 @@ create JRT-NAMES 400 allot
    JRT-TEST-REASON-ACCESSORS
    JRT-TEST-REASON-MEMBER
    JRT-TEST-READ-MEMBERS
+   JRT-TEST-READ-LISTED
    JRT-TEST-REASON-WHOLE ;
 
 false [if] \ off until dot habu-add-the-checks-a49d054d

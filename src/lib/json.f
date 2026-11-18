@@ -9,6 +9,11 @@ split-str
 \ source's start. READ-MEMBERS reads a closed object, each member its list
 \ names once, one whose name ends in `?` at most once and keyed without it,
 \ and no other, calling a handler with each member's index in the list.
+\ READ-LISTED reads that list one member at a time, from the object's `{` or a
+\ member value's last token: the key's index, with the reader on the value's
+\ first token, or -1 at the `}`.
+\ READ-REWIND puts a reader on a value's last token back on its first, given
+\ the span READ-ANY-SPAN$ answered for that value.
 \ READ-REPEAT answers some index, from 0 in document order, of the first
 \ top-level key of an object that repeats one before it once decoded, nested
 \ objects' keys not counted: READ-FIND-KEY takes the first copy where
