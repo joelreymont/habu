@@ -3189,7 +3189,7 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL SRC-NAME
 : TOP-JUDGE ( -- )
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 LAYOUT-XPORT !
    CHECK-NO-BORROW
    OK @ 0= FAILSET @ 0= and IF -1 FAILSET ! THEN
@@ -3812,12 +3812,11 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    0 CHECKER-REC-SYM !
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + RES-TRUE ;
 
-\ A primitive row of sym as the table states one, its quotation inputs kept,
-\ its record under symbol 0, so a call tries every row (TRY-PRIMS).
+\ A primitive row of sym as the table states one, its record under symbol 0, so a
+\ call tries every row (TRY-PRIMS).
 : READ-ROW ( n n n n bool n n -- )
    {: din:n dout:n rin:n rout:n hasr:bool sym:n pe:n :}
    0 CHECKER-REC-SYM !
-   din KEEP-QUOTS
    sym  din dout rin rout hasr E-BUILD-EFFECT  pe PE-ACTIVE or  PRIM-ADD
    HIDX-VALID @ IF  HIDX-EPOCH @ 1- sym HT-PRM-E HIDX-CELL !  THEN ;
 

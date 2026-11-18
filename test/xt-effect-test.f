@@ -272,6 +272,53 @@ create XE-EMPTY 1 allot
    SB-RESET  s" defer DE ( -- renders | )" XE-LINE
    SB$ s" does not parse" XE-FACT-REJECTED ;
 
+\ A quotation kept in a slot has only the facts the slot's type states; one a
+\ callee only runs charges the caller.
+: XE-KEPT-FACTS ( -- )
+   s" a typed cell keeps only a quotation its type states the facts of" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE XV [ -- ]" XE-LINE  s" : S ( -- ) ['] EVC XV ! ;" XE-LINE
+   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   XE-ERR$ s" state `renders`" CONTAINS? TTRUE
+   s" a declared output keeps only a quotation its type states the facts of" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" : MK ( -- [ -- ] ) [: EVC ;] ;" XE-LINE
+   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   s" a defer keeps only a quotation its effect states the facts of" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" defer DV ( -- )" XE-LINE  s" : IN ( -- ) ['] EVC is DV ;" XE-LINE
+   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   s" a parameter the callee keeps takes only a quotation its type states the facts of" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE XV [ -- ]" XE-LINE  s" : XKEEP ( [ -- ] -- ) XV ! ;" XE-LINE
+   s" : K ( -- ) ['] EVC XKEEP ;" XE-LINE
+   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   s" a parameter the callee only runs charges the caller with its facts" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE XV [ -- ]" XE-LINE  s" : A ( [ -- ] -- ) execute ;" XE-LINE
+   s" : R ( -- ) ['] EVC A ;" XE-LINE  s" : S3 ( -- ) ['] R XV ! ;" XE-LINE
+   SB$ s" does more than the type that keeps it states" XE-FACT-REJECTED
+   s" a typed cell whose type states the facts keeps the quotation" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" TYPED-VARIABLE XR [ -- renders ]" XE-LINE  s" : S2 ( -- ) ['] EVC XR ! ;" XE-LINE
+   SB$ XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T=
+   s" a defer whose effect states the facts keeps the quotation" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" defer DR ( -- renders )" XE-LINE  s" : IR ( -- ) ['] EVC is DR ;" XE-LINE
+   SB$ XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T=
+   s" a parameter the callee only runs takes any quotation" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" : A ( [ -- ] -- ) execute ;" XE-LINE  s" : R ( -- ) ['] EVC A ;" XE-LINE
+   SB$ XE-RUN  XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
+
 : XE-PREPARE ( -- )
    FS:CLEANUP-RESET
    s" habu-xe" FS:MKTEMP-DIR {: a:^ u:n :}
@@ -291,6 +338,7 @@ create XE-EMPTY 1 allot
    XE-USING-REFUSED
    XE-FACT-WORDS
    XE-DEFER-FACTS
+   XE-KEPT-FACTS
    XE-CLEANUP
    T-REPORT
    s" xt-effect: ok" type cr ;

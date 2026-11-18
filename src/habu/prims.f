@@ -158,6 +158,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-A-ADDR  A-VAR-A CODE, A-ADDR CODE, A-PTR CODE, ;
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
 : PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
+\ PE-Q opens a quotation the primitive runs before it returns; PE-QANY is an xt it keeps.
 : PE-Q           A-QUOT CODE, ;
 : PE-QIN         A-QUOT-IN CODE, ;
 : PE-QOUT        A-QUOT-OUT CODE, ;

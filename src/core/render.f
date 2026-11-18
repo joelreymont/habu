@@ -971,6 +971,7 @@ variable MDV-I   variable MDV-F
       MD-MEMBER-TOP of s" E-LAYOUT-VALUE" endof
       MD-ONE-CELL   of s" E-MISMATCH" endof
       MD-OFF-STEP   of s" E-MISMATCH" endof
+      MD-FACT-UNSTATED of s" E-MISMATCH" endof
       MD-CONSTRUCT-WIDE of s" E-CONSTRUCT-WIDE" endof
       MD-C2-BINDER    of s" E-C2-BINDER" endof
       MD-C2-RECORDS-BINDER of s" E-C2-BINDER" endof
@@ -1088,6 +1089,7 @@ variable MDV-I   variable MDV-F
       MD-RECORD-AT-WIDE of s" index a `LAYOUT-BUFFER` or `TYPED-BUFFER` of the instantiated type, which steps by its width" endof
       MD-MEMBER-TOP of s" move the call inside a definition, which uses the receiver's layout" endof
       MD-ONE-CELL   of s" call it with a plain one-cell type (`n`, a pointer), or do the work in a word whose effect names" endof
+      MD-FACT-UNSTATED of s" state" endof
       MD-CONSTRUCT-WIDE of s" declare the widest variant over the type argument, or hold the argument through a one-cell `^`" endof
       MD-C2-BINDER    of s" declare the callback `forall<i inside [l,T],[ mut-view<p,i,a,init<i,T>> -- … ]>`, with `l` the view's scope and `T` the record" endof
       MD-C2-RECORDS-BINDER of s" declare the callback `forall<i inside [l,T],[ records<p,i,a,T> -- … ]>`, with `l` the view's scope and `T` the record" endof
@@ -1191,6 +1193,7 @@ variable MDV-I   variable MDV-F
       MD-MEMBER-TOP of s" at top level the word runs with its declared layout, and the receiver's instance moves this member" endof
       MD-ONE-CELL   of s"  is one cell" endof
       MD-OFF-STEP   of s"  is stepped by an offset" endof
+      MD-FACT-UNSTATED of s" this quotation does more than the type that keeps it states" endof
       MD-CONSTRUCT-WIDE of s" the variant is wider than the declared widest variant once its type argument is filled in" endof
       MD-C2-BINDER    of s" the callback's binder does not fit this entry's scope and record" endof
       MD-C2-RECORDS-BINDER of s" the callback's binder does not fit this entry's scope and record" endof
@@ -1270,6 +1273,7 @@ variable MDV-I   variable MDV-F
       MD-MEMBER-TOP of s" runs with its declared layout" endof
       MD-ONE-CELL   of s" takes one cell" endof
       MD-OFF-STEP   of s" steps by an offset" endof
+      MD-FACT-UNSTATED of s" kept here" endof
       MD-CONSTRUCT-WIDE of s" variant wider than declared" endof
       MD-LINEAR-DROP  of s" linear value dropped" endof
       MD-LINEAR-COPY  of s" linear value copied" endof
@@ -2146,6 +2150,18 @@ PTR-VARIABLE HOLDER-FIRST
    s"  for the plain cell type it steps, or step `" EMIT-STR
    AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN  s" ` by its size" EMIT-STR ;
 
+\ The latched FACT-HIT's facts in bit order, joined by one space.
+: FACT-HELP ( -- )
+   MD-FACT-UNSTATED MD-SUGGEST$ EMIT-STR  s"  `" EMIT-STR
+   MDIAG-CELL @ dup negate and {: low:n :}
+   63 0 ?do
+      1 i lshift {: f:n :}
+      MDIAG-CELL @ f and 0 <> IF
+         f low <> IF s"  " EMIT-STR THEN  i CTL-BIT>TAG$ EMIT-STR
+      THEN
+   loop
+   s" ` in the type that keeps it" EMIT-STR ;
+
 : LINLOCAL-HELP ( -- )
    s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"
    EMIT-STR ;
@@ -2207,6 +2223,7 @@ PTR-VARIABLE HOLDER-FIRST
       MDIAG @ MD-SCOPED-TICK = IF SCOPED-TICK-HELP EXIT THEN
       MDIAG @ MD-ONE-CELL = IF ONE-CELL-HELP EXIT THEN
       MDIAG @ MD-OFF-STEP = IF OFF-STEP-HELP EXIT THEN
+      MDIAG @ MD-FACT-UNSTATED = IF FACT-HELP EXIT THEN
       MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
    THEN
    k RF-UNCHECKABLE = IF UNCK-HELP EXIT THEN

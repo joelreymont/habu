@@ -1434,6 +1434,29 @@ variable FV   0 FV !   \ the next var id FRESH hands out
 1 61 lshift constant CTL-OPAQUE
 \ CTL-UNSEEN: a call may run words no reader can see: a deferred word's, an xt the walk did not make.
 1 62 lshift constant CTL-UNSEEN
+global
+\ CTL-RENDERS means a call may define words, or open, add to or close a
+\ definition, at run time that no source text spells.
+$80 constant CTL-RENDERS
+private
+\ CTL-PARSES means a call may read the source after it, so which tokens it takes
+\ cannot be known without running it.
+CHECKER-OWNER-ABI:BINDING-PARSES constant CTL-PARSES
+global
+\ CTL-CREATES means a call may define the name it reads. Unlike rendered text it
+\ defines exactly that name.
+$4000 constant CTL-CREATES
+\ A call may register a nominal type without rendering source. The flag grants
+\ no registration authority to checked code.
+$8000 constant CTL-NOMINAL
+private
+\ CTL-ROOTS means a call may move the source root, so which files later requires
+\ load cannot be known without running it.
+CHECKER-OWNER-ABI:BINDING-ROOTS constant CTL-ROOTS
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or CTL-OPAQUE or
+   CTL-UNSEEN or constant CTL-INHERITED
+\ The facts a quotation type may state after its outputs.
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CTL-STATABLE
 
 \ A term and its block variable are made together: a trial's rollback restores
 \ FV and QEN together (TRIAL-REST).
@@ -1478,6 +1501,14 @@ $10000 constant BVAR-REGION-BIT
 : Q-BLOCK! ( n n -- ) PAY cells QXBA + ! ;
 : Q>FACTS ( n -- n ) PAY cells QXFA + @ ;
 : Q-FACTS! ( n n -- ) PAY cells QXFA + ! ;
+SCRATCH{
+\ INHSET: the CTL-INHERITED facts of what the body calls or runs, CTL-UNSEEN for what it
+\ cannot see; an open literal's body has its own. Sticky per body: a call on any path is
+\ enough for the may-claim.
+variable INHSET
+}SCRATCH
+\ Running a quotation charges the runner with its facts.
+: INH-CHARGE ( n -- ) Q>FACTS CTL-INHERITED and INHSET @ or INHSET ! ;
 : Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 
 \ A slot holds the window's intact mask (THROW-EDGE) tagged XMASK-MARK, a zero
@@ -3263,7 +3294,8 @@ variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotati
    PTR>INNER NO-SCOPE? ;
 
 \ A kept quotation may outlive its caller, so its block reads no local (NSCOPE). A signature
-\ with no checked body cannot show a use, so each quotation in its inputs counts as kept.
+\ with no checked body cannot show a use, so each quotation in its inputs counts as kept; a
+\ primitive's row says which it keeps (PE-QANY).
 : KEEP-QUOTS* ( n -- ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -4208,6 +4240,8 @@ variable ONE-CELL-HIT
 variable STEP-HIT
 \ The id of the variable the latest of them met; each latch clears the other.
 variable ONE-CELL-VAR
+\ The facts a kept quotation has and its slot's type lacks.
+variable FACT-HIT
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
@@ -4790,6 +4824,12 @@ defer U-DRAIN-XT ( n -- )
    {: got:n want:n :}
    CUR-ROLE @ {: role:n :}   role ROLE-FLIP {: flip:n :}
    TRAIL-N @ {: mark:n :}   USP @ {: base:n :}   CUR-UPOS @ {: upos:n :}
+   \ A demanded slot keeps the quotation: a definition's declared output, or a
+   \ block that keeps its scope. It states every fact the quotation has.
+   want Q>BLOCK T-RES {: b:n :}
+   role ROLE-D2 and 0 <> IF
+      UNIFY-KIND @ UK-COERCE =  b ISVAR IF b PAY NSCOPE@ or THEN
+   ELSE RES-FALSE THEN {: kept:bool :}
    got want role HOLD-PUSH {: g:n w:n :}
    w Q>DIN g Q>DIN flip PAIR-QUOT
    g Q>DOUT w Q>DOUT role PAIR-QUOT
@@ -4798,10 +4838,14 @@ defer U-DRAIN-XT ( n -- )
    g w BLOCK-PAIR
    base U-DRAIN-XT
    UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
-   \ The fact union is not trailed: a rolled-back trial can only add facts.
-   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE
+   got Q>FACTS CTL-STATABLE and want Q>FACTS invert and {: lack:n :}
+   UOK @ IF kept IF lack 0 <> IF lack FACT-HIT !  got want U-FAIL THEN THEN THEN
+   \ The fact union is not trailed: a rolled-back trial can only add facts. A
+   \ quotation a callee only runs charges the caller with its facts.
+   TAIL-HIT @ UOK @ 0= or IF mark TRAIL-UNWIND ELSE kept 0= IF
       g Q>FACTS w Q>FACTS or {: f:n :}  f g Q-FACTS!  f w Q-FACTS!
-   THEN
+      role ROLE-D2 and 0 <> UNIFY-KIND @ UK-INPUT = and IF got INH-CHARGE THEN
+   THEN THEN
    -1 HOLD-N +! ;
 
 
@@ -5099,10 +5143,6 @@ U-DRAIN-INSTALL
 \ of the body being checked. THSET says whether any edge was seen.
 SCRATCH{
 variable THDMASK  variable THRMASK  variable THSET
-\ INHSET: the CTL-INHERITED facts of what the body calls or runs, CTL-UNSEEN for what it
-\ cannot see; an open literal's body has its own. Sticky per body: a call on any path is
-\ enough for the may-claim.
-variable INHSET
 }SCRATCH
 variable XROW  variable XRROW
 SCRATCH{
@@ -5369,6 +5409,7 @@ private
 101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?); E-LAYOUT-VALUE
 102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type (ONE-CELL-HIT); E-MISMATCH
 103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type (STEP-HIT); E-MISMATCH
+104 constant MD-FACT-UNSTATED \ a kept quotation has facts its slot's type does not state (FACT-HIT); E-MISMATCH
 \ A data depth change is E-MISMATCH and prints the loop's start row and the
 \ row at its back edge or leave; each other reason has its own code (MD-CODE$).
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
@@ -5426,7 +5467,7 @@ variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
 variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from the top
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
-variable MDIAG-CELL   \ one-cell and step rules: the layout type a variable met
+variable MDIAG-CELL   \ one-cell and step rules: the layout type a variable met; fact rule: FACT-HIT
 variable MDIAG-CELL-VAR   \ one-cell and step rules: that variable's id
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
@@ -5519,6 +5560,9 @@ TAIL-CAPTURE-DEFAULT
       MDIAG @  MD-OFF-STEP MDIAG!  MDIAG @ <> IF
          STEP-HIT @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
       THEN
+   THEN
+   FACT-HIT @ 0 <> IF   \ the facts copied only when this refusal latches the reason
+      MDIAG @  MD-FACT-UNSTATED MDIAG!  MDIAG @ <> IF FACT-HIT @ MDIAG-CELL ! THEN
    THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN
    BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN
@@ -5765,15 +5809,9 @@ private
 CHECKER-OWNER-ABI:BINDING-CORE-OP constant CTL-CORE-OP
 $20 constant CTL-ZERO-TRUE
 $40 constant CTL-ZERO-FALSE
-global
-\ CTL-RENDERS means a call may define words, or open, add to or close a
-\ definition, at run time that no source text spells.
-$80 constant CTL-RENDERS
-private
 
-\ Control word bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13-18 the flags below with 16
-\ the defer bit, 19 the verifier query's refused-name mark, 20-39 and 40-59 the intact masks,
-\ 60 CTL-ROOTS, 61 CTL-OPAQUE, 62 CTL-UNSEEN.
+\ Control word bits: 0-7 and 13-18 flags with 16 the defer bit, 8-12 the INTRINSIC id, 19 the verifier
+\ query's refused-name mark, 20-39 and 40-59 the intact masks, 60 CTL-ROOTS, 61 CTL-OPAQUE, 62 CTL-UNSEEN.
 CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
 CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
 CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
@@ -5804,27 +5842,11 @@ CHECKER-OWNER-ABI:BINDING-TOP-ONLY-ID constant INTRINSIC-TOP-ONLY
    n CTL>INTRINSIC INTRINSIC-TOP-ONLY = IF n CTL-CORE-OP invert and EXIT THEN
    n CTL-IDENTITY invert and ;
 
-\ CTL-PARSES means a call may read the source after it, so which tokens it takes
-\ cannot be known without running it.
-CHECKER-OWNER-ABI:BINDING-PARSES constant CTL-PARSES
 global
-\ CTL-CREATES means a call may define the name it reads. Unlike rendered text it
-\ defines exactly that name.
-$4000 constant CTL-CREATES
-\ A call may register a nominal type without rendering source. The flag grants
-\ no registration authority to checked code.
-$8000 constant CTL-NOMINAL
 \ CTL-GENERATES means the symbol's created effect is what a `generates:` row
 \ states. It describes that cell, not what a call may do.
 CHECKER-OWNER-ABI:BINDING-GENERATES constant CTL-GENERATES
 private
-\ CTL-ROOTS means a call may move the source root, so which files later requires
-\ load cannot be known without running it.
-CHECKER-OWNER-ABI:BINDING-ROOTS constant CTL-ROOTS
-CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or CTL-OPAQUE or
-   CTL-UNSEEN or constant CTL-INHERITED
-\ Running a quotation charges the runner with its facts.
-: INH-CHARGE ( n -- ) Q>FACTS CTL-INHERITED and INHSET @ or INHSET ! ;
 \ CTL-NAMES means the word looks its top string operand up, so a string literal
 \ just before a call of it is a use of the word it names.
 CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
@@ -5880,8 +5902,6 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
       i CTL-BIT>TAG$ a u CORE-STR= IF 1 i lshift unloop EXIT THEN
    loop
    0 ;
-\ The facts a quotation type may state after its outputs.
-CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CTL-STATABLE
 \ The fact a quotation type's token a u states, 0 when it states none.
 : STATED-FLAG ( str -- n ) TAG>CTL-FLAG CTL-STATABLE and ;
 
@@ -12754,7 +12774,6 @@ variable PE-EFF-ID
 : PE-CLOSE-SYM ( n -- )
    dup PREFIX-SYM? IF  drop  -1 PE-LAST !  EXIT  THEN
    dup PE-SYM-ID ! CHECKER-REC-SYM !
-   PE-DIN @ KEEP-QUOTS
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
    PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD
@@ -12823,7 +12842,7 @@ variable PE-EFF-ID
    PE-Q PE-N PE-QIN ;PE-Q PE-IN ;
 
 : PE-QANY ( -- )
-   FREE-QUOT PE-IN ;
+   FREE-QUOT dup KEEP-QUOTS PE-IN ;
 
 : PE-STOW-LAYOUT ( -- n )
    PARAM-SCR-N @ s" stow-layout" C2-STOW-FAM @ MK-PARAM ;
@@ -22341,7 +22360,10 @@ EXPORT CHECKER-TAPE:K-IS
    sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
-   FEP @ EFF-QUOT IS-APPLY ;
+   \ The defer's term states the defer's facts, which a stored callable must not exceed.
+   FEP @ EFF-QUOT {: q:n :}
+   sym CTL-WORD-SYM CTL-STATABLE and CTL-THROW or q Q-FACTS!
+   q IS-APPLY ;
 
 \ A tick retains the target effect through calls, locals and typed storage.
 : BTICK-CAND? ( str -- bool )
@@ -22750,7 +22772,7 @@ variable POST-A0
    THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
@@ -22765,7 +22787,7 @@ variable POST-A0
    \ The raw-cell and base-address refusals name themselves where they are
    \ raised. The flags are dropped here because TRY-PRIMS applies candidate
    \ rows in turn and the next token must start clean.
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    NZ-STEP
    unj IF
@@ -23369,7 +23391,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
    0 UNFIT !
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    0 SGWIN !  0 SGWOUT !  0 SGWRIN !  0 SGWROUT !
