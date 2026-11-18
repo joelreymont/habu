@@ -78,7 +78,7 @@ private
 
 \ The size of the chain a row of kind holds at site in emission bytes b, s of them: a code
 \ chain is ADDR-CHAIN-BYTES long, a data chain whole; 0 when no such chain is there.
-: SITE-SIZE ( str n n -- n )
+: SITE-SIZE ( ^u8 n n n -- n )
    {: b:^ s:n site:n kind:n :}
    site 0<  site 3 and 0<>  or  site s >=  or if 0 exit then
    b site +  b s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}

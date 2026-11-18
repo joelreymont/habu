@@ -43,7 +43,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT OUT-U @ + LE:U64!
    8 OUT-U +! ;
 
-: BYTES+ ( str -- )
+: BYTES+ ( ^u8 n -- )
    {: a:^ u:n :}
    OUT-U @ u + OUT-RESERVE
    a  0 OUT OUT-U @ +  u BYTE-COPY

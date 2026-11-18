@@ -89,20 +89,20 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    data $28 + LE16@ dup HEADER-BYTES < if E-FORMAT throw then
    size 0 rot CHECK-RANGE ;
 
-: CHECK-TABLE ( str -- ) {: data size:n :}
+: CHECK-TABLE ( ^u8 n -- ) {: data size:n :}
    data PH-COUNT dup $FFFF = if E-UNSUPPORTED throw then
    dup 0= if drop exit then
    data PH-STRIDE dup PROGRAM-BYTES < if E-FORMAT throw then
    * size data PH-OFFSET rot CHECK-RANGE
    data PH-OFFSET 0= if E-FORMAT throw then ;
 
-: HEADER-CHECKED ( str -- )
+: HEADER-CHECKED ( ^u8 n -- )
    2dup CHECK-HEADER CHECK-TABLE ;
 
 : PROGRAM-ROW ( ^u8 n -- ^u8 ) {: data index:n :}
    data data PH-OFFSET + index data PH-STRIDE * + ;
 
-: CHECK-INDEX ( str -- ) {: data index:n :}
+: CHECK-INDEX ( ^u8 n -- ) {: data index:n :}
    index 0 < index data PH-COUNT >= or if E-BOUNDS throw then ;
 
 : CHECK-LOAD-EXTENT ( ^u8 -- ) {: row :}

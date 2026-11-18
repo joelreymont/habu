@@ -204,13 +204,13 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup U32-MAX > if E-SIZE throw then ;
 
 \ Every stream is at least one byte, so zero capacity cannot hold one.
-: DEFLATE-FOR ( str ^u8 n n -- n )
+: DEFLATE-FOR ( ^u8 n ^u8 n n -- n )
    {: src:^ srcu:n dst:^ cap:n window:n :}
    src srcu dst cap PAIR-CHECK
    cap 0= if E-CAPACITY throw then
    window src srcu dst cap [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
 
-: INFLATE-FOR ( str ^u8 n n -- n )
+: INFLATE-FOR ( ^u8 n ^u8 n n -- n )
    {: src:^ srcu:n dst:^ cap:n window:n :}
    src srcu dst cap PAIR-CHECK
    window src srcu dst cap [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;

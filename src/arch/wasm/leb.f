@@ -126,10 +126,10 @@ public
 : U32@ ( ^u8 n -- u32 n )
    32 false DECODE ;
 
-: S32@ ( str -- n n )
+: S32@ ( ^u8 n -- n n )
    32 true DECODE ;
 
-: S64@ ( str -- n n )
+: S64@ ( ^u8 n -- n n )
    64 true DECODE ;
 
 \ ---- padded fields ------------------------------------------------------

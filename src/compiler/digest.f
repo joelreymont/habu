@@ -36,7 +36,7 @@ public
 
 \ ---- whole runs of slots -----------------------------------------------------
 
-: SLOTS-COPY ( ^u8 str -- )
+: SLOTS-COPY ( ^u8 ^u8 n -- )
    {: src:^ dst:^ n:n :}
    n 0 <= if exit then
    n 0 ?do
