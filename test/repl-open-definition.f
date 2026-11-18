@@ -55,15 +55,23 @@ using PTY-HARNESS
    then
    0 EXIT= ;
 
-\ ^D with the definition still open names it and exits 70.
+\ A body line: 1400 of them pass the first chunk the REPL keeps its lines in.
+: FILL-LINE$ ( -- str )
+   s" 1 drop 1 drop 1 drop 1 drop 1 drop 1 drop" ;
+
+\ ^D with the definition still open, its name on a line an older chunk keeps,
+\ underlines the whole name and exits 70.
 : EOF-CASE ( -- )
    OPEN dup TTRUE if
       s" : EOF-Y ( -- )" STEP dup TTRUE if
+         true 1400 0 do FILL-LINE$ STEP and loop TTRUE
          4 SEND-BYTE
       then
    then
    70 EXIT=
-   s" error[E-VS-UNTERMINATED-DEFINITION]" s" `EOF-Y`" AFTER? TTRUE ;
+   s" error[E-VS-UNTERMINATED-DEFINITION]" s" `EOF-Y`" AFTER? TTRUE
+   s" error[E-VS-UNTERMINATED-DEFINITION]" s" |   ^^^^^ never closed"
+   AFTER? TTRUE ;
 
 \ ^D with a declaration still open names it and exits 70.
 : DECL-EOF-CASE ( -- )
@@ -91,8 +99,8 @@ using PTY-HARNESS
    s" error[E-UNCLOSED]" s" | BEGIN-STRUCTURE EOF-REC2" AFTER? TTRUE
    s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE ;
 
-\ A `FUNCTION:` left open is rejected, its opener spelled as typed, when a later
-\ line opens another.
+\ A `FUNCTION:` left open is rejected, its opener spelled as typed and its
+\ record placed on the line that opened it, when a later line opens another.
 : FN-LINES-CASE ( -- )
    OPEN dup TTRUE if
       s" require src/lib/ffi-abi.f" STEP TTRUE
@@ -102,6 +110,7 @@ using PTY-HARNESS
       s" E-UNCLOSED" WAIT-FOR TTRUE
       s" E-UNCLOSED" s" habu> " WAIT-AFTER TTRUE
       s" error[E-UNCLOSED]" s" `FUNCTION:` is still open" AFTER? TTRUE
+      s" error[E-UNCLOSED]" s" | FUNCTION: FNL-PID getpid ( -- n )" AFTER? TTRUE
       s" error[E-UNCLOSED]" s" error[E-UNCLOSED]" AFTER? TFALSE
       4 SEND-BYTE
    then

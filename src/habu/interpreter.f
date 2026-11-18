@@ -3164,84 +3164,10 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    prior USE-FLOOR !
    found REC ! ;
 
-\ The REPL's lines: kept while a definition is pending or a declaration is
-\ open, so a token kept past its line still names its bytes; a line never moves.
-\ A chunk holds its older chunk, its size and its free end, then each line as
-\ its length and its bytes.
-PTR-VARIABLE LINES-NEWEST
-65536 constant LINES-CHUNK
-3 cells constant LINES-HEAD
-
-: CHUNK-OLDER ( ^u8 -- ^u8 ) 0 ptr-field @ ;
-: CHUNK-SIZE ( ^u8 -- n ) CELL FR@ ;
-: CHUNK-USED ( ^u8 -- n ) 2 cells FR@ ;
-: CHUNK-USED! ( n ^u8 -- ) 2 cells FR! ;
-
-\ A chunk after older, with room for a line of u bytes.
-: CHUNK-NEW ( ^u8 n -- ^u8 ) {: older:^ u:n :}
-   LINES-HEAD CELL + u + LINES-CHUNK max {: size:n :}
-   size MEM-ALLOC-PTR {: c:^ :}
-   older c 0 ptr-field !
-   size c CELL FR!
-   LINES-HEAD c CHUNK-USED!
-   c LINES-NEWEST !
-   c ;
-
-\ The newest chunk if a line of u bytes fits at its free end, else a new one.
-: CHUNK-ROOM ( n -- ^u8 ) {: u:n :}
-   LINES-NEWEST @ {: c:^ :}
-   c NULL-PTR = if c u CHUNK-NEW exit then
-   c CHUNK-USED CELL + u + c CHUNK-SIZE > if c u CHUNK-NEW exit then
-   c ;
-
-\ The kept copy of line a u.
-: LINE-KEEP ( str -- str ) {: a:^ u:n :}
-   u CHUNK-ROOM {: c:^ :}
-   c CHUNK-USED {: o:n :}
-   u c o FR!
-   a c o + CELL + u BYTE-COPY
-   o CELL + u + c CHUNK-USED!
-   c o + CELL + u ;
-
-: RECORD$ ( n ^u8 -- str ) {: o:n c:^ :}
-   c o + CELL +  c o FR@ ;
-
-: RECORD-HAS? ( n ^u8 ^u8 -- bool ) {: o:n p:^ c:^ :}
-   p c o + CELL + - {: d:n :}
-   d 0 >=  d c o FR@ <= and ;
-
-\ The line of chunk c holding p, else a zero-length string.
-: CHUNK-LINE ( ^u8 ^u8 -- str ) {: p:^ c:^ :}
-   LINES-HEAD
-   begin dup c CHUNK-USED < while
-      dup p c RECORD-HAS? if c RECORD$ exit then
-      c over FR@ CELL + +
-   repeat
-   drop NULL-PTR 0 ;
-
-\ The kept line holding p, looked for from chunk c on; else a zero-length string.
-: CHAIN-LINE ( ^u8 ^u8 -- str ) {: p:^ c:^ :}
-   c NULL-PTR = if NULL-PTR 0 exit then
-   p c CHUNK-LINE {: s:^ u:n :}
-   u 0<> if s u exit then
-   p c CHUNK-OLDER RECURSE ;
-
-: LINE-AT ( ^u8 -- str )
-   LINES-NEWEST @ CHAIN-LINE ;
-
-\ A definition is pending or a declaration is open.
+\ The REPL keeps its lines while this holds: a definition is pending or a
+\ declaration is open.
 : LINES-NEEDED? ( -- bool )
    PEND-CELL CELL@ 0<>  SOURCE-ROOT:OPENER$ nip 0<> or ;
-
-\ Unmaps every chunk but the first and empties the first.
-: LINES-EMPTY ( -- )
-   LINES-NEWEST @ {: c:^ :}
-   c NULL-PTR = if exit then
-   c CHUNK-OLDER {: o:^ :}
-   o NULL-PTR = if LINES-HEAD c CHUNK-USED! exit then
-   o LINES-NEWEST !
-   c c CHUNK-SIZE munmap 0<> if E-MEM-UNMAP throw then
-   RECURSE ;
 
 \ The record, at the running token, of a throw of code c that its text did not
 \ catch.
@@ -3296,7 +3222,7 @@ PTR-VARIABLE LINES-NEWEST
       code 1 255 BETWEEN? 0= if code ERROR:UNCAUGHT then
       mark SOURCE-ROOT:TEXT-UNWOUND
    then
-   LINES-NEEDED? 0= if LINES-EMPTY then
+   LINES-NEEDED? 0= if REJECTION:DROP-LINES then
    done 0= if
       REPL-STACK-CLEAR
       2 REPL-QNL 2 write drop
@@ -3304,14 +3230,12 @@ PTR-VARIABLE LINES-NEWEST
    then
    true ;
 
-\ The end of input goes on the pending definition's line, reported first, else
-\ on the open declaration's.
+\ A pending definition's name is measured up to the end of input, which goes on
+\ the name's kept line.
 : REPL-END ( -- )
-   SOURCE-ROOT:OPENER$ drop {: t:^ :}
-   PEND-CELL CELL@ 0<> if PENDTKA-CELL ADDR@ else t then
-   LINE-AT {: c:^ cu:n :}
-   cu 0<> if
-      c SRCLOC:INB-CELL ADDR!  c cu + INE-CELL ADDR!
+   PEND-CELL CELL@ 0<> if
+      PENDTKA-CELL ADDR@ REJECTION:KEPT-LINE {: c:^ cu:n :}
+      cu 0<> if  c SRCLOC:INB-CELL ADDR!  c cu + INE-CELL ADDR!  then
    then
    [: DEF-SOURCE-END DECL-SOURCE-END ;] catch {: code:n :}
    code 0<> if NULL$ code die then ;
@@ -3325,7 +3249,7 @@ PTR-VARIABLE LINES-NEWEST
       REPL-OK @ if S\"  ok\n" type then
       DEBUG:REPL-READ {: a:^ u:n :}
       a 0= if REPL-END exit then
-      a u LINE-KEEP REPL-LINE REPL-OK !
+      a u REJECTION:KEEP-LINE REPL-LINE REPL-OK !
    again ;
 
 public

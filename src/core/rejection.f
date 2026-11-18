@@ -88,6 +88,7 @@ dup constant WORD-A-OFF  1 cells +
 dup constant WORD-U-OFF  1 cells +
 dup constant ROOT-A-OFF  1 cells +
 dup constant ROOT-U-OFF  1 cells +
+dup constant LINES-OFF  1 cells +
 dup constant WARNING-OFF  1 cells +
 dup constant LABELS-P-OFF  1 cells +
 dup constant LABELS-CAP-OFF  1 cells +
@@ -607,9 +608,51 @@ public
    INPUT-START @ {: b:^ :}
    b  INPUT-END @ b - ;
 private
+\ REPL lines, never moved, so a token kept past its line names its bytes; a
+\ block cell holds the newest chunk, so no task reads one the REPL unmaps.
+: LINES-NEWEST ( -- ^^u8 ) LINES-OFF PTR-AT ;
+\ A chunk's older chunk, size and free end; then each line, its length first.
+3 cells constant LINES-HEAD
+
+: CHUNK-OLDER ( ^u8 -- ^u8 ) 0 ptr-field @ ;
+: CHUNK-SIZE ( ^u8 -- n ) CELL + cell-view @ ;
+: CHUNK-USED ( ^u8 -- n ) 2 cells + cell-view @ ;
+
+: RECORD$ ( n ^u8 -- str ) {: o:n c:^ :}
+   c o + CELL +  c o + cell-view @ ;
+
+: RECORD-HAS? ( n ^u8 ^u8 -- bool ) {: o:n p:^ c:^ :}
+   p c o + CELL + - {: d:n :}
+   d 0 >=  d c o + cell-view @ <= and ;
+
+\ The line of chunk c holding p, else a zero-length string.
+: CHUNK-LINE ( ^u8 ^u8 -- str ) {: p:^ c:^ :}
+   LINES-HEAD
+   BEGIN dup c CHUNK-USED < WHILE
+      dup p c RECORD-HAS? IF c RECORD$ EXIT THEN
+      c over + cell-view @ CELL + +
+   REPEAT
+   drop NULL-PTR 0 ;
+
+\ The kept line holding p, looked for from chunk c on; else a zero-length string.
+: CHAIN-LINE ( ^u8 ^u8 -- str ) {: p:^ c:^ :}
+   c NULL-PTR = IF NULL-PTR 0 EXIT THEN
+   p c CHUNK-LINE {: s:^ u:n :}
+   u 0 <> IF s u EXIT THEN
+   p c CHUNK-OLDER RECURSE ;
+
+public
+: KEPT-LINE ( ^u8 -- str )
+   LINES-NEWEST @ CHAIN-LINE ;
+private
 : HOLDS? ( str str -- bool ) {: b:^ bu:n t:^ tu:n :}
    t b - {: at:n :}
    at 0 >=  at tu + bu <= and ;
+\ The kept line holding the token t tu whole, else a zero-length string.
+: KEPT-HOLDING ( str -- str ) {: t:^ tu:n :}
+   t KEPT-LINE {: l:^ lu:n :}
+   lu 0 >  l lu t tu HOLDS?  and IF l lu EXIT THEN
+   NULL-PTR 0 ;
 public
 \ Whether the engine reads file text: an `evaluate` of a slice of the open file
 \ does, of any other string does not.
@@ -771,23 +814,24 @@ SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER
 public
 \ Whether one source a rejection places from holds the token p n whole while
 \ the rejection is written: the armed source, the given closer's bytes, an open
-\ file's bytes, the root stream's text or an evaluated text being run, each of
-\ which stays put while it is open or runs. A zero-length token is held at any
-\ offset from 0 to the buffer's length.
+\ file's bytes, the root stream's text, a kept REPL line or an evaluated text
+\ being run, each of which stays put while it is open or runs. A zero-length
+\ token is held at any offset from 0 to the buffer's length.
 : HELD? ( ^u8 n -- bool ) {: p:^ n:n :}
    p n ARMED? IF 0 0= EXIT THEN
    CLOSER$ p n HOLDS? IF 0 0= EXIT THEN
    p n HOLDER NULL-PTR = 0= IF 0 0= EXIT THEN
    ROOT-TEXT$ p n HOLDS? IF 0 0= EXIT THEN
+   p n KEPT-HOLDING nip 0 > IF 0 0= EXIT THEN
    INVOKER {: inv:^ :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p n inv IN-EVALUATED? nip ;
 private
 \ Places the token t tu in the armed source holding its first byte, else an
 \ open file's bytes, else an evaluated text, which places it where the
-\ evaluation was run, else the buffer read, holding the whole token, as itself
-\ or as the bytes a body's text copied it from; answers whether one did. A
-\ token of a run a definer built is placed by none of them.
+\ evaluation was run, else the buffer read, else a kept REPL line, holding the
+\ whole token, as itself or as the bytes a body's text copied it from; answers
+\ whether one did. A token of a run a definer built is placed by none of them.
 : PLACE-IN ( str -- bool ) {: t:^ tu:n :}
    t >SOURCE IF t tu SOURCE-PLACE 0 0= EXIT THEN drop
    t BUILDER nip 0 > IF 0 0= 0= EXIT THEN
@@ -801,6 +845,8 @@ private
       THEN
    THEN
    INPUT$ s tu HOLDS? IF INPUT$ s tu BUFFER-PLACE NO-FILE$ PLACE-FILE!  0 0= EXIT THEN
+   s tu KEPT-HOLDING {: l:^ lu:n :}
+   lu 0 > IF l lu s tu BUFFER-PLACE NO-FILE$ PLACE-FILE!  0 0= EXIT THEN
    0 0= 0= ;
 public
 \ Whether a record at the byte p underlines that byte in its source, never the
@@ -811,6 +857,7 @@ public
    p 1 BODY>INPUT {: s:^ :}
    s 1 HOLDER NULL-PTR = 0= IF 0 0= EXIT THEN
    INPUT$ s 1 HOLDS? IF 0 0= EXIT THEN
+   p 1 KEPT-HOLDING nip 0 > IF 0 0= EXIT THEN
    INVOKER {: inv:^ :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p 1 inv IN-EVALUATED? nip ;
@@ -1174,6 +1221,48 @@ public
 \ a u names, if anything.
 : MAP-PASS ( n str -- )
    s" " MAP-PASS-FILE ;
+
+private
+65536 constant LINES-CHUNK
+
+: CHUNK-USED! ( n ^u8 -- ) 2 cells + cell-view ! ;
+
+\ A chunk after older, with room for a line of u bytes.
+: CHUNK-NEW ( ^u8 n -- ^u8 ) {: older:^ u:n :}
+   LINES-HEAD CELL + u + LINES-CHUNK max {: size:n :}
+   size map-anon 0 <> IF drop size s" a REPL line" MAP-PASS THEN {: c:^ :}
+   older c 0 ptr-field !
+   size c CELL + cell-view !
+   LINES-HEAD c CHUNK-USED!
+   c LINES-NEWEST !
+   c ;
+
+\ The newest chunk if a line of u bytes fits at its free end, else a new one.
+: CHUNK-ROOM ( n -- ^u8 ) {: u:n :}
+   LINES-NEWEST @ {: c:^ :}
+   c NULL-PTR = IF c u CHUNK-NEW EXIT THEN
+   c CHUNK-USED CELL + u + c CHUNK-SIZE > IF c u CHUNK-NEW EXIT THEN
+   c ;
+
+public
+\ The kept copy of line a u.
+: KEEP-LINE ( str -- str ) {: a:^ u:n :}
+   u CHUNK-ROOM {: c:^ :}
+   c CHUNK-USED {: o:n :}
+   u c o + cell-view !
+   a c o + CELL + u ARENA-COPY
+   o CELL + u + c CHUNK-USED!
+   c o + CELL + u ;
+
+\ Unmaps every chunk but the first and empties the first.
+: DROP-LINES ( -- )
+   LINES-NEWEST @ {: c:^ :}
+   c NULL-PTR = IF EXIT THEN
+   c CHUNK-OLDER {: o:^ :}
+   o NULL-PTR = IF LINES-HEAD c CHUNK-USED! EXIT THEN
+   o LINES-NEWEST !
+   c c CHUNK-SIZE ARENA-UNMAP
+   RECURSE ;
 
 private
 : DUPLICATE-OPEN ( str str -- ) {: a:^ u:n t:^ tu:n :}
