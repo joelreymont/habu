@@ -11,3 +11,5 @@ Problem: ': T ( -- n ) data-base $100000000000 + @ ;' passes the checker: T read
 Acceptance case (2026-11-12): a private `CAST: ( n -- ptr [ -- n ] )` over a neighbour cell's address minus 5 cells writes the cell of `defer D ( -- Q:tok )`, and D then yields a token the package never minted; refused once no checked program writes outside the object its base names.
 
 Acceptance case: `TASK:MAIN-BASE` (src/lib/task.f:1800) answers the main DATA region's base as a raw `^n`, so `TASK:MAIN-BASE $2000 + @` reads an engine cell once programs lose `data-base` (dot habu-reject-a-cell-3499c957); refused once no checked program reads outside the object its base names.
+
+Acceptance case: public words answer the DATA base as a number or a pointer, so a program steps from it to any engine cell: `NULL-PTR DATA-VA VA>N +`, `TASK:SELF-CONTEXT` (src/lib/task.f:1803, the base as n), `SB-BUF` (src/lib/string.f:39) and on Wasm `WKWORDS:DATA-START` (src/arch/wasm/kernel-words.f:35); refused once no checked program reads outside the object its base names.
