@@ -760,10 +760,9 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + FACTS-NEW ! ;
 
 
-\ A throw from the parse refuses the text as SGBAD does.
+\ The parse refuses a text by SGBAD or SIG-UNRES, never by a throw.
 : FACTS-ANSWER ( -- bool )
-   [: FACTS-BUILD ;] catch {: rc:n :}
-   rc 0 <> IF RES-FALSE EXIT THEN
+   FACTS-BUILD
    FACTS-NEW @ 0= IF RES-FALSE EXIT THEN
    FACTS-REC @ E-PTR ER.CONTENT @  FACTS-NEW @ 1 - E-PTR ER.CONTENT @ E-CONTENT-SAME? ;
 

@@ -1,17 +1,11 @@
 split-str
-\ arena-pages.f - growable stores on fresh anonymous pages: allocation, copy,
-\ zeroing, growth and release.
+\ arena-pages.f - growable stores on fresh anonymous pages: copy, zeroing and
+\ release.
 
 \ A cell no binding has reached.
 -1 constant UNBOUND
 
 \ --- growable checker arenas --------------------------------------------
-\ `map-anon` answers a pointer whose element type the caller picks.
-: ARENA-ALLOC ( n -- ^a )
-   map-anon 0 <> IF drop s" checker: arena mmap failed" EXIT-STATUS:SYSTEM die THEN ;
-
-: ARENA-ALLOC-BYTES ( n -- ^u8 ) ARENA-ALLOC ;
-
 \ An address's DATA offset, measured from the null so neither pointer is viewed.
 : DATA-OFF ( ^a -- n ) NULL-PTR - data-base NULL-PTR - - ;
 
@@ -40,7 +34,7 @@ split-str
 \ A caller holding a byte count passes it rounded up to cells. The rounded read
 \ stays mapped because every source is a page-granular map-anon mapping or lies
 \ inside DATA; the rounded write stays inside the destination because that is a
-\ fresh ARENA-ALLOC (whole pages), CHECKER-REG:GROW's whole cells at a build's
+\ fresh map-anon mapping (whole pages), CHECKER-REG:GROW's whole cells at a build's
 \ `here`, or an SR-TAKE, which starts the next take on a cell boundary past it.
 : ARENA-CELLS-COPY ( ^a ^a n -- ) {: src:^ dst:^ n:n :}
    n 0 ?do src i cells + @ dst i cells + ! loop ;
@@ -74,19 +68,3 @@ split-str
 : ARENA-ABANDON ( ^a n -- ) {: base:^ bytes:n :}
    base BYTE-VIEW bytes REG-DATA-SPAN? IF base BYTE-VIEW bytes ARENA-ZERO EXIT THEN
    base bytes ARENA-UNMAP ;
-
-\ Callers reset their counters per definition, so no tail init is needed.
-: ARENA-BYTES-GROW ( ^a n n -- ^a ) {: base:^ oldbytes:n newbytes:n :}
-   newbytes ARENA-ALLOC {: nb:^ :}
-   base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
-   base oldbytes ARENA-ABANDON
-   nb ;
-
-\ Fits need bytes in the mapping pv holds; capv holds its byte count, 0 before
-\ the first mapping. A grow moves the bytes, so an address into them goes stale.
-: ARENA-ROOM ( ^^a ^n n n -- ) {: pv:^ capv:^ first:n need:n :}
-   capv @ 0= IF first ARENA-ALLOC pv !  first capv ! THEN
-   capv @ BEGIN dup need < WHILE
-      dup -1 1 rshift 2 / > IF drop need ELSE 2 * THEN
-   REPEAT {: nc:n :}
-   nc capv @ > IF pv @ capv @ nc ARENA-BYTES-GROW pv !  nc capv ! THEN ;

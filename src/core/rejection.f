@@ -174,7 +174,10 @@ private
 \ Moves the room of c bytes at p, whose first room is f, to nc fresh bytes that
 \ hold its c bytes. The first room is the block's: it is zeroed, not unmapped.
 : ROOM-GROW ( ^u8 ^u8 n n -- ^u8 ) {: p:^ f:^ c:n nc:n :}
-   nc ARENA-ALLOC-BYTES {: q:^ :}
+   \ The record writer cannot report a refusal of its own room.
+   nc map-anon 0 <> IF
+      drop s" rejection: a record room's mmap failed" EXIT-STATUS:SYSTEM die
+   THEN {: q:^ :}
    p q c ARENA-COPY
    p f = IF p c ARENA-ZERO ELSE p c ARENA-UNMAP THEN
    q ;
