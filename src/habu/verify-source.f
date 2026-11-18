@@ -105,16 +105,18 @@ split-str
 \ RUN-LOADER clears it however the load ends, so no other load reports it: not
 \ a file the load reads, nor the load after it.
 \
-\ A primitive row is read as its opener reads it: the name, and a package row's
-\ package before it, are read raw, so either may be spelled as a definer or
-\ parsing word (`EPRIM: create EPRIM;`). The body is read raw too: it holds only
-\ atoms, spelled `PE-...` or `;PE-...`, and `REF` clauses, `REF` and the token
-\ after it; any other body token makes the row malformed. prims.f's `EPRIM:` and
-\ `EPPRIM:` rows end at the first `EPRIM;` or `ECLOSE-PRIVATE` that is not a
-\ `REF` operand. A row is known by its opener's
-\ spelling: a binding cannot tell prims.f's opener from its own definition when
-\ the scan reads prims.f. No `parses-through:` row can bound an engine row:
-\ prims.f loads before that word is defined.
+\ A primitive row opens only in a file the engine provides, prims.f, which the
+\ LSP's definition index scans; in any other file `EPRIM:` and `EPPRIM:` are
+\ ordinary words. A row is read as its opener reads it: the name, and a package
+\ row's package before it, are read raw, so either may be spelled as a definer
+\ or parsing word (`EPRIM: create EPRIM;`). The body is read raw too: it holds
+\ only atoms, spelled `PE-...` or `;PE-...`, and `REF` clauses, `REF` and the
+\ token after it; any other body token makes the row malformed. prims.f's
+\ `EPRIM:` and `EPPRIM:` rows end at the first `EPRIM;` or `ECLOSE-PRIVATE`
+\ that is not a `REF` operand. A row is known by its opener's spelling: a
+\ binding cannot tell prims.f's opener from its own definition when the scan
+\ reads prims.f. No `parses-through:` row can bound an engine row: prims.f
+\ loads before that word is defined.
 \
 \ A top-level token no arm acts on is one the load runs; `'` ticks its operand.
 \ Under composition (the verifier's child, --all-errors and the check tool's
@@ -3460,6 +3462,10 @@ private
    ROW-HEADER
    RECORD-PRIM-ROW ;
 
+: ENGINE-FILE? ( -- bool )
+   COMPOSE-CUR-PATH-U @ 0= IF false EXIT THEN
+   COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ REQUIRE-REG:ENGINE-PROVIDES? ;
+
 : STRUCTURE-END? ( str -- bool )
    s" END-STRUCTURE" STR=CI ;
 
@@ -3787,8 +3793,8 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" create" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
-   a u s" EPRIM:" STR=CI IF RECORD-PRIM-ROW 0 0= EXIT THEN
-   a u s" EPPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
+   a u s" EPRIM:" STR=CI IF ENGINE-FILE? IF RECORD-PRIM-ROW 0 0= EXIT THEN THEN
+   a u s" EPPRIM:" STR=CI IF ENGINE-FILE? IF RECORD-PPRIM 0 0= EXIT THEN THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF
       [: CAST-DECLARATION ;] IDENTITY-OUTCOME 0 0= EXIT THEN

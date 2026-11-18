@@ -4,18 +4,30 @@ require src/core/exit-status.f
 require src/habu/xref.f
 
 package CORE-PREFIX
+
+: MISSING ( -- )
+   s" prefix boundary: first source record is missing" EXIT-STATUS:INTERNAL die ;
+
+\ hb's own CORE-PREFIX private wordlist: a build repoints BOOT:NAMESPACE-WL at
+\ the target's packages, so the probe goes through WL:NAMESPACE.
+: OWN-WL ( -- n )
+   s" CORE-PREFIX" WL:NAMESPACE CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
+   pkg NULL-PTR = if MISSING then
+   pkg XREF-PKG-PRIVATE ;
+
 public
 
 : FIRST-RECORD ( -- n )
-   \ Retained/replayed prefixes can contain another marker. The earliest global
-   \ row owns the original source boundary, as in the recovery rewind.
+   \ A replayed prefix can hold another marker; the earliest row in hb's own
+   \ CORE-PREFIX private wordlist is the original boundary.
+   OWN-WL {: wl:n :}
    ndict@ 0 ?do
       i XREF-REC {: rec:^ :}
-      rec XREF-WORDLIST 0= if
+      rec XREF-WORDLIST wl = if
          rec XREF-NAME$ s" IMK-NDICT0" CORE-STR=CI if i unloop exit then
       then
    loop
-   s" prefix boundary: first source record is missing" EXIT-STATUS:INTERNAL die ;
+   MISSING ;
 
 private
 

@@ -2378,31 +2378,6 @@ HB-TARGET-LINUX? 0= [if]
    1 s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 VERIFY-REJECTED-AT
    s" E-UNDEFINED" s" :1:12" 70 LOADED-AT ;
 
-\ A primitive row's record in check mode flag: E-MALFORMED-REGISTRY-ROW with
-\ message m mu, label l lu and the row rule's help ending in h hu.
-: ROW-RECORD ( str str str str -- )
-   {: flag:^ flagu:n m:^ mu:n l:^ lu:n h:^ hu:n :}
-   flag flagu CHECK
-   s" E-MALFORMED-REGISTRY-ROW" REJECTED-AS
-   0 s" message" m mu FIELD=
-   0 s" label" l lu FIELD=
-   SB-RESET
-   s" a row's name and package are neither an opener nor a closer, " SB-APPEND
-   s" its body holds only `PE-` or `;PE-` atoms and `REF` clauses, " SB-APPEND
-   s" and it ends at `EPRIM;` or `ECLOSE-PRIVATE`: " SB-APPEND  h hu SB-APPEND
-   0 s" help" SB$ FIELD= ;
-
-\ The row's record in each check mode, at the token tok toku on line, column
-\ and bytes bs..be of the fixture.
-: ROW-MODES ( str n n n n str str str -- )
-   {: tok:^ toku:n line:n col:n bs:n be:n m:^ mu:n l:^ lu:n h:^ hu:n :}
-   s" " m mu l lu h hu ROW-RECORD
-   0 tok toku line col bs be AT
-   s" --all-errors" m mu l lu h hu ROW-RECORD
-   0 tok toku line col bs be AT
-   s" --verify-only" m mu l lu h hu ROW-RECORD
-   0 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
-
 \ The load knows no `EPRIM:`, so it rejects the fixture at it: p pu is the
 \ record's place after the path, through its marked source line.
 : ROW-LOADED ( str -- ) {: p:^ pu:n :}
@@ -2414,29 +2389,17 @@ HB-TARGET-LINUX? 0= [if]
    SB-APPEND
    GT-ERR$ SB$ T$= ;
 
-\ Each check rejects a primitive-axiom row at the token that breaks it, or at
-\ the source's end inside it, and names the row's opener.
+\ The check rejects a program's well-formed row at its opener, as the load does.
 : TEST-PRIM-ROW ( -- )
-   s" a token that breaks a primitive row" T-LABEL
+   s" a primitive row in a program file, at its opener" T-LABEL
    SB-RESET
    s" \ a row" SB-APPEND LF+
-   s"   EPRIM: FOO PE-N" SB-APPEND LF+
-   s"    postpone EPRIM;" SB-APPEND LF+
-   s" bad-row.f" FIXTURE!
-   s" postpone" 3 4 29 37
-   s" found `postpone` in the primitive-axiom row opened at 2:3"
-   s" breaks the row"  s" close the row before this token or replace it"
-   ROW-MODES
-   S\" :2:3\n  |\n2 |   EPRIM: FOO PE-N\n  |   ^^^^^^ not found\n" ROW-LOADED
-   s" a primitive row the source ends inside" T-LABEL
-   SB-RESET
-   s" EPRIM: FOO PE-N" SB-APPEND LF+
-   s" open-row.f" FIXTURE!
-   s" " 2 1 16 16
-   s" found the end of the source in the primitive-axiom row opened at 1:1"
-   s" the source ends before the row closes"  s" close the row"
-   ROW-MODES
-   S\" :1:1\n  |\n1 | EPRIM: FOO PE-N\n  | ^^^^^^ not found\n" ROW-LOADED ;
+   s"   EPRIM: FOO PE-N EPRIM;" SB-APPEND LF+
+   s" program-row.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" EPRIM:" 2 3 10 16 FX-PATH$ CANON$ FX$ AT-IN
+   S\" :2:3\n  |\n2 |   EPRIM: FOO PE-N EPRIM;\n  |   ^^^^^^ not found\n" ROW-LOADED ;
 
 \ A declaration piped to hb with no file argument is rejected at its token in
 \ `<input>`, as the file's bytes place it, naming no word.

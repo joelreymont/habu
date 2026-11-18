@@ -5,7 +5,9 @@ split-str
 \ by CORE-PREFIX in the running engine: a captured ndict value would describe
 \ the build host, whose primitive/helper record count can differ from ours.
 \ This identifies the prefix; earlier DATA allocations can still be live.
+package CORE-PREFIX
 variable IMK-NDICT0
+;package
 
 \ >U8, >U16 and >U32 answer the low 8, 16 or 32 bits of an n; >I64 answers the
 \ n declared an i64. The raw casts are retired in src/core/int-convert-retire.f,
