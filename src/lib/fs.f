@@ -72,6 +72,7 @@ $2F constant SLASH
 13 constant EACCES
 17 constant EEXIST
 18 constant EXDEV
+20 constant ENOTDIR
 21 constant EISDIR
 22 constant EINVAL
 23 constant ENFILE
@@ -80,6 +81,8 @@ $2F constant SLASH
 34 constant ERANGE
 : ENAMETOOLONG ( -- n )
    HB-TARGET-MACOS? if 63 else 36 then ;
+: ELOOP ( -- n )
+   HB-TARGET-MACOS? if 62 else 40 then ;
 : ENOTEMPTY ( -- n )
    HB-TARGET-MACOS? if 66 else 39 then ;
 : ESTALE ( -- n )
@@ -87,8 +90,8 @@ $2F constant SLASH
 : ENODATA ( -- n )
    HB-TARGET-MACOS? if 96 else 61 then ;
 
-\ Read at once after an E-FS-* or E-FS-LIST-* throw from fs.f, fs-list.f or an
-\ fs-mutate.f word that says so, or an E-TASK-THREAD from task.f: the throw's host
+\ Read at once after an E-FS-* or E-FS-LIST-* throw from fs.f, fs-list.f, fs-anchored.f or
+\ an fs-mutate.f word that says so, or an E-TASK-THREAD from task.f: the throw's host
 \ errno, or 0 for a semantic refusal.
 : ERRNO ( -- n )
    data-base FS-ABI:ERRNO-OFF + @ ;

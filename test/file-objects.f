@@ -1524,6 +1524,30 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build three rewrites no object" LABEL  n 0 T=
    s" prog-sf" s\" 0\n" s" the program prints whether a.txt and l are one file" NEST-RUN ;
 
+\ The anchored sequence's f.f: K is the byte count of d.txt, which it reads through FS:READ-FILE-AT
+\ from its directory, opened by its real path (FS:OPEN-DIR follows no symlink) as it loads.
+: WRITE-ANCHORED ( -- )
+   L$ s" anchored" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" 1" WRITE-DATA
+   s\" require src/lib/fs-anchored.f\npackage FILE-OBJECTS-ANCHORED\n1 SPAN-BUFFER: B\n" SRC+
+   s\" : READ-D ( -- n ) s\" " SRC+
+   NEST-DIR NEST-DIR-U @ FS:>PATHZ NEST-PATH PATH-CAP realpath {: real:n :}
+   NEST-PATH real SRC+
+   s\" \" FS:OPEN-DIR {: d:fd :} d s\" d.txt\" B FS:READ-FILE-AT d FS:CLOSE-DIR ;\n" SRC+
+   s\" public READ-D constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-ANCHORED:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a file a load reads through an anchor, which no recording holds: AN2, with nothing changed,
+\ still compiles f.f.
+: ANCHORED-CASE ( CMD:command -- CMD:command )
+   WRITE-ANCHORED
+   s" AN" WHICH!  s" main.f" s" prog-an" NEST-BUILD 0= if exit then
+   s" prog-an" s\" 1\n" s" the program prints d.txt's byte count" NEST-RUN  L$ MARK
+   s" AN2" WHICH!  s" main.f" s" prog-an" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build two rewrites an object" LABEL  n 0 > TTRUE
+   s" prog-an" s\" 1\n" s" the program prints d.txt's byte count" NEST-RUN ;
+
 \ The spawn sequence's f.f: K is d.txt's first byte, which /bin/cat, run as f.f loads, reads by its
 \ absolute path and prints.
 : WRITE-SPAWN ( -- )
@@ -2190,7 +2214,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
-      SAMEFILE-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
+      SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE
       OPENED-CASE BUILT-CASE CAST-CASE CROSS-CASE TARGET-CASE ;]

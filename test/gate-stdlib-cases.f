@@ -1113,6 +1113,10 @@ SUITE fs-list
    src/lib/fs-cause-test.f
 ;SUITE
 
+SUITE fs-anchored
+   test/fs-anchored-consumer.f
+;SUITE
+
 \ Raw serial streams over a pty pair: the loop supplies every wait.
 SUITE serial
    src/lib/serial-test.f
