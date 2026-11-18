@@ -6,14 +6,9 @@ split-str
 \ definer's duplicate wall keeps every real wordlist at one live row per folded
 \ tail; `undefine` stamps every row it retires with one shared value that is no
 \ wordlist, so retiring a tail twice leaves two rows under it. Cases pin rows by
-\ ROW IDENTITY, the index the row was published at. The engine reads an empty
-\ hash slot as PROOF that a name is absent, which holds only while the table
-\ covers every record below NDICT, so raising the mark with ndict! rebuilds the
-\ table from scratch; only then does the claim count equal ndict. The ndict!
-\ block is last in the file and leaves the index rebuilt: the search-wl battery
-\ is answered before it and again after it, and the two captures must agree row
-\ for row. No case writes a wid down: every wid is read out of the row that
-\ owns it.
+\ ROW IDENTITY, the index the row was published at. A hide lowers NDICT
+\ under a live index, and a row above it must read as absent. No case writes a
+\ wid down: every wid is read out of the row that owns it.
 
 require src/core/exit-status.f
 require src/lib/type/deftype.f
@@ -2050,31 +2045,10 @@ CAST: N>REC ( n -- ^n )
 1 constant PRI-WID-SLOT     \ a package row's PRIVATE wid
 5 constant WL-SLOT
 
-2 constant OWNER-PRIVATE-WID     \ the reserved wordlist search-wl reports empty
-$7FFFFF constant NO-SUCH-WID     \ never allocated
-
-24 constant ANS-CAP
-create ANS-A ANS-CAP cells allot
-create ANS-B ANS-CAP cells allot
-variable ANS-I
-variable ANS-SECOND
-
 variable NS-IDX
 variable RET1-IDX
 variable RET2-IDX
 variable NDX-WID
-
-: ANS+ ( n -- ) {: v:n :}
-   ANS-I @ ANS-CAP >= if s" engine-suite: search-wl battery overflow" EXIT-STATUS:FAILURE die then
-   ANS-SECOND @ 0= if
-      v ANS-I @ cells ANS-A + !
-   else
-      v ANS-I @ cells ANS-B + !
-   then
-   ANS-I @ 1+ ANS-I ! ;
-
-: PROBE ( ^u8 n n -- ) {: a:^ u:n w:n :}
-   a u w search-wl ANS+ ;
 
 public
 
@@ -2088,8 +2062,8 @@ public
 : MARK-RET1 ( -- )  ndict@ RET1-IDX ! ;
 : MARK-RET2 ( -- )  ndict@ RET2-IDX ! ;
 
-\ The wordlist the ndict! block below defines its row into, so a case there can
-\ ask this word about a row the mark has taken out of the dictionary.
+\ The wordlist the hide block below defines its row into, so a case there can
+\ ask this word about a row the hide has taken out of the dictionary.
 : SET-NDX-WID ( n -- )  NDX-WID ! ;
 : NDX-WID@ ( -- n )     NDX-WID @ ;
 
@@ -2100,40 +2074,6 @@ public
 : RET-WID ( -- n )      RET1-IDX @ ROW-WID ;
 : RET1-XT ( -- n )      RET1-IDX @ ROW-XT ;
 : RET2-XT ( -- n )      RET2-IDX @ ROW-XT ;
-
-17 constant BATTERY-N
-
-: CAPTURE ( -- )
-   0 ANS-I !
-   s" T-LABEL-CAP"          0 PROBE
-   s" t-label-cap"          0 PROBE
-   s" T-Label-Cap"          0 PROBE
-   s" ES-SWL-NO-SUCH-NAME"  0 PROBE
-   s" T-LABEL-CA"           0 PROBE
-   s" T-LABEL-CAPX"         0 PROBE
-   s" ES-SWL-NS"            NS-WID PROBE
-   s" ES-SWL-NS"            0 PROBE
-   s" ES-SWL-PUB"           PKG-PUB-WID PROBE
-   s" ES-SWL-PUB"           PKG-PRI-WID PROBE
-   s" ES-SWL-PUB"           0 PROBE
-   s" ES-SWL-PRIV"          PKG-PRI-WID PROBE
-   s" ES-SWL-PRIV"          PKG-PUB-WID PROBE
-   s" ES-SWL-U"             0 PROBE
-   s" ES-SWL-U"             RET-WID PROBE
-   s" (NUM)"                OWNER-PRIVATE-WID PROBE
-   s" ES-SWL-PUB"           NO-SUCH-WID PROBE ;
-
-: CAPTURE-SECOND ( -- )
-   -1 ANS-SECOND !
-   CAPTURE ;
-
-: N ( -- n )  ANS-I @ ;
-
-: DIFF ( -- n )
-   0 begin dup ANS-I @ < while
-      dup cells ANS-A + @  over cells ANS-B + @ <> if exit then
-      1+
-   repeat drop -1 ;
 
 ;package
 
@@ -2184,67 +2124,35 @@ s" ES-SWL-U" ES-SWL:RET-WID search-wl  ES-SWL:RET2-XT T=
 s" search-wl: and the tail is gone from the wordlist" T-LABEL
 s" ES-SWL-U" 0 search-wl 0 T=
 
-s" search-wl: the battery ran with the index live" T-LABEL
-ES-SWL:CAPTURE  ES-SWL:N ES-SWL:BATTERY-N T=
-
 package ES-NDX
 
 : HIDXP@ ( -- n )  data-base HIDXP-CELL + @ ;
-: ND! ( n -- )     ndict! ;
-
-variable LO
-variable HI
 
 public
 
-: MARK-LOW ( -- )   ndict@ LO ! ;
-: MARK-HIGH ( -- )  ndict@ HI ! ;
-: LOWER ( -- )      LO @ ND! ;
-: RAISE ( -- )      HI @ ND! ;
+: LOWER ( -- )      s" ES-NDX:FRESH" XREF:HIDE-DEFS-FROM ;
 : INDEXED? ( -- bool )  HIDXP@ 0 <> ;
 
 ;package
 
-s" ndict!: the lookup index is live to begin with" T-LABEL
+s" a hide: the lookup index is live to begin with" T-LABEL
 ES-NDX:INDEXED? TTRUE
 
 package ES-NDX
-MARK-LOW
 public
 get-current ES-SWL:SET-NDX-WID
 : FRESH ( -- n ) 7 ;
 ;package
-ES-NDX:MARK-HIGH
 
-s" ndict!: the fresh record resolves through the index" T-LABEL
+s" a hide: the fresh record resolves through the index" T-LABEL
 ES-NDX:FRESH 7 T=
 ES-NDX:LOWER
 \ What makes the row absent is that the index is out of range, which a lookup
 \ has to notice: the row's own bytes would still match on wid and name.
-s" ndict!: a lowered mark keeps the index live" T-LABEL
+s" a hide: a lowered mark keeps the index live" T-LABEL
 ES-NDX:INDEXED? TTRUE
-s" ndict!: a slot above a lowered mark reads as absent" T-LABEL
+s" a hide: a slot above a lowered mark reads as absent" T-LABEL
 s" FRESH" ES-SWL:NDX-WID@ search-wl 0 T=
-ES-NDX:RAISE
-s" ndict!: a raise rebuilds the index in place" T-LABEL
-ES-NDX:INDEXED? TTRUE
-s" ndict!: the rebuild claims exactly the live records" T-LABEL
-data-base HIDX:CLAIMS + @ ndict@ T=
-s" ndict!: the re-exposed record resolves through the rebuilt index" T-LABEL
-ES-NDX:FRESH 7 T=
-s" ndict!: the rebuilt index resolves the global tail" T-LABEL
-T-LABEL-CAP 256 T=
-s" ndict!: the rebuilt index resolves the qualified tail" T-LABEL
-ES-RESO:T-LABEL-CAP 3 T=
-s" ndict!: the rebuilt index still refuses a bare package public" T-LABEL
-s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" ES-RES-REFUSE:CAPTURED ES-RES-REFUSE:UNDEFINED T=
-s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  REJECTION:BUFFER$ s" engine-suite.f" 39 s" : ES-NDX-P1 ( -- n ) ES-RES-PUB ;" T-PLACED
-
-ES-SWL:CAPTURE-SECOND
-s" search-wl: the rebuilt index ran the same battery" T-LABEL
-ES-SWL:N ES-SWL:BATTERY-N T=
-s" search-wl: the rebuilt index answers the battery the original answered" T-LABEL
-ES-SWL:DIFF -1 T=
 
 \ With the odd allots between them, an engine that does not align cannot place
 \ both B and C on a cell boundary.

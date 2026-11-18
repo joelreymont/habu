@@ -41,18 +41,13 @@ prof-off
 s" PROF-LATE-TRIM" XREF:HIDE-DEFS-FROM
 prof-json
 
-\ A CP rewind after an NDICT lowering releases the donor's code; the word that
-\ reuses its address must not charge the donor's identity in the next report.
-variable REUSE-CP
-variable REUSE-ND
+\ FORGET-DEFS-FROM releases the donor's code; the word that reuses its address
+\ must not charge the donor's identity in the next report.
 variable REUSE-PC
-cp@ REUSE-CP !
-ndict@ REUSE-ND !
 : PROF-RECLAIM-DONOR ( -- ) 100000000 0 ?do i drop loop ;
 s" PROF-RECLAIM-DONOR" XREF-FIND XREF-START REUSE-PC !
 0 prof-on
-REUSE-ND @ ndict!
-REUSE-CP @ cp!
+s" PROF-RECLAIM-DONOR" XREF:FORGET-DEFS-FROM
 : PROF-RECLAIM-TARGET ( -- n ) 100000000 0 ?do i drop loop 42 ;
 : VERIFY-RECLAIM ( -- )
    s" PROF-RECLAIM-TARGET" XREF-FIND XREF-START REUSE-PC @ <> if

@@ -372,7 +372,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" ' TLL-IDLE TLL-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
    s" : TLL-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
    s" TLL-AFTER ." SB-APPEND TASK-LF
-   s" ndict@ ndict!" SB-APPEND TASK-LF
+   S\" s\" TLL-AFTER\" XREF:FORGET-DEFS-FROM" SB-APPEND TASK-LF
    SB$ ;
 
 \ A TASK MAY NOT COMPILE: a body that evaluates a colon definition renders, so
@@ -2289,12 +2289,12 @@ variable BIND-PAIR-Q-WON
    s" TWW-OUTER TASK:KILL" SB-APPEND TASK-LF
    s" : TWW-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
    s" TWW-AFTER ." SB-APPEND TASK-LF
-   s" cp@ cp!" SB-APPEND TASK-LF
+   S\" s\" TWW-AFTER\" XREF:FORGET-DEFS-FROM" SB-APPEND TASK-LF
    SB$ ;
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
    TASK-WORKER-ACTIVATES$
-   s" error[E-TASK-COMPILE]: `cp!` ran while a task is live"
+   s" error[E-TASK-COMPILE]: `ndict!` ran while a task is live"
    TASK-EXPECT-REFUSED-EXIT ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records

@@ -1364,55 +1364,6 @@ variable LABEL-U
    s" hb native xref words" GE-EVAL-RUN-STDIN
    s" xref-test: ok" s" hb native xref words output" GE-EXPECT-OUT-HAS ;
 
-: NDICT-BAD-COUNT ( str -- ) {: lit:^ litu:n :}
-   GE-SRC-RESET
-   lit litu GE-SRC+ s"  ndict!" GE-SRC-LINE
-   SB-RESET s" interpreted ndict! refuses " SB-APPEND lit litu SB-APPEND
-   70 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD
-   GE-SRC-RESET
-   s" : GD-NDICT-BAD ( -- ) " GE-SRC+
-   lit litu GE-SRC+ s"  ndict! ;" GE-SRC-LINE
-   s" GD-NDICT-BAD" GE-SRC-LINE
-   SB-RESET s" optimized ndict! refuses " SB-APPEND lit litu SB-APPEND
-   70 s" E-DICT-COUNT habu: dictionary count above DICT-CAP: " SB$ GE-EVAL-FORK-BAD ;
-
-: NDICT-LIVE-RESTORE ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" package GD-NDICT-LIVE" GE-SRC-LINE
-   s" variable LO variable HI" GE-SRC-LINE
-   s" : MARK-LOW ( -- ) ndict@ LO ! ;" GE-SRC-LINE
-   s" : MARK-HIGH ( -- ) ndict@ HI ! ;" GE-SRC-LINE
-   s" : LOWER ( -- ) LO @ ndict! ;" GE-SRC-LINE
-   s" : RAISE ( -- ) HI @ ndict! ;" GE-SRC-LINE
-   s" : IDENTITY ( -- bool ) ndict@ dup ndict! ndict@ = ;" GE-SRC-LINE
-   s" MARK-LOW" GE-SRC-LINE
-   s" : FRESH ( -- n ) 41 ;" GE-SRC-LINE
-   s" MARK-HIGH FRESH . IDENTITY bool>n . LOWER" GE-SRC-LINE
-   S\" s\" FRESH\" get-current search-wl 0= bool>n ." GE-SRC-LINE
-   s" RAISE FRESH . IDENTITY bool>n ." GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" public ndict! preserves live identity and rewind/restore lookup" GE-EVAL-RUN-STDIN
-   SB-RESET
-   s" 41" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
-   s" 41" GE-OUT-LINE s" -1" GE-OUT-LINE
-   SB$ s" restored dictionary lookup values" GE-EXPECT-OUT ;
-
-: NDICT-BOUNDS ( -- )
-   NDICT-LIVE-RESTORE
-   s" -1" NDICT-BAD-COUNT
-   s" -9223372036854775808" NDICT-BAD-COUNT
-   s" $20001" NDICT-BAD-COUNT
-   s" 140000" NDICT-BAD-COUNT
-   s" $2FFFF" NDICT-BAD-COUNT
-   s" $30000" NDICT-BAD-COUNT
-   s" 9223372036854775807" NDICT-BAD-COUNT
-   GE-SRC-RESET
-   s" 0 ndict!" GE-SRC-LINE
-   83
-   s" E-SEAL-VIOLATION habu: ndict! count below the sealed record count: 0x0000000000000000 lr 0x"
-   s" public ndict! still protects the sealed lower bound" GE-EVAL-FORK-BAD ;
-
 public
 
 : RUN ( -- )
@@ -1458,7 +1409,6 @@ public
    CHECK-POSITIVE-BATCH
    DATA-OVERFLOW
    NAMED-ROW-RUN
-   NDICT-BOUNDS
    XREF
    GT-CLEANUP
    s" PASS: native dictionary/checker tests" type cr ;

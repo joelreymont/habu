@@ -568,7 +568,8 @@ EPRIM: prof-pc>rec   PE-N PE-IN  PE-N PE-OUT EPRIM;   \ the armed index's record
 
 EPRIM: rbase          PE-N PE-OUT EPRIM;
 EPRIM: cp@            PE-N PE-OUT EPRIM;
-EPRIM: cp!            PE-N PE-IN EPRIM;
+EPPRIM: CHECKER-OVERLAY cp! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CODE-RECLAIM cp! PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: dbase@         PE-N PE-OUT EPRIM;
 EPRIM: check@         PE-N PE-OUT EPRIM;
 \ The compiler's prospective trusted-tick order and the owner whose installed
@@ -579,8 +580,15 @@ EFIXED-ABI!
 EPPRIM: CHECK set-preflight PE-A PE-IN ECLOSE-PRIVATE
 EFIXED-ABI!
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
-EPRIM: ndict!         PE-N PE-IN EPRIM;
-EPRIM: retire-from    PE-N PE-IN PE-F PE-OUT EPRIM;
+EPPRIM: CHECKER-OVERLAY ndict! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: GENERATED-DECL-DICTIONARY ndict! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: INTERPRETER ndict! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: XREF ndict! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: LINKER ndict! PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY retire-from PE-N PE-IN PE-F PE-OUT ECLOSE-PRIVATE
+EPPRIM: GENERATED-DECL-DICTIONARY retire-from PE-N PE-IN PE-F PE-OUT ECLOSE-PRIVATE
+EPPRIM: INTERPRETER retire-from PE-N PE-IN PE-F PE-OUT ECLOSE-PRIVATE
+EPPRIM: LINKER retire-from PE-N PE-IN PE-F PE-OUT ECLOSE-PRIVATE
 EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECK def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
@@ -759,7 +767,7 @@ EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM; REACH source
 EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM; REACH memory
 \ record-facts! ( n n -- ) offset, index: stores where a record's facts text
 \ lies.
-EPRIM: record-facts! PE-N PE-IN PE-N PE-IN EPRIM;
+EPPRIM: CHECK record-facts! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ sha256-blocks ( ^n ^u8 n -- n ) state cells, bytes, block count: how
 \ many blocks the CPU's SHA-256 instructions compressed.
 EPRIM: sha256-blocks PE-PTR-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM; REACH memory

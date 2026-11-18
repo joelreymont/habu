@@ -598,8 +598,9 @@ holds an address**.
   rejected where it is kept (`E-MISMATCH`). A body that allots (`allot`, `,`,
   `c,`, `align`) is kept and exits 79 (`$4F`) on the task's thread
   (``error[E-TASK-COMPILE]: `allot` ran on a task's thread``, note `in`). The
-  main thread compiles while tasks run; `cp!` and `ndict!` exit 79 on it while
-  any task is live (``error[E-TASK-COMPILE]: `cp!` ran while a task is live``).
+  main thread compiles while tasks run; `XREF:FORGET-DEFS-FROM` and
+  `XREF:HIDE-DEFS-FROM` exit 79 on it while any task is live
+  (``error[E-TASK-COMPILE]: `ndict!` ran while a task is live``).
 - A literal `0 throw` is rejected (`E-THROW-ZERO`): 0 means no error; so is a
   literal 0 at an input a word with a signature throws with only stack words,
   locals, integer and string literals and calls before it. A computed 0

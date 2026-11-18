@@ -1,5 +1,5 @@
 split-str
-\ protection-span.f - code-area bounds and long-body regressions.
+\ protection-span.f - task user-area bounds and long-body regressions.
 
 require src/lib/error.f
 require src/lib/test.f
@@ -20,21 +20,8 @@ create ERR CAP allot
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
 
-: REJECTS ( ^u8 n -- )
-   83 EXPECT ;
-
 : ACCEPTS ( ^u8 n -- )
    0 EXPECT ;
-
-\ At the code ceiling `create` and `:` refuse before they write (src/habu/interpreter.f
-\ DEF-CODE-ROOM); a constant's body write reaches the guard.
-: TEST-CODE ( -- )
-   s" dbase@ DICT-SIZE + cp!" ACCEPTS
-   s" dbase@ REGION + $4000 - 4 - cp!" ACCEPTS
-   s" dbase@ REGION + 4 - cp!" ACCEPTS
-   s" dbase@ REGION + 4 - cp! create PST-END" 77 EXPECT
-   s" dbase@ REGION + 4 - cp! 1 constant PST-END" REJECTS
-   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" 77 EXPECT ;
 
 : TEST-TASK-USER ( -- )
    s" require src/lib/task.f -1 TASK:+USERS PST-WRAP u8" 67 EXPECT ;
@@ -66,7 +53,6 @@ public
 
 : RUN ( -- )
    T-RESET
-   TEST-CODE
    TEST-TASK-USER
    TEST-BODY-TEXT
    T-REPORT

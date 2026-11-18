@@ -1,8 +1,7 @@
 split-str
 \ seal.f - seal regressions: post-seal FORGET and HIDE of engine words are
-\ rejected (E-SEAL-VIOLATION, status 70), post-seal cp! and record writes stop
-\ with status 83, and a sealed package rejects a definition
-\ into it, under --load and in an evaluated source.
+\ rejected (E-SEAL-VIOLATION, status 70), and a sealed package rejects a
+\ definition into it, under --load and in an evaluated source.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
@@ -49,14 +48,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-LF ( -- )
    10 SB-APPEND-C ;
 
-\ Legit FORGET marks live in the code region (>= DATA-START, in the DBASE region),
-\ so the cp!/ndict! guards must leave a real save-mark/roll-back/redefine intact.
+\ XREF:FORGET-DEFS-FROM removes a user word, every later one and their
+\ code, and a word defined after it still calls an earlier one.
 : SLV-FORGET-FORGE$ ( -- str )
    SB-RESET
    s" : SLF-A ( -- n ) 1 ;" SB-APPEND SLV-LF
-   s" cp@ ndict@" SB-APPEND SLV-LF                 \ save code/dict marks
-   s" : SLF-B ( -- n ) 2 ;" SB-APPEND SLV-LF       \ define past the marks
-   s" ndict! cp!" SB-APPEND SLV-LF                 \ FORGET: roll both back
+   s" : SLF-B ( -- n ) 2 ;" SB-APPEND SLV-LF
+   S\" s\" SLF-B\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
    s" : SLF-C ( -- n ) SLF-A 3 + ;" SB-APPEND SLV-LF
    s" SLF-C . cr" SB-APPEND SLV-LF
    SB$ ;
@@ -90,34 +88,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" SCRIPT-ARGV$\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-\ Public ndict! may forget user definitions, but it cannot retire the sealed
-\ engine. The attack continues from already compiled code and would evaluate a
-\ reserved-package publication attempt if the dictionary sink failed open.
-: SLV-NDICT-CONTINUATION-FORGE$ ( -- str )
-   SB-RESET
-   s" TRUSTED: SLF-NDICT-ATTACK ( -- )" SB-APPEND SLV-LF
-   s"    0 ndict!" SB-APPEND SLV-LF
-   S\"    s\" package TFAM public : SLF-PWN ( -- ) ; ;package\" evaluate ;" SB-APPEND SLV-LF
-   s" SLF-NDICT-ATTACK" SB-APPEND SLV-LF
-   SB$ ;
-
-\ record-facts! refuses a record below the floor: record 0 is a kernel word's.
-: SLV-RECFACTS-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-RF ( -- ) 0 0 record-facts! ; SLF-RF" SB-APPEND SLV-LF
-   SB$ ;
-
-\ A user mark defined after the seal is above the watermark, so FORGET/HIDE of
-\ it stays a working round-trip (retire the user tail, redefine).
-: SLV-FORGET-USER-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
-   s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
-   S\" s\" SLF-UMARK\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
-   s" : SLF-UB ( -- n ) 2 ;" SB-APPEND SLV-LF
-   s" SLF-UB . cr" SB-APPEND SLV-LF
-   SB$ ;
-
+\ A user mark defined after the seal is above the watermark, so HIDE of it works.
 : SLV-HIDE-USER-FORGE$ ( -- str )
    SB-RESET
    s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
@@ -151,9 +122,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-EXITED @ TTRUE
    SLV-RC @ rc T= ;
 
-: SLV-ASSERT-SEAL ( -- )
-   83 SLV-ASSERT-RC ;
-
+: SLV-OUT$ ( -- str )  SLV-OUT SLV-OUT-U @ ;
 : SLV-ERR$ ( -- str )  SLV-ERR SLV-ERR-U @ ;
 
 \ The child's record opens with the line L and holds the help line H.
@@ -267,17 +236,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" HIDE-DEFS-FROM of the script-argv tail is rejected" T-LABEL
    SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT
    S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `XREF:HIDE-DEFS-FROM` cannot remove\n"
-   SLV-HIDE-HELP$ SLV-ASSERT-REJECT
-   s" public ndict! continuation cannot cross the engine watermark" T-LABEL
-   SLV-NDICT-CONTINUATION-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
-   s" record-facts! of a sealed record traps" T-LABEL
-   SLV-RECFACTS-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
+   SLV-HIDE-HELP$ SLV-ASSERT-REJECT ;
 
 : SLV-POSITIVES ( -- )
-   s" legit cp!/ndict! FORGET round-trip still works" T-LABEL
+   s" a FORGET round trip still works" T-LABEL
    SLV-FORGET-FORGE$ SLV-SUBJECT SLV-ASSERT-OK
-   s" FORGET-DEFS-FROM of a post-seal user mark still works" T-LABEL
-   SLV-FORGET-USER-FORGE$ SLV-SUBJECT SLV-ASSERT-OK
+   SLV-OUT$ s" 4" STARTS-WITH? TTRUE
    s" HIDE-DEFS-FROM of a post-seal user mark still works" T-LABEL
    SLV-HIDE-USER-FORGE$ SLV-SUBJECT SLV-ASSERT-OK ;
 
