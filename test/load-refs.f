@@ -8,6 +8,7 @@ split-str
 
 require src/lib/string.f
 require src/lib/source-lex.f
+require src/habu/escape.f
 
 package LOAD-REFS
 
@@ -41,45 +42,18 @@ TYPED-VARIABLE VISIT [ ^u8 n n n -- ]
    a u s" require" STR=CI
    a u s" required" STR=CI or if REQUIRES else INCLUDES then ;
 
-\ ---- escaped literals --------------------------------------------------------
-\ LITERAL runs an escaped literal's text, opener through closing quote, under
-\ evaluate-closed, so it holds what the engine's reader decodes. A bad escape
-\ throws; zero or one cell left is PATH!'s underdepth, 70; more is a residue
-\ record and 70. The decoded bytes stay in data space, and a task may not
-\ evaluate (src/habu/interpreter.f), so EACH and OPAQUE-EACH run on the main
-\ thread.
-
-PTR-VARIABLE TEXT-A
-variable TEXT-U
-PTR-VARIABLE PATH-A
-variable PATH-U
-
-public
-
-\ TEXT$ and PATH! are the hooks of LITERAL's closed text, which runs in the
-\ caller's scope and so reaches them only qualified.
-: TEXT$ ( -- ^u8 n )
-   TEXT-A @ TEXT-U @ ;
-
-: PATH! ( ^u8 n -- )
-   PATH-U !
-   PATH-A ! ;
-
-private
-
 \ ---- references ---------------------------------------------------------------
 
-\ A plain literal (a two-byte opener) holds its payload; the token is the
-\ opener, one delimiter, the payload and its closing quote.
-: LITERAL ( n -- ^u8 n bool ) {: idx:n :}
+DYNAMIC-BUFFER DEC u8
+
+\ A plain literal (two-byte opener) is its payload; an escaped one, whole since
+\ the lexer stops at a bad escape, decodes into DEC until the next LITERAL.
+: LITERAL ( n -- str ) {: idx:n :}
    idx LINT-LEX:CONTENT {: a:^ u:n :}
-   idx LINT-LEX:TOKEN {: o:^ ou:n :}
-   ou 2 = if a u true exit then
-   o TEXT-A !
-   ou u + 2 + TEXT-U !
-   [: s" LOAD-REFS:TEXT$ evaluate LOAD-REFS:PATH!" evaluate-closed ;] catch
-   0= if PATH-A @ PATH-U @ true exit then
-   a u false ;
+   idx LINT-LEX:TOKEN nip 2 = if a u exit then
+   u 1+ DEC-RESERVE
+   0 DEC {: dst:^ :}
+   a u dst ESCAPE:DECODE drop  dst swap ;
 
 \ Comments are lexer tokens, but they leave the data stack untouched.
 : NEXT-CODE ( n -- n )
@@ -138,13 +112,13 @@ private
    next LINT-LEX:COUNT >= if false exit then
    next LINT-LEX:TOKEN STRING-IMPORT? ;
 
-\ Only a literal a load consumes is evaluated.
+\ Only a literal a load consumes is decoded.
 : SCAN-STRING ( n -- )
    {: idx:n :}
    idx STRING? 0= if exit then
    idx IMPORTED? {: import:bool :}
    import idx LITERAL-LOAD? or 0= if exit then
-   idx LITERAL 0= if 2drop exit then
+   idx LITERAL
    idx LINT-LEX:LINE@
    import if idx NEXT-CODE LINT-LEX:TOKEN IMPORT-KIND else LAUNCHES then
    VISIT @ execute ;
@@ -154,7 +128,7 @@ private
    idx SCAN-WORD
    idx SCAN-STRING ;
 
-\ `required` or `included` with no literal before it that the engine decodes.
+\ `required` or `included` with no literal before it.
 \ The word is matched by its spelling alone, so one that loads nothing, such as
 \ a local named `required`, is opaque too: the finding fails closed and lets no
 \ load pass unread.
@@ -163,8 +137,7 @@ private
    idx LINT-LEX:TOKEN STRING-IMPORT? 0= if false exit then
    idx PREV-CODE {: prev:n :}
    prev 0 < if true exit then
-   prev STRING? 0= if true exit then
-   prev LITERAL nip nip 0= ;
+   prev STRING? 0= ;
 
 public
 
