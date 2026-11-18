@@ -14,7 +14,9 @@ split-str
 \ resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
-\ refusals. The info line a tools/call and a resources/read log, without arguments.
+\ refusals. The info line a tools/call and a resources/read log, without arguments,
+\ and, after MCP:LOG, each message's line after its answer with arguments and
+\ outcome.
 \ MCP:ANSWER on a request worker into a BUF holding old text: a tools/call
 \ written as HANDLE sends it, a notification leaving it empty, a message that is
 \ not JSON-RPC or not JSON, an unknown tool, and ANSWER off a worker.
@@ -43,6 +45,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/test/stderr.f
 require src/lib/memory.f
+require src/lib/arena.f
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -1745,9 +1748,22 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    h idx HELD-CALLS !
    idx [: WAKE ;] HTTP:SUBMIT ;
 
-\ "now" answers at once, "fail" throws after HOLD, anything else HOLDs.
+\ A tool error whose text is in an arena released before the body returns.
+: FREED-ERROR ( -- )
+   s" freed text" {: t:^ tu:n :}
+   ARENA:NEW {: a:^ :}
+   a tu ARENA:ALLOC {: p:^ pu:n :}
+   t p tu BYTE-COPY
+   p pu MCP:RESULT-ERROR
+   a ARENA:RELEASE ;
+
+\ "freed" gives FREED-ERROR, a "late" key (quoted: "later" holds late)
+\ throws after its result, "now" answers at once, "fail" throws after HOLD,
+\ anything else HOLDs.
 : WAIT-BODY ( str -- )
    {: args:^ au:n :}
+   args au s" freed" CONTAINS? if FREED-ERROR exit then
+   args au S\" \"late\"" CONTAINS? if WAIT-RESULT MCP:E-STATE throw then
    args au s" now" CONTAINS? if WAIT-RESULT exit then
    args au s" fail" CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
    MCP:HOLD HELD-WAIT ;
@@ -1807,6 +1823,136 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    LEGACY S\" {\"fail\":1}" WAIT-LEGACY POST -2 T= ;
 
 : HELD-CASES ( -- ) HELD-LEGACY HELD-MODERN HELD-ANSWER HELD-FAULT ;
+
+
+: REQ-HEAD ( -- str ) s" Z info mcp: req " ;
+
+\ Where the line holding the offset starts.
+: LINE-START ( ^u8 n -- n )
+   {: a:^ at:n :}
+   at begin dup 0 > while
+      dup 1- a + c@ LF = if exit then
+      1-
+   repeat ;
+
+\ Whether the text is digits and `-` after its `r`.
+: REQ-ID? ( str -- bool )
+   {: a:^ u:n :}
+   u 2 < if false exit then
+   a c@ [char] r <> if false exit then
+   u 1 ?do
+      a i + c@ dup [char] 0 >= over [char] 9 <= and swap [char] - = or
+      0= if false unloop exit then
+   loop true ;
+
+\ The id of the capture's `<stamp> info mcp: req <id><rest>` line, rest from
+\ the space after the id through LF; empty when there is none.
+: REQ-ID$ ( str -- str )
+   {: rest:^ ru:n :}
+   LOG$ {: a:^ u:n :}
+   a u rest ru FIND-SUB MATCH option
+      some OF {: at:idx :} at IDX>N ENDOF
+      none OF -1 ENDOF
+   ;MATCH {: at:n :}
+   at 0< if s" no line holds the rest" T-FAIL-AS s" " exit then
+   a at LINE-START DATE:TIME-LEN 1- + {: head:n :}
+   a head + at head - REQ-HEAD STARTS-WITH? TTRUE
+   head REQ-HEAD nip + {: from:n :}
+   a from + at from - 0 max
+   2dup REQ-ID? TTRUE ;
+
+: REQ-LOGGED ( str -- ) REQ-ID$ 2drop ;
+
+: LOGGED-ECHO ( -- )
+   s" MCP:LOG logs a tools/call with its arguments and ok" T-LABEL
+   [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"a\":1}}}" POST 200 T= ;]
+   CAPTURED
+   S\"  tools/call echo {\"a\":1} -> ok\n" REQ-LOGGED
+   LOG$ S\" Z info mcp: tools/call echo\n" CONTAINS? TFALSE ;
+
+: LOGGED-STRICT ( -- )
+   s" MCP:LOG logs a schema refusal as a tool error" T-LABEL
+   [: LEGACY 81 FILTERS STRICT-CALL POST 200 T= ;] CAPTURED
+   W-RESET S\"  tools/call strict {\"filters\":\"x\"} -> tool error: " W+
+   FILTERS-TEXT W+ S\" \n" W+
+   W$ REQ-LOGGED ;
+
+: LOGGED-UNKNOWN ( -- )
+   s" MCP:LOG logs an unknown tool's JSON-RPC error" T-LABEL
+   [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST 400 T= ;]
+   CAPTURED
+   W-RESET s"  tools/call none -> error -32602: Unknown tool: none; " W+
+   S\" if the client's list of test-server's tools names it, that list is out of date\n" W+
+   W$ REQ-LOGGED ;
+
+: LOGGED-NOTIFIED ( -- )
+   s" MCP:LOG logs a legacy notification as notified" T-LABEL
+   [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST 202 T= ;]
+   CAPTURED
+   S\"  notifications/initialized -> notified\n" REQ-LOGGED ;
+
+: LOGGED-HELD ( -- )
+   [: HELD-LEGACY ;] CAPTURED
+   s" MCP:LOG logs a held call as held and FINISH's line under its id" T-LABEL
+   S\"  tools/call wait {\"later\":1} -> held\n" REQ-ID$
+   W-RESET W+
+   S\"  tools/call wait -> ok\n" REQ-ID$ W$ T$= ;
+
+\ The sole worker logs the fault after the client sees the closed connection,
+\ and before it serves the next request.
+: FAULT-SEEN ( -- )
+   HELD-FAULT
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST 202 T= ;
+
+: LOGGED-FAULT ( -- )
+   [: FAULT-SEEN ;] CAPTURED
+   s" MCP:LOG logs a throw passed to the host as a fault" T-LABEL
+   W-RESET S\"  tools/call wait {\"fail\":1} -> fault " W+
+   MCP:E-STATE FMT:INT$ W+ S\" \n" W+
+   W$ REQ-LOGGED ;
+
+: LOGGED-FREED ( -- )
+   s" MCP:LOG logs a tool error whose text the body freed" T-LABEL
+   [: LEGACY S\" {\"freed\":1}" WAIT-LEGACY POST 200 T= ;] CAPTURED
+   S\"  tools/call wait {\"freed\":1} -> tool error: freed text\n" REQ-LOGGED ;
+
+: LOGGED-LATE ( -- )
+   s" MCP:LOG logs a throw after the result as a fault" T-LABEL
+   [: LEGACY S\" {\"late\":1}" WAIT-LEGACY POST 500 T= ;] CAPTURED
+   W-RESET S\"  tools/call wait {\"late\":1} -> fault " W+
+   MCP:E-STATE FMT:INT$ W+ S\" \n" W+
+   W$ REQ-LOGGED ;
+
+: LOGGED-ANSWER ( -- )
+   s" MCP:LOG logs ANSWER's message under the id -" T-LABEL
+   [: ANSWER-OPEN ECHO-A1 POST 200 T= ;] CAPTURED
+   LOG$ S\" Z info mcp: req - tools/call echo {\"a\":1} -> ok\n" CONTAINS? TTRUE ;
+
+\ An echo call whose arguments, {"b":<BIG>}, pass the 4096 bytes LOG writes of a text.
+: LONG-CALL ( -- str )
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":82,\"method\":\"tools/call\",\"params\":" W+
+   S\" {\"name\":\"echo\",\"arguments\":{\"b\":" W+ BIG BIG-U W+ s" }}}" W+ W$ ;
+
+: LOGGED-LONG ( -- )
+   s" MCP:LOG cuts arguments past 4096 bytes and gives their length" T-LABEL
+   [: LEGACY LONG-CALL POST 200 T= ;] CAPTURED
+   \ The first 4096 bytes: `{"b":` and 4091 of BIG.
+   W-RESET S\"  tools/call echo {\"b\":" W+ BIG 4091 W+
+   s"  [" W+ BIG-U 6 + FMT:INT$ W+ S\"  B] -> ok\n" W+
+   W$ REQ-LOGGED ;
+
+\ The server again, with LOG and every tool visible: LOG and VISIBLE! are
+\ refused while HTTP serves.
+: LOGGED-CASES ( -- )
+   HTTP:STOP
+   HTTP:ROUTES-RESET
+   s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
+   s" POST" s" /answer" [: ANSWER-ROUTE ;] HTTP:ROUTE
+   [: 2drop true ;] MCP:VISIBLE!
+   MCP:LOG
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOGGED-ECHO LOGGED-STRICT LOGGED-UNKNOWN LOGGED-NOTIFIED LOGGED-HELD
+   LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-ANSWER LOGGED-LONG ;
 
 
 : SERVE-CASES ( -- )
@@ -1898,6 +2044,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    HELD-CASES
    CLIENT-CASES
    PROTECTED-CASES
+   LOGGED-CASES
    HTTP:STOP
    REPLIES BUF:DISPOSE
    AIO:STOP ;

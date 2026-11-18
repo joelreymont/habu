@@ -10,7 +10,8 @@ split-str
 \ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. HANDLE logs each message it
 \ dispatches, a notification included, as one LOG:INFO line `mcp: <method>`, then a
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
-\ written between its quotes as sent, never the arguments. ANSWER answers one JSON-RPC
+\ written between its quotes as sent, never the arguments, without LOG; with it,
+\ LOG's line after the answer. ANSWER answers one JSON-RPC
 \ message that came by another transport into a BUF, as HANDLE answers a 2026-07-28
 \ request with no transport headers, its log line included. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
@@ -38,10 +39,10 @@ split-str
 \ registries, the input schemas each compiled into an arena of its own kept for the
 \ process, and
 \ visibility hook, written before HTTP serves; tables indexed by HTTP:WORKER-SLOT holding
-\ each request's state; the held table, a row per held call and its id's BUF: a row's
-\ phase is read and written under its own lock, and a finishing row's other fields are
-\ its finisher's; and the client table, a row per open client, read and written under its
-\ own lock.
+\ each request's state; the held table, a row per held call and its id's and its
+\ holding request id's BUFs: a row's phase is read and written under its own lock,
+\ and a finishing row's other fields are its finisher's; and the client table, a row
+\ per open client, read and written under its own lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
 \
 \ The client. A client is a row of a process-wide table that grows with the
@@ -86,7 +87,7 @@ package MCP
 public
 -9480 constant E-FIRST
 -9489 constant E-LAST
--9481 s" an MCP word ran out of turn: SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER or FINISH off a request worker, a body that does not give its result exactly once, HOLD outside a body before its result, FINISH of a call not held, or a client word given a closed client"
+-9481 s" an MCP word ran out of turn: SERVER-INFO!, INSTRUCTIONS!, LOG, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP serves, HANDLE or ANSWER before SERVER-INFO!, ANSWER or FINISH off a request worker, a body that does not give its result exactly once, HOLD outside a body before its result, FINISH of a call not held, or a client word given a closed client"
    ERROR:FAULT E-STATE
 -9482 s" ADD-TOOL was given a registered name or ADD-RESOURCE a registered uri, compared decoded"
    ERROR:CODE E-DUPLICATE
@@ -156,6 +157,8 @@ DYNAMIC-BUFFER RESOURCE-PAGE SPAN:span<u8>
 TYPED-VARIABLE VISIBILITY [ ^u8 n -- bool ]   \ VISIBLE!'s hook
 ' EVERY VISIBILITY !
 
+variable LOGGING                              \ LOG's: nonzero once it ran
+
 \ ADD-TOOL's and ADD-RESOURCE's: both run before HTTP serves.
 TYPED-VARIABLE SCHEMA-READER JSON:cursor
 
@@ -192,6 +195,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body a
 HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: FINISHED
 \ Each worker's BUF, where a tools/call's arguments' violation is written.
 HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: VIOLATIONS
+\ Each worker's BUF, where a tool error's text is kept for LOG's line.
+HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: TOOL-ERRORS
 
 \ The held table: a row is free, kept by HOLD, or finishing while FINISH runs.
 \ A kept row holds the call's connection, era and tool, and its id's JSON text
@@ -207,6 +212,8 @@ STRUCTURE keep DERIVE addr
 
 MAX-HELD TYPED-BUFFER KEEPS keep
 MAX-HELD BUF:HDR-BYTES * BUFFER: KEEP-IDS
+\ A held row's holding request's HTTP:REQUEST-ID$, in the row's own BUF.
+MAX-HELD BUF:HDR-BYTES * BUFFER: KEEP-REQS
 TASK:FACILITY KEEP-LOCK
 KEEP-LOCK TASK:FACILITY-INIT
 
@@ -510,17 +517,21 @@ CAST: HELD>N ( held -- n )
    JSON:WRITE-COMMA s" id" id iu JSON:WRITE-FIELD-RAW ;
 
 
-\ An error's message; a STALE-REPLY's names the tool and the server.
+\ A STALE-REPLY's message, part by part: it names the tool and the server.
+: STALE-PARTS ( R [ R ^u8 n -- R ] -- R )
+   {: q :}
+   s" Unknown tool: " q execute
+   TEXT$ q execute
+   s" ; if the client's list of " q execute
+   SERVER-NAME @ SPAN:$ q execute
+   s" 's tools names it, that list is out of date" q execute ;
+
 : MESSAGE ( ^JSON:writer -- ^JSON:writer )
    s" message" JSON:WRITE-KEY
    SLOT REPLY @ STALE-REPLY <> if TEXT$ JSON:WRITE-STRING exit then
    JSON:WRITE-STRING-START
-   s" Unknown tool: " JSON:WRITE-STRING-PART
-   TEXT$ JSON:WRITE-STRING-PART
-   s" ; if the client's list of " JSON:WRITE-STRING-PART
-   SERVER-NAME @ SPAN:$ JSON:WRITE-STRING-PART
-   s" 's tools names it, that list is out of date"
-   JSON:WRITE-STRING-PART JSON:WRITE-STRING-END ;
+   [: JSON:WRITE-STRING-PART ;] STALE-PARTS
+   JSON:WRITE-STRING-END ;
 
 
 \ An error reply. Both eras' schemas make its id optional and never null, so
@@ -792,6 +803,7 @@ CAST: HELD>N ( held -- n )
 
 \ A held row's id BUF.
 : KEEP-ID ( n -- ^n ) BUF:HDR-BYTES * KEEP-IDS + CELL-VIEW ;
+: KEEP-REQ ( n -- ^n ) BUF:HDR-BYTES * KEEP-REQS + CELL-VIEW ;
 : KEEP-UNLOCK ( -- ) KEEP-LOCK TASK:RELEASE ;
 
 \ The text written into the BUF, which grows to hold it.
@@ -819,6 +831,7 @@ CAST: HELD>N ( held -- n )
    FREE-KEEP {: idx:n :}
    idx 0< if -1 exit then
    ID$ idx KEEP-ID TEXT-SET
+   SLOT TO @ HTTP:REQUEST-ID$ idx KEEP-REQ TEXT-SET
    SLOT ERA @ idx KEEPS KEEP-ERA !
    SLOT CALLED @ idx KEEPS KEEP-TOOL !
    SLOT FROM @ HTTP:TAKE-OVER 2drop idx KEEPS KEEP-CONN !
@@ -1180,8 +1193,6 @@ CAST: HELD>N ( held -- n )
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
-: TOOL-ERROR ( ^u8 n -- ) s" " s" []" true RESULT! ;
-
 \ The worker's BUF in a table of BUF headers, made live the first time.
 : WORKER-BUF ( ^u8 -- ^n )
    {: table:^ :}
@@ -1189,8 +1200,16 @@ CAST: HELD>N ( held -- n )
    buf BUF:LIVE? 0= if buf 1024 BUF:N>BLEN BUF:INIT then
    buf ;
 
+\ Under LOG the text is copied: the line is written after the body returns.
+: TOOL-ERROR ( ^u8 n -- )
+   {: text:^ u:n :}
+   LOGGING @ 0= if text u s" " s" []" true RESULT! exit then
+   TOOL-ERRORS WORKER-BUF {: buf:^ :}
+   text u BUF:N>BLEN buf BUF:REPLACE
+   buf BUF:SPAN$ BUF:BLEN>N s" " s" []" true RESULT! ;
+
 \ Whether the arguments satisfy the tool's inputSchema; false gives the tool
-\ error `arguments` and the violation, which is not logged.
+\ error `arguments` and the violation.
 : ADMITTED? ( ^u8 n n -- bool )
    {: args:^ au:n idx:n :}
    VIOLATIONS WORKER-BUF {: buf:^ :}
@@ -1272,8 +1291,85 @@ CAST: HELD>N ( held -- n )
 
 
 : LOGGED ( -- )
+   LOGGING @ 0<> if exit then
    LOG:INFO s" mcp" LOG:LINE
    METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+
+   LOG:;LINE ;
+
+
+4096 constant TEXT-MAX    \ the most bytes of one text on a LOG line
+
+\ The text, or its first bytes up to TEXT-MAX cut at a character's start and
+\ then ` [<n> B]`, n its length.
+: TEXT-CUT+ ( str -- )
+   {: a:^ u:n :}
+   u TEXT-MAX <= if a u LOG:TEXT+ exit then
+   a u TEXT-MAX UTF8:FIT {: cut:n :}
+   a cut LOG:TEXT+
+   s"  [" LOG:TEXT+  u LOG:INT+  s"  B]" LOG:TEXT+ ;
+
+
+\ A tools/call's params.arguments as sent, when params is an object that has
+\ them.
+: ARGUMENTS+ ( -- )
+   s" tools/call" METHOD= 0= if exit then
+   PARAMS$ nip 0= if exit then
+   PARAMS$ OBJECT? 0= if exit then
+   PARAMS$ s" arguments" FIELD? 0= if 2drop exit then
+   s"  " LOG:TEXT+  TEXT-CUT+ ;
+
+\ The method, target and arguments; `-` when no method was read.
+: CALL+ ( -- )
+   METHOD$ nip 0= if s" -" LOG:TEXT+ exit then
+   METHOD$ UNQUOTED$ LOG:TEXT+  TARGET+  ARGUMENTS+ ;
+
+
+: ERROR+ ( -- )
+   s" error " LOG:TEXT+  SLOT CODE @ LOG:INT+  s" : " LOG:TEXT+
+   SLOT REPLY @ STALE-REPLY = if [: LOG:TEXT+ ;] STALE-PARTS exit then
+   TEXT$ TEXT-CUT+ ;
+
+\ The reply SEND began.
+: REPLY+ ( -- )
+   SLOT REPLY @ {: kind:n :}
+   kind ERROR-REPLY = kind STALE-REPLY = or if ERROR+ exit then
+   kind CALL-REPLY = SLOT FAULT @ and if
+      s" tool error: " LOG:TEXT+  TEXT$ TEXT-CUT+ exit
+   then
+   s" ok" LOG:TEXT+ ;
+
+\ The slot's outcome, given the code passed to the host.
+: OUTCOME+ ( n -- )
+   {: code:n :}
+   code 0<> if s" fault " LOG:TEXT+  code LOG:INT+ exit then
+   SLOT STAGE @ SENT = if REPLY+ exit then
+   SLOT STAGE @ HELD = if s" held" LOG:TEXT+ exit then
+   s" notified" LOG:TEXT+ ;
+
+\ A LOG line opened with `req <id> `.
+: REQ-LINE ( str -- )
+   {: id:^ iu:n :}
+   LOG:INFO s" mcp" LOG:LINE
+   s" req " LOG:TEXT+  id iu LOG:TEXT+  s"  " LOG:TEXT+ ;
+
+\ With LOG, the message's line under the id text, given the code passed to
+\ the host.
+: MESSAGE-LOGGED ( str n -- )
+   {: id:^ iu:n code:n :}
+   LOGGING @ 0= if exit then
+   id iu REQ-LINE
+   CALL+  s"  -> " LOG:TEXT+  code OUTCOME+
+   LOG:;LINE ;
+
+\ With LOG, FINISH's line for the held row, under the id of the request
+\ that held it, given the code passed to the host.
+: HELD-LOGGED ( n n -- )
+   {: idx:n code:n :}
+   LOGGING @ 0= if exit then
+   idx KEEP-REQ BUF:SPAN$ BUF:BLEN>N REQ-LINE
+   s" tools/call " LOG:TEXT+
+   idx KEEPS KEEP-TOOL @ TOOL-NAME @ SPAN:$ LOG:TEXT+
+   s"  -> " LOG:TEXT+  code OUTCOME+
    LOG:;LINE ;
 
 
@@ -1304,15 +1400,25 @@ CAST: HELD>N ( held -- n )
 : OPENED-TO ( sink -- )
    SLOT REPLY-TO !
    IDLE SLOT STAGE !
-   s" " SPAN:MAKE SLOT ID ! ;
+   s" " SPAN:MAKE SLOT ID !
+   s" " SPAN:MAKE SLOT METHOD !
+   s" " SPAN:MAKE SLOT PARAMS ! ;
 
+
+\ The code a message's caught code passes to the host: none for E-INPUT
+\ before the reply began, which FAULTED answers -32602.
+: PASSED ( n -- n )
+   {: code:n :}
+   SLOT STAGE @ IDLE = code E-INPUT = and if 0 exit then
+   code ;
 
 \ A message's caught code: E-INPUT before the reply began is -32602; any
 \ other fault is rethrown.
 : FAULTED ( n -- )
    {: code:n :}
    code 0= if exit then
-   SLOT STAGE @ IDLE <> code E-INPUT <> or if code throw then
+   code PASSED {: passed:n :}
+   passed 0<> if passed throw then
    BAD-INPUT SEND ;
 
 
@@ -1360,6 +1466,7 @@ CAST: HELD>N ( held -- n )
    {: idx:n q :}
    idx RESUME
    [: q COMPOSE ;] catch {: code:n :}
+   idx code HELD-LOGGED
    code 0<> if idx CLOSE-KEPT code throw then
    idx KEEPS KEEP-CONN @ 200 s" application/json"
    FINISH-BUF BUF:SPAN$ BUF:BLEN>N HTTP:REPLY drop ;
@@ -1374,7 +1481,8 @@ CAST: HELD>N ( held -- n )
 \ caller's BUF.
 : BUF-ANSWER ( str -- )
    [: CARRIED ;] catch {: code:n :} 2drop
-   code FAULTED ;
+   code PASSED {: passed:n :}
+   [: code FAULTED ;] [: s" -" passed MESSAGE-LOGGED ;] finally ;
 
 public
 
@@ -1393,6 +1501,24 @@ public
 : INSTRUCTIONS! ( ^u8 n -- )
    HTTP:RUNNING? if E-STATE throw then
    SPAN:MAKE INSTRUCTIONS ! ;
+
+
+\ From the next HTTP:START on, each message HANDLE or ANSWER takes writes one
+\ LOG INFO line, tag mcp, once it is answered, in place of the line before
+\ dispatch: `req <id> <method> <target> <arguments> -> <outcome>`. id is the
+\ HTTP:REQUEST-ID$ of HANDLE's request, `-` under ANSWER; method and target
+\ are as without LOG, `-` when no method was read; arguments are a tools/call's
+\ params.arguments as sent, left out when absent. outcome is `ok`, `tool
+\ error: <text>` (a schema refusal's included), `error <code>: <message>` for
+\ a JSON-RPC error (UNKNOWN-TOOL's included), `held` for a call HOLD kept,
+\ `notified` for a notification, or `fault <code>` for a throw passed to the
+\ host. FINISH writes a held call's own line, `req <id> tools/call <name> ->
+\ <outcome>`, with the id of the request that held it. A text past 4096 bytes
+\ is cut at a character boundary and followed by ` [<n> B]`, n its length.
+\ It lasts across STOP; E-STATE while HTTP serves.
+: LOG ( -- )
+   HTTP:RUNNING? if E-STATE throw then
+   1 LOGGING ! ;
 
 
 \ False hides the named tool from HANDLE's or ANSWER's caller as an unknown one; the
@@ -1517,7 +1643,10 @@ public
    asked SLOT FROM !
    answer SLOT TO !
    construct sink response OPENED-TO
-   [: PROCESS ;] catch FAULTED ;
+   [: PROCESS ;] catch {: code:n :}
+   code PASSED {: passed:n :}
+   [: code FAULTED ;]
+   [: answer HTTP:REQUEST-ID$ passed MESSAGE-LOGGED ;] finally ;
 
 
 \ Answers one JSON-RPC message whose caller the host has authenticated and
