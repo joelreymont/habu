@@ -7,6 +7,7 @@ split-str
 require src/core/exit-status.f
 
 package DEBUG
+EXPORT BOOT:data-base
 
 8 constant BPW-MAX
 

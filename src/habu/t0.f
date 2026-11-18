@@ -33,6 +33,7 @@ require src/habu/t0-emit.f
 
 package COMP
 
+EXPORT BOOT:data-base
 EXPORT CHECK:BODY-ARM
 EXPORT CHECK:DISARMER
 EXPORT CHECK:IMM-HELP

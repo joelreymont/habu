@@ -5,6 +5,7 @@ split-str
 
 package INTERN
 private
+EXPORT BOOT:data-base
 
 \ error.f owns E-INTERN-REWIND but loads later: the same (code, name)
 \ is registered here.

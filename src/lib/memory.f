@@ -63,6 +63,7 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 
 package MEM
 private
+EXPORT BOOT:data-base
 
 \ Private allocation-role erasure for mmap, cells and munmap; no raw value
 \ escapes.

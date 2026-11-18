@@ -222,6 +222,7 @@ private
    loop
    -1 ;
 
+EXPORT BOOT:data-base
 EXPORT CHECKER-RESOLVE:USED-ONLY?
 
 \ The scope's answer (open package, enclosing package, global, NAME:tail), never

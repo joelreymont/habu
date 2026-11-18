@@ -3,7 +3,11 @@ split-str
 \ at fixed offsets below DATA-START; every process, image or task reads them
 \ through its own DATA base.
 
+package ENV-BASE
+private
+EXPORT BOOT:data-base
 : ENV-DATA ( -- ^n ) data-base ;
+global
 $2D constant ENV-DASH
 
 : ARGC ( -- n )
@@ -17,6 +21,7 @@ $2D constant ENV-DASH
 
 : ENVP-BASE ( -- ^^u8 )
    ENV-DATA ENVP-CELL CELL / ptr-field @ ;
+;package
 
 : ENVP ( n -- ^u8 )
    ENVP-BASE swap ptr-field @ ;

@@ -9,6 +9,7 @@ split-str
 \ declared type's width in bytes.
 
 package ARENA-DECL
+EXPORT BOOT:data-base
 EXPORT CHECK:REJECT-DUPLICATE
 
 private

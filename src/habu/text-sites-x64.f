@@ -9,6 +9,7 @@ require src/os/linux-x86-64/target-layout.f
 package X64TEXT
 
 private
+EXPORT BOOT:data-base
 
 5 constant ROW-BYTES
 16 constant FOOTER-BYTES

@@ -82,9 +82,9 @@ is SwiftX's ([swiftx.md](swiftx.md)), with the differences stated below.
   refusing it there would put every caller of a target word in a target
   section too. `'` names a target word without calling it: its token can be
   stored in data, and executing the token on the host is the same refusal.
-- A host word reaches a build's data through data words and `data-base`, never
-  through an address the target's layout fixes: during a build that address is
-  the host's own memory.
+- A host word reaches a build's data through data words (in an engine package
+  also `data-base`), never through an address the target's layout fixes:
+  during a build that address is the host's own memory.
 - An object holds a definition's emission for each machine it was compiled
   for. Linking a file places its host emissions in the build's process, where
   later files' top level calls them, and its target emissions in the output; a

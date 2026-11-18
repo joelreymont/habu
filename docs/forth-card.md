@@ -511,8 +511,8 @@ a `require`, and `' X HK !` for `TYPED-VARIABLE HK [ -- ]`.
 An integer or an `xt` becomes an address or a quotation only through a private
 `CAST:` (`CAST: >BYTES ( n -- ^u8 )` in a package's private section, else
 `E-CAST-MINT`); `X NULL-PTR -` is the address-to-integer distance for any
-pointer `X`, with no view: a distance against `NULL-PTR` or `data-base` binds
-neither pointee, so `: D ( ^a -- n ) NULL-PTR - ;` keeps `a` free.
+pointer `X`, with no view: a distance against `NULL-PTR` binds neither
+pointee, so `: D ( ^a -- n ) NULL-PTR - ;` keeps `a` free.
 A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 (`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
 type`).

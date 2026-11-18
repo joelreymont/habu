@@ -9,6 +9,7 @@ require src/core/layout-buffer.f
 require src/core/dynamic-storage.f
 
 package CWORK
+EXPORT BOOT:data-base
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-TOP-ONLY
 $100000 constant LIMIT

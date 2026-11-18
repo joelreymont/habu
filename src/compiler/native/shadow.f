@@ -21,6 +21,7 @@ require src/compiler/native/emission.f
 
 package NSHADOW
 private
+EXPORT BOOT:data-base
 
 \ The shadow is closed; open; or native, open for the engine's own binding
 \ with its source already emitted.

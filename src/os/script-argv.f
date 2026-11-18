@@ -36,6 +36,8 @@ split-str
    dup 1 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then
    2 ZBYTE@ 0 = ;
 
+package SCRIPT-ARGV
+private EXPORT BOOT:data-base global
 : SCRIPT-ARG-START ( -- n )
    data-base APP-ENTRY:XT-CELL + @ 0 <> if
       ARGC 1 > if 1 SCRIPT-SEP? if 2 exit then then
@@ -47,6 +49,7 @@ split-str
       1 +
    repeat
    drop ARGC ;
+;package
 
 : SCRIPT-ARGC ( -- n )
    ARGC SCRIPT-ARG-START - dup 0 < if drop 0 then ;

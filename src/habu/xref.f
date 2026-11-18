@@ -44,6 +44,7 @@ WL:RETIRED constant XREF-RETIRED-WL
 package XREF
 private
 EXPORT CHECK:DICT-CELL@
+EXPORT BOOT:data-base
 global
 \ Every reader in this file reads a record's cells through this word, which
 \ rejects XREF-NULL.
@@ -213,6 +214,7 @@ variable XREF-NV
 
 package PKG-AUTH
 private
+EXPORT BOOT:data-base
 
 : NAME-OUT ( ^n -- str bool ) {: rec:^ :}
    rec XREF-NAME$ dup 0= if
@@ -569,6 +571,8 @@ DOES-COMPANION-INSTALL
    k XREF-DOES-COMPANION? if k 1+ XREF-REC XREF:RETIRE then
    k XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
 
+package XREF
+global
 \ While a checker overlay is open (src/habu/layout.f REPLAY-SCOPE) the engine
 \ undefines nothing live, as it defines nothing (src/habu/habu1.f
 \ OVERLAY-EMIT:GUARD,): replay-close gives back only the records the overlay
@@ -587,6 +591,7 @@ DOES-COMPANION-INSTALL
    s" run `undefine` after the `CHECK:SCOPED` quotation returns"
    REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
+;package
 
 : XREF-REQUIRE-UNDEFINE ( n str -- n ) {: idx:n a:^ u:n :}
    idx 0 < if
@@ -622,6 +627,8 @@ public
    XREF-IDX @ XREF-RETIRE-INDEX ;
 ;package
 
+package XREF
+global
 \ The seal watermark of the dictionary being loaded: while a build writes an
 \ image, the image's, where a header store goes (habu2.f ROUTE-HEADER), 0 until
 \ the product seals; else hb's.
@@ -629,6 +636,7 @@ public
    data-base BOOT:IMAGE-BASE-CELL + @ {: image:n :}
    image 0 <> if NULL-PTR BYTE-VIEW image + SEAL-NDICT-CELL + CELL-VIEW @ exit then
    data-base SEAL-NDICT-CELL + @ ;
+;package
 
 \ A selected record is borrowed from the resolver at SELECT. The slot alone is
 \ never identity: lowering and re-exposing the count issues another occurrence.
@@ -751,6 +759,8 @@ public
    t tu s" no name follows" REJECTION:MISSING-OPERAND
    s" write the word after it, as in `undefine NAME`" REJECTION:EMIT-STR ;
 
+package XREF
+global
 \ The `undefine` token is kept at entry: parse-name moves the token cells.
 : undefine ( -- )
    data-base TKA-CELL + 0 ptr-field @  data-base TKL-CELL + @
@@ -759,6 +769,7 @@ public
       ta tu UNDEFINE-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP
    then
    XREF:UNDEFINE-NAME ;
+;package
 
 : WORDS ( -- )
    0 begin dup ndict@ < while

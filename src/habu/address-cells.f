@@ -28,6 +28,7 @@ SNAP-RELOC:XTCELL-END BOOT-OFF - CELL / constant BOOT-CAP
 $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 
 private
+EXPORT BOOT:data-base
 
 : REFUSE ( -- ) s" address-cells: invalid storage header" EXIT-STATUS:INTERNAL die ;
 : SHAPE ( n n -- ) {: count:n cap:n :}

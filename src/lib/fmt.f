@@ -11,6 +11,7 @@ require src/lib/string.f
 require src/lib/ieee754.f
 
 package FMT
+EXPORT BOOT:data-base
 
 48 constant FMT-ZERO
 65 constant FMT-A

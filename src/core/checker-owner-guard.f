@@ -36,6 +36,7 @@ public
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 private
+EXPORT BOOT:data-base
 
 : BAD ( -- ) MALFORMED ;
 : ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;

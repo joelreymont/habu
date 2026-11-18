@@ -1570,41 +1570,40 @@ a `defer` bound with `is`, or a typed code cell.
 
 #### A base address addresses no declared element
 
-`data-base` (the start of the task's DATA region) and `NULL-PTR` are not the
-address of anything. Both are fenced, and both refuse with
-`E-RAW-CELL-PTR`, `declare_pointer_cell`, each with its own reason.
+`NULL-PTR` is not the address of anything, and neither is a pointer computed
+off it. Both are fenced, and both refuse with `E-RAW-CELL-PTR`,
+`declare_pointer_cell`, each with its own reason.
 
 - **The null** is fenced in value position and permissive inside a pointee:
   a value read through the null is never a nominal or a pointer, while
   `^thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell (also
   `^^n`) and `NULL-PTR 0=` certify.
-- **The DATA base** is fenced at every pointee depth: binding its pointee, at
-  any depth, to a nominal, a pointer or a linear con is refused
-  (`( -- ^^^n ) data-base 8 +`).
-- **An offset null is a DATA-base pointer.** A null stepped by an integer
-  (`+`, `-` with `n`, `1+`, `1-`, `cell+`, `char+`) is fenced as the DATA base:
-  `: F ( -- ^^n ) NULL-PTR OFF + ;` is refused. Stepping any other
-  pointer changes nothing, so `( ^thing -- thing ) 8 + @` still certifies.
-- **A distance binds no pointee.** `X NULL-PTR -` and `X data-base -` match the
-  base's pointee alone, so `: D ( ^a -- n ) NULL-PTR - ;`
-  certifies; so does `V BYTE-VIEW NULL-PTR BYTE-VIEW -`.
+- **An offset null** (a null stepped by an integer: `+`, `-` with `n`, `1+`,
+  `1-`, `cell+`, `char+`) is fenced at every pointee depth: binding its
+  pointee, at any depth, to a nominal, a pointer or a linear con is refused
+  (`: F ( -- ^^^n ) NULL-PTR 8 + ;`). Stepping any other pointer changes
+  nothing, so `( ^thing -- thing ) 8 + @` still certifies. The engine's own
+  DATA base, which only engine packages name, is fenced the same way.
+- **A distance binds no pointee.** `X NULL-PTR -` matches the null's pointee
+  alone, so `: D ( ^a -- n ) NULL-PTR - ;` certifies; so does
+  `V BYTE-VIEW NULL-PTR BYTE-VIEW -`.
 
-`data-base OFF + @` still answers the number, xt or role the cell holds; a DATA
-cell that holds an address is reached with `ptr-field`; `data-base BYTE-VIEW`
-erases the fence.
+`NULL-PTR OFF + @` still answers the number, xt or role the cell holds; a cell
+there that holds an address is reached with `ptr-field`; `BYTE-VIEW` erases
+the fence.
 
 **The wrapper is refused where it is written.** A declared quantifier the body
 restricts to a base address is `E-NONPARAMETRIC-EFFECT` ("restricted to a base
 address -- the DATA region, or a pointer computed off NULL-PTR", or "restricted
-to the null address"): `: W ( -- ^a ) data-base 8 + ;` would let its
-caller choose the element type of engine DATA. Name the pointee the
-cell holds (`^n`, `^u8`). A quantifier restricted through an input-only
-position is excused for the null only (`: RELEASE ( ^^a -- ) … NULL-PTR
-cb ! ;`); one named on both sides is still published (`: LEAK ( ^a -- ^a )
-drop data-base 8 + ;` is refused). The DATA base has no such excuse:
-`: STASH ( ^^a -- ) data-base 8 + swap ! ;` and `: FEED ( [ ^a -- ] --
-) data-base 8 + swap execute ;` are refused. To read one DATA offset at two
-types, write two accessors, each naming what it reaches.
+to the null address"): `: W ( -- ^a ) NULL-PTR 8 + ;` would let its caller
+choose the element type of whatever lies there. Name the pointee the cell
+holds (`^n`, `^u8`). A quantifier restricted through an input-only position is
+excused for the null only (`: RELEASE ( ^^a -- ) … NULL-PTR cb ! ;`); one
+named on both sides is still published (`: LEAK ( ^a -- ^a ) drop NULL-PTR 8
++ ;` is refused). An offset null has no such excuse: `: STASH ( ^^a -- )
+NULL-PTR 8 + swap ! ;` and `: FEED ( [ ^a -- ] -- ) NULL-PTR 8 + swap
+execute ;` are refused. To read one offset at two types, write two
+accessors, each naming what it reaches.
 
 #### Reading code bytes
 

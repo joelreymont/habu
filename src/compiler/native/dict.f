@@ -15,6 +15,7 @@ require src/compiler/native/checker-owner.f
 require src/compiler/workspace.f
 
 package NDICT
+EXPORT BOOT:data-base
 
 public
 

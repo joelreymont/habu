@@ -6,6 +6,7 @@ split-str
 require src/habu/layout.f
 
 package DATA-FLOOR
+private EXPORT BOOT:data-base
 public
 
 \ Everything allotted so far outlives any rewind of DATA: a failed evaluation

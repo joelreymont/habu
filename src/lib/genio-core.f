@@ -37,6 +37,7 @@ E-GENIO-IO constant E-IO
 E-GENIO-FULL constant E-FULL
 
 private
+EXPORT BOOT:data-base
 
 GENIO-ABI:DEVICES constant MAX-DEVICES
 MAX-DEVICES 1+ constant SLOTS

@@ -411,6 +411,7 @@ require src/os/env-base.f
 package ERROR
 
 private
+EXPORT BOOT:data-base
 
 255 constant NAME-CAP
 

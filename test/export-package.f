@@ -23,6 +23,7 @@ require src/lib/engine-candidate.f
 
 variable XPK-ROOT-U
 variable XPK-CHILD-U
+variable XPK-PROG-U
 variable XPK-IN-U
 variable XPK-OUT-U
 variable XPK-ERR-U
@@ -31,6 +32,7 @@ variable XPK-RC
 
 create XPK-ROOT-BUF PATH-CAP allot
 create XPK-CHILD-BUF PATH-CAP allot
+create XPK-PROG-BUF PATH-CAP allot
 create XPK-IN XPK-CAP allot
 create XPK-OUT XPK-CAP allot
 create XPK-ERR XPK-CAP allot
@@ -43,6 +45,7 @@ create XPK-EMPTY 1 allot
 
 : XPK-ROOT ( -- str )   XPK-ROOT-BUF XPK-ROOT-U @ ;
 : XPK-CHILD ( -- str )  XPK-CHILD-BUF XPK-CHILD-U @ ;
+: XPK-PROG ( -- str )   XPK-PROG-BUF XPK-PROG-U @ ;
 : XPK-IN$ ( -- str )    XPK-IN XPK-IN-U @ ;
 
 : XPK-LF ( -- )   10 SB-APPEND-C ;
@@ -119,6 +122,17 @@ create XPK-EMPTY 1 allot
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT dup" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+: XPK-DBASE-FORGE$ ( str -- str ) {: a:^ u:n :}   \ the line a u alone
+   SB-RESET  a u XPK-LINE  SB$ ;
+
+: XPK-DBASE-EXPORT-FORGE$ ( -- str )     \ BOOT's private data-base (E-SEALED-PACKAGE)
+   SB-RESET
+   s" package P" XPK-LINE
+   s" private" XPK-LINE
+   s" EXPORT BOOT:data-base" XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
 
@@ -640,19 +654,32 @@ create XPK-EMPTY 1 allot
    s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+ ;
 
-\ Adds the child file a --load run wrote to the arguments so far and runs them.
-: XPK-CHECK-CHILD ( -- )
-   XPK-CHILD >LEN PROC-ARGV+
+\ Runs the arguments so far with empty stdin.
+: XPK-SPAWN ( -- )
    ENGINE-CANDIDATE:PATH$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-CHILD XPK-STORE! ;
+
+\ Adds the child file a --load run wrote to the arguments so far and runs them.
+: XPK-CHECK-CHILD ( -- )   XPK-CHILD >LEN PROC-ARGV+  XPK-SPAWN ;
 
 : XPK-RUN-CHECK ( -- )  XPK-CHECK-ARGV XPK-CHECK-CHILD ;
 
 \ The verifier alone, without the run stage that would print the load's record.
 : XPK-RUN-VERIFY ( -- )
    XPK-CHECK-ARGV  s" --verify-only" >LEN PROC-ARGV+  XPK-CHECK-CHILD ;
+
+\ A program build of the child file a --load run wrote.
+: XPK-RUN-BUILD ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/hb-build.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   XPK-CHILD >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   XPK-PROG >LEN PROC-ARGV+
+   XPK-SPAWN ;
 
 : XPK-ASSERT-RC ( n -- ) {: rc:n :}
    XPK-EXITED @ TTRUE
@@ -669,7 +696,8 @@ create XPK-EMPTY 1 allot
    s" habu-export-pkg" FS:MKTEMP-DIR {: a:^ u:n :}
    a u XPK-ROOT-BUF XPK-ROOT-U XPK-COPY!
    XPK-ROOT FS:CLEANUP-TREE+
-   XPK-ROOT s" forge.f" XPK-CHILD-BUF FS:JOIN-PATH XPK-CHILD-U ! ;
+   XPK-ROOT s" forge.f" XPK-CHILD-BUF FS:JOIN-PATH XPK-CHILD-U !
+   XPK-ROOT s" forge-prog" XPK-PROG-BUF FS:JOIN-PATH XPK-PROG-U ! ;
 
 : XPK-CLEANUP ( -- )
    FS:CLEANUP-RUN
@@ -683,6 +711,12 @@ create XPK-EMPTY 1 allot
    a u XPK-RUN-STDIN 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
    a u XPK-RUN-LOAD 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR?
    XPK-RUN-VERIFY 70 XPK-ASSERT-RC  e eu XPK-ERR?  c cu XPK-ERR? ;
+
+\ The line a u is rejected by --load for naming data-base, which only the
+\ engine's packages reach, by EXPORT.
+: XPK-DBASE ( str -- ) {: a:^ u:n :}
+   a u XPK-DBASE-FORGE$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
+   s" error[E-UNDEFINED]" XPK-ERR?  s" `data-base`" XPK-ERR? ;
 
 : XPK-POSITIVES ( -- )
    s" dual-name execution + checked callers" T-LABEL
@@ -710,6 +744,20 @@ create XPK-EMPTY 1 allot
    s" primitive source rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-PRIM-FORGE$ XPK-RUN-STDIN 70 XPK-ASSERT-RC
    s" error[E-EXPORT-PRIM]" XPK-ERR?  s" `dup`" XPK-ERR?
+   s" a definition cannot name data-base bare (E-UNDEFINED)" T-LABEL
+   s" : F ( -- ^n ) data-base ;" XPK-DBASE
+   s" top level cannot name data-base bare (E-UNDEFINED)" T-LABEL
+   s" data-base drop" XPK-DBASE
+   s" ' cannot take data-base bare (E-UNDEFINED)" T-LABEL
+   s" ' data-base drop" XPK-DBASE
+   s" an evaluated text cannot name data-base bare (E-UNDEFINED)" T-LABEL
+   S\" s\" data-base drop\" evaluate" XPK-DBASE
+   s" a user package cannot export BOOT's data-base (E-SEALED-PACKAGE, --load)" T-LABEL
+   XPK-DBASE-EXPORT-FORGE$ XPK-RUN-LOAD 70 XPK-ASSERT-RC
+   s" error[E-SEALED-PACKAGE]: `BOOT:data-base` is private to `BOOT`" XPK-ERR?
+   s" a program build cannot export BOOT's data-base (E-SEALED-PACKAGE)" T-LABEL
+   XPK-RUN-BUILD 70 XPK-ASSERT-RC
+   s" error[E-SEALED-PACKAGE]: `BOOT:data-base` is private to `BOOT`" XPK-ERR?
    s" a word the checker judges rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-JUDGED-FORGE$ s" error[E-EXPORT-PRIM]" s" is built into the checker"
    XPK-REJECT-ALL

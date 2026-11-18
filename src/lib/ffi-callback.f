@@ -21,6 +21,7 @@ public
 NEWTYPE callback
 
 private
+EXPORT BOOT:data-base
 
 CAST: >CALLBACK ( n -- callback )
 CAST: CALLBACK>N ( callback -- n )

@@ -233,6 +233,7 @@ public
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
 package SOURCE-ROOT
+EXPORT BOOT:data-base
 EXPORT CHECK:ROOT-MOVER
 EXPORT LOADER:INCLUDE-FALSE
 EXPORT LOADER:INCLUDE-TRUE
@@ -1036,6 +1037,7 @@ private
 
 package REQUIRE-REG
 private
+EXPORT BOOT:data-base
 EXPORT LOADER:INCLUDE-DIE
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
@@ -1869,6 +1871,7 @@ public
 SOURCE-UNIT:RESET
 
 package LOADER
+EXPORT BOOT:data-base
 
 : LOADER-TOK-A ( -- n )   data-base TKA-CELL + @ ;
 : LOADER-TOK-U ( -- n )   data-base TKL-CELL + @ ;

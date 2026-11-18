@@ -56,7 +56,7 @@ private
    S\" \"code\":\"E-RAW-CELL-PTR\"" ;
 
 : DB-REASON$ ( -- str )
-   S\" \"message\":\"base address: a cell reached from data-base, or from a pointer computed off NULL-PTR, holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
+   S\" \"message\":\"base address: a cell reached from a pointer computed off NULL-PTR, or from the engine's DATA base, holds a plain value at every pointee depth, never a nominal type or a pointer\"" ;
 
 : NULL-REASON$ ( -- str )
    S\" \"message\":\"null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one\"" ;

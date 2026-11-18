@@ -30,6 +30,7 @@ public
 PATH-CAP 1 + constant PATHZ-CAP
 
 private
+EXPORT BOOT:data-base
 4096 constant DIR-CAP
 256 constant STAT-CAP
 64 constant TEXT-CAP

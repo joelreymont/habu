@@ -11,7 +11,7 @@ Problem: no build writes a snapshot image. Deleting snap-rebase removed the arm6
 - the x86-64 boot's snapshot restore: src/habu/boot-x64.f SNAP-CARRIER,, SNAP-REGION, and SNAP-FRAME,, the snapshot branch of SNAP-START,, src/habu/snap-decode-x64.f, snap-x64.f, SNAP-CELL and src/habu/cell-grid.f;
 - SNAPSHOT-FORMAT, the `snapshot-format` primitive (prims.f, habu2.f BSNAPSHOTFORMAT, kernel-x64.f) and layout.f SNAP-MAGIC and SNAP-TRL-*.
 
-The call and address maps and the x86-64 site rows go with habu-find-whether-anything-b457bf9c. The cost column of tools/data-table-census.f measures cell-grid.f's form, so it goes with it.
+The call and address maps and the x86-64 site rows go with habu-find-whether-anything-b457bf9c.
 
 The comments that still describe a snapshot writer or loader go with the code they describe: layout.f's snapshot comments, genio-core.f, elaborate.f, dict.f, docs/xcomp.md "Live-region sites", and test/xt-cell-band-bad.f.
 

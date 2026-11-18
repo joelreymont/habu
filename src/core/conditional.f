@@ -9,6 +9,8 @@ split-str
 \ src/core/checker.f, which loads before the source loader, so the checker can
 \ choose its own text.
 
+package CONDITIONAL
+private EXPORT BOOT:data-base global
 \ The `[if]` token is kept at entry: parse-name moves the token cells.
 : [if] ( bool -- )
    if exit then
@@ -31,3 +33,4 @@ immediate
 
 : [then] ( -- ) ;
 immediate
+;package

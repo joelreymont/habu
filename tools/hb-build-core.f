@@ -271,9 +271,12 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    CHECK:SCOPE-ENTRIES! ;
 
 \ Loaded before the seal in every build: past it no code reaches a private word
-\ of these files' packages. Of them only fmt.f compiles for Wasm.
+\ of these files' packages. Wasm compiles only those before WASM? exits.
 : ENGINE-LIB-FILES ( -- )
    s" src/lib/fmt.f" REQUIRE-FILE
+   s" src/lib/byte-buffer.f" REQUIRE-FILE
+   s" src/lib/reason.f" REQUIRE-FILE
+   s" src/habu/data-floor.f" REQUIRE-FILE
    WASM? if exit then
    s" src/lib/ffi-abi.f" REQUIRE-FILE
    s" src/lib/task.f" REQUIRE-FILE

@@ -731,7 +731,6 @@ EPRIM: DRAIN-PRETRUST EPRIM;
 \ DATA cell is not the address of an address either.
 \ A cell of the region that really holds an address
 \ is reached with `ptr-field`, the declared door.
-EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 EPPRIM: BOOT data-base PE-PTR-A-DBASE PE-OUT ECLOSE-PRIVATE
 \ NULL-PTR is the language's null: a pointer of any pointee, and the address OF
 \ nothing. Its value is zero, so the body pushes zero and reads no memory.

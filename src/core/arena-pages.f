@@ -6,6 +6,8 @@ split-str
 -1 constant UNBOUND
 
 \ --- growable checker arenas --------------------------------------------
+package ARENA-PAGES
+private EXPORT BOOT:data-base global
 \ An address's DATA offset, measured from the null so neither pointer is viewed.
 : DATA-OFF ( ^a -- n ) NULL-PTR - data-base NULL-PTR - - ;
 
@@ -56,6 +58,7 @@ split-str
 : REG-DATA-SPAN? ( ^u8 n -- bool ) {: base:^ cap:n :}
    cap 0 < 0=  base data-base < 0= and  base here <= and
    dup IF drop cap here base - <= THEN ;
+;package
 
 : ARENA-UNMAP ( ^a n -- )
    {: base:^ bytes:n :}

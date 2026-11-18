@@ -21,6 +21,7 @@ package COMMAND-LINE
 
 private
 
+EXPORT BOOT:data-base
 EXPORT INTERPRETER:REPL
 
 $2D constant DASH

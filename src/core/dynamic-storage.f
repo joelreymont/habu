@@ -15,6 +15,7 @@ public
 2 constant CONTROL-CELLS
 
 private
+EXPORT BOOT:data-base
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
 

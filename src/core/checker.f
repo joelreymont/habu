@@ -841,6 +841,7 @@ $F constant TAG-MASK
 
 ;package
 package CHECKER-REG
+EXPORT BOOT:data-base
 EXPORT CHECK:REG-GROW1
 \ Grows a store whose boot buffer lies in DATA, so it holds numbers and no
 \ address. One in an open build's space is the program's: it grows there at
@@ -1853,6 +1854,7 @@ variable SOURCE-FLOOR
 0 SOURCE-FLOOR !
 ;package
 package CHECK
+EXPORT BOOT:data-base
 
 \ Import row storage is shared by the live compiler and the verifier window.
 \ Row n holds slot n's folded package name: its offset in SYM-STR, then its
@@ -1919,6 +1921,7 @@ CHECKER-PKG-LIVE-DEFAULT
 
 ;package
 package CHECKER-RESOLVE
+EXPORT BOOT:data-base
 EXPORT CHECK:ARENA-ROWS-ENSURE
 EXPORT CHECK:CHECKER-PKG-CONTEXT-REJECT
 EXPORT CHECK:CK-USE-ENGINE-DEPTH
@@ -13572,6 +13575,7 @@ USE-SLOT-BOOT
 ;package
 package CHECKER-RESYNC
 
+EXPORT BOOT:data-base
 EXPORT CHECK:CHECKER-PACKAGE-COPY
 EXPORT CHECK:CHECKER-PACKAGE-MODE
 EXPORT CHECK:CHECKER-PACKAGE-U
@@ -13879,6 +13883,7 @@ defer FIRST-RECORD-XT ( -- n )
 
 ;package
 package SRCLOC
+EXPORT BOOT:data-base
 EXPORT CHECK:DICT-CELL@
 private
 TKA-CELL RESERVED-PTR-U8-CELL LAST-TOKEN
@@ -13991,6 +13996,7 @@ public
 
 \ ---- the checker overlay ------------------------------------------------------
 package CHECKER-OVERLAY
+EXPORT BOOT:data-base
 
 variable ON
 variable MARK                              \ NDICT when it opened: later records are the replay's
@@ -19186,6 +19192,7 @@ defer NAMED-OPERAND-XT ( -- )
 \ The items a definition define-word opened records as it is built.
 ;package
 package CHECKER-ITEMS
+EXPORT BOOT:data-base
 EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 BODY-ITEMS:BASE-CELL RESERVED-PTR-U8-CELL ITEM-BLOCK
 : ITEM-CELL@ ( n n -- n ) {: i:n f:n :}

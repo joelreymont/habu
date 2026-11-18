@@ -58,6 +58,7 @@ seal-package
 ;package
 
 package DATA-SPACE
+private EXPORT BOOT:data-base
 public
 
 \ Rewinds DATA to cut, in DP-CELL's units, raising the release high-water to a

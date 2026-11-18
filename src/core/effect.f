@@ -10,6 +10,7 @@ split-str
 \ transient: they end with the file that built them.
 
 package EFFECT
+EXPORT BOOT:data-base
 
 CAST: >TYPE ( n -- type )
 CAST: TYPE>N ( type -- n )

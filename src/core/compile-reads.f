@@ -39,6 +39,7 @@ CELL constant REC-MAP
 1 constant ST-RECORDING
 2 constant ST-MISSED
 create READS-REC REC-BYTES SCRATCH-ALLOT   \ a saved program starts with it empty
+EXPORT BOOT:data-base
 EXPORT POINTER-STORAGE:RESERVED-PTR-U8-CELL
 SRCLOC:READS-CELL RESERVED-PTR-U8-CELL READS-CELL
 READS-REC READS-CELL ptr-cell!             \ a build's store goes to its image

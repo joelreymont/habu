@@ -20,6 +20,7 @@ require src/core/exit-status.f
 require src/lib/byte-buffer.f
 
 package REASON
+EXPORT BOOT:data-base
 
 $1000 constant TEXT-CAP
 

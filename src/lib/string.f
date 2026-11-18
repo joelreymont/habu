@@ -29,6 +29,8 @@ STRING-ABI:SB-BUF-BYTES constant SB-CAP
 $7FFFFFFFFFFFFFFF constant STR-MAX-I64
 STR-MAX-I64 negate 1 - constant STR-MIN-I64
 
+package STRING
+private EXPORT BOOT:data-base global
 \ TASK-LOCAL: `data-base` is the running task's DATA region, at STRING-ABI's
 \ offsets (src/habu/layout.f). This module is baked into the engine below
 \ src/lib/ffi-abi.f, which requires it back, so it cannot require
@@ -39,6 +41,7 @@ STR-MAX-I64 negate 1 - constant STR-MIN-I64
 
 : SB-LEN ( -- ^n )
    data-base STRING-ABI:SB-LEN-OFF + ;
+;package
 
 : BUFFER: ( n -- )
    create allot does> ( -- ^u8 ) ;

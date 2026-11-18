@@ -353,6 +353,7 @@ $43B0 constant DELTA-CELL
 \ stores them as `DATA <off> STR`) and below DATA-START.
 \ A program reads the two published cells through STUB and FD.
 package SIGNAL-ABI
+private EXPORT BOOT:data-base
 public
 $678 constant STUB-CELL
 $680 constant FD-PTR-CELL
@@ -1206,6 +1207,7 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 \ The application entry is outside compiler scratch storage. Zero preserves
 \ ordinary hb CLI routing; a saved application calls this entry before input.
 package APP-ENTRY
+private EXPORT BOOT:data-base
 public
 $43A0 constant XT-CELL
 

@@ -87,12 +87,7 @@ its commands for bare use; a one-off call qualifies the name instead, as in
 
 **Watched cells.** `BPW+` adds a cell address, `BPW-` removes it, `BPW-CLEAR`
 clears all, `BPW.` lists `address value` pairs. Both `step` and breakpoints
-print the watch table. For fixed engine cells:
-
-```
-data-base ENVP-CELL + BPW+
-data-base ARGV-CELL + BPW+
-```
+print the watch table.
 
 **`step`** (in the REPL, `bin/hb` on a tty): `step 5 dup * 3 +` runs the rest
 of the line one token at a time, echoing each token and printing the data stack
