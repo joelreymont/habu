@@ -130,13 +130,19 @@ CAST: WRITE>N ( [ ^u8 n -- ] -- n )
 : ROW-HANDLE ( n -- device ) {: idx:n :}
    idx idx SLOT-GEN @ HANDLE ;
 
-: ROW ( device -- n )
+\ Whether the device is still open: the terminal, or its row live in the
+\ device's generation.
+: OPEN? ( device -- bool )
    DEVICE>N {: h:n :}
    h ROW-MASK and BOUNDED {: idx:n :}
-   idx TERMINAL-ROW = if TERMINAL-ROW exit then
-   idx STATUS@ LIVE <> if E-STATE throw then
-   h GEN-SHIFT rshift idx SLOT-GEN @ <> if E-STATE throw then
-   idx ;
+   idx TERMINAL-ROW = if true exit then
+   idx STATUS@ LIVE <> if false exit then
+   h GEN-SHIFT rshift idx SLOT-GEN @ = ;
+
+: ROW ( device -- n )
+   {: dev:device :}
+   dev OPEN? 0= if E-STATE throw then
+   dev DEVICE>N ROW-MASK and ;
 
 \ No row free is its own failure: the table is intact and every handle in it is
 \ good, the caller simply has to close a device before opening another.
@@ -308,11 +314,11 @@ private
 \ device the caller was on, that task goes back to the terminal, exactly as it
 \ would have if the close had happened with no WITH-IO in the picture.
 : RESTORE-IN ( device -- ) {: dev:device :}
-   dev DEVICE>N ROW-MASK and STATUS@ LIVE <> if 0 IN-PTR ! exit then
+   dev OPEN? 0= if 0 IN-PTR ! exit then
    dev INPUT! ;
 
 : RESTORE-OUT ( device -- ) {: dev:device :}
-   dev DEVICE>N ROW-MASK and STATUS@ LIVE <> if 0 OUT-PTR ! exit then
+   dev OPEN? 0= if 0 OUT-PTR ! exit then
    dev OUTPUT! ;
 
 public

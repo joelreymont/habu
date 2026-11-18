@@ -1,9 +1,9 @@
 ---
-title: "Route a task's I/O by device, not by row"
-status: open
+title: "Restore a WITH-IO caller only to its own device"
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-18T20:19:25.237783+01:00"
 ---
 
-Problem (inferred from code, not reproduced): src/lib/genio-core.f IN-PTR and OUT-PTR hold a bare row; CURRENT and LIVE-ROW check only that the row is LIVE, so once the device a task was set to is closed and another device opens in its row, the task reads or writes the new device instead of the terminal, which the comments above CURRENT and LIVE-ROW promise. Acceptance: a test where a task's output device is closed and another opened in its row sends that task's output to the terminal; first a probe shows whether a closed row is reused. Depends: none. Claim: unassigned.
+Problem: src/lib/genio-core.f WITH-IO restores the caller's devices through RESTORE-IN and RESTORE-OUT (:309-315), which check only that the saved device's row is LIVE. When the body closes the caller's device and opens another, CLAIM-ROW gives the new device that row, so the restore reaches ROW's generation check and throws E-STATE over the body's result, where the comment above them promises the caller goes back to the terminal. Acceptance: a genio test in which the body closes the caller's output device and opens another in its row returns from WITH-IO, leaves the caller on the terminal, and fails with the engine before the fix. Depends: none. Claim: agent=worker workspace=.jj-ws.noindex/jerry-gio.

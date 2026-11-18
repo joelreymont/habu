@@ -5,6 +5,8 @@ split-str
 \ the first read, so no read waits; its end is the end of input.
 \ A device write that faults is caught with the output state its catch saved,
 \ so the next write reaches its device rather than fd 1.
+\ WITH-IO puts its caller back on the terminal when the body closed the
+\ caller's device and a device it opened took that row.
 \ The REPL reads the current input device's lines, an empty one and one a word
 \ reads included, and ends at its end of input.
 \ Run: bin/hb --load src/lib/genio-test.f </dev/null
@@ -46,6 +48,8 @@ variable GOT-CODE
 variable SINK-N
 variable SINK-DEV
 variable FAULTY-DEV
+variable CALLER-DEV
+variable REUSE-DEV
 TASK:MIN-STACK TASK:TASK READER
 
 \ ---- the source --------------------------------------------------------------
@@ -162,6 +166,21 @@ TASK:MIN-STACK TASK:TASK READER
    self GENIO:TERMINAL GENIO:DEVICE>N T=
    SINK SINK-N @ s" y" T$= ;
 
+: REUSE-BODY ( -- )
+   CALLER-DEV @ GENIO:>DEVICE GENIO:CLOSE
+   [: NO-WRITE ;] OUT-DEVICE GENIO:DEVICE>N REUSE-DEV ! ;
+
+: T-RESTORE-REUSED ( -- )
+   s" WITH-IO leaves its caller on the terminal when the body closed the caller's device" T-LABEL
+   [: NO-WRITE ;] OUT-DEVICE dup GENIO:DEVICE>N CALLER-DEV !
+   GENIO:OUTPUT!
+   [: GENIO:TERMINAL GENIO:TERMINAL [: REUSE-BODY ;] GENIO:WITH-IO ;]
+   catch GOT-CODE !
+   GENIO:OUTPUT@ GENIO:DEVICE>N {: out:n :}
+   GOT-CODE @ 0 T=
+   out GENIO:TERMINAL GENIO:DEVICE>N T=
+   REUSE-DEV @ GENIO:>DEVICE GENIO:CLOSE ;
+
 \ ---- the worker ---------------------------------------------------------------
 \ The worker's line is released on its exit chain, which TASK:JOIN has run.
 : READER-BODY ( -- )
@@ -229,6 +248,7 @@ public
    s" the end of input answers a null line" T-NULL-LINE
    CLOSE-ALL
    T-FAULTING-WRITE
+   T-RESTORE-REUSED
    T-REPL-DEVICE
    T-REPORT ;
 
