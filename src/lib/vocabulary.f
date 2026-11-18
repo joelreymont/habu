@@ -9,7 +9,7 @@ split-str
 package VOCABULARY
 private
 
-TYPED-VARIABLE REQUIRE-XT [ -- ]
+TYPED-VARIABLE REQUIRE-XT [ -- renders parses nominal roots ]
 ' require REQUIRE-XT !
 
 public

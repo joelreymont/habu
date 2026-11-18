@@ -1809,7 +1809,7 @@ variable SCRIPT-NAMED-PEND
 package SOURCE-UNIT
 private
 
-TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ]
+TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ]
 
 : ORDINARY ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
@@ -1817,11 +1817,11 @@ TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ]
 
 public
 
-: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- ) LOAD-XT @ execute ;
+: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- ) LOAD-XT @ execute ;
 \ A runner calls the file's quotation as `0 sourceu q execute` with nothing of
 \ its own beneath it; the quotation throws for a refused file.
-: USE ( [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ] -- ) LOAD-XT ! ;
-: CURRENT ( -- [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ] ) LOAD-XT @ ;
+: USE ( [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ] -- ) LOAD-XT ! ;
+: CURRENT ( -- [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ] ) LOAD-XT @ ;
 : RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
 
 ;package
@@ -2287,7 +2287,7 @@ private
    $20 a 1 + c! ;
 
 \ The loop LOAD-UNIT runs a loaded file's bytes through; USE-INTERPRETER swaps it.
-defer INCLUDE-INTERPRET ( str n n -- )
+defer INCLUDE-INTERPRET ( str n n -- nominal )
 
 \ The design seal is read where the engine's loop reads a token, and the loop
 \ written in Habu reads it nowhere, so a file loaded once the seal is set is read
@@ -2345,7 +2345,7 @@ INTERPRET-INSTALL
 
 public
 
-: USE-INTERPRETER ( [ str n n -- ] -- ) is INCLUDE-INTERPRET ;
+: USE-INTERPRETER ( [ str n n -- nominal ] -- ) is INCLUDE-INTERPRET ;
 
 \ The process's root stream (stdin, or the `--load` stream) runs open, as the
 \ engine's own loop runs it: it may leave cells on the stack and the process
@@ -2845,7 +2845,7 @@ private
    s" call `POLICY-ROOT` before the policy seals the dictionary" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: POLICY-ROOT-SET ( [ -- ] -- )
+: POLICY-ROOT-SET ( [ -- renders parses nominal roots ] -- )
    data-base POLICY-REQUIRE-CELL + xt!
    CANON-BUF POLICY-ROOT-BUF CANON-U @ BYTE-COPY
    CANON-U @ POLICY-ROOT-U ! ;
@@ -2857,7 +2857,7 @@ public
 
 \ Configure confinement before checking or sealing. The policy library passes
 \ the ordinary require xt it captured when loaded.
-: POLICY-ROOT ( ^u8 n [ -- ] -- )
+: POLICY-ROOT ( ^u8 n [ -- renders parses nominal roots ] -- )
    {: path:^ u:n require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
    s" SOURCE-ROOT:POLICY-ROOT" path u ROOT-CANON
@@ -2865,7 +2865,8 @@ public
 
 \ Scope a root and require owner for reusable source checks. A callback that
 \ seals leaves the new policy root and refuses the attempted return to the old.
-: POLICY-WITH-ROOT ( ^u8 n [ -- ] [ -- ] -- )
+: POLICY-WITH-ROOT ( ^u8 n [ -- ] [ -- renders parses nominal roots ]
+   -- )
    {: path:^ u:n q require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
    data-base POLICY-REQUIRE-CELL + @ 0= 0= {: had:bool :}

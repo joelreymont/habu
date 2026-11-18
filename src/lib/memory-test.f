@@ -222,7 +222,7 @@ create RBT-ERR RBT-CAP allot
    RBT-RELEASE-LAST-SRC RBT-EXPECT-FAULT
    T-REPORT ;
 
-: RBT-ACTION ( -- [ -- ] )
+: RBT-ACTION ( -- [ -- renders ] )
    [: RBT-EXACT-SPANS ;] ;
 
 : TEST-ALLOC-ROLES ( -- )

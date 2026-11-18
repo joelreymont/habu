@@ -77,7 +77,7 @@ variable OPEN-TASKS                  \ hb's live tasks at the open (TASKS-LIVE-C
 TYPED-VARIABLE BODY [ -- renders nominal roots ]
 variable COMPILED-N                  \ files the last build compiled
 variable LINKED-N                    \ files the last build linked
-TYPED-VARIABLE PRIOR-RUNNER [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ]
+TYPED-VARIABLE PRIOR-RUNNER [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ]
 
 \ The host cells a build changes; RESTORE puts them back.
 variable SAVED-DP
