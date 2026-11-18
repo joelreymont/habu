@@ -3,7 +3,8 @@ html, body { height: 100%; }
 body { margin: 0; display: flex; font: 14px system-ui, sans-serif; }
 #side { flex: 0 0 240px; min-height: 0; overflow: auto; border-right: 1px solid #ddd; }
 #main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-#viewport { position: relative; flex: 1; min-height: 200px; }
+/* #viewport clips a zoomed image (page.js). */
+#viewport { position: relative; flex: 1; min-height: 200px; overflow: hidden; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
@@ -22,7 +23,9 @@ form input { box-sizing: border-box; width: 100%; }
 #text.error { color: #b00020; }
 /* The key buttons sit over the canvas's top right. Each sends its data-key
    to the module as a key turn (page.js), and the module gives it its
-   meaning: "+" zoom in, "-" zoom out, "f" fit. */
+   meaning: "+" zoom in, "-" zoom out, "f" fit. While an image stands in the
+   canvas's place they stay shown and page.js gives them that meaning on the
+   image instead; no key turn is sent. */
 #keys { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
 #keys button, #tree-toggle { font: inherit; min-width: 32px; padding: 4px 8px; border: 1px solid #bbb;
   border-radius: 4px; background: #fff; cursor: pointer; }

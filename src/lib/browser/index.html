@@ -7,7 +7,8 @@
 <style>
 body { margin: 0; font: 14px system-ui, sans-serif; }
 main { display: flex; height: 80vh; }
-#viewport { position: relative; min-width: 0; flex: 1; }
+/* #viewport clips a zoomed image (page.js). */
+#viewport { position: relative; min-width: 0; flex: 1; overflow: hidden; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
