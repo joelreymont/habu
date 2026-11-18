@@ -168,8 +168,6 @@ variable RX  variable RACC
    s" RELOC-EMIT:Lmark" $3FFFF row execute
    s" RELOC-EMIT:Lptrmark" $3FFFF row execute
    s" RELOC-EMIT:Lscratchmark" $3FFFF row execute
-   \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
-   s" RELOC-EMIT:Lrollback" $3FFFF row execute
    s" ENGINE-EMIT:Lbcs" 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD
       row execute
    \ LHEADROW frames x0, x1, x9, x10, x13, x17 and x30 around its probes.

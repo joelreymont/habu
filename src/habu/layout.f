@@ -296,9 +296,6 @@ FR-ROOT PATH-CAP + 1 cells + constant HEADER-BYTES
 $2C50 constant READS-CELL
 ;package
 
-\ PKGRESYNC-CELL: LEVALREC arms it and EM-PKG-RESYNC drains it before the
-\ throw is delivered, making the checker re-read the restored scope.
-$27C0 constant PKGRESYNC-CELL
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
@@ -385,9 +382,6 @@ WRITE-OFF DEVICES 8 * + constant END
 ;package
 
 
-\ EVALREC-CELL: the kernel object names it; no code reads or writes it.
-\ $3CA0..$3CB8 are engine cells no compiled source writes.
-$3CA0 constant EVALREC-CELL
 \ UNCGH-CELL: runtime address of the uncaught-throw reporter, written by the
 \ link: BTHROW, a leaf, branches through it.
 $40C0 constant UNCGH-CELL

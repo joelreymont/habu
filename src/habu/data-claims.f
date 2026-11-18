@@ -116,7 +116,6 @@ create TAB
    PENDTKA-CELL                       1 cells                 CLAIM PENDTKA-CELL
    NCOMP-DISPATCH:DOES-SHADOW-CELL    1 cells                 CLAIM NCOMP-DOES-SHADOW-CELL
    TASK-CHAIN-CELL                    1 cells                 CLAIM TASK-CHAIN-CELL
-   PKGRESYNC-CELL                     1 cells                 CLAIM PKGRESYNC-CELL
    HIDX:CLAIMS                        1 cells                 CLAIM HIDX-CLAIMS
    COMPILE-PREFLIGHT-CELL             1 cells                 CLAIM COMPILE-PREFLIGHT-CELL
    SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
@@ -184,7 +183,6 @@ create TAB
    TASK-TCB-CELL                      1 cells                 CLAIM TASK-TCB-CELL
    TASKS-LIVE-CELL                    1 cells                 CLAIM TASKS-LIVE-CELL
    HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL
-   EVALREC-CELL                       1 cells                 CLAIM EVALREC-CELL
    BOOT:USER-END                      1 cells                 CLAIM BOOT-USER-END
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
    CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS

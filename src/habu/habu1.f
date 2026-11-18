@@ -1431,15 +1431,6 @@ private
    9 11 9 ADD,  9 G-PUSH ;
 ;package
 
-package ENGINE-EMIT
-public
-
-: ENCLOSING-RESTORE, ( n n n -- ) {: base:n off:n tmp:n :}
-   ENCLOSING:END ENCLOSING:PUB - 0 do
-      tmp base off i + LDR,  tmp DATA ENCLOSING:PUB i + STR,
-   CELL +loop ;
-;package
-
 \ The source checker's operations and its record mark.
 package DECL-OWNER
 public
@@ -1450,13 +1441,6 @@ public
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
    11 11 off LDR,
    done LBL, ;
-
-\ Cut back to the mark at [base+off] through the owner's cut operation at op,
-\ through x9; a 0 mark or no operation branches to kept, which the caller places.
-: RETRACT-TO ( n n n label -- ) {: base:n off:n op:n kept:label :}
-   9 base off LDR,  9 kept CBZ,
-   op FIND  11 kept CBZ,
-      9 9 1 SUBI,  9 G-PUSH  11 BLR, ;
 
 \ x11 = the operation at off in the target owner's record; no record, or a 0
 \ operation, branches to absent. The active native compiler retains its

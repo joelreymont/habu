@@ -71,7 +71,6 @@ public
 variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
 variable LSCRATCHMARK \ declare one DATA cell as a scratch pointer, saved as null
-variable LROLLBACK  \ retire address rows at or above the saved DATA cut
 
 ;package
 
@@ -1425,13 +1424,6 @@ private
 package ENGINE-EMIT
 
 public
-
-public
-variable LEVALREC             \ escaped evaluate frames' unwind; no throw branches here
-private
-variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN \ LEVALREC internal labels
-
-public
 : EM-ENTRY-ARGS ( -- )
    HB-TARGET-LINUX? IF
       13 SP 0 LDR,  14 SP 8 ADDI,
@@ -1684,46 +1676,6 @@ public
    13 8 ADDRESS-CELLS:INDEX-COUNT STR,
    13 4 0 STR, ;
 
-\ Raise register rd to DATA plus the DATA floor when it is lower, through the
-\ scratch register rt: a rewind of DATA puts DP no lower than the floor.
-: FLOOR-CLAMP, ( n n -- ) {: rd:n rt:n :}
-   rt DATA DATA-FLOOR-CELL LDR,  rt DATA rt ADD,
-   rd rt CMP,  rd rd rt C-HI CSEL, ;
-
-\ x12 = absolute DP cut. Preserve x0..x17 for both recovery callers.
-: EMIT-ROLLBACK ( -- )
-   LBL {: no-owner:label :}
-   LROLLBACK LABEL@ LBL,
-   \ Registration order is not address order: a late xt! can declare an
-   \ older cell. Keep every row below the cut, preserving its relative order.
-   \ The index records its row count; a reduced count makes the next marker
-   \ rebuild it before lookup, so stale ordinals cannot survive this cut.
-   MARK-SAVE
-   SP SP 16 SUBI,  30 SP 0 STR,
-   CHECKER-OWNER-ABI:DP-CUT-OFF no-owner DECL-OWNER:TARGET
-   9 12 DATA SUB,  9 G-PUSH  11 BLR,
-   no-owner LBL,
-   30 SP 0 LDR,  SP SP 16 ADDI,
-   12 SP 96 LDR,
-   MARK-HEADER MARK-LOCK MARK-ROWS
-   12 12 16 SUB,                                  \ cut as DATA offset
-   13 4 0 LDR,
-   LBL LBL LBL {: arloop:label arnext:label ardone:label :}
-   3 0 MOVZ, 10 0 MOVZ,
-   6 RELOC:XTCELL-OFF-MASK LIT64,
-arloop LBL,
-   3 13 CMP, C-CS ardone BCOND,
-   9 3 3 LSLI, 9 5 9 ADD, 7 9 0 LDR,
-   8 7 6 AND, 8 12 CMP, C-CS arnext BCOND,
-   9 10 3 LSLI, 9 5 9 ADD, 7 9 0 STR,
-   10 10 1 ADDI,
-arnext LBL,
-   3 3 1 ADDI, arloop B,
-ardone LBL,
-   10 4 0 STR,
-   MARK-UNLOCK
-   MARK-RESTORE ;
-
 \ (MARK) spans [LMARK, end) as one sealed record: xt!'s direct BL lands on its entry.
 : EMIT-MARK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -1899,21 +1851,6 @@ public
 
 : EM-TEXT-SIZE ( -- )
    9 DATA RBASE-CELL LDR,  9 10 TEXT-SIZE,  9 DATA TEXT-SIZE-CELL STR, ;
-
-private
-
-\ A throw's recovery rolls the engine package scope back, but the checker's own
-\ mirror moved with the failed input. Recovery arms PKGRESYNC-CELL; this drain
-\ clears it and has the checker re-read the restored scope whatever it is:
-\ resyncing only a global scope left a package open across the boundary refusing
-\ E-PKG-CONTEXT. LEVALREC drains before delivering the throw.
-: EM-PKG-RESYNC ( -- )
-   LBL {: nosync:label :}
-   9 DATA PKGRESYNC-CELL LDR,  9 nosync CBZ,
-      9 0 MOVZ,  9 DATA PKGRESYNC-CELL STR,
-      NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF nosync DECL-OWNER:TARGET   \ x11 = the checker's resync (nosync if absent: cold load / no checker)
-      C-CALL-X11-SAVED
-   nosync LBL, ;
 
 ;package
 
@@ -2091,124 +2028,10 @@ package ENGINE-EMIT
 package ENGINE-EMIT
 
 private
-\ LEVALREC, x15 = throw code, pops the evaluate frames a throw escapes; no throw
-\ branches to it. Each escaped frame gives back its input cursor, data-stack
-\ base (XDS), package and using scope. A frame begun with no
-\ definition open also rolls back everything compiled since: CP/NDICT, DP,
-\ compile state and the checker's records; while a task is live it retires the
-\ dictionary records made since instead and keeps CP, NDICT and DP, rolling
-\ back the rest. A frame begun inside an open
-\ definition is an immediate's evaluate compiling into an outer buffer's
-\ definition, which it may not close: that definition stays open, put back to
-\ the token-start mark. The mark is the innermost buffer's current token, or its
-\ end when it exited cleanly; frames begun in an open definition nest inside the
-\ one that owns the compile, so all pop while the mark holds. Popping stops when
-\ EVALD reaches 0 or the nearest handler (x11) is inside the current frame;
-\ delivery then matches the non-evaluate path.
-: EM-EVAL-THROW-RECOVER ( -- )
-   LBL LBL LBL LBL {: owned:label scope:label rows:label kept:label :}
-   LBL {: retired:label :}
-   LEVALREC LABEL@ LBL,
-   LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !
-   11 DATA 8 LDR,
-   LEVLL LABEL@ LBL,
-      12 DATA EVALD-CELL LDR,  12 LEVLD LABEL@ CBZ,   \ no eval frame left → unwind to handler
-      13 DATA EVAL-TOP-CELL LDR,
-      14 13 24 LDR,                                   \ x14 = the frame's boundary; x13 stays &frame
-      11 LEVLP LABEL@ CBZ,                            \ no handler → pop (escape)
-      \ Handler strictly inside this frame -> unwind to it. The boundary is the
-      \ evaluate's own catch handler, so an equal handler lies outside the
-      \ buffer and the frame pops.
-      11 14 CMP,  C-CC LEVLD LABEL@ BCOND,
-   LEVLP LABEL@ LBL,
-      14 13 STACK-ABI:EVAL-BASE LDR,
-      14 DATA STACK-ABI:BASE-CELL STR,
-      12 13 STACK-ABI:EVAL-CAP LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-      12 13 EVAL-INP LDR,  12 DATA INP-CELL STR,
-      12 13 EVAL-INE LDR,  12 DATA INE-CELL STR,
-      12 13 EVAL-INB LDR,  12 DATA SRCLOC:INB-CELL STR,
-      12 13 EVAL-TKA LDR,  12 DATA TKA-CELL STR,
-      12 13 EVAL-TKL LDR,  12 DATA TKL-CELL STR,
-      XDS 13 32 LDR,
-      12 13 EVAL-FRAME:PEND LDR,  12 owned CBZ,       \ no definition open as it began: it owns the compile
-         \ The outer definition as the interrupted token began.
-         12 DATA TOKBODY-CELL LDR,  12 DATA BODYLEN-CELL STR,
-         12 DATA TOKLOCN-CELL LDR,  12 DATA LOCN-CELL STR,
-         12 DATA TOKDEPTH-CELL LDR,  12 DATA CAPDEPTH-CELL STR,
-         12 DATA TOKRAW-CELL LDR,  12 DATA RAWNEXT-CELL STR,
-         12 DATA TOKCP-CELL LDR,  CP DBASE 12 ADD,
-         12 DATA TOKVSP-CELL LDR,  12 DATA VSP-CELL STR,
-         scope B,
-      owned LBL,
-      SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,  30 SP 24 STR,   \ x30 for the exits below
-      \ The checker's records and held facts go with the definitions, back to
-      \ the ends as the buffer began (EVAL-FRAME:ROWS and EVAL-FRAME:HELD: end+1,
-      \ 0 with no owner then). The held cut comes before LRETIRE holds retirements.
-      13 EVAL-FRAME:ROWS NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF rows DECL-OWNER:RETRACT-TO
-      rows LBL,
-      13 SP 8 LDR,
-      13 EVAL-FRAME:HELD NCOMP-DISPATCH:DECL-HELD-CUT-OFF kept DECL-OWNER:RETRACT-TO
-      kept LBL,
-      13 SP 8 LDR,  9 13 EVAL-FRAME:NDICT LDR,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 retired CBNZ,
-      9 13 EVAL-FRAME:CP LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
-      13 SP 8 LDR,
-      CP 13 EVAL-FRAME:CP LDR,
-      9 13 EVAL-FRAME:NDICT LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,  NDICT 13 EVAL-FRAME:NDICT LDR,
-      12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
-      RELOC-EMIT:LROLLBACK LABEL@ BL,
-      12 9 10 DP-LOWER,
-      12 DATA DP-CELL STR,
-      9 10 LASTC-TRIM,
-      retired LBL,
-      11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  30 SP 24 LDR,  SP SP 32 ADDI,
-      scope LBL,
-      10 13 EVAL-PKG ADDI,
-      9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
-      9 10 PKGSNAP-PUB LDR,     9 DATA PKG-PUB-CELL STR,
-      9 10 PKGSNAP-PRI LDR,     9 DATA PKG-PRI-CELL STR,
-      9 10 PKGSNAP-PARENT LDR,  9 DATA PKG-PARENT-CELL STR,
-      9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
-      13 EVAL-FRAME:ENCLOSING 9 ENGINE-EMIT:ENCLOSING-RESTORE,
-      9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
-      9 10 PKGSNAP:FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
-      9 13 EVAL-FRAME:PKG-OUTSIDE LDR,  9 DATA PKG-OUTSIDE-CELL STR,   \ and whether the includer opened it
-      9 13 EVAL-FRAME:SECTION LDR,  9 DATA SECTION-CELL STR,   \ and the section in force when it began
-      9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
-      12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
-      12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
-      12 13 EVAL-FRAME:PEND LDR,  12 LEVLL LABEL@ CBNZ, \ the outer buffer's definition keeps compiling
-      EM-ABORT-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
-      LEVLL LABEL@ B,
-   LEVLD LABEL@ LBL,
-   \ The handler is compiled code and may ask the checker before the loop reads
-   \ on, so the checker re-reads the restored package scope here. The call owns
-   \ every caller-saved register, so x11 and x15 ride on the stack.
-   SP SP 16 SUBI,  11 SP 0 STR,  15 SP 8 STR,
-   EM-PKG-RESYNC
-   11 SP 0 LDR,  15 SP 8 LDR,  SP SP 16 ADDI,
-   9 15 0 ADDI,
-   11 LEVLN LABEL@ CBZ,
-   14 11 STACK-ABI:CATCH-BASE LDR,
-   19 11 8 LDR,
-   14 DATA STACK-ABI:BASE-CELL STR,
-   14 11 STACK-ABI:CATCH-PEND LDR,
-   10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
-   10 11 STACK-ABI:CATCH-BUSY LDR,  10 DATA GENIO-ABI:BUSY-CELL STR,
-   10 11 STACK-ABI:CATCH-ACTIVE LDR,  10 DATA GENIO-ABI:ACTIVE-CELL STR,
-   10 11 40 LDR,  10 DATA RSP-CELL STR,
-   10 11 48 LDR,  10 DATA LOOPSP-CELL STR,
-   10 11 0 LDR,  10 DATA 8 STR,                       \ HND = prev
-   30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
-   SP 13 0 ADDI,  12 BR,
-   LEVLN LABEL@ LBL,
-   \ No handler: the uncaught-throw exit, x9 = x15 = code. LEVLN falls in;
-   \ BTHROW reaches LUNCAUGHT through UNCGH-CELL. A code in [1,255] is a
-   \ deliberate exit contract and exits as itself with no output. Any other code
-   \ would be masked to `code & 0xFF`, so it is reported as "hb: uncaught throw
-   \ code <n>\n" on fd 2 and exits EXIT-STATUS:UNCAUGHT. x15 keeps the code
-   \ across the write (the kernel preserves x2-x15). Never returns: no RET keeps
-   \ the FPRIM-L throw leaf-safe.
-     LUNCAUGHT LABEL@ LBL,
+\ The uncaught-throw exit, x9 = code: one in [1,255] exits as itself; any other prints
+\ "hb: uncaught throw code <n>" on fd 2 and exits EXIT-STATUS:UNCAUGHT. No RET: leaf-safe.
+: EM-UNCAUGHT ( -- )
+   LUNCAUGHT LABEL@ LBL,
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    0 9 0 ADDI,
    \ One hook call serves both legs below. x0 is the trampoline's to preserve;
@@ -2325,7 +2148,7 @@ package ENGINE-EMIT
    EM-RECOVER-EXITS
    EM-COMPILE-DIE
    EM-BODY-GROW-DIE
-   EM-EVAL-THROW-RECOVER ;
+   EM-UNCAUGHT ;
 
 ;package
 
@@ -2348,8 +2171,7 @@ package LABELS
    LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
    LBL EM-DEF-OCC:LRECLAIM !  LBL EM-DEF-OCC:LRETIRE !
-   LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK !
-   LBL RELOC-EMIT:LROLLBACK ! ;
+   LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK ! ;
 
 : CONTROL ( -- )
    LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !
@@ -2358,7 +2180,7 @@ package LABELS
 
 : RUNTIME ( -- )
    LBL LDOESPATCH !  LBL LGENIOOUT !
-   LBL LEVALREC !  LBL LEXITHOOK !
+   LBL LEXITHOOK !
    LBL LCRASHH !  LBL LHANDLERS-END !  LBL LFAULTREC !  LBL LSIGH !  LBL LHEX !  LBL LDIE-LINE !  LBL LFAULT-PUT !  LBL LFAULT-OWNER !  LBL LFAULT-DEC !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !
    LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
@@ -2517,7 +2339,6 @@ package ENGINE-EMIT
 : EMIT-DICTIONARY-SECTIONS ( -- )
    DOESPATCH:EMIT
    RELOC-EMIT:EMIT-MARK
-   RELOC-EMIT:EMIT-ROLLBACK
    KWDATA:EMIT ;
 
 \ [LCRASHH, LHANDLERS-END) holds the signal handlers and no code Habu code calls. Where an
