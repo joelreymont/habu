@@ -596,6 +596,7 @@ private
 EXPORT CHECK:CHECKER-UNDEFINE
 EXPORT CHECK:REJECT-QUALIFIED
 EXPORT CHECK:CHECKER-USIGS-TRUNCATE-FROM-RAW
+EXPORT CHECK:CHECKER-ROWS-END
 EXPORT CHECK:DOES-COMPANION?-XT
 \ The checker overlay asks this same test of a live definer a replayed
 \ `undefine` retires (src/core/checker.f CHECKER-OVERLAY CLAUSE-OF); a replayed
@@ -716,6 +717,26 @@ public
    idx ;
 
 package XREF
+private
+: CELL-LOWER ( n ^u8 n -- )
+   + CELL-VIEW {: v:n p:^ :}
+   p @ v min p ! ;
+
+\ A throw out of a frame never raises CP, NDICT or the record mark above a
+\ forget or hide made in it. TOKCP-CELL needs no lowering: no forget runs while
+\ a definition is open, since an immediate in a checked body writes nothing.
+: FRAMES-LOWER ( -- )
+   ndict@ cp@ CHECKER-ROWS-END 1+ {: count:n code:n mark:n :}
+   data-base EVAL-TOP-CELL + @
+   begin dup 0 <> while
+      NULL-PTR BYTE-VIEW swap +
+      count over EVAL-FRAME:NDICT CELL-LOWER
+      code over EVAL-FRAME:CP CELL-LOWER
+      dup EVAL-FRAME:ROWS + CELL-VIEW @ 0 <> if
+         mark over EVAL-FRAME:ROWS CELL-LOWER
+      then
+      EVAL-PREV + CELL-VIEW @
+   repeat drop ;
 public
 \ A snapshot builder truncates a refresh tail with HIDE-DEFS-FROM and retires
 \ one word with `undefine NAME`; it never replays baked sources to hide one.
@@ -725,7 +746,8 @@ public
    XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" XREF-REQUIRE-DEFINED
    XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
-   idx ndict! ;
+   idx ndict!
+   FRAMES-LOWER ;
 ;package
 
 \ FORGET retires a suffix of dictionary records and gives back the corresponding
@@ -870,7 +892,8 @@ public
    idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
-   floor CODE-RECLAIM:TRUNCATE ;
+   floor CODE-RECLAIM:TRUNCATE
+   FRAMES-LOWER ;
 ;package
 
 : XREF-NAME. ( ^n -- )

@@ -96,6 +96,30 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" SLF-UMARK\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
+\ A failed evaluate keeps the words a forget inside it removed.
+: SLV-EVAL-FORGET-FORGE$ ( -- str )
+   SB-RESET
+   s" : SLF-J ( -- n ) 7 ;" SB-APPEND SLV-LF
+   s" : SLF-K ( -- n ) 41 ;" SB-APPEND SLV-LF
+   s" : SLF-L ( -- n ) 42 ;" SB-APPEND SLV-LF
+   S\" S\\\" s\\\" SLF-K\\\" XREF:FORGET-DEFS-FROM" SB-APPEND
+   s"  : SLF-M ( -- n ) 0" SB-APPEND
+   5 0 ?do s"  ndict@ max cp@ max" SB-APPEND loop
+   S\"  ; 1 throw\" TEST-EVAL:RC drop" SB-APPEND SLV-LF
+   s" SLF-J . cr" SB-APPEND SLV-LF
+   s" SLF-L . cr" SB-APPEND SLV-LF
+   SB$ ;
+
+\ A failed evaluate keeps the words a hide inside it hid.
+: SLV-EVAL-HIDE-FORGE$ ( -- str )
+   SB-RESET
+   s" : SLF-J ( -- n ) 7 ;" SB-APPEND SLV-LF
+   s" : SLF-L ( -- n ) 42 ;" SB-APPEND SLV-LF
+   S\" S\\\" s\\\" SLF-L\\\" XREF:HIDE-DEFS-FROM 1 throw\" TEST-EVAL:RC drop" SB-APPEND SLV-LF
+   s" SLF-J . cr" SB-APPEND SLV-LF
+   s" SLF-L . cr" SB-APPEND SLV-LF
+   SB$ ;
+
 : SLV-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U !
    oc MATCH PROCESS:ending
@@ -238,10 +262,20 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `XREF:HIDE-DEFS-FROM` cannot remove\n"
    SLV-HIDE-HELP$ SLV-ASSERT-REJECT ;
 
+\ The child printed SLF-J's value and was rejected at SLF-L, never run.
+: SLV-ASSERT-EVAL-GONE ( -- )
+   S\" error[E-UNDEFINED]: cannot find word `SLF-L`\n"
+   s" = help: define `SLF-L` before this point" SLV-ASSERT-REJECT
+   SLV-OUT$ s" 7" STARTS-WITH? TTRUE ;
+
 : SLV-POSITIVES ( -- )
    s" a FORGET round trip still works" T-LABEL
    SLV-FORGET-FORGE$ SLV-SUBJECT SLV-ASSERT-OK
    SLV-OUT$ s" 4" STARTS-WITH? TTRUE
+   s" a failed evaluate keeps the words its forget removed" T-LABEL
+   SLV-EVAL-FORGET-FORGE$ SLV-SUBJECT SLV-ASSERT-EVAL-GONE
+   s" a failed evaluate keeps the words its hide hid" T-LABEL
+   SLV-EVAL-HIDE-FORGE$ SLV-SUBJECT SLV-ASSERT-EVAL-GONE
    s" HIDE-DEFS-FROM of a post-seal user mark still works" T-LABEL
    SLV-HIDE-USER-FORGE$ SLV-SUBJECT SLV-ASSERT-OK ;
 

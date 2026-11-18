@@ -2996,8 +2996,6 @@ private
 \ bounds.
 $18 constant FR-BOUND
 $20 constant FR-XDS
-$28 constant FR-CP
-$30 constant FR-NDICT
 $38 constant FR-DP
 
 \ The frame on its way into the catch that links it; empty at rest.
@@ -3039,8 +3037,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    TKA-CELL CELL@ f EVAL-TKA FR!
    TKL-CELL CELL@ f EVAL-TKL FR!
    STACK-ABI:BASE-CELL CELL@ cells-in cells + f FR-XDS FR!
-   cp@ f FR-CP FR!
-   ndict@ f FR-NDICT FR!
+   cp@ f EVAL-FRAME:CP FR!
+   ndict@ f EVAL-FRAME:NDICT FR!
    DP-CELL CELL@ f FR-DP FR!
    STACK-ABI:BASE-CELL CELL@ f STACK-ABI:EVAL-BASE FR!
    STACK-ABI:CAP-CELL CELL@ f STACK-ABI:EVAL-CAP FR!
@@ -3099,11 +3097,11 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    {: f:^ :}
    DEF-ABORT
    f ROWS-CUT
-   f FR-NDICT FR@ retire-from IF EXIT THEN
+   f EVAL-FRAME:NDICT FR@ retire-from IF EXIT THEN
    \ A buffer may start a task and throw without allocating a definition.
    \ Only changed cursors need their guarded mutation sinks during recovery.
-   f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
-   f FR-CP FR@ dup cp@ <> if CODE-RECLAIM:TRUNCATE else drop then
+   f EVAL-FRAME:NDICT FR@ dup ndict@ <> if ndict! else drop then
+   f EVAL-FRAME:CP FR@ dup cp@ <> if CODE-RECLAIM:TRUNCATE else drop then
    f FRAME-CUT DATA-SPACE:REWIND ;
 
 

@@ -243,10 +243,12 @@ public
 \ to an outer buffer, whose immediate word's evaluate compiles into it, and a
 \ throw that unwinds this buffer leaves it compiling.
 $A0 constant PEND
-\ ROWS: the checker's record end as the buffer began, plus one, read through
-\ the source owner; 0 when no owner records. A throw that unwinds a buffer
-\ owning the compile cuts the records back to it as it rolls the dictionary
-\ back, so no definition the rollback drops keeps a record or a pending window.
+\ CP, NDICT: the code pointer and dictionary count as the buffer began, lowered
+\ by a forget or hide inside it.
+$28 constant CP
+$30 constant NDICT
+\ ROWS: the checker's record end as the buffer began, plus one, 0 when no owner
+\ records; a forget or hide inside the buffer lowers it.
 $B0 constant ROWS
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.
