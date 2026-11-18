@@ -101,14 +101,17 @@ PC1-AT 1+ constant DEFERRED
 5 constant S-A-ENTRY                    \ and in its index entry, which the sync folds
 DEFERRED S-OTHER + S-FOREIGN + S-SPILL + constant S-TOT
 
+: HOST-IX ( str n -- n )
+   XREF-FIND-WL-INDEX dup 0 >= if exit then
+   s" x86-64-kernel-prof: the host lacks a word the report names" 1 die ;
+
 \ The host's records, the package's wids and the code starts, which the
 \ report image seeds and states at the same indices.
-s" prof-a" BOOT:GLOBAL-WL XREF-FIND-WL-INDEX XREF-REQUIRE-INDEX constant A-IX
-s" prof-b" BOOT:GLOBAL-WL XREF-FIND-WL-INDEX XREF-REQUIRE-INDEX constant B-IX
-s" X64K-PROF-Q" BOOT:NAMESPACE-WL XREF-FIND-WL-INDEX
-   XREF-REQUIRE-INDEX constant Q-IX
+s" prof-a" BOOT:GLOBAL-WL HOST-IX constant A-IX
+s" prof-b" BOOT:GLOBAL-WL HOST-IX constant B-IX
+s" X64K-PROF-Q" BOOT:NAMESPACE-WL HOST-IX constant Q-IX
 Q-IX XREF-REC XREF-PKG-PUBLIC constant Q-PUBLIC
-s" CALLER-WITH-A-LONG-NAME" Q-PUBLIC XREF-FIND-WL-INDEX XREF-REQUIRE-INDEX constant C-IX
+s" CALLER-WITH-A-LONG-NAME" Q-PUBLIC HOST-IX constant C-IX
 Q-IX XREF-REC XREF-PKG-PRIVATE constant Q-PRIVATE
 C-IX XREF-REC XREF-WORDLIST constant C-WID
 A-IX B-IX max C-IX max Q-IX max 1+ constant TOP-IX

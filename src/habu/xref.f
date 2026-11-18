@@ -367,10 +367,6 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    a q 1 + ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC  XREF-FIND-WL-INDEX ;
 ;package
 
-: XREF-REQUIRE-INDEX ( n -- n )
-   dup 0 >= if exit then
-   s" xref: word not found" EXIT-STATUS:INTERNAL die ;
-
 \ RETIRE and SEAL rewrite a write-protected record cell through patch32, which
 \ this package's row in src/habu/prims.f (EPPRIM: XREF patch32) types for it.
 package XREF
