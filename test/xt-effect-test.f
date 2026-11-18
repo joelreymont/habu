@@ -230,6 +230,10 @@ create XE-EMPTY 1 allot
    s" a typed cell's quotation shows its stated facts" T-LABEL
    SB-RESET  s" TYPED-VARIABLE XV [ -- renders ]" XE-LINE  s" : XG ( -- n ) XV @ ;" XE-LINE
    SB$ s" found: [ -- renders ]" XE-FACT-REJECTED
+   s" a field's quotation type keeps its stated facts" T-LABEL
+   SB-RESET  s" STRUCTURE xfr DERIVE addr FIELD run [ -- renders ] ;STRUCTURE" XE-LINE
+   s" : XF ( ^xfr -- n ) XFR:RUN @ ;" XE-LINE
+   SB$ s" found: [ -- renders ]" XE-FACT-REJECTED
    s" a recorded output keeps its quotation's facts" T-LABEL
    SB-RESET
    S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE

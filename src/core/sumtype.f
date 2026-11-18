@@ -97,6 +97,7 @@ EXPORT CHECK:CHECKER-RECORD-SYM
 EXPORT CHECK:CHECKER-SIG-UNRES-TAKE
 EXPORT CHECK:CON-OF
 EXPORT CHECK:CT-INT?
+EXPORT CHECK:CTL-STATABLE
 EXPORT CHECK:DELIM?
 EXPORT CHECK:EFFECT-ROWS
 EXPORT CHECK:FAM-RESET
@@ -119,6 +120,7 @@ EXPORT CHECK:PKRESET
 EXPORT CHECK:PTR>INNER
 EXPORT CHECK:Q>DIN
 EXPORT CHECK:Q>DOUT
+EXPORT CHECK:Q>FACTS
 EXPORT CHECK:Q>RIN
 EXPORT CHECK:Q>ROUT
 EXPORT CHECK:R-RES
@@ -149,6 +151,7 @@ EXPORT CHECK:SIG-UNRES-CLEAR
 EXPORT CHECK:SIG-VAR-SLOT
 EXPORT CHECK:SL
 EXPORT CHECK:SQUOT-N
+EXPORT CHECK:STATED-FLAG
 EXPORT CHECK:T-RES
 EXPORT CHECK:TAG
 EXPORT CHECK:TDECL-TITLE
@@ -781,8 +784,8 @@ defer TDV-ELEM-XT ( str -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recurs
 \ Each quotation side is an ordered row of zero or more payload elements.
 \ Element ids collect in a reentrant scratch and land as one contiguous run of
 \ schema roots per side, after every element's own argument roots, so each
-\ SCH-ROW range stays contiguous. No `|` clause stores hasr 0 with empty rin and
-\ rout rows; an explicit clause pins both.
+\ SCH-ROW range stays contiguous. Without a `|` clause the rin and rout rows
+\ are empty and no return clause is stored; an explicit clause pins both.
 PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
 : TDV-QUOT-SCR ( -- ^n ) TDV-QUOT-P @ ;
 : TDV-QUOT+ ( n -- ) {: node:n :}
@@ -801,20 +804,43 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
    base TDV-QUOT-N !
    estart cnt SCHEMA-ROW ;
 : TDV-QUOT-EMPTY-ROW ( -- n ) SCHEMA-ROOT-N@ 0 SCHEMA-ROW ;
-: TDV-QUOT-FINISH ( n n n n n n -- n )
-   {: din:n dout:n rin:n rout:n hasr:n outer:n :}
+: TDV-QUOT-FINISH ( n n n n bool n n -- n )
+   {: din:n dout:n rin:n rout:n hasr:bool facts:n outer:n :}
    TDV-QUOT-MISS @ {: missing:n :}
    outer TDV-QUOT-MISS !
    missing 0 <> IF 0 EXIT THEN
-   din dout rin rout hasr SCHEMA-QUOT ;
-: TDV-QUOT-SIDE ( [ -- str ] [ str -- n ] -- n str )
-   {: next elem :}
+   din dout rin rout hasr facts SCHEMA-QUOT ;
+: TDV-FACTS-HELP$ ( -- str )
+   s" write the facts after the last outputs, as `[ n -- n renders ]`" ;
+\ Rejects the token a u, a fact word where the side may not end in facts.
+: TDV-FACT-PLACE ( str [ str str str n -- ] -- ) {: a:^ u:n fail :}
+   a u s" a fact follows only the last outputs" TDV-FACTS-HELP$ E-TDECL-SYNTAX fail execute ;
+\ One token a u of a side stating FACTS so far: a type joins the row, a fact word, when OK lets
+\ the side end in them, joins the facts. A fact is stated once and only fact words follow it.
+: TDV-QUOT-TOK ( n str [ str -- n ] [ str str str n -- ] bool -- n )
+   {: facts:n a:^ u:n elem fail ok:bool :}
+   a u STATED-FLAG {: flag:n :}
+   flag 0 <> IF
+      ok 0= IF a u fail TDV-FACT-PLACE facts EXIT THEN
+      facts flag and 0 <> IF
+         a u s" this fact is already stated" s" state each fact once"
+         E-TDECL-SYNTAX fail execute facts EXIT
+      THEN
+      facts flag or EXIT
+   THEN
+   facts 0 <> IF
+      a u s" a type follows the facts" TDV-FACTS-HELP$ E-TDECL-SYNTAX fail execute facts EXIT
+   THEN
+   a u elem execute TDV-QUOT+ facts ;
+\ One side: its row, the facts it states, 0 when none, and the separator that ends it.
+: TDV-QUOT-SIDE ( [ -- str ] [ str -- n ] [ str str str n -- ] bool -- n n str )
+   {: next elem fail ok:bool :}
    TDV-QUOT-N @ {: base:n :}
-   BEGIN next execute 2dup DELIM? 0= WHILE
-      elem execute TDV-QUOT+
+   0 BEGIN next execute 2dup DELIM? 0= WHILE
+      elem fail ok TDV-QUOT-TOK
    REPEAT
-   {: sep:^ sepu:n :}
-   base TDV-QUOT-BUILD-ROW sep sepu ;
+   {: facts:n sep:^ sepu:n :}
+   base TDV-QUOT-BUILD-ROW facts sep sepu ;
 : TDV-QUOT-EXPECT ( str str [ str str str n -- ] -- )
    {: a:^ u:n ea:^ eu:n fail :}
    a u ea eu CORE-STR= IF EXIT THEN
@@ -831,22 +857,24 @@ public
 
 \ Shared by variant payloads and STRUCTURE fields, each supplying its token
 \ stream, element resolver and rejecter, which is given the token it stopped at.
+\ The facts follow the last outputs: the data outputs' when there is no `|`.
 : PARSE-QUOT ( [ -- str ] [ str -- n ] [ str str str n -- ] -- n )
    {: next elem fail :}
    TDV-QUOT-MISS @ {: outer:n :}
    0 TDV-QUOT-MISS !
-   next elem TDV-QUOT-SIDE {: din:n sep:^ sepu:n :}
+   next elem fail RES-FALSE TDV-QUOT-SIDE rot drop {: din:n sep:^ sepu:n :}
    sep sepu s" --" fail TDV-QUOT-EXPECT
-   next elem TDV-QUOT-SIDE {: dout:n end:^ endu:n :}
+   next elem fail RES-TRUE TDV-QUOT-SIDE {: dout:n dfacts:n end:^ endu:n :}
    end endu s" |" CORE-STR= IF
-      next elem TDV-QUOT-SIDE {: rin:n rsep:^ rsepu:n :}
+      dfacts 0 <> IF end endu fail TDV-FACT-PLACE THEN
+      next elem fail RES-FALSE TDV-QUOT-SIDE rot drop {: rin:n rsep:^ rsepu:n :}
       rsep rsepu s" --" fail TDV-QUOT-EXPECT
-      next elem TDV-QUOT-SIDE {: rout:n rend:^ rendu:n :}
+      next elem fail RES-TRUE TDV-QUOT-SIDE {: rout:n rfacts:n rend:^ rendu:n :}
       rend rendu s" ]" fail TDV-QUOT-EXPECT
-      din dout rin rout -1 outer TDV-QUOT-FINISH
+      din dout rin rout RES-TRUE rfacts outer TDV-QUOT-FINISH
    ELSE
       end endu s" ]" fail TDV-QUOT-EXPECT
-      din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 outer TDV-QUOT-FINISH
+      din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW RES-FALSE dfacts outer TDV-QUOT-FINISH
    THEN ;
 
 private
@@ -982,7 +1010,8 @@ defer TERM-SCHEMA-XT ( n -- n )
    q Q>DIN ROW-TAIL q Q>DOUT ROW-TAIL <> IF 0 EXIT THEN
    q Q>DIN READ-SIDE dup 0= IF EXIT THEN {: din:n :}
    q Q>DOUT READ-SIDE dup 0= IF EXIT THEN {: dout:n :}
-   din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 SCHEMA-QUOT ;
+   din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW
+   RES-FALSE q Q>FACTS CTL-STATABLE and SCHEMA-QUOT ;
 
 \ The schema node of a closed type's term, 0 for one no node holds: an atom
 \ other than `xt`, a binder or a variable.

@@ -205,6 +205,7 @@ EXPORT CHECK:CT-FIND
 EXPORT CHECK:CT-LINEAR?
 EXPORT CHECK:CT-LIVE?
 EXPORT CHECK:CT-NAME$
+EXPORT CHECK:CTL-STATABLE
 EXPORT CHECK:CTOR-EXTEND?-XT
 EXPORT CHECK:CTOR-OWNER-XT
 EXPORT CHECK:CTOR-ROW?-XT
@@ -266,7 +267,9 @@ EXPORT CHECK:PTX-TILE-FAM
 EXPORT CHECK:PTX-UNIFORM-FAM
 EXPORT CHECK:PUSH-LOGICAL
 EXPORT CHECK:PUSH-TERM
+EXPORT CHECK:Q-FACTS!
 EXPORT CHECK:Q>BLOCK
+EXPORT CHECK:Q>FACTS
 EXPORT CHECK:R-RES
 EXPORT CHECK:REC-IX
 EXPORT CHECK:REC-ON
@@ -2343,7 +2346,7 @@ public
       PK-CELL RES-TRUE EXIT
    THEN
    node SCHEMA-QUOT? IF
-      node SCHEMA-A@ dup 0= swap -1 = or 0= IF 0 RES-FALSE EXIT THEN
+      node SCHEMA-A@ 1 invert and CTL-STATABLE invert and 0 <> IF 0 RES-FALSE EXIT THEN
       node SCHEMA-C@ SCH-QUOT-ROWS <> IF 0 RES-FALSE EXIT THEN
       node SCHEMA-B@ {: start:n :}
       start 0 < start SCH-ROOT-N @ > or IF 0 RES-FALSE EXIT THEN
@@ -3798,10 +3801,10 @@ create ER-MSG ER-MSG-CAP allot
       fam  mark ES-ROOTS  k SCHEMA-APP EXIT
    THEN
    c 81 = IF
-      ER-NUM {: hasr:n :}
+      ER-NUM {: qa:n :}
       ES-N @ {: mark:n :}
       SCH-QUOT-ROWS 0 ?do recurse ES-PUSH loop
-      mark ES@  mark 1 + ES@  mark 2 + ES@  mark 3 + ES@  hasr
+      mark ES@  mark 1 + ES@  mark 2 + ES@  mark 3 + ES@  qa 1 and 0 <>  qa 1 invert and
       mark ES-N !
       SCHEMA-QUOT EXIT
    THEN
@@ -4246,13 +4249,14 @@ defer TFC-QUOT-ROW ( n n n -- n )   \ ( rownode base mode -- row )
       FRESH MK-QROW {: rbase:n :}             \ implicit tails a signature's callable has
       node SCHEMA-QUOT-DIN@  dbase mode TFC-QUOT-ROW {: din:n :}
       node SCHEMA-QUOT-DOUT@ dbase mode TFC-QUOT-ROW {: dout:n :}
-      node SCHEMA-QUOT-HASR@ 0= 0= IF
+      node SCHEMA-QUOT-HASR@ IF
          node SCHEMA-QUOT-RIN@  rbase mode TFC-QUOT-ROW {: rin:n :}
          node SCHEMA-QUOT-ROUT@ rbase mode TFC-QUOT-ROW {: rout:n :}
          din dout rin rout MK-QUOT
       ELSE
          din dout rbase rbase MK-QUOT         \ no return clause: neutral rin = rout
       THEN
+      dup Q>FACTS node SCHEMA-QUOT-FACTS@ or over Q-FACTS!
       \ A schema's quotation in a constructor's input is stored, so it reads no local.
       mode TFC-STORE = IF dup Q>BLOCK PAY NSCOPE-RAISE THEN EXIT
    THEN

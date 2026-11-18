@@ -1409,6 +1409,24 @@ s" SUMTYPE tdpqy VARIANT run [ n -- n ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqy`\n"
 s" [" s" the quotation type is not closed" TDT-AT
 s\"   = help: close the quotation type with `]`\n" TDT-HAS
+\ Fact words follow the last outputs, each stated once.
+SUMTYPE tdpqf VARIANT run [ -- renders ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+s" SUMTYPE tdpqf1 VARIANT run [ renders -- ] ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf1`\n"
+s" renders" s" a fact follows only the last outputs" TDT-AT
+s\"   = help: write the facts after the last outputs, as `[ n -- n renders ]`\n" TDT-HAS
+s" SUMTYPE tdpqf2 VARIANT run [ -- renders renders ] ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf2`\n"
+s" renders" s" this fact is already stated" TDT-AT
+s\"   = help: state each fact once\n" TDT-HAS
+s" SUMTYPE tdpqf3 VARIANT run [ -- renders n ] ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf3`\n"
+s" n" s" a type follows the facts" TDT-AT
+s\"   = help: write the facts after the last outputs, as `[ n -- n renders ]`\n" TDT-HAS
+s" SUMTYPE tdpqf4 VARIANT run [ -- renders | -- ] ;VARIANT ;SUMTYPE"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf4`\n"
+s" |" s" a fact follows only the last outputs" TDT-AT
+s\"   = help: write the facts after the last outputs, as `[ n -- n renders ]`\n" TDT-HAS
 
 \ A quotation side of 300 elements declares, and the constructor takes a
 \ quotation of 300 cells, not of 299; a variant of 300 payload elements declares.

@@ -322,8 +322,8 @@ public
    dup SCHEMA-NODE-OK? IF SCHEMA-ROW? ELSE drop RES-FALSE THEN ;
 
 \ --- SCH-QUOT quotation payload node: the checker's quotation effect sides (din,
-\ dout, rin, rout) as four SCH-ROW roots plus a hasr flag, so a schema can carry a
-\ quotation-typed argument. A side that is not a live SCH-ROW node is rejected.
+\ dout, rin, rout) as four SCH-ROW roots, so a schema can carry a quotation-typed
+\ argument. A side that is not a live SCH-ROW node is rejected.
 private
 
 : QUOT-SIDE-CK ( n -- ) {: side:n :}
@@ -332,22 +332,22 @@ private
    side s" SCHEMA-QUOT" s" a side that is not a live row node"
    s" pass four sides `SCHEMA-REG:SCHEMA-ROW` made" SCHEMA-BAD ;
 
-: SCH-FLAG ( n -- n )                       \ canonical 0/-1 flag as a plain cell (any nonzero -> -1)
-   0= IF 0 ELSE -1 THEN ;
-
 public
 
-: SCHEMA-QUOT ( n n n n n -- n )
-   {: din:n dout:n rin:n rout:n hasr:n :}
+\ The four sides, whether there is a return clause, and the stated facts. A holds
+\ the facts, ORed with 1 when there is a return clause: no fact uses bit 0.
+: SCHEMA-QUOT ( n n n n bool n -- n )
+   {: din:n dout:n rin:n rout:n hasr:bool facts:n :}
    din QUOT-SIDE-CK  dout QUOT-SIDE-CK  rin QUOT-SIDE-CK  rout QUOT-SIDE-CK
    din SCHEMA-ROOT+ {: start:n :}          \ first side root; dout/rin/rout follow contiguously
    dout SCHEMA-ROOT+ drop
    rin SCHEMA-ROOT+ drop
    rout SCHEMA-ROOT+ drop
-   SCH-QUOT hasr SCH-FLAG start SCH-QUOT-ROWS SCHEMA-NEW ;
+   SCH-QUOT  hasr IF facts 1 or ELSE facts THEN  start SCH-QUOT-ROWS SCHEMA-NEW ;
 
 : SCHEMA-QUOT? ( n -- bool ) SCHEMA-TAG@ SCH-QUOT = ;
-: SCHEMA-QUOT-HASR@ ( n -- n ) SCHEMA-A@ ;
+: SCHEMA-QUOT-HASR@ ( n -- bool ) SCHEMA-A@ 1 and 0 <> ;
+: SCHEMA-QUOT-FACTS@ ( n -- n ) SCHEMA-A@ 1 invert and ;
 : SCHEMA-QUOT-ROW@ ( n n -- n ) {: node:n i:n :}    \ i-th effect side's SCH-ROW node
    i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot side index" EXIT-STATUS:INTERNAL die THEN
    node SCHEMA-B@ i + SCHEMA-ROOT@ ;
@@ -359,7 +359,7 @@ public
 \ The effect with no inputs and no outputs.
 : EMPTY-EFFECT ( -- n )
    0 0 SCHEMA-ROW {: row:n :}
-   row row row row 0 SCHEMA-QUOT ;
+   row row row row RES-FALSE 0 SCHEMA-QUOT ;
 
 \ Row with node after its elements.
 private
@@ -377,13 +377,13 @@ public
 : EFFECT-IN ( n n -- n ) {: eff:n node:n :}
    eff SCHEMA-QUOT-DIN@ node SIDE+  eff SCHEMA-QUOT-DOUT@
    eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
-   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+   eff SCHEMA-QUOT-HASR@ eff SCHEMA-QUOT-FACTS@ SCHEMA-QUOT ;
 
 \ Effect EFF with NODE as its new top output.
 : EFFECT-OUT ( n n -- n ) {: eff:n node:n :}
    eff SCHEMA-QUOT-DIN@  eff SCHEMA-QUOT-DOUT@ node SIDE+
    eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
-   eff SCHEMA-QUOT-HASR@ SCHEMA-QUOT ;
+   eff SCHEMA-QUOT-HASR@ eff SCHEMA-QUOT-FACTS@ SCHEMA-QUOT ;
 
 \ --- SCH-PTR: a `^T` variant payload element. A malformed child (nil or out
 \ of range) is rejected.

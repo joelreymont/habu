@@ -502,7 +502,7 @@ variable DENSE-N
    node SCHEMA-QUOT? if
       node SCHEMA-QUOT-DIN@ RECURSE  node SCHEMA-QUOT-DOUT@ RECURSE
       node SCHEMA-QUOT-RIN@ RECURSE  node SCHEMA-QUOT-ROUT@ RECURSE
-      node SCHEMA-QUOT-HASR@ SCHEMA-QUOT exit
+      node SCHEMA-QUOT-HASR@ node SCHEMA-QUOT-FACTS@ SCHEMA-QUOT exit
    then
    node SCHEMA-APP? node SCHEMA-ROW? or 0= if node exit then
    PARAM-SCR-N @
