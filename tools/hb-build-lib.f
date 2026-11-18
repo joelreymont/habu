@@ -382,10 +382,14 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
 
 \ A link that threw a status in 1..255 has its record out: the build stops with
-\ that status and prints nothing more.
+\ that status and prints nothing more. Any other throw prints the record it
+\ carries, else a line naming where the build was.
 : HBB-LINK-FAILED ( n -- )
    {: rc:n :}
    rc 1 >= rc 255 <= and if HBB-CLEANUP rc HBB-EXIT then
+   REJECTION:CARRIED? if
+      rc ERROR:UNCAUGHT  HBB-CLEANUP  EXIT-STATUS:UNCAUGHT HBB-EXIT
+   then
    HBB-JSON @ 0= if
       s" hb-build: " HBB-WERR  HB-BUILD-CORE:WHERE$ HBB-WERR
       s"  threw " HBB-WERR
