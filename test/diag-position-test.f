@@ -1460,8 +1460,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : X ( n rvbox<a> -- ) 2>r 2r> 2drop ;" SB-APPEND LF+
    s" rvbox-2tor.f" FIXTURE!
    s" E-MISMATCH" s" 2>r" 2 23 62 65 REFUSED-AT
-   0 s" expected" s" a b" NOTE=
-   0 s" found" s" n rvbox<c>" NOTE=
+   0 s" expected" s" c a" NOTE=
+   0 s" found" s" n rvbox<b>" NOTE=
    0 s" family" s" rvbox" NOTE=
    s" that unbalanced return row alone" T-LABEL
    s" : X ( n -- ) >r ;" s" rstack.f" LINE-FIXTURE

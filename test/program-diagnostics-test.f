@@ -369,6 +369,12 @@ variable BIG-U
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
+   s" test/program-diagnostic-one-cell.f" s" program-diagnostic-one-cell.f:16:25" DIAGNOSTIC
+   s" error[E-MISMATCH]: `a` in `ap`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" error[E-MISMATCH]: `a` in `d`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" error[E-MISMATCH]: `a` in `g`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" in a word whose effect names `pr`" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" @pr.tag" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-LACKS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" error[E-USING-UNKNOWN]" DIAGNOSTIC
    s" no package is named `NOPE-PKG`" s" test/program-diagnostic-using.f" GE-EXPECT-ERR-HAS

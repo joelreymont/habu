@@ -1183,7 +1183,7 @@ variable MDV-I   variable MDV-F
       MD-CALLABLE-NARROW of s" the callable works on fewer types than the cell or defer it goes into holds" endof
       MD-RECORD-AT-WIDE of s" `record-at` steps by the record's declared width, and this instantiation is wider" endof
       MD-MEMBER-TOP of s" at top level the word runs with its declared layout, and the receiver's instance moves this member" endof
-      MD-ONE-CELL   of s" the word's code reads one cell through this pointer" endof
+      MD-ONE-CELL   of s"  is one cell" endof
       MD-CONSTRUCT-WIDE of s" the variant is wider than the declared widest variant once its type argument is filled in" endof
       MD-C2-BINDER    of s" the callback's binder does not fit this entry's scope and record" endof
       MD-C2-RECORDS-BINDER of s" the callback's binder does not fit this entry's scope and record" endof
@@ -1358,13 +1358,30 @@ variable MDV-I   variable MDV-F
    THEN
    ;AT-PIN ;
 
+\ The declared type a one-cell variable met, a hidden cell named by its whole
+\ type.
+: CELL-TYPE ( -- n )
+   MDIAG-CELL @ dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
+
+\ The one-cell variable and the word whose effect made it, before the reason's
+\ prose. A deferred verdict prints after SIG-EFF-DROP dropped the checked
+\ definition's own records, so there it names the variable alone.
+: ONE-CELL-LEAD ( -- )
+   AT-PIN  s" `" EMIT-STR  MDIAG-CELL-VAR @ MK-VAR REND-TYPE  s" `" EMIT-STR  ;AT-PIN
+   MDIAG-CELL-VAR @ TVO@ {: org:n :}
+   org 0=  DVERD @ VERDICT-DEFERRED =  or IF EXIT THEN
+   org 1 - E-PTR ER.SYM @ {: sym:n :}
+   sym 0= IF EXIT THEN
+   s"  in `" EMIT-STR  sym SYM-NAME$ EMIT-STR  s" `'s effect" EMIT-STR ;
+
 \ The declared type a one-cell variable met, after the reason's prose: its
 \ cells, or that it is a declared type where it fits one cell.
 : ONE-CELL-COUNTS ( -- )
    AT-PIN
-   s" ; `" EMIT-STR  MDIAG-CELL @ REND-TYPE
-   MDIAG-CELL @ T-WIDTH 1 > IF
-      s" ` is " EMIT-STR  MDIAG-CELL @ T-WIDTH EMIT-U  s"  cells" EMIT-STR
+   CELL-TYPE {: t:n :}
+   s" ; `" EMIT-STR  t REND-TYPE
+   t T-WIDTH 1 > IF
+      s" ` is " EMIT-STR  t T-WIDTH EMIT-U  s"  cells" EMIT-STR
    ELSE
       s" ` is a declared type, not a plain cell" EMIT-STR
    THEN
@@ -1688,6 +1705,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    \ read of an index no group declared lacks.
    MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
    PIN-TOK$ nip 0 <>  and IF TOK-SPAN 32 EMIT1 THEN
+   MDIAG @ MD-ONE-CELL = IF ONE-CELL-LEAD THEN
    MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
    MDIAG-COUNTS ;
@@ -2102,7 +2120,7 @@ PTR-VARIABLE HOLDER-FIRST
 
 : ONE-CELL-HELP ( -- )
    MD-ONE-CELL MD-SUGGEST$ EMIT-STR
-   AT-PIN  s"  `" EMIT-STR  MDIAG-CELL @ REND-TYPE  s" `" EMIT-STR  ;AT-PIN ;
+   AT-PIN  s"  `" EMIT-STR  CELL-TYPE REND-TYPE  s" `" EMIT-STR  ;AT-PIN ;
 
 : LINLOCAL-HELP ( -- )
    s" keep the linear value on the stack and pass it on with stack words, in place of binding it to a local"

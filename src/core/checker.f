@@ -915,7 +915,7 @@ PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
 \ A saved program starts with none: the planes and TV-CAP are scratch, so
 \ TV-ENSURE maps the arena on first use.
 1280 constant MAXTV-INIT
-18 constant TV-PLANES
+20 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   TV-CAP scratch-cell-mark   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;
@@ -934,6 +934,8 @@ PTR-VARIABLE NLINEAR-P  \ a type var binds only a type a cast's stored position 
 PTR-VARIABLE TVP-P      \ a bound type var was bound from a provided side (TV-BIND)
 PTR-VARIABLE QCON-IDS-P   PTR-VARIABLE QCON-KINDS-P
 PTR-VARIABLE QCON-RIDS-P  PTR-VARIABLE QCON-NLIN-P
+\ A var E-I-TV minted: its record's offset + 1 (0 for none) and its id there.
+PTR-VARIABLE TVO-P  PTR-VARIABLE TVI-P
 
 : TV-BYTES ( n -- n ) TV-PLANES * cells ;
 : TV-PLANE ( ^a n n -- ^a ) {: base:^ cap:n plane:n :}
@@ -966,6 +968,8 @@ PTR-VARIABLE QCON-RIDS-P  PTR-VARIABLE QCON-NLIN-P
    base cap 15 TV-PLANE TVP-P !
    base cap 16 TV-PLANE NLINEAR-P !
    base cap 17 TV-PLANE QCON-NLIN-P !
+   base cap 18 TV-PLANE TVO-P !
+   base cap 19 TV-PLANE TVI-P !
    cap TV-CAP ! ;
 
 
@@ -979,6 +983,7 @@ PTR-VARIABLE QCON-RIDS-P  PTR-VARIABLE QCON-NLIN-P
    NULL-PTR QCON-IDS-P !   NULL-PTR QCON-KINDS-P !
    NULL-PTR QCON-RIDS-P !   NULL-PTR TVP-P !
    NULL-PTR NLINEAR-P !   NULL-PTR QCON-NLIN-P !
+   NULL-PTR TVO-P !   NULL-PTR TVI-P !
    0 TV-CAP ! ;
 TV-CLEAR
 
@@ -1021,6 +1026,7 @@ TV-CLEAR
 : TV-READY ( -- ) 1 TV-ENSURE ;
 : TVT ( -- ^n ) TV-READY TVT-P @ ;       : RVT ( -- ^n ) TV-READY RVT-P @ ;
 : TVK ( -- ^n ) TV-READY TVK-P @ ;
+: TVO ( -- ^n ) TV-READY TVO-P @ ;       : TVI ( -- ^n ) TV-READY TVI-P @ ;
 : NSCOPE ( -- ^n ) TV-READY NSCOPE-P @ ;
 : TVP ( -- ^n ) TV-READY TVP-P @ ;
 : QCON-IDS ( -- ^n ) TV-READY QCON-IDS-P @ ;
@@ -1083,6 +1089,10 @@ private
 13 constant TVK-MOVED
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK! ( n n -- ) cells TVK + ! ;
+: TVO@ ( n -- n ) cells TVO + @ ;
+: TVO! ( n n -- ) cells TVO + ! ;
+: TVI@ ( n -- n ) cells TVI + @ ;
+: TVI! ( n n -- ) cells TVI + ! ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )
    dup TVK-NULL = swap TVK-DBASE = or ;
@@ -4191,6 +4201,7 @@ SCRATCH{
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
 \ The layout type a one-cell variable met in this token's unify, 0 for none.
 variable ONE-CELL-HIT
+variable ONE-CELL-VAR   \ that variable's id, read only while ONE-CELL-HIT is set
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
@@ -4216,12 +4227,15 @@ variable XT-DECL
    t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
    t T-WIDTH 1 = ;
 
-\ A one-cell var met declared type t: latch t, which a plain cell is not.
+\ A one-cell var met declared type t: latch t, which a plain cell is not. A
+\ MOVED var is one cell only against a wider value.
 : ONE-CELL-MET ( n n -- ) {: v:n t:n :}
    v ISVAR 0= IF EXIT THEN
-   v PAY TVK@ TVK-CELL <> IF EXIT THEN
    t TAG T-PARAM <> IF EXIT THEN
-   t ONE-CELL-HIT ! ;
+   v PAY TVK@ {: k:n :}
+   k TVK-CELL =  k TVK-ANY = or
+   k TVK-MOVED =  t T-WIDTH 1 >  and  or 0= IF EXIT THEN
+   t ONE-CELL-HIT !  v PAY ONE-CELL-VAR ! ;
 
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}
    a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
@@ -4355,7 +4369,7 @@ variable XT-DECL
       \ A generic ! or atomic! still reads its one-cell value.
       dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
       dup T-WIDTH 1 = IF drop RES-FALSE EXIT THEN
-      ONE-CELL-HIT ! RES-TRUE EXIT
+      ONE-CELL-HIT !  vid ONE-CELL-VAR !  RES-TRUE EXIT
    THEN
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
@@ -5035,6 +5049,8 @@ U-DRAIN-INSTALL
      dup cells NSCOPE + 0 swap !
      dup cells NLINEAR + 0 swap !
      dup cells TVP + 0 swap !
+     dup cells TVO + 0 swap !
+     dup cells TVI + 0 swap !
      1 +
    REPEAT drop ;
 
@@ -5370,6 +5386,7 @@ variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
 variable MDIAG-CELL   \ one-cell rule: the layout type a one-cell variable met
+variable MDIAG-CELL-VAR   \ one-cell rule: that variable's id
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
 
@@ -5453,7 +5470,9 @@ TAIL-CAPTURE-DEFAULT
    RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
    ONE-CELL-HIT @ 0 <> IF   \ the type copied only when this refusal latches the reason
-      MDIAG @  MD-ONE-CELL MDIAG!  MDIAG @ <> IF ONE-CELL-HIT @ MDIAG-CELL ! THEN
+      MDIAG @  MD-ONE-CELL MDIAG!  MDIAG @ <> IF
+         ONE-CELL-HIT @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
+      THEN
    THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN
    BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN
@@ -9997,6 +10016,7 @@ $50 constant EFF-NODE
 SCRATCH{
 PTR-VARIABLE EI-AK-P   variable EI-AK-CAP
 variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK and E-AK-BIND wrote
+variable EI-REC                \ the record being instantiated: its offset + 1, 0 for the TOP row
 }SCRATCH
 3 constant EI-AK-ROW
 : EI-AK ( n -- ^n ) EI-AK-ROW * cells EI-AK-P @ + ;
@@ -11822,6 +11842,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    if rec FEP-SET then ;
 
 : E-INST-COUNTS ( n n -- ) {: tvn:n rvn:n :}
+   0 EI-REC !
    E-I-AK-RESET
    tvn rvn TV-ENSURE-MAX
    0 begin dup tvn < while
@@ -11834,13 +11855,15 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    repeat drop ;
 
 : E-INST-RESET ( ^u8 -- ) {: h:^ :}
-   h E-TVN@ h E-RVN@ E-INST-COUNTS ;
+   h E-TVN@ h E-RVN@ E-INST-COUNTS
+   h E-OFF 1+ EI-REC ! ;
 
 \ FRESH may grow (relocate) the EI arena, so re-fetch the slot address after
 \ it: a base cached across FRESH would store into the freed buffer.
 : E-I-TV ( n -- n ) {: id:n :}
    id cells EI-TV + @ UNBOUND = if
-      FRESH MK-VAR id cells EI-TV + !
+      FRESH  EI-REC @ over TVO!  id over TVI!
+      MK-VAR id cells EI-TV + !
    then id cells EI-TV + @ ;
 
 : E-I-RV ( n -- n ) {: id:n :}
