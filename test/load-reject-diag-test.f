@@ -885,28 +885,25 @@ undefine include
    EXITED @ TTRUE
    RC @ 0 T= ;
 
-\ LRD-NEST's action starts a second verification inside the first one's
-\ window; the record stands at the line that ran LRD-NEST.
-: TEST-WINDOW-NESTED ( -- )
-   s" a verification started inside another one's window is rejected" T-LABEL
+\ The action SOURCE-BUF-THEN-IN-SCOPE runs inside its window has a type that
+\ states no facts, so a verification kept there is rejected where it is kept.
+: TEST-WINDOW-KEPT ( -- )
+   s" a verification kept as another verification's action is rejected" T-LABEL
    BODY$ S\" require src/habu/verify-source.f\n: LRD-IN ( -- ) s\" : RB ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;\n: LRD-NEST ( -- ) s\" : RA ( -- ) ;\" [: LRD-IN ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;\nLRD-NEST\n" FS:WRITE-ALL
    BODY$ RUN
-   ERR$ s" error[E-VERIFY-WINDOW]: a source verification started inside another one's window" COUNT-SUB 1 T=
-   BODY$ s" :4:1" ASSERT-AT
-   OUT-U @ 0 T=
-   EXITED @ TTRUE
-   RC @ 70 T= ;
+   s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
+      s" :3:50" BODY-REJECT-AT
+   ERR$ s" = found: ^u8 n [ -- renders parses nominal ]" CONTAINS? TTRUE ;
 
-\ The VERIFY:ON-CANDIDATE hook starts a composition while the one labelled
-\ lrd-a is open; the record stands at the start of lrd-a.
-: TEST-COMPOSE-NESTED ( -- )
-   s" a composition started while another is open is rejected" T-LABEL
+\ VERIFY:ON-CANDIDATE runs while a composition is open and states no facts, so
+\ installing a composition in it is rejected at the `is`.
+: TEST-COMPOSE-KEPT ( -- )
+   s" a composition installed as the candidate hook is rejected" T-LABEL
    BODY$ S\" require src/habu/verify-source.f\n: LRD-AGAIN ( ^u8 n ^u8 n n n -- )\n   2drop 2drop 2drop  s\" \" s\" b.f\" s\" b\" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;\n: LRD-HOOK ( -- ) ['] LRD-AGAIN is VERIFY:ON-CANDIDATE ;\nLRD-HOOK\n2 VERIFY:CURSOR!\ns\" DU\" s\" lrd-a.f\" s\" lrd-a\" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE\n" FS:WRITE-ALL
    BODY$ RUN
-   ERR$ s" error[E-VERIFY-WINDOW]: `VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE` ran while a source composition is open" COUNT-SUB 1 T=
-   s" lrd-a" s" :1:1" ASSERT-AT
-   EXITED @ TTRUE
-   RC @ 70 T= ;
+   s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
+      s" :4:33" BODY-REJECT-AT
+   ERR$ s" = found: [ ^u8 n ^u8 n n n -- renders parses nominal ]" CONTAINS? TTRUE ;
 
 \ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
@@ -1550,8 +1547,8 @@ variable LONG-U
    TEST-OUTER-FILE-PLACE
    TEST-REPLAY-DUP-PLACE
    TEST-REPLAY-TASK
-   TEST-WINDOW-NESTED
-   TEST-COMPOSE-NESTED
+   TEST-WINDOW-KEPT
+   TEST-COMPOSE-KEPT
    TEST-OPEN-AT-CLOSE
    TEST-LOAD-IN-DECLARATION
    TEST-BAD-SIGNATURE-LINE

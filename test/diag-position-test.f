@@ -2492,21 +2492,26 @@ HB-TARGET-LINUX? 0= [if]
    1 s" severity" s" warning" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-: VERIFY-DEFERRED-AT ( str n n str n n n n -- )
-   {: call:^ callu:n cline:n cbs:n tok:^ toku:n line:n col:n bs:n be:n :}
+: VERIFY-DEFERRED-AT ( str n n -- )
+   {: call:^ callu:n cline:n cbs:n :}
    s" " 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
    s" --all-errors" 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
-   call callu cline cbs tok toku line col bs be VERIFY-ONLY-AT ;
+   s" --verify-only" 0 CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" severity" s" warning" FIELD=
+   0 s" label" s" may move the source root" FIELD=
+   0 call callu cline 1 cbs cbs callu + FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ A string loader's path is the bytes the load's literal makes. A loader in a
 \ body loads when the word runs: the plain check and --all-errors follow its
 \ path after the definition, kept for that load whatever the check decodes
-\ first. --verify-only runs no body, so it defers a call of the body's word and
-\ the first later use of a word that file defines. A bad escape, at top level
-\ or in a body, stops the load: each check rejects that literal once, at its
-\ opener, and follows nothing after it.
+\ first. --verify-only runs no body: a call of the body's word may move the
+\ source root, so it leaves the source after the call to the run. A bad escape,
+\ at top level or in a body, stops the load: each check rejects that literal
+\ once, at its opener, and follows nothing after it.
 : TEST-ESCAPED-PATH ( -- )
    SB-RESET
    s" : INCLUDED-WORD ( -- n ) 7 ;" SB-APPEND LF+
@@ -2538,14 +2543,14 @@ HB-TARGET-LINUX? 0= [if]
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-body-path.f" FIXTURE!
-   s" L" 2 43 s" INCLUDED-WORD" 3 1 45 58 VERIFY-DEFERRED-AT
+   s" L" 2 43 VERIFY-DEFERRED-AT
    s" an escaped path with no escape in a body" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" inc-target.f\" included ;" SB-APPEND LF+
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escape-free-body-path.f" FIXTURE!
-   s" L" 2 40 s" INCLUDED-WORD" 3 1 42 55 VERIFY-DEFERRED-AT
+   s" L" 2 40 VERIFY-DEFERRED-AT
    SB-RESET
    s" : BODY-A-WORD ( -- n ) 1 ;" SB-APPEND LF+
    s" body-a.f" FIXTURE!
@@ -2562,7 +2567,7 @@ HB-TARGET-LINUX? 0= [if]
    s" L" SB-APPEND LF+
    s" BODY-A-WORD drop BODY-B-WORD drop BODY-C-WORD drop" SB-APPEND LF+
    s" escaped-body-paths.f" FIXTURE!
-   s" L" 2 91 s" BODY-A-WORD" 3 1 93 104 VERIFY-DEFERRED-AT
+   s" L" 2 91 VERIFY-DEFERRED-AT
    s" an escaped path in a body, escaped literals before its package closes" T-LABEL
    SB-RESET
    s" package DPT-ESC" SB-APPEND LF+
@@ -2574,7 +2579,7 @@ HB-TARGET-LINUX? 0= [if]
    s" DPT-ESC:L" SB-APPEND LF+
    s" BODY-A-WORD drop" SB-APPEND LF+
    s" escaped-body-path-package.f" FIXTURE!
-   s" DPT-ESC:L" 7 137 s" BODY-A-WORD" 8 1 147 158 VERIFY-DEFERRED-AT
+   s" DPT-ESC:L" 7 137 VERIFY-DEFERRED-AT
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
    PATH-CAP 4 / s" escaped-steps-fit.f" STEPS-FIXTURE
    CERTIFIED
@@ -2860,46 +2865,30 @@ HB-TARGET-LINUX? 0= [if]
    s" E-UNMODELED-IMMEDIATE" s" :3:16" 70 LOADED-AT
    GT-ERR$ s" may define words or add to a definition" CONTAINS? TTRUE ;
 
-\ The fixture's first five lines: MK makes Q, which postpones V, so a reader
-\ that cannot run MK defers R's body at Q.
-: MK-Q-LINES ( -- )
+\ Record 0 of the check: `compile,` at 3:50 keeps V, which reads the source,
+\ in the word MK makes, and its type states no `parses`.
+: COMPILE-KEPT ( -- )
+   0 s" code" s" E-MISMATCH" FIELD=
+   0 s" compile," 3 50 101 109 AT
+   0 s" message" s" this quotation does more than the type that keeps it states" FIELD=
+   0 s" found" s" [ -- parses ]" NOTE= ;
+
+\ `compile,` keeps the word it compiles, so its type states what that word may
+\ do: compiling a reader is rejected there, and --verify-only goes on to find no Q.
+: TEST-COMPILE-KEPT ( -- )
+   s" compile, keeping a reader its type does not state" T-LABEL
    SB-RESET
    s" : V ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
    s" parses: V 1" SB-APPEND LF+
    s" : MK ( ^u8 n -- ) EFFECT:EMPTY define-word ['] V compile, postpone ; ;" SB-APPEND LF+
    s\" s\" Q\" MK" SB-APPEND LF+
-   s" : R ( -- ) Q ; immediate" SB-APPEND LF+ ;
-
-\ --verify-only gives status 0 and N records, the second R's body deferred at Q.
-: Q-DEFERRED ( n -- ) {: n:n :}
-   s" --verify-only" 0 CHECK-EXIT
-   GJA-LINE# @ n T=
-   1 s" code" s" W-CHECK-DEFERRED" FIELD=
-   1 s" Q" 5 12 143 144 AT ;
-
-\ An immediate whose body the check deferred: with no row the readers that see the body reject it;
-\ its `parses:` row stands unjudged where it was deferred, and bounds the use.
-: TEST-IMM-DEFERRED-BODY ( -- )
-   s" an immediate whose body the check deferred, with no parses: row" T-LABEL
-   MK-Q-LINES
+   s" : R ( -- ) Q ; immediate" SB-APPEND LF+
    s" : P ( -- ) R x ;" SB-APPEND LF+
-   s" imm-dq-unread.f" FIXTURE!
-   s" " CHECK
-   s" E-UNMODELED-IMMEDIATE" REJECTED-AS
-   0 s" R" 6 12 168 169 AT
-   0 s" message"
-   s" `R` reads the source after it and no `parses:` row says how many tokens" FIELD=
-   3 Q-DEFERRED
-   s" E-UNMODELED-IMMEDIATE" s" :6:12" 70 LOADED-AT
-   GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
-   s" an immediate whose body the check deferred, with its parses: row" T-LABEL
-   MK-Q-LINES
-   s" parses: R 1" SB-APPEND LF+
-   s" : P ( -- ) R dup ;" SB-APPEND LF+
-   s" imm-dq-read.f" FIXTURE!
-   s" " 0 CHECK-EXIT  GJA-LINE# @ 0 T=
-   2 Q-DEFERRED
-   s" " 0 LOADED ;
+   s" imm-compile-kept.f" FIXTURE!
+   s" " CHECK  GJA-LINE# @ 1 T=  COMPILE-KEPT
+   s" --verify-only" CHECK  GJA-LINE# @ 3 T=  COMPILE-KEPT
+   1 s" code" s" E-UNDEFINED" FIELD=  1 s" Q" 5 12 143 144 AT
+   s" E-MISMATCH" s" :3:50" 70 LOADED-AT ;
 
 \ An immediate calling a word whose body the check deferred: the walk saw no fact of it, so every
 \ reader admits it.
@@ -3962,7 +3951,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-IMM-POSTPONED
    TEST-IMM-TICKED
    TEST-IMM-ITEM
-   TEST-IMM-DEFERRED-BODY
+   TEST-COMPILE-KEPT
    TEST-IMM-CALLS-DEFERRED
    TEST-IMM-ROOTS
    TEST-IMM-DEFERRED-CALL
