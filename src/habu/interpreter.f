@@ -3092,9 +3092,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
 
-\ x86 THROW returns with the evaluation frame still linked; arm64's throw
-\ recovery has already popped it before catch returns. The top link is the
-\ ownership test: exactly one path performs the rollback.
 : FRAME-ROLLBACK-CODE ( ^u8 -- )
    {: f:^ :}
    DEF-ABORT
@@ -3139,13 +3136,10 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 
 0 constant FRAME-DONE
 1 constant FRAME-LINKED
-2 constant FRAME-UNWOUND
 
-\ Success is the frame still on top with code 0, which the catch answers only
-\ when the text ran to its end.
-: FRAME-EXIT ( ^u8 n -- n ) {: f:^ code:n :}
-   f NULL-PTR - EVAL-TOP-CELL CELL@ <> if FRAME-UNWOUND exit then
-   code 0= if FRAME-DONE else FRAME-LINKED then ;
+\ Success is code 0, which the catch answers only when the text ran to its end.
+: FRAME-EXIT ( n -- n )
+   0= if FRAME-DONE else FRAME-LINKED then ;
 
 : FRAME-FREE ( ^u8 -- )
    dup EVAL-FRAME-SIZE FR@ munmap 0<> if E-MEM-UNMAP throw then ;
@@ -3219,7 +3213,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS ;] ERROR:CAUGHT LEFT ;]
    catch {: code:n :}
-   f code FRAME-EXIT {: out:n :}
+   code FRAME-EXIT {: out:n :}
    out case
       FRAME-DONE of
          f FRAME-UNLINK
@@ -3227,12 +3221,6 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
       FRAME-LINKED of
          f FRAME-UNLINK
          f prior found REPL-RECOVER
-         f FRAME-CELLS-RESTORE
-      endof
-      FRAME-UNWOUND of
-         \ The checker last read the using slots before they came back.
-         REPL-WIDS-BACK  NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY
-         prior USE-FLOOR !  found REC !
          f FRAME-CELLS-RESTORE
       endof
    endcase
@@ -3291,15 +3279,11 @@ public
    f FRAME-ARG !
    [: FRAME-ARG @ FRAME-LINK [: RUN ;] ERROR:CAUGHT LEFT ;]
    catch {: code:n :}
-   f code FRAME-EXIT {: out:n :}
+   code FRAME-EXIT {: out:n :}
    out case
       FRAME-DONE of f FRAME-LEAVE endof
       FRAME-LINKED of
          f FRAME-RECOVER
-         f FRAME-CELLS-RESTORE
-         entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
-      endof
-      FRAME-UNWOUND of
          f FRAME-CELLS-RESTORE
          entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
       endof

@@ -196,7 +196,7 @@ s" BUMPED" MAKE-BUMPED
 
 \ : NAME ( -- n ) 5 ; after a text whose token the compile refuses: the
 \ refusal, caught inside the definer, leaves its definition compiling, as it
-\ does for any buffer begun inside one (habu2.f EM-EVAL-THROW-RECOVER).
+\ does for any buffer begun inside one.
 variable CAUGHT
 : MAKE-REFUSED ( ^u8 n -- )
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word

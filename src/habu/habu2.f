@@ -60,7 +60,7 @@ public
 
 variable LFLOORREC   \ the underdepth throw for a data access below the base
 
-variable LCOMPILEDIE   \ the die sites' tail, x0 = code: ends their line, then throws x0 inside evaluate (LEVALREC), else exits x0
+variable LCOMPILEDIE   \ the die sites' tail, x0 = code: ends their line, then throws x0 inside a text, else exits x0
 variable LPLACE        \ the place writer each die site calls after its class head
 ;package
 \ Snapshot relocation labels and messages. This file compiles on a product
@@ -1427,7 +1427,7 @@ package ENGINE-EMIT
 public
 
 public
-variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry
+variable LEVALREC             \ escaped evaluate frames' unwind; no throw branches here
 private
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN \ LEVALREC internal labels
 
@@ -2091,9 +2091,9 @@ package ENGINE-EMIT
 package ENGINE-EMIT
 
 private
-\ LEVALREC: a throw whose nearest handler lies beyond active evaluate boundaries
-\ lands here, x15 = throw code. Each escaped frame gives back its input cursor,
-\ data-stack base (XDS), package and using scope. A frame begun with no
+\ LEVALREC, x15 = throw code, pops the evaluate frames a throw escapes; no throw
+\ branches to it. Each escaped frame gives back its input cursor, data-stack
+\ base (XDS), package and using scope. A frame begun with no
 \ definition open also rolls back everything compiled since: CP/NDICT, DP,
 \ compile state and the checker's records; while a task is live it retires the
 \ dictionary records made since instead and keeps CP, NDICT and DP, rolling
@@ -2291,11 +2291,10 @@ private
    LBL {: ldie:label :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,
-   15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
+   15 0 0 ADDI,                                             \ x15 = code across the write
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    9 DATA EVALD-CELL LDR,  9 ldie CBZ,
-      BTHROW-COUNT
-      10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
+      9 15 0 ADDI,  LFAULTREC LABEL@ B,
    ldie LBL,
    0 15 0 ADDI,
    NR-EXIT-GROUP SYS,

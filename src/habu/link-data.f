@@ -57,12 +57,11 @@ variable CODE-END
 \ at an 8-byte boundary.
 variable NAMES-END
 \ The kernel's uncaught-throw reporter, signal handler, primitive count and
-\ dictionary table; an engine's throw recoveries.
+\ dictionary table; an engine's underdepth throw.
 variable LUNCAUGHT
 variable LSIGH
 variable LNCOUNT
 variable LDICT
-variable LEVALREC
 variable LFLOORREC
 \ The kernel's code end, in bytes from the text's start: the target's words follow.
 variable KERNEL-END
@@ -173,11 +172,9 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
 
 
-\ An engine's throw recoveries: its kernel branches through these cells inside an
-\ evaluate and after a data-stack underdepth. A stripped program's cut keeps neither.
+\ An engine's throw recovery: its kernel branches through this cell after a
+\ data-stack underdepth. A stripped program's cut drops it.
 : RECOVERY-CELLS ( -- )
-   NATIVE:X64? if 0 else NATIVE:TEXT-VA LEVALREC LABEL-OFFSET + then
-   s" EVALREC-CELL" NATIVE:SYM HEADER!
    NATIVE:TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" NATIVE:SYM HEADER! ;
 
 \ The header cells HEADER-CELLS and RECOVERY-CELLS give a code address.
@@ -187,7 +184,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" STUB-CELL" NATIVE:SYM NATIVE:U64,
    s" CODE-END-CELL" NATIVE:SYM NATIVE:U64,
    ENGINE? @ if
-      NATIVE:X64? 0= if s" EVALREC-CELL" NATIVE:SYM NATIVE:U64, then
       s" FLOORREC-CELL" NATIVE:SYM NATIVE:U64,
    then ;
 
@@ -518,7 +514,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    s" RECS-END" NATIVE:SYM-LABEL LRECS-END NATIVE:LABEL!
    s" RLIST" NATIVE:SYM-LABEL LRLIST NATIVE:LABEL!
    s" RLIST-END" NATIVE:SYM-LABEL LRLIST-END NATIVE:LABEL!
-   NATIVE:X64? 0= if s" EVALREC" NATIVE:SYM-LABEL LEVALREC NATIVE:LABEL! then
    s" FLOORREC" NATIVE:SYM-LABEL LFLOORREC NATIVE:LABEL! ;
 
 

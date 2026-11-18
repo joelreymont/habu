@@ -8,7 +8,6 @@ blocks:
   - habu-compile-definer-bodies-1292d049
   - habu-move-pkgs-using-22f18b81
   - habu-move-evaluate-and-9119f746
-  - habu-recover-throws-across-18bd36f9
   - habu-route-stdin-repl-d7e12895
   - habu-add-the-engine-ebe5d757
   - habu-call-the-unit-ec148ccf

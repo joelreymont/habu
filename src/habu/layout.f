@@ -385,9 +385,8 @@ WRITE-OFF DEVICES 8 * + constant END
 ;package
 
 
-\ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry, set at
-\ startup so the leaf throw primitive can branch to it. $3CA0..$3CB8 are engine
-\ cells no compiled source writes.
+\ EVALREC-CELL: the kernel object names it; no code reads or writes it.
+\ $3CA0..$3CB8 are engine cells no compiled source writes.
 $3CA0 constant EVALREC-CELL
 \ UNCGH-CELL: runtime address of the uncaught-throw reporter, written by the
 \ link: BTHROW, a leaf, branches through it.

@@ -267,7 +267,6 @@ variable C2-INVOKE-CLEAN
 variable THROW-NOH
 variable THROW-NOREC-FB
 variable THROW-NOREC-FB2
-variable THROW-EVAL
 public
 variable SWL-LOOP
 variable SWL-END
@@ -2983,17 +2982,10 @@ private
    kept LBL, ;
 
 private
-\ The unwind of a throw whose code is in x9: to the nearest catch handler. With
-\ EVALD>0 it first goes to LEVALREC (through EVALREC-CELL: a leaf prim cannot
-\ name a habu2.f label), which rolls back each escaped evaluate frame, so a
-\ checker or compile error inside `evaluate` is a catchable throw and a catch
-\ inside the evaluated source still handles its own throws.
+\ The unwind of a throw whose code is in x9: to the nearest catch handler.
 : BTHROW-UNWIND ( -- )
-   LBL THROW-NOH !  LBL THROW-EVAL !
-   15 9 0 ADDI,                                        \ x15 = code
-   12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ,
+   LBL THROW-NOH !
    11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
-   9 15 0 ADDI,
    11 THROW-NOH LABEL@ CBZ,
    14 11 STACK-ABI:CATCH-BASE LDR,
    19 11 8 LDR,
@@ -3007,8 +2999,6 @@ private
    10 11 0 LDR,  10 DATA 8 STR,
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
-   THROW-EVAL LABEL@ LBL,
-   10 DATA EVALREC-CELL LDR,  10 BR,                   \ x15 = code → LEVALREC (habu2.f)
    THROW-NOH LABEL@ LBL,
      LBL THROW-NOREC-FB !  LBL THROW-NOREC-FB2 !
    10 DATA UNCGH-CELL LDR,  10 THROW-NOREC-FB LABEL@ CBZ, \ reporter installed? branch with x9 = code
