@@ -59,11 +59,9 @@ TYPED-VARIABLE BYTES-OK bool
 variable REFUSED
 variable REWOUND
 
-: LOOKUP ( ^u8 n -- n ) XREF-FIND-INDEX ;
-
 \ The address a string word of the space answers, read with its length cell
 \ and bytes while the space is mapped.
-: CALL$ ( str -- str ) LOOKUP XREF-REC XREF-START STRING-XT execute ;
+: CALL$ ( str -- str ) XREF-FIND XREF-START STRING-XT execute ;
 
 : LEN-AT ( n -- ^n ) NULL-PTR BYTE-VIEW swap + CELL - CELL-VIEW ;
 
@@ -72,7 +70,7 @@ variable REWOUND
 : BODY-A ( -- )
    s" : MAIN ( -- ) 72 emit 105 emit cr ;" evaluate-closed
    s" create LK-A1 1 , 2 ," evaluate-closed
-   MAIN$ LOOKUP FOUND !
+   MAIN$ XREF-FIND-CURRENT-INDEX FOUND !
    FOUND @ 0 >= if FOUND @ XREF-REC XREF-WORDLIST FOUND-WL ! then
    BOOT:GLOBAL-WL SPACE-WL !
    BOOT:NAMESPACE-WL SPACE-NS !
@@ -89,7 +87,7 @@ variable REWOUND
    s" a: MAIN is defined in the space's wordlist under the native shadow" SAY ;
 
 : CASE-B ( -- )
-   MAIN$ LOOKUP -1 T=
+   MAIN$ XREF-FIND XREF-FOUND? TFALSE
    HOST-CHECK
    s" b: after the close hb's dictionary, code and data are as before" SAY ;
 
@@ -168,13 +166,13 @@ variable REWOUND
 : BODY-G ( -- )
    [: INNER ;] E-COMP-STATE TTHROWSQ
    s" : LK-G1 ( -- ) ;" evaluate-closed
-   G1$ LOOKUP FOUND ! ;
+   G1$ XREF-FIND-CURRENT-INDEX FOUND ! ;
 
 : CASE-G ( -- )
    -1 FOUND !
    [: BODY-G ;] BUILD
    FOUND @ ND0 @ >= TTRUE
-   G1$ LOOKUP -1 T=
+   G1$ XREF-FIND XREF-FOUND? TFALSE
    HOST-CHECK
    s" g: a build inside a build is refused and the outer one goes on" SAY ;
 
@@ -324,7 +322,8 @@ variable RC-K
 
 : BODY-K ( -- )
    s" variable LK-K1  1 LK-K1 !" evaluate-closed
-   s" LK-K1" LOOKUP dup 0 >= if XREF-REC XREF-WORDLIST then WL-K !
+   s" LK-K1" XREF-FIND
+   dup XREF-FOUND? if XREF-WORDLIST else drop -1 then WL-K !
    BOOT:GLOBAL-WL GLOBAL-K ! ;
 
 : CASE-K ( -- )
@@ -344,7 +343,7 @@ variable RAN-L
 
 : CASE-L ( -- )
    [: [: s" : LK-L1 ( -- ) ;" evaluate-closed ;] INTERPRETER:WITHOUT-PACKAGE ;] catch 0 T=
-   s" LK-L1" LOOKUP -1 T<>
+   s" LK-L1" XREF-FIND XREF-FOUND? TTRUE
    s" package LK-PB ;package" TEST-EVAL:RC 70 T=
    0 RAN-L !
    s" OPEN-L -1 RAN-L ! package LK-PB ;package" TEST-EVAL:RC 70 T=

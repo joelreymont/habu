@@ -21,7 +21,7 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 
 : BODY ( -- )
    s" test/compiler/arm64-place-fixture.f" included
-   s" PL-MAKE" XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
+   s" PL-MAKE" XREF-FIND XREF-START ENTRY-XT
    APP-ENTRY:XT!
    s" ARM64-PLACE-UNSAFE-ARMED" type cr
    1 SCRIPT-ARGV$ LINKER:WRITE

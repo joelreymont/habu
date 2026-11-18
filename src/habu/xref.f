@@ -341,30 +341,13 @@ variable XREF-QI
    XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
-: XREF-FIND-QUALIFIED-INDEX ( str n -- n )
-   XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? 0= if drop -1 exit then
-   XREF-PKG-PUBLIC {: qwid:n :}
-   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL-INDEX ;
-
 : XREF-FIND ( ^u8 n -- ^n )
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
    drop XREF-SN@ XREF-SU @ BOOT:GLOBAL-WL
    XREF-FIND-WL ;
-\ The operand names a word: a string literal before a call is a use of it
-\ (src/core/operand-rows.f names:), here and for XREF-FIND-INDEX below.
 names: XREF-FIND
-
-: XREF-FIND-INDEX ( ^u8 n -- n )
-   XREF-QUAL-INDEX
-   dup -2 = if drop -1 exit then
-   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
-   drop XREF-SN@ XREF-SU @ BOOT:GLOBAL-WL
-   XREF-FIND-WL-INDEX ;
-names: XREF-FIND-INDEX
 
 : XREF-FIND-CURRENT-INDEX ( str -- n )
    get-current XREF-FIND-WL-INDEX ;

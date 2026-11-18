@@ -107,7 +107,7 @@ CAST: >CELL ( n -- [ -- ^n ] )
 CAST: >RUN ( n -- [ -- ] )
 
 \ The host entry of the build's word named by the string.
-: ENTRY ( ^u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
+: ENTRY ( ^u8 n -- n ) XREF-FIND XREF-START ;
 
 \ The build's word named by the string becomes its program's entry.
 : ENTRY! ( ^u8 n -- ) ENTRY >RUN APP-ENTRY:XT! ;

@@ -23,7 +23,7 @@ package ARM64-LINK-DATA-BAD
 
 CAST: ENTRY-XT ( n -- [ -- ] )
 
-: WORD-XT ( str -- [ -- ] ) XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT ;
+: WORD-XT ( str -- [ -- ] ) XREF-FIND XREF-START ENTRY-XT ;
 
 : WRITE ( -- )
    s" ARM64-LINK-DATA-BAD-ARMED" type cr

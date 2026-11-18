@@ -20,7 +20,7 @@ private
    REC XREF-START ;
 
 : REC-INDEX ( str -- n )
-   XREF-FIND-INDEX ;
+   XREF-FIND-CURRENT-INDEX ;
 
 : DEFINED? ( str -- bool )
    XREF-FIND XREF-FOUND? ;
