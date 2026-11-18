@@ -173,6 +173,14 @@ TYPED-VARIABLE SRC-U len
 : UNKNOWN-LINE ( -- )
    SRC-RESET  S\" : SN-UNKNOWN-LINE ( n sn-nosuch\n-- ) drop drop ;" S+ ;
 
+\ Words with no signature whose facts text holds a quotation from a callee.
+: QUOT-NIP ( -- )
+   SRC-RESET  s" : SN-MK2 ( -- [ -- ] [ -- ] ) [: ;] [: ;] ; : SN-W15 SN-MK2 nip ;" S+ ;
+: QUOT-SWAP ( -- )
+   SRC-RESET  s" : SN-AP3 ( a [ -- ] -- ) execute drop ; : SN-W3 5 swap SN-AP3 ;" S+ ;
+: QUOT-PAIR ( -- )
+   SRC-RESET  s" : SN-AP2 ( [ -- ] [ -- ] -- ) execute execute ; : SN-W5 [: ;] swap SN-AP2 ;" S+ ;
+
 
 variable ERR-U
 
@@ -406,6 +414,12 @@ public
    s" an unknown type that ends a line refuses by its name alone" T-LABEL
    UNKNOWN-LINE
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `sn-nosuch`" REFUSES
+   s" a word with no signature that drops a callee's quotation loads" T-LABEL
+   QUOT-NIP  LOADS
+   s" a word with no signature that passes a quotation over a value loads" T-LABEL
+   QUOT-SWAP  LOADS
+   s" a word with no signature that passes two quotations loads" T-LABEL
+   QUOT-PAIR  LOADS
    s" a type mismatch prints its expected and found rows" T-LABEL
    SRC-RESET  s" : SN-MIS ( -- bool ) 1 ;" S+
    s" error[E-MISMATCH]: SN-MIS ends with n on the stack; its signature promises bool" REFUSES

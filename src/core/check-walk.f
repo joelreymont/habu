@@ -3287,8 +3287,11 @@ variable TG-GEN    variable TG-TERM-NAME
    -1 TOP-COPYING !
    CELL E-WEND!
    E-COPY-MAPS-RESET
-   DCUR @ ROW-TERMS 0 <> IF DCUR @ E-COPY ELSE 0 THEN {: off:n :}
-   RCUR @ ROW-TERMS 0 <> IF RCUR @ E-COPY ELSE 0 THEN TOP-RROW-OFF !
+   DCUR @ ROW-TERMS 0 <> IF DCUR @ ELSE 0 THEN {: d:n :}
+   RCUR @ ROW-TERMS 0 <> IF RCUR @ ELSE 0 THEN {: r:n :}
+   d 0 r 0 E-LET-PLAN
+   d 0 <> IF d E-COPY ELSE 0 THEN {: off:n :}
+   r 0 <> IF r E-COPY ELSE 0 THEN TOP-RROW-OFF !
    0 TOP-COPYING !
    TOP-READ-P @ TOP-WRITE-P @ {: old:^ next:^ :}
    TOP-READ-CAP @ TOP-WRITE-CAP @ {: oldcap:n nextcap:n :}

@@ -142,7 +142,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" -1 REJECTION:JSON ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s\" \"code\":\"E-MISMATCH\"" SUBJECT:REFUSED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" \"inferred\":\"a -- a [ -- n ]\"" SUBJECT:REFUSED? TTRUE
+   s\" \"inferred\":\"x -- x [ -- n ]\"" SUBJECT:REFUSED? TTRUE
    s" a capture past the render buffers' first sizes grows them and leaves later renders without row tails" T-LABEL
    CAPTURE-PAST$ CHECK-QUIET-CANDIDATE! 0 T=
    \ The subject is a fork of this process, so it renders with the grown buffers.
@@ -369,7 +369,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 : OPEN-WIDTH-LOCALS ( -- )
    s" a local over an open-width cell is refused at its bind" T-LABEL
    s" : CS-L1 ( -- ) OPTION:NONE {: x:option<t> :} ;" 70
-   s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<b>\n" SUBJECT:REFUSED? TTRUE
+   s\" error[E-MISMATCH]: `:}` takes option<t>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
    s" : CS-L2 ( a -- n option<a> ) OPTION:SOME {: x:option<a> :} 7 x ;" 70
    s\" error[E-MISMATCH]: `:}` takes option<a>; the stack holds option<a>\n" SUBJECT:REFUSED? TTRUE
    s" : CS-L3 ( option<a> -- n option<a> ) {: o:option<a> :} 7 o ;" 70

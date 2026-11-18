@@ -347,6 +347,13 @@ split-str
 \ nothing is skipped whole. The table's lookup still gates the span, since a
 \ record may name one of its nodes twice.
 \
+\ Var letters: before E-COPY* stores an effect, E-LET-PLAN gives each type
+\ variable the letter its text will name it by. A letter a signature or a
+\ callee's record spells goes to the first variable spelling it; each other
+\ variable, in text order, takes the first letter by name index that no
+\ variable of the effect owns, none when all are. A quotation's block part
+\ takes none: no text names it.
+\
 \ The per-symbol effect-record index (USX): a symbol lookup needs one record,
 \ the newest carrying that symbol; older ones are shadowed and its state
 \ (active or deleted) is the answer. HT-USX keeps its offset+1 per symbol id.
@@ -927,7 +934,7 @@ PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
 \ A saved program starts with none: the planes and TV-CAP are scratch, so
 \ TV-ENSURE maps the arena on first use.
 1280 constant MAXTV-INIT
-20 constant TV-PLANES
+22 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   TV-CAP scratch-cell-mark   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;
@@ -948,6 +955,10 @@ PTR-VARIABLE QCON-IDS-P   PTR-VARIABLE QCON-KINDS-P
 PTR-VARIABLE QCON-RIDS-P  PTR-VARIABLE QCON-NLIN-P
 \ A var E-I-TV minted: its record's offset + 1 (0 for none) and its id there.
 PTR-VARIABLE TVO-P  PTR-VARIABLE TVI-P
+\ A var's letter, the one its signature or stored effect names it by; 0 for none.
+PTR-VARIABLE TVS-P
+\ The letter E-LET-PLAN gives a var of the effect being stored, plus one; 0 for none.
+PTR-VARIABLE EC-LET-P
 
 : TV-BYTES ( n -- n ) TV-PLANES * cells ;
 : TV-PLANE ( ^a n n -- ^a ) {: base:^ cap:n plane:n :}
@@ -982,6 +993,8 @@ PTR-VARIABLE TVO-P  PTR-VARIABLE TVI-P
    base cap 17 TV-PLANE QCON-NLIN-P !
    base cap 18 TV-PLANE TVO-P !
    base cap 19 TV-PLANE TVI-P !
+   base cap 20 TV-PLANE TVS-P !
+   base cap 21 TV-PLANE EC-LET-P !
    cap TV-CAP ! ;
 
 
@@ -996,6 +1009,7 @@ PTR-VARIABLE TVO-P  PTR-VARIABLE TVI-P
    NULL-PTR QCON-RIDS-P !   NULL-PTR TVP-P !
    NULL-PTR NLINEAR-P !   NULL-PTR QCON-NLIN-P !
    NULL-PTR TVO-P !   NULL-PTR TVI-P !
+   NULL-PTR TVS-P !   NULL-PTR EC-LET-P !
    0 TV-CAP ! ;
 TV-CLEAR
 
@@ -1039,6 +1053,7 @@ TV-CLEAR
 : TVT ( -- ^n ) TV-READY TVT-P @ ;       : RVT ( -- ^n ) TV-READY RVT-P @ ;
 : TVK ( -- ^n ) TV-READY TVK-P @ ;
 : TVO ( -- ^n ) TV-READY TVO-P @ ;       : TVI ( -- ^n ) TV-READY TVI-P @ ;
+: TVS ( -- ^n ) TV-READY TVS-P @ ;       : EC-LET ( -- ^n ) TV-READY EC-LET-P @ ;
 : NSCOPE ( -- ^n ) TV-READY NSCOPE-P @ ;
 : TVP ( -- ^n ) TV-READY TVP-P @ ;
 : QCON-IDS ( -- ^n ) TV-READY QCON-IDS-P @ ;
@@ -1105,6 +1120,8 @@ private
 : TVO! ( n n -- ) cells TVO + ! ;
 : TVI@ ( n -- n ) cells TVI + @ ;
 : TVI! ( n n -- ) cells TVI + ! ;
+: TVS@ ( n -- n ) cells TVS + @ ;
+: TVS! ( n n -- ) cells TVS + ! ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )
    dup TVK-NULL = swap TVK-DBASE = or ;
@@ -5216,6 +5233,7 @@ U-DRAIN-INSTALL
      dup cells TVP + 0 swap !
      dup cells TVO + 0 swap !
      dup cells TVI + 0 swap !
+     dup cells TVS + 0 swap !
      1 +
    REPEAT drop ;
 
@@ -7207,7 +7225,14 @@ variable VRC-RVN
 \ The names one effect text gives its type variables and binders: 23 letters,
 \ then the ordinals from 23. A letter's NMAP slot is its code minus 97, an
 \ ordinal's the ordinal plus 3; a slot holds its name's variable, else UNBOUND.
+23 constant VAR-LETTERS
 32 constant BINDER-DEPTH-MAX   \ binders nested in one signature
+
+\ Name index idx's letter: a..z without f, n and r, which the parser reads as types.
+: IDX>LETTER ( n -- n )
+   97 +  dup 102 >= IF 1+ THEN  dup 110 >= IF 1+ THEN  dup 114 >= IF 1+ THEN ;
+: LETTER>IDX ( n -- n )
+   dup 114 > IF 1- THEN  dup 110 > IF 1- THEN  dup 102 > IF 1- THEN  97 - ;
 SCRATCH{
 PTR-VARIABLE NMAP-P   variable NMAP-CAP   \ the slots and their count
 variable BIND-DEPTH
@@ -7581,7 +7606,7 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
 : SLOT>VAR ( n -- n )
    {: slot:n :}
    slot NMAP-SLOT
-   dup @ UNBOUND = IF FRESH over ! THEN
+   dup @ UNBOUND = IF FRESH  slot 26 < IF slot 97 + over TVS! THEN  over ! THEN
    @ dup UNBOUND < IF
       BIND-DEPTH @ + 1 + dup BIND-DEPTH @ swap - 1- cells BIND-DOMAINS + @
       MK-BVAR-DOMAIN EXIT THEN
@@ -10260,8 +10285,16 @@ NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !  NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP
 \ Allocation establishes zero maps.
 0 EC-TV-HW !   0 EC-RV-HW !   0 EC-TV-LW !   0 EC-RV-LW !
 
+SCRATCH{
+variable ELET-MASK      \ the letters given, bit i for name index i
+PTR-VARIABLE ELET-ROW-P   variable ELET-ROW-CAP   variable ELET-ROW-N
+\ The vars the walk gave no letter, in first-visit order.
+PTR-VARIABLE ELET-WAIT-P   variable ELET-WAIT-CAP   variable ELET-WAIT-N
+}SCRATCH
+
 : E-COPY-MAPS-RESET ( -- )
    EC-TV EC-TV-LW @ EC-TV-HW @ ARENA-CELLS-ZERO
+   EC-LET EC-TV-LW @ EC-TV-HW @ ARENA-CELLS-ZERO
    EC-RV EC-RV-LW @ EC-RV-HW @ ARENA-CELLS-ZERO
    0 EC-TV-HW !   0 EC-TV-LW !
    0 EC-RV-HW !   0 EC-RV-LW !
@@ -10275,12 +10308,15 @@ NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !  NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP
    loop
    0 EI-AK-HW ! ;
 
+: EC-TV-SPAN+ ( n -- ) {: id:n :}
+   EC-TV-HW @ IF id EC-TV-LW @ min ELSE id THEN EC-TV-LW !
+   id 1+ EC-TV-HW @ max EC-TV-HW ! ;
+
 : E-TV-ID ( n -- n ) {: id:n :}
    id cells EC-TV + dup @ 0= if
       EC-TVN @ 1+ over !
       EC-TVN @ 1+ EC-TVN !
-      EC-TV-HW @ IF id EC-TV-LW @ min ELSE id THEN EC-TV-LW !
-      id 1+ EC-TV-HW @ max EC-TV-HW !
+      id EC-TV-SPAN+
    then @ 1- ;
 
 : E-RV-ID ( n -- n ) {: id:n :}
@@ -10345,6 +10381,84 @@ NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !  NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP
 
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
+
+: ELET-FREE ( -- n )
+   VAR-LETTERS 0 ?do
+      ELET-MASK @ 1 i lshift and 0= IF
+         ELET-MASK @ 1 i lshift or ELET-MASK !  i IDX>LETTER unloop EXIT
+      THEN
+   loop 0 ;
+
+: ELET-WAIT+ ( n -- )
+   ELET-WAIT-P ELET-WAIT-CAP ELET-WAIT-N @ 1 + 1 ARENA-ROWS-ENSURE
+   ELET-WAIT-N @ cells ELET-WAIT-P @ + !
+   ELET-WAIT-N @ 1 + ELET-WAIT-N ! ;
+
+: ELET-VAR ( n n -- ) {: v:n c:n :}
+   v EC-TV-SPAN+
+   v cells EC-LET + @ 0 <> IF EXIT THEN
+   c 0 <> IF ELET-MASK @ 1 c LETTER>IDX lshift and 0= IF
+      ELET-MASK @ 1 c LETTER>IDX lshift or ELET-MASK !
+      c 1 + v cells EC-LET + ! EXIT
+   THEN THEN
+   -1 v cells EC-LET + !
+   v ELET-WAIT+ ;
+
+: ELET-ROW+ ( n -- )
+   ELET-ROW-P ELET-ROW-CAP ELET-ROW-N @ 1 + 1 ARENA-ROWS-ENSURE
+   ELET-ROW-N @ cells ELET-ROW-P @ + !
+   ELET-ROW-N @ 1 + ELET-ROW-N ! ;
+
+\ A row's entries go through ELET-ROW, so they are walked bottom first, as the
+\ text writes them, with no recursion per entry.
+: ELET-WALK ( n -- ) {: t:n :}
+   t 0= IF EXIT THEN
+   t E-RES {: x:n :}
+   x ISVAR IF
+      \ A signature's own variable keeps its letter though bound; any
+      \ other term takes its root's.
+      x PAY  t PAY TVO@ 0=  t PAY TVS@ 0 <>  and IF t ELSE x THEN PAY TVS@  ELET-VAR EXIT
+   THEN
+   x TAG S-PUSH = IF
+      ELET-ROW-N @
+      x BEGIN dup TAG S-PUSH = WHILE dup P>TYPE ELET-ROW+  P>REST R-RES REPEAT drop
+      BEGIN dup ELET-ROW-N @ < WHILE
+         ELET-ROW-N @ 1 - dup ELET-ROW-N !  cells ELET-ROW-P @ + @
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      REPEAT drop EXIT
+   THEN
+   x TAG case
+      T-PTR of x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER endof
+      T-STALE of x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER endof
+      T-QUOT of
+         x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      endof
+      T-FORALL of
+         x F>PARENT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         x F>SECOND TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      endof
+      T-PARAM of
+         0 BEGIN dup x PARAM>ARGC < WHILE
+            x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+            1 +
+         REPEAT drop
+      endof
+   endcase ;
+
+: E-LET-PLAN ( n n n n -- ) {: din:n dout:n rin:n rout:n :}
+   0 ELET-MASK !  0 ELET-ROW-N !  0 ELET-WAIT-N !
+   TWALK-RESET din ELET-WALK  TWALK-RESET rin ELET-WALK
+   TWALK-RESET dout ELET-WALK  TWALK-RESET rout ELET-WALK
+   ELET-WAIT-N @ 0 ?do
+      ELET-FREE 1 +  i cells ELET-WAIT-P @ + @ cells EC-LET + !
+   loop ;
+
+\ The letter E-COPY* stores for var v, 0 for none.
+: E-VAR-LETTER ( n -- n ) cells EC-LET + @ 1 - 0 max ;
 
 \ --- node interning ------------------------------------------------------------
 $1000 constant UIX-BKT-INIT       \ buckets; a power of two
@@ -10415,7 +10529,7 @@ UIX-RESET
 : E-KEY-N ( n -- n ) {: p:n :}
    p E-NODE-TAG {: tg:n :}
    tg EN-CON = IF 1 EXIT THEN
-   tg EN-VAR = IF 4 EXIT THEN
+   tg EN-VAR = IF 5 EXIT THEN
    tg EN-ROW = IF 3 EXIT THEN
    tg EN-PTR = IF 1 EXIT THEN
    tg EN-PUSH = IF 3 EXIT THEN
@@ -10662,6 +10776,7 @@ UIX-RESET
          x E-RES PAY TVK@ r@ E-WPTR EN.B !   \ persist the var kind for freshening + snapshot
          x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-WPTR EN.C !
          x E-RES PAY NLINEAR@ Q-FLAG>N r@ E-WPTR EN.D !
+         x E-RES PAY E-VAR-LETTER r@ E-WPTR EN.E !
          r>
       endof
       S-ROW of
@@ -11383,6 +11498,7 @@ CUR-DEFAULT
 : E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
    E-REC-START E-OFF {: rec:n :}
    E-COPY-MAPS-RESET
+   din dout  hasr IF rin rout ELSE 0 0 THEN  E-LET-PLAN
    EFF-ACTIVE rec E-PTR ER.ACTIVE !
    din E-COPY {: di:n :}
    dout E-COPY {: doff:n :}
@@ -12043,9 +12159,10 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 
 \ FRESH may grow (relocate) the EI arena, so re-fetch the slot address after
 \ it: a base cached across FRESH would store into the freed buffer.
-: E-I-TV ( n -- n ) {: id:n :}
+\ A var it mints takes letter, the one its node stores.
+: E-I-TV ( n n -- n ) {: id:n letter:n :}
    id cells EI-TV + @ UNBOUND = if
-      FRESH  EI-REC @ over TVO!  id over TVI!
+      FRESH  EI-REC @ over TVO!  id over TVI!  letter over TVS!
       MK-VAR id cells EI-TV + !
    then id cells EI-TV + @ ;
 
@@ -12122,7 +12239,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    r@ EN.TAG @ case
       EN-CON of  r@ EN.A @ MK-CON r> drop  endof
       EN-VAR of
-         r@ EN.A @ E-I-TV
+         r@ EN.A @ r@ EN.E @ E-I-TV
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
          r@ EN.B @ TVK-NULL  = IF dup PAY TVK-NULL!  THEN   \ and the base-address kinds: `NULL-PTR`
          r@ EN.B @ TVK-DBASE = IF dup PAY TVK-DBASE! THEN   \ and `data-base`
@@ -12358,7 +12475,7 @@ create RECUR-MARK NP-CAP cells allot
    NP-ORIG-N @ 0 ?do
       i cells NP-ORIG + @ dup RECUR-MAP-FIND
       dup 0 < IF 2drop ELSE
-         E-I-TV  TSTART @  TOKIX @  TI @ TSTART @ -  RECUR-INST+
+         0 E-I-TV  TSTART @  TOKIX @  TI @ TSTART @ -  RECUR-INST+
       THEN
    loop ;
 

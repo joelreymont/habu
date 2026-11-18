@@ -35,8 +35,11 @@ variable SEEN-CAP   0 SEEN-CAP !
 \ Only the assigned prefix needs clearing; allocation initializes every cell
 \ above SEEN-HW to UNBOUND, including a grown tail.
 variable SEEN-HW   0 SEEN-HW !
-variable NLET                                      \ SEEN is indexed by typevar (PAY)
+variable NLET                                      \ one past the highest name index given
 variable RBIND-N                                   \ lexical names while rendering forall
+variable RLETS                                     \ the letters given, bit i for name index i
+variable RNAMED                                    \ how many names were given
+variable RRESV                                     \ the letters REND-EFFECT's first pass met stored
 64 constant RATOM-CAP
 create RATOM-KEY RATOM-CAP cells allot
 variable RATOM-N
@@ -81,26 +84,40 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
       UNBOUND over cells SEEN + !
       1 +
    REPEAT drop
-   0 SEEN-HW ! 0 RBIND-N ! ;
-
-
-\ Unnames every variable SEEN named at or past index idx.
-: SEEN-FORGET ( n -- )
-   {: idx:n :}
-   0 BEGIN dup SEEN-HW @ < WHILE
-      dup cells SEEN + @ idx >= IF UNBOUND over cells SEEN + ! THEN
-      1 +
-   REPEAT drop ;
+   0 SEEN-HW ! 0 RBIND-N !  0 RLETS !  0 RNAMED ! ;
 
 
 : RATOM-RESET ( -- )
    0 RATOM-N ! ;
 
+: NAME-TAKE ( n -- n ) {: idx:n :}
+   idx VAR-LETTERS < IF RLETS @ 1 idx lshift or RLETS ! THEN
+   idx 1 + NLET @ max NLET !
+   RNAMED @ 1 + RNAMED !
+   idx ;
+
+\ The first name index not given; in REND-EFFECT's second pass, no letter a
+\ variable of the effect stores either.
+: NAME-FREE ( -- n )
+   RLETS @  RNAMES @ 2 = IF RRESV @ or THEN {: used:n :}
+   VAR-LETTERS 0 ?do used 1 i lshift and 0= IF i NAME-TAKE unloop EXIT THEN loop
+   NLET @ VAR-LETTERS max NAME-TAKE ;
+
+\ A variable is named by the letter it stores unless a name took it; that one
+\ and an unlettered one take NAME-FREE's.
+: VAR-NAME-NEW ( n -- n ) {: vp:n :}
+   vp TVS@ {: c:n :}
+   c 0= IF NAME-FREE EXIT THEN
+   c LETTER>IDX {: own:n :}
+   RNAMES @ 1 = IF RRESV @ 1 own lshift or RRESV ! THEN
+   RLETS @ 1 own lshift and 0= IF own NAME-TAKE EXIT THEN
+   NAME-FREE ;
+
 : SEEN-IDX ( n -- n )
    {: vp:n :}
    SEEN-ENSURE
    vp 1 + SEEN-HW @ < 0= IF vp 1 + SEEN-HW ! THEN
-   vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
+   vp cells SEEN + @ UNBOUND = IF vp VAR-NAME-NEW vp cells SEEN + ! THEN
    vp cells SEEN + @ ;
 : RATOM-CHAR ( n -- n ) {: idx:n :}
    idx 26 < IF idx 97 + ELSE 1 RQM ! 63 THEN ;
@@ -151,15 +168,11 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    10 mod 48 + EMIT1 ;
 
 
-\ Name index idx: a..z without f, n and r, which the parser reads as types,
-\ then the ordinal; the signature parser reads both back.
+\ Name index idx is a letter, then the ordinal; the signature parser reads both back.
 : VAR-NAME ( n -- )
    {: idx:n :}
-   idx 22 > IF 1 RORDINAL !  idx RNUM EXIT THEN
-   idx 97 +
-   dup 102 >= IF 1+ THEN
-   dup 110 >= IF 1+ THEN
-   dup 114 >= IF 1+ THEN EMIT1 ;
+   idx VAR-LETTERS < 0= IF 1 RORDINAL !  idx RNUM EXIT THEN
+   idx IDX>LETTER EMIT1 ;
 
 
 \ A term minted before the registry loads holds an id outside it. A slot a
@@ -438,11 +451,11 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
       T-FORALL of
         RBIND-N @ BINDER-DEPTH-MAX >= IF
            1 RBIND-FULL !
-           NLET @ 1 + NLET ! EMIT-UNSAID
+           NAME-FREE drop EMIT-UNSAID
         ELSE d QDEPTH-CAP < IF
-           NLET @ {: idx:n :}
+           NLET @ RNAMED @ {: high:n given:n :}
+           NAME-FREE {: idx:n :}
            idx RBIND-N @ cells RBIND + !
-           NLET @ 1 + NLET !
            r F>DOMAIN BIND-REGION = IF s" forall-region<" ELSE s" forall<" THEN RSTR idx VAR-NAME
            r F>PARENT dup 0= IF drop ELSE
               r F>SECOND 0= IF s"  inside " RSTR d 1+ 0 RECURSE ELSE
@@ -453,7 +466,10 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
            r F>BODY d 1+ 0 RECURSE 62 EMIT1
            RBIND-N @ 1 - RBIND-N !
            \ A body that named no free variable frees the name for a sibling.
-           NLET @ idx 1 + = IF idx NLET ! THEN
+           RNAMED @ given 1 + = IF
+              idx VAR-LETTERS < IF RLETS @ 1 idx lshift invert and RLETS ! THEN
+              high NLET !  given RNAMED !
+           THEN
         ELSE EMIT-UNSAID THEN THEN
       endof
       T-BVAR of
@@ -532,7 +548,7 @@ LOCSHOW-INSTALL
 : REND-EFFECT ( n n n n bool -- str )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    TEXT-LEN @ {: base:n :}
-   1 DEST !  0 RPOS-N !
+   1 DEST !  0 RPOS-N !  0 RRESV !
    1 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
    2 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
    0 RNAMES !  0 DEST !  TEXT TEXT-LEN @ ;
