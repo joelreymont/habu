@@ -11,7 +11,6 @@ require src/lib/genio-core.f
 package DEBUG
 
 DYNAMIC-BUFFER SBUF u8          \ the rest of the line STEP took, sized to it
-DYNAMIC-BUFFER SOUT u8          \ the line or token the REPL is reading: only S-OUT and S-LINE write it
 variable SLEN  variable SPOS  variable STEPPING
 
 : SINP-FIELD ( -- ^^u8 )
@@ -60,24 +59,15 @@ variable SLEN  variable SPOS  variable STEPPING
    at  SLEN @ at - ;
 
 
-\ A word the REPL runs from what this hands out may STEP, which rewrites SBUF
-\ and can move it, so the REPL reads a copy.
+\ A word on the token may STEP and move SBUF: the REPL keeps a copy first.
 : S-OUT ( n n -- str )
    {: at u :}
-   u SOUT-RESERVE
-   u 0 ?do at i + SBUF c@ i SOUT c! loop
-   0 SOUT u ;
+   at SBUF u ;
 
 
-\ Stepping is over, so SBUF can go. The line is copied: a word on it may read the
-\ next line into READ-LINE's buffer and move it.
+\ Stepping is over, so SBUF can go.
 : S-LINE ( -- str )
-   SBUF-RELEASE
-   GENIO:READ-LINE {: a:^ u:n :}
-   u 0= if a u exit then
-   u SOUT-RESERVE
-   u 0 ?do a i + c@ i SOUT c! loop
-   0 SOUT u ;
+   SBUF-RELEASE GENIO:READ-LINE ;
 
 
 : BPW-DUMP ( -- )
