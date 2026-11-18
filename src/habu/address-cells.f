@@ -38,12 +38,27 @@ private
 
 \ The header's base and the index cell hold an outside mapping's address as an integer.
 CAST: N>ROWS ( n -- ^n )
-: DATA-ROWS ( n -- ^n ) data-base + ;
 
 : LOCK-ADDR ( -- ^n ) data-base LOCK-CELL + ;
 : INDEX-ADDR ( -- ^n ) data-base INDEX-CELL + ;
 : LOCK ( -- ) begin 0 1 LOCK-ADDR atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 LOCK-ADDR atomic! ;
+
+: HEADER-MODE ( ^n -- n )
+   {: h:^ :}
+   h MAGIC-FIELD + @ MAGIC <> if REFUSE then
+   h @ h CAP-FIELD + @ SHAPE
+   h MODE-FIELD + @ ;
+
+\ A mode-1 table's rows, in the outside mapping the kernel's growth made.
+: OWN-ROWS ( ^n -- ^n )
+   {: h:^ :}
+   h MODE-FIELD + @ 1 <> if REFUSE then
+   h BASE-FIELD + @ {: base:n :}
+   h CAP-FIELD + @ {: cap:n :}
+   base 0 <= base 7 and 0 <> or if REFUSE then
+   cap $7FFFFFFFFFFFFFFF base - CELL / > if REFUSE then
+   base N>ROWS ;
 
 public
 \ Unmaps the index the cell holds and zeroes the cell. On a table markers reach, the caller holds
@@ -60,6 +75,15 @@ public
    bytes $7FFFFFFFFFFFFFFF address - > if REFUSE then
    address N>ROWS bytes munmap 0 <> if E-MEM-UNMAP throw then
    0 held ! ;
+
+\ Unmaps a mode-1 table's rows, cap cells as the kernel's growth mapped them; a
+\ mode-0 header, or one not yet laid (all zero), holds none.
+: ROWS-RELEASE ( ^n -- )
+   {: h:^ :}
+   h MODE-FIELD + @ 0= if exit then
+   h HEADER-MODE drop
+   h OWN-ROWS h CAP-FIELD + @ cells munmap
+   0 <> if E-MEM-UNMAP throw then ;
 private
 
 \ Subtraction precedes addition/multiplication, including on malformed input.
@@ -67,25 +91,23 @@ private
    off 0 < off bytes > or if REFUSE then
    cap bytes off - CELL / > if REFUSE then ;
 
-: LIVE-HEADER ( -- ^n n n )
-   HEADER {: h:^ :}
-   h MAGIC-FIELD + @ MAGIC <> if REFUSE then
-   h @ h CAP-FIELD + @ SHAPE
-   h BASE-FIELD + @ {: base:n :}
+\ The header in DATA bytes [data, data+bytes): its rows and count.
+: READ-HEADER ( ^u8 n -- ^n n )
+   {: data:^ bytes:n :}
+   data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
+   h HEADER-MODE {: mode:n :}
    h CAP-FIELD + @ {: cap:n :}
-   h MODE-FIELD + @ {: mode:n :}
    mode 0= if
-      base cap here data-base - WITHIN
-      base DATA-ROWS cap 0 exit
+      h BASE-FIELD + @ {: base:n :}
+      base cap bytes WITHIN
+      data base + cell-view h @ exit
    then
-   mode 1 <> base 0 <= or base 7 and 0 <> or if REFUSE then
-   cap $7FFFFFFFFFFFFFFF base - CELL / > if REFUSE then
-   base N>ROWS cap 1 ;
+   h OWN-ROWS h @ ;
 
 public
 
 : LIVE-SPAN ( -- ^n n )
-   LIVE-HEADER 2drop HEADER @ ;
+   data-base BYTE-VIEW here data-base - READ-HEADER ;
 
 : ROW@ ( n -- n ) {: row:n :}
    LIVE-SPAN {: base:^ count:n :}
@@ -94,8 +116,8 @@ public
 
 private
 
-\ Mode-0 rows live only in the boot area, below every DP a rewind returns to,
-\ so a rewind keeps them in place.
+\ Mode-0 rows lie below the DP the program starts with, in the band or after the
+\ linked data; every rewind returns to a DP recorded at run time, so they stay in place.
 : KEEP-ROWS ( n -- ) {: floor:n :}
    LIVE-SPAN {: base:^ count:n :}
    0 count 0 ?do
@@ -154,14 +176,10 @@ public
    bytes here data-base - first - > if REFUSE then
    first first bytes + [: REMOVE-LOCKED ;] WITH-LOCK ;
 
-\ Reads a complete snapshot DATA copy.
+\ Reads a DATA copy's table: its rows lie in the copy or, once grown, in a mapping
+\ this process made.
 : DATA-SPAN ( str -- ^n n ) {: data:^ bytes:n :}
    bytes SNAP-RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
-   data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
-   h MAGIC-FIELD + @ MAGIC <> if REFUSE then
-   h MODE-FIELD + @ 0 <> if REFUSE then
-   h @ h CAP-FIELD + @ SHAPE
-   h BASE-FIELD + @ h CAP-FIELD + @ bytes WITHIN
-   data h BASE-FIELD + @ + cell-view h @ ;
+   data bytes READ-HEADER ;
 
 ;package

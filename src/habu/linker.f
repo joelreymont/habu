@@ -133,9 +133,10 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : CELL-VALUE ( n -- n ) ROW-OFF SPACE-AT @ ;
 
 \ Runs only while IMAGE-BASE-CELL is 0 (before IMAGE-IN or after IMAGE-OUT), so no marker reaches
-\ the space's table (habu2.f EMIT-MARK) and its index is released unlocked.
+\ the space's table and its index and grown rows are released unlocked.
 : UNMAP ( -- )
    ADDRESS-CELLS:INDEX-CELL SPACE-AT ADDRESS-CELLS:INDEX-RELEASE
+   SNAP-RELOC:XTCELL-N-CELL SPACE-AT ADDRESS-CELLS:ROWS-RELEASE
    NULL-PTR BYTE-VIEW BASE @ ROUTED-BYTES - +  SPACE-SIZE @ ROUTED-BYTES +  munmap
    0<> if E-MEM-UNMAP throw then ;
 

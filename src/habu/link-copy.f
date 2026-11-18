@@ -33,8 +33,10 @@ split-str
 \ meaning; then the kept bodies whose unit is dead, sorted by length then
 \ bytes, each from a cell boundary with its length cell and the byte past it.
 \ The alignment bytes no unit holds are not laid. An address cell not read
-\ holds zeros where it is laid, and the list names none of them. An engine's
-\ is the space as is.
+\ holds zeros where it is laid, and the list names none of them. The list lies
+\ in the band when it fits, else from the first cell past the data, where the
+\ image's data then ends. An engine's is the space as is, its list and header
+\ written as a stripped program's.
 
 require src/core/exit-status.f
 require src/lib/le.f
@@ -64,7 +66,8 @@ DYNAMIC-BUFFER BY-START n            \ the BUILT rows in data order
 DYNAMIC-BUFFER BY-EXT n              \ the BUILT-EXTS rows in data order
 variable CELLS-N                     \ the address rows UNITS saw
 variable WENT-LIVE                   \ 1 once a unit or piece went live this round
-variable KEPT-N                      \ the rows KEEP-LIST kept
+variable KEPT-N                      \ the rows the program keeps
+variable LIST-OFF                    \ the list's byte offset in the image's data
 DYNAMIC-BUFFER STR-AT n              \ the build's string bodies, ascending
 DYNAMIC-BUFFER STR-KEPT n            \ 1 once body k is kept
 variable STR-N
@@ -414,9 +417,15 @@ variable EXT-I                       \ BY-EXT's next row to lay
    ENGINE? @ 0= if LAY-DATA then ;
 
 
-: DATA-IMAGE-LEN ( -- n )
+: DATA-LEN ( -- n )
    ENGINE? @ if SPACE-DATA nip exit then
    LAID-END @ ;
+
+: IN-BAND? ( -- bool ) KEPT-N @ ADDRESS-CELLS:BOOT-CAP <= ;
+
+: DATA-IMAGE-LEN ( -- n )
+   IN-BAND? if DATA-LEN exit then
+   LIST-OFF @  KEPT-N @ cells + ;
 
 \ The segment holding the byte at v or ending at it, -1 for none.
 : SEG-OF ( n -- n )
@@ -475,9 +484,16 @@ variable EXT-I                       \ BY-EXT's next row to lay
    ENGINE? @ if true exit then
    i CELL-READ @ 0<> ;
 
+\ The rows the program keeps, and where their list lies.
+: PLACE-LIST ( -- )
+   0  ROWS nip 0 ?do i ROW-KEPT? if 1 + then loop  KEPT-N !
+   DATA-LEN CELL 1- +  CELL negate and
+   IN-BAND? if drop ADDRESS-CELLS:BOOT-OFF then
+   LIST-OFF ! ;
+
 : CELL-FITS ( n -- )
    {: off:n :}
-   DATA-IMAGE-LEN {: len:n :}
+   DATA-LEN {: len:n :}
    off CELL + len > if
       s" E-LINK-DATA-CELL" REJECTION:OPEN
       s" the declared cell at offset " REJECTION:EMIT-STR  off REJECTION:EMIT-N
@@ -521,8 +537,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
 : FILL-COPY ( -- )
    COPY-N {: n:n :}
    n COPY-CELLS-RESERVE
-   ENGINE? @ if  0 n 1- COPY-CELLS !  COPY-SPACE exit  then
    n 0 ?do 0 i COPY-CELLS ! loop
+   ENGINE? @ if COPY-SPACE exit then
    COPY-LAID ;
 
 
@@ -544,9 +560,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
    loop ;
 
 
-\ The rows list's cell index in the copy, as the header's base field names it.
-: LIST-AT ( -- n )
-   SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:BASE-FIELD +  SPACE-AT @ CELL / ;
+\ The rows list's cell index in the copy.
+: LIST-AT ( -- n ) LIST-OFF @ CELL / ;
 
 \ Whether address row i's cell lies in a kept unit, whose bytes the image lays.
 : CELL-LAID? ( n -- bool )
@@ -554,21 +569,35 @@ variable EXT-I                       \ BY-EXT's next row to lay
    u 0< if false exit then
    u UNIT-KEPT? ;
 
-\ A stripped program's copy lists only its kept rows, at their image offsets;
-\ a dropped row's laid cell and its list slot hold 0.
+\ The copy's header field at byte offset off from the count holds v.
+: HEADER-FIELD! ( n n -- )
+   SNAP-RELOC:XTCELL-N-CELL + COPY-AT LE:U64! ;
+
+\ The copy's header names the list, mode 0. Past the band its cap is its count, so
+\ the target's next mark grows the table into a mapping rather than into the DP
+\ after the list.
+: COPY-HEADER ( -- )
+   KEPT-N @ 0 HEADER-FIELD!
+   LIST-OFF @ ADDRESS-CELLS:BASE-FIELD HEADER-FIELD!
+   IN-BAND? if ADDRESS-CELLS:BOOT-CAP else KEPT-N @ then
+   ADDRESS-CELLS:CAP-FIELD HEADER-FIELD!
+   0 ADDRESS-CELLS:MODE-FIELD HEADER-FIELD! ;
+
+\ The copy lists only the kept rows, at their image offsets; a dropped row's laid
+\ cell holds 0.
 : KEEP-LIST ( -- )
-   0 KEPT-N !
+   ADDRESS-CELLS:BOOT-OFF SNAP-RELOC:XTCELL-END ZERO-COPY
+   LIST-AT
    ROWS {: rows:^ count:n :}
    count 0 ?do
       rows i cells + @ {: row:n :}
       i ROW-KEPT? if
-         row IMAGE-ROW  LIST-AT KEPT-N @ +  COPY-CELLS !  1 KEPT-N +!
+         row IMAGE-ROW over COPY-CELLS !  1 +
       else
          i CELL-LAID? if 0 row IMAGE-OFF COPY-AT LE:U64! then
       then
    loop
-   count KEPT-N @ ?do 0  LIST-AT i + COPY-CELLS ! loop
-   KEPT-N @ SNAP-RELOC:XTCELL-N-CELL COPY-AT LE:U64! ;
+   drop  COPY-HEADER ;
 
 
 \ The copy's rows in cell order, not the build's mark order: the target's first
@@ -580,8 +609,8 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 
 : KEPT-COPY ( -- )
-   FILL-COPY
-   ENGINE? @ 0= if CUT-HEADER-STRINGS KEEP-LIST then
-   SORT-ROWS ;
+   PLACE-LIST FILL-COPY
+   ENGINE? @ 0= if CUT-HEADER-STRINGS then
+   KEEP-LIST SORT-ROWS ;
 
 ;package

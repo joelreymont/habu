@@ -31,13 +31,15 @@ split-str
 \ first token buffers is named by that whole text. A program that requires
 \ src/lib/c2-memory.f builds cold and warm to the same image and copies a byte
 \ into owned bytes, and one whose definition ticks a C2-MEM scoped entry is
-\ rejected.
+\ rejected. A program keeping more address rows than the band holds builds
+\ cold and warm to the same image and runs a quotation the build stored.
 
 require src/lib/test.f
 require src/lib/c2-memory.f
 require src/lib/adt/nullable.f
 require src/lib/test/subject.f
 require test/decl-diag-capture.f
+require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
@@ -643,11 +645,8 @@ BITEM:UNREAD-CHILD
 \ own out under DIR, and the warm build reuses the cold one's.
 package BITEM-BUILD
 private
-524288 constant PROG-CAP                 \ a program's bytes
 PATH-CAP BUFFER: DIR  variable DIR-U
 PATH-CAP BUFFER: PATH
-PROG-CAP BUFFER: PROG-1
-PROG-CAP BUFFER: PROG-2
 : DIR$ ( -- str ) DIR DIR-U @ ;
 \ NAME's path in DIR, in bytes the next call reuses.
 : IN$ ( str -- str ) DIR$ 2swap PATH FS:JOIN-PATH PATH swap ;
@@ -678,17 +677,47 @@ PROG-CAP BUFFER: PROG-2
    CMD:ERR$ s" HELD" CONTAINS? TTRUE
    rc 70 T= ;
 
+\ Built program NAME's bytes, in storage its size makes.
+: PROG-READ ( str -- str )
+   IN$ {: p:^ pu:n :}
+   p pu FS:FILE-SIZE {: u:n :}
+   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: b:^ :}
+   p pu b u FS:READ-ALL u T=  b u ;
+: PROG-FREE ( str -- ) MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ Built programs A and B are the same image.
+: SAME-PROGS ( str str -- )
+   {: x:^ xu:n y:^ yu:n :}
+   x xu PROG-READ {: a:^ au:n :}
+   y yu PROG-READ {: b:^ bu:n :}
+   a au b bu CODESIGN:SAME-IMAGE? TTRUE
+   a au PROG-FREE  b bu PROG-FREE ;
+
 : C2-BYTES ( CMD:command -- CMD:command )
    s" test/fixtures/build-items/c2-bytes.f" s" c2-bytes" s" c2-bytes-cold" BUILD 0 SHOW {: cold:n :}
    cold 0 T=  cold 0<> if exit then
    s" test/fixtures/build-items/c2-bytes.f" s" c2-bytes" s" c2-bytes-warm" BUILD 0 SHOW {: warm:n :}
    warm 0 T=  warm 0<> if exit then
-   s" c2-bytes-cold" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
-   s" c2-bytes-warm" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
-   PROG-1 u1 PROG-2 u2 CODESIGN:SAME-IMAGE? TTRUE
+   s" c2-bytes-cold" s" c2-bytes-warm" SAME-PROGS
    CMD:RESET  s" c2-bytes-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 0 SHOW {: rc:n :}
    CMD:OUT$ S\" bitem-c2-bytes: a\n" STR= TTRUE
+   rc 0 T= ;
+
+: CAP-BUILD ( CMD:command ^u8 n -- CMD:command bool ) {: prog:^ progu:n :}
+   s" test/fixtures/build-items/cap-grown.f" s" cap-grown" prog progu BUILD
+   0 SHOW {: rc:n :}
+   rc 0 T=  rc 0= ;
+
+\ A program keeping more rows than the band holds lists them after its data,
+\ mode 0, and its next row grows the list to mode 1.
+: CAP-GROWN ( CMD:command -- CMD:command )
+   s" cap-grown-cold" CAP-BUILD 0= if exit then
+   s" cap-grown-warm" CAP-BUILD 0= if exit then
+   s" cap-grown-cold" s" cap-grown-warm" SAME-PROGS
+   CMD:RESET  s" cap-grown-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N 0 SHOW {: rc:n :}
+   CMD:OUT$ S\" 42\n-1\n0\n1\n" STR= TTRUE
    rc 0 T= ;
 
 \ The build's own C2-MEM entries are scoped entries too.
@@ -700,7 +729,7 @@ PROG-CAP BUFFER: PROG-2
    CMD:ERR$ s" scoped-tick.f:8:" CONTAINS? TTRUE
    rc 70 T= ;
 
-: CHECKS ( -- ) [: STORED C2-BYTES TICK ;] CMD:WITH-COMMAND ;
+: CHECKS ( -- ) [: STORED C2-BYTES CAP-GROWN TICK ;] CMD:WITH-COMMAND ;
 : REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
 
 public
