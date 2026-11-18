@@ -1113,30 +1113,40 @@ public
    t tu RANGE-NOTE
    HELP  s" write a number in that range" EMIT-STR ;
 
-\ Writes the record of word w given a path len bytes long, past cap, the
-\ longest length the failing test allows, through its message: the caller may
-\ write one AT, then writes the help and ends the record. len is 0 for an empty
-\ path and -1 when only the path it resolves to is longer. A w of length 0
-\ names no word: the message's subject is the path.
+\ Writes the record of word w given a path len bytes long, empty, below 0 or
+\ past cap, the longest length the failing test allows, through its message:
+\ the caller may write one AT, then writes the help and ends the record. A w of
+\ length 0 names no word: the message's subject is the path.
 : PATH-RANGE ( str n n -- ) {: w:^ wu:n len:n cap:n :}
    s" E-PATH-RANGE" OPEN
    wu 0= IF
       len 0= IF s" a path is empty" EMIT-STR  EXIT THEN
       len 0 < IF
-         s" a path resolves to more than the " EMIT-STR
-      ELSE
-         s" a path is " EMIT-STR  len EMIT-U
-         s"  bytes long, more than the " EMIT-STR
+         s" a path's length is " EMIT-STR  len EMIT-N  s" , below 0" EMIT-STR
+         EXIT
       THEN
+      s" a path is " EMIT-STR
    ELSE
       96 EMIT1  w wu EMIT-STR
       len 0= IF s" ` got an empty path" EMIT-STR  EXIT THEN
       len 0 < IF
-         s" ` got a path that resolves to more than the " EMIT-STR
-      ELSE
-         s" ` got a path " EMIT-STR  len EMIT-U
-         s"  bytes long, more than the " EMIT-STR
+         s" ` got a path whose length is " EMIT-STR  len EMIT-N
+         s" , below 0" EMIT-STR  EXIT
       THEN
+      s" ` got a path " EMIT-STR
+   THEN
+   len EMIT-U  s"  bytes long, more than the " EMIT-STR
+   cap EMIT-U  s"  bytes a path may have" EMIT-STR ;
+
+\ Writes the record of word w given a path that resolves to more than cap
+\ bytes; the caller's part is as for PATH-RANGE.
+: PATH-RESOLVED-RANGE ( str n -- ) {: w:^ wu:n cap:n :}
+   s" E-PATH-RANGE" OPEN
+   wu 0= IF
+      s" a path resolves to more than the " EMIT-STR
+   ELSE
+      96 EMIT1  w wu EMIT-STR
+      s" ` got a path that resolves to more than the " EMIT-STR
    THEN
    cap EMIT-U  s"  bytes a path may have" EMIT-STR ;
 

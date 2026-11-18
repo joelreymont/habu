@@ -122,10 +122,11 @@ public
    a u SRCLOC:ORIGIN$ drop NULL-PTR = if s" passes a path that " REJECTION:EMIT-STR then
    0 0= ;
 
-\ Word w's record for the path a u, kind E-PATH-NUL or E-PATH-RANGE: len 0 when empty,
-\ -1 if too long once resolved, else the length over cap. Empty w names no word.
-: LOADER-PATH-RECORD ( str str n n n -- )
-   {: w:^ wu:n a:^ u:n kind:n len:n cap:n :}
+\ Word w's record for the path a u, kind E-PATH-NUL or E-PATH-RANGE: len is the
+\ length given, unread when resolved is set because only the path a u resolves
+\ to is over cap. Empty w names no word.
+: LOADER-PATH-RECORD ( str str n n bool n -- )
+   {: w:^ wu:n a:^ u:n kind:n len:n resolved:bool cap:n :}
    w wu SRCLOC:SPELLED drop {: name:^ nameu:n :}
    kind E-PATH-NUL = if
       s" E-PATH-NUL" REJECTION:OPEN
@@ -137,16 +138,24 @@ public
       then
       s" , which no file name holds" REJECTION:EMIT-STR
    else
-      name nameu len cap REJECTION:PATH-RANGE
+      resolved if
+         name nameu cap REJECTION:PATH-RESOLVED-RANGE
+      else
+         name nameu len cap REJECTION:PATH-RANGE
+      then
    then
    w wu a u LOADER-PATH-AT if
       kind E-PATH-NUL = if
          s" holds a NUL byte"
       else
-         len 0= if
-            s" is empty"
+         resolved if
+            s" is too long once resolved"
          else
-            len 0 < if s" is too long once resolved" else s" is too long" then
+            len 0= if
+               s" is empty"
+            else
+               len 0 < if s" has a length below 0" else s" is too long" then
+            then
          then
       then REJECTION:EMIT-STR
    then
@@ -159,13 +168,13 @@ public
    then ;
 
 \ Stops with word w's record for the path a u it cannot take.
-: LOADER-PATH-STOP ( str str n n -- )
+: LOADER-PATH-STOP ( str str n n bool -- )
    INCLUDE-PATH-CAP LOADER-PATH-RECORD  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ Whether a loader or ROOT! can take the path a u before resolving it: 0 0, else
 \ the kind and len LOADER-PATH-STOP takes. Length is the resolver's to judge.
 : LOADER-PATH-FAULT ( str -- n n ) {: a:^ u:n :}
-   u 0 <= if E-PATH-RANGE 0 exit then
+   u 0 <= if E-PATH-RANGE u exit then
    0 begin dup u < while
       dup a + c@ 0= if drop E-PATH-NUL 0 exit then
       1 +
@@ -175,7 +184,7 @@ public
 \ Word w's path a u, placed at p pu: one no file name holds stops with w's record.
 : LOADER-PATH-CHECK ( str str str -- ) {: w:^ wu:n p:^ pu:n a:^ u:n :}
    a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if w wu p pu kind len LOADER-PATH-STOP then ;
+   kind 0 <> if w wu p pu kind len INCLUDE-FALSE LOADER-PATH-STOP then ;
 
 \ The path a u that loader w takes, found by q, which is given a u and the
 \ place of w's record; one it cannot take stops with that record. An empty w
@@ -186,7 +195,7 @@ public
    wu 0= if NULL-PTR 0 else w wu a u LOADER-PLACE$ then {: t:^ tu:n :}
    w wu p pu a u LOADER-PATH-CHECK
    a u INCLUDE-FALSE [: drop t tu q execute ;] catch {: rc:n :}
-   rc E-PATH-RANGE = if w wu p pu E-PATH-RANGE -1 LOADER-PATH-STOP then
+   rc E-PATH-RANGE = if w wu p pu E-PATH-RANGE 0 INCLUDE-TRUE LOADER-PATH-STOP then
    rc 0= if exit then
    rc throw ;
 
@@ -200,7 +209,7 @@ private
 \ than PATH-CAP, stops with w's record.
 : GIVEN-CHECK ( str str -- ) {: w:^ wu:n a:^ u:n :}
    w wu a u a u LOADER-PATH-CHECK
-   u INCLUDE-PATH-CAP > if w wu a u E-PATH-RANGE u LOADER-PATH-STOP then ;
+   u INCLUDE-PATH-CAP > if w wu a u E-PATH-RANGE u INCLUDE-FALSE LOADER-PATH-STOP then ;
 
 INCLUDE-PATH-CAP 1+ constant PATH-BYTES
 create CWD-BUF PATH-BYTES allot
@@ -282,16 +291,17 @@ variable SLOT-BASE
    CURRENT-PTR CURRENT-U @ ;
 
 \ Throws kind, E-PATH-RANGE or E-PATH-NUL, carrying the record of the path a
-\ u, which names no word, since its callers serve many public words: len and
-\ cap as LOADER-PATH-RECORD takes them. Callers catch either code and go on.
-: PATH-PASS ( str n n n -- )
-   {: a:^ u:n kind:n len:n cap:n :}
-   NULL-PTR 0 a u kind len cap LOADER-PATH-RECORD
+\ u, which names no word, since its callers serve many public words: len,
+\ resolved and cap as LOADER-PATH-RECORD takes them. Callers catch either code
+\ and go on.
+: PATH-PASS ( str n n bool n -- )
+   {: a:^ u:n kind:n len:n resolved:bool cap:n :}
+   NULL-PTR 0 a u kind len resolved cap LOADER-PATH-RECORD
    REJECTION:SAVE  kind REJECTION:PASS ;
 
 : CHECK ( ^u8 n -- )
    {: a:^ u:n :}
-   u 0 <= if a u E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then ;
+   u 0 <= if a u E-PATH-RANGE u INCLUDE-FALSE INCLUDE-PATH-CAP PATH-PASS then ;
 
 
 \ realpath of a path of any written length into CANON-BUF: its length, below 0
@@ -300,7 +310,7 @@ variable SLOT-BASE
    {: a:^ u:n :}
    a u CHECK
    a u LOADER-PATH-FAULT {: kind:n len:n :}
-   kind 0 <> if a u kind len INCLUDE-PATH-CAP PATH-PASS then
+   kind 0 <> if a u kind len INCLUDE-FALSE INCLUDE-PATH-CAP PATH-PASS then
    a u ZPATH-OF CANON-BUF PATH-BYTES realpath ;
 
 public
@@ -334,7 +344,7 @@ private
 : TRY-CANON ( str -- bool )
    {: p:^ pu:n :}
    p pu SOURCE-INPUT:CANON {: a:^ u:n found:bool :}
-   u PATH-BYTES >= if p pu E-PATH-RANGE -1 PATH-BYTES 1- PATH-PASS then
+   u PATH-BYTES >= if p pu E-PATH-RANGE 0 INCLUDE-TRUE PATH-BYTES 1- PATH-PASS then
    found if
       a u LOADER-PATH-FAULT drop {: kind:n :}
       kind 0 <> if INCLUDE-TRUE else a c@ [char] / <> then if
@@ -460,12 +470,13 @@ public
 
 private
 
-\ The root length is the caller's: one below 0, or whose sum with u wraps, is
-\ rejected. Built in WORK-BUF, so a root or name in JOIN-BUF is read first.
+\ The root length is the caller's: one below 0 is rejected, and one whose sum
+\ with u wraps is a joined path too long. Built in WORK-BUF, so a root or name
+\ in JOIN-BUF is read first.
 : JOIN! ( str str -- ) {: root:^ rootu:n a:^ u:n :}
-   rootu 0 < if root 0 E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then
+   rootu 0 < if root 0 E-PATH-RANGE rootu INCLUDE-FALSE INCLUDE-PATH-CAP PATH-PASS then
    rootu u + 1+ {: n:n :}
-   n 0 < if root 0 E-PATH-RANGE 0 INCLUDE-PATH-CAP PATH-PASS then
+   n 0 < if root 0 E-PATH-RANGE 0 INCLUDE-TRUE INCLUDE-PATH-CAP PATH-PASS then
    n WORK-FIT
    root WORK-BUF rootu BYTE-COPY
    47 WORK-BUF rootu + c!
@@ -486,7 +497,7 @@ private
 \ p pu is the path being normalized.
 : NORMAL-ROOM ( str n n -- )
    {: p:^ pu:n n:n limit:n :}
-   NORMAL-U @ n + limit > if p pu E-PATH-RANGE -1 limit PATH-PASS then
+   NORMAL-U @ n + limit > if p pu E-PATH-RANGE 0 INCLUDE-TRUE limit PATH-PASS then
    NORMAL-U @ n + NORMAL-FIT ;
 
 

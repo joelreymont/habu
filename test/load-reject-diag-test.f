@@ -1392,7 +1392,7 @@ variable LONG-U
    HELP-MOST
    s" JOIN's uncaught throw on a negative root length prints its record" T-LABEL
    SB-RESET
-   s" error[E-PATH-RANGE]: a path is empty" SB-APPEND
+   s" error[E-PATH-RANGE]: a path's length is -1, below 0" SB-APPEND
    S\" s\" r\" drop -1 s\" x\" SOURCE-ROOT:JOIN 2drop" PATH-PASS-NOWHERE
    HELP-MOST
    s" CANONICAL's uncaught throw on a long path prints its record" T-LABEL
