@@ -1,9 +1,9 @@
 ---
-title: "Link or reject a rollback that gives back a required file"
+title: "Name where a build gave back data space"
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-18T20:19:25.247025+01:00"
 ---
 
-Problem: a caught evaluate whose text requires a file and then throws gives back what that file's part holds: its records, rows and the data its load allotted, below the marks the linker took for the parts it wrote (src/habu/linker.f FILE-REC, FILE-ROW, FILE-EM, FILE-HELD). test/fixtures/file-objects/rollback.f FOB-REQ is refused (rc 67, 'it gave back data space') because MARKS's POINTER-STORAGE:ALIGN-APART allots at each part start, so the rollback lowers DP; a DATA-FLOOR:RAISE during the load (src/lib/task.f:803, src/habu/intern.f:141) may lift the rollback's floor and leave DP where it was, and the record names data space, not the given-back file. Acceptance: a test/file-objects.f build of that shape either links with cold equal to warm or is rejected with a record naming the given-back file, whatever DP the rollback leaves; a probe first shows whether a load that raises the data floor links such a build. Depends: none. Claim: unassigned.
+Problem: src/habu/linker.f END-CK rejects a build in which DP moved back with "linker: FILE: it gave back data space (a caught failure or a negative allot), so the build writes nothing", naming only the build's file: not the line of the caught evaluate or the negative allot, nor a required file the rollback gave back. Every rollback past a load ends this way, since MARKS and PIECE-END each allot (POINTER-STORAGE:ALIGN-APART), even when the load raised the data floor (a 600 KB literal in the required file). test/fixtures/file-objects/rollback.f FOB-REQ is that shape. Acceptance: the rejection names the file and line where DP was lowered and, when the rollback gave back a loaded file, that file, in the form of the other rejections (place, source line, what to change); CAUGHT-CASE in test/file-objects.f checks it. Depends: none. Claim: unassigned.
