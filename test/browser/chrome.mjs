@@ -10,8 +10,12 @@ const linuxGpu = process.platform === "linux"
   ? ["--enable-features=Vulkan,WebGPU", "--use-vulkan=swiftshader", "--use-webgpu-adapter=swiftshader"]
   : [];
 
+// --password-store=basic keeps the profile's cookie key out of the desktop
+// keyring: a locked GNOME Keyring holds every page load on a prompt no one
+// answers.
 export function launch(chrome, profile, log) {
   return Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check",
+    "--password-store=basic",
     "--enable-unsafe-webgpu", "--use-angle=swiftshader", "--disable-gpu-sandbox", ...linuxGpu,
     "--disable-updater-scheduler", `--breakpad-dump-location=${profile}`, "--remote-debugging-port=0",
     `--user-data-dir=${profile}`, "about:blank"],
