@@ -1,10 +1,14 @@
 split-str
-\ Fixed storage binds the accessor that owns its allocation, and the binding
-\ marks cells by their stored type: a quotation cell as code, a nullable cell as
-\ a DATA address whether it holds an address or zero.
+\ Fixed storage binds the accessor that owns its allocation. A linked program
+\ runs the quotation and reads through the address its build stored in typed
+\ cells; hb-build.f reads its argv, so it is spawned from the tree's root.
+require src/lib/string.f
 require src/lib/test.f
-require src/habu/address-cells.f
-require src/lib/adt/nullable.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/process-command.f
+require src/lib/engine-candidate.f
 
 package STORAGE-BIND-TEST
 
@@ -21,34 +25,12 @@ private
 TYPED-VARIABLE ROW [ n -- n ]
 : PRIVATE-STORE ( -- ) [: 1 + ;] ROW ! ;
 : PRIVATE-CALL ( n -- n ) ROW @ execute ;
-: PRIVATE-OFF ( -- n ) ROW data-base - ;
 
 public
-\ The public accessor has the same tail as the private quote accessor. Record
-\ its own allocation directly: bare name lookup in this scope prefers the
-\ private word, while the generated public accessor still mints its own row.
-PTR-VARIABLE PUBLIC-BASE
-here PUBLIC-BASE !
+\ The public accessor has the same tail as the private quote accessor.
 TYPED-VARIABLE ROW n
 : PUBLIC-STORE ( n -- ) STORAGE-BIND-TEST:ROW ! ;
 : PUBLIC-READ ( -- n ) STORAGE-BIND-TEST:ROW @ ;
-: PUBLIC-OFF ( -- n ) PUBLIC-BASE @ BYTE-VIEW data-base BYTE-VIEW - ;
-
-\ The kind bits of the address-cell row at a DATA offset, -1 for no row.
-: CELL-KIND ( n -- n ) {: off:n :}
-   ADDRESS-CELLS:LIVE-SPAN nip 0 ?do
-      i ADDRESS-CELLS:ROW@ {: row:n :}
-      row SNAP-RELOC:XTCELL-OFF-MASK and off = if
-         row SNAP-RELOC:XTCELL-OFF-MASK invert and unloop exit
-      then
-   loop -1 ;
-: XT-MARKED? ( n -- bool ) CELL-KIND 0 = ;
-: DATA-MARKED? ( n -- bool ) CELL-KIND SNAP-RELOC:XTCELL-DATA-TAG = ;
-
-TYPED-VARIABLE NULL-SOME nullable<u8>
-TYPED-VARIABLE NULL-NONE nullable<u8>
-: NULL-STORE ( -- )
-   PUBLIC-BASE @ BYTE-VIEW NULLABLE:SOME NULL-SOME ! ;
 
 : RUN ( -- )
    17 PUBLIC-STORE PUBLIC-READ 17 T=
@@ -56,13 +38,60 @@ TYPED-VARIABLE NULL-NONE nullable<u8>
    3 s" abc" drop PLAIN-ROW-MAKE 4095 PLAIN !
    4095 PLAIN @ PLAIN-ROW-UNMAKE 3
    s" abc" T$= 3 T=
-   NULL-STORE
-   PRIVATE-OFF XT-MARKED? TTRUE
-   PUBLIC-OFF XT-MARKED? TFALSE
-   NULL-SOME PTR>N data-base PTR>N - DATA-MARKED? TTRUE
-   NULL-NONE PTR>N data-base PTR>N - DATA-MARKED? TTRUE
-   5 PRIVATE-CALL 6 T=
-   T-REPORT ;
+   5 PRIVATE-CALL 6 T= ;
 
 RUN
+
+private
+PATH-CAP BUFFER: DIR   variable DIR-U
+PATH-CAP BUFFER: SRC   variable SRC-U
+PATH-CAP BUFFER: PROG  variable PROG-U
+PATH-CAP BUFFER: OUT   variable OUT-U
+: DIR$ ( -- str ) DIR DIR-U @ ;
+: SRC$ ( -- str ) SRC SRC-U @ ;
+: PROG$ ( -- str ) PROG PROG-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ ;
+
+\ The build stores a quotation and the address of a cell it set to 7.
+: PROGRAM-SOURCE$ ( -- str )
+   S\" require src/lib/adt/nullable.f\nTYPED-VARIABLE SBT-H [ n -- n ]\nTYPED-VARIABLE SBT-N n\nTYPED-VARIABLE SBT-P nullable<u8>\n: SBT-SET ( -- ) [: 1 + ;] SBT-H !  7 SBT-N !  SBT-N BYTE-VIEW NULLABLE:SOME SBT-P ! ;\nSBT-SET\n: SBT-BYTE ( -- n ) SBT-P @ MATCH nullable none OF 0 ENDOF some OF c@ ENDOF ;MATCH ;\n: MAIN ( -- ) 41 SBT-H @ execute . SBT-BYTE . ;\n" ;
+
+: SHOW ( CMD:command n -- CMD:command )
+   {: rc:n :}
+   s" storage-binding: exited " type rc .
+   s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
+
+: BUILD ( CMD:command -- CMD:command n )
+   CMD:RESET
+   s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
+   SRC$ CMD:ARG+  s" -o" CMD:ARG+  PROG$ CMD:ARG+
+   s" HABU_OUT" OUT$ CMD:ENV+
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N ;
+
+: LINKED-CASE ( CMD:command -- CMD:command )
+   SRC$ PROGRAM-SOURCE$ FS:WRITE-ALL
+   BUILD {: built:n :}
+   built 0<> if built SHOW then
+   s" the typed-cell program builds" T-LABEL  built 0 T=
+   built 0<> if exit then
+   CMD:RESET  PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
+   PROCESS:ENDING>RC RC>N {: rc:n :}
+   rc 0<> if rc SHOW then
+   s" the linked program runs its build's quotation and reads its build's address" T-LABEL
+   CMD:OUT$ s\" 42\n7\n" T$=
+   s" the linked program exits 0" T-LABEL  rc 0 T= ;
+
+: REMOVE ( -- ) DIR$ FS:REMOVE-TREE ;
+
+: LINKED ( -- )
+   s" habu-storage-binding" FS:MKTEMP-DIR {: a:^ u:n :}
+   a DIR u BYTE-COPY  u DIR-U !
+   DIR$ s" cells.f" SRC FS:JOIN-PATH SRC-U !
+   DIR$ s" cells" PROG FS:JOIN-PATH PROG-U !
+   DIR$ s" out" OUT FS:JOIN-PATH OUT-U !
+   [: [: LINKED-CASE ;] CMD:WITH-COMMAND ;] ['] REMOVE finally ;
+
+LINKED
+T-REPORT
 ;package

@@ -7,9 +7,10 @@ split-str
 \ pointer's target; a string it types after filling 4096 bytes at its `here`,
 \ which shows its DP lies past its data, the string's body included. The
 \ program is PIE: these hold only if the start-up slides each code cell once
-\ and no DATA cell. over allots up to its ceiling, prints that ceiling less its
-\ heap floor, which must be the build's, then allots one byte more, which throws
-\ E-DATA-SPACE uncaught. A second link of main writes the same bytes.
+\ and no DATA cell. over allots until it catches E-DATA-SPACE, prints the bytes
+\ it allotted and rethrows uncaught: its DATA less the profiler band, the
+\ engine's part below DATA-START and its own data, which is under a step.
+\ A second link of main writes the same bytes.
 \ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
 \ The data child also runs on three malformed copies of the kernel object, one
 \ failing its checksum, one whose DATA-START is off a cell and one whose Mach-O
@@ -30,7 +31,6 @@ require src/core/sha256.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/habu/layout.f
-require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/compiler/target/model.f
 require src/habu/linker.f
@@ -53,12 +53,13 @@ create PROG-BUF PATH-CAP allot
    PROG-BUF u ;
 
 
-\ The build's wordlists hold no BOOT, so its cell offsets go in as numbers.
+$100000 constant OVER-STEP                \ over's first allot step, in bytes
+
+\ over halves its step at each throw, so it allots up to its ceiling.
 : OVER-SRC ( -- str )
    SB-RESET
-   s" : LD-OVER ( -- ) data-base " SB-APPEND  BOOT:DP-FLOOR-CELL FMT:SB-INT
-   s"  + @ {: floor:n :}  data-base " SB-APPEND  BOOT:DP-CEILING-CELL FMT:SB-INT
-   s"  + @ here NULL-PTR - - allot  here NULL-PTR - floor - LD-U cr  1 allot ;" SB-APPEND
+   s" : LD-OVER ( -- ) " SB-APPEND  OVER-STEP FMT:SB-INT
+   s"  LD-ST !  begin LD-ST @ 0 <> while [: LD-ST @ allot ;] catch dup 0= if drop LD-AL @ LD-ST @ + LD-AL ! else LD-RC ! LD-ST @ 2 / LD-ST ! then repeat LD-AL @ LD-U  LD-RC @ throw ;" SB-APPEND
    SB$ ;
 
 \ LD-LEAF2 is reached only from the quotation LD-MAKE stores.
@@ -79,17 +80,13 @@ create PROG-BUF PATH-CAP allot
    s" : LD-FILL ( -- ) here {: p:^ :} 4096 allot 4096 0 ?do [char] x p i + c! loop ;" evaluate-closed
    s" : LD-U ( n -- ) dup 9 > if dup 10 / recurse then 10 mod 48 + emit ;" evaluate-closed
    s" : LD-U_ ( n -- ) LD-U 32 emit ;" evaluate-closed
+   s" variable LD-AL  0 LD-AL !  variable LD-ST  variable LD-RC" evaluate-closed
    s\" : LD-MAIN ( -- ) 1 LD-XT @ execute LD-U_  1 LD-Q @ execute LD-U_  LD-SCR @ LD-U_  LD-V @ LD-U_  LD-PV LD-U_  LD-FILL  s\" ld-text\" type cr ;" evaluate-closed
    OVER-SRC evaluate-closed ;
 
 
-\ The ceiling over prints, less the heap floor, read from the build's cells as
-\ the kernel reads the program's.
-variable OVER-CEILING
-
-: OVER-EXPECT ( -- )
-   data-base BOOT:DP-FLOOR-CELL + @ {: base:n :}
-   data-base BOOT:DP-CEILING-CELL + @ base - OVER-CEILING ! ;
+\ The bytes a program can allot from its heap floor to its ceiling.
+DATA-SIZE PROF-CNT-BYTES - DATA-START - constant OVER-ROOM
 
 
 : STORE-ENTRY ( str -- )
@@ -122,7 +119,6 @@ DYNAMIC-BUFFER SECOND-LINK u8
 
 : BODY ( -- )
    FIXTURE
-   OVER-EXPECT
    s" LD-OVER" STORE-ENTRY  s" over" PROG$ LINKER:WRITE
    s" LD-MAIN" STORE-ENTRY  s" main" PROG$ LINKER:WRITE
    SECOND-CASE ;
@@ -140,10 +136,15 @@ DYNAMIC-BUFFER SECOND-LINK u8
 
 : RUN-OVER ( CMD:command -- CMD:command )
    s" over" RUN-PROG {: rc:n :}
-   s" over allots up to the ceiling the build places" T-LABEL
-   SB-RESET  OVER-CEILING @ FMT:SB-INT  s\" \n" SB-APPEND
-   CMD:OUT$ SB$ T$=
-   s" and one byte more throws E-DATA-SPACE uncaught" T-LABEL
+   CMD:OUT$ STR>NUMBER? MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH {: got:n :}
+   s" over allots no more than the room below its ceiling" T-LABEL
+   got OVER-ROOM <= TTRUE
+   s" over allots within a step of that room" T-LABEL
+   got OVER-ROOM OVER-STEP - > TTRUE
+   s" and rethrows the E-DATA-SPACE it caught uncaught" T-LABEL
    CMD:ERR$ s" hb: uncaught throw code -9850" CONTAINS? TTRUE
    s" over exits 67" T-LABEL  rc 67 T= ;
 
