@@ -29,6 +29,8 @@ variable MT-EACH-SUM
 variable MT-EACH-LEN-SUM
 variable MT-EACH-LAST                   \ slot of the entry EACH visited last
 variable MT-COL-N
+TYPED-VARIABLE MT-ROOM-MAP ^n
+variable MT-ROOM-CAP
 
 create MT-MAP MT-CAP >COUNT CELL-COUNT COUNT>N cells allot
 create MT-FULL-MAP MT-FULL-CAP >COUNT CELL-COUNT COUNT>N cells allot
@@ -493,6 +495,25 @@ create MT-KEY-Z 122 c,
    $3A7 MT-MIX-OPS PROP:RUN-RESET
    PROP:COUNT@ 0 ?do MT-MIX-OP MT-MIX-SWEEP loop ;
 
+\ ROOM makes a null map with capacity 8 and doubles it as SETs fill it past
+\ half: nine keys end at 32, each still found.
+: MT-TEST-ROOM ( -- )
+   MT-FILL-LETTERS
+   ARENA:NEW {: a:^ :}
+   NULL-PTR MT-ROOM-MAP !  0 MT-ROOM-CAP !
+   MT-ROOM-MAP MT-ROOM-CAP a ROOM
+   MT-ROOM-CAP @ 8 MT=
+   MT-ROOM-MAP @ MT-MAP-CAP@ 8 MT=
+   9 0 ?do
+      MT-ROOM-MAP MT-ROOM-CAP a ROOM
+      i 100 + MT-ROOM-MAP @ MT-ROOM-CAP @ i MT-LETTER 1 MT-MAP-SET
+   loop
+   MT-ROOM-CAP @ 32 MT=
+   9 0 ?do
+      MT-ROOM-MAP @ MT-ROOM-CAP @ i MT-LETTER 1 i 100 + MT-ASSERT-HIT
+   loop
+   a ARENA:RELEASE ;
+
 : MT-REPORT ( -- )
    MT-FAIL @ 0= if s" map-test: ok" type cr exit then
    s" map-test: " type MT-FAIL @ FMT:.INT s"  failure(s)" type cr
@@ -511,6 +532,7 @@ create MT-KEY-Z 122 c,
    MT-TEST-MAP-KEYED
    MT-TEST-INIT-KEYED
    MT-TEST-MAP-MIX
+   MT-TEST-ROOM
    MT-REPORT ;
 
 MT-MAIN

@@ -465,30 +465,10 @@ CAST: >PROPERTY ( n -- ^property )
    m NULL-PTR = if 0 exit then
    m MAP:COUNT@ COUNT>N ;
 
-: MAP-IN ( ^ARENA:arena n -- ^n ) {: a:^ cap:n :}
-   cap >COUNT MAP:CELL-COUNT COUNT>N cells {: bytes:n :}
-   a bytes ARENA:ALLOC drop CELL-VIEW {: m:^ :}
-   m cap >COUNT MAP:INIT
-   m ;
-
-: MOVE-ENTRY ( ^u8 len n ^n count -- )
-   {: key:^ len:len v:n m:^ cap:count :}
-   v m cap key len MAP:SET ;
-
-\ Room for one more entry at mp: a null map is made, and a map that entry
-\ would fill past half is doubled.
-: MAP-ROOM ( ^^n ^n ^ARENA:arena -- ) {: mp:^ cp:^ a:^ :}
-   mp @ {: old:^ :}  cp @ {: cap:n :}
-   old NULL-PTR = if a 8 MAP-IN mp !  8 cp ! exit then
-   old MAP:COUNT@ COUNT>N 1+ 2 * cap <= if exit then
-   cap 2 * {: ncap:n :}  a ncap MAP-IN {: new:^ :}
-   old cap >COUNT [: new ncap >COUNT MOVE-ENTRY ;] MAP:EACH
-   new mp !  ncap cp ! ;
-
 \ na nu must live as long as arena a, which holds the map.
 : NAME-PUT ( n ^u8 n ^^n ^n ^ARENA:arena -- )
    {: v:n na:^ nu:n mp:^ cp:^ a:^ :}
-   mp cp a MAP-ROOM
+   mp cp a MAP:ROOM
    v mp @ cp @ >COUNT na nu >LEN MAP:SET ;
 
 : APPEND-PROPERTY ( ^property ^level -- ) {: p:^ lv:^ :}

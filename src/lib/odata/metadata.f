@@ -585,30 +585,10 @@ CAST: >RECORD ( n -- ^t )
 \ The names map.
 : MAP-OF ( ^doc -- ^n count ) dup DOC-MAP @ swap DOC-MAP-CAP @ >COUNT ;
 
-: MAP-IN ( ^ARENA:arena n -- ^n )
-   {: a:^ cap:n :}
-   cap >COUNT MAP:CELL-COUNT COUNT>N cells {: bytes:n :}
-   a bytes ARENA:ALLOC drop CELL-VIEW {: m:^ :}
-   m cap >COUNT MAP:INIT
-   m ;
-
 : MAP-NEW ( ^doc n -- )
    {: d:^ cap:n :}
-   d DOC-NAMES @ cap MAP-IN d DOC-MAP !
+   d DOC-NAMES @ cap >COUNT MAP:IN d DOC-MAP !
    cap d DOC-MAP-CAP ! ;
-
-: MOVE-ENTRY ( ^u8 len n ^n count -- )
-   {: key:^ len:len v:n m:^ cap:count :}
-   v m cap key len MAP:SET ;
-
-\ Doubles the map when one more entry would fill it past half.
-: MAP-GROW ( ^doc -- )
-   {: d:^ :}
-   d MAP-OF {: old:^ cap:count :}
-   old MAP:COUNT@ COUNT>N 1+ 2 * cap COUNT>N <= if exit then
-   d cap COUNT>N 2 * MAP-NEW
-   d MAP-OF {: new:^ ncap:count :}
-   old cap [: new ncap MOVE-ENTRY ;] MAP:EACH ;
 
 : HELD? ( ^doc -- bool )
    {: d:^ :}
@@ -627,7 +607,7 @@ CAST: >RECORD ( n -- ^t )
 : REMEMBER ( ^doc n -- )
    {: d:^ v:n :}
    d HELD? if v d MAP-OF d KEY$ >LEN MAP:SET exit then
-   d MAP-GROW
+   d DOC-MAP d DOC-MAP-CAP d DOC-NAMES @ MAP:ROOM
    d DOC-NAMES @ d DOC-KEY-LEN @ ARENA:ALLOC {: copy:^ len:n :}
    d DOC-KEY @ copy len BYTE-COPY
    v d MAP-OF copy len >LEN MAP:SET ;
@@ -1662,7 +1642,7 @@ CAST: >RECORD ( n -- ^t )
 : INDEX-NAMES ( ^doc -- )
    {: d:^ :}
    d NAME-COUNT 2 * 1 max {: cap:n :}
-   d DOC-ARENA @ cap MAP-IN d DOC-MODEL @ METADATA-NAMES !
+   d DOC-ARENA @ cap >COUNT MAP:IN d DOC-MODEL @ METADATA-NAMES !
    cap d DOC-MODEL @ METADATA-NAMES-CAP !
    d TALLY-NAMES
    d DOC-TYPE-COUNT @ 0 ?do
@@ -1893,7 +1873,7 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ :}
    d TARGET-COUNT {: count:n :}
    count 2 * 1 max {: cap:n :}
-   d DOC-ARENA @ cap MAP-IN d DOC-MODEL @ METADATA-TARGETS !
+   d DOC-ARENA @ cap >COUNT MAP:IN d DOC-MODEL @ METADATA-TARGETS !
    cap d DOC-MODEL @ METADATA-TARGETS-CAP !
    d DOC-NAMES @ count cells ARENA:ALLOC drop >SET-ENDS d DOC-SECONDS ! ;
 
