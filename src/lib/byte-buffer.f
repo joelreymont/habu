@@ -2,7 +2,8 @@ split-str
 \ byte-buffer.f - one package-owned growable byte buffer, package BUF.
 \ The caller embeds a three-cell header (BUF:HDR-BYTES); the buffer owns the one
 \ OS mapping at its storage pointer. The capacity cell is the ownership token:
-\ positive, a live mapping of that many bytes; zero, none (fresh or disposed).
+\ positive, a live mapping of that many bytes; zero, none (fresh or disposed),
+\ and any growth maps one.
 \ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; BUF owns the mapping.
 
 require src/lib/error.f
@@ -86,6 +87,7 @@ private
 
 : GROW-CAP ( ^a n -- n ) {: buf:^ need:n :}
    buf CAP-RAW@
+   dup 0= if drop need exit then
    begin dup need < while
       dup MAX-BYTES GROWTH / > if
          drop need
@@ -117,7 +119,6 @@ private
    NULL-PTR buf DATA!
    0 buf CAP-RAW!
    0 buf LEN-FIELD !
-   owned SPAN:LEN 0= if exit then
    owned STORAGE-RELEASE ;
 
 : CLEAR-RAW ( ^a -- ) {: buf:^ :}
@@ -182,7 +183,6 @@ public
 \ longer length takes in are unspecified until written.
 : LEN! ( NUM:byte-len ^a -- ) {: n:NUM:byte-len buf:^ :}
    n BLEN>N buf SET-LEN ;
-\ The one accessor safe on a fresh or disposed header.
 : LIVE? ( ^a -- bool )  CAP-RAW@ 0<> ;
 \ SPAN and SPAN$ borrow exactly the active prefix until the next mutation or
 \ disposal; the span enforces neither that lifetime nor read-only use, and the

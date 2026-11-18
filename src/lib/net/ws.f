@@ -323,7 +323,6 @@ RUN-IDLE RUN !
 
 
 : DROP-SPAN ( SPAN:span<u8> -- SPAN:span<u8> ) {: s :}
-   s SPAN:LEN 0= if s exit then
    s MEM:FREE-SPAN
    s 0 SPAN:TAKE ;
 

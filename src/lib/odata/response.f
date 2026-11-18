@@ -400,17 +400,13 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : TOP ( ^copy -- ^frame ) dup COPY-DEPTH @ 1- NTH-FRAME ;
 
-: FREE-MAPPING ( SPAN:span<u8> -- )
-   {: map:SPAN:span<u8> :}
-   map SPAN:LEN 0 > if map MEM:FREE-SPAN then ;
-
 \ A new mapping of WANT bytes holding the HAVE bytes at FROM; the old
 \ mapping is freed.
 : MOVED ( ^u8 n n SPAN:span<u8> -- SPAN:span<u8> )
    {: from:^ have:n want:n old:SPAN:span<u8> :}
    want MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: grown:SPAN:span<u8> :}
    from have grown SPAN:COPY
-   old FREE-MAPPING
+   old MEM:FREE-SPAN
    grown ;
 
 : GROW ( ^copy -- )
@@ -437,8 +433,8 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : DROP-FRAMES ( ^copy -- )
    {: c:^ :}
-   c COPY-MAPPING @ FREE-MAPPING
-   c COPY-NAMES-MAPPING @ FREE-MAPPING ;
+   c COPY-MAPPING @ MEM:FREE-SPAN
+   c COPY-NAMES-MAPPING @ MEM:FREE-SPAN ;
 
 \ A frame read after a PUSH is read afresh: a PUSH may move the frames.
 : PUSH ( ^copy nest ^entity-type -- )

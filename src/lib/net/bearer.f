@@ -707,7 +707,7 @@ public
    NAMED-SPAN {: was :}
    row SPAN:$ NAMED-LEN ! NAMED ! split NAMED-U ! cu CHALLENGES-U !
    uu RESOURCE-LEN RESOURCE-U !
-   was SPAN:LEN 0 > if was MEM:FREE-SPAN then ;
+   was MEM:FREE-SPAN ;
 
 
 \ The route handler a host gives HTTP:ROUTE for the GET of METADATA!'s URL

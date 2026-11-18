@@ -110,8 +110,10 @@ public
 : ALLOC-SPAN ( NUM:alloc-byte-len -- SPAN:span<u8> )
    ALLOC-BYTES ALLOCATION>SPAN ;
 
-: FREE-SPAN ( SPAN:span<u8> -- )
-   SPAN:$ BYTES-ALLOC-LEN RELEASE-BYTES ;
+\ An empty span has no allocation behind it.
+: FREE-SPAN ( SPAN:span<u8> -- ) {: s :}
+   s SPAN:LEN 0= if exit then
+   s SPAN:$ BYTES-ALLOC-LEN RELEASE-BYTES ;
 
 private
 

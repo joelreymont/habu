@@ -147,7 +147,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
 : REFUSAL-ROOM ( n n -- ) {: at:n want:n :}
    want at REFUSAL @ SPAN:LEN <= if exit then
    want MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-   at REFUSAL @ SPAN:LEN 0<> if at REFUSAL @ MEM:FREE-SPAN then
+   at REFUSAL @ MEM:FREE-SPAN
    fresh at REFUSAL ! ;
 
 

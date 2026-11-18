@@ -229,7 +229,6 @@ LINEAR: ERASE-READER ( JSON:reader -- ^n )
    state CURSOR-MORE @ state CURSOR-MORE-CELLS @ cells SPAN:MAKE ;
 
 : MORE-RELEASE ( ^cursor -- ) {: state:^ :}
-   state CURSOR-MORE-CELLS @ 0= if exit then
    state MORE-SPAN {: old :}
    NULL-PTR state CURSOR-MORE !
    0 state CURSOR-MORE-CELLS !
@@ -246,7 +245,7 @@ LINEAR: ERASE-READER ( JSON:reader -- ^n )
    old SPAN:$ grown SPAN:COPY
    grown SPAN:$ drop state CURSOR-MORE !
    want state CURSOR-MORE-CELLS !
-   have 0<> if old MEM:FREE-SPAN then ;
+   old MEM:FREE-SPAN ;
 
 \ The level's word exists: it is below the depth, or PUSH ensured it.
 : KIND-WORD ( ^cursor n -- ^n ) {: state:^ level:n :}

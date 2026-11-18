@@ -12,6 +12,7 @@ create BUFT-BUF BUF:HDR-BYTES allot
 create BUFT-REL-BUF BUF:HDR-BYTES allot
 create BUFT-BIG-BUF BUF:HDR-BYTES allot
 create BUFT-LIVE-BUF BUF:HDR-BYTES allot
+create BUFT-NEW-BUF BUF:HDR-BYTES allot
 create BUFT-CHUNK 1024 allot
 create BUFT-REF 4096 allot
 
@@ -263,6 +264,11 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-LIVE-BUF BUF:DISPOSE
    BUFT-LIVE-BUF BUF:LIVE? TFALSE ;
 
+: BUFT-APPEND-NEW ( -- )
+   s" abc" BUF:N>BLEN BUFT-NEW-BUF BUF:APPEND-SPAN
+   BUFT-NEW-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
+   BUFT-NEW-BUF BUF:DISPOSE ;
+
 : BUFT-GROW-FAIL-ATOMIC ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    s" keep" BUF:N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
@@ -352,6 +358,8 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-DISPOSE-CYCLE-BOUNDED
    s" LIVE? answers on a fresh, live and disposed header and never throws" T-LABEL
    [: BUFT-LIVE ;] catch 0 T=
+   s" a span appended to a header never initialised grows it to fit" T-LABEL
+   BUFT-APPEND-NEW
    s" a failed growth leaves the buffer as it was" T-LABEL
    BUFT-GROW-FAIL-ATOMIC
    s" init with zero capacity is refused" T-LABEL

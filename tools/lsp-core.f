@@ -151,7 +151,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: v n:n :}
    n 1 max {: need:n :}
    v @ LEN need >= if exit then
-   v @ LEN 0 > if v @ FREE-SPAN then
+   v @ FREE-SPAN
    need BYTES-ALLOC-LEN ALLOC-SPAN v ! ;
 
 \ ---- replies -----------------------------------------------------------------

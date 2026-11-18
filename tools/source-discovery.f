@@ -159,7 +159,7 @@ variable SD-SCOPES
       old SPAN:$ {: a:^ u:n :}
       a fresh SPAN:$ drop u BYTE-COPY
       fresh SD-STORAGE !
-      u 0 > if old MEM:FREE-SPAN then
+      old MEM:FREE-SPAN
    then
    SD-STORAGE @ SPAN:$ drop ;
 
