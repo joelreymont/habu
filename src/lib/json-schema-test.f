@@ -191,6 +191,11 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    s" VALID? rejects a missing required member" T-LABEL
    SAPD$ s\" {\"top\":5}"
    s" : expected a member `filter`, found none; add `filter`"
+   FAILS
+   s" VALID? finds nine members and required names past a map's growth" T-LABEL
+   s\" {\"properties\":{\"p1\":{},\"p2\":{},\"p3\":{},\"p4\":{},\"p5\":{},\"p6\":{},\"p7\":{},\"p8\":{},\"p9\":{}},\"required\":[\"p9\",\"p8\",\"p7\",\"p6\",\"p5\",\"p4\",\"p3\",\"p2\",\"p1\"],\"additionalProperties\":false}"
+   s\" {\"p7\":1,\"p2\":1,\"p9\":1,\"p1\":1,\"p6\":1,\"p3\":1,\"p8\":1,\"p5\":1}"
+   s" : expected a member `p4`, found none; add `p4`"
    FAILS ;
 
 : VALUES ( -- )

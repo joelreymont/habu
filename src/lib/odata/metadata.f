@@ -601,7 +601,7 @@ CAST: >RECORD ( n -- ^t )
    {: key:^ len:len v:n m:^ cap:count :}
    v m cap key len MAP:SET ;
 
-\ Doubles the map before an entry would fill half of it.
+\ Doubles the map when one more entry would fill it past half.
 : MAP-GROW ( ^doc -- )
    {: d:^ :}
    d MAP-OF {: old:^ cap:count :}

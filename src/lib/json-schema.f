@@ -36,10 +36,10 @@ split-str
 \ reads. enum reads a container to its end before its members, then again;
 \ uniqueItems reads its array again at the `]`. A container's violation
 \ that quotes it is written once its closing token is read.
-\ STORAGE CLASS. CALLER-OWNED: the nodes, the decoded names and each
-\ pattern's decoded text and program lie in the arena COMPILE was given,
-\ read-only after COMPILE; they borrow the schema text, which must outlive
-\ the schema. VALID?'s scratch is one ARENA:WITH, so calls on several
+\ STORAGE CLASS. CALLER-OWNED: the nodes, their name maps, the decoded names
+\ and each pattern's decoded text and program lie in the arena COMPILE was
+\ given, read-only after COMPILE; they borrow the schema text, which must
+\ outlive the schema. VALID?'s scratch is one ARENA:WITH, so calls on several
 \ threads at once are safe.
 
 require src/lib/error.f
@@ -50,6 +50,7 @@ require src/lib/adt/option.f
 require src/lib/arena.f
 require src/lib/reason.f
 require src/lib/json.f
+require src/lib/map.f
 require src/lib/regex.f
 require src/lib/byte-buffer.f
 require src/lib/utf8-scalar.f
@@ -80,6 +81,8 @@ STRUCTURE entry DERIVE addr
 
 \ types: bit i for TYPE-NAMES$'s i-th name, 0 for none; type-order: each i + 1
 \ in the schema's order, 4 bits apiece. An empty span, -1 or null is no rule.
+\ property-map: each property's name to its address; required-map: each
+\ required name to its index in required. A null map has capacity 0.
 MUTUAL node property branch
 STRUCTURE node DERIVE addr
    FIELD types n
@@ -96,7 +99,11 @@ STRUCTURE node DERIVE addr
    FIELD pattern REGEX:regex
    FIELD pattern-text SPAN:span<u8>
    FIELD properties ^property
+   FIELD property-map ^n
+   FIELD property-cap n
    FIELD required ^entry
+   FIELD required-map ^n
+   FIELD required-cap n
    FIELD extras extras
    FIELD additional ^node
    FIELD items ^node
@@ -447,19 +454,42 @@ $73 constant SCALARS
    then
    b KEYWORDS$ 1 OPEN ;
 
-\ Whether the property is named as the current key; p stays.
-: SAME-NAME? ( JSON:reader ^property -- JSON:reader ^property bool )
-   {: p:^ :}
-   p PROPERTY-NAME @ SPAN:$ JSON:READ-STR-EQ? p swap ;
+\ A property's address a map holds.
+CAST: >PROPERTY ( n -- ^property )
 
-\ The first property from p on named as the current key, else NULL-PTR.
-: PROPERTY-NAMED ( JSON:reader ^property -- JSON:reader ^property )
-   begin dup NULL-PTR <> while
-      SAME-NAME? if exit then PROPERTY-NEXT @
-   repeat ;
+: NAME-GET ( ^u8 n ^n n -- option<n> ) {: na:^ nu:n m:^ cap:n :}
+   m NULL-PTR = if OPTION:NONE exit then
+   m cap >COUNT na nu >LEN MAP:GET ;
 
-: NAMED? ( JSON:reader ^property -- JSON:reader bool )
-   PROPERTY-NAMED NULL-PTR <> ;
+: NAME-COUNT ( ^n -- n ) {: m:^ :}
+   m NULL-PTR = if 0 exit then
+   m MAP:COUNT@ COUNT>N ;
+
+: MAP-IN ( ^ARENA:arena n -- ^n ) {: a:^ cap:n :}
+   cap >COUNT MAP:CELL-COUNT COUNT>N cells {: bytes:n :}
+   a bytes ARENA:ALLOC drop CELL-VIEW {: m:^ :}
+   m cap >COUNT MAP:INIT
+   m ;
+
+: MOVE-ENTRY ( ^u8 len n ^n count -- )
+   {: key:^ len:len v:n m:^ cap:count :}
+   v m cap key len MAP:SET ;
+
+\ Room for one more entry at mp: a null map is made, and a map that entry
+\ would fill past half is doubled.
+: MAP-ROOM ( ^^n ^n ^ARENA:arena -- ) {: mp:^ cp:^ a:^ :}
+   mp @ {: old:^ :}  cp @ {: cap:n :}
+   old NULL-PTR = if a 8 MAP-IN mp !  8 cp ! exit then
+   old MAP:COUNT@ COUNT>N 1+ 2 * cap <= if exit then
+   cap 2 * {: ncap:n :}  a ncap MAP-IN {: new:^ :}
+   old cap >COUNT [: new ncap >COUNT MOVE-ENTRY ;] MAP:EACH
+   new mp !  ncap cp ! ;
+
+\ na nu must live as long as arena a, which holds the map.
+: NAME-PUT ( n ^u8 n ^^n ^n ^ARENA:arena -- )
+   {: v:n na:^ nu:n mp:^ cp:^ a:^ :}
+   mp cp a MAP-ROOM
+   v mp @ cp @ >COUNT na nu >LEN MAP:SET ;
 
 : APPEND-PROPERTY ( ^property ^level -- ) {: p:^ lv:^ :}
    p lv LEVEL-PROPERTY-TAIL @ !  p PROPERTY-NEXT lv LEVEL-PROPERTY-TAIL ! ;
@@ -467,16 +497,22 @@ $73 constant SCALARS
 \ The key is current; its value's level is pushed.
 : PROPERTY ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}  lv LEVEL-BUILD @ {: b:^ :}
-   nd NODE-PROPERTIES @ NAMED? if
-      s" `properties` naming each property once"
-      s" remove the repeated property, keeping one" REJECT
-   then
    b DECODED {: na:^ nu:n :}
+   na nu nd NODE-PROPERTY-MAP @ nd NODE-PROPERTY-CAP @ NAME-GET
+   MATCH option
+      none OF ENDOF
+      some OF
+         drop s" `properties` naming each property once"
+         s" remove the repeated property, keeping one" REJECT
+      ENDOF
+   ;MATCH
    JSON:READ-NEXT drop
    b s" a property's schema as an object" SUB {: child:^ :}
    b BUILD-ARENA @ PROPERTIES-NEW {: p:^ :}
    na nu SPAN:MAKE p PROPERTY-NAME !  child p PROPERTY-NODE !
-   p lv APPEND-PROPERTY ;
+   p lv APPEND-PROPERTY
+   p NULL-PTR -  na nu  nd NODE-PROPERTY-MAP nd NODE-PROPERTY-CAP
+   b BUILD-ARENA @ NAME-PUT ;
 
 : PROPERTIES-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    JSON:READ-TOKEN JSON:T-OBJ <> if
@@ -491,16 +527,6 @@ $73 constant SCALARS
    then
    lv PROPERTY ;
 
-: SAME-ENTRY? ( JSON:reader ^entry -- JSON:reader ^entry bool )
-   {: en:^ :}
-   en ENTRY-NAME @ SPAN:$ JSON:READ-STR-EQ? en swap ;
-
-\ Whether an entry from en on holds the current string.
-: LISTED? ( JSON:reader ^entry -- JSON:reader bool )
-   begin dup NULL-PTR <> while
-      SAME-ENTRY? if drop true exit then ENTRY-NEXT @
-   repeat drop false ;
-
 : APPEND-ENTRY ( ^entry ^level -- ) {: en:^ lv:^ :}
    en lv LEVEL-ENTRY-TAIL @ !  en ENTRY-NEXT lv LEVEL-ENTRY-TAIL ! ;
 
@@ -513,14 +539,20 @@ $73 constant SCALARS
    JSON:READ-TOKEN JSON:T-STR <> if
       REQUIRED-EXPECTED$ REQUIRED-FIX$ REJECT
    then
-   nd NODE-REQUIRED @ LISTED? if
-      s" `required` naming each property once" s" remove the repeated name"
-      REJECT
-   then
    b DECODED {: na:^ nu:n :}
+   na nu nd NODE-REQUIRED-MAP @ nd NODE-REQUIRED-CAP @ NAME-GET
+   MATCH option
+      none OF ENDOF
+      some OF
+         drop s" `required` naming each property once"
+         s" remove the repeated name" REJECT
+      ENDOF
+   ;MATCH
    b BUILD-ARENA @ ENTRIES-NEW {: en:^ :}
    na nu SPAN:MAKE en ENTRY-NAME !
-   en lv APPEND-ENTRY ;
+   en lv APPEND-ENTRY
+   nd NODE-REQUIRED-MAP @ NAME-COUNT  na nu
+   nd NODE-REQUIRED-MAP nd NODE-REQUIRED-CAP b BUILD-ARENA @ NAME-PUT ;
 
 : REQUIRED-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    JSON:READ-TOKEN JSON:T-ARR <> if
@@ -1020,23 +1052,20 @@ $40 constant INTEGER-BIT
    s" , found " pl ADD  k s"  member" pl COUNTED
    s" remove a member" pl FIX ;
 
-: REQUIRED-COUNT ( ^entry -- n )
-   0 swap begin dup NULL-PTR <> while swap 1+ swap ENTRY-NEXT @ repeat
-   drop ;
-
 : OPEN-OBJECT ( ^place -- ) {: pl:^ :}
-   pl PLACE-NODE @ NODE-REQUIRED @ REQUIRED-COUNT {: k:n :}
+   pl PLACE-NODE @ NODE-REQUIRED-MAP @ NAME-COUNT {: k:n :}
    pl PLACE-WALK @ WALK-SCRATCH @ k 1 max ARENA:ALLOC drop
    pl PLACE-MARKS !
    JUDGING-MEMBERS pl PLACE-PHASE ! ;
 
-\ Marks the required name the current key holds.
-: MARK-REQUIRED ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
-   pl PLACE-MARKS @ {: marks:^ :}
-   pl PLACE-NODE @ NODE-REQUIRED @ 0
-   begin over NULL-PTR <> while
-      >r SAME-ENTRY? if 1 marks r@ + c! then ENTRY-NEXT @ r> 1+
-   repeat 2drop ;
+\ Marks the name, when it is required.
+: MARK-REQUIRED ( ^u8 n ^place -- ) {: na:^ nu:n pl:^ :}
+   pl PLACE-NODE @ {: nd:^ :}
+   na nu nd NODE-REQUIRED-MAP @ nd NODE-REQUIRED-CAP @ NAME-GET
+   MATCH option
+      none OF ENDOF
+      some OF pl PLACE-MARKS @ swap + 1 swap c! ENDOF
+   ;MATCH ;
 
 \ The first required name no member held, else NULL-PTR.
 : UNREAD-REQUIRED ( ^place -- ^entry ) {: pl:^ :}
@@ -1058,13 +1087,20 @@ $40 constant INTEGER-BIT
    nd pl PLACE-WALK @ OPEN-PLACE {: kid:^ :}
    na nu SPAN:MAKE kid PLACE-NAME ! ;
 
+: FIND-PROPERTY ( ^u8 n ^node -- ^property ) {: na:^ nu:n nd:^ :}
+   na nu nd NODE-PROPERTY-MAP @ nd NODE-PROPERTY-CAP @ NAME-GET
+   MATCH option
+      none OF NULL-PTR ENDOF
+      some OF >PROPERTY ENDOF
+   ;MATCH ;
+
 \ The key is current: its value is pushed against its property's or
 \ additionalProperties' schema, skipped, or rejected.
 : KEY-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
    pl PLACE-NODE @ {: nd:^ :}
-   nd NODE-PROPERTIES @ PROPERTY-NAMED {: p:^ :}
-   pl MARK-REQUIRED
    pl DECODE {: na:^ nu:n :}
+   na nu nd FIND-PROPERTY {: p:^ :}
+   na nu pl MARK-REQUIRED
    JSON:READ-NEXT drop
    p NULL-PTR <> if p PROPERTY-NODE @ na nu pl PUSH-MEMBER exit then
    nd NODE-EXTRAS @ MATCH extras
