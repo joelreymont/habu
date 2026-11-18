@@ -22,10 +22,12 @@
 //                          removes the shown image
 //   onInput(enabled)       true as the module starts, then each input record
 //
-//   viewport.post(event)   { kind: "typed", text } or { kind: "control", key,
-//                          opened }: the field's submitted text, or a tree
-//                          row's key, selected or, when opened is true, opened
-//                          (turn.js's control event); the promise settles
+//   viewport.post(event)   { kind: "typed", text }, { kind: "control", key,
+//                          opened } or { kind: "key", key }: the field's
+//                          submitted text, a tree row's key, selected or, when
+//                          opened is true, opened (turn.js's control event),
+//                          or a page control's KeyboardEvent.key, a key turn
+//                          with no modifiers; the promise settles
 //                          when the turn has, its failure already reported
 //                          through onText
 //   viewport.load(scene)   a load turn (turn.js) of the scene's bytes, an
@@ -1407,6 +1409,7 @@ export async function mount(canvas, { Module, module: url, fetch: load, rpc, onT
         case "typed": return send(() => module.typed(event.text));
         case "control":
           return send(() => module.control(event.key, event.opened));
+        case "key": return send(() => module.key(event.key, 0));
         default: throw new TypeError(`unknown viewport event ${event.kind}`);
       }
     },

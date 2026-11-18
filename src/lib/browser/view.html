@@ -20,10 +20,32 @@ form input { box-sizing: border-box; width: 100%; }
    depends only on the frame's and the model never moves under the pointer. */
 #text { flex: none; height: 3lh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 #text.error { color: #b00020; }
+/* The key buttons sit over the canvas's top right. Each sends its data-key
+   to the module as a key turn (page.js), and the module gives it its
+   meaning: "+" zoom in, "-" zoom out, "f" fit. */
+#keys { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+#keys button, #tree-toggle { font: inherit; min-width: 32px; padding: 4px 8px; border: 1px solid #bbb;
+  border-radius: 4px; background: #fff; cursor: pointer; }
+#keys button:focus-visible, #tree-toggle:focus-visible { outline: 2px solid #1168b6; }
+#tree-toggle { display: none; }
+/* Under 720 px a docked tree would leave the canvas under two thirds of the
+   frame, so the tree leaves the flow and the canvas spans the frame; the
+   toggle lays it over the frame's left 240 px, the field and text included,
+   so the canvas keeps its size. A media query follows the frame as the
+   host resizes it. */
+@media (width < 720px) {
+  #side { visibility: hidden; position: absolute; top: 0; bottom: 0; left: 0; z-index: 2; width: 240px;
+    box-sizing: border-box; padding-top: 44px; background: #fff; }
+  #side.open { visibility: visible; }
+  #tree-toggle { display: block; position: absolute; top: 8px; left: 8px; z-index: 3; }
+}
 </style>
+<button type="button" id="tree-toggle" aria-controls="side" aria-expanded="false">Tree</button>
 <nav id="side" aria-label="Tree"><div id="tree"></div></nav>
 <div id="main">
-<div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas></div>
+<div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas>
+<div id="keys" role="group" aria-label="Zoom"><button type="button" data-key="+" aria-label="Zoom in">+</button><button type="button" data-key="-" aria-label="Zoom out">&minus;</button><button type="button" data-key="f" aria-label="Fit">Fit</button></div>
+</div>
 <form><input aria-label="text" autocomplete="off" disabled></form>
 <div id="text">loading</div>
 </div>

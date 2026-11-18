@@ -5,9 +5,10 @@
 // page's body, imports turn.js, viewport.js, page.js and socket.js from blob:
 // URLs after it, since page.js reads the document as it loads, opens the view's
 // socket (socket.js), mounts the module with an rpc bridge, and listens to the
-// page's field and drops. It resolves with the viewport, whose dispose
-// also ends the socket and removes the page's listeners, so a restart leaves
-// none of this view's.
+// page's field, key buttons and drops and to its tree toggle, which in a
+// narrow frame opens and closes the tree over the canvas (view.html). It
+// resolves with the viewport, whose dispose also ends the socket and removes
+// the page's listeners, so a restart leaves none of this view's.
 //
 //   rpc    a module's tools/call rpc goes over the socket (socket.call), its
 //          view/resume P is kept by the socket and answered {} at once, and
@@ -116,6 +117,11 @@ export async function start({ meta, files, request, restart, carried, initialize
   held = null;
   const listening = new AbortController();
   listen(mounted, listening.signal);
+  const toggle = document.querySelector("#tree-toggle");
+  const side = document.querySelector("#side");
+  toggle.addEventListener("click", () => {
+    toggle.setAttribute("aria-expanded", String(side.classList.toggle("open")));
+  }, { signal: listening.signal });
   return {
     ...mounted,
     dispose() {

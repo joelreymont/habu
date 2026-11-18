@@ -16,8 +16,12 @@
 // inline and fullscreen display modes and which asks for no display mode, the
 // view_code call, view.js's full-screen request after it and the
 // view_socket ask, that both notifications reach the module in the order
-// sent, that a message from a window other than the parent is ignored, a
-// tools/call round trip over the socket, the model context, an after tick, a
+// sent, that the tree gives way to the canvas in the 507 px frame, opened over
+// it by its toggle with a row pressed while it was closed in view, and is
+// docked at 900 px, that each key button reaches the
+// module as a key turn and a drawing hides them, that a message from a window
+// other than the parent is ignored, a tools/call round trip over the socket,
+// the model context, an after tick, a
 // response holding both a result and an error, a dropped file read in two
 // pieces, teardown, a second frame torn down before its ui/initialize is
 // answered, a third torn down while its view_code request is pending, a
@@ -349,6 +353,74 @@ try {
     const hs = ["", "one", "1\\n2\\n3\\n4\\n5"].map(sized); return hs; })()`);
   assert.ok(heights[0] > 0 && heights.every((h) => h === heights[0]),
     `the canvas keeps its height with an empty #text, one line and five: ${heights.join(", ")}`);
+
+  // Under 720 px the tree gives way: the canvas spans the frame, and the
+  // toggle lays the tree over the canvas's left without resizing it. At 720 px
+  // and wider the tree is docked and the toggle hidden.
+  const layout = () => evaluate(`(() => { const w = frames[0], d = w.document, side = d.querySelector('#side');
+    const toggle = d.querySelector('#tree-toggle'), c = d.querySelector('canvas').getBoundingClientRect();
+    const s = side.getBoundingClientRect(), t = toggle?.getBoundingClientRect();
+    const shown = side.checkVisibility({ visibilityProperty: true });
+    return { frame: d.documentElement.clientWidth, side: shown ? 'visible' : 'hidden', sideLeft: s.left,
+      sideWidth: s.width, left: c.left, width: c.width, height: c.height,
+      toggle: toggle && w.getComputedStyle(toggle).display, expanded: toggle?.getAttribute('aria-expanded'),
+      hit: !!toggle && d.elementFromPoint(t.left + t.width / 2, t.top + t.height / 2) === toggle }; })()`);
+  const clickToggle = () => evaluate("frames[0].document.querySelector('#tree-toggle').click()");
+  const narrow = await layout();
+  assert.equal(narrow.frame, 507);
+  assert.equal(narrow.side, "hidden", "in a 507 px frame the tree is hidden");
+  assert.ok(narrow.left === 0 && narrow.width === narrow.frame,
+    `in a 507 px frame the canvas spans it: ${JSON.stringify(narrow)}`);
+  assert.ok(narrow.toggle !== "none" && narrow.expanded === "false", `the tree's toggle is shown, closed: ${JSON.stringify(narrow)}`);
+  await clickToggle();
+  const unfolded = await layout();
+  assert.ok(unfolded.side === "visible" && unfolded.sideLeft === 0 && unfolded.sideWidth >= 240 && unfolded.expanded === "true",
+    `the toggle opens the tree at the frame's left: ${JSON.stringify(unfolded)}`);
+  assert.deepEqual([unfolded.left, unfolded.width, unfolded.height], [narrow.left, narrow.width, narrow.height],
+    "the open tree lies over the canvas, which keeps its size");
+  assert.ok(unfolded.hit, `the toggle lies above the open tree, so a click closes it: ${JSON.stringify(unfolded)}`);
+  await clickToggle();
+  const closed = await layout();
+  assert.ok(closed.side === "hidden" && closed.expanded === "false", `the toggle closes the tree: ${JSON.stringify(closed)}`);
+  // A row pressed while the tree is closed is scrolled into view, so it shows
+  // once the toggle opens the tree.
+  const pressed = "frames[0].document.querySelector('#tree button[aria-pressed=\"true\"]')";
+  await submit("tree");
+  await until(async () => await evaluate(`${pressed}?.textContent ?? null`) === "40");
+  await clickToggle();
+  const seen = await evaluate(`(() => { const side = frames[0].document.querySelector('#side');
+    const r = ${pressed}.getBoundingClientRect(), b = side.getBoundingClientRect(), top = b.top + side.clientTop;
+    return { scrolled: side.scrollTop, top: r.top, bottom: r.bottom, lo: top, hi: top + side.clientHeight }; })()`);
+  assert.ok(seen.scrolled > 0 && seen.top >= seen.lo && seen.bottom <= seen.hi,
+    `a row pressed below the closed tree's fold is in view once it opens: ${JSON.stringify(seen)}`);
+  await clickToggle();
+  const widen = (px) => evaluate(`document.querySelector('iframe').style.width = '${px}px'`);
+  await widen(900);
+  await until(async () => (await layout()).frame === 900);
+  const wide = await layout();
+  assert.ok(wide.side === "visible" && wide.toggle === "none", `in a 900 px frame the tree is docked and the toggle hidden: ${JSON.stringify(wide)}`);
+  assert.ok(wide.left >= wide.sideWidth && wide.left + wide.width === wide.frame,
+    `in a 900 px frame the canvas sits beside the tree: ${JSON.stringify(wide)}`);
+  await widen(507);
+  await until(async () => (await layout()).width === narrow.width);
+  console.log(`Headless Chrome: a 507 px frame's canvas is ${narrow.width} px wide and its toggled tree lies over it; a 900 px frame docks the tree beside a ${wide.width} px canvas`);
+
+  // Each zoom button reaches the module as a key turn of its key; while a
+  // drawing stands in the canvas's place the buttons are hidden.
+  const keyButtons = "frames[0].document.querySelectorAll('#viewport button[data-key]')";
+  const keys = await evaluate(`[...${keyButtons}].map((b) => b.dataset.key)`);
+  assert.deepEqual(keys, ["+", "-", "f"]);
+  for (const [i, key] of keys.entries()) {
+    await evaluate(`${keyButtons}[${i}].click()`);
+    await shows(`key ${key} 0`);
+  }
+  const keysShown = () => evaluate(`[...${keyButtons}].map((b) => b.getBoundingClientRect().width > 0)`);
+  assert.deepEqual(await keysShown(), [true, true, true]);
+  await submit("svg");
+  await until(async () => (await keysShown()).every((s) => !s));
+  await submit("draw");
+  await until(async () => (await keysShown()).every((s) => s));
+  console.log(`Headless Chrome: the zoom buttons send the keys ${keys.join(" ")}; a drawing hides them and a draw shows them again`);
 
   const later = `notified ui/notifications/tool-result ${JSON.stringify(LATER)}`;
   await evaluate(`stranger({ method: "ui/notifications/tool-result", params: ${JSON.stringify(STRANGER)} });

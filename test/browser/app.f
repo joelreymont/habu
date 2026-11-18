@@ -2,7 +2,11 @@ split-str
 \ app.f - real Wasm fixture for the turn protocol's rpc, after and read records
 \ and its notified, tick, file and chunk events, built by `tools/hb-build.f --
 \ --target wasm`, whose entry is MAIN. Each event it reads answers a text record
-\ naming its fields; typed text names the record to make.
+\ naming its fields; typed text names the record to make. A key event answers
+\ key <text> <mods>, so a page control's key turn shows; typed "svg" sends an
+\ svg record and "draw" a draw of 0 rows, which removes it, so a page shows
+\ what it does while a drawing stands in the canvas's place. Typed "tree" sends
+\ a tree of 40 rows with its last pressed, more than a 700 px frame shows.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -18,11 +22,13 @@ CAST: BYTES>N ( ^u8 -- n )
 
 256 BUFFER: SPAN
 variable SPAN-U
-1024 BUFFER: TEXT
+2048 BUFFER: TEXT
 variable TEXT-U
 \ The last file event's number and size.
 variable FILE-NO
 variable FILE-SIZE
+\ A draw's matrix, all zeros; a draw of 0 rows reads it and draws nothing.
+64 BUFFER: MATRIX
 
 : FIELD, ( n -- )
    8 0 do dup $FF and emit 8 rshift loop drop ;
@@ -100,6 +106,22 @@ variable FILE-SIZE
    true ;
 
 
+: SVG ( -- )
+   s\" <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"8\"/>"
+   {: a:^ u:n :}
+   8 a BYTES>N u 0 RECORD ;
+
+
+\ A tree of rows 1 to 40 under the root, labelled by key, the last pressed.
+: TREE ( -- )
+   0 TEXT-U !  91 SAY-C
+   41 1 do
+      i 1 > if 44 SAY-C then
+      s\" {\"key\":" SAY  i DIGITS  s\" ,\"parent\":0,\"label\":\"" SAY  i DIGITS  s\" \"}" SAY
+   loop
+   93 SAY-C  5 TEXT BYTES>N TEXT-U @ 40 RECORD ;
+
+
 : TYPED ( -- )
    1 EVENT@ 2 EVENT@ {: at:n u:n :}
    CALL
@@ -122,7 +144,10 @@ variable FILE-SIZE
    at u s" read start" IS? if FILE-NO @ 0 3 READ exit then
    at u s" read end" IS? if FILE-NO @ FILE-SIZE @ 3 - 3 READ exit then
    at u s" read past" IS? if FILE-NO @ FILE-SIZE @ 2 - 3 READ exit then
-   at u s" read unknown" IS? if FILE-NO @ 1+ 0 1 READ exit then ;
+   at u s" read unknown" IS? if FILE-NO @ 1+ 0 1 READ exit then
+   at u s" svg" IS? if SVG exit then
+   at u s" tree" IS? if TREE exit then
+   at u s" draw" IS? if 2 MATRIX BYTES>N 0 MATRIX BYTES>N RECORD exit then ;
 
 
 \ answered <c> <d> <the response's bytes>
@@ -145,6 +170,12 @@ variable FILE-SIZE
    0 TEXT-U !
    s" notified " SAY  at 8 + mu SAY-AT  32 SAY-C
    at 8 + mu +  2 EVENT@ 8 - mu -  SAY-AT  TEXT-RECORD ;
+
+
+\ key <KeyboardEvent.key> <mods>
+: KEYED ( -- )
+   0 TEXT-U !
+   s" key " SAY  1 EVENT@ 2 EVENT@ SAY-AT  32 SAY-C  6 EVENT@ DIGITS  TEXT-RECORD ;
 
 
 \ file <name> <size> <number>
@@ -172,6 +203,7 @@ variable FILE-SIZE
    0 EVENT@ {: kind:n :}
    kind 0 = if 0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD exit then
    kind 4 = if TYPED exit then
+   kind 8 = if KEYED exit then
    kind 3 = if ANSWERED exit then
    kind 14 = if NOTIFIED exit then
    kind 15 = if TICK exit then

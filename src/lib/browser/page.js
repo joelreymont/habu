@@ -1,9 +1,10 @@
 // page.js - a host page's view of a mounted module, shared by host.js
 // (index.html) and view.js (view.html): both pages hold a canvas under a
-// #viewport, a #tree, a #text and a form's input, and no file picker. This file
+// #viewport, a #tree, a #text and a form's input, and no file picker; view.html
+// also holds buttons under #viewport whose data-key names a key. This file
 // shows the module's text, tree and SVG images, enables its field, and sends
-// the view the field's text and each file dropped on the page. It imports
-// nothing, so view.js can import it from a blob: URL.
+// the view the field's text, each key button's key and each file dropped on
+// the page. It imports nothing, so view.js can import it from a blob: URL.
 //
 // SVG is shown through an img element, whose processing mode disables scripts,
 // interaction and external references; supplied markup is never inserted into
@@ -14,6 +15,7 @@ const field = document.querySelector("form input");
 const shown = document.querySelector("#text");
 const tree = document.querySelector("#tree");
 const frame = document.querySelector("#viewport");
+const keys = frame.querySelectorAll("button[data-key]");
 
 export function show(s, error) {
   shown.textContent = s;
@@ -189,8 +191,11 @@ function clearImage() {
   old.remove();
 }
 
+// A shown image hides the key buttons, whose keys act on what the canvas
+// shows; null shows them again.
 export function svg(bytes) {
   clearImage();
+  for (const button of keys) button.hidden = !!bytes;
   if (!bytes) return;
   const next = document.createElement("img");
   next.alt = "SVG image";
@@ -208,9 +213,12 @@ export function svg(bytes) {
 // once, though the turn may wait minutes for an answer. Submission, not a key,
 // sends it, since the Enter that ends an input method's composition submits
 // nothing. The field stays disabled until the module starts, as an Enter with
-// no listener would submit the page. signal, when given, removes the listeners
-// once it aborts.
+// no listener would submit the page. A click on a key button sends its
+// data-key as a key turn. signal, when given, removes the listeners once it
+// aborts.
 export function listen(view, signal) {
+  for (const button of keys)
+    button.addEventListener("click", () => view.post({ kind: "key", key: button.dataset.key }), { signal });
   field.form.addEventListener("submit", (e) => {
     e.preventDefault();
     if (field.disabled) return;

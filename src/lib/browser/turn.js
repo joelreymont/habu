@@ -21,7 +21,8 @@
 // 19 occluded. c and d are the drawing buffer's width and height in device
 // pixels except for answered, file, chunk, picked and occluded.
 //   bytes, typed, key: a, b name the fetched bytes, the field's text or
-//     KeyboardEvent.key (sent only while the canvas has focus)
+//     KeyboardEvent.key (sent only while the canvas has focus, or by a page
+//     control that names a key)
 //   pointer, moved, released: a, b are x, y from the canvas's top-left; the
 //     canvas captures the pointer, so either may be negative or past the buffer
 //   answered: a, b the response, c the status, d the request id, buttons and
