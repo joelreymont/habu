@@ -130,8 +130,8 @@ variable LDPBAD   \ DP-CHECK's out-of-range target: throws E-DATA-SPACE (habu2.f
 variable LBGROWFAIL   \ the body text could not grow: throws E-BODY-TEXT (habu2.f EM-BODY-GROW-DIE)
 ;package
 \ Hash-index label ids, bound in EMIT-HIDX: LREBUILD for the in-place compaction
-\ BNDSET's raise leg calls, LFULL for the cannot-maintain exit, LREKEY for the
-\ re-key record-wid! calls.
+\ LHIDXADD and LHIDXBUILD call, LFULL for the cannot-maintain exit, LREKEY for
+\ the re-key record-wid! calls.
 package HIDX-EMIT
 public
 variable LREBUILD
@@ -4489,8 +4489,8 @@ private
       bfail LBL,
          s" E-DICT-INDEX habu: dictionary index alloc failed" EXIT-STATUS:SYSTEM DIE-LINE,
    HIDX-EMIT:LREBUILD LABEL@ LBL,
-      \ register-transparent like LHIDXBUILD: BNDSET and LHIDXADD call it
-      \ mid-primitive with caller state live.
+      \ register-transparent: LHIDXADD and LHIDXBUILD call it mid-primitive
+      \ with caller state live.
       SP SP 160 SUBI,
       30 SP 0 STR,   2 SP 8 STR,   3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
       6 SP 40 STR,   7 SP 48 STR,  8 SP 56 STR,  13 SP 64 STR, 14 SP 72 STR,
