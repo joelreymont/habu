@@ -21495,8 +21495,7 @@ private
    WRITE-WINDOW-CK                       \ before the does> latch steps
    DOES-EFF-STEP
    0 DL-NEW !
-   RES-TRUE SIG-STATES-FACTS !
-   na nu sa su [: TRUST-USIG! ;] [: RES-FALSE SIG-STATES-FACTS ! ;] finally
+   na nu sa su TRUST-USIG!
    {: row:n :}
    DL-TAKE
    \ A quiet row comes only from the verifier's pre-pass, whose quiet types
@@ -21521,8 +21520,11 @@ private
 : TRUST-DECL-REJECTED? ( ^u8 n ^u8 n -- bool )
    TRUST-DECL-ROW CHECKER-ROW:REJECTED = ;
 
+\ EFFECT-OFF's registrar, which only a defer's declaration reaches, so its
+\ outputs may end in fact words.
 : TRUST-DECL ( ^u8 n ^u8 n -- )
-   TRUST-DECL-ROW drop ;
+   RES-TRUE SIG-STATES-FACTS !
+   [: TRUST-DECL-ROW ;] [: RES-FALSE SIG-STATES-FACTS ! ;] finally drop ;
 ' TRUST-DECL CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
 ' TRUST-DECL-REJECTED? CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
 

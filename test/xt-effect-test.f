@@ -265,6 +265,9 @@ create XE-EMPTY 1 allot
    s" a colon word's effect states no facts" T-LABEL
    SB-RESET  s" : CF ( -- renders ) ;" XE-LINE
    SB$ s" bad signature at `renders`" XE-FACT-REJECTED
+   s" a TRUSTED: effect states no facts" T-LABEL
+   SB-RESET  s" TRUSTED: TX ( -- renders ) ;" XE-LINE
+   SB$ s" the signature does not parse here" XE-FACT-REJECTED
    s" a defer's inputs state no facts" T-LABEL
    SB-RESET  s" defer DI ( renders -- )" XE-LINE
    SB$ s" does not parse" XE-FACT-REJECTED
