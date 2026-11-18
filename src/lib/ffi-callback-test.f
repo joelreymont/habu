@@ -24,8 +24,6 @@ using FFI-CB
 
 $3000 constant SCRIPT-CAP
 $4000 constant CAP
-60000 constant CHILD-MS               \ includes compiling the fixture in each child
-600000 constant BUILD-MS
 1000 constant OWNER-READS
 200 constant HELD-MS                  \ how long a held row keeps a call waiting
 10 constant LF
@@ -474,7 +472,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    name nameu >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN
-   OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : CHILD-CASE ( str -- ) {: name:^ nameu:n :}
@@ -526,14 +524,14 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    IMAGE$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN
-   OUT CAP >LEN ERR CAP >LEN BUILD-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : RUN-IMAGE ( -- len len PROCESS:ending )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    IMAGE$ >LEN
-   OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : LINKED ( len len PROCESS:ending -- )
