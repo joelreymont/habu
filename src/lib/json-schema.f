@@ -126,14 +126,10 @@ private
 \ `properties` object, or the elements of its anyOf or oneOf array.
 ENUM reading keywords properties choice ;ENUM
 
-\ build is one COMPILE call: the arena the nodes go in, the scratch arena,
-\ the schema text, whose start rejections are placed from, and top, the
+\ build: one COMPILE call. Rejections are placed from text's start; top is the
 \ innermost open level, NULL-PTR once the root's `}` is read.
-\ level is one schema object being read: outer is the level that opened it;
-\ seen holds a byte per name of the keyword list for READ-LISTED, and base
-\ is the root index of the list's first name; choice is the open anyOf's or
-\ oneOf's keyword index; unique-at is the offset of uniqueItems' `true`, 0
-\ when it states none.
+\ level: one open schema object. base is the root index of names' first name; a
+\ tail is where its list's next record goes; unique-at is 0 for no `true`.
 MUTUAL build level
 STRUCTURE build DERIVE addr
    FIELD arena ^ARENA:arena
@@ -146,6 +142,9 @@ STRUCTURE level DERIVE addr
    FIELD build ^build
    FIELD outer ^level
    FIELD node ^node
+   FIELD property-tail ^^property
+   FIELD entry-tail ^^entry
+   FIELD branch-tail ^^branch
    FIELD phase reading
    FIELD names SPAN:span<u8>
    FIELD base n
@@ -431,11 +430,13 @@ $73 constant SCALARS
    b BUILD-SCRATCH @ {: s:^ :}
    s LEVELS-NEW {: lv:^ :}
    b lv LEVEL-BUILD !  b BUILD-TOP @ lv LEVEL-OUTER !
-   b NEW-NODE lv LEVEL-NODE !  READING-KEYWORDS lv LEVEL-PHASE !
+   b NEW-NODE {: nd:^ :}  nd lv LEVEL-NODE !
+   nd NODE-PROPERTIES lv LEVEL-PROPERTY-TAIL !
+   nd NODE-REQUIRED lv LEVEL-ENTRY-TAIL !  READING-KEYWORDS lv LEVEL-PHASE !
    list lu SPAN:MAKE lv LEVEL-NAMES !  base lv LEVEL-BASE !
-   s list lu JSON:READ-NAME-COUNT ARENA:ALLOC drop lv LEVEL-SEEN !
+   s list lu JSON:SEEN-BYTES ARENA:ALLOC drop lv LEVEL-SEEN !
    lv b BUILD-TOP !
-   lv LEVEL-NODE @ ;
+   nd ;
 
 \ The sub-schema whose first token is current, its level pushed; e is the
 \ expected text for a token that opens no object.
@@ -459,9 +460,8 @@ $73 constant SCALARS
 : NAMED? ( JSON:reader ^property -- JSON:reader bool )
    PROPERTY-NAMED NULL-PTR <> ;
 
-: APPEND-PROPERTY ( ^property ^node -- )
-   NODE-PROPERTIES
-   begin dup @ NULL-PTR <> while @ PROPERTY-NEXT repeat ! ;
+: APPEND-PROPERTY ( ^property ^level -- ) {: p:^ lv:^ :}
+   p lv LEVEL-PROPERTY-TAIL @ !  p PROPERTY-NEXT lv LEVEL-PROPERTY-TAIL ! ;
 
 \ The key is current; its value's level is pushed.
 : PROPERTY ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
@@ -475,7 +475,7 @@ $73 constant SCALARS
    b s" a property's schema as an object" SUB {: child:^ :}
    b BUILD-ARENA @ PROPERTIES-NEW {: p:^ :}
    na nu SPAN:MAKE p PROPERTY-NAME !  child p PROPERTY-NODE !
-   p nd APPEND-PROPERTY ;
+   p lv APPEND-PROPERTY ;
 
 : PROPERTIES-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    JSON:READ-TOKEN JSON:T-OBJ <> if
@@ -500,8 +500,8 @@ $73 constant SCALARS
       SAME-ENTRY? if drop true exit then ENTRY-NEXT @
    repeat drop false ;
 
-: APPEND-ENTRY ( ^entry ^node -- )
-   NODE-REQUIRED begin dup @ NULL-PTR <> while @ ENTRY-NEXT repeat ! ;
+: APPEND-ENTRY ( ^entry ^level -- ) {: en:^ lv:^ :}
+   en lv LEVEL-ENTRY-TAIL @ !  en ENTRY-NEXT lv LEVEL-ENTRY-TAIL ! ;
 
 : REQUIRED-EXPECTED$ ( -- ^u8 n )
    s" `required` as an array of property names" ;
@@ -519,7 +519,7 @@ $73 constant SCALARS
    b DECODED {: na:^ nu:n :}
    b BUILD-ARENA @ ENTRIES-NEW {: en:^ :}
    na nu SPAN:MAKE en ENTRY-NAME !
-   en nd APPEND-ENTRY ;
+   en lv APPEND-ENTRY ;
 
 : REQUIRED-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    JSON:READ-TOKEN JSON:T-ARR <> if
@@ -569,16 +569,17 @@ $73 constant SCALARS
       15 of lv UNIQUE-RULE endof
    endcase ;
 
-: APPEND-BRANCH ( ^branch ^^branch -- )
-   begin dup @ NULL-PTR <> while @ BRANCH-NEXT repeat ! ;
+: APPEND-BRANCH ( ^branch ^level -- ) {: br:^ lv:^ :}
+   br lv LEVEL-BRANCH-TAIL @ !  br BRANCH-NEXT lv LEVEL-BRANCH-TAIL ! ;
 
-\ An alternative whose first token is current, appended at head.
-: BRANCH ( JSON:reader ^build ^^branch ^u8 n -- JSON:reader )
-   {: b:^ head:^ e:^ eu:n :}
+\ An alternative whose first token is current, appended at the level's
+\ branch-tail.
+: BRANCH ( JSON:reader ^level ^u8 n -- JSON:reader ) {: lv:^ e:^ eu:n :}
+   lv LEVEL-BUILD @ {: b:^ :}
    b e eu SUB {: child:^ :}
    b BUILD-ARENA @ BRANCHES-NEW {: br:^ :}
    child br BRANCH-NODE !
-   br head APPEND-BRANCH ;
+   br lv APPEND-BRANCH ;
 
 : CHOICE-FIX$ ( -- ^u8 n ) s" list the alternatives' schemas in an array" ;
 
@@ -596,13 +597,15 @@ $73 constant SCALARS
    JSON:READ-TOKEN JSON:T-ARR <> if
       idx CHOICE-EXPECTED$ CHOICE-FIX$ REJECT
    then
+   lv LEVEL-NODE @ {: nd:^ :}
+   idx 16 = if nd NODE-ANY-OF else nd NODE-ONE-OF then lv LEVEL-BRANCH-TAIL !
    idx lv LEVEL-CHOICE !  READING-CHOICE lv LEVEL-PHASE ! ;
 
 : CHOICE-STEP ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    lv LEVEL-CHOICE @ {: idx:n :}  lv LEVEL-NODE @ {: nd:^ :}
    idx 16 = if nd NODE-ANY-OF else nd NODE-ONE-OF then {: head:^ :}
    JSON:READ-NEXT JSON:T-ARR-END <> if
-      lv LEVEL-BUILD @ head idx ELEMENT-EXPECTED$ BRANCH exit
+      lv idx ELEMENT-EXPECTED$ BRANCH exit
    then
    head @ NULL-PTR = if idx CHOICE-EXPECTED$ CHOICE-FIX$ REJECT then
    READING-KEYWORDS lv LEVEL-PHASE ! ;
@@ -643,7 +646,6 @@ $73 constant SCALARS
    then
    idx lv LEVEL-BASE @ + lv KEYWORD ;
 
-\ Reads the next member or element of the innermost open level.
 : STEP ( JSON:reader ^build -- JSON:reader )
    BUILD-TOP @ {: lv:^ :}
    lv LEVEL-PHASE @ MATCH reading
@@ -684,14 +686,10 @@ STRUCTURE pass DERIVE addr
    FIELD index n
 ;STRUCTURE
 
-\ walk is one VALID? call: cursor reads the value text and values an enum's
-\ array; top is the innermost open place, NULL-PTR once the root closes;
-\ spare chains closed places by outer; verdict is the last closed place's.
-\ place is one value judged against node; a path starts at a rooted place
-\ and goes down inner, `[index]` where index is not negative, else `.name`.
-\ A container's text is its start until its closing token is read; mark is
-\ the BUF's length at the push; marks holds a byte per required name, set
-\ once its member is read; passes are ascending, through tail.
+\ walk: one VALID? call. values reads an enum's array; spare chains closed
+\ places by outer; verdict is the last closed place's.
+\ place: one value judged against node; a container's text is its start until
+\ its close is read. BUF lengths: mark at the push, path-end after its path.
 MUTUAL walk place
 STRUCTURE walk DERIVE addr
    FIELD buf ^n
@@ -714,6 +712,7 @@ STRUCTURE place DERIVE addr
    FIELD kind n
    FIELD text SPAN:span<u8>
    FIELD mark NUM:byte-len
+   FIELD path-end NUM:byte-len
    FIELD count n
    FIELD marks ^u8
    FIELD branch ^branch
@@ -749,7 +748,6 @@ ARENA PASSES pass
    up NULL-PTR <> if pl up PLACE-INNER ! then
    pl w WALK-TOP !  pl ;
 
-\ Pops top onto the spare chain.
 : POP-PLACE ( ^walk -- ) {: w:^ :}
    w WALK-TOP @ {: pl:^ :}
    pl PLACE-OUTER @ {: up:^ :}
@@ -812,7 +810,10 @@ ARENA PASSES pass
 \ down to this one.
 : PATH ( ^place -- ) {: pl:^ :}
    pl begin dup PLACE-ROOTED @ 0= while PLACE-OUTER @ repeat
-   begin dup pl <> while PLACE-INNER @ dup SAY-STEP repeat drop ;
+   dup MARK over PLACE-PATH-END !
+   begin dup pl <> while
+      PLACE-INNER @ dup SAY-STEP  dup MARK over PLACE-PATH-END !
+   repeat drop ;
 
 : EXPECTED ( ^place -- ) {: pl:^ :}
    pl PATH  s" : expected " pl ADD ;
@@ -1270,23 +1271,24 @@ ARENA TABLES table
       >r JSON:READ-SKIP-VALUE r> 1+
    repeat ;
 
-\ k elements break the count lim, a most when most.
-: BAD-COUNT ( n n bool ^place -- ) {: lim:n k:n most:bool pl:^ :}
-   pl EXPECTED
+\ k elements break the count lim, a most when most: the text after the path.
+: COUNT-SAYS ( n n bool ^place -- ) {: lim:n k:n most:bool pl:^ :}
+   s" : expected " pl ADD
    most if s" at most " else s" at least " then pl ADD
    lim s"  item" pl COUNTED
    s" , found " pl ADD  k s"  item" pl COUNTED
    most if s" remove an item" else s" add an item" then pl FIX ;
 
-: COUNT-OK? ( n ^node ^place -- bool ) {: k:n nd:^ pl:^ :}
+\ The bound lim k elements break, a most when most; bad when they break one.
+: BROKEN-BOUND ( n ^node -- n bool bool ) {: k:n nd:^ :}
    nd NODE-MIN-ITEMS @ {: least:n :}  nd NODE-MAX-ITEMS @ {: most:n :}
-   k least < if least k false pl BAD-COUNT false exit then
-   most 0 >= k most > and if most k true pl BAD-COUNT false exit then
-   true ;
+   k least < if least false true exit then
+   most 0 >= k most > and if most true true exit then
+   0 false false ;
 
-: COUNT-KEPT? ( n ^node -- bool ) {: k:n nd:^ :}
-   nd NODE-MAX-ITEMS @ {: most:n :}
-   k nd NODE-MIN-ITEMS @ >=  most 0< k most <= or and ;
+: COUNT-OK? ( n ^node ^place -- bool ) {: k:n nd:^ pl:^ :}
+   k nd BROKEN-BOUND {: lim:n most:bool bad:bool :}
+   bad if pl PATH  lim k most pl COUNT-SAYS then  bad 0= ;
 
 \ At the `]`: the count, then uniqueItems.
 : ARRAY-END ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
@@ -1306,15 +1308,16 @@ ARENA TABLES table
    items pl PLACE-WALK @ OPEN-PLACE {: kid:^ :}
    pl PLACE-COUNT @ kid PLACE-INDEX ! ;
 
-\ An element that fails fails its array, unless the count breaks a bound:
-\ the count's violation then stands in the element's.
+\ A failing element fails its array; a broken count's text replaces the
+\ element's after the array's path, which starts the element's violation.
 : ELEMENT-DONE ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
    1 pl PLACE-COUNT +!
    pl DECIDED if JUDGING-ELEMENTS pl PLACE-PHASE ! exit then
    pl PLACE-COUNT @ SKIP-ELEMENTS {: k:n :}
    pl ENDED
    pl PLACE-NODE @ {: nd:^ :}
-   k nd COUNT-KEPT? 0= if pl PLACE-MARK @ pl BACK  k nd pl COUNT-OK? drop then
+   k nd BROKEN-BOUND {: lim:n most:bool bad:bool :}
+   bad if pl PLACE-PATH-END @ pl BACK  lim k most pl COUNT-SAYS then
    false pl DECIDE ;
 
 \ ---- anyOf and oneOf --------------------------------------------------------
@@ -1357,7 +1360,6 @@ ARENA TABLES table
    pl LAST-ALTERNATIVE? if false pl DECIDE exit then
    pl NEXT-ALTERNATIVE ;
 
-\ Appends the alternative in hand to the passes.
 : PASSED ( ^place -- ) {: pl:^ :}
    pl PLACE-WALK @ WALK-SCRATCH @ PASSES-NEW {: p:^ :}
    pl PLACE-CHOICE @ p PASS-INDEX !

@@ -1750,18 +1750,18 @@ variable JRT-COUNT
 : JRT-FIRST ( str -- JSON:reader )
    JRT-OPEN-A JSON:READ-NEXT drop ;
 
-create JRT-SEEN 100 allot
-create JRT-INNER-SEEN 2 allot   \ the nested object's, while JRT-SEEN is in use
+create JRT-SEEN 1 cells 100 + allot
+create JRT-INNER-SEEN 1 cells 2 + allot   \ the nested object's, while JRT-SEEN is in use
 
 : JRT-UNSEEN ( -- )
-   100 0 ?do 0 JRT-SEEN i + c! loop ;
+   1 cells 100 + 0 ?do 0 JRT-SEEN i + c! loop ;
 
 \ Reads every listed member with READ-LISTED, seen cleared first, calling the
 \ handler on each member's value with its index.
 : JRT-LISTED-EACH
    ( JSON:reader str ^u8 [ JSON:reader n -- JSON:reader ] -- JSON:reader )
    {: a:^ u:n seen:^ h :}
-   a u JSON:READ-NAME-COUNT 0 ?do 0 seen i + c! loop
+   a u JSON:SEEN-BYTES 0 ?do 0 seen i + c! loop
    begin a u seen JSON:READ-LISTED dup -1 <> while h execute repeat drop ;
 
 : JRT-TLS-H ( JSON:reader n -- JSON:reader ) {: idx:n :}
@@ -1830,12 +1830,19 @@ create JRT-INNER-SEEN 2 allot   \ the nested object's, while JRT-SEEN is in use
    JSON:READ-FINISH
    JRT-ORDER @ 21321 T= ;
 
-: JRT-BAD-LISTED-NESTED ( -- )
+: JRT-BAD-LISTED-KEY ( -- )
    JRT-UNSEEN
-   s\" {\"a\":[1,2]}" JRT-FIRST
-   s" a" JRT-SEEN JSON:READ-LISTED drop
+   s\" {\"a\":1,\"b\":2}" JRT-FIRST
+   s" a b" JRT-SEEN JSON:READ-LISTED drop
    JSON:READ-NEXT drop
-   s" a" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
+   s" a b" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
+
+: JRT-BAD-LISTED-INNER ( -- )
+   JRT-UNSEEN
+   s\" {\"a\":{\"x\":1,\"b\":2}}" JRT-FIRST
+   s" a b" JRT-SEEN JSON:READ-LISTED drop
+   JSON:READ-NEXT drop JSON:READ-NEXT drop
+   s" a b" JRT-SEEN JSON:READ-LISTED drop JSON:READ-CLOSE ;
 
 : JRT-TEST-LISTED-REJECTED ( -- )
    s" READ-LISTED rejects an unknown key, listing the names" T-LABEL
@@ -1854,8 +1861,16 @@ create JRT-INNER-SEEN 2 allot   \ the nested object's, while JRT-SEEN is in use
    s" [1]" s" host"
    s" 1:1: expected an object, found `[`; write an object here"
    JRT-LISTED-SAY
-   s" READ-LISTED rejects a call from inside a member's array" T-LABEL
-   [: JRT-BAD-LISTED-NESTED ;] E-JSON-READ-STATE TTHROWSQ ;
+   s" READ-LISTED rejects a call with the reader on the next member's key" T-LABEL
+   [: JRT-BAD-LISTED-KEY ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s\" 1:8: expected the last token of the member's value, found `\"b\"`; leave the reader on the value's last token, with READ-SKIP-VALUE for a value not read"
+   JRT-SAID
+   s" READ-LISTED rejects a call from inside a member's object" T-LABEL
+   [: JRT-BAD-LISTED-INNER ;] E-JSON-READ-STATE TTHROWSQ
+   E-JSON-READ-STATE
+   s" 1:11: expected the last token of the member's value, found `1`; leave the reader on the value's last token, with READ-SKIP-VALUE for a value not read"
+   JRT-SAID ;
 
 : JRT-TEST-LISTED-HANDLER ( -- )
    s" READ-REJECT rejects a READ-LISTED member's value at its token" T-LABEL
@@ -1966,10 +1981,10 @@ create JRT-NAMES 400 allot
    s" 1:4: expected the span of the value the reader just read, found the end of the input; pass READ-ANY-SPAN$'s answer for that value before the reader moves past it"
    JRT-SAID ;
 
-: JRT-TEST-NAME-COUNT ( -- )
-   s" READ-NAME-COUNT counts the listed names, an optional one included" T-LABEL
-   s" a b? c" JSON:READ-NAME-COUNT 3 T=
-   s" " JSON:READ-NAME-COUNT 0 T= ;
+: JRT-TEST-SEEN-BYTES ( -- )
+   s" SEEN-BYTES counts a cell for the depth and a byte per listed name, an optional one included" T-LABEL
+   s" a b? c" JSON:SEEN-BYTES 1 cells 3 + T=
+   s" " JSON:SEEN-BYTES 1 cells T= ;
 
 : JRT-TEST-READ-LISTED ( -- )
    JRT-TEST-LISTED-READ
@@ -1978,7 +1993,7 @@ create JRT-NAMES 400 allot
    JRT-TEST-LISTED-HUNDRED
    JRT-TEST-LISTED-OPTIONAL
    JRT-TEST-REWIND
-   JRT-TEST-NAME-COUNT ;
+   JRT-TEST-SEEN-BYTES ;
 
 : JRT-TEST-REASON-WHOLE ( -- )
    s" READ-REPEAT rejects a text that is no object at its first token" T-LABEL

@@ -291,9 +291,10 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    s\" {\"maxItems\":2}" s" [0,1,2]"
    s" : expected at most 2 items, found 3 items; remove an item"
    FAILS
-   s" VALID? reports a broken count in place of a failing element" T-LABEL
-   s\" {\"items\":{\"type\":\"string\"},\"maxItems\":1}" s" [1,2]"
-   s" : expected at most 1 item, found 2 items; remove an item"
+   s" VALID? reports a broken count after the array's path, at each level" T-LABEL
+   s\" {\"properties\":{\"p\":{\"items\":{\"minItems\":2,\"items\":{\"maxItems\":0,\"items\":{\"type\":\"string\"}}}}}}"
+   s\" {\"p\":[[[1]]]}"
+   s" .p[0]: expected at least 2 items, found 1 item; add an item"
    FAILS
    s" VALID? takes elements that differ in kind or value" T-LABEL
    s\" {\"items\":{\"type\":[\"string\",\"number\",\"boolean\",\"null\"]},\"uniqueItems\":true}"
@@ -315,6 +316,36 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    s" [1,1e99999999999999999999]"
    s" [1]: expected a number whose exponent a signed 64-bit cell holds, found `1e99999999999999999999`; write the number with a smaller exponent"
    FAILS ;
+
+100000 constant DEPTH
+BUF:HDR-BYTES BUFFER: NESTED
+: NESTED-BUF ( -- ^n ) NESTED CELL-VIEW ;
+
+: ADD-TIMES ( ^u8 n n -- ) {: s:^ u:n k:n :}
+   k 0 ?do s u BUF:N>BLEN NESTED-BUF BUF:APPEND-SPAN loop ;
+
+\ o DEPTH times, m, then c DEPTH times; answers the buffer's length after.
+: NEST ( ^u8 n ^u8 n ^u8 n -- n ) {: o:^ ou:n m:^ mu:n c:^ cu:n :}
+   o ou DEPTH ADD-TIMES  m mu 1 ADD-TIMES  c cu DEPTH ADD-TIMES
+   NESTED-BUF BUF:LEN@ BUF:BLEN>N ;
+
+\ The schema, the value it takes and the two it rejects, one after another
+\ in one buffer: spans into it hold only once it stops growing.
+: DEEP ( -- )
+   s" COMPILE and VALID? walk a schema and a value 100000 levels deep" T-LABEL
+   NESTED-BUF 4096 BUF:N>BLEN BUF:INIT
+   s\" {\"maxItems\":1,\"items\":" s\" {\"type\":\"string\"}" s" }" NEST {: a:n :}
+   s" [" s\" \"a\"" s" ]" NEST {: b:n :}
+   s" [" s" 1" s" ]" NEST {: c:n :}
+   s" [" s" 1" s" ,0]" NEST drop
+   NESTED-BUF BUF:SPAN$ BUF:BLEN>N {: t:^ u:n :}
+   t a  t a +  b a -  PASSES
+   t a  t b +  c b -  VERDICT TFALSE
+   VIOLATION$ {: w:^ wu:n :}
+   w 6 s" [0][0]" T$=  wu 300073 T=
+   t a  t c +  u c -
+   s" : expected at most 1 item, found 2 items; remove an item" FAILS
+   NESTED-BUF BUF:DISPOSE ;
 
 : CHOICES ( -- )
    s" VALID? takes anyOf's second alternative after the first fails" T-LABEL
@@ -350,7 +381,7 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    T-RESET
    TAKEN REJECTED
    VIOLATION-BUF 256 BUF:N>BLEN BUF:INIT
-   SAPD VALUES ARRAYS CHOICES
+   SAPD VALUES ARRAYS DEEP CHOICES
    VIOLATION-BUF BUF:DISPOSE
    T-REPORT ;
 

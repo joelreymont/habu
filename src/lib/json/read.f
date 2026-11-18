@@ -1395,13 +1395,13 @@ public
    then
    v vu ;
 
+private
+
 \ The names READ-LISTED takes are separated by single blanks; an empty
 \ list holds none.
 : READ-NAME-COUNT ( ^u8 n -- n ) {: a:^ u:n :}
    u 0= if 0 exit then
    1 u 0 ?do a i + c@ SP = if 1+ then loop ;
-
-private
 
 \ The name that starts at start, as listed, and the next name's start.
 : NAME-AT ( str n -- str n ) {: a:^ u:n start:n :}
@@ -1501,10 +1501,6 @@ private
    1 seen idx + c!
    state NEXT-INNER drop idx ;
 
-\ Whether no listed member was read yet: the object's first call.
-: UNREAD? ( ^u8 n -- bool ) {: seen:^ count:n :}
-   count 0 ?do seen i + c@ 0<> if false unloop exit then loop true ;
-
 : REQUIRE-OBJECT ( ^cursor -- ) {: state:^ :}
    state CURSOR-KIND @ T-OBJ = if exit then
    state s" an object" s" write an object here" E-MEMBER REJECT-TOKEN ;
@@ -1530,22 +1526,31 @@ public
    {: ea:^ eu:n fa:^ fu:n :}
    READER>STATE ea eu fa fu E-MEMBER REJECT-TOKEN ;
 
-\ seen holds a byte per listed name, zero before the object's first call.
+\ A seen buffer holds the listed object's depth, then a byte per listed name.
+: SEEN-BYTES ( ^u8 n -- n ) READ-NAME-COUNT 1 cells + ;
+
+\ seen takes SEEN-BYTES for the names, all zero before the object's first call.
 : READ-LISTED ( JSON:reader ^u8 n ^u8 -- JSON:reader n )
    {: a:^ u:n seen:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-SOUND
    a u READ-NAME-COUNT {: count:n :}
-   seen count UNREAD? if
+   seen CELL-VIEW {: held:^ :}
+   seen 1 cells + {: marks:^ :}
+   held @ 0= if
       state REQUIRE-OBJECT
+      state CURSOR-DEPTH @ held !
    else
-      state CURSOR-STATE @ ST-SEP <> if state ANCHOR-REJECT then
+      state CURSOR-STATE @ ST-SEP <>  state CURSOR-DEPTH @ held @ <>  or if
+         state s" the last token of the member's value"
+         s" leave the reader on the value's last token, with READ-SKIP-VALUE for a value not read"
+         E-JSON-READ-STATE REJECT-TOKEN
+      then
    then
-   state FIND-ANCHOR drop
    state NEXT-INNER {: token:n :}
-   token T-OBJ-END = if state a u count seen REQUIRE-ALL -1 exit then
+   token T-OBJ-END = if state a u count marks REQUIRE-ALL -1 exit then
    token T-KEY <> if state MEMBER-NAME-REJECT then
-   state a u count seen MEMBER-INDEX ;
+   state a u count marks MEMBER-INDEX ;
 
 \ A container's opener is read again, so the depth counts it as before.
 : READ-REWIND ( JSON:reader ^u8 n -- JSON:reader ) {: a:^ u:n :}
