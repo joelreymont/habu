@@ -1,12 +1,12 @@
 \ allow-bound.f - a package whose wordlist id is past the admission bitmap.
-\ PBIG is minted after PROT-WID-MAX other wordlists, so its wid has no bit.
+\ PBIG is minted after POLICY-WID-MAX other wordlists, so its wid has no bit.
 \ With an argument it admits PDEP, seals and loads the design; with none it
 \ tries to admit PBIG itself.
 require src/lib/vocabulary.f
 require test/policy/dep.f
 using VOCABULARY
 
-: MANY ( -- ) PROT-WID-MAX 0 do wordlist drop loop ;
+: MANY ( -- ) POLICY-WID-MAX 0 do wordlist drop loop ;
 MANY
 
 package PBIG

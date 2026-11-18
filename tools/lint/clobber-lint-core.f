@@ -181,8 +181,6 @@ variable RX  variable RACC
    \ Trim and reclaim save x0..x17 and x30 on entry and restore them at their one return.
    s" PROF-ABI:Lproftrim" $3FFFF 30 CL-ADD row execute
    s" PROF-ABI:Lprofreclaim" $3FFFF 30 CL-ADD row execute
-   s" ENGINE-EMIT:Lprotwidq" 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD
-      row execute
    s" ENGINE-EMIT:Lhidxadd"
       0 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD
       14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD row execute ;

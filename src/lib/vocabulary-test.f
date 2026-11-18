@@ -244,7 +244,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" allow-catch" HARNESS!
    s" evaluate" 0 s" error[E-POLICY]: `evaluate` is not in the vocabulary this source may use" s" test/policy/evaluate.f:1:" S\" 70\n" SAYS ;
 
-\ A wordlist id at or above PROT-WID-MAX has no bit in the admission bitmap: it
+\ A wordlist id at or above POLICY-WID-MAX has no bit in the admission bitmap: it
 \ cannot be admitted, and a record in it is never in the vocabulary.
 : BOUND ( -- )
    s" allow-bound" HARNESS!

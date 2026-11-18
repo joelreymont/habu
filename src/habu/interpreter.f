@@ -508,7 +508,7 @@ TYPED-VARIABLE REC ^n
    rec XREF-FOUND? 0= if a u a u POLICY-REFUSE then
    rec XREF-NULL - seal XREF-REC-ADDR < if
       rec XREF-WORDLIST {: wid:n :}
-      wid 0 < wid PROT-WID-MAX >= or if a u a u POLICY-REFUSE then
+      wid 0 < wid POLICY-WID-MAX >= or if a u a u POLICY-REFUSE then
       wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
       wid 63 and rshift 1 and 0= if a u a u POLICY-REFUSE then
    then

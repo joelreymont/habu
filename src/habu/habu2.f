@@ -847,11 +847,12 @@ package DEFWRITE
 : REAL-WID, ( label -- ) {: bad:label :}
    2 0 CMPI,  C-LT bad BCOND, ;
 
-\ After the seal, wid x2 is protected. LPROTWIDQ keeps x0-x4 and answers in x13.
+\ After the seal, wid x2 is protected when it is an OWNER-API wordlist.
 : OPEN-WID, ( label -- ) {: prot:label :}
    LBL {: open:label :}
    9 DATA SEAL-NDICT-CELL LDR,  9 open CBZ,
-   9 2 0 ADDI,  LPROTWIDQ LABEL@ BL,  13 prot CBNZ,
+   2 OWNER-API-PUB-WID CMPI,  C-EQ prot BCOND,
+   2 OWNER-API-PRI-WID CMPI,  C-EQ prot BCOND,
    open LBL, ;
 
 \ Count record NDICT and index it.
@@ -2337,7 +2338,6 @@ package LABELS
 : CORE ( -- )
    LBL LFIND !  LBL LNUM !  LBL LDICT !
    LBL LTOK !  LBL LFLUSH !  LBL LFLUSHTO !  LBL LNCOUNT !
-   LBL LPROTWIDQ !  LBL LPROTWIDADD !
    LBL LBCS !
    LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !
@@ -2497,8 +2497,6 @@ package ENGINE-EMIT
    ENGINE-PRIMS:COMPLETE
    EMIT-BCAP
    EMIT-TOK
-   EMIT-PROTWID
-   EMIT-PROTWIDADD
    EMIT-FLUSH
    EMIT-FIND
    WLFIND:EMIT

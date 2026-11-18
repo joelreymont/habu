@@ -49,8 +49,8 @@ public
 \ the admitted words; with a root, `require` reads each file once. An admitted
 \ package must guarantee that every public word terminates (a throw counts), a
 \ parsing word reads boundedly many tokens, no word stores to an address its caller
-\ supplies, and no word widens what the design can name (prot-wid-add, evaluate
-\ or included on caller data).
+\ supplies, and no word widens what the design can name (evaluate or included
+\ on caller data).
 \ Rejections print an E-POLICY rejection record. A token outside the
 \ vocabulary (placed at the token), a package that predates the seal,
 \ SOURCE-ROOT! or WITH-SOURCE-ROOT once sealed, and a source outside the root
@@ -58,7 +58,7 @@ public
 \ once sealed, an unknown package and a package publishing a word spelled like
 \ a dispatched keyword row, case folded (tier 0 would read it as the row, not
 \ the word), exit with 107; their records note `package`, `keyword` and `in`,
-\ the caller. A wid at or above PROT-WID-MAX (it has no admission bit) prints
+\ the caller. A wid at or above POLICY-WID-MAX (it has no admission bit) prints
 \ one line and exits with 107.
 : RESTRICT ( -- ) policy-seal ;
 

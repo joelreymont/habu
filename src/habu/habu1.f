@@ -126,7 +126,6 @@ variable LCALLBACKADDR
 ;package
 package ENGINE-EMIT
 public
-variable LPROTWIDQ  variable LPROTWIDADD
 variable LDPBAD   \ DP-CHECK's out-of-range target: throws E-DATA-SPACE (habu2.f EM-COMPILE-DIE)
 variable LBGROWFAIL   \ the body text could not grow: throws E-BODY-TEXT (habu2.f EM-BODY-GROW-DIE)
 ;package
@@ -3710,30 +3709,17 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
 package ENGINE-EMIT
 public
 
-\ PROT-BITS-ADDR, ( base w a m scratch -- ): emit the bitmap addressing sequence.
-\ xbase holds the region base (DATA live, or a snapshot/AOT image's DATA source) and
-\ xw the WID; xa comes back holding &word-containing-the-bit and xm that bit's mask.
-\ The band is PROT-BITS-BYTES of u64 words, so word index = w>>6 (scaled to a byte
-\ offset by <<3) and bit index = w&63. Callers must have proved w < PROT-WID-MAX
-\ first; that bound is what keeps the computed address inside the band. xscratch is
-\ clobbered; xw is preserved.
-\ PROT-BITS-AT, is the same for a bitmap whose base register already points at bit 0
-\ -- the AOT seed blob and a snapshot image carry the band that way.
-: PROT-BITS-AT, ( n n n n n -- ) {: bits:n w:n a:n m:n scratch:n :}
+\ POLICY-BITS-AT, ( bits w a m scratch -- ): xbits points at bit 0 of the policy
+\ bitmap and xw holds the WID; xa comes back holding the u64 word that holds the
+\ bit and xm that bit's mask. The caller proves w < POLICY-WID-MAX first: that
+\ bound keeps xa inside the bitmap. xscratch is clobbered; xw is preserved.
+: POLICY-BITS-AT, ( n n n n n -- ) {: bits:n w:n a:n m:n scratch:n :}
    scratch w 6 LSRI,  scratch scratch 3 LSLI,
    a bits scratch ADD,
    m w 63 ANDI,
    scratch 1 MOVZ,  m scratch m LSLV, ;
 
-: PROT-BITS-ADDR, ( n n n n n -- ) {: base:n w:n a:n m:n scratch:n :}
-   a PROT-BITS-OFF MOVZ,  a base a ADD,
-   a w a m scratch PROT-BITS-AT, ;
-
 private
-
-\ prot-wid-add ( wid -- ): mark wid protected.
-: BPROTWIDADD ( -- )
-   9 G-POP  LPROTWIDADD LABEL@ BL, ;
 
 \ The design seal's two writers. The harness admits packages and seals before
 \ it loads the design; once POLICY-NDICT-CELL is set either prim writes the
@@ -3774,7 +3760,7 @@ private
       s" package" 4 5 FAULT-TEXT,
       s" admit a package the program defines" POLICY-STOP,
    found LBL,
-   15 PROT-WID-MAX MOVZ,  11 15 CMP,  C-CC bounded BCOND,
+   15 POLICY-WID-MAX MOVZ,  11 15 CMP,  C-CC bounded BCOND,
       0 CALLER-LR,                                   \ WLFIND's BL replaced x30
       POLICY-BOUND$ EXIT-STATUS:POLICY DIE-LINE,
    bounded LBL,
@@ -3792,7 +3778,7 @@ private
       s" rename the word in that package" POLICY-STOP,
    walked LBL,
    14 POLICY-BITS-OFF MOVZ,  14 DATA 14 ADD,
-   14 11 15 14 16 PROT-BITS-AT,                      \ x15 = &word, x14 = mask
+   14 11 15 14 16 POLICY-BITS-AT,                    \ x15 = &word, x14 = mask
    16 15 LDAR,
    16 16 14 ORR,
    16 15 STLR, ;
@@ -3808,19 +3794,6 @@ private
 ;package
 
 package ENGINE-EMIT
-\ prot-wid-room ( -- n ): how many more wordlists may still be allocated AND
-\ protected. Clamped at 0 so a caller's `room 0=` and `need room >` tests stay
-\ meaningful if WIDN ever passes the bound (unprotected wordlists may be
-\ allocated beyond it).
-: BPROTWIDROOM ( -- )
-   LBL {: pos:label :}
-   14 DATA WIDN-CELL LDR,
-   9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
-   14 0 MOVZ,  9 14 CMP,  C-GT pos BCOND,
-      9 0 MOVZ,
-   pos LBL,
-   9 G-PUSH ;
-
 \ The hash index's key derivation is the FNV-1a hash of the folded name's
 \ bytes. A two-part name hashes as one stream, so it lands in the bucket of
 \ the same name spelled as one span.
@@ -4125,8 +4098,6 @@ package ENGINE-EMIT
    s" record-facts!" ['] BRECFACTS FPRIM
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
    s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" prot-wid-add" ['] BPROTWIDADD FPRIM
-   s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" policy-admit" ['] BPOLICYADMIT FPRIM
    s" policy-seal" ['] BPOLICYSEAL FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
@@ -4445,55 +4416,6 @@ package ENGINE-EMIT
       9 DATA TOKENS-CELL LDR,  9 9 1 ADDI,  9 DATA TOKENS-CELL STR,
       11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
    TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
-;package
-
-\ Protected-WID membership, BL routine: x9 = wid, x13 = 1 when protected else 0.
-\ The OWNER-API wordlists (public=1, private=2; OWNER-API-PRI-WID marks the AOT
-\ direct-branch helpers) are always protected, pinned here because three paths
-\ populate the protected-WID table (cold init, AOT-REPL restore, snapshot
-\ restore). Any other WID is one bit in the PROT-BITS-OFF bitmap; one at or
-\ above PROT-WID-MAX answers "not protected", sound because prot-wid-add
-\ refuses to protect it. Preserves x5 x6 x7 x9 x14.
-package ENGINE-EMIT
-
-: EMIT-PROTWID ( -- )
-   LBL LBL {: qdone:label qhit:label :}
-   LPROTWIDQ LABEL@ LBL,
-   SP SP 32 SUBI,
-   5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
-   13 0 MOVZ,
-   9 OWNER-API-PUB-WID CMPI,  C-EQ qhit BCOND,
-   9 OWNER-API-PRI-WID CMPI,  C-EQ qhit BCOND,
-   5 PROT-WID-MAX MOVZ,  9 5 CMP,  C-CS qdone BCOND,
-   DATA 9 5 14 6 PROT-BITS-ADDR,                \ x5 = &word, x14 = mask
-   7 5 LDAR,
-   7 7 14 AND,
-   7 qdone CBZ,
-   qhit LBL,  13 1 MOVZ,
-   qdone LBL,
-   5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
-   SP SP 32 ADDI,  RET, ;
-
-\ Protect wid x9, idempotently; one at or above PROT-WID-MAX has no bit and
-\ exits 84 naming it. Single writer. Clobbers x13-x16.
-: EMIT-PROTWIDADD ( -- )
-   LBL LBL {: ok:label done:label :}
-   LPROTWIDADD LABEL@ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,
-   LPROTWIDQ LABEL@ BL,
-   13 done CBNZ,
-   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
-      16 CALLER-LR,           \ BPROTWIDADD, the one caller, holds the frame
-      s" E-SEAL-WORDLIST habu: wid at or above PROT-WID-MAX:" EXIT-STATUS:SEAL-WORDLIST 9
-      DIE-LINE-VALUE,
-   ok LBL,
-   DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
-   16 15 LDAR,
-   16 16 14 ORR,
-   16 15 STLR,
-   done LBL,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
-
 ;package
 
 package ENGINE-EMIT

@@ -390,24 +390,6 @@ WRITE-OFF DEVICES 8 * + constant END
 \ startup so the leaf throw primitive can branch to it. $3CA0..$3CB8 are engine
 \ cells no compiled source writes.
 $3CA0 constant EVALREC-CELL
-\ The protected-WID registry records the WIDs of sealed system / generated
-\ constructor packages created in the friend window; membership gates the
-\ sealed-WID guards.
-\ Bit w of the $400-byte band at PROT-BITS-OFF is set exactly when wordlist w is
-\ protected, so the set holds any subset of the WIDs the engine indexes.
-\ PROT-WID-MAX is a WID bound: $400 bytes index 8192 WIDs, and prot-wid-add
-\ names the bound when handed a WID at or above it. A wider bitmap must first
-\ move CB-XDS at $41C8, and APP-ENTRY:XT-CELL and the evaluator-pointer band
-\ from $43A0; growing it also moves UNCGH-CELL.
-\ No compiled source writes the band, the DP heap is bounded >= DATA-START, and
-\ snapshots save it.
-$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag
-$3CC0 constant PROT-BITS-OFF
-8192 constant PROT-WID-MAX
-PROT-WID-MAX 8 / constant PROT-BITS-BYTES
-PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
-PROT-REG-TAG-CELL constant PROT-REG-OFF
-PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN
 \ UNCGH-CELL: runtime address of the uncaught-throw reporter, written by the
 \ link: BTHROW, a leaf, branches through it.
 $40C0 constant UNCGH-CELL
@@ -907,14 +889,16 @@ $2DA8 constant TASK-CHAIN-CELL
 \ The design seal confines a sealed source to the vocabulary its harness
 \ admitted. POLICY-NDICT-CELL is 0 while nothing is sealed, else the NDICT the
 \ seal stored; a record at or above that index is the design's own.
-\ POLICY-BITS-OFF is a WID-indexed bitmap shaped like PROT-BITS-OFF's: bit w
-\ admits wordlist w, and every reader tests w against PROT-WID-MAX before it
-\ addresses the band. Every writer of the vocabulary and of the require xt
-\ refuses once the seal is set. Only the engine's token reader tests the
-\ vocabulary; the native compiler never reads it. The snapshot writer zeros its DATA copy and
-\ the warm loader zeros the restored fields, so a fresh process is unsealed.
+\ POLICY-BITS-OFF is a WID-indexed bitmap: bit w admits wordlist w, and every
+\ reader tests w against POLICY-WID-MAX before it addresses the band. Every
+\ writer of the vocabulary and of the require xt refuses once the seal is set.
+\ Only the engine's token reader tests the vocabulary; the native compiler never
+\ reads it. The snapshot writer zeros its DATA copy and the warm loader zeros
+\ the restored fields, so a fresh process is unsealed.
 $4898 constant POLICY-NDICT-CELL
 $48A0 constant POLICY-BITS-OFF
+8192 constant POLICY-WID-MAX
+POLICY-WID-MAX 8 / constant POLICY-BITS-BYTES
 $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 \ CLAUSE-CELL: nonzero once the pending definition has a `;does` clause - set by
 \ the `does>` keyword and by does-record, which an imported definer reaches with

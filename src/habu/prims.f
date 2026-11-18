@@ -743,8 +743,6 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
 \ a nominal identity or as an address certified and forged one.
 EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM; REACH stack
-EPRIM: prot-wid-add   PE-N PE-IN EPRIM; REACH dict
-EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
 \ The design seal's two writers: admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.

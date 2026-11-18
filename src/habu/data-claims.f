@@ -187,7 +187,6 @@ create TAB
    HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL
    EVALREC-CELL                       1 cells                 CLAIM EVALREC-CELL
    BOOT:USER-END                      1 cells                 CLAIM BOOT-USER-END
-   PROT-REG-OFF                       PROT-REG-LEN            CLAIM PROT-REG
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
    CB-TLS-GET                         2 cells                 CLAIM CALLBACK-TLS
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
@@ -221,7 +220,7 @@ create TAB
    REPLAY-SCOPE:PEND                  1 cells                 CLAIM REPLAY-SCOPE:PEND
    REPLAY-SCOPE:PEND-REC              DREC                    CLAIM REPLAY-SCOPE:PEND-REC
    POLICY-NDICT-CELL                  1 cells                 CLAIM POLICY-NDICT-CELL
-   POLICY-BITS-OFF                    PROT-BITS-BYTES         CLAIM POLICY-BITS
+   POLICY-BITS-OFF                    POLICY-BITS-BYTES       CLAIM POLICY-BITS
    POLICY-REQUIRE-CELL                1 cells                 CLAIM POLICY-REQUIRE-CELL
    CLAUSE-CELL                        1 cells                 CLAIM CLAUSE-CELL
    PKG-OUTSIDE-CELL                   1 cells                 CLAIM PKG-OUTSIDE-CELL

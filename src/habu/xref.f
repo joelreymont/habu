@@ -121,13 +121,10 @@ public
    wid XREF-RETIRED-WL =  wid WL:RETIRED-NAMESPACE =  or ;
 ;package
 
-\ Whether `wid` is protected, as habu1.f EMIT-PROTWID reads it: the OWNER-API wordlists by
-\ rule, any other wid below PROT-WID-MAX by its bit at PROT-BITS-OFF.
+\ The OWNER-API wordlists are the protected ones.
 : XREF-WID-PROTECTED? ( n -- bool ) {: wid:n :}
    wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if XREF-TRUE exit then
-   wid 0 < wid PROT-WID-MAX < 0= or if XREF-FALSE exit then
-   wid 6 rshift 8 * data-base PROT-BITS-OFF + + @
-   wid 63 and rshift 1 and 0= 0= ;
+   XREF-FALSE ;
 
 \ Keep the historical body length distinct from the exact code span. A package
 \ row's length cell, live or retired, holds a wordlist id, so it is answered raw

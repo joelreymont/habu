@@ -180,23 +180,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-EXITED @ TTRUE
    SLV-RC @ 0 T= ;
 
-\ prot-wid-add refuses an id at or above PROT-WID-MAX, the protected-WID
-\ bitmap's bound, and exits 84 rather than writing outside it, printing the id.
-: SLV-ASSERT-PWID-OOR ( str -- ) {: want:^ wantu:n :}
-   SLV-EXITED @ TTRUE
-   SLV-RC @ 84 T=
-   SLV-ERR$ want wantu CONTAINS? TTRUE ;
-
-: SLV-PWID-BOUND ( -- )
-   s" prot-wid-add refuses an id at the bitmap bound" T-LABEL
-   s" PROT-WID-MAX prot-wid-add" SLV-RUN-LOAD
-   s" E-SEAL-WORDLIST habu: wid at or above PROT-WID-MAX: 0x0000000000002000 lr 0x"
-   SLV-ASSERT-PWID-OOR
-   s" and prints the id past it, not the bound" T-LABEL
-   s" PROT-WID-MAX 1+ prot-wid-add" SLV-RUN-LOAD
-   s" E-SEAL-WORDLIST habu: wid at or above PROT-WID-MAX: 0x0000000000002001 lr 0x"
-   SLV-ASSERT-PWID-OOR ;
-
 \ Publishing into a protected WID is rejected with exit 70 and an
 \ E-SEALED-PACKAGE record naming the word it would add.
 : SLV-ASSERT-PROT-PUBLISH ( str -- ) {: prose:^ proseu:n :}
@@ -308,7 +291,6 @@ public
    SLV-PREPARE
    SLV-NEGATIVES-TRUNCATE
    SLV-POSITIVES
-   SLV-PWID-BOUND
    SLV-SEALED-DEFINE
    SLV-ENGINE-SEALED
    SLV-CLEANUP
