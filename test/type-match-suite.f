@@ -1,7 +1,7 @@
 split-str
 \ type-match-suite.f — checked MATCH suite (docs/forth.md "Structures And
-\ Enums"), run by the engine over stdin like the other type suites:
-\     bin/hb < test/type-match-suite.f
+\ Enums"), loaded by name:
+\     bin/hb --load test/type-match-suite.f
 \ MATCH refines each branch with its variant's payload, joins branch outputs and
 \ enforces exhaustiveness over declaration-order tags (no default branch).
 
@@ -197,6 +197,9 @@ s" MATCH-BAD" type cr
 \ constructor, so they also pin that a qualified def leaks no bare-global row.
 s" CS1=" type s" C1 ( n -- n ) case 1 of 2 endof dup endcase" CHECK-QUIET-CANDIDATE! -1 T=
 s" CS2=" type s" C2 ( n n -- n ) case 1 of 1 + endof 2 of 2 + endof drop dup endcase" CHECK-QUIET-CANDIDATE! -1 T=
+\ An endof restores the row its of saw, not the one case saw.
+s" CS4=" type s" C4 ( n -- n ) 7 0 rot case >r swap r> 1 of 2drop 1 endof drop / 0 endcase" CHECK-QUIET-CANDIDATE! -1 T=
+s" CS5=" type s" C5 ( n -- n ) 7 0 rot case >r swap r> 1 of 2drop 1 endof drop swap / 0 endcase" CHECK-QUIET-CANDIDATE! 0 T=
 s" CS3=" type s" C3 ( n -- n ) endof" CHECK-QUIET-CANDIDATE! 0 T=
 s" CASE-GREEN" type cr
 

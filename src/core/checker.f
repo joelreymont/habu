@@ -20690,8 +20690,9 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
       STEP-N-IN
       CF@A SUNI-JOIN
       CF@RA RSUNI-JOIN
+      DCUR @ RCUR @ {: data:n ret:n :}
       STEP-N-IN
-      8 CF@A 0 CF@RA 0 CF-PUSH
+      8 data 0 ret 0 CF-PUSH
    THEN ;
 
 
