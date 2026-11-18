@@ -1,11 +1,13 @@
 split-str
 \ json-schema-test.f - schemas through JSON-SCHEMA:COMPILE: the shapes the
-\ consumers register, and each rejected schema's text.
+\ consumers register and each rejected schema's text; values through
+\ JSON-SCHEMA:VALID?, each violation's text.
 \ Run: bin/hb --load src/lib/json-schema-test.f
 
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/arena.f
+require src/lib/byte-buffer.f
 require src/lib/reason.f
 require src/lib/json-schema.f
 
@@ -114,14 +116,225 @@ package JSON-SCHEMA-TEST
    s\" {\"type\":\"array\",\"uniqueItems\":true,\"items\":{\"type\":\"object\"}}"
    s\" 1:31: expected `uniqueItems` beside `items` whose `type` names scalar types only, found `true`; remove `uniqueItems`, or give `items` a `type` of scalars only"
    REJECTS
+   s" COMPILE rejects a minimum whose exponent leaves a cell" T-LABEL
+   s\" {\"minimum\":1e99999999999999999999}"
+   s\" 1:12: expected `minimum` as a number whose exponent a signed 64-bit cell holds, found `1e99999999999999999999`; write the bound with a smaller exponent"
+   REJECTS
+   s" COMPILE rejects an enum number whose exponent leaves a cell" T-LABEL
+   s\" {\"enum\":[1e99999999999999999999]}"
+   s\" 1:10: expected `enum` values whose exponents a signed 64-bit cell holds, found `1e99999999999999999999`; write each number with a smaller exponent"
+   REJECTS
+   s" COMPILE rejects an enum number nested in a value, at the number" T-LABEL
+   s\" {\"enum\":[{\"a\":[1,1e99999999999999999999]}]}"
+   s\" 1:18: expected `enum` values whose exponents a signed 64-bit cell holds, found `1e99999999999999999999`; write each number with a smaller exponent"
+   REJECTS
    s" COMPILE rejects text that ends inside the schema" T-LABEL
    s\" {\"type\":"
    s\" 1:9: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
    REJECTS ;
 
+BUF:HDR-BYTES BUFFER: VIOLATION
+: VIOLATION-BUF ( -- ^n ) VIOLATION CELL-VIEW ;
+: VIOLATION$ ( -- ^u8 n ) VIOLATION-BUF BUF:SPAN$ BUF:BLEN>N ;
+
+: CHECKED ( ^u8 n ^u8 n ^ARENA:arena -- bool )
+   {: v:^ vu:n s:^ su:n a:^ :}
+   s su a JSON-SCHEMA:COMPILE {: sc :}
+   v vu sc VIOLATION-BUF JSON-SCHEMA:VALID? ;
+
+\ The value v checked against the schema s, the BUF cleared first.
+: VERDICT ( ^u8 n ^u8 n -- bool ) {: s:^ su:n v:^ vu:n :}
+   VIOLATION-BUF BUF:CLEAR
+   v vu s su [: CHECKED ;] ARENA:WITH ;
+
+: PASSES ( ^u8 n ^u8 n -- )
+   VERDICT TTRUE  VIOLATION$ s" " T$= ;
+
+\ The value fails with exactly the text given.
+: FAILS ( ^u8 n ^u8 n ^u8 n -- ) {: s:^ su:n v:^ vu:n w:^ wu:n :}
+   s su v vu VERDICT TFALSE  VIOLATION$ w wu T$= ;
+
+: SAPD$ ( -- ^u8 n )
+   s\" {\"type\":\"object\",\"properties\":{\"filter\":{\"type\":\"string\"},\"top\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":500},\"key\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}}},\"required\":[\"filter\"],\"additionalProperties\":false}" ;
+
+: SAPD ( -- )
+   s" VALID? takes sapd's arguments" T-LABEL
+   SAPD$ s\" {\"filter\":\"x\",\"top\":5,\"key\":{\"a\":\"b\"}}" PASSES
+   s" VALID? rejects a root of the wrong type" T-LABEL
+   SAPD$ s" []"
+   s" : expected a value of type `object`, found `[]`; send a value of that type"
+   FAILS
+   s" VALID? rejects a member properties does not name, listing them" T-LABEL
+   SAPD$ s\" {\"filters\":\"x\"}"
+   s" : expected only the members `filter`, `top` and `key`, found `filters`; rename it to one of those or remove it"
+   FAILS
+   s" VALID? rejects a fraction where an integer belongs" T-LABEL
+   SAPD$ s\" {\"filter\":\"x\",\"top\":1.5}"
+   s" .top: expected a value of type `integer`, found `1.5`; send a whole number from -9223372036854775808 to 9223372036854775807, with no fraction or exponent"
+   FAILS
+   s" VALID? rejects a number above the maximum" T-LABEL
+   SAPD$ s\" {\"filter\":\"x\",\"top\":501}"
+   s" .top: expected a number of at most `500`, found `501`; send a number in that range"
+   FAILS
+   s" VALID? rejects a number below the minimum" T-LABEL
+   SAPD$ s\" {\"filter\":\"x\",\"top\":-1}"
+   s" .top: expected a number of at least `0`, found `-1`; send a number in that range"
+   FAILS
+   s" VALID? rejects an exponent past a cell as no integer" T-LABEL
+   SAPD$ s\" {\"filter\":\"x\",\"top\":1e99999999999999999999}"
+   s" .top: expected a value of type `integer`, found `1e99999999999999999999`; send a whole number from -9223372036854775808 to 9223372036854775807, with no fraction or exponent"
+   FAILS
+   s" VALID? rejects a member additionalProperties' schema rejects" T-LABEL
+   SAPD$ s\" {\"filter\":\"x\",\"key\":{\"a\":1}}"
+   s" .key.a: expected a value of type `string`, found `1`; send a value of that type"
+   FAILS
+   s" VALID? rejects a missing required member" T-LABEL
+   SAPD$ s\" {\"top\":5}"
+   s" : expected a member `filter`, found none; add `filter`"
+   FAILS ;
+
+: VALUES ( -- )
+   s" VALID? rejects an exponent past a cell at a bound" T-LABEL
+   s\" {\"type\":\"number\",\"minimum\":0}" s" 1e99999999999999999999"
+   s" : expected a number whose exponent a signed 64-bit cell holds, found `1e99999999999999999999`; write the number with a smaller exponent"
+   FAILS
+   s" VALID? names two types with or" T-LABEL
+   s\" {\"type\":[\"integer\",\"null\"]}" s\" \"x\""
+   s\" : expected a value of type `integer` or `null`, found `\"x\"`; send a value of one of those types"
+   FAILS
+   s" VALID? names three types in the schema's order" T-LABEL
+   s\" {\"type\":[\"string\",\"number\",\"null\"]}" s" true"
+   s" : expected a value of type `string`, `number` or `null`, found `true`; send a value of one of those types"
+   FAILS
+   s" VALID? takes a value the enum lists" T-LABEL
+   s\" {\"enum\":[\"open\",\"closed\"]}" s\" \"open\"" PASSES
+   s" VALID? rejects a value the enum does not list" T-LABEL
+   s\" {\"enum\":[\"open\",\"closed\"]}" s\" \"shut\""
+   s\" : expected one of `[\"open\",\"closed\"]`, found `\"shut\"`; send one of those values"
+   FAILS
+   s" VALID? compares enum numbers by value" T-LABEL
+   s\" {\"enum\":[1]}" s" 1.0" PASSES
+   s" VALID? counts minLength in characters" T-LABEL
+   s\" {\"minLength\":2}" s\" \"é\""
+   s\" : expected a string of at least 2 characters, found `\"é\"`; send a longer string"
+   FAILS
+   s" VALID? counts maxLength in characters" T-LABEL
+   s\" {\"maxLength\":1}" s\" \"é\"" PASSES
+   s" VALID? rejects a string over maxLength, one character" T-LABEL
+   s\" {\"maxLength\":1}" s\" \"éé\""
+   s\" : expected a string of at most 1 character, found `\"éé\"`; send a shorter string"
+   FAILS
+   s" VALID? takes a string the pattern matches" T-LABEL
+   s\" {\"pattern\":\"^[a-z]+$\"}" s\" \"abc\"" PASSES
+   s" VALID? rejects a string the pattern does not match" T-LABEL
+   s\" {\"pattern\":\"^[a-z]+$\"}" s\" \"Abc\""
+   s\" : expected a string the pattern `^[a-z]+$` matches, found `\"Abc\"`; send a string it matches"
+   FAILS
+   s" VALID? rejects any member when additionalProperties is false alone" T-LABEL
+   s\" {\"additionalProperties\":false}" s\" {\"a\":1}"
+   s" : expected no members, found `a`; remove it"
+   FAILS
+   s" VALID? names the one member properties allows" T-LABEL
+   s\" {\"properties\":{\"filter\":{}},\"additionalProperties\":false}"
+   s\" {\"filtre\":1}"
+   s" : expected only the member `filter`, found `filtre`; rename it to `filter` or remove it"
+   FAILS
+   s" VALID? rejects members past maxProperties" T-LABEL
+   s\" {\"maxProperties\":1}" s\" {\"a\":1,\"b\":2}"
+   s" : expected at most 1 member, found 2 members; remove a member"
+   FAILS
+   s" VALID? cuts a long value at 32 bytes" T-LABEL
+   s\" {\"type\":\"integer\"}" s\" \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+   s\" : expected a value of type `integer`, found `\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...`; send a value of that type"
+   FAILS
+   s" VALID? cuts a long member name in the place" T-LABEL
+   s\" {\"properties\":{\"abcdefghijklmnopqrstuvwxyz0123456789ABCD\":{\"type\":\"string\"}}}"
+   s\" {\"abcdefghijklmnopqrstuvwxyz0123456789ABCD\":1}"
+   s" .abcdefghijklmnopqrstuvwxyz012345...: expected a value of type `string`, found `1`; send a value of that type"
+   FAILS ;
+
+: STRINGS$ ( -- ^u8 n )
+   s\" {\"type\":\"array\",\"items\":{\"type\":\"string\"}}" ;
+
+: UNIQUE-STRINGS$ ( -- ^u8 n )
+   s\" {\"type\":\"array\",\"items\":{\"type\":\"string\"},\"uniqueItems\":true}" ;
+
+: ARRAYS ( -- )
+   s" VALID? rejects an element items rejects, at its index" T-LABEL
+   STRINGS$ s\" [\"a\",1]"
+   s" [1]: expected a value of type `string`, found `1`; send a value of that type"
+   FAILS
+   s" VALID? places an element below a member" T-LABEL
+   s\" {\"properties\":{\"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}"
+   s\" {\"tags\":[1]}"
+   s" .tags[0]: expected a value of type `string`, found `1`; send a value of that type"
+   FAILS
+   s" VALID? takes an array of minItems" T-LABEL
+   s\" {\"minItems\":1}" s" [0]" PASSES
+   s" VALID? rejects an array under minItems" T-LABEL
+   s\" {\"minItems\":1}" s" []"
+   s" : expected at least 1 item, found 0 items; add an item"
+   FAILS
+   s" VALID? takes an array of maxItems" T-LABEL
+   s\" {\"maxItems\":2}" s" [0,1]" PASSES
+   s" VALID? rejects an array over maxItems" T-LABEL
+   s\" {\"maxItems\":2}" s" [0,1,2]"
+   s" : expected at most 2 items, found 3 items; remove an item"
+   FAILS
+   s" VALID? takes elements that differ in kind or value" T-LABEL
+   s\" {\"items\":{\"type\":[\"string\",\"number\",\"boolean\",\"null\"]},\"uniqueItems\":true}"
+   s\" [\"1\",1,1.5,true,false,null,\"a\"]" PASSES
+   s" VALID? rejects strings equal once decoded" T-LABEL
+   UNIQUE-STRINGS$ s\" [\"a\",\"\\u0061\"]"
+   s\" : expected items that differ, found `\"\\u0061\"` at [0] and [1]; remove one of the two"
+   FAILS
+   s" VALID? rejects numbers equal by value" T-LABEL
+   s\" {\"items\":{\"type\":\"number\"},\"uniqueItems\":true}" s" [1,1.0]"
+   s" : expected items that differ, found `1.0` at [0] and [1]; remove one of the two"
+   FAILS
+   s" VALID? reports the repeat whose second copy comes first" T-LABEL
+   UNIQUE-STRINGS$ s\" [\"b\",\"a\",\"a\",\"b\"]"
+   s\" : expected items that differ, found `\"a\"` at [1] and [2]; remove one of the two"
+   FAILS
+   s" VALID? rejects an exponent past a cell under uniqueItems" T-LABEL
+   s\" {\"items\":{\"type\":\"number\"},\"uniqueItems\":true}"
+   s" [1,1e99999999999999999999]"
+   s" [1]: expected a number whose exponent a signed 64-bit cell holds, found `1e99999999999999999999`; write the number with a smaller exponent"
+   FAILS ;
+
+: CHOICES ( -- )
+   s" VALID? takes anyOf's second alternative after the first fails" T-LABEL
+   s\" {\"anyOf\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}" s" 5"
+   PASSES
+   s" VALID? lists each anyOf alternative's violation" T-LABEL
+   s\" {\"anyOf\":[{\"type\":\"string\"},{\"type\":\"object\",\"required\":[\"a\"]}]}"
+   s" {}"
+   s\" : expected a value one schema of `anyOf` takes, found `{}`; meet one of them:\n  [0]: expected a value of type `string`, found `{}`; send a value of that type\n  [1]: expected a member `a`, found none; add `a`"
+   FAILS
+   s" VALID? places an anyOf member's alternatives below it" T-LABEL
+   s\" {\"properties\":{\"x\":{\"anyOf\":[{\"type\":\"string\"},{\"properties\":{\"y\":{\"type\":\"integer\"}}}]}}}"
+   s\" {\"x\":{\"y\":\"z\"}}"
+   s\" .x: expected a value one schema of `anyOf` takes, found `{\"y\":\"z\"}`; meet one of them:\n  [0]: expected a value of type `string`, found `{\"y\":\"z\"}`; send a value of that type\n  [1].y: expected a value of type `integer`, found `\"z\"`; send a value of that type"
+   FAILS
+   s" VALID? lists each oneOf alternative's violation when none passes" T-LABEL
+   s\" {\"oneOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}" s" 1"
+   s\" : expected a value exactly one schema of `oneOf` takes, found `1`; meet one of them:\n  [0]: expected a value of type `string`, found `1`; send a value of that type\n  [1]: expected a value of type `null`, found `1`; send a value of that type"
+   FAILS
+   s" VALID? takes a value one oneOf alternative takes" T-LABEL
+   s\" {\"oneOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}" s" null"
+   PASSES
+   s" VALID? names the oneOf alternatives that both take a value" T-LABEL
+   s\" {\"oneOf\":[{\"type\":\"integer\"},{\"type\":\"number\"},{\"type\":\"string\"}]}"
+   s" 1"
+   s" : expected a value exactly one schema of `oneOf` takes, found `1`, which schemas [0] and [1] take; send a value only one of them takes"
+   FAILS ;
+
 : RUN ( -- )
    T-RESET
    TAKEN REJECTED
+   VIOLATION-BUF 256 BUF:N>BLEN BUF:INIT
+   SAPD VALUES ARRAYS CHOICES
+   VIOLATION-BUF BUF:DISPOSE
    T-REPORT ;
 
 RUN
