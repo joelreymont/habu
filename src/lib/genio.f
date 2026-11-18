@@ -60,11 +60,11 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 public
 
-\ src/habu/repl.f's RD-LINE stays the terminal device's accept, the tty editor
+\ LINE-EDITOR:READ-LINE stays the terminal device's accept, the tty editor
 \ with its history; any other current input device answers with its own accept,
-\ so a REPL over a connection needs no change to repl.f.
+\ so a REPL over a connection needs no change to the editor.
 : READ-LINE ( -- ^u8 n )
-   IN-ROW TERMINAL-ROW = if RD-LINE exit then
+   IN-ROW TERMINAL-ROW = if LINE-EDITOR:READ-LINE exit then
    LINE-OPEN
    0 IO-LINE BUF:CLEAR
    LINE-FILL

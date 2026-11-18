@@ -18,6 +18,7 @@ require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
 require src/lib/task.f
+require src/lib/line-editor.f
 
 package GENIO
 
@@ -208,10 +209,10 @@ private
    STDIN-FD bytes cap read dup 0 < if drop E-IO throw then ;
 
 : TERMINAL-KEY ( -- n )
-   KEY1 ;
+   LINE-EDITOR:KEY ;
 
 : TERMINAL-ACCEPT ( ^u8 n -- n ) {: bytes:^ cap:n :}
-   RD-LINE {: line:^ len:n :}
+   LINE-EDITOR:READ-LINE {: line:^ len:n :}
    len cap > if E-OPERAND throw then
    len 0 ?do line i + c@ bytes i + c! loop
    len ;

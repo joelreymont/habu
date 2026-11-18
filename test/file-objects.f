@@ -1088,6 +1088,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" QA2" WHICH!  KEPT-AIO-REJECTED  s" the warm build links aio.f" AIO-OBJ LINKED
    s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then
    REPORT-RUN  GENIO-RUN
+   s" NG" WHICH!  s" test/fixtures/file-objects/kept-genio.f" FIXTURE-BUILD 0= if exit then  GENIO-RUN
    s" W" WHICH!  TASK-LEFT-BUILD
    s" W2" WHICH!  TASK-LEFT-BUILD
    WORD-LOAD-BUILD ;
@@ -1842,7 +1843,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 \ The route sequence's f.f: its top level makes D, a device whose emit and write add their byte
 \ counts to N, the output, types to it and leaves it there, and stores 7 into the user row U.
-\ main.f's MAIN prints U, N, how making D the output ends, and N. genio-core.f needs --repl.
+\ main.f's MAIN prints U, N, how making D the output ends, and N.
 : WRITE-ROUTE ( -- )
    L$ s" route" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    s\" require src/lib/genio-core.f\nrequire src/lib/task.f\npackage FILE-OBJECTS-ROUTE\n" SRC+

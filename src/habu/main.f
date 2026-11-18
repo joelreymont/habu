@@ -200,11 +200,11 @@ CAST: APP-ACTION ( n -- [ -- ] )
 : ROUTED ( -- )
    APP? if
       [: APP-RUN ;] ERROR:TOP-LEVEL
-      TTY? if REPL else [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL then
+      LINE-EDITOR:TTY? if REPL else [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL then
       exit
    then
    ARGC 1 > if [: ARGV-BASE ARGC RUN ;] ERROR:TOP-LEVEL exit then
-   TTY? if REPL exit then
+   LINE-EDITOR:TTY? if REPL exit then
    [: STDIN RUN-TEXT ;] ERROR:TOP-LEVEL ;
 
 \ Normal completion follows die's deliberate exit path, which runs the hook.

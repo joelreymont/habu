@@ -194,16 +194,9 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    BOOT-FILES:TOPROW ['] ROW BOOT-FILES:EACH ;
 
 
-: REPL-TERM$ ( -- str )
-   RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN TARGET? if s" src/os/macos/repl-term.f" exit then
-   RTARGET-PROFILE--ID:X86-64-UNKNOWN-LINUX-GNU TARGET? if s" src/os/linux-x86-64/repl-term.f" exit then
-   s" src/os/linux/repl-term.f" ;
-
-
 : RUNTIME-FILES ( -- )
    s" src/habu/engine-origin.f" REQUIRE-FILE
    s" src/habu/runtime-arm64.f" REQUIRE-FILE
-   REPL-TERM$ REQUIRE-FILE
    s" src/habu/repl.f" REQUIRE-FILE
    s" src/habu/code-bytes.f" REQUIRE-FILE
    s" src/habu/debug-watch.f" REQUIRE-FILE

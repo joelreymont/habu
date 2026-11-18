@@ -71,7 +71,7 @@ variable SLEN  variable SPOS  variable STEPPING
 \ Stepping is over and the last token it handed out is spent, so both mappings
 \ can go before the next line.
 : S-LINE ( -- str )
-   SBUF-RELEASE SOUT-RELEASE RD-LINE ;
+   SBUF-RELEASE SOUT-RELEASE LINE-EDITOR:READ-LINE ;
 
 
 : BPW-DUMP ( -- )

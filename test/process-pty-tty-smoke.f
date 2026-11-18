@@ -86,11 +86,8 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : EXPECT! ( process-pty-handle str -- process-pty-handle ) {: ta:^ tu:n :}
    ANYWHERE$ ta tu EXPECT-AFTER! ;
 
-\ A prompt proves the REPL came back only when it FOLLOWS the answer. The line
-\ editor redraws prompt and line on every keystroke (src/habu/repl.f REDRAW,
-\ one byte per KEY1), so the echo of the line just typed carries prompts of its
-\ own, printed before the child evaluated anything: a bare wait for the prompt
-\ is answered by the echo and proves nothing about the line it was typed for.
+\ The editor redraws the prompt on every keystroke, so the typed line's echo
+\ carries prompts: only a prompt after the answer proves the REPL came back.
 : PROMPT-AFTER! ( process-pty-handle str -- process-pty-handle ) {: na:^ nu:n :}
    na nu PROMPT$ EXPECT-AFTER! ;
 

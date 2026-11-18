@@ -1,8 +1,7 @@
 split-str
-\ kept-genio.f - a program built by tools/hb-build.f with --repl, since
-\ genio-core.f calls the REPL's KEY1: its top level builds a device and keeps
-\ its handle in OLD; MAIN builds another device and closes OLD, which
-\ E-GENIO-STATE refuses.
+\ kept-genio.f - a program built by tools/hb-build.f both as a stripped program
+\ and with --repl: its top level builds a device and keeps its handle in OLD;
+\ MAIN builds another device and closes OLD, which E-GENIO-STATE refuses.
 
 require src/lib/error.f
 require src/lib/genio-core.f
