@@ -16,8 +16,9 @@ split-str
 \ take, a bound or enum number whose exponent a signed cell does not hold,
 \ or text that is no JSON throws E-SCHEMA through REASON:THROW with the
 \ text `L:C: expected X, found Y; fix`, line and byte column in the schema
-\ text. Each sub-schema is read by a nested call, so the depth of the
-\ recursion is the schema's own.
+\ text. COMPILE makes no nested call per sub-schema: each open schema object
+\ is a level on a stack in the scratch arena, read one member or element a
+\ step, so memory, not the machine stack, bounds a schema's depth.
 \ VALID? ( ^u8 n schema ^a -- bool ) answers whether a JSON value text the
 \ reader admits satisfies the schema, and false appends the first
 \ violation, `P: expected X, found Y; fix` with P `.name` per member and
@@ -111,22 +112,38 @@ STRUCTURE schema OPAQUE
 
 private
 
-\ One COMPILE call: the arena the nodes go in, the scratch arena and the
-\ schema text, whose start rejections are placed from.
+\ What a level reads next: its own keywords, the members of its
+\ `properties` object, or the elements of its anyOf or oneOf array.
+ENUM reading keywords properties choice ;ENUM
+
+\ build is one COMPILE call: the arena the nodes go in, the scratch arena,
+\ the schema text, whose start rejections are placed from, and top, the
+\ innermost open level, NULL-PTR once the root's `}` is read.
+\ level is one schema object being read: outer is the level that opened it;
+\ seen holds a byte per name of the keyword list for READ-LISTED, and base
+\ is the root index of the list's first name; choice is the open anyOf's or
+\ oneOf's keyword index; unique-at is the offset of uniqueItems' `true`, 0
+\ when it states none.
+MUTUAL build level
 STRUCTURE build DERIVE addr
    FIELD arena ^ARENA:arena
    FIELD scratch ^ARENA:arena
    FIELD text ^u8
    FIELD root ^node
+   FIELD top ^level
 ;STRUCTURE
-
-\ One schema object being read; unique-at is the offset of uniqueItems'
-\ `true`, 0 when it states none.
 STRUCTURE level DERIVE addr
    FIELD build ^build
+   FIELD outer ^level
    FIELD node ^node
+   FIELD phase reading
+   FIELD names SPAN:span<u8>
+   FIELD base n
+   FIELD seen ^u8
+   FIELD choice n
    FIELD unique-at n
 ;STRUCTURE
+;MUTUAL
 
 ARENA NODES node
 ARENA PROPERTIES property
@@ -381,15 +398,42 @@ $73 constant SCALARS
 
 \ ---- objects ---------------------------------------------------------------
 
-defer READ-SCHEMA ( JSON:reader ^build -- JSON:reader ^node )
+\ The keywords READ-LISTED takes at the root, each optional; KEYWORD reads
+\ by the index in this list. A sub-schema takes the list past `$schema? `.
+: ROOT-KEYWORDS$ ( -- ^u8 n )
+   s" $schema? type? enum? minimum? maximum? minLength? maxLength? pattern? properties? required? additionalProperties? maxProperties? items? minItems? maxItems? uniqueItems? anyOf? oneOf? description? title? default? examples? deprecated? readOnly? writeOnly? $comment? format?" ;
 
-\ The sub-schema whose first token is current; e is the expected text for
-\ a token that opens no object.
+: KEYWORDS$ ( -- ^u8 n )
+   ROOT-KEYWORDS$ {: a:^ u:n :}  s" $schema? " nip {: k:n :}
+   a k +  u k - ;
+
+: NEW-NODE ( ^build -- ^node )
+   BUILD-ARENA @ NODES-NEW {: nd:^ :}
+   -1 nd NODE-MIN-LENGTH !  -1 nd NODE-MAX-LENGTH !
+   -1 nd NODE-MAX-PROPERTIES !
+   -1 nd NODE-MIN-ITEMS !  -1 nd NODE-MAX-ITEMS !
+   nd ;
+
+\ The node of the schema object whose `{` is current, its level pushed to
+\ read it over the keyword list; base is the root index of the list's first
+\ name.
+: OPEN ( ^build ^u8 n n -- ^node ) {: b:^ list:^ lu:n base:n :}
+   b BUILD-SCRATCH @ {: s:^ :}
+   s LEVELS-NEW {: lv:^ :}
+   b lv LEVEL-BUILD !  b BUILD-TOP @ lv LEVEL-OUTER !
+   b NEW-NODE lv LEVEL-NODE !  READING-KEYWORDS lv LEVEL-PHASE !
+   list lu SPAN:MAKE lv LEVEL-NAMES !  base lv LEVEL-BASE !
+   s list lu JSON:READ-NAME-COUNT ARENA:ALLOC drop lv LEVEL-SEEN !
+   lv b BUILD-TOP !
+   lv LEVEL-NODE @ ;
+
+\ The sub-schema whose first token is current, its level pushed; e is the
+\ expected text for a token that opens no object.
 : SUB ( JSON:reader ^build ^u8 n -- JSON:reader ^node ) {: b:^ e:^ eu:n :}
    JSON:READ-TOKEN JSON:T-OBJ <> if
       e eu s" write a schema object, `{}` for any value" REJECT
    then
-   b READ-SCHEMA ;
+   b KEYWORDS$ 1 OPEN ;
 
 \ Whether the property is named as the current key; p stays.
 : SAME-NAME? ( JSON:reader ^property -- JSON:reader ^property bool )
@@ -409,7 +453,7 @@ defer READ-SCHEMA ( JSON:reader ^build -- JSON:reader ^node )
    NODE-PROPERTIES
    begin dup @ NULL-PTR <> while @ PROPERTY-NEXT repeat ! ;
 
-\ The key is current; the reader ends on its value's last token.
+\ The key is current; its value's level is pushed.
 : PROPERTY ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}  lv LEVEL-BUILD @ {: b:^ :}
    nd NODE-PROPERTIES @ NAMED? if
@@ -428,7 +472,13 @@ defer READ-SCHEMA ( JSON:reader ^build -- JSON:reader ^node )
       s" `properties` as an object of schema objects"
       s" write an object mapping each property name to its schema" REJECT
    then
-   begin JSON:READ-NEXT JSON:T-OBJ-END <> while lv PROPERTY repeat ;
+   READING-PROPERTIES lv LEVEL-PHASE ! ;
+
+: PROPERTIES-STEP ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
+   JSON:READ-NEXT JSON:T-OBJ-END = if
+      READING-KEYWORDS lv LEVEL-PHASE ! exit
+   then
+   lv PROPERTY ;
 
 : SAME-ENTRY? ( JSON:reader ^entry -- JSON:reader ^entry bool )
    {: en:^ :}
@@ -522,35 +572,32 @@ defer READ-SCHEMA ( JSON:reader ^build -- JSON:reader ^node )
 
 : CHOICE-FIX$ ( -- ^u8 n ) s" list the alternatives' schemas in an array" ;
 
-\ e is the expected text for the value, el for an element.
-: CHOICE-RULE ( JSON:reader ^build ^^branch ^u8 n ^u8 n -- JSON:reader )
-   {: b:^ head:^ e:^ eu:n el:^ elu:n :}
-   JSON:READ-TOKEN JSON:T-ARR <> if e eu CHOICE-FIX$ REJECT then
-   begin JSON:READ-NEXT JSON:T-ARR-END <> while
-      b head el elu BRANCH
-   repeat
-   head @ NULL-PTR <> if exit then
-   e eu CHOICE-FIX$ REJECT ;
+\ The expected text for the value of choice keyword idx, 16 anyOf or 17
+\ oneOf.
+: CHOICE-EXPECTED$ ( n -- ^u8 n )
+   16 = if s" `anyOf` as an array of one schema object or more" exit then
+   s" `oneOf` as an array of one schema object or more" ;
+
+: ELEMENT-EXPECTED$ ( n -- ^u8 n )
+   16 = if s" an `anyOf` element as a schema object" exit then
+   s" a `oneOf` element as a schema object" ;
 
 : CHOICE-KEYWORD ( JSON:reader n ^level -- JSON:reader ) {: idx:n lv:^ :}
-   lv LEVEL-BUILD @ {: b:^ :}  lv LEVEL-NODE @ {: nd:^ :}
-   idx 16 = if
-      b nd NODE-ANY-OF s" `anyOf` as an array of one schema object or more"
-      s" an `anyOf` element as a schema object" CHOICE-RULE exit
+   JSON:READ-TOKEN JSON:T-ARR <> if
+      idx CHOICE-EXPECTED$ CHOICE-FIX$ REJECT
    then
-   b nd NODE-ONE-OF s" `oneOf` as an array of one schema object or more"
-   s" a `oneOf` element as a schema object" CHOICE-RULE ;
+   idx lv LEVEL-CHOICE !  READING-CHOICE lv LEVEL-PHASE ! ;
+
+: CHOICE-STEP ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
+   lv LEVEL-CHOICE @ {: idx:n :}  lv LEVEL-NODE @ {: nd:^ :}
+   idx 16 = if nd NODE-ANY-OF else nd NODE-ONE-OF then {: head:^ :}
+   JSON:READ-NEXT JSON:T-ARR-END <> if
+      lv LEVEL-BUILD @ head idx ELEMENT-EXPECTED$ BRANCH exit
+   then
+   head @ NULL-PTR = if idx CHOICE-EXPECTED$ CHOICE-FIX$ REJECT then
+   READING-KEYWORDS lv LEVEL-PHASE ! ;
 
 \ ---- schemas ---------------------------------------------------------------
-
-\ The keywords READ-MEMBERS takes at the root, each optional; KEYWORD reads
-\ by the index in this list. A sub-schema takes the list past `$schema? `.
-: ROOT-KEYWORDS$ ( -- ^u8 n )
-   s" $schema? type? enum? minimum? maximum? minLength? maxLength? pattern? properties? required? additionalProperties? maxProperties? items? minItems? maxItems? uniqueItems? anyOf? oneOf? description? title? default? examples? deprecated? readOnly? writeOnly? $comment? format?" ;
-
-: KEYWORDS$ ( -- ^u8 n )
-   ROOT-KEYWORDS$ {: a:^ u:n :}  s" $schema? " nip {: k:n :}
-   a k +  u k - ;
 
 \ Keywords from 18 on state no rule.
 : KEYWORD ( JSON:reader n ^level -- JSON:reader ) {: idx:n lv:^ :}
@@ -559,13 +606,6 @@ defer READ-SCHEMA ( JSON:reader ^build -- JSON:reader ^node )
    idx 16 < if idx lv ARRAY-KEYWORD exit then
    idx 18 < if idx lv CHOICE-KEYWORD exit then
    JSON:READ-SKIP-VALUE ;
-
-: NEW-NODE ( ^build -- ^node )
-   BUILD-ARENA @ NODES-NEW {: nd:^ :}
-   -1 nd NODE-MIN-LENGTH !  -1 nd NODE-MAX-LENGTH !
-   -1 nd NODE-MAX-PROPERTIES !
-   -1 nd NODE-MIN-ITEMS !  -1 nd NODE-MAX-ITEMS !
-   nd ;
 
 \ Whether the node's items state scalar types only.
 : SCALAR-ITEMS? ( ^node -- bool )
@@ -584,27 +624,29 @@ defer READ-SCHEMA ( JSON:reader ^build -- JSON:reader ^node )
    s" remove `uniqueItems`, or give `items` a `type` of scalars only"
    REJECT-AT ;
 
-\ The schema object whose `{` is current, read over the keyword list; base
-\ is the root index of the list's first keyword.
-: OBJECT ( JSON:reader ^build ^u8 n n -- JSON:reader ^node )
-   {: b:^ list:^ lu:n base:n :}
-   b BUILD-SCRATCH @ LEVELS-NEW {: lv:^ :}
-   b lv LEVEL-BUILD !  b NEW-NODE lv LEVEL-NODE !
-   list lu [: base + lv KEYWORD ;] JSON:READ-MEMBERS
-   lv CHECK-UNIQUE
-   lv LEVEL-NODE @ ;
+\ The next keyword; at the schema's `}` its level is popped.
+: KEYWORDS-STEP ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
+   lv LEVEL-NAMES @ SPAN:$ lv LEVEL-SEEN @ JSON:READ-LISTED {: idx:n :}
+   idx 0< if
+      lv CHECK-UNIQUE
+      lv LEVEL-OUTER @ lv LEVEL-BUILD @ BUILD-TOP ! exit
+   then
+   idx lv LEVEL-BASE @ + lv KEYWORD ;
 
-: SUB-SCHEMA ( JSON:reader ^build -- JSON:reader ^node ) {: b:^ :}
-   b KEYWORDS$ 1 OBJECT ;
-
-: INSTALL ( -- ) [: SUB-SCHEMA ;] is READ-SCHEMA ;
-INSTALL
+\ Reads the next member or element of the innermost open level.
+: STEP ( JSON:reader ^build -- JSON:reader )
+   BUILD-TOP @ {: lv:^ :}
+   lv LEVEL-PHASE @ MATCH reading
+      keywords OF lv KEYWORDS-STEP ENDOF
+      properties OF lv PROPERTIES-STEP ENDOF
+      choice OF lv CHOICE-STEP ENDOF
+   ;MATCH ;
 
 : ROOT ( JSON:reader ^build -- JSON:reader ^node ) {: b:^ :}
    JSON:READ-TOKEN JSON:T-OBJ <> if
       s" a schema object" s" write the schema as a JSON object" REJECT
    then
-   b ROOT-KEYWORDS$ 0 OBJECT ;
+   b ROOT-KEYWORDS$ 0 OPEN ;
 
 \ s is the scratch arena; a throw leaves the cursor owning nothing.
 : READ-ROOT ( ^u8 n ^ARENA:arena ^ARENA:arena -- schema )
@@ -613,7 +655,9 @@ INSTALL
    a b BUILD-ARENA !  s b BUILD-SCRATCH !  src b BUILD-TEXT !
    s CURSORS-NEW {: c:^ :}
    [: c src u JSON:READ-INIT JSON:READ-NEXT drop
-      b ROOT b BUILD-ROOT ! JSON:READ-FINISH ;] catch {: code:n :}
+      b ROOT b BUILD-ROOT !
+      begin b BUILD-TOP @ NULL-PTR <> while b STEP repeat
+      JSON:READ-FINISH ;] catch {: code:n :}
    code 0<> if c JSON:READ-DISPOSE code RETHROW then
    b BUILD-ROOT @ SCHEMA-MAKE ;
 
