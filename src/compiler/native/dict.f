@@ -237,25 +237,15 @@ private
 : REC-BINDING ( ^n -- n n )
    true REC-CODE ;
 
-public
-
-\ Whether a compiled call may bind an internal record (DNAME-INT) with flag cell
-\ f: an owned one (DNAME-OWNED) always, since the checker decides that call;
-\ any other only while the TRUSTED: compilation cell is armed. Asked by REC-CALL.
-: INT-CALL? ( n -- bool )
-   DNAME-OWNED and 0<> if true exit then
-   data-base TRUSTED-CELL + @ 0<> ;
-
-private
-
 \ Where a compiled CALL to the bound record may branch, or zero: an internal
-\ record as INT-CALL? admits it, any other when visible.
+\ record always, since every one a lookup binds is owned (DNAME-OWNED) and the
+\ checker decides that call; any other when visible.
 : REC-CALL ( ^n -- n n )
    {: rec:^ :}
    rec XREF-FOUND? 0= if 0 0 exit then
-   rec XREF-FLAGS {: f:n :}
-   f DNAME-INT and 0<> if f INT-CALL? else rec VISIBLE-RECORD? then
-   0= if 0 0 exit then
+   rec XREF-FLAGS DNAME-INT and 0= if
+      rec VISIBLE-RECORD? 0= if 0 0 exit then
+   then
    rec REC-BINDING ;
 
 \ A `PACKAGE:WORD` spelling's record among the publics of the top-level package

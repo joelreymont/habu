@@ -215,15 +215,6 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECTION:HELP  s" call " SAY  a u TICKS  s"  directly instead of ticking it" SAY
    REJECT ;
 
-\ A call of an engine-internal record (NDICT:INT-CALL?).
-: INTERNAL ( ^u8 n -- ) {: a:^ u:n :}
-   s" E-UNDEFINED" REJECTION:OPEN
-   s" compiled code cannot call " SAY  a u TICKS
-   a u REJECTION:AT  s" internal to the engine" SAY
-   REJECTION:HELP  s" call a public word that does what " SAY  a u TICKS
-   s"  does" SAY
-   REJECT ;
-
 \ `is` with no operand before the body's end.
 : IS-ALONE ( str -- ) {: a:^ u:n :}
    s" E-T0-DEFER" REJECTION:OPEN
@@ -1958,9 +1949,6 @@ EXPORT CHECK:WF-N@
    r OP-CODE {: code:n :}
    code 0<> if a code to INLINE if exit then then
    rec XREF-FLAGS {: flags:n :}
-   flags DNAME-INT and 0<> if
-      flags NDICT:INT-CALL? 0= if a u INTERNAL then
-   then
    to 0= if a u NO-CODE then
    ORD @ 1- {: k:n :}
    k COUNT-SLOT @ {: s:n :}

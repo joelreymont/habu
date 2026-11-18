@@ -144,7 +144,6 @@ $8000000000000000 constant DNAME-INT
 \ the record. With it a compiled call is the checker's decision through the
 \ rows: the owner's checked callers compile, and the global trusted-only row
 \ refuses a checked caller elsewhere.
-\ DNAME-INT without it keeps the compile refusal outside a TRUSTED: body.
 $0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots.
 131072 constant DICT-CAP

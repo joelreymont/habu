@@ -37,14 +37,12 @@ public
 \ it: a `:` definition with `\` and `( ... )` comments; a number literal; a
 \ `{: :}` group or a name it bound; fourteen keywords (if else then {: :} s" S\"
 \ [package] package public private ;package using ;using) and, in a body,
-\ [type]; a word the sealed source
-\ defined; a public word of an admitted package that checked source may call and
-\ the engine has not marked internal; after SOURCE-ROOT!, a top-level global
-\ `require` with a literal path. `using` does not admit a package, and `package`
-\ refuses one that existed at the seal (inside it its private words would come
-\ first); a package the sealed source made opens and reopens as usual. The
-\ checker still certifies every body, and an admitted program runs as it does
-\ unsealed.
+\ [type]; a word the sealed source defined; a public word of an admitted package
+\ that checked source may call; after SOURCE-ROOT!, a top-level global `require`
+\ with a literal path. `using` does not admit a package, and `package` refuses
+\ one that existed at the seal (inside it its private words would come first); a
+\ package the sealed source made opens and reopens as usual. The checker still
+\ certifies every body, and an admitted program runs as it does unsealed.
 \ No back edge is in the vocabulary (forward branches only; no loop, recursion or
 \ xt; no self-name before `;`; no source read under the default seal), so a sealed
 \ load's calls are ordered by dictionary index and every run is bounded down to
