@@ -27,7 +27,10 @@ require src/lib/xml/write.f
 \ later reads are E-STATE and CLOSE still consumes it. An input code
 \ (E-MALFORMED, E-TRUNCATED, E-UTF8, E-UTF16, E-SCALAR, E-ENTITY, E-NAMESPACE,
 \ E-DTD, E-ENCODING) is thrown through REASON:THROW with the text
-\ `L:C: expected <e>, found <f>; <fix>`; a caller's fault carries none.
+\ `L:C: expected <e>, found <f>; <fix>`; a caller's fault carries none. L:C is
+\ the place in the document as given, or in the text an escaping or encoding
+\ word is given: a line ends at LF, and a column counts bytes in UTF-8 and
+\ US-ASCII and 16-bit units in UTF-16, a byte order mark counted on line 1.
 \ Decoders validate the whole result before writing and refuse overlap with
 \ the source or the reader's buffers. A DTD is E-DTD (not a validating
 \ processor); an unsupported encoding is E-ENCODING. Qualify XML:CLOSE and

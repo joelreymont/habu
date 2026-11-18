@@ -1,24 +1,25 @@
 split-str
 \ reject.f - the text of an XML rejection, thrown with its code; part of package
 \ XML (src/lib/xml.f). The text is `L:C: expected <expected>, found <found>;
-\ <fix>`, L and C counting bytes from the first byte of the span given, which
-\ sits at a line and column the caller gives. <found> is the token at the
-\ place: the end of the input; `byte $HH` for a control byte or a byte no UTF-8
-\ character starts; else in backticks a markup byte, a space, the run of whole
-\ characters, each an ASCII graphic byte but markup or a UTF-8 character above
-\ ASCII, or at `&` the `&`, the run after it and a `;` closing it; at most
-\ FOUND-CAP bytes of it cut on a character's first byte, and then `...` when
-\ cut or when the run reaches the span's end and input follows the span. A
-\ character the span's end cuts, with input after it, counts as reaching the
-\ span's end, and alone shows as `...`. Found counts over the span and never
-\ refills. The text's size is counted before it is written, so it needs no
-\ fixed buffer and never touches SB.
+\ <fix>`, L and C counted from the first byte of the span given, which sits at
+\ the place the caller gives. <found> is the token at the place: the end of
+\ the input; `byte $HH` for a control byte or a byte no UTF-8 character starts;
+\ else in backticks a markup byte, a space, the run of whole characters, each an
+\ ASCII graphic byte but markup or a UTF-8 character above ASCII, or at `&` the
+\ `&`, the run after it and a `;` closing it; at most FOUND-CAP bytes of it cut
+\ on a character's first byte, and then `...` when cut or when the run reaches
+\ the span's end and input follows the span. A character the span's end cuts,
+\ with input after it, counts as reaching the span's end, and alone shows as
+\ `...`. Found counts over the span and never refills. The text's size is
+\ counted before it is written, so it needs no fixed buffer and never touches
+\ SB.
 \ REJECT-UNITS places in UTF-16 bytes: a line ends at an LF unit, a column
 \ counts units, and <found> is the end of the input, `byte $HH` for a lone
 \ last byte, or `unit $HHHH`.
 
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
+require src/lib/utf16.f
 require src/lib/fmt.f
 require src/lib/reason.f
 require src/lib/memory.f
@@ -28,16 +29,35 @@ package XML
 
 32 constant FOUND-CAP
 
-\ Where a span's first byte sits in the whole input, and whether input follows
-\ the span.
+\ A place's kind: its columns count UTF-16 units for COUNT-UNITS, else bytes;
+\ input follows the span only for COUNT-MORE.
+0 constant COUNT-BYTES
+1 constant COUNT-MORE
+2 constant COUNT-UNITS
+
+\ Where a span's first byte sits in the whole input.
 STRUCTURE place
    FIELD line n
    FIELD column n
-   FIELD more bool
+   FIELD kind n
 ;STRUCTURE
 
-\ The place of a span counted from its own first byte, with nothing after it.
-: WHOLE ( -- place ) 1 1 false PLACE-MAKE ;
+\ The place of a span counted from its own first byte.
+: WHOLE ( -- place ) 1 1 COUNT-BYTES PLACE-MAKE ;
+
+\ The line and column of byte off of the UTF-8 bytes from a, counting UTF-16
+\ units from line l, column c.
+: UTF16-POSITION ( ^u8 n n n -- n n ) {: a:^ off:n l:n c:n :}
+   a a off + l c 0 REJECTION:POSITION drop {: line:n col:n :}
+   line l = if 0 c else off col - 1+ 1 then {: from:n base:n :}
+   line base a from + off from - UTF16:UNITS + ;
+
+\ The line and column of byte off of the span a, whose first byte sits at the
+\ place at.
+: PLACE-POSITION ( ^u8 place n -- n n ) {: a:^ at:place off:n :}
+   at PLACE-UNMAKE {: l:n c:n kind:n :}
+   kind COUNT-UNITS = if a off l c UTF16-POSITION exit then
+   a a off + l c 0 REJECTION:POSITION drop ;
 
 0 constant FOUND-END
 1 constant FOUND-BYTE
@@ -169,8 +189,8 @@ STRUCTURE place
 \ Rejects at off in the span a u, whose first byte sits at the place at.
 : REJECT-FROM ( str place n str str n -- )
    {: a:^ u:n at:place off:n ea:^ eu:n fa:^ fu:n code:n :}
-   at PLACE-UNMAKE {: bl:n bc:n more:bool :}
-   a a off + bl bc 0 REJECTION:POSITION drop {: line:n col:n :}
+   a at off PLACE-POSITION {: line:n col:n :}
+   at PLACE-UNMAKE nip nip COUNT-MORE = {: more:bool :}
    a u off more FOUND-FORM {: len:n form:n :}
    line col a off len form ea eu fa fu code REJECT-WRITE ;
 

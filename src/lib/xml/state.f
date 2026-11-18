@@ -9,7 +9,6 @@ require src/lib/utf8-scalar.f
 require src/lib/byte-buffer.f
 require src/lib/siphash.f
 require src/lib/entropy.f
-require src/core/rejection.f
 
 package XML
 public
@@ -51,6 +50,8 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD wire-original-len n
    FIELD wire-storage ^u8
    FIELD wire-storage-len n
+   FIELD head-columns n
+   FIELD window-kind n
    FIELD ns-cap n
    FIELD frames ^n
    FIELD attrs ^n
@@ -156,6 +157,11 @@ NULL-PTR CURSOR-WIRE-ORIGINAL NULL-PTR - CELL / constant WIRE-ORIGINAL-IDX
 NULL-PTR CURSOR-WIRE-ORIGINAL-LEN NULL-PTR - constant WIRE-ORIGINAL-LEN
 NULL-PTR CURSOR-WIRE-STORAGE NULL-PTR - CELL / constant WIRE-STORAGE-IDX
 NULL-PTR CURSOR-WIRE-STORAGE-LEN NULL-PTR - constant WIRE-STORAGE-LEN
+\ The columns before a source reader's window on line 1, 0 for another reader.
+NULL-PTR CURSOR-HEAD-COLUMNS NULL-PTR - constant HEAD-COLUMNS
+\ The place kind of a source reader's window; another reader leaves it zero,
+\ which counts bytes.
+NULL-PTR CURSOR-WINDOW-KIND NULL-PTR - constant WINDOW-KIND
 NULL-PTR CURSOR-NS-CAP NULL-PTR - constant NS-CAP
 NULL-PTR CURSOR-FRAMES NULL-PTR - CELL / constant FRAMES-IDX
 NULL-PTR CURSOR-ATTRS NULL-PTR - CELL / constant ATTRS-IDX
@@ -311,13 +317,19 @@ LINEAR: ERASE ( XML:reader -- ^n )
    {: state :}
    state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
 
+: UTF16-SOURCE? ( n -- bool )
+   dup SOURCE-UTF16-LE-BOM = over SOURCE-UTF16-BE-BOM = or
+   over SOURCE-UTF16-LE-DECL = or swap SOURCE-UTF16-BE-DECL = or ;
+
 \ An input reader's input follows the window until its fill has answered 0.
 : WINDOW-PLACE ( ^n -- place )
    {: state :}
-   state INPUT? 0= if WHOLE exit then
+   state INPUT? 0= if
+      1 state HEAD-COLUMNS + @ 1+ state WINDOW-KIND + @ PLACE-MAKE exit
+   then
    state STREAM@ {: stream :}
    stream STREAM-LINE @ stream STREAM-COLUMN @
-   stream STREAM-EOF @ 0= PLACE-MAKE ;
+   stream STREAM-EOF @ 0= if COUNT-MORE else COUNT-BYTES then PLACE-MAKE ;
 
 \ Rejects at off in the window, placed in the whole input.
 : REJECT ( ^n n ^u8 n ^u8 n n -- )
@@ -546,9 +558,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-INPUT-CAP @ {: chunk:n :}
    state SOURCE-LEN + @ chunk + cap <=
    cap 4 / chunk tail max <= and if exit then
-   state SOURCE-IDX ptr-field @ {: window:^ :}
-   window window consumed + stream STREAM-LINE @ stream STREAM-COLUMN @ 0
-      REJECTION:POSITION drop
+   state SOURCE-IDX ptr-field @ state WINDOW-PLACE consumed PLACE-POSITION
    stream STREAM-COLUMN ! stream STREAM-LINE !
    state SOURCE-IDX ptr-field @ consumed + tail BUF:N>BLEN
       stream TOKEN-BUF BUF:REPLACE
@@ -709,6 +719,17 @@ private
       then
    then ;
 
+\ A source reader's window is the lexical text, after the byte order mark
+\ that starts line 1: the mark's bytes in UTF-8, one unit in UTF-16.
+: WINDOW-COLUMNS ( ^n ^n -- )
+   {: state source-state :}
+   source-state SRC-BOM-LEN + @ {: bom:n :}
+   state SOURCE-MODE + @ UTF16-SOURCE? if
+      COUNT-UNITS bom 2 /
+   else
+      COUNT-BYTES bom
+   then state HEAD-COLUMNS + ! state WINDOW-KIND + ! ;
+
 : SOURCE-BODY ( ^n ^n -- ^n ^n )
    {: state source-state :}
    source-state SRC-LEXICAL$ {: lexical size:n :}
@@ -718,6 +739,7 @@ private
    source-state SRC-ORIGINAL$ {: original original-len:n :}
    original state WIRE-ORIGINAL-IDX ptr-field !
    original-len state WIRE-ORIGINAL-LEN + !
+   state source-state WINDOW-COLUMNS
    source-state BYTE-VIEW state WIRE-STORAGE-IDX ptr-field !
    source-state SRC-STORAGE-LEN + @ state WIRE-STORAGE-LEN + !
    state READER-TABLES

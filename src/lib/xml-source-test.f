@@ -734,7 +734,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    SAID-NEXT
    s" a byte order mark takes UTF-16" T-LABEL
    s" <?xml version='1.0' encoding='UTF-8'?><a/>" true BOM-ASCII XML:E-ENCODING
-   s\" 1:31: expected `UTF-16`, as the byte order mark shows, found `UTF-8`; declare `encoding=\qUTF-16\q`"
+   s\" 1:32: expected `UTF-16`, as the byte order mark shows, found `UTF-8`; declare `encoding=\qUTF-16\q`"
    SAID-NEXT
    s" little-endian UTF-16 without a byte order mark takes UTF-16LE" T-LABEL
    s" <?xml version='1.0' encoding='UTF-16BE'?><a/>" true ASCII>UTF16 XML:E-ENCODING
@@ -766,6 +766,31 @@ CAST: ENCODING>N ( XML:encoding -- n )
    s\" <a>\x0A<b/>\x0A\xFF</a>" XML:E-UTF8 BAD-INIT
    XML:E-UTF8 s" 3:1: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID ;
 
+\ Each source-stage case and the reader case after it reject documents that
+\ differ only at the rejected place, and give it one line and column.
+: PLACE-TEXTS ( -- )
+   s" a source stage counts a UTF-8 byte order mark on line 1" T-LABEL
+   s\" \xEF\xBB\xBF<a><b>xxxxxxxx</b><c>yyyyyyyy</c>\x01</a>" XML:E-SCALAR BAD-INIT
+   XML:E-SCALAR s" 1:37: expected a character XML 1.0 allows, found byte $01; remove the character, or write one XML 1.0 allows" SAID
+   s" a source reader counts a UTF-8 byte order mark on line 1" T-LABEL
+   s\" \xEF\xBB\xBF<a><b>xxxxxxxx</b><c>yyyyyyyy</c>&foo;</a>" XML:E-ENTITY
+   s" 1:37: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&foo;`; write `&amp;` for a literal `&`, and end each reference with `;`"
+   SAID-NEXT
+   s" a source stage counts UTF-16LE in units" T-LABEL
+   s\" \xFF\xFE<\za\z>\z\n\z<\zb\z>\z\xE9\z\x3D\xD8\z\xDE\x01\z<\z/\zb\z>\z<\z/\za\z>\z" XML:E-SCALAR BAD-INIT
+   XML:E-SCALAR s" 2:7: expected a character XML 1.0 allows, found unit $0001; remove the character, or write one XML 1.0 allows" SAID
+   s" a source reader counts UTF-16LE in units" T-LABEL
+   s\" \xFF\xFE<\za\z>\z\n\z<\zb\z>\z\xE9\z\x3D\xD8\z\xDE&\zf\zo\zo\z;\z<\z/\zb\z>\z<\z/\za\z>\z" XML:E-ENTITY
+   s" 2:7: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&foo;`; write `&amp;` for a literal `&`, and end each reference with `;`"
+   SAID-NEXT
+   s" a source stage counts UTF-16BE in units" T-LABEL
+   s\" \xFE\xFF\z<\za\z>\z\n\z<\zb\z>\z\xE9\xD8\x3D\xDE\z\z\x01\z<\z/\zb\z>\z<\z/\za\z>" XML:E-SCALAR BAD-INIT
+   XML:E-SCALAR s" 2:7: expected a character XML 1.0 allows, found unit $0001; remove the character, or write one XML 1.0 allows" SAID
+   s" a source reader counts UTF-16BE in units" T-LABEL
+   s\" \xFE\xFF\z<\za\z>\z\n\z<\zb\z>\z\xE9\xD8\x3D\xDE\z\z&\zf\zo\zo\z;\z<\z/\zb\z>\z<\z/\za\z>" XML:E-ENTITY
+   s" 2:7: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&foo;`; write `&amp;` for a literal `&`, and end each reference with `;`"
+   SAID-NEXT ;
+
 T-RESET
 UTF16-READ
 ODD-STORAGE
@@ -795,5 +820,6 @@ REFUSED-READER-KEEPS-SOURCE
 REJECTIONS
 DECLARATION-TEXTS
 UNIT-TEXTS
+PLACE-TEXTS
 T-REPORT
 ;package
