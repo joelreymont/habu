@@ -419,7 +419,7 @@ EXPORT CHECK:WIDTH-FAM
    na nu DECL-REJECT:TOKEN!
    s" unknown" s" " na nu SD-PTR-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
 
-defer SD-PARSE-NODE ( str n n -- n n )
+defer SD-PARSE-NODE ( str n n -- n n nominal )
 
 \ The argument spelled at aa au fills slot k of fam; LETTER-TYPE judges a
 \ parameter argument. A wrap reaches no region slot: each follows two scope
@@ -501,7 +501,7 @@ defer SD-PARSE-NODE ( str n n -- n n )
    base SD-ARG-N !
    fam start k SCHEMA-APP j ;
 
-defer SD-LOOSE-NODE ( str n -- n )
+defer SD-LOOSE-NODE ( str n -- n nominal )
 
 : SD-LOOSE-ARGS ( str n n -- n ) {: a:^ u:n h:n i:n :}
    a u  a u i SD-LOOSE-NODE  SD-SKIP {: j:n :}
@@ -1124,10 +1124,10 @@ private
 
 \ The member table is cleared on both exits: a later declaration's family may
 \ reuse a rejected member's id.
-: SD-FRONT ( -- str str [ -- ] )
+: SD-FRONT ( -- str str [ -- renders parses nominal ] )
    SD-KIND$ s" ;structure"
    [: SD-RESET [: DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
-: MUTUAL-FRONT ( -- str str [ -- ] )
+: MUTUAL-FRONT ( -- str str [ -- renders parses nominal ] )
    s" mutual" s" ;mutual"
    [: SD-RESET [: MUTUAL-DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
 
@@ -1172,7 +1172,7 @@ private
 \ Takes the name as written and the kind, the declaration's keyword, "newtype"
 \ or "deftype". The stream has no closer, so a rejected one resynchronizes to
 \ its end.
-: WRAP-FRONT ( str str -- str str [ -- ] )
+: WRAP-FRONT ( str str -- str str [ -- parses nominal ] )
    2swap NAME-U ! NAME-A !
    s" " [: SD-RESET WRAP-DRIVE ;] ;
 

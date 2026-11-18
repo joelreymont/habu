@@ -729,7 +729,7 @@ variable TDV-ARG-N
    node TDV-ARG-N @ cells TDV-ARG-SCR + !
    TDV-ARG-N @ 1 + TDV-ARG-N ! ;
 
-defer TDV-ELEM-XT ( str -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recursion
+defer TDV-ELEM-XT ( str -- n nominal )   \ forward ref for the ELEM<->ARGS<->QUOT recursion
 
 \ The layout or cell family a payload token names, arity left to TDV-ARGS-BUILD.
 \ One with a scope or region parameter is rejected: a SUMTYPE header lists none.
@@ -1420,7 +1420,7 @@ private
 
 
 \ TYPE-DECL's parts install the transaction runner at load.
-defer TDECL-TXN-XT ( [ -- ] -- )
+defer TDECL-TXN-XT ( [ -- renders parses nominal ] -- renders nominal )
 
 : CHECKER-DEFFAMILY-BODY ( -- )
    s" write a name after `NEWTYPE`, as in `NEWTYPE meters`" TDECL-HEADER! {: ar:n :}

@@ -492,7 +492,7 @@ SUM-U 32 + constant HEAD-U
    KERNEL-ENGINE? @ ['] KERNEL-WRITE WRITER execute ;
 
 \ LINKER:WITH's build of the mode, which is idle once it returns.
-: LINK ( ^u8 n RTARGET:resolved-target [ -- ] -- )
+: LINK ( ^u8 n RTARGET:resolved-target [ -- renders nominal roots ] -- )
    {: mode:^ modeu:n target:RTARGET:resolved-target body :}
    mode modeu OPENING
    mode modeu target body LINKER:WITH

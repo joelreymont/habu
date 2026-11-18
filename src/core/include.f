@@ -1809,7 +1809,7 @@ variable SCRIPT-NAMED-PEND
 package SOURCE-UNIT
 private
 
-TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ]
+TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ]
 
 : ORDINARY ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
@@ -1820,8 +1820,8 @@ public
 : LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- ) LOAD-XT @ execute ;
 \ A runner calls the file's quotation as `0 sourceu q execute` with nothing of
 \ its own beneath it; the quotation throws for a refused file.
-: USE ( [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ] -- ) LOAD-XT ! ;
-: CURRENT ( -- [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ] ) LOAD-XT @ ;
+: USE ( [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ] -- ) LOAD-XT ! ;
+: CURRENT ( -- [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ] ) LOAD-XT @ ;
 : RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
 
 ;package

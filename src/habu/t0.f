@@ -2505,7 +2505,7 @@ EXPORT CHECKER-TAPE:DISARM
    FORGET-MEASURES
    rc SETTLE-UNIT  rc 0<> if rc throw then ;
 
-: DISPATCH! ( [ str -- ] -- )
+: DISPATCH! ( [ str -- nominal ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
 
 public

@@ -669,7 +669,7 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
 \ resynchronized and reset on the way out; 0 or the reject code. The body
 \ quotation rides the data stack through the catch (docs/forth.md, checked
 \ catch): the quotation is stack-preserving, so the xt is dropped after it.
-: DRIVE ( str [ -- ] -- n )
+: DRIVE ( str [ -- renders parses nominal ] -- n )
    {: ta:^ tu:n body :}
    MISS-CLEAR RESET
    ta TERM-A !  tu TERM-U !
@@ -693,7 +693,7 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
 public
 
 \ RUN ( kind terminator body -- ) : one live declaration.
-: RUN ( ^u8 n ^u8 n [ -- ] -- )
+: RUN ( ^u8 n ^u8 n [ -- renders parses nominal ] -- )
    {: ka:^ ku:n ta:^ tu:n body :}
    ka ku DECL-REJECT:OPEN
    ta tu body DRIVE DECL-REJECT:GUARD-CODE ;
@@ -701,7 +701,7 @@ public
 \ REPLAY-OUTCOME ( name body-text kind terminator body -- span bool ) : register
 \ a declaration from tokens a tool has already lexed, defining no word, and
 \ answer whether a type it names may still arrive, and which.
-: REPLAY-OUTCOME ( str str str str [ -- ] -- str bool )
+: REPLAY-OUTCOME ( str str str str [ -- renders parses nominal ] -- str bool )
    {: na:^ nu:n ba:^ bu:n ka:^ ku:n ta:^ tu:n body :}
    na nu ba bu DECL-REPLAY:RP-CLAIM
    ka ku DECL-REJECT:OPEN

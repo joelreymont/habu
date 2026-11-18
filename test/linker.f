@@ -104,7 +104,7 @@ variable HEADER0                     \ hb's DATA header, its distance from NULL-
    NSHADOW:OPEN? TFALSE
    HEADER-DIFFS 0 T= ;
 
-: BUILD ( [ -- ] -- )
+: BUILD ( [ -- renders nominal roots ] -- )
    {: body :}
    s" test" RTARGET:HOST-TARGET body LINKER:WITH ;
 

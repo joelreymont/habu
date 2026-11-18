@@ -331,7 +331,7 @@ TYPED-VARIABLE TICK-REMAINDER bool
    TICK-CONTEXT-ORDER @ DEF-TICK-ORDER !
    TICK-CONTEXT-OWNER @ DEF-TICK-OWNER ! ;
 
-defer COMPOSE-FILE ( str str -- )
+defer COMPOSE-FILE ( str str -- renders parses nominal )
 
 : SOURCE@ ( -- ^u8 )
    SOURCE-A @ ;
@@ -3285,7 +3285,7 @@ variable LOAD-U
 : LOAD$ ( -- str )
    LOAD-A @ LOAD-U @ ;
 
-: FILE-LOAD ( bool -- [ str -- str ] )
+: FILE-LOAD ( bool -- [ str -- str renders parses nominal ] )
    IF [: 2dup LOAD$ COMPOSE-INCLUDED ;] EXIT THEN
    [: 2dup LOAD$ COMPOSE-REQUIRED ;] ;
 

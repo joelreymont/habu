@@ -1701,8 +1701,8 @@ variable PARAM-CAP     variable PARAM-SCR-CAP-V
 \ type-family.f at prefix load. The TFAM-CON-LIN, TFAM-MEMBERS, TFAM-LIN-N
 \ and TFAM-MAY-LIN hooks have no default: their call sites never run before
 \ type-family.f installs them, and an unset one fails closed (DEFER-UNSET).
-defer TFAM-RESOLVE-XT ( str str -- n bool )   \ pkg + name -> family id, true | false
-defer TFAM-CLAIMED?-XT ( str -- bool )             \ some scope reads the token as a family (any package, either visibility)
+defer TFAM-RESOLVE-XT ( str str -- n bool nominal )   \ pkg + name -> family id, true | false
+defer TFAM-CLAIMED?-XT ( str -- bool nominal )             \ some scope reads the token as a family (any package, either visibility)
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
@@ -7598,7 +7598,7 @@ private
 
 \ Installed by the nominal resolver once its package and grammar rules exist.
 \ A pre-install parse retains the ordinary unknown-type refusal.
-defer TYPE-MAY-ARRIVE-XT ( str -- bool )
+defer TYPE-MAY-ARRIVE-XT ( str -- bool nominal )
 
 : BAD-SIG-TYPE ( str -- n )
    SGBAD-UNKNOWN!
@@ -7865,9 +7865,9 @@ SCRATCH-VARIABLE LINEAR-TEXT-CAP  \ LINEAR-TEXT-P's room, in cells
 
 \ SIG-QUOT-XT needs PSTACK, defined below SIG-TYPE, so it is bound just after
 \ PSTACK; nothing reaches it before then.
-defer SIG-QUOT-XT ( -- n )
-defer SIG-BINDER-BODY-XT ( -- n )
-defer SIG-TYPE-XT ( str -- n )
+defer SIG-QUOT-XT ( -- n nominal )
+defer SIG-BINDER-BODY-XT ( -- n nominal )
+defer SIG-TYPE-XT ( str -- n nominal )
 
 : SIG-PARENT-NAME? ( str n -- bool )
    {: a:^ u:n bound:n :}
@@ -13222,9 +13222,9 @@ global
 7202 constant E-CHECKER-STORAGE-UNRESOLVED
 7205 constant E-CHECKER-IDENTITY-UNRESOLVED
 private
-defer CTOR-OWNER-XT ( str -- str str bool )   \ the family a ctor package is of
-defer CTOR-WORD?-XT ( str -- bool )
-defer CTOR-EXTEND?-XT ( str -- bool )    \ new tail in a closed ctor package?
+defer CTOR-OWNER-XT ( str -- str str bool nominal )   \ the family a ctor package is of
+defer CTOR-WORD?-XT ( str -- bool nominal )
+defer CTOR-EXTEND?-XT ( str -- bool nominal )    \ new tail in a closed ctor package?
 : CTOR-PROT-DEFAULTS ( -- )
    [: drop 0 over 0 RES-FALSE ;] is CTOR-OWNER-XT
    [: 2drop RES-FALSE ;] is CTOR-WORD?-XT
@@ -14953,7 +14953,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
 
 \ Reads a bound record's facts text into the stores the first time a lookup binds
 \ it (CHECK:READ-BOUND, which needs words defined below).
-defer FACTS-READ-XT ( ^n -- )
+defer FACTS-READ-XT ( ^n -- nominal )
 : FACTS-READ-DEFAULT ( -- ) [: drop ;] is FACTS-READ-XT ;
 FACTS-READ-DEFAULT
 

@@ -364,7 +364,7 @@ ED-RESET
    THEN
    ED-CLOSE ;
 
-: ED-FRONT ( -- str str [ -- ] )
+: ED-FRONT ( -- str str [ -- parses nominal ] )
    s" enum" s" ;enum" [: ED-RESET DRIVE ;] ;
 
 : DECLARE-ENUM ( -- ) ED-FRONT DECL-FRONT:RUN ;

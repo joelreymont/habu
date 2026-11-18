@@ -468,7 +468,7 @@ variable ANSWERED
 
 \ TOP-LEVEL judges each number after its push and each word MOVE-WORD? does not
 \ name before it runs; a check that leaves the stack below its base is rejected.
-CAST: HOOK-CALL ( [ -- ] -- n )
+CAST: HOOK-CALL ( [ -- nominal ] -- n )
 
 \ The call runs under the floor, so it pushes the event itself: a quotation
 \ reads no local, and the class waits in this cell.

@@ -74,10 +74,10 @@ variable SPACE-SIZE                  \ the space's size; MAP maps ROUTED-BYTES m
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
 variable OPEN-DP                     \ here's distance once open; header data is [BASE, OPEN-DP)
 variable OPEN-TASKS                  \ hb's live tasks at the open (TASKS-LIVE-CELL)
-TYPED-VARIABLE BODY [ -- ]
+TYPED-VARIABLE BODY [ -- renders nominal roots ]
 variable COMPILED-N                  \ files the last build compiled
 variable LINKED-N                    \ files the last build linked
-TYPED-VARIABLE PRIOR-RUNNER [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- ]
+TYPED-VARIABLE PRIOR-RUNNER [ ^u8 n ^u8 n ^u8 n [ n n -- ] -- renders nominal roots ]
 
 \ The host cells a build changes; RESTORE puts them back.
 variable SAVED-DP
@@ -5821,7 +5821,7 @@ public
 \ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
 \ The mode is "engine", "kernel" for a kernel build, or a stripped program's; the
 \ target is the one the program runs on, and another than hb's own makes a cross build.
-: WITH ( ^u8 n RTARGET:resolved-target [ -- ] -- )
+: WITH ( ^u8 n RTARGET:resolved-target [ -- renders nominal roots ] -- )
    {: mode:^ modeu:n target:RTARGET:resolved-target body :}
    IDLE? 0= if E-COMP-STATE throw then
    target TARGET !
