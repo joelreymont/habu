@@ -14,6 +14,7 @@ package TFAM
 private
 EXPORT SCHEMA-REG:SCH-APP
 EXPORT SCHEMA-REG:SCH-CON
+EXPORT SCHEMA-REG:SCH-N
 EXPORT SCHEMA-REG:SCH-PARAM
 EXPORT SCHEMA-REG:SCH-PTR
 EXPORT SCHEMA-REG:SCH-QUOT
@@ -594,9 +595,19 @@ variable TFM-EPOCH   1 TFM-EPOCH !
 
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
 
+EXPORT CHECKER-REG:SCRATCH{
+EXPORT CHECKER-REG:}SCRATCH
+\ The kind memo's current generation, 0 for none, and the last one handed out.
+SCRATCH{
+variable PF-GEN   variable PF-GEN-N
+}SCRATCH
+: PF-GEN-NEW ( -- ) PF-GEN-N @ 1 + dup PF-GEN-N !  PF-GEN ! ;
+
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" EXIT-STATUS:INTERNAL die THEN
    k 0 < k PK-MAX > or IF s" tfam: parameter kind out of range" EXIT-STATUS:INTERNAL die THEN
+   \ A memoized kind may read this one, so a change starts a new generation.
+   PF-GEN @ 0 <> IF id i TFAM-PK@ k <> IF PF-GEN-NEW THEN THEN
    k id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + ! ;
 
 \ --- matching and lookup.
@@ -2156,7 +2167,38 @@ EXPORT CHECKER-RESOLVE:TOP$
 \ calls PF-NODE-KIND? back, is defined.
 defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
 
-: PF-NODE-KIND? ( n n -- n bool ) {: owner:n node:n :}
+\ PF-NODE-KIND?'s answer per node id: it reads only the node, which never
+\ changes, the owner and the registry, so it holds while PF-GEN is current.
+SCRATCH{
+PTR-VARIABLE PF-MEMO-P   variable PF-MEMO-CAP
+}SCRATCH
+4 constant PF-MEMO-ROW
+: PF-MEMO-SLOT ( n -- ^n ) PF-MEMO-ROW * cells PF-MEMO-P @ + ;
+\ Transient ids are reused after a release: never memoized.
+: PF-MEMO-ID? ( n -- bool ) {: node:n :} node 0 > node SCH-N @ < and ;
+
+: PF-MEMO-HIT? ( n n -- bool ) {: owner:n node:n :}
+   PF-GEN @ 0= IF RES-FALSE EXIT THEN
+   node PF-MEMO-ID? 0= IF RES-FALSE EXIT THEN
+   node PF-MEMO-CAP @ >= IF RES-FALSE EXIT THEN
+   node PF-MEMO-SLOT {: s:^ :}
+   s @ PF-GEN @ =  s CELL + @ owner =  and ;
+
+: PF-MEMO-ANSWER ( n -- n bool ) PF-MEMO-SLOT {: s:^ :}
+   s 2 cells + @  s 3 cells + @ 0 <> ;
+
+\ Stores node's answer while a generation is current, and answers it.
+: PF-KEEP ( n bool n n -- n bool ) {: kind:n ok:bool owner:n node:n :}
+   PF-GEN @ 0 <>  node PF-MEMO-ID? and IF
+      PF-MEMO-P PF-MEMO-CAP node 1 + PF-MEMO-ROW ARENA-ROWS-ENSURE
+      node PF-MEMO-SLOT {: s:^ :}
+      PF-GEN @ s !  owner s CELL + !  kind s 2 cells + !  ok IF 1 ELSE 0 THEN s 3 cells + !
+   THEN kind ok ;
+
+\ Each child's answer goes through PF-KEEP. The recursion is as deep as the
+\ type, so a frame keeps only what the walk needs on the data stack.
+: PF-NODE-JUDGE ( n n -- n bool ) {: owner:n node:n :}
+   owner node PF-MEMO-HIT? IF node PF-MEMO-ANSWER EXIT THEN
    node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
    node SCHEMA-PARAM? IF
       node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
@@ -2172,7 +2214,7 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
       node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
       node SCHEMA-A@ {: child:n :}
       child node >= IF 0 RES-FALSE EXIT THEN
-      owner child RECURSE 0= IF drop 0 RES-FALSE EXIT THEN
+      owner child RECURSE  owner child PF-KEEP 0= IF drop 0 RES-FALSE EXIT THEN
       PF-NONVALUE? IF 0 RES-FALSE EXIT THEN
       child SCHEMA-APP? IF
          child SCHEMA-A@ TFAM-NONVALUE-PARAM? IF 0 RES-FALSE EXIT THEN
@@ -2212,7 +2254,8 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
          start r@ + SCHEMA-ROOT@ dup node >= IF
             drop r> drop drop 0 RES-FALSE EXIT
          THEN
-         owner swap RECURSE 0= IF drop r> drop drop 0 RES-FALSE EXIT THEN
+         owner swap RECURSE  owner start r@ + SCHEMA-ROOT@ PF-KEEP
+         0= IF drop r> drop drop 0 RES-FALSE EXIT THEN
          fam r@ TFAM-PK@ PF-KIND-OK? 0= IF r> drop drop 0 RES-FALSE EXIT THEN
          r> drop
          1 +
@@ -2220,6 +2263,13 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
       fam PF-APP-KIND RES-TRUE EXIT
    THEN
    0 RES-FALSE ;
+
+: PF-NODE-KIND? ( n n -- n bool ) {: owner:n node:n :}
+   owner node PF-NODE-JUDGE  owner node PF-KEEP ;
+
+\ A field type's parse judges each node once: answers are kept from START to END.
+: PF-KIND-MEMO-START ( -- ) PF-GEN-NEW ;
+: PF-KIND-MEMO-END ( -- ) 0 PF-GEN ! ;
 
 \ Elements are built before their row (parser order), so each must sit below the
 \ row id: the acyclic guard PF-NODE-KIND? applies to APP/PTR children.

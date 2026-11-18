@@ -1691,6 +1691,11 @@ PTR-VARIABLE PARAMU-P   PTR-VARIABLE PARAMC-P
 PTR-VARIABLE PARAMFAM-P   \ resolved family-id per param term (identity)
 PTR-VARIABLE PARAMOFF-P   \ arg-run start index into the flat PARGP pool
 PTR-VARIABLE PARAMHID-P   \ hidden physical-field slot+1 per param term (0 = logical)
+PTR-VARIABLE PARAMCPG-P   \ the TWALK-GEN of the E-COPY that last copied each param term
+PTR-VARIABLE PARAMCPO-P   \ the node offset that copy answered
+variable TWALK-GEN   \ bumped by TWALK-RESET, so the walk stamps need no clearing
+PTR-VARIABLE PARAMWG-P   \ the TWALK-GEN of the walk that last passed each param term
+PTR-VARIABLE PARAMWC-P   \ the context that walk passed it with
 PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
 PTR-VARIABLE PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
@@ -1701,6 +1706,10 @@ variable PARAM-CAP     variable PARAM-SCR-CAP-V
 : PARAMFAM ( -- ^n ) PARAMFAM-P @ ;
 : PARAMOFF ( -- ^n ) PARAMOFF-P @ ;
 : PARAMHID ( -- ^n ) PARAMHID-P @ ;
+: PARAMCPG ( -- ^n ) PARAMCPG-P @ ;
+: PARAMCPO ( -- ^n ) PARAMCPO-P @ ;
+: PARAMWG ( -- ^n ) PARAMWG-P @ ;
+: PARAMWC ( -- ^n ) PARAMWC-P @ ;
 : PARGP ( -- ^n ) PARGP-P @ ;
 : PARG-ENSURE ( n -- ) {: need:n :}
    PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
@@ -1722,6 +1731,10 @@ variable PARAM-CAP     variable PARAM-SCR-CAP-V
    PARAMFAM-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMFAM-P !
    PARAMOFF-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMOFF-P !
    PARAMHID-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMHID-P !
+   PARAMCPG-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMCPG-P !
+   PARAMCPO-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMCPO-P !
+   PARAMWG-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMWG-P !
+   PARAMWC-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMWC-P !
    nc PARAM-CAP ! ;
 
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The registry
@@ -3190,13 +3203,27 @@ global
 TWALK-MAX-DEPTH 2 / constant EFFECT-DEPTH-MAX
 private
 variable TWALK-D
-: TWALK-RESET ( -- ) 0 TWALK-D ! ;
+: TWALK-RESET ( -- ) 0 TWALK-D !  TWALK-GEN @ 1 + TWALK-GEN ! ;
 : TWALK-DEEPER ( -- )
    TWALK-D @ 1 + dup TWALK-D !
    TWALK-MAX-DEPTH > IF
       s" checker: term walk too deep (cyclic term)" EXIT-STATUS:INTERNAL die
    THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
+
+\ A walk stamps a param term only after its arguments' visit finished without
+\ an early exit, so a repeat visit in that context answers as that one did.
+: TWALK-PASSED? ( n n -- bool ) {: x:n ctx:n :}
+   x PAY {: pid:n :}
+   pid cells PARAMWG + @ TWALK-GEN @ =  pid cells PARAMWC + @ ctx =  and ;
+: TWALK-PASS ( n n -- ) {: x:n ctx:n :}
+   x PAY {: pid:n :}
+   TWALK-GEN @ pid cells PARAMWG + !  ctx pid cells PARAMWC + ! ;
+\ The context this walk passed x with; -1 when it has not.
+: TWALK-CTX ( n -- n ) {: x:n :}
+   x PAY {: pid:n :}
+   pid cells PARAMWG + @ TWALK-GEN @ <> IF -1 EXIT THEN
+   pid cells PARAMWC + @ ;
 
 \ With any? false, find the named type variable for the occurs check; with any?
 \ true, find any unresolved type or row variable for closedness.
@@ -3395,10 +3422,12 @@ variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotati
       x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
+      x 0 TWALK-PASSED? IF EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
          1 +
       REPEAT drop
+      x 0 TWALK-PASS
    THEN ;
 : KEEP-QUOTS ( n -- ) TWALK-RESET KEEP-QUOTS* ;
 
@@ -4125,8 +4154,9 @@ EXPORT CHECKER-QUOT-FRESH:HELD
    {: p:n :}
    p P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? 0= IF 1 EXIT THEN
-   t HIDDEN-SLOT@ t T-WIDTH 1 - <> IF 1 EXIT THEN
-   t T-WIDTH ;
+   t T-WIDTH {: w:n :}
+   t HIDDEN-SLOT@ w 1 - <> IF 1 EXIT THEN
+   w ;
 
 \ The row below the value on top of row s; false when s holds no push or ends
 \ inside that value's group.
@@ -4150,11 +4180,11 @@ EXPORT CHECKER-QUOT-FRESH:HELD
 \ The width vocabulary's absent answer: a row nothing can state a width for.
 -1 constant CELLS-NONE
 
-\ `slot` ranges over [0,W): 0..W-2 payload slots, W-1 the tag.
-: MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
+\ Cell slot of src's W cells, which share its argument tree: 0..W-2 payload,
+\ W-1 the tag. w is src's T-WIDTH, which the caller measures once for all W.
+: MK-HIDDEN ( n n n -- n ) {: src0:n slot:n w:n :}
    src0 T-RES {: src:n :}
    src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" EXIT-STATUS:INTERNAL die THEN
-   src T-WIDTH {: w:n :}
    slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" EXIT-STATUS:INTERNAL die THEN
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup src PARAM>ARGC < WHILE
@@ -4181,7 +4211,7 @@ EXPORT CHECKER-QUOT-FRESH:HELD
    type T-RES {: src:n :}
    src T-WIDTH {: w:n :}
    row 0 BEGIN dup w < WHILE                 \ ( row slot )
-      dup src swap MK-HIDDEN                 \ ( row slot hid )
+      dup src swap w MK-HIDDEN               \ ( row slot hid )
       rot MK-PUSH swap                       \ push hid onto row -> ( row' slot )
       1 +
    REPEAT drop ;
@@ -4267,8 +4297,9 @@ variable NMOFF                           \ its token's offset in the checked tex
    node P>TYPE T-RES {: t:n :}
    t T-UNSTALE {: src:n :}
    t TAG T-STALE = {: stale:bool :}
-   rest  src T-WIDTH 0 ?do
-      src i MK-HIDDEN  stale IF MK-STALE THEN  swap MK-PUSH
+   src T-WIDTH {: w:n :}
+   rest  w 0 ?do
+      src i w MK-HIDDEN  stale IF MK-STALE THEN  swap MK-PUSH
    loop
    node over rest FIELDS-LINEAGE! ;
 
@@ -8437,7 +8468,8 @@ SIG-BINDER-BODY-INSTALL
    t T-RES {: rt:n :}
    rt LAYOUT-PARAM? 0= IF rt EXIT THEN
    rt LAYOUT-WIDTH-OPEN? IF rt EXIT THEN
-   rt dup T-WIDTH 1 - MK-HIDDEN ;
+   rt T-WIDTH {: w:n :}
+   rt w 1 - w MK-HIDDEN ;
 
 \ A bare `^`, which SIG-TYPE rejects, is read first: its pointee is STORED, and
 \ a one-cell use of it (`p @`) makes it one cell.
@@ -8614,6 +8646,7 @@ variable PD-ATOM0                        \ the first atom index this signature p
       x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
+      x 0 TWALK-PASSED? IF RES-TRUE EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          x PARAM>FAM over TFAM-SCOPE-SLOT-XT IF
             x over PARAM>ARG T-RES dup ISVAR IF PAY TVK@ TVK-SCOPE = ELSE
@@ -8628,6 +8661,7 @@ variable PD-ATOM0                        \ the first atom index this signature p
          0= IF drop RES-FALSE EXIT THEN
          1 +
       REPEAT drop
+      x 0 TWALK-PASS
    THEN
    RES-TRUE ;
 : SCOPE-SORT? ( n -- bool ) TWALK-RESET SCOPE-SORT?* ;
@@ -8656,10 +8690,12 @@ variable PD-ATOM0                        \ the first atom index this signature p
       x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
+      x 0 TWALK-PASSED? IF RES-TRUE EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
          1 +
       REPEAT drop
+      x 0 TWALK-PASS
    THEN
    RES-TRUE ;
 : SCOPE-SUPPLIED? ( n -- bool ) TWALK-RESET SCOPE-SUPPLIED?* ;
@@ -8694,11 +8730,13 @@ variable PD-ATOM0                        \ the first atom index this signature p
       x Q>ROUT RES-FALSE depth TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
+      x depth TWALK-PASSED? IF RES-TRUE EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          x over PARAM>ARG RES-FALSE depth
          TWALK-DEEPER RECURSE TWALK-SHALLOWER 0= IF drop RES-FALSE EXIT THEN
          1 +
       REPEAT drop
+      x depth TWALK-PASS
    THEN
    RES-TRUE ;
 : FORALL-PLACE? ( n bool -- bool ) TWALK-RESET 0 FORALL-PLACE* ;
@@ -9057,10 +9095,13 @@ variable FB-PASS                     \ 0 mints the caller's names, else makes th
       q 24 + caller TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    t TAG T-PARAM = IF
+      caller IF 1 ELSE 0 THEN {: ctx:n :}
+      t ctx TWALK-PASSED? IF EXIT THEN
       0 BEGIN dup t PARAM>ARGC < WHILE
          t over PARAM-ARG-IDX caller TWALK-DEEPER RECURSE TWALK-SHALLOWER
          1 +
       REPEAT drop
+      t ctx TWALK-PASS
    THEN ;
 
 : FB-WALK-SIG ( -- )
@@ -10486,6 +10527,62 @@ variable EI-REC                \ the record being instantiated: its offset + 1, 
    EI-AK-P EI-AK-CAP need EI-AK-ROW ARENA-ROWS-ENSURE
    EI-AK-CAP @ oc ?do UNBOUND i EI-AK ! loop ;
 
+\ Per node address, the param term this instantiation built first; a repeat
+\ gets its own top term, as XMASK-OF reads a shared one as an unchanged cell.
+SCRATCH{
+PTR-VARIABLE EI-MEMO-P   variable EI-MEMO-CAP
+variable EI-MEMO-N   variable EI-MEMO-GEN
+}SCRATCH
+3 constant EI-MEMO-ROW
+64 constant EI-MEMO-INIT
+: EI-MEMO-SLOT ( n -- ^n ) EI-MEMO-ROW * cells EI-MEMO-P @ + ;
+: EI-MEMO-LIVE? ( ^n -- bool ) @ EI-MEMO-GEN @ = ;
+
+\ Node addresses are cell-aligned: the low bits carry nothing.
+: EI-MEMO-HOME ( n -- n )
+   3 rshift FNV:BASIS FNV:STEP  dup 29 rshift xor
+   EI-MEMO-CAP @ 1 - and ;
+
+: EI-MEMO-OTHER? ( ^n n -- bool ) {: s:^ key:n :}
+   s EI-MEMO-LIVE?  s CELL + @ key <>  and ;
+
+\ The slot holding key, else the empty slot it would take.
+: EI-MEMO-FIND ( n -- ^n ) {: key:n :}
+   key EI-MEMO-HOME
+   BEGIN dup EI-MEMO-SLOT key EI-MEMO-OTHER? WHILE
+      1 + EI-MEMO-CAP @ 1 - and
+   REPEAT EI-MEMO-SLOT ;
+
+: EI-MEMO-PUT ( n n -- ) {: key:n term:n :}
+   key EI-MEMO-FIND {: s:^ :}
+   s EI-MEMO-LIVE? 0= IF EI-MEMO-N @ 1 + EI-MEMO-N ! THEN
+   EI-MEMO-GEN @ s !  key s CELL + !  term s 2 cells + ! ;
+
+: EI-MEMO-MOVE ( ^n -- ) {: s:^ :}
+   s EI-MEMO-LIVE? 0= IF EXIT THEN
+   s CELL + @  s 2 cells + @  EI-MEMO-PUT ;
+
+\ A take answers zero bytes: every new slot is empty.
+: EI-MEMO-GROW ( -- )
+   EI-MEMO-P @ {: old:^ :}
+   EI-MEMO-CAP @ {: oc:n :}
+   oc 2 * EI-MEMO-INIT max {: nc:n :}
+   nc EI-MEMO-ROW * cells SR-TAKE EI-MEMO-P !
+   nc EI-MEMO-CAP !  0 EI-MEMO-N !
+   0 BEGIN dup oc < WHILE
+      dup EI-MEMO-ROW * cells old + EI-MEMO-MOVE
+      1 +
+   REPEAT drop ;
+
+: EI-MEMO@ ( n -- n ) {: key:n :}
+   EI-MEMO-CAP @ 0= IF 0 EXIT THEN
+   key EI-MEMO-FIND {: s:^ :}
+   s EI-MEMO-LIVE? IF s 2 cells + @ ELSE 0 THEN ;
+
+: EI-MEMO! ( n n -- ) {: key:n term:n :}
+   EI-MEMO-N @ 1 + 2 * EI-MEMO-CAP @ > IF EI-MEMO-GROW THEN
+   key term EI-MEMO-PUT ;
+
 \ One copy's counters and rigid identities (E-COPY-MAPS-RESET) rest in the span,
 \ so neither an image nor a file object carries the last check's atom terms.
 SCRATCH{
@@ -10690,10 +10787,12 @@ PTR-VARIABLE ELET-WAIT-P   variable ELET-WAIT-CAP   variable ELET-WAIT-N
          x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER
       endof
       T-PARAM of
+         x 0 TWALK-PASSED? IF EXIT THEN
          0 BEGIN dup x PARAM>ARGC < WHILE
             x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
             1 +
          REPEAT drop
+         x 0 TWALK-PASS
       endof
    endcase ;
 
@@ -11115,6 +11214,11 @@ UIX-RESET
          r>
       endof
       T-PARAM of
+         \ A repeat of a param term answers its first copy; a copy that met a live
+         \ scope is not kept, since each cell holding it must see the scope.
+         x E-RES PAY {: pid:n :}
+         pid cells PARAMCPG + @ TWALK-GEN @ = IF pid cells PARAMCPO + @ EXIT THEN
+         TOP-SCOPE-SEEN @ {: outer:n :}  0 TOP-SCOPE-SEEN !
          EN-PARAM E-NODE-NEW E-WOFF {: noff:n :}      \ node offset (stable across USIGS grow)
          \ The resolved family owns the stored spelling, not CBIND:binding.
          x E-RES PARAM>FAM REG-EXT-AOT-FAMILY-NAME-XT noff E-WPTR E-COPY-STR
@@ -11131,7 +11235,12 @@ UIX-RESET
                1 +
             REPEAT drop
          THEN
-         noff
+         noff E-INTERN {: off:n :}
+         TOP-SCOPE-SEEN @ 0= IF
+            TWALK-GEN @ pid cells PARAMCPG + !  off pid cells PARAMCPO + !
+         THEN
+         TOP-SCOPE-SEEN @ outer or TOP-SCOPE-SEEN !
+         off EXIT
       endof
       0 swap
    endcase
@@ -11165,14 +11274,24 @@ variable TD-MAX                         \ the deepest level TERM-DEPTH* reached
       x F>BODY in RECURSE  x F>PARENT in RECURSE  x F>SECOND in RECURSE  EXIT
    THEN
    x TAG T-PARAM = IF
+      \ A param term's height answers a repeat visit only where the walk is not cut,
+      \ so a depth past EFFECT-DEPTH-MAX is counted as a fresh walk counts it.
+      x TWALK-CTX {: h:n :}
+      h 0 >=  lvl h + EFFECT-DEPTH-MAX <=  and IF
+         lvl h + TD-MAX @ max TD-MAX !  EXIT
+      THEN
+      TD-MAX @ {: outer:n :}  lvl TD-MAX !
       0 BEGIN dup x PARAM>ARGC < WHILE  \ data-stack index (RECURSE-safe)
          x over PARAM>ARG in RECURSE
          1 +
       REPEAT drop
+      TD-MAX @ {: deep:n :}
+      deep EFFECT-DEPTH-MAX <= IF x deep lvl - TWALK-PASS THEN
+      deep outer max TD-MAX !
    THEN ;
 
 : TERM-DEPTH ( n -- n )
-   0 TD-MAX !  0 TERM-DEPTH*  TD-MAX @ ;
+   TWALK-RESET  0 TD-MAX !  0 TERM-DEPTH*  TD-MAX @ ;
 
 : ROWS-DEPTH ( n n n n -- n )
    {: in:n out:n rin:n rout:n :}
@@ -11757,24 +11876,19 @@ CUR-DEFAULT
 \ A pointer to a layout is one cell and stays unmarked; pointers are followed
 \ only to reach nested quotations.
 : ROW-WIDE? ( n -- bool ) {: s:n :}
-   RES-FALSE s                           \ ( acc cur )
+   s                                     \ ( cur )
    BEGIN R-RES dup TAG S-PUSH = WHILE
-     dup P>TYPE T-RES
-     dup T-WIDTH 1 > IF
-       drop nip RES-TRUE swap            \ ( true cur )
-     ELSE
-       BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
-       BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT
-       dup TAG T-QUOT = IF
-         dup Q>DIN RECURSE  swap         \ ( acc cur f1 qt )
-         dup Q>DOUT RECURSE  swap        \ ( acc cur f1 f2 qt )
-         dup Q>RIN RECURSE  swap         \ ( acc cur f1 f2 f3 qt )
-         Q>ROUT RECURSE                  \ ( acc cur f1 f2 f3 f4 )
-         or or or  rot or swap           \ ( acc' cur )
-       ELSE drop THEN
+     dup P>TYPE T-RES                    \ ( cur t )
+     dup T-WIDTH 1 > IF 2drop RES-TRUE EXIT THEN
+     BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+     BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT
+     dup TAG T-QUOT = IF
+       dup Q>DIN RECURSE  over Q>DOUT RECURSE or
+       over Q>RIN RECURSE or  over Q>ROUT RECURSE or
+       IF 2drop RES-TRUE EXIT THEN
      THEN
-     P>REST
-   REPEAT drop ;
+     drop P>REST
+   REPEAT drop RES-FALSE ;
 
 \ DOESEFF holds the effect a `create … does>` definer gives its created words:
 \ the clause signature, certified against the clause body by CHECK-DOES!, as an
@@ -12368,6 +12482,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 
 : E-INST-COUNTS ( n n -- ) {: tvn:n rvn:n :}
    0 EI-REC !
+   EI-MEMO-GEN @ 1 + EI-MEMO-GEN !  0 EI-MEMO-N !
    E-I-AK-RESET
    tvn rvn TV-ENSURE-MAX
    0 begin dup tvn < while
@@ -12538,13 +12653,26 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          r@ {: np:^ :}
          np EN.C @ {: argc:n :}
          np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
-         PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
-         0 BEGIN dup argc < WHILE                   \ data-stack index (RECURSE-safe)
-            dup cells run + pool + CELL-VIEW @ pool RECURSE PARAM-SCR+
-            1 +
-         REPEAT drop
-         np pool E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
-         dup np EN.E @ swap PAY cells PARAMHID + !
+         np PTR>N {: key:n :}
+         key EI-MEMO@ dup 0= IF
+            drop
+            PARAM-SCR-N @                           \ reentrant scratch mark (base) on the data stack
+            0 BEGIN dup argc < WHILE                \ data-stack index (RECURSE-safe)
+               dup cells run + pool + CELL-VIEW @ pool RECURSE PARAM-SCR+
+               1 +
+            REPEAT drop
+            np pool E-I-STR np EN.H @ MK-PARAM           \ ( base a u fam -- t )
+            dup np EN.E @ swap PAY cells PARAMHID + !
+            key over EI-MEMO!
+         ELSE
+            PARAM-SCR-N @ swap                      \ ( base hit )
+            0 BEGIN dup argc < WHILE
+               2dup PARAM>ARG PARAM-SCR+
+               1 +
+            REPEAT 2drop
+            np pool E-I-STR np EN.H @ MK-PARAM
+            dup np EN.E @ swap PAY cells PARAMHID + !
+         THEN
          r> drop
       endof
       r> drop 0 swap
@@ -23417,11 +23545,13 @@ variable SD-MOVES   \ a checked `:` signature's rows: its body proves MOVED
       x Q>ROUT 2 TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
+      x at TWALK-PASSED? IF EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          dup x swap PARAM>ARG  over x swap at SD-ARG-AT
          TWALK-DEEPER RECURSE TWALK-SHALLOWER
          1 +
       REPEAT drop
+      x at TWALK-PASS
    THEN ;
 
 : SD-ROWS ( n n n n bool -- )

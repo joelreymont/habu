@@ -13,6 +13,8 @@ package TYPE-DECL
 private
 package STRUCTURE-DECL
 using DECL-FRONT
+EXPORT TFAM:PF-KIND-MEMO-END
+EXPORT TFAM:PF-KIND-MEMO-START
 EXPORT TFAM:TFAM-FLD-RANGE!
 EXPORT TFAM:TFAM-PK!
 EXPORT SCHEMA-REG:SCHEMA-PARAM?
@@ -726,8 +728,9 @@ public
    TYPE@ NOUN@ {: ota:^ otu:n oa:^ ou:n :}
    fam FAM !  0 POINTEE !  0 SD-ARG-N !
    a u TYPE!  na NOUN-A !  nu NOUN-U !
+   PF-KIND-MEMO-START
    [: a u want SD-WHOLE-NODE ;]
-   [: ofam FAM !  ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
+   [: PF-KIND-MEMO-END  ofam FAM !  ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
 private
 
 \ A field type's text, from its first token (SD-SPAN).
