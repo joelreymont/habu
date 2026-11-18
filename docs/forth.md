@@ -1316,8 +1316,12 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - `r` is a 64-bit float; `f32` is a 32-bit float and does not unify or widen
   with `r`.
 - `str` is a string as one value, its base address and byte length; `>str`
-  and `str>` cross between it and `^u8 n`, which the string words still
-  take.
+  and `str>` cross between it and `^u8 n`, which `s"` and the primitives take
+  and give. A file whose first line is `split-str`, alone and in lower case,
+  reads each `str` in the rows it checks against, its own signatures'
+  included, as `^u8 n`: there `s" a" LTRIM` passes, where an unmarked file
+  is `E-MISMATCH` until it writes `s" a" >str LTRIM`. `split-str` anywhere
+  else, or in a program read from stdin, is `E-SPLIT-STR-LINE`.
 - The roles are nominal one-cell types, distinct from each other and
   from every integer type.
 - `^τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation

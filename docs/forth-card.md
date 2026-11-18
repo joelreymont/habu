@@ -119,7 +119,10 @@ cast holds or yields one.
 `[type] t` in a body makes one for a closed type `ARENA` stores; it refuses an
 open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 
-- A string is `^u8 n`, a cell address `^a`, `n` only a genuine scalar.
+- A row's `str` is one string value; a file whose first line is `split-str`
+  reads it as `^u8 n`, which `s"` gives. Unmarked, `s" a" LTRIM` is
+  `E-MISMATCH` and `s" a" >str LTRIM` passes (forth.md **Types**).
+- A cell address is `^a`, `n` only a genuine scalar.
   `^a` needs a body that keeps the pointee parametric — a `^` local admits
   `@` and `!`, but reading the cell specialises `a`; read it as a number and
   declare `( ^n -- n )`. `^u8` is a byte span — `c@`/`c!`; cell `@` on
