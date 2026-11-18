@@ -458,17 +458,20 @@ variable STATE-B-CURSOR
    $E0 $A0 $80 0 PREP4 2 UTF8:VALID? TFALSE
    CANARIES ;
 
-\ A cap that falls inside a character backs up to its lead; stray continuation
-\ bytes back it up no further than a character's three trailing bytes.
+\ A cap that falls inside a character backs up to its lead; a stray
+\ continuation byte is a character of its own, so a cap before one stays.
 : FIT-CUTS ( -- )
    $41 $42 0 0 PREP4 2 4 UTF8:FIT 2 T=
    $41 $C3 $A9 $41 PREP4 4 2 UTF8:FIT 1 T=
    $41 $C3 $A9 $41 PREP4 4 3 UTF8:FIT 3 T=
    $F0 $9F $98 $80 PREP4 4 3 UTF8:FIT 0 T=
    $41 $C3 $A9 $41 PREP4 4 0 UTF8:FIT 0 T=
-   S\" A\x80\x80\x80\x80\x80" 5 UTF8:FIT 2 T=
-   \ The canary before the span is a continuation byte too; FIT stops at 0.
-   $80 $80 0 0 PREP4 2 1 UTF8:FIT 0 T=
+   S\" A\x80\x80\x80\x80\x80" 5 UTF8:FIT 5 T=
+   S\" AAAAAAAAAAAAAAAAAAAAAAAAAAAA\xF0\x9F\x98\x80\x80B" 32 UTF8:FIT 32 T=
+   S\" \xE0\x80\x80" 1 UTF8:FIT 1 T=
+   \ The byte before the span leads a character that crosses the cap; FIT
+   \ never reads it.
+   S\" \xE2\x80\x80" drop 1+ 2 1 UTF8:FIT 1 T=
    [: CASE-BUF 1+ 2 -1 UTF8:FIT drop ;] E-STR-BOUNDS TTHROWSQ
    [: CASE-BUF 1+ -1 2 UTF8:FIT drop ;] E-STR-BOUNDS TTHROWSQ
    CANARIES ;

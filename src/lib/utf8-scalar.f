@@ -3,7 +3,7 @@ split-str
 \ answers SCALAR and the next cursor for a canonical sequence, else RAW-BYTE with
 \ the lead byte and cursor+1: malformed, truncated, non-shortest, surrogate and
 \ out-of-range input is data and never throws. VALID? is true when every step is a
-\ SCALAR (empty included). FIT cuts a span at a cap without ending in a character.
+\ SCALAR (empty included). FIT cuts a span at a cap without splitting a character.
 \ SUBPART-END answers the end of the longest prefix of a well-formed sequence at
 \ a cursor (Unicode 3.9, Table 3-7), at least the cursor's byte. CUT? is true
 \ when the bytes from a cursor to the end, at least one, are a proper prefix of
@@ -247,15 +247,18 @@ public
       NO
    then ;
 
-\ A cap before a continuation byte backs up to its lead, and never more than a
-\ character's three trailing bytes, however many stray continuations precede it.
+\ The start of the character SUBPART-END bounds that crosses the cap, else the
+\ cap. Only a non-continuation byte starts one, at most three bytes before it.
 : FIT ( ^u8 n n -- n ) {: source:^ length:n cap:n :}
    length NONNEGATIVE  cap NONNEGATIVE
    length cap <= if length exit then
-   cap begin
-      dup 0 > over cap FOUR-WIDTH - 1+ > and if
+   cap FOUR-WIDTH 1- - 0 max {: least:n :}
+   cap 1- begin
+      dup least >= if
          dup source + c@ CONTINUATION?
       else NO then
-   while 1- repeat ;
+   while 1- repeat {: start:n :}
+   start least < if cap exit then
+   source length start SUBPART-END cap > if start else cap then ;
 
 ;package
