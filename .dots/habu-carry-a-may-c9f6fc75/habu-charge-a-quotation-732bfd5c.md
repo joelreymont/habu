@@ -1,6 +1,6 @@
 ---
 title: Charge a quotation for the quotations it runs
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-17T22:54:19.951048+01:00"
