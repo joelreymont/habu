@@ -58,7 +58,7 @@ create ERR CAP allot
 \ either mapping would hide CW-KEEP from the parent's next token.
 : TEST-FORK-REGION ( -- )
    s" a forked child's dictionary writes leave the parent unchanged" T-LABEL
-   S\" : CW-KEEP ( -- n ) 17 ;\n: CW-CHILD ( -- ) s\" undefine CW-KEEP\" evaluate-closed ;\n: CW-FORK ( -- ) PROC-FORK:CHECKED dup PID>N 0= if drop ['] CW-CHILD PROC-FORK:CHILD-MAIN then PID>N wait-status 0<> if 75 throw then ;\nCW-FORK CW-KEEP .\n"
+   S\" : CW-KEEP ( -- n ) 17 ;\n: CW-CHILD ( -- ) s\" undefine CW-KEEP\" evaluate-closed ;\n: CW-FORK ( -- ) PROC-FORK:CHECKED dup PID>N 0= if drop ['] CW-CHILD ERROR:CHILD-TOP then PID>N wait-status 0<> if 75 throw then ;\nCW-FORK CW-KEEP .\n"
    2dup CAPTURE {: outu:len erru:len oc :}
    OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    OUT outu LEN>N S\" 17\n" T$=

@@ -1,7 +1,7 @@
 split-str
 \ subject.f - isolated evaluation of the running test subject (package SUBJECT).
 \ RUN evaluates one counted source in a fork child, its own process root
-\ (PROC-FORK:CHILD-MAIN), captures bounded stdout and stderr into the caller's
+\ (ERROR:CHILD-TOP), captures bounded stdout and stderr into the caller's
 \ spans, enforces a deadline and answers the outcome. Copy-on-write keeps the
 \ child's changes from the parent; `evaluate-closed` fails a source leaving cells.
 \ STORAGE CLASS. PROCESS-WIDE: static buffers; one task runs a subject at a time.
@@ -53,7 +53,7 @@ create STATUS-ERR STATUS-CAP allot
    SRC$ evaluate-closed ;
 
 : CHILD ( -- )
-   [: CHILD-FDS EVAL ;] PROC-FORK:CHILD-MAIN ;
+   [: CHILD-FDS EVAL ;] ERROR:CHILD-TOP ;
 
 : SPAWN ( -- )
    [: PROC-FORK:RAW dup PID>N 0= if CHILD then ;]

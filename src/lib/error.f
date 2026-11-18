@@ -952,5 +952,13 @@ public
    rc UNCAUGHT
    NULL$ rc STATUS die ;
 
+\ Runs q as a just-forked child's root and exits 0 after it, never returning: it
+\ clears the catch chain the fork copied (HND-CELL), so no throw resumes the parent's.
+: CHILD-TOP ( [ -- ] -- )
+   {: q :}
+   0 data-base HND-CELL + !
+   q TOP-LEVEL
+   s" " EXIT-STATUS:SUCCESS die ;
+
 seal-package
 ;package

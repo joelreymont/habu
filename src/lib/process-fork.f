@@ -27,7 +27,7 @@ package PROC-FORK
 private
 
 \ An engine or AOT linker closure module never requires fork-child.f (no claim
-\ owns its cells), so the one fork registers its reset here.
+\ owns its cells), so the one fork registers its resets here.
 : REGISTER-RESETS ( -- )
    [: TASK:CHILD-RESET ;] FORK-CHILD:REGISTER
    [: FS:CLEANUP-RESET ;] FORK-CHILD:REGISTER
@@ -130,18 +130,6 @@ public
    RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
-
-\ Runs q as the process root of a child RAW or CHECKED just forked, and never
-\ returns: the child exits 0 once q returns, and a throw out of q ends it as a
-\ throw ends a fresh process, through ERROR:TOP-LEVEL. The fork copied the
-\ parent's catch frames (HND-CELL), so a throw would otherwise resume the
-\ parent's catch in the child; they are cleared before q runs. The exit hook
-\ stays: RAW's child resets ran FS:CLEANUP-RESET, so the inherited
-\ CLEANUP-AT-EXIT removes only what the child itself registers.
-: CHILD-MAIN ( [ -- ] -- ) {: q :}
-   0 data-base HND-CELL + !
-   q ERROR:TOP-LEVEL
-   s" " EXIT-STATUS:SUCCESS die ;
 
 \ setpgid(pid, pgid): place pid into process group pgid. `0 0 PROC-FORK:SET-PGID`
 \ makes the caller its own group leader (pgid == pid) so a later group signal

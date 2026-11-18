@@ -350,11 +350,19 @@ $43B0 constant DELTA-CELL
 \ a library reads them once from the main task and keeps them.
 \ The cells sit in the $600..$800 hole, below $7FF8 (the boot
 \ stores them as `DATA <off> STR`) and below DATA-START.
+\ A program reads the two published cells through STUB and FD.
 package SIGNAL-ABI
 public
 $678 constant STUB-CELL
 $680 constant FD-PTR-CELL
 $688 constant FD-CELL
+\ Both answer zero where the boot published nothing.
+: STUB ( -- n )
+   data-base STUB-CELL + @ ;
+\ Read as a pointer: an offset from this task's region would name a different
+\ word per task, and a zero one in a spawned task.
+: FD ( -- ^n )
+   data-base FD-PTR-CELL + 0 ptr-field @ ;
 ;package
 
 

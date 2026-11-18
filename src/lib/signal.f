@@ -123,21 +123,6 @@ FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
 : SIGNO-BUF ( -- ^u8 )
    0 SIGNO-STORAGE ;
 
-: ABI-SLOT ( n -- ^n ) {: off:n :}
-   data-base off + ;
-
-: STUB-CELL@ ( -- n )
-   SIGNAL-ABI:STUB-CELL ABI-SLOT @ ;
-
-: FD-PTR-CELL@ ( -- n )
-   SIGNAL-ABI:FD-PTR-CELL ABI-SLOT @ ;
-
-\ The published pointer read AS a pointer. Reaching the fd word by an offset of
-\ this task's own region instead would name a different word in every task and
-\ a zero one in a spawned task; the address is what makes it one word.
-: FD-WORD-PUBLISHED ( -- ^n )
-   SIGNAL-ABI:FD-PTR-CELL ABI-SLOT 0 ptr-field @ ;
-
 : FD-WORD ( -- ^n )
    FD-WORD-A @ ;
 
@@ -150,10 +135,10 @@ FUNCTION: SIGACTION-CALL sigaction ( n ^u8 ^u8 -- i32 )
 \ Both cells are read before either is dereferenced: a spawned task, and an
 \ engine that bakes no stub, read zero in both.
 : KEEP-ABI ( -- )
-   STUB-CELL@ 0= if E-SIGNAL-ABI throw then
-   FD-PTR-CELL@ 0= if E-SIGNAL-ABI throw then
-   STUB-CELL@ STUB-A !
-   FD-WORD-PUBLISHED FD-WORD-A ! ;
+   SIGNAL-ABI:STUB 0= if E-SIGNAL-ABI throw then
+   SIGNAL-ABI:FD NULL-PTR = if E-SIGNAL-ABI throw then
+   SIGNAL-ABI:STUB STUB-A !
+   SIGNAL-ABI:FD FD-WORD-A ! ;
 
 : SIG-BIT ( n -- n ) {: sig:n :}
    1 sig 1 - lshift ;

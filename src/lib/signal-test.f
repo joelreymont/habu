@@ -610,7 +610,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    SIGNAL:SIGUSR1 SIGNAL:IGNORE
    SIGNAL:SIGUSR2 SIGNAL:CATCH
    PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if [: FORKED-RAISES ;] PROC-FORK:CHILD-MAIN then
+   pid PID>N 0= if [: FORKED-RAISES ;] ERROR:CHILD-TOP then
    pid PROCESS:WAIT PROCESS:STATUS>ENDING {: done :}
    SIGNAL:RELEASE
 
@@ -644,7 +644,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 : DIE-WAIT ( [ -- ] -- PROCESS:ending )
    {: q :}
    PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if q PROC-FORK:CHILD-MAIN then
+   pid PID>N 0= if q ERROR:CHILD-TOP then
    pid PROCESS:WAIT PROCESS:STATUS>ENDING ;
 
 : DIE-OF-CASE ( -- )
