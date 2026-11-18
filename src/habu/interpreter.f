@@ -825,14 +825,17 @@ private
 : PUSH-CHAR ( -- )
    [: FIRST-BYTE TOP-EV-CHAR HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
+NCOMP-DISPATCH:DECL-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
+NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
+
 \ The active checker owner supplies the trusted-only query, not a source name.
 : TICK-QUERY-READY? ( -- bool )
    SEAL-NDICT@ 0= if false exit then
-   NCOMP-DISPATCH:TARGET-DECL-A @ dup 0= if drop true exit then
-   NCOMP-DISPATCH:DECL-A @ = ;
+   TARGET-OWNER-A @ dup 0= if drop true exit then
+   SOURCE-OWNER-A @ = ;
 
 : TICK-QUERY ( -- n )
-   NCOMP-DISPATCH:DECL-A @ dup 0= if drop 0 exit then
+   SOURCE-OWNER-A @ dup 0= if drop 0 exit then
    NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF + CELL-VIEW @ ;
 
 \ The owner record's trusted-tick field holds a raw execution token.
@@ -954,11 +957,10 @@ EXPORT CHECK:REJECT-DUPLICATE
 
 : PKG-CODE-ROOM ( str str -- ) 0 CODE-SPACE:ROOM ;
 
-\ The operation at off in the owner record a dispatch cell names, 0 when there
-\ is no record or the field is empty: the call is then skipped, not refused.
-: PKG-OPERATION ( ^^u8 n -- n )
-   {: cell:^ off:n :}
-   cell @ {: rec:^ :}
+\ The operation at off in the owner record, 0 when there is no record or the
+\ field is empty: the call is then skipped, not refused.
+: PKG-OPERATION ( ^u8 n -- n )
+   {: rec:^ off:n :}
    rec 0= if 0 exit then
    rec off + CELL-VIEW @ ;
 
@@ -971,7 +973,7 @@ CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
 \ `package`, the section words and `;package` notify the target checker alone:
 \ a loading checker is the target at once, the source owner only where none was.
 : PKG-TARGET ( n -- n )
-   NCOMP-DISPATCH:TARGET-DECL-A swap PKG-OPERATION ;
+   TARGET-OWNER-A @ swap PKG-OPERATION ;
 
 : PKG-NOTIFY ( n -- )
    PKG-TARGET {: xt:n :}
@@ -987,7 +989,7 @@ CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
 \ operation is the same one. Each records the name at the using depth before it
 \ grows.
 : PKG-NOTIFY-USING ( -- )
-   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-USING-OFF PKG-OPERATION
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-USING-OFF PKG-OPERATION
    {: own:n :}
    own 0<> if TOKEN$ own PKG-AS-NAME-ACTION execute then
    NCOMP-DISPATCH:DECL-USING-OFF PKG-TARGET {: target:n :}
@@ -998,7 +1000,7 @@ CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
 \ An actual export names the source checker's declaration callback. A direct
 \ call only adds a checker row and has no engine alias to bind.
 : PKG-CHECK-EXPORT ( -- )
-   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
       {: xt:n :}
    xt 0= if
       s" E-DISPATCH-UNSET" REJECTION:OPEN
@@ -2393,7 +2395,7 @@ variable LIT-AT
    s" create" DEF-HOOK ;
 
 : DEF-RAW-ACTIVE ( -- n )
-   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
    own 0<> if own exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if
@@ -2413,10 +2415,10 @@ variable LIT-AT
 : DEF-RAW-PUBLISH ( str -- ) {: sig:^ su:n :}
    DEF-RAW-ACTIVE {: own:n :}
    sig su own DEF-DECLARE
-   NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
+   SOURCE-OWNER-A @ 0= if exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if exit then
-   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION target = if exit then
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION target = if exit then
    sig su target DEF-DECLARE ;
 
 : DEF-ADDR-PUBLISH ( -- )
@@ -2501,11 +2503,11 @@ variable DEF-VALUE
 \ A row the checker refuses throws before DEF-FIXED counts the record, so no
 \ callable name is left.
 : DEF-REGISTER-IDENTITY ( str str n -- ) {: a:^ u:n sig:^ su:n off:n :}
-   NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
+   SOURCE-OWNER-A @ off PKG-OPERATION {: own:n :}
    own 0<> if a u sig su own DEF-DECLARE-NAME then
    off PKG-TARGET {: target:n :}
    target 0= if exit then
-   NCOMP-DISPATCH:DECL-A off PKG-OPERATION target = if exit then
+   SOURCE-OWNER-A @ off PKG-OPERATION target = if exit then
    a u sig su target DEF-DECLARE-NAME ;
 
 : DEF-REGISTER-CAST ( -- )
@@ -2734,7 +2736,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ The active owner's operation at off, then the target owner's, 0 when the
 \ active owner's field holds the same one.
 : DEF-OWNERS ( n -- n n ) {: off:n :}
-   NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
+   SOURCE-OWNER-A @ off PKG-OPERATION {: own:n :}
    off PKG-TARGET {: target:n :}
    own  target own = if 0 else target then ;
 
@@ -3007,7 +3009,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 \ The checker's record end as a buffer begins, plus one, or 0 when no owner
 \ records rows.
 : ROWS-MARK ( -- n )
-   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-ROWS-END-OFF PKG-OPERATION {: xt:n :}
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-ROWS-END-OFF PKG-OPERATION {: xt:n :}
    xt 0= if 0 exit then
    xt AS-ROWS-END execute 1+ ;
 
@@ -3016,7 +3018,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 : ROWS-CUT ( ^u8 -- ) {: f:^ :}
    f EVAL-FRAME:ROWS FR@ {: mark:n :}
    mark 0= if exit then
-   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF PKG-OPERATION {: xt:n :}
+   SOURCE-OWNER-A @ NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF PKG-OPERATION {: xt:n :}
    xt 0= if exit then
    mark 1- xt AS-ROWS-CUT execute ;
 

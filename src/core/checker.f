@@ -14493,10 +14493,12 @@ SCRATCH-VARIABLE PATH-KEY-CAP     \ PATH-KEY-P's room, in cells
 \ The owner record stores raw execution tokens.
 CAST: AS-ACTION ( n -- [ -- ] )
 
+NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
+
 \ The target owner's operation at off, skipped when there is no record or the
 \ field is empty: a loading checker, or in a build the image's.
 : OWNER-RUN ( n -- ) {: off:n :}
-   NCOMP-DISPATCH:TARGET-DECL-A @ {: rec:^ :}
+   TARGET-OWNER-A @ {: rec:^ :}
    rec NULL-PTR = IF EXIT THEN
    rec off + CELL-VIEW @ {: xt:n :}
    xt 0 <> IF xt AS-ACTION execute THEN ;

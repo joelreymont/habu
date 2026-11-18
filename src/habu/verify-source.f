@@ -1016,9 +1016,11 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    p REJECTION:PLACES? IF p ELSE NULL-PTR THEN {: t:^ :}
    NULL-PTR 0 t 0 CHECKER-OWNER-GUARD:MISSING-OP ;
 
+NCOMP-DISPATCH:DECL-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
+
 \ Replay-only checker queries use the live declaration owner.
 : OWNER-XT ( n -- n ) {: off:n :}
-   NCOMP-DISPATCH:DECL-A @
+   SOURCE-OWNER-A @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
    off + CELL-VIEW @ dup 0= IF OWNER-STOP THEN ;
 
@@ -2952,7 +2954,7 @@ DYNAMIC-BUFFER PRS-LEN n                   \ their bytes; 0 for a `parses:` row
 DYNAMIC-BUFFER PRS-TERMS u8
 
 : PRS-OWNER-BASE ( -- n )
-   NCOMP-DISPATCH:DECL-A @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+   SOURCE-OWNER-A @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
 : TOP-VERDICT ( str bool -- n )
