@@ -17,6 +17,7 @@ require src/lib/fs-mutate.f
 require src/lib/json.f
 require src/lib/memory.f
 require src/lib/property.f
+require src/lib/reason.f
 require src/lib/secret.f
 require src/lib/span.f
 require src/lib/string.f
@@ -33,7 +34,7 @@ require src/lib/net/tcp4.f
 package MODEL-FIXTURE
 private
 \ The store holds ITEMS items; an empty service marks a free one, since SECRET
-\ refuses an empty identifier before calling the store.
+\ rejects an empty identifier before calling the store.
 8 constant ITEMS
 64 constant ID-CAP
 4096 constant VALUE-CAP
@@ -1172,6 +1173,12 @@ variable JOURNAL-READY
 : M ( -- ^MODEL:call ) 0 CALL ;
 : TRUE-CONTENT$ ( -- str ) S\" {\qanswer\q:true}" ;
 : CODE-OF ( n [ n -- n ] -- n ) catch {: code:n :} drop code ;
+\ Runs xt as CODE-OF does; it must throw MODEL:E-CONFIG with the text want.
+: CONFIG-SAYS ( n [ n -- n ] str -- )
+   {: want:^ wl:n :} CODE-OF {: code:n :}
+   code REASON:TEXT$ {: ta:^ tu:n :}
+   code MODEL:E-CONFIG = ASSERT
+   ta tu want wl T$= ;
 variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
 : CHAT-CODE ( -- n ) TIME:MONO-NS CHAT-NS ! M [: dup MODEL:CHAT 2drop ;] catch {: code:n :} drop code ;
 : EMBED-CODE ( -- n ) M [: dup MODEL:EMBED ;] catch {: code:n :} drop code ;
@@ -1410,25 +1417,92 @@ variable REFUSED-BASE-U
 : STORE-KEY ( -- ) KEY-CASES FIXTURE-KEY ;
 
 
-\ A negative length is refused before the setter touches the key, so the prior
+\ A negative length is rejected before the setter touches the key, so the prior
 \ key stays in force.
 : NEGATIVE-ACCOUNT ( n -- n ) SERVICE$ s" account" drop -1 M MODEL:API-KEY! ;
 : NEGATIVE-KEY ( -- )
-   0 [: NEGATIVE-ACCOUNT ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: NEGATIVE-ACCOUNT ;]
+   s" expected API-KEY!'s account, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS
    CHAT ;
 
 
+\ Call 1 opened ready to chat, with no key item named.
+: KEYLESS-CALL ( -- ^MODEL:call )
+   1 CALL {: c:^ :}
+   c MODEL:OPEN
+   MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
+   s" test-generation" c MODEL:GENERATION-MODEL!
+   s" Read source evidence." c MODEL:SYSTEM!
+   SCHEMA$ c MODEL:SCHEMA!
+   c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
+   c ;
+: KEYLESS-TEXT$ ( -- str )
+   s" expected an API key item named by API-KEY!, found an empty text; pass API-KEY! the service and account of the store item holding the key" ;
+
+\ A chat of a call with no key item named sends nothing.
+: KEYLESS-CHAT ( -- )
+   MODEL-PEER:CALLS@ {: before:n :}
+   KEYLESS-CALL {: c:^ :}
+   0 [: drop 1 CALL MODEL:CHAT 2drop 0 ;] KEYLESS-TEXT$ CONFIG-SAYS
+   c MODEL:CLOSE
+   MODEL-PEER:CALLS@ before = ASSERT ;
+
+\ AWAIT throws the key item's rejection START kept with its own text, not the
+\ text of a rejection the task met since.
+: KEYLESS-AWAIT ( -- )
+   KEYLESS-CALL {: c:^ :}
+   c MODEL:START
+   0 [: -1 M MODEL:MAX-OUTPUT! ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: drop 1 CALL MODEL:AWAIT 0 ;] KEYLESS-TEXT$ CONFIG-SAYS
+   c MODEL:CLOSE ;
+
+
 : BAD-IMAGE ( n -- n ) s" image/png" s" invalid!" M MODEL:IMAGE+ ;
+: EMPTY-IMAGE ( n -- n ) s" image/png" s" " M MODEL:IMAGE+ ;
+: TEXT-IMAGE ( n -- n ) s" text/plain" s" aGVsbG8=" M MODEL:IMAGE+ ;
+: NEGATIVE-MIME ( n -- n ) s" image/png" drop -50 s" aGVsbG8=" M MODEL:IMAGE+ ;
+: NEGATIVE-DATA ( n -- n ) s" image/png" s" aGVsbG8=" drop -8 M MODEL:IMAGE+ ;
 
 
 : INVALID-IMAGE ( -- )
    M MODEL:PARTS-RESET
-   0 [: BAD-IMAGE ;] CODE-OF MODEL:E-CONFIG = ASSERT ;
+   0 [: BAD-IMAGE ;]
+   s" IMAGE+'s image data 1:8: expected a character of A-Z, a-z, 0-9, + or /, found `!`; write the data as BASE64:ENCODE writes it"
+   CONFIG-SAYS
+   0 [: EMPTY-IMAGE ;]
+   s" expected IMAGE+'s image data in base64, found an empty text; pass the image's bytes as BASE64:ENCODE writes them"
+   CONFIG-SAYS
+   0 [: TEXT-IMAGE ;]
+   s" expected IMAGE+'s media type image/png, image/jpeg, image/webp or image/gif, found `text/plain`; pass one of those media types"
+   CONFIG-SAYS
+   0 [: NEGATIVE-MIME ;]
+   s" expected IMAGE+'s media type, found `-50`; pass the text with its length in bytes"
+   CONFIG-SAYS
+   0 [: NEGATIVE-DATA ;]
+   s" expected IMAGE+'s image data, found `-8`; pass the text with its length in bytes"
+   CONFIG-SAYS ;
 
 
+\ A text of negative length is rejected before the input changes, so a text
+\ added next still joins it.
+: NEGATIVE-TEXT ( n -- n ) s" x" drop -1 M MODEL:TEXT+ ;
+: INVALID-TEXT ( -- )
+   M MODEL:PARTS-RESET
+   0 [: NEGATIVE-TEXT ;]
+   s" expected TEXT+'s text, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS
+   s" x" M MODEL:TEXT+ ;
+
+
+: VALID-CHAT ( n -- n ) s" valid" PREP M MODEL:CHAT 2drop ;
 : INVALID-SCHEMA ( -- )
    s" {bad" M MODEL:SCHEMA!
-   [: s" valid" MODEL:E-CONFIG FAILS ;] QUIET
+   [:
+      0 [: VALID-CHAT ;]
+      s" SCHEMA!'s schema 1:2: expected a member name or `}`, found `bad`; write the member's name in double quotes, or close the object with `}`"
+      CONFIG-SAYS
+   ;] QUIET
    SCHEMA$ M MODEL:SCHEMA! ;
 
 
@@ -1479,7 +1553,9 @@ variable REFUSED-BASE-U
    M MODEL:ERROR$ s" bad request" STR= ASSERT
    s" error" s" MODEL:E-HTTP status 400: bad request" CHAT-LOGGED
    CHAT M MODEL:ERROR$ nip 0= ASSERT
-   s" http-text" MODEL:E-CONFIG FAILS
+   0 [: drop s" http-text" PREP M MODEL:CHAT 2drop 0 ;]
+   s" expected a generation model the provider serves, found `test-generation`; pass GENERATION-MODEL! or PURPOSE-MODEL! a model the provider serves: it answered status 404"
+   CONFIG-SAYS
    M MODEL:HTTP-STATUS 404 = ASSERT
    M MODEL:ERROR$ s" model not found" STR= ASSERT
    s" error" s" MODEL:E-CONFIG status 404: model not found" CHAT-LOGGED
@@ -1857,6 +1933,18 @@ variable KEPT-U
    s" " M MODEL:LOG-NOTE! ;
 
 
+\ A note of negative length is rejected; so is a negative resend wait.
+: NEGATIVE-NOTE ( n -- n ) s" x" drop -1 M MODEL:LOG-NOTE! ;
+: NEGATIVE-WAIT ( n -- n ) -1 M MODEL:RESEND-WAIT! ;
+: NEGATIVE-SETTINGS ( -- )
+   0 [: NEGATIVE-NOTE ;]
+   s" expected LOG-NOTE!'s note, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS
+   0 [: NEGATIVE-WAIT ;]
+   s" expected RESEND-WAIT!'s ms of 0 or more, found `-1`; pass the ms to rest before a resend, or 0 for none"
+   CONFIG-SAYS ;
+
+
 \ SERVE refuses a call not started; a started call answers true once it lands
 \ and again until AWAIT ends it, and a fault before the transfer lands it.
 : SERVED-CALL ( -- )
@@ -2031,6 +2119,14 @@ variable LANDED
    M MODEL:HTTP-STATUS 0= ASSERT ;
 
 
+\ An embed with no input is E-CONFIG.
+: NO-INPUT-EMBED ( -- )
+   M MODEL:INPUT-RESET
+   0 [: drop M MODEL:EMBED 0 ;]
+   s" expected at least one input, found `0`; add each text to embed with INPUT+"
+   CONFIG-SAYS ;
+
+
 \ An embed the provider fails keeps its inputs: EMBED sends the same body
 \ again.
 : EMBED-RESENT ( -- )
@@ -2050,9 +2146,16 @@ variable LANDED
    PAD-U INPUT-LEN drop
    M MODEL:EMBED
    0 M MODEL:VECTOR@ PAD-U s>f F32:NARROW 0 0 VECTOR-IS
-   0 [: drop 1 M MODEL:VECTOR@ 2drop 0 ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: drop 1 M MODEL:VECTOR@ 2drop 0 ;]
+   s" expected VECTOR@'s index of 0 or more below the input count 1, found `1`; pass the index of an input INPUT+ added"
+   CONFIG-SAYS
    M MODEL:INPUT-RESET
-   0 [: INPUT-LEN ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: INPUT-LEN ;]
+   s" expected INPUT+'s input, found an empty text; pass a text of 1 byte or more"
+   CONFIG-SAYS
+   -1 [: INPUT-LEN ;]
+   s" expected INPUT+'s input, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS
    MODEL:INPUT-MAX 0 ?do 1 INPUT-LEN drop loop
    1 [: INPUT-LEN ;] CODE-OF MODEL:E-CAPACITY = ASSERT ;
 
@@ -2083,7 +2186,9 @@ variable LANDED
 \ MODEL-PEER:WIDE-DIMS vector embeds whole. The embeds that follow run at
 \ three.
 : DIMS-PROPERTY ( -- )
-   0 [: DIMS ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: DIMS ;]
+   s" expected an embedding dimension count of 1 or more, found `0`; pass the length of the model's vectors"
+   CONFIG-SAYS
    1 DIMS drop
    PROP:DEFAULT-SEED BOUND-TRIALS PROP:RUN-RESET
    PROP:COUNT@ 0 ?do MODEL-PEER:WIDE-DIMS PROP:RND% 1+ DIMS drop loop
@@ -2094,6 +2199,19 @@ variable LANDED
    3 DIMS drop ;
 
 
+\ An empty or negative-length generation model is rejected naming the
+\ setting.
+: EMPTY-GENERATION ( n -- n ) s" " M MODEL:GENERATION-MODEL! ;
+: NEGATIVE-GENERATION ( n -- n ) s" x" drop -1 M MODEL:GENERATION-MODEL! ;
+: GENERATION-REJECTED ( -- )
+   0 [: EMPTY-GENERATION ;]
+   s" expected GENERATION-MODEL!'s model, found an empty text; pass a text of 1 byte or more"
+   CONFIG-SAYS
+   0 [: NEGATIVE-GENERATION ;]
+   s" expected GENERATION-MODEL!'s model, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS ;
+
+
 \ The call answers the embedding model it was last given.
 : EMBEDDING-NAMED ( -- )
    s" named-embedding" 3 60000 M MODEL:EMBEDDING-MODEL!
@@ -2102,24 +2220,41 @@ variable LANDED
    M MODEL:EMBEDDING-MODEL$ s" test-embedding" STR= ASSERT ;
 
 
-\ Refused bases: another scheme, no host, a blank, a trailing slash, and
-\ userinfo or a query that could carry a credential, in a base or an Ollama
-\ endpoint. A refusal keeps the configured base.
+\ Rejected bases: another scheme, no host, a blank, a trailing slash, and
+\ userinfo, a query or a fragment, which could carry a credential.
 : FTP-BASE ( n -- n ) s" ftp://x" M MODEL:BASE-URL! ;
 : BARE-BASE ( n -- n ) s" http://" M MODEL:BASE-URL! ;
 : BLANK-BASE ( n -- n ) s" http://x y" M MODEL:BASE-URL! ;
 : SLASH-BASE ( n -- n ) s" http://x/" M MODEL:BASE-URL! ;
 : USER-BASE ( n -- n ) s" https://user:token@x" M MODEL:BASE-URL! ;
-: QUERY-BASE ( n -- n ) s" https://x/v1?key=k" M MODEL:BASE-URL! ;
+: KEY-BASE ( n -- n ) s" https://host/v1?key=SECRETKEY" M MODEL:BASE-URL! ;
+: FRAGMENT-BASE ( n -- n ) s" https://u:p@host/v1#k=S" M MODEL:BASE-URL! ;
+: HASH-USER-BASE ( n -- n ) s" https://user:SECRET#@host" M MODEL:BASE-URL! ;
+: QUERY-AT-BASE ( n -- n ) s" https://host/v1?email=me@example.com&key=SECRET" M MODEL:BASE-URL! ;
 : USER-OLLAMA ( n -- n ) s" http://user:token@x/api/embed" s" bge-m3" s" bge-m3" 3 60000 M MODEL:OLLAMA! ;
 : BASES ( -- )
    0 [: FTP-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: BARE-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: BLANK-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: SLASH-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
-   0 [: USER-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
-   0 [: QUERY-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
-   0 [: USER-OLLAMA ;] CODE-OF MODEL:E-CONFIG = ASSERT ;
+   0 [: USER-BASE ;]
+   s" expected BASE-URL!'s http or https base with no trailing slash, userinfo, query or fragment, found `https://<redacted>@x`; pass the provider's base, as https://api.openai.com/v1, or an empty text for OpenAI's"
+   CONFIG-SAYS
+   0 [: KEY-BASE ;]
+   s" expected BASE-URL!'s http or https base with no trailing slash, userinfo, query or fragment, found `https://host/v1?<redacted>`; pass the provider's base, as https://api.openai.com/v1, or an empty text for OpenAI's"
+   CONFIG-SAYS
+   0 [: FRAGMENT-BASE ;]
+   s" expected BASE-URL!'s http or https base with no trailing slash, userinfo, query or fragment, found `https://<redacted>@host/v1#<redacted>`; pass the provider's base, as https://api.openai.com/v1, or an empty text for OpenAI's"
+   CONFIG-SAYS
+   0 [: HASH-USER-BASE ;]
+   s" expected BASE-URL!'s http or https base with no trailing slash, userinfo, query or fragment, found `https://<redacted>@<redacted>`; pass the provider's base, as https://api.openai.com/v1, or an empty text for OpenAI's"
+   CONFIG-SAYS
+   0 [: QUERY-AT-BASE ;]
+   s" expected BASE-URL!'s http or https base with no trailing slash, userinfo, query or fragment, found `https://<redacted>@<redacted>`; pass the provider's base, as https://api.openai.com/v1, or an empty text for OpenAI's"
+   CONFIG-SAYS
+   0 [: USER-OLLAMA ;]
+   s" expected OLLAMA!'s http or https endpoint with no trailing slash, userinfo, query or fragment, found `http://<redacted>@x/api/embed`; pass the Ollama server's embed URL, as http://localhost:11434/api/embed"
+   CONFIG-SAYS ;
 
 
 \ A hit requires the stored journal input, so a hit is that exact request.
@@ -2216,6 +2351,7 @@ variable ROW-FAIL
 \ A reader at the value of the last recorded row's member `key`.
 : ROW ( ^u8 n -- JSON:reader ) {: key:^ key-u:n :} ROW$ key key-u MEMBER ;
 : BLANK-PURPOSE ( n -- n ) s"  " M MODEL:PURPOSE! ;
+: NEGATIVE-PURPOSE ( n -- n ) s" x" drop -1 M MODEL:PURPOSE! ;
 : PURPOSE ( -- ) s" assemble" M MODEL:PURPOSE! ;
 \ The first generation row's prefix hash, 64 hex digits.
 create HASH 64 allot
@@ -2309,7 +2445,12 @@ variable PAUSED-ROWS
    CAPTURE
    TEST-RECORDER
    0 ROWS-MADE ! 0 REJECTED-ROW ! false ROW-FAIL !
-   0 [: BLANK-PURPOSE ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: BLANK-PURPOSE ;]
+   s" expected a purpose with a byte other than a blank or a control, found ` `; name what the call is for"
+   CONFIG-SAYS
+   0 [: NEGATIVE-PURPOSE ;]
+   s" expected PURPOSE!'s purpose, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS
    MODEL-PEER:CALLS@ {: calls:n :}
    [: s" valid" MODEL:E-STATE FAILS ;] QUIET
    MODEL-PEER:CALLS@ calls = ASSERT
@@ -2464,7 +2605,9 @@ create ROW-NAME 1 allot
    s" model" SENT s" test-generation" STR-IS
    NO-EFFORT
    s" model" ROW s" test-generation" STR-IS
-   0 [: SAME-ROW ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: SAME-ROW ;]
+   s" expected a purpose with no row yet, found `extract`; give each purpose one PURPOSE-MODEL! row"
+   CONFIG-SAYS
    0 [: EMPTY-MODEL ;] CODE-OF MODEL:E-CONFIG = ASSERT
    16 0 ?do i NTH-ROW loop
    s" z" s" last-model" s" " s" " M MODEL:PURPOSE-MODEL!
@@ -2535,7 +2678,9 @@ variable KEYLESS-U
    0 M MODEL:MAX-OUTPUT!
    PURPOSE CHAT
    NO-MAX-OUTPUT
-   0 [: NEGATIVE-MAX-OUTPUT ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: NEGATIVE-MAX-OUTPUT ;]
+   s" expected MAX-OUTPUT!'s count of 0 or more, found `-1`; pass the most output tokens, or 0 for no limit"
+   CONFIG-SAYS
    PURPOSE CHAT
    NO-MAX-OUTPUT ;
 
@@ -2839,6 +2984,7 @@ variable ASKED-U
 : REPLAYED ( ^MODEL:call -- ^MODEL:call ) {: c :} RECORD$ c MODEL:REPLAY 2drop c ;
 : REPLAY-CODE ( -- n ) M [: REPLAYED ;] catch {: code:n :} drop code ;
 : ADD-TEXT ( ^MODEL:call -- ^MODEL:call ) {: c :} s" x" c MODEL:TEXT+ c ;
+: NEGATIVE-REPLAY ( n -- n ) s" x" drop -1 M MODEL:REPLAY 2drop ;
 
 
 \ A caller that looks its journal up itself reads the journal input of the
@@ -2846,7 +2992,8 @@ variable ASKED-U
 \ request with CHAT or restores a saved record with REPLAY, which sends and
 \ records nothing and restores the call id the record was saved from. The
 \ pending purpose's row reaches that input. REPLAY needs a request
-\ JOURNAL-INPUT$ finished and not yet consumed or discarded by a builder.
+\ JOURNAL-INPUT$ finished and not yet consumed or discarded by a builder; a
+\ record of negative length is rejected before it takes that request.
 : CALLER-JOURNAL ( -- )
    CAPTURE
    TEST-RECORDER
@@ -2861,6 +3008,9 @@ variable ASKED-U
    ROWS-MADE @ {: rows:n :}
    MODEL-PEER:CALLS@ {: calls:n :}
    PURPOSE s" valid" ASK
+   0 [: NEGATIVE-REPLAY ;]
+   s" expected REPLAY's record, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS
    RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR= ASSERT
    MODEL-PEER:CALLS@ calls = ASSERT
    ROWS-MADE @ rows = ASSERT
@@ -3881,7 +4031,9 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    M MODEL:PARTS-RESET
    CALLED$ ITEM-CODE 0= ASSERT
    M MODEL:PARTS-RESET
-   CHAT-CODE MODEL:E-CONFIG = ASSERT ;
+   0 [: drop M MODEL:CHAT 2drop 0 ;]
+   s" expected at least one part or item, found `0`; add a part with TEXT+ or IMAGE+, or an item with ITEM+"
+   CONFIG-SAYS ;
 
 
 \ Items follow the head message of the parts in the order added, verbatim in
@@ -3912,11 +4064,18 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" input" SENT SB$ RAW-IS ;
 
 
+: ARRAY-ITEM ( n -- n ) s" []" ITEM ;
+: NEGATIVE-ITEM ( n -- n ) s" {}" drop -1 ITEM ;
 \ An item that is not exactly one JSON object is E-CONFIG and adds nothing.
 : ITEM-REFUSALS ( -- )
    s" valid" PREP CALLED$ ITEM
    s" " ITEM-CODE MODEL:E-CONFIG = ASSERT
-   s" []" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   0 [: ARRAY-ITEM ;]
+   s" ITEM+'s item 1:1: expected an object, found `[`; pass one JSON object"
+   CONFIG-SAYS
+   0 [: NEGATIVE-ITEM ;]
+   s" expected ITEM+'s item, found `-1`; pass the text with its length in bytes"
+   CONFIG-SAYS
    S\" \qx\q" ITEM-CODE MODEL:E-CONFIG = ASSERT
    s" {}{}" ITEM-CODE MODEL:E-CONFIG = ASSERT
    s" {" ITEM-CODE MODEL:E-CONFIG = ASSERT
@@ -3963,6 +4122,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 : TOOLS-CODE ( str -- n ) M MODEL:TOOLS! s" tool-call" PREP CHAT-CODE ;
+: NUMBER-TOOL ( n -- n ) s" [1]" M MODEL:TOOLS! s" tool-call" PREP M MODEL:CHAT 2drop ;
 
 
 \ Tools other than one non-empty JSON array of objects, and neither schema nor
@@ -3971,7 +4131,9 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    MODEL-PEER:CALLS@ {: before:n :}
    s" {}" TOOLS-CODE MODEL:E-CONFIG = ASSERT
    s" []" TOOLS-CODE MODEL:E-CONFIG = ASSERT
-   s" [1]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   0 [: NUMBER-TOOL ;]
+   s" TOOLS!'s tools 1:2: expected an object, found `1`; pass one JSON array of one or more tool objects"
+   CONFIG-SAYS
    S\" \q\q" TOOLS-CODE MODEL:E-CONFIG = ASSERT
    s" [{},1]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
    s" [{}][]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
@@ -4179,7 +4341,9 @@ variable COUNTED-U
    KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
    s" Read source evidence." c MODEL:SYSTEM!
    c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
-   c COUNT-CODE MODEL:E-CONFIG = ASSERT
+   0 [: drop 1 CALL MODEL:COUNT-INPUT drop 0 ;]
+   s" expected a reply form set by SCHEMA! or TOOLS!, found an empty text; pass the reply's JSON schema to SCHEMA! or its tools to TOOLS!"
+   CONFIG-SAYS
    c MODEL:CLOSE
    MODEL-PEER:CALLS@ before = ASSERT ;
 
@@ -4436,9 +4600,15 @@ variable COUNTED-U
    MODEL-PEER:AWAIT-HOLD ;
 
 
+\ A rejected OLLAMA! keeps the configured endpoint.
+: EMPTY-OLLAMA ( n -- n )
+   {: n:n :}
+   s" http://127.0.0.1:9/api/embed" s" " IDENTITY$ 3 60000 M MODEL:OLLAMA! n ;
+
 : OLLAMA-CASES ( -- )
    3 OLLAMA-DIMS drop
    M MODEL:EMBEDDING-CONFIG$ s" identity" MEMBER IDENTITY$ STR-IS
+   0 [: EMPTY-OLLAMA ;] s" expected OLLAMA!'s model, found an empty text; pass a text of 1 byte or more" CONFIG-SAYS
    s" one" INPUTS
    s" two" M MODEL:INPUT+
    M MODEL:EMBED
@@ -4506,7 +4676,9 @@ variable COUNTED-U
    s" " APPLIED
    s" base_url" s" https://api.openai.com/v1" GEN-IS
    s" base-url" s" ftp://x" FILE
-   0 [: ST-OPEN ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: ST-OPEN ;]
+   s" expected a service whose base-url item holds a base BASE-URL! takes, found `habu-test-settings`; file an http or https base with no trailing slash, userinfo, query or fragment in the service's base-url item, or erase the item"
+   CONFIG-SAYS
    0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = ASSERT
    s" base-url" UNFILE
    s" model" UNFILE
@@ -4518,6 +4690,14 @@ variable COUNTED-U
 : SETTINGS ( -- )
    s" settings-generation" MODEL-PEER:BASE-URL$ SETTINGS!
    SETTINGS-CASES ;
+
+
+\ Settings opened under an empty service are rejected before any store read.
+: UNNAMED-OPEN ( n -- n ) s" " ST MODEL:SETTINGS-OPEN ;
+: UNNAMED-SETTINGS ( -- )
+   0 [: UNNAMED-OPEN ;]
+   s" expected SETTINGS-OPEN's service, found an empty text; pass a text of 1 byte or more"
+   CONFIG-SAYS ;
 
 
 \ While a limit is set, a count and a compaction send and journal none, a
@@ -4545,17 +4725,17 @@ variable COUNTED-U
 : CASES ( -- )
    SETUP
    M MODEL:CANCEL 0= ASSERT
-   BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
+   BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY KEYLESS-CHAT KEYLESS-AWAIT INVALID-IMAGE INVALID-TEXT INVALID-SCHEMA
    REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET
-   EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE EMBED-RESENT INPUT-BOUNDS
+   EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE NO-INPUT-EMBED EMBED-RESENT INPUT-BOUNDS
    INPUT-MAX-EMBED
-   DIMS-PROPERTY EMBEDDING-NAMED
+   DIMS-PROPERTY GENERATION-REJECTED EMBEDDING-NAMED
    STOP-BETWEEN
    M MODEL:CLOSE
    SETUP
    CHAT EMBEDDINGS PREPARED-CHAT
    [: STARTED-CALLS HELD-START ;] QUIET LANDED-START FAILED-START
-   FAILED-RESENT NOTED-FAILURE
+   FAILED-RESENT NOTED-FAILURE NEGATIVE-SETTINGS
    SERVED-CALL STARTER-ONLY SETUP HALTED-STARTER
    SETUP HELD-SERVE MANY-CALLS SPOILED-SERVE
    STOP-ACTIVE
@@ -4583,7 +4763,7 @@ variable COUNTED-U
    M MODEL:CLOSE
    SETUP OLLAMA-CASES
    M MODEL:CLOSE
-   SETTINGS ;
+   SETTINGS UNNAMED-SETTINGS ;
 
 
 : PEERED ( -- )

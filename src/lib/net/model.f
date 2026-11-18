@@ -26,6 +26,7 @@ require src/lib/memory.f
 require src/lib/net/curl.f
 require src/lib/net/event-stream.f
 require src/lib/os-memory.f
+require src/lib/reason.f
 require src/lib/secret.f
 require src/lib/span.f
 require src/lib/string.f
@@ -109,7 +110,8 @@ ENUM input-state none building broken finished ;ENUM
 \ What a call's reply answers: nothing set yet, its schema or its tools.
 ENUM reply-form none schema tools ;ENUM
 public
-\ HTTP-STATUS keeps the status of a 404, 401 or 403.
+\ HTTP-STATUS keeps the status of a 404, 401 or 403. E-CONFIG's REASON:TEXT$
+\ is `expected <e>, found <f>; <fix>`, or `<argument> L:C: …` for JSON or base64.
 -9700 s" a setter, builder or key spec was given an invalid argument, or the provider answered 404 for an unknown model"
    ERROR:CODE E-CONFIG
 -9701 s" the provider refused the key with 401 or 403, or the key item is missing, empty or not printable"
@@ -361,7 +363,9 @@ RESPONSE-ID-HDR-AT BUF:HDR-BYTES + constant CHUNK-HDR-AT
 CHUNK-HDR-AT BUF:HDR-BYTES + constant EVENT-ROWS-HDR-AT
 EVENT-ROWS-HDR-AT BUF:HDR-BYTES + constant EVENT-TEXT-HDR-AT
 EVENT-TEXT-HDR-AT BUF:HDR-BYTES + constant NOTE-HDR-AT
-NOTE-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
+NOTE-HDR-AT BUF:HDR-BYTES + constant OUTCOME-TEXT-HDR-AT
+OUTCOME-TEXT-HDR-AT BUF:HDR-BYTES + constant RECORD-TEXT-HDR-AT
+RECORD-TEXT-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
 COUNTS-AT TOKENS-BYTES + constant ACCOUNTS-AT
 ACCOUNTS-AT LEDGER-BYTES + constant EVENTS-AT
 EVENTS-AT STREAM-BYTES + constant DECODER-AT
@@ -424,7 +428,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base CHUNK-HDR-AT + CELL-VIEW CHUNK-BYTES BUF:N>BLEN BUF:INIT
    base EVENT-ROWS-HDR-AT + CELL-VIEW EVENT-ROW-BYTES BUF:N>BLEN BUF:INIT
    base EVENT-TEXT-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
-   base NOTE-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT ;
+   base NOTE-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
+   base OUTCOME-TEXT-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
+   base RECORD-TEXT-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT ;
 
 : DISPOSE-BUFFERS ( ^u8 -- )
    {: base:^ :}
@@ -465,7 +471,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base CHUNK-HDR-AT + CELL-VIEW BUF:DISPOSE
    base EVENT-ROWS-HDR-AT + CELL-VIEW BUF:DISPOSE
    base EVENT-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base NOTE-HDR-AT + CELL-VIEW BUF:DISPOSE ;
+   base NOTE-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base OUTCOME-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base RECORD-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE ;
 
 : STORAGE ( ^call -- SPAN:span<u8> )
    {: c :}
@@ -532,6 +540,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : CHUNK-BUF ( ^call -- ^n ) CHUNK-HDR-AT HEADER ;
 \ The text LOG-NOTE! names the call's work with.
 : NOTE-BUF ( ^call -- ^n ) NOTE-HDR-AT HEADER ;
+\ The REASON text of the call's outcome; of its recorder fault.
+: OUTCOME-TEXT-BUF ( ^call -- ^n ) OUTCOME-TEXT-HDR-AT HEADER ;
+: RECORD-TEXT-BUF ( ^call -- ^n ) RECORD-TEXT-HDR-AT HEADER ;
 \ A buffer's whole capacity. Writers that keep their own length write here.
 : HELD ( ^n -- SPAN:span<u8> )
    {: buf:^ :}
@@ -551,6 +562,25 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    EVENTS-AT STREAM-BYTES REGION SPAN:$ drop >STREAM ;
 : RECEIPT ( ^call -- ^receipt )
    ENDING-AT RECEIPT-BYTES REGION SPAN:$ drop >RECEIPT ;
+\ Keeps in buf the text of n, a code just caught: REASON:TEXT$ holds it only
+\ until the task's next REASON:THROW.
+: CAUGHT-TEXT! ( n ^n -- )
+   {: code:n buf:^ :}
+   code REASON:TEXT$ BUF:N>BLEN buf BUF:REPLACE ;
+\ Keeps n as the call's outcome with its text: a code just caught, or
+\ E-CANCELLED, which has none.
+: OUTCOME! ( n ^call -- )
+   {: code:n c :}
+   code c RECEIPT RECEIPT-OUTCOME !
+   code c OUTCOME-TEXT-BUF CAUGHT-TEXT! ;
+\ Throws the call's outcome, if any, through REASON:THROW when it keeps a text.
+: OUTCOME-THROW ( ^call -- )
+   {: c :}
+   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
+   fault 0= if exit then
+   c OUTCOME-TEXT-BUF BUF:SPAN$ BUF:BLEN>N {: a:^ u:n :}
+   u 0= if fault throw then
+   a u fault REASON:THROW ;
 : DECODER-STORAGE ( ^call -- ^n n )
    DECODER-AT SSE:STORAGE-BYTES REGION SPAN:$ {: a:^ u:n :}
    a CELL-VIEW u ;
@@ -793,9 +823,120 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    then ;
 
 
-: REPLACE-SOME ( str ^n -- )
-   {: a:^ u:n buf:^ :}
-   u 0 <= if E-CONFIG throw then
+: PUT$ ( ^u8 str -- ^u8 ) {: at:^ a:^ u:n :} a at u BYTE-COPY  at u + ;
+
+: EXPECTED$ ( -- str ) s" expected " ;
+: FOUND$ ( -- str ) s" , found " ;
+: EMPTY$ ( -- str ) s" an empty text" ;
+: FIX-SEP$ ( -- str ) s" ; " ;
+
+: REJECT-SCOPE ( str str str ^u8 NUM:alloc-byte-len -- )
+   drop {: ea:^ eu:n fa:^ fu:n xa:^ xu:n buf:^ :}
+   buf EXPECTED$ PUT$ ea eu PUT$ FOUND$ PUT$
+   fu 0= if EMPTY$ PUT$ else s" `" PUT$ fa fu PUT$ s" `" PUT$ then
+   FIX-SEP$ PUT$ xa xu PUT$
+   buf - {: tu:n :}
+   buf tu E-CONFIG REASON:THROW ;
+
+\ Throws E-CONFIG with the text `expected <e>, found `<f>`; <fix>`, an empty f
+\ found as `an empty text`.
+: CONFIG-REJECT ( str str str -- )
+   {: ea:^ eu:n fa:^ fu:n xa:^ xu:n :}
+   ea eu fa fu xa xu
+   EXPECTED$ nip eu + FOUND$ nip +  fu 0= if EMPTY$ nip else 2 then +
+   fu + FIX-SEP$ nip + xu + MEM:BYTES-ALLOC-LEN
+   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
+
+: NAMED-SCOPE ( str str ^u8 NUM:alloc-byte-len -- )
+   drop {: na:^ nu:n ta:^ tu:n buf:^ :}
+   buf na nu PUT$ s"  " PUT$ ta tu PUT$
+   buf - {: u:n :}
+   buf u E-CONFIG REASON:THROW ;
+
+\ Throws E-CONFIG with the text `<name> <text>`.
+: NAMED-THROW ( str str -- )
+   {: na:^ nu:n ta:^ tu:n :}
+   na nu ta tu  nu tu + 1+ MEM:BYTES-ALLOC-LEN
+   [: NAMED-SCOPE ;] MEM:WITH-BYTES ;
+
+: REDACTED$ ( -- str ) s" <redacted>" ;
+
+\ A byte a URL scheme may hold (RFC 3986 section 3.1).
+: SCHEME-BYTE? ( n -- bool )
+   {: b:n :}
+   b [char] a >= b [char] z <= and  b [char] A >= b [char] Z <= and or
+   b [char] 0 >= b [char] 9 <= and or
+   b [char] + = or  b [char] - = or  b [char] . = or ;
+
+\ The index past a leading scheme and its `://`, else 0.
+: AUTHORITY-AT ( str -- n )
+   {: a:^ u:n :}
+   u 3 - 0 max 0 ?do
+      a i + c@ {: b:n :}
+      b [char] : = if
+         i 0 > a i + 1+ c@ [char] / = and a i + 2 + c@ [char] / = and
+         if i 3 + else 0 then unloop exit
+      then
+      b SCHEME-BYTE? 0= if 0 unloop exit then
+   loop 0 ;
+
+\ The index of the URL's first `?` or `#`, its length when it has neither.
+: QUERY-AT ( str -- n )
+   {: a:^ u:n :}
+   u 0 ?do
+      a i + c@ {: b:n :}
+      b [char] ? = b [char] # = or if i unloop exit then
+   loop u ;
+
+\ The index past the URL's last `@`, 0 when it has none.
+: USERINFO-END ( str -- n )
+   {: a:^ u:n :}
+   0 u 0 ?do a i + c@ [char] @ = if drop i 1+ then loop ;
+
+: REDACTED-SCOPE ( str str n n n n str ^u8 NUM:alloc-byte-len -- )
+   drop {: ea:^ eu:n fa:^ fu:n at:n end:n q0:n q:n xa:^ xu:n buf:^ :}
+   buf end 0<> if fa at PUT$ REDACTED$ PUT$ s" @" PUT$ then
+   fa end + q end - PUT$
+   q fu < if q0 end >= if fa q + 1 PUT$ then REDACTED$ PUT$ then
+   buf - {: ru:n :}
+   ea eu buf ru xa xu CONFIG-REJECT ;
+
+\ CONFIG-REJECT, the found URL's bytes past its scheme to its last `@` and from
+\ its first `?` or `#` written `<redacted>`; a negative length found as itself.
+: URL-REJECT ( str str str -- )
+   {: ea:^ eu:n fa:^ fu:n xa:^ xu:n :}
+   fu 0< if ea eu fu FMT:INT$ xa xu CONFIG-REJECT then
+   fa fu AUTHORITY-AT {: at:n :}
+   fa fu USERINFO-END {: end:n :}
+   fa fu QUERY-AT {: q0:n :}
+   q0 end max {: q:n :}
+   end 0= q fu = and if ea eu fa fu xa xu CONFIG-REJECT then
+   ea eu fa fu at end q0 q xa xu
+   fu REDACTED$ nip 1+ 2 * + MEM:BYTES-ALLOC-LEN
+   [: REDACTED-SCOPE ;] MEM:WITH-BYTES ;
+
+\ Rejects a first text of negative length; the second names it as the
+\ rejection's expected text.
+: REQUIRE-LENGTH ( str str -- )
+   {: u:n na:^ nu:n :}
+   drop
+   u 0< if
+      na nu u FMT:INT$ s" pass the text with its length in bytes" CONFIG-REJECT
+   then ;
+
+\ Rejects a first text that is empty or of negative length; the second names
+\ it as the rejection's expected text.
+: REQUIRE-SOME ( str str -- )
+   {: a:^ u:n na:^ nu:n :}
+   a u na nu REQUIRE-LENGTH
+   u 0= if
+      na nu a 0 s" pass a text of 1 byte or more" CONFIG-REJECT
+   then ;
+
+\ Stores the text REQUIRE-SOME passes in buf.
+: REPLACE-SOME ( str str ^n -- )
+   {: a:^ u:n na:^ nu:n buf:^ :}
+   a u na nu REQUIRE-SOME
    a u BUF:N>BLEN buf BUF:REPLACE ;
 
 \ Clears buf for a use of used bytes. One whose capacity is above the smallest
@@ -935,8 +1076,16 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
 : DIMS-DEADLINE? ( n n -- )
    {: dims:n deadline:n :}
-   dims 0 <= deadline 0 <= or deadline CURL:MAX-TIMEOUT > or
-   if E-CONFIG throw then ;
+   dims 0 <= if
+      s" an embedding dimension count of 1 or more"
+      dims FMT:INT$
+      s" pass the length of the model's vectors" CONFIG-REJECT
+   then
+   deadline 0 <= deadline CURL:MAX-TIMEOUT > or if
+      s" an embedding deadline of 1 to CURL:MAX-TIMEOUT ms"
+      deadline FMT:INT$
+      s" pass the ms that may end each embedding call" CONFIG-REJECT
+   then ;
 
 : DIMS-DEADLINE! ( n n ^call -- )
    {: dims:n deadline:n c :}
@@ -1002,7 +1151,11 @@ public
 : PURPOSE! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   a u PURPOSE? 0= if E-CONFIG throw then
+   a u s" PURPOSE!'s purpose" REQUIRE-LENGTH
+   a u PURPOSE? 0= if
+      s" a purpose with a byte other than a blank or a control" a u
+      s" name what the call is for" CONFIG-REJECT
+   then
    a u BUF:N>BLEN c PURPOSE-BUF BUF:REPLACE
    u c LEDGER LEDGER-PENDING-U ! ;
 
@@ -1013,7 +1166,7 @@ public
 : LOG-NOTE! ( str ^call -- )
    {: a:^ u:n c :}
    c REQUIRE-REST
-   u 0< if E-CONFIG throw then
+   a u s" LOG-NOTE!'s note" REQUIRE-LENGTH
    a u BUF:N>BLEN c NOTE-BUF BUF:REPLACE ;
 
 : BASE-URL? ( str -- bool )
@@ -1029,15 +1182,20 @@ public
 : BASE-URL! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   u 0<> if a u BASE-URL? 0= if E-CONFIG throw then then
+   u 0<> if a u BASE-URL? 0= if
+      s" BASE-URL!'s http or https base with no trailing slash, userinfo, query or fragment"
+      a u
+      s" pass the provider's base, as https://api.openai.com/v1, or an empty text for OpenAI's"
+      URL-REJECT
+   then then
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    u 0= if c BASE-URL-BUF BUF:CLEAR exit then
-   a u c BASE-URL-BUF REPLACE-SOME ;
+   a u BUF:N>BLEN c BASE-URL-BUF BUF:REPLACE ;
 
 : GENERATION-MODEL! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   a u c GEN-BUF REPLACE-SOME
+   a u s" GENERATION-MODEL!'s model" c GEN-BUF REPLACE-SOME
    c FORGET-GEN-REPLAY ;
 
 \ The reasoning effort of every chat and count without a purpose row; empty
@@ -1045,7 +1203,8 @@ public
 : EFFORT! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   u 0= if c EFFORT-BUF BUF:CLEAR else a u c EFFORT-BUF REPLACE-SOME then
+   u 0= if c EFFORT-BUF BUF:CLEAR
+   else a u s" EFFORT!'s effort" c EFFORT-BUF REPLACE-SOME then
    c FORGET-GEN-REPLAY ;
 
 \ The provider's prompt cache key of every later generation call: requests
@@ -1054,14 +1213,19 @@ public
 : CACHE-KEY! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   u 0= if c CACHE-KEY-BUF BUF:CLEAR else a u c CACHE-KEY-BUF REPLACE-SOME then ;
+   u 0= if c CACHE-KEY-BUF BUF:CLEAR
+   else a u s" CACHE-KEY!'s key" c CACHE-KEY-BUF REPLACE-SOME then ;
 
 \ The most output tokens, reasoning included, of each later chat request alone,
 \ 0 none; a chat's journal input names it, so a refusal replays only under it.
 : MAX-OUTPUT! ( n ^call -- )
    {: n:n c :}
    c UNPREPARE drop
-   n 0< if E-CONFIG throw then
+   n 0< if
+      s" MAX-OUTPUT!'s count of 0 or more" n FMT:INT$
+      s" pass the most output tokens, or 0 for no limit"
+      CONFIG-REJECT
+   then
    n c MAX-OUTPUT-CELL ! ;
 
 \ The service tier every generation request without a purpose row names,
@@ -1071,7 +1235,8 @@ public
 : SERVICE-TIER! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   u 0= if c TIER-BUF BUF:CLEAR else a u c TIER-BUF REPLACE-SOME then ;
+   u 0= if c TIER-BUF BUF:CLEAR
+   else a u s" SERVICE-TIER!'s tier" c TIER-BUF REPLACE-SOME then ;
 
 \ Whether a call whose send fails E-TIER is sent again at once, once, with no
 \ service tier, so the provider serves its default: each send is recorded,
@@ -1089,7 +1254,11 @@ public
 : RESEND-WAIT! ( n ^call -- )
    {: ms:n c :}
    c REQUIRE-REST
-   ms 0< if E-CONFIG throw then
+   ms 0< if
+      s" RESEND-WAIT!'s ms of 0 or more" ms FMT:INT$
+      s" pass the ms to rest before a resend, or 0 for none"
+      CONFIG-REJECT
+   then
    ms c MODEL-CALL:RESEND-WAIT ! ;
 
 \ The generation model, effort and service tier of every later call for the
@@ -1099,9 +1268,18 @@ public
 : PURPOSE-MODEL! ( str str str str ^call -- )
    {: p:^ p-u:n m:^ m-u:n e:^ e-u:n t:^ t-u:n c :}
    c UNPREPARE drop
-   p p-u PURPOSE? 0= if E-CONFIG throw then
-   m-u 0 <= e-u 0< or t-u 0< or if E-CONFIG throw then
-   p p-u c ROW-OF 0<> if E-CONFIG throw then
+   p p-u s" PURPOSE-MODEL!'s purpose" REQUIRE-LENGTH
+   p p-u PURPOSE? 0= if
+      s" PURPOSE-MODEL!'s purpose with a byte other than a blank or a control"
+      p p-u s" name what the purpose's calls are for" CONFIG-REJECT
+   then
+   m m-u s" PURPOSE-MODEL!'s model" REQUIRE-SOME
+   e e-u s" PURPOSE-MODEL!'s effort" REQUIRE-LENGTH
+   t t-u s" PURPOSE-MODEL!'s service tier" REQUIRE-LENGTH
+   p p-u c ROW-OF 0<> if
+      s" a purpose with no row yet" p p-u
+      s" give each purpose one PURPOSE-MODEL! row" CONFIG-REJECT
+   then
    p p-u 0 c ROW-TEXT+
    m m-u 1 c ROW-TEXT+
    e e-u 2 c ROW-TEXT+
@@ -1115,7 +1293,7 @@ public
    {: a:^ u:n dims:n deadline:n c :}
    c REQUIRE-REST
    dims deadline DIMS-DEADLINE?
-   a u c EMBED-BUF REPLACE-SOME
+   a u s" EMBEDDING-MODEL!'s model" c EMBED-BUF REPLACE-SOME
    dims deadline c DIMS-DEADLINE!
    construct call-kind embed c REPLAYED? if
       OPTION:NONE c MODEL-CALL:REPLAY-KIND !
@@ -1134,20 +1312,21 @@ public
 : API-KEY! ( str str ^call -- )
    {: svc:^ su:n acct:^ au:n c :}
    c REQUIRE-REST
-   su 0 <= au 0 <= or if E-CONFIG throw then
-   svc su c KEY-SPEC-BUF REPLACE-SOME
+   svc su s" API-KEY!'s service" REQUIRE-SOME
+   acct au s" API-KEY!'s account" REQUIRE-SOME
+   svc su BUF:N>BLEN c KEY-SPEC-BUF BUF:REPLACE
    acct au BUF:N>BLEN c KEY-SPEC-BUF BUF:APPEND-SPAN
    su c MODEL-CALL:KEY-SPLIT ! ;
 
 : SYSTEM! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   a u c SYSTEM-BUF REPLACE-SOME ;
+   a u s" SYSTEM!'s text" c SYSTEM-BUF REPLACE-SOME ;
 
 : SCHEMA! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   a u c FORM-BUF REPLACE-SOME
+   a u s" SCHEMA!'s schema" c FORM-BUF REPLACE-SOME
    construct reply-form schema c MODEL-CALL:FORM ! ;
 
 \ The tools a call offers, a JSON array of OpenAI function tools checked when
@@ -1155,7 +1334,7 @@ public
 : TOOLS! ( str ^call -- )
    {: a:^ u:n c :}
    c UNPREPARE drop
-   a u c FORM-BUF REPLACE-SOME
+   a u s" TOOLS!'s tools" c FORM-BUF REPLACE-SOME
    construct reply-form tools c MODEL-CALL:FORM ! ;
 
 \ Model settings a host files in the native credential store under one
@@ -1229,10 +1408,17 @@ private
    loop
    svc su BUF:N>BLEN s SETTING-SERVICE SETTING-BUF BUF:REPLACE
    s SETTING-MODEL SETTING-LOAD {: mu:n :}
-   mu 0= if E-CONFIG throw then
+   mu 0= if
+      s" a service whose model item names the generation model" svc su
+      s" file the model's name in the service's model item" CONFIG-REJECT
+   then
    mu s MODEL-SETTINGS:MODEL-U !
    s SETTING-BASE SETTING-LOAD {: bu:n :}
-   bu 0<> if s SETTING-BASE bu SETTING$ BASE-URL? 0= if E-CONFIG throw then then
+   bu 0<> if s SETTING-BASE bu SETTING$ BASE-URL? 0= if
+      s" a service whose base-url item holds a base BASE-URL! takes" svc su
+      s" file an http or https base with no trailing slash, userinfo, query or fragment in the service's base-url item, or erase the item"
+      CONFIG-REJECT
+   then then
    bu s MODEL-SETTINGS:BASE-U !
    svc su s ;
 
@@ -1260,13 +1446,18 @@ public
 : SETTINGS-OPEN ( str ^settings -- )
    {: svc:^ su:n s :}
    s SETTINGS-OPEN? if E-STATE throw then
-   su 0 <= if E-CONFIG throw then
+   svc su s" SETTINGS-OPEN's service" REQUIRE-SOME
    SETTING-BUFFERS BUF:HDR-BYTES * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
       s MODEL-SETTINGS:BUFS !
    0 s MODEL-SETTINGS:READY !
    svc su s [: SETTINGS-FILL ;] catch {: code:n :}
+   code REASON:TEXT$ {: ta:^ tu:n :}
    drop 2drop
-   code 0<> if s SETTINGS-RELEASE code throw then ;
+   code 0<> if
+      s SETTINGS-RELEASE
+      tu 0<> if ta tu code REASON:THROW then
+      code throw
+   then ;
 
 \ Releases the settings' bytes; closed settings are E-STATE.
 : SETTINGS-CLOSE ( ^settings -- )
@@ -1364,10 +1555,17 @@ public
    {: endpoint:^ endpoint-u:n model:^ model-u:n identity:^ identity-u:n dims:n deadline:n c :}
    c REQUIRE-REST
    dims deadline DIMS-DEADLINE?
-   endpoint endpoint-u BASE-URL? 0= if E-CONFIG throw then
-   endpoint endpoint-u c ENDPOINT-BUF REPLACE-SOME
-   model model-u c EMBED-BUF REPLACE-SOME
-   identity identity-u c IDENTITY-BUF REPLACE-SOME
+   endpoint endpoint-u BASE-URL? 0= if
+      s" OLLAMA!'s http or https endpoint with no trailing slash, userinfo, query or fragment"
+      endpoint endpoint-u
+      s" pass the Ollama server's embed URL, as http://localhost:11434/api/embed"
+      URL-REJECT
+   then
+   model model-u s" OLLAMA!'s model" REQUIRE-SOME
+   identity identity-u s" OLLAMA!'s identity" REQUIRE-SOME
+   endpoint endpoint-u BUF:N>BLEN c ENDPOINT-BUF BUF:REPLACE
+   model model-u BUF:N>BLEN c EMBED-BUF BUF:REPLACE
+   identity identity-u BUF:N>BLEN c IDENTITY-BUF BUF:REPLACE
    dims deadline c DIMS-DEADLINE!
    OLLAMA c MODEL-CALL:EMBEDDING-KIND !
    construct call-kind embed c REPLAYED? if
@@ -1444,6 +1642,7 @@ public
    {: a:^ u:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
+   a u s" TEXT+'s text" REQUIRE-LENGTH
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
    c PART-COMMA
    a u c PART-WRITER TEXT-PART
@@ -1467,14 +1666,19 @@ private
    w SHA256-CTX-BYTES + w SHA256-CTX-BYTES + 32 + SHA256>HEX
    data du c ;
 
-\ The SHA-256 hex, in HASH-WORK, of the bytes base64 data encodes. Data that
-\ is not base64 as BASE64:ENCODE writes it is E-CONFIG.
+\ The SHA-256 hex of the bytes non-empty base64 data encodes.
 : IMAGE-DIGEST ( str ^call -- str )
    {: data:^ du:n c :}
-   du 0= if E-CONFIG throw then
+   du 0= if
+      s" IMAGE+'s image data in base64" s" "
+      s" pass the image's bytes as BASE64:ENCODE writes them" CONFIG-REJECT
+   then
    data du c [: DIGEST-KEEP ;] catch {: code:n :} drop 2drop
+   code REASON:TEXT$ {: ta:^ tu:n :}
    code 0<> if c URI-BUF c RESET-SCRATCH then
-   code E-BASE64-FIRST <= code E-BASE64-LAST >= and if E-CONFIG throw then
+   code E-BASE64-FIRST <= code E-BASE64-LAST >= and if
+      s" IMAGE+'s image data" ta tu NAMED-THROW
+   then
    code 0<> if code throw then
    c HASH-WORK SHA256-CTX-BYTES + 32 + 64 ;
 
@@ -1487,7 +1691,12 @@ public
    {: mime:^ mu:n data:^ du:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
-   mime mu IMAGE-MIME? 0= if E-CONFIG throw then
+   mime mu s" IMAGE+'s media type" REQUIRE-LENGTH
+   data du s" IMAGE+'s image data" REQUIRE-LENGTH
+   mime mu IMAGE-MIME? 0= if
+      s" IMAGE+'s media type image/png, image/jpeg, image/webp or image/gif"
+      mime mu s" pass one of those media types" CONFIG-REJECT
+   then
    data du c IMAGE-DIGEST {: hex:^ hex-u:n :}
    c URI-BUF BUF:CLEAR
    s" data:" BUF:N>BLEN c URI-BUF BUF:APPEND-SPAN
@@ -1519,6 +1728,13 @@ private
    {: code:n :}
    code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and ;
 
+\ Throws code n on, except a JSON reader's rejection of the argument named,
+\ with the reader's text, as E-CONFIG with the text `<name> <text>`.
+: READER-THROW ( str str n -- )
+   {: na:^ nu:n ta:^ tu:n code:n :}
+   code JSON-FAULT? if na nu ta tu NAMED-THROW then
+   code 0<> if code throw then ;
+
 : JSON-OBJECT? ( str ^call -- bool )
    {: a:^ u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
@@ -1529,39 +1745,49 @@ private
    then
    JSON:READ-CLOSE false ;
 
+: OBJECT-FIX$ ( -- str ) s" pass one JSON object" ;
+
 : OBJECT-STEP ( str ^call -- str ^call )
    {: a:^ u:n c :}
-   a u c JSON-OBJECT? 0= if E-CONFIG throw then
+   c MODEL-CALL:READER a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if s" an object" OBJECT-FIX$ JSON:READ-REJECT then
+   JSON:READ-SKIP-VALUE
+   JSON:READ-NEXT JSON:T-END <> if
+      s" the end of the input" OBJECT-FIX$ JSON:READ-REJECT
+   then
+   JSON:READ-CLOSE
    a u c ;
 
 \ Bytes that are not exactly one JSON object, a reader fault included, are
 \ E-CONFIG.
-: CHECK-OBJECT ( str ^call -- )
-   [: OBJECT-STEP ;] catch {: code:n :} drop 2drop
-   code JSON-FAULT? if E-CONFIG throw then
-   code 0<> if code throw then ;
+: CHECK-OBJECT ( str ^call str -- )
+   {: na:^ nu:n :}
+   [: OBJECT-STEP ;] catch {: code:n :} code REASON:TEXT$ {: ta:^ tu:n :}
+   drop 2drop
+   na nu ta tu code READER-THROW ;
 
-: JSON-TOOLS? ( str ^call -- bool )
-   {: a:^ u:n c :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-ARR <> if JSON:READ-CLOSE false exit then
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
-   begin JSON:READ-SKIP-VALUE JSON:READ-NEXT dup JSON:T-OBJ = while drop repeat
-   JSON:T-ARR-END = if JSON:READ-NEXT JSON:T-END = else false then
-   {: valid:bool :}
-   JSON:READ-CLOSE valid ;
+: TOOLS-FIX$ ( -- str ) s" pass one JSON array of one or more tool objects" ;
 
 : TOOLS-STEP ( str ^call -- str ^call )
    {: a:^ u:n c :}
-   a u c JSON-TOOLS? 0= if E-CONFIG throw then
+   c MODEL-CALL:READER a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-ARR <> if s" an array" TOOLS-FIX$ JSON:READ-REJECT then
+   JSON:READ-NEXT JSON:T-OBJ <> if s" an object" TOOLS-FIX$ JSON:READ-REJECT then
+   begin JSON:READ-SKIP-VALUE JSON:READ-NEXT dup JSON:T-OBJ = while drop repeat
+   JSON:T-ARR-END <> if s" an object or `]`" TOOLS-FIX$ JSON:READ-REJECT then
+   JSON:READ-NEXT JSON:T-END <> if
+      s" the end of the input" TOOLS-FIX$ JSON:READ-REJECT
+   then
+   JSON:READ-CLOSE
    a u c ;
 
 \ Bytes that are not one non-empty JSON array of objects, a reader fault
 \ included, are E-CONFIG.
-: CHECK-TOOLS ( str ^call -- )
-   [: TOOLS-STEP ;] catch {: code:n :} drop 2drop
-   code JSON-FAULT? if E-CONFIG throw then
-   code 0<> if code throw then ;
+: CHECK-TOOLS ( str ^call str -- )
+   {: na:^ nu:n :}
+   [: TOOLS-STEP ;] catch {: code:n :} code REASON:TEXT$ {: ta:^ tu:n :}
+   drop 2drop
+   na nu ta tu code READER-THROW ;
 
 \ Appends an item's bytes to the items, after a single comma once there are
 \ any.
@@ -1580,7 +1806,8 @@ public
    {: a:^ u:n c :}
    c UNPREPARE drop
    c REQUIRE-BUILDING
-   a u c CHECK-OBJECT
+   a u s" ITEM+'s item" REQUIRE-LENGTH
+   a u c s" ITEM+'s item" CHECK-OBJECT
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
    a u c ITEM-JOIN
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
@@ -1591,19 +1818,31 @@ private
 \ E-CONFIG.
 : CHECK-INPUT ( ^call -- )
    {: c :}
-   c MODEL-CALL:PARTS-COUNT @ 0= c ITEMS$ nip 0= and {: empty:bool :}
-   c GEN$ nip 0=
-   c SYSTEM$ nip 0= or empty or if
-      E-CONFIG throw
+   c GEN$ nip 0= if
+      s" a generation model set by GENERATION-MODEL!" c GEN$
+      s" pass the model's name to GENERATION-MODEL!" CONFIG-REJECT
+   then
+   c SYSTEM$ nip 0= if
+      s" instructions set by SYSTEM!" c SYSTEM$
+      s" pass the instructions to SYSTEM!" CONFIG-REJECT
+   then
+   c MODEL-CALL:PARTS-COUNT @ 0= c ITEMS$ nip 0= and if
+      s" at least one part or item" c MODEL-CALL:PARTS-COUNT @ FMT:INT$
+      s" add a part with TEXT+ or IMAGE+, or an item with ITEM+" CONFIG-REJECT
    then ;
+
+: NO-FORM ( -- )
+   s" a reply form set by SCHEMA! or TOOLS!" s" "
+   s" pass the reply's JSON schema to SCHEMA! or its tools to TOOLS!"
+   CONFIG-REJECT ;
 
 : CHECK-CHAT ( ^call -- )
    {: c :}
    c CHECK-INPUT
    c MODEL-CALL:FORM @ MATCH reply-form
-      none OF E-CONFIG throw ENDOF
-      schema OF c FORM$ c CHECK-OBJECT ENDOF
-      tools OF c FORM$ c CHECK-TOOLS ENDOF
+      none OF NO-FORM ENDOF
+      schema OF c FORM$ c s" SCHEMA!'s schema" CHECK-OBJECT ENDOF
+      tools OF c FORM$ c s" TOOLS!'s tools" CHECK-TOOLS ENDOF
    ;MATCH ;
 
 : BODY-OPEN ( ^call -- )
@@ -1702,7 +1941,7 @@ private
    c OUTPUT-MEMBER
    c INPUT-MEMBERS
    c MODEL-CALL:FORM @ MATCH reply-form
-      none OF E-CONFIG throw ENDOF
+      none OF NO-FORM ENDOF
       schema OF c SCHEMA-TAIL ENDOF
       tools OF
          \ The reasoning items a later turn sends back.
@@ -1727,7 +1966,7 @@ private
    c EFFORT-MEMBER
    c INPUT-MEMBERS
    c MODEL-CALL:FORM @ MATCH reply-form
-      none OF E-CONFIG throw ENDOF
+      none OF NO-FORM ENDOF
       schema OF c SCHEMA-TAIL ENDOF
       tools OF c TOOL-MEMBERS ENDOF
    ;MATCH
@@ -1754,8 +1993,19 @@ private
 
 : CHECK-EMBED ( ^call -- )
    {: c :}
-   c EMBED-MODEL$ nip 0= c MODEL-CALL:DIMS @ 0= or
-   c MODEL-CALL:INPUT-COUNT @ 0= or if E-CONFIG throw then ;
+   c EMBED-MODEL$ nip 0= if
+      s" an embedding model set by EMBEDDING-MODEL! or OLLAMA!" c EMBED-MODEL$
+      s" pass the model's name to EMBEDDING-MODEL! or OLLAMA!" CONFIG-REJECT
+   then
+   c MODEL-CALL:DIMS @ 0= if
+      s" EMBEDDING-MODEL!'s or OLLAMA!'s dimensions of 1 or more"
+      c MODEL-CALL:DIMS @ FMT:INT$
+      s" pass the model's dimensions to EMBEDDING-MODEL! or OLLAMA!" CONFIG-REJECT
+   then
+   c MODEL-CALL:INPUT-COUNT @ 0= if
+      s" at least one input" c MODEL-CALL:INPUT-COUNT @ FMT:INT$
+      s" add each text to embed with INPUT+" CONFIG-REJECT
+   then ;
 
 : EMBED-BODY ( ^call -- )
    {: c :}
@@ -1806,7 +2056,7 @@ public
 : INPUT+ ( ^u8 n ^call -- )
    {: a:^ u:n c :}
    c REQUIRE-REST
-   u 0= if E-CONFIG throw then
+   a u s" INPUT+'s input" REQUIRE-SOME
    c MODEL-CALL:INPUT-COUNT @ INPUT-MAX >= if E-CAPACITY throw then
    c MODEL-CALL:INPUT-U @ c c MODEL-CALL:INPUT-COUNT @ INPUT-OFF !
    u c c MODEL-CALL:INPUT-COUNT @ INPUT-LEN !
@@ -1820,7 +2070,7 @@ private
 \ The member that carries the form's text in a chat's journal input.
 : FORM-KEY$ ( ^call -- str )
    MODEL-CALL:FORM @ MATCH reply-form
-      none OF E-CONFIG throw ENDOF
+      none OF NO-FORM ENDOF
       schema OF s" schema" ENDOF
       tools OF s" tools" ENDOF
    ;MATCH ;
@@ -1994,7 +2244,12 @@ private
 
 : KEY-LINE ( ^call -- str )
    {: c :}
-   c KEY-SPEC$ nip 0= if E-CONFIG throw then
+   c KEY-SPEC$ {: spec:^ spec-u:n :}
+   spec-u 0= if
+      s" an API key item named by API-KEY!" spec spec-u
+      s" pass API-KEY! the service and account of the store item holding the key"
+      CONFIG-REJECT
+   then
    c KEY-PREFIX$ nip KEY-FETCH {: line-u:n :}
    c KEY-LINE-BUF HELD line-u SPAN:TAKE SPAN:$ ;
 
@@ -2172,6 +2427,25 @@ private
    E-HTTP ;
 
 
+\ Throws STATUS-FAULT's E-CONFIG, the provider's status 404, naming the model
+\ the call's kind sent.
+: UNKNOWN-MODEL ( ^call -- )
+   {: c :}
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF false ENDOF
+      embed OF true ENDOF
+      tally OF false ENDOF
+      compaction OF false ENDOF
+   ;MATCH {: embed:bool :}
+   embed if
+      s" an embedding model the provider serves" c EMBED-MODEL$
+      s" pass EMBEDDING-MODEL! or OLLAMA! a model the provider serves: it answered status 404"
+      CONFIG-REJECT
+   then
+   s" a generation model the provider serves" c GEN$
+   s" pass GENERATION-MODEL! or PURPOSE-MODEL! a model the provider serves: it answered status 404"
+   CONFIG-REJECT ;
+
 \ Throws the fault of a refused reply's status; a key the provider refused
 \ keeps that it did.
 : STATUS-THROW ( CURL:http-status ^call -- )
@@ -2180,6 +2454,7 @@ private
    fault E-KEY = c KEYED? and if
       construct key-fault refused c KEY-FAULT!
    then
+   fault E-CONFIG = if c UNKNOWN-MODEL then
    fault throw ;
 
 
@@ -2747,7 +3022,7 @@ private
    c REPLY-STR {: a:^ u:n :}
    JSON:READ-CLOSE
    u 0= if E-RESPONSE throw then
-   a u c SERVED-BUF REPLACE-SOME ;
+   a u BUF:N>BLEN c SERVED-BUF BUF:REPLACE ;
 
 : PARSE-TIER ( ^call -- )
    {: c :}
@@ -2814,7 +3089,7 @@ private
 : RESEND-LOCKED ( ^call -- ^call )
    {: c :}
    c MODEL-CALL:STOPPED @ c MODEL-CALL:CANCELLED @ or if
-      E-CANCELLED c RECEIPT RECEIPT-OUTCOME !
+      E-CANCELLED c OUTCOME!
       E-CANCELLED throw
    then
    c MODEL-CALL:STATE @ MATCH call-state
@@ -3597,6 +3872,7 @@ ENUM poll none fed spoiled done ;ENUM
    false l LEDGER-DISPATCHED !
    0 l LEDGER-CALL-ID !
    0 l LEDGER-FAULT !
+   c RECORD-TEXT-BUF BUF:CLEAR
    0 l LEDGER-TRANSPORT !
    construct tier-step preferred c RECEIPT RECEIPT-TIER !
    construct resend-step sending c RECEIPT RECEIPT-RESEND !
@@ -3813,8 +4089,8 @@ ENUM record-event kept faulted ;ENUM
 
 \ Keeps n as the call's outcome unless one is kept.
 : KEEP-FAULT ( n ^call -- )
-   RECEIPT {: fault:n r :}
-   r RECEIPT-OUTCOME @ 0= if fault r RECEIPT-OUTCOME ! then ;
+   {: fault:n c :}
+   c RECEIPT RECEIPT-OUTCOME @ 0= if fault c OUTCOME! then ;
 
 : RUN-STEP ( ^call [ ^call -- ^call ] -- ^call [ ^call -- ^call ] )
    {: c step :}
@@ -3922,7 +4198,7 @@ ENUM record-event kept faulted ;ENUM
    fault cancelled c END-LEDGER
    e ;
 
-: LAND-CUT ( ^call -- ) E-CANCELLED swap RECEIPT RECEIPT-OUTCOME ! ;
+: LAND-CUT ( ^call -- ) E-CANCELLED swap OUTCOME! ;
 
 
 \ Records a dispatched request, keeping the recorder's fault.
@@ -3934,6 +4210,7 @@ ENUM record-event kept faulted ;ENUM
    then
    c [: RECORD-RUN ;] catch {: rc:n :} drop
    rc l LEDGER-FAULT !
+   rc c RECORD-TEXT-BUF CAUGHT-TEXT!
    rc 0<> if construct record-event faulted exit then
    construct record-event kept ;
 
@@ -3942,13 +4219,15 @@ ENUM record-event kept faulted ;ENUM
    {: c :}
    c MODEL-CALL:JOURNAL-READY @ 0= if exit then
    c [: dup JOURNAL-PUT ;] catch {: put:n :} drop
-   put 0<> if put c RECEIPT RECEIPT-OUTCOME ! then ;
+   put 0<> if put c OUTCOME! then ;
 
-\ A served call whose recorder failed keeps the recorder's fault as its outcome
-\ and is journaled as served.
+\ A served call whose recorder failed keeps the recorder's fault and its text
+\ as its outcome and is journaled as served.
 : LAND-UNRECORDED ( ^call -- )
-   dup LEDGER LEDGER-FAULT @ over RECEIPT RECEIPT-OUTCOME !
-   LAND-SERVED ;
+   {: c :}
+   c LEDGER LEDGER-FAULT @ c RECEIPT RECEIPT-OUTCOME !
+   c RECORD-TEXT-BUF BUF:SPAN$ c OUTCOME-TEXT-BUF BUF:REPLACE
+   c LAND-SERVED ;
 
 \ Journals a live refusal so a replay meets it at the same step and asks for
 \ less with no request. A put fault replaces the outcome.
@@ -3956,7 +4235,7 @@ ENUM record-event kept faulted ;ENUM
    {: c :}
    c MODEL-CALL:JOURNAL-READY @ 0= if exit then
    c RECEIPT RECEIPT-OUTCOME @ c [: 2dup REFUSAL-PUT ;] catch {: put:n :} 2drop
-   put 0<> if put c RECEIPT RECEIPT-OUTCOME ! then ;
+   put 0<> if put c OUTCOME! then ;
 
 : REPORT-OUTCOME ( ^call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
 
@@ -4087,7 +4366,7 @@ CAST: N>CALL ( n -- ^call )
 \ A fault the machine throws becomes the outcome, and the call ends landed.
 : LAND-THREW ( n ^call -- )
    {: rc:n c :}
-   rc c RECEIPT RECEIPT-OUTCOME !
+   rc c OUTCOME!
    construct land-step landed c STEP! ;
 
 : SETTLE-RUN ( ^call -- ^call )
@@ -4100,8 +4379,7 @@ CAST: N>CALL ( n -- ^call )
    {: c :}
    c [: SETTLE-RUN ;] catch {: rc:n :} drop
    rc 0= if exit then
-   c END-CALL
-   rc c LAND-THREW ;
+   rc c [: LAND-THREW ;] [: c END-CALL ;] finally ;
 
 \ Lands a call once its run ends, keeping the next step for ACCOUNT. It runs
 \ deferred: a halt while it runs leaves the call landed.
@@ -4226,9 +4504,11 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
 \ A send's or a replay's receipt: nothing replayed, failed, still to report,
 \ failing its key or ended yet.
 : RECEIPT-RESET ( ^call -- )
-   RECEIPT {: r :}
+   {: c :}
+   c RECEIPT {: r :}
    false r RECEIPT-REPLAYED !
    0 r RECEIPT-OUTCOME !
+   c OUTCOME-TEXT-BUF BUF:CLEAR
    0 r RECEIPT-REPORT !
    construct key-fault none r RECEIPT-KEY-READ !
    OPTION:NONE r RECEIPT-ENDING ! ;
@@ -4298,10 +4578,12 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
 
 \ A resend's ledger: nothing dispatched, recorded or failed yet.
 : LEDGER-RESET ( ^call -- )
-   LEDGER {: l :}
+   {: c :}
+   c LEDGER {: l :}
    false l LEDGER-DISPATCHED !
    0 l LEDGER-CALL-ID !
    0 l LEDGER-FAULT !
+   c RECORD-TEXT-BUF BUF:CLEAR
    0 l LEDGER-TRANSPORT ! ;
 
 \ Ends a call whose send a stop or CANCEL kept from being sent again, its
@@ -4328,9 +4610,8 @@ FSM:DEFINE SEND-MACHINE ( ^call ) send-step lookup-event
    {: code:n c :}
    code 0= if construct begin-event begun exit then
    code E-CANCELLED = if construct begin-event refused exit then
-   c RECEIPT {: r :}
-   code r RECEIPT-OUTCOME !
-   OPTION:NONE r RECEIPT-ENDING !
+   code c OUTCOME!
+   OPTION:NONE c RECEIPT RECEIPT-ENDING !
    construct begin-event faulted ;
 
 \ Runs begin on a landed call under its gate, as BEGIN-GATED does, and
@@ -4867,8 +5148,7 @@ public
       c REST-PARK
    repeat
    c IDLE!
-   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
-   fault 0<> if fault throw then
+   c OUTCOME-THROW
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c USED construct call-result content ENDOF
       embed OF construct call-result vectors ENDOF
@@ -5007,6 +5287,7 @@ public
 \ one that throws keeps the request as JOURNAL-INPUT$ says.
 : REPLAY ( ^u8 n ^call -- ^u8 n )
    {: a:^ u:n c :}
+   a u s" REPLAY's record" REQUIRE-LENGTH
    c TAKE-PREPARED 0= if E-STATE throw then
    construct call-result none c MODEL-CALL:RESULT !
    c START-LEDGER
@@ -5029,6 +5310,23 @@ public
    c START-EMBED
    c AWAIT ;
 
+private
+
+: INDEX-WANT$ ( -- str ) s" VECTOR@'s index of 0 or more below the input count " ;
+
+: INDEX-SCOPE ( n n ^u8 NUM:alloc-byte-len -- )
+   drop {: idx:n count:n buf:^ :}
+   buf INDEX-WANT$ PUT$ count FMT:INT$ PUT$ buf - {: eu:n :}
+   buf eu idx FMT:INT$ s" pass the index of an input INPUT+ added" CONFIG-REJECT ;
+
+\ Throws E-CONFIG for index idx outside a call's count inputs.
+: INDEX-REJECT ( n n -- )
+   {: idx:n count:n :}
+   idx count  INDEX-WANT$ nip count FMT:INT$ nip +  MEM:BYTES-ALLOC-LEN
+   [: INDEX-SCOPE ;] MEM:WITH-BYTES ;
+
+public
+
 \ Input idx's vector: DIMS little-endian IEEE-754 binary32 values, borrowed
 \ until the next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or
 \ CLOSE.
@@ -5039,7 +5337,8 @@ public
       content OF E-STATE throw ENDOF
       vectors OF ENDOF
    ;MATCH
-   idx 0 < idx c MODEL-CALL:INPUT-COUNT @ >= or if E-CONFIG throw then
+   c MODEL-CALL:INPUT-COUNT @ {: count:n :}
+   idx 0 < idx count >= or if idx count INDEX-REJECT then
    c VECTORS-BUF BUF:SPAN c idx VECTOR-OFF @ c idx VECTOR-LEN @ SPAN:SUB SPAN:$ ;
 
 : GENERATION-MODEL$ ( ^call -- str ) GEN$ ;
@@ -5055,12 +5354,15 @@ public
 \ The library rejected the last call's reply: mark its recorded row. A
 \ recorder fault is kept for RECORD-FAULT, unless one already is, and thrown.
 : REJECTED ( ^call -- )
-   LEDGER {: l :}
+   {: c :}
+   c LEDGER {: l :}
    l LEDGER-READY @ 0= if exit then
    l LEDGER-CALL-ID @ 0= if exit then
    l [: REJECT-RUN ;] catch {: rc:n :} drop
    rc 0= if exit then
-   l LEDGER-FAULT @ 0= if rc l LEDGER-FAULT ! then
+   l LEDGER-FAULT @ 0= if
+      rc l LEDGER-FAULT !
+   then
    rc throw ;
 : CACHED-TOKENS ( ^call -- n ) MODEL-CALL:CACHED-TOKENS @ ;
 
