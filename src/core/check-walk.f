@@ -3962,12 +3962,15 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;
 
 \ Reads rec's facts text, or an image's export's source's, when there is one and no link,
-\ except hb's own record of a prefix symbol in a build: the prefix holds its rows.
+\ except hb's own record of a primitive or of a prefix symbol in a build: the
+\ build's kernel object states the primitives the target has, and the prefix
+\ holds its rows.
 : READ-BOUND ( ^n -- ) {: rec:^ :}
    rec CK-REC-FACTS-SLOT cells + @ {: off:n :}
    off 0= IF EXIT THEN
    rec NULL-PTR - dbase@ - DREC / {: ix:n :}
    BUILDING? ix BUILD-FIRST @ < and IF
+      rec CK-REC-WID WL:PRIMITIVES = IF EXIT THEN
       rec REC-SYM PREFIX-SYM? IF EXIT THEN
    THEN
    ix LINKED? IF EXIT THEN
