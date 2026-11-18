@@ -210,6 +210,33 @@ create XE-EMPTY 1 allot
    XE-ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
    XE-ERR$ s" XEU-NOSUCH" CONTAINS? TTRUE ;
 
+\ ---- fact words in a quotation type -------------------------------------------
+\ Each program runs in its own child: a rejection ends its load.
+: XE-FACT-REJECTED ( str str -- ) {: src:^ srcu:n want:^ wantu:n :}
+   src srcu XE-RUN
+   XE-EXITED @ TTRUE  XE-RC @ 70 T=
+   XE-ERR$ want wantu CONTAINS? TTRUE ;
+
+: XE-FACT-WORDS ( -- )
+   s" a fact word is stated once" T-LABEL
+   SB-RESET  s" TYPED-VARIABLE XB [ -- renders renders ]" XE-LINE
+   SB$ s" does not parse" XE-FACT-REJECTED
+   s" no type follows a fact word" T-LABEL
+   SB-RESET  s" TYPED-VARIABLE XD [ -- renders n ]" XE-LINE
+   SB$ s" does not parse" XE-FACT-REJECTED
+   s" the facts follow the last outputs, never a return clause" T-LABEL
+   SB-RESET  s" TYPED-VARIABLE XE [ -- renders | -- ]" XE-LINE
+   SB$ s" does not parse" XE-FACT-REJECTED
+   s" a typed cell's quotation shows its stated facts" T-LABEL
+   SB-RESET  s" TYPED-VARIABLE XV [ -- renders ]" XE-LINE  s" : XG ( -- n ) XV @ ;" XE-LINE
+   SB$ s" found: [ -- renders ]" XE-FACT-REJECTED
+   s" a recorded output keeps its quotation's facts" T-LABEL
+   SB-RESET
+   S\" : EVC ( -- ) s\" 1 drop\" evaluate-closed ;" XE-LINE
+   s" : MKR ['] EVC ;" XE-LINE
+   s" : XH ( -- n ) MKR ;" XE-LINE
+   SB$ s" found: [ -- renders ]" XE-FACT-REJECTED ;
+
 : XE-PREPARE ( -- )
    FS:CLEANUP-RESET
    s" habu-xe" FS:MKTEMP-DIR {: a:^ u:n :}
@@ -227,6 +254,7 @@ create XE-EMPTY 1 allot
    XE-VALUES
    XE-USING
    XE-USING-REFUSED
+   XE-FACT-WORDS
    XE-CLEANUP
    T-REPORT
    s" xt-effect: ok" type cr ;

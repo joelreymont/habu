@@ -5871,6 +5871,17 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
    f CTL-UNSEEN = IF s" unseen" EXIT THEN
    s" " ;
 
+: TAG>CTL-FLAG ( str -- n )
+   {: a:^ u:n :}
+   63 0 ?do
+      i CTL-BIT>TAG$ a u CORE-STR= IF 1 i lshift unloop EXIT THEN
+   loop
+   0 ;
+\ The facts a quotation type may state after its outputs.
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or CTL-ROOTS or constant CTL-STATABLE
+\ The fact a quotation type's token a u states, 0 when it states none.
+: STATED-FLAG ( str -- n ) TAG>CTL-FLAG CTL-STATABLE and ;
+
 
 SCRATCH{
 variable XM-I   variable XM-ACC   variable XS-I
@@ -6925,6 +6936,7 @@ variable VRC-RVN
          x VREC-RES Q>DOUT RECURSE node VN.B!
          x VREC-RES Q>RIN RECURSE node VN.C!
          x VREC-RES Q>ROUT RECURSE node VN.D!
+         x VREC-RES Q>FACTS CTL-STATABLE and node VN.E!
          x VREC-RES Q>XDEAD Q-FLAG>N node VN.F!
          x VREC-RES Q>XDFIELD node VN.G!
          x VREC-RES Q>XRFIELD node VN.H!
@@ -7043,6 +7055,7 @@ variable VRC-RVN
          node VN.C@ RECURSE
          node VN.D@ RECURSE
          MK-QUOT
+         dup Q>FACTS node VN.E@ or over Q-FACTS!
          dup node VN.F@ 0 <> node VN.G@ node VN.H@ QX!
          node VN.I@ RECURSE over Q-BLOCK!
       endof
@@ -7772,6 +7785,7 @@ variable PKHAVE
    a u DELIM? IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
    a u ROW-LEAD? IF RES-TRUE EXIT THEN
+   a u STATED-FLAG 0 <> IF RES-TRUE EXIT THEN
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
    a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
    a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
@@ -8119,21 +8133,28 @@ variable SQUOT-N   0 SQUOT-N !
 : RCLAUSE-CHECK ( n n -- )
    RCLAUSE-NEUTRAL? 0= IF SB@ SL @ SGBAD-RETURN! THEN ;
 
-: PSTACK ( n -- n ) {: tail:n :}
+\ One token a u of a stack side: a type joins the row, a fact word, when OK lets the side end in
+\ them, joins the facts. A fact word is stated once and only fact words follow it.
+: PSTACK-TOK ( n n str bool -- n n ) {: row:n facts:n a:^ u:n ok:bool :}
+   ok IF a u STATED-FLAG ELSE 0 THEN {: flag:n :}
+   flag 0 <> IF
+      facts flag and 0 <> IF a u SGBAD-SYNTAX! THEN
+      row facts flag or EXIT
+   THEN
+   facts 0 <> IF a u SGBAD-SYNTAX! THEN
+   a u s" [" CORE-STR= IF a u SIG-TYPE row MK-PUSH facts EXIT THEN
+   a u VREC-FIND IF row swap VREC-PUSH-FIELDS facts EXIT THEN drop
+   a u SIG-TYPE row PUSH-LOGICAL facts ;
+
+\ Answers a stack side's row on TAIL and the facts it states, 0 when none.
+: PSTACK ( n bool -- n n ) {: tail:n ok:bool :}
    NEXT-SIG-TOK 2dup ROW-LEAD? IF
       drop c@ RVAR-OF
    ELSE PK! tail THEN
+   0
    BEGIN
      NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN
-     2dup s" [" CORE-STR= IF
-        SIG-TYPE swap MK-PUSH
-     ELSE
-        2dup VREC-FIND IF
-           >r 2drop r> VREC-PUSH-FIELDS
-        ELSE
-           drop SIG-TYPE swap PUSH-LOGICAL
-        THEN
-     THEN
+     ok PSTACK-TOK
    AGAIN ;
 
 \ The opening '[' is already consumed. Its rows are a level below it and their
@@ -8143,23 +8164,28 @@ variable SQUOT-N   0 SQUOT-N !
    SIG-LEVEL @ 1 + SIG-LEVEL !
    FRESH MK-QROW {: qdbase:n :}
    FRESH MK-QROW {: qrbase:n :}
-   qdbase PSTACK {: qin:n :}
+   qdbase RES-FALSE PSTACK drop {: qin:n :}
    s" --" EXPECT-SIG
-   qdbase PSTACK {: qout:n :}
+   qdbase RES-TRUE PSTACK {: qout:n dfacts:n :}
    NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
+      \ The facts follow the last outputs.
+      dfacts 0 <> IF 2dup SGBAD-SYNTAX! THEN
       2drop
-      qrbase PSTACK {: qrin:n :}
+      qrbase RES-FALSE PSTACK drop {: qrin:n :}
       s" --" EXPECT-SIG
-      qrbase PSTACK {: qrout:n :}
+      qrbase RES-TRUE PSTACK {: qrout:n rfacts:n :}
       s" ]" EXPECT-SIG
       qrin qrout RCLAUSE-CHECK
-      qin qout qrin qrout MK-QUOT
+      qin qout qrin qrout MK-QUOT  rfacts
    ELSE
       s" ]" SIG-EXPECTED
-      qin qout qrbase qrbase MK-QUOT
+      qin qout qrbase qrbase MK-QUOT  dfacts
    THEN
-   dup num SQUOT!
-   SIG-LEVEL @ 1 - SIG-LEVEL ! ;
+   {: q:n facts:n :}
+   q Q>FACTS facts or q Q-FACTS!
+   q num SQUOT!
+   SIG-LEVEL @ 1 - SIG-LEVEL !
+   q ;
 : SIG-QUOT-INSTALL ( -- ) [: SIG-PARSE-QUOT ;] is SIG-QUOT-XT ;
 SIG-QUOT-INSTALL
 : TYPE-CERTAIN ( str -- bool ) 2drop RES-FALSE ;
@@ -8290,9 +8316,9 @@ variable PD-ATOM0                        \ the first atom index this signature p
 \ No '|' leaves the shared return row so far (0 when no clause anywhere), which
 \ CHECK ignores.
 : PSIDE ( n -- n n ) {: dtail:n :}
-   dtail PSTACK
+   dtail RES-FALSE PSTACK drop
    NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
-      2drop  -1 SGHASR !  RRTAIL PSTACK
+      2drop  -1 SGHASR !  RRTAIL RES-FALSE PSTACK drop
    ELSE PK! RR-SHARED @ THEN ;
 
 \ The rules a signature's rows pass, parsed or built; a refusal sets SGBAD at
@@ -8338,13 +8364,6 @@ variable PD-ATOM0                        \ the first atom index this signature p
    rows a c@ UPPER? and IF a c@ 65 - cells ROWMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
    -1 ;
 
-
-: TAG>CTL-FLAG ( str -- n )
-   {: a:^ u:n :}
-   63 0 ?do
-      i CTL-BIT>TAG$ a u CORE-STR= IF 1 i lshift unloop EXIT THEN
-   loop
-   0 ;
 
 
 : SIG-MASK ( str -- n )
@@ -10576,6 +10595,7 @@ UIX-RESET
          x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.B !
          x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.C !
          x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.D !
+         x E-RES Q>FACTS CTL-STATABLE and r@ E-WPTR EN.E !
          x E-RES Q>XDEAD Q-FLAG>N r@ E-WPTR EN.F !
          x E-RES Q>XDFIELD r@ E-WPTR EN.G !
          x E-RES Q>XRFIELD r@ E-WPTR EN.H !
@@ -12030,6 +12050,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
          r@ EN.C @ pool RECURSE
          r@ EN.D @ pool RECURSE
          MK-QUOT
+         dup Q>FACTS r@ EN.E @ or over Q-FACTS!
          dup r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
          r@ EN.I @ pool RECURSE over Q-BLOCK!
          r> drop
@@ -15279,7 +15300,7 @@ variable EFFQ-DOUT          \ dout row offset
 : EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
 : EFF-C@   ( n -- n )   E-PTR EN.C @ ;      \ EN.C field (on a row cell: width+1; on a quot: rin)
-: EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: 0)
+: EFF-E@   ( n -- n )   E-PTR EN.E @ ;      \ EN.E field (on a param term: hidden slot+1; on a quot: its stated facts)
 
 \ Without it `( option<n> n -- )` and `( a b n -- )` agree on term count, cell
 \ count and every family.

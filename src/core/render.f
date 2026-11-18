@@ -428,6 +428,10 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
               124 EMIT1 32 EMIT1  r Q>RIN d 1+ 1 RECURSE
               45 EMIT1 45 EMIT1 32 EMIT1  r Q>ROUT d 1+ 1 RECURSE
            ELSE RNAMES @ 0 <> IF r owner 1 + QRET-NAME THEN THEN
+           r Q>FACTS CTL-STATABLE and {: facts:n :}
+           63 0 ?do
+              facts 1 i lshift and 0 <> IF i CTL-BIT>TAG$ RSTR 32 EMIT1 THEN
+           loop
            93 EMIT1
         ELSE EMIT-UNSAID THEN
       endof
