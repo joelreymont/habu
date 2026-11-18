@@ -2,8 +2,9 @@ split-str
 \ curl.f - HTTPS client over libcurl's easy interface: one request and one
 \ response, with no retry policy, authentication, payload format or URL
 \ construction; TLS, redirects, proxies and the CA bundle are libcurl's. Every
-\ setter copies its span before it returns. PERFORM holds its task; START/AWAIT
-\ and STREAM-START/NEXT run on one CURL loop task (the multi interface below).
+\ setter but BORROW-BODY! copies its span before it returns. PERFORM holds its
+\ task; START/AWAIT and STREAM-START/NEXT run on one CURL loop task (the multi
+\ interface below).
 \ NEXT-ARM, NEXT-READY? and NEXT-TAKE let one task have several streams armed
 \ and take each as it answers.
 \
@@ -124,6 +125,7 @@ OPT-OBJECT 36 + constant OPT-METHOD       \ CURLOPT_CUSTOMREQUEST
 OPT-OBJECT 82 + constant OPT-COOKIE-JAR   \ CURLOPT_COOKIEJAR
 OPT-OBJECT 103 + constant OPT-PRIVATE     \ CURLOPT_PRIVATE
 OPT-OBJECT 165 + constant OPT-COPY-BODY   \ CURLOPT_COPYPOSTFIELDS
+OPT-OBJECT 15 + constant OPT-BODY        \ CURLOPT_POSTFIELDS
 OPT-LONG 19 + constant OPT-LOW-SPEED-LIMIT \ CURLOPT_LOW_SPEED_LIMIT
 OPT-LONG 20 + constant OPT-LOW-SPEED-TIME  \ CURLOPT_LOW_SPEED_TIME
 OPT-LONG 52 + constant OPT-FOLLOW         \ CURLOPT_FOLLOWLOCATION
@@ -576,6 +578,14 @@ public
    u 0 AT-LEAST
    subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
    subject HANDLE-CELL OPT-COPY-BODY bytes SETOPT-SPAN CODE>STATUS ;
+
+
+\ No copy: each transfer the handle runs before RESET or a new body reads these
+\ bytes, so none changes or frees them in flight, not even a task's cleanup.
+: BORROW-BODY! ( handle str -- status ) {: subject:handle bytes u:n :}
+   u 0 AT-LEAST
+   subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
+   subject HANDLE-CELL OPT-BODY bytes SETOPT-SPAN CODE>STATUS ;
 
 
 \ Cookies read at request time. An empty path starts the cookie engine with no

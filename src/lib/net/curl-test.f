@@ -134,6 +134,7 @@ create STREAM-CHUNK STREAM-CAP allot
 create STREAM-CHUNK-TWO STREAM-CAP allot
 create RETRY-POLLS 16 allot             \ two pollfd rows: pooled socket and listener
 create CAPTURE-BUF PATH-CAP allot       \ the path the refused start's stderr goes to
+create BORROWED-BUF 3 allot             \ FORM$'s length
 create LIMITS 16 allot                  \ struct rlimit: soft, then hard
 $40 constant SOFT-LIMIT                 \ the descriptor limit the starved start sets
 0 constant F-DUPFD                      \ the same number on Linux and macOS
@@ -1368,6 +1369,18 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject BODY-CAP >LEN FETCH
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T= ;
+
+
+\ The echo ends with the bytes as the transfer found them, changed after the setter.
+: TEST-BORROWED-POST ( -- )
+   s" b=2" BORROWED-BUF swap BYTE-COPY
+   PATH-ECHO$ GET-READY {: subject:CURL:handle :}
+   subject BORROWED-BUF FORM$ nip CURL:BORROW-BODY! EXPECT-OK
+   FORM$ BORROWED-BUF swap BYTE-COPY
+   subject ECHO-FETCH
+   subject CURL:CLEANUP
+   s" a borrowed body is sent as it is when the transfer runs" T-LABEL
+   BODY$ FORM$ ENDS-WITH? TTRUE ;
 
 
 : NO-BODY-HEADERS ( -- )
@@ -3129,7 +3142,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   106 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   107 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -3255,6 +3268,7 @@ public
    TEST-HEADER
    TEST-POST
    TEST-HUGE-POST
+   TEST-BORROWED-POST
    TEST-METHOD
    TEST-REDIRECT-VERBS
    TEST-RESET
