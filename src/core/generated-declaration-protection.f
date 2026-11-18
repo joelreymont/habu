@@ -47,11 +47,9 @@ INSTALL
 \ A rollback that cannot complete leaves a savepoint live with nothing left
 \ to restore it from: fail closed, as the checker frame already does,
 \ instead of poisoning.
-: FAIL ( n -- )
-   {: rc:n :}
+: FAIL ( -- )
    [: ROLLBACKS ;] catch {: cleanup:n :}
-   cleanup 0 <> IF s" declaration rollback failed" EXIT-STATUS:INTERNAL die THEN
-   rc throw ;
+   cleanup 0 <> IF s" declaration rollback failed" EXIT-STATUS:INTERNAL die THEN ;
 
 public
 
@@ -63,9 +61,9 @@ public
    [: SAVEPOINTS ;] catch {: save-rc:n :}
    save-rc 0 <> IF save-rc throw THEN
    body catch {: body-rc:n :}
-   body-rc 0 <> IF body-rc FAIL THEN
+   body-rc 0 <> IF FAIL body-rc throw THEN
    [: PREPARES COMMITS ;] catch {: publish-rc:n :}
-   publish-rc 0 <> IF publish-rc FAIL THEN
+   publish-rc 0 <> IF FAIL publish-rc throw THEN
    RELEASES ;
 
 private

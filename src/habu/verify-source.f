@@ -16,6 +16,9 @@ split-str
 \ comment or string the scan skips belong to the token after it. One answer at
 \ most.
 \
+\ Each *-OUTCOME word runs a record's reader under its own catch, so a code it
+\ throws on keeps the record its throw carried.
+\
 \ A skipped top-level string literal is kept in one slot so the string the
 \ scanner would otherwise discard reaches the row that replays it: a string
 \ loader's path and a name before a call of a word a names: row marks. The
@@ -2322,7 +2325,8 @@ variable TRUSTED-DOES
    DISARM
    name nameu sig sigu at DEF-WORD DEFINED-HERE ;
 
-: IDENTITY-OUTCOME ( n -- ) {: rc:n :}
+: IDENTITY-OUTCOME ( [ -- ] -- )
+   catch {: rc:n :}
    rc 0= IF EXIT THEN
    DISARM
    rc E-CHECKER-IDENTITY-UNRESOLVED = IF QUIET-TYPE-REPORT EXIT THEN
@@ -2570,7 +2574,8 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
    name nameu BODY$ TYPE-DECL:REPLAY-MUTUAL
    IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
 
-: LEGACY-TYPE-OUTCOME ( n -- ) {: rc:n :}
+: LEGACY-TYPE-OUTCOME ( [ -- ] -- )
+   catch {: rc:n :}
    rc 0= IF EXIT THEN
    rc TYPE-DECL:E-TDECL-UNRESOLVED <> IF rc throw THEN
    QUIET-TYPE-REPORT ;
@@ -2886,7 +2891,8 @@ variable STG-TYPE-U
 
 \ Registrars resolve the whole type before publishing a word, so an unresolved
 \ type leaves only the scoped uncertainty mark.
-: STORAGE-OUTCOME ( n -- ) {: rc:n :}
+: STORAGE-OUTCOME ( [ -- ] -- )
+   catch {: rc:n :}
    rc 0= IF EXIT THEN
    DISARM
    rc E-CHECKER-STORAGE-UNRESOLVED <> IF rc throw THEN
@@ -2927,7 +2933,8 @@ variable STG-TYPE-U
       2drop DECL-TOKEN
    AGAIN ;
 
-: VALUE-RECORD-OUTCOME ( n -- ) {: rc:n :}
+: VALUE-RECORD-OUTCOME ( [ -- ] -- )
+   catch {: rc:n :}
    rc 0= IF EXIT THEN
    rc E-CHECKER-RECORD-UNRESOLVED <> IF rc throw THEN
    QUIET-TYPE-REPORT ;
@@ -3730,38 +3737,38 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" deftype" STR=CI decl and IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI decl and IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI decl and IF
-      [: RECORD-VALUE-RECORD ;] catch VALUE-RECORD-OUTCOME 0 0= EXIT THEN
+      [: RECORD-VALUE-RECORD ;] VALUE-RECORD-OUTCOME 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
    a u s" structure" STR=CI decl and IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
    a u s" mutual" STR=CI decl and IF RECORD-MUTUAL 0 0= EXIT THEN
    a u s" newtype" STR=CI decl and IF RECORD-NEWTYPE 0 0= EXIT THEN
    a u s" sumtype" STR=CI decl and IF
-      [: RECORD-SUMTYPE ;] catch LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-SUMTYPE ;] LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
    a u s" enum" STR=CI decl and IF RECORD-ENUM 0 0= EXIT THEN
    a u LAYOUT-BUFFER-XT @ s" LAYOUT-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-LAYOUT-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u DEFER-LAYOUT-BUFFER-XT @ s" DEFER-LAYOUT-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-DEFER-LAYOUT-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-DEFER-LAYOUT-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u TYPED-BUFFER-XT @ s" TYPED-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-TYPED-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-TYPED-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u TYPED-VARIABLE-XT @ s" TYPED-VARIABLE" LIBRARY-DEFINER? IF
-      [: RECORD-TYPED-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-TYPED-VARIABLE ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u s" TASK:+USERS" s" +USERS" TASK-DEFINER? IF
-      [: RECORD-BYTE-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-BYTE-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u s" TASK:+USER" s" +USER" TASK-DEFINER? IF
-      [: RECORD-SLOT ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-SLOT ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u DYNAMIC-BUFFER-XT @ s" DYNAMIC-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-DYNAMIC-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u ARENA-XT @ s" ARENA" LIBRARY-DEFINER? IF
-      [: RECORD-ARENA ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-ARENA ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u HEAP-XT @ s" HEAP" LIBRARY-DEFINER? IF
-      [: RECORD-HEAP ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-HEAP ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-BUFFER-XT @ s" CWORK-BUFFER" LIBRARY-DEFINER? IF
-      [: RECORD-BYTE-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-BYTE-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-SPAN-XT @ s" CWORK-SPAN" LIBRARY-DEFINER? IF
-      [: RECORD-CWORK-SPAN ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-CWORK-SPAN ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
-      [: RECORD-CWORK-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+      [: RECORD-CWORK-VARIABLE ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
@@ -3770,9 +3777,9 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" EPPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" cast:" STR=CI IF
-      [: CAST-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN
+      [: CAST-DECLARATION ;] IDENTITY-OUTCOME 0 0= EXIT THEN
    a u s" linear:" STR=CI IF
-      [: LINEAR-DECLARATION ;] catch IDENTITY-OUTCOME 0 0= EXIT THEN
+      [: LINEAR-DECLARATION ;] IDENTITY-OUTCOME 0 0= EXIT THEN
    a u s" undefine" STR=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
    a u s" generates:" STR=CI decl and IF RECORD-GENERATES 0 0= EXIT THEN
    a u s" FUNCTION:" STR=CI decl and IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
@@ -4120,10 +4127,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 
 COMPOSE-INIT
 
-: THROW-RESULT ( n -- )
-   dup 0= IF drop exit THEN
-   throw ;
-
 \ The owner's start opens the checker's engine overlay, so every name the
 \ action replays binds through the engine dictionary; the done closes it and
 \ restores the caller's scope on the clean and the throwing path alike. With no
@@ -4135,17 +4138,17 @@ COMPOSE-INIT
    false TICK-REMAINDER !  FFI:ABANDON-FUNCTION
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
-   catch
+   catch {: rc:n :}
    SOURCE-SEALS-CLEAR
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute
    split CHECKER-SPLIT-STR !
-   THROW-RESULT ;
+   rc 0<> IF rc throw THEN ;
 
 : VERIFY-ARMED ( -- )
    SOURCE-ARM
-   [: VERIFY-SOURCE ;] catch
+   [: VERIFY-SOURCE ;] catch {: rc:n :}
    REJECTION:SOURCE-OFF
-   THROW-RESULT ;
+   rc 0<> IF rc throw THEN ;
 
 : RUN ( -- )
    [: VERIFY-ARMED ;] RUN-IN-SCOPE ;
@@ -4285,10 +4288,10 @@ public
    SOURCE!
    CHECKER-CANDIDATE-SCOPE-START
    true INDEX-ON !
-   [: [: VERIFY-THEN ;] RUN-IN-SCOPE ;] catch
+   [: [: VERIFY-THEN ;] RUN-IN-SCOPE ;] catch {: rc:n :}
    false INDEX-ON !
    CHECKER-CANDIDATE-SCOPE-DONE
-   THROW-RESULT ;
+   rc 0<> IF rc throw THEN ;
 
 \ A framed verifier child makes each neutral scope stand for an independent
 \ child. The previous scope has retired every declaration before this reset.
@@ -4381,7 +4384,7 @@ private
    catch {: rc:n :}
    false ENTRY-TEXT !
    SOURCE-INPUT:RESET
-   rc THROW-RESULT ;
+   rc 0<> IF rc throw THEN ;
 public
 
 \ Verify src srcu, the bytes supplied for path, composing each file a loader
@@ -4430,8 +4433,8 @@ public
 : SOURCE-BUF ( ^u8 n -- )
    SOURCE!
    CHECKER-CANDIDATE-SCOPE-START
-   [: RUN ;] catch
+   [: RUN ;] catch {: rc:n :}
    CHECKER-CANDIDATE-SCOPE-DONE
-   THROW-RESULT ;
+   rc 0<> IF rc throw THEN ;
 
 ;package

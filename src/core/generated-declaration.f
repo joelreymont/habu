@@ -22,8 +22,8 @@ EXPORT CHECK:DEF-NAME-REJECT?
 \ The slots hold copies: the family name is read on a declaration's first
 \ line but rendered after a reject on a later one, and a REPL refills its
 \ input buffer per line. Each slot also keeps the span it was copied from,
-\ which a located token renders instead (TOKEN-SPAN@), until GUARD-CODE ends
-\ the declaration.
+\ which a located token renders instead (TOKEN-SPAN@), until the declaration
+\ ends.
 3 constant SLOTS
 96 constant SPAN-CAP        \ bytes a slot keeps; a longer span is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
@@ -45,11 +45,20 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
 : SRC@ ( n -- str )
    {: s:n :}
    SLOT-SRC-A s ptr-field @  s cells SLOT-SRC-U + @ ;
+
+public
+
+\ Every exit of a declaration forgets the borrowed spans: one left behind is
+\ read stale or baked into an image with its build-time address, so engine
+\ generations differ.
 : FORGET-SRC ( -- )
    SLOTS 0 ?do
       NULL-PTR SLOT-SRC-A i ptr-field !
       0 i cells SLOT-SRC-U + !
    loop ;
+
+private
+
 : CAPPED ( n -- n ) SPAN-CAP min ;
 
 : COPY-BYTES ( ^u8 n ^u8 -- ) {: a:^ u:n d:^ :}
@@ -204,16 +213,17 @@ public
    a u TYPE-DECL:DECL-FAMILY-NAME {: ca:^ cu:n :}
    cu 0 > IF ca cu FAMILY!  ca cu TDECL-NAME-PREFLIGHT-XT  a u FAMILY! THEN ;
 
-\ End one declaration. Every exit forgets the borrowed spans: one left behind is
-\ read stale or baked into an image with its build-time address, so engine
-\ generations differ. A status in 1..255 was printed where it arose, and a code
-\ no reason explains is no declaration's: both are rethrown. Any other renders,
-\ then counts in a multi-error load (DRIVE skipped to its terminator) or stops
-\ the load.
+\ Whether a declaration's catch throws code n on: a status in 1..255 was printed
+\ where it arose, and a code no reason explains is no declaration's.
+: THROWN-ON? ( n -- bool ) {: rc:n :}
+   rc 1 >=  rc 255 <= and  rc REASON? 0= or ;
+
+\ End one declaration whose code is 0 or one a reason explains. That code
+\ renders, then counts in a multi-error load (DRIVE skipped to its terminator)
+\ or stops the load.
 : GUARD-CODE ( n -- )
    {: rc:n :}
    rc 0= IF FORGET-SRC EXIT THEN
-   rc 1 >=  rc 255 <= and  rc REASON? 0= or IF FORGET-SRC rc throw THEN
    rc RENDER
    FORGET-SRC
    MULTI-ERR? IF REJECTION:KEEP EXIT THEN
@@ -666,9 +676,10 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
    SKIP-BODY ;
 
 \ DRIVE ( terminator body -- code ) : one declaration through the transaction,
-\ resynchronized and reset on the way out; 0 or the reject code. The body
-\ quotation rides the data stack through the catch (docs/forth.md, checked
-\ catch): the quotation is stack-preserving, so the xt is dropped after it.
+\ resynchronized and reset on the way out; 0 or a reject code a reason explains,
+\ and any other code thrown on. The body quotation rides the data stack through
+\ the catch (docs/forth.md, checked catch): the quotation is stack-preserving,
+\ so the xt is dropped after it.
 : DRIVE ( str [ -- renders parses nominal ] -- n )
    {: ta:^ tu:n body :}
    MISS-CLEAR RESET
@@ -679,10 +690,10 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
    ta tu RESYNC
    RESET
    rc E-UNRESOLVED <> IF MISS-CLEAR THEN
+   rc DECL-REJECT:THROWN-ON? IF DECL-REJECT:FORGET-SRC rc throw THEN
    rc ;
 
 : REPLAY-END ( n -- str bool )    \ direct missing span after rollback
-   DECL-REPLAY:RP-RELEASE
    dup E-UNRESOLVED = IF
       drop MISS-A @ MISS-U @
       0 DECL-REJECT:GUARD-CODE
@@ -700,15 +711,19 @@ public
 
 \ REPLAY-OUTCOME ( name body-text kind terminator body -- span bool ) : register
 \ a declaration from tokens a tool has already lexed, defining no word, and
-\ answer whether a type it names may still arrive, and which.
+\ answer whether a type it names may still arrive, and which. DRIVE throws
+\ E-UNRESOLVED on: no reason explains it.
 : REPLAY-OUTCOME ( str str str str [ -- renders parses nominal ] -- str bool )
    {: na:^ nu:n ba:^ bu:n ka:^ ku:n ta:^ tu:n body :}
    na nu ba bu DECL-REPLAY:RP-CLAIM
    ka ku DECL-REJECT:OPEN
    YES OUTCOME-NAMES !
-   ta tu body DRIVE
+   0 [: drop ta tu body DRIVE ;] catch {: code rc:n :}
    0 OUTCOME-NAMES !
-   REPLAY-END ;
+   DECL-REPLAY:RP-RELEASE
+   rc 0= IF code REPLAY-END EXIT THEN
+   rc E-UNRESOLVED = IF E-UNRESOLVED REPLAY-END EXIT THEN
+   rc throw ;
 
 private
 

@@ -11427,27 +11427,21 @@ CUR-DEFAULT
    CUR-RN @ 0 ?do i CUR-SEND loop ;
 
 \ The owner's exit, when it took the arm: publish the check's candidates, then
-\ drop the tables and disarm whatever the visitor throws, and answer the code
-\ it threw, 0 when none.
-: CUR-RELEASE ( bool -- n )
-   0= IF 0 EXIT THEN
+\ drop the tables and disarm whatever the visitor throws.
+: CUR-RELEASE ( bool -- )
+   0= IF EXIT THEN
    [: CUR-PUBLISH ;] catch {: rc:n :}
    0 VIS-OPEN !
    CUR-RP CUR-RCAP CUR-ROW ARENA-ROWS-RELEASE  0 CUR-RN !
    CB-P CB-CAP 1 ARENA-ROWS-RELEASE  0 CB-N !
    CUR-DEFAULT
-   rc ;
+   rc 0 <> IF rc throw THEN ;
 
 \ A check's exit: publish its uses from PU0 and, when it took the arm, its
-\ candidates, then disarm, whatever either handler throws. It answers the first
-\ code thrown, 0 when none, which the check rethrows after its own bookkeeping.
-: PUBLISH-EXIT ( n bool -- n )
+\ candidates, then disarm, whatever either handler throws.
+: PUBLISH-EXIT ( n bool -- )
    {: took:bool :}
-   [: dup NAV-PUBLISH ;] catch {: urc:n :}
-   drop
-   took CUR-RELEASE {: crc:n :}
-   urc 0 <> IF urc EXIT THEN
-   crc ;
+   [: NAV-PUBLISH ;] [: took CUR-RELEASE ;] finally ;
 
 : SYM-VISIBLE ( n -- n ) {: sym:n :}   \ the symbol, or 0 when its records all lie beyond the horizon
    sym 0= IF 0 EXIT THEN

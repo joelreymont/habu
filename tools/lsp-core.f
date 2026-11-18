@@ -550,9 +550,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       some OF RECEIVE ENDOF
    ;MATCH ;
 
+\ SETTLE's throw of FAULT is a new throw, so a record the caught one carried is sent here.
 : READ-ON ( -- )
    SETTLED? if exit then
-   [: READ-MESSAGE ;] catch FAULT ! ;
+   [: READ-MESSAGE ;] catch {: code:n :}
+   code 0<> REJECTION:CARRIED? and if REJECTION:SEND-SAVED then
+   code FAULT ! ;
 
 \ A message begun is read whole, which waits for the rest of it.
 : READ-WAITING ( -- )

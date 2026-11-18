@@ -2036,7 +2036,7 @@ global
    \ handlers, which may start a check; the exit runs whatever either throws.
    rc 0 <> IF 0 PARSE-COMPLETE ! THEN
    rc DEF-RESUMES? IF [: CHECK-DEF-THREW ;] ELSE [: ;] THEN catch {: trc:n :}
-   pu0 took PUBLISH-EXIT {: prc:n :}
+   [: pu0 took PUBLISH-EXIT ;] catch {: prc:n :}
    rc 0 <> rc DEF-RESUMES? 0= and IF rc throw THEN
    trc 0 <> IF trc throw THEN
    prc 0 <> IF prc throw THEN
@@ -2398,7 +2398,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
    -1 TORDER-DEPTH +!
    oldactive TORDER-ACTIVE !  oldunknown TORDER-SCAN-UNKNOWN !
    rc 0 <> IF rc SRC-DOES-THREW THEN
-   pu0 took PUBLISH-EXIT {: prc:n :}
+   [: pu0 took PUBLISH-EXIT ;] catch {: prc:n :}
    DOES-EFF-CLEAR
    rc 0 <> rc DEF-RESUMES? 0= and IF rc throw THEN
    prc 0 <> IF prc throw THEN
@@ -3227,9 +3227,10 @@ variable TG-GEN    variable TG-TERM-NAME
 \ taken, so the judge resolves the token as the step did; a throw from either (a
 \ scope refusal raises) turns it off too, and releases the step's terms.
 : TOP-RUN ( [ -- ] -- )
-   -1 TOP-STEP !  catch  dup 0= IF drop ['] TOP-JUDGE catch THEN  0 TOP-STEP !
-   {: rc:n :}
-   rc 0 <> IF TOP-RELEASE rc throw THEN ;
+   -1 TOP-STEP !  catch {: rc:n :}
+   rc 0 <> IF 0 TOP-STEP !  TOP-RELEASE  rc throw THEN
+   ['] TOP-JUDGE catch {: jrc:n :}  0 TOP-STEP !
+   jrc 0 <> IF TOP-RELEASE  jrc throw THEN ;
 
 : TOP-SEG-PRUNE ( n -- ) {: lvl:n :}
    BEGIN TOP-ENTRY @ lvl >  TOP-LIVE @ 0 <> and WHILE
