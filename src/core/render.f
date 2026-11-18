@@ -1946,6 +1946,10 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    efam 0 >= IF efam EXIT THEN
    afam 0 >= IF afam EXIT THEN
    DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
+EXPORT TFAM:PF-NAME$
+EXPORT TFAM:SUMV-PAY-FIELD
+EXPORT TFAM:SUMV-PAY-N
+
 \ DPOS is the slot from the top of the failed expected element; the field is
 \ the variant's payload field in declaration order, none outside its cells.
 : FIELD-NOTE ( -- )

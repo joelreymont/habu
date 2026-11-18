@@ -2400,11 +2400,15 @@ EXPORT CHECKER-TAPE:DISARM
    kind COMP-BODY:SETTER COMP-BODY:EQ or
    kind COMP-BODY:BYTES COMP-BODY:EQ or ;
 
+EXPORT TFAM:PF-BYTE-OFF@
+EXPORT TFAM:PF-BYTES@
+EXPORT TFAM:PF-CELLS@
+
 \ A getter's view is on top, its base under its bound: it pushes the field
 \ FID's cells, lowest first, from the base plus the field's offset.
 : GET-CELLS ( n -- ) {: fid:n :}
-   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
-   fid TYPE-FIELD:CELLS@ 0 ?do
+   fid PF-BYTE-OFF@ {: off:n :}
+   fid PF-CELLS@ 0 ?do
       i 1+ DEEP  off i cells + PUSH-CONST  [: + ;] OP-ADD true ALU2
       CELL-W FETCH
    loop ;
@@ -2413,8 +2417,8 @@ EXPORT CHECKER-TAPE:DISARM
 \ and drops them. T0 has no inline store, so each cell is a call, as in
 \ DO-STORE.
 : SET-CELLS ( n -- ) {: fid:n :}
-   fid TYPE-FIELD:BYTE-OFF@ {: off:n :}
-   fid TYPE-FIELD:CELLS@ {: k:n :}
+   fid PF-BYTE-OFF@ {: off:n :}
+   fid PF-CELLS@ {: k:n :}
    k 0 ?do
       k 1- i - DEEP  k 2 + DEEP
       off i cells + PUSH-CONST  [: + ;] OP-ADD true ALU2
@@ -2454,8 +2458,8 @@ EXPORT CHECKER-TAPE:DISARM
       getter OF val GET-CELLS  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
       setter OF val SET-CELLS  EMIT-RETURN  EMIT-CLOSE ENDOF
       bytes OF
-         val TYPE-FIELD:BYTE-OFF@ PUSH-CONST  [: + ;] OP-ADD true ALU2
-         val TYPE-FIELD:BYTES@ PUSH-CONST
+         val PF-BYTE-OFF@ PUSH-CONST  [: + ;] OP-ADD true ALU2
+         val PF-BYTES@ PUSH-CONST
          SPILL-ALL  EMIT-RETURN  EMIT-CLOSE
       ENDOF
    ;MATCH ;

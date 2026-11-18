@@ -1658,14 +1658,18 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
 
-\ The build's TFAM:TYPE-WORD, the word every type entry's record runs.
+\ The build's TYPE-WORD in TFAM, the word every type entry's record runs: a
+\ private word, or a public one in a source from before it went private.
 : TYPE-SOURCE ( -- n )
    s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    -1  pkg XREF-FOUND? if
-      drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE REC>INDEX
+      drop  s" TYPE-WORD" pkg XREF-PKG-PRIVATE CHECKER-RESOLVE:WL-PROBE
+      dup XREF-FOUND? 0= if
+         drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE
+      then  REC>INDEX
    then {: src:n :}
    src FIRST-REC @ < if
-      REFUSAL  s" a type entry needs the build's own TFAM:TYPE-WORD" SAY SAY-CR  E-COMP-STATE throw
+      REFUSAL  s" a type entry needs the build's own TYPE-WORD in package TFAM" SAY SAY-CR  E-COMP-STATE throw
    then
    src ;
 

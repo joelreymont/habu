@@ -17,6 +17,7 @@ package LBUF
 EXPORT CHECK:ARENA-BYTES-ENSURE
 EXPORT CHECK:REJECT-DUPLICATE
 EXPORT CHECK:TYPE-TEXT
+EXPORT TFAM:SUMV-PAY-N
 
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 0 constant LBUF-FALSE
@@ -183,7 +184,7 @@ PTR-VARIABLE STGT-START
       base term T-WIDTH 1- cells + @
       fam swap TFAM:TFAM-STORAGE-VARIANT drop {: vid:n :}
       0
-      vid TFAM:SUMV-PAY-N 0 ?do
+      vid SUMV-PAY-N 0 ?do
          term vid i TFAM:TFAM-STORAGE-PAY {: child:n width:n :}
          base over cells + child recurse
          width +

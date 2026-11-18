@@ -16,6 +16,11 @@ package TYPE-DECL
 private
 package STRUCTURE-DECL
 using DECL-FRONT
+EXPORT TFAM:TFAM-DECL
+EXPORT TFAM:TFAM-FLD-RANGE!
+EXPORT TFAM:TFAM-LAYOUT!
+EXPORT TFAM:TFAM-PK!
+EXPORT TFAM:TFAM-SLOTS!
 
 \ Transient parse state, not declaration state: STRUCTURE is top-level
 \ interpret-only, so one declaration runs at a time.

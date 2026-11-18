@@ -13,6 +13,8 @@ using TYPE-DECL
 package TYPE-DECL
 private
 package STRUCTURE-MAKE
+EXPORT TFAM:PF-ROW
+EXPORT TFAM:TFAM-VAR-RANGE!
 
 : SM-FIELD-SCHEMA@ ( n n -- n ) {: idx:n fs:n :}
    fs idx + PF-PENDING-SCH@ ;

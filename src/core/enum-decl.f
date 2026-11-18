@@ -14,6 +14,11 @@ package TYPE-DECL
 private
 package ENUM-DECL
 using DECL-FRONT
+EXPORT TFAM:TFAM-DECL
+EXPORT TFAM:TFAM-FLD-RANGE!
+EXPORT TFAM:TFAM-LAYOUT!
+EXPORT TFAM:TFAM-SLOTS!
+EXPORT TFAM:TFAM-VAR-RANGE!
 
 \ Transient parse state, not declaration state: ENUM is top-level
 \ interpret-only, so one declaration runs at a time.

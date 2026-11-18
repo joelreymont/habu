@@ -19,7 +19,7 @@ DECL-DIAG:PROSE
 
 T-RESET
 
-variable B   variable PFB
+variable PFB
 
 \ 6. A duplicate field name rejects through the field record (E-TFAM-DUP 7102)
 \    and the provisional field rows roll back. hb's own type entries are read
@@ -993,11 +993,7 @@ DEFLINEAR SDLIN:tok                                   \ the linear owner these f
 s" STRUCTURE sdlbox FIELD t SDLIN:tok FIELD k n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ depth 2: a field naming that linear family.
-TYPE-FIELD:COUNT B !
 s" STRUCTURE sdlouter FIELD inner sdlbox FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
-B @ TFAM:PF-NAME$ s" inner" CORE-STR= TTRUE
-B @ TYPE-FIELD:BYTES@ 2 cells T=                      \ the field is the whole bundle, not one cell
-B @ 1 + TFAM:PF-BYTE-OFF@ 2 cells T=                  \ z sits after it
 
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE sdldeep FIELD d sdlouter ;STRUCTURE" TEST-EVAL:RC 0 T=

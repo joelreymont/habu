@@ -123,11 +123,7 @@ create TF-STR-BOOT   TF-STR-INIT allot
 PERSISTED-PTR-VARIABLE TF-STR-P   TF-STR-BOOT TF-STR-P !
 : TF-STR ( -- ^u8 ) TF-STR-P @ ;
 
-public
-
 variable TF-STR-U   0 TF-STR-U !
-
-private
 
 EXPORT CHECKER-REG:GROW
 
@@ -346,11 +342,7 @@ create TF-PK-BOOT   TF-PK-INIT cells allot
 PERSISTED-PTR-VARIABLE TF-PK-P   TF-PK-BOOT TF-PK-P !
 : TF-PK-BASE ( -- ^n ) TF-PK-P @ ;
 
-public
-
 variable TF-PK-N   0 TF-PK-N !
-
-private
 
 : TF-PK-GROW ( n -- ) {: need:n :}
    need TF-PK-CAP-V @ 2 * max {: nc:n :}
@@ -446,11 +438,7 @@ create TF-A-BOOT   TF-CAP-INIT TF-REC * allot
 PERSISTED-PTR-VARIABLE TF-A-P   TF-A-BOOT TF-A-P !
 : TF-BASE ( -- ^n ) TF-A-P @ ;
 
-public
-
 variable TFAM-N   0 TFAM-N !
-
-private
 
 : TF-GROW ( n -- ) {: need:n :}
    need TF-CAP-V @ 2 * max {: nc:n :}
@@ -462,12 +450,12 @@ private
 : TF-SCRUB ( n n -- ) {: lo:n hi:n :}     \ zero the family records [lo,hi); see PF-SCRUB
    TF-BASE  lo TF-REC CELL / *  hi TF-REC CELL / *  ARENA-CELLS-ZERO ;
 
-public
-
 : TF-REC@ ( n -- ^n ) {: id:n :}
    id 0 < IF s" tfam: bad family id" EXIT-STATUS:INTERNAL die THEN
    id TFAM-N @ >= IF s" tfam: bad family id" EXIT-STATUS:INTERNAL die THEN
    id TF-REC * TF-BASE + ;
+
+public
 
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
 
@@ -479,12 +467,13 @@ public
 
 using TFAM
 
+package TFAM
+
 \ Global: the engine names TFAM-NAME$, TFL-CON-FAM?, TFL-MATCH-FAM? and
 \ TFAM-CTOR-WORD? bare, from packages that do not use TFAM.
+global
 : TFAM-NAME$ ( n -- str ) {: id:n :}
    id TF-REC@ {: r:^ :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
-
-package TFAM
 
 public
 
@@ -600,14 +589,22 @@ public
 
 : TFM-EPOCH+ ( -- ) TFM-EPOCH @ 1 + TFM-EPOCH ! ;
 
-\ --- friend-only field mutators (populated by later declaration passes / tests).
+private
+
+\ --- field mutators.
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
    p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" EXIT-STATUS:INTERNAL die THEN
    p id TF-REC@ TF.LAYOUT !
    TFM-EPOCH+ ;
 : TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
+
+public
+
 \ A STRUCTURE learns its kind at its close: one with no field is a cell family.
 : TFAM-KIND! ( n n -- ) swap TF-REC@ TF.KIND !  TFM-EPOCH+ ;
+
+private
+
 \ An empty range (count 0) is stored as start 0 count 0, never at the
 \ store's high-water: it names no row, so its start is the same whatever
 \ an earlier file left in the store.
@@ -619,15 +616,18 @@ public
    c 0= IF 0 ELSE s THEN id TF-REC@ TF.FLD-START !
    c id TF-REC@ TF.FLD-COUNT !
    TFM-EPOCH+ ;
+public
+
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
+
+private
+
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" EXIT-STATUS:INTERNAL die THEN
    k 0 < k PK-MAX > or IF s" tfam: parameter kind out of range" EXIT-STATUS:INTERNAL die THEN
    k id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + ! ;
 
 \ --- matching and lookup.
-
-private
 
 : TFAM-PKG-MATCH? ( str n -- bool ) {: pa:^ pu:n id:n :}
    id TFAM-PKG$ pa pu CORE-STR=CI ;
@@ -660,11 +660,7 @@ PERSISTED-PTR-VARIABLE TFX-A-P   TFX-A-BOOT TFX-A-P !
 : TFX-BASE ( -- ^n ) TFX-A-P @ ;
 variable TFX-READY   0 TFX-READY !
 
-public
-
 variable TFX-HI      0 TFX-HI !
-
-private
 
 variable TFX-CAP     0 TFX-CAP !      \ the TF-CAP the buckets were sized for
 variable TFX-I                \ private build/retire index
@@ -783,8 +779,6 @@ private
       1 +
    REPEAT drop ;
 
-public
-
 : TFAM-DECL ( str n str n n -- n )
    {: pa:^ pu:n vis:n na:^ nu:n arity:n kind:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
@@ -823,8 +817,6 @@ NOMINAL-PROVIDER
 
 \ SUMV: sum/enum variant records, keyed by (family-id, variant tail).
 
-private
-
 0 cells constant SV.FAM-OFF
 1 cells constant SV.NAME-OFF-AT
 2 cells constant SV.NAME-U-OFF
@@ -860,11 +852,7 @@ create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot
 PERSISTED-PTR-VARIABLE SUMV-A-P   SUMV-A-BOOT SUMV-A-P !
 : SUMV-BASE ( -- ^n ) SUMV-A-P @ ;
 
-public
-
 variable SUMV-N   0 SUMV-N !
-
-private
 
 : SUMV-GROW ( n -- ) {: need:n :}
    need SUMV-CAP-V @ 2 * max {: nc:n :}
@@ -922,11 +910,9 @@ public
 private
 
 variable SVX-GEN
-
-public
-
 variable SVX-HI
 0 SVX-GEN !   0 SVX-HI !
+public
 
 : SVX@ ( n -- n ) HT-SVX IDX-HEAD@ ;
 
@@ -1022,11 +1008,7 @@ PERSISTED-PTR-VARIABLE VNX-L-P   VNX-L-BOOT VNX-L-P !
 variable VNX-LCAP   SUMV-CAP-INIT VNX-LCAP !   \ rows the link array holds
 variable VNX-READY   0 VNX-READY !
 
-public
-
 variable VNX-HI      0 VNX-HI !      \ SUMV-N the chains cover
-
-private
 
 variable VNX-CAP     0 VNX-CAP !     \ SUMV-CAP the buckets were sized for
 variable VNX-CUR              \ private bucket-walk cursor
@@ -1480,10 +1462,11 @@ PERSISTED-PTR-VARIABLE PF-A-P   PF-A-BOOT PF-A-P !
 public
 
 : PF-BASE ( -- ^n ) PF-A-P @ ;
-variable PF-N   0 PF-N !
-variable PF-COMMIT-N   0 PF-COMMIT-N !
 
 private
+
+variable PF-N   0 PF-N !
+variable PF-COMMIT-N   0 PF-COMMIT-N !
 
 PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
 
@@ -1515,8 +1498,6 @@ private
 : ID-REQUIRE ( n n -- ) {: id:n n:n :}
    id 0 <  id n >=  or IF s" pf: field id names no field" EXIT-STATUS:INTERNAL die THEN ;
 
-public
-
 \ Only the engine holds a field id, so one out of range is a defect. PF-ROW
 \ admits provisional rows (bound PF-N) for in-transaction machinery; PF-REC@ is
 \ the committed reader (bound PF-COMMIT-N).
@@ -1524,20 +1505,21 @@ public
    id PF-N @ ID-REQUIRE
    id PF-REC * PF-BASE + ;
 
-private
-
 : PF-REC@ ( n -- ^n ) {: id:n :}
    id PF-COMMIT-N @ ID-REQUIRE
    id PF-REC * PF-BASE + ;
-
-public
 
 : PF-FAM@ ( n -- n ) PF-REC@ PF.FAM @ ;
 : PF-VAR@ ( n -- n ) PF-REC@ PF.VAR @ ;
 : PF-NAME$ ( n -- str ) {: id:n :}
    id PF-REC@ {: r:^ :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
 : PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
+
+public
+
 : PF-PENDING-SCH@ ( n -- n ) PF-ROW PF.SCH @ ;
+
+private
 
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-CELLS@ ( n -- n ) PF-REC@ PF.CELLS @ ;
@@ -1545,6 +1527,9 @@ public
 : PF-BYTES@ ( n -- n ) PF-REC@ PF.BYTES @ ;
 : PF-ALIGN@ ( n -- n ) PF-REC@ PF.ALIGN @ ;
 : PF-FLAGS@ ( n -- n ) PF-REC@ PF.FLAGS @ ;
+
+public
+
 : PF-N@ ( -- n ) PF-COMMIT-N @ ;
 
 \ --- field owner index (FVX). Every question about one owner's fields (is this
@@ -1814,8 +1799,6 @@ private
 \ A payload index the variant does not have.
 : PAY-INDEX-BAD ( -- ) s" tfam: payload index out of range" EXIT-STATUS:INTERNAL die ;
 
-public
-
 : SUMV-PAY-FIELD ( n n -- n bool ) {: vid:n wanted:n :}
    vid SUMV-NAMED-PAYLOAD? 0= IF 0 RES-FALSE EXIT THEN
    vid wanted SUMV-NAMED-FIELD ;
@@ -1854,8 +1837,6 @@ public
 \ is read; base and top are passed explicitly, so a throw leaks nothing. T-WIDTH
 \ (checker.f) reads TFAM-INST-WIDTH@; typed storage, generated constructors and
 \ MATCH read T-WIDTH.
-
-private
 
 16 constant TFW-INIT
 create TFW-BOOT   TFW-INIT cells allot
@@ -2705,12 +2686,6 @@ public
 
 : COUNT ( -- n ) PF-N@ ;
 : NO-VARIANT ( -- n ) PF-NO-VARIANT ;
-: FAMILY@ ( n -- n ) PF-FAM@ ;
-: SCHEMA@ ( n -- n ) PF-SCH@ ;
-: BYTE-OFF@ ( n -- n ) PF-BYTE-OFF@ ;
-: BYTES@ ( n -- n ) PF-BYTES@ ;
-: CELLS@ ( n -- n ) PF-CELLS@ ;
-: FLAGS@ ( n -- n ) PF-FLAGS@ ;
 
 seal-package
 ;package
@@ -2971,11 +2946,7 @@ create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot
 PERSISTED-PTR-VARIABLE LAY-A-P   LAY-A-BOOT LAY-A-P !
 : LAY-BASE ( -- ^n ) LAY-A-P @ ;
 
-public
-
 variable LAY-N   0 LAY-N !
-
-private
 
 : LAY-GROW ( n -- ) {: need:n :}
    need LAY-CAP-V @ 2 * max {: nc:n :}
@@ -3006,6 +2977,9 @@ public
       i 1 +
    REPEAT drop
    0 RES-FALSE ;
+
+private
+
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
    WRITE-WINDOW-CK
    p 0 < p TL-MAX > or IF s" tfam: layout policy out of range" EXIT-STATUS:INTERNAL die THEN
@@ -3026,8 +3000,6 @@ public
 \ sits after the payload, matching the stack order; SIZE is the aligned record
 \ stride. These compute the descriptor for any family, independent of its
 \ declared policy.
-
-private
 
 : PACKED-ALIGN-UP ( n n -- n ) {: v:n a:n :}   \ round v up to a multiple of pow2 a
    v a 1- + a 1- invert and ;
@@ -3087,8 +3059,6 @@ private
       i TF-REC@ TF.ENTRY @ 0 <> IF -1 ENTRIES-PENDING ! THEN
    loop ;
 
-public
-
 : TFAM-RESET ( -- )
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains
@@ -3102,6 +3072,8 @@ public
    0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    -1 FIELD-FAM !  -1 LOAN-FIELD-FAM ! ;
 TFAM-RESET
+
+public
 
 \ The registry rewind: every caller that puts the family and variant stores or
 \ the name pool back to an earlier mark goes through here. Three indexes chain
@@ -3174,11 +3146,7 @@ create TF-RBF-BOOT   TF-RBF-CAP-INIT TF-RBF-REC * allot
 PERSISTED-PTR-VARIABLE TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
 : TF-RBF-BASE ( -- ^n ) TF-RBF-P @ ;
 
-public
-
 variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
-
-private
 
 : TF-RBF-GROW ( -- )
    TF-RBF-CAP-V @ 2 * {: nc:n :}
@@ -3198,6 +3166,14 @@ public
 ;package
 
 package CHECKER-DECL-FRAME
+EXPORT TFAM:LAY-N
+EXPORT TFAM:PF-COMMIT-N
+EXPORT TFAM:PF-N
+EXPORT TFAM:SUMV-N
+EXPORT TFAM:TF-PK-N
+EXPORT TFAM:TF-RBF-DEPTH
+EXPORT TFAM:TF-STR-U
+EXPORT TFAM:TFAM-N
 
 : TF-RELEASE ( -- )
    TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH ! ;
@@ -3229,7 +3205,6 @@ package CHECKER-DECL-FRAME
 
 \ One SAVE/RESTORE pair the checker's core RBF-PUSH/POP drives, so TFAM and
 \ SCHEMA frames stay in lockstep with core marks.
-public
 : EXT-SAVE ( -- )
    TF-SAVE
    SCHEMA-ROLLBACK-SAVE ;
@@ -3242,7 +3217,6 @@ public
    SCHEMA-ROLLBACK-FINALIZE
    TF-FINALIZE ;
 
-private
 : TYPES-READY ( n -- bool ) {: depth:n :}
    TF-RBF-DEPTH @ depth =
    SCH-RBF-DEPTH @ depth = and ;
@@ -4627,10 +4601,10 @@ private
 \ arguments the field's type reads. A field of other flags, or one ending past
 \ the family's width, is an engine defect.
 : FIELD-IN ( n n -- n n n ) {: fid:n flags:n :}
-   fid TYPE-FIELD:FAMILY@ {: fam:n :}
-   fid TYPE-FIELD:FLAGS@ flags <> IF
+   fid PF-FAM@ {: fam:n :}
+   fid PF-FLAGS@ flags <> IF
       s" tfam: a field accessor met a field of other flags" EXIT-STATUS:INTERNAL die THEN
-   fid TYPE-FIELD:BYTE-OFF@ fid TYPE-FIELD:BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
+   fid PF-BYTE-OFF@ fid PF-BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
       s" tfam: a field ends past its family's width" EXIT-STATUS:INTERNAL die THEN
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
@@ -4657,8 +4631,8 @@ private
 : TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
    fid PF-FLAGS-NONE FIELD-IN {: din:n base:n term:n :}
    CHILD-ABI:FIELD fid term MEMBER-CELLS
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
-   din  ft MK-PTR base MK-PUSH  fid TYPE-FIELD:BYTE-OFF@ ;
+   fid PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
+   din  ft MK-PTR base MK-PUSH  fid PF-BYTE-OFF@ ;
 
 \ A BUFFER field's accessor's rows and field id, from the committed field id
 \ FID: it takes `^F<..>` and answers the field's bytes as `SPAN:span<u8>`,
@@ -4695,10 +4669,10 @@ private
 \ field's T over the family's arguments; INIT-SET takes both and answers the
 \ receiver.
 : TFAM-INIT-ROWS ( n n -- n n n ) {: shape:n fid:n :}
-   fid TYPE-FIELD:FAMILY@ {: fam:n :}
+   fid PF-FAM@ {: fam:n :}
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
-   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
+   fid PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
    term fam TFAM-ARITY@ INIT-RECEIVER {: view:n :}
    view FRESH MK-ROW PUSH-LOGICAL {: bare:n :}
    ft bare PUSH-LOGICAL {: full:n :}
@@ -5114,7 +5088,7 @@ private
       CC-N MK-CON din MK-PUSH  term MK-PTR base MK-PUSH EXIT
    THEN
    shape CHILD-ABI:SPAN = IF din  SPAN-U8 base PUSH-LOGICAL EXIT THEN
-   param TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
+   param PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
    din  ft MK-PTR base MK-PUSH ;
 
 \ Files member SHAPE PARAM's number NUM on the token, which T0 adds in place of
@@ -5123,14 +5097,14 @@ private
    REC-ON @ 0= IF EXIT THEN
    shape CHILD-ABI:INDEX = IF REC-IX @ num 0 CW-MEMBER-STRIDE CWIN-ADD EXIT THEN
    shape CHILD-ABI:SPAN = IF
-      REC-IX @ num param TYPE-FIELD:BYTES@ CW-MEMBER-SPAN CWIN-ADD EXIT
+      REC-IX @ num param PF-BYTES@ CW-MEMBER-SPAN CWIN-ADD EXIT
    THEN
    REC-IX @ num 0 CW-MEMBER-OFFSET CWIN-ADD ;
 
 \ Whether NUM differs from the number member SHAPE PARAM's own word adds: a
 \ field's or span's declared offset, AT's declared stride.
 : MEMBER-MOVED? ( n n n -- bool ) {: shape:n param:n num:n :}
-   shape CHILD-ABI:INDEX = IF param TFAM-SLOTS@ CELL * ELSE param TYPE-FIELD:BYTE-OFF@ THEN
+   shape CHILD-ABI:INDEX = IF param TFAM-SLOTS@ CELL * ELSE param PF-BYTE-OFF@ THEN
    num <> ;
 
 \ Records the entry name of TERM's family and, unless its width is one cell
@@ -5212,8 +5186,8 @@ public
    IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
 : TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
    term TFC-ARGS!
-   field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
-   field TYPE-FIELD:FLAGS@ PF-FLAG-BUFFER = IF field TYPE-FIELD:CELLS@ EXIT THEN   \ a buffer: its cells
+   field PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
+   field PF-FLAGS@ PF-FLAG-BUFFER = IF field PF-CELLS@ EXIT THEN   \ a buffer: its cells
    dup T-WIDTH ;
 : TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
    fam TFAM-VAR-COUNT@ 0 ?do
