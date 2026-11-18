@@ -771,10 +771,14 @@ PTR-VARIABLE OBJ-BASE
    idx BUILT-ROW {: row:n :}
    row  idx REC-TIME 0=  REF-FILE ;
 
-\ A record reference: the file, 0 for this one, then the record's sum and count (REC-ID), which no
-\ earlier part changes; an earlier piece's record also gets its WORDS row.
+\ The file of a reference to hb's own record, which no FILES row number takes.
+-1 constant HB-FILE
+
+\ A record reference, three cells: this file's record as 0, sum and count (REC-ID), which no earlier part changes; an
+\ earlier piece's as its FILES row, sum and count, plus a WORDS row; hb's as HB-FILE, index and 0, which only facts read.
 : ID-REF+ ( n -- )
    {: idx:n :}
+   idx FIRST-REC @ < if  HB-FILE PIECES U64+  idx PIECES U64+  0 PIECES U64+  exit  then
    idx REC-ID {: sum:n count:n :}
    idx FILE-REC @ >= if
       0 PIECES U64+  sum PIECES U64+  count PIECES U64+  exit
@@ -1677,7 +1681,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    src ;
 
 \ The kind, name, flags without the name length and EXT, wordlist, then the kind's fields; KIND-PRIVATE and
-\ KIND-SEALED entries are LATE+'s and SEAL+'s. Answers the record the entry binds: an alias's or type's source, else -1.
+\ KIND-SEALED entries are LATE+'s and SEAL+'s. Answers the build's record an alias or type entry binds, else -1.
 : RECORD+ ( n -- n )
    {: idx:n :}
    idx XREF-REC {: rec:^ :}
@@ -2326,14 +2330,14 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    {: v:n :}
    v OPEN-DP @ < if -1 else v DP-ROW 0= if E-COMP-STATE throw then then  PAIR+ ;
 
-\ The running piece changed an earlier piece's record (facts, retirement, seal, late wordlist): its name in NAMES names
-\ the running piece whole, so a file spelling it depends on that piece; STORERS pairs the piece with the record's row.
+\ The running piece changed an earlier piece's or hb's record (facts, retirement, seal, late wordlist): a file spelling
+\ its name depends on the piece whole (NAMES); STORERS pairs it with an earlier piece's record's row, hb's having none.
 : CHANGER+ ( n -- )
    {: idx:n :}
    idx FILE-REC @ >= if exit then
    true CHANGED-EARLIER !
    idx  -2 BUILT-N -  REC-NAME+
-   idx BUILT-ROW PAIR+ ;
+   idx REC-ROW@ if PAIR+ else drop then ;
 
 
 \ The space's address-cell row of the cell at v, and true; false when it has none.
@@ -3705,6 +3709,14 @@ variable RD-END
 
 EXPORT CHECK:HELD-UNDEFINE
 
+\ A facts row's record reference: hb's record for HB-FILE, which only a facts row names; else ID-REF-CK's.
+: FACT-REF-CK ( n n n n -- )
+   {: file:n sum:n count:n bound:n :}
+   file HB-FILE = if
+      sum 0<  sum FIRST-REC @ >=  or  count 0<>  or if BAD then exit
+   then
+   file sum count bound ID-REF-CK drop ;
+
 \ FACTS (FACTS+): each row a retirement of a record made before it (its count of the piece's records,
 \ never below the last retirement's), a text for a record, or a text of kind CHECK:HELD-LAID or -UNDEFINE.
 : FACTS-CK ( -- )
@@ -3714,11 +3726,11 @@ EXPORT CHECK:HELD-UNDEFINE
       ix HELD-RETIRED =  ix HELD-AMENDED =  or if
          RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}
          ix HELD-AMENDED = if
-            file sum count RECS-N @ ID-REF-CK drop  RD-U64 RD-SKIP  last
+            file sum count RECS-N @ FACT-REF-CK  RD-U64 RD-SKIP  last
          else
             RD-U64 {: made:n :}
             made last <  made RECS-N @ >  or if BAD then
-            file sum count made ID-REF-CK drop
+            file sum count made FACT-REF-CK
             made
          then
       else
@@ -4530,6 +4542,12 @@ variable LINK-OWNER                  \ the record that emission makes, -1 for no
 : LINK-CLEAR ( -- ) -1 LINK-EM !  -1 LINK-OWNER !  0 LINK-FN ! ;
 
 
+\ The index of hb's record a reference with file HB-FILE holds as its sum; E-COMP-STATE for none of hb's.
+: HB-REC ( n -- n )
+   {: idx:n :}
+   idx 0<  idx FIRST-REC @ >=  or if E-COMP-STATE throw then
+   idx ;
+
 \ The dictionary index a linked record reference (file, sum, count; ID-REF+) names: this part's
 \ record by OWN-REC, an earlier part's by PLACE; E-COMP-STATE when neither finds it.
 : ID-REC ( n n n -- n )
@@ -4950,17 +4968,18 @@ CAST: >XT-CELL ( ^n -- ^[ -- ] )
    E-COMP-STATE throw ;
 
 
-\ A facts row's record (file, sum, count; ID-REF+) as a dictionary index: a link's by ID-REC; a
-\ compile's by PART-REC for file 0, else by PLACE at REFS' row, which starts with the part's key.
+\ A facts row's record (file, sum, count; ID-REF+) as a dictionary index: hb's by HB-REC for HB-FILE; else a link's by
+\ ID-REC, a compile's by PART-REC for file 0, else by PLACE at REFS' row, which starts with the part's key.
 : FACT-REC ( bool n n n -- n )
    {: read:bool file:n sum:n count:n :}
+   file HB-FILE = if sum HB-REC exit then
    read if file sum count ID-REC exit then
    file 0= if  sum count PART-REC  else
       REFS BYTES$ drop  file 1 - FILES-ROW-BYTES * +  sum count PLACE
    then ;
 
 \ A retirement row: a link retires its record again (XREF:RETIRE) in the compile's order (DUE!), so both see one
-\ wordlist; either way an earlier piece's record counts as changed by this piece (CHANGER+).
+\ wordlist; either way an earlier piece's or hb's record counts as changed by this piece (CHANGER+).
 : LINK-RETIRED ( bool -- )
    {: read:bool :}
    RD-U64 RD-U64 RD-U64 {: file:n sum:n count:n :}

@@ -1205,18 +1205,21 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-NESTED:K . ;\n" SRC+  s" r.f" NEST-WRITE
    s" x.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" m.f" NEST-WRITE ;
 
-\ tools/hb-build.f's build of a NEST-DIR source to the program of that name, in a fresh hb with L's
-\ directory as its out root: the boundary under test is the object another build wrote. Answers its
-\ exit code.
-: NEST-RC ( CMD:command str str -- CMD:command n )
-   {: src:^ srcu:n prog:^ progu:n :}
+\ tools/hb-build.f's build of a NEST-DIR source to L's program of that name, in a fresh hb with the out root
+\ given: the boundary under test is the object another build wrote. Answers its exit code.
+: OUT-RC ( CMD:command str str str -- CMD:command n )
+   {: src:^ srcu:n prog:^ progu:n out:^ outu:n :}
    CMD:RESET
+   \ CMD:ENV+ copies the root before NEST-PATH$ and IN$ reuse the buffers it may lie in.
+   s" HABU_OUT" out outu CMD:ENV+
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+
    s" --" CMD:ARG+  src srcu NEST-PATH$ CMD:ARG+
    s" -o" CMD:ARG+  L$ prog progu IN$ CMD:ARG+
-   s" HABU_OUT" L$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
+
+\ OUT-RC's build with L's directory as its out root.
+: NEST-RC ( CMD:command str str -- CMD:command n ) L$ OUT-RC ;
 
 \ NEST-RC's build, true when it exits 0.
 : NEST-BUILD ( CMD:command str str -- CMD:command bool )
@@ -1349,6 +1352,78 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    L$ REWRITTEN {: n:n :}
    s" build three rewrites no object" LABEL  n 0 T=
    s" prog-r" s\" 1\n" s" the program prints K" NEST-RUN ;
+
+\ The primitive sequence's main.f, which spells u.f's dup; the flag adds a comment line.
+: WRITE-PRIMITIVE-MAIN ( bool -- ) {: edited:bool :}
+   s" u.f" REQUIRE+
+   edited if s\" \\ edited\n" SRC+ then
+   s\" : MAIN ( -- ) 5 dup . ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ u.f retires hb's dup and defines its own, which main.f calls.
+: WRITE-PRIMITIVE ( -- )
+   L$ s" primitive" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" undefine dup\n: dup ( n -- n ) 100 + ;\n" SRC+  s" u.f" NEST-WRITE
+   false WRITE-PRIMITIVE-MAIN ;
+
+\ Guards a retirement of hb's own record: P compiles u.f, whose object names hb's dup; P2, after
+\ main.f's edit, links u.f's object, retiring hb's dup again, and compiles main.f's two parts alone.
+: PRIMITIVE-CASE ( CMD:command -- CMD:command )
+   WRITE-PRIMITIVE
+   s" P" WHICH!  s" main.f" s" prog-p" NEST-BUILD 0= if exit then
+   s" prog-p" s\" 105\n" s" the program prints u.f's dup of 5" NEST-RUN  L$ MARK
+   true WRITE-PRIMITIVE-MAIN
+   s" P2" WHICH!  s" main.f" s" prog-p" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build two rewrites main.f's two objects alone" LABEL  n 2 T=
+   s" prog-p" s\" 105\n" s" the program prints u.f's dup of 5" NEST-RUN ;
+
+\ The hb-retire sequence's s.f: empty, or an undefine of hb's own dup when the flag is true.
+: WRITE-HB-S ( bool -- ) {: retire:bool :}
+   retire if s\" undefine dup\n" SRC+ then
+   s" s.f" NEST-WRITE ;
+
+\ main.f: a require of s.f, then the text.
+: WRITE-HB-MAIN ( str -- ) {: m:^ mu:n :}
+   s" s.f" REQUIRE+  m mu SRC+  s" main.f" NEST-WRITE ;
+
+: WRITE-HB-RETIRE ( -- )
+   L$ s" hb-retire" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   false WRITE-HB-S
+   s\" : MAIN ( -- ) 1 dup + . cr ;\n" WRITE-HB-MAIN ;
+
+\ main.f's build with the out root given, rejected at its dup, which s.f retired. Answers its exit code.
+: HB-UNDEFINED ( CMD:command str -- CMD:command n )
+   {: out:^ outu:n :}
+   s" main.f" s" prog-h" out outu OUT-RC {: rc:n :}
+   CMD:ERR$ s" error[E-UNDEFINED]: cannot find word `dup`" CONTAINS? {: coded:bool :}
+   CMD:ERR$ s\" /main.f:2:17\n" CONTAINS? coded and {: named:bool :}
+   named  rc 0<>  and 0= if rc SHOW then
+   s" the build rejects main.f's dup" LABEL  named TTRUE
+   rc ;
+
+\ Guards a file's retirement of one of hb's own words: H2 and H3, warm and cold, reject main.f's dup;
+\ H4 links s.f and prints 1; H5, with nothing changed, links every file; H6 links s.f's retirement and rejects dup.
+: HB-RETIRE-CASE ( CMD:command -- CMD:command )
+   WRITE-HB-RETIRE
+   s" H" WHICH!  s" main.f" s" prog-h" NEST-BUILD 0= if exit then
+   s" prog-h" s\" 2\n\n" s" the program prints 2" NEST-RUN
+   true WRITE-HB-S
+   s" H2" WHICH!  L$ HB-UNDEFINED {: warm:n :}
+   s" cold" NEST-PATH$ FS:MAKE-DIR
+   s" H3" WHICH!  s" cold" NEST-PATH$ HB-UNDEFINED {: cold:n :}
+   s" the build exits as H2 does" LABEL  cold warm T=
+   s\" : MAIN ( -- ) 1 . cr ;\n" WRITE-HB-MAIN
+   s" H4" WHICH!  s" main.f" s" prog-h" NEST-BUILD 0= if exit then
+   s" prog-h" s\" 1\n\n" s" the program prints 1" NEST-RUN  L$ MARK
+   s" H5" WHICH!  s" main.f" s" prog-h" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build five rewrites no object" LABEL  n 0 T=
+   s" prog-h" s\" 1\n\n" s" the program prints 1" NEST-RUN  L$ MARK
+   s\" : MAIN ( -- ) 1 dup + . cr ;\n" WRITE-HB-MAIN
+   s" H6" WHICH!  L$ HB-UNDEFINED drop
+   L$ REWRITTEN {: n6:n :}
+   s" build six rewrites only main.f's first object" LABEL  n6 1 T=
+   s" the object it rewrites is main.f's" LABEL  FOUND$ s" /main.f.hfo" ENDS-WITH? TTRUE ;
 
 \ The clause sequence: h.f's definer FILE-OBJECTS-CL has a does> clause, w.f defines a word of the
 \ clause's name, one.f requires h.f, and two.f w.f then h.f.
@@ -2196,7 +2271,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
-      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
+      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE
+      TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE
