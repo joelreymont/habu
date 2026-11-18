@@ -459,7 +459,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 \ The bytes a name of LEN takes in the names, its length cell included.
 : NAME-SIZE ( n -- n ) CELL 1- + CELL / 1+ cells ;
 
-: NAME$ ( ^u8 n -- ^u8 n )
+: NAME$ ( ^u8 n -- str )
    + {: at:^ :}
    at cell+ at CELL-VIEW @ ;
 

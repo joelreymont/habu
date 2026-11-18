@@ -60,7 +60,7 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
 
 public
 \ A note's key, after the text before it.
-: NOTE+ ( ^u8 n -- ) {: k:^ ku:n :}
+: NOTE+ ( str -- ) {: k:^ ku:n :}
    NOTE-PART?  k ku CHECK-TEXT
    S\" \n  = " PROSE+  k ku PROSE+  s" : " PROSE+
    S\" \"," JSON+
@@ -69,7 +69,7 @@ public
    FAULT-NOTE FAULT-PART ! ;
 
 \ The record's start: its code and message.
-: FAULT-OPEN ( ^u8 n ^u8 n -- )
+: FAULT-OPEN ( str str -- )
    {: code:^ cu:n msg:^ mu:n :}
    FAULT-SHUT PART?  code cu CHECK-TEXT  msg mu CHECK-TEXT
    s" error[" PROSE+  code cu PROSE+  s" ]: " PROSE+  msg mu PROSE+
@@ -78,7 +78,7 @@ public
    FAULT-MESSAGE FAULT-PART ! ;
 
 \ A note whose value is an address, `0x` and its hex digits.
-: FAULT-ADDRESS ( ^u8 n -- )  NOTE+  s" 0x" BOTH+ ;
+: FAULT-ADDRESS ( str -- )  NOTE+  s" 0x" BOTH+ ;
 
 \ Note `in`, the word whose code holds an address; n is the part open before
 \ it, which FAULT-AT takes when the site finds no such word.
@@ -89,7 +89,7 @@ public
 : FAULT-AT ( n -- )  FAULT-PART !  s" at" FAULT-ADDRESS ;
 
 \ The record's end, with its help, for a site that exits.
-: FAULT-STOP ( ^u8 n -- ) {: h:^ hu:n :}
+: FAULT-STOP ( str -- ) {: h:^ hu:n :}
    NOTE-PART?  h hu CHECK-TEXT
    S\" \n  = help: " PROSE+  h hu PROSE+  S\" \n\n" PROSE+
    FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
@@ -98,7 +98,7 @@ public
 
 \ The record's end, with its help, none for an empty text, for a site that
 \ returns.
-: FAULT-KEEP ( ^u8 n -- ) {: h:^ hu:n :}
+: FAULT-KEEP ( str -- ) {: h:^ hu:n :}
    NOTE-PART?  h hu CHECK-TEXT
    hu 0 <> IF S\" \n  = help: " PROSE+  h hu PROSE+ THEN
    S\" \n\n" PROSE+
@@ -108,19 +108,19 @@ public
    FAULT-SHUT FAULT-PART ! ;
 
 \ The four stack-bounds messages and their help.
-: CRS-DATA$ ( -- ^u8 n ) s" the data stack ran past its bounds" ;
-: CRS-RET$ ( -- ^u8 n ) s" the return stack ran past its bounds" ;
-: CRS-LOOP$ ( -- ^u8 n ) s" the loop stack ran past its bounds" ;
-: CRS-MACHINE$ ( -- ^u8 n ) s" the machine stack ran past its bounds" ;
-: CRS-HELP$ ( -- ^u8 n )
+: CRS-DATA$ ( -- str ) s" the data stack ran past its bounds" ;
+: CRS-RET$ ( -- str ) s" the return stack ran past its bounds" ;
+: CRS-LOOP$ ( -- str ) s" the loop stack ran past its bounds" ;
+: CRS-MACHINE$ ( -- str ) s" the machine stack ran past its bounds" ;
+: CRS-HELP$ ( -- str )
    s" give a recursion an exit, or keep fewer values on the stack" ;
 
-: TASK-GUARD$ ( -- ^u8 n )
+: TASK-GUARD$ ( -- str )
    s" ran on a task's thread, and only the main thread defines and allots" ;
-: TASK-GUARD-HELP$ ( -- ^u8 n )
+: TASK-GUARD-HELP$ ( -- str )
    s" define and allot on the main thread before the task starts" ;
-: LOWER-GUARD$ ( -- ^u8 n ) s" ran while a task is live" ;
-: LOWER-GUARD-HELP$ ( -- ^u8 n )
+: LOWER-GUARD$ ( -- str ) s" ran while a task is live" ;
+: LOWER-GUARD-HELP$ ( -- str )
    s" wait for every task to end before forgetting definitions" ;
 
 private
@@ -131,7 +131,7 @@ TYPED-VARIABLE GUARD-MSG-U len
    GUARD-MSG GUARD-MSG-CAP GUARD-MSG-U BUF-APPEND ;
 public
 \ "`<name>` <rest>", held in GUARD-MSG until the next call.
-: GUARD-MSG$ ( ^u8 n ^u8 n -- ^u8 n )
+: GUARD-MSG$ ( str str -- str )
    {: p:^ pu:n r:^ ru:n :}
    GUARD-MSG-U BUF-RESET
    s" `" GUARD-MSG+  p pu GUARD-MSG+  s" ` " GUARD-MSG+
@@ -140,38 +140,38 @@ public
 
 \ The callback rejections' messages and help: a thunk C entered, and an
 \ outbound foreign call on a context another thread runs in.
-: CB-NO-TABLE$ ( -- ^u8 n )
+: CB-NO-TABLE$ ( -- str )
    s" C called a callback before any callback was bound" ;
-: CB-NO-TABLE-HELP$ ( -- ^u8 n )
+: CB-NO-TABLE-HELP$ ( -- str )
    s" bind it with `FFI-CB:ENTRY` before C can call it" ;
-: CB-ROW-BUSY$ ( -- ^u8 n )
+: CB-ROW-BUSY$ ( -- str )
    s" C called the callback on a second thread while another thread runs it" ;
-: CB-ROW-BUSY-HELP$ ( -- ^u8 n )
+: CB-ROW-BUSY-HELP$ ( -- str )
    s" bind it to `TASK:CALLER-CONTEXT` for calls from many threads at once" ;
-: CB-UNBOUND$ ( -- ^u8 n ) s" C called a callback whose slot is not bound" ;
-: CB-UNBOUND-HELP$ ( -- ^u8 n )
+: CB-UNBOUND$ ( -- str ) s" C called a callback whose slot is not bound" ;
+: CB-UNBOUND-HELP$ ( -- str )
    s" keep the callback bound until the C library drops the pointer" ;
-: CB-NO-REGION$ ( -- ^u8 n )
+: CB-NO-REGION$ ( -- str )
    s" C called a callback bound to the caller's context on a thread with no region of its own" ;
-: CB-NO-REGION-HELP$ ( -- ^u8 n )
+: CB-NO-REGION-HELP$ ( -- str )
    s" call it only on a thread a Habu task runs" ;
-: CB-OWNER-BUSY$ ( -- ^u8 n )
+: CB-OWNER-BUSY$ ( -- str )
    s" C called the callback on one thread while another thread runs in its context" ;
-: CB-OWNER-BUSY-HELP$ ( -- ^u8 n )
+: CB-OWNER-BUSY-HELP$ ( -- str )
    s" call it only on the thread whose context it is bound to" ;
-: CB-NO-FRAME$ ( -- ^u8 n )
+: CB-NO-FRAME$ ( -- str )
    s" C called the callback outside the foreign call that passed it" ;
-: CB-NO-FRAME-HELP$ ( -- ^u8 n )
+: CB-NO-FRAME-HELP$ ( -- str )
    s" call it only while that foreign call runs" ;
-: CB-NO-XT$ ( -- ^u8 n )
+: CB-NO-XT$ ( -- str )
    s" C called a callback slot that no `CALLBACK:` declared" ;
-: CB-NO-XT-HELP$ ( -- ^u8 n )
+: CB-NO-XT-HELP$ ( -- str )
    s" pass C only the pointer `FFI-CB:ENTRY` answers" ;
-: CB-DEFINED$ ( -- ^u8 n ) s" the callback's body defined a word" ;
-: CB-DEFINED-HELP$ ( -- ^u8 n )
+: CB-DEFINED$ ( -- str ) s" the callback's body defined a word" ;
+: CB-DEFINED-HELP$ ( -- str )
    s" define words on the main thread, outside callbacks" ;
-: CB-CONTEXT-BUSY$ ( -- ^u8 n )
+: CB-CONTEXT-BUSY$ ( -- str )
    s" a foreign call ran in a context another thread is running in" ;
-: CB-CONTEXT-BUSY-HELP$ ( -- ^u8 n )
+: CB-CONTEXT-BUSY-HELP$ ( -- str )
    s" call C from one thread at a time in a context, and bind callbacks other threads call to `TASK:CALLER-CONTEXT`" ;
 ;package

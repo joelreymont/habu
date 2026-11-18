@@ -798,7 +798,7 @@ create UNESC-MAP
    EXP-UPPER = ;
 
 
-: DIGITS-END ( ^u8 n n -- n )
+: DIGITS-END ( str n -- n )
    {: src:^ len:n i:n :}
    i begin
       dup len < if dup src + c@ STR-DIGIT? else false then

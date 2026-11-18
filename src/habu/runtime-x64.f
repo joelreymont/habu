@@ -1,3 +1,4 @@
+split-str
 \ runtime-x64.f - the x86-64 engine's installs; native-runtime.f loads it only
 \ for linux-x86-64. CHECKER-REG:SEAL runs SEAL-TARGET, bound here to
 \ RUNTIME:INSTALL, before the capture seals the cells it fills.

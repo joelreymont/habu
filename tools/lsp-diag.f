@@ -76,7 +76,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ Whether the line is a diagnostic: an object whose file names an absolute
 \ path, which FILE$ then holds.
-: SCREENED ( ^u8 n -- bool )
+: SCREENED ( str -- bool )
    {: a:^ u:n :}
    a LINE-A !
    u LINE-U !

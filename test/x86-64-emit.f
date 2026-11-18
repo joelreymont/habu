@@ -1,3 +1,4 @@
+split-str
 \ x86-64-emit.f - pins, on aarch64, the bytes the linux-x86-64 seam
 \ (src/os/linux-x86-64/{sys,proc-watch,proc-control}.f), src/arch/x86-64/rt.f
 \ and X64CODE's label sites emit. Each `llvm-mc:` comment is the line that
@@ -37,7 +38,7 @@ using X64RT
    a i 2 * + c@ HEX-DIGIT 4 lshift
    a i 2 * 1 + + c@ HEX-DIGIT or ;
 
-: SPAN=HEX? ( ^u8 n ^u8 n -- bool ) {: da:^ dlen:n ea:^ eu:n :}
+: SPAN=HEX? ( ^u8 n str -- bool ) {: da:^ dlen:n ea:^ eu:n :}
    eu 2 mod 0<> if FMATH:E-DOMAIN throw then
    dlen eu 2 / <> if false exit then
    dlen 0 ?do
@@ -59,14 +60,14 @@ using X64RT
    SINK$ ea eu SPAN=HEX? TTRUE
    ASM-RESET ;
 
-: S= ( ^u8 n ^u8 n -- ) {: da:^ dlen:n ea:^ eu:n :}
+: S= ( ^u8 n str -- ) {: da:^ dlen:n ea:^ eu:n :}
    da dlen ea eu SPAN=HEX? TTRUE ;
 
 256 constant WANT-CAP
 create WANT WANT-CAP allot
 variable WANT-N
 
-: E+ ( ^u8 n -- ) {: ea:^ eu:n :}
+: E+ ( str -- ) {: ea:^ eu:n :}
    eu 2 mod 0<> if FMATH:E-DOMAIN throw then
    eu 2 / 0 ?do
       WANT-N @ WANT-CAP >= if E-BUF-BOUNDS throw then

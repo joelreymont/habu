@@ -1,3 +1,4 @@
+split-str
 \ code-dump-x64.f - one recorded Intel instruction for the shared code walker.
 
 require src/arch/x86-64/disasm.f

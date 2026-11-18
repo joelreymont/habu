@@ -204,7 +204,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : ROOT$ ( -- ^u8 n )       ROOT-BUF ROOT-U @ ;
 : FILE$ ( -- str )       FILE-BUF FILE-U @ ;
 : JAR$ ( -- str )        JAR-BUF JAR-U @ ;
-: HELLO$ ( -- ^u8 n )      S\" hello\n" ;
+: HELLO$ ( -- str )      S\" hello\n" ;
 : PROXY-BODY$ ( -- str ) S\" proxy\n" ;
 : COOKIE-PAIR$ ( -- str ) s" probe=value1" ;
 : NO-COOKIE$ ( -- str )  s" none" ;

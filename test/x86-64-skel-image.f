@@ -1,3 +1,4 @@
+split-str
 \ Cross-builds the x86-64 boot, X64BOOT's `_start`, into bare executables for an
 \ x86-64 peer; the host checks each image's ELF header, and running them is the
 \ peer's.

@@ -14,7 +14,7 @@ private
 
 \ [ ^^…^u8 … -- ]: 228 inputs of 17 carets, 4566 bytes, above checker.f
 \ TOKBUF-INIT-CAP (4096).
-: LONG$ ( -- ^u8 n )
+: LONG$ ( -- str )
    0 TEXT-U !  s" [ " ADD  228 0 ?do ELEM loop  s" -- ]" ADD  TEXT$ ;
 
 : MAKE-LONG ( str -- )

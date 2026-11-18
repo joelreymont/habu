@@ -148,7 +148,7 @@ create TAIL TAIL-BYTES allot
    s" and runs it" T-LABEL
    OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
 
-: CHAINED ( ^u8 n -- ) {: cwd:^ cwdu:n :}
+: CHAINED ( str -- ) {: cwd:^ cwdu:n :}
    ARGV  CHAIN$ >LEN PROC-ARGV+
    cwd cwdu s" `hb P` takes an entry written past 8 KB" RAN SAID
    CHAIN$ LOAD-ARGV

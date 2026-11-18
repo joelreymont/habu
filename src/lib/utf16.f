@@ -58,7 +58,7 @@ public
 \ "U+FFFD Substitution of Maximal Subparts") only for a truncated sequence that
 \ starts well (E2 82 then `A`, or F0 9F 98 at the span's end), which it counts
 \ as one unit.
-: UNITS ( ^u8 n -- n )
+: UNITS ( str -- n )
    {: a:^ u:n :}
    u 0 < if E-STR-BOUNDS throw then
    0 0 begin dup u < while a u STEP repeat

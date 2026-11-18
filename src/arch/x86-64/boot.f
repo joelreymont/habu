@@ -1,3 +1,4 @@
+split-str
 \ Startup for the current linker's DATA runs and record image.
 require src/core/exit-status.f
 require src/habu/boot-x64.f

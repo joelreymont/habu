@@ -1,3 +1,4 @@
+split-str
 \ parse-name walks the live source cursor, including its end-of-input answer.
 \ tok-imm? follows the primary name binding and ignores used publics.
 \ Runtime CREATE dispatches through the captured handler. A defining word
@@ -33,7 +34,7 @@ using X64LAYOUT
    RAX R64>N G-PUSH
    off X64HARNESS:EXPECT-POP, ;
 
-: IMM?, ( ^u8 n n -- ) {: a:^ u:n want:n :}
+: IMM?, ( str n -- ) {: a:^ u:n want:n :}
    a u X64HARNESS:PUSH-TEXT,
    s" tok-imm?" X64HARNESS:CALL-ROW,
    want X64HARNESS:EXPECT-POP, ;

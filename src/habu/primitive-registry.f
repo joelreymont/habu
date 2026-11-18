@@ -61,7 +61,7 @@ public
 : FIRST-LABEL ( n -- label ) 0 ROW-FIELD @ >LABEL ;
 : LAST-LABEL ( n -- label ) 1 ROW-FIELD @ >LABEL ;
 : NAME-LEN ( n -- n ) 2 ROW-FIELD @ ;
-: NAME$ ( n -- ^u8 n ) {: row:n :}
+: NAME$ ( n -- str ) {: row:n :}
    0 NAMES BYTE-VIEW row 3 ROW-FIELD @ + row NAME-LEN ;
 : NAME-LABEL ( n -- label ) 4 ROW-FIELD @ >LABEL ;
 : NAME-LABEL! ( label n -- ) swap LABEL>N swap 4 ROW-FIELD ! ;
@@ -71,7 +71,7 @@ public
 \ The table is which primitives exist: every body registers under a name
 \ src/habu/prims.f specifies; the row states the effect, the body the machine
 \ code. SPEC-CHECK refuses a body with no row, COMPLETE a row no body answered.
-: SPEC-CHECK ( ^u8 n -- ) {: name:^ size:n :}
+: SPEC-CHECK ( str -- ) {: name:^ size:n :}
    name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
 
 \ A primitive whose dictionary record is globally searchable but cannot be
@@ -86,7 +86,7 @@ public
 \ sealed system-private record over [start-addr, end-addr) stamped
 \ OWNER-API-PRI-WID, hidden from raw searches (BSWL). DNAME folds the marker into
 \ the baked name/flags cell.
-: HELPER-REGISTER ( ^u8 n n n -- )
+: HELPER-REGISTER ( str n n -- )
    >LABEL swap >LABEL swap ADD OWNER-API-PRI-WID swap WID! ;
 
 private

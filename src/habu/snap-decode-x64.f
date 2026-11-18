@@ -1,3 +1,4 @@
+split-str
 \ Decode a fixed-address x86-64 snapshot heap in boot code. The writer places
 \ raw bytes or the cell grid after the immutable text footer, then zero padding
 \ and the trailer at the end of RX. Nothing in DATA above DATA-START is mapped

@@ -29,7 +29,7 @@ PATH-CAP BUFFER: PROG     variable PROG-U
 
 : DIR$ ( -- str ) DIR DIR-U @ ;
 : OUT-DIR$ ( -- str ) OUT-DIR OUT-DIR-U @ ;
-: EXE$ ( -- ^u8 n ) EXE EXE-U @ ;
+: EXE$ ( -- str ) EXE EXE-U @ ;
 : SRC$ ( -- ^u8 n ) SRC SRC-U @ ;
 : PROG$ ( -- str ) PROG PROG-U @ ;
 

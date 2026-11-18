@@ -109,7 +109,7 @@ variable GE-EVAL-SRC-U
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
-: GE-RUN-STDIN ( ^u8 n ^u8 n n -- ) {: path:^ pathu:n in:^ inu:n timeout:n :}
+: GE-RUN-STDIN ( str str n -- ) {: path:^ pathu:n in:^ inu:n timeout:n :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
    timeout >MS PROCESS:STDIN-CAPTURE-BEGIN
@@ -196,7 +196,7 @@ variable GE-EVAL-SRC-U
    GT-TIMED-OUT @ if label labelu GE-FAIL then
    GT-RC@ ;
 
-: GE-EXPECT-OK ( ^u8 n -- ) {: label:^ labelu:n :}
+: GE-EXPECT-OK ( str -- ) {: label:^ labelu:n :}
    label labelu GE-RC@ 0 <> if label labelu GE-FAIL then ;
 
 : GE-EXPECT-RC ( n str -- ) {: want:n label:^ labelu:n :}
@@ -209,14 +209,14 @@ variable GE-EVAL-SRC-U
    GT-OUT$ nip 0 <> if label labelu GE-FAIL then
    GT-ERR$ nip 0 <> if label labelu GE-FAIL then ;
 
-: GE-EXPECT-OUT ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
+: GE-EXPECT-OUT ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
    GT-OUT$ want wantu STR= 0= if label labelu GE-FAIL then ;
 
-: GE-EXPECT-OUT-HAS ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
+: GE-EXPECT-OUT-HAS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
    GT-OUT$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
 
 \ The whole of stderr, byte for byte - the check a one-line diagnostic asks for.
-: GE-EXPECT-ERR ( ^u8 n ^u8 n -- ) {: want:^ wantu:n label:^ labelu:n :}
+: GE-EXPECT-ERR ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
    GT-ERR$ want wantu STR= 0= if label labelu GE-FAIL then ;
 
 : GE-EXPECT-ERR-HAS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}

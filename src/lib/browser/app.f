@@ -117,7 +117,7 @@ APP-AT APP-MARK nip + constant APP-END
 \ The longest escape ESCAPE-TEXT writes for one byte: &amp; and &#13;.
 5 constant WIDEST
 
-: SPAN+ ( ^u8 n ^a -- )
+: SPAN+ ( str ^a -- )
    {: a:^ u:n buf:^ :}
    a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 

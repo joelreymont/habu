@@ -125,7 +125,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    {: t:^ u:n from:n byte:n :}
    u from ?do t i + c@ byte = if i unloop exit then loop u ;
 
-: NAME$ ( n -- ^u8 n )
+: NAME$ ( n -- str )
    {: k:n :}
    k CLIENT-ID = if s" client_id" exit then
    k CLIENT-SECRET = if s" client_secret" exit then

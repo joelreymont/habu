@@ -1,3 +1,4 @@
+split-str
 \ elf.f -- dynamic Linux/x86-64 ELF executable writer.
 \ Provides the same image-builder surface as the aarch64 ELF and the Mach-O
 \ writers: MBUF, MLEN@/!, MPAGE, ASM-CODE, BUILD-IMAGE.
@@ -334,7 +335,7 @@ $C0 constant SNAP-EXTRA-SIZE
 : IMG-TAIL-N ( -- n )
    ELF-TAIL-N ;
 
-: IMG-TAIL-NAME ( n -- ^u8 n ) {: i:n :}
+: IMG-TAIL-NAME ( n -- str ) {: i:n :}
    i 0 = if s" container/rw-segment" exit then
    s" elf: size tail index out of range" EXIT-STATUS:IMAGE die ;
 

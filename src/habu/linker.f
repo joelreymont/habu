@@ -624,7 +624,7 @@ PTR-VARIABLE OBJ-BASE
    top FILE-KEY topu BYTE-COPY
    LOADERS BYTES$ LOADER-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
 
-: PATH! ( ^u8 n -- )
+: PATH! ( str -- )
    {: path:^ pathu:n :}
    pathu PATH-CAP min {: u:n :}
    path FILE-PATH u BYTE-COPY  u FILE-PATH-N ! ;

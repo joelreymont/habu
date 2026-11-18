@@ -1,3 +1,4 @@
+split-str
 \ Build and run one x86-64 program twice in the same output directory.
 \ The ELF must stay byte-identical across the cold and warm builds.
 require src/lib/test.f
@@ -19,8 +20,8 @@ SHA256-FILE-CTX-BYTES BUFFER: HASH
 32 BUFFER: WARM
 
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: SOURCE$ ( -- ^u8 n ) SOURCE SOURCE-U @ ;
-: EXE$ ( -- ^u8 n ) EXE EXE-U @ ;
+: SOURCE$ ( -- str ) SOURCE SOURCE-U @ ;
+: EXE$ ( -- str ) EXE EXE-U @ ;
 
 : SHOW ( CMD:command n -- CMD:command )
    s" x64-link-run: exit " type . cr

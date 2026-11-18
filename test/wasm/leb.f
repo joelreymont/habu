@@ -33,7 +33,7 @@ variable STAGED-LEN
 : OUT$ ( n -- ^u8 n )
    OUT SPAN:$ drop swap ;
 
-: HEX$ ( ^u8 n -- ^u8 n )
+: HEX$ ( str -- str )
    {: a u:n :}
    HEX u 2 * SPAN:TAKE SPAN:$ {: h hu:n :}
    u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
@@ -46,7 +46,7 @@ variable STAGED-LEN
 
 \ A refusal's quotation sees no locals, so the hex's bytes are staged, with
 \ canaries past them.
-: STAGE ( ^u8 n -- )
+: STAGE ( str -- )
    {: a u:n :}
    u 2 / {: k:n :}
    CANARY STAGED SPAN:FILL

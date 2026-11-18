@@ -1,3 +1,4 @@
+split-str
 \ A real x86-64 boot with both captured entry cells must enter Habu MAIN.
 \ MAIN invokes the saved application and then reads one byte of stdin; entering
 \ APP directly prints only its first line. Both emitted ELFs remain in TMPDIR

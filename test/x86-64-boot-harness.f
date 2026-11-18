@@ -1,3 +1,4 @@
+split-str
 \ x86-64-boot-harness.f - an x86-64 image that boots as the engine does, carries
 \ the whole kernel and runs one case against the DATA the boot mapped:
 \ BOOT-OPEN, stages the boot and the kernel, the case follows, and BOOT-CLOSE,
@@ -52,7 +53,7 @@ public
 : PUSH, ( n -- ) {: v:n :}  RAX v IMM  0 G-PUSH ;
 
 \ The string's bytes sit in the text behind a jump.
-: PUSH-TEXT, ( ^u8 n -- ) {: a:^ u:n :}
+: PUSH-TEXT, ( str -- ) {: a:^ u:n :}
    X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
    text X64CODE:LBL,
@@ -69,7 +70,7 @@ public
    RAX v IMM
    RAX DATA-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-: CALL-ROW, ( ^u8 n -- ) X64KERNEL:ENTRY-LABEL CALL, ;
+: CALL-ROW, ( str -- ) X64KERNEL:ENTRY-LABEL CALL, ;
 
 : EXPECT-POP, ( n -- ) {: want:n :}  0 G-POP  want EXPECT, ;
 
@@ -91,7 +92,7 @@ public
    want EXPECT, ;
 
 \ A row that ends the process ends the image with its own status.
-: BOOT-CLOSE, ( ^u8 n -- )
+: BOOT-CLOSE, ( str -- )
    RDI ZERO-REG,
    EXIT,
    BOOT-END-LBL X64CODE:LBL,
@@ -103,7 +104,7 @@ private
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
 
 \ Up to eight of the name's bytes from `at`, little-endian, zero past its end.
-: NAME-CELL ( ^u8 n n -- n ) {: a:^ u:n at:n :}
+: NAME-CELL ( str n -- n ) {: a:^ u:n at:n :}
    0  CELL 0 ?do
       at i + u < if  a at i + + c@  i 8 * lshift  or  then
    loop ;
@@ -113,7 +114,7 @@ private
    RCX v IMM
    RCX RAX off MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-: NAME-TEXT, ( ^u8 n -- label ) {: a:^ u:n :}
+: NAME-TEXT, ( str -- label ) {: a:^ u:n :}
    X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
    text X64CODE:LBL,
@@ -227,7 +228,7 @@ public
    RCX X64KERNEL:WRITE-ALIAS,
    RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-: TEXT!, ( ^u8 n n -- ) {: a:^ u:n off:n :}
+: TEXT!, ( str n -- ) {: a:^ u:n off:n :}
    u 0 ?do  a u i NAME-CELL off i + CELL!,  CELL +loop ;
 
 : EXPECT-RECORD, ( n n n -- ) {: want:n ix:n off:n :}
@@ -277,7 +278,7 @@ public
 \ Compare rax with rcx; on a mismatch the kernel's `die` row writes the text and
 \ LF on fd 2 and exits FIRST-CASE. Staged before any numbered check, so a
 \ negative image expects one less, as EXPECT-RCX, does.
-: CHECK-RCX, ( ^u8 n -- ) {: a:^ u:n :}
+: CHECK-RCX, ( str -- ) {: a:^ u:n :}
    X64CODE:LBL {: ok:label :}
    WRONG-AT @ CASE-NEXT @ = if
       RCX 1 >IMM32 ASM-SINK ENC-SUB-RI32
@@ -304,7 +305,7 @@ public
 \ Seed record r14 as RECORD, does, in wordlist 0 with no flags: the code cell
 \ holds the first label's address and the length cell after it the span's byte
 \ count (src/habu/code-span.f). Clobbers rax, rcx and rdx.
-: CODE-RECORD, ( ^u8 n label label -- ) {: a:^ u:n first:label last:label :}
+: CODE-RECORD, ( str label label -- ) {: a:^ u:n first:label last:label :}
    a u 0 0 RECORD,
    RAX NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RAX DBASE-REG ASM-SINK ENC-ADD-RR                     \ one record past it

@@ -1,3 +1,4 @@
+split-str
 \ boot-x64.f - the x86-64 process entry, package X64BOOT. START, emits
 \ `_start` up to its first run-time state, and falls through into whatever the
 \ stream emits next. It is straight-line code that never calls or pushes: rsp
@@ -54,7 +55,7 @@ variable SNAP-END
 
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-: TEXT-BYTES, ( ^u8 n -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+: TEXT-BYTES, ( str -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
 
 : CELL! ( r64 n -- ) {: r:r64 off:n :}
    r RBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
@@ -354,7 +355,7 @@ private
 \ Bind a failure at the label: its line, newline included, to fd 2 in one
 \ write, then exit with the status. The line follows the exit syscall inside
 \ the loaded text, so it is readable before any region exists.
-: FAIL, ( label ^u8 n n -- ) {: at:label a:^ u:n rc:n :}
+: FAIL, ( label str n -- ) {: at:label a:^ u:n rc:n :}
    X64CODE:LBL {: msg:label :}
    at X64CODE:LBL,
    RDI STDERR IMM,  RSI msg MOVABS,  RDX u IMM,  NR-WRITE SYS,
@@ -592,8 +593,8 @@ DIGITS 1+ constant LINE-BYTES
 1 constant MEMORY-ORDER
 $F constant NIBBLE
 
-: HEX$ ( -- ^u8 n ) s" 0123456789abcdef" ;
-: HEAD$ ( -- ^u8 n )
+: HEX$ ( -- str ) s" 0123456789abcdef" ;
+: HEAD$ ( -- str )
    S\" habu-crash regs [sig rax rcx rdx rbx rsp rbp rsi rdi r8..r15 rip] code [rip-8 rip rip+8], hex one-per-line:\n" ;
 
 \ Bind the printer at the label: called with rax = the value and rdx = the
@@ -684,7 +685,7 @@ $F constant NIBBLE
 \ A stack's overflow record: `in` the word at the saved rip, read from the
 \ records at DICT-REG, which the saved r14 counts; `at` the rip when DICT-REG
 \ is 0 or no word holds it.
-: STACK-RECORD, ( ^u8 n -- ) {: a:^ u:n :}
+: STACK-RECORD, ( str -- ) {: a:^ u:n :}
    s" E-STACK-BOUNDS" a u X64CRASH:FAULT-OPEN,
    RDI UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
    RSI DICT-REG ASM-SINK ENC-MOV-RR
@@ -867,10 +868,10 @@ variable HEX-AT
 8 constant BP-SLOTS
 BPTRAMP-BYTES BP-SLOTS / constant BP-TRAMP
 
-: BP-HEAD$ ( -- ^u8 n ) S\" habu-bp:\n" ;
-: BP-LR$ ( -- ^u8 n ) S\" habu-bp-lr:\n" ;
-: BP-STACK$ ( -- ^u8 n ) S\" habu-bp-stack:\n" ;
-: BP-WATCH$ ( -- ^u8 n ) S\" habu-bp-watch:\n" ;
+: BP-HEAD$ ( -- str ) S\" habu-bp:\n" ;
+: BP-LR$ ( -- str ) S\" habu-bp-lr:\n" ;
+: BP-STACK$ ( -- str ) S\" habu-bp-stack:\n" ;
+: BP-WATCH$ ( -- str ) S\" habu-bp-watch:\n" ;
 
 \ One line from the text at the label, n bytes, to fd 2.
 : BP-LINE, ( label n -- ) {: at:label u:n :}

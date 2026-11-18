@@ -15,7 +15,7 @@ private
 
 : ROOT$ ( -- ^u8 n ) 0 SCRIPT-ARGV$ ;
 
-: PATH! ( ^u8 n -- ) {: a:^ u:n :}
+: PATH! ( str -- ) {: a:^ u:n :}
    u INCLUDE-PATH-CAP > if E-FS-CAPACITY throw then
    a PATH-BUF u BYTE-COPY u PATH-U ! ;
 

@@ -157,7 +157,7 @@ public
    src MP@ u BYTE-COPY-LEN
    u M-ADVANCE ;
 
-: M-BYTES ( ^u8 n -- )
+: M-BYTES ( str -- )
    M-LEN M-BYTES-LEN ;
 
 : M-NAME16-LEN ( ^u8 len -- )

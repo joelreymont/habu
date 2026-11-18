@@ -62,7 +62,7 @@ variable STATUS
    code E-PROC-TRUNCATED = if CHILD-TRUNCATED exit then
    code throw ;
 
-: PREFIX? ( ^u8 n ^u8 n -- bool ) {: g:^ gu:n w:^ wu:n :}
+: PREFIX? ( str str -- bool ) {: g:^ gu:n w:^ wu:n :}
    gu wu < if 0 0= 0= exit then
    g wu w wu T-STR= ;
 

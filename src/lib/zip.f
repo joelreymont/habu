@@ -316,7 +316,7 @@ public
 : EDIT-FILE ( str -- archive ) EDIT ;
 \ The original snapshot, which pending changes do not alter. SOURCE$, NAME$ and
 \ READ answer archive-owned copies valid until a successful COMMIT or CLOSE.
-: SOURCE$ ( archive -- ^u8 n )
+: SOURCE$ ( archive -- str )
    ARCHIVE-NODE {: node:^ :}
    node RAW-PTR @ NULL? if
       0 node RAW-LEN @ 1 2 node SNAP-FD @ 0 mmap {: mapped:n :}
@@ -329,7 +329,7 @@ public
 \ fixed entry limit.
 : ENTRY ( archive n -- entry ) swap ARCHIVE-NODE swap NEW-ENTRY ;
 
-: NAME$ ( archive entry -- ^u8 n )
+: NAME$ ( archive entry -- str )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX NAME-COPY ;
 
 \ Sees a pending replacement.

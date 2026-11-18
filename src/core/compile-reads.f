@@ -88,7 +88,7 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
 : SPAN ( n -- n ) {: off:n :}
    off CELL + CELL@ off 2 cells + CELL@ + PAD 3 cells + ;
 
-: SAME? ( n n ^u8 n ^u8 n -- bool )
+: SAME? ( n n str str -- bool )
    {: off:n kind:n a:^ u:n b:^ v:n :}
    off CELL@ kind =  off CELL + CELL@ u = and  off 2 cells + CELL@ v = and if
       off 3 cells + AT u a u CORE-STR=

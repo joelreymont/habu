@@ -28,7 +28,7 @@ variable MOD-U
 PATH-CAP BUFFER: SRC
 variable SRC-U
 
-: SOURCE$ ( -- ^u8 n )
+: SOURCE$ ( -- str )
    S\" require src/lib/heap.f\nrequire src/lib/test/heap-churn.f\n: MAIN ( -- ) HEAP:ALLOCATOR HEAP-CHURN:RUN {: u:n c:n r:n h:n :} u . c . r . h . ;\n" ;
 
 : SETUP ( -- )

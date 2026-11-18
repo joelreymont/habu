@@ -595,7 +595,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    c ROWS-BUF BUF:SPAN idx ROW-BYTES * k cells + 1 cells SPAN:SUB
    SPAN:$ drop CELL-VIEW @ ;
 \ Field 0, 1, 2 or 3 of row idx: its purpose, model, effort or service tier.
-: ROW$ ( n n ^call -- ^u8 n )
+: ROW$ ( n n ^call -- str )
    {: idx:n field:n c :}
    c ROW-TEXT-BUF BUF:SPAN
    idx field 2 * c ROW-CELL idx field 2 * 1+ c ROW-CELL SPAN:SUB SPAN:$ ;

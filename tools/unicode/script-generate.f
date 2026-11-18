@@ -66,7 +66,7 @@ CODEGEN:BUFFER OUTPUT
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got ;
 
-: NAME+ ( ^u8 n -- ) {: a:^ u:n :}
+: NAME+ ( str -- ) {: a:^ u:n :}
    u 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
    NAME-N @ NAME-CAPACITY >= if UNICODE-CLASS-TOOL:E-CAPACITY throw then
    a NAME-N @ NAME-A !

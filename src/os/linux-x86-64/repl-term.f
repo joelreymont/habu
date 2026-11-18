@@ -1,3 +1,4 @@
+split-str
 \ repl-term.f - Linux/x86-64 terminal constants for the baked Habu REPL.
 \ Linux's termios is one struct for every architecture: four 32-bit flag words,
 \ then c_line, then c_cc, so the offsets read the same as the aarch64 seam's.

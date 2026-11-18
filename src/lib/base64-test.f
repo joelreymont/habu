@@ -100,7 +100,7 @@ variable STAGED-LEN
    s" fooba" s" Zm9vYmE=" BOTH
    s" foobar" s" Zm9vYmFy" BOTH ;
 
-: HEX$ ( ^u8 n -- ^u8 n ) {: a u:n :}
+: HEX$ ( str -- str ) {: a u:n :}
    HEX SPAN:$ drop {: h :}
    u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
    h u 2 * ;
@@ -142,7 +142,7 @@ variable STAGED-LEN
    k OUT$ ALL SPAN:$ T$= ;
 
 \ A refusal runs in a quotation, which sees no locals, so its input is staged.
-: STAGE ( ^u8 n -- ) {: a u:n :}
+: STAGE ( str -- ) {: a u:n :}
    a u STAGED SPAN:COPY
    u STAGED-LEN ! ;
 

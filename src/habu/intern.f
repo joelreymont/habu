@@ -89,7 +89,7 @@ variable PROBE
 : ROW-LEN ( n -- n ) {: k:n :}
    k cells R-LEN + @ ;
 
-: ROW$ ( n -- ^u8 n ) {: k:n :}
+: ROW$ ( n -- str ) {: k:n :}
    STRING-ARENA k ROW-OFF +  k ROW-LEN ;
 
 \ ---- finding a body that is already here --------------------------------------

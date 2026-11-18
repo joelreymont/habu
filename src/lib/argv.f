@@ -170,7 +170,7 @@ public
 : LABEL$ ( -- str )
    ARGV-LABEL @ VALUE$ ;
 
-: OUT! ( ^u8 n -- )
+: OUT! ( str -- )
    >SPAN construct configured-value explicit ARGV-OUT ! ;
 
 : OUT? ( -- bool )

@@ -1,3 +1,4 @@
+split-str
 \ x86-64-seam.f - the x86_64 Linux seam from an aarch64 engine: the ELF writer
 \ (src/os/linux-x86-64/elf.f) read back field by field, the mov r64, imm64
 \ relocation site kind (SNAP-RELOC) over hand-built fixtures, and the x86-64 row

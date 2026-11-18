@@ -2212,7 +2212,7 @@ variable ROW-FAIL
 
 : TEST-REJECT ( n n -- ) nip REJECTED-ROW ! ;
 : TEST-RECORDER ( -- ) 0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER! ;
-: ROW$ ( -- ^u8 n ) ROW-TEXT ROW-U @ ;
+: ROW$ ( -- str ) ROW-TEXT ROW-U @ ;
 \ A reader at the value of the last recorded row's member `key`.
 : ROW ( ^u8 n -- JSON:reader ) {: key:^ key-u:n :} ROW$ key key-u MEMBER ;
 : BLANK-PURPOSE ( n -- n ) s"  " M MODEL:PURPOSE! ;
@@ -3803,7 +3803,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 
 
 \ The user message of the part "valid" as a chat request writes it.
-: HEAD$ ( -- ^u8 n )
+: HEAD$ ( -- str )
    S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" ;
 
 

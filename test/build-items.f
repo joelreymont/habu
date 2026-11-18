@@ -337,7 +337,7 @@ variable BUILT-DIAG-U
       none OF u ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
-: HEAD$ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: HEAD$ ( str -- str ) {: a:^ u:n :}
    a  a u S\" \n" CUT ;
 : NOTES$ ( str -- str ) {: a:^ u:n :}
    a u s" = declared:" CUT {: k:n :}

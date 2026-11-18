@@ -25,7 +25,7 @@ TYPED-VARIABLE WHO WS:sender
 : OUT$ ( n -- ^u8 n )
    OUT SPAN:$ drop swap ;
 
-: HEX$ ( ^u8 n -- ^u8 n ) {: a u:n :}
+: HEX$ ( str -- str ) {: a u:n :}
    HEX u 2 * SPAN:TAKE SPAN:$ {: h hu:n :}
    u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
    h hu ;
@@ -36,7 +36,7 @@ TYPED-VARIABLE WHO WS:sender
 
 \ A case's bytes are staged, with the sender and the bound, because a refusal
 \ runs in a quotation and a quotation sees no locals.
-: STAGE ( ^u8 n WS:sender n -- ) {: a u:n who max:n :}
+: STAGE ( str WS:sender n -- ) {: a u:n who max:n :}
    u 2 / {: k:n :}
    k 0 ?do
       a i 2 * + c@ NIBBLE 4 lshift a i 2 * + 1+ c@ NIBBLE or $FF and

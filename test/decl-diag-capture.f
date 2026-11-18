@@ -105,7 +105,7 @@ public
 \ Byte equality of two spans, for asserting a packet field against a literal
 \ when the field is read back through DECL-REJECT's reflection rather than out
 \ of a rendered line.
-: SAME? ( ^u8 n ^u8 n -- bool ) {: aa:^ au:n ba:^ bu:n :}
+: SAME? ( str str -- bool ) {: aa:^ au:n ba:^ bu:n :}
    au bu <> IF 0 0= 0= EXIT THEN
    aa au ba bu AT? ;
 

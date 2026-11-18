@@ -1,3 +1,4 @@
+split-str
 \ proc-watch.f -- Linux/x86-64 exact process-lifetime watch primitive emitter.
 
 \ The register names are package X64ASM's public surface

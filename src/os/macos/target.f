@@ -16,7 +16,7 @@ split-str
 : HB-TARGET-WASM? ( -- bool )
    0 0= 0= ;
 
-: HB-TARGET$ ( -- ^u8 n )
+: HB-TARGET$ ( -- str )
    s" macos-aarch64" ;
 
 \ The OS's PATH_MAX (sys/syslimits.h, 1024) less its NUL.

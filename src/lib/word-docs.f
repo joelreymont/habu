@@ -314,7 +314,7 @@ public
 
 \ For EXPORT, its operand as written (`MAKI-SKETCH:XY`), whose tail the package
 \ publishes.
-: NAME$ ( n -- ^u8 n )
+: NAME$ ( n -- str )
    1 TEXT$ ;
 
 \ The trimmed body of the `( ... )` comment EFFECT finds after the name, as the

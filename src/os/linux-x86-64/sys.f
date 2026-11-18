@@ -1,3 +1,4 @@
+split-str
 \ sys.f -- linux-x86-64 OS seam: syscall numbers and kernel argument constants.
 \
 \ The numbers are the x86_64 table, chosen against the argument shapes the

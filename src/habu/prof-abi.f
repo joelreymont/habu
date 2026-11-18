@@ -173,11 +173,11 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 \ EXIT-STATUS:SYSTEM. A refused setitimer is such a resource: it would leave a phase
 \ that samples nothing and reports zeros. The sample that reaches a non-zero
 \ PROF-LIM prints the report and exits EXIT-STATUS:PROF-LIMIT.
-: PROFARNMSG$ ( -- ^u8 n ) S\" hb: prof-on: cannot map the profiler arena\n" ;
-: PROFARMMSG$ ( -- ^u8 n ) S\" hb: prof-on: cannot arm the interval timer\n" ;
-: PROFIDMSG$ ( -- ^u8 n ) S\" hb: profiler profile IDs exhausted\n" ;
-: PROFNAMEMSG$ ( -- ^u8 n ) S\" hb: profiler cannot map name snapshot\n" ;
-: PROFNAMEFREEMSG$ ( -- ^u8 n ) S\" hb: profiler cannot release name snapshot\n" ;
+: PROFARNMSG$ ( -- str ) S\" hb: prof-on: cannot map the profiler arena\n" ;
+: PROFARMMSG$ ( -- str ) S\" hb: prof-on: cannot arm the interval timer\n" ;
+: PROFIDMSG$ ( -- str ) S\" hb: profiler profile IDs exhausted\n" ;
+: PROFNAMEMSG$ ( -- str ) S\" hb: profiler cannot map name snapshot\n" ;
+: PROFNAMEFREEMSG$ ( -- str ) S\" hb: profiler cannot release name snapshot\n" ;
 
 \ prof-rate's refusal, re-registered from src/lib/error.f, which loads after
 \ prof.f. Qualify it: a bare E-PROF-RATE under `using PROF-ABI` meets error.f's.

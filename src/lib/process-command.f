@@ -528,7 +528,7 @@ public
 \ refused path, deadline or placed fd and cancellation throw their own codes; a
 \ path, deadline or closed placed fd refused before the run leaves the previous
 \ outcome in place.
-: RUN-OUTCOME ( CMD:command ^u8 n ms -- CMD:command PROCESS:ending )
+: RUN-OUTCOME ( CMD:command str ms -- CMD:command PROCESS:ending )
    {: path:^ pathu:n timeout:ms :}
    CTX {: h:^ :}
    h path pathu timeout RUN-CAPTURE

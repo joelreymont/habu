@@ -100,7 +100,7 @@ variable LBL-U
    k 0 ?do a i + c@ LBL LBL-U @ + i + c! loop
    LBL-U @ k + LBL-U ! ;
 : RELABEL ( -- ) LBL LBL-U @ T-LABEL ;
-: LABEL-AT ( ^u8 n ^u8 n -- )
+: LABEL-AT ( str str -- )
    {: at:^ atu:n src:^ srcu:n :}
    0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+ ;
 
@@ -209,7 +209,7 @@ variable LBL-U
    u 0 ?do c p i + c! loop
    p u ;
 
-: LONG$ ( -- ^u8 n ) LONG-LEN TAIL ;
+: LONG$ ( -- str ) LONG-LEN TAIL ;
 
 \ `a` and then `b`, in a fresh mapping.
 : JOIN ( ^u8 n ^u8 n -- ^u8 n )

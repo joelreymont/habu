@@ -407,7 +407,7 @@ false STOPPED !
    SCRIPT-ARGC 0= if 2 exit then
    SCRIPT-ARGC ;
 
-: CASE$ ( n -- ^u8 n ) {: i:n :}
+: CASE$ ( n -- str ) {: i:n :}
    SCRIPT-ARGC 0 > if i SCRIPT-ARGV$ exit then
    i 0= if s" src/lib/pg-test.f" exit then
    s" src/lib/pg-rows-test.f" ;

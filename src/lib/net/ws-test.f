@@ -359,7 +359,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    got 0= if false exit then
    conn dst got SPAN:SKIP RECURSE ;
 
-: HEAD$ ( -- ^u8 n )
+: HEAD$ ( -- str )
    HEAD-BUF HEAD-U @ SPAN:TAKE SPAN:$ ;
 
 \ The response head and not a byte past it: frames may follow at once.

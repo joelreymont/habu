@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-atomics.f - the atomics and publication rows of the x86-64
 \ kernel (src/habu/kernel-x64.f) in the booted harness, cross-built for an
 \ x86-64 peer. The host checks each image's ELF header; running them is the
@@ -100,7 +101,7 @@ DICT-SIZE 32 + constant THIRD-SLOT
 $CCCCCCCCCCCCCCC3 constant RET-INT3S
 $CCCCCCCCCCCCCCCC constant INT3S
 
-: AT-ROW, ( n ^u8 n -- ) {: off:n row:^ rowu:n :}
+: AT-ROW, ( n str -- ) {: off:n row:^ rowu:n :}
    off X64HARNESS:PUSH-REGION,  row rowu X64HARNESS:CALL-ROW, ;
 
 : CLEAR, ( n n -- ) {: off:n len:n :}
@@ -265,8 +266,8 @@ DICT-SIZE $100 + constant CLAUSE-A
 DICT-SIZE $200 + constant CLAUSE-B
 9 constant CLAUSE-LEN-A
 11 constant CLAUSE-LEN-B
-: SHORT$ ( -- ^u8 n ) s" abc;does" ;
-: LONG$ ( -- ^u8 n ) s" abcdefghijklmnopq;does" ;
+: SHORT$ ( -- str ) s" abc;does" ;
+: LONG$ ( -- str ) s" abcdefghijklmnopq;does" ;
 DICT-SIZE 16 + constant LONG-AT
 LONG-AT CELL 2 * + constant LONG-TAIL
 LONG-TAIL CELL + constant LONG-PAD

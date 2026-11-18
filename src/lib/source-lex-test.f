@@ -132,7 +132,7 @@ create ROW-FIX ROW-CAP allot     variable ROW-LEN
 : ROW-Q  ( -- )  DQUOTE ROW-C+ ;
 : ROW-BS  ( -- )  92 ROW-C+ ;
 : ROW-NL  ( -- )  10 ROW-C+ ;
-: ROW$  ( -- ^u8 n )  ROW-FIX ROW-LEN STR:BUF-LEN@ BL>RAW ;
+: ROW$  ( -- str )  ROW-FIX ROW-LEN STR:BUF-LEN@ BL>RAW ;
 
 \ Scan a fixture that is exactly one row plus nothing else, so the whole fixture
 \ text is the expected REGISTRY token span.

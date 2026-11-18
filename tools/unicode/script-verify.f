@@ -99,7 +99,7 @@ CODEGEN:BUFFER TEXT
    valid 0= if E-SCRIPT-MISMATCH throw then
    fa fu TRIM next ;
 
-: NAME+ ( ^u8 n -- ) {: a:^ u:n :}
+: NAME+ ( str -- ) {: a:^ u:n :}
    NAME-N @ NAME-CAPACITY >= if E-SCRIPT-MISMATCH throw then
    a NAME-N @ NAME-A !
    u NAME-N @ NAME-U !

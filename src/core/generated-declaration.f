@@ -74,7 +74,7 @@ create SLOT-SRC-U  SLOTS cells allot  \ and its length
    u CAPPED s cells SPAN-LEN + !
    a u s SPAN-CAP * SPAN-BUF + CAP-COPY
    a u s SRC! ;
-: SLOT@ ( n -- ^u8 n ) {: s:n :}
+: SLOT@ ( n -- str ) {: s:n :}
    s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
 
 \ The offending token: the span it was copied from while its source still

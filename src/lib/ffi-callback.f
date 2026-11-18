@@ -288,10 +288,10 @@ variable OPEN
    NAME CODEGEN:RESET
    a u NAME CODEGEN:APPEND-STRING ;
 
-: NAME$ ( -- ^u8 n )
+: NAME$ ( -- str )
    NAME CODEGEN:CONTENTS ;
 
-: NAME+ ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: NAME+ ( str -- str ) {: a:^ u:n :}
    WORD-NAME CODEGEN:RESET
    NAME$ WORD-NAME CODEGEN:APPEND-STRING
    a u WORD-NAME CODEGEN:APPEND-STRING

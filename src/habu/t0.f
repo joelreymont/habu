@@ -100,7 +100,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 : TXT$ ( -- ^u8 ) TXT @ ;
 
 \ Row k's span, empty past the tape.
-: ROW$ ( n -- ^u8 n ) {: k:n :}
+: ROW$ ( n -- str ) {: k:n :}
    k ROWS @ >= if TXT$ 0 exit then
    TXT$ k ROW-OFF @ +  k ROW-LEN @ ;
 

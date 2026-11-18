@@ -79,7 +79,7 @@ variable FPL  variable FPE
    FP-A@ FP-U @ FPL LABEL@ FPE LABEL@ ENGINE-PRIMS:ADD ;
 
 public
-: FPRIM ( ^u8 n [ -- ] -- )
+: FPRIM ( str [ -- ] -- )
    FP-ARGS
    LBL FPL !  LBL FPE !
    FP-REG drop
@@ -3745,7 +3745,7 @@ private
 : POLICY-LR, ( -- )  3 SP 0 LDR, ;
 
 \ Note `in` and help, the dictionary read through x26/x27; never returns.
-: POLICY-STOP, ( ^u8 n -- ) {: h:^ hu:n :}
+: POLICY-STOP, ( str -- ) {: h:^ hu:n :}
    4 DBASE 0 ADDI,  6 NDICT 0 ADDI,  FAULT-IN,
    h hu EXIT-STATUS:POLICY FAULT-STOP, ;
 

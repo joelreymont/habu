@@ -153,7 +153,7 @@ private
 
 \ The digits from the first that is not a zero, the last kept, so that only a
 \ count's value decides whether it fits a cell.
-: SIGNIFICANT ( ^u8 n -- ^u8 n )
+: SIGNIFICANT ( str -- str )
    {: a:^ u:n :}
    0 begin dup u 1- < if dup a + c@ [char] 0 = else false then while 1+ repeat
    {: z:n :}

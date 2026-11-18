@@ -66,7 +66,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 : ROW-LEN ( str -- n ) {: a:^ u:n :}
    a u COL-LEN @ NUM-COL dup CODE-SPAN:VALID? if CODE-SPAN:BYTES else drop -1 then ;
 
-: ROW-BYTES ( ^u8 n -- n )
+: ROW-BYTES ( str -- n )
    ROW-LEN dup 0 < if
       s" image-names: a row's length is not a length" EXIT-STATUS:DATAERR die then ;
 

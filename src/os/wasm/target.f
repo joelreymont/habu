@@ -16,7 +16,7 @@ split-str
 : HB-TARGET-WASM? ( -- bool )
    0 0= ;
 
-: HB-TARGET$ ( -- ^u8 n )
+: HB-TARGET$ ( -- str )
    s" wasm" ;
 
 \ Wasm has no OS path limit: it takes Linux's, PATH_MAX less its NUL.

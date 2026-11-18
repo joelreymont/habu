@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-policy.f - policy-admit and policy-seal in a booted x86 ELF.
 \ The peer runs these images and checks their exact status and the
 \ `error[E-POLICY]` record or die line each writes to stderr:
@@ -52,7 +53,7 @@ using X64RT
    name size WL:NAMESPACE 0 X64HARNESS:RECORD,
    wid 0 X64KERNEL:REC-CODE + X64HARNESS:REGION!, ;
 
-: ADMIT, ( ^u8 n -- )
+: ADMIT, ( str -- )
    X64HARNESS:PUSH-TEXT,  s" policy-admit" ROW, ;
 
 : READY, ( ^u8 n n -- ) {: name:^ size:n wid:n :}

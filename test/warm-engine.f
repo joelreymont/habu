@@ -58,7 +58,7 @@ PATH-CAP BUFFER: JOINED-2
    s" tree/src/habu/linker.f" AT$
    s\" \n\\ warm-engine\n" FS:APPEND-FILE ;
 
-: SAME? ( ^u8 n ^u8 n -- bool )
+: SAME? ( str str -- bool )
    {: a:^ au:n b:^ bu:n :}
    ROOT$ a au JOINED FS:JOIN-PATH {: ju:n :}
    ROOT$ b bu JOINED-2 FS:JOIN-PATH {: ku:n :}

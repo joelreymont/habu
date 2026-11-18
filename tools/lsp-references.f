@@ -197,7 +197,7 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    at POOL u ;
 
 : P$ ( -- str )  0 P-B P-U @ ;
-: NAME$ ( -- ^u8 n )  NAME-AT @ NAME-U @ POOL$ ;
+: NAME$ ( -- str )  NAME-AT @ NAME-U @ POOL$ ;
 : PKG$ ( -- str )  PKG-AT @ PKG-U @ POOL$ ;
 : D$ ( -- str )  D-AT @ D-U @ POOL$ ;
 

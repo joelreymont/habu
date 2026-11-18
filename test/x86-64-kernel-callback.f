@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-callback.f - emitted SysV callback-entry E2E.
 \ Run the produced ELFs on x86-64: the qsort image exits 0 after libc calls a
 \ Habu comparator through ffi-call and -1 answers the address slot 0's stub
@@ -50,7 +51,7 @@ NEST-DEPTH CELL + constant QSORT-FN
    RCX RDX ASM-SINK ENC-SUB-RR
    RCX RAX MEM-AT ASM-SINK ENC-MOV-MR ;
 
-: SYM, ( ^u8 n -- ) {: a:^ u:n :}
+: SYM, ( str -- ) {: a:^ u:n :}
    LBL LBL {: name:label past:label :}
    past JMP,
    name LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN

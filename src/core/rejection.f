@@ -417,7 +417,7 @@ public
 : CLOSER! ( str ^u8 -- )
    {: a:^ u:n base:^ :}
    a CLOSER-A !  u CLOSER-U !  base CLOSER-BASE ! ;
-: SOURCE$ ( -- ^u8 n ) SOURCE-A @ SOURCE-U @ ;
+: SOURCE$ ( -- str ) SOURCE-A @ SOURCE-U @ ;
 \ Whether a closer was given for the text whose first byte is base.
 : CLOSES? ( ^u8 -- bool ) CLOSER-BASE @ - 0= CLOSER-U @ 0 > and ;
 : CLOSER$ ( -- str ) CLOSER-A @ CLOSER-U @ ;

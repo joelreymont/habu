@@ -1,3 +1,4 @@
+split-str
 \ Read the exact x86-64 engine-text sites retained by X64CODE:TEXT-SITES,.
 \ CODE-END-CELL points at their count header; fixed text VAs survive snapshots.
 require src/core/exit-status.f

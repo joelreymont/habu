@@ -1,3 +1,4 @@
+split-str
 \ The x86-64 kernel object. Positions are bytes; relocation kinds are
 \ X64CODE's rel8, rel32 and abs64 fields. The other sections are shared.
 require src/habu/kernel-format.f
@@ -96,7 +97,7 @@ DYNAMIC-BUFFER NAME-OFF n
    7 U64+
    9 2 ?do i X64KERNEL:SCOPE-SITE X64CODE:LABEL-INDEX U64+ loop ;
 
-: LSYM+ ( ^u8 n label -- ) X64CODE:LABEL-INDEX SYM+ ;
+: LSYM+ ( str label -- ) X64CODE:LABEL-INDEX SYM+ ;
 
 : COMMON-SYMBOLS ( -- )
    s" K0" K0 @ SYM+

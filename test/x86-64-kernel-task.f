@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-task.f - the task entry of the x86-64 kernel
 \ (src/habu/kernel-x64.f TASK,) in the booted harness, cross-built for an
 \ x86-64 peer. `task-entry` answers a SysV function taking a TASK-ABI
@@ -89,7 +90,7 @@ $B0B0B0B0B0 constant CALLER-RBX
 \ ---- the thread ---------------------------------------------------------------
 \ Push the function dlsym finds for the name, whose bytes sit NUL-terminated
 \ behind a jump.
-: SYM, ( ^u8 n -- ) {: a:^ u:n :}
+: SYM, ( str -- ) {: a:^ u:n :}
    LBL LBL {: name:label past:label :}
    past JMP,
    name LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN  0 ASM-SINK BUF:APPEND-BYTE

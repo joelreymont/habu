@@ -1,3 +1,4 @@
+split-str
 \ rt.f - X64RT, x86-64 runtime emitters appending to X64CODE's ASM-SINK: twins
 \ of src/habu/rt.f G-PUSH, G-POP, G-OUT, G-PRINT9, G-PRINTU9 and G-EMITC, and
 \ habu1.f SYS-PUSH. Moves

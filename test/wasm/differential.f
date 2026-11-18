@@ -65,7 +65,7 @@ variable THROWN-U
 : PROG+ ( str -- )  PROG PROG-U TEXT+ ;
 : THROWN+ ( str -- )  THROWN THROWN-U TEXT+ ;
 
-: NAME$ ( -- ^u8 n )  NAME-A @ NAME-U @ ;
+: NAME$ ( -- str )  NAME-A @ NAME-U @ ;
 
 : LABEL ( -- )  NAME$ T-LABEL ;
 

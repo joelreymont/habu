@@ -106,7 +106,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ One line typed at the target. Not SEND: that is the module's own master, and
 \ this suite's bytes go through the supervised handle.
-: TELL ( process-pty-handle ^u8 n -- process-pty-handle )
+: TELL ( process-pty-handle str -- process-pty-handle )
    PROCESS-PTY:WRITE-LINE ;
 
 : BAD-DEF$ ( -- str )  s" : TTY-BAD ( -- n ) drop ;" ;

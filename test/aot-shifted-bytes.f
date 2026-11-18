@@ -118,7 +118,7 @@ variable WANT-U
 
 \ The text is the kept block's own first 8 bytes, so no image byte but the
 \ rows' holds the address. KEPT is a PTR-VARIABLE, which a save writes as null.
-: SOURCE$ ( -- ^u8 n )
+: SOURCE$ ( -- str )
    S\" require src/lib/error.f\nrequire src/lib/memory.f\nPTR-VARIABLE KEPT\n64 MEM-ALLOC-BYTES drop KEPT !\n: LAY ( -- ) KEPT @ NULL-PTR - {: a:n :} 8 0 do a i 8 * rshift $FF and KEPT @ i + c! loop ;\nLAY\n-110001 KEPT @ 8 ERROR:CODE E-SHIFTED\n-110002 KEPT @ 8 ERROR:CODE E-ALIGN8\n: MAIN ( -- ) s\q ok\q type cr ;\n" ;
 
 : RECORD-SOURCE$ ( -- str )

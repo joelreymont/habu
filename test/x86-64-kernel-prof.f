@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-prof.f - the profiler rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f PROFILER,, src/habu/prof-x64.f) in the booted harness,
 \ cross-built for an x86-64 peer. The host checks only the build; the peer runs
@@ -452,7 +453,7 @@ variable ENTRY-AT
    DEFERRED ARN-DEFER ARENA! ;
 
 \ The byte past the key in capture k, which must hold it.
-: KEY-END ( ^u8 n n -- n ) {: key:^ keyu:n k:n :}
+: KEY-END ( str n -- n ) {: key:^ keyu:n k:n :}
    k TEXT {: a:^ u:n :}
    0 AT-BYTE !
    begin
@@ -481,7 +482,7 @@ variable ENTRY-AT
    u past - from +  k TEXT-LEN ! ;
 
 \ Replace the digits after the key in capture k with the image's count.
-: REINDEX ( ^u8 n n -- ) {: key:^ keyu:n k:n :}
+: REINDEX ( str n -- ) {: key:^ keyu:n k:n :}
    key keyu k KEY-END {: at:n :}
    at k DIGITS-END {: past:n :}
    IMAGE-INDEXED [char] 0 +  k TEXT drop at + c!
@@ -771,7 +772,7 @@ variable ENTRY-AT
 
 \ Check the count read into GOT and its bytes: 0 when GOT starts with the
 \ text, which the count must reach.
-: STARTS, ( ^u8 n -- ) {: a:^ u:n :}
+: STARTS, ( str -- ) {: a:^ u:n :}
    LBL {: enough:label :}
    a u X64HARNESS:PUSH-TEXT,
    GOT AT,

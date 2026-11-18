@@ -64,7 +64,7 @@ variable FILE-SIZE
    SPAN SPAN-U @ + c! SPAN-U @ 1+ SPAN-U ! ;
 
 
-: SPAN+ ( ^u8 n -- )
+: SPAN+ ( str -- )
    {: a:^ u:n :}
    u 0 ?do a i + c@ SPAN-C loop ;
 

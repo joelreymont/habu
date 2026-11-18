@@ -68,7 +68,7 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ The name the header gives record R: its word, or PKG:TAIL built in NAME-B
 \ with a byte past it reserved, as the store's BYTES, so that the tail's
 \ place has an address however short the tail is.
-: NAME$ ( n -- ^u8 n )
+: NAME$ ( n -- str )
    {: r:n :}
    r REC-PUBLIC? 0= if r REC-WORD$ exit then
    r REC-TAIL$ {: w:^ wu:n :}

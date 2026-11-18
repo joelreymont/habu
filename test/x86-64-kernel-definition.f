@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-definition.f - the definition writers of the x86-64 kernel
 \ (src/habu/kernel-x64.f DEFINITION,) in the booted harness, cross-built for an
 \ x86-64 peer. Each image puts the code region at rest before calling the rows,
@@ -31,14 +32,14 @@ COPIED DKIND:VAL or constant SOURCE-FLAGS
 
 \ A 17-byte name, longer than DNAME-INL, stored at CP: it fills past the first
 \ code slot, so CP moves past the second.
-: LONG$ ( -- ^u8 n ) s" abcdefghijklmnopq" ;
+: LONG$ ( -- str ) s" abcdefghijklmnopq" ;
 DICT-SIZE X64KERNEL:CODE-SLOT + constant SECOND-SLOT
 SECOND-SLOT X64KERNEL:CODE-SLOT + constant PAST-LONG
 
 \ A source name past DNAME-INL, so its record carries DNAME-EXT.
-: SOURCE$ ( -- ^u8 n ) s" a-source-past-inline" ;
+: SOURCE$ ( -- str ) s" a-source-past-inline" ;
 
-: HELLO$ ( -- ^u8 n ) s" hello" ;
+: HELLO$ ( -- str ) s" hello" ;
 HELLO$ nip 1+ constant HELLO-LEN        \ "hello" and its space
 BODY-TEXT:FIRST-CAP constant FIRST-CAP
 
@@ -91,7 +92,7 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    a u X64HARNESS:PUSH-TEXT,  src X64HARNESS:PUSH,  wid X64HARNESS:PUSH,
    s" alias-record" X64HARNESS:CALL-ROW, ;
 
-: DEF-OPEN, ( ^u8 n n n -- ) {: a:^ u:n wid:n kind:n :}
+: DEF-OPEN, ( str n n -- ) {: a:^ u:n wid:n kind:n :}
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,  kind X64HARNESS:PUSH,
    s" def-open" X64HARNESS:CALL-ROW, ;
 
@@ -99,15 +100,15 @@ BODY-TEXT:FIRST-CAP constant FIRST-CAP
    row X64HARNESS:PUSH,  parent X64HARNESS:PUSH,
    s" package-scope!" X64HARNESS:CALL-ROW, ;
 
-: APPEND, ( ^u8 n -- ) X64HARNESS:PUSH-TEXT,  s" body-capture" X64HARNESS:CALL-ROW, ;
+: APPEND, ( str -- ) X64HARNESS:PUSH-TEXT,  s" body-capture" X64HARNESS:CALL-ROW, ;
 
 \ The signature row named over SIG-LEN bytes at the text's start, a span whose
 \ address the block fixes at run time.
-: SIG, ( ^u8 n -- ) {: row:^ rowu:n :}
+: SIG, ( str -- ) {: row:^ rowu:n :}
    0 PUSH-TEXT-ADDR,  SIG-LEN X64HARNESS:PUSH,
    row rowu X64HARNESS:CALL-ROW, ;
 
-: XREF, ( ^u8 n n -- ) {: a:^ u:n wid:n :}
+: XREF, ( str n -- ) {: a:^ u:n wid:n :}
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,
    s" xref-search-wl" X64HARNESS:CALL-ROW, ;
 

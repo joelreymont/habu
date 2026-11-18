@@ -1,3 +1,4 @@
+split-str
 \ prof-x64.f - the x86-64 twin of src/habu/prof.f, package X64PROF: the SIGALRM handler, its pc
 \ index, the sync, the reports and the prof-* bodies src/habu/kernel-x64.f PROFILER, registers.
 \ The band and arena are PROF-ABI's (src/habu/prof-abi.f); prof.f EMIT-PROF's comment gives the design. What
@@ -785,7 +786,7 @@ variable SESSION-CELL
 \ of prof.f's printers. Each writes fd 1 directly, as those do.
 
 \ Write the text; its bytes sit in the stream behind a jump.
-: SAY, ( ^u8 n -- ) {: a:^ u:n :}
+: SAY, ( str -- ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
    text LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
@@ -915,11 +916,11 @@ variable SESSION-CELL
 
 \ A header field: the text, then the value in one column, from the frame, the
 \ band or the arena.
-: FRAME-FIELD, ( ^u8 n n -- ) {: a:^ u:n off:n :}
+: FRAME-FIELD, ( str n -- ) {: a:^ u:n off:n :}
    a u SAY,  RAX off SLOT@,  1 NUM, ;
-: BAND-FIELD, ( ^u8 n n -- ) {: a:^ u:n off:n :}
+: BAND-FIELD, ( str n -- ) {: a:^ u:n off:n :}
    a u SAY,  RAX BAND-VA IMM,  RAX RAX off MEM-OFF LOAD,  1 NUM, ;
-: ARENA-FIELD, ( ^u8 n n -- ) {: a:^ u:n off:n :}
+: ARENA-FIELD, ( str n -- ) {: a:^ u:n off:n :}
    a u SAY,  RAX R15 off MEM-OFF LOAD,  1 NUM, ;
 
 \ The header: words + other + new + defer + spill + foreign == samples is the
@@ -1165,7 +1166,7 @@ private
 \ rax = n fresh read/write bytes. A refused mapping writes the text on fd 2
 \ and exits EXIT-STATUS:SYSTEM: a profiler that ran without its arena would report
 \ numbers nobody could trust (prof.f C-PROF-ARENA-MAP).
-: MAP, ( n ^u8 n -- ) {: len:n a:^ u:n :}
+: MAP, ( n str -- ) {: len:n a:^ u:n :}
    LBL {: ok:label :}
    RDI ZERO-REG,  RSI len IMM32,  RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
    R8 ALL-ONES,  R9 ZERO-REG,

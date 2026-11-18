@@ -1,3 +1,4 @@
+split-str
 \ kernel-x64.f - the x86-64 engine's primitive bodies (package X64KERNEL): the
 \ twins of habu1.f's bodies for the rows of src/habu/prims.f, written through
 \ X64ASM and registered in src/habu/primitive-registry.f as habu1.f FPRIM does.
@@ -129,7 +130,7 @@ variable RETIRE-CELL
 defer BODY ( -- )
 PTR-VARIABLE ROW-A
 variable ROW-U
-: ROW$ ( -- ^u8 n ) ROW-A @ ROW-U @ ;
+: ROW$ ( -- str ) ROW-A @ ROW-U @ ;
 
 : ARGS ( ^u8 n [ -- ] -- )
    is BODY  ROW-U !  ROW-A !
@@ -146,7 +147,7 @@ variable ROW-U
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
 
 \ The text follows the exit, inside the record.
-: STDERR-EXIT, ( ^u8 n n -- ) {: a:^ u:n rc:n :}
+: STDERR-EXIT, ( str n -- ) {: a:^ u:n rc:n :}
    X64CODE:LBL {: msg:label :}
    msg u STDERR-WRITE,
    rc EXIT-GROUP,
@@ -159,7 +160,7 @@ public
    EMIT-ROW drop ;
 
 \ The twin of habu1.f FPRIM-WID.
-: PRIM-WID ( ^u8 n [ -- ] n -- ) {: wid:n :}
+: PRIM-WID ( str [ -- ] n -- ) {: wid:n :}
    ARGS
    wid EMIT-ROW ENGINE-PRIMS:WID! ;
 
@@ -333,7 +334,7 @@ $20 constant FOLD-BIT
 \ `in` the word whose code holds [rsp], and the exit; else only rax and flags
 \ change. It runs before the row's first call or machine-stack push, so [rsp]
 \ is the caller's return address.
-: MUTATION-GUARD, ( ^u8 n ^u8 n ^u8 n n -- )
+: MUTATION-GUARD, ( str str str n -- )
    {: p:^ pu:n r:^ ru:n h:^ hu:n cell:n :}
    X64CODE:LBL {: ok:label :}
    RAX cell CELL@,
@@ -348,12 +349,12 @@ $20 constant FOLD-BIT
 
 \ The main thread alone defines and allots: a task's or callback's DATA holds
 \ a TCB in TASK-TCB-CELL.
-: TASK-GUARD, ( ^u8 n -- )
+: TASK-GUARD, ( str -- )
    FAULT-RECORD:TASK-GUARD$ FAULT-RECORD:TASK-GUARD-HELP$
    TASK-TCB-CELL MUTATION-GUARD, ;
 
 \ A sink that lowers CP or NDICT frees code a live task may be running.
-: LOWER-GUARD, ( ^u8 n -- )
+: LOWER-GUARD, ( str -- )
    FAULT-RECORD:LOWER-GUARD$ FAULT-RECORD:LOWER-GUARD-HELP$
    TASKS-LIVE-CELL MUTATION-GUARD, ;
 
@@ -826,7 +827,7 @@ private
 
 \ RAX receives the named import's address from this run's GOT.
 \ The read-write segment starts the text's size past the image base.
-: LIBC-ENTRY, ( ^u8 n -- )
+: LIBC-ENTRY, ( str -- )
    ELF:IMPORT-ROW ELF:SLOT-OFF {: slot:n :}
    RAX DATA-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
@@ -3354,7 +3355,7 @@ private
 
 \ Exit EXIT-STATUS:SEAL-VIOLATION with the row's die line and rax when rax, a count, lies
 \ below the floor SEAL-CAPTURE recorded; 0 is no floor. It clobbers rcx.
-: FLOOR-GUARD, ( ^u8 n -- ) {: a:^ u:n :}
+: FLOOR-GUARD, ( str -- ) {: a:^ u:n :}
    X64CODE:LBL {: ok:label :}
    RCX SEAL-NDICT-CELL CELL@,
    RCX RCX ASM-SINK ENC-TEST-RR  C-E ok JCC,
@@ -3556,7 +3557,7 @@ private
    R8 RCX PD-SLOT >IMM32 ASM-SINK ENC-IMUL-RRI32
    R8 DATA-REG R8 1 PD-TABLE-OFF PD-SLOTS-REL + MEM-IDX ASM-SINK ENC-LEA ;
 
-: UNDRAINED$ ( -- ^u8 n ) s" hb: undrained pre-trust defer: " ;
+: UNDRAINED$ ( -- str ) s" hb: undrained pre-trust defer: " ;
 
 \ SEAL-CAPTURE ( -- ): record the count as the seal floor. The pending table
 \ must be empty by then, as checker.f drains it after `trust-decl`; a pending
@@ -3688,7 +3689,7 @@ private
 
 \ Note `in` the word whose code holds the lr at rsp + off, read from the records
 \ at r13, and help; never returns.
-: POLICY-STOP, ( ^u8 n n -- ) {: h:^ hu:n lr:n :}
+: POLICY-STOP, ( str n -- ) {: h:^ hu:n lr:n :}
    RDI lr POLICY-ARG,
    RSI DBASE-REG ASM-SINK ENC-MOV-RR  RDX NDICT-REG ASM-SINK ENC-MOV-RR
    X64CRASH:FAULT-IN,
@@ -4325,7 +4326,7 @@ CBT-BYTES 6 cells + constant CBT-LR  \ above the six saved VM registers
 \ the slot and C's return address, which no word owns, then exit
 \ EXIT-STATUS:CALLBACK. FAULT-OPEN, moves rsp, so rbx and r12, which the
 \ record never writes, carry both.
-: CB-DIE, ( ^u8 n ^u8 n label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
+: CB-DIE, ( str str label -- ) {: msg:^ mu:n help:^ hu:n at:label :}
    at X64CODE:LBL,
    RBX RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
    R12 RSP CBT-LR MEM-OFF ASM-SINK ENC-MOV-RM
@@ -5290,7 +5291,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 \ rax = the active checker's operation at offset n of its record; with no
 \ record or no operation the process ends naming it.
-: OWNER-OP, ( n ^u8 n -- ) {: off:n a:^ u:n :}
+: OWNER-OP, ( n str -- ) {: off:n a:^ u:n :}
    X64CODE:LBL X64CODE:LBL {: absent:label found:label :}
    RAX NCOMP-DISPATCH:DECL-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E absent JCC,
@@ -5359,10 +5360,10 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    scan JMP,
    done X64CODE:LBL, ;
 
-: DOES-NONE-CLASS$ ( -- ^u8 n )
+: DOES-NONE-CLASS$ ( -- str )
    s" E-DOES-UNCREATED habu: " ;
 
-: DOES-NONE$ ( -- ^u8 n )
+: DOES-NONE$ ( -- str )
    S\" does> has no created word\n" ;
 
 : DOES-PATCH-BODY ( -- )

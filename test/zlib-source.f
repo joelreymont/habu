@@ -22,7 +22,7 @@ create ROOT PATH-CAP allot variable ROOT-U
 create PATH PATH-CAP allot
 
 : CHECK$ ( -- str ) s" 123456789" ;
-: HELLO$ ( -- ^u8 n ) s" hello" ;
+: HELLO$ ( -- str ) s" hello" ;
 : EMPTY-STREAM$ ( -- str ) s\" \x03\x00" ;
 : STORED-HELLO$ ( -- str ) s\" \x01\x05\x00\xFA\xFFhello" ;
 : FIXED-HELLO$ ( -- str ) s\" \xCB\x48\xCD\xC9\xC9\x07\x00" ;

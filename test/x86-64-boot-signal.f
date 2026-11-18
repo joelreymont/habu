@@ -1,3 +1,4 @@
+split-str
 \ x86-64-boot-signal.f - the SIGUSR1 stub src/habu/boot-x64.f START emits and
 \ publishes, cross-built for an x86-64 peer. Each image installs it from
 \ SIGNAL-ABI:STUB-CELL through SIGACTION-AT,, and raises the signal on its own

@@ -421,7 +421,7 @@ variable USE-N   variable USE-SUM
 : COUNTED ( -- ) [: COUNT-USE ;] [: REPLAY ;] WITH-USES ;
 
 \ Replay TEXT counting its uses; its throw code, uses and byte sum.
-: OBSERVED ( ^u8 n -- n n n )
+: OBSERVED ( str -- n n n )
    TEXT-U !  TEXT-A !
    0 USE-N !  0 USE-SUM !
    [: COUNTED ;] catch  USE-N @  USE-SUM @ ;

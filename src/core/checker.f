@@ -2912,7 +2912,7 @@ variable HB-CEILING   0 HB-CEILING !
 : BUILDING? ( -- bool ) IMAGE-BASE 0 <> ;
 \ A linear type's type entry is named for the type, its text `linear pkg`, `-`
 \ for none; a family's text starts with a number.
-: HEAD$ ( -- ^u8 n ) s" linear " ;
+: HEAD$ ( -- str ) s" linear " ;
 : ENTRY-PKG$ ( str -- str ) {: a:^ u:n :}
    HEAD$ nip {: hu:n :}
    a hu + u hu - {: pa:^ pu:n :}
@@ -11621,7 +11621,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 : DEPTH-SUGGEST$ ( -- str )
    s" keep bulk values in a buffer instead of on the stack, and name an inner callback's effect in a word of its own" ;
 
-: CODE-SPAN ( ^u8 n -- ) 96 REJECTION:EMIT1 REJECTION:EMIT-STR 96 REJECTION:EMIT1 ;
+: CODE-SPAN ( str -- ) 96 REJECTION:EMIT1 REJECTION:EMIT-STR 96 REJECTION:EMIT1 ;
 : SGBAD-ARITY-FIX ( str -- ) {: t:^ tu:n :}
    s" give " REJECTION:EMIT-STR  t tu CODE-SPAN  32 REJECTION:EMIT1
    SGBAD-AR-DECL @ REJECTION:EMIT-U
@@ -15950,7 +15950,7 @@ EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
 
 \ A length that describes no memory is rejected with the symbol pool's error
 \ before the constructor scan reads it.
-: CHECKER-DEFER ( ^u8 n -- ) {: a:^ u:n :}
+: CHECKER-DEFER ( str -- ) {: a:^ u:n :}
    a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
    a u CHECKER-RECORD-NAME DFER-ADD ;

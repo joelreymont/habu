@@ -93,7 +93,7 @@ HEX-CAP BUFFER: GOT-BUF
 HEX-CAP BUFFER: WANT-BUF
 TYPED-VARIABLE WANT-U len
 
-: HEX$ ( n n -- ^u8 n )
+: HEX$ ( n n -- str )
    {: at:n len:n :}
    len 0 ?do  at i + B@  GOT-BUF i 2 * +  BYTE>HEX  loop
    GOT-BUF len 2 * ;

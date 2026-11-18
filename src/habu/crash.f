@@ -179,7 +179,7 @@ public
    0 5 0 ADDI,  NR-EXIT-GROUP SYS, ;
 
 private
-: DIE-LINE-SITE, ( ^u8 n n n -- )
+: DIE-LINE-SITE, ( str n n -- )
    LBL {: a:^ u:n status:n flag:n msg:label :}
    u 0= u DIE-LINE-ROOM > or IF
       s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" EXIT-STATUS:INTERNAL die
@@ -328,7 +328,7 @@ private
 public
 \ Opens a record with its code and message: sp drops FAULT-FRAME, x14 = its
 \ start, x17 = the JSON flag.
-: FAULT-OPEN, ( ^u8 n ^u8 n -- )
+: FAULT-OPEN, ( str str -- )
    FAULT-OPEN
    SP SP FAULT-FRAME SUBI,  14 SP 0 ADDI,
    17 DATA-VA VA>N REJECTION-JSON-CELL + LIT64,  17 17 0 LDR,
@@ -350,7 +350,7 @@ public
    done LBL, ;
 
 \ A note with the register's value in decimal; the register is copied first.
-: FAULT-NUMBER, ( ^u8 n n -- ) {: k:^ ku:n r:n :}
+: FAULT-NUMBER, ( str n -- ) {: k:^ ku:n r:n :}
    7 r 0 ADDI,
    k ku NOTE+  PIECE,
    LFAULT-DEC LABEL@ BL, ;
@@ -367,19 +367,19 @@ public
 
 \ A note with the address in the register, `0x` and 16 hex digits; the
 \ register is copied first.
-: FAULT-ADDRESS, ( ^u8 n n -- ) {: k:^ ku:n r:n :}
+: FAULT-ADDRESS, ( str n -- ) {: k:^ ku:n r:n :}
    7 r 0 ADDI,
    k ku FAULT-ADDRESS  PIECE,  7 HEX, ;
 
 \ Ends the record with its help and exits with the status.
-: FAULT-STOP, ( ^u8 n n -- ) {: h:^ hu:n status:n :}
+: FAULT-STOP, ( str n -- ) {: h:^ hu:n status:n :}
    h hu FAULT-STOP
    PIECE,  FLUSH,
    0 status MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Ends the record with its help, none for an empty text, and returns, sp as
 \ FAULT-OPEN, found it.
-: FAULT-KEEP, ( ^u8 n -- )
+: FAULT-KEEP, ( str -- )
    FAULT-KEEP
    PIECE,  FLUSH,
    SP SP FAULT-FRAME ADDI, ;

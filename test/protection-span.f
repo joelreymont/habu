@@ -51,7 +51,7 @@ variable LONG-U
    LONG-U @ u + LONG-U ! ;
 : STEP$ ( -- str )
    s" PST-ADD-ONE-TO-THE-COUNT-OF-STEPS-IN-A-LONG-DEFINITION-BODY" ;
-: LONG$ ( -- ^u8 n )
+: LONG$ ( -- str )
    0 LONG-U !
    s" : " LONG+  STEP$ LONG+  s"  ( n -- n ) 1 + ; : PST-LONG ( -- n ) 0" LONG+
    350 0 ?do s"  " LONG+  STEP$ LONG+ loop

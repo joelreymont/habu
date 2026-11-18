@@ -182,7 +182,7 @@ create DECODED BUF:HDR-BYTES allot
 : FORM-SAFE$ ( -- str )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*-._" ;
 
-: HEX$ ( -- ^u8 n ) s" 0123456789ABCDEF" ;
+: HEX$ ( -- str ) s" 0123456789ABCDEF" ;
 
 : FORM-SAFE? ( n -- bool )
    {: c:n :}

@@ -51,7 +51,7 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
 
 : AT ( ^u8 n -- ^u8 n ) 2dup SRCLOC:TOKEN! ;
 
-: NAME$ ( -- ^u8 n ) NAME-A @ NAME-U @ AT ;
+: NAME$ ( -- str ) NAME-A @ NAME-U @ AT ;
 : CTX$ ( -- str ) CTX-A @ CTX-U @ AT ;
 : STATES$ ( -- str ) STATES-A @ STATES-U @ AT ;
 : INPUTS$ ( -- str ) INPUTS-A @ INPUTS-U @ AT ;

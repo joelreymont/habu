@@ -29,7 +29,7 @@ create BAD-NAME $FF c,
    d NAME u + du BYTE-COPY
    u du + NAME-LEN ! ;
 
-: NAME$ ( -- ^u8 n ) NAME NAME-LEN @ ;
+: NAME$ ( -- str ) NAME NAME-LEN @ ;
 
 : PMSET ( CMD:command -- CMD:command bool )
    CMD:RESET

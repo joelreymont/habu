@@ -288,7 +288,7 @@ TYPED-VARIABLE PAD-LEN len
    DONE ;
 
 \ A message whose body is LONG bytes of b.
-: LONG$ ( -- ^u8 n )
+: LONG$ ( -- str )
    SB-RESET  s" Content-Length: " SB-APPEND  LONG FMT:SB-U  s\" \r\n\r\n" SB-APPEND
    PAD-LEN BUF-RESET
    SB$ PAD-BUF PAD-CAP PAD-LEN BUF-APPEND

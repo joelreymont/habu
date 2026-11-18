@@ -313,7 +313,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
    {: state :}
    state NS-CAP + @ 0 ?do -1 state i NAMESPACE BINDING-HEAD + ! loop ;
 
-: SOURCE$ ( ^n -- ^u8 n )
+: SOURCE$ ( ^n -- str )
    {: state :}
    state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
 
@@ -921,7 +921,7 @@ public
 : RAW$ ( XML:reader -- XML:reader str )
    STATE RAW$-STATE ;
 
-: NAME$ ( XML:reader -- XML:reader ^u8 n )
+: NAME$ ( XML:reader -- XML:reader str )
    STATE NAME$-STATE ;
 
 : LOCAL$ ( XML:reader -- XML:reader str )

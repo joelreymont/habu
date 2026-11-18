@@ -37,7 +37,7 @@ variable SOCK-S
 
 : DIR$ ( -- str ) DIR DIR-U @ ;
 : PATH$ ( -- ^u8 n ) PATH PATH-U @ ;
-: NAME$ ( -- ^u8 n ) NAME NAME-U @ ;
+: NAME$ ( -- str ) NAME NAME-U @ ;
 
 
 \ ---- result inspectors -------------------------------------------------------
@@ -76,7 +76,7 @@ variable SOCK-S
 
 \ ---- the sockets the cases share ---------------------------------------------
 
-: PATH! ( ^u8 n -- )
+: PATH! ( str -- )
    {: name:^ size:n :}
    DIR$ name size PATH FS:JOIN-PATH PATH-U ! ;
 

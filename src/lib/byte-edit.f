@@ -58,7 +58,7 @@ LINEAR: ERASE ( EDIT:editor -- ^n )
    {: state index:n :}
    state HEADER-CELLS index ROW-CELLS * + cells + ;
 
-: SOURCE$ ( ^n -- ^u8 n )
+: SOURCE$ ( ^n -- str )
    {: state :}
    state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
 

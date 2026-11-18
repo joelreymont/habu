@@ -1,3 +1,4 @@
+split-str
 \ The linked x86 program checks local reads through calls and unwinding.
 require src/lib/string.f
 

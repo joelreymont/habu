@@ -16,7 +16,7 @@ split-str
 : HB-TARGET-WASM? ( -- bool )
    0 0= 0= ;
 
-: HB-TARGET$ ( -- ^u8 n )
+: HB-TARGET$ ( -- str )
    s" linux-aarch64" ;
 
 \ The OS's PATH_MAX (linux/limits.h, 4096) less its NUL.

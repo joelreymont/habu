@@ -79,7 +79,7 @@ ELF-DYNAMIC-SZ constant ELF-GOT-OFF
 public
 \ The libc symbols the loader binds into the GOT of the tree's kernel, in slot
 \ order, by C name; the kernel object carries them to the link.
-: IMPORT$ ( n -- ^u8 n )
+: IMPORT$ ( n -- str )
    case
       0 of s" dlopen" endof
       1 of s" dlsym" endof
@@ -90,7 +90,7 @@ public
 4 constant IMPORTS
 
 \ The row whose C name this is; the build dies on a name the table lacks.
-: IMPORT-ROW ( ^u8 n -- n )
+: IMPORT-ROW ( str -- n )
    {: a:^ u:n :}
    IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
    SB-RESET  s" elf: no such import " SB-APPEND  a u SB-APPEND
@@ -296,7 +296,7 @@ private
 public
 \ The program as an ELF file whose code maps at the address, its GOT binding
 \ the import names given.
-: BUILD-IMAGE ( asm n ^u8 n -- img )
+: BUILD-IMAGE ( asm n str -- img )
    IMPORT-NAMES:SPAN!
    false X64 ! ASM-CODELEN!
    CODE-OFF - VMBASE !

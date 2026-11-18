@@ -32,7 +32,7 @@ variable CLOSED-FD
 : ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
 : FILE$ ( -- str ) FILE FILE-U @ ;
 : FD@ ( -- fd ) FILE-FD @ >FD ;
-: NAME$ ( -- ^u8 n ) s" user.hb-xattr-test" ;
+: NAME$ ( -- str ) s" user.hb-xattr-test" ;
 
 : SETUP ( -- )
    s" hb-xattr" FS:MKTEMP-DIR {: path:^ u:n :}

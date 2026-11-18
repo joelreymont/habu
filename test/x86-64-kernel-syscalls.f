@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-syscalls.f - the syscall rows of src/habu/kernel-x64.f in the
 \ booted harness, cross-built for an x86-64 peer. The host checks each image's
 \ ELF header; running them is the peer's. The file rows work relative to the
@@ -122,7 +123,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    RAX ENGINE-GPR:X64-RBASE >R64 off MEM-OFF ASM-SINK ENC-LEA  0 G-PUSH ;
 
 \ Call a row with the machine stack a cell deeper than CALL-ROW, leaves it.
-: SHIFTED-ROW ( ^u8 n -- )
+: SHIFTED-ROW ( str -- )
    RAX ASM-SINK ENC-PUSH  ROW  RCX ASM-SINK ENC-POP ;
 
 : IO-CASE ( -- )
@@ -237,7 +238,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 : QUIT, ( n -- ) {: rc:n :} QUIET, rc N, s" die" ROW ;
 
 \ argv = /bin/sh -c text, envp = text or nothing.
-: SH-ARGV, ( ^u8 n -- ) {: a:^ u:n :}
+: SH-ARGV, ( str -- ) {: a:^ u:n :}
    s" /bin/sh" PATH, ARGV KEEP,  s" -c" PATH, ARGV CELL + KEEP,
    a u PATH, ARGV 2 CELL * + KEEP,  0 N, ARGV 3 CELL * + KEEP, ;
 : ENV, ( ^u8 n -- ) {: a:^ u:n :}
@@ -379,7 +380,7 @@ $410 constant PID2
 : FD-SLOT, ( n n -- ) {: fd:n slot:n :}  fd N, FDS slot CELL * + KEEP, ;
 
 \ A request running sh with the text, over the map at FDS of n slots.
-: SH-REQ, ( ^u8 n n -- ) {: a:^ u:n nfds:n :}
+: SH-REQ, ( str n -- ) {: a:^ u:n nfds:n :}
    a u SH-ARGV,  NO-ENV,
    s" /bin/sh" PATH, SPAWN-ABI:PATH REQ-CELL,  ARGV AT, SPAWN-ABI:ARGV REQ-CELL,
    ENVP AT, SPAWN-ABI:ENVP REQ-CELL,  0 N, SPAWN-ABI:CWD REQ-CELL,

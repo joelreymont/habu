@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-ffi.f - the FFI rows of src/habu/kernel-x64.f FFI, in the booted
 \ harness, cross-built for an x86-64 peer: one case per image. No libc symbol
 \ takes nine integer arguments, so a stub stands in.
@@ -32,7 +33,7 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 
 \ Call a row with the machine stack a cell deeper than ROW leaves it, so the
 \ trampoline's alignment takes its other case.
-: SHIFTED-ROW ( ^u8 n -- )
+: SHIFTED-ROW ( str -- )
    RAX ASM-SINK ENC-PUSH  ROW  RCX ASM-SINK ENC-POP ;
 
 : SUB, ( -- )                           \ ( x y -- x-y )
@@ -72,14 +73,14 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
    ARGS AT, FPS AT, STK AT, nstack N, ;
 
 \ A NUL-terminated copy of a string behind a jump, and its label.
-: C-TEXT, ( ^u8 n -- label ) {: a:^ u:n :}
+: C-TEXT, ( str -- label ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
    text LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN  0 ASM-SINK BUF:APPEND-BYTE
    past LBL,
    text ;
 
-: LIBC, ( ^u8 n -- )
+: LIBC, ( str -- )
    C-TEXT, {: name:label :}
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 

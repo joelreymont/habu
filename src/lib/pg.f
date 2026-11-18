@@ -1961,7 +1961,7 @@ public
    PEEK CMD-COUNT >COUNT ;
 
 
-: NAME$ ( PG:result col -- PG:result ^u8 n ) {: c:col :}
+: NAME$ ( PG:result col -- PG:result str ) {: c:col :}
    PEEK c COLUMN-AT LIB-FNAME {: p :}
    p NULL-ADDR? if E-COLUMN throw then
    p CSTR$ ;

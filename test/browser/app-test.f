@@ -57,7 +57,7 @@ variable BEFORE-U
 \ A method of non-ASCII text, so its length counts bytes, not characters.
 : METHOD$ ( -- str )  s" ui/notifications/tool-résult" ;
 : DATA$ ( -- str )  s\" \x00\x01\x02\x03\x04\x05\x06\xFD\xFE\xFF" ;
-: NAME$ ( -- ^u8 n )  s" naïve.bin" ;
+: NAME$ ( -- str )  s" naïve.bin" ;
 \ The composed page's title, which HTML must escape and the view must pass
 \ to the host as it is, with its space run, LF and CR.
 : TITLE$ ( -- str )  s\" Zürich  <part>\x0A& \"co\"\x0D" ;

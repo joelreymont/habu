@@ -812,7 +812,7 @@ variable OPEN-N
 
 \ ---- the input ----------------------------------------------------------------
 
-: HEAD$ ( n -- ^u8 n )
+: HEAD$ ( n -- str )
    SB-RESET
    s" Content-Length: " SB-APPEND
    FMT:SB-U
@@ -850,7 +850,7 @@ variable OPEN-N
    s" }" MSG+
    MSG$ ;
 
-: TELL ( ^u8 n ^u8 n -- )  TELL$ FRAMED ;
+: TELL ( str str -- )  TELL$ FRAMED ;
 
 : INITIALIZE$ ( -- str )
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}" ;
@@ -1002,7 +1002,7 @@ variable OPEN-N
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ URI+ s" }}" PAR+ ;
 
-: SAVES ( ^u8 n -- )  NAMING s" textDocument/didSave" PAR$ TELL ;
+: SAVES ( str -- )  NAMING s" textDocument/didSave" PAR$ TELL ;
 : CLOSE-WIRE ( str -- )  NAMING s" textDocument/didClose" PAR$ TELL ;
 : CLOSES ( ^u8 n -- )
    2dup CLOSE-WIRE
@@ -2414,7 +2414,7 @@ USE-MAX 1 + constant OVER-USINGS
 
 \ LSPT-WIDE's inferred effect nests 33 binders, more than an effect text holds:
 \ the check verifies it and warns at its name that the effect is not recorded.
-: WIDENS ( -- ^u8 n )
+: WIDENS ( -- str )
    s\" defer LSPT-MK ( -- a )\n: LSPT-UN ( forall<p,[ a -- ]> -- a ) drop LSPT-MK ;\n: LSPT-WIDE LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN LSPT-UN ;\n" ;
 
 : NOT-RECORDED-TURNS ( -- )
@@ -4786,7 +4786,7 @@ variable WS-ROOT-U
    {: i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
    s" textDocument/references" i iu p pu l c x xu AT-ASK-WITH ;
 
-: REF+ ( ^u8 n n n n -- )
+: REF+ ( str n n n -- )
    {: u:^ uu:n l:n c1:n c2:n :}
    MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"uri\":\"" MSG+ u uu MSG+

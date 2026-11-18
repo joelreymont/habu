@@ -262,7 +262,7 @@ public
 : KIND@ ( n -- n )
    F-KIND ROW-FIELD @ ;
 
-: NAME$ ( n -- ^u8 n ) {: row:n :}
+: NAME$ ( n -- str ) {: row:n :}
    NAMES row F-NAME-OFF ROW-FIELD @ +  row F-NAME-LEN ROW-FIELD @ ;
 
 : PKG$ ( n -- str ) {: row:n :}

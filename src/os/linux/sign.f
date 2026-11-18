@@ -3,7 +3,7 @@ split-str
 
 package ELF
 public
-: SET-SIGID ( ^u8 n -- )
+: SET-SIGID ( str -- )
    2drop ;
 
 : CODESIG2 ( img -- img ) ;

@@ -59,7 +59,7 @@ create BODY 4096 allot
    SERVER-U @ CHILD-U !
    s" tools/lsp.f" SERVER-ENTRY 2drop ;
 
-: STAGE ( CMD:command ^u8 n -- CMD:command )
+: STAGE ( CMD:command str -- CMD:command )
    {: entry:^ entryu:n :}
    PROJECT PROJECT-U @ CMD:CWD!
    \ Exercise a cold image build here, then reuse it for the nested entry.

@@ -1912,7 +1912,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 
 \ The finished reply's header block, in the request buffer, which grows to it.
-: HEAD$ ( n CURL:handle -- ^u8 n )
+: HEAD$ ( n CURL:handle -- str )
    {: idx:n h:CURL:handle :}
    idx REQUEST-BUF {: buf:^ :}
    buf BUF:CLEAR

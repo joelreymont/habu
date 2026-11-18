@@ -36,7 +36,7 @@ variable RC
 : TREE$ ( -- str ) TREE TREE-U @ ;
 : ENGINE$ ( -- ^u8 n ) ENGINE ENGINE-U @ ;
 
-: PATH! ( ^u8 n -- )
+: PATH! ( str -- )
    TREE$ 2swap PATH FS:JOIN-PATH PATH-U ! ;
 
 : COPY-SOURCE ( str -- ) {: rel:^ relu:n :}

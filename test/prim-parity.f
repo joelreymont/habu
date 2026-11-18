@@ -73,10 +73,10 @@ $3A constant COLON-B
 : ENC6 ( n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n :}
    a b ENC2 c ENC2 d ENC2 e ENC2 f ENC2 ;
 
-: SUBJ$ ( -- ^u8 n )
+: SUBJ$ ( -- str )
    SUBJ-BUF SUBJ-U @ ;
 
-: SUBJ! ( ^u8 n -- ) {: a:^ u:n :}
+: SUBJ! ( str -- ) {: a:^ u:n :}
    u SUBJ-CAP > IF s" prim-parity: primitive name too long" EXIT-STATUS:FAILURE die THEN
    a SUBJ-BUF u BYTE-COPY
    u SUBJ-U ! ;
@@ -94,7 +94,7 @@ $3A constant COLON-B
    s" prim-parity: no " type ka ku type s"  arm for " type na nu type cr
    s" prim-parity: unwired primitive" EXIT-STATUS:FAILURE die ;
 
-: LBL ( ^u8 n -- ) {: ta:^ tu:n :}   \ "<subject> <tail>" as the failure label
+: LBL ( str -- ) {: ta:^ tu:n :}   \ "<subject> <tail>" as the failure label
    SUBJ-U @ tu + 1+ LBL-CAP > IF s" prim-parity: label too long" EXIT-STATUS:FAILURE die THEN
    SUBJ-BUF LBL-BUF SUBJ-U @ BYTE-COPY
    $20 LBL-BUF SUBJ-U @ + c!
@@ -314,7 +314,7 @@ $3A constant COLON-B
 \ covers both rows. `PTR>N` reads no memory: the value is a byte offset into
 \ FIX-CELLS, answered back as the number less FIX-CELLS's own distance from
 \ NULL-PTR.
-: MEM-PRIM ( n ^u8 n -- n ) {: v:n na:^ nu:n :}
+: MEM-PRIM ( n str -- n ) {: v:n na:^ nu:n :}
    na nu s" !" STR= IF
       v FIX-CELLS ! FIX-CELLS @ EXIT THEN
    na nu s" c!" STR= IF

@@ -1,3 +1,4 @@
+split-str
 \ x86-64-peer-harness.f - the checks, exit and ELF writer of the images an
 \ x86-64 peer runs: an image stages after ASM-RESET and ends with WRITE.
 require src/lib/test.f

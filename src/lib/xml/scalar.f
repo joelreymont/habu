@@ -91,7 +91,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    then ;
 
 \ The offset of the first byte above $7F, or n when there is none.
-: HIGH-BYTE ( ^u8 n -- n )
+: HIGH-BYTE ( str -- n )
    {: source size:n :}
    size 0 ?do source i + c@ $7F > if i unloop exit then loop
    size ;
@@ -138,7 +138,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    E-ENTITY REJECT-FROM ;
 
 \ The value of a digit of the reference at amp.
-: HEX-DIGIT ( ^u8 n place n n -- n )
+: HEX-DIGIT ( str place n n -- n )
    {: source size:n at:place amp:n byte:n :}
    byte STR-HEX-DIGIT? 0= if source size at amp DIGIT-REJECT then
    byte STR-HEX-DIGIT-VALUE ;

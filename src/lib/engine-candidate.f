@@ -18,7 +18,7 @@ package ENGINE-CANDIDATE
 private
 
 \ A gate names the freshly built candidate here.
-: NAME$ ( -- ^u8 n )  s" HABU_UNDER_TEST" ;
+: NAME$ ( -- str )  s" HABU_UNDER_TEST" ;
 
 PATH-CAP BUFFER: JOINED
 

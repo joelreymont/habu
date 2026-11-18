@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-pure.f - the pure-op rows of the x86-64 kernel
 \ (src/habu/kernel-x64.f PURE,) in the booted harness, cross-built for an x86-64
 \ peer. The cases are the parity gate's: test/prim-cases.f and
@@ -40,9 +41,9 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 : CALL ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
 
 \ ---- the subject and its case text -------------------------------------------
-: SUBJ$ ( -- ^u8 n ) SUBJ-BUF SUBJ-U @ ;
+: SUBJ$ ( -- str ) SUBJ-BUF SUBJ-U @ ;
 
-: SUBJ! ( ^u8 n -- ) {: a:^ u:n :}
+: SUBJ! ( str -- ) {: a:^ u:n :}
    u 0= if s" x64k-pure: CASES needs a primitive name" SETUP-RC die then
    u SUBJ-CAP > if s" x64k-pure: primitive name too long" SETUP-RC die then
    a SUBJ-BUF u BYTE-COPY
@@ -50,7 +51,7 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 
 \ `x64k-pure: <name> overload <n> case <k>`, the text a failing check writes,
 \ in the string builder: PUSH-TEXT, copies it into the image.
-: CASE$ ( -- ^u8 n )
+: CASE$ ( -- str )
    SB-RESET
    s" x64k-pure: " SB-APPEND  SUBJ$ SB-APPEND
    s"  overload " SB-APPEND  OVERLOAD @ FMT:SB-INT
@@ -212,7 +213,7 @@ private
 
 \ The host checks each image's ELF header; the peer runs each and must see its
 \ status.
-: CLOSE-IMAGE ( ^u8 n -- )
+: CLOSE-IMAGE ( str -- )
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,
    X64HARNESS:BOOT-CLOSE, ;
@@ -247,7 +248,7 @@ $40 constant GOT-CAP
    0 G-PUSH ;
 
 \ A double's bits through f., and the line it must write.
-: FDOT ( n ^u8 n -- ) {: bits:n a:^ u:n :}
+: FDOT ( n str -- ) {: bits:n a:^ u:n :}
    CASE+  bits N,  ROW
    RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" CALL  u WANT
    a u SAME,  0 WANT  SETTLED ;

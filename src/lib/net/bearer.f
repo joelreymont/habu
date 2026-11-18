@@ -645,7 +645,7 @@ ENUM lookup-step
    rest WELL-KNOWN nip + ru WELL-KNOWN nip - PATH? 0= if E-OPERAND throw then
    end ;
 
-: SCOPES+ ( ^JSON:writer ^u8 n n -- ^JSON:writer )
+: SCOPES+ ( ^JSON:writer str n -- ^JSON:writer )
    {: s:^ su:n from:n :}
    from begin {: at:n :}
       s su at SPACE-AT {: to:n :}
@@ -979,7 +979,7 @@ private
 \ when absent, decoded into the BUF past the answer's bytes, the refresh token
 \ right after the access token, and its expires_in. They are disjoint parts of
 \ the answer and a decoded string never outgrows its text, so both fit.
-: ISSUED ( n ^n bool -- ^u8 n ^u8 n n )
+: ISSUED ( n ^n bool -- str str n )
    {: status:n buf:^ renew:bool :}
    buf BUF:LEN@ {: u:NUM:byte-len :}
    buf u BUF:GROW {: room :}

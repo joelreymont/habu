@@ -71,7 +71,7 @@ variable GT-PROGRESS-START-NS
 : GT-ROOT ( -- str )
    GT-ROOT-BUF GT-ROOT-U @ ;
 
-: GT-OUT$ ( -- ^u8 n )
+: GT-OUT$ ( -- str )
    0 GT-OUT-BYTES GT-OUT-U @ ;
 
 : GT-ERR$ ( -- str )
@@ -377,7 +377,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    cr
    GT-REPORT ;
 
-: GT-START ( ^u8 n -- ) {: prefix:^ prefixu :}
+: GT-START ( str -- ) {: prefix:^ prefixu :}
    GT-RESET
    FS:CLEANUP-RESET
    0 GT-ROOT-U !

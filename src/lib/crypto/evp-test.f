@@ -86,7 +86,7 @@ variable FILL-N
    value FILL-AT FILL-N @ + c!
    FILL-N @ 1+ FILL-N ! ;
 
-: HEX, ( ^u8 n -- ) {: text u:n :}
+: HEX, ( str -- ) {: text u:n :}
    u 2 mod 0 <> if E-VECTOR throw then
    u 2 / 0 ?do
       text i 2 * + c@ NIBBLE 4 lshift

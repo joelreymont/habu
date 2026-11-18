@@ -1,3 +1,4 @@
+split-str
 \ A fixed-segment x86-64 ELF writer. The caller owns the descriptor and the
 \ three initialized spans; this file owns the ELF header, dynamic tail and
 \ zero padding between the segments.

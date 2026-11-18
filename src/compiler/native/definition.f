@@ -87,7 +87,7 @@ public
 : DOES-BYTE@ ( -- n )
    data-base DOESB-CELL + @ ;
 
-: NAME$ ( -- ^u8 n )
+: NAME$ ( -- str )
    NAME-A @ NAME-U @ ;
 
 \ A compiler entry reached while a compilation runs would stage one definition

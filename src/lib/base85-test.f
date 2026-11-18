@@ -38,7 +38,7 @@ variable STAGED-LEN
 
 
 \ A refusal runs in a quotation, which sees no locals, so its input is staged.
-: STAGE ( ^u8 n -- )
+: STAGE ( str -- )
    {: a u:n :}
    a u STAGED SPAN:COPY
    u STAGED-LEN ! ;

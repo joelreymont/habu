@@ -1,3 +1,4 @@
+split-str
 \ x86-64-asm.f - the x86_64 encoder suite (package X64ASM,
 \ src/arch/x86-64/asm.f). Each expected byte string came from
 \ `llvm-mc -triple=x86_64 -show-encoding` (LLVM 22.1.8) on the source line in
@@ -36,7 +37,7 @@ create SINK BUF:HDR-BYTES allot
    a i 2 * + c@ HEX-DIGIT 4 lshift
    a i 2 * 1 + + c@ HEX-DIGIT or ;
 
-: SPAN=HEX? ( ^u8 n ^u8 n -- bool ) {: da:^ dlen:n ea:^ eu:n :}
+: SPAN=HEX? ( ^u8 n str -- bool ) {: da:^ dlen:n ea:^ eu:n :}
    eu 2 mod 0<> if FMATH:E-DOMAIN throw then
    dlen eu 2 / <> if false exit then
    dlen 0 ?do

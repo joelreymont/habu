@@ -1,3 +1,4 @@
+split-str
 \ linux-x86-64 runtime/build-script target flag and the OS's path capacity.
 
 : HB-TARGET-LINUX? ( -- bool )
@@ -15,7 +16,7 @@
 : HB-TARGET-WASM? ( -- bool )
    0 0= 0= ;
 
-: HB-TARGET$ ( -- ^u8 n )
+: HB-TARGET$ ( -- str )
    s" linux-x86-64" ;
 
 \ The OS's PATH_MAX (linux/limits.h, 4096) less its NUL.

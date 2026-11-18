@@ -58,7 +58,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 
 : SPAN+ ( ^u8 n -- ) BYTES+ PAD+ ;
 
-: NAME+ ( ^u8 n -- ) dup U64+ SPAN+ ;
+: NAME+ ( str -- ) dup U64+ SPAN+ ;
 
 
 : SECTION ( -- ) OUT-U @ COUNT-AT !  0 COUNT-N !  0 U64+ ;
@@ -66,11 +66,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 : ;SECTION ( -- ) COUNT-N @  0 OUT COUNT-AT @ + LE:U64! ;
 
 
-: SYM+ ( ^u8 n n -- )
+: SYM+ ( str n -- )
    {: a:^ u:n v:n :}
    a u NAME+  v U64+  ENTRY ;
 
-: IMPORTS+ ( n [ n -- ^u8 n ] -- )
+: IMPORTS+ ( n [ n -- str ] -- )
    {: n:n name :}
    OUT-U @ {: at:n :}
    0 U64+

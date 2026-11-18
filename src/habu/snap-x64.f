@@ -1,3 +1,4 @@
+split-str
 \ Persist a fixed-address x86-64 snapshot using SNAP's canonical copies and
 \ publication lifecycle. Loaded only on the x86-64 target after snap-lib.f.
 require src/core/exit-status.f

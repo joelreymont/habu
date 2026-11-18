@@ -53,7 +53,7 @@ public
    xt bytes CODE-BYTES:AT drop {: a:^ :}
    xt a bytes WALK ;
 
-: FIND-XT ( ^u8 n -- n )
+: FIND-XT ( str -- n )
    get-current XREF-FIND-WL
    dup XREF-FOUND? 0= if drop s" code-dump: target word not found" EXIT-STATUS:NOINPUT die then
    XREF-START ;

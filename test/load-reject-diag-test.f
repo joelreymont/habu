@@ -206,7 +206,7 @@ variable RC
    post postu SB-APPEND
    path pathu SB$ FS:WRITE-ALL ;
 
-: PATH! ( ^u8 n ^u8 ^n -- )
+: PATH! ( str ^u8 ^n -- )
    {: name:^ nameu:n dst:^ lenp:^ :}
    BASE$ name nameu dst FS:JOIN-PATH lenp ! ;
 
@@ -1378,7 +1378,7 @@ variable LONG-U
    a LONG LONG-U @ + u BYTE-COPY  u LONG-U +! ;
 
 \ A missing path of 4223 bytes, which CANONICAL normalizes past the cap.
-: LONG$ ( -- ^u8 n )
+: LONG$ ( -- str )
    0 LONG-U !  S\" s\" /x/" LONG+
    LONG-QS 0 ?do [char] q LONG LONG-U @ + c!  1 LONG-U +! loop
    S\" \" SOURCE-ROOT:CANONICAL drop 2drop" LONG+

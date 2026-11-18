@@ -1,3 +1,4 @@
+split-str
 \ icode.f - X64CODE, the x86-64 code layer: ASM-SINK, the sink X64ASM
 \ (src/arch/x86-64/asm.f) appends every instruction to, and the labels a stream
 \ branches to; the counterpart of src/arch/arm64/icode.f. The seam

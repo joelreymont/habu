@@ -2,5 +2,5 @@ split-str
 \ The shared spelling of a defining word's companion clause.
 package DOES-CLAUSE
 public
-: SUFFIX$ ( -- ^u8 n ) s" ;does" ;
+: SUFFIX$ ( -- str ) s" ;does" ;
 ;package

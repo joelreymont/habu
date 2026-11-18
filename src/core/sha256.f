@@ -252,7 +252,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    dg out SHA256>HEX
    0 ;
 
-: SHA256-FILE-IN ( ^u8 ^u8 n ^u8 -- n )
+: SHA256-FILE-IN ( ^u8 str ^u8 -- n )
    {: fctx a u:n out :}
    fctx SHA-FILE-PATH {: pz :}
    a u pz PATH-CAP 1+ PATHZ

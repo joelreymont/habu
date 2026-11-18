@@ -18,7 +18,7 @@ variable DRV-WFD
    DRV-WFD @ close ;
 
 public
-: DRV-WRITE-IMAGE ( img ^u8 n -- ) {: phase path:^ pathu :}
+: DRV-WRITE-IMAGE ( img str -- ) {: phase path:^ pathu :}
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
 ;package

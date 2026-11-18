@@ -1,3 +1,4 @@
+split-str
 \ x86-64-kernel-crash.f - the crash handler src/habu/boot-x64.f START,
 \ installs, in the booted harness, cross-built for an x86-64 peer. Each image
 \ forks a child that faults with a pipe on fd 2; the parent checks the wait
@@ -63,7 +64,7 @@ variable SKIP-AT
    b WANT-BUF WANT-N @ + c!
    WANT-N @ 1+ WANT-N ! ;
 
-: WANT-TEXT ( ^u8 n -- ) {: a:^ u:n :}  u 0 ?do  a i + c@ WANT-BYTE  loop ;
+: WANT-TEXT ( str -- ) {: a:^ u:n :}  u 0 ?do  a i + c@ WANT-BYTE  loop ;
 
 : HEX-CHAR ( n -- n ) {: d:n :}  s" 0123456789abcdef" drop d + c@ ;
 
@@ -85,7 +86,7 @@ variable SKIP-AT
    DIGITS 0 ?do  [char] ? WANT-BYTE  loop
    STR-LF WANT-BYTE ;
 
-: HEAD$ ( -- ^u8 n )
+: HEAD$ ( -- str )
    S\" habu-crash regs [sig rax rcx rdx rbx rsp rbp rsi rdi r8..r15 rip] code [rip-8 rip rip+8], hex one-per-line:\n" ;
 
 \ The value a dump image gives register n, rbp the one given: the others hold
@@ -116,7 +117,7 @@ RBP R64>N TURNED constant WILD-RBP
    lo MEMORY-LINE  mid MEMORY-LINE  hi MEMORY-LINE ;
 
 \ A guard hit's one line, compared whole.
-: LINE-TEXT ( ^u8 n -- )
+: LINE-TEXT ( str -- )
    0 WANT-N !  WANT-TEXT  WANT-N @ SKIP-AT ! ;
 
 \ ---- the children ------------------------------------------------------------

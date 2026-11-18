@@ -344,7 +344,7 @@ public
    then
    CODESIGN-TARGET-UNKNOWN ;
 
-: FORCE ( ^u8 n -- ) {: a:^ u:n :}
+: FORCE ( str -- ) {: a:^ u:n :}
    a u CODESIGN-LINUX? if a u CODESIGN-LINUX-FORCE exit then
    HB-TARGET-MACOS? if a u CODESIGN-MACOS-FORCE exit then
    CODESIGN-TARGET-UNKNOWN ;

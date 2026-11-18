@@ -1,3 +1,4 @@
+split-str
 \ target-layout.f -- the linux-x86-64 target's layout for a cross build,
 \ package X64LAYOUT.
 \ The host's layout names the host's own DATA (a macOS host maps it at

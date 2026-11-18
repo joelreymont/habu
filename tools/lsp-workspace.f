@@ -132,7 +132,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ ---- the nodes, indexed by path and root ----------------------------------------
 
-: MIX ( n ^u8 n -- n )
+: MIX ( n str -- n )
    {: h:n a:^ u:n :}
    h a u FNV:BYTES u FNV:STEP ;
 
@@ -140,7 +140,7 @@ variable CUR-ROOT                        \ and the root being walked
    {: a:^ u:n r:^ ru:n :}
    FNV:BASIS a u MIX r ru MIX ;
 
-: SAME? ( n ^u8 n ^u8 n n -- bool )
+: SAME? ( n str str n -- bool )
    {: id:n a:^ u:n r:^ ru:n h:n :}
    id N-HASH NODE@ h <> if false exit then
    id PATH$ a u STR= id DIR$ r ru STR= and ;

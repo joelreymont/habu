@@ -1,3 +1,4 @@
+split-str
 \ crash-x64.f - the x86-64 fault records and die lines, package X64CRASH: the
 \ twin of src/habu/crash.f's emitters over package FAULT-RECORD's texts. A site emits
 \ FAULT-OPEN,, any notes, then FAULT-STOP, or FAULT-KEEP,. Each part's text is
@@ -220,7 +221,7 @@ variable DIE-CELL
    FLUSH,
    RDI R10 MOV,  NR-EXIT-GROUP SYS, ;
 
-: DIE-LINE-SITE, ( ^u8 n n n -- )
+: DIE-LINE-SITE, ( str n n -- )
    LBL {: a:^ u:n status:n flag:n msg:label :}
    u 0= u DIE-LINE-ROOM > or IF
       s" x64crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" EXIT-STATUS:INTERNAL die
@@ -248,7 +249,7 @@ public
 public
 \ Opens a record with its code and message: rsp drops FAULT-FRAME, r9 = its
 \ start and r8 the cursor, r10 = the JSON flag.
-: FAULT-OPEN, ( ^u8 n ^u8 n -- )
+: FAULT-OPEN, ( str str -- )
    FAULT-OPEN
    RSP FAULT-FRAME >IMM32 ASM-SINK ENC-SUB-RI32
    FRAME-REG RSP MOV,  CUR-REG RSP MOV,
@@ -275,7 +276,7 @@ public
    done LBL, ;
 
 \ A note with the register's value in decimal.
-: FAULT-NUMBER, ( ^u8 n r64 -- ) {: k:^ ku:n r:r64 :}
+: FAULT-NUMBER, ( str r64 -- ) {: k:^ ku:n r:r64 :}
    r PUSH,
    k ku NOTE+  PIECE,
    RAX POP,  DEC-LBL CALL, ;
@@ -288,20 +289,20 @@ public
    RDX POP,  RSI POP,  RDI JSON-REG MOV,  PUT-LBL CALL, ;
 
 \ A note with the address in the register, `0x` and 16 hex digits.
-: FAULT-ADDRESS, ( ^u8 n r64 -- ) {: k:^ ku:n r:r64 :}
+: FAULT-ADDRESS, ( str r64 -- ) {: k:^ ku:n r:r64 :}
    r PUSH,
    k ku FAULT-ADDRESS  PIECE,
    RAX POP,  HEX, ;
 
 \ Ends the record with its help and exits with the status.
-: FAULT-STOP, ( ^u8 n n -- ) {: h:^ hu:n status:n :}
+: FAULT-STOP, ( str n -- ) {: h:^ hu:n status:n :}
    h hu FAULT-STOP
    PIECE,  FLUSH,
    RDI status IMM32,  NR-EXIT-GROUP SYS, ;
 
 \ Ends the record with its help, none for an empty text, and returns, rsp as
 \ FAULT-OPEN, found it.
-: FAULT-KEEP, ( ^u8 n -- )
+: FAULT-KEEP, ( str -- )
    FAULT-KEEP
    PIECE,  FLUSH,
    RSP FAULT-FRAME >IMM32 ASM-SINK ENC-ADD-RI32 ;

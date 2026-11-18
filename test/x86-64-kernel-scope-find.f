@@ -1,3 +1,4 @@
+split-str
 \ Real x86-64 kernel images exercise scope-find with and without the name
 \ index. The emitted ELFs remain in TMPDIR for replay on the x86-64 peer.
 require test/x86-64-boot-harness.f

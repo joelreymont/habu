@@ -70,7 +70,7 @@ SOCKADDR-BYTES TASK:+USERS ADDRESS-ROW u8
 
 
 \ A C string; the length counts its NUL.
-: PATH! ( ^u8 n -- n ) {: name size:n :}
+: PATH! ( str -- n ) {: name size:n :}
    name size 0 PATH-SPAN FFI:CSTR drop size 3 + ;
 
 
@@ -88,7 +88,7 @@ SOCKADDR-BYTES TASK:+USERS ADDRESS-ROW u8
 
 
 \ Answers the address length; the empty name is the header alone.
-: ADDRESS! ( ^u8 n -- n )
+: ADDRESS! ( str -- n )
    NAME! dup SOCKADDR HEADER! ;
 
 

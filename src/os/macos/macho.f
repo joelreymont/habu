@@ -55,7 +55,7 @@ $4000     constant DATA-CONST-SIZE
 public
 \ The libSystem functions and variables dyld binds into the GOT of the tree's
 \ kernel, in slot order, by C name; the kernel object carries them to the link.
-: IMPORT$ ( n -- ^u8 n )
+: IMPORT$ ( n -- str )
    case
       0 of s" dlopen" endof
       1 of s" dlsym" endof
@@ -69,7 +69,7 @@ public
 7 constant IMPORTS
 
 \ The row whose C name this is; the build dies on a name the table lacks.
-: IMPORT-ROW ( ^u8 n -- n )
+: IMPORT-ROW ( str -- n )
    {: a:^ u:n :}
    IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
    SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
@@ -81,7 +81,7 @@ private
 
 \ Darwin's plain realpath is its legacy entry, which reads every parent
 \ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
-: SUFFIX$ ( ^u8 n -- ^u8 n )
+: SUFFIX$ ( str -- str )
    s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
 
 \ A name's symbol is an underscore, the name, then the suffix.
@@ -148,7 +148,7 @@ PTR-VARIABLE SIGA  variable SIGU
    SIGA ! ;
 
 public
-: SET-SIGID ( ^u8 n -- ) {: a:^ u:n :}
+: SET-SIGID ( str -- ) {: a:^ u:n :}
    a SIGA!
    u SIGU ! ;
 
@@ -333,7 +333,7 @@ variable NCMDS
 public
 \ The program in icode's CODE as a Mach-O file whose code maps at the address,
 \ its GOT binding the import names given.
-: BUILD-IMAGE ( asm n ^u8 n -- img )
+: BUILD-IMAGE ( asm n str -- img )
    IMPORT-NAMES:SPAN!
    CODE-OFF - VMBASE !
    ASM-DROP

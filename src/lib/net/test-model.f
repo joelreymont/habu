@@ -30,7 +30,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : ROW ( -- ^n ) SLOT BUF:HDR-BYTES * HEADS + CELL-VIEW ;
-: ROW$ ( -- ^u8 n ) ROW BUF:SPAN$ BUF:BLEN>N ;
+: ROW$ ( -- str ) ROW BUF:SPAN$ BUF:BLEN>N ;
 
 
 : READY ( -- )

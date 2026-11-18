@@ -34,7 +34,7 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
 : A$ ( n -- str )
    A-BYTES SPAN:$ drop swap ;
 
-: HEX$ ( SHA1:digest -- ^u8 n )
+: HEX$ ( SHA1:digest -- str )
    DG SHA1:DIGEST!
    DG SPAN:$ drop {: d :}
    HEX SPAN:$ drop {: h :}

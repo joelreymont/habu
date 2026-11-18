@@ -14,9 +14,9 @@ create ERR CAP allot
 TYPED-VARIABLE SRC-U len
 
 : SRC-RESET ( -- )   SRC-U BUF-RESET ;
-: S+ ( ^u8 n -- )   SRC-BUF CAP SRC-U BUF-APPEND ;
+: S+ ( str -- )   SRC-BUF CAP SRC-U BUF-APPEND ;
 : SRC$ ( -- ^u8 n )   SRC-BUF SRC-U @ LEN>N ;
-: S+N ( ^u8 n n -- ) {: a:^ u:n k:n :}   k 0 ?do a u S+ loop ;
+: S+N ( str n -- ) {: a:^ u:n k:n :}   k 0 ?do a u S+ loop ;
 
 \ The input of a quotation nested k deep, each the input of the next.
 : QUOT-INPUT ( n -- ) {: k:n :}

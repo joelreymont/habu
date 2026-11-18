@@ -1,3 +1,4 @@
+split-str
 \ code-dump-x64.f - the live Intel code dump and its bounded byte decoder.
 \ Needs a native x86-64 engine.
 

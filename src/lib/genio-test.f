@@ -107,7 +107,7 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ ---- reading through the device ------------------------------------------------
 
-: SAME? ( ^u8 n n -- bool ) {: a:^ u:n c:n :}
+: SAME? ( str n -- bool ) {: a:^ u:n c:n :}
    u 0 ?do a i + c@ c <> if false unloop exit then loop
    true ;
 

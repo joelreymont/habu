@@ -46,7 +46,7 @@ variable HELD-U
    TEXT TEXT-U @ TEXT-RECORD
    HELD @ HELD-U @ FREE  0 HELD-U ! ;
 
-: SAME? ( ^u8 n ^u8 n -- bool )
+: SAME? ( str str -- bool )
    {: a:^ au:n b:^ bu:n :}
    a BYTES>N b BYTES>N =  au bu =  and ;
 

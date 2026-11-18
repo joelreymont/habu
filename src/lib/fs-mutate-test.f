@@ -1215,7 +1215,7 @@ variable WANT-U
 
 \ A directory one byte past the longest TMPDIR with room for the temp name
 \ PROG-SRC$ asks for, whose prefix is tmpdir-child.
-: LONG$ ( -- ^u8 n )
+: LONG$ ( -- str )
    s" tmpdir-child" nip FS:TEMP-DIR-BASE-MAX 1+ FMT-DEEP-DIR ;
 
 : CHILD-ENV ( str -- ) {: a:^ u :}
@@ -1967,7 +1967,7 @@ variable DIR-U
 : DIR$ ( -- str ) DIR-BUF DIR-U @ SPAN:TAKE SPAN:$ ;
 
 \ File i's path, valid until the next call.
-: NAME$ ( n -- ^u8 n ) {: i :}
+: NAME$ ( n -- str ) {: i :}
    SB-RESET
    DIR$ SB-APPEND
    s" /f-" SB-APPEND
@@ -2022,7 +2022,7 @@ variable DONE
 : NONE$ ( -- str ) P-NONE P-NONE-U @ ;
 
 \ File i's path, valid until the next call.
-: NAME$ ( n -- ^u8 n ) {: i :}
+: NAME$ ( n -- str ) {: i :}
    SB-RESET
    s" f-" SB-APPEND
    i FMT:SB-U

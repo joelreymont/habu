@@ -37,7 +37,7 @@ variable REPORT-FD
    s" usage: bin/hb --load tools/build-profile.f -- [--target name] (--engine | source.f) <out> <text-report> <json-report>"
    EXIT-STATUS:USAGE die ;
 
-: SOURCE$ ( -- ^u8 n )   FIRST SCRIPT-ARGV$ ;
+: SOURCE$ ( -- str )   FIRST SCRIPT-ARGV$ ;
 : OUT$    ( -- ^u8 n )   SCRIPT-ARGC 3 - SCRIPT-ARGV$ ;
 : TEXT$   ( -- ^u8 n )   SCRIPT-ARGC 2 - SCRIPT-ARGV$ ;
 : JSON$   ( -- str )   SCRIPT-ARGC 1 - SCRIPT-ARGV$ ;

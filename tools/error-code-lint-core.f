@@ -165,7 +165,7 @@ variable JX
 : NAME@  ( n -- intern-id ) CLAIM-ROWS CLAIM-NAME @ ;
 : OWNER@ ( n -- file-id )   CLAIM-ROWS CLAIM-OWNER @ ;
 
-: NAME$ ( intern-id -- ^u8 n ) NAME>N INTERN$ ;
+: NAME$ ( intern-id -- str ) NAME>N INTERN$ ;
 : FILE$ ( file-id -- str ) FILE>N INTERN$ ;
 : STEM-NAME$ ( stem-id -- str ) STEM>N INTERN$ ;
 
@@ -176,7 +176,7 @@ variable JX
    code name file CLAIM-MAKE CLAIM# @ CLAIM-ROWS !
    CLAIM# @ 1+ CLAIM# ! ;
 
-: PATH! ( ^u8 n -- ) {: a:^ u:n :}
+: PATH! ( str -- ) {: a:^ u:n :}
    u PATH-CAP > if s" error-code-lint: path too long" EXIT-STATUS:FULL die then
    a PATH u LINT-BMOVE  u PATH-U ! ;
 

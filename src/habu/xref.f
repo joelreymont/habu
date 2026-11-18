@@ -309,7 +309,7 @@ INSTALL
 
 \ A miss in the global wordlist answers the walk of WL:PRIMITIVES, the
 \ built-ins' wordlist (kernel-x64.f FIND-HELPER, does the same).
-: XREF-FIND-WL-INDEX ( ^u8 n n -- n ) {: a:^ u:n wid:n :}
+: XREF-FIND-WL-INDEX ( str n -- n ) {: a:^ u:n wid:n :}
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
    begin dup 0 >= while

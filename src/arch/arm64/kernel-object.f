@@ -113,7 +113,7 @@ variable K0                          \ the kernel's first word position
    then ;
 
 
-: LSYM+ ( ^u8 n label -- ) LABEL>N SYM+ ;
+: LSYM+ ( str label -- ) LABEL>N SYM+ ;
 
 : COMMON-SYMBOLS ( -- )
    s" K0" K0 @ SYM+

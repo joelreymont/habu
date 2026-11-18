@@ -577,7 +577,7 @@ generates: FAULT ( -- n )
    ROW-FAULT? ;
 
 \ The name or text a code's declaration gave it, empty when none.
-: NAME$ ( n -- ^u8 n )
+: NAME$ ( n -- str )
    FIND dup NULL-PTR = if drop s" " exit then
    ROW-NAME$ ;
 
