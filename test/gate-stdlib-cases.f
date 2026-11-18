@@ -1412,19 +1412,11 @@ SUITE type-match
    test/type-match-suite.f
 ;SUITE
 
-\ The sequential group comes last. Entering it drains the pool (GROUP-HEADER in
-\ src/lib/test/suite.f), so anywhere earlier every slot idles until the rows before
-\ it finish, and the rows after it start only when it ends.
-GROUP SEQ native-serial-gates
-
-\ The PTY REPL fixture starts and reaps four engine children: in the idle serial
-\ group a saturated suite pool cannot eat its fixed 20 s child-reap budget.
 SUITE repl-address-cell-rollback
    test/repl-address-cell-rollback.f
 ;SUITE
 
-\ The open-definition PTY fixture starts and reaps one engine child per case,
-\ under the same fixed reap budget.
+\ The open-definition PTY fixture starts and reaps one engine child per case.
 SUITE repl-open-definition
    test/repl-open-definition.f
 ;SUITE
@@ -1433,8 +1425,6 @@ SUITE repl-open-definition
 SUITE dictionary-zero
    test/dictionary-zero.f
 ;SUITE
-
-;GROUP
 
 RUN
 
