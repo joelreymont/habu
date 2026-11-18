@@ -471,11 +471,8 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    s" : CDD-PB1 ( -- ) does> ( -- n ) drop 9 ;"
       s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED
    s" a head that bends before a word's first call is still rejected" T-LABEL
-   s\" : CDD-PB5 ( -- ) false if then s\" CDD-PB5\" XREF:HIDE-DEFS-FROM create 5 , does> ( -- n ) @ ;"
-      s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED
-   s" a word created over a forgotten definition's ordinal starts unlinked" T-LABEL
-   s\" public : CDD-FD ( -- n ) 5 ; private s\" CERTIFY-DOES-DEFINER:CDD-FD\" XREF:FORGET-DEFS-FROM create CDD-FX" TEST-EVAL:RC 0 T=
-   s" : CDD-FG ( -- ^n ) CDD-FX ;" TEST-EVAL:RC  0 T= ;
+   s" : CDD-PB5 ( -- ) false if then depth drop create 5 , does> ( -- n ) @ ;"
+      s" `does>` needs a word this definition creates" CDD-NOT-CERTIFIED ;
 
 \ Section 16: the qualified definer's created word gives the clause's cells.
 : CDD-SECTION-QUALIFIED ( -- )

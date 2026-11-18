@@ -1,7 +1,6 @@
 split-str
-\ seal.f - seal regressions: post-seal FORGET and HIDE of engine words are
-\ rejected (E-SEAL-VIOLATION, status 70), and a sealed package rejects a
-\ definition into it, under --load and in an evaluated source.
+\ seal.f - seal regressions: a sealed package, and every engine package hb's
+\ build seals, rejects a definition into it, under --load and in a SUBJECT fork.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
@@ -48,92 +47,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-LF ( -- )
    10 SB-APPEND-C ;
 
-\ XREF:FORGET-DEFS-FROM removes a user word, every later one and their
-\ code, and a word defined after it still calls an earlier one.
-: SLV-FORGET-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-A ( -- n ) 1 ;" SB-APPEND SLV-LF
-   s" : SLF-B ( -- n ) 2 ;" SB-APPEND SLV-LF
-   S\" s\" SLF-B\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
-   s" : SLF-C ( -- n ) SLF-A 3 + ;" SB-APPEND SLV-LF
-   s" SLF-C . cr" SB-APPEND SLV-LF
-   SB$ ;
-
-\ Sealed-dictionary truncation guard: FORGET-DEFS-FROM and HIDE-DEFS-FROM
-\ truncate ndict (FORGET also rewinds CP) to a name's dict index. An index below
-\ the seal-time watermark SEAL-NDICT-CELL, the engine's record count, would
-\ retire engine definitions and rewind CP into engine code, so post-seal source
-\ is rejected (E-SEAL-VIOLATION). `WORDS` is an
-\ engine word (xref.f), well below the watermark.
-: SLV-FORGET-ENGINE-FORGE$ ( -- str )
-   SB-RESET
-   S\" s\" WORDS\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
-: SLV-HIDE-ENGINE-FORGE$ ( -- str )
-   SB-RESET
-   S\" s\" WORDS\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
-\ The engine-prefix tail: src/os/script-argv.f loads after xref.f, and the
-\ watermark counts every engine-prefix record, so the tail is rejected like any
-\ engine definition.
-: SLV-FORGET-TAIL-FORGE$ ( -- str )
-   SB-RESET
-   S\" s\" SCRIPT-ARGV$\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
-: SLV-HIDE-TAIL-FORGE$ ( -- str )
-   SB-RESET
-   S\" s\" SCRIPT-ARGV$\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
-: SLV-FORGET-DOES-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-DEF ( n -- ) create , does> ( -- n ) @ ;" SB-APPEND SLV-LF
-   s" 5 SLF-DEF SLF-FIVE" SB-APPEND SLV-LF
-   S\" s\" SLF-DEF;does\" XREF:FORGET-DEFS-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
-: SLV-HIDE-DOES-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-DEF ( n -- ) create , does> ( -- n ) @ ;" SB-APPEND SLV-LF
-   s" 5 SLF-DEF SLF-FIVE" SB-APPEND SLV-LF
-   S\" s\" SLF-DEF;does\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
-\ A user mark defined after the seal is above the watermark, so HIDE of it works.
-: SLV-HIDE-USER-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
-   s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
-   S\" s\" SLF-UMARK\" XREF:HIDE-DEFS-FROM" SB-APPEND SLV-LF
-   SB$ ;
-
-\ A failed evaluate keeps the words a forget inside it removed.
-: SLV-EVAL-FORGET-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-J ( -- n ) 7 ;" SB-APPEND SLV-LF
-   s" : SLF-K ( -- n ) 41 ;" SB-APPEND SLV-LF
-   s" : SLF-L ( -- n ) 42 ;" SB-APPEND SLV-LF
-   S\" S\\\" s\\\" SLF-K\\\" XREF:FORGET-DEFS-FROM" SB-APPEND
-   s"  : SLF-M ( -- n ) 0" SB-APPEND
-   5 0 ?do s"  ndict@ max cp@ max" SB-APPEND loop
-   S\"  ; 1 throw\" TEST-EVAL:RC drop" SB-APPEND SLV-LF
-   s" SLF-J . cr" SB-APPEND SLV-LF
-   s" SLF-L . cr" SB-APPEND SLV-LF
-   SB$ ;
-
-\ A failed evaluate keeps the words a hide inside it hid.
-: SLV-EVAL-HIDE-FORGE$ ( -- str )
-   SB-RESET
-   s" : SLF-J ( -- n ) 7 ;" SB-APPEND SLV-LF
-   s" : SLF-L ( -- n ) 42 ;" SB-APPEND SLV-LF
-   S\" S\\\" s\\\" SLF-L\\\" XREF:HIDE-DEFS-FROM 1 throw\" TEST-EVAL:RC drop" SB-APPEND SLV-LF
-   s" SLF-J . cr" SB-APPEND SLV-LF
-   s" SLF-L . cr" SB-APPEND SLV-LF
-   SB$ ;
-
 : SLV-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U !
    oc MATCH PROCESS:ending
@@ -156,29 +69,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN src u SLV-STORE! ;
 
-: SLV-ASSERT-RC ( n -- ) {: rc:n :}
-   SLV-EXITED @ TTRUE
-   SLV-RC @ rc T= ;
-
-: SLV-OUT$ ( -- str )  SLV-OUT SLV-OUT-U @ ;
 : SLV-ERR$ ( -- str )  SLV-ERR SLV-ERR-U @ ;
-
-\ The child's record opens with the line L and holds the help line H.
-: SLV-ASSERT-REJECT ( str str -- )
-   {: l:^ lu:n h:^ hu:n :}
-   70 SLV-ASSERT-RC
-   SLV-ERR$ l lu STARTS-WITH? TTRUE
-   SLV-ERR$ h hu CONTAINS? TTRUE ;
-
-: SLV-FORGET-HELP$ ( -- str )
-   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" XREF:FORGET-DEFS-FROM`\n" ;
-
-: SLV-HIDE-HELP$ ( -- str )
-   S\" = help: pass a word this program defined, as in `s\" MY-WORD\" XREF:HIDE-DEFS-FROM`\n" ;
-
-: SLV-ASSERT-OK ( -- )
-   SLV-EXITED @ TTRUE
-   SLV-RC @ 0 T= ;
 
 \ Publishing into a protected WID is rejected with exit 70 and an
 \ E-SEALED-PACKAGE record naming the word it would add.
@@ -241,56 +132,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    FS:CLEANUP-RUN
    SLV-ROOT FS:EXISTS? TFALSE ;
 
-: SLV-NEGATIVES-TRUNCATE ( -- )
-   s" FORGET-DEFS-FROM of an engine def is rejected" T-LABEL
-   SLV-FORGET-ENGINE-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `XREF:FORGET-DEFS-FROM` cannot remove\n"
-   SLV-FORGET-HELP$ SLV-ASSERT-REJECT
-   s" HIDE-DEFS-FROM of an engine def is rejected" T-LABEL
-   SLV-HIDE-ENGINE-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `WORDS` is an engine definition, which `XREF:HIDE-DEFS-FROM` cannot remove\n"
-   SLV-HIDE-HELP$ SLV-ASSERT-REJECT
-   s" FORGET-DEFS-FROM of the script-argv tail is rejected" T-LABEL
-   SLV-FORGET-TAIL-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `XREF:FORGET-DEFS-FROM` cannot remove\n"
-   SLV-FORGET-HELP$ SLV-ASSERT-REJECT
-   s" HIDE-DEFS-FROM of the script-argv tail is rejected" T-LABEL
-   SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT
-   S\" error[E-SEAL-VIOLATION]: `SCRIPT-ARGV$` is an engine definition, which `XREF:HIDE-DEFS-FROM` cannot remove\n"
-   SLV-HIDE-HELP$ SLV-ASSERT-REJECT
-   s" FORGET-DEFS-FROM of a does> clause is rejected" T-LABEL
-   SLV-FORGET-DOES-FORGE$ SLV-SUBJECT
-   S\" error[E-DOES-CLAUSE]: `SLF-DEF;does` is the does> clause of `SLF-DEF`, which `XREF:FORGET-DEFS-FROM` cannot start from\n"
-   S\" = help: pass the definer, as in `s\" SLF-DEF\" XREF:FORGET-DEFS-FROM`\n" SLV-ASSERT-REJECT
-   s" HIDE-DEFS-FROM of a does> clause is rejected" T-LABEL
-   SLV-HIDE-DOES-FORGE$ SLV-SUBJECT
-   S\" error[E-DOES-CLAUSE]: `SLF-DEF;does` is the does> clause of `SLF-DEF`, which `XREF:HIDE-DEFS-FROM` cannot start from\n"
-   S\" = help: pass the definer, as in `s\" SLF-DEF\" XREF:HIDE-DEFS-FROM`\n" SLV-ASSERT-REJECT ;
-
-\ The child printed SLF-J's value and was rejected at SLF-L, never run.
-: SLV-ASSERT-EVAL-GONE ( -- )
-   S\" error[E-UNDEFINED]: cannot find word `SLF-L`\n"
-   s" = help: define `SLF-L` before this point" SLV-ASSERT-REJECT
-   SLV-OUT$ s" 7" STARTS-WITH? TTRUE ;
-
-: SLV-POSITIVES ( -- )
-   s" a FORGET round trip still works" T-LABEL
-   SLV-FORGET-FORGE$ SLV-SUBJECT SLV-ASSERT-OK
-   SLV-OUT$ s" 4" STARTS-WITH? TTRUE
-   s" a failed evaluate keeps the words its forget removed" T-LABEL
-   SLV-EVAL-FORGET-FORGE$ SLV-SUBJECT SLV-ASSERT-EVAL-GONE
-   s" a failed evaluate keeps the words its hide hid" T-LABEL
-   SLV-EVAL-HIDE-FORGE$ SLV-SUBJECT SLV-ASSERT-EVAL-GONE
-   s" HIDE-DEFS-FROM of a post-seal user mark still works" T-LABEL
-   SLV-HIDE-USER-FORGE$ SLV-SUBJECT SLV-ASSERT-OK ;
-
 public
 
 : RUN ( -- )
    T-RESET
    SLV-PREPARE
-   SLV-NEGATIVES-TRUNCATE
-   SLV-POSITIVES
    SLV-SEALED-DEFINE
    SLV-ENGINE-SEALED
    SLV-CLEANUP

@@ -6,9 +6,8 @@ split-str
 \ definer's duplicate wall keeps every real wordlist at one live row per folded
 \ tail; `undefine` stamps every row it retires with one shared value that is no
 \ wordlist, so retiring a tail twice leaves two rows under it. Cases pin rows by
-\ ROW IDENTITY, the index the row was published at. A hide lowers NDICT
-\ under a live index, and a row above it must read as absent. No case writes a
-\ wid down: every wid is read out of the row that owns it.
+\ ROW IDENTITY, the index the row was published at. No case writes a wid
+\ down: every wid is read out of the row that owns it.
 
 require src/core/exit-status.f
 require src/lib/type/deftype.f
@@ -2047,7 +2046,6 @@ CAST: N>REC ( n -- ^n )
 variable NS-IDX
 variable RET1-IDX
 variable RET2-IDX
-variable NDX-WID
 
 public
 
@@ -2060,11 +2058,6 @@ public
 : MARK-NS ( -- )    ndict@ NS-IDX ! ;
 : MARK-RET1 ( -- )  ndict@ RET1-IDX ! ;
 : MARK-RET2 ( -- )  ndict@ RET2-IDX ! ;
-
-\ The wordlist the hide block below defines its row into, so a case there can
-\ ask this word about a row the hide has taken out of the dictionary.
-: SET-NDX-WID ( n -- )  NDX-WID ! ;
-: NDX-WID@ ( -- n )     NDX-WID @ ;
 
 : NS-WID ( -- n )       NS-IDX @ ROW-WID ;
 : PKG-PUB-WID ( -- n )  NS-IDX @ ROW-XT ;
@@ -2122,36 +2115,6 @@ s" search-wl: with both rows retired the LAST one is the answer" T-LABEL
 s" ES-SWL-U" ES-SWL:RET-WID search-wl  ES-SWL:RET2-XT T=
 s" search-wl: and the tail is gone from the wordlist" T-LABEL
 s" ES-SWL-U" 0 search-wl 0 T=
-
-package ES-NDX
-
-: HIDXP@ ( -- n )  data-base HIDXP-CELL + @ ;
-
-public
-
-: LOWER ( -- )      s" ES-NDX:FRESH" XREF:HIDE-DEFS-FROM ;
-: INDEXED? ( -- bool )  HIDXP@ 0 <> ;
-
-;package
-
-s" a hide: the lookup index is live to begin with" T-LABEL
-ES-NDX:INDEXED? TTRUE
-
-package ES-NDX
-public
-get-current ES-SWL:SET-NDX-WID
-: FRESH ( -- n ) 7 ;
-;package
-
-s" a hide: the fresh record resolves through the index" T-LABEL
-ES-NDX:FRESH 7 T=
-ES-NDX:LOWER
-\ What makes the row absent is that the index is out of range, which a lookup
-\ has to notice: the row's own bytes would still match on wid and name.
-s" a hide: a lowered mark keeps the index live" T-LABEL
-ES-NDX:INDEXED? TTRUE
-s" a hide: a slot above a lowered mark reads as absent" T-LABEL
-s" FRESH" ES-SWL:NDX-WID@ search-wl 0 T=
 
 \ With the odd allots between them, an engine that does not align cannot place
 \ both B and C on a cell boundary.

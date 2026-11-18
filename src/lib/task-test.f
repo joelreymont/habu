@@ -361,21 +361,6 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
-\ LOWERING IS REJECTED WHILE A TASK IS LIVE. Main defines and prints beside a
-\ parked worker, then `XREF:FORGET-DEFS-FROM` exits $4F naming itself:
-\ lowering frees records a task may hold. The printed word proves main compiled
-\ beside the live task.
-: TASK-LOWER-LIVE$ ( -- str )
-   SB-RESET
-   s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" : TLL-IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
-   s" TASK:MIN-STACK TASK:TASK TLL-WORKER" SB-APPEND TASK-LF
-   s" ' TLL-IDLE TLL-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" : TLL-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
-   s" TLL-AFTER ." SB-APPEND TASK-LF
-   S\" s\" TLL-AFTER\" XREF:FORGET-DEFS-FROM" SB-APPEND TASK-LF
-   SB$ ;
-
 \ A TASK MAY NOT COMPILE: a body that evaluates a colon definition renders, so
 \ the program is rejected where it activates the task, before anything runs.
 : TASK-COMPILES$ ( -- str )
@@ -613,9 +598,6 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE
    erru ;
 
-: TASK-EXPECT-REFUSED-EXIT ( str str -- )
-   TASK-REJECTED-ERR drop ;
-
 \ The record's first line and its note `in`, the word that called the
 \ primitive.
 : TASK-EXPECT-REJECTED-IN ( str str str -- )
@@ -633,11 +615,6 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
    STARTS-WITH? TTRUE
    TASK-ERR erru LEN>N site siteu CONTAINS? TTRUE ;
-
-: TASK-TEST-LOWER-LIVE ( -- )
-   TASK-LOWER-LIVE$
-   s" error[E-TASK-COMPILE]: `XREF:FORGET-DEFS-FROM` ran while a task is live"
-   TASK-EXPECT-REFUSED-EXIT ;
 
 : TASK-TEST-TASK-COMPILES ( -- )
    TASK-COMPILES$ s" --> <input>:4:23" TASK-EXPECT-KEPT ;
@@ -2272,31 +2249,34 @@ variable BIND-PAIR-Q-WON
    s" the race gives the live count back" T-LABEL
    TASK-LIVE-COUNT base T= ;
 
-\ The lowering guard reads the main region's cell, so a worker that activates a
-\ worker counts there: counted in its own region, the inner task would be
-\ invisible once the outer one is released, and main could free code beside a
-\ running thread.
+\ A task a worker activated counts in main's live count: with TWW-OUTER killed,
+\ only that count keeps the rollback from lowering the code TWW-INNER is running.
 : TASK-WORKER-ACTIVATES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK TWW-OUTER" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK TWW-INNER" SB-APPEND TASK-LF
+   s" variable TWW-N" SB-APPEND TASK-LF
    s" variable TWW-UP" SB-APPEND TASK-LF
-   s" : TWW-IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
-   s" : TWW-START ( -- ) ['] TWW-IDLE TWW-INNER TASK:ACTIVATE 1 TWW-UP atomic! ;" SB-APPEND TASK-LF
    s" : TWW-WAIT ( -- ) begin TWW-UP atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
-   s" ' TWW-START TWW-OUTER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" TWW-WAIT" SB-APPEND TASK-LF
-   s" TWW-OUTER TASK:KILL" SB-APPEND TASK-LF
-   s" : TWW-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
-   s" TWW-AFTER ." SB-APPEND TASK-LF
-   S\" s\" TWW-AFTER\" XREF:FORGET-DEFS-FROM" SB-APPEND TASK-LF
+   S\" : TWW-TRY ( -- n ) [: s\" : TWW-SPIN ( -- ) begin 1 TWW-N +! TASK:PAUSE again ;" SB-APPEND
+   s"  : TWW-START ( -- ) ['] TWW-SPIN TWW-INNER TASK:ACTIVATE 1 TWW-UP atomic! ;" SB-APPEND
+   s"  ' TWW-START TWW-OUTER TASK:ACTIVATE TWW-WAIT TWW-OUTER TASK:KILL MISSING-WORD" SB-APPEND
+   S\" \" evaluate-closed ;] catch ;" SB-APPEND TASK-LF
+   s" : TWW-ADVANCE ( -- ) TWW-N atomic@ begin dup TWW-N atomic@ = while TASK:PAUSE repeat drop ;" SB-APPEND TASK-LF
+   S\" : TWW-GONE? ( -- bool ) [: s\" ' TWW-SPIN drop\" evaluate-closed ;] catch 0<> ;" SB-APPEND TASK-LF
+   s" TWW-TRY 0<> TWW-ADVANCE TWW-GONE? and bool>n ." SB-APPEND TASK-LF
+   s" : TWW-F1 ( n -- n ) 3 * 7 + 11 xor 13 and 5 lshift ;" SB-APPEND TASK-LF
+   s" : TWW-F2 ( n -- n ) TWW-F1 TWW-F1 TWW-F1 1 + ;" SB-APPEND TASK-LF
+   s" : TWW-F3 ( n n -- n ) + 2 * 9 - ;" SB-APPEND TASK-LF
+   s" : TWW-F4 ( n -- n ) dup TWW-F2 TWW-F3 ;" SB-APPEND TASK-LF
+   s" TWW-ADVANCE 5 TWW-F4 ." SB-APPEND TASK-LF
    SB$ ;
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
-   TASK-WORKER-ACTIVATES$
-   s" error[E-TASK-COMPILE]: `XREF:FORGET-DEFS-FROM` ran while a task is live"
-   TASK-EXPECT-REFUSED-EXIT ;
+   TASK-WORKER-ACTIVATES$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" -1\n771\n" T$=
+   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" CONTAINS? TTRUE ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS
@@ -2535,7 +2515,6 @@ variable NEW-STRAY
    WORKER-A TASK:KILL
    WORKER-A TASK:DONE? TFALSE
    TASK-TEST-MAIN-COMPILES
-   TASK-TEST-LOWER-LIVE
    TASK-TEST-TASK-COMPILES
    TASK-TEST-FRAMED-COMPILES
    TASK-TEST-TASK-CREATES

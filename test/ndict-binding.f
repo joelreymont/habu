@@ -122,35 +122,6 @@ variable ROLL-OCC
    s" NDB-RETIRED" XREF-RETIRED-WL XREF-FIND-WL = TTRUE ;
 
 
-: HIDE-REUSE ( -- )
-   s" : NDB-HIDE ( -- n ) 51 ; : NDB-HIDE-TAIL ( -- n ) 52 ;" EV
-   s" NDB-HIDE" 0 RECORD {: old:^ :}
-   old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
-   s" NDB-HIDE" XREF:HIDE-DEFS-FROM
-   s" NDB-HIDE" SPELL-START 0 T=
-   s" NDB-HIDE-TAIL" SPELL-START 0 T=
-   s" : NDB-HIDE ( -- n ) 53 ;" EV
-   s" NDB-HIDE" 0 RECORD old = TTRUE
-   old-slot REF-SLOT !  old-occ REF-OCC !
-   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
-   s" NDB-HIDE" 0 RECORD DEF-OCC:SELECT REF-VALUE 53 T=
-   s" : NDB-HIDE-CALL ( -- n ) NDB-HIDE ; NDB-HIDE-CALL 53 T=" EV ;
-
-
-: FORGET-REUSE ( -- )
-   s" : NDB-FORGET ( -- n ) 61 ;" EV
-   s" NDB-FORGET" 0 RECORD {: old:^ :}
-   old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
-   s" NDB-FORGET" XREF:FORGET-DEFS-FROM
-   s" NDB-FORGET" SPELL-START 0 T=
-   s" : NDB-FORGET ( -- n ) 62 ;" EV
-   s" NDB-FORGET" 0 RECORD old = TTRUE
-   old-slot REF-SLOT !  old-occ REF-OCC !
-   [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
-   s" NDB-FORGET" 0 RECORD DEF-OCC:SELECT REF-VALUE 62 T=
-   s" : NDB-FORGET-CALL ( -- n ) NDB-FORGET ; NDB-FORGET-CALL 62 T=" EV ;
-
-
 public
 : CAPTURE-ROLLBACK ( -- )
    s" NDB-ROLLBACK" 0 RECORD DEF-OCC:SELECT
@@ -187,7 +158,6 @@ private
    s" a checker replay inside a definition leaves it pending" T-LABEL REPLAY-PENDING T-NEXT
    s" compiled calls retain the binding they captured" T-LABEL REDECLARATION T-NEXT
    s" the retired wordlist returns the latest matching record" T-LABEL RETIRED-LATEST T-NEXT
-   s" hide and forget invalidate recyclable slots" T-LABEL HIDE-REUSE FORGET-REUSE T-NEXT
    s" failed source evaluation invalidates recyclable slots" T-LABEL ROLLBACK-REUSE T-NEXT
    T-REPORT ;
 

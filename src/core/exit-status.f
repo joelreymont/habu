@@ -18,7 +18,7 @@ public
 76 constant INTERNAL            \ a defect in Habu: an invariant failed, or a table no program fills is full
 77 constant FULL                \ the program filled a fixed space
 78 constant SYSTEM              \ the system refused a resource: memory, a mapping, a descriptor, a close
-79 constant TASK-COMPILE        \ a definition or allot ran on a task's or callback's thread, or CP or NDICT was lowered while a task was live
+79 constant TASK-COMPILE        \ a definition or allot ran on a task's or callback's thread
 81 constant BL-RANGE            \ the mapped code region is out of BL reach from __text
 82 constant DISPATCH-UNSET      \ the engine has no entry
 83 constant SEAL-VIOLATION      \ a kernel dictionary, code or replay primitive met an argument or state its contract forbids

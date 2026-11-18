@@ -5769,8 +5769,8 @@ EXPORT CHECK:DROP-FACTS
    GENIO-ABI:END GENIO-ABI:OUT-CELL - BYTE-COPY
    SAVED-FLAGS @ NEWEST-FLAGS ! ;
 
-\ Records still below the count would name bodies in the unmapped space; their
-\ code goes back as FORGET-DEFS-FROM gives it.
+\ Records still below the count would name bodies in the unmapped space, so the
+\ count drops to FIRST-REC and their code goes back.
 : FORGET-SPACE ( -- )
    FIRST-REC @ retire-from IF EXIT THEN
    FIRST-REC @ CODE-RECLAIM:FLOOR-FROM {: floor:n :}

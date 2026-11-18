@@ -12135,23 +12135,6 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 : USIG-SYM@ ( ^u8 -- n )
    ER.SYM @ ;
 
-\ Where retracting sym's definition starts, offset+1, 0 when sym has no live
-\ row: the oldest record of its live generation. A name `undefine` retired and
-\ defined again keeps its retired records, and the rows other words recorded
-\ after them are not this definition's.
-: USIG-LIVE-START ( n -- n ) {: sym:n :}
-   sym 0= IF 0 EXIT THEN
-   sym USIG-NEWEST
-   dup 0= IF EXIT THEN
-   dup 1 - E-PTR ER.ACTIVE @ EFF-DELETED = IF drop 0 EXIT THEN
-   BEGIN
-      dup 1 - E-PTR ER.SYMPREV @
-      dup 0 <> IF dup 1 - E-PTR ER.ACTIVE @ EFF-DELETED <> ELSE RES-FALSE THEN
-   WHILE
-      nip
-   REPEAT
-   drop ;
-
 \ FEP = the NEWEST record for sym when that record is active, cleared when it
 \ is deleted or there is none; the returned record end is the cache dependency,
 \ since a rewind below it can change the answer.
@@ -15586,13 +15569,6 @@ package CHECK
 
 : CHECKER-FIND-USIG ( str -- bool ) {: a:^ u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
-
-: CHECKER-USIGS-TRUNCATE-FROM-RAW ( str -- ) {: a:^ u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM USIG-LIVE-START {: off1:n :}
-   off1 0= IF
-      s" checker: missing signature truncation mark" EXIT-STATUS:INTERNAL die
-   THEN
-   off1 1 - USIGS-RESTORE-END ;
 
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 

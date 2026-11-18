@@ -1346,9 +1346,8 @@ variable LDIE
 ;package
 
 package ENGINE-EMIT
-\ cp! and ndict! are the FORGET sinks: cp! moves emission to the popped CP,
-\ ndict! the next record write to DBASE+n*DREC. Their callers lower only on
-\ the main thread with no task live, to a count or CP read there earlier.
+\ cp! and ndict! are the rollback sinks. Each caller asks retire-from first, so
+\ they lower only with no task live, except a CP rewind inside a pending body.
 : BCPSET ( -- )
    A G-POP
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP

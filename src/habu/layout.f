@@ -169,7 +169,6 @@ $2DC0 constant TOKDEPTH-CELL
 $2DC8 constant RAWNEXT-CELL
 $2DD0 constant TOKRAW-CELL
 \ SEAL-NDICT-CELL holds the seal-time ndict watermark.
-\ HIDE-DEFS-FROM/FORGET-DEFS-FROM refuse a post-seal FORGET below it.
 $A8 constant SEAL-NDICT-CELL
 
 $28 constant CUR-CELL
@@ -243,12 +242,11 @@ public
 \ to an outer buffer, whose immediate word's evaluate compiles into it, and a
 \ throw that unwinds this buffer leaves it compiling.
 $A0 constant PEND
-\ CP, NDICT: the code pointer and dictionary count as the buffer began, lowered
-\ by a forget or hide inside it.
+\ CP, NDICT: the code pointer and dictionary count as the buffer began.
 $28 constant CP
 $30 constant NDICT
 \ ROWS: the checker's record end as the buffer began, plus one, 0 when no owner
-\ records; a forget or hide inside the buffer lowers it.
+\ records.
 $B0 constant ROWS
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.

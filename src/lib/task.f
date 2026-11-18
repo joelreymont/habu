@@ -5,11 +5,10 @@ split-str
 \ interpret-mode string literal that keeps its text, `evaluate`, a load and the
 \ package keywords run on the main thread while tasks are live, and exit $4F on
 \ a thread whose DATA holds a TCB in TASK-TCB-CELL: a task or a callback.
-\ XREF:FORGET-DEFS-FROM and XREF:HIDE-DEFS-FROM also exit $4F on main while
-\ TASKS-LIVE-CELL (the main region's count, the AIO loop task included) is
-\ nonzero: lowering frees code a task may be running and records it may
-\ reference. An engine rollback retires them instead and keeps every cursor.
-\ A task's DBASE, NDICT and CP are registers loaded
+\ While TASKS-LIVE-CELL (the main region's count, the AIO loop task included) is
+\ nonzero, an engine rollback retires records instead of lowering the counts and
+\ keeps every cursor: lowering would free code a task may be running and records
+\ it may reference. A task's DBASE, NDICT and CP are registers loaded
 \ from its TCB as it starts, so a definition main has in progress is out of its
 \ reach. A word main finishes later reaches a task only as an xt through a
 \ channel that orders (a queue, an atomic cell, `is` on a defer):

@@ -1,13 +1,12 @@
 split-str
-\ code-reclaim.f - the live-XREF floor used when FORGET gives code back, and
-\ the created record a definer's does> acts on after a motion retires records.
+\ code-reclaim.f - the code a rollback gives back, and the created record a
+\ definer's does> acts on after a motion retires records.
 
 require src/core/exit-status.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
-require src/habu/layout.f
 
 package CRECL-TEST
 
@@ -26,99 +25,34 @@ private
 : DEFINED? ( str -- bool )
    XREF-FIND XREF-FOUND? ;
 
-: FILL ( -- )
-   s" : CR-F1 ( n -- n ) dup 3 * swap 7 + + ;" evaluate-closed
-   s" : CR-F2 ( n -- n ) dup 5 * swap 9 + + ;" evaluate-closed
-   s" : CR-F3 ( n -- n ) dup 11 * swap 13 + + ;" evaluate-closed
-   s" : CR-F4 ( n -- n ) dup 17 * swap 19 + + ;" evaluate-closed ;
-
-: FILL-FORGET ( -- )
-   s" CR-F1" XREF:FORGET-DEFS-FROM ;
-
-variable A-CP
-variable ALIAS-SLOT
-variable ALIAS-OCC
-
-: ALIAS-CASE ( -- )
-   s" CRECL-SUBJ:CR-LOW" REC DEF-OCC:SELECT {: original-slot:n original-occ:n :}
-   s" CRECL-ALIAS:CR-LOW" REC DEF-OCC:SELECT {: alias-slot:n alias-occ:n :}
-   original-occ alias-occ T<>
-   s" the alias record names the earlier routine" T-LABEL
-   s" CRECL-ALIAS:CR-LOW" REC-START  s" CRECL-SUBJ:CR-LOW" REC-START  T=
-
-   s" and follows the word compiled above that routine" T-LABEL
-   s" CRECL-ALIAS:CR-LOW" REC-INDEX  s" CRECL-SUBJ:CR-HIGH" REC-INDEX  >  TTRUE
-   s" CRECL-SUBJ:CR-HIGH" REC-START  s" CRECL-SUBJ:CR-LOW" REC-START  >  TTRUE
-
-   cp@ A-CP !
-   s" CRECL-ALIAS:CR-LOW" XREF:FORGET-DEFS-FROM
-
-   s" forgetting the alias retires only its record" T-LABEL
-   s" CRECL-ALIAS:CR-LOW" DEFINED? TFALSE
-   cp@ A-CP @ T=
-   alias-slot ALIAS-SLOT !  alias-occ ALIAS-OCC !
-   [: ALIAS-SLOT @ ALIAS-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
-   original-slot original-occ DEF-OCC:CALLABLE {: old-entry:n :}
-   s" CRECL-SUBJ:CR-LOW" REC-START old-entry T=
-
-   FILL
-   s" both surviving records keep their code" T-LABEL
-   s" CRECL-SUBJ:CR-LOW" TEST-EVAL:N 11 T=
-   s" CRECL-SUBJ:CR-HIGH" TEST-EVAL:N 22 T=
-   FILL-FORGET ;
-
-variable P-START
+variable P-CP
 
 : PLAIN-CASE ( -- )
    s" : CR-P1 ( -- n ) 1 ;" evaluate-closed
-   s" : CR-P2 ( -- n ) 2 ;" evaluate-closed
-   s" : CR-P3 ( -- n ) 3 ;" evaluate-closed
-   s" CR-P2" REC-START P-START !
-   s" CR-P2" XREF:FORGET-DEFS-FROM
-
-   s" an ordinary forget returns the first retired routine's slot" T-LABEL
-   cp@ P-START @ T=
+   cp@ P-CP !
+   s" a rollback gives back the code of the words it retires" T-LABEL
+   s" : CR-P2 ( -- n ) 2 ; : CR-P3 ( -- n ) 3 ; 73 throw" TEST-EVAL:RC 0<> TTRUE
+   cp@ P-CP @ T=
    s" CR-P2" DEFINED? TFALSE
    s" CR-P3" DEFINED? TFALSE
    s" CR-P1" DEFINED? TTRUE
    s" CR-P1" TEST-EVAL:N 1 T= ;
 
-variable U-START
-variable U-INDEX
+variable U-CP
+variable U-NDICT
 
 : REUSE-CASE ( -- )
-   s" : CR-REUSE ( n -- n ) 1 + ;" evaluate-closed
-   s" CR-REUSE" REC-START U-START !
-   s" CR-REUSE" REC-INDEX U-INDEX !
-   s" CR-REUSE" XREF:FORGET-DEFS-FROM
+   cp@ U-CP !
+   ndict@ U-NDICT !
+   s" a new definition reuses the record and code a rollback gave back" T-LABEL
+   s" : CR-REUSE ( n -- n ) 1 + ; 73 throw" TEST-EVAL:RC 0<> TTRUE
    s" : CR-REUSE ( n -- n ) 3 * ;" evaluate-closed
-
-   s" a new definition reuses the reclaimed record and code slot" T-LABEL
-   s" CR-REUSE" REC-START U-START @ T=
-   s" CR-REUSE" REC-INDEX U-INDEX @ T=
+   s" CR-REUSE" REC-START U-CP @ T=
+   s" CR-REUSE" REC-INDEX U-NDICT @ T=
 
    s" a caller compiled after reuse reaches the new bytes" T-LABEL
    s" : CR-REUSE-CALL ( n -- n ) CR-REUSE ;" evaluate-closed
    s" 5 CR-REUSE-CALL" TEST-EVAL:N 15 T= ;
-
-variable L-CP
-
-\ A `:` word's name copy lies just below its routine.
-: LONG-CASE ( -- )
-   cp@ L-CP !
-   s" : CR-LONG-NAMED-WORD ( -- n ) 7 ;" evaluate-closed
-   s" CR-LONG-NAMED-WORD" XREF:FORGET-DEFS-FROM
-   s" forget gives back a long name's bytes" T-LABEL
-   cp@ L-CP @ T= ;
-
-\ The alias record's name copy lies above the routine it names.
-: ALIAS-LONG-CASE ( -- )
-   cp@ L-CP !
-   s" package CRECL-ALIAS public EXPORT CRECL-SUBJ:CR-LONG-SUBJECT-WORD ;package"
-   evaluate-closed
-   s" CRECL-ALIAS:CR-LONG-SUBJECT-WORD" XREF:FORGET-DEFS-FROM
-   s" forgetting a long-named alias gives back its name's bytes" T-LABEL
-   cp@ L-CP @ T= ;
 
 \ LASTC-CELL names the record the last create, variable or constant wrote, and
 \ a definer's does> gives that record its action. Every motion that lowers the
@@ -147,14 +81,6 @@ LC-CAP BUFFER: LC-ERR
    LC-OUT outu LEN>N want wantu T$= ;
 
 : LASTC-CASE ( -- )
-   s" a definer after a forget that keeps the created record acts on its own word" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" XREF:FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) create 8 , does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-NEW CR-LC-NEW .\n"
-   S\" 9\n" LC-PRINTS
-
-   s" a definer after a forget that retires the created record acts on its own word" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ncreate CR-LC-GONE 5 ,\ns\" CR-LC-MARK\" XREF:FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) create 8 , does> ( -- n ) @ ;\nCR-LC-BEHAVE CR-LC-NEW CR-LC-NEW .\n"
-   S\" 8\n" LC-PRINTS
-
    s" a definer after an evaluate that fails acts on its own word" T-LABEL
    S\" create CR-LC-KEEP 7 ,\n: CR-LC-TRY ( -- n ) [: s\" create CR-LC-GONE 5 , CR-LC-NO-SUCH-WORD\" evaluate-closed ;] catch ;\nCR-LC-TRY drop\n: CR-LC-BEHAVE ( -- ) create 8 , does> ( -- n ) @ ;\nCR-LC-BEHAVE CR-LC-NEW CR-LC-NEW .\n"
    S\" 8\n" LC-OUT-PRINTS
@@ -176,36 +102,10 @@ public
 
 : RUN ( -- )
    T-RESET
-   ALIAS-CASE
    PLAIN-CASE
    REUSE-CASE
-   LONG-CASE
-   ALIAS-LONG-CASE
    LASTC-CASE
    T-REPORT ;
-
-;package
-
-package CRECL-SUBJ
-
-public
-
-: CR-LOW ( -- n )
-   11 ;
-
-: CR-HIGH ( -- n )
-   22 ;
-
-: CR-LONG-SUBJECT-WORD ( -- n )
-   33 ;
-
-;package
-
-package CRECL-ALIAS
-
-public
-
-EXPORT CRECL-SUBJ:CR-LOW
 
 ;package
 

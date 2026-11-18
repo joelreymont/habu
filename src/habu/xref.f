@@ -503,12 +503,6 @@ public
    else s" the private words of package " then REJECTION:EMIT-STR
    row XREF-NAME$ XREF-EMIT-TICKS ;
 
-\ Prints a call of the word w wu on the name a u, in ticks: `s" NAME" W`.
-: XREF-EMIT-CALL ( str str -- ) {: a:^ u:n w:^ wu:n :}
-   96 REJECTION:EMIT1  115 REJECTION:EMIT1  34 REJECTION:EMIT1  32 REJECTION:EMIT1
-   a u REJECTION:EMIT-STR  34 REJECTION:EMIT1  32 REJECTION:EMIT1
-   w wu REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
-
 package GENERATED-DECL-NAME-PREFLIGHT
 
 private
@@ -575,8 +569,6 @@ package XREF
 private
 EXPORT CHECK:CHECKER-UNDEFINE
 EXPORT CHECK:REJECT-QUALIFIED
-EXPORT CHECK:CHECKER-USIGS-TRUNCATE-FROM-RAW
-EXPORT CHECK:CHECKER-ROWS-END
 EXPORT CHECK:DOES-COMPANION?-XT
 \ The checker overlay asks this same test of a live definer a replayed
 \ `undefine` retires (src/core/checker.f CHECKER-OVERLAY CLAUSE-OF); a replayed
@@ -659,110 +651,6 @@ public
    image 0 <> if NULL-PTR BYTE-VIEW image + SEAL-NDICT-CELL + CELL-VIEW @ exit then
    data-base SEAL-NDICT-CELL + @ ;
 
-\ idx is the record FORGET-DEFS-FROM or HIDE-DEFS-FROM, the word w wu, found
-\ for the name a u, -1 for none; a name that is not defined is rejected.
-: XREF-REQUIRE-DEFINED ( n str str -- n )
-   {: idx:n a:^ u:n w:^ wu:n :}
-   idx 0 < if
-      s" E-UNDEFINED" REJECTION:OPEN
-      a u XREF-EMIT-TICKS  s"  is not defined, so " REJECTION:EMIT-STR
-      w wu XREF-EMIT-TICKS  s"  has no word to start from" REJECTION:EMIT-STR
-      s" scope" REJECTION:NOTE  a u BOOT:GLOBAL-WL XREF-EMIT-SCOPE
-      REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
-      s" MY-WORD" w wu XREF-EMIT-CALL
-      EXIT-STATUS:REJECTED REJECTION:STOP
-   then
-   idx ;
-
-\ A does> clause starts inside its definer's body: removing definitions from it
-\ would keep the definer and cut its clause, so the word w wu rejects the record
-\ idx it found for a u when it is one.
-: XREF-REQUIRE-WORD ( n str str -- n )
-   {: idx:n a:^ u:n w:^ wu:n :}
-   idx 1 < if idx exit then
-   idx 1- XREF-DOES-COMPANION? 0= if idx exit then
-   idx 1- XREF-REC XREF-NAME$ {: d:^ du:n :}
-   s" E-DOES-CLAUSE" REJECTION:OPEN
-   a u XREF-EMIT-TICKS  s"  is the does> clause of " REJECTION:EMIT-STR
-   d du XREF-EMIT-TICKS  s" , which " REJECTION:EMIT-STR
-   w wu XREF-EMIT-TICKS  s"  cannot start from" REJECTION:EMIT-STR
-   REJECTION:HELP  s" pass the definer, as in " REJECTION:EMIT-STR
-   d du w wu XREF-EMIT-CALL
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
-
-\ Sealed-dictionary truncation guard: once the namespace watermark is set, a
-\ FORGET/HIDE lowering ndict below it would retire engine definitions and
-\ (FORGET) rewind CP into engine code, so the word w wu given the engine word
-\ a u at index idx is rejected. A zero watermark is the open build namespace;
-\ post-seal marks at or above the watermark pass. The floor is hb's own, in a
-\ build too.
-: SEAL-DICT-GUARD ( n str str -- n )
-   {: idx:n a:^ u:n w:^ wu:n :}
-   data-base SEAL-NDICT-CELL + @ {: floor:n :}
-   floor 0= 0=  idx floor <  and if
-      s" E-SEAL-VIOLATION" REJECTION:OPEN
-      a u XREF-EMIT-TICKS  s"  is an engine definition, which " REJECTION:EMIT-STR
-      w wu XREF-EMIT-TICKS  s"  cannot remove" REJECTION:EMIT-STR
-      s" record" REJECTION:NOTE  idx REJECTION:EMIT-U
-      s" sealed" REJECTION:NOTE  s" records below " REJECTION:EMIT-STR
-      floor REJECTION:EMIT-U  s"  belong to the engine" REJECTION:EMIT-STR
-      REJECTION:HELP  s" pass a word this program defined, as in " REJECTION:EMIT-STR
-      s" MY-WORD" w wu XREF-EMIT-CALL
-      EXIT-STATUS:REJECTED REJECTION:STOP
-   then
-   idx ;
-
-package XREF
-private
-: CELL-LOWER ( n ^u8 n -- )
-   + CELL-VIEW {: v:n p:^ :}
-   p @ v min p ! ;
-
-\ A throw out of a frame never raises CP, NDICT or the record mark above a
-\ forget or hide made in it. TOKCP-CELL needs no lowering: no forget runs while
-\ a definition is open, since an immediate in a checked body writes nothing.
-: FRAMES-LOWER ( -- )
-   ndict@ cp@ CHECKER-ROWS-END 1+ {: count:n code:n mark:n :}
-   data-base EVAL-TOP-CELL + @
-   begin dup 0 <> while
-      NULL-PTR BYTE-VIEW swap +
-      count over EVAL-FRAME:NDICT CELL-LOWER
-      code over EVAL-FRAME:CP CELL-LOWER
-      dup EVAL-FRAME:ROWS + CELL-VIEW @ 0 <> if
-         mark over EVAL-FRAME:ROWS CELL-LOWER
-      then
-      EVAL-PREV + CELL-VIEW @
-   repeat drop ;
-
-\ Removing definitions frees code a live task may be running and records it
-\ may reference, so the word a u is rejected while any task is live.
-: LIVE-TASK-GUARD ( str -- )
-   {: a:^ u:n :}
-   data-base TASKS-LIVE-CELL + @ 0 <> if
-      s" E-TASK-COMPILE" REJECTION:OPEN
-      a u XREF-EMIT-TICKS  s"  ran while a task is live" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" wait for every task to end before removing definitions" REJECTION:EMIT-STR
-      EXIT-STATUS:TASK-COMPILE REJECTION:STOP
-   then ;
-public
-\ A snapshot builder truncates a refresh tail with HIDE-DEFS-FROM and retires
-\ one word with `undefine NAME`; it never replays baked sources to hide one.
-: HIDE-DEFS-FROM ( ^u8 n -- )
-   s" XREF:HIDE-DEFS-FROM" LIVE-TASK-GUARD
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX
-   XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" XREF-REQUIRE-DEFINED
-   XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" XREF-REQUIRE-WORD
-   XREF-SN@ XREF-SU @ s" XREF:HIDE-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
-   idx ndict!
-   FRAMES-LOWER ;
-;package
-
-\ FORGET retires a suffix of dictionary records and gives back the corresponding
-\ code. Live XREF records decide the safe floor; relocation metadata over the
-\ released span is cleared before the code pointer moves.
 \ A selected record is borrowed from the resolver at SELECT. The slot alone is
 \ never identity: lowering and re-exposing the count issues another occurrence.
 \ These references stay in this process and carry no checker effect or code lease.
@@ -866,24 +754,6 @@ public
       live swap i REC-LOW MIN-ABOVE-LIVE
    loop ;
 
-;package
-
-package XREF
-private
-EXPORT CODE-RECLAIM:TRUNCATE
-public
-: FORGET-DEFS-FROM ( ^u8 n -- )
-   s" XREF:FORGET-DEFS-FROM" LIVE-TASK-GUARD
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX
-   XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" XREF-REQUIRE-DEFINED
-   XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" XREF-REQUIRE-WORD
-   XREF-SN@ XREF-SU @ s" XREF:FORGET-DEFS-FROM" SEAL-DICT-GUARD {: idx:n :}
-   idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
-   idx ndict!
-   floor TRUNCATE
-   FRAMES-LOWER ;
 ;package
 
 : XREF-NAME. ( ^n -- )
