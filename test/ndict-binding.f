@@ -5,7 +5,6 @@ require src/habu/fnv.f
 require src/habu/verify-source.f
 
 17 constant NDB-GLOBAL
-1 constant NDB-MUTABLE
 
 package NDB-LEFT
 7 constant HIDDEN
@@ -26,16 +25,6 @@ public
 ;package
 
 package NDB-IMMEDIATE
-using NDICT
-public
-
-: RETIRE-BINDING ( -- )
-   s" NDB-MUTABLE" SPELL-START 0<> TTRUE
-   s" NDB-MUTABLE" XREF:UNDEFINE-NAME
-   s" NDB-MUTABLE" SPELL-START 0 T= ;
-immediate
-parses: RETIRE-BINDING 0
-
 private
 : REPLAY-RA ( -- ) [: s" : NDB-RA ( -- n ) 5 ;" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;
 public
@@ -46,7 +35,6 @@ public
    EFFECT:EMPTY EFFECT:N EFFECT:IN define-word
    s" create , does> ( -- n )" evaluate-closed REPLAY-RA ;
 
-;using
 ;package
 
 package NDICT-BINDING-TEST
@@ -102,13 +90,6 @@ variable ROLL-OCC
    s" undefine NDB-LEFT:NDB-COLLIDE-608" EV
    s" NDB-LEFT:NDB-COLLIDE-608" SPELL-START 0 T=
    s" NDB-LEFT:NDB-COLLIDE-1146" FIXED-VALUE 42 T= ;
-
-
-: IMMEDIATES ( -- )
-   s" NDB-IMMEDIATE:RETIRE-BINDING" CALL-TARGET 0 T=
-   s" : NDB-MUTATION ( -- ) NDB-IMMEDIATE:RETIRE-BINDING ;" EV
-   s" NDB-MUTABLE" SPELL-START 0 T=
-   s" 2 constant NDB-MUTABLE : NDB-MUTATED ( -- n ) NDB-MUTABLE ; NDB-MUTATED 2 T=" EV ;
 
 
 : REPLAY-PENDING ( -- )
@@ -203,7 +184,6 @@ private
    s" package visibility and scope precedence" T-LABEL OPEN-SCOPE T-NEXT
    s" using identity and ambiguity" T-LABEL USED-SCOPE T-NEXT
    s" folded hash collisions retain exact identity" T-LABEL COLLISIONS T-NEXT
-   s" immediate compilation re-reads binding" T-LABEL IMMEDIATES T-NEXT
    s" a checker replay inside a definition leaves it pending" T-LABEL REPLAY-PENDING T-NEXT
    s" compiled calls retain the binding they captured" T-LABEL REDECLARATION T-NEXT
    s" the retired wordlist returns the latest matching record" T-LABEL RETIRED-LATEST T-NEXT

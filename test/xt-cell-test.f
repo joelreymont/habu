@@ -152,9 +152,9 @@ defer XC-DF ( n -- n )
    s\" \"token\":\"catch\"" XC-CODE?          \ the catch-specific reason fired, not the execute one
    XC-CODE-END
    s" GC1 ( n -- n n ) ['] SP catch" CHECK-QUIET-CANDIDATE! -1 T=
-   s" GC2 ( n [ n -- n ] -- n n ) catch" CHECK-QUIET-CANDIDATE! -1 T=
-   s" GC3 ( n -- n n ) HK @ catch" CHECK-QUIET-CANDIDATE! -1 T=
-   s" GC4 ( n -- n n ) ['] XC-DF catch" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" GC2 ( n [ n -- n ] -- n ) catch nip" CHECK-QUIET-CANDIDATE! -1 T=
+   s" GC3 ( n -- n ) HK @ catch nip" CHECK-QUIET-CANDIDATE! -1 T=
+   s" GC4 ( n -- n ) ['] XC-DF catch nip" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ ---- the `xt` type: the token `'` pushes for a word with no stack effect -------
 \ XE declares it. A cast may take it but never yields one, and no storage holds
