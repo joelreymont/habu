@@ -1,7 +1,8 @@
 split-str
 \ curl.f - HTTPS client over libcurl's easy interface: one request and one
 \ response, with no retry policy, authentication, payload format or URL
-\ construction; TLS, redirects, proxies and the CA bundle are libcurl's. Every
+\ construction; TLS, redirects, proxies and the CA bundle are libcurl's, but
+\ CA-PATH! verifies peers against a certificate directory instead. Every
 \ setter but BORROW-BODY! copies its span before it returns. PERFORM holds its
 \ task; START/AWAIT and STREAM-START/NEXT run on one CURL loop task (the multi
 \ interface below).
@@ -122,9 +123,13 @@ OPT-OBJECT 4 + constant OPT-PROXY         \ CURLOPT_PROXY
 OPT-OBJECT 23 + constant OPT-HTTP-HEADER  \ CURLOPT_HTTPHEADER
 OPT-OBJECT 31 + constant OPT-COOKIE-FILE  \ CURLOPT_COOKIEFILE
 OPT-OBJECT 36 + constant OPT-METHOD       \ CURLOPT_CUSTOMREQUEST
+OPT-OBJECT 65 + constant OPT-CA-INFO      \ CURLOPT_CAINFO
 OPT-OBJECT 82 + constant OPT-COOKIE-JAR   \ CURLOPT_COOKIEJAR
+OPT-OBJECT 97 + constant OPT-CA-PATH      \ CURLOPT_CAPATH
 OPT-OBJECT 103 + constant OPT-PRIVATE     \ CURLOPT_PRIVATE
 OPT-OBJECT 165 + constant OPT-COPY-BODY   \ CURLOPT_COPYPOSTFIELDS
+OPT-OBJECT 246 + constant OPT-PROXY-CA-INFO  \ CURLOPT_PROXY_CAINFO
+OPT-OBJECT 247 + constant OPT-PROXY-CA-PATH  \ CURLOPT_PROXY_CAPATH
 OPT-OBJECT 15 + constant OPT-BODY        \ CURLOPT_POSTFIELDS
 OPT-LONG 19 + constant OPT-LOW-SPEED-LIMIT \ CURLOPT_LOW_SPEED_LIMIT
 OPT-LONG 20 + constant OPT-LOW-SPEED-TIME  \ CURLOPT_LOW_SPEED_TIME
@@ -310,6 +315,12 @@ CAST: >BYTES ( n -- ^u8 )
 
 : SET-TEXT ( handle n str -- status )
    SET-TEXT-RAW CODE>STATUS ;
+
+
+\ Runs the next setter only while every earlier one answered CURLE_OK.
+: OK-THEN ( n [ -- n ] -- n )
+   swap dup CURLE-OK <> if nip exit then
+   drop execute ;
 
 
 \ One record per CURL*, lasting exactly as long. S.VALID: 0 none, VALID-WHOLE a
@@ -546,6 +557,19 @@ public
 : PROXY! ( handle str -- status )
    {: subject:handle text u:n :}
    subject OPT-PROXY text u SET-TEXT ;
+
+
+\ The server and an HTTPS proxy are verified against the hashed directory at
+\ path, whose certificates load as a handshake needs them, not the CA bundle.
+: CA-PATH! ( handle str -- status )
+   {: subject:handle path u:n :}
+   u 1 AT-LEAST
+   subject OPT-CA-PATH path u SET-TEXT-RAW
+   [: subject OPT-PROXY-CA-PATH path u SET-TEXT-RAW ;] OK-THEN
+   \ Paths before clears: a path libcurl refuses leaves the bundles in force.
+   [: subject OPT-CA-INFO 0 SET-NUM-RAW ;] OK-THEN
+   [: subject OPT-PROXY-CA-INFO 0 SET-NUM-RAW ;] OK-THEN
+   CODE>STATUS ;
 
 
 \ libcurl picks GET by default and POST once BODY! has been used. METHOD!
