@@ -212,6 +212,16 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    s\" {\"enum\":[\"open\",\"closed\"]}" s\" \"shut\""
    s\" : expected one of `[\"open\",\"closed\"]`, found `\"shut\"`; send one of those values"
    FAILS
+   s" VALID? checks enum before an object's members" T-LABEL
+   s\" {\"enum\":[{\"a\":1}],\"properties\":{\"a\":{\"type\":\"string\"}}}"
+   s\" {\"a\":2}"
+   s\" : expected one of `[{\"a\":1}]`, found `{\"a\":2}`; send one of those values"
+   FAILS
+   s" VALID? checks an object's members after enum takes it" T-LABEL
+   s\" {\"enum\":[{\"a\":1}],\"properties\":{\"a\":{\"type\":\"string\"}}}"
+   s\" {\"a\":1}"
+   s" .a: expected a value of type `string`, found `1`; send a value of that type"
+   FAILS
    s" VALID? compares enum numbers by value" T-LABEL
    s\" {\"enum\":[1]}" s" 1.0" PASSES
    s" VALID? counts minLength in characters" T-LABEL
@@ -281,6 +291,10 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    s\" {\"maxItems\":2}" s" [0,1,2]"
    s" : expected at most 2 items, found 3 items; remove an item"
    FAILS
+   s" VALID? reports a broken count in place of a failing element" T-LABEL
+   s\" {\"items\":{\"type\":\"string\"},\"maxItems\":1}" s" [1,2]"
+   s" : expected at most 1 item, found 2 items; remove an item"
+   FAILS
    s" VALID? takes elements that differ in kind or value" T-LABEL
    s\" {\"items\":{\"type\":[\"string\",\"number\",\"boolean\",\"null\"]},\"uniqueItems\":true}"
    s\" [\"1\",1,1.5,true,false,null,\"a\"]" PASSES
@@ -306,6 +320,9 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    s" VALID? takes anyOf's second alternative after the first fails" T-LABEL
    s\" {\"anyOf\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}" s" 5"
    PASSES
+   s" VALID? takes a container's second anyOf alternative after the first fails deep" T-LABEL
+   s\" {\"anyOf\":[{\"items\":{\"items\":{\"type\":\"string\"}}},{\"items\":{\"type\":\"array\"}}]}"
+   s" [[1]]" PASSES
    s" VALID? lists each anyOf alternative's violation" T-LABEL
    s\" {\"anyOf\":[{\"type\":\"string\"},{\"type\":\"object\",\"required\":[\"a\"]}]}"
    s" {}"

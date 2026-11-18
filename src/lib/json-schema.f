@@ -26,6 +26,16 @@ split-str
 \ does not admit, or memory that cannot be had, throws its code, leaving the
 \ BUF as it was. A failed anyOf or oneOf lists each alternative's violation
 \ on a line of its own, `[i]` and the violation, its place below the value's.
+\ VALID? makes no nested call per value: one reader passes over the text,
+\ and each value being judged is a place on a stack in the scratch arena,
+\ so memory, not the machine stack, bounds a value's depth. A place judges
+\ type, enum and its kind's rules, pushes a place for each member or
+\ element a schema judges, then each anyOf and oneOf alternative, rooted, on
+\ its value read again from its first token; it closes with the reader on
+\ its value's last token, whatever its verdict, which the place below
+\ reads. enum reads a container to its end before its members, then again;
+\ uniqueItems reads its array again at the `]`. A container's violation
+\ that quotes it is written once its closing token is read.
 \ STORAGE CLASS. CALLER-OWNED: the nodes, the decoded names and each
 \ pattern's decoded text and program lie in the arena COMPILE was given,
 \ read-only after COMPILE; they borrow the schema text, which must outlive
@@ -663,33 +673,109 @@ $73 constant SCALARS
 
 \ ---- checking values -------------------------------------------------------
 
-\ One VALID? call: the BUF a violation's text goes to, the scratch arena
-\ and the cursor an enum's array is read with.
+\ What a place reads next: its value's first token, its object's next
+\ member, its array's next element, the verdict of the place it pushed, or
+\ its anyOf's or oneOf's alternatives; close pops it.
+ENUM judging value members member elements element any-of any-alt one-of one-alt close ;ENUM
+
+\ The index of an alternative a oneOf value meets.
+STRUCTURE pass DERIVE addr
+   FIELD next ^pass
+   FIELD index n
+;STRUCTURE
+
+\ walk is one VALID? call: cursor reads the value text and values an enum's
+\ array; top is the innermost open place, NULL-PTR once the root closes;
+\ spare chains closed places by outer; verdict is the last closed place's.
+\ place is one value judged against node; a path starts at a rooted place
+\ and goes down inner, `[index]` where index is not negative, else `.name`.
+\ A container's text is its start until its closing token is read; mark is
+\ the BUF's length at the push; marks holds a byte per required name, set
+\ once its member is read; passes are ascending, through tail.
+MUTUAL walk place
 STRUCTURE walk DERIVE addr
    FIELD buf ^n
    FIELD scratch ^ARENA:arena
+   FIELD cursor JSON:cursor
    FIELD values JSON:cursor
+   FIELD top ^place
+   FIELD spare ^place
+   FIELD verdict bool
 ;STRUCTURE
-
-\ A value's place under the one at up: element index when not negative, else
-\ member name; the root when up is NULL-PTR. cursor reads the values here.
 STRUCTURE place DERIVE addr
-   FIELD up ^place
+   FIELD walk ^walk
+   FIELD outer ^place
+   FIELD inner ^place
+   FIELD rooted bool
    FIELD name SPAN:span<u8>
    FIELD index n
-   FIELD walk ^walk
-   FIELD cursor JSON:cursor
+   FIELD node ^node
+   FIELD phase judging
+   FIELD kind n
+   FIELD text SPAN:span<u8>
+   FIELD mark NUM:byte-len
+   FIELD count n
+   FIELD marks ^u8
+   FIELD branch ^branch
+   FIELD choice n
+   FIELD passes ^pass
+   FIELD tail ^pass
 ;STRUCTURE
+;MUTUAL
 
 ARENA WALKS walk
 ARENA PLACES place
+ARENA PASSES pass
 
-: NEW-PLACE ( ^place ^walk -- ^place ) {: up:^ w:^ :}
-   w WALK-SCRATCH @ [: PLACE-CURSOR JSON:READ-DISPOSE ;]
-   PLACES-NEW-DISPOSE {: pl:^ :}
-   up pl PLACE-UP !  w pl PLACE-WALK !  -1 pl PLACE-INDEX !  pl ;
+: MARK ( ^place -- NUM:byte-len ) PLACE-WALK @ WALK-BUF @ BUF:LEN@ ;
 
-: CHILD ( ^place -- ^place ) dup PLACE-WALK @ NEW-PLACE ;
+: BACK ( NUM:byte-len ^place -- ) PLACE-WALK @ WALK-BUF @ BUF:LEN! ;
+
+: SPARE-PLACE ( ^walk -- ^place ) {: w:^ :}
+   w WALK-SPARE @ {: pl:^ :}
+   pl NULL-PTR = if w WALK-SCRATCH @ PLACES-NEW exit then
+   pl PLACE-OUTER @ w WALK-SPARE !  pl ;
+
+\ A place for the value whose first token is current, judged against nd,
+\ pushed above top; rooted when it is the root.
+: OPEN-PLACE ( ^node ^walk -- ^place ) {: nd:^ w:^ :}
+   w SPARE-PLACE {: pl:^ :}
+   w WALK-TOP @ {: up:^ :}
+   w pl PLACE-WALK !  up pl PLACE-OUTER !  NULL-PTR pl PLACE-INNER !
+   up NULL-PTR = pl PLACE-ROOTED !
+   s" " SPAN:MAKE pl PLACE-NAME !  -1 pl PLACE-INDEX !
+   nd pl PLACE-NODE !  JUDGING-VALUE pl PLACE-PHASE !
+   pl MARK pl PLACE-MARK !  0 pl PLACE-COUNT !
+   up NULL-PTR <> if pl up PLACE-INNER ! then
+   pl w WALK-TOP !  pl ;
+
+\ Pops top onto the spare chain.
+: POP-PLACE ( ^walk -- ) {: w:^ :}
+   w WALK-TOP @ {: pl:^ :}
+   pl PLACE-OUTER @ {: up:^ :}
+   up w WALK-TOP !
+   up NULL-PTR <> if NULL-PTR up PLACE-INNER ! then
+   w WALK-SPARE @ pl PLACE-OUTER !  pl w WALK-SPARE ! ;
+
+\ The place's verdict; its next step pops it.
+: DECIDE ( bool ^place -- ) {: ok:bool pl:^ :}
+   ok pl PLACE-WALK @ WALK-VERDICT !  JUDGING-CLOSE pl PLACE-PHASE ! ;
+
+: DECIDED ( ^place -- bool ) PLACE-WALK @ WALK-VERDICT @ ;
+
+: TEXT$ ( ^place -- ^u8 n ) PLACE-TEXT @ SPAN:$ ;
+
+: CONTAINER? ( ^place -- bool ) PLACE-KIND @ OPENER? ;
+
+\ The container's closing token is current.
+: ENDED ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl TEXT$ drop {: a:^ :}
+   JSON:READ-SPAN$ + a -  a swap SPAN:MAKE pl PLACE-TEXT ! ;
+
+\ A container's first token is current: the reader moves to its last.
+: SPANNED ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl CONTAINER? 0= if exit then
+   JSON:READ-ANY-SPAN$ SPAN:MAKE pl PLACE-TEXT ! ;
 
 \ The current string or key, decoded into the scratch arena.
 : DECODE ( JSON:reader ^place -- JSON:reader ^u8 n ) {: pl:^ :}
@@ -717,23 +803,22 @@ ARENA PLACES place
 : SAY-INDEX ( n ^place -- ) {: idx:n pl:^ :}
    s" [" pl ADD  idx FMT:INT$ pl ADD  s" ]" pl ADD ;
 
-\ `.name` for each member and `[i]` for each element from the root down to
-\ the place.
-: PATH ( ^place -- ) {: pl:^ :}
-   pl PLACE-UP @ {: up:^ :}
-   up NULL-PTR = if exit then
-   up RECURSE
+: SAY-STEP ( ^place -- ) {: pl:^ :}
    pl PLACE-INDEX @ {: idx:n :}
    idx 0 >= if idx pl SAY-INDEX exit then
    s" ." pl ADD  pl PLACE-NAME @ SPAN:$ pl ADD-CUT ;
 
+\ `.name` for each member and `[i]` for each element from the rooted place
+\ down to this one.
+: PATH ( ^place -- ) {: pl:^ :}
+   pl begin dup PLACE-ROOTED @ 0= while PLACE-OUTER @ repeat
+   begin dup pl <> while PLACE-INNER @ dup SAY-STEP repeat drop ;
+
 : EXPECTED ( ^place -- ) {: pl:^ :}
    pl PATH  s" : expected " pl ADD ;
 
-\ `, found` and the current value's text; the reader may move to the
-\ value's last token.
-: FOUND ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
-   s" , found " pl ADD  JSON:READ-ANY-SPAN$ pl QUOTE ;
+: FOUND ( ^place -- ) {: pl:^ :}
+   s" , found " pl ADD  pl TEXT$ pl QUOTE ;
 
 : FIX ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
    s" ; " pl ADD  s u pl ADD ;
@@ -791,14 +876,14 @@ $40 constant INTEGER-BIT
    t dup 1- and 0= if s" send a value of that type" exit then
    s" send a value of one of those types" ;
 
-: WRONG-TYPE ( JSON:reader ^node ^place -- JSON:reader ) {: nd:^ pl:^ :}
-   JSON:READ-TOKEN NUMBER? {: num:bool :}
+: WRONG-TYPE ( ^node ^place -- ) {: nd:^ pl:^ :}
+   pl PLACE-KIND @ NUMBER? {: num:bool :}
    pl EXPECTED  s" a value of type " pl ADD  nd pl SAY-TYPES
    pl FOUND  nd num TYPE-FIX$ pl FIX ;
 
 \ ---- enum and numbers ------------------------------------------------------
 
-: HUGE ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+: HUGE ( ^place -- ) {: pl:^ :}
    pl EXPECTED
    s" a number whose exponent a signed 64-bit cell holds" pl ADD
    pl FOUND  s" write the number with a smaller exponent" pl FIX ;
@@ -814,16 +899,17 @@ $40 constant INTEGER-BIT
    repeat
    JSON:READ-FINISH false ;
 
-: UNLISTED ( JSON:reader ^node ^place -- JSON:reader ) {: nd:^ pl:^ :}
+: UNLISTED ( ^node ^place -- ) {: nd:^ pl:^ :}
    pl EXPECTED  s" one of " pl ADD  nd NODE-VALUES @ SPAN:$ pl QUOTE
    pl FOUND  s" send one of those values" pl FIX ;
 
-\ The value text v against the node's enum. A number VALUE= cannot read,
+: ENUM? ( ^node -- bool ) NODE-VALUES @ SPAN:$ nip 0<> ;
+
+\ The place's text against the node's enum. A number VALUE= cannot read,
 \ COMPILE having read the enum's, is the value's.
-: ENUM-OK? ( JSON:reader ^u8 n ^node ^place -- JSON:reader bool )
-   {: v:^ vu:n nd:^ pl:^ :}
+: ENUM-OK? ( ^node ^place -- bool ) {: nd:^ pl:^ :}
+   pl TEXT$ {: v:^ vu:n :}
    nd NODE-VALUES @ SPAN:$ {: e:^ eu:n :}
-   eu 0= if true exit then
    pl PLACE-WALK @ WALK-VALUES {: c:^ :}
    false [: drop v vu e eu c ELEMENT? ;] catch {: in code:n :}
    code 0= if
@@ -834,26 +920,23 @@ $40 constant INTEGER-BIT
    code throw ;
 
 \ A bound's lexeme is quoted in the text: `at least` for a minimum.
-: OUTSIDE ( JSON:reader SPAN:span<u8> bool ^place -- JSON:reader )
-   {: b most:bool pl:^ :}
+: OUTSIDE ( SPAN:span<u8> bool ^place -- ) {: b most:bool pl:^ :}
    pl EXPECTED
    most if s" a number of at most " else s" a number of at least " then
    pl ADD  b SPAN:$ pl QUOTE
    pl FOUND  s" send a number in that range" pl FIX ;
 
-\ Whether the current number keeps to the bound b, a maximum when most;
-\ an empty b states none.
-: BOUND? ( JSON:reader SPAN:span<u8> bool ^place -- JSON:reader bool )
-   {: b most:bool pl:^ :}
+\ Whether the number keeps to the bound b, a maximum when most; an empty b
+\ states none.
+: BOUND? ( SPAN:span<u8> bool ^place -- bool ) {: b most:bool pl:^ :}
    b SPAN:$ nip 0= if true exit then
    most if 1 else -1 then {: wrong:n :}
-   JSON:READ-SPAN$ b SPAN:$ JSON:NUMBER-COMPARE MATCH option
+   pl TEXT$ b SPAN:$ JSON:NUMBER-COMPARE MATCH option
       none OF pl HUGE false ENDOF
       some OF wrong = if b most pl OUTSIDE false else true then ENDOF
    ;MATCH ;
 
-: NUMBER-OK? ( JSON:reader ^node ^place -- JSON:reader bool )
-   {: nd:^ pl:^ :}
+: NUMBER-OK? ( ^node ^place -- bool ) {: nd:^ pl:^ :}
    nd NODE-MINIMUM @ false pl BOUND? 0= if false exit then
    nd NODE-MAXIMUM @ true pl BOUND? ;
 
@@ -870,8 +953,7 @@ $40 constant INTEGER-BIT
    repeat drop ;
 
 \ A string of k characters breaks the length n, a most when most.
-: BAD-LENGTH ( JSON:reader n bool ^place -- JSON:reader )
-   {: k:n most:bool pl:^ :}
+: BAD-LENGTH ( n bool ^place -- ) {: k:n most:bool pl:^ :}
    pl EXPECTED
    most if s" a string of at most " else s" a string of at least " then
    pl ADD  k s"  character" pl COUNTED
@@ -879,7 +961,7 @@ $40 constant INTEGER-BIT
    most if s" send a shorter string" else s" send a longer string" then
    pl FIX ;
 
-: UNMATCHED ( JSON:reader ^node ^place -- JSON:reader ) {: nd:^ pl:^ :}
+: UNMATCHED ( ^node ^place -- ) {: nd:^ pl:^ :}
    pl EXPECTED  s" a string the pattern " pl ADD
    nd NODE-PATTERN-TEXT @ SPAN:$ pl QUOTE  s"  matches" pl ADD
    pl FOUND  s" send a string it matches" pl FIX ;
@@ -898,8 +980,6 @@ $40 constant INTEGER-BIT
 
 \ ---- objects ---------------------------------------------------------------
 
-defer CHECK ( ^u8 n ^node ^place -- bool )
-
 \ The quoted names of the properties from p on: `a`, `b` and `c`.
 : SAY-NAMES ( ^property ^place -- ) {: p:^ pl:^ :}
    p begin dup NULL-PTR <> while
@@ -910,58 +990,23 @@ defer CHECK ( ^u8 n ^node ^place -- bool )
       then
    repeat drop ;
 
-\ A member additionalProperties false rejects; kid is its place.
-: EXTRA ( ^node ^place -- ) {: nd:^ kid:^ :}
-   kid PLACE-UP @ {: pl:^ :}  nd NODE-PROPERTIES @ {: p:^ :}
+\ The member named na that additionalProperties false rejects in the object
+\ at pl.
+: EXTRA ( ^u8 n ^node ^place -- ) {: na:^ nu:n nd:^ pl:^ :}
+   nd NODE-PROPERTIES @ {: p:^ :}
    pl EXPECTED
    p NULL-PTR = if s" no members" else s" only the member" then pl ADD
    p NULL-PTR <> if
       p PROPERTY-NEXT @ NULL-PTR <> if s" s" pl ADD then
       s"  " pl ADD  p pl SAY-NAMES
    then
-   s" , found " pl ADD  kid PLACE-NAME @ SPAN:$ pl QUOTE
+   s" , found " pl ADD  na nu pl QUOTE
    p NULL-PTR = if s" remove it" pl FIX exit then
    p PROPERTY-NEXT @ NULL-PTR <> if
       s" rename it to one of those or remove it" pl FIX exit
    then
    s" ; rename it to " pl ADD  p PROPERTY-NAME @ SPAN:$ pl QUOTE
    s"  or remove it" pl ADD ;
-
-\ The key is current; kid is the member's place.
-: MEMBER ( JSON:reader ^node ^place -- JSON:reader bool )
-   {: nd:^ kid:^ :}
-   nd NODE-PROPERTIES @ PROPERTY-NAMED {: p:^ :}
-   kid DECODE SPAN:MAKE kid PLACE-NAME !
-   JSON:READ-NEXT drop  JSON:READ-ANY-SPAN$ {: v:^ vu:n :}
-   p NULL-PTR <> if v vu p PROPERTY-NODE @ kid CHECK exit then
-   nd NODE-EXTRAS @ MATCH extras
-      open OF true ENDOF
-      closed OF nd kid EXTRA false ENDOF
-      ruled OF v vu nd NODE-ADDITIONAL @ kid CHECK ENDOF
-   ;MATCH ;
-
-\ Each member of the object whose `{` is current, and their count.
-: MEMBERS ( JSON:reader ^node ^place -- JSON:reader n bool )
-   {: nd:^ kid:^ :}
-   0 begin
-      >r JSON:READ-NEXT JSON:T-OBJ-END <> r> swap
-   while
-      >r nd kid MEMBER r> swap
-      0= if false exit then
-      1+
-   repeat true ;
-
-\ Whether the object text o holds a member the entry names.
-: HAS? ( ^u8 n ^entry ^JSON:cursor -- bool ) {: o:^ ou:n en:^ c:^ :}
-   c o ou JSON:READ-INIT JSON:READ-NEXT drop
-   en ENTRY-NAME @ SPAN:$ JSON:READ-FIND-KEY >r JSON:READ-CLOSE r> ;
-
-\ The first entry from en on the object text o lacks, else NULL-PTR.
-: MISSING ( ^u8 n ^entry ^JSON:cursor -- ^entry )
-   {: o:^ ou:n en:^ c:^ :}
-   en NULL-PTR = if en exit then
-   o ou en c HAS? 0= if en exit then
-   o ou en ENTRY-NEXT @ c RECURSE ;
 
 : ABSENT ( ^entry ^place -- ) {: en:^ pl:^ :}
    pl EXPECTED  s" a member " pl ADD  en ENTRY-NAME @ SPAN:$ pl QUOTE
@@ -972,17 +1017,81 @@ defer CHECK ( ^u8 n ^node ^place -- bool )
    s" , found " pl ADD  k s"  member" pl COUNTED
    s" remove a member" pl FIX ;
 
-\ The object text o, whose `{` is current, against the node.
-: OBJECT-OK? ( JSON:reader ^u8 n ^node ^place -- JSON:reader bool )
-   {: o:^ ou:n nd:^ pl:^ :}
-   pl CHILD {: kid:^ :}
-   nd kid MEMBERS {: k:n ok:bool :}
-   ok 0= if false exit then
-   o ou nd NODE-REQUIRED @ kid PLACE-CURSOR MISSING {: en:^ :}
-   en NULL-PTR <> if en pl ABSENT false exit then
-   nd NODE-MAX-PROPERTIES @ {: most:n :}
-   most 0 >= k most > and if most k pl TOO-MANY false exit then
-   true ;
+: REQUIRED-COUNT ( ^entry -- n )
+   0 swap begin dup NULL-PTR <> while swap 1+ swap ENTRY-NEXT @ repeat
+   drop ;
+
+: OPEN-OBJECT ( ^place -- ) {: pl:^ :}
+   pl PLACE-NODE @ NODE-REQUIRED @ REQUIRED-COUNT {: k:n :}
+   pl PLACE-WALK @ WALK-SCRATCH @ k 1 max ARENA:ALLOC drop
+   pl PLACE-MARKS !
+   JUDGING-MEMBERS pl PLACE-PHASE ! ;
+
+\ Marks the required name the current key holds.
+: MARK-REQUIRED ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-MARKS @ {: marks:^ :}
+   pl PLACE-NODE @ NODE-REQUIRED @ 0
+   begin over NULL-PTR <> while
+      >r SAME-ENTRY? if 1 marks r@ + c! then ENTRY-NEXT @ r> 1+
+   repeat 2drop ;
+
+\ The first required name no member held, else NULL-PTR.
+: UNREAD-REQUIRED ( ^place -- ^entry ) {: pl:^ :}
+   pl PLACE-MARKS @ {: marks:^ :}
+   pl PLACE-NODE @ NODE-REQUIRED @ 0
+   begin over NULL-PTR <> while
+      marks over + c@ 0= if drop exit then
+      1+ swap ENTRY-NEXT @ swap
+   repeat drop ;
+
+\ Reads past the members after the current one to the object's `}`.
+: SKIP-MEMBERS ( JSON:reader -- JSON:reader )
+   begin JSON:READ-NEXT JSON:T-OBJ-END <> while
+      JSON:READ-NEXT drop  JSON:READ-SKIP-VALUE
+   repeat ;
+
+: PUSH-MEMBER ( ^node ^u8 n ^place -- ) {: nd:^ na:^ nu:n pl:^ :}
+   JUDGING-MEMBER pl PLACE-PHASE !
+   nd pl PLACE-WALK @ OPEN-PLACE {: kid:^ :}
+   na nu SPAN:MAKE kid PLACE-NAME ! ;
+
+\ The key is current: its value is pushed against its property's or
+\ additionalProperties' schema, skipped, or rejected.
+: KEY-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-NODE @ {: nd:^ :}
+   nd NODE-PROPERTIES @ PROPERTY-NAMED {: p:^ :}
+   pl MARK-REQUIRED
+   pl DECODE {: na:^ nu:n :}
+   JSON:READ-NEXT drop
+   p NULL-PTR <> if p PROPERTY-NODE @ na nu pl PUSH-MEMBER exit then
+   nd NODE-EXTRAS @ MATCH extras
+      open OF JSON:READ-SKIP-VALUE  1 pl PLACE-COUNT +! ENDOF
+      closed OF
+         na nu nd pl EXTRA
+         JSON:READ-SKIP-VALUE SKIP-MEMBERS pl ENDED  false pl DECIDE
+      ENDOF
+      ruled OF nd NODE-ADDITIONAL @ na nu pl PUSH-MEMBER ENDOF
+   ;MATCH ;
+
+\ At the `}`: the first required name unread, then maxProperties.
+: OBJECT-END ( ^place -- ) {: pl:^ :}
+   pl UNREAD-REQUIRED {: en:^ :}
+   en NULL-PTR <> if en pl ABSENT false pl DECIDE exit then
+   pl PLACE-NODE @ NODE-MAX-PROPERTIES @ {: most:n :}
+   pl PLACE-COUNT @ {: k:n :}
+   most 0 >= k most > and if most k pl TOO-MANY false pl DECIDE exit then
+   JUDGING-ANY-OF pl PLACE-PHASE ! ;
+
+: MEMBERS-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   JSON:READ-NEXT JSON:T-OBJ-END = if pl ENDED pl OBJECT-END exit then
+   pl KEY-STEP ;
+
+\ A member that fails fails its object.
+: MEMBER-DONE ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl DECIDED if
+      1 pl PLACE-COUNT +!  JUDGING-MEMBERS pl PLACE-PHASE ! exit
+   then
+   SKIP-MEMBERS pl ENDED  false pl DECIDE ;
 
 \ ---- arrays ----------------------------------------------------------------
 
@@ -1084,16 +1193,18 @@ ARENA TABLES table
       some OF drop false ENDOF
    ;MATCH ;
 
-: HUGE-AT ( n ^table ^place -- ) {: idx:n tb:^ kid:^ :}
-   idx kid PLACE-INDEX !
-   kid PLACE-CURSOR idx tb ELEMENT$ JSON:READ-INIT JSON:READ-NEXT drop
-   kid HUGE JSON:READ-FINISH ;
+\ Element idx rejected at a place pushed for it and popped.
+: HUGE-AT ( n ^table ^place -- ) {: idx:n tb:^ pl:^ :}
+   pl PLACE-WALK @ {: w:^ :}
+   pl PLACE-NODE @ NODE-ITEMS @ w OPEN-PLACE {: kid:^ :}
+   idx kid PLACE-INDEX !  idx tb ELEMENT$ SPAN:MAKE kid PLACE-TEXT !
+   kid HUGE  w POP-PLACE ;
 
 \ The first number NUMBER-COMPARE cannot order, if any, rejected at its
-\ place kid.
-: ORDERABLE? ( n ^table ^place -- bool ) {: k:n tb:^ kid:^ :}
+\ place.
+: ORDERABLE? ( n ^table ^place -- bool ) {: k:n tb:^ pl:^ :}
    k 0 ?do
-      i tb HUGE? if i tb kid HUGE-AT unloop false exit then
+      i tb HUGE? if i tb pl HUGE-AT unloop false exit then
    loop true ;
 
 \ Whether the elements at positions p - 1 and p of order are equal and
@@ -1126,8 +1237,8 @@ ARENA TABLES table
 
 \ uniqueItems over the k recorded elements: sorted by kind, value and
 \ index, equal elements are neighbours.
-: DISTINCT? ( n ^table ^place ^place -- bool ) {: k:n tb:^ pl:^ kid:^ :}
-   k tb kid ORDERABLE? 0= if false exit then
+: DISTINCT? ( n ^table ^place -- bool ) {: k:n tb:^ pl:^ :}
+   k tb pl ORDERABLE? 0= if false exit then
    pl PLACE-WALK @ WALK-SCRATCH @ k cells 1 max ARENA:ALLOC drop
    CELL-VIEW {: order:^ :}
    k 0 ?do i order i cells + ! loop
@@ -1136,15 +1247,28 @@ ARENA TABLES table
    b 0< if true exit then
    a b tb pl DUPLICATE false ;
 
-\ The elements of the array text v.
-: COUNT-ELEMENTS ( ^u8 n ^JSON:cursor -- n ) {: v:^ vu:n c:^ :}
-   c v vu JSON:READ-INIT JSON:READ-NEXT drop
+\ The array read again from its `[` to its `]`, each element recorded; items
+\ took them all, so they are scalars.
+: UNIQUE? ( JSON:reader ^place -- JSON:reader bool ) {: pl:^ :}
+   pl PLACE-COUNT @ {: k:n :}
+   pl TEXT$ {: v:^ vu:n :}
+   v vu k pl NEW-TABLE {: tb:^ :}
+   v vu JSON:READ-REWIND
    0 begin
       >r JSON:READ-NEXT JSON:T-ARR-END <> r> swap
    while
+      >r JSON:READ-ANY-SPAN$ r@ tb RECORD r> 1+
+   repeat drop
+   k tb pl DISTINCT? ;
+
+\ Reads past the elements after the current one to the array's `]`, adding
+\ them to k.
+: SKIP-ELEMENTS ( JSON:reader n -- JSON:reader n )
+   begin
+      >r JSON:READ-NEXT JSON:T-ARR-END <> r> swap
+   while
       >r JSON:READ-SKIP-VALUE r> 1+
-   repeat
-   >r JSON:READ-FINISH r> ;
+   repeat ;
 
 \ k elements break the count lim, a most when most.
 : BAD-COUNT ( n n bool ^place -- ) {: lim:n k:n most:bool pl:^ :}
@@ -1160,94 +1284,86 @@ ARENA TABLES table
    most 0 >= k most > and if most k true pl BAD-COUNT false exit then
    true ;
 
-\ The element whose first token is current, at index idx, recorded in tb
-\ unless tb is NULL-PTR.
-: ELEMENT-OK? ( JSON:reader n ^node ^table ^place -- JSON:reader bool )
-   {: idx:n items:^ tb:^ kid:^ :}
-   idx kid PLACE-INDEX !
-   JSON:READ-ANY-SPAN$ {: e:^ eu:n :}
-   e eu items kid CHECK 0= if false exit then
-   tb NULL-PTR <> if e eu idx tb RECORD then
-   true ;
+: COUNT-KEPT? ( n ^node -- bool ) {: k:n nd:^ :}
+   nd NODE-MAX-ITEMS @ {: most:n :}
+   k nd NODE-MIN-ITEMS @ >=  most 0< k most <= or and ;
 
-\ Each element of the array whose `[` is current against items.
-: ELEMENTS-OK? ( JSON:reader ^node ^table ^place -- JSON:reader bool )
-   {: items:^ tb:^ kid:^ :}
-   0 begin
-      >r JSON:READ-NEXT JSON:T-ARR-END <> r> swap
-   while
-      >r r@ items tb kid ELEMENT-OK? r> swap
-      0= if drop false exit then
-      1+
-   repeat drop true ;
+\ At the `]`: the count, then uniqueItems.
+: ARRAY-END ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-NODE @ {: nd:^ :}
+   pl PLACE-COUNT @ nd pl COUNT-OK? 0= if false pl DECIDE exit then
+   nd NODE-UNIQUE @ nd NODE-ITEMS @ NULL-PTR <> and if
+      pl UNIQUE? 0= if false pl DECIDE exit then
+   then
+   JUDGING-ANY-OF pl PLACE-PHASE ! ;
 
-\ The array text v, whose `[` is current, against the node.
-: ARRAY-OK? ( JSON:reader ^u8 n ^node ^place -- JSON:reader bool )
-   {: v:^ vu:n nd:^ pl:^ :}
-   pl CHILD {: kid:^ :}
-   v vu kid PLACE-CURSOR COUNT-ELEMENTS {: k:n :}
-   k nd pl COUNT-OK? 0= if false exit then
-   nd NODE-ITEMS @ {: items:^ :}
-   items NULL-PTR = if true exit then
-   nd NODE-UNIQUE @ if v vu k pl NEW-TABLE else NULL-PTR then
-   {: tb:^ :}
-   items tb kid ELEMENTS-OK? 0= if false exit then
-   tb NULL-PTR = if true exit then
-   k tb pl kid DISTINCT? ;
+\ The next element is pushed against items, or skipped and counted.
+: ELEMENTS-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   JSON:READ-NEXT JSON:T-ARR-END = if pl ENDED pl ARRAY-END exit then
+   pl PLACE-NODE @ NODE-ITEMS @ {: items:^ :}
+   items NULL-PTR = if JSON:READ-SKIP-VALUE 1 pl PLACE-COUNT +! exit then
+   JUDGING-ELEMENT pl PLACE-PHASE !
+   items pl PLACE-WALK @ OPEN-PLACE {: kid:^ :}
+   pl PLACE-COUNT @ kid PLACE-INDEX ! ;
+
+\ An element that fails fails its array, unless the count breaks a bound:
+\ the count's violation then stands in the element's.
+: ELEMENT-DONE ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   1 pl PLACE-COUNT +!
+   pl DECIDED if JUDGING-ELEMENTS pl PLACE-PHASE ! exit then
+   pl PLACE-COUNT @ SKIP-ELEMENTS {: k:n :}
+   pl ENDED
+   pl PLACE-NODE @ {: nd:^ :}
+   k nd COUNT-KEPT? 0= if pl PLACE-MARK @ pl BACK  k nd pl COUNT-OK? drop then
+   false pl DECIDE ;
 
 \ ---- anyOf and oneOf --------------------------------------------------------
-
-\ The index of an alternative a oneOf value meets.
-STRUCTURE pass DERIVE addr
-   FIELD next ^pass
-   FIELD index n
-;STRUCTURE
-
-ARENA PASSES pass
-
-: MARK ( ^place -- NUM:byte-len ) PLACE-WALK @ WALK-BUF @ BUF:LEN@ ;
-
-: BACK ( NUM:byte-len ^place -- ) PLACE-WALK @ WALK-BUF @ BUF:LEN! ;
-
-\ A root place of the place's walk.
-: FRESH-ROOT ( ^place -- ^place ) NULL-PTR swap PLACE-WALK @ NEW-PLACE ;
 
 : ANY-OF$ ( -- ^u8 n ) s" one schema of `anyOf` takes" ;
 : ONE-OF$ ( -- ^u8 n ) s" exactly one schema of `oneOf` takes" ;
 
-\ `P: expected a value s, found `v``; v may hold the root's blanks.
-: CHOICE-HEAD ( ^u8 n ^u8 n ^place -- ) {: v:^ vu:n s:^ su:n pl:^ :}
-   pl EXPECTED  s" a value " pl ADD  s su pl ADD
-   s" , found " pl ADD  v vu TRIM pl QUOTE ;
+\ `P: expected a value s, found `v``.
+: CHOICE-HEAD ( ^u8 n ^place -- ) {: s:^ su:n pl:^ :}
+   pl EXPECTED  s" a value " pl ADD  s su pl ADD  pl FOUND ;
 
-\ Alternative k checked at alt, its text after `[k]` on a line of its own.
-: ALTERNATIVE ( ^u8 n ^branch n ^place -- bool )
-   {: v:^ vu:n br:^ k:n alt:^ :}
-   s\" \n  [" alt ADD  k FMT:INT$ alt ADD  s" ]" alt ADD
-   v vu br BRANCH-NODE @ alt CHECK ;
+\ `[k]` on a line of its own, then alternative br, k, pushed rooted on the
+\ value's first token.
+: ALTERNATIVE ( JSON:reader ^branch n ^place -- JSON:reader )
+   {: br:^ k:n pl:^ :}
+   br pl PLACE-BRANCH !  k pl PLACE-CHOICE !
+   s\" \n  [" pl ADD  k FMT:INT$ pl ADD  s" ]" pl ADD
+   pl CONTAINER? if pl TEXT$ JSON:READ-REWIND then
+   br BRANCH-NODE @ pl PLACE-WALK @ OPEN-PLACE {: alt:^ :}
+   true alt PLACE-ROOTED ! ;
 
-\ Whether v meets an alternative from br on, k br's index.
-: ANY? ( ^u8 n ^branch n ^place -- bool ) {: v:^ vu:n br:^ k:n alt:^ :}
-   br NULL-PTR = if false exit then
-   v vu br k alt ALTERNATIVE if true exit then
-   v vu br BRANCH-NEXT @ k 1+ alt RECURSE ;
+: NEXT-ALTERNATIVE ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-BRANCH @ BRANCH-NEXT @  pl PLACE-CHOICE @ 1+  pl ALTERNATIVE ;
 
-: ANY-OF-OK? ( ^u8 n ^node ^place -- bool ) {: v:^ vu:n nd:^ pl:^ :}
-   nd NODE-ANY-OF @ {: br:^ :}
-   br NULL-PTR = if true exit then
-   pl MARK {: at :}
-   v vu ANY-OF$ pl CHOICE-HEAD  s" meet one of them:" pl FIX
-   v vu br 0 pl FRESH-ROOT ANY? 0= if false exit then
-   at pl BACK true ;
+: LAST-ALTERNATIVE? ( ^place -- bool )
+   PLACE-BRANCH @ BRANCH-NEXT @ NULL-PTR = ;
 
-\ The indexes of the alternatives from br on that v meets, ascending.
-: PASSING ( ^u8 n ^branch n ^place -- ^pass ) {: v:^ vu:n br:^ k:n alt:^ :}
-   br NULL-PTR = if NULL-PTR exit then
-   v vu br k alt ALTERNATIVE {: ok:bool :}
-   v vu br BRANCH-NEXT @ k 1+ alt RECURSE {: rest:^ :}
-   ok 0= if rest exit then
-   alt PLACE-WALK @ WALK-SCRATCH @ PASSES-NEW {: p:^ :}
-   rest p PASS-NEXT !  k p PASS-INDEX !  p ;
+: ANY-OF-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-NODE @ NODE-ANY-OF @ {: br:^ :}
+   br NULL-PTR = if JUDGING-ONE-OF pl PLACE-PHASE ! exit then
+   ANY-OF$ pl CHOICE-HEAD  s" meet one of them:" pl FIX
+   JUDGING-ANY-ALT pl PLACE-PHASE !
+   br 0 pl ALTERNATIVE ;
+
+\ An alternative that passes drops the alternatives' texts.
+: ANY-ALT-DONE ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl DECIDED if
+      pl PLACE-MARK @ pl BACK  JUDGING-ONE-OF pl PLACE-PHASE ! exit
+   then
+   pl LAST-ALTERNATIVE? if false pl DECIDE exit then
+   pl NEXT-ALTERNATIVE ;
+
+\ Appends the alternative in hand to the passes.
+: PASSED ( ^place -- ) {: pl:^ :}
+   pl PLACE-WALK @ WALK-SCRATCH @ PASSES-NEW {: p:^ :}
+   pl PLACE-CHOICE @ p PASS-INDEX !
+   pl PLACE-TAIL @ {: t:^ :}
+   t NULL-PTR = if p pl PLACE-PASSES ! else p t PASS-NEXT ! then
+   p pl PLACE-TAIL ! ;
 
 \ The indexes from p on: `[0], [1] and [2]`.
 : SAY-PASSES ( ^pass ^place -- ) {: p:^ pl:^ :}
@@ -1259,59 +1375,89 @@ ARENA PASSES pass
       then
    repeat drop ;
 
-: AMBIGUOUS ( ^u8 n ^pass ^place -- ) {: v:^ vu:n p:^ pl:^ :}
-   v vu ONE-OF$ pl CHOICE-HEAD
+: AMBIGUOUS ( ^pass ^place -- ) {: p:^ pl:^ :}
+   ONE-OF$ pl CHOICE-HEAD
    s" , which schemas " pl ADD  p pl SAY-PASSES  s"  take" pl ADD
    s" send a value only one of them takes" pl FIX ;
 
-: ONE-OF-OK? ( ^u8 n ^node ^place -- bool ) {: v:^ vu:n nd:^ pl:^ :}
-   nd NODE-ONE-OF @ {: br:^ :}
-   br NULL-PTR = if true exit then
-   pl MARK {: at :}
-   v vu ONE-OF$ pl CHOICE-HEAD  s" meet one of them:" pl FIX
-   v vu br 0 pl FRESH-ROOT PASSING {: p:^ :}
-   p NULL-PTR = if false exit then
-   at pl BACK
-   p PASS-NEXT @ NULL-PTR = if true exit then
-   v vu p pl AMBIGUOUS false ;
+: ONE-OF-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-NODE @ NODE-ONE-OF @ {: br:^ :}
+   br NULL-PTR = if true pl DECIDE exit then
+   ONE-OF$ pl CHOICE-HEAD  s" meet one of them:" pl FIX
+   NULL-PTR pl PLACE-PASSES !  NULL-PTR pl PLACE-TAIL !
+   JUDGING-ONE-ALT pl PLACE-PHASE !
+   br 0 pl ALTERNATIVE ;
+
+\ After the last alternative: none passed keeps their texts; one passed
+\ drops them; more names them.
+: ONE-ALT-DONE ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl DECIDED if pl PASSED then
+   pl LAST-ALTERNATIVE? 0= if pl NEXT-ALTERNATIVE exit then
+   pl PLACE-PASSES @ {: p:^ :}
+   p NULL-PTR = if false pl DECIDE exit then
+   pl PLACE-MARK @ pl BACK
+   p PASS-NEXT @ NULL-PTR = if true pl DECIDE exit then
+   p pl AMBIGUOUS  false pl DECIDE ;
 
 \ ---- judging ---------------------------------------------------------------
 
-\ The rules of the value's kind: a number's, a string's or an object's.
-: KIND-OK? ( JSON:reader ^u8 n ^node ^place -- JSON:reader bool )
-   {: v:^ vu:n nd:^ pl:^ :}
-   JSON:READ-TOKEN {: kind:n :}
-   kind NUMBER? if nd pl NUMBER-OK? exit then
-   kind JSON:T-STR = if nd pl STRING-OK? exit then
-   kind JSON:T-OBJ = if v vu nd pl OBJECT-OK? exit then
-   kind JSON:T-ARR = if v vu nd pl ARRAY-OK? exit then
-   true ;
+\ A number's and a string's rules at once; an object's members and an
+\ array's elements step by step.
+: KIND-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-NODE @ {: nd:^ :}
+   pl PLACE-KIND @ {: kind:n :}
+   kind NUMBER? if
+      nd pl NUMBER-OK? 0= if false pl DECIDE exit then
+   then
+   kind JSON:T-STR = if
+      nd pl STRING-OK? 0= if false pl DECIDE exit then
+   then
+   kind JSON:T-OBJ = if pl OPEN-OBJECT exit then
+   kind JSON:T-ARR = if JUDGING-ELEMENTS pl PLACE-PHASE ! exit then
+   JUDGING-ANY-OF pl PLACE-PHASE ! ;
 
-\ The value text v, whose first token is current, against the node; the
-\ reader ends anywhere in the value.
-: JUDGE ( JSON:reader ^u8 n ^node ^place -- JSON:reader bool )
-   {: v:^ vu:n nd:^ pl:^ :}
+\ The value's first token is current: type, enum, then its kind's rules.
+: VALUE-STEP ( JSON:reader ^place -- JSON:reader ) {: pl:^ :}
+   pl PLACE-NODE @ {: nd:^ :}
+   JSON:READ-TOKEN pl PLACE-KIND !
+   pl CONTAINER? if JSON:READ-SPAN$ drop 0 else JSON:READ-ANY-SPAN$ then
+   SPAN:MAKE pl PLACE-TEXT !
    VALUE-TYPES {: bits:n :}  nd NODE-TYPES @ {: t:n :}
-   t 0<> t bits and 0= and if nd pl WRONG-TYPE false exit then
-   v vu nd pl ENUM-OK? 0= if false exit then
-   v vu nd pl KIND-OK? 0= if false exit then
-   v vu nd pl ANY-OF-OK? 0= if false exit then
-   v vu nd pl ONE-OF-OK? ;
+   t 0<> t bits and 0= and if
+      pl SPANNED  nd pl WRONG-TYPE  false pl DECIDE exit
+   then
+   nd ENUM? if
+      pl SPANNED
+      nd pl ENUM-OK? 0= if false pl DECIDE exit then
+      pl CONTAINER? if pl TEXT$ JSON:READ-REWIND then
+   then
+   pl KIND-STEP ;
 
-\ The value text v against the node, read with the place's cursor.
-: CHECK-VALUE ( ^u8 n ^node ^place -- bool ) {: v:^ vu:n nd:^ pl:^ :}
-   pl PLACE-CURSOR v vu JSON:READ-INIT JSON:READ-NEXT drop
-   v vu nd pl JUDGE  >r JSON:READ-FINISH r> ;
-
-: INSTALL-CHECK ( -- ) [: CHECK-VALUE ;] is CHECK ;
-INSTALL-CHECK
+: JUDGE-STEP ( JSON:reader ^walk -- JSON:reader ) {: w:^ :}
+   w WALK-TOP @ {: pl:^ :}
+   pl PLACE-PHASE @ MATCH judging
+      value OF pl VALUE-STEP ENDOF
+      members OF pl MEMBERS-STEP ENDOF
+      member OF pl MEMBER-DONE ENDOF
+      elements OF pl ELEMENTS-STEP ENDOF
+      element OF pl ELEMENT-DONE ENDOF
+      any-of OF pl ANY-OF-STEP ENDOF
+      any-alt OF pl ANY-ALT-DONE ENDOF
+      one-of OF pl ONE-OF-STEP ENDOF
+      one-alt OF pl ONE-ALT-DONE ENDOF
+      close OF w POP-PLACE ENDOF
+   ;MATCH ;
 
 \ s is the scratch arena.
 : WALK-ROOT ( ^u8 n schema ^n ^ARENA:arena -- bool )
    {: v:^ vu:n sc buf:^ s:^ :}
-   s [: WALK-VALUES JSON:READ-DISPOSE ;] WALKS-NEW-DISPOSE {: w:^ :}
+   s [: dup WALK-CURSOR JSON:READ-DISPOSE WALK-VALUES JSON:READ-DISPOSE ;]
+   WALKS-NEW-DISPOSE {: w:^ :}
    buf w WALK-BUF !  s w WALK-SCRATCH !
-   v vu sc SCHEMA-UNMAKE NULL-PTR w NEW-PLACE CHECK ;
+   w WALK-CURSOR v vu JSON:READ-INIT JSON:READ-NEXT drop
+   sc SCHEMA-UNMAKE w OPEN-PLACE drop
+   begin w WALK-TOP @ NULL-PTR <> while w JUDGE-STEP repeat
+   JSON:READ-FINISH  w WALK-VERDICT @ ;
 
 public
 
