@@ -1403,19 +1403,25 @@ private
    u 0= if 0 exit then
    1 u 0 ?do a i + c@ SP = if 1+ then loop ;
 
-\ The name that starts at start, and the next name's start.
+\ The name that starts at start, as listed, and the next name's start.
 : NAME-AT ( str n -- str n ) {: a:^ u:n start:n :}
    a u SP start SPLIT-NEXT drop ;
 
-: NAME ( ^u8 n n -- ^u8 n ) {: a:^ u:n idx:n :}
-   0 idx 0 ?do a u rot NAME-AT nip nip loop
-   a u rot NAME-AT drop ;
+\ A listed name that ends in `?` names an optional member.
+: OPTIONAL? ( ^u8 n -- bool ) {: a:^ u:n :}
+   u 0= if false exit then
+   a u + 1- c@ [char] ? = ;
+
+\ The member's name a listed name gives.
+: BARE ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+   a u OPTIONAL? if a u 1- exit then
+   a u ;
 
 \ Whether the current key matches the name at start, and the next start.
 : NAME-MATCH? ( n ^cursor str -- n bool )
    {: start:n state:^ a:^ u:n :}
    a u start NAME-AT {: na:^ nu:n next:n :}
-   next state na nu MATCH-INNER ;
+   next state na nu BARE MATCH-INNER ;
 
 \ The index of the name the current key decodes to, or -1.
 : KEY-INDEX ( ^cursor str n -- n ) {: state:^ a:^ u:n count:n :}
@@ -1428,8 +1434,8 @@ private
 : LIST-SEP$ ( -- str ) s" , " ;
 : MEMBER-OF$ ( -- str ) s" the member `" ;
 
-\ The size of `one of ` and each name in backticks, LIST-SEP$ between them,
-\ for a list of count names in u bytes.
+\ Room for `one of ` and each name in backticks, LIST-SEP$ between them,
+\ for a list of count names in u bytes, a `?` counted though not shown.
 : LIST-SIZE ( n n -- n ) {: u:n count:n :}
    ONE-OF$ nip  u count 1- -  +  count 2 * +
    count 1- LIST-SEP$ nip * + ;
@@ -1438,7 +1444,7 @@ private
    {: buf:^ at:n a:^ u:n start:n idx:n :}
    a u start NAME-AT {: na:^ nu:n next:n :}
    buf at idx 0<> if LIST-SEP$ PUT then
-   TICK$ PUT na nu PUT TICK$ PUT next ;
+   TICK$ PUT na nu BARE PUT TICK$ PUT next ;
 
 : UNKNOWN-FIX$ ( -- str )
    s" rename the member to one of those, or remove it" ;
@@ -1465,16 +1471,22 @@ private
    state state TOKEN-START ea eu s" add the member to the object"
    E-MEMBER REJECT ;
 
-\ At the object's `}`: rejects the first listed name not seen.
+\ Rejects the name at start unless its member was seen or the name is
+\ optional, and answers the next name's start.
+: REQUIRE-NAME ( n ^cursor ^u8 n bool -- n )
+   {: start:n state:^ a:^ u:n seen:bool :}
+   a u start NAME-AT {: na:^ nu:n next:n :}
+   seen  na nu OPTIONAL?  or if next exit then
+   state na nu  MEMBER-OF$ nip nu + 1+ MEM:BYTES-ALLOC-LEN
+   [: MISSING-SCOPE ;] MEM:WITH-BYTES
+   next ;
+
+\ At the object's `}`: rejects the first required name not seen.
 : REQUIRE-ALL ( ^cursor str n ^u8 -- )
    {: state:^ a:^ u:n count:n seen:^ :}
-   0 begin
-      dup count < if seen over + c@ 0<> else false then
-   while 1+ repeat {: idx:n :}
-   idx count = if exit then
-   a u idx NAME {: na:^ nu:n :}
-   state na nu  MEMBER-OF$ nip nu + 1+ MEM:BYTES-ALLOC-LEN
-   [: MISSING-SCOPE ;] MEM:WITH-BYTES ;
+   0 count 0 ?do
+      state a u  seen i + c@ 0<>  REQUIRE-NAME
+   loop drop ;
 
 \ The index of the current key's name, marked seen, with the reader advanced
 \ to the member's value. After a key the reader yields a value or throws.
@@ -1517,7 +1529,8 @@ public
    READER>STATE ea eu fa fu E-MEMBER REJECT-TOKEN ;
 
 \ Reads the object whose `{` is the current token, holding each member the
-\ blank-separated names list once and no other. The handler gets a member's
+\ blank-separated names list once and no other. A name that ends in `?` is
+\ optional and names its member without the `?`. The handler gets a member's
 \ index in the list and the reader on its value's first token, and leaves the
 \ reader on the value's last token. Answers the reader on the `}`.
 : READ-MEMBERS ( JSON:reader ^u8 n [ JSON:reader n -- JSON:reader ] -- JSON:reader )

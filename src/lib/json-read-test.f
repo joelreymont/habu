@@ -1846,9 +1846,25 @@ create JRT-NAMES 400 allot
    JSON:READ-FINISH
    JRT-COUNT @ 100 T= ;
 
+: JRT-TEST-MEMBERS-OPTIONAL ( -- )
+   s" READ-MEMBERS reads an object without an optional member" T-LABEL
+   s\" {\"host\":\"a\"}" JRT-FIRST
+   s" host port?" [: JRT-SKIP-H ;] JSON:READ-MEMBERS
+   JSON:READ-TOKEN JSON:T-OBJ-END T=
+   JSON:READ-FINISH
+   s" READ-MEMBERS rejects an optional member repeated at its second key" T-LABEL
+   s\" {\"port\":1,\"port\":2}" s" host? port?" [: JRT-SKIP-H ;]
+   s\" 1:11: expected each member once, found `\"port\"`; remove the repeated member, keeping one"
+   JRT-MEMBERS-SAY
+   s" READ-MEMBERS lists an optional name without its `?`" T-LABEL
+   s\" {\"colour\":1}" s" host port?" [: JRT-SKIP-H ;]
+   s\" 1:2: expected one of `host`, `port`, found `\"colour\"`; rename the member to one of those, or remove it"
+   JRT-MEMBERS-SAY ;
+
 : JRT-TEST-READ-MEMBERS ( -- )
    JRT-TEST-MEMBERS-READ
    JRT-TEST-MEMBERS-REJECTED
+   JRT-TEST-MEMBERS-OPTIONAL
    JRT-TEST-MEMBERS-HANDLER
    JRT-TEST-MEMBERS-HUNDRED ;
 

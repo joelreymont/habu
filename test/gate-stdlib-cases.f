@@ -404,6 +404,10 @@ SUITE regex
    src/lib/regex-test.f
 ;SUITE
 
+SUITE json-schema
+   src/lib/json-schema-test.f
+;SUITE
+
 SUITE diff
    src/lib/diff-test.f
 ;SUITE

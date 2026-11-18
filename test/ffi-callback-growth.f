@@ -48,7 +48,7 @@ CALLBACK: LATE ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' ORDER LATE-BODY !
 CALLBACK: FAULTY ( ^u8 ^u8 -- i32 ) -777 FALLBACK ;CALLBACK
 
--9917 constant FAULT-CODE
+-9972 constant FAULT-CODE          \ the faulting callback's code, outside every lib block
 
 : FAIL ( ^u8 ^u8 -- n ) 2drop FAULT-CODE throw ;
 ' FAIL FAULTY-BODY !

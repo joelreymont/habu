@@ -388,12 +388,16 @@ require src/os/env-base.f
 \ Enum tags: -9880..-9889, minted in src/core/sumtype.f (FAM:TAG>).
 \ Extended attributes: -9900..-9909, minted in src/lib/xattr.f, which owns
 \ package XATTR.
+\ JSON Schema: -9910..-9919, minted in src/lib/json-schema.f, which owns
+\ package JSON-SCHEMA.
 \ The key light's volume: -9920..-9929, minted in src/lib/browser/studio.f,
 \ which owns package STUDIO.
 \ OData: -9930..-9939, minted in src/lib/odata/metadata.f, a file of package
 \ ODATA (src/lib/odata.f).
 \ Regular expressions: -9940..-9949, minted in src/lib/regex.f, which owns
 \ package REGEX.
+\ Tests' own fixture codes: -9950..-9999, each declared in the test file that
+\ throws it; no lib block is taken from this range.
 
 \ T0 (src/habu/t0.f): -9600..-9609, declared at this file's end.
 -9600 constant E-T0-FIRST
