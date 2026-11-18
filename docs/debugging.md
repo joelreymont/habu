@@ -90,8 +90,8 @@ clears all, `BPW.` lists `address value` pairs. Both `step` and breakpoints
 print the watch table. For fixed engine cells:
 
 ```
-DATAB ENVP-CELL + BPW+
-DATAB ARGV-CELL + BPW+
+data-base ENVP-CELL + BPW+
+data-base ARGV-CELL + BPW+
 ```
 
 **`step`** (in the REPL, `bin/hb` on a tty): `step 5 dup * 3 +` runs the rest
