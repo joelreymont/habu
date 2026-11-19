@@ -250,8 +250,6 @@ variable ELF-DATA-BYTES
    tag IMG-M64
    val IMG-M64 ;
 
-\ The loader writes its r_debug's address into DT_DEBUG's value, where a
-\ debugger finds the link map; the read-write load holds the section so it can.
 : ELF-DYNAMIC, ( -- )
    DT-HASH     ELF-HASH-OFF ELF-VA ELF-DYN,
    DT-STRTAB   ELF-DYNSTR-OFF ELF-VA ELF-DYN,

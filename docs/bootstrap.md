@@ -108,7 +108,10 @@ given a new meaning (the running
 checker replays the rows with the old meaning and says nothing), a checker rule
 the tree's code needs (the running checker rejects that code), or a tool that
 calls a word hb carries (the linker) by a name or effect its own change gives
-it, or a change to which files a build
+it, a change to where the image writer puts what the tree's kernel reads,
+such as the GOT's offset in the read-write tail (the link writes with the
+running hb's writer, src/habu/link-data.f EMIT-IMAGE, while the kernel build
+loads the tree's src/os/linux/elf.f), or a change to which files a build
 loads or their order, needs a stage: the tool itself runs the words hb carries
 (outside a build, `require` of a file hb carries loads nothing), though inside
 the build each `require` loads the tree's file (src/habu/linker.f

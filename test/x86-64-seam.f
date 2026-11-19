@@ -120,8 +120,8 @@ $228 constant WANT-RELA-OFF
    1 PH-FLAGS@ 6 T=                       \ PF_R | PF_W
    1 PH-OFF@ textsz T=
    1 PH-VADDR@ WANT-VMBASE textsz + T=
-   1 PH-FILESZ@ $C0 T=
-   1 PH-MEMSZ@ $C0 T=
+   1 PH-FILESZ@ $D0 T=
+   1 PH-MEMSZ@ $D0 T=
    1 PH-ALIGN@ PROT-PAGE-MAX T=
    s" the two load segments share no page" T-LABEL
    textsz PROT-PAGE-MAX mod 0 T= ;
@@ -141,7 +141,7 @@ $228 constant WANT-RELA-OFF
    3 PH-FLAGS@ 6 T=
    3 PH-OFF@ textsz T=
    3 PH-VADDR@ WANT-VMBASE textsz + T=
-   3 PH-FILESZ@ $B0 T=
+   3 PH-FILESZ@ $C0 T=
    3 PH-ALIGN@ 8 T= ;
 
 \ The code region and the DATA carrier are loadable segments this file carries
@@ -193,6 +193,7 @@ $228 constant WANT-RELA-OFF
    textsz 2 DYN-VAL@ WANT-VMBASE WANT-DYNSYM-OFF + T=
    textsz 5 DYN-TAG@ 7 T=                 \ DT_RELA
    textsz 5 DYN-VAL@ WANT-VMBASE WANT-RELA-OFF + T=
+   textsz 10 DYN-TAG@ 21 T=  textsz 10 DYN-VAL@ 0 T=  textsz 11 DYN-TAG@ 0 T=
    s" each metadata table holds its own bytes where it is named" T-LABEL
    WANT-HASH-OFF U32@ 1 T=                \ nbucket
    WANT-HASH-OFF 4 + U32@ 3 T=            \ nchain
@@ -205,16 +206,16 @@ $228 constant WANT-RELA-OFF
 \ symbol index in the high half, type in the low.
 : CHECK-RELA ( n -- ) {: textsz:n :}
    s" each GOT slot takes an R_X86_64_GLOB_DAT against its own symbol" T-LABEL
-   WANT-RELA-OFF U64@ WANT-VMBASE textsz + $B0 + T=
+   WANT-RELA-OFF U64@ WANT-VMBASE textsz + $C0 + T=
    WANT-RELA-OFF 8 + U64@ 1 32 lshift 6 or T=
    WANT-RELA-OFF 16 + U64@ 0 T=
-   WANT-RELA-OFF 24 + U64@ WANT-VMBASE textsz + $B8 + T=
+   WANT-RELA-OFF 24 + U64@ WANT-VMBASE textsz + $C8 + T=
    WANT-RELA-OFF 32 + U64@ 2 32 lshift 6 or T=
    WANT-RELA-OFF 40 + U64@ 0 T= ;
 
 : CHECK-LENGTH ( n -- ) {: textsz:n :}
    s" the image is the padded text plus the read-write segment, no region or DATA" T-LABEL
-   MLEN@ textsz $C0 + T= ;
+   MLEN@ textsz $D0 + T= ;
 
 : ELF-CASES ( -- )
    s" the writer's layout agrees with the engine it was loaded into" T-LABEL

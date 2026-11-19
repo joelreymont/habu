@@ -12,8 +12,7 @@ split-str
 \ does not. So each x86 source opens `using X64LAYOUT` after its last load and
 \ closes it before its end: under that guard a bare DATA-VA, DATA-SIZE, CODE-OFF,
 \ IMAGE-TEXT-SIZE-OFF or IMAGE-TEXT-CONTENT-ADJ refuses by name on every host, rc 67 in a definition
-\ and rc 105 at top level. A macOS host has no LINUX-DLSYM-SLOT-OFF global, so
-\ there a bare one reads this package's value. Bodies nothing certifies
+\ and rc 105 at top level. Bodies nothing certifies
 \ (TRUSTED:, 0 set-check) keep global-first, outside the guard.
 \ The public constants copy the replayed values rather than EXPORT them:
 \ tools/check.f preverifies without replaying another target's layout, so there
@@ -32,5 +31,4 @@ IMAGE-TEXT-SIZE-OFF constant IMAGE-TEXT-SIZE-OFF
 IMAGE-TEXT-CONTENT-ADJ constant IMAGE-TEXT-CONTENT-ADJ
 \ Leave the final $4000 of the code region for the runtime's protected tail.
 REGION $4000 - constant CODE-CEILING
-LINUX-DLSYM-SLOT-OFF constant LINUX-DLSYM-SLOT-OFF
 ;package

@@ -3,8 +3,7 @@ split-str
 \ (linux-aarch64, linux-x86-64), loaded at boot before `require` exists.
 \ The image offsets are ELF64 format facts: IMAGE-TEXT-SIZE-OFF is the first
 \ program header's p_filesz (64-byte header, then type, flags, offset, vaddr and
-\ paddr), and dlsym's slot is the GOT's second cell, past the read-write
-\ segment's dynamic table. DATA-VA is a Linux fixed mapping, not an architecture
+\ paddr). DATA-VA is a Linux fixed mapping, not an architecture
 \ fact: 13 GiB is as free above a non-PIE image at $400000 and its brk on x86_64
 \ as it is on aarch64.
 \
@@ -32,4 +31,3 @@ $340000000 constant DATA-VA
 $4000000000 constant DATA-SIZE
 $1000 constant CODE-OFF
 $400000 constant IMAGE-VA
-$B8 constant LINUX-DLSYM-SLOT-OFF
