@@ -19,12 +19,12 @@ split-str
 \ text. COMPILE makes no nested call per sub-schema: each open schema object
 \ is a level on a stack in the scratch arena, read one member or element a
 \ step, so memory, not the machine stack, bounds a schema's depth.
-\ VALID? ( ^u8 n schema ^a -- bool ) answers whether a JSON value text the
+\ VALID? ( str schema ^VEC:vector<u8> -- bool ) answers whether a JSON value text the
 \ reader admits satisfies the schema, and false appends the first
 \ violation, `P: expected X, found Y; fix` with P `.name` per member and
-\ `[i]` per array element below the root, to the BUF ^a; text the reader
+\ `[i]` per array element below the root, to the vector; text the reader
 \ does not admit, or memory that cannot be had, throws its code, leaving the
-\ BUF as it was. A failed anyOf or oneOf lists each alternative's violation
+\ vector as it was. A failed anyOf or oneOf lists each alternative's violation
 \ on a line of its own, `[i]` and the violation, its place below the value's.
 \ VALID? makes no nested call per value: one reader passes over the text,
 \ and each value being judged is a place on a stack in the scratch arena,
@@ -52,7 +52,7 @@ require src/lib/reason.f
 require src/lib/json.f
 require src/lib/map.f
 require src/lib/regex.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/utf8-scalar.f
 require src/core/rejection.f
 require src/lib/unicode/visible.f
@@ -691,10 +691,10 @@ STRUCTURE pass DERIVE addr
 \ walk: one VALID? call. values reads an enum's array; spare chains closed
 \ places by outer; verdict is the last closed place's.
 \ place: one value judged against node; a container's text is its start until
-\ its close is read. BUF lengths: mark at the push, path-end after its path.
+\ its close is read. Text counts: mark at the push, path-end after its path.
 MUTUAL walk place
 STRUCTURE walk DERIVE addr
-   FIELD buf ^n
+   FIELD buf ^VEC:vector<u8>
    FIELD scratch ^ARENA:arena
    FIELD cursor JSON:cursor
    FIELD values JSON:cursor
@@ -713,8 +713,8 @@ STRUCTURE place DERIVE addr
    FIELD phase judging
    FIELD kind n
    FIELD text SPAN:span<u8>
-   FIELD mark NUM:byte-len
-   FIELD path-end NUM:byte-len
+   FIELD mark n
+   FIELD path-end n
    FIELD count n
    FIELD marks ^u8
    FIELD branch ^branch
@@ -728,9 +728,9 @@ ARENA WALKS walk
 ARENA PLACES place
 ARENA PASSES pass
 
-: MARK ( ^place -- NUM:byte-len ) PLACE-WALK @ WALK-BUF @ BUF:LEN@ ;
+: MARK ( ^place -- n ) PLACE-WALK @ WALK-BUF @ VEC:COUNT ;
 
-: BACK ( NUM:byte-len ^place -- ) PLACE-WALK @ WALK-BUF @ BUF:LEN! ;
+: BACK ( n ^place -- ) PLACE-WALK @ WALK-BUF @ swap VEC:RESIZE ;
 
 : SPARE-PLACE ( ^walk -- ^place ) {: w:^ :}
    w WALK-SPARE @ {: pl:^ :}
@@ -784,7 +784,7 @@ ARENA PASSES pass
    dst raw JSON:READ-STR  dst swap ;
 
 : ADD ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
-   s u BUF:N>BLEN pl PLACE-WALK @ WALK-BUF @ BUF:APPEND-SPAN ;
+   s u pl PLACE-WALK @ WALK-BUF @ VEC:APPEND ;
 
 \ Text quoted from the value or the schema is cut at CUT bytes.
 32 constant CUT
@@ -1458,7 +1458,7 @@ ARENA TABLES table
    ;MATCH ;
 
 \ s is the scratch arena.
-: WALK-ROOT ( ^u8 n schema ^n ^ARENA:arena -- bool )
+: WALK-ROOT ( ^u8 n schema ^VEC:vector<u8> ^ARENA:arena -- bool )
    {: v:^ vu:n sc buf:^ s:^ :}
    s [: dup WALK-CURSOR JSON:READ-DISPOSE WALK-VALUES JSON:READ-DISPOSE ;]
    WALKS-NEW-DISPOSE {: w:^ :}
@@ -1477,13 +1477,12 @@ public
    src u a [: READ-ROOT ;] ARENA:WITH ;
 
 \ Whether the value text satisfies the schema; false appends the first
-\ violation's text to the BUF.
-: VALID? ( ^u8 n schema ^a -- bool ) {: v:^ vu:n sc buf:^ :}
-   buf BUF:LEN@ {: at :}
-   buf BYTE-VIEW CELL-VIEW {: cells:^ :}
-   false [: drop v vu sc cells [: WALK-ROOT ;] ARENA:WITH ;] catch
+\ violation's text to the vector.
+: VALID? ( str schema ^VEC:vector<u8> -- bool ) {: v:^ vu:n sc buf:^ :}
+   buf VEC:COUNT {: at:n :}
+   false [: drop v vu sc buf [: WALK-ROOT ;] ARENA:WITH ;] catch
    {: ok code:n :}
    code 0= if ok exit then
-   at buf BUF:LEN!  code throw ;
+   buf at VEC:RESIZE  code throw ;
 
 ;package

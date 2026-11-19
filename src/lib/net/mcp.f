@@ -75,6 +75,8 @@ require src/lib/adt/option.f
 require src/lib/reason.f
 require src/core/rejection.f
 require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/task.f
 require src/lib/time.f
 require src/lib/net/curl.f
@@ -192,8 +194,9 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body at HELD
 \ Each worker's BUF, where FINISH writes a held call's response.
 HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: FINISHED
-\ Each worker's BUF, where a tools/call's arguments' violation is written.
-HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: VIOLATIONS
+\ Each worker's vector, where a tools/call's arguments' violation is written;
+\ NULL-PTR until its first call.
+HTTP:MAX-WORKERS TYPED-BUFFER VIOLATIONS ^VEC:vector<u8>
 \ Each worker's BUF, where a tool error's text is kept for LOG's line.
 HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: TOOL-ERRORS
 
@@ -1192,15 +1195,21 @@ CAST: HELD>N ( held -- n )
    text u BUF:N>BLEN buf BUF:REPLACE
    buf BUF:SPAN$ BUF:BLEN>N s" " s" []" true RESULT! ;
 
+\ The worker's violation vector, made the first time.
+: VIOLATION ( -- ^VEC:vector<u8> )
+   SLOT VIOLATIONS {: c:^ :}
+   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
+   c @ ;
+
 \ Whether the arguments satisfy the tool's inputSchema; false gives the tool
 \ error `arguments` and the violation.
 : ADMITTED? ( ^u8 n n -- bool )
    {: args:^ au:n idx:n :}
-   VIOLATIONS WORKER-BUF {: buf:^ :}
-   s" arguments" BUF:N>BLEN buf BUF:REPLACE
-   args au idx TOOL-INPUT @ buf JSON-SCHEMA:VALID?
+   VIOLATION {: v:^ :}
+   v 0 VEC:RESIZE  s" arguments" v VEC:APPEND
+   args au idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
    dup if exit then
-   buf BUF:SPAN$ BUF:BLEN>N TOOL-ERROR ;
+   v VEC:SPAN SPAN:$ TOOL-ERROR ;
 
 
 \ The body gives its result once, through RESULT, RESULT-META, RESULT-CONTENT or

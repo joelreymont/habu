@@ -7,7 +7,9 @@ split-str
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/arena.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/reason.f
 require src/lib/json-schema.f
 
@@ -133,18 +135,26 @@ package JSON-SCHEMA-TEST
    s\" 1:9: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
    REJECTS ;
 
-BUF:HDR-BYTES BUFFER: VIOLATION
-: VIOLATION-BUF ( -- ^n ) VIOLATION CELL-VIEW ;
-: VIOLATION$ ( -- ^u8 n ) VIOLATION-BUF BUF:SPAN$ BUF:BLEN>N ;
+\ Each cell holds a vector, NULL-PTR while it is not made.
+TYPED-VARIABLE VIOLATION ^VEC:vector<u8>
+TYPED-VARIABLE NESTED ^VEC:vector<u8>
+
+: MAKE ( ^^VEC:vector<u8> -- ) {: c:^ :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! ;
+
+: UNMAKE ( ^^VEC:vector<u8> -- ) {: c:^ :}
+   c @ VEC:DELETE  NULL-PTR c ! ;
+
+: VIOLATION$ ( -- ^u8 n ) VIOLATION @ VEC:SPAN SPAN:$ ;
 
 : CHECKED ( ^u8 n ^u8 n ^ARENA:arena -- bool )
    {: v:^ vu:n s:^ su:n a:^ :}
    s su a JSON-SCHEMA:COMPILE {: sc :}
-   v vu sc VIOLATION-BUF JSON-SCHEMA:VALID? ;
+   v vu sc VIOLATION @ JSON-SCHEMA:VALID? ;
 
-\ The value v checked against the schema s, the BUF cleared first.
+\ The value v checked against the schema s, the vector cleared first.
 : VERDICT ( ^u8 n ^u8 n -- bool ) {: s:^ su:n v:^ vu:n :}
-   VIOLATION-BUF BUF:CLEAR
+   VIOLATION @ 0 VEC:RESIZE
    v vu s su [: CHECKED ;] ARENA:WITH ;
 
 : PASSES ( ^u8 n ^u8 n -- )
@@ -327,34 +337,32 @@ BUF:HDR-BYTES BUFFER: VIOLATION
    FAILS ;
 
 100000 constant DEPTH
-BUF:HDR-BYTES BUFFER: NESTED
-: NESTED-BUF ( -- ^n ) NESTED CELL-VIEW ;
 
 : ADD-TIMES ( ^u8 n n -- ) {: s:^ u:n k:n :}
-   k 0 ?do s u BUF:N>BLEN NESTED-BUF BUF:APPEND-SPAN loop ;
+   k 0 ?do s u NESTED @ VEC:APPEND loop ;
 
-\ o DEPTH times, m, then c DEPTH times; answers the buffer's length after.
+\ o DEPTH times, m, then c DEPTH times; answers the vector's count after.
 : NEST ( ^u8 n ^u8 n ^u8 n -- n ) {: o:^ ou:n m:^ mu:n c:^ cu:n :}
    o ou DEPTH ADD-TIMES  m mu 1 ADD-TIMES  c cu DEPTH ADD-TIMES
-   NESTED-BUF BUF:LEN@ BUF:BLEN>N ;
+   NESTED @ VEC:COUNT ;
 
 \ The schema, the value it takes and the two it rejects, one after another
-\ in one buffer: spans into it hold only once it stops growing.
+\ in one vector: spans into it hold only once it stops growing.
 : DEEP ( -- )
    s" COMPILE and VALID? walk a schema and a value 100000 levels deep" T-LABEL
-   NESTED-BUF 4096 BUF:N>BLEN BUF:INIT
+   NESTED MAKE
    s\" {\"maxItems\":1,\"items\":" s\" {\"type\":\"string\"}" s" }" NEST {: a:n :}
    s" [" s\" \"a\"" s" ]" NEST {: b:n :}
    s" [" s" 1" s" ]" NEST {: c:n :}
    s" [" s" 1" s" ,0]" NEST drop
-   NESTED-BUF BUF:SPAN$ BUF:BLEN>N {: t:^ u:n :}
+   NESTED @ VEC:SPAN SPAN:$ {: t:^ u:n :}
    t a  t a +  b a -  PASSES
    t a  t b +  c b -  VERDICT TFALSE
    VIOLATION$ {: w:^ wu:n :}
    w 6 s" [0][0]" T$=  wu 300073 T=
    t a  t c +  u c -
    s" : expected at most 1 item, found 2 items; remove an item" FAILS
-   NESTED-BUF BUF:DISPOSE ;
+   NESTED UNMAKE ;
 
 : CHOICES ( -- )
    s" VALID? takes anyOf's second alternative after the first fails" T-LABEL
@@ -389,9 +397,9 @@ BUF:HDR-BYTES BUFFER: NESTED
 : RUN ( -- )
    T-RESET
    TAKEN REJECTED
-   VIOLATION-BUF 256 BUF:N>BLEN BUF:INIT
+   VIOLATION MAKE
    SAPD VALUES ARRAYS DEEP CHOICES
-   VIOLATION-BUF BUF:DISPOSE
+   VIOLATION UNMAKE
    T-REPORT ;
 
 RUN

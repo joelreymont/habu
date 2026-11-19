@@ -2,7 +2,7 @@ split-str
 \ reason.f - a failure's stated text, package REASON. A throw code's ERROR:TEXT$
 \ is one static text; REASON:THROW throws a code together with a text the
 \ thrower composed, the numbers that made it fail, and REASON:TEXT$ answers it
-\ at the catch. ERROR cannot keep it: it is sealed and loads below BUF.
+\ at the catch. ERROR cannot keep it: it is sealed and loads below VEC.
 \ CONTRACT. A code leaves its package through REASON:THROW at every place or at
 \ none; a throw its own package catches and throws on through REASON:THROW is
 \ not a place. A catch reads REASON:TEXT$ before it runs anything else. So a
@@ -12,26 +12,28 @@ split-str
 \ reads its own. A text is written between REASON:OPEN and REASON:STOP; only
 \ REASON's part words and pure reads run between them, since an OPEN there
 \ would clear the text being written.
-\ STORAGE CLASS. TASK-LOCAL: one code cell and two BUFs per task, the last text
-\ and the next, in the REASON-ABI band (src/habu/layout.f); a buffer grows on
-\ its first append and TASK releases both as each activation ends; the main
-\ task's buffers last the process.
+\ STORAGE CLASS. TASK-LOCAL: one code cell and two vector cells per task, the
+\ last text and the next, in the REASON-ABI band (src/habu/layout.f); a vector
+\ is made on its first use and TASK releases both as each activation ends; the
+\ main task's vectors last the process.
 
 require src/habu/layout.f
 require src/core/exit-status.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/fmt.f
 require src/lib/unicode/visible.f
 
 package REASON
 EXPORT BOOT:data-base
 
-\ src/habu/layout.f loads below BUF, so the band states the headers' width in
-\ cells; a narrower band would let BUF write into the next one.
+\ The band states each text's width in bytes; a narrower one would let a
+\ vector cell's store reach the next band.
 : BAND-AGREE ( -- )
-   REASON-ABI:NEXT-OFF REASON-ABI:TEXT-OFF -  BUF:HDR-BYTES <>
-   REASON-ABI:END REASON-ABI:NEXT-OFF -  BUF:HDR-BYTES <>  or if
-      s" reason: BUF's header differs from the REASON-ABI band's text bytes"
+   REASON-ABI:NEXT-OFF REASON-ABI:TEXT-OFF -  CELL <>
+   REASON-ABI:END REASON-ABI:NEXT-OFF -  CELL <>  or if
+      s" reason: a vector cell differs from the REASON-ABI band's text bytes"
       EXIT-STATUS:INTERNAL die
    then ;
 BAND-AGREE
@@ -40,11 +42,26 @@ BAND-AGREE
 : LAST-CODE ( -- ^n )
    data-base REASON-ABI:CODE-OFF + ;
 
-: LAST-TEXT ( -- ^u8 )
-   data-base BYTE-VIEW REASON-ABI:TEXT-OFF + ;
+\ The band's text cells hold a vector's address.
+CAST: >TEXT-CELL ( ^n -- ^^VEC:vector<u8> )
 
-: NEXT-TEXT ( -- ^u8 )
-   data-base BYTE-VIEW REASON-ABI:NEXT-OFF + ;
+: LAST-CELL ( -- ^^VEC:vector<u8> )
+   data-base REASON-ABI:TEXT-OFF + >TEXT-CELL ;
+
+: NEXT-CELL ( -- ^^VEC:vector<u8> )
+   data-base REASON-ABI:NEXT-OFF + >TEXT-CELL ;
+
+\ The cell's vector, made on its first use; the cell is NULL-PTR until then.
+: MADE ( ^^VEC:vector<u8> -- ^VEC:vector<u8> ) {: c:^ :}
+   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
+   c @ ;
+
+: LAST-TEXT ( -- ^VEC:vector<u8> )  LAST-CELL MADE ;
+
+: NEXT-TEXT ( -- ^VEC:vector<u8> )  NEXT-CELL MADE ;
+
+: DELETE-TEXT ( ^^VEC:vector<u8> -- ) {: c:^ :}
+   c @ VEC:DELETE  NULL-PTR c ! ;
 
 public
 
@@ -52,15 +69,20 @@ public
 \ empty; valid until the task's next REASON:THROW or REASON:STOP.
 : TEXT$ ( n -- ^u8 n ) {: code:n :}
    code 0=  LAST-CODE @ code <>  or if s" " exit then
-   LAST-TEXT BUF:SPAN$ BUF:BLEN>N ;
+   LAST-TEXT VEC:SPAN SPAN:$ ;
 
 \ Throws code n with the span kept as the calling task's text, replacing any
-\ earlier one. The span is copied first, so it may be the caller's scratch; a
-\ copy that throws passes its own code on with no text kept.
+\ earlier one. The span is appended after the old text, then moved to the
+\ front, so it may be the caller's scratch or the old text, a rethrow's
+\ REASON:TEXT$; a copy that throws passes its own code on with no text kept.
 : THROW ( ^u8 n n -- ) {: a:^ u:n code:n :}
    0 LAST-CODE !
-   LAST-TEXT BUF:CLEAR
-   a u BUF:N>BLEN LAST-TEXT BUF:APPEND-SPAN
+   LAST-TEXT {: t:^ :}
+   t VEC:COUNT {: k:n :}
+   a u t VEC:APPEND
+   t VEC:SPAN SPAN:$ drop {: p:^ :}
+   p k + p u BYTE-COPY
+   t u VEC:RESIZE
    code LAST-CODE !
    code throw ;
 
@@ -69,10 +91,10 @@ public
 32 constant QUOTE-MOST
 
 \ Empties the next text.
-: OPEN ( -- )  NEXT-TEXT BUF:CLEAR ;
+: OPEN ( -- )  NEXT-TEXT 0 VEC:RESIZE ;
 
 \ Appends the span as given.
-: APPEND ( ^u8 n -- )  BUF:N>BLEN NEXT-TEXT BUF:APPEND-SPAN ;
+: APPEND ( ^u8 n -- )  NEXT-TEXT VEC:APPEND ;
 
 \ Appends `L:C: `, the line then the column.
 : AT ( n n -- ) {: line:n col:n :}
@@ -101,12 +123,12 @@ public
 
 \ Throws code n with the next text through REASON:THROW.
 : STOP ( n -- ) {: code:n :}
-   NEXT-TEXT BUF:SPAN$ BUF:BLEN>N code THROW ;
+   NEXT-TEXT VEC:SPAN SPAN:$ code THROW ;
 
-\ Disposes the calling task's texts.
+\ Deletes the calling task's texts.
 : RELEASE ( -- )
    0 LAST-CODE !
-   LAST-TEXT BUF:DISPOSE
-   NEXT-TEXT BUF:DISPOSE ;
+   LAST-CELL DELETE-TEXT
+   NEXT-CELL DELETE-TEXT ;
 
 ;package
