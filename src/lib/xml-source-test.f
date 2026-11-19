@@ -20,7 +20,6 @@ create BOMLESS 256 allot
 create BOM-INPUT 256 allot
 TYPED-VARIABLE ASCII-OWNER XML:source-owner
 TYPED-VARIABLE RD XML:cursor
-create SHARED-STORE XML:CURSOR-BYTES allot
 1024 constant MARKED-CAP
 create MARKED MARKED-CAP allot
 create MARKED-AT MARKED-CAP cells allot
@@ -510,15 +509,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
    LEN>N 0 T= OFF>N 13 T=
    XML:SOURCE-CLOSE ;
 
-: SHORT-CURSOR ( -- )
-   SHARED-STORE BYTE-VIEW XML:CURSOR-BYTES 1- XML:EMPTY-CURSOR drop ;
-
-: SOURCE-CAPACITY ( -- )
-   ['] SHORT-CURSOR catch XML:E-CAPACITY T=
-   s\" \xFF\xFE<\za\z/\z>\z" OPEN
-   READER XML-KIND:START NEXT= XML-KIND:END NEXT=
-   XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE ;
-
 \ An allocator bumping through POOL whose resize moves the block and fills
 \ the old one with $A5, so a read of the old block shows.
 256 constant POOL-BYTES
@@ -821,7 +811,6 @@ UTF8-RANGES
 true MARKED-RANGES
 false MARKED-RANGES
 WIDE-OWNER-RANGES
-SOURCE-CAPACITY
 APPENDS-KEEP
 ESCAPE-OWN
 COUNTED-STORAGE

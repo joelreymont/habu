@@ -1,22 +1,22 @@
 split-str
 \ xml.f - package XML: XML 1.0 pull reader, source views and escaping. A reader
-\ is a linear XML:reader over a caller-declared XML:cursor record
-\ (XML:CURSOR-BYTES bytes, typed by a storage definer or by EMPTY-CURSOR); a
-\ zero-filled record owns nothing. Constructors:
-\ INIT and INIT-INPUT (src/lib/xml/state.f), INIT-SOURCE and OWNER-READER
-\ (src/lib/xml/source.f). STORAGE CLASS. CALLER-OWNED record, source and output;
-\ the reader owns its record's tables until CLOSE or DISPOSE. No module state.
+\ is a linear XML:reader over a caller-declared XML:cursor record (a STRUCTURE
+\ field, a typed variable or ALLOC:NEW); a zero-filled record owns nothing.
+\ Constructors: INIT and INIT-INPUT (src/lib/xml/state.f), INIT-SOURCE and
+\ OWNER-READER (src/lib/xml/source.f). STORAGE CLASS. CALLER-OWNED record and
+\ output; a source holds a block from the allocator it was given until
+\ SOURCE-CLOSE; the reader owns its record's tables until CLOSE or DISPOSE. No
+\ module state.
 require src/lib/xml/source.f
 require src/lib/xml/read.f
 require src/lib/xml/write.f
 
 \ Every constructor takes the record first, except INIT-SOURCE, which keeps the
-\ linear source below it; a record overlapping the source is E-ALIAS. Record
-\ and source stay live and unchanged until CLOSE: the caller's promise, which
-\ raw pointers cannot prove. Separate records share nothing. Close a reader
-\ after a callback or parser throw, keeping that error; a reader abandoned by
-\ the caller's own throw is released by the next INIT on its record or by
-\ DISPOSE, which is idempotent.
+\ linear source below it. Record and source stay live and unchanged until
+\ CLOSE: the caller's promise, which raw pointers cannot prove. Separate
+\ records share nothing. Close a reader after a callback or parser throw,
+\ keeping that error; a reader abandoned by the caller's own throw is released
+\ by the next INIT on its record or by DISPOSE, which is idempotent.
 \ Views stay valid until the next NEXT or CLOSE; text may arrive as several TEXT
 \ events. RAW includes delimiters; CONTENT is what is inside CDATA, comment or
 \ PI delimiters, else the whole text span. `<a/>` gives a start, then a

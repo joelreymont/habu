@@ -25,7 +25,6 @@ public
    ERROR:FAULT E-STATE
 -9213 s" the document holds a DOCTYPE, which the reader does not read" ERROR:CODE E-DTD
 -9214 s" the document's encoding or XML declaration is not one the reader takes" ERROR:CODE E-ENCODING
--9215 s" an output span overlaps the input or the reader's storage" ERROR:CODE E-ALIAS
 
 private
 $7FFFFFFFFFFFFFFF constant MAX-SIZE

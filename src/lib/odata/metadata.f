@@ -2516,18 +2516,11 @@ CAST: >RECORD ( n -- ^t )
 : PARSE ( ^doc ^u8 n -- )
    {: d:^ src:^ len:n :}
    src len SPAN:MAKE d DOC-SOURCE !
-   ARENA:NEW d DOC-NAMES !
    d DOC-NAMES @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW d DOC-SCRATCH !
    d 16 MAP-NEW
    d DOC-CURSOR @ src len XML:INIT
    d EVENTS XML:CLOSE
    d RESOLVE ;
-
-: CURSOR-BLOCK ( ^doc -- SPAN:span<u8> )
-   {: d:^ :}
-   XML:CURSOR-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: buf:SPAN:span<u8> :}
-   buf SPAN:$ drop XML:CURSOR-BYTES XML:EMPTY-CURSOR d DOC-CURSOR !
-   buf ;
 
 \ The types from T up that declare properties, collected in BUF, a cell per
 \ base type and T, so the callback runs over them from the top down.
@@ -2707,10 +2700,10 @@ public
    arena DOCS-NEW {: d:^ :}
    arena MODELS-NEW d DOC-MODEL !
    arena d DOC-ARENA !
-   d CURSOR-BLOCK {: buf:SPAN:span<u8> :}
+   ARENA:NEW d DOC-NAMES !
+   d DOC-NAMES @ ARENA:ALLOCATOR [type] XML:cursor ALLOC:NEW d DOC-CURSOR !
    [: d src len PARSE ;] catch {: code:n :}
    d DOC-CURSOR @ XML:DISPOSE
-   buf MEM:FREE-SPAN
    d DOC-NAMES @ ARENA:RELEASE
    code 0<> if code throw then
    d DOC-TYPES @ d DOC-MODEL @ METADATA-TYPES !

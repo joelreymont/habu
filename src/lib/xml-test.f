@@ -31,7 +31,6 @@ TYPED-VARIABLE RD XML:cursor
 TYPED-VARIABLE RD2 XML:cursor
 
 CAST: TOKEN>N ( XML:kind -- n )
-CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
 
 : OPEN ( ^u8 n -- XML:reader )
    {: source size:n :}
@@ -460,13 +459,6 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
    CLEARED TEXT DECODED @ TEXT
    DECODED$ s" long&textlong&text" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
-
-\ The reader writes its record on every event, so the source may not overlap
-\ it.
-: INIT-INTO-RECORD ( -- ) RD RD CURSOR>BYTES 16 INIT XML:CLOSE ;
-
-: INIT-RECORD-ALIAS ( -- )
-   [: INIT-INTO-RECORD ;] E-ALIAS TTHROWSQ ;
 
 : PREFIX-RECOVERY ( -- )
    s" <a xmlns:p='urn:&#97;'/>" OPEN
@@ -1188,7 +1180,6 @@ ASCII-WIRE
 FAILURE-AND-STATE
 NAMESPACE-FAILURE
 TEXT-APPENDS
-INIT-RECORD-ALIAS
 PREFIX-RECOVERY
 PREFIX-READERS
 ABANDONED-RECORD

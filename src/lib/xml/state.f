@@ -47,10 +47,7 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD failed n
    FIELD attr-cap n
    FIELD source-mode n
-   FIELD wire-original ^u8
-   FIELD wire-original-len n
    FIELD wire-storage ^u8
-   FIELD wire-storage-len n
    FIELD head-columns n
    FIELD window-kind n
    FIELD ns-cap n
@@ -61,10 +58,6 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD hash-k1 n
    FIELD sip SIPHASH:state
 ;STRUCTURE
-
-\ The record's size in bytes, for a caller that allocates it as bytes and makes
-\ it a record with EMPTY-CURSOR.
-EXPORT CURSOR-BYTES
 
 private
 CAST: >STATE ( ^cursor -- ^n )
@@ -154,10 +147,7 @@ NULL-PTR CURSOR-ROOT-COUNT NULL-PTR - constant ROOT-COUNT
 NULL-PTR CURSOR-FAILED NULL-PTR - constant FAILED
 NULL-PTR CURSOR-ATTR-CAP NULL-PTR - constant ATTR-CAP
 NULL-PTR CURSOR-SOURCE-MODE NULL-PTR - constant SOURCE-MODE
-NULL-PTR CURSOR-WIRE-ORIGINAL NULL-PTR - CELL / constant WIRE-ORIGINAL-IDX
-NULL-PTR CURSOR-WIRE-ORIGINAL-LEN NULL-PTR - constant WIRE-ORIGINAL-LEN
 NULL-PTR CURSOR-WIRE-STORAGE NULL-PTR - CELL / constant WIRE-STORAGE-IDX
-NULL-PTR CURSOR-WIRE-STORAGE-LEN NULL-PTR - constant WIRE-STORAGE-LEN
 \ The columns before a source reader's window on line 1, 0 for another reader.
 NULL-PTR CURSOR-HEAD-COLUMNS NULL-PTR - constant HEAD-COLUMNS
 \ The place kind of a source reader's window; another reader leaves it zero,
@@ -603,12 +593,6 @@ LINEAR: ERASE ( XML:reader -- ^n )
    then ;
 
 
-\ Refuse bytes that overlap the record: the reader writes it on every event.
-: RECORD-CHECK ( ^n str -- )
-   {: state bytes size:n :}
-   state BYTE-VIEW CURSOR-BYTES bytes size OVERLAP? if E-ALIAS throw then ;
-
-
 \ A record a caller's throw abandoned still holds its tables: release them,
 \ then zero the record, so a failed build releases exactly what it made.
 : INIT-STATE ( ^n -- )
@@ -664,11 +648,10 @@ LINEAR: ERASE ( XML:reader -- ^n )
    state ctx fill input ;
 
 public
-: INIT ( ^cursor ^u8 n -- XML:reader )
+: INIT ( ^cursor str -- XML:reader )
    {: record source size:n :}
    source size SPAN-CHECK
    record >STATE {: state :}
-   state source size RECORD-CHECK
    state INIT-STATE
    state source size ['] INIT-BODY catch
    >r 2drop drop r> {: code:n :}
@@ -682,7 +665,6 @@ public
    {: record ctx fill input :}
    input SPAN:$ SPAN-CHECK
    record >STATE {: state :}
-   state input SPAN:$ RECORD-CHECK
    state INIT-STATE
    state ctx fill input ['] INPUT-BODY catch
    >r 2drop 2drop r> {: code:n :}
@@ -725,9 +707,6 @@ private
    lexical state SOURCE-IDX ptr-field !
    size state SOURCE-LEN + !
    source-state SOURCE-READER-MODE state SOURCE-MODE + !
-   source-state SRC-ORIGINAL$ {: original original-len:n :}
-   original state WIRE-ORIGINAL-IDX ptr-field !
-   original-len state WIRE-ORIGINAL-LEN + !
    state source-state WINDOW-COLUMNS
    source-state BYTE-VIEW state WIRE-STORAGE-IDX ptr-field !
    state READER-TABLES
@@ -738,8 +717,6 @@ private
    {: record source-state :}
    source-state SRC-LEXICAL$ SPAN-CHECK
    record >STATE {: state :}
-   state source-state SRC-LEXICAL$ RECORD-CHECK
-   state source-state SRC-ORIGINAL$ RECORD-CHECK
    state INIT-STATE
    state source-state ['] SOURCE-BODY catch
    >r 2drop r> {: code:n :}
@@ -761,19 +738,6 @@ public
 \ A second DISPOSE, or one on a closed or zero-filled record, does nothing.
 : DISPOSE ( ^cursor -- )
    >STATE RECORD-FREE ;
-
-private
-CAST: BYTES>CURSOR ( ^u8 -- ^cursor )
-
-public
-\ A record over the first CURSOR-BYTES of a caller's bytes, zero-filled so it
-\ owns nothing; a shorter span is E-CAPACITY. A live record there leaks its tables.
-: EMPTY-CURSOR ( str -- ^cursor )
-   {: bytes size:n :}
-   bytes size SPAN-CHECK
-   size CURSOR-BYTES < if E-CAPACITY throw then
-   CURSOR-BYTES 0 ?do 0 bytes i + c! loop
-   bytes BYTES>CURSOR ;
 
 private
 : LIVE ( ^n -- )
