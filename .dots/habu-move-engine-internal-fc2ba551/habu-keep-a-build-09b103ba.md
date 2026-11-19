@@ -1,9 +1,10 @@
 ---
 title: Reject a build whose caught failed text left words or data
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-18T20:19:25.247025+01:00"
+closed-at: "2026-11-19T13:51:46.556671+01:00"
 ---
 
 Problem: once habu-a-caught-failed-9bb3e339 keeps a caught failed text's storage, a build has no sign of it (src/habu/linker.f END-CK tests DPHW-CELL, which nothing then raises) and would write the text's retired records and data into the image. END-CK's and GOING's rejections name only the build's file, never the line that ran the failed text or requested the failed load.

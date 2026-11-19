@@ -39,9 +39,9 @@ private
 -9690 constant E-LINKER-FIRST
 -9699 constant E-LINKER-LAST
 
-\ The open's progress, the last step completed. Past open, loading: a file's load runs, from its key
-\ to its last BUILT row, the loads it requests included; returned: its body returned; failed: a load threw.
-ENUM step none mapped shadowed moved checked required objects routed open loading returned failed ;ENUM
+\ The open's last completed step. Past open, loading: a file's load runs, key to last BUILT row, its requests' loads
+\ included; returned: its body returned; failed: a load threw; caught: a caught text failed and left words or data.
+ENUM step none mapped shadowed moved checked required objects routed open loading returned failed caught ;ENUM
 TYPED-VARIABLE PROGRESS step
 
 public
@@ -61,7 +61,6 @@ EXPORT CHECK:PRIMITIVE-FACTS
 EXPORT CHECK:OWNED-FACTS
 EXPORT CHECK:WORDLIST-PACKAGE
 EXPORT INTERPRETER:PUBLISH-ALIAS
-EXPORT INTERPRETER:FAILED-TEXT
 EXPORT CODE-RECLAIM:TRUNCATE
 EXPORT REQUIRE-REG:REQUIRE-KNOWN?
 EXPORT SOURCE-EVENT:EVENT-DEPTH@
@@ -5202,13 +5201,17 @@ EXPORT CHECK:STORES-OPEN
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
-\ Fails the build with the rejection of a caught text that failed and left words or data, carried by
-\ its throw; a caught text that left nothing links, so its rejection is dropped.
+: CAUGHT-REFUSED ( -- )
+   s" linker: a caught text failed and left words or data, so the build loads and writes nothing more" SAY SAY-CR
+   E-FAILED throw ;
+
+\ Fails the build, caught from then on, with the rejection of a caught text that failed and left words or
+\ data, carried by its throw; a caught text that left nothing links, so its rejection is dropped.
 : CAUGHT-CK ( -- )
-   FAILED-TEXT @ if
+   REJECTION:PENDING-FAILS? if
+      construct step caught PROGRESS !
       E-FAILED REJECTION:PASS-PENDING
-      s" linker: a caught text failed and left words or data, so the build writes nothing" SAY SAY-CR
-      E-FAILED throw
+      CAUGHT-REFUSED
    then
    REJECTION:DROP-PENDING ;
 
@@ -5243,6 +5246,7 @@ EXPORT CHECK:STORES-OPEN
          s" , so the build loads and writes nothing more" SAY SAY-CR
          E-FAILED throw
       ENDOF
+      caught OF CAUGHT-REFUSED ENDOF
    ;MATCH ;
 
 
@@ -5629,10 +5633,29 @@ EXPORT CHECK:DROP-FACTS
    then ;
 
 
+\ A load's body returned.
+: RETURNED ( -- )
+   PROGRESS @
+   MATCH step
+      none OF construct step returned PROGRESS ! ENDOF
+      mapped OF construct step returned PROGRESS ! ENDOF
+      shadowed OF construct step returned PROGRESS ! ENDOF
+      moved OF construct step returned PROGRESS ! ENDOF
+      checked OF construct step returned PROGRESS ! ENDOF
+      required OF construct step returned PROGRESS ! ENDOF
+      objects OF construct step returned PROGRESS ! ENDOF
+      routed OF construct step returned PROGRESS ! ENDOF
+      open OF construct step returned PROGRESS ! ENDOF
+      loading OF construct step returned PROGRESS ! ENDOF
+      returned OF ENDOF
+      failed OF construct step returned PROGRESS ! ENDOF
+      caught OF ENDOF
+   ;MATCH ;
+
 \ The load, nested when a compiling file requested it.
 : ENTER ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
    LOADER$ nip 0<>  LINKING? 0=  and if NEST else LOAD then
-   construct step returned PROGRESS ! ;
+   RETURNED ;
 
 \ After a load, whether it returned or threw: one that returned leaves the build open, or its
 \ loader's load running; one that threw fails the build, so every later load throws E-FAILED.
@@ -5653,6 +5676,7 @@ EXPORT CHECK:DROP-FACTS
          LOADER$ nip 0<> if construct step loading else construct step open then PROGRESS !
       ENDOF
       failed OF ENDOF
+      caught OF ENDOF
    ;MATCH ;
 
 
@@ -5672,13 +5696,9 @@ EXPORT CHECK:DROP-FACTS
    [: RUN-FILE ;] SOURCE-UNIT:USE
    construct step routed PROGRESS ! ;
 
-\ The interpreter's caught-failure state is the build's alone: IMAGE-OUT drops it too.
-: CAUGHT-CLEAR ( -- )
-   false FAILED-TEXT !  REJECTION:DROP-PENDING ;
-
-\ From here header stores go to the space (habu2.f ROUTE-HEADER).
+\ From here header stores go to the space; a rejection pending is a build's alone, which this and IMAGE-OUT drop.
 : IMAGE-IN ( -- )
-   CAUGHT-CLEAR
+   REJECTION:DROP-PENDING
    BASE @ BOOT:IMAGE-BASE-CELL HOST!
    construct step open PROGRESS ! ;
 
@@ -5826,7 +5846,7 @@ EXPORT CHECK:DROP-FACTS
 \ threw before END-CK, whatever they answer, then zero the space's cell for EXITED.
 : IMAGE-OUT ( -- bool )
    SPACE-EXIT drop  0 EXIT-HOOK-CELL SPACE-AT !
-   0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP  CAUGHT-CLEAR
+   0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP  REJECTION:DROP-PENDING
    construct step routed PROGRESS ! true ;
 
 EXPORT CHECK:STORES-CLOSE
@@ -5861,6 +5881,7 @@ EXPORT CHECK:STORES-CLOSE
       loading OF IMAGE-OUT ENDOF
       returned OF IMAGE-OUT ENDOF
       failed OF IMAGE-OUT ENDOF
+      caught OF IMAGE-OUT ENDOF
    ;MATCH ;
 
 : CLOSE ( -- )
@@ -5883,6 +5904,7 @@ EXPORT CHECK:STORES-CLOSE
       loading OF false ENDOF
       returned OF false ENDOF
       failed OF false ENDOF
+      caught OF false ENDOF
    ;MATCH ;
 
 public

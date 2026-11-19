@@ -76,7 +76,8 @@ PATH-CAP BUFFER: PROG-BUF
 
 : STOP-INSIDE ( -- )
    ['] ROLLBACK catch LINKER:E-FAILED
-   s" build: STOP-INSIDE: a file that moved DP back was not refused" EXPECT ;
+   s" build: STOP-INSIDE: a file's caught failed text was not refused" EXPECT
+   [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED s" build: STOP-INSIDE: a write after a file's caught failed text ran" EXPECT ;
 
 : STOP-ALIGN ( -- )
    ['] UNALIGNED catch E-COMP-STATE

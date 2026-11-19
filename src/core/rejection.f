@@ -44,6 +44,7 @@ dup constant SAVED-U-OFF  1 cells +
 dup constant PENDING-P-OFF  1 cells +
 dup constant PENDING-CAP-OFF  1 cells +
 dup constant PENDING-U-OFF  1 cells +
+dup constant PENDING-FAILS-OFF  1 cells +
 dup constant NUM-V-OFF  1 cells +
 dup constant NUM-N-OFF  1 cells +
 dup constant QUIET-OFF  1 cells +
@@ -148,10 +149,12 @@ create MAIN-BLOCK BLOCK-BYTES SCRATCH-ALLOT
 : SAVED-P ( -- ^^u8 ) SAVED-P-OFF PTR-AT ;
 : SAVED-CAP ( -- ^n ) SAVED-CAP-OFF CELL-AT ;
 : SAVED-U ( -- ^n ) SAVED-U-OFF CELL-AT ;
-\ The record PEND kept, PENDING-U bytes, in a mapped room of PENDING-CAP bytes.
+\ The record PEND kept, PENDING-U bytes, in a mapped room of PENDING-CAP bytes;
+\ PENDING-FAILS is nonzero while the rejection pending fails the build.
 : PENDING-P ( -- ^^u8 ) PENDING-P-OFF PTR-AT ;
 : PENDING-CAP ( -- ^n ) PENDING-CAP-OFF CELL-AT ;
 : PENDING-U ( -- ^n ) PENDING-U-OFF CELL-AT ;
+: PENDING-FAILS ( -- ^n ) PENDING-FAILS-OFF CELL-AT ;
 : NUM-BUF ( -- ^u8 ) BLOCK NUM-BUF-OFF + ;
 : NUM-V ( -- ^n ) NUM-V-OFF CELL-AT ;
 : NUM-N ( -- ^n ) NUM-N-OFF CELL-AT ;
@@ -1109,11 +1112,12 @@ public
    SAVED-U @ 0= IF EXIT THEN
    SAVED-P @ SAVED-U @  0 SAVED-U !  BUF-APPEND ;
 
-\ Ends the record and keeps it pending, in place of the one pending before, for
-\ PASS-PENDING; under QUIET, or when the system refuses its room, it keeps
-\ none. A throw on its way out keeps the record it carries: STAMP-CELL stays.
-: PEND ( -- )
+\ Ends the record and keeps it pending for PASS-PENDING, marked to fail the build when fails, unless
+\ the one pending fails it and this one does not; QUIET keeps no bytes. A throw's record stays.
+: PEND ( bool -- ) {: fails:bool :}
    CLOSE-RECORD
+   PENDING-FAILS @ 0 <>  fails 0=  and IF  0 TEXT-LEN !  0 DEST !  EXIT  THEN
+   fails IF -1 ELSE 0 THEN PENDING-FAILS !
    0 PENDING-U !
    QUIET @ 0= IF
       TEXT-LEN @ PENDING-ROOM IF
@@ -1123,7 +1127,9 @@ public
    THEN
    0 TEXT-LEN !  0 DEST ! ;
 
-: DROP-PENDING ( -- ) 0 PENDING-U ! ;
+: DROP-PENDING ( -- ) 0 PENDING-U !  0 PENDING-FAILS ! ;
+
+: PENDING-FAILS? ( -- bool ) PENDING-FAILS @ 0 <> ;
 
 \ Throws n as the throw that carries the kept record, if SAVE kept one.
 : PASS ( n -- )
@@ -1135,6 +1141,7 @@ public
 \ With a record pending, keeps it as SAVE keeps one, keeps none pending and
 \ throws n carrying it; with none pending, returns.
 : PASS-PENDING ( n -- ) {: n:n :}
+   0 PENDING-FAILS !
    PENDING-U @ {: u:n :}
    u 0= IF EXIT THEN
    0 PENDING-U !  0 SAVED-U !

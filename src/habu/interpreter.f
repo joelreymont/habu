@@ -3063,10 +3063,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-FRAME:PKG-OUTSIDE FR@ CLEAN-END ;
 
 
-\ Set while a build holds the rejection of a caught text that failed and left
-\ words or data (FAILED-PEND); the linker reads it.
-TYPED-VARIABLE FAILED-TEXT bool
-
 \ Whether frame f's text left records above its mark, moved DP from its own or
 \ left held facts above its mark.
 : REMAINS? ( ^u8 -- bool ) {: f:^ :}
@@ -3074,13 +3070,9 @@ TYPED-VARIABLE FAILED-TEXT bool
    f EVAL-FRAME:HELD FR@ {: mark:n :}
    mark 0<>  HELD-MARK mark >  and  or ;
 
-\ In a build, pends the rejection of frame f's text, which failed with code c,
-\ at the line that ran it, naming the files it required; the build is failed
-\ when the text left something. A text that left nothing never replaces the
-\ record of one that did, so the rollback nearest the catch names the line.
+\ In a build, pends the rejection of frame f's failed text at the line that ran
+\ it; the rejection fails the build when the text left something.
 : FAILED-PEND ( n ^u8 -- ) {: c:n f:^ :}
-   f REMAINS? {: left:bool :}
-   left 0=  FAILED-TEXT @  and if exit then
    s" E-FAILED" REJECTION:OPEN
    s" a text failed and its failure was caught, so the build writes nothing" SAY
    f EVAL-TKA FR-ADDR@ f EVAL-TKL FR@ REJECTION:AT  s" this ran the text" SAY
@@ -3092,8 +3084,7 @@ TYPED-VARIABLE FAILED-TEXT bool
    loop
    REJECTION:HELP
    s" let the failure end the build, or keep a text that can fail from defining, allotting or undefining" SAY
-   REJECTION:PEND
-   left if true FAILED-TEXT ! then ;
+   f REMAINS? REJECTION:PEND ;
 
 \ A failed text keeps its code, records and data, which older data may point
 \ into: its records lose their names and its files leave the require registry.
