@@ -278,7 +278,7 @@ CALLBACK: FFI-T-SA-CB ( -- n ) 0 FALLBACK ;CALLBACK
    evaluate-closed
    [: s" FUNCTION: FFI-T-SA-CAP5 hb_none ( n n n n n n n n n n n n n n n n ^u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
       evaluate-closed ;]
-   s" error[E-FFI-ARITY]: a FUNCTION: declaration has at most 16 inputs" FFI-T-RECORD ;
+   s" error[E-FFI-ARITY]: a FUNCTION: declaration has at most 16 inputs, a str counting two" FFI-T-RECORD ;
 
 : FFI-T-STRUCT-ARGS ( -- )
    FFI-T-REGISTER-ARGS

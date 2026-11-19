@@ -714,6 +714,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   the address; a `some` of a null pointer matches `none`.
 - **A `FUNCTION:` result declared `nullable<u8>`** is the C pointer as a
   `nullable<u8>`: NULL is `none`.
+- **A `FUNCTION:` input declared `str`** passes its base and its byte length
+  as two C arguments.
 - **A public, non-`OPAQUE` package family's generated words are
   `PKG-FAMILY:TAIL` with every hyphen in the package and family names
   doubled**: an `ENUM read-result` in `package TCP4` constructs its `data`

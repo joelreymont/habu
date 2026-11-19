@@ -5,9 +5,10 @@ split-str
 \ narrow integer with the register's high bits set, so the run builds its
 \ callees with the system compiler. A spilling callee weighs its inputs by
 \ position, so an input read from the wrong register or stack cell fails its
-\ case. A declaration has at most 16 inputs, so no call spills both kinds:
-\ a mixed case spills longs between floats in registers. On Linux a narrow
-\ callee returns its long input whole; Apple's ABI has the callee extend it.
+\ case. A declaration passes at most 16 C arguments, so no call spills both
+\ kinds: a mixed case spills longs between floats in registers. On Linux a
+\ narrow callee returns its long input whole; Apple's ABI has the callee
+\ extend it.
 
 require src/lib/fs.f
 require src/lib/fs-mutate.f

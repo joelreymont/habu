@@ -163,6 +163,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   nullable` with `none` and `some` arms reaches the address. Zero-filled
   storage and a null `some` read as `none`.
 - A `FUNCTION:` result declared `nullable<u8>` is `none` for NULL.
+- A `FUNCTION:` input declared `str` passes its base and its byte length as
+  two C arguments.
 - Locals `{: a b:^ :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Locals are block-scoped, bindable after a

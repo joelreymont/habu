@@ -18,6 +18,7 @@ require src/lib/test/guard-page.f      \ a path whose bytes end where memory doe
 require src/lib/ffi-callback.f         \ a struct argument held across a callback
 require src/lib/task.f
 require test/ffi-struct-fixture.f      \ the struct cases' callee
+require test/fixtures/ffi-str-unmarked.f \ a str input outside split-str
 require test/e2e-tree.f                \ the struct clauses' load children
 require tools/check-verify-core.f       \ LSP-CHECK:VERIFY-BYTES - the struct clauses' check
 require test/decl-diag-capture.f
@@ -148,6 +149,10 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 \ Promotion reaches only the variadic tail: a fixed f32 before it is admitted.
 : FFI-T-F32-FIXED ( -- )
    s" FUNCTION: FFI-T-XQ getpid ( f32 n r -- f32 ) 2 VARIADIC ;FUNCTION" evaluate-closed ;
+
+\ VARIADIC counts a str as one input, so the f32 after it stays fixed.
+: FFI-T-STR-FIXED ( -- )
+   s" FUNCTION: FFI-T-XS getpid ( str f32 r -- n ) 2 VARIADIC ;FUNCTION" evaluate-closed ;
 
 \ Declaration-only shapes: Cairo's exact signature must load without requiring
 \ Cairo, and Darwin's variadic stack routing must admit a pointer result. These
@@ -386,7 +391,9 @@ create FFI-T-LONG-PATH PATH-CAP allot
    then
    s" an FFI:NOW FFI:PROCESS-WIDE or open puts the function in process-wide resolution" T-LABEL
    FFI-T-GLOBAL-LIB$ FFI:NOW FFI:PROCESS-WIDE or FFI:DLOPEN 0 T<>
-   0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T= ;
+   0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T=
+   s" a str input works in a file without split-str" T-LABEL
+   FFI-STR-UNMARKED:FFI-U-CRC-A $E8B7BE43 T= ;
 
 : FFI-T-CHECK-PASSES ( str -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -837,11 +844,11 @@ create FFI-T-LONG FFI-T-LONG-U allot
    [: FFI-T-BAD-RESULTS ;]
    s" error[E-FFI-SYNTAX]: a FUNCTION: declaration has at most one output" FFI-T-RECORD
    [: FFI-T-BAD-IN-TYPE ;]
-   s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ^u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   s" error[E-FFI-SYNTAX]: 'fd' is not an input type: an input is ^u8, str, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-T-RECORD
    \ A pointer input is spelled ^u8: `ptr` is no input type.
    [: FFI-T-PTR-IN ;]
-   s" error[E-FFI-SYNTAX]: 'ptr' is not an input type: an input is ^u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   s" error[E-FFI-SYNTAX]: 'ptr' is not an input type: an input is ^u8, str, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-T-RECORD
    [: FFI-T-BAD-OUT-TYPE ;]
    s" error[E-FFI-SYNTAX]: 'bool' is not an output type: an output is ^u8, f32, i32, nullable<u8>, r, n, i64, cell, addr, u8, u16, u32 or char"
@@ -849,6 +856,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    [: FFI-T-BAD-F32-VARARG ;]
    s" error[E-FFI-SYNTAX]: an f32 variadic argument" FFI-T-RECORD
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
+   [: FFI-T-STR-FIXED ;] 0 TTHROWSQ
    [: FFI-T-PTR-MIXED ;] 0 TTHROWSQ
    [: FFI-T-PTR-VARARG ;] 0 TTHROWSQ
    [: FFI-T-BAD-VARARG ;]

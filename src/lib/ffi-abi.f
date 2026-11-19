@@ -748,7 +748,7 @@ s" dlerror" PROCESS 0 0 DECLARE-ROW DLERROR-FN-CELL !
 \ FUNCTION: - declare a foreign function, get a checked word.
 \
 \     VERSIONED-LIBRARY z 1,2                 \ libz.so.1, else libz.so.2 (.1.dylib, else .2.dylib on macOS)
-\     FUNCTION: CRC-CALL crc32 ( n ^u8 n -- n ) ;FUNCTION
+\     FUNCTION: CRC-CALL crc32 ( n str -- n ) ;FUNCTION
 \     LIBRARY /usr/lib/libSystem.B.dylib      \ a literal, or PROCESS-SYMBOLS (RTLD_DEFAULT)
 \     FUNCTION: SQRT-CALL sqrt ( r -- r ) ;FUNCTION
 \     FUNCTION: LOCAL-CALL getsockname ( i32 ^u8 ^u8 -- i32 ) ;FUNCTION
@@ -757,9 +757,11 @@ s" dlerror" PROCESS 0 0 DECLARE-ROW DLERROR-FN-CELL !
 \ a legal Habu name (__errno_location).
 \
 \ The declared effect becomes the generated word's effect, with `f32` mapped
-\ to Habu `r` and `i32` to `n` on either side. The clauses STRUCT-ARG,
-\ STRUCT-RESULT and VARIADIC are ordinary words the interpreter runs between
-\ the two keywords, so their numbers are literals and comments sit among them.
+\ to Habu `r` and `i32` to `n` on either side. A `str` input is two C
+\ arguments, its base then its byte length as a C size_t; a clause names an
+\ input by its place in the effect. The clauses STRUCT-ARG, STRUCT-RESULT and
+\ VARIADIC are ordinary words the interpreter runs between the two keywords,
+\ so their numbers are literals and comments sit among them.
 \ Convert a nominal at the call site: a declaration speaks the C function's own
 \ types.
 \
@@ -800,8 +802,8 @@ s" dlerror" PROCESS 0 0 DECLARE-ROW DLERROR-FN-CELL !
 \ is aligned as the C record is. A `create … allot` block is cell-aligned;
 \ a record holding a 16-byte aligned member needs 16. A record of 16 bytes or
 \ fewer is stored a byte at a time, at any address.
-\ The destination is one of the sixteen inputs, so at most fifteen C arguments
-\ remain, placed as STRUCT-ARG's are.
+\ The destination counts toward the sixteen inputs, a str counting two, so at
+\ most fifteen C arguments remain, placed as STRUCT-ARG's are.
 \
 \ `idx bytes STRUCT-ARG` declares input idx, a `^u8`, the address of a C
 \ struct of `bytes`, any positive count, passed by value: one C argument,
@@ -833,8 +835,8 @@ s" dlerror" PROCESS 0 0 DECLARE-ROW DLERROR-FN-CELL !
 
 private
 
-\ Each input but a record takes at most one 8-byte stack slot, so ARG-MAX
-\ inputs fit FFI's stack buffer.
+\ Each C argument but a record takes at most one 8-byte stack slot, so ARG-MAX
+\ arguments fit FFI's stack buffer.
 FFI-MAX-ARGS constant ARG-MAX
 \ The longest type text IN-TOKEN or OUT-TOKEN records, nullable<u8>, fits.
 $10 constant TYPE-CAP
@@ -892,7 +894,9 @@ create ARG-WIDTH ARG-MAX cells allot          \ each input's C width in bytes
 create ARG-REG ARG-MAX cells allot
 create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 when none
 create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
-create ARG-TEXT ARG-MAX TYPE-CAP * allot      \ each input's type as DECLARED-EFFECT reads it
+\ Each effect input's type as DECLARED-EFFECT reads it, a str's at its base;
+\ empty at a str's length, which the effect does not name.
+create ARG-TEXT ARG-MAX TYPE-CAP * allot
 create ARG-TEXT-U ARG-MAX cells allot
 variable ARG-N
 variable RES-KIND
@@ -1113,7 +1117,7 @@ private
 : INPUTS-FULL ( -- )
    ARITY-OPEN
    s" a FUNCTION: declaration has at most " REJECTION:EMIT-STR
-   ARG-MAX REJECTION:EMIT-U  s"  inputs" REJECTION:EMIT-STR
+   ARG-MAX REJECTION:EMIT-U  s"  inputs, a str counting two" REJECTION:EMIT-STR
    s" call it through a C function that takes the inputs in a record"
    HELP-STOP ;
 
@@ -1155,7 +1159,7 @@ private
 
 : IN-REJECT ( -- )
    s" an input"
-   s" ^u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   s" ^u8, str, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    TYPE-REJECT ;
 
 : OUT-REJECT ( -- )
@@ -1171,6 +1175,11 @@ private
    PTR-TOK? if
       PTR-TAIL  a u EFFECT:READ-TYPE drop
       K-POINTER size ARG+ s" ^u8" IN-TEXT exit
+   then
+   s" str" TOK-IS? if
+      a u EFFECT:READ-TYPE drop
+      K-POINTER 8 ARG+ s" str" IN-TEXT
+      K-VALUE 8 ARG+ s" " IN-TEXT exit
    then
    s" f32" TOK-IS? if
       K-FLOAT32 size ARG+ s" r" IN-TEXT exit
@@ -1644,18 +1653,16 @@ private
 \ from the recorded texts, never kept from the FUNCTION: line.
 : DECLARED-EFFECT ( -- EFFECT:type )
    EFFECT:EMPTY
-   ARG-N @ 0 ?do i ARG-TEXT$ EFFECT:READ-TYPE EFFECT:IN loop
+   ARG-N @ 0 ?do
+      i ARG-TEXT$ dup 0 <> if EFFECT:READ-TYPE EFFECT:IN else 2drop then
+   loop
    RES-KIND @ R-NONE = if exit then
    RES-TEXT RES-TEXT-U @ EFFECT:READ-TYPE EFFECT:OUT ;
 
-\ A struct call's definition is STRUCT-BODY's, whose call reads its spill
-\ count and relocation mask from the row; a C-REG call's is REG-BODY's,
-\ its arguments passed on the data stack to CALL-k. Any other stages its
-\ inputs, then calls its row with stk, its spilled stack cells, compiled in.
-: EMIT ( n n -- )
-   {: stk:n kind:n :}
-   stk SLOT {: slot:n :}
-   0 NAME-BUF NAME-U @ DECLARED-EFFECT define-word
+\ A struct call reads its spill count and relocation mask from its row; a
+\ staged call has stk, its spilled stack cells, compiled in.
+: BODY ( n n n -- )
+   {: stk:n kind:n slot:n :}
    kind C-STRUCT = if slot STRUCT-BODY postpone ; exit then
    kind C-REG = if
       slot REG-BODY  RESULT-TAIL  postpone ; exit
@@ -1666,6 +1673,23 @@ private
    kind CALL-WORD
    RESULT-TAIL
    postpone ; ;
+
+EXPORT CHECK:CHECKER-SPLIT-STR
+
+\ The body takes each str apart into its base and length, so it is checked as
+\ split-str code; callers read the effect's str in their own mode.
+: SPLIT-BODY ( n n n -- )
+   {: stk:n kind:n slot:n :}
+   CHECKER-SPLIT-STR @ {: split:n :}
+   true CHECKER-SPLIT-STR !
+   [: stk kind slot BODY ;]
+   [: split CHECKER-SPLIT-STR ! ;] finally ;
+
+: EMIT ( n n -- )
+   {: stk:n kind:n :}
+   stk SLOT {: slot:n :}
+   0 NAME-BUF NAME-U @ DECLARED-EFFECT define-word
+   stk kind slot SPLIT-BODY ;
 
 \ The selection scope is the current wordlist, not the loading file:
 \ INCLUDE-PATH names the last file opened, so every consumer would share one
@@ -1758,7 +1782,9 @@ public
 \ The texts DECLARED-EFFECT reads, in its order, with -- before the output.
 : DECLARED-TEXTS ( [ str -- ] -- )
    {: put :}
-   ARG-N @ 0 ?do i ARG-TEXT$ put execute loop
+   ARG-N @ 0 ?do
+      i ARG-TEXT$ dup 0 <> if put execute else 2drop then
+   loop
    s" --" put execute
    RES-KIND @ R-NONE = if exit then
    RES-TEXT RES-TEXT-U @ put execute ;
@@ -1799,9 +1825,25 @@ private
    s" name another input: C writes the result record to the last one"
    SYNTAX-REJECT ;
 
+\ The effect's input at place as an index into the ARG- arrays, a str's at its
+\ base; ARG-N past the last.
+: PLACE>ARG ( n -- n ) {: place:n :}
+   place 0 < if place exit then
+   place ARG-N @ 0 ?do
+      ARG-TEXT-U i cells + @ 0 <> if
+         dup 0= if drop i unloop exit then
+         1-
+      then
+   loop
+   drop ARG-N @ ;
+
+\ The effect's input count, a str one.
+: EFFECT-INPUTS ( -- n )
+   0 ARG-N @ 0 ?do ARG-TEXT-U i cells + @ 0 <> if 1+ then loop ;
+
 : CLAUSE-TARGET ( n -- ) {: idx:n :}
    idx 0 < idx ARG-N @ >= or if NO-INPUT then
-   idx ARG-KIND@ K-POINTER <> if NOT-SPAN then
+   idx ARG-TEXT$ s" ^u8" STR= 0= if NOT-SPAN then
    idx ARG-SBYTES@ 0 <> if TAKEN then
    STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if DEST-TAKEN then ;
 
@@ -1822,11 +1864,12 @@ private
    CLAUSE? 0= if exit then
    VAR-START @ -1 <> if VARIADIC-TWICE then
    STRUCT-BYTES @ 0 <> RECORDS? or if STRUCT-VARIADIC then
-   fixed 1 < fixed ARG-N @ > or if FIXED-RANGE then
-   ARG-N @ fixed ?do
+   fixed 1 < fixed EFFECT-INPUTS > or if FIXED-RANGE then
+   fixed PLACE>ARG {: start:n :}
+   ARG-N @ start ?do
       i ARG-KIND@ K-FLOAT32 = if VARIADIC-F32 then
    loop
-   fixed VAR-START ! ;
+   start VAR-START ! ;
 
 : RESULT-CHECK ( n -- ) {: bytes:n :}
    STRUCT-BYTES @ 0 <> if
@@ -1853,8 +1896,9 @@ private
    bytes STRUCT-BYTES ! ;
 
 \ The struct call returns two integer registers, so a float result has no shape here.
-: STRUCT-ARG-CLAUSE ( n n -- ) {: idx:n bytes:n :}
+: STRUCT-ARG-CLAUSE ( n n -- ) {: place:n bytes:n :}
    CLAUSE? 0= if exit then
+   place PLACE>ARG {: idx:n :}
    idx CLAUSE-TARGET
    bytes 0 <= if
       s" STRUCT-ARG's byte count is not positive"

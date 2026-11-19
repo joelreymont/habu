@@ -165,6 +165,7 @@ variable FFI-SV-SRC-U
    s" ( ^u8 n -- n ) 0 24 STRUCT-ARG" FFI-SV-PASS
    s" ( r ^u8 f32 -- n ) 1 12 STRUCT-ARG" FFI-SV-PASS
    s" ( i32 ^u8 -- n ) 1 16 STRUCT-ARG" FFI-SV-PASS
+   s" ( str ^u8 -- n ) 1 16 STRUCT-ARG" FFI-SV-PASS
    s" ( ^u8 ^u8 -- ) 0 16 STRUCT-ARG 16 STRUCT-RESULT" FFI-SV-PASS
    s" ( ^u8 -- n ) 0 128 STRUCT-ARG" FFI-SV-PASS
    s" ( n n n n n n n n ^u8 -- n ) 8 112 STRUCT-ARG" FFI-SV-PASS
@@ -185,6 +186,8 @@ variable FFI-SV-SRC-U
    s" ( n -- n ) 0 16 STRUCT-ARG"
    s" the clause names an input that is not ^u8" FFI-SV-SYNTAX
    S\" \"token\":\"STRUCT-ARG\"" FFI-SV-SAYS
+   s" ( str -- n ) 0 16 STRUCT-ARG"
+   s" the clause names an input that is not ^u8" FFI-SV-SYNTAX
    s" ( ^u8 -- n ) 1 16 STRUCT-ARG"
    s" the clause names no input of the declaration" FFI-SV-SYNTAX
    s" ( ^u8 -- n ) -1 16 STRUCT-ARG"
@@ -259,12 +262,12 @@ variable FFI-SV-SRC-U
    S\" \"token\":\"n\"" FFI-SV-SAYS
    S\" \"column\":35," FFI-SV-SAYS
    s" ( fd -- n )"
-   s" 'fd' is not an input type: an input is ^u8, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
+   s" 'fd' is not an input type: an input is ^u8, str, f32, r, i32, n, i64, cell, addr, u8, u16, u32 or char"
    FFI-SV-SYNTAX
    S\" \"token\":\"fd\"" FFI-SV-SAYS
    s" ( ^ -- n )" s" expected 'u8' after '^'" FFI-SV-SYNTAX
    s" ( n n n n n n n n n n n n n n n n n -- n )" FFI-SV-ARITY
-   S\" \"message\":\"a FUNCTION: declaration has at most 16 inputs\""
+   S\" \"message\":\"a FUNCTION: declaration has at most 16 inputs, a str counting two\""
    FFI-SV-SAYS
    s" 16 STRUCT-RESULT"
    S\" \"message\":\"a clause outside a FUNCTION: declaration\""

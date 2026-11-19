@@ -152,6 +152,6 @@ create FFI-T-SR-BUF 64 allot
    s" error[E-FFI-SYNTAX]: a clause outside a FUNCTION: declaration" FFI-T-RECORD
    s" sixteen C arguments beside the destination exceed the inputs" T-LABEL
    [: FFI-T-SR-INPUTS ;]
-   s" error[E-FFI-ARITY]: a FUNCTION: declaration has at most 16 inputs" FFI-T-RECORD ;
+   s" error[E-FFI-ARITY]: a FUNCTION: declaration has at most 16 inputs, a str counting two" FFI-T-RECORD ;
 
 FFI-T-STRUCT-RESULTS
