@@ -9,34 +9,32 @@ split-str
 \ so a test may assert them. The host routes the request to its own handler
 \ and calls one of them there.
 \ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a reply
-\ body and its writer, whose buffer a slot's first reply makes and the process
+\ body and its writer, whose vector a slot's first reply makes and the process
 \ keeps; a body stays in its row, as HTTP:BODY! borrows it, until the slot's
 \ next reply.
 \ https://platform.openai.com/docs/api-reference/responses-streaming
 
 require src/lib/string.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/json.f
 require src/lib/net/http.f
 
 package TEST-MODEL
 private
 
-$100 constant FIRST-CAP
-
-HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: HEADS
-HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
+HTTP:MAX-WORKERS TYPED-BUFFER BODIES ^VEC:vector<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: ROW ( -- ^n ) SLOT BUF:HDR-BYTES * HEADS + CELL-VIEW ;
-: ROW$ ( -- str ) ROW BUF:SPAN$ BUF:BLEN>N ;
+: ROW ( -- ^VEC:vector<u8> ) SLOT BODIES @ ;
+: ROW$ ( -- str ) ROW VEC:SPAN SPAN:$ ;
 
 
 : READY ( -- )
-   SLOT MADE @ if exit then
-   ROW FIRST-CAP BUF:N>BLEN BUF:INIT
-   true SLOT MADE ! ;
+   ROW NULL-PTR <> if exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW SLOT BODIES ! ;
 
 
 \ Opens the data of an event of the type numbered n, after its type and number.
@@ -122,14 +120,14 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 : OPENED ( -- ^JSON:writer )
    READY
-   SLOT WRITER ROW JSON:WRITE-OPEN-BUF
+   SLOT WRITER ROW JSON:OPEN
    s" response.created" 0 RESPONSE-OPEN s" queued" PENDING EVENT-CLOSE
    s" response.in_progress" 1 RESPONSE-OPEN s" in_progress" PENDING EVENT-CLOSE ;
 
 
 : SENT ( ^JSON:writer HTTP:response -- )
    {: answer:HTTP:response :}
-   JSON:WRITE-CLOSE
+   JSON:CLOSE
    answer s" Content-Type" s" text/event-stream" HTTP:HEADER!
    answer ROW$ HTTP:BODY! ;
 
@@ -174,10 +172,10 @@ public
 : INPUT-TOKENS! ( HTTP:response n -- )
    {: answer:HTTP:response tokens:n :}
    READY
-   SLOT WRITER ROW JSON:WRITE-OPEN-BUF
+   SLOT WRITER ROW JSON:OPEN
    S\" {\qobject\q:\qresponse.input_tokens\q,\qinput_tokens\q:" JSON:WRITE-RAW
    tokens JSON:WRITE-U s" }" JSON:WRITE-RAW
-   JSON:WRITE-CLOSE
+   JSON:CLOSE
    answer s" Content-Type" s" application/json" HTTP:HEADER!
    answer ROW$ HTTP:BODY! ;
 
@@ -188,10 +186,10 @@ public
 : COMPACTION! ( HTTP:response str -- )
    {: answer:HTTP:response items:^ items-u:n :}
    READY
-   SLOT WRITER ROW JSON:WRITE-OPEN-BUF
+   SLOT WRITER ROW JSON:OPEN
    S\" {\qid\q:\qcmp_1\q,\qobject\q:\qresponse.compaction\q,\qcreated_at\q:0,\qoutput\q:" JSON:WRITE-RAW
    items items-u JSON:WRITE-RAW USAGE s" }" JSON:WRITE-RAW
-   JSON:WRITE-CLOSE
+   JSON:CLOSE
    answer s" Content-Type" s" application/json" HTTP:HEADER!
    answer ROW$ HTTP:BODY! ;
 

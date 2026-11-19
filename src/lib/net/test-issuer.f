@@ -21,7 +21,6 @@ require src/lib/string.f
 require src/lib/span.f
 require src/lib/fmt.f
 require src/lib/memory.f
-require src/lib/byte-buffer.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/base64.f
@@ -36,7 +35,6 @@ package TEST-ISSUER
 private
 
 3600 constant LIFE-S
-$100 constant FIRST-CAP
 
 : KID$ ( -- str ) s" test-issuer" ;
 : TENANT$ ( -- str ) s" test-tenant" ;
@@ -88,7 +86,8 @@ DYNAMIC-BUFFER SECRET-LEN n
 2 constant SCRATCH                  \ an assertion's or refresh token's decoded claims and signature
 3 constant TOKEN                    \ the token issued
 4 constant RENEWAL                  \ the refresh token issued
-5 constant VECS
+5 constant CLAIMED                  \ the claims of the token being issued, which the JSON writer fills
+6 constant VECS
 
 \ The form fields /token reads, by index.
 0 constant CLIENT-ID
@@ -101,8 +100,6 @@ DYNAMIC-BUFFER SECRET-LEN n
 7 constant FIELDS
 
 HTTP:MAX-WORKERS VECS * TYPED-BUFFER HEADS ^VEC:vector<u8>
-\ The claims of the token being issued: a BUF, which the JSON writer fills.
-HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: CLAIMS-HEADS
 HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
@@ -114,14 +111,13 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : CURSOR ( -- ^JSON:cursor ) SLOT READER ;
 : VEC-OF ( n -- ^VEC:vector<u8> ) SLOT VECS * + HEADS @ ;
-: CLAIMS ( -- ^n ) SLOT BUF:HDR-BYTES * CLAIMS-HEADS + CELL-VIEW ;
-: CLAIMS$ ( -- str ) CLAIMS BUF:SPAN$ BUF:BLEN>N ;
+: CLAIMS ( -- ^VEC:vector<u8> ) CLAIMED VEC-OF ;
+: CLAIMS$ ( -- str ) CLAIMS VEC$ ;
 : SLOT-FIELD ( n -- n ) SLOT FIELDS * + ;
 
 : READY ( -- )
    SLOT MADE @ if exit then
    VECS 0 ?do NEW-VEC SLOT VECS * i + HEADS ! loop
-   CLAIMS FIRST-CAP BUF:N>BLEN BUF:INIT
    true SLOT MADE ! ;
 
 
@@ -326,7 +322,7 @@ private
 \ The claims every issued token carries; the writer is left inside the object.
 : CLAIMS-OPEN ( -- ^JSON:writer )
    epoch-seconds {: now:n :}
-   SLOT WRITER CLAIMS JSON:WRITE-OPEN-BUF
+   SLOT WRITER CLAIMS JSON:OPEN
    JSON:WRITE-OBJECT-START
    s" iss" s" " URL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" aud" AUDIENCE$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -336,7 +332,7 @@ private
    s" exp" now LIFE-S + JSON:WRITE-FIELD-INT ;
 
 : CLAIMS-CLOSE ( ^JSON:writer -- )
-   JSON:WRITE-OBJECT-END JSON:WRITE-CLOSE ;
+   JSON:WRITE-OBJECT-END JSON:CLOSE ;
 
 \ The client acts as itself.
 : CREDENTIALS ( -- )
@@ -357,7 +353,7 @@ private
 
 \ The refresh token's claims: the client's, for the presented one's oid and tid.
 : RENEWAL-CLAIMS ( -- )
-   SLOT WRITER CLAIMS JSON:WRITE-OPEN-BUF
+   SLOT WRITER CLAIMS JSON:OPEN
    JSON:WRITE-OBJECT-START
    s" aud" CLIENT-ID FIELD$ drop JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" exp" epoch-seconds LIFE-S + JSON:WRITE-FIELD-INT

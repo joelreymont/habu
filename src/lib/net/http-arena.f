@@ -1,8 +1,9 @@
 split-str
 \ http-arena.f - per-worker storage for the HTTP/1.1 server
 \ (src/lib/net/http.f): one OS-backed span per worker, carved into the input
-\ buffer, the fixed buffers and the headers of four growing ones; the request
-\ body owns a block while a request is live.
+\ buffer, the fixed buffers and the headers of three growing ones; the JSON
+\ vector is held beside it, and the request body owns a block while a request
+\ is live.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by worker slot, rows of typed
 \ buffers and never bare globals; the running worker's slot is a TASK:+USER row.
 
@@ -17,6 +18,8 @@ require src/lib/type/deftype.f
 require src/lib/task.f
 require src/lib/json.f
 require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 
 package HTTP
 
@@ -63,8 +66,7 @@ HEAD-CAP constant SEG-CAP
 
 IN-CAP constant BODY-OFF
 BODY-OFF BUF:HDR-BYTES + constant HDR-OFF
-HDR-OFF BUF:HDR-BYTES + constant JSON-OFF
-JSON-OFF BUF:HDR-BYTES + constant OUT-OFF
+HDR-OFF BUF:HDR-BYTES + constant OUT-OFF
 OUT-OFF BUF:HDR-BYTES + constant SEG-OFF
 SEG-OFF SEG-CAP + constant ID-OFF
 ID-OFF ID-CAP + constant NUM-OFF
@@ -89,6 +91,8 @@ MAX-WORKERS TYPED-BUFFER IN-U n           \ bytes read into the input buffer
 MAX-WORKERS TYPED-BUFFER IN-AT n          \ bytes of it already consumed
 MAX-WORKERS TYPED-BUFFER HEAD-U n         \ bytes of the current request head
 MAX-WORKERS TYPED-BUFFER GIVEN-BACK n     \ 1: the answer buffers wait for SLOT-RESET
+\ What JSON! writes, or the error text; NULL while the slot has none.
+MAX-WORKERS TYPED-BUFFER JSON-OUT ^VEC:vector<u8>
 
 MAX-WORKERS TYPED-BUFFER METHOD-AT n
 MAX-WORKERS TYPED-BUFFER METHOD-N n
@@ -202,14 +206,28 @@ private
 
 : BODY-HDR ( n -- ^n )    BODY-OFF BUF-AT ;
 : HDR-BUF ( n -- ^n )     HDR-OFF BUF-AT ;
-: JSON-BUF ( n -- ^n )    JSON-OFF BUF-AT ;
 : OUT-BUF ( n -- ^n )     OUT-OFF BUF-AT ;
+
+
+\ The slot's JSON vector deleted, if it has one.
+: DROP-JSON ( n -- ) {: idx:n :}
+   idx JSON-OUT @ VEC:DELETE
+   NULL-PTR idx JSON-OUT ! ;
+
+
+\ The slot's JSON vector deleted and made again with room for JSON-START bytes.
+\ It is held before its room is reserved, so a refused reserve leaks nothing.
+: REMAKE-JSON ( n -- ) {: idx:n :}
+   idx DROP-JSON
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   v idx JSON-OUT !
+   v JSON-START VEC:RESERVE ;
 
 
 \ One span per worker, taken before any task is live and given back after every
 \ task has ended. A slot is live once carved, so ARENA-CLOSE gives back whatever
 \ an open that failed part way had taken: a header never opened is zero, which
-\ is a disposed one.
+\ is a disposed one, and a vector never made is NULL.
 : ARENA-OPEN ( n -- ) {: workers:n :}
    workers 1 < if E-WORKERS throw then
    workers MAX-WORKERS > if E-WORKERS throw then
@@ -218,7 +236,7 @@ private
       0 i SEQ !
       0 i GIVEN-BACK !
       i HDR-BUF HDR-START BUF:N>BLEN BUF:INIT
-      i JSON-BUF JSON-START BUF:N>BLEN BUF:INIT
+      i REMAKE-JSON
       i OUT-BUF OUT-START BUF:N>BLEN BUF:INIT
    loop ;
 
@@ -244,7 +262,7 @@ private
          i CLOSE-FILE
          i BODY-CLOSE
          i HDR-BUF BUF:DISPOSE
-         i JSON-BUF BUF:DISPOSE
+         i DROP-JSON
          i OUT-BUF BUF:DISPOSE
          i READER JSON:READ-DISPOSE
          i SLOT-REGION @ MEM:FREE-SPAN
@@ -448,11 +466,11 @@ private
 : GIVE-BACK ( n -- ) {: idx:n :}
    idx GIVEN-BACK @ 0<> if exit then
    idx HDR-BUF HDR-START GROWN?
-   idx JSON-BUF JSON-START GROWN? or
+   idx JSON-OUT @ VEC:CAP JSON-START > or
    idx OUT-BUF OUT-START GROWN? or 0= if exit then
    1 idx GIVEN-BACK !
    idx HDR-BUF BUF:DISPOSE
-   idx JSON-BUF BUF:DISPOSE
+   idx DROP-JSON
    idx OUT-BUF BUF:DISPOSE ;
 
 
@@ -460,7 +478,7 @@ private
 : MAKE-ANSWER ( n -- ) {: idx:n :}
    idx GIVEN-BACK @ 0= if exit then
    idx HDR-BUF HDR-START REMAKE
-   idx JSON-BUF JSON-START REMAKE
+   idx REMAKE-JSON
    idx OUT-BUF OUT-START REMAKE
    0 idx GIVEN-BACK ! ;
 

@@ -333,11 +333,11 @@ GEN-HDR-AT BUF:HDR-BYTES + constant EMBED-HDR-AT
 EMBED-HDR-AT BUF:HDR-BYTES + constant KEY-SPEC-HDR-AT
 KEY-SPEC-HDR-AT BUF:HDR-BYTES + constant SYSTEM-HDR-AT
 SYSTEM-HDR-AT BUF:HDR-BYTES + constant FORM-HDR-AT
-FORM-HDR-AT BUF:HDR-BYTES + constant PARTS-HDR-AT
-PARTS-HDR-AT BUF:HDR-BYTES + constant JOURNAL-PARTS-HDR-AT
-JOURNAL-PARTS-HDR-AT BUF:HDR-BYTES + constant ITEMS-HDR-AT
-ITEMS-HDR-AT BUF:HDR-BYTES + constant BODY-HDR-AT
-BODY-HDR-AT BUF:HDR-BYTES + constant INPUT-HDR-AT
+FORM-HDR-AT BUF:HDR-BYTES + constant PARTS-AT
+PARTS-AT 1 cells + constant JOURNAL-PARTS-AT
+JOURNAL-PARTS-AT 1 cells + constant ITEMS-HDR-AT
+ITEMS-HDR-AT BUF:HDR-BYTES + constant BODY-AT
+BODY-AT 1 cells + constant INPUT-HDR-AT
 INPUT-HDR-AT BUF:HDR-BYTES + constant URI-HDR-AT
 URI-HDR-AT BUF:HDR-BYTES + constant EFFORT-HDR-AT
 EFFORT-HDR-AT BUF:HDR-BYTES + constant TIER-HDR-AT
@@ -346,11 +346,11 @@ SERVED-HDR-AT BUF:HDR-BYTES + constant ENDPOINT-HDR-AT
 ENDPOINT-HDR-AT BUF:HDR-BYTES + constant IDENTITY-HDR-AT
 IDENTITY-HDR-AT BUF:HDR-BYTES + constant BASE-URL-HDR-AT
 BASE-URL-HDR-AT BUF:HDR-BYTES + constant URL-HDR-AT
-URL-HDR-AT BUF:HDR-BYTES + constant GEN-CONFIG-HDR-AT
-GEN-CONFIG-HDR-AT BUF:HDR-BYTES + constant EMBED-CONFIG-HDR-AT
-EMBED-CONFIG-HDR-AT BUF:HDR-BYTES + constant JOURNAL-INPUT-HDR-AT
-JOURNAL-INPUT-HDR-AT BUF:HDR-BYTES + constant JOURNAL-RECORD-HDR-AT
-JOURNAL-RECORD-HDR-AT BUF:HDR-BYTES + constant JOURNAL-OUT-HDR-AT
+URL-HDR-AT BUF:HDR-BYTES + constant GEN-CONFIG-AT
+GEN-CONFIG-AT 1 cells + constant EMBED-CONFIG-AT
+EMBED-CONFIG-AT 1 cells + constant JOURNAL-INPUT-AT
+JOURNAL-INPUT-AT 1 cells + constant JOURNAL-RECORD-AT
+JOURNAL-RECORD-AT 1 cells + constant JOURNAL-OUT-HDR-AT
 JOURNAL-OUT-HDR-AT BUF:HDR-BYTES + constant REPLAY-CONTENT-HDR-AT
 REPLAY-CONTENT-HDR-AT BUF:HDR-BYTES + constant RESPONSE-HDR-AT
 RESPONSE-HDR-AT BUF:HDR-BYTES + constant CONTENT-HDR-AT
@@ -400,6 +400,13 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    v 0 VEC:RESIZE
    v VEC:DELETE ;
 
+: BYTES-MAKE ( ^u8 -- )
+   >VEC-CELL {: cell:^ :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW cell ! ;
+
+\ Fresh storage is zero, so a cell INIT-BUFFERS has not reached holds NULL.
+: BYTES-DELETE ( ^u8 -- ) >VEC-CELL @ VEC:DELETE ;
+
 : INIT-BUFFERS ( ^call -- )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:^ :}
@@ -408,10 +415,10 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    base KEY-SPEC-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base SYSTEM-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
    base FORM-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
-   base PARTS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
-   base JOURNAL-PARTS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
+   base PARTS-AT + BYTES-MAKE
+   base JOURNAL-PARTS-AT + BYTES-MAKE
    base ITEMS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
-   base BODY-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
+   base BODY-AT + BYTES-MAKE
    base INPUT-HDR-AT + CELL-VIEW 256 BUF:N>BLEN BUF:INIT
    base URI-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base EFFORT-HDR-AT + CELL-VIEW 32 BUF:N>BLEN BUF:INIT
@@ -421,10 +428,10 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    base IDENTITY-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
    base BASE-URL-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
    base URL-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
-   base GEN-CONFIG-HDR-AT + CELL-VIEW 256 BUF:N>BLEN BUF:INIT
-   base EMBED-CONFIG-HDR-AT + CELL-VIEW 256 BUF:N>BLEN BUF:INIT
-   base JOURNAL-INPUT-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
-   base JOURNAL-RECORD-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
+   base GEN-CONFIG-AT + BYTES-MAKE
+   base EMBED-CONFIG-AT + BYTES-MAKE
+   base JOURNAL-INPUT-AT + BYTES-MAKE
+   base JOURNAL-RECORD-AT + BYTES-MAKE
    base JOURNAL-OUT-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base REPLAY-CONTENT-HDR-AT + CELL-VIEW 256 BUF:N>BLEN BUF:INIT
    base RESPONSE-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
@@ -451,10 +458,10 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    base KEY-SPEC-HDR-AT + CELL-VIEW BUF:DISPOSE
    base SYSTEM-HDR-AT + CELL-VIEW BUF:DISPOSE
    base FORM-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base PARTS-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base JOURNAL-PARTS-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base PARTS-AT + BYTES-DELETE
+   base JOURNAL-PARTS-AT + BYTES-DELETE
    base ITEMS-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base BODY-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base BODY-AT + BYTES-DELETE
    base INPUT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base URI-HDR-AT + CELL-VIEW BUF:DISPOSE
    base EFFORT-HDR-AT + CELL-VIEW BUF:DISPOSE
@@ -464,10 +471,10 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    base IDENTITY-HDR-AT + CELL-VIEW BUF:DISPOSE
    base BASE-URL-HDR-AT + CELL-VIEW BUF:DISPOSE
    base URL-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base GEN-CONFIG-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base EMBED-CONFIG-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base JOURNAL-INPUT-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base JOURNAL-RECORD-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base GEN-CONFIG-AT + BYTES-DELETE
+   base EMBED-CONFIG-AT + BYTES-DELETE
+   base JOURNAL-INPUT-AT + BYTES-DELETE
+   base JOURNAL-RECORD-AT + BYTES-DELETE
    base JOURNAL-OUT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base REPLAY-CONTENT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base RESPONSE-HDR-AT + CELL-VIEW BUF:DISPOSE
@@ -504,18 +511,25 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    {: c off:n :}
    c off BUF:HDR-BYTES REGION SPAN:$ drop CELL-VIEW ;
 
+: BYTES-AT ( ^call n -- ^VEC:vector<u8> )
+   {: c off:n :}
+   c off 1 cells REGION SPAN:$ drop >VEC-CELL @ ;
+
 : GEN-BUF ( ^call -- ^n ) GEN-HDR-AT HEADER ;
 : EMBED-BUF ( ^call -- ^n ) EMBED-HDR-AT HEADER ;
 : KEY-SPEC-BUF ( ^call -- ^n ) KEY-SPEC-HDR-AT HEADER ;
 : SYSTEM-BUF ( ^call -- ^n ) SYSTEM-HDR-AT HEADER ;
 \ The schema or the tools, as the call's form names.
 : FORM-BUF ( ^call -- ^n ) FORM-HDR-AT HEADER ;
-: PARTS-BUF ( ^call -- ^n ) PARTS-HDR-AT HEADER ;
+: PARTS-BYTES ( ^call -- ^VEC:vector<u8> )
+   PARTS-AT BYTES-AT ;
 \ The parts as the journal input names them: an image by its digest.
-: JOURNAL-PARTS-BUF ( ^call -- ^n ) JOURNAL-PARTS-HDR-AT HEADER ;
+: JOURNAL-PARTS-BYTES ( ^call -- ^VEC:vector<u8> )
+   JOURNAL-PARTS-AT BYTES-AT ;
 \ The history items as given, joined by single commas.
 : ITEMS-BUF ( ^call -- ^n ) ITEMS-HDR-AT HEADER ;
-: BODY-BUF ( ^call -- ^n ) BODY-HDR-AT HEADER ;
+: BODY-BYTES ( ^call -- ^VEC:vector<u8> )
+   BODY-AT BYTES-AT ;
 : INPUT-BUF ( ^call -- ^n ) INPUT-HDR-AT HEADER ;
 : URI-BUF ( ^call -- ^n ) URI-HDR-AT HEADER ;
 : EFFORT-BUF ( ^call -- ^n ) EFFORT-HDR-AT HEADER ;
@@ -527,10 +541,14 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : IDENTITY-BUF ( ^call -- ^n ) IDENTITY-HDR-AT HEADER ;
 : BASE-URL-BUF ( ^call -- ^n ) BASE-URL-HDR-AT HEADER ;
 : URL-BUF ( ^call -- ^n ) URL-HDR-AT HEADER ;
-: GEN-CONFIG-BUF ( ^call -- ^n ) GEN-CONFIG-HDR-AT HEADER ;
-: EMBED-CONFIG-BUF ( ^call -- ^n ) EMBED-CONFIG-HDR-AT HEADER ;
-: JOURNAL-INPUT-BUF ( ^call -- ^n ) JOURNAL-INPUT-HDR-AT HEADER ;
-: JOURNAL-RECORD-BUF ( ^call -- ^n ) JOURNAL-RECORD-HDR-AT HEADER ;
+: GEN-CONFIG-BYTES ( ^call -- ^VEC:vector<u8> )
+   GEN-CONFIG-AT BYTES-AT ;
+: EMBED-CONFIG-BYTES ( ^call -- ^VEC:vector<u8> )
+   EMBED-CONFIG-AT BYTES-AT ;
+: JOURNAL-INPUT-BYTES ( ^call -- ^VEC:vector<u8> )
+   JOURNAL-INPUT-AT BYTES-AT ;
+: JOURNAL-RECORD-BYTES ( ^call -- ^VEC:vector<u8> )
+   JOURNAL-RECORD-AT BYTES-AT ;
 : JOURNAL-OUT-BUF ( ^call -- ^n ) JOURNAL-OUT-HDR-AT HEADER ;
 : REPLAY-CONTENT-BUF ( ^call -- ^n ) REPLAY-CONTENT-HDR-AT HEADER ;
 : RESPONSE-BUF ( ^call -- ^n ) RESPONSE-HDR-AT HEADER ;
@@ -690,10 +708,10 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : KEY-SPEC$ ( ^call -- str ) KEY-SPEC-BUF BUFFER$ ;
 : SYSTEM$ ( ^call -- str ) SYSTEM-BUF BUFFER$ ;
 : FORM$ ( ^call -- str ) FORM-BUF BUFFER$ ;
-: PARTS$ ( ^call -- str ) PARTS-BUF BUFFER$ ;
-: JOURNAL-PARTS$ ( ^call -- str ) JOURNAL-PARTS-BUF BUFFER$ ;
+: PARTS$ ( ^call -- str ) PARTS-BYTES VEC:SPAN SPAN:$ ;
+: JOURNAL-PARTS$ ( ^call -- str ) JOURNAL-PARTS-BYTES VEC:SPAN SPAN:$ ;
 : ITEMS$ ( ^call -- str ) ITEMS-BUF BUFFER$ ;
-: BODY$ ( ^call -- ^u8 n ) BODY-BUF BUFFER$ ;
+: BODY$ ( ^call -- str ) BODY-BYTES VEC:SPAN SPAN:$ ;
 : EFFORT$ ( ^call -- str )
    {: c :}
    c PICK-CELL @ {: r:n :}
@@ -721,10 +739,11 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : ENDPOINT$ ( ^call -- str ) ENDPOINT-BUF BUFFER$ ;
 : IDENTITY$ ( ^call -- str ) IDENTITY-BUF BUFFER$ ;
 : BASE-URL$ ( ^call -- str ) BASE-URL-BUF BUFFER$ ;
-: GEN-CONFIG$ ( ^call -- str ) GEN-CONFIG-BUF BUFFER$ ;
-: EMBED-CONFIG$ ( ^call -- str ) EMBED-CONFIG-BUF BUFFER$ ;
-: JOURNAL-INPUT-SPAN$ ( ^call -- str ) JOURNAL-INPUT-BUF BUFFER$ ;
-: JOURNAL-RECORD$ ( ^call -- str ) JOURNAL-RECORD-BUF BUFFER$ ;
+: GEN-CONFIG$ ( ^call -- str ) GEN-CONFIG-BYTES VEC:SPAN SPAN:$ ;
+: EMBED-CONFIG$ ( ^call -- str ) EMBED-CONFIG-BYTES VEC:SPAN SPAN:$ ;
+: JOURNAL-INPUT-SPAN$ ( ^call -- str )
+   JOURNAL-INPUT-BYTES VEC:SPAN SPAN:$ ;
+: JOURNAL-RECORD$ ( ^call -- str ) JOURNAL-RECORD-BYTES VEC:SPAN SPAN:$ ;
 : JOURNAL-OUT$ ( ^call -- str ) JOURNAL-OUT-BUF BUFFER$ ;
 : REPLAY-CONTENT$ ( ^call -- str ) REPLAY-CONTENT-BUF BUFFER$ ;
 : RESPONSE$ ( ^call -- str )
@@ -940,13 +959,17 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    a u na nu REQUIRE-SOME
    a u BUF:N>BLEN buf BUF:REPLACE ;
 
+: SCRATCH-TARGET ( n ^call -- n )
+   {: used:n c :}
+   c SCRATCH-BASE-CELL @
+   begin dup used < while 2 * repeat ;
+
 \ Clears buf for a use of used bytes. One whose capacity is above the smallest
 \ doubling of the scratch base that holds them is shrunk to that doubling, the
 \ room a past use took given back; a shrink that throws leaves buf cleared.
 : RESET-SIZED ( ^n n ^call -- )
    {: buf:^ used:n c :}
-   c SCRATCH-BASE-CELL @
-   begin dup used < while 2 * repeat {: target:n :}
+   used c SCRATCH-TARGET {: target:n :}
    buf BUF:CAP@ BUF:BLEN>N target > if
       buf BUF:CLEAR  buf target BUF:N>BLEN BUF:RESIZE
    else
@@ -956,6 +979,13 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : RESET-SCRATCH ( ^n ^call -- )
    {: buf:^ c :}
    buf buf BUF:LEN@ BUF:BLEN>N c RESET-SIZED ;
+
+\ Empties v as RESET-SIZED clears a buffer for a use of the bytes v holds.
+: RESET-BYTES ( ^VEC:vector<u8> ^call -- )
+   {: v:^ c :}
+   v VEC:COUNT c SCRATCH-TARGET {: target:n :}
+   v 0 VEC:RESIZE
+   v VEC:CAP target > if v target VEC:TRIM then ;
 
 \ No reply usage seen yet.
 : RESET-USAGE ( ^call -- )
@@ -1481,7 +1511,7 @@ private
 \ The flag says whether the configuration carries the effort, when one is set.
 : BUILD-GEN-CONFIG ( bool ^call -- )
    {: shaped:bool c :}
-   c WRITER c GEN-CONFIG-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER c GEN-CONFIG-BYTES JSON:OPEN drop
    c WRITER JSON:WRITE-OBJECT-START
    s" backend" s" openai-responses" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
@@ -1491,11 +1521,11 @@ private
    then
    JSON:WRITE-COMMA s" base_url" c BASE$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END drop
-   c WRITER JSON:WRITE-CLOSE ;
+   c WRITER JSON:CLOSE ;
 
 : BUILD-EMBED-CONFIG ( ^call -- )
    {: c :}
-   c WRITER c EMBED-CONFIG-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER c EMBED-CONFIG-BYTES JSON:OPEN drop
    c WRITER JSON:WRITE-OBJECT-START
    s" backend" c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
       s" ollama" else s" openai-embeddings" then JSON:WRITE-FIELD-S
@@ -1508,7 +1538,7 @@ private
       JSON:WRITE-COMMA s" base_url" c BASE$ JSON:WRITE-FIELD-S
    then
    JSON:WRITE-OBJECT-END drop
-   c WRITER JSON:WRITE-CLOSE ;
+   c WRITER JSON:CLOSE ;
 
 public
 
@@ -1555,16 +1585,16 @@ private
 
 : PART-OPEN ( ^call -- )
    {: c :}
-   c PART-WRITER c PARTS-BUF JSON:WRITE-OPEN-BUF JSON:WRITE-ARRAY-START drop
-   c JOURNAL-PART-WRITER c JOURNAL-PARTS-BUF JSON:WRITE-OPEN-BUF
+   c PART-WRITER c PARTS-BYTES JSON:OPEN JSON:WRITE-ARRAY-START drop
+   c JOURNAL-PART-WRITER c JOURNAL-PARTS-BYTES JSON:OPEN
    JSON:WRITE-ARRAY-START drop ;
 
 : PART-FINISH ( ^call -- )
    {: c :}
    c REQUIRE-BUILDING
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
-   c PART-WRITER JSON:WRITE-ARRAY-END JSON:WRITE-CLOSE
-   c JOURNAL-PART-WRITER JSON:WRITE-ARRAY-END JSON:WRITE-CLOSE
+   c PART-WRITER JSON:WRITE-ARRAY-END JSON:CLOSE
+   c JOURNAL-PART-WRITER JSON:WRITE-ARRAY-END JSON:CLOSE
    construct input-state finished c MODEL-CALL:CHAT-INPUT ! ;
 
 \ Finishes a building input and passes a finished one, as a count or a
@@ -1608,8 +1638,8 @@ private
 \ Drops the input's parts, their journal copy and its items.
 : EMPTY-INPUT ( ^call -- )
    {: c :}
-   c PARTS-BUF c RESET-SCRATCH
-   c JOURNAL-PARTS-BUF c RESET-SCRATCH
+   c PARTS-BYTES c RESET-BYTES
+   c JOURNAL-PARTS-BYTES c RESET-BYTES
    c ITEMS-BUF c RESET-SCRATCH
    0 c MODEL-CALL:PARTS-COUNT ! ;
 
@@ -1845,12 +1875,12 @@ private
 
 : BODY-OPEN ( ^call -- )
    {: c :}
-   c BODY-BUF c RESET-SCRATCH
-   c WRITER c BODY-BUF JSON:WRITE-OPEN-BUF drop ;
+   c BODY-BYTES c RESET-BYTES
+   c WRITER c BODY-BYTES JSON:OPEN drop ;
 
 : BODY-DONE ( ^call -- )
    {: c :}
-   c WRITER JSON:WRITE-CLOSE ;
+   c WRITER JSON:CLOSE ;
 
 \ The members after a schema call's input: its strict JSON schema format.
 : SCHEMA-TAIL ( ^JSON:writer ^call -- ^JSON:writer )
@@ -2089,8 +2119,8 @@ private
    {: k:call-kind c :}
    k c GEN-INPUT-KIND {: kind:^ kind-u:n url:^ url-u:n :}
    k SHAPED? {: shaped:bool :}
-   c JOURNAL-INPUT-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-INPUT-BUF JSON:WRITE-OPEN-BUF drop
+   c JOURNAL-INPUT-BYTES c RESET-BYTES
+   c WRITER c JOURNAL-INPUT-BYTES JSON:OPEN drop
    c WRITER JSON:WRITE-OBJECT-START
    s" kind" kind kind-u JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" configuration" JSON:WRITE-KEY
@@ -2111,12 +2141,12 @@ private
       JSON:WRITE-ARRAY-START c ITEMS$ JSON:WRITE-RAW JSON:WRITE-ARRAY-END
    then
    JSON:WRITE-OBJECT-END drop
-   c WRITER JSON:WRITE-CLOSE ;
+   c WRITER JSON:CLOSE ;
 
 : JOURNAL-EMBED-INPUT ( ^call -- )
    {: c :}
-   c JOURNAL-INPUT-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-INPUT-BUF JSON:WRITE-OPEN-BUF drop
+   c JOURNAL-INPUT-BYTES c RESET-BYTES
+   c WRITER c JOURNAL-INPUT-BYTES JSON:OPEN drop
    c WRITER JSON:WRITE-OBJECT-START
    s" kind" s" embedding" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" configuration" JSON:WRITE-KEY
@@ -2141,7 +2171,7 @@ private
    loop
    JSON:WRITE-ARRAY-END
    JSON:WRITE-OBJECT-END drop
-   c WRITER JSON:WRITE-CLOSE ;
+   c WRITER JSON:CLOSE ;
 
 : TRANSPORT-FAILED ( CURL:code ^call -- )
    LEDGER {: code:CURL:code l :}
@@ -3618,12 +3648,13 @@ ENUM poll none fed spoiled done ;ENUM
    c JOURNAL-ORIGIN
    s" configuration" c JOURNAL-FIELD {: config:^ config-u:n :}
    config config-u c JSON-OBJECT? 0= if E-RESPONSE throw then
-   config config-u BUF:N>BLEN c MODEL-CALL:KIND @ MATCH call-kind
-      chat OF c GEN-CONFIG-BUF ENDOF
-      embed OF c EMBED-CONFIG-BUF ENDOF
-      tally OF c GEN-CONFIG-BUF ENDOF
-      compaction OF c GEN-CONFIG-BUF ENDOF
-   ;MATCH BUF:REPLACE
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c GEN-CONFIG-BYTES ENDOF
+      embed OF c EMBED-CONFIG-BYTES ENDOF
+      tally OF c GEN-CONFIG-BYTES ENDOF
+      compaction OF c GEN-CONFIG-BYTES ENDOF
+   ;MATCH {: v:^ :}
+   v 0 VEC:RESIZE  config config-u v VEC:APPEND
    c JOURNAL-RESPONSE
    s" content" c REPLAY-CONTENT-BUF c JOURNAL-STRING-BUF
    c MODEL-CALL:KIND @ MATCH call-kind
@@ -3686,8 +3717,8 @@ ENUM poll none fed spoiled done ;ENUM
    {: c :}
    c MODEL-CALL:KIND @ {: k:call-kind :}
    k GENERATES? if k SHAPED? c BUILD-GEN-CONFIG else c BUILD-EMBED-CONFIG then
-   c JOURNAL-RECORD-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-RECORD-BUF JSON:WRITE-OPEN-BUF drop
+   c JOURNAL-RECORD-BYTES c RESET-BYTES
+   c WRITER c JOURNAL-RECORD-BYTES JSON:OPEN drop
    c WRITER JSON:WRITE-OBJECT-START
    s" configuration" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN-CONFIG$ ENDOF
@@ -3714,7 +3745,7 @@ ENUM poll none fed spoiled done ;ENUM
    s" kind" s" live" JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END
    JSON:WRITE-OBJECT-END drop
-   c WRITER JSON:WRITE-CLOSE ;
+   c WRITER JSON:CLOSE ;
 
 \ A nonzero count, else none.
 : NONZERO ( n -- option<n> ) dup 0<> if OPTION:SOME else drop OPTION:NONE then ;
@@ -3753,8 +3784,8 @@ ENUM poll none fed spoiled done ;ENUM
    {: c :}
    c LEDGER {: l :}
    l LEDGER-CANCELLED @ if E-CANCELLED else l LEDGER-CODE @ then {: fault:n :}
-   c JOURNAL-RECORD-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-RECORD-BUF JSON:WRITE-OPEN-BUF drop
+   c JOURNAL-RECORD-BYTES c RESET-BYTES
+   c WRITER c JOURNAL-RECORD-BYTES JSON:OPEN drop
    c WRITER JSON:WRITE-OBJECT-START
    s" kind" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" generation" ENDOF
@@ -3816,7 +3847,7 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:WRITE-COMMA s" output_tokens" c TOKENS TOKENS-OUTPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
    JSON:WRITE-OBJECT-END drop
-   c WRITER JSON:WRITE-CLOSE ;
+   c WRITER JSON:CLOSE ;
 
 : REJECT-RUN ( ^ledger -- ^ledger )
    {: l :}
@@ -3889,7 +3920,7 @@ ENUM poll none fed spoiled done ;ENUM
    c LEDGER LEDGER-CALL-ID @ {: id:n :}
    id 0<> if JSON:WRITE-COMMA s" call_id" id JSON:WRITE-FIELD-INT then
    JSON:WRITE-OBJECT-END drop
-   c WRITER JSON:WRITE-CLOSE
+   c WRITER JSON:CLOSE
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 

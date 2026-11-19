@@ -30,9 +30,9 @@ TYPED-VARIABLE JRT-B JSON:cursor
 create JRT-SUBJECT-OUT $400 allot
 create JRT-SUBJECT-ERR $400 allot
 
-\ The round-trip fixture below owns the writer's bytes; src/lib/json/write.f
+\ The writer cases' output, which RUN makes and deletes; src/lib/json/write.f
 \ holds none.
-JRT-CAP BUFFER: JRT-WRITE-BUF
+TYPED-VARIABLE JRT-WRITE-OUT ^VEC:vector<u8>
 TYPED-VARIABLE JRT-WRITER JSON:writer
 
 : JRT-OPEN-A ( str -- JSON:reader )
@@ -614,7 +614,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-CLOSE ;
 
 : JRT-RT-BUILD ( -- str )
-   JRT-WRITER JRT-WRITE-BUF JRT-CAP JSON:WRITE-OPEN
+   JRT-WRITER JRT-WRITE-OUT @ JSON:OPEN
    JSON:WRITE-OBJECT-START
    s" name" JRT-NAME$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
@@ -647,7 +647,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 
 : JRT-COPY ( n -- str ) {: indent:n :}
    JRT-COPY$ JRT-OPEN-A JSON:READ-NEXT drop
-   JRT-WRITER JRT-WRITE-BUF JRT-CAP JSON:WRITE-OPEN indent JSON:WRITE-INDENT!
+   JRT-WRITER JRT-WRITE-OUT @ JSON:OPEN indent JSON:WRITE-INDENT!
    JRT-BUF JRT-CAP JSON:COPY-VALUE
    JSON:WRITTEN$ {: a:^ u:n :}
    JSON:READ-CLOSE a u ;
@@ -659,19 +659,18 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    0 JRT-COPY JRT-COPY$ T$= ;
 
 \ A value nested deeper than the return stack holds frames copies whole.
-JRT-DEEP-CAP BUFFER: JRT-COPY-OUT
 JRT-DEEP-CAP BUFFER: JRT-COPY-DST
 
 : JRT-TEST-COPY-DEEP ( -- )
    0 JRT-COPY-DEPTH JRT-DIGIT-1 JRT-DEEP-ONE$ {: src:^ len:n :}
    src len JRT-OPEN-A JSON:READ-NEXT drop
-   JRT-WRITER JRT-COPY-OUT JRT-DEEP-CAP JSON:WRITE-OPEN
+   JRT-WRITER JRT-WRITE-OUT @ JSON:OPEN
    JRT-COPY-DST JRT-DEEP-CAP JSON:COPY-VALUE
    JSON:WRITTEN$ src len T$=
    JSON:READ-CLOSE ;
 
 : JRT-COPY-AT ( JSON:reader -- )
-   JRT-WRITER JRT-WRITE-BUF JRT-CAP JSON:WRITE-OPEN
+   JRT-WRITER JRT-WRITE-OUT @ JSON:OPEN
    JRT-BUF JRT-CAP JSON:COPY-VALUE drop JSON:READ-CLOSE ;
 
 : JRT-SECOND ( str -- JSON:reader )
@@ -2104,7 +2103,9 @@ create JRT-NAMES 400 allot
 public
 
 : RUN ( -- )
-   JRT-CORE ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW JRT-WRITE-OUT !
+   JRT-CORE
+   JRT-WRITE-OUT @ VEC:DELETE ;
 
 ;package
 

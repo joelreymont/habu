@@ -1,15 +1,15 @@
 split-str
-\ write.f - the emit-only JSON writer, WRITE-OPEN through WRITE-FIELD-NULL.
+\ write.f - the emit-only JSON writer, OPEN through WRITE-FIELD-NULL.
 \ A file of package JSON (src/lib/json.f).
 \
-\ A source span may lie in a growable writer's own output, and any step that
-\ grows the output may relocate it. A word that takes a source records the
-\ span's offset with JW-ALIAS first and recomputes its address with JW-REBASE
-\ after each such step, before reading it.
+\ A source span may lie in the writer's own output, and any step that grows
+\ the output may relocate it. A word that takes a source records the span's
+\ offset with JW-ALIAS first and recomputes its address with JW-REBASE after
+\ each such step, before reading it.
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/utf8-scalar.f
 require src/lib/utf16.f
 
@@ -17,20 +17,16 @@ package JSON
 
 public
 
-\ fresh: nothing written since WRITE-OPEN, WRITE-OPEN-BUF or WRITE-RESET;
-\ valued: a value last; opened: a START last; separated: a comma last; keyed:
-\ a key last, its value due; quoting: inside WRITE-STRING-START's open string.
+\ fresh: nothing written since OPEN or RESET; valued: a value last; opened: a
+\ START last; separated: a comma last; keyed: a key last, its value due;
+\ quoting: inside WRITE-STRING-START's open string.
 ENUM writer-layout fresh valued opened separated keyed quoting ;ENUM
 
-\ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
-\ through buf. A closed writer keeps CLOSED-CAP. indent is the spaces per
-\ nesting level; 0 is compact. ascii is the mode WRITE-ASCII! sets. depth
-\ counts the open containers.
+\ out is the caller's vector, NULL before OPEN and after CLOSE. indent is the
+\ spaces per nesting level; 0 is compact. ascii is the mode WRITE-ASCII! sets.
+\ depth counts the open containers.
 STRUCTURE writer
-  FIELD out ^u8
-  FIELD cap n
-  FIELD len n
-  FIELD buf ^n
+  FIELD out ^VEC:vector<u8>
   FIELD indent n
   FIELD ascii bool
   FIELD depth n
@@ -38,8 +34,6 @@ STRUCTURE writer
 ;STRUCTURE
 
 private
-
--1 constant JW-CLOSED-CAP
 
 8 constant JW-BS
 9 constant JW-TAB
@@ -91,98 +85,81 @@ create JW-ESC-W
    1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $E0
    1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $F0
 
-: JW-BUF@ ( ^writer -- ^n )
-   @ JSON-WRITER:UNMAKE {: vp:^ cap:n used:n buf:^ indent:n ascii:bool depth:n layout:writer-layout :}
-   buf ;
+\ The output vector, NULL before OPEN and after CLOSE.
+: JW-OUT@ ( ^writer -- ^VEC:vector<u8> )
+   @ JSON-WRITER:UNMAKE {: v:^ indent:n ascii:bool depth:n layout:writer-layout :}
+   v ;
+
+\ The output vector, or E-JSON-WRITE-STATE before OPEN and after CLOSE.
+: JW-OUT ( ^writer -- ^VEC:vector<u8> )
+   JW-OUT@ {: v:^ :}
+   v NULL-PTR = if E-JSON-WRITE-STATE throw then
+   v ;
 
 \ indent, depth, layout. Unchecked: also reads a closed writer.
 : JW-LAYOUT@ ( ^writer -- n n writer-layout )
-   @ JSON-WRITER:UNMAKE {: vp:^ cap:n used:n buf:^ indent:n ascii:bool depth:n layout:writer-layout :}
+   @ JSON-WRITER:UNMAKE {: v:^ indent:n ascii:bool depth:n layout:writer-layout :}
    indent depth layout ;
 
 : JW-ASCII@ ( ^writer -- bool )
-   @ JSON-WRITER:UNMAKE {: vp:^ cap:n used:n buf:^ indent:n ascii:bool depth:n layout:writer-layout :}
+   @ JSON-WRITER:UNMAKE {: v:^ indent:n ascii:bool depth:n layout:writer-layout :}
    ascii ;
 
 : JW-LAYOUT! ( ^writer n writer-layout -- )
    {: w depth:n layout:writer-layout :}
-   w @ JSON-WRITER:UNMAKE 2drop {: vp:^ cap:n used:n buf:^ indent:n ascii:bool :}
-   vp cap used buf indent ascii depth layout JSON-WRITER:MAKE w ! ;
-
-: JW-LIVE ( ^writer -- ^u8 n n )   \ output buffer, capacity, length
-   @ JSON-WRITER:UNMAKE {: vp:^ cap:n used:n buf:^ indent:n ascii:bool depth:n layout:writer-layout :}
-   cap 0 < if E-JSON-WRITE-STATE throw then
-   buf 0= if
-      vp 0= if E-JSON-WRITE-STATE throw then
-      vp cap used exit
-   then
-   buf BUF:SPAN$ BUF:BLEN>N {: data:^ length:n :}
-   data buf BUF:CAP@ BUF:BLEN>N length ;
-
-: JW-USED! ( ^writer ^u8 n n -- )
-   {: w vp:^ cap:n used:n :}
-   w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
-   w JW-ASCII@ {: ascii:bool :}
-   vp cap used NULL-PTR indent ascii depth layout JSON-WRITER:MAKE w ! ;
+   w @ JSON-WRITER:UNMAKE 2drop {: v:^ indent:n ascii:bool :}
+   v indent ascii depth layout JSON-WRITER:MAKE w ! ;
 
 : JW-SPAN ( str -- ) {: a:^ u:n :}
    u 0 < if E-JSON-WRITE-SOURCE throw then
    u 0 > a 0= and if E-JSON-WRITE-SOURCE throw then ;
 
-\ A span's offset in a growable writer's output, or -1 for fixed output or
-\ outside its capacity; one inside the capacity but past the written bytes is
-\ E-JSON-WRITE-SOURCE.
+\ A span's offset in the writer's output, or -1 outside the room the output
+\ holds or with no output, which the write then refuses; one inside that room
+\ but past the written bytes is E-JSON-WRITE-SOURCE.
 : JW-ALIAS ( ^writer str -- n ) {: w a:^ u:n :}
-   w JW-BUF@ 0= if -1 exit then
-   w JW-LIVE {: base:^ cap:n used:n :}
+   w JW-OUT@ {: v:^ :}
+   v NULL-PTR = if -1 exit then
+   v VEC:SPAN SPAN:$ {: base:^ used:n :}
    a base < if -1 exit then
    a base - {: off:n :}
-   off cap >= if -1 exit then
+   off v VEC:CAP >= if -1 exit then
    off used > if E-JSON-WRITE-SOURCE throw then
    u used off - > if E-JSON-WRITE-SOURCE throw then
    off ;
 
-: JW-REBASE ( ^writer ^u8 n -- ^u8 ) {: w a:^ off:n :}
-   off 0 < if a exit then
-   w JW-LIVE {: base:^ cap:n used:n :}
-   base off + ;
+\ The source span where it lies now, given JW-ALIAS's answer for it.
+: JW-REBASE ( ^writer str n -- str ) {: w a:^ u:n off:n :}
+   off 0 < if a u exit then
+   w JW-OUT VEC:SPAN SPAN:$ drop off +  u ;
 
 : JW-SIZE+ ( n n -- n ) {: left:n right:n :}
    right MEM-MAX-N left - > if E-JSON-WRITE-CAPACITY throw then
    left right + ;
 
+\ The most bytes the output grows to: a larger output is
+\ E-JSON-WRITE-CAPACITY, never the vector's own code.
+MEM-MAX-CELLS MEM-CELL-BYTES * constant JW-MAX-N
+
+\ Room for n bytes after the written ones; the block may move.
 : JW-ROOM ( ^writer n -- ^writer ) {: w need:n :}
-   w JW-LIVE {: vp:^ cap:n used:n :}
-   need 0 < need MEM-MAX-N used - > or if E-JSON-WRITE-CAPACITY throw then
-   w JW-BUF@ {: buf:^ :}
-   buf 0= if
-      need cap used - > if E-JSON-WRITE-CAPACITY throw then
-      w exit
-   then
-   buf used need + BUF:N>BLEN BUF:ENSURE
+   w JW-OUT {: v:^ :}
+   v VEC:COUNT {: used:n :}
+   need 0 <  need JW-MAX-N used - >  or if E-JSON-WRITE-CAPACITY throw then
+   v used need + VEC:RESERVE
    w ;
 
 \ Extend the output by n bytes JW-ROOM has made room for and answer the span
 \ over them; it is valid until the next write.
 : JW-TAKE ( ^writer n -- SPAN:span<u8> ) {: w n:n :}
-   w JW-BUF@ {: buf:^ :}
-   buf 0= if
-      w JW-LIVE {: vp:^ cap:n used:n :}
-      w vp cap used n + JW-USED!
-      vp used + n SPAN:MAKE exit
-   then
-   buf n BUF:N>BLEN BUF:GROW ;
+   w JW-OUT {: v:^ :}
+   v VEC:COUNT {: used:n :}
+   v used n + VEC:RESIZE
+   v VEC:SPAN used SPAN:SKIP ;
 
 : JW-C ( ^writer n -- ^writer ) {: w c:n :}
-   w JW-BUF@ {: buf:^ :}
-   buf 0= if
-      w JW-LIVE {: vp:^ cap:n used:n :}
-      used cap >= if E-JSON-WRITE-CAPACITY throw then
-      c vp used + c!
-      w vp cap used 1+ JW-USED!
-      w exit
-   then
-   c buf BUF:APPEND-BYTE w ;
+   c w JW-OUT VEC:PUSH c!
+   w ;
 
 : JW-BREAK-N ( n n -- n ) {: indent:n depth:n :}
    indent 0= if 0 exit then
@@ -202,7 +179,7 @@ create JW-ESC-W
 \ A refusal leaves the length, depth and layout unchanged.
 : JW-TOKEN ( ^writer n -- ^writer )
    {: w count:n :}
-   w JW-LIVE 2drop drop
+   w JW-OUT drop
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    layout MATCH writer-layout
       fresh OF 0 ENDOF
@@ -224,7 +201,7 @@ create JW-ESC-W
 
 : JW-QUOTING ( ^writer -- ^writer )
    {: w :}
-   w JW-LIVE 2drop drop
+   w JW-OUT drop
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    layout MATCH writer-layout
       fresh OF E-JSON-WRITE-STATE throw ENDOF
@@ -245,7 +222,7 @@ create JW-ESC-W
 
 : JW-END ( ^writer n -- ^writer )
    {: w c:n :}
-   w JW-LIVE 2drop drop
+   w JW-OUT drop
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    depth 0= if E-JSON-WRITE-STATE throw then
    layout MATCH writer-layout
@@ -262,69 +239,54 @@ create JW-ESC-W
 
 public
 
-\ Fixed output refuses a value that will not fit with E-JSON-WRITE-CAPACITY:
-\ size it for the worst case, one byte escaping to six (\u00XX). The caller
-\ keeps its buffer live and exclusive until WRITE-CLOSE.
-: WRITE-OPEN ( ^writer ^u8 n -- ^writer )
-   {: w vp:^ cap:n :}
-   vp 0= if E-JSON-WRITE-OUTPUT throw then
-   cap 0 < if E-JSON-WRITE-OUTPUT throw then
-   vp cap 0 NULL-PTR 0 false 0 construct writer-layout fresh
+\ Empties the vector, which the writer grows as it writes, including when an
+\ emitter reads bytes already in it; allocation failures propagate. The bytes
+\ stay the caller's after CLOSE; the caller deletes the vector after their
+\ last use.
+: OPEN ( ^writer ^VEC:vector<u8> -- ^writer )
+   {: w v:^ :}
+   v NULL-PTR = if E-JSON-WRITE-OUTPUT throw then
+   v 0 VEC:RESIZE
+   v 0 false 0 construct writer-layout fresh
    JSON-WRITER:MAKE w !
    w ;
 
-\ Clears the BUF and grows it as needed, including when an emitter reads bytes
-\ already in it; allocation failures propagate. WRITE-CLOSE leaves the bytes to the
-\ caller, who disposes the BUF after their last use.
-: WRITE-OPEN-BUF ( ^writer ^n -- ^writer )
-   {: w buf:^ :}
-   buf 0= if E-JSON-WRITE-OUTPUT throw then
-   buf BUF:CLEAR
-   NULL-PTR 0 0 buf 0 false 0 construct writer-layout fresh
-   JSON-WRITER:MAKE w !
-   w ;
-
-: WRITE-RESET ( ^writer -- ^writer )
+: RESET ( ^writer -- ^writer )
    {: w :}
-   w JW-BUF@ {: buf:^ :}
-   buf 0= if
-      w JW-LIVE {: vp:^ cap:n used:n :}
-      w vp cap 0 JW-USED!
-   else
-      buf BUF:CLEAR
-   then
+   w JW-OUT 0 VEC:RESIZE
    w 0 construct writer-layout fresh JW-LAYOUT!
    w ;
 
-: WRITE-CLOSE ( ^writer -- ) {: w :}
-   w JW-BUF@ 0= if w JW-LIVE 2drop drop then
-   w NULL-PTR JW-CLOSED-CAP 0 JW-USED! ;
+\ Reads only the writer, so the caller may have deleted the vector already.
+: CLOSE ( ^writer -- ) {: w :}
+   w JW-OUT drop
+   NULL-PTR 0 false 0 construct writer-layout fresh
+   JSON-WRITER:MAKE w ! ;
 
 \ The span stays valid until the next write.
-: WRITTEN$ ( ^writer -- ^u8 n )
-   JW-LIVE {: vp:^ cap:n used:n :}
-   vp used ;
+: WRITTEN$ ( ^writer -- str )
+   JW-OUT VEC:SPAN SPAN:$ ;
 
-: WRITE-RAW ( ^writer ^u8 n -- ^writer ) {: w a:^ u:n :}
+: WRITE-RAW ( ^writer str -- ^writer ) {: w a:^ u:n :}
    a u JW-SPAN
    w a u JW-ALIAS {: off:n :}
    w u JW-TOKEN u JW-TAKE {: s :}
-   w a off JW-REBASE u s SPAN:COPY
+   w a u off JW-REBASE s SPAN:COPY
    w ;
 
 : WRITE-INDENT! ( ^writer n -- ^writer )
    {: w indent:n :}
    indent 0 < if E-JSON-WRITE-BYTE throw then
-   w JW-LIVE 2drop drop
-   w @ JSON-WRITER:UNMAKE {: vp:^ cap:n used:n buf:^ old:n ascii:bool depth:n layout:writer-layout :}
-   vp cap used buf indent ascii depth layout JSON-WRITER:MAKE w !
+   w JW-OUT drop
+   w @ JSON-WRITER:UNMAKE {: v:^ old:n ascii:bool depth:n layout:writer-layout :}
+   v indent ascii depth layout JSON-WRITER:MAKE w !
    w ;
 
 : WRITE-ASCII! ( ^writer bool -- ^writer )
    {: w ascii:bool :}
-   w JW-LIVE 2drop drop
-   w @ JSON-WRITER:UNMAKE {: vp:^ cap:n used:n buf:^ indent:n old:bool depth:n layout:writer-layout :}
-   vp cap used buf indent ascii depth layout JSON-WRITER:MAKE w !
+   w JW-OUT drop
+   w @ JSON-WRITER:UNMAKE {: v:^ indent:n old:bool depth:n layout:writer-layout :}
+   v indent ascii depth layout JSON-WRITER:MAKE w !
    w ;
 
 private
@@ -450,16 +412,16 @@ private
    w JW-ASCII@ if a u s JW-ASCII-INTO exit then
    a u s JW-ESC-INTO ;
 
-\ Each source byte needs at least one output byte, so refuse an overlong fixed
-\ span before reading it, then text that is not UTF-8. A quoted string or key is
-\ a token, so its width reserves any due break with it; a string part never
-\ breaks.
+\ Each source byte needs at least one output byte, so refuse a span longer than
+\ the output can grow to before reading it, then text that is not UTF-8. A quoted
+\ string or key is a token, so its width reserves any due break with it; a
+\ string part never breaks.
 : JW-QUOTED ( ^writer str bool n -- ^writer )
    {: w a:^ u:n quoted:bool sep:n :}
    a u JW-SPAN
    w a u JW-ALIAS {: off:n :}
    w u JW-ROOM drop
-   w a off JW-REBASE {: src:^ :}
+   w a u off JW-REBASE drop {: src:^ :}
    src u UTF8:VALID? 0= if E-JSON-WRITE-BYTE throw then
    quoted if 1 JW-QUOTE-N else 0 0 then {: lead:n delims:n :}
    w src u JW-BODY-N {: body:n :}
@@ -470,7 +432,7 @@ private
       JW-DQ s 0 SPAN:U8!
       JW-DQ s width 1- SPAN:U8!
    then
-   w a off JW-REBASE {: from:^ :}
+   w a u off JW-REBASE drop {: from:^ :}
    w from u s lead body SPAN:SUB JW-BODY-INTO
    JW-KEY-SEP sep s width SPAN:SKIP SPAN:COPY
    w ;
@@ -480,7 +442,7 @@ public
 : WRITE-STRING ( ^writer str -- ^writer )
    true 0 JW-QUOTED ;
 
-: WRITE-KEY ( ^writer ^u8 n -- ^writer ) {: w a:^ u:n :}
+: WRITE-KEY ( ^writer str -- ^writer ) {: w a:^ u:n :}
    w JW-LAYOUT@ 2drop 0 > if JW-COLON-SP-N else JW-COLON-N then {: sep:n :}
    w a u true sep JW-QUOTED construct writer-layout keyed JW-MARK ;
 
@@ -508,7 +470,7 @@ public
 
 : WRITE-COMMA ( ^writer -- ^writer )
    {: w :}
-   w JW-LIVE 2drop drop
+   w JW-OUT drop
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    layout MATCH writer-layout
       fresh OF E-JSON-WRITE-STATE throw ENDOF
@@ -567,24 +529,24 @@ public
    {: kp:^ keyu:n vp:^ valu:n :}
    dup vp valu JW-ALIAS {: off:n :}
    kp keyu WRITE-KEY
-   dup vp off JW-REBASE valu WRITE-RAW ;
+   dup vp valu off JW-REBASE WRITE-RAW ;
 
-: WRITE-FIELD-S ( ^writer ^u8 n ^u8 n -- ^writer )
+: WRITE-FIELD-S ( ^writer str str -- ^writer )
    {: kp:^ keyu:n vp:^ valu:n :}
    dup vp valu JW-ALIAS {: off:n :}
    kp keyu WRITE-KEY
-   dup vp off JW-REBASE valu WRITE-STRING ;
+   dup vp valu off JW-REBASE WRITE-STRING ;
 
-: WRITE-FIELD-U ( ^writer ^u8 n n -- ^writer ) {: kp:^ keyu:n val:n :}
+: WRITE-FIELD-U ( ^writer str n -- ^writer ) {: kp:^ keyu:n val:n :}
    kp keyu WRITE-KEY
    val WRITE-U ;
 
-: WRITE-FIELD-INT ( ^writer ^u8 n n -- ^writer )
+: WRITE-FIELD-INT ( ^writer str n -- ^writer )
    {: kp:^ keyu:n val:n :}
    kp keyu WRITE-KEY
    val WRITE-INT ;
 
-: WRITE-FIELD-BOOL ( ^writer ^u8 n bool -- ^writer )
+: WRITE-FIELD-BOOL ( ^writer str bool -- ^writer )
    {: kp:^ keyu:n val:bool :}
    kp keyu WRITE-KEY
    val WRITE-BOOL ;

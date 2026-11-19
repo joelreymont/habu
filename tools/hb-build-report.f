@@ -1,12 +1,13 @@
 split-str
 \ hb-build-report.f - typed in-process and wire-format hb-build reports.
 \ The JSON writer keeps no state, so this module owns the report bytes: REPORT-W
-\ writes into REPORT-BUF, and a span one report word answers stays valid until the
+\ writes into REPORT-OUT, and a span one report word answers stays valid until the
 \ next one runs.
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/fs.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/json.f
 
 package HB-BUILD
@@ -28,14 +29,15 @@ variable SIZE-DATA-ZERO
 variable SIZE-PAD
 variable SIZE-OTHER
 
-\ Worst case one quoted path byte becomes \u00XX, plus the fixed keys and values.
-6 constant REPORT-ESCAPE-MAX
-PATH-CAP REPORT-ESCAPE-MAX * 512 + constant REPORT-CAP
-REPORT-CAP BUFFER: REPORT-BUF
+\ Made by the first report and kept for the process.
+TYPED-VARIABLE REPORT-OUT ^VEC:vector<u8>
 TYPED-VARIABLE REPORT-W JSON:writer
 
 : REPORT-OPEN ( -- ^JSON:writer )
-   REPORT-W REPORT-BUF REPORT-CAP JSON:WRITE-OPEN ;
+   REPORT-OUT @ NULL-PTR = if
+      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW REPORT-OUT !
+   then
+   REPORT-W REPORT-OUT @ JSON:OPEN ;
 
 : STATE-PTR ( -- ^state )
    0 STATE-BUF ;

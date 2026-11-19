@@ -5,6 +5,7 @@ split-str
 \ (src/lib/net/http.f).
 require src/lib/net/http-request.f
 require src/lib/json.f
+require src/lib/vector.f
 require src/lib/string.f
 require src/lib/error.f
 require src/lib/span.f
@@ -251,25 +252,25 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
    [: SEND-BODY ;] [: SELF-SLOT CLOSE-FILE ;] finally ;
 
 
-\ The slot's writer over the slot's JSON buffer, empty and ready to be chained.
-\ Each worker holds its own writer and buffer (src/lib/json/write.f keeps no
+\ The slot's writer over the slot's JSON vector, empty and ready to be chained.
+\ Each worker holds its own writer and vector (src/lib/json/write.f keeps no
 \ state), so two workers write JSON at once without a lock between them.
 \ The writer may move the bytes a previous body borrowed, so that body goes
 \ first: a body that does not finish leaves none.
 : OPEN-JSON ( n -- ) {: idx:n :}
    idx DROP-BODY
-   idx JSON-W idx JSON-BUF JSON:WRITE-OPEN-BUF drop ;
+   idx JSON-W idx JSON-OUT @ JSON:OPEN drop ;
 
 
 \ Whatever the body left behind, the writer is done with: a closed writer
 \ refuses every emitter, so a body quotation that kept its writer cannot write
 \ into the next request's answer.
 : CLOSE-JSON ( n -- ) {: idx:n :}
-   idx JSON-W JSON:WRITE-CLOSE ;
+   idx JSON-W JSON:CLOSE ;
 
 
 \ The body's chain, from the slot's writer to the bytes it wrote, which become
-\ the response body in the slot's own buffer. x86-64 refuses a quotation that
+\ the response body in the slot's own vector. x86-64 refuses a quotation that
 \ reads a local, so the body travels through the slot.
 : WRITE-JSON ( -- )
    SELF-SLOT {: idx:n :}
@@ -297,7 +298,7 @@ public
 
 
 \ The body is BORROWED: it must stay valid until the response has been sent,
-\ which a literal, a loaded static file and the slot's own JSON buffer all are.
+\ which a literal, a loaded static file and the slot's own JSON vector all are.
 : BODY! ( response str -- ) {: subject:response bytes:^ len:n :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    bytes len idx RESPONSE-BODY! ;
@@ -321,7 +322,7 @@ public
 
 
 \ A JSON body written by `body` through the worker's own writer and kept in the
-\ worker's own buffer, with the Content-Type this word adds itself. Only the
+\ worker's own vector, with the Content-Type this word adds itself. Only the
 \ worker that owns the slot may build its response. The writer is closed however
 \ the body ended, and a body that did not finish is no answer at all.
 : JSON! ( response [ ^JSON:writer -- ^JSON:writer ] -- )
@@ -336,10 +337,10 @@ public
 
 private
 
-\ The whole error answer as text in the slot's JSON buffer: the code, the
+\ The whole error answer as text in the slot's JSON vector: the code, the
 \ message and the request id the fault was reported under, on one line.
 : ERROR-TEXT+ ( str n -- ) {: src:^ len:n idx:n :}
-   src len BUF:N>BLEN idx JSON-BUF BUF:APPEND-SPAN ;
+   src len idx JSON-OUT @ VEC:APPEND ;
 
 
 : PLAIN-ERROR ( response n str str -- )
@@ -348,7 +349,7 @@ private
    idx SELF-SLOT <> if E-HANDLE throw then
    subject status STATUS!
    idx DROP-BODY
-   idx JSON-BUF BUF:CLEAR
+   idx JSON-OUT @ 0 VEC:RESIZE
    code codelen idx ERROR-TEXT+
    s" : " idx ERROR-TEXT+
    message messagelen idx ERROR-TEXT+
@@ -356,7 +357,7 @@ private
    idx SLOT-ID$ idx ERROR-TEXT+
    S\" )\n" idx ERROR-TEXT+
    subject s" Content-Type" s" text/plain; charset=utf-8" HEADER!
-   idx JSON-BUF BUF$ idx RESPONSE-BODY! ;
+   idx JSON-OUT @ VEC:SPAN SPAN:$ idx RESPONSE-BODY! ;
 
 
 \ The quotation lives in a row declared to hold one, the checker's proven

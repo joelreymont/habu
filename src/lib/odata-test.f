@@ -18,6 +18,8 @@ require src/lib/fs.f
 require src/lib/arena.f
 require src/lib/reason.f
 require src/lib/test.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/json.f
 require src/lib/xml.f
 require src/lib/vector.f
@@ -33,7 +35,7 @@ variable DESC-LEN
 TYPED-VARIABLE SET ^ODATA:entity-set
 TYPED-VARIABLE CURSOR JSON:cursor
 TYPED-VARIABLE WRITER JSON:writer
-CAP BUFFER: OUT
+TYPED-VARIABLE OUT ^VEC:vector<u8>   \ TEST-MAIN makes and deletes it
 CAP BUFFER: STR
 256 constant LINK-CAP
 LINK-CAP BUFFER: LINK
@@ -414,7 +416,7 @@ LINK-CAP BUFFER: LINK
 : PLAIN ( ^ODATA:entity-type ^u8 n -- ^u8 n )
    {: t:^ text:^ len:n :}
    CURSOR text len JSON:READ-INIT JSON:READ-NEXT drop
-   WRITER OUT CAP JSON:WRITE-OPEN JSON:WRITE-ARRAY-START
+   WRITER OUT @ JSON:OPEN JSON:WRITE-ARRAY-START
    begin swap JSON:READ-NEXT rot swap dup JSON:T-OBJ = while
       drop JSON:WRITE-COMMA t STR CAP ODATA:COPY-ENTITY
    repeat drop
@@ -457,7 +459,7 @@ LINK-CAP BUFFER: LINK
    m set sl SET-TYPE {: t:^ :}
    m body bl CURSOR ODATA:RECORD$ {: rt:^ rl:n :}
    CURSOR rt rl JSON:READ-INIT JSON:READ-NEXT drop
-   WRITER OUT CAP JSON:WRITE-OPEN t STR CAP ODATA:COPY-ENTITY
+   WRITER OUT @ JSON:OPEN t STR CAP ODATA:COPY-ENTITY
    JSON:WRITTEN$ {: w:^ wl:n :}
    JSON:READ-FINISH w wl ;
 
@@ -541,7 +543,7 @@ LINK-CAP BUFFER: LINK
    ARENA:NEW {: a:^ :}
    a V2$ MODEL s" Orders" SET-TYPE {: t:^ :}
    [: CURSOR s" [1]" JSON:READ-INIT JSON:READ-NEXT drop JSON:READ-NEXT drop
-      WRITER OUT CAP JSON:WRITE-OPEN t STR CAP ODATA:COPY-ENTITY
+      WRITER OUT @ JSON:OPEN t STR CAP ODATA:COPY-ENTITY
       drop JSON:READ-FINISH ;]
    ODATA:E-RESPONSE TTHROWSQ
    s" 1:2: expected a record object, found `1`; write that kind of value here"
@@ -896,6 +898,7 @@ variable VALUE-LEN
 
 : TEST-MAIN ( -- )
    T-RESET
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT !
    TEST-V2
    TEST-V4
    TEST-DERIVED
@@ -922,6 +925,7 @@ variable VALUE-LEN
    TEST-HIDDEN-NAME
    TEST-HIDE-NAMES
    TEST-HIDE-COPY
+   OUT @ VEC:DELETE
    T-REPORT
    s" odata-test: ok" type cr ;
 

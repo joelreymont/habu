@@ -7,33 +7,34 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/property.f
 require src/lib/json.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/memory.f
 require src/lib/test/guard-page.f
 
 package JSON-TEST
 
 10 constant JWT-LF
-128 constant JWT-CAP   \ holds the indented nested document
-8 constant JWT-SMALL-CAP
+8 constant JWT-TAIL-N   \ the bytes before the guard page
 20 constant JWT-FILL-N
 
-JWT-CAP BUFFER: JWT-BUF-A
-JWT-CAP BUFFER: JWT-BUF-B
-
+\ JWT-MAIN makes the outputs of JWT-A, JWT-B and JWT-RT-W and deletes them;
+\ each JWT-GROW-OPEN makes JWT-GROW-W's, which JWT-GROW-DONE deletes.
+TYPED-VARIABLE JWT-OUT-A ^VEC:vector<u8>
+TYPED-VARIABLE JWT-OUT-B ^VEC:vector<u8>
 TYPED-VARIABLE JWT-A JSON:writer
 TYPED-VARIABLE JWT-B JSON:writer
 TYPED-VARIABLE JWT-FRESH JSON:writer   \ never opened: keeps the definer's zero image
 
-create JWT-GROW-BUF BUF:HDR-BYTES allot
+TYPED-VARIABLE JWT-GROW-OUT ^VEC:vector<u8>
 TYPED-VARIABLE JWT-GROW-W JSON:writer
 1024 BUFFER: JWT-LARGE-CHUNK
 
-\ Round-trip fixture storage: the writer's bytes, the reader's decode buffer,
+\ Round-trip fixture storage: the writer's output, the reader's decode buffer,
 \ and the reader's own caller-owned state block.
 $400 constant JWT-RT-CAP
 $40 constant JWT-RT-MAX-N
-JWT-RT-CAP BUFFER: JWT-RT-OUT
+TYPED-VARIABLE JWT-RT-OUT ^VEC:vector<u8>
 JWT-RT-CAP BUFFER: JWT-RT-DECODE
 TYPED-VARIABLE JWT-RT-W JSON:writer
 TYPED-VARIABLE JWT-RT-READER JSON:cursor
@@ -82,14 +83,14 @@ create JWT-RUN-KEY-WANT
 : JWT-CHECK-ACCEPTS ( str -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
 
+: JWT-NEW ( -- ^VEC:vector<u8> )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+
 : JWT-OPEN-A ( -- ^JSON:writer )
-   JWT-A JWT-BUF-A JWT-CAP JSON:WRITE-OPEN ;
+   JWT-A JWT-OUT-A @ JSON:OPEN ;
 
 : JWT-OPEN-B ( -- ^JSON:writer )
-   JWT-B JWT-BUF-B JWT-CAP JSON:WRITE-OPEN ;
-
-: JWT-OPEN-SMALL ( -- ^JSON:writer )
-   JWT-A JWT-BUF-A JWT-SMALL-CAP JSON:WRITE-OPEN ;
+   JWT-B JWT-OUT-B @ JSON:OPEN ;
 
 : JWT-EXPECTED-OBJECT$ ( -- str )
    SB-RESET
@@ -153,7 +154,7 @@ create JWT-RUN-KEY-WANT
    JSON:WRITTEN$ JWT-EXPECTED-ARRAY$ T$= ;
 
 \ The point of caller-owned storage: two writers are alive at the same time over
-\ different buffers, each document is interleaved with the other, and neither
+\ different vectors, each document is interleaved with the other, and neither
 \ sees the other's bytes.
 : JWT-TEST-TWO-WRITERS ( -- )
    JWT-OPEN-A JSON:WRITE-OBJECT-START s" count" 42 JSON:WRITE-FIELD-U drop
@@ -168,81 +169,88 @@ create JWT-RUN-KEY-WANT
 
 : JWT-TEST-RESET ( -- )
    JWT-OPEN-A s" abc" JSON:WRITE-RAW drop
-   JWT-A JSON:WRITE-RESET drop
+   JWT-A JSON:RESET drop
    JWT-A JSON:WRITTEN$ nip 0 T=
    JWT-A s" z" JSON:WRITE-RAW JSON:WRITTEN$ s" z" T$= ;
 
+\ A vector with room for eight bytes, so the cases outgrow it.
 : JWT-GROW-OPEN ( -- ^JSON:writer )
-   JWT-GROW-BUF 8 BUF:N>BLEN BUF:INIT
-   JWT-GROW-W JWT-GROW-BUF JSON:WRITE-OPEN-BUF ;
+   JWT-NEW {: v:^ :}
+   v 8 VEC:RESERVE
+   v JWT-GROW-OUT !
+   JWT-GROW-W v JSON:OPEN ;
+
+: JWT-GROW-DONE ( -- )
+   JWT-GROW-W JSON:CLOSE
+   JWT-GROW-OUT @ VEC:DELETE ;
 
 : JWT-TEST-GROW-LIFECYCLE ( -- )
-   JWT-GROW-BUF 8 BUF:N>BLEN BUF:INIT
-   s" stale" BUF:N>BLEN JWT-GROW-BUF BUF:APPEND-SPAN
-   JWT-GROW-W JWT-GROW-BUF JSON:WRITE-OPEN-BUF JSON:WRITTEN$ nip 0 T=
+   JWT-NEW {: v:^ :}
+   s" stale" v VEC:APPEND
+   JWT-GROW-W v JSON:OPEN JSON:WRITTEN$ nip 0 T=
    JWT-GROW-W s" one" JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITE-RESET JSON:WRITTEN$ nip 0 T=
+   JWT-GROW-W JSON:RESET JSON:WRITTEN$ nip 0 T=
    JWT-GROW-W s" two" JSON:WRITE-RAW drop
-   JWT-GROW-W JSON:WRITE-CLOSE
-   JWT-GROW-BUF BUF:SPAN$ BUF:BLEN>N s" two" T$=
-   JWT-GROW-BUF BUF:DISPOSE
+   JWT-GROW-W JSON:CLOSE
+   v VEC:SPAN SPAN:$ s" two" T$=
+   v VEC:DELETE
    [: JWT-GROW-W JSON:WRITTEN$ 2drop ;] E-JSON-WRITE-STATE TTHROWSQ ;
 
 : JWT-TEST-GROW-ESCAPE ( -- )
    JWT-GROW-OPEN JWT-ESC-IN$ JSON:WRITE-STRING
    JSON:WRITTEN$ JWT-ESC-WANT$ T$=
-   JWT-GROW-W JSON:WRITE-RESET
+   JWT-GROW-W JSON:RESET
    s" é" JSON:WRITE-STRING JSON:WRITTEN$ s\" \"é\"" T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-OBJECT ( -- )
    JWT-GROW-OPEN JWT-BUILD-OBJECT
    JSON:WRITTEN$ JWT-EXPECTED-OBJECT$ T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-RAW-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
    JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 1+ 5 JSON:WRITE-RAW
    JSON:WRITTEN$ s" abcdefbcdef" T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-STRING-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
    JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 1+ 5 JSON:WRITE-STRING
    JSON:WRITTEN$ s\" abcdef\"bcdef\"" T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-FIELD-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
    JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 3 a 3 + 3 JSON:WRITE-FIELD-S
    JSON:WRITTEN$ s\" abcdef\"abc\":\"def\"" T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-KEY-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
    JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a u JSON:WRITE-KEY JSON:WRITTEN$ s\" abcdef\"abcdef\":" T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-ESC-ALIAS ( -- )
    JWT-GROW-OPEN JWT-RUN-IN 7 JSON:WRITE-RAW drop
    JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a u JSON:WRITE-STRING JSON:WRITTEN$ JWT-RUN-KEY-WANT 18 T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE
+   JWT-GROW-DONE
    JWT-GROW-OPEN JWT-RUN-IN 7 JSON:WRITE-RAW drop
    JWT-GROW-W JSON:WRITTEN$ {: key:^ keyu:n :}
    JWT-GROW-W key keyu JSON:WRITE-KEY JSON:WRITTEN$ JWT-RUN-KEY-WANT 19 T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-FIELD-RAW-ALIAS ( -- )
    JWT-GROW-OPEN s" abcdef" JSON:WRITE-RAW drop
    JWT-GROW-W JSON:WRITTEN$ {: a:^ u:n :}
    JWT-GROW-W a 3 a 3 + 3 JSON:WRITE-FIELD-RAW
    JSON:WRITTEN$ s\" abcdef\"abc\":def" T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-LARGE ( -- )
    1024 0 ?do 65 JWT-LARGE-CHUNK i + c! loop
@@ -255,25 +263,24 @@ create JWT-RUN-KEY-WANT
    a 1+ c@ 65 T=
    a u 2 - + c@ 65 T=
    a u 1- + c@ [char] " T=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
-\ Every ASCII byte value escaped into fixed output and into a BUF it outgrows, as
-\ a string and as a key: the BUF holds the fixed output after its prefix.
+\ Every ASCII byte value escaped, as a string and as a key, alone and after a
+\ prefix in a vector it outgrows: the second output holds the first after its
+\ prefix.
 $80 constant JWT-EVERY-N
-JWT-EVERY-N 6 * 3 + constant JWT-EVERY-CAP   \ at most six bytes each, quotes, colon
-JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 
 : JWT-EVERY-EMIT ( ^JSON:writer bool -- ^JSON:writer ) {: key:bool :}
    JWT-LARGE-CHUNK JWT-EVERY-N key if JSON:WRITE-KEY else JSON:WRITE-STRING then ;
 
 : JWT-EVERY ( bool -- ) {: key:bool :}
    JWT-EVERY-N 0 ?do i JWT-LARGE-CHUNK i + c! loop
-   JWT-A JWT-EVERY-OUT JWT-EVERY-CAP JSON:WRITE-OPEN key JWT-EVERY-EMIT JSON:WRITTEN$ {: f:^ fu:n :}
+   JWT-OPEN-A key JWT-EVERY-EMIT JSON:WRITTEN$ {: f:^ fu:n :}
    JWT-GROW-OPEN s" pre" JSON:WRITE-RAW key JWT-EVERY-EMIT JSON:WRITTEN$ {: g:^ gu:n :}
    gu fu 3 + T=
    g 3 s" pre" T$=
    g 3 + gu 3 - f fu T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 : JWT-TEST-GROW-EVERY-BYTE ( -- )
    JWT-FALSE JWT-EVERY
@@ -282,23 +289,18 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 : JWT-TEST-GROW-ROOM ( -- )
    JWT-GROW-OPEN s" abcdefgh" JSON:WRITE-RAW s" i" JSON:WRITE-RAW
    JSON:WRITTEN$ s" abcdefghi" T$=
-   JWT-GROW-BUF BUF:CAP@ BUF:BLEN>N 16 T=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-OUT @ VEC:CAP 16 T=
+   JWT-GROW-DONE ;
 
-: JWT-GROW-NULL ( -- )
-   JWT-GROW-W NULL-PTR JSON:WRITE-OPEN-BUF drop ;
-
-: JWT-TEST-GROW-STATE ( -- )
-   [: JWT-GROW-NULL ;] E-JSON-WRITE-OUTPUT TTHROWSQ ;
-
+\ CLOSE after the caller deleted the vector; the writer stays closed.
 : JWT-TEST-GROW-DISPOSED-CLOSE ( -- )
    JWT-GROW-OPEN s" x" JSON:WRITE-RAW drop
-   JWT-GROW-BUF BUF:DISPOSE
-   JWT-GROW-W JSON:WRITE-CLOSE
-   JWT-GROW-BUF 8 BUF:N>BLEN BUF:INIT
+   JWT-GROW-OUT @ VEC:DELETE
+   JWT-GROW-W JSON:CLOSE
+   JWT-NEW JWT-GROW-OUT !
    [: JWT-GROW-W s" y" JSON:WRITE-RAW drop ;] E-JSON-WRITE-STATE TTHROWSQ
-   [: JWT-GROW-W JSON:WRITE-CLOSE ;] E-JSON-WRITE-STATE TTHROWSQ
-   JWT-GROW-BUF BUF:DISPOSE ;
+   [: JWT-GROW-W JSON:CLOSE ;] E-JSON-WRITE-STATE TTHROWSQ
+   JWT-GROW-OUT @ VEC:DELETE ;
 
 : JWT-FILL-A ( -- )
    JWT-OPEN-A
@@ -327,73 +329,22 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    b JWT-FILL-N 1+ + c@ 97 T=
    b v 1 - + c@ [char] " T= ;
 
-\ A value that does not fit is refused by name and appends nothing. The escaped
-\ cases leave room for their unescaped width, but not the escaped width.
-: JWT-FULL-RAW ( -- )
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW s" fghij" JSON:WRITE-RAW drop ;
-
-: JWT-FULL-STRING ( -- )
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW s" xy" JSON:WRITE-STRING drop ;
-
-: JWT-FULL-STRING-ESC ( -- )
-   JWT-OPEN-SMALL s" abcd" JSON:WRITE-RAW JWT-RUN-IN 2 JSON:WRITE-STRING drop ;
-
-: JWT-FULL-KEY-ESC ( -- )
-   JWT-OPEN-SMALL s" abc" JSON:WRITE-RAW JWT-RUN-IN 2 JSON:WRITE-KEY drop ;
-
-: JWT-FULL-U ( -- )
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW 1000 JSON:WRITE-U drop ;
-
-: JWT-FULL-KEY ( -- )
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW s" k" JSON:WRITE-KEY drop ;
-
-: JWT-FULL-INT ( -- )
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW -123 JSON:WRITE-INT drop ;
-
-: JWT-FULL-INT-MIN ( -- )
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW STR-MIN-I64 JSON:WRITE-INT drop ;
-
-: JWT-ZERO-CAP ( -- )
-   JWT-A JWT-BUF-A 0 JSON:WRITE-OPEN s" x" JSON:WRITE-RAW drop ;
-
 : JWT-REFUSED-KEEPS$ ( [ -- ] str -- )   \ refusal left the document untouched
    {: want:^ wu:n :}
    E-JSON-WRITE-CAPACITY TTHROWSQ
    JWT-A JSON:WRITTEN$ want wu T$= ;
 
-: JWT-TEST-FULL ( -- )
-   [: JWT-FULL-RAW ;] s" abcde" JWT-REFUSED-KEEPS$
-   [: JWT-FULL-STRING ;] s" abcde" JWT-REFUSED-KEEPS$
-   [: JWT-FULL-STRING-ESC ;] s" abcd" JWT-REFUSED-KEEPS$
-   [: JWT-FULL-KEY-ESC ;] s" abc" JWT-REFUSED-KEEPS$
-   [: JWT-FULL-U ;] s" abcde" JWT-REFUSED-KEEPS$
-   [: JWT-FULL-KEY ;] s" abcde" JWT-REFUSED-KEEPS$
-   [: JWT-FULL-INT ;] s" abcde" JWT-REFUSED-KEEPS$
-   [: JWT-FULL-INT-MIN ;] s" abcde" JWT-REFUSED-KEEPS$
-   [: JWT-ZERO-CAP ;] E-JSON-WRITE-CAPACITY TTHROWSQ
-   JWT-A JSON:WRITTEN$ nip 0 T= ;
-
 : JWT-FIELD-S-BAD-VALUE ( -- )
-   JWT-OPEN-SMALL s" ab" JSON:WRITE-RAW s" k" s" v" drop -1 JSON:WRITE-FIELD-S drop ;
+   JWT-OPEN-A s" ab" JSON:WRITE-RAW s" k" s" v" drop -1 JSON:WRITE-FIELD-S drop ;
 
 : JWT-FIELD-RAW-BAD-VALUE ( -- )
-   JWT-OPEN-SMALL s" ab" JSON:WRITE-RAW s" k" s" v" drop -1 JSON:WRITE-FIELD-RAW drop ;
-
-: JWT-FIELD-S-FULL-KEY ( -- )
-   JWT-OPEN-SMALL s" ab" JSON:WRITE-RAW s" longkey" s" v" drop -1 JSON:WRITE-FIELD-S drop ;
-
-: JWT-FIELD-RAW-FULL-KEY ( -- )
-   JWT-OPEN-SMALL s" ab" JSON:WRITE-RAW s" longkey" s" v" drop -1 JSON:WRITE-FIELD-RAW drop ;
+   JWT-OPEN-A s" ab" JSON:WRITE-RAW s" k" s" v" drop -1 JSON:WRITE-FIELD-RAW drop ;
 
 : JWT-TEST-FIELD-REFUSAL ( -- )
    [: JWT-FIELD-S-BAD-VALUE ;] E-JSON-WRITE-SOURCE TTHROWSQ
    JWT-A JSON:WRITTEN$ s\" ab\"k\":" T$=
    [: JWT-FIELD-RAW-BAD-VALUE ;] E-JSON-WRITE-SOURCE TTHROWSQ
-   JWT-A JSON:WRITTEN$ s\" ab\"k\":" T$=
-   [: JWT-FIELD-S-FULL-KEY ;] E-JSON-WRITE-CAPACITY TTHROWSQ
-   JWT-A JSON:WRITTEN$ s" ab" T$=
-   [: JWT-FIELD-RAW-FULL-KEY ;] E-JSON-WRITE-CAPACITY TTHROWSQ
-   JWT-A JSON:WRITTEN$ s" ab" T$= ;
+   JWT-A JSON:WRITTEN$ s\" ab\"k\":" T$= ;
 
 \ A writer that was never opened and one that was closed are both refused by
 \ name; neither reads or writes the caller's bytes.
@@ -410,40 +361,36 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JWT-FRESH s" k" s" v" drop -1 JSON:WRITE-FIELD-RAW drop ;
 
 : JWT-CLOSED-FIELD-S-NEG-KEY ( -- )
-   JWT-OPEN-B JSON:WRITE-CLOSE
+   JWT-OPEN-B JSON:CLOSE
    JWT-B s" k" drop -1 s" v" JSON:WRITE-FIELD-S drop ;
 
 : JWT-CLOSED-FIELD-RAW-NEG-KEY ( -- )
-   JWT-OPEN-B JSON:WRITE-CLOSE
+   JWT-OPEN-B JSON:CLOSE
    JWT-B s" k" drop -1 s" v" JSON:WRITE-FIELD-RAW drop ;
 
 : JWT-CLOSED-RAW ( -- )
-   JWT-OPEN-B JSON:WRITE-CLOSE
+   JWT-OPEN-B JSON:CLOSE
    JWT-B s" x" JSON:WRITE-RAW drop ;
 
 : JWT-CLOSED-TWICE ( -- )
-   JWT-OPEN-B JSON:WRITE-CLOSE
-   JWT-B JSON:WRITE-CLOSE ;
+   JWT-OPEN-B JSON:CLOSE
+   JWT-B JSON:CLOSE ;
 
-: JWT-NULL-OUT ( -- ^u8 )   \ the zero image's null output pointer
-   JWT-FRESH @ JSON-WRITER:UNMAKE 2drop 2drop 2drop drop ;
+: JWT-NULL-SRC ( -- ^u8 ) NULL-PTR ;
 
 : JWT-CLOSED-FIELD-S-NULL-KEY ( -- )
-   JWT-OPEN-B JSON:WRITE-CLOSE
-   JWT-B JWT-NULL-OUT 1 s" v" JSON:WRITE-FIELD-S drop ;
+   JWT-OPEN-B JSON:CLOSE
+   JWT-B JWT-NULL-SRC 1 s" v" JSON:WRITE-FIELD-S drop ;
 
 : JWT-CLOSED-FIELD-RAW-NULL-KEY ( -- )
-   JWT-OPEN-B JSON:WRITE-CLOSE
-   JWT-B JWT-NULL-OUT 1 s" v" JSON:WRITE-FIELD-RAW drop ;
+   JWT-OPEN-B JSON:CLOSE
+   JWT-B JWT-NULL-SRC 1 s" v" JSON:WRITE-FIELD-RAW drop ;
 
 : JWT-OPEN-NULL ( -- )
-   JWT-A JWT-NULL-OUT JWT-CAP JSON:WRITE-OPEN drop ;
-
-: JWT-OPEN-NEG ( -- )
-   JWT-A JWT-BUF-A -1 JSON:WRITE-OPEN drop ;
+   JWT-A NULL-PTR JSON:OPEN drop ;
 
 : JWT-NULL-SOURCE ( -- )
-   JWT-OPEN-A JWT-NULL-OUT 3 JSON:WRITE-RAW drop ;
+   JWT-OPEN-A JWT-NULL-SRC 3 JSON:WRITE-RAW drop ;
 
 : JWT-TEST-STATE ( -- )
    [: JWT-FRESH-RAW ;] E-JSON-WRITE-STATE TTHROWSQ
@@ -457,7 +404,6 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    [: JWT-CLOSED-RAW ;] E-JSON-WRITE-STATE TTHROWSQ
    [: JWT-CLOSED-TWICE ;] E-JSON-WRITE-STATE TTHROWSQ
    [: JWT-OPEN-NULL ;] E-JSON-WRITE-OUTPUT TTHROWSQ
-   [: JWT-OPEN-NEG ;] E-JSON-WRITE-OUTPUT TTHROWSQ
    [: JWT-NULL-SOURCE ;] E-JSON-WRITE-SOURCE TTHROWSQ
    JWT-OPEN-B s" ok" JSON:WRITE-RAW JSON:WRITTEN$ s" ok" T$= ;
 
@@ -474,22 +420,20 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JWT-OPEN-A s" x" drop MEM-MAX-N negate 1- JSON:WRITE-STRING drop ;
 
 \ Every source byte takes at least one byte of output, so text longer than the
-\ room is refused before a byte of it is read: these bytes end at an
-\ inaccessible page, and the claim runs one past them.
+\ output can grow to is refused before a byte of it is read: these bytes end at
+\ an inaccessible page, and the claim runs past them.
 : JWT-STRING-UNREAD ( n -- ) {: u:n :}
-   JWT-OPEN-SMALL JWT-SMALL-CAP [char] a GUARD-PAGE:TAIL u JSON:WRITE-STRING drop ;
+   JWT-OPEN-A JWT-TAIL-N [char] a GUARD-PAGE:TAIL u JSON:WRITE-STRING drop ;
 
 : JWT-KEY-UNREAD ( n -- ) {: u:n :}
-   JWT-OPEN-SMALL JWT-SMALL-CAP [char] a GUARD-PAGE:TAIL u JSON:WRITE-KEY drop ;
+   JWT-OPEN-A JWT-TAIL-N [char] a GUARD-PAGE:TAIL u JSON:WRITE-KEY drop ;
 
 : JWT-TEST-ERRORS ( -- )
    [: JWT-RAW-NEG ;] E-JSON-WRITE-SOURCE TTHROWSQ
    [: JWT-STRING-NEG ;] E-JSON-WRITE-SOURCE TTHROWSQ
    [: JWT-STRING-MIN ;] E-JSON-WRITE-SOURCE TTHROWSQ
    [: JWT-U-NEG ;] E-JSON-WRITE-BYTE TTHROWSQ
-   [: JWT-SMALL-CAP 1+ JWT-STRING-UNREAD ;] E-JSON-WRITE-CAPACITY TTHROWSQ
    [: MEM-MAX-N JWT-STRING-UNREAD ;] E-JSON-WRITE-CAPACITY TTHROWSQ
-   [: JWT-SMALL-CAP 1+ JWT-KEY-UNREAD ;] E-JSON-WRITE-CAPACITY TTHROWSQ
    [: MEM-MAX-N JWT-KEY-UNREAD ;] E-JSON-WRITE-CAPACITY TTHROWSQ ;
 
 \ WRITE-INT writes every cell: zero, both ends of the range, and negatives such
@@ -510,12 +454,6 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    STR-MAX-I64 s" 9223372036854775807" JWT-INT=
    STR-MIN-I64 s" -9223372036854775808" JWT-INT=
    STR-MIN-I64 1+ s" -9223372036854775807" JWT-INT= ;
-
-\ The room WRITE-INT reserves is exact: a number that just fits is written
-\ whole, the minimum cell's twenty bytes included.
-: JWT-TEST-INT-FIT ( -- )
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW -12 JSON:WRITE-INT JSON:WRITTEN$ s" abcde-12" T$=
-   JWT-A JWT-BUF-A 20 JSON:WRITE-OPEN STR-MIN-I64 JSON:WRITE-INT JSON:WRITTEN$ s" -9223372036854775808" T$= ;
 
 \ WRITE-U64 reads a cell's 64 bits unsigned: STR-MIN-I64 is 2^63 and -1
 \ is 2^64-1.
@@ -552,7 +490,7 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    PROP:BUF$ ;
 
 : JWT-RT-ENCODE ( str -- str ) {: a:^ u:n :}
-   JWT-RT-W JWT-RT-OUT JWT-RT-CAP JSON:WRITE-OPEN a u JSON:WRITE-STRING JSON:WRITTEN$ ;
+   JWT-RT-W JWT-RT-OUT @ JSON:OPEN a u JSON:WRITE-STRING JSON:WRITTEN$ ;
 
 : JWT-RT-DECODE$ ( str -- str ) {: a:^ u:n :}
    JWT-RT-READER a u JSON:READ-INIT
@@ -561,19 +499,12 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JSON:READ-CLOSE
    JWT-RT-DECODE got ;
 
-: JWT-RT-FIT ( str n -- ) {: a:^ u:n cap:n :}
-   JWT-RT-W JWT-RT-OUT cap JSON:WRITE-OPEN a u JSON:WRITE-STRING drop ;
-
 : JWT-RT-ONE ( -- )
    JWT-RT-CASE$ {: a:^ u:n :}
-   a u JWT-RT-ENCODE {: e:^ eu:n :}
-   e eu JWT-RT-DECODE$ a u T$=
-   [: a u eu JWT-RT-FIT ;] 0 TTHROWSQ
-   [: a u eu 1- JWT-RT-FIT ;] E-JSON-WRITE-CAPACITY TTHROWSQ ;
+   a u JWT-RT-ENCODE JWT-RT-DECODE$ a u T$= ;
 
-\ 2048 random strings: what WRITE-STRING reserves is what it writes, the output
-\ is a well-formed JSON string to the strict reader, and it decodes back
-\ unchanged.
+\ 2048 random strings: the output is a well-formed JSON string to the strict
+\ reader, and it decodes back unchanged.
 : JWT-TEST-ROUNDTRIP ( -- )
    $517A32D PROP:SEED!
    2048 0 ?do JWT-RT-ONE loop ;
@@ -641,7 +572,7 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
 
 : JWT-TEST-ASCII-RESET ( -- )
    JWT-OPEN-A JWT-TRUE JSON:WRITE-ASCII! s" x" JSON:WRITE-STRING
-   JSON:WRITE-RESET JWT-WIDE$ JSON:WRITE-STRING
+   JSON:RESET JWT-WIDE$ JSON:WRITE-STRING
    JSON:WRITTEN$ JWT-WIDE-ESC$ JWT-QUOTE$ T$=
    JWT-OPEN-A JWT-WIDE$ JSON:WRITE-STRING JSON:WRITTEN$
    S\" \xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\x7F\\\"\\t\xEF\xBF\xBF\xF0\x90\x80\x80" JWT-QUOTE$ T$= ;
@@ -666,7 +597,7 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
 : JWT-TEST-INDENTED ( -- )
    JWT-OPEN-A 2 JSON:WRITE-INDENT! JWT-NESTED JSON:WRITTEN$ JWT-INDENTED$ T$=
    JWT-GROW-OPEN 2 JSON:WRITE-INDENT! JWT-NESTED JSON:WRITTEN$ JWT-INDENTED$ T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+   JWT-GROW-DONE ;
 
 \ Opening a writer again makes it compact, whatever width it had.
 : JWT-COMPACT$ ( -- str )
@@ -675,11 +606,6 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
 : JWT-TEST-COMPACT ( -- )
    JWT-OPEN-A 2 JSON:WRITE-INDENT! drop
    JWT-OPEN-A JWT-NESTED JSON:WRITTEN$ JWT-COMPACT$ T$= ;
-
-: JWT-TEST-OPEN-BUF-COMPACT ( -- )
-   JWT-GROW-OPEN 2 JSON:WRITE-INDENT! drop
-   JWT-GROW-W JWT-GROW-BUF JSON:WRITE-OPEN-BUF JWT-NESTED JSON:WRITTEN$ JWT-COMPACT$ T$=
-   JWT-GROW-W JSON:WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
 \ A string in parts never breaks, even after a part ending in a comma; the
 \ COMMA after it puts the number on its own line.
@@ -690,10 +616,10 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
    JSON:WRITE-COMMA 1 JSON:WRITE-U JSON:WRITE-ARRAY-END
    JSON:WRITTEN$ s\" [\n  \"a,b\",\n  1\n]" T$= ;
 
-\ WRITE-RESET right after a START keeps the width and forgets the open object
+\ RESET right after a START keeps the width and forgets the open object
 \ and its due break.
 : JWT-TEST-INDENT-RESET ( -- )
-   JWT-OPEN-A 2 JSON:WRITE-INDENT! JSON:WRITE-OBJECT-START JSON:WRITE-RESET
+   JWT-OPEN-A 2 JSON:WRITE-INDENT! JSON:WRITE-OBJECT-START JSON:RESET
    JWT-NESTED JSON:WRITTEN$ JWT-INDENTED$ T$=
    [: JWT-A JSON:WRITE-OBJECT-END drop ;] E-JSON-WRITE-STATE TTHROWSQ
    JWT-A JSON:WRITTEN$ JWT-INDENTED$ T$= ;
@@ -717,11 +643,6 @@ create JWT-PARTS-WANT
 : JWT-PART-HALF ( -- )
    JWT-OPEN-A JSON:WRITE-STRING-START JWT-PARTS 4 + 1 JSON:WRITE-STRING-PART drop ;
 : JWT-INDENT!-NEG ( -- ) JWT-OPEN-AB -1 JSON:WRITE-INDENT! drop ;
-: JWT-PART-FULL ( -- )   \ room for the two raw bytes, not their three escaped
-   JWT-OPEN-SMALL s" abcde" JSON:WRITE-RAW JSON:WRITE-STRING-START
-   JWT-RUN-IN 2 JSON:WRITE-STRING-PART drop ;
-: JWT-KEY-FULL ( -- )   \ room for the break before the key, not for the key
-   JWT-OPEN-SMALL 2 JSON:WRITE-INDENT! JSON:WRITE-OBJECT-START s" k" JSON:WRITE-KEY drop ;
 : JWT-BREAK-WRAP ( -- )   \ two levels of MEM-MAX-N spaces overflow a cell
    JWT-OPEN-AB JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-START MEM-MAX-N JSON:WRITE-INDENT!
    1 JSON:WRITE-U drop ;
@@ -737,17 +658,11 @@ create JWT-PARTS-WANT
 : JWT-FRESH-PART ( -- ) JWT-FRESH s" x" JSON:WRITE-STRING-PART drop ;
 : JWT-FRESH-END ( -- ) JWT-FRESH JSON:WRITE-STRING-END drop ;
 
-: JWT-CLOSED ( -- ^JSON:writer ) JWT-OPEN-B JSON:WRITE-CLOSE JWT-B ;
+: JWT-CLOSED ( -- ^JSON:writer ) JWT-OPEN-B JSON:CLOSE JWT-B ;
 : JWT-CLOSED-INDENT! ( -- ) JWT-CLOSED 2 JSON:WRITE-INDENT! drop ;
 : JWT-CLOSED-START ( -- ) JWT-CLOSED JSON:WRITE-STRING-START drop ;
 : JWT-CLOSED-PART ( -- ) JWT-CLOSED s" x" JSON:WRITE-STRING-PART drop ;
 : JWT-CLOSED-END ( -- ) JWT-CLOSED JSON:WRITE-STRING-END drop ;
-
-\ A refused key keeps its depth and due break: the null that fits the same
-\ eight bytes writes after the break.
-: JWT-TEST-KEY-FULL ( -- )
-   [: JWT-KEY-FULL ;] s" {" JWT-REFUSED-KEEPS$
-   JWT-A JSON:WRITE-NULL JSON:WRITTEN$ s\" {\n  null" T$= ;
 
 : JWT-TEST-LAYOUT-REFUSALS ( -- )
    [: JWT-PART-FF ;] E-JSON-WRITE-BYTE TTHROWSQ
@@ -755,7 +670,6 @@ create JWT-PARTS-WANT
    [: JWT-PART-HALF ;] E-JSON-WRITE-BYTE TTHROWSQ
    JWT-A JSON:WRITTEN$ s\" \"" T$=
    [: JWT-INDENT!-NEG ;] JWT-BYTE-REFUSED
-   [: JWT-PART-FULL ;] s\" abcde\"" JWT-REFUSED-KEEPS$
    [: JWT-BREAK-WRAP ;] s" ab[[" JWT-REFUSED-KEEPS$
    [: JWT-OBJECT-END-TOP ;] JWT-STATE-REFUSED
    [: JWT-ARRAY-END-TOP ;] JWT-STATE-REFUSED
@@ -810,7 +724,7 @@ create JWT-PARTS-WANT
 
 \ A writer closed right after a START still refuses a comma.
 : JWT-CLOSED-OPEN-COMMA ( -- )
-   JWT-OPEN-B JSON:WRITE-ARRAY-START JSON:WRITE-CLOSE JWT-B JSON:WRITE-COMMA drop ;
+   JWT-OPEN-B JSON:WRITE-ARRAY-START JSON:CLOSE JWT-B JSON:WRITE-COMMA drop ;
 
 
 : JWT-TEST-COMMA-REFUSALS ( -- )
@@ -830,7 +744,7 @@ create JWT-PARTS-WANT
 : JWT-QUOTING$ ( -- str ) s\" \"ab" ;
 : JWT-COMMA-FRESH ( -- ) JWT-OPEN-A JSON:WRITE-COMMA drop ;
 : JWT-COMMA-RESET ( -- )
-   JWT-OPEN-A s" x" JSON:WRITE-RAW JSON:WRITE-RESET JSON:WRITE-COMMA drop ;
+   JWT-OPEN-A s" x" JSON:WRITE-RAW JSON:RESET JSON:WRITE-COMMA drop ;
 : JWT-COMMA-KEYED ( -- ) JWT-KEYED JSON:WRITE-COMMA drop ;
 : JWT-COMMA-QUOTING ( -- ) JWT-QUOTING JSON:WRITE-COMMA drop ;
 : JWT-PART-FRESH ( -- ) JWT-OPEN-A s" x" JSON:WRITE-STRING-PART drop ;
@@ -871,13 +785,14 @@ create JWT-PARTS-WANT
 \ The handle is nominal: a raw cell is not a writer.
 : JWT-TEST-CHECKER ( -- )
    s" JWT-OK ( ^JSON:writer -- ^JSON:writer ) JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END" JWT-CHECK-ACCEPTS
-   s" JWT-GROW-OK ( ^JSON:writer ^n -- ^JSON:writer ) JSON:WRITE-OPEN-BUF" JWT-CHECK-ACCEPTS
-   s" JWT-GROW-BAD ( ^JSON:writer ^u8 -- ^JSON:writer ) JSON:WRITE-OPEN-BUF" JWT-CHECK-REJECTS
+   s" JWT-OPEN-OK ( ^JSON:writer ^VEC:vector<u8> -- ^JSON:writer ) JSON:OPEN" JWT-CHECK-ACCEPTS
+   s" JWT-OPEN-BAD ( ^JSON:writer ^u8 -- ^JSON:writer ) JSON:OPEN" JWT-CHECK-REJECTS
    s" JWT-BAD-CELL ( n ^u8 n -- n ) JSON:WRITE-RAW" JWT-CHECK-REJECTS
    s" JWT-BAD-BUF ( ^u8 ^u8 n -- ^u8 ) JSON:WRITE-RAW" JWT-CHECK-REJECTS ;
 
 : JWT-MAIN ( -- )
    T-RESET
+   JWT-NEW JWT-OUT-A !  JWT-NEW JWT-OUT-B !  JWT-NEW JWT-RT-OUT !
    JWT-TEST-STRING-ESCAPE
    JWT-TEST-OBJECT
    JWT-TEST-ARRAY
@@ -895,51 +810,33 @@ create JWT-PARTS-WANT
    JWT-TEST-GROW-LARGE
    JWT-TEST-GROW-EVERY-BYTE
    JWT-TEST-GROW-ROOM
-   JWT-TEST-GROW-STATE
    JWT-TEST-GROW-DISPOSED-CLOSE
    JWT-TEST-SELF-RAW
    JWT-TEST-SELF-STRING
-   JWT-TEST-FULL
    JWT-TEST-FIELD-REFUSAL
    JWT-TEST-STATE
    JWT-TEST-ERRORS
    JWT-TEST-INT
-   JWT-TEST-INT-FIT
    JWT-TEST-U64
    JWT-TEST-FIELD-INT
    JWT-TEST-ROUNDTRIP
    JWT-TEST-UTF8
    JWT-TEST-INDENTED
    JWT-TEST-COMPACT
-   JWT-TEST-OPEN-BUF-COMPACT
    JWT-TEST-PART-LAYOUT
    JWT-TEST-INDENT-RESET
    JWT-TEST-ASCII
    JWT-TEST-ASCII-RESET
    JWT-TEST-PARTS
-   JWT-TEST-KEY-FULL
    JWT-TEST-LAYOUT-REFUSALS
    JWT-TEST-COMMA-FIRST
    JWT-TEST-COMMA-REFUSALS
    JWT-TEST-LAYOUT-STATES
    JWT-TEST-CHECKER
+   JWT-OUT-A @ VEC:DELETE  JWT-OUT-B @ VEC:DELETE  JWT-RT-OUT @ VEC:DELETE
    T-REPORT
    s" json-write-test: ok" type cr ;
 
 JWT-MAIN
-
-false [if] \ off until dot habu-add-the-checks-a49d054d
-: JWT-GROW-DISPOSED ( -- )
-   JWT-GROW-BUF 8 BUF:N>BLEN BUF:INIT
-   JWT-GROW-BUF BUF:DISPOSE
-   JWT-GROW-W JWT-GROW-BUF JSON:WRITE-OPEN-BUF drop ;
-
-: JWT-TEST-GROW-DISPOSED ( -- )
-   [: JWT-GROW-DISPOSED ;] E-BUF-STATE TTHROWSQ ;
-
-T-RESET
-JWT-TEST-GROW-DISPOSED
-T-REPORT
-[then]
 
 ;package

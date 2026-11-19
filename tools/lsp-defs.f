@@ -18,7 +18,8 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/span.f
 require src/lib/uri.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/adt/option.f
 require src/lib/json.f
 require src/lib/fs.f
@@ -219,7 +220,7 @@ variable TARGET-END-V
 variable LINE-AT                         \ and where its strings start in BYTES
 variable CUR-G                           \ the group positions count for, -1 for none
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
-create ESC-B BUF:HDR-BYTES allot
+TYPED-VARIABLE ESC-OUT ^VEC:vector<u8>
 TYPED-VARIABLE ESC-W JSON:writer
 
 : BLOCK@ ( n n -- n )  swap BLOCK-CELLS * + BLOCKS @ ;
@@ -400,7 +401,7 @@ private
 
 : URI-JSON ( str -- str )
    {: u:^ uu:n :}
-   ESC-W ESC-B JSON:WRITE-OPEN-BUF
+   ESC-W ESC-OUT @ JSON:OPEN
    u uu JSON:WRITE-STRING JSON:WRITTEN$ ;
 
 : KEPT-SLOT ( -- n )  BLOCK-N @ 1- B-SLOT BLOCK@ ;
@@ -863,7 +864,7 @@ private
 public
 
 : DEFS-PREPARE ( -- )
-   ESC-B 1 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ESC-OUT !
    false PROBE-DISK-VALID ! ;
 
 : DEFS-DROP ( n -- )

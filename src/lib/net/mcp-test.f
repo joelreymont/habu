@@ -17,7 +17,7 @@ split-str
 \ refusals. The info line a tools/call and a resources/read log, without arguments,
 \ and, after MCP:LOG, each message's line after its answer with arguments and
 \ outcome.
-\ MCP:ANSWER on a request worker into a BUF holding old text: a tools/call
+\ MCP:ANSWER on a request worker into a vector holding old text: a tools/call
 \ written as HANDLE sends it, a notification leaving it empty, a message that is
 \ not JSON-RPC or not JSON, an unknown tool, and ANSWER off a worker.
 \ A call its body HOLDs, FINISHed by a call SUBMIT queues for the sole worker
@@ -41,6 +41,8 @@ split-str
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/test/stderr.f
@@ -1669,17 +1671,18 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    HIDDEN-LIST HIDDEN-CALL OWNER-LIST OWNER-CALL GUARDED-CLIENT ;
 
 
-BUF:HDR-BYTES BUFFER: REPLIES
+TYPED-VARIABLE REPLIES ^VEC:vector<u8>   \ SERVE-CASES makes and deletes it
 
 \ MCP:ANSWER of the body's message into REPLIES holding a mark, so the reply
 \ shows the mark when ANSWER does not clear it.
 : ANSWER-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
-   REPLIES BUF:CLEAR
-   62 REPLIES BUF:APPEND-BYTE
-   asked HTTP:BODY$ REPLIES MCP:ANSWER
+   REPLIES @ {: v:^ :}
+   v 0 VEC:RESIZE
+   62 v VEC:PUSH c!
+   asked HTTP:BODY$ v MCP:ANSWER
    answer JSON-HEADER
-   answer REPLIES BUF:SPAN$ BUF:BLEN>N HTTP:BODY! ;
+   answer v VEC:SPAN SPAN:$ HTTP:BODY! ;
 
 : ANSWER-OPEN ( -- CURL:handle )
    s" /answer" s" Content-Type: application/json" s" Accept: application/json"
@@ -1714,7 +1717,7 @@ BUF:HDR-BYTES BUFFER: REPLIES
    STRICT-RAN atomic@ 0 T= ;
 
 : ANSWER-NOTIFIED ( -- )
-   s" ANSWER of a notification clears the BUF's old text" T-LABEL
+   s" ANSWER of a notification empties the vector's old text" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST
    200 s" " ANSWERED ;
 
@@ -1736,7 +1739,7 @@ BUF:HDR-BYTES BUFFER: REPLIES
 
 : ANSWER-OFF-WORKER ( -- )
    s" ANSWER off a request worker throws E-STATE" T-LABEL
-   [: s" {}" REPLIES MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
+   [: s" {}" REPLIES @ MCP:ANSWER ;] MCP:E-STATE TTHROWSQ ;
 
 : ANSWER-CASES ( -- )
    ANSWER-CALL ANSWER-STRICT ANSWER-NOTIFIED ANSWER-ENVELOPE ANSWER-UNKNOWN ANSWER-OFF-WORKER ;
@@ -1981,7 +1984,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
    s" POST" s" /counted" [: COUNTED-ROUTE ;] HTTP:ROUTE
    s" POST" s" /answer" [: ANSWER-ROUTE ;] HTTP:ROUTE
-   REPLIES $1000 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW REPLIES !
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
@@ -2060,7 +2063,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    PROTECTED-CASES
    LOGGED-CASES
    HTTP:STOP
-   REPLIES BUF:DISPOSE
+   REPLIES @ VEC:DELETE
    AIO:STOP ;
 
 T-RESET

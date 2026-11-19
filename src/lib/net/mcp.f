@@ -12,7 +12,7 @@ split-str
 \ tools/call's params.name or a resources/read's params.uri when it is a string,
 \ written between its quotes as sent, never the arguments, without LOG; with it,
 \ LOG's line after the answer. ANSWER answers one JSON-RPC
-\ message that came by another transport into a BUF, as HANDLE answers a 2026-07-28
+\ message that came by another transport into a vector, as HANDLE answers a 2026-07-28
 \ request with no transport headers, its log line included. VISIBLE! hides a tool
 \ from a caller its hook refuses; it does not apply to resources, which every caller may list
 \ and read. A tools/call of a tool the caller cannot call, unknown or hidden, is -32602,
@@ -51,14 +51,16 @@ split-str
 \ record, taken from an arena when the row is made, and its region never move.
 \ A client's value is the generation OPEN gave its row from a process-wide
 \ count, and CLOSE clears the row's generation, so a closed client's value
-\ names no row even after another OPEN reuses it. The region holds six BUFs: the
-\ URL; the request, then, once BODY! has copied it, a header line; the reply;
-\ the tool list TOOLS assembles; the response an event-stream reply carried; and
-\ the token TOKEN! set, empty for none. The handle of the exchange in flight,
-\ none between exchanges, and the row's run state, which REQUEST-STOP sets from
-\ another task (ROW-RUN), are read and written under LOCK. So is a record's
-\ region, except that its own client reads it without LOCK: OPEN sets it only on
-\ a free row, and only that client's CLOSE empties it.
+\ names no row even after another OPEN reuses it. The region holds five BUFs:
+\ the URL; the reply; the tool list TOOLS assembles; the response an
+\ event-stream reply carried; and the token TOKEN! set, empty for none. The
+\ record's request vector holds the request, then, once BODY! has copied it, a
+\ header line, and is made and deleted with the region's BUFs. The handle of
+\ the exchange in flight, none between exchanges, and the row's run state,
+\ which REQUEST-STOP sets from another task (ROW-RUN), are read and written
+\ under LOCK. So is a record's region, except that its own client reads it
+\ without LOCK: OPEN sets it only on a free row, and only that client's CLOSE
+\ empties it.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -167,7 +169,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
 \ Where the reply goes: HANDLE's HTTP response in TO, or BUF-W, the writer
-\ ANSWER holds open on its caller's BUF.
+\ ANSWER holds open on its caller's vector.
 ENUM sink response buf ;ENUM
 HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
 HTTP:MAX-WORKERS TYPED-BUFFER BUF-W JSON:writer
@@ -191,8 +193,9 @@ HTTP:MAX-WORKERS TYPED-BUFFER ASKED SPAN:span<u8>     \ an unsupported MCP-Proto
 \ A decoded Mcp-Name is no longer than the header block that carried it.
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 HTTP:MAX-WORKERS TYPED-BUFFER HOLDING n               \ the held row of a body at HELD
-\ Each worker's BUF, where FINISH writes a held call's response.
-HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: FINISHED
+\ Each worker's vector, where FINISH writes a held call's response; NULL-PTR
+\ until its first FINISH.
+HTTP:MAX-WORKERS TYPED-BUFFER FINISHED ^VEC:vector<u8>
 \ Each worker's vector, where a tools/call's arguments' violation is written;
 \ NULL-PTR until its first call.
 HTTP:MAX-WORKERS TYPED-BUFFER VIOLATIONS ^VEC:vector<u8>
@@ -1422,8 +1425,11 @@ CAST: HELD>N ( held -- n )
    code throw ;
 
 
-\ The worker's BUF for a held call's response.
-: FINISH-BUF ( -- ^n ) FINISHED WORKER-BUF ;
+\ The worker's vector for a held call's response, made the first time.
+: FINISH-VEC ( -- ^VEC:vector<u8> )
+   SLOT FINISHED {: c:^ :}
+   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
+   c @ ;
 
 \ Under KEEP-LOCK: whether the held row was kept, now finishing.
 : CLAIM-ROW ( n -- bool )
@@ -1437,7 +1443,7 @@ CAST: HELD>N ( held -- n )
    ok ;
 
 \ The worker's slot set as for the held call's body, its reply written into
-\ FINISH-BUF.
+\ FINISH-VEC.
 : RESUME ( n -- )
    {: idx:n :}
    construct sink buf OPENED-TO
@@ -1449,8 +1455,8 @@ CAST: HELD>N ( held -- n )
 \ The quotation run as the body; E-STATE when it gives no result.
 : COMPOSE ( [ -- ] -- )
    {: q :}
-   SLOT BUF-W FINISH-BUF JSON:WRITE-OPEN-BUF drop
-   q [: SLOT BUF-W JSON:WRITE-CLOSE ;] finally
+   SLOT BUF-W FINISH-VEC JSON:OPEN drop
+   q [: SLOT BUF-W JSON:CLOSE ;] finally
    SLOT STAGE @ SENT <> if E-STATE throw then ;
 
 \ The response sent on the row's connection, which a throw closes first.
@@ -1461,7 +1467,7 @@ CAST: HELD>N ( held -- n )
    idx code HELD-LOGGED
    code 0<> if idx CLOSE-KEPT code throw then
    idx KEEPS KEEP-CONN @ 200 s" application/json"
-   FINISH-BUF BUF:SPAN$ BUF:BLEN>N HTTP:REPLY drop ;
+   FINISH-VEC VEC:SPAN SPAN:$ HTTP:REPLY drop ;
 
 
 \ The message's envelope checked, then dispatched; the text is kept for catch.
@@ -1470,7 +1476,7 @@ CAST: HELD>N ( held -- n )
 
 
 \ The message answered into BUF-W, the writer ANSWER holds open on the
-\ caller's BUF.
+\ caller's vector.
 : BUF-ANSWER ( str -- )
    [: CARRIED ;] catch {: code:n :} 2drop
    code PASSED {: passed:n :}
@@ -1644,19 +1650,19 @@ public
 \ Answers one JSON-RPC message whose caller the host has authenticated and
 \ which came by a transport other than HTTP, on a request worker: as HANDLE
 \ answers a 2026-07-28 request, with no transport, version or header checks.
-\ ANSWER clears the BUF and writes the response's JSON text there, nothing for
+\ ANSWER empties the vector and writes the response's JSON text there, nothing for
 \ a notification; after a throw its text is no reply to send. Any fault but
 \ HANDLE's JSON-RPC errors is rethrown, a tool body's included.
 \ The VISIBLE! hook is called with no HTTP request, so it judges by what the
 \ host set for the message's caller: BEARER:CLAIM$ speaks only for a request
 \ the worker serves. E-STATE before SERVER-INFO! and off a request worker.
-: ANSWER ( ^u8 n ^a -- )
+: ANSWER ( str ^VEC:vector<u8> -- )
    SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
    ON-WORKER
    construct sink buf OPENED-TO
    MODERN SLOT ERA !
-   SLOT BUF-W swap BYTE-VIEW CELL-VIEW JSON:WRITE-OPEN-BUF drop
-   [: BUF-ANSWER ;] [: SLOT BUF-W JSON:WRITE-CLOSE ;] finally ;
+   SLOT BUF-W swap JSON:OPEN drop
+   [: BUF-ANSWER ;] [: SLOT BUF-W JSON:CLOSE ;] finally ;
 
 
 private
@@ -1665,12 +1671,14 @@ CAST: >CLIENT ( n -- client )
 CAST: CLIENT>N ( client -- n )
 
 \ A row's record, kept by the row for its next client: the cursor parses a
-\ reply and the writer builds a request; status is the HTTP status the last
-\ exchange ended with, and stream whether its reply was an event stream, which
-\ sse decodes; region is the client's memory, empty for a free row.
+\ reply and the writer builds a request in request, the client's vector, NULL
+\ for a free row; status is the HTTP status the last exchange ended with, and
+\ stream whether its reply was an event stream, which sse decodes; region is
+\ the client's memory, empty for a free row.
 STRUCTURE peer DERIVE addr
    FIELD cursor JSON:cursor
    FIELD writer JSON:writer
+   FIELD request ^VEC:vector<u8>
    FIELD status CURL:http-status
    FIELD stream bool
    FIELD sse SSE:state
@@ -1684,8 +1692,7 @@ TYPED-VARIABLE RECORDS ^ARENA:arena
 
 $1000 constant FIRST-CAP
 0 constant URL-OFF
-URL-OFF BUF:HDR-BYTES + constant REQUEST-OFF
-REQUEST-OFF BUF:HDR-BYTES + constant REPLY-OFF
+URL-OFF BUF:HDR-BYTES + constant REPLY-OFF
 REPLY-OFF BUF:HDR-BYTES + constant LIST-OFF
 LIST-OFF BUF:HDR-BYTES + constant MESSAGE-OFF
 MESSAGE-OFF BUF:HDR-BYTES + constant TOKEN-OFF
@@ -1739,7 +1746,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx REGION off BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
 
 : URL-BUF ( n -- ^n ) URL-OFF BUF-AT ;
-: REQUEST-BUF ( n -- ^n ) REQUEST-OFF BUF-AT ;
+: REQUEST-VEC ( n -- ^VEC:vector<u8> ) ROW PEER-REQUEST @ ;
 : REPLY-BUF ( n -- ^n ) REPLY-OFF BUF-AT ;
 : LIST-BUF ( n -- ^n ) LIST-OFF BUF-AT ;
 : MESSAGE-BUF ( n -- ^n ) MESSAGE-OFF BUF-AT ;
@@ -1749,6 +1756,19 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 : BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 : BUF+ ( str ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+: VEC$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
+
+\ Every byte the vector holds zeroed: RESIZE zeroes the bytes it cuts, and VEC
+\ keeps those past COUNT zero.
+: WIPE-VEC ( ^VEC:vector<u8> -- ) 0 VEC:RESIZE ;
+
+\ The vector's count grown by n, the span of the new bytes, which are zero; the
+\ block may move.
+: GROWN ( ^VEC:vector<u8> n -- SPAN:span<u8> )
+   {: v:^ k:n :}
+   v VEC:COUNT {: old:n :}
+   v old k + VEC:ENSURE
+   v VEC:SPAN old SPAN:SKIP ;
 
 
 \ The first free row, else -1; under LOCK.
@@ -1817,7 +1837,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : RELEASE ( n -- )
    {: idx:n :}
    idx URL-BUF BUF:DISPOSE
-   idx REQUEST-BUF BUF:DISPOSE
+   idx REQUEST-VEC VEC:DELETE
+   NULL-PTR idx ROW PEER-REQUEST !
    idx REPLY-BUF BUF:DISPOSE
    idx LIST-BUF BUF:DISPOSE
    idx MESSAGE-BUF BUF:DISPOSE
@@ -1829,11 +1850,19 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    LOCK TASK:RELEASE
    region MEM:FREE-SPAN ;
 
+\ The row's request vector, held before its room is reserved, so RELEASE
+\ deletes it whatever the reserve does.
+: MAKE-REQUEST ( n -- )
+   {: idx:n :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   v idx ROW PEER-REQUEST !
+   v FIRST-CAP VEC:RESERVE ;
+
 \ Readies a claimed row's buffers and copies the URL; answers its operands.
 : FILL-ROW ( n str -- n str )
    {: idx:n url:^ uu:n :}
    idx URL-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
-   idx REQUEST-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
+   idx MAKE-REQUEST
    idx REPLY-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx LIST-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx MESSAGE-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
@@ -1959,21 +1988,21 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 : WRITER ( n -- ^JSON:writer )
    {: idx:n :}
-   idx ROW PEER-WRITER idx REQUEST-BUF JSON:WRITE-OPEN-BUF ;
+   idx ROW PEER-WRITER idx REQUEST-VEC JSON:OPEN ;
 
 \ tools/list from the cursor's JSON string, or from the start when it is empty.
 : LIST-REQUEST ( n str -- )
    {: idx:n next:^ nu:n :}
    idx WRITER s" tools/list" REQUEST-START
    nu 0<> if s" cursor" next nu JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA then
-   REQUEST-END JSON:WRITE-CLOSE ;
+   REQUEST-END JSON:CLOSE ;
 
 : CALL-REQUEST ( n str str -- )
    {: idx:n name:^ nu:n args:^ au:n :}
    idx WRITER s" tools/call" REQUEST-START
    s" name" name nu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" arguments" args au JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA
-   REQUEST-END JSON:WRITE-CLOSE ;
+   REQUEST-END JSON:CLOSE ;
 
 
 : PLAIN-NAME? ( str -- bool )
@@ -1982,31 +2011,31 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       a i + c@ dup $21 < swap $7E > or if false unloop exit then
    loop true ;
 
-\ The Mcp-Name line, built in the request buffer: the name as it is when every
+\ The Mcp-Name line, built in the request vector: the name as it is when every
 \ byte is visible ASCII, else =?base64?...?=.
 : NAME-LINE ( n str -- str )
    {: idx:n name:^ nu:n :}
-   idx REQUEST-BUF {: buf:^ :}
-   buf BUF:CLEAR
-   s" Mcp-Name: " buf BUF+
-   name nu PLAIN-NAME? if name nu buf BUF+ else
-      s" =?base64?" buf BUF+
-      name nu buf nu 2 + 3 / 4 * BUF:N>BLEN BUF:GROW BASE64:ENCODE drop
-      s" ?=" buf BUF+
+   idx REQUEST-VEC {: v:^ :}
+   v 0 VEC:RESIZE
+   s" Mcp-Name: " v VEC:APPEND
+   name nu PLAIN-NAME? if name nu v VEC:APPEND else
+      s" =?base64?" v VEC:APPEND
+      name nu v nu 2 + 3 / 4 * GROWN BASE64:ENCODE drop
+      s" ?=" v VEC:APPEND
    then
-   buf BUF$ ;
+   v VEC$ ;
 
-\ The Authorization line carrying the row's token, built in the request buffer.
+\ The Authorization line carrying the row's token, built in the request vector.
 : BEARER-LINE ( n -- str )
    {: idx:n :}
-   idx REQUEST-BUF {: buf:^ :}
-   buf BUF:CLEAR
-   s" Authorization: Bearer " buf BUF+
-   idx TOKEN-BUF BUF$ buf BUF+
-   buf BUF$ ;
+   idx REQUEST-VEC {: v:^ :}
+   v 0 VEC:RESIZE
+   s" Authorization: Bearer " v VEC:APPEND
+   idx TOKEN-BUF BUF$ v VEC:APPEND
+   v VEC$ ;
 
 
-\ A fresh handle, held by the row, posting the request buffer to the URL; a
+\ A fresh handle, held by the row, posting the request vector to the URL; a
 \ handle a halt left is retired first. E-TRANSFER once REQUEST-STOP stopped the row.
 : PREPARE ( n ^u8 n ms -- CURL:handle )
    {: idx:n line:^ lu:n limit:ms :}
@@ -2019,7 +2048,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    ;MATCH {: h:CURL:handle :}
    h OPTION:SOME idx HANDLE!
    h idx URL-BUF BUF$ CURL:URL! idx CHECK
-   h idx REQUEST-BUF BUF$ CURL:BODY! idx CHECK
+   h idx REQUEST-VEC VEC$ CURL:BODY! idx CHECK
    idx TOKEN-BUF BUF$ nip 0<> if h idx BEARER-LINE CURL:HEADER+ idx CHECK then
    h limit CURL:TIMEOUT! idx CHECK
    h s" Content-Type: application/json" CURL:HEADER+ idx CHECK
@@ -2288,14 +2317,14 @@ public
 
 \ Ends a client in any state a throw or a TASK:HALT left it in: a transfer
 \ still in flight is cancelled and drained, then the handle, reader and buffers
-\ go, the token and the request buffer, which carries the Authorization line,
+\ go, the token and the request vector, which carries the Authorization line,
 \ wiped first. A caller that must survive a halt keeps the client in its own
 \ task storage and closes it in its own finally. E-STATE for a closed client.
 : CLOSE ( client -- )
    LIVE {: idx:n :}
    idx RETIRE
    idx TOKEN-BUF BUF:WIPE
-   idx REQUEST-BUF BUF:WIPE
+   idx REQUEST-VEC WIPE-VEC
    idx RELEASE ;
 
 

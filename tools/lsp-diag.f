@@ -9,6 +9,8 @@ split-str
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/byte-buffer.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -37,7 +39,7 @@ private
 2 constant WARNING-SEVERITY              \ LSP DiagnosticSeverity.Warning
 
 TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for reading a packet line
-create PUB-B BUF:HDR-BYTES allot         \ a notification's bytes, grown as written
+TYPED-VARIABLE PUB-OUT ^VEC:vector<u8>   \ a notification's bytes, grown as written
 TYPED-VARIABLE NEW-B ^VEC:vector<u8> SCRATCH-ONLY \ the files this check published lists for
 TYPED-VARIABLE W JSON:writer
 create FILE-BUF PATH-CAP allot        \ a packet's file, decoded
@@ -178,7 +180,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ there is one, up to its diagnostics' opening bracket.
 : OPENING ( str option<n> -- ^JSON:writer )
    {: u:^ uu:n v :}
-   W PUB-B WRITE-OPEN-BUF
+   W PUB-OUT @ JSON:OPEN
    s" textDocument/publishDiagnostics" NOTIFY
    WRITE-OBJECT-START
    s" uri" u uu WRITE-FIELD-S WRITE-COMMA
@@ -192,7 +194,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    WRITE-ARRAY-END WRITE-OBJECT-END END
    {: w :}
    w WRITTEN$ {: a:^ u:n :}
-   w WRITE-CLOSE
+   w JSON:CLOSE
    FD:STDOUT a u CONTENT-LENGTH:SEND ;
 
 : ITEM ( str -- )
@@ -280,7 +282,7 @@ public
 
 \ Readies the buffers; the server calls it once, before any other word here.
 : PREPARE ( -- )
-   PUB-B 1 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW PUB-OUT !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW NEW-B ! ;
 
 : PUBLISH ( n str -- )

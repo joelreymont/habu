@@ -14,6 +14,7 @@ require src/lib/float32-buffer.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/heap.f
 require src/lib/json.f
 require src/lib/memory.f
 require src/lib/property.f
@@ -145,8 +146,8 @@ TASK:SEMAPHORE HELD
 TASK:SEMAPHORE TURN
 \ LET-GO lets a gated reply go.
 TASK:SEMAPHORE GO
-\ An event stream being written.
-create STREAM-B BUF:HDR-BYTES allot
+\ An event stream being written; START makes it and STOP deletes it.
+TYPED-VARIABLE STREAM-OUT ^VEC:vector<u8>
 TYPED-VARIABLE STREAM-W JSON:writer
 TYPED-VARIABLE PARSER JSON:cursor
 \ A second parser reads one content part apart from the request.
@@ -324,13 +325,13 @@ $300000 constant BIG-U
    s" keepalive" 9 EVENT-OPEN EVENT-CLOSE ;
 
 
-: STREAM-OPEN ( -- ^JSON:writer ) STREAM-W STREAM-B JSON:WRITE-OPEN-BUF ;
-: STREAM$ ( -- str ) STREAM-B BUF:SPAN$ BUF:BLEN>N ;
+: STREAM-OPEN ( -- ^JSON:writer ) STREAM-W STREAM-OUT @ JSON:OPEN ;
+: STREAM$ ( -- str ) STREAM-OUT @ VEC:SPAN SPAN:$ ;
 
 
 \ Answers with the written events as the whole body.
 : STREAM! ( HTTP:response ^JSON:writer -- )
-   JSON:WRITE-CLOSE {: response:HTTP:response :}
+   JSON:CLOSE {: response:HTTP:response :}
    response s" Content-Type" s" text/event-stream" HTTP:HEADER!
    response STREAM$ HTTP:BODY! ;
 
@@ -355,7 +356,7 @@ $300000 constant BIG-U
 \ Takes the request's connection over and sends a chunked event-stream head
 \ and the written events as one chunk, leaving the stream open.
 : RAW-STREAM ( HTTP:request ^JSON:writer -- TCP4:connection )
-   JSON:WRITE-CLOSE
+   JSON:CLOSE
    HTTP:TAKE-OVER 2drop {: conn:TCP4:connection :}
    STREAM$ {: a:^ u:n :}
    SB-RESET
@@ -1130,7 +1131,7 @@ EXPORT WIDE-DIMS
    1 TURN TASK:SEMAPHORE-INIT
    0 GO TASK:SEMAPHORE-INIT
    0 CALLS atomic!
-   STREAM-B 1 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW STREAM-OUT !
    HTTP:ROUTES-RESET
    s" POST" s" /responses" [: [: CHAT ;] ALONE ;] HTTP:ROUTE
    s" POST" s" /responses/input_tokens" [: [: INPUT-TOKENS ;] ALONE ;] HTTP:ROUTE
@@ -1147,7 +1148,7 @@ EXPORT WIDE-DIMS
    HELD TASK:SEMAPHORE-DESTROY
    TURN TASK:SEMAPHORE-DESTROY
    GO TASK:SEMAPHORE-DESTROY
-   STREAM-B BUF:DISPOSE
+   STREAM-OUT @ VEC:DELETE
    BIG$ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 ;using
 ;package

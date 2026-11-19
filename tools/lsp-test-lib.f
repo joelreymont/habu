@@ -717,6 +717,8 @@ require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/span.f
 require src/lib/memory.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/byte-buffer.f
 require src/lib/fd.f
 require src/lib/fs.f
@@ -761,7 +763,7 @@ create LABEL-B HDR-BYTES allot           \ the conversation's name
 create SESSION-B HDR-BYTES allot         \ the initialized process's name
 create IN-B HDR-BYTES allot              \ its input
 create WANT-B HDR-BYTES allot            \ the stderr it must write
-create MSG-B HDR-BYTES allot             \ a message, a reply or a line being composed
+TYPED-VARIABLE MSG-TEXT ^VEC:vector<u8>  \ a message, a reply or a line being composed
 create PAR-B HDR-BYTES allot             \ a notification's params
 create DIR-B HDR-BYTES allot             \ the artifact directory
 create EXP-B HDR-BYTES allot             \ a publish expected
@@ -795,12 +797,13 @@ variable OPEN-N
 : SESSION$ ( -- str )  SESSION-B SPAN$ BLEN>N ;
 : IN$ ( -- str )  IN-B SPAN$ BLEN>N ;
 : WANT$ ( -- str )  WANT-B SPAN$ BLEN>N ;
-: MSG$ ( -- str )  MSG-B SPAN$ BLEN>N ;
+: MSG$ ( -- str )  MSG-TEXT @ VEC:SPAN SPAN:$ ;
 : PAR$ ( -- str )  PAR-B SPAN$ BLEN>N ;
 : DIR$ ( -- str )  DIR-B SPAN$ BLEN>N ;
 : IN+ ( str -- )  N>BLEN IN-B APPEND-SPAN ;
 : WANT+ ( str -- )  N>BLEN WANT-B APPEND-SPAN ;
-: MSG+ ( str -- )  N>BLEN MSG-B APPEND-SPAN ;
+: MSG+ ( str -- )  MSG-TEXT @ VEC:APPEND ;
+: MSG-CLEAR ( -- )  MSG-TEXT @ 0 VEC:RESIZE ;
 : PAR+ ( str -- )  N>BLEN PAR-B APPEND-SPAN ;
 : EXP$ ( -- str )  EXP-B SPAN$ BLEN>N ;
 : EXP+ ( str -- )  N>BLEN EXP-B APPEND-SPAN ;
@@ -835,7 +838,7 @@ variable OPEN-N
 
 : ASK$ ( str str -- str )
    {: i:^ iu:n m:^ mu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"" MSG+ m mu MSG+ s\" \"}" MSG+
    MSG$ ;
@@ -844,7 +847,7 @@ variable OPEN-N
 
 : TELL$ ( str str -- str )
    {: m:^ mu:n p:^ pu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"" MSG+ m mu MSG+ s\" \"" MSG+
    pu 0 > if s\" ,\"params\":" MSG+ p pu MSG+ then
    s" }" MSG+
@@ -1088,7 +1091,7 @@ variable OPEN-N
 : ARCHIVE ( n -- )
    {: rc:n :}
    ARCHIVE-STREAMS
-   MSG-B CLEAR
+   MSG-CLEAR
    LABEL$ MSG+ s"  " MSG+ rc INT$ MSG+ s\" \n" MSG+
    SB-RESET DIR$ SB-APPEND s" /exits" SB-APPEND
    SB$ MSG$ FS:APPEND-FILE ;
@@ -1211,14 +1214,14 @@ variable OPEN-N
 : REFUSED ( str n -- )
    {: i:^ iu:n code:n :}
    NEXT-BODY {: b:^ bu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"error\":{\"code\":" MSG+
    code INT$ MSG+ s\" ,\"message\":\"" MSG+
    b bu MSG$ nip min MSG$ ALIKE
    b bu s\" \"}}" ENDS-WITH? LABEL$ T-LABEL TTRUE ;
 
 : CAPABILITIES ( -- )
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\"," MSG+
    s\" \"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," MSG+
    s\" \"completionProvider\":{},\"definitionProvider\":true,\"declarationProvider\":true," MSG+
@@ -1236,7 +1239,7 @@ variable OPEN-N
 
 : NULL-RESULT ( str -- )
    {: i:^ iu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":null}" MSG+
    MSG$ HEARD ;
 
@@ -1537,7 +1540,7 @@ variable OPEN-N
 
 : PUBLISHED ( str -- )
    {: u:^ uu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":" MSG+
    u uu MSG+ s\" ,\"diagnostics\":[]}}" MSG+
    MSG$ HEAR-FOR
@@ -1753,7 +1756,7 @@ variable PUB-COUNT
 
 : BATCH-WAIT$ ( n n -- str )
    {: heard:n count:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s" a publication of the batch, " MSG+ heard INT$ MSG+
    s"  of " MSG+ count INT$ MSG+ s"  heard" MSG+
    MSG$ ;
@@ -2551,14 +2554,14 @@ USE-MAX 1 + constant OVER-USINGS
 
 : SYMBOLS-ASK ( str str -- )
    {: i:^ iu:n p:^ pu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"workspace/symbol\",\"params\":" MSG+ p pu MSG+ s" }" MSG+
    MSG$ FRAMED ;
 
 : SYMBOLS-START ( str -- )
    {: i:^ iu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
 
 : SYMBOL+ ( str n str n n n str -- )
@@ -2598,7 +2601,7 @@ USE-MAX 1 + constant OVER-USINGS
 
 : OUTLINE-ASK ( str str -- )
    {: i:^ iu:n p:^ pu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+ s\" \"}}}" MSG+
@@ -2606,7 +2609,7 @@ USE-MAX 1 + constant OVER-USINGS
 
 : AT-ASK-WITH ( str str str n n str -- )
    {: m:^ mu:n i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"" MSG+ m mu MSG+
    s\" \",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
@@ -2628,7 +2631,7 @@ USE-MAX 1 + constant OVER-USINGS
 
 : LOCATED ( str str n n n -- )
    {: i:^ iu:n u:^ uu:n l:n c1:n c2:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":[{\"uri\":\"" MSG+ u uu MSG+
    s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
@@ -2961,7 +2964,7 @@ variable LENGTH-N
 
 : NOWHERE ( str -- )
    {: i:^ iu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[]}" MSG+
    HEAR
    MSG$ HEARD ;
@@ -3420,7 +3423,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HEAR s" 7" -32602 REFUSED ;
 
 : HIERARCHICAL-CLIENT ( -- )
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":" MSG+
    s\" {\"textDocument\":{\"documentSymbol\":{\"hierarchicalDocumentSymbolSupport\":true}}}}}" MSG+
    MSG$ FRAMED ;
@@ -3475,7 +3478,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 : INITIALIZE-AS ( str -- )
    {: f:^ fu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{\"textDocument\":{\"hover\":{\"contentFormat\":" MSG+
    f fu MSG+ s" }}}}}" MSG+
    MSG$ FRAMED ;
@@ -3499,7 +3502,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : HOVERED ( str str n n n -- )
    {: i:^ iu:n k:^ ku:n l:n c1:n c2:n :}
    PAR-B CLEAR TXT$ TEXT+
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"contents\":{\"kind\":\"" MSG+ k ku MSG+
    s\" \",\"value\":" MSG+ PAR$ MSG+
@@ -3925,9 +3928,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
    line ch LSP-TEXT:OFFSET-AT {: at:n :}
    l lu T-LABEL
-   HL-W MSG-B JSON:WRITE-OPEN-BUF slot at LSP-HIGHLIGHT:ANSWER
+   HL-W MSG-TEXT @ JSON:OPEN slot at LSP-HIGHLIGHT:ANSWER
    JSON:WRITTEN$ s" null" T$=
-   HL-W JSON:WRITE-CLOSE ;
+   HL-W JSON:CLOSE ;
 
 : HL-REREAD-ASK ( n -- )
    {: slot:n :}
@@ -3958,7 +3961,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 : TOKENS-ASK ( str str -- )
    {: i:^ iu:n p:^ pu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"textDocument/semanticTokens/full\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+ s\" \"}}}" MSG+
@@ -3966,7 +3969,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 : TOKENS-START ( str -- )
    {: i:^ iu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":{\"data\":[" MSG+ ;
 
 \ The token the answer TOKENS-START began lists next, as LSP encodes one: the
@@ -4287,7 +4290,7 @@ create WAS-B HDR-BYTES allot
 
 : ITEMS-START ( str -- )
    {: i:^ iu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"isIncomplete\":false,\"items\":[" MSG+ ;
 
@@ -4447,7 +4450,7 @@ create WAS-B HDR-BYTES allot
 
 : LINKS-ASK ( str str -- )
    {: i:^ iu:n p:^ pu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"textDocument/documentLink\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
    p pu URI-OF MSG+ s\" \"}}}" MSG+
@@ -4455,7 +4458,7 @@ create WAS-B HDR-BYTES allot
 
 : LINKS-START ( str -- )
    {: i:^ iu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"result\":[" MSG+ ;
 
 : LINK+ ( n n n str -- )
@@ -4779,7 +4782,7 @@ variable WS-ROOT-U
 : INITIALIZE-WITH ( str -- )
    {: m:^ mu:n :}
    SHARED? @ if exit then
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}," MSG+
    m mu MSG+ s" }}" MSG+
    MSG$ FRAMED ;
@@ -6137,7 +6140,7 @@ variable PROBE-DECLS
 
 : RANGED ( str n n n -- )
    {: i:^ iu:n l:n c1:n c2:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
@@ -6214,7 +6217,7 @@ variable PROBE-DECLS
 
 : EDITS-START ( str -- )
    {: i:^ iu:n :}
-   MSG-B CLEAR
+   MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"result\":{\"changes\":{" MSG+ ;
 
@@ -7082,7 +7085,7 @@ public
    SESSION-B READY
    IN-B READY
    WANT-B READY
-   MSG-B READY
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW MSG-TEXT !
    PAR-B READY
    DIR-B READY
    EXP-B READY

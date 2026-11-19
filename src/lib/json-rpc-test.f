@@ -6,6 +6,8 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fmt.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/json.f
 require src/lib/json-rpc.f
 
@@ -14,7 +16,7 @@ using JSON-RPC
 using JSON
 
 TYPED-VARIABLE ST JSON:cursor
-256 BUFFER: OUT
+TYPED-VARIABLE OUT ^VEC:vector<u8>   \ TEST-MAIN makes and deletes it
 TYPED-VARIABLE W JSON:writer
 
 : SORTED ( ^u8 n -- JSON-RPC:message )
@@ -190,12 +192,12 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" \"\"" s" " NAMES? TTRUE ;
 
 : WRITER ( -- ^JSON:writer )
-   W OUT 256 WRITE-OPEN ;
+   W OUT @ JSON:OPEN ;
 
 : CLOSED$ ( ^JSON:writer -- str )
    {: w :}
    w WRITTEN$ {: a:^ u:n :}
-   w WRITE-CLOSE
+   w JSON:CLOSE
    a u ;
 
 : ID ( ^u8 n -- JSON-RPC:id )  JSON--RPC-ID:MAKE ;
@@ -230,6 +232,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 
 : TEST-MAIN ( -- )
    T-RESET
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT !
    TEST-REQUEST
    TEST-NOTIFICATION
    TEST-RESPONSE
@@ -240,6 +243,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    TEST-RESPONSE-FAULTS
    TEST-METHOD
    TEST-WRITE
+   OUT @ VEC:DELETE
    T-REPORT
    s" json-rpc-test: ok" type cr ;
 

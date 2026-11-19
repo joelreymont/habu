@@ -35,6 +35,8 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/span.f
 require src/lib/memory.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/byte-buffer.f
 require src/lib/heap.f
 require src/lib/vector.f
@@ -98,7 +100,7 @@ ENUM state starting running shut-down ;ENUM
 
 TYPED-VARIABLE JSON-ST JSON:cursor
 LINE-CAP 2 + SPAN-BUFFER: HEAD-BUF        \ the reader's buffer: a header line and its CR LF
-create REPLY-BUF BUF:HDR-BYTES allot      \ a reply's bytes, grown as it is written
+TYPED-VARIABLE REPLY-OUT ^VEC:vector<u8>  \ a reply's bytes, grown as it is written
 TYPED-VARIABLE INPUT CONTENT-LENGTH:reader
 TYPED-VARIABLE BODY-SPAN SPAN:span<u8>
 TYPED-VARIABLE URI-SPAN SPAN:span<u8>     \ textDocument.uri, decoded
@@ -159,13 +161,13 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ ---- replies -----------------------------------------------------------------
 
 : WRITER ( -- ^JSON:writer )
-   W REPLY-BUF WRITE-OPEN-BUF ;
+   W REPLY-OUT @ JSON:OPEN ;
 
 : SENT ( ^JSON:writer -- )
    {: w :}
-   w WRITTEN$ {: a:^ u:n :}
-   w WRITE-CLOSE
-   FD:STDOUT a u >str SEND ;
+   w WRITTEN$ {: s:str :}
+   w JSON:CLOSE
+   FD:STDOUT s SEND ;
 
 : REPLY-NULL ( JSON-RPC:id -- )
    {: i :}
@@ -179,31 +181,31 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: i :}
    WRITER i RESULT
    WRITE-OBJECT-START
-      s" capabilities" WRITE-KEY WRITE-OBJECT-START
-         s" positionEncoding" s" utf-16" WRITE-FIELD-S WRITE-COMMA
-         s" textDocumentSync" WRITE-KEY WRITE-OBJECT-START
-            s" openClose" true WRITE-FIELD-BOOL WRITE-COMMA
-            s" change" FULL-SYNC WRITE-FIELD-U WRITE-COMMA
-            s" save" WRITE-KEY WRITE-OBJECT-START
-               s" includeText" false WRITE-FIELD-BOOL
+      s" capabilities" >str WRITE-KEY WRITE-OBJECT-START
+         s" positionEncoding" >str s" utf-16" >str WRITE-FIELD-S WRITE-COMMA
+         s" textDocumentSync" >str WRITE-KEY WRITE-OBJECT-START
+            s" openClose" >str true WRITE-FIELD-BOOL WRITE-COMMA
+            s" change" >str FULL-SYNC WRITE-FIELD-U WRITE-COMMA
+            s" save" >str WRITE-KEY WRITE-OBJECT-START
+               s" includeText" >str false WRITE-FIELD-BOOL
             WRITE-OBJECT-END
          WRITE-OBJECT-END WRITE-COMMA
-         s" completionProvider" WRITE-KEY WRITE-OBJECT-START WRITE-OBJECT-END WRITE-COMMA
-         s" definitionProvider" true WRITE-FIELD-BOOL WRITE-COMMA
-         s" declarationProvider" true WRITE-FIELD-BOOL WRITE-COMMA
-         s" referencesProvider" true WRITE-FIELD-BOOL WRITE-COMMA
-         s" renameProvider" WRITE-KEY WRITE-OBJECT-START
-            s" prepareProvider" true WRITE-FIELD-BOOL
+         s" completionProvider" >str WRITE-KEY WRITE-OBJECT-START WRITE-OBJECT-END WRITE-COMMA
+         s" definitionProvider" >str true WRITE-FIELD-BOOL WRITE-COMMA
+         s" declarationProvider" >str true WRITE-FIELD-BOOL WRITE-COMMA
+         s" referencesProvider" >str true WRITE-FIELD-BOOL WRITE-COMMA
+         s" renameProvider" >str WRITE-KEY WRITE-OBJECT-START
+            s" prepareProvider" >str true WRITE-FIELD-BOOL
          WRITE-OBJECT-END WRITE-COMMA
-         s" hoverProvider" true WRITE-FIELD-BOOL WRITE-COMMA
-         s" documentHighlightProvider" true WRITE-FIELD-BOOL WRITE-COMMA
-         s" documentSymbolProvider" true WRITE-FIELD-BOOL WRITE-COMMA
-         s" documentLinkProvider" WRITE-KEY WRITE-OBJECT-START WRITE-OBJECT-END WRITE-COMMA
+         s" hoverProvider" >str true WRITE-FIELD-BOOL WRITE-COMMA
+         s" documentHighlightProvider" >str true WRITE-FIELD-BOOL WRITE-COMMA
+         s" documentSymbolProvider" >str true WRITE-FIELD-BOOL WRITE-COMMA
+         s" documentLinkProvider" >str WRITE-KEY WRITE-OBJECT-START WRITE-OBJECT-END WRITE-COMMA
          LSP-TOKENS:LEGEND WRITE-COMMA
-         s" workspaceSymbolProvider" true WRITE-FIELD-BOOL
+         s" workspaceSymbolProvider" >str true WRITE-FIELD-BOOL
       WRITE-OBJECT-END WRITE-COMMA
-      s" serverInfo" WRITE-KEY WRITE-OBJECT-START
-         s" name" s" habu" WRITE-FIELD-S
+      s" serverInfo" >str WRITE-KEY WRITE-OBJECT-START
+         s" name" >str s" habu" >str WRITE-FIELD-S
       WRITE-OBJECT-END
    WRITE-OBJECT-END
    END SENT ;
@@ -1064,7 +1066,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : SERVE ( -- )
    FD:STDOUT FD:FD-NOSIGPIPE!
    FD:STDERR FD:FD-NOSIGPIPE!
-   REPLY-BUF 1 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW REPLY-OUT !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HELD-B !
    0 HELD-COUNT !
    0 HELD-NEXT !

@@ -323,7 +323,7 @@ s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-46176391
 \ JSON fields, UTF-8 bytes and the signed minimum's text through the library's
 \ writer.
 s" WJSON:STEP"
-S\" require src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\n128 BUFFER: B\npublic\n: STEP ( -- )\n   W B 128 JSON:WRITE-OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr ;\n;package\n"
+S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" >str s\" é\" >str JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" >str STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ str> type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
 S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 
 \ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a

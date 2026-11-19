@@ -32,7 +32,7 @@ split-str
 \ storage definers; one never opened (the definer's zero image) or already
 \ closed refuses every operation with E-JSON-WRITE-STATE.
 \ Every emitter answers its writer and appends all of its bytes or none; a
-\ document that hit a refusal is incomplete until WRITE-RESET or WRITE-CLOSE.
+\ document that hit a refusal is incomplete until RESET or CLOSE.
 \ WRITE-STRING, WRITE-KEY and WRITE-STRING-PART take UTF-8 text, else
 \ E-JSON-WRITE-BYTE, as is a negative indent; WRITE-RAW and
 \ WRITE-FIELD-RAW copy JSON text as given.

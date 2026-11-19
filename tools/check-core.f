@@ -9,7 +9,6 @@ require src/lib/date.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
-require src/lib/vector.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fd.f
@@ -24,7 +23,6 @@ require src/lib/argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
@@ -82,17 +80,6 @@ DYNAMIC-BUFFER CHK-REPORT-MEM u8
 \ offset then length. CHK-POS-SET may move a span an earlier CHK-POS$ answered.
 DYNAMIC-BUFFER CHK-POS-MEM u8
 DYNAMIC-BUFFER CHK-POS-ROWS n
-create CHK-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE CHK-JSON-W JSON:writer
-variable CHK-JSON-READY
-
-: CHK-JSON-WRITER ( -- ^JSON:writer )
-   CHK-JSON-READY @ 0= if
-      CHK-JSON-BUF 1 BUF:N>BLEN BUF:INIT
-      1 CHK-JSON-READY !
-   then
-   CHK-JSON-W CHK-JSON-BUF JSON:WRITE-OPEN-BUF ;
-
 variable CHK-ARG-I
 variable CHK-POS-N
 variable CHK-POS-U
