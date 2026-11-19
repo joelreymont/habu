@@ -212,7 +212,7 @@ $37F0 constant BPWN-CELL
 \ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. EVAL-PREV links
 \ each to the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
-STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
+$F8 constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 \ EVAL-INB: the outer evaluate's input-buffer start, which a nested evaluate restores.
@@ -233,8 +233,7 @@ public
 \ to an outer buffer, whose immediate word's evaluate compiles into it, and a
 \ throw that unwinds this buffer leaves it compiling.
 $A0 constant PEND
-\ CP, NDICT: the code pointer and dictionary count as the buffer began.
-$28 constant CP
+\ NDICT: the dictionary count as the buffer began.
 $30 constant NDICT
 \ ROWS: the checker's record end as the buffer began, plus one, 0 when no owner
 \ records.

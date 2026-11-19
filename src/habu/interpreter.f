@@ -2980,9 +2980,7 @@ EXPORT CODE-RECLAIM:TRUNCATE
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
    PKG-OUTSIDE-CELL CELL@ 0<> if outside PKG-OUTSIDE-CELL CELL! then ;
 
-\ An evaluated buffer's frame, which this file's frame words and rejection.f
-\ read. The clean-exit continuation at $10 stays zero: nothing reads it for a
-\ buffer this frame bounds.
+\ DP-CELL as the buffer began.
 $38 constant FR-DP
 
 \ The frame on its way into the catch that links it; empty at rest.
@@ -3023,12 +3021,9 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    SRCLOC:INB-CELL CELL@ f EVAL-INB FR!
    TKA-CELL CELL@ f EVAL-TKA FR!
    TKL-CELL CELL@ f EVAL-TKL FR!
-   cp@ f EVAL-FRAME:CP FR!
    ndict@ f EVAL-FRAME:NDICT FR!
    REQUIRE-REG:MARK f EVAL-FRAME:REQUIRES FR!
    DP-CELL CELL@ f FR-DP FR!
-   STACK-ABI:BASE-CELL CELL@ f STACK-ABI:EVAL-BASE FR!
-   STACK-ABI:CAP-CELL CELL@ f STACK-ABI:EVAL-CAP FR!
    PEND-CELL CELL@ f EVAL-FRAME:PEND FR!
    f EVAL-PKG + {: snap:^ :}
    CUR-CELL CELL@ snap PKGSNAP-CUR FR!
