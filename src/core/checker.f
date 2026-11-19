@@ -6412,30 +6412,14 @@ variable RSR-EXP   variable RSR-ACT
    t HIDDEN-SLOT@ 0= IF CC-U8 MK-CON MK-PTR EXIT THEN
    CC-N MK-CON ;
 
-\ A push over the split type and rest; the push itself when neither changed.
-: SPLIT-PUSH ( n n n n -- n ) {: s0:n p:n t:n rest:n :}
-   p P>TYPE t =  p P>REST rest = and IF s0 EXIT THEN
-   t rest MK-PUSH {: q:n :}
-   p P>PROOF q P-PROOF!  p P>LOST q P-LOST!
-   q ;
-
-\ A quotation over the split rows, keeping its throw windows, facts and block part;
-\ the quotation itself when no row changed.
-: SPLIT-QUOT ( n n n n n n -- n ) {: t0:n q:n din:n dout:n rin:n rout:n :}
-   q Q>DIN din =  q Q>DOUT dout = and  q Q>RIN rin = and  q Q>ROUT rout = and
-   IF t0 EXIT THEN
-   din dout rin rout MK-QUOT {: nq:n :}
-   nq q Q>XDFIELD q Q>XRFIELD QX!
-   q Q>FACTS nq Q-FACTS!
-   q Q>BLOCK nq Q-BLOCK!
-   nq ;
-
 \ A scheme over the split quotation; the scheme itself when it did not change.
 : SPLIT-FORALL ( n n n -- n ) {: t0:n f:n body:n :}
    f F>BODY body = IF t0 EXIT THEN
    f F>PARENT f F>SECOND f F>DOMAIN body MK-FORALL-IN ;
 
 EXPORT CHECKER-QUOT-FRESH:ARGS-SAME?
+EXPORT CHECKER-QUOT-FRESH:REPUSH
+EXPORT CHECKER-QUOT-FRESH:REQUOT
 
 \ A row with each str value as ^u8 under n, through quotation rows, schemes, pointees
 \ and family arguments; a str that is itself a pointee or an argument stays whole.
@@ -6446,7 +6430,7 @@ EXPORT CHECKER-QUOT-FRESH:ARGS-SAME?
       \ as EFFECT-DEPTH-MAX, or the one its parse cut there, fits.
       s P>TYPE RECURSE {: ty:n :}
       s P>REST RECURSE {: rest:n :}
-      x0 s ty rest SPLIT-PUSH EXIT
+      x0 s rest ty REPUSH EXIT
    THEN
    x0 T-RES {: t:n :}
    t STR-CELL? IF t STR-CELL-SPLIT EXIT THEN
@@ -6455,7 +6439,7 @@ EXPORT CHECKER-QUOT-FRESH:ARGS-SAME?
       t Q>DOUT RECURSE {: dout:n :}
       t Q>RIN RECURSE {: rin:n :}
       t Q>ROUT RECURSE {: rout:n :}
-      x0 t din dout rin rout SPLIT-QUOT EXIT
+      x0 t din dout rin rout REQUOT EXIT
    THEN
    t TAG T-FORALL = IF t F>BODY RECURSE {: body:n :}  x0 t body SPLIT-FORALL EXIT THEN
    t TAG T-PTR = IF
