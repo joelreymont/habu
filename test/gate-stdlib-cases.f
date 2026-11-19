@@ -477,6 +477,13 @@ SUITE curl-http
    src/lib/net/curl-test.f
 ;SUITE
 
+\ HTTPC's connection lifecycle against a scripted loopback HTTP/1.1 server.
+HB-TARGET-LINUX-KERNEL? [if]
+SUITE httpc
+   src/lib/net/httpc-test.f
+;SUITE
+[then]
+
 \ The HTTP/1.1 server on a loopback port, answered by CURL and by raw TCP4;
 \ writes build/http-transcript.txt and compares it whole.
 SUITE http
