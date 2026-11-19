@@ -6,9 +6,12 @@ split-str
 \ FINISH drops an unterminated event; FEED after it is E-STATE. A callback's throw
 \ leaves the decoder failed: CLOSE it. STORAGE CLASS. CALLER-OWNED (STORAGE-BYTES).
 
-require src/lib/byte-buffer.f
+require src/lib/error.f
+require src/lib/heap.f
+require src/lib/span.f
 require src/lib/string.f
 require src/lib/utf8-scalar.f
+require src/lib/vector.f
 
 package SSE
 public
@@ -29,10 +32,16 @@ private
 1 cells constant BOM-OFF
 2 cells constant CR-OFF
 3 cells constant DATA-OFF
-4 cells constant LINE-OFF
-LINE-OFF BUF:HDR-BYTES + constant BODY-OFF
-BODY-OFF BUF:HDR-BYTES + constant EVENT-OFF
-EVENT-OFF BUF:HDR-BYTES + constant SIZE
+4 cells constant VECS-OFF
+
+\ A vector not made is NULL-PTR in its cell.
+STRUCTURE vectors DERIVE addr
+   FIELD line ^VEC:vector<u8>
+   FIELD body ^VEC:vector<u8>
+   FIELD event ^VEC:vector<u8>
+;STRUCTURE
+
+VECS-OFF VECTORS-CELLS cells + constant SIZE
 
 0 constant CLOSED
 1 constant LIVE
@@ -50,10 +59,10 @@ $BF constant BOM-THIRD
 13 constant CR
 32 constant SP
 58 constant COLON
-64 constant START-CAP
 
 CAST: >DECODER ( ^n -- decoder )
 CAST: DECODER>STATE ( decoder -- ^n )
+CAST: >VECTORS ( ^n -- ^vectors )
 
 : ST@ ( ^n -- n ) ST-OFF + @ ;
 : ST! ( n ^n -- ) ST-OFF + ! ;
@@ -63,9 +72,10 @@ CAST: DECODER>STATE ( decoder -- ^n )
 : CR! ( n ^n -- ) CR-OFF + ! ;
 : DATA? ( ^n -- bool ) DATA-OFF + @ 0<> ;
 : DATA! ( n ^n -- ) DATA-OFF + ! ;
-: LINE-BUF ( ^n -- ^n ) LINE-OFF + ;
-: BODY-BUF ( ^n -- ^n ) BODY-OFF + ;
-: EVENT-BUF ( ^n -- ^n ) EVENT-OFF + ;
+: VECS ( ^n -- ^vectors ) VECS-OFF + >VECTORS ;
+: LINE ( ^n -- ^VEC:vector<u8> ) VECS VECTORS-LINE @ ;
+: BODY ( ^n -- ^VEC:vector<u8> ) VECS VECTORS-BODY @ ;
+: EVENT ( ^n -- ^VEC:vector<u8> ) VECS VECTORS-EVENT @ ;
 
 : CHECK-LIVE ( ^n -- ) ST@ LIVE <> if E-STATE throw then ;
 : CHECK-OPEN ( ^n -- )
@@ -75,41 +85,41 @@ CAST: DECODER>STATE ( decoder -- ^n )
    FAILED = if exit then
    E-STATE throw ;
 
-: ZERO-BUF ( ^n -- )
-   {: buf:^ :}
-   0 buf ! 0 buf CELL + ! 0 buf 2 cells + ! ;
+: NULL-VECS ( ^n -- )
+   VECS {: v:^ :}
+   NULL-PTR v VECTORS-LINE !
+   NULL-PTR v VECTORS-BODY !
+   NULL-PTR v VECTORS-EVENT ! ;
 
-: INIT-BUF ( ^n -- ) START-CAP BUF:N>BLEN BUF:INIT ;
+: FRESH ( ^^VEC:vector<u8> -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW swap ! ;
 
-: INIT-BUFS ( ^n -- ^n )
+: MAKE-VECS ( ^n -- ^n )
    {: state:^ :}
-   state LINE-BUF INIT-BUF
-   state BODY-BUF INIT-BUF
-   state EVENT-BUF INIT-BUF
+   state VECS {: v:^ :}
+   v VECTORS-LINE FRESH
+   v VECTORS-BODY FRESH
+   v VECTORS-EVENT FRESH
    state ;
 
-: DISPOSE-IF-LIVE ( ^n -- )
-   {: buf:^ :}
-   buf 2 cells + @ 0<> if buf BUF:DISPOSE then ;
-
-: DISPOSE-BUFS ( ^n -- )
+: DELETE-VECS ( ^n -- )
    {: state:^ :}
-   state LINE-BUF DISPOSE-IF-LIVE
-   state BODY-BUF DISPOSE-IF-LIVE
-   state EVENT-BUF DISPOSE-IF-LIVE ;
+   state LINE VEC:DELETE
+   state BODY VEC:DELETE
+   state EVENT VEC:DELETE ;
 
 : RESET-EVENT ( ^n -- )
    {: state:^ :}
-   state BODY-BUF BUF:CLEAR
-   state EVENT-BUF BUF:CLEAR
+   state BODY 0 VEC:RESIZE
+   state EVENT 0 VEC:RESIZE
    0 state DATA! ;
 
 : DISPATCH ( ^n a [ a ^u8 n ^u8 n -- ] -- )
    {: state:^ ctx:a cb :}
    state DATA? 0= if state RESET-EVENT exit then
    FAILED state ST!
-   state EVENT-BUF BUF:SPAN$ BUF:BLEN>N {: kind:^ ku:n :}
-   state BODY-BUF BUF:SPAN$ BUF:BLEN>N {: body:^ bu:n :}
+   state EVENT VEC:SPAN SPAN:$ {: kind:^ ku:n :}
+   state BODY VEC:SPAN SPAN:$ {: body:^ bu:n :}
    kind ku UTF8:VALID? 0= if E-UTF8 throw then
    body bu 1- UTF8:VALID? 0= if E-UTF8 throw then
    ctx
@@ -134,27 +144,28 @@ CAST: DECODER>STATE ( decoder -- ^n )
 
 : FIELD-LINE ( ^n -- )
    {: state:^ :}
-   state LINE-BUF BUF:SPAN$ BUF:BLEN>N {: src:^ u:n :}
+   state LINE VEC:SPAN SPAN:$ {: src:^ u:n :}
    src c@ COLON = if exit then
    src u SPLIT-FIELD {: name:^ nu:n value:^ vu:n :}
    name nu s" data" STR= if
-      value vu BUF:N>BLEN state BODY-BUF BUF:APPEND-SPAN
-      LF state BODY-BUF BUF:APPEND-BYTE
+      value vu state BODY VEC:APPEND
+      LF state BODY VEC:PUSH c!
       1 state DATA!
       exit
    then
    name nu s" event" STR= if
-      value vu BUF:N>BLEN state EVENT-BUF BUF:REPLACE
+      state EVENT 0 VEC:RESIZE
+      value vu state EVENT VEC:APPEND
    then ;
 
 : END-LINE ( ^n a [ a str str -- ] -- )
    {: state:^ ctx:a cb :}
-   state LINE-BUF BUF:LEN@ BUF:BLEN>N 0= if
+   state LINE VEC:COUNT 0= if
       state ctx cb DISPATCH
    else
       state FIELD-LINE
    then
-   state LINE-BUF BUF:CLEAR ;
+   state LINE 0 VEC:RESIZE ;
 
 : BYTE ( ^n n a [ a ^u8 n ^u8 n -- ] -- )
    {: state:^ byte:n ctx:a cb :}
@@ -168,7 +179,7 @@ CAST: DECODER>STATE ( decoder -- ^n )
       exit
    then
    byte LF = if state ctx cb END-LINE exit then
-   byte state LINE-BUF BUF:APPEND-BYTE ;
+   byte state LINE VEC:PUSH c! ;
 
 : BOM-BYTE ( ^n n a [ a str str -- ] -- )
    {: state:^ byte:n ctx:a cb :}
@@ -210,7 +221,7 @@ CAST: DECODER>STATE ( decoder -- ^n )
       src u TERM-AT {: run:n :}
       run 0 > if
          0 state CR!
-         src run BUF:N>BLEN state LINE-BUF BUF:APPEND-SPAN
+         src run state LINE VEC:APPEND
          run exit
       then
    then
@@ -228,11 +239,9 @@ public
    state 0= if E-STORAGE throw then
    cap STORAGE-BYTES < if E-STORAGE throw then
    state ST@ CLOSED <> if E-STATE throw then
-   state LINE-BUF ZERO-BUF
-   state BODY-BUF ZERO-BUF
-   state EVENT-BUF ZERO-BUF
-   state [: INIT-BUFS ;] catch {: code:n :} drop
-   code 0<> if state DISPOSE-BUFS code throw then
+   state NULL-VECS
+   state [: MAKE-VECS ;] catch {: code:n :} drop
+   code 0<> if state DELETE-VECS code throw then
    BOM-START state BOM!
    0 state CR! 0 state DATA!
    LIVE state ST!
@@ -256,9 +265,7 @@ public
 : CLOSE ( decoder -- )
    DECODER>STATE {: state:^ :}
    state CHECK-OPEN
-   state LINE-BUF BUF:DISPOSE
-   state BODY-BUF BUF:DISPOSE
-   state EVENT-BUF BUF:DISPOSE
+   state DELETE-VECS
    CLOSED state ST! ;
 
 ;package

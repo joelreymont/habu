@@ -3,7 +3,7 @@ split-str
 \ the rest reach a device through a vector table, chosen per task. It requires no
 \ transport and changes nothing on load.
 \ STORAGE CLASS. TASK-LOCAL: the device indices (GENIO-ABI) and the byte scratch;
-\ READ-LINE's line and the chunk a device's accept fills are TASK:+USERS rows,
+\ READ-LINE's line and the chunk a device's accept fills are task slots,
 \ so two tasks may each be reading a line from their own device.
 \ PROCESS-WIDE: the device table, so a task inherits its creator's devices.
 \
@@ -20,7 +20,9 @@ require src/lib/prelude.f
 require src/lib/type/deftype.f
 require src/lib/num-types.f
 require src/lib/task.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/line-editor.f
 
 package GENIO
@@ -464,19 +466,17 @@ public
 
 private
 
-\ A BUF that grows to the longest line its task has read; the main task has no
-\ exit chain, so its line lasts the process.
+\ A vector that grows to the longest line its task has read, NULL-PTR until
+\ made; the main task has no exit chain, so its line lasts the process.
 $100 constant CHUNK-CAP
 CHUNK-CAP TASK:+USERS IO-CHUNK u8
-BUF:HDR-BYTES TASK:+USERS IO-LINE u8
-TASK:+USER IO-LINE-LIVE n
+TASK:+USER IO-LINE ^VEC:vector<u8>
 
 : CHUNK ( -- ^u8 )
    0 IO-CHUNK ;
 
 : LINE-DISPOSE ( -- )
-   0 IO-LINE-LIVE !
-   0 IO-LINE BUF:DISPOSE ;
+   IO-LINE @ NULL-PTR IO-LINE ! VEC:DELETE ;
 
 : LINE-REGISTER ( -- )
    TASK:SELF-N 0= if exit then
@@ -485,13 +485,10 @@ TASK:+USER IO-LINE-LIVE n
 \ A refused registration releases the line it would have released, so a task's
 \ live line always has its release armed.
 : LINE-OPEN ( -- )
-   IO-LINE-LIVE @ 0<> if exit then
-   0 IO-LINE CHUNK-CAP BUF:N>BLEN BUF:INIT
+   IO-LINE @ NULL-PTR <> if exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW IO-LINE !
    [: LINE-REGISTER ;] catch {: code:n :}
-   code 0<> if 0 IO-LINE BUF:DISPOSE code throw then
-   1 IO-LINE-LIVE ! ;
-
-CAST: BLEN>N ( NUM:byte-len -- n )
+   code 0<> if LINE-DISPOSE code throw then ;
 
 \ At most the buffer of one line, without its terminator. A filled buffer goes on
 \ at the next call, 0 when nothing is left; an empty line is 0, the end of input -1.
@@ -508,7 +505,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ True when the line goes on past this chunk.
 : APPEND-CHUNK ( n -- bool ) {: got:n :}
    got 0 < if false exit then
-   CHUNK got BUF:N>BLEN 0 IO-LINE BUF:APPEND-SPAN
+   CHUNK got IO-LINE @ VEC:APPEND
    got CHUNK-CAP = ;
 
 \ False at the end of input; else IO-LINE holds the whole line.
@@ -525,8 +522,8 @@ public
 : READ-LINE ( -- ^u8 n )
    IN-ROW TERMINAL-ROW = if LINE-EDITOR:READ-LINE exit then
    LINE-OPEN
-   0 IO-LINE BUF:CLEAR
+   IO-LINE @ 0 VEC:RESIZE
    LINE-FILL 0= if NULL$ exit then
-   0 IO-LINE BUF:SPAN$ BLEN>N ;
+   IO-LINE @ VEC:SPAN SPAN:$ ;
 
 ;package

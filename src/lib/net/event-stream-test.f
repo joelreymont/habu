@@ -3,7 +3,9 @@ split-str
 \ Run: bin/hb --load src/lib/net/event-stream-test.f
 
 require src/lib/test.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/net/event-stream.f
 
 package SSE-TEST
@@ -12,34 +14,35 @@ SSE:STORAGE-BYTES constant DEC-BYTES
 create DEC-A DEC-BYTES allot
 create DEC-B DEC-BYTES allot
 create DEC-ODD DEC-BYTES 1+ allot
-create GOT BUF:HDR-BYTES allot
-create WANT BUF:HDR-BYTES allot
-create BIG BUF:HDR-BYTES allot
+TYPED-VARIABLE GOT ^VEC:vector<u8>
+TYPED-VARIABLE WANT ^VEC:vector<u8>
+TYPED-VARIABLE BIG ^VEC:vector<u8>
 TYPED-VARIABLE ACTIVE SSE:decoder
 variable CALLS
 
-: APPEND ( ^u8 n ^a -- )
-   {: src:^ u:n buf:^ :}
-   src u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+: APPEND ( ^u8 n ^^VEC:vector<u8> -- ) @ VEC:APPEND ;
+
+: FRESH ( ^^VEC:vector<u8> -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW swap ! ;
 
 : RECORD ( ^a ^u8 n ^u8 n -- )
    {: ctx:^ kind:^ ku:n data:^ du:n :}
    ctx drop
-   kind ku GOT APPEND 0 GOT BUF:APPEND-BYTE
-   data du GOT APPEND 0 GOT BUF:APPEND-BYTE
+   kind ku GOT APPEND 0 GOT @ VEC:PUSH c!
+   data du GOT APPEND 0 GOT @ VEC:PUSH c!
    1 CALLS +! ;
 
 : EXPECT ( ^u8 n ^u8 n -- )
    {: kind:^ ku:n data:^ du:n :}
-   kind ku WANT APPEND 0 WANT BUF:APPEND-BYTE
-   data du WANT APPEND 0 WANT BUF:APPEND-BYTE ;
+   kind ku WANT APPEND 0 WANT @ VEC:PUSH c!
+   data du WANT APPEND 0 WANT @ VEC:PUSH c! ;
 
 : RESET ( -- )
-   GOT BUF:CLEAR WANT BUF:CLEAR 0 CALLS ! ;
+   GOT @ 0 VEC:RESIZE WANT @ 0 VEC:RESIZE 0 CALLS ! ;
 
 : CHECK ( n -- )
    CALLS @ T=
-   GOT BUF:SPAN$ BUF:BLEN>N WANT BUF:SPAN$ BUF:BLEN>N T$= ;
+   GOT @ VEC:SPAN SPAN:$ WANT @ VEC:SPAN SPAN:$ T$= ;
 
 : A-OPEN ( -- SSE:decoder ) DEC-A DEC-BYTES SSE:OPEN ;
 : B-OPEN ( -- SSE:decoder ) DEC-B DEC-BYTES SSE:OPEN ;
@@ -159,15 +162,15 @@ variable CALLS
    1 CHECK ;
 
 : LARGE-EVENT ( -- )
-   RESET BIG BUF:CLEAR
+   RESET BIG @ 0 VEC:RESIZE
    s" data:" BIG APPEND
-   70000 0 ?do [char] x BIG BUF:APPEND-BYTE loop
+   70000 0 ?do [char] x BIG @ VEC:PUSH c! loop
    s\" \n\n" BIG APPEND
    A-OPEN {: d:SSE:decoder :}
-   BIG BUF:SPAN$ BUF:BLEN>N d -rot SEND
+   BIG @ VEC:SPAN SPAN:$ d -rot SEND
    d SSE:CLOSE
    1 CALLS @ T=
-   GOT BUF:LEN@ BUF:BLEN>N 70009 T= ;
+   GOT @ VEC:COUNT 70009 T= ;
 
 : INVALID-UTF8 ( -- )
    RESET
@@ -207,13 +210,11 @@ variable CALLS
 
 : RUN ( -- )
    T-RESET
-   GOT 16 BUF:N>BLEN BUF:INIT
-   WANT 16 BUF:N>BLEN BUF:INIT
-   BIG 16 BUF:N>BLEN BUF:INIT
+   GOT FRESH WANT FRESH BIG FRESH
    BASIC ODD-STORAGE EVERY-SPLIT TWO-DECODERS EOF-DISCARD FIELDS NO-COLON
    BOM-SPLITS MIDSTREAM-BOM LARGE-EVENT INVALID-UTF8 CALLBACK-FAILURE
    MISUSE BAD-SOURCE
-   BIG BUF:DISPOSE WANT BUF:DISPOSE GOT BUF:DISPOSE
+   BIG @ VEC:DELETE WANT @ VEC:DELETE GOT @ VEC:DELETE
    T-REPORT
    s" event-stream-test: ok" type cr ;
 
