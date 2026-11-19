@@ -9,20 +9,26 @@ split-str
 \ NEXT-ARM, NEXT-READY? and NEXT-TAKE let one task have several streams armed
 \ and take each as it answers.
 \
-\ PERFORM's libcurl writes the body into the span as it arrives, never past it.
-\ An HTTP error status is a `response`, not `failed`. A body longer than the
-\ span is `truncated`, its length the body bytes the span holds; on the write
-\ that overflows, glibc may hold fewer than the span. A followed redirect's own
-\ body never reaches the span; a `failed` or cancelled transfer may leave part
-\ of its body there. The first libcurl error wins; only an otherwise successful
-\ transfer maps a close failure to 23, and then a reply cut inside its header
-\ block to 18.
+\ A whole body lands in the caller's vector through a write callback, at most
+\ the limit START or PERFORM was given. An HTTP error status is a `response`,
+\ not `failed`. A body longer than the limit is `truncated` with exactly the
+\ limit appended; len is the bytes the transfer appended. A followed redirect's
+\ own body never reaches the vector; a `failed` or cancelled transfer may leave
+\ part of its body there. The first libcurl error wins; only an otherwise
+\ successful transfer maps a close failure to 23, and then a reply cut inside
+\ its header block to 18.
 \
-\ No callback into checked code is needed: libcurl's default write callback is
-\ fwrite. A whole body's CURLOPT_WRITEDATA is an fmemopen stream over the
-\ caller's span; the header capture and a streamed body are open_memstream
-\ streams, and memcpy moves their bytes into caller spans. For the same reason
-\ the loop task uses no CURLMOPT_SOCKETFUNCTION or CURLMOPT_TIMERFUNCTION. It
+\ PERFORM's callback grows the vector on the calling task. The loop task never
+\ calls the vector's allocator, so each whole-body record holds a window: open,
+\ the callback appends a piece that fits the block's room; full, a piece did
+\ not fit, the callback answered CURL_WRITEFUNC_PAUSE and woke the owner;
+\ ready, AWAIT reserved the room on the owner's task and woke the loop, which
+\ reopens the window and resumes the transfer, and libcurl hands the kept piece
+\ back; closed, the limit cut a piece short, which ends the transfer.
+\
+\ The header capture and a streamed body are open_memstream streams libcurl
+\ writes with fwrite, and memcpy moves their bytes into caller spans. The loop
+\ task uses no CURLMOPT_SOCKETFUNCTION or CURLMOPT_TIMERFUNCTION. It
 \ wakes a stream's owner for every chunk and end, and parks in package AIO and
 \ not in libcurl: after every curl_multi_perform it asks curl_multi_fdset which
 \ descriptors libcurl is waiting on and curl_multi_timeout how long it may
@@ -32,11 +38,13 @@ split-str
 \ fast server waits in the kernel's window and not in this process's memory.
 \
 \ One byte on the wake pipe says "a record changed": a START, a NEXT-ARM, a
-\ CANCEL, an abandoned record or the stop; the loop scans the table after each.
+\ ready window, a CANCEL, an abandoned record or the stop; the loop scans the
+\ table after each.
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
+require src/lib/ffi-callback.f
 require src/lib/type/deftype.f
 require src/lib/memory.f
 require src/lib/span.f
@@ -47,6 +55,7 @@ require src/lib/fd.f
 require src/lib/aio.f
 require src/lib/log.f
 require src/lib/adt/result.f
+require src/lib/vector.f
 
 package CURL
 public
@@ -113,10 +122,13 @@ private
 
 0 constant OPT-LONG                       \ CURLOPTTYPE_LONG
 10000 constant OPT-OBJECT                 \ CURLOPTTYPE_OBJECTPOINT
+20000 constant OPT-FUNCTION               \ CURLOPTTYPE_FUNCTIONPOINT
 $100000 constant INFO-STRING              \ CURLINFO_STRING
 $200000 constant INFO-LONG                \ CURLINFO_LONG
 
 OPT-OBJECT 1 + constant OPT-WRITE-DATA    \ CURLOPT_WRITEDATA
+OPT-FUNCTION 11 + constant OPT-WRITE-FUNCTION  \ CURLOPT_WRITEFUNCTION
+OPT-FUNCTION 79 + constant OPT-HEADER-FUNCTION \ CURLOPT_HEADERFUNCTION
 OPT-OBJECT 29 + constant OPT-HEADER-DATA  \ CURLOPT_HEADERDATA
 OPT-OBJECT 2 + constant OPT-URL           \ CURLOPT_URL
 OPT-OBJECT 4 + constant OPT-PROXY         \ CURLOPT_PROXY
@@ -151,7 +163,7 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 27 constant CURLE-OUT-OF-MEMORY
 23 constant CURLE-WRITE-ERROR
 18 constant CURLE-PARTIAL-FILE
-2 constant UNBUFFERED                     \ _IONBF, on both libcs
+$10000001 constant WRITE-PAUSE            \ CURL_WRITEFUNC_PAUSE
 
 1 constant PROTO-HTTP                     \ CURLPROTO_HTTP
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
@@ -210,16 +222,11 @@ PROCESS-SYMBOLS
 
 FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-FLUSH fflush ( n -- i32 ) ;FUNCTION
-FUNCTION: STREAM-POSITION ftell ( n -- n ) ;FUNCTION
 FUNCTION: STREAM-SEEK fseek ( n n n -- i32 ) ;FUNCTION
-FUNCTION: STREAM-ERROR ferror ( n -- i32 ) ;FUNCTION
-FUNCTION: STREAM-BUFFERING setvbuf ( n n n n -- i32 ) ;FUNCTION
-FUNCTION: FILE-OPEN fopen ( ^u8 ^u8 -- n ) ;FUNCTION
 FUNCTION: TEXT-LENGTH strlen ( n -- n ) ;FUNCTION
 FUNCTION: RELEASE free ( n -- ) ;FUNCTION
 FUNCTION: NEW-STATE calloc ( n n -- n ) ;FUNCTION
 FUNCTION: MEMSTREAM open_memstream ( ^u8 ^u8 -- n ) ;FUNCTION
-FUNCTION: SPAN-STREAM fmemopen ( ^u8 n ^u8 -- n ) ;FUNCTION
 FUNCTION: COPY-OUT memcpy ( ^u8 n n -- n ) ;FUNCTION
 
 
@@ -427,33 +434,8 @@ CAST: >BYTES ( n -- ^u8 )
    buf LE:U64@ len LE:U64@ rot ;
 
 
-\ fmemopen "r+b" writes no NUL and nothing past the span on either libc, where
-\ the "w" modes put a NUL in the span's last byte on glibc. macOS refuses a
-\ zero-byte fmemopen, so an empty span is /dev/null opened read-only, which
-\ refuses every write on both. Unbuffered, a byte libcurl hands fwrite is in
-\ the span or refused at that call.
-: SPAN-OPEN ( ^u8 n -- n ) {: target capacity:n :}
-   capacity 0= if
-      S\" /dev/null\z" drop S\" rb\z" drop FILE-OPEN
-   else
-      target capacity S\" r+b\z" drop SPAN-STREAM
-   then
-   dup 0= if exit then
-   dup 0 UNBUFFERED 0 STREAM-BUFFERING 0 <> if STREAM-CLOSE drop 0 then ;
-
-
-\ A full span sets the stream's error flag on both libcs while fclose still
-\ answers 0.
-: SPAN-TAKE ( n -- n bool n ) {: stream:n :}
-   stream STREAM-POSITION {: u:n :}
-   stream STREAM-ERROR 0 <> {: refused:bool :}
-   stream STREAM-CLOSE 0= if CURLE-OK else CURLE-WRITE-ERROR then {: rc:n :}
-   u 0 < if E-RESULT throw then
-   u refused rc ;
-
-
-\ A refused write is `truncated` whatever code ends the transfer: 23 over
-\ HTTP/1.1, 56 over HTTP/2 on libcurl 8.7.1.
+\ A body the limit cut short is `truncated` whatever code ends the transfer:
+\ 23 over HTTP/1.1, 56 over HTTP/2 on libcurl 8.7.1.
 : BODY-RC ( n bool -- n ) {: rc:n refused:bool :}
    refused if CURLE-OK else rc then ;
 
@@ -465,12 +447,6 @@ CAST: >BYTES ( n -- ^u8 )
 : DATA-CLEAR ( n -- n ) {: easy:n :}
    easy OPT-WRITE-DATA 0 SETOPT-NUM
    easy OPT-HEADER-DATA 0 SETOPT-NUM FIRST-ERROR ;
-
-
-: TRANSFER ( n n n -- n ) {: easy:n body:n headers:n :}
-   easy OPT-WRITE-DATA body SETOPT-NUM dup CURLE-OK <> if exit then drop
-   easy OPT-HEADER-DATA headers SETOPT-NUM dup CURLE-OK <> if exit then drop
-   easy EASY-PERFORM ;
 
 
 : STATUS-TRY ( n -- n bool ) {: easy:n :}
@@ -522,9 +498,18 @@ SCRATCH-VARIABLE GLOBAL-DONE
    easy OPT-REDIR-PROTO PROTO-WEB SETOPT-NUM ;
 
 
+\ With a write function set and none for headers, libcurl hands the header
+\ lines to the write function; fwrite keeps them in the capture stream.
+: HEADER-SINK ( n -- n ) {: easy:n :}
+   FFI:PROCESS-HANDLE s\" fwrite\z" drop FFI:DLSYM {: put:n :}
+   put 0= if CURLE-FAILED-INIT exit then
+   easy OPT-HEADER-FUNCTION put SETOPT-NUM ;
+
+
 \ libcurl must not reach for signals inside a tasked engine.
 : DEFAULTS ( n -- n ) {: easy:n :}
    easy OPT-NO-SIGNAL 1 SETOPT-NUM dup CURLE-OK <> if exit then drop
+   easy HEADER-SINK dup CURLE-OK <> if exit then drop
    easy SCHEMES ;
 
 public
@@ -700,6 +685,14 @@ $18 constant MSG-BYTES
 
 0 constant MODE-WHOLE
 1 constant MODE-STREAM
+2 constant MODE-CALLER                    \ PERFORM's record, outside the table
+
+\ A whole body's window, the header's machine: the loop moves open -> full and
+\ open -> closed in the callback and ready -> open, the owner full -> ready.
+0 constant WINDOW-OPEN
+1 constant WINDOW-FULL
+2 constant WINDOW-READY
+3 constant WINDOW-CLOSED
 0 constant REQUEST-NONE
 1 constant REQUEST-WAITING
 2 constant REQUEST-CHUNK
@@ -709,13 +702,13 @@ $18 constant MSG-BYTES
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.STATE
    CELL +FIELD R.EASY
-   CELL +FIELD R.CAP
+   CELL +FIELD R.CAP                      \ the limit, or the armed span's length
    CELL +FIELD R.STREAM
    CELL +FIELD R.HSTREAM
    CELL +FIELD R.ADDED                    \ the handle is in the multi handle
    CELL +FIELD R.KIND
    CELL +FIELD R.STATUS
-   CELL +FIELD R.LEN
+   CELL +FIELD R.LEN                      \ a whole body's bytes appended
    CELL +FIELD R.CODE
    CELL +FIELD R.MODE
    CELL +FIELD R.REQUEST
@@ -724,7 +717,11 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.DELIVERED
    CELL +FIELD R.PAUSED                   \ the loop paused the handle's receive
    CELL +FIELD R.OWNER                    \ the TCB pointer
-   CELL +FIELD R.TARGET                   \ the span's address
+   CELL +FIELD R.TARGET                   \ the span NEXT-ARM armed
+   CELL +FIELD R.VEC                      \ a whole body's vector
+   CELL +FIELD R.WINDOW                   \ a WINDOW- state
+   CELL +FIELD R.WANTED                   \ the room a full window waits for
+   CELL +FIELD R.THROW                    \ what the callback's append threw
    CELL +FIELD R.PRIVATE                  \ the handle's state record
    \ open_memstream's buffer and length, for the body and for the header
    \ capture, because the loop is what closes the streams and the opening
@@ -799,6 +796,7 @@ CAST: CURL-N>PTR ( n -- ^n )
 
 CAST: OWNER-SLOT ( ^n -- ^^n )
 CAST: TARGET-SLOT ( ^n -- ^^u8 )
+CAST: VEC-SLOT ( ^n -- ^^VEC:vector<u8> )
 
 : CHUNK-FIRST ( -- n )
    CURL-RECS CELL-VIEW FFI:>CELL ;
@@ -855,6 +853,87 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 : REC-STATE! ( n n -- ) {: state:n idx:n :}
    state idx REC R.STATE atomic! ;
+
+
+: WINDOW@ ( ^n -- n ) R.WINDOW atomic@ ;
+
+: WINDOW! ( n ^n -- ) {: w:n r:^ :}
+   w r R.WINDOW atomic! ;
+
+: CLOSED? ( ^n -- bool ) WINDOW@ WINDOW-CLOSED = ;
+
+: VEC@ ( ^n -- ^VEC:vector<u8> ) R.VEC VEC-SLOT @ ;
+
+: ROOM ( ^VEC:vector<u8> -- n ) dup VEC:CAP swap VEC:COUNT - ;
+
+
+\ An open window onto v that takes at most limit bytes.
+: WINDOW-INIT ( ^n n ^VEC:vector<u8> -- ) {: r:^ limit:n v:^ :}
+   v r R.VEC VEC-SLOT !
+   limit r R.CAP !
+   0 r R.LEN !
+   0 r R.WANTED !
+   0 r R.THROW !
+   WINDOW-OPEN r WINDOW! ;
+
+
+\ The loop's callback, under CURL-LOCK: only the owner moves a full window.
+: WINDOW-WAIT ( ^n n -- n ) {: r:^ k:n :}
+   k r R.WANTED !
+   WINDOW-FULL r WINDOW!
+   r R.OWNER OWNER-SLOT @ TASK:WAKE
+   WRITE-PAUSE ;
+
+
+\ An owner that left is never woken for room, and its vector never touched.
+: GONE? ( ^n -- bool )
+   R.STATE atomic@ dup STATE-ABANDONED = swap STATE-LEAVING = or ;
+
+
+\ The loop's record waits for room; PERFORM's grows the vector itself.
+: WAITS? ( ^n n -- bool ) {: r:^ k:n :}
+   r R.MODE @ MODE-CALLER <>  k r VEC@ ROOM >  and ;
+
+
+\ What libcurl hears back for u bytes at src: all of them, fewer when the limit
+\ cuts them, which ends the transfer, or a pause until the block has room.
+: PIECE-PUT ( str ^n -- n ) {: src:^ u:n r:^ :}
+   r GONE? if 0 exit then
+   r WINDOW@ {: w:n :}
+   w WINDOW-CLOSED = if 0 exit then
+   w WINDOW-OPEN <> if WRITE-PAUSE exit then
+   r R.CAP @ r R.LEN @ - u min {: k:n :}
+   r k WAITS? if r k WINDOW-WAIT exit then
+   src k r VEC@ VEC:APPEND
+   r R.LEN @ k + r R.LEN !
+   k u < if WINDOW-CLOSED r WINDOW! then
+   k ;
+
+
+\ size_t write(char *, size_t, size_t, void *record). A throw answers 0, which
+\ ends the transfer, and waits in the record for the owner to rethrow.
+CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
+
+: PIECE-BODY ( ^u8 n n n -- n ) {: src:^ size:n count:n data:n :}
+   data CURL-N>PTR {: r:^ :}
+   0 [: drop src size count * r PIECE-PUT ;] catch {: code:n :}
+   code 0= if exit then
+   drop code r R.THROW !
+   0 ;
+' PIECE-BODY PIECE-WRITE-BODY !
+
+
+\ libcurl calls PIECE-WRITE on whichever task drives the handle.
+: BODY-SINK ( n ^n -- n ) {: easy:n r:^ :}
+   PIECE-WRITE TASK:CALLER-CONTEXT FFI-CB:ENTRY {: entry:n :}
+   easy OPT-WRITE-FUNCTION entry SETOPT-NUM dup CURLE-OK <> if exit then drop
+   easy OPT-WRITE-DATA r FFI:>CELL SETOPT-NUM ;
+
+
+: TRANSFER ( n ^n n -- n ) {: easy:n r:^ headers:n :}
+   easy r BODY-SINK dup CURLE-OK <> if exit then drop
+   easy OPT-HEADER-DATA headers SETOPT-NUM dup CURLE-OK <> if exit then drop
+   easy EASY-PERFORM ;
 
 
 \ A fresh mapping is zero: every record free. The chunk is linked once it is
@@ -931,8 +1010,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    idx REC-RELEASE ;
 
 
-: LEAVING? ( n -- bool ) {: idx:n :}
-   idx REC-STATE@ dup STATE-ABANDONED = swap STATE-LEAVING = or ;
+: LEAVING? ( n -- bool ) REC GONE? ;
 
 
 : TABLE-CLEAR ( -- )
@@ -959,13 +1037,12 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    false ;
 
 
-: REC-FILL ( n n ^u8 n n n n -- ) {: idx:n easy:n target capacity:n stream:n headers:n mode:n :}
+: REC-FILL ( n n n -- ) {: idx:n easy:n mode:n :}
    easy idx REC R.EASY !
-   capacity idx REC R.CAP !
-   stream idx REC R.STREAM !
-   headers idx REC R.HSTREAM !
+   0 idx REC R.CAP !
+   0 idx REC R.STREAM !
+   0 idx REC R.HSTREAM !
    0 idx REC R.ADDED !
-   target idx REC-TARGET!
    TASK:SELF idx REC R.OWNER OWNER-SLOT !
    KIND-FAILED idx REC R.KIND !
    0 idx REC R.STATUS !
@@ -999,19 +1076,16 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    headers headeru headrc clear-rc FIRST-ERROR ;
 
 
-\ A whole body's span keeps what it was given; a streamed body is the loop's
+\ A whole body's vector keeps what it was given; a streamed body is the loop's
 \ own buffer and is freed.
 : BODY-DROP ( n -- n ) {: idx:n :}
-   idx REC-MODE@ MODE-WHOLE = if
-      idx REC-STREAM@ SPAN-TAKE nip nip exit
-   then
+   idx REC-STREAM@ 0= if CURLE-OK exit then
    idx REC-STREAM-TAKE {: body:n bodyu:n bodyrc:n :}
    body bodyu BYTES-RELEASE
    bodyrc ;
 
 
 : STREAM-DROP ( n -- n ) {: idx:n :}
-   idx REC-STREAM@ 0= if CURLE-OK exit then
    idx BODY-DROP {: bodyrc:n :}
    idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
    headers headeru BYTES-RELEASE
@@ -1025,9 +1099,8 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 \ FETCH-RESULT's decision, stored as fields because the value belongs to the
 \ task that waits.
-: RESULT-STORE ( n n n bool -- ) {: idx:n status:n u:n full:bool :}
+: RESULT-STORE ( n n bool -- ) {: idx:n status:n full:bool :}
    status idx REC R.STATUS !
-   u idx REC R.LEN !
    full if KIND-TRUNCATED else KIND-RESPONSE then idx REC R.KIND ! ;
 
 
@@ -1156,14 +1229,14 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    CURLM-OK ;
 
 
-\ libcurl already wrote the body into the owner's span, exactly as PERFORM's.
+\ The callback already appended the body to the owner's vector, as PERFORM's.
 : WHOLE-FINISH ( n n -- n ) {: idx:n rc:n :}
-   idx REC-STREAM@ SPAN-TAKE {: u:n refused:bool bodyrc:n :}
    idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
    idx LEAVING? if
       headers headeru BYTES-RELEASE idx LEAVE-DONE CURLM-OK exit
    then
-   rc refused BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR
+   idx REC CLOSED? {: refused:bool :}
+   rc refused BODY-RC headrc FIRST-ERROR
    headers headeru CAPTURE-RC FIRST-ERROR {: outcome:n :}
    outcome CURLE-OK <> if
       headers headeru BYTES-RELEASE
@@ -1173,7 +1246,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    then
    idx REC-EASY@ STATUS-TRY {: status:n valid:bool :}
    valid 0= if headers headeru BYTES-RELEASE E-RESULT throw then
-   idx status u refused RESULT-STORE
+   idx status refused RESULT-STORE
    idx REC-EASY@ headers headeru VALID-WHOLE STATE-PUBLISH
    idx SETTLE
    CURLM-OK ;
@@ -1273,6 +1346,18 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    idx rc FAIL-RUN ;
 
 
+\ The loop's side of a ready window: open again, then the resume, inside which
+\ libcurl may hand the kept piece straight back.
+: WINDOW-RESUME ( n -- n ) {: idx:n :}
+   idx REC-MODE@ MODE-WHOLE <> if CURLM-OK exit then
+   idx REC-STATE@ STATE-RUNNING <> if CURLM-OK exit then
+   idx REC WINDOW@ WINDOW-READY <> if CURLM-OK exit then
+   WINDOW-OPEN idx REC WINDOW!
+   idx REC-EASY@ CURLPAUSE-CONT EASY-PAUSE {: rc:n :}
+   rc CURLE-OK = if CURLM-OK exit then
+   idx rc FINISH ;
+
+
 : CANCEL-RUN ( n -- n ) {: idx:n :}
    idx CURLE-ABORTED FAIL-RUN ;
 
@@ -1290,6 +1375,7 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
    st STATE-CLAIMED = if idx ADD-ONE exit then
    st STATE-CANCEL = if idx CANCEL-RUN exit then
    idx LEAVING? if idx LEAVE-RUN exit then
+   idx WINDOW-RESUME dup CURLM-OK <> if exit then drop
    idx STREAM-DELIVER dup CURLM-OK <> if exit then drop
    idx STREAM-PACE ;
 
@@ -1633,16 +1719,18 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 : RESULT-TAKE ( n -- fetch-result ) {: idx:n :}
    CURL-LOCK TASK:GET
    idx REC R.KIND @ idx REC R.STATUS @ idx REC R.LEN @ idx REC R.CODE @
+   idx REC R.THROW @ {: fault:n :}
    idx REC-RELEASE
    CURL-LOCK TASK:RELEASE
+   fault 0<> if fault throw then
    RESULT-BUILD ;
 
 
 \ An owner that leaves, halted or in CLEANUP, gives its record up and returns
 \ only once the loop holds no part of it: the loop takes the handle out of the
-\ multi handle, cleans it up and marks it LEFT before the span is the owner's
-\ to free or reuse. The wait is a TASK:WAIT loop, which parks normally once the
-\ halt's hint is taken. A DONE record is already out of the multi handle with
+\ multi handle, cleans it up and marks it LEFT before the vector or span is the
+\ owner's to free or reuse. The wait is a TASK:WAIT loop, which parks normally
+\ once the halt's hint is taken. A DONE record is already out of the multi handle with
 \ nothing left to write, and is freed here without the loop, which after a
 \ FAIL-ALL is no longer there to answer.
 : ABANDON ( n -- ) {: idx:n :}
@@ -1677,9 +1765,9 @@ CAST: TARGET-SLOT ( ^n -- ^^u8 )
 
 \ Every task exit precedes release of its TCB. Marking its records under the
 \ loop's lock stops a later copy or wake, but this runs after the task's
-\ cleanups, so it gives no span back: a span must outlive its record. It wakes
-\ the loop before releasing the lock, so the loop cannot stop and close the
-\ waker under that wake.
+\ cleanups, so it gives no vector or span back: each must outlive its record.
+\ It wakes the loop before releasing the lock, so the loop cannot stop and
+\ close the waker under that wake.
 : OWNER-END ( -- )
    TASK:SELF {: owner:^ :}
    CURL-LOCK TASK:GET
@@ -1791,40 +1879,39 @@ public
 
 private
 
-\ A whole body goes straight into the owner's span; a streamed one grows in the
-\ record's memstream until the loop copies it into a span NEXT-ARM armed.
-: BODY-OPEN ( n ^u8 n n -- n ) {: idx:n target capacity:n mode:n :}
-   mode MODE-WHOLE = if target capacity SPAN-OPEN exit then
-   idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN ;
+\ A whole body's sink is a window onto the owner's vector; a streamed one grows
+\ in the record's memstream until the loop copies it into a span NEXT-ARM armed.
+: WHOLE-SINK ( n n ^VEC:vector<u8> -- n ) {: idx:n limit:n v:^ :}
+   idx REC limit v WINDOW-INIT
+   idx REC-EASY@ idx REC BODY-SINK ;
 
 
-: START-WITH-BODY ( handle ^u8 len n -- status ) {: subject:handle target capacity:len mode:n :}
+: STREAM-SINK ( n -- n ) {: idx:n :}
+   idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN {: stream:n :}
+   stream 0= if CURLE-OUT-OF-MEMORY exit then
+   stream idx REC R.STREAM !
+   idx REC-EASY@ {: easy:n :}
+   easy OPT-WRITE-FUNCTION 0 SETOPT-NUM dup CURLE-OK <> if exit then drop
+   easy OPT-WRITE-DATA stream SETOPT-NUM ;
+
+
+: START-WITH-BODY ( handle n [ n -- n ] -- status )
+   {: subject:handle mode:n sink :}
    subject HANDLE-CELL {: easy:n :}
    LOOP-LIVE atomic@ 0= if E-STATE throw then
-   capacity LEN>N 0 AT-LEAST
    TASK:SELF dup FFI:>CELL 0<> if ['] OWNER-END swap TASK:AT-EXIT else drop then
    easy START-CLAIM {: idx:n :}
    easy STATE-GET {: state:n :}
    state STATE-CLEAR-RESPONSE
-   idx target capacity LEN>N mode BODY-OPEN dup 0= if
-      drop idx REC-RELEASE OUT-OF-MEMORY exit
-   then
-   {: stream:n :}
-   idx easy target capacity LEN>N stream 0 mode REC-FILL
+   idx easy mode REC-FILL
    state idx REC R.PRIVATE !
    idx REC-HBUF-CELL idx REC-HLEN-CELL STREAM-OPEN dup 0= if
-      drop
-      idx STREAM-DROP drop
-      idx REC-RELEASE OUT-OF-MEMORY exit
+      drop idx REC-RELEASE OUT-OF-MEMORY exit
    then
    {: headers:n :}
    headers idx REC R.HSTREAM !
-   easy OPT-WRITE-DATA stream SETOPT-NUM dup CURLE-OK <> if
-      idx STREAM-DROP drop
-      idx REC-RELEASE
-      CODE>STATUS exit
-   then drop
-   easy OPT-HEADER-DATA headers SETOPT-NUM dup CURLE-OK <> if
+   idx sink execute
+   [: easy OPT-HEADER-DATA headers SETOPT-NUM ;] OK-THEN dup CURLE-OK <> if
       idx STREAM-DROP drop
       idx REC-RELEASE
       CODE>STATUS exit
@@ -1840,7 +1927,7 @@ private
 
 \ No halt may leave a half-initialized transfer behind. Once published, the
 \ task's exit cleanup owns abandonment until a terminal result is collected.
-: START-WITH ( handle ^u8 len n -- status )
+: START-WITH ( handle n [ n -- n ] -- status )
    TASK:DEFER-ENTER
    [: START-WITH-BODY ;] [: TASK:DEFER-LEAVE ;] finally ;
 
@@ -1867,23 +1954,40 @@ private
    CURL-LOCK TASK:RELEASE
    kind status u rc STREAM-RESULT-BUILD ;
 
+\ The owner's side of a full window, on its own task: the room, then ready
+\ under CURL-LOCK. A refused RESERVE gives the transfer up, then rethrows.
+: WINDOW-GROW ( n -- ) {: idx:n :}
+   idx REC {: r:^ :}
+   r VEC@ {: v:^ :}
+   [: v  v VEC:COUNT r R.WANTED @ +  VEC:RESERVE ;] catch {: code:n :}
+   code 0<> if idx ABANDON code throw then
+   CURL-LOCK TASK:GET
+   WINDOW-READY r WINDOW!
+   CURL-LOCK TASK:RELEASE
+   WAKER AIO:WAKE ;
+
 public
 
-\ Hands one prepared handle and one writable span to the loop and answers as
-\ soon as the record is queued. Every per-handle option is set before this and
-\ holds for that transfer alone.
-\ From here until AWAIT answers, the handle and the span belong to the loop: no
-\ other task may touch either. A START with no loop running, and a second START
-\ on a handle already in flight, are E-STATE. The records grow with the
-\ transfers in flight, so no count of them is refused.
-: START ( handle ^u8 len -- status ) {: subject:handle target capacity:len :}
-   subject target capacity MODE-WHOLE START-WITH ;
+\ Hands one prepared handle to the loop, which appends at most len body bytes
+\ to the vector, and answers as soon as the record is queued. Every per-handle
+\ option is set before this and holds for that transfer alone.
+\ From here until AWAIT answers, the handle and the vector belong to the
+\ transfer: no other task may touch either. Body bytes within len that pass the
+\ vector's room pause the transfer until this handle's AWAIT grows it, so a
+\ vector reserved to its count plus len before START never waits. A START with
+\ no loop running, and a second START on a handle already in flight, are
+\ E-STATE. The records grow with the transfers in flight, so no count of them
+\ is refused.
+: START ( handle len ^VEC:vector<u8> -- status )
+   {: subject:handle limit:len v:^ :}
+   limit LEN>N 0 AT-LEAST
+   subject MODE-WHOLE [: limit LEN>N v WHOLE-SINK ;] START-WITH ;
 
 
 \ Queues the handle for incremental receive. The loop may write each span NEXT
 \ or NEXT-ARM gives until that read is taken or the task exits, after cleanups.
 : STREAM-START ( handle -- status ) {: subject:handle :}
-   subject BUF-CELL 0 >LEN MODE-STREAM START-WITH ;
+   subject MODE-STREAM [: STREAM-SINK ;] START-WITH ;
 
 
 \ Arms the next read into the span. The loop may write it until NEXT-TAKE
@@ -1948,13 +2052,15 @@ public
 \ handle with no transfer in flight, and one another task started, are E-STATE.
 \ A pending halt comes before a ready result: the record is given up and the
 \ task ends, or answers failed CURLE-ABORTED where termination is deferred.
+\ The vector grows here, on this task; what its allocator or VEC throws is
+\ rethrown once the transfer is given up.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
    begin
       idx HALT-LEFT? if CURLE-ABORTED FETCH-FAILED exit then
       idx REC-STATE@ STATE-DONE = if idx RESULT-TAKE exit then
-      TASK:WAIT
+      idx REC WINDOW@ WINDOW-FULL = if idx WINDOW-GROW else TASK:WAIT then
    again ;
 
 
@@ -2052,26 +2158,24 @@ public
    [: CURL-LOCK TASK:RELEASE ;] finally ;
 
 
-: PERFORM ( handle ^u8 len -- fetch-result ) {: subject:handle target capacity:len :}
-   subject HANDLE-CELL {: easy:n :}
-   capacity LEN>N 0 AT-LEAST
-   easy HANDLE-BUSY? if E-STATE throw then
-   easy STATE-GET STATE-CLEAR-RESPONSE
-   target capacity LEN>N SPAN-OPEN dup 0= if
+private
+
+\ PERFORM's record is its own, outside the table, and the callback appends on
+\ this task, growing the vector; what that growth throws is rethrown here.
+: PERFORM-IN ( ^n n n ^VEC:vector<u8> -- fetch-result )
+   {: r:^ easy:n limit:n v:^ :}
+   r limit v WINDOW-INIT
+   MODE-CALLER r R.MODE !
+   HBUF-CELL HLEN-CELL STREAM-OPEN dup 0= if
       drop CURLE-OUT-OF-MEMORY FETCH-FAILED exit
    then
-   {: body:n :}
-   HBUF-CELL HLEN-CELL STREAM-OPEN dup 0= if
-      drop
-      body SPAN-TAKE drop drop drop
-      CURLE-OUT-OF-MEMORY FETCH-FAILED exit
-   then
    {: headers:n :}
-   easy body headers TRANSFER {: rc:n :}
-   body SPAN-TAKE {: u:n refused:bool bodyrc:n :}
+   easy r headers TRANSFER {: rc:n :}
    headers HBUF-CELL HLEN-CELL STREAM-TAKE {: captured:n capturedu:n headrc:n :}
    easy DATA-CLEAR {: clear-rc:n :}
-   rc refused BODY-RC bodyrc FIRST-ERROR headrc FIRST-ERROR clear-rc FIRST-ERROR
+   r R.THROW @ {: fault:n :}
+   fault 0<> if captured capturedu BYTES-RELEASE fault throw then
+   rc r CLOSED? BODY-RC headrc FIRST-ERROR clear-rc FIRST-ERROR
    captured capturedu CAPTURE-RC FIRST-ERROR {: outcome:n :}
    outcome CURLE-OK <> if
       captured capturedu BYTES-RELEASE
@@ -2080,7 +2184,20 @@ public
    easy STATUS-TRY {: status:n valid:bool :}
    valid 0= if captured capturedu BYTES-RELEASE E-RESULT throw then
    easy captured capturedu VALID-WHOLE STATE-PUBLISH
-   status u refused FETCH-RESULT ;
+   status r R.LEN @ r CLOSED? FETCH-RESULT ;
+
+public
+
+\ Runs the transfer on this task, appending at most len body bytes to the
+\ vector.
+: PERFORM ( handle len ^VEC:vector<u8> -- fetch-result )
+   {: subject:handle limit:len v:^ :}
+   subject HANDLE-CELL {: easy:n :}
+   limit LEN>N 0 AT-LEAST
+   easy HANDLE-BUSY? if E-STATE throw then
+   easy STATE-GET STATE-CLEAR-RESPONSE
+   REC-BYTES MEM:BYTES-ALLOC-LEN
+   [: drop CELL-VIEW easy limit LEN>N v PERFORM-IN ;] MEM:WITH-BYTES ;
 
 
 \ Gives up the caller's uncollected transfer as a halted owner does; another

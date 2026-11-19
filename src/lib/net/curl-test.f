@@ -33,6 +33,8 @@ require src/lib/aio.f                       \ the loop the multiplexed transfers
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
 require src/lib/arena.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/test/stderr.f
 
 \ White-box: reopens CURL for the record count, a record's published length and
@@ -86,7 +88,7 @@ FUNCTION: SET-LIMIT setrlimit ( n ^u8 -- i32 ) ;FUNCTION
 
 $7F000001 constant LOOPBACK
 $80 constant BACKLOG                    \ the concurrent case connects MANY-N times at once
-$2000 constant BODY-CAP
+$2000 constant BODY-CAP                 \ a fetch's limit, and the room BODY holds
 $1000 constant REQ-CAP
 $1000 constant RES-CAP
 $1000 constant HEADER-CAP
@@ -112,14 +114,14 @@ $61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
 5000 constant STALL-MOST-MS             \ the bound on a stall the low-speed test ends
 $80000000 constant OVER-LONG            \ one past the C long ceiling CURL checks
 $4000001 constant HUGE-BODY-U           \ one past 64 MiB: a request body has no fixed cap
-$4001000 constant HUGE-U                \ a page past 64 MiB: a reply span has no fixed cap
+$4001000 constant HUGE-U                \ a page past 64 MiB: a reply has no fixed cap
 251 constant HUGE-PERIOD                \ a prime period, so a shifted copy cannot match
 
 create ROOT-BUF PATH-CAP allot
 create FILE-BUF PATH-CAP allot
 create JAR-BUF PATH-CAP allot
 create NO-CERTS-BUF PATH-CAP allot      \ an empty certificate directory
-create BODY-BUF BODY-CAP allot
+create BODY-BUF BODY-CAP allot          \ the second stream's bytes
 create REQ-BUF REQ-CAP allot
 create PLAIN-BUF REQ-CAP allot          \ the plain peer's, apart from the server task's
 create RES-BUF RES-CAP allot
@@ -193,7 +195,7 @@ variable HEADER-KIND
 variable TRANSCRIPT-U
 TYPED-VARIABLE HEADER-HANDLE CURL:handle
 PTR-VARIABLE HUGE-SENT                  \ the huge body the server writes
-PTR-VARIABLE HUGE-GOT                   \ the span the client receives it in
+TYPED-VARIABLE BODY-VEC ^VEC:vector<u8> \ the vector a fetch appends to
 
 0 constant KIND-RESPONSE
 1 constant KIND-TRUNCATED
@@ -235,7 +237,6 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : PATH-HINT-CUT$ ( -- str ) s" /hint-cut" ;
 : PATH-BAD-CHUNK$ ( -- str ) s" /bad-chunk" ;
 : SENT-BYTES ( -- ^u8 ) HUGE-SENT @ ;
-: GOT-BYTES ( -- ^u8 ) HUGE-GOT @ ;
 : FORM$ ( -- str ) s" a=1" ;
 : JSON$ ( -- str ) s" {}" ;
 : HEADERS$ ( -- str )
@@ -671,7 +672,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 \ HELLO$ over cleartext HTTP/2 to a client with prior knowledge, for the HTTP/2
-\ span cases.
+\ limit cases.
 : SERVE-H2 ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn H2-STREAM 0= if drop conn TCP4:CLOSE PEER-STATUS exit then
    {: stream:n :}
@@ -749,7 +750,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    conn SEND-RESPONSE ;
 
 
-\ A redirect whose own body is longer than the span its final answer fills.
+\ A redirect whose own body is longer than the limit its final answer fills.
 : SERVE-BODIED-REDIRECT ( TCP4:connection -- ) {: conn:TCP4:connection :}
    RES-RESET
    s" 302 Found" STATUS-LINE
@@ -1097,32 +1098,36 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    ;MATCH ;
 
 
-: BODY-FILL ( -- )
-   BODY-CAP 0 do FILL-BYTE BODY-BUF i + c! loop ;
+: BODY ( -- ^VEC:vector<u8> ) BODY-VEC @ ;
+
+
+: NEW-VEC ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+
+
+: BODY-EMPTY ( -- ) BODY 0 VEC:RESIZE ;
 
 
 : RESULT-RESET ( -- )
    0 LAST-STATUS ! 0 LAST-LEN ! 0 LAST-CODE ! KIND-FAILED LAST-KIND !
-   BODY-FILL ;
+   BODY-EMPTY ;
 
 
 : PERFORM-BODY ( CURL:handle len -- CURL:fetch-result )
-   {: subject:CURL:handle capacity:len :}
+   {: subject:CURL:handle limit:len :}
    RESULT-RESET
-   subject BODY-BUF capacity CURL:PERFORM ;
+   subject limit BODY CURL:PERFORM ;
 
 
 : FETCH ( CURL:handle len -- )
    PERFORM-BODY RECORD-RESULT ;
 
 
-: BODY$ ( -- ^u8 n )
-   BODY-BUF LAST-LEN @ ;
+: BODY$ ( -- str )
+   BODY VEC:SPAN SPAN:$ ;
 
 
 : UNTOUCHED? ( -- bool )
-   BODY-CAP 0 do BODY-BUF i + c@ FILL-BYTE <> if false unloop exit then loop
-   true ;
+   BODY VEC:COUNT 0= ;
 
 
 : HEADER-FILL ( -- )
@@ -1490,8 +1495,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : HUGE-RELEASE ( -- )
-   SENT-BYTES HUGE-FREE NULL-PTR HUGE-SENT !
-   GOT-BYTES HUGE-FREE NULL-PTR HUGE-GOT ! ;
+   SENT-BYTES HUGE-FREE NULL-PTR HUGE-SENT ! ;
 
 
 : HUGE-FILL ( -- )
@@ -1499,19 +1503,25 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    HUGE-U 0 do i HUGE-PERIOD mod p i + c! loop ;
 
 
-: HUGE-CASE ( -- )
-   HUGE-ALLOC HUGE-SENT !
-   HUGE-ALLOC HUGE-GOT !
-   HUGE-FILL
-   RESULT-RESET
-   PATH-HUGE$ GET-READY {: subject:CURL:handle :}
-   subject GOT-BYTES HUGE-U >LEN CURL:PERFORM RECORD-RESULT
+: HUGE-PERFORM ( CURL:handle ^VEC:vector<u8> -- )
+   {: subject:CURL:handle v:^ :}
+   subject HUGE-U >LEN v CURL:PERFORM RECORD-RESULT
    subject CURL:CLEANUP
-   s" a reply past 64 MiB arrives whole in a span that holds it" T-LABEL
+   s" PERFORM grows an empty vector to a whole reply past 64 MiB" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T=
    LAST-LEN @ HUGE-U T=
-   GOT-BYTES HUGE-U SENT-BYTES HUGE-U STR= TTRUE ;
+   v VEC:COUNT HUGE-U T=
+   v VEC:SPAN SPAN:$ SENT-BYTES HUGE-U STR= TTRUE ;
+
+
+: HUGE-CASE ( -- )
+   HUGE-ALLOC HUGE-SENT !
+   HUGE-FILL
+   RESULT-RESET
+   PATH-HUGE$ GET-READY {: subject:CURL:handle :}
+   NEW-VEC {: v:^ :}
+   [: subject v HUGE-PERFORM ;] [: v VEC:DELETE ;] finally ;
 
 
 : TEST-HUGE ( -- )
@@ -1552,9 +1562,8 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject 1 >LEN FETCH
    s" body and header truncation report independent lengths" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
-   \ macOS fills the one-byte span; glibc's fmemopen refuses the whole write
-   \ that overflows once pos+1 >= size, so the span holds nothing there.
-   LAST-LEN @ HB-TARGET-MACOS? if 1 else 0 then T=
+   LAST-LEN @ 1 T=
+   BODY$ JSON$ drop 1 T$=
    subject 1 HEADER-COPY
    HEADER-KIND @ 1 T=
    HEADER-LEN @ HEADERS$ nip T=
@@ -1955,10 +1964,10 @@ variable LONG-ANSWER
 \ No more: macOS caps listen queues at kern.ipc.somaxconn = 128; HTTP/1.1 connects per transfer
 100 constant MANY-N                     \ the concurrent transfers of case one, past 32 + 64 records
 2 constant MANY-ROUNDS                  \ and its rounds, the second on the first's records
-$40 constant MANY-CAP                   \ one span each, far past the six-byte body
+$40 constant MANY-CAP                   \ each one's limit and room, far past the six-byte body
 4 constant STALL-GROUP                  \ one stalled transfer and three healthy ones
 
-create MANY-BUF MANY-N MANY-CAP * allot
+MANY-N TYPED-BUFFER MANY-VECS ^VEC:vector<u8>
 
 TEST-ALIGN8
 variable DURING-THREADS
@@ -2037,85 +2046,85 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
 
 : MULTI-FETCH ( CURL:handle len -- ) {: subject:CURL:handle capacity:len :}
    RESULT-RESET
-   subject BODY-BUF capacity CURL:START EXPECT-OK
+   subject capacity BODY CURL:START EXPECT-OK
    subject AWAIT-ONE ;
 
 
-: SPAN-RUN ( CURL:handle n bool -- ) {: subject:CURL:handle capacity:n multi:bool :}
+: LIMIT-RUN ( CURL:handle n bool -- ) {: subject:CURL:handle capacity:n multi:bool :}
    multi if subject capacity >LEN MULTI-FETCH
    else subject capacity >LEN FETCH then
    subject CURL:CLEANUP ;
 
 
-: SPAN-FETCH ( str n bool -- ) {: path:^ pathu:n capacity:n multi:bool :}
-   path pathu GET-READY capacity multi SPAN-RUN ;
+: LIMIT-FETCH ( str n bool -- ) {: path:^ pathu:n capacity:n multi:bool :}
+   path pathu GET-READY capacity multi LIMIT-RUN ;
 
 
-: SPAN-CASES ( bool -- ) {: multi:bool :}
-   PATH-HELLO$ 7 multi SPAN-FETCH
-   s" a body shorter than its span arrives whole" T-LABEL
+: LIMIT-CASES ( bool -- ) {: multi:bool :}
+   PATH-HELLO$ 7 multi LIMIT-FETCH
+   s" a body shorter than its limit arrives whole" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    BODY$ HELLO$ T$=
-   BODY-BUF 6 + c@ FILL-BYTE T=
-   PATH-HELLO$ 6 multi SPAN-FETCH
-   s" a body that fills its span exactly arrives whole" T-LABEL
+   BODY VEC:COUNT 6 T=
+   PATH-HELLO$ 6 multi LIMIT-FETCH
+   s" a body as long as its limit arrives whole" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    BODY$ HELLO$ T$=
-   BODY-BUF 6 + c@ FILL-BYTE T=
-   PATH-HELLO$ 5 multi SPAN-FETCH
-   s" a Content-Length past the span fills it and stops at its end" T-LABEL
+   BODY VEC:COUNT 6 T=
+   PATH-HELLO$ 5 multi LIMIT-FETCH
+   s" a Content-Length past the limit is cut at the limit" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-STATUS @ 200 T=
    BODY$ s" hello" T$=
-   BODY-BUF 5 + c@ FILL-BYTE T=
-   PATH-CHUNKED$ 5 multi SPAN-FETCH
-   s" a chunked body past the span fills it and stops at its end" T-LABEL
+   BODY VEC:COUNT 5 T=
+   PATH-CHUNKED$ 5 multi LIMIT-FETCH
+   s" a chunked body past the limit is cut at the limit" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-STATUS @ 200 T=
    BODY$ s" hello" T$=
-   BODY-BUF 5 + c@ FILL-BYTE T=
+   BODY VEC:COUNT 5 T=
    PATH-HELLO$ GET-READY {: whole:CURL:handle :}
    whole CURL-TEST:H2-PRIOR EXPECT-OK
-   whole 7 multi SPAN-RUN
-   s" an HTTP/2 body shorter than its span arrives whole" T-LABEL
+   whole 7 multi LIMIT-RUN
+   s" an HTTP/2 body shorter than its limit arrives whole" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T=
    BODY$ HELLO$ T$=
    PATH-HELLO$ GET-READY {: past:CURL:handle :}
    past CURL-TEST:H2-PRIOR EXPECT-OK
-   past 5 multi SPAN-RUN
-   s" an HTTP/2 body past the span fills it and stops at its end" T-LABEL
+   past 5 multi LIMIT-RUN
+   s" an HTTP/2 body past the limit is cut at the limit" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-STATUS @ 200 T=
    BODY$ s" hello" T$=
-   BODY-BUF 5 + c@ FILL-BYTE T=
-   PATH-HELLO$ 0 multi SPAN-FETCH
-   s" an empty span truncates a body and holds nothing" T-LABEL
+   BODY VEC:COUNT 5 T=
+   PATH-HELLO$ 0 multi LIMIT-FETCH
+   s" a limit of 0 truncates a body and appends nothing" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-STATUS @ 200 T=
    LAST-LEN @ 0 T=
    UNTOUCHED? TTRUE
-   PATH-FOUND$ 0 multi SPAN-FETCH
-   s" an empty span takes an empty body as a response" T-LABEL
+   PATH-FOUND$ 0 multi LIMIT-FETCH
+   s" a limit of 0 takes an empty body as a response" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 302 T=
    LAST-LEN @ 0 T=
    PATH-BODIED-REDIRECT$ GET-READY {: moved:CURL:handle :}
    moved true CURL:FOLLOW! EXPECT-OK
-   moved 6 multi SPAN-RUN
-   s" a followed redirect's body longer than the span does not bound the answer" T-LABEL
+   moved 6 multi LIMIT-RUN
+   s" a followed redirect's body longer than the limit does not bound the answer" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T=
    BODY$ HELLO$ T$=
-   s" /nothing-here.txt" 3 multi SPAN-FETCH
-   s" an HTTP error past the span is truncated with its status" T-LABEL
+   s" /nothing-here.txt" 3 multi LIMIT-FETCH
+   s" an HTTP error past the limit is truncated with its status" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-STATUS @ 404 T=
    BODY$ s" not" T$= ;
 
 
-: TEST-SPANS ( -- )
-   false SPAN-CASES ;
+: TEST-LIMITS ( -- )
+   false LIMIT-CASES ;
 
 
 : STREAM-APPEND ( len -- ) {: u:len :}
@@ -2177,7 +2186,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    STREAM-HEAD
    subject RES-BUF RES-U @ HEADER-EXACT
    STALL-READY {: other:CURL:handle :}
-   other BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   other BODY-CAP >LEN BODY CURL:START EXPECT-OK
    other AWAIT-ONE
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 28 T=
@@ -2232,7 +2241,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:CLEANUP
    PATH-HELLO$ GET-READY {: whole:CURL:handle :}
    whole OWNER-HANDLE !
-   whole BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   whole BODY-CAP >LEN BODY CURL:START EXPECT-OK
    [: NEXT-WHOLE-REFUSED ;] CURL:E-STATE TTHROWSQ
    whole AWAIT-ONE
    LAST-KIND @ KIND-RESPONSE T=
@@ -2574,8 +2583,8 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    RETRY-POST-HITS atomic@ 3 T= ;
 
 
-: PARITY-SPANS ( -- )
-   true SPAN-CASES ;
+: PARITY-LIMITS ( -- )
+   true LIMIT-CASES ;
 
 
 : CASE-HEADER-REUSE ( -- )
@@ -2584,7 +2593,8 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    subject HEADERS$ HEADER-EXACT
    HEADER-BUF HEADER-SAVED HEADER-LEN @ BYTE-COPY
    subject PATH-HEADERS-B$ URL-FOR CURL:URL! EXPECT-OK
-   subject BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   BODY-EMPTY
+   subject BODY-CAP >LEN BODY CURL:START EXPECT-OK
    subject HEADER-REFUSED
    subject AWAIT-ONE
    s" AWAIT publishes replacement headers only after collection" T-LABEL
@@ -2598,11 +2608,11 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    HEADER-SAVED HEADER-LEN @ HEADERS$ T$= ;
 
 
-: CASE-HEADER-INDEPENDENT ( -- )
+: HEADER-INDEPENDENT ( ^VEC:vector<u8> -- ) {: v:^ :}
    PATH-HEADERS$ GET-READY {: one:CURL:handle :}
    PATH-HEADERS-B$ GET-READY {: two:CURL:handle :}
-   one BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
-   two BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   one BODY-CAP >LEN BODY CURL:START EXPECT-OK
+   two BODY-CAP >LEN v CURL:START EXPECT-OK
    two AWAIT-ONE
    two HEADERS-B$ HEADER-EXACT
    one HEADER-REFUSED
@@ -2613,14 +2623,18 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    two CURL:CLEANUP ;
 
 
-: MANY-SPAN ( n -- ^u8 ) {: idx:n :}
-   MANY-BUF idx MANY-CAP * + ;
+: CASE-HEADER-INDEPENDENT ( -- )
+   NEW-VEC {: v:^ :}
+   [: v HEADER-INDEPENDENT ;] [: v VEC:DELETE ;] finally ;
 
 
 : MANY-START ( n -- ) {: idx:n :}
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
    subject idx MANY-HANDLES !
-   subject idx MANY-SPAN MANY-CAP >LEN CURL:START EXPECT-OK ;
+   NEW-VEC {: v:^ :}
+   v MANY-CAP VEC:RESERVE
+   v idx MANY-VECS !
+   subject MANY-CAP >LEN v CURL:START EXPECT-OK ;
 
 
 : MANY-CHECK ( n -- ) {: idx:n :}
@@ -2629,7 +2643,9 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    subject CURL:CLEANUP
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T=
-   idx MANY-SPAN LAST-LEN @ HELLO$ T$= ;
+   idx MANY-VECS @ {: v:^ :}
+   v VEC:SPAN SPAN:$ HELLO$ T$=
+   v VEC:DELETE ;
 
 
 : MANY-ROUND ( -- )
@@ -2652,7 +2668,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 : CASE-STALLED ( -- )
    STALL-READY {: bad:CURL:handle :}
    RESULT-RESET
-   bad BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   bad BODY-CAP >LEN BODY CURL:START EXPECT-OK
    STALL-GROUP 1- 0 ?do i MANY-START loop
    bad AWAIT-ONE
    bad HEADER-REFUSED
@@ -2673,7 +2689,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    subject PATH-STALL$ URL-FOR CURL:URL! EXPECT-OK
    SERVER-HITS atomic@ {: before:n :}
    RESULT-RESET
-   subject BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   subject BODY-CAP >LEN BODY CURL:START EXPECT-OK
    before WAIT-HIT
    subject CURL:CANCEL
    subject AWAIT-ONE
@@ -2694,7 +2710,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    0 OWNER-RC !
    PATH-HELLO$ GET-READY OWNER-HANDLE !
    RESULT-RESET
-   OWNER-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   OWNER-HANDLE @ BODY-CAP >LEN BODY CURL:START EXPECT-OK
    s" the loop refuses to stop while a transfer is in flight" T-LABEL
    [: CURL:LOOP-STOP ;] CURL:E-STATE TTHROWSQ
    ['] OWNER-WORK OWNER-TASK TASK:ACTIVATE
@@ -2710,7 +2726,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 
 
 : HALT-WORK ( -- )
-   HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   HALT-HANDLE @ BODY-CAP >LEN BODY CURL:START
    MATCH CURL:status
       ok OF ENDOF
       failed OF CURL:CODE>N HALT-RC ! ENDOF
@@ -2747,7 +2763,7 @@ variable EXIT-BEGUN
 
 : EXIT-FETCH ( -- )
    1 EXIT-BEGUN atomic!
-   EXIT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+   EXIT-HANDLE @ BODY-CAP >LEN BODY CURL:START EXPECT-OK
    EXIT-HANDLE @ AWAIT-ONE ;
 
 : EXIT-WORK ( -- )
@@ -2786,7 +2802,7 @@ variable EXIT-BEGUN
 
 
 : LATE-WORK ( -- )
-   HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   HALT-HANDLE @ BODY-CAP >LEN BODY CURL:START
    MATCH CURL:status
       ok OF ENDOF
       failed OF CURL:CODE>N HALT-RC ! ENDOF
@@ -2819,7 +2835,7 @@ variable EXIT-BEGUN
 
 
 : LEAVE-WAIT ( -- )
-   HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   HALT-HANDLE @ BODY-CAP >LEN BODY CURL:START
    MATCH CURL:status
       ok OF ENDOF
       failed OF CURL:CODE>N HALT-RC ! ENDOF
@@ -2828,16 +2844,16 @@ variable EXIT-BEGUN
    HALT-HANDLE @ CURL:AWAIT DROP-FETCH ;
 
 : LEAVE-WORK ( -- )
-   [: LEAVE-WAIT ;] [: BODY-FILL ;] finally ;
+   [: LEAVE-WAIT ;] [: BODY-EMPTY ;] finally ;
 
 
 \ The wait for the server to see the client go outlasts every read the loop
 \ could still make, and a dribble cut short says the transfer was in flight at
 \ the halt.
-\ A loop that let go late writes after the refill only when it reads before the
-\ turn that answers the wake, so a regression fails this case on some runs and
-\ not on every one.
-: CASE-HALTED-SPAN ( -- )
+\ A loop that let go late appends after the cleanup emptied the vector only
+\ when it reads before the turn that answers the wake, so a regression fails
+\ this case on some runs and not on every one.
+: CASE-HALTED-VECTOR ( -- )
    0 HALT-PARKED !
    0 HALT-RC !
    PATH-TRICKLE$ GET-READY HALT-HANDLE !
@@ -2853,7 +2869,7 @@ variable EXIT-BEGUN
    s" the trickle was still in flight when its waiter was halted" T-LABEL
    HALT-RC @ 0 T=
    DRIBBLE-SENT atomic@ DRIBBLE-U < TTRUE
-   s" a halted waiter's span is its own again before its cleanups run" T-LABEL
+   s" a halted waiter's vector is its own again before its cleanups run" T-LABEL
    UNTOUCHED? TTRUE
    HALT-HANDLE @ CURL:CLEANUP
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
@@ -2962,7 +2978,7 @@ variable DEFER-RETURNED
    EARLY-MODE @ if
       HALT-HANDLE @ CURL:STREAM-START EXPECT-OK
    else
-      HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
+      HALT-HANDLE @ BODY-CAP >LEN BODY CURL:START EXPECT-OK
    then ;
 
 
@@ -3034,7 +3050,7 @@ variable DEFER-RETURNED
 \ halt meets a ready result.
 : DONE-WORK ( -- )
    DONE-HANDLE @ DONE-STATE {: state:^ :}
-   DONE-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START
+   DONE-HANDLE @ BODY-CAP >LEN BODY CURL:START
    MATCH CURL:status
       ok OF ENDOF
       failed OF CURL:CODE>N DONE-RC ! ENDOF
@@ -3077,10 +3093,140 @@ variable DEFER-RETURNED
 
 
 : START-COLD ( -- )
-   COLD-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK ;
+   COLD-HANDLE @ BODY-CAP >LEN BODY CURL:START EXPECT-OK ;
 
 : START-COLD-STREAM ( -- )
    COLD-HANDLE @ CURL:STREAM-START EXPECT-OK ;
+
+
+\ Into an empty vector, each piece of the trickle the block cannot hold pauses
+\ the transfer until AWAIT has grown it.
+: VEC-PAUSED ( ^VEC:vector<u8> -- ) {: v:^ :}
+   PATH-TRICKLE$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN v CURL:START EXPECT-OK
+   subject AWAIT-ONE
+   subject CURL:CLEANUP
+   s" a body past the vector's room arrives whole through AWAIT's growth" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-LEN @ DRIBBLE-U T=
+   v VEC:COUNT DRIBBLE-U T=
+   v VEC:SPAN SPAN:$ DRIBBLE$ T$= ;
+
+
+: VEC-RESERVED ( ^VEC:vector<u8> -- ) {: v:^ :}
+   v BODY-CAP VEC:RESERVE
+   v VEC:SPAN SPAN:$ drop {: block:^ :}
+   PATH-TRICKLE$ GET-READY {: subject:CURL:handle :}
+   subject BODY-CAP >LEN v CURL:START EXPECT-OK
+   subject AWAIT-ONE
+   subject CURL:CLEANUP
+   s" a vector reserved to the limit before START keeps its block" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   v VEC:SPAN SPAN:$ DRIBBLE$ T$=
+   v VEC:SPAN SPAN:$ drop block = TTRUE ;
+
+
+\ START appends after what the vector holds; a limit of 0 appends nothing.
+: VEC-NO-LIMIT ( ^VEC:vector<u8> -- ) {: v:^ :}
+   s" x" drop 1 v VEC:APPEND
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   subject 0 >LEN v CURL:START EXPECT-OK
+   subject AWAIT-ONE
+   subject CURL:CLEANUP
+   s" a limit of 0 takes no body and leaves the vector as it was" T-LABEL
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-LEN @ 0 T=
+   v VEC:SPAN SPAN:$ s" x" T$= ;
+
+
+\ Into an empty vector, the body's one piece waits for AWAIT's growth and is
+\ handed back on the resume, where the limit cuts it.
+: CUT-RESUMED ( ^VEC:vector<u8> bool -- ) {: v:^ h2:bool :}
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   h2 if subject CURL-TEST:H2-PRIOR EXPECT-OK then
+   subject 5 >LEN v CURL:START EXPECT-OK
+   subject AWAIT-ONE
+   subject CURL:CLEANUP
+   LAST-KIND @ KIND-TRUNCATED T=
+   LAST-STATUS @ 200 T=
+   LAST-LEN @ 5 T=
+   v VEC:SPAN SPAN:$ s" hello" T$= ;
+
+
+: VEC-CUT-RESUMED ( ^VEC:vector<u8> -- )
+   s" a limit cutting a resumed piece truncates the body" T-LABEL
+   false CUT-RESUMED ;
+
+
+: VEC-CUT-RESUMED-H2 ( ^VEC:vector<u8> -- )
+   s" an HTTP/2 limit cutting a resumed piece truncates the body" T-LABEL
+   true CUT-RESUMED ;
+
+
+\ The heap's allocator, but a block grows to 4 bytes at most.
+TYPED-VARIABLE TIGHT-ALLOCATOR ALLOC:allocator
+
+: TIGHT-ALLOC ( str -- ^u8 )
+   {: st:^ len:n :}
+   HEAP:ALLOCATOR len ALLOC:BYTES drop ;
+
+: TIGHT-RESIZE ( ^u8 str n -- ^u8 )
+   {: st:^ block:^ old:n new:n :}
+   new 4 > if E-MEM-SIZE throw then
+   HEAP:ALLOCATOR block old new ALLOC:RESIZE drop ;
+
+: TIGHT-FREE ( ^u8 ^u8 -- )
+   {: st:^ p:^ :}
+   HEAP:ALLOCATOR p ALLOC:FREE ;
+
+: TIGHT-FILL ( -- )
+   NULL-PTR [: TIGHT-ALLOC ;] [: TIGHT-RESIZE ;] [: TIGHT-FREE ;]
+   TIGHT-ALLOCATOR ALLOC:INIT ;
+
+TIGHT-FILL
+
+
+\ Its first block comes from TIGHT-ALLOC, so it is reserved before any piece.
+: NEW-TIGHT ( -- ^VEC:vector<u8> )
+   TIGHT-ALLOCATOR 0 [type] u8 VEC:NEW
+   dup 4 VEC:RESERVE ;
+
+
+\ A growth the allocator refuses leaves no record in flight: the handle starts
+\ again.
+: TIGHT-RUN ( ^VEC:vector<u8> ^VEC:vector<u8> -- ) {: v:^ tight:^ :}
+   PATH-HELLO$ GET-READY {: subject:CURL:handle :}
+   subject 7 >LEN tight CURL:START EXPECT-OK
+   s" AWAIT throws the growth the allocator refused" T-LABEL
+   [: subject CURL:AWAIT DROP-FETCH ;] E-MEM-SIZE TTHROWSQ
+   subject 7 >LEN v CURL:START EXPECT-OK
+   subject AWAIT-ONE
+   s" a handle whose AWAIT threw starts again" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   v VEC:SPAN SPAN:$ HELLO$ T$=
+   s" PERFORM throws the growth the allocator refused" T-LABEL
+   [: subject 7 >LEN tight CURL:PERFORM DROP-FETCH ;] E-MEM-SIZE TTHROWSQ
+   subject CURL:CLEANUP ;
+
+
+: VEC-REFUSED ( ^VEC:vector<u8> -- ) {: v:^ :}
+   NEW-TIGHT {: tight:^ :}
+   [: v tight TIGHT-RUN ;] [: tight VEC:DELETE ;] finally ;
+
+
+: VEC-CASE ( [ ^VEC:vector<u8> -- ] -- ) {: body :}
+   RESULT-RESET
+   NEW-VEC {: v:^ :}
+   [: v body execute ;] [: v VEC:DELETE ;] finally ;
+
+
+: CASE-VECTORS ( -- )
+   [: VEC-PAUSED ;] VEC-CASE
+   [: VEC-RESERVED ;] VEC-CASE
+   [: VEC-NO-LIMIT ;] VEC-CASE
+   [: VEC-CUT-RESUMED ;] VEC-CASE
+   [: VEC-CUT-RESUMED-H2 ;] VEC-CASE
+   [: VEC-REFUSED ;] VEC-CASE ;
 
 
 : TEST-MULTI ( -- )
@@ -3095,7 +3241,8 @@ variable DEFER-RETURNED
    PARITY-WHOLE
    CASE-RETRY-DEFAULT
    CASE-RETRY-FRESH
-   PARITY-SPANS
+   PARITY-LIMITS
+   CASE-VECTORS
    CASE-STREAM-HELD
    CASE-STREAM-MODES
    CASE-STREAM-HTTP-ERROR
@@ -3113,7 +3260,7 @@ variable DEFER-RETURNED
    CASE-STALLED
    CASE-CANCEL
    CASE-OWNER
-   CASE-HALTED-SPAN
+   CASE-HALTED-VECTOR
    CASE-CANCEL-STREAM-OTHER-TASK
    CASE-HALTED-STREAM
    CURL:LOOP-START
@@ -3144,7 +3291,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   107 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   115 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -3271,6 +3418,8 @@ variable DEFER-RETURNED
 
 
 : PREPARE ( -- )
+   NEW-VEC BODY-VEC !
+   BODY BODY-CAP VEC:RESERVE
    MAKE-ROOT
    WRITE-FIXTURES
    DRIBBLE-FILL
@@ -3280,6 +3429,7 @@ variable DEFER-RETURNED
 
 
 : TEARDOWN ( -- )
+   BODY VEC:DELETE
    END-SERVER
    CLOSE-SILENT
    ROOT$ FS:REMOVE-TREE ;
@@ -3301,7 +3451,7 @@ public
    TEST-REDIRECT-VERBS
    TEST-RESET
    TEST-COOKIES
-   TEST-SPANS
+   TEST-LIMITS
    TEST-HUGE
    TEST-RESPONSE-HEADERS
    TEST-HEADER-TRUNCATIONS
