@@ -30,8 +30,9 @@ split-str
 \ each return gives them back; a throw does not, and catch restores the depth.
 
 require src/lib/error.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
 require src/lib/span.f
+require src/lib/vector.f
 require src/core/exit-status.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
@@ -66,8 +67,7 @@ using WCODE
 17 constant FIXED-I64                \ the i64 locals before the frame
 
 \ ---- the sink ------------------------------------------------------------------
-create SINK BUF:HDR-BYTES SCRATCH-ALLOT
-SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
+TYPED-VARIABLE SINK ^VEC:vector<u8> SCRATCH-ONLY \ null until OPEN makes it
 variable FRAME-CELLS
 variable COUNT-AT                     \ the unit's padded i64 count field
 variable REC-CELLS
@@ -79,25 +79,30 @@ variable CF-N
 variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER UNIT-REF n             \ each unit's address field offset
 
-4096 constant SINK-START-BYTES
 10 constant LEB-MOST
 LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
-: HERE-OFF ( -- n ) SINK BUF:LEN@ BUF:BLEN>N ;
+: HERE-OFF ( -- n ) SINK @ VEC:COUNT ;
 
-: B, ( n -- ) SINK BUF:APPEND-BYTE ;
+: B, ( n -- ) SINK @ VEC:PUSH c! ;
 
 : SCRATCH ( -- SPAN:span<u8> ) LEB-ROOM LEB-MOST SPAN:MAKE ;
 
 : LEB, ( n -- ) {: u:n :}
-   LEB-ROOM u BUF:N>BLEN SINK BUF:APPEND-SPAN ;
+   LEB-ROOM u SINK @ VEC:APPEND ;
 
 : U32, ( n -- ) SCRATCH WLEB:U32! LEB, ;
 : S32, ( n -- ) SCRATCH WLEB:S32! LEB, ;
 : S64, ( n -- ) SCRATCH WLEB:S64! LEB, ;
 
-: PAD32, ( n -- ) SINK 5 BUF:N>BLEN BUF:GROW WLEB:U32-PAD! drop ;
-: PAD64, ( n -- ) SINK 10 BUF:N>BLEN BUF:GROW WLEB:S64-PAD! drop ;
+\ n bytes appended to SINK, zero.
+: GROW ( n -- SPAN:span<u8> ) {: k:n :}
+   HERE-OFF {: at:n :}
+   SINK @ at k + VEC:ENSURE
+   SINK @ VEC:SPAN at SPAN:SKIP ;
+
+: PAD32, ( n -- ) 5 GROW WLEB:U32-PAD! drop ;
+: PAD64, ( n -- ) 10 GROW WLEB:S64-PAD! drop ;
 
 : GET, ( n -- ) OP-LOCAL-GET B, U32, ;
 : SET, ( n -- ) OP-LOCAL-SET B, U32, ;
@@ -175,11 +180,8 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 
 \ ---- the body ----------------------------------------------------------------
 : OPEN ( -- )
-   SINK-LIVE @ 0= if
-      SINK SINK-START-BYTES BUF:N>BLEN BUF:INIT
-      1 SINK-LIVE !
-   then
-   SINK BUF:CLEAR
+   SINK @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW SINK ! then
+   SINK @ 0 VEC:RESIZE
    0 CF-N !
    0 NUNIT !
    UNIT-BEGIN ;
@@ -187,7 +189,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ CF-N is 0: the unit before closed every structure it opened.
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if E-T0-UNIT throw then
-   HERE-OFF  SINK BUF:SPAN  n UNIT-REF @  WLEB:S64-PATCH
+   HERE-OFF  SINK @ VEC:SPAN  n UNIT-REF @  WLEB:S64-PATCH
    UNIT-BEGIN ;
 
 : UNIT-OPEN ( -- ) UNIT-BEGIN ;
@@ -203,7 +205,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 \ Every path of a unit leaves by RETURN or TAIL, so the closing `unreachable`
 \ makes the fall-through valid whatever precedes it.
 : CLOSE ( -- )
-   FIXED-I64 FRAME-CELLS @ +  SINK BUF:SPAN  COUNT-AT @  WLEB:U32-PATCH
+   FIXED-I64 FRAME-CELLS @ +  SINK @ VEC:SPAN  COUNT-AT @  WLEB:U32-PATCH
    OP-UNREACHABLE B,  END, ;
 
 
@@ -216,7 +218,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-RETURN B,
    CLOSE ;
 
-: BYTES ( -- ^u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ^u8 n ) SINK @ VEC:SPAN SPAN:$ ;
 
 \ A Wasm body is never placed at a host address.
 : PATCH ( n -- ) drop E-COMP-STATE throw ;
@@ -558,7 +560,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
 : ENTRY-EQ ( -- )
    CF-DO-HEAD CF-FIND CF-ENTRY @ {: at:n :}
    at 0 < if exit then
-   OP-I64-EQ  SINK BUF:SPAN$ drop at + c! ;
+   OP-I64-EQ  SINK @ at VEC:AT c! ;
 
 \ With t = index - limit before the step, the index crossed the boundary when
 \ (t xor t + s) and (t xor s) is negative.

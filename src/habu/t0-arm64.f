@@ -36,9 +36,10 @@ split-str
 \ token discards the whole emission, and OPEN begins the next one clear.
 
 require src/lib/error.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
 require src/lib/le.f
 require src/lib/span.f
+require src/lib/vector.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/arm64/asm.f
@@ -107,10 +108,10 @@ C-GT CC-GT CC>N CONDS !
 ' ENC-LSLI SH-LEFT SHIFTER>N SH-RI !
 ' ENC-LSRI SH-RIGHT SHIFTER>N SH-RI !
 
-create RAW BUF:HDR-BYTES SCRATCH-ALLOT \ the open unit's body
-create OUT BUF:HDR-BYTES SCRATCH-ALLOT \ the closed units, BYTES
-create EPI BUF:HDR-BYTES SCRATCH-ALLOT \ the open unit's epilogue, built at CLOSE
-SCRATCH-VARIABLE LIVE                 \ nonzero once the buffers hold storage
+\ Null until OPEN makes them.
+TYPED-VARIABLE RAW ^VEC:vector<u8> SCRATCH-ONLY \ the open unit's body
+TYPED-VARIABLE OUT ^VEC:vector<u8> SCRATCH-ONLY \ the closed units, BYTES
+TYPED-VARIABLE EPI ^VEC:vector<u8> SCRATCH-ONLY \ the open unit's epilogue, built at CLOSE
 variable FRAME-CELLS                  \ machine-stack cells this unit uses
 variable REC-CELLS                    \ this unit's record cells
 variable ENV                          \ 1 when this unit keeps a record's address
@@ -143,19 +144,20 @@ DYNAMIC-BUFFER BR-ARG n
 1 constant FORM-BCOND
 2 constant FORM-CBZ
 
-4096 constant SINK-START-BYTES
 4095 constant ADJ-MAX                 \ the widest add/sub immediate
 
-: HERE-OFF ( -- n ) RAW BUF:LEN@ BUF:BLEN>N ;
-: OUT-OFF ( -- n ) OUT BUF:LEN@ BUF:BLEN>N ;
+: HERE-OFF ( -- n ) RAW @ VEC:COUNT ;
+: OUT-OFF ( -- n ) OUT @ VEC:COUNT ;
 
-: W32+ ( n ^a -- ) {: w:n buf:^ :}
-   w  buf INSN BUF:N>BLEN BUF:GROW SPAN:$ drop  LE:U32! ;
+: W32+ ( n ^VEC:vector<u8> -- ) {: w:n v:^ :}
+   v VEC:COUNT {: at:n :}
+   v at INSN + VEC:ENSURE
+   w  v at VEC:AT  LE:U32! ;
 
-: W ( n -- ) RAW W32+ ;
+: W ( n -- ) RAW @ W32+ ;
 
 : W32! ( n n -- ) {: w:n at:n :}
-   w  OUT BUF:SPAN$ drop at +  LE:U32! ;
+   w  OUT @ at VEC:AT  LE:U32! ;
 
 : HALF ( n n -- n ) 16 * rshift $FFFF and ;
 
@@ -224,7 +226,7 @@ DYNAMIC-BUFFER BR-ARG n
    if SP SP rot ENC-ADDI-LSL12 exit then
    SP SP rot ENC-SUBI-LSL12 ;
 
-: SP-ADJ ( n bool ^a -- ) {: bytes:n add:bool buf:^ :}
+: SP-ADJ ( n bool ^VEC:vector<u8> -- ) {: bytes:n add:bool buf:^ :}
    bytes 12 rshift
    begin dup 0 > while
       dup ADJ-MAX min dup add SP-PAGES buf W32+ -
@@ -262,11 +264,11 @@ DYNAMIC-BUFFER BR-ARG n
    k 1 + NEPI ! ;
 
 \ The four-lane carrier into buf: every half, low first.
-: CHAIN4-IN ( n n ^a -- ) {: v:n r:n buf:^ :}
+: CHAIN4-IN ( n n ^VEC:vector<u8> -- ) {: v:n r:n buf:^ :}
    r v 0 HALF 0 MOVZHW buf W32+
    4 1 ?do r v i HALF i MOVKHW buf W32+ loop ;
 
-: CHAIN4 ( n n -- ) RAW CHAIN4-IN ;
+: CHAIN4 ( n n -- ) RAW @ CHAIN4-IN ;
 
 \ Whether v is inside the fixed DATA mapping and the mapping fits 48 bits, so
 \ three halves, high first, carry it.
@@ -291,7 +293,7 @@ DYNAMIC-BUFFER BR-ARG n
    ADR ADR TMP 3 ENC-ADD-LSL W ;
 
 : UNIT-BEGIN ( -- )
-   RAW BUF:CLEAR
+   RAW @ 0 VEC:RESIZE
    OUT-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
    0 FRAME-CELLS !  0 REC-CELLS !  0 ENV !  0 LINKED !  0 HELD !  0 NEPI !
@@ -325,18 +327,17 @@ DYNAMIC-BUFFER BR-ARG n
 
 
 : COPY ( n n -- ) {: from:n to:n :}
-   RAW BUF:SPAN$ drop from +  to from - BUF:N>BLEN  OUT BUF:APPEND-SPAN ;
+   RAW @ VEC:SPAN SPAN:$ drop from +  to from -  OUT @ VEC:APPEND ;
 
 
 \ ---- the body ----------------------------------------------------------------
+: EMPTY ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+
 : OPEN ( -- )
-   LIVE @ 0= if
-      RAW SINK-START-BYTES BUF:N>BLEN BUF:INIT
-      OUT SINK-START-BYTES BUF:N>BLEN BUF:INIT
-      EPI SINK-START-BYTES BUF:N>BLEN BUF:INIT
-      1 LIVE !
+   RAW @ NULL-PTR = if
+      EMPTY RAW !  EMPTY OUT !  EMPTY EPI !
    then
-   OUT BUF:CLEAR
+   OUT @ 0 VEC:RESIZE
    0 NUNIT !
    LABEL:RESET
    UNIT-BEGIN ;
@@ -345,7 +346,7 @@ DYNAMIC-BUFFER BR-ARG n
 \ Point the `adr` at OUT offset at to OUT offset to; its first byte holds its
 \ register.
 : ADR-TO ( n n -- ) {: at:n to:n :}
-   OUT BUF:SPAN$ drop at + c@ 31 and  to at - ENC-ADR  at W32! ;
+   OUT @ at VEC:AT c@ 31 and  to at - ENC-ADR  at W32! ;
 
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
 \ at.
@@ -372,16 +373,16 @@ DYNAMIC-BUFFER BR-ARG n
 : CLOSE ( -- )
    ENV @ REC-CELLS @ + FRAME-CELLS @ + CELL * 15 + 15 invert and {: bytes:n :}
    OUT-OFF {: base:n :}
-   LINKED @ if LR SP -16 ENC-STRPRE OUT W32+ then
-   bytes false OUT SP-ADJ
+   LINKED @ if LR SP -16 ENC-STRPRE OUT @ W32+ then
+   bytes false OUT @ SP-ADJ
    OUT-OFF base - {: p:n :}
-   EPI BUF:CLEAR
-   bytes true EPI SP-ADJ
-   LINKED @ if LR SP 16 ENC-LDRPOST EPI W32+ then
-   EPI BUF:LEN@ BUF:BLEN>N {: e:n :}
+   EPI @ 0 VEC:RESIZE
+   bytes true EPI @ SP-ADJ
+   LINKED @ if LR SP 16 ENC-LDRPOST EPI @ W32+ then
+   EPI @ VEC:COUNT {: e:n :}
    0 NEPI @ 0 ?do
       i EPI-AT @ COPY
-      EPI BUF:SPAN$ OUT BUF:APPEND-SPAN
+      EPI @ VEC:SPAN SPAN:$ OUT @ VEC:APPEND
       i EPI-AT @
    loop
    HERE-OFF COPY
@@ -411,14 +412,14 @@ DYNAMIC-BUFFER BR-ARG n
 \ code is the same armed or not. Answers where it starts.
 : CB-STUB ( -- n )
    OUT-OFF {: at:n :}
-   NCBSTUB:SLOT@ CB-ID OUT CHAIN4-IN
+   NCBSTUB:SLOT@ CB-ID OUT @ CHAIN4-IN
    NCBSTUB:THUNK@ {: thunk:n :}
    OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
-   thunk TMP OUT CHAIN4-IN
-   TMP ENC-BR OUT W32+
+   thunk TMP OUT @ CHAIN4-IN
+   TMP ENC-BR OUT @ W32+
    at ;
 
-: BYTES ( -- ^u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ^u8 n ) OUT @ VEC:SPAN SPAN:$ ;
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
 : PATCH ( n -- )
