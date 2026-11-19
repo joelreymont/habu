@@ -106,10 +106,9 @@ public
    XREF-START ;
 
 \ ---- which definer made the record a spelling denotes -------------------------
-\ A `create`d or `variable` address moves with the DATA region on a snapshot, so
-\ it may not be compiled as an ordinary number. The stamp is the definer's own:
-\ COMP-BODY:VALUE for `constant`, COMP-BODY:ADDRESS for `create`/`variable`,
-\ and COMP-BODY:COMPILED when a mention of the name folds to nothing.
+\ The stamp is the definer's own: COMP-BODY:VALUE for `constant`,
+\ COMP-BODY:ADDRESS for `create`/`variable`, and COMP-BODY:COMPILED when a
+\ mention of the name folds to nothing.
 private
 
 \ Which definer stamped a record, retired or not: `undefine` removes a name,

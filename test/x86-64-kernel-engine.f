@@ -4,7 +4,6 @@ split-str
 \ peer. RUN names every image and its builder's comment states its exit status
 \ (0 unless stated); the peer runs each and compares its status and its fd-1 and
 \ fd-2 bytes. The host checks each image's ELF header only.
-require src/habu/snapshot-format.f
 require src/habu/address-cells.f
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
@@ -464,12 +463,6 @@ REGION SLOT-BYTES - constant TOP-SLOT
    0 X64HARNESS:PUSH-SCRATCH, s" ptr-cell-mark" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-: BUILD-CONSTANTS ( str -- ) {: path:^ pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
-   0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
 \ Exercise the booted kernel's reader through its public primitive. Rejected
 \ tokens must discard any partial value and clear both flags.
 : NUM-CASE, ( str n n n -- )
@@ -566,7 +559,6 @@ public
    s" hb-x64-kernel-addr-kind" TMP-PATH BUILD-ADDR-KIND
    s" hb-x64-kernel-addr-band" TMP-PATH BUILD-ADDR-BAND
    s" hb-x64-kernel-addr-header" TMP-PATH BUILD-ADDR-HEADER
-   s" hb-x64-kernel-constants" TMP-PATH BUILD-CONSTANTS
    0 s" hb-x64-kernel-number-00" TMP-PATH BUILD-NUM
    1 s" hb-x64-kernel-number-01" TMP-PATH BUILD-NUM
    2 s" hb-x64-kernel-number-02" TMP-PATH BUILD-NUM

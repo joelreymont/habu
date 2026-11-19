@@ -35,7 +35,6 @@ split-str
 require src/core/exit-status.f
 require src/lib/fmt.f
 require src/habu/address-cells.f
-require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/compiler/fixed-body.f
 require src/arch/arm64/icode.f
@@ -1848,8 +1847,6 @@ ardone LBL,
    ret LBL, MARK-UNLOCK MARK-RESTORE
    end LBL, ;
 
-: BSNAPSHOTFORMAT ( -- ) A SNAPSHOT-FORMAT:VERSION MOVZ, A G-PUSH ;
-
 : BPTRCELLMARK ( -- )
    A G-POP
    LPTRMARK LABEL@ BL, ;
@@ -2498,7 +2495,6 @@ package ENGINE-EMIT
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
    s" scratch-cell-mark" ['] RELOC-EMIT:BSCRATCHCELLMARK FPRIM
    s" ptr-cell!" ['] RELOC-EMIT:BPTRCELLSTORE FPRIM
-   s" snapshot-format" ['] RELOC-EMIT:BSNAPSHOTFORMAT FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    ENGINE-PRIMS:COMPLETE

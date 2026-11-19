@@ -159,7 +159,6 @@ create TAB
    EVALD-CELL                         1 cells                 CLAIM EVALD-CELL
    BPWBASE-CELL                       1 cells                 CLAIM BPWBASE-CELL
    BPWN-CELL                          1 cells                 CLAIM BPWN-CELL
-   SNAP-CELL                          1 cells                 CLAIM SNAP-CELL
    ENGINE-MAIN:XT-CELL                1 cells                 CLAIM ENGINE-MAIN-XT-CELL
    NCOMP-DISPATCH:CALLBACK-STUB-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-STUB-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-ENTRY-CELL

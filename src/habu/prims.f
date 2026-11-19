@@ -380,7 +380,6 @@ EPRIM: scratch-cell-mark PE-PTR-A PE-IN EPRIM;
 \ ptr-cell! is xt!'s store for a cell that holds a DATA pointer: it writes the
 \ value and declares the cell as ptr-cell-mark declares it.
 EPRIM: ptr-cell!  PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
-EPRIM: snapshot-format PE-N PE-OUT EPRIM;
 EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM;
 \ Explicit memory views preserve address bits while changing the access type.
 EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM;

@@ -1,5 +1,5 @@
 split-str
-\ layout.f - shared native image, dictionary, and snapshot layout constants.
+\ layout.f - shared native image and dictionary layout constants.
 \ A start-up row loaded before require exists, so it requires nothing.
 
 20 constant XREG-RBASE
@@ -62,20 +62,6 @@ REGION-OFF REGION + constant CARRIER-OFF
 \ AArch64 BL imm26 reach (+/-128 MiB): direct-BL emission relies on the code
 \ region lying within it of __text.
 $8000000 constant BL-REACH
-$48425350414E5321 constant SNAP-MAGIC
-
-\ The trailer ends the authenticated text extent: its base is (the header's
-\ text-size field + IMAGE-TEXT-TRAILER-ADJ) - SNAP-TRL-BYTES; the codesign blob
-\ and page padding follow outside the extent. Every trailer reader and writer
-\ derives size and offsets from here.
-48 constant SNAP-TRL-BYTES        \ magic, heap form, ndict, region len, data len, version
-16 constant SNAP-TRL-NDICT
-24 constant SNAP-TRL-REGLEN
-32 constant SNAP-TRL-DATALEN
-40 constant SNAP-TRL-VERSION      \ SNAPSHOT-FORMAT:VERSION of the writing engine
-\ The pre-version trailer. Only the loader may name it, and only to recognise a
-\ legacy image and fail it closed rc 80 instead of misreading its fields.
-40 constant SNAP-TRL-LEGACY-BYTES
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
@@ -100,10 +86,10 @@ REGION DICT-SIZE - constant BYTES
 \ instructions the region rule below forbids reading, and running a word to ask
 \ is its side effects. The definer stamps the kind; every reader asks the record.
 \ The two-bit kind is an enum: a `constant` pushes a number, a `create`d or
-\ `variable` word a DATA address a snapshot must relocate, so folding the second
-\ as the first bakes an address a restore cannot move. CAST: uses the remaining
-\ kind for a declared identity retype: its body stays callable, but a compiled
-\ mention only renames the checked value.
+\ `variable` word a DATA address the link rewrites to the image's, so folding
+\ the second as the first bakes in the building engine's address. CAST: uses the
+\ remaining kind for a declared identity retype: its body stays callable, but a
+\ compiled mention only renames the checked value.
 \ A stamped record's body is the definer's own.
 \ Band: bits 50-51 of the record flags cell [16].
 package DKIND
@@ -376,9 +362,7 @@ $688 constant FD-CELL
 \ GENIO-ABI: the routing cells of the generic I/O layer that engine code reads;
 \ everything else about a device is library storage.
 \ OUT-CELL and IN-CELL hold a device index, never an address: 0 is the built-in
-\ terminal, 1..DEVICES a row of the write table. They are per task, and nothing
-\ canonicalises a code address in a task region, so an execution token there
-\ would survive a snapshot pointing into the builder's region.
+\ terminal, 1..DEVICES a row of the write table. They are per task.
 \ The write table holds this run's write handlers, stored undeclared, so a
 \ build's image never holds one; TASK-REGION-INIT copies the rows to a task.
 \ DEVICES is small so the table costs no allocation on a microcontroller.
@@ -463,12 +447,10 @@ package HIDX
 public
 HIDX-SLOTS 3 * 4 / constant LOAD-MAX
 ;package
-$37F8 constant SNAP-CELL
 \ ENGINE-MAIN:XT-CELL is the DATA cell an engine's boot calls its MAIN through.
 \ It is a separate cell from APP-ENTRY:XT-CELL because that one also switches
-\ the argv and stdin conventions to a saved application's. It sits in the
-\ single-cell run above SNAP-CELL ($37F8); a fresh DATA mapping reads it zero
-\ until set.
+\ the argv and stdin conventions to a saved application's. A fresh DATA mapping
+\ reads it zero until set.
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL
@@ -758,8 +740,7 @@ $27A8 constant CMM-CELL
 \ COMPILE-PREFLIGHT-CELL: the protected compile-immediate preflight hook. The
 \ checker installs it before arming HOOK-CELL; the compiler calls it before
 \ every source-defined immediate in a checked body, and 0 is an invalid armed
-\ state. It persists through snapshots like HOOK-CELL; `0 set-check` parks it in
-\ the SUSP-HOOK band below.
+\ state. `0 set-check` parks it in the SUSP-HOOK band below.
 $27E8 constant COMPILE-PREFLIGHT-CELL
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
 \ suspends until `set-check` of the same hook resumes it. Both start zero.
@@ -822,7 +803,7 @@ $2838 constant TOKVSP-CELL
 \ token (`:`, kernel:, TRUSTED:) or the word that ran def-open; a source that
 \ ends inside the definition is located there. CAST: and defer set PEND-CELL
 \ only within their keyword, so no source can end inside them. A transient
-\ address like TKA-CELL, zeroed at snapshot: no stripped-image claim.
+\ address like TKA-CELL: no stripped-image claim.
 $2850 constant PENDTKA-CELL
 \ FLOORREC-CELL: runtime address of the underdepth throw entry, stored at
 \ startup because the crash handler that jumps there cannot name an emit-time
@@ -863,16 +844,16 @@ $2CE0 constant CODE-END-CELL
 \ grown callback or task-row table) raises the floor to its end, so it and every
 \ address into it outlive a failed evaluation and a rolled-back generated
 \ declaration: each puts DP at the higher of its saved value and the floor. An
-\ offset rather than an address, so nothing relocates it: a snapshot carries it
-\ with the rest of DATA, and a native or stripped image starts at 0, which no
-\ rewind reaches, because every DP it saves is above the `here` it boots with.
+\ offset rather than an address, so nothing relocates it: a native or stripped
+\ image starts at 0, which no rewind reaches, because every DP it saves is above
+\ the `here` it boots with.
 $2CE8 constant DATA-FLOOR-CELL
 \ PRIM-TABLE-CELL: the kernel's primitive table, count in the cell before, as
 \ an offset from RBASE-CELL's address; 0 in a stripped program.
 $2CF0 constant PRIM-TABLE-CELL
 \ DEF-OCC:PTR-CELL holds this process's dictionary occurrence allocation, not an
-\ image address: last-issued, then DICT-CAP u64 slots. A snapshot DATA copy
-\ clears it and the receiving process restores its own.
+\ image address: last-issued, then DICT-CAP u64 slots. Every boot maps a fresh
+\ one and stores it here.
 package DEF-OCC
 public
 $2D08 constant PTR-CELL
@@ -882,8 +863,7 @@ DICT-CAP 1+ cells constant STATE-BYTES
 \ RBASE-CELL holds - the header's text-size field less IMAGE-TEXT-CONTENT-ADJ.
 \ The words that bound the engine's text read it rather than the layout
 \ constants they were loaded with: a build window for another OS loads that OS's
-\ header offsets. A size, not an address, so snapshots carry it unzeroed. Every
-\ boot stores it before a word runs.
+\ header offsets. Every boot stores it before a word runs.
 $2D50 constant TEXT-SIZE-CELL
 \ DPHW-CELL: the release high-water, the highest DP (a DATA offset) that any
 \ path lowering DP has lowered it from. Every such path updates it. Space above
@@ -909,8 +889,8 @@ $2DA8 constant TASK-CHAIN-CELL
 \ reader tests w against POLICY-WID-MAX before it addresses the band. Every
 \ writer of the vocabulary and of the require xt refuses once the seal is set.
 \ Only the engine's token reader tests the vocabulary; the native compiler never
-\ reads it. The snapshot writer zeros its DATA copy and the warm loader zeros
-\ the restored fields, so a fresh process is unsealed.
+\ reads it. An engine's kernel object presets POLICY-NDICT-CELL to 0, so a fresh
+\ engine starts unsealed.
 $4898 constant POLICY-NDICT-CELL
 $48A0 constant POLICY-BITS-OFF
 8192 constant POLICY-WID-MAX
@@ -1081,7 +1061,7 @@ ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 \ `trust-decl` and `checker-defer` cannot register itself, so the Habu loop's
 \ `defer` copies the qualified name and effect signature into a slot here;
 \ DRAIN-PRETRUST, right after both, replays both registrations per slot, so
-\ the table is empty by snapshot time. Overflow or an over-long name or sig dies
+\ the table is empty after it. Overflow or an over-long name or sig dies
 \ at declaration. The table sits after
 \ the private engine bands, below DATA-START, so its growth never moves the
 \ using ABI or relocation maps. PD-TABLE-OFF is past the scaled-immediate range,
@@ -1120,7 +1100,7 @@ public
 \ and REPL boundaries save and restore it), and the checker reads the same cell
 \ through `data-base USE-DEPTH-CELL +`, so its package-name mirror
 \ has no counter of its own to drift. The depth is 0 at rest:
-\ usings are file-local and closed before seal or snapshot.
+\ usings are file-local and closed before seal.
 16 constant USE-MAX                       \ concurrent `using` capacity (E-code on overflow)
 \ A published engine ABI, not derived from the pending table's capacity.
 $9C08 constant USE-BAND-OFF
@@ -1147,7 +1127,6 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ address carrier. A CODE carrier has four move-wide halves, shared DATA normally
 \ three; CODE includes the entry a `[: ... ;]` pushes and the target a `[']`
 \ pushes. Recorded where the compiler decides a literal is an address.
-\ Fixed-VA DATA needs nothing on snapshot restore.
 \ Nothing recognises a chain from region bytes or from its value: a word may
 \ hold inline data and an integer any value.
 REGION 32 / constant ADDRMAP-BYTES
@@ -1175,9 +1154,6 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \
 \ Unlike a bitmap, the band can fill. SITE-CAP rows fit; a writer refuses one
 \ more with EXIT-STATUS:SITE.
-\
-\ Snapshot relocation does not apply on x86-64: the region and DATA are mapped
-\ at fixed addresses there.
 CALLMAP-OFF constant SITE-N-CELL                \ live row count (u64)
 SITE-N-CELL 8 + constant SITE-ROWS-OFF
 4 constant SITE-KIND-OFF
@@ -1188,12 +1164,11 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 
 \ Address-cell table: the DATA offset and kind of every cell declared
 \ to hold an address. XT cells hold code-region addresses, DATA-pointer cells
-\ addresses in the DATA heap. Only XT values need snapshot canonicalisation:
-\ region code moves on restore and DATA does not. Membership is recorded where
+\ addresses in the DATA heap. Membership is recorded where
 \ the cell's kind is decided, never inferred from its contents (an integer can
 \ hold any value).
-\ A scratch pointer cell is a DATA-pointer row that also carries bit 62: every
-\ save writes it as null and never reads it, so a reader that knows only bit 63
+\ A scratch pointer cell is a DATA-pointer row that also carries bit 62: the
+\ link writes it as null and never reads it, so a reader that knows only bit 63
 \ treats it as a DATA pointer, never as an xt.
 \ The engine appends an identical declaration only once and refuses one cell
 \ declared with two kinds. ADDRESS-CELLS' header and inline boot rows use this

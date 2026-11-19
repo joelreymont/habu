@@ -32,7 +32,6 @@ require src/habu/primitive-registry.f
 require src/habu/boot-x64.f
 require src/habu/crash-x64.f
 require src/habu/data-claims.f
-require src/habu/snapshot-format.f
 require src/habu/code-span.f
 require src/habu/task-abi.f
 require src/habu/spawn-abi.f
@@ -3876,7 +3875,6 @@ variable MARK-CELL
       RDI RCX ASM-SINK ENC-MOV-RR  RSI SNAP-RELOC:XTCELL-DATA-TAG IMM64,  MARK-LBL CALL,
       RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
       RAX RCX MEM-AT ASM-SINK ENC-MOV-MR ;] PRIM
-   s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
    s" record-facts!" [: RECORD-FACTS-BODY ;] PRIM
    \ No SHA-256 instructions here yet: sha256.f compresses every block itself.
    s" sha256-blocks" [: RAX POP,  RAX POP,  RAX POP,  RAX ZERO-REG,  RAX PUSH, ;] PRIM
