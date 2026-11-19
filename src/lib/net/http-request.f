@@ -23,9 +23,9 @@ require src/lib/net/tcp4.f
 require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
-require src/lib/byte-buffer.f
 require src/lib/task.f
 require src/lib/uri.f
+require src/lib/vector.f
 
 package HTTP
 
@@ -983,19 +983,19 @@ public
    SLOT-OF-REQUEST SLOT-QUERY$ ;
 
 
-\ Appends to the BUF the value of the query's first name=value pair whose name
-\ is the given one and answers true; false, appending nothing, when no pair
-\ has it. Names and values decode as a web form; a pair with no "=" has the
-\ empty value. The parser checked every escape (ESCAPES-OK?), so each one
+\ Appends to the vector the value of the query's first name=value pair whose
+\ name is the given one and answers true; false, appending nothing, when no
+\ pair has it. Names and values decode as a web form; a pair with no "=" has
+\ the empty value. The parser checked every escape (ESCAPES-OK?), so each one
 \ decodes.
-: PARAM+ ( request str ^a -- bool )
-   {: subject:request key:^ keyu:n buf:^ :}
+: PARAM+ ( request str ^VEC:vector<u8> -- bool )
+   {: subject:request key:^ keyu:n v:^ :}
    subject QUERY$ {: q:^ qu:n :}
    0 begin {: start:n :}
       q qu AMPERSAND start SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
       found 0= if false exit then
       fa fu PAIR {: na:^ nu:n va:^ vu:n :}
-      na nu key keyu URI:FORM= if va vu buf URI:FORM-DECODE+ true exit then
+      na nu key keyu URI:FORM= if va vu v URI:FORM-DECODE+ true exit then
       next
    again ;
 

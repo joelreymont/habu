@@ -22,6 +22,8 @@ require src/lib/span.f
 require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/base64.f
 require src/lib/json.f
 require src/lib/utf8-scalar.f
@@ -55,12 +57,11 @@ JWS-FIXTURE:EXPONENT$ EXPONENT-ROW JWS-FIXTURE:EXPONENT$ nip RAW EXPONENT-U !
 
 : HEADER$ ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"test-issuer\",\"typ\":\"JWT\"}" ;
 
-: BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
-: BUF+ ( str ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+: VEC$ ( ^VEC:vector<u8> -- ^u8 n ) VEC:SPAN SPAN:$ ;
+: NEW-VEC ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 \ The clients: each id's offset in CLIENTS, its secret right after it.
-create CLIENTS-HEAD BUF:HDR-BYTES allot
-: CLIENTS ( -- ^n ) CLIENTS-HEAD CELL-VIEW ;
+TYPED-VARIABLE CLIENTS ^VEC:vector<u8>
 variable CLIENT-COUNT
 DYNAMIC-BUFFER CLIENT-AT n
 DYNAMIC-BUFFER ID-LEN n
@@ -68,11 +69,11 @@ DYNAMIC-BUFFER SECRET-LEN n
 
 : ID$ ( n -- ^u8 n )
    {: k:n :}
-   CLIENTS BUF$ drop k CLIENT-AT @ + k ID-LEN @ ;
+   CLIENTS @ VEC$ drop k CLIENT-AT @ + k ID-LEN @ ;
 
 : SECRET$ ( n -- str )
    {: k:n :}
-   CLIENTS BUF$ drop k CLIENT-AT @ + k ID-LEN @ + k SECRET-LEN @ ;
+   CLIENTS @ VEC$ drop k CLIENT-AT @ + k ID-LEN @ + k SECRET-LEN @ ;
 
 : KNOWN? ( str str -- bool )
    {: id:^ iu:n secret:^ su:n :}
@@ -81,14 +82,13 @@ DYNAMIC-BUFFER SECRET-LEN n
    loop false ;
 
 
-\ A worker's buffers, by index.
+\ A worker's vectors, by index.
 0 constant FORM                     \ the form's wanted values, decoded
 1 constant NOTE                     \ a form name, decoded
 2 constant SCRATCH                  \ an assertion's or refresh token's decoded claims and signature
-3 constant CLAIMS                   \ the claims of the token being issued
-4 constant TOKEN                    \ the token issued
-5 constant RENEWAL                  \ the refresh token issued
-6 constant BUFS
+3 constant TOKEN                    \ the token issued
+4 constant RENEWAL                  \ the refresh token issued
+5 constant VECS
 
 \ The form fields /token reads, by index.
 0 constant CLIENT-ID
@@ -100,7 +100,9 @@ DYNAMIC-BUFFER SECRET-LEN n
 6 constant REFRESH-TOKEN
 7 constant FIELDS
 
-HTTP:MAX-WORKERS BUFS * BUF:HDR-BYTES * BUFFER: HEADS
+HTTP:MAX-WORKERS VECS * TYPED-BUFFER HEADS ^VEC:vector<u8>
+\ The claims of the token being issued: a BUF, which the JSON writer fills.
+HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: CLAIMS-HEADS
 HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
@@ -111,12 +113,15 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : CURSOR ( -- ^JSON:cursor ) SLOT READER ;
-: BUF-OF ( n -- ^n ) SLOT BUFS * + BUF:HDR-BYTES * HEADS + CELL-VIEW ;
+: VEC-OF ( n -- ^VEC:vector<u8> ) SLOT VECS * + HEADS @ ;
+: CLAIMS ( -- ^n ) SLOT BUF:HDR-BYTES * CLAIMS-HEADS + CELL-VIEW ;
+: CLAIMS$ ( -- ^u8 n ) CLAIMS BUF:SPAN$ BUF:BLEN>N ;
 : SLOT-FIELD ( n -- n ) SLOT FIELDS * + ;
 
 : READY ( -- )
    SLOT MADE @ if exit then
-   BUFS 0 ?do i BUF-OF FIRST-CAP BUF:N>BLEN BUF:INIT loop
+   VECS 0 ?do NEW-VEC SLOT VECS * i + HEADS ! loop
+   CLAIMS FIRST-CAP BUF:N>BLEN BUF:INIT
    true SLOT MADE ! ;
 
 
@@ -145,21 +150,21 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 : PAIR ( ^u8 n -- bool )
    {: p:^ pu:n :}
    p pu 0 [char] = FIND {: eq:n :}
-   NOTE BUF-OF BUF:CLEAR
-   p eq NOTE BUF-OF URI:FORM-DECODE+
-   NOTE BUF-OF BUF$ WHICH {: k:n :}
+   NOTE VEC-OF 0 VEC:RESIZE
+   p eq NOTE VEC-OF URI:FORM-DECODE+
+   NOTE VEC-OF VEC$ WHICH {: k:n :}
    k 0< if true exit then
    k SLOT-FIELD FIELD-AT @ 0< 0= if false exit then
-   FORM BUF-OF BUF:LEN@ BUF:BLEN>N {: at:n :}
-   eq pu < if p eq + 1+ pu eq - 1- FORM BUF-OF URI:FORM-DECODE+ then
+   FORM VEC-OF VEC:COUNT {: at:n :}
+   eq pu < if p eq + 1+ pu eq - 1- FORM VEC-OF URI:FORM-DECODE+ then
    at k SLOT-FIELD FIELD-AT !
-   FORM BUF-OF BUF:LEN@ BUF:BLEN>N at - k SLOT-FIELD FIELD-LEN !
+   FORM VEC-OF VEC:COUNT at - k SLOT-FIELD FIELD-LEN !
    true ;
 
 \ False for a form naming a wanted field twice.
 : FORM! ( str -- bool )
    {: b:^ bu:n :}
-   FORM BUF-OF BUF:CLEAR
+   FORM VEC-OF 0 VEC:RESIZE
    FIELDS 0 ?do -1 i SLOT-FIELD FIELD-AT ! loop
    0 begin dup bu <= while
       {: from:n :}
@@ -174,7 +179,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    SLOT-FIELD {: f:n :}
    f FIELD-AT @ {: at:n :}
    at 0< if s" " false exit then
-   FORM BUF-OF BUF$ drop at + f FIELD-LEN @ true ;
+   FORM VEC-OF VEC$ drop at + f FIELD-LEN @ true ;
 
 : FIELD= ( n str -- bool )
    {: k:n w:^ wu:n :}
@@ -254,31 +259,33 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
 
 \ The bytes appended as unpadded base64url, whose length is exactly (4u+2)/3.
-: SEGMENT+ ( str ^n -- )
-   {: a:^ u:n buf:^ :}
-   buf u 4 * 2 + 3 / BUF:N>BLEN BUF:GROW {: room :}
-   a u room BASE64:ENCODE-URL drop ;
+\ The bytes must not lie in the vector, whose block the growth may move.
+: SEGMENT+ ( str ^VEC:vector<u8> -- )
+   {: a:^ u:n v:^ :}
+   v VEC:COUNT {: old:n :}
+   v old u 4 * 2 + 3 / + VEC:ENSURE
+   a u v VEC:SPAN old SPAN:SKIP BASE64:ENCODE-URL drop ;
 
-\ The signature over the BUF's text appended as its third segment.
-: SIGNED+ ( ^n ^u8 NUM:alloc-byte-len -- )
-   MEM:ALLOCATION>SPAN SPAN:$ {: buf:^ out:^ cap:n :}
-   JWS-FIXTURE:PEM$ buf BUF$ out cap CRYPTO:RS256-SIGN {: su:n :}
-   [char] . buf BUF:APPEND-BYTE
-   out su buf SEGMENT+ ;
+\ The signature over the vector's text appended as its third segment.
+: SIGNED+ ( ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- )
+   MEM:ALLOCATION>SPAN SPAN:$ {: v:^ out:^ cap:n :}
+   JWS-FIXTURE:PEM$ v VEC$ out cap CRYPTO:RS256-SIGN {: su:n :}
+   [char] . v VEC:PUSH c!
+   out su v SEGMENT+ ;
 
 public
 
 \ A compact JWS of the claims text, signed RS256 with the fixture key under the
-\ issuer's kid, borrowed from the BUF until its next write. Claims must not lie
-\ in the BUF.
-: MINT ( ^u8 n ^n -- ^u8 n )
-   {: claims:^ cu:n buf:^ :}
-   buf BUF:CLEAR
-   HEADER$ buf SEGMENT+
-   [char] . buf BUF:APPEND-BYTE
-   claims cu buf SEGMENT+
-   buf MODULUS-U @ MEM:BYTES-ALLOC-LEN [: SIGNED+ ;] MEM:WITH-BYTES
-   buf BUF$ ;
+\ issuer's kid, borrowed from the vector until its next write. Claims must not
+\ lie in the vector.
+: MINT ( str ^VEC:vector<u8> -- str )
+   {: claims:^ cu:n v:^ :}
+   v 0 VEC:RESIZE
+   HEADER$ v SEGMENT+
+   [char] . v VEC:PUSH c!
+   claims cu v SEGMENT+
+   v MODULUS-U @ MEM:BYTES-ALLOC-LEN [: SIGNED+ ;] MEM:WITH-BYTES
+   v VEC$ ;
 
 private
 
@@ -289,8 +296,9 @@ private
 \ signature, true for three segments and a modulus-wide signature.
 : SPLIT ( ^u8 n -- n SPAN:span<u8> bool )
    {: t:^ u:n :}
-   SCRATCH BUF-OF BUF:CLEAR
-   SCRATCH BUF-OF u BUF:N>BLEN BUF:GROW {: room :}
+   SCRATCH VEC-OF {: v:^ :}
+   v 0 VEC:RESIZE  v u VEC:ENSURE
+   v VEC:SPAN {: room :}
    t u 0 [char] . FIND {: d1:n :}
    t u d1 1+ [char] . FIND {: d2:n :}
    d2 u = if 0 room false exit then
@@ -318,7 +326,7 @@ private
 \ The claims every issued token carries; the writer is left inside the object.
 : CLAIMS-OPEN ( -- ^JSON:writer )
    epoch-seconds {: now:n :}
-   SLOT WRITER CLAIMS BUF-OF JSON:WRITE-OPEN-BUF
+   SLOT WRITER CLAIMS JSON:WRITE-OPEN-BUF
    JSON:WRITE-OBJECT-START
    s" iss" s" " URL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" aud" AUDIENCE$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
@@ -349,14 +357,14 @@ private
 
 \ The refresh token's claims: the client's, for the presented one's oid and tid.
 : RENEWAL-CLAIMS ( -- )
-   SLOT WRITER CLAIMS BUF-OF JSON:WRITE-OPEN-BUF
+   SLOT WRITER CLAIMS JSON:WRITE-OPEN-BUF
    JSON:WRITE-OBJECT-START
    s" aud" CLIENT-ID FIELD$ drop JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" exp" epoch-seconds LIFE-S + JSON:WRITE-FIELD-INT
    s" oid" COPIED s" tid" COPIED CLAIMS-CLOSE ;
 
 : TOKEN-FIELDS ( ^JSON:writer -- ^JSON:writer )
-   s" access_token" TOKEN BUF-OF BUF$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" access_token" TOKEN VEC-OF VEC$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" token_type" s" Bearer" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" expires_in" LIFE-S JSON:WRITE-FIELD-INT ;
 
@@ -365,18 +373,18 @@ private
 
 : RENEWED-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START TOKEN-FIELDS JSON:WRITE-COMMA
-   s" refresh_token" RENEWAL BUF-OF BUF$ JSON:WRITE-FIELD-S
+   s" refresh_token" RENEWAL VEC-OF VEC$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END ;
 
-: MINTED ( n n -- ) {: from:n into:n :} from BUF-OF BUF$ into BUF-OF MINT 2drop ;
+: MINTED ( n -- ) {: into:n :} CLAIMS$ into VEC-OF MINT 2drop ;
 
 : ISSUE ( HTTP:response -- )
-   CLAIMS TOKEN MINTED
+   TOKEN MINTED
    [: ISSUED-BODY ;] HTTP:JSON! ;
 
 : RENEW ( HTTP:response -- )
-   ON-BEHALF CLAIMS TOKEN MINTED
-   RENEWAL-CLAIMS CLAIMS RENEWAL MINTED
+   ON-BEHALF TOKEN MINTED
+   RENEWAL-CLAIMS RENEWAL MINTED
    [: RENEWED-BODY ;] HTTP:JSON! ;
 
 : ERROR-BODY ( ^JSON:writer -- ^JSON:writer )
@@ -424,7 +432,7 @@ private
 : MINT-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    READY
-   asked HTTP:BODY$ TOKEN BUF-OF MINT {: t:^ u:n :}
+   asked HTTP:BODY$ TOKEN VEC-OF MINT {: t:^ u:n :}
    answer s" Content-Type" s" text/plain" HTTP:HEADER!
    answer t u HTTP:BODY! ;
 
@@ -462,15 +470,15 @@ public
    {: id:^ iu:n secret:^ su:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    CLIENT-COUNT @ {: k:n :}
-   k 0= if CLIENTS FIRST-CAP BUF:N>BLEN BUF:INIT then
+   k 0= if NEW-VEC CLIENTS ! then
    k 1+ CLIENT-AT-RESERVE
    k 1+ ID-LEN-RESERVE
    k 1+ SECRET-LEN-RESERVE
-   CLIENTS BUF:LEN@ BUF:BLEN>N k CLIENT-AT !
+   CLIENTS @ VEC:COUNT k CLIENT-AT !
    iu k ID-LEN !
    su k SECRET-LEN !
-   id iu CLIENTS BUF+
-   secret su CLIENTS BUF+
+   id iu CLIENTS @ VEC:APPEND
+   secret su CLIENTS @ VEC:APPEND
    k 1+ CLIENT-COUNT ! ;
 
 ;package

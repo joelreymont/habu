@@ -20,7 +20,8 @@ require src/lib/net/curl.f
 require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
@@ -204,11 +205,12 @@ variable ITEM-HOST-N
    answer [: ITEM-BODY ;] HTTP:JSON! ;
 
 
-create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
+\ Made by the first request PARAMS answers; the case deletes it once answered.
+TYPED-VARIABLE PARAM-VEC ^VEC:vector<u8>
 
 
 : PARAM-TEXT ( str -- )
-   BUF:N>BLEN PARAM-BUF BUF:APPEND-SPAN ;
+   PARAM-VEC @ VEC:APPEND ;
 
 
 \ `key=[value] true`, or `key=[] false` for a parameter the query lacks.
@@ -216,19 +218,22 @@ create PARAM-BUF BUF:HDR-BYTES allot   \ the case disposes it once answered
    {: asked:HTTP:request key:^ keyu:n :}
    key keyu PARAM-TEXT
    s" =[" PARAM-TEXT
-   asked key keyu PARAM-BUF HTTP:PARAM+ {: found:bool :}
+   asked key keyu PARAM-VEC @ HTTP:PARAM+ {: found:bool :}
    found if s" ] true" else s" ] false" then PARAM-TEXT ;
 
 
 : PARAMS ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
-   PARAM-BUF 64 BUF:N>BLEN BUF:RESET
+   PARAM-VEC @ NULL-PTR = if
+      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW PARAM-VEC !
+   then
+   PARAM-VEC @ 0 VEC:RESIZE
    asked s" session" PARAM-ONE
    s" , " PARAM-TEXT
    asked s" b" PARAM-ONE
    s" , " PARAM-TEXT
    asked s" missing" PARAM-ONE
-   answer PARAM-BUF BUF:SPAN$ BUF:BLEN>N HTTP:BODY!
+   answer PARAM-VEC @ VEC:SPAN SPAN:$ HTTP:BODY!
    answer 200 HTTP:STATUS! ;
 
 
@@ -1278,7 +1283,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : PARAM-CASES ( -- )
    s" GET" s" /api/params?a=1&session=4f2c%2Dx+y&b&session=2" FETCH 200 T=
    RES$ s" session=[4f2c-x y] true, b=[] true, missing=[] false" T$=
-   PARAM-BUF BUF:DISPOSE ;
+   PARAM-VEC @ VEC:DELETE  NULL-PTR PARAM-VEC ! ;
 
 
 \ The default error answer is one line of text naming the code, the message and

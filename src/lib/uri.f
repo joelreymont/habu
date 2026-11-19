@@ -14,7 +14,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/adt/option.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 
 package URI
 private
@@ -424,12 +424,13 @@ public
    0 u 0 ?do a i + c@ out rot FORM-BYTE loop drop
    len ;
 
-\ Appends to the BUF the bytes application/x-www-form-urlencoded text decodes
-\ to (DECODED-AT).
-: FORM-DECODE+ ( str ^a -- )
-   {: a:^ u:n buf:^ :}
+\ Appends to the vector the bytes application/x-www-form-urlencoded text
+\ decodes to (DECODED-AT). The text must not lie in the vector: a push may
+\ move its block while the text is still being read.
+: FORM-DECODE+ ( str ^VEC:vector<u8> -- )
+   {: a:^ u:n v:^ :}
    0 begin dup u < while
-      a u rot DECODED-AT swap buf BUF:APPEND-BYTE
+      a u rot DECODED-AT swap v VEC:PUSH c!
    repeat drop ;
 
 \ Whether form-encoded text decodes to exactly the name; recurses once per

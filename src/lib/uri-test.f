@@ -9,7 +9,8 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/span.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/uri.f
 
 package URI-TEST
@@ -21,7 +22,7 @@ using SPAN
 2 BUFFER: ONE                     \ `/` and the byte a round trip takes
 3 BUFFER: WANT                    \ one byte's form encoding
 $A5 constant CANARY
-create DECODED BUF:HDR-BYTES allot
+TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
 : PATH$ ( ^u8 n -- ^u8 n )
    DST URI:FILE>PATH {: u:n :}
@@ -202,9 +203,9 @@ create DECODED BUF:HDR-BYTES allot
    256 0 do i ONE c! ONE 1 FORM$ i FORM-WANT T$= loop ;
 
 : DECODED$ ( str -- str )
-   DECODED BUF:CLEAR
-   DECODED URI:FORM-DECODE+
-   DECODED BUF:SPAN$ BUF:BLEN>N ;
+   DECODED @ 0 VEC:RESIZE
+   DECODED @ URI:FORM-DECODE+
+   DECODED @ VEC:SPAN SPAN:$ ;
 
 \ Every byte comes back from its form encoding as it went in.
 : FORM-TRIP ( -- )
@@ -426,7 +427,7 @@ create DECODED BUF:HDR-BYTES allot
    5 UNTOUCHED ;
 
 : MAIN ( -- )
-   DECODED 16 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED !
    T-RESET
    FORMS
    ESCAPES
@@ -450,7 +451,7 @@ create DECODED BUF:HDR-BYTES allot
    REQUEST-TARGETS
    QUERY-ENCODES
    T-REPORT
-   DECODED BUF:DISPOSE
+   DECODED @ VEC:DELETE
    s" uri-test: ok" type cr ;
 
 MAIN

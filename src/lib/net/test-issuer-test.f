@@ -34,6 +34,8 @@ require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/base64.f
 require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/date.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -86,9 +88,9 @@ variable LINE-U
 variable CHILD-OUT                  \ the read end of the child's stdout, an fd number
 
 TYPED-VARIABLE READER JSON:cursor
-create MINTED-HEAD BUF:HDR-BYTES allot
-: MINTED ( -- ^n ) MINTED-HEAD CELL-VIEW ;
-MINTED $100 BUF:N>BLEN BUF:INIT
+TYPED-VARIABLE MINTED ^VEC:vector<u8>
+: MAKE-MINTED ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW MINTED ! ;
+MAKE-MINTED
 
 $80 constant URL-CAP
 URL-CAP BUFFER: ISSUER-URL
@@ -294,7 +296,7 @@ PAST-CAP BUFFER: OVERSIZE
    {: aud:^ au:n exp:n :}
    SB-RESET S\" {\"aud\":\"" SB-APPEND aud au SB-APPEND S\" \",\"exp\":" SB-APPEND
    exp FMT:SB-INT S\" ,\"oid\":\"user-1\",\"tid\":\"tenant-1\"}" SB-APPEND
-   SB$ MINTED TEST-ISSUER:MINT ASSERTION COPY ASSERTION-U ! ;
+   SB$ MINTED @ TEST-ISSUER:MINT ASSERTION COPY ASSERTION-U ! ;
 
 : LATER ( -- n ) epoch-seconds LIFE-S + ;
 
@@ -394,7 +396,7 @@ PAST-CAP BUFFER: OVERSIZE
    s" /mint answers MINT's token for the same claims" T-LABEL
    S\" {\"sub\":\"s-1\",\"n\":7}" {: c:^ cu:n :}
    s" /mint" s" Content-Type: application/json" c cu POST 200 T=
-   BODY$ c cu MINTED TEST-ISSUER:MINT T$= ;
+   BODY$ c cu MINTED @ TEST-ISSUER:MINT T$= ;
 
 
 : ISSUER$ ( -- str ) ISSUER-URL ISSUER-URL-U @ ;
