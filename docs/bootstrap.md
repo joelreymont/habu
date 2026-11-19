@@ -61,6 +61,10 @@ libharfbuzz-vector, on the loader path (Ubuntu 24.04 ships 8.3), and on
 Linux the Ubuntu font packages test/font-native.f's header names.
 The Wasm device suite needs wasm-tools and bun on PATH.
 The SQLite test needs libsqlite3 3.37 or newer on the loader path.
+On Linux the TLS and HTTPC tests need mbedTLS 4 on the loader path
+(libmbedtls.so.23, libmbedx509.so.9 and libtfpsacrypto.so.2) and openssl
+on PATH for their loopback server; where the distribution ships an older
+mbedTLS, build 4.x from source.
 On Linux the secret-linux test needs dbus-daemon, gnome-keyring-daemon,
 gdbus and secret-tool on PATH.
 On macOS the library tests use Homebrew libzip, libunistring, openssl@3,

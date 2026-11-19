@@ -479,7 +479,8 @@ SUITE curl-http
 
 \ HTTPC's connection lifecycle against a scripted loopback HTTP/1.1 server, and
 \ its https origins against openssl s_server on loopback, with certificates
-\ made at test time.
+\ made at test time. mbedTLS 4 and openssl are a gate requirement
+\ (docs/bootstrap.md "Requirements").
 HB-TARGET-LINUX-KERNEL? [if]
 SUITE httpc
    src/lib/net/httpc-test.f
@@ -487,7 +488,8 @@ SUITE httpc
 [then]
 
 \ TLS client sessions over mbedTLS against openssl s_server on loopback, with
-\ certificates made at test time.
+\ certificates made at test time. mbedTLS 4 and openssl are a gate requirement
+\ (docs/bootstrap.md "Requirements").
 HB-TARGET-LINUX-KERNEL? [if]
 SUITE tls
    src/lib/net/tls-test.f
