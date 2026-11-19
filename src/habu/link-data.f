@@ -1,13 +1,16 @@
 split-str
 \ link-data.f - a build's DATA: the link's copy of the open space's cells, each
 \ declared cell given its value at DATA-VA, appended to A64ICODE's code buffer
-\ after the routine band as its non-zero runs, then the DATA list, the offset
-\ from DATA-VA of every cell holding a code address, which start-up adds the
-\ load offset to. The link also writes the header cells HEADER-CELLS names and
-\ lists the code ones. An engine's link adds the records: the target kernel's
-\ primitives, then the build's, each build record and wordlist id renumbered for
-\ the target (RECORD-IMAGE), and the record list. LINKER:WRITE writes the
-\ linked program; the other words are LINKER's own.
+\ after the routine band. A Mach-O image holds the copy as its non-zero cell
+\ runs, then the DATA list, the offset from DATA-VA of every cell holding a
+\ code address, which start-up adds the load offset to. An ELF image never
+\ moves: it holds a table of the copy's runs of PROT-PAGE-MAX pages that hold a
+\ non-zero cell, whose bytes the writer's carrier load holds, and an empty
+\ list. The link also writes the header cells HEADER-CELLS names, and a Mach-O
+\ image lists the code ones. An engine's link adds the records: the target
+\ kernel's primitives, then the build's, each build record and wordlist id
+\ renumbered for the target (RECORD-IMAGE), and the record list. LINKER:WRITE
+\ writes the linked program; the other words are LINKER's own.
 
 require src/core/exit-status.f
 require src/lib/error.f
@@ -405,16 +408,76 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    first CELL * NATIVE:U64,  end first - NATIVE:U64,
    end first ?do i COPY-CELLS @ NATIVE:U64, loop ;
 
-\ The copy as runs [off u64][n u64][n cells], off the run's byte offset from
-\ DATA; zero cells outside a run are not written.
+\ A Mach-O image's copy as runs [off u64][n u64][n cells], off the run's byte
+\ offset from DATA; zero cells outside a run are not written.
 : RUNS, ( -- )
    0 NEXT-SET
    begin dup COPY-N < while dup RUN-END tuck RUN, NEXT-SET repeat drop ;
 
 
-\ After PLACE-ROUTINES: at an 8-byte boundary the copy's runs with the header
-\ cells written, then the DATA list, the code header cells last.
-: DATA-IMAGE ( -- )
+\ An ELF image's carrier: the copy's carried pages, in the run table's order.
+DYNAMIC-BUFFER CARRIER u8
+variable CARRIER-N
+
+: CARRIER$ ( -- str ) 0 CARRIER CARRIER-N @ ;
+
+\ The copy in PROT-PAGE-MAX pages, the last one zero past the copy's end: the
+\ boot moves whole pages, and one image runs on every supported page size.
+: PAGE-CELLS ( -- n ) PROT-PAGE-MAX CELL / ;
+: PAGES ( -- n ) COPY-N PAGE-CELLS 1- + PAGE-CELLS / ;
+
+\ Whether page p holds a non-zero cell.
+: PAGE-SET? ( n -- bool )
+   PAGE-CELLS * {: first:n :}
+   first PAGE-CELLS + COPY-N min {: end:n :}
+   end first ?do i SET? if true unloop exit then loop false ;
+
+\ The page holding the first non-zero cell at or after cell i, or PAGES.
+: NEXT-PAGE ( n -- n )
+   NEXT-SET dup COPY-N < if PAGE-CELLS / else drop PAGES then ;
+
+\ The page after the run of carried pages whose first is p.
+: PAGE-RUN-END ( n -- n )
+   begin 1+ dup PAGES < if dup PAGE-SET? else false then while repeat ;
+
+\ Page p's bytes appended to the carrier.
+: CARRY-PAGE ( n -- )
+   PROT-PAGE-MAX * {: from:n :}
+   CARRIER-N @ {: at:n :}
+   at PROT-PAGE-MAX + CARRIER-RESERVE
+   COPY-N CELL * from - PROT-PAGE-MAX min {: u:n :}
+   from COPY-AT  at CARRIER  u BYTE-COPY
+   PROT-PAGE-MAX u ?do 0 at i + CARRIER c! loop
+   PROT-PAGE-MAX CARRIER-N +! ;
+
+: PAGE-RUN, ( n n -- )
+   {: first:n end:n :}
+   first PROT-PAGE-MAX * NATIVE:U64,
+   end first - PROT-PAGE-MAX * NATIVE:U64,
+   end first ?do i CARRY-PAGE loop ;
+
+\ An ELF image's copy as a table of runs [off u64][bytes u64], both multiples
+\ of PROT-PAGE-MAX, each a maximal run of pages holding a non-zero cell; the
+\ pages go to CARRIER, and a page of zero cells is not carried.
+: PAGE-RUNS, ( -- )
+   0 CARRIER-N !
+   0 NEXT-PAGE
+   begin dup PAGES < while
+      dup PAGE-RUN-END tuck PAGE-RUN,  PAGE-CELLS * NEXT-PAGE
+   repeat drop ;
+
+
+\ The cells holding a code address, the code header cells last.
+: DATA-LIST ( -- )
+   0 LISTED-N !  ['] LIST-ROW EACH-KEPT
+   LIST,
+   LIST-HEADER ;
+
+\ After PLACE-ROUTINES: at an 8-byte boundary the copy with the header cells
+\ written, as cell runs then the DATA list when macho, else as page runs then
+\ an empty list.
+: DATA-IMAGE ( bool -- )
+   {: macho:bool :}
    NATIVE:SIZE CODE-END !
    PAD8
    LIMAGE NATIVE:LABEL@ NATIVE:BIND
@@ -422,12 +485,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    ['] COPY-ROW EACH-KEPT
    HEADER-CELLS
    ENGINE? @ if ENGINE-CELLS RECOVERY-CELLS then
-   RUNS,
+   macho if RUNS, else PAGE-RUNS, then
    LIMAGE-END NATIVE:LABEL@ NATIVE:BIND
    LLIST NATIVE:LABEL@ NATIVE:BIND
-   0 LISTED-N !  ['] LIST-ROW EACH-KEPT
-   LIST,
-   LIST-HEADER
+   macho if DATA-LIST then
    LLIST-END NATIVE:LABEL@ NATIVE:BIND ;
 
 
@@ -466,9 +527,10 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ A stripped program's code: the start-up, the kernel code the program reaches,
-\ the routines and the data it reaches. HEADER-CELLS reads LUNCAUGHT and LSIGH
-\ after the cut.
-: LINK-STRIPPED ( -- )
+\ the routines and the data it reaches, for a Mach-O image when macho.
+\ HEADER-CELLS reads LUNCAUGHT and LSIGH after the cut.
+: LINK-STRIPPED ( bool -- )
+   {: macho:bool :}
    ADOPT-LABELS
    ROUTINES
    REACH-DATA
@@ -477,7 +539,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    NATIVE:CUT
    NATIVE:SIZE KERNEL-END !
    false ['] DATA-ADDRESS PLACE-ROUTINES
-   DATA-IMAGE ;
+   macho DATA-IMAGE ;
 
 
 \ Kind k's chain in the kernel becomes adrp+add of the entry of k's word in
@@ -501,15 +563,16 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ An engine's code: the start-up, the whole kernel, every routine, DATA, then
-\ the records.
-: LINK-ENGINE ( -- )
+\ the records, for a Mach-O image when macho.
+: LINK-ENGINE ( bool -- )
+   {: macho:bool :}
    ADOPT-LABELS
    NATIVE:SIZE KERNEL-END !
    PRIM-TEXTS
    ROUTINES REACH-ALL
    true ['] DATA-ADDRESS PLACE-ROUTINES
    SCOPE-ENTRIES
-   DATA-IMAGE
+   macho DATA-IMAGE
    RECORD-IMAGE ;
 
 
@@ -525,10 +588,12 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
       NATIVE:X64? if
          NATIVE:TEXT-VA X64CODE:FIXUPS!
          NATIVE:CODE NATIVE:SIZE NATIVE:TEXT-VA
-         NATIVE:ELF-IMPORTS$ ELF:BUILD-X64
+         NATIVE:ELF-IMPORTS$ CARRIER$ ELF:BUILD-X64
       else
-         ELF:ASM-CODE NATIVE:TEXT-VA NATIVE:ELF-IMPORTS$ ELF:BUILD-IMAGE
+         ELF:ASM-CODE NATIVE:TEXT-VA NATIVE:ELF-IMPORTS$ CARRIER$
+         ELF:BUILD-IMAGE
       then
+      CARRIER-RELEASE
       ELF:CODESIG2
    then
    path pathu DRV-WRITE-IMAGE ;
@@ -544,7 +609,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : WRITE-PROGRAM ( str bool -- )
    {: path:^ pathu:n macho:bool :}
    ENGINE? @ if 0 PLACE-FACTS then
-   ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
+   macho ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    path pathu [: 2dup ENGINE? @ if SIGN-ID:ENGINE$ else SIGN-ID:PROG$ then 2swap
       macho EMIT-IMAGE  FS:CHMOD-X ;] FS:REPLACE-CACHED
    REGIONS  path pathu CODE-END @ WRITE-MAP ;

@@ -9,16 +9,24 @@ split-str
 \ brk heap starts above it and nothing mapped before entry takes its range, and
 \ the boot maps the region's views over it.
 \
-\ OPEN reads the extents of such an executable: the ELF header, its five
+\ The carrier is a read-write PT_LOAD at the image's base plus CARRIER-OFF,
+\ past the code region and below DATA-VA, that holds DATA's initial pages for
+\ the boot to move into the window. Its bytes end the file, from the
+\ PROT-PAGE-MAX boundary after the read-write tail.
+\
+\ OPEN reads the extents of such an executable: the ELF header, its six
 \ program headers (the text's PT_LOAD, the read-write tail's PT_LOAD, PT_INTERP,
-\ PT_DYNAMIC and the code region's PT_LOAD), the interpreter path and the hash,
-\ symbol, string and relocation tables the dynamic section names. The code
-\ starts at the entry, and the text's PT_LOAD maps the file from offset 0, so a
-\ file offset is an address less that load's. Offsets come from these headers,
-\ never from the inspecting host.
+\ PT_DYNAMIC, the code region's PT_LOAD and the carrier's PT_LOAD), the
+\ interpreter path and the hash, symbol, string and relocation tables the
+\ dynamic section names. The code starts at the entry, and the text's PT_LOAD
+\ maps the file from offset 0, so a file offset is an address less that
+\ load's. Offsets come from these headers, never from the inspecting host.
+\ CODE-OFF and DATA-VA are the target's, LINUX-LAYOUT's, which the `using`
+\ below keeps from reading bare; it closes before this file ends.
 
 require src/core/exit-status.f
 require src/arch/arm64/icode.f
+require src/os/linux/layout.f
 require src/os/image-bytes.f
 require src/os/import-names.f
 require src/lib/fmt.f
@@ -26,6 +34,7 @@ require src/lib/le.f
 require src/lib/string.f
 using A64ICODE
 using IMAGE-BYTES
+using LINUX-LAYOUT   \ the guard
 package ELF
 $7F constant ELF-MAG0
 69 constant ELF-MAG1
@@ -47,16 +56,16 @@ $B7 constant EM-AARCH64
 6 constant PF-RW
 64 constant ELF-HDR-SZ
 56 constant ELF-PHDR-SZ
-5 constant ELF-PHDR-N
+6 constant ELF-PHDR-N
 \ Where the file's first byte maps.
 variable VMBASE
 $C0 constant ELF-DYNAMIC-SZ
-$158 constant ELF-INTERP-OFF
+$190 constant ELF-INTERP-OFF
 TYPED-VARIABLE X64 bool
 : INTERPRETER$ ( -- str )
    X64 @ if s" /lib64/ld-linux-x86-64.so.2" else s" /lib/ld-linux-aarch64.so.1" then ;
 : ELF-INTERP-SZ ( -- n ) INTERPRETER$ nip 1+ ;
-$178 constant ELF-HASH-OFF
+$1B0 constant ELF-HASH-OFF
 24 constant ELF-SYM-SZ
 24 constant ELF-RELA-ENT-SZ
 $401 constant ELF-R-AARCH64-GLOB-DAT
@@ -121,6 +130,8 @@ variable CODELEN
 private
 variable ELF-TEXT-SIZE
 PTR-VARIABLE TEXT
+PTR-VARIABLE CARRIER-A
+variable CARRIER-N
 
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
@@ -133,11 +144,14 @@ public
    ASM-CODELEN!
    ASM-PHASE ;
 
-: TEXTSZ ( -- n )  CODE-OFF CODELEN @ + ELF-PAGE-UP ;
+: TEXTSZ ( -- n )  LINUX-LAYOUT:CODE-OFF CODELEN @ + ELF-PAGE-UP ;
 
 private
+\ The carrier's file offset: the boundary after the read-write tail.
+: ELF-CARRIER-AT ( -- n ) TEXTSZ ELF-RW-SZ + ELF-PAGE-UP ;
+
 \ The buffer fits the file BUILD-ELF writes.
-: ELF-MSIZE! ( -- ) TEXTSZ ELF-RW-SZ + MSIZE! ;
+: ELF-MSIZE! ( -- ) ELF-CARRIER-AT CARRIER-N @ + MSIZE! ;
 
 : ELF-VA ( n -- n )
    VMBASE @ + ;
@@ -158,7 +172,7 @@ private
    ET-EXEC IMG-M16
    X64 @ if EM-X86-64 else EM-AARCH64 then IMG-M16
    EV-CURRENT IMG-M32
-   VMBASE @ CODE-OFF + IMG-M64
+   VMBASE @ LINUX-LAYOUT:CODE-OFF + IMG-M64
    ELF-HDR-SZ IMG-M64
    0 IMG-M64
    0 IMG-M32
@@ -192,13 +206,18 @@ private
 : ELF-REGION-PHDR, ( -- )
    PT-LOAD PF-RW 0 REGION-OFF ELF-VA 0 REGION PROT-PAGE-MAX ELF-PHDR, ;
 
-\ The loads ascend by address: text, read-write tail, code region.
+: ELF-CARRIER-PHDR, ( -- )
+   PT-LOAD PF-RW ELF-CARRIER-AT CARRIER-OFF ELF-VA CARRIER-N @ dup
+   PROT-PAGE-MAX ELF-PHDR, ;
+
+\ The loads ascend by address: text, read-write tail, code region, carrier.
 : ELF-PHDRS, ( -- )
    ELF-RX-PHDR,
    ELF-RW-PHDR,
    ELF-INTERP-PHDR,
    ELF-DYNAMIC-PHDR,
-   ELF-REGION-PHDR, ;
+   ELF-REGION-PHDR,
+   ELF-CARRIER-PHDR, ;
 
 : ELF-INTERP, ( -- )
    ELF-INTERP-OFF M-OFF M-PAD-OFF
@@ -248,7 +267,7 @@ private
    ELF-DYNSYM,
    ELF-DYNSTR,
    ELF-RELA,
-   CODE-OFF M-OFF M-PAD-OFF ;
+   LINUX-LAYOUT:CODE-OFF M-OFF M-PAD-OFF ;
 
 : ELF-DYN, ( n n -- ) {: tag val :}
    tag IMG-M64
@@ -278,16 +297,25 @@ private
    ELF-DYNAMIC,
    ELF-GOT, ;
 
+: ELF-CARRIER, ( -- )
+   ELF-CARRIER-AT M-OFF M-PAD-OFF
+   CARRIER-A @ CARRIER-N @ M-BYTES ;
+
+\ The checks come first: the buffer holds the carrier, which they bound.
 : BUILD-ELF ( -- )
-   ELF-MSIZE! M-RESET
    TEXTSZ ELF-RW-SZ + REGION-OFF > if
       s" elf: the text overlaps the runtime code region" EXIT-STATUS:IMAGE die
    then
-   ELF-TABLES-END CODE-OFF > if
+   VMBASE @ CARRIER-OFF + CARRIER-N @ + LINUX-LAYOUT:DATA-VA > if
+      s" elf: the DATA carrier passes DATA-VA" EXIT-STATUS:IMAGE die
+   then
+   ELF-TABLES-END LINUX-LAYOUT:CODE-OFF > if
       SB-RESET  s" elf: " SB-APPEND  IMPORT-NAMES:COUNT FMT:SB-U
-      s"  imports outgrow the header page's " SB-APPEND  CODE-OFF FMT:SB-U
+      s"  imports outgrow the header page's " SB-APPEND
+      LINUX-LAYOUT:CODE-OFF FMT:SB-U
       s"  bytes" SB-APPEND  SB$ EXIT-STATUS:IMAGE die
    then
+   ELF-MSIZE! M-RESET
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
    ELF-PHDRS,
@@ -295,23 +323,28 @@ private
    TEXT @ CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
    ELF-TEXT-SIZE @ ELF-RW-AT,
+   ELF-CARRIER,
    M-HERE MLEN! ;
+
+: CARRIER! ( str -- ) CARRIER-N ! CARRIER-A ! ;
 
 public
 \ The program as an ELF file whose code maps at the address, its GOT binding
-\ the import names given.
-: BUILD-IMAGE ( asm n str -- img )
+\ the import names given and its carrier holding the bytes given last.
+: BUILD-IMAGE ( asm n str str -- img )
+   CARRIER!
    IMPORT-NAMES:SPAN!
    false X64 ! ASM-CODELEN!
-   CODE-OFF - VMBASE !
+   LINUX-LAYOUT:CODE-OFF - VMBASE !
    ASM-DROP
    BUILD-ELF
    IMG-PHASE ;
 
 \ The same ELF layout, with the x86-64 loader and relocation number.
-: BUILD-X64 ( str n str -- img )
+: BUILD-X64 ( str n str str -- img )
+   CARRIER!
    IMPORT-NAMES:SPAN!
-   CODE-OFF - VMBASE ! CODELEN ! TEXT ! true X64 !
+   LINUX-LAYOUT:CODE-OFF - VMBASE ! CODELEN ! TEXT ! true X64 !
    BUILD-ELF IMG-PHASE ;
 
 private
@@ -321,6 +354,7 @@ variable BYTES
 variable RX-HDR
 variable RW-HDR
 variable REGION-HDR
+variable CARRIER-HDR
 variable INTERP-HDR
 variable DYN-HDR
 variable HASH-AT
@@ -388,7 +422,7 @@ private
    s" elf: not a supported 64-bit little-endian executable" CHECK
    32 U64@ 52 U16@ = 52 U16@ ELF-HDR-SZ = and 54 U16@ ELF-PHDR-SZ = and
    56 U16@ ELF-PHDR-N = and
-   s" elf: not five program headers after the header" CHECK
+   s" elf: not six program headers after the header" CHECK
    40 U64@ 0= 60 U16@ 0= and
    s" elf: a section header table the linker does not write" CHECK ;
 
@@ -396,20 +430,34 @@ private
    slot @ 0= s" elf: two program headers of one kind" CHECK
    off slot ! ;
 
+: RW-LOAD? ( n -- bool ) {: off:n :}
+   off U32@ PT-LOAD = off 4 + U32@ PF-RW = and ;
+
+\ Every header but a read-write load, which RW-PHDR places once the text's
+\ address is known.
 : PHDR ( n -- ) {: off:n :}
+   off RW-LOAD? if exit then
    off U32@ off 4 + U32@ {: kind:n flags:n :}
    kind PT-LOAD = flags PF-RX = and if off RX-HDR UNIQUE! exit then
-   kind PT-LOAD = flags PF-RW = and if
-      off  off P-FILESZ 0= if REGION-HDR else RW-HDR then  UNIQUE! exit
-   then
    kind PT-INTERP = flags PF-R = and if off INTERP-HDR UNIQUE! exit then
    kind PT-DYNAMIC = flags PF-RW = and
    s" elf: a program header the linker does not write" CHECK
    off DYN-HDR UNIQUE! ;
 
+\ The carrier is the read-write load at CARRIER-OFF; of the others the code
+\ region's holds no file bytes.
+: RW-PHDR ( n -- ) {: off:n :}
+   off RW-LOAD? 0= if exit then
+   off P-VA RX-VA - CARRIER-OFF = if off CARRIER-HDR UNIQUE! exit then
+   off  off P-FILESZ 0= if REGION-HDR else RW-HDR then  UNIQUE! ;
+
+: PHDR-AT ( n -- n ) ELF-PHDR-SZ * 32 U64@ + ;
+
 : PHDRS ( -- )
-   0 RX-HDR ! 0 RW-HDR ! 0 REGION-HDR ! 0 INTERP-HDR ! 0 DYN-HDR !
-   56 U16@ 0 ?do 32 U64@ i ELF-PHDR-SZ * + PHDR loop ;
+   0 RX-HDR ! 0 RW-HDR ! 0 REGION-HDR ! 0 CARRIER-HDR ! 0 INTERP-HDR !
+   0 DYN-HDR !
+   56 U16@ 0 ?do i PHDR-AT PHDR loop
+   56 U16@ 0 ?do i PHDR-AT RW-PHDR loop ;
 
 : POW2? ( n -- bool ) {: n:n :}
    n 0 > n n 1- and 0= and ;
@@ -420,19 +468,31 @@ private
    r P-ALIGN TEXT-ALIGN = and  r P-VA RW-HDR @ P-VA RW-BYTES + >= and
    s" elf: the code region's load is not REGION bytes at REGION-OFF past the text" CHECK ;
 
+\ The carrier's load maps whole pages from the page boundary after the
+\ read-write load to the file's end.
+: CHECK-CARRIER ( -- )
+   CARRIER-HDR @ {: c:n :}
+   RW-OFF RW-BYTES + TEXT-ALIGN 1- + TEXT-ALIGN negate and {: start:n :}
+   c P-OFF start = c P-OFF c P-FILESZ + BYTES @ = and
+   c P-FILESZ c P-MEMSZ = and c P-FILESZ TEXT-ALIGN mod 0= and
+   c P-ALIGN TEXT-ALIGN = and
+   s" elf: the carrier's load does not end the file" CHECK
+   c P-OFF c P-FILESZ AT drop ;
+
 \ The text's load maps the file from its first byte to a page boundary, and
-\ the read-write load maps the rest at the address that follows it.
+\ the read-write load maps what follows at the address that follows it.
 : CHECK-LOADS ( -- )
    TEXT-ALIGN POW2? s" elf: the text's page is not a power of two" CHECK
    RX-HDR @ P-OFF 0= TEXT-LIMIT RX-HDR @ P-MEMSZ = and
    RX-VA TEXT-ALIGN mod 0= and TEXT-LIMIT TEXT-ALIGN mod 0= and
    s" elf: the text's load is not on page boundaries" CHECK
    0 TEXT-LIMIT AT drop
-   RW-OFF TEXT-LIMIT = RW-OFF RW-BYTES + BYTES @ = and
-   RW-HDR @ P-VA RX-VA RW-OFF + = and
+   RW-OFF TEXT-LIMIT = RW-HDR @ P-VA RX-VA RW-OFF + = and
    RW-BYTES RW-HDR @ P-MEMSZ = and RW-HDR @ P-ALIGN TEXT-ALIGN = and
-   s" elf: the read-write load does not end the file" CHECK
+   s" elf: the read-write load does not follow the text" CHECK
+   RW-OFF RW-BYTES AT drop
    CHECK-REGION
+   CHECK-CARRIER
    TEXT-OFF HEADERS-BYTES > TEXT-OFF TEXT-LIMIT <= and
    s" elf: the entry is not in the text's load past the headers" CHECK ;
 
@@ -503,6 +563,10 @@ public
    image IMAGE ! size BYTES !
    CHECK-HEADER PHDRS CHECK-LOADS CHECK-DYNAMIC CHECK-TABLES ;
 
+\ The opened image's carrier: its file offset and length.
+: CARRIER ( -- n n ) CARRIER-HDR @ dup P-OFF swap P-FILESZ ;
+
 ;package
+;using   \ LINUX-LAYOUT
 ;using
 ;using
