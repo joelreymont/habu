@@ -2890,11 +2890,11 @@ sections above.
 
 ## Spans: a pointer that carries its reach
 
-When a word writes into a buffer or indexes one, pass a `SPAN:span<u8>` rather
-than a `^u8` and a separate length: `src/lib/span.f` bounds-checks every access
-against the reach the span carries. Take the span from a producer — `n
-SPAN-BUFFER: NAME`, `n SPAN-CELLS: NAME`, `MEM:ALLOC-SPAN` — or narrow one you
-were handed with `SPAN:SKIP` / `SPAN:TAKE` / `SPAN:SUB`, which can never widen
-it. `SPAN:MAKE`, the one place an address and a number become a reach, belongs
-to library source, and so does bare `BYTE-COPY`. A read-only source stays the `( ^u8 n
-)` string idiom. The reach is counted in bytes whatever the element type.
+A word reads bytes as `str` and writes them into a `^VEC:vector<u8>`, which
+grows; a row never says `^u8 n`. A `SPAN:span<u8>` is for storage a word is
+handed to index: `src/lib/span.f` checks each access against the reach it
+carries. Take one from a producer — `n SPAN-BUFFER: NAME`, `n SPAN-CELLS:
+NAME`, `MEM:ALLOC-SPAN` — or narrow one with `SPAN:SKIP` / `SPAN:TAKE` /
+`SPAN:SUB`, which can never widen it. `SPAN:MAKE`, the one place an address
+and a number become a reach, belongs to library source, and so does bare
+`BYTE-COPY`. The reach is counted in bytes whatever the element type.
