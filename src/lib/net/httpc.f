@@ -34,8 +34,12 @@ split-str
 \ at zero it reads a size line, and a chunk's data read whole is followed at
 \ once by its CRLF. The answer's head, its interim heads together, each
 \ chunk-size line and its trailer section are each bounded by the room, past
-\ which NEXT fails `oversize`. Dialing tries every address getaddrinfo
-\ answers, in order, each with the time left divided by the addresses left.
+\ which NEXT fails `oversize`. Each head's first line is judged as it arrives:
+\ bytes held that cannot begin `HTTP/1.x NNN` and a space or CR fail
+\ `malformed` before any further read, so a close or a full room after them
+\ is not `cut` or `oversize`. Dialing tries every address
+\ getaddrinfo answers, in order, each with the time left divided by the
+\ addresses left.
 \ A request marked malformed or oversize while it was built fails at
 \ `starting`, with nothing dialed or written, and drops any connection the
 \ record held.
@@ -163,7 +167,6 @@ private
 253 constant HOST-MOST             \ RFC 1035's longest name text
 5 constant PORT-DIGITS
 65535 constant PORT-MOST
-16 constant STATUS-LINE-LEAST      \ `HTTP/1.1 200`, its CRLF, the blank line
 15 constant SIZE-DIGITS            \ hex digits a positive chunk size may have
 $80801 constant SOCKET-FLAGS       \ SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC
 $4000 constant MSG-NOSIGNAL
@@ -669,14 +672,44 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       c MORE-HEAD? 0= if drop false exit then
    repeat drop true ;
 
-\ `HTTP/1.x NNN` then a space or the line's end; keeps the status and x.
+\ Where the first CRLF held at or after FROM begins; -1 while none is.
+: LINE-AT ( ^conn n -- n ) {: c from:n :}
+   c ROOM c CONN-FILLED @ S\" \r\n" from FIND-SUB-FROM MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ Whether byte b may stand at index i of a status line's fixed part:
+\ `HTTP/1.`, a digit, a space, three digits, then a space or CR.
+: LEAD-BYTE? ( n n -- bool ) {: b:n i:n :}
+   i 7 < if s" HTTP/1." drop i + c@ b = exit then
+   i 7 = if b STR-DIGIT? exit then
+   i 8 = if b 32 = exit then
+   i 12 < if b STR-DIGIT? exit then
+   b 32 = b 13 = or ;
+
+\ Whether the bytes held can begin a status line.
+: LEAD? ( ^conn -- bool ) {: c :}
+   c ROOM {: r:^ :}
+   true c CONN-FILLED @ 13 min 0 ?do r i + c@ i LEAD-BYTE? and loop ;
+
+\ The first line into the room, judged as each receive adds to it: bytes
+\ held that cannot begin a status line fail `malformed` before any
+\ further read.
+: FILL-LINE ( ^conn -- bool ) {: c :}
+   0 begin
+      c LEAD? 0= if drop c MALFORMED false exit then
+      c over LINE-AT 0 <
+   while
+      drop c CONN-FILLED @ 1- 0 max
+      c MORE-HEAD? 0= if drop false exit then
+   repeat drop true ;
+
+\ The first line, held whole with LEAD? true; keeps the status and x. A
+\ line with no CRLF held is refused.
 : STATUS? ( ^conn -- bool ) {: c :}
    c ROOM {: r:^ :}
-   c CONN-HEAD-LEN @ STATUS-LINE-LEAST < if false exit then
-   r 7 s" HTTP/1." STR= 0= if false exit then
-   r 7 + c@ STR-DIGIT? 0= r 8 + c@ 32 <> or if false exit then
-   r 9 + 3 STR-DIGITS? 0= if false exit then
-   r 12 + c@ dup 32 <> swap 13 <> and if false exit then
+   c 0 LINE-AT 12 < if false exit then
    r 7 + c@ STR-DIGIT-VALUE c CONN-MINOR !
    r 9 + 3 STR-PARSE-POS MATCH option
       none OF false ENDOF
@@ -766,10 +799,12 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       to 2 +
    again ;
 
-\ Reads a head; an interim one is discarded.
+\ Reads a head, its first line judged before the rest is read; an interim
+\ one is discarded.
 : READ-HEAD ( ^conn -- head-read ) {: c :}
-   c FILL-HEAD 0= if construct head-read failed exit then
+   c FILL-LINE 0= if construct head-read failed exit then
    c STATUS? 0= if c MALFORMED construct head-read failed exit then
+   c FILL-HEAD 0= if construct head-read failed exit then
    c INTERIM? if
       c DISCARD? 0= if construct head-read failed exit then
       construct head-read interim exit

@@ -110,7 +110,7 @@ CONN-CAP TYPED-BUFFER PER-CONN n
 ENUM script sized chunked closing interim no-content reuse idle-close
    unread cut-head cut-body silent bad-status bad-length bad-chunk big-head
    trailing trailer big-trailer long-size interims close-asked minor-zero
-   wire-sized wire-chunked stale-byte ;ENUM
+   wire-sized wire-chunked stale-byte not-http garbage bad-code ;ENUM
 TYPED-VARIABLE SCRIPT script
 TYPED-VARIABLE LINK HTTPC:conn
 TYPED-VARIABLE SPARE HTTPC:conn          \ a record OPEN finds full of bytes
@@ -210,6 +210,9 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       wire-sized OF WIRE-SIZED$ false ENDOF
       wire-chunked OF WIRE-CHUNKED$ false ENDOF
       stale-byte OF k 0= if STALE-BYTE$ else SECOND$ then false ENDOF
+      not-http OF S\" not http\r\n" true ENDOF
+      garbage OF s" garbage" true ENDOF
+      bad-code OF s" HTTP/1.1 2x" true ENDOF
    ;MATCH ;
 
 
@@ -677,6 +680,14 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    construct script bad-length
    s" a non-numeric Content-Length fails `malformed`" MALFORMED-BY
    construct script bad-chunk s" a bad chunk size fails `malformed`"
+   MALFORMED-BY
+   construct script not-http
+   s" a line that is not HTTP, then the close, fails `malformed`" MALFORMED-BY
+   construct script garbage
+   s" bytes that cannot begin HTTP, then the close, fail `malformed`"
+   MALFORMED-BY
+   construct script bad-code
+   s" a status code that is not digits, then the close, fails `malformed`"
    MALFORMED-BY ;
 
 \ A request with a stall only, in a room of SMALL-ROOM bytes, whose answer
