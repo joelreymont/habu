@@ -21,7 +21,8 @@ require src/lib/process-env.f
 require src/lib/test.f
 require test/wasm/harness.f
 require test/browser/memory.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/browser/app.f
 
 package BROWSER-APP-TEST
@@ -44,9 +45,9 @@ variable GOT-U
 PATH-CAP BUFFER: FILE
 PATH-CAP BUFFER: CHROME
 variable CHROME-U
-BUF:HDR-BYTES BUFFER: WASM
-BUF:HDR-BYTES BUFFER: PAGE
-BUF:HDR-BYTES BUFFER: CODE
+TYPED-VARIABLE WASM ^VEC:vector<u8>
+TYPED-VARIABLE PAGE ^VEC:vector<u8>
+TYPED-VARIABLE CODE ^VEC:vector<u8>
 \ A refused case's expected output, kept apart from SB, which labels build in.
 CAP BUFFER: BEFORE
 variable BEFORE-U
@@ -306,19 +307,21 @@ variable BEFORE-U
       some OF LEN>N ENDOF
    ;MATCH CHROME-U ! ;
 
+: BYTES ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+
 : PAGE! ( -- )
    MOD MOD-U @ FS:FILE-SIZE {: wu:n :}
-   WASM wu BUF:N>BLEN BUF:INIT
-   WASM wu BUF:N>BLEN BUF:GROW SPAN:$ {: w:^ cap:n :}
+   BYTES WASM !  WASM @ wu VEC:ENSURE
+   WASM @ VEC:SPAN SPAN:$ {: w:^ cap:n :}
    MOD MOD-U @ w cap FS:READ-ALL cap <> if E-FS-IO throw then
-   PAGE wu BUF:N>BLEN BUF:INIT
-   TITLE$ PAGE MCP-APP:PAGE+
-   PAGE BUF:SPAN$ BUF:BLEN>N s" page.html" FILE!
-   PAGE BUF:DISPOSE
-   CODE wu BUF:N>BLEN BUF:INIT
-   w cap CODE MCP-APP:CODE+
-   CODE BUF:SPAN$ BUF:BLEN>N s" code.json" FILE!
-   CODE BUF:DISPOSE  WASM BUF:DISPOSE ;
+   BYTES PAGE !
+   TITLE$ PAGE @ MCP-APP:PAGE+
+   PAGE @ VEC:SPAN SPAN:$ s" page.html" FILE!
+   PAGE @ VEC:DELETE
+   BYTES CODE !
+   w cap CODE @ MCP-APP:CODE+
+   CODE @ VEC:SPAN SPAN:$ s" code.json" FILE!
+   CODE @ VEC:DELETE  WASM @ VEC:DELETE ;
 
 
 : CHROME-CASE ( -- )

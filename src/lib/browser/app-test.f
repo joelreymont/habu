@@ -1,5 +1,5 @@
 split-str
-\ app-test.f - MCP-APP:PAGE+ into a BUF holding a prefix, with a title holding
+\ app-test.f - MCP-APP:PAGE+ into a vector holding a prefix, with a title holding
 \ <&"', and MCP-APP:CODE+ of a small module. The prefix is kept; the page after
 \ it is valid UTF-8, holds the escaped title, the page id and app.js's base64,
 \ and no marker; MCP-APP:PAGE-ID$ is the page's id. CODE+ names the same page
@@ -7,10 +7,9 @@ split-str
 \ module as base64 that decodes to their bytes, the files read here from
 \ src/lib/browser at the tree's root. MCP-APP:FILE+ of a.js with the bytes hi
 \ appends "a.js":"aGk=" after a prefix. A title that is not XML text is
-\ refused and the BUF kept; the cases of a
-\ module held in the BUF and of a negative module length need the build's
-\ --checks option and are off. test/browser/app-test.f's --chrome check runs a
-\ composed page and its code in Chrome.
+\ refused and the vector kept; the case of a negative module length needs
+\ the build's --checks option and is off. test/browser/app-test.f's --chrome
+\ check runs a composed page and its code in Chrome.
 \ Run: bin/hb --load src/lib/browser/app-test.f
 
 require src/lib/test.f
@@ -18,7 +17,8 @@ require src/lib/string.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/utf8-scalar.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/base64.f
 require src/lib/xml.f
 require src/lib/browser/app.f
@@ -29,18 +29,19 @@ private
 $20000 constant CAP                   \ room for any of the page's scripts
 CAP SPAN-BUFFER: DECODED
 CAP BUFFER: WANT
-BUF:HDR-BYTES BUFFER: PAGE
-BUF:HDR-BYTES BUFFER: CODE
-BUF:HDR-BYTES BUFFER: FILE
+TYPED-VARIABLE PAGE ^VEC:vector<u8>
+TYPED-VARIABLE CODE ^VEC:vector<u8>
+TYPED-VARIABLE FILE ^VEC:vector<u8>
 
 : PREFIX$ ( -- str )  s" HTTP/1.1 200 OK prefix|" ;
 : MODULE$ ( -- str )  s\" \x00asm\x01\x00\x00\x00\xFF\xFE" ;
 : TITLE$ ( -- str )  s\" Zürich <&\"'" ;
 : ESCAPED$ ( -- str )  s\" <title>Zürich &lt;&amp;\"'</title>" ;
 
-: PAGE$ ( -- str )  PAGE BUF:SPAN$ BUF:BLEN>N ;
-: CODE$ ( -- str )  CODE BUF:SPAN$ BUF:BLEN>N ;
-: FILE$ ( -- str )  FILE BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+: PAGE$ ( -- str )  PAGE @ VEC:SPAN SPAN:$ ;
+: CODE$ ( -- str )  CODE @ VEC:SPAN SPAN:$ ;
+: FILE$ ( -- str )  FILE @ VEC:SPAN SPAN:$ ;
 
 : AFTER$ ( -- str )
    PAGE$ {: a:^ u:n :}
@@ -136,29 +137,29 @@ BUF:HDR-BYTES BUFFER: FILE
 
 
 : FILE-CASES ( -- )
-   FILE CAP BUF:N>BLEN BUF:INIT
-   PREFIX$ BUF:N>BLEN FILE BUF:APPEND-SPAN
-   s" a.js" s" hi" FILE MCP-APP:FILE+
+   BYTES FILE !
+   PREFIX$ FILE @ VEC:APPEND
+   s" a.js" s" hi" FILE @ MCP-APP:FILE+
    s" FILE+ appends the name and the bytes as base64" T-LABEL
    MEMBER-AFTER$ s\" \"a.js\":\"aGk=\"" T$=
-   FILE BUF:DISPOSE ;
+   FILE @ VEC:DELETE ;
 
 
 : COMPOSE-CASES ( -- )
-   PAGE CAP BUF:N>BLEN BUF:INIT
-   PREFIX$ BUF:N>BLEN PAGE BUF:APPEND-SPAN
-   TITLE$ PAGE MCP-APP:PAGE+
-   CODE CAP BUF:N>BLEN BUF:INIT
-   MODULE$ CODE MCP-APP:CODE+
+   BYTES PAGE !
+   PREFIX$ PAGE @ VEC:APPEND
+   TITLE$ PAGE @ MCP-APP:PAGE+
+   BYTES CODE !
+   MODULE$ CODE @ MCP-APP:CODE+
    PAGE-CASES
    CODE-CASES
    PAGE$ {: u:n :} drop
    s" a title that is not XML text is refused" T-LABEL
-   [: s\" bad\z" PAGE MCP-APP:PAGE+ ;] XML:E-SCALAR TTHROWSQ
-   s" a refused title leaves the BUF as it was" T-LABEL
+   [: s\" bad\z" PAGE @ MCP-APP:PAGE+ ;] XML:E-SCALAR TTHROWSQ
+   s" a refused title leaves the vector as it was" T-LABEL
    PAGE$ nip u T=
-   CODE BUF:DISPOSE
-   PAGE BUF:DISPOSE ;
+   CODE @ VEC:DELETE
+   PAGE @ VEC:DELETE ;
 
 T-RESET
 COMPOSE-CASES
@@ -167,28 +168,18 @@ T-REPORT
 
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : NEGATIVE-LENGTH-CASE ( -- )
-   PAGE CAP BUF:N>BLEN BUF:INIT
-   PREFIX$ BUF:N>BLEN PAGE BUF:APPEND-SPAN
+   BYTES PAGE !
+   PREFIX$ PAGE @ VEC:APPEND
    PAGE$ {: u:n :} drop
    s" a negative module length is refused" T-LABEL
-   [: MODULE$ drop -1 PAGE MCP-APP:CODE+ ;] E-STR-BOUNDS TTHROWSQ
-   s" a refused length leaves the BUF as it was" T-LABEL
+   [: MODULE$ drop -1 PAGE @ MCP-APP:CODE+ ;] E-STR-BOUNDS TTHROWSQ
+   s" a refused length leaves the vector as it was" T-LABEL
    PAGE$ nip u T=
-   PAGE BUF:DISPOSE ;
+   PAGE @ VEC:DELETE ;
 
 T-RESET
 NEGATIVE-LENGTH-CASE
 T-REPORT
-[then]
-
-false [if] \ off until dot habu-add-the-checks-a49d054d
-\ Runs in COMPOSE-CASES after the refused title, the page built.
-: MODULE-HELD ( -- )
-   PAGE$ {: u:n :} drop
-   s" a module held in the BUF is refused" T-LABEL
-   [: PAGE$ PAGE MCP-APP:CODE+ ;] E-BUF-BOUNDS TTHROWSQ
-   s" a refused module leaves the BUF as it was" T-LABEL
-   PAGE$ nip u T= ;
 [then]
 
 ;package

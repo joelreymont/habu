@@ -20,14 +20,15 @@ split-str
 \ is its own view.js, not this one, answers CODE-TOOL$ with a _meta of its own
 \ making, {"page":PAGE-ID$,"files":{FILE+ ...}}, whose view.js app.js starts.
 \ STORAGE CLASS. PROCESS-WIDE: buffers filled at load and only read after;
-\ PAGE+, FILE+, CODE-ID+ and CODE+ write only the caller's BUF.
+\ PAGE+, FILE+, CODE-ID+ and CODE+ write only the caller's vector.
 
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/memory.f
-require src/lib/byte-buffer.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/base64.f
 require src/lib/xml.f
 
@@ -117,38 +118,41 @@ APP-AT APP-MARK nip + constant APP-END
 \ The longest escape ESCAPE-TEXT writes for one byte: &amp; and &#13;.
 5 constant WIDEST
 
-: SPAN+ ( str ^a -- )
-   {: a:^ u:n buf:^ :}
-   a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+: GAP+ ( n n ^VEC:vector<u8> -- )
+   {: from:n to:n v:^ :}
+   HTML from + to from - v VEC:APPEND ;
 
 
-: GAP+ ( n n ^a -- )
-   {: from:n to:n buf:^ :}
-   HTML from + to from - buf SPAN+ ;
+\ The n zero bytes appended to the vector.
+: TAIL+ ( ^VEC:vector<u8> n -- SPAN:span<u8> )
+   {: v:^ k:n :}
+   v VEC:COUNT {: old:n :}
+   v old k + VEC:ENSURE
+   v VEC:SPAN old SPAN:SKIP ;
 
 
-: BASE64+ ( str ^a -- )
-   {: a:^ u:n buf:^ :}
-   u 2 + 3 / 4 * {: len:n :}
-   buf len BUF:N>BLEN BUF:GROW {: out :}
+\ The bytes are read after the vector grows, so it must not hold them.
+: BASE64+ ( str ^VEC:vector<u8> -- )
+   {: a:^ u:n v:^ :}
+   v u 2 + 3 / 4 * TAIL+ {: out :}
    a u out BASE64:ENCODE drop ;
 
 
-\ The escaped title and the BUF.
-: COMPOSE ( ^u8 n ^a -- )
-   {: t:^ tu:n buf:^ :}
-   0 TITLE-AT buf GAP+  t tu buf SPAN+
-   TITLE-END ID-AT buf GAP+  ID ID-U buf SPAN+
-   ID-END APP-AT buf GAP+  APP APP-U buf BASE64+
-   APP-END HTML-U buf GAP+ ;
+\ The escaped title and the vector.
+: COMPOSE ( str ^VEC:vector<u8> -- )
+   {: t:^ tu:n v:^ :}
+   0 TITLE-AT v GAP+  t tu v VEC:APPEND
+   TITLE-END ID-AT v GAP+  ID ID-U v VEC:APPEND
+   ID-END APP-AT v GAP+  APP APP-U v BASE64+
+   APP-END HTML-U v GAP+ ;
 
 
-\ Escapes the title into the scratch bytes before the BUF is touched, so a
-\ title ESCAPE-TEXT refuses leaves the BUF as it was.
-: ESCAPED ( ^u8 n ^a n ^u8 NUM:alloc-byte-len -- )
-   drop {: t:^ tu:n buf:^ cap:n s:^ :}
+\ Escapes the title into the scratch bytes before the vector is touched, so
+\ a title ESCAPE-TEXT refuses leaves the vector as it was.
+: ESCAPED ( str ^VEC:vector<u8> n ^u8 NUM:alloc-byte-len -- )
+   drop {: t:^ tu:n v:^ cap:n s:^ :}
    t tu s cap XML:ESCAPE-TEXT {: n:n :}
-   s n buf COMPOSE ;
+   s n v COMPOSE ;
 
 
 \ CODE-ID+'s files, in its order, fed to the SHA-256 context.
@@ -162,14 +166,14 @@ APP-AT APP-MARK nip + constant APP-END
    sha SOCKET SOCKET-U SHA256-FEED ;
 
 
-\ The scratch bytes hold the SHA-256 context, then the digest; the BUF grows
-\ only once the digest is done.
-: HASHED ( ^u8 n ^a ^u8 NUM:alloc-byte-len -- )
-   drop {: m:^ mu:n buf:^ sha:^ :}
+\ The scratch bytes hold the SHA-256 context, then the digest; the vector
+\ grows only once the digest is done.
+: HASHED ( str ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- )
+   drop {: m:^ mu:n v:^ sha:^ :}
    sha SHA256-BEGIN  sha m mu SHA256-FEED  sha FILES-FED
    sha SHA256-CTX-BYTES + {: dg:^ :}
    sha dg SHA256-END
-   buf ID-U BUF:N>BLEN BUF:GROW SPAN:$ drop {: hex:^ :}
+   v ID-U TAIL+ SPAN:$ drop {: hex:^ :}
    dg hex SHA256>HEX ;
 
 public
@@ -178,22 +182,23 @@ public
 \ as 64 lowercase hex digits.
 : PAGE-ID$ ( -- ^u8 n )  ID ID-U ;
 
-\ A file's name, its bytes and the BUF a member of a CODE-TOOL$ result's
+\ A file's name, its bytes and the vector a member of a CODE-TOOL$ result's
 \ files is appended to: "<name>":"<the bytes as base64>". The name is
-\ written as it is, so it must be printable ASCII with no " or \.
-: FILE+ ( ^u8 n ^u8 n ^a -- )
-   {: name:^ nu:n a:^ u:n buf:^ :}
-   s\" \"" buf SPAN+  name nu buf SPAN+  s\" \":\"" buf SPAN+
-   a u buf BASE64+  s\" \"" buf SPAN+ ;
+\ written as it is, so it must be printable ASCII with no " or \. The vector
+\ must not hold the bytes.
+: FILE+ ( str str ^VEC:vector<u8> -- )
+   {: name:^ nu:n a:^ u:n v:^ :}
+   s\" \"" v VEC:APPEND  name nu v VEC:APPEND
+   s\" \":\"" v VEC:APPEND  a u v BASE64+  s\" \"" v VEC:APPEND ;
 
 
-\ The title and the BUF the page is appended to; a title that is not XML text
-\ is refused.
-: PAGE+ ( str ^a -- )
-   {: t:^ tu:n buf:^ :}
+\ The title and the vector the page is appended to; a title that is not XML
+\ text is refused.
+: PAGE+ ( str ^VEC:vector<u8> -- )
+   {: t:^ tu:n v:^ :}
    \ An allocation is never empty, so an empty title takes one escape's room.
    tu 1 max WIDEST * {: cap:n :}
-   t tu buf cap  cap MEM:BYTES-ALLOC-LEN [: ESCAPED ;] MEM:WITH-BYTES ;
+   t tu v cap  cap MEM:BYTES-ALLOC-LEN [: ESCAPED ;] MEM:WITH-BYTES ;
 
 
 \ The app-only tool the page calls, with arguments {}, for its code.
@@ -204,28 +209,28 @@ public
 \ the seconds after which the view asks for the URL again.
 : SOCKET-TOOL$ ( -- str )  s" view_socket" ;
 
-\ The module's bytes and the BUF their code id is appended to: the SHA-256,
+\ The module's bytes and the vector their code id is appended to: the SHA-256,
 \ as 64 lowercase hex digits, of the module's bytes, then view.html's,
 \ view.js's, turn.js's, viewport.js's, page.js's and socket.js's.
-: CODE-ID+ ( str ^a -- )
+: CODE-ID+ ( str ^VEC:vector<u8> -- )
    SHA256-CTX-BYTES $20 + MEM:BYTES-ALLOC-LEN
    [: HASHED ;] MEM:WITH-BYTES ;
 
-\ The module's bytes and the BUF CODE-TOOL$'s result's _meta is appended to:
-\ {"page":"<page id>","code":"<CODE-ID+>","files":{"view.html":"<base64>",
+\ The module's bytes and the vector CODE-TOOL$'s result's _meta is appended
+\ to: {"page":"<page id>","code":"<CODE-ID+>","files":{"view.html":"<base64>",
 \ "view.js":…,"turn.js":…,"viewport.js":…,"page.js":…,"socket.js":…,
-\ "module":…}}. The BUF must not hold the module.
-: CODE+ ( ^u8 n ^a -- )
-   {: m:^ mu:n buf:^ :}
-   s\" {\"page\":\"" buf SPAN+  ID ID-U buf SPAN+
-   s\" \",\"code\":\"" buf SPAN+  m mu buf CODE-ID+
-   s\" \",\"files\":{" buf SPAN+
-   s" view.html" VIEW-HTML VIEW-HTML-U buf FILE+  s" ," buf SPAN+
-   s" view.js" VIEW-JS VIEW-JS-U buf FILE+  s" ," buf SPAN+
-   s" turn.js" TURN TURN-U buf FILE+  s" ," buf SPAN+
-   s" viewport.js" VIEWPORT VIEWPORT-U buf FILE+  s" ," buf SPAN+
-   s" page.js" PAGE PAGE-U buf FILE+  s" ," buf SPAN+
-   s" socket.js" SOCKET SOCKET-U buf FILE+  s" ," buf SPAN+
-   s" module" m mu buf FILE+  s" }}" buf SPAN+ ;
+\ "module":…}}. The vector must not hold the module.
+: CODE+ ( str ^VEC:vector<u8> -- )
+   {: m:^ mu:n v:^ :}
+   s\" {\"page\":\"" v VEC:APPEND  ID ID-U v VEC:APPEND
+   s\" \",\"code\":\"" v VEC:APPEND  m mu v CODE-ID+
+   s\" \",\"files\":{" v VEC:APPEND
+   s" view.html" VIEW-HTML VIEW-HTML-U v FILE+  s" ," v VEC:APPEND
+   s" view.js" VIEW-JS VIEW-JS-U v FILE+  s" ," v VEC:APPEND
+   s" turn.js" TURN TURN-U v FILE+  s" ," v VEC:APPEND
+   s" viewport.js" VIEWPORT VIEWPORT-U v FILE+  s" ," v VEC:APPEND
+   s" page.js" PAGE PAGE-U v FILE+  s" ," v VEC:APPEND
+   s" socket.js" SOCKET SOCKET-U v FILE+  s" ," v VEC:APPEND
+   s" module" m mu v FILE+  s" }}" v VEC:APPEND ;
 
 ;package
