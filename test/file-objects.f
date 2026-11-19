@@ -1069,7 +1069,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" Y4" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    s" a load inside a package never links inside-i.f's object from a load alone" INSIDE-I COMPILED ;
 
-\ kept-aio.f's build: it exits 70 with E-BAD-STORAGE naming OLD and kept-aio.f's line 7.
+\ kept-aio.f's build: it exits 70 with E-BAD-STORAGE naming OLD and kept-aio.f's line 8.
 : KEPT-AIO-REJECTED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/kept-aio.f" false BUILD-RC {: rc:n :}
    CMD:ERR$ s" error[E-BAD-STORAGE]" CONTAINS? {: classed:bool :}
@@ -1078,7 +1078,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:8" CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build rejects OLD" LABEL  named TTRUE
-   s" the rejection names kept-aio.f's line 7" LABEL  placed TTRUE
+   s" the rejection names kept-aio.f's line 8" LABEL  placed TTRUE
    s" the build exits 70" LABEL  rc 70 T= ;
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
@@ -1921,19 +1921,21 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" ht-main.f" NEST-WRITE
    s\" : MAIN ( -- ) ;\n" SRC+  s" o.f" NEST-WRITE ;
 
-\ The main's build, rejected at link by one record naming the fixture, the cell that holds the
-\ address, what it found and the fix. Answers its exit code.
-: ARENA-REFUSED ( CMD:command str str str -- CMD:command n )
-   {: main:^ mainu:n f:^ fu:n cell:^ cellu:n :}
+\ The main's build, rejected at link by one record placed at the fixture's file:line:col over its source line,
+\ with the cell that holds the address, what it found and the fix. Answers its exit code.
+: ARENA-REFUSED ( CMD:command str str str str -- CMD:command n )
+   {: main:^ mainu:n f:^ fu:n line:^ lineu:n cell:^ cellu:n :}
    main mainu s" prog-ar" NEST-RC {: rc:n :}
    CMD:ERR$ f fu NEST-PATH$ CONTAINS? {: named:bool :}
+   CMD:ERR$ line lineu CONTAINS? {: shown:bool :}
    CMD:ERR$ cell cellu CONTAINS? {: celled:bool :}
    CMD:ERR$ s" outside hb's data and the build's space" CONTAINS? {: found:bool :}
    CMD:ERR$ s" or clear the cell before the file ends" CONTAINS? {: fixed:bool :}
    CMD:ERR$ s" error[" COUNT-SUB 1 = {: one:bool :}
-   named celled and found and fixed and one and  rc 0<> and 0= if rc SHOW then
+   named shown and celled and found and fixed and one and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
-   s" the rejection names the fixture" LABEL  named TTRUE
+   s" the rejection is placed at the declaration" LABEL  named TTRUE
+   s" the rejection shows the declaration's line" LABEL  shown TTRUE
    s" the rejection names the cell" LABEL  celled TTRUE
    s" the rejection says what it found" LABEL  found TTRUE
    s" the rejection gives the fix" LABEL  fixed TTRUE
@@ -1943,9 +1945,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : ARENA-OTHER ( CMD:command -- CMD:command ) s" o.f" s" prog-ao" NEST-BUILD drop ;
 
 : ARENA-KT ( CMD:command -- CMD:command )
-   s" AR" WHICH!  s" kt-main.f" s" kt.f" S\" in A +0\n" ARENA-REFUSED {: cold:n :}
+   s" AR" WHICH!  s" kt-main.f" s" kt.f:4:16" s" | TYPED-VARIABLE A ^ARENA:arena"
+   S\" in A +0\n" ARENA-REFUSED {: cold:n :}
    s" AR2" WHICH!  ARENA-OTHER
-   s" AR3" WHICH!  s" kt-main.f" s" kt.f" S\" in A +0\n" ARENA-REFUSED {: warm:n :}
+   s" AR3" WHICH!  s" kt-main.f" s" kt.f:4:16" s" | TYPED-VARIABLE A ^ARENA:arena"
+   S\" in A +0\n" ARENA-REFUSED {: warm:n :}
    s" the build exits as AR does" LABEL  warm cold T= ;
 
 : ARENA-KB ( CMD:command -- CMD:command )
@@ -1963,9 +1967,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" prog-ar" s\" 0\n" s" the program prints 0" NEST-RUN ;
 
 : ARENA-HT ( CMD:command -- CMD:command )
-   s" AR10" WHICH!  s" ht-main.f" s" ht.f" S\" in Q +0\n" ARENA-REFUSED {: cold:n :}
+   s" AR10" WHICH!  s" ht-main.f" s" ht.f:4:16" s" | TYPED-VARIABLE Q ^n"
+   S\" in Q +0\n" ARENA-REFUSED {: cold:n :}
    s" AR11" WHICH!  ARENA-OTHER
-   s" AR12" WHICH!  s" ht-main.f" s" ht.f" S\" in Q +0\n" ARENA-REFUSED {: warm:n :}
+   s" AR12" WHICH!  s" ht-main.f" s" ht.f:4:16" s" | TYPED-VARIABLE Q ^n"
+   S\" in Q +0\n" ARENA-REFUSED {: warm:n :}
    s" the build exits as AR10 does" LABEL  warm cold T= ;
 
 \ Guards that a build gives a program no address of memory a top level mapped.

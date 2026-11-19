@@ -596,20 +596,40 @@ TYPED-VARIABLE REC ^n
    XT-GATE
    SCOPE-ENTRY-GUARD ;
 
-\ The dictionary record index of each word run since RECORD-RUNS, in order.
+\ The dictionary record index of each word run since LOG-BUILD, in order.
 DYNAMIC-BUFFER RUNS n
 variable RUNS-N
 variable RUNS-CAP
-TYPED-VARIABLE RUNS-ON bool
+TYPED-VARIABLE LOGGING bool
 
 : RUN+ ( n -- ) {: idx:n :}
-   RUNS-ON @ 0= if exit then
+   LOGGING @ 0= if exit then
    RUNS-N @ RUNS-CAP @ = if
       RUNS-CAP @ 0= if 1024 else RUNS-CAP @ 2 * then
       dup RUNS-RESERVE RUNS-CAP !
    then
    idx RUNS-N @ RUNS !
    RUNS-N @ 1 + RUNS-N ! ;
+
+\ Each record declared since LOG-BUILD: its index and its declaration's token in
+\ an open file, empty ones too: a reused index's newest entry is then its own.
+DYNAMIC-BUFFER DECL-IDX n
+DYNAMIC-BUFFER DECL-A ^u8
+DYNAMIC-BUFFER DECL-U n
+variable DECLS-N
+variable DECLS-CAP
+
+: DECL+ ( n str -- ) {: idx:n t:^ tu:n :}
+   LOGGING @ 0= if exit then
+   DECLS-N @ DECLS-CAP @ = if
+      DECLS-CAP @ 0= if 1024 else DECLS-CAP @ 2 * then
+      dup DECL-IDX-RESERVE  dup DECL-A-RESERVE  dup DECL-U-RESERVE  DECLS-CAP !
+   then
+   t tu REJECTION:FILE-TOKEN$ {: a:^ u:n :}
+   idx DECLS-N @ DECL-IDX !
+   a DECLS-N @ DECL-A !
+   u DECLS-N @ DECL-U !
+   DECLS-N @ 1 + DECLS-N ! ;
 
 
 \ A literal a program keeps is program code: the quotation that pushes it runs
@@ -898,13 +918,15 @@ CAST: TICK-ACTION ( n -- [ ^u8 n -- bool ] )
 
 public
 
-\ RECORD-RUNS … ;RECORD-RUNS logs the words run between them; the log is read
-\ before ;RECORD-RUNS releases it.
-: RECORD-RUNS ( -- )
-   0 RUNS-N !  true RUNS-ON ! ;
+\ LOG-BUILD … ;LOG-BUILD logs the words run and the records declared between
+\ them; the logs are read before ;LOG-BUILD releases them.
+: LOG-BUILD ( -- )
+   0 RUNS-N !  0 DECLS-N !  true LOGGING ! ;
 
-: ;RECORD-RUNS ( -- )
-   false RUNS-ON !  RUNS-RELEASE  0 RUNS-N !  0 RUNS-CAP ! ;
+: ;LOG-BUILD ( -- )
+   false LOGGING !
+   RUNS-RELEASE  0 RUNS-N !  0 RUNS-CAP !
+   DECL-IDX-RELEASE  DECL-A-RELEASE  DECL-U-RELEASE  0 DECLS-N !  0 DECLS-CAP ! ;
 
 : RUN-COUNT ( -- n ) RUNS-N @ ;
 
@@ -912,6 +934,13 @@ public
 : RUN-RECORD@ ( n -- n )
    dup RUN-COUNT >= if E-LAYOUT-BOUNDS throw then
    RUNS @ ;
+
+: DECL-COUNT ( -- n ) DECLS-N @ ;
+
+\ Entry n of the declaration log: the record index and its token. n is below
+\ DECL-COUNT.
+: DECL@ ( n -- n ^u8 n ) {: i:n :}
+   i DECL-IDX @  i DECL-A @  i DECL-U @ ;
 
 ;package
 
@@ -1727,10 +1756,8 @@ private
    EXIT-STATUS:REJECTED KEEP-DIE ;
 
 public
-\ The name a u passes the wall, room, duplicate, code room and
-\ protected-wordlist tests, then def-open records it; every rejection is placed
-\ at t tu. kind: 0 (compiled), DKIND:ADDR, VAL or CAST. def-open rejects a
-\ protected wordlist too, but without a word.
+\ The name a u passes the wall, room, duplicate, code room and protected-wordlist
+\ tests, each rejection placed at t tu. kind: 0 (compiled), DKIND:ADDR, VAL or CAST.
 : DEF-RECORD ( str str n n -- )
    {: a:^ u:n t:^ tu:n wid:n kind:n :}
    a u t tu DEF-WALL
@@ -1744,7 +1771,8 @@ public
    \ A value or an address in a target section stays unmarked: it answers on the host.
    SECTION-CELL CELL@ 0<>  dk DKIND:ADDR <> and  dk DKIND:VAL <> and
    if kind DNAME-TARGET or else kind then {: k:n :}
-   a u wid k def-open ;
+   \ def-open names no word for a protected wordlist; its record stays unpublished, at ndict@.
+   a u wid k def-open  ndict@ t tu DECL+ ;
 private
 
 \ The capture seeded with the name, the spelling the checker is told.

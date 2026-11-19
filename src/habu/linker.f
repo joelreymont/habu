@@ -297,8 +297,8 @@ DYNAMIC-BUFFER ANCHORS n
 variable ANCHORS-N
 DYNAMIC-BUFFER ORDER n               \ EXTENTS!'s sorts: anchor numbers, then string extents
 \ The running piece's extents in address order (EXTENTS!, OWN-IDS!), EXT-CELLS cells: start from NULL-PTR, kind, sum,
-\ count; span in PIECES and TOP-ROW (EXTENT+); first slot and count in EXT-ROWS (GROUP-ROWS); bytes; time (TIMES+).
-11 constant EXT-CELLS
+\ count; PIECES span, TOP-ROW (EXTENT+); EXT-ROWS slot, count (GROUP-ROWS); bytes; time (TIMES+); anchor's record or -1.
+12 constant EXT-CELLS
 DYNAMIC-BUFFER EXTS n
 variable EXTS-N
 DYNAMIC-BUFFER PICKED n              \ the piece's cell rows in the space's order, each then its extent (GROUP-ROWS)
@@ -384,7 +384,8 @@ DYNAMIC-BUFFER ROW-EDGES n           \ the same by BUILT row, for its STORES val
 DYNAMIC-BUFFER EXT-EDGES n           \ the same by build-table row, for its cell rows
 
 \ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR, WIDN-CELL,
-\ the loader's SOURCE-EVENT:COUNT and INTERPRETER:RUN-COUNT as a file's load or its piece after a request starts (MARKS).
+\ the loader's SOURCE-EVENT:COUNT, INTERPRETER:RUN-COUNT and INTERPRETER:DECL-COUNT as a file's load or its piece after
+\ a request starts (MARKS).
 variable FILE-REC
 variable FILE-HELD
 variable FILE-TFAM                   \ TFAM-N@ as the running piece starts
@@ -404,6 +405,7 @@ variable TOP-EV
 \ The first loader event EVENTS-LOG has yet to log; LOAD moves it past a top-level load's own events as the load ends.
 variable LOGGED-EV
 variable FILE-RUN                    \ the first entry of INTERPRETER's run log the piece made
+variable FILE-DECL                   \ the first entry of INTERPRETER's declaration log the piece made
 variable FILE-END                    \ here's distance as the piece ends
 \ The running piece holds a header-data address outside its STORES rows' cells: a tag-4
 \ reference written (DATA-REF+) or resolved (RESOLVE).
@@ -1489,8 +1491,8 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 
 \ ---- a rejected reference -------------------------------------------------------
-\ A value no reference can name ends the build with one LINKER:E-ADDRESS rejection naming the
-\ file, the cell, site or defer that holds it, and the value. The scans run only on rejection.
+\ A value no reference can name ends the build with one LINKER:E-ADDRESS rejection, naming the cell or site and value,
+\ placed at a cell's holder's declaration when this piece made that record, else at the file. Scans run only then.
 
 \ The record whose code holds a, as its name and a's offset in it, hb's below FIRST-REC.
 : CODE-VALUE. ( n -- )
@@ -1552,6 +1554,21 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : FILE-NOTE ( -- ) s" file" REJECTION:NOTE  FILE-PATH FILE-PATH-N @ REJECTION:EMIT-STR ;
 : FOUND-NOTE ( n bool -- ) s" found" REJECTION:NOTE  VALUE. ;
 
+\ The token the newest entry for record n in the piece's declaration log holds, empty when none does.
+: DECL$ ( n -- str )
+   {: r:n :}
+   NULL-PTR 0  INTERPRETER:DECL-COUNT FILE-DECL @ ?do
+      i INTERPRETER:DECL@ {: x:n a:^ u:n :}
+      x r = if 2drop a u then
+   loop ;
+
+\ Places the rejection at record n's declaration with the label, else names the file.
+: DECL-AT ( n str -- )
+   {: r:n l:^ lu:n :}
+   r DECL$ {: a:^ u:n :}
+   u 0= if FILE-NOTE exit then
+   a u REJECTION:AT  l lu REJECTION:EMIT-STR ;
+
 
 \ Emission e's site holding v, a code address when code is true.
 : REFUSE-SITE ( n n n bool -- )
@@ -1568,10 +1585,18 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 \ The space's cell at holding v, a code address when code is true.
 : REFUSE-CELL ( n n bool -- )
    {: at:n v:n code:bool :}
+   at EXT-OF {: e:n :}
+   e 0< if -1 else e 11 EXT @ then {: r:n :}
    s" LINKER:E-ADDRESS" REJECTION:OPEN
    s" a cell the file keeps holds an address made while the build ran" REJECTION:EMIT-STR
-   FILE-NOTE
-   s" cell" REJECTION:NOTE  s" space +" REJECTION:EMIT-STR  at BASE @ - REJECTION:EMIT-N  at OWNER.
+   r 0< if FILE-NOTE else r s" this storage keeps the address" DECL-AT then
+   s" cell" REJECTION:NOTE  s" space +" REJECTION:EMIT-STR  at BASE @ - REJECTION:EMIT-N
+   r 0< if
+      at OWNER.
+   else
+      s"  in " REJECTION:EMIT-STR  r XREF-REC XREF-NAME$ REJECTION:EMIT-STR
+      s"  +" REJECTION:EMIT-STR  at e 0 EXT @ - REJECTION:EMIT-N
+   then
    v code FOUND-NOTE
    REJECTION:HELP
    s" make the address when the program starts, or clear the cell before the file ends"
@@ -1691,14 +1716,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    {: rec:^ :}
    rec NDICT:TRAILER-CELL {: cell:n :}
    cell 0= if 5 PIECES @ U64+ exit then
-   cell DATA-REF+ if exit then
-   s" LINKER:E-ADDRESS" REJECTION:OPEN
-   s" a defer's dispatch cell holds an address made while the build ran" REJECTION:EMIT-STR
-   FILE-NOTE
-   s" defer" REJECTION:NOTE  rec XREF-NAME$ REJECTION:EMIT-STR
-   cell false FOUND-NOTE
-   REJECTION:HELP  s" set the defer when the program starts" REJECTION:EMIT-STR
-   EXIT-STATUS:REJECTED REJECTION:STOP ;
+   cell DATA-REF+ 0= if E-COMP-STATE throw then ;
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
 
@@ -2095,13 +2113,15 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    {: a:^ u:n :}
    FNV:BASIS32 a u FNV:BYTES32 dup 0= if 1 + then ;
 
-\ The extent at the address onto EXTS, with no span, rows, length or time yet.
-: EXT+ ( n n n n -- )
-   {: at:n kind:n sum:n count:n :}
+\ The extent at the address onto EXTS, started by record rec's anchor (-1 for none), with no span, rows, length or
+\ time yet.
+: EXT+ ( n n n n n -- )
+   {: at:n kind:n sum:n count:n rec:n :}
    EXTS-N @ {: e:n :}
    e 1 + EXT-CELLS * EXTS-RESERVE
    at e 0 EXT !  kind e 1 EXT !  sum e 2 EXT !  count e 3 EXT !
    EXT-CELLS 4 ?do 0 e i EXT ! loop
+   rec e 11 EXT !
    1 EXTS-N +! ;
 
 \ Each string extent's count: its number, in address order, among the piece's strings with its sum.
@@ -2140,18 +2160,18 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
    n 1 > if 0 ORDER n [: ANCHOR< ;] SORT:SORT! then
    FILE-END @ FILE-DP @ > if
       n 0= if true else 0 ORDER @ 3 * ANCHORS @ FILE-DP @ > then
-      if FILE-DP @ 3 0 0 EXT+ then
+      if FILE-DP @ 3 0 0 -1 EXT+ then
    then
    0  n 0 ?do
       {: d:n :}
       i ORDER @ 3 * {: k:n :}
       k ANCHORS @  k 1 + ANCHORS @  k 2 + ANCHORS @ {: at:n rank:n x:n :}
       rank 1 = if
-         at 1 x REC-ID EXT+  d
+         at 1 x REC-ID x EXT+  d
       else rank 4 = if
-         at 4 0 d EXT+  d 1 +
+         at 4 0 d -1 EXT+  d 1 +
       else
-         at 2  NULL-PTR BYTE-VIEW x +  x BODY-U  BYTES-SUM  0 EXT+  d
+         at 2  NULL-PTR BYTE-VIEW x +  x BODY-U  BYTES-SUM  0 -1 EXT+  d
       then then
    loop drop
    EXTS-N @ 0 ?do
@@ -5221,10 +5241,10 @@ EXPORT CHECK:STORES-OPEN
    SAVED-CEILING @ STORES-OPEN
    construct step checked PROGRESS ! ;
 
-\ The build's registry starts empty, the loader logs each act,
-\ which a compiling file's object carries (ACTS+), and INTERPRETER logs each word run (RAN+).
+\ The build's registry starts empty, the loader logs each act, which a compiling file's object carries (ACTS+), and
+\ INTERPRETER logs each word run (RAN+) and each declaration's place (DECL$).
 : REQUIRE-FRESH ( -- )
-   REQUIRE-REG:SNAPSHOT  SOURCE-EVENT:RESET SOURCE-EVENT:ON  0 LOGGED-EV !  INTERPRETER:RECORD-RUNS
+   REQUIRE-REG:SNAPSHOT  SOURCE-EVENT:RESET SOURCE-EVENT:ON  0 LOGGED-EV !  INTERPRETER:LOG-BUILD
    construct step required PROGRESS ! ;
 
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
@@ -5302,7 +5322,7 @@ EXPORT CHECK:TYPE-END
    NSHADOW:TRIM  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
-   SOURCE-EVENT:COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !
+   SOURCE-EVENT:COUNT FILE-EVENT !  INTERPRETER:RUN-COUNT FILE-RUN !  INTERPRETER:DECL-COUNT FILE-DECL !
    ENTRY-ROOT @ 0 VEC:RESIZE  SOURCE-ROOT:CURRENT$ ENTRY-ROOT @ VEC:APPEND ;
 
 \ The loader's log event of the request no part made that loads the path, as LOAD starts: the newest event, an
@@ -5927,7 +5947,7 @@ EXPORT CHECK:STORES-CLOSE
          STORES-CLOSE construct step moved PROGRESS ! true
       ENDOF
       required OF
-         INTERPRETER:;RECORD-RUNS  SOURCE-EVENT:OFF SOURCE-EVENT:RESET REQUIRE-REG:RESTORE construct step checked PROGRESS ! true
+         INTERPRETER:;LOG-BUILD  SOURCE-EVENT:OFF SOURCE-EVENT:RESET REQUIRE-REG:RESTORE construct step checked PROGRESS ! true
       ENDOF
       objects OF
          DISPOSE-OBJECTS construct step required PROGRESS ! true

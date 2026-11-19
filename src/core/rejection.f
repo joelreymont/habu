@@ -840,11 +840,13 @@ SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER
    e BEGIN dup 0 > IF dup 1 - b + c@ 32 > ELSE 0 0= 0= THEN WHILE 1 - REPEAT
    {: s:n :}
    b s +  e s - ;
-\ Places at the token the invoker's input had read as the evaluation began, in
-\ the open file holding it or else the line it interrupted.
+\ The token the invoker inv's input had read as the evaluation began.
+: INVOKE-TOKEN ( ^u8 -- str ) {: inv:^ :}
+   inv SAVED$ drop  inv EVAL-INP FRAME@ TOKEN-BEFORE ;
+\ Places at INVOKE-TOKEN, in the open file holding it or else the line it interrupted.
 : INVOKE-PLACE ( ^u8 -- ) {: inv:^ :}
    inv SAVED$ {: b:^ bu:n :}
-   b inv EVAL-INP FRAME@ TOKEN-BEFORE {: a:^ u:n :}
+   inv INVOKE-TOKEN {: a:^ u:n :}
    u 0= IF EXIT THEN
    -1 EVALUATED !
    a u FILE-PLACE IF EXIT THEN
@@ -864,6 +866,19 @@ public
    INVOKER {: inv:^ :}
    inv NULL-PTR = IF 0 0= 0= EXIT THEN
    p n inv IN-EVALUATED? nip ;
+\ The open file's token a record at t tu would place at now, by PLACE's file
+\ branches; empty for none. It places there while that file stays open.
+: FILE-TOKEN$ ( str -- str ) {: t:^ tu:n :}
+   t BUILDER {: b:^ bu:n :}
+   bu 0 > IF b bu ELSE t tu THEN {: a:^ u:n :}
+   a u BODY>INPUT {: s:^ :}
+   s u HOLDER NULL-PTR = 0= IF s u EXIT THEN
+   INVOKER {: inv:^ :}
+   inv NULL-PTR = IF NULL-PTR 0 EXIT THEN
+   a u inv IN-EVALUATED? nip 0= IF NULL-PTR 0 EXIT THEN
+   inv INVOKE-TOKEN {: k:^ ku:n :}
+   ku 0 >  k ku HOLDER NULL-PTR = 0=  and IF k ku EXIT THEN
+   NULL-PTR 0 ;
 private
 \ Places the token t tu in the armed source holding its first byte, else an
 \ open file's bytes, else an evaluated text, which places it where the
