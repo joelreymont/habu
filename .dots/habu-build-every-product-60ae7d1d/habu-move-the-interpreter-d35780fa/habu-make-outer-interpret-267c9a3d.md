@@ -10,6 +10,6 @@ Problem: on the x86-64 engine, a file that closes its includer's package, starts
 
 Acceptance: both runs of the program pass on x86-64 once habu-lift-the-task-754c94f6 lands; if either still exits non-zero, the cause is reported at file:line.
 
-Depends: habu-lift-the-task-754c94f6, habu-re-enable-the-959502b5 (x86-64 builds are off until it lands, docs/xcomp.md:157).
+Depends: habu-lift-the-task-754c94f6.
 
 Claim: unassigned.
