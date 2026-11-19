@@ -25,7 +25,6 @@ require src/lib/process-env.f
 require src/lib/process-command.f
 require src/lib/task.f
 require src/lib/engine-candidate.f
-require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/habu/verify-source.f
 
