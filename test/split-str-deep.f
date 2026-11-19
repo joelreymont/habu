@@ -74,23 +74,23 @@ public
 
 : RUN ( -- )
    s" a definition's signature nested past the depth limit rejects by it" T-LABEL
-   2049 DEF-OPEN
-   s" effect too deep to record (depth 4097, at most 4096)" REJECTS
+   1025 DEF-OPEN
+   s" effect too deep to record (more than 2048 levels)" REJECTS
    s" a local's type nested past the depth limit rejects by it" T-LABEL
-   2049 LOCAL-OPEN
-   s" effect too deep to record (depth 4097, at most 4096)" REJECTS
+   1025 LOCAL-OPEN
+   s" effect too deep to record (more than 2048 levels)" REJECTS
    s" 9000 nested pointees reject by the depth limit" T-LABEL
    9000 POINTEES
-   s" effect too deep to record (depth 4097, at most 4096)" REJECTS
+   s" effect too deep to record (more than 2048 levels)" REJECTS
    s" 4500 nested quotations reject by the depth limit" T-LABEL
    4500 QUOTATIONS
-   s" effect too deep to record (depth 4097, at most 4096)" REJECTS
-   s" a definition's input quotation nested 2048 deep splits" T-LABEL
-   2048 DEF-QUOT  LOADS
-   s" a definition's row of 4096 entries splits" T-LABEL
-   4096 DEF-ROW  LOADS
-   s" a call of a word whose input quotation nests 2047 deep splits" T-LABEL
-   2047 QUOT-CALL  LOADS ;
+   s" effect too deep to record (more than 2048 levels)" REJECTS
+   s" a definition's input quotation nested 1024 deep splits" T-LABEL
+   1024 DEF-QUOT  LOADS
+   s" a definition's row of 2048 entries splits" T-LABEL
+   2048 DEF-ROW  LOADS
+   s" a call of a word whose input quotation nests 1023 deep splits" T-LABEL
+   1023 QUOT-CALL  LOADS ;
 
 ;package
 

@@ -1598,9 +1598,9 @@ s\"   = help: rename the field: a declaration word such as `field` or a generate
 DECL-DIAG:OFF
 
 \ MAKE takes one item per FIELD and one per buffer cell, and its effect holds
-\ EFFECT-DEPTH-MAX (4096) at most: the clause that passes it is rejected.
+\ EFFECT-DEPTH-MAX at most: the clause that passes it is rejected.
 package SDBIG
-$10000 constant CAP            \ bytes: 4097 fields of 13 bytes and the head
+$10000 constant CAP            \ bytes: 2049 fields of 13 bytes and the head
 create SRC CAP allot
 TYPED-VARIABLE SRC-U len
 : S+ ( str -- ) SRC CAP SRC-U BUF-APPEND ;
@@ -1613,42 +1613,44 @@ TYPED-VARIABLE SRC-U len
    i 676 / S+LETTER  i 26 / S+LETTER  i S+LETTER
    s"  n" S+ ;
 public
+: START ( str -- ) SRC-U BUF-RESET  S+ ;
 : FIELDS ( ^u8 n n -- )
    {: na:^ nu:n k:n :}
-   SRC-U BUF-RESET  s" STRUCTURE " S+  na nu S+
+   s" STRUCTURE " START  na nu S+
    k 0 ?do i S+FIELD loop ;
 : SRC+ ( str -- ) S+ ;
+: SRC-REP ( str n -- ) {: a:^ u:n k:n :} k 0 ?do a u S+ loop ;
 : SRC$ ( -- ^u8 n ) SRC SRC-U @ LEN>N ;
 ;package
 
-\ 4095 fields and one cell of bytes are exactly 4096 items.
-s" sdbfull" 4095 SDBIG:FIELDS  s"  BUFFER b 8 ;STRUCTURE" SDBIG:SRC+
+\ 2047 fields and one cell of bytes are exactly 2048 items.
+s" sdbfull" 2047 SDBIG:FIELDS  s"  BUFFER b 8 ;STRUCTURE" SDBIG:SRC+
 SDBIG:SRC$ TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
-s" STRUCTURE sdbover FIELD a n BUFFER b 32761 ;STRUCTURE" TEST-EVAL:RC 70 T=
+s" STRUCTURE sdbover FIELD a n BUFFER b 16377 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbover`\n" DECL-DIAG:HAS? TTRUE
-s" 32761" s" record takes more than 4096 items to make" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096\n" DECL-DIAG:HAS? TTRUE
+s" 16377" s" record takes more than 2048 items to make" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 2048\n" DECL-DIAG:HAS? TTRUE
 \ A count past the room is rejected before its cells are counted.
 DECL-DIAG:PROSE
 s" STRUCTURE sdbhuge BUFFER b $7FFFFFFFFFFFFFF0 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbhuge`\n" DECL-DIAG:HAS? TTRUE
-s" $7FFFFFFFFFFFFFF0" s" record takes more than 4096 items to make" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096\n" DECL-DIAG:HAS? TTRUE
+s" $7FFFFFFFFFFFFFF0" s" record takes more than 2048 items to make" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 2048\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
-s" sdbmany" 4097 SDBIG:FIELDS  s"  ;STRUCTURE" SDBIG:SRC+
+s" sdbmany" 2049 SDBIG:FIELDS  s"  ;STRUCTURE" SDBIG:SRC+
 SDBIG:SRC$ TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbmany`\n" DECL-DIAG:HAS? TTRUE
-s" fgbo" s" record takes more than 4096 items to make" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096\n" DECL-DIAG:HAS? TTRUE
+s" fdau" s" record takes more than 2048 items to make" DECL-DIAG:CAUSE? TTRUE
+s\"   = help: split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 2048\n" DECL-DIAG:HAS? TTRUE
 \ A generated word whose effect is too deep to record has no signature text:
-\ its rejection quotes none. SDGDEEP:MAKE takes 4095 `n` fields and one
-\ `option<n>`, 4097 cells, one past EFFECT-DEPTH-MAX.
+\ its rejection quotes none. SDGDEEP:MAKE takes 2047 `n` fields and one
+\ `option<n>`, 2049 cells, one past EFFECT-DEPTH-MAX.
 DECL-DIAG:PROSE
-s" sdgdeep" 4095 SDBIG:FIELDS  s"  FIELD qopt option<n> ;STRUCTURE" SDBIG:SRC+
+s" sdgdeep" 2047 SDBIG:FIELDS  s"  FIELD qopt option<n> ;STRUCTURE" SDBIG:SRC+
 SDBIG:SRC$ TEST-EVAL:RC 70 T=
 s\" error[E-BAD-STORED-SIGNATURE]: the signature of `SDGDEEP:MAKE` cannot be recorded\n" DECL-DIAG:HAS? TTRUE
-s\"   = reason: effect too deep to record (depth 4097, at most 4096)\n" DECL-DIAG:HAS? TTRUE
+s\"   = reason: effect too deep to record (more than 2048 levels)\n" DECL-DIAG:HAS? TTRUE
 s" = signature:" DECL-DIAG:HAS? TFALSE
 DECL-DIAG:OFF
 \ A pointee's label holds its whole name, however long
@@ -1679,5 +1681,67 @@ SDBIG:SRC$ TEST-EVAL:RC 0 T=
 \ A buffer of it checks each nested instance once.
 1 TYPED-BUFFER SDND-REC sdndeep
 7 0 SDND-REC SDND-GO 7 T=
+
+\ A declared type holds EFFECT-DEPTH-MAX levels, 2048: one per pointer, application
+\ and name, two per quotation. The 2049th is rejected at its token, here `n`.
+: SDLV-DEEP ( -- )
+   SDBIG:SRC$ TEST-EVAL:RC 70 T=
+   s" n" s" type nested too deep: at most 2048 levels" DECL-DIAG:CAUSE? TTRUE
+   s\"   = help: declare an inner part as a type of its own (`NEWTYPE` or `STRUCTURE`) and use its name here\n"
+   DECL-DIAG:HAS? TTRUE ;
+: SDLV-CARETS ( str n str -- ) {: ha:^ hu:n k:n ta:^ tu:n :}
+   ha hu SDBIG:START  s" ^" k SDBIG:SRC-REP  s" n" SDBIG:SRC+  ta tu SDBIG:SRC+ ;
+DECL-DIAG:PROSE
+s" STRUCTURE sdlvc FIELD p " 2047 s"  ;STRUCTURE" SDLV-CARETS
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+s" STRUCTURE sdlvcx FIELD p " 2048 s"  ;STRUCTURE" SDLV-CARETS SDLV-DEEP
+DECL-DIAG:PROSE
+s" ENUM sdlve VARIANT vee FIELD p " 2047 s"  ;VARIANT ;ENUM" SDLV-CARETS
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+s" ENUM sdlvex VARIANT vee FIELD p " 2048 s"  ;VARIANT ;ENUM" SDLV-CARETS SDLV-DEEP
+DECL-DIAG:PROSE
+s" NEWTYPE sdlvn " 2047 s" " SDLV-CARETS
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+s" NEWTYPE sdlvnx " 2048 s" " SDLV-CARETS SDLV-DEEP
+DECL-DIAG:PROSE
+s" SUMTYPE sdlvs VARIANT vee " 2047 s"  ;VARIANT ;SUMTYPE" SDLV-CARETS
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+s" SUMTYPE sdlvsx VARIANT vee " 2048 s"  ;VARIANT ;SUMTYPE" SDLV-CARETS SDLV-DEEP
+\ MAKE's recorded effect holds a level per cell of the record, so `sdnest`
+\ 1024 deep, 1025 cells wide, passes the limit there; this nests a one-cell family.
+s" STRUCTURE sdlvbox<a> FIELD x a ;STRUCTURE" TEST-EVAL:RC 0 T=
+: SDLV-BOXES ( str n -- ) {: ha:^ hu:n k:n :}
+   ha hu SDBIG:START  s" sdlvbox<" k SDBIG:SRC-REP  s" n" SDBIG:SRC+
+   s" >" k SDBIG:SRC-REP  s"  ;STRUCTURE" SDBIG:SRC+ ;
+DECL-DIAG:PROSE
+s" STRUCTURE sdlva FIELD d " 2047 SDLV-BOXES
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+s" STRUCTURE sdlvax FIELD d " 2048 SDLV-BOXES SDLV-DEEP
+\ A quotation is two levels, its `[` and its rows: 1023 of them hold `^n`.
+: SDLV-QUOTS ( str n str -- ) {: ha:^ hu:n k:n ta:^ tu:n :}
+   ha hu SDBIG:START  s" [ " k SDBIG:SRC-REP  ta tu SDBIG:SRC+
+   s"  -- ]" k SDBIG:SRC-REP  s"  ;STRUCTURE" SDBIG:SRC+ ;
+DECL-DIAG:PROSE
+s" STRUCTURE sdlvq FIELD q " 1023 s" ^n" SDLV-QUOTS
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+s" STRUCTURE sdlvqx FIELD q " 1024 s" n" SDLV-QUOTS SDLV-DEEP
+\ A sum nested to the limit keeps within the stack in every walk over it:
+\ `option` 2047 deep is a type, words take and pass it, and a cell holds it.
+DECL-DIAG:PROSE
+s" require src/lib/adt/option.f NEWTYPE sdlvo " SDBIG:START
+s" option<" 2047 SDBIG:SRC-REP  s" n" SDBIG:SRC+
+s" >" 2047 SDBIG:SRC-REP
+s"  : SDLVO-RT ( sdlvo -- sdlvo ) ;" SDBIG:SRC+
+s"  : SDLVO-RT2 ( sdlvo -- sdlvo )" SDBIG:SRC+
+s"  SDLVO-RT SDLVO-RT ;" SDBIG:SRC+
+s"  TYPED-VARIABLE SDLVO-V sdlvo" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 0 T=
+\ After 2047 pointers the `[` opens the 2048th level and its rows the 2049th.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlvqp FIELD q " SDBIG:START  s" ^" 2047 SDBIG:SRC-REP
+s" [ -- ] ;STRUCTURE" SDBIG:SRC+
+SDBIG:SRC$ TEST-EVAL:RC 70 T=
+s" [" s" type nested too deep: at most 2048 levels" DECL-DIAG:CAUSE? TTRUE
+DECL-DIAG:OFF
 
 T-REPORT

@@ -359,9 +359,9 @@ variable BIG-U
    MAP-REJECTS
    HB-TARGET-LINUX? if MAP-LIMITED then
    s" test/program-diagnostic-long-row.f" 70 s" LONG-ROW-ARMED"
-      s" error[E-MISMATCH]: LONG-ROW ends with (904 more) n n" NEGATIVE
+      s" error[E-MISMATCH]: LONG-ROW ends with (2952 more) n n" NEGATIVE
    s" test/program-diagnostic-long-quot.f" 70 s" LONG-QUOT-ARMED"
-      s" error[E-MISMATCH]: LONG-QUOT ends with [ -- (905 more) n n" NEGATIVE
+      s" error[E-MISMATCH]: LONG-QUOT ends with [ -- (2953 more) n n" NEGATIVE
    s" test/program-diagnostic-me.f" s" program-diagnostic-me.f:10:30" DIAGNOSTIC
    s" error[E-MISMATCH]" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS
    s" = evaluated: : MEA1 ( n -- n ) drop ;" s" test/program-diagnostic-me.f" GE-EXPECT-ERR-HAS

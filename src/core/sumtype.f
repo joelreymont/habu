@@ -163,7 +163,7 @@ public
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
-7118 constant E-TDECL-CAP       \ a record past MAKE's items
+7118 constant E-TDECL-CAP       \ a record past MAKE's items, or a type nested too deep
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7120 constant E-TDECL-SEALED    \ a family or generated name that would change a sealed package
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
@@ -461,6 +461,21 @@ variable TDA-CAP   0 TDA-CAP !          \ bytes mapped at TDA-P, 0 for none
    TDN-A @ TDN-U @ TDECL-TOK!
    na nu TDA-KEEP
    code throw ;
+
+\ A rejection's label is composed here, grown to fit, and read when the record
+\ prints, so the next rejection may reuse the buffer.
+$80 constant LABEL-FIRST                \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE LABEL-P   NULL-PTR LABEL-P !
+variable LABEL-CAP   0 LABEL-CAP !      \ bytes mapped at LABEL-P, 0 for none
+variable LABEL-U
+
+\ A label: LABEL-START empties it, LABEL+ appends text, LABEL$ is the text.
+: LABEL-START ( -- ) 0 LABEL-U ! ;
+: LABEL+ ( str -- ) {: a:^ u:n :}
+   LABEL-P LABEL-CAP LABEL-FIRST LABEL-U @ u + ARENA-ROOM
+   a LABEL-P @ LABEL-U @ + u ARENA-COPY
+   LABEL-U @ u + LABEL-U ! ;
+: LABEL$ ( -- str ) LABEL-P @ LABEL-U @ ;
 
 \ Arms E-USING-AMBIGUOUS for the family tail a u, public in more than one used
 \ package, keeping a copy of it; answers the code for the caller to throw.
@@ -959,11 +974,26 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
    s" write the quotation type as `[ in -- out ]`"
    E-TDECL-SYNTAX fail execute ;
 
+\ The levels open in the type being read, 0 at each whole type: a node reader
+\ rejects its token at EFFECT-DEPTH-MAX, and a quotation's rows open one more.
+variable TYPE-LEVEL
+\ The reason and fix of a type nested past the limit.
+: TDECL-DEPTH-TEXTS ( -- str str )
+   LABEL-START
+   s" type nested too deep: at most " LABEL+
+   EFFECT-DEPTH-MAX REJECTION:DIGITS LABEL+
+   s"  levels" LABEL+
+   LABEL$
+   s" declare an inner part as a type of its own (`NEWTYPE` or `STRUCTURE`) and use its name here" ;
+
 \ Shared by variant payloads and STRUCTURE fields, each supplying its token
 \ stream, element resolver and rejecter, which is given the token it stopped at.
 \ The facts follow the last outputs: the data outputs' when there is no `|`.
 : PARSE-QUOT ( [ -- str ] [ str -- n ] [ str str str n -- ] -- n )
    {: next elem fail :}
+   TYPE-LEVEL @ EFFECT-DEPTH-MAX >= IF
+      s" " TDECL-DEPTH-TEXTS E-TDECL-CAP fail execute THEN
+   TYPE-LEVEL @ 1 + TYPE-LEVEL !
    TDV-QUOT-MISS @ {: outer:n :}
    0 TDV-QUOT-MISS !
    next elem fail RES-FALSE TDV-QUOT-SIDE rot drop {: din:n sep:^ sepu:n :}
@@ -979,7 +1009,8 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
    ELSE
       end endu s" ]" fail TDV-QUOT-EXPECT
       din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW RES-FALSE dfacts outer TDV-QUOT-FINISH
-   THEN ;
+   THEN
+   TYPE-LEVEL @ 1 - TYPE-LEVEL ! ;
 
 : TDECL-QUOT-FAIL ( str str str n str -- )
    {: ta:^ tu:n wa:^ wu:n fa:^ fu:n code:n qa:^ qu:n :}
@@ -1023,14 +1054,14 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
       THEN THEN
    AGAIN ;
 
-: TDECL-VPAY-ELEM ( str -- n ) {: a:^ u:n :}
+: TDECL-VPAY-ONE ( str -- n ) {: a:^ u:n :}
    a u s" [" CORE-STR= IF a u TDECL-VPAY-QUOT EXIT THEN
    a u s" ptr" CORE-STR= IF a u s" unknown payload type"
       TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
    a u SIG-CARET? IF
       a u SIG-CARET-BARE? IF a u s" pointer without a pointee"
          TDECL-PTR-FIX$ E-TDECL-PAYLOAD TDECL-THROW THEN
-      a u SIG-CARET-POINTEE RECURSE
+      a u SIG-CARET-POINTEE TDV-ELEM-XT
       SIG-UNRES @ IF drop 0 EXIT THEN
       SCHEMA-PTR EXIT THEN
    a u TDECL-VPAY-APP? IF EXIT THEN drop
@@ -1043,6 +1074,12 @@ PTR-VARIABLE TDV-QUOT-P   SCRATCH-VARIABLE TDV-QUOT-CAP
       0 EXIT
    THEN
    a u TDECL-PAY-ELEM ;
+: TDECL-VPAY-ELEM ( str -- n ) {: a:^ u:n :}
+   TYPE-LEVEL @ EFFECT-DEPTH-MAX >= IF
+      a u TDECL-DEPTH-TEXTS E-TDECL-CAP TDECL-THROW THEN
+   TYPE-LEVEL @ 1 + TYPE-LEVEL !
+   a u TDECL-VPAY-ONE
+   TYPE-LEVEL @ 1 - TYPE-LEVEL ! ;
 : TDV-ELEM-INSTALL ( -- ) [: TDECL-VPAY-ELEM ;] is TDV-ELEM-XT ;
 TDV-ELEM-INSTALL
 
@@ -1287,7 +1324,7 @@ create TDV-BADLETTER 1 allot
    BEGIN
       TDECL-NEXT
       2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
-      2dup TDECL-VPAY-ELEM
+      0 TYPE-LEVEL !  2dup TDECL-VPAY-ELEM
       SIG-UNRES @ IF drop 2drop ELSE
          >r fam r@ TDECL-REQUIRE-DERIVABLE r>
          dup fam swap TFAM-SCH-WIDTH TDV-PW @ + TDV-PW ! TDV-PAY+

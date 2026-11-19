@@ -311,22 +311,22 @@ public
 : EMIT-STR ( ^u8 n -- ) {: a:^ u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
-: EMIT-U
-   NUM-V !  0 NUM-N !
-   NUM-V @ 0= IF 48 EMIT1 EXIT THEN
+\ n, read as unsigned, in decimal; the text holds until the next DIGITS or EMIT-U.
+: DIGITS ( n -- str )
+   NUM-V !  20 NUM-N !
    NUM-V @ 0 < IF
       NUM-V @ 1 rshift 5 /
-      NUM-V @ over 10 * - 48 +  NUM-BUF c!
-      1 NUM-N !  NUM-V !
+      NUM-V @ over 10 * - 48 +  NUM-BUF 19 + c!
+      19 NUM-N !  NUM-V !
    THEN
-   BEGIN NUM-V @ 0 > WHILE
+   BEGIN
+      NUM-N @ 1 - NUM-N !
       NUM-V @ 10 mod 48 +  NUM-BUF NUM-N @ + c!
-      NUM-N @ 1 + NUM-N !
       NUM-V @ 10 / NUM-V !
-   REPEAT
-   NUM-N @ BEGIN dup 0 > WHILE
-      1 - dup NUM-BUF + c@ EMIT1
-   REPEAT drop ;
+   NUM-V @ 0= UNTIL
+   NUM-BUF NUM-N @ +  20 NUM-N @ - ;
+
+: EMIT-U ( n -- ) DIGITS EMIT-STR ;
 
 \ A signed number in decimal, as EMIT-U prints one from 0 up.
 : EMIT-N ( n -- ) {: v:n :}

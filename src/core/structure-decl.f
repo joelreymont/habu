@@ -124,15 +124,15 @@ PTR-VARIABLE NOUN-A   variable NOUN-U
 
 : SD-WORD+ ( str -- ) {: a:^ u:n :}   \ a blank, then the word
    u 0= IF EXIT THEN
-   s"  " DECL-REJECT:LABEL+  a u DECL-REJECT:LABEL+ ;
+   s"  " LABEL+  a u LABEL+ ;
 
 \ The text before the noun, the noun, the text after it, blank-separated.
 : SD-NOUN-TEXT ( str str str -- str ) {: pa:^ pu:n na:^ nu:n sa:^ su:n :}
-   DECL-REJECT:LABEL-START
-   pa pu DECL-REJECT:LABEL+
-   pu 0= IF na nu DECL-REJECT:LABEL+ ELSE na nu SD-WORD+ THEN
+   LABEL-START
+   pa pu LABEL+
+   pu 0= IF na nu LABEL+ ELSE na nu SD-WORD+ THEN
    sa su SD-WORD+
-   DECL-REJECT:LABEL$ ;
+   LABEL$ ;
 : SD-TEXT ( str str -- str ) {: pa:^ pu:n sa:^ su:n :}   \ with the noun SD-TYPE-NODE set
    pa pu NOUN@ sa su SD-NOUN-TEXT ;
 : SD-REJECT ( str str str n -- n ) {: pa:^ pu:n sa:^ su:n fa:^ fu:n code:n :}
@@ -311,16 +311,16 @@ EXPORT CHECK:WIDTH-FAM
 \ Rejects the parameter at a u used as want, which field fa fu used as kind.
 : PARAM-KIND-REJECT ( n str str n -- ) {: kind:n fa:^ fu:n a:^ u:n want:n :}
    a u DECL-REJECT:TOKEN!
-   DECL-REJECT:LABEL-START
-   s" `" DECL-REJECT:LABEL+
-   a u DECL-REJECT:LABEL+
-   s" ` is " DECL-REJECT:LABEL+
-   want USE-KIND$ DECL-REJECT:LABEL+
-   s"  here, but field `" DECL-REJECT:LABEL+
-   fa fu DECL-REJECT:LABEL+
-   s" ` uses it as " DECL-REJECT:LABEL+
-   kind USE-KIND$ DECL-REJECT:LABEL+
-   DECL-REJECT:LABEL$
+   LABEL-START
+   s" `" LABEL+
+   a u LABEL+
+   s" ` is " LABEL+
+   want USE-KIND$ LABEL+
+   s"  here, but field `" LABEL+
+   fa fu LABEL+
+   s" ` uses it as " LABEL+
+   kind USE-KIND$ LABEL+
+   LABEL$
    ENUM? IF
       s" give each kind its own header parameter, as in `ENUM box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`"
    ELSE
@@ -343,11 +343,11 @@ EXPORT CHECK:WIDTH-FAM
 \ self is whether that family is the declared one.
 : PTR-VIEW-REJECT ( str bool -- ) {: a:^ u:n self:bool :}
    a u DECL-REJECT:TOKEN!
-   DECL-REJECT:LABEL-START
-   s" a pointer cannot reach `" DECL-REJECT:LABEL+
-   a u DECL-REJECT:LABEL+
-   s" `, which takes a scope or region" DECL-REJECT:LABEL+
-   DECL-REJECT:LABEL$  self PTR-VIEW-FIX$
+   LABEL-START
+   s" a pointer cannot reach `" LABEL+
+   a u LABEL+
+   s" `, which takes a scope or region" LABEL+
+   LABEL$  self PTR-VIEW-FIX$
    TYPE-DECL:E-TDECL-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : LETTER-TYPE ( str n -- n ) {: a:^ u:n want:n :}
@@ -606,9 +606,16 @@ variable SD-QUOT-AT
    i MEM-LISTED@ 0= IF EXIT THEN
    i M.PTEE-U MEM-CELL @ 0= IF a i MEM-PTEE !  u i M.PTEE-U MEM-CELL ! THEN ;
 
-\ SD-PARSE-NODE-IMPL's grammar over the arguments of a family that may still arrive
+\ Opens a level for the type at i, rejecting its token at the limit.
+: SD-LEVEL+ ( str n -- ) {: a:^ u:n i:n :}
+   TYPE-LEVEL @ EFFECT-DEPTH-MAX >= IF
+      a u  a u i SD-SKIP  SD-ATOM drop DECL-REJECT:TOKEN!
+      TDECL-DEPTH-TEXTS TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw THEN
+   TYPE-LEVEL @ 1 + TYPE-LEVEL ! ;
+
+\ SD-PARSE-NODE-ONE's grammar over the arguments of a family that may still arrive
 \ (SD-LOOSE-APP), building no application; an empty `<>` passes here and SD-APP refuses it.
-: SD-LOOSE-NODE-IMPL ( str n -- n ) {: a:^ u:n i:n :}
+: SD-LOOSE-NODE-ONE ( str n -- n ) {: a:^ u:n i:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-LOOSE-PTR EXIT THEN drop
    na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE nip EXIT THEN
@@ -625,6 +632,10 @@ variable SD-QUOT-AT
       a u  na NULL-PTR - a NULL-PTR - -  j 1 + SD-LOOSE-APP EXIT
    THEN
    na nu SD-LOOSE-ATOM j ;
+: SD-LOOSE-NODE-IMPL ( str n -- n ) {: a:^ u:n i:n :}
+   a u i SD-LEVEL+
+   a u i SD-LOOSE-NODE-ONE
+   TYPE-LEVEL @ 1 - TYPE-LEVEL ! ;
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
@@ -642,7 +653,7 @@ SD-LOOSE-INSTALL
 
 \ The node at i of a field type's text: a type parameter, a con, a family
 \ application, a pointer argument or a quotation, with the index after it.
-: SD-PARSE-NODE-IMPL ( str n n -- n n ) {: a:^ u:n i:n want:n :}
+: SD-PARSE-NODE-ONE ( str n n -- n n ) {: a:^ u:n i:n want:n :}
    a u  a u i SD-SKIP  SD-ATOM {: na:^ nu:n j:n :}
    na nu a u j SD-POINTEE-AT IF {: k:n :} a u k SD-PTR-NODE EXIT THEN drop
    na nu s" [" CORE-STR= IF a u j 1 - SD-QUOT-NODE EXIT THEN
@@ -671,6 +682,10 @@ SD-LOOSE-INSTALL
    na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 j EXIT THEN
    na nu DECL-REJECT:TOKEN!
    s" unknown" s" " SD-TYPE-FIX$ TYPE-DECL:E-TDECL-PAYLOAD SD-REJECT throw ;
+: SD-PARSE-NODE-IMPL ( str n n -- n n ) {: a:^ u:n i:n want:n :}
+   a u i SD-LEVEL+
+   a u i want SD-PARSE-NODE-ONE
+   TYPE-LEVEL @ 1 - TYPE-LEVEL ! ;
 
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
 SD-PARSER-INSTALL
@@ -724,13 +739,14 @@ private
 public
 : SD-TYPE-NODE ( str n n str -- n )
    {: a:^ u:n fam:n want:n na:^ nu:n :}
-   FAM @ {: ofam:n :}
+   FAM @ TYPE-LEVEL @ {: ofam:n olevel:n :}
    TYPE@ NOUN@ {: ota:^ otu:n oa:^ ou:n :}
-   fam FAM !  0 POINTEE !  0 SD-ARG-N !
+   fam FAM !  0 TYPE-LEVEL !  0 POINTEE !  0 SD-ARG-N !
    a u TYPE!  na NOUN-A !  nu NOUN-U !
    PF-KIND-MEMO-START
    [: a u want SD-WHOLE-NODE ;]
-   [: PF-KIND-MEMO-END  ofam FAM !  ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
+   [: PF-KIND-MEMO-END  ofam FAM !  olevel TYPE-LEVEL !
+      ota otu TYPE!  oa NOUN-A !  ou NOUN-U ! ;] finally ;
 private
 
 \ A field type's text, from its first token (SD-SPAN).
@@ -850,12 +866,20 @@ private
    OUTCOME-NAMES @ 0 <> IF
       na nu SD-FIELD-FIX$ NAME-CHECK THEN
    na nu ;
+\ ITEMS-FULL's reason and fix, composed in one label.
+: ITEMS-TEXTS ( -- str str )
+   LABEL-START
+   s" record takes more than " LABEL+
+   EFFECT-DEPTH-MAX REJECTION:DIGITS LABEL+
+   s"  items to make" LABEL+
+   LABEL$ nip {: r:n :}
+   s" split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most " LABEL+
+   EFFECT-DEPTH-MAX REJECTION:DIGITS LABEL+
+   LABEL$ {: a:^ u:n :}  a r  a r +  u r - ;
 \ Each item is at least one level of MAKE's effect, so no record of more items
 \ than EFFECT-DEPTH-MAX can be made; USIG-DEPTH-FITS? measures nested types.
 : ITEMS-FULL ( -- )
-   s" record takes more than 4096 items to make"
-   s" split the record: MAKE takes one item per `FIELD` and one per buffer cell, at most 4096"
-   TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw ;
+   ITEMS-TEXTS TYPE-DECL:E-TDECL-CAP DECL-REJECT:REJECT throw ;
 : ITEM-ROOM ( -- n ) EFFECT-DEPTH-MAX SD-ITEMS @ - ;
 : FIELD-CLAUSE ( -- )
    FIELD-NAME {: na:^ nu:n :}

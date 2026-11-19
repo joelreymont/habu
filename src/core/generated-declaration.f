@@ -141,13 +141,6 @@ PERSISTED-PTR-VARIABLE NEWEST
    r NULL-PTR = IF NOTHING$ NOTHING$ EXIT THEN
    r ROW-REASON$  r ROW-FIX$ ;
 
-\ A rejection's label is composed here, grown to fit, and read when the record
-\ prints, so the next rejection may reuse the buffer.
-$80 constant LABEL-FIRST                \ bytes of the first mapping
-PERSISTED-PTR-VARIABLE LABEL-P   NULL-PTR LABEL-P !
-variable LABEL-CAP   0 LABEL-CAP !      \ bytes mapped at LABEL-P, 0 for none
-variable LABEL-U
-
 public
 
 \ OPEN ( kind -- ): every field is cleared, so nothing from the previous
@@ -182,14 +175,6 @@ public
 : REJECT ( ^u8 n ^u8 n n -- n ) {: wa:^ wu:n fa:^ fu:n code:n :}
    wa wu fa fu code EXPECT
    code ;
-
-\ A label: LABEL-START empties it, LABEL+ appends text, LABEL$ is the text.
-: LABEL-START ( -- ) 0 LABEL-U ! ;
-: LABEL+ ( str -- ) {: a:^ u:n :}
-   LABEL-P LABEL-CAP LABEL-FIRST LABEL-U @ u + ARENA-ROOM
-   a LABEL-P @ LABEL-U @ + u ARENA-COPY
-   LABEL-U @ u + LABEL-U ! ;
-: LABEL$ ( -- str ) LABEL-P @ LABEL-U @ ;
 
 \ Reflection for the suites: what the record would report right now.
 : KIND$ ( -- ^u8 n ) S-KIND SLOT@ ;
@@ -271,8 +256,8 @@ E-TDECL-POLICY EXPLAIN
 s" invalid layout policy for recursive sum"
 s" drop the payload that names the family being declared: no family can hold itself"
 E-TDECL-RECURSIVE EXPLAIN
-s" record too wide to make"
-s" give the record at most 4096 items: one per `FIELD` and one per buffer cell"
+s" record too wide or type too deep to make"
+s" split the record, or declare an inner part as a type of its own"
 E-TDECL-CAP EXPLAIN
 s" derive requirement not met"
 s" derive a feature only when every payload type has it, or drop it from `DERIVE`"

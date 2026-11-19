@@ -3212,10 +3212,11 @@ FO-BOOT FO-P !  FO-INIT-CAP FO-CAP !
 $2000 constant TWALK-MAX-DEPTH
 
 global
-\ The deepest effect a record holds: 4096 levels as TERM-DEPTH counts them, a
-\ row of 4096 plain entries; half of each 8192-cell stack is left for what the
-\ stacks already hold.
-TWALK-MAX-DEPTH 2 / constant EFFECT-DEPTH-MAX
+\ The deepest effect a record holds: per level a walk keeps at most two data
+\ cells, two return cells and one loop frame, and half of each stack stays free.
+STACK-ABI:BOOT-BYTES 1 cells / 4 /
+STACK-ABI:RETURN-CELLS 4 / min
+STACK-ABI:LOOP-FRAMES 2 / min constant EFFECT-DEPTH-MAX
 private
 variable TWALK-D
 : TWALK-RESET ( -- ) 0 TWALK-D !  TWALK-GEN @ 1 + TWALK-GEN ! ;
@@ -5763,7 +5764,6 @@ variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check
 variable MDIAG-VCNT   \ nonexhaustive: variant count
 variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
 variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
-variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
 variable MDIAG-LITV   \ literal misfit: the literal's value
 variable MDIAG-LITT   \ literal misfit: the type code it does not fit
 variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
@@ -7652,7 +7652,6 @@ variable SGBAD-U
 variable SGBAD-KIND
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
-variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
 PTR-VARIABLE SGBAD-EXP-A \ syntax kind: the word the parser expected there, if one
 variable SGBAD-EXP-U
 variable SGBAD-USED      \ ambiguous kind: bit i set when using slot i offers the family
@@ -7938,7 +7937,6 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
 : SGBAD-CLEAR ( -- )
    -1 SGBAD-AR-DECL !
    -1 SGBAD-AR-GOT !
-   0 SGBAD-SIZE !
    0 SGBAD !
    NULL-PTR SGBAD-A !
    0 SGBAD-U !
@@ -7996,10 +7994,6 @@ PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
    a u SGBAD-ARITY-KIND SGBAD-SET ;
 : SGBAD-ARITY? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
-: SGBAD-SIZE! ( str n n -- )   \ a row too deep for a record
-   {: a:^ u:n kind:n size:n :}
-   SGBAD @ 0= IF size SGBAD-SIZE ! THEN
-   a u kind SGBAD-SET ;
 : SGBAD-DEPTH? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-DEPTH-KIND = and ;
 : SGBAD-BINDERS? ( -- bool )
@@ -8470,7 +8464,7 @@ defer SIG-TYPE-XT ( str -- n nominal )
 \ built.
 : SIG-TYPE ( str -- n ) {: a:^ u:n :}
    SIG-LEVEL @ EFFECT-DEPTH-MAX >= IF
-      a u SGBAD-DEPTH-KIND SIG-LEVEL @ 1 + SGBAD-SIZE!  SIG-STOP  1 MK-CON EXIT
+      a u SGBAD-DEPTH-KIND SGBAD-SET  SIG-STOP  1 MK-CON EXIT
    THEN
    SIG-LEVEL @ 1 + SIG-LEVEL !
    a u SIG-TYPE-ONE
@@ -12396,16 +12390,14 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    s" more than " REJECTION:EMIT-STR  BINDER-DEPTH-MAX REJECTION:EMIT-U
       s"  nested binders" REJECTION:EMIT-STR ;
 
-: DEPTH-COUNTS ( n -- )
-   {: depth:n :}
-   s"  (depth " REJECTION:EMIT-STR  depth REJECTION:EMIT-U
-   s" , at most " REJECTION:EMIT-STR  EFFECT-DEPTH-MAX REJECTION:EMIT-U
-   s" )" REJECTION:EMIT-STR ;
+: DEPTH-COUNTS ( -- )
+   s"  (more than " REJECTION:EMIT-STR  EFFECT-DEPTH-MAX REJECTION:EMIT-U
+   s"  levels)" REJECTION:EMIT-STR ;
 
-\ The reason a signature too large to record names its bound, count and limit.
+\ The reason a signature too large to record names the limit it passed.
 : BADSIG-REASON ( -- )
    SGBAD-BINDERS? IF BINDERS-REASON EXIT THEN
-   DEPTH-REASON$ REJECTION:EMIT-STR  SGBAD-SIZE @ DEPTH-COUNTS ;
+   DEPTH-REASON$ REJECTION:EMIT-STR  DEPTH-COUNTS ;
 
 \ Prints the rejection of stored signature SA SU declared at the name AT ATU as
 \ read, placed at SGBAD-TOKEN, up to its help; the caller ends it. A generated
@@ -12442,13 +12434,13 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    {: sa:^ su:n at:^ atu:n din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
    depth EFFECT-DEPTH-MAX <= if RES-TRUE exit then
-   sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
+   sa su SGBAD-DEPTH-KIND SGBAD-SET
    sa su at atu USIG-ADD-BAD RES-FALSE ;
 
 : SGBAD-UNFIT! ( str n n n n -- )
    {: sa:^ su:n din:n dout:n rin:n rout:n :}
    din dout rin rout ROWS-DEPTH {: depth:n :}
-   depth EFFECT-DEPTH-MAX > IF sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE! THEN ;
+   depth EFFECT-DEPTH-MAX > IF sa su SGBAD-DEPTH-KIND SGBAD-SET THEN ;
 
 \ The binder that opens a scope scheme in signature SA SU, `forall` through
 \ its `<`; the declaring name AT ATU when the text holds none.
@@ -21011,7 +21003,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
 : ROWS-FIT? ( n n n n -- bool )
    {: in:n out:n rin:n rout:n :}
    in out rin rout ROWS-DEPTH {: d:n :}
-   d EFFECT-DEPTH-MAX > IF d MDIAG-DEPTH !  -1 UNFIT !  RES-FALSE EXIT THEN
+   d EFFECT-DEPTH-MAX > IF -1 UNFIT !  RES-FALSE EXIT THEN
    RES-TRUE ;
 
 \ Whether a reason leaves its definition uncheckable, where every other reason
@@ -22110,7 +22102,7 @@ private
    SGBAD-SPAN!
    0 FAILIX !
    SGBAD-DEPTH? IF
-      SGBAD-SIZE @ MDIAG-DEPTH !  MD-EFFECT-DEPTH MDIAG!  UNCK-RAISE  RF-REASON REFUSAL !
+      MD-EFFECT-DEPTH MDIAG!  UNCK-RAISE  RF-REASON REFUSAL !
    ELSE RF-SIG REFUSAL ! THEN
    -1 FAILSET ! ;
 
@@ -23335,7 +23327,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
 \ read; LBI-T holds the term.
 : TYPE-LIT-INFO ( str -- n bool ) {: a:^ u:n :}
    SGBAD @ SGBAD-A @ SGBAD-U @ SGBAD-KIND @ {: sg:n sga:^ sgu:n sgk:n :}
-   SGBAD-AR-DECL @ SGBAD-AR-GOT @ SGBAD-SIZE @ {: ard:n arg:n sgs:n :}
+   SGBAD-AR-DECL @ SGBAD-AR-GOT @ {: ard:n arg:n :}
    SGBAD-EXP-A @ SGBAD-EXP-U @ SGBAD-USED @ SGBAD-LOCAL @
    {: sgea:^ sgeu:n sgused:n sgloc:n :}
    SIG-UNRES @ SIG-UNRES-A @ SIG-UNRES-U @ {: un:n una:^ unu:n :}
@@ -23346,7 +23338,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    t LBI-T !
    SGBAD @ 0= one and IF ARENA-TERM-INFO ELSE 0 RES-FALSE THEN
    sg SGBAD !  sga SGBAD-A !  sgu SGBAD-U !  sgk SGBAD-KIND !
-   ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !  sgs SGBAD-SIZE !
+   ard SGBAD-AR-DECL !  arg SGBAD-AR-GOT !
    sgea SGBAD-EXP-A !  sgeu SGBAD-EXP-U !  sgused SGBAD-USED !  sgloc SGBAD-LOCAL !
    un SIG-UNRES !  una SIG-UNRES-A !  unu SIG-UNRES-U !
    dup IF drop t TYPE-CLOSED? THEN ;
@@ -24069,7 +24061,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 ZSHAPE !
    0 CHECKER-MATCH-MODE !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
-   0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
+   0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
    0 UNFIT !
    FENCE-OK RAW-FENCE !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !

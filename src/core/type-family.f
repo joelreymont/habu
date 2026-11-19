@@ -4225,20 +4225,18 @@ TFC-QUOT-ROW-INSTALL
    REPEAT drop ;
 
 : SUMV-LIN-N ( n n bool -- n ) {: vid:n term:n maybe:bool :}
-   0
-   0 BEGIN dup vid SUMV-PAY-N < WHILE
-      vid over SUMV-PAY-ROOT term maybe TFAM-SCH-LIN-N
-      rot + swap
-      1 +
+   0 0 BEGIN dup vid SUMV-PAY-N < WHILE
+      {: acc:n idx:n :}
+      vid idx SUMV-PAY-ROOT term maybe TFAM-SCH-LIN-N acc +
+      idx 1 +
    REPEAT drop ;
 
 : SUM-LIN-N ( n bool -- n ) {: term:n maybe:bool :}
    term PARAM>FAM {: fam:n :}
-   0
-   0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
-      fam TFAM-VAR-START@ over + term maybe SUMV-LIN-N
-      rot max swap
-      1 +
+   0 0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
+      {: acc:n idx:n :}
+      fam TFAM-VAR-START@ idx + term maybe SUMV-LIN-N acc max
+      idx 1 +
    REPEAT drop ;
 
 : TFAM-INST-LIN-N ( n bool -- n ) {: term:n maybe:bool :}
@@ -5010,14 +5008,16 @@ EXPORT CHECK:OK
    THEN drop
    term TFAM-STORAGE-SUM? IF
       {: fam:n :}
-      fam TFAM-VAR-COUNT@ 0 ?do
-         fam TFAM-VAR-START@ i + {: vid:n :}
+      0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
+         {: idx:n :}
+         fam TFAM-VAR-START@ idx + {: vid:n :}
          vid SUMV-PAY-N 0 ?do
             term vid i TFAM-STORAGE-PAY drop recurse IF
-               RES-TRUE unloop unloop EXIT
+               RES-TRUE unloop EXIT
             THEN
          loop
-      loop RES-FALSE EXIT
+         idx 1 +
+      REPEAT drop RES-FALSE EXIT
    THEN drop
    RES-FALSE ;
 
@@ -5038,14 +5038,16 @@ EXPORT CHECK:OK
    THEN drop
    term TFAM-STORAGE-SUM? IF
       {: fam:n :}
-      fam TFAM-VAR-COUNT@ 0 ?do
-         fam TFAM-VAR-START@ i + {: vid:n :}
+      0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
+         {: idx:n :}
+         fam TFAM-VAR-START@ idx + {: vid:n :}
          vid SUMV-PAY-N 0 ?do
             term vid i TFAM-STORAGE-PAY drop recurse IF
-               RES-TRUE unloop unloop EXIT
+               RES-TRUE unloop EXIT
             THEN
          loop
-      loop RES-FALSE EXIT
+         idx 1 +
+      REPEAT drop RES-FALSE EXIT
    THEN drop
    RES-FALSE ;
 

@@ -904,7 +904,7 @@ private
 7110 s" a family, variant or generated name is reserved or already taken: rename it so it is no reserved word and no word the declaration generates" false MINTED TYPE-DECL:E-TDECL-NAME
 7116 s" a layout policy that is missing, unknown or unsupported, or that the family's shape does not fit: name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`, or drop the clause" false MINTED TYPE-DECL:E-TDECL-POLICY
 7117 s" a sum's payload names the family being declared: drop that payload, since no family can hold itself" false MINTED TYPE-DECL:E-TDECL-RECURSIVE
-7118 s" a record takes more than 4096 items to make: split it, since MAKE takes one item per `FIELD` and one per buffer cell" false MINTED TYPE-DECL:E-TDECL-CAP
+7118 s" a record takes more items to make, or a type nests deeper, than the checker's depth limit: split the record, or declare an inner part as a type of its own" false MINTED TYPE-DECL:E-TDECL-CAP
 7119 s" a `DERIVE` feature is unknown, or a payload type lacks it: derive a feature only when every payload type has it, or drop it from `DERIVE`" false MINTED TYPE-DECL:E-TDECL-DERIVE
 7120 s" a declaration would add a family or a generated word to a sealed package: declare the type in a package that is not sealed" false MINTED TYPE-DECL:E-TDECL-SEALED
 7204 s" a type declaration's payload names a type not yet declared: declare that type before it" false MINTED TYPE-DECL:E-TDECL-UNRESOLVED

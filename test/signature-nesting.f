@@ -248,18 +248,18 @@ public
    24 WIDE  SRC$ TEST-EVAL:RC 0 T=
    s" 9000 nested pointees refuse by the depth limit" T-LABEL
    9000 POINTEES
-   s" effect too deep to record (depth 4097, at most 4096)" REFUSES
+   s" effect too deep to record (more than 2048 levels)" REFUSES
    s" 4500 nested quotations refuse by the depth limit" T-LABEL
    4500 QUOTATIONS
-   s" effect too deep to record (depth 4097, at most 4096)" REFUSES
+   s" effect too deep to record (more than 2048 levels)" REFUSES
    s" a word whose input quotation nests 65 deep checks" T-LABEL
    65 QUOT-CALL  LOADS
    s" a definition's signature nested past the depth limit refuses by it" T-LABEL
-   2049 DEF-QUOTATIONS
-   s" effect too deep to record (depth 4097, at most 4096)" REFUSES
+   1025 DEF-QUOTATIONS
+   s" effect too deep to record (more than 2048 levels)" REFUSES
    s" a local's type nested past the depth limit refuses by it" T-LABEL
-   2049 LOCAL-QUOTATIONS
-   S\" error[E-BAD-SIGNATURE]: effect too deep to record (depth 4097, at most 4096) at `[` in the annotation of local `x`\n" REFUSES
+   1025 LOCAL-QUOTATIONS
+   S\" error[E-BAD-SIGNATURE]: effect too deep to record (more than 2048 levels) at `[` in the annotation of local `x`\n" REFUSES
    s" 70 nested IFs check and run" T-LABEL
    70 NESTED-IFS
    SRC$ TEST-EVAL:RC 0 T=  s" true SN-IFS-70" TEST-EVAL:RC 0 T=

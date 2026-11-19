@@ -494,8 +494,8 @@ cell boundary past the bytes. `MAKE` takes one value per `FIELD` and
 ceil(N / CELL) values of type `n` per `BUFFER`, in declaration order, and
 `UNMAKE` answers them; those cells also fill any bytes past N in the buffer's
 last cell, which neither clears. Under `DERIVE addr` the accessor answers a
-span of the first N bytes. A record of more than 4096 such items is rejected
-at the clause that passes it (`error[E-BAD-DECLARATION]`), and nested field
+span of the first N bytes. A record too wide to make is rejected at the
+clause that passes it (`error[E-BAD-DECLARATION]`), and nested field
 types can still make `MAKE`'s effect too deep (`error[E-BAD-STORED-SIGNATURE]`).
 A record with a `BUFFER` rejects `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
 field and variant name.
@@ -2161,8 +2161,8 @@ answers alike.
 ## Engine limits ordinary source reaches
 
 These ceilings are reachable from plain Habu rather than a runaway. Source past
-one is rejected by name with the count it saw and the ceiling, and none
-truncates; the ceiling is a named constant beside the code that enforces it. A
+one is rejected by name with the ceiling, and none truncates; the ceiling is a
+named constant beside the code that enforces it. A
 definition's captured text and its name have no ceiling: they grow with the
 definition, and a map the system refuses throws `E-BODY-TEXT`.
 
@@ -2172,11 +2172,17 @@ definition, and a map the system refuses throws `E-BODY-TEXT`.
 - **A definition's effect depth**: a row of cells, where a cell's type adds the
   levels it nests, so a returned quotation's row counts from the cell that
   holds it. Past it the definition is uncheckable: `E-UNCHECKABLE`, `effect too
-  deep to record (depth <depth>, at most <cap>)`. A `defer` or `TRUSTED:`
+  deep to record (more than <cap> levels)`. A `defer` or `TRUSTED:`
   row that deep is `E-BAD-STORED-SIGNATURE` under
   `fix_signature_size`, with the same reason, and a local's type that deep
   `E-BAD-SIGNATURE` under `fix_signature_size`. Keep bulk values in a buffer,
   not on the stack, and name an inner callback's effect in a word of its own.
+- **A declared type's nesting**: in a `STRUCTURE` or `ENUM` field, a `NEWTYPE`
+  base or a `SUMTYPE` payload, each `^`, family application and type name opens
+  one level and a quotation two, so `^^n` is three. Past the effect depth's
+  ceiling the declaration is rejected at the token that opens the level,
+  `E-BAD-DECLARATION`, `type nested too deep: at most <cap> levels`. Declare an
+  inner part as a type of its own and use its name.
 - **Binders nested in one signature**: at most 32 `forall<…>` binders inside
   one another. A 33rd is refused, `E-BAD-SIGNATURE` under `fix_signature_size`,
   `more than 32 nested binders at '<token>'`; a `defer` or `TRUSTED:` row is
