@@ -79,9 +79,9 @@ require src/lib/reason.f
 package TASK
 public
 
-\ A nominal cell, so a TASK:FACILITY (the same machine shape) cannot reach
-\ TASK:WAIT-SEM.
-NEWTYPE sem
+\ The address of a semaphore record, nominal so a TASK:FACILITY (the same
+\ machine shape) cannot reach TASK:WAIT-SEM.
+NEWTYPE sem ^n
 
 : PTHREAD-ENTRY ( -- n ) task-entry ;
 
@@ -94,8 +94,8 @@ using TASK-ABI
 
 \ Both converters stay private: no caller mints a handle over its own memory or
 \ projects one back to an address.
-CAST: >SEM ( n -- sem )
-CAST: SEM>N ( sem -- n )
+CAST: >SEM ( ^n -- sem )
+CAST: SEM-REC ( sem -- ^n )
 
 $8 constant TASK-CELL
 $10000 constant TASK-MIN-STACK
@@ -283,13 +283,8 @@ target
    DATA-VA VA>N TASK-N>PTR ;
 host
 
-: SEM-REC ( sem -- ^n )
-   SEM>N TASK-N>PTR ;
-
-\ A record this package owns but did not define: a task's TCB holds its park
-\ and done semaphores and the pool below holds a fixed row.
-: SEM-AT ( ^n -- sem )
-   FFI:>CELL >SEM ;
+: SEM>N ( sem -- n )
+   SEM-REC FFI:>CELL ;
 
 : SEM-GUARD ( sem -- ^n )
    SEM-REC SEM-GUARD-OFF + ;
@@ -364,12 +359,8 @@ host
    again ;
 
 \ ---- the semaphore pool ------------------------------------------------------
-\ The records live in chunks TASK owns, so a pooled handle still names a TASK
-\ record. A chunk is a link, TASK-SEM-POOL-N used cells and as many records. The
-\ first chunk is static; later ones are mapped and never move, since a handle is
-\ the record's address. A freed record is reused before the pool grows. The
-\ first chunk is scratch, so a program starts with every record free and no
-\ chunk mapped.
+\ A chunk is a mapping of a link, TASK-SEM-POOL-N used cells and as many
+\ records. None moves, since a handle is its record's address.
 $40 constant TASK-SEM-POOL-N
 
 BEGIN-STRUCTURE TASK-SEM-CHUNK-SIZE
@@ -385,10 +376,12 @@ TASK-SEM-CHUNK-SIZE constant TASK-SEM-CHUNK-BYTES
 : TASK-ZERO-CELLS, ( n -- )
    0 ?do 0 , loop ;
 
-create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
+\ The chain's link cell alone, scratch, so a program starts with no chunk
+\ mapped.
+create TASK-SEM-POOL CELL SCRATCH-ALLOT
 
 \ Chunks are named by address, as n; 0 ends the chain.
-: SEM-POOL-FIRST ( -- n )
+: SEM-CHAIN-HEAD ( -- n )
    TASK-SEM-POOL CELL-VIEW FFI:>CELL ;
 
 : SEM-CHUNK-LINK ( n -- ^n )
@@ -396,6 +389,9 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 
 : SEM-CHUNK-NEXT ( n -- n )
    SEM-CHUNK-LINK atomic@ ;
+
+: SEM-POOL-FIRST ( -- n )
+   SEM-CHAIN-HEAD SEM-CHUNK-NEXT ;
 
 : SEM-CHUNK-USED ( n n -- ^n ) {: c:n idx:n :}
    c TASK-SEM-CHUNK-USED-OFF + idx cells + TASK-N>PTR ;
@@ -431,7 +427,7 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 \ Two tasks growing at once each append their own chunk; the loser walks on to
 \ the new last.
 : SEM-CHUNK-APPEND ( n -- ) {: c:n :}
-   SEM-POOL-FIRST
+   SEM-CHAIN-HEAD
    begin
       dup 0 c rot SEM-CHUNK-LINK atomic-cas
       dup 0<>
@@ -449,10 +445,10 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
 : SEM-NEW ( -- sem )
    SEM-POOL-FIRST
    begin dup 0<> while
-      dup SEM-CHUNK-CLAIM dup 0<> if nip >SEM exit then drop
+      dup SEM-CHUNK-CLAIM dup 0<> if nip TASK-N>PTR >SEM exit then drop
       SEM-CHUNK-NEXT
    repeat
-   drop SEM-GROW >SEM ;
+   drop SEM-GROW TASK-N>PTR >SEM ;
 
 \ Destroys the semaphore if it is still live, so a recycled record never carries
 \ a POSIX object into its next owner; the caller has already ended its waiters.
@@ -463,7 +459,7 @@ create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES SCRATCH-ALLOT
    0 slot TASK-N>PTR atomic! ;
 
 : TASK-PARK-SEM ( ^n -- sem )
-   TCB.PARK SEM-AT ;
+   TCB.PARK >SEM ;
 
 \ The park outlives every release of its TCB, TASK:FREE included: a post from
 \ any thread (TASK-WAKE, HALT) is ordered before no KILL, JOIN or ACTIVATE.
@@ -482,7 +478,7 @@ create MAIN-PARK-REC SEMAPHORE-BYTES SCRATCH-ALLOT
 SCRATCH-VARIABLE MAIN-PARK-READY
 
 : MAIN-PARK ( -- sem )
-   MAIN-PARK-REC CELL-VIEW SEM-AT ;
+   MAIN-PARK-REC CELL-VIEW >SEM ;
 
 \ The semaphore, Darwin's Mach port included, belongs to this process. A failed
 \ MAIN-PARK-CREATE gives it back here, so the next wake makes the park again.
@@ -573,7 +569,7 @@ EXIT-CHUNK-BYTES EXIT-CHUNK-HEAD - EXIT-ROW-BYTES / constant EXIT-CHUNK-ROWS
 TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
 
 : TASK-DONE-SEM ( ^n -- sem )
-   TCB.DONE SEM-AT ;
+   TCB.DONE >SEM ;
 
 \ Created with the task and destroyed with its memory: a task never activated has nothing to signal, and a released task's record is gone
 \ before the next PREPARE opens a fresh one.
@@ -1669,7 +1665,7 @@ CAST: >SLOT-AT ( n -- ^t )
 
 : SEMAPHORE ( -- )
    create SEMAPHORE-BYTES SCRATCH-ALLOT
-   does> ( -- TASK:sem ) FFI:>CELL >SEM ;
+   does> ( -- TASK:sem ) CELL-VIEW >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
 \ The request and remainder timespecs are one slot: each task sleeps on its own.

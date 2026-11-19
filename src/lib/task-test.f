@@ -870,8 +870,8 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ A stale handle names its record still, so it counts again when the record
 \ went to a new owner who initialized it.
 : POOL-REUSED ( TASK:sem -- )
-   [: dup TASK:TRY-WAIT-SEM TTRUE ;] catch {: rc:n :}
-   drop
+   {: s:TASK:sem :}
+   [: s TASK:TRY-WAIT-SEM TTRUE ;] catch {: rc:n :}
    rc 0 T= ;
 
 \ One record from the first chunk and the last one taken, in a further chunk,

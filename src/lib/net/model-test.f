@@ -175,7 +175,8 @@ $300000 constant BIG-U
 
 
 : TAKE ( TASK:sem -- )
-   [: dup TASK:TRY-WAIT-SEM ;] TEST-WAIT:POLL drop ;
+   {: s:TASK:sem :}
+   [: s TASK:TRY-WAIT-SEM ;] TEST-WAIT:POLL ;
 
 
 : AUTHORIZED? ( HTTP:request -- bool )
