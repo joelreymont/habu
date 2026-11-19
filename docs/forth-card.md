@@ -689,7 +689,7 @@ the throw code out of a source text. Register it as a `SUITE name … ;SUITE`
 entry in `test/gate-stdlib-cases.f`; `bin/hb --load test/run.f` runs every
 suite.
 
-forth.md: **Testing**, **Verification before committing**.
+forth.md: **Testing**.
 
 ## 9 Comments
 
@@ -730,7 +730,6 @@ forth.md: **Testing**, **Verification before committing**.
 | Constants | hex versus decimal, where codes live |
 | Testing | assertions, a suite example, runner and property rules |
 | Diagnosing a checker miss | find the layer that is wrong |
-| Verification before committing | where the gates are |
 | Comments & hygiene | debug prints, a refused definition's report |
 | Habu Native Tooling Gotchas | debugger, xref, `DYNAMIC-BUFFER`, `ARENA`, `HEAP`, alignment, absent words, escapes |
 | Native Forth Gotchas … | compile-only words, `case`, `parse-name` |

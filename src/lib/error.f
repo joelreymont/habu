@@ -292,6 +292,8 @@ require src/os/env-base.f
 -9290 constant E-AIO-FIRST
 -9299 constant E-AIO-LAST
 
+\ The debugger's breakpoints (package DEBUG): -9300..-9309, minted in
+\ src/habu/debug.f.
 \ Package PG's row readers: -9320..-9329, minted by src/lib/pg-rows.f.
 
 \ The WebSocket frame codec, RFC 6455 (package WS, src/lib/net/ws-frame.f):
@@ -338,6 +340,7 @@ require src/os/env-base.f
 \ JSONL framing (package JSONL, src/lib/jsonl.f): -9470..-9479.
 \ MCP tool server and client (package MCP, src/lib/net/mcp.f): -9480..-9489,
 \ minted there.
+\ SVG to PDF (package SVG-PDF): -9490..-9499, minted in src/lib/svg-pdf.f.
 \ Secret store, native or host-bound: -9500..-9509, minted in src/lib/secret.f.
 
 \ Intel disassembly: -9510..-9519, minted by src/arch/x86-64/disasm.f,
