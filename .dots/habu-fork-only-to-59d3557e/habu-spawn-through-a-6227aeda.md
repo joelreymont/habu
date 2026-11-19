@@ -16,4 +16,4 @@ Joel 2026-10-29: superseded by the approved PROCESS API (parent dot): package SP
 
 PROCESS lane 1A (request half).
 
-PROCESS lane 1A landed: master f506c0af (request half, review and fold-ins done). The run half (STDIN/CANCEL/TICK/RUN, lane 1B) is next. Claim: unassigned.
+PROCESS lane 1A landed: master f506c0af (request half, review and fold-ins done). The run half (STDIN/CANCEL/TICK, lane 1B) is next. Claim: unassigned.

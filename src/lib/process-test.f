@@ -14,6 +14,8 @@ require src/lib/process-argv.f
 require src/lib/signal.f
 require src/lib/task.f
 require src/lib/test/ending.f
+require src/lib/test/subject.f
+require src/lib/spawn.f
 require src/lib/fmt.f
 
 variable PT-R
@@ -30,6 +32,8 @@ variable PT-CAPTURE-ERR-LONG-U
 variable PT-CAPTURE-FALSE-U
 variable PT-CAPTURE-EOF-U
 variable PT-TERM-MARKER-U
+variable PT-RUN-IN-U
+variable PT-RUN-OUT-U
 variable PT-FORK-CELL
 create PT-BUF 32 allot
 create PT-OUT 32 allot
@@ -44,6 +48,10 @@ create PT-CAPTURE-ERR-LONG-BUF PATH-CAP allot
 create PT-CAPTURE-FALSE-BUF PATH-CAP allot
 create PT-CAPTURE-EOF-BUF PATH-CAP allot
 create PT-TERM-MARKER-BUF PATH-CAP allot
+create PT-RUN-IN-BUF PATH-CAP allot
+create PT-RUN-OUT-BUF PATH-CAP allot
+create PT-SUB-OUT 64 allot
+create PT-SUB-ERR 256 allot
 4096 constant PT-CHUNK                   \ one PROCESS:STDIN-CHUNK-CAP write
 1024 constant PT-FILL-MAX                \ bounds the pipe fill at 4 MiB
 create PT-CHUNK-BUF PT-CHUNK allot
@@ -83,6 +91,12 @@ create PT-DRAIN-BUF PT-CHUNK allot
 : PT-TERM-MARKER ( -- str )
    PT-TERM-MARKER-BUF PT-TERM-MARKER-U @ ;
 
+: PT-RUN-IN ( -- str )
+   PT-RUN-IN-BUF PT-RUN-IN-U @ ;
+
+: PT-RUN-OUT ( -- str )
+   PT-RUN-OUT-BUF PT-RUN-OUT-U @ ;
+
 : PT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
@@ -100,7 +114,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT s" capture-err-long.f" PT-CAPTURE-ERR-LONG-BUF PT-CAPTURE-ERR-LONG-U PT-PATH!
    PT-ROOT s" capture-false.f" PT-CAPTURE-FALSE-BUF PT-CAPTURE-FALSE-U PT-PATH!
    PT-ROOT s" capture-eof.f" PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U PT-PATH!
-   PT-ROOT s" term-marker" PT-TERM-MARKER-BUF PT-TERM-MARKER-U PT-PATH! ;
+   PT-ROOT s" term-marker" PT-TERM-MARKER-BUF PT-TERM-MARKER-U PT-PATH!
+   PT-ROOT s" run-in" PT-RUN-IN-BUF PT-RUN-IN-U PT-PATH!
+   PT-ROOT s" run-out" PT-RUN-OUT-BUF PT-RUN-OUT-U PT-PATH! ;
 
 : PT-WRITE-SCRIPT ( str str -- ) {: path:^ pathu src:^ srcu :}
    path pathu src srcu FS:WRITE-ALL
@@ -120,7 +136,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT FS:CLEANUP-DIR+
    PT-PATHS!
    PT-WRITE-SCRIPTS
-   PT-TERM-MARKER FS:CLEANUP+ ;            \ the stay and plain cases leave it
+   PT-TERM-MARKER FS:CLEANUP+             \ the stay and plain cases leave it
+   PT-RUN-IN FS:CLEANUP+
+   PT-RUN-OUT FS:CLEANUP+ ;
 
 : PT-CLEANUP ( -- )
    FS:CLEANUP-RUN
@@ -872,6 +890,137 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    s" kill-capture: a child that does not catch SIGTERM is not held" T-LABEL
    ms PT-TERM-GRACE-MS < TTRUE ;
 
+\ PROCESS:RUN: each of a child's fds 0, 1 and 2 chosen as inherit, null or pipe.
+: PT-PIPE ( ^u8 n -- PROCESS:stdio ) SPAN:MAKE PROCESS-STDIO:PIPE ;
+
+: PT-SH-REQUEST ( ^u8 n -- PROCESS:request ) {: script:^ len :}
+   s" /bin/sh" PROCESS:NEW
+   s" -c" PROCESS:ARG
+   script len PROCESS:ARG ;
+
+\ The exit code, or -1 for a child a signal ended.
+: PT-EXITED ( PROCESS:status -- n )
+   MATCH PROCESS:status
+     exited OF ENDOF
+     signaled OF drop -1 ENDOF
+   ;MATCH ;
+
+: TEST-RUN-PIPES ( -- )
+   s" /bin/cat" PROCESS:NEW
+   s" chosen" PT-PIPE PT-OUT 32 PT-PIPE PT-ERR 32 PT-PIPE PROCESS:RUN
+   PT-EXITED {: o:len e:len code:n :}
+   s" run: pipes on all three streams" T-LABEL
+   e LEN>N 0 T=
+   PT-OUT o LEN>N s" chosen" T$=
+   code 0 T= ;
+
+: TEST-RUN-STDOUT-CAPACITY ( -- )
+   s" printf abcdef" PT-SH-REQUEST
+   PROCESS-STDIO:NULL PT-OUT 3 PT-PIPE PT-ERR 32 PT-PIPE PROCESS:RUN
+   PT-EXITED drop 2drop ;
+
+: TEST-RUN-STDERR-CAPACITY ( -- )
+   s" printf abcdef >&2" PT-SH-REQUEST
+   PROCESS-STDIO:NULL PT-OUT 32 PT-PIPE PT-ERR 3 PT-PIPE PROCESS:RUN
+   PT-EXITED drop 2drop ;
+
+\ The fds of run-in, holding "kept", and of run-out, made empty.
+: PT-RUN-FILES ( -- n n )
+   PT-RUN-IN s" kept" FS:WRITE-ALL
+   PT-RUN-OUT NULL$ FS:WRITE-ALL
+   PT-RUN-IN FS:>PATHZ open-rd {: in:n :}
+   in 0 < if E-FS-OPEN throw then
+   PT-RUN-OUT FS:OPEN-APPEND-FD {: out:n :}
+   in out ;
+
+\ The request's FD 0 and 1 name the parent's in and out.
+: PT-FILE-SLOTS ( PROCESS:request n n -- PROCESS:request ) {: in out :}
+   0 >FD in >FD PROCESS:FD
+   1 >FD out >FD PROCESS:FD ;
+
+: PT-RUN-OUT$ ( -- str )
+   PT-RUN-OUT PT-PWD-OUT PT-PWD-CAP FS:READ-ALL {: n:n :}
+   PT-PWD-OUT n ;
+
+: TEST-RUN-INHERIT-SLOT ( -- )
+   PT-RUN-FILES {: in out :}
+   s" /bin/cat" PROCESS:NEW in out PT-FILE-SLOTS
+   PROCESS-STDIO:INHERIT PROCESS-STDIO:INHERIT PROCESS-STDIO:INHERIT PROCESS:RUN
+   PT-EXITED {: o:len e:len code:n :}
+   in close  out close
+   s" run: inherit keeps the request's FD" T-LABEL
+   o LEN>N 0 T=
+   e LEN>N 0 T=
+   PT-RUN-OUT$ s" kept" T$=
+   code 0 T= ;
+
+: TEST-RUN-NULL-SLOT ( -- )
+   PT-RUN-FILES {: in out :}
+   s" cat >&2; echo out; echo err >&2" PT-SH-REQUEST
+   in out PT-FILE-SLOTS
+   PROCESS-STDIO:NULL PROCESS-STDIO:NULL PT-ERR 32 PT-PIPE PROCESS:RUN
+   PT-EXITED {: o:len e:len code:n :}
+   in close  out close
+   s" run: null overrides the request's FD" T-LABEL
+   o LEN>N 0 T=
+   PT-ERR e LEN>N s\" err\n" T$=
+   PT-RUN-OUT$ nip 0 T=
+   code 0 T= ;
+
+\ FD 0 names in, closed, and FD 3 out. RUN refuses the request before a
+\ capture pipe can take in's number, so the child never writes ran to out.
+: PT-RUN-CLOSED-FD ( n n -- )
+   {: in out :}
+   s" printf ran >&3" PT-SH-REQUEST
+   0 >FD in >FD PROCESS:FD
+   3 >FD out >FD PROCESS:FD
+   PROCESS-STDIO:INHERIT PT-OUT 32 PT-PIPE PT-ERR 32 PT-PIPE PROCESS:RUN
+   PT-EXITED drop 2drop ;
+
+: TEST-RUN-CLOSED-FD ( -- )
+   PT-RUN-FILES {: in out :}
+   in close
+   s" run: an FD naming a closed parent fd is refused" T-LABEL
+   [: in out PT-RUN-CLOSED-FD ;] E-PROC-SPAWN TTHROWSQ
+   PROCESS:ERRNO FS:EBADF T=
+   out close
+   PT-RUN-OUT$ nip 0 T= ;
+
+\ Run in a subject child: with fd 0 closed, cat's inherited stdin is closed too,
+\ so cat fails at once rather than read its own stdout pipe.
+: PT-RUN-CLOSED-STDIN ( -- )
+   0 close
+   s" /bin/cat" PROCESS:NEW
+   PROCESS-STDIO:INHERIT PT-OUT 32 PT-PIPE PROCESS-STDIO:INHERIT PROCESS:RUN
+   PT-EXITED nip nip
+   0<> if s" cat-failed" type then ;
+
+: TEST-RUN-CLOSED-STDIN ( -- )
+   s" PT-RUN-CLOSED-STDIN" {: src:^ srcu:n :}
+   src srcu PT-SUB-OUT 64 >LEN PT-SUB-ERR 256 >LEN 10000 >MS SUBJECT:RUN
+   {: o:len e:len ending :}
+   s" run: a closed parent stdin stays closed in the child" T-LABEL
+   PT-SUB-OUT o LEN>N s" cat-failed" T$=
+   ending MATCH PROCESS:ending
+     exited OF 0 T= ENDOF
+     signaled OF drop 1 0 T= ENDOF
+     timeout OF
+        src srcu PT-SUB-OUT o LEN>N PT-SUB-ERR e LEN>N SUBJECT:TIMED-OUT
+     ENDOF
+   ;MATCH ;
+
+: TEST-RUN-MISSING ( -- )
+   s" /nonexistent/habu-run" PROCESS:NEW
+   PROCESS-STDIO:NULL PT-OUT 32 PT-PIPE PT-ERR 32 PT-PIPE PROCESS:RUN
+   PT-EXITED drop 2drop ;
+
+: TEST-RUN-EXIT-CODE ( -- )
+   s" exit 3" PT-SH-REQUEST
+   PROCESS-STDIO:INHERIT PROCESS-STDIO:INHERIT PROCESS-STDIO:INHERIT PROCESS:RUN
+   PT-EXITED nip nip
+   s" run: the child's exit code" T-LABEL
+   3 T= ;
+
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
    PT-PREPARE
@@ -924,6 +1073,15 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    TEST-CAPTURE-DEADLINE-ASKS
    TEST-KILL-CAPTURE-GRACE
    TEST-KILL-CAPTURE-PLAIN
+   TEST-RUN-PIPES
+   [: TEST-RUN-STDOUT-CAPACITY ;] E-PROC-STDOUT-CAPACITY TTHROWSQ
+   [: TEST-RUN-STDERR-CAPACITY ;] E-PROC-STDERR-CAPACITY TTHROWSQ
+   TEST-RUN-INHERIT-SLOT
+   TEST-RUN-NULL-SLOT
+   TEST-RUN-CLOSED-FD
+   TEST-RUN-CLOSED-STDIN
+   [: TEST-RUN-MISSING ;] E-PROC-SPAWN TTHROWSQ
+   TEST-RUN-EXIT-CODE
    [: TEST-PROC-READ-NEG-LEN ;] E-PROC-OUTPUT TTHROWSQ
    [: TEST-PROC-READ-HIGH-LEN ;] E-PROC-OUTPUT TTHROWSQ
    TEST-ZCOPY-EXACT

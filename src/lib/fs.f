@@ -40,6 +40,7 @@ EXPORT BOOT:data-base
 19 constant LINUX-DIRENT-NAME-OFF
 
 public
+0 constant O-RDONLY
 1 constant O-WRONLY
 2 constant O-RDWR
 4 constant O-NONBLOCK

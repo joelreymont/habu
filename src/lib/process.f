@@ -24,6 +24,18 @@ split-str
 \ is no error: the capture stops writing, reads both streams to their end
 \ and answers the exit status, since whether the child read the bytes the
 \ pipe took cannot be seen.
+\
+\ RUN. Runs a spawn.f request with stdin, stdout and stderr each chosen
+\ (stdio) and waits for it with no deadline, on this file's per-task capture
+\ row; STOP-FD is heard as in every capture. inherit keeps the slot as the
+\ request has it: by default the parent's fd of that number, closed in the
+\ child while the parent's is closed. null is /dev/null, read-only as stdin
+\ and write-only as an output. pipe as stdin has RUN write the span's bytes
+\ and close the pipe; as an output RUN captures the stream into the span,
+\ whose length bounds it. A refusal before the child exists throws
+\ E-PROC-SPAWN, and a refused spawn leaves its errno in ERRNO. Once the child
+\ runs, E-PROC-OUTPUT, E-PROC-WAIT, E-PROC-STDOUT-CAPACITY or
+\ E-PROC-STDERR-CAPACITY is thrown after its tree is ended and it is reaped.
 
 require src/lib/engine-id.f
 require src/core/exit-status.f
@@ -33,6 +45,7 @@ s" src/lib/adt/result.f" required            \ result<n,n> for RUN-IO-RC
 s" src/lib/task.f" required                  \ TASK:+USERS carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
 s" src/lib/fd.f" required                    \ FD:PIPE, the capture pipes
+s" src/lib/fs.f" required                    \ FS:O-RDONLY and O-WRONLY, /dev/null
 s" src/lib/span.f" required
 s" src/lib/ffi-abi.f" required
 s" src/lib/spawn.f" required                 \ PROCESS:request and PROCESS:SPAWN, the spawn every RAW word makes
@@ -72,6 +85,14 @@ ENUM ending
   VARIANT exited FIELD code n ;VARIANT
   VARIANT signaled FIELD signal n ;VARIANT
   VARIANT timeout ;VARIANT
+;ENUM
+
+\ stdio - what RUN gives a child's fd 0, 1 or 2; this file's header says
+\ what each means.
+ENUM stdio
+  VARIANT inherit ;VARIANT
+  VARIANT null ;VARIANT
+  VARIANT pipe FIELD bytes SPAN:span<u8> ;VARIANT
 ;ENUM
 
 PATH-CAP 1 + constant PATHZ-CAP          \ a path of PATH-CAP bytes and its NUL
@@ -562,17 +583,20 @@ private
    [: PIPE-CELLS ;] catch {: code:n :} 2drop
    code 0<> if E-PROC-SPAWN THROW-CAPTURE then ;
 
-: CAPTURE-NULL-INPUT-HELD ( -- )
-   s\" /dev/null\z" drop open-rd
+\ /dev/null into the cell, close-on-exec, under the caller's FD-LOCK;
+\ flags are open(2)'s access mode.
+: OPEN-NULL ( ^n n -- )
+   {: cell:^ flags :}
+   s\" /dev/null\z" drop flags 0 open
    dup 0 < if drop E-PROC-SPAWN THROW-CAPTURE then
-   IN-R !
-   IN-R CLOEXEC-CELL ;
+   cell !
+   cell CLOEXEC-CELL ;
 
 public
 \ A capture's default stdin is EOF, whatever the parent's terminal or pipe; the
 \ fd sits in the capture row so a refused spawn closes it too.
 : CAPTURE-NULL-INPUT ( -- fd )
-   [: CAPTURE-NULL-INPUT-HELD ;] FD-LOCK:WITH
+   [: IN-R FS:O-RDONLY OPEN-NULL ;] FD-LOCK:WITH
    IN-R @ >FD ;
 
 private
@@ -1082,6 +1106,87 @@ private
    pathz SPAWN-CAPTURE
    out outcap err errcap RUN-CAPTURE-ENDING-LOOP
    CAPTURE-FINISH-ENDING ;
+
+private
+
+\ The child's slot names the capture cell's fd.
+: SLOT! ( ^n n ^n -- ) {: h:^ slot cell:^ :}
+   h slot >FD cell @ >FD SET-FD drop drop drop ;
+
+\ Whether RUN leaves the child's slot as the request maps it.
+: KEPT? ( stdio -- bool )
+   MATCH stdio
+     inherit OF true ENDOF
+     null OF false ENDOF
+     pipe OF drop false ENDOF
+   ;MATCH ;
+
+\ Refuses the slot's parent fd as CHECK-FD does; a slot naming no fd passes.
+: CHECK-SLOT ( ^n n -- )
+   {: h:^ slot :}
+   h MAP @ slot VEC:AT @ {: parent :}
+   parent 0 < if exit then
+   parent >FD CHECK-FD ;
+
+\ Each parent fd the child gets as the request maps it: slots 3 and up,
+\ and those of 0-2 chosen inherit.
+: CHECK-KEPT ( stdio stdio stdio ^n -- )
+   {: in out err h:^ :}
+   in KEPT? if h 0 CHECK-SLOT then
+   out KEPT? if h 1 CHECK-SLOT then
+   err KEPT? if h 2 CHECK-SLOT then
+   h MAP-LEN 3 ?do h i CHECK-SLOT loop ;
+
+\ The span a capture loop takes for a stream: a pipe's, else an empty one.
+: BYTES$ ( stdio -- ^u8 len )
+   MATCH stdio
+     inherit OF NULL$ ENDOF
+     null OF NULL$ ENDOF
+     pipe OF SPAN:$ ENDOF
+   ;MATCH >LEN ;
+
+: OPEN-INPUT ( stdio ^n -- ) {: h:^ :}
+   MATCH stdio
+     inherit OF ENDOF
+     null OF
+        [: IN-R FS:O-RDONLY OPEN-NULL ;] FD-LOCK:WITH
+        h 0 IN-R SLOT!
+     ENDOF
+     pipe OF drop SETUP-STDIN-FDS h 0 IN-R SLOT! ENDOF
+   ;MATCH ;
+
+\ rp and wp are the stream's capture cells; the child's slot gets the write end.
+: OPEN-OUTPUT ( stdio ^n n ^n ^n -- )
+   {: h:^ slot rp:^ wp:^ :}
+   MATCH stdio
+     inherit OF ENDOF
+     null OF
+        [: wp FS:O-WRONLY OPEN-NULL ;] FD-LOCK:WITH
+        h slot wp SLOT!
+     ENDOF
+     pipe OF drop rp wp OPEN-PIPE h slot wp SLOT! ENDOF
+   ;MATCH ;
+
+public
+
+\ Frees the request whatever the outcome. Answers the bytes captured into
+\ stdout's and stderr's spans, 0 for a stream not piped, and the status.
+: RUN ( PROCESS:request stdio stdio stdio -- len len status )
+   {: in out err :}
+   ERASE {: h:^ :}
+   \ Before any descriptor opens, so none takes a closed slot's number.
+   3 0 do h i INHERIT-SLOT loop
+   [: in out err h CHECK-KEPT
+      CAPTURE-RESET
+      WAIT-FOREVER CAPTURE-DEADLINE!
+      in h OPEN-INPUT
+      out h 1 OUT-R OUT-W OPEN-OUTPUT
+      err h 2 ERR-R ERR-W OPEN-OUTPUT ;] catch {: code:n :}
+   code 0<> if h RELEASE code throw then
+   [: h MINT SPAWN ;] CAPTURE-ADOPT-SPAWN
+   in BYTES$ out BYTES$ err BYTES$ RUN-STDIN-CAPTURE-ENDING-LOOP
+   CLOSE-ALL-CAPTURE-FDS
+   OUT-LEN @ >LEN ERR-LEN @ >LEN STATUS @ >STATUS ;
 ;package
 
 s" src/lib/process-reaper.f" required        \ PROCESS:REAPER-START, a pool's reaper, over WAIT
