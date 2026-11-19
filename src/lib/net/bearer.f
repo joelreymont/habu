@@ -10,16 +10,19 @@ split-str
 \ challenge, and RESOURCE-METADATA answers that metadata's GET (RFC 9728 3).
 \ As a client, TOKEN gets a token from the token endpoint CLIENT! names, for
 \ the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
-\ REFRESH renews one with a refresh grant (RFC 6749 6). Every URL BEARER
-\ fetches or advertises is https, or http to a loopback IP literal for tests.
+\ REFRESH renews one with a refresh grant (RFC 6749 6); CURRENT keeps the
+\ client's own token per scope. Every URL BEARER fetches or advertises is
+\ https, or http to a loopback IP literal for tests.
 \ STORAGE CLASS. PROCESS-WIDE: the issuer, and the challenges, resource and
 \ scope METADATA! states, written before HTTP serves; the key set, read and
 \ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
 \ time; the counts of workers waiting for that fetch and of fetches returned,
 \ under KEYS-LOCK, and the semaphore that wakes them, which ISSUER! sets up;
 \ tables indexed by HTTP:WORKER-SLOT holding each request's token and
-\ scratch; the client CLIENT! states, written before any TOKEN or REFRESH; and
-\ the cursor that reads a token answer, under ANSWER-LOCK.
+\ scratch; the client CLIENT! states, written before any TOKEN or REFRESH;
+\ the cursor that reads a token answer, under ANSWER-LOCK; and the rows
+\ CURRENT keeps, one per scope, written under ROWS-LOCK when linked and each
+\ under its own lock after, which CLIENT! empties.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
 \
 \ Key lookup: a worker looks for the token's kid in the cached key set under
@@ -38,6 +41,8 @@ require src/lib/base64.f
 require src/lib/json.f
 require src/lib/log.f
 require src/lib/task.f
+require src/lib/arena.f
+require src/lib/byte-buffer.f
 require src/lib/adt/option.f
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
@@ -771,6 +776,60 @@ TYPED-VARIABLE ANSWER-CURSOR JSON:cursor
 TASK:FACILITY ANSWER-LOCK
 ANSWER-LOCK TASK:FACILITY-INIT
 
+private
+
+ENUM kept-state empty kept failed ;ENUM
+
+\ A scope's kept token: state says whether one is kept or the last ask
+\ failed; CURRENT asks again once life seconds have passed since the epoch
+\ second before the kept token's ask; asks counts the asks ended, and
+\ region holds the row's lock and BUFs.
+STRUCTURE row DERIVE addr
+   FIELD next ^row
+   FIELD state kept-state
+   FIELD since n
+   FIELD life n
+   FIELD code n
+   FIELD asks n
+   FIELD region SPAN:span<u8>
+;STRUCTURE
+
+ARENA ROWS row
+\ The rows' arena, made by the first CURRENT so a saved image maps none; null
+\ until then, and never released: the rows live as long as the process.
+TYPED-VARIABLE ROW-ARENA ^ARENA:arena
+TYPED-VARIABLE NEWEST ^row
+
+0 constant LOCK-OFF
+LOCK-OFF TASK:FACILITY-BYTES + constant SCOPE-OFF
+SCOPE-OFF BUF:HDR-BYTES + constant KEPT-OFF
+KEPT-OFF BUF:HDR-BYTES + constant ANSWER-OFF
+ANSWER-OFF BUF:HDR-BYTES + constant REGION-BYTES
+
+\ Held to find a scope's row or link a new one, never across a TOKEN.
+TASK:FACILITY ROWS-LOCK
+ROWS-LOCK TASK:FACILITY-INIT
+
+: AREA ( SPAN:span<u8> n n -- ^n )
+   {: region off:n u:n :}
+   region off u SPAN:SUB SPAN:$ drop CELL-VIEW ;
+
+: GUARD ( SPAN:span<u8> -- ^n ) LOCK-OFF TASK:FACILITY-BYTES AREA ;
+: SCOPE-BUF ( SPAN:span<u8> -- ^n ) SCOPE-OFF BUF:HDR-BYTES AREA ;
+: KEPT-BUF ( SPAN:span<u8> -- ^n ) KEPT-OFF BUF:HDR-BYTES AREA ;
+: ANSWER-BUF ( SPAN:span<u8> -- ^n ) ANSWER-OFF BUF:HDR-BYTES AREA ;
+
+: LISTED ( R [ R -- S ] -- S )
+   ROWS-LOCK TASK:GET [: ROWS-LOCK TASK:RELEASE ;] finally ;
+
+: DROP-KEPT ( -- )
+   NEWEST @
+   begin dup NULL-PTR <> while
+      dup ROW-REGION @ KEPT-BUF BUF:WIPE
+      construct kept-state empty over ROW-STATE !
+      ROW-NEXT @
+   repeat drop ;
+
 public
 
 \ How TOKEN asks: as the client itself (client credentials), or for the person
@@ -781,18 +840,19 @@ ENUM grant
 ;ENUM
 
 \ The token endpoint's URL, and the client id and secret this process presents
-\ there, written before any TOKEN or REFRESH, not while one runs. An empty
-\ secret states a public client, which presents none (RFC 6749 2.3.1). The
-\ texts are borrowed and outlive every TOKEN and REFRESH, as literals do.
-\ E-OPERAND for a URL neither https nor http to a loopback IP literal,
-\ URI:ORIGIN's rejection for one it cannot read, either leaving the previous
-\ client in force.
+\ there, written before any TOKEN, REFRESH or CURRENT, not while one runs; each
+\ kept token is dropped. An empty secret states a public client, which
+\ presents none (RFC 6749 2.3.1). The texts are borrowed and outlive every
+\ TOKEN and REFRESH, as literals do. E-OPERAND for a URL neither https nor
+\ http to a loopback IP literal, URI:ORIGIN's rejection for one it cannot
+\ read, either leaving the previous client in force.
 : CLIENT! ( ^u8 n ^u8 n ^u8 n -- )
    {: url:^ uu:n id:^ iu:n secret:^ su:n :}
    url uu SECURE
    url uu SPAN:MAKE ENDPOINT !
    id iu SPAN:MAKE CLIENT-ID !
-   secret su SPAN:MAKE SECRET ! ;
+   secret su SPAN:MAKE SECRET !
+   DROP-KEPT ;
 
 private
 
@@ -1041,5 +1101,132 @@ public
    STATED
    scope su r ru buf REFRESH-FORM
    buf ASKED buf true ISSUED ;
+
+private
+
+: ROW-SCOPE$ ( ^row -- ^u8 n ) ROW-REGION @ SCOPE-BUF BUF:SPAN$ BUF:BLEN>N ;
+: ROW-KEPT$ ( ^row -- ^u8 n ) ROW-REGION @ KEPT-BUF BUF:SPAN$ BUF:BLEN>N ;
+
+\ Under ROWS-LOCK: the scope's row, else null.
+: FOUND ( ^u8 n -- ^row )
+   {: scope:^ su:n :}
+   NEWEST @
+   begin dup NULL-PTR <> while
+      dup ROW-SCOPE$ scope su STR= if exit then
+      ROW-NEXT @
+   repeat ;
+
+\ A zeroed region, its lock made ready and its scope BUF holding the scope.
+: REGION-FOR ( ^u8 n -- SPAN:span<u8> )
+   {: scope:^ su:n :}
+   REGION-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: region :}
+   0 region SPAN:FILL
+   region GUARD TASK:FACILITY-INIT
+   [: scope su BUF:N>BLEN region SCOPE-BUF BUF:APPEND-SPAN ;] catch
+   {: code:n :}
+   code 0<> if region MEM:FREE-SPAN code throw then
+   region ;
+
+\ A zeroed row from the arena, which the first call makes.
+: ALLOTTED ( -- ^row )
+   ROW-ARENA @ NULL-PTR = if ARENA:NEW ROW-ARENA ! then
+   ROW-ARENA @ ROWS-NEW ;
+
+\ Under ROWS-LOCK: the row holds the region and is linked newest first.
+: LINK ( SPAN:span<u8> ^row -- )
+   {: region r:^ :}
+   region r ROW-REGION !
+   NEWEST @ r ROW-NEXT !
+   r NEWEST ! ;
+
+\ Under ROWS-LOCK: a new row for the scope, linked; a throw leaves nothing allocated.
+: LINKED ( ^u8 n -- ^row )
+   {: scope:^ su:n :}
+   scope su REGION-FOR {: region :}
+   [: region ALLOTTED LINK ;] catch {: code:n :}
+   code 0<> if
+      region SCOPE-BUF BUF:DISPOSE  region MEM:FREE-SPAN  code throw
+   then
+   NEWEST @ ;
+
+\ Under ROWS-LOCK.
+: ROW-FOR ( ^u8 n -- ^row )
+   {: scope:^ su:n :}
+   scope su FOUND dup NULL-PTR = if drop scope su LINKED then ;
+
+: FAILED? ( ^row -- bool )
+   ROW-STATE @ MATCH kept-state
+      empty OF false ENDOF
+      kept OF false ENDOF
+      failed OF true ENDOF
+   ;MATCH ;
+
+\ Under the row's lock: whether its token is to be asked for.
+: STALE? ( ^row -- bool )
+   {: r:^ :}
+   r ROW-STATE @ MATCH kept-state
+      empty OF true ENDOF
+      kept OF epoch-seconds r ROW-SINCE @ - r ROW-LIFE @ >= ENDOF
+      failed OF true ENDOF
+   ;MATCH ;
+
+\ Under the row's lock: a failed ask that ended after CURRENT read the asks
+\ count throws its code to the task that waited on it.
+: WAITED ( ^row n -- )
+   {: r:^ seen:n :}
+   r ROW-ASKS @ seen > 0= if exit then
+   r FAILED? if r ROW-CODE @ throw then ;
+
+\ Under the row's lock: the answer's token in place of the old one, kept
+\ for its expires_in less LEEWAY-S, counted from before the ask.
+: KEEP ( ^row -- )
+   {: r:^ :}
+   r ROW-REGION @ {: region :}
+   epoch-seconds {: asked:n :}
+   r ROW-SCOPE$ BEARER-GRANT:OWN region ANSWER-BUF TOKEN {: a:^ u:n secs:n :}
+   region KEPT-BUF BUF:WIPE
+   a u BUF:N>BLEN region KEPT-BUF BUF:APPEND-SPAN
+   asked r ROW-SINCE !  secs LEEWAY-S - r ROW-LIFE !
+   construct kept-state kept r ROW-STATE ! ;
+
+\ Under the row's lock: one more ask ended, failed with the code unless it is
+\ 0; asks is stored atomic! for CURRENT's read outside the lock.
+: ENDED ( ^row n -- )
+   {: r:^ code:n :}
+   code 0<> if
+      code r ROW-CODE !  construct kept-state failed r ROW-STATE !
+   then
+   r ROW-ASKS @ 1+ r ROW-ASKS atomic! ;
+
+\ Under the row's lock.
+: FRESH ( ^row -- )
+   {: r:^ :}
+   r STALE? 0= if exit then
+   [: r KEEP ;] catch {: code:n :}
+   r ROW-REGION @ ANSWER-BUF BUF:WIPE
+   r code ENDED
+   code 0<> if code throw then ;
+
+public
+
+\ Runs the quotation on an access token for the scope, asked as the client
+\ itself (TOKEN with own) from the endpoint CLIENT! names. A token is kept
+\ per scope and asked again once LEEWAY-S or less of its expires_in
+\ remains, counted in epoch seconds from before the ask, so one that lasts
+\ LEEWAY-S or less is asked for on every call. Callable from any task, many
+\ at once: tasks on one scope ask one at a time; one that waited on an ask
+\ that failed throws that ask's code, and a call that begins after it asks
+\ again. The text is borrowed for the quotation only, under the scope's
+\ lock: the quotation copies what it keeps, does no I/O and calls no
+\ CURRENT. A failed ask throws TOKEN's code. The replaced token and the
+\ endpoint's answer are wiped. E-HTTP-STATE before CLIENT!.
+: CURRENT ( ^u8 n [ ^u8 n -- ] -- )
+   {: scope:^ su:n q :}
+   STATED
+   scope su [: ROW-FOR ;] LISTED {: r:^ :}
+   r ROW-ASKS atomic@ {: seen:n :}
+   r ROW-REGION @ GUARD TASK:GET
+   [: r seen WAITED r FRESH r ROW-KEPT$ q execute ;]
+   [: r ROW-REGION @ GUARD TASK:RELEASE ;] finally ;
 
 ;package

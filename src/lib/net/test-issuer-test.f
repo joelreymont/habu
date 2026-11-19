@@ -20,7 +20,10 @@ split-str
 \ storage; REFRESH's form from a confidential and a public client, an answer
 \ without refresh_token, an escaped refresh token decoded after an escaped
 \ token, and a refresh_token that is not a string, E-RESPONSE logged for
-\ REFRESH and ignored by TOKEN.
+\ REFRESH and ignored by TOKEN. CURRENT on /token-count: a token kept per
+\ scope, asked again when it lasts LEEWAY-S or less, asked once for four tasks
+\ at once, a failed ask's code thrown to the tasks waiting on it, and asked
+\ again after a failed ask and after CLIENT!.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -96,6 +99,8 @@ URL-CAP BUFFER: ENDPOINT
 variable ENDPOINT-U
 URL-CAP BUFFER: FAULT-URL
 variable FAULT-URL-U
+URL-CAP BUFFER: COUNT-URL
+variable COUNT-URL-U
 variable PORT-KEPT                  \ the server's port, across its restart and stop
 CAP BUFFER: AUTH
 variable AUTH-U
@@ -396,6 +401,7 @@ PAST-CAP BUFFER: OVERSIZE
 : KEYS-URL$ ( -- str ) KEYS-URL KEYS-URL-U @ ;
 : ENDPOINT$ ( -- str ) ENDPOINT ENDPOINT-U @ ;
 : FAULT-URL$ ( -- str ) FAULT-URL FAULT-URL-U @ ;
+: COUNT-URL$ ( -- str ) COUNT-URL COUNT-URL-U @ ;
 
 \ The running server's port and URLs, kept for its restart and stop.
 : ADDRESSES ( -- )
@@ -403,7 +409,8 @@ PAST-CAP BUFFER: OVERSIZE
    s" " URL ISSUER-URL COPY ISSUER-URL-U !
    s" /keys" URL KEYS-URL COPY KEYS-URL-U !
    s" /token" URL ENDPOINT COPY ENDPOINT-U !
-   s" /token-fault" URL FAULT-URL COPY FAULT-URL-U ! ;
+   s" /token-fault" URL FAULT-URL COPY FAULT-URL-U !
+   s" /token-count" URL COUNT-URL COPY COUNT-URL-U ! ;
 
 \ A JSON token answer whose access_token runs past BEARER's TOKEN-CAP.
 : OVERSIZE-FILL ( -- )
@@ -439,6 +446,37 @@ OVERSIZE-FILL
    mode RENEWAL-NUMBER = if answer S\" {\"access_token\":\"t\",\"expires_in\":60,\"refresh_token\":1}" HTTP:BODY! exit then
    asked HTTP:BODY$ POSTED COPY POSTED-U !
    answer S\" {\"expires_in\":60,\"access_token\":\"fault\\/token\"}" HTTP:BODY! ;
+
+\ /token-count's state: the POSTs it has answered or holds, a HOLD that keeps
+\ each answer waiting while set, a FAIL that makes each answer a 503 while
+\ set, and the expires_in each answer states.
+variable ASKS
+variable HOLD
+variable FAIL
+variable LIFE
+$40 constant REPLY-CAP
+$10 constant REPLY-SLOTS
+REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
+
+\ The text appended at the row's length: the row and its new length.
+: PUT ( ^u8 n str -- ^u8 n )
+   {: at:^ u:n t:^ tu:n :}
+   t tu at u + COPY drop at u tu + ;
+
+\ The answer for the count, in a slot of its own, so answers in flight at
+\ once share no bytes.
+: COUNTED ( n -- ^u8 n )
+   {: k:n :}
+   REPLIES k REPLY-SLOTS mod REPLY-CAP * + 0
+   S\" {\"expires_in\":" PUT  LIFE @ FMT:INT$ PUT
+   S\" ,\"access_token\":\"t" PUT  k FMT:INT$ PUT  S\" \"}" PUT ;
+
+: COUNT-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   1 ASKS atomic-add 1+ {: k:n :}
+   [: HOLD atomic@ 0= ;] TEST-WAIT:POLL
+   FAIL atomic@ 0<> if answer 503 HTTP:STATUS! exit then
+   answer k COUNTED HTTP:BODY! ;
 
 : AUTH+ ( str -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
 
@@ -627,6 +665,125 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" &refresh_token=r.1-x&scope=api%3A%2F%2Fzen%2F.default" FORM+
    POSTED POSTED-U @ FORM$ T$= ;
 
+8 constant ASKERS
+4 constant AT-ONCE                  \ the tasks the asked-at-once case runs
+$40 constant SEEN-CAP
+\ The token text each asker ran on; slot ASKERS is the main task's.
+SEEN-CAP ASKERS 1+ * BUFFER: SEEN
+ASKERS 1+ TYPED-BUFFER SEEN-U n
+ASKERS TYPED-BUFFER CAUGHT n        \ the code each waiter's CURRENT threw
+variable ENTERED                    \ the tasks that have begun their CURRENT
+TASK:MIN-STACK TASK:TASK ASKER-0
+TASK:MIN-STACK TASK:TASK ASKER-1
+TASK:MIN-STACK TASK:TASK ASKER-2
+TASK:MIN-STACK TASK:TASK ASKER-3
+TASK:MIN-STACK TASK:TASK ASKER-4
+TASK:MIN-STACK TASK:TASK ASKER-5
+TASK:MIN-STACK TASK:TASK ASKER-6
+TASK:MIN-STACK TASK:TASK ASKER-7
+ASKERS TYPED-BUFFER TASKS ^n
+
+: TASKS! ( -- )
+   ASKER-0 0 TASKS !  ASKER-1 1 TASKS !  ASKER-2 2 TASKS !
+   ASKER-3 3 TASKS !  ASKER-4 4 TASKS !  ASKER-5 5 TASKS !
+   ASKER-6 6 TASKS !  ASKER-7 7 TASKS ! ;
+TASKS!
+
+: SEEN$ ( n -- str ) {: i:n :} SEEN i SEEN-CAP * + i SEEN-U @ ;
+
+: SAW ( ^u8 n n -- )
+   {: t:^ tu:n i:n :}
+   t tu SEEN i SEEN-CAP * + COPY i SEEN-U ! ;
+
+\ CURRENT's token for the scope, copied into slot i.
+: CURRENT-INTO ( ^u8 n n -- )
+   {: scope:^ su:n i:n :}
+   scope su [: i SAW ;] BEARER:CURRENT ;
+
+: CURRENT$ ( str -- str ) ASKERS CURRENT-INTO ASKERS SEEN$ ;
+
+: ASKING ( n -- ) LIFE ! 0 ASKS atomic! ;
+
+: COUNT-CLIENT ( -- ) COUNT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT! ;
+: KEPT ( -- str ) s" api://kept/.default" ;
+: DUE ( -- str ) s" api://due/.default" ;
+: SHARED ( -- str ) s" api://shared/.default" ;
+: FAILING ( -- str ) s" api://failing/.default" ;
+
+: ASKER ( n -- )
+   {: i:n :}
+   1 ENTERED atomic-add drop
+   SHARED i CURRENT-INTO 0 TASK:RETURN ;
+
+\ Catches its CURRENT's code in the slot its place in ENTERED gives it.
+: WAITER ( -- )
+   1 ENTERED atomic-add {: i:n :}
+   [: FAILING i CURRENT-INTO ;] catch i CAUGHT !
+   0 TASK:RETURN ;
+
+: JOINED ( ^n -- )
+   TASK:JOIN MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH 0 T= ;
+
+: ALL-JOINED ( n -- ) 0 ?do i TASKS @ JOINED loop ;
+
+\ Waits until n tasks have begun their CURRENT and one has asked.
+: ALL-ASKING ( n -- )
+   {: n:n :}
+   [: ENTERED atomic@ n = ASKS atomic@ 1 >= and ;] TEST-WAIT:POLL ;
+
+: ASKED-AT-ONCE ( -- )
+   s" CURRENT from four tasks at once asks once, and each runs on its token" T-LABEL
+   3600 ASKING  0 ENTERED atomic!  1 HOLD atomic!
+   [: 0 ASKER ;] ASKER-0 TASK:ACTIVATE
+   [: 1 ASKER ;] ASKER-1 TASK:ACTIVATE
+   [: 2 ASKER ;] ASKER-2 TASK:ACTIVATE
+   [: 3 ASKER ;] ASKER-3 TASK:ACTIVATE
+   AT-ONCE ALL-ASKING
+   0 HOLD atomic!
+   AT-ONCE ALL-JOINED
+   AT-ONCE 0 ?do i SEEN$ s" t1" T$= loop
+   ASKS atomic@ 1 T= ;
+
+: WAITED-ON-FAILURE ( -- )
+   s" tasks that waited on a failed ask throw its code, asking no more" T-LABEL
+   3600 ASKING  0 ENTERED atomic!  1 FAIL atomic!  1 HOLD atomic!
+   ASKERS 0 ?do [: WAITER ;] i TASKS @ TASK:ACTIVATE loop
+   ASKERS ALL-ASKING
+   0 HOLD atomic!
+   ASKERS ALL-JOINED
+   ASKERS 0 ?do i CAUGHT @ BEARER:E-UNAVAILABLE T= loop
+   \ A task that reads the asks count only after the failed ask ended asks
+   \ again, as a call begun after it: the count is bounded, not one.
+   ASKS atomic@ ASKERS < TTRUE
+   s" a CURRENT that begins after a failed ask asks again" T-LABEL
+   0 FAIL atomic!  3600 ASKING
+   FAILING CURRENT$ s" t1" T$=  ASKS atomic@ 1 T= ;
+
+: BEARER-CURRENT ( -- )
+   COUNT-CLIENT
+   s" CURRENT keeps a scope's token while it lasts, asking once per scope" T-LABEL
+   3600 ASKING
+   KEPT CURRENT$ s" t1" T$=  KEPT CURRENT$ s" t1" T$=  ASKS atomic@ 1 T=
+   s" api://other/.default" CURRENT$ s" t2" T$=  ASKS atomic@ 2 T=
+   s" CLIENT! drops every kept token, so the next CURRENT asks" T-LABEL
+   COUNT-CLIENT
+   KEPT CURRENT$ s" t3" T$=  ASKS atomic@ 3 T=
+   s" CURRENT asks again for a token that lasts LEEWAY-S or less" T-LABEL
+   30 ASKING
+   DUE CURRENT$ s" t1" T$=  DUE CURRENT$ s" t2" T$=
+   ASKED-AT-ONCE
+   WAITED-ON-FAILURE
+   s" a failed ask throws TOKEN's code, and the next CURRENT asks again" T-LABEL
+   FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!
+   BUSY FAULT-MODE !
+   [: DUE CURRENT$ 2drop ;] BEARER:E-UNAVAILABLE TTHROWSQ
+   ECHO FAULT-MODE !
+   COUNT-CLIENT 30 ASKING
+   DUE CURRENT$ s" t1" T$=  ASKS atomic@ 1 T= ;
+
 \ Run once the server has stopped: its port is closed.
 : BEARER-UNREACHED ( -- )
    s" an endpoint on a closed loopback port is E-TRANSFER" T-LABEL
@@ -712,13 +869,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    TEST-ISSUER:ROUTES
    s" POST" s" /claim" [: CLAIM-ROUTE ;] HTTP:ROUTE
    s" POST" s" /token-fault" [: FAULT-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /token-count" [: COUNT-ROUTE ;] HTTP:ROUTE
    LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
    ADDRESSES
    HTTP:STOP
    ISSUER$ s" api://up" KEYS-URL$ BEARER:ISSUER!
    LOOPBACK PORT-KEPT @ TWO-WORKERS IDLE-MS HTTP:START
    DISCOVERY KEYS CLIENT-CREDENTIALS CLIENTS REQUESTS OBO MINTS
-   BEARER-GRANTS BEARER-FAULTS
+   BEARER-GRANTS BEARER-CURRENT BEARER-FAULTS
    HTTP:STOP
    BEARER-UNREACHED BEARER-LONG
    TOOL

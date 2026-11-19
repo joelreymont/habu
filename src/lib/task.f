@@ -1997,6 +1997,10 @@ TASK-MIN-STACK constant MIN-STACK
 : FACILITY-INIT ( ^n -- )
    FACILITY-INIT ;
 
+\ The bytes of a facility in storage its owner allots, which FACILITY-INIT
+\ makes a lock.
+TASK-FACILITY-BYTES constant FACILITY-BYTES
+
 : GET ( ^n -- )
    GET ;
 
