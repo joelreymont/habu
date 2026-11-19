@@ -8,21 +8,25 @@ split-str
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/diff.f
 
 package DIFF-TEST
 using DIFF
 
-create OUT BUF:HDR-BYTES allot
-create WANT BUF:HDR-BYTES allot
+TYPED-VARIABLE OUT-VEC ^VEC:vector<u8>
+TYPED-VARIABLE WANT-VEC ^VEC:vector<u8>
+: OUT ( -- ^VEC:vector<u8> )  OUT-VEC @ ;
+: WANT ( -- ^VEC:vector<u8> )  WANT-VEC @ ;
+: NEW ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
-: W+ ( ^u8 n -- )  BUF:N>BLEN WANT BUF:APPEND-SPAN ;
-: GOT$ ( -- str )  OUT BUF:SPAN$ BUF:BLEN>N ;
-: WANT$ ( -- str )  WANT BUF:SPAN$ BUF:BLEN>N ;
+: W+ ( ^u8 n -- )  WANT VEC:APPEND ;
+: GOT$ ( -- str )  OUT VEC:SPAN SPAN:$ ;
+: WANT$ ( -- str )  WANT VEC:SPAN SPAN:$ ;
 : SAME ( -- )  GOT$ WANT$ T$= ;
 
-: FRESH ( ^u8 n -- )  T-LABEL OUT BUF:CLEAR WANT BUF:CLEAR ;
+: FRESH ( ^u8 n -- )  T-LABEL OUT 0 VEC:RESIZE WANT 0 VEC:RESIZE ;
 
 : PATH ( -- ^u8 n )  s" src/f.f" ;
 : HEAD+ ( -- )  s\" diff --git a/src/f.f b/src/f.f\n--- a/src/f.f\n+++ b/src/f.f\n" W+ ;
@@ -172,8 +176,8 @@ create WANT BUF:HDR-BYTES allot
 
 
 : TEST-MAIN ( -- )
-   OUT 64 BUF:N>BLEN BUF:INIT
-   WANT 64 BUF:N>BLEN BUF:INIT
+   NEW OUT-VEC !
+   NEW WANT-VEC !
    T-RESET
    TEST-END
    TEST-HUNKS
@@ -193,8 +197,8 @@ create WANT BUF:HDR-BYTES allot
    TEST-EMPTY-BASE
    TEST-MERGE-NO-NEWLINE
    TEST-MERGE-CRLF
-   OUT BUF:DISPOSE
-   WANT BUF:DISPOSE
+   OUT VEC:DELETE
+   WANT VEC:DELETE
    T-REPORT
    s" diff-test: ok" type cr ;
 

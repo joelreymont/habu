@@ -9,7 +9,7 @@ split-str
 \ line costs linear time. git also leaves very frequent lines out of its
 \ search and DIFF does not, so on text with many repeated lines DIFF's edit
 \ can be shorter than git's and its output differ.
-\ STORAGE CLASS. CALLER-OWNED: every word appends to the caller's BUF header. A
+\ STORAGE CLASS. CALLER-OWNED: every word appends to the caller's vector. A
 \ call's scratch is one MEM:WITH-BYTES scope, zeroed on entry and released
 \ whole when the call returns or throws.
 \
@@ -23,7 +23,7 @@ require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/string.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/map.f
 require src/lib/adt/option.f
 
@@ -55,7 +55,7 @@ STRUCTURE script DERIVE addr
 \ One call's state, at the start of its scratch. Lines are numbered across the
 \ call's texts, which lie back to back in text; a line's class is the first
 \ line with the same bytes, so equal lines have equal classes. out is the
-\ caller's BUF header; starts holds each line's offset in text, then the end
+\ caller's vector; starts holds each line's offset in text, then the end
 \ of text; ids each line's class; map (cap slots) finds a class by a line's
 \ bytes. For the script being run, seen holds per class the sides that have it,
 \ and seq the lines the search runs over, the old side's then the new side's. v1
@@ -65,7 +65,7 @@ STRUCTURE script DERIVE addr
 \ k1lo..k2hi are the diagonals each pass has run off the rectangle on; sx and sy
 \ are the split the bisection found.
 STRUCTURE work DERIVE addr
-   FIELD out ^n
+   FIELD out ^VEC:vector<u8>
    FIELD text ^u8
    FIELD starts ^n
    FIELD ids ^n
@@ -505,7 +505,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    s u SPAN:SKIP s u SPAN:TAKE SPAN:$ drop ;
 
 
-: OPEN ( ^u8 NUM:alloc-byte-len ^n n -- SPAN:span<u8> ^work )
+: OPEN ( ^u8 NUM:alloc-byte-len ^VEC:vector<u8> n -- SPAN:span<u8> ^work )
    {: base size out lines :}
    base size MEM:ALLOCATION>SPAN
    WORK-CELLS cells CUT >WORK {: w :}
@@ -543,12 +543,12 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : OUT$ ( ^work ^u8 n -- )
    {: w a u :}
-   a u BUF:N>BLEN w WORK-OUT @ BUF:APPEND-SPAN ;
+   a u w WORK-OUT @ VEC:APPEND ;
 
 
 : OUT-BYTE ( ^work n -- )
    {: w c :}
-   c w WORK-OUT @ BUF:APPEND-BYTE ;
+   c w WORK-OUT @ VEC:PUSH c! ;
 
 
 : OUT-LINE ( ^work str -- )
@@ -741,7 +741,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    repeat ;
 
 
-: PATCH-BODY ( str text text kind ^n ^u8 NUM:alloc-byte-len -- )
+: PATCH-BODY ( str text text kind ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- )
    {: p u a b k out base size :}
    a TEXT-LINES {: la :}
    la b TEXT-LINES + {: lines :}
@@ -755,7 +755,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    w s p u k OUT-PATCH ;
 
 
-: PATCH ( ^u8 n text text kind ^n -- )
+: PATCH ( str text text kind ^VEC:vector<u8> -- )
    {: p u a b k out :}
    p u a b k out
    a TEXT-LINES b TEXT-LINES + a TEXT-LEN b TEXT-LEN + 1 SIZE
@@ -902,7 +902,7 @@ STRUCTURE block
    again ;
 
 
-: MERGE-BODY ( text text text ^n ^u8 NUM:alloc-byte-len -- bool )
+: MERGE-BODY ( text text text ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- bool )
    {: a b c out base size :}
    a TEXT-LINES {: la :}
    la b TEXT-LINES + {: lb :}
@@ -928,21 +928,21 @@ public
 \ `--- a/P`, `+++ b/P` and hunks with three lines of context, joined when
 \ their context touches; nothing when the texts have the same lines. P is
 \ quoted and hunk headers name a function line as git's are.
-: WRITE-EDIT ( str str str ^n -- )
+: WRITE-EDIT ( str str str ^VEC:vector<u8> -- )
    {: p u a au b bu out :}
    p u a au >TEXT b bu >TEXT construct kind edit out PATCH ;
 
 
 \ The patch adding path P with this text: `new file mode 100644`, then
 \ `--- /dev/null` and one hunk, which an empty text leaves out.
-: WRITE-ADD ( str str ^n -- )
+: WRITE-ADD ( str str ^VEC:vector<u8> -- )
    {: p u b bu out :}
    p u s" " >TEXT b bu >TEXT construct kind add out PATCH ;
 
 
 \ The patch deleting path P, whose text this was: `deleted file mode 100644`,
 \ then `+++ /dev/null` and one hunk, which an empty text leaves out.
-: WRITE-DELETE ( str str ^n -- )
+: WRITE-DELETE ( str str ^VEC:vector<u8> -- )
    {: p u a au out :}
    p u a au >TEXT s" " >TEXT construct kind delete out PATCH ;
 
@@ -953,7 +953,7 @@ public
 \ nothing conflicts; false when the text holds git's diff3 markers around each
 \ conflict (`<<<<<<< ours`, `||||||| base`, `=======`, `>>>>>>> theirs`), every
 \ section ending in a line end, CR LF where git's merge writes one.
-: MERGE ( ^u8 n ^u8 n ^u8 n ^n -- bool )
+: MERGE ( str str str ^VEC:vector<u8> -- bool )
    {: a au b bu c cu out :}
    a au >TEXT {: ta :}
    b bu >TEXT {: tb :}
