@@ -78,11 +78,11 @@ private
    CHECKER COMMON s" src/core/exec-vector.f" ROW
    CHECKER COMMON s" src/core/conditional.f" ROW
    CHECKER COMMON s" src/habu/escape.f" ROW
+   CHECKER COMMON s" src/core/compile-reads.f" ROW
    CHECKER COMMON s" src/core/checker.f" ROW
    CHECKER COMMON s" src/core/type-schema.f" ROW
    CHECKER COMMON s" src/core/roles.f" ROW
    CHECKER COMMON s" src/core/bytes.f" ROW
-   CHECKER COMMON s" src/core/compile-reads.f" ROW
    CHECKER COMMON s" src/core/type-family.f" ROW
    CHECKER COMMON s" src/core/render.f" ROW
    CHECKER COMMON s" src/core/check-walk.f" ROW

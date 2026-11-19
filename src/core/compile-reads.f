@@ -156,7 +156,7 @@ create STAMP-BUF 3 cells SCRATCH-ALLOT   \ STAMP+'s second bytes
    CAP @ 2 * need max ROOM-MIN max {: cap:n :}
    cap s" a recording of a compile's reads" FRESH
    {: fresh:^ :}
-   MAP @ fresh USED @ BYTE-COPY
+   MAP @ fresh USED @ ARENA-COPY
    MAP @ CAP @ UNMAP
    fresh MAP !
    cap CAP ! ;
@@ -199,8 +199,8 @@ private
    kind off AT CELL-VIEW !
    u off CELL + AT CELL-VIEW !
    v off 2 cells + AT CELL-VIEW !
-   a off 3 cells + AT u BYTE-COPY
-   b off 3 cells + u + AT v BYTE-COPY
+   a off 3 cells + AT u ARENA-COPY
+   b off 3 cells + u + AT v ARENA-COPY
    size 3 cells - u v + ?do 0 off 3 cells + i + AT c! loop
    off size + USED !
    off 1+ place SLOT !  FILLED @ 1+ FILLED ! ;
