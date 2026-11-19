@@ -1299,9 +1299,8 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
    nc TRAIL-CAP ! ;
 
 
-\ Tags: 0 TVT, 1 RVT, 2 kind, 3 NLINEAR, 4 run record (TRAIL-RAN), 8 NSCOPE,
-\ 12 TVT link, 13 RVT link, 14 TVP. Rollback restores a raise's old kind, not
-\ ANY, so fences survive; a run record has no slot to restore.
+\ Tags: 0 TVT, 1 RVT, 2 kind, 3 NLINEAR, 4 run record (TRAIL-RAN), 5 a run's
+\ first record, 8 NSCOPE, 12 TVT link, 13 RVT link, 14 TVP.
 : TRAIL-PUSH ( n n -- )
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
@@ -1317,6 +1316,14 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
 \ Quotation term q was run or handed on at a copy of its tail var id.
 : TRAIL-RAN ( n n -- ) 4 TRAIL-LINK ;
 
+\ Retags the first run record at or above trail index mark as its run's first.
+: TRAIL-RAN-FIRST ( n -- )
+   {: mark:n :}
+   TRAIL-N @ mark ?do
+      i cells TRAIL + {: e:^ :}
+      e @ 15 and 4 = IF  e @ 1 + e !  unloop EXIT  THEN
+   loop ;
+
 
 : TRAIL-SLOT ( n -- ^n )
    {: e:n :}
@@ -1329,11 +1336,13 @@ variable TRAIL-PIN   \ trail height + 1 where the refusal's rows were pinned (RO
    TVK off + ;
 
 
+\ Restores a raise's old kind, not ANY, so fences survive; a run record has no
+\ slot to restore.
 : TRAIL-UNDO ( n -- )
    {: i:n :}
    i cells TRAIL + @ {: e:n :}
    e 15 and {: tag:n :}
-   tag 4 = IF EXIT THEN
+   tag 4 =  tag 5 = or IF EXIT THEN
    tag 2 =  tag 12 = or  tag 13 = or  tag 14 = or IF
       i cells TRAIL-OLD + @  e TRAIL-SLOT !  EXIT
    THEN
@@ -4982,10 +4991,12 @@ EXPORT CHECKER-QUOT-FRESH:UNLIST
 \ Copy the tail of each of q's rows before any row is copied, so RENEW meets
 \ a tail's copy in a cell of any row.
 : QAPP-REG ( n bool -- ) {: q:n pair?:bool :}
+   TRAIL-N @ {: mark:n :}
    q Q>DIN ROW-TAIL q pair? QAPP-TAIL drop
    q Q>DOUT ROW-TAIL q pair? QAPP-TAIL drop
    q Q>RIN ROW-TAIL q pair? QAPP-TAIL drop
-   q Q>ROUT ROW-TAIL q pair? QAPP-TAIL drop ;
+   q Q>ROUT ROW-TAIL q pair? QAPP-TAIL drop
+   mark TRAIL-RAN-FIRST ;
 
 
 \ A copy of quotation q whose rows end in QAPP-TAIL's copies and whose cells
@@ -21309,25 +21320,24 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    THEN
    why CF-FAIL ;
 
-: RAN? ( n -- bool ) cells TRAIL + @ 15 and 4 = ;
+: RAN? ( n -- bool )
+   cells TRAIL + @ 15 and {: tag:n :}
+   tag 4 =  tag 5 = or ;
+: RAN-FIRST? ( n -- bool ) cells TRAIL + @ 15 and 5 = ;
 : RAN-ID ( n -- n ) cells TRAIL + @ 4 rshift ;
 : RAN-Q ( n -- n ) cells TRAIL-OLD + @ ;
 
-\ Run record j is in record i's run: one quotation's tails, each listed once.
-: RAN-GROUP? ( n n -- bool )
-   {: j:n i:n :}
-   j RAN? 0= IF RES-FALSE EXIT THEN
-   j RAN-Q i RAN-Q =  j RAN-ID i RAN-ID <> and ;
-
-\ An earlier tail of record i's run resolves to r: one run has four rows, which
-\ sit together on the trail, since no path compression runs within QUOT-INST.
+\ An earlier tail of record i's run resolves to r. Runs never nest, so only path
+\ compression's entries sit between a run's first record and its later ones.
 : RAN-TIED? ( n n -- bool )
    {: i:n r:n :}
-   i BEGIN dup 0 >  over i 3 - > and WHILE
+   i RAN-FIRST? IF RES-FALSE EXIT THEN
+   i BEGIN
       1 -
-      dup i RAN-GROUP? 0= IF drop RES-FALSE EXIT THEN
-      dup RAN-ID MK-ROW R-RES r = IF drop RES-TRUE EXIT THEN
-   REPEAT drop RES-FALSE ;
+      dup RAN? IF
+         dup RAN-ID MK-ROW R-RES r = IF drop RES-TRUE EXIT THEN
+      THEN
+   dup RAN-FIRST? UNTIL drop RES-FALSE ;
 
 \ Run record i's tail is still free: an unbound open row, not the region's
 \ entry tail in data or ret, nor tied to another tail of its run.
