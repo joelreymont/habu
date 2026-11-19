@@ -1305,7 +1305,10 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   theirs), takes a one-cell enum, sum or structure too; handing it to any other
   word (a primitive, a `defer`, the word's own `RECURSE`) makes it one plain
   cell, and a value wider than one cell or one that may be linear is rejected
-  at the call.
+  at the call. An unsigned definition's or a quotation literal's input is
+  moved the same way by the stack words that take it: `[: dup USE ;] catch`
+  takes a one-cell `NEWTYPE` that `USE` names, and `[: dup + ;] execute`
+  rejects one.
 - Type, role and family names are lower case and case-sensitive: `I64` and
   `IDX` reject as bad signatures.
 - Blanks separate tokens, and a line break or a tab is one, so a long effect

@@ -1123,9 +1123,8 @@ private
 \ TVK-ADDR: the pointee of a row that reads, writes and sizes nothing through
 \ the pointer, so any type, any family included; an inferred signature keeps it.
 12 constant TVK-ADDR
-\ TVK-MOVED: a var of a checked `:` signature named only in stack positions
-\ whose body only moves it, so it takes a one-cell layout value; any other
-\ use makes it TVK-CELL.
+\ TVK-MOVED: a var the body only moves, so it takes a one-cell layout value;
+\ any other use makes it TVK-CELL.
 13 constant TVK-MOVED
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK! ( n n -- ) cells TVK + ! ;
@@ -23623,6 +23622,27 @@ variable POST-A0
    TSTART @ u POSTPONED-REC NULL-PTR <> IF RES-FALSE EXIT THEN
    a u LOC-REF? ;
 
+SCRATCH{
+\ BROW's open tail when a transport token began with no `:` signature in
+\ force, else 0.
+variable XPORT-TAIL
+}SCRATCH
+
+\ A transport token only moves what it takes from an unsigned definition's or a
+\ quotation literal's open input: each plain var it binds there becomes MOVED.
+: XPORT-TAIL-ARM ( -- )
+   0 XPORT-TAIL !
+   LAYOUT-XPORT @ 0=  QDEPTH @ 0=  SGSEEN @ 0 <>  and  or IF EXIT THEN
+   BROW @ ROW-TAIL XPORT-TAIL ! ;
+: XPORT-TAIL-MOVE ( -- )
+   XPORT-TAIL @ dup 0= IF drop EXIT THEN
+   R-RES BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE T-RES dup ISVAR IF
+         PAY dup TVK@ TVK-ANY = IF TVK-MOVED TVK-LOWER-TO ELSE drop THEN
+      ELSE drop THEN
+      P>REST R-RES
+   REPEAT drop ;
+
 \ Answers whether the token is unjudged, and the OK, UNCK and FAILSET it came
 \ in with, for DO-TOK-TAIL.
 : DO-TOK-HEAD ( str -- bool n n n )
@@ -23644,12 +23664,13 @@ variable POST-A0
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
-   ELSE RES-FALSE THEN LAYOUT-XPORT !
+   ELSE RES-FALSE THEN LAYOUT-XPORT !  XPORT-TAIL-ARM
    NZ-OTHER NZ-IN !
    unj ok-in unck-in pin-in ;
 
 : DO-TOK-TAIL ( str bool n n n -- )
    {: a:^ u:n unj:bool ok-in:n unck-in:n pin-in:n :}
+   XPORT-TAIL-MOVE
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are

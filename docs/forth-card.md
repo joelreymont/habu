@@ -151,7 +151,10 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
   locals, calls of words that only move theirs), also takes a
   one-cell enum, sum or structure; passing it to a primitive, a `defer` or
   `RECURSE` makes it one plain cell, and a wider or possibly linear value is
-  rejected at the call.
+  rejected at the call. An unsigned definition's or a quotation literal's
+  input is moved the same way by the stack words that take it:
+  `[: dup USE ;] catch` takes a one-cell `NEWTYPE` that `USE` names;
+  `[: dup + ;] execute` rejects one.
 - Concrete integers widen when lossless (`u8 → u16 → u32 → cell/i64`). Generic
   `n` accepts structural integer stack cells in either direction: `n` can pass
   to `u32`, while `i64` needs an explicit conversion. In a definition's body a
