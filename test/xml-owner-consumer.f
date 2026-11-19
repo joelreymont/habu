@@ -4,6 +4,8 @@ split-str
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/xml.f
+require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/byte-edit.f
 require src/lib/fs.f
 require src/os/script-argv.f
@@ -21,7 +23,7 @@ create ATTR-BYTES 32 allot
 create TEXT-BYTES 32 allot
 create TAIL-BYTES 32 allot
 create WRITTEN OUTPUT-CAP allot
-create DECODED 64 allot
+TYPED-VARIABLE DECODED ^VEC:vector<u8>
 1 SPAN-BUFFER: STREAM-CHUNK
 variable STREAM-POS
 
@@ -90,24 +92,23 @@ CAST: ENCODING>N ( XML:encoding -- n )
    source pos @ + c@ output 0 SPAN:U8!
    1 pos +! 1 ;
 
+: CLEARED ( -- ^VEC:vector<u8> ) DECODED @ dup 0 VEC:RESIZE ;
+: DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
+
 : STREAM-READ ( -- )
    0 STREAM-POS !
    RD STREAM-POS ['] STREAM-FILL STREAM-CHUNK XML:INIT-INPUT
    XML-KIND:START NEXT=
    XML-KIND:START NEXT=
    XML:NAME$ s" p:b" T$=
-   DECODED 64 XML:URI DECODED swap s" urn:x" T$=
+   CLEARED XML:URI DECODED$ s" urn:x" T$=
    XML:ATTR-NEXT TTRUE
-   DECODED 64 XML:ATTR-TEXT DECODED swap s" &" T$=
-   0
-   begin
-      >r XML:NEXT KIND>N XML-KIND:TEXT KIND>N =
-   while
-      r> {: used:n :}
-      DECODED used + 64 used - XML:TEXT used +
+   CLEARED XML:ATTR-TEXT DECODED$ s" &" T$=
+   CLEARED drop
+   begin XML:NEXT KIND>N XML-KIND:TEXT KIND>N = while
+      DECODED @ XML:TEXT
    repeat
-   r> {: used:n :}
-   DECODED used s" Aé&Z" T$=
+   DECODED$ s" Aé&Z" T$=
    XML:KIND KIND>N XML-KIND:END KIND>N T=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE ;
@@ -193,9 +194,9 @@ CAST: ENCODING>N ( XML:encoding -- n )
    RD XML:INIT-SOURCE
    XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
-   DECODED 64 XML:ATTR-TEXT DECODED swap s" aQb" T$=
+   CLEARED XML:ATTR-TEXT DECODED$ s" aQb" T$=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s" Ax🚗Y" T$=
+   CLEARED XML:TEXT DECODED$ s" Ax🚗Y" T$=
    XML-KIND:END NEXT= XML-KIND:COMMENT NEXT=
    XML-KIND:COMMENT NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
@@ -278,6 +279,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 public
 : MAIN ( -- )
    T-RESET
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED !
    s" bounded callback XML survives source and native capture" T-LABEL
    STREAM-READ
    s" runtime-sized owners survive parser scratch reuse and later edits" T-LABEL
@@ -290,6 +292,7 @@ public
    2 false OPEN
    2 0 ?do i CHECK-OWNER loop
    CLOSE-PARTS
+   DECODED @ VEC:DELETE
    T-REPORT
    s" xml-owner-consumer: ok" type cr ;
 ;package

@@ -3,6 +3,8 @@ require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
 require src/lib/property.f
+require src/lib/vector.f
+require src/lib/heap.f
 
 package XML-ROUNDTRIP-TEST
 using XML
@@ -13,7 +15,7 @@ create EDITOR 2 EDIT:STORAGE-BYTES allot
 create ATTRIBUTE-BUF BYTE-CAP allot
 create TEXT-BUF BYTE-CAP allot
 create DOCUMENT BYTE-CAP allot
-create READBACK BYTE-CAP allot
+TYPED-VARIABLE READBACK ^VEC:vector<u8>
 create SINGLE 1 allot
 create RANDOM-BUF BYTE-CAP allot
 variable TEMPLATE
@@ -54,16 +56,20 @@ TYPED-VARIABLE RD XML:cursor
    DOCUMENT BYTE-CAP EDIT:WRITE {: document-size:n :}
    EDIT:CLOSE document-size ;
 
+: READBACK-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW READBACK ! ;
+: CLEARED ( -- ^VEC:vector<u8> ) READBACK @ dup 0 VEC:RESIZE ;
+: READBACK$ ( -- str ) READBACK @ VEC:SPAN SPAN:$ ;
+
 : VERIFY ( ^u8 n n -- )
    {: value size:n document-size:n :}
    DOCUMENT document-size OPEN
    NEXT drop NEXT drop
    ATTR-NEXT TTRUE ATTR-NEXT TTRUE
-   READBACK BYTE-CAP ATTR-TEXT READBACK swap value size T$=
+   CLEARED ATTR-TEXT READBACK$ value size T$=
    NEXT drop
-   READBACK BYTE-CAP TEXT READBACK swap value size T$=
+   CLEARED TEXT READBACK$ value size T$=
    NEXT drop NEXT drop
-   READBACK BYTE-CAP TEXT READBACK swap s" keep" T$=
+   CLEARED TEXT READBACK$ s" keep" T$=
    NEXT drop XML:CLOSE ;
 
 : ROUNDTRIP ( ^u8 n -- )
@@ -131,12 +137,14 @@ TYPED-VARIABLE RD XML:cursor
       RANDOM-VALUE$ 2dup APPLY dup >r VERIFY r> RANDOM-REJECTION
    loop ;
 
+READBACK-NEW
 T-RESET
 0 TEMPLATE !
 ASCII-ROUNDTRIPS
 s\" \t\n\r" ROUNDTRIP
 s" <&>'é名😀🚀" ROUNDTRIP
 RANDOM-ROUNDTRIPS
+READBACK @ VEC:DELETE
 T-REPORT
 ;using
 ;package

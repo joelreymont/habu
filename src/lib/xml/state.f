@@ -577,18 +577,13 @@ LINEAR: ERASE ( XML:reader -- ^n )
    loop
    true ;
 
-\ Decode a URI into destination, copying a plain one directly, with
-\ DECODE-INTO's refusals in its order.
-: URI-INTO ( str str -- n )
-   {: source size:n destination cap:n :}
+\ Append a decoded URI, copying a plain one directly.
+: URI-INTO ( str ^VEC:vector<u8> -- )
+   {: source size:n v:^ :}
    source size PLAIN-VALUE? 0= if
-      source size DECODE-ATTR destination cap DECODE-INTO exit
+      source size DECODE-ATTR v DECODE-INTO exit
    then
-   destination cap SPAN-CHECK
-   size cap > if E-CAPACITY throw then
-   source size destination cap OVERLAP? if E-ALIAS throw then
-   source destination size BYTE-COPY
-   size ;
+   source size v VEC:APPEND ;
 
 : CURRENT-FRAME ( ^n -- ^n )
    dup OPEN-DEPTH + @ 1- FRAME ;
@@ -808,31 +803,6 @@ private
    loop
    name size ;
 
-\ No byte the vector's block holds, live or spare.
-: VEC-ALIAS ( ^VEC:vector<u8> str -- )
-   {: v:^ destination cap:n :}
-   v VEC:SPAN SPAN:$ drop v VEC:CAP
-   destination cap OVERLAP? if E-ALIAS throw then ;
-
-: OUTPUT-CHECK ( ^n str -- )
-   {: state destination cap:n :}
-   destination cap SPAN-CHECK
-   state SOURCE$ destination cap OVERLAP? if E-ALIAS throw then
-   state destination cap RECORD-CHECK
-   state WIRE-ORIGINAL-IDX ptr-field @ state WIRE-ORIGINAL-LEN + @
-   destination cap OVERLAP? if E-ALIAS throw then
-   state WIRE-STORAGE-IDX ptr-field @ state WIRE-STORAGE-LEN + @
-   destination cap OVERLAP? if E-ALIAS throw then
-   state INPUT? if
-      state STREAM@ {: stream :}
-      stream STREAM-INPUT @ stream STREAM-INPUT-CAP @
-      destination cap OVERLAP? if E-ALIAS throw then
-      stream STREAM>BYTES STREAM-CELLS cells
-      destination cap OVERLAP? if E-ALIAS throw then
-      stream TOKEN-VEC destination cap VEC-ALIAS
-      stream SCOPE-VEC destination cap VEC-ALIAS
-   then ;
-
 \ Keep the reader below throwing workers' arguments. Native catch restores
 \ stack depth, so public locals could overwrite the reader's saved stack cell.
 : RAW-STATE ( ^n -- off len )
@@ -850,16 +820,15 @@ private
    state NAMED
    state state NAME-OFF + @ state NAME-LEN + @ SPAN$ ;
 
-: DECODE-ARGS ( XML:reader ^u8 n -- XML:reader ^n ^u8 n )
-   {: destination cap:n :}
-   STATE destination cap ;
+: DECODE-ARGS ( XML:reader ^VEC:vector<u8> -- XML:reader ^n ^VEC:vector<u8> )
+   {: v:^ :}
+   STATE v ;
 
-: URI-STATE ( ^n ^u8 n -- n )
-   {: state destination cap:n :}
+: URI-STATE ( ^n ^VEC:vector<u8> -- )
+   {: state v:^ :}
    state NAMED
-   state destination cap OUTPUT-CHECK
    state state URI-OFF + @ state URI-LEN + @ URI$
-   destination cap URI-INTO ;
+   v URI-INTO ;
 
 : ATTR-RESET-STATE ( ^n -- )
    {: state :}
@@ -895,19 +864,17 @@ private
    state ACTIVE-ATTRIBUTE {: attr :}
    state attr ATTRIBUTE-VALUE + @ ABS-OFF >OFF attr ATTRIBUTE-VALUE-U + @ >LEN ;
 
-: ATTR-URI-STATE ( ^n ^u8 n -- n )
-   {: state destination cap:n :}
+: ATTR-URI-STATE ( ^n ^VEC:vector<u8> -- )
+   {: state v:^ :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state destination cap OUTPUT-CHECK
    state attr ATTRIBUTE-URI + @ attr ATTRIBUTE-URI-U + @ URI$
-   destination cap URI-INTO ;
+   v URI-INTO ;
 
-: ATTR-TEXT-STATE ( ^n ^u8 n -- n )
-   {: state destination cap:n :}
+: ATTR-TEXT-STATE ( ^n ^VEC:vector<u8> -- )
+   {: state v:^ :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state destination cap OUTPUT-CHECK
    state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$
-   DECODE-ATTR destination cap DECODE-INTO ;
+   DECODE-ATTR v DECODE-INTO ;
 
 public
 : KIND ( XML:reader -- XML:reader kind )
@@ -928,7 +895,7 @@ public
 : DEPTH ( XML:reader -- XML:reader n )
    STATE dup LIVE OPEN-DEPTH + @ ;
 
-: URI ( XML:reader ^u8 n -- XML:reader n )
+: URI ( XML:reader ^VEC:vector<u8> -- XML:reader )
    DECODE-ARGS URI-STATE ;
 
 \ Attribute access works only on a start event, after ATTR-NEXT selects one and
@@ -955,10 +922,10 @@ public
 : ATTR-VALUE ( XML:reader -- XML:reader off len )
    STATE ATTR-VALUE-STATE ;
 
-: ATTR-URI ( XML:reader ^u8 n -- XML:reader n )
+: ATTR-URI ( XML:reader ^VEC:vector<u8> -- XML:reader )
    DECODE-ARGS ATTR-URI-STATE ;
 
-: ATTR-TEXT ( XML:reader ^u8 n -- XML:reader n )
+: ATTR-TEXT ( XML:reader ^VEC:vector<u8> -- XML:reader )
    DECODE-ARGS ATTR-TEXT-STATE ;
 
 ;package

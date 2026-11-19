@@ -4,6 +4,8 @@ require src/lib/xml.f
 require src/lib/byte-edit.f
 require src/lib/test/guard-page.f
 require src/lib/reason.f
+require src/lib/vector.f
+require src/lib/heap.f
 
 package XML-SOURCE-TEST
 
@@ -15,10 +17,9 @@ create ENCODED 64 allot
 create ATTR-OUT 64 allot
 create INSERT-OUT 64 allot
 create WRITTEN 256 allot
-create DECODED 64 allot
+TYPED-VARIABLE DECODED ^VEC:vector<u8>
 create BOMLESS 256 allot
 create BOM-INPUT 256 allot
-create WIRE 64 allot
 TYPED-VARIABLE ASCII-OWNER XML:source-owner
 TYPED-VARIABLE RD XML:cursor
 create SHARED-STORE XML:CURSOR-BYTES allot
@@ -71,6 +72,10 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : READER ( XML:source -- XML:source XML:reader ) RD XML:INIT-SOURCE ;
 
+: DECODED-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED ! ;
+: CLEARED ( -- ^VEC:vector<u8> ) DECODED @ dup 0 VEC:RESIZE ;
+: DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
+
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    KIND>N {: want:n :}
    XML:NEXT KIND>N want T= ;
@@ -89,14 +94,14 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:ATTR-NEXT TTRUE
    XML:ATTR-VALUE$ s" x" T$=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s" &" T$=
+   CLEARED XML:TEXT DECODED$ s" &" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE
    BE$ OPEN
    XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF16-BE ENCODING>N T=
    XML:SOURCE-LEXICAL$ s" <a>x</a>" T$=
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s" x" T$=
+   CLEARED XML:TEXT DECODED$ s" x" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -104,7 +109,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    ODD-STORE 1 + SOURCE-CAP BE$ XML:SOURCE-INIT
    XML:SOURCE-LEXICAL$ s" <a>x</a>" T$=
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s" x" T$=
+   CLEARED XML:TEXT DECODED$ s" x" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -114,7 +119,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:SOURCE-BOM$ s\" \xEF\xBB\xBF" T$=
    XML:SOURCE-LEXICAL$ s" <a>é😀</a>" T$=
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s" é😀" T$=
+   CLEARED XML:TEXT DECODED$ s" é😀" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -127,9 +132,9 @@ CAST: ENCODING>N ( XML:encoding -- n )
    lexical size s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>" T$=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
-   DECODED 64 XML:ATTR-TEXT DECODED swap s" 中" T$=
+   CLEARED XML:ATTR-TEXT DECODED$ s" 中" T$=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s" 中" T$=
+   CLEARED XML:TEXT DECODED$ s" 中" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE
    s\" <?xml version='1.0' encoding=\quS-aScIi\q?><a/>" OPEN
@@ -138,7 +143,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    s" <?xml-stylesheet encoding='US-ASCII'?><a>é</a>" OPEN
    XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF8 ENCODING>N T=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
-   XML-KIND:TEXT NEXT= DECODED 64 XML:TEXT DECODED swap s" é" T$=
+   XML-KIND:TEXT NEXT= CLEARED XML:TEXT DECODED$ s" é" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -174,7 +179,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    WRITTEN written s" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>" T$=
    SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
-   XML-KIND:TEXT NEXT= DECODED 64 XML:TEXT DECODED swap s" 中" T$=
+   XML-KIND:TEXT NEXT= CLEARED XML:TEXT DECODED$ s" 中" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE
    owner XML:OWNER-CLOSE ;
 
@@ -187,19 +192,19 @@ CAST: ENCODING>N ( XML:encoding -- n )
    READER
    XML-KIND:PI NEXT=
    XML-KIND:START NEXT=
-   DECODED 64 XML:URI DECODED swap s\" u" T$=
-   s" p" DECODED 64 XML:PREFIX-URI TTRUE
-   DECODED swap s" u" T$=
+   CLEARED XML:URI DECODED$ s\" u" T$=
+   s" p" CLEARED XML:PREFIX-URI TTRUE
+   DECODED$ s" u" T$=
    XML:ATTR-NEXT TTRUE XML:ATTR-NEXT TTRUE
    XML:ATTR-VALUE$ s\" x&amp;y" T$=
-   DECODED 64 XML:ATTR-TEXT DECODED swap s\" x&y" T$=
+   CLEARED XML:ATTR-TEXT DECODED$ s\" x&y" T$=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" a\n" T$=
+   CLEARED XML:TEXT DECODED$ s\" a\n" T$=
    XML-KIND:CDATA NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" <b>" T$=
+   CLEARED XML:TEXT DECODED$ s\" <b>" T$=
    XML-KIND:PI NEXT= XML-KIND:END NEXT=
    XML-KIND:COMMENT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" keep" T$=
+   CLEARED XML:TEXT DECODED$ s\" keep" T$=
    XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE
    s\" <?xml version='1.0' encoding='UTF-16'?><a/>"
    true BOM-ASCII OPEN READER
@@ -211,14 +216,14 @@ CAST: ENCODING>N ( XML:encoding -- n )
    READER XML-KIND:START NEXT=
    XML:NAME$ s\" é" T$=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" 😀" T$=
+   CLEARED XML:TEXT DECODED$ s\" 😀" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE
    s\" \xFE\xFF\z<\z\xE9\z>\xD8\x3D\xDE\z\z<\z/\z\xE9\z>" OPEN
    READER XML-KIND:START NEXT=
    XML:NAME$ s\" é" T$=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" 😀" T$=
+   CLEARED XML:TEXT DECODED$ s\" 😀" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -239,7 +244,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    s\" <?xml version='1.0' encoding='UTF-16LE'?><a>x</a>" T$=
    READER
    XML-KIND:PI NEXT= XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" x" T$=
+   CLEARED XML:TEXT DECODED$ s\" x" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE
    s\" <?xml version='1.0' encoding='utf-16be'?><a>x</a>"
@@ -247,7 +252,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:SOURCE-BOM$ nip 0 T=
    READER
    XML-KIND:PI NEXT= XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" x" T$=
+   CLEARED XML:TEXT DECODED$ s\" x" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -349,7 +354,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
    XML:SOURCE-BOM$ nip 0 T=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" A🚗|KEEP" T$=
+   CLEARED XML:TEXT DECODED$ s\" A🚗|KEEP" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -411,15 +416,15 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:SOURCE-BOM$ nip 2 T=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
-   DECODED 64 XML:ATTR-TEXT DECODED swap s\" A🚗" T$=
+   CLEARED XML:ATTR-TEXT DECODED$ s\" A🚗" T$=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" pre-KEEP" T$=
+   CLEARED XML:TEXT DECODED$ s\" pre-KEEP" T$=
    XML-KIND:CDATA NEXT=
-   DECODED 64 XML:TEXT 0 T=
+   CLEARED XML:TEXT DECODED @ VEC:COUNT 0 T=
    XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" tail" T$=
+   CLEARED XML:TEXT DECODED$ s\" tail" T$=
    XML-KIND:END NEXT= XML-KIND:COMMENT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" keep" T$=
+   CLEARED XML:TEXT DECODED$ s\" keep" T$=
    XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE ;
 
 : WRITE-TINY ( EDIT:editor -- EDIT:editor )
@@ -444,7 +449,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    WRITTEN written s\" \xFF\xFE<\za\z>\z\xE9\z<\z/\za\z>\z" T$=
    SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s" é" T$=
+   CLEARED XML:TEXT DECODED$ s" é" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -466,24 +471,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
 : ALIAS-ENCODE ( XML:source -- XML:source )
    XML:SOURCE-ORIGINAL$ {: original size:n :}
    s\" A" original size XML:ENCODE drop ;
-
-: TEXT-WIRE ( XML:reader -- XML:reader )
-   WIRE BYTE-VIEW 1 XML:TEXT drop ;
-
-: TEXT-SOURCE-HEADER ( XML:reader -- XML:reader )
-   SOURCE-STORE CELL + BYTE-VIEW 1 XML:TEXT drop ;
-
-: SOURCE-OUTPUT-ALIAS ( -- )
-   s\" \xFF\xFE<\za\z>\zx\z<\z/\za\z>\z" {: original size:n :}
-   original WIRE size BYTE-COPY
-   WIRE BYTE-VIEW size OPEN
-   READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   ['] TEXT-WIRE catch XML:E-ALIAS T=
-   WIRE c@ $FF T=
-   ['] TEXT-SOURCE-HEADER catch XML:E-ALIAS T=
-   XML:CLOSE
-   XML:SOURCE-ORIGINAL$ nip size T=
-   XML:SOURCE-CLOSE ;
 
 \ A record over the source's own storage is refused before the reader is
 \ built, and the refusal leaves the source with its caller to read and close.
@@ -517,7 +504,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    {: added:n :}
    added 6 T=
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   DECODED 64 XML:TEXT DECODED swap s\" 😀" T$=
+   CLEARED XML:TEXT DECODED$ s\" 😀" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -791,6 +778,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    s" 2:7: expected `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;` or a character reference such as `&#65;`, found `&foo;`; write `&amp;` for a literal `&`, and end each reference with `;`"
    SAID-NEXT ;
 
+DECODED-NEW
 T-RESET
 UTF16-READ
 ODD-STORAGE
@@ -815,11 +803,11 @@ false MARKED-RANGES
 WIDE-OWNER-RANGES
 SOURCE-CAPACITY
 ENCODE-BOUND
-SOURCE-OUTPUT-ALIAS
 REFUSED-READER-KEEPS-SOURCE
 REJECTIONS
 DECLARATION-TEXTS
 UNIT-TEXTS
 PLACE-TEXTS
+DECODED @ VEC:DELETE
 T-REPORT
 ;package

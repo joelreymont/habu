@@ -7,6 +7,7 @@ split-str
 
 require src/lib/xml/state.f
 require src/lib/siphash.f
+require src/lib/vector.f
 
 package XML
 private
@@ -443,29 +444,28 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    state URI-LEN + ! state URI-OFF + !
    state RESOLVE-ATTRIBUTES ;
 
-: PREFIX-URI-ARGS ( XML:reader str ^u8 n -- XML:reader ^n str ^u8 n )
-   {: prefix size:n destination cap:n :}
-   STATE prefix size destination cap ;
+: PREFIX-URI-ARGS ( XML:reader str ^VEC:vector<u8> -- XML:reader ^n str ^VEC:vector<u8> )
+   {: prefix size:n v:^ :}
+   STATE prefix size v ;
 
-: PREFIX-URI-STATE ( ^n str ^u8 n -- n bool )
-   {: state prefix size:n destination cap:n :}
+: PREFIX-URI-STATE ( ^n str ^VEC:vector<u8> -- bool )
+   {: state prefix size:n v:^ :}
    state LIVE
    state OPEN-DEPTH + @ 0= if E-STATE throw then
    prefix size SPAN-CHECK
-   state destination cap OUTPUT-CHECK
    state prefix size BOUND-URI if
-      state -rot URI$ destination cap URI-INTO true
+      state -rot URI$ v URI-INTO true
    else
-      2drop 0 false
+      2drop false
    then ;
 
 public
 \ Resolves against the current scope, the start tag's own declarations
-\ included. An unknown nonempty prefix, xmlns included, answers 0 and false
-\ without writing, `xml` its implicit URI, the empty prefix the default (zero
+\ included. An unknown nonempty prefix, xmlns included, answers false and
+\ appends nothing, `xml` its implicit URI, the empty prefix the default (no
 \ bytes when none). Before the root, past its end, at EOF or on a failed reader
-\ it is E-STATE; a short or aliasing output throws and leaves the reader alone.
-: PREFIX-URI ( XML:reader str ^u8 n -- XML:reader n bool )
+\ it is E-STATE.
+: PREFIX-URI ( XML:reader str ^VEC:vector<u8> -- XML:reader bool )
    PREFIX-URI-ARGS PREFIX-URI-STATE ;
 
 ;package

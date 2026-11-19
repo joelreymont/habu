@@ -34,6 +34,7 @@ require src/lib/map.f
 require src/lib/adt/option.f
 require src/lib/adt/nullable.f
 require src/lib/sort.f
+require src/lib/vector.f
 
 package ODATA
 public
@@ -290,18 +291,16 @@ ENUM phase DERIVE eq
 ENUM space DERIVE eq edmx2 edmx4 edm2 edm4 other ;ENUM
 
 \ One METADATA call's state: scratch holds an element's namespace URI until its
-\ first attribute is decoded; names holds the map, keys, arrays.
-\ Scratch then holds a PropertyPath's or Bool's text, `filled` bytes of it,
-\ until its end; `home` is the phase a filter's end returns to.
+\ first attribute is decoded; names holds the map, keys, arrays and scratch.
+\ Scratch then holds a PropertyPath's or Bool's text until its end; `home` is
+\ the phase a filter's end returns to.
 STRUCTURE doc DERIVE addr
    FIELD model ^metadata
    FIELD arena ^ARENA:arena
    FIELD cursor ^XML:cursor
-   FIELD scratch ^u8
-   FIELD room n
+   FIELD scratch ^VEC:vector<u8>
    FIELD phase phase
    FIELD space space
-   FIELD uri-len n
    FIELD depth n
    FIELD resume phase
    FIELD offset n
@@ -316,7 +315,6 @@ STRUCTURE doc DERIVE addr
    FIELD association-set ^association-set
    FIELD block ^block
    FIELD filter ^filter
-   FIELD filled n
    FIELD home phase
    FIELD enum-type ^enum-type
    FIELD set-last ^entity-set
@@ -474,6 +472,10 @@ CAST: >RECORD ( n -- ^t )
    s SPAN:$ t tl STR= ;
 
 \ Attributes. Each answer is a view of scratch, overwritten by the next.
+: SCRATCH$ ( ^doc -- str ) DOC-SCRATCH @ VEC:SPAN SPAN:$ ;
+
+: CLEARED ( ^doc -- ^VEC:vector<u8> ) DOC-SCRATCH @ dup 0 VEC:RESIZE ;
+
 : FIND-ATTR ( XML:reader str -- XML:reader bool )
    {: name:^ len:n :}
    XML:ATTR-RESET
@@ -484,13 +486,13 @@ CAST: >RECORD ( n -- ^t )
 
 : ATTR-TEXT$ ( XML:reader ^doc -- XML:reader str )
    {: d:^ :}
-   d DOC-SCRATCH @ d DOC-ROOM @ XML:ATTR-TEXT {: got:n :}
-   d DOC-SCRATCH @ got ;
+   d CLEARED XML:ATTR-TEXT
+   d SCRATCH$ ;
 
 : ATTR$ ( XML:reader ^doc str -- XML:reader str bool )
    {: d:^ name:^ len:n :}
    name len FIND-ATTR if d ATTR-TEXT$ true exit then
-   d DOC-SCRATCH @ 0 false ;
+   d SCRATCH$ drop 0 false ;
 
 : NEED$ ( XML:reader ^doc str -- XML:reader str )
    {: d:^ name:^ len:n :}
@@ -786,9 +788,9 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ list:^ :}
    XML:ATTR-NAME$ {: name:^ len:n :}
    name len PREFIXED? 0= name len XMLNS? or if exit then
-   d DOC-SCRATCH @ d DOC-ROOM @ XML:ATTR-URI {: ul:n :}
-   d DOC-SCRATCH @ ul FOREIGN? 0= if exit then
-   d d DOC-SCRATCH @ ul KEEP {: ns:SPAN:span<u8> :}
+   d CLEARED XML:ATTR-URI
+   d SCRATCH$ FOREIGN? 0= if exit then
+   d d SCRATCH$ KEEP {: ns:SPAN:span<u8> :}
    XML:ATTR-LOCAL$ {: local:^ ll:n :}
    d local ll KEEP {: nm:SPAN:span<u8> :}
    d ATTR-TEXT$ {: v:^ vl:n :}
@@ -868,8 +870,6 @@ CAST: >RECORD ( n -- ^t )
    then
    d PHASE-EDMX ENTER ;
 
-: URI$ ( ^doc -- str ) dup DOC-SCRATCH @ swap DOC-URI-LEN @ ;
-
 \ A namespace URI in backticks, whole and made visible, as CUT would make
 \ V2's and V3's the same; or no namespace.
 : NAMESPACE+ ( ^u8 n -- )
@@ -889,7 +889,7 @@ CAST: >RECORD ( n -- ^t )
    d PLACE-HERE
    s" `edmx:Edmx` in the EDMX namespace of OData V2 or V4" REASON:APPEND
    XML:LOCAL$ {: el:^ el-len:n :}
-   REASON:FOUND el el-len QUOTE s"  in " REASON:APPEND d URI$ NAMESPACE+
+   REASON:FOUND el el-len QUOTE s"  in " REASON:APPEND d SCRATCH$ NAMESPACE+
    s" make the root element `edmx:Edmx` in that namespace" FIX ;
 
 \ The element's Alias, when it has one, for the namespace NS.
@@ -936,7 +936,7 @@ CAST: >RECORD ( n -- ^t )
       s" `Schema` in the CSDL namespace of OData V4"
    then
    REASON:APPEND
-   d URI$ s" put the `Schema` in that namespace" NAMESPACE-FOUND ;
+   d SCRATCH$ s" put the `Schema` in that namespace" NAMESPACE-FOUND ;
 
 \ Duplicate names are rejected where the second is read.
 : NOT-NEW ( str SPAN:span<u8> -- )
@@ -1424,7 +1424,7 @@ CAST: >RECORD ( n -- ^t )
 
 : TEXT-START ( XML:reader ^doc phase -- XML:reader )
    {: d:^ p:phase :}
-   0 d DOC-FILLED !
+   d CLEARED drop
    d p ENTER ;
 
 : IN-PATHS ( XML:reader ^doc -- XML:reader )
@@ -1446,9 +1446,8 @@ CAST: >RECORD ( n -- ^t )
 \ A start tag: its namespace is classified, then the open phase takes it.
 : CLASSIFY ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d DOC-SCRATCH @ d DOC-ROOM @ XML:URI {: ul:n :}
-   ul d DOC-URI-LEN !
-   d DOC-SCRATCH @ ul SPACE-OF d DOC-SPACE ! ;
+   d CLEARED XML:URI
+   d SCRATCH$ SPACE-OF d DOC-SPACE ! ;
 
 : ON-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
@@ -1484,22 +1483,18 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ :}
    d DOC-PHASE @ {: p:phase :}
    p PHASE-PATH-TEXT PHASE-EQ p PHASE-BOOL-TEXT PHASE-EQ or 0= if exit then
-   d DOC-FILLED @ {: at:n :}
-   d DOC-SCRATCH @ at + d DOC-ROOM @ at - XML:TEXT
-   d DOC-FILLED +! ;
-
-: TEXT$ ( ^doc -- str ) dup DOC-SCRATCH @ swap DOC-FILLED @ ;
+   d DOC-SCRATCH @ XML:TEXT ;
 
 : PATH-END ( ^doc -- )
    {: d:^ :}
    d DOC-ARENA @ PATHS-NEW {: p:^ :}
-   d d TEXT$ KEEP p PATH-TEXT !
+   d d SCRATCH$ KEEP p PATH-TEXT !
    d DOC-FILTER @ {: f:^ :}
    f FILTER-PATHS @ p PATH-NEXT ! p f FILTER-PATHS ! ;
 
 : BOOL-END ( ^doc -- )
    {: d:^ :}
-   d d DOC-OFFSET @ s" Bool" s" PropertyValue" d TEXT$ BOOL-OF
+   d d DOC-OFFSET @ s" Bool" s" PropertyValue" d SCRATCH$ BOOL-OF
    d DOC-FILTER @ FILTER-FILTERABLE ! ;
 
 : ON-END ( ^doc -- )
@@ -2522,18 +2517,16 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ src:^ len:n :}
    src len SPAN:MAKE d DOC-SOURCE !
    ARENA:NEW d DOC-NAMES !
+   d DOC-NAMES @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW d DOC-SCRATCH !
    d 16 MAP-NEW
    d DOC-CURSOR @ src len XML:INIT
    d EVENTS XML:CLOSE
    d RESOLVE ;
 
-: SCRATCH ( ^doc n -- SPAN:span<u8> )
-   {: d:^ len:n :}
-   len XML:CURSOR-BYTES + MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: buf:SPAN:span<u8> :}
-   buf SPAN:$ drop {: base:^ :}
-   base XML:CURSOR-BYTES XML:EMPTY-CURSOR d DOC-CURSOR !
-   base XML:CURSOR-BYTES + d DOC-SCRATCH !
-   len d DOC-ROOM !
+: CURSOR-BLOCK ( ^doc -- SPAN:span<u8> )
+   {: d:^ :}
+   XML:CURSOR-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: buf:SPAN:span<u8> :}
+   buf SPAN:$ drop XML:CURSOR-BYTES XML:EMPTY-CURSOR d DOC-CURSOR !
    buf ;
 
 \ The types from T up that declare properties, collected in BUF, a cell per
@@ -2714,7 +2707,7 @@ public
    arena DOCS-NEW {: d:^ :}
    arena MODELS-NEW d DOC-MODEL !
    arena d DOC-ARENA !
-   d len SCRATCH {: buf:SPAN:span<u8> :}
+   d CURSOR-BLOCK {: buf:SPAN:span<u8> :}
    [: d src len PARSE ;] catch {: code:n :}
    d DOC-CURSOR @ XML:DISPOSE
    buf MEM:FREE-SPAN

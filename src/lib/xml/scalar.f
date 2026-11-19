@@ -3,6 +3,7 @@ split-str
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
 require src/lib/string.f
+require src/lib/vector.f
 require src/lib/xml/reject.f
 
 package XML
@@ -286,15 +287,15 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    repeat
    2drop ;
 
-\ A reader's value was checked when NEXT read it, so it rejects nothing here.
-: DECODE-INTO ( str n str -- n )
-   {: source size:n mode:n destination cap:n :}
+\ Appends the decoded bytes. A reader's value was checked when NEXT read it,
+\ so it rejects nothing here.
+: DECODE-INTO ( str n ^VEC:vector<u8> -- )
+   {: source size:n mode:n v:^ :}
    source size mode DECODED-SIZE {: needed:n :}
-   destination cap SPAN-CHECK
-   needed cap > if E-CAPACITY throw then
-   source size destination cap OVERLAP? if E-ALIAS throw then
-   source size mode destination DECODE-WRITE
-   needed ;
+   v VEC:COUNT {: at:n :}
+   v at needed + VEC:ENSURE
+   v VEC:SPAN SPAN:$ drop at + {: out:^ :}
+   source size mode out DECODE-WRITE ;
 
 : NORMAL-EQUAL? ( str str -- bool )
    {: first first-len:n second second-len:n :}

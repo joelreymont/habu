@@ -23,6 +23,7 @@ variable INPUT-OFF
 variable INPUT-USED
 create INPUT-BIG 8200 allot
 TYPED-VARIABLE DEEP-DOC ^VEC:vector<u8>
+TYPED-VARIABLE DECODED ^VEC:vector<u8>
 100000 constant DEEP-LEVELS
 4 BUFFER: DEEP-NAME
 variable DEEP-BAD
@@ -52,27 +53,33 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
    {: expected size:n :}
    LOCAL$ expected size T$= ;
 
+: DECODED-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED ! ;
+: DECODED-CLEAR ( -- ) DECODED @ 0 VEC:RESIZE ;
+: CLEARED ( -- ^VEC:vector<u8> ) DECODED-CLEAR DECODED @ ;
+: DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
+
 : URI= ( XML:reader str -- XML:reader )
    {: expected size:n :}
-   TEXT-BUF TEXT-CAP URI TEXT-BUF swap expected size T$= ;
+   CLEARED URI DECODED$ expected size T$= ;
 
 : PREFIX= ( XML:reader str str -- XML:reader )
    {: prefix prefix-size:n expected size:n :}
    prefix prefix-size T-LABEL
-   prefix prefix-size TEXT-BUF TEXT-CAP PREFIX-URI TTRUE
-   TEXT-BUF swap expected size T$= ;
+   prefix prefix-size CLEARED PREFIX-URI TTRUE
+   DECODED$ expected size T$= ;
 
 : PREFIX-MISSING ( XML:reader str -- XML:reader )
-   $5A TEXT-BUF c!
-   TEXT-BUF TEXT-CAP PREFIX-URI TFALSE 0 T=
-   TEXT-BUF c@ $5A T= ;
+   {: prefix size:n :}
+   s" Z" CLEARED VEC:APPEND
+   prefix size DECODED @ PREFIX-URI TFALSE
+   DECODED$ s" Z" T$= ;
 
 : PREFIX-READ ( XML:reader -- XML:reader )
-   s" p" TEXT-BUF TEXT-CAP PREFIX-URI 2drop ;
+   s" p" CLEARED PREFIX-URI drop ;
 
 : TEXT= ( XML:reader str -- XML:reader )
    {: expected size:n :}
-   TEXT-BUF TEXT-CAP TEXT TEXT-BUF swap expected size T$= ;
+   CLEARED TEXT DECODED$ expected size T$= ;
 
 : ATTR-NAME= ( XML:reader str -- XML:reader )
    {: expected size:n :}
@@ -80,11 +87,11 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
 
 : ATTR-URI= ( XML:reader str -- XML:reader )
    {: expected size:n :}
-   TEXT-BUF TEXT-CAP ATTR-URI TEXT-BUF swap expected size T$= ;
+   CLEARED ATTR-URI DECODED$ expected size T$= ;
 
 : ATTR-TEXT= ( XML:reader str -- XML:reader )
    {: expected size:n :}
-   TEXT-BUF TEXT-CAP ATTR-TEXT TEXT-BUF swap expected size T$= ;
+   CLEARED ATTR-TEXT DECODED$ expected size T$= ;
 
 : DRAIN ( XML:reader -- XML:reader )
    begin NEXT TOKEN>N XML-KIND:EOF TOKEN>N <> while repeat ;
@@ -121,9 +128,6 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
 : INPUT-OVER-COUNT-RC ( -- n )
    RD INPUT-POS ['] INPUT-OVER-COUNT INPUT-CHUNK INIT-INPUT
    ['] DRAIN catch swap XML:CLOSE ;
-
-: INPUT-TEXT-ALIASED ( XML:reader -- XML:reader )
-   INPUT-CHUNK SPAN:$ TEXT drop ;
 
 : INPUT-BAD ( str n -- )
    {: source size:n expected:n :}
@@ -409,21 +413,7 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
 : ATTR-VALUE-READ ( XML:reader -- XML:reader ) ATTR-VALUE 2drop ;
 : ATTR-VALUE$-READ ( XML:reader -- XML:reader ) ATTR-VALUE$ 2drop ;
 : CONTENT-READ ( XML:reader -- XML:reader ) CONTENT 2drop ;
-: TEXT-FULL ( XML:reader -- XML:reader ) TEXT-BUF TEXT-CAP TEXT drop ;
-: TEXT-TINY ( XML:reader -- XML:reader ) TEXT-BUF 1 TEXT drop ;
-: TEXT-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP TEXT drop ;
-: TEXT-INTO-RECORD ( XML:reader -- XML:reader ) RD CURSOR>BYTES 16 TEXT drop ;
-: URI-TINY ( XML:reader -- XML:reader ) TEXT-BUF 4 URI drop ;
-: URI-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP URI drop ;
-: ATTR-URI-TINY ( XML:reader -- XML:reader ) TEXT-BUF 4 ATTR-URI drop ;
-: ATTR-URI-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP ATTR-URI drop ;
-: ATTR-TEXT-TINY ( XML:reader -- XML:reader ) TEXT-BUF 1 ATTR-TEXT drop ;
-: ATTR-TEXT-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP ATTR-TEXT drop ;
-: PREFIX-TINY ( XML:reader -- XML:reader )
-   s" p" TEXT-BUF 2 PREFIX-URI 2drop ;
-: PREFIX-ALIASED ( XML:reader -- XML:reader )
-   RAW$ drop {: raw :}
-   s" p" raw TEXT-CAP PREFIX-URI 2drop ;
+: TEXT-FULL ( XML:reader -- XML:reader ) CLEARED TEXT ;
 
 : FAILURE-AND-STATE ( -- )
    s" <a><b></a>" OPEN
@@ -463,51 +453,26 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
    XML-KIND:START NEXT= s" p" PREFIX-MISSING s" r" s" urn:r" PREFIX=
    XML-KIND:END NEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
-: NO-PARTIAL-DECODE ( -- )
-   $5A TEXT-BUF c!
+\ A second TEXT appends after the first's bytes.
+: TEXT-APPENDS ( -- )
    s" <a>long&amp;text</a>" OPEN
    NEXT drop NEXT drop
-   ['] TEXT-TINY catch E-CAPACITY T=
-   TEXT-BUF c@ $5A T=
-   s" long&text" TEXT=
-   ['] TEXT-ALIASED catch E-ALIAS T=
-   s" long&text" TEXT=
+   CLEARED TEXT DECODED @ TEXT
+   DECODED$ s" long&textlong&text" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
-\ The reader writes its record on every event, so neither the source nor a
-\ decoder's output may overlap it.
+\ The reader writes its record on every event, so the source may not overlap
+\ it.
 : INIT-INTO-RECORD ( -- ) RD RD CURSOR>BYTES 16 INIT XML:CLOSE ;
 
 : INIT-RECORD-ALIAS ( -- )
    [: INIT-INTO-RECORD ;] E-ALIAS TTHROWSQ ;
-
-: TEXT-RECORD-ALIAS ( -- )
-   s" <a>long&amp;text</a>" OPEN
-   NEXT drop NEXT drop
-   ['] TEXT-INTO-RECORD catch E-ALIAS T=
-   s" long&text" TEXT=
-   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
-
-: URI-CAPACITY-RECOVERY ( -- )
-   $5A TEXT-BUF c!
-   s" <p:a xmlns:p='urn:&#97;'/>" OPEN NEXT drop
-   ['] URI-TINY catch E-CAPACITY T=
-   TEXT-BUF c@ $5A T=
-   s" p:a" NAME= s" urn:a" URI=
-   ['] URI-ALIASED catch E-ALIAS T=
-   s" urn:a" URI=
-   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : PREFIX-RECOVERY ( -- )
    s" <a xmlns:p='urn:&#97;'/>" OPEN
    ['] PREFIX-READ catch E-STATE T=
    XML-KIND:START NEXT=
    s" " s" " PREFIX=
-   $5A TEXT-BUF c!
-   ['] PREFIX-TINY catch E-CAPACITY T=
-   TEXT-BUF c@ $5A T=
-   s" p" s" urn:a" PREFIX=
-   ['] PREFIX-ALIASED catch E-ALIAS T=
    s" p" s" urn:a" PREFIX=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    ['] PREFIX-READ catch E-STATE T=
@@ -584,24 +549,6 @@ CAST: CURSOR>BYTES ( ^XML:cursor -- ^u8 )
    [: ABANDON-DISPOSE ;] RELEASES
    s" a record holding a leftover reads again and nothing stays mapped" T-LABEL
    [: ABANDON-REINIT ;] RELEASES ;
-
-: ATTRIBUTE-CAPACITY-RECOVERY ( -- )
-   s" <p:a xmlns:p='urn:&#97;' p:q='long&amp;text'/>" OPEN NEXT drop
-   ATTR-NEXT TTRUE ATTR-NEXT TTRUE
-   $5A TEXT-BUF c!
-   ['] ATTR-URI-TINY catch E-CAPACITY T=
-   TEXT-BUF c@ $5A T=
-   s" p:q" ATTR-NAME= s" urn:a" ATTR-URI=
-   ['] ATTR-URI-ALIASED catch E-ALIAS T=
-   s" urn:a" ATTR-URI=
-   $5A TEXT-BUF c!
-   ['] ATTR-TEXT-TINY catch E-CAPACITY T=
-   TEXT-BUF c@ $5A T=
-   s" p:q" ATTR-NAME= s" long&text" ATTR-TEXT=
-   ['] ATTR-TEXT-ALIASED catch E-ALIAS T=
-   s" long&text" ATTR-TEXT=
-   ATTR-VALUE$ s" long&amp;text" T$=
-   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
 \ One tag of WIDE-PREFIXES declarations and as many attributes p0:a, p1:a, ...
 \ URI i has URI-SCALARS scalars, U+0061 or U+20061 by the bits of i. The two
@@ -716,17 +663,15 @@ variable URI-LEN
    ATTR-VALUE {: value-off:off value-len:len :}
    value-off OFF>N 47 T= value-len LEN>N 5 T=
    s" &" ATTR-TEXT=
-   54 INPUT-OFF ! 0 INPUT-USED !
+   54 INPUT-OFF ! DECODED-CLEAR
    begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
       RAW {: start:off size:len :}
       start OFF>N INPUT-OFF @ T=
-      TEXT-BUF INPUT-USED @ + TEXT-CAP INPUT-USED @ - TEXT
-         {: count:n :}
+      DECODED @ TEXT
       size LEN>N INPUT-OFF +!
-      count INPUT-USED +!
    repeat
    INPUT-OFF @ 63 T=
-   TEXT-BUF INPUT-USED @ s" Aé&Z" T$=
+   DECODED$ s" Aé&Z" T$=
    RAW {: end-off:off end-len:len :}
    end-off OFF>N 63 T= end-len LEN>N 6 T=
    s" p" s" u" PREFIX=
@@ -749,21 +694,13 @@ variable URI-LEN
 : INPUT-NEWLINE ( -- )
    S\" <a>x\r\ny</a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:START NEXT=
-   0 INPUT-USED !
+   DECODED-CLEAR
    begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
-      TEXT-BUF INPUT-USED @ + TEXT-CAP INPUT-USED @ - TEXT
-      INPUT-USED +!
+      DECODED @ TEXT
    repeat
-   TEXT-BUF INPUT-USED @ S\" x\ny" T$=
+   DECODED$ S\" x\ny" T$=
    KIND TOKEN>N XML-KIND:END TOKEN>N T=
    XML-KIND:EOF NEXT= XML:CLOSE ;
-
-: INPUT-ALIAS-CHECK ( -- )
-   s" <a>x</a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
-   XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   ['] INPUT-TEXT-ALIASED catch E-ALIAS T=
-   s" x" TEXT=
-   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : INPUT-LARGE-TEXT ( -- )
    s" <r>" drop INPUT-BIG 3 BYTE-COPY
@@ -775,7 +712,7 @@ variable URI-LEN
    begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
       RAW {: start:off size:len :}
       start OFF>N INPUT-OFF @ T=
-      TEXT-BUF TEXT-CAP TEXT {: count:n :}
+      CLEARED TEXT DECODED @ VEC:COUNT {: count:n :}
       size LEN>N count T=
       count INPUT-USED +!
       size LEN>N INPUT-OFF +!
@@ -796,9 +733,10 @@ variable URI-LEN
    XML-KIND:START NEXT=
    XML-KIND:START NEXT=
    XML-KIND:START NEXT= s" p:c" NAME=
-   TEXT-BUF TEXT-CAP URI 1000 T=
-   TEXT-BUF c@ [char] x T=
-   TEXT-BUF 999 + c@ [char] x T=
+   CLEARED URI DECODED @ VEC:COUNT 1000 T=
+   DECODED$ drop {: uri:^ :}
+   uri c@ [char] x T=
+   uri 999 + c@ [char] x T=
    XML-KIND:END NEXT= XML-KIND:END NEXT=
    XML-KIND:START NEXT= s" d" NAME=
    XML-KIND:END NEXT= XML-KIND:END NEXT=
@@ -1227,6 +1165,7 @@ variable SEEN
    $7FFFFFFFFFFFFFFF $7FFFFFFFFFFFFFFF INPUT-SET INPUT-WHOLE-FAILURE E-ENCODING T=
    E-ENCODING s\" 2:4: expected a US-ASCII character, found `\xC3\xA9`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
 
+DECODED-NEW
 T-RESET
 EMPTY-ELEMENT
 NAMESPACE-SCOPES
@@ -1246,21 +1185,17 @@ BAD-ENCODINGS
 ASCII-WIRE
 FAILURE-AND-STATE
 NAMESPACE-FAILURE
-NO-PARTIAL-DECODE
+TEXT-APPENDS
 INIT-RECORD-ALIAS
-TEXT-RECORD-ALIAS
-URI-CAPACITY-RECOVERY
 PREFIX-RECOVERY
 PREFIX-READERS
 ABANDONED-RECORD
-ATTRIBUTE-CAPACITY-RECOVERY
 WIDE-ELEMENT
 ESCAPING
 CHECKED-OWNERSHIP
 INPUT-BOUNDARIES
 INPUT-MARKUP
 INPUT-NEWLINE
-INPUT-ALIAS-CHECK
 INPUT-LARGE-TEXT
 INPUT-LARGE-SCOPE
 INPUT-NAMESPACE-SCOPES
@@ -1276,6 +1211,7 @@ SCALAR-TEXTS
 TALL-TREE
 MANY-ATTRIBUTES
 MANY-BINDINGS
+DECODED @ VEC:DELETE
 T-REPORT
 ;using
 ;package

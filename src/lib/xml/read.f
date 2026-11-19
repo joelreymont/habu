@@ -3,6 +3,7 @@ split-str
 
 require src/lib/xml/names.f
 require src/lib/reason.f
+require src/lib/vector.f
 
 package XML
 private
@@ -525,13 +526,12 @@ private
    state TEXT-MODE drop
    state state VALUE-OFF + @ ABS-OFF >OFF state VALUE-LEN + @ >LEN ;
 
-: TEXT-STATE ( ^n ^u8 n -- n )
-   {: state destination cap:n :}
+: TEXT-STATE ( ^n ^VEC:vector<u8> -- )
+   {: state v:^ :}
    state LIVE
    state TEXT-MODE {: mode:n :}
-   state destination cap OUTPUT-CHECK
    state state VALUE-OFF + @ state VALUE-LEN + @ SPAN$
-   mode destination cap DECODE-INTO ;
+   mode v DECODE-INTO ;
 
 public
 : NEXT ( XML:reader -- XML:reader kind )
@@ -540,7 +540,7 @@ public
 : CONTENT ( XML:reader -- XML:reader off len )
    STATE CONTENT-STATE ;
 
-: TEXT ( XML:reader ^u8 n -- XML:reader n )
+: TEXT ( XML:reader ^VEC:vector<u8> -- XML:reader )
    DECODE-ARGS TEXT-STATE ;
 
 ;package
