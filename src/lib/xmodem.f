@@ -4,10 +4,11 @@ split-str
 \ test/xmodem.py). CRC: polynomial $1021, initial zero, no reflection or final
 \ XOR, high byte first; the checksum is the payload sum modulo 256. Unused
 \ payload bytes are $1A. STORAGE CLASS. CALLER-OWNED: ENCODE writes the caller's
-\ BUF; DECODE borrows the packet.
+\ vector; DECODE borrows the packet.
 require src/lib/error.f
 require src/lib/type/deftype.f
-require src/lib/byte-buffer.f
+require src/lib/span.f
+require src/lib/vector.f
 
 package XMODEM
 public
@@ -28,7 +29,6 @@ $18 constant CAN
 $43 constant REQUEST-CRC
 
 private
-using BUF
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 \ Each caller has shown the cell nonnegative.
@@ -82,20 +82,24 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    size 0 < size block > or if E-OPERAND throw then ;
 
 
-: HEADER+ ( n n ^a -- ) {: sequence:n block:n output:^ :}
-   block START-BYTE output APPEND-BYTE
-   sequence output APPEND-BYTE sequence $FF xor output APPEND-BYTE ;
+: HEADER+ ( n n ^VEC:vector<u8> -- )
+   {: sequence:n block:n output:^ :}
+   block START-BYTE output VEC:PUSH c!
+   sequence output VEC:PUSH c!
+   sequence $FF xor output VEC:PUSH c! ;
 
 
-: PAYLOAD+ ( ^u8 NUM:byte-len n ^a -- ) {: data size:NUM:byte-len block:n output:^ :}
-   data size output APPEND-SPAN
-   block size BLEN>N - 0 ?do $1A output APPEND-BYTE loop ;
+: PAYLOAD+ ( ^u8 NUM:byte-len n ^VEC:vector<u8> -- )
+   {: data size:NUM:byte-len block:n output:^ :}
+   data size BLEN>N output VEC:APPEND
+   block size BLEN>N - 0 ?do $1A output VEC:PUSH c! loop ;
 
 
-: TRAILER+ ( n n ^a -- ) {: block:n kind:n output:^ :}
-   output SPAN$ drop 3 + block kind CHECK-VALUE {: check:n :}
-   kind 1 = if check 8 rshift output APPEND-BYTE then
-   check $FF and output APPEND-BYTE ;
+: TRAILER+ ( n n ^VEC:vector<u8> -- )
+   {: block:n kind:n output:^ :}
+   output VEC:SPAN SPAN:$ drop 3 + block kind CHECK-VALUE {: check:n :}
+   kind 1 = if check 8 rshift output VEC:PUSH c! then
+   check $FF and output VEC:PUSH c! ;
 
 
 : TRAILER@ ( ^u8 n -- n ) {: data kind:n :}
@@ -125,12 +129,12 @@ public
    kind CHECK-KIND block CHECK-BLOCK block 4 + kind + N>BLEN ;
 
 
-\ Output is an initialized BUF. The borrowed payload must not alias it.
-\ Input length may be zero.
-: ENCODE ( ^u8 NUM:byte-len sequence payload-size check-kind ^a -- )
+\ The borrowed payload must not alias the output vector, which ENCODE empties
+\ first. Input length may be zero.
+: ENCODE ( ^u8 NUM:byte-len sequence payload-size check-kind ^VEC:vector<u8> -- )
    {: data size:NUM:byte-len sequence:sequence block:payload-size kind:check-kind output:^ :}
    size BLEN>N sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
-   output block kind PACKET-BYTES RESERVE output CLEAR
+   output block kind PACKET-BYTES BLEN>N VEC:RESERVE output 0 VEC:RESIZE
    sequence SEQUENCE>N block PAYLOAD-SIZE>N output HEADER+
    data size block PAYLOAD-SIZE>N output PAYLOAD+
    block PAYLOAD-SIZE>N kind CHECK-KIND>N output TRAILER+ ;

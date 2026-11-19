@@ -12,20 +12,24 @@ from xmodem import packet
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SETUP = '''
+SETUP = '''split-str
 require src/lib/aio.f
 require src/lib/fs.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 package SXMODEM-TEST
 using XMODEM
-using BUF
-create INPUT HDR-BYTES allot
-create OUTPUT HDR-BYTES allot
+TYPED-VARIABLE INPUT ^VEC:vector<u8>
+TYPED-VARIABLE OUTPUT ^VEC:vector<u8>
 create SESSION SERIAL-XMODEM:SESSION-BYTES allot
+CAST: BLEN>N ( NUM:byte-len -- n )
+: FRESH ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 : INPUT-READ ( ^u8 n n -- ) {: path size:n capacity:n :}
-   INPUT capacity 1 max BYTES INIT
-   INPUT SPAN$ drop {: data :}
-   path size data capacity FS:READ-ALL data swap BYTES INPUT REPLACE ;
+   HEAP:ALLOCATOR capacity [type] u8 VEC:NEW INPUT !
+   INPUT @ VEC:SPAN SPAN:$ drop {: data :}
+   path size data capacity FS:READ-ALL INPUT @ swap VEC:RESIZE ;
 
 
 : OPEN-HANDLE ( ^u8 n -- SERIAL:handle )
@@ -107,16 +111,16 @@ class Checks:
         source.write_bytes(data)
         output = self.out / 'received.bin'
         if sending:
-            call = f'INPUT SPAN$ {block} BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
+            call = f'INPUT @ VEC:SPAN SPAN:$ BYTES {block} BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
             expected = expected or f'completed {len(data)}'
         else:
-            call = f'{maximum} BYTES OUTPUT {total} >MS SESSION SERIAL-XMODEM:RECEIVE'
+            call = f'{maximum} BYTES OUTPUT @ {total} >MS SESSION SERIAL-XMODEM:RECEIVE'
             expected = expected or f'completed {len(received)}'
         if actions is not None:
             call = actions
         code = SETUP + f'''
 s" {source}" {len(data)} INPUT-READ
-OUTPUT 16 BYTES INIT
+FRESH OUTPUT !
 : RUN ( -- )
    AIO:START
    s" {os.ttyname(slave)}" OPEN-HANDLE {{: handle:SERIAL:handle :}}
@@ -124,9 +128,9 @@ OUTPUT 16 BYTES INIT
    {'handle CLOSE-HANDLE' if close_before else ''}
    s" READY" type cr
    {call} REPORT
-   s" {output}" OUTPUT SPAN$ BLEN>N FS:WRITE-ALL
+   s" {output}" OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
-   INPUT DISPOSE OUTPUT DISPOSE
+   INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE
    AIO:STOP ;
 RUN
 ;package
@@ -382,10 +386,10 @@ RUN
 
     def reuse(self):
         actions = '''
-INPUT SPAN$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-128 BYTES OUTPUT 5000 >MS SESSION SERIAL-XMODEM:RECEIVE REPORT
-INPUT SPAN$ 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-1024 BYTES OUTPUT 5000 >MS SESSION SERIAL-XMODEM:RECEIVE
+INPUT @ VEC:SPAN SPAN:$ BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+128 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE REPORT
+INPUT @ VEC:SPAN SPAN:$ BYTES 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+1024 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE
 '''
         def peer(port):
             for crc, size in [(True, 128), (False, 1024)]:
@@ -412,8 +416,8 @@ INPUT SPAN$ 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
             port.expect(b'\x04')
             port.write(b'\x06')
         self.exchange('reuse-after-peer-cancel', recover, actions='''
-INPUT SPAN$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-INPUT SPAN$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
+INPUT @ VEC:SPAN SPAN:$ BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:SPAN SPAN:$ BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
 ''', expected='cancelled completed 7')
 
     def native(self, body, *, rejected=None):
@@ -464,8 +468,8 @@ variable ENTERED
 variable DONE
 create SESSION0 SERIAL-XMODEM:SESSION-BYTES allot
 create SESSION1 SERIAL-XMODEM:SESSION-BYTES allot
-create OUTPUT0 HDR-BYTES allot
-create OUTPUT1 HDR-BYTES allot
+TYPED-VARIABLE OUTPUT0 ^VEC:vector<u8>
+TYPED-VARIABLE OUTPUT1 ^VEC:vector<u8>
 create SOURCE0 8 allot
 create SOURCE1 8 allot
 TASK:MIN-STACK TASK:TASK WORKER0
@@ -486,25 +490,25 @@ TASK:MIN-STACK TASK:TASK WORKER1
    ;MATCH ;
 
 
-: CHECK-REPLY ( n ^a -- ) {{: identity:n output:^ :}}
-   output SPAN$ BLEN>N {{: data length:n :}}
+: CHECK-REPLY ( n ^VEC:vector<u8> -- ) {{: identity:n output:^ :}}
+   output VEC:SPAN SPAN:$ {{: data length:n :}}
    length 128 <> if -1 throw then
    length 0 do data i + c@ identity <> if -1 throw then loop ;
 
 
-: WORK ( ^u8 n ^a ^a ^u8 n -- )
+: WORK ( ^u8 n ^a ^^VEC:vector<u8> ^u8 n -- )
    {{: path length:n session:^ output:^ data identity:n :}}
    1 ENTERED atomic-add drop
    begin ENTERED atomic@ 2 < while TASK:PAUSE repeat
    path length OPEN-HANDLE {{: handle:SERIAL:handle :}}
-   handle 1000 >MS 1000 >MS session SERIAL-XMODEM:INIT output 16 BYTES INIT handle READY
+   handle 1000 >MS 1000 >MS session SERIAL-XMODEM:INIT FRESH output ! handle READY
    4 0 do
       identity i + data c!
       data 1 BYTES 128 BLOCK 5000 >MS session SERIAL-XMODEM:SEND COUNT 1 <> if -1 throw then
-      128 BYTES output 5000 >MS session SERIAL-XMODEM:RECEIVE COUNT 128 <> if -1 throw then
-      identity i + output CHECK-REPLY
+      128 BYTES output @ 5000 >MS session SERIAL-XMODEM:RECEIVE COUNT 128 <> if -1 throw then
+      identity i + output @ CHECK-REPLY
    loop
-   session SERIAL-XMODEM:DISPOSE output DISPOSE handle CLOSE-HANDLE
+   session SERIAL-XMODEM:DISPOSE output @ VEC:DELETE handle CLOSE-HANDLE
    1 DONE atomic-add drop ;
 
 

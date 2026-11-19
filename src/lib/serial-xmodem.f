@@ -5,6 +5,9 @@ split-str
 \ an accepted prefix and padding is never stripped, so the application frames
 \ its own length; DISPOSE leaves the serial handle open. test/serial-xmodem.py.
 \ STORAGE CLASS. CALLER-OWNED; a session or a stream serves one task at a time.
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/xmodem.f
 require src/lib/serial.f
 
@@ -28,10 +31,17 @@ using XMODEM
 
 1000000 constant NS-PER-MS
 10 constant MAX-TRIES
-19 cells constant SESSION-SIZE
+17 cells constant SESSION-SIZE
 
-\ Caller-owned session header. The packet BUF is the only owned allocation;
-\ the serial handle, source span, and destination BUF remain borrowed.
+STRUCTURE vectors DERIVE addr
+   FIELD packet ^VEC:vector<u8>
+   FIELD output ^VEC:vector<u8>
+;STRUCTURE
+
+CAST: >VECTORS ( ^n -- ^vectors )
+
+\ Caller-owned session header. The packet vector is the only owned allocation;
+\ the serial handle, source span, and destination vector remain borrowed.
 : HANDLE-FIELD ( ^a -- ^n ) BYTE-VIEW CELL-VIEW ;
 : CONTROL-WAIT-FIELD ( ^a -- ^n ) BYTE-VIEW 1 cells + CELL-VIEW ;
 : DEADLINE-FIELD ( ^a -- ^n ) BYTE-VIEW 2 cells + CELL-VIEW ;
@@ -40,15 +50,17 @@ using XMODEM
 : NEXT-FIELD ( ^a -- ^n ) BYTE-VIEW 5 cells + CELL-VIEW ;
 : TRIES-FIELD ( ^a -- ^n ) BYTE-VIEW 6 cells + CELL-VIEW ;
 : PROGRESS-FIELD ( ^a -- ^n ) BYTE-VIEW 7 cells + CELL-VIEW ;
-: PACKET-BUF ( ^a -- ^a ) 8 cells + ;
-: CONTROL-DATA ( ^a -- ^u8 ) BYTE-VIEW 11 cells + ;
-: SOURCE-FIELD ( ^a -- ^^u8 ) 12 cells ptr-field ;
-: SOURCE-LEN-FIELD ( ^a -- ^n ) BYTE-VIEW 13 cells + CELL-VIEW ;
-: BLOCK-FIELD ( ^a -- ^n ) BYTE-VIEW 14 cells + CELL-VIEW ;
-: OUTPUT-FIELD ( ^a -- ^^a ) 15 cells ptr-field ;
-: MAXIMUM-FIELD ( ^a -- ^n ) BYTE-VIEW 16 cells + CELL-VIEW ;
-: NEGOTIATED-FIELD ( ^a -- ^n ) BYTE-VIEW 17 cells + CELL-VIEW ;
-: RECEIVE-WAIT-FIELD ( ^a -- ^n ) BYTE-VIEW 18 cells + CELL-VIEW ;
+: VECS ( ^a -- ^vectors ) BYTE-VIEW 8 cells + CELL-VIEW >VECTORS ;
+: PACKET-FIELD ( ^a -- ^^VEC:vector<u8> ) VECS VECTORS-PACKET ;
+: OUTPUT-FIELD ( ^a -- ^^VEC:vector<u8> ) VECS VECTORS-OUTPUT ;
+: CONTROL-DATA ( ^a -- ^u8 ) BYTE-VIEW 10 cells + ;
+: SOURCE-FIELD ( ^a -- ^^u8 ) 11 ptr-field ;
+: SOURCE-LEN-FIELD ( ^a -- ^n ) BYTE-VIEW 12 cells + CELL-VIEW ;
+: BLOCK-FIELD ( ^a -- ^n ) BYTE-VIEW 13 cells + CELL-VIEW ;
+: MAXIMUM-FIELD ( ^a -- ^n ) BYTE-VIEW 14 cells + CELL-VIEW ;
+: NEGOTIATED-FIELD ( ^a -- ^n ) BYTE-VIEW 15 cells + CELL-VIEW ;
+: RECEIVE-WAIT-FIELD ( ^a -- ^n ) BYTE-VIEW 16 cells + CELL-VIEW ;
+: PACKET ( ^a -- ^VEC:vector<u8> ) PACKET-FIELD @ ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
@@ -194,7 +206,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : START ( ms ^a -- ) {: timeout:ms session:^ :}
-   timeout CHECK-MS session PACKET-BUF BUF:CLEAR
+   timeout CHECK-MS session PACKET 0 VEC:RESIZE
    timeout MS>N NS-PER-MS * mono-ns + session DEADLINE-FIELD !
    0 session IO-ERROR-FIELD ! 0 session PROGRESS-FIELD ! 0 session TRIES-FIELD !
    1 session NEXT-FIELD ! 1 session KIND-FIELD ! 0 session NEGOTIATED-FIELD ! ;
@@ -216,12 +228,12 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : BUILD-PACKET ( ^a -- ) {: session:^ :}
    session SOURCE-FIELD @ session PROGRESS-FIELD @ + session CHUNK-SIZE BYTES
    session NEXT-FIELD @ >SEQUENCE session BLOCK-FIELD @ >PAYLOAD-SIZE
-   session KIND-FIELD @ >CHECK-KIND session PACKET-BUF ENCODE ;
+   session KIND-FIELD @ >CHECK-KIND session PACKET ENCODE ;
 
 
 : SEND-PACKET ( ^a -- ) {: session:^ :}
    MAX-TRIES 0 do
-      session PACKET-BUF BUF:SPAN$ BLEN>N session WRITE-ALL
+      session PACKET VEC:SPAN SPAN:$ session WRITE-ALL
       session CONTROL-WINDOW session WAIT-REPLY ACK = if unloop exit then
       session CHECK-TIME
    loop E-SXMODEM-RETRIES throw ;
@@ -256,7 +268,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : READ-FRAME ( ^a -- NUM:byte-len ) {: session:^ :}
    session CONTROL-DATA c@ {: header:n :}
    header session FRAME-SIZE {: size:NUM:byte-len :}
-   session PACKET-BUF BUF:SPAN$ drop {: data :}
+   session PACKET dup size BLEN>N VEC:RESIZE
+   VEC:SPAN SPAN:$ drop {: data :}
    header data c!
    data 1 + size BLEN>N 1 - session READ-REST 0= if E-FRAME throw then size ;
 
@@ -271,7 +284,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    sequence SEQUENCE>N session NEXT-FIELD @ = if
       size BLEN>N session MAXIMUM-FIELD @ session PROGRESS-FIELD @ - >
       if E-SXMODEM-CAPACITY throw then
-      data size session OUTPUT-FIELD @ BUF:APPEND-SPAN
+      data size BLEN>N session OUTPUT-FIELD @ VEC:APPEND
       size BLEN>N session ADVANCE ACK session SEND-BYTE exit
    then
    sequence session PREVIOUS? if session TRY+ ACK session SEND-BYTE exit then
@@ -281,7 +294,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : RECEIVE-PACKET ( ^a -- ) {: session:^ :}
    1 session NEGOTIATED-FIELD !
    session READ-FRAME {: size:NUM:byte-len :}
-   session PACKET-BUF BUF:SPAN$ drop size session KIND-FIELD @ >CHECK-KIND DECODE
+   session PACKET VEC:SPAN SPAN:$ drop size
+   session KIND-FIELD @ >CHECK-KIND DECODE
    session ACCEPT-PAYLOAD ;
 
 
@@ -300,7 +314,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : RECEIVE-RUN ( ^a -- ) {: session:^ :}
-   session OUTPUT-FIELD @ BUF:CLEAR REQUEST-CRC session SEND-BYTE
+   session OUTPUT-FIELD @ 0 VEC:RESIZE REQUEST-CRC session SEND-BYTE
    begin
       session CONTROL-WINDOW session WAIT-HEADER {: header:n :}
       header EOT = if ACK session SEND-BYTE exit then
@@ -322,12 +336,15 @@ public
    {: handle:SERIAL:handle control-wait:ms receive-wait:ms session:^ :}
    control-wait CHECK-MS receive-wait CHECK-MS
    handle SERIAL:HANDLE>N dup 0 < swap $7FFFFFFF > or if E-OPERAND throw then
-   session PACKET-BUF 1029 BYTES BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW session PACKET-FIELD !
+   session PACKET 1029 VEC:RESERVE
    handle SERIAL:HANDLE>N session HANDLE-FIELD !
    control-wait MS>N session CONTROL-WAIT-FIELD ! receive-wait MS>N session RECEIVE-WAIT-FIELD ! ;
 
 
-: DISPOSE ( ^a -- ) PACKET-BUF BUF:DISPOSE ;
+\ A second DISPOSE finds the cell null and frees nothing.
+: DISPOSE ( ^a -- )
+   PACKET-FIELD dup @ VEC:DELETE NULL-PTR swap ! ;
 
 
 \ The source must be disjoint from the session and its private packet buffer.
@@ -342,11 +359,11 @@ public
    session [: dup SEND-RUN ;] catch RESULT ;
 
 
-\ The output is an initialized caller-owned BUF, disjoint from the session. The
-\ limit includes whole padded packets.
-: RECEIVE ( NUM:byte-len ^a ms ^a -- transfer-result )
+\ The output is a caller-owned vector, disjoint from the session. The limit
+\ includes whole padded packets.
+: RECEIVE ( NUM:byte-len ^VEC:vector<u8> ms ^a -- transfer-result )
    {: maximum:NUM:byte-len output:^ timeout:ms session:^ :}
-   maximum CHECK-LENGTH output BUF:SPAN$ 2drop timeout session START
+   maximum CHECK-LENGTH timeout session START
    output session OUTPUT-FIELD ! maximum BLEN>N session MAXIMUM-FIELD !
    session [: dup RECEIVE-RUN ;] catch RESULT ;
 
