@@ -18,7 +18,7 @@ require src/lib/le.f
 require src/lib/sort.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/wl.f
@@ -64,8 +64,8 @@ private
    wid r BAD-WID ;
 
 
-create MAP-TEXT BUF:HDR-BYTES allot
-create MAP-PATH BUF:HDR-BYTES allot
+TYPED-VARIABLE MAP-TEXT ^VEC:vector<u8>
+TYPED-VARIABLE MAP-PATH ^VEC:vector<u8>
 DYNAMIC-BUFFER MAP-START n           \ row k's code offset in A64ICODE's code buffer, -1 for none
 DYNAMIC-BUFFER MAP-BYTES n           \ its length, -1 until MAP-ENDS for an end CUT unbound
 DYNAMIC-BUFFER MAP-FILE n            \ build row k's BUILT row, -1 for one the build's body made
@@ -191,7 +191,7 @@ variable REGION-N
    loop ;
 
 
-: MAP+ ( str -- ) MAP-TEXT SPAN+ ;
+: MAP+ ( str -- ) MAP-TEXT @ VEC:APPEND ;
 : MAP-NL ( -- ) S\" \n" MAP+ ;
 
 : MAP-INT+ ( n -- )
@@ -241,7 +241,7 @@ variable REGION-N
 : FILE-PATH$ ( n -- str )
    {: row:n :}
    row 0 < if s" " exit then
-   LOAD-PATHS BYTES$ drop  row BUILT-PATHS @ + {: at:^ :}
+   LOAD-PATHS @ BYTES$ drop  row BUILT-PATHS @ + {: at:^ :}
    at 8 +  at LE:U64@ ;
 
 
@@ -352,15 +352,15 @@ variable REGION-N
 
 : MAP-WRITE ( str n -- )
    {: path:^ pathu:n end:n :}
-   MAP-TEXT 4096 BUF:N>BLEN BUF:INIT  MAP-PATH 256 BUF:N>BLEN BUF:INIT
+   MAP-TEXT BYTES-NEW  MAP-PATH BYTES-NEW
    MAP-FILL MAP-SORT MAP-ENDS MAP-ALIASES
    S\" habu-names 1\ncolumns rec named start len wid name kind origin source\n" MAP+
    0 MAP-REC !  end CODE-ROWS  end REGION-ROWS  PACKAGE-ROWS
-   path pathu MAP-PATH SPAN+  s" .map" MAP-PATH SPAN+
-   MAP-PATH BYTES$ [: MAP-TEXT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-CACHED ;
+   path pathu MAP-PATH @ VEC:APPEND  s" .map" MAP-PATH @ VEC:APPEND
+   MAP-PATH @ BYTES$ [: MAP-TEXT @ BYTES$ FS:WRITE-ALL ;] FS:REPLACE-CACHED ;
 
 : MAP-RELEASE ( -- )
-   MAP-TEXT BUF:DISPOSE  MAP-PATH BUF:DISPOSE
+   MAP-TEXT BYTES-DELETE  MAP-PATH BYTES-DELETE
    MAP-START-RELEASE  MAP-BYTES-RELEASE  MAP-FILE-RELEASE  MAP-ORDER-RELEASE
    MAP-ALIAS-RELEASE
    REGION-KIND-RELEASE  REGION-START-RELEASE  REGION-END-RELEASE  0 REGION-N ! ;
