@@ -129,6 +129,8 @@ create TAB
    DBASE-CELL                         1 cells                 CLAIM DBASE-CELL
    REJECTION-JSON-CELL                1 cells                 CLAIM REJECTION-JSON-CELL
    REJECTION-SENT-CELL                1 cells                 CLAIM REJECTION-SENT-CELL
+   REJECTION-CARRY-A-CELL             1 cells                 CLAIM REJECTION-CARRY-A-CELL
+   REJECTION-CARRY-U-CELL             1 cells                 CLAIM REJECTION-CARRY-U-CELL
    MAIN-STACK-TOP-CELL                1 cells                 CLAIM MAIN-STACK-TOP-CELL
    MAIN-THREAD-CELL                   1 cells                 CLAIM MAIN-THREAD-CELL
    CLOSED-FREE-CELL                   1 cells                 CLAIM CLOSED-FREE-CELL

@@ -641,7 +641,10 @@ variable CLASS-N                        \ the class CLASS+ read
    CMD:ERR$ s\" \nerror[E-THROW]: nothing caught a throw of code 12345\n" CONTAINS? {: threw:bool :}
    said threw and 0= if rc SHOW then
    s" the build prints the caught rejection first" LABEL  said TTRUE
-   s" the build prints the throw's record" LABEL  threw TTRUE ;
+   s" the build prints the throw's record" LABEL  threw TTRUE
+   \ A rejection the program's own copy of REJECTION kept prints through hb's.
+   s" X9" WHICH!  s" test/fixtures/file-objects/carried-main.f" FAILING-BUILD
+   EXIT-STATUS:UNCAUGHT s\" error[E-PATH-RANGE]: a path is empty\n" ONE-RECORD ;
 
 \ A rejection ends its build, so each way a word reaches word-load-inc.f is a build of its own: included,
 \ provided, a caught required and SOURCE-ROOT:READ-OS, which SOURCE-INPUT:READ's default reader also reaches.
@@ -1175,6 +1178,18 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build exits 67" LABEL  rc 67 T=
    s" the build is rejected E-FAILED at rollback.f's line 10 with code 70" LABEL  placed TTRUE
    s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
+
+\ rollback-passed.f's build: its caught E-PATH-RANGE never displaces FOB-TRY's E-FAILED at line 5.
+: CAUGHT-PASSED-CASE ( CMD:command -- CMD:command )
+   s" CP" WHICH!
+   s" test/fixtures/file-objects/rollback-passed.f" FAILING-BUILD {: rc:n :}
+   s\" rollback-passed.f:5:1\n  |\n5 | FOB-TRY\n  | ^^^^^^^ this ran the text\n"
+   s" = code: 70" FAILED-AT? {: placed:bool :}
+   CMD:ERR$ s" E-PATH-RANGE" CONTAINS? {: passed:bool :}
+   rc 67 =  placed and  passed 0= and 0= if rc SHOW then
+   s" the build exits 67" LABEL  rc 67 T=
+   s" the build is rejected E-FAILED at rollback-passed.f's line 5 with code 70" LABEL  placed TTRUE
+   s" the build prints no E-PATH-RANGE" LABEL  passed TFALSE ;
 
 \ rollback-load.f's build, whose text catches rollback-fail.f's failed load: it exits 67,
 \ rejected E-FAILED at the line that ran the text, which requested the load, with a note for
@@ -2506,7 +2521,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: WARM-A WARM-CUT WARM-GROW WARM-B WARM-E LOG-CASE PT-CASE RECORD-CASE ZERO-CASE PATH-CASE STALE-CASE HIDDEN-CASE
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
-      CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CAUGHT-AGAIN-CASE CTOR-CASE EXPORT-CASE
+      CAUGHT-PASSED-CASE CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CAUGHT-AGAIN-CASE CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
       PUBLIC-LOOKUP-CASE CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE

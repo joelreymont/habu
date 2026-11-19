@@ -5,8 +5,8 @@ split-str
 \ diagnostic's source sits: the armed source, its map and the loader's file
 \ path. Loads before the checker, where no emit exists, so bytes go out through
 \ a one-byte buffer. Every cell, buffer and first room it writes is the running
-\ task's own: its block, or its region's carry stamp; SENT's cell, the main
-\ DATA's, is bumped atomically.
+\ task's own: its block, or its region's carry stamp and carried record's cells;
+\ SENT's cell, the main DATA's, is bumped atomically.
 \ A rejection is printed in parts, called in this order: OPEN, or WARN for a
 \ warning, at most one AT, any NOTEs, HELP, then STOP or KEEP. The caller
 \ writes each part's text with EMIT-STR, EMIT-U or EMIT1 before the next part
@@ -1125,17 +1125,24 @@ public
 : STOP ( n -- )
    KEEP throw ;
 
+private
+\ Keeps the u bytes at a as the record, in place of the one kept before; no throw carries it yet.
+: KEEP-SAVED ( ^u8 n -- ) {: a:^ u:n :}
+   0 SAVED-U !  u SAVED-ROOM
+   a SAVED-P @ u ARENA-COPY
+   u SAVED-U !  0 data-base STAMP-CELL + ! ;
+
+public
 \ Ends the record and keeps it, in place of the one kept before, for
 \ SEND-SAVED; under QUIET it keeps none.
 : SAVE ( -- )
    CLOSE-RECORD
-   0 SAVED-U !
    QUIET @ 0= IF
-      TEXT-LEN @ SAVED-ROOM
-      TEXT SAVED-P @ TEXT-LEN @ ARENA-COPY
-      TEXT-LEN @ SAVED-U !
+      TEXT TEXT-LEN @ KEEP-SAVED
+   ELSE
+      0 SAVED-U !  0 data-base STAMP-CELL + !
    THEN
-   0 data-base STAMP-CELL + !  0 TEXT-LEN !  0 DEST ! ;
+   0 TEXT-LEN !  0 DEST ! ;
 
 \ Sends the record SAVE kept, counted in SENT once it reaches the descriptor, and keeps none.
 : SEND-SAVED ( -- )
@@ -1163,27 +1170,37 @@ public
 
 : PENDING-FAILS? ( -- bool ) PENDING-FAILS @ 0 <> ;
 
-\ Throws n as the throw that carries the kept record, if SAVE kept one.
+\ Whether the newest throw this thread began carries the kept record.
+: CARRIED? ( -- bool )
+   data-base STAMP-CELL + @ {: stamp:n :}
+   stamp 0 <>  stamp data-base THROWS-CELL + @ =  and ;
+
+private
+: CARRY-A ( -- ^^u8 ) REJECTION-CARRY-A-CELL DATA-CELL ;
+: CARRY-U ( -- ^n ) data-base REJECTION-CARRY-U-CELL + cell-view ;
+\ Keeps the carried record as SAVE keeps one when another copy of this file kept it (a build's program).
+: ADOPT ( -- )
+   CARRY-A @ SAVED-P @ = IF EXIT THEN
+   CARRY-A @ CARRY-U @ KEEP-SAVED ;
+
+public
+\ Throws n as the throw that carries the kept record, if SAVE kept one. While the
+\ newest throw is carried, n passes it on and keeps its record, whichever copy kept it.
 : PASS ( n -- )
+   CARRIED? IF ADOPT THEN
    SAVED-U @ 0 <> IF
       data-base THROWS-CELL + @ 1 +  data-base STAMP-CELL + !
+      SAVED-P @ CARRY-A !  SAVED-U @ CARRY-U !
    THEN
    throw ;
 
 \ With a record pending, keeps it as SAVE keeps one and throws n carrying it; the record stays
-\ pending, so each later pass carries it again. With none pending, returns.
+\ pending, so each later pass carries it again. With none pending, throws n carrying none.
 : PASS-PENDING ( n -- ) {: n:n :}
    PENDING-U @ {: u:n :}
-   u 0= IF EXIT THEN
-   0 SAVED-U !
-   u SAVED-ROOM
-   PENDING-P @ SAVED-P @ u ARENA-COPY
-   u SAVED-U !
+   u 0= IF n throw THEN
+   PENDING-P @ u KEEP-SAVED
    n PASS ;
-
-\ Whether the newest throw this thread began carries the kept record.
-: CARRIED? ( -- bool )
-   data-base STAMP-CELL + @  data-base THROWS-CELL + @  = ;
 
 \ The word kw ku has no operand after it, which what names with its article
 \ ("a name"): the record stands at t tu, which why labels. It is written
