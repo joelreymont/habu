@@ -852,8 +852,6 @@ variable SUMV-N   0 SUMV-N !
 \ family's stays zero. The checker symbol for each variant's generated word,
 \ public or private, lands in SV.CTOR-SYM. All three cells are integers /
 \ interned offsets, so the existing SUMV snapshot bake persists them verbatim.
-: SUMV-CTOR-PKG! ( n n n -- ) {: id:n off:n u:n :}
-   off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
 : SUMV-CTOR-PKG$ ( n -- str ) {: id:n :}
    id SUMV-REC@ {: r:^ :}  r SV.CTOR-PKG-OFF @ r SV.CTOR-PKG-U @ TF-OFF$ ;
 : SUMV-CTOR-SYM@ ( n -- n ) SUMV-REC@ SV.CTOR-SYM @ ;
@@ -935,17 +933,22 @@ variable SVX-HI
    sym vid SUMV-REC@ SV.CTOR-SYM !
    vid sym SVX-LINK ;
 
-\ --- variant tail index (VNX). SUMV-FIND wants one tail in one family and the
-\ generated-word recognizer every row spelled like one tail in any family;
+\ --- variant indexes (VNX, CPX). SUMV-FIND wants one tail in one family and the
+\ qualified constructor recognizer one tail under one constructor package;
 \ generating an ENUM's constructors asks each once per variant, so a store walk
-\ makes the declaration quadratic in its variants. Rows chain by the hash of
-\ their folded tail, which serves both: the exact comparison still rejects a
-\ non-canonical spelling, and every case-insensitive match sits in one bucket.
-\ Rows are pushed in id order by SUMV-ADD and retired newest-first by
-\ TFAM-REWIND, so a retired row is always its bucket's head. Buckets and links
-\ are process-local: a capture drops them and a capacity change rebuilds them. A
-\ store that moved outside those seams is rebuilt by the next lookup, and
-\ refused by a rewind that comes first (VNX-RETIRE).
+\ makes the declaration quadratic in its variants. VNX chains rows by the hash
+\ of their family and folded tail: the family is in the key because every
+\ structure has the tails `make` and `unmake`, which by the tail alone put a
+\ row per structure in one bucket. CPX chains the rows that have a constructor
+\ package by the hash of the folded package and folded tail. The exact
+\ comparisons still reject a non-canonical spelling, and every
+\ case-insensitive match sits in one bucket. Rows join VNX in id order in
+\ SUMV-ADD and CPX in id order as SUMV-CTOR-PKG! records their packages, and
+\ TFAM-REWIND retires them newest first, so a retired row is always its
+\ buckets' head. Buckets and links are process-local: a capture drops them and
+\ a capacity change rebuilds them. A store that moved outside those seams is
+\ rebuilt by the next lookup, and refused by a rewind that comes first
+\ (VNX-RETIRE).
 
 8 constant VNX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
 variable VNX-SLOTS-V   VNX-SLOTS-INIT VNX-SLOTS-V !
@@ -954,7 +957,11 @@ create VNX-B-BOOT   VNX-SLOTS-INIT cells allot
 PERSISTED-PTR-VARIABLE VNX-B-P   VNX-B-BOOT VNX-B-P !
 create VNX-L-BOOT   SUMV-CAP-INIT cells allot
 PERSISTED-PTR-VARIABLE VNX-L-P   VNX-L-BOOT VNX-L-P !
-variable VNX-LCAP   SUMV-CAP-INIT VNX-LCAP !   \ rows the link array holds
+create CPX-B-BOOT   VNX-SLOTS-INIT cells allot
+PERSISTED-PTR-VARIABLE CPX-B-P   CPX-B-BOOT CPX-B-P !
+create CPX-L-BOOT   SUMV-CAP-INIT cells allot
+PERSISTED-PTR-VARIABLE CPX-L-P   CPX-L-BOOT CPX-L-P !
+variable VNX-LCAP   SUMV-CAP-INIT VNX-LCAP !   \ rows each link array holds
 variable VNX-READY   0 VNX-READY !
 
 variable VNX-HI      0 VNX-HI !      \ SUMV-N the chains cover
@@ -966,26 +973,51 @@ variable VNX-CUR              \ private bucket-walk cursor
    slot cells VNX-B-P @ + ;
 : VNX-LINK ( n -- ^n ) {: id:n :}    \ next row id + 1 in the row's bucket
    id cells VNX-L-P @ + ;
+: CPX-BKT ( n -- ^n ) {: slot:n :}
+   slot cells CPX-B-P @ + ;
+: CPX-LINK ( n -- ^n ) {: id:n :}
+   id cells CPX-L-P @ + ;
 
-: VNX-HASH ( str -- n ) {: a:^ u:n :}
-   FNV:BASIS
-   0 BEGIN dup u < WHILE
+: VNX-FOLD ( n str -- n ) {: h:n a:^ u:n :}   \ folded bytes into h
+   h 0 BEGIN dup u < WHILE
       dup a + c@ CORE-FOLD-C rot FNV:STEP swap
       1 +
-   REPEAT drop
+   REPEAT drop ;
+
+: VNX-HASH ( n str -- n ) {: fam:n a:^ u:n :}   \ family, tail
+   FNV:BASIS fam FNV:STEP  a u VNX-FOLD
    VNX-SLOTS 1 - and ;
 
-: VNX-ROW-BKT ( n -- ^n ) SUMV-NAME$ VNX-HASH VNX-BKT ;
+: CPX-HASH ( str str -- n ) {: pa:^ pu:n ta:^ tu:n :}   \ package, tail
+   FNV:BASIS pa pu VNX-FOLD  ta tu VNX-FOLD
+   VNX-SLOTS 1 - and ;
+
+: VNX-ROW-BKT ( n -- ^n ) {: id:n :}
+   id SUMV-FAM@ id SUMV-NAME$ VNX-HASH VNX-BKT ;
+: CPX-ROW-BKT ( n -- ^n ) {: id:n :}
+   id SUMV-CTOR-PKG$ id SUMV-NAME$ CPX-HASH CPX-BKT ;
+: CPX-ROW? ( n -- bool )   \ has a package, so a CPX chain holds it
+   SUMV-REC@ SV.CTOR-PKG-U @ 0 <> ;
+
+: CHAIN-PUSH ( n ^n ^n -- ) {: id:n b:^ l:^ :}   \ l: id's link
+   b @ l !   id 1 + b ! ;
+: CHAIN-POP ( n ^n ^n -- ) {: id:n b:^ l:^ :}
+   b @ id 1 + <> IF
+      s" tfam: variant tail index corrupt" EXIT-STATUS:INTERNAL die
+   THEN
+   l @ b ! ;
 
 : VNX-PUSH ( n -- ) {: id:n :}
-   id VNX-ROW-BKT {: b:^ :}
-   b @ id VNX-LINK !
-   id 1 + b ! ;
+   id  id VNX-ROW-BKT  id VNX-LINK  CHAIN-PUSH ;
+: CPX-PUSH ( n -- ) {: id:n :}
+   id  id CPX-ROW-BKT  id CPX-LINK  CHAIN-PUSH ;
 
-: VNX-POP ( n -- ) {: id:n :}
-   id VNX-ROW-BKT {: b:^ :}
-   b @ id 1 + <> IF s" tfam: variant tail index corrupt" EXIT-STATUS:INTERNAL die THEN
-   id VNX-LINK @ b ! ;
+: VNX-JOIN ( n -- ) {: id:n :}   \ chain a row in both indexes
+   id VNX-PUSH
+   id CPX-ROW? IF id CPX-PUSH THEN ;
+: VNX-LEAVE ( n -- ) {: id:n :}   \ unchain a row from both
+   id CPX-ROW? IF id  id CPX-ROW-BKT  id CPX-LINK  CHAIN-POP THEN
+   id  id VNX-ROW-BKT  id VNX-LINK  CHAIN-POP ;
 
 \ The links follow the variant store's capacity and the buckets keep the load
 \ factor at or below one half. Both only ever grow: SUMV-CAP never shrinks.
@@ -993,17 +1025,20 @@ variable VNX-CUR              \ private bucket-walk cursor
    SUMV-CAP VNX-CAP !
    SUMV-CAP VNX-LCAP @ > IF
       VNX-L-P  VNX-LCAP @ cells  SUMV-CAP cells  GROW
+      CPX-L-P  VNX-LCAP @ cells  SUMV-CAP cells  GROW
       SUMV-CAP VNX-LCAP !
    THEN
    VNX-SLOTS-INIT BEGIN dup SUMV-CAP 2 * < WHILE 2 * REPEAT {: need:n :}
    need VNX-SLOTS <= IF EXIT THEN
    VNX-B-P  VNX-SLOTS cells  need cells  GROW
+   CPX-B-P  VNX-SLOTS cells  need cells  GROW
    need VNX-SLOTS-V ! ;
 
 : VNX-BUILD ( -- )
    VNX-RESIZE
    VNX-B-P @ 0 VNX-SLOTS ARENA-CELLS-ZERO
-   0 BEGIN dup SUMV-N @ < WHILE dup VNX-PUSH 1 + REPEAT drop
+   CPX-B-P @ 0 VNX-SLOTS ARENA-CELLS-ZERO
+   0 BEGIN dup SUMV-N @ < WHILE dup VNX-JOIN 1 + REPEAT drop
    SUMV-N @ VNX-HI !
    -1 VNX-READY ! ;
 
@@ -1015,7 +1050,7 @@ variable VNX-CUR              \ private bucket-walk cursor
    VNX-CAP @ SUMV-CAP <> or IF VNX-BUILD THEN ;
 
 \ Pops rows [newn, SUMV-N) before SUMV-N rewinds to newn, newest first, so each
-\ popped row is at its bucket head. It dies, as TFX-RETIRE does, on chains that
+\ popped row is at its buckets' head. It dies, as TFX-RETIRE does, on chains that
 \ do not cover exactly the live rows: SUMV-ADD and TFAM-REWIND move VNX-HI with
 \ SUMV-N, and TFAM-RESET drops the chains, so unequal marks
 \ mean a caller moved the counter around those seams, and popping would unlink
@@ -1026,8 +1061,13 @@ variable VNX-CUR              \ private bucket-walk cursor
       s" tfam: variant tail index retired out of step with its rows" EXIT-STATUS:INTERNAL die
    THEN
    SUMV-N @ 1 -
-   BEGIN dup newn >= WHILE dup VNX-POP 1 - REPEAT drop
+   BEGIN dup newn >= WHILE dup VNX-LEAVE 1 - REPEAT drop
    newn VNX-HI ! ;
+
+: SUMV-CTOR-PKG! ( n n n -- ) {: id:n off:n u:n :}
+   VNX-ENSURE
+   off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U !
+   u 0 <> IF id CPX-PUSH THEN ;
 
 \ Generated-constructor protection: a split name's head matches the recorded
 \ SV.CTOR-PKG spelling of the package it resolves to here, case-insensitively,
@@ -1110,17 +1150,17 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
 \ The QUALIFIED half of the generated-word scan. Its private half, and the two
 \ recognizers that join them, sit beside TF-CTOR-PRIV$ below: a recognizer must
 \ read the spelling from the derivation that generates it, never restate it.
-\ A constructor word's tail is its variant's tail, so only the rows in that
-\ tail's VNX bucket can be one. A derived word is recognized from its family,
-\ not a row, so only the derived tails still walk the store.
+\ A constructor word's head and tail are its variant's package and tail, so
+\ only the rows in their CPX bucket can be one. A derived word is recognized
+\ from its family, not a row, so only the derived tails still walk the store.
 : TF-CTOR-QUAL-FIND ( str -- n bool ) {: a:^ u:n :}   \ family, found
    a u TF-CW-TAIL$ {: ta:^ tu:n :}
    VNX-ENSURE
-   ta tu VNX-HASH VNX-BKT @ VNX-CUR !
+   TF-CW-HEAD$ ta tu CPX-HASH CPX-BKT @ VNX-CUR !
    BEGIN VNX-CUR @ 0 <> WHILE
       VNX-CUR @ 1 - {: id:n :}
       a u id TFAM-CTOR-WORD-AT? IF id SUMV-FAM@ RES-TRUE EXIT THEN
-      id VNX-LINK @ VNX-CUR !
+      id CPX-LINK @ VNX-CUR !
    REPEAT
    ta tu TFAM-DERIVED-TAIL? 0= IF 0 RES-FALSE EXIT THEN
    SUMV-N @ 0 ?do
@@ -1141,7 +1181,7 @@ private
 : SUMV-FIND ( n str -- n bool ) {: fam:n na:^ nu:n :}
    VNX-ENSURE
    -1
-   na nu VNX-HASH VNX-BKT @ VNX-CUR !
+   fam na nu VNX-HASH VNX-BKT @ VNX-CUR !
    BEGIN VNX-CUR @ 0 <> WHILE
       VNX-CUR @ 1 - {: id:n :}
       fam na nu id SUMV-MATCH? IF drop id THEN
@@ -2926,14 +2966,14 @@ variable LAY-N   0 LAY-N !
 TFAM-RESET
 
 \ The registry rewind: every caller that puts the family and variant stores or
-\ the name pool back to an earlier mark goes through here. Three indexes chain
+\ the name pool back to an earlier mark goes through here. Four indexes chain
 \ rows by id (TFAM-FIND-IN's tail index, SUMV-FROM-CTOR-SYM's symbol index,
-\ SUMV-FIND's variant index); a chained row whose id is out of range is found by
-\ the next lookup, which reads past the store and dies. So rows are unchained
-\ before the counters move. A caller that wrote the counters itself and skipped
-\ the retirements left the outer restore popping nothing and stamping the index
-\ current; the first lookup of that tail died 76 in TF-REC@ while every
-\ watermark was right.
+\ SUMV-FIND's and TF-CTOR-QUAL-FIND's variant indexes); a chained row whose id
+\ is out of range is found by the next lookup, which reads past the store and
+\ dies. So rows are unchained before the counters move. A caller that wrote the
+\ counters itself and skipped the retirements left the outer restore popping
+\ nothing and stamping the index current; the first lookup of that tail died 76
+\ in TF-REC@ while every watermark was right.
 \ The retired family, variant, param-kind and layout rows and pool bytes are
 \ scrubbed to zero, as PF-SCRUB does for field rows, after the indexes pop: the
 \ pops read the tail links and constructor symbols the scrub clears.
@@ -5120,6 +5160,8 @@ TFX-CAP 0 CELL-ROW+
 SUMV-A-P SUMV-CAP-V SUMV-REC SUMV-N STORE+
 VNX-B-P VNX-SLOTS-V CELL TABLE+
 VNX-L-P VNX-LCAP CELL TABLE+
+CPX-B-P VNX-SLOTS-V CELL TABLE+
+CPX-L-P VNX-LCAP CELL TABLE+
 VNX-READY 0 CELL-ROW+
 VNX-HI 0 CELL-ROW+
 VNX-CAP 0 CELL-ROW+
