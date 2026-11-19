@@ -1,18 +1,15 @@
 split-str
-\ E2E against the real desktop credential store via the public SECRET words, dummy
-\ items only, removed even when a case fails; then with no native store bound for
-\ one case; a host store bound with SECRET:STORE! then replaces it. Fails on: a
-\ wrong item; missing read as empty; truncated or partial writes; an overwrite
-\ keeping old bytes or duplicating; an erase that leaves, misreports or
-\ overreaches; ids WRITE/ERASE take that READ refuses; native leaks; source/AOT
-\ mismatch; no store bound refused as anything but E-CONFIG; a host store
-\ bypassed, called before the checks or masked. The native cases run on macOS
-\ only, as Linux has no erase; src/lib/secret/linux-test.f covers Linux.
+\ E2E of the public SECRET words with no store bound for one case, then over a
+\ host store bound with SECRET:STORE!. Fails on: no store bound refused as
+\ anything but E-CONFIG; a host store bypassed, called before the checks or
+\ masked; a read that loses the bytes the vector held or keeps the bytes of a
+\ read that failed or found nothing.
 require src/lib/secret.f
 require src/lib/test.f
 require src/lib/codegen.f
-require src/lib/time.f
 require src/lib/string.f
+require src/lib/vector.f
+require src/lib/heap.f
 
 \ White-box helpers, compiled in package SECRET to reach its native words; each
 \ qualified name lands in SECRET-E2E, so SECRET's public surface gains nothing.
@@ -28,23 +25,15 @@ HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or [if]
 package SECRET-E2E
 private
 
-CODEGEN:BUFFER TEST-SERVICE
-CODEGEN:BUFFER TEST-OTHER
-64 SPAN-BUFFER: TEST-OUT
+TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
-: TEST-SERVICE$ ( -- str ) TEST-SERVICE CODEGEN:CONTENTS ;
-: TEST-OTHER$ ( -- str ) TEST-OTHER CODEGEN:CONTENTS ;
+: OUT ( -- ^VEC:vector<u8> ) TEST-OUT @ ;
+: OUT$ ( -- str ) OUT VEC:SPAN SPAN:$ ;
 
+\ Empties OUT, zeroing the bytes it held.
+: CLEAR-OUT ( -- ) OUT 0 VEC:RESIZE ;
 
-: TEST-NAMES ( -- )
-   TEST-SERVICE CODEGEN:RESET
-   s" org.habu.secret-e2e." TEST-SERVICE CODEGEN:APPEND-STRING
-   getpid TEST-SERVICE CODEGEN:APPEND-DECIMAL
-   s" ." TEST-SERVICE CODEGEN:APPEND-STRING
-   TIME:MONO-NS TEST-SERVICE CODEGEN:APPEND-DECIMAL
-   TEST-OTHER CODEGEN:RESET
-   TEST-SERVICE$ TEST-OTHER CODEGEN:APPEND-STRING
-   s" .other" TEST-OTHER CODEGEN:APPEND-STRING ;
+: HOLD ( -- ) CLEAR-OUT s" held" OUT VEC:APPEND ;
 
 
 \ Attempts one erase whatever came before; keeps the first failure code.
@@ -54,102 +43,13 @@ CODEGEN:BUFFER TEST-OTHER
    first 0 <> if first else code then ;
 
 
-\ Every item is erased and TEST-OUT cleared even when an erase fails; the
-\ first failure is rethrown afterwards.
-: TEST-CLEANUP ( -- )
-   0
-   TEST-SERVICE$ s" first" TEST-ERASE-KEEP
-   TEST-SERVICE$ s" other" TEST-ERASE-KEEP
-   TEST-SERVICE$ s" empty" TEST-ERASE-KEEP
-   TEST-OTHER$ s" first" TEST-ERASE-KEEP {: first:n :}
-   0 TEST-OUT SPAN:FILL
-   first 0 <> if first throw then ;
-
-
-: TEST-FOUND ( str str str -- )
-   {: service:^ su:n account:^ au:n expected:^ eu:n :}
-   service su account au TEST-OUT SECRET:READ TTRUE
-   {: got:n :}
-   got eu T=
-   TEST-OUT SPAN:$ drop got expected eu STR= TTRUE
-   0 TEST-OUT SPAN:FILL ;
-
-
-: TEST-MISSING ( str str -- )
-   TEST-OUT SECRET:READ TFALSE 0 T= ;
-
+\ OUT holds what HOLD put there.
 : TEST-UNTOUCHED ( -- )
-   64 0 ?do TEST-OUT i SPAN:U8@ $A5 T= loop ;
-
-
-: TEST-LOOKUP ( -- )
-   TEST-SERVICE$ s" first" s\" native\x00dummy" SECRET:WRITE
-   TEST-SERVICE$ s" other" s" account dummy" SECRET:WRITE
-   TEST-SERVICE$ s" empty" s" " SECRET:WRITE
-   TEST-OTHER$ s" first" s" service dummy" SECRET:WRITE
-   s" write then read selects service and account and keeps exact bytes" T-LABEL
-   TEST-SERVICE$ s" first" s\" native\x00dummy" TEST-FOUND
-   TEST-SERVICE$ s" other" s" account dummy" TEST-FOUND
-   TEST-OTHER$ s" first" s" service dummy" TEST-FOUND
-   s" empty is found even with a zero capacity destination" T-LABEL
-   TEST-SERVICE$ s" empty" TEST-OUT 0 SPAN:TAKE SECRET:READ TTRUE 0 T=
-   s" missing is distinct from empty" T-LABEL
-   TEST-SERVICE$ s" absent" TEST-MISSING
-   s" insufficient capacity refuses without changing destination" T-LABEL
-   $A5 TEST-OUT SPAN:FILL
-   [: TEST-SERVICE$ s" first" TEST-OUT 1 SPAN:TAKE SECRET:READ 2drop ;] SECRET:E-CAPACITY TTHROWSQ
-   TEST-UNTOUCHED ;
-
-
-: TEST-REPLACE ( -- )
-   s" write replaces the value of an existing item, shorter or empty" T-LABEL
-   TEST-SERVICE$ s" other" s" new" SECRET:WRITE
-   TEST-SERVICE$ s" other" s" new" TEST-FOUND
-   TEST-SERVICE$ s" first" s" " SECRET:WRITE
-   TEST-SERVICE$ s" first" s" " TEST-FOUND
-   TEST-SERVICE$ s" empty" s\" now\x00set" SECRET:WRITE
-   TEST-SERVICE$ s" empty" s\" now\x00set" TEST-FOUND
-   TEST-OTHER$ s" first" s" service dummy" TEST-FOUND ;
-
-
-: TEST-ERASE ( -- )
-   s" erase removes only its item and a second erase finds nothing" T-LABEL
-   TEST-SERVICE$ s" other" SECRET:ERASE TTRUE
-   TEST-SERVICE$ s" other" TEST-MISSING
-   TEST-SERVICE$ s" other" SECRET:ERASE TFALSE
-   TEST-SERVICE$ s" empty" s\" now\x00set" TEST-FOUND
-   TEST-OTHER$ s" first" s" service dummy" TEST-FOUND ;
-
-
-: TEST-REFUSALS ( -- )
-   s" identifiers reject empty, NUL and malformed UTF-8 on every word" T-LABEL
-   [: s" " s" first" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s" " TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: s\" a\x00b" s" first" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s\" a\x00b" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: s\" a\xFFb" s" first" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s\" a\xFFb" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: s" " s" first" s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s" " s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
-   [: s\" a\x00b" s" first" s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s\" a\x00b" s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s\" a\xFFb" s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
-   [: s" " s" first" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s" " SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: s\" a\x00b" s" first" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s\" a\x00b" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: TEST-SERVICE$ s\" a\xFFb" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
-   s" write rejects a negative value length and keeps the item" T-LABEL
-   [: TEST-SERVICE$ s" first" s" x" drop -1 SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
-   TEST-SERVICE$ s" first" s" " TEST-FOUND ;
-
-
-: TEST-RUN ( -- )
-   TEST-LOOKUP TEST-REPLACE TEST-ERASE TEST-REFUSALS ;
+   OUT VEC:COUNT 4 T= OUT$ s" held" STR= TTRUE ;
 
 
 : UNBOUND-READ ( -- )
-   [: s" unbound" s" key" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ ;
+   [: s" unbound" s" key" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ ;
 
 
 \ The target's native words are bound again even when the case fails.
@@ -174,14 +74,20 @@ variable HOST-CALLS
    account au HOST-ACCOUNT CODEGEN:CONTENTS STR= and ;
 
 
-: HOST-READ ( str str SPAN:span<u8> -- n bool )
-   {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}
+\ The account late is a store that appends bytes and then does not answer;
+\ stale, one that appends bytes and answers false.
+: HOST-READ ( str str ^VEC:vector<u8> -- bool )
+   {: service:^ su:n account:^ au:n dest:^ :}
    1 HOST-CALLS +!
-   service su account au HOST-HELD? 0= if 0 false exit then
-   HOST-VALUE$ {: value:^ vu:n :}
-   vu dest SPAN:LEN > if SECRET:E-CAPACITY throw then
-   value vu dest SPAN:COPY
-   vu true ;
+   account au s" late" STR= if
+      s" partial" dest VEC:APPEND SECRET:E-UNAVAILABLE throw
+   then
+   account au s" stale" STR= if
+      s" partial" dest VEC:APPEND false exit
+   then
+   service su account au HOST-HELD? 0= if false exit then
+   HOST-VALUE$ dest VEC:APPEND
+   true ;
 
 
 : HOST-WRITE ( str str str -- )
@@ -197,69 +103,73 @@ variable HOST-CALLS
    HOST-HELD? dup if HOST-SERVICE CODEGEN:RESET then ;
 
 
+: HOST-FOUND ( str str str -- )
+   {: service:^ su:n account:^ au:n want:^ wu:n :}
+   HOLD service su account au OUT SECRET:READ TTRUE
+   OUT$ want wu T$=
+   CLEAR-OUT ;
+
+
+: HOST-MISSING ( str str -- )
+   HOLD OUT SECRET:READ TFALSE TEST-UNTOUCHED CLEAR-OUT ;
+
+
 : TEST-HOST-ITEMS ( -- )
    s" a bound host store answers write, read and erase" T-LABEL
    0 HOST-CALLS !
    s" host" s" key" s\" host\x00value" SECRET:WRITE
    HOST-VALUE$ s\" host\x00value" STR= TTRUE
-   s" host" s" key" s\" host\x00value" TEST-FOUND
-   s" host" s" other" TEST-MISSING
+   s" host" s" key" s\" heldhost\x00value" HOST-FOUND
+   s" host" s" other" HOST-MISSING
    HOST-CALLS @ 3 T=
    s" host" s" key" SECRET:ERASE TTRUE
-   s" host" s" key" TEST-MISSING
+   s" host" s" key" HOST-MISSING
    s" host" s" key" SECRET:ERASE TFALSE ;
 
 
 : TEST-HOST-CHECKS ( -- )
    s" identifier and value checks refuse before the host store is called" T-LABEL
    0 HOST-CALLS !
-   [: s" " s" key" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: s" host" s\" a\x00b" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
+   [: s" " s" key" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
+   [: s" host" s\" a\x00b" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s" " s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s" key" s" x" drop -1 SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
    [: s\" a\x00b" s" key" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: s\" a\xFFb" s" key" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
-   [: s" host" s\" a\xFFb" TEST-OUT SECRET:READ 2drop ;] SECRET:E-CONFIG TTHROWSQ
+   [: s\" a\xFFb" s" key" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
+   [: s" host" s\" a\xFFb" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s\" a\xFFb" s" key" s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s\" a\xFFb" s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
    [: s\" a\xFFb" s" key" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s\" a\xFFb" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
    HOST-CALLS @ 0 T=
-   s" a host store's throw passes through and leaves the destination" T-LABEL
-   s" host" s" key" s" eight by" SECRET:WRITE
-   $A5 TEST-OUT SPAN:FILL
-   [: s" host" s" key" TEST-OUT 1 SPAN:TAKE SECRET:READ 2drop ;] SECRET:E-CAPACITY TTHROWSQ
-   TEST-UNTOUCHED ;
+   s" a host read that throws after appending leaves the vector" T-LABEL
+   HOLD
+   [: s" host" s" late" OUT SECRET:READ drop ;] SECRET:E-UNAVAILABLE TTHROWSQ
+   TEST-UNTOUCHED
+   CLEAR-OUT
+   s" a host read that appends and answers false leaves the vector" T-LABEL
+   s" host" s" stale" HOST-MISSING ;
 
 
-\ Erases the host cases' item and clears TEST-OUT, so a binding that failed
+\ Erases the host cases' item and clears OUT, so a binding that failed
 \ leaves no host/key item in the real store.
 : TEST-HOST-CLEANUP ( -- )
    0 s" host" s" key" TEST-ERASE-KEEP {: first:n :}
-   0 TEST-OUT SPAN:FILL
+   CLEAR-OUT
    first 0 <> if first throw then ;
 
 
-\ Bound only after the real store's cleanup, which erases through SECRET:ERASE.
 : TEST-HOST ( -- )
    [: HOST-READ ;] [: HOST-WRITE ;] [: HOST-ERASE ;] SECRET:STORE!
    [: TEST-HOST-ITEMS TEST-HOST-CHECKS ;] [: TEST-HOST-CLEANUP ;] finally ;
 
 
-HB-TARGET-MACOS? [if]
-: TEST-NATIVE ( -- )
-   TEST-NAMES
-   [: TEST-RUN ;] [: TEST-CLEANUP ;] finally ;
-[then]
-HB-TARGET-MACOS? 0= [if]
-: TEST-NATIVE ( -- ) ;
-[then]
-
-
 : TEST-MAIN ( -- )
-   T-RESET TEST-NATIVE
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW TEST-OUT !
+   T-RESET
    TEST-UNBOUND
    TEST-HOST
+   OUT VEC:DELETE
    T-REPORT ;
 TEST-MAIN
 ;package

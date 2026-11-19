@@ -135,7 +135,7 @@ false ITEM-BOUND !
 : LINUX-WRITE ( ^request -- )
    {: req:^ :}
    req LINUX-OPEN
-   req REQUEST-DATA @ req REQUEST-CAPACITY @ s\" text/plain\z" drop
+   req REQUEST-DATA @ req REQUEST-LEN @ s\" text/plain\z" drop
       VALUE-NEW OWNED req REQUEST-VALUE !
    0 0 req REQUEST-QUERY @ 0 req ITEM-LABEL req REQUEST-VALUE @ 0
       req REQUEST-ERROR BYTE-VIEW SECRET-STORE drop

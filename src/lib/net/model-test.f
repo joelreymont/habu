@@ -2,9 +2,9 @@ split-str
 \ model-test.f - MODEL's HTTP transport, input bounds and journal against one
 \ in-process OpenAI- and Ollama-shaped peer on a loopback port. Its key and
 \ settings items live in a store the test binds with SECRET:STORE!, so no item
-\ reaches the desktop store; secret-test.f covers the native stores. The run's
-\ stderr goes to a file in a private temp directory, where cases read MODEL's
-\ log lines. The first failed assertion ends the run.
+\ reaches the desktop store. The run's stderr goes to a file in a private temp
+\ directory, where cases read MODEL's log lines. The first failed assertion ends
+\ the run.
 \ Run: bin/hb --load src/lib/net/model-test.f
 require src/lib/aio.f
 require src/lib/byte-buffer.f

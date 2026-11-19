@@ -522,6 +522,12 @@ SUITE odata
    src/lib/odata-test.f
 ;SUITE
 
+\ SECRET's words with no store bound and over a host store. Its own suite:
+\ STORE! holds SECRET's store for the whole process.
+SUITE secret
+   src/lib/secret-test.f
+;SUITE
+
 \ SECRET:DIR-BIND over a directory under TMPDIR. Its own suite: the bind holds
 \ SECRET's store for the whole process.
 SUITE secret-dir

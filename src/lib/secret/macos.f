@@ -100,7 +100,7 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : MAC-WRITE ( ^request -- )
    {: req:^ :}
    req MAC-OPEN
-   0 req REQUEST-DATA @ req REQUEST-CAPACITY @ req s\" kCFAllocatorNull\z" drop CF-SYMBOL
+   0 req REQUEST-DATA @ req REQUEST-LEN @ req s\" kCFAllocatorNull\z" drop CF-SYMBOL
       CF-DATA-BORROW CREATED req REQUEST-VALUE !
    req s\" kSecValueData\z" drop SEC-SYMBOL {: data-key:n :}
    0 0 0 0 CF-DICT CREATED req REQUEST-ATTRS !

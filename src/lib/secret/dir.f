@@ -8,13 +8,15 @@ split-str
 \ symlink item is followed, and an item that is not a regular file, a FIFO
 \ included, is E-ACCESS. Contract: src/lib/secret.f.
 \ STORAGE CLASS. PROCESS-WIDE: the bound directory and service, written by
-\ DIR-BIND before use; one read's item and staged bytes, under DIR-LOCK.
+\ DIR-BIND before use; one read's item path, descriptor, size and found flag,
+\ under DIR-LOCK.
 require src/lib/secret.f
 require src/lib/fs.f
 require src/lib/log.f
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/task.f
+require src/lib/vector.f
 
 package SECRET
 private
@@ -28,10 +30,6 @@ variable DIR-ITEM-U
 variable DIR-FD
 variable DIR-SIZE
 variable DIR-FOUND
-\ The item's bytes, wiped before DIR-LOCK is released; the destination's
-\ size bounds them.
-DYNAMIC-BUFFER DIR-STAGED u8
-variable DIR-STAGED-U
 TASK:FACILITY DIR-LOCK
 \ access(2) R_OK | X_OK: the directory can be listed and searched.
 5 constant DIR-ACCESS
@@ -57,10 +55,6 @@ TASK:FACILITY DIR-LOCK
 
 : DIR-OPEN ( -- )
    DIR-ITEM$ FS:OPEN-SIZED bool>n DIR-FOUND ! DIR-SIZE ! FD>N DIR-FD ! ;
-
-
-: DIR-READ-ITEM ( -- )
-   DIR-FD @ >FD 0 DIR-STAGED DIR-STAGED-U @ FS:READ-SIZED ;
 
 
 \ The cause's errno text; with none, what FS refused: a file not regular
@@ -92,42 +86,33 @@ TASK:FACILITY DIR-LOCK
    code throw ;
 
 
-\ Stage the opened item's bytes; a failed reservation closes the item.
-\ DIR-STAGED holds at least one element, so index 0 is valid for an empty
-\ item.
-: DIR-STAGE ( -- )
-   [: DIR-SIZE @ 1 max DIR-STAGED-RESERVE ;] catch {: code:n :}
+\ Appends the opened item straight into the vector, its room reserved before the
+\ first byte is read; a failed reservation closes the item.
+: DIR-APPEND ( ^VEC:vector<u8> -- )
+   {: dst:^ :}
+   dst VEC:COUNT {: old:n :}
+   [: dst old DIR-SIZE @ + VEC:ENSURE ;] catch {: code:n :}
    code 0<> if DIR-FD @ close code throw then
-   DIR-SIZE @ DIR-STAGED-U !
-   [: DIR-READ-ITEM ;] catch FS:ERRNO DIR-REJECT ;
+   dst VEC:SPAN SPAN:$ drop old + {: at:^ :}
+   [: DIR-FD @ >FD at DIR-SIZE @ FS:READ-SIZED ;] catch
+   FS:ERRNO DIR-REJECT ;
 
 
-: DIR-READ-STAGED ( str str SPAN:span<u8> -- n bool )
-   {: sa:^ su:n aa:^ au:n dst:SPAN:span<u8> :}
+: DIR-READ-LOCKED ( str str ^VEC:vector<u8> -- bool )
+   {: sa:^ su:n aa:^ au:n dst:^ :}
    sa su DIR-SERVICE$ STR= 0= if E-CONFIG throw then
    aa au DIR-PLAIN? 0= if E-CONFIG throw then
    au DIR-ITEM-LEN PATH-CAP > if E-CONFIG throw then
    DIR-PATH$ aa au DIR-ITEM FS:JOIN-PATH-INTO DIR-ITEM-U !
    [: DIR-OPEN ;] catch FS:ERRNO DIR-REJECT
-   DIR-FOUND @ 0= if 0 false exit then
-   DIR-SIZE @ dst SPAN:LEN > if DIR-FD @ close E-CAPACITY throw then
-   DIR-STAGE
-   0 DIR-STAGED DIR-STAGED-U @ dst SPAN:COPY
-   DIR-STAGED-U @ true ;
+   DIR-FOUND @ 0= if false exit then
+   dst DIR-APPEND
+   true ;
 
 
-: DIR-WIPE ( -- )
-   DIR-STAGED-U @ 0= if exit then
-   0 0 DIR-STAGED DIR-STAGED-U @ SPAN:MAKE SPAN:FILL
-   0 DIR-STAGED-U ! ;
-
-
-: DIR-UNLOCK ( -- ) DIR-WIPE DIR-LOCK TASK:RELEASE ;
-
-
-: DIR-READ ( str str SPAN:span<u8> -- n bool )
+: DIR-READ ( str str ^VEC:vector<u8> -- bool )
    DIR-LOCK TASK:GET
-   [: DIR-READ-STAGED ;] [: DIR-UNLOCK ;] finally ;
+   [: DIR-READ-LOCKED ;] [: DIR-LOCK TASK:RELEASE ;] finally ;
 
 
 : DIR-WRITE ( str str str -- )

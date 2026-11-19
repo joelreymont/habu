@@ -27,6 +27,8 @@ require src/lib/process.f
 require src/lib/process-env.f
 require src/lib/process-command.f
 require src/lib/test/stderr.f
+require src/lib/vector.f
+require src/lib/heap.f
 
 package SECRET-LINUX-TEST
 private
@@ -49,7 +51,7 @@ PATH-CAP BUFFER: JOINED
 CODEGEN:BUFFER ADDRESS
 CODEGEN:BUFFER CONF
 CODEGEN:BUFFER EXPECTED
-64 SPAN-BUFFER: OUT
+TYPED-VARIABLE OUT-VEC ^VEC:vector<u8>
 4096 constant LOG-CAP
 LOG-CAP BUFFER: LOGGED
 
@@ -73,6 +75,7 @@ NO-PID KEY-PID !
 : LABEL$ ( -- str ) s" Habu secret-linux test item" ;
 : SERVICE$ ( -- str ) s" org.habu.secret-linux-test" ;
 : PASSWORD$ ( -- str ) s" habu-test" ;
+: OUT ( -- ^VEC:vector<u8> ) OUT-VEC @ ;
 
 
 \ A path under ROOT or SOCKETS, borrowed until the next one.
@@ -305,8 +308,9 @@ NO-PID KEY-PID !
    s" store" CMD:ARG+ LABEL-ARG$ CMD:ARG+ s" stored" ATTRS
    s\" stored\x00by secret-tool" CMD:IN!
    TOOL-RUN
-   SERVICE$ s" stored" OUT SECRET:READ TTRUE {: got:n :}
-   OUT SPAN:$ drop got s\" stored\x00by secret-tool" T$= ;
+   SERVICE$ s" stored" OUT SECRET:READ TTRUE
+   OUT VEC:SPAN SPAN:$ s\" stored\x00by secret-tool" T$=
+   OUT 0 VEC:RESIZE ;
 
 \ The call's throw code, with fd 2 sent to a file for the call.
 : CAPTURED ( [ -- ] -- n )
@@ -329,7 +333,7 @@ NO-PID KEY-PID !
    [: SERVICE$ s" written" s" third" SECRET:WRITE ;] CAPTURED
    SECRET:E-ACCESS T=
    s" cannot store the item: " LOGGED-ONCE
-   [: SERVICE$ s" written" OUT SECRET:READ 2drop ;] CAPTURED
+   [: SERVICE$ s" written" OUT SECRET:READ drop ;] CAPTURED
    SECRET:E-ACCESS T=
    s" cannot search for the item: " LOGGED-ONCE ;
 
@@ -347,10 +351,12 @@ NO-PID KEY-PID !
 
 : MAIN ( -- )
    T-RESET
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT-VEC !
    TOOLS DIRS BUS-ENV!
    REFUSALS
    SERVICE-KEY$ ACCOUNT-KEY$ LABEL$ SECRET:LINUX-ITEM!
    [: CASES ;] [: STOP ;] finally
+   OUT VEC:DELETE
    T-REPORT ;
 MAIN
 ;package

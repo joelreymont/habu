@@ -2,7 +2,11 @@ split-str
 \ secret.f - credential storage, package SECRET: the native desktop store
 \ (src/lib/secret/macos.f; src/lib/secret/linux.f reads and writes, its ERASE
 \ throws E-CONFIG) unless the host binds its own with STORE!. No
-\ plaintext fallback; calls are synchronous and may block on the store.
+\ plaintext fallback, and no key material enters a diagnostic; calls are
+\ synchronous and may block on the store.
+\ Every word throws E-CONFIG for an identifier that is empty, holds a NUL or is
+\ malformed UTF-8, before the store is called. A found item stays in the caller's
+\ vector: the caller zeroes it (VEC:RESIZE to 0) before VEC:DELETE.
 \ STORAGE CLASS. PROCESS-WIDE: the store binding, written before use and only
 \ read afterwards. CALLER-OWNED: each native call's request record.
 require src/lib/error.f
@@ -10,6 +14,7 @@ require src/lib/span.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
 require src/lib/utf8-scalar.f
+require src/lib/vector.f
 
 package SECRET
 public
@@ -19,21 +24,20 @@ public
 -9500 s" an identifier was refused, or no store is bound or able to do the operation: a person must fix it"
    ERROR:CODE E-CONFIG
 -9501 s" the store failed or refused an access" ERROR:CODE E-ACCESS
--9502 s" the item's value is larger than the destination: pass a destination that holds it"
-   ERROR:CODE E-CAPACITY
 -9503 s" a bound store did not answer: it may answer later" ERROR:FAULT E-UNAVAILABLE
 
 private
 
 \ This mapping exists for one call. Opaque native handles are never dereferenced.
-\ data/capacity are READ's destination or WRITE's value, borrowed from the caller.
+\ dest is READ's vector and data/len WRITE's value, borrowed from the caller.
 STRUCTURE request DERIVE addr
    FIELD service ^u8
    FIELD service-len n
    FIELD account ^u8
    FIELD account-len n
+   FIELD dest ^VEC:vector<u8>
    FIELD data ^u8
-   FIELD capacity n
+   FIELD len n
    FIELD query n
    FIELD attrs n
    FIELD list n
@@ -60,9 +64,7 @@ CAST: >BYTES ( n -- ^u8 )
 : COPY-VALUE ( ^u8 n ^request -- )
    {: p:^ u:n req:^ :}
    u 0 < if E-ACCESS throw then
-   u req REQUEST-CAPACITY @ > if E-CAPACITY throw then
-   p u req REQUEST-DATA @ req REQUEST-CAPACITY @ SPAN:MAKE SPAN:COPY
-   u req REQUEST-SIZE !
+   p u req REQUEST-DEST @ VEC:APPEND
    true req REQUEST-FOUND ! ;
 
 defer NATIVE-READ ( ^request -- )
@@ -103,32 +105,23 @@ INSTALL-DEFAULT
 : REQ-FREE ( ^request -- )
    REQUEST>BYTES REQUEST-BYTES SPAN:MAKE MEM:FREE-SPAN ;
 
-\ The native store's words take identifiers and values the public words checked.
-\ No key material enters diagnostics. Habu allocates no copy of a value (WRITE
-\ borrows the caller's bytes, READ copies straight into the destination); copies
-\ inside the native store or the framework, such as the CFData READ gets back, are
-\ outside that guarantee, and the caller's buffer is never wiped. A failed access
-\ throws E-ACCESS; no native support (an absent library or symbol, macOS
-\ errSecNotAvailable) E-CONFIG; a failed macOS CoreFoundation allocation
-\ E-MEM-MAP, Habu's code for a failed allocation. On Linux the search is by the
-\ item's two attributes, so a dismissed unlock is an access failure, and the
-\ value is read by length, keeping NULs.
-: OS-READ ( str str SPAN:span<u8> -- n bool )
-   {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}
+\ A value's copies inside the native store or its framework are not Habu's.
+: OS-READ ( str str ^VEC:vector<u8> -- bool )
+   {: service:^ su:n account:^ au:n dest:^ :}
    service su account au REQ-OPEN {: req:^ :}
-   dest SPAN:$ req REQUEST-CAPACITY ! req REQUEST-DATA !
+   dest req REQUEST-DEST !
    req [: dup NATIVE-READ ;] catch {: code:n :}
    drop
    req code REQ-CLOSE {: error:n :}
-   req REQUEST-SIZE @ req REQUEST-FOUND @
+   req REQUEST-FOUND @
    req REQ-FREE
-   error 0 <> if 2drop error throw then ;
+   error 0 <> if drop error throw then ;
 
 
 : OS-WRITE ( str str str -- )
    {: service:^ su:n account:^ au:n value:^ vu:n :}
    service su account au REQ-OPEN {: req:^ :}
-   value req REQUEST-DATA ! vu req REQUEST-CAPACITY !
+   value req REQUEST-DATA ! vu req REQUEST-LEN !
    req [: dup NATIVE-WRITE ;] catch {: code:n :}
    drop
    req code REQ-CLOSE {: error:n :}
@@ -145,43 +138,39 @@ INSTALL-DEFAULT
    req REQ-FREE
    error 0 <> if drop error throw then ;
 
-TYPED-VARIABLE STORE-READ [ ^u8 n ^u8 n SPAN:span<u8> -- n bool ]
-TYPED-VARIABLE STORE-WRITE [ ^u8 n ^u8 n ^u8 n -- ]
-TYPED-VARIABLE STORE-ERASE [ ^u8 n ^u8 n -- bool ]
+TYPED-VARIABLE STORE-READ [ str str ^VEC:vector<u8> -- bool ]
+TYPED-VARIABLE STORE-WRITE [ str str str -- ]
+TYPED-VARIABLE STORE-ERASE [ str str -- bool ]
 : INSTALL-OS ( -- )
    ['] OS-READ STORE-READ ! ['] OS-WRITE STORE-WRITE ! ['] OS-ERASE STORE-ERASE ! ;
 INSTALL-OS
 
 public
 
-\ Binds a host store for the whole process, once, before any task uses SECRET: the
-\ binding is one global cell, so rebinding while tasks call SECRET races. Each xt
-\ has its public word's effect and gets the identifiers and value once that word's
-\ checks pass; its throws pass through unchanged. It owes each word's contract
-\ below, keeps the caller's bytes only by copying them, and throws the native
-\ codes: E-CONFIG for an identifier it cannot hold or an operation it cannot do,
-\ which a person must fix; E-ACCESS for a failed or refused access; E-UNAVAILABLE
-\ for a store that did not answer and may answer later; E-CAPACITY before any
-\ byte is copied. It may log the detail first, never key material.
-: STORE! ( [ str str SPAN:span<u8> -- n bool ] [ str str str -- ] [ str str -- bool ] -- )
+\ Binds a host store, once, before any task uses SECRET: one global cell. Each
+\ xt owes its word's contract, copies bytes it keeps and logs no key material.
+: STORE! ( [ str str ^VEC:vector<u8> -- bool ] [ str str str -- ] [ str str -- bool ] -- )
    STORE-ERASE ! STORE-WRITE ! STORE-READ ! ;
 
 
-\ Identifiers that are empty, hold a NUL or are malformed UTF-8 throw E-CONFIG on
-\ every word, before the store is called. A found item writes exactly n bytes into
-\ the caller's destination and answers true (0 true when empty); a miss answers 0
-\ false. A miss or a throw leaves the destination unchanged; a value larger than it
-\ is E-CAPACITY before any byte is copied. The caller owns the bytes.
-: READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
-   {: service:^ su:n account:^ au:n dest:SPAN:span<u8> :}
+\ Appends a found item, its room reserved before its first byte lands. A miss or
+\ a throw leaves the elements as they were. Neither identifier may lie in dest.
+: READ ( str str ^VEC:vector<u8> -- bool )
+   {: service:^ su:n account:^ au:n dest:^ :}
    service su INPUT account au INPUT
-   service su account au dest STORE-READ @ execute ;
+   dest VEC:COUNT {: held:n :}
+   false [: drop service su account au dest STORE-READ @ execute ;] catch
+   {: found code:n :}
+   code 0= if found if true exit then then
+   dest held VEC:RESIZE
+   code 0<> if code throw then
+   false ;
 
 
 \ Creates the item or replaces an existing item's value in place, without a
 \ duplicate (on macOS its access control stays). The value may be empty or hold
 \ NULs; a negative length or a null address throws E-CONFIG. The caller keeps the bytes.
-: WRITE ( ^u8 n ^u8 n ^u8 n -- )
+: WRITE ( str str str -- )
    {: service:^ su:n account:^ au:n value:^ vu:n :}
    vu 0 < value 0= or if E-CONFIG throw then
    service su INPUT account au INPUT
@@ -189,7 +178,7 @@ public
 
 
 \ Removes the item; a missing item returns false.
-: ERASE ( ^u8 n ^u8 n -- bool )
+: ERASE ( str str -- bool )
    {: service:^ su:n account:^ au:n :}
    service su INPUT account au INPUT
    service su account au STORE-ERASE @ execute ;
