@@ -4,8 +4,13 @@ split-str
 \ main.f its command line and T0 its compiler, after the declaration cells,
 \ bound to the checker's record, and the shadow's `does>` patch. INSTALL stores their xts in the
 \ engine's cells; in a build those stores reach the product being written.
+\ The selected target chooses the T0 emitter for live and shadow compilation,
+\ and COMP is an engine package: a sealed package cannot be reopened to load one later.
 
 require src/compiler/native/shadow.f
+require src/habu/t0-arm64.f
+require src/habu/t0-x64.f
+require src/habu/t0-wasm.f
 require src/habu/t0.f
 require src/habu/interpreter.f
 require src/habu/main.f

@@ -42,6 +42,7 @@ require src/habu/layout.f
 require src/habu/wl.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
+require src/habu/t0.f
 require src/habu/escape.f
 require src/core/top-row.f
 

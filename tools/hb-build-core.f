@@ -195,7 +195,6 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 : RUNTIME-FILES ( -- )
    s" src/habu/engine-origin.f" REQUIRE-FILE
-   s" src/habu/runtime-arm64.f" REQUIRE-FILE
    s" src/habu/code-bytes.f" REQUIRE-FILE
    s" src/habu/debug-watch.f" REQUIRE-FILE
    s" src/habu/stepper.f" REQUIRE-FILE
