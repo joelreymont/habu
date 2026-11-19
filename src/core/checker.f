@@ -1242,19 +1242,27 @@ variable PTRN   PTR-VARIABLE PTRA-P   variable PTR-CAP
 \ diagnostic can name the lost type. Its arena is per-definition scratch like
 \ PTRA: counter reset in NEW, height saved and restored by a prim-overload
 \ trial.
+\ A stale row (MK-STALE-ROW) wraps a caught window's open tail; STLC holds the
+\ catch whose success arm gives it back, 0 for a stale cell.
 1024 constant MAXSTALE-INIT
 SCRATCH{
-variable STLN   PTR-VARIABLE STLA-P   variable STL-CAP
+variable STLN   PTR-VARIABLE STLA-P   PTR-VARIABLE STLC-P   variable STL-CAP
 }SCRATCH
 : STLA ( -- ^n ) STLA-P @ ;
+: STLC ( -- ^n ) STLC-P @ ;
 
 : STL-ENSURE ( n -- ) {: need:n :}
    need STL-CAP @ <= IF exit THEN
    need STL-CAP @ 2 * max MAXSTALE-INIT max {: nc:n :}
    STLA-P @ STL-CAP @ cells nc cells SR-GROW STLA-P !
+   STLC-P @ STL-CAP @ cells nc cells SR-GROW STLC-P !
    nc STL-CAP ! ;
 
 : STALE>INNER ( n -- n ) PAY cells STLA + @ ;
+: STALE-ROW? ( n -- bool )
+   dup TAG T-STALE <> IF drop 0 0= 0= EXIT THEN
+   PAY cells STLC + @ 0 <> ;
+: STALE-ROW-CATCH ( n -- n ) PAY cells STLC + @ ;
 
 \ The one stale term the interpret row gives every cell beneath the cells it
 \ knows (TOP-ROW-PAD), minted per top-level load (CHECKER-TOP-LOAD) and marked in
@@ -2147,8 +2155,10 @@ global
    0 0= 0= ;
 private
 
+\ A stale tail (MK-STALE-ROW) is a row value: a row variable may take it whole.
 : ROW-VALUE? ( n -- bool )
    dup 0= IF drop RES-TRUE EXIT THEN
+   dup STALE-ROW? IF drop RES-TRUE EXIT THEN
    ROW-NODE? ;
 
 : CP-LIT? ( n -- bool ) {: pf:n :}
@@ -2311,6 +2321,9 @@ PTX-BARRIER-DEFAULT
 
 : ROW-VIEW-AT ( n n -- n ) {: row:n facts:n :}
    row R-RES {: node:n :}
+   node STALE-ROW? IF
+      facts node STALE-ROW-CATCH FACT-HAS IF node STALE>INNER facts RECURSE EXIT THEN
+   THEN
    node TAG S-PUSH <> IF node EXIT THEN
    node P>REST facts RECURSE {: rest:n :}
    node facts P-VIEW-TYPE rest MK-PUSH {: copy:n :}
@@ -2342,12 +2355,21 @@ variable JOIN-FACTS
 
 \ Idempotent: a cell two nested catches both leave stale is stale once, so the
 \ wrapper never nests and one STALE>INNER always reaches the real type.
-: MK-STALE ( n -- n )
-   T-RES dup TAG T-STALE = IF EXIT THEN
+: STALE-NEW ( n n -- n ) {: inner:n catch:n :}
    STLN @ 1 + STL-ENSURE
-   STLN @ cells STLA + !
+   inner STLN @ cells STLA + !
+   catch STLN @ cells STLC + !
    STLN @ TAG-SHIFT lshift T-STALE or
    STLN @ 1 + STLN ! ;
+: MK-STALE ( n -- n )
+   T-RES dup TAG T-STALE = IF EXIT THEN
+   0 STALE-NEW ;
+\ The open tail of a caught window that a throw path may have changed: catch
+\ n's success arm (ROW-VIEW-AT) gives the tail back. Idempotent as MK-STALE.
+: MK-STALE-ROW ( n n -- n ) {: row:n catch:n :}
+   row R-RES {: t:n :}
+   t TAG T-STALE = IF t EXIT THEN
+   t catch STALE-NEW ;
 
 : T-UNSTALE ( n -- n )
    T-RES dup TAG T-STALE = IF STALE>INNER T-RES THEN ;
@@ -2541,6 +2563,7 @@ CWIN-BOOT-DEFAULT
          r over P>TYPE RES-FALSE RECURSE IF drop RES-TRUE EXIT THEN
          P>REST R-RES
       REPEAT
+      dup STALE-ROW? IF r swap STALE>INNER RES-TRUE RECURSE EXIT THEN
       r = EXIT
    THEN
    x T-RES {: t:n :}
@@ -4746,6 +4769,7 @@ variable QAPP-N
 
 : QAPP-FRESH? ( n bool -- bool )   \ instantiate row's tail on the copy
    {: row:n pair?:bool :}
+   row STALE-ROW? IF RES-FALSE EXIT THEN
    pair? 0= IF row PAY RVK-IMPLICIT? EXIT THEN
    row ISROW 0= IF RES-FALSE EXIT THEN
    row PAY {: id:n :}
@@ -5113,13 +5137,20 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    an P>REST bn P>REST RECURSE ;
 
 
+\ A tail one path holds stale and the other as the row it wraps joins stale,
+\ unless the joined facts hold its catch's success, as a cell's proof does.
+: JOIN-TAIL ( n n -- n n ) {: a:n b:n :}
+   a STALE-ROW? IF a STALE>INNER R-RES b = IF a JOIN-FACTS @ ROW-VIEW-AT dup EXIT THEN THEN
+   b STALE-ROW? IF b STALE>INNER R-RES a = IF b JOIN-FACTS @ ROW-VIEW-AT dup EXIT THEN THEN
+   a b ;
+
 \ A logical cell meeting its group joins as its W fields, each merged with the
 \ group's field, so the joined row holds the group.
 : ROW-JOIN-PREP ( n n -- n n )
    {: a:n b:n :}
    a R-RES {: an:n :}  b R-RES {: bn:n :}
    an TAG S-PUSH <> bn TAG S-PUSH <> or IF
-      an ROW-NO-PROOF bn ROW-NO-PROOF EXIT
+      an bn JOIN-TAIL swap ROW-NO-PROOF swap ROW-NO-PROOF EXIT
    THEN
    bn an LOGHID-JOIN? IF an an P>REST CELL-FIELDS bn RECURSE EXIT THEN
    an bn LOGHID-JOIN? IF an bn bn P>REST CELL-FIELDS RECURSE EXIT THEN
@@ -5191,6 +5222,8 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
          ELSE PAY RV! THEN
       THEN EXIT
    THEN
+   \ Taking a cell from a stale tail reads it.
+   over STALE-ROW? over STALE-ROW? or IF STALE-NOTE U-FAIL EXIT THEN
    \ Zero terminates a closed evaluator row; it has no cell to descend into.
    over TAG S-PUSH <> over TAG S-PUSH <> or IF U-FAIL EXIT THEN
    \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells. The
@@ -5771,6 +5804,7 @@ variable SG-ROWS-PUBLISH
    {: exp:n act:n :}
    exp ROW-TAIL {: tail:n :}
    tail ISROW 0=  tail act ROW-TAIL =  or IF exp act EXIT THEN
+   act ROW-TAIL STALE-ROW? IF exp act EXIT THEN      \ the stale tail is the difference
    exp R-RES TAG S-PUSH <> IF exp act EXIT THEN
    exp act COVER-WALK  swap drop {: er:n ok:bool :}
    ok 0= IF exp act EXIT THEN
@@ -6527,6 +6561,7 @@ variable CWIN-DMASK                 \ the callee's intact bits over the live win
 
 : QUOT-TAIL-MARK ( n n n -- ) {: row:n floor:n mark:n :}
    row BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT {: t:n :}
+   t STALE-ROW? IF EXIT THEN
    t PAY floor < IF EXIT THEN
    t floor mark QUOT-TAIL-HELD? IF EXIT THEN
    t PAY RVK-INFERRED! ;
@@ -6611,17 +6646,23 @@ variable QUOT-LOSS
    normal R-RES dup TAG S-PUSH <> IF drop EXIT THEN
    P>TYPE copy P>TYPE CP-NORMAL CATCH-N @ 2swap CP-NEW copy P-PROOF! ;
 
-: ROW-STALE-FROM ( n n n n n bool -- n ) {: row:n normal:n cnt:n d:n mask:n exceptional:bool :}
-   cnt 0= IF row EXIT THEN
+\ An `open` window's body can reach the row below its cnt fixed cells: on the
+\ exceptional edge each cell there is uncertain and its tail stale.
+: ROW-STALE-FROM ( n n n n n bool bool -- n )
+   {: row:n normal:n cnt:n d:n mask:n exceptional:bool open:bool :}
+   cnt 0=  exceptional open and 0=  and IF row EXIT THEN
    row R-RES {: r:n :}
-   r TAG S-PUSH <> IF row EXIT THEN
+   r TAG S-PUSH <> IF
+      cnt 0=  r ISROW r STALE-ROW? or  and IF r CATCH-N @ MK-STALE-ROW EXIT THEN
+      row EXIT
+   THEN
    normal 0= IF 0 ELSE
       normal R-RES dup TAG S-PUSH = IF P>REST ELSE drop 0 THEN
    THEN {: next:n :}
-   r P>REST next cnt 1 - d 1 + mask exceptional RECURSE {: rest:n :}
+   r P>REST next  cnt 0= IF 0 ELSE cnt 1 - THEN  d 1 + mask exceptional open RECURSE {: rest:n :}
    r P>TYPE {: t:n :}
    exceptional IF
-      d XMASK-BITS >= IF RES-TRUE ELSE mask 1 d lshift and 0= THEN
+      cnt 0=  d XMASK-BITS >= or IF RES-TRUE ELSE mask 1 d lshift and 0= THEN
    ELSE RES-FALSE THEN {: uncertain:bool :}
    uncertain IF t MK-STALE ELSE t THEN
    rest MK-PUSH {: copy:n :}
@@ -6632,8 +6673,36 @@ variable QUOT-LOSS
    THEN
    copy ;
 
-: ROW-STALE-TOP ( n n n n bool -- n ) {: row:n normal:n cnt:n mask:n exceptional:bool :}
-   row normal cnt 0 mask exceptional ROW-STALE-FROM ;
+: ROW-STALE-TOP ( n n n n bool bool -- n )
+   {: row:n normal:n cnt:n mask:n exceptional:bool open:bool :}
+   row normal cnt 0 mask exceptional open ROW-STALE-FROM ;
+
+\ A body reaches its window's open tail unless QUOT-APPLY-INST made that tail
+\ for it and, after the unify, no window cell's type names it.
+: QUOT-TAIL-OWN? ( n -- bool ) {: row:n :}
+   row ROW-TAIL {: t:n :}
+   t ISROW 0= IF RES-FALSE EXIT THEN
+   QAPP-N @ 0 ?do
+      i cells QAPP-NEW + @ R-RES t = IF RES-TRUE unloop EXIT THEN
+   loop
+   RES-FALSE ;
+
+\ Whether row var r occurs within one of row x's first cnt terms.
+: TERMS-OCC? ( n n n -- bool ) {: r:n x:n cnt:n :}
+   x  cnt 0 ?do
+      R-RES dup TAG S-PUSH <> IF drop RES-FALSE unloop EXIT THEN
+      r over P>TYPE RES-FALSE OCC-WALK IF drop RES-TRUE unloop EXIT THEN
+      P>REST
+   loop
+   drop RES-FALSE ;
+
+\ Runs before CWIN-LIVE, while CWIN-DTERMS and CWIN-RTERMS count the window's
+\ terms: past them the unified rows hold the caller's cells.
+: QUOT-TAIL-REACH? ( n n bool -- bool ) {: q:n row:n own:bool :}
+   row ROW-TAIL {: t:n :}
+   t ISROW t STALE-ROW? or 0= IF RES-FALSE EXIT THEN
+   own 0= IF RES-TRUE EXIT THEN
+   t q Q>DIN CWIN-DTERMS @ TERMS-OCC?  t q Q>RIN CWIN-RTERMS @ TERMS-OCC?  or ;
 
 : RSCATCH
    \ Catchable `throw` is not process no-return. `die` remains separate
@@ -6648,13 +6717,16 @@ variable QUOT-LOSS
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
+     QTT @ Q>DIN QUOT-TAIL-OWN?  QTT @ Q>RIN QUOT-TAIL-OWN?
      noret QTT @ Q>XHAS 0= and 0=
-   ELSE RES-TRUE THEN {: returns:bool :}
+   ELSE RES-FALSE RES-FALSE RES-TRUE THEN {: dmine:bool rmine:bool returns:bool :}
    QTT @ TAG T-QUOT = IF
      QTT @ INH-CHARGE
      QUOT-WINDOW
      CATCH-N @ 1 + CATCH-N !
      QTT @ QUOT-STEP-IN
+     QTT @ QTT @ Q>DIN dmine QUOT-TAIL-REACH? {: dopen:bool :}
+     QTT @ QTT @ Q>RIN rmine QUOT-TAIL-REACH? {: ropen:bool :}
      noret IF
         QTT @ Q>XHAS 0= IF TOKEN-DEAD! THEN
      ELSE
@@ -6677,8 +6749,8 @@ variable QUOT-LOSS
         \ the normal row walks beside the live one, so it is expanded alike
         noret IF 0 ELSE QTT @ Q>DOUT CWIN-DTERMS @ ROW-EXPAND-TERMS THEN {: nd:n :}
         noret IF 0 ELSE QTT @ Q>ROUT THEN {: nr:n :}
-        DCUR @ nd CWIN-DTERMS @ CWIN-DMASK @ QTT @ Q>XHAS ROW-STALE-TOP DCUR !
-        RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ROW-STALE-TOP RCUR !
+        DCUR @ nd CWIN-DTERMS @ CWIN-DMASK @ QTT @ Q>XHAS dopen ROW-STALE-TOP DCUR !
+        RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ropen ROW-STALE-TOP RCUR !
      THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
      \ Opaque xt, as RSEXEC judges it: catching it launders whatever the xt does

@@ -2773,7 +2773,14 @@ sections above.
   that exact term in place. Other cells become `stale<t>`;
   `E-STALE-READ` (`keep_value_before_catch`) rejects `@`, `c@`, arithmetic,
   typed locals, a declared output and other typed reads. A stale value may be
-  moved, dropped (unless linear), or bound to an untyped local. The exact
+  moved, dropped (unless linear), or bound to an untyped local. An open row
+  in the caught window, one the body can reach through a declared row or a
+  window cell typed over it, is stale like a fixed cell outside the evidence:
+  every cell in it and its tail (`stale<A>`), on the data and the return
+  stack. It may be moved whole; a declared output row, a typed read or a
+  drop of a cell from it is refused. So a helper that catches its quotation
+  over an open row, `( R [ R -- R ] -- R )`, returns the row only on the
+  success arm, as `catch {: code:n :} code 0<> if code throw then` does. The exact
   catch code proves normal output in the success arm of core `0=` (or false
   arm of core `0<>`); an unrelated zero, shadowed predicate or another
   catch's code proves nothing. A later catch still treats physically replaced
@@ -2794,10 +2801,11 @@ sections above.
   intact, so a catch of it leaves its window stale. A tick of a never-returning callee still fits against its
   declared output row.
 - **Linear and multi-cell values respect the stale boundary.** A linear
-  handle cannot cross a quotation-literal catch: reading it is
-  `E-STALE-READ`, and dropping it is a linear refusal. Open it inside the
-  caught body; use `['] WORD catch` only when WORD's own throw paths preserve
-  the handle; or consume it before rethrowing. A multi-cell value is one logical stale
+  handle that a throw path of the caught body may replace or consume is
+  stale: reading it is `E-STALE-READ`, and dropping it is a linear refusal.
+  A callee whose every throw path keeps the handle leaves it live, through
+  its quotation literal or `['] W` alike. Open the handle inside the caught
+  body, or consume it before rethrowing. A multi-cell value is one logical stale
   value (`stale<option<pt>>`): one `drop` removes it, an untyped local can
   transport it, and a typed use or `MATCH` is `E-STALE-READ`.
 - **`depth` and `.s` count no value held in several cells.** They count raw

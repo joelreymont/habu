@@ -135,9 +135,12 @@ public
    s" a scheme cannot pass through execute" T-LABEL
    s" : C2-SCOPE-EXECUTE ( read-view<q,q,u8> forall<p,[ read-view<p,p,u8> -- read-view<p,p,u8> | U -- U ]> | U -- read-view<q,q,u8> | U ) execute ;" 70 SUBJECT:EXITED? TTRUE
    s" ordinary quotations remain catchable with the same view operand" T-LABEL
-   s" : C2-QUOTE-CATCH ( read-view<q,q,u8> [ read-view<q,q,u8> -- read-view<q,q,u8> | U -- U ] | U -- | U ) catch drop drop ;" 0 SUBJECT:EXITED? TTRUE
+   \ the quotation is over the word's own return row, which catch returns only
+   \ on its success arm
+   s" : C2-QUOTE-CATCH ( read-view<q,q,u8> [ read-view<q,q,u8> -- read-view<q,q,u8> | U -- U ] | U -- | U ) catch {: code:n :} drop code 0<> if code throw then ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot pass through catch" T-LABEL
-   s" : C2-SCOPE-CATCH ( read-view<q,q,u8> forall<p,[ read-view<p,p,u8> -- read-view<p,p,u8> | U -- U ]> | U -- | U ) catch drop drop ;" 70 SUBJECT:EXITED? TTRUE
+   s" : C2-SCOPE-CATCH ( read-view<q,q,u8> forall<p,[ read-view<p,p,u8> -- read-view<p,p,u8> | U -- U ]> | U -- | U ) catch {: code:n :} drop code 0<> if code throw then ;"
+      70 s" error[E-MISMATCH]: `catch` takes [ -- ]; the stack holds forall<a,[ read-view<a,a,u8> -- read-view<a,a,u8> ]>" SUBJECT:REFUSED? TTRUE
    s" ordinary quotations remain finally bodies with the same view operand" T-LABEL
    s" : C2-QUOTE-FINALLY ( read-view<q,q,u8> [ read-view<q,q,u8> -- read-view<q,q,u8> | U -- U ] | U -- | U ) [: ;] finally drop ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot pass through finally" T-LABEL

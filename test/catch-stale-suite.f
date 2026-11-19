@@ -28,6 +28,7 @@ public
 variable CS-TICK
 : WBOOM ( ^u8 -- ) drop E-CS-BOOM throw ;
 : WMAYBE ( ^u8 -- ^u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ;
+: WMAYBEN ( n -- n ) dup 0= IF E-CS-BOOM throw THEN ;
 : WKEEP ( ^u8 -- ^u8 ) dup c@ drop ;
 : CLEANMAYBE ( -- ) CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
 : FINBODY ( ^u8 -- ^u8 ) dup c@ drop ;
@@ -516,6 +517,36 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    code3 E-CS-BOOM T=
    r CS-BUF = TTRUE ;
 
+\ A caught body that reaches the open row below its window leaves it stale<A>;
+\ a helper returns that row only on the success arm.
+: CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ;
+
+: CS-SECTION-OPEN ( -- )
+   \ a quotation parameter over the row keeps no cell of R intact
+   s" O1 ( R [ R -- R ] -- R n ) catch" CS-CODE<
+   s" stale<A> n" CS-CODE?  CS-CODE-END
+   \ a literal that runs the parameter reaches R alike
+   s" O2 ( R [ R -- R ] -- R n ) {: q :} [: q execute ;] catch" CS-CODE<
+   s" stale<A> n" CS-CODE?  CS-CODE-END
+   \ a literal whose window holds a quotation over the caller's row reaches it
+   s" O3 ( R [ R -- R ] -- R ) [: CS-EXEC ;] catch {: code:n :} drop" CS-CODE<
+   s" stale<A>" CS-CODE?  CS-CODE-END
+   \ a stale row may be moved; taking a cell from it is a read
+   s" O4 ( R [ R -- R ] -- R ) catch drop drop" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   \ the success arm of the exact code gives the row back, past a join
+   s" O5 ( R [ R -- R ] -- R ) catch {: code:n :} code 0<> if code throw then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" O6 ( R [ R -- R ] -- R ) [: CS-EXEC ;] catch {: code:n :} drop code 0= if exit then code throw"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" O7 ( R [ R -- R ] -- R ) catch {: code:n :} 7 KEEPN code 0= if 1+ else 2 + then drop code 0<> if code throw then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ a body over a row of its own cannot reach the caller's
+   s" O8 ( R ^u8 -- R ^u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+   \ nor through a quotation over the caller's row below its window
+   s" BW1 ( R [ R -- R ] n -- R [ R -- R ] n n ) [: WMAYBEN ;] catch"
+      CHECK-QUIET-CANDIDATE! -1 T= ;
+
 : RUN ( -- )
    T-RESET
    CS-SECTION-REPRODUCERS
@@ -529,6 +560,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    CS-SECTION-WIDTHS
    CS-SECTION-RUNTIME
    CS-SECTION-TICK
+   CS-SECTION-OPEN
    CS-SECTION-IMAGE
    T-REPORT ;
 
