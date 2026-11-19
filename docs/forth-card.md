@@ -123,6 +123,8 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 - A row's `str` is one string value; a file whose first line is `split-str`
   reads it as `^u8 n`, which `s"` gives. Unmarked, `s" a" LTRIM` is
   `E-MISMATCH` and `s" a" >str LTRIM` passes (forth.md **Types**).
+- A word reads bytes as `str` and writes them into a `^VEC:vector<u8>`; a
+  row never says `^u8 n`.
 - A cell address is `^a`, `n` only a genuine scalar.
   `^a` needs a body that keeps the pointee parametric — a `^` local admits
   `@` and `!`, but reading the cell specialises `a`; read it as a number and
