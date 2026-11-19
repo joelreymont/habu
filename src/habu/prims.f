@@ -413,7 +413,7 @@ EPRIM: .s           EPRIM;
 EPRIM: depth        PE-N PE-OUT EPRIM;
 EPRIM: here         PE-PTR-A-RAW PE-OUT EPRIM;
 EPRIM: tok-imm?     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
-EPRIM: bare-tok-imm?     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
+EPPRIM: CHECKER-RESOLVE bare-tok-imm? PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-kind?  PE-N PE-IN PE-N PE-OUT EPRIM;
 EPRIM: allot        PE-N PE-IN EPRIM;
 EPRIM: align        EPRIM;
@@ -710,12 +710,12 @@ EPRIM: policy-seal    EPRIM;
 EPRIM: wordlist       PE-N PE-OUT EPRIM;
 EPRIM: get-current    PE-N PE-OUT EPRIM;
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: bare-search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+EPPRIM: CHECKER-RESOLVE bare-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
-EPRIM: bare-scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
-                      PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
+EPPRIM: CHECKER-RESOLVE bare-scope-find PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
 \ num-parse ( ^u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile
