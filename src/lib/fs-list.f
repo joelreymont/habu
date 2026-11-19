@@ -35,7 +35,7 @@ private
 4096 constant BLOCK-CAP
 
 public
-NEWTYPE context
+NEWTYPE context ^u8
 
 2 cells BLOCK-CAP + constant STORAGE-BYTES
 

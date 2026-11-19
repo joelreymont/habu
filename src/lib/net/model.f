@@ -3286,10 +3286,10 @@ ENUM poll none fed spoiled done ;ENUM
    c CHUNK-BUF BUF:CLEAR
    room got BUF:N>BLEN c CHUNK-BUF BUF:APPEND-SPAN
    status CURL:HTTP-STATUS>N 200 = if
-      d c [: 2dup FEED-CHUNK ;] catch
+      [: d c FEED-CHUNK ;] catch
    else
-      d c [: dup KEEP-CHUNK ;] catch
-   then {: fault:n :} 2drop
+      [: c KEEP-CHUNK ;] catch
+   then {: fault:n :}
    fault 0= if construct answer fed exit then
    status 0 fault READ-FAULT c KEEP-ENDING
    construct answer spoiled ;
@@ -4126,8 +4126,8 @@ ENUM record-event kept faulted ;ENUM
    replayed 0= if c [: RECEIPT-CHECK ;] CHECK-STEP then
    c STREAM STREAM-DECODER @ MATCH option
       none OF ENDOF
-      some OF
-         [: dup SSE:CLOSE ;] catch {: closed:n :} drop
+      some OF {: d:SSE:decoder :}
+         [: d SSE:CLOSE ;] catch {: closed:n :}
          closed c KEEP-FAULT
       ENDOF
    ;MATCH

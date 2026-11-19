@@ -24,7 +24,7 @@ public
 -9452 s" FEED was given a negative length, or bytes at a null address" ERROR:CODE E-SOURCE
 -9453 s" an event's type or data is not valid UTF-8" ERROR:CODE E-UTF8
 
-NEWTYPE decoder
+NEWTYPE decoder ^n
 
 private
 

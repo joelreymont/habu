@@ -33,7 +33,7 @@ public
 -9623 s" a statement scope's body handed back another statement"
    ERROR:CODE E-HANDLE
 
-NEWTYPE connection
+NEWTYPE connection ^u8
 DEFLINEAR SQLITE:statement
 
 private
