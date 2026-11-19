@@ -948,6 +948,7 @@ variable MDV-I   variable MDV-F
       MD-EXEC-OPAQUE  of s" E-EXEC-OPAQUE-XT" endof
       MD-CATCH-OPAQUE of s" E-EXEC-OPAQUE-XT" endof
       MD-RAW-PTR      of s" E-RAW-CELL-PTR" endof
+      MD-RAW-FAMILY   of s" E-MISMATCH" endof
       MD-NULL-PTR     of s" E-RAW-CELL-PTR" endof
       MD-DBASE-PTR    of s" E-RAW-CELL-PTR" endof
       MD-RAW-FIELD    of s" E-RAW-CELL-PTR" endof
@@ -1056,6 +1057,7 @@ variable MDV-I   variable MDV-F
       MD-EXEC-OPAQUE  of s" `execute` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell; call a declaration by name at top level" endof
       MD-CATCH-OPAQUE of s" `catch` a quotation parameter, a `defer` bound with `is`, or an xt fetched from a `TYPED-VARIABLE NAME [ in -- out ]` cell; call a declaration by name at top level" endof
       MD-RAW-PTR      of s" declare the cell that holds the address with `PTR-VARIABLE`, `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ^t` or `TYPED-BUFFER NAME ^t`" endof
+      MD-RAW-FAMILY   of s" keep the value in storage that names its type, `TYPED-VARIABLE NAME t` or `TYPED-BUFFER NAME t`; for `constant`, define a word that leaves it, `: NAME ( -- t ) ... ;`" endof
       MD-NULL-PTR     of s" read the value from the cell that holds it, not through `NULL-PTR`" endof
       MD-DBASE-PTR    of s" reach the cell through an accessor that names its pointee, as `( -- ^n )`, or take a pointer it holds with `ptr-field`" endof
       MD-RAW-EXEC     of s" declare the cell that holds the code as `TYPED-VARIABLE NAME [ in -- out ]`, a `TYPED-BUFFER` or `DYNAMIC-BUFFER` of `[ in -- out ]`, or a `defer` bound with `is`" endof
@@ -1160,6 +1162,7 @@ variable MDV-I   variable MDV-F
       MD-EXEC-OPAQUE  of s" execute: opaque xt of unknown provenance (fetched from untyped memory, or ticked from a primitive, a declaration or a word with no stack effect)" endof
       MD-CATCH-OPAQUE of s" catch: opaque xt of unknown provenance (fetched from untyped memory, or ticked from a primitive, a declaration or a word with no stack effect)" endof
       MD-RAW-PTR      of s" raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell" endof
+      MD-RAW-FAMILY   of s" raw storage cell: an undeclared cell holds only a plain number, flag or character, never a nominal value" endof
       MD-NULL-PTR     of s" null address: nothing is read through NULL-PTR, so it is never a nominal type and never the address of one" endof
       MD-DBASE-PTR    of s" base address: a cell reached from a pointer computed off NULL-PTR, or from the engine's DATA base, holds a plain value at every pointee depth, never a nominal type or a pointer" endof
       MD-RAW-FIELD    of s" ptr-field: base is an undeclared raw storage cell, not a declared pointer cell" endof
@@ -1274,6 +1277,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" generation from before a mutation" endof
       MD-RIGID-XDOM   of s" identity of another domain" endof
       MD-RAW-PTR      of s" pointer through an untyped cell" endof
+      MD-RAW-FAMILY   of s" nominal value through an untyped cell" endof
       MD-RAW-FIELD    of s" field of an undeclared cell" endof
       MD-UNDERFLOW    of TOP-STEP @ IF s" reaches below the stack" ELSE s" reaches below the inputs" THEN endof
       MD-NULL-PTR     of s" reaches through `NULL-PTR`" endof

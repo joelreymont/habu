@@ -86,6 +86,10 @@ variable ERR-U
    S\" \"code\":\"E-RAW-CELL-PTR\"" HAS?
    S\" \"message\":\"raw storage cell: a pointer cannot be stored in or fetched from an undeclared cell\"" HAS? ;
 
+: RAW-FAMILY ( -- )
+   S\" \"message\":\"raw storage cell: an undeclared cell holds only a plain number, flag or character, never a nominal value\"" HAS?
+   S\" \"help\":\"keep the value in storage that names its type, `TYPED-VARIABLE NAME t` or `TYPED-BUFFER NAME t`; for `constant`, define a word that leaves it, `: NAME ( -- t ) ... ;`\"" HAS? ;
+
 : RAW-XT ( -- )
    S\" \"code\":\"E-RAW-CELL-PTR\"" HAS?
    S\" \"message\":\"raw storage cell: an undeclared cell cannot hold an execution token / a quotation\"" HAS? ;
@@ -162,8 +166,11 @@ variable ERR-U
    s" a NEWTYPE value to constant is refused, as one stored into V is" T-LABEL
    ARM
    [: s" TS-NT:MK constant TS-NC" evaluate-closed ;] 70 TTHROWSQ
-   MISMATCH AT-CONSTANT  S\" \"found\":\"ts-nt:tk\"" HAS?
-   DISARM ;
+   MISMATCH AT-CONSTANT  S\" \"found\":\"ts-nt:tk\"" HAS?  RAW-FAMILY
+   ARM
+   [: s" variable TS-NV TS-NT:MK TS-NV !" evaluate-closed ;] 70 TTHROWSQ
+   MISMATCH AT-STORE  RAW-FAMILY
+   DISARM ;                 \ the refused program's TS-NV loses its name
 
 : CASE-TYPED-N-PTR ( -- )
    s" here BN ! through a ( -- ^n ) accessor is refused as in a body" T-LABEL

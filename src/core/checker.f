@@ -150,8 +150,8 @@ split-str
 \ the null's permissive arm, or `( -- ^[ -- n ] ) NULL-PTR 8 +` would run
 \ at address 8; so a declared code cell cannot be compared with the null, and
 \ an empty one is read through a number-typed accessor of the same address.
-\ That refusal latches RAW-EXEC-HIT: at every base the repair is to declare
-\ the cell that holds the xt.
+\ That refusal records FENCE-EXEC in RAW-FENCE: at every base the repair is to
+\ declare the cell that holds the xt.
 \
 \ Hold frames: while a quotation is compared with a declared callable, the
 \ callable's implicit data tail is rigid. The callee runs it on whatever
@@ -4313,9 +4313,7 @@ variable NMOFF                           \ its token's offset in the checked tex
 : NOMPTR-BLOCK? ( n n -- bool ) {: actual:n expected:n :}
    CUR-STRICT @ 0= IF RES-FALSE EXIT THEN
    actual NOM-SCALAR? expected ISVAR and IF
-      INPUT-KIND? IF
-         expected PAY TVK-RAW? 0= IF RES-FALSE EXIT THEN
-      THEN
+      INPUT-KIND? IF RES-FALSE EXIT THEN
       RES-TRUE EXIT
    THEN
    expected NOM-SCALAR? actual ISVAR and ;
@@ -4332,7 +4330,9 @@ variable NMOFF                           \ its token's offset in the checked tex
    t LAYOUT-MEM-OK? ;
 
 SCRATCH{
-variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
+\ Why an undeclared cell or a base address refused this token's value: a FENCE-
+\ reason, FENCE-OK for none.
+variable RAW-FENCE
 \ The layout type a one-cell variable met in this token's unify, 0 for none.
 variable ONE-CELL-HIT
 \ The layout type a variable of a pointee stepped by an offset met, 0 for none.
@@ -4353,9 +4353,6 @@ variable FACT-KIND
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region.
 variable BASE-PTR-HIT
-\ An undeclared cell or a base address was declared to hold an executable value
-\ in this token's unify.
-variable RAW-EXEC-HIT
 \ A `stale<t>` met a type this token's unify demanded. It holds the stale term
 \ read, 0 for none.
 variable STALE-HIT
@@ -4408,6 +4405,9 @@ variable XT-DECL
    b a MOVED-TAKES? IF RES-FALSE EXIT THEN
    a b ONE-CELL-MET  b a ONE-CELL-MET
    a b OFF-STEP-MET  b a OFF-STEP-MET
+   \ RAW-BLOCK? judges an undeclared cell's var, with its reason.
+   a ISVAR IF a PAY TVK-RAW? IF RES-FALSE EXIT THEN THEN
+   b ISVAR IF b PAY TVK-RAW? IF RES-FALSE EXIT THEN THEN
    RES-TRUE ;
 
 
@@ -4435,11 +4435,15 @@ variable XT-DECL
    t OPAQUE-XT? IF XT-DECL @ IF FENCE-OK ELSE FENCE-EXEC THEN EXIT THEN
    FENCE-OK ;                                         \ other atoms have no code-cell provenance
 
+\ RAW-FENCE keeps the strongest reason, as the FENCE- numbers rank them: an
+\ executable value, the one rule that names a base and a raw cell alike, then a
+\ pointer, then a family.
+: RAW-FENCE-HIT ( n -- ) RAW-FENCE @ max RAW-FENCE ! ;
+
 : RAW-OK? ( n -- bool )
    T-RES {: t:n :}
    t TVK-RAW FENCE-WHY
-   dup FENCE-PTR  = IF -1 RAW-PTR-HIT ! THEN
-   dup FENCE-EXEC = IF -1 RAW-EXEC-HIT ! THEN
+   dup FENCE-FAMILY = over FENCE-PTR = or over FENCE-EXEC = or IF dup RAW-FENCE-HIT THEN
    dup FENCE-STALE = IF t STALE-HIT ! THEN
    0= ;
 
@@ -4447,7 +4451,7 @@ variable XT-DECL
    {: t:n kind:n :}
    t kind FENCE-WHY
    dup FENCE-OK   = IF drop RES-FALSE EXIT THEN
-   dup FENCE-EXEC = IF drop -1 RAW-EXEC-HIT ! RES-TRUE EXIT THEN
+   dup FENCE-EXEC = IF RAW-FENCE-HIT RES-TRUE EXIT THEN
    dup FENCE-STALE = IF drop t STALE-HIT ! RES-TRUE EXIT THEN
    drop
    kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
@@ -5532,6 +5536,7 @@ private
 29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?)
 30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth
 31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC)
+107 constant MD-RAW-FAMILY    \ a nominal family value met an undeclared raw storage cell (RAW-OK? FENCE-FAMILY)
 32 constant MD-STALE-READ     \ a token read a cell `catch` left stale (U-TYPE met a T-STALE)
 34 constant MD-SCOPE-KIND     \ a scope identity was used as a value type
 35 constant MD-C2-COPY       \ a C2 exclusive value was copied by a transport
@@ -5713,10 +5718,9 @@ TAIL-CAPTURE-DEFAULT
    \ a cell with no type left to read answers before any rule about which type
    \ it is
    STALE-HIT @ 0 <> IF STALE-HIT @ STALE-WHY MDIAG! THEN
-   \ the executable value first: it is the one rule that names a base and a raw
-   \ cell alike
-   RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN
-   RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
+   RAW-FENCE @ FENCE-EXEC = IF MD-RAW-EXEC MDIAG! THEN
+   RAW-FENCE @ FENCE-PTR = IF MD-RAW-PTR MDIAG! THEN
+   RAW-FENCE @ FENCE-FAMILY = IF MD-RAW-FAMILY MDIAG! THEN
    ONE-CELL-HIT @ 0 <> IF   \ the type copied only when this refusal latches the reason
       MDIAG @  MD-ONE-CELL MDIAG!  MDIAG @ <> IF
          ONE-CELL-HIT @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
@@ -18418,9 +18422,9 @@ variable SV-SGRIN   variable SV-SGROUT
 variable SV-SGWIN  variable SV-SGWOUT  variable SV-SGWRIN  variable SV-SGWROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL   variable SV-PIN
-variable SV-RAWPTR  variable SV-ONECELL  variable SV-STEP  variable SV-CELLVAR
+variable SV-RAWFENCE  variable SV-ONECELL  variable SV-STEP  variable SV-CELLVAR
 variable SV-FACT  variable SV-FTERM  variable SV-FKIND
-variable SV-BASEPTR  variable SV-RAWEXEC  variable SV-STALE  variable SV-SCOPE
+variable SV-BASEPTR  variable SV-STALE  variable SV-SCOPE
 variable TSEEN  variable TSOK
 \ The closest failed row's effect, how far it got, and the last trial's reach.
 variable TCLOSE  variable TBEST  variable TREACH
@@ -18443,9 +18447,9 @@ variable TCLOSE  variable TBEST  variable TREACH
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    SGWIN @ SV-SGWIN !  SGWOUT @ SV-SGWOUT !  SGWRIN @ SV-SGWRIN !  SGWROUT @ SV-SGWROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET !
-   RAW-PTR-HIT @ SV-RAWPTR !  ONE-CELL-HIT @ SV-ONECELL !  STEP-HIT @ SV-STEP !  ONE-CELL-VAR @ SV-CELLVAR !
+   RAW-FENCE @ SV-RAWFENCE !  ONE-CELL-HIT @ SV-ONECELL !  STEP-HIT @ SV-STEP !  ONE-CELL-VAR @ SV-CELLVAR !
    FACT-HIT @ SV-FACT !  FACT-TERM @ SV-FTERM !  FACT-KIND @ SV-FKIND !
-   BASE-PTR-HIT @ SV-BASEPTR !  RAW-EXEC-HIT @ SV-RAWEXEC !  STALE-HIT @ SV-STALE !  SCOPE-HIT @ SV-SCOPE ! ;
+   BASE-PTR-HIT @ SV-BASEPTR !  STALE-HIT @ SV-STALE !  SCOPE-HIT @ SV-SCOPE ! ;
 
 : TRIAL-REST-SG
    SV-SGBAD @ SGBAD !  SV-SGBAD-A @ SGBAD-A !
@@ -18469,9 +18473,9 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
-   SV-RAWPTR @ RAW-PTR-HIT !  SV-ONECELL @ ONE-CELL-HIT !  SV-STEP @ STEP-HIT !  SV-CELLVAR @ ONE-CELL-VAR !
+   SV-RAWFENCE @ RAW-FENCE !  SV-ONECELL @ ONE-CELL-HIT !  SV-STEP @ STEP-HIT !  SV-CELLVAR @ ONE-CELL-VAR !
    SV-FACT @ FACT-HIT !  SV-FTERM @ FACT-TERM !  SV-FKIND @ FACT-KIND !
-   SV-BASEPTR @ BASE-PTR-HIT !  SV-RAWEXEC @ RAW-EXEC-HIT !  SV-STALE @ STALE-HIT !  SV-SCOPE @ SCOPE-HIT !
+   SV-BASEPTR @ BASE-PTR-HIT !  SV-STALE @ STALE-HIT !  SV-SCOPE @ SCOPE-HIT !
    TRIAL-REST-SG ;
 
 \ Is a var still an open distance-row base operand? Its pointee never met a
@@ -23208,7 +23212,7 @@ variable POST-A0
    THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
+   FENCE-OK RAW-FENCE !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
@@ -23223,7 +23227,7 @@ variable POST-A0
    \ The raw-cell and base-address refusals name themselves where they are
    \ raised. The flags are dropped here because TRY-PRIMS applies candidate
    \ rows in turn and the next token must start clean.
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   FENCE-OK RAW-FENCE !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    NZ-STEP
    unj IF
@@ -23827,7 +23831,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-DEPTH !  0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
    0 UNFIT !
-   0 RAW-PTR-HIT !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   FENCE-OK RAW-FENCE !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    0 SGWIN !  0 SGWOUT !  0 SGWRIN !  0 SGWROUT !
