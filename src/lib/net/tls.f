@@ -3,6 +3,10 @@ split-str
 \ session speaks TLS on a connected, non-blocking stream socket the caller
 \ owns and closes. No word waits: want-read or want-write asks the caller to
 \ wait until the socket is readable or writable and call the same word again.
+\ READ tells the peer's close_notify, `closed`, from a transport that ended
+\ without one, `truncated`: a stream cut at a record boundary, by an attacker
+\ or a dropped connection, reads as `truncated` and never as an end.
+\ A peer's TLS 1.3 KeyUpdate fails READ: mbedTLS 4.2 does not support it.
 \ Verification is mbedTLS's client default, REQUIRED: the peer's chain must
 \ end in a certificate of the trust file and name the host START was given.
 \ HELD? tells whether the session holds bytes it read from the socket that
@@ -37,12 +41,15 @@ SUMTYPE tls-step
 ;SUMTYPE
 
 \ One transfer: `moved` carries the bytes read or written, at least one.
-\ `closed` is the peer's close_notify or its end of stream.
+\ `closed` is the peer's close_notify alone; `truncated` is a transport that
+\ closed with no close_notify, mbedtls_ssl_read's 0, so what was read may
+\ lack its tail.
 SUMTYPE tls-io
    VARIANT moved len ;VARIANT
    VARIANT want-read ;VARIANT
    VARIANT want-write ;VARIANT
    VARIANT closed ;VARIANT
+   VARIANT truncated ;VARIANT
    VARIANT failed n ;VARIANT
 ;SUMTYPE
 
@@ -220,7 +227,8 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 : >IO ( n -- tls-io )
    {: rc:n :}
    rc 0 > if rc >LEN construct tls-io moved exit then
-   rc 0= rc CLOSE-NOTIFY = or if construct tls-io closed exit then
+   rc 0= if construct tls-io truncated exit then
+   rc CLOSE-NOTIFY = if construct tls-io closed exit then
    rc WANT-READ = if construct tls-io want-read exit then
    rc WANT-WRITE = if construct tls-io want-write exit then
    rc construct tls-io failed ;

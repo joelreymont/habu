@@ -4,7 +4,10 @@ split-str
 \ directory under TMPDIR that the test removes: a trusted handshake carries
 \ GET / and its answer to the close; another host name and an unrelated CA
 \ are distrusted at the handshake, a missing trust file at START; STOP lets
-\ the same record START again. Every wait is a poll on a descriptor.
+\ the same record START again. A peer that ends its stream without
+\ close_notify reads `truncated`: the test relays the handshake between the
+\ session and the server itself, then sends the session its FIN. Every wait
+\ is a poll on a descriptor.
 \ Run: bin/hb --load src/lib/net/tls-test.f </dev/null
 require src/lib/test.f
 require src/lib/string.f
@@ -42,6 +45,11 @@ TYPED-VARIABLE SESSION TLS:session
 2 constant FAILED
 3 constant WANT-READ
 4 constant WANT-WRITE
+\ How a read ended, beside FAILED.
+5 constant CLOSED
+6 constant TRUNCATED
+$4000 constant RELAY-ROOM
+RELAY-ROOM BUFFER: RELAYED           \ bytes on their way through the relay
 
 $04 constant CN-MISMATCH            \ MBEDTLS_X509_BADCERT_CN_MISMATCH
 $08 constant NOT-TRUSTED            \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
@@ -155,13 +163,17 @@ $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_f
    SERVER-OUT @ close ;
 
 
-\ A connected, non-blocking socket to the server.
-: DIAL ( -- fd )
-   LOOPBACK TCP4:ADDRESS PORT @ TCP4:PORT TCP4:CONNECT
+\ A connected, non-blocking socket to the loopback port.
+: DIAL-AT ( n -- fd )
+   {: port:n :}
+   LOOPBACK TCP4:ADDRESS port TCP4:PORT TCP4:CONNECT
    MATCH TCP4:connect-result
       connected OF TCP4:CONNECTION-FD ENDOF
       failed OF TCP4:ERRNO>N drop s" connect" T-FAIL-AS -1 >FD ENDOF
    ;MATCH ;
+
+\ A connected, non-blocking socket to the server.
+: DIAL ( -- fd ) PORT @ DIAL-AT ;
 
 : HANG-UP ( fd -- )
    SESSION TLS:STOP  FD>N close ;
@@ -209,13 +221,14 @@ $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_f
          want-read OF sock FD:POLLIN AWAIT sent ENDOF
          want-write OF sock FD:POLLOUT AWAIT sent ENDOF
          closed OF false exit ENDOF
+         truncated OF false exit ENDOF
          failed OF drop false exit ENDOF
       ;MATCH
       dup u >= if drop true exit then
    again ;
 
-\ ANSWER filled until the session closes; false once READ answers failed.
-: TAKE ( fd -- bool )
+\ ANSWER filled until READ ends it: CLOSED, TRUNCATED or FAILED.
+: TAKE ( fd -- n )
    {: sock:fd :}
    0 ANSWER-U !
    begin
@@ -224,8 +237,9 @@ $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_f
          moved OF LEN>N ANSWER-U +! ENDOF
          want-read OF sock FD:POLLIN AWAIT ENDOF
          want-write OF sock FD:POLLOUT AWAIT ENDOF
-         closed OF true exit ENDOF
-         failed OF drop false exit ENDOF
+         closed OF CLOSED exit ENDOF
+         truncated OF TRUNCATED exit ENDOF
+         failed OF drop FAILED exit ENDOF
       ;MATCH
    again ;
 
@@ -236,7 +250,7 @@ $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_f
    sock s" localhost" s" ca.pem" SET-UP 0 T= DONE T=
    sock SHAKE 0 T= DONE T=
    sock S\" GET / HTTP/1.0\r\n\r\n" PUT TTRUE
-   sock TAKE TTRUE
+   sock TAKE CLOSED T=
    ANSWER ANSWER-U @ s" HTTP/1.0 200" STARTS-WITH? TTRUE
    sock HANG-UP ;
 
@@ -276,8 +290,100 @@ $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_f
    SHAKE-HANDS SHAKE-HANDS ;
 
 
+\ ---- A peer that ends its stream without close_notify
+
+\ The relay's two ends, as TCP4 connections.
+: >CONN ( fd -- TCP4:connection ) FD>N TCP4:>CONNECTION ;
+
+\ Whether a TCP4 call succeeded.
+: OK? ( TCP4:status -- bool )
+   MATCH TCP4:status
+      ok OF true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
+
+\ Bytes one end has sent, written to the other; false once it has ended or
+\ failed.
+: MOVE ( TCP4:connection TCP4:connection -- bool )
+   {: from:TCP4:connection to:TCP4:connection :}
+   from RELAYED RELAY-ROOM TCP4:TRANSFER-BYTES TCP4:TRY-READ
+   MATCH TCP4:try-read-result
+      data OF to RELAYED rot TCP4:WRITE OK? ENDOF
+      closed OF drop false ENDOF
+      empty OF true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
+
+\ One wait for either end, forwarding what it sent; false once an end has
+\ ended or failed.
+: PUMP ( TCP4:connection TCP4:connection -- bool )
+   {: peer:TCP4:connection far:TCP4:connection :}
+   peer TCP4:CONNECTION-FD FD:POLLIN 0 >IDX PROCESS:PFD-AT!
+   far TCP4:CONNECTION-FD FD:POLLIN 1 >IDX PROCESS:PFD-AT!
+   2 -1 >MS PROCESS:POLL drop
+   0 >IDX PROCESS:PFD-REVENTS 0<> if
+      peer far MOVE 0= if false exit then
+   then
+   1 >IDX PROCESS:PFD-REVENTS 0<> if far peer MOVE exit then
+   true ;
+
+\ The handshake to its end, relayed between PEER, the session's own peer,
+\ and the server.
+: RELAYED-SHAKE ( TCP4:connection TCP4:connection -- n n )
+   {: peer:TCP4:connection far:TCP4:connection :}
+   begin
+      SESSION TLS:HANDSHAKE >STEP {: what:n code:n :}
+      what EVENTS 0= if what code exit then
+      peer far PUMP 0= if FAILED 0 exit then
+   again ;
+
+\ A loopback listener on a port of its own, and the port.
+: LISTEN ( -- TCP4:listener n )
+   LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
+   MATCH TCP4:bind-result
+      bound OF ENDOF
+      failed OF drop E-PROC-OUTPUT throw ENDOF
+   ;MATCH {: lis:TCP4:listener :}
+   lis 1 TCP4:LISTEN MATCH TCP4:status
+      ok OF ENDOF
+      failed OF drop E-PROC-OUTPUT throw ENDOF
+   ;MATCH
+   lis TCP4:LOCAL MATCH TCP4:endpoint-result
+      endpoint OF TCP4:PORT>N nip ENDOF
+      failed OF drop E-PROC-OUTPUT throw ENDOF
+   ;MATCH lis swap ;
+
+\ The session's peer: the connection DIAL-AT made, accepted at once since it
+\ is already queued.
+: PEER ( TCP4:listener -- TCP4:connection )
+   TCP4:ACCEPT MATCH TCP4:accept-result
+      accepted OF 2drop ENDOF
+      failed OF drop E-PROC-OUTPUT throw ENDOF
+   ;MATCH ;
+
+\ The relay ends the handshake once the session is done; the server's
+\ answer to the session's Finished is never forwarded. The peer's FIN, a
+\ shutdown and not a close, reaches the session even with that Finished still
+\ unread at the peer, where a close would answer it with a reset.
+: CUT-PEER ( -- )
+   s" a peer that ends its stream without close_notify reads truncated" T-LABEL
+   LISTEN {: lis:TCP4:listener port:n :}
+   port DIAL-AT {: sock:fd :}
+   lis PEER {: peer:TCP4:connection :}
+   DIAL >CONN {: far:TCP4:connection :}
+   sock s" localhost" s" ca.pem" SET-UP 0 T= DONE T=
+   peer far RELAYED-SHAKE 0 T= DONE T=
+   peer TCP4:SENDING TCP4:SHUTDOWN OK? TTRUE
+   sock TAKE TRUNCATED T=
+   ANSWER-U @ 0 T=
+   sock HANG-UP
+   peer TCP4:CLOSE OK? drop
+   far TCP4:CLOSE OK? drop
+   lis TCP4:CLOSE-LISTENER OK? drop ;
+
+
 : CASES ( -- )
-   CERTS SERVE TRUSTED OTHER-HOST UNRELATED MISSING RESTART ;
+   CERTS SERVE TRUSTED OTHER-HOST UNRELATED MISSING RESTART CUT-PEER ;
 
 : RUN ( -- )
    SCRATCH

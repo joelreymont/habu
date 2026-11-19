@@ -10,11 +10,13 @@ split-str
 \ The https cases speak to `openssl s_server`, this test's own child on a
 \ loopback port, with a CA, an unrelated CA and a localhost certificate made
 \ in a scratch directory under TMPDIR that the test removes, as tls-test.f
-\ does. With -www, a trusted GET / reads its answer to the close, and an
-\ unrelated CA or an origin naming another host fails the greeting with
+\ does. With -www, a trusted GET / reads its answer to its close_notify, and
+\ an unrelated CA or an origin naming another host fails the greeting with
 \ `trust`. Without it, the server sends in one record what the test writes to
 \ its stdin: an answer whose record carries bytes past its body leaves them in
-\ the TLS session, and the next request dials anew.
+\ the TLS session, and the next request dials anew. A relay task between
+\ HTTPC and an s_server restarted on TLS 1.2 closes HTTPC's socket in place of
+\ the server's close_notify, so an answer read to the close fails `cut`.
 \ TEST-TABLE compares TEST-FSM:TABLE-MODULE's text for the LIFECYCLE table
 \ with spec/HttpcTable.tla whole, so the table spec/HttpcFollows.tla ties to
 \ the model spec/Httpc.tla is the code's.
@@ -244,23 +246,24 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       ;MATCH
    again ;
 
-: LISTEN-LOOPBACK ( -- bool )
+\ A loopback listener on a port of its own, kept in the cells.
+: LISTEN-LOOPBACK ( ^n ^n -- bool ) {: lis-cell:^ port-cell:^ :}
    LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
    MATCH TCP4:bind-result
-      bound OF TCP4:LISTENER>N LISTENER-CELL ! ENDOF
+      bound OF TCP4:LISTENER>N lis-cell ! ENDOF
       failed OF drop false exit ENDOF
    ;MATCH
-   LISTENER@ BACKLOG TCP4:LISTEN
+   lis-cell @ TCP4:>LISTENER BACKLOG TCP4:LISTEN
    MATCH TCP4:status ok OF ENDOF failed OF drop false exit ENDOF ;MATCH
-   LISTENER@ TCP4:LOCAL
+   lis-cell @ TCP4:>LISTENER TCP4:LOCAL
    MATCH TCP4:endpoint-result
-      endpoint OF TCP4:PORT>N PORT-CELL ! drop true ENDOF
+      endpoint OF TCP4:PORT>N port-cell ! drop true ENDOF
       failed OF drop false ENDOF
    ;MATCH ;
 
 \ The port is published before readiness is.
 : SERVER-WORK ( -- )
-   LISTEN-LOOPBACK 0= if 1 STOP atomic-add drop then
+   LISTENER-CELL PORT-CELL LISTEN-LOOPBACK 0= if 1 STOP atomic-add drop then
    1 READY atomic-add drop
    SERVE-LOOP
    1 DONE atomic-add drop ;
@@ -654,7 +657,10 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
       some OF IDX>N a swap ENDOF
    ;MATCH ;
 
-: S-SERVER ( -- PROCESS:request )
+\ TLS 1.3 encrypts a record's type, so only on TLS 1.2 does the relay see
+\ which record is the close_notify; after it s_server sends no FIN and waits
+\ for the client's.
+: S-SERVER ( bool -- PROCESS:request ) {: old:bool :}
    s" /usr/bin/env" PROCESS:NEW
    s" openssl" PROCESS:ARG
    s" s_server" PROCESS:ARG
@@ -664,10 +670,11 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
    s" server.pem" PROCESS:ARG
    s" -key" PROCESS:ARG
    s" server.key" PROCESS:ARG
+   old if s" -no_tls1_3" PROCESS:ARG then
    DIR$ PROCESS:CWD ;
 
 \ The server answering every request with its status page.
-: WWW-SERVER ( -- PROCESS:request ) S-SERVER s" -www" PROCESS:ARG ;
+: WWW-SERVER ( bool -- PROCESS:request ) S-SERVER s" -www" PROCESS:ARG ;
 
 \ The server's stdout and stderr share one pipe, read only up to the ACCEPT
 \ line: what it writes after that stays far below the pipe's capacity.
@@ -697,7 +704,7 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
 \ test's stdin holds descriptor 0, so the pipe's end is never 0.
 : SCRIPT-SERVE ( -- )
    FD:PIPE-PAIR {: r:fd w:fd :}
-   S-SERVER 0 >FD r PROCESS:FD TLS-SERVE
+   false S-SERVER 0 >FD r PROCESS:FD TLS-SERVE
    r FD>N close
    w FD>N SERVER-IN ! ;
 
@@ -705,24 +712,24 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
 : SCRIPTED ( str -- ) {: a:^ u:n :}
    SERVER-IN @ >FD a u FD:WRITE-FULL ;
 
-\ The origin `https://` HOST `:` the server's port.
-: HTTPS-ORIGIN! ( str -- ) {: h:^ hu:n :}
+\ The origin `https://` HOST `:` PORT.
+: HTTPS-ORIGIN! ( str n -- ) {: h:^ hu:n port:n :}
    SB-RESET s" https://" SB-APPEND h hu SB-APPEND s" :" SB-APPEND
-   TLS-PORT @ FMT:SB-U SB$ {: a:^ u:n :}
+   port FMT:SB-U SB$ {: a:^ u:n :}
    a ORIGIN-BUF u BYTE-COPY  u ORIGIN-U ! ;
 
 : TRUST! ( str -- )
    IN-DIR {: a:^ u:n :}
    a TRUST-BUF u BYTE-COPY  u TRUST-U ! ;
 
-\ A conn opened on the https origin for HOST, trusting the scratch file, with
-\ a room of ROOM bytes.
-: BEGIN-HTTPS-IN ( str str n -- ) {: h:^ hu:n f:^ fu:n room:n :}
-   f fu TRUST!  h hu HTTPS-ORIGIN!
+\ A conn opened on the https origin for HOST at PORT, trusting the scratch
+\ file, with a room of ROOM bytes.
+: BEGIN-HTTPS-AT ( str str n n -- ) {: h:^ hu:n f:^ fu:n port:n room:n :}
+   f fu TRUST!  h hu port HTTPS-ORIGIN!
    LINK ORIGIN$ TRUST-BUF TRUST-U @ ROOM-BUF room HTTPC:OPEN
    s" OPEN takes the https origin" T-LABEL TTRUE ;
 
-: BEGIN-HTTPS ( str str -- ) ROOM-CAP BEGIN-HTTPS-IN ;
+: BEGIN-HTTPS ( str str -- ) TLS-PORT @ ROOM-CAP BEGIN-HTTPS-AT ;
 
 : ASK-ROOT ( -- )
    LINK s" GET" s" /" HTTPC:REQUEST
@@ -746,7 +753,7 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
 : TEST-HTTPS-TRUSTED ( -- )
    s" localhost" s" ca.pem" BEGIN-HTTPS
    ASK-ROOT WIDE-SPAN READ-ALL
-   s" a trusted https GET / answers 200 and its body to the close" T-LABEL
+   s" a trusted https GET / answers 200 and its body to close_notify" T-LABEL
    FAULTS @ 0 T=  LAST-STATUS @ 200 T=
    GOT$ s" <HTML>" STARTS-WITH? TTRUE
    LINK HTTPC:HEAD$ s" HTTP/1.0 200" STARTS-WITH? TTRUE
@@ -773,7 +780,7 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
 \ body's at the body: STALE$, in the same record, stays in the TLS session. A
 \ reused connection would answer the second request with it.
 : TEST-HTTPS-HELD ( -- )
-   s" localhost" s" ca.pem" HELD-HEAD$ nip BEGIN-HTTPS-IN
+   s" localhost" s" ca.pem" TLS-PORT @ HELD-HEAD$ nip BEGIN-HTTPS-AT
    ASK-ROOT
    SB-RESET HELD-HEAD$ SB-APPEND s" first" SB-APPEND STALE$ SB-APPEND
    SB$ SCRIPTED
@@ -785,11 +792,145 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
    200 s" second" ANSWER-IS
    END-CASE ;
 
+\ ---- A relay that withholds the close_notify
+
+\ The relay task accepts HTTPC's connection and dials s_server. It forwards
+\ the client's bytes as they come and the server's by whole records, each
+\ framed by its 5-byte header. At the server's first alert record, the
+\ close_notify, it closes the client's socket with that record unsent.
+5 constant RECORD-HEAD
+21 constant ALERT-TYPE                  \ a TLS 1.2 record's content type
+$10000 constant RECORDS-CAP             \ a part record, 5 + 2^14 + 2048
+                                        \ bytes at most, and a read
+create RECORDS RECORDS-CAP allot        \ the server's bytes not forwarded
+variable RECORDS-U
+create UPWARD REQ-CAP allot             \ the client's bytes on their way
+variable WITHHELD                       \ the client was closed at an alert
+variable RELAY-LISTENER
+variable RELAY-PORT
+variable RELAY-DONE
+TASK:MIN-STACK TASK:TASK RELAY-TASK
+
+\ The length of the whole record at AT, header included; 0 while it is not
+\ whole yet.
+: RECORD-LEN ( n -- n ) {: at:n :}
+   at RECORD-HEAD + RECORDS-U @ > if 0 exit then
+   RECORDS at + 3 + c@ 8 lshift  RECORDS at + 4 + c@ or RECORD-HEAD +
+   {: len:n :}
+   at len + RECORDS-U @ > if 0 exit then
+   len ;
+
+\ Where the whole records before any alert end, and whether an alert
+\ record follows them.
+: WHOLE ( -- n bool )
+   0 begin {: at:n :}
+      at RECORD-LEN {: len:n :}
+      len 0= if at false exit then
+      RECORDS at + c@ ALERT-TYPE = if at true exit then
+      at len +
+   again ;
+
+\ The whole records before any alert to the client; what is not sent moves
+\ to the buffer's start. False at an alert, which WITHHELD records.
+: PASS ( TCP4:connection -- bool ) {: client:TCP4:connection :}
+   WHOLE {: sent:n alert:bool :}
+   client RECORDS sent TCP4:TRANSFER-BYTES TCP4:WRITE PEER-STATUS
+   RECORDS sent + RECORDS RECORDS-U @ sent - BYTE-COPY
+   sent negate RECORDS-U +!
+   alert if true WITHHELD ! false exit then
+   true ;
+
+: UP ( TCP4:connection n -- bool ) {: server:TCP4:connection k:n :}
+   server UPWARD k TCP4:TRANSFER-BYTES TCP4:WRITE PEER-STATUS true ;
+
+\ The client's bytes to the server; false at the client's end.
+: FROM-CLIENT ( TCP4:connection TCP4:connection -- bool )
+   {: client:TCP4:connection server:TCP4:connection :}
+   client UPWARD REQ-CAP TCP4:TRANSFER-BYTES TCP4:TRY-READ
+   MATCH TCP4:try-read-result
+      data OF BLEN>N server swap UP ENDOF
+      closed OF drop false ENDOF
+      empty OF true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
+
+\ The server's bytes into RECORDS, its whole records passed on; false at
+\ its alert or its end.
+: FROM-SERVER ( TCP4:connection TCP4:connection -- bool )
+   {: client:TCP4:connection server:TCP4:connection :}
+   server RECORDS RECORDS-U @ + RECORDS-CAP RECORDS-U @ - TCP4:TRANSFER-BYTES
+   TCP4:TRY-READ MATCH TCP4:try-read-result
+      data OF BLEN>N RECORDS-U +! client PASS ENDOF
+      closed OF drop false ENDOF
+      empty OF true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
+
+\ Forwards both ways until either end ends or the server's alert.
+: SHUTTLE ( TCP4:connection TCP4:connection -- )
+   {: client:TCP4:connection server:TCP4:connection :}
+   begin
+      client TCP4:CONNECTION-FD FD:POLLIN 0 >IDX PROCESS:PFD-AT!
+      server TCP4:CONNECTION-FD FD:POLLIN 1 >IDX PROCESS:PFD-AT!
+      2 -1 >MS PROCESS:POLL drop
+      0 >IDX PROCESS:PFD-REVENTS 0<> if
+         client server FROM-CLIENT 0= if exit then
+      then
+      1 >IDX PROCESS:PFD-REVENTS 0<> if
+         client server FROM-SERVER 0= if exit then
+      then
+   again ;
+
+: RELAY-SERVER ( TCP4:connection -- ) {: client:TCP4:connection :}
+   LOOPBACK TCP4:ADDRESS TLS-PORT @ TCP4:PORT TCP4:CONNECT
+   MATCH TCP4:connect-result
+      connected OF client over SHUTTLE TCP4:CLOSE PEER-STATUS ENDOF
+      failed OF drop ENDOF
+   ;MATCH
+   client TCP4:CLOSE PEER-STATUS ;
+
+: RELAY-WORK ( -- )
+   RELAY-LISTENER @ TCP4:>LISTENER TCP4:ACCEPT
+   MATCH TCP4:accept-result
+      accepted OF 2drop RELAY-SERVER ENDOF
+      failed OF drop ENDOF
+   ;MATCH
+   1 RELAY-DONE atomic-add drop ;
+
+: START-RELAY ( -- )
+   0 RECORDS-U !  false WITHHELD !
+   0 RELAY-DONE !
+   s" the relay listens on loopback" T-LABEL
+   RELAY-LISTENER RELAY-PORT LISTEN-LOOPBACK TTRUE
+   ['] RELAY-WORK RELAY-TASK TASK:ACTIVATE ;
+
+: END-RELAY ( -- )
+   RELAY-DONE 1 RELAY-TASK TEST-WAIT:FOR-CELL
+   RELAY-TASK TASK:KILL
+   RELAY-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER PEER-STATUS ;
+
+\ s_server serves on TLS 1.2 from here on.
+: TEST-HTTPS-CUT ( -- )
+   TLS-UNSERVE true WWW-SERVER TLS-SERVE
+   START-RELAY
+   s" localhost" s" ca.pem" RELAY-PORT @ ROOM-CAP BEGIN-HTTPS-AT
+   ASK-ROOT WIDE-SPAN READ-ALL
+   END-CASE
+   END-RELAY
+   s" the relay closed the client in place of the close_notify" T-LABEL
+   WITHHELD @ TTRUE
+   s" an https answer read to the close fails `cut` without close_notify"
+   T-LABEL
+   HTTPC-FAULT:CUT true FAULT-IS
+   LAST-STATUS @ 200 T=
+   GOT$ s" <HTML>" STARTS-WITH? TTRUE ;
+
 : HTTPS-CASES ( -- )
-   CERTS WWW-SERVER TLS-SERVE
+   CERTS false WWW-SERVER TLS-SERVE
    TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST
    TLS-UNSERVE SCRIPT-SERVE
-   TEST-HTTPS-HELD ;
+   TEST-HTTPS-HELD
+   TEST-HTTPS-CUT ;
 
 : TEST-HTTPS ( -- )
    SCRATCH

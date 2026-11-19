@@ -43,13 +43,16 @@ split-str
 \ `trust` with the verify flags or mbedTLS's code as CAUSE; any other failure
 \ is `handshake`. Every receive and write then goes through the session, and
 \ a write asked to wait is made again with the same bytes, as TLS requires.
-\ A connection is reused only when its session holds no byte READ has not
-\ handed out (TLS's HELD?): a poll of the socket cannot see bytes mbedTLS
-\ has read into the session, and the next answer would be read from them.
-\ The probe stays a peek at the socket, since nothing reads the session
-\ between that check and the probe, so a TLS record held on the socket makes
-\ the connection stale too. Hanging up STOPs a session that started before
-\ the socket is closed.
+\ Only the peer's close_notify is its end of stream: a transport that closes
+\ without one is `cut` at any point of an answer, a body read to the close
+\ included, since a stream cut at a record boundary would otherwise end that
+\ body short and whole. A connection is reused only when its session holds
+\ no byte READ has not handed out (TLS's HELD?): a poll of the socket cannot
+\ see bytes mbedTLS has read into the session, and the next answer would be
+\ read from them. The probe stays a peek at the socket, since nothing reads
+\ the session between that check and the probe, so a TLS record held on the
+\ socket makes the connection stale too. Hanging up STOPs a session that
+\ started before the socket is closed.
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
@@ -306,8 +309,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : SEND-FAILED ( ^conn n -- ) {: c e:n :}
    c construct fault send e FAIL ;
 
-\ One receive through the TLS session, waiting as it asks. Its `closed` is
-\ the peer's end.
+\ One receive through the TLS session, waiting as it asks. Its `closed`, the
+\ peer's close_notify, is the peer's end; `truncated` is `cut`.
 : TLS-RECEIVE ( ^conn ^u8 n -- take ) {: c a:^ u:n :}
    begin
       c CONN-TLS a u TLS:READ MATCH TLS:tls-io
@@ -315,6 +318,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
          want-read OF c POLLIN RECEIVE-WAIT? ENDOF
          want-write OF c POLLOUT RECEIVE-WAIT? ENDOF
          closed OF construct take eof exit ENDOF
+         truncated OF c CUT false ENDOF
          failed OF c swap RECEIVE-FAILED false ENDOF
       ;MATCH
    0= until construct take broke ;
@@ -330,6 +334,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
          want-read OF off c POLLIN SEND-WAIT? ENDOF
          want-write OF off c POLLOUT SEND-WAIT? ENDOF
          closed OF off c 0 SEND-FAILED false ENDOF
+         truncated OF off c 0 SEND-FAILED false ENDOF
          failed OF off c rot SEND-FAILED false ENDOF
       ;MATCH
       0= if drop false exit then
