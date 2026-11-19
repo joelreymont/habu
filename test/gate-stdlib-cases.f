@@ -683,18 +683,16 @@ SUITE byte-buffer
 
 \ Off: x86-64.
 false [if]
-\ The x86_64 seam is written and exercised from this aarch64 host: the ELF64
-\ writer, the mov r64, imm64 relocation site and the x86-64 target contract.
-\ Its own suite because it loads src/os/linux-x86-64/elf.f, which spells the
-\ same words as the host's image writer and cannot share a process with it.
+\ The x86_64 seam is exercised from this aarch64 host: the mov r64, imm64
+\ relocation site and the x86-64 target contract.
 SUITE x86-64-seam
    test/x86-64-seam.f
 ;SUITE
 [then]
 
 \ The same seam's instruction emitters, whose bytes an aarch64 engine can produce
-\ and read back. Its own suite for the same reason: it loads
-\ src/os/linux-x86-64/sys.f, which spells the host's syscall-number words.
+\ and read back. Its own suite because it loads src/os/linux-x86-64/sys.f, which
+\ spells the host's syscall-number words.
 SUITE x86-64-emit
    test/x86-64-emit.f
 ;SUITE

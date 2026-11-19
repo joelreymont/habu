@@ -33,7 +33,7 @@ $1000 constant UNMAPPED                         \ below vm.mmap_min_addr
 5 constant JMP-BYTES                            \ e9 and its rel32
 7 constant RIP-STORE-BYTES                      \ 48 89 05 and its disp32
 16 constant DIGITS
-VMBASE REGION-OFF + constant REGION-VA
+LINUX-LAYOUT:IMAGE-VA REGION-OFF + constant REGION-VA
 REGION-VA DICT-SIZE + constant CP-VA            \ where the boot leaves r15
 REGION-VA REGION + CELL - constant LAST-VA      \ the region's last cell
 REGION-VA REGION + constant PAST-VA             \ never mapped

@@ -10,7 +10,8 @@ require src/os/linux-flags.f
 
 \ The production image writer loads at top level, as every production path loads it.
 require src/os/linux/layout.f
-require src/os/linux-x86-64/elf.f
+require src/os/linux/elf.f
+require src/os/linux/sign.f
 
 package X64HARNESS
 using X64ASM
@@ -33,13 +34,12 @@ variable WRONG-AT                    \ the check a negative image fails, or 0
 
 : EXIT-LBL ( -- label ) EXIT-CELL @ >LABEL ;
 
-\ The signer, the image driver and the OS seam over package X64CODE's byte
-\ stream. They load into this package because the x86-64 sys.f spells the host
-\ seam's syscall-number words, which must not become globals here. The driver's
+\ The image driver and the OS seam over package X64CODE's byte stream. They
+\ load into this package because the x86-64 sys.f spells the host seam's
+\ syscall-number words, which must not become globals here. The driver's
 \ packaged dependencies, fdio.f and sign-id.f, and the seam's,
 \ src/os/linux-flags.f, load at top level above, because a file required
 \ inside a package cannot open one.
-s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
 using DRIVER
 s" src/os/linux-x86-64/sys.f" required
@@ -77,23 +77,40 @@ using LINUX-LAYOUT   \ the guard
    0 >R32 NR-EXIT-GROUP >IMM32 ASM-SINK ENC-MOV32-RI32
    ASM-SINK ENC-SYSCALL ;
 
+: TEXT-VA ( -- n ) LINUX-LAYOUT:IMAGE-VA LINUX-LAYOUT:CODE-OFF + ;
+
+\ The engine's import names, each ending in a NUL: the kernel reaches its C
+\ functions through their GOT slots, so every image binds all of them.
+create IMPORT-BUF BUF:HDR-BYTES allot
+
+: IMPORTS$ ( -- str ) IMPORT-BUF BUF:SPAN$ BUF:BLEN>N ;
+
+: IMPORTS! ( -- )
+   IMPORT-BUF 64 BUF:N>BLEN BUF:INIT
+   ELF:IMPORTS 0 ?do
+      i ELF:IMPORT$ BUF:N>BLEN IMPORT-BUF BUF:APPEND-SPAN
+      0 IMPORT-BUF BUF:APPEND-BYTE
+   loop ;
+
 public
 
 \ The address the next routine appended lands at, so the one it is emitted at.
-: POSITION ( -- n ) VMBASE LINUX-LAYOUT:CODE-OFF + ASM-LEN + ;
+: POSITION ( -- n ) TEXT-VA ASM-LEN + ;
 
 \ Write the staged stream as it stands: byte 0 is the ELF entry.
 : WRITE ( ^u8 n -- ) {: path:^ pathu:n :}
-   ASM-CODE BUILD-IMAGE
-   s" x64-peer" SET-SIGID CODESIG2
+   TEXT-VA ASM-LINK
+   CODE ASM-LEN TEXT-VA IMPORTS$ s" " ELF:BUILD-X64   \ no DATA, so an empty carrier
+   s" x64-peer" ELF:SET-SIGID ELF:CODESIG2
    path pathu DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
    $12 M-OFF M-LE32@ $FFFF and 62 T=
-   $18 M-OFF M-LE32@ VMBASE LINUX-LAYOUT:CODE-OFF + T=
+   $18 M-OFF M-LE32@ TEXT-VA T=
    $1C M-OFF M-LE32@ 0 T= ;
 
-\ The sink every image is staged in, held across the images of one run.
-: INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT ;
-: DISPOSE ( -- ) ASM-SINK BUF:DISPOSE ;
+\ The sink every image is staged in and the import names, held across the
+\ images of one run.
+: INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT  IMPORTS! ;
+: DISPOSE ( -- ) ASM-SINK BUF:DISPOSE  IMPORT-BUF BUF:DISPOSE ;
 ;using   \ LINUX-LAYOUT
 ;package

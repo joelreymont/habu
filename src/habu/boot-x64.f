@@ -936,7 +936,7 @@ variable LEXITHOOK
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: booted:label crash:label rest:label stub:label :}
    OPEN,
    CODE-REGION,
-   DATA-REGION,                  \ its carrier is empty: nothing to copy
+   DATA-REGION,
    true DATA-INIT,
    floor PUBLISH-FLOOR,
    RAX code-end MOVABS,  RAX CODE-END-CELL CELL!

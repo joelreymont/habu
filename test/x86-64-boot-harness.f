@@ -3,7 +3,6 @@ split-str
 \ the whole kernel and runs one case against the DATA the boot mapped:
 \ BOOT-OPEN, stages the boot and the kernel, the case follows, and BOOT-CLOSE,
 \ exits 0 and writes the image.
-require src/os/linux-x86-64/elf.f
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f

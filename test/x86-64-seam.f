@@ -1,234 +1,17 @@
 split-str
-\ x86-64-seam.f - the x86_64 Linux seam from an aarch64 engine: the ELF writer
-\ (src/os/linux-x86-64/elf.f) read back field by field, the mov r64, imm64
-\ relocation site kind (RELOC) over hand-built fixtures, and the x86-64 row
-\ of src/compiler/target.f. HB-TARGET-LINUX-X86-64? is false on this host, so
-\ the x86-64 arms of host selectors (src/compiler/native/abi.f, src/habu/prof.f)
-\ are not reached here.
+\ x86-64-seam.f - the x86_64 Linux seam from an aarch64 engine: the mov r64,
+\ imm64 relocation site kind (RELOC) over hand-built fixtures, and the x86-64
+\ row of src/compiler/target.f. HB-TARGET-LINUX-X86-64? is false on this host,
+\ so the x86-64 arms of host selectors (src/compiler/native/abi.f,
+\ src/habu/prof.f) are not reached here.
 
 require src/lib/test.f
 require src/lib/error.f
-require src/lib/byte-buffer.f
 require src/arch/x86-64/asm.f
-require src/arch/x86-64/icode.f
-\ The writer brings src/os/image-bytes.f in under `using X64CODE`, so its shared
-\ buffer uses the x86-64 capacity. The ARM64 code layer below has its own package.
-require src/os/linux/layout.f
-s" src/os/linux-x86-64/elf.f" required
-require src/os/image-bytes.f
-
-require src/arch/arm64/asm.f
-require src/arch/arm64/icode.f
 require src/habu/address-carrier.f
 require src/compiler/target.f
 
 package X64-SEAM-TEST
-using IMAGE-BYTES
-using LINUX-LAYOUT   \ the guard
-
-\ ---- reading the written image ----------------------------------------------
-: U8@ ( n -- n )
-   MBUF swap M-BYTE@ ;
-
-: U16@ ( n -- n ) {: off:n :}
-   off U8@  off 1+ U8@ 8 lshift or ;
-
-: U32@ ( n -- n )
-   M-OFF M-LE32@ ;
-
-: U64@ ( n -- n ) {: off:n :}
-   off U32@  off 4 + U32@ 32 lshift or ;
-
-\ ---- the fields a loader reads ----------------------------------------------
-\ Each field is read back, not compared with a recorded blob, so a failure names
-\ the field and its value. Every address and size is a literal, so this test
-\ fails rather than drifts if either target moves one.
-$400000 constant WANT-VMBASE
-$1000 constant WANT-CODE-OFF
-62 constant WANT-EM-X86-64
-2 constant WANT-ELFCLASS64
-1 constant WANT-ELFDATA2LSB
-64 constant PHOFF
-56 constant PHENT
-6 constant WANT-PHNUM
-$10000 constant WANT-PAGE-MAX
-$2400000 constant WANT-REGION-VA        \ VMBASE plus REGION-OFF
-$2300000 constant WANT-REGION
-$4700000 constant WANT-CARRIER-VA       \ the region's end
-\ The metadata past the six program headers, which end at $190.
-$190 constant WANT-INTERP-OFF
-$1B0 constant WANT-HASH-OFF
-$1C8 constant WANT-DYNSYM-OFF
-$210 constant WANT-DYNSTR-OFF
-$228 constant WANT-RELA-OFF
-
-: PH ( n n -- n ) {: i:n field:n :}
-   PHOFF i PHENT * + field + ;
-
-: PH-TYPE@ ( n -- n )   0 PH U32@ ;
-: PH-FLAGS@ ( n -- n )  4 PH U32@ ;
-: PH-OFF@ ( n -- n )    8 PH U64@ ;
-: PH-VADDR@ ( n -- n )  $10 PH U64@ ;
-: PH-PADDR@ ( n -- n )  $18 PH U64@ ;
-: PH-FILESZ@ ( n -- n ) $20 PH U64@ ;
-: PH-MEMSZ@ ( n -- n )  $28 PH U64@ ;
-: PH-ALIGN@ ( n -- n )  $30 PH U64@ ;
-
-: CHECK-IDENT ( -- )
-   s" e_ident names a 64-bit little-endian ELF" T-LABEL
-   0 U8@ $7F T=  1 U8@ 69 T=  2 U8@ 76 T=  3 U8@ 70 T=
-   4 U8@ WANT-ELFCLASS64 T=
-   5 U8@ WANT-ELFDATA2LSB T=
-   6 U8@ 1 T=
-   7 U8@ 0 T=  8 U8@ 0 T=
-   9 U8@ 0 T=  10 U8@ 0 T=  11 U8@ 0 T=  12 U8@ 0 T=
-   13 U8@ 0 T=  14 U8@ 0 T=  15 U8@ 0 T= ;
-
-: CHECK-HEADER ( -- )
-   s" the header names an x86-64 executable entered at CODE-OFF" T-LABEL
-   $10 U16@ 2 T=                          \ e_type = ET_EXEC
-   $12 U16@ WANT-EM-X86-64 T=             \ e_machine = EM_X86_64
-   $14 U32@ 1 T=                          \ e_version = EV_CURRENT
-   $18 U64@ WANT-VMBASE WANT-CODE-OFF + T= \ e_entry
-   $20 U64@ PHOFF T=                      \ e_phoff
-   $28 U64@ 0 T=                          \ e_shoff
-   $30 U32@ 0 T=                          \ e_flags
-   $34 U16@ 64 T=                         \ e_ehsize
-   $36 U16@ PHENT T=                      \ e_phentsize
-   $38 U16@ WANT-PHNUM T=                 \ e_phnum
-   $3A U16@ 0 T=  $3C U16@ 0 T=  $3E U16@ 0 T= ;
-
-: CHECK-RX-PHDR ( n -- ) {: textsz:n :}
-   s" program header 0 loads the text read-execute from file offset zero" T-LABEL
-   0 PH-TYPE@ 1 T=                        \ PT_LOAD
-   0 PH-FLAGS@ 5 T=                       \ PF_R | PF_X
-   0 PH-OFF@ 0 T=
-   0 PH-VADDR@ WANT-VMBASE T=
-   0 PH-PADDR@ WANT-VMBASE T=
-   0 PH-FILESZ@ textsz T=
-   0 PH-MEMSZ@ textsz T=
-   0 PH-ALIGN@ PROT-PAGE-MAX T= ;
-
-: CHECK-RW-PHDR ( n -- ) {: textsz:n :}
-   s" program header 1 loads the read-write tail on its own page" T-LABEL
-   1 PH-TYPE@ 1 T=                        \ PT_LOAD
-   1 PH-FLAGS@ 6 T=                       \ PF_R | PF_W
-   1 PH-OFF@ textsz T=
-   1 PH-VADDR@ WANT-VMBASE textsz + T=
-   1 PH-FILESZ@ $D0 T=
-   1 PH-MEMSZ@ $D0 T=
-   1 PH-ALIGN@ PROT-PAGE-MAX T=
-   s" the two load segments share no page" T-LABEL
-   textsz PROT-PAGE-MAX mod 0 T= ;
-
-: CHECK-INTERP-PHDR ( -- )
-   s" program header 2 names the x86-64 dynamic loader" T-LABEL
-   2 PH-TYPE@ 3 T=                        \ PT_INTERP
-   2 PH-FLAGS@ 4 T=                       \ PF_R
-   2 PH-OFF@ WANT-INTERP-OFF T=
-   2 PH-VADDR@ WANT-VMBASE WANT-INTERP-OFF + T=
-   2 PH-FILESZ@ 28 T=
-   2 PH-ALIGN@ 1 T= ;
-
-: CHECK-DYNAMIC-PHDR ( n -- ) {: textsz:n :}
-   s" program header 3 is the dynamic table inside the read-write segment" T-LABEL
-   3 PH-TYPE@ 2 T=                        \ PT_DYNAMIC
-   3 PH-FLAGS@ 6 T=
-   3 PH-OFF@ textsz T=
-   3 PH-VADDR@ WANT-VMBASE textsz + T=
-   3 PH-FILESZ@ $C0 T=
-   3 PH-ALIGN@ 8 T= ;
-
-\ The code region and the DATA carrier are loadable segments this file carries
-\ no bytes of, after the read-write tail and in ascending order, as ELF orders
-\ loadable segments: the kernel maps the region zeroed and read-write at its
-\ address, and the carrier, as large as the bytes it holds, not at all. DATA is
-\ no segment: the boot maps it and copies in the carrier's bytes.
-: CHECK-FIXED-PHDR ( n n n n -- ) {: i:n flags:n va:n memsz:n :}
-   i PH-TYPE@ 1 T=                        \ PT_LOAD
-   i PH-FLAGS@ flags T=
-   i PH-OFF@ 0 T=
-   i PH-VADDR@ va T=
-   i PH-PADDR@ va T=
-   i PH-FILESZ@ 0 T=
-   i PH-MEMSZ@ memsz T=
-   i PH-ALIGN@ WANT-PAGE-MAX T= ;
-
-: CHECK-REGION-PHDR ( -- )
-   s" program header 4 maps the code region at the image base plus REGION-OFF" T-LABEL
-   4 6 WANT-REGION-VA WANT-REGION CHECK-FIXED-PHDR ;   \ PF_R | PF_W
-
-: CHECK-CARRIER-PHDR ( -- )
-   s" program header 5 is the read-only DATA carrier at the region's end" T-LABEL
-   5 4 WANT-CARRIER-VA 0 CHECK-FIXED-PHDR ;            \ PF_R
-
-: CHECK-INTERP-BYTES ( -- )
-   s" the interpreter string is /lib64/ld-linux-x86-64.so.2 and is terminated" T-LABEL
-   MBUF WANT-INTERP-OFF M-BYTE+ 27 s" /lib64/ld-linux-x86-64.so.2" T$=
-   WANT-INTERP-OFF 27 + U8@ 0 T= ;
-
-\ Entry i of the dynamic table, which opens the read-write segment.
-: DYN-TAG@ ( n n -- n ) {: textsz:n i:n :}
-   textsz i 16 * + U64@ ;
-
-: DYN-VAL@ ( n n -- n ) {: textsz:n i:n :}
-   textsz i 16 * + 8 + U64@ ;
-
-\ The loader reaches the hash, string, symbol and relocation tables through the
-\ dynamic table, so each is pinned both where the table points and by its own
-\ bytes there: an offset left inside the program headers would put the bytes
-\ elsewhere while the pointer still named it.
-: CHECK-DYNAMIC-TABLES ( n -- ) {: textsz:n :}
-   s" the dynamic table points at each metadata table past the headers" T-LABEL
-   textsz 0 DYN-TAG@ 4 T=                 \ DT_HASH
-   textsz 0 DYN-VAL@ WANT-VMBASE WANT-HASH-OFF + T=
-   textsz 1 DYN-TAG@ 5 T=                 \ DT_STRTAB
-   textsz 1 DYN-VAL@ WANT-VMBASE WANT-DYNSTR-OFF + T=
-   textsz 2 DYN-TAG@ 6 T=                 \ DT_SYMTAB
-   textsz 2 DYN-VAL@ WANT-VMBASE WANT-DYNSYM-OFF + T=
-   textsz 5 DYN-TAG@ 7 T=                 \ DT_RELA
-   textsz 5 DYN-VAL@ WANT-VMBASE WANT-RELA-OFF + T=
-   textsz 10 DYN-TAG@ 21 T=  textsz 10 DYN-VAL@ 0 T=  textsz 11 DYN-TAG@ 0 T=
-   s" each metadata table holds its own bytes where it is named" T-LABEL
-   WANT-HASH-OFF U32@ 1 T=                \ nbucket
-   WANT-HASH-OFF 4 + U32@ 3 T=            \ nchain
-   WANT-DYNSYM-OFF 24 + U32@ 1 T=         \ dlopen's st_name
-   WANT-DYNSYM-OFF 48 + U32@ 8 T=         \ dlsym's st_name
-   MBUF WANT-DYNSTR-OFF 1 + M-BYTE+ 6 s" dlopen" T$=
-   MBUF WANT-DYNSTR-OFF 8 + M-BYTE+ 5 s" dlsym" T$= ;
-
-\ Both GOT slots are bound by a GLOB_DAT relocation of the x86-64 vocabulary:
-\ symbol index in the high half, type in the low.
-: CHECK-RELA ( n -- ) {: textsz:n :}
-   s" each GOT slot takes an R_X86_64_GLOB_DAT against its own symbol" T-LABEL
-   WANT-RELA-OFF U64@ WANT-VMBASE textsz + $C0 + T=
-   WANT-RELA-OFF 8 + U64@ 1 32 lshift 6 or T=
-   WANT-RELA-OFF 16 + U64@ 0 T=
-   WANT-RELA-OFF 24 + U64@ WANT-VMBASE textsz + $C8 + T=
-   WANT-RELA-OFF 32 + U64@ 2 32 lshift 6 or T=
-   WANT-RELA-OFF 40 + U64@ 0 T= ;
-
-: CHECK-LENGTH ( n -- ) {: textsz:n :}
-   s" the image is the padded text plus the read-write segment, no region or DATA" T-LABEL
-   MLEN@ textsz $D0 + T= ;
-
-: ELF-CASES ( -- )
-   s" the writer's layout agrees with the engine it was loaded into" T-LABEL
-   VMBASE WANT-VMBASE T=
-   BUILD-ELF
-   TEXTSZ {: textsz:n :}
-   CHECK-IDENT
-   CHECK-HEADER
-   textsz CHECK-RX-PHDR
-   textsz CHECK-RW-PHDR
-   CHECK-INTERP-PHDR
-   textsz CHECK-DYNAMIC-PHDR
-   CHECK-REGION-PHDR
-   CHECK-CARRIER-PHDR
-   CHECK-INTERP-BYTES
-   textsz CHECK-DYNAMIC-TABLES
-   textsz CHECK-RELA
-   textsz CHECK-LENGTH ;
 
 \ ---- the mov r64, imm64 relocation site --------------------------------------
 \ A site is ten bytes: REX.W (with B for r8..r15), B8+rd, then the eight
@@ -340,13 +123,9 @@ create NEAR 16 allot
 
 : RUN ( -- )
    T-RESET
-   X64CODE:ASM-SINK 64 BUF:N>BLEN BUF:INIT
-   ELF-CASES
-   X64CODE:ASM-SINK BUF:DISPOSE
    MOVABS-CASES
    CONTRACT-CASES
    T-REPORT ;
 
 RUN
-;using   \ LINUX-LAYOUT
 ;package
