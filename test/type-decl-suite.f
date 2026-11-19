@@ -64,10 +64,8 @@ NEWTYPE tdzero
 s" TDOK-ZERO ( tdzero -- tdzero )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ SCRATCH-ONLY last on the line marks the family, after a base or a parametrised
-\ name, in either case and before a comment.
-NEWTYPE tdscrb n scratch-only \ a comment after the clause
-NEWTYPE tdscrp<a> SCRATCH-ONLY
+\ A family takes no `SCRATCH-ONLY` clause: the word after its base is undefined.
+s" NEWTYPE tdscrx ^n SCRATCH-ONLY" s\" error[E-UNDEFINED]: cannot find word `SCRATCH-ONLY`\n" s" not found" TDT-REJ
 
 \ TYPEFAMILY is not a word: in a line comment, paren comment or string literal
 \ it throws nothing (TDT-NEG).
@@ -1211,7 +1209,7 @@ s" fresh-mask-x" s" reserved name" TDT-AT
 s" NEWTYPE ptr"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `ptr`\n"
 s" ptr" s" reserved name" TDT-AT
-\ `scratch-only` is NEWTYPE's clause, so no family takes the name.
+\ `scratch-only` is the storage clause, so no family takes the name.
 : TDT-SCRATCH-NAME ( -- )
    REJECTION:CAPTURE
    s" NEWTYPE scratch-only" TDT-EVAL-CATCH {: rc:n :}

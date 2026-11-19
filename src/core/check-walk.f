@@ -25,8 +25,6 @@ EXPORT TFAM:TFAM-MATCH-PAY
 EXPORT TFAM:TFAM-MATCH-VARIANT
 EXPORT TFAM:TFAM-MEMBER-STEP?
 EXPORT TFAM:TFAM-NICHE?
-EXPORT TFAM:TFAM-PKG-MATCH?
-EXPORT TFAM:TFAM-SCRATCH?
 EXPORT TFAM:TFAM-SUM?
 EXPORT TFAM:TFAM-VAR-COUNT@
 EXPORT TFAM:TFL-VPADS
@@ -1088,7 +1086,6 @@ public
 
 \ The family TAGGED-HIT? last found, or -1 for a type variable.
 variable TAGGED-FAM
-variable SCRATCH-FAM
 \ An enum or sum value carries a tag only its constructors and TAG> check, and a
 \ caller may bind one to a type variable that takes no linear value (NLINEAR,
 \ stored or `nolinear`). A pointee is storage, which the mint rule leaves to the
@@ -1133,30 +1130,6 @@ variable SCRATCH-FAM
    sign CAST-ARG and 0 <> sign CAST-BOTH = or IF RES-FALSE EXIT THEN
    t TAG T-QUOT = ;
 
-\ A value of a SCRATCH-ONLY family another package declared, outside a layout
-\ argument; a hit keeps the family for SCRATCH-RAISE.
-: SCRATCH-HIT? ( n n -- bool ) {: t:n sign:n :}
-   sign CAST-ARG and 0 <> IF RES-FALSE EXIT THEN
-   t T-RES dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
-   PARAM>FAM {: fam:n :}
-   fam 0 < IF RES-FALSE EXIT THEN
-   fam TFAM-SCRATCH? 0= IF RES-FALSE EXIT THEN
-   CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? IF RES-FALSE EXIT THEN
-   fam SCRATCH-FAM !
-   RES-TRUE ;
-
-: SCRATCH-RAISE ( -- )
-   SCRATCH-FAM @ TFAM-PKG$ {: pa:^ pu:n :}
-   pu 0= IF
-      s" the cast names a top-level SCRATCH-ONLY family"
-      s" declare the cast at top level, where the family is declared"
-   ELSE
-      pa pu CAST-ERROR:TOKEN!
-      s" the cast names a SCRATCH-ONLY family of package"
-      s" declare the cast in the package that declares the family, which decides what its values may become"
-   THEN
-   E-CAST-SCRATCH CAST-ERROR:RAISE ;
-
 \ The cast gate: true when the output mints a pointer or quotation, else a
 \ representation cast.
 : CAST-WALKS ( -- bool )
@@ -1196,8 +1169,6 @@ variable SCRATCH-FAM
       s" write `n` where the input's pointees or its quotations' inputs name a `width<t>`"
       E-CAST-CLASS CAST-ERROR:RAISE
    THEN
-   SGIN @ CAST-ROW-TERM CAST-BOTH [: SCRATCH-HIT? ;] CAST-INTRO?
-   SGOUT @ CAST-ROW-TERM CAST-BOTH [: SCRATCH-HIT? ;] CAST-INTRO? or IF SCRATCH-RAISE THEN
    \ A row variable stands for cells the signature does not show, which each use
    \ of the cast picks; an output holding no pointer or quotation passes.
    SGOUT @ CAST-ROW-TERM [: drop MINT-HIT? ;] CAST-INTRODUCES? {: mint:bool :}
@@ -1315,7 +1286,6 @@ variable SCRATCH-FAM
       s" write a closed non-linear element type, such as `u8`, in place of the view element's type variable or linear type"
       E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
-   view view PARAM>ARGC 1 - PARAM>ARG CAST-BOTH [: SCRATCH-HIT? ;] CAST-INTRO? IF SCRATCH-RAISE THEN
    unpack IF view READ-VIEW? IF EXIT THEN THEN
    \ The literal is only the owner's name, which no registry holds: the view
    \ families are declared with package "".

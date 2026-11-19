@@ -19,7 +19,6 @@ EXPORT CHECK:REJECT-DUPLICATE
 EXPORT CHECK:TYPE-TEXT
 EXPORT TFAM:EFFECT-TYPE
 EXPORT TFAM:HAS-ADDRESS?
-EXPORT TFAM:HOLDS-SCRATCH?
 EXPORT TFAM:SUMV-PAY-N
 EXPORT TFAM:TFAM-FLD-COUNT@
 EXPORT TFAM:TFAM-FLD-START@
@@ -91,8 +90,6 @@ EXPORT CHECK:LBI-CELLS
 EXPORT CHECK:LBI-T
 EXPORT CHECK:LBI-TERM
 EXPORT CHECK:STG-NO-NAME
-EXPORT CHECK:STG-SCRATCH-SAVED
-EXPORT CHECK:STG-SCRATCH-TYPE
 EXPORT CHECK:STGR-END
 EXPORT CHECK:STORAGE-RESET
 EXPORT CHECK:T-RES
@@ -324,10 +321,6 @@ private
 
 : NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM HAS-ADDRESS? ;
 
-: NODE-SCRATCH-REJECT ( str -- ) {: name:^ nameu:n :}
-   LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
-   name nameu LBUF-GEN LBUF-GEN-U @ STG-SCRATCH-SAVED CHECKER-STORAGE-REJECT ;
-
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
 : STORAGE-BIND ( n ^n n str bool -- )
@@ -373,14 +366,6 @@ public
    tu 0= IF 0 0= 0= EXIT THEN
    ta tu s" scratch-only" CORE-STR=CI IF 0 0= EXIT THEN
    ta STORAGE-UNREAD  0 0= 0= ;
-
-\ Rejects the storage name, of type text, with the STG- reason why when the
-\ type holds a SCRATCH-ONLY family; a type the checker cannot read answers false.
-: SCRATCH-HELD? ( str str n -- bool )
-   {: name:^ nameu:n type:^ typeu:n why:n :}
-   type typeu CHECKER-STORAGE-TERM 0= if drop LBUF-FALSE exit then
-   HOLDS-SCRATCH? 0= if LBUF-FALSE exit then
-   name nameu type typeu why CHECKER-STORAGE-REJECT LBUF-TRUE ;
 
 private
 
@@ -565,7 +550,6 @@ global
    STORAGE-PARSE-TYPE {: type:^ typeu:n :}
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
-   name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
    name nameu type typeu MIXED-SAVED? if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu type typeu hasaddr LBUF-FALSE LBUF-CHILD ;
@@ -586,7 +570,6 @@ INTRINSIC-DECLARATION INTRINSIC
       2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT exit
    then
    LBUF-W !  drop
-   name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
    name nameu type typeu MIXED-SAVED? if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    name nameu CHILD-ABI:DEFERRED ['] DEFERRED-ELEMENT AS-ENTRY
@@ -642,7 +625,6 @@ global
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
    scratch 0= if
-      name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
       name nameu type typeu MIXED-SAVED? if exit then
    then
    scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
@@ -663,7 +645,6 @@ INTRINSIC-DECLARATION INTRINSIC
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
    scratch 0= if
-      name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
       name nameu type typeu MIXED-SAVED? if exit then
    then
    scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
@@ -681,7 +662,6 @@ public
    nameu 0= if s" EFFECT:VARIABLE-OF" CHECKER-STORAGE-NAME-REFUSE exit then
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    1 name nameu node NODE-VALIDATE 0= if exit then
-   node NODE-TERM HOLDS-SCRATCH? if name nameu NODE-SCRATCH-REJECT exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}
    hasaddr if
       node NODE-TERM {: term:n :}

@@ -558,10 +558,7 @@ multi-cell type rationale is `docs/design.md` "Types".
 - `NEWTYPE name` registers an opaque nominal cell family, with no
   closer. `NEWTYPE name base`, the base spelled on the name's line, makes the
   family as wide as the base and a type apart from it (`NEWTYPE path str`).
-  `NEWTYPE name<a,b>` declares two type parameters and takes no base.
-  `SCRATCH-ONLY` last on the line, after the name or base (`NEWTYPE ticket
-  SCRATCH-ONLY`), declares a family whose values are valid only in the process
-  that made them. `SUMTYPE`,
+  `NEWTYPE name<a,b>` declares two type parameters and takes no base. `SUMTYPE`,
   `STRUCTURE`, and full `ENUM` use the same header syntax. The count
   stays internal; payload types bind the listed names by declaration order.
   Names are distinct letters from `a b c d e g h i j k l m o p q s t u v w x y z`;
@@ -860,10 +857,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   `( [ n -- width<n> ] -- [ n -- n ] )` reads the width the source produces.
   A cell family's arguments are phantom and introduce nothing. Projections out
   (`fam -- n`, `^t -- n`, `[ … ] -- n`, `box<^u8> -- n`, `pfbox -- n`)
-  need no private section. A cast that names a `SCRATCH-ONLY` family on either
-  side other than as a phantom argument, a view's element included, is
-  declared in that family's package (`E-CAST-SCRATCH`): its values are valid
-  only in their process.
+  need no private section.
 - `LINEAR: NAME ( payload -- PKG:tok )` mints a `DEFLINEAR` token and
   `LINEAR: NAME ( PKG:tok -- payload )` erases one: the reader-keyword shape of
   `CAST:`, an identity at its call sites, and the one checked way to make a
@@ -1530,12 +1524,10 @@ while `( -- ^^u8 )` does not. An image save writes the scratch forms
 `PERSISTED-` siblings keep their addresses, and so do the pointer fields of
 typed storage not declared `SCRATCH-ONLY`.
 
-**A value valid only in its process stays out of the saved image.** Storage
-whose type holds a `SCRATCH-ONLY` family, through a field or a payload, is
-`TYPED-VARIABLE V t SCRATCH-ONLY` or `n TYPED-BUFFER TB t SCRATCH-ONLY`, which
-a build saves as zeros, or storage no build saves (`DYNAMIC-BUFFER`, `ARENA`,
-`HEAP`, a task's `USER`); any other is rejected `E-BAD-STORAGE`. A pointer
-`^t` does not hold `t`.
+**A value valid only in its process stays out of the saved image.** It is kept
+in `TYPED-VARIABLE V t SCRATCH-ONLY` or `n TYPED-BUFFER TB t SCRATCH-ONLY`,
+which a build saves as zeros, or in storage no build saves (`DYNAMIC-BUFFER`,
+`ARENA`, `HEAP`, a task's `USER`).
 
 Records that mix a pointer field with scalars use `STRUCTURE … DERIVE addr`
 (**Structures And Enums**). Two launders remain open and certify today:

@@ -1069,16 +1069,15 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" Y4" WHICH!  s" test/fixtures/file-objects/parts-root-1.f" FIXTURE-BUILD 0= if exit then
    s" a load inside a package never links inside-i.f's object from a load alone" INSIDE-I COMPILED ;
 
-\ kept-aio.f's build: it exits 70 with E-BAD-STORAGE naming OLD and kept-aio.f's line 8.
+\ kept-aio.f's build: it exits 70 with LINKER:E-ADDRESS naming OLD at kept-aio.f's line 9.
 : KEPT-AIO-REJECTED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/kept-aio.f" false BUILD-RC {: rc:n :}
-   CMD:ERR$ s" error[E-BAD-STORAGE]" CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" the type of `OLD` holds a value valid only in the process that made it" CONTAINS? classed and
-   {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:8" CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" error[LINKER:E-ADDRESS]" CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" in OLD +0" CONTAINS? classed and {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:9" CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build rejects OLD" LABEL  named TTRUE
-   s" the rejection names kept-aio.f's line 8" LABEL  placed TTRUE
+   s" the rejection names kept-aio.f's line 9" LABEL  placed TTRUE
    s" the build exits 70" LABEL  rc 70 T= ;
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
@@ -1089,7 +1088,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    SCRATCH-RUN
    s" Q" WHICH!  s" test/fixtures/file-objects/kept-main.f" FIXTURE-BUILD 0= if exit then  KEPT-RUN
    s" QA" WHICH!  KEPT-AIO-REJECTED  AIO-OBJ KEEP
-   \ QA2 links aio.f's object: the ticket's SCRATCH-ONLY flag comes from its type entry.
+   \ QA2's warm build links aio.f's object and is rejected the same.
    s" QA2" WHICH!  KEPT-AIO-REJECTED  s" the warm build links aio.f" AIO-OBJ LINKED
    s" N" WHICH!  s" test/fixtures/file-objects/kept-genio.f" REPL-BUILD 0= if exit then
    REPORT-RUN  GENIO-RUN

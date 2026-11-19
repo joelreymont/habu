@@ -33,7 +33,7 @@ public
 
 \ A submission's handle: its record's address, in memory mapped while the
 \ program runs. Only the submitting task may AWAIT it, once.
-NEWTYPE ticket ^n SCRATCH-ONLY
+NEWTYPE ticket ^n
 
 \ A set of tickets one AWAIT-ANY waits on, as the index a GROUP definition
 \ was given.
@@ -44,7 +44,7 @@ NEWTYPE group
 \ the submission and comes back out of AWAIT-XFER and nowhere else, so AWAIT,
 \ GROUP+ and GROUP- cannot name one and no checked code can read, write or
 \ release the bytes while the kernel is still moving them.
-NEWTYPE xfer ^n SCRATCH-ONLY
+NEWTYPE xfer ^n
 
 \ What an operation ended as. `ready` carries the poll revents the kernel
 \ reported (or zero for an operation with no mask); `refused` carries the errno

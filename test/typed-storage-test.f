@@ -22,11 +22,10 @@ E-LAYOUT-BOUNDS constant E-STORAGE-BOUNDS
 \ ---- families under test ----------------------------------------------------
 \ tsk / tsk2 are arity-0 nominal scalars; tsres a closed non-linear layout
 \ family; tsowned a linear layout (inadmissible for storage); tsscr a nominal
-\ scalar valid only in the process that made it, and tsscrw a family over it.
+\ scalar valid only in the process that made it.
 NEWTYPE tsk
 NEWTYPE tsk2
-NEWTYPE tsscr SCRATCH-ONLY
-NEWTYPE tsscrw tsscr
+NEWTYPE tsscr
 SUMTYPE tsres<a,b>
    VARIANT ok a ;VARIANT
    VARIANT err b ;VARIANT
@@ -164,24 +163,17 @@ TYPED-VARIABLE TSL tsres<n,n>
    s" BAD-QUOT" 0 search-wl 0= TTRUE
    s" BAD-ZERO" 0 search-wl 0= TTRUE ;
 
-\ 6. A SCRATCH-ONLY family is stored only where a build leaves it out: the
-\    clause on TYPED-VARIABLE and TYPED-BUFFER, or behind a pointer
+\ 6. TYPED-VARIABLE and TYPED-BUFFER declared SCRATCH-ONLY, storage a build
+\    leaves out, store and fetch their type
 TYPED-VARIABLE TSS tsscr SCRATCH-ONLY
 2 TYPED-BUFFER TSSB tsscr SCRATCH-ONLY
-TYPED-VARIABLE TSSP ^tsscr
 
 CAST: N>TSSCR ( n -- tsscr )
 CAST: TSSCR>N ( tsscr -- n )
-: TS-SCR-NODE ( -- n )
-   [: s" BAD-SCR-NODE" s" tsscr" EFFECT:READ-TYPE EFFECT:VARIABLE-OF ;] catch ;
 
 : TS-SECTION-SCRATCH ( -- )
    5 N>TSSCR TSS !  TSS @ TSSCR>N 5 T=
-   6 N>TSSCR 1 TSSB !  1 TSSB @ TSSCR>N 6 T=
-   s" 2 TYPED-BUFFER BAD-SCR-APP tsres<tsscr,n>" TS-EVAL 70 T=
-   s" TYPED-VARIABLE BAD-SCR-FLD tsscrw" TS-EVAL 70 T=
-   s" DEFER-LAYOUT-BUFFER BAD-SCR-DL tsscr" TS-EVAL 70 T=
-   TS-SCR-NODE 70 T= ;
+   6 N>TSSCR 1 TSSB !  1 TSSB @ TSSCR>N 6 T= ;
 
 \ 7. Duplicate + transactional rollback
 PTR-VARIABLE TS-DP

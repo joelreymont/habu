@@ -2501,7 +2501,6 @@ package CAST-ERROR
    code E-CAST-FAM = IF s" E-CAST-FAM" EXIT THEN
    code E-CAST-LINEAR = IF s" E-CAST-LINEAR" EXIT THEN
    code E-CAST-MINT = IF s" E-CAST-MINT" EXIT THEN
-   code E-CAST-SCRATCH = IF s" E-CAST-SCRATCH" EXIT THEN
    code E-CAST-SCOPE = IF s" E-CAST-SCOPE" EXIT THEN
    code E-LINEAR-PAYLOAD = IF s" E-LINEAR-PAYLOAD" EXIT THEN
    code E-LINEAR-OWNER = IF s" E-LINEAR-OWNER" EXIT THEN
@@ -2514,7 +2513,6 @@ package CAST-ERROR
    code E-CAST-FAM = IF s" the signature does not parse here" SGBAD-LABEL$ EXIT THEN
    code E-CAST-LINEAR = IF s" a linear value would change hands" EXIT THEN
    code E-CAST-MINT = IF s" mints outside a private section" EXIT THEN
-   code E-CAST-SCRATCH = IF s" names another package's scratch family" EXIT THEN
    code E-CAST-SCOPE = IF s" not a view cast this place may declare" EXIT THEN
    code E-LINEAR-PAYLOAD = IF s" not one token and one payload" EXIT THEN
    code E-LINEAR-OWNER = IF s" declared outside the type's package" EXIT THEN

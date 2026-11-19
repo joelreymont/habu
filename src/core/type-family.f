@@ -395,15 +395,12 @@ variable TF-PK-N   0 TF-PK-N !
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
 \ placement (the OPAQUE header clause, structure-decl.f OPAQUE-CLAUSE).
 18 cells constant TF.OPAQUE-OFF
-\ TF.SCRATCH: nonzero when the family was declared SCRATCH-ONLY: its values are
-\ valid only in the process that made them.
-19 cells constant TF.SCRATCH-OFF
 \ TF.ENTRY: the family's type entry, its record index + 1; 0 when it has none.
-20 cells constant TF.ENTRY-OFF
+19 cells constant TF.ENTRY-OFF
 \ TF.AT-SYM: the checker symbol of the family's generated AT, 0 when it has none.
-21 cells constant TF.AT-SYM-OFF
+20 cells constant TF.AT-SYM-OFF
 
-22 cells constant TF-REC
+21 cells constant TF-REC
 
 : TF.PKG-OFF ( ^a -- ^a ) TF.PKG-OFF-AT + ;
 : TF.PKG-U ( ^a -- ^a ) TF.PKG-U-OFF + ;
@@ -426,7 +423,6 @@ variable TF-PK-N   0 TF-PK-N !
 : TF.DERIVE ( ^a -- ^a ) TF.DERIVE-OFF + ;
 : TF.TAILNEXT ( ^a -- ^a ) TF.TAILNEXT-OFF + ;
 : TF.OPAQUE ( ^a -- ^a ) TF.OPAQUE-OFF + ;
-: TF.SCRATCH ( ^a -- ^a ) TF.SCRATCH-OFF + ;
 : TF.ENTRY ( ^a -- ^a ) TF.ENTRY-OFF + ;
 : TF.AT-SYM ( ^a -- ^a ) TF.AT-SYM-OFF + ;
 
@@ -526,9 +522,6 @@ private
 \ before the field commit that moves the epoch, so no answer predates it.
 : TFAM-OPAQUE! ( n -- ) TF-REC@ TF.OPAQUE -1 swap ! ;
 : TFAM-OPAQUE? ( n -- bool ) TF-REC@ TF.OPAQUE @ 0 <> ;
-\ The SCRATCH-ONLY clause, set as NEWTYPE declares the family.
-: TFAM-SCRATCH! ( n -- ) TF-REC@ TF.SCRATCH -1 swap ! ;
-: TFAM-SCRATCH? ( n -- bool ) TF-REC@ TF.SCRATCH @ 0 <> ;
 : TFAM-GEN-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-PUBLIC? fam TFAM-OPAQUE? 0= and ;
 
@@ -778,7 +771,6 @@ variable TFX-CUR              \ private bucket-walk cursor
    0 r TF.DERIVE !
    0 r TF.TAILNEXT !
    0 r TF.OPAQUE !
-   0 r TF.SCRATCH !
    0 r TF.ENTRY !
    0 r TF.AT-SYM !
    id TFX-ADD                             \ the row's tail is written: it can be found now
@@ -3533,7 +3525,7 @@ create ET-CH 8 allot
    id TFAM-KIND@ ET-NUM  id TFAM-VIS@ ET-NUM  id TFAM-ARITY@ ET-NUM
    id TFAM-ARITY@ 0 ?do id i TFAM-PK@ ET-NUM loop
    id TFAM-LAYOUT-POLICY@ ET-NUM  id TFAM-SLOTS@ ET-NUM  id TFAM-TAGW@ ET-NUM
-   id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM  id TF-REC@ TF.SCRATCH @ ET-NUM
+   id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM
    id TF-REC@ TF.AT-SYM @ ET-SYM
    ED-N @ ET-NUM
    ED-N @ 0 ?do ED-BUF @ i cells + @ ET-FAM loop
@@ -3729,7 +3721,6 @@ create ER-MSG ER-MSG-CAP allot
    id ER-NUM TFAM-TAGW!
    ER-NUM id TF-REC@ TF.DERIVE !
    ER-NUM id TF-REC@ TF.OPAQUE !
-   ER-NUM id TF-REC@ TF.SCRATCH !
    id ER-SYM AT-SYM!
    id ;
 
@@ -5030,36 +5021,6 @@ EXPORT CHECK:OK
 : HAS-ADDRESS? ( n -- bool ) {: term:n :}
    term TFAM-STORAGE-QUOT? IF RES-TRUE EXIT THEN
    term T-RES TAG T-PTR = IF RES-TRUE EXIT THEN
-   term TFAM-STORAGE-PRODUCT? IF
-      {: fam:n :}
-      fam TFAM-FLD-COUNT@ 0 ?do
-         fam TFAM-FLD-START@ i + {: field:n :}
-         term field TFAM-FIELD-TERM recurse IF
-            RES-TRUE unloop EXIT
-         THEN
-      loop RES-FALSE EXIT
-   THEN drop
-   term TFAM-STORAGE-SUM? IF
-      {: fam:n :}
-      0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
-         {: idx:n :}
-         fam TFAM-VAR-START@ idx + {: vid:n :}
-         vid SUMV-PAY-N 0 ?do
-            term vid i TFAM-PAY-TERM recurse IF
-               RES-TRUE unloop EXIT
-            THEN
-         loop
-         idx 1 +
-      REPEAT drop RES-FALSE EXIT
-   THEN drop
-   RES-FALSE ;
-
-\ Whether any cell of the type holds a SCRATCH-ONLY family, through a field or a
-\ payload (in every sum alternative); a pointer or a quotation holds nothing.
-: HOLDS-SCRATCH? ( n -- bool ) {: term:n :}
-   term T-RES dup TAG T-PARAM = IF
-      PARAM>FAM TFAM-SCRATCH? IF RES-TRUE EXIT THEN
-   ELSE drop THEN
    term TFAM-STORAGE-PRODUCT? IF
       {: fam:n :}
       fam TFAM-FLD-COUNT@ 0 ?do

@@ -677,26 +677,6 @@ undefine include
    s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" 
       s" error[E-BAD-STORAGE]: the type of `LRD-STG-DL`" STORAGE-REJECT ;
 
-\ SRC stores a SCRATCH-ONLY family where a build saves it: the record HEAD
-\ holds HELP.
-: SCRATCH-REJECT ( str str str -- )
-   {: src:^ srcu:n head:^ headu:n help:^ helpu:n :}
-   BODY$ src srcu FS:WRITE-ALL
-   BODY$ RUN
-   ERR$ help helpu CONTAINS? TTRUE
-   head headu ASSERT-NAMED ;
-
-: TEST-SCRATCH-STORAGE ( -- )
-   s" a SCRATCH-ONLY family in saved storage is a named rejection" T-LABEL
-   S\" NEWTYPE lrd-scr SCRATCH-ONLY\nTYPED-VARIABLE LRD-SCR-TV lrd-scr"
-   s" error[E-BAD-STORAGE]: the type of `LRD-SCR-TV` holds a value valid only in the process that made it"
-   s" write `SCRATCH-ONLY` after the type of `LRD-SCR-TV`, which keeps it out of the saved image"
-      SCRATCH-REJECT
-   S\" NEWTYPE lrd-scr SCRATCH-ONLY\n4 LAYOUT-BUFFER LRD-SCR-LB lrd-scr"
-   s" error[E-BAD-STORAGE]: the type of `LRD-SCR-LB` holds a value valid only in the process that made it"
-   s" keep the values of `LRD-SCR-LB` in a TYPED-VARIABLE or TYPED-BUFFER declared `SCRATCH-ONLY`"
-      SCRATCH-REJECT ;
-
 \ SRC as the body exits RC, its stderr holding the record HEAD placed at PLACE.
 : CODE-REJECT-AT ( str str str n -- )
    {: src:^ srcu:n head:^ headu:n place:^ placeu:n rc:n :}
@@ -1508,7 +1488,6 @@ variable LONG-U
    TEST-BYTE-PTR-FETCH
    TEST-CONTROL-FLOW
    TEST-STORAGE
-   TEST-SCRATCH-STORAGE
    TEST-MISSING-SIGNATURE
    TEST-CAST
    TEST-UNSAFE

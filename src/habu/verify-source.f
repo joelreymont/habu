@@ -608,14 +608,11 @@ EXPORT CHECK:PROW-FIND
 EXPORT CHECK:SIG-RAW-MODE
 EXPORT CHECK:SIG-STATES-FACTS
 EXPORT CHECK:SPLIT-STR-FILE?
-EXPORT CHECK:STG-SCRATCH-SAVED
-EXPORT CHECK:STG-SCRATCH-TYPE
 EXPORT CHECK:TYPE-RESERVED?
 EXPORT CHECK:TYPE-SPAN-END?
 EXPORT CHECK:UNSEEN-COVERS?
 EXPORT CHECK:USIG-NEWEST
 EXPORT CHECK:VREC-TOKEN
-EXPORT TYPE-DECL:SCRATCH-MARK
 \ The bytes the engine's `s\"` makes of an escaped literal's payload, and
 \ whether every escape in it is one the engine reads. An escape is spelt
 \ with more bytes than it decodes to, so a decode as long as its payload met no
@@ -2637,8 +2634,8 @@ variable STG-TYPE-U
    SCAN-LINE-TOKEN s" scratch-only" STR=CI IF 0 0= EXIT THEN
    mark SCAN-I !  0 0= 0= ;
 
-: NEWTYPE-CELL ( str bool -- ) {: name:^ nameu:n scratch:bool :}
-   name nameu 2dup s" newtype" CHECKER-DEFFAMILY  scratch SCRATCH-MARK ;
+: NEWTYPE-CELL ( str -- ) {: name:^ nameu:n :}
+   name nameu 2dup s" newtype" CHECKER-DEFFAMILY ;
 
 \ CHECKER-DEFFAMILY's record rejects a missing name, at the keyword, or a
 \ malformed header; a base on the name's line replays as NEWTYPE registers it.
@@ -2649,17 +2646,15 @@ variable STG-TYPE-U
    nameu 0= IF name nameu TOP-CUR-A @ TOP-CUR-U @ s" newtype" CHECKER-DEFFAMILY EXIT THEN
    name nameu at SEALED-FAMILY
    0 0= 0= nameu 0 ?do name i + c@ 60 = or loop
-   IF name nameu SCAN-SCRATCH-CLAUSE? NEWTYPE-CELL EXIT THEN
-   SCAN-SCRATCH-CLAUSE? IF name nameu 0 0= NEWTYPE-CELL EXIT THEN
+   IF name nameu NEWTYPE-CELL EXIT THEN
    SCAN-I @ {: mark:n :}
    SCAN-LINE-TOKEN {: ta:^ tu:n :}
    mark SCAN-I !
-   tu 0= IF name nameu 0 0= 0= NEWTYPE-CELL EXIT THEN
-   tu 1 = IF ta c@ 92 = IF name nameu 0 0= 0= NEWTYPE-CELL EXIT THEN THEN
-   name nameu 2dup SCAN-STORAGE-TYPE SCAN-SCRATCH-CLAUSE? {: scratch:bool :}
+   tu 0= IF name nameu NEWTYPE-CELL EXIT THEN
+   tu 1 = IF ta c@ 92 = IF name nameu NEWTYPE-CELL EXIT THEN THEN
+   name nameu 2dup SCAN-STORAGE-TYPE
    s" newtype" SD-WRAP-OUTCOME
-   IF DW-TYPE DEFER-AT EXIT THEN 2drop
-   scratch SCRATCH-MARK ;
+   IF DW-TYPE DEFER-AT EXIT THEN 2drop ;
 
 \ A DEFTYPE base is the one name on the name's line, consumed; none, or a `\`
 \ left unread, is `n`, and the bool says whether one was spelled.
@@ -2739,9 +2734,7 @@ variable STG-TYPE-U
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
-   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? 0= IF
-      name nameu type typeu LBUF:MIXED-SAVED? drop
-   THEN
+   name nameu type typeu LBUF:MIXED-SAVED? drop
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
@@ -2757,9 +2750,7 @@ variable STG-TYPE-U
    name nameu s" -GROW" at DERIVED-FREE? 0= IF EXIT THEN
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
-   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? 0= IF
-      name nameu type typeu LBUF:MIXED-SAVED? drop
-   THEN
+   name nameu type typeu LBUF:MIXED-SAVED? drop
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
@@ -2773,9 +2764,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
    scratch 0= IF
-      name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? 0= IF
-         name nameu type typeu LBUF:MIXED-SAVED? drop
-      THEN
+      name nameu type typeu LBUF:MIXED-SAVED? drop
    THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
@@ -2788,9 +2777,7 @@ variable STG-TYPE-U
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
    scratch 0= IF
-      name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? 0= IF
-         name nameu type typeu LBUF:MIXED-SAVED? drop
-      THEN
+      name nameu type typeu LBUF:MIXED-SAVED? drop
    THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
