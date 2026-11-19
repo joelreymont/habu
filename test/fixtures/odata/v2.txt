@@ -5,7 +5,7 @@ set Orders
  property Year Edm.Int16 not-null
  property Amount Edm.Decimal nullable Common.Label=Net Amount
  property Placed Edm.DateTimeOffset nullable
- property Shipped Edm.DateTime nullable
+ property Shipped Edm.DateTime nullable unfilterable
  navigation Buyer to-one Customers
 set ArchivedOrders
  type sap:label=Sales Order
@@ -14,7 +14,7 @@ set ArchivedOrders
  property Year Edm.Int16 not-null
  property Amount Edm.Decimal nullable Common.Label=Net Amount
  property Placed Edm.DateTimeOffset nullable
- property Shipped Edm.DateTime nullable
+ property Shipped Edm.DateTime nullable unfilterable
  navigation Buyer to-one FormerCustomers
 set Customers
  type sap:label=Customer

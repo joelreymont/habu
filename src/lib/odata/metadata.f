@@ -62,6 +62,21 @@ STRUCTURE annotation DERIVE addr
    FIELD next ^annotation
 ;STRUCTURE
 
+STRUCTURE path DERIVE addr
+   FIELD text SPAN:span<u8>
+   FIELD next ^path
+;STRUCTURE
+
+\ A V4 Capabilities.FilterRestrictions: its term's namespace, an alias resolved
+\ when read, its Filterable and its NonFilterableProperties paths.
+STRUCTURE filter DERIVE addr
+   FIELD namespace SPAN:span<u8>
+   FIELD filterable bool
+   FIELD paths ^path
+   FIELD offset n
+   FIELD next ^filter
+;STRUCTURE
+
 \ A V2 Association End: many when its Multiplicity is `*`.
 STRUCTURE association-end DERIVE addr
    FIELD role SPAN:span<u8>
@@ -107,6 +122,8 @@ STRUCTURE type-definition DERIVE addr
 
 \ `names` maps a set or member name to its `named`; `targets` maps to a
 \ binding's target (V4) or an association set (V2).
+\ A set's `filters` are the FilterRestrictions read for it, `filter` the one
+\ kept, null for none.
 \ A key-ref's `enum-type` is set when its `kind` is `enumeration`.
 \ An entity type's `rank-end` is 0 until the walk of the base types leaves it.
 \ A property's `complex-type` is the complex type its Type names, or names in
@@ -125,6 +142,8 @@ STRUCTURE entity-set OPAQUE DERIVE addr
    FIELD name SPAN:span<u8>
    FIELD type-name SPAN:span<u8>
    FIELD type ^entity-type
+   FIELD filters ^filter
+   FIELD filter ^filter
    FIELD offset n
    FIELD next ^entity-set
 ;STRUCTURE
@@ -228,6 +247,7 @@ STRUCTURE binding DERIVE addr
 STRUCTURE block DERIVE addr
    FIELD target SPAN:span<u8>
    FIELD annotations ^annotation
+   FIELD filters ^filter
    FIELD next ^block
 ;STRUCTURE
 
@@ -248,7 +268,7 @@ ENUM kind DERIVE tag
 ENUM phase DERIVE eq
    document edmx reference data-services schema type-body key property-body
    container set-body association-body set-pairs annotations enum-body
-   skip
+   filter-body record paths-value paths path-text bool-value bool-text skip
 ;ENUM
 
 \ An element's namespace: EDMX of V2 or V4, CSDL of V2 (1.0, 1.1, 2.0) or
@@ -257,6 +277,8 @@ ENUM space DERIVE eq edmx2 edmx4 edm2 edm4 other ;ENUM
 
 \ One METADATA call's state: scratch holds an element's namespace URI until its
 \ first attribute is decoded; names holds the map, keys, arrays; text, a BUF.
+\ Scratch then holds a PropertyPath's or Bool's text, `filled` bytes of it,
+\ until its end; `home` is the phase a filter's end returns to.
 STRUCTURE doc DERIVE addr
    FIELD model ^metadata
    FIELD arena ^ARENA:arena
@@ -279,6 +301,9 @@ STRUCTURE doc DERIVE addr
    FIELD set ^entity-set
    FIELD association-set ^association-set
    FIELD block ^block
+   FIELD filter ^filter
+   FIELD filled n
+   FIELD home phase
    FIELD enum-type ^enum-type
    FIELD set-last ^entity-set
    FIELD property-last ^property
@@ -310,6 +335,8 @@ ARENA TYPES entity-type
 ARENA PROPERTIES property
 ARENA NAVIGATIONS navigation
 ARENA ANNOTATIONS annotation
+ARENA FILTERS filter
+ARENA PATHS path
 ARENA ENDS association-end
 ARENA ASSOCIATIONS association
 ARENA KEY-REFS key-ref
@@ -510,8 +537,9 @@ CAST: >RECORD ( n -- ^t )
    d DOC-DEPTH @ 0= if d d DOC-RESUME @ ENTER then ;
 
 \ The phase an element's end returns to.
-: PARENT ( phase -- phase )
-   MATCH phase
+: PARENT ( ^doc phase -- phase )
+   {: d:^ p:phase :}
+   p MATCH phase
       document OF PHASE-DOCUMENT ENDOF
       edmx OF PHASE-DOCUMENT ENDOF
       reference OF PHASE-EDMX ENDOF
@@ -526,6 +554,13 @@ CAST: >RECORD ( n -- ^t )
       set-pairs OF PHASE-CONTAINER ENDOF
       annotations OF PHASE-SCHEMA ENDOF
       enum-body OF PHASE-SCHEMA ENDOF
+      filter-body OF d DOC-HOME @ ENDOF
+      record OF PHASE-FILTER-BODY ENDOF
+      paths-value OF PHASE-RECORD ENDOF
+      paths OF PHASE-PATHS-VALUE ENDOF
+      path-text OF PHASE-PATHS ENDOF
+      bool-value OF PHASE-RECORD ENDOF
+      bool-text OF PHASE-BOOL-VALUE ENDOF
       skip OF PHASE-SKIP ENDOF
    ;MATCH ;
 
@@ -777,11 +812,10 @@ CAST: >RECORD ( n -- ^t )
    repeat
    false ;
 
-\ A V4 Annotation onto LIST; one with a Qualifier or no value attribute is
-\ not kept.
-: ANNOTATION-START ( XML:reader ^doc ^^annotation -- XML:reader )
-   {: d:^ list:^ :}
-   s" Qualifier" FIND-ATTR if d SKIP-START exit then
+\ The Annotation's Term, kept, as its qualifier and its name; rejected
+\ unless qualified.
+: TERM-OF ( XML:reader ^doc -- XML:reader ^u8 n ^u8 n )
+   {: d:^ :}
    d s" Term" NEED {: term:SPAN:span<u8> :}
    term SPAN:$ QUALIFIER {: q:^ ql:n tail:^ tl:n :}
    tl 0= if
@@ -789,6 +823,14 @@ CAST: >RECORD ( n -- ^t )
       d term SPAN:$ s" write the term's namespace or alias, a dot and its name"
       FOUND-QUOTED
    then
+   q ql tail tl ;
+
+\ A V4 Annotation onto LIST; one with a Qualifier or no value attribute is
+\ not kept.
+: ANNOTATION-START ( XML:reader ^doc ^^annotation -- XML:reader )
+   {: d:^ list:^ :}
+   s" Qualifier" FIND-ATTR if d SKIP-START exit then
+   d TERM-OF {: q:^ ql:n tail:^ tl:n :}
    FIND-VALUE if
       d ATTR-TEXT$ {: v:^ vl:n :}
       d list q ql SPAN:MAKE tail tl SPAN:MAKE d v vl KEEP ADD-ANNOTATION
@@ -936,17 +978,24 @@ CAST: >RECORD ( n -- ^t )
    d KIND-PROPERTY-NAME t name SPAN:$ OWNED-KEY d HELD?
    d KIND-NAVIGATION-NAME t name SPAN:$ OWNED-KEY d HELD? or ;
 
+\ V, the value of NAME on the element EL at AT, as a boolean; rejected unless
+\ true or false.
+: BOOL-OF ( ^doc n str str str -- bool )
+   {: d:^ at:n name:^ len:n el:^ el-len:n v:^ vl:n :}
+   v vl s" true" STR= if true exit then
+   v vl s" false" STR= if false exit then
+   d at PLACE
+   d s" `" ADD d name len ADD d s" ` of `" ADD d el el-len ADD
+   d s" ` to be true or false, found " ADD d v vl QUOTE
+   d s" ; set `" ADD d name len ADD d s" ` to true or false" ADD d REJECT-DOC ;
+
 \ The boolean attribute NAME of the current element, DEFAULT when absent.
 : BOOL-ATTR ( XML:reader ^doc str bool -- XML:reader bool )
    {: d:^ name:^ len:n default:bool :}
    d name len ATTR$ 0= if 2drop default exit then
    {: v:^ vl:n :}
-   v vl s" true" STR= if true exit then
-   v vl s" false" STR= if false exit then
-   d PLACE-HERE XML:LOCAL$ {: el:^ el-len:n :}
-   d s" `" ADD d name len ADD d s" ` of `" ADD d el el-len ADD
-   d s" ` to be true or false, found " ADD d v vl QUOTE
-   d s" ; set `" ADD d name len ADD d s" ` to true or false" ADD d REJECT-DOC ;
+   XML:LOCAL$ {: el:^ el-len:n :}
+   d d DOC-OFFSET @ name len el el-len v vl BOOL-OF ;
 
 : NULLABLE ( XML:reader ^doc -- XML:reader bool )
    s" Nullable" true BOOL-ATTR ;
@@ -1183,9 +1232,35 @@ CAST: >RECORD ( n -- ^t )
    d b ADD-BINDING
    d SKIP-START ;
 
+: FILTER-NAME? ( str -- bool ) s" FilterRestrictions" STR= ;
+
+: FILTER-TERM? ( XML:reader ^doc -- XML:reader bool )
+   {: d:^ :}
+   d s" Term" ATTR$ 0= if 2drop false exit then
+   QUALIFIER {: q:^ ql:n tail:^ tl:n :} tail tl FILTER-NAME? ;
+
+\ A FilterRestrictions with no Qualifier onto LIST, read in filter-body; any
+\ other Annotation is read past.
+: FILTER-START ( XML:reader ^doc ^^filter -- XML:reader )
+   {: d:^ list:^ :}
+   s" Qualifier" FIND-ATTR if d SKIP-START exit then
+   d TERM-OF {: q:^ ql:n tail:^ tl:n :}
+   tail tl FILTER-NAME? 0= if d SKIP-START exit then
+   d DOC-ARENA @ FILTERS-NEW {: f:^ :}
+   q ql SPAN:MAKE f FILTER-NAMESPACE !
+   true f FILTER-FILTERABLE !
+   d DOC-OFFSET @ f FILTER-OFFSET !
+   list @ f FILTER-NEXT ! f list !
+   f d DOC-FILTER !
+   d DOC-PHASE @ d DOC-HOME !
+   d PHASE-FILTER-BODY ENTER ;
+
 : IN-SET ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d SPACE-EDM4 s" NavigationPropertyBinding" IS? if d BINDING-START exit then
+   d SPACE-EDM4 s" Annotation" IS? if
+      d d DOC-SET @ ENTITY-SET-FILTERS FILTER-START exit
+   then
    d SKIP-START ;
 
 : SET-END-START ( XML:reader ^doc -- XML:reader )
@@ -1215,6 +1290,7 @@ CAST: >RECORD ( n -- ^t )
 : IN-ANNOTATIONS ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d SPACE-EDM4 s" Annotation" IS? if
+      d FILTER-TERM? if d d DOC-BLOCK @ BLOCK-FILTERS FILTER-START exit then
       d d DOC-BLOCK @ BLOCK-ANNOTATIONS ANNOTATION-START exit
    then
    d SKIP-START ;
@@ -1264,6 +1340,58 @@ CAST: >RECORD ( n -- ^t )
    d SPACE-EDM4 s" TypeDefinition" IS? if d DEFINITION-START exit then
    d SKIP-START ;
 
+: IN-FILTER ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d SPACE-EDM4 s" Record" IS? if d PHASE-RECORD ENTER exit then
+   d SKIP-START ;
+
+\ Filterable as a Bool attribute is read here, as a Bool element in bool-value.
+: FILTERABLE-START ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   s" Bool" FIND-ATTR 0= if d PHASE-BOOL-VALUE ENTER exit then
+   d s" Bool" true BOOL-ATTR d DOC-FILTER @ FILTER-FILTERABLE !
+   d SKIP-START ;
+
+: PROPERTY-VALUE-START ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d s" Property" ATTR$ drop {: name:^ len:n :}
+   name len s" NonFilterableProperties" STR= if
+      d PHASE-PATHS-VALUE ENTER exit
+   then
+   name len s" Filterable" STR= if d FILTERABLE-START exit then
+   d SKIP-START ;
+
+: IN-FILTER-RECORD ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d SPACE-EDM4 s" PropertyValue" IS? if d PROPERTY-VALUE-START exit then
+   d SKIP-START ;
+
+: IN-PATHS-VALUE ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d SPACE-EDM4 s" Collection" IS? if d PHASE-PATHS ENTER exit then
+   d SKIP-START ;
+
+: TEXT-START ( XML:reader ^doc phase -- XML:reader )
+   {: d:^ p:phase :}
+   0 d DOC-FILLED !
+   d p ENTER ;
+
+: IN-PATHS ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d SPACE-EDM4 s" PropertyPath" IS? if d PHASE-PATH-TEXT TEXT-START exit then
+   d SKIP-START ;
+
+: IN-BOOL-VALUE ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d SPACE-EDM4 s" Bool" IS? if d PHASE-BOOL-TEXT TEXT-START exit then
+   d SKIP-START ;
+
+\ Rejects an element inside EL, whose value is text.
+: NOT-TEXT ( XML:reader ^doc str -- XML:reader )
+   {: d:^ el:^ el-len:n :}
+   d PLACE-HERE d s" text in `" ADD d el el-len ADD d s" `" ADD
+   d s" an element" s" write the value as text" FOUND ;
+
 \ A start tag: its namespace is classified, then the open phase takes it.
 : CLASSIFY ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
@@ -1289,13 +1417,47 @@ CAST: >RECORD ( n -- ^t )
       set-pairs OF d IN-SET-PAIRS ENDOF
       annotations OF d IN-ANNOTATIONS ENDOF
       enum-body OF d IN-ENUM ENDOF
+      filter-body OF d IN-FILTER ENDOF
+      record OF d IN-FILTER-RECORD ENDOF
+      paths-value OF d IN-PATHS-VALUE ENDOF
+      paths OF d IN-PATHS ENDOF
+      path-text OF d s" PropertyPath" NOT-TEXT ENDOF
+      bool-value OF d IN-BOOL-VALUE ENDOF
+      bool-text OF d s" Bool" NOT-TEXT ENDOF
       skip OF d DEEPER ENDOF
    ;MATCH ;
 
+\ A PropertyPath's or Bool's text, which may come in several text and CDATA
+\ events, is collected in the scratch; other text is read past.
+: ON-TEXT ( XML:reader ^doc -- XML:reader )
+   {: d:^ :}
+   d DOC-PHASE @ {: p:phase :}
+   p PHASE-PATH-TEXT PHASE-EQ p PHASE-BOOL-TEXT PHASE-EQ or 0= if exit then
+   d DOC-FILLED @ {: at:n :}
+   d DOC-SCRATCH @ at + d DOC-ROOM @ at - XML:TEXT
+   d DOC-FILLED +! ;
+
+: TEXT$ ( ^doc -- str ) dup DOC-SCRATCH @ swap DOC-FILLED @ ;
+
+: PATH-END ( ^doc -- )
+   {: d:^ :}
+   d DOC-ARENA @ PATHS-NEW {: p:^ :}
+   d d TEXT$ KEEP p PATH-TEXT !
+   d DOC-FILTER @ {: f:^ :}
+   f FILTER-PATHS @ p PATH-NEXT ! p f FILTER-PATHS ! ;
+
+: BOOL-END ( ^doc -- )
+   {: d:^ :}
+   d d DOC-OFFSET @ s" Bool" s" PropertyValue" d TEXT$ BOOL-OF
+   d DOC-FILTER @ FILTER-FILTERABLE ! ;
+
 : ON-END ( ^doc -- )
    {: d:^ :}
-   d DOC-PHASE @ PHASE-SKIP PHASE-EQ if d SHALLOWER exit then
-   d d DOC-PHASE @ PARENT ENTER ;
+   d DOC-PHASE @ {: p:phase :}
+   p PHASE-SKIP PHASE-EQ if d SHALLOWER exit then
+   p PHASE-PATH-TEXT PHASE-EQ if d PATH-END then
+   p PHASE-BOOL-TEXT PHASE-EQ if d BOOL-END then
+   d d p PARENT ENTER ;
 
 \ One event; false at the end of the document.
 : STEP ( XML:reader ^doc -- XML:reader bool )
@@ -1305,10 +1467,10 @@ CAST: >RECORD ( n -- ^t )
    k MATCH XML:kind
       start OF d ON-START true ENDOF
       end OF d ON-END true ENDOF
-      text OF true ENDOF
+      text OF d ON-TEXT true ENDOF
       comment OF true ENDOF
       pi OF true ENDOF
-      cdata OF true ENDOF
+      cdata OF d ON-TEXT true ENDOF
       eof OF false ENDOF
    ;MATCH ;
 
@@ -2081,8 +2243,17 @@ CAST: >RECORD ( n -- ^t )
       b list !
    repeat drop ;
 
-\ A block whose Target names a type or a property it declares attaches; any
-\ other is read past: SAP's services target navigation properties.
+: ATTACH-FILTERS ( ^filter ^^filter -- )
+   {: f:^ list:^ :}
+   f begin dup NULL-PTR <> while
+      {: g:^filter :}
+      g FILTER-NEXT @
+      list @ g FILTER-NEXT !
+      g list !
+   repeat drop ;
+
+\ A Target naming a type or property takes the block's annotations, a set of
+\ the container its filters; others, as SAP's navigations, are read past.
 : BLOCK ( ^doc ^block -- )
    {: d:^ b:^ :}
    b BLOCK-TARGET @ SPAN:$ {: text:^ len:n :}
@@ -2092,6 +2263,10 @@ CAST: >RECORD ( n -- ^t )
       b BLOCK-ANNOTATIONS @ swap ENTITY-TYPE-ANNOTATIONS ATTACH exit
    then
    text len i SPLIT {: head:^ hl:n tail:^ tl:n :}
+   d head hl CONTAINER-PATH? if
+      d tail tl FIND-SET dup NULL-PTR = if drop exit then
+      b BLOCK-FILTERS @ swap ENTITY-SET-FILTERS ATTACH-FILTERS exit
+   then
    d head hl FIND-TYPE {: t:^ :}
    t NULL-PTR = if exit then
    d KIND-PROPERTY-NAME t tail tl OWNED-KEY d FIND {: p:^property :}
@@ -2132,14 +2307,20 @@ CAST: >RECORD ( n -- ^t )
    held ANNOTATION-OFFSET @ a ANNOTATION-OFFSET @ < if a exit then
    d a REMEMBER-AT held ;
 
+\ The Annotation at AT is rejected as a second of the term NAMESPACE, NAME.
+: SECOND-TERM ( ^doc n SPAN:span<u8> SPAN:span<u8> -- )
+   {: d:^ at:n ns:SPAN:span<u8> nm:SPAN:span<u8> :}
+   d at PLACE
+   d s" one `Annotation` of term " ADD d nm QUOTE-SPAN
+   d s"  of " ADD d ns QUOTE-SPAN d s"  per target" ADD
+   d s" a second" s" remove one of the two" FOUND ;
+
 \ A, unless null, is rejected as a second annotation of its term.
 : DUPLICATE ( ^doc ^annotation -- )
    {: d:^ a:^ :}
    a NULL-PTR = if exit then
-   d a ANNOTATION-OFFSET @ PLACE
-   d s" one `Annotation` of term " ADD d a ANNOTATION-NAME @ QUOTE-SPAN
-   d s"  of " ADD d a ANNOTATION-NAMESPACE @ QUOTE-SPAN d s"  per target" ADD
-   d s" a second" s" remove one of the two" FOUND ;
+   d a ANNOTATION-OFFSET @ a ANNOTATION-NAMESPACE @ a ANNOTATION-NAME @
+   SECOND-TERM ;
 
 \ Rejects a second annotation of one term on one target, at its later copy.
 : TERMS ( ^doc ^annotation -- )
@@ -2165,6 +2346,47 @@ CAST: >RECORD ( n -- ^t )
       d over TYPE-TERMS ENTITY-TYPE-NEXT @
    repeat drop ;
 
+: CAPABILITIES$ ( -- str ) s" Org.OData.Capabilities.V1" ;
+
+\ The earlier of F and G in the document; either may be null.
+: EARLIER-FILTER ( ^filter ^filter -- ^filter )
+   {: f:^ g:^ :}
+   f NULL-PTR = if g exit then
+   g NULL-PTR = if f exit then
+   f FILTER-OFFSET @ g FILTER-OFFSET @ < if f else g then ;
+
+\ Whether F's term, its alias resolved, is in Org.OData.Capabilities.V1.
+: CAPABILITIES? ( ^doc ^filter -- bool )
+   {: d:^ f:^ :}
+   d f FILTER-NAMESPACE @ SPAN:$ ALIAS CAPABILITIES$ STR= ;
+
+\ The earliest CAPABILITIES? filter on LIST other than BUT, null for none.
+: EARLIEST ( ^doc ^filter ^filter -- ^filter )
+   {: d:^ list:^ but:^ :}
+   NULL-PTR list begin dup NULL-PTR <> while
+      {: least:^filter f:^filter :}
+      least
+      f but <> d f CAPABILITIES? and if f EARLIER-FILTER then
+      f FILTER-NEXT @
+   repeat drop ;
+
+\ The earliest is the set's filter; a second is rejected.
+: SET-FILTER ( ^doc ^entity-set -- )
+   {: d:^ s:^ :}
+   s ENTITY-SET-FILTERS @ {: list:^filter :}
+   d list NULL-PTR EARLIEST {: first:^filter :}
+   first s ENTITY-SET-FILTER !
+   d list first EARLIEST {: second:^filter :}
+   second NULL-PTR = if exit then
+   d second FILTER-OFFSET @ CAPABILITIES$ SPAN:MAKE
+   s" FilterRestrictions" SPAN:MAKE SECOND-TERM ;
+
+: RESOLVE-FILTERS ( ^doc -- )
+   {: d:^ :}
+   d DOC-MODEL @ METADATA-SETS @ begin dup NULL-PTR <> while
+      d over SET-FILTER ENTITY-SET-NEXT @
+   repeat drop ;
+
 : RESOLVE ( ^doc -- )
    {: d:^ :}
    d RESOLVE-BASES
@@ -2178,6 +2400,7 @@ CAST: >RECORD ( n -- ^t )
    d RESOLVE-BINDINGS
    d RESOLVE-SECONDS
    d RESOLVE-BLOCKS
+   d RESOLVE-FILTERS
    d RESOLVE-TERMS ;
 
 : PARSE ( ^doc ^u8 n -- )
@@ -2288,6 +2511,20 @@ CAST: >RECORD ( n -- ^t )
       dup q execute KEY-REF-NEXT @
    repeat drop ;
 
+: V2-FILTERABLE? ( ^property -- bool )
+   PROPERTY-ANNOTATIONS @ s" http://www.sap.com/Protocols/SAPData"
+   s" filterable" ANNOTATION if s" false" STR= 0= exit then
+   2drop true ;
+
+\ Whether F makes no property filterable or lists P's name.
+: RESTRICTS? ( ^filter ^property -- bool )
+   {: f:^ p:^ :}
+   f FILTER-FILTERABLE @ 0= if true exit then
+   f FILTER-PATHS @ begin dup NULL-PTR <> while
+      dup PATH-TEXT @ p PROPERTY-NAME @ SPAN:$ SPAN= if drop true exit then
+      PATH-NEXT @
+   repeat drop false ;
+
 public
 
 : METADATA ( ^ARENA:arena ^u8 n -- ^metadata )
@@ -2355,5 +2592,14 @@ public
 : PROPERTY-ANNOTATION$ ( ^property str str -- str bool )
    {: p:^ ns:^ nl:n name:^ len:n :}
    p PROPERTY-ANNOTATIONS @ ns nl name len ANNOTATION ;
+
+\ Whether a $filter on SET may name PROP, a property of SET's type: false when
+\ PROP's sap:filterable or SET's FilterRestrictions says not, else true.
+: FILTERABLE? ( ^entity-set ^property -- bool )
+   {: s:^ p:^ :}
+   p V2-FILTERABLE? 0= if false exit then
+   s ENTITY-SET-FILTER @ {: f:^filter :}
+   f NULL-PTR = if true exit then
+   f p RESTRICTS? 0= ;
 
 ;package

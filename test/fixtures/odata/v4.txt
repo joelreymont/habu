@@ -2,8 +2,8 @@ set Customers
  type Common.Label=Customer
  key PartyID
  property PartyID Edm.String not-null Common.Label=Party
- property Email Edm.String nullable
- property Name Edm.String nullable
+ property Email Edm.String nullable unfilterable
+ property Name Edm.String nullable unfilterable
  property Home self.Address nullable
  property Branches Collection(com.example.shop.Address) nullable
  navigation Referrer to-one none
@@ -13,15 +13,15 @@ set Customers
 set Orders
  type Common.Label=Order
  key OrderID
- property OrderID Edm.Int64 not-null
- property Placed Edm.DateTimeOffset nullable Common.Label=Placed at Core.Computed=true
+ property OrderID Edm.Int64 not-null unfilterable
+ property Placed Edm.DateTimeOffset nullable Common.Label=Placed at Core.Computed=true unfilterable
  navigation Buyer to-one Customers
  navigation Lines to-many none
 set Showcase
  type Common.Label=Order
  key OrderID
  property OrderID Edm.Int64 not-null
- property Placed Edm.DateTimeOffset nullable Common.Label=Placed at Core.Computed=true
+ property Placed Edm.DateTimeOffset nullable Common.Label=Placed at Core.Computed=true unfilterable
  navigation Buyer to-one none
  navigation Lines to-many none
 Shop none

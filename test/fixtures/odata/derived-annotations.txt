@@ -1,7 +1,7 @@
 set As
  type
  key K
- property K Edm.String not-null Common.Label=Key
+ property K Edm.String not-null Common.Label=Key unfilterable
 set Bs
  type
  key K

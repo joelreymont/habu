@@ -24,6 +24,15 @@
       <Annotations Target="N.A/K">
         <Annotation Term="Common.Label" String="Key"/>
       </Annotations>
+      <Annotations Target="N.Container/As">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable">
+              <Bool>false</Bool>
+            </PropertyValue>
+          </Record>
+        </Annotation>
+      </Annotations>
     </Schema>
   </edmx:DataServices>
 </edmx:Edmx>

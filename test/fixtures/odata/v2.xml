@@ -27,7 +27,7 @@
         <Property Name="Year" Type="Edm.Int16" Nullable="false"/>
         <Property Name="Amount" Type="Edm.Decimal" Precision="13" Scale="2"/>
         <Property Name="Placed" Type="Edm.DateTimeOffset"/>
-        <Property Name="Shipped" Type="Edm.DateTime"/>
+        <Property Name="Shipped" Type="Edm.DateTime" sap:filterable="false"/>
         <NavigationProperty Name="Buyer" Relationship="SHOP.CustomerOrders" FromRole="Bought" ToRole="Buyer"/>
       </EntityType>
       <ComplexType Name="Address">

@@ -61,6 +61,7 @@ LINK-CAP BUFFER: LINK
    p SAP$ s" label" ODATA:PROPERTY-ANNOTATION$ s" sap:label" SHOW
    p COMMON$ s" Label" ODATA:PROPERTY-ANNOTATION$ s" Common.Label" SHOW
    p CORE$ s" Computed" ODATA:PROPERTY-ANNOTATION$ s" Core.Computed" SHOW
+   SET @ p ODATA:FILTERABLE? 0= if s"  unfilterable" ADD then
    NL ;
 
 : SHOW-KEY ( ^ODATA:property -- ) s"  " ADD ODATA:PROPERTY-NAME$ ADD ;
@@ -254,6 +255,21 @@ LINK-CAP BUFFER: LINK
    ODATA:E-METADATA SOURCE-REJECTS
    s" test/fixtures/odata/enum-is-flags.xml"
    s" 4:7: expected `IsFlags` of `EnumType` to be true or false, found `yes`; set `IsFlags` to true or false"
+   REJECTS
+   s" test/fixtures/odata/repeated-filter-inline.xml"
+   s" 17:11: expected one `Annotation` of term `FilterRestrictions` of `Org.OData.Capabilities.V1` per target, found a second; remove one of the two"
+   REJECTS
+   s" test/fixtures/odata/repeated-filter-block.xml"
+   s" 18:9: expected one `Annotation` of term `FilterRestrictions` of `Org.OData.Capabilities.V1` per target, found a second; remove one of the two"
+   REJECTS
+   s" test/fixtures/odata/repeated-filter-thrice.xml"
+   s" 13:11: expected one `Annotation` of term `FilterRestrictions` of `Org.OData.Capabilities.V1` per target, found a second; remove one of the two"
+   REJECTS
+   s" test/fixtures/odata/filter-path-element.xml"
+   s" 16:33: expected text in `PropertyPath`, found an element; write the value as text"
+   REJECTS
+   s" test/fixtures/odata/filter-bool-text.xml"
+   s" 15:26: expected `Bool` of `PropertyValue` to be true or false, found `yes`; set `Bool` to true or false"
    REJECTS
    s" test/fixtures/odata/mismatched-end.xml"
    s" 7:9: expected `</EntityType>`, found `EntityTypo`; close elements in the reverse of the order they were opened"

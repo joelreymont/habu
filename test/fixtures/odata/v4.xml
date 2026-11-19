@@ -6,6 +6,9 @@
   <edmx:Reference Uri="/vocabularies/core">
     <edmx:Include Namespace="Org.OData.Core.V1" Alias="Core"/>
   </edmx:Reference>
+  <edmx:Reference Uri="/vocabularies/capabilities">
+    <edmx:Include Namespace="Org.OData.Capabilities.V1" Alias="Capabilities"/>
+  </edmx:Reference>
   <edmx:DataServices>
     <Schema Namespace="com.example.shop" Alias="self">
       <EntityType Name="Party" Abstract="true">
@@ -56,12 +59,37 @@
           <NavigationPropertyBinding Path="Orders" Target="Orders"/>
           <NavigationPropertyBinding Path="LastLine" Target="Orders/Lines"/>
           <NavigationPropertyBinding Path="Household" Target="Customers"/>
+          <Annotation Term="Capabilities.FilterRestrictions">
+            <Record>
+              <PropertyValue Property="NonFilterableProperties">
+                <Collection>
+                  <PropertyPath>Em<!-- split -->ail</PropertyPath>
+                  <PropertyPath><![CDATA[Name]]></PropertyPath>
+                  <PropertyPath>Home/City</PropertyPath>
+                </Collection>
+              </PropertyValue>
+            </Record>
+          </Annotation>
+          <Annotation Term="Capabilities.FilterRestrictions" Qualifier="ReadPast">
+            <Record>
+              <PropertyValue Property="NonFilterableProperties">
+                <Collection>
+                  <PropertyPath>PartyID</PropertyPath>
+                </Collection>
+              </PropertyValue>
+            </Record>
+          </Annotation>
         </EntitySet>
         <EntitySet Name="Orders" EntityType="com.example.shop.Order">
           <NavigationPropertyBinding Path="Buyer" Target="Customers"/>
         </EntitySet>
         <EntitySet Name="Showcase" EntityType="self.Order">
           <NavigationPropertyBinding Path="Buyer" Target="self.Container/Shop"/>
+          <Annotation Term="Common.FilterRestrictions">
+            <Record>
+              <PropertyValue Property="Filterable" Bool="false"/>
+            </Record>
+          </Annotation>
         </EntitySet>
         <Singleton Name="Shop" Type="self.Customer"/>
         <ActionImport Name="RestockAll" Action="self.Restock"/>
@@ -73,6 +101,27 @@
       </Annotations>
       <Annotations Target="com.example.shop.Order">
         <Annotation Term="Common.Label" String="Order"/>
+      </Annotations>
+      <Annotations Target="self.Container/Orders">
+        <Annotation Term="Capabilities.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="false"/>
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="com.example.shop.Container/Showcase">
+        <Annotation Term="Capabilities.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable">
+              <Bool>true</Bool>
+            </PropertyValue>
+            <PropertyValue Property="NonFilterableProperties">
+              <Collection>
+                <PropertyPath>Placed</PropertyPath>
+              </Collection>
+            </PropertyValue>
+          </Record>
+        </Annotation>
       </Annotations>
     </Schema>
   </edmx:DataServices>
