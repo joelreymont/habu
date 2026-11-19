@@ -1,12 +1,16 @@
 split-str
-\ source.f - caller-owned XML source views and reversible lexical/original byte
+\ source.f - XML source views and reversible lexical/original byte
 \ coordinates. Part of package XML (src/lib/xml.f). UTF-8 and US-ASCII borrow
-\ the original bytes; UTF-16 is converted to canonical UTF-8 in caller storage.
-\ Storage and original bytes stay live until SOURCE-CLOSE, after every reader
-\ and editor borrowing them has closed: nothing counts borrowers, the caller
-\ sequences close and use. A failed initialisation publishes nothing.
+\ the original bytes; UTF-16 is converted to canonical UTF-8 in the source's
+\ storage. The source takes its storage from the allocator it is given and
+\ keeps it; SOURCE-CLOSE or OWNER-CLOSE frees it. On an arena's allocator the
+\ free does nothing, and the arena's release ends a source nobody closed. The
+\ original bytes are borrowed until then. Readers and editors close first;
+\ nothing counts borrowers. After the close every copy of the owner is dead.
+\ A rejected initialisation takes nothing.
 require src/lib/xml/scalar.f
 require src/lib/vector.f
+require src/lib/allocator.f
 
 package XML
 public
@@ -20,6 +24,8 @@ private
 CAST: ENCODING>N ( encoding -- n )
 \ Views the encoding cell, which holds only ENCODING>N values.
 CAST: >ENCODING-CELL ( ^n -- ^encoding )
+\ Views the allocator cell, which holds only the allocator SOURCE-INIT took.
+CAST: >ALLOCATOR-CELL ( ^n -- ^^ALLOC:allocator )
 
 BEGIN-STRUCTURE SRC-HEADER-BYTES
    CELL +FIELD SRC-HEADER.ORIGINAL
@@ -28,7 +34,7 @@ BEGIN-STRUCTURE SRC-HEADER-BYTES
    CELL +FIELD SRC-HEADER.LEXICAL-U
    CELL +FIELD SRC-HEADER.ENCODING
    CELL +FIELD SRC-HEADER.BOM-U
-   CELL +FIELD SRC-HEADER.STORAGE-U
+   CELL +FIELD SRC-HEADER.ALLOCATOR
 END-STRUCTURE
 
 SRC-HEADER-BYTES CELL / constant SRC-HEADER-CELLS
@@ -38,7 +44,7 @@ NULL-PTR SRC-HEADER.LEXICAL NULL-PTR - CELL / constant SRC-LEXICAL-IDX
 NULL-PTR SRC-HEADER.LEXICAL-U NULL-PTR - constant SRC-LEXICAL-LEN
 NULL-PTR SRC-HEADER.ENCODING NULL-PTR - constant SRC-ENCODING-IDX
 NULL-PTR SRC-HEADER.BOM-U NULL-PTR - constant SRC-BOM-LEN
-NULL-PTR SRC-HEADER.STORAGE-U NULL-PTR - constant SRC-STORAGE-LEN
+NULL-PTR SRC-HEADER.ALLOCATOR NULL-PTR - constant SRC-ALLOCATOR-IDX
 
 \ A UTF-16 source's storage holds, after the header, one checkpoint cell per
 \ SRC-MARK-STRIDE lexical bytes, then the lexical copy. Checkpoint k-1 is the
@@ -46,7 +52,7 @@ NULL-PTR SRC-HEADER.STORAGE-U NULL-PTR - constant SRC-STORAGE-LEN
 \ k*SRC-MARK-STRIDE, so a mapping walks fewer than SRC-MARK-STRIDE bytes.
 64 constant SRC-MARK-STRIDE
 
-\ The token carries the caller-owned header; every span stays caller-owned.
+\ The token carries the header, which begins the source's storage.
 LINEAR: SRC-MINT ( ^n -- XML:source )
 LINEAR: SRC-ERASE ( XML:source -- ^n )
 
@@ -54,9 +60,7 @@ LINEAR: SRC-ERASE ( XML:source -- ^n )
    SRC-ERASE dup SRC-MINT swap ;
 
 : OWNER-STATE ( source-owner -- ^n )
-   SOURCE-OWNER-UNMAKE
-   dup 0= if E-STATE throw then
-   dup SRC-STORAGE-LEN + @ 0= if E-STATE throw then ;
+   SOURCE-OWNER-UNMAKE ;
 
 : SRC-ORIGINAL$ ( ^n -- str )
    {: state :}
@@ -297,27 +301,20 @@ LINEAR: SRC-ERASE ( XML:source -- ^n )
    repeat
    drop ;
 
-: SRC-BYTES ( str -- n n n )
+\ Validates the whole document; answers the bytes its storage takes, the
+\ encoding, the BOM's bytes and the lexical length.
+: SRC-BYTES ( str -- n n n n )
    {: source size:n :}
    source size SPAN-CHECK
    source size SRC-DETECT {: encoding:n bom:n :}
    source size bom encoding SRC-SCAN {: lexical:n :}
    encoding XML-ENCODING:UTF8 ENCODING>N =
    encoding XML-ENCODING:US-ASCII ENCODING>N = or if
-      SRC-HEADER-CELLS cells encoding bom exit
-   then
-   lexical SRC-MARK-STRIDE / cells {: marks:n :}
-   lexical MAX-SIZE SRC-HEADER-CELLS cells - CELL 1- - marks - > if
-      E-CAPACITY throw
+      SRC-HEADER-CELLS cells encoding bom lexical exit
    then
    lexical CELL 1- + CELL 1- invert and
-   marks + SRC-HEADER-CELLS cells + encoding bom ;
-
-: SRC-STORAGE-CHECK ( ^n n str n -- )
-   {: storage cap:n original size:n needed:n :}
-   storage BYTE-VIEW cap SPAN-CHECK
-   cap needed < if E-CAPACITY throw then
-   original size storage BYTE-VIEW cap OVERLAP? if E-ALIAS throw then ;
+   lexical SRC-MARK-STRIDE / cells + SRC-HEADER-CELLS cells +
+   encoding bom lexical ;
 
 \ Set each checkpoint from mark on whose stride point lies at or before the
 \ scalar boundary at lexical to original, that boundary's original offset;
@@ -345,57 +342,53 @@ LINEAR: SRC-ERASE ( XML:source -- ^n )
    {: target cursor:n mark:n :}
    marks mark target output - cursor SRC-MARKS drop ;
 
-: SRC-INITIALIZE ( ^n n str n n -- )
-   {: storage cap:n original size:n encoding:n bom:n :}
+: SRC-INITIALIZE ( ^n str n n n -- )
+   {: storage original size:n encoding:n bom:n lexical:n :}
    original storage SRC-ORIGINAL-IDX ptr-field !
    size storage SRC-ORIGINAL-LEN + !
    encoding storage SRC-ENCODING-IDX + !
    bom storage SRC-BOM-LEN + !
-   cap storage SRC-STORAGE-LEN + !
+   lexical storage SRC-LEXICAL-LEN + !
    encoding XML-ENCODING:UTF8 ENCODING>N =
    encoding XML-ENCODING:US-ASCII ENCODING>N = or if
       original bom + storage SRC-LEXICAL-IDX ptr-field !
-      size bom - storage SRC-LEXICAL-LEN + !
    else
-      original size bom encoding SRC-SCAN {: lexical:n :}
-      lexical storage SRC-LEXICAL-LEN + !
       storage SRC-HEADER-CELLS lexical SRC-MARK-STRIDE / + cells + BYTE-VIEW
       storage SRC-LEXICAL-IDX ptr-field !
       original size bom encoding storage SRC-HEADER-CELLS cells +
       storage SRC-LEXICAL-IDX ptr-field @ SRC-WRITE-UTF16
    then ;
 
+: SRC-FREE ( ^n -- )
+   {: state :}
+   state SRC-ALLOCATOR-IDX + >ALLOCATOR-CELL @ state BYTE-VIEW ALLOC:FREE ;
+
 public
-\ Validates the whole wire encoding and scalar range and answers the storage
-\ SOURCE-INIT needs; SOURCE-INIT validates again before publishing. Neither
-\ checks well-formedness. Accepted: UTF-8 with or without BOM; declared US-ASCII
+\ Validates the whole wire encoding and scalar range before it takes storage;
+\ it does not check well-formedness. Accepted: UTF-8 with or without BOM; declared US-ASCII
 \ without BOM (a byte above $7F anywhere, replacement markup included, is
 \ E-ENCODING; numeric references stay ASCII); UTF-16 LE or BE with BOM and no or
 \ a generic UTF-16 declaration; BOM-less UTF-16 starting `<?` with a matching
 \ UTF-16LE or UTF-16BE declaration, checked by the first NEXT. Labels are
 \ case-insensitive and the target `xml` lowercase (XML 1.0 section 4.3.3).
 \ Anything else, UTF-32 included, is E-ENCODING; bad surrogates are E-UTF16.
-: SOURCE-BYTES ( str -- n )
-   SRC-BYTES 2drop ;
-
-: SOURCE-INIT ( ^n n str -- XML:source )
-   {: storage cap:n original size:n :}
-   original size SRC-BYTES {: needed:n encoding:n bom:n :}
-   storage cap original size needed SRC-STORAGE-CHECK
-   storage cap original size encoding bom SRC-INITIALIZE
+: SOURCE-INIT ( ^ALLOC:allocator str -- XML:source )
+   {: al:^ original size:n :}
+   original size SRC-BYTES {: needed:n encoding:n bom:n lexical:n :}
+   al needed ALLOC:BYTES drop CELL-VIEW {: storage :}
+   al storage SRC-ALLOCATOR-IDX + >ALLOCATOR-CELL !
+   storage original size encoding bom lexical SRC-INITIALIZE
    storage SRC-MINT ;
 
 : SOURCE-CLOSE ( XML:source -- )
-   SRC-ERASE drop ;
+   SRC-ERASE SRC-FREE ;
 
-\ A one-cell XML:source-owner for movable records; header, storage and bytes
-\ stay put until OWNER-CLOSE, which invalidates every copy (later use and a
-\ second close are E-STATE).
+\ A one-cell XML:source-owner for movable records.
 : SOURCE-OWN ( XML:source -- source-owner )
    SRC-ERASE SOURCE-OWNER-MAKE ;
 
 : OWNER-CLOSE ( source-owner -- )
-   OWNER-STATE SRC-STORAGE-LEN + 0 swap ! ;
+   OWNER-STATE SRC-FREE ;
 
 : OWNER-ORIGINAL$ ( source-owner -- str )
    OWNER-STATE SRC-ORIGINAL$ ;

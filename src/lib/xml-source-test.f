@@ -12,9 +12,6 @@ require src/lib/heap.f
 
 package XML-SOURCE-TEST
 
-256 constant SOURCE-CAP
-create SOURCE-STORE SOURCE-CAP allot
-create SECOND-STORE SOURCE-CAP allot
 create EDIT-STORE 4 EDIT:STORAGE-BYTES allot
 TYPED-VARIABLE ENCODED-OUT ^VEC:vector<u8>
 create WRITTEN 256 allot
@@ -27,7 +24,6 @@ create SHARED-STORE XML:CURSOR-BYTES allot
 1024 constant MARKED-CAP
 create MARKED MARKED-CAP allot
 create MARKED-AT MARKED-CAP cells allot
-create ODD-STORE SOURCE-CAP 1+ allot
 variable MARKED-LEX
 variable MARKED-WIRE
 variable PROBE
@@ -68,8 +64,8 @@ CAST: ENCODING>N ( XML:encoding -- n )
    encoded BOM-INPUT 2 + count BYTE-COPY
    BOM-INPUT count 2 + ;
 
-: OPEN ( ^u8 n -- XML:source )
-   SOURCE-STORE SOURCE-CAP 2swap XML:SOURCE-INIT ;
+: OPEN ( str -- XML:source )
+   HEAP:ALLOCATOR -rot XML:SOURCE-INIT ;
 
 : READER ( XML:source -- XML:source XML:reader ) RD XML:INIT-SOURCE ;
 
@@ -100,14 +96,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:CLOSE XML:SOURCE-CLOSE
    BE$ OPEN
    XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF16-BE ENCODING>N T=
-   XML:SOURCE-LEXICAL$ s" <a>x</a>" T$=
-   READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   CLEARED XML:TEXT DECODED$ s" x" T$=
-   XML-KIND:END NEXT= XML-KIND:EOF NEXT=
-   XML:CLOSE XML:SOURCE-CLOSE ;
-
-: ODD-STORAGE ( -- )
-   ODD-STORE 1 + SOURCE-CAP BE$ XML:SOURCE-INIT
    XML:SOURCE-LEXICAL$ s" <a>x</a>" T$=
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s" x" T$=
@@ -179,7 +167,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    EDIT:CLOSE
    out VEC:DELETE
    WRITTEN written s" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>" T$=
-   SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
+   WRITTEN written OPEN
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML-KIND:TEXT NEXT= CLEARED XML:TEXT DECODED$ s" 中" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE
@@ -231,7 +219,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : INTERLEAVED ( -- )
    LE$ OPEN
-   SECOND-STORE SOURCE-CAP BE$ XML:SOURCE-INIT
+   BE$ OPEN
    XML:SOURCE-ENCODING ENCODING>N
    XML-ENCODING:UTF16-BE ENCODING>N T=
    swap XML:SOURCE-ENCODING ENCODING>N
@@ -267,7 +255,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : BAD-INIT ( str n -- )
    {: want:n :}
-   [: 2dup SOURCE-STORE SOURCE-CAP 2swap XML:SOURCE-INIT XML:SOURCE-CLOSE ;]
+   [: 2dup OPEN XML:SOURCE-CLOSE ;]
    catch want T= 2drop ;
 
 \ A rejection's text: the place, what was expected, the token found and the fix.
@@ -356,7 +344,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    WRITTEN BYTE-VIEW start added + + written start added + -
    original start removed + + original-len start removed + -
    T$=
-   SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
+   WRITTEN written OPEN
    XML:SOURCE-BOM$ nip 0 T=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s\" A🚗|KEEP" T$=
@@ -423,7 +411,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    original b + c b - T$=
    WRITTEN BYTE-VIEW c insert-added + + written c insert-added + -
    original c cr + + original-len c cr + - T$=
-   SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
+   WRITTEN written OPEN
    XML:SOURCE-BOM$ nip 2 T=
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
@@ -461,7 +449,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    EDIT:CLOSE XML:SOURCE-CLOSE
    out VEC:DELETE
    WRITTEN written s\" \xFF\xFE<\za\z>\z\xE9\z<\z/\za\z>\z" T$=
-   SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
+   WRITTEN written OPEN
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s" é" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
@@ -478,18 +466,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : HUGE-RANGE ( XML:source -- XML:source )
    $7FFFFFFFFFFFFFFF >OFF 1 >LEN XML:SOURCE-RANGE 2drop ;
-
-\ A record over the source's own storage is refused before the reader is
-\ built, and the refusal leaves the source with its caller to read and close.
-: SHARED-READER ( ^XML:cursor XML:source -- ^XML:cursor XML:source )
-   over XML:INIT-SOURCE XML:CLOSE ;
-
-: REFUSED-READER-KEEPS-SOURCE ( -- )
-   SHARED-STORE BYTE-VIEW XML:CURSOR-BYTES XML:EMPTY-CURSOR
-   SHARED-STORE XML:CURSOR-BYTES s" <a>x</a>" XML:SOURCE-INIT
-   ['] SHARED-READER catch XML:E-ALIAS T= nip
-   READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
-   XML:CLOSE XML:SOURCE-CLOSE ;
 
 : BOUNDARIES-AND-RECOVERY ( -- )
    s\" \xFF\xFE<\za\z>\z\x3D\xD8\z\xDE<\z/\za\z>\z" OPEN
@@ -534,19 +510,11 @@ CAST: ENCODING>N ( XML:encoding -- n )
    LEN>N 0 T= OFF>N 13 T=
    XML:SOURCE-CLOSE ;
 
-: OPEN-SMALL ( str -- )
-   2dup XML:SOURCE-BYTES 1- {: cap:n :}
-   SOURCE-STORE cap 2swap XML:SOURCE-INIT XML:SOURCE-CLOSE ;
-
-: SMALL-SOURCE ( str -- )
-   [: 2dup OPEN-SMALL ;] catch XML:E-CAPACITY T= 2drop ;
-
 : SHORT-CURSOR ( -- )
    SHARED-STORE BYTE-VIEW XML:CURSOR-BYTES 1- XML:EMPTY-CURSOR drop ;
 
 : SOURCE-CAPACITY ( -- )
    ['] SHORT-CURSOR catch XML:E-CAPACITY T=
-   s\" \xFF\xFE<\za\z/\z>\z" SMALL-SOURCE
    s\" \xFF\xFE<\za\z/\z>\z" OPEN
    READER XML-KIND:START NEXT= XML-KIND:END NEXT=
    XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE ;
@@ -592,6 +560,35 @@ TYPED-VARIABLE MOVER ALLOC:allocator
    v VEC:SPAN SPAN:$ v XML:ESCAPE-TEXT
    v VEC:SPAN SPAN:$ s" a<ba&lt;b" T$=
    v VEC:DELETE ;
+
+\ An allocator over the heap that counts the blocks it gives and frees.
+variable TAKEN
+variable FREED
+TYPED-VARIABLE COUNTER ALLOC:allocator
+
+: C-ALLOC ( ^u8 n -- ^u8 )
+   {: st:^ len:n :}
+   1 TAKEN +!  HEAP:ALLOCATOR len ALLOC:BYTES drop ;
+
+: C-RESIZE ( ^u8 ^u8 n n -- ^u8 )
+   {: st:^ block:^ old:n new:n :}
+   HEAP:ALLOCATOR block old new ALLOC:RESIZE drop ;
+
+: C-FREE ( ^u8 ^u8 -- )
+   {: st:^ block:^ :}
+   1 FREED +!  HEAP:ALLOCATOR block ALLOC:FREE ;
+
+: COUNTED-STORAGE ( -- )
+   NULL-PTR [: C-ALLOC ;] [: C-RESIZE ;] [: C-FREE ;] COUNTER ALLOC:INIT
+   s" a rejected document takes no storage" T-LABEL
+   [: COUNTER s\" \xFF\xFE\x00\xDC" XML:SOURCE-INIT XML:SOURCE-CLOSE ;]
+   catch XML:E-UTF16 T=
+   TAKEN @ 0 T=
+   s" a source's close frees the storage it took" T-LABEL
+   COUNTER LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE
+   TAKEN @ 1 T= FREED @ 1 T=
+   COUNTER s" <a/>" XML:SOURCE-INIT XML:SOURCE-OWN XML:OWNER-CLOSE
+   TAKEN @ 2 T= FREED @ 2 T= ;
 
 \ MARKED holds a UTF-16 text built scalar by scalar; MARKED-AT holds, per
 \ lexical offset, the original offset that scalar was written at, or -1 inside
@@ -653,9 +650,7 @@ TYPED-VARIABLE MOVER ALLOC:allocator
 : MARKED-RANGES ( bool -- )
    {: little:bool :}
    little MARKED-BUILD {: original size:n :}
-   original size XML:SOURCE-BYTES {: needed:n :}
-   needed MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: store alloc :}
-   store CELL-VIEW needed original size XML:SOURCE-INIT
+   original size OPEN
    XML:SOURCE-LEXICAL$ nip MARKED-LEX @ T=
    READER DRAIN XML:CLOSE
    0
@@ -674,8 +669,7 @@ TYPED-VARIABLE MOVER ALLOC:allocator
       then
    loop
    drop
-   XML:SOURCE-CLOSE
-   store alloc MEM:RELEASE-BYTES ;
+   XML:SOURCE-CLOSE ;
 
 
 : WIDE-PUT ( ^u8 n str -- n )
@@ -696,9 +690,7 @@ TYPED-VARIABLE MOVER ALLOC:allocator
    wire 2 s" <r>" WIDE-PUT
    CHILDREN 0 ?do wire swap s" <a/>" WIDE-PUT loop
    wire swap s" </r>" WIDE-PUT size T=
-   wire size XML:SOURCE-BYTES {: needed:n :}
-   needed MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: store store-alloc :}
-   store CELL-VIEW needed wire size XML:SOURCE-INIT XML:SOURCE-OWN {: owner :}
+   wire size OPEN XML:SOURCE-OWN {: owner :}
    0 WIDE-BAD !
    CHILDREN 0 ?do
       owner i 4 * 3 + >OFF 4 >LEN XML:OWNER-RANGE
@@ -706,7 +698,6 @@ TYPED-VARIABLE MOVER ALLOC:allocator
    loop
    WIDE-BAD @ 0 T=
    owner XML:OWNER-CLOSE
-   store store-alloc MEM:RELEASE-BYTES
    wire wire-alloc MEM:RELEASE-BYTES ;
 
 : REJECTIONS ( -- )
@@ -811,7 +802,6 @@ TYPED-VARIABLE MOVER ALLOC:allocator
 DECODED-NEW
 T-RESET
 UTF16-READ
-ODD-STORAGE
 UTF8-READ
 ASCII-READ
 ASCII-OUTPUT
@@ -834,7 +824,7 @@ WIDE-OWNER-RANGES
 SOURCE-CAPACITY
 APPENDS-KEEP
 ESCAPE-OWN
-REFUSED-READER-KEEPS-SOURCE
+COUNTED-STORAGE
 REJECTIONS
 DECLARATION-TEXTS
 UNIT-TEXTS

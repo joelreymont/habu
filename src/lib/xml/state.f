@@ -730,7 +730,6 @@ private
    original-len state WIRE-ORIGINAL-LEN + !
    state source-state WINDOW-COLUMNS
    source-state BYTE-VIEW state WIRE-STORAGE-IDX ptr-field !
-   source-state SRC-STORAGE-LEN + @ state WIRE-STORAGE-LEN + !
    state READER-TABLES
    state source-state ;
 
@@ -741,7 +740,6 @@ private
    record >STATE {: state :}
    state source-state SRC-LEXICAL$ RECORD-CHECK
    state source-state SRC-ORIGINAL$ RECORD-CHECK
-   state source-state BYTE-VIEW source-state SRC-STORAGE-LEN + @ RECORD-CHECK
    state INIT-STATE
    state source-state ['] SOURCE-BODY catch
    >r 2drop r> {: code:n :}

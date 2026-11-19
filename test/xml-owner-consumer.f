@@ -7,6 +7,7 @@ require src/lib/heap.f
 require src/lib/span.f
 require src/lib/vector.f
 require src/lib/xml.f
+require src/lib/arena.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/byte-edit.f
@@ -20,17 +21,13 @@ private
 1024 constant OUTPUT-CAP
 create WIRE WIRE-CAP allot
 create INPUT WIRE-CAP allot
-create REOPEN-STORE WIRE-CAP allot
 create EDIT-STORE 3 EDIT:STORAGE-BYTES allot
-TYPED-VARIABLE ENCODED-OUT ^VEC:vector<u8>
 create WRITTEN OUTPUT-CAP allot
 TYPED-VARIABLE DECODED ^VEC:vector<u8>
 1 SPAN-BUFFER: STREAM-CHUNK
 variable STREAM-POS
 
 DYNAMIC-BUFFER OWNERS XML:source-owner
-DYNAMIC-BUFFER SOURCES ^u8
-DYNAMIC-BUFFER SOURCE-SIZES NUM:alloc-byte-len
 DYNAMIC-BUFFER ORIGINALS ^u8
 DYNAMIC-BUFFER ORIGINAL-SIZES NUM:alloc-byte-len
 DYNAMIC-BUFFER ATTR-OFF off
@@ -38,12 +35,9 @@ DYNAMIC-BUFFER ATTR-LEN len
 DYNAMIC-BUFFER TEXT-OFF off
 DYNAMIC-BUFFER TEXT-LEN len
 
-TYPED-VARIABLE ZERO-OWNER XML:source-owner
-TYPED-VARIABLE SAVED-OWNER XML:source-owner
 TYPED-VARIABLE RD XML:cursor
 variable COUNT
 variable ORIGINAL-COUNT
-variable SOURCE-COUNT
 variable OWNER-COUNT
 variable FIRST-OWNER
 variable READING
@@ -131,8 +125,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : COPY-PART ( n -- )
    {: index:n :}
-   index 1+ OWNERS-RESERVE index 1+ SOURCES-RESERVE
-   index 1+ SOURCE-SIZES-RESERVE index 1+ ORIGINALS-RESERVE
+   index 1+ OWNERS-RESERVE index 1+ ORIGINALS-RESERVE
    index 1+ ORIGINAL-SIZES-RESERVE index 1+ ATTR-OFF-RESERVE
    index 1+ ATTR-LEN-RESERVE index 1+ TEXT-OFF-RESERVE
    index 1+ TEXT-LEN-RESERVE
@@ -143,13 +136,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    wire original size >LEN BYTE-COPY-LEN
    original index ORIGINALS ! original-size index ORIGINAL-SIZES !
    ORIGINAL-COUNT @ 1+ ORIGINAL-COUNT !
-   original size XML:SOURCE-BYTES {: needed:n :}
-   needed MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
-   {: source source-size:NUM:alloc-byte-len :}
-   source index SOURCES ! source-size index SOURCE-SIZES !
-   SOURCE-COUNT @ 1+ SOURCE-COUNT !
-   source CELL-VIEW needed original size
-   XML:SOURCE-INIT XML:SOURCE-OWN index OWNERS !
+   HEAP:ALLOCATOR original size XML:SOURCE-INIT XML:SOURCE-OWN index OWNERS !
    OWNER-COUNT @ 1+ OWNER-COUNT !
    index PARSE-PART ;
 
@@ -158,17 +145,15 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : CLOSE-PARTS ( -- )
    OWNER-COUNT @ FIRST-OWNER @ ?do i OWNERS @ XML:OWNER-CLOSE loop
-   SOURCE-COUNT @ 0 ?do i SOURCES @ i SOURCE-SIZES @ MEM:RELEASE-BYTES loop
    ORIGINAL-COUNT @ 0 ?do i ORIGINALS @ i ORIGINAL-SIZES @ MEM:RELEASE-BYTES loop
-   OWNERS-RELEASE SOURCES-RELEASE SOURCE-SIZES-RELEASE
-   ORIGINALS-RELEASE ORIGINAL-SIZES-RELEASE
+   OWNERS-RELEASE ORIGINALS-RELEASE ORIGINAL-SIZES-RELEASE
    ATTR-OFF-RELEASE ATTR-LEN-RELEASE TEXT-OFF-RELEASE TEXT-LEN-RELEASE
-   0 OWNER-COUNT ! 0 SOURCE-COUNT ! 0 ORIGINAL-COUNT ! 0 FIRST-OWNER ! ;
+   0 OWNER-COUNT ! 0 ORIGINAL-COUNT ! 0 FIRST-OWNER ! ;
 
 : OPEN ( n bool -- )
    {: count:n bad:bool :}
    count COUNT ! bad BAD-LAST !
-   0 OWNER-COUNT ! 0 SOURCE-COUNT ! 0 ORIGINAL-COUNT ! 0 FIRST-OWNER !
+   0 OWNER-COUNT ! 0 ORIGINAL-COUNT ! 0 FIRST-OWNER !
    ['] OPEN-PARTS catch
    dup 0<> if
       {: failure:n :}
@@ -191,7 +176,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : REPARSE ( n -- )
    {: written:n :}
-   REOPEN-STORE WIRE-CAP WRITTEN written XML:SOURCE-INIT
+   HEAP:ALLOCATOR WRITTEN written XML:SOURCE-INIT
    RD XML:INIT-SOURCE
    XML-KIND:START NEXT=
    XML:ATTR-NEXT TTRUE
@@ -250,27 +235,8 @@ CAST: ENCODING>N ( XML:encoding -- n )
    0 SCRIPT-ARGV$ 2swap INPUT FS:JOIN-PATH INPUT swap
    WRITTEN written FS:WRITE-ALL ;
 
-: CLOSED-VIEW ( -- ) SAVED-OWNER @ XML:OWNER-ORIGINAL$ 2drop ;
-: CLOSED-MAP ( -- ) SAVED-OWNER @ 0 >OFF 0 >LEN XML:OWNER-RANGE 2drop ;
-: CLOSED-READER ( -- )
-   RD SAVED-OWNER @ XML:OWNER-READER XML:CLOSE ;
-: CLOSED-ENCODE ( -- ) SAVED-OWNER @ s" x" ENCODED-OUT @ XML:OWNER-ENCODE ;
-: CLOSED-AGAIN ( -- ) SAVED-OWNER @ XML:OWNER-CLOSE ;
-: ZERO-VIEW ( -- ) ZERO-OWNER @ XML:OWNER-LEXICAL$ 2drop ;
-: ZERO-CLOSE ( -- ) ZERO-OWNER @ XML:OWNER-CLOSE ;
-
 : LIFETIME ( -- )
-   0 OWNERS @ dup SAVED-OWNER ! XML:OWNER-CLOSE
-   s" a closed alias rejects before its storage is freed" T-LABEL
-   ['] CLOSED-VIEW XML:E-STATE TTHROWSQ
-   ['] CLOSED-MAP XML:E-STATE TTHROWSQ
-   ['] CLOSED-READER XML:E-STATE TTHROWSQ
-   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ENCODED-OUT !
-   ['] CLOSED-ENCODE XML:E-STATE TTHROWSQ
-   ENCODED-OUT @ VEC:DELETE
-   ['] CLOSED-AGAIN XML:E-STATE TTHROWSQ
-   ['] ZERO-VIEW XML:E-STATE TTHROWSQ
-   ['] ZERO-CLOSE XML:E-STATE TTHROWSQ
+   0 OWNERS @ XML:OWNER-CLOSE
    1 FIRST-OWNER ! ;
 
 : DOCUMENT ( -- )
@@ -281,6 +247,27 @@ CAST: ENCODING>N ( XML:encoding -- n )
    LIFETIME
    6 OWNERS @ XML:OWNER-LEXICAL$ nip 0 > TTRUE
    CLOSE-PARTS ;
+
+\ The source takes its storage from the arena, between the blocks asked for
+\ before and after it; the arena's release ends the owner nobody closed.
+: ARENA-OWNER ( -- )
+   ARENA:NEW {: a:^ :}
+   a 1 ARENA:ALLOC drop NULL-PTR - {: before:n :}
+   a ARENA:ALLOCATOR s" <r q='a&amp;b'>Ax&#x1F600;Y</r>" true UTF16$
+   XML:SOURCE-INIT XML:SOURCE-OWN {: owner :}
+   a 1 ARENA:ALLOC drop NULL-PTR - {: after:n :}
+   owner XML:OWNER-LEXICAL$ {: lexical size:n :}
+   lexical NULL-PTR - before > TTRUE
+   lexical NULL-PTR - size + after <= TTRUE
+   RD owner XML:OWNER-READER
+   XML-KIND:START NEXT=
+   XML:ATTR-NEXT TTRUE
+   CLEARED XML:ATTR-TEXT DECODED$ s" a&b" T$=
+   XML-KIND:TEXT NEXT=
+   CLEARED XML:TEXT DECODED$ s" Ax😀Y" T$=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT=
+   XML:CLOSE
+   a ARENA:RELEASE ;
 
 : BAD-OPEN ( -- ) 4 true OPEN ;
 : BAD-WIRE ( -- ) true INVALID-LAST ! 4 false OPEN ;
@@ -293,6 +280,8 @@ public
    STREAM-READ
    s" runtime-sized owners survive parser scratch reuse and later edits" T-LABEL
    DOCUMENT
+   s" an owner on an arena's allocator ends with the arena" T-LABEL
+   ARENA-OWNER
    s" a malformed later part preserves the parser error and frees prior parts" T-LABEL
    ['] BAD-OPEN catch XML:E-MALFORMED T=
    s" a failed source initialization publishes no owner" T-LABEL
