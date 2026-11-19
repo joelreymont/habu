@@ -444,9 +444,12 @@ uses on a microcontroller.
 
 **Sockets and HTTP.** TCP takes SwiftForth's verbs (`BIND`, `LISTEN`,
 `ACCEPT`, `CONNECT`, read, write, close) in the typed style of `UDP4`, with
-result types carrying `errno`. The HTTP client is `libcurl` through the FFI, as
-in VFX; the server is a small layer over `TCP4`. TLS for a server terminates at
-a proxy.
+result types carrying `errno`. The HTTP client is `HTTPC`
+(`src/lib/net/httpc.f`): one HTTP/1.1 connection to one origin per caller-owned
+record, its lifecycle one table checked against a TLA+ model, with TLS through
+mbedTLS (`src/lib/net/tls.f`). `libcurl` through the FFI (`CURL`), as in VFX,
+still serves the libraries written against it. The server is a small layer
+over `TCP4`; TLS for a server terminates at a proxy.
 
 **Databases.** SQL through the FFI came first: Postgres through libpq
 (`src/lib/pg.f`), with a nominal connection handle, results as `DEFLINEAR`
