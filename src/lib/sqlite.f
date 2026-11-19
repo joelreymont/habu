@@ -279,17 +279,18 @@ public
    a u WHOLE
    a u begin dup 0 > while c EXEC-NEXT repeat 2drop ;
 
+\ Rolls back the connection's transaction if one is open: SQLite may have
+\ rolled it back itself already, as it does on FULL.
+: ROLLBACK-OPEN ( connection -- )
+   {: c:connection :}
+   c DB LIB-AUTOCOMMIT 0= if c s" ROLLBACK" EXEC then ;
+
 private
 
 : COMMIT-AFTER ( R connection [ R -- S ] -- S )
    {: c:connection body :}
    body execute
    c s" COMMIT" EXEC ;
-
-\ No transaction is open once SQLite rolled one back itself, as it may on FULL.
-: ROLLBACK-OPEN ( connection -- )
-   {: c:connection :}
-   c DB LIB-AUTOCOMMIT 0= if c s" ROLLBACK" EXEC then ;
 
 \ Begins with the text; a body or COMMIT that fails is rolled back, and its
 \ error goes on.
