@@ -9,16 +9,19 @@ split-str
 \ written at most once: HTTPC never resends, so a request lost on a reused
 \ connection is the caller's to classify. No proxy support: the proxy
 \ variables are ignored. No HEAD requests, whose answers would misframe.
-\ Linux only. A conn is OPENed fresh or after CLOSE; each exchange is REQUEST,
-\ HEADER+ and DEADLINES! as needed, one SEND, then NEXT until it answers
-\ `response` or `failed`; a NEXT before the first SEND or after CLOSE answers
-\ `failed` with fault `send`. One task at a time uses HTTPC over https, as TLS's
-\ contract requires: the TLS library keeps process-wide state and no lock.
+\ Linux only. A record is OPENed when fresh or for another origin; a CLOSEd
+\ conn keeps its origin, trust and room and dials again at its next SEND. Each
+\ exchange is REQUEST, HEADER+ and DEADLINES! as needed, one SEND, then NEXT
+\ until it answers `response` or `failed`; a NEXT before the first SEND or
+\ after CLOSE answers `failed` with fault `send`. One task at a time uses HTTPC
+\ over https, as TLS's contract requires: the TLS library keeps process-wide
+\ state and no lock.
 \ STORAGE CLASS. CALLER-OWNED: the conn record, the origin, trust and room
-\ spans OPEN borrows until CLOSE, SEND's body until SEND returns and NEXT's
-\ span until NEXT returns. The record holds its TLS session inline, so it
-\ stays at one address while it holds a connection. HTTPC allocates nothing;
-\ mbedTLS allocates its own buffers from a session's START to its STOP.
+\ spans OPEN borrows until the record is dropped or OPENed again, SEND's body
+\ until SEND returns and NEXT's span until NEXT returns. The record holds its
+\ TLS session inline, so it stays at one address while it holds a connection.
+\ HTTPC allocates nothing; mbedTLS allocates its own buffers from a session's
+\ START to its STOP.
 \
 \ The lifecycle is the LIFECYCLE table. SEND runs it from `starting`, NEXT from
 \ where the last run rested (`heading` after `sent`, `reading` after
@@ -1105,7 +1108,8 @@ public
 \ until the next REQUEST.
 : HEAD$ ( ^conn -- ^u8 n ) dup ROOM swap CONN-HEAD-LEN @ ;
 
-\ Drops the connection in any state; the record stays usable.
+\ Drops the connection in any state; the record keeps its origin, trust and
+\ room, and its next SEND dials again.
 : CLOSE ( ^conn -- ) UNSENT ;
 
 \ Whether no whole answer arrived from a peer that may answer later.

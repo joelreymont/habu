@@ -509,6 +509,19 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    ACCEPTS @ 1 T=
    END-CASE ;
 
+\ No OPEN between CLOSE and the second request.
+: TEST-CLOSE-REDIAL ( -- )
+   construct script reuse BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   s" the answer before CLOSE" T-LABEL
+   200 s" first" ANSWER-IS
+   LINK HTTPC:CLOSE
+   ASK WIDE-SPAN READ-ALL
+   s" the request after CLOSE dials the same origin again" T-LABEL
+   200 s" second" ANSWER-IS
+   ACCEPTS @ 2 T=
+   END-CASE ;
+
 : TEST-IDLE-CLOSE ( -- )
    construct script idle-close BEGIN-CASE
    ASK WIDE-SPAN READ-ALL
@@ -1143,6 +1156,7 @@ public
    TEST-INTERIM
    TEST-NO-CONTENT
    TEST-REUSE
+   TEST-CLOSE-REDIAL
    TEST-IDLE-CLOSE
    TEST-UNREAD
    TEST-TRAILING
