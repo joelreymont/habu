@@ -3866,16 +3866,37 @@ package CHECK
 \ its callers.
 : MINT-HIT? ( n -- bool ) {: t:n :}
    t TAG T-PTR =  t TAG T-QUOT =  or ;
-\ One row per layout instance the walk has expanded: its term and the sign it
-\ was reached at.
+\ One row per layout instance the walk has expanded and the sign it was reached
+\ at. Row i's head cell is bucket i; a link is a row plus one, 0 ends a chain.
 SCRATCH{
-PTR-VARIABLE CAST-SEEN-P   variable CAST-SEEN-CAP
+PTR-VARIABLE CAST-SEEN-P   variable CAST-SEEN-CAP   variable CAST-SEEN-N
 }SCRATCH
-variable CAST-SEEN-N
-2 constant CAST-SEEN-ROW
-: CAST-SEEN-TERM ( n -- ^n ) CAST-SEEN-ROW * cells CAST-SEEN-P @ + ;
-: CAST-SEEN-SIGN ( n -- ^n ) CAST-SEEN-ROW * 1 + cells CAST-SEEN-P @ + ;
-: CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-SEEN-N ! ;
+5 constant CAST-SEEN-ROW
+: CAST-SEEN-CELL ( n n -- ^n )
+   swap CAST-SEEN-ROW * + cells CAST-SEEN-P @ + ;
+: CAST-SEEN-TERM ( n -- ^n ) 0 CAST-SEEN-CELL ;
+: CAST-SEEN-SIGN ( n -- ^n ) 1 CAST-SEEN-CELL ;
+: CAST-SEEN-HASH ( n -- ^n ) 2 CAST-SEEN-CELL ;
+: CAST-SEEN-NEXT ( n -- ^n ) 3 CAST-SEEN-CELL ;
+: CAST-SEEN-HEAD ( n -- ^n ) 4 CAST-SEEN-CELL ;
+\ CAST-SEEN+ adds one row at a time, so CAST-SEEN-CAP doubles from 64 and the
+\ mask reaches every bucket.
+: CAST-SEEN-BKT ( n -- ^n ) CAST-SEEN-CAP @ 1 - and CAST-SEEN-HEAD ;
+: CAST-SEEN-LINK ( n -- ) {: i:n :}
+   i CAST-SEEN-HASH @ CAST-SEEN-BKT {: b:^ :}
+   b @ i CAST-SEEN-NEXT !
+   i 1 + b ! ;
+: CAST-SEEN-REHASH ( -- )
+   CAST-SEEN-CAP @ 0 ?do 0 i CAST-SEEN-HEAD ! loop
+   CAST-SEEN-N @ 0 ?do i CAST-SEEN-LINK loop ;
+: CAST-WALK-RESET ( -- )
+   TWALK-RESET
+   CAST-SEEN-N @ 0 ?do 0 i CAST-SEEN-HASH @ CAST-SEEN-BKT ! loop
+   0 CAST-SEEN-N ! ;
+\ Hashes what CAST-SAME-INSTANCE? and the sign compare.
+: CAST-INST-HASH ( n n -- n ) {: t:n sign:n :}
+   FNV:BASIS sign FNV:STEP  t PARAM>FAM FNV:STEP
+   t PARAM>ARGC 0 ?do t i PARAM>ARG FNV:STEP loop ;
 : CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
    a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
    a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
@@ -3895,18 +3916,25 @@ variable CAST-SEEN-N
       dup CAST-POS = IF drop CAST-NEG THEN
    THEN
    sign CAST-ARG and or ;
+: CAST-SEEN-ROW? ( n n n -- bool ) {: i:n t:n sign:n :}
+   i CAST-SEEN-SIGN @ sign <> IF RES-FALSE EXIT THEN
+   i CAST-SEEN-TERM @ t CAST-SAME-INSTANCE? ;
 : CAST-SEEN? ( n n -- bool ) {: t:n sign:n :}
-   0 BEGIN dup CAST-SEEN-N @ < WHILE
-      dup CAST-SEEN-SIGN @ sign = IF
-         dup CAST-SEEN-TERM @ t CAST-SAME-INSTANCE? IF drop RES-TRUE EXIT THEN
-      THEN
-      1 +
+   CAST-SEEN-N @ 0= IF RES-FALSE EXIT THEN
+   t sign CAST-INST-HASH CAST-SEEN-BKT @
+   BEGIN dup 0 <> WHILE
+      1 - dup t sign CAST-SEEN-ROW? IF drop RES-TRUE EXIT THEN
+      CAST-SEEN-NEXT @
    REPEAT drop RES-FALSE ;
 : CAST-SEEN+ ( n n -- ) {: t:n sign:n :}
-   CAST-SEEN-P CAST-SEEN-CAP CAST-SEEN-N @ 1 + CAST-SEEN-ROW ARENA-ROWS-ENSURE
-   t CAST-SEEN-N @ CAST-SEEN-TERM !
-   sign CAST-SEEN-N @ CAST-SEEN-SIGN !
-   CAST-SEEN-N @ 1 + CAST-SEEN-N ! ;
+   CAST-SEEN-N @ {: i:n :}
+   CAST-SEEN-CAP @ {: cap:n :}
+   CAST-SEEN-P CAST-SEEN-CAP i 1 + CAST-SEEN-ROW ARENA-ROWS-ENSURE
+   t i CAST-SEEN-TERM !  sign i CAST-SEEN-SIGN !
+   t sign CAST-INST-HASH i CAST-SEEN-HASH !
+   i 1 + CAST-SEEN-N !
+   CAST-SEEN-CAP @ cap = IF i CAST-SEEN-LINK EXIT THEN
+   CAST-SEEN-REHASH ;
 \ A destination position introduces unless negative; consumed rows flip the sign
 \ and a pointee counts at both. Cell-family arguments and row bases yield none.
 \ A layout argument is walked with CAST-ARG set.
