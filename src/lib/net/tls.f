@@ -5,6 +5,8 @@ split-str
 \ wait until the socket is readable or writable and call the same word again.
 \ Verification is mbedTLS's client default, REQUIRED: the peer's chain must
 \ end in a certificate of the trust file and name the host START was given.
+\ HELD? tells whether the session holds bytes it read from the socket that
+\ READ has not handed out, which no poll of the socket can see.
 \ CONTRACT. One task at a time uses TLS: the library is built without
 \ threading and keeps process-wide PSA state, and there is no lock.
 \ STORAGE CLASS. CALLER-OWNED: a session record holds the library's ssl
@@ -102,6 +104,7 @@ FUNCTION: SSL-HANDSHAKE mbedtls_ssl_handshake ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: SSL-VERIFY mbedtls_ssl_get_verify_result ( ^u8 -- u32 ) ;FUNCTION
 FUNCTION: SSL-READ mbedtls_ssl_read ( ^u8 ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: SSL-WRITE mbedtls_ssl_write ( ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: SSL-PENDING mbedtls_ssl_check_pending ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: SSL-CLOSE mbedtls_ssl_close_notify ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: SSL-FREE mbedtls_ssl_free ( ^u8 -- ) ;FUNCTION
 FUNCTION: CONFIG-FREE mbedtls_ssl_config_free ( ^u8 -- ) ;FUNCTION
@@ -261,6 +264,13 @@ public
 : WRITE ( ^session ^u8 n -- tls-io )
    {: s:^ buf:^ u:n :}
    s SSL buf u SSL-WRITE >IO ;
+
+\ Whether the session holds bytes read from the socket that READ has not
+\ handed out: decrypted data past what READ took, or record bytes not yet
+\ processed. The session is between HANDSHAKE's `done` and STOP.
+: HELD? ( ^session -- bool )
+   {: s:^ :}
+   s SSL SSL-PENDING 0<> ;
 
 \ Sends close_notify once without waiting for room, then frees what START
 \ made. The socket stays open and the caller's; the record can START again.

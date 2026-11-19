@@ -7,11 +7,14 @@ split-str
 \ exchange has deadlines, so a server that fails to answer ends its case
 \ `timeout` and not in a hang. A scripted close is a half-close: the server
 \ sends its FIN and still counts any request that arrives after it.
-\ The https cases speak to `openssl s_server -www`, this test's own child on a
+\ The https cases speak to `openssl s_server`, this test's own child on a
 \ loopback port, with a CA, an unrelated CA and a localhost certificate made
 \ in a scratch directory under TMPDIR that the test removes, as tls-test.f
-\ does: a trusted GET / reads its answer to the close, and an unrelated CA or
-\ an origin naming another host fails the greeting with `trust`.
+\ does. With -www, a trusted GET / reads its answer to the close, and an
+\ unrelated CA or an origin naming another host fails the greeting with
+\ `trust`. Without it, the server sends in one record what the test writes to
+\ its stdin: an answer whose record carries bytes past its body leaves them in
+\ the TLS session, and the next request dials anew.
 \ TEST-TABLE compares TEST-FSM:TABLE-MODULE's text for the LIFECYCLE table
 \ with spec/HttpcTable.tla whole, so the table spec/HttpcFollows.tla ties to
 \ the model spec/Httpc.tla is the code's.
@@ -584,6 +587,7 @@ OUT-ROOM BUFFER: OUT                    \ the server's output up to its port
 variable OUT-U
 variable SERVER-PID                     \ 0 while no server runs
 variable SERVER-OUT                     \ the read end of its output
+variable SERVER-IN                      \ its stdin's write end; 0 while none
 variable TLS-PORT
 $04 constant CN-MISMATCH                \ MBEDTLS_X509_BADCERT_CN_MISMATCH
 $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
@@ -656,19 +660,21 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
    s" s_server" PROCESS:ARG
    s" -accept" PROCESS:ARG
    s" 127.0.0.1:0" PROCESS:ARG
-   s" -www" PROCESS:ARG
    s" -cert" PROCESS:ARG
    s" server.pem" PROCESS:ARG
    s" -key" PROCESS:ARG
    s" server.key" PROCESS:ARG
    DIR$ PROCESS:CWD ;
 
+\ The server answering every request with its status page.
+: WWW-SERVER ( -- PROCESS:request ) S-SERVER s" -www" PROCESS:ARG ;
+
 \ The server's stdout and stderr share one pipe, read only up to the ACCEPT
 \ line: what it writes after that stays far below the pipe's capacity.
-: TLS-SERVE ( -- )
+: TLS-SERVE ( PROCESS:request -- )
    s" s_server names its loopback port" T-LABEL
    FD:PIPE-PAIR {: r:fd w:fd :}
-   S-SERVER 1 >FD w PROCESS:FD 2 >FD w PROCESS:FD
+   1 >FD w PROCESS:FD 2 >FD w PROCESS:FD
    PROCESS:SPAWN PID>N SERVER-PID !
    w FD>N close
    r FD>N SERVER-OUT !
@@ -684,7 +690,20 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
    SERVER-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
    SERVER-PID @ >PID PROCESS:WAIT PROCESS:STATUS>RC drop
    0 SERVER-PID !
-   SERVER-OUT @ close ;
+   SERVER-OUT @ close
+   SERVER-IN @ 0<> if SERVER-IN @ close  0 SERVER-IN ! then ;
+
+\ The server sending what SERVER-IN is given, one record per write; the
+\ test's stdin holds descriptor 0, so the pipe's end is never 0.
+: SCRIPT-SERVE ( -- )
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   S-SERVER 0 >FD r PROCESS:FD TLS-SERVE
+   r FD>N close
+   w FD>N SERVER-IN ! ;
+
+\ The bytes to the server's stdin in one write, which a pipe keeps whole.
+: SCRIPTED ( str -- ) {: a:^ u:n :}
+   SERVER-IN @ >FD a u FD:WRITE-FULL ;
 
 \ The origin `https://` HOST `:` the server's port.
 : HTTPS-ORIGIN! ( str -- ) {: h:^ hu:n :}
@@ -696,11 +715,14 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
    IN-DIR {: a:^ u:n :}
    a TRUST-BUF u BYTE-COPY  u TRUST-U ! ;
 
-\ A conn opened on the https origin for HOST, trusting the scratch file.
-: BEGIN-HTTPS ( str str -- ) {: h:^ hu:n f:^ fu:n :}
+\ A conn opened on the https origin for HOST, trusting the scratch file, with
+\ a room of ROOM bytes.
+: BEGIN-HTTPS-IN ( str str n -- ) {: h:^ hu:n f:^ fu:n room:n :}
    f fu TRUST!  h hu HTTPS-ORIGIN!
-   LINK ORIGIN$ TRUST-BUF TRUST-U @ ROOM-BUF ROOM-CAP HTTPC:OPEN
+   LINK ORIGIN$ TRUST-BUF TRUST-U @ ROOM-BUF room HTTPC:OPEN
    s" OPEN takes the https origin" T-LABEL TTRUE ;
+
+: BEGIN-HTTPS ( str str -- ) ROOM-CAP BEGIN-HTTPS-IN ;
 
 : ASK-ROOT ( -- )
    LINK s" GET" s" /" HTTPC:REQUEST
@@ -742,9 +764,32 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
    CN-MISMATCH DISTRUSTED
    END-CASE ;
 
+\ An answer head padded to hold the request head, which shares the room.
+: HELD-HEAD$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Pad: abcdefghijklmnopq\r\n\r\n" ;
+: STALE$ ( -- str ) S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nstale" ;
+
+\ The head fills a room of its own size, so the head's read ends at it and the
+\ body's at the body: STALE$, in the same record, stays in the TLS session. A
+\ reused connection would answer the second request with it.
+: TEST-HTTPS-HELD ( -- )
+   s" localhost" s" ca.pem" HELD-HEAD$ nip BEGIN-HTTPS-IN
+   ASK-ROOT
+   SB-RESET HELD-HEAD$ SB-APPEND s" first" SB-APPEND STALE$ SB-APPEND
+   SB$ SCRIPTED
+   WIDE-SPAN READ-ALL
+   s" an https answer whose record holds bytes past its body" T-LABEL
+   200 s" first" ANSWER-IS
+   ASK-ROOT  SECOND$ SCRIPTED  WIDE-SPAN READ-ALL
+   s" the request after bytes the TLS session holds dials anew" T-LABEL
+   200 s" second" ANSWER-IS
+   END-CASE ;
+
 : HTTPS-CASES ( -- )
-   CERTS TLS-SERVE
-   TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST ;
+   CERTS WWW-SERVER TLS-SERVE
+   TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST
+   TLS-UNSERVE SCRIPT-SERVE
+   TEST-HTTPS-HELD ;
 
 : TEST-HTTPS ( -- )
    SCRATCH

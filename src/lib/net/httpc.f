@@ -43,9 +43,13 @@ split-str
 \ `trust` with the verify flags or mbedTLS's code as CAUSE; any other failure
 \ is `handshake`. Every receive and write then goes through the session, and
 \ a write asked to wait is made again with the same bytes, as TLS requires.
-\ The probe stays a peek at the socket, so a TLS record held there makes the
-\ connection stale too. Hanging up STOPs a session that started before the
-\ socket is closed.
+\ A connection is reused only when its session holds no byte READ has not
+\ handed out (TLS's HELD?): a poll of the socket cannot see bytes mbedTLS
+\ has read into the session, and the next answer would be read from them.
+\ The probe stays a peek at the socket, since nothing reads the session
+\ between that check and the probe, so a TLS record held on the socket makes
+\ the connection stale too. Hanging up STOPs a session that started before
+\ the socket is closed.
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
@@ -866,10 +870,15 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       closing OF false ENDOF
    ;MATCH ;
 
+\ Whether an https conn's session holds bytes past what was read from it.
+: TLS-HELD? ( ^conn -- bool ) {: c :}
+   c CONN-SECURE @ if c CONN-TLS TLS:HELD? else false then ;
+
 \ Kept after a framed answer read whole, on HTTP/1.1, with no `Connection:
-\ close` and no byte read past it.
+\ close` and no byte read past it, in the room or held in the TLS session.
 : REUSE ( ^conn -- reuse ) {: c :}
    c FRAMED? c CONN-MINOR @ 1 = and c CONN-CLOSE-ASKED @ 0= and c EXTRA 0= and
+   c TLS-HELD? 0= and
    if construct reuse keep else construct reuse shut then ;
 
 
