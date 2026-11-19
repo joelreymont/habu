@@ -370,12 +370,32 @@ private
 PLAIN-ERRORS
 
 
+: IN-REQUEST? ( n -- bool )
+   ACCESS-STATE@
+   MATCH access
+      unrequested OF false ENDOF
+      unanswered OF true ENDOF
+      undelivered OF true ENDOF
+      delivered OF true ENDOF
+      handed-off OF true ENDOF
+   ;MATCH ;
+
+
 public
 
 \ The id this request is reported under, which is what an error answer quotes
 \ so a client's report and the server's own line name one request.
 : REQUEST-ID$ ( response -- str )
    SLOT-OF-RESPONSE SLOT-ID$ ;
+
+
+\ On a worker serving a request, handed off or not, that request's REQUEST-ID$
+\ and true; anywhere else, a SUBMIT call included, an empty string and false.
+: CURRENT-ID$ ( -- str bool )
+   MY-SLOT @ 1- {: idx:n :}
+   idx 0 < if s" " false exit then
+   idx IN-REQUEST? 0= if s" " false exit then
+   idx SLOT-ID$ true ;
 
 
 \ Every refusal and fault this server answers, and any a handler answers

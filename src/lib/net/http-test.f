@@ -341,6 +341,30 @@ variable ECHO-HITS
    answer [: TEXT-BODY ;] HTTP:JSON! ;
 
 
+$40 constant ID-TEXT-CAP
+ID-TEXT-CAP BUFFER: ID-TEXT
+TYPED-VARIABLE ID-TEXT-LEN len
+
+: ID-TEXT+ ( str -- )
+   ID-TEXT ID-TEXT-CAP ID-TEXT-LEN BUF-APPEND ;
+
+
+\ CURRENT-ID$'s text, its flag as 1 or 0 and REQUEST-ID$, a space apart.
+: ID-TEXT$ ( HTTP:response -- str ) {: answer:HTTP:response :}
+   ID-TEXT-LEN BUF-RESET
+   HTTP:CURRENT-ID$ {: id:^ idlen:n flag:bool :}
+   id idlen ID-TEXT+  s"  " ID-TEXT+
+   flag if s" 1" else s" 0" then ID-TEXT+  s"  " ID-TEXT+
+   answer HTTP:REQUEST-ID$ ID-TEXT+
+   ID-TEXT ID-TEXT-LEN BUF-LEN@ ;
+
+
+: CURRENT-ID ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   answer 200 HTTP:STATUS!
+   answer answer ID-TEXT$ HTTP:BODY! ;
+
+
 : BOOM ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    1 BOOM-HITS +!
    E-BOOM throw ;
@@ -717,6 +741,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" POST" s" /api/large-echo" [: LARGE-ECHO ;] HTTP:ROUTE
    s" GET" s" /api/serving-keep" [: SERVING-KEEP ;] HTTP:ROUTE
    s" GET" s" /api/serving-check" [: SERVING-CHECK ;] HTTP:ROUTE
+   s" GET" s" /api/current-id" [: CURRENT-ID ;] HTTP:ROUTE
    s" GET" s" /api/boom" [: BOOM ;] HTTP:ROUTE
    s" GET" s" /api/boom-json" [: BOOM-JSON ;] HTTP:ROUTE
    s" POST" s" /api/answer" [: ANSWER-TEXT ;] HTTP:ROUTE
@@ -2908,6 +2933,7 @@ variable LATER-U
 variable LATER-STATUS             \ the status REPLY answers with
 variable LATER-GONE               \ the peer closes before the task answers
 variable LATER-TAKEN
+variable LATER-ID-FLAG
 variable LATER-GO
 variable LATER-RESULT             \ 1 when REPLY answered true, 2 when false
 variable LATER-SLOT-CODE
@@ -2966,6 +2992,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    bytes len LATER-BUF SPAN:COPY
    len LATER-U !
    asked HTTP:TAKE-OVER drop drop 0 LATER-CONN !
+   HTTP:CURRENT-ID$ bool>n LATER-ID-FLAG ! 2drop
    [: LATER-ANSWER ;] LATER-TASK TASK:ACTIVATE
    1 LATER-TAKEN ! ;
 
@@ -3177,7 +3204,57 @@ variable CALL-DONE
    s" SUBMIT runs its call on a worker" T-LABEL
    CALL-ARG @ 42 T=
    CALL-CODE @ 0 T=
-   CALL-SLOT @ 0 T= ;
+   CALL-SLOT @ 0 T=
+   s" CURRENT-ID$ after TAKE-OVER, on the handler's worker, is true" T-LABEL
+   LATER-ID-FLAG @ 0<> TTRUE ;
+
+
+: ID-FIELDS ( -- str str str )
+   RES$ {: a:^ u:n :}
+   a u STR-SPACE 0 SPLIT-NEXT drop {: one:^ onelen:n at:n :}
+   a u STR-SPACE at SPLIT-NEXT drop {: two:^ twolen:n third:n :}
+   one onelen two twolen
+   a u STR-SPACE third SPLIT-NEXT 2drop ;
+
+
+: SERVED-ID-CASE ( -- )
+   s" CURRENT-ID$ on the serving worker is its request's id" T-LABEL
+   s" GET" s" /api/current-id" FETCH 200 T=
+   ID-FIELDS {: id:^ idlen:n flag:^ flaglen:n req:^ reqlen:n :}
+   flag flaglen s" 1" T$=
+   id idlen req reqlen T$=
+   reqlen 0 > TTRUE ;
+
+
+: OWN-TASK-ID-CASE ( -- )
+   s" CURRENT-ID$ on a task that is no worker is empty and false" T-LABEL
+   HTTP:CURRENT-ID$ TFALSE s" " T$= ;
+
+
+variable CALL-ID-N                \ CURRENT-ID$'s length in the submitted call
+variable CALL-ID-FLAG             \ and its flag, as bool>n
+
+: NOTE-ID ( n -- )
+   drop
+   HTTP:CURRENT-ID$ bool>n CALL-ID-FLAG ! CALL-ID-N ! drop
+   1 CALL-DONE atomic! ;
+
+
+: SUBMIT-ID-CASE ( -- )
+   0 CALL-DONE atomic!
+   -1 CALL-ID-N !
+   -1 CALL-ID-FLAG !
+   0 [: NOTE-ID ;] HTTP:SUBMIT
+   [: CALL-DONE atomic@ 0<> ;] TEST-WAIT:POLL
+   s" CURRENT-ID$ in a SUBMIT call is empty and false" T-LABEL
+   CALL-ID-N @ 0 T=
+   CALL-ID-FLAG @ 0 T= ;
+
+
+: CURRENT-ID-CASES ( -- )
+   SERVED-ID-CASE
+   OWN-TASK-ID-CASE
+   SUBMIT-ID-CASE ;
 
 
 variable CALL-AT                  \ mono-ns when the submitted call ran
@@ -3323,6 +3400,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    TAKE-OVER-CASES
    CLIENT-GONE-CASES
    SUBMIT-CASE
+   CURRENT-ID-CASES
    PARAM-CASES
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
