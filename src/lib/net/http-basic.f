@@ -1,16 +1,20 @@
 split-str
 \ http-basic.f - HTTP Basic credentials (RFC 7617), the value of an
-\ `Authorization` field. Input is checked and output measured before a byte is
-\ written. Memory Habu owns, dead stack cells aside, never holds a copy of the
-\ password or of user`:`password: every byte is encoded straight from the
-\ caller's spans, except the one three-byte group that straddles the `:`, which
-\ is laid at its own output position in the destination and encoded there in
-\ place. The caller wipes its span when done.
+\ `Authorization` field, appended to a byte vector. Input is checked and room
+\ for the whole value reserved before a byte is written, so the vector's block
+\ moves, if at all, before the first byte lands. Memory Habu owns, dead stack
+\ cells aside, never holds a copy of the password or of user`:`password: every
+\ byte is encoded straight from the caller's strings, except the one three-byte
+\ group that straddles the `:`, which is laid at its own output position in the
+\ vector and encoded there in place. The caller reserves room for what it
+\ appends after the value, since growth leaves the old block unwiped, and wipes
+\ the vector before VEC:DELETE.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/error.f
 require src/lib/span.f
 require src/lib/base64.f
+require src/lib/vector.f
 
 package HTTP
 private
@@ -29,30 +33,12 @@ $3A constant USER-END            \ ':' ends the user-id
 : PASS-CHECKED ( str -- ) {: a:^ p:n :}
    p 0 ?do a i + c@ CONTROL? if E-HTTP-BASIC-PASSWORD throw then loop ;
 
-\ The input is compared with what the span holds past the prefix, three bytes
-\ to four of reach, so no length is scaled up and none wraps.
-: ROOM-CHECKED ( n n SPAN:span<u8> -- ) {: u:n p:n s :}
-   s SPAN:LEN BASIC-PREFIX$ nip - {: room:n :}
-   room 0 < if E-SPAN-CAPACITY throw then
-   room 4 / 3 * {: most:n :}
-   p most u - 1- > if E-SPAN-CAPACITY throw then ;
+\ The bytes of the value: the prefix and the base64 of u + 1 + p bytes.
+: VALUE-LEN ( n n -- n ) + 3 + 3 / 4 * BASIC-PREFIX$ nip + ;
 
-public
-
-E-HTTP-BASIC-USER constant E-BASIC-USER
-E-HTTP-BASIC-PASSWORD constant E-BASIC-PASSWORD
-
-\ Writes `Basic ` and the RFC 4648 standard base64, padded, of user `:`
-\ password; answers the length written. A negative length is E-SPAN-LENGTH, a
-\ user holding `:` or a control character E-BASIC-USER, a password holding a
-\ control character E-BASIC-PASSWORD, a span shorter than
-\ 6 + 4 * ceil((u + 1 + p) / 3) E-SPAN-CAPACITY.
-: BASIC-CREDENTIALS ( str ^u8 n SPAN:span<u8> -- n )
+\ Writes the value into s, which holds exactly VALUE-LEN bytes.
+: WRITE-VALUE ( str str SPAN:span<u8> -- )
    {: user:^ u:n pass:^ p:n s :}
-   u 0 < p 0 < or if E-SPAN-LENGTH throw then
-   user u USER-CHECKED
-   pass p PASS-CHECKED
-   u p s ROOM-CHECKED
    BASIC-PREFIX$ s SPAN:COPY
    s BASIC-PREFIX$ nip SPAN:SKIP {: head :}
    u 3 / 3 * {: whole:n :}
@@ -64,7 +50,27 @@ E-HTTP-BASIC-PASSWORD constant E-BASIC-PASSWORD
    USER-END mid r SPAN:U8!
    pass k mid r 1+ SPAN:SKIP SPAN:COPY
    mid SPAN:$ drop r 1+ k + mid BASE64:ENCODE {: mn:n :}
-   pass k + p k - mid mn SPAN:SKIP BASE64:ENCODE {: tn:n :}
-   BASIC-PREFIX$ nip hn + mn + tn + ;
+   pass k + p k - mid mn SPAN:SKIP BASE64:ENCODE drop ;
+
+public
+
+E-HTTP-BASIC-USER constant E-BASIC-USER
+E-HTTP-BASIC-PASSWORD constant E-BASIC-PASSWORD
+
+\ Appends `Basic ` and the RFC 4648 standard base64, padded, of user `:`
+\ password, neither of which may lie in the vector: its block may move. A
+\ negative length is E-SPAN-LENGTH, a user holding `:` or a control character
+\ E-BASIC-USER, a password holding a control character E-BASIC-PASSWORD; a
+\ rejection leaves the vector as it was.
+: BASIC-CREDENTIALS ( str str ^VEC:vector<u8> -- )
+   {: user:^ u:n pass:^ p:n v:^ :}
+   u 0 < p 0 < or if E-SPAN-LENGTH throw then
+   user u USER-CHECKED
+   pass p PASS-CHECKED
+   v VEC:COUNT {: old:n :}
+   old u p VALUE-LEN + {: new:n :}
+   v new VEC:RESERVE
+   v new VEC:ENSURE
+   user u pass p v VEC:SPAN old SPAN:SKIP WRITE-VALUE ;
 
 ;package
