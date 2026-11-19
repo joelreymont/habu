@@ -3816,20 +3816,15 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE 0 0= EXIT
    THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
-   \ A word that makes definitions when it runs (`;FUNCTION`) defines words this
-   \ scan never reads: the checker marks the statement's wordlist and leaves a
-   \ later name nothing resolves to the run. It marks even when an arm below
-   \ records what a `generates:` row declares (RECORD-GENERATES); the mark
-   \ covers what no row declares. A `;FUNCTION` is taken here; any other
-   \ undeclared renderer is deferred at its token (RENDER-GAP), by BOUND-CALL
-   \ when a definer arm below takes it, else by TOP-TOKEN.
-   a u NOMINAL-MARK
-   a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
-   renders a u FFI-CLOSER? and IF
+   \ `;FUNCTION` defines only the word the `FUNCTION:` arm recorded, so it marks
+   \ nothing.
+   a u FFI-CLOSER? decl and IF
       [: FFI:PLAN-FUNCTION ;] a u FFI-AT 0 0= EXIT
    THEN
+   a u NOMINAL-MARK
+   a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
    \ A declaration no arm above reads and that renders no source (`evaluate`
-   \ renders, as `;FUNCTION` does) leaves the rest of its statement to the run.
+   \ renders) leaves the rest of its statement to the run.
    decl renders 0= and IF a u DW-PARSER TOP-OPAQUE 0 0= EXIT THEN
    \ A definer learned from a `does>` definition or a `generates:` row earlier
    \ in the closure. The created word is the next token, as for `constant` (the
