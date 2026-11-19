@@ -21,8 +21,10 @@ no unread answer; that a connection is written to again only after an answer
 framed by status, length or chunks was read whole; that every rest holds zero
 or one socket, `closed` and `down` hold none and a rest that holds the
 connection idle holds one; and that every run from `starting`, `heading` or
-`reading` reaches a FINAL row. The bounds are two addresses a name resolves to,
-two pieces a body has and two interim heads before an answer's head.
+`reading` reaches a FINAL row. The bounds are two addresses a name resolves to
+and two pieces a body has. Two interim heads before an answer's head stand for
+the code's bound, interim heads that together fit the room, else `oversize`:
+the proof that every run reaches a FINAL row rests on it.
 
 `HttpcFollows.tla` ties the model to the code's table: every step that moves
 the machine or runs a line is one line of `HttpcTable.tla` or a SEND, NEXT or

@@ -32,10 +32,13 @@ split-str
 \ sent, then the answer head; bytes read past the head are handed out before
 \ the wire. The chunk decoder keeps only the bytes left in the current chunk:
 \ at zero it reads a size line, and a chunk's data read whole is followed at
-\ once by its CRLF. Dialing tries every address getaddrinfo answers, in order,
-\ each with the time left divided by the addresses left. A request marked
-\ malformed or oversize while it was built fails at `starting`, with nothing
-\ dialed or written, and drops any connection the record held.
+\ once by its CRLF. The answer's head, its interim heads together, each
+\ chunk-size line and its trailer section are each bounded by the room, past
+\ which NEXT fails `oversize`. Dialing tries every address getaddrinfo
+\ answers, in order, each with the time left divided by the addresses left.
+\ A request marked malformed or oversize while it was built fails at
+\ `starting`, with nothing dialed or written, and drops any connection the
+\ record held.
 \
 \ An https origin adds TLS over the connected socket. Its greeting STARTs the
 \ conn's own TLS session with the host and the trust file, then steps the
@@ -136,6 +139,7 @@ STRUCTURE conn OPAQUE DERIVE addr
    FIELD filled n
    FIELD head-len n
    FIELD taken n
+   FIELD interims n
    FIELD status n
    FIELD minor n
    FIELD chunked bool
@@ -213,6 +217,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : CUT ( ^conn -- ) construct fault cut 0 FAIL ;
 : MALFORMED ( ^conn -- ) construct fault malformed 0 FAIL ;
 : TIMED-OUT ( ^conn -- ) construct fault timeout 0 FAIL ;
+: OVERSIZED ( ^conn -- ) construct fault oversize 0 FAIL ;
 
 
 \ Closes the socket the record holds, if any, STOPping first the TLS session
@@ -250,9 +255,9 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    0 c PFD 6 + LE:U16!
    c PFD 1 ms poll ;
 
-\ True once the socket is ready for the events or the deadline passes; a
-\ signal restarts the wait with what is left of it. Else the fault is kept:
-\ `timeout`, or WHY with poll's errno.
+\ True once the socket is ready for the events; a signal restarts the wait
+\ with what is left of it. False with the fault kept: timeout once the
+\ deadline passes, or WHY with poll's errno.
 : AWAIT-BY ( ^conn n n fault -- bool ) {: c events:n deadline:n why:fault :}
    begin
       c events deadline TIMEOUT-MS POLL-ONCE {: rc:n :}
@@ -340,8 +345,11 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       0= if drop false exit then
    repeat drop true ;
 
-\ One receive over the conn's socket or its TLS session.
+\ One receive over the conn's socket or its TLS session; `timeout`, with
+\ nothing read, once the exchange's total deadline has passed, so a peer
+\ that always has a byte ready cannot outlast it.
 : RECEIVE ( ^conn ^u8 n -- take ) {: c a:^ u:n :}
+   mono-ns c CONN-ENDS @ >= if c TIMED-OUT construct take broke exit then
    c CONN-SECURE @ if c a u TLS-RECEIVE else c a u SOCKET-RECEIVE then ;
 
 \ Writes the whole span over the conn's socket or its TLS session; false
@@ -642,9 +650,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ More of the head into the room; `oversize` once the room is full.
 : MORE-HEAD? ( ^conn -- bool ) {: c :}
-   c CONN-FILLED @ c CONN-ROOM-LEN @ >= if
-      c construct fault oversize 0 FAIL false exit
-   then
+   c CONN-FILLED @ c CONN-ROOM-LEN @ >= if c OVERSIZED false exit then
    c c ROOM c CONN-FILLED @ + c CONN-ROOM-LEN @ c CONN-FILLED @ - RECEIVE
    MATCH take
       got OF c CONN-FILLED +! true ENDOF
@@ -674,12 +680,17 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : INTERIM? ( ^conn -- bool ) CONN-STATUS @ dup 100 >= swap 200 < and ;
 
-\ Drops an interim head, moving the bytes read past it to the room's start.
-: DISCARD ( ^conn -- ) {: c :}
+\ Drops an interim head, moving the bytes read past it to the room's start;
+\ `oversize` once the interim heads of one answer together outgrow the room.
+: DISCARD? ( ^conn -- bool ) {: c :}
    c CONN-HEAD-LEN @ {: h:n :}
+   c CONN-INTERIMS @ h + {: shed:n :}
+   shed c CONN-ROOM-LEN @ > if c OVERSIZED false exit then
+   shed c CONN-INTERIMS !
    c ROOM h + c ROOM c CONN-FILLED @ h - BYTE-COPY
    h negate c CONN-FILLED +!
-   0 c CONN-HEAD-LEN ! ;
+   0 c CONN-HEAD-LEN !
+   true ;
 
 : CHUNKED? ( ^u8 n -- bool ) {: a:^ u:n :}
    u 7 < if false exit then
@@ -754,7 +765,10 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : READ-HEAD ( ^conn -- head-read ) {: c :}
    c FILL-HEAD 0= if construct head-read failed exit then
    c STATUS? 0= if c MALFORMED construct head-read failed exit then
-   c INTERIM? if c DISCARD construct head-read interim exit then
+   c INTERIM? if
+      c DISCARD? 0= if construct head-read failed exit then
+      construct head-read interim exit
+   then
    c FIELDS? 0= if c MALFORMED construct head-read failed exit then
    construct head-read head ;
 
@@ -793,10 +807,18 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       broke OF construct piece failed ENDOF
    ;MATCH ;
 
-\ Reads through the line's LF.
-: TO-LF ( ^conn -- bool ) {: c :}
-   begin c LAST-BYTE 10 <> while
-      c BYTE? 0= if false exit then
+\ One more answer byte of a line or section of N bytes so far, which may
+\ be as long as the room; false with the fault kept, `oversize` past it.
+: BYTE-IN? ( ^conn n -- bool ) {: c n:n :}
+   n c CONN-ROOM-LEN @ >= if c OVERSIZED false exit then
+   c BYTE? ;
+
+\ Reads through the line's LF, N bytes of the line or its section read so
+\ far; answers the count through the LF.
+: TO-LF ( ^conn n -- n bool ) {: c n:n :}
+   n begin c LAST-BYTE 10 <> while
+      c over BYTE-IN? 0= if false exit then
+      1+
    repeat true ;
 
 \ The byte after a chunk size: the line's CR, or an extension's start.
@@ -805,7 +827,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ A chunk's size line, its size kept as the bytes left; an empty or too long
 \ size, or one followed by anything but an extension or the line's end, is
-\ malformed.
+\ malformed; a line longer than the room, its extension included, is
+\ oversize.
 : SIZE-LINE? ( ^conn -- bool ) {: c :}
    0 0 begin
       c BYTE? 0= if 2drop false exit then
@@ -814,9 +837,10 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       1+ dup SIZE-DIGITS > if 2drop c MALFORMED false exit then
       swap 4 lshift c LAST-BYTE STR-HEX-DIGIT-VALUE or swap
    repeat
-   0= c LAST-BYTE SIZE-END? 0= or if drop c MALFORMED false exit then
-   c CONN-LEFT !
-   c TO-LF ;
+   {: size:n k:n :}
+   k 0= c LAST-BYTE SIZE-END? 0= or if c MALFORMED false exit then
+   size c CONN-LEFT !
+   c k 1+ TO-LF nip ;
 
 \ The LF after a CR just read.
 : CRLF-TAIL? ( ^conn -- bool ) {: c :}
@@ -830,12 +854,17 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c LAST-BYTE 13 <> if c MALFORMED false exit then
    c CRLF-TAIL? ;
 
-\ The trailer lines after the last chunk, through the blank line.
+\ The trailer lines after the last chunk, through the blank line; a
+\ section longer than the room is oversize.
 : TRAILERS? ( ^conn -- bool ) {: c :}
-   begin
-      c BYTE? 0= if false exit then
-      c LAST-BYTE 13 = if c CRLF-TAIL? exit then
-      c TO-LF 0= if false exit then
+   0 begin
+      c over BYTE-IN? 0= if drop false exit then
+      1+
+      c LAST-BYTE 13 = if
+         c CONN-ROOM-LEN @ < if c CRLF-TAIL? exit then
+         c OVERSIZED false exit
+      then
+      c swap TO-LF 0= if drop false exit then
    again ;
 
 : CHUNK-DATA ( ^conn -- piece ) {: c :}
@@ -893,7 +922,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : SENT-REST ( ^conn -- ) {: c :}
    c construct held busy construct phase heading REST
-   0 c CONN-FILLED !  0 c CONN-HEAD-LEN !  0 c CONN-TAKEN ! ;
+   0 c CONN-FILLED !  0 c CONN-HEAD-LEN !  0 c CONN-TAKEN !
+   0 c CONN-INTERIMS ! ;
 
 : PARTWAY-REST ( ^conn -- ) {: c :}
    c construct held busy construct phase reading REST
@@ -1059,7 +1089,9 @@ public
       cut OF s" the server closed the connection before the answer ended" ENDOF
       timeout OF s" a deadline passed" ENDOF
       malformed OF s" the request or the answer is not well-formed HTTP" ENDOF
-      oversize OF s" a head is larger than the room" ENDOF
+      oversize OF
+         s" a head, interim heads, a chunk-size line or trailers exceed the room"
+      ENDOF
    ;MATCH ;
 
 \ The errno, getaddrinfo code, mbedTLS code or verify flags behind the last

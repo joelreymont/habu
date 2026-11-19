@@ -16,6 +16,9 @@
 (* head or a piece to a socket. A body by the close ends only once the     *)
 (* peer has closed. Bounds: Addrs addresses a name resolves to, Pieces     *)
 (* pieces a body has, Interims interim heads before an answer's head.      *)
+(* Interims stands for the code's room bound, which Ends rests on: the     *)
+(* interim heads of one answer together fit the room, else READ-HEAD fails *)
+(* `oversize`.                                                             *)
 EXTENDS Naturals
 
 Addrs == 2
@@ -237,6 +240,9 @@ Unwritten ==
 
 (* ---- heading, READ-HEAD; FRAME on a head                                *)
 
+(* Interims bounds the heads Interim discards, as the room bounds the      *)
+(* code's: past the room READ-HEAD fails `oversize`, a step Unheaded       *)
+(* takes.                                                                  *)
 Interim ==
     /\ Go("heading", "heading")
     /\ interims < Interims
@@ -352,6 +358,8 @@ QuietWrites ==
 (* A connection is written to again only after a whole framed answer.      *)
 WholeReuse == [][wrote' > wrote /\ ~fresh => answer = "whole"]_vars
 
-(* Every run SEND or NEXT starts reaches a FINAL row.                      *)
+(* Every run SEND or NEXT starts reaches a FINAL row. It holds only        *)
+(* through Interims, which stands for the room bound on interim heads:     *)
+(* with no bound, `heading` could loop through Interim forever.            *)
 Ends == \A s \in {"starting", "heading", "reading"} : at = s ~> at \in Rests
 =============================================================================

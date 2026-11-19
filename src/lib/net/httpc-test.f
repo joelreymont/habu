@@ -6,7 +6,9 @@ split-str
 \ keeping the last request head, while the main task drives HTTPC. Every
 \ exchange has deadlines, so a server that fails to answer ends its case
 \ `timeout` and not in a hang. A scripted close is a half-close: the server
-\ sends its FIN and still counts any request that arrives after it.
+\ sends its FIN and still counts any request that arrives after it. The
+\ server counts the answers it has written, so a case reads an answer only
+\ once all of it is ready and no receive waits.
 \ The https cases speak to TEST-TLS-PEER's `openssl s_server` and its
 \ certificates. An https origin at the plain server, which answers nothing,
 \ fails its handshake `timeout` at the stall deadline. With -www, a trusted
@@ -65,6 +67,7 @@ $40 constant ORIGIN-CAP
 4 constant CHUNKED-SPAN                 \ crosses every chunk boundary
 $40 constant WIDE-SPAN
 $01 constant POLLIN
+100 constant PAST-MS                    \ the total deadline a case outlives
 
 create REQ-BUF REQ-CAP allot
 create SEEN-BUF REQ-CAP allot
@@ -89,13 +92,14 @@ variable GOT-U
 variable WIDEST                         \ the largest piece one NEXT answered
 variable LAST-STATUS
 variable FAULTS
+variable WRITTEN                        \ answers the server has written
 TYPED-VARIABLE LAST-FAULT HTTPC:fault
 CONN-CAP TYPED-BUFFER PER-CONN n
 
 \ What the server answers in the running case.
 ENUM script sized chunked closing interim no-content reuse idle-close
    unread cut-head cut-body silent bad-status bad-length bad-chunk big-head
-   trailing ;ENUM
+   trailing trailer big-trailer long-size interims ;ENUM
 TYPED-VARIABLE SCRIPT script
 TYPED-VARIABLE LINK HTTPC:conn
 TYPED-VARIABLE SPARE HTTPC:conn          \ a record OPEN finds full of bytes
@@ -127,6 +131,18 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    S\" HTTP/1.1 200 OK\r\nContent-Length: abc\r\n\r\nok" ;
 : BAD-CHUNK$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nok\r\n0\r\n\r\n" ;
+: TRAILER$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX-Trailer: 1\r\n\r\n" ;
+\ Three trailer lines, each shorter than SMALL-ROOM and together longer.
+: BIG-TRAILER$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX-A: abcdefghijklmnopqrstuvwxyz\r\nX-B: abcdefghijklmnopqrstuvwxyz\r\nX-C: abcdefghijklmnopqrstuvwxyz\r\n\r\n" ;
+\ A chunk-size line whose extension makes it longer than SMALL-ROOM.
+: LONG-SIZE$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;x=abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\r\nhello\r\n0\r\n\r\n" ;
+\ Three interim heads, each shorter than SMALL-ROOM and together longer,
+\ then FINAL-HEAD$'s answer.
+: INTERIMS$ ( -- str )
+   S\" HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok" ;
 : BIG-HEAD$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nX-Pad: abcdefghijklmnopqrstuvwxyz\r\nContent-Length: 0\r\n\r\n" ;
 \ FIRST$ and two bytes past its body, sent in one write.
@@ -154,6 +170,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       bad-chunk OF BAD-CHUNK$ false ENDOF
       big-head OF BIG-HEAD$ false ENDOF
       trailing OF k 0= if TRAILING$ else SECOND$ then false ENDOF
+      trailer OF TRAILER$ false ENDOF
+      big-trailer OF BIG-TRAILER$ false ENDOF
+      long-size OF LONG-SIZE$ false ENDOF
+      interims OF INTERIMS$ false ENDOF
    ;MATCH ;
 
 
@@ -216,6 +236,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       1 idx PER-CONN atomic-add drop
       1 REQUESTS atomic-add REPLY {: a:^ u:n shut:bool :}
       conn a u TCP4:TRANSFER-BYTES TCP4:WRITE PEER-STATUS
+      1 WRITTEN atomic-add drop
       shut if conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS true exit then
    repeat false ;
 
@@ -284,7 +305,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 \ The server's script for a fresh case, its counts zeroed.
 : SCRIPT-IS ( script -- )
    SCRIPT !
-   0 ACCEPTS ! 0 REQUESTS ! 0 REQ-BYTES ! 0 SEEN-U !
+   0 ACCEPTS ! 0 REQUESTS ! 0 REQ-BYTES ! 0 SEEN-U ! 0 WRITTEN !
    CONN-CAP 0 do 0 i PER-CONN ! loop ;
 
 \ A fresh case: the script, zeroed counts and a conn holding nothing, with a
@@ -363,7 +384,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    HTTPC-FAULT:SEND true FAULT-IS
    LINK HTTPC-TEST:FD -1 T= ;
 
-\ Blocks until the server's FIN reaches the conn's socket.
+\ Blocks until the server's bytes or its FIN reach the conn's socket.
 : AWAIT-FIN ( -- bool )
    LINK HTTPC-TEST:FD FIN-PFD LE:U32!
    POLLIN FIN-PFD 4 + LE:U16!  0 FIN-PFD 6 + LE:U16!
@@ -528,6 +549,22 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    HTTPC-FAULT:TIMEOUT true FAULT-IS
    END-CASE ;
 
+\ The whole answer is ready at the conn's socket when NEXT starts, after the
+\ total deadline has passed, so no receive waits.
+: TEST-TOTAL ( -- )
+   construct script trailer BEGIN-CASE
+   LINK s" GET" s" /case" HTTPC:REQUEST
+   LINK PAST-MS 0 HTTPC:DEADLINES!
+   LINK s" " HTTPC:SEND
+   WRITTEN 1 SERVER-TASK TEST-WAIT:FOR-CELL
+   s" the whole answer reaches the client" T-LABEL
+   AWAIT-FIN TTRUE
+   PAST-MS >MS TASK:SLEEP
+   WIDE-SPAN READ-ALL
+   s" an answer read after the total deadline fails `timeout`" T-LABEL
+   HTTPC-FAULT:TIMEOUT true FAULT-IS
+   END-CASE ;
+
 : MALFORMED-BY ( script ^u8 n -- ) {: sc:script a:^ u:n :}
    sc BEGIN-CASE
    ASK WIDE-SPAN READ-ALL
@@ -543,12 +580,32 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    construct script bad-chunk s" a bad chunk size fails `malformed`"
    MALFORMED-BY ;
 
+\ A request with a stall only, in a room of SMALL-ROOM bytes, whose answer
+\ fails `oversize`.
+: OVERSIZE-BY ( script ^u8 n -- ) {: sc:script a:^ u:n :}
+   sc SMALL-ROOM BEGIN-IN
+   LINK s" GET" s" /case" HTTPC:REQUEST
+   LINK 0 STALL-MS HTTPC:DEADLINES!
+   LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
+   a u T-LABEL
+   HTTPC-FAULT:OVERSIZE false FAULT-IS
+   END-CASE ;
+
 : TEST-OVERSIZE ( -- )
    construct script big-head SMALL-ROOM BEGIN-IN
    ASK WIDE-SPAN READ-ALL
    s" an answer head larger than the room fails `oversize`" T-LABEL
    HTTPC-FAULT:OVERSIZE false FAULT-IS
-   END-CASE ;
+   END-CASE
+   construct script big-trailer
+   s" trailers larger than the room fail `oversize` with a stall only"
+   OVERSIZE-BY
+   construct script long-size
+   s" a size line larger than the room fails `oversize` with a stall only"
+   OVERSIZE-BY
+   construct script interims
+   s" interim heads larger than the room fail `oversize` with a stall only"
+   OVERSIZE-BY ;
 
 \ A marked request's first NEXT answers its fault.
 : REFUSED ( HTTPC:fault -- ) {: f:HTTPC:fault :}
@@ -908,6 +965,7 @@ public
    TEST-CONNECT
    TEST-CUT
    TEST-TIMEOUT
+   TEST-TOTAL
    TEST-MALFORMED
    TEST-OVERSIZE
    TEST-REFUSED
