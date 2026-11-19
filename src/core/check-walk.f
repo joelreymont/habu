@@ -404,7 +404,8 @@ EXPORT CHECKER-TAPE:K-MATCH-OF
    r MF.RBASE @ RCUR !
    CF-ENTRY-FACTS
    MPEND @ 0 < 0=  r MF.TERM @ 0 <>  and IF
-      MPEND @  r MF.TERM @  DCUR @  TFAM-MATCH-PAY DCUR !
+      MPEND @  r MF.TERM @  DCUR @  TFAM-MATCH-PAY
+      SPLIT-MARKED DCUR !
       CF-TOP CF.FT @ 0 <> IF
          DCUR @ ROW-TERMS r MF.BASE @ ROW-TERMS - 0 max {: count:n :}
          DCUR @ count -1 ROW-TOP-OUTPUT-LOSS DCUR !

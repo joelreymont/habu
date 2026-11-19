@@ -1,7 +1,7 @@
 \ split-str-test.f - the split-str marker: a file that carries it reads each
 \ str in the rows its tokens are checked against as ^u8 n; the marker ends with
 \ its file, and the verifier reads it as the load does.
-\     bin/hb < test/split-str-test.f
+\     bin/hb --load test/run.f -- split-str </dev/null
 
 require src/habu/verify-source.f
 require src/lib/test.f
@@ -27,6 +27,13 @@ include test/split-str-marked.f
 \ The marker ended with its file: str is one value again.
 s" : SPX ( ^u8 n -- n ) SPL ;" TEST-EVAL:RC 70 T=
 s" abc" >str SPL 3 T=
+s" : SPSX ( ^u8 n -- n ) SPSV @ execute ;" TEST-EVAL:RC 70 T=
+s" abcd" >str SPSV @ execute 4 T=
+s" : SPSQX ( ^u8 n -- n ) 0 SPSQB SPSQ:Q @ execute ;" TEST-EVAL:RC 70 T=
+s" abcd" >str 0 SPSQB SPSQ:Q @ execute 4 T=
+: SPJ-W ( spj -- n )
+   MATCH spj text OF str> nip ENDOF none OF 0 ENDOF ;MATCH ;
+s" ab" >str SPJ:TEXT SPJ-W 2 T=
 
 \ Its own definitions are published as written.
 s" abc" >str SPB 3 T=

@@ -6402,10 +6402,87 @@ variable RSR-EXP   variable RSR-ACT
    OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
    OK @ IF bef LIN-CHECK THEN ;
 
-\ Memory tokens construct these rows directly instead of instantiating a named
-\ word.
-: RECORDED-STEP ( n n -- )
+\ One of the two cells of a str value.
+: STR-CELL? ( n -- bool ) {: t:n :}
+   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM STR-FAM @ = ;
+\ A str cell as its field: slot 0, the base, as ^u8; slot 1, the length, as n.
+: STR-CELL-SPLIT ( n -- n ) {: t:n :}
+   t HIDDEN-SLOT@ 0= IF CC-U8 MK-CON MK-PTR EXIT THEN
+   CC-N MK-CON ;
+
+\ A push over the split type and rest; the push itself when neither changed.
+: SPLIT-PUSH ( n n n n -- n ) {: s0:n p:n t:n rest:n :}
+   p P>TYPE t =  p P>REST rest = and IF s0 EXIT THEN
+   t rest MK-PUSH {: q:n :}
+   p P>PROOF q P-PROOF!  p P>LOST q P-LOST!
+   q ;
+
+\ A quotation over the split rows, keeping its throw windows, facts and block part;
+\ the quotation itself when no row changed.
+: SPLIT-QUOT ( n n n n n n -- n ) {: t0:n q:n din:n dout:n rin:n rout:n :}
+   q Q>DIN din =  q Q>DOUT dout = and  q Q>RIN rin = and  q Q>ROUT rout = and
+   IF t0 EXIT THEN
+   din dout rin rout MK-QUOT {: nq:n :}
+   nq q Q>XDFIELD q Q>XRFIELD QX!
+   q Q>FACTS nq Q-FACTS!
+   q Q>BLOCK nq Q-BLOCK!
+   nq ;
+
+\ A scheme over the split quotation; the scheme itself when it did not change.
+: SPLIT-FORALL ( n n n -- n ) {: t0:n f:n body:n :}
+   f F>BODY body = IF t0 EXIT THEN
+   f F>PARENT f F>SECOND f F>DOMAIN body MK-FORALL-IN ;
+
+EXPORT CHECKER-QUOT-FRESH:ARGS-SAME?
+
+\ A row with each str value as ^u8 under n, through quotation rows, schemes, pointees
+\ and family arguments; a str that is itself a pointee or an argument stays whole.
+: SPLIT-ROW ( n -- n ) {: x0:n :}
+   x0 R-RES {: s:n :}
+   s TAG S-PUSH = IF
+      \ Parts live in locals and no data-stack cell crosses a RECURSE, so a row as deep
+      \ as EFFECT-DEPTH-MAX, or the one its parse cut there, fits.
+      s P>TYPE RECURSE {: ty:n :}
+      s P>REST RECURSE {: rest:n :}
+      x0 s ty rest SPLIT-PUSH EXIT
+   THEN
+   x0 T-RES {: t:n :}
+   t STR-CELL? IF t STR-CELL-SPLIT EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN RECURSE {: din:n :}
+      t Q>DOUT RECURSE {: dout:n :}
+      t Q>RIN RECURSE {: rin:n :}
+      t Q>ROUT RECURSE {: rout:n :}
+      x0 t din dout rin rout SPLIT-QUOT EXIT
+   THEN
+   t TAG T-FORALL = IF t F>BODY RECURSE {: body:n :}  x0 t body SPLIT-FORALL EXIT THEN
+   t TAG T-PTR = IF
+      t PTR>INNER RECURSE {: in:n :}
+      in t PTR>INNER = IF x0 EXIT THEN
+      in MK-PTR EXIT
+   THEN
+   t TAG T-PARAM <> IF x0 EXIT THEN
+   \ An argument's index is the count of split arguments above base on PARAM-SCR,
+   \ which each RECURSE leaves as it found it.
+   PARAM-SCR-N @ {: base:n :}
+   BEGIN PARAM-SCR-N @ base - t PARAM>ARGC < WHILE
+      t PARAM-SCR-N @ base - PARAM>ARG RECURSE PARAM-SCR+
+   REPEAT
+   t base ARGS-SAME? IF base PARAM-SCR-N !  x0 EXIT THEN
+   base t PARAM>NAME-A t PARAM>NAME-U t PARAM>FAM MK-PARAM {: copy:n :}
+   t PARAM>HID copy PAY cells PARAMHID + !
+   copy ;
+
+\ A row as the file reading it sees it: split under split-str.
+: SPLIT-MARKED ( n -- n )
+   CHECKER-SPLIT-STR @ 0= IF EXIT THEN
+   SPLIT-ROW ;
+
+: RECORDED-STEP ( n n -- ) {: din:n dout:n :}
    0 CALL-HIT !
+   din SPLIT-MARKED dout SPLIT-MARKED
    2dup CALL-DOUT ! CALL-DIN !
    REC-ON @ CALL-ARMED !
    CHECKER-STEP
@@ -12723,67 +12800,6 @@ EXPORT CHECKER-QUOT-FRESH:CALLED
       dup E-AK-CLAIM-SLOT
       1 +
    REPEAT drop ;
-
-\ One of the two cells of a str value.
-: STR-CELL? ( n -- bool ) {: t:n :}
-   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
-   t PARAM>FAM STR-FAM @ = ;
-\ A str cell as its field: slot 0, the base, as ^u8; slot 1, the length, as n.
-: STR-CELL-SPLIT ( n -- n ) {: t:n :}
-   t HIDDEN-SLOT@ 0= IF CC-U8 MK-CON MK-PTR EXIT THEN
-   CC-N MK-CON ;
-
-\ A push over the split type and rest; the push itself when neither changed.
-: SPLIT-PUSH ( n n n n -- n ) {: s0:n p:n t:n rest:n :}
-   p P>TYPE t =  p P>REST rest = and IF s0 EXIT THEN
-   t rest MK-PUSH {: q:n :}
-   p P>PROOF q P-PROOF!  p P>LOST q P-LOST!
-   q ;
-
-\ A quotation over the split rows, keeping its throw windows, facts and block part;
-\ the quotation itself when no row changed.
-: SPLIT-QUOT ( n n n n n n -- n ) {: t0:n q:n din:n dout:n rin:n rout:n :}
-   q Q>DIN din =  q Q>DOUT dout = and  q Q>RIN rin = and  q Q>ROUT rout = and
-   IF t0 EXIT THEN
-   din dout rin rout MK-QUOT {: nq:n :}
-   nq q Q>XDFIELD q Q>XRFIELD QX!
-   q Q>FACTS nq Q-FACTS!
-   q Q>BLOCK nq Q-BLOCK!
-   nq ;
-
-\ A scheme over the split quotation; the scheme itself when it did not change.
-: SPLIT-FORALL ( n n n -- n ) {: t0:n f:n body:n :}
-   f F>BODY body = IF t0 EXIT THEN
-   f F>PARENT f F>SECOND f F>DOMAIN body MK-FORALL-IN ;
-
-\ A row with each str value, and each in a quotation row it holds, as ^u8 under n.
-\ One word walks rows and the cell types in them, so a quotation's rows recurse.
-\ Each level holds its parts in locals and no data-stack cell across a RECURSE,
-\ so a row as deep as EFFECT-DEPTH-MAX, or the one its parse cut there, fits.
-: SPLIT-ROW ( n -- n ) {: x0:n :}
-   x0 R-RES {: s:n :}
-   s TAG S-PUSH = IF
-      s P>TYPE RECURSE {: ty:n :}
-      s P>REST RECURSE {: rest:n :}
-      x0 s ty rest SPLIT-PUSH EXIT
-   THEN
-   x0 T-RES {: t:n :}
-   t STR-CELL? IF t STR-CELL-SPLIT EXIT THEN
-   t TAG T-QUOT = IF
-      t Q>DIN RECURSE {: din:n :}
-      t Q>DOUT RECURSE {: dout:n :}
-      t Q>RIN RECURSE {: rin:n :}
-      t Q>ROUT RECURSE {: rout:n :}
-      x0 t din dout rin rout SPLIT-QUOT EXIT
-   THEN
-   t TAG T-FORALL = IF t F>BODY RECURSE {: body:n :}  x0 t body SPLIT-FORALL EXIT THEN
-   x0 ;
-
-\ A row as the file reading it sees it: split under split-str.
-: SPLIT-MARKED ( n -- n )
-   CHECKER-SPLIT-STR @ 0= IF EXIT THEN
-   SPLIT-ROW ;
 
 \ Keeps the installed signature's rows as written, for its publication.
 : SG-WRITTEN! ( -- )
