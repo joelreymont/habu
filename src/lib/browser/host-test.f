@@ -11,6 +11,8 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/aio.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/browser/host.f
@@ -23,10 +25,9 @@ $7F000001 constant LOOPBACK
 500 constant IDLE-MS
 $10000 constant CAP                    \ room for any of the page's files
 4096 constant HEAD-CAP
-CAP BUFFER: BODY
+TYPED-VARIABLE BODY ^VEC:vector<u8>
 CAP BUFFER: WANT
 HEAD-CAP BUFFER: HEAD
-variable BODY-U
 variable HEAD-U
 
 : OK ( CURL:status -- )
@@ -47,10 +48,10 @@ variable HEAD-U
 \ wall-clock limit, so CURLE 28 is libcurl's default 300 s connect timeout, met by
 \ a starved or stopped process: it throws E-PROC-TIMEOUT, a timeout and not a FAIL.
 : PERFORM ( CURL:handle -- n )
-   BODY CAP >LEN CURL:PERFORM
+   BODY @ 0 VEC:RESIZE
+   CAP >LEN BODY @ CURL:PERFORM
    MATCH CURL:fetch-result
-      response OF {: status:CURL:http-status got:len :}
-         got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
+      response OF drop CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
       failed OF {: rc:CURL:code :}
          SB-RESET
@@ -94,10 +95,11 @@ variable HEAD-U
    path pu GET 200 T=
    SB-RESET  s" Content-Type: " SB-APPEND  type tu SB-APPEND  S\" \r\n" SB-APPEND
    HEAD HEAD-U @ SB$ CONTAINS? TTRUE
-   BODY BODY-U @ WANT u T$= ;
+   BODY @ VEC:SPAN SPAN:$ WANT u T$= ;
 
 : SERVE-CASES ( -- )
    AIO:START
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HTTP:ROUTES-RESET
    BROWSER-HOST:ROUTES
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START

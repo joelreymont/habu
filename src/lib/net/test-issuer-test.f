@@ -62,8 +62,7 @@ $7F000001 constant LOOPBACK
 8 constant EXPONENT-CAP
 
 $2000 constant CAP
-CAP BUFFER: BODY
-variable BODY-U
+TYPED-VARIABLE BODY ^VEC:vector<u8>
 CAP BUFFER: FORM
 variable FORM-U
 CAP BUFFER: TOKEN
@@ -141,7 +140,7 @@ variable POSTED-U
 $10001 constant PAST-CAP            \ one byte past BEARER's TOKEN-CAP
 PAST-CAP BUFFER: OVERSIZE
 
-: BODY$ ( -- ^u8 n ) BODY BODY-U @ ;
+: BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
 : TOKEN$ ( -- ^u8 n ) TOKEN TOKEN-U @ ;
 : CLAIMS$ ( -- str ) CLAIMS CLAIMS-U @ ;
 : ASSERTION$ ( -- str ) ASSERTION ASSERTION-U @ ;
@@ -201,11 +200,10 @@ PAST-CAP BUFFER: OVERSIZE
 \ a failed transfer.
 : FINISH ( CURL:handle -- n )
    {: h:CURL:handle :}
-   0 BODY-U !
-   h BODY CAP >LEN CURL:PERFORM
+   BODY @ 0 VEC:RESIZE
+   h CAP >LEN BODY @ CURL:PERFORM
    MATCH CURL:fetch-result
-      response OF {: status:CURL:http-status got:len :}
-         got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
+      response OF drop CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
       failed OF drop -2 ENDOF
    ;MATCH
@@ -858,6 +856,7 @@ TASKS!
 \ the server starts once to take a port and serves again on it.
 : SERVE-CASES ( -- )
    AIO:START LOG-INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    s" app" s" s3cr&t+1" TEST-ISSUER:CLIENT+
    s" cli" s" " TEST-ISSUER:CLIENT+
    HTTP:ROUTES-RESET

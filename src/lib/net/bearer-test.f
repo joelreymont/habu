@@ -21,6 +21,8 @@ require src/lib/span.f
 require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/task.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/base64.f
 require src/lib/json.f
 require src/lib/crypto/evp.f
@@ -48,8 +50,7 @@ $7F000001 constant LOOPBACK
 600 constant LIFE-S                 \ how far past now a current token's exp lies
 
 $1000 constant CAP
-CAP BUFFER: BODY
-variable BODY-U
+TYPED-VARIABLE BODY ^VEC:vector<u8>
 CAP BUFFER: HEADS
 variable HEADS-U
 10 SPAN-BUFFER: HELD
@@ -81,13 +82,22 @@ variable FETCHED-BY                 \ a mono-ns after the last fetch returned
 variable DUE                        \ when that fetch's window has passed, a mono-ns
 variable RELEASED                   \ the test lets the stalled /keys answer
 TYPED-VARIABLE PENDING CURL:handle  \ the request ASKER sends
+\ ASKER's body, apart from BODY, which the main task's requests fill while
+\ ASKER's is stalled.
+TYPED-VARIABLE ASKED-BODY ^VEC:vector<u8>
 TASK:MIN-STACK TASK:TASK ASKER
 \ WAITER sends WAITING while ASKER's fetch is stalled, its body apart from
 \ BODY.
-CAP BUFFER: WAITED-BODY
-variable WAITED-U
+TYPED-VARIABLE WAITED-BODY ^VEC:vector<u8>
 TYPED-VARIABLE WAITING CURL:handle
 TASK:MIN-STACK TASK:TASK WAITER
+
+: BODIES ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ASKED-BODY !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW WAITED-BODY ! ;
+
+: BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
 TASK:MIN-STACK TASK:TASK CLAIMER
 
 \ The bytes copied into the span at off; answers the offset past them.
@@ -242,18 +252,22 @@ TASK:MIN-STACK TASK:TASK CLAIMER
       truncated OF drop -1 ENDOF
    ;MATCH ;
 
-\ The response's status, its body in BODY and its header block in HEADS; -1
-\ for a body past CAP, -2 for a failed transfer.
-: PERFORM ( CURL:handle -- n )
-   {: h:CURL:handle :}
-   0 BODY-U ! 0 HEADS-U !
-   h BODY CAP >LEN CURL:PERFORM
+\ The response's status, its body in the emptied vector; -1 for a body past
+\ CAP, -2 for a failed transfer.
+: TAKEN ( CURL:handle ^VEC:vector<u8> -- n )
+   {: h:CURL:handle v:^ :}
+   v 0 VEC:RESIZE
+   h CAP >LEN v CURL:PERFORM
    MATCH CURL:fetch-result
-      response OF {: status:CURL:http-status got:len :}
-         got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
+      response OF drop CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
       failed OF drop -2 ENDOF
-   ;MATCH {: status:n :}
+   ;MATCH ;
+
+: PERFORM ( CURL:handle -- n )
+   {: h:CURL:handle :}
+   0 HEADS-U !
+   h BODY @ TAKEN {: status:n :}
    status 0 > if h HEADS CAP >LEN CURL:HEADERS HEADS-LEN HEADS-U ! then
    status ;
 
@@ -267,7 +281,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    {: status:n want:^ wu:n :}
    SB-RESET s" WWW-Authenticate: " SB-APPEND want wu SB-APPEND 13 SB-APPEND-C 10 SB-APPEND-C
    HEADS HEADS-U @ SB$ CONTAINS? TTRUE
-   BODY-U @ 0 T=
+   BODY @ VEC:COUNT 0 T=
    status 401 T= ;
 
 : CHALLENGED ( n -- ) s" Bearer" REFUSED ;
@@ -290,7 +304,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : ANSWERED ( n ^u8 n -- )
    {: status:n want:^ wu:n :}
-   BODY BODY-U @ want wu T$=
+   BODY$ want wu T$=
    status 200 T= ;
 
 
@@ -359,7 +373,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    0 MODE atomic!
    KID-A CURRENT MINT SEND {: status:n :}
    FETCHED
-   BODY-U @ 0 T=
+   BODY @ VEC:COUNT 0 T=
    status 503 T=
    HITS atomic@ 1 T=
    s" an empty set inside the failed fetch's window answers 503 and fetches nothing" T-LABEL
@@ -493,18 +507,13 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    s" CLAIM$ and CLAIM-HOLDS? in a task the admitted request spawns answer false" T-LABEL
    KID-A CURRENT MINT s" /spawn" OPEN BEARING FINISH s" false" ANSWERED ;
 
-: ASK ( -- ) PENDING @ FINISH TASK:RETURN ;
+: SENT ( CURL:handle ^VEC:vector<u8> -- n )
+   {: h:CURL:handle v:^ :}
+   h v TAKEN h CURL:CLEANUP ;
 
-: WAIT-ASK ( -- )
-   WAITING @ {: h:CURL:handle :}
-   h WAITED-BODY CAP >LEN CURL:PERFORM
-   MATCH CURL:fetch-result
-      response OF {: status:CURL:http-status got:len :}
-         got LEN>N WAITED-U ! status CURL:HTTP-STATUS>N ENDOF
-      truncated OF drop drop -1 ENDOF
-      failed OF drop -2 ENDOF
-   ;MATCH
-   h CURL:CLEANUP TASK:RETURN ;
+: ASK ( -- ) PENDING @ ASKED-BODY @ SENT TASK:RETURN ;
+
+: WAIT-ASK ( -- ) WAITING @ WAITED-BODY @ SENT TASK:RETURN ;
 
 \ Sends AUTH's request from WAITER and releases the stalled /keys once
 \ BEARER counts it as a waiter or it has been answered.
@@ -516,16 +525,17 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : ASKED ( -- )
    ASKER TASK:JOIN MATCH result
-      ok OF WANT-WHO ANSWERED ENDOF
+      ok OF 200 T= ENDOF
       err OF throw ENDOF
-   ;MATCH ;
+   ;MATCH
+   ASKED-BODY @ VEC:SPAN SPAN:$ WANT-WHO T$= ;
 
 : WAITED ( -- )
    WAITER TASK:JOIN MATCH result
       ok OF 200 T= ENDOF
       err OF throw ENDOF
    ;MATCH
-   WAITED-BODY WAITED-U @ WANT-WHO T$= ;
+   WAITED-BODY @ VEC:SPAN SPAN:$ WANT-WHO T$= ;
 
 : WINDOW ( -- )
    s" a fetch in flight does not delay a cached kid" T-LABEL
@@ -670,6 +680,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 \ ISSUER! is refused while serving: the server starts again on that port.
 : SERVE-CASES ( -- )
    AIO:START
+   BODIES
    SET-ONE-FILL SET-TWO-FILL
    ROUTES
    EARLY

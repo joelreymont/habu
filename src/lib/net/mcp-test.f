@@ -51,6 +51,8 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/task.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/adt/result.f
 require src/lib/reason.f
 require src/lib/base64.f
@@ -68,8 +70,7 @@ $7F000001 constant LOOPBACK
 1 constant ONE-WORKER
 500 constant IDLE-MS
 $4000 constant CAP
-CAP BUFFER: BODY
-variable BODY-U
+TYPED-VARIABLE BODY ^VEC:vector<u8>
 1000000 constant NS-PER-MS
 2000 constant WAIT-MS               \ how long /endless pages before its last
 50 constant PAGE-MS                 \ /endless's delay before each page
@@ -149,13 +150,15 @@ TASK:MIN-STACK TASK:TASK STALLER
       failed OF drop CURL:E-STATE throw ENDOF
    ;MATCH ;
 
+: BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
+
 \ The response's status, its body in BODY; -1 for a body past CAP, -2 for a
 \ failed transfer.
 : PERFORM ( CURL:handle -- n )
-   BODY CAP >LEN CURL:PERFORM
+   BODY @ 0 VEC:RESIZE
+   CAP >LEN BODY @ CURL:PERFORM
    MATCH CURL:fetch-result
-      response OF {: status:CURL:http-status got:len :}
-         got LEN>N BODY-U ! status CURL:HTTP-STATUS>N ENDOF
+      response OF drop CURL:HTTP-STATUS>N ENDOF
       truncated OF drop drop -1 ENDOF
       failed OF drop -2 ENDOF
    ;MATCH ;
@@ -200,7 +203,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : ANSWERED ( n n ^u8 n -- )
    {: status:n wanted:n want:^ wu:n :}
-   BODY BODY-U @ want wu T$=
+   BODY$ want wu T$=
    status wanted T= ;
 
 : META ( -- )
@@ -211,7 +214,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ A tool body's fault reaches the host, which answers 500.
 : FAULTED ( n -- )
    {: status:n :}
-   BODY BODY-U @ s" internal: the handler did not finish this request" STARTS-WITH? TTRUE
+   BODY$ s" internal: the handler did not finish this request" STARTS-WITH? TTRUE
    status 500 T= ;
 
 : SERVER ( -- )
@@ -1676,7 +1679,7 @@ BUF:HDR-BYTES BUFFER: REPLIES
    s" ANSWER of a tools/call writes the text HANDLE sends for it" T-LABEL
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: echo" ADD
    ECHO-A1 POST 200 T=
-   W-RESET BODY BODY-U @ W+
+   W-RESET BODY$ W+
    ANSWER-OPEN ECHO-A1 POST
    200 W$ ANSWERED ;
 
@@ -1790,8 +1793,8 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : KEPT-NOW ( n -- )
    {: status:n :}
    status 200 T=
-   BODY BODY-U @ S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"result\":{" STARTS-WITH? TTRUE
-   W-RESET BODY BODY-U @ W+ ;
+   BODY$ S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"result\":{" STARTS-WITH? TTRUE
+   W-RESET BODY$ W+ ;
 
 \ The held call's answer is W, given by one FINISH.
 : KEPT-LATER ( n -- )
@@ -1957,6 +1960,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 
 : SERVE-CASES ( -- )
    AIO:START
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
    HTTP:ROUTES-RESET
    s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
    s" POST" s" /paged" [: PAGED-ROUTE ;] HTTP:ROUTE

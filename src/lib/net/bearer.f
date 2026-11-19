@@ -113,9 +113,8 @@ TYPED-VARIABLE FETCHING bool
 variable WAITERS                    \ WAKE posts RETURNED owes, one per wait
 variable ROUND                      \ fetches returned
 TASK:SEMAPHORE WAKE
-KEYS-CAP BUFFER: FETCHED
-variable FETCHED-U
-TYPED-VARIABLE ACCEPTED bool        \ FETCHED holds a key set of FETCHED-U bytes
+TYPED-VARIABLE FETCHED ^VEC:vector<u8>
+TYPED-VARIABLE ACCEPTED bool        \ FETCHED holds a key set
 TASK:FACILITY KEYS-LOCK
 KEYS-LOCK TASK:FACILITY-INIT
 
@@ -316,10 +315,12 @@ TASK:+USER FROM n
    {: h:CURL:handle :}
    h KEYS-URL SPAN:$ CURL:URL! OK? 0= if -1 exit then
    h KEYS-TIMEOUT-MS >MS CURL:TIMEOUT! OK? 0= if -1 exit then
-   h FETCHED KEYS-CAP >LEN CURL:PERFORM FETCHED-LEN ;
+   h KEYS-CAP >LEN FETCHED @ CURL:PERFORM FETCHED-LEN ;
+
+: FETCHED$ ( -- str ) FETCHED @ VEC:SPAN SPAN:$ ;
 
 : KEY-SET? ( -- bool )
-   OUTER-CURSOR FETCHED FETCHED-U @ JSON:READ-INIT
+   OUTER-CURSOR FETCHED$ JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
    s" keys" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE false exit then
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE false exit then
@@ -328,10 +329,18 @@ TASK:+USER FROM n
 \ TRANSFER's answer in place of the second cell, the handle kept for catch.
 : TRANSFERRED ( CURL:handle n -- CURL:handle n ) drop dup TRANSFER ;
 
-\ The issuer's key set into FETCHED, outside KEYS-LOCK: ACCEPTED when it was
-\ answered whole with 200 and is a key set.
+\ FETCHED is made on the first fetch: a block made at load lives in the
+\ loading process, never in a program built from it.
+: FETCHED-READY ( -- )
+   FETCHED @ NULL-PTR <> if FETCHED @ 0 VEC:RESIZE exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FETCHED ! ;
+
+\ The issuer's key set appended to the empty FETCHED, at most KEYS-CAP bytes,
+\ outside KEYS-LOCK: ACCEPTED when it was answered whole with 200 and is a
+\ key set.
 : FETCH ( -- )
    false ACCEPTED !
+   FETCHED-READY
    CURL:INIT
    MATCH CURL:init-result
       ready OF {: h:CURL:handle :}
@@ -340,8 +349,7 @@ TASK:+USER FROM n
          code 0<> if 2drop code throw then
          nip ENDOF
       failed OF drop -1 ENDOF
-   ;MATCH FETCHED-U !
-   FETCHED-U @ 0< if exit then
+   ;MATCH 0< if exit then
    [: drop KEY-SET? ;] STEP ACCEPTED ! ;
 
 : LOCKED ( R [ R -- S ] -- S )
@@ -374,9 +382,14 @@ ENUM lookup-step
    DUE? 0= if found construct lookup-step answer exit then
    true FETCHING ! construct lookup-step fetch ;
 
+\ Under KEYS-LOCK: FETCHED, at most KEYS-CAP bytes, into KEYS.
+: KEEP-SET ( -- )
+   FETCHED$ {: src:^ u:n :}
+   src KEYS u BYTE-COPY u KEYS-U ! ;
+
 \ Under KEYS-LOCK: the fetch has returned, by a throw too.
 : RETURNED ( -- )
-   ACCEPTED @ if FETCHED KEYS FETCHED-U @ BYTE-COPY FETCHED-U @ KEYS-U ! then
+   ACCEPTED @ if KEEP-SET then
    mono-ns KEYS-AT !
    1 ROUND +!
    false FETCHING !
@@ -936,16 +949,13 @@ private
    code 400 >= code 500 < and if E-REFUSED exit then
    E-RESPONSE ;
 
-\ REQUESTED? left the vector empty: the answer is read into its first
-\ TOKEN-CAP bytes, then the vector is cut to the answer.
+\ REQUESTED? left the vector empty with EMPTIED's room: the answer is appended
+\ to it, at most TOKEN-CAP bytes, so the block never moves.
 : RECEIVED ( CURL:handle ^VEC:vector<u8> -- option<CURL:http-status> )
    {: h:CURL:handle buf:^ :}
-   buf TOKEN-CAP VEC:ENSURE
-   h buf VEC:SPAN SPAN:$ >LEN CURL:PERFORM
+   h TOKEN-CAP >LEN buf CURL:PERFORM
    MATCH CURL:fetch-result
-      response OF {: status:CURL:http-status got:len :}
-         buf got LEN>N VEC:RESIZE
-         status OPTION:SOME ENDOF
+      response OF drop OPTION:SOME ENDOF
       truncated OF
          drop {: status:CURL:http-status :}
          buf 0 VEC:RESIZE

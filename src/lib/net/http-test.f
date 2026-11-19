@@ -97,7 +97,6 @@ $2E constant DOT-BYTE
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 
-create RES-BUF RES-CAP allot
 REQ-CAP SPAN-BUFFER: REQ-BUF
 PATH-CAP SPAN-BUFFER: ROOT-BUF
 PATH-CAP SPAN-BUFFER: TREE-BUF   \ the root of the big and linked static trees
@@ -113,7 +112,6 @@ SCRIPT-CAP SPAN-BUFFER: BACK-BUF    \ the transcript read back from its file
 TEST-ALIGN8
 variable ROOT-U
 variable TREE-U
-variable RES-U
 variable REQ-U
 variable ETAG-U
 variable SCRIPT-U
@@ -131,16 +129,22 @@ TASK:SEMAPHORE GATE               \ holds the handler of /api/gate
 TASK:MIN-STACK TASK:TASK HOOK-RELEASER
 variable PARKED
 1 TYPED-BUFFER LARGE-SPAN SPAN:span<u8>
+\ The last response's bytes; its room never falls below RES-CAP.
+TYPED-VARIABLE RES ^VEC:vector<u8>
 1 TYPED-BUFFER OLD-REQUEST HTTP:request
 1 TYPED-BUFFER OWN-REQUEST HTTP:request
 
 
-: ROOT$ ( -- ^u8 n )
+: ROOT$ ( -- str )
    ROOT-BUF ROOT-U @ SPAN:TAKE SPAN:$ ;
 
 
 : RES$ ( -- str )
-   RES-BUF RES-U @ ;
+   RES @ VEC:SPAN SPAN:$ ;
+
+
+: RES-FROM ( n -- str ) {: at:n :}
+   RES @ VEC:SPAN at SPAN:SKIP SPAN:$ ;
 
 
 : REQ$ ( -- str )
@@ -457,7 +461,6 @@ $101000 constant BIG-VALUE-BYTES
 create BIG-VALUE BIG-VALUE-BYTES allot
 BIG-VALUE-BYTES 10 + constant BIG-ANSWER-BYTES   \ {"big":"<value>"}
 BIG-ANSWER-BYTES $1000 + constant BIG-RES-CAP    \ room to see a longer answer
-1 TYPED-BUFFER BIG-RES SPAN:span<u8>
 5 constant FILL-HEADERS
 $400 constant FILL-HEADER-BYTES   \ five of them: past 2 KiB of lines, 4 KiB of head
 300 constant LONG-SEGMENT-BYTES   \ past 256 decoded bytes
@@ -483,6 +486,7 @@ FILL-BIG
 \ 64 MiB, mapped and filled by HUGE-JSON-CASE for the time it runs.
 $4000000 constant HUGE-VALUE-BYTES
 HUGE-VALUE-BYTES 10 + constant HUGE-ANSWER-BYTES   \ {"big":"<value>"}
+HUGE-ANSWER-BYTES $1000 + constant HUGE-RES-CAP
 1 TYPED-BUFFER HUGE-VALUE SPAN:span<u8>
 $4000 constant RSS-SLACK-KIB      \ 16 MiB
 
@@ -814,8 +818,9 @@ $2710 constant PARK-MS            \ far past every stop bound
 \ none, so it is the default 300 s connect timeout, met by a starved or stopped
 \ process. A deadline is no assertion result: the wait names itself on stdout
 \ and throws E-PROC-TIMEOUT.
-: TAKE-INTO ( CURL:handle ^u8 n -- n n ) {: subject:CURL:handle into:^ cap:n :}
-   subject into cap >LEN CURL:PERFORM
+: TAKE-INTO ( CURL:handle n ^VEC:vector<u8> -- n n )
+   {: subject:CURL:handle cap:n into:^ :}
+   subject cap >LEN into CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
          status CURL:HTTP-STATUS>N got LEN>N ENDOF
@@ -833,8 +838,12 @@ $2710 constant PARK-MS            \ far past every stop bound
    ;MATCH ;
 
 
+\ RES holds the whole body, or nothing when the status is negative.
 : TAKE-RESPONSE ( CURL:handle -- n )
-   RES-BUF RES-CAP TAKE-INTO RES-U ! ;
+   RES @ 0 VEC:RESIZE
+   RES-CAP RES @ TAKE-INTO drop {: status:n :}
+   status 0 < if RES @ 0 VEC:RESIZE then
+   status ;
 
 
 : FETCH ( ^u8 n ^u8 n -- n ) {: method:^ methodlen:n path:^ pathlen:n :}
@@ -884,21 +893,31 @@ $2710 constant PARK-MS            \ far past every stop bound
    conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS ;
 
 
+\ RES's room past COUNT n, up to RES-CAP, for one read; COUNT is RES-CAP
+\ until the reader sets it back.
+: RES-ROOM ( n -- str ) {: old:n :}
+   RES @ RES-CAP VEC:ENSURE
+   old RES-FROM ;
+
+
 : RAW-READ-STEP ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
-   conn RES-BUF RES-U @ + RES-CAP RES-U @ - TCP4:TRANSFER-BYTES TCP4:READ
+   RES @ VEC:COUNT {: old:n :}
+   conn old RES-ROOM TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
-      data OF BLEN>N RES-U @ + RES-U ! true ENDOF
-      closed OF drop false ENDOF
-      failed OF drop false ENDOF
-   ;MATCH ;
+      data OF BLEN>N true ENDOF
+      closed OF drop 0 false ENDOF
+      failed OF drop 0 false ENDOF
+   ;MATCH {: got:n more:bool :}
+   RES @ old got + VEC:RESIZE
+   more ;
 
 
 \ Reads until the server closes the connection, which the idle deadline
 \ guarantees even when the server would have kept it alive.
 : RAW-DRAIN ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   0 RES-U !
+   RES @ 0 VEC:RESIZE
    begin
-      RES-U @ RES-CAP >= if exit then
+      RES @ VEC:COUNT RES-CAP >= if exit then
       conn RAW-READ-STEP 0= if exit then
    again ;
 
@@ -925,10 +944,10 @@ $2710 constant PARK-MS            \ far past every stop bound
 
 : RAW-COLLECT ( TCP4:connection str -- bool )
    {: conn:TCP4:connection want:^ len:n :}
-   0 RES-U !
+   RES @ 0 VEC:RESIZE
    begin
       RES$ want len CONTAINS? if true exit then
-      RES-U @ RES-CAP >= if false exit then
+      RES @ VEC:COUNT RES-CAP >= if false exit then
       conn RAW-AWAIT
       conn RAW-READ-STEP 0= if RES$ want len CONTAINS? exit then
    again ;
@@ -984,8 +1003,8 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 : RESPONSES ( -- n )
    0
-   RES-U @ 0 ?do
-      RES-BUF i + RES-U @ i - s" HTTP/1.1 " STARTS-WITH? if 1+ then
+   RES @ VEC:COUNT 0 ?do
+      i RES-FROM s" HTTP/1.1 " STARTS-WITH? if 1+ then
    loop ;
 
 
@@ -997,12 +1016,12 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
       none OF -1 ENDOF
    ;MATCH {: start:n :}
    start 0 < if exit then
-   RES-BUF start + RES-U @ start - s\" \r" FIND-SUB
+   start RES-FROM s\" \r" FIND-SUB
    MATCH option
       some OF {: stop:idx :} stop IDX>N ENDOF
       none OF 0 ENDOF
    ;MATCH {: len:n :}
-   RES-BUF start + len ETAG-BUF SPAN:COPY
+   start RES-FROM drop len ETAG-BUF SPAN:COPY
    len ETAG-U ! ;
 
 
@@ -1022,7 +1041,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 : HEAD+ ( n n -- ) {: from:n to:n :}
    to from ?do
-      RES-BUF i + c@ {: byte:n :}
+      RES @ i VEC:AT c@ {: byte:n :}
       byte CR <> if byte SCRIPT+C then
    loop ;
 
@@ -1032,7 +1051,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 : HEAD-START ( n -- n ) {: at:n :}
-   RES-BUF at + RES-U @ at - s" HTTP/1.1 " FIND-SUB
+   at RES-FROM s" HTTP/1.1 " FIND-SUB
    MATCH option
       some OF {: off:idx :} off IDX>N at + ENDOF
       none OF -1 ENDOF
@@ -1040,10 +1059,10 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 : HEAD-END ( n -- n ) {: start:n :}
-   RES-BUF start + RES-U @ start - BLANK-LINE$ FIND-SUB
+   start RES-FROM BLANK-LINE$ FIND-SUB
    MATCH option
       some OF {: off:idx :} off IDX>N start + ENDOF
-      none OF RES-U @ ENDOF
+      none OF RES @ VEC:COUNT ENDOF
    ;MATCH ;
 
 
@@ -1335,14 +1354,14 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 : BIG-JSON-CASE ( -- )
-   BIG-RES-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-RES !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: body:^ :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject s" /api/big-json" URL-FOR CURL:URL! DROP-CURL-STATUS
-   subject 0 BIG-RES @ SPAN:$ TAKE-INTO {: status:n got:n :}
+   subject BIG-RES-CAP body TAKE-INTO drop {: status:n :}
    subject CURL:CLEANUP
    status 200 T=
-   0 BIG-RES @ SPAN:$ drop got BIG-ANSWER? TTRUE
-   0 BIG-RES @ MEM:FREE-SPAN
+   body VEC:SPAN SPAN:$ BIG-ANSWER? TTRUE
+   body VEC:DELETE
    s" GET" s" /api/ping" FETCH 200 T=
    RES$ S\" {\qservice\q:\qhttp-test\q}" T$= ;
 
@@ -1365,13 +1384,13 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    HUGE-VALUE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 HUGE-VALUE !
    0 HUGE-VALUE @ SPAN:$ drop {: value:^ :}
    HUGE-VALUE-BYTES 0 ?do FILL-BYTE value i + c! loop
-   HUGE-ANSWER-BYTES $1000 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-RES !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: body:^ :}
    [: PS-RSS ;] CMD:WITH-COMMAND {: before:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject s" /api/huge-json" URL-FOR CURL:URL! DROP-CURL-STATUS
-   subject 0 BIG-RES @ SPAN:$ TAKE-INTO {: status:n got:n :}
+   subject HUGE-RES-CAP body TAKE-INTO {: status:n got:n :}
    subject CURL:CLEANUP
-   0 BIG-RES @ MEM:FREE-SPAN
+   body VEC:DELETE
    s" GET" s" /api/ping" FETCH 200 T=
    [: PS-RSS ;] CMD:WITH-COMMAND {: after:n :}
    0 HUGE-VALUE @ MEM:FREE-SPAN
@@ -1385,7 +1404,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : MANY-HEADERS-CASE ( -- )
    s\" GET /api/many-headers HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s" HTTP/1.1 200 OK" BEGINS? TTRUE
-   RES-U @ FILL-HEADERS FILL-HEADER-BYTES * > TTRUE
+   RES @ VEC:COUNT FILL-HEADERS FILL-HEADER-BYTES * > TTRUE
    S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE ;
 
 
@@ -1414,7 +1433,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    ETAG-U @ $42 T=
    s" static-file" TRANSCRIBE
    s" /index.html" ETAG$ FETCH-IF-NONE-MATCH 304 T=
-   RES-U @ 0 T=
+   RES @ VEC:COUNT 0 T=
    REQ-RESET
    s\" GET /index.html HTTP/1.1\r\nHost: x\r\nIf-None-Match: " REQ+
    ETAG$ REQ+
@@ -1671,8 +1690,10 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 \ body, is reset by the kernel. It promises no answer there, so the reset is its
 \ close too.
 : CLOSED-WITHIN? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
+   RES @ 0 VEC:RESIZE
    conn RAW-AWAIT
-   conn RES-BUF RES-CAP TCP4:TRANSFER-BYTES TCP4:READ
+   conn 0 RES-ROOM TCP4:TRANSFER-BYTES TCP4:READ
+   RES @ 0 VEC:RESIZE
    MATCH TCP4:read-result
       data OF drop false ENDOF
       closed OF drop true ENDOF
@@ -1759,7 +1780,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    0 FOREIGN-CODE !
    0 TAKEN-CODE !
    s\" POST /api/body-probe HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nok" RAW-ONE
-   RES-U @ 0 T=
+   RES @ VEC:COUNT 0 T=
    FOREIGN-CODE @ HTTP:E-HANDLE T=
    TAKEN-CODE @ HTTP:E-STATE T= ;
 
@@ -3358,6 +3379,8 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
 \ it, and it is stopped once every server has been stopped.
 : LIFECYCLE ( -- )
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW RES !
+   RES @ RES-CAP VEC:RESERVE
    NO-LOOP-CASE
    AIO:START
    MAKE-STATIC
@@ -3434,6 +3457,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    SETUP-REFUSAL-CASE
    THROWING-HOOK-CASE
    GATED-HOOK-CASE
+   RES @ VEC:DELETE
    ROOT$ FS:REMOVE-TREE
    AIO-STOP ;
 
