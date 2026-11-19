@@ -2,7 +2,8 @@ split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/test/guard-page.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/reason.f
 
 package XML-TEST
@@ -21,7 +22,7 @@ variable INPUT-FAIL
 variable INPUT-OFF
 variable INPUT-USED
 create INPUT-BIG 8200 allot
-create DEEP-DOC BUF:HDR-BYTES allot
+TYPED-VARIABLE DEEP-DOC ^VEC:vector<u8>
 100000 constant DEEP-LEVELS
 4 BUFFER: DEEP-NAME
 variable DEEP-BAD
@@ -844,7 +845,9 @@ variable URI-LEN
    s" <a xmlns:p='urn:u' xmlns:q='urn:u'><b><c p:x='1' q:x='2'/></b></a>"
       E-NAMESPACE INPUT-BAD ;
 
-: DEEP+ ( str -- ) BUF:N>BLEN DEEP-DOC BUF:APPEND-SPAN ;
+: DOC-START ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DEEP-DOC ! ;
+: DOC$ ( -- str ) DEEP-DOC @ VEC:SPAN SPAN:$ ;
+: DEEP+ ( str -- ) DEEP-DOC @ VEC:APPEND ;
 
 \ Level i of the chain is p:aD, D the digit i mod 10.
 : LEVEL-NAME ( n -- str )
@@ -854,13 +857,13 @@ variable URI-LEN
    DEEP-NAME 4 ;
 
 : DEEP-BUILD ( -- str )
-   DEEP-DOC 16 BUF:N>BLEN BUF:INIT
+   DOC-START
    s" <r xmlns:p='urn:p'>" DEEP+
    DEEP-LEVELS 0 ?do s" <" DEEP+ i LEVEL-NAME DEEP+ s" >" DEEP+ loop
    s" <p:z/>" DEEP+
    0 DEEP-LEVELS 1- ?do s" </" DEEP+ i LEVEL-NAME DEEP+ s" >" DEEP+ -1 +loop
    s" </r>" DEEP+
-   DEEP-DOC BUF:SPAN$ BUF:BLEN>N ;
+   DOC$ ;
 
 : DEEP-EVENT ( XML:reader XML:kind n -- XML:reader )
    {: expected:XML:kind level:n :}
@@ -885,7 +888,7 @@ variable URI-LEN
    DEEP-BAD @ 0 T=
    XML-KIND:END NEXT= s" r" NAME= s" p" s" urn:p" PREFIX=
    XML-KIND:EOF NEXT= XML:CLOSE
-   DEEP-DOC BUF:DISPOSE ;
+   DEEP-DOC @ VEC:DELETE ;
 
 \ The reader's element, attribute and binding tables start small and grow: a
 \ 5000-deep tree, a tag of 2000 attributes and 2000 live bindings read whole.
@@ -894,8 +897,6 @@ variable URI-LEN
 1000 constant NS-LEVELS
 variable SEEN
 
-: DOC-START ( -- ) DEEP-DOC 16 BUF:N>BLEN BUF:INIT ;
-: DOC$ ( -- str ) DEEP-DOC BUF:SPAN$ BUF:BLEN>N ;
 
 : DEEP-N+ ( n -- )
    {: value:n :}
@@ -921,7 +922,7 @@ variable SEEN
    XML-KIND:END TALL-LEVELS EVENTS
    DEEP-BAD @ 0 T=
    XML-KIND:EOF NEXT= XML:CLOSE
-   DEEP-DOC BUF:DISPOSE ;
+   DEEP-DOC @ VEC:DELETE ;
 
 : MANY-ATTRIBUTES ( -- )
    DOC-START s" <a" DEEP+
@@ -936,7 +937,7 @@ variable SEEN
    ATTR-RESET WIDE-ATTRS 0 ?do ATTR-NEXT drop loop
    s" a1999" ATTR-NAME= s" 1999" ATTR-TEXT=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
-   DEEP-DOC BUF:DISPOSE ;
+   DEEP-DOC @ VEC:DELETE ;
 
 \ Level i rebinds p to urn:i and binds its own qi to urn:qi. Rebuilding the
 \ prefix buckets as the binding table grows keeps every binding reachable, and
@@ -958,7 +959,7 @@ variable SEEN
    s" q0" s" urn:q0" PREFIX= s" q1" PREFIX-MISSING
    DEEP-BAD @ 0 T=
    XML-KIND:EOF NEXT= XML:CLOSE
-   DEEP-DOC BUF:DISPOSE ;
+   DEEP-DOC @ VEC:DELETE ;
 
 : INPUT-FAILURES ( -- )
    s" <a><b></a>" E-MALFORMED INPUT-BAD

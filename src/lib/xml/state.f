@@ -6,7 +6,8 @@ split-str
 
 require src/lib/xml/source.f
 require src/lib/utf8-scalar.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/siphash.f
 require src/lib/entropy.f
 
@@ -196,12 +197,8 @@ STRUCTURE stream DERIVE addr
    FIELD eof n
    FIELD base n
    FIELD started n
-   FIELD token ^u8
-   FIELD token-len n
-   FIELD token-cap n
-   FIELD scope ^u8
-   FIELD scope-len n
-   FIELD scope-cap n
+   FIELD token ^VEC:vector<u8>
+   FIELD scope ^VEC:vector<u8>
    FIELD line n
    FIELD column n
 ;STRUCTURE
@@ -219,26 +216,25 @@ CAST: STREAM>BYTES ( ^stream -- ^u8 )
    {: state offset:n :}
    state INPUT? if state STREAM@ STREAM-BASE @ offset + else offset then ;
 
-: TOKEN-BUF ( ^stream -- ^^u8 ) STREAM-TOKEN ;
-: SCOPE-BUF ( ^stream -- ^^u8 ) STREAM-SCOPE ;
-
-: BUF-LEN ( ^a -- n ) BUF:LEN@ BUF:BLEN>N ;
-: BUF-CAP ( ^a -- n ) BUF:CAP@ BUF:BLEN>N ;
+: TOKEN-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-TOKEN @ ;
+: SCOPE-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-SCOPE @ ;
 
 : SCOPE$ ( ^n -- str )
-   STREAM@ SCOPE-BUF BUF:SPAN$ BUF:BLEN>N ;
+   STREAM@ SCOPE-VEC VEC:SPAN SPAN:$ ;
 
+\ A vector not yet made is NULL-PTR, which DELETE ignores.
 : STREAM-CLOSE ( ^stream -- )
    {: stream :}
-   stream STREAM-TOKEN-CAP @ 0<> if stream TOKEN-BUF BUF:DISPOSE then
-   stream STREAM-SCOPE-CAP @ 0<> if stream SCOPE-BUF BUF:DISPOSE then
+   stream TOKEN-VEC VEC:DELETE
+   stream SCOPE-VEC VEC:DELETE
    stream STREAM>BYTES STREAM-CELLS cells
       MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
-: STREAM-OPEN-BUFS ( ^stream n -- ^stream n )
+: STREAM-OPEN-VECS ( ^stream n -- ^stream n )
    {: stream cap:n :}
-   stream TOKEN-BUF cap BUF:N>BLEN BUF:INIT
-   stream SCOPE-BUF 16 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW stream STREAM-TOKEN !
+   stream TOKEN-VEC cap VEC:RESERVE
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW stream STREAM-SCOPE !
    stream cap ;
 
 : STREAM-OPEN ( ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- ^stream )
@@ -253,7 +249,7 @@ CAST: STREAM>BYTES ( ^stream -- ^u8 )
    1 stream STREAM-COLUMN !
    bytes stream STREAM-INPUT !
    cap stream STREAM-INPUT-CAP !
-   stream cap ['] STREAM-OPEN-BUFS catch
+   stream cap ['] STREAM-OPEN-VECS catch
    >r 2drop r> {: code:n :}
    code 0<> if stream STREAM-CLOSE code throw then
    stream ;
@@ -363,8 +359,8 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-FILL @ execute {: count:n :}
    count 0 < count stream STREAM-INPUT-CAP @ > or if E-RANGE throw then
    count 0= if 1 stream STREAM-EOF ! false exit then
-   stream STREAM-INPUT @ count BUF:N>BLEN stream TOKEN-BUF BUF:APPEND-SPAN
-   stream TOKEN-BUF BUF:SPAN$ BUF:BLEN>N
+   stream STREAM-INPUT @ count stream TOKEN-VEC VEC:APPEND
+   stream TOKEN-VEC VEC:SPAN SPAN:$
    state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
    state SOURCE-MODE + @ INPUT-ASCII = if
       state state SOURCE-LEN + @ count - ASCII-WINDOW
@@ -514,31 +510,31 @@ LINEAR: ERASE ( XML:reader -- ^n )
 : SCOPE-REF ( ^n n n -- n n )
    {: state start:n size:n :}
    state INPUT? 0= if start size exit then
-   state STREAM@ SCOPE-BUF {: scope :}
-   scope BUF-LEN {: index:n :}
-   state start size SPAN$ BUF:N>BLEN scope BUF:APPEND-SPAN
+   state STREAM@ SCOPE-VEC {: scope :}
+   scope VEC:COUNT {: index:n :}
+   state start size SPAN$ scope VEC:APPEND
    index negate 3 - size ;
 
 : TOKEN-TRIM ( ^stream -- )
    {: stream :}
-   stream TOKEN-BUF BUF-LEN {: used:n :}
+   stream TOKEN-VEC VEC:COUNT {: used:n :}
    stream STREAM-INPUT-CAP @
    used max 1 max {: need:n :}
-   stream TOKEN-BUF BUF-CAP 4 / need <= if exit then
-   stream TOKEN-BUF need BUF:N>BLEN BUF:RESIZE ;
+   stream TOKEN-VEC VEC:CAP 4 / need <= if exit then
+   stream TOKEN-VEC need VEC:TRIM ;
 
 : SCOPE-TRIM ( ^stream -- )
    {: stream :}
-   stream SCOPE-BUF BUF-LEN {: used:n :}
+   stream SCOPE-VEC VEC:COUNT {: used:n :}
    used 16 max {: need:n :}
-   stream SCOPE-BUF BUF-CAP 4 / need <= if exit then
-   stream SCOPE-BUF need BUF:N>BLEN BUF:RESIZE ;
+   stream SCOPE-VEC VEC:CAP 4 / need <= if exit then
+   stream SCOPE-VEC need VEC:TRIM ;
 
 : SCOPE-CUT ( ^n n -- )
    {: state ref:n :}
    state INPUT? 0= if exit then
    state STREAM@ {: stream :}
-   ref negate 3 - stream STREAM-SCOPE-LEN !
+   stream SCOPE-VEC ref negate 3 - VEC:RESIZE
    stream SCOPE-TRIM ;
 
 \ Before an event, drop the consumed bytes only when the next refill would not
@@ -551,16 +547,17 @@ LINEAR: ERASE ( XML:reader -- ^n )
    state POSITION + @ {: consumed:n :}
    state SOURCE-LEN + @ consumed - {: tail:n :}
    consumed 0= consumed tail < or if exit then
-   stream TOKEN-BUF BUF-CAP {: cap:n :}
+   stream TOKEN-VEC VEC:CAP {: cap:n :}
    stream STREAM-INPUT-CAP @ {: chunk:n :}
    state SOURCE-LEN + @ chunk + cap <=
    cap 4 / chunk tail max <= and if exit then
    state SOURCE-IDX ptr-field @ state WINDOW-PLACE consumed PLACE-POSITION
    stream STREAM-COLUMN ! stream STREAM-LINE !
-   state SOURCE-IDX ptr-field @ consumed + tail BUF:N>BLEN
-      stream TOKEN-BUF BUF:REPLACE
+   state SOURCE-IDX ptr-field @ consumed + tail
+      stream TOKEN-VEC VEC:SPAN SPAN:COPY
+   stream TOKEN-VEC tail VEC:RESIZE
    stream TOKEN-TRIM
-   stream TOKEN-BUF BUF:SPAN$ BUF:BLEN>N
+   stream TOKEN-VEC VEC:SPAN SPAN:$
       state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
    stream STREAM-BASE @ consumed + stream STREAM-BASE !
    0 state POSITION + ! ;
@@ -811,6 +808,12 @@ private
    loop
    name size ;
 
+\ No byte the vector's block holds, live or spare.
+: VEC-ALIAS ( ^VEC:vector<u8> str -- )
+   {: v:^ destination cap:n :}
+   v VEC:SPAN SPAN:$ drop v VEC:CAP
+   destination cap OVERLAP? if E-ALIAS throw then ;
+
 : OUTPUT-CHECK ( ^n str -- )
    {: state destination cap:n :}
    destination cap SPAN-CHECK
@@ -826,10 +829,8 @@ private
       destination cap OVERLAP? if E-ALIAS throw then
       stream STREAM>BYTES STREAM-CELLS cells
       destination cap OVERLAP? if E-ALIAS throw then
-      stream STREAM-TOKEN @ stream STREAM-TOKEN-CAP @
-      destination cap OVERLAP? if E-ALIAS throw then
-      stream STREAM-SCOPE @ stream STREAM-SCOPE-CAP @
-      destination cap OVERLAP? if E-ALIAS throw then
+      stream TOKEN-VEC destination cap VEC-ALIAS
+      stream SCOPE-VEC destination cap VEC-ALIAS
    then ;
 
 \ Keep the reader below throwing workers' arguments. Native catch restores

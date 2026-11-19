@@ -11,7 +11,6 @@ require src/lib/task.f
 require src/lib/fs.f
 require src/lib/fd.f
 require src/lib/ffi-abi.f
-require src/lib/byte-buffer.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/map.f
@@ -47,6 +46,10 @@ private
 : RUNNING ( -- ^^n ) 1 CMD-TASK ;
 
 STRUCTURE vectors DERIVE addr
+   FIELD arg-bytes ^VEC:vector<u8>
+   FIELD env-bytes ^VEC:vector<u8>
+   FIELD in-bytes ^VEC:vector<u8>
+   FIELD unset-bytes ^VEC:vector<u8>
    FIELD argv ^VEC:vector<^u8>
    FIELD envp ^VEC:vector<^u8>
    FIELD arg-off ^VEC:vector<n>
@@ -74,33 +77,39 @@ CAST: >VECTORS ( ^n -- ^vectors )
 : OUT-CAP ( ^n -- ^n ) 11 cells + ;
 : ERR-BASE ( ^n -- ^^u8 ) 12 ptr-field ;
 : ERR-CAP ( ^n -- ^n ) 13 cells + ;
-: ARG-BUF ( ^n -- ^n ) 14 cells + ;      \ NUL-terminated arguments, back to back
-: ENV-BUF ( ^n -- ^n ) 17 cells + ;      \ NUL-terminated caller rows, back to back
-: IN-BUF ( ^n -- ^n ) 20 cells + ;
+\ NUL-terminated arguments, back to back
+: ARG-BYTES ( ^n -- ^^VEC:vector<u8> )
+   14 cells + >VECTORS VECTORS-ARG-BYTES ;
+\ NUL-terminated caller rows, back to back
+: ENV-BYTES ( ^n -- ^^VEC:vector<u8> )
+   14 cells + >VECTORS VECTORS-ENV-BYTES ;
+: IN-BYTES ( ^n -- ^^VEC:vector<u8> )
+   14 cells + >VECTORS VECTORS-IN-BYTES ;
 \ UNSETENV's NUL-terminated names, back to back
-: UNSET-BUF ( ^n -- ^n ) 23 cells + ;
+: UNSET-BYTES ( ^n -- ^^VEC:vector<u8> )
+   14 cells + >VECTORS VECTORS-UNSET-BYTES ;
 \ the child's argv, built by PREPARE
 : ARGV-VEC ( ^n -- ^^VEC:vector<^u8> )
-   26 cells + >VECTORS VECTORS-ARGV ;
+   14 cells + >VECTORS VECTORS-ARGV ;
 \ the child's envp, built by PREPARE
 : ENVP-VEC ( ^n -- ^^VEC:vector<^u8> )
-   26 cells + >VECTORS VECTORS-ENVP ;
-\ each argument's offset in ARG-BUF
+   14 cells + >VECTORS VECTORS-ENVP ;
+\ each argument's offset in ARG-BYTES
 : ARG-OFF ( ^n -- ^^VEC:vector<n> )
-   26 cells + >VECTORS VECTORS-ARG-OFF ;
-\ each caller row's offset in ENV-BUF
+   14 cells + >VECTORS VECTORS-ARG-OFF ;
+\ each caller row's offset in ENV-BYTES
 : ENV-OFF ( ^n -- ^^VEC:vector<n> )
-   26 cells + >VECTORS VECTORS-ENV-OFF ;
+   14 cells + >VECTORS VECTORS-ENV-OFF ;
 \ FD+'s child/parent pairs, back to back
 : PLACED ( ^n -- ^^VEC:vector<n> )
-   26 cells + >VECTORS VECTORS-PLACED ;
-\ each unset name's offset in UNSET-BUF
+   14 cells + >VECTORS VECTORS-PLACED ;
+\ each unset name's offset in UNSET-BYTES
 : UNSET-OFF ( ^n -- ^^VEC:vector<n> )
-   26 cells + >VECTORS VECTORS-UNSET-OFF ;
+   14 cells + >VECTORS VECTORS-UNSET-OFF ;
 \ a MAP indexing envp rows by name during PREPARE
 : ENV-NAMES ( ^n -- ^^VEC:vector<n> )
-   26 cells + >VECTORS VECTORS-ENV-NAMES ;
-26 VECTORS-CELLS + constant HEAD-CELLS
+   14 cells + >VECTORS VECTORS-ENV-NAMES ;
+14 VECTORS-CELLS + constant HEAD-CELLS
 
 PROCESS:PATHZ-CAP constant PATHZ-CAP
 HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
@@ -108,11 +117,14 @@ HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
 : PATHZ ( ^n -- ^u8 ) BYTE-VIEW HEAD-CELLS cells + ;
 : CWDZ ( ^n -- ^u8 ) PATHZ PATHZ-CAP + ;
 
-\ Growing members start small; the first byte, row or capture grows them.
-64 constant BYTES-START
+: VEC-BASE ( ^VEC:vector<u8> -- ^u8 ) VEC:SPAN SPAN:$ drop ;
 
-: BUF-LEN ( ^a -- n ) BUF:LEN@ BUF:BLEN>N ;
-: BUF-BASE ( ^a -- ^u8 ) BUF:SPAN$ drop ;
+\ n more zero bytes at the end, answered as a span; the block may move.
+: GROW ( ^VEC:vector<u8> n -- SPAN:span<u8> )
+   {: v:^ u:n :}
+   v VEC:COUNT {: at:n :}
+   v at u + VEC:ENSURE
+   v VEC:SPAN at SPAN:SKIP ;
 
 LINEAR: MINT ( ^n -- CMD:command )
 LINEAR: ERASE ( CMD:command -- ^n )
@@ -130,13 +142,13 @@ LINEAR: ERASE ( CMD:command -- ^n )
 
 : CLEAR-BUILD ( ^n -- )
    {: h:^ :}
-   h ARG-BUF BUF:CLEAR
-   h ENV-BUF BUF:CLEAR
-   h IN-BUF BUF:CLEAR
+   h ARG-BYTES @ 0 VEC:RESIZE
+   h ENV-BYTES @ 0 VEC:RESIZE
+   h IN-BYTES @ 0 VEC:RESIZE
    h ARG-OFF @ 0 VEC:RESIZE
    h ENV-OFF @ 0 VEC:RESIZE
    h PLACED @ 0 VEC:RESIZE
-   h UNSET-BUF BUF:CLEAR
+   h UNSET-BYTES @ 0 VEC:RESIZE
    h UNSET-OFF @ 0 VEC:RESIZE
    0 h CWD-LEN !
    1 h INHERIT !
@@ -145,16 +157,16 @@ LINEAR: ERASE ( CMD:command -- ^n )
 
 : INIT-MEMBERS ( ^n -- )
    {: h:^ :}
-   h ARG-BUF BYTES-START BUF:N>BLEN BUF:INIT
-   h ENV-BUF BYTES-START BUF:N>BLEN BUF:INIT
-   h IN-BUF BYTES-START BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW h ARG-BYTES !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW h ENV-BYTES !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW h IN-BYTES !
    HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ARGV-VEC !
    HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ENVP-VEC !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW h ENV-NAMES !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW h ARG-OFF !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW h ENV-OFF !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW h PLACED !
-   h UNSET-BUF BYTES-START BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW h UNSET-BYTES !
    HEAP:ALLOCATOR 0 [type] n VEC:NEW h UNSET-OFF !
    h CLEAR-BUILD ;
 
@@ -163,21 +175,21 @@ LINEAR: ERASE ( CMD:command -- ^n )
    base cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 \ Pop the context first, so a failing disposer cannot leave a freed context on
-\ the chain; a member never initialised is a dead header or a NULL-PTR vector,
-\ which DISPOSE and DELETE ignore.
+\ the chain; a member never initialised is a NULL-PTR vector, which DELETE
+\ ignores.
 : CLOSE ( -- )
    INNER @ {: h:^ :}
    h OUTER @ INNER !
-   h ARG-BUF BUF:DISPOSE
-   h ENV-BUF BUF:DISPOSE
-   h IN-BUF BUF:DISPOSE
+   h ARG-BYTES @ VEC:DELETE
+   h ENV-BYTES @ VEC:DELETE
+   h IN-BYTES @ VEC:DELETE
    h ARGV-VEC @ VEC:DELETE
    h ENVP-VEC @ VEC:DELETE
    h ENV-NAMES @ VEC:DELETE
    h ARG-OFF @ VEC:DELETE
    h ENV-OFF @ VEC:DELETE
    h PLACED @ VEC:DELETE
-   h UNSET-BUF BUF:DISPOSE
+   h UNSET-BYTES @ VEC:DELETE
    h UNSET-OFF @ VEC:DELETE
    h OUT-BASE @ h OUT-CAP @ RELEASE-REGION
    h ERR-BASE @ h ERR-CAP @ RELEASE-REGION
@@ -223,38 +235,38 @@ public
 
 private
 
-: CSTR+ ( str ^n -- )
+: CSTR+ ( str ^VEC:vector<u8> -- )
    {: a:^ u:n buf:^ :}
-   a u  buf u FFI:CSTR-ROOM BUF:N>BLEN BUF:GROW  FFI:CSTR drop ;
+   a u  buf u FFI:CSTR-ROOM GROW  FFI:CSTR drop ;
 
 \ Offsets, not addresses: the buffer moves as it grows until PREPARE. A
 \ refused entry leaves no bytes and no offset.
-: ENTRY ( ^n ^VEC:vector<n> [ -- ] -- )
+: ENTRY ( ^VEC:vector<u8> ^VEC:vector<n> [ -- ] -- )
    {: buf:^ offs:^ w :}
-   buf BUF-LEN {: at:n :}
+   buf VEC:COUNT {: at:n :}
    [: w execute  at offs VEC:PUSH ! ;] catch {: code:n :}
    code 0= if exit then
-   at BUF:N>BLEN buf BUF:LEN!  code throw ;
+   buf at VEC:RESIZE  code throw ;
 
 public
 
 : ARG+ ( CMD:command ^u8 n -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    u 0 < if E-PROC-OUTPUT throw then
-   h ARG-BUF h ARG-OFF @ [: a u h ARG-BUF CSTR+ ;] ENTRY ;
+   h ARG-BYTES @ h ARG-OFF @ [: a u h ARG-BYTES @ CSTR+ ;] ENTRY ;
 
 : ENV-ENTRY+ ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    u 0 < if E-PROC-ENV throw then
    a u >LEN PROC-ENV-CHECK-ENTRY
-   h ENV-BUF h ENV-OFF @ [: a u h ENV-BUF CSTR+ ;] ENTRY ;
+   h ENV-BYTES @ h ENV-OFF @ [: a u h ENV-BYTES @ CSTR+ ;] ENTRY ;
 
 : ENV+ ( CMD:command ^u8 n ^u8 n -- CMD:command )
    {: name:^ nameu:n val:^ valu:n :}
    CTX {: h:^ :}
-   h ENV-BUF h ENV-OFF @
+   h ENV-BYTES @ h ENV-OFF @
    [: name nameu >LEN val valu >LEN
-      [: BUF:N>BLEN h ENV-BUF swap BUF:GROW SPAN:$ drop ;] PROC-ENV-ROW drop ;]
+      [: h ENV-BYTES @ swap GROW SPAN:$ drop ;] PROC-ENV-ROW drop ;]
    ENTRY ;
 
 \ A run inherits this process's environment and the PROC-ENV defaults unless
@@ -272,7 +284,7 @@ public
    {: a:^ u:n :}
    CTX {: h:^ :}
    a u >LEN PROC-ENV-CHECK-NAME
-   h UNSET-BUF h UNSET-OFF @ [: a u h UNSET-BUF CSTR+ ;] ENTRY ;
+   h UNSET-BYTES @ h UNSET-OFF @ [: a u h UNSET-BYTES @ CSTR+ ;] ENTRY ;
 
 private
 
@@ -295,7 +307,8 @@ public
 : IN! ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    u 0 < if E-PROC-OUTPUT throw then
-   a u BUF:N>BLEN h IN-BUF BUF:REPLACE ;
+   h IN-BYTES @ 0 VEC:RESIZE
+   a u h IN-BYTES @ VEC:APPEND ;
 
 
 \ The child's fd child is the parent's fd parent in every run until RESET or the
@@ -323,7 +336,7 @@ private
 
 : UNSET-NAME ( ^n n -- ^u8 len )
    {: h:^ i:n :}
-   h UNSET-BUF BUF-BASE h UNSET-OFF @ i VEC:AT @ + dup ZLEN >LEN ;
+   h UNSET-BYTES @ VEC-BASE h UNSET-OFF @ i VEC:AT @ + dup ZLEN >LEN ;
 
 
 : UNSET? ( ^n ^u8 -- bool )
@@ -362,7 +375,7 @@ private
    0 begin dup ENVP 0= 0= while 1 + repeat + ;
 
 \ Twice the rows keeps the table at most half full. Keys point at the rows
-\ themselves; ENV-BUF does not grow in PREPARE and inherited rows never move.
+\ themselves; ENV-BYTES does not grow in PREPARE and inherited rows never move.
 : NAMES-INIT ( ^n -- ) {: h:^ :}
    h ENV-ROWS 2 * 1 max >COUNT {: cap :}
    h ENV-NAMES @ cap MAP:CELL-COUNT COUNT>N VEC:ENSURE
@@ -376,13 +389,13 @@ private
    h ARGV-VEC @ 0 VEC:RESIZE
    z h ARGV-VEC @ VEC:PUSH !
    h ARG-OFF @ VEC:COUNT 0 ?do
-      h ARG-BUF BUF-BASE  h ARG-OFF @ i VEC:AT @ +  h ARGV-VEC @ VEC:PUSH !
+      h ARG-BYTES @ VEC-BASE  h ARG-OFF @ i VEC:AT @ +  h ARGV-VEC @ VEC:PUSH !
    loop
    NULL-PTR h ARGV-VEC @ VEC:PUSH !
    h NAMES-INIT
    h ENVP-VEC @ 0 VEC:RESIZE
    h ENV-OFF @ VEC:COUNT 0 ?do
-      h ENV-BUF BUF-BASE  h ENV-OFF @ i VEC:AT @ +  {: z:^ :}
+      h ENV-BYTES @ VEC-BASE  h ENV-OFF @ i VEC:AT @ +  {: z:^ :}
       h NAMES z ROW-NAME MAP:GET MATCH option
          none OF h z NAMED-PUSH ENDOF
          some OF z swap h ENVP-VEC @ swap VEC:AT ! ENDOF
@@ -485,7 +498,7 @@ private
    timeout PROCESS:STDIN-CAPTURE-BEGIN
    cancel START-CANCEL
    h SPAWN
-   h IN-BUF BUF-BASE h IN-BUF BUF-LEN >LEN
+   h IN-BYTES @ VEC:SPAN SPAN:$ >LEN
    [: OUT-ROOM ;] [: ERR-ROOM ;] PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    h cancel timeout ;
 
