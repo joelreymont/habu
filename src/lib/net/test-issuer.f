@@ -57,7 +57,7 @@ JWS-FIXTURE:EXPONENT$ EXPONENT-ROW JWS-FIXTURE:EXPONENT$ nip RAW EXPONENT-U !
 
 : HEADER$ ( -- str ) S\" {\"alg\":\"RS256\",\"kid\":\"test-issuer\",\"typ\":\"JWT\"}" ;
 
-: VEC$ ( ^VEC:vector<u8> -- ^u8 n ) VEC:SPAN SPAN:$ ;
+: VEC$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
 : NEW-VEC ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 \ The clients: each id's offset in CLIENTS, its secret right after it.
@@ -115,7 +115,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 : CURSOR ( -- ^JSON:cursor ) SLOT READER ;
 : VEC-OF ( n -- ^VEC:vector<u8> ) SLOT VECS * + HEADS @ ;
 : CLAIMS ( -- ^n ) SLOT BUF:HDR-BYTES * CLAIMS-HEADS + CELL-VIEW ;
-: CLAIMS$ ( -- ^u8 n ) CLAIMS BUF:SPAN$ BUF:BLEN>N ;
+: CLAIMS$ ( -- str ) CLAIMS BUF:SPAN$ BUF:BLEN>N ;
 : SLOT-FIELD ( n -- n ) SLOT FIELDS * + ;
 
 : READY ( -- )

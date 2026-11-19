@@ -185,7 +185,7 @@ public
 \ A file's name, its bytes and the vector a member of a CODE-TOOL$ result's
 \ files is appended to: "<name>":"<the bytes as base64>". The name is
 \ written as it is, so it must be printable ASCII with no " or \. The vector
-\ must not hold the bytes.
+\ must hold neither the name nor the bytes.
 : FILE+ ( str str ^VEC:vector<u8> -- )
    {: name:^ nu:n a:^ u:n v:^ :}
    s\" \"" v VEC:APPEND  name nu v VEC:APPEND

@@ -51,8 +51,6 @@ require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/test-issuer.f
 require src/lib/net/bearer.f
-require src/lib/heap.f
-require src/lib/vector.f
 
 package TEST-ISSUER-TEST
 private

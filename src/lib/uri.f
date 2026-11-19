@@ -424,9 +424,8 @@ public
    0 u 0 ?do a i + c@ out rot FORM-BYTE loop drop
    len ;
 
-\ Appends to the vector the bytes application/x-www-form-urlencoded text
-\ decodes to (DECODED-AT). The text must not lie in the vector: a push may
-\ move its block while the text is still being read.
+\ Appends the bytes application/x-www-form-urlencoded text decodes to
+\ (DECODED-AT). The text must not lie in the vector: a push may move its block.
 : FORM-DECODE+ ( str ^VEC:vector<u8> -- )
    {: a:^ u:n v:^ :}
    0 begin dup u < while

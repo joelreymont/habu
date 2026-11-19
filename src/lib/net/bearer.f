@@ -785,9 +785,8 @@ ENUM kept-state empty kept failed ;ENUM
 
 \ A scope's kept token: state says whether one is kept or the last ask
 \ failed; CURRENT asks again once life seconds have passed since the epoch
-\ second before the kept token's ask; asks counts the asks ended; region
-\ holds the row's lock, and the vectors hold the scope, the kept token and
-\ the token endpoint's answer.
+\ second before the kept token's ask; asks counts the asks ended, and
+\ region holds the row's lock.
 STRUCTURE row DERIVE addr
    FIELD next ^row
    FIELD state kept-state
@@ -854,8 +853,8 @@ private
    v old k + VEC:ENSURE
    v VEC:SPAN old SPAN:SKIP ;
 
-\ v is read after GROWN, which may move the block: it must not lie in the
-\ vector.
+\ The value must not lie in the vector: each append before it is read may move
+\ the block.
 : PAIR+ ( str str ^VEC:vector<u8> -- )
    {: k:^ ku:n v:^ vu:n buf:^ :}
    buf VEC:COUNT 0 > if [char] & buf VEC:PUSH c! then
@@ -870,11 +869,11 @@ private
    SECRET @ SPAN:LEN 0= if exit then
    s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
 
-\ What the vector held is wiped, and it has room for a form within TOKEN-CAP:
-\ the secret and the earlier answer never sit in storage a grow releases.
+\ What the vector held is wiped, and it has room for twice TOKEN-CAP, an answer
+\ and ISSUED's decode room: no secret or answer sits in storage a grow releases.
 : EMPTIED ( ^VEC:vector<u8> -- )
    {: buf:^ :}
-   buf 0 VEC:RESIZE  buf TOKEN-CAP VEC:RESERVE ;
+   buf 0 VEC:RESIZE  buf TOKEN-CAP 2 * VEC:RESERVE ;
 
 : FORM ( str grant ^VEC:vector<u8> -- )
    {: scope:^ su:n g buf:^ :}
@@ -1142,9 +1141,8 @@ private
    r ROW-ANSWER @ VEC:DELETE  r ROW-REGION @ MEM:FREE-SPAN
    HEAP:ALLOCATOR r ALLOC:DELETE ;
 
-\ Under ROWS-LOCK: a new row for the scope, linked newest first; a throw leaves
-\ nothing allocated. A linked row is never freed: rows live as long as the
-\ process.
+\ Under ROWS-LOCK: a new row for the scope, linked newest first and never
+\ freed; a throw leaves nothing allocated.
 : LINKED ( str -- ^row )
    {: scope:^ su:n :}
    HEAP:ALLOCATOR [type] row ALLOC:NEW {: r:^ :}
