@@ -12,6 +12,9 @@ split-str
 \ in a scratch directory under TMPDIR that the test removes, as tls-test.f
 \ does: a trusted GET / reads its answer to the close, and an unrelated CA or
 \ an origin naming another host fails the greeting with `trust`.
+\ TEST-TABLE compares TEST-FSM:TABLE-MODULE's text for the LIFECYCLE table
+\ with spec/HttpcTable.tla whole, so the table spec/HttpcFollows.tla ties to
+\ the model spec/Httpc.tla is the code's.
 \ Run: bin/hb --load src/lib/net/httpc-test.f </dev/null
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
@@ -30,6 +33,8 @@ require src/lib/process.f
 require src/lib/spawn.f
 require src/lib/net/tcp4.f
 require src/lib/net/httpc.f
+require src/lib/arena.f
+require src/lib/test-fsm.f
 
 \ White-box: the conn's socket, so a case waits for the server's FIN to reach
 \ it before it sends again.
@@ -745,10 +750,28 @@ $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
    SCRATCH
    [: HTTPS-CASES ;] [: TLS-UNSERVE DIR$ FS:REMOVE-TREE ;] finally ;
 
+
+\ ---- The table against its model
+
+\ The file at the path, whole, in the arena.
+: FILE-IN ( str ^ARENA:arena -- str ) {: p:^ pu:n ar :}
+   p pu FS:FILE-SIZE {: u:n :}
+   ar u ARENA:ALLOC drop {: b:^ :}
+   b  p pu b u FS:READ-ALL ;
+
+: TABLE-IS-MODEL ( ^ARENA:arena -- ) {: ar :}
+   s" src/lib/net/httpc.f" s" LIFECYCLE" s" Httpc" ar TEST-FSM:TABLE-MODULE
+   s" spec/HttpcTable.tla" ar FILE-IN T$= ;
+
+: TEST-TABLE ( -- )
+   s" LIFECYCLE is the table spec/HttpcTable.tla holds" T-LABEL
+   [: TABLE-IS-MODEL ;] ARENA:WITH ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   TEST-TABLE
    START-SERVER
    s" the server listens on loopback" T-LABEL
    STOP @ 0 T=

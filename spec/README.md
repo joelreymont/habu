@@ -6,6 +6,38 @@ They are plain TLA+ with standard modules only, checked by TLC from TLA+
 tools 1.7.4 on spark, never on the Mac: `~/.local/bin/tlc` copies the spec's `.tla` and `.cfg` files there and
 runs TLC with the arguments given.
 
+## Httpc
+
+`Httpc.tla` models one HTTPC conn (`src/lib/net/httpc.f`) as its LIFECYCLE
+table runs it, with its caller and its peer. The caller SENDs from any rest, a
+request marked or not, resumes with NEXT from `sent` or `partway`, and may
+CLOSE at any rest; the peer may close the connection or send bytes nobody
+asked for at any time. Every wait ends, with bytes or at a deadline, so every
+sense that reads or writes may answer `failed`; a wait with no deadline on a
+silent peer is left out. It proves that a request is written at most once per
+SEND; that a write goes to the one socket held, dialed by that SEND's run or
+probed quiet by it, carrying no unread answer; that a connection is written to
+again only after an answer framed by status, length or chunks was read whole;
+that every rest holds zero or one socket and `closed` and `down` hold none;
+and that every run from `starting`, `heading` or `reading` reaches a FINAL
+row. The bounds are two addresses a name resolves to, two pieces a body has
+and two interim heads before an answer's head.
+
+`HttpcFollows.tla` ties the model to the code's table: every step that moves
+the machine or runs a line is one line of `HttpcTable.tla`, and every line's
+step moves as the line says. `src/lib/net/httpc-test.f` keeps `HttpcTable.tla`
+equal to the LIFECYCLE table as TEST-FSM:TABLE-MODULE renders it, on every run
+of the test. `HttpcFollows.cfg` checks Httpc's properties and Follows in one
+run.
+
+Check it from the repository root:
+
+```sh
+tlc -workers auto -metadir /tmp/habu-tlc -config spec/HttpcFollows.cfg spec/HttpcFollows.tla
+```
+
+A pass ends "Model checking completed. No error has been found."
+
 ## ModelCall
 
 `ModelCall.tla` models one task that owns several MODEL calls, starts them and
