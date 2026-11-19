@@ -13,33 +13,27 @@ package HTTP
 
 private
 
-$20 constant MAX-ROUTES
 $7B constant LBRACE
 $7D constant RBRACE
 
-MAX-ROUTES TYPED-BUFFER ROUTE-METHOD-A ^u8
-MAX-ROUTES TYPED-BUFFER ROUTE-METHOD-N n
-MAX-ROUTES TYPED-BUFFER ROUTE-PATTERN-A ^u8
-MAX-ROUTES TYPED-BUFFER ROUTE-PATTERN-N n
-MAX-ROUTES TYPED-BUFFER ROUTE-HANDLER [ request response -- ]
-MAX-ROUTES TYPED-BUFFER ROUTE-CAP n       \ -1 inherits BODY-CAP
+\ A route added may move the columns under a worker reading them.
+DYNAMIC-BUFFER ROUTE-METHOD-A ^u8
+DYNAMIC-BUFFER ROUTE-METHOD-N n
+DYNAMIC-BUFFER ROUTE-PATTERN-A ^u8
+DYNAMIC-BUFFER ROUTE-PATTERN-N n
+DYNAMIC-BUFFER ROUTE-HANDLER [ request response -- ]
+DYNAMIC-BUFFER ROUTE-CAP n       \ -1 inherits BODY-CAP
 
-\ Routes are registered before any task is live and only read afterwards.
+variable RUNNING
 variable ROUTE-COUNT
 
 
-: ROUTE-BOUNDED ( n -- n ) {: route:n :}
-   route 0 < if E-ROUTE throw then
-   route ROUTE-COUNT @ >= if E-ROUTE throw then
-   route ;
-
-
 : ROUTE-METHOD$ ( n -- str ) {: route:n :}
-   route ROUTE-BOUNDED ROUTE-METHOD-A @ route ROUTE-METHOD-N @ ;
+   route ROUTE-METHOD-A @ route ROUTE-METHOD-N @ ;
 
 
 : ROUTE-PATTERN$ ( n -- str ) {: route:n :}
-   route ROUTE-BOUNDED ROUTE-PATTERN-A @ route ROUTE-PATTERN-N @ ;
+   route ROUTE-PATTERN-A @ route ROUTE-PATTERN-N @ ;
 
 
 : ROUTE-BODY-CAP ( n -- n ) {: route:n :}
@@ -203,12 +197,22 @@ variable ROUTE-COUNT
    s" this path does not answer that method" ERROR! ;
 
 
+: ROUTE-RESERVE ( n -- ) {: routes:n :}
+   routes ROUTE-METHOD-A-RESERVE
+   routes ROUTE-METHOD-N-RESERVE
+   routes ROUTE-PATTERN-A-RESERVE
+   routes ROUTE-PATTERN-N-RESERVE
+   routes ROUTE-HANDLER-RESERVE
+   routes ROUTE-CAP-RESERVE ;
+
+
 : ADD-ROUTE ( str str n [ request response -- ] -- )
    {: method:^ methodlen:n pattern:^ patternlen:n cap:n handler :}
-   ROUTE-COUNT @ MAX-ROUTES >= if E-ROUTE throw then
+   RUNNING @ 0 <> if E-STATE throw then
    methodlen 0 <= if E-ROUTE throw then
    patternlen 0 <= if E-ROUTE throw then
    pattern c@ SLASH <> if E-ROUTE throw then
+   ROUTE-COUNT @ 1+ ROUTE-RESERVE
    ROUTE-COUNT @ {: at:n :}
    method at ROUTE-METHOD-A !
    methodlen at ROUTE-METHOD-N !
@@ -236,6 +240,7 @@ public
 
 
 : ROUTES-RESET ( -- )
+   RUNNING @ 0 <> if E-STATE throw then
    0 ROUTE-COUNT ! ;
 
 

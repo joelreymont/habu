@@ -834,7 +834,7 @@ generates: FAULT ( -- n )
 -9341 s" a request or response handle past its request, or one over another worker's slot, or a slot asked by a task that is no worker" ERROR:CODE E-HTTP-HANDLE
 -9342 s" a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms" ERROR:CODE E-HTTP-WORKERS
 -9343 s" more hooks, headers or bound segments than a table holds, or a negative body length" ERROR:CODE E-HTTP-CAPACITY
--9344 s" more routes than the table holds, or an empty method or a pattern not starting with /" ERROR:CODE E-HTTP-ROUTE
+-9344 s" an empty method or a pattern not starting with /" ERROR:CODE E-HTTP-ROUTE
 -9345 s" a bad or non-directory static root, a URL wider than PATH-CAP, or a directory cycle" ERROR:CODE E-HTTP-STATIC
 -9346 s" the listener could not be bound, put to listen or asked its own address" ERROR:CODE E-HTTP-SOCKET
 -9347 s" a handler's body read that did not complete; the server answers it with the read's rejection, never as a fault" ERROR:CODE E-HTTP-BODY-READ

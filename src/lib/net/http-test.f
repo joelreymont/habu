@@ -2081,6 +2081,24 @@ $C8 constant STALL-MARGIN-MS
    [: ADD-ERROR-HOOK ;] HTTP:E-STATE TTHROWSQ ;
 
 
+: ADD-LIVE-ROUTE ( -- )
+   s" GET" s" /api/live" [: PING ;] HTTP:ROUTE ;
+
+
+: PING-ANSWERS ( -- )
+   s" GET" s" /api/ping" FETCH 200 T=
+   RES$ S\" {\qservice\q:\qhttp-test\q}" T$= ;
+
+
+: ROUTE-LIVE-CASES ( -- )
+   s" a route added while serving" T-LABEL
+   [: ADD-LIVE-ROUTE ;] HTTP:E-STATE TTHROWSQ
+   PING-ANSWERS
+   s" the routes reset while serving" T-LABEL
+   [: HTTP:ROUTES-RESET ;] HTTP:E-STATE TTHROWSQ
+   PING-ANSWERS ;
+
+
 \ The one worker retires the kept request before it reads the next, so both the
 \ check route and this task find the kept handle no longer served.
 : SERVING-CASE ( -- )
@@ -3300,6 +3318,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    WRITER-RECOVERY-CASE
    SPLIT-HEAD-CASE
    HOOK-LIVE-CASES
+   ROUTE-LIVE-CASES
    SERVING-CASE
    TAKE-OVER-CASES
    CLIENT-GONE-CASES

@@ -135,7 +135,6 @@ variable LISTENER-CELL
 variable BOUND-PORT
 variable BOUND-ADDRESS
 variable WORKER-COUNT
-variable RUNNING
 variable IDLE-MS
 variable CLAIMED                  \ slots the started workers have taken
 variable ENDED-COUNT              \ tasks that reached the end of their body
@@ -1445,10 +1444,10 @@ public
 
 \ The address and port to listen on, how many request workers to run, and how
 \ long a connection may stay silent before it is closed. Every hook and route is
-\ registered before START: a running server makes each hook word E-STATE, and a
-\ worker reads the route table unordered, while a word reaches a running task
-\ only through a channel that orders (src/lib/task.f). Route strings must
-\ outlive the server. The AIO loop is a
+\ registered before START: a running server makes each hook and route word
+\ E-STATE, and a worker reads the route table unordered, while a word reaches a
+\ running task only through a channel that orders (src/lib/task.f). Route
+\ strings must outlive the server. The AIO loop is a
 \ precondition and not this package's to start: every readiness wait is an AIO
 \ submission, and one with no loop is E-AIO-STATE. Thrown inside the listener's
 \ task that code is a report nobody reads (no connection is accepted and the
