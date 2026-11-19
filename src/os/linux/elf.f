@@ -50,7 +50,7 @@ $B7 constant EM-AARCH64
 5 constant ELF-PHDR-N
 \ Where the file's first byte maps.
 variable VMBASE
-$B0 constant ELF-DYNAMIC-SZ
+$C0 constant ELF-DYNAMIC-SZ
 $158 constant ELF-INTERP-OFF
 TYPED-VARIABLE X64 bool
 : INTERPRETER$ ( -- str )
@@ -71,6 +71,7 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 11 constant DT-SYMENT
 1 constant DT-NEEDED
 30 constant DT-FLAGS
+21 constant DT-DEBUG
 8 constant DF-BIND-NOW
 
 \ The GOT follows the dynamic section and ends the read-write tail.
@@ -253,6 +254,8 @@ private
    tag IMG-M64
    val IMG-M64 ;
 
+\ The loader writes its r_debug's address into DT_DEBUG's value, where a
+\ debugger finds the link map; the read-write load holds the section so it can.
 : ELF-DYNAMIC, ( -- )
    DT-HASH     ELF-HASH-OFF ELF-VA ELF-DYN,
    DT-STRTAB   ELF-DYNSTR-OFF ELF-VA ELF-DYN,
@@ -264,6 +267,7 @@ private
    DT-RELAENT  ELF-RELA-ENT-SZ ELF-DYN,
    DT-NEEDED   ELF-LIBC-OFF ELF-DYN,
    DT-FLAGS    DF-BIND-NOW ELF-DYN,
+   DT-DEBUG    0 ELF-DYN,
    0 0 ELF-DYN, ;
 
 : ELF-GOT, ( -- )

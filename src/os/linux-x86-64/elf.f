@@ -49,10 +49,10 @@ $7F constant ELF-MAG0
 56 constant ELF-PHDR-SZ
 6 constant ELF-PHDR-N
 $400000 constant VMBASE
-$C0 constant ELF-RW-SZ
-$B0 constant ELF-DYNAMIC-SZ
-$B0 constant ELF-DLOPEN-SLOT-OFF
-$B8 constant ELF-DLSYM-SLOT-OFF
+$C0 constant ELF-DYNAMIC-SZ
+ELF-DYNAMIC-SZ constant ELF-DLOPEN-SLOT-OFF
+ELF-DYNAMIC-SZ 8 + constant ELF-DLSYM-SLOT-OFF
+ELF-DYNAMIC-SZ 16 + constant ELF-RW-SZ
 $190 constant ELF-INTERP-OFF
 28 constant ELF-INTERP-SZ
 $1B0 constant ELF-HASH-OFF
@@ -74,6 +74,7 @@ $228 constant ELF-RELA-OFF
 11 constant DT-SYMENT
 1 constant DT-NEEDED
 30 constant DT-FLAGS
+21 constant DT-DEBUG
 8 constant DF-BIND-NOW
 \ The generated executable window: everything the code layer admits, behind the
 \ header page it sits at. It is DERIVED from X64CODE's window rather than
@@ -249,6 +250,8 @@ variable ELF-DATA-BYTES
    tag IMG-M64
    val IMG-M64 ;
 
+\ The loader writes its r_debug's address into DT_DEBUG's value, where a
+\ debugger finds the link map; the read-write load holds the section so it can.
 : ELF-DYNAMIC, ( -- )
    DT-HASH     ELF-HASH-OFF ELF-VA ELF-DYN,
    DT-STRTAB   ELF-DYNSTR-OFF ELF-VA ELF-DYN,
@@ -260,6 +263,7 @@ variable ELF-DATA-BYTES
    DT-RELAENT  ELF-RELA-ENT-SZ ELF-DYN,
    DT-NEEDED   14 ELF-DYN,
    DT-FLAGS    DF-BIND-NOW ELF-DYN,
+   DT-DEBUG    0 ELF-DYN,
    0 0 ELF-DYN, ;
 
 : ELF-GOT, ( -- )
@@ -290,7 +294,7 @@ variable ELF-DATA-BYTES
 : SNAP-EXTRA-PTR ( -- ^u8 )
    MBUF X64LAYOUT:CODE-OFF + ;
 
-$C0 constant SNAP-EXTRA-SIZE
+ELF-RW-SZ constant SNAP-EXTRA-SIZE
 
 : ELF-BUILD-SPAN ( ^u8 n -- ) {: text:^ bytes:n :}
    bytes CODELEN !  M-RESET

@@ -2385,7 +2385,9 @@ package LIBC-OS
    15 CODE-OFF LIT64,  16 16 15 SUB,
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
    HB-TARGET-LINUX? if
-      16 16 17 ADD,  16 16 name u ELF:IMPORT-ROW ELF:SLOT-OFF LDR,
+      \ The running hb's writer, which links this image, starts the GOT at $B0,
+      \ not where the tree's ELF:SLOT-OFF puts it.
+      16 16 17 ADD,  16 16 name u ELF:IMPORT-ROW 8 * $B0 + LDR,
    else HB-TARGET-MACOS? if
       15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
       17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
