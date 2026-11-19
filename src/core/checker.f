@@ -4819,8 +4819,12 @@ variable FORALL-INPUT-ROOT
 SCRATCH{
 PTR-VARIABLE HOLD-P   variable HOLD-CAP
 PTR-VARIABLE HOLD-I-P   variable HOLD-I-CAP   variable HOLD-I-N
+PTR-VARIABLE HOLD-IX-P   variable HOLD-IX-CAP
 }SCRATCH
 : HOLD-I ( -- ^n ) HOLD-I-P @ ;
+\ HOLD-IX: per var id, the HOLD-I index HOLD-PUT put it at. HOLD-I-N only
+\ grows within a unify, so a stale or unwritten cell fails a bound or the match.
+: HOLD-IX ( -- ^n ) HOLD-IX-P @ ;
 
 
 : HOLD-ENSURE ( n -- )
@@ -4837,6 +4841,13 @@ PTR-VARIABLE HOLD-I-P   variable HOLD-I-CAP   variable HOLD-I-N
    need HOLD-I-CAP @ 2 * max HOLD-I-INIT max {: nc:n :}
    HOLD-I-P @ HOLD-I-CAP @ cells nc cells SR-GROW HOLD-I-P !
    nc HOLD-I-CAP ! ;
+
+
+: HOLD-IX-ENSURE ( -- )   \ a cell per var id
+   TV-CAP @ {: nc:n :}
+   nc HOLD-IX-CAP @ <= IF exit THEN
+   HOLD-IX-P @ HOLD-IX-CAP @ cells nc cells SR-GROW HOLD-IX-P !
+   nc HOLD-IX-CAP ! ;
 
 
 : HF ( n n -- ^n ) swap HOLD-FRAME * + cells HOLD-P @ + ;   \ frame f's cell k
@@ -4860,10 +4871,10 @@ PTR-VARIABLE HOLD-I-P   variable HOLD-I-CAP   variable HOLD-I-N
 
 : HOLD-I-FROM? ( n n -- bool )   \ id is instantiable at list index from or later
    {: from:n id:n :}
-   HOLD-I-N @ from ?do
-      i cells HOLD-I + @ id = IF RES-TRUE unloop EXIT THEN
-   loop
-   RES-FALSE ;
+   id HOLD-IX-CAP @ < 0= IF RES-FALSE EXIT THEN
+   id cells HOLD-IX + @ {: at:n :}
+   at from >=  at HOLD-I-N @ < and  0= IF RES-FALSE EXIT THEN
+   at cells HOLD-I + @ id = ;
 
 
 : HOLD-I? ( n -- bool ) 0 swap HOLD-I-FROM? ;
@@ -4877,8 +4888,9 @@ PTR-VARIABLE HOLD-I-P   variable HOLD-I-CAP   variable HOLD-I-N
       id  f HF-NK 1 + k + HF !
       k 1 + f HF-NK HF !  EXIT
    THEN
-   HOLD-I-N @ 1 + HOLD-I-ENSURE
+   HOLD-I-N @ 1 + HOLD-I-ENSURE   HOLD-IX-ENSURE
    id HOLD-I-N @ cells HOLD-I + !
+   HOLD-I-N @ id cells HOLD-IX + !
    1 HOLD-I-N +! ;
 
 
