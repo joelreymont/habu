@@ -22,6 +22,9 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 \ in the set. A kernel before 4.17 treats NOREPLACE as a hint and may map
 \ elsewhere; the boot's compare of the result with DATA-VA refuses that too.
 $104022 constant MAP-DATA-RESERVE
+\ MREMAP-MOVE-FIXED moves a mapping to an exact address, replacing what is
+\ mapped there: MREMAP_MAYMOVE 1 | MREMAP_FIXED 2.
+$3 constant MREMAP-MOVE-FIXED
 \ The code region's two views map one memfd.
 $01 constant MAP-SHARED
 $11 constant MAP-SHARED-FIXED
@@ -50,6 +53,7 @@ public
 134 constant NR-SIGACTION
 226 constant NR-MPROTECT
 215 constant NR-MUNMAP
+216 constant NR-MREMAP
 24  constant NR-DUP2
 25  constant NR-FCNTL
 103 constant NR-SETITIMER

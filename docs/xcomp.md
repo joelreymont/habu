@@ -218,7 +218,11 @@ of whole instructions appended as they stand.
 ### Fixed segments
 
 DATA is no segment on any target: the boot maps it at its fixed address and
-copies in the bytes the image carries. Where the code runs is the linker's rule
+fills it from the image. A Linux image carries DATA's pages that hold a
+non-zero cell in a read-write load that ends the file, and the boot moves each
+run of them into DATA with mremap, so a page the program only reads stays a
+clean file page; a macOS boot copies the cells its image carries. Where the
+code runs is the linker's rule
 ([Building an image](compilation.md#building-an-image)).
 
 - No `LOAD` reserves DATA, so the kernel neither commit-charges it nor starts

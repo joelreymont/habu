@@ -34,9 +34,6 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 
 create ROOT-BUF PATH-CAP allot variable ROOT-U
 create PROG-BUF PATH-CAP allot
-$20000 constant FILE-CAP
-FILE-CAP BUFFER: FILE-A
-FILE-CAP BUFFER: FILE-B
 
 : ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
 
@@ -44,6 +41,12 @@ FILE-CAP BUFFER: FILE-B
    {: name:^ name-n:n :}
    ROOT$ name name-n PROG-BUF FS:JOIN-PATH {: u:n :}
    PROG-BUF u ;
+
+\ The bytes of the file at the path, in storage its size makes.
+: FILE-BYTES ( str -- str ) {: p:^ pu:n :}
+   p pu FS:FILE-SIZE MEM-ALLOC-BYTES {: b:^ bu:n :}
+   p pu b bu FS:READ-ALL {: got:n :}
+   b got ;
 
 
 : FIXTURE ( -- )
@@ -91,8 +94,7 @@ FILE-CAP BUFFER: FILE-B
 \ Whether the map has a row for the word: a row's name stands between spaces.
 : ROW? ( str str -- bool )
    {: map:^ map-n:n name:^ name-n:n :}
-   map map-n PROG$ FILE-A FILE-CAP FS:READ-ALL {: u:n :}
-   FILE-A u name name-n CONTAINS? ;
+   map map-n PROG$ FILE-BYTES name name-n CONTAINS? ;
 
 
 : RUN-MAP ( -- )
@@ -135,10 +137,8 @@ FILE-CAP BUFFER: FILE-B
 
 
 : SAME-BYTES ( -- )
-   s" run" PROG$ FILE-A FILE-CAP FS:READ-ALL {: a:n :}
-   s" run-again" PROG$ FILE-B FILE-CAP FS:READ-ALL {: b:n :}
    s" a second link of run writes the same bytes" T-LABEL
-   FILE-A a FILE-B b STR= TTRUE ;
+   s" run" PROG$ FILE-BYTES s" run-again" PROG$ FILE-BYTES STR= TTRUE ;
 
 
 : UNSAFE-RUN ( CMD:command -- CMD:command )

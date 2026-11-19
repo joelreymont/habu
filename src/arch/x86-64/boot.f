@@ -1,32 +1,38 @@
 split-str
 \ Startup for the current linker's DATA runs and record image.
 require src/core/exit-status.f
+require src/habu/layout.f
+require src/os/linux/layout.f
 require src/habu/boot-x64.f
+require src/os/linux-x86-64/sys.f
 
 package X64BOOT
 private
 using X64ASM
 using X64CODE
 
-\ Each DATA run is an offset, a cell count, then the cells.
-: COPY-RUNS, ( label label -- )
+\ Move each run [off][bytes] in [r9, last) from the carrier, rdi at its pages,
+\ to DATA-VA + off; the syscall keeps rdi, rsi and r9. A refused move dies.
+: MOVE-RUNS, ( label label -- )
    {: first:label last:label :}
-   LBL LBL LBL {: more:label each:label done:label :}
-   R8 first MOVABS, R9 last MOVABS,
+   LBL LBL LBL {: more:label bad:label done:label :}
+   RDI RBASE-REG CARRIER-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   R9 first MOVABS,
    more LBL,
-   R8 R9 ASM-SINK ENC-CMP-RR C-AE done JCC,
-   R10 R8 MEM-AT ASM-SINK ENC-MOV-RM
-   RCX R8 8 MEM-OFF ASM-SINK ENC-MOV-RM
-   R11 LINUX-LAYOUT:DATA-VA VA>N IMM,
-   R10 R11 ASM-SINK ENC-ADD-RR
-   R8 16 >IMM8 ASM-SINK ENC-ADD-RI8
-   each LBL,
-   RCX RCX ASM-SINK ENC-TEST-RR C-E more JCC,
-   RAX R8 MEM-AT ASM-SINK ENC-MOV-RM
-   RAX R10 MEM-AT ASM-SINK ENC-MOV-MR
-   R8 8 >IMM8 ASM-SINK ENC-ADD-RI8
-   R10 8 >IMM8 ASM-SINK ENC-ADD-RI8
-   RCX ASM-SINK ENC-DEC each JMP,
+   RAX last MOVABS,
+   R9 RAX ASM-SINK ENC-CMP-RR C-AE done JCC,
+   R8 R9 MEM-AT ASM-SINK ENC-MOV-RM
+   RSI R9 8 MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
+   R8 RAX ASM-SINK ENC-ADD-RR
+   RDX RSI ASM-SINK ENC-MOV-RR
+   R10 MREMAP-MOVE-FIXED IMM,
+   NR-MREMAP SYS,
+   RAX R8 ASM-SINK ENC-CMP-RR C-NE bad JCC,
+   RDI RSI ASM-SINK ENC-ADD-RR
+   R9 16 >IMM8 ASM-SINK ENC-ADD-RI8
+   more JMP,
+   bad S\" hb: cannot move the image's data into the fixed data region\n" EXIT-STATUS:SYSTEM FAIL,
    done LBL, ;
 
 : COPY-RECORDS, ( label label -- )
@@ -54,7 +60,7 @@ public
    {: engine:bool image:label end:label records:label records-end:label :}
    LBL LBL LBL LBL LBL {: go:label crash:label rest:label stub:label trap:label :}
    OPEN, CODE-REGION, DATA-REGION,
-   image end COPY-RUNS,
+   image end MOVE-RUNS,
    engine if records records-end COPY-RECORDS, then
    RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
    false DATA-INIT,

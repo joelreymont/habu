@@ -5,8 +5,8 @@ split-str
 \ exits 3, its uncaught throw code; LR-XT stores a quotation with xt! at run
 \ time and prints `Hi` only if the product's MARK accepts its address-cell
 \ header and index; LR-DEEP overflows the machine stack and exits 102 through
-\ the crash path the start-up installs. Each file is under 128 KiB, which the
-\ whole kernel alone exceeds: only the kernel code the program reaches is
+\ the crash path the start-up installs. Each file's text load is under 128 KiB,
+\ which the whole kernel alone exceeds: only the kernel code the program reaches is
 \ written, and no message it never prints: control never passes from a message's
 \ text into what follows it. Each program runs in its own process:
 \ the boundary under test is the written file and its start-up.
@@ -90,14 +90,19 @@ create PROG-BUF PATH-CAP allot
    STARTS-WITH? TTRUE ;
 
 
-\ An ELF file is at least one PROT-PAGE-MAX text page.
+8 BUFFER: TEXT-LOAD
+
+\ The text load's size, the header field at IMAGE-TEXT-SIZE-OFF. An ELF file
+\ is larger: past the text come the read-write load, the pad to the next
+\ PROT-PAGE-MAX boundary and the carrier's DATA pages.
 : SMALLER ( ^u8 n -- )
    {: file:^ file-n:n :}
-   file file-n PROG$ FS:FILE-SIZE {: size:n :}
+   file file-n PROG$ IMAGE-TEXT-SIZE-OFF TEXT-LOAD 8 FS:READ-AT
+   TEXT-LOAD LE:U64@ {: size:n :}
    size $20000 < 0= if
-      s" arm64-link-run: " type file file-n type s"  has bytes: " type size .
+      s" arm64-link-run: " type file file-n type s"  has a text load of bytes: " type size .
    then
-   s" each file is under 128 KiB: only the kernel code the program reaches is written"
+   s" the text load is under 128 KiB: only the kernel code the program reaches is written"
       T-LABEL
    size $20000 < TTRUE ;
 

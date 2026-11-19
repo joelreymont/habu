@@ -45,6 +45,9 @@ $11 constant MAP-SHARED-FIXED
 \ in the set. A kernel before 4.17 treats NOREPLACE as a hint and may map
 \ elsewhere; the boot's compare of the result with DATA-VA refuses that too.
 $104022 constant MAP-DATA-RESERVE
+\ MREMAP-MOVE-FIXED moves a mapping to an exact address, replacing what is
+\ mapped there: MREMAP_MAYMOVE 1 | MREMAP_FIXED 2.
+$3 constant MREMAP-MOVE-FIXED
 
 60  constant NR-EXIT
 0   constant NR-READ
@@ -70,6 +73,7 @@ $104022 constant MAP-DATA-RESERVE
 14  constant NR-RT-SIGPROCMASK
 10  constant NR-MPROTECT
 11  constant NR-MUNMAP
+25  constant NR-MREMAP
 292 constant NR-DUP2              \ dup3(old, new, flags)
 72  constant NR-FCNTL
 38  constant NR-SETITIMER

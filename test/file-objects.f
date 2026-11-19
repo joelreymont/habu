@@ -68,7 +68,6 @@ package FILE-OBJECTS-TEST
 24 constant STAMP-BYTES                  \ the stamp an object's INPUT starts with
 16384 constant CAP                       \ an object's bytes
 16384 constant STATE-CAP                 \ a build's output before its last line
-262144 constant PROG-CAP                 \ a program's bytes, L's included
 
 PATH-CAP BUFFER: OUT-A   variable OUT-A-U
 PATH-CAP BUFFER: OUT-B   variable OUT-B-U
@@ -94,8 +93,6 @@ STATE-CAP BUFFER: STATE-B  variable STATE-B-U
 STATE-CAP BUFFER: STATE-W  variable STATE-W-U  \ a warm build's, C's or D's
 STATE-CAP BUFFER: STATE-E  variable STATE-E-U
 STATE-CAP BUFFER: ERR-E    variable ERR-E-U    \ E's stderr
-PROG-CAP BUFFER: PROG-1
-PROG-CAP BUFFER: PROG-2
 8 BUFFER: WHICH          variable WHICH-U  \ the build the labels name
 96 BUFFER: TEXT-BUF
 T-LABEL-CAP BUFFER: HELD-LABEL           \ a label FIXTURE-OBJECT keeps across FOUND?
@@ -308,12 +305,17 @@ variable CLASS-N                        \ the class CLASS+ read
 : SAME-AS-D ( -- ) FILES 0 ?do D$ s" D" i SAME-OBJECT loop ;
 : SAME-AS-B ( -- ) FILES-B 0 ?do B$ s" B" i SAME-OBJECT loop ;
 
+\ The file at the path, whole, in room its size takes from the arena.
+: WHOLE-FILE ( ^ARENA:arena str -- ^u8 n )
+   {: a:^ p:^ u:n :}
+   a p u FS:FILE-SIZE ARENA:ALLOC {: buf:^ cap:n :}
+   buf  p u buf cap FS:READ-ALL ;
+
 \ Whether the first out root's file holds the bytes of the second's.
 : SAME-FILE? ( str str str str -- bool )
    {: a:^ au:n an:^ anu:n b:^ bu:n bn:^ bnu:n :}
-   a au an anu IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
-   b bu bn bnu IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
-   PROG-1 u1 PROG-2 u2 STR= ;
+   [: dup a au an anu IN$ WHOLE-FILE
+      rot b bu bn bnu IN$ WHOLE-FILE STR= ;] ARENA:WITH ;
 
 \ EXPECT: the regular file's stamp, its change time seconds, its type over its change time nanoseconds
 \ and its size, each low byte first.
@@ -384,9 +386,10 @@ variable CLASS-N                        \ the class CLASS+ read
 \ program holds.
 : CHECK-MAP ( -- )
    s" A" WHICH!
-   A$ s" prog.map" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
-   s" the map lists RUN as main.f's" LABEL
-   PROG-1 u s\"  RUN word loaded test/fixtures/file-objects/main.f\n" CONTAINS? TTRUE ;
+   [: A$ s" prog.map" IN$ WHOLE-FILE
+      s" the map lists RUN as main.f's" LABEL
+      s\"  RUN word loaded test/fixtures/file-objects/main.f\n" CONTAINS? TTRUE ;]
+   ARENA:WITH ;
 
 \ E's build, a fresh process as every build is: E2's process then holds E's
 \ objects alone, never the checker memory of the process that compiled them.
@@ -606,8 +609,9 @@ variable CLASS-N                        \ the class CLASS+ read
 \ Darwin's first lock of a mutex sets its signature, $4D55545A (the bytes ZTUM), and unlocking leaves it.
 : LOG-UNLOCKED ( -- )
    HB-TARGET-MACOS? 0= if exit then
-   L$ s" prog" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
-   s" the program holds no mutex the build locked" LABEL  PROG-1 u s" ZTUM" CONTAINS? TFALSE ;
+   [: L$ s" prog" IN$ WHOLE-FILE
+      s" the program holds no mutex the build locked" LABEL  s" ZTUM" CONTAINS? TFALSE ;]
+   ARENA:WITH ;
 
 \ L's program, run in its own process: the boundary under test is the written file.
 : LOG-RUN ( CMD:command -- CMD:command )
@@ -1113,17 +1117,22 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" CN" WHICH!  s" test/fixtures/file-objects/rollback-none.f" FIXTURE-BUILD 0= if exit then
    s\" 1\n\n" s" the program prints MAIN's 1" PRINTS-RUN ;
 
+\ DF's program, read into the arena before DF2's build replaces it, then DF2's.
+: DEFINE-AGAIN ( CMD:command ^ARENA:arena -- CMD:command )
+   {: m:^ :}
+   m L$ s" prog" IN$ WHOLE-FILE {: p1:^ u1:n :}
+   s" DF2" WHICH!  s" test/fixtures/file-objects/rollback-define.f" FIXTURE-BUILD 0= if exit then
+   s\" 1\n3\n2\n\n" s" the program prints 1, then the 3 and 2 of the words on given-back records" PRINTS-RUN
+   m L$ s" prog" IN$ WHOLE-FILE {: p2:^ u2:n :}
+   s" the program has DF's bytes" LABEL  p1 u1 p2 u2 STR= TTRUE ;
+
 \ rollback-define.f's build (DF) and its warm rebuild (DF2), whose top level gives
 \ back a definition's record before a definition, a require and the file's end: each
 \ program prints what MAIN prints, and DF2's has DF's bytes.
 : DEFINE-CASE ( CMD:command -- CMD:command )
    s" DF" WHICH!  s" test/fixtures/file-objects/rollback-define.f" FIXTURE-BUILD 0= if exit then
    s\" 1\n3\n2\n\n" s" the program prints 1, then the 3 and 2 of the words on given-back records" PRINTS-RUN
-   L$ s" prog" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
-   s" DF2" WHICH!  s" test/fixtures/file-objects/rollback-define.f" FIXTURE-BUILD 0= if exit then
-   s\" 1\n3\n2\n\n" s" the program prints 1, then the 3 and 2 of the words on given-back records" PRINTS-RUN
-   L$ s" prog" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
-   s" the program has DF's bytes" LABEL  PROG-1 u1 PROG-2 u2 STR= TTRUE ;
+   [: DEFINE-AGAIN ;] ARENA:WITH ;
 
 \ ctor-main.f's build, in a fresh hb since the refusal ends the build: it fails with
 \ E-CTOR-PROTECTED at ctor-main.f's line 6. Answers its exit code.
@@ -2234,16 +2243,21 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    rc 0<> if rc SHOW then
    s" the build exits 0" LABEL  rc 0 T= ;
 
+\ WASM's module, read into the arena before WASM2's build replaces it, then WASM2's.
+: CROSS-AGAIN ( CMD:command ^ARENA:arena -- CMD:command )
+   {: m:^ :}
+   m L$ s" prog" IN$ WHOLE-FILE {: p1:^ u1:n :}
+   F$ MARK
+   s" WASM2" WHICH!  WASM-BUILD
+   s" the build rewrites no object" LABEL  F$ REWRITTEN 0 T=
+   m L$ s" prog" IN$ WHOLE-FILE {: p2:^ u2:n :}
+   s" the module is the first build's" LABEL  p1 u1 p2 u2 STR= TTRUE ;
+
 \ Guards a cross build's objects, which hold each definition's target and host copies: a second Wasm build
 \ links every file and writes the first's module.
 : CROSS-CASE ( CMD:command -- CMD:command )
    s" WASM" WHICH!  WASM-BUILD
-   L$ s" prog" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u1:n :}
-   F$ MARK
-   s" WASM2" WHICH!  WASM-BUILD
-   s" the build rewrites no object" LABEL  F$ REWRITTEN 0 T=
-   L$ s" prog" IN$ PROG-2 PROG-CAP FS:READ-ALL {: u2:n :}
-   s" the module is the first build's" LABEL  PROG-1 u1 PROG-2 u2 STR= TTRUE ;
+   [: CROSS-AGAIN ;] ARENA:WITH ;
 
 \ A Wasm build exits 0 where a target word is only named and is refused where top level runs it, a linked file's
 \ by its name; two builds, since a refused build ends its hb.

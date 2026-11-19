@@ -1,10 +1,12 @@
 split-str
 \ boot.f - the arm64 start-up at offset 0 of a product's code. START, maps the
-\ stacks and DATA, stores the DATA image's runs in it, adds the load offset to
-\ each cell the DATA list names, writes the run-time cells and calls the entry
-\ the build stored. ENGINE-START, first maps the code region, copies the record
-\ image into its dictionary band and slides the record list, then builds the
-\ name index and enters the engine's main. Its caller binds the tail's labels.
+\ stacks and DATA and places the DATA image in it: on Linux it moves the
+\ carrier's pages to each run the table names, on macOS it stores each run's
+\ cells. It adds the load offset to each cell the DATA list names, writes the
+\ run-time cells and calls the entry the build stored. ENGINE-START, first
+\ maps the code region, copies the record image into its dictionary band and
+\ slides the record list, then builds the name index and enters the engine's
+\ main. Its caller binds the tail's labels.
 HB-TARGET-LINUX? HB-TARGET-MACOS? or ?TARGET
 require src/core/exit-status.f
 require src/lib/le.f
@@ -15,7 +17,10 @@ require src/arch/arm64/mnem.f
 require src/habu/layout.f
 require src/habu/xref.f
 
-HB-TARGET-LINUX? [if] require src/os/linux/sys.f [then]
+HB-TARGET-LINUX? [if]
+   require src/os/linux/layout.f
+   require src/os/linux/sys.f
+[then]
 HB-TARGET-MACOS? [if] require src/os/macos/sys.f [then]
 
 require src/os/script-argv.f
@@ -52,9 +57,31 @@ using SYSCALL
    rd l LOFF,  rd 9 rd ADD, ;
 
 
+HB-TARGET-LINUX? [if]
+\ Move each run [off][bytes] in [x6, x7) from the carrier, x10 at its pages,
+\ to DATA + off. A refused move dies.
+: PLACE-RUNS, ( label label label -- )
+   {: text0:label start:label end:label :}
+   LBL LBL LBL {: more:label moved:label done:label :}
+   text0 TEXT-BASE,
+   6 start TEXT-AT,  7 end TEXT-AT,
+   10 CARRIER-OFF LINUX-LAYOUT:CODE-OFF - LIT64,  10 9 10 ADD,
+   more LBL,  6 7 CMP,  C-CS done BCOND,
+      11 6 0 LDR,  1 6 8 LDR,  6 6 16 ADDI,  11 DATA 11 ADD,
+      0 10 0 ADDI,  2 1 0 ADDI,  3 MREMAP-MOVE-FIXED MOVZ,  4 11 0 ADDI,
+      NR-MREMAP SYS,
+      0 11 CMP,  C-EQ moved BCOND,
+         s" hb: the system refused to move the image's data into the fixed data region; mremap answered:"
+         EXIT-STATUS:SYSTEM 0 DIE-LINE-VALUE,
+      moved LBL,
+      10 10 1 ADD,  more B,
+   done LBL, ;
+[then]
+
+HB-TARGET-MACOS? [if]
 \ Store each run in [x1, x2) at DATA + off, x3 the target and x4 the cells left;
 \ DATA outside the runs stays zero.
-: COPY-DATA, ( label label label -- )
+: PLACE-RUNS, ( label label label -- )
    {: text0:label start:label end:label :}
    LBL LBL LBL {: more:label each:label done:label :}
    text0 TEXT-BASE,
@@ -65,6 +92,7 @@ using SYSCALL
          5 1 0 LDR,  5 3 0 STR,
          1 1 8 ADDI,  3 3 8 ADDI,  4 4 1 SUBI,  each B,
    done LBL, ;
+[then]
 
 
 \ x21 = text base - the address the code is linked at, added to the cell at
@@ -114,12 +142,12 @@ using SYSCALL
    C-SIGNAL-STACK
    STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP ;
 
-\ DATA mapped (x20), its image's runs stored and its listed code addresses slid.
-\ The text size is read from the header the slid RBASE-CELL finds.
+\ Map DATA (x20), place its runs and slide the listed code addresses (Linux
+\ lists none); the text size comes from the header the slid RBASE-CELL finds.
 : DATA, ( n label label label label label -- )
    {: linked:n text0:label image:label image-end:label list:label list-end:label :}
    EM-MMAP-DATA-REGION  DATA 0 0 ADDI,
-   text0 image image-end COPY-DATA,
+   text0 image image-end PLACE-RUNS,
    linked text0 list list-end SLIDE,
    RUNTIME-CELLS,
    EM-TEXT-SIZE ;

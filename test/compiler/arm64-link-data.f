@@ -1,16 +1,19 @@
 split-str
 \ arm64-link-data.f - a stripped program's DATA, written by LINKER:WRITE and
-\ run, its kernel the tree's kernel object. One build writes two programs. main
+\ run, its kernel the tree's kernel object. One build writes the programs. main
 \ prints `12 6 0 11 11 ld-text`: the word an xt cell holds, which reads a
 \ variable through a data address; the quotation an xt cell holds, stored as
 \ the build ran; a scratch cell the build set to 7; a plain cell; a DATA
 \ pointer's target; a string it types after filling 4096 bytes at its `here`,
-\ which shows its DP lies past its data, the string's body included. The
-\ program is PIE: these hold only if the start-up slides each code cell once
-\ and no DATA cell. over allots until it catches E-DATA-SPACE, prints the bytes
+\ which shows its DP lies past its data, the string's body included. On a
+\ macOS host the program is PIE, and these hold only if the start-up slides
+\ each code cell once and no DATA cell; a Linux program loads at its link
+\ address. over allots until it catches E-DATA-SPACE, prints the bytes
 \ it allotted and rethrows uncaught: its DATA less the profiler band, the
 \ engine's part below DATA-START and its own data, which is under a step.
-\ A second link of main writes the same bytes.
+\ A second link of main writes the same bytes. On Linux, held sums a table it
+\ only reads, prints the sum, then blocks on stdin; while it blocks, its
+\ smaps shows the table's pages in DATA as file pages, not Anonymous ones.
 \ Each refusal (arm64-link-data-bad.f) dies, so each runs in its own child.
 \ The data child also runs on three malformed copies of the kernel object, one
 \ failing its checksum, one whose DATA-START is off a cell and one whose Mach-O
@@ -28,9 +31,13 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/le.f
 require src/core/sha256.f
+require src/lib/fd.f
+require src/lib/spawn.f
+require src/lib/process.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/habu/layout.f
+require src/os/linux/layout.f
 require src/habu/xref.f
 require src/compiler/target/model.f
 require src/habu/linker.f
@@ -117,11 +124,39 @@ DYNAMIC-BUFFER SECOND-LINK u8
    FIRST-LINK-RELEASE SECOND-LINK-RELEASE ;
 
 
+HB-TARGET-LINUX? [if]
+
+4 PROT-PAGE-MAX * constant HELD-BYTES     \ held's table, each byte 1
+\ The kB of the table's pages no other data shares: at least the table less
+\ the carried page at each end.
+HELD-BYTES 2 PROT-PAGE-MAX * - 1024 / constant HELD-KB
+$1000 constant SMAPS-CHUNK
+64 constant LINE-CAP
+$0A constant LF-BYTE
+
+: HELD-SRC ( -- str )
+   SB-RESET  HELD-BYTES FMT:SB-INT
+   s"  constant LD-TN  create LD-TAB LD-TN allot" SB-APPEND
+   SB$ ;
+
+\ After SECOND-CASE, whose two links of main must see one build.
+: HELD-WRITE ( -- )
+   HELD-SRC evaluate-closed
+   s" : LD-TFILL ( -- ) LD-TN 0 ?do 1 LD-TAB i + c! loop ;  LD-TFILL" evaluate-closed
+   s" : LD-HELD ( -- ) 0 LD-TN 0 ?do LD-TAB i + c@ + loop LD-U cr  0 here 1 read drop ;" evaluate-closed
+   s" LD-HELD" STORE-ENTRY  s" held" PROG$ LINKER:WRITE ;
+
+[then]
+HB-TARGET-LINUX? 0= [if]
+: HELD-WRITE ( -- ) ;
+[then]
+
+
 : BODY ( -- )
    FIXTURE
    s" LD-OVER" STORE-ENTRY  s" over" PROG$ LINKER:WRITE
    s" LD-MAIN" STORE-ENTRY  s" main" PROG$ LINKER:WRITE
-   SECOND-CASE ;
+   SECOND-CASE  HELD-WRITE ;
 
 
 : RUN-PROG ( CMD:command str -- CMD:command n )
@@ -277,6 +312,135 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    s" link: the kernel object is cut short or malformed" 65 BAD-LINK ;
 
 
+HB-TARGET-LINUX? [if]
+
+create LINE LINE-CAP allot
+variable LINE-N
+DYNAMIC-BUFFER SMAPS u8
+variable SMAPS-N
+variable AT                          \ the parse's offset in SMAPS
+variable START                       \ the start of the mapping being read
+
+: LINE$ ( -- str ) LINE LINE-N @ ;
+
+: LINE-DONE? ( -- bool )
+   LINE-N @ LINE-CAP =
+   LINE-N @ 0 > if LINE LINE-N @ + 1- c@ LF-BYTE = or then ;
+
+\ Reads r until a line or its end.
+: READ-LINE ( fd -- )
+   {: r:fd :}
+   0 LINE-N !
+   begin LINE-DONE? 0= while
+      r FD>N LINE LINE-N @ + LINE-CAP LINE-N @ - read
+      dup 0 <= if drop exit then
+      LINE-N +!
+   repeat ;
+
+: SMAPS-PATHZ ( pid -- ^u8 )
+   SB-RESET  s" /proc/" SB-APPEND  PID>N FMT:SB-INT
+   s" /smaps" SB-APPEND  SB$ FS:>PATHZ ;
+
+\ procfs gives no size, so it reads to the end.
+: READ-SMAPS ( pid -- )
+   SMAPS-PATHZ open-rd {: fd:n :}
+   0 SMAPS-N !
+   begin
+      SMAPS-N @ SMAPS-CHUNK + SMAPS-RESERVE
+      fd SMAPS-N @ SMAPS SMAPS-CHUNK read dup 0 > while
+      SMAPS-N +!
+   repeat drop
+   fd 0 >= if fd close then ;
+
+\ The line at AT, AT moved past it.
+: NEXT-LINE ( -- ^u8 n )
+   AT @ {: from:n :}
+   begin
+      AT @ SMAPS-N @ < if AT @ SMAPS c@ LF-BYTE <> else false then
+   while 1 AT +! repeat
+   from SMAPS  AT @ from -  1 AT +! ;
+
+\ A hex digit's value, -1 for another byte.
+: HEX-DIGIT ( u8 -- n )
+   {: c:u8 :}
+   c [char] 0 >= c [char] 9 <= and if c [char] 0 - exit then
+   c [char] a >= c [char] f <= and if c [char] a - 10 + exit then
+   -1 ;
+
+\ The value of the hex digits the line starts with.
+: HEX ( ^u8 n -- n )
+   {: a:^ u:n :}
+   0 u 0 ?do
+      a i + c@ HEX-DIGIT dup 0< if drop unloop exit then
+      swap 16 * +
+   loop ;
+
+\ The value of the decimal digits in the line, whatever lies between them.
+: DEC ( ^u8 n -- n )
+   {: a:^ u:n :}
+   0 u 0 ?do
+      a i + c@ dup [char] 0 >= over [char] 9 <= and
+      if [char] 0 - swap 10 * + else drop then
+   loop ;
+
+\ A mapping's header starts with its hex start; a field's key, a capital.
+: HEADER? ( ^u8 n -- bool )
+   {: a:^ u:n :}
+   u 0 > if a c@ HEX-DIGIT 0 >= else false then ;
+
+: IN-DATA? ( -- bool )
+   START @ LINUX-LAYOUT:DATA-VA >=
+   START @ LINUX-LAYOUT:DATA-VA LINUX-LAYOUT:DATA-SIZE + < and ;
+
+\ A field's share of FILE-KB: Rss adds, Anonymous takes away.
+: FIELD-KB ( ^u8 n -- n )
+   {: a:^ u:n :}
+   IN-DATA? 0= if 0 exit then
+   a u s" Rss:" STARTS-WITH? if a u DEC exit then
+   a u s" Anonymous:" STARTS-WITH? if a u DEC negate exit then
+   0 ;
+
+: LINE-KB ( ^u8 n -- n )
+   {: a:^ u:n :}
+   a u HEADER? if a u HEX START ! 0 exit then
+   a u FIELD-KB ;
+
+\ The kB of DATA's window resident and not Anonymous, over each mapping that
+\ starts in it.
+: FILE-KB ( -- n )
+   0 AT !  0 START !  0
+   begin AT @ SMAPS-N @ < while NEXT-LINE LINE-KB + repeat ;
+
+: HELD-SPAWN ( fd fd -- pid )
+   {: in:fd out:fd :}
+   s" held" PROG$ PROCESS:NEW
+   0 >FD in PROCESS:FD  1 >FD out PROCESS:FD
+   PROCESS:SPAWN ;
+
+: HELD-SUM$ ( -- str )
+   SB-RESET  HELD-BYTES FMT:SB-INT  LF-BYTE SB-APPEND-C  SB$ ;
+
+\ held's line comes once it has read its table; its smaps is read while it
+\ blocks on stdin, which closing in-w ends.
+: RUN-HELD ( -- )
+   FD:PIPE {: in-r:fd in-w:fd :}
+   FD:PIPE {: out-r:fd out-w:fd :}
+   in-r out-w HELD-SPAWN {: pid:pid :}
+   in-r FD>N close  out-w FD>N close
+   out-r READ-LINE  out-r FD>N close
+   pid READ-SMAPS  in-w FD>N close
+   s" held: the sum of its table" T-LABEL  LINE$ HELD-SUM$ T$=
+   s" held: its table's pages in DATA are file pages, not Anonymous" T-LABEL
+   FILE-KB HELD-KB min HELD-KB T=
+   s" held exits 0" T-LABEL
+   pid PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T= ;
+
+[then]
+HB-TARGET-LINUX? 0= [if]
+: RUN-HELD ( -- ) ;
+[then]
+
+
 public
 
 : RUN ( -- )
@@ -295,6 +459,7 @@ public
    [: BAD-DP-AT-START ;] CMD:WITH-COMMAND
    [: BAD-EVAL ;] CMD:WITH-COMMAND
    [: BAD-DICT ;] CMD:WITH-COMMAND
+   RUN-HELD
    ROOT$ FS:REMOVE-TREE
    T-REPORT ;
 

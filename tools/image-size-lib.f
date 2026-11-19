@@ -6,13 +6,16 @@ split-str
 \ - code: the map's code rows, which end where its first pad or region row starts;
 \ - names: the names, records and record-list rows, what the program holds to
 \   find a word by its name;
-\ - data written and data zero: the data and data-list rows; data zero is the
-\   zero cells inside the DATA image's runs, data written the rest, the runs'
-\   headers included;
+\ - data written and data zero: the data and data-list rows and, in ELF, the
+\   carrier's load; in Mach-O data zero is the zero cells inside the DATA
+\   image's runs, data written the rest, the runs' headers included; in ELF
+\   the run table is data written, and the carrier's zero cells are data zero
+\   and the rest data written;
 \ - padding: the pad rows; in Mach-O the gap after the load commands up to
 \   __text, the gap after __text to its segment's end and __DATA_CONST past
-\   __got; in ELF the bytes before the code no header or table holds and the
-\   gap after the code to its load's end;
+\   __got; in ELF the bytes before the code no header or table holds, the
+\   gap after the code to its load's end and the gap after the read-write
+\   load up to the carrier's;
 \ - other: in Mach-O the header and load commands, __got and __LINKEDIT; in
 \   ELF the header, the program headers, the dynamic-linking tables and the
 \   read-write load's dynamic section and slots.
@@ -113,6 +116,7 @@ variable OTHER-SIZE
    ELF:HEADERS-BYTES ELF:TABLES-BYTES + {: head:n :}
    head ELF:RW-BYTES + OTHER-SIZE !
    ELF:TEXT-OFF head - ELF:TEXT-LIMIT TEXT-END - +
+   ELF:CARRIER drop ELF:TEXT-LIMIT - ELF:RW-BYTES - +
    PAD-SIZE ! ;
 
 : CONTAINER ( -- )
@@ -132,11 +136,14 @@ variable OTHER-SIZE
    at 16 + len 8 * +
    0 len 0 ?do at 16 + i 8 * + IMG-U64@ 0= if 8 + then loop ;
 
+\ The bytes of the zero cells at file offsets [at, at + len).
+: ZERO-CELLS ( n n -- n )
+   {: at:n len:n :}
+   0 len 0 ?do at i + IMG-U64@ 0= if 8 + then 8 +loop ;
+
 \ The bytes of the zero cells in the runs at file offsets [at, end).
 : DATA-ZEROS ( n n -- n )
    {: at:n end:n :}
-   end TEXT-END > if
-      s" image-size: the DATA image passes the code" EXIT-STATUS:DATAERR die then
    0 at begin dup end < while end DATA-RUN rot + swap repeat drop ;
 
 : DATA-REGION ( -- n n )
@@ -155,18 +162,28 @@ variable OTHER-SIZE
    s" names" IMAGE-NAMES:KIND-BYTES s" records" IMAGE-NAMES:KIND-BYTES +
    s" record-list" IMAGE-NAMES:KIND-BYTES + NAME-SIZE ! ;
 
+\ An ELF image's data rows are its run table, all data written.
 : DATA-CLASSES ( n n -- )
    {: start:n len:n :}
    TEXT-OFF start + {: at:n :}
-   at at len + DATA-ZEROS ZERO-SIZE !
+   at len + TEXT-END > if
+      s" image-size: the DATA image passes the code" EXIT-STATUS:DATAERR die then
+   ELF? if 0 else at at len + DATA-ZEROS then ZERO-SIZE !
    len s" data-list" IMAGE-NAMES:KIND-BYTES + ZERO-SIZE @ - WRITTEN-SIZE ! ;
+
+\ An ELF image's carrier: its zero cells are data zero, the rest data written.
+: CARRIER-CLASSES ( -- )
+   ELF:CARRIER {: at:n len:n :}
+   at len ZERO-CELLS {: zero:n :}
+   zero ZERO-SIZE +!  len zero - WRITTEN-SIZE +! ;
 
 : MAP-CLASSES ( -- )
    DATA-REGION {: start:n len:n :}
    CODE-CLASS
    NAME-CLASS
    s" pad" IMAGE-NAMES:KIND-BYTES PAD-SIZE +!
-   start len DATA-CLASSES ;
+   start len DATA-CLASSES
+   ELF? if CARRIER-CLASSES then ;
 
 : SUMS ( -- )
    CODE-SIZE @ NAME-SIZE @ + WRITTEN-SIZE @ + ZERO-SIZE @ +

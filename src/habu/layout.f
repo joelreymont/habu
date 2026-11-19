@@ -412,7 +412,7 @@ $40C0 constant UNCGH-CELL
 \ Eight cells every region carries at the same offset, in the run between the
 \ FFI length buffers ($40C8..$41C8) and APP-ENTRY:XT-CELL ($43A0). Every cell is
 \ correct at zero, which is what a fresh task region, a fresh DATA mapping and a
-\ stripped image's anonymous DATA all hold.
+\ stripped image's DATA all hold.
 \   CB-XDS..CB-CP  the VM frame an outbound FFI core publishes after its pops and
 \                  restores after its BLR, LIFO
 \                  through the core's own $30 stack frame. CB-XDS 0 = no frame.

@@ -415,10 +415,6 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    begin dup COPY-N < while dup RUN-END tuck RUN, NEXT-SET repeat drop ;
 
 
-\ An ELF image's carrier: the copy's carried pages, in the run table's order.
-DYNAMIC-BUFFER CARRIER u8
-variable CARRIER-N
-
 : CARRIER$ ( -- str ) 0 CARRIER CARRIER-N @ ;
 
 \ The copy in PROT-PAGE-MAX pages, the last one zero past the copy's end: the
@@ -593,7 +589,6 @@ variable CARRIER-N
          ELF:ASM-CODE NATIVE:TEXT-VA NATIVE:ELF-IMPORTS$ CARRIER$
          ELF:BUILD-IMAGE
       then
-      CARRIER-RELEASE
       ELF:CODESIG2
    then
    path pathu DRV-WRITE-IMAGE ;

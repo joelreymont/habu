@@ -99,12 +99,12 @@ because an editor changed a file.
 it.** It takes the product's dictionary space with its reference cells, one
 unplaced emission per definition and the product platform's primitive bodies.
 It keeps what the roots reach (the boot entry and the public words) and writes
-the image with DATA at DATA-VA and the code at a base the OS may move. Calls
-inside the code are relative, so they hold at any base. The linker lists every
-stored address that points into the image, and the boot adds the load offset
-to each, as dyld and ld.so do for a position-independent C program. The boot
-maps DATA at its address and refuses to run when it cannot get it.
-**Now:** every ARM64 image hb-build makes follows this rule: it builds hb or
+the image with DATA at DATA-VA. A macOS image's code runs at a base the OS may
+move: calls inside the code are relative, the linker lists every stored address
+that points into the image, and the boot adds the load offset to each, as dyld
+does for a position-independent C program. A Linux image is `ET_EXEC`, runs at
+its link address and lists none. The boot maps DATA at its address and refuses
+to run when it cannot get it.
+**Now:** every image hb-build makes follows this rule: it builds hb or
 the program in its own process (`tools/hb-build-core.f`) and `LINKER:WRITE`
-writes it (`src/habu/link-data.f` `LINK-ENGINE`, `LINK-STRIPPED`). Nothing
-links an x86-64 image.
+writes it (`src/habu/link-data.f` `LINK-ENGINE`, `LINK-STRIPPED`).
