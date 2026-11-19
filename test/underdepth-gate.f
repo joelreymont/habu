@@ -279,6 +279,47 @@ public
    s" error[E-FINALLY-CLEANUP]: the cleanup `finally` runs must take and leave nothing"
    s" finally" s" cleanup not stack-neutral" UDG-ASSERT-AT ;
 
+\ --- combinator negatives: cells reached through a row var -----------------
+\ The cells a combinator's quotation takes beyond its fixed inputs arrive
+\ through R and count as needed: RUNQ's call needs 2 cells over the 1 there.
+
+: UDG-COMB$ ( str str -- str ) {: comb:^ cu:n v:^ vu:n :}
+   SB-RESET
+   s" : STEPN ( n -- n ) ;" UDG-LINE
+   comb cu UDG-LINE
+   v vu UDG-LINE
+   SB$ ;
+
+: UDG-COMB-UNDER ( str str str -- ) {: comb:^ cu:n v:^ vu:n at:^ atu:n :}
+   comb cu v vu UDG-COMB$ UDG-EXEC:SUBJECT
+   at atu UDG-ASSERT-UNDERDEPTH
+   UDG-ERR$ s" (needs 2, has 1)" CONTAINS? TTRUE ;
+
+: UDG-RUNQ$ ( -- str )
+   s" : RUNQ ( R [ R -- R ] -- R ) execute ;" ;
+
+: UDG-NEG-COMB ( -- )
+   s" a ticked word through RUNQ on no cells is an input underflow" T-LABEL
+   UDG-RUNQ$ s" : V ( -- ) ['] STEPN RUNQ ;" s" RUNQ" UDG-COMB-UNDER
+   s" a quotation literal through RUNQ on no cells is an input underflow" T-LABEL
+   UDG-RUNQ$ s" : V ( -- ) [: STEPN ;] RUNQ ;" s" RUNQ" UDG-COMB-UNDER
+   s" a ticked RUNQ executed on no cells is an input underflow" T-LABEL
+   UDG-RUNQ$ s" : V ( -- ) ['] STEPN ['] RUNQ execute ;" s" execute" UDG-COMB-UNDER
+   s" a quotation calling RUNQ executed on no cells is an input underflow" T-LABEL
+   UDG-RUNQ$ s" : V ( -- ) ['] STEPN [: RUNQ ;] execute ;" s" execute" UDG-COMB-UNDER
+   s" a row var carrying a cell counts it as needed" T-LABEL
+   s" : STEP3 ( n n -- n ) + ;  : APPLY2 ( R n [ R n -- S ] -- S ) execute ;"
+   s" : V ( -- ) ['] STEP3 APPLY2 ;" UDG-COMB$ UDG-EXEC:SUBJECT
+   s" APPLY2" UDG-ASSERT-UNDERDEPTH
+   UDG-ERR$ s" (needs 3, has 1)" CONTAINS? TTRUE ;
+
+\ --- recursion negatives: RECURSE takes its inputs as a call does ----------
+
+: UDG-NEG-RECURSE ( -- )
+   s" RECURSE on no cells is an input underflow" T-LABEL
+   s" : X ( n -- ) drop RECURSE ;" s" RECURSE" UDG-BODY-UNDER
+   UDG-ERR$ s" (needs 1, has 0)" CONTAINS? TTRUE ;
+
 \ --- positives: the public top-level surface is untouched -------------------
 
 : UDG-EXACT$ ( -- str )
@@ -397,6 +438,8 @@ public
    UDG-NEG-SHAPES
    UDG-NEG-PRIMS
    UDG-NEG-BODY
+   UDG-NEG-COMB
+   UDG-NEG-RECURSE
    UDG-POSITIVES
    UDG-MINIMUM:BOUNDARY
    UDG-CLEANUP

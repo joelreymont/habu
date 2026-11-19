@@ -5593,7 +5593,7 @@ private
 25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
 26 constant MD-RAW-PTR        \ a pointer met an undeclared raw storage cell (RAW-OK? T-PTR)
 27 constant MD-RAW-FIELD      \ ptr-field on an undeclared raw storage base
-28 constant MD-UNDERFLOW      \ a step or transport reached under the definition's declared inputs (STEP-BORROWS?, XPORT-APPLY)
+28 constant MD-UNDERFLOW      \ a step or transport reached under the definition's declared inputs
 29 constant MD-NULL-PTR       \ a nominal or a pointer read through NULL-PTR (BASE-BLOCK?)
 30 constant MD-DBASE-PTR      \ the same through data-base, at any pointee depth
 31 constant MD-RAW-EXEC       \ an execution token met an undeclared cell or a base address (FENCE-EXEC)
@@ -5950,6 +5950,20 @@ variable UF-NEED   variable UF-HAVE
       -1 FAILSET !
    THEN
    0 OK ! ;
+
+\ A call's input unify, refused at its token when it reaches below the
+\ declared inputs by its fixed cells or by binding the sealed base row.
+: STEP-CALL ( n -- bool bool ) {: din:n :}   \ fit, refused for underflow
+   DCUR @ {: pre:n :}
+   din STEP-BORROWS? {: borrows:bool :}
+   STEP-AT-BASE? IF SGDBASE @ R-RES TAG S-ROW = ELSE RES-FALSE THEN {: open:bool :}
+   UF-HAVE @ {: have:n :}
+   pre din UNIFY-CALL {: fit:bool :}
+   fit 0=  FAILSET @ 0=  and  OK @ and  IF din pre UF-CAPTURE THEN
+   fit OK @ and OK !
+   open  SGDBASE @ R-RES TAG S-ROW <>  and  borrows or  OK @ and {: under:bool :}
+   under IF pre ROW-CELLS UF-NEED !  have UF-HAVE !  STEP-UNDERFLOW! THEN
+   fit under ;
 
 \ The first resolved hidden-field bundle of FAM in the declared output; an open
 \ one (option<a>) is one logical cell and skipped.
@@ -6339,11 +6353,7 @@ variable UNJ-WF0                    \ the width-fact count before the token
    unj IF din dout pre SPLICE-SHAPE ELSE -1 0 THEN {: cells:n terms:n :}
    din dout LIN-EXPLICIT? {: exp:bool :}
    pre WAS !
-   din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
-   DCUR @ din UNIFY-CALL {: fit:bool :}
-   fit 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
-   fit OK @ and OK !
-   OK @ borrows and IF STEP-UNDERFLOW! THEN
+   din STEP-CALL drop {: fit:bool :}
    WAS @ dout STEP-LINEAGE DCUR !
    OK @ exp 0= and IF pre rpre LIN-CHECK THEN
    unj 0= IF EXIT THEN
@@ -6703,12 +6713,7 @@ variable QUOT-LOSS
 \ In an unjudged scan a step that fit applied its rows, so the underflow
 \ settles the token as a call's does and the scan keeps its rows.
 : QUOT-STEP-IN ( n -- ) {: q:n :}
-   q Q>DIN STEP-BORROWS? {: borrows:bool :}
-   DCUR @ q Q>DIN UNIFY-CALL {: fit:bool :}
-   fit 0=  FAILSET @ 0=  and  OK @ and  IF q Q>DIN DCUR @ UF-CAPTURE THEN
-   fit OK @ and OK !
-   OK @ borrows and IF
-      STEP-UNDERFLOW!
+   q Q>DIN STEP-CALL nip IF
       UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN
    THEN
    q Q>RIN RSUNI-IN ;
@@ -20772,7 +20777,6 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    OK @ and OK ! ;
 
 : SUNI-IN {: s:n :} DCUR @ s UNIFY-IN  s SUNI-END ;
-: SUNI-CALL {: s:n :} DCUR @ s UNIFY-CALL  s SUNI-END ;
 
 : SUNI-COERCE {: s:n :}
    DCUR @ s UNIFY-COERCE
@@ -20949,7 +20953,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    {: rin:n rout:n :}
    RECUR-INST-KEEP
    mark din dout rin rout E-AK-LIST
-   din SUNI-CALL
+   din STEP-CALL 2drop
    OK @ IF OWNB-LOCAL? IF MD-LOCAL-ESCAPE CF-FAIL THEN THEN
    dout DCUR !
    hasr 0 <> IF rin RSUNI-IN  rout RCUR ! THEN
