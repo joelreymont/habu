@@ -3068,11 +3068,6 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f EVAL-FRAME:PKG-OUTSIDE FR@ CLEAN-END ;
 
 
-: FRAME-CUT ( ^u8 -- n )
-   {: f:^ :}
-   data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
-   f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max ;
-
 \ Set while a build holds the rejection of a caught text that failed and left
 \ words or data (FAILED-PEND); the linker reads it.
 TYPED-VARIABLE FAILED-TEXT bool
@@ -3106,16 +3101,13 @@ TYPED-VARIABLE FAILED-TEXT bool
    left if true FAILED-TEXT ! then ;
 
 \ A failed text keeps its code, records and data, which older data may point
-\ into: its records lose their names, its texts leave the string table and
-\ its files leave the require registry, so a later require loads them again.
-\ c is the code the text failed with.
+\ into: its records lose their names and its files leave the require registry.
 : FRAME-ROLLBACK-CODE ( n ^u8 -- )
    {: c:n f:^ :}
    DEF-ABORT
    f ROWS-CUT
    BUILDING? if c f FAILED-PEND then
    f EVAL-FRAME:NDICT FR@ RETIRE-ABOVE
-   f FRAME-CUT INTERN:KEEP-BELOW
    0 COMMA-RUN-CELL CELL!
    f EVAL-FRAME:REQUIRES FR@ REQUIRE-REG:TRUNCATE ;
 

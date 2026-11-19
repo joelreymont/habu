@@ -1,6 +1,5 @@
 split-str
-\ A caught failed text keeps the address cells it declared, and the texts it
-\ interned leave the string table.
+\ A caught failed text keeps the address cells it declared.
 require src/lib/test.f
 require src/habu/address-cells.f
 
@@ -68,23 +67,6 @@ create OLDER CELL allot
    s" PERSISTED-PTR-VARIABLE AFTER-NESTED" evaluate-closed
    ROWS BASE-N @ 3 + T= ;
 
-: LAY-TEXT ( -- ) s" address-cell-rollback-text" INTERN:TEXT drop ;
-: FAIL-TEXT ( -- ) s" LAY-TEXT 12345 throw" evaluate-closed ;
-: TEXT-GONE ( -- )
-   s" a failed load's text leaves the string table" T-LABEL
-   START [: FAIL-TEXT ;] catch 0 KEPT
-   s" address-cell-rollback-text" INTERN:FIND 0 T= ;
-
-\ The facts text `;` stores for ACR-FACTS; no other word in hb has this effect.
-: FACTS$ ( -- str ) s" ( u16 i64 u8 -- u32 u16 ) " ;
-: FAIL-FACTS ( -- )
-   s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ; 12345 throw" evaluate-closed ;
-: FACTS-GONE ( -- )
-   s" a failed line's facts text leaves the string table" T-LABEL
-   FACTS$ INTERN:FIND 0 T=
-   START [: FAIL-FACTS ;] catch 0 KEPT
-   FACTS$ INTERN:FIND 0 T= ;
-
 \ here lands 3 bytes into the text's length cell.
 : CUT-TEXT ( -- )
    s" a negative allot into a text forgets it" T-LABEL
@@ -94,6 +76,6 @@ create OLDER CELL allot
    align ;
 
 : RUN ( -- )
-   T-RESET THREE-SHAPES UNORDERED NESTED TEXT-GONE FACTS-GONE CUT-TEXT T-REPORT ;
+   T-RESET THREE-SHAPES UNORDERED NESTED CUT-TEXT T-REPORT ;
 RUN
 ;package
