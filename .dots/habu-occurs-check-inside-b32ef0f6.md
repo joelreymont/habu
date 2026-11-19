@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-11-19T14:36:49.424691+02:00"
 ---
 
-Problem: src/core/checker.f OCC-WALK does not walk into a T-STALE cell's type, so a variable may unify with a term that holds it under a stale cell; no program is yet known that this admits. Acceptance: a case where it admits a cyclic type, fixed in OCC-WALK, or OCC-WALK's comment states why a stale cell cannot hold the variable. Depends: none. Claim: unassigned.
+Problem: src/core/checker.f OCC-WALK does not walk into a T-STALE cell's type, so a variable may unify with a term that holds it under a stale cell: `: OC1 ( R [ S -- S ] [ [ S -- S ] -- [ S -- S ] ] [ S -- S ] -- ) {: p :} catch drop p execute ;` binds S into a cyclic type (it is then refused E-NONPARAMETRIC-EFFECT, and the inferred: line prints the cycle). Acceptance: a case where it admits a cyclic type, fixed in OCC-WALK, or OCC-WALK's comment states why a stale cell cannot hold the variable. Depends: none. Claim: unassigned.
