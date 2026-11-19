@@ -11,6 +11,7 @@ require src/lib/string.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/uri.f
+require src/lib/vector.f
 require src/lib/base64.f
 require src/lib/reason.f
 require src/lib/odata/metadata.f
@@ -18,9 +19,9 @@ require src/lib/odata/metadata.f
 package ODATA
 private
 
-\ The predicate being written: rest is what is left of the caller's span.
+\ The predicate being written: out is the caller's vector.
 STRUCTURE predicate DERIVE addr
-   FIELD rest SPAN:span<u8>
+   FIELD out ^VEC:vector<u8>
    FIELD keys n
    FIELD written n
    FIELD v2 bool
@@ -143,19 +144,13 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    a u at [char] D UNIT {: b:^ bl:n t:n :}
    a u t [char] T PEEK? if a u t CLOCK else a u t then WHOLE ;
 
-\ Writing: RAW writes bytes as they are, ESCAPED every byte outside `-._~`,
-\ letters and digits as `%XX`; a span too short is E-SPAN-CAPACITY.
-: REST+ ( ^predicate n -- )
-   {: p:^ len:n :}
-   p PREDICATE-REST @ len SPAN:SKIP p PREDICATE-REST ! ;
-
-: RAW ( ^predicate ^u8 n -- )
+: RAW ( ^predicate str -- )
    {: p:^ a:^ u:n :}
-   a u p PREDICATE-REST @ SPAN:COPY p u REST+ ;
+   a u p PREDICATE-OUT @ VEC:APPEND ;
 
-: ESCAPED ( ^predicate ^u8 n -- )
+: ESCAPED ( ^predicate str -- )
    {: p:^ a:^ u:n :}
-   p a u p PREDICATE-REST @ URI:QUERY-ENCODE REST+ ;
+   a u p PREDICATE-OUT @ URI:QUERY-ENCODE ;
 
 : QUOTED ( ^predicate ^u8 n -- )
    {: p:^ a:^ u:n :}
@@ -350,23 +345,25 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    p k v vl CHECKED-LITERAL
    1 p PREDICATE-WRITTEN +! ;
 
-: WRITE-PREDICATE ( ^entity-type [ ^property -- ^u8 n ] SPAN:span<u8> ^u8 NUM:alloc-byte-len -- n )
-   drop {: t:^ q s at:^ :}
+: WRITE-PREDICATE ( ^entity-type [ ^property -- str ] ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- )
+   drop {: t:^ q v:^ at:^ :}
    at >PREDICATE {: p:^ :}
-   s p PREDICATE-REST !
+   v p PREDICATE-OUT !
    t TYPE-V2? p PREDICATE-V2 !
    t [: drop 1 p PREDICATE-KEYS +! ;] KEY-REFS-OF
    p s" (" RAW
    t [: p q KEY-PART ;] KEY-REFS-OF
-   p s" )" RAW
-   s SPAN:LEN p PREDICATE-REST @ SPAN:LEN - ;
+   p s" )" RAW ;
 
 public
 
-\ The key predicate of the entity whose key values CALLBACK gives as text,
-\ written into the span; its length.
-: KEY ( ^entity-type [ ^property -- ^u8 n ] SPAN:span<u8> -- n )
-   PREDICATE-BYTES MEM:BYTES-ALLOC-LEN
-   [: WRITE-PREDICATE ;] MEM:WITH-BYTES ;
+\ Appends to the vector the key predicate of the entity whose key values
+\ CALLBACK gives as text.
+: KEY ( ^entity-type [ ^property -- str ] ^VEC:vector<u8> -- )
+   {: t:^ q v:^ :}
+   v VEC:COUNT {: n:n :}
+   [: t q v PREDICATE-BYTES MEM:BYTES-ALLOC-LEN
+      [: WRITE-PREDICATE ;] MEM:WITH-BYTES ;] catch {: code:n :}
+   code 0<> if v n VEC:RESIZE code throw then ;
 
 ;package

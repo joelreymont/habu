@@ -145,10 +145,8 @@ public
    ALLOC:RESIZE drop  v VECTOR-DATA !
    r v VECTOR-ROOM ! ;
 
-private
-
-\ Answers where the bytes at s lie after RESERVE: an address in the old block,
-\ live elements or not, keeps its offset.
+\ Reserves room for n elements and answers where the bytes at the address lie
+\ afterwards: an address in the old block, live elements or not, keeps its offset.
 : MAKE-ROOM ( ^vector<t> n ^u8 -- ^u8 )
    {: v:^ k:n s:^ :}
    s v VECTOR-DATA @ - {: off:n :}
@@ -156,8 +154,6 @@ private
    v k RESERVE
    off 0 >=  off held <  and if v VECTOR-DATA @ off + exit then
    s ;
-
-public
 
 \ n elements read at the address, appended; a negative n is E-VEC-CAPACITY.
 \ They may be the vector's own elements, though growth moves the block.

@@ -454,16 +454,17 @@ public
       a u SEGMENT-STEP if 2drop true exit then
    repeat drop DOTS? ;
 
-\ Writes the bytes as a query component (RFC 3986 section 3.4): letters,
-\ digits and `-._~` as they are, every other byte as upper-case `%XX`. A space
-\ is `%20`, never `+`, which is form encoding.
-: QUERY-ENCODE ( str SPAN:span<u8> -- n )
-   {: a:^ u:n s :}
+\ Appends the bytes as an RFC 3986 query component: unreserved bytes as they
+\ are, every other byte, a space included, as upper-case `%XX`.
+: QUERY-ENCODE ( str ^VEC:vector<u8> -- )
+   {: a:^ u:n v:^ :}
    u 0 < if E-SPAN-LENGTH throw then
    a u [: UNRESERVED? ;] ENCODED-LEN {: len:n :}
-   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out:^ :}
-   0 u 0 ?do a i + c@ out rot [: UNRESERVED? ;] ENCODE-BYTE loop drop
-   len ;
+   v VEC:COUNT {: at:n :}
+   v at len + a VEC:MAKE-ROOM {: src:^ :}
+   v at len + VEC:ENSURE
+   v VEC:SPAN SPAN:$ drop {: out:^ :}
+   at u 0 ?do src i + c@ out rot [: UNRESERVED? ;] ENCODE-BYTE loop drop ;
 
 \ The path and query of an http(s) URL: its bytes from the authority's end
 \ to the first `#` or the end; no copy. An empty path stays empty, where

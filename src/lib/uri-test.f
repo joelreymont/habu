@@ -9,6 +9,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/span.f
+require src/lib/allocator.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/uri.f
@@ -409,22 +410,45 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" /sap/X/A?$skiptoken=5" T$=
    s" https://h" URI:REQUEST-TARGET$ nip 0 T= ;
 
-: QUERY$ ( ^u8 n -- ^u8 n )
-   URI-DST URI:QUERY-ENCODE {: u:n :}
-   URI-DST $ drop u ;
-
-: QUERY-SHORT ( -- )   \ `a%20b` is 5 bytes
-   s" a b" DST 4 TAKE URI:QUERY-ENCODE drop ;
-
 \ A space as `%20`, quotes and the delimiters a query gives meaning to
-\ escaped; a short span writes nothing.
+\ escaped; a second encoding appended after the first.
 : QUERY-ENCODES ( -- )
-   s" MaterialDocument eq '4900037654'" QUERY$
-   s" MaterialDocument%20eq%20%274900037654%27" T$=
-   s" a+b&c=d/" QUERY$ s" a%2Bb%26c%3Dd%2F" T$=
-   CANARY DST FILL
-   [: QUERY-SHORT ;] E-SPAN-CAPACITY TTHROWSQ
-   5 UNTOUCHED ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   s" a+b&c=d/" v URI:QUERY-ENCODE
+   v VEC:SPAN $ s" a%2Bb%26c%3Dd%2F" T$=
+   s" MaterialDocument eq '4900037654'" v URI:QUERY-ENCODE
+   v VEC:SPAN $
+   s" a%2Bb%26c%3Dd%2FMaterialDocument%20eq%20%274900037654%27" T$=
+   v VEC:DELETE ;
+
+\ An allocator bumping through POOL whose resize moves the block and fills
+\ the old one with CANARY, so a read of the old block shows.
+256 constant POOL-BYTES
+POOL-BYTES BUFFER: POOL
+variable TOP
+TYPED-VARIABLE MOVER ALLOC:allocator
+
+: P-ALLOC ( str -- ^u8 )
+   {: st:^ len:n :}
+   TOP @ len + POOL-BYTES > if E-MEM-SIZE throw then
+   st TOP @ +  len 7 + -8 and TOP +! ;
+
+: P-RESIZE ( ^u8 str n -- ^u8 )
+   {: st:^ block:^ old:n new:n :}
+   st new P-ALLOC {: moved:^ :}
+   block moved old new min BYTE-COPY
+   CANARY block old SPAN:MAKE SPAN:FILL  moved ;
+
+: P-FREE ( ^u8 ^u8 -- ) 2drop ;
+
+\ The vector's own bytes encoded into it while its block moves.
+: QUERY-OWN ( -- )
+   POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] MOVER ALLOC:INIT
+   MOVER 0 [type] u8 VEC:NEW {: v:^ :}
+   s" a b/" v VEC:APPEND
+   v VEC:SPAN $ v URI:QUERY-ENCODE
+   v VEC:SPAN $ s" a b/a%20b%2F" T$=
+   v VEC:DELETE ;
 
 : MAIN ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DECODED !
@@ -450,6 +474,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    SAME-ORIGINS
    REQUEST-TARGETS
    QUERY-ENCODES
+   QUERY-OWN
    T-REPORT
    DECODED @ VEC:DELETE
    s" uri-test: ok" type cr ;

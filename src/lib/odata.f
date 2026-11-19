@@ -65,12 +65,13 @@ split-str
 \ record, expanded and complex ones included, that repeats a member is
 \ rejected. V2 and V4 bodies of the same records give the same members; a
 \ value both versions write in one JSON form gives the same bytes.
-\ KEY writes an entity's key predicate from its key values' text, each
-\ checked against its property's type and written in the version's literal
-\ form, a V4 enumeration value as the type's qualified name and the member
-\ names in single quotes: a value that does not fit its type is E-KEY, with
-\ REASON text naming the property, its type and, for a type the document
-\ declares, the value, thrown straight after the callback that gave it.
+\ KEY appends to a vector an entity's key predicate from its key values'
+\ text, each checked against its property's type and written in the version's
+\ literal form, a V4 enumeration value as the type's qualified name and the
+\ member names in single quotes: a value that does not fit its type is E-KEY,
+\ with REASON text naming the property, its type and, for a type the document
+\ declares, the value, thrown straight after the callback that gave it; a
+\ rejection leaves the vector as it was.
 \ STORAGE CLASS. CALLER-OWNED: the model lives in the arena METADATA is given
 \ and is freed with it; a rejection leaves partial records there until the
 \ caller resets or releases it. METADATA's scratch, as large as the document,

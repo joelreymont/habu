@@ -5,11 +5,11 @@ split-str
 \ records written plain and compared with one expected text, the V4 page
 \ also in 4.01's spelling; a binding to a singleton leading to no set; each
 \ corrupted copy rejected with its reason text, two with document text cut; and
-\ ODATA:KEY's literal for each type a key may
-\ hold, in both versions, over keys-v2.xml and keys-v4.xml, which hold one set
-\ per type the version writes in a key, keyed by it; a record copied as sets
-\ whose types share a member name with types they do not derive from; and a
-\ navigation of another type leading to no set.
+\ ODATA:KEY's literal for each type a key may hold, in both versions, over
+\ keys-v2.xml and keys-v4.xml, which hold one set per type the version writes
+\ in a key, keyed by it; a record copied as sets whose types share a member
+\ name with types they do not derive from; and a navigation of another type
+\ leading to no set.
 \ Run: bin/hb --load src/lib/odata-test.f
 
 require src/lib/string.f
@@ -19,6 +19,7 @@ require src/lib/reason.f
 require src/lib/test.f
 require src/lib/json.f
 require src/lib/xml.f
+require src/lib/vector.f
 require src/lib/odata.f
 
 package ODATA-TEST
@@ -585,17 +586,22 @@ LINK-CAP BUFFER: LINK
    REASON:RELEASE
    a ARENA:RELEASE ;
 
-CAP BUFFER: KEY-OUT
+TYPED-VARIABLE KEY-OUT ^VEC:vector<u8>
 PTR-VARIABLE VALUE-AT
 variable VALUE-LEN
 
 : VALUE$ ( -- str ) VALUE-AT @ VALUE-LEN @ ;
 
+\ The key predicate KEY appends to KEY-OUT, emptied first.
+: KEY$ ( ^ODATA:entity-type [ ^ODATA:property -- str ] -- str )
+   KEY-OUT @ {: v:^ :}
+   v 0 VEC:RESIZE
+   v ODATA:KEY
+   v VEC:SPAN SPAN:$ ;
+
 \ The key predicate of the set's type when its one key's value is VALUE.
 : PREDICATE$ ( ^ODATA:metadata str str -- str )
-   VALUE-LEN ! VALUE-AT ! SET-TYPE
-   [: drop VALUE$ ;] KEY-OUT CAP SPAN:MAKE ODATA:KEY
-   KEY-OUT swap ;
+   VALUE-LEN ! VALUE-AT ! SET-TYPE [: drop VALUE$ ;] KEY$ ;
 
 : WRITES ( ^ODATA:metadata ^u8 n ^u8 n ^u8 n -- )
    {: m:^ set:^ sl:n v:^ vl:n want:^ wl:n :}
@@ -683,14 +689,22 @@ variable VALUE-LEN
    ODATA:PROPERTY-NAME$ s" Year" STR= if s" 2024" else s" it's a/b" then ;
 
 : MULTI-KEY ( ^ODATA:metadata -- )
-   s" Orders" SET-TYPE [: ORDER-VALUE ;] KEY-OUT CAP SPAN:MAKE ODATA:KEY
-   KEY-OUT swap s" (Year=2024,OrderID='it%27%27s%20a%2Fb')" T$= ;
+   s" Orders" SET-TYPE {: t:^ :}
+   KEY-OUT @ {: v:^ :}
+   v 0 VEC:RESIZE  s" Orders" v VEC:APPEND
+   t [: ORDER-VALUE ;] v ODATA:KEY
+   [: t [: drop s" x" ;] v ODATA:KEY ;] ODATA:E-KEY TTHROWSQ
+   REASON:RELEASE
+   v VEC:SPAN SPAN:$
+   s" Orders(Year=2024,OrderID='it%27%27s%20a%2Fb')" T$= ;
 
 : TEST-KEYS ( -- )
    ARENA:NEW {: a:^ :}
+   a ARENA:ALLOCATOR 0 [type] u8 VEC:NEW KEY-OUT !
    a s" test/fixtures/odata/keys-v2.xml" MODEL V2-KEYS
    a s" test/fixtures/odata/keys-v4.xml" MODEL V4-KEYS
    a s" test/fixtures/odata/v2.xml" MODEL MULTI-KEY
+   KEY-OUT @ VEC:DELETE
    a ARENA:RELEASE ;
 
 \ shared-names.xml: B and A both declare Stamp, B as Edm.String and A as
