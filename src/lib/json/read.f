@@ -9,10 +9,10 @@ require src/lib/string.f
 require src/lib/string-roles.f
 require src/lib/float.f
 require src/lib/adt/option.f
-require src/lib/byte-buffer.f
 require src/lib/sort.f
 require src/lib/utf16.f
 require src/lib/utf8-scalar.f
+require src/lib/vector.f
 require src/lib/reason.f
 require src/core/rejection.f
 
@@ -1200,16 +1200,17 @@ public
    {: dst:^ cap:n :}
    READER>STATE dst cap STR-INNER ;
 
-\ Appends the current string or key, decoded, to a byte buffer, whose earlier
-\ bytes stay. Another token is E-JSON-READ-STATE before the buffer changes.
-: READ-STR-APPEND ( JSON:reader ^a -- JSON:reader ) {: buf:^ :}
+\ Appends the current string or key, decoded, to a vector, whose earlier
+\ bytes stay. Another token is E-JSON-READ-STATE before the vector changes.
+: READ-STR-APPEND ( JSON:reader ^VEC:vector<u8> -- JSON:reader ) {: v:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-STRING
-   buf BUF:LEN@ BUF:BLEN>N {: at:n :}
+   v VEC:COUNT {: at:n :}
    state CURSOR-TOK-LEN @ {: raw:n :}
    raw 0= if exit then
-   state  buf raw BUF:N>BLEN BUF:GROW SPAN:$  STR-INNER {: u:n :}
-   at u + BUF:N>BLEN buf BUF:LEN! ;
+   v at raw + VEC:ENSURE
+   state  v VEC:SPAN at SPAN:SKIP SPAN:$  STR-INNER {: u:n :}
+   v at u + VEC:RESIZE ;
 
 private
 

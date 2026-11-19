@@ -12,7 +12,8 @@ require src/lib/time-cpu.f
 require src/lib/json.f
 require src/lib/reason.f
 require src/lib/fmt.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/test/ending.f
 require src/lib/test/guard-page.f
 require src/lib/test/subject.f
@@ -22,7 +23,7 @@ private
 
 256 constant JRT-CAP
 create JRT-BUF JRT-CAP allot
-create JRT-APPEND-BUF BUF:HDR-BYTES allot
+TYPED-VARIABLE JRT-APPEND-VEC ^VEC:vector<u8>
 TYPED-VARIABLE JRT-A JSON:cursor
 TYPED-VARIABLE JRT-B JSON:cursor
 create JRT-SUBJECT-OUT $400 allot
@@ -386,43 +387,46 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE ;
 
-\ BUF:INIT refuses a live header, so each case opens from a disposed one.
+\ An empty vector with room for n bytes.
 : JRT-APPEND-FRESH ( n -- )
-   JRT-APPEND-BUF BUF:DISPOSE  JRT-APPEND-BUF swap BUF:N>BLEN BUF:INIT ;
-: JRT-APPEND$ ( -- str )  JRT-APPEND-BUF BUF:SPAN$ BUF:BLEN>N ;
-: JRT-APPEND-LEN ( -- n )  JRT-APPEND-BUF BUF:LEN@ BUF:BLEN>N ;
+   {: room:n :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   v room VEC:RESERVE
+   v JRT-APPEND-VEC ! ;
+: JRT-APPEND$ ( -- str )  JRT-APPEND-VEC @ VEC:SPAN SPAN:$ ;
+: JRT-APPEND-LEN ( -- n )  JRT-APPEND-VEC @ VEC:COUNT ;
 
 : JRT-TEST-STR-APPEND ( -- )
    s" READ-STR-APPEND appends a string's decoded bytes, and nothing for an empty string" T-LABEL
    64 JRT-APPEND-FRESH
    JRT-ESC-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
-   JRT-APPEND-BUF JSON:READ-STR-APPEND
+   JRT-APPEND-VEC @ JSON:READ-STR-APPEND
    JRT-APPEND$ JRT-ESC-WANT$ T$=
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE
    s\" \"\"" JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
-   JRT-APPEND-BUF JSON:READ-STR-APPEND
+   JRT-APPEND-VEC @ JSON:READ-STR-APPEND
    JRT-APPEND-LEN 8 T=
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE
-   JRT-APPEND-BUF BUF:DISPOSE ;
+   JRT-APPEND-VEC @ VEC:DELETE ;
 
-\ A capacity of 4 holds "ab" but not the escaped string after it.
+\ Room for 4 bytes holds "ab" but not the escaped string after it.
 : JRT-TEST-STR-APPEND-GROW ( -- )
-   s" READ-STR-APPEND grows a full buffer and keeps what it held" T-LABEL
+   s" READ-STR-APPEND grows a full vector and keeps what it held" T-LABEL
    4 JRT-APPEND-FRESH
-   s" ab" BUF:N>BLEN JRT-APPEND-BUF BUF:APPEND-SPAN
+   s" ab" JRT-APPEND-VEC @ VEC:APPEND
    JRT-ESC-SRC$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-STR T=
-   JRT-APPEND-BUF JSON:READ-STR-APPEND
+   JRT-APPEND-VEC @ JSON:READ-STR-APPEND
    JSON:READ-CLOSE
-   JRT-APPEND-BUF BUF:CAP@ BUF:BLEN>N 4 > TTRUE
+   JRT-APPEND-VEC @ VEC:CAP 4 > TTRUE
    JRT-APPEND$ {: got:^ len:n :}
    got 2 s" ab" T$=
    got 2 + len 2 - JRT-ESC-WANT$ T$=
-   JRT-APPEND-BUF BUF:DISPOSE ;
+   JRT-APPEND-VEC @ VEC:DELETE ;
 
 : JRT-TEST-STR-APPEND-KEY ( -- )
    s" READ-STR-APPEND appends a key's decoded bytes" T-LABEL
@@ -430,24 +434,24 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s\" {\"k\\u0065y\":1}" JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
    JSON:READ-NEXT JSON:T-KEY T=
-   JRT-APPEND-BUF JSON:READ-STR-APPEND
+   JRT-APPEND-VEC @ JSON:READ-STR-APPEND
    JRT-APPEND$ s" key" T$=
    JSON:READ-NEXT JSON:T-INT T=
    JSON:READ-CLOSE
-   JRT-APPEND-BUF BUF:DISPOSE ;
+   JRT-APPEND-VEC @ VEC:DELETE ;
 
 : JRT-BAD-APPEND-KIND ( -- )
    s" 12" JRT-OPEN-A
-   JSON:READ-NEXT drop JRT-APPEND-BUF JSON:READ-STR-APPEND JSON:READ-CLOSE ;
+   JSON:READ-NEXT drop JRT-APPEND-VEC @ JSON:READ-STR-APPEND JSON:READ-CLOSE ;
 
 : JRT-TEST-STR-APPEND-MISUSE ( -- )
-   s" READ-STR-APPEND on a number throws E-JSON-READ-STATE and leaves the buffer as it was" T-LABEL
+   s" READ-STR-APPEND on a number throws E-JSON-READ-STATE and leaves the vector as it was" T-LABEL
    16 JRT-APPEND-FRESH
-   s" ab" BUF:N>BLEN JRT-APPEND-BUF BUF:APPEND-SPAN
+   s" ab" JRT-APPEND-VEC @ VEC:APPEND
    [: JRT-BAD-APPEND-KIND ;] E-JSON-READ-STATE TTHROWSQ
    JRT-A JSON:READ-DISPOSE
    JRT-APPEND$ s" ab" T$=
-   JRT-APPEND-BUF BUF:DISPOSE ;
+   JRT-APPEND-VEC @ VEC:DELETE ;
 
 : JRT-TEST-UESCAPE ( -- )
    s" READ-STR decodes a \u escape" T-LABEL
@@ -1141,8 +1145,7 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
 \ nothing took the holes, so a body that leaves such a mapping owned moves a
 \ probe elsewhere; a larger mapping, such as the rows VALUE= moves to one, can
 \ land past both holes, and the check does not see it.
-\ This relies on the kernel's first-fit reuse of a freed mapping, as
-\ src/lib/byte-buffer-test.f BUFT-DISPOSE-RELEASES does.
+\ This relies on the kernel's first-fit reuse of a freed mapping.
 4096 constant JRT-MORE-BYTES
 
 : JRT-PROBE ( -- SPAN:span<u8> )
@@ -2117,22 +2120,6 @@ create JRT-NAMES 400 allot
    JRT-TEST-REASON-MEMBER
    JRT-TEST-READ-LISTED
    JRT-TEST-REASON-WHOLE ;
-
-false [if] \ off until dot habu-add-the-checks-a49d054d
-: JRT-BAD-APPEND-DEAD ( -- )
-   JRT-HI-SRC$ JRT-OPEN-A
-   JSON:READ-NEXT drop JRT-APPEND-BUF JSON:READ-STR-APPEND JSON:READ-CLOSE ;
-
-: JRT-TEST-STR-APPEND-DEAD ( -- )
-   16 JRT-APPEND-FRESH
-   JRT-APPEND-BUF BUF:DISPOSE
-   [: JRT-BAD-APPEND-DEAD ;] E-BUF-STATE TTHROWSQ
-   JRT-A JSON:READ-DISPOSE ;
-
-T-RESET
-JRT-TEST-STR-APPEND-DEAD
-T-REPORT
-[then]
 
 public
 
