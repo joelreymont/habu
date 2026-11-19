@@ -174,7 +174,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
-      failed OF drop -1 CURL:>HANDLE ENDOF
+      failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
    SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path pu SB-APPEND
    h SB$ CURL:URL! OK

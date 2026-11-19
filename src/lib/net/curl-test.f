@@ -61,6 +61,10 @@ OPT-LONG 84 + constant OPT-HTTP-VERSION   \ CURLOPT_HTTP_VERSION
 : CURL-TEST:H2-PRIOR ( CURL:handle -- CURL:status ) {: subject:CURL:handle :}
    subject OPT-HTTP-VERSION HTTP-2-PRIOR SET-NUM-RAW CODE>STATUS ;
 
+
+: CURL-TEST:EASY ( CURL:handle -- ^u8 )
+   HANDLE>ADDR ;
+
 ;package
 
 package CURL-TEST
@@ -1842,7 +1846,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : NULL-HANDLE ( -- )
-   0 CURL:>HANDLE CURL:CLEANUP ;
+   CURL:EMPTY-HANDLE CURL:CLEANUP ;
 
 
 : SPLIT-HEADER ( str -- )
@@ -3039,7 +3043,7 @@ variable DEFER-RETURNED
 \ the loop. Its response-valid cell becomes nonzero only when FINISH publishes
 \ the completed peer response; reading it does not call libcurl on a busy handle.
 : DONE-STATE ( CURL:handle -- ^n ) {: subject:CURL:handle :}
-   subject CURL:HANDLE>N INFO-PRIVATE DONE-STATE-CELL PRIVATE-GET 0 T=
+   subject CURL-TEST:EASY PTR>N INFO-PRIVATE DONE-STATE-CELL PRIVATE-GET 0 T=
    DONE-STATE-CELL LE:U64@ STATE>CELL ;
 
 

@@ -4142,8 +4142,8 @@ ENUM record-event kept faulted ;ENUM
    then
    c MODEL-CALL:HANDLE @ MATCH option
       none OF ENDOF
-      some OF
-         [: dup CURL:CLEANUP ;] catch {: freed:n :} drop
+      some OF {: h:CURL:handle :}
+         [: h CURL:CLEANUP ;] catch {: freed:n :}
          freed c KEEP-FAULT
       ENDOF
    ;MATCH

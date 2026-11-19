@@ -60,9 +60,18 @@ require src/lib/vector.f
 package CURL
 public
 
-DEFTYPE HANDLE
+NEWTYPE handle ^u8
 DEFTYPE CODE
 DEFTYPE HTTP-STATUS
+
+private
+CAST: ADDR>HANDLE ( ^u8 -- handle )
+CAST: HANDLE>ADDR ( handle -- ^u8 )
+public
+
+\ The handle a closed or never-opened holder keeps; every use of it, CLEANUP
+\ included, throws E-STATE.
+: EMPTY-HANDLE ( -- handle ) NULL-PTR ADDR>HANDLE ;
 
 : UNAVAILABLE? ( http-status -- bool )
    HTTP-STATUS>N {: status:n :}
@@ -246,7 +255,7 @@ FUNCTION: COPY-OUT memcpy ( ^u8 n n -- n ) ;FUNCTION
 
 
 : HANDLE-CELL ( handle -- n ) {: subject:handle :}
-   subject HANDLE>N dup 0= if E-STATE throw then ;
+   subject HANDLE>ADDR dup NULL-PTR = if E-STATE throw then PTR>N ;
 
 
 : CODE>STATUS ( n -- status ) {: rc:n :}
@@ -530,7 +539,7 @@ public
    easy OPT-PRIVATE state SETOPT-NUM dup CURLE-OK <> if
       state RELEASE easy EASY-CLEANUP >CODE CURL-INIT--RESULT:FAILED exit
    then drop
-   easy >HANDLE CURL-INIT--RESULT:READY ;
+   easy >BYTES ADDR>HANDLE CURL-INIT--RESULT:READY ;
 
 
 : URL! ( handle str -- status ) {: subject:handle text u:n :}

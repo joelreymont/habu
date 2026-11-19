@@ -236,7 +236,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
-      failed OF drop -1 CURL:>HANDLE ENDOF
+      failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
    h path pu URL CURL:URL! OK h ;
 

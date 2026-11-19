@@ -1928,7 +1928,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx HANDLE-TAKE MATCH option
       none OF ENDOF
       some OF {: h:CURL:handle :}
-         h [: dup CURL:CANCEL ;] catch {: code:n :} drop
+         [: h CURL:CANCEL ;] catch {: code:n :}
          \ CANCEL's only E-STATE is a handle with no transfer in flight.
          code 0= if idx h DRAIN else
             code CURL:E-STATE <> if code throw then
@@ -2267,7 +2267,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    {: idx:n :}
    idx ROW-HANDLE @ MATCH option
       none OF 0 ENDOF
-      some OF [: dup CURL:CANCEL ;] catch nip ENDOF
+      some OF {: h:CURL:handle :} [: h CURL:CANCEL ;] catch ENDOF
    ;MATCH ;
 
 \ CANCEL-ROW's code passed on; CURL's E-STATE means no transfer was in flight,

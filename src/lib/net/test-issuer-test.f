@@ -190,7 +190,7 @@ PAST-CAP BUFFER: OVERSIZE
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
-      failed OF drop -1 CURL:>HANDLE ENDOF
+      failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
    h url uu CURL:URL! OK h ;
 

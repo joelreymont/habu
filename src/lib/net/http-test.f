@@ -799,7 +799,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
-      failed OF drop -1 CURL:>HANDLE ENDOF
+      failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH ;
 
 
