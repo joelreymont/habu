@@ -413,7 +413,7 @@ LINK-CAP BUFFER: LINK
    ;MATCH ;
 
 \ The plain forms of the records in TEXT, as one array.
-: PLAIN ( ^ODATA:entity-type ^u8 n -- ^u8 n )
+: PLAIN ( ^ODATA:entity-type str -- str )
    {: t:^ text:^ len:n :}
    CURSOR text len JSON:READ-INIT JSON:READ-NEXT drop
    WRITER OUT @ JSON:OPEN JSON:WRITE-ARRAY-START

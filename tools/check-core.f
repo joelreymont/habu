@@ -23,7 +23,6 @@ require src/lib/argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f

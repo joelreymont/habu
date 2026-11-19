@@ -114,9 +114,10 @@ create JW-ESC-W
    u 0 < if E-JSON-WRITE-SOURCE throw then
    u 0 > a 0= and if E-JSON-WRITE-SOURCE throw then ;
 
-\ A span's offset in the writer's output, or -1 outside the room the output
-\ holds or with no output, which the write then refuses; one inside that room
-\ but past the written bytes is E-JSON-WRITE-SOURCE.
+\ A span's offset in the writer's output; -1 for a span outside the room the
+\ output holds, and for a closed writer, whose write then throws
+\ E-JSON-WRITE-STATE; a span inside that room but past the written bytes is
+\ E-JSON-WRITE-SOURCE.
 : JW-ALIAS ( ^writer str -- n ) {: w a:^ u:n :}
    w JW-OUT@ {: v:^ :}
    v NULL-PTR = if -1 exit then

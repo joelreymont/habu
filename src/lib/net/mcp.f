@@ -168,11 +168,11 @@ TYPED-VARIABLE SCHEMA-READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
-\ Where the reply goes: HANDLE's HTTP response in TO, or BUF-W, the writer
+\ Where the reply goes: HANDLE's HTTP response in TO, or ANSWER-W, the writer
 \ ANSWER holds open on its caller's vector.
-ENUM sink response buf ;ENUM
+ENUM sink response vector ;ENUM
 HTTP:MAX-WORKERS TYPED-BUFFER REPLY-TO sink
-HTTP:MAX-WORKERS TYPED-BUFFER BUF-W JSON:writer
+HTTP:MAX-WORKERS TYPED-BUFFER ANSWER-W JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER ID SPAN:span<u8>        \ empty when the id is not known
 HTTP:MAX-WORKERS TYPED-BUFFER METHOD SPAN:span<u8>    \ JSON text, quotes kept
 HTTP:MAX-WORKERS TYPED-BUFFER PARAMS SPAN:span<u8>    \ an object's JSON text, or empty
@@ -565,13 +565,13 @@ CAST: HELD>N ( held -- n )
    answer SLOT STATUS @ HTTP:STATUS!
    answer [: RESPONSE-BODY ;] HTTP:JSON! ;
 
-: BUF-REPLY ( -- ) SLOT BUF-W RESPONSE-BODY drop ;
+: VEC-REPLY ( -- ) SLOT ANSWER-W RESPONSE-BODY drop ;
 
 : SEND ( -- )
    SENT SLOT STAGE !
    SLOT REPLY-TO @ MATCH sink
       response OF HTTP-REPLY ENDOF
-      buf OF BUF-REPLY ENDOF
+      vector OF VEC-REPLY ENDOF
    ;MATCH ;
 
 
@@ -1197,11 +1197,14 @@ CAST: HELD>N ( held -- n )
    text u BUF:N>BLEN buf BUF:REPLACE
    buf BUF:SPAN$ BUF:BLEN>N s" " s" []" true RESULT! ;
 
-\ The worker's violation vector, made the first time.
-: VIOLATION ( -- ^VEC:vector<u8> )
-   SLOT VIOLATIONS {: c:^ :}
+\ The vector in a worker's row cell, made the first time.
+: WORKER-VEC ( ^^VEC:vector<u8> -- ^VEC:vector<u8> )
+   {: c:^ :}
    c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
    c @ ;
+
+\ The worker's violation vector.
+: VIOLATION ( -- ^VEC:vector<u8> ) SLOT VIOLATIONS WORKER-VEC ;
 
 \ Whether the arguments satisfy the tool's inputSchema; false gives the tool
 \ error `arguments` and the violation.
@@ -1264,7 +1267,7 @@ CAST: HELD>N ( held -- n )
 : NOTIFIED ( -- )
    SLOT REPLY-TO @ MATCH sink
       response OF HTTP-NOTIFIED ENDOF
-      buf OF ENDOF
+      vector OF ENDOF
    ;MATCH ;
 
 
@@ -1425,11 +1428,8 @@ CAST: HELD>N ( held -- n )
    code throw ;
 
 
-\ The worker's vector for a held call's response, made the first time.
-: FINISH-VEC ( -- ^VEC:vector<u8> )
-   SLOT FINISHED {: c:^ :}
-   c @ NULL-PTR = if HEAP:ALLOCATOR 0 [type] u8 VEC:NEW c ! then
-   c @ ;
+\ The worker's vector for a held call's response.
+: FINISH-VEC ( -- ^VEC:vector<u8> ) SLOT FINISHED WORKER-VEC ;
 
 \ Under KEEP-LOCK: whether the held row was kept, now finishing.
 : CLAIM-ROW ( n -- bool )
@@ -1446,7 +1446,7 @@ CAST: HELD>N ( held -- n )
 \ FINISH-VEC.
 : RESUME ( n -- )
    {: idx:n :}
-   construct sink buf OPENED-TO
+   construct sink vector OPENED-TO
    idx KEEP-ID BUF:SPAN$ BUF:BLEN>N SPAN:MAKE SLOT ID !
    idx KEEPS KEEP-ERA @ SLOT ERA !
    idx KEEPS KEEP-TOOL @ SLOT CALLED !
@@ -1455,8 +1455,8 @@ CAST: HELD>N ( held -- n )
 \ The quotation run as the body; E-STATE when it gives no result.
 : COMPOSE ( [ -- ] -- )
    {: q :}
-   SLOT BUF-W FINISH-VEC JSON:OPEN drop
-   q [: SLOT BUF-W JSON:CLOSE ;] finally
+   SLOT ANSWER-W FINISH-VEC JSON:OPEN drop
+   q [: SLOT ANSWER-W JSON:CLOSE ;] finally
    SLOT STAGE @ SENT <> if E-STATE throw then ;
 
 \ The response sent on the row's connection, which a throw closes first.
@@ -1475,9 +1475,9 @@ CAST: HELD>N ( held -- n )
    2dup ENVELOPE? if DISPATCH else SEND then ;
 
 
-\ The message answered into BUF-W, the writer ANSWER holds open on the
+\ The message answered into ANSWER-W, the writer ANSWER holds open on the
 \ caller's vector.
-: BUF-ANSWER ( str -- )
+: VEC-ANSWER ( str -- )
    [: CARRIED ;] catch {: code:n :} 2drop
    code PASSED {: passed:n :}
    [: code FAULTED ;] [: s" -" passed MESSAGE-LOGGED ;] finally ;
@@ -1600,7 +1600,7 @@ public
    SLOT STAGE @ CALLING <> if E-STATE throw then
    SLOT REPLY-TO @ MATCH sink
       response OF false ENDOF
-      buf OF true ENDOF
+      vector OF true ENDOF
    ;MATCH if 0 >HELD false exit then
    KEEP-LOCK TASK:GET
    [: KEEP-CALL ;] [: KEEP-UNLOCK ;] finally {: idx:n :}
@@ -1659,10 +1659,10 @@ public
 : ANSWER ( str ^VEC:vector<u8> -- )
    SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
    ON-WORKER
-   construct sink buf OPENED-TO
+   construct sink vector OPENED-TO
    MODERN SLOT ERA !
-   SLOT BUF-W swap JSON:OPEN drop
-   [: BUF-ANSWER ;] [: SLOT BUF-W JSON:CLOSE ;] finally ;
+   SLOT ANSWER-W swap JSON:OPEN drop
+   [: VEC-ANSWER ;] [: SLOT ANSWER-W JSON:CLOSE ;] finally ;
 
 
 private
@@ -1757,10 +1757,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 : BUF+ ( str ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 : VEC$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
-
-\ Every byte the vector holds zeroed: RESIZE zeroes the bytes it cuts, and VEC
-\ keeps those past COUNT zero.
-: WIPE-VEC ( ^VEC:vector<u8> -- ) 0 VEC:RESIZE ;
 
 \ The vector's count grown by n, the span of the new bytes, which are zero; the
 \ block may move.
@@ -2037,7 +2033,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ A fresh handle, held by the row, posting the request vector to the URL; a
 \ handle a halt left is retired first. E-TRANSFER once REQUEST-STOP stopped the row.
-: PREPARE ( n ^u8 n ms -- CURL:handle )
+: PREPARE ( n str ms -- CURL:handle )
    {: idx:n line:^ lu:n limit:ms :}
    idx RETIRE
    idx STOP@ if E-TRANSFER throw then
@@ -2324,7 +2320,8 @@ public
    LIVE {: idx:n :}
    idx RETIRE
    idx TOKEN-BUF BUF:WIPE
-   idx REQUEST-VEC WIPE-VEC
+   \ RESIZE zeroes the bytes it cuts, and VEC keeps those past COUNT zero.
+   idx REQUEST-VEC 0 VEC:RESIZE
    idx RELEASE ;
 
 
