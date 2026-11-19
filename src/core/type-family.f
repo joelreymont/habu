@@ -4976,9 +4976,11 @@ EXPORT CHECK:OK
    T-RES dup TAG T-PARAM <> IF drop 0 RES-FALSE EXIT THEN
    PARAM>FAM dup TFAM-SUM? over TFAM-ENUM? or
    IF RES-TRUE ELSE drop 0 RES-FALSE THEN ;
-: TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
+: TFAM-FIELD-TERM ( n n -- n ) {: term:n field:n :}
    term TFC-ARGS!
-   field PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
+   field PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM ;
+: TFAM-STORAGE-FIELD ( n n -- n n ) {: term:n field:n :}
+   term field TFAM-FIELD-TERM
    field PF-FLAGS@ PF-FLAG-BUFFER = IF field PF-CELLS@ EXIT THEN   \ a buffer: its cells
    dup T-WIDTH ;
 : TFAM-STORAGE-VARIANT ( n n -- n bool ) {: fam:n tag:n :}
@@ -4987,10 +4989,11 @@ EXPORT CHECK:OK
       vid SUMV-TAG@ tag = IF vid RES-TRUE unloop EXIT THEN
    loop
    0 RES-FALSE ;
-: TFAM-STORAGE-PAY ( n n n -- n n ) {: term:n vid:n index:n :}
+: TFAM-PAY-TERM ( n n n -- n ) {: term:n vid:n index:n :}
    term TFC-ARGS!
-   vid index SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM
-   dup T-WIDTH ;
+   vid index SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM ;
+: TFAM-STORAGE-PAY ( n n n -- n n )
+   TFAM-PAY-TERM dup T-WIDTH ;
 
 \ Whether any cell of the type holds an address: a quotation (code) or a pointer
 \ (its pointee is not followed), in every sum alternative, since the tag can change.
@@ -5001,7 +5004,7 @@ EXPORT CHECK:OK
       {: fam:n :}
       fam TFAM-FLD-COUNT@ 0 ?do
          fam TFAM-FLD-START@ i + {: field:n :}
-         term field TFAM-STORAGE-FIELD drop recurse IF
+         term field TFAM-FIELD-TERM recurse IF
             RES-TRUE unloop EXIT
          THEN
       loop RES-FALSE EXIT
@@ -5012,7 +5015,7 @@ EXPORT CHECK:OK
          {: idx:n :}
          fam TFAM-VAR-START@ idx + {: vid:n :}
          vid SUMV-PAY-N 0 ?do
-            term vid i TFAM-STORAGE-PAY drop recurse IF
+            term vid i TFAM-PAY-TERM recurse IF
                RES-TRUE unloop EXIT
             THEN
          loop
@@ -5031,7 +5034,7 @@ EXPORT CHECK:OK
       {: fam:n :}
       fam TFAM-FLD-COUNT@ 0 ?do
          fam TFAM-FLD-START@ i + {: field:n :}
-         term field TFAM-STORAGE-FIELD drop recurse IF
+         term field TFAM-FIELD-TERM recurse IF
             RES-TRUE unloop EXIT
          THEN
       loop RES-FALSE EXIT
@@ -5042,7 +5045,7 @@ EXPORT CHECK:OK
          {: idx:n :}
          fam TFAM-VAR-START@ idx + {: vid:n :}
          vid SUMV-PAY-N 0 ?do
-            term vid i TFAM-STORAGE-PAY drop recurse IF
+            term vid i TFAM-PAY-TERM recurse IF
                RES-TRUE unloop EXIT
             THEN
          loop
