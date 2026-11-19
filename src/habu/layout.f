@@ -65,7 +65,7 @@ $8000000 constant BL-REACH
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
-\ Keep DICT-CAP/CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step. Maki's STEP
+\ Keep DICT-BITS/CFSTK-OFF/DICT-SIZE in step. Maki's STEP
 \ import needs over 65,536 checked records.
 $601000 constant DICT-SIZE
 \ CODE-BAND:BYTES: what REGION leaves for emitted code, [DBASE+DICT-SIZE,
@@ -136,7 +136,8 @@ $8000000000000000 constant DNAME-INT
 \ rows: the owner's checked callers compile.
 $0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots.
-131072 constant DICT-CAP
+17 constant DICT-BITS
+1 DICT-BITS lshift constant DICT-CAP
 $600000 constant CFSTK-OFF
 
 \ Profiler counter band: one 64-bit sample counter per dictionary slot, reserved
@@ -426,10 +427,11 @@ $4338 constant CB-TLS-KEY
 \ them, then d0..d7 from CB-FRAME-FLOATS. The dispatch leaves its result in the
 \ x0 or the d0 slot, and the thunk returns both.
 $40 constant CB-FRAME-FLOATS
-\ Dict-name hash index: slots are a power of 2 (probes with the
-\ HIDX-SLOTS 1 - mask) and 2x DICT-CAP, so the load factor stays <= 50% and
-\ DICT-CAP stays a power of two; bytes = slots * 4 (u32 entries).
-DICT-CAP 2 * constant HIDX-SLOTS
+\ Dict-name hash index: twice DICT-CAP u32 slots; live keys fill half at most.
+\ HIDX-MIX spreads one name's sequential wids, which a bare XOR packs in a run.
+DICT-BITS 1 + constant HIDX-BITS
+1 HIDX-BITS lshift constant HIDX-SLOTS
+$9E3779B97F4A7C15 constant HIDX-MIX
 HIDX-SLOTS 4 * constant HIDX-BYTES
 \ HIDX:LOAD-MAX: the claimed-slot count at which LHIDXADD compacts the table
 \ in place instead of letting chains grow toward a full wrap. Three quarters of

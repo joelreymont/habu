@@ -3,6 +3,7 @@ split-str
 require src/lib/test.f
 require src/habu/fnv.f
 require src/habu/verify-source.f
+require src/lib/fmt.f
 
 17 constant NDB-GLOBAL
 
@@ -10,12 +11,11 @@ package NDB-LEFT
 7 constant HIDDEN
 10 constant SHARED
 public
+get-current constant WID
 20 constant SHARED
 19 constant NDB-GLOBAL
 29 constant SOLO
 31 constant AMBIG
-41 constant NDB-COLLIDE-608
-42 constant NDB-COLLIDE-1146
 ;package
 
 package NDB-RIGHT
@@ -74,20 +74,79 @@ variable ROLL-OCC
    s" using NDB-LEFT : NDB-USED ( -- n ) SOLO ; ;using NDB-USED 29 T=" EV ;
 
 
-: HASH-SLOT ( str -- n )
-   {: name:^ size:n :}
+: HASH-SLOT ( str n -- n )
+   {: name:^ size:n wid:n :}
    FNV:BASIS
    size 0 ?do name i + c@ XREF-FOLD-C FNV:STEP loop
-   HIDX-SLOTS 1- and ;
+   wid xor HIDX-MIX *  64 HIDX-BITS - rshift ;
+
+
+4096 constant PAIR-CAP
+PAIR-CAP TYPED-BUFFER PAIRS n
+128 constant TEXT-CAP
+create TEXT-BUF TEXT-CAP allot
+variable TEXT-U
+
+
+: TEXT$ ( -- ^u8 n ) TEXT-BUF TEXT-U @ ;
+
+
+: TEXT+ ( ^u8 n -- )
+   {: src:^ u:n :}
+   src TEXT-BUF TEXT-U @ + u BYTE-COPY
+   TEXT-U @ u + TEXT-U ! ;
+
+
+: NUM+ ( n -- ) FMT:INT$ TEXT+ ;
+
+
+\ TEXT holds the prefix then k's digits.
+: SPELL ( ^u8 n n -- )
+   {: p:^ u:n k:n :}
+   0 TEXT-U !  p u TEXT+  k NUM+ ;
+
+
+: SLOT-OF ( n -- n )
+   {: k:n :}
+   s" NDB-COLLIDE-" k SPELL TEXT$ NDB-LEFT:WID HASH-SLOT ;
+
+
+: EARLIER ( n -- n )                   \ an index below k on k's slot, or -1
+   {: k:n :}
+   k 0 ?do i PAIRS @ k PAIRS @ = if i unloop exit then loop
+   -1 ;
+
+
+\ The odds that no two of PAIR-CAP names share one of the 2^HIDX-BITS slots
+\ are e^-32.
+: FIND-PAIR ( -- n n bool )
+   PAIR-CAP 0 ?do
+      i SLOT-OF i PAIRS !
+      i EARLIER dup 0< 0= if i true unloop exit then drop
+   loop -1 -1 false ;
+
+
+: DEFINE-PAIR ( n n -- )
+   {: a:n b:n :}
+   s" package NDB-LEFT public 41 constant NDB-COLLIDE-"
+   a SPELL
+   s"  42 constant NDB-COLLIDE-" TEXT+ b NUM+ s"  ;package" TEXT+
+   TEXT$ EV ;
+
+
+: CHECK-PAIR ( n n -- )
+   {: a:n b:n :}
+   a b DEFINE-PAIR
+   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ FIXED-VALUE 41 T=
+   s" ndb-left:ndb-collide-" b SPELL TEXT$ FIXED-VALUE 42 T=
+   s" undefine NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ EV
+   s" NDB-LEFT:NDB-COLLIDE-" a SPELL TEXT$ SPELL-START 0 T=
+   s" NDB-LEFT:NDB-COLLIDE-" b SPELL TEXT$ FIXED-VALUE 42 T= ;
 
 
 : COLLISIONS ( -- )
-   s" NDB-COLLIDE-608" HASH-SLOT s" NDB-COLLIDE-1146" HASH-SLOT T=
-   s" NDB-LEFT:NDB-COLLIDE-608" FIXED-VALUE 41 T=
-   s" ndb-left:ndb-collide-1146" FIXED-VALUE 42 T=
-   s" undefine NDB-LEFT:NDB-COLLIDE-608" EV
-   s" NDB-LEFT:NDB-COLLIDE-608" SPELL-START 0 T=
-   s" NDB-LEFT:NDB-COLLIDE-1146" FIXED-VALUE 42 T= ;
+   FIND-PAIR dup TTRUE {: a:n b:n found:bool :}
+   found if a b CHECK-PAIR then ;
 
 
 : REPLAY-PENDING ( -- )

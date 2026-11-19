@@ -295,7 +295,7 @@ CELL 4 * constant DIAG-BYTES
    end X64CODE:LBL, ;
 
 \ The index at HIDXP-CELL: HIDX-SLOTS u32 slots, each 0 or a record index + 1,
-\ keyed on the folded name's hash XOR the wid. A re-key leaves the old slot.
+\ keyed on the folded name's hash and the wid. A re-key leaves the old slot.
 
 public
 
@@ -409,9 +409,12 @@ variable HEAD-ROW-CELL
    second X64CODE:LBL,
    name len h cur byte prime HASH-SPAN, ;
 
-: SLOT, ( r64 r64 -- ) {: h:r64 wid:r64 :}
+\ h = the first slot of hash h's chain in wid; clobbers tmp.
+: SLOT, ( r64 r64 r64 -- ) {: h:r64 wid:r64 tmp:r64 :}
    h wid ASM-SINK ENC-XOR-RR
-   h HIDX-SLOTS 1- >IMM32 ASM-SINK ENC-AND-RI32 ;
+   tmp HIDX-MIX IMM64,
+   h tmp ASM-SINK ENC-IMUL-RR
+   h 64 HIDX-BITS - >IMM8 ASM-SINK ENC-SHR-RI8 ;
 
 : NEXT-SLOT, ( r64 -- ) {: slot:r64 :}
    slot ASM-SINK ENC-INC
@@ -507,7 +510,7 @@ variable HEAD-ROW-CELL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: probe:label miss:label next:label absent:label :}
    R8 R9 RDI RSI R10 RCX RAX R11 HASH-PAIR,
-   R10 RDX SLOT,                                       \ r10 = the slot
+   R10 RDX RAX SLOT,                                   \ r10 = the slot
    R11 HIDX-SLOTS IMM32,                               \ r11 = slots left to walk
    probe X64CODE:LBL,
    RCX R10 SLOT@,
@@ -595,7 +598,7 @@ variable HEAD-ROW-CELL
    RAX RDX R8 NAME-LEN,
    RAX RSI R8 NAME-AT,
    RSI RDX R8 R9 R10 R11 HASH,
-   R8 RCX SLOT,
+   R8 RCX R10 SLOT,
    R9 HIDX-SLOTS IMM32, ;
 
 \ Index record rdi at the first empty or stale slot of its chain; meeting rdi

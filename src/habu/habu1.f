@@ -3703,6 +3703,12 @@ public
       c7 c7 1 ADDI,  hl B,
    hc LBL,  c4 $3A MOVZ,  hr c3 c4 C-HIDX-STEP,
    hd LBL,  nr lr hr c3 c4 c7 C-HIDX-SPAN, ;
+\ Emit dr = the first slot of hash hr's chain in wid wr; clobbers c.
+: C-HIDX-SLOT, ( n n n n -- ) {: dr:n hr:n wr:n c:n :}
+   dr hr wr EOR,
+   c HIDX-MIX LIT64,
+   dr dr c MUL,
+   dr dr 64 HIDX-BITS - LSRI, ;
 ;package
 
 \ WLFIND:LENTRY is the name's row in one wordlist and the whole of
@@ -3782,7 +3788,7 @@ public
    4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,
    14 DATA HIDXP-CELL LDR,  14 plin CBZ,
    9 10 0 1 15 4 16 7 C-HIDX-PAIR
-   6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+   6 15 2 5 C-HIDX-SLOT,
    8 HIDX-SLOTS LIT64,
    ploop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,            \ x3 = slot value (index+1)
@@ -4329,9 +4335,8 @@ public
 variable LHIDXBUILD
 
 private
-\ Emit: the chain of record x3's key, its folded name XOR its wid cell: x6 =
-\ the chain's first slot, x8 = HIDX-SLOTS, the most slots one walk visits.
-\ Clobbers x2 x4 x5 x7 x15 x16.
+\ Emit: x6 = the first slot of record x3's key, its folded name and wid cell;
+\ x8 = HIDX-SLOTS, a walk's most slots. Clobbers x2 x4 x5 x7 x15 x16.
 : C-HIDX-CHAIN ( -- )
    LBL {: rinl:label :}
    5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
@@ -4342,7 +4347,7 @@ private
       16 5 24 LDR,
    rinl LBL,
    16 15 6 4 5 7 C-HIDX-HASH
-   6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+   6 6 2 5 C-HIDX-SLOT,
    8 HIDX-SLOTS LIT64, ;
 
 \ Emit: index record x3 in table x14 at its chain's first empty or stale slot;
@@ -4749,7 +4754,7 @@ private
       14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 0 CMPI,  2 14 2 C-EQ CSEL,
       14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,
       9 10 15 4 16 7 C-HIDX-HASH
-      6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
+      6 15 2 5 C-HIDX-SLOT,
       8 HIDX-SLOTS LIT64,
    FIND-HLOOP LABEL@ LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,

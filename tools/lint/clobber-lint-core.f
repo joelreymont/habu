@@ -241,6 +241,7 @@ package CLOBBER
    a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-hidx-hash" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-hidx-slot," LINT-STR=CI if LINT-TRUE exit then
    a u s" g-print9" LINT-STR=CI ;
 : INSTR?  ( str -- bool ) {: a:^ u :}
    a u PSEUDO? if LINT-TRUE exit then
@@ -414,6 +415,8 @@ DYNAMIC-BUFFER ROLES u8
    \ C-HIDX-HASH ( nr lr hr c3 c4 c7 ) reads the name and writes the hash
    \ and its scratch.
    a u s" c-hidx-hash" LINT-STR=CI if 0 ER 1 ER 2 EW 3 EW 4 EW 5 EW exit then
+   \ C-HIDX-SLOT, ( dr hr wr c ) reads the hash and wid, writes the slot and c.
+   a u s" c-hidx-slot," LINT-STR=CI if 0 EW 1 ER 2 ER 3 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then ;
 

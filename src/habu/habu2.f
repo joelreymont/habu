@@ -1894,7 +1894,7 @@ private
    kloop LBL,
       3 8 CMP,  C-GE udone BCOND,
       2 3 3 LSLI,  2 7 2 ADD,  2 2 0 LDR,
-      5 15 2 EOR,  4 HIDX-SLOTS 1 - LIT64,  5 5 4 AND,             \ x5 = slot = (hash XOR wid) & mask
+      5 15 2 4 C-HIDX-SLOT,                                        \ x5 = the wid's first slot
       4 HIDX-SLOTS LIT64,                                          \ x4 = step budget
    ploop LBL,
       12 5 2 LSLI,  12 14 12 ADD,  11 12 0 LDRW,                   \ x11 = slot value (index+1)
