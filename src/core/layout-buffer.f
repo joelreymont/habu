@@ -29,7 +29,8 @@ EXPORT TFAM:TFAM-STORAGE-PAY
 EXPORT TFAM:TFAM-STORAGE-PRODUCT?
 EXPORT TFAM:TFAM-STORAGE-QUOT?
 EXPORT TFAM:TFAM-STORAGE-SUM?
-EXPORT TFAM:TFAM-STORAGE-VARIANT
+EXPORT TFAM:TFAM-VAR-COUNT@
+EXPORT TFAM:TFAM-VAR-START@
 
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 0 constant LBUF-FALSE
@@ -82,6 +83,7 @@ EXPORT CHECK:CHECKER-STORAGE-TERM
 EXPORT CHECK:CHECKER-STORAGE-TYPE-REJECT
 EXPORT CHECK:CHECKER-TYPE-SPAN-BREAK?
 EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
+EXPORT CHECK:CODE-SPAN
 EXPORT CHECK:INTRINSIC
 EXPORT CHECK:INTRINSIC-DECLARATION
 EXPORT CHECK:LBI-BAD
@@ -91,6 +93,7 @@ EXPORT CHECK:LBI-TERM
 EXPORT CHECK:STG-NO-NAME
 EXPORT CHECK:STG-SCRATCH-SAVED
 EXPORT CHECK:STG-SCRATCH-TYPE
+EXPORT CHECK:STGR-END
 EXPORT CHECK:STORAGE-RESET
 EXPORT CHECK:T-RES
 EXPORT CHECK:T-WIDTH
@@ -173,40 +176,120 @@ PTR-VARIABLE STGT-START
 : LBUF-ALIGN ( -- )
    align ;
 
-\ A sum is marked by its active tag: a shared payload slot is a code
-\ cell while it holds a quotation and an address cell while it holds a pointer.
-\ A niche value has no tag: its one cell is an address cell, zero or not.
-: STORAGE-MARK-TERM ( ^n n -- ) {: base:^ term:n :}
-   term TFAM-STORAGE-QUOT? if base @ base xt! exit then
-   term T-RES TAG T-PTR = if base ptr-cell-mark exit then
+\ A store of a sum writes every cell of it, zero past the stored variant's
+\ payload, so a cell is an address cell when any variant puts an address in
+\ it: a mark made at allocation holds whichever variant is stored later. A
+\ cell's class is the set of kinds its variants put in it, one bit each.
+0 constant CELL-ABSENT
+1 constant CELL-SCALAR
+2 constant CELL-PTR
+4 constant CELL-CODE
+
+PTR-VARIABLE CLS-P
+SCRATCH-VARIABLE CLS-CAP
+
+: CLS-BASE ( -- ^u8 ) CLS-P @ ;
+: CLS ( n -- ^u8 ) {: at:n :} CLS-BASE at + ;
+
+: CLS-PUT ( n n -- ) {: at:n class:n :}
+   at CLS c@ class or at CLS c! ;
+
+: CLS-SPAN ( n n n -- ) {: at:n width:n class:n :}
+   width 0 ?do at i + class CLS-PUT loop ;
+
+\ The cells of term from cell at, every sum variant over the same cells; a
+\ sum's tag cell holds no address in any variant and stays absent.
+: CLASSIFY ( n n -- ) {: at:n term:n :}
+   term TFAM-STORAGE-QUOT? if at CELL-CODE CLS-PUT exit then
+   term T-RES TAG T-PTR = if at CELL-PTR CLS-PUT exit then
    term TFAM-STORAGE-PRODUCT? if
       {: fam:n :}
-      0
+      at
       fam TFAM-FLD-COUNT@ 0 ?do
          fam TFAM-FLD-START@ i + {: field:n :}
          term field TFAM-STORAGE-FIELD {: child:n width:n :}
-         base over cells + child recurse
+         dup child recurse
          width +
       loop drop
       exit
    then drop
    term TFAM-STORAGE-SUM? if
       {: fam:n :}
-      fam TFAM-NICHE? if base ptr-cell-mark exit then
-      \ The block is fresh, so its tag is 0, which every sum's first variant has.
-      base term T-WIDTH 1- cells + @
-      fam swap TFAM-STORAGE-VARIANT drop {: vid:n :}
-      0
-      vid SUMV-PAY-N 0 ?do
-         term vid i TFAM-STORAGE-PAY {: child:n width:n :}
-         base over cells + child recurse
-         width +
-      loop drop
-   else drop then ;
+      fam TFAM-NICHE? if at CELL-PTR CLS-PUT exit then
+      fam TFAM-VAR-COUNT@ 0 ?do
+         fam TFAM-VAR-START@ i + {: vid:n :}
+         at
+         vid SUMV-PAY-N 0 ?do
+            term vid i TFAM-STORAGE-PAY {: child:n width:n :}
+            dup child recurse
+            width +
+         loop drop
+      loop
+      exit
+   then drop
+   at term T-WIDTH CELL-SCALAR CLS-SPAN ;
+
+\ Classifies the LBUF-W cells of an element of term.
+: CLASSIFY-ELEMENT ( n -- ) {: term:n :}
+   LBUF-W @ {: width:n :}
+   CLS-P CLS-CAP width 1 max ARENA-BYTES-ENSURE
+   width 0 ?do CELL-ABSENT i CLS c! loop
+   0 term CLASSIFY ;
+
+\ The first cell of the element that holds more than one kind, else -1.
+: MIXED-CELL ( -- n )
+   LBUF-W @ 0 ?do
+      i CLS c@ {: class:n :}
+      class class 1 - and 0= 0= if i unloop exit then
+   loop -1 ;
+
+: KINDS$ ( n -- str ) {: class:n :}
+   class CELL-SCALAR CELL-PTR or CELL-CODE or = if
+      s" a number, an address and a quotation" exit
+   then
+   class CELL-SCALAR CELL-PTR or = if s" an address and a number" exit then
+   class CELL-SCALAR CELL-CODE or = if s" a quotation and a number" exit then
+   s" an address and a quotation" ;
+
+\ The storage name, of type text, whose element's cell at holds the kinds of
+\ its class, each in another variant.
+: MIXED-REJECT ( str str n -- ) {: name:^ nameu:n type:^ typeu:n at:n :}
+   at CLS c@ {: class:n :}
+   s" E-BAD-STORAGE" REJECTION:OPEN
+   s" the type " REJECTION:EMIT-STR  type typeu CODE-SPAN
+   s"  of " REJECTION:EMIT-STR  name nameu CODE-SPAN
+   s"  holds " REJECTION:EMIT-STR  class KINDS$ REJECTION:EMIT-STR
+   s"  in cell " REJECTION:EMIT-STR  at REJECTION:EMIT-N
+   s"  of an element, each in another variant" REJECTION:EMIT-STR
+   type typeu REJECTION:AT
+   s" a saved cell must hold one kind in every variant" REJECTION:EMIT-STR
+   REJECTION:HELP  s" keep the " REJECTION:EMIT-STR
+   class CELL-PTR and 0= 0= if s" address" else s" quotation" then REJECTION:EMIT-STR
+   s"  in a variant cell no other variant uses as " REJECTION:EMIT-STR
+   class CELL-SCALAR and 0= 0= if s" a number" else s" a quotation" then REJECTION:EMIT-STR
+   STGR-END ;
+
+\ Rejects the storage name, of type text and term, when two variants put
+\ different kinds in one cell of its element.
+: MIXED-HELD? ( str str n -- bool ) {: name:^ nameu:n type:^ typeu:n term:n :}
+   term CLASSIFY-ELEMENT
+   MIXED-CELL {: at:n :}
+   at 0< if LBUF-FALSE exit then
+   name nameu type typeu at MIXED-REJECT LBUF-TRUE ;
+
+: MARK-CELLS ( ^n n -- ) {: base:^ width:n :}
+   width 0 ?do
+      i CLS c@ {: class:n :}
+      base i cells + {: cell:^ :}
+      class CELL-PTR = if cell ptr-cell-mark then
+      class CELL-CODE = if cell @ cell xt! then
+   loop ;
 
 : STORAGE-MARK-FIXED ( ^n n -- ) {: base:^ term:n :}
+   LBUF-W @ {: width:n :}
+   term CLASSIFY-ELEMENT
    LBUF-N @ 0 ?do
-      base i LBUF-W @ * cells + term STORAGE-MARK-TERM
+      base i width * cells + width MARK-CELLS
    loop ;
 
 \ A type node is read where its text would be parsed (STORAGE-PARSE?), into
@@ -223,6 +306,14 @@ public
 
 : NODE-STORAGE-TERM ( n -- n bool ) NODE-READ LBI-TERM ;
 
+\ Rejects the storage name, of type text, when the type puts an address and
+\ another kind in one cell; a type the checker cannot read answers false.
+: MIXED-SAVED? ( str str -- bool ) {: name:^ nameu:n type:^ typeu:n :}
+   type typeu CHECKER-STORAGE-TERM 0= if drop LBUF-FALSE exit then
+   {: term:n :}
+   term HAS-ADDRESS? 0= if LBUF-FALSE exit then
+   name nameu type typeu term MIXED-HELD? ;
+
 private
 
 \ The definer's validation took the type or node, so its term is taken too.
@@ -233,6 +324,12 @@ private
 : STORAGE-HAS-ADDRESS? ( str -- bool ) TYPE-TERM HAS-ADDRESS? ;
 
 : NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM HAS-ADDRESS? ;
+
+\ Only storage the image saves, hasaddr, is checked; scratch is not saved.
+: TYPE-MIXED? ( str str bool -- bool )
+   {: name:^ nameu:n type:^ typeu:n hasaddr:bool :}
+   hasaddr 0= if LBUF-FALSE exit then
+   name nameu type typeu MIXED-SAVED? ;
 
 : NODE-SCRATCH-REJECT ( str -- ) {: name:^ nameu:n :}
    LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
@@ -458,6 +555,7 @@ global
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
    name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
+   name nameu type typeu hasaddr TYPE-MIXED? if exit then
    name nameu type typeu hasaddr LBUF-FALSE LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
@@ -531,6 +629,7 @@ global
       name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
    then
    scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
+   name nameu type typeu hasaddr TYPE-MIXED? if exit then
    name nameu type typeu hasaddr scratch LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
@@ -551,6 +650,7 @@ INTRINSIC-DECLARATION INTRINSIC
       name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
    then
    scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
+   name nameu type typeu hasaddr TYPE-MIXED? if exit then
    name nameu type typeu TDECL-STORED-CHILD {: handle:n :}
    here {: v:^ :}
    scratch if LBUF-BYTES @ SCRATCH-ALLOT else LBUF-BYTES @ allot then
@@ -567,6 +667,11 @@ public
    1 name nameu node NODE-VALIDATE 0= if exit then
    node NODE-TERM HOLDS-SCRATCH? if name nameu NODE-SCRATCH-REJECT exit then
    node NODE-HAS-ADDRESS? {: hasaddr:bool :}
+   hasaddr if
+      node NODE-TERM {: term:n :}
+      LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
+      name nameu LBUF-GEN LBUF-GEN-U @ term MIXED-HELD? if exit then
+   then
    name nameu node TDECL-NODE-CHILD {: handle:n :}
    here {: v:^ :}
    LBUF-BYTES @ allot

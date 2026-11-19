@@ -522,6 +522,32 @@ variable G-IMAGE-U
    S\" require lib.f\nPERSISTED-PTR-VARIABLE P\nU 16 + P !\n: MAIN ( -- ) P @ NULL-PTR - U NULL-PTR - - .  P @ 16 - @ . ;\n"
    ADDRESS-REFUSED ;
 
+\ A sum's cell is an address cell when any variant puts an address in it, so `some` of a variable's address in an
+\ `option<^n>`, whose first variant is `none`, is relocated, and `none` stored over a heap address leaves a null.
+: OPTION-LIB$ ( -- str )
+   S\" require src/lib/adt/option.f\nrequire src/lib/memory.f\nvariable PT-CELL\n42 PT-CELL !\n1 TYPED-BUFFER PT-ROW option<^n>\nPT-CELL OPTION:SOME 0 PT-ROW !\n1 TYPED-BUFFER HEAP-ROW option<^n>\n1 >COUNT MEM-ALLOC-CELLS OPTION:SOME 0 HEAP-ROW !\nOPTION:NONE 0 HEAP-ROW !\n" ;
+: OPTION-MAIN$ ( -- str )
+   S\" require lib.f\n: SHOW ( option<^n> -- ) MATCH option none OF 1 . ENDOF some OF @ . ENDOF ;MATCH ;\n: MAIN ( -- ) 0 PT-ROW @ SHOW  0 HEAP-ROW @ SHOW ;\n" ;
+
+: OPTION-CASE ( -- )
+   s" option" CASE-OPEN
+   s" lib.f" G-LIB IN-CASE G-LIB-U !
+   G-LIB G-LIB-U @ OPTION-LIB$ FS:WRITE-ALL
+   C-MAIN$ OPTION-MAIN$ FS:WRITE-ALL
+   WARM
+   GE-HB-RESET
+   C-IMAGE$ GE-ARGV+
+   C-IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
+   s" the program built from main.f" LABEL GE-EXPECT-OK
+   S\" 42\n1\n" s" the program prints the variable `some` holds, then `none`" LABEL GE-EXPECT-OUT ;
+
+\ A heap address in an `option<^n>` is refused.
+: HEAP-CASE ( -- )
+   s" heap" CASE-OPEN
+   S\" require src/lib/adt/option.f\nrequire src/lib/memory.f\n1 TYPED-BUFFER HEAP-ROW option<^n>\n1 >COUNT MEM-ALLOC-CELLS OPTION:SOME 0 HEAP-ROW !\n"
+   S\" require lib.f\n: MAIN ( -- ) 0 HEAP-ROW @ MATCH option none OF 1 . ENDOF some OF @ . ENDOF ;MATCH ;\n"
+   ADDRESS-REFUSED ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -551,7 +577,8 @@ variable G-IMAGE-U
    ENVTOP-BUILDS
    ROOTED-WRITE ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
    SYMLINK-CASE LONG-CASE GAP-CASE FILE-END-CASE LATER-END-CASE EXTENT-END-CASE
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one" type cr ;
+   OPTION-CASE HEAP-CASE
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one, a variable's address in a sum's second variant, run, and a heap address there, refused" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

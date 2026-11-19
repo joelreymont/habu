@@ -2739,7 +2739,9 @@ variable STG-TYPE-U
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER
-   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? drop
+   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? 0= IF
+      name nameu type typeu LBUF:MIXED-SAVED? drop
+   THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
@@ -2768,7 +2770,11 @@ variable STG-TYPE-U
    count countu COUNT-REFUSED? IF EXIT THEN
    name nameu at nameu ARM
    type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER
-   scratch 0= IF name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? drop THEN
+   scratch 0= IF
+      name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? 0= IF
+         name nameu type typeu LBUF:MIXED-SAVED? drop
+      THEN
+   THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 
@@ -2779,7 +2785,11 @@ variable STG-TYPE-U
    SCAN-SCRATCH-CLAUSE? {: scratch:bool :}
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE
-   scratch 0= IF name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? drop THEN
+   scratch 0= IF
+      name nameu type typeu STG-SCRATCH-TYPE LBUF:SCRATCH-HELD? 0= IF
+         name nameu type typeu LBUF:MIXED-SAVED? drop
+      THEN
+   THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 

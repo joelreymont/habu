@@ -758,6 +758,13 @@ s" : RFB-PTR-GEN-BAD ( zpub:rfbwone<^a> -- result<zpub:rfbwone<^a>,n> ) RESULT:O
 s" : RFB-PTR-CON-BAD ( zpub:rfbwone<^a> -- result<zpub:rfbwone<^a>,n> ) construct result ok ;"
    TCE-CATCH 70 T=
 
+\ A sum one variant puts an address in and another a number, in the same cell,
+\ is rejected as stored: the build could not tell which the cell holds.
+SUMTYPE zaddrmix VARIANT ref ^n ;VARIANT VARIANT num n ;VARIANT ;SUMTYPE
+REJECTION:CAPTURE  s" 1 TYPED-BUFFER ZAM-ROW zaddrmix" TCE-CATCH 70 T=
+REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" CONTAINS? TTRUE
+REJECTION:BUFFER-OFF
+
 T-REPORT
 
 ;using
