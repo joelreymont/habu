@@ -6,7 +6,7 @@ split-str
 \ proc-watch.f and proc-control.f name them. The seam loads globally here, so a
 \ file loading it into a private wordlist (test/x86-64-peer-harness.f) follows.
 
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/string.f
 require src/core/cell.f
 require src/core/engine-error.f
@@ -155,7 +155,7 @@ public
 \ (src/os/linux-x86-64/sys.f), so it is appended as it stands where ARM64's
 \ consumer reassembles four-byte words.
 : EMIT-STENCIL ( ^u8 n -- ) {: a:^ u:n :}
-   a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+   a u ASM-SINK VEC:APPEND ;
 
 ;using
 ;using

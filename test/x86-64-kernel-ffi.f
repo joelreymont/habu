@@ -4,6 +4,7 @@ split-str
 \ takes nine integer arguments, so a stub stands in.
 \ The host checks each image's ELF header; running them is the peer's.
 require test/x86-64-boot-harness.f
+require src/lib/vector.f
 
 package X64K-FFI
 using X64ASM
@@ -76,7 +77,7 @@ $F constant JUNK                        \ the ABI rows' argbuf[6..9): no place
 : C-TEXT, ( str -- label ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
-   text LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN  0 ASM-SINK BUF:APPEND-BYTE
+   text LBL,  a u ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
    past LBL,
    text ;
 

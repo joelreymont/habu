@@ -7,7 +7,7 @@ split-str
 \ The signal and crash words are the x86-64 side of src/habu/crash.f. A file that loads the x86-64
 \ seam into a private wordlist first (test/x86-64-peer-harness.f) must load after this one.
 require src/core/exit-status.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/string.f
 require src/core/cell.f
 require src/habu/boot-cells.f
@@ -44,7 +44,7 @@ variable OCC-BAD
 
 : IMM, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
-: TEXT-BYTES, ( str -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+: TEXT-BYTES, ( str -- ) ASM-SINK VEC:APPEND ;
 
 : CELL! ( r64 n -- ) {: r:r64 off:n :}
    r RBASE-REG off MEM-OFF ASM-SINK ENC-MOV-MR ;
@@ -108,7 +108,7 @@ private
    RDI RAX ASM-SINK ENC-MOV-RR  RSI DBASE-REG ASM-SINK ENC-MOV-RR
    RCX ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-MOV-RR
    RCX DBASE-REG ASM-SINK ENC-SUB-RR
-   $F3 ASM-SINK BUF:APPEND-BYTE  $A4 ASM-SINK BUF:APPEND-BYTE  \ rep movsb
+   $F3 ASM-SINK VEC:PUSH c!  $A4 ASM-SINK VEC:PUSH c!  \ rep movsb
    RDI DBASE-REG ASM-SINK ENC-MOV-RR
    RSI REGION IMM,  RDX PROT-RX IMM,  R10 MAP-SHARED-FIXED IMM,
    R8 RSP MEM-AT ASM-SINK ENC-MOV-RM  R9 ZERO-REG,

@@ -7,11 +7,13 @@ split-str
 
 require src/core/exit-status.f
 require src/lib/error.f
-require src/lib/byte-buffer.f
 require src/core/roles.f
 require src/arch/x86-64/asm.f
 require src/os/linux/layout.f
 require src/habu/layout.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 
 package X64CODE
 using X64ASM
@@ -34,7 +36,7 @@ private
 1 constant SITE-REL32
 2 constant SITE-ABS64
 
-create SINK BUF:HDR-BYTES allot
+TYPED-VARIABLE SINK ^VEC:vector<u8>     \ NULL-PTR until SINK-OPEN makes it
 variable NLBL                        \ labels made since load
 variable LBL-BASE                    \ the number of this stream's first label
 variable NSITE                       \ sites this stream has recorded
@@ -45,12 +47,11 @@ DYNAMIC-BUFFER SITE-KIND n           \ site -> SITE-REL8, SITE-REL32 or SITE-ABS
 
 public
 
-\ The driver owns ASM-SINK's lifetime: `ASM-SINK n BUF:N>BLEN BUF:INIT` before
-\ the first byte and `ASM-SINK BUF:DISPOSE` when the build is done. CODE and
-\ ASM-LEN fail closed on a sink that is not live.
-: ASM-SINK ( -- ^u8 ) SINK ;
-: CODE ( -- ^u8 ) SINK BUF:SPAN$ drop ;
-: ASM-LEN ( -- n ) SINK BUF:LEN@ BUF:BLEN>N ;
+\ The driver owns ASM-SINK's lifetime: SINK-OPEN before the first byte and
+\ SINK-CLOSE when the build is done.
+: ASM-SINK ( -- ^VEC:vector<u8> ) SINK @ ;
+: CODE ( -- ^u8 ) ASM-SINK VEC:SPAN SPAN:$ drop ;
+: ASM-LEN ( -- n ) ASM-SINK VEC:COUNT ;
 
 private
 
@@ -87,7 +88,7 @@ private
 \ unresolved label, a delta its field cannot hold, a label bound twice, a label
 \ this stream did not make (refused at use, before its instruction is emitted),
 \ and a site or label past the end of the stream: the backstop for a driver that
-\ empties the sink with BUF:CLEAR instead of ASM-RESET, catching only the sites
+\ empties the sink with VEC:RESIZE instead of ASM-RESET, catching only the sites
 \ past the new end.
 : ?IN-CODE ( n -- )
    ASM-LEN > if s" x64code: label or site past the end of the code" REFUSE then ;
@@ -151,34 +152,34 @@ public
 \ Each site's label is checked before its instruction is emitted.
 : JMP, ( label -- )
    ?KNOWN {: k:n :}
-   0 >REL SINK ENC-JMP-REL32
+   0 >REL ASM-SINK ENC-JMP-REL32
    k SITE-REL32 END-SITE ;
 
 : JMP8, ( label -- )
    ?KNOWN {: k:n :}
-   0 >REL SINK ENC-JMP-REL8
+   0 >REL ASM-SINK ENC-JMP-REL8
    k SITE-REL8 END-SITE ;
 
 : JCC, ( condition label -- )
    ?KNOWN {: c:condition k:n :}
-   c 0 >REL SINK ENC-JCC-REL32
+   c 0 >REL ASM-SINK ENC-JCC-REL32
    k SITE-REL32 END-SITE ;
 
 : JCC8, ( condition label -- )
    ?KNOWN {: c:condition k:n :}
-   c 0 >REL SINK ENC-JCC-REL8
+   c 0 >REL ASM-SINK ENC-JCC-REL8
    k SITE-REL8 END-SITE ;
 
 : CALL, ( label -- )
    ?KNOWN {: k:n :}
-   0 >REL SINK ENC-CALL-REL32
+   0 >REL ASM-SINK ENC-CALL-REL32
    k SITE-REL32 END-SITE ;
 
 \ The site is X64ASM's own statement of where the immediate starts.
 : MOVABS, ( r64 label -- )
    ?KNOWN {: r:r64 k:n :}
    ASM-LEN MOV-RI64-IMM-OFF + {: at:n :}
-   r 0 >IMM64 SINK ENC-MOV-RI64
+   r 0 >IMM64 ASM-SINK ENC-MOV-RI64
    at k SITE-ABS64 SITE+ ;
 
 \ Read before ASM-LINK forgets it: the number the link adds the load address
@@ -189,7 +190,7 @@ public
    at ;
 
 : U64, ( n -- ) {: v:n :}
-   8 0 ?do v i 8 * rshift $FF and SINK BUF:APPEND-BYTE loop ;
+   8 0 ?do v i 8 * rshift $FF and ASM-SINK VEC:PUSH c! loop ;
 
 \ The linker keeps labels through map writing. Other callers finish the stream
 \ with ASM-LINK, which also releases its labels and sites.
@@ -202,7 +203,7 @@ public
 \ Empties the sink and forgets this stream's labels and sites, so nothing of one
 \ stream is patched into the next.
 : ASM-RESET ( -- )
-   SINK BUF:CLEAR
+   ASM-SINK 0 VEC:RESIZE
    FORGET ;
 
 \ Kernel objects retain labels and relocation sites until final placement.
@@ -219,16 +220,18 @@ public
 : REF+ ( n n n -- ) SITE+ ;
 
 : SINK-OPEN ( -- )
-   SINK BUF:LIVE? if ASM-RESET else
-      SINK 4096 BUF:N>BLEN BUF:INIT
+   SINK @ NULL-PTR <> if ASM-RESET else
+      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW SINK !
    then ;
 
-: SINK-CLOSE ( -- ) FORGET SINK BUF:DISPOSE ;
+: SINK-CLOSE ( -- ) FORGET ASM-SINK VEC:DELETE  NULL-PTR SINK ! ;
 
-: BYTES, ( ^u8 n -- ) BUF:N>BLEN SINK BUF:APPEND-SPAN ;
+: BYTES, ( ^u8 n -- ) ASM-SINK VEC:APPEND ;
 
 : SPACE ( n -- ^u8 )
-   BUF:N>BLEN SINK swap BUF:GROW SPAN:$ drop ;
+   ASM-LEN {: k:n at:n :}
+   ASM-SINK at k + VEC:ENSURE
+   ASM-SINK VEC:SPAN at SPAN:SKIP SPAN:$ drop ;
 
 ;using
 ;package

@@ -7,6 +7,7 @@ split-str
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require test/x86-64-peer-harness.f
+require src/lib/vector.f
 require test/gate-common.f
 
 package X64-MAIN-ENTRY-TEST
@@ -43,7 +44,7 @@ using X64RT
    RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
    ASM-SINK ENC-RET
    X64BOOT:LEXITHOOK @ >LABEL LBL,  ASM-SINK ENC-RET
-   msg LBL,  S\" APP\n" BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
+   msg LBL,  S\" APP\n" ASM-SINK VEC:APPEND
    floor LBL,  RDI 70 IMM,  NR-EXIT-GROUP SYS,
    code-end LBL,
    path u X64HARNESS:WRITE

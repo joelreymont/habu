@@ -5,6 +5,7 @@ split-str
 \ working directory and remove what they create, so a peer runs them in a
 \ writable scratch directory.
 require test/x86-64-boot-harness.f
+require src/lib/vector.f
 
 package X64K-SYSCALLS
 using X64ASM
@@ -115,7 +116,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
    LBL LBL {: text:label past:label :}
    past JMP,
    text LBL,
-   a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN  0 ASM-SINK BUF:APPEND-BYTE
+   a u ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
    past LBL,
    RAX text MOVABS,  0 G-PUSH ;
 

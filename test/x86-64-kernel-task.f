@@ -7,6 +7,7 @@ split-str
 \ register, as an xt may, so an entry reading the descriptor from one faults.
 require test/x86-64-boot-harness.f
 require src/habu/task-abi.f
+require src/lib/vector.f
 
 package X64K-TASK
 using X64ASM
@@ -93,7 +94,7 @@ $B0B0B0B0B0 constant CALLER-RBX
 : SYM, ( str -- ) {: a:^ u:n :}
    LBL LBL {: name:label past:label :}
    past JMP,
-   name LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN  0 ASM-SINK BUF:APPEND-BYTE
+   name LBL,  a u ASM-SINK VEC:APPEND  0 ASM-SINK VEC:PUSH c!
    past LBL,
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 

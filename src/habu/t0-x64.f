@@ -8,7 +8,9 @@ split-str
 \ CTARGET-ARCH:X86-64.
 
 require src/lib/error.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/x86-64/asm.f
@@ -39,8 +41,7 @@ using X64ASM
    k 5 = if C-G exit then
    E-OPERAND throw ;
 
-create SINK BUF:HDR-BYTES SCRATCH-ALLOT
-SCRATCH-VARIABLE SINK-LIVE            \ nonzero once SINK holds storage
+TYPED-VARIABLE SINK-CELL ^VEC:vector<u8> SCRATCH-ONLY  \ NULL-PTR until OPEN makes it
 variable FRAME-CELLS                  \ machine-stack cells this body uses
 variable REC-CELLS                    \ this unit's quotation record cells
 variable ENV                          \ 1 when this unit keeps a record's address
@@ -50,9 +51,9 @@ variable NUNIT                        \ units begun in this emission
 DYNAMIC-BUFFER FRAME-AT n             \ offset of each frame imm32 field
 DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
-4096 constant SINK-START-BYTES
+: SINK ( -- ^VEC:vector<u8> ) SINK-CELL @ ;
 
-: HERE-OFF ( -- n ) SINK BUF:LEN@ BUF:BLEN>N ;
+: HERE-OFF ( -- n ) SINK VEC:COUNT ;
 
 \ A body's contract (src/habu/kernel-x64.f "A BODY'S CONTRACT"): rbp is DATA,
 \ r12 the data stack pointer, rbx and r13-r15 the other engine registers;
@@ -75,7 +76,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    k 4 + >R64 ;
 
 : PUT ( n n n -- ) {: v:n off:n k:n :}
-   SINK BUF:SPAN$ drop off + {: p:^ :}
+   SINK VEC:SPAN SPAN:$ drop off + {: p:^ :}
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 : REL32! ( n n -- )
@@ -145,11 +146,10 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 \ RIP-relative lea names its unit inside the emission and needs no row.
 \ Every branch is rel32.
 : OPEN ( -- )
-   SINK-LIVE @ 0= if
-      SINK SINK-START-BYTES BUF:N>BLEN BUF:INIT
-      1 SINK-LIVE !
+   SINK-CELL @ NULL-PTR = if
+      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW SINK-CELL !
    then
-   SINK BUF:CLEAR
+   SINK 0 VEC:RESIZE
    0 NUNIT !
    LABEL:RESET
    UNIT-BEGIN ;
@@ -187,7 +187,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    RAX SINK ENC-JMP-REG
    at ;
 
-: BYTES ( -- ^u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
+: BYTES ( -- ^u8 n ) SINK VEC:SPAN SPAN:$ ;
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
 : PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}
@@ -454,7 +454,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
 
 \ The branch's jcc becomes je: its opcode byte is just before the field.
 : ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: at:n :}
-   C-E CONDITION>N $80 +  SINK BUF:SPAN$ drop at 1 - + c! ;
+   C-E CONDITION>N $80 +  SINK VEC:SPAN SPAN:$ drop at 1 - + c! ;
 
 \ A backward rel is measured from the end of the instruction, five bytes for
 \ jmp rel32 and six for jcc rel32.

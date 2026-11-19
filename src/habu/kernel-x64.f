@@ -17,7 +17,7 @@ split-str
 \ (proc-watch.f, proc-control.f) load here globally, so this file loads before
 \ any file that loads the seam into a private wordlist, as boot-x64.f does.
 require src/core/exit-status.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/string.f
 require src/habu/prof-x64.f
 require src/core/does-clause.f
@@ -91,7 +91,7 @@ private
 : IMM32, ( r64 n -- ) {: r:r64 v:n :}
    r R64>N >R32 v >IMM32 ASM-SINK ENC-MOV32-RI32 ;
 
-: TEXT, ( ^u8 n -- ) BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+: TEXT, ( ^u8 n -- ) ASM-SINK VEC:APPEND ;
 
 : EXIT-GROUP, ( n -- ) {: rc:n :} RDI rc IMM32,  NR-EXIT-GROUP SYS, ;
 
@@ -1021,7 +1021,7 @@ SPN-ENVP0 CELL + constant SPN-FRAME
    RCX RAX ASM-SINK ENC-CMP-RR  C-A RCX RAX ASM-SINK ENC-CMOVCC
    RCX RCX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RSI DBASE-REG ASM-SINK ENC-MOV-RR  RDI 8 FRAME@,
-   $F3 ASM-SINK BUF:APPEND-BYTE  $A4 ASM-SINK BUF:APPEND-BYTE  \ rep movsb
+   $F3 ASM-SINK VEC:PUSH c!  $A4 ASM-SINK VEC:PUSH c!  \ rep movsb
    R9 CP-REG ASM-SINK ENC-MOV-RR
    R10 R10 NDICT-HW-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    R10 NDICT-REG ASM-SINK ENC-CMP-RR  C-B R10 NDICT-REG ASM-SINK ENC-CMOVCC
@@ -1052,7 +1052,7 @@ SPN-ENVP0 CELL + constant SPN-FRAME
    RSI DBASE-REG CFSTK-OFF MEM-OFF ASM-SINK ENC-LEA
    RCX R9 ASM-SINK ENC-MOV-RR  RCX RSI ASM-SINK ENC-SUB-RR
    RDI 8 FRAME@,  RDI CFSTK-OFF >IMM32 ASM-SINK ENC-ADD-RI32
-   $F3 ASM-SINK BUF:APPEND-BYTE  $A4 ASM-SINK BUF:APPEND-BYTE ;
+   $F3 ASM-SINK VEC:PUSH c!  $A4 ASM-SINK VEC:PUSH c! ;
 
 \ The child replaces both shared mappings with its private backing before
 \ returning to Habu. Copying before clone prevents later parent writes from
@@ -1700,8 +1700,8 @@ private
    nl 1 STDERR-WRITE,
    done X64CODE:LBL,  ASM-SINK ENC-RET
    head X64CODE:LBL,  s" hb: uncaught throw code " TEXT,
-   minus X64CODE:LBL,  $2D ASM-SINK BUF:APPEND-BYTE
-   nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE ;
+   minus X64CODE:LBL,  $2D ASM-SINK VEC:PUSH c!
+   nl X64CODE:LBL,  STR-LF ASM-SINK VEC:PUSH c! ;
 
 \ Forward the code in rax without beginning another throw. Habu's `evaluate`
 \ recovers through `catch`; the handler's frame is restored and resumed.
@@ -3876,10 +3876,10 @@ private
 
 \ mov rax, qword ptr fs:0 (the segment form the assembler does not expose).
 : CB-SELF, ( -- )
-   $64 ASM-SINK BUF:APPEND-BYTE  $48 ASM-SINK BUF:APPEND-BYTE
-   $8B ASM-SINK BUF:APPEND-BYTE  $04 ASM-SINK BUF:APPEND-BYTE
-   $25 ASM-SINK BUF:APPEND-BYTE
-   4 0 do  0 ASM-SINK BUF:APPEND-BYTE  loop ;
+   $64 ASM-SINK VEC:PUSH c!  $48 ASM-SINK VEC:PUSH c!
+   $8B ASM-SINK VEC:PUSH c!  $04 ASM-SINK VEC:PUSH c!
+   $25 ASM-SINK VEC:PUSH c!
+   4 0 do  0 ASM-SINK VEC:PUSH c!  loop ;
 
 public
 

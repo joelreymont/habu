@@ -6,6 +6,7 @@ split-str
 \ ..." lines on stderr: range and below "slot out of range", unbound "slot is
 \ not bound", no-frame "context is not inside a foreign call".
 require test/x86-64-boot-harness.f
+require src/lib/vector.f
 
 package X64K-CB
 using X64ASM
@@ -54,8 +55,8 @@ NEST-DEPTH CELL + constant QSORT-FN
 : SYM, ( str -- ) {: a:^ u:n :}
    LBL LBL {: name:label past:label :}
    past JMP,
-   name LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
-   0 ASM-SINK BUF:APPEND-BYTE
+   name LBL,  a u ASM-SINK VEC:APPEND
+   0 ASM-SINK VEC:PUSH c!
    past LBL,
    RSI name MOVABS,  X64KERNEL:DLSYM,  0 G-PUSH ;
 

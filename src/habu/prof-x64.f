@@ -6,7 +6,7 @@ split-str
 \ whose first cell is a leaf's return address, and searches each code cell one byte back, inside
 \ the call that pushed it.
 require src/core/exit-status.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/string.f
 require src/habu/layout.f
 require src/habu/wl.f
@@ -180,7 +180,7 @@ variable SESSION-CELL
    LBL {: msg:label :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
    RDI EXIT-STATUS:SYSTEM IMM32,  NR-EXIT-GROUP SYS,
-   msg LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+   msg LBL,  a u ASM-SINK VEC:APPEND ;
 
 \ rdi = a live dictionary record; rsi/rdx = its raw name bytes and exact
 \ length. The caller copies those bytes before a rewind can reuse the record.
@@ -791,7 +791,7 @@ variable SESSION-CELL
 : SAY, ( str -- ) {: a:^ u:n :}
    LBL LBL {: text:label past:label :}
    past JMP,
-   text LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
+   text LBL,  a u ASM-SINK VEC:APPEND
    past LBL,
    RDI STDOUT IMM32,  RSI text MOVABS,  RDX u IMM32,  NR-WRITE SYS, ;
 

@@ -4,6 +4,7 @@ require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/link.f
+require src/lib/vector.f
 
 package LINKER
 private
@@ -38,7 +39,7 @@ public
 
 : PAD8 ( -- )
    X64? if
-      begin SIZE 7 and 0<> while 0 X64CODE:ASM-SINK BUF:APPEND-BYTE repeat
+      begin SIZE 7 and 0<> while 0 X64CODE:ASM-SINK VEC:PUSH c! repeat
    else SIZE 7 and 0<> if 0 A64ICODE:EMITW then then ;
 
 : CODE-ADDRESS! ( n n ^u8 -- )

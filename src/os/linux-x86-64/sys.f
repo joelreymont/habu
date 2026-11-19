@@ -13,8 +13,8 @@ split-str
 \
 \ THE INSTRUCTION EMITTERS BELOW ARE WRITTEN AGAINST TWO LAYERS AND ONE NAME.
 \
-\ ASM-SINK ( -- ^u8 ) is the byte buffer the code stream currently being
-\ emitted appends into, package X64CODE's (src/arch/x86-64/icode.f). An x86_64
+\ ASM-SINK ( -- ^VEC:vector<u8> ) is the vector the code stream being emitted
+\ appends into, package X64CODE's (src/arch/x86-64/icode.f). An x86_64
 \ instruction has no value representation, so every X64ASM encoder takes that
 \ sink as its last operand instead of returning a word the way the ARM64
 \ encoders do. Both packages are loaded before this file, which imports them

@@ -4,11 +4,11 @@ split-str
 \ bit, and a refusal is E-OPERAND. Destination comes first; a memory form takes
 \ the data register first and the memory operand second, stores included.
 \ An instruction is 1..15 bytes with no value form, so every ENC-* takes the byte
-\ sink (src/lib/byte-buffer.f) last and appends to it.
+\ sink, a vector<u8> (src/lib/vector.f), last and appends to it.
 
 require src/lib/type/deftype.f
 require src/lib/error.f
-require src/lib/byte-buffer.f
+require src/lib/vector.f
 
 package X64ASM
 public
@@ -62,17 +62,17 @@ private
 \ ---- the byte sink -----------------------------------------------------------
 \ Encoded length depends only on the word chosen and the memory operand's
 \ displacement magnitude: no relaxation. A caller sizes an instruction by
-\ encoding it into a scratch buffer.
-: EMIT-B ( n ^a -- ) {: v:n s:^ :}
-   v $FF and s BUF:APPEND-BYTE ;
+\ encoding it into a scratch vector.
+: EMIT-B ( n ^VEC:vector<u8> -- ) {: v:n s:^ :}
+   v $FF and s VEC:PUSH c! ;
 
-: EMIT-W ( n ^a -- ) {: v:n s:^ :}
+: EMIT-W ( n ^VEC:vector<u8> -- ) {: v:n s:^ :}
    v s EMIT-B  v 8 rshift s EMIT-B ;
 
-: EMIT-D ( n ^a -- ) {: v:n s:^ :}
+: EMIT-D ( n ^VEC:vector<u8> -- ) {: v:n s:^ :}
    v s EMIT-W  v 16 rshift s EMIT-W ;
 
-: EMIT-Q ( n ^a -- ) {: v:n s:^ :}
+: EMIT-Q ( n ^VEC:vector<u8> -- ) {: v:n s:^ :}
    v s EMIT-D  v 32 rshift s EMIT-D ;
 
 \ ---- operation width ---------------------------------------------------------
@@ -92,7 +92,7 @@ private
 \ ---- REX, ModRM and SIB ------------------------------------------------------
 \ The REX byte is omitted entirely when every one of its fields is zero and no
 \ operand forces it, which is what makes a 32-bit or 8-bit form short.
-: EMIT-REX ( n n n n n ^a -- ) {: w:n r:n x:n b:n force:n s:^ :}
+: EMIT-REX ( n n n n n ^VEC:vector<u8> -- ) {: w:n r:n x:n b:n force:n s:^ :}
    w r or x or b or force or 0= if exit then
    $40 w 3 lshift or r 2 lshift or x 1 lshift or b or s EMIT-B ;
 
@@ -103,7 +103,7 @@ private
    ss 6 lshift  index 7 and 3 lshift or  base 7 and or ;
 
 \ A two-byte opcode is carried as 0Fxx, so its escape byte is its high byte.
-: EMIT-OP ( n ^a -- ) {: op:n s:^ :}
+: EMIT-OP ( n ^VEC:vector<u8> -- ) {: op:n s:^ :}
    op 8 rshift $FF and {: esc:n :}
    esc 0<> if esc s EMIT-B then
    op s EMIT-B ;
@@ -194,11 +194,11 @@ private
    ix MEM-NONE = if 4 exit then
    ix ;
 
-: EMIT-DISP ( n mem ^a -- ) {: mod:n m:mem s:^ :}
+: EMIT-DISP ( n mem ^VEC:vector<u8> -- ) {: mod:n m:mem s:^ :}
    mod 1 = if m MEM-DISP s EMIT-B exit then
    mod 2 = if m MEM-DISP s EMIT-D then ;
 
-: EMIT-MEM ( n mem ^a -- ) {: reg:n m:mem s:^ :}
+: EMIT-MEM ( n mem ^VEC:vector<u8> -- ) {: reg:n m:mem s:^ :}
    m MEM-RIP? if
       0 reg 5 MODRM s EMIT-B
       m MEM-DISP s EMIT-D
@@ -216,7 +216,7 @@ private
 \ ---- the two instruction shapes ----------------------------------------------
 \ A register-to-register form: mod 11, the reg field holding either a register
 \ or an opcode extension digit.
-: RR-ENC ( n n n n n ^a -- ) {: wd:n op:n reg:n rm:n force:n s:^ :}
+: RR-ENC ( n n n n n ^VEC:vector<u8> -- ) {: wd:n op:n reg:n rm:n force:n s:^ :}
    wd WIDTH-66? if $66 s EMIT-B then
    wd WIDTH-W  reg 3 rshift  0  rm 3 rshift  force s EMIT-REX
    op s EMIT-OP
@@ -224,7 +224,7 @@ private
 
 \ A memory form: the reg field as above, the rm field spelled by the ModRM, the
 \ optional SIB and the displacement.
-: RM-ENC ( n n n mem n ^a -- ) {: wd:n op:n reg:n m:mem force:n s:^ :}
+: RM-ENC ( n n n mem n ^VEC:vector<u8> -- ) {: wd:n op:n reg:n m:mem force:n s:^ :}
    m MEM-CHECK
    wd WIDTH-66? if $66 s EMIT-B then
    wd WIDTH-W  reg 3 rshift  m MEM-X-BIT  m MEM-B-BIT  force s EMIT-REX
@@ -236,59 +236,59 @@ private
 \ and 20, sub 28, xor 30, cmp 38. base+1 is the "to r/m" direction, base+3 the
 \ "from r/m" direction, and base>>3 is the opcode extension digit the immediate
 \ forms 81 and 83 select with.
-: ALU-RR ( n r64 r64 ^a -- ) {: base:n dst:r64 src:r64 s:^ :}
+: ALU-RR ( n r64 r64 ^VEC:vector<u8> -- ) {: base:n dst:r64 src:r64 s:^ :}
    W64 base 1 + src R64>N REG-NUM dst R64>N REG-NUM 0 s RR-ENC ;
 
-: ALU-RM ( n r64 mem ^a -- ) {: base:n dst:r64 m:mem s:^ :}
+: ALU-RM ( n r64 mem ^VEC:vector<u8> -- ) {: base:n dst:r64 m:mem s:^ :}
    W64 base 3 + dst R64>N REG-NUM m 0 s RM-ENC ;
 
-: ALU-MR ( n r64 mem ^a -- ) {: base:n src:r64 m:mem s:^ :}
+: ALU-MR ( n r64 mem ^VEC:vector<u8> -- ) {: base:n src:r64 m:mem s:^ :}
    W64 base 1 + src R64>N REG-NUM m 0 s RM-ENC ;
 
 \ The immediate is screened BEFORE the first byte reaches the sink, so a refused
 \ instruction leaves no prefix of itself behind. Every immediate form below
 \ follows this order for the same reason.
-: ALU-RI8 ( n r64 imm8 ^a -- ) {: base:n dst:r64 v:imm8 s:^ :}
+: ALU-RI8 ( n r64 imm8 ^VEC:vector<u8> -- ) {: base:n dst:r64 v:imm8 s:^ :}
    v IMM8>N ?SIMM8 {: imm:n :}
    W64 $83 base 3 rshift dst R64>N REG-NUM 0 s RR-ENC
    imm s EMIT-B ;
 
-: ALU-RI32 ( n r64 imm32 ^a -- ) {: base:n dst:r64 v:imm32 s:^ :}
+: ALU-RI32 ( n r64 imm32 ^VEC:vector<u8> -- ) {: base:n dst:r64 v:imm32 s:^ :}
    v IMM32>N ?SIMM32 {: imm:n :}
    W64 $81 base 3 rshift dst R64>N REG-NUM 0 s RR-ENC
    imm s EMIT-D ;
 
 \ ---- shared shapes for the remaining families --------------------------------
-: UNARY-F7 ( n r64 ^a -- ) {: digit:n r:r64 s:^ :}
+: UNARY-F7 ( n r64 ^VEC:vector<u8> -- ) {: digit:n r:r64 s:^ :}
    W64 $F7 digit r R64>N REG-NUM 0 s RR-ENC ;
 
-: UNARY-FF ( n r64 ^a -- ) {: digit:n r:r64 s:^ :}
+: UNARY-FF ( n r64 ^VEC:vector<u8> -- ) {: digit:n r:r64 s:^ :}
    W64 $FF digit r R64>N REG-NUM 0 s RR-ENC ;
 
-: SHIFT-RI8 ( n r64 imm8 ^a -- ) {: digit:n r:r64 v:imm8 s:^ :}
+: SHIFT-RI8 ( n r64 imm8 ^VEC:vector<u8> -- ) {: digit:n r:r64 v:imm8 s:^ :}
    v IMM8>N ?SHIFT-COUNT {: count:n :}
    W64 $C1 digit r R64>N REG-NUM 0 s RR-ENC
    count s EMIT-B ;
 
-: SHIFT-CL ( n r64 ^a -- ) {: digit:n r:r64 s:^ :}
+: SHIFT-CL ( n r64 ^VEC:vector<u8> -- ) {: digit:n r:r64 s:^ :}
    W64 $D3 digit r R64>N REG-NUM 0 s RR-ENC ;
 
-: EXT-RM ( n n r64 mem ^a -- ) {: wd:n op:n dst:r64 m:mem s:^ :}
+: EXT-RM ( n n r64 mem ^VEC:vector<u8> -- ) {: wd:n op:n dst:r64 m:mem s:^ :}
    wd op dst R64>N REG-NUM m 0 s RM-ENC ;
 
 \ An indirect jump or call is FF /digit with no REX.W: a near branch target is a
 \ full 64-bit register already.
-: BRANCH-REG ( n r64 ^a -- ) {: digit:n r:r64 s:^ :}
+: BRANCH-REG ( n r64 ^VEC:vector<u8> -- ) {: digit:n r:r64 s:^ :}
    W32 $FF digit r R64>N REG-NUM 0 s RR-ENC ;
 
 \ Mandatory SSE prefixes precede REX. Screen both registers before that prefix;
 \ REX.W is set only by the signed 64-bit integer conversion forms.
-: SSE-RR ( n n n n n ^a -- ) {: prefix:n wd:n op:n reg:n rm:n s:^ :}
+: SSE-RR ( n n n n n ^VEC:vector<u8> -- ) {: prefix:n wd:n op:n reg:n rm:n s:^ :}
    reg REG-NUM {: rn:n :}  rm REG-NUM {: mn:n :}
    prefix s EMIT-B
    wd op rn mn 0 s RR-ENC ;
 
-: MOVSD-MEM ( n xmm mem ^a -- ) {: op:n r:xmm m:mem s:^ :}
+: MOVSD-MEM ( n xmm mem ^VEC:vector<u8> -- ) {: op:n r:xmm m:mem s:^ :}
    r XMM>N REG-NUM {: rn:n :}  m MEM-CHECK
    $F2 s EMIT-B
    0 rn 3 rshift m MEM-X-BIT m MEM-B-BIT 0 s EMIT-REX
@@ -297,7 +297,7 @@ private
 
 \ A locked 64-bit read-modify-write of memory. The lock prefix precedes REX, as
 \ a mandatory SSE prefix does, so both operands are screened before it.
-: LOCK-RM ( n r64 mem ^a -- ) {: op:n r:r64 m:mem s:^ :}
+: LOCK-RM ( n r64 mem ^VEC:vector<u8> -- ) {: op:n r:r64 m:mem s:^ :}
    r R64>N REG-NUM {: rn:n :}  m MEM-CHECK
    $F0 s EMIT-B
    W64 op rn m 0 s RM-ENC ;
@@ -383,65 +383,65 @@ public
 \ One encoding per operation: no accumulator short forms (05 id, A9 id, 90+r)
 \ and no D1 shift-by-one. llvm-mc prefers those, so test/compiler/x86-64-asm.f
 \ pins registers other than rax and shift counts other than one.
-: ENC-ADD-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}  $00 d sr s ALU-RR ;
-: ENC-ADD-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}   $00 d m s ALU-RM ;
-: ENC-ADD-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}  $00 sr m s ALU-MR ;
-: ENC-ADD-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}   $00 d v s ALU-RI8 ;
-: ENC-ADD-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $00 d v s ALU-RI32 ;
+: ENC-ADD-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}  $00 d sr s ALU-RR ;
+: ENC-ADD-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $00 d m s ALU-RM ;
+: ENC-ADD-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $00 sr m s ALU-MR ;
+: ENC-ADD-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $00 d v s ALU-RI8 ;
+: ENC-ADD-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $00 d v s ALU-RI32 ;
 
-: ENC-OR-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}   $08 d sr s ALU-RR ;
-: ENC-OR-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}    $08 d m s ALU-RM ;
-: ENC-OR-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}   $08 sr m s ALU-MR ;
-: ENC-OR-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}    $08 d v s ALU-RI8 ;
-: ENC-OR-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $08 d v s ALU-RI32 ;
+: ENC-OR-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}   $08 d sr s ALU-RR ;
+: ENC-OR-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}    $08 d m s ALU-RM ;
+: ENC-OR-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}   $08 sr m s ALU-MR ;
+: ENC-OR-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}    $08 d v s ALU-RI8 ;
+: ENC-OR-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $08 d v s ALU-RI32 ;
 
-: ENC-ADC-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}  $10 d sr s ALU-RR ;
-: ENC-ADC-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}   $10 d m s ALU-RM ;
-: ENC-ADC-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}  $10 sr m s ALU-MR ;
-: ENC-ADC-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}   $10 d v s ALU-RI8 ;
-: ENC-ADC-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $10 d v s ALU-RI32 ;
+: ENC-ADC-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}  $10 d sr s ALU-RR ;
+: ENC-ADC-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $10 d m s ALU-RM ;
+: ENC-ADC-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $10 sr m s ALU-MR ;
+: ENC-ADC-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $10 d v s ALU-RI8 ;
+: ENC-ADC-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $10 d v s ALU-RI32 ;
 
-: ENC-SBB-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}  $18 d sr s ALU-RR ;
-: ENC-SBB-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}   $18 d m s ALU-RM ;
-: ENC-SBB-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}  $18 sr m s ALU-MR ;
-: ENC-SBB-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}   $18 d v s ALU-RI8 ;
-: ENC-SBB-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $18 d v s ALU-RI32 ;
+: ENC-SBB-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}  $18 d sr s ALU-RR ;
+: ENC-SBB-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $18 d m s ALU-RM ;
+: ENC-SBB-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $18 sr m s ALU-MR ;
+: ENC-SBB-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $18 d v s ALU-RI8 ;
+: ENC-SBB-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $18 d v s ALU-RI32 ;
 
-: ENC-AND-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}  $20 d sr s ALU-RR ;
-: ENC-AND-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}   $20 d m s ALU-RM ;
-: ENC-AND-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}  $20 sr m s ALU-MR ;
-: ENC-AND-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}   $20 d v s ALU-RI8 ;
-: ENC-AND-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $20 d v s ALU-RI32 ;
+: ENC-AND-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}  $20 d sr s ALU-RR ;
+: ENC-AND-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $20 d m s ALU-RM ;
+: ENC-AND-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $20 sr m s ALU-MR ;
+: ENC-AND-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $20 d v s ALU-RI8 ;
+: ENC-AND-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $20 d v s ALU-RI32 ;
 
-: ENC-SUB-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}  $28 d sr s ALU-RR ;
-: ENC-SUB-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}   $28 d m s ALU-RM ;
-: ENC-SUB-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}  $28 sr m s ALU-MR ;
-: ENC-SUB-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}   $28 d v s ALU-RI8 ;
-: ENC-SUB-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $28 d v s ALU-RI32 ;
+: ENC-SUB-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}  $28 d sr s ALU-RR ;
+: ENC-SUB-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $28 d m s ALU-RM ;
+: ENC-SUB-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $28 sr m s ALU-MR ;
+: ENC-SUB-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $28 d v s ALU-RI8 ;
+: ENC-SUB-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $28 d v s ALU-RI32 ;
 
-: ENC-XOR-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}  $30 d sr s ALU-RR ;
-: ENC-XOR-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}   $30 d m s ALU-RM ;
-: ENC-XOR-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}  $30 sr m s ALU-MR ;
-: ENC-XOR-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}   $30 d v s ALU-RI8 ;
-: ENC-XOR-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $30 d v s ALU-RI32 ;
+: ENC-XOR-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}  $30 d sr s ALU-RR ;
+: ENC-XOR-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $30 d m s ALU-RM ;
+: ENC-XOR-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $30 sr m s ALU-MR ;
+: ENC-XOR-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $30 d v s ALU-RI8 ;
+: ENC-XOR-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $30 d v s ALU-RI32 ;
 
-: ENC-CMP-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}  $38 d sr s ALU-RR ;
-: ENC-CMP-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}   $38 d m s ALU-RM ;
-: ENC-CMP-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}  $38 sr m s ALU-MR ;
-: ENC-CMP-RI8 ( r64 imm8 ^a -- ) {: d:r64 v:imm8 s:^ :}   $38 d v s ALU-RI8 ;
-: ENC-CMP-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :} $38 d v s ALU-RI32 ;
+: ENC-CMP-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}  $38 d sr s ALU-RR ;
+: ENC-CMP-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}   $38 d m s ALU-RM ;
+: ENC-CMP-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}  $38 sr m s ALU-MR ;
+: ENC-CMP-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 v:imm8 s:^ :}   $38 d v s ALU-RI8 ;
+: ENC-CMP-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :} $38 d v s ALU-RI32 ;
 
 \ ---- test --------------------------------------------------------------------
 \ test is its own opcode family: 85 /r both directions (it is commutative, so the
 \ memory form is the one encoding) and F7 /0 id for the immediate. It has no
 \ sign-extended imm8 form.
-: ENC-TEST-RR ( r64 r64 ^a -- ) {: l:r64 r:r64 s:^ :}
+: ENC-TEST-RR ( r64 r64 ^VEC:vector<u8> -- ) {: l:r64 r:r64 s:^ :}
    W64 $85 r R64>N REG-NUM l R64>N REG-NUM 0 s RR-ENC ;
 
-: ENC-TEST-MR ( r64 mem ^a -- ) {: r:r64 m:mem s:^ :}
+: ENC-TEST-MR ( r64 mem ^VEC:vector<u8> -- ) {: r:r64 m:mem s:^ :}
    W64 $85 r R64>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-TEST-RI32 ( r64 imm32 ^a -- ) {: r:r64 v:imm32 s:^ :}
+: ENC-TEST-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: r:r64 v:imm32 s:^ :}
    v IMM32>N ?SIMM32 {: imm:n :}
    W64 $F7 0 r R64>N REG-NUM 0 s RR-ENC
    imm s EMIT-D ;
@@ -450,55 +450,55 @@ public
 \ 89 stores the reg field into the rm operand, 8B loads it from there; the 8-bit
 \ pair is 88 and 8A. A 32-bit form zero-extends its result into the full 64-bit
 \ register, which is why the 32-bit move is the cheap zeroing and truncating one.
-: ENC-MOV-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}
+: ENC-MOV-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}
    W64 $89 sr R64>N REG-NUM d R64>N REG-NUM 0 s RR-ENC ;
 
-: ENC-MOV-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-MOV-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $8B d R64>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-MOV-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}
+: ENC-MOV-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}
    W64 $89 sr R64>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-MOV32-RR ( r32 r32 ^a -- ) {: d:r32 sr:r32 s:^ :}
+: ENC-MOV32-RR ( r32 r32 ^VEC:vector<u8> -- ) {: d:r32 sr:r32 s:^ :}
    W32 $89 sr R32>N REG-NUM d R32>N REG-NUM 0 s RR-ENC ;
 
-: ENC-MOV32-RM ( r32 mem ^a -- ) {: d:r32 m:mem s:^ :}
+: ENC-MOV32-RM ( r32 mem ^VEC:vector<u8> -- ) {: d:r32 m:mem s:^ :}
    W32 $8B d R32>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-MOV32-MR ( r32 mem ^a -- ) {: sr:r32 m:mem s:^ :}
+: ENC-MOV32-MR ( r32 mem ^VEC:vector<u8> -- ) {: sr:r32 m:mem s:^ :}
    W32 $89 sr R32>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-MOV16-RR ( r16 r16 ^a -- ) {: d:r16 sr:r16 s:^ :}
+: ENC-MOV16-RR ( r16 r16 ^VEC:vector<u8> -- ) {: d:r16 sr:r16 s:^ :}
    W16 $89 sr R16>N REG-NUM d R16>N REG-NUM 0 s RR-ENC ;
 
-: ENC-MOV16-RM ( r16 mem ^a -- ) {: d:r16 m:mem s:^ :}
+: ENC-MOV16-RM ( r16 mem ^VEC:vector<u8> -- ) {: d:r16 m:mem s:^ :}
    W16 $8B d R16>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-MOV16-MR ( r16 mem ^a -- ) {: sr:r16 m:mem s:^ :}
+: ENC-MOV16-MR ( r16 mem ^VEC:vector<u8> -- ) {: sr:r16 m:mem s:^ :}
    W16 $89 sr R16>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-MOV8-RR ( r8 r8 ^a -- ) {: d:r8 sr:r8 s:^ :}
+: ENC-MOV8-RR ( r8 r8 ^VEC:vector<u8> -- ) {: d:r8 sr:r8 s:^ :}
    sr R8>N REG-NUM {: sn:n :}
    d R8>N REG-NUM {: dn:n :}
    W8 $88 sn dn sn R8-FORCE dn R8-FORCE or s RR-ENC ;
 
-: ENC-MOV8-RM ( r8 mem ^a -- ) {: d:r8 m:mem s:^ :}
+: ENC-MOV8-RM ( r8 mem ^VEC:vector<u8> -- ) {: d:r8 m:mem s:^ :}
    d R8>N REG-NUM {: dn:n :}
    W8 $8A dn m dn R8-FORCE s RM-ENC ;
 
-: ENC-MOV8-MR ( r8 mem ^a -- ) {: sr:r8 m:mem s:^ :}
+: ENC-MOV8-MR ( r8 mem ^VEC:vector<u8> -- ) {: sr:r8 m:mem s:^ :}
    sr R8>N REG-NUM {: sn:n :}
    W8 $88 sn m sn R8-FORCE s RM-ENC ;
 
 \ C7 /0 id sign-extends its imm32 across the whole 64-bit register; B8+rd id
 \ zero-extends, which is the only difference between the two constant forms and
 \ the reason their immediates are screened against different ranges.
-: ENC-MOV-RI32 ( r64 imm32 ^a -- ) {: d:r64 v:imm32 s:^ :}
+: ENC-MOV-RI32 ( r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 v:imm32 s:^ :}
    v IMM32>N ?SIMM32 {: imm:n :}
    W64 $C7 0 d R64>N REG-NUM 0 s RR-ENC
    imm s EMIT-D ;
 
-: ENC-MOV32-RI32 ( r32 imm32 ^a -- ) {: d:r32 v:imm32 s:^ :}
+: ENC-MOV32-RI32 ( r32 imm32 ^VEC:vector<u8> -- ) {: d:r32 v:imm32 s:^ :}
    d R32>N REG-NUM {: n:n :}
    v IMM32>N ?UIMM32 {: imm:n :}
    0 0 0 n 3 rshift 0 s EMIT-REX
@@ -508,12 +508,12 @@ public
 \ Like the register-to-memory stores, the source precedes the destination.
 \ C7's signed imm32 literal writes exactly four bytes here (no REX.W).
 \ A RIP displacement is relative to the end, including these immediate bytes.
-: ENC-MOV32-MI32 ( imm32 mem ^a -- ) {: v:imm32 m:mem s:^ :}
+: ENC-MOV32-MI32 ( imm32 mem ^VEC:vector<u8> -- ) {: v:imm32 m:mem s:^ :}
    v IMM32>N ?SIMM32 {: imm:n :}
    W32 $C7 0 m 0 s RM-ENC
    imm s EMIT-D ;
 
-: ENC-MOV-RI64 ( r64 imm64 ^a -- ) {: d:r64 v:imm64 s:^ :}
+: ENC-MOV-RI64 ( r64 imm64 ^VEC:vector<u8> -- ) {: d:r64 v:imm64 s:^ :}
    d R64>N REG-NUM {: n:n :}
    1 0 0 n 3 rshift 0 s EMIT-REX
    $B8 n 7 and + s EMIT-B
@@ -523,124 +523,124 @@ public
 \ ANDPD and XORPD operate on both 64-bit lanes; UCOMISD compares the low lane.
 \ CMPUNORDSD writes the low lane all ones when the two doubles are unordered
 \ and zero when not: CMPSD's predicate 3 is its trailing byte.
-: ENC-MOVSD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-MOVSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F10 d XMM>N sr XMM>N s SSE-RR ;
-: ENC-MOVSD-RM ( xmm mem ^a -- ) {: d:xmm m:mem s:^ :}
+: ENC-MOVSD-RM ( xmm mem ^VEC:vector<u8> -- ) {: d:xmm m:mem s:^ :}
    $0F10 d m s MOVSD-MEM ;
-: ENC-MOVSD-MR ( xmm mem ^a -- ) {: sr:xmm m:mem s:^ :}
+: ENC-MOVSD-MR ( xmm mem ^VEC:vector<u8> -- ) {: sr:xmm m:mem s:^ :}
    $0F11 sr m s MOVSD-MEM ;
-: ENC-ADDSD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-ADDSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F58 d XMM>N sr XMM>N s SSE-RR ;
-: ENC-SUBSD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-SUBSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F5C d XMM>N sr XMM>N s SSE-RR ;
-: ENC-MULSD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-MULSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F59 d XMM>N sr XMM>N s SSE-RR ;
-: ENC-DIVSD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-DIVSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F5E d XMM>N sr XMM>N s SSE-RR ;
-: ENC-SQRTSD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-SQRTSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0F51 d XMM>N sr XMM>N s SSE-RR ;
-: ENC-ANDPD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-ANDPD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $66 W32 $0F54 d XMM>N sr XMM>N s SSE-RR ;
-: ENC-XORPD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-XORPD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $66 W32 $0F57 d XMM>N sr XMM>N s SSE-RR ;
-: ENC-UCOMISD-RR ( xmm xmm ^a -- ) {: l:xmm r:xmm s:^ :}
+: ENC-UCOMISD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: l:xmm r:xmm s:^ :}
    $66 W32 $0F2E l XMM>N r XMM>N s SSE-RR ;
-: ENC-CMPUNORDSD-RR ( xmm xmm ^a -- ) {: d:xmm sr:xmm s:^ :}
+: ENC-CMPUNORDSD-RR ( xmm xmm ^VEC:vector<u8> -- ) {: d:xmm sr:xmm s:^ :}
    $F2 W32 $0FC2 d XMM>N sr XMM>N s SSE-RR  3 s EMIT-B ;
 
 \ Hardware conversions only: range/NaN handling for Habu's realint belongs to
 \ lowering (src/compiler/native/select-x64.f EMIT-REALINT), not this byte
 \ encoder.
-: ENC-CVTSI2SD-RR ( xmm r64 ^a -- ) {: d:xmm sr:r64 s:^ :}
+: ENC-CVTSI2SD-RR ( xmm r64 ^VEC:vector<u8> -- ) {: d:xmm sr:r64 s:^ :}
    $F2 W64 $0F2A d XMM>N sr R64>N s SSE-RR ;
-: ENC-CVTTSD2SI-RR ( r64 xmm ^a -- ) {: d:r64 sr:xmm s:^ :}
+: ENC-CVTTSD2SI-RR ( r64 xmm ^VEC:vector<u8> -- ) {: d:r64 sr:xmm s:^ :}
    $F2 W64 $0F2C d R64>N sr XMM>N s SSE-RR ;
 
 \ The eight bytes moved between the two files unchanged, a NaN's payload and a
 \ signalling NaN included. The XMM register is the ModRM reg field in both
 \ directions and the opcode says which way: 66 REX.W 0F 6E /r into it,
 \ 66 REX.W 0F 7E /r out of it.
-: ENC-MOVQ-XR ( xmm r64 ^a -- ) {: d:xmm sr:r64 s:^ :}
+: ENC-MOVQ-XR ( xmm r64 ^VEC:vector<u8> -- ) {: d:xmm sr:r64 s:^ :}
    $66 W64 $0F6E d XMM>N sr R64>N s SSE-RR ;
-: ENC-MOVQ-RX ( r64 xmm ^a -- ) {: d:r64 sr:xmm s:^ :}
+: ENC-MOVQ-RX ( r64 xmm ^VEC:vector<u8> -- ) {: d:r64 sr:xmm s:^ :}
    $66 W64 $0F7E sr XMM>N d R64>N s SSE-RR ;
 
 \ ---- widening moves ----------------------------------------------------------
 \ Every one of these widens into a 64-bit register, so REX.W is always set. movsxd
 \ is the 32-to-64 sign extension and has no zero-extending counterpart: a plain
 \ 32-bit move already zero-extends.
-: ENC-MOVZX-8-RR ( r64 r8 ^a -- ) {: d:r64 sr:r8 s:^ :}
+: ENC-MOVZX-8-RR ( r64 r8 ^VEC:vector<u8> -- ) {: d:r64 sr:r8 s:^ :}
    sr R8>N REG-NUM {: sn:n :}
    W64 $0FB6 d R64>N REG-NUM sn sn R8-FORCE s RR-ENC ;
 
-: ENC-MOVZX-8-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-MOVZX-8-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $0FB6 d m s EXT-RM ;
 
-: ENC-MOVZX-16-RR ( r64 r16 ^a -- ) {: d:r64 sr:r16 s:^ :}
+: ENC-MOVZX-16-RR ( r64 r16 ^VEC:vector<u8> -- ) {: d:r64 sr:r16 s:^ :}
    W64 $0FB7 d R64>N REG-NUM sr R16>N REG-NUM 0 s RR-ENC ;
 
-: ENC-MOVZX-16-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-MOVZX-16-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $0FB7 d m s EXT-RM ;
 
-: ENC-MOVSX-8-RR ( r64 r8 ^a -- ) {: d:r64 sr:r8 s:^ :}
+: ENC-MOVSX-8-RR ( r64 r8 ^VEC:vector<u8> -- ) {: d:r64 sr:r8 s:^ :}
    sr R8>N REG-NUM {: sn:n :}
    W64 $0FBE d R64>N REG-NUM sn sn R8-FORCE s RR-ENC ;
 
-: ENC-MOVSX-8-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-MOVSX-8-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $0FBE d m s EXT-RM ;
 
-: ENC-MOVSX-16-RR ( r64 r16 ^a -- ) {: d:r64 sr:r16 s:^ :}
+: ENC-MOVSX-16-RR ( r64 r16 ^VEC:vector<u8> -- ) {: d:r64 sr:r16 s:^ :}
    W64 $0FBF d R64>N REG-NUM sr R16>N REG-NUM 0 s RR-ENC ;
 
-: ENC-MOVSX-16-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-MOVSX-16-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $0FBF d m s EXT-RM ;
 
-: ENC-MOVSXD-RR ( r64 r32 ^a -- ) {: d:r64 sr:r32 s:^ :}
+: ENC-MOVSXD-RR ( r64 r32 ^VEC:vector<u8> -- ) {: d:r64 sr:r32 s:^ :}
    W64 $63 d R64>N REG-NUM sr R32>N REG-NUM 0 s RR-ENC ;
 
-: ENC-MOVSXD-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-MOVSXD-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $63 d m s EXT-RM ;
 
 \ ---- address arithmetic ------------------------------------------------------
-: ENC-LEA ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-LEA ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $8D d m s EXT-RM ;
 
 \ ---- the 32-bit zeroing idiom ------------------------------------------------
 \ xor of a register with itself is two bytes and clears the whole 64-bit
 \ register because a 32-bit result zero-extends.
-: ENC-XOR32-RR ( r32 r32 ^a -- ) {: d:r32 sr:r32 s:^ :}
+: ENC-XOR32-RR ( r32 r32 ^VEC:vector<u8> -- ) {: d:r32 sr:r32 s:^ :}
    W32 $31 sr R32>N REG-NUM d R32>N REG-NUM 0 s RR-ENC ;
 
 \ ---- one-register arithmetic -------------------------------------------------
 \ mul, imul, div and idiv here are the widening forms: they read rax (and rdx for
 \ the divisions) implicitly and write the 128-bit result or the quotient and
 \ remainder into rdx:rax. cqo sign-extends rax into rdx:rax to set up idiv.
-: ENC-NOT ( r64 ^a -- ) {: r:r64 s:^ :}   2 r s UNARY-F7 ;
-: ENC-NEG ( r64 ^a -- ) {: r:r64 s:^ :}   3 r s UNARY-F7 ;
-: ENC-MUL ( r64 ^a -- ) {: r:r64 s:^ :}   4 r s UNARY-F7 ;
-: ENC-IMUL1 ( r64 ^a -- ) {: r:r64 s:^ :} 5 r s UNARY-F7 ;
-: ENC-DIV ( r64 ^a -- ) {: r:r64 s:^ :}   6 r s UNARY-F7 ;
-: ENC-IDIV ( r64 ^a -- ) {: r:r64 s:^ :}  7 r s UNARY-F7 ;
-: ENC-INC ( r64 ^a -- ) {: r:r64 s:^ :}   0 r s UNARY-FF ;
-: ENC-DEC ( r64 ^a -- ) {: r:r64 s:^ :}   1 r s UNARY-FF ;
+: ENC-NOT ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}   2 r s UNARY-F7 ;
+: ENC-NEG ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}   3 r s UNARY-F7 ;
+: ENC-MUL ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}   4 r s UNARY-F7 ;
+: ENC-IMUL1 ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :} 5 r s UNARY-F7 ;
+: ENC-DIV ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}   6 r s UNARY-F7 ;
+: ENC-IDIV ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}  7 r s UNARY-F7 ;
+: ENC-INC ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}   0 r s UNARY-FF ;
+: ENC-DEC ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}   1 r s UNARY-FF ;
 
-: ENC-CQO ( ^a -- ) {: s:^ :}
+: ENC-CQO ( ^VEC:vector<u8> -- ) {: s:^ :}
    1 0 0 0 0 s EMIT-REX
    $99 s EMIT-B ;
 
 \ ---- the non-widening signed multiply ----------------------------------------
-: ENC-IMUL-RR ( r64 r64 ^a -- ) {: d:r64 sr:r64 s:^ :}
+: ENC-IMUL-RR ( r64 r64 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 s:^ :}
    W64 $0FAF d R64>N REG-NUM sr R64>N REG-NUM 0 s RR-ENC ;
 
-: ENC-IMUL-RM ( r64 mem ^a -- ) {: d:r64 m:mem s:^ :}
+: ENC-IMUL-RM ( r64 mem ^VEC:vector<u8> -- ) {: d:r64 m:mem s:^ :}
    W64 $0FAF d m s EXT-RM ;
 
-: ENC-IMUL-RRI8 ( r64 r64 imm8 ^a -- ) {: d:r64 sr:r64 v:imm8 s:^ :}
+: ENC-IMUL-RRI8 ( r64 r64 imm8 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 v:imm8 s:^ :}
    v IMM8>N ?SIMM8 {: imm:n :}
    W64 $6B d R64>N REG-NUM sr R64>N REG-NUM 0 s RR-ENC
    imm s EMIT-B ;
 
-: ENC-IMUL-RRI32 ( r64 r64 imm32 ^a -- ) {: d:r64 sr:r64 v:imm32 s:^ :}
+: ENC-IMUL-RRI32 ( r64 r64 imm32 ^VEC:vector<u8> -- ) {: d:r64 sr:r64 v:imm32 s:^ :}
    v IMM32>N ?SIMM32 {: imm:n :}
    W64 $69 d R64>N REG-NUM sr R64>N REG-NUM 0 s RR-ENC
    imm s EMIT-D ;
@@ -648,81 +648,81 @@ public
 \ ---- shifts and rotates ------------------------------------------------------
 \ C1 /n ib shifts by an immediate, D3 /n by the count in cl. rol 0, ror 1,
 \ shl 4, shr 5, sar 7.
-: ENC-ROL-RI8 ( r64 imm8 ^a -- ) {: r:r64 v:imm8 s:^ :} 0 r v s SHIFT-RI8 ;
-: ENC-ROR-RI8 ( r64 imm8 ^a -- ) {: r:r64 v:imm8 s:^ :} 1 r v s SHIFT-RI8 ;
-: ENC-SHL-RI8 ( r64 imm8 ^a -- ) {: r:r64 v:imm8 s:^ :} 4 r v s SHIFT-RI8 ;
-: ENC-SHR-RI8 ( r64 imm8 ^a -- ) {: r:r64 v:imm8 s:^ :} 5 r v s SHIFT-RI8 ;
-: ENC-SAR-RI8 ( r64 imm8 ^a -- ) {: r:r64 v:imm8 s:^ :} 7 r v s SHIFT-RI8 ;
+: ENC-ROL-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: r:r64 v:imm8 s:^ :} 0 r v s SHIFT-RI8 ;
+: ENC-ROR-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: r:r64 v:imm8 s:^ :} 1 r v s SHIFT-RI8 ;
+: ENC-SHL-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: r:r64 v:imm8 s:^ :} 4 r v s SHIFT-RI8 ;
+: ENC-SHR-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: r:r64 v:imm8 s:^ :} 5 r v s SHIFT-RI8 ;
+: ENC-SAR-RI8 ( r64 imm8 ^VEC:vector<u8> -- ) {: r:r64 v:imm8 s:^ :} 7 r v s SHIFT-RI8 ;
 
-: ENC-ROL-CL ( r64 ^a -- ) {: r:r64 s:^ :} 0 r s SHIFT-CL ;
-: ENC-ROR-CL ( r64 ^a -- ) {: r:r64 s:^ :} 1 r s SHIFT-CL ;
-: ENC-SHL-CL ( r64 ^a -- ) {: r:r64 s:^ :} 4 r s SHIFT-CL ;
-: ENC-SHR-CL ( r64 ^a -- ) {: r:r64 s:^ :} 5 r s SHIFT-CL ;
-: ENC-SAR-CL ( r64 ^a -- ) {: r:r64 s:^ :} 7 r s SHIFT-CL ;
+: ENC-ROL-CL ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :} 0 r s SHIFT-CL ;
+: ENC-ROR-CL ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :} 1 r s SHIFT-CL ;
+: ENC-SHL-CL ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :} 4 r s SHIFT-CL ;
+: ENC-SHR-CL ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :} 5 r s SHIFT-CL ;
+: ENC-SAR-CL ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :} 7 r s SHIFT-CL ;
 
 \ ---- control flow ------------------------------------------------------------
 \ Every relative displacement is measured in bytes from the END of the branch, and
 \ the caller picks the width by picking the word.
-: ENC-JMP-REL8 ( rel ^a -- ) {: d:rel s:^ :}
+: ENC-JMP-REL8 ( rel ^VEC:vector<u8> -- ) {: d:rel s:^ :}
    d REL>N ?SIMM8 {: delta:n :}
    $EB s EMIT-B  delta s EMIT-B ;
 
-: ENC-JMP-REL32 ( rel ^a -- ) {: d:rel s:^ :}
+: ENC-JMP-REL32 ( rel ^VEC:vector<u8> -- ) {: d:rel s:^ :}
    d REL>N ?SIMM32 {: delta:n :}
    $E9 s EMIT-B  delta s EMIT-D ;
 
-: ENC-CALL-REL32 ( rel ^a -- ) {: d:rel s:^ :}
+: ENC-CALL-REL32 ( rel ^VEC:vector<u8> -- ) {: d:rel s:^ :}
    d REL>N ?SIMM32 {: delta:n :}
    $E8 s EMIT-B  delta s EMIT-D ;
 
-: ENC-JCC-REL8 ( condition rel ^a -- ) {: c:condition d:rel s:^ :}
+: ENC-JCC-REL8 ( condition rel ^VEC:vector<u8> -- ) {: c:condition d:rel s:^ :}
    c CONDITION>N ?COND {: cc:n :}
    d REL>N ?SIMM8 {: delta:n :}
    $70 cc + s EMIT-B  delta s EMIT-B ;
 
-: ENC-JCC-REL32 ( condition rel ^a -- ) {: c:condition d:rel s:^ :}
+: ENC-JCC-REL32 ( condition rel ^VEC:vector<u8> -- ) {: c:condition d:rel s:^ :}
    c CONDITION>N ?COND {: cc:n :}
    d REL>N ?SIMM32 {: delta:n :}
    $0F80 cc + s EMIT-OP  delta s EMIT-D ;
 
-: ENC-JMP-REG ( r64 ^a -- ) {: r:r64 s:^ :}  4 r s BRANCH-REG ;
+: ENC-JMP-REG ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}  4 r s BRANCH-REG ;
 
-: ENC-CALL-REG ( r64 ^a -- ) {: r:r64 s:^ :} 2 r s BRANCH-REG ;
+: ENC-CALL-REG ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :} 2 r s BRANCH-REG ;
 
-: ENC-RET ( ^a -- ) {: s:^ :}  $C3 s EMIT-B ;
+: ENC-RET ( ^VEC:vector<u8> -- ) {: s:^ :}  $C3 s EMIT-B ;
 
-: ENC-SYSCALL ( ^a -- ) {: s:^ :}  $0F05 s EMIT-OP ;
+: ENC-SYSCALL ( ^VEC:vector<u8> -- ) {: s:^ :}  $0F05 s EMIT-OP ;
 
-: ENC-CPUID ( ^a -- ) {: s:^ :}  $0FA2 s EMIT-OP ;
+: ENC-CPUID ( ^VEC:vector<u8> -- ) {: s:^ :}  $0FA2 s EMIT-OP ;
 
-: ENC-NOP ( ^a -- ) {: s:^ :}  $90 s EMIT-B ;
+: ENC-NOP ( ^VEC:vector<u8> -- ) {: s:^ :}  $90 s EMIT-B ;
 
-: ENC-UD2 ( ^a -- ) {: s:^ :}  $0F0B s EMIT-OP ;
+: ENC-UD2 ( ^VEC:vector<u8> -- ) {: s:^ :}  $0F0B s EMIT-OP ;
 
 \ setcc writes one byte, so its destination is a byte register and carries that
 \ file's REX rule.
-: ENC-SETCC ( condition r8 ^a -- ) {: c:condition r:r8 s:^ :}
+: ENC-SETCC ( condition r8 ^VEC:vector<u8> -- ) {: c:condition r:r8 s:^ :}
    r R8>N REG-NUM {: n:n :}
    W8 $0F90 c CONDITION>N ?COND + 0 n n R8-FORCE s RR-ENC ;
 
-: ENC-CMOVCC ( condition r64 r64 ^a -- ) {: c:condition d:r64 sr:r64 s:^ :}
+: ENC-CMOVCC ( condition r64 r64 ^VEC:vector<u8> -- ) {: c:condition d:r64 sr:r64 s:^ :}
    W64 $0F40 c CONDITION>N ?COND + d R64>N REG-NUM sr R64>N REG-NUM 0 s RR-ENC ;
 
 \ ---- the stack and the exchange ----------------------------------------------
 \ push and pop are already 64-bit, so they take REX only to reach r8..r15.
-: ENC-PUSH ( r64 ^a -- ) {: r:r64 s:^ :}
+: ENC-PUSH ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}
    r R64>N REG-NUM {: n:n :}
    0 0 0 n 3 rshift 0 s EMIT-REX
    $50 n 7 and + s EMIT-B ;
 
-: ENC-POP ( r64 ^a -- ) {: r:r64 s:^ :}
+: ENC-POP ( r64 ^VEC:vector<u8> -- ) {: r:r64 s:^ :}
    r R64>N REG-NUM {: n:n :}
    0 0 0 n 3 rshift 0 s EMIT-REX
    $58 n 7 and + s EMIT-B ;
 
 \ xchg between two registers touches no memory, so nothing locks it. The first
 \ operand takes the reg field, the second the rm field.
-: ENC-XCHG-RR ( r64 r64 ^a -- ) {: l:r64 r:r64 s:^ :}
+: ENC-XCHG-RR ( r64 r64 ^VEC:vector<u8> -- ) {: l:r64 r:r64 s:^ :}
    W64 $87 l R64>N REG-NUM r R64>N REG-NUM 0 s RR-ENC ;
 
 \ ---- the atomic forms and the fence ------------------------------------------
@@ -731,17 +731,17 @@ public
 \ the stores. xchg and xadd leave the old memory value in it; cmpxchg compares
 \ rax with memory, stores the register only on a match, and leaves the old
 \ memory value in rax.
-: ENC-XCHG-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}
+: ENC-XCHG-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}
    W64 $87 sr R64>N REG-NUM m 0 s RM-ENC ;
 
-: ENC-LOCK-XADD-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}
+: ENC-LOCK-XADD-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}
    $0FC1 sr m s LOCK-RM ;
 
-: ENC-LOCK-CMPXCHG-MR ( r64 mem ^a -- ) {: sr:r64 m:mem s:^ :}
+: ENC-LOCK-CMPXCHG-MR ( r64 mem ^VEC:vector<u8> -- ) {: sr:r64 m:mem s:^ :}
    $0FB1 sr m s LOCK-RM ;
 
 \ mfence is the group-15 opcode 0F AE with the register-form ModRM of digit 6.
-: ENC-MFENCE ( ^a -- ) {: s:^ :}
+: ENC-MFENCE ( ^VEC:vector<u8> -- ) {: s:^ :}
    $0FAE s EMIT-OP  3 6 0 MODRM s EMIT-B ;
 
 ;package

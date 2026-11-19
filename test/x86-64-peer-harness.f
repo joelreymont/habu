@@ -2,11 +2,13 @@ split-str
 \ x86-64-peer-harness.f - the checks, exit and ELF writer of the images an
 \ x86-64 peer runs: an image stages after ASM-RESET and ends with WRITE.
 require src/lib/test.f
-require src/lib/byte-buffer.f
 require src/habu/fdio.f
+require src/lib/heap.f
 require src/habu/sign-id.f
 require src/arch/x86-64/icode.f
 require src/os/linux-flags.f
+require src/lib/span.f
+require src/lib/vector.f
 
 \ The production image writer loads at top level, as every production path loads it.
 require src/os/linux/layout.f
@@ -81,15 +83,15 @@ using LINUX-LAYOUT   \ the guard
 
 \ The engine's import names, each ending in a NUL: the kernel reaches its C
 \ functions through their GOT slots, so every image binds all of them.
-create IMPORT-BUF BUF:HDR-BYTES allot
+TYPED-VARIABLE IMPORT-BUF ^VEC:vector<u8>
 
-: IMPORTS$ ( -- str ) IMPORT-BUF BUF:SPAN$ BUF:BLEN>N ;
+: IMPORTS$ ( -- str ) IMPORT-BUF @ VEC:SPAN SPAN:$ ;
 
 : IMPORTS! ( -- )
-   IMPORT-BUF 64 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW IMPORT-BUF !
    ELF:IMPORTS 0 ?do
-      i ELF:IMPORT$ BUF:N>BLEN IMPORT-BUF BUF:APPEND-SPAN
-      0 IMPORT-BUF BUF:APPEND-BYTE
+      i ELF:IMPORT$ IMPORT-BUF @ VEC:APPEND
+      0 IMPORT-BUF @ VEC:PUSH c!
    loop ;
 
 public
@@ -110,7 +112,7 @@ public
 
 \ The sink every image is staged in and the import names, held across the
 \ images of one run.
-: INIT ( -- ) ASM-SINK CODE-CAP-BYTES BUF:N>BLEN BUF:INIT  IMPORTS! ;
-: DISPOSE ( -- ) ASM-SINK BUF:DISPOSE  IMPORT-BUF BUF:DISPOSE ;
+: INIT ( -- ) SINK-OPEN  ASM-SINK CODE-CAP-BYTES VEC:RESERVE  IMPORTS! ;
+: DISPOSE ( -- ) SINK-CLOSE  IMPORT-BUF @ VEC:DELETE  NULL-PTR IMPORT-BUF ! ;
 ;using   \ LINUX-LAYOUT
 ;package

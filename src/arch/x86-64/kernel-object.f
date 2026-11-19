@@ -6,6 +6,7 @@ require src/habu/primitive-registry.f
 require src/habu/kernel-x64.f
 require src/arch/x86-64/boot.f
 require src/os/linux/elf.f
+require src/lib/vector.f
 
 package KERNEL-OBJECT
 private
@@ -24,7 +25,7 @@ DYNAMIC-BUFFER NAME-OFF n
 : TEXT-VA ( -- n ) LINUX-LAYOUT:IMAGE-VA LINUX-LAYOUT:CODE-OFF + ;
 : PAD8 ( -- )
    begin X64CODE:ASM-LEN 7 and 0<> while
-      0 X64CODE:ASM-SINK BUF:APPEND-BYTE
+      0 X64CODE:ASM-SINK VEC:PUSH c!
    repeat ;
 
 : NAMES, ( -- )

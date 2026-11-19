@@ -7,6 +7,7 @@ require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f
 require src/habu/code-span.f
+require src/lib/vector.f
 \ boot-x64.f and kernel-x64.f load the x86-64 seam globally, so they come
 \ before the peer harness, which would otherwise load it into its own private
 \ wordlist.
@@ -56,7 +57,7 @@ public
    X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
    text X64CODE:LBL,
-   a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
+   a u ASM-SINK VEC:APPEND
    past X64CODE:LBL,
    RAX text MOVABS,  0 G-PUSH
    u PUSH, ;
@@ -117,7 +118,7 @@ private
    X64CODE:LBL X64CODE:LBL {: text:label past:label :}
    past JMP,
    text X64CODE:LBL,
-   a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN
+   a u ASM-SINK VEC:APPEND
    past X64CODE:LBL,
    text ;
 

@@ -10,12 +10,12 @@ require src/lib/test.f
 require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/process.f
-require src/lib/byte-buffer.f
 require src/lib/error.f
 require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/arch/x86-64/rt.f
+require src/lib/vector.f
 
 \ Own suite: the seam's sys.f redefines host syscall words.
 s" src/os/linux-x86-64/sys.f" required
@@ -338,7 +338,7 @@ create ERR CAPTURE-CAP allot
 : CUT ( -- )
    LBL {: l:label :}
    l JMP,  l LBL,
-   ASM-SINK BUF:CLEAR
+   ASM-SINK 0 VEC:RESIZE
    LINK-VA ASM-LINK ;
 
 : REFUSES ( ^u8 n ^u8 n -- )
@@ -367,7 +367,7 @@ create ERR CAPTURE-CAP allot
 
 : RUN ( -- )
    T-RESET
-   ASM-SINK 64 BUF:N>BLEN BUF:INIT
+   SINK-OPEN
    TRAP-CASES
    STENCIL-CASES
    OPEN-CASES
@@ -375,7 +375,7 @@ create ERR CAPTURE-CAP allot
    PROC-CASES
    LINK-CASES
    REFUSAL-CASES
-   ASM-SINK BUF:DISPOSE
+   SINK-CLOSE
    T-REPORT ;
 
 RUN
