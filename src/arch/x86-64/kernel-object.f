@@ -21,7 +21,7 @@ DYNAMIC-BUFFER NAME-OFF n
 : L@ ( ^n -- label ) @ >LABEL ;
 : L! ( label ^n -- ) swap LABEL>N swap ! ;
 : TAIL@ ( n -- label ) TAIL L@ ;
-: TEXT-VA ( -- n ) $400000 LINUX-LAYOUT:CODE-OFF + ;
+: TEXT-VA ( -- n ) LINUX-LAYOUT:IMAGE-VA LINUX-LAYOUT:CODE-OFF + ;
 : PAD8 ( -- )
    begin X64CODE:ASM-LEN 7 and 0<> while
       0 X64CODE:ASM-SINK BUF:APPEND-BYTE
