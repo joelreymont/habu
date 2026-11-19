@@ -26,6 +26,7 @@ require src/lib/test.f
 require src/lib/test/stderr.f
 require src/lib/test/wait.f
 require src/lib/time.f
+require src/lib/vector.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/model.f
@@ -65,23 +66,21 @@ variable READ-FAULT    \ the code each read throws, 0 for none
    -1 ;
 
 
-: STORE-READ ( str str SPAN:span<u8> -- n bool )
-   {: s:^ su:n a:^ au:n dest:SPAN:span<u8> :}
+: STORE-READ ( str str ^VEC:vector<u8> -- bool )
+   {: s:^ su:n a:^ au:n dest:^ :}
    READ-FAULT @ {: fault:n :}
    fault 0<> if fault throw then
    s su a au FIND {: i:n :}
-   i 0< if 0 false exit then
-   i VALUE-AT {: v:^ vu:n :}
-   vu dest SPAN:LEN > if SECRET:E-CAPACITY throw then
-   v vu dest SPAN:COPY
-   vu true ;
+   i 0< if false exit then
+   i VALUE-AT dest VEC:APPEND
+   true ;
 
 
 : STORE-WRITE ( str str str -- )
    {: s:^ su:n a:^ au:n v:^ vu:n :}
    s su a au FIND dup 0< if drop FREE then {: i:n :}
    i 0< su ID-CAP > or au ID-CAP > or vu VALUE-CAP > or
-   if SECRET:E-CAPACITY throw then
+   if SECRET:E-CONFIG throw then
    s SERVICES i ID-CAP * + su BYTE-COPY su i SERVICE-US !
    a ACCOUNTS i ID-CAP * + au BYTE-COPY au i ACCOUNT-US !
    v VALUES i VALUE-CAP * + vu BYTE-COPY vu i VALUE-US ! ;

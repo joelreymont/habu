@@ -66,7 +66,7 @@ NO-PID KEY-PID !
 : KEYRING$ ( -- str ) KEYRING KEYRING-U @ ;
 : GDBUS$ ( -- str ) GDBUS GDBUS-U @ ;
 : SECRET-TOOL$ ( -- str ) SECRET-TOOL SECRET-TOOL-U @ ;
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ ;
 : SOCKETS$ ( -- str ) SOCKETS SOCKETS-U @ ;
 : ADDRESS$ ( -- str ) ADDRESS CODEGEN:CONTENTS ;
 

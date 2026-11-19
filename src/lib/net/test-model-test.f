@@ -17,6 +17,7 @@ require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/secret.f
 require src/lib/task.f
+require src/lib/vector.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/model.f
@@ -52,14 +53,12 @@ TASK:SEMAPHORE GO
    S\" [{\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]},{\qtype\q:\qcompaction\q,\qid\q:\qcmp_item\q,\qencrypted_content\q:\qsealed\q}]" ;
 
 
-\ Every item holds KEY$; a span too short for it is SECRET:E-CAPACITY, which
-\ MODEL answers by reading again into more room.
-: STORE-READ ( ^u8 n ^u8 n SPAN:span<u8> -- n bool )
-   {: dest:SPAN:span<u8> :}
+\ Every item holds KEY$.
+: STORE-READ ( str str ^VEC:vector<u8> -- bool )
+   {: dest:^ :}
    2drop 2drop
-   KEY$ nip dest SPAN:LEN > if SECRET:E-CAPACITY throw then
-   KEY$ dest SPAN:COPY
-   KEY$ nip true ;
+   KEY$ dest VEC:APPEND
+   true ;
 
 
 : STORE-WRITE ( str str str -- )

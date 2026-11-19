@@ -30,7 +30,7 @@ $180 constant FIFO-MODE                \ 0600
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
-: ROOT$ ( -- ^u8 n ) ROOT SPAN:$ drop ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT SPAN:$ drop ROOT-U @ ;
 : SERVICE$ ( -- str ) s" org.habu.secret-dir-test" ;
 : OUT ( -- ^VEC:vector<u8> ) OUT-VEC @ ;
 : OUT$ ( -- str ) OUT VEC:SPAN SPAN:$ ;
@@ -45,7 +45,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 
 \ The path of the named entry in ROOT, borrowed until the next call.
-: ENTRY ( ^u8 n -- ^u8 n )
+: ENTRY ( str -- str )
    {: name:^ u:n :}
    ROOT$ name u ENTRY-PATH FS:JOIN-PATH-INTO {: k:n :}
    ENTRY-PATH SPAN:$ drop k ;

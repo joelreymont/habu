@@ -20,6 +20,7 @@ require src/lib/float32.f
 require src/lib/float32-buffer.f
 require src/lib/fmt.f
 require src/lib/fsm.f
+require src/lib/heap.f
 require src/lib/json.f
 require src/lib/log.f
 require src/lib/memory.f
@@ -32,6 +33,7 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/time.f
+require src/lib/vector.f
 
 \ One exclusive call context per worker. Results borrow its arena until the
 \ next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or CLOSE.
@@ -352,8 +354,8 @@ JOURNAL-OUT-HDR-AT BUF:HDR-BYTES + constant REPLAY-CONTENT-HDR-AT
 REPLAY-CONTENT-HDR-AT BUF:HDR-BYTES + constant RESPONSE-HDR-AT
 RESPONSE-HDR-AT BUF:HDR-BYTES + constant CONTENT-HDR-AT
 CONTENT-HDR-AT BUF:HDR-BYTES + constant ERROR-HDR-AT
-ERROR-HDR-AT BUF:HDR-BYTES + constant KEY-LINE-HDR-AT
-KEY-LINE-HDR-AT BUF:HDR-BYTES + constant VECTORS-HDR-AT
+ERROR-HDR-AT BUF:HDR-BYTES + constant KEY-LINE-AT
+KEY-LINE-AT 1 cells + constant VECTORS-HDR-AT
 VECTORS-HDR-AT BUF:HDR-BYTES + constant PURPOSE-HDR-AT
 PURPOSE-HDR-AT BUF:HDR-BYTES + constant ROWS-HDR-AT
 ROWS-HDR-AT BUF:HDR-BYTES + constant ROW-TEXT-HDR-AT
@@ -388,6 +390,16 @@ INPUT-LEN-AT INPUT-MAX cells + constant VECTOR-OFF-AT
 VECTOR-OFF-AT INPUT-MAX cells + constant VECTOR-LEN-AT
 VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
+\ Views a cell that holds a vector.
+CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
+
+\ Zeroed before it is freed, so a freed block holds no byte the store read.
+: WIPE-DELETE ( ^VEC:vector<u8> -- )
+   {: v:^ :}
+   v NULL-PTR = if exit then
+   v 0 VEC:RESIZE
+   v VEC:DELETE ;
+
 : INIT-BUFFERS ( ^call -- )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:^ :}
@@ -418,7 +430,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base RESPONSE-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base CONTENT-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base ERROR-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
-   base KEY-LINE-HDR-AT + CELL-VIEW 256 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW base KEY-LINE-AT + >VEC-CELL !
    base VECTORS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base PURPOSE-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base ROWS-HDR-AT + CELL-VIEW ROW-BYTES BUF:N>BLEN BUF:INIT
@@ -461,7 +473,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base RESPONSE-HDR-AT + CELL-VIEW BUF:DISPOSE
    base CONTENT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base ERROR-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base KEY-LINE-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base KEY-LINE-AT + >VEC-CELL @ WIPE-DELETE
    base VECTORS-HDR-AT + CELL-VIEW BUF:DISPOSE
    base PURPOSE-HDR-AT + CELL-VIEW BUF:DISPOSE
    base ROWS-HDR-AT + CELL-VIEW BUF:DISPOSE
@@ -525,7 +537,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : CONTENT-BUF ( ^call -- ^n ) CONTENT-HDR-AT HEADER ;
 \ The last failed reply's provider message.
 : ERROR-BUF ( ^call -- ^n ) ERROR-HDR-AT HEADER ;
-: KEY-LINE-BUF ( ^call -- ^n ) KEY-LINE-HDR-AT HEADER ;
+\ The KEY-LINE-AT cell holds the key line's vector, NULL-PTR until it is made.
+: KEY-LINE-BUF ( ^call -- ^VEC:vector<u8> )
+   KEY-LINE-AT 1 cells REGION SPAN:$ drop >VEC-CELL @ ;
 : VECTORS-BUF ( ^call -- ^n ) VECTORS-HDR-AT HEADER ;
 : PURPOSE-BUF ( ^call -- ^n ) PURPOSE-HDR-AT HEADER ;
 : ROWS-BUF ( ^call -- ^n ) ROWS-HDR-AT HEADER ;
@@ -1337,8 +1351,6 @@ public
 STRUCTURE settings DERIVE addr
    FIELD bufs ^u8
    FIELD ready n
-   FIELD model-u n
-   FIELD base-u n
 ;STRUCTURE
 
 private
@@ -1347,11 +1359,13 @@ private
 1 constant SETTING-MODEL
 2 constant SETTING-BASE
 3 constant SETTING-BUFFERS
-64 constant SETTING-INITIAL
 
-: SETTING-BUF ( ^settings n -- ^n )
+\ BUFS holds SETTING-BUFFERS cells, each a setting's vector once READY counts it.
+: SETTING-CELL ( ^settings n -- ^^VEC:vector<u8> )
    {: s idx:n :}
-   s MODEL-SETTINGS:BUFS @ idx BUF:HDR-BYTES * + CELL-VIEW ;
+   s MODEL-SETTINGS:BUFS @ idx cells + >VEC-CELL ;
+
+: SETTING-BUF ( ^settings n -- ^VEC:vector<u8> ) SETTING-CELL @ ;
 
 : SETTING-ACCOUNT$ ( n -- str )
    case
@@ -1360,68 +1374,46 @@ private
       E-STATE throw
    endcase ;
 
-: SETTING$ ( ^settings n n -- str )
-   {: s idx:n u:n :}
-   s idx SETTING-BUF HELD u SPAN:TAKE SPAN:$ ;
+: SETTING$ ( ^settings n -- str ) SETTING-BUF VEC:SPAN SPAN:$ ;
 
 
-\ Reads the item of setting idx into its buffer's capacity and returns its
-\ length; a missing item reads as empty.
-: SETTING-READ ( ^settings n -- ^settings n )
+\ Reads the item of setting idx into its vector and returns its length; a
+\ missing item reads as empty.
+: SETTING-READ ( ^settings n -- n )
    {: s idx:n :}
-   s SETTING-SERVICE SETTING-BUF BUFFER$ idx SETTING-ACCOUNT$
-   s idx SETTING-BUF HELD SECRET:READ {: u:n found:bool :}
-   s found if u else 0 then ;
-
-
-\ An item larger than the buffer grows it and is read again: the store copies
-\ no byte of an item it refuses. The store's own failures pass through.
-: SETTING-LOAD ( ^settings n -- n )
-   {: s idx:n :}
-   begin
-      s idx [: SETTING-READ ;] catch {: fault:n :}
-      fault 0= if nip exit then
-      2drop
-      fault SECRET:E-CAPACITY <> if fault throw then
-      s idx SETTING-BUF {: buf:^ :}
-      buf BUF:CAP@ BUF:BLEN>N 2 * {: need:n :}
-      buf BUF:CLEAR
-      buf need BUF:N>BLEN BUF:ENSURE
-   again ;
+   s idx SETTING-BUF {: v:^ :}
+   s SETTING-SERVICE SETTING$ idx SETTING-ACCOUNT$
+   v SECRET:READ if v VEC:COUNT else 0 then ;
 
 
 : SETTINGS-FILL ( str ^settings -- str ^settings )
    {: svc:^ su:n s :}
    SETTING-BUFFERS 0 ?do
-      s i SETTING-BUF SETTING-INITIAL BUF:N>BLEN BUF:INIT
+      HEAP:ALLOCATOR 0 [type] u8 VEC:NEW s i SETTING-CELL !
       i 1+ s MODEL-SETTINGS:READY !
    loop
-   svc su BUF:N>BLEN s SETTING-SERVICE SETTING-BUF BUF:REPLACE
-   s SETTING-MODEL SETTING-LOAD {: mu:n :}
-   mu 0= if
+   s SETTING-SERVICE SETTING-BUF {: sv:^ :}
+   svc su sv VEC:APPEND
+   s SETTING-MODEL SETTING-READ 0= if
       s" a service whose model item names the generation model" svc su
       s" file the model's name in the service's model item" CONFIG-REJECT
    then
-   mu s MODEL-SETTINGS:MODEL-U !
-   s SETTING-BASE SETTING-LOAD {: bu:n :}
-   bu 0<> if s SETTING-BASE bu SETTING$ BASE-URL? 0= if
+   s SETTING-BASE SETTING-READ {: bu:n :}
+   bu 0<> if s SETTING-BASE SETTING$ BASE-URL? 0= if
       s" a service whose base-url item holds a base BASE-URL! takes" svc su
       s" file an http or https base with no trailing slash, userinfo, query or fragment in the service's base-url item, or erase the item"
       CONFIG-REJECT
    then then
-   bu s MODEL-SETTINGS:BASE-U !
    svc su s ;
 
 
 : SETTINGS-RELEASE ( ^settings -- )
    {: s :}
-   s MODEL-SETTINGS:READY @ 0 ?do s i SETTING-BUF BUF:DISPOSE loop
-   s MODEL-SETTINGS:BUFS @ SETTING-BUFFERS BUF:HDR-BYTES *
+   s MODEL-SETTINGS:READY @ 0 ?do s i SETTING-BUF WIPE-DELETE loop
+   s MODEL-SETTINGS:BUFS @ SETTING-BUFFERS cells
       MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    NULL-PTR s MODEL-SETTINGS:BUFS !
-   0 s MODEL-SETTINGS:READY !
-   0 s MODEL-SETTINGS:MODEL-U !
-   0 s MODEL-SETTINGS:BASE-U ! ;
+   0 s MODEL-SETTINGS:READY ! ;
 
 : SETTINGS-OPEN? ( ^settings -- bool )
    MODEL-SETTINGS:BUFS @ NULL-PTR = 0= ;
@@ -1437,7 +1429,7 @@ public
    {: svc:^ su:n s :}
    s SETTINGS-OPEN? if E-STATE throw then
    svc su s" SETTINGS-OPEN's service" REQUIRE-SOME
-   SETTING-BUFFERS BUF:HDR-BYTES * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
+   SETTING-BUFFERS cells MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
       s MODEL-SETTINGS:BUFS !
    0 s MODEL-SETTINGS:READY !
    svc su s [: SETTINGS-FILL ;] catch {: code:n :}
@@ -1461,17 +1453,17 @@ public
 : SETTINGS-SERVICE$ ( ^settings -- str )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
-   s SETTING-SERVICE SETTING-BUF BUFFER$ ;
+   s SETTING-SERVICE SETTING$ ;
 
 : SETTINGS-MODEL$ ( ^settings -- str )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
-   s SETTING-MODEL s MODEL-SETTINGS:MODEL-U @ SETTING$ ;
+   s SETTING-MODEL SETTING$ ;
 
 : SETTINGS-BASE$ ( ^settings -- str )
    {: s :}
    s SETTINGS-OPEN? 0= if E-STATE throw then
-   s SETTING-BASE s MODEL-SETTINGS:BASE-U @ SETTING$ ;
+   s SETTING-BASE SETTING$ ;
 
 \ Sets the call's generation model, base URL and the service's "api-key" item
 \ as its key, copying each into the call: the settings may close after.
@@ -2155,7 +2147,7 @@ private
       failed OF c TRANSPORT-FAILED ENDOF
    ;MATCH ;
 
-: HEADER-WIPE ( ^call -- ) KEY-LINE-BUF BUF:WIPE ;
+: HEADER-WIPE ( ^call -- ) KEY-LINE-BUF 0 VEC:RESIZE ;
 
 : WIPE-AFTER ( n ^call -- )
    {: fault:n c :}
@@ -2163,17 +2155,6 @@ private
    fault 0<> if fault throw then ;
 
 : KEY-PREFIX$ ( -- str ) s" Authorization: Bearer " ;
-
-\ Room in the header for its prefix and then a key of n bytes, with the
-\ prefix written. The whole header is wiped before it is resized, so released
-\ storage never holds a key byte.
-: KEY-ROOM ( n ^call -- )
-   {: ku:n c :}
-   KEY-PREFIX$ {: prefix:^ pu:n :}
-   c HEADER-WIPE
-   c KEY-LINE-BUF pu ku + c RESET-SIZED
-   pu ku + c KEY-LINE-BUF ROOM {: line:SPAN:span<u8> :}
-   prefix pu line SPAN:COPY ;
 
 : KEY-FAULT! ( key-fault ^call -- ) RECEIPT RECEIPT-KEY-READ ! ;
 
@@ -2192,17 +2173,16 @@ private
    loop ;
 
 
-\ Reads the store's item into the header after its pu-byte prefix and returns
-\ the line's length; a missing, empty or non-printable item is E-KEY.
-: KEY-READ ( ^call n -- ^call n )
-   {: c pu:n :}
+\ Appends the store's item to the header line after its prefix; a missing,
+\ empty or non-printable item is E-KEY.
+: KEY-READ ( ^call -- )
+   {: c :}
    c KEY-SPEC$ {: spec:^ spec-u:n :}
    c MODEL-CALL:KEY-SPLIT @ {: su:n :}
-   spec su spec su + spec-u su - c KEY-LINE-BUF HELD pu SPAN:SKIP SECRET:READ
-   {: ku:n found:bool :}
-   found 0= if construct key-fault missing c KEY-REFUSE then
-   c KEY-LINE-BUF HELD pu SPAN:SKIP ku SPAN:TAKE SPAN:$ c KEY-CHECK
-   c pu ku + ;
+   c KEY-LINE-BUF {: line:^ :}
+   spec su spec su + spec-u su - line SECRET:READ
+   0= if construct key-fault missing c KEY-REFUSE then
+   line VEC:SPAN KEY-PREFIX$ nip SPAN:SKIP SPAN:$ c KEY-CHECK ;
 
 
 \ How the store's refusal failed the key read; none for another fault.
@@ -2214,22 +2194,13 @@ private
    construct key-fault none ;
 
 
-\ An item larger than the header after its prefix grows the header and is
-\ read again: the store copies no byte of an item it refuses. The store's own
-\ failures pass through.
-: KEY-FETCH ( ^call n -- n )
-   {: c pu:n :}
-   0 c KEY-ROOM
-   begin
-      c pu [: KEY-READ ;] catch {: fault:n :}
-      fault 0= if nip exit then
-      2drop
-      fault SECRET:E-CAPACITY <> if
-         fault E-KEY <> if fault STORE-FAULT c KEY-FAULT! then
-         fault throw
-      then
-      c KEY-LINE-BUF BUF:CAP@ BUF:BLEN>N c KEY-ROOM
-   again ;
+\ The store's own failures pass through, kept as how the key read failed.
+: KEY-FETCH ( ^call -- )
+   {: c :}
+   [: c KEY-READ ;] catch {: fault:n :}
+   fault 0= if exit then
+   fault E-KEY <> if fault STORE-FAULT c KEY-FAULT! then
+   fault throw ;
 
 
 : KEY-LINE ( ^call -- str )
@@ -2240,8 +2211,11 @@ private
       s" pass API-KEY! the service and account of the store item holding the key"
       CONFIG-REJECT
    then
-   c KEY-PREFIX$ nip KEY-FETCH {: line-u:n :}
-   c KEY-LINE-BUF HELD line-u SPAN:TAKE SPAN:$ ;
+   \ The prefix goes in first: growth for the key comes before the key's first
+   \ byte, so a freed block holds only the prefix.
+   KEY-PREFIX$ c KEY-LINE-BUF VEC:APPEND
+   c KEY-FETCH
+   c KEY-LINE-BUF VEC:SPAN SPAN:$ ;
 
 : KEY-HEADER-KEEP ( CURL:handle ^call -- CURL:handle ^call )
    2dup KEY-LINE CURL:HEADER+ over CHECK-STATUS ;
