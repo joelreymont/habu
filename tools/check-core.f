@@ -841,15 +841,13 @@ private
 
 \ The run's output is captured to be replayed, CHK-OUT-CAP bytes of standard
 \ output and CHK-ERR-CAP of standard error. A run that writes past either is
-\ killed by the capture, which throws E-PROC-TRUNCATED without naming the
-\ stream, so the record names both bounds.
-: CHK-RUN-TOO-BIG ( -- )
-   s" E-PROC-TRUNCATED" CHK-OPEN
+\ killed by the capture, whose code names the stream that overflowed; the
+\ record names that code, that stream and its bound.
+: CHK-RUN-TOO-BIG ( str str n -- ) {: c:^ cu:n st:^ stu:n cap:n :}
+   c cu CHK-OPEN
    s" the run wrote past its capture" CHK-SUBJECT
-   s" stdout" REJECTION:NOTE  s" at most " REJECTION:EMIT-STR
-   CHK-OUT-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
-   s" stderr" REJECTION:NOTE  s" at most " REJECTION:EMIT-STR
-   CHK-ERR-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   st stu REJECTION:NOTE  s" at most " REJECTION:EMIT-STR
+   cap REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
    REJECTION:HELP
    CHK-RERUN  s"  to see its whole output, or make it write less" REJECTION:EMIT-STR
    REJECTION:KEEP
@@ -874,7 +872,12 @@ private
 : CHK-RUN-CAPPED ( -- )
    [: CHK-RUN-CAPTURE ;] catch {: rc:n :}
    rc 0= if exit then
-   rc E-PROC-TRUNCATED = if CHK-RUN-TOO-BIG then
+   rc E-PROC-STDOUT-CAPACITY = if
+      s" E-PROC-STDOUT-CAPACITY" s" stdout" CHK-OUT-CAP CHK-RUN-TOO-BIG
+   then
+   rc E-PROC-STDERR-CAPACITY = if
+      s" E-PROC-STDERR-CAPACITY" s" stderr" CHK-ERR-CAP CHK-RUN-TOO-BIG
+   then
    rc E-PROC-TIMEOUT = if CHK-RUN-LATE then
    rc throw ;
 
@@ -925,7 +928,7 @@ private
 \ check.f's verifier child runs alone, never in a batch, so its stderr cap is
 \ VFY-ERR-CAP.
 : CHK-VERIFIER-TRUNCATED ( -- )
-   s" E-PROC-TRUNCATED" CHK-OPEN
+   s" E-PROC-STDERR-CAPACITY" CHK-OPEN
    s" the verifier wrote past its capture of standard error" CHK-SUBJECT
    s" stderr" REJECTION:NOTE  s" at most " REJECTION:EMIT-STR
    VFY-ERR-CAP REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
@@ -971,7 +974,7 @@ private
 : CHK-RUN-PREVERIFY ( -- )
    [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
    rc 0= if exit then
-   rc E-PROC-TRUNCATED <> if rc throw then
+   rc E-PROC-STDERR-CAPACITY <> if rc throw then
    CHK-VERIFIER-RELAY
    CHK-VERIFIER-TRUNCATED
    EXIT-STATUS:UNAVAILABLE CHK-THROW ;
@@ -1103,7 +1106,7 @@ private
 : CHK-RUN-VERIFY ( -- )
    [: CHK-VERIFY-ACT ;] catch {: rc:n :}
    rc 0= if exit then
-   rc E-PROC-TRUNCATED <> if rc throw then
+   rc E-PROC-STDERR-CAPACITY <> if rc throw then
    CHK-VERIFIER-RELAY
    CHK-VERIFIER-TRUNCATED
    EXIT-STATUS:UNAVAILABLE CHK-THROW ;

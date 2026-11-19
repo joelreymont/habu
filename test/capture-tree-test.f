@@ -113,8 +113,8 @@ PROCESS:NO-FD FIFO-RD !
 
 : OVERFLOW-BODY ( -- )
    OPEN-FIFO
-   s" a line longer than the capture throws E-PROC-TRUNCATED" T-LABEL
-   [: OVERFLOW-CAPTURE ;] E-PROC-TRUNCATED TTHROWSQ
+   s" a line past the stdout capture throws E-PROC-STDOUT-CAPACITY" T-LABEL
+   [: OVERFLOW-CAPTURE ;] E-PROC-STDOUT-CAPACITY TTHROWSQ
    REPORT-READ? REPORTED !
    s" the subject started its sleeper and reported" T-LABEL
    REPORTED @ TTRUE

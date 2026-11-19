@@ -685,9 +685,9 @@ public
    rc >COUNT ;
 
 : READ-STREAM ( ^n ^u8 len ^n -- ) {: fdp:^ buf:^ cap lenp:^ :}
-   lenp @ 0 < if E-PROC-TRUNCATED THROW-CAPTURE then
-   lenp @ cap LEN>N > if E-PROC-TRUNCATED THROW-CAPTURE then
-   cap LEN>N lenp @ - 0 <= if E-PROC-TRUNCATED THROW-CAPTURE then
+   lenp @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
+   lenp @ cap LEN>N > if E-PROC-OUTPUT THROW-CAPTURE then
+   cap LEN>N lenp @ - 0 <= if E-PROC-OUTPUT THROW-CAPTURE then
    fdp @ buf lenp @ + cap LEN>N lenp @ - read RD !
    RD @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ cap LEN>N lenp @ - > if E-PROC-OUTPUT THROW-CAPTURE then
@@ -698,40 +698,45 @@ public
    then ;
 
 private
-: PROBE-FULL-STREAM ( ^n -- ) {: fdp:^ :}
+\ code is the stream's overflow code, E-PROC-STDOUT-CAPACITY or
+\ E-PROC-STDERR-CAPACITY, thrown on a byte past the span.
+: PROBE-FULL-STREAM ( ^n n -- ) {: fdp:^ code:n :}
    fdp @ PROBE 1 read RD !
    RD @ 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ 1 > if E-PROC-OUTPUT THROW-CAPTURE then
    RD @ 0= if
       fdp CLOSE-CELL
    else
-      E-PROC-TRUNCATED THROW-CAPTURE
+      code THROW-CAPTURE
    then ;
 
 \ A read that fills the span may leave an overflow byte already in the pipe.
 \ Probe it without waiting, before an expired deadline ends the capture. This
 \ uses poll slot 0 after its read; stderr's slot remains available to the drain.
-: PROBE-READY-FULL-STREAM ( ^n -- ) {: fdp:^ :}
+: PROBE-READY-FULL-STREAM ( ^n n -- ) {: fdp:^ code:n :}
    fdp @ >FD 0 >MS POLL-IN COUNT>N {: ready:n :}
    ready FD:EINTR# negate = if exit then
    ready 0 < if E-PROC-OUTPUT THROW-CAPTURE then
-   ready 0 > if fdp PROBE-FULL-STREAM then ;
+   ready 0 > if fdp code PROBE-FULL-STREAM then ;
 
-: READ-OR-PROBE-STREAM ( ^n ^u8 len ^n -- ) {: fdp:^ buf:^ cap lenp:^ :}
+: READ-OR-PROBE-STREAM ( ^n ^u8 len ^n n -- )
+   {: fdp:^ buf:^ cap lenp:^ code:n :}
    cap LEN>N lenp @ - 0 <= if
-      fdp PROBE-FULL-STREAM
+      fdp code PROBE-FULL-STREAM
    else
       fdp buf cap lenp READ-STREAM
-      cap LEN>N lenp @ = if fdp PROBE-READY-FULL-STREAM then
+      cap LEN>N lenp @ = if fdp code PROBE-READY-FULL-STREAM then
    then ;
 
 public
 : DRAIN-READY ( ^u8 len ^u8 len -- ) {: out:^ outcap err:^ errcap :}
    0 >IDX PFD-REVENTS 0 <> if
-      OUT-R out outcap OUT-LEN READ-OR-PROBE-STREAM
+      OUT-R out outcap OUT-LEN
+      E-PROC-STDOUT-CAPACITY READ-OR-PROBE-STREAM
    then
    1 >IDX PFD-REVENTS 0 <> if
-      ERR-R err errcap ERR-LEN READ-OR-PROBE-STREAM
+      ERR-R err errcap ERR-LEN
+      E-PROC-STDERR-CAPACITY READ-OR-PROBE-STREAM
    then ;
 
 private
@@ -770,7 +775,8 @@ $10000 constant GROW-CHUNK
       OUT-R OUT-LEN sink READ-GROWING
    then
    1 >IDX PFD-REVENTS 0 <> if
-      ERR-R err errcap ERR-LEN READ-OR-PROBE-STREAM
+      ERR-R err errcap ERR-LEN
+      E-PROC-STDERR-CAPACITY READ-OR-PROBE-STREAM
    then ;
 
 : DRAIN-READY-GROWING-BOTH ( [ n -- ^u8 ] [ n -- ^u8 ] -- )

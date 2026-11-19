@@ -22,8 +22,9 @@ variable STATUS
    ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
 
-\ A crashed child's dump outgrows IO-CAP, and E-PROC-TRUNCATED uncaught would
-\ end the file without naming the case. The case fails under its label, and the
+\ A crashed child's dump outgrows IO-CAP on either stream, and its
+\ E-PROC-STDOUT-CAPACITY or E-PROC-STDERR-CAPACITY uncaught would end the file
+\ without naming the case. The case fails under its label, and the
 \ empty capture and -1 fail the checks after it.
 : CHILD-TRUNCATED ( -- n )
    T-NEXT s" child output exceeded the capture" T-ASSERT-DETAIL
@@ -32,7 +33,8 @@ variable STATUS
 : CHILD-RC ( str -- n ) {: src:^ size:n :}
    [: src size CHILD-CAPTURE ;] catch {: code:n :}
    code 0= if STATUS @ exit then
-   code E-PROC-TRUNCATED = if CHILD-TRUNCATED exit then
+   code E-PROC-STDOUT-CAPACITY = if CHILD-TRUNCATED exit then
+   code E-PROC-STDERR-CAPACITY = if CHILD-TRUNCATED exit then
    code throw ;
 
 : PREFIX? ( str str -- bool ) {: g:^ gu:n w:^ wu:n :}

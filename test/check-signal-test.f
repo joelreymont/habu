@@ -1,7 +1,7 @@
 split-str
 \ check-signal-test.f - a stopped check.f, and a check run past its deadline,
-\ leave no process and no scratch behind; a verifier that writes past its
-\ capture, and a path the run cannot quote, each end check.f with one record.
+\ leave no process and no scratch behind; a verifier or a run that writes past
+\ its capture, and a path the run cannot quote, each end check.f with one record.
 \ Runs tools/check.f on test/check-signal-subject.f as a child with a private
 \ TMPDIR; check.f's run stage runs the subject in a child of its own, which
 \ starts a sleeper and reports. Each case signals check.f once the report is in,
@@ -32,6 +32,7 @@ package CHECK-SIGNAL-TEST
 $20000 constant PAD-BYTES            \ twice the 64 KiB a pipe holds on either host
 $8000 constant LOG-CAP
 $40000 constant VERIFY-ERR-CAP       \ the bytes of stderr check.f's verifier capture holds
+$8000 constant RUN-OUT-CAP           \ the bytes of stdout check.f's run capture holds
 
 create REPORT REPORT-BYTES allot
 create LOG-TEXT LOG-CAP allot
@@ -40,6 +41,7 @@ create LOG PATH-CAP allot
 create OUT PATH-CAP allot
 create STANDIN PATH-CAP allot
 create QUOTED PATH-CAP allot
+create LOUD PATH-CAP allot
 create BAD-TMP PATH-CAP allot
 create FIFO PATH-CAP allot
 create FEED FEED-CHUNK allot         \ newlines: blank lines to check.f
@@ -55,6 +57,7 @@ variable LOG-U
 variable OUT-U
 variable STANDIN-U
 variable QUOTED-U
+variable LOUD-U
 variable BAD-TMP-U
 variable ENTRY-N
 
@@ -73,6 +76,7 @@ PROCESS:NO-FD FEED-WR !
 : OUT$ ( -- ^u8 n )    OUT OUT-U @ ;
 : STANDIN$ ( -- str )   STANDIN STANDIN-U @ ;
 : QUOTED$ ( -- str )   QUOTED QUOTED-U @ ;
+: LOUD$ ( -- str )   LOUD LOUD-U @ ;
 : BAD-TMP$ ( -- str )   BAD-TMP BAD-TMP-U @ ;
 : FIFO$ ( -- str )   FIFO FIFO-U @ ;
 
@@ -94,6 +98,7 @@ PROCESS:NO-FD FEED-WR !
    GT-ROOT s" check.out" OUT FS:JOIN-PATH OUT-U !
    GT-ROOT s" standin" STANDIN FS:JOIN-PATH STANDIN-U !
    GT-ROOT s\" q\nx.f" QUOTED FS:JOIN-PATH QUOTED-U !
+   GT-ROOT s" loud.f" LOUD FS:JOIN-PATH LOUD-U !
    GT-ROOT s\" t\"d" BAD-TMP FS:JOIN-PATH BAD-TMP-U !
    TMP$ FS:MAKE-DIRS ;
 
@@ -413,7 +418,7 @@ PROCESS:NO-FD FEED-WR !
 : TRUNCATED-RECORD$ ( -- str )
    SUBJECT$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
    SB-RESET
-   s" error[E-PROC-TRUNCATED]: " SB-APPEND  p pu SB-APPEND
+   s" error[E-PROC-STDERR-CAPACITY]: " SB-APPEND  p pu SB-APPEND
    s\" : the verifier wrote past its capture of standard error\n  = stderr: at most " SB-APPEND
    VERIFY-ERR-CAP FMT:SB-INT
    s\"  bytes\n  = help: an engine defect wrote it, its stderr is shown above; run the program with `bin/hb " SB-APPEND
@@ -443,6 +448,33 @@ PROCESS:NO-FD FEED-WR !
    s" truncated: the record starts its own line" T-LABEL
    LOG$ size ru - 1- LOG-TEXT 1 FS:READ-AT
    LOG-TEXT c@ 10 T= ;
+
+: LOUD-RECORD$ ( -- str )
+   LOUD$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
+   SB-RESET
+   s" error[E-PROC-STDOUT-CAPACITY]: " SB-APPEND  p pu SB-APPEND
+   s" : the run wrote past its capture" SB-APPEND
+   s\" \n  = stdout: at most " SB-APPEND  RUN-OUT-CAP FMT:SB-INT
+   s\"  bytes\n  = help: run the program with `bin/hb " SB-APPEND
+   p pu SB-APPEND  s" ` to see its whole output" SB-APPEND
+   s\" , or make it write less\n\n" SB-APPEND
+   SB$ ;
+
+\ A program that prints past the run's stdout capture: check.f ends with one
+\ record naming that code, the overflow and the stdout bound.
+: LOUD-BODY ( -- )
+   LOUD$ s\" : LOUD ( -- ) 40000 0 do [char] x emit loop ;\nLOUD\n"
+   FS:WRITE-ALL
+   CHECK-BEGIN
+   s" --" >LEN PROC-ARGV+
+   LOUD$ >LEN PROC-ARGV+
+   OPEN-NULL CHECK-SPAWN
+   CHECK-ENDED
+   s" loud: check.f exits its refusal status" T-LABEL
+   CHECK-REAP PROCESS:STATUS>RC RC>N 70 T=
+   s" loud: stderr is the stdout record alone" T-LABEL
+   LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL
+   LOUD-RECORD$ T$= ;
 
 : QUOTED-RECORD$ ( -- str )
    QUOTED$ SOURCE-ROOT:CANON-OS drop {: p:^ pu:n :}
@@ -539,6 +571,8 @@ public
    true true LATE-CASE
    s" check-signal: a verifier that writes past its capture" type cr
    [: TRUNCATED-BODY ;] [: CASE-END ;] finally
+   s" check-signal: a run that writes past its stdout capture" type cr
+   [: LOUD-BODY ;] [: CASE-END ;] finally
    s" check-signal: a source path holding a LF" type cr
    [: QUOTED-BODY ;] [: CASE-END ;] finally
    s" check-signal: a TMPDIR holding a double quote" type cr

@@ -136,7 +136,8 @@ variable GE-EVAL-SRC-U
       E-PROC-WAIT of s" E-PROC-WAIT" type endof
       E-PROC-TIMEOUT of s" E-PROC-TIMEOUT" type endof
       E-PROC-OUTPUT of s" E-PROC-OUTPUT" type endof
-      E-PROC-TRUNCATED of s" E-PROC-TRUNCATED" type endof
+      E-PROC-STDOUT-CAPACITY of s" E-PROC-STDOUT-CAPACITY" type endof
+      E-PROC-STDERR-CAPACITY of s" E-PROC-STDERR-CAPACITY" type endof
       E-PROC-ENV of s" E-PROC-ENV" type endof
       E-PROC-PATH of s" E-PROC-PATH" type endof
       E-FS-OPEN of s" E-FS-OPEN" type endof
@@ -147,7 +148,8 @@ variable GE-EVAL-SRC-U
       59 of s" E-PROC-WAIT" type endof
       58 of s" E-PROC-TIMEOUT" type endof
       57 of s" E-PROC-OUTPUT" type endof
-      56 of s" E-PROC-TRUNCATED" type endof
+      56 of s" E-PROC-STDOUT-CAPACITY" type endof
+      49 of s" E-PROC-STDERR-CAPACITY" type endof
       55 of s" E-PROC-ENV" type endof
       54 of s" E-PROC-PATH" type endof
       70 of s" E-CHECK" type endof

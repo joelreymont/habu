@@ -513,13 +513,13 @@ variable VFY-EXE-U
 
 
 \ How the child ended. More stderr than the capture holds kills it, and its
-\ E-PROC-TRUNCATED is thrown on once what was captured is kept. The executable
-\ is resolved before the capture, so a throw from the engine's resolver is the
-\ resolver's, never read as the child's truncation.
+\ E-PROC-STDERR-CAPACITY is thrown on once what was captured is kept. The
+\ executable is resolved before the capture, so a throw from the engine's
+\ resolver is the resolver's, never read as the child's overflow.
 : VFY-RUN ( -- PROCESS:ending )
    VFY-EXE!
    [: VFY-CAPTURE ;] catch {: rc:n :}
-   rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
+   rc 0<> rc E-PROC-STDERR-CAPACITY <> and if rc throw then
    PROCESS:CAPTURE-ENDING@ {: outu:len erru:len o :}
    erru LEN>N VFY-LOG-U !
    outu LEN>N VFY-TAKE
@@ -633,7 +633,7 @@ public
 \ that is not there or cannot be read, which VERIFY-UNREAD$ names. An empty
 \ PATH is E-FS-PATH; an engine src/lib/engine-candidate.f refuses (E-FS-OPEN)
 \ or a failed spawn throws as well. stdout is kept whole; more than 256 KiB of
-\ the child's stderr is E-PROC-TRUNCATED, VERIFY-OUT$ then holding every
+\ the child's stderr is E-PROC-STDERR-CAPACITY, VERIFY-OUT$ then holding every
 \ complete record received before it.
 : VERIFY-BYTES ( str str [ [ str str -- ] -- ] ms bool -- verdict )
    {: src:^ srcu:n path:^ pathu:n open deadline json:bool :}
@@ -1065,7 +1065,7 @@ public
    s" 0 0" VFY-IN+ s\" \n" VFY-IN+
    VFY-EXE!
    [: VFY-BATCH-CAPTURE ;] catch {: rc:n :}
-   rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
+   rc 0<> rc E-PROC-STDERR-CAPACITY <> and if rc throw then
    PROCESS:CAPTURE-ENDING@ {: outu:len erru:len o :}
    outu LEN>N VFY-BATCH-OUT-U !
    erru LEN>N VFY-LOG-U !

@@ -630,12 +630,13 @@ generates: FAULT ( -- n )
 -2501 s" waiting for a child process failed, or the pid is not one this process can wait for" ERROR:CODE E-PROC-WAIT
 -2502 s" a child process or a wait on it ran past its deadline" ERROR:CODE E-PROC-TIMEOUT
 -2503 s" a child's pipe, descriptor or poll could not be set up or read, or a pid or copied argument is out of range" ERROR:CODE E-PROC-OUTPUT
--2504 s" a child's output outgrew the capture that holds it" ERROR:CODE E-PROC-TRUNCATED
+-2504 s" a child wrote more to its stdout than the capture holds" ERROR:CODE E-PROC-STDOUT-CAPACITY
 -2505 s" an environment name, entry or index is malformed: negative, empty, a name holding `=` or a 0 byte, an entry with no `=`, or too large to store" ERROR:CODE E-PROC-ENV
 -2506 s" a program or directory path is empty, too long, or names no executable" ERROR:CODE E-PROC-PATH
 -2507 s" every pseudoterminal child slot is in use" ERROR:CODE E-PROC-PTY-CAPACITY
 -2508 s" a pseudoterminal child handle is stale, another process's, or in the wrong state for the call" ERROR:CODE E-PROC-PTY-HANDLE
 -2510 s" the caller's borrowed cancellation fd became ready" ERROR:CODE E-PROC-CANCELLED
+-2511 s" a child wrote more to its stderr than the capture holds" ERROR:CODE E-PROC-STDERR-CAPACITY
 -2600 s" a date's year is outside 0..9999, or a time is before the epoch" ERROR:CODE E-TIME-RANGE
 -2601 s" the buffer is shorter than the date or time text" ERROR:CODE E-TIME-CAPACITY
 -2602 s" the host refused to read the clock" ERROR:FAULT E-TIME-CLOCK
