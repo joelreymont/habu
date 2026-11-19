@@ -28,7 +28,7 @@ CAST: >I64 ( n -- i64 )
 \ record the engine's lookup binds to a scope by it.
 5 constant DICT-WORDLIST-SLOT
 
-\ The scope-find2 flag bit set when two used publics hold the tail.
+\ The scope-find flag bit set when two used publics hold the tail.
 2 constant SCOPE-FIND-AMBIGUOUS
 
 : CORE-STR= {: a:^ u:n b:^ v:n :}   \ ( ^u8 n ^u8 n -- bool ) byte-wise string equality

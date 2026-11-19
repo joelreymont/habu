@@ -1766,12 +1766,12 @@ DYNAMIC-BUFFER TICK-QUAL u8
 
 : TICK-RESIDENT-IMM? ( str -- bool )
    {: a:^ u:n :}
-   a u tok-imm2? 0<> IF true EXIT THEN
+   a u tok-imm? 0<> IF true EXIT THEN
    a u FIND-SYM dup 0= IF drop false EXIT THEN
    SYM-IDENTITY {: pkg:^ pkgu:n tail:^ tailu:n vis:n :}
    vis 1 = IF true EXIT THEN
    pkgu 0= IF false EXIT THEN
-   pkg pkgu tail tailu QUAL-SPELLING tok-imm2? 0<> ;
+   pkg pkgu tail tailu QUAL-SPELLING tok-imm? 0<> ;
 
 \ A compile-time action inside the current definition can change the compiler or
 \ replace a checker before its later trusted tick. The source scan does not run
@@ -3705,7 +3705,7 @@ variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
 : LIBRARY-DEFINER? ( str n str -- bool )
    {: a:^ u:n code:n name:^ nameu:n :}
    a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
-   a u scope-find2 drop drop drop {: rec:^ :}
+   a u scope-find drop drop drop {: rec:^ :}
    rec XREF-FOUND? 0= IF false EXIT THEN
    rec XREF-START code = IF true EXIT THEN
    a u FIND-SYM {: sym:n :}

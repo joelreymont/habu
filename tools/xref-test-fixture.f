@@ -46,8 +46,8 @@ public
    s" HB:XRT-SAMPLE" XRT-EXPECT-FOUND {: qrec :}
    qrec XREF-NAME$ s" XRT-SAMPLE" T$=
    qrec XREF-WORDLIST get-current T<>
-   s" HB:XRT-SAMPLE" 0 search-wl2 0= TTRUE
-   s" hB:xRt-SaMpLe" 0 search-wl2 0= TTRUE
+   s" HB:XRT-SAMPLE" 0 search-wl 0= TTRUE
+   s" hB:xRt-SaMpLe" 0 search-wl 0= TTRUE
    s" xrt-suffix:" XRT-EXPECT-FOUND {: erec :}
    erec XREF-NAME$ s" XRT-SUFFIX:" T$=
    erec XREF-WORDLIST get-current T=

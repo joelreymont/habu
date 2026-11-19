@@ -547,7 +547,7 @@ TYPED-VARIABLE REC ^n
 \ The record the name binds, rejected, naming it, where a sealed source may
 \ not call it, then where USING-CHECK rejects it.
 : LOOKUP-NAME ( str -- ^n ) {: a:^ u:n :}
-   a u scope-find2 {: rec:^ used:^ used2:^ flags:n :}
+   a u scope-find {: rec:^ used:^ used2:^ flags:n :}
    a u rec POLICY-CHECK-REC
    a u rec used flags USING-CHECK ;
 

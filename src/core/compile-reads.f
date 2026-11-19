@@ -267,15 +267,15 @@ EXPORT CHECKER-RESOLVE:bare-tok-imm?
 global
 
 \ The name's code cell in wordlist wid, or 0; a dependency of the part that asks.
-: search-wl2 ( ^u8 n n -- n ) {: a:^ u:n wid:n :}
+: search-wl ( ^u8 n n -- n ) {: a:^ u:n wid:n :}
    a u wid NAME+  a u wid bare-search-wl ;
 
 \ The search order's binding of the name, a dependency as the part's text is.
-: scope-find2 ( ^u8 n -- ^n ^n ^n n ) {: a:^ u:n :}
+: scope-find ( ^u8 n -- ^n ^n ^n n ) {: a:^ u:n :}
    a u TEXT+  a u bare-scope-find ;
 
 \ The name's immediate flag (2) or 0, a dependency as scope-find's name is.
-: tok-imm2? ( ^u8 n -- n ) {: a:^ u:n :}
+: tok-imm? ( ^u8 n -- n ) {: a:^ u:n :}
    a u TEXT+  a u bare-tok-imm? ;
 
 private

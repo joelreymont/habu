@@ -13588,7 +13588,7 @@ variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the usin
    E-USING-SHADOW-GLOBAL ;
 
 : CK-WL-CLAIMS? ( str n -- bool ) {: a:^ u:n wid:n :}
-   a u wid search-wl2 0 <> ;
+   a u wid search-wl 0 <> ;
 
 global
 \ --- generated-constructor protection. CTOR-PROT-DEFAULTS answers no to every
@@ -14031,8 +14031,8 @@ public
    wu 0= IF w wu 0 0= 0= EXIT THEN
    TOKEN$ {: t:^ tu:n :}
    tu 0= IF w wu 0 0= 0= EXIT THEN
-   w wu scope-find2 drop drop drop {: wrec:^ :}
-   t tu scope-find2 drop drop drop {: trec:^ :}
+   w wu scope-find drop drop drop {: wrec:^ :}
+   t tu scope-find drop drop drop {: trec:^ :}
    wrec NULL-PTR = trec NULL-PTR = or IF w wu 0 0= 0= EXIT THEN
    trec 0 DICT-CELL@ wrec 0 DICT-CELL@ = IF t tu 0 0= EXIT THEN
    w wu 0 0= 0= ;
@@ -15238,7 +15238,7 @@ variable CK-PEND-IX
    ix CK-USE-SLOT ix CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
 
 \ The packages a using refusal names: every package the lookup met, not only the
-\ two scope-find2 reports.
+\ two scope-find reports.
 : CK-USED-MARK ( str -- ) {: a:^ u:n :}
    0 CK-USED-MASK !
    CK-USE-SCAN-N 0 ?DO
@@ -22128,7 +22128,7 @@ EXPORT CHECKER-OVERLAY:RETIRE
 
 \ A U spells the word SYM names.
 : TOK-SYM-IMM? ( str n -- bool ) {: a:^ u:n sym:n :}
-   a u tok-imm2? 0 <> IF RES-TRUE EXIT THEN
+   a u tok-imm? 0 <> IF RES-TRUE EXIT THEN
    sym SOURCE-IMM? ;
 
 public
@@ -24135,6 +24135,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    ndict@ 1- REC-AT CTL-ROOTS CTL-ADD-REC ;
 \ The registrars above are found by name: a record's index holds only in the
 \ process that made it, and a built hb numbers its records anew.
-s" CHECKER-DEFRECORD" scope-find2 drop drop drop NOMINAL-ADD-REC
-s" CHECKER-DEFLINEAR" scope-find2 drop drop drop NOMINAL-ADD-REC
+s" CHECKER-DEFRECORD" scope-find drop drop drop NOMINAL-ADD-REC
+s" CHECKER-DEFLINEAR" scope-find drop drop drop NOMINAL-ADD-REC
 ;package

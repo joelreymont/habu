@@ -121,7 +121,7 @@ public
 : CLAIM-NAME ( str str -- ) {: name:^ nameu:n t:^ tu:n :}
    name nameu SEAL-NAME
    name nameu CHECKER-DEFINED-HERE? if name nameu t tu REJECT-DUPLICATE then
-   name nameu get-current search-wl2 0 <> if name nameu t tu REJECT-DUPLICATE then ;
+   name nameu get-current search-wl 0 <> if name nameu t tu REJECT-DUPLICATE then ;
 
 \ A name the checker rejects answers false, and the definer defines nothing:
 \ the checker has reported it.

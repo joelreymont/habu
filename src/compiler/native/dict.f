@@ -51,7 +51,7 @@ public
 \ export the tail, with nothing earlier binding it, are the ambiguity the engine
 \ refuses.
 : SCOPE-REC ( str -- ^n )
-   scope-find2 {: rec:^ used:^ used2:^ flags:n :}
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= flags SCOPE-FIND-AMBIGUOUS and 0<> and if E-USING-AMBIGUOUS throw then
    rec ;
 
@@ -61,7 +61,7 @@ public
 \ E-USING-AMBIGUOUS when a second used public exports it too). The engine's
 \ lookup and the checker's binder refuse the same two shapes.
 : USING-REFUSED? ( str -- bool )
-   scope-find2 {: rec:^ used:^ used2:^ flags:n :}
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then
    rec XREF-WORDLIST WL:GLOBAL?  used XREF-FOUND?  and ;
 
@@ -70,7 +70,7 @@ public
 \ has no record). A package word, an EXPORT alias and a redefinition after
 \ `undefine` each bind a record of their own, and the call path reaches it.
 : SPELL-PRIM? ( str -- bool )
-   scope-find2 {: rec:^ used:^ used2:^ flags:n :}
+   scope-find {: rec:^ used:^ used2:^ flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> if false exit then
    rec XREF-FOUND? 0= if true exit then
    flags SCOPE-SEEDED and 0<> ;
