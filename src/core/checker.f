@@ -4477,11 +4477,15 @@ SCRATCH{
 \ Why an undeclared cell or a base address refused this token's value: a FENCE-
 \ reason, FENCE-OK for none.
 variable RAW-FENCE
-\ The layout type a one-cell variable met in this token's unify, 0 for none.
-variable ONE-CELL-HIT
-\ The layout type a variable of a pointee stepped by an offset met, 0 for none.
-variable STEP-HIT
-\ The id of the variable the latest of them met; each latch clears the other.
+\ Why a variable met a type it may not take in this token's unify: one of these
+\ MD- codes, numbered with the MD- block below; 0 for none.
+102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type
+103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type
+110 constant MD-MOVED-LINEAR \ a MOVED variable met a one-cell type that may be linear
+variable CELL-HIT
+\ The type the variable met, set with CELL-HIT.
+variable CELL-HIT-TYPE
+\ The id of the variable that met it, set with CELL-HIT.
 variable ONE-CELL-VAR
 \ The facts a kept quotation has and its slot's type lacks.
 variable FACT-HIT
@@ -4506,6 +4510,9 @@ variable STALE-HIT
 variable XT-DECL
 }SCRATCH
 
+: CELL-HIT! ( n n n -- ) {: code:n t:n vid:n :}
+   code CELL-HIT !  t CELL-HIT-TYPE !  vid ONE-CELL-VAR ! ;
+
 \ A MOVED var takes a one-cell layout value its body never reads, the hidden
 \ cell a signature expands it to included: that cell is the whole value.
 : MOVED-TAKES? ( n n -- bool ) {: v:n t:n :}
@@ -4517,14 +4524,18 @@ variable XT-DECL
    t T-WIDTH 1 = ;
 
 \ A one-cell var met declared type t: latch t, which a plain cell is not. A
-\ MOVED var is one cell only against a wider value.
+\ MOVED var is one cell only against a wider value; one that may be linear it
+\ latches apart, as the stack words moving it may copy or drop it.
 : ONE-CELL-MET ( n n -- ) {: v:n t:n :}
    v ISVAR 0= IF EXIT THEN
    t TAG T-PARAM <> IF EXIT THEN
    v PAY TVK@ {: k:n :}
+   k TVK-MOVED =  t T-WIDTH 1 = and  t LAYOUT-MAYBE-LINEAR? and IF
+      MD-MOVED-LINEAR t v PAY CELL-HIT!  EXIT
+   THEN
    k TVK-CELL =  k TVK-ANY = or
    k TVK-MOVED =  t T-WIDTH 1 >  and  or 0= IF EXIT THEN
-   t ONE-CELL-HIT !  0 STEP-HIT !  v PAY ONE-CELL-VAR ! ;
+   MD-ONE-CELL t v PAY CELL-HIT! ;
 
 \ A stepped pointee's var met layout type t: latch t. A fixed step is one
 \ element of a plain cell type only, never of a layout type.
@@ -4532,7 +4543,7 @@ variable XT-DECL
    v ISVAR 0= IF EXIT THEN
    t TAG T-PARAM <> IF EXIT THEN
    v PAY TVK@ TVK-OFF <> IF EXIT THEN
-   t STEP-HIT !  0 ONE-CELL-HIT !  v PAY ONE-CELL-VAR ! ;
+   MD-OFF-STEP t v PAY CELL-HIT! ;
 
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}
    a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
@@ -4674,7 +4685,7 @@ variable XT-DECL
       \ A generic ! or atomic! still reads its one-cell value.
       dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
       dup T-WIDTH 1 = IF drop RES-FALSE EXIT THEN
-      ONE-CELL-HIT !  0 STEP-HIT !  vid ONE-CELL-VAR !  RES-TRUE EXIT
+      MD-ONE-CELL swap vid CELL-HIT!  RES-TRUE EXIT
    THEN
    vid TVK-RAW? IF term RAW-OK? 0= EXIT THEN
    vid TVK@ TVK-OFF = IF term OFF-RIDE RES-FALSE EXIT THEN   \ offset row's pointee: provenance, never a fence
@@ -5287,7 +5298,7 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
          h over PARAM>ARG T-UNSTALE {: ha:n :}
          la T-WIDTH ha T-WIDTH <> IF
             la ISVAR IF
-               ha ONE-CELL-HIT !  0 STEP-HIT !  la PAY ONE-CELL-VAR !  drop RES-TRUE EXIT
+               MD-ONE-CELL ha la PAY CELL-HIT!  drop RES-TRUE EXIT
             THEN
             la LAYOUT-PARAM?  ha TAG T-PARAM =  and IF
                la ha TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
@@ -5797,8 +5808,6 @@ private
 99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
 100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
 101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?)
-102 constant MD-ONE-CELL     \ a one-cell variable met a declared (T-PARAM) type (ONE-CELL-HIT)
-103 constant MD-OFF-STEP     \ a stepped pointee's variable met a layout type (STEP-HIT)
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
 49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
 50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose lineage differs or whose proof does not carry the entry's (CP-CARRIES?), at the same depths (CF-CARRIED=)
@@ -5854,8 +5863,8 @@ variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
 variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from the top
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
-variable MDIAG-CELL   \ one-cell and step rules: the layout type a variable met; fact rules: FACT-HIT
-variable MDIAG-CELL-VAR   \ one-cell and step rules: that variable's id; fact rules: FACT-TERM
+variable MDIAG-CELL   \ one-cell, step and moved-linear rules: the layout type a variable met; fact rules: FACT-HIT
+variable MDIAG-CELL-VAR   \ one-cell, step and moved-linear rules: that variable's id; fact rules: FACT-TERM
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
 
@@ -5938,14 +5947,9 @@ TAIL-CAPTURE-DEFAULT
    RAW-FENCE @ FENCE-EXEC = IF MD-RAW-EXEC MDIAG! THEN
    RAW-FENCE @ FENCE-PTR = IF MD-RAW-PTR MDIAG! THEN
    RAW-FENCE @ FENCE-FAMILY = IF MD-RAW-FAMILY MDIAG! THEN
-   ONE-CELL-HIT @ 0 <> IF   \ the type copied only when this refusal latches the reason
-      MDIAG @  MD-ONE-CELL MDIAG!  MDIAG @ <> IF
-         ONE-CELL-HIT @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
-      THEN
-   THEN
-   STEP-HIT @ 0 <> IF
-      MDIAG @  MD-OFF-STEP MDIAG!  MDIAG @ <> IF
-         STEP-HIT @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
+   CELL-HIT @ 0 <> IF   \ the type copied only when this refusal latches the reason
+      MDIAG @  CELL-HIT @ MDIAG!  MDIAG @ <> IF
+         CELL-HIT-TYPE @ MDIAG-CELL !  ONE-CELL-VAR @ MDIAG-CELL-VAR !
       THEN
    THEN
    FACT-HIT @ 0 <> IF   \ the facts copied only when this refusal latches the reason
@@ -18765,7 +18769,7 @@ variable SV-SGRIN   variable SV-SGROUT
 variable SV-SGWIN  variable SV-SGWOUT  variable SV-SGWRIN  variable SV-SGWROUT
 variable SV-THDMASK  variable SV-THRMASK  variable SV-THSET
 variable SV-TRAIL   variable SV-PIN
-variable SV-RAWFENCE  variable SV-ONECELL  variable SV-STEP  variable SV-CELLVAR
+variable SV-RAWFENCE  variable SV-CELLHIT  variable SV-CELLTYPE  variable SV-CELLVAR
 variable SV-FACT  variable SV-FTERM  variable SV-FKIND
 variable SV-BASEPTR  variable SV-STALE  variable SV-SCOPE
 variable TSEEN  variable TSOK
@@ -18790,7 +18794,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    SGWIN @ SV-SGWIN !  SGWOUT @ SV-SGWOUT !  SGWRIN @ SV-SGWRIN !  SGWROUT @ SV-SGWROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET !
-   RAW-FENCE @ SV-RAWFENCE !  ONE-CELL-HIT @ SV-ONECELL !  STEP-HIT @ SV-STEP !  ONE-CELL-VAR @ SV-CELLVAR !
+   RAW-FENCE @ SV-RAWFENCE !  CELL-HIT @ SV-CELLHIT !  CELL-HIT-TYPE @ SV-CELLTYPE !  ONE-CELL-VAR @ SV-CELLVAR !
    FACT-HIT @ SV-FACT !  FACT-TERM @ SV-FTERM !  FACT-KIND @ SV-FKIND !
    BASE-PTR-HIT @ SV-BASEPTR !  STALE-HIT @ SV-STALE !  SCOPE-HIT @ SV-SCOPE ! ;
 
@@ -18816,7 +18820,7 @@ variable TCLOSE  variable TBEST  variable TREACH
    SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-MDIAG @ MDIAG !
    SV-THDMASK @ THDMASK !  SV-THRMASK @ THRMASK !  SV-THSET @ THSET !
-   SV-RAWFENCE @ RAW-FENCE !  SV-ONECELL @ ONE-CELL-HIT !  SV-STEP @ STEP-HIT !  SV-CELLVAR @ ONE-CELL-VAR !
+   SV-RAWFENCE @ RAW-FENCE !  SV-CELLHIT @ CELL-HIT !  SV-CELLTYPE @ CELL-HIT-TYPE !  SV-CELLVAR @ ONE-CELL-VAR !
    SV-FACT @ FACT-HIT !  SV-FTERM @ FACT-TERM !  SV-FKIND @ FACT-KIND !
    SV-BASEPTR @ BASE-PTR-HIT !  SV-STALE @ STALE-HIT !  SV-SCOPE @ SCOPE-HIT !
    TRIAL-REST-SG ;
@@ -23660,7 +23664,7 @@ variable XPORT-TAIL
    THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
-   FENCE-OK RAW-FENCE !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
+   FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
    TKF TKFU @ s" xt!" CORE-STR= XT-DECL !          \ the sanctioned code-cell declaration point, open for this token only
    TKF TKFU @ LAYOUT-XPORT-TOK? IF
       TKF TKFU @ TOK-CORE-OP?
@@ -23676,7 +23680,7 @@ variable XPORT-TAIL
    \ The raw-cell and base-address refusals name themselves where they are
    \ raised. The flags are dropped here because TRY-PRIMS applies candidate
    \ rows in turn and the next token must start clean.
-   FENCE-OK RAW-FENCE !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
    NZ-STEP
    unj IF
@@ -24287,7 +24291,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !  0 MDIAG-NEED !  0 MDIAG-HAVE !
    0 MDIAG-LITV !  0 MDIAG-LITT !  0 MDIAG-LOCAL !  0 MDIAG-ZIN !
    0 UNFIT !
-   FENCE-OK RAW-FENCE !  0 ONE-CELL-HIT !  0 STEP-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   FENCE-OK RAW-FENCE !  0 CELL-HIT !  0 FACT-HIT !  0 BASE-PTR-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    0 FAILSET !  0 DEXP !  0 DEND !  0 DACT !  0 TRAIL-PIN !  0 RSBAD !  0 RSR-EXP !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGDECL-BAD !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !
    0 SGWIN !  0 SGWOUT !  0 SGWRIN !  0 SGWROUT !

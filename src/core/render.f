@@ -1005,6 +1005,7 @@ variable MDV-I   variable MDV-F
       MD-MEMBER-TOP of s" E-LAYOUT-VALUE" endof
       MD-ONE-CELL   of s" E-MISMATCH" endof
       MD-OFF-STEP   of s" E-MISMATCH" endof
+      MD-MOVED-LINEAR of s" E-LINEAR-COPY" endof
       MD-FACT-UNSTATED of s" E-MISMATCH" endof
       MD-FACT-INPUT of s" E-MISMATCH" endof
       MD-FACT-PASSED of s" E-MISMATCH" endof
@@ -1237,6 +1238,7 @@ variable MDV-I   variable MDV-F
       MD-MEMBER-TOP of s" at top level the word runs with its declared layout, and the receiver's instance moves this member" endof
       MD-ONE-CELL   of s"  is one cell" endof
       MD-OFF-STEP   of s"  is stepped by an offset" endof
+      MD-MOVED-LINEAR of s"  is moved by stack words that may copy or drop it" endof
       MD-FACT-UNSTATED of s" this quotation does more than the type that keeps it states" endof
       MD-FACT-INPUT of s" the type that keeps this quotation hands it a quotation its input type does not allow" endof
       MD-FACT-PASSED of s" the type this quotation is passed as hands it a quotation its input type does not allow" endof
@@ -1320,6 +1322,7 @@ variable MDV-I   variable MDV-F
       MD-MEMBER-TOP of s" runs with its declared layout" endof
       MD-ONE-CELL   of s" takes one cell" endof
       MD-OFF-STEP   of s" steps by an offset" endof
+      MD-MOVED-LINEAR of s" may copy a linear value" endof
       MD-FACT-UNSTATED of s" kept here" endof
       MD-FACT-INPUT of s" kept here" endof
       MD-FACT-PASSED of s" passed here" endof
@@ -1456,6 +1459,9 @@ variable MDV-I   variable MDV-F
 : OFF-STEP-COUNTS ( -- )
    AT-PIN  s" ; `" EMIT-STR  CELL-TYPE REND-TYPE  s" ` is not a plain cell type" EMIT-STR  ;AT-PIN ;
 
+: MOVED-LIN-COUNTS ( -- )
+   AT-PIN  s" ; `" EMIT-STR  CELL-TYPE REND-TYPE  s" ` may hold a linear value" EMIT-STR  ;AT-PIN ;
+
 
 \ What a reason carries after its prose, in text and JSON alike.
 : MDIAG-COUNTS ( -- )
@@ -1468,6 +1474,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-ONE-CELL = IF ONE-CELL-COUNTS EXIT THEN
    MDIAG @ MD-OFF-STEP = IF OFF-STEP-COUNTS EXIT THEN
+   MDIAG @ MD-MOVED-LINEAR = IF MOVED-LIN-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF DEPTH-COUNTS THEN ;
 
@@ -1841,7 +1848,8 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    \ read of an index no group declared lacks.
    MDIAG @ MD-LOCAL-ENDED =  MDIAG @ MD-LOCAL-UNBOUND = or
    PIN-TOK$ nip 0 <>  and IF TOK-SPAN 32 EMIT1 THEN
-   MDIAG @ MD-ONE-CELL =  MDIAG @ MD-OFF-STEP = or IF ONE-CELL-LEAD THEN
+   MDIAG @ MD-ONE-CELL =  MDIAG @ MD-OFF-STEP = or  MDIAG @ MD-MOVED-LINEAR = or
+   IF ONE-CELL-LEAD THEN
    MDIAG @ MD-REASON$ EMIT-STR
    MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
    MDIAG-COUNTS ;
@@ -2286,6 +2294,14 @@ PTR-VARIABLE HOLDER-FIRST
    s"  for the plain cell type it steps, or step `" EMIT-STR
    AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN  s" ` by its size" EMIT-STR ;
 
+\ A word whose effect names the type is checked as linear; a mover's var is not.
+: MOVED-LIN-HELP ( -- )
+   s" call a word whose effect names `" EMIT-STR  AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN
+   s" ` in place of " EMIT-STR
+   CELL-VAR-SYM {: sym:n :}
+   sym 0= IF s" the stack words that move it" EMIT-STR EXIT THEN
+   s" `" EMIT-STR  sym SYM-NAME$ EMIT-STR  s" `, which moves any type" EMIT-STR ;
+
 \ The latched FACT-HIT's facts in bit order, joined by one space.
 : FACT-NAMES ( -- )
    MDIAG-CELL @ dup negate and {: low:n :}
@@ -2371,6 +2387,7 @@ PTR-VARIABLE HOLDER-FIRST
       MDIAG @ MD-SCOPED-TICK = IF SCOPED-TICK-HELP EXIT THEN
       MDIAG @ MD-ONE-CELL = IF ONE-CELL-HELP EXIT THEN
       MDIAG @ MD-OFF-STEP = IF OFF-STEP-HELP EXIT THEN
+      MDIAG @ MD-MOVED-LINEAR = IF MOVED-LIN-HELP EXIT THEN
       MDIAG @ MD-FACT-UNSTATED =  MDIAG @ MD-FACT-INPUT = or  MDIAG @ MD-FACT-PASSED = or IF
          FACT-HELP EXIT
       THEN

@@ -358,7 +358,7 @@ s" TDLINC-S-ID ( tdlins -- tdlins )" CHECK-QUIET-CANDIDATE! -1 T=
 \ definition's or a quotation literal's input that stack words only move; one
 \ the body hands to a defer, a two-cell value and a one-cell value holding a
 \ linear field, which a `dup` body would copy, are rejected, the last even by
-\ an identity body.
+\ an identity body and naming the linear value.
 STRUCTURE tdmvlin
   FIELD owned tdown
 ;STRUCTURE
@@ -381,6 +381,12 @@ s" TDMV-6 ( n tdlight -- tdlight n ) TDMV-SW2" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDMV-7 ( tdlight -- tdlight ) TDMV-RD" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDMV-8 ( n tdres<n,n> -- tdres<n,n> n ) TDMV-SW" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" CHECK-QUIET-CANDIDATE! 0 T=
+\ TDMV-LIN: SRC's rejection names its linear value.
+: TDMV-LIN ( ^u8 n -- ) {: a:^ u:n :}
+   REJECTION:CAPTURE  a u CHECK-CANDIDATE! drop
+   s" `tdmvlin` may hold a linear value" TDT-HAS ;
+s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" TDMV-LIN
+s" TDMV-15 ( tdmvlin -- tdmvlin ) TDMV-UN" TDMV-LIN
 s" TDMV-10 ( tdlight -- tdlight n ) [: dup TDMV-USE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDMV-11 ( tdlight -- tdlight ) [: dup drop ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDMV-12 ( tdlight -- tdlight bool ) [: dup 0= ;] execute" CHECK-QUIET-CANDIDATE! 0 T=
