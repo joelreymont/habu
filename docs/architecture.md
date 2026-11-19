@@ -214,6 +214,9 @@ each is in the build with the time the part's object recorded:
 - a public word its source, or a text its compile evaluates, spells outside
   comment lines, and for a part that reopens a package, or evaluates a text
   that does, that package's private words too;
+- each name its compile looked up in the dictionary, as `'`, `search-wl` and
+  `scope-find` do, whether a word held it or not, a type's name aside;
+- the name of each record it made, which no earlier word may hold;
 - a type whose width sets a member offset or stride its code holds or its top
   level's member call is judged by, and that type's arguments;
 - a part that changes a record an earlier part made, which counts as defining

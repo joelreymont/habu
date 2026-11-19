@@ -5441,18 +5441,21 @@ EXPORT CHECK:DROP-FACTS
 : SPELL-MADE ( -- )
    ndict@ FILE-REC @ ?do i REC-HIT loop ;
 
-\ A name the part looked up in wordlist wid, which it did not spell: a lookup under WL:RETIRED or WL:RETIRED-NAMESPACE makes the
-\ part never link, and one in a package's public or private wordlist opens that package for the name's hit.
+\ A name the part looked up in wordlist wid: a retired wordlist's lookup makes the part never link,
+\ and a package's private wordlist's lookup opens the package for the name's hit.
 : SPELL-LOOKUP ( str n -- )
    {: a:^ u:n wid:n :}
    wid WL:RETIRED =  wid WL:RETIRED-NAMESPACE =  or if true UNLINKABLE ! then
    wid WORDLIST-PACKAGE {: pkg:n hit:bool :}
-   hit if pkg XREF-REC XREF-NAME$ TOP-NAME NAME-SUM SPELL-OPEN then
+   hit if
+      pkg XREF-REC XREF-PKG-PRIVATE wid = if
+         pkg XREF-REC XREF-NAME$ TOP-NAME NAME-SUM SPELL-OPEN
+      then
+   then
    a u NAME-SUM SPELL-HIT ;
 
-\ The compiling part's NAMES (NAMED!) as it ends, after READS-KEEP, before PIECE-END, so a part after a request hits the file it loaded:
-\ its source from FILE-OFF to end, then PART-TEXTS' texts and looked-up names (SPELL-LOOKUP) and, if there are any, all again, so
-\ each is scanned with every package one opened, then the names of the records it made (SPELL-MADE).
+\ The compiling part's NAMES as it ends, before PIECE-END: its source from FILE-OFF and its texts and
+\ looked-up names, all twice when it has texts so each sees every package one opens, then the records it made.
 : PART-NAMES ( n -- )
    {: end:n :}
    HITS-CLEAR

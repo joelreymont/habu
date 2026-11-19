@@ -3057,13 +3057,16 @@ EXPORT CHECKER-RESOLVE:REC-AT
 
 EXPORT CHECKER-RESOLVE:CK-REC-NAME$
 EXPORT CHECKER-RESOLVE:REC>INDEX
+EXPORT CHECKER-RESOLVE:xref-search-wl
 
 EXPORT BOOT:TYPES-WL
 
+\ The probe is no dependency of the part: the part that reads every pending entry
+\ probes each one's name, which its source need not spell.
 : LINEAR-ENTRY ( str -- n ) {: a:^ u:n :}
    TYPES-WL {: wid:n :}
    wid 0= IF -1 EXIT THEN
-   a u wid CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+   a u wid xref-search-wl {: rec:^ :}
    rec NULL-PTR = IF -1 EXIT THEN
    rec CK-REC-NAME$ a u CORE-STR= 0= IF -1 EXIT THEN
    rec REC>INDEX {: ix:n :}

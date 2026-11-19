@@ -2677,10 +2677,9 @@ private
    TOKEN if exit then
    TOKEN$ DEFER-NO-NAME  EXIT-STATUS:REJECTED REJECTION:STOP ;
 
+\ The global word: no package's own defer-unset stands in for it.
 : DEFER-UNSET-XT ( -- n )
-   s" defer-unset" FIND-SCOPE {: rec:^ :}
-   rec XREF-FOUND? 0= if s" defer-unset" UNDEFINED-NAME then
-   rec XREF-START ;
+   s" defer-unset" BOOT:GLOBAL-WL HANDLE-PROBE XREF-START ;
 
 \ The cell holds an execution token, so xt! declares it one: a snapshot moves
 \ it with the code region.

@@ -1545,6 +1545,31 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" probe-find" s" scope-find drop drop drop NULL-PTR = if 0 else 1 then" s" probe-find2"
    LOOKUP-RUN ;
 
+\ The public-lookup sequence's s.f: package FILE-OBJECTS-QS with a private HELPER of value n.
+: WRITE-PUBLIC-S ( str -- ) {: n:^ nu:n :}
+   s" package FILE-OBJECTS-QS : HELPER ( -- n ) " SRC+  n nu SRC+
+   s\"  ; public : PUB ( -- n ) 3 ; ;package\n" SRC+  s" s.f" NEST-WRITE ;
+
+\ r.f has a private HELPER of its own and calls only FILE-OBJECTS-QS:PUB.
+: WRITE-PUBLIC ( -- )
+   L$ s" public" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s" 1" WRITE-PUBLIC-S
+   s" s.f" REQUIRE+  s\" package FILE-OBJECTS-QR : HELPER ( -- n ) 5 ;\n" SRC+
+   s\" public : K ( -- n ) HELPER FILE-OBJECTS-QS:PUB + ; ;package\n" SRC+  s" r.f" NEST-WRITE
+   s" r.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-QR:K . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
+
+\ Guards a lookup in a package's public wordlist, which reaches none of its private names: after QS's
+\ private HELPER changes, PL2 compiles only s.f, and r.f, which spells a HELPER of its own, links.
+: PUBLIC-LOOKUP-CASE ( CMD:command -- CMD:command )
+   WRITE-PUBLIC
+   s" PL" WHICH!  s" main.f" s" prog-pl" NEST-BUILD 0= if exit then  L$ MARK
+   s" 2" WRITE-PUBLIC-S
+   s" PL2" WHICH!  s" main.f" s" prog-pl" NEST-BUILD 0= if exit then
+   L$ REWRITTEN {: n:n :}
+   s" build two rewrites only s.f's object" LABEL  n 1 T=
+   s" the object it rewrites is s.f's" LABEL  FOUND$ s" /s.f.hfo" ENDS-WITH? TTRUE
+   s" prog-pl" s\" 8\n\n" s" the program prints K" NEST-RUN ;
+
 \ The clause sequence: h.f's definer FILE-OBJECTS-CL has a does> clause, w.f defines a word of the
 \ clause's name, one.f requires h.f, and two.f w.f then h.f.
 : WRITE-CLAUSE ( -- )
@@ -1554,23 +1579,23 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
    s" w.f" REQUIRE+  s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" two.f" NEST-WRITE ;
 
-\ two.f's build, refused at h.f's FILE-OBJECTS-CL since w.f's word holds the name of its
+\ two.f's build, rejected at h.f's FILE-OBJECTS-CL since w.f's word holds the name of its
 \ clause. Answers its exit code.
-: CLAUSE-REFUSED ( CMD:command -- CMD:command n )
+: CLAUSE-REJECTED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-c" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-CL;does`" CONTAINS? {: coded:bool :}
    CMD:ERR$ S\" /h.f:1:3\n" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
-   s" the build refuses the clause's name" LABEL  named TTRUE
+   s" the build rejects the clause's name" LABEL  named TTRUE
    rc ;
 
 \ Guards a does> clause a link places: CL2 compiles h.f with no word of its clause's name live. h.f's
-\ object records that name, so in CL3 w.f's word makes it not hold: h.f compiles and is refused as in CL.
+\ object records that name, so in CL3 w.f's word makes it not hold: h.f compiles and is rejected as in CL.
 : CLAUSE-CASE ( CMD:command -- CMD:command )
    WRITE-CLAUSE
-   s" CL" WHICH!  CLAUSE-REFUSED {: cold:n :}
+   s" CL" WHICH!  CLAUSE-REJECTED {: cold:n :}
    s" CL2" WHICH!  s" one.f" s" prog-c" NEST-BUILD 0= if exit then
-   s" CL3" WHICH!  CLAUSE-REFUSED {: warm:n :}
+   s" CL3" WHICH!  CLAUSE-REJECTED {: warm:n :}
    s" the build exits as CL does" LABEL  warm cold T= ;
 
 \ The derived sequence: h.f's definer FILE-OBJECTS-DV defines its argument's name plus "-W", spelled
@@ -1584,23 +1609,23 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
    s" w.f" REQUIRE+  s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" two.f" NEST-WRITE ;
 
-\ two.f's build, refused at h.f's use of FILE-OBJECTS-DV since w.f's word holds the name it
+\ two.f's build, rejected at h.f's use of FILE-OBJECTS-DV since w.f's word holds the name it
 \ derives. Answers its exit code.
-: DERIVED-REFUSED ( CMD:command -- CMD:command n )
+: DERIVED-REJECTED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-dr" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-DX-W`" CONTAINS? {: coded:bool :}
    CMD:ERR$ S\" /h.f:4:21\n" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
-   s" the build refuses the derived name" LABEL  named TTRUE
+   s" the build rejects the derived name" LABEL  named TTRUE
    rc ;
 
 \ Guards a record a definer names by deriving: DR2 compiles h.f with no word of that name live.
-\ h.f's object records the name, so in DR3 w.f's word makes it not hold: h.f is refused as in DR.
+\ h.f's object records the name, so in DR3 w.f's word makes it not hold: h.f is rejected as in DR.
 : DERIVED-CASE ( CMD:command -- CMD:command )
    WRITE-DERIVED
-   s" DR" WHICH!  DERIVED-REFUSED {: cold:n :}
+   s" DR" WHICH!  DERIVED-REJECTED {: cold:n :}
    s" DR2" WHICH!  s" one.f" s" prog-dr" NEST-BUILD 0= if exit then
-   s" DR3" WHICH!  DERIVED-REFUSED {: warm:n :}
+   s" DR3" WHICH!  DERIVED-REJECTED {: warm:n :}
    s" the build exits as DR does" LABEL  warm cold T= ;
 
 \ The read sequence's d.txt, the text f.f reads as it loads.
@@ -2427,7 +2452,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
-      CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
+      PUBLIC-LOOKUP-CASE CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE

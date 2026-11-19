@@ -1228,6 +1228,15 @@ variable LABEL-U
    s" GD-XV-UNSET ." GE-SRC-LINE
    70 s" error[E-DEFER-UNSET]" s" execution vector rejects unset call" RUN-BAD-SOURCE
    GE-SRC-RESET
+   s" package GDXU" GE-SRC-LINE
+   s" : defer-unset ( -- ) 7 . ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" defer D ( -- )" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" GDXU:D" GE-SRC-LINE
+   70 s" error[E-DEFER-UNSET]" s" a package's defer-unset stands in for no defer's"
+   RUN-BAD-SOURCE
+   GE-SRC-RESET
    s" defer GD-XV-ACTION-A ( -- i64 )" GE-SRC-LINE
    s" : GD-XV-BAD-A ( -- ) [: 1 2 ;] is GD-XV-ACTION-A ;" GE-SRC-LINE
    \ A tick carries the target's certified effect (src/core/checker.f

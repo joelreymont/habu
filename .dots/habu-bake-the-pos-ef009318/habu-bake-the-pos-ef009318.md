@@ -10,4 +10,4 @@ Problem: four engine primitives type a build position as `n` (src/habu/prims.f `
 
 Acceptance: test/file-objects.f builds that B after A grows, cold, warm and cold again, with equal outputs and program bytes; a third build with nothing changed compiles B again and gives the same program; `get-current constant W` is rejected the same cold and warm; a part that only probes at top level links warm.
 
-Depends: habu-make-a-build-6931d6ea (the nr stack's `bare-search-wl`). Claim: unassigned.
+Depends: none. Claim: unassigned.

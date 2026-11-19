@@ -155,7 +155,7 @@ variable LAFTER
 variable LMATCH
 variable LRECLAIM
 ;package
-\ The one-wordlist search shared by the `search-wl` primitive and the AOT
+\ The one-wordlist search shared by the `bare-search-wl` primitive and the AOT
 \ seed's call-site pass.
 package WLFIND
 public
@@ -3706,7 +3706,7 @@ public
 ;package
 
 \ WLFIND:LENTRY is the name's row in one wordlist and the whole of
-\ `search-wl`'s body: in x0 = name, x1 = length, x2 = wid; out x11 = the row's
+\ `bare-search-wl`'s body: in x0 = name, x1 = length, x2 = wid; out x11 = the row's
 \ code cell or 0, x12 = the row or 0. The AOT seed's call-site pass shares it
 \ and needs the row for the sealed-WID gate. WLFIND:LPAIR looks up the
 \ two-part name `first:second` without composing it: x9 = first, x10 = its

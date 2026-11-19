@@ -255,6 +255,8 @@ public
 \ A name looked up in a wordlist, which the part depends on as if its source
 \ spelled it; the wordlist cell is the second bytes, little-endian.
 : NAME+ ( str n -- ) {: a:^ u:n wid:n :}
+   OFF-MAIN? if MISS exit then
+   STATUS @ ST-OFF = if exit then
    wid WID-BUF CELL-VIEW !
    s" COMPILE-READS:NAME+" NAME-READ a u WID-BUF CELL APPEND ;
 

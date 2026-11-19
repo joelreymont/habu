@@ -1,9 +1,9 @@
 split-str
 \ dict.f - what the running engine's dictionary says a spelling denotes, and
-\ what the chain may do with that record. The binding is the engine's own
-\ `scope-find` (habu2.f LSCOPEREC). A `create`d or `constant` word's value is in
-\ no record slot and its body may not be decoded, so the word is entered, and
-\ only while its flags still carry its definer's stamp.
+\ what the chain may do with that record. The binding is the one `scope-find`
+\ answers. A `create`d or `constant` word's value is in no record slot and its
+\ body may not be decoded, so the word is entered, and only while its flags
+\ still carry its definer's stamp.
 
 require src/lib/prelude.f
 require src/lib/error.f
