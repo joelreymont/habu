@@ -46,7 +46,9 @@ require src/lib/memory.f
 require src/lib/type/deftype.f
 require src/lib/task.f
 require src/lib/aio.f
-require src/lib/byte-buffer.f
+require src/lib/allocator.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/fork-child.f
 require src/lib/ffi-callback.f
 require src/lib/log.f
@@ -197,11 +199,9 @@ TASK:+USER SCOPE-HEAD n
 \ The packed handle of the attempt CONNECT waits on, 0 when none. Its cleanup
 \ is a quotation, which cannot read CONNECT's locals.
 TASK:+USER CONNECT-HEAD n
-\ The task's last connect refusal's or lost connection's text, a BUF growing
-\ from REFUSED-CAP; REFUSED-REGISTER says who releases it.
-$1000 constant REFUSED-CAP
-BUF:HDR-BYTES TASK:+USERS REFUSED-TEXT u8
-TASK:+USER REFUSED-LIVE n
+\ The task's last connect refusal's or lost connection's text, null until the
+\ task's first; REFUSED-REGISTER says who releases it.
+TASK:+USER REFUSED-TEXT ^VEC:vector<u8>
 0 constant KIND-NONE
 1 constant KIND-REFUSAL
 2 constant KIND-LOSS
@@ -1004,7 +1004,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 : RECORD-REFUSAL ( -- )   KIND-REFUSAL REFUSED-KIND ! ;
 
 : RECORD-LOSS ( -- )
-   0 REFUSED-TEXT BUF:LEN@ BUF:BLEN>N 0<> if KIND-LOSS REFUSED-KIND ! then ;
+   REFUSED-TEXT @ VEC:COUNT 0<> if KIND-LOSS REFUSED-KIND ! then ;
 
 : DROP-LOSS ( -- )
    REFUSED-KIND @ KIND-LOSS = if RECORD-NONE then ;
@@ -1018,22 +1018,20 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 : REFUSED-DISPOSE ( -- )
    RECORD-NONE
-   0 REFUSED-LIVE !
-   0 REFUSED-TEXT BUF:DISPOSE ;
+   REFUSED-TEXT @ VEC:DELETE  NULL-PTR REFUSED-TEXT ! ;
 
 : REFUSED-REGISTER ( -- )
    TASK:SELF-N 0= if exit then
    [: REFUSED-DISPOSE ;] TASK:SELF TASK:AT-EXIT ;
 
-\ The main task has no exit chain: its buffer lasts the process, in user cells no
-\ build carries. Elsewhere a refused registration releases the buffer, so a live
-\ buffer always has its release armed.
+\ The main task has no exit chain: its vector lasts the process, held in user
+\ cells no build carries. Elsewhere a refused registration releases the vector,
+\ so a live vector always has its release armed.
 : REFUSED-OPEN ( -- )
-   REFUSED-LIVE @ 0<> if exit then
-   0 REFUSED-TEXT REFUSED-CAP BUF:N>BLEN BUF:INIT
+   REFUSED-TEXT @ NULL-PTR <> if exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW REFUSED-TEXT !
    [: REFUSED-REGISTER ;] catch {: code:n :}
-   code 0<> if 0 REFUSED-TEXT BUF:DISPOSE code throw then
-   1 REFUSED-LIVE ! ;
+   code 0<> if REFUSED-TEXT @ VEC:DELETE  NULL-PTR REFUSED-TEXT !  code throw then ;
 
 
 \ PQerrorMessage points into the PGconn FINISH-SLOT finishes, so the text is
@@ -1042,16 +1040,16 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
    {: slot:n :}
    DROP-LOSS
    REFUSED-OPEN
-   0 REFUSED-TEXT BUF:CLEAR
+   REFUSED-TEXT @ 0 VEC:RESIZE
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
-   p NULL-ADDR? 0= if p CSTR$ -TRAILING-LF BUF:N>BLEN 0 REFUSED-TEXT BUF:APPEND-SPAN then
+   p NULL-ADDR? 0= if p CSTR$ -TRAILING-LF REFUSED-TEXT @ VEC:APPEND then
    slot ;
 
 : CONNECT-REFUSED ( n -- progress ) {: slot:n :}
    slot ['] KEEP-REFUSAL catch nip {: code:n :}
    slot CLOSE-SLOT drop
    code 0<> if code throw then
-   0 REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N PG-PROGRESS:REFUSED ;
+   REFUSED-TEXT @ VEC:SPAN SPAN:$ PG-PROGRESS:REFUSED ;
 
 
 \ CONN-LOST's copy; one that throws leaves the record empty.

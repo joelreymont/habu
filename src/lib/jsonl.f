@@ -1,7 +1,7 @@
 split-str
 \ jsonl.f - JSONL framing: a caller-owned file cursor and a memory splitter.
 \ Between OPEN and the end of input or CLOSE a cursor owns its descriptor, line
-\ BUF, 8192-byte block mapping and JSON:cursor record; at the end of input and
+\ vector, 8192-byte block mapping and JSON:cursor record; at the end of input and
 \ after any throw it releases all of them and is closed. Neither form trims or
 \ parses: each caller decides whether blank or malformed rows are errors.
 \ STORAGE CLASS. CALLER-OWNED: the cursor and what it owns; SPLIT-LINE owns none.
@@ -10,6 +10,9 @@ require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/fs.f
 require src/lib/memory.f
+require src/lib/allocator.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/string.f
 require src/lib/span.f
 require src/core/compile-reads.f
@@ -26,9 +29,7 @@ public
 -9472 s" a physical line exceeds its inclusive byte limit" ERROR:CODE E-LIMIT
 
 STRUCTURE cursor OPAQUE DERIVE addr
-   FIELD buf-base ^u8
-   FIELD buf-len n
-   FIELD buf-cap n
+   FIELD line ^VEC:vector<u8>
    FIELD storage ^u8
    FIELD pos n
    FIELD end n
@@ -41,18 +42,13 @@ STRUCTURE cursor OPAQUE DERIVE addr
 private
 
 8192 constant BLOCK-BYTES
-256 constant FIRST-CAP
 10 constant LF
-
-\ BUF's public header is the first three cells of cursor. Its API accepts a
-\ pointer to that header, so project the record base at this one boundary.
-CAST: BUF-HDR ( ^cursor -- ^n )
 
 : LIVE ( ^cursor -- )
    CURSOR-LIVE @ 0= if E-STATE throw then ;
 
 : LINE-LEN ( ^cursor -- n )
-   BUF-HDR BUF:LEN@ BUF:BLEN>N ;
+   CURSOR-LINE @ VEC:COUNT ;
 
 public
 
@@ -63,7 +59,7 @@ public
    \ A failed close ends the process: macOS and Linux release the descriptor
    \ before close reports, so a retry could close a reused one.
    cur CURSOR-FD @ FD>N close-rc 0<> if s" jsonl: close failed" EXIT-STATUS:SYSTEM die then
-   cur BUF-HDR BUF:DISPOSE
+   cur CURSOR-LINE @ VEC:DELETE  NULL-PTR cur CURSOR-LINE !
    cur CURSOR-READER JSON:READ-DISPOSE
    cur CURSOR-STORAGE @ 0= if exit then       \ OPEN's allocation threw first
    cur CURSOR-STORAGE @ BLOCK-BYTES SPAN:MAKE MEM:FREE-SPAN
@@ -74,7 +70,7 @@ private
 : PREPARE ( ^cursor -- ^cursor )
    {: cur:^ :}
    BLOCK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop cur CURSOR-STORAGE !
-   cur BUF-HDR FIRST-CAP BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW cur CURSOR-LINE !
    cur ;
 
 public
@@ -99,7 +95,7 @@ private
 : APPEND ( ^cursor ^u8 n -- )
    {: cur:^ seg:^ u:n :}
    cur LINE-LEN u + cur CURSOR-MAX @ BUF:BLEN>N > if E-LIMIT throw then
-   seg u BUF:N>BLEN cur BUF-HDR BUF:APPEND-SPAN ;
+   seg u cur CURSOR-LINE @ VEC:APPEND ;
 
 \ Only a zero read is the end.
 : FILL ( ^cursor -- bool )
@@ -139,7 +135,7 @@ public
 : NEXT ( ^cursor -- bool )
    {: cur:^ :}
    cur LIVE
-   cur BUF-HDR BUF:CLEAR
+   cur CURSOR-LINE @ 0 VEC:RESIZE
    cur ['] FRAME catch {: code:n :} drop
    code 0<> if cur CLOSE code throw then
    cur LINE-LEN 0 > if true exit then
@@ -151,7 +147,7 @@ public
    cur LIVE
    cur LINE-LEN 0= if E-STATE throw then
    cur CURSOR-READER
-   cur BUF-HDR BUF:SPAN$ BUF:BLEN>N
+   cur CURSOR-LINE @ VEC:SPAN SPAN:$
    JSON:READ-INIT ;
 
 \ The physical line at pos, the position after its LF (u when unterminated)

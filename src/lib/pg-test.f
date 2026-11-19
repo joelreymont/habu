@@ -20,7 +20,9 @@ require src/lib/span.f
 require src/lib/date.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/byte-buffer.f
+require src/lib/allocator.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/test/stderr.f
 require src/lib/pg.f
 
@@ -1964,7 +1966,7 @@ variable HEARD-U
    b PG:CLOSE ;
 
 
-create FILE-B BUF:HDR-BYTES allot       \ the capture file's bytes, read back
+TYPED-VARIABLE FILE-B ^VEC:vector<u8>   \ the capture file's bytes, read back
 variable ALL-LINES
 variable BARE-LINES
 variable PG-LINES
@@ -1974,9 +1976,10 @@ variable WARN-LINES
 \ The whole file, valid until the next read.
 : FILE$ ( -- str )
    PATH$ FS:FILE-SIZE {: size:n :}
-   FILE-B BUF:CLEAR
-   PATH$ FILE-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
-   FILE-B BUF:SPAN$ BUF:BLEN>N ;
+   FILE-B @ 0 VEC:RESIZE
+   FILE-B @ size VEC:ENSURE
+   PATH$ FILE-B @ VEC:SPAN SPAN:$ FS:READ-ALL size T=
+   FILE-B @ VEC:SPAN SPAN:$ ;
 
 
 \ libpq's default notice processor writes the message as is.
@@ -2035,8 +2038,8 @@ variable WARN-LINES
    [: a [: NOTIFY-LONG ;] E-EXEC REFUSES  b RAISES ;]
    [: STDERR:;CAPTURE ;] finally
    a PG:LIVE? TFALSE
-   FILE-B 1 BUF:N>BLEN BUF:INIT
-   [: FILE$ LINES-COUNT ;] [: FILE-B BUF:DISPOSE ;] finally
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW FILE-B !
+   [: FILE$ LINES-COUNT ;] [: FILE-B @ VEC:DELETE  NULL-PTR FILE-B ! ;] finally
    BARE-LINES @ 0 T=
    PG-LINES @ 1 T=
    s" a WARNING is one warn line; NOTICE and INFO add none" T-LABEL
