@@ -362,6 +362,15 @@ public
 : >PATHZ ( str -- ^u8 )
    PATHZ-BUF PATHZ-INTO ;
 
+\ Whether >PATHZ can spell the path: 0 to PATH-CAP bytes, none of them 0.
+: PATHZ? ( str -- bool ) {: a:^ u:n :}
+   u 0 < if false exit then
+   u PATH-CAP > if false exit then
+   a u 0 INDEX-OF MATCH option
+      none OF true ENDOF
+      some OF drop false ENDOF
+   ;MATCH ;
+
 private
 \ >PATHZ of a path whose file a word reads, the read recorded
 \ (COMPILE-READS:FILE+).

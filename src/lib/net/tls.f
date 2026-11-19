@@ -21,6 +21,8 @@ HB-TARGET-LINUX-KERNEL? ?TARGET
 
 require src/lib/error.f
 require src/lib/span.f
+require src/lib/string.f
+require src/lib/adt/option.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
 require src/lib/task.f
@@ -53,17 +55,25 @@ SUMTYPE tls-io
    VARIANT failed n ;VARIANT
 ;SUMTYPE
 
-\ mbedtls_ssl_context, mbedtls_ssl_config and mbedtls_x509_crt, sized by a
-\ sizeof probe against mbedtls 4.2.0's headers for aarch64 and x86-64 Linux,
-\ which agree; the sonames pin the ABI that fixes them. No field of them is read here. `host` is the host
-\ name as a C string, `parsed` whether the chain holds the trust file.
+private
+
+\ What START has made of a session: nothing, as a zeroed record or after STOP;
+\ contexts with the trust file in the chain, PREPARE's last step; or a session
+\ whose handshake was done and whose chain FORGET freed.
+ENUM stage empty trusting open ;ENUM
+
+public
+
+\ mbedtls_ssl_context, mbedtls_ssl_config and mbedtls_x509_crt, by a sizeof
+\ probe of mbedtls 4.2.0's headers; the sonames pin the ABI that fixes them.
+\ `host` is the name as a C string; `stage` is what START has made of them.
 STRUCTURE session OPAQUE DERIVE addr
    BUFFER ssl 584
    BUFFER config 344
    BUFFER chain 1296
    BUFFER host 256
    FIELD socket fd
-   FIELD parsed bool
+   FIELD stage stage
 ;STRUCTURE
 
 private
@@ -77,6 +87,8 @@ $7B00 negate constant NEW-TICKET
 $4C negate constant RECEIVE-FAILED
 $4E negate constant SEND-FAILED
 135 negate constant BAD-INPUT
+\ MBEDTLS_ERR_X509_FILE_IO_ERROR, from mbedtls/x509.h.
+$2900 negate constant FILE-IO
 \ mbedtls_ssl_get_verify_result's answer when no chain was verified.
 $FFFFFFFF constant UNVERIFIED
 255 constant MAX-HOST              \ MBEDTLS_SSL_MAX_HOST_NAME_LEN
@@ -160,16 +172,19 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
    s SSL SSL-INIT
    s CONFIG CONFIG-INIT
    s CHAIN CHAIN-INIT
-   true s SESSION-PARSED ! ;
+   construct stage trusting s SESSION-STAGE ! ;
 
-\ Frees the chain once; mbedtls_x509_crt_free leaves it empty, which the
-\ configuration still names and which verifies nothing.
+\ Frees the chain once, from `trusting`; mbedtls_x509_crt_free leaves it
+\ empty, which the configuration still names and which verifies nothing.
 : FORGET ( ^session -- )
    {: s:^ :}
-   s SESSION-PARSED @ if
-      s CHAIN CHAIN-FREE
-      false s SESSION-PARSED !
-   then ;
+   s SESSION-STAGE @ MATCH stage
+      empty OF ENDOF
+      trusting OF
+         s CHAIN CHAIN-FREE  construct stage open s SESSION-STAGE !
+      ENDOF
+      open OF ENDOF
+   ;MATCH ;
 
 \ The trust file into the chain. A negative answer is a file unread or with
 \ no certificate parsed; a positive one counts those skipped beside one kept.
@@ -186,10 +201,15 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
    s CONFIG s CHAIN 0 CONFIG-CHAIN
    s SSL s CONFIG SSL-SETUP ;
 
-\ The name SNI sends and the peer's certificate must carry.
+\ The name SNI sends and the peer's certificate must carry; BAD-INPUT for
+\ one FFI:CSTR cannot spell.
 : NAME ( ^session ^u8 n -- n )
    {: s:^ host:^ u:n :}
    u MAX-HOST > if BAD-INPUT exit then
+   host u 0 INDEX-OF MATCH option
+      none OF ENDOF
+      some OF drop BAD-INPUT exit ENDOF
+   ;MATCH
    host u s SESSION-HOST FFI:CSTR {: z:^ :}
    s SSL z SSL-HOST ;
 
@@ -233,13 +253,27 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
    rc WANT-WRITE = if construct tls-io want-write exit then
    rc construct tls-io failed ;
 
+\ What STOP does to a session START made: close_notify, then every context
+\ freed, the record left `empty`.
+: RELEASE ( ^session -- )
+   {: s:^ :}
+   s SSL SSL-CLOSE drop
+   s SSL SSL-FREE
+   s CONFIG CONFIG-FREE
+   s FORGET
+   construct stage empty s SESSION-STAGE ! ;
+
 public
 
 \ Sets the session up on a connected socket for the host name, trusting the
-\ certificates of the trust file. It does no I/O: `done` is a session ready
-\ for HANDSHAKE. A trust path longer than FS's PATH-CAP is E-FS-PATH.
+\ trust file's certificates. It reads that file and leaves the socket alone.
+\ A trust path FS cannot spell is `distrusted` with X509_FILE_IO_ERROR and
+\ makes nothing; a host too long or holding a 0 byte is `failed` BAD_INPUT.
 : START ( ^session fd ^u8 n ^u8 n -- tls-step )
    {: s:^ sock:fd host:^ hu:n path:^ pu:n :}
+   path pu FS:PATHZ? 0= if
+      FILE-IO construct tls-step distrusted exit
+   then
    s sock PREPARE
    CRYPTO-INIT {: init:n :}
    init 0<> if init construct tls-step failed exit then
@@ -281,12 +315,14 @@ public
    s SSL SSL-PENDING 0<> ;
 
 \ Sends close_notify once without waiting for room, then frees what START
-\ made. The socket stays open and the caller's; the record can START again.
+\ made. A zeroed or stopped session holds nothing, and STOP leaves it alone.
+\ The socket stays open and the caller's; the record can START again.
 : STOP ( ^session -- )
    {: s:^ :}
-   s SSL SSL-CLOSE drop
-   s SSL SSL-FREE
-   s CONFIG CONFIG-FREE
-   s FORGET ;
+   s SESSION-STAGE @ MATCH stage
+      empty OF ENDOF
+      trusting OF s RELEASE ENDOF
+      open OF s RELEASE ENDOF
+   ;MATCH ;
 
 ;package

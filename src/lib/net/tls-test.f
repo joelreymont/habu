@@ -2,11 +2,12 @@ split-str
 \ tls-test.f - TLS sessions against TEST-TLS-PEER's `openssl s_server -www`
 \ on a loopback port, with the certificates it makes: a trusted handshake
 \ carries GET / and its answer to the close; another host name and an
-\ unrelated CA are distrusted at the handshake, a missing trust file at
-\ START; STOP lets the same record START again. A peer that ends its stream
-\ without close_notify reads `truncated`: the test relays the handshake
-\ between the session and the server itself, then sends the session its
-\ FIN. Every wait is a poll on a descriptor.
+\ unrelated CA are distrusted at the handshake, a missing trust file or a
+\ trust path FS cannot spell at START, where a host holding a 0 byte fails
+\ BAD-INPUT; STOP lets the same record START again. A peer that ends its
+\ stream without close_notify reads `truncated`: the test relays the
+\ handshake between the session and the server itself, then sends the
+\ session its FIN. Every wait is a poll on a descriptor.
 \ Run: bin/hb --load src/lib/net/tls-test.f </dev/null
 require src/lib/test.f
 require src/lib/string.f
@@ -40,6 +41,8 @@ $4000 constant RELAY-ROOM
 RELAY-ROOM BUFFER: RELAYED           \ bytes on their way through the relay
 
 $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_file
+135 negate constant BAD-INPUT       \ MBEDTLS_ERR_SSL_BAD_INPUT_DATA
+create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
 
 
 : AWAIT ( fd n -- )
@@ -156,11 +159,31 @@ $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_f
    flags TEST-TLS-PEER:NOT-TRUSTED and TEST-TLS-PEER:NOT-TRUSTED T=
    sock HANG-UP ;
 
-\ START does no I/O, so no socket is dialed.
+\ START leaves the socket alone, so none is dialed.
 : MISSING ( -- )
    s" a trust file that does not exist is distrusted at START" T-LABEL
    -1 >FD s" localhost" s" absent.pem" SET-UP
    FILE-IO T= DISTRUSTED T=
+   SESSION TLS:STOP ;
+
+\ A trust path FS cannot spell, given as it is.
+: UNSPELLED ( str -- )
+   {: path:^ u:n :}
+   SESSION -1 >FD s" localhost" path u TLS:START >STEP
+   TEST-TLS-PEER:X509-FILE-IO T= DISTRUSTED T=
+   SESSION TLS:STOP ;
+
+: BAD-PATHS ( -- )
+   PATH-CAP 1 + 0 do [char] a LONG i + c! loop
+   s" a trust path longer than PATH-CAP is distrusted at START" T-LABEL
+   LONG PATH-CAP 1 + UNSPELLED
+   s" a trust path holding a 0 byte is distrusted at START" T-LABEL
+   s\" ca\z.pem" UNSPELLED ;
+
+: NUL-HOST ( -- )
+   s" a host holding a 0 byte fails BAD-INPUT at START" T-LABEL
+   -1 >FD s\" local\zhost" s" ca.pem" SET-UP
+   BAD-INPUT T= FAILED T=
    SESSION TLS:STOP ;
 
 : SHAKE-HANDS ( -- )
@@ -258,7 +281,7 @@ $3E00 negate constant FILE-IO       \ MBEDTLS_ERR_PK_FILE_IO_ERROR, from parse_f
 
 : CASES ( -- )
    TEST-TLS-PEER:CERTS false TEST-TLS-PEER:WWW-SERVE
-   TRUSTED OTHER-HOST UNRELATED MISSING RESTART CUT-PEER ;
+   TRUSTED OTHER-HOST UNRELATED MISSING BAD-PATHS NUL-HOST RESTART CUT-PEER ;
 
 : RUN ( -- )
    s" habu-tls" TEST-TLS-PEER:SCRATCH

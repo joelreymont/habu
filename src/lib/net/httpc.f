@@ -190,6 +190,8 @@ $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
 
 \ An addrinfo node's address, which getaddrinfo answers as a cell.
 CAST: N>BYTES ( n -- ^u8 )
+\ The conn's TLS session as bytes, which OPEN zeroes.
+CAST: SESSION>BYTES ( ^TLS:session -- ^u8 )
 
 PROCESS-SYMBOLS
 
@@ -220,14 +222,17 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : OVERSIZED ( ^conn -- ) construct fault oversize 0 FAIL ;
 
 
-\ Closes the socket the record holds, if any, STOPping first the TLS session
-\ of an https conn, which GREET STARTs on every socket DIAL connects.
+\ STOPs the TLS session of an https conn, which holds nothing unless GREET
+\ STARTed it on the socket, then closes the socket the record holds, if any.
 : HANG-UP ( ^conn -- ) {: c :}
-   c CONN-FD @ 0 >= if
-      c CONN-SECURE @ if c CONN-TLS TLS:STOP then
-      c CONN-FD @ CLOSE-CALL drop
-   then
+   c CONN-SECURE @ if c CONN-TLS TLS:STOP then
+   c CONN-FD @ 0 >= if c CONN-FD @ CLOSE-CALL drop then
    -1 c CONN-FD ! ;
+
+\ The conn's TLS session zeroed, which TLS reads as one holding nothing.
+: CLEAR-TLS ( ^conn -- ) {: c :}
+   c CONN-TLS SESSION>BYTES {: a:^ :}
+   [type] TLS:session width>n 0 ?do 0 a i + c! loop ;
 
 
 \ ---- Waiting
@@ -989,12 +994,18 @@ FSM:DEFINE LIFECYCLE ( ^conn ) phase intake
    c CONN-TOTAL @ 0= if NO-DEADLINE c CONN-ENDS ! exit then
    c CONN-TOTAL @ NS-PER-MS * mono-ns + c CONN-ENDS ! ;
 
-\ Hangs up and rests `down`, holding nothing, with fault `send` and no
-\ cause: a NEXT before the next SEND answers `failed` with `send`.
+\ Hangs up, frees the address list and rests `down`, holding nothing, with
+\ fault `send` and no cause: a NEXT before the next SEND fails `send`.
 : UNSENT ( ^conn -- ) {: c :}
-   c HANG-UP
+   c HANG-UP  c UNLIST
    c construct held none construct phase down REST
    c construct fault send 0 FAIL ;
+
+\ Runs LIFECYCLE from the phase. A throw out of a sense runs UNSENT before it
+\ goes on, so no socket or address list outlives it.
+: DRIVE ( ^conn phase -- ) {: c p:phase :}
+   [: c p LIFECYCLE ;] catch {: rc:n :}
+   rc 0<> if c UNSENT rc throw then ;
 
 public
 
@@ -1005,6 +1016,7 @@ public
 \ connection after it.
 : OPEN ( ^conn ^u8 n ^u8 n ^u8 n -- bool )
    {: c o:^ ou:n t:^ tu:n r:^ ru:n :}
+   c CLEAR-TLS
    -1 c CONN-FD !  0 c CONN-LIST !  c UNSENT
    t c CONN-TRUST !  tu c CONN-TRUST-LEN !
    r c CONN-ROOM !  ru c CONN-ROOM-LEN !
@@ -1045,13 +1057,13 @@ public
    then
    c CRLF+
    c ENDS!
-   c construct phase starting LIFECYCLE ;
+   c construct phase starting DRIVE ;
 
 \ The span holds at least one byte. The first call reads the head. Each call
 \ answers one piece of the body in the span, or the end, or the fault.
 : NEXT ( ^conn ^u8 len -- chunk-result ) {: c a:^ u:len :}
    a c CONN-SPAN !  u LEN>N c CONN-SPAN-LEN !
-   c c CONN-RESUME @ LIFECYCLE
+   c c CONN-RESUME @ DRIVE
    c CONN-ANSWER @ ;
 
 \ The answer's head, status line through the blank line, in the room; valid

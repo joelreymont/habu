@@ -32,6 +32,8 @@ $7F000001 constant LOOPBACK
 \ naming another host than the certificate's.
 $08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
 $04 constant CN-MISMATCH                \ MBEDTLS_X509_BADCERT_CN_MISMATCH
+\ What START answers for a trust path it cannot read.
+$2900 negate constant X509-FILE-IO      \ MBEDTLS_ERR_X509_FILE_IO_ERROR
 
 private
 
@@ -65,10 +67,10 @@ public
 
 private
 
-\ openssl's chatter goes to a log the script shows only when a command fails.
 : KEY+ ( -- )
    s"  -newkey ec -pkeyopt ec_paramgen_curve:P-256 -noenc" SB-APPEND ;
 
+\ openssl's chatter goes to a log the script shows only when a command fails.
 : CERTS$ ( -- str )
    SB-RESET
    s" { openssl req -x509 -days 1 -subj /CN=habu-tls-ca" SB-APPEND

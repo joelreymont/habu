@@ -103,6 +103,15 @@ Close ==
     /\ UNCHANGED <<fresh, probed, answer, fin, stray, wrote, marked,
                    framed, persist, left, interims, addrs>>
 
+(* A throw out of a run's sense: DRIVE runs UNSENT, as CLOSE does.         *)
+Throw ==
+    /\ at \in Runs
+    /\ at' = "down"
+    /\ HangUp
+    /\ held' = "none"
+    /\ UNCHANGED <<fresh, probed, answer, fin, stray, wrote, marked,
+                   framed, persist, left, interims, addrs>>
+
 (* ---- The peer                                                           *)
 
 PeerCloses ==
@@ -314,7 +323,7 @@ Run ==
     \/ Piece \/ Ended \/ Unread
     \/ Keep \/ Shut
 
-Next == Run \/ Send \/ Resume \/ Close \/ PeerCloses \/ PeerWrites
+Next == Run \/ Send \/ Resume \/ Close \/ Throw \/ PeerCloses \/ PeerWrites
 
 (* The code runs: a run's next line is weakly fair. The caller and the     *)
 (* peer are not.                                                           *)

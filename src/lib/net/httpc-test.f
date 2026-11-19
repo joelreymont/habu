@@ -22,7 +22,8 @@ split-str
 \ close_notify, an unrelated CA or an origin naming another host fails the
 \ greeting with `trust`, and a relay task between HTTPC and s_server closes
 \ HTTPC's socket in place of the server's close_notify, so an answer read to
-\ the close fails `cut`.
+\ the close fails `cut`. An https origin trusting a path TLS cannot read
+\ fails `trust` at each SEND's first NEXT and leaves no descriptor open.
 \ TEST-TABLE compares TEST-FSM:TABLE-MODULE's text for the LIFECYCLE table
 \ with spec/HttpcTable.tla whole, so the table spec/HttpcFollows.tla ties to
 \ the model spec/Httpc.tla is the code's.
@@ -91,6 +92,7 @@ variable READY
 variable STOP
 variable DONE
 variable ACCEPTS
+variable CLOSES                         \ connections the server has closed
 variable REQUESTS
 variable REQ-BYTES
 variable REQ-U
@@ -114,6 +116,10 @@ TYPED-VARIABLE LINK HTTPC:conn
 TYPED-VARIABLE SPARE HTTPC:conn          \ a record OPEN finds full of bytes
 
 CAST: CONN>BYTES ( ^HTTPC:conn -- ^u8 )
+
+\ SPARE full of non-zero bytes, as OPEN may find a record.
+: SPOIL ( -- )
+   [type] HTTPC:conn width>n 0 do $A5 SPARE CONN>BYTES i + c! loop ;
 
 TASK:MIN-STACK TASK:TASK SERVER-TASK
 
@@ -295,7 +301,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : SERVE ( TCP4:connection -- ) {: conn:TCP4:connection :}
    1 ACCEPTS atomic-add CONN-CAP 1- min {: idx:n :}
    conn idx ANSWER-ALL if conn idx COUNT-LATE then
-   conn TCP4:CLOSE PEER-STATUS ;
+   conn TCP4:CLOSE PEER-STATUS
+   1 CLOSES atomic-add drop ;
 
 : LISTENER@ ( -- TCP4:listener ) LISTENER-CELL @ TCP4:>LISTENER ;
 
@@ -351,7 +358,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 \ The server's script for a fresh case, its counts zeroed.
 : SCRIPT-IS ( script -- )
    SCRIPT !
-   0 ACCEPTS ! 0 REQUESTS ! 0 REQ-BYTES ! 0 SEEN-U ! 0 WRITTEN !
+   0 ACCEPTS ! 0 CLOSES ! 0 REQUESTS ! 0 REQ-BYTES ! 0 SEEN-U ! 0 WRITTEN !
    CONN-CAP 0 do 0 i PER-CONN ! loop ;
 
 \ A fresh case: the script, zeroed counts and a conn holding nothing, with a
@@ -887,6 +894,52 @@ variable TRUST-U
    TEST-TLS-PEER:HANDSHAKES before - 1 T=
    END-CASE ;
 
+\ ---- A trust path TLS cannot read
+
+3 constant UNREAD-SENDS
+1 constant F-GETFD
+64 constant FD-SCAN                     \ above every descriptor the test holds
+create LONG-TRUST PATH-CAP 1 + allot    \ a trust path FS cannot spell
+
+\ How many of the descriptors below FD-SCAN are open. accept(2) reserves the
+\ number of the socket it waits for before it blocks, so the lowest free
+\ number moves with the server task; a reserved number is not open.
+: OPEN-FDS ( -- n )
+   0 FD-SCAN 0 do i F-GETFD 0 fcntl 0 >= if 1+ then loop ;
+
+\ One SEND, whose first NEXT fails `trust` with X509_FILE_IO_ERROR. Once the
+\ server has closed the Kth connection, the descriptors open are OPEN.
+: UNREAD-SEND ( n n -- ) {: open:n k:n :}
+   SPARE s" GET" s" /" HTTPC:REQUEST
+   SPARE TOTAL-MS STALL-MS HTTPC:DEADLINES!
+   SPARE s" " HTTPC:SEND  ANSWER-RESET
+   SPARE SPAN-BUF WIDE-SPAN >LEN HTTPC:NEXT ANSWERED? TTRUE
+   HTTPC-FAULT:TRUST false FAULT-IS
+   SPARE HTTPC:CAUSE TEST-TLS-PEER:X509-FILE-IO T=
+   CLOSES k SERVER-TASK TEST-WAIT:FOR-CELL
+   OPEN-FDS open T= ;
+
+\ An https origin at the plain server, opened in a record full of stale
+\ bytes, trusting the path: each SEND dials, and TLS refuses the path
+\ before it makes anything. The server has closed DONE connections.
+: UNREAD-PATH ( str n -- ) {: t:^ tu:n done:n :}
+   SPOIL  s" 127.0.0.1" PORT-CELL @ HTTPS-ORIGIN!
+   SPARE ORIGIN$ t tu ROOM-BUF ROOM-CAP HTTPC:OPEN TTRUE
+   OPEN-FDS {: open:n :}
+   UNREAD-SENDS 0 do open done i + 1+ UNREAD-SEND loop
+   SPARE HTTPC:CLOSE ;
+
+\ The server answers nothing; it closes each connection at HTTPC's close.
+: TEST-HTTPS-UNREAD ( -- )
+   construct script silent SCRIPT-IS
+   s" a trust path holding a 0 byte fails each SEND `trust`, holding no socket"
+   T-LABEL
+   s\" ca\z.pem" 0 UNREAD-PATH
+   PATH-CAP 1 + 0 do [char] a LONG-TRUST i + c! loop
+   s" OPEN takes a trust path longer than PATH-CAP, which fails `trust`"
+   T-LABEL
+   LONG-TRUST PATH-CAP 1 + UNREAD-SENDS UNREAD-PATH ;
+
 \ ---- A relay that withholds the close_notify
 
 \ The relay task accepts HTTPC's connection and dials s_server. It forwards
@@ -1055,7 +1108,7 @@ public
 \ OPEN overwrites whatever the record held: a NEXT with no SEND fails `send`
 \ with no cause.
 : TEST-OPEN-NEXT ( -- )
-   [type] HTTPC:conn width>n 0 do $A5 SPARE CONN>BYTES i + c! loop
+   SPOIL
    s" OPEN takes a record full of stale bytes" T-LABEL
    SPARE s" http://127.0.0.1" s" " ROOM-BUF ROOM-CAP HTTPC:OPEN TTRUE
    ANSWER-RESET
@@ -1071,6 +1124,7 @@ public
    START-SERVER
    s" the server listens on loopback" T-LABEL
    STOP @ 0 T=
+   TEST-HTTPS-UNREAD
    PORT-CELL @ ORIGIN!
    TEST-SIZED
    TEST-CHUNKED
