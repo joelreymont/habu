@@ -4820,11 +4820,15 @@ SCRATCH{
 PTR-VARIABLE HOLD-P   variable HOLD-CAP
 PTR-VARIABLE HOLD-I-P   variable HOLD-I-CAP   variable HOLD-I-N
 PTR-VARIABLE HOLD-IX-P   variable HOLD-IX-CAP
+PTR-VARIABLE HOLD-KF-P   variable HOLD-KF-CAP
 }SCRATCH
 : HOLD-I ( -- ^n ) HOLD-I-P @ ;
 \ HOLD-IX: per var id, the HOLD-I index HOLD-PUT put it at. HOLD-I-N only
 \ grows within a unify, so a stale or unwritten cell fails a bound or the match.
 : HOLD-IX ( -- ^n ) HOLD-IX-P @ ;
+\ HOLD-KF: per var id, the frame HOLD-PUT last held it rigid in. HOLD-TAIL
+\ holds no id an active frame holds, so that frame is the only one.
+: HOLD-KF ( -- ^n ) HOLD-KF-P @ ;
 
 
 : HOLD-ENSURE ( n -- )
@@ -4850,6 +4854,13 @@ PTR-VARIABLE HOLD-IX-P   variable HOLD-IX-CAP
    nc HOLD-IX-CAP ! ;
 
 
+: HOLD-KF-ENSURE ( -- )   \ a cell per var id
+   TV-CAP @ {: nc:n :}
+   nc HOLD-KF-CAP @ <= IF exit THEN
+   HOLD-KF-P @ HOLD-KF-CAP @ cells nc cells SR-GROW HOLD-KF-P !
+   nc HOLD-KF-CAP ! ;
+
+
 : HF ( n n -- ^n ) swap HOLD-FRAME * + cells HOLD-P @ + ;   \ frame f's cell k
 
 
@@ -4863,10 +4874,10 @@ PTR-VARIABLE HOLD-IX-P   variable HOLD-IX-CAP
 
 : HOLD-OF ( n -- n )   \ the active frame holding id rigid, else -1
    {: id:n :}
-   HOLD-N @ 0 ?do
-      i id HF-K? IF i unloop EXIT THEN
-   loop
-   -1 ;
+   id HOLD-KF-CAP @ < 0= IF -1 EXIT THEN
+   id cells HOLD-KF + @ {: f:n :}
+   f 0 >=  f HOLD-N @ < and  0= IF -1 EXIT THEN
+   f id HF-K? IF f ELSE -1 THEN ;
 
 
 : HOLD-I-FROM? ( n n -- bool )   \ id is instantiable at list index from or later
@@ -4886,7 +4897,8 @@ PTR-VARIABLE HOLD-IX-P   variable HOLD-IX-CAP
       HOLD-N @ 1 - {: f:n :}
       f HF-NK HF @ {: k:n :}
       id  f HF-NK 1 + k + HF !
-      k 1 + f HF-NK HF !  EXIT
+      k 1 + f HF-NK HF !
+      HOLD-KF-ENSURE  f id cells HOLD-KF + !  EXIT
    THEN
    HOLD-I-N @ 1 + HOLD-I-ENSURE   HOLD-IX-ENSURE
    id HOLD-I-N @ cells HOLD-I + !
