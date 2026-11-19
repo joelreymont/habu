@@ -520,6 +520,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
 \ A caught body that reaches the open row below its window leaves it stale<A>;
 \ a helper returns that row only on the success arm.
 : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ;
+: CS-TIE ( R [ R -- R ] -- R [ R -- R ] ) ;
 
 : CS-SECTION-OPEN ( -- )
    \ a quotation parameter over the row keeps no cell of R intact
@@ -545,7 +546,14 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    s" O8 ( R ^u8 -- R ^u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ nor through a quotation over the caller's row below its window
    s" BW1 ( R [ R -- R ] n -- R [ R -- R ] n n ) [: WMAYBEN ;] catch"
-      CHECK-QUIET-CANDIDATE! -1 T= ;
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ a nested literal whose window holds a quotation over the caller's row
+   s" O9 ( R [ R -- R ] -- R ) [: [: CS-EXEC ;] catch drop drop ;] execute" CS-CODE<
+   s" stale<A>" CS-CODE?  CS-CODE-END
+   \ a stale row held only in a cell's type stays one across a literal's run
+   s" O10 ( R [ R -- R ] -- R [ R -- R ] ) [: [: CS-EXEC ;] catch >r [: ;] CS-TIE r> dup 0<> if throw then drop ;] execute"
+      CS-CODE<
+   s\" \"code\":\"E-MISMATCH\"" CS-CODE?  s" [ stale<A> stale<[ -- ]> --" CS-CODE?  CS-CODE-END ;
 
 : RUN ( -- )
    T-RESET

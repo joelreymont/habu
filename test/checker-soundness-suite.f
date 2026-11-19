@@ -232,7 +232,15 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" : CS-K123 ( R [ R -- R ] -- R ) {: f :} 1 [: f CHECKER-SOUNDNESS:TAIL-NAMED ;] execute drop ;" 70
    s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
    s" : CS-K124 ( R [ R -- R ] bool -- R ) {: f b :} 1 [: b IF f execute ELSE f execute THEN ;] execute drop ;" 70
-   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE ;
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" a literal's run renames its tail inside its cells too" T-LABEL
+   s" : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ; : CS-K125 ( R [ R -- R ] -- R ) 5 swap [: CS-EXEC ;] execute drop drop ;" 70
+   s" error[E-MISMATCH]: `execute` takes [ -- ]; the stack holds n [ -- ]" SUBJECT:REFUSED? TTRUE
+   s" and the copy of a literal's tail stays extensible to the caller's window" T-LABEL
+   s" CS-K126 ( R [ R -- S ] -- S ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+   s" and a stale tail a binding made a push is renamed with the push's tail" T-LABEL
+   s" : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ; : CS-K132 ( R [ R n -- R n ] -- R ) [: 5 swap [: [: CS-EXEC ;] catch drop drop ;] execute ;] execute ;" 70
+   s" error[E-MISMATCH]: CS-K132 ends with stale<A> on the stack" SUBJECT:REFUSED? TTRUE ;
 
 
 : CALLABLE-HOLDS ( -- )

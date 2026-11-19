@@ -3443,6 +3443,7 @@ EXPORT CHECKER-REG:}SCRATCH
 SCRATCH{
 PTR-VARIABLE LIST-P   variable LIST-CAP   variable LIST-N
 PTR-VARIABLE PAIR-P   variable PAIR-CAP   variable PAIR-N   \ one execution's (own, new) pairs
+PTR-VARIABLE TAILS-P  variable TAILS-CAP  variable TAILS-N  \ one instantiation's (tail, copy) pairs
 }SCRATCH
 EXPORT CHECK:ATOM>K
 EXPORT CHECK:ATOMK
@@ -3482,6 +3483,9 @@ EXPORT CHECK:Q>XRFIELD
 EXPORT CHECK:QX!
 EXPORT CHECK:R-RES
 EXPORT CHECK:SR-GROW
+EXPORT CHECK:STALE-NEW
+EXPORT CHECK:STALE-ROW-CATCH
+EXPORT CHECK:STALE-ROW?
 EXPORT CHECK:STALE>INNER
 EXPORT CHECK:T-RES
 EXPORT CHECK:TAG
@@ -3691,10 +3695,39 @@ EXPORT CHECK:TWALK-SHALLOWER
    copy ;
 
 
+: TAIL-MAP ( n -- n ) {: t:n :}   \ tail t's copy, 0 when it has none
+   0 BEGIN dup TAILS-N @ < WHILE
+      dup 2 * cells TAILS-P @ + @ t = IF 2 * 1+ cells TAILS-P @ + @ EXIT THEN
+      1 +
+   REPEAT drop 0 ;
+: TAIL-MAP+ ( n n -- ) {: old:n new:n :}   \ map tail old to its copy new
+   TAILS-N @ 1+ TAILS-CAP @ > IF
+      TAILS-CAP @ 2 * 8 max {: nc:n :}
+      TAILS-P @ TAILS-CAP @ 2 * cells nc 2 * cells SR-GROW TAILS-P !
+      nc TAILS-CAP !
+   THEN
+   old TAILS-N @ 2 * cells TAILS-P @ + !
+   new TAILS-N @ 2 * 1+ cells TAILS-P @ + !
+   TAILS-N @ 1+ TAILS-N ! ;
+: TAIL-COPY? ( n -- bool ) {: t:n :}   \ whether row t resolves to a copy
+   0 BEGIN dup TAILS-N @ < WHILE
+      dup 2 * 1+ cells TAILS-P @ + @ R-RES t = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+
+\ Type or row t with each paired identity renewed and each mapped tail renamed
+\ at every depth; a stale row over a renamed tail maps to one copy, catch kept.
 : RENEW* ( n -- n ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       t swap  dup P>REST RECURSE  over P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       REPUSH EXIT
+   THEN
+   dup TAIL-MAP dup 0 <> IF nip EXIT THEN drop
+   dup STALE-ROW? IF
+      dup STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      over STALE>INNER over = IF 2drop t EXIT THEN
+      over STALE-ROW-CATCH STALE-NEW  tuck TAIL-MAP+ EXIT
    THEN drop
    t T-RES {: x:n :}
    x TAG T-ATOM = IF x NEW dup 0= IF drop t THEN EXIT THEN
@@ -3743,8 +3776,9 @@ EXPORT CHECK:TWALK-SHALLOWER
    TWALK-RESET
    q Q>DIN RES-TRUE OWN*  q Q>DOUT RES-FALSE OWN*
    q Q>RIN RES-TRUE OWN*  q Q>ROUT RES-FALSE OWN* ;
+\ RENEW* of t; t itself when nothing is paired or copied.
 : RENEW ( n -- n ) {: t:n :}
-   PAIR-N @ 0= IF t EXIT THEN
+   PAIR-N @ 0=  TAILS-N @ 0= and IF t EXIT THEN
    TWALK-RESET t RENEW* ;
 \ List each identity a direct call minted that its rows hold only in quotations
 \ its execution leaves closed.
@@ -4770,53 +4804,74 @@ PTR-VARIABLE HOLD-I-P   variable HOLD-I-CAP   variable HOLD-I-N
    1 HOLD-I-N +! ;
 
 
-\ There are four rows in a quotation, hence at most four terminal tails.
-create QAPP-OLD 4 cells allot
-create QAPP-NEW 4 cells allot
-variable QAPP-N
+EXPORT CHECKER-QUOT-FRESH:TAILS-N
+EXPORT CHECKER-QUOT-FRESH:TAIL-MAP
+EXPORT CHECKER-QUOT-FRESH:TAIL-MAP+
+EXPORT CHECKER-QUOT-FRESH:TAIL-COPY?
 
 
-: QAPP-FRESH? ( n bool -- bool )   \ instantiate row's tail on the copy
+\ Whether to instantiate tail row on the copy; a stale row as its inner's tail,
+\ which a binding may have made a push.
+: QAPP-FRESH? ( n bool -- bool )
    {: row:n pair?:bool :}
-   row STALE-ROW? IF RES-FALSE EXIT THEN
-   pair? 0= IF row PAY RVK-IMPLICIT? EXIT THEN
+   row STALE-ROW? IF row STALE>INNER ROW-TAIL pair? RECURSE EXIT THEN
    row ISROW 0= IF RES-FALSE EXIT THEN
+   pair? 0= IF row PAY RVK-IMPLICIT? EXIT THEN
    row PAY {: id:n :}
    id RVK-QUOT?  id HOLD-OF -1 = and  id HOLD-I? 0= and ;
 
 
-: QAPP-TAIL ( n bool -- n )
-   {: row:n pair?:bool :}
-   row pair? QAPP-FRESH? 0= IF row EXIT THEN
-   QAPP-N @ 0 ?do
-      i cells QAPP-OLD + @ row = IF
-         i cells QAPP-NEW + @ unloop EXIT
-      THEN
-   loop
-   FRESH MK-QROW {: fresh:n :}
-   row QAPP-N @ cells QAPP-OLD + !
-   fresh QAPP-N @ cells QAPP-NEW + !
-   1 QAPP-N +!
-   fresh ;
-
-
 EXPORT CHECKER-QUOT-FRESH:RENEW
 
-: QAPP-ROW ( n bool -- n )
-   {: row:n pair?:bool :}
+\ Row row's pushes copied over tail, each cell renewed unless pair?.
+: QAPP-PUSHES ( n n bool -- n )
+   {: row:n tail:n pair?:bool :}
    row R-RES {: r:n :}
-   r TAG S-PUSH <> IF r pair? QAPP-TAIL EXIT THEN
-   r  r P>REST pair? RECURSE  P-COPY {: node:n :}
+   r TAG S-PUSH <> IF tail EXIT THEN
+   r  r P>REST tail pair? RECURSE  P-COPY {: node:n :}
    pair? IF node EXIT THEN
    node P>TYPE RENEW node P-TYPE!
    node ;
 
 
+\ Tail row, or its one copy per instantiation when QAPP-FRESH?; the copy keeps
+\ the tail's kind: a literal's tail stays inferred, extensible to a window.
+: QAPP-TAIL ( n bool -- n )
+   {: row:n pair?:bool :}
+   row pair? QAPP-FRESH? 0= IF row EXIT THEN
+   row TAIL-MAP dup 0 <> IF EXIT THEN drop
+   row STALE-ROW? IF
+      row STALE>INNER  dup ROW-TAIL pair? RECURSE  pair? QAPP-PUSHES
+      row STALE-ROW-CATCH STALE-NEW
+   ELSE
+      FRESH dup row PAY TVK@ swap TVK!  MK-ROW
+   THEN {: copy:n :}
+   row copy TAIL-MAP+
+   copy ;
+
+
+: QAPP-ROW ( n bool -- n )
+   {: row:n pair?:bool :}
+   row  row ROW-TAIL pair? QAPP-TAIL  pair? QAPP-PUSHES ;
+
+
 EXPORT CHECKER-QUOT-FRESH:START
 
+\ Copy the tail of each of q's rows before any row is copied, so RENEW meets
+\ a tail's copy in a cell of any row.
+: QAPP-REG ( n bool -- ) {: q:n pair?:bool :}
+   q Q>DIN ROW-TAIL pair? QAPP-TAIL drop
+   q Q>DOUT ROW-TAIL pair? QAPP-TAIL drop
+   q Q>RIN ROW-TAIL pair? QAPP-TAIL drop
+   q Q>ROUT ROW-TAIL pair? QAPP-TAIL drop ;
+
+
+\ A copy of quotation q whose rows end in QAPP-TAIL's copies; unless pair?, its
+\ cells also name those copies and renewed identities (START, RENEW).
 : QUOT-INST ( n bool -- n )
    {: q:n pair?:bool :}
-   0 QAPP-N !  pair? 0= IF q START THEN
+   0 TAILS-N !  pair? 0= IF q START THEN
+   q pair? QAPP-REG
    q Q>DIN pair? QAPP-ROW  q Q>DOUT pair? QAPP-ROW
    q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
    q Q>BLOCK fresh Q-BLOCK!
@@ -6752,10 +6807,7 @@ variable QUOT-LOSS
 : QUOT-TAIL-OWN? ( n -- bool ) {: row:n :}
    row ROW-TAIL {: t:n :}
    t ISROW 0= IF RES-FALSE EXIT THEN
-   QAPP-N @ 0 ?do
-      i cells QAPP-NEW + @ R-RES t = IF RES-TRUE unloop EXIT THEN
-   loop
-   RES-FALSE ;
+   t TAIL-COPY? ;
 
 \ Whether row var r occurs within one of row x's first cnt terms.
 : TERMS-OCC? ( n n n -- bool ) {: r:n x:n cnt:n :}
@@ -16015,8 +16067,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    0 CWIN-N !
    0 CALL-HIT !  0 CALL-ARMED !
    0 CALL-DIN !  0 CALL-DOUT !  0 QTT !
-   QAPP-OLD 0 4 ARENA-CELLS-ZERO
-   QAPP-NEW 0 4 ARENA-CELLS-ZERO  0 QAPP-N !
+   0 TAILS-N !
    0 CWIN-DTERMS !  0 CWIN-RTERMS !
    0 CWIN-DOUT-TERMS !  0 CWIN-ROUT-TERMS ! ;
 
