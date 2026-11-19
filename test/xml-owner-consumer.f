@@ -8,8 +8,6 @@ require src/lib/span.f
 require src/lib/vector.f
 require src/lib/xml.f
 require src/lib/arena.f
-require src/lib/vector.f
-require src/lib/heap.f
 require src/lib/byte-edit.f
 require src/lib/fs.f
 require src/os/script-argv.f

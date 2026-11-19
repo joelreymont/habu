@@ -8,7 +8,7 @@ require src/lib/xml/reject.f
 
 package XML
 public
-\ XML scalar/parser errors: -9201..-9208 and -9212..-9217.
+\ XML scalar/parser errors: -9201..-9208, -9212..-9214, -9216 and -9217.
 -9201 s" a caller's span is too short for what it must hold, or an output would pass the largest size"
    ERROR:CODE E-CAPACITY
 -9202 s" a length, start or count is negative, past its input, or names bytes at a null address"
@@ -32,7 +32,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 1 constant DECODE-ATTR
 2 constant DECODE-RAW
 
-\ A numeric address view is needed solely for extent and alias checks.
+\ A numeric address view is needed solely for extent checks.
 : BYTE-ADDRESS ( ^u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
 : SPAN-CHECK ( str -- )
@@ -43,15 +43,9 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    size 0 > start 0= and if E-RANGE throw then
    size MAX-SIZE start - > if E-RANGE throw then ;
 
-: OVERLAP? ( str str -- bool )
-   {: first first-len:n second second-len:n :}
-   first-len 0= second-len 0= or if false exit then
-   first BYTE-ADDRESS second BYTE-ADDRESS second-len + <
-   second BYTE-ADDRESS first BYTE-ADDRESS first-len + < and ;
-
 \ Each helper below rejects at the failing byte of the span it is given, an entity
 \ reference at its `&`, counted from at, the place of the span's first byte.
-: BYTE@ ( ^u8 n place n -- n )
+: BYTE@ ( str place n -- n )
    {: source size:n at:place index:n :}
    index 0 < index size >= or if
       source size at index 0 max size min
@@ -208,7 +202,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    source size at start end NAMED-SCALAR
    end 1+ ;
 
-: NORMALIZED ( ^u8 n n n n -- n n )
+: NORMALIZED ( str n n n -- n n )
    {: source size:n mode:n scalar:n next:n :}
    scalar $D = if
       next size < if
@@ -286,8 +280,7 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
    repeat
    2drop ;
 
-\ Appends the decoded bytes. A reader's value was checked when NEXT read it,
-\ so it rejects nothing here.
+\ A reader's value was checked when NEXT read it, so it rejects nothing here.
 : DECODE-INTO ( str n ^VEC:vector<u8> -- )
    {: source size:n mode:n v:^ :}
    source size mode DECODED-SIZE {: needed:n :}

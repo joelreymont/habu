@@ -8,6 +8,13 @@ split-str
 \ original bytes are borrowed until then. Readers and editors close first;
 \ nothing counts borrowers. After the close every copy of the owner is dead.
 \ A rejected initialisation takes nothing.
+\ SOURCE-INIT accepts UTF-8 with or without BOM; declared US-ASCII without BOM
+\ (a byte above $7F anywhere, replacement markup included, is E-ENCODING;
+\ numeric references stay ASCII); UTF-16 LE or BE with BOM and no or a generic
+\ UTF-16 declaration; BOM-less UTF-16 starting `<?` with a matching UTF-16LE or
+\ UTF-16BE declaration, checked by the first NEXT. Labels are case-insensitive
+\ and the target `xml` lowercase (XML 1.0 section 4.3.3). Anything else, UTF-32
+\ included, is E-ENCODING; bad surrogates are E-UTF16.
 require src/lib/xml/scalar.f
 require src/lib/vector.f
 require src/lib/allocator.f
@@ -365,13 +372,7 @@ LINEAR: SRC-ERASE ( XML:source -- ^n )
 
 public
 \ Validates the whole wire encoding and scalar range before it takes storage;
-\ it does not check well-formedness. Accepted: UTF-8 with or without BOM; declared US-ASCII
-\ without BOM (a byte above $7F anywhere, replacement markup included, is
-\ E-ENCODING; numeric references stay ASCII); UTF-16 LE or BE with BOM and no or
-\ a generic UTF-16 declaration; BOM-less UTF-16 starting `<?` with a matching
-\ UTF-16LE or UTF-16BE declaration, checked by the first NEXT. Labels are
-\ case-insensitive and the target `xml` lowercase (XML 1.0 section 4.3.3).
-\ Anything else, UTF-32 included, is E-ENCODING; bad surrogates are E-UTF16.
+\ it does not check well-formedness.
 : SOURCE-INIT ( ^ALLOC:allocator str -- XML:source )
    {: al:^ original size:n :}
    original size SRC-BYTES {: needed:n encoding:n bom:n lexical:n :}
@@ -517,9 +518,8 @@ private
    SRC-STATE input size ;
 
 public
-\ ENCODE appends replacement markup, already escaped, to the vector in the wire
-\ encoding without a BOM, validating the input first; the text may lie in the
-\ vector. ENCODE-SIZE answers the bytes ENCODE appends.
+\ ENCODE appends replacement markup, already escaped, in the wire encoding
+\ without a BOM, or nothing when it rejects; the text may lie in the vector.
 : ENCODE-SIZE ( XML:source str -- XML:source n )
    SRC-ENCODE-ARGS SRC-ENCODE-SIZE ;
 

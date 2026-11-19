@@ -41,18 +41,18 @@ STRUCTURE place
 \ The place of a span counted from its own first byte.
 : WHOLE ( -- place ) 1 1 COUNT-BYTES PLACE-MAKE ;
 
-\ The line and column of byte off of the UTF-8 bytes from a, counting UTF-16
+\ The line and column of byte off of the UTF-8 bytes a u, counting UTF-16
 \ units from line l, column c.
-: UTF16-POSITION ( ^u8 n n n -- n n ) {: a:^ off:n l:n c:n :}
+: UTF16-POSITION ( str n n n -- n n ) {: a:^ u:n off:n l:n c:n :}
    a a off + l c 0 REJECTION:POSITION drop {: line:n col:n :}
    line l = if 0 c else off col - 1+ 1 then {: from:n base:n :}
    line base a from + off from - UTF16:UNITS + ;
 
-\ The line and column of byte off of the span a, whose first byte sits at the
-\ place at.
-: PLACE-POSITION ( ^u8 place n -- n n ) {: a:^ at:place off:n :}
+\ The line and column of byte off of the span a u, whose first byte sits at
+\ the place at.
+: PLACE-POSITION ( str place n -- n n ) {: a:^ u:n at:place off:n :}
    at PLACE-UNMAKE {: l:n c:n kind:n :}
-   kind COUNT-UNITS = if a off l c UTF16-POSITION exit then
+   kind COUNT-UNITS = if a u off l c UTF16-POSITION exit then
    a a off + l c 0 REJECTION:POSITION drop ;
 
 0 constant FOUND-END
@@ -75,7 +75,7 @@ STRUCTURE place
 
 \ The bytes of a span shown within REASON:QUOTE-MOST, cut back to a character's
 \ first byte, and FOUND-CUT when any are dropped, else FOUND-TOKEN.
-: CAPPED ( ^u8 n -- n n ) {: a:^ u:n :}
+: CAPPED ( str -- n n ) {: a:^ u:n :}
    u REASON:QUOTE-MOST <= if u FOUND-TOKEN exit then
    a u REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
 
@@ -124,7 +124,7 @@ STRUCTURE place
    b $80 >= b $20 < or b $7F = or if 1 FOUND-BYTE exit then
    1 FOUND-TOKEN ;
 
-: PUT-FOUND ( ^u8 n n n -- ) {: a:^ off:n len:n form:n :}
+: PUT-FOUND ( str n n n -- ) {: a:^ u:n off:n len:n form:n :}
    form FOUND-END = if END$ REASON:APPEND exit then
    form FOUND-BYTE = if a off + c@ REASON:BYTE exit then
    form FOUND-UNIT-LE = if
@@ -140,18 +140,18 @@ STRUCTURE place
    a off + len  form FOUND-CUT =  REASON:QUOTE ;
 
 \ Writes the found part and the fix, and throws code with the text.
-: WRITE-TAIL ( ^u8 n n n str n -- )
-   {: a:^ off:n len:n form:n fa:^ fu:n code:n :}
+: WRITE-TAIL ( str n n n str n -- )
+   {: a:^ u:n off:n len:n form:n fa:^ fu:n code:n :}
    REASON:FOUND
-   a off len form PUT-FOUND
+   a u off len form PUT-FOUND
    REASON:FIX fa fu REASON:APPEND
    code REASON:STOP ;
 
-\ Opens the text of a rejection at off in the span a, whose first byte sits at
-\ the place at, up to its expected part.
-: HEAD-FROM ( ^u8 place n -- ) {: a:^ at:place off:n :}
+\ Opens the text of a rejection at off in the span a u, whose first byte sits
+\ at the place at, up to its expected part.
+: HEAD-FROM ( str place n -- ) {: a:^ u:n at:place off:n :}
    REASON:OPEN
-   a at off PLACE-POSITION REASON:AT REASON:EXPECTED ;
+   a u at off PLACE-POSITION REASON:AT REASON:EXPECTED ;
 
 \ Writes the found part at off of the span a u and the fix, and throws code
 \ with the text.
@@ -159,18 +159,18 @@ STRUCTURE place
    {: a:^ u:n at:place off:n fa:^ fu:n code:n :}
    at PLACE-UNMAKE nip nip COUNT-MORE = {: more:bool :}
    a u off more FOUND-FORM {: len:n form:n :}
-   a off len form fa fu code WRITE-TAIL ;
+   a u off len form fa fu code WRITE-TAIL ;
 
 \ Rejects at off in the span a u, whose first byte sits at the place at.
 : REJECT-FROM ( str place n str str n -- )
    {: a:^ u:n at:place off:n ea:^ eu:n fa:^ fu:n code:n :}
-   a at off HEAD-FROM
+   a u at off HEAD-FROM
    ea eu REASON:APPEND
    a u at off fa fu code TAIL-FROM ;
 
 \ The line and column of byte off, even, in UTF-16 bytes from a, big-endian
 \ when be is set.
-: UNIT-POSITION ( ^u8 n bool -- n n ) {: a:^ off:n be:bool :}
+: UNIT-POSITION ( str n bool -- n n ) {: a:^ u:n off:n be:bool :}
    1 1 off 0 ?do
       a i + c@ a i + 1+ c@ be if swap then
       0= swap $0A = and if drop 1+ 1 else 1+ then
@@ -179,7 +179,7 @@ STRUCTURE place
 \ Rejects at byte off of the UTF-16 bytes a u, big-endian when be is set.
 : REJECT-UNITS ( str n bool str str n -- )
    {: a:^ u:n off:n be:bool ea:^ eu:n fa:^ fu:n code:n :}
-   a off be UNIT-POSITION {: line:n col:n :}
+   a u off be UNIT-POSITION {: line:n col:n :}
    off u >= if 0 FOUND-END else
       u off - 1 = if 1 FOUND-BYTE else
          2 be if FOUND-UNIT-BE else FOUND-UNIT-LE then
@@ -188,6 +188,6 @@ STRUCTURE place
    REASON:OPEN
    line col REASON:AT REASON:EXPECTED
    ea eu REASON:APPEND
-   a off len form fa fu code WRITE-TAIL ;
+   a u off len form fa fu code WRITE-TAIL ;
 
 ;package

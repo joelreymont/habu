@@ -319,7 +319,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 
 \ Opens the text of a rejection at off in the window, up to its expected part.
 : REJECT-HEAD ( ^n n -- ) {: state off:n :}
-   state SOURCE$ drop state WINDOW-PLACE off HEAD-FROM ;
+   state SOURCE$ state WINDOW-PLACE off HEAD-FROM ;
 
 \ Writes the found part at off in the window and the fix, and throws code with
 \ the text.
@@ -327,7 +327,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
    state SOURCE$ state WINDOW-PLACE off fa fu code TAIL-FROM ;
 
 \ Rejects at off in the window, placed in the whole input.
-: REJECT ( ^n n ^u8 n ^u8 n n -- )
+: REJECT ( ^n n str str n -- )
    {: state off:n ea:^ eu:n fa:^ fu:n code:n :}
    state SOURCE$ state WINDOW-PLACE off ea eu fa fu code REJECT-FROM ;
 
@@ -385,7 +385,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 : ADVANCE-N ( ^n n -- )
    swap POSITION + +! ;
 
-: SPAN$ ( ^n n n -- ^u8 n )
+: SPAN$ ( ^n n n -- str )
    {: state start:n size:n :}
    start -2 < if
       state SCOPE$ drop start negate 3 - + size exit
@@ -541,7 +541,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-INPUT-CAP @ {: chunk:n :}
    state SOURCE-LEN + @ chunk + cap <=
    cap 4 / chunk tail max <= and if exit then
-   state SOURCE-IDX ptr-field @ state WINDOW-PLACE consumed PLACE-POSITION
+   state SOURCE$ state WINDOW-PLACE consumed PLACE-POSITION
    stream STREAM-COLUMN ! stream STREAM-LINE !
    state SOURCE-IDX ptr-field @ consumed + tail
       stream TOKEN-VEC VEC:SPAN SPAN:COPY
@@ -567,7 +567,6 @@ LINEAR: ERASE ( XML:reader -- ^n )
    loop
    true ;
 
-\ Append a decoded URI, copying a plain one directly.
 : URI-INTO ( str ^VEC:vector<u8> -- )
    {: source size:n v:^ :}
    source size PLAIN-VALUE? 0= if
@@ -708,14 +707,12 @@ private
    size state SOURCE-LEN + !
    source-state SOURCE-READER-MODE state SOURCE-MODE + !
    state source-state WINDOW-COLUMNS
-   source-state BYTE-VIEW state WIRE-STORAGE-IDX ptr-field !
    state READER-TABLES
    state source-state ;
 
 
 : SOURCE-READER ( ^cursor ^n -- XML:reader )
    {: record source-state :}
-   source-state SRC-LEXICAL$ SPAN-CHECK
    record >STATE {: state :}
    state INIT-STATE
    state source-state ['] SOURCE-BODY catch

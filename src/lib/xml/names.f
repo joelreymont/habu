@@ -4,6 +4,9 @@ split-str
 \ resolved, decoded namespace URI. A default namespace applies to elements, not
 \ to unprefixed attributes. Duplicate expanded attribute names and invalid
 \ bindings are refused before the start event is returned.
+\ PREFIX-URI resolves against the current scope, the start tag's own
+\ declarations included: `xml` to its implicit URI, the empty prefix to the
+\ default, no bytes when there is none.
 
 require src/lib/xml/state.f
 require src/lib/siphash.f
@@ -460,11 +463,8 @@ here NAME-RANGES - 2 cells / constant NAME-RANGES#
    then ;
 
 public
-\ Resolves against the current scope, the start tag's own declarations
-\ included. An unknown nonempty prefix, xmlns included, answers false and
-\ appends nothing, `xml` its implicit URI, the empty prefix the default (no
-\ bytes when none). Before the root, past its end, at EOF or on a failed reader
-\ it is E-STATE.
+\ An unknown nonempty prefix, xmlns included, answers false and appends
+\ nothing; before the root, past its end, at EOF or failed it is E-STATE.
 : PREFIX-URI ( XML:reader str ^VEC:vector<u8> -- XML:reader bool )
    PREFIX-URI-ARGS PREFIX-URI-STATE ;
 

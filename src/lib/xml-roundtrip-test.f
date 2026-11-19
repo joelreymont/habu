@@ -27,7 +27,7 @@ TYPED-VARIABLE RD XML:cursor
       s" <?xml version='1.0'?><p:a xmlns:p='urn:p' q=''>long &lt; old</p:a><!--keep-->" rot
    endcase ;
 
-: OPEN ( ^u8 n -- XML:reader )
+: OPEN ( str -- XML:reader )
    {: source size:n :}
    RD source size INIT ;
 
@@ -42,7 +42,7 @@ TYPED-VARIABLE RD XML:cursor
    CONTENT {: start:off size:len :}
    XML:CLOSE start size ;
 
-: APPLY ( ^u8 n -- n )
+: APPLY ( str -- n )
    {: value size:n :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: attr:^ :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
@@ -62,7 +62,7 @@ TYPED-VARIABLE RD XML:cursor
 : CLEARED ( -- ^VEC:vector<u8> ) READBACK @ dup 0 VEC:RESIZE ;
 : READBACK$ ( -- str ) READBACK @ VEC:SPAN SPAN:$ ;
 
-: VERIFY ( ^u8 n n -- )
+: VERIFY ( str n -- )
    {: value size:n document-size:n :}
    DOCUMENT document-size OPEN
    NEXT drop NEXT drop
@@ -74,7 +74,7 @@ TYPED-VARIABLE RD XML:cursor
    CLEARED TEXT READBACK$ s" keep" T$=
    NEXT drop XML:CLOSE ;
 
-: ROUNDTRIP ( ^u8 n -- )
+: ROUNDTRIP ( str -- )
    {: value size:n :}
    value size value size APPLY VERIFY ;
 
@@ -121,7 +121,7 @@ TYPED-VARIABLE RD XML:cursor
 \ The body is a word reached by `[']`, not a quotation literal: the reader is read
 \ and closed after the catch, `catch` restores stack depth but not contents, and
 \ a literal would leave stale<XML:reader>, which can be neither read nor dropped.
-: REJECTS ( ^u8 n -- )
+: REJECTS ( str -- )
    OPEN ['] DRAIN catch 0<> TTRUE
    ['] NEXT-AFTER catch E-STATE T=
    XML:CLOSE ;

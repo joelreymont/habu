@@ -9,7 +9,6 @@ package XML-TEST
 using XML
 
 $400 constant TEXT-CAP
-create TEXT-BUF TEXT-CAP allot
 create OTHER-BUF TEXT-CAP allot
 3 SPAN-BUFFER: INPUT-CHUNK
 64 SPAN-BUFFER: INPUT-WHOLE
@@ -32,7 +31,7 @@ TYPED-VARIABLE RD2 XML:cursor
 
 CAST: TOKEN>N ( XML:kind -- n )
 
-: OPEN ( ^u8 n -- XML:reader )
+: OPEN ( str -- XML:reader )
    {: source size:n :}
    RD source size INIT ;
 
@@ -138,7 +137,7 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ a reader opened before the catch comes back `stale<XML:reader>` and a linear
 \ cell can be neither read nor dropped. The body closes the reader its failed
 \ NEXT leaves, as the contract requires, and rethrows that failure.
-: BAD ( ^u8 n n -- )
+: BAD ( str n -- )
    {: expected:n :}
    [: 2dup OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch expected T=
    2drop ;

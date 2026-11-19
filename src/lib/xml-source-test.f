@@ -7,8 +7,6 @@ require src/lib/heap.f
 require src/lib/span.f
 require src/lib/vector.f
 require src/lib/reason.f
-require src/lib/vector.f
-require src/lib/heap.f
 
 package XML-SOURCE-TEST
 
@@ -540,8 +538,8 @@ TYPED-VARIABLE MOVER ALLOC:allocator
    out VEC:DELETE
    XML:SOURCE-CLOSE ;
 
-\ The vector's own bytes escaped into it while its block moves: TRIM leaves
-\ no room, so the escape grows the block.
+\ The vector's own bytes escaped and encoded into it while its block moves:
+\ TRIM leaves no room, so each append grows the block.
 : ESCAPE-OWN ( -- )
    POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] MOVER ALLOC:INIT
    MOVER 0 [type] u8 VEC:NEW {: v:^ :}
@@ -549,6 +547,11 @@ TYPED-VARIABLE MOVER ALLOC:allocator
    v 3 VEC:TRIM
    v VEC:SPAN SPAN:$ v XML:ESCAPE-TEXT
    v VEC:SPAN SPAN:$ s" a<ba&lt;b" T$=
+   s" <a/>" OPEN
+   v 9 VEC:TRIM
+   v VEC:SPAN SPAN:$ v XML:ENCODE
+   v VEC:SPAN SPAN:$ s" a<ba&lt;ba<ba&lt;b" T$=
+   XML:SOURCE-CLOSE
    v VEC:DELETE ;
 
 \ An allocator over the heap that counts the blocks it gives and frees.
@@ -556,11 +559,11 @@ variable TAKEN
 variable FREED
 TYPED-VARIABLE COUNTER ALLOC:allocator
 
-: C-ALLOC ( ^u8 n -- ^u8 )
+: C-ALLOC ( str -- ^u8 )
    {: st:^ len:n :}
    1 TAKEN +!  HEAP:ALLOCATOR len ALLOC:BYTES drop ;
 
-: C-RESIZE ( ^u8 ^u8 n n -- ^u8 )
+: C-RESIZE ( ^u8 str n -- ^u8 )
    {: st:^ block:^ old:n new:n :}
    HEAP:ALLOCATOR block old new ALLOC:RESIZE drop ;
 
@@ -662,25 +665,26 @@ TYPED-VARIABLE COUNTER ALLOC:allocator
    XML:SOURCE-CLOSE ;
 
 
-: WIDE-PUT ( ^u8 n str -- n )
-   {: wire at:n text size:n :}
+: WIDE-PUT ( ^VEC:vector<u8> str -- )
+   {: wire:^ text size:n :}
    size 0 ?do
-      text i + c@ wire at i 2 * + + c!
-      0 wire at i 2 * + 1+ + c!
-   loop
-   at size 2 * + ;
+      text i + c@ wire VEC:PUSH c!
+      0 wire VEC:PUSH c!
+   loop ;
 
 
 \ Mapping costs time bounded whatever the offset, or the row overruns
 \ its CPU budget.
 : WIDE-OWNER-RANGES ( -- )
    CHILDREN 4 * 7 + 2 * 2 + {: size:n :}
-   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: wire wire-alloc :}
-   $FF wire c! $FE wire 1+ c!
-   wire 2 s" <r>" WIDE-PUT
-   CHILDREN 0 ?do wire swap s" <a/>" WIDE-PUT loop
-   wire swap s" </r>" WIDE-PUT size T=
-   wire size OPEN XML:SOURCE-OWN {: owner :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: wire:^ :}
+   wire size VEC:RESERVE
+   $FF wire VEC:PUSH c! $FE wire VEC:PUSH c!
+   wire s" <r>" WIDE-PUT
+   CHILDREN 0 ?do wire s" <a/>" WIDE-PUT loop
+   wire s" </r>" WIDE-PUT
+   wire VEC:COUNT size T=
+   wire VEC:SPAN SPAN:$ OPEN XML:SOURCE-OWN {: owner :}
    0 WIDE-BAD !
    CHILDREN 0 ?do
       owner i 4 * 3 + >OFF 4 >LEN XML:OWNER-RANGE
@@ -688,7 +692,7 @@ TYPED-VARIABLE COUNTER ALLOC:allocator
    loop
    WIDE-BAD @ 0 T=
    owner XML:OWNER-CLOSE
-   wire wire-alloc MEM:RELEASE-BYTES ;
+   wire VEC:DELETE ;
 
 : REJECTIONS ( -- )
    s\" \xFF\xFE<" XML:E-UTF16 BAD-INIT

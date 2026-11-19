@@ -290,10 +290,8 @@ ENUM phase DERIVE eq
 \ V4, or another, V3's CSDL among them.
 ENUM space DERIVE eq edmx2 edmx4 edm2 edm4 other ;ENUM
 
-\ One METADATA call's state: scratch holds an element's namespace URI until its
-\ first attribute is decoded; names holds the map, keys, arrays and scratch.
-\ Scratch then holds a PropertyPath's or Bool's text until its end; `home` is
-\ the phase a filter's end returns to.
+\ One METADATA call's state: names holds the map, keys, arrays, scratch and
+\ the cursor; `home` is the phase a filter's end returns to.
 STRUCTURE doc DERIVE addr
    FIELD model ^metadata
    FIELD arena ^ARENA:arena
@@ -1443,7 +1441,8 @@ CAST: >RECORD ( n -- ^t )
    d PLACE-HERE s" text in `" REASON:APPEND el el-len REASON:APPEND s" `" REASON:APPEND
    s" an element" s" write the value as text" FOUND ;
 
-\ A start tag: its namespace is classified, then the open phase takes it.
+\ A start tag: its namespace is classified, then the open phase takes it;
+\ scratch holds the URI until the tag's first attribute is decoded.
 : CLASSIFY ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d CLEARED XML:URI

@@ -26,7 +26,7 @@ create FILE-BYTES FILE-CAP allot
 create EXPECTED FILE-CAP allot
 variable RC
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ ;
 : FILE$ ( str -- str ) {: rel:^ size:n :}
    ROOT$ rel size PATH FS:JOIN-PATH PATH swap ;
 
@@ -42,7 +42,7 @@ variable RC
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T= ;
 
-: MARKER ( ^u8 n -- ) {: marker size:n :}
+: MARKER ( str -- ) {: marker size:n :}
    OUT OUT-U @ marker size CONTAINS? TTRUE ;
 
 : ENTRY$ ( -- str ) s" source-run.f" FILE$ ;
