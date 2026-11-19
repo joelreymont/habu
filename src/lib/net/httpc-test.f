@@ -8,17 +8,21 @@ split-str
 \ `timeout` and not in a hang. A scripted close is a half-close: the server
 \ sends its FIN and still counts any request that arrives after it. The
 \ server counts the answers it has written, so a case reads an answer only
-\ once all of it is ready and no receive waits.
+\ once all of it is ready and no receive waits. A room the size of an
+\ answer's head, or of its head and body, bounds the head's read, so the body,
+\ or a byte past it, stays on the socket.
 \ The https cases speak to TEST-TLS-PEER's `openssl s_server` and its
-\ certificates. An https origin at the plain server, which answers nothing,
-\ fails its handshake `timeout` at the stall deadline. With -www, a trusted
-\ GET / reads its answer to its close_notify, and an unrelated CA or an
-\ origin naming another host fails the greeting with `trust`. Without it,
-\ the server sends in one record what the test writes to its stdin: an
-\ answer whose record carries bytes past its body leaves them in the TLS
-\ session, and the next request dials anew. A relay task between HTTPC and
-\ an s_server restarted on TLS 1.2 closes HTTPC's socket in place of the
-\ server's close_notify, so an answer read to the close fails `cut`.
+\ certificates. The plain server reads a ClientHello as a request: an https
+\ origin at it fails its handshake `timeout` at the stall deadline when it
+\ answers nothing, and `handshake` when it closes or answers plain HTTP.
+\ Without -www, s_server sends in one record what the test writes to its
+\ stdin: two answers ride one session, and an answer whose record carries
+\ bytes past its body leaves them in the TLS session, so the next request
+\ dials anew. On TLS 1.2 with -www, a trusted GET / reads its answer to its
+\ close_notify, an unrelated CA or an origin naming another host fails the
+\ greeting with `trust`, and a relay task between HTTPC and s_server closes
+\ HTTPC's socket in place of the server's close_notify, so an answer read to
+\ the close fails `cut`.
 \ TEST-TABLE compares TEST-FSM:TABLE-MODULE's text for the LIFECYCLE table
 \ with spec/HttpcTable.tla whole, so the table spec/HttpcFollows.tla ties to
 \ the model spec/Httpc.tla is the code's.
@@ -60,7 +64,7 @@ $4000 constant GOT-CAP                  \ s_server's status page fits
 $40 constant ORIGIN-CAP
 5000 constant TOTAL-MS
 5000 constant STALL-MS
-5000 constant FIN-MS
+5000 constant INPUT-MS
 100 constant SHORT-STALL-MS             \ the stall the timeout case expects
 8 constant CONN-CAP                     \ connections one case may make
 10 constant SIZED-SPAN                  \ shorter than the sized body
@@ -68,6 +72,10 @@ $40 constant ORIGIN-CAP
 $40 constant WIDE-SPAN
 $01 constant POLLIN
 100 constant PAST-MS                    \ the total deadline a case outlives
+5 constant RECORD-HEAD                  \ a TLS record's header
+22 constant HANDSHAKE-TYPE              \ the content type of a ClientHello
+$7280 negate constant CONN-EOF          \ MBEDTLS_ERR_SSL_CONN_EOF
+$7200 negate constant INVALID-RECORD    \ MBEDTLS_ERR_SSL_INVALID_RECORD
 
 create REQ-BUF REQ-CAP allot
 create SEEN-BUF REQ-CAP allot
@@ -75,7 +83,7 @@ create ROOM-BUF ROOM-CAP allot
 create SPAN-BUF WIDE-SPAN allot
 create GOT-BUF GOT-CAP allot
 create ORIGIN-BUF ORIGIN-CAP allot
-create FIN-PFD 8 allot
+create INPUT-PFD 8 allot
 
 variable LISTENER-CELL
 variable PORT-CELL
@@ -99,7 +107,8 @@ CONN-CAP TYPED-BUFFER PER-CONN n
 \ What the server answers in the running case.
 ENUM script sized chunked closing interim no-content reuse idle-close
    unread cut-head cut-body silent bad-status bad-length bad-chunk big-head
-   trailing trailer big-trailer long-size interims ;ENUM
+   trailing trailer big-trailer long-size interims close-asked minor-zero
+   wire-sized wire-chunked stale-byte ;ENUM
 TYPED-VARIABLE SCRIPT script
 TYPED-VARIABLE LINK HTTPC:conn
 TYPED-VARIABLE SPARE HTTPC:conn          \ a record OPEN finds full of bytes
@@ -148,6 +157,22 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 \ FIRST$ and two bytes past its body, sent in one write.
 : TRAILING$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfirstXX" ;
+: CLOSE-ASKED$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nfirst" ;
+: MINOR-ZERO$ ( -- str ) S\" HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\nfirst" ;
+
+\ Heads padded to hold the request head, which shares the room.
+: WIRE-SIZED$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 26\r\nX-Pad: abcdefghijklmnopq\r\n\r\nabcdefghijklmnopqrstuvwxyz" ;
+: WIRE-SIZED-HEAD$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 26\r\nX-Pad: abcdefghijklmnopq\r\n\r\n" ;
+: WIRE-CHUNKED$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nX-Pad: abcdefghijklmnopq\r\n\r\n5\r\nhello\r\n7;x=1\r\n, world\r\n0\r\nX-Trailer: 1\r\n\r\n" ;
+: WIRE-CHUNKED-HEAD$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nX-Pad: abcdefghijklmnopq\r\n\r\n" ;
+\ A whole answer and one byte past its body, sent in one write.
+: STALE-BYTE$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Pad: abcdefghijklmnopq\r\n\r\nfirstX" ;
 
 : TWO$ ( n -- str ) 0= if FIRST$ else SECOND$ then ;
 
@@ -174,6 +199,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       big-trailer OF BIG-TRAILER$ false ENDOF
       long-size OF LONG-SIZE$ false ENDOF
       interims OF INTERIMS$ false ENDOF
+      close-asked OF k 0= if CLOSE-ASKED$ else SECOND$ then false ENDOF
+      minor-zero OF k 0= if MINOR-ZERO$ else SECOND$ then false ENDOF
+      wire-sized OF WIRE-SIZED$ false ENDOF
+      wire-chunked OF WIRE-CHUNKED$ false ENDOF
+      stale-byte OF k 0= if STALE-BYTE$ else SECOND$ then false ENDOF
    ;MATCH ;
 
 
@@ -216,9 +246,25 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       ENDOF
    ;MATCH ;
 
-\ One whole request, its bytes counted; false at the client's close.
+\ The length of the TLS record at the address, its header included.
+: RECORD-SIZE ( ^u8 -- n ) {: a:^ :}
+   a 3 + c@ 8 lshift  a 4 + c@ or RECORD-HEAD + ;
+
+\ The rest of a ClientHello's record; false at the client's close.
+: READ-HELLO ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
+   begin REQ-U @ RECORD-HEAD < while
+      conn REQ-CHUNK 0= if false exit then
+   repeat
+   begin REQ-U @ REQ-BUF RECORD-SIZE < while
+      conn REQ-CHUNK 0= if false exit then
+   repeat true ;
+
+\ One whole request, its bytes counted; false at the client's close. A
+\ ClientHello is one whole once its record is.
 : READ-REQUEST ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
    0 REQ-U !
+   conn REQ-CHUNK 0= if false exit then
+   REQ-BUF c@ HANDSHAKE-TYPE = if conn READ-HELLO exit then
    begin HEAD-U dup 0= while
       drop conn REQ-CHUNK 0= if false exit then
    repeat
@@ -384,11 +430,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    HTTPC-FAULT:SEND true FAULT-IS
    LINK HTTPC-TEST:FD -1 T= ;
 
-\ Blocks until the server's bytes or its FIN reach the conn's socket.
-: AWAIT-FIN ( -- bool )
-   LINK HTTPC-TEST:FD FIN-PFD LE:U32!
-   POLLIN FIN-PFD 4 + LE:U16!  0 FIN-PFD 6 + LE:U16!
-   FIN-PFD 1 FIN-MS poll 1 = ;
+\ Blocks until a byte or the server's FIN reaches the conn's socket.
+: AWAIT-INPUT ( -- bool )
+   LINK HTTPC-TEST:FD INPUT-PFD LE:U32!
+   POLLIN INPUT-PFD 4 + LE:U16!  0 INPUT-PFD 6 + LE:U16!
+   INPUT-PFD 1 INPUT-MS poll 1 = ;
 
 
 \ ---- Cases
@@ -460,7 +506,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    200 s" first" ANSWER-IS
    REQ-BYTES @ {: one:n :}
    s" the server's FIN reaches the idle connection" T-LABEL
-   AWAIT-FIN TTRUE
+   AWAIT-INPUT TTRUE
    ASK WIDE-SPAN READ-ALL
    s" the next request dials anew and is written once" T-LABEL
    200 s" second" ANSWER-IS
@@ -505,6 +551,52 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH TTRUE
+   END-CASE ;
+
+\ An answer that forbids keeping its connection; the next request dials anew.
+: SHUT-BY ( script ^u8 n -- ) {: sc:script a:^ u:n :}
+   sc BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   a u T-LABEL
+   200 s" first" ANSWER-IS
+   ASK WIDE-SPAN READ-ALL
+   200 s" second" ANSWER-IS
+   ACCEPTS @ 2 T=
+   END-CASE ;
+
+: TEST-SHUT ( -- )
+   construct script close-asked
+   s" the request after an answer asking `Connection: close` dials anew"
+   SHUT-BY
+   construct script minor-zero
+   s" the request after an HTTP/1.0 answer dials anew" SHUT-BY ;
+
+\ A room of the head's size leaves the whole body on the socket.
+: TEST-WIRE-BODY ( -- )
+   construct script wire-sized WIRE-SIZED-HEAD$ nip BEGIN-IN
+   ASK SIZED-SPAN READ-ALL
+   s" a Content-Length body read from the wire arrives whole" T-LABEL
+   200 ALPHABET$ ANSWER-IS
+   END-CASE
+   construct script wire-chunked WIRE-CHUNKED-HEAD$ nip BEGIN-IN
+   ASK CHUNKED-SPAN READ-ALL
+   s" a chunked body read from the wire decodes whole" T-LABEL
+   200 s" hello, world" ANSWER-IS
+   END-CASE ;
+
+\ The room holds the answer but not the byte past it, so the connection is
+\ kept with that byte unread on its socket.
+: TEST-STALE-BYTE ( -- )
+   construct script stale-byte STALE-BYTE$ nip 1- BEGIN-IN
+   ASK WIDE-SPAN READ-ALL
+   s" an answer with a byte past it on the socket" T-LABEL
+   200 s" first" ANSWER-IS
+   s" the byte past the answer reaches the kept connection" T-LABEL
+   AWAIT-INPUT TTRUE
+   ASK WIDE-SPAN READ-ALL
+   s" the probe finds a byte on the kept connection and dials anew" T-LABEL
+   200 s" second" ANSWER-IS
+   ACCEPTS @ 2 T=
    END-CASE ;
 
 \ A loopback port bound but not listening refuses every connection.
@@ -558,7 +650,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LINK s" " HTTPC:SEND
    WRITTEN 1 SERVER-TASK TEST-WAIT:FOR-CELL
    s" the whole answer reaches the client" T-LABEL
-   AWAIT-FIN TTRUE
+   AWAIT-INPUT TTRUE
    PAST-MS >MS TASK:SLEEP
    WIDE-SPAN READ-ALL
    s" an answer read after the total deadline fails `timeout`" T-LABEL
@@ -733,6 +825,23 @@ variable TRUST-U
    s" the plain server took the connection" T-LABEL
    ACCEPTS 1 SERVER-TASK TEST-WAIT:FOR-CELL ;
 
+\ The plain server answers the ClientHello by its script; the handshake
+\ fails with mbedTLS's code as CAUSE.
+: SHAKE-FAILS ( script n ^u8 n -- ) {: sc:script cause:n a:^ u:n :}
+   sc SCRIPT-IS
+   s" localhost" s" ca.pem" PORT-CELL @ ROOM-CAP BEGIN-HTTPS-AT
+   ASK-ROOT WIDE-SPAN READ-ALL
+   a u T-LABEL
+   HTTPC-FAULT:HANDSHAKE true FAULT-IS
+   LINK HTTPC:CAUSE cause T=
+   END-CASE ;
+
+: TEST-HTTPS-HANDSHAKE ( -- )
+   construct script cut-head CONN-EOF
+   s" a server that closes before any byte fails `handshake`" SHAKE-FAILS
+   construct script sized INVALID-RECORD
+   s" a server answering plain HTTP fails `handshake`" SHAKE-FAILS ;
+
 \ An answer head padded to hold the request head, which shares the room.
 : HELD-HEAD$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Pad: abcdefghijklmnopq\r\n\r\n" ;
@@ -766,13 +875,24 @@ variable TRUST-U
    CLOSED-NEXT
    END-CASE ;
 
+: TEST-HTTPS-REUSE ( -- )
+   TEST-TLS-PEER:HANDSHAKES {: before:n :}
+   s" localhost" s" ca.pem" BEGIN-HTTPS
+   ASK-ROOT  FIRST$ TEST-TLS-PEER:SCRIPTED  WIDE-SPAN READ-ALL
+   s" the first of two https requests" T-LABEL
+   200 s" first" ANSWER-IS
+   ASK-ROOT  SECOND$ TEST-TLS-PEER:SCRIPTED  WIDE-SPAN READ-ALL
+   s" the second https request rides the first one's session" T-LABEL
+   200 s" second" ANSWER-IS
+   TEST-TLS-PEER:HANDSHAKES before - 1 T=
+   END-CASE ;
+
 \ ---- A relay that withholds the close_notify
 
 \ The relay task accepts HTTPC's connection and dials s_server. It forwards
 \ the client's bytes as they come and the server's by whole records, each
 \ framed by its 5-byte header. At the server's first alert record, the
 \ close_notify, it closes the client's socket with that record unsent.
-5 constant RECORD-HEAD
 21 constant ALERT-TYPE                  \ a TLS 1.2 record's content type
 $10000 constant RECORDS-CAP             \ a part record, 5 + 2^14 + 2048
                                         \ bytes at most, and a read
@@ -789,7 +909,7 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
 \ whole yet.
 : RECORD-LEN ( n -- n ) {: at:n :}
    at RECORD-HEAD + RECORDS-U @ > if 0 exit then
-   RECORDS at + 3 + c@ 8 lshift  RECORDS at + 4 + c@ or RECORD-HEAD +
+   RECORDS at + RECORD-SIZE
    {: len:n :}
    at len + RECORDS-U @ > if 0 exit then
    len ;
@@ -883,9 +1003,7 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
    RELAY-TASK TASK:KILL
    RELAY-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER PEER-STATUS ;
 
-\ s_server serves on TLS 1.2 from here on.
 : TEST-HTTPS-CUT ( -- )
-   TEST-TLS-PEER:UNSERVE true TEST-TLS-PEER:WWW-SERVE
    START-RELAY
    s" localhost" s" ca.pem" RELAY-PORT @ ROOM-CAP BEGIN-HTTPS-AT
    ASK-ROOT WIDE-SPAN READ-ALL
@@ -902,11 +1020,13 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
 : HTTPS-CASES ( -- )
    TEST-TLS-PEER:CERTS
    TEST-HTTPS-SILENT
-   false TEST-TLS-PEER:WWW-SERVE
-   TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST
-   TEST-TLS-PEER:UNSERVE TEST-TLS-PEER:SCRIPT-SERVE
+   TEST-HTTPS-HANDSHAKE
+   TEST-TLS-PEER:SCRIPT-SERVE
    TEST-HTTPS-HELD
+   TEST-HTTPS-REUSE
    TEST-HTTPS-CLOSE
+   TEST-TLS-PEER:UNSERVE true TEST-TLS-PEER:WWW-SERVE
+   TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST
    TEST-HTTPS-CUT ;
 
 : TEST-HTTPS ( -- )
@@ -961,6 +1081,9 @@ public
    TEST-IDLE-CLOSE
    TEST-UNREAD
    TEST-TRAILING
+   TEST-SHUT
+   TEST-WIRE-BODY
+   TEST-STALE-BYTE
    TEST-LENGTH-SENT
    TEST-CONNECT
    TEST-CUT

@@ -6,8 +6,9 @@ split-str
 \ certificate for localhost that ca.pem signs. WWW-SERVE starts a server
 \ answering every request with its status page; SCRIPT-SERVE one sending in
 \ one record each write SCRIPTED makes to its stdin. PORT answers the
-\ server's port and UNSERVE stops it; CLEAN stops it and removes the scratch
-\ directory. LISTEN binds a loopback listener on a port of its own.
+\ server's port, HANDSHAKES the handshakes it has finished, and UNSERVE stops
+\ it; CLEAN stops it and removes the scratch directory. LISTEN binds a
+\ loopback listener on a port of its own.
 \ STORAGE CLASS. PROCESS-WIDE: the scratch directory's path, and the one
 \ running server's pid, pipes, output and port; a test UNSERVEs before it
 \ serves again. CALLER-OWNED: the cells LISTEN writes.
@@ -38,8 +39,8 @@ private
 $200 constant DIR-ROOM
 DIR-ROOM BUFFER: DIR                    \ the scratch directory's path
 variable DIR-U
-$400 constant OUT-ROOM
-OUT-ROOM BUFFER: OUT                    \ the server's output up to its port
+$8000 constant OUT-ROOM
+OUT-ROOM BUFFER: OUT                    \ the server's output read so far
 variable OUT-U
 variable SERVER-PID                     \ 0 while no server runs
 variable SERVER-OUT                     \ the read end of its output
@@ -135,8 +136,9 @@ private
    old if s" -no_tls1_3" PROCESS:ARG then
    DIR$ PROCESS:CWD ;
 
-\ The server's stdout and stderr share one pipe, read only up to the ACCEPT
-\ line: what it writes after that stays far below the pipe's capacity.
+\ The server's stdout and stderr share one pipe, read here up to the ACCEPT
+\ line and later only by HANDSHAKES: what it writes after that line stays far
+\ below the pipe's capacity.
 : SERVE ( PROCESS:request -- )
    s" s_server names its loopback port" T-LABEL
    FD:PIPE-PAIR {: r:fd w:fd :}
@@ -171,6 +173,22 @@ public
    SERVER-IN @ >FD a u FD:WRITE-FULL ;
 
 : PORT ( -- n ) SERVER-PORT @ ;
+
+private
+
+\ Every byte of output the server has written so far.
+: DRAIN-OUT ( -- )
+   begin SERVER-OUT @ >FD 0 >MS PROCESS:POLL-IN COUNT>N 0 > while
+      READ-OUT
+   repeat ;
+
+public
+
+\ The `CIPHER is` lines of the server's output. It writes one for each
+\ handshake before any byte SCRIPTED gives that session, so a session that
+\ has answered is counted.
+: HANDSHAKES ( -- n )
+   DRAIN-OUT  OUT OUT-U @ s" CIPHER is" COUNT-SUB ;
 
 : UNSERVE ( -- )
    SERVER-PID @ 0= if exit then
