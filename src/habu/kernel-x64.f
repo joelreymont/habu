@@ -104,13 +104,11 @@ variable OVERLAY-DIE-CELL
 variable SCOPE-SEED-CELL
 variable SCOPE-SEED-END-CELL
 variable SCOPE-KIND-CELL
-variable RETIRE-CELL
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
 : DPBAD-LBL ( -- label ) DPBAD-CELL @ >LABEL ;
 : OVERLAY-DIE-LBL ( -- label ) OVERLAY-DIE-CELL @ >LABEL ;
 : SCOPE-SEED-LBL ( -- label ) SCOPE-SEED-CELL @ >LABEL ;
 : SCOPE-SEED-END-LBL ( -- label ) SCOPE-SEED-END-CELL @ >LABEL ;
-: RETIRE-LBL ( -- label ) RETIRE-CELL @ >LABEL ;
 : SCOPE-KIND-LBL ( -- label ) SCOPE-KIND-CELL @ >LABEL ;
 : EXIT-HOOK-LBL ( -- label ) X64BOOT:LEXITHOOK @ >LABEL ;
 
@@ -1786,52 +1784,14 @@ private
    ASM-SINK ENC-RET
    end X64CODE:LBL, ;
 
-\ r8 = the count; keeps all but rax and flags. No task live: rax = 0, the caller
-\ lowers. Else a task may run that code: retire [r8, NDICT), its LASTC; rax = -1.
-: RETIRE-HELPER, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: scan:label pkg:label next:label cut:label kept:label done:label :}
-   RETIRE-LBL X64CODE:LBL,
-   RAX TASKS-LIVE-CELL CELL@,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
-   RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH
-   RDX ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
-   RDI R8 DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
-   RDI DBASE-REG ASM-SINK ENC-ADD-RR
-   RAX LASTC-CELL CELL@,
-   RAX RDI ASM-SINK ENC-CMP-RR  C-B cut JCC,
-   RAX ZERO-REG,  RAX LASTC-CELL CELL!,
-   cut X64CODE:LBL,
-   R11 NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
-   R11 DBASE-REG ASM-SINK ENC-ADD-RR
-   RDI WRITE-ALIAS,  R11 WRITE-ALIAS,
-   RDX WL:RETIRED IMM64,  RSI WL:RETIRED-NAMESPACE IMM64,
-   scan X64CODE:LBL,
-   RDI R11 ASM-SINK ENC-CMP-RR  C-AE kept JCC,
-   RAX RDI REC-WID MOV-LOAD,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-S pkg JCC,
-   RDX RDI REC-WID MOV-STORE,  next JMP,
-   pkg X64CODE:LBL,
-   RAX RDX ASM-SINK ENC-CMP-RR  C-E next JCC,
-   RAX RSI ASM-SINK ENC-CMP-RR  C-E next JCC,
-   RSI RDI REC-WID MOV-STORE,
-   next X64CODE:LBL,
-   RDI DREC >IMM8 ASM-SINK ENC-ADD-RI8  scan JMP,
-   kept X64CODE:LBL,
-   R11 ASM-SINK ENC-POP  RDX ASM-SINK ENC-POP
-   RSI ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP
-   RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
-   done X64CODE:LBL,
-   ASM-SINK ENC-RET ;
-
 \ Make helper labels before the sections that branch to them.
 : HELPERS, ( -- )
    X64CODE:LBL LIVE-CELL !
    X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
-   X64CODE:LBL OVERLAY-DIE-CELL !  X64CODE:LBL RETIRE-CELL !
+   X64CODE:LBL OVERLAY-DIE-CELL !
    X64CODE:LBL X64BOOT:LEXITHOOK !
    LIVE-HELPER,  INDEX-HELPERS,
-   DPBAD-HELPER,  GENIO-HELPER,  RETIRE-HELPER,  EXIT-HOOK-HELPER,
+   DPBAD-HELPER,  GENIO-HELPER,  EXIT-HOOK-HELPER,
    X64PROF:HELPERS, ;
 
 \ Begin the selected code's new throw. RDX is the count when it landed;
@@ -3455,11 +3415,6 @@ private
    OCC-COUNT,
    LASTC-TRIM, ;
 
-\ retire-from ( n -- bool ): with a task live, retire the records from n up and
-\ answer true (the caller keeps CP, NDICT and DP); else false, the caller lowers.
-: RETIRE-FROM-BODY ( -- )
-   R8 POP,  RETIRE-LBL CALL,  RAX PUSH, ;
-
 \ ndict-append ( n -- ): count the compiler's pending record, which must
 \ be record n at the count, or its does> companion one record past it while
 \ a does> body is pending, and index it. Anything else exits SEAL-VIOLATION.
@@ -3505,7 +3460,6 @@ private
       DEF-CODE-RECLAIM-BODY
       CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
    s" ndict!" [: NDICT-SET-BODY ;] PRIM
-   s" retire-from" [: RETIRE-FROM-BODY ;] PRIM
    s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
@@ -4858,10 +4812,10 @@ variable REPLAY-TRAP-CELL
    R8 WRITE-ALIAS,
    R9 R8 REC-CODE CELL + MOV-STORE, ;
 
-\ replay-close ( -- ): no task live: lower NDICT and CP and zero the overlay
-\ records; else retire them. A parked definition returns, PEND-CELL last.
+\ replay-close ( -- ): zero the records [NDICT, HW), which the owner dropped. A
+\ parked definition returns, PEND-CELL last.
 : REPLAY-CLOSE-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: kept:label unparked:label done:label :}
+   X64CODE:LBL X64CODE:LBL {: unparked:label done:label :}
    s" replay-close" TASK-GUARD,
    RAX REPLAY-SCOPE:LATCH CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,    \ no overlay
@@ -4879,19 +4833,11 @@ variable REPLAY-TRAP-CELL
    RAX TASKS-LIVE-CELL CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
    unparked X64CODE:LBL,
-   RETIRE-LBL CALL,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE kept JCC,
-   RAX R8 ASM-SINK ENC-MOV-RR
-   OCC-COUNT,
-   LASTC-TRIM,
-   CP-REG R10 ASM-SINK ENC-MOV-RR
-   RAX REPLAY-SCOPE:NDICT CELL@,
-   RDI RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDI NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RDI DBASE-REG ASM-SINK ENC-ADD-RR  RDI WRITE-ALIAS,
-   RCX REPLAY-SCOPE:HW CELL@,  RCX RAX ASM-SINK ENC-SUB-RR
+   RCX REPLAY-SCOPE:HW CELL@,  RCX NDICT-REG ASM-SINK ENC-SUB-RR
    RCX RCX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    ZERO-BYTES,
-   kept X64CODE:LBL,
    false SCOPE,
    RDI DATA-REG REPLAY-SCOPE:LATCH MEM-OFF ASM-SINK ENC-LEA
    RCX REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - IMM32,

@@ -548,9 +548,6 @@ EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPPRIM: CHECKER-OVERLAY ndict! PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: GENERATED-DECL-DICTIONARY ndict! PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: LINKER ndict! PE-N PE-IN ECLOSE-PRIVATE
-EPPRIM: CHECKER-OVERLAY retire-from PE-N PE-IN PE-F PE-OUT ECLOSE-PRIVATE
-EPPRIM: GENERATED-DECL-DICTIONARY retire-from PE-N PE-IN PE-F PE-OUT ECLOSE-PRIVATE
-EPPRIM: LINKER retire-from PE-N PE-IN PE-F PE-OUT ECLOSE-PRIVATE
 EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECK def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
@@ -671,8 +668,9 @@ EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 \ an index at or above NDICT, unsigned, and a row not a live package row; true
 \ a row with a private wid, false one whose private wid is 0 or older than the
 \ overlay.
-\ replay-close ( -- ): zero the records published since replay-open, put the
-\ saved state back, a saved pending definition included, and zero the band.
+\ replay-close ( -- ): zero the records from NDICT up to the highest count
+\ reached, put the saved state back, a saved pending definition included, and
+\ zero the band. The owner has already retired or dropped the ones below.
 \ It refuses no overlay, a definition pending, a parked definition while a
 \ task is live, NDICT below the saved count or above the highest count
 \ replay-record and namespace-record reached, and CP or WIDN below the saved.

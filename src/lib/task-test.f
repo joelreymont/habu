@@ -433,6 +433,25 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
+\ A CHECKER SCOPE RETIRES ITS RECORDS WHILE A TASK RUNS: REPLAY's RS-R is dropped
+\ with no task live and retired with SPIN live, and found neither time.
+: TASK-SCOPED-LIVE$ ( -- str )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" require src/habu/verify-source.f" SB-APPEND TASK-LF
+   s" package RS" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
+   s" variable N  variable BEFORE  variable INSIDE" SB-APPEND TASK-LF
+   s" : SPIN ( -- ) begin 1 N +! TASK:PAUSE again ;" SB-APPEND TASK-LF
+   S\" : REPLAY ( -- ) ndict@ BEFORE ! [: s\" : RS-R ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ndict@ INSIDE ! ;] CHECK:SCOPED ;" SB-APPEND TASK-LF
+   S\" : FOUND? ( -- bool ) [: s\" ' RS-R drop\" evaluate-closed ;] catch 0= ;" SB-APPEND TASK-LF
+   s" : GREW? ( -- bool ) INSIDE @ BEFORE @ > ;" SB-APPEND TASK-LF
+   s" REPLAY GREW? ndict@ BEFORE @ = and FOUND? 0= and bool>n ." SB-APPEND TASK-LF
+   s" ' SPIN W TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" REPLAY GREW? ndict@ INSIDE @ = and FOUND? 0= and bool>n ." SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   SB$ ;
+
 : TASK-DIE$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -616,6 +635,11 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
    TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" CONTAINS? TTRUE ;
+
+: TASK-TEST-SCOPED-LIVE ( -- )
+   TASK-SCOPED-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" -1\n-1\n" T$=
+   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `RS-R`" CONTAINS? TTRUE ;
 
 : TASK-EXPECT-FAIL ( str n str -- ) {: src:^ srcu:n want:n needle:^ needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
@@ -2493,6 +2517,7 @@ variable NEW-STRAY
    TASK-TEST-TASK-CREATES
    TASK-TEST-TASK-ALLOTS
    TASK-TEST-ROLLBACK-LIVE
+   TASK-TEST-SCOPED-LIVE
    TASK-TEST-APP-SOAK
    TASK-TEST-USER-SLOTS
    TASK-TEST-ROLLBACK-SLOT

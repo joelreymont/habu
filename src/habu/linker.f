@@ -68,6 +68,7 @@ EXPORT SOURCE-EVENT:EVENT-DEPTH@
 EXPORT SOURCE-EVENT:EVENT-SPELLED@
 EXPORT SOURCE-EVENT:EVENT-TOK@
 EXPORT XREF:REVIVE-BELOW
+EXPORT XREF:RETIRE-IF-TASKS
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
@@ -5816,7 +5817,7 @@ EXPORT CHECK:DROP-FACTS
 \ Records still below the count would name bodies in the unmapped space, so the
 \ count drops to FIRST-REC and their code goes back.
 : FORGET-SPACE ( -- )
-   FIRST-REC @ retire-from IF EXIT THEN
+   FIRST-REC @ RETIRE-IF-TASKS IF EXIT THEN
    FIRST-REC @ CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    FIRST-REC @ ndict!
    floor TRUNCATE ;

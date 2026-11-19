@@ -154,7 +154,6 @@ variable LBEFORE
 variable LAFTER
 variable LMATCH
 variable LRECLAIM
-variable LRETIRE
 ;package
 \ The one-wordlist search shared by the `search-wl` primitive and the AOT
 \ seed's call-site pass.
@@ -1345,43 +1344,27 @@ variable LDIE
 ;package
 
 package ENGINE-EMIT
-\ cp! and ndict! lower CP and NDICT. Each caller asks retire-from first, so they
-\ lower only with no task live, except a token's CP rewind in a pending body.
+\ cp! and ndict! lower CP and NDICT. A caller lowers only with no task live and
+\ retires instead while one is, except a token's CP rewind in a pending body.
 : BCPSET ( -- )
    A G-POP
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
-\ LASTC-CELL names the record the last create, variable or constant wrote;
-\ does> patches it. A record at or above NDICT is retired and its slot reused,
-\ so every motion that lowers NDICT (ndict!, replay-close) calls this after
-\ setting the count. A LASTC below the count is kept; one at or above it is
-\ cleared, not moved back: a does>-patched record no longer says a create made
-\ it. A does> with none refuses by name.
-\ LASTC-CUT, cuts at the index in k instead, for a rollback that retires
-\ records and keeps the count. Clobbers the two scratch registers.
-: LASTC-CUT, ( n n n -- ) {: k:n t:n u:n :}
+\ ndict! calls this after lowering NDICT: a LASTC-CELL record (does>'s target) at or
+\ above the count is cleared, so does> refuses by name. Clobbers both scratch registers.
+private
+: LASTC-TRIM, ( n n -- ) {: t:n u:n :}
    LBL {: live:label :}
-   t DREC MOVZ,  t k t MUL,  t DBASE t ADD,            \ first retired record
+   t DREC MOVZ,  t NDICT t MUL,  t DBASE t ADD,        \ the first record past the count
    u DATA LASTC-CELL LDR,  u t CMP,  C-CC live BCOND,
    u 0 MOVZ,  u DATA LASTC-CELL STR,
    live LBL, ;
 
-public
-: LASTC-TRIM, ( n n -- ) {: t:n u:n :}
-   NDICT t u LASTC-CUT, ;
-
-private
 : BNDSET ( -- )                                     \ ( n -- ) set NDICT — forget dict entries past a mark
    A G-POP
    SP SP 16 SUBI,  30 SP 0 STR,
    EM-DEF-OCC:LCOUNT LABEL@ BL,
    A B LASTC-TRIM,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
-
-\ While a task is live, retires the records from n up and answers true: the
-\ caller keeps CP, NDICT and DP. Else answers false and the caller lowers.
-: BRETIREFROM ( -- )                                \ ( n -- bool )
-   9 G-POP  EM-DEF-OCC:LRETIRE LABEL@ BL,
-   14 0 CMPI,  9 C-NE CSET,  9 31 9 SUB,  9 G-PUSH ;
 
 \ Append the completed native pending record at the caller's expected index.
 \ NPUB proves the emission and record shape; this sink owns the live count and
@@ -3981,7 +3964,6 @@ package ENGINE-EMIT
    s" NULL-PTR" ['] BNULLPTR FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
-   s" retire-from" ['] BRETIREFROM FPRIM
    s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-select" ['] BDEFSELECT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
@@ -4589,42 +4571,6 @@ private
       3 DEF-OCC:STATE-BYTES LIT64,
       s" hb: the system refused the definition occurrence table; raise the address-space limit (ulimit -v) above its size in bytes:"
       EXIT-STATUS:SYSTEM 3 DIE-LINE-VALUE, ;
-
-\ A rollback's lower-or-retire step (replay-close, retire-from), x9 = the NDICT
-\ to lower to. With no task live it answers x14 = 0 and the caller lowers; the
-\ count cannot rise from 0 under it, since only main or a live task activates
-\ one. Else a task may still use the code and records above, so it stamps each
-\ record in [x9, NDICT) with WL:RETIRED, a live package row with
-\ RETIRED-NAMESPACE, clears a LASTC at or above x9 and answers x14 nonzero: the
-\ caller keeps CP, NDICT, DP and the relocation rows.
-\ Preserves every register but x14.
-: EMIT-DEF-OCC-RETIRE ( -- )
-   LBL LBL LBL LBL LBL {: loop:label pkg:label next:label cut:label done:label :}
-   EM-DEF-OCC:LRETIRE LABEL@ LBL,
-      14 DATA TASKS-LIVE-CELL LDR,  14 done CBZ,
-      SP SP 48 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
-      13 SP 32 STR,  15 SP 40 STR,
-      11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 DBASE 11 ADD,
-      12 WL:RETIRED invert MOVN,
-      15 WL:RETIRED-NAMESPACE invert MOVN,
-   loop LBL,
-      9 NDICT CMP,  C-CS cut BCOND,
-      10 DREC MOVZ,  10 9 10 MUL,  10 11 10 ADD,
-      13 10 40 LDR,
-      13 0 CMPI,  C-LT pkg BCOND,
-      12 10 40 STR,  next B,                                \ the wordlist cell
-   pkg LBL,
-      13 12 CMP,  C-EQ next BCOND,                          \ retired already
-      13 15 CMP,  C-EQ next BCOND,
-      15 10 40 STR,                                         \ a live package row
-   next LBL,
-      9 9 1 ADDI,  loop B,
-   cut LBL,
-      9 SP 0 LDR,  9 10 11 LASTC-CUT,
-      9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
-      13 SP 32 LDR,  15 SP 40 LDR,
-      SP SP 48 ADDI,
-   done LBL,  RET, ;
 
 \ x9 names the four-byte patch (zero for an effect-only change); x10 names the
 \ created record. Every record covering changed bytes is replaced separately.

@@ -430,16 +430,16 @@ split-str
 \ replayed text would have defined, kept through the replay writers only
 \ CHECKER-OVERLAY may call. replay-open saves NDICT, CP, WIDN, CURRENT, the
 \ package cells and the using band; on every exit, clean or thrown, the log is
-\ undone newest first and replay-close zeroes the overlay's records and
-\ restores them; while a task is live it retires those records instead and
-\ keeps NDICT and CP, restoring the rest. A definition pending at the open is
-\ parked across the replay. The outermost asking scope opens the overlay: the
-\ verifier window (tag -1) or a package-neutral rollback scope (its frame
-\ depth). A scope opened inside it saves the engine scope in a snapshot row and
-\ restores it on close, so names a scope publishes bind until the overlay
-\ closes. Between a logged record's restore and the drop of a replay record of
-\ the same name, one wordlist holds two live records of it: CLOSE ends that
-\ window with replay-close and ROLLBACK with ndict! or retire-from, each before
+\ undone newest first, CLOSE lowers NDICT and CP back with ndict! and cp!, or
+\ while a task is live retires the overlay's records and keeps both, and
+\ replay-close zeroes the dropped records and restores the rest. A definition
+\ pending at the open is parked across the replay. The outermost asking scope
+\ opens the overlay: the verifier window (tag -1) or a package-neutral rollback
+\ scope (its frame depth). A scope opened inside it saves the engine scope in a
+\ snapshot row and restores it on close, so names a scope publishes bind until
+\ the overlay closes. Between a logged record's restore and the drop of a
+\ replay record of the same name, one wordlist holds two live records of it:
+\ CLOSE and ROLLBACK end that window by lowering NDICT or retiring, each before
 \ any lookup. Every writer rejection ends the process, so each rejection a
 \ replay can meet is checked in CHECKER-OVERLAY first and thrown by name.
 \
@@ -14079,9 +14079,63 @@ public
    EXIT-STATUS:FULL REJECTION:STOP ;
 ;package
 
+\ ---- retiring records ----------------------------------------------------------
+package XREF
+public
+\ Every marker is negative. RETIRED marks a retired word, whose row keeps code;
+\ RETIRED-NAMESPACE a retired package row; any other negative value is a live
+\ package row's marker.
+\ Whether a wordlist cell marks a package row, live or retired: its start and
+\ length cells hold wids, which no code span reader may take for a span.
+: PACKAGE-WL? ( n -- bool ) {: wid:n :}
+   wid 0 <  wid WL:RETIRED <>  and ;
+
+\ Whether a wordlist cell marks a retired row, a word's or a package's.
+: RETIRED-WL? ( n -- bool ) {: wid:n :}
+   wid WL:RETIRED =  wid WL:RETIRED-NAMESPACE =  or ;
+
+private
+EXPORT BOOT:data-base
+EXPORT CHECK:CK-REC-WID
+EXPORT CHECKER-RESOLVE:REC-AT
+
+\ The record's wordlist cell is write-protected: one aligned store through the
+\ region's write alias, so a task reads the old cell or the new one.
+: WL-STAMP ( n ^n -- ) {: wid:n rec:^ :}
+   data-base REGION-ALIAS:DELTA-CELL + @ {: delta:n :}
+   wid  rec DICT-WORDLIST-SLOT cells + delta +  ! ;
+
+: RETIRE-RAW ( ^n -- ) WL:RETIRED swap WL-STAMP ;
+
+: RETIRE-REC ( ^n -- ) {: rec:^ :}
+   rec CK-REC-WID {: wid:n :}
+   wid 0 >= if rec RETIRE-RAW exit then
+   wid RETIRED-WL? if exit then
+   WL:RETIRED-NAMESPACE rec WL-STAMP ;
+
+\ LASTC-CELL names the record a does> patches; one the cut retires is cleared.
+: LASTC-CUT ( n -- )
+   REC-AT NULL-PTR - {: cut:n :}
+   data-base LASTC-CELL + @ cut < if exit then
+   0 data-base LASTC-CELL + ! ;
+
+\ Retires every record from index n up, keeping the count, code and data (a word
+\ loses its name, a live package row its package); no build holds these.
+: RETIRE-ABOVE ( n -- ) {: first:n :}
+   ndict@ first ?do  i REC-AT RETIRE-REC  loop
+   first LASTC-CUT ;
+
+\ With no task live it answers false and changes nothing (none can start under
+\ main); else it retires the records from n up and the caller keeps CP, NDICT and DP.
+: RETIRE-IF-TASKS ( n -- bool ) {: first:n :}
+   data-base TASKS-LIVE-CELL + @ 0= if RES-FALSE exit then
+   first RETIRE-ABOVE  RES-TRUE ;
+;package
+
 \ ---- the checker overlay ------------------------------------------------------
 package CHECKER-OVERLAY
 EXPORT BOOT:data-base
+EXPORT XREF:RETIRE-IF-TASKS
 
 variable ON
 variable MARK                              \ NDICT when it opened: later records are the replay's
@@ -14283,10 +14337,13 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    REPEAT ;
 
 \ The mappings are given back, so an image captured afterwards holds the bytes
-\ one no replay ran in does, except that with a task live at replay-close it
-\ also holds the overlay's records, retired, and their code.
+\ one no replay ran in does, except that with a task live at the close it also
+\ holds the overlay's records, retired, and their code.
 : CLOSE ( -- )
    0 UNDO
+   MARK @ RETIRE-IF-TASKS 0= IF
+      MARK @ ndict!  REPLAY-SCOPE:CP DATA@ cp!
+   THEN
    replay-close
    0 UNPAIR
    LOG-P LOG-CAP 2 ARENA-ROWS-RELEASE
@@ -14404,15 +14461,16 @@ EXPORT CHECKER-RESYNC:MIRROR
    ON @ 0= IF 0 0 0 0 EXIT THEN
    ndict@ LOG-N @ cp@ WIDN-CELL DATA@ ;
 
-\ A scope opened inside the overlay closes here, not through replay-close, so
-\ ROLLBACK restores the three counters replay-close restores. WIDN goes back
+\ A scope opened inside the overlay closes here, not through CLOSE, so ROLLBACK
+\ restores NDICT, CP and WIDN as CLOSE and replay-close do. WIDN goes back
 \ last, after UNDO took back the private wids granted since the mark and ndict!
-\ dropped every record holding a wid at or above it, or retire-from retired them.
+\ dropped every record holding a wid at or above it, or RETIRE-IF-TASKS retired
+\ them.
 : ROLLBACK ( n n n n -- )
    {: nd:n logn:n cp:n widn:n :}
    ON @ 0=  nd MARK @ <  or IF EXIT THEN
    logn UNDO
-   ndict@ nd > IF nd retire-from ELSE 0 0= 0= THEN {: kept:bool :}
+   ndict@ nd > IF nd RETIRE-IF-TASKS ELSE 0 0= 0= THEN {: kept:bool :}
    kept 0= ndict@ nd > and IF nd ndict! THEN
    nd UNPAIR
    kept 0= cp@ cp > and IF cp cp! THEN

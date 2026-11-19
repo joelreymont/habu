@@ -14,6 +14,7 @@ PTR-VARIABLE DP-MARK
 
 EXPORT BOOT:data-base
 EXPORT CODE-RECLAIM:TRUNCATE
+EXPORT XREF:RETIRE-IF-TASKS
 
 \ Rewinds DATA to cut, in DP-CELL's units, raising the release high-water to a
 \ DP it lowers, so the build refuses the data given back.
@@ -37,7 +38,7 @@ public
    here DP-MARK ! ;
 
 : ROLLBACK ( -- )
-   NDICT-MARK @ retire-from IF EXIT THEN
+   NDICT-MARK @ RETIRE-IF-TASKS IF EXIT THEN
    NDICT-MARK @ ndict!
    CP-MARK @ TRUNCATE
    \ A literal segment opened inside the transaction outlives its rollback: DP

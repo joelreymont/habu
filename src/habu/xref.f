@@ -38,7 +38,6 @@ WL:RETIRED constant XREF-RETIRED-WL
 package XREF
 private
 EXPORT CHECK:DICT-CELL@
-EXPORT BOOT:data-base
 global
 \ Every reader in this file reads a record's cells through this word, which
 \ rejects XREF-NULL.
@@ -100,21 +99,6 @@ public
    BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
    rec NULL-PTR = if 0 exit then
    rec XREF-PKG-PRIVATE ;
-
-package XREF
-public
-\ Every marker is negative. RETIRED marks a retired word, whose row keeps code;
-\ RETIRED-NAMESPACE a retired package row; any other negative value is a live
-\ package row's marker.
-\ Whether a wordlist cell marks a package row, live or retired: its start and
-\ length cells hold wids, which no code span reader may take for a span.
-: PACKAGE-WL? ( n -- bool ) {: wid:n :}
-   wid 0 <  wid XREF-RETIRED-WL <>  and ;
-
-\ Whether a wordlist cell marks a retired row, a word's or a package's.
-: RETIRED-WL? ( n -- bool ) {: wid:n :}
-   wid XREF-RETIRED-WL =  wid WL:RETIRED-NAMESPACE =  or ;
-;package
 
 \ The OWNER-API wordlists are the protected ones.
 : XREF-WID-PROTECTED? ( n -- bool ) {: wid:n :}
@@ -363,38 +347,10 @@ EXPORT CHECKER-RESOLVE:HEAD-ROW
    a q 1 + ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC  XREF-FIND-WL-INDEX ;
 ;package
 
-\ RETIRE and SEAL rewrite a write-protected record cell through patch32, which
-\ this package's row in src/habu/prims.f (EPPRIM: XREF patch32) types for it.
+\ SEAL rewrites a write-protected record cell through patch32, which this
+\ package's row in src/habu/prims.f (EPPRIM: XREF patch32) types for it.
 package XREF
 private
-
-\ A marker is negative, so its high half is all ones: the two halves leave the
-\ whole wordlist cell equal to the marker the lookup compares.
-: WL-STAMP ( n ^n -- ) {: wid:n rec:^ :}
-   rec XREF-WORDLIST-SLOT cells + {: wl:^ :}
-   wid wl patch32
-   -1 wl 4 + patch32 ;
-
-: RETIRE-RAW ( ^n -- ) XREF-RETIRED-WL swap WL-STAMP ;
-
-: RETIRE-REC ( ^n -- ) {: rec:^ :}
-   rec XREF-WORDLIST {: wid:n :}
-   wid 0 >= if rec RETIRE-RAW exit then
-   wid RETIRED-WL? if exit then
-   WL:RETIRED-NAMESPACE rec WL-STAMP ;
-
-\ LASTC-CELL names the record a does> patches; one the cut retires is cleared.
-: LASTC-CUT ( n -- )
-   XREF-REC-ADDR {: cut:n :}
-   data-base LASTC-CELL + @ cut < if exit then
-   0 data-base LASTC-CELL + ! ;
-
-\ Retires every record from index n up and keeps the count, the code and the
-\ data: a word loses its name and a live package row its package. No build
-\ holds these retirements.
-: RETIRE-ABOVE ( n -- ) {: first:n :}
-   ndict@ first ?do  i XREF-REC RETIRE-REC  loop
-   first LASTC-CUT ;
 
 EXPORT CHECK:HOLD-RETIRED
 EXPORT CHECK:BUILDING?
@@ -414,10 +370,7 @@ variable BUILD-RETIRED-N
 
 : REVIVE ( n -- ) {: k:n :}
    k 2 * BUILD-RETIRED @ {: ix:n :}
-   k 2 * 1 + BUILD-RETIRED @ {: wid:n :}
-   ix XREF-REC XREF-WORDLIST-SLOT cells + {: wl:^ :}
-   wid wl patch32
-   wid 32 rshift wl 4 + patch32
+   k 2 * 1 + BUILD-RETIRED @  ix XREF-REC WL-STAMP
    ix record-rekey ;
 
 \ Newest first, so a record retired twice gets the cell it had before the first.

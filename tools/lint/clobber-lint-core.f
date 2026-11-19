@@ -133,8 +133,6 @@ variable RX  variable RACC
    s" EM-DEF-OCC:LRESET" 0 27 CL-ADD row execute
    \ Both LMATCH return arms define the hit flag in x12.
    s" EM-DEF-OCC:LMATCH" 0 12 CL-ADD row execute
-   \ LRETIRE answers in x14: nonzero when it retired instead of lowering.
-   s" EM-DEF-OCC:LRETIRE" 0 14 CL-ADD row execute
    s" WLFIND:LENTRY" 0 11 CL-ADD 12 CL-ADD row execute
    s" ENGINE-EMIT:Lheadrow" 0 12 CL-ADD row execute
    \ The callback accessor returns its thunk address in A (x9).
@@ -154,10 +152,6 @@ variable RX  variable RACC
    s" EM-DEF-OCC:LAPPEND"
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
       15 CL-ADD 16 CL-ADD 17 CL-ADD 30 CL-ADD row execute
-   \ LRETIRE frames x9-x13 and x15 and writes only its answer, x14.
-   s" EM-DEF-OCC:LRETIRE"
-      0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 15 CL-ADD
-      row execute
    s" EM-DEF-OCC:LCOUNT"
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
       15 CL-ADD 30 CL-ADD row execute

@@ -1185,11 +1185,11 @@ variable LREPLAYTRAP
    done LBL, ;
 
 \ replay-close ( -- ): every check comes before the first store, and the parked
-\ definition goes back into slot NDICT last, after the overlay's records are
+\ definition goes back into slot NDICT last, after the records [NDICT, HW) are
 \ zeroed. Engine writers only raise WIDN past the saved count, so the WIDN
 \ rejection meets a raw store to WIDN-CELL, which nothing else rejects.
 : REPLAY-CLOSE ( -- )
-   LBL LBL LBL LBL {: bad kept unparked done :}
+   LBL LBL LBL {: bad unparked done :}
    s" E-TASK-COMPILE" s" replay-close" B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -1202,14 +1202,10 @@ variable LREPLAYTRAP
    14 DATA REPLAY-SCOPE:PEND LDR,  14 unparked CBZ,
    14 DATA TASKS-LIVE-CELL LDR,  14 bad CBNZ,
    unparked LBL,
-   9 4 0 ADDI,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 kept CBNZ,
-   EM-DEF-OCC:LCOUNT LABEL@ BL,  10 11 LASTC-TRIM,
-   CP 6 0 ADDI,
-   10 DREC MOVZ,  11 5 10 MUL,  10 4 10 MUL,
+   10 DREC MOVZ,  11 5 10 MUL,  10 NDICT 10 MUL,
    10 DBASE 10 ADD,  11 DBASE 11 ADD,                 \ records [x10, x11)
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  10 10 12 ADD,  11 11 12 ADD,
    ZERO-SPAN,
-   kept LBL,
    8 BAND,
    0 0<> SCOPE,
    10 8 0 ADDI,  11 8 REPLAY-SCOPE:END BAND-OFF ADDI,
@@ -2170,7 +2166,7 @@ package LABELS
    LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
    LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
-   LBL EM-DEF-OCC:LRECLAIM !  LBL EM-DEF-OCC:LRETIRE !
+   LBL EM-DEF-OCC:LRECLAIM !
    LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK ! ;
 
 : CONTROL ( -- )
@@ -2332,7 +2328,6 @@ package ENGINE-EMIT
    EMIT-DEF-OCC
    EMIT-DEF-OCC-OVERLAP
    EMIT-DEF-OCC-RECLAIM
-   EMIT-DEF-OCC-RETIRE
    EMIT-NUM
    EMIT-EXITHOOK ;
 
