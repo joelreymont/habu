@@ -11,7 +11,8 @@ split-str
 \ variables are ignored. No HEAD requests, whose answers would misframe.
 \ Linux only. A conn is OPENed fresh or after CLOSE; each exchange is REQUEST,
 \ HEADER+ and DEADLINES! as needed, one SEND, then NEXT until it answers
-\ `response` or `failed`. One task at a time uses HTTPC over https, as TLS's
+\ `response` or `failed`; a NEXT before the first SEND or after CLOSE answers
+\ `failed` with fault `send`. One task at a time uses HTTPC over https, as TLS's
 \ contract requires: the TLS library keeps process-wide state and no lock.
 \ STORAGE CLASS. CALLER-OWNED: the conn record, the origin, trust and room
 \ spans OPEN borrows until CLOSE, SEND's body until SEND returns and NEXT's
@@ -119,7 +120,6 @@ STRUCTURE conn OPAQUE DERIVE addr
    FIELD secure bool
    FIELD trust ^u8
    FIELD trust-len n
-   FIELD started bool
    FIELD room ^u8
    FIELD room-len n
    FIELD used n
@@ -215,13 +215,13 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : TIMED-OUT ( ^conn -- ) construct fault timeout 0 FAIL ;
 
 
-\ Stops the TLS session that started, if any, then closes the socket the
-\ record holds, if any.
+\ Closes the socket the record holds, if any, STOPping first the TLS session
+\ of an https conn, which GREET STARTs on every socket DIAL connects.
 : HANG-UP ( ^conn -- ) {: c :}
-   c CONN-STARTED @ if
-      c CONN-TLS TLS:STOP  false c CONN-STARTED !
+   c CONN-FD @ 0 >= if
+      c CONN-SECURE @ if c CONN-TLS TLS:STOP then
+      c CONN-FD @ CLOSE-CALL drop
    then
-   c CONN-FD @ 0 >= if c CONN-FD @ CLOSE-CALL drop then
    -1 c CONN-FD ! ;
 
 
@@ -561,7 +561,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    fd 0 < if c construct fault connect FFI:ERRNO FAIL false exit then
    fd c CONN-FD !
    c ai deadline CONNECTED? if true exit then
-   c HANG-UP false ;
+   fd CLOSE-CALL drop  -1 c CONN-FD !  false ;
 
 \ The next address in its share of the time left; the list is freed once an
 \ address connects or none is left.
@@ -600,7 +600,6 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ STARTs the conn's session on its socket for the host and the trust file.
 : TLS-START ( ^conn -- shake ) {: c :}
-   true c CONN-STARTED !
    c c CONN-TLS c CONN-FD @ >FD c NODE c CONN-HOST-LEN @
    c CONN-TRUST @ c CONN-TRUST-LEN @ TLS:START SHAKEN ;
 
@@ -960,6 +959,13 @@ FSM:DEFINE LIFECYCLE ( ^conn ) phase intake
    c CONN-TOTAL @ 0= if NO-DEADLINE c CONN-ENDS ! exit then
    c CONN-TOTAL @ NS-PER-MS * mono-ns + c CONN-ENDS ! ;
 
+\ Hangs up and rests `down`, holding nothing, with fault `send` and no
+\ cause: a NEXT before the next SEND answers `failed` with `send`.
+: UNSENT ( ^conn -- ) {: c :}
+   c HANG-UP
+   c construct held none construct phase down REST
+   c construct fault send 0 FAIL ;
+
 public
 
 \ Origin `http://host[:port]` (port 80 by default) or `https://host[:port]`
@@ -969,10 +975,8 @@ public
 \ connection after it.
 : OPEN ( ^conn ^u8 n ^u8 n ^u8 n -- bool )
    {: c o:^ ou:n t:^ tu:n r:^ ru:n :}
-   -1 c CONN-FD !  0 c CONN-LIST !  false c CONN-STARTED !
+   -1 c CONN-FD !  0 c CONN-LIST !  c UNSENT
    t c CONN-TRUST !  tu c CONN-TRUST-LEN !
-   c construct held none construct phase down REST
-   construct fault send construct chunk-result failed c CONN-ANSWER !
    r c CONN-ROOM !  ru c CONN-ROOM-LEN !
    0 c CONN-USED !  0 c CONN-HEAD-LEN !  OPTION:NONE c CONN-MARK !
    c o ou ORIGIN? ;
@@ -1013,8 +1017,8 @@ public
    c ENDS!
    c construct phase starting LIFECYCLE ;
 
-\ The first call reads the head. Each call answers one piece of the body in
-\ the span, or the end, or the fault.
+\ The span holds at least one byte. The first call reads the head. Each call
+\ answers one piece of the body in the span, or the end, or the fault.
 : NEXT ( ^conn ^u8 len -- chunk-result ) {: c a:^ u:len :}
    a c CONN-SPAN !  u LEN>N c CONN-SPAN-LEN !
    c c CONN-RESUME @ LIFECYCLE
@@ -1025,8 +1029,7 @@ public
 : HEAD$ ( ^conn -- ^u8 n ) dup ROOM swap CONN-HEAD-LEN @ ;
 
 \ Drops the connection in any state; the record stays usable.
-: CLOSE ( ^conn -- ) {: c :}
-   c HANG-UP  construct held none c CONN-HELD ! ;
+: CLOSE ( ^conn -- ) UNSENT ;
 
 \ Whether no whole answer arrived from a peer that may answer later.
 : LOST? ( fault -- bool )
@@ -1048,8 +1051,10 @@ public
       resolve OF s" the host name did not resolve" ENDOF
       connect OF s" no address of the host took the connection" ENDOF
       handshake OF s" the TLS handshake failed" ENDOF
-      trust OF s" the server's certificate did not verify" ENDOF
-      send OF s" writing the request failed" ENDOF
+      trust OF
+         s" the server's certificate did not verify, or the trust file could not be read"
+      ENDOF
+      send OF s" the request was not written" ENDOF
       receive OF s" reading the answer failed" ENDOF
       cut OF s" the server closed the connection before the answer ended" ENDOF
       timeout OF s" a deadline passed" ENDOF

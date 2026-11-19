@@ -5,14 +5,14 @@
 (* FINAL row that row's REST, which sets what the record holds (held). The *)
 (* caller SENDs from any rest, a request marked malformed or oversize or   *)
 (* not; NEXT resumes `sent` as `heading` and `partway` as `reading`; CLOSE *)
-(* hangs up at any rest. The peer may close the connection, or send bytes  *)
-(* nobody asked for, at any time. Every wait ends, with bytes or at a      *)
-(* deadline, so every sense that reads or writes may answer `failed`; a    *)
-(* wait with no deadline on a silent peer lasts as long, which the model   *)
-(* leaves out. A probe may answer `stale` and a greeting `failed` at any   *)
-(* time; a probe answers `quiet` only with one socket the peer has neither *)
-(* closed nor written to. A read may take bytes from the room, which can   *)
-(* hold the rest of an answer after a CLOSE, so the model does not tie a   *)
+(* hangs up at any rest and rests the conn at `down`. The peer may close   *)
+(* the connection, or send bytes nobody asked for, at any time. Every wait *)
+(* ends, with bytes or at a deadline, so every sense that reads or writes  *)
+(* may answer `failed`; a wait with no deadline on a silent peer lasts as  *)
+(* long, which the model leaves out. A probe may answer `stale` and a      *)
+(* greeting `failed` at any time; a probe answers `quiet` only with one    *)
+(* socket the peer has neither closed nor written to. A read may take      *)
+(* bytes from the room in place of the socket, so the model does not tie a *)
 (* head or a piece to a socket. A body by the close ends only once the     *)
 (* peer has closed. Bounds: Addrs addresses a name resolves to, Pieces     *)
 (* pieces a body has, Interims interim heads before an answer's head.      *)
@@ -94,9 +94,10 @@ Resume ==
 
 Close ==
     /\ at \in Rests
+    /\ at' = "down"
     /\ HangUp
     /\ held' = "none"
-    /\ UNCHANGED <<at, fresh, probed, answer, fin, stray, wrote, marked,
+    /\ UNCHANGED <<fresh, probed, answer, fin, stray, wrote, marked,
                    framed, persist, left, interims, addrs>>
 
 (* ---- The peer                                                           *)
@@ -333,10 +334,12 @@ TypeOK ==
 (* A request is written at most once per SEND.                             *)
 WriteOnce == wrote <= 1
 
-(* Every rest holds zero or one socket; `closed` and `down` hold none.     *)
+(* Every rest holds zero or one socket: none at `closed` and `down`, and   *)
+(* one where the record holds the connection idle.                         *)
 Sockets ==
     /\ at \in Rests => socks <= 1
     /\ at \in {"closed", "down"} => socks = 0
+    /\ at \in Rests /\ held = "idle" => socks = 1
 
 (* A write goes to the one socket held, dialed by this run or probed quiet *)
 (* by it, which carries no unread answer.                                  *)

@@ -2,7 +2,8 @@
 (* Follows: every step of Httpc that moves the machine, or runs a line, is *)
 (* one line of LIFECYCLE (HttpcTable, which a test keeps equal to the      *)
 (* code's table) and every line's step moves as the line says. SEND and    *)
-(* NEXT start a run from a rest, which no line does.                       *)
+(* NEXT start a run from a rest and CLOSE rests the machine at `down`;     *)
+(* no line does either.                                                    *)
 EXTENDS Httpc
 T == INSTANCE HttpcTable
 Walks(l) ==
@@ -32,6 +33,6 @@ Walks(l) ==
 Line(l) == at = l[1] /\ at' = l[3]
 Follows ==
     [][ /\ (at' # at \/ Run) => \/ \E l \in T!Lines : Line(l) /\ Walks(l)
-                                \/ Send \/ Resume
+                                \/ Send \/ Resume \/ Close
         /\ \A l \in T!Lines : Walks(l) => Line(l) ]_vars
 ====

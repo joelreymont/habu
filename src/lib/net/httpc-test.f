@@ -98,6 +98,9 @@ ENUM script sized chunked closing interim no-content reuse idle-close
    trailing ;ENUM
 TYPED-VARIABLE SCRIPT script
 TYPED-VARIABLE LINK HTTPC:conn
+TYPED-VARIABLE SPARE HTTPC:conn          \ a record OPEN finds full of bytes
+
+CAST: CONN>BYTES ( ^HTTPC:conn -- ^u8 )
 
 TASK:MIN-STACK TASK:TASK SERVER-TASK
 
@@ -319,10 +322,17 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       failed OF FAILED true ENDOF
    ;MATCH ;
 
+: ANSWER-RESET ( -- ) 0 GOT-U ! 0 WIDEST ! -1 LAST-STATUS ! 0 FAULTS ! ;
+
 \ Reads the answer to its end in NEXT spans of SPAN bytes.
 : READ-ALL ( n -- ) {: span:n :}
-   0 GOT-U ! 0 WIDEST ! -1 LAST-STATUS ! 0 FAULTS !
+   ANSWER-RESET
    begin LINK SPAN-BUF span >LEN HTTPC:NEXT ANSWERED? until ;
+
+\ One NEXT of SPAN bytes, which answers a piece of the body.
+: ONE-PIECE ( n -- ) {: span:n :}
+   ANSWER-RESET
+   LINK SPAN-BUF span >LEN HTTPC:NEXT ANSWERED? TFALSE ;
 
 : ANSWER-IS ( n ^u8 n -- ) {: status:n a:^ u:n :}
    FAULTS @ 0<> if
@@ -345,6 +355,13 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH ;
+
+\ A NEXT after CLOSE fails `send` and leaves no socket held.
+: CLOSED-NEXT ( -- )
+   LINK HTTPC:CLOSE  ANSWER-RESET
+   LINK SPAN-BUF WIDE-SPAN >LEN HTTPC:NEXT ANSWERED? TTRUE
+   HTTPC-FAULT:SEND true FAULT-IS
+   LINK HTTPC-TEST:FD -1 T= ;
 
 \ Blocks until the server's FIN reaches the conn's socket.
 : AWAIT-FIN ( -- bool )
@@ -567,6 +584,17 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    END-CASE ;
 
 
+\ The body is longer than the span, so CLOSE comes partway through it.
+: TEST-CLOSE ( -- )
+   construct script sized BEGIN-CASE
+   ASK
+   s" the first NEXT of a sized answer answers a piece" T-LABEL
+   SIZED-SPAN ONE-PIECE
+   s" a NEXT after CLOSE partway fails `send`, holding no socket" T-LABEL
+   CLOSED-NEXT
+   END-CASE ;
+
+
 \ ---- An https origin
 
 $200 constant TRUST-ROOM
@@ -668,6 +696,17 @@ variable TRUST-U
    ASK-ROOT  SECOND$ TEST-TLS-PEER:SCRIPTED  WIDE-SPAN READ-ALL
    s" the request after bytes the TLS session holds dials anew" T-LABEL
    200 s" second" ANSWER-IS
+   END-CASE ;
+
+\ The first NEXT reads the 5-byte body whole, so a NEXT after CLOSE would
+\ settle the answer over the session CLOSE stopped.
+: TEST-HTTPS-CLOSE ( -- )
+   s" localhost" s" ca.pem" BEGIN-HTTPS
+   ASK-ROOT  FIRST$ TEST-TLS-PEER:SCRIPTED
+   s" an https NEXT answers the 5-byte body" T-LABEL
+   WIDE-SPAN ONE-PIECE  GOT$ s" first" T$=
+   s" an https NEXT after CLOSE fails `send`, holding no socket" T-LABEL
+   CLOSED-NEXT
    END-CASE ;
 
 \ ---- A relay that withholds the close_notify
@@ -810,6 +849,7 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
    TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST
    TEST-TLS-PEER:UNSERVE TEST-TLS-PEER:SCRIPT-SERVE
    TEST-HTTPS-HELD
+   TEST-HTTPS-CLOSE
    TEST-HTTPS-CUT ;
 
 : TEST-HTTPS ( -- )
@@ -835,9 +875,22 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
 
 public
 
+\ OPEN overwrites whatever the record held: a NEXT with no SEND fails `send`
+\ with no cause.
+: TEST-OPEN-NEXT ( -- )
+   [type] HTTPC:conn width>n 0 do $A5 SPARE CONN>BYTES i + c! loop
+   s" OPEN takes a record full of stale bytes" T-LABEL
+   SPARE s" http://127.0.0.1" s" " ROOM-BUF ROOM-CAP HTTPC:OPEN TTRUE
+   ANSWER-RESET
+   s" a NEXT before any SEND fails `send` with no cause" T-LABEL
+   SPARE SPAN-BUF WIDE-SPAN >LEN HTTPC:NEXT ANSWERED? TTRUE
+   HTTPC-FAULT:SEND true FAULT-IS
+   SPARE HTTPC:CAUSE 0 T= ;
+
 : RUN ( -- )
    T-RESET
    TEST-TABLE
+   TEST-OPEN-NEXT
    START-SERVER
    s" the server listens on loopback" T-LABEL
    STOP @ 0 T=
@@ -858,6 +911,7 @@ public
    TEST-MALFORMED
    TEST-OVERSIZE
    TEST-REFUSED
+   TEST-CLOSE
    TEST-HTTPS
    END-SERVER ;
 
