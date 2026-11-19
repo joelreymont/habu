@@ -484,6 +484,14 @@ SUITE httpc
 ;SUITE
 [then]
 
+\ TLS client sessions over mbedTLS against openssl s_server on loopback, with
+\ certificates made at test time.
+HB-TARGET-LINUX-KERNEL? [if]
+SUITE tls
+   src/lib/net/tls-test.f
+;SUITE
+[then]
+
 \ The HTTP/1.1 server on a loopback port, answered by CURL and by raw TCP4;
 \ writes build/http-transcript.txt and compares it whole.
 SUITE http
