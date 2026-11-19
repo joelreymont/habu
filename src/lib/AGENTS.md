@@ -8,8 +8,8 @@ it as `<name>-test.f`.
 - `test.f` is the test framework's interface; `test/` holds its runner, suites,
   assertions and fork helpers.
 - `net/` (TCP, UDP, TLS, HTTP, WebSocket, curl, event streams, model chat
-  and embeddings), `crypto/`, `json/` (the reader, writer, pointers, copy and
-  equality of `json.f`), `xml/`, `unicode/`, `adt/` (option, result,
+  and embeddings), `crypto/`, `json/` (the reader, writer, pointers, copy,
+  equality and values of `json.f`), `xml/`, `unicode/`, `adt/` (option, result,
   nullable), `type/` (`deftype.f`), `secret/` (per-OS backends of `secret.f`),
   `heap/` (per-target backends of `heap.f`), `power/` (per-OS backends of
   `power.f`), and `browser/` (the browser host and its JavaScript peers).

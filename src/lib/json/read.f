@@ -46,7 +46,7 @@ public
 
 -3914 s" a negative length, or a null source of positive length"
 ERROR:CODE E-READ-SOURCE
--3915 s" no object, an unknown, repeated or missing member, or a member value its reader rejected"
+-3915 s" no object, an unknown, repeated or missing member, a member name or value its reader or a program rejected, or a value of another kind than the word reads"
 ERROR:CODE E-MEMBER
 
 DEFLINEAR JSON:reader
@@ -207,14 +207,14 @@ LINEAR: ERASE-READER ( JSON:reader -- ^cursor )
    0 state CURSOR-FAIL ! ;
 
 \ Reads a source byte its caller has bounds-checked.
-: AT ( ^cursor n -- n ) {: state:^ idx:n :}
+: BYTE-AT ( ^cursor n -- n ) {: state:^ idx:n :}
    state CURSOR-SRC @ idx + c@ ;
 
 : EOF? ( ^cursor -- bool ) {: state:^ :}
    state CURSOR-POS @ state CURSOR-SRC-LEN @ >= ;
 
 : PEEK ( ^cursor -- n ) {: state:^ :}
-   state state CURSOR-POS @ AT ;
+   state state CURSOR-POS @ BYTE-AT ;
 
 : ADVANCE ( ^cursor -- ) {: state:^ :}
    state CURSOR-POS dup @ 1+ swap ! ;
@@ -280,14 +280,14 @@ $7F constant DEL
 \ A backslash before a quote or a backslash: the pair is shown together, so
 \ an escaped quote never reads as the string's close.
 : PAIRED? ( ^cursor n n -- bool ) {: state:^ lim:n i:n :}
-   state i AT BACKSLASH <> if false exit then
+   state i BYTE-AT BACKSLASH <> if false exit then
    i 1+ lim >= if false exit then
-   state i 1+ AT dup DQ = swap BACKSLASH = or ;
+   state i 1+ BYTE-AT dup DQ = swap BACKSLASH = or ;
 
 \ The index after the character at i, or i when its byte is a control byte or
 \ starts no valid UTF-8 sequence.
 : CHAR-END ( ^cursor n -- n ) {: state:^ i:n :}
-   state i AT {: b:n :}
+   state i BYTE-AT {: b:n :}
    b UTF1-MAX < if b SHOWN? if i 1+ else i then exit then
    state CURSOR-SRC @ state CURSOR-SRC-LEN @ i UTF8:NEXT
    MATCH UTF8:scalar-step
@@ -297,7 +297,7 @@ $7F constant DEL
 
 \ The index after the bare run's character at i, or i when it ends the run.
 : BARE-STEP ( ^cursor n -- n ) {: state:^ i:n :}
-   state i AT {: b:n :}
+   state i BYTE-AT {: b:n :}
    b UTF1-MAX >= if state i CHAR-END exit then
    b BARE? if i 1+ else i then ;
 
@@ -316,7 +316,7 @@ $7F constant DEL
 \ The next index after the shown character at i, and whether it closed the
 \ string.
 : STRING-STEP ( ^cursor n n -- n bool ) {: state:^ lim:n i:n :}
-   state i AT DQ = if i 1+ true exit then
+   state i BYTE-AT DQ = if i 1+ true exit then
    state lim i PAIRED? if i 2 + false exit then
    state i CHAR-END false ;
 
@@ -347,7 +347,7 @@ $7F constant DEL
 \ elsewhere it opens a string token.
 : FOUND-FORM ( ^cursor n bool -- n n ) {: state:^ off:n inside:bool :}
    off state CURSOR-SRC-LEN @ >= if 0 FOUND-END exit then
-   state off AT {: b:n :}
+   state off BYTE-AT {: b:n :}
    b UTF1-MAX >= if
       state off CHAR-END off > if state off FOUND-RUN else 1 FOUND-BYTE then exit
    then
@@ -358,7 +358,7 @@ $7F constant DEL
 
 : PUT-FOUND ( ^cursor n n n -- ) {: state:^ off:n len:n form:n :}
    form FOUND-END = if END$ REASON:APPEND exit then
-   form FOUND-BYTE = if state off AT REASON:BYTE exit then
+   form FOUND-BYTE = if state off BYTE-AT REASON:BYTE exit then
    state CURSOR-SRC @ off + len  form FOUND-CUT =  REASON:QUOTE ;
 
 \ The line and column of off.
@@ -384,7 +384,7 @@ $7F constant DEL
    code REASON:STOP ;
 
 \ Throws code with the text of the place at off, SB untouched.
-: REJECT ( ^cursor n ^u8 n ^u8 n n -- )
+: REJECT-AT ( ^cursor n ^u8 n ^u8 n n -- )
    {: state:^ off:n ea:^ eu:n fa:^ fu:n code:n :}
    state off REJECT-HEAD
    ea eu REASON:APPEND
@@ -397,7 +397,7 @@ $7F constant DEL
 
 : REJECT-TOKEN ( ^cursor str str n -- )
    {: state:^ ea:^ eu:n fa:^ fu:n code:n :}
-   state state TOKEN-START ea eu fa fu code REJECT ;
+   state state TOKEN-START ea eu fa fu code REJECT-AT ;
 
 \ Rejects the current token for its kind, given the kind expected.
 : KIND-REJECT ( ^cursor str -- ) {: state:^ ea:^ eu:n :}
@@ -434,10 +434,10 @@ $7F constant DEL
 \ start.
 : PRIOR-BYTE ( ^cursor -- n ) {: state:^ :}
    state CURSOR-POS @ begin
-      dup 0 > if state over 1- AT WS? else false then
+      dup 0 > if state over 1- BYTE-AT WS? else false then
    while 1- repeat {: at:n :}
    at 0= if -1 exit then
-   state at 1- AT ;
+   state at 1- BYTE-AT ;
 
 : VALUE-FIX ( n -- str ) {: prior:n :}
    prior COMMA = if s" write a value, or remove a trailing comma" exit then
@@ -532,7 +532,7 @@ $7F constant DEL
 : THROW-FAILURE ( ^cursor -- ) {: state:^ :}
    state CURSOR-FAIL @ {: code:n :}
    code READER-CODE? if
-      state state CURSOR-POS @ state code ADVICE code REJECT
+      state state CURSOR-POS @ state code ADVICE code REJECT-AT
    then
    code throw ;
 
@@ -683,7 +683,7 @@ create UNESC-MAP
    $C0 and UTF-CONT = ;
 
 : UTF-BYTE ( ^cursor n -- n ) {: state:^ off:n :}
-   state state CURSOR-POS @ off + AT ;
+   state state CURSOR-POS @ off + BYTE-AT ;
 
 : ADVANCE-N ( ^cursor n -- ) {: state:^ count:n :}
    state CURSOR-POS dup @ count + swap ! ;
@@ -1350,19 +1350,19 @@ public
       c TOKEN-START swap READ-FINISH
       c swap s" an object"
       s" write the text as one JSON object holding the member"
-      E-MEMBER REJECT
+      E-MEMBER REJECT-AT
    then
    k ku READ-FIND-KEY 0= if
       c TOKEN-START swap READ-FINISH
       c swap s" the member the key names" s" add the member to the object"
-      E-MEMBER REJECT
+      E-MEMBER REJECT-AT
    then
    READ-ANY-SPAN$ {: v:^ vu:n :}
    k ku READ-FIND-KEY {: again:bool :}
    c TOKEN-START {: at:n :}
    READ-FINISH again if
       c at s" the member once" s" remove the repeated member, keeping one"
-      E-MEMBER REJECT
+      E-MEMBER REJECT-AT
    then
    v vu ;
 
@@ -1546,27 +1546,56 @@ public
 
 private
 
-\ A member takes at least 5 source bytes ("":0,), so the
-\ reader returns at most u/5 + 1 keys before it refuses.
+\ A key is recorded after a `{` or `,`, its two quotes and its `:`, 4 bytes
+\ no other key shares, so the keys held at once in u bytes are below u/4 + 1.
 : TABLE-CELLS ( n -- n )
-   5 / 3 + ;
+   4 / 3 + ;
 
-\ READ-REPEAT's scratch, zero-filled: the table, the order, then the
-\ room, u bytes, which every decoded key fits.
-: SCRATCH-LEN ( n -- n )
-   dup TABLE-CELLS 2 * cells + ;
+\ Heads the key area; room-len is the text's length u.
+STRUCTURE keys DERIVE addr
+   FIELD table ^n
+   FIELD sorted ^n
+   FIELD places ^n
+   FIELD room ^u8
+   FIELD room-len n
+;STRUCTURE
 
-\ Cell 0 counts the keys read, k; cells 1..k+1 hold room offsets,
+CAST: >KEYS ( ^n -- ^keys )
+
+\ The key area, zero-filled: the keys record, the table, the order, the
+\ places, then the room, u bytes, which the decoded keys held at once fit.
+: KEYS-LEN ( n -- n )
+   dup TABLE-CELLS 3 * cells + KEYS-BYTES + ;
+
+\ The record over a key area sized for the cursor's text.
+: OPEN-KEYS ( ^cursor ^u8 -- ^keys )
+   {: state:^ area:^ :}
+   state CURSOR-SRC-LEN @ {: u:n :}
+   area CELL-VIEW >KEYS {: keys:^ :}
+   area KEYS-BYTES + {: at:^ :}
+   u TABLE-CELLS cells {: span:n :}
+   at CELL-VIEW keys KEYS-TABLE !
+   at span + CELL-VIEW keys KEYS-SORTED !
+   at span 2 * + CELL-VIEW keys KEYS-PLACES !
+   at span 3 * + keys KEYS-ROOM !
+   u keys KEYS-ROOM-LEN !
+   keys ;
+
+\ Cell 0 counts the keys held, k; cells 1..k+1 hold room offsets,
 \ the first 0, and key i decodes to room bytes o(i)..o(i+1).
-: TABLE ( ^u8 -- ^n )
-   CELL-VIEW ;
+: TABLE ( ^keys -- ^n )
+   KEYS-TABLE @ ;
 
-\ Key indices, sorted by their decoded bytes once all are read.
-: ORDER ( ^u8 n -- ^n )
-   TABLE-CELLS cells + CELL-VIEW ;
+\ Key indices, a range sorted by their decoded bytes once all are read.
+: ORDER ( ^keys -- ^n )
+   KEYS-SORTED @ ;
 
-: ROOM ( ^u8 n -- ^u8 )
-   TABLE-CELLS 2 * cells + ;
+\ Cell i holds key i's offset in the text, at its opening quote.
+: PLACES ( ^keys -- ^n )
+   KEYS-PLACES @ ;
+
+: ROOM ( ^keys -- ^u8 )
+   KEYS-ROOM @ ;
 
 : OFFSET-AT ( ^n n -- ^n )
    1+ cells + ;
@@ -1575,72 +1604,74 @@ private
    OFFSET-AT @ ;
 
 
-: KEY$ ( ^n ^u8 n -- str )
-   {: table:^ room:^ idx:n :}
+: KEY$ ( ^keys n -- str )
+   {: keys:^ idx:n :}
+   keys TABLE {: table:^ :}
    table idx OFFSET {: from:n :}
-   room from +  table idx 1+ OFFSET from - ;
+   keys ROOM from +  table idx 1+ OFFSET from - ;
 
 
-\ On a top-level key of the record: decodes it as key k, after the k before it.
-: RECORD-KEY ( ^cursor str -- )
-   {: a:^ base:^ u:n :}
-   base TABLE {: table:^ :}
-   base u ROOM {: room:^ :}
+\ On a key: records it as key k, after the k before it.
+: RECORD-KEY ( ^cursor ^keys -- )
+   {: state:^ keys:^ :}
+   keys TABLE {: table:^ :}
    table @ {: k:n :}
+   state TOKEN-START  keys PLACES k cells + !
    table k OFFSET {: from:n :}
-   a room from + u from - STR-INNER {: ku:n :}
+   keys KEYS-ROOM-LEN @ {: u:n :}
+   state keys ROOM from + u from - STR-INNER {: ku:n :}
    from ku + table k 1+ OFFSET-AT !
    k 1+ table ! ;
 
 
-: RECORD-KEYS ( ^cursor str -- )
-   {: a:^ base:^ u:n :}
+: RECORD-KEYS ( ^cursor ^keys -- )
+   {: a:^ keys:^ :}
    begin a NEXT-INNER T-KEY = while
-      a base u RECORD-KEY
+      a keys RECORD-KEY
       a NEXT-INNER drop
       a SKIP-INNER
    repeat ;
 
 \ Keys in order of their decoded bytes, equal keys in document order.
-: KEY< ( n n ^n ^u8 -- bool )
-   {: i:n j:n table:^ room:^ :}
-   table room i KEY$ table room j KEY$ {: a:^ u:n b:^ v:n :}
+: KEY< ( n n ^keys -- bool )
+   {: i:n j:n keys:^ :}
+   keys i KEY$ keys j KEY$ {: a:^ u:n b:^ v:n :}
    a u b v STR< if true exit then
    b v a u STR< if false exit then
    i j < ;
 
 
-: FILL-ORDER ( ^n n -- )
-   {: order:^ k:n :}
-   k 0 ?do i order i cells + ! loop ;
+: FILL-ORDER ( ^n n n -- )
+   {: order:^ lo:n k:n :}
+   k lo ?do i order i cells + ! loop ;
 
 
-: RANKED$ ( ^n ^n ^u8 n -- str )
-   {: order:^ table:^ room:^ idx:n :}
-   table room order idx cells + @ KEY$ ;
+: RANKED$ ( ^keys n -- str )
+   {: keys:^ idx:n :}
+   keys  keys ORDER idx cells + @  KEY$ ;
 
 
-\ The least index ranked after an equal key, k when there is none.
-: LEAST-REPEAT ( ^n n ^n ^u8 -- n )
-   {: order:^ k:n table:^ room:^ :}
-   k  k 1 ?do
-      order table room i 1- RANKED$
-      order table room i RANKED$ STR=
+\ The least index of keys lo..k-1 ranked after an equal key, k when
+\ there is none.
+: LEAST-REPEAT ( ^keys n n -- n )
+   {: keys:^ lo:n k:n :}
+   keys ORDER {: order:^ :}
+   k  k lo 1+ ?do
+      keys i 1- RANKED$
+      keys i RANKED$ STR=
       if order i cells + @ min then
    loop ;
 
 
-\ The earliest recorded key that decodes as one before it: sorted,
-\ equal keys are neighbours, the second of a run its earliest repeat.
-: FIRST-REPEAT ( str -- option<n> )
-   {: base:^ u:n :}
-   base TABLE {: table:^ :}
-   base u ROOM {: room:^ :}
-   base u ORDER {: order:^ :}
-   table @ {: k:n :}
-   order k FILL-ORDER
-   order k [: table room KEY< ;] SORT:SORT!
-   order k table room LEAST-REPEAT {: at:n :}
+\ The earliest of keys lo..k-1 that decodes as one before it in the range:
+\ sorted, equal keys are neighbours, the second of a run its earliest repeat.
+: FIRST-REPEAT ( ^keys n -- option<n> )
+   {: keys:^ lo:n :}
+   keys ORDER {: order:^ :}
+   keys TABLE @ {: k:n :}
+   order lo k FILL-ORDER
+   order lo cells + k lo - [: keys KEY< ;] SORT:SORT!
+   keys lo k LEAST-REPEAT {: at:n :}
    at k = if OPTION:NONE exit then
    at OPTION:SOME ;
 
@@ -1649,18 +1680,18 @@ private
 : REPEAT-IN ( ^cursor ^u8 str -- option<n> )
    {: a:^ base:^ text:^ u:n :}
    a text u INIT-STATE
+   a base OPEN-KEYS {: keys:^ :}
    a NEXT-INNER T-OBJ <> if
       a s" an object" s" write the text as one JSON object"
       E-JSON-READ-STATE REJECT-TOKEN
    then
-   a base u RECORD-KEYS
+   a keys RECORD-KEYS
    begin a NEXT-INNER T-END = until
-   base u FIRST-REPEAT ;
-
+   keys 0 FIRST-REPEAT ;
 
 : REPEAT-WITH ( str ^cursor -- option<n> )
    {: text:^ u:n a:^ :}
-   [: a  u SCRATCH-LEN MEM:BYTES-ALLOC-LEN [: drop text u REPEAT-IN ;] MEM:WITH-BYTES ;]
+   [: a  u KEYS-LEN MEM:BYTES-ALLOC-LEN [: drop text u REPEAT-IN ;] MEM:WITH-BYTES ;]
    [: a MORE-RELEASE ;] finally ;
 
 public

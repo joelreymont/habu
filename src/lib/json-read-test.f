@@ -16,6 +16,7 @@ require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/test/ending.f
 require src/lib/test/guard-page.f
+require src/lib/test/mapped.f
 require src/lib/test/subject.f
 
 package JSON-TEST
@@ -1146,29 +1147,6 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    depth JRT-DRAIN-ARR
    JSON:READ-CLOSE ;
 
-\ A reader's first stack mapping is 4096 bytes, and the only mapping
-\ READ-REPEAT holds here is its record's stack; its scratch comes from
-\ MEM:WITH-BYTES. Two probes freed and mapped again land at the same addresses
-\ only when nothing took the holes, so a body that leaves such a mapping owned
-\ moves a probe elsewhere; a larger mapping, such as the rows VALUE= moves to
-\ one, can land past both holes, and the check does not see it.
-\ This relies on the kernel's first-fit reuse of a freed mapping.
-4096 constant JRT-MORE-BYTES
-
-: JRT-PROBE ( -- SPAN:span<u8> )
-   JRT-MORE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
-
-: JRT-RELEASES ( [ -- ] -- )
-   JRT-PROBE JRT-PROBE {: h1 h2 :}
-   h1 SPAN:$ drop {: a1:^ :}
-   h2 SPAN:$ drop {: a2:^ :}
-   h1 MEM:FREE-SPAN h2 MEM:FREE-SPAN
-   execute
-   JRT-PROBE JRT-PROBE {: g1 g2 :}
-   g1 SPAN:$ drop a1 = TTRUE
-   g2 SPAN:$ drop a2 = TTRUE
-   g1 MEM:FREE-SPAN g2 MEM:FREE-SPAN ;
-
 \ Each case checks its own release, so a READ-CLOSE that leaks fails the case
 \ that leaked rather than hiding in a mapping a later case reuses.
 : JRT-DEEP-EDGES ( -- )
@@ -1286,30 +1264,32 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
 
 : JRT-TEST-DEEP ( -- )
    s" nesting at and past the inline stack parses" T-LABEL
-   [: JRT-DEEP-EDGES ;] JRT-RELEASES
+   [: JRT-DEEP-EDGES ;] MAPPED:RELEASED? TTRUE
    s" 10000 levels parse and READ-CLOSE releases the stack" T-LABEL
-   [: JRT-DEEP-10000 ;] JRT-RELEASES
+   [: JRT-DEEP-10000 ;] MAPPED:RELEASED? TTRUE
    s" 40000 levels double the stack and READ-CLOSE releases it" T-LABEL
-   [: JRT-DEEP-40000 ;] JRT-RELEASES
+   [: JRT-DEEP-40000 ;] MAPPED:RELEASED? TTRUE
    s" READ-FIND-KEY works 70 objects deep and READ-FINISH releases the stack" T-LABEL
-   [: JRT-TEST-DEEP-FIND ;] JRT-RELEASES
+   [: JRT-TEST-DEEP-FIND ;] MAPPED:RELEASED? TTRUE
    \ A task's first rejection maps its REASON text and its scope chunk for
    \ good, so one is taken before the probes.
    [: s" x" JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-CLOSE ;]
    E-JSON-READ-MALFORMED TTHROWSQ
    s" a failure 100 deep releases the stack" T-LABEL
-   [: JRT-DEEP-MALFORMED-THROWS ;] JRT-RELEASES
+   [: JRT-DEEP-MALFORMED-THROWS ;] MAPPED:RELEASED? TTRUE
    s" READ-DISPOSE releases what a caller's throw abandoned" T-LABEL
-   [: JRT-ABANDON-DISPOSE ;] JRT-RELEASES
+   [: JRT-ABANDON-DISPOSE ;] MAPPED:RELEASED? TTRUE
    s" DISPOSE leaves the record zero-filled" T-LABEL
-   [: JRT-DISPOSE-ZEROES ;] JRT-RELEASES
+   [: JRT-DISPOSE-ZEROES ;] MAPPED:RELEASED? TTRUE
    s" a record holding a leftover parses again and nothing stays mapped" T-LABEL
-   [: JRT-ABANDON-REINIT ;] JRT-RELEASES
+   [: JRT-ABANDON-REINIT ;] MAPPED:RELEASED? TTRUE
    s" READ-REPEAT past 64 levels releases both stacks, a throw included" T-LABEL
-   [: JRT-DEEP-REPEATS ;] JRT-RELEASES
+   \ READ-REPEAT holds two mappings at once here, its scratch and its record's
+   \ stack, each one page at most.
+   [: JRT-DEEP-REPEATS ;] MAPPED:RELEASED? TTRUE
    s" VALUE= past 64 levels releases every record's stack, a throw included" T-LABEL
    JRT-WARM-VALUE-EQ
-   [: JRT-DEEP-VALUE-EQ ;] JRT-RELEASES ;
+   [: JRT-DEEP-VALUE-EQ ;] MAPPED:RELEASED? TTRUE ;
 
 : JRT-BAD-NEGATIVE-SOURCE ( -- )
    JRT-A s" 0" drop -1 JSON:READ-INIT JSON:READ-CLOSE ;

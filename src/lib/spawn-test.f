@@ -13,6 +13,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/spawn.f
+require src/lib/test/mapped.f
 require src/core/exit-status.f
 
 package SPAWN-TEST
@@ -391,18 +392,7 @@ variable DEAD-FD
    7 T= ;
 
 
-\ 13: the request's record and each member it maps is one page. PROBES one-page
-\ mappings, freed, are the pages first-fit reuse hands the request next, as
-\ src/lib/json-read-test.f JRT-RELEASES relies on; mapping them again lands on
-\ the same pages only when DISCARD returned every one.
-4096 constant PROBE-BYTES
-8 constant PROBES
-PROBES TYPED-BUFFER PROBE-AT ^u8
-
-: PROBE-LEN ( -- NUM:alloc-byte-len ) PROBE-BYTES MEM:BYTES-ALLOC-LEN ;
-: PROBE ( -- ^u8 ) PROBE-LEN MEM:ALLOC-BYTES drop ;
-: UNPROBE ( -- ) PROBES 0 ?do i PROBE-AT @ PROBE-LEN MEM:RELEASE-BYTES loop ;
-
+\ 13: the request's record and each member it maps is one page.
 \ Six ARGs grow argv past its first mapping and child fd 5 grows the map.
 : DISCARDED ( -- )
    s" /bin/echo" PROCESS:NEW
@@ -414,16 +404,7 @@ PROBES TYPED-BUFFER PROBE-AT ^u8
 
 : TEST-DISCARD ( -- )
    s" a discarded request frees its record and its members" T-LABEL
-   PROBES 0 ?do PROBE i PROBE-AT ! loop
-   UNPROBE
-   DISCARDED
-   true PROBES 0 ?do
-      PROBE {: again:^ :}
-      again i PROBE-AT @ = and
-      again i PROBE-AT !
-   loop
-   UNPROBE
-   TTRUE ;
+   [: DISCARDED ;] MAPPED:RELEASED? TTRUE ;
 
 
 \ 14

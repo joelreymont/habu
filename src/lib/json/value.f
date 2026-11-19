@@ -1,0 +1,328 @@
+split-str
+\ value.f - JSON:value, one JSON value inside a text: PARSE makes one, and
+\ the other words look values up, walk them and read them. A file of package
+\ JSON (src/lib/json.f).
+\
+\ A value is its document's address, its offset there and its length, so a
+\ cursor opened on it counts places from the document's start.
+\ PARSE reads the text once and keeps the decoded keys of the objects open at
+\ the cursor in the key area after its record. At an object's `{` it pushes k,
+\ the keys held, as the object's first index lo; at its `}` it pops lo, finds
+\ the first of keys lo..k-1 that repeats one before it, and drops those keys.
+\ The lo stack lies in the order's low cells: every enclosing object holds a key
+\ below an inner object's lo, so the stack stays below the range a check sorts.
+\ The repeat earliest in the text is rejected once the whole text has read well
+\ formed.
+\ EACH and EACH-MEMBER run their quotation while the walk's cursor is open;
+\ a value it is given borrows the text, not the cursor, so it stays valid
+\ after the walk.
+\ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows. The
+\ cursor record, its depth mapping, the key area, AT's decoded token and
+\ WITH-STRING's decoded text live in a MEM:WITH-BYTES scope, released on
+\ return or throw. No module state.
+
+require src/lib/memory.f
+require src/lib/adt/option.f
+require src/lib/reason.f
+require src/lib/json/read.f
+require src/lib/json/pointer.f
+require src/lib/utf8-scalar.f
+
+package JSON
+
+public
+
+STRUCTURE value OPAQUE
+   FIELD doc ^u8
+   FIELD offset n
+   FIELD len n
+;STRUCTURE
+
+private
+
+\ The record reads to the value's end, so after the value it answers T-END.
+: OPEN-AT ( ^cursor value -- ) {: state:^ v :}
+   v VALUE-UNMAKE {: doc:^ at:n len:n :}
+   state doc at len + INIT-STATE
+   at state CURSOR-POS ! ;
+
+: RUN-BODY ( R ^cursor ^u8 [ R ^cursor ^u8 -- S ] -- S )
+   execute ;
+
+\ WITH-RECORD zero-fills the record, so it owns no mapping until it grows one.
+: CURSOR-SCOPE ( R ^cursor ^u8 value [ R ^cursor ^u8 -- S ] -- S )
+   {: state:^ base:^ v body :}
+   state v OPEN-AT
+   state base body
+   [: RUN-BODY ;] [: state MORE-RELEASE ;] finally ;
+
+\ Runs body on a cursor at the value's first byte and n bytes of
+\ zero-filled scratch, both released on return or throw.
+: WITH-CURSOR ( R value n [ R ^cursor ^u8 -- S ] -- S )
+   {: v extra:n body :}
+   [type] cursor
+   [: extra MEM:BYTES-ALLOC-LEN [: drop v body CURSOR-SCOPE ;] MEM:WITH-BYTES ;]
+   MEM:WITH-RECORD ;
+
+\ Pushes k as the lo of an object opened inside m others.
+: OPEN-OBJECT ( ^keys n -- n ) {: keys:^ m:n :}
+   keys TABLE @  keys ORDER m cells + !
+   m 1+ ;
+
+\ The earlier of first and the place of the key found, if any.
+: EARLIER ( option<n> ^keys n -- n ) {: found keys:^ first:n :}
+   found MATCH option
+     none OF first ENDOF
+     some OF cells keys PLACES + @ first min ENDOF
+   ;MATCH ;
+
+\ Pops the innermost object's lo, checks its keys and drops them.
+: CLOSE-OBJECT ( ^keys n n -- n n ) {: keys:^ m:n first:n :}
+   keys ORDER m 1- cells + @ {: lo:n :}
+   keys lo FIRST-REPEAT keys first EARLIER
+   lo keys TABLE !
+   m 1- swap ;
+
+\ Takes one token, given m open objects and the earliest repeat's place,
+\ the room's size for none; true at the text's end.
+: WALK-STEP ( n n ^cursor ^keys -- n n bool )
+   {: m:n first:n state:^ keys:^ :}
+   state NEXT-INNER {: tok:n :}
+   tok T-OBJ = if keys m OPEN-OBJECT first false exit then
+   tok T-KEY = if state keys RECORD-KEY m first false exit then
+   tok T-OBJ-END = if keys m first CLOSE-OBJECT false exit then
+   m first tok T-END = ;
+
+: CHECK-KEYS ( ^cursor ^keys -- ) {: state:^ keys:^ :}
+   keys KEYS-ROOM-LEN @ {: none:n :}
+   0 none begin state keys WALK-STEP until
+   nip {: first:n :}
+   first none = if exit then
+   state first s" a member name not used before in this object"
+   s" remove the repeated member" E-MEMBER REJECT-AT ;
+
+\ The value of a text read as one: only white space is around it.
+: TRIMMED ( str -- value ) {: text:^ u:n :}
+   0 begin text over + c@ WS? while 1+ repeat {: at:n :}
+   u begin text over + 1- c@ WS? while 1- repeat {: end:n :}
+   text at end at - VALUE-MAKE ;
+
+public
+
+\ A text that is not one JSON value throws the reader's code; a repeated
+\ member name, decoded, throws E-MEMBER at the repeat earliest in the text.
+: PARSE ( str -- value ) {: text:^ u:n :}
+   text u REQUIRE-SOURCE
+   text 0 u VALUE-MAKE u KEYS-LEN
+   [: over swap OPEN-KEYS CHECK-KEYS ;] WITH-CURSOR
+   text u TRIMMED ;
+
+: TEXT$ ( value -- str )
+   VALUE-UNMAKE {: doc:^ at:n len:n :}
+   doc at + len ;
+
+private
+
+: FIRST-BYTE ( value -- n )
+   TEXT$ drop c@ ;
+
+public
+
+: STRING? ( value -- bool )  FIRST-BYTE DQ = ;
+: OBJECT? ( value -- bool )  FIRST-BYTE LBRACE = ;
+: ARRAY? ( value -- bool )  FIRST-BYTE LBRACK = ;
+: NULL? ( value -- bool )  FIRST-BYTE CH-N = ;
+
+: NUMBER? ( value -- bool )
+   FIRST-BYTE dup MINUS = swap STR-DIGIT? or ;
+
+private
+
+\ Throws E-MEMBER at the current token, the found part its kind.
+: WRONG-KIND ( ^cursor str str -- )
+   {: state:^ ea:^ eu:n fa:^ fu:n :}
+   state state TOKEN-START REJECT-HEAD
+   ea eu REASON:APPEND
+   REASON:FOUND state CURSOR-KIND @ KIND$ REASON:APPEND
+   REASON:FIX fa fu REASON:APPEND
+   E-MEMBER REASON:STOP ;
+
+\ The value at the current token; the cursor moves past it.
+: TOKEN-VALUE ( ^cursor -- value ) {: state:^ :}
+   state TOKEN-START {: at:n :}
+   state ANY-SPAN-INNER nip {: u:n :}
+   state CURSOR-SRC @ at u VALUE-MAKE ;
+
+\ The current key as a string value, its quotes included.
+: NAME-VALUE ( ^cursor -- value ) {: state:^ :}
+   state CURSOR-SRC @ state TOKEN-START
+   state CURSOR-TOK-LEN @ 2 + VALUE-MAKE ;
+
+: ELEMENTS ( R ^cursor [ R value -- R ] -- R )
+   {: state:^ body :}
+   state NEXT-INNER T-ARR <> if
+      state s" an array" s" walk only an array with JSON:EACH"
+      WRONG-KIND
+   then
+   begin state NEXT-INNER T-ARR-END <> while
+      state TOKEN-VALUE body execute
+   repeat ;
+
+: MEMBERS ( R ^cursor [ R value value -- R ] -- R )
+   {: state:^ body :}
+   state NEXT-INNER T-OBJ <> if
+      state s" an object" s" walk only an object with JSON:EACH-MEMBER"
+      WRONG-KIND
+   then
+   begin state NEXT-INNER T-OBJ-END <> while
+      state NAME-VALUE
+      state NEXT-INNER drop state TOKEN-VALUE
+      body execute
+   repeat ;
+
+public
+
+: EACH ( R value [ R value -- R ] -- R ) {: v body :}
+   v 0 [: drop body ELEMENTS ;] WITH-CURSOR ;
+
+\ The name is the key as written, a string value.
+: EACH-MEMBER ( R value [ R value value -- R ] -- R )
+   {: v body :}
+   v 0 [: drop body MEMBERS ;] WITH-CURSOR ;
+
+private
+
+\ Opens the value the cursor reads next and answers its `{`; any other
+\ value is rejected with its kind.
+: ENTER-OBJECT ( ^cursor -- n ) {: state:^ :}
+   state NEXT-INNER T-OBJ = if state TOKEN-START exit then
+   state s" an object" s" read a member only from an object" WRONG-KIND ;
+
+\ Quotes the span, cut at REASON:QUOTE-MOST on a character's first byte.
+: QUOTE-CUT ( str -- ) {: a:^ u:n :}
+   a u REASON:QUOTE-MOST UTF8:FIT {: k:n :}
+   a k  k u <  REASON:QUOTE ;
+
+: MISSING ( ^cursor n str -- ) {: state:^ at:n name:^ u:n :}
+   state at REJECT-HEAD
+   s" a member " REASON:APPEND  name u QUOTE-CUT
+   REASON:FOUND s" none" REASON:APPEND
+   REASON:FIX s" add the member or read it with JSON:FIND" REASON:APPEND
+   E-MEMBER REASON:STOP ;
+
+: MEMBER-VALUE ( ^cursor str -- value ) {: state:^ name:^ u:n :}
+   state ENTER-OBJECT {: at:n :}
+   state name u FIND-INNER if state TOKEN-VALUE exit then
+   state at name u MISSING ;
+
+: MEMBER-OPTION ( ^cursor str -- option<value> )
+   {: state:^ name:^ u:n :}
+   state ENTER-OBJECT drop
+   state name u FIND-INNER 0= if OPTION:NONE exit then
+   state TOKEN-VALUE OPTION:SOME ;
+
+: POINTED ( ^cursor str ^u8 -- option<value> )
+   {: state:^ p:^ u:n room:^ :}
+   state p u room SEEK {: at:n len:n found:bool :}
+   found 0= if OPTION:NONE exit then
+   state CURSOR-SRC @ at len VALUE-MAKE OPTION:SOME ;
+
+public
+
+\ The member of that decoded name. A value that is not an object, or an
+\ object without the member, throws E-MEMBER.
+: GET ( value str -- value ) {: v name:^ u:n :}
+   v 0 [: drop name u MEMBER-VALUE ;] WITH-CURSOR ;
+
+\ None for an object without the member; a value that is not an object
+\ throws E-MEMBER.
+: FIND ( value str -- option<value> ) {: v name:^ u:n :}
+   v 0 [: drop name u MEMBER-OPTION ;] WITH-CURSOR ;
+
+\ The value the RFC 6901 pointer names from this one, none for no such place.
+\ A pointer POINTER? rejects throws E-JSON-POINTER before anything is read.
+: AT ( value str -- option<value> ) {: v p:^ u:n :}
+   p u POINTER? 0= if E-JSON-POINTER throw then
+   v u [: p u rot POINTED ;] WITH-CURSOR ;
+
+private
+
+: MATCH-AT ( ^cursor str -- bool ) {: state:^ want:^ len:n :}
+   state NEXT-INNER drop
+   state want len MATCH-INNER ;
+
+\ A string's text inside its quotes.
+: INSIDE$ ( value -- str )
+   VALUE-UNMAKE {: doc:^ at:n len:n :}
+   doc at + 1+ len 2 - ;
+
+: ESCAPED? ( str -- bool )
+   BACKSLASH INDEX-OF MATCH option
+     none OF false ENDOF
+     some OF drop true ENDOF
+   ;MATCH ;
+
+\ The scratch holds the value, so its decoded text fits.
+: DECODE-RUN ( R ^cursor ^u8 [ R str -- S ] -- S )
+   {: state:^ buf:^ body :}
+   state NEXT-INNER T-STR <> if
+      state s" a string" s" write a string" WRONG-KIND
+   then
+   state buf state CURSOR-TOK-LEN @ STR-INNER {: u:n :}
+   buf u body execute ;
+
+\ Throws E-MEMBER at the current token, the found part the token.
+: WHOLE-REJECT ( ^cursor -- )
+   s" a whole number" s" write a whole number" E-MEMBER REJECT-TOKEN ;
+
+: INT-AT ( ^cursor -- n ) {: state:^ :}
+   state NEXT-INNER T-INT <> if state WHOLE-REJECT then
+   state RAW-SPAN$ STR>NUMBER? MATCH option
+     none OF state WHOLE-REJECT ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
+: BOOL-AT ( ^cursor -- bool ) {: state:^ :}
+   state NEXT-INNER {: tok:n :}
+   tok T-TRUE = if true exit then
+   tok T-FALSE <> if
+      state s" true or false" s" write true or false" E-MEMBER
+      REJECT-TOKEN
+   then
+   false ;
+
+public
+
+\ Streams the decoding, so no buffer bounds the string.
+: STRING= ( value str -- bool ) {: v want:^ len:n :}
+   v STRING? 0= if false exit then
+   v 0 [: drop want len MATCH-AT ;] WITH-CURSOR ;
+
+\ The text is lent for the call only: the bytes inside the quotes when the
+\ string holds no escape, else its decoding in the cursor's scratch.
+: WITH-STRING ( R value [ R str -- S ] -- S ) {: v body :}
+   v STRING? if
+      v INSIDE$ 2dup ESCAPED? 0= if body execute exit then
+      2drop
+   then
+   v v TEXT$ nip [: body DECODE-RUN ;] WITH-CURSOR ;
+
+\ A number with no fraction or exponent that fits in a signed cell.
+: >N ( value -- n )
+   0 [: drop INT-AT ;] WITH-CURSOR ;
+
+: >BOOL ( value -- bool )
+   0 [: drop BOOL-AT ;] WITH-CURSOR ;
+
+private
+
+: VALUE-REJECT ( ^cursor str str -- ) {: state:^ ea:^ eu:n fa:^ fu:n :}
+   state state CURSOR-POS @ ea eu fa fu E-MEMBER REJECT-AT ;
+
+public
+
+\ Throws E-MEMBER at the value's first byte with this expected text and fix.
+: REJECT ( value str str -- ) {: v ea:^ eu:n fa:^ fu:n :}
+   v 0 [: drop ea eu fa fu VALUE-REJECT ;] WITH-CURSOR ;
+
+;package

@@ -31,9 +31,20 @@ create MPT-STATIC MPT-SPAN allot
    b MAPPED:LIVE? TFALSE
    MPT-STATIC MAPPED:LIVE? TTRUE ;
 
+1 TYPED-BUFFER MPT-KEPT ^u8
+
+: MPT-PAGE ( -- NUM:alloc-byte-len ) 4096 MEM:BYTES-ALLOC-LEN ;
+
+\ A body that keeps one page is caught; one that frees the page it maps is not.
+: MPT-RELEASES ( -- )
+   [: MPT-PAGE MEM:ALLOC-BYTES drop 0 MPT-KEPT ! ;] MAPPED:RELEASED? TFALSE
+   0 MPT-KEPT @ MPT-PAGE MEM:RELEASE-BYTES
+   [: MPT-PAGE MEM:ALLOC-BYTES MEM:RELEASE-BYTES ;] MAPPED:RELEASED? TTRUE ;
+
 : MPT-MAIN ( -- )
    T-RESET
    MPT-CASES
+   MPT-RELEASES
    T-REPORT
    s" mapped-test: ok" type cr ;
 

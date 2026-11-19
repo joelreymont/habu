@@ -707,6 +707,10 @@ SUITE tail-pure-fixtures
    tools/image-bytes-test.f
 ;SUITE
 
+SUITE json-value
+   src/lib/json-value-test.f
+;SUITE
+
 SUITE byte-buffer
    src/lib/byte-buffer-test.f
 ;SUITE

@@ -2,12 +2,18 @@ split-str
 \ pointer.f - RFC 6901 JSON Pointers: POINTER? and POINTER-SPAN. A file of
 \ package JSON (src/lib/json.f).
 \
-\ POINTER-SPAN reads the text once with the pull reader. From the top value it
-\ takes the pointer's tokens in order: on an object READ-FIND-KEY stops on the
-\ value of the first member the decoded token names; on an array the reader
-\ skips the elements before the index. The named value's span is taken where
-\ the reader stands, then READ-FINISH reads the rest, so a text that is not one
-\ valid JSON value throws the reader's code whatever the pointer names.
+\ SEEK takes the pointer's tokens in order from the value a cursor reads
+\ next: on an object FIND-INNER stops on the value of the first member the
+\ decoded token names; on an array the cursor skips the elements before the
+\ index. The named value's span is taken where the cursor stands.
+\ The empty pointer names the value itself. A token, ~1 and ~0 decoded into
+\ room, names the first member of an object whose decoded name it equals (RFC
+\ 6901 leaves repeated names open), or on an array element k for 0 or a digit
+\ 1-9 then digits, when k is below its length; - and any other token, and any
+\ token on a scalar, name no place. The cursor's end bounds an index.
+\ POINTER-SPAN runs SEEK on a reader over the whole text, then READ-FINISH
+\ reads the rest, so a text that is not one valid JSON value throws the
+\ reader's code whatever the pointer names.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text and the pointer.
 \ POINTER-SPAN holds its cursor and the decoded token in storage of its own,
 \ released before it answers or throws. No module state.
@@ -90,54 +96,60 @@ private
    loop true ;
 
 \ Skips the array's next element; false at the array's end.
-: SKIP-ELEMENT ( JSON:reader -- JSON:reader bool )
-   READ-NEXT T-ARR-END = if false exit then
-   READ-SKIP-VALUE true ;
+: SKIP-ELEMENT ( ^cursor -- bool ) {: state:^ :}
+   state NEXT-INNER T-ARR-END = if false exit then
+   state SKIP-INNER true ;
 
-\ Element k of the array the reader has just opened, the reader stopping on
+\ Element k of the array the cursor has just opened, the cursor stopping on
 \ its first token; false past the last element.
-: INTO-ARRAY ( JSON:reader n -- JSON:reader bool )
-   {: k:n :}
-   k 0 ?do SKIP-ELEMENT 0= if false unloop exit then loop
-   READ-NEXT T-ARR-END <> ;
+: INTO-ARRAY ( ^cursor n -- bool )
+   {: state:^ k:n :}
+   k 0 ?do state SKIP-ELEMENT 0= if false unloop exit then loop
+   state NEXT-INNER T-ARR-END <> ;
 
-\ Moves the reader from the value it is on into the place the decoded token
+\ Moves the cursor from the value it is on into the place the decoded token
 \ names there; false when there is none. cap bounds an index.
-: DESCEND ( JSON:reader str n -- JSON:reader bool )
-   {: t:^ len:n cap:n :}
-   READ-TOKEN {: kind:n :}
-   kind T-OBJ = if t len READ-FIND-KEY exit then
+: DESCEND ( ^cursor str n -- bool )
+   {: state:^ t:^ len:n cap:n :}
+   state CURSOR-KIND @ {: kind:n :}
+   kind T-OBJ = if state t len FIND-INNER exit then
    kind T-ARR <> if false exit then
    t len cap INDEX? 0= if drop false exit then
-   INTO-ARRAY ;
+   {: k:n :} state k INTO-ARRAY ;
 
 \ Takes the token after the slash at at; answers the offset after the token
 \ and whether it names a place.
-: TOKEN-STEP ( JSON:reader n str ^u8 n -- JSON:reader n bool )
-   {: at:n p:^ u:n room:^ cap:n :}
+: TOKEN-STEP ( ^cursor n str ^u8 n -- n bool )
+   {: state:^ at:n p:^ u:n room:^ cap:n :}
    p u at 1+ TOKEN-END {: end:n :}
    p at 1+ end room UNESCAPE {: len:n :}
-   room len cap DESCEND end swap ;
+   state room len cap DESCEND end swap ;
 
-\ Takes every token of the pointer from the value the reader is on; false at
+\ Takes every token of the pointer from the value the cursor is on; false at
 \ the first that names no place.
-: FOLLOW ( JSON:reader ^u8 n ^u8 n -- JSON:reader bool )
-   {: p:^ u:n room:^ cap:n :}
+: FOLLOW ( ^cursor ^u8 n ^u8 n -- bool )
+   {: state:^ p:^ u:n room:^ cap:n :}
    0 begin dup u < while
-      p u room cap TOKEN-STEP 0= if drop false exit then
+      state swap p u room cap TOKEN-STEP 0= if drop false exit then
    repeat drop true ;
+
+\ The offset and length of the value the pointer names from the value the
+\ cursor reads next, and true; 0 0 false for no such place.
+: SEEK ( ^cursor str ^u8 -- n n bool )
+   {: state:^ p:^ u:n room:^ :}
+   state NEXT-INNER drop
+   state p u room state CURSOR-SRC-LEN @ FOLLOW
+   0= if 0 0 false exit then
+   state ANY-SPAN-INNER {: at:^ len:n :}
+   at state CURSOR-SRC @ - len true ;
 
 \ The place's offset and length in the text, and whether it is there. The
 \ reader reads the whole text on either answer.
 : LOCATE ( ^cursor str str ^u8 -- n n bool )
    {: rec:^ text:^ tu:n p:^ u:n room:^ :}
    rec text tu READ-INIT
-   READ-NEXT drop
-   p u room tu FOLLOW if
-      READ-ANY-SPAN$ {: at:^ len:n :}
-      READ-FINISH at text - len true exit
-   then
-   READ-FINISH 0 0 false ;
+   READER>STATE p u room SEEK {: at:n len:n found:bool :}
+   READ-FINISH at len found ;
 
 : LOCATE-WITH ( str str ^cursor -- n n bool )
    {: text:^ tu:n p:^ u:n rec:^ :}
@@ -158,15 +170,8 @@ public
    p u ESCAPES-OK? 0= if false exit then
    p u UTF8:VALID? ;
 
-\ The offset and length in text, one JSON value, of the value the pointer
-\ names, as written (READ-ANY-SPAN$), and true; 0 0 false for no such place.
-\ The empty pointer names the whole value. A token, ~1 and ~0 decoded, names
-\ the first member of an object whose decoded name it equals (RFC 6901 leaves
-\ repeated names open), or on an array element k for 0 or a digit 1-9 then
-\ digits, when k is below its length; - and any other token, and any token on
-\ a scalar, name no place. A pointer POINTER? rejects throws E-JSON-POINTER
-\ before the text is read; a text that is not one valid JSON value throws the
-\ reader's code.
+\ The offset and length in text of the value the pointer names, and true; 0 0
+\ false for no such place. A pointer POINTER? rejects throws E-JSON-POINTER.
 : POINTER-SPAN ( str str -- n n bool )
    {: text:^ tu:n p:^ u:n :}
    p u POINTER? 0= if E-JSON-POINTER throw then

@@ -6,7 +6,16 @@ split-str
 \ advances; values decode on demand. Every E-JSON-READ code and E-MEMBER is
 \ thrown through REASON:THROW with the text
 \ `L:C: expected <e>, found <f>; <fix>`, line and byte column counted from the
-\ source's start. READ-LISTED reads a closed object one member at a time,
+\ source's start.
+\ PARSE checks a text as one JSON value and answers a JSON:value: one value
+\ inside that text, borrowed, valid while the text is unchanged, as a str is.
+\ PARSE rejects malformed text and an object that repeats a member name, at any
+\ depth, with the place. TEXT$ answers the value as written. REJECT rejects a
+\ value at its place with a program's own expected text and fix. GET, FIND and
+\ AT find a member by decoded name or a value by RFC 6901 pointer. EACH and
+\ EACH-MEMBER walk an array or object; STRING=, WITH-STRING, >N and >BOOL read
+\ scalars; STRING? OBJECT? ARRAY? NUMBER? NULL? test a value's kind.
+\ READ-LISTED reads a closed object one member at a time,
 \ each member its list names once, one whose name ends in `?` at most once
 \ and keyed without it, and no other unless the list's last name is `*`,
 \ which skips the others, repeated or not: from the object's `{` or a member
@@ -59,12 +68,14 @@ split-str
 \ (zero-filled typed storage owns nothing, and READ-DISPOSE leaves it so) and the
 \ source span, and keeps both live and exclusive until READ-CLOSE or
 \ READ-FINISH: a promise the checker cannot prove. The caller owns the writer
-\ record, its output and COPY-VALUE's decode buffer. No module state.
+\ record, its output and COPY-VALUE's decode buffer. A JSON:value owns nothing.
+\ No module state.
 require src/lib/json/read.f
 require src/lib/json/write.f
 require src/lib/json/copy.f
 require src/lib/json/equal.f
 require src/lib/json/pointer.f
+require src/lib/json/value.f
 
 package JSON
 seal-package
