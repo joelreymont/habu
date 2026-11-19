@@ -247,16 +247,13 @@ CAST: >CHUNK ( ^u8 -- ^chunk )
       cur CHUNK-PREV @ first CHUNK-CUR !
    then ;
 
-: WB-BODY ( R ^u8 NUM:alloc-byte-len [ R ^u8 NUM:alloc-byte-len -- S ] -- S )
-   execute ;
-
 CAST: >RECORD ( ^u8 -- ^t )
 
 public
 
 : WITH-BYTES ( R NUM:alloc-byte-len [ R ^u8 NUM:alloc-byte-len -- S ] -- S )
    {: body :}
-   WB-ENTER body [: WB-BODY ;] [: WB-LEAVE ;] finally ;
+   WB-ENTER body [: WB-LEAVE ;] finally ;
 
 \ Lends a zeroed t, released on exit and on a throw.
 : WITH-RECORD ( R width<t> [ R ^t -- S ] -- S )
