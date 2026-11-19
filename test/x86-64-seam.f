@@ -1,7 +1,7 @@
 split-str
 \ x86-64-seam.f - the x86_64 Linux seam from an aarch64 engine: the ELF writer
 \ (src/os/linux-x86-64/elf.f) read back field by field, the mov r64, imm64
-\ relocation site kind (SNAP-RELOC) over hand-built fixtures, and the x86-64 row
+\ relocation site kind (RELOC) over hand-built fixtures, and the x86-64 row
 \ of src/compiler/target.f. HB-TARGET-LINUX-X86-64? is false on this host, so
 \ the x86-64 arms of host selectors (src/compiler/native/abi.f, src/habu/prof.f)
 \ are not reached here.

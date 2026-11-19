@@ -89,9 +89,9 @@ package PROGRAM-DIAGNOSTICS
 
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 96 s" ADDRESS-CELL-KIND-ARMED"
-      s" E-XTKIND habu: snapshot address cell kind mismatch" NEGATIVE-LINE
+      s" E-XTKIND habu: address cell kind mismatch" NEGATIVE-LINE
    s" test/xt-cell-band-bad.f" 96 s" XT-CELL-BAND-ARMED"
-      s" E-XTBAND habu: snapshot address cell out of range" NEGATIVE-LINE
+      s" E-XTBAND habu: address cell out of range" NEGATIVE-LINE
    s" test/enum-ctor-collide-bad.f" s" enum-ctor-collide-bad.f:18:1" DIAGNOSTIC
    s" error[E-BAD-DECLARATION]" s" test/enum-ctor-collide-bad.f" GE-EXPECT-ERR-HAS
    s" ^ generated declaration already defined" s" test/enum-ctor-collide-bad.f"

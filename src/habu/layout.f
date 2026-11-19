@@ -1112,7 +1112,7 @@ USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 \ Two tables of the code region's recorded sites: calls into __text and the
 \ first instruction of each address literal. Both live below DATA-START and are
 \ keyed by region offset.
-package SNAP-RELOC
+package RELOC
 public
 
 \ Call-site map: one bit per four-byte word of the code region, marking every call
@@ -1247,7 +1247,7 @@ $4DD0 constant PKG-OUTSIDE-CELL
 \ The section in force: 0 host, 1 target; `host` and `target` write it.
 $4DD8 constant SECTION-CELL
 
-SNAP-RELOC:XTCELL-END constant PD-TABLE-OFF
+RELOC:XTCELL-END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ Rows (text offset, source) for the runs EMIT-BCAP appends, ascending: a run

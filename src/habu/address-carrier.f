@@ -2,8 +2,8 @@ split-str
 \ address-carrier.f - pure address shapes and value codecs, shared by capture,
 \ link and file inspection without capture buffers or assembler state. A matching
 \ shape grants no provenance: callers still need the declared site map or a
-\ created-owner record. Its own package, not SNAP-RELOC: the engine bakes
-\ layout.f, which owns SNAP-RELOC, and the image tools that load this file on a
+\ created-owner record. Its own package, not RELOC: the engine bakes
+\ layout.f, which owns RELOC, and the image tools that load this file on a
 \ product engine may not reopen it (docs/forth-card.md § 6).
 
 require src/core/exit-status.f

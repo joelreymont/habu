@@ -1561,7 +1561,7 @@ public
 \ image's base for a cell inside it. SYS, clobbers x16: reload after each.
 : MARK-HEADER ( -- )
    16 SP 184 LDR,
-   4 SNAP-RELOC:XTCELL-N-CELL LIT64, 4 16 4 ADD, ;
+   4 RELOC:XTCELL-N-CELL LIT64, 4 16 4 ADD, ;
 
 \ One owner serializes lookup and publication, including backing replacement.
 \ x16 is the table's base; all registers touched here are MARK-SAVE'd.
@@ -1616,7 +1616,7 @@ public
       9 6 0 LDR, 9 miss CBZ,
       9 9 1 SUBI, 9 13 CMP, C-CS bad BCOND,
       7 9 3 LSLI, 7 5 7 ADD, 7 7 0 LDR,
-      9 SNAP-RELOC:XTCELL-OFF-MASK LIT64, 9 7 9 AND,
+      9 RELOC:XTCELL-OFF-MASK LIT64, 9 7 9 AND,
       9 12 CMP, C-EQ hit BCOND,
       11 11 1 ADDI, 11 11 17 AND,
       14 14 1 SUBI, probe B, ;
@@ -1654,7 +1654,7 @@ public
    3 0 MOVZ,
    rows LBL, 3 13 CMP, C-CS built BCOND,
       7 3 3 LSLI, 7 5 7 ADD, 12 7 0 LDR,
-      7 SNAP-RELOC:XTCELL-OFF-MASK LIT64, 12 12 7 AND,
+      7 RELOC:XTCELL-OFF-MASK LIT64, 12 12 7 AND,
       next hole bad INDEX-PROBE
    hole LBL, 7 3 1 ADDI, 7 6 0 STR,
    next LBL, 3 3 1 ADDI, rows B,
@@ -1710,7 +1710,7 @@ public
    13 4 0 LDR,
    LBL LBL LBL {: arloop:label arnext:label ardone:label :}
    3 0 MOVZ, 10 0 MOVZ,
-   6 SNAP-RELOC:XTCELL-OFF-MASK LIT64,
+   6 RELOC:XTCELL-OFF-MASK LIT64,
 arloop LBL,
    3 13 CMP, C-CS ardone BCOND,
    9 3 3 LSLI, 9 5 9 ADD, 7 9 0 LDR,
@@ -1735,10 +1735,10 @@ ardone LBL,
    LMARK LABEL@ LBL, MARK-SAVE
    15 0 MOVZ, common B,
    LSCRATCHMARK LABEL@ LBL, MARK-SAVE
-   15 SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or LIT64,
+   15 RELOC:XTCELL-DATA-TAG RELOC:XTCELL-SCRATCH-TAG or LIT64,
    common B,
    LPTRMARK LABEL@ LBL, MARK-SAVE
-   15 SNAP-RELOC:XTCELL-DATA-TAG LIT64,
+   15 RELOC:XTCELL-DATA-TAG LIT64,
    \ x9 = the cell, unchanged on return; x15 = its kind.
    common LBL,
    LBL {: host:label :}
@@ -1751,7 +1751,7 @@ ardone LBL,
    \ A cell outside DATA and the open image stops the process: a dropped row
    \ would leave a stale address in a saved image.
    12 9 16 SUB,
-   6 SNAP-RELOC:XTCELL-OFF-MAX LIT64, 12 6 CMP, C-HI band BCOND,
+   6 RELOC:XTCELL-OFF-MAX LIT64, 12 6 CMP, C-HI band BCOND,
    MARK-LOCK
    6 4 ADDRESS-CELLS:MAGIC-FIELD LDR,
    7 ADDRESS-CELLS:MAGIC LIT64, 6 7 CMP, C-NE shape BCOND,
@@ -1839,11 +1839,11 @@ ardone LBL,
       MARK-HEADER MARK-UNLOCK
       9 -9855 LIT64,  LFAULTREC LABEL@ B,
    shape LBL,
-      s" E-XTCELL habu: invalid address-cell storage header" EXIT-STATUS:SNAPSHOT DIE-LINE,
+      s" E-XTCELL habu: invalid address-cell storage header" EXIT-STATUS:ADDRESS-CELL DIE-LINE,
    band LBL,
-      s" E-XTBAND habu: snapshot address cell out of range" EXIT-STATUS:SNAPSHOT DIE-LINE,
+      s" E-XTBAND habu: address cell out of range" EXIT-STATUS:ADDRESS-CELL DIE-LINE,
    kind LBL,
-      s" E-XTKIND habu: snapshot address cell kind mismatch" EXIT-STATUS:SNAPSHOT DIE-LINE,
+      s" E-XTKIND habu: address cell kind mismatch" EXIT-STATUS:ADDRESS-CELL DIE-LINE,
    ret LBL, MARK-UNLOCK MARK-RESTORE
    end LBL, ;
 

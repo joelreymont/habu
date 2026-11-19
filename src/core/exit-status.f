@@ -23,7 +23,7 @@ public
 82 constant DISPATCH-UNSET      \ the engine has no entry
 83 constant SEAL-VIOLATION      \ a kernel dictionary, code or replay primitive met an argument or state its contract forbids
 84 constant SEAL-WORDLIST       \ a write into a wordlist the seal protects, or one past the wordlists it can protect
-96 constant SNAPSHOT            \ a snapshot's address-cell storage is malformed: header, offset or kind
+96 constant ADDRESS-CELL        \ an address-cell table is malformed: header, offset or kind
 99 constant PROF-LIMIT          \ the profiler reached its sample limit and printed its report
 102 constant STACK-BOUNDS       \ a physical VM stack access exceeds its active allocation
 103 constant SITE               \ an x86-64 code site cannot be recorded: the other kind holds its offset, or the site band is full or corrupt

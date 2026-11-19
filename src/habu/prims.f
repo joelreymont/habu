@@ -471,7 +471,7 @@ EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE
 \ `code-publish ( src dst len -- )` copies an emission into the code arena,
 \ `callmap-set ( addr -- )` and `addrmap-set ( addr -- )` record a call or an
 \ address literal at a region address, and `reloc-maps-clear ( start len -- )`
-\ forgets the sites of a reclaimed span. The record is SNAP-RELOC's band.
+\ forgets the sites of a reclaimed span. The record is RELOC's band.
 \ - ARM64, two bitmaps of one bit per four-byte region word: `callmap-set` sets
 \   the call map's bit of the BL at `addr` and `addrmap-set` the address map's
 \   bit of a carrier's first MOVZ, and a set bit stays set; `code-publish`

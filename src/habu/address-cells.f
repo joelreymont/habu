@@ -23,8 +23,8 @@ $4842414444520001 constant MAGIC
 24 constant CAP-FIELD
 32 constant MODE-FIELD
 40 constant HEADER-BYTES
-SNAP-RELOC:XTCELL-N-CELL HEADER-BYTES + constant BOOT-OFF
-SNAP-RELOC:XTCELL-END BOOT-OFF - CELL / constant BOOT-CAP
+RELOC:XTCELL-N-CELL HEADER-BYTES + constant BOOT-OFF
+RELOC:XTCELL-END BOOT-OFF - CELL / constant BOOT-CAP
 $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 
 private
@@ -35,7 +35,7 @@ EXPORT BOOT:data-base
    cap 0 <= cap MAX-ROWS > or count 0 < or if REFUSE then
    count cap > if REFUSE then ;
 
-: HEADER ( -- ^n ) data-base SNAP-RELOC:XTCELL-N-CELL + ;
+: HEADER ( -- ^n ) data-base RELOC:XTCELL-N-CELL + ;
 
 \ The header's base and the index cell hold an outside mapping's address as an integer.
 CAST: N>ROWS ( n -- ^n )
@@ -95,7 +95,7 @@ private
 \ The header in DATA bytes [data, data+bytes): its rows and count.
 : READ-HEADER ( ^u8 n -- ^n n )
    {: data:^ bytes:n :}
-   data SNAP-RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
+   data RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
    h HEADER-MODE {: mode:n :}
    h CAP-FIELD + @ {: cap:n :}
    mode 0= if
@@ -123,7 +123,7 @@ private
    LIVE-SPAN {: base:^ count:n :}
    0 count 0 ?do
       base i cells + @ {: row:n :}
-      row SNAP-RELOC:XTCELL-OFF-MASK and floor < if
+      row RELOC:XTCELL-OFF-MASK and floor < if
          dup cells base + row swap ! 1+
       then
    loop
@@ -162,7 +162,7 @@ private
    0
    count 0 ?do
       rows i cells + @ {: row:n :}
-      row SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
+      row RELOC:XTCELL-OFF-MASK and {: off:n :}
       off first >= off limit CELL - <= and 0= if
          dup cells rows + row swap ! 1+
       then
@@ -180,7 +180,7 @@ public
 \ Reads a DATA copy's table: its rows lie in the copy or, once grown, in a mapping
 \ this process made.
 : DATA-SPAN ( str -- ^n n ) {: data:^ bytes:n :}
-   bytes SNAP-RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
+   bytes RELOC:XTCELL-N-CELL HEADER-BYTES + < if REFUSE then
    data bytes READ-HEADER ;
 
 ;package

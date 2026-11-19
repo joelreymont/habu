@@ -125,11 +125,11 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : ROWS ( -- ^n n ) SPACE-DATA ADDRESS-CELLS:DATA-SPAN ;
 
 \ A row's cell offset from the space's start, and its kind (layout.f).
-: ROW-OFF ( n -- n ) SNAP-RELOC:XTCELL-OFF-MASK and ;
-: SCRATCH-ROW? ( n -- bool ) SNAP-RELOC:XTCELL-SCRATCH-TAG and 0<> ;
-: DATA-ROW? ( n -- bool ) SNAP-RELOC:XTCELL-DATA-TAG and 0<> ;
+: ROW-OFF ( n -- n ) RELOC:XTCELL-OFF-MASK and ;
+: SCRATCH-ROW? ( n -- bool ) RELOC:XTCELL-SCRATCH-TAG and 0<> ;
+: DATA-ROW? ( n -- bool ) RELOC:XTCELL-DATA-TAG and 0<> ;
 : XT-ROW? ( n -- bool )
-   SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or and 0= ;
+   RELOC:XTCELL-DATA-TAG RELOC:XTCELL-SCRATCH-TAG or and 0= ;
 
 : CELL-VALUE ( n -- n ) ROW-OFF SPACE-AT @ ;
 
@@ -137,7 +137,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ the space's table and its index and grown rows are released unlocked.
 : UNMAP ( -- )
    ADDRESS-CELLS:INDEX-CELL SPACE-AT ADDRESS-CELLS:INDEX-RELEASE
-   SNAP-RELOC:XTCELL-N-CELL SPACE-AT ADDRESS-CELLS:ROWS-RELEASE
+   RELOC:XTCELL-N-CELL SPACE-AT ADDRESS-CELLS:ROWS-RELEASE
    NULL-PTR BYTE-VIEW BASE @ ROUTED-BYTES - +  SPACE-SIZE @ ROUTED-BYTES +  munmap
    0<> if E-MEM-UNMAP throw then ;
 
@@ -2216,7 +2216,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
 
 \ The compared cells, as [from, to) offsets from BASE: the header above its address-cell rows,
 \ the open's data and every earlier file's data.
-: BELOW ( -- n n ) SNAP-RELOC:XTCELL-END  FILE-DP @ BASE @ - ;
+: BELOW ( -- n n ) RELOC:XTCELL-END  FILE-DP @ BASE @ - ;
 
 
 : SPACE-BYTES ( n -- ^u8 ) NULL-PTR BYTE-VIEW BASE @ + swap + ;
@@ -5099,8 +5099,8 @@ EXPORT CHECK:PLACE-FACTS
 \ Lays the boot's address-cell header, so EMIT-MARK records address cells in the
 \ space; it and its cap's rows lie at hb's offsets, below the target's DATA-START.
 : LAY-ADDRESS-HEADER ( -- )
-   SNAP-RELOC:XTCELL-END LAYOUT-START > if E-HEAP-STORE throw then
-   SNAP-RELOC:XTCELL-N-CELL {: h:n :}
+   RELOC:XTCELL-END LAYOUT-START > if E-HEAP-STORE throw then
+   RELOC:XTCELL-N-CELL {: h:n :}
    0 h SPACE-AT !
    ADDRESS-CELLS:MAGIC h ADDRESS-CELLS:MAGIC-FIELD + SPACE-AT !
    ADDRESS-CELLS:BOOT-OFF h ADDRESS-CELLS:BASE-FIELD + SPACE-AT !

@@ -476,7 +476,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ Address row n's cell's offset in the image, and the row with that offset.
 : IMAGE-OFF ( n -- n ) ROW-OFF BASE @ + DATA-OFFSET ;
 : IMAGE-ROW ( n -- n )
-   dup SNAP-RELOC:XTCELL-OFF-MASK invert and  swap IMAGE-OFF or ;
+   dup RELOC:XTCELL-OFF-MASK invert and  swap IMAGE-OFF or ;
 
 
 : ROW-KEPT? ( n -- bool )
@@ -571,7 +571,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 
 \ The copy's header field at byte offset off from the count holds v.
 : HEADER-FIELD! ( n n -- )
-   SNAP-RELOC:XTCELL-N-CELL + COPY-AT LE:U64! ;
+   RELOC:XTCELL-N-CELL + COPY-AT LE:U64! ;
 
 \ The copy's header names the list, mode 0. Past the band its cap is its count, so
 \ the target's next mark grows the table into a mapping rather than into the DP
@@ -586,7 +586,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ The copy lists only the kept rows, at their image offsets; a dropped row's laid
 \ cell holds 0.
 : KEEP-LIST ( -- )
-   ADDRESS-CELLS:BOOT-OFF SNAP-RELOC:XTCELL-END ZERO-COPY
+   ADDRESS-CELLS:BOOT-OFF RELOC:XTCELL-END ZERO-COPY
    LIST-AT
    ROWS {: rows:^ count:n :}
    count 0 ?do
@@ -604,7 +604,7 @@ variable EXT-I                       \ BY-EXT's next row to lay
 \ MARK rebuilds the index HEADER-CELLS zeroes.
 : SORT-ROWS ( -- )
    LIST-AT {: at:n :}
-   SNAP-RELOC:XTCELL-N-CELL COPY-AT LE:U64@ {: n:n :}
+   RELOC:XTCELL-N-CELL COPY-AT LE:U64@ {: n:n :}
    n 0 > if at COPY-CELLS n [: ROW-OFF swap ROW-OFF swap < ;] SORT:SORT! then ;
 
 
