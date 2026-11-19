@@ -4389,11 +4389,8 @@ private
    6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    8 HIDX-SLOTS LIT64, ;
 
-\ Emit: insert record index x3 into table x14, storing index+1 in the first empty
-\ or stale slot of its chain. Insert-once: the dictionary rejects duplicate
-\ definitions. LHIDXADD compacts at HIDX:LOAD-MAX, so the exhausted-wrap exit
-\ is unreachable and dies loudly (HIDX-EMIT:LFULL).
-\ Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
+\ Emit: index record x3 in table x14 at its chain's first empty or stale slot; a
+\ walk of every slot dies. Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
 : C-HIDX-INS ( -- )
    LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label :}
    C-HIDX-CHAIN

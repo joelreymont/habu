@@ -301,11 +301,8 @@ CELL 4 * constant DIAG-BYTES
    ASM-SINK ENC-RET
    end X64CODE:LBL, ;
 
-\ The twins of habu1.f EMIT-HIDX and WLFIND:EMIT. The index at HIDXP-CELL is
-\ HIDX-SLOTS u32 slots, each 0 (empty) or a record index plus one, keyed on
-\ C-HIDX-HASH's hash of the folded name XOR the record's wid. It is
-\ insert-once per record: definers refuse duplicate live names. An empty slot
-\ on a key's chain means absent.
+\ The index at HIDXP-CELL: HIDX-SLOTS u32 slots, each 0 or a record index + 1,
+\ keyed on the folded name's hash XOR the wid. A re-key leaves the old slot.
 
 public
 
@@ -597,21 +594,23 @@ variable HEAD-ROW-CELL
    done X64CODE:LBL,
    ASM-SINK ENC-RET ;
 
-\ The twin of C-HIDX-INS: index record rdi, which it keeps, at the first empty
-\ or stale slot of its key's chain, unless the chain already holds that row.
-\ Claiming an empty slot counts one more
-\ HIDX:CLAIMS; a chain walked through every slot is HIDX-EMIT:LFULL's. It clobbers
-\ rax rcx rdx rsi and r8-r11.
-: INSERT, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: probe:label empty:label put:label done:label :}
+\ r8 = the first slot of record rdi's chain, r9 = the most slots a walk of it
+\ visits. It keeps rdi and clobbers rax rcx rdx rsi r10 r11.
+: CHAIN, ( -- )
    RAX RDI ASM-SINK ENC-MOV-RR  RAX ROW,
    RCX RAX REC-WID MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RDX R8 NAME-LEN,
    RAX RSI R8 NAME-AT,
    RSI RDX R8 R9 R10 R11 HASH,
-   R8 RCX SLOT,                                        \ r8 = the slot
-   R9 HIDX-SLOTS IMM32,                                \ r9 = slots left to walk
+   R8 RCX SLOT,
+   R9 HIDX-SLOTS IMM32, ;
+
+\ Index record rdi at the first empty or stale slot of its chain; meeting rdi
+\ before either writes nothing. Keeps rdi, clobbers rax rcx rdx rsi r8-r11.
+: INSERT, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: probe:label empty:label put:label done:label :}
+   CHAIN,
    probe X64CODE:LBL,
    R10 R8 SLOT@,
    R10 R10 ASM-SINK ENC-TEST-RR  C-E empty JCC,
@@ -629,6 +628,21 @@ variable HEAD-ROW-CELL
    R10 RDI 1 MEM-OFF ASM-SINK ENC-LEA
    R10 R64>N >R32 RAX R8 4 0 MEM-IDX ASM-SINK ENC-MOV32-MR
    done X64CODE:LBL, ;
+
+\ Branch to `held` when rdi's chain holds rdi before its first empty slot, as a
+\ probe walks it; else fall through. Keeps rdi, clobbers rax rcx rdx rsi r8-r11.
+: HELD, ( label -- ) {: held:label :}
+   X64CODE:LBL X64CODE:LBL {: probe:label none:label :}
+   CHAIN,
+   probe X64CODE:LBL,
+   R10 R8 SLOT@,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E none JCC,
+   R10 ASM-SINK ENC-DEC
+   R10 RDI ASM-SINK ENC-CMP-RR  C-E held JCC,
+   R9 ASM-SINK ENC-DEC  C-E none JCC,
+   R8 NEXT-SLOT,
+   probe JMP,
+   none X64CODE:LBL, ;
 
 \ HIDX-EMIT:LREBUILD's twin: zero the table and HIDX:CLAIMS, then index the live
 \ records [0, r14). With no table it returns at once. NDICT <= DICT-CAP <
@@ -654,22 +668,26 @@ variable HEAD-ROW-CELL
    done X64CODE:LBL,
    ASM-SINK ENC-RET ;
 
-\ LHIDXADD's twin: index record r14 - 1, the one just published, and compact
-\ the table once HIDX:CLAIMS reaches HIDX:LOAD-MAX. With no table it returns at
-\ once.
+\ ADD-LBL indexes the record just published, r14 - 1; REKEY-LBL indexes record
+\ rdi after a store to its wid cell.
 : ADD-HELPER, ( -- )
-   X64CODE:LBL {: done:label :}
+   X64CODE:LBL X64CODE:LBL {: insert:label done:label :}
    ADD-LBL X64CODE:LBL,
    RDI NDICT-REG -1 MEM-OFF ASM-SINK ENC-LEA
-   REKEY-LBL X64CODE:LBL,
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   insert X64CODE:LBL,
    INSERT,
    RAX DATA-REG HIDX:CLAIMS MEM-OFF ASM-SINK ENC-MOV-RM
    RAX HIDX:LOAD-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-L done JCC,
    REBUILD-LBL CALL,
    done X64CODE:LBL,
-   ASM-SINK ENC-RET ;
+   ASM-SINK ENC-RET
+   REKEY-LBL X64CODE:LBL,
+   RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   done HELD,
+   insert JMP, ;
 
 \ LHIDXBUILD's twin: map the table once, HIDX-BYTES of fresh zero pages with no
 \ claims, then rebuild it; a table already mapped is refilled in place.
