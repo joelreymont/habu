@@ -10,9 +10,9 @@ split-str
 \ line and reads one way. A line fd 2 takes only in part is cut: a lone LF ends
 \ it, at once or before the next line, which is lost while fd 2 refuses that LF.
 \ A log call never throws for LOG's own failure: a line fd 2 refuses is lost,
-\ and a refused mapping loses the line, which ;LINE replaces with NOTICE. A LINE
-\ while a line is open abandons that line, as a throw does: once the new line is
-\ closed, the abandoned line's remaining TEXT+ and ;LINE write nothing.
+\ and a refused allocation loses the line, which ;LINE replaces with NOTICE. A
+\ LINE while a line is open abandons that line, as a throw does: once the new
+\ line is closed, the abandoned line's remaining TEXT+ and ;LINE write nothing.
 \ STORAGE CLASS. TASK-LOCAL: the line, a per-task BUF header kept across lines
 \ and released once a line grows it past START-CAP; ARMED, set once this run
 \ has run REGISTER; PHASE, whether a line is closed, open or lost. A line
@@ -43,7 +43,8 @@ DEFTYPE LEVEL
 1 constant WARN-N
 2 constant INFO-N
 $A constant LF
-\ A mapping is at least a page, so lines up to 4 KiB reuse the row.
+\ The bytes each logging task keeps between lines: the row's starting capacity
+\ and the most SHED leaves it.
 $1000 constant START-CAP
 $20 constant SPACE-B
 $7F constant DEL-B
@@ -66,11 +67,11 @@ variable TAIL
 
 \ PHASE's states; a fresh task's is CLOSED. Each input in each state, and the
 \ state it leaves:
-\   state    LINE              TEXT+ INT+ CODE+  ;LINE             refused map
+\   state    LINE              TEXT+ INT+ CODE+  ;LINE             refused block
 \   CLOSED   opens: OPENED     nothing           nothing: CLOSED   -
 \   OPENED   abandons: OPENED  appends           the row: CLOSED   LOST
 \   LOST     abandons: OPENED  nothing           NOTICE: CLOSED    LOST
-\ LINE leaves LOST when the row's mapping is refused; ;LINE leaves CLOSED also
+\ LINE leaves LOST when the row's block is refused; ;LINE leaves CLOSED also
 \ when its write throws. An abandoned line is never written. The row's release
 \ leaves CLOSED.
 0 constant CLOSED

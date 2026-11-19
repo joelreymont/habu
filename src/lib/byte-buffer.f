@@ -1,13 +1,17 @@
 split-str
 \ byte-buffer.f - one package-owned growable byte buffer, package BUF.
 \ The caller embeds a three-cell header (BUF:HDR-BYTES); the buffer owns the one
-\ OS mapping at its storage pointer. The capacity cell is the ownership token:
-\ positive, a live mapping of that many bytes; zero, none (fresh or disposed),
-\ and any growth maps one.
-\ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; BUF owns the mapping.
+\ block at its storage pointer: a HEAP:ALLOCATOR block below
+\ STACK-ABI:PAGE-BYTES, an OS mapping otherwise. The capacity cell is the
+\ ownership token: positive, a live block of that many bytes; zero, none (fresh
+\ or disposed), and any growth makes one.
+\ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; BUF owns the block.
 
 require src/lib/error.f
 require src/lib/memory.f
+require src/lib/allocator.f
+require src/lib/heap.f
+require src/habu/stack-abi.f
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/adt/option.f
@@ -50,10 +54,17 @@ private
 : CHECK-NEED ( n -- ) {: need:n :}
    need 0 < if E-BUF-CAPACITY throw then ;
 
-: STORAGE-ALLOC ( n -- SPAN:span<u8> )
-   MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
-: STORAGE-RELEASE ( SPAN:span<u8> -- )
-   MEM:FREE-SPAN ;
+\ A block's capacity names its route, so it is released by the route that made
+\ it: ALLOC:FREE takes no size.
+: HEAP-BLOCK? ( n -- bool )  STACK-ABI:PAGE-BYTES < ;
+
+: STORAGE-ALLOC ( n -- SPAN:span<u8> ) {: len:n :}
+   len HEAP-BLOCK? if HEAP:ALLOCATOR len ALLOC:BYTES SPAN:MAKE exit then
+   len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
+: STORAGE-RELEASE ( SPAN:span<u8> -- ) {: old :}
+   old SPAN:$ {: p:^ len:n :}
+   len HEAP-BLOCK? if HEAP:ALLOCATOR p ALLOC:FREE exit then
+   old MEM:FREE-SPAN ;
 
 \ The header is the span: the base lives in the pointer field and the reach in
 \ the capacity cell (INIT-RAW and INSTALL-RESIZE write both, DISPOSE-RAW clears
@@ -66,7 +77,7 @@ private
    buf DATA@ buf CAP-RAW@ SPAN:MAKE ;
 
 \ Install only after all source bytes have been copied; release is last, so a
-\ refused grow leaves the old mapping owned and intact.
+\ refused grow leaves the old block owned and intact.
 : INSTALL-STORAGE ( ^a SPAN:span<u8> SPAN:span<u8> -- )
    {: buf:^ d old :}
    d SPAN:$ {: dp:^ cap:n :}
@@ -124,7 +135,7 @@ private
 : CLEAR-RAW ( ^a -- ) {: buf:^ :}
    0 buf SET-LEN ;
 
-\ Writers project their destination from the mapping that receives the bytes.
+\ Writers project their destination from the block that receives the bytes.
 : APPEND-BYTE-RAW ( n ^a -- ) {: v:n buf:^ :}
    buf  buf LEN-RAW@ 1 +  ENSURE-RAW
    v  buf BUF-SPAN buf LEN-RAW@ SPAN:U8!
@@ -172,7 +183,8 @@ public
    buf cap BLEN>N INIT-RAW ;
 : DISPOSE ( ^a -- )  DISPOSE-RAW ;
 : CLEAR ( ^a -- )  CLEAR-RAW ;
-\ Zeroes the bytes past the length too, for secrets a later grow or dispose would release unzeroed.
+\ Zeroes the bytes past the length too, for secrets a later grow or dispose would
+\ release unzeroed; a freed heap block's bytes stay in the process until reused.
 : WIPE ( ^a -- ) {: buf:^ :}
    0 buf BUF-SPAN SPAN:FILL
    buf CLEAR-RAW ;
@@ -208,21 +220,21 @@ public
    buf BUF-SPAN at u SPAN:SUB ;
 
 \ RESIZE makes the capacity exactly n, at least the length, larger or smaller,
-\ and keeps the active bytes; zero is E-BUF-CAPACITY. The new mapping is made
-\ and filled before the old one is released, so an allocation the OS refuses
-\ throws with the buffer as it was.
+\ and keeps the active bytes; zero is E-BUF-CAPACITY. The new block is made and
+\ filled before the old one is released, so a refused allocation throws with the
+\ buffer as it was.
 : RESIZE ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf n BLEN>N RESIZE-RAW ;
 
-\ n zero on a dead header is E-BUF-CAPACITY, as INIT; a growth the OS refuses
-\ leaves a live one empty at its old capacity.
+\ n zero on a dead header is E-BUF-CAPACITY, as INIT; a refused growth leaves a
+\ live one empty at its old capacity.
 : RESET ( ^a NUM:byte-len -- ) {: buf:^ n:NUM:byte-len :}
    buf LIVE? 0= if buf n INIT exit then
    buf CLEAR  buf n RESERVE ;
 
 \ Appends keep saved offsets valid; CLEAR and REPLACE do not. APPEND-SPAN
 \ accepts input borrowed from the buffer's own bytes: growth copies the input
-\ before releasing the old mapping.
+\ before releasing the old block.
 : APPEND-BYTE ( n ^a -- )  APPEND-BYTE-RAW ;
 : APPEND-SPAN ( ^u8 NUM:byte-len ^a -- ) {: src:^ u:NUM:byte-len buf:^ :}
    src u BLEN>N buf APPEND-SPAN-RAW ;

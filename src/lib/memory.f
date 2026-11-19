@@ -1,11 +1,14 @@
 split-str
 \ memory.f - checked OS-backed mappings for runtime-sized storage; `create ...
-\ allot` is for dictionary-sized static storage. A refused mmap throws
-\ E-MEM-MAP; a kernel munmap refusal writes "memory: unmap failed" and exits 78,
-\ bypassing catch. STORAGE CLASS. CALLER-OWNED: the caller releases every
-\ mapping. WITH-BYTES's scopes are TASK-LOCAL: their chunks hang off one head
-\ cell in the MEM-ABI band (src/habu/layout.f), a halted task unwinds its scopes
-\ at TASK:PAUSE, and MEM:RELEASE-SCOPES unmaps a freed region's chunks.
+\ allot` is for dictionary-sized static storage. A mapping is whole pages, so
+\ storage much smaller than STACK-ABI:PAGE-BYTES belongs on HEAP:ALLOCATOR or in
+\ an arena; MEM is for page-sized storage, allocator internals and storage below
+\ the FFI. A refused mmap throws E-MEM-MAP; a kernel munmap refusal writes
+\ "memory: unmap failed" and exits 78, bypassing catch. STORAGE CLASS.
+\ CALLER-OWNED: the caller releases every mapping. WITH-BYTES's scopes are
+\ TASK-LOCAL: their chunks hang off one head cell in the MEM-ABI band
+\ (src/habu/layout.f), a halted task unwinds its scopes at TASK:PAUSE, and
+\ MEM:RELEASE-SCOPES unmaps a freed region's chunks.
 
 s" src/lib/error.f" required
 require src/lib/num-arithmetic.f

@@ -11,6 +11,8 @@ split-str
 
 require src/lib/error.f
 require src/lib/memory.f
+require src/lib/allocator.f
+require src/lib/heap.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
@@ -410,12 +412,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 
 \ A row entry is two cells: the handle cell GROUP+ was given, then the caller's
 \ number.
-: ROW-LEN ( n -- NUM:alloc-byte-len )
-   2 * cells MEM:BYTES-ALLOC-LEN ;
-
-: ROW-RELEASE ( ^n -- ) {: e:^ :}
-   e G.ROW @ 0= if exit then
-   e G.ROW @ AIO-N>PTR BYTE-VIEW e G.CAP @ ROW-LEN MEM:RELEASE-BYTES ;
+: ROW-LEN ( n -- n )
+   2 * cells ;
 
 \ Links a chunk after the last one. Two tasks appending at the same moment each
 \ link their own; the one that loses the race walks on to the new last.
@@ -1046,12 +1044,8 @@ INSTALL-HOST
 \ moves and the move needs no facility.
 : ROW-GROW ( ^n -- ) {: e:^ :}
    e G.CAP @ 2 * ROW-FIRST max {: cap:n :}
-   cap ROW-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: row:n :}
-   e G.COUNT @ 0 ?do
-      e G.ROW @ i row i ENTRY-COPY
-   loop
-   e ROW-RELEASE
-   row e G.ROW !
+   HEAP:ALLOCATOR  e G.ROW @ AIO-N>PTR BYTE-VIEW  e G.CAP @ ROW-LEN  cap ROW-LEN
+   ALLOC:RESIZE drop FFI:>CELL e G.ROW !
    cap e G.CAP ! ;
 
 : G-DISOWN-EMPTY ( ^n -- ) {: e:^ :}

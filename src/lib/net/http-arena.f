@@ -2,7 +2,7 @@ split-str
 \ http-arena.f - per-worker storage for the HTTP/1.1 server
 \ (src/lib/net/http.f): one OS-backed span per worker, carved into the input
 \ buffer, the fixed buffers and the headers of four growing ones; the request
-\ body owns a mapping while a request is live.
+\ body owns a block while a request is live.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by worker slot, rows of typed
 \ buffers and never bare globals; the running worker's slot is a TASK:+USER row.
 
@@ -45,7 +45,7 @@ $1C00 constant HEAD-CAP          \ the header block limit answered with 431
 $400 constant STREAM-CAP         \ chunk framing and the head of a pipelined request
 HEAD-CAP STREAM-CAP + constant IN-CAP
 $100000 constant DEFAULT-BODY-CAP
-$2000 constant BODY-START-CAP    \ small mapping, grown only for the current request
+$2000 constant BODY-START-CAP    \ small block, grown only for the current request
 $20 constant ID-CAP              \ the request id a fault is reported under
 $18 constant NUM-CAP             \ one number on its way into a buffer
 
@@ -456,7 +456,7 @@ private
    idx OUT-BUF BUF:DISPOSE ;
 
 
-\ A failed mapping leaves GIVEN-BACK set, so the next request tries again.
+\ A refused allocation leaves GIVEN-BACK set, so the next request tries again.
 : MAKE-ANSWER ( n -- ) {: idx:n :}
    idx GIVEN-BACK @ 0= if exit then
    idx HDR-BUF HDR-START REMAKE
@@ -494,7 +494,7 @@ private
 
 
 \ A request handle is valid through SEND or takeover release, then retired
-\ before its body mapping goes away. Disposal also accepts a partial read.
+\ before its body's block goes away. Disposal also accepts a partial read.
 : SLOT-FINISH ( n -- ) {: idx:n :}
    idx BOUNDED SLOT-GEN @ 1+ idx SLOT-GEN !
    idx BODY-CLOSE

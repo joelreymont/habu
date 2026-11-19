@@ -12,6 +12,7 @@ require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
 require src/lib/span.f
 require src/lib/memory.f
+require src/habu/stack-abi.f
 require src/lib/date.f
 require src/lib/fmt.f
 require src/lib/task.f
@@ -61,7 +62,6 @@ variable T0                         \ epoch seconds before a case's first line
 variable T1                         \ and after its last
 variable CODE-A
 variable CODE-B
-variable CODE-C
 variable START
 variable LINES
 variable BAD
@@ -387,38 +387,20 @@ TASK:MIN-STACK TASK:TASK RELEASER
    [: EMPTY ;] finally ;
 
 
-: OPEN-LOST ( -- )
-   [: LOG:ERROR s" t" LOG:LINE s" lost" LOG:TEXT+ LOG:;LINE ;] FULL ;
+\ Appends n bytes of BIG$; more than BIG-U fails here.
+: BIG-TEXT+ ( n -- ) {: u:n :}
+   u BIG-U <= TTRUE
+   BIG$ drop u BIG-U min LOG:TEXT+ ;
 
 
-\ A task's row is unmapped until its first line opens it.
-: OPEN-LOST-TASK ( -- )
-   [: OPEN-LOST ;] catch CODE-A !
-   [: KEPT-LINE ;] catch CODE-B !
-   0 TASK:RETURN ;
+: ROW-LEN ( -- n )  LOG-TEST:ROW BUF:LEN@ BUF:BLEN>N ;
 
 
-: OPEN-LOST-JOIN ( -- )
-   [: OPEN-LOST-TASK ;] WRITER-A TASK:ACTIVATE
-   WRITER-A TASK:JOIN JOIN-CODE CODE-C ! ;
-
-
-: OPEN-CASE ( -- )
-   s" a line whose row LINE cannot map is written as the notice" T-LABEL
-   [: OPEN-LOST-JOIN ;] CAPTURED
-   NOTICE-THEN-KEPT
-   CODE-C @ 0 T=
-   CODE-A @ 0 T=
-   CODE-B @ 0 T= ;
-
-
-\ The text fills the row to its capacity, so the LF ;LINE appends needs a
-\ growth. A row with more room than BIG-U fails here.
+\ The row grows to at least half of STACK-ABI:PAGE-BYTES and fills, so the LF
+\ ;LINE appends needs a mapping, which FULL refuses; a heap block it may not.
 : ROW-FILL ( -- )
-   LOG-TEST:ROW BUF:CAP@ BUF:BLEN>N LOG-TEST:ROW BUF:LEN@ BUF:BLEN>N -
-   {: room:n :}
-   room BIG-U <= TTRUE
-   BIG$ drop room BIG-U min LOG:TEXT+ ;
+   STACK-ABI:PAGE-BYTES 2 / ROW-LEN - BIG-TEXT+
+   LOG-TEST:ROW BUF:CAP@ BUF:BLEN>N ROW-LEN - BIG-TEXT+ ;
 
 
 : FINISH-LOST ( -- )
@@ -661,7 +643,6 @@ TASK:MIN-STACK TASK:TASK RELEASER
    UNPAIRED-CASE
    LINE-IN-LINE-CASE
    LOST-CASE
-   OPEN-CASE
    FINISH-CASE
    RELEASE-CASE
    PIPE-CASE

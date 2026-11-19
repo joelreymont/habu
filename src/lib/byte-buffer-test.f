@@ -5,6 +5,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
+require src/habu/stack-abi.f
 require src/lib/byte-buffer.f
 require src/lib/property.f
 
@@ -18,6 +19,12 @@ create BUFT-REF 4096 allot
 
 32 constant BUFT-CAP0
 2097152 constant BUFT-BIG-N
+STACK-ABI:PAGE-BYTES constant BUFT-PAGE      \ the smallest capacity BUF maps
+100 constant BUFT-SMALL-N
+16 constant BUFT-SMALL-CAP
+$1000 constant BUFT-PAGE-MIN                 \ the smallest page any target maps
+create BUFT-SMALL BUFT-SMALL-N BUF:HDR-BYTES * allot
+create BUFT-BASES BUFT-SMALL-N cells allot
 
 CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
@@ -27,7 +34,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ Re-init of a live header would leak its mapping, so each test opens from a
+\ Re-init of a live header would leak its block, so each test opens from a
 \ disposed header.
 : BUFT-FRESH ( n -- )  BUFT-BUF BUF:DISPOSE  BUFT-BUF swap BUF:N>BLEN BUF:INIT ;
 : BUFT-REL-INIT ( n -- )  BUFT-REL-BUF BUF:DISPOSE  BUFT-REL-BUF swap BUF:N>BLEN BUF:INIT ;
@@ -52,7 +59,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdef" T$= ;
 
 \ A borrowed source can be this buffer's own active prefix or a substring.
-\ Growth must keep that source mapped until the append has copied its bytes.
+\ Growth must keep that source's block until the append has copied its bytes.
 : BUFT-APPEND-SELF ( -- )
    64 BUFT-FRESH
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -228,17 +235,17 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
 \ Address reuse proves a mapping was freed.
 : BUFT-GROW-RELEASES ( -- )
-   BUFT-CAP0 BUFT-REL-INIT
+   BUFT-PAGE BUFT-REL-INIT
    BUFT-REL-BUF BUF:SPAN$ drop {: old:^ :}
-   BUFT-REL-BUF BUFT-CAP0 2 * BUF:N>BLEN BUF:RESERVE
-   BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:^ :}        \ a fresh same-size mapping refills the freed hole
+   BUFT-REL-BUF BUFT-PAGE 2 * BUF:N>BLEN BUF:RESERVE
+   BUFT-PAGE MEM-ALLOC-BYTES drop {: reuse:^ :}        \ a fresh same-size mapping refills the freed hole
    reuse old = TTRUE ;
 
 : BUFT-DISPOSE-RELEASES ( -- )
-   BUFT-CAP0 BUFT-REL-INIT
+   BUFT-PAGE BUFT-REL-INIT
    BUFT-REL-BUF BUF:SPAN$ drop {: old:^ :}
    BUFT-REL-BUF BUF:DISPOSE
-   BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:^ :}
+   BUFT-PAGE MEM-ALLOC-BYTES drop {: reuse:^ :}
    reuse old = TTRUE ;
 
 : BUFT-DISPOSE-DOUBLE ( -- )
@@ -247,11 +254,11 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-REL-BUF BUF:DISPOSE ;
 
 : BUFT-DISPOSE-CYCLE-BOUNDED ( -- )
-   BUFT-CAP0 BUFT-REL-INIT
+   BUFT-PAGE BUFT-REL-INIT
    BUFT-REL-BUF BUF:SPAN$ drop {: base:^ :}
    BUFT-REL-BUF BUF:DISPOSE
    8 0 ?do
-      BUFT-CAP0 BUFT-REL-INIT
+      BUFT-PAGE BUFT-REL-INIT
       BUFT-REL-BUF BUF:SPAN$ drop base = TTRUE         \ every cycle refills the same freed hole
       BUFT-REL-BUF BUF:DISPOSE
    loop ;
@@ -292,12 +299,42 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-CHUNK-FILL
    2048 0 ?do  BUFT-CHUNK 1024 BUF:N>BLEN BUFT-BIG-BUF BUF:APPEND-SPAN  loop
    BUFT-BIG-BUF BUFT-TLEN BUFT-BIG-N T=
+   BUFT-BIG-BUF BUFT-TCAP BUFT-PAGE > TTRUE                      \ grew from a heap block to a mapping
    BUFT-BIG-BUF BUF:SPAN$ BUFT-BL>RAW {: data:^ len:n :}
    len BUFT-BIG-N T=
-   data 0 + c@ 0 T=
-   data 1000 + c@ 232 T=                                              \ 1000 & 255
-   data BUFT-BIG-N 1 - + c@ 255 T=                                    \ last byte = 1023 & 255
+   0 len 0 ?do  data i + c@ i 255 and <> if 1 + then  loop  0 T=
    BUFT-BIG-BUF BUF:DISPOSE ;
+
+: BUFT-SMALL-AT ( n -- ^u8 )  BUF:HDR-BYTES * BUFT-SMALL + ;
+
+: BUFT-SMALL-BASE ( n -- n )  BUFT-SMALL-AT BUF:SPAN$ drop NULL-PTR - ;
+
+: BUFT-SMALL-GAP ( n -- n ) {: k:n :}
+   k BUFT-SMALL-BASE  k 1 - BUFT-SMALL-BASE  - abs ;
+
+\ A mapping per block puts each at least a page from the last: none share.
+: BUFT-SMALL-SHARE ( -- )
+   BUFT-SMALL-N 0 ?do  i BUFT-SMALL-AT BUFT-SMALL-CAP BUF:N>BLEN BUF:INIT  loop
+   0 BUFT-SMALL-N 1 ?do  i BUFT-SMALL-GAP BUFT-PAGE-MIN < if 1 + then  loop
+   BUFT-SMALL-N 2 / >= TTRUE
+   BUFT-SMALL-N 0 ?do  i BUFT-SMALL-AT BUF:DISPOSE  loop ;
+
+: BUFT-BASE-AT ( n -- ^n )  cells BUFT-BASES + CELL-VIEW ;
+
+\ Whether no earlier cycle recorded the base cycle k recorded.
+: BUFT-BASE-NEW? ( n -- bool ) {: k:n :}
+   true  k 0 ?do  i BUFT-BASE-AT @  k BUFT-BASE-AT @  = if drop false then  loop ;
+
+\ The allocator may hand a freed block back in any order, so this bounds the
+\ distinct blocks over many cycles; a skipped free gives one per cycle.
+: BUFT-SMALL-REUSE ( -- )
+   BUFT-SMALL-N 0 ?do
+      0 BUFT-SMALL-AT BUFT-CAP0 BUF:N>BLEN BUF:INIT
+      0 BUFT-SMALL-BASE  i BUFT-BASE-AT !
+      0 BUFT-SMALL-AT BUF:DISPOSE
+   loop
+   0 BUFT-SMALL-N 0 ?do  i BUFT-BASE-NEW? if 1 + then  loop
+   16 <= TTRUE ;
 
 : BUFT-PROP ( -- )
    16 BUFT-FRESH
@@ -340,7 +377,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-GROW-TAIL
    s" replace swaps the whole content for a longer text" T-LABEL
    BUFT-REPLACE
-   s" clear empties the buffer and keeps its capacity and mapping" T-LABEL
+   s" clear empties the buffer and keeps its capacity and block" T-LABEL
    BUFT-CLEAR
    s" wipe zeroes the whole capacity, and a disposed buffer wipes as empty" T-LABEL
    BUFT-WIPE
@@ -356,6 +393,10 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-DISPOSE-DOUBLE
    s" repeated init and dispose reuse one mapping" T-LABEL
    BUFT-DISPOSE-CYCLE-BOUNDED
+   s" small buffers lie within a page of each other" T-LABEL
+   BUFT-SMALL-SHARE
+   s" a disposed small buffer's block is reused" T-LABEL
+   BUFT-SMALL-REUSE
    s" LIVE? answers on a fresh, live and disposed header and never throws" T-LABEL
    [: BUFT-LIVE ;] catch 0 T=
    s" a span appended to a header never initialised grows it to fit" T-LABEL
@@ -371,7 +412,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" a refused grow leaves the length where it was" T-LABEL
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" A" T$=
    BUFT-REL-BUF BUF:DISPOSE
-   s" two megabytes appended in chunks keep their length and sampled bytes" T-LABEL
+   s" two megabytes appended in chunks grow from a heap block to a mapping and keep every byte" T-LABEL
    BUFT-BIG-FILL
    s" random bytes appended one at a time keep their order" T-LABEL
    BUFT-PROP
@@ -442,20 +483,20 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : BUFT-INIT-LIVE-REJECTS ( -- )
    BUFT-REL-BUF BUF:DISPOSE
    BUFT-CAP0 BUFT-REL-INIT
-   BUFT-REL-BUF BUFT-CAP0 BUF:N>BLEN BUF:INIT ;    \ re-init without dispose throws (else old mapping leaks)
+   BUFT-REL-BUF BUFT-CAP0 BUF:N>BLEN BUF:INIT ;    \ re-init without dispose throws (else old block leaks)
 
 : BUFT-LEN-ABOVE-CAP ( -- )
    8 BUFT-FRESH
    s" data" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
    9 BUF:N>BLEN BUFT-BUF BUF:LEN! ;
 
-\ An operand inside the buffer's mapping would dangle once an append grew it.
+\ An operand inside the buffer's block would dangle once an append grew it.
 : BUFT-REPLACED-SELF ( -- )
    4 BUFT-FRESH
    s" a-b" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" -" s" +" BUFT-BUF BUF:APPEND-REPLACED drop ;
 
-\ So would one that starts below the mapping and runs into it.
+\ So would one that starts below the block and runs into it.
 : BUFT-REPLACED-STRADDLE ( -- )
    4 BUFT-FRESH
    s" a-b" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
