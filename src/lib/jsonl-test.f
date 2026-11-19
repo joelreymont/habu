@@ -6,7 +6,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/jsonl.f
 require src/lib/process.f
@@ -77,7 +76,7 @@ variable PATH-B-U
 : OPEN-KNOWN ( n -- n )
    {: max:n :}
    FREE-FD {: fd:n :}
-   A PATH$ max BUF:N>BLEN JSONL:OPEN
+   A PATH$ max JSONL:OPEN
    FREE-FD fd 1+ T=
    fd ;
 
@@ -189,7 +188,7 @@ variable PATH-B-U
 : CR-LIMIT ( -- )
    PATH$ s\" 7\r\n" FS:WRITE-ALL
    FREE-FD {: fd:n :}
-   [: A PATH$ 1 BUF:N>BLEN JSONL:OPEN A JSONL:NEXT drop ;] JSONL:E-LIMIT TTHROWSQ
+   [: A PATH$ 1 JSONL:OPEN A JSONL:NEXT drop ;] JSONL:E-LIMIT TTHROWSQ
    FREE-FD fd T=
    2 OPEN-KNOWN drop
    A 7 INT-LINE
@@ -198,9 +197,9 @@ variable PATH-B-U
 : LIMIT ( -- )
    LONG-FIXTURE
    FREE-FD {: fd:n :}
-   [: A PATH$ LONG-N 1- BUF:N>BLEN JSONL:OPEN A JSONL:NEXT drop ;] JSONL:E-LIMIT TTHROWSQ
+   [: A PATH$ LONG-N 1- JSONL:OPEN A JSONL:NEXT drop ;] JSONL:E-LIMIT TTHROWSQ
    FREE-FD fd T=
-   [: A PATH$ 1 BUF:N>BLEN JSONL:OPEN A JSONL:NEXT drop ;] JSONL:E-LIMIT TTHROWSQ
+   [: A PATH$ 1 JSONL:OPEN A JSONL:NEXT drop ;] JSONL:E-LIMIT TTHROWSQ
    FREE-FD fd T=
    LONG-N OPEN-KNOWN drop
    A LONG-N STRING-LINE
@@ -209,7 +208,7 @@ variable PATH-B-U
 
 : READ-FAULT ( -- )
    FREE-FD {: fd:n :}
-   A TMP$ 16 BUF:N>BLEN JSONL:OPEN           \ a directory opens; its read fails
+   A TMP$ 16 JSONL:OPEN           \ a directory opens; its read fails
    FREE-FD fd 1+ T=
    [: A JSONL:NEXT drop ;] E-FS-IO TTHROWSQ
    FREE-FD fd T=
@@ -217,14 +216,14 @@ variable PATH-B-U
 
 : OPEN-MISSING ( -- )
    FREE-FD {: fd:n :}
-   [: A s" no-such-habu-jsonl-file" 1 BUF:N>BLEN JSONL:OPEN ;] E-FS-OPEN TTHROWSQ
+   [: A s" no-such-habu-jsonl-file" 1 JSONL:OPEN ;] E-FS-OPEN TTHROWSQ
    FREE-FD fd T=
    [: A JSONL:NEXT drop ;] JSONL:E-STATE TTHROWSQ ;
 
 : OPEN-TWICE ( -- )
    PATH$ s\" 1\n2" FS:WRITE-ALL
    16 OPEN-KNOWN {: fd:n :}
-   [: A PATH$ 16 BUF:N>BLEN JSONL:OPEN ;] JSONL:E-STATE TTHROWSQ
+   [: A PATH$ 16 JSONL:OPEN ;] JSONL:E-STATE TTHROWSQ
    FREE-FD fd 1+ T=
    A 1 INT-LINE
    A JSONL:CLOSE
@@ -251,8 +250,8 @@ variable PATH-B-U
 : INTERLEAVE ( -- )
    PATH$ s\" 1\n2" FS:WRITE-ALL
    PATH-B$ s\" 3\n{\qx\q:7}" FS:WRITE-ALL
-   A PATH$ 16 BUF:N>BLEN JSONL:OPEN
-   B PATH-B$ 16 BUF:N>BLEN JSONL:OPEN
+   A PATH$ 16 JSONL:OPEN
+   B PATH-B$ 16 JSONL:OPEN
    A JSONL:NEXT TTRUE
    B JSONL:NEXT TTRUE
    A JSONL:READER B JSONL:READER

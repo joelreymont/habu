@@ -6,7 +6,6 @@ split-str
 \ parses: each caller decides whether blank or malformed rows are errors.
 \ STORAGE CLASS. CALLER-OWNED: the cursor and what it owns; SPLIT-LINE owns none.
 
-require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/fs.f
 require src/lib/memory.f
@@ -34,7 +33,7 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD pos n
    FIELD end n
    FIELD fd fd
-   FIELD max NUM:byte-len
+   FIELD max n
    FIELD live bool
    FIELD reader JSON:cursor
 ;STRUCTURE
@@ -75,8 +74,8 @@ private
 
 public
 
-: OPEN ( ^cursor ^u8 n NUM:byte-len -- )
-   {: cur:^ path:^ u:n max:NUM:byte-len :}
+: OPEN ( ^cursor str n -- )
+   {: cur:^ path:^ u:n max:n :}
    cur CURSOR-LIVE @ if E-STATE throw then
    path u FS:>PATHZ {: z:^ :}
    path u z COMPILE-READS:FILE+
@@ -94,7 +93,7 @@ private
 
 : APPEND ( ^cursor ^u8 n -- )
    {: cur:^ seg:^ u:n :}
-   cur LINE-LEN u + cur CURSOR-MAX @ BUF:BLEN>N > if E-LIMIT throw then
+   cur LINE-LEN u + cur CURSOR-MAX @ > if E-LIMIT throw then
    seg u cur CURSOR-LINE @ VEC:APPEND ;
 
 \ Only a zero read is the end.

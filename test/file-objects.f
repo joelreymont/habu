@@ -1830,10 +1830,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WRITE-JSONL ( -- )
    L$ s" jsonl" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    s\" 1\n" SRC+  s" d.jsonl" NEST-WRITE
-   s\" require src/lib/byte-buffer.f\nrequire src/lib/jsonl.f\npackage FILE-OBJECTS-JSONL\n" SRC+
+   s\" require src/lib/jsonl.f\npackage FILE-OBJECTS-JSONL\n" SRC+
    s\" TYPED-VARIABLE C JSONL:cursor\nvariable N\n: COUNTED ( -- ) C s\" " SRC+
    s" d.jsonl" NEST-PATH$ SRC+
-   s\" \" 64 BUF:N>BLEN JSONL:OPEN begin C JSONL:NEXT while 1 N +! repeat ;\n" SRC+
+   s\" \" >str 64 JSONL:OPEN begin C JSONL:NEXT while 1 N +! repeat ;\n" SRC+
    s\" COUNTED public N @ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-JSONL:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
