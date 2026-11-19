@@ -29,9 +29,9 @@ split-str
 \ the wire. The chunk decoder keeps only the bytes left in the current chunk:
 \ at zero it reads a size line, and a chunk's data read whole is followed at
 \ once by its CRLF. Dialing tries every address getaddrinfo answers, in order,
-\ each with the time left divided by the addresses left. A request HEADER+
-\ marked fails at `sending`, the table's one write, so it is dialed but writes
-\ nothing.
+\ each with the time left divided by the addresses left. A request marked
+\ malformed or oversize while it was built fails at `starting`, with nothing
+\ dialed or written, and drops any connection the record held.
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
@@ -61,6 +61,7 @@ private
 ENUM phase starting probing resolving connecting greeting sending heading
    reading settling sent partway idle closed down ;ENUM
 ENUM held none idle busy ;ENUM
+ENUM intake marked none idle busy ;ENUM
 ENUM probe quiet stale ;ENUM
 ENUM lookup found failed ;ENUM
 ENUM dial up next failed ;ENUM
@@ -93,6 +94,7 @@ STRUCTURE conn OPAQUE DERIVE addr
    FIELD room-len n
    FIELD used n
    FIELD mark option<fault>
+   FIELD get-method bool
    FIELD total n
    FIELD stall n
    FIELD ends n
@@ -326,6 +328,10 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : BREAK? ( ^u8 n -- bool ) {: a:^ u:n :}
    a u 13 HAS? a u 10 HAS? or ;
 
+\ Whether a request line's method or target holds CR, LF or SP.
+: SPLITS? ( ^u8 n -- bool ) {: a:^ u:n :}
+   a u BREAK? a u 32 HAS? or ;
+
 
 \ ---- The origin
 
@@ -375,7 +381,22 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ ---- Senses and actions of the lifecycle
 
-: HOLDS ( ^conn -- held ) CONN-HELD @ ;
+\ A marked request, before what the record holds.
+: INTAKE ( ^conn -- intake ) {: c :}
+   c MARKED? if construct intake marked exit then
+   c CONN-HELD @ MATCH held
+      none OF construct intake none ENDOF
+      idle OF construct intake idle ENDOF
+      busy OF construct intake busy ENDOF
+   ;MATCH ;
+
+\ Drops any held connection and keeps the mark's fault.
+: REFUSE ( ^conn -- ) {: c :}
+   c HANG-UP
+   c CONN-MARK @ MATCH option
+      some OF c swap 0 FAIL ENDOF
+      none OF ENDOF
+   ;MATCH ;
 
 \ A held connection is quiet when a peek finds no byte and no close.
 : PROBE ( ^conn -- probe ) {: c :}
@@ -456,12 +477,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ A plain origin has no handshake.
 : GREET ( ^conn -- greet ) drop construct greet up ;
 
-\ The head and the body, each written once; a marked request writes nothing.
+\ The head and the body, each written once.
 : DELIVER ( ^conn -- delivery ) {: c :}
-   c CONN-MARK @ MATCH option
-      some OF c swap 0 FAIL construct delivery failed exit ENDOF
-      none OF ENDOF
-   ;MATCH
    c c ROOM c CONN-USED @ WRITE-ALL
    if c c CONN-BODY @ c CONN-BODY-LEN @ WRITE-ALL else false then
    if construct delivery sent else construct delivery failed then ;
@@ -746,8 +763,9 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c CONN-FAULT @ construct chunk-result failed c CONN-ANSWER ! ;
 
 
-FSM:DEFINE LIFECYCLE ( ^conn ) phase held
-   IN starting  HOLDS ( held )
+FSM:DEFINE LIFECYCLE ( ^conn ) phase intake
+   IN starting  INTAKE ( intake )
+      marked   REFUSE   >down
       none     -        >resolving
       idle     -        >probing
       busy     HANG-UP  >resolving
@@ -806,10 +824,13 @@ public
    c o ou ORIGIN? ;
 
 \ Method and target. Starts a request head in the room, the request line and
-\ `Host`, and clears the deadlines.
+\ `Host`, and clears the deadlines. A CR, LF or SP in either marks the request
+\ malformed.
 : REQUEST ( ^conn ^u8 n ^u8 n -- ) {: c m:^ mu:n t:^ tu:n :}
    0 c CONN-USED !  0 c CONN-HEAD-LEN !  OPTION:NONE c CONN-MARK !
    0 c CONN-TOTAL !  0 c CONN-STALL !
+   m mu s" GET" STR= c CONN-GET-METHOD !
+   m mu SPLITS? t tu SPLITS? or if c construct fault malformed MARK then
    c m mu APPEND  c 32 CHAR+  c t tu APPEND  c s"  HTTP/1.1" APPEND  c CRLF+
    c s" Host: " APPEND  c c CONN-AUTHORITY @ c CONN-AUTHORITY-LEN @ APPEND
    c CRLF+ ;
@@ -826,12 +847,15 @@ public
 : DEADLINES! ( ^conn n n -- ) {: c total:n stall:n :}
    total c CONN-TOTAL !  stall c CONN-STALL ! ;
 
-\ The body span is borrowed until SEND returns; a `Content-Length` frames it.
-\ Probes or dials, then writes head and body once. A fault is kept for the
-\ first NEXT.
+\ The body span is borrowed until SEND returns. A `Content-Length` frames it
+\ in every request but a GET with no body, which has none. Probes or dials,
+\ then writes head and body once. A fault is kept for the first NEXT.
 : SEND ( ^conn ^u8 n -- ) {: c a:^ u:n :}
    a c CONN-BODY !  u c CONN-BODY-LEN !
-   c s" Content-Length: " APPEND  c u DIGITS+  c CRLF+  c CRLF+
+   c CONN-GET-METHOD @ u 0= and 0= if
+      c s" Content-Length: " APPEND  c u DIGITS+  c CRLF+
+   then
+   c CRLF+
    c ENDS!
    c construct phase starting LIFECYCLE ;
 

@@ -2,11 +2,11 @@ split-str
 \ httpc-test.f - focused tests for src/lib/net/httpc.f over loopback HTTP/1.1.
 \ One process holds both peers: a server task accepts on a loopback TCP4
 \ listener bound to port 0 and answers each request with the bytes its case
-\ scripts, counting accepts, requests per connection and request bytes, while
-\ the main task drives HTTPC. Every exchange has deadlines, so a server that
-\ fails to answer ends its case `timeout` and not in a hang. A scripted close
-\ is a half-close: the server sends its FIN and still counts any request that
-\ arrives after it.
+\ scripts, counting accepts, requests per connection and request bytes and
+\ keeping the last request head, while the main task drives HTTPC. Every
+\ exchange has deadlines, so a server that fails to answer ends its case
+\ `timeout` and not in a hang. A scripted close is a half-close: the server
+\ sends its FIN and still counts any request that arrives after it.
 \ Run: bin/hb --load src/lib/net/httpc-test.f
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
@@ -36,11 +36,13 @@ $7F000001 constant LOOPBACK
 8 constant BACKLOG
 $1000 constant REQ-CAP
 $10000 constant ROOM-CAP
+64 constant SMALL-ROOM                  \ holds a request head, not BIG-HEAD$
 $100 constant GOT-CAP
 $40 constant ORIGIN-CAP
 5000 constant TOTAL-MS
 5000 constant STALL-MS
 5000 constant FIN-MS
+100 constant SHORT-STALL-MS             \ the stall the timeout case expects
 8 constant CONN-CAP                     \ connections one case may make
 10 constant SIZED-SPAN                  \ shorter than the sized body
 4 constant CHUNKED-SPAN                 \ crosses every chunk boundary
@@ -48,6 +50,7 @@ $40 constant WIDE-SPAN
 $01 constant POLLIN
 
 create REQ-BUF REQ-CAP allot
+create SEEN-BUF REQ-CAP allot
 create ROOM-BUF ROOM-CAP allot
 create SPAN-BUF WIDE-SPAN allot
 create GOT-BUF GOT-CAP allot
@@ -63,16 +66,19 @@ variable ACCEPTS
 variable REQUESTS
 variable REQ-BYTES
 variable REQ-U
+variable SEEN-U                         \ the last request head answered
 variable ORIGIN-U
 variable GOT-U
 variable WIDEST                         \ the largest piece one NEXT answered
 variable LAST-STATUS
 variable FAULTS
+TYPED-VARIABLE LAST-FAULT HTTPC:fault
 CONN-CAP TYPED-BUFFER PER-CONN n
 
 \ What the server answers in the running case.
 ENUM script sized chunked closing interim no-content reuse idle-close
-   unread ;ENUM
+   unread cut-head cut-body silent bad-status bad-length bad-chunk big-head
+   trailing ;ENUM
 TYPED-VARIABLE SCRIPT script
 TYPED-VARIABLE LINK HTTPC:conn
 
@@ -94,6 +100,19 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : FIRST$ ( -- str ) S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfirst" ;
 : SECOND$ ( -- str ) S\" HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nsecond" ;
 
+: CUT-BODY$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 26\r\n\r\nabc" ;
+: BAD-STATUS$ ( -- str ) S\" HTTP/1.1 2x0 OK\r\n\r\n" ;
+: BAD-LENGTH$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: abc\r\n\r\nok" ;
+: BAD-CHUNK$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nok\r\n0\r\n\r\n" ;
+: BIG-HEAD$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nX-Pad: abcdefghijklmnopqrstuvwxyz\r\nContent-Length: 0\r\n\r\n" ;
+\ FIRST$ and two bytes past its body, sent in one write.
+: TRAILING$ ( -- str )
+   S\" HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfirstXX" ;
+
 : TWO$ ( n -- str ) 0= if FIRST$ else SECOND$ then ;
 
 \ The answer to the case's request K, and whether the server closes after it.
@@ -107,6 +126,14 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       reuse OF k TWO$ false ENDOF
       idle-close OF k TWO$ k 0= ENDOF
       unread OF k TWO$ false ENDOF
+      cut-head OF s" " true ENDOF
+      cut-body OF CUT-BODY$ true ENDOF
+      silent OF s" " false ENDOF
+      bad-status OF BAD-STATUS$ false ENDOF
+      bad-length OF BAD-LENGTH$ false ENDOF
+      bad-chunk OF BAD-CHUNK$ false ENDOF
+      big-head OF BIG-HEAD$ false ENDOF
+      trailing OF k 0= if TRAILING$ else SECOND$ then false ENDOF
    ;MATCH ;
 
 
@@ -135,7 +162,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       some OF IDX>N 4 + ENDOF
    ;MATCH ;
 
-\ The Content-Length HTTPC writes in every request head of H bytes.
+\ The body length a request head of H bytes declares; 0 for none.
 : BODY-U ( n -- n ) {: h:n :}
    REQ-BUF h s" Content-Length: " FIND-SUB MATCH option
       none OF 0 ENDOF
@@ -160,6 +187,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       conn REQ-CHUNK 0= if false exit then
    repeat
    REQ-U @ REQ-BYTES atomic-add drop
+   REQ-BUF SEEN-BUF HEAD-U BYTE-COPY  HEAD-U SEEN-U !
    true ;
 
 \ Answers each request until a scripted close; true after that close.
@@ -241,25 +269,29 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 : ORIGIN$ ( -- str ) ORIGIN-BUF ORIGIN-U @ ;
 
-: ORIGIN! ( -- )
-   SB-RESET s" http://127.0.0.1:" SB-APPEND PORT-CELL @ FMT:SB-U
+: ORIGIN! ( n -- ) {: port:n :}
+   SB-RESET s" http://127.0.0.1:" SB-APPEND port FMT:SB-U
    SB$ {: a:^ u:n :}
    a ORIGIN-BUF u BYTE-COPY  u ORIGIN-U ! ;
 
-\ A fresh case: the script, zeroed counts and a conn holding nothing.
-: BEGIN-CASE ( script -- )
+\ A fresh case: the script, zeroed counts and a conn holding nothing, with a
+\ room of ROOM bytes.
+: BEGIN-IN ( script n -- ) {: room:n :}
    SCRIPT !
-   0 ACCEPTS ! 0 REQUESTS ! 0 REQ-BYTES !
+   0 ACCEPTS ! 0 REQUESTS ! 0 REQ-BYTES ! 0 SEEN-U !
    CONN-CAP 0 do 0 i PER-CONN ! loop
-   LINK ORIGIN$ s" " ROOM-BUF ROOM-CAP HTTPC:OPEN
+   LINK ORIGIN$ s" " ROOM-BUF room HTTPC:OPEN
    s" OPEN takes the loopback origin" T-LABEL TTRUE ;
+
+: BEGIN-CASE ( script -- ) ROOM-CAP BEGIN-IN ;
 
 : END-CASE ( -- ) LINK HTTPC:CLOSE ;
 
-: ASK ( -- )
-   LINK s" GET" s" /case" HTTPC:REQUEST
-   LINK TOTAL-MS STALL-MS HTTPC:DEADLINES!
-   LINK s" " HTTPC:SEND ;
+: PREPARE ( ^u8 n ^u8 n -- ) {: m:^ mu:n t:^ tu:n :}
+   LINK m mu t tu HTTPC:REQUEST
+   LINK TOTAL-MS STALL-MS HTTPC:DEADLINES! ;
+
+: ASK ( -- ) s" GET" s" /case" PREPARE  LINK s" " HTTPC:SEND ;
 
 : GOT$ ( -- str ) GOT-BUF GOT-U @ ;
 
@@ -267,9 +299,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    SPAN-BUF GOT-BUF GOT-U @ + k BYTE-COPY
    k GOT-U +!  WIDEST @ k max WIDEST ! ;
 
-: FAILED ( HTTPC:fault -- )
-   s" httpc-test: NEXT failed: " type HTTPC:FAULT$ type cr
-   1 FAULTS +! ;
+: FAILED ( HTTPC:fault -- ) LAST-FAULT !  1 FAULTS +! ;
 
 : ANSWERED? ( HTTPC:chunk-result -- bool )
    MATCH HTTPC:chunk-result
@@ -284,7 +314,23 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    begin LINK SPAN-BUF span >LEN HTTPC:NEXT ANSWERED? until ;
 
 : ANSWER-IS ( n ^u8 n -- ) {: status:n a:^ u:n :}
+   FAULTS @ 0<> if
+      s" httpc-test: NEXT failed: " type LAST-FAULT @ HTTPC:FAULT$ type cr
+   then
    FAULTS @ 0 T=  LAST-STATUS @ status T=  GOT$ a u T$= ;
+
+\ The answer ended in the fault, which LOST? answers LOST for.
+: FAULT-IS ( HTTPC:fault bool -- ) {: f:HTTPC:fault lost:bool :}
+   FAULTS @ 1 T=
+   LAST-FAULT @ HTTPC:FAULT$ f HTTPC:FAULT$ T$=
+   LAST-FAULT @ HTTPC:LOST? lost if TTRUE else TFALSE then ;
+
+\ Whether the last request head the server answered names a Content-Length.
+: SEEN-LENGTH? ( -- bool )
+   SEEN-BUF SEEN-U @ s" Content-Length" FIND-SUB MATCH option
+      none OF false ENDOF
+      some OF drop true ENDOF
+   ;MATCH ;
 
 \ Blocks until the server's FIN reaches the conn's socket.
 : AWAIT-FIN ( -- bool )
@@ -338,6 +384,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    ASK WIDE-SPAN READ-ALL
    s" a 204 ends at its head" T-LABEL
    204 s" " ANSWER-IS
+   ASK WIDE-SPAN READ-ALL
+   s" the request after a 204 reuses the connection" T-LABEL
+   204 s" " ANSWER-IS
+   ACCEPTS @ 1 T=
    END-CASE ;
 
 : TEST-REUSE ( -- )
@@ -378,6 +428,130 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    1 PER-CONN @ 1 T=
    END-CASE ;
 
+: TEST-TRAILING ( -- )
+   construct script trailing BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   s" an answer with bytes past its body" T-LABEL
+   200 s" first" ANSWER-IS
+   ASK WIDE-SPAN READ-ALL
+   s" the request after bytes past an answer dials anew" T-LABEL
+   200 s" second" ANSWER-IS
+   ACCEPTS @ 2 T=
+   0 PER-CONN @ 1 T=
+   END-CASE ;
+
+: TEST-LENGTH-SENT ( -- )
+   construct script reuse BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   s" a GET with no body sends no Content-Length" T-LABEL
+   200 s" first" ANSWER-IS
+   SEEN-LENGTH? TFALSE
+   s" POST" s" /case" PREPARE  LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
+   s" an empty POST sends Content-Length: 0" T-LABEL
+   200 s" second" ANSWER-IS
+   SEEN-BUF SEEN-U @ S\" \r\nContent-Length: 0\r\n" FIND-SUB MATCH option
+      none OF false ENDOF
+      some OF drop true ENDOF
+   ;MATCH TTRUE
+   END-CASE ;
+
+\ A loopback port bound but not listening refuses every connection.
+: TEST-CONNECT ( -- )
+   LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
+   MATCH TCP4:bind-result
+      bound OF ENDOF
+      failed OF drop s" a loopback port binds" T-LABEL false TTRUE exit ENDOF
+   ;MATCH {: shut:TCP4:listener :}
+   shut TCP4:LOCAL
+   MATCH TCP4:endpoint-result
+      endpoint OF TCP4:PORT>N ORIGIN! drop ENDOF
+      failed OF drop 0 ORIGIN! ENDOF
+   ;MATCH
+   construct script sized BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   s" a port nothing listens on fails `connect`" T-LABEL
+   HTTPC-FAULT:CONNECT true FAULT-IS
+   END-CASE
+   shut TCP4:CLOSE-LISTENER PEER-STATUS
+   PORT-CELL @ ORIGIN! ;
+
+: TEST-CUT ( -- )
+   construct script cut-head BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   s" a close before the head fails `cut`" T-LABEL
+   HTTPC-FAULT:CUT true FAULT-IS
+   END-CASE
+   construct script cut-body BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   s" a close inside a Content-Length body fails `cut`" T-LABEL
+   HTTPC-FAULT:CUT true FAULT-IS
+   GOT$ s" abc" T$=
+   END-CASE ;
+
+: TEST-TIMEOUT ( -- )
+   construct script silent BEGIN-CASE
+   LINK s" GET" s" /case" HTTPC:REQUEST
+   LINK TOTAL-MS SHORT-STALL-MS HTTPC:DEADLINES!
+   LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
+   s" a server that answers nothing fails `timeout` at the stall" T-LABEL
+   HTTPC-FAULT:TIMEOUT true FAULT-IS
+   END-CASE ;
+
+: MALFORMED-BY ( script ^u8 n -- ) {: sc:script a:^ u:n :}
+   sc BEGIN-CASE
+   ASK WIDE-SPAN READ-ALL
+   a u T-LABEL
+   HTTPC-FAULT:MALFORMED false FAULT-IS
+   END-CASE ;
+
+: TEST-MALFORMED ( -- )
+   construct script bad-status s" a bad status line fails `malformed`"
+   MALFORMED-BY
+   construct script bad-length
+   s" a non-numeric Content-Length fails `malformed`" MALFORMED-BY
+   construct script bad-chunk s" a bad chunk size fails `malformed`"
+   MALFORMED-BY ;
+
+: TEST-OVERSIZE ( -- )
+   construct script big-head SMALL-ROOM BEGIN-IN
+   ASK WIDE-SPAN READ-ALL
+   s" an answer head larger than the room fails `oversize`" T-LABEL
+   HTTPC-FAULT:OVERSIZE false FAULT-IS
+   END-CASE ;
+
+\ A marked request's first NEXT answers its fault.
+: REFUSED ( HTTPC:fault -- ) {: f:HTTPC:fault :}
+   LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
+   f false FAULT-IS ;
+
+\ The good request after the refused ones accepts every connection the
+\ refused ones would have made, so ACCEPTS counts them.
+: TEST-REFUSED ( -- )
+   construct script reuse SMALL-ROOM BEGIN-IN
+   s" GET" s" /case" PREPARE  LINK ALPHABET$ HTTPC:HEADER+
+   s" a request head larger than the room fails `oversize`" T-LABEL
+   HTTPC-FAULT:OVERSIZE REFUSED
+   s" GET" s" /case" PREPARE  LINK S\" X-Bad: a\rb" HTTPC:HEADER+
+   s" a CR in a header line fails `malformed`" T-LABEL
+   HTTPC-FAULT:MALFORMED REFUSED
+   s" GET" s" /a b" PREPARE
+   s" a SP in the target fails `malformed`" T-LABEL
+   HTTPC-FAULT:MALFORMED REFUSED
+   ASK WIDE-SPAN READ-ALL
+   s" refused requests dial nothing" T-LABEL
+   200 s" first" ANSWER-IS
+   ACCEPTS @ 1 T=
+   s" GET" s" /a b" PREPARE
+   s" a refused request over a held connection" T-LABEL
+   HTTPC-FAULT:MALFORMED REFUSED
+   ASK WIDE-SPAN READ-ALL
+   s" a refused request drops the held connection" T-LABEL
+   200 s" second" ANSWER-IS
+   ACCEPTS @ 2 T=
+   0 PER-CONN @ 1 T=
+   1 PER-CONN @ 1 T=
+   END-CASE ;
+
 public
 
 : RUN ( -- )
@@ -385,7 +559,7 @@ public
    START-SERVER
    s" the server listens on loopback" T-LABEL
    STOP @ 0 T=
-   ORIGIN!
+   PORT-CELL @ ORIGIN!
    TEST-SIZED
    TEST-CHUNKED
    TEST-CLOSING
@@ -394,6 +568,14 @@ public
    TEST-REUSE
    TEST-IDLE-CLOSE
    TEST-UNREAD
+   TEST-TRAILING
+   TEST-LENGTH-SENT
+   TEST-CONNECT
+   TEST-CUT
+   TEST-TIMEOUT
+   TEST-MALFORMED
+   TEST-OVERSIZE
+   TEST-REFUSED
    END-SERVER ;
 
 ;package
