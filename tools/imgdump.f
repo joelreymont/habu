@@ -7,12 +7,8 @@ split-str
 
 require src/lib/adt/option.f                 \ option<n> for the number parsers
 require src/lib/fs.f
-require src/habu/code-span.f
 require src/os/macos/macho.f
 require src/core/exit-status.f
-\ An x86 image maps DATA at LINUX-LAYOUT:DATA-VA on every host; a macOS host's
-\ DATA-VA is elsewhere.
-require src/os/linux/layout.f
 
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
@@ -23,7 +19,6 @@ TYPED-VARIABLE IB ^u8                     \ image buffer
 variable IL                                  \ image length
 variable MACHO
 variable IFD
-variable X64-IMAGE
 variable RUNV  variable BESTO  variable BESTN
 \ The base added to a code record's raw xt field.
 variable XTBASE
@@ -48,11 +43,7 @@ $12 constant ELF-MACHINE-OFF
 183 constant ELF-EM-AARCH64
 62 constant ELF-EM-X86-64
 $18 constant ELF-ENTRY-OFF
-$20 constant ELF-PHOFF-OFF
-$36 constant ELF-PHENTSIZE-OFF
-$38 constant ELF-PHNUM-OFF
 $40 constant ELF-EHDR-BYTES
-56 constant ELF-PHDR-BYTES
 
 DICT-CAP TYPED-BUFFER A-NAME-P-SLOT ^u8   \ one dictionary name start per row
 create A-NAME-U DICT-CAP cells allot
@@ -127,58 +118,6 @@ variable HV  variable HP
    p 6 + c@ 48 lshift or
    p 7 + c@ 56 lshift or ;
 
-: ELF-PHDRS? ( -- bool )
-   IL @ ELF-EHDR-BYTES < if IMG-FALSE exit then
-   ELF-PHOFF-OFF I@ {: at:n :}
-   ELF-PHENTSIZE-OFF I@ $FFFF and ELF-PHDR-BYTES <> if IMG-FALSE exit then
-   ELF-PHNUM-OFF I@ $FFFF and {: count:n :}
-   at ELF-EHDR-BYTES < at IL @ > or if IMG-FALSE exit then
-   count 0 > count IL @ at - ELF-PHDR-BYTES / <= and ;
-
-: ELF-PHDR ( n -- n )
-   ELF-PHOFF-OFF I@ swap ELF-PHDR-BYTES * + ;
-
-\ A file-backed VA is found through a PT_LOAD, including the x86 dictionary
-\ region and DATA carrier segments whose VAs are far from the ordinary ELF text.
-: ELF-VA-SPAN>OFF ( n n -- n ) {: va:n len:n :}
-   len 1 < if -1 exit then
-   ELF-PHDRS? 0= if -1 exit then
-   ELF-PHNUM-OFF I@ $FFFF and 0 ?do
-      i ELF-PHDR {: p:n :}
-      p I@ $FFFFFFFF and 1 = if
-         p 8 + I@ {: off:n :}
-         p 16 + I@ {: base:n :}
-         p 32 + I@ {: size:n :}
-         p 40 + I@ {: mem:n :}
-         off 0 < base 0 < or size 0 < or mem size < or
-         off IL @ > or size IL @ off - > or if -1 unloop exit then
-         va base >= if
-            va base - {: delta:n :}
-            delta size < len size delta - <= and if off delta + unloop exit then
-         then
-      then
-   loop -1 ;
-
-: ELF-VA>OFF ( n -- n ) 1 ELF-VA-SPAN>OFF ;
-
-\ The x86 PT_LOAD at the text's VA plus `delta`, or -1.
-: X64-FIXED-PHDR ( n -- n ) {: delta:n :}
-   ELF-PHDRS? 0= if -1 exit then
-   0 ELF-PHDR 16 + I@ delta + {: va:n :}
-   ELF-PHNUM-OFF I@ $FFFF and 0 ?do
-      i ELF-PHDR {: p:n :}
-      p I@ $FFFFFFFF and 1 = p 16 + I@ va = and if p unloop exit then
-   loop -1 ;
-
-: X64-REG-PHDR ( -- n ) REGION-OFF X64-FIXED-PHDR ;
-
-\ The read-only carrier at the region's end holds DATA's leading bytes, which
-\ the boot copies to the start of DATA, so DATA's bytes [off, off + len) are
-\ the carrier's at the same offset: their file offset, or -1.
-: X64-DATA-SPAN>OFF ( n n -- n ) {: off:n len:n :}
-   REGION-OFF REGION + X64-FIXED-PHDR {: p:n :}
-   p 0 < off 0 < or if -1 exit then
-   p 16 + I@ off + len ELF-VA-SPAN>OFF ;
 : E-E {: o :} ( n -- n )
    o 8 + I@ ;
 : E-F {: o :} ( n -- n )
@@ -195,10 +134,8 @@ variable HV  variable HP
 : E-S {: o :} ( n -- n )
    o I@  o E-CODE? if XTBASE @ + then ;
 
-\ Slot 1 holds a raw CODE-SPAN length in an x86 dictionary record and a
-\ text-relative span end in an arm64 primitive-table row.
+\ Slot 1 holds a text-relative span end.
 : E-CODE-END {: o :} ( n -- n )                     \ code records only
-   X64-IMAGE @ if o E-S o E-E CODE-SPAN:BYTES + exit then
    XTBASE @ o E-E + ;
 
 : E-CODE-BYTES {: o :} ( n -- n )
@@ -217,30 +154,16 @@ variable OKV
    repeat drop
    OKV @ ;
 
-using LINUX-LAYOUT   \ the guard
-
-: X64-PTR-SPAN>OFF ( n n -- n ) {: p:n len:n :}
-   len 1 max {: size:n :}
-   p LINUX-LAYOUT:DATA-VA >= p LINUX-LAYOUT:DATA-VA LINUX-LAYOUT:DATA-SIZE + < and if
-      p LINUX-LAYOUT:DATA-VA - size X64-DATA-SPAN>OFF exit
-   then
-   p size ELF-VA-SPAN>OFF ;
-
-;using   \ LINUX-LAYOUT
-
-\ An external name's cell holds a text-relative offset in an arm64 image and a
-\ fixed VA, which a PT_LOAD maps, in an x86 one.
+\ An external name's cell holds a text-relative offset.
 : E-NAME-OFF ( n -- n )
    {: o:n :}
    o E-F DNAME-EXT and 0= if o 24 + else
       o 24 + I@ {: raw:n :}
-      X64-IMAGE @ if raw o E-L X64-PTR-SPAN>OFF else
-         \ A negative raw offset would otherwise land in the file header.
-         raw 0 < if -1 exit then
-         CODE-OFF IL @ > if -1 exit then
-         raw IL @ CODE-OFF - > if -1 exit then
-         raw CODE-OFF +
-      then
+      \ A negative raw offset would otherwise land in the file header.
+      raw 0 < if -1 exit then
+      CODE-OFF IL @ > if -1 exit then
+      raw IL @ CODE-OFF - > if -1 exit then
+      raw CODE-OFF +
    then {: off:n :}
    off 0 < if -1 exit then
    off IL @ > if -1 exit then
@@ -265,9 +188,8 @@ using LINUX-LAYOUT   \ the guard
    o E-NAME-OFF dup 0 < if drop IMG-FALSE exit then
    IB@ +  o E-L PRN? ;
 
-\ The ARM seed table has no direct file header: its preceding count cell
-\ bounds the exact run, and a printable name anchors the candidate. The x86
-\ table lives in its fixed REGION PT_LOAD and is bounded by that segment.
+\ The primitive table has no direct file header: its preceding count cell
+\ bounds the exact run, and a printable name anchors the candidate.
 : ENT-NAMED? ( n -- bool ) {: o :}
    o ENT? 0= if IMG-FALSE exit then
    o E-L 1 >= ;
@@ -287,17 +209,7 @@ using LINUX-LAYOUT   \ the guard
    count IL @ at - DREC / > if 0 exit then
    at at count DREC * + RUN#-TO count = if count else 0 then ;
 
-: FIND-X64-DICT ( -- )
-   X64-REG-PHDR {: p:n :}
-   p 0 < if s" imgdump: no x86 dictionary LOAD" EXIT-STATUS:DATAERR die then
-   p 16 + I@ ELF-VA>OFF {: off:n :}
-   off 0 < if s" imgdump: no file-backed x86 dictionary" EXIT-STATUS:DATAERR die then
-   off off p 32 + I@ DICT-SIZE min + RUN#-TO {: count:n :}
-   count 0= if s" imgdump: no dict found" EXIT-STATUS:DATAERR die then
-   off BESTO !  count BESTN ! ;
-
 : FIND-DICT ( -- )
-   X64-IMAGE @ if FIND-X64-DICT exit then
    0 BESTO !  0 BESTN !
    0 begin dup IL @ DREC - <= while
       dup ENT-NAMED? if
@@ -342,7 +254,7 @@ using LINUX-LAYOUT   \ the guard
 
 \ ---- xt base ----
 \ A primitive-table xt field is relative to the text base, which in an ET_EXEC
-\ arm64 ELF is its entry point; a PIE's base is chosen at exec, not in the file.
+\ ELF is its entry point; a PIE's base is chosen at exec, not in the file.
 : ELF-FIXED-BASE? ( -- bool )
    IL @ ELF-EHDR-BYTES < if IMG-FALSE exit then
    ELF-MAG-OFF I@ $FFFFFFFF and ELF-MAG <> if IMG-FALSE exit then
@@ -350,9 +262,6 @@ using LINUX-LAYOUT   \ the guard
    ELF-MACHINE-OFF I@ $FFFF and {: machine:n :}
    machine ELF-EM-AARCH64 <> machine ELF-EM-X86-64 <> and if IMG-FALSE exit then
    ELF-TYPE-OFF I@ $FFFF and ELF-ET-EXEC = ;
-
-: ELF-X64? ( -- bool )
-   ELF-FIXED-BASE? if ELF-MACHINE-OFF I@ $FFFF and ELF-EM-X86-64 = else false then ;
 
 : READ-XTBASE ( -- n )
    \ Mach-O reports the section's preferred virtual addresses. Runtime PCs
@@ -362,11 +271,9 @@ using LINUX-LAYOUT   \ the guard
       s" imgdump: image is not a fixed-base Habu ELF executable; refusing to guess the dictionary base"
       EXIT-STATUS:DATAERR die
    then
-   X64-IMAGE @ if 0 exit then                  \ x86 records hold absolute xts
    ELF-ENTRY-OFF I@ ;
 
 : PREP-IMG ( -- )
-   ELF-X64? X64-IMAGE !
    READ-XTBASE XTBASE !
    FIND-DICT ;
 
