@@ -4389,22 +4389,24 @@ private
    6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    8 HIDX-SLOTS LIT64, ;
 
-\ Emit: index record x3 in table x14 at its chain's first empty or stale slot; a
-\ walk of every slot dies. Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
+\ Emit: index record x3 in table x14 at its chain's first empty or stale slot;
+\ meeting x3 before either writes nothing, and a walk of every slot dies.
+\ Clobbers x2 x4 x5 x6 x7 x8 x15 x16 x17.
 : C-HIDX-INS ( -- )
-   LBL LBL LBL LBL {: iloop:label inext:label iempty:label iput:label :}
+   LBL LBL LBL LBL {: iloop:label iempty:label iput:label idone:label :}
    C-HIDX-CHAIN
    iloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
       4 iempty CBZ,
-      4 4 1 SUBI,  4 NDICT CMP,  C-GE iput BCOND,
-   inext LBL,
+      4 4 1 SUBI,  4 3 CMP,  C-EQ idone BCOND,
+      4 NDICT CMP,  C-GE iput BCOND,
       8 8 1 SUBI,  8 HIDX-EMIT:LFULL LABEL@ CBZ,
       6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  iloop B,
    iempty LBL,
       4 DATA HIDX:CLAIMS LDR,  4 4 1 ADDI,  4 DATA HIDX:CLAIMS STR,
    iput LBL,
-      4 3 1 ADDI,  4 17 0 STRW, ;
+      4 3 1 ADDI,  4 17 0 STRW,
+   idone LBL, ;
 
 \ Emit: branch to `held` when record x3's chain in table x14 holds x3 before
 \ its first empty slot, the stretch every probe for the record's key walks;
