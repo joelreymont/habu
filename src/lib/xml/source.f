@@ -6,6 +6,7 @@ split-str
 \ and editor borrowing them has closed: nothing counts borrowers, the caller
 \ sequences close and use. A failed initialisation publishes nothing.
 require src/lib/xml/scalar.f
+require src/lib/vector.f
 
 package XML
 public
@@ -523,8 +524,9 @@ private
    SRC-STATE input size ;
 
 public
-\ ENCODE-SIZE and ENCODE write replacement markup, already escaped, in the wire
-\ encoding without a BOM, validating input, capacity and aliasing first.
+\ ENCODE appends replacement markup, already escaped, to the vector in the wire
+\ encoding without a BOM, validating the input first; the text may lie in the
+\ vector. ENCODE-SIZE answers the bytes ENCODE appends.
 : ENCODE-SIZE ( XML:source str -- XML:source n )
    SRC-ENCODE-ARGS SRC-ENCODE-SIZE ;
 
@@ -566,39 +568,24 @@ private
    repeat
    2drop ;
 
-\ The fewest bytes size bytes of UTF-8 encode to: all of them in UTF-8, and in
-\ UTF-16 two for every three, the width of a three-byte scalar.
-: SRC-ENCODE-FLOOR ( ^n n -- n ) {: state size:n :}
-   state SRC-ENCODING-N XML-ENCODING:UTF8 ENCODING>N =
-   state SRC-ENCODING-N XML-ENCODING:US-ASCII ENCODING>N = or if
-      size exit
-   then
-   size 3 / 2 * ;
-
-: SRC-ENCODE-INTO ( ^n str ^u8 n -- n )
-   {: state input size:n output cap:n :}
-   input size SPAN-CHECK
-   output cap SPAN-CHECK
-   state size SRC-ENCODE-FLOOR cap > if E-CAPACITY throw then   \ measured before the input is read
+: SRC-ENCODE-INTO ( ^n str ^VEC:vector<u8> -- )
+   {: state input size:n v:^ :}
    state input size SRC-ENCODE-SIZE {: needed:n :}
-   needed cap > if E-CAPACITY throw then
-   input size output cap OVERLAP? if E-ALIAS throw then
-   state SRC-ORIGINAL$ output cap OVERLAP? if E-ALIAS throw then
-   state BYTE-VIEW state SRC-STORAGE-LEN + @
-   output cap OVERLAP? if E-ALIAS throw then
-   state input size output SRC-ENCODE-WRITE
-   needed ;
+   v VEC:COUNT {: at:n :}
+   v at needed + input VEC:MAKE-ROOM {: src:^ :}
+   v at needed + VEC:ENSURE
+   state src size  v VEC:SPAN SPAN:$ drop at +  SRC-ENCODE-WRITE ;
 
-: SRC-INTO-ARGS ( XML:source str ^u8 n -- XML:source ^n str ^u8 n )
-   {: input size:n output cap:n :}
-   SRC-STATE input size output cap ;
+: SRC-INTO-ARGS ( XML:source str ^VEC:vector<u8> -- XML:source ^n str ^VEC:vector<u8> )
+   {: input size:n v:^ :}
+   SRC-STATE input size v ;
 
 public
-: ENCODE ( XML:source ^u8 n ^u8 n -- XML:source n )
+: ENCODE ( XML:source str ^VEC:vector<u8> -- XML:source )
    SRC-INTO-ARGS SRC-ENCODE-INTO ;
 
-: OWNER-ENCODE ( source-owner str ^u8 n -- n )
-   {: owner input size:n output cap:n :}
-   owner OWNER-STATE input size output cap SRC-ENCODE-INTO ;
+: OWNER-ENCODE ( source-owner str ^VEC:vector<u8> -- )
+   {: owner input size:n v:^ :}
+   owner OWNER-STATE input size v SRC-ENCODE-INTO ;
 
 ;package

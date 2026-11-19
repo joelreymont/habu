@@ -2,6 +2,7 @@ split-str
 \ write.f - XML escaping.
 
 require src/lib/xml/scalar.f
+require src/lib/vector.f
 
 package XML
 private
@@ -61,24 +62,23 @@ private
    repeat
    2drop ;
 
-: ESCAPE-INTO ( str bool str -- n )
-   {: source size:n attr:bool destination cap:n :}
+: ESCAPE-INTO ( str bool ^VEC:vector<u8> -- )
+   {: source size:n attr:bool v:^ :}
    source size SPAN-CHECK
-   destination cap SPAN-CHECK
-   size cap > if E-CAPACITY throw then        \ every scalar escapes to at least its own width
    source size attr ESCAPED-SIZE {: needed:n :}
-   needed cap > if E-CAPACITY throw then
-   source size destination cap OVERLAP? if E-ALIAS throw then
-   source size attr destination ESCAPE-WRITE
-   needed ;
+   v VEC:COUNT {: at:n :}
+   v at needed + source VEC:MAKE-ROOM {: src:^ :}
+   v at needed + VEC:ENSURE
+   src size attr  v VEC:SPAN SPAN:$ drop at +  ESCAPE-WRITE ;
 
 public
-: ESCAPE-TEXT ( ^u8 n ^u8 n -- n )
-   {: source size:n destination cap:n :}
-   source size false destination cap ESCAPE-INTO ;
+\ Each appends the text, escaped, to the vector; the text may lie in it.
+: ESCAPE-TEXT ( str ^VEC:vector<u8> -- )
+   {: source size:n v:^ :}
+   source size false v ESCAPE-INTO ;
 
-: ESCAPE-ATTR ( str str -- n )
-   {: source size:n destination cap:n :}
-   source size true destination cap ESCAPE-INTO ;
+: ESCAPE-ATTR ( str ^VEC:vector<u8> -- )
+   {: source size:n v:^ :}
+   source size true v ESCAPE-INTO ;
 
 ;package

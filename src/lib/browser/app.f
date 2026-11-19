@@ -29,6 +29,7 @@ require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/vector.f
+require src/lib/arena.f
 require src/lib/base64.f
 require src/lib/xml.f
 
@@ -115,9 +116,6 @@ ID-AT ID-MARK nip + constant ID-END
 APP-MARK ID-END MARK constant APP-AT
 APP-AT APP-MARK nip + constant APP-END
 
-\ The longest escape ESCAPE-TEXT writes for one byte: &amp; and &#13;.
-5 constant WIDEST
-
 : GAP+ ( n n ^VEC:vector<u8> -- )
    {: from:n to:n v:^ :}
    HTML from + to from - v VEC:APPEND ;
@@ -147,12 +145,13 @@ APP-AT APP-MARK nip + constant APP-END
    APP-END HTML-U v GAP+ ;
 
 
-\ Escapes the title into the scratch bytes before the vector is touched, so
-\ a title ESCAPE-TEXT refuses leaves the vector as it was.
-: ESCAPED ( str ^VEC:vector<u8> n ^u8 NUM:alloc-byte-len -- )
-   drop {: t:^ tu:n v:^ cap:n s:^ :}
-   t tu s cap XML:ESCAPE-TEXT {: n:n :}
-   s n v COMPOSE ;
+\ Escapes the title into a scratch vector before the page vector is touched,
+\ so a title ESCAPE-TEXT rejects leaves the page vector as it was.
+: ESCAPED ( str ^VEC:vector<u8> ^ARENA:arena -- )
+   ARENA:ALLOCATOR {: t:^ tu:n v:^ al:^ :}
+   al 0 [type] u8 VEC:NEW {: s:^ :}
+   t tu s XML:ESCAPE-TEXT
+   s VEC:SPAN SPAN:$ v COMPOSE ;
 
 
 \ CODE-ID+'s files, in its order, fed to the SHA-256 context.
@@ -193,12 +192,9 @@ public
 
 
 \ The title and the vector the page is appended to; a title that is not XML
-\ text is refused.
+\ text is rejected and appends nothing.
 : PAGE+ ( str ^VEC:vector<u8> -- )
-   {: t:^ tu:n v:^ :}
-   \ An allocation is never empty, so an empty title takes one escape's room.
-   tu 1 max WIDEST * {: cap:n :}
-   t tu v cap  cap MEM:BYTES-ALLOC-LEN [: ESCAPED ;] MEM:WITH-BYTES ;
+   [: ESCAPED ;] ARENA:WITH ;
 
 
 \ The app-only tool the page calls, with arguments {}, for its code.

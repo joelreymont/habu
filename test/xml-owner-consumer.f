@@ -3,6 +3,9 @@ split-str
 \ lexical ranges, closes its parsing cursors, then edits those parts later.
 require src/lib/test.f
 require src/lib/memory.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/xml.f
 require src/lib/vector.f
 require src/lib/heap.f
@@ -19,9 +22,7 @@ create WIRE WIRE-CAP allot
 create INPUT WIRE-CAP allot
 create REOPEN-STORE WIRE-CAP allot
 create EDIT-STORE 3 EDIT:STORAGE-BYTES allot
-create ATTR-BYTES 32 allot
-create TEXT-BYTES 32 allot
-create TAIL-BYTES 32 allot
+TYPED-VARIABLE ENCODED-OUT ^VEC:vector<u8>
 create WRITTEN OUTPUT-CAP allot
 TYPED-VARIABLE DECODED ^VEC:vector<u8>
 1 SPAN-BUFFER: STREAM-CHUNK
@@ -214,19 +215,25 @@ CAST: ENCODING>N ( XML:encoding -- n )
    end-len LEN>N 0 T=
    owner s" Q" XML:OWNER-ENCODE-SIZE
    index 3 mod 0= if 1 else 2 then T=
-   owner s" Q" ATTR-BYTES 32 XML:OWNER-ENCODE {: attr-size:n :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
+   owner s" Q" out XML:OWNER-ENCODE
+   out VEC:COUNT {: attr-size:n :}
    owner s" 🚗" XML:OWNER-ENCODE-SIZE {: wanted:n :}
-   owner s" 🚗" TEXT-BYTES 32 XML:OWNER-ENCODE dup wanted T=
+   owner s" 🚗" out XML:OWNER-ENCODE
+   out VEC:COUNT attr-size - dup wanted T=
    {: text-size:n :}
-   owner s" <!--late-->" TAIL-BYTES 32 XML:OWNER-ENCODE {: tail-size:n :}
+   owner s" <!--late-->" out XML:OWNER-ENCODE
+   out VEC:COUNT attr-size - text-size - {: tail-size:n :}
+   out VEC:SPAN SPAN:$ drop {: encoded :}
    owner XML:OWNER-ORIGINAL$ {: original original-size:n :}
    end-off OFF>N original-size T=
    EDIT-STORE 3 EDIT:STORAGE-BYTES original original-size EDIT:INIT
-   attr-off attr-len ATTR-BYTES attr-size EDIT:REPLACE
-   text-off text-len TEXT-BYTES text-size EDIT:REPLACE
-   end-off end-len TAIL-BYTES tail-size EDIT:REPLACE
+   attr-off attr-len encoded attr-size EDIT:REPLACE
+   text-off text-len encoded attr-size + text-size EDIT:REPLACE
+   end-off end-len encoded attr-size + text-size + tail-size EDIT:REPLACE
    WRITTEN OUTPUT-CAP EDIT:WRITE {: written:n :}
    EDIT:CLOSE
+   out VEC:DELETE
    WRITTEN attr-off OFF>N original attr-off OFF>N T$=
    WRITTEN BYTE-VIEW index 3 mod 0= if 3 else 2 then
    original index 3 mod 0= if 3 else 2 then T$=
@@ -247,7 +254,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 : CLOSED-MAP ( -- ) SAVED-OWNER @ 0 >OFF 0 >LEN XML:OWNER-RANGE 2drop ;
 : CLOSED-READER ( -- )
    RD SAVED-OWNER @ XML:OWNER-READER XML:CLOSE ;
-: CLOSED-ENCODE ( -- ) SAVED-OWNER @ s" x" ATTR-BYTES 32 XML:OWNER-ENCODE drop ;
+: CLOSED-ENCODE ( -- ) SAVED-OWNER @ s" x" ENCODED-OUT @ XML:OWNER-ENCODE ;
 : CLOSED-AGAIN ( -- ) SAVED-OWNER @ XML:OWNER-CLOSE ;
 : ZERO-VIEW ( -- ) ZERO-OWNER @ XML:OWNER-LEXICAL$ 2drop ;
 : ZERO-CLOSE ( -- ) ZERO-OWNER @ XML:OWNER-CLOSE ;
@@ -258,7 +265,9 @@ CAST: ENCODING>N ( XML:encoding -- n )
    ['] CLOSED-VIEW XML:E-STATE TTHROWSQ
    ['] CLOSED-MAP XML:E-STATE TTHROWSQ
    ['] CLOSED-READER XML:E-STATE TTHROWSQ
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ENCODED-OUT !
    ['] CLOSED-ENCODE XML:E-STATE TTHROWSQ
+   ENCODED-OUT @ VEC:DELETE
    ['] CLOSED-AGAIN XML:E-STATE TTHROWSQ
    ['] ZERO-VIEW XML:E-STATE TTHROWSQ
    ['] ZERO-CLOSE XML:E-STATE TTHROWSQ

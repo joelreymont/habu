@@ -1,7 +1,6 @@
 split-str
 require src/lib/test.f
 require src/lib/xml.f
-require src/lib/test/guard-page.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/reason.f
@@ -24,6 +23,7 @@ variable INPUT-USED
 create INPUT-BIG 8200 allot
 TYPED-VARIABLE DEEP-DOC ^VEC:vector<u8>
 TYPED-VARIABLE DECODED ^VEC:vector<u8>
+TYPED-VARIABLE ESCAPED-OUT ^VEC:vector<u8>
 100000 constant DEEP-LEVELS
 4 BUFFER: DEEP-NAME
 variable DEEP-BAD
@@ -632,18 +632,18 @@ variable URI-LEN
    WIDE-DOC @ WIDE-DOC-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 : ESCAPING ( -- )
-   s\" A<&>\r\n\q'😀" TEXT-BUF TEXT-CAP ESCAPE-TEXT
-   TEXT-BUF swap s\" A&lt;&amp;&gt;&#13;\n\q'😀" T$=
-   s\" A<&>\r\n\t\q'😀" TEXT-BUF TEXT-CAP ESCAPE-ATTR
-   TEXT-BUF swap s" A&lt;&amp;&gt;&#13;&#10;&#9;&quot;&apos;😀" T$=
-   s" " TEXT-BUF 0 ESCAPE-TEXT 0 T=
-   [: s" &" TEXT-BUF 4 ESCAPE-TEXT drop ;] E-CAPACITY TTHROWSQ
-   \ Every scalar escapes to at least its own width, so a source longer than the
-   \ destination is refused before it is read; this one ends at an inaccessible
-   \ page one byte short of the length it claims.
-   [: 4 [char] a GUARD-PAGE:TAIL 5 TEXT-BUF 4 ESCAPE-TEXT drop ;] E-CAPACITY TTHROWSQ
-   [: 4 [char] a GUARD-PAGE:TAIL 5 TEXT-BUF 4 ESCAPE-ATTR drop ;] E-CAPACITY TTHROWSQ
-   [: s\" \z" TEXT-BUF TEXT-CAP ESCAPE-TEXT drop ;] E-SCALAR TTHROWSQ ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   v ESCAPED-OUT !
+   s\" A<&>\r\n\q'😀" v ESCAPE-TEXT
+   v VEC:SPAN SPAN:$ s\" A&lt;&amp;&gt;&#13;\n\q'😀" T$=
+   v 0 VEC:RESIZE
+   s\" A<&>\r\n\t\q'😀" v ESCAPE-ATTR
+   v VEC:SPAN SPAN:$ s" A&lt;&amp;&gt;&#13;&#10;&#9;&quot;&apos;😀" T$=
+   v 0 VEC:RESIZE
+   s" " v ESCAPE-TEXT  v VEC:COUNT 0 T=
+   [: s\" \z" ESCAPED-OUT @ ESCAPE-TEXT ;] E-SCALAR TTHROWSQ
+   v VEC:COUNT 0 T=
+   v VEC:DELETE ;
 
 : CHECKED-OWNERSHIP ( -- )
    s" XML-TEST-DUP ( XML:reader -- XML:reader XML:reader ) dup" CHECK! 0 T=
@@ -1154,7 +1154,9 @@ variable SEEN
    s\" <a>\n\xC3\xA9\xFF</a>" E-UTF8 BAD
    E-UTF8 s" 2:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
    s" ESCAPE-TEXT places bad UTF-8 in the text it is given" T-LABEL
-   [: s\" ab\xFF" TEXT-BUF TEXT-CAP ESCAPE-TEXT drop ;] E-UTF8 TTHROWSQ
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ESCAPED-OUT !
+   [: s\" ab\xFF" ESCAPED-OUT @ ESCAPE-TEXT ;] E-UTF8 TTHROWSQ
+   ESCAPED-OUT @ VEC:DELETE
    E-UTF8 s" 1:3: expected a UTF-8 character, found byte $FF; write the text in UTF-8" SAID
    s" a US-ASCII input stream places a high byte of a later chunk in the whole input" T-LABEL
    s\" <?xml version='1.0' encoding='US-ASCII'?>\n<a>\xC3\xA9</a>"

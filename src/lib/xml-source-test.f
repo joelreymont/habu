@@ -2,7 +2,10 @@ split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
-require src/lib/test/guard-page.f
+require src/lib/allocator.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/reason.f
 require src/lib/vector.f
 require src/lib/heap.f
@@ -13,9 +16,7 @@ package XML-SOURCE-TEST
 create SOURCE-STORE SOURCE-CAP allot
 create SECOND-STORE SOURCE-CAP allot
 create EDIT-STORE 4 EDIT:STORAGE-BYTES allot
-create ENCODED 64 allot
-create ATTR-OUT 64 allot
-create INSERT-OUT 64 allot
+TYPED-VARIABLE ENCODED-OUT ^VEC:vector<u8>
 create WRITTEN 256 allot
 TYPED-VARIABLE DECODED ^VEC:vector<u8>
 create BOMLESS 256 allot
@@ -160,22 +161,23 @@ CAST: ENCODING>N ( XML:encoding -- n )
    {: edit-off:off edit-len:len :}
    edit-len LEN>N 3 T= edit-off OFF>N 44 T=
    owner s" &#x4E2D;" XML:OWNER-ENCODE-SIZE 8 T=
-   owner s" &#x4E2D;" ENCODED 64 XML:OWNER-ENCODE 8 T=
-   ENCODED 8 s" &#x4E2D;" T$=
-   $5A ENCODED c!
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
+   out ENCODED-OUT !
+   owner s" &#x4E2D;" out XML:OWNER-ENCODE
+   out VEC:SPAN SPAN:$ s" &#x4E2D;" T$=
    [: ASCII-OWNER @ s" 中" XML:OWNER-ENCODE-SIZE drop ;]
    XML:E-ENCODING TTHROWSQ
-   [: ASCII-OWNER @ s" 中" ENCODED 64 XML:OWNER-ENCODE drop ;]
+   [: ASCII-OWNER @ s" 中" ENCODED-OUT @ XML:OWNER-ENCODE ;]
    XML:E-ENCODING TTHROWSQ
    [: ASCII-OWNER @ s\" \z" XML:OWNER-ENCODE-SIZE drop ;]
    XML:E-SCALAR TTHROWSQ
-   ENCODED c@ $5A T=
-   owner s" &#x4E2D;" ENCODED 64 XML:OWNER-ENCODE 8 T=
+   out VEC:SPAN SPAN:$ s" &#x4E2D;" T$=
    owner XML:OWNER-ORIGINAL$ {: original size:n :}
    EDIT-STORE 1 EDIT:STORAGE-BYTES original size EDIT:INIT
-   edit-off edit-len ENCODED 8 EDIT:REPLACE
+   edit-off edit-len out VEC:SPAN SPAN:$ EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE
+   out VEC:DELETE
    WRITTEN written s" <?xml version='1.0' encoding='US-ASCII'?><a>&#x4E2D;</a>" T$=
    SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
@@ -333,18 +335,21 @@ CAST: ENCODING>N ( XML:encoding -- n )
    text-off 1 >LEN XML:SOURCE-RANGE
    {: edit-off:off edit-len:len :}
    edit-len LEN>N 2 T=
-   s\" A🚗" ENCODED 64 XML:ENCODE {: added:n :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
+   s\" A🚗" out XML:ENCODE
+   out VEC:SPAN SPAN:$ {: encoded added:n :}
    added 6 T=
    little if
-      ENCODED added s\" A\z\x3D\xD8\x97\xDE" T$=
+      encoded added s\" A\z\x3D\xD8\x97\xDE" T$=
    else
-      ENCODED added s\" \zA\xD8\x3D\xDE\x97" T$=
+      encoded added s\" \zA\xD8\x3D\xDE\x97" T$=
    then
    XML:SOURCE-ORIGINAL$ {: original original-len:n :}
    EDIT-STORE 2 EDIT:STORAGE-BYTES original original-len EDIT:INIT
-   edit-off edit-len ENCODED added EDIT:REPLACE
+   edit-off edit-len encoded added EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE XML:SOURCE-CLOSE
+   out VEC:DELETE
    edit-off OFF>N {: start:n :}
    edit-len LEN>N {: removed:n :}
    WRITTEN BYTE-VIEW start original start T$=
@@ -383,22 +388,28 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:SOURCE-LEXICAL$ nip >OFF 0 >LEN XML:SOURCE-RANGE
    {: eof-wire:off eof-old:len :}
    eof-old LEN>N 0 T=
-   s\" A🚗" ATTR-OUT 64 XML:ENCODE {: attr-added:n :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
+   s\" A🚗" out XML:ENCODE
+   out VEC:COUNT {: attr-added:n :}
+   s\" pre-" out XML:ENCODE
+   out VEC:COUNT attr-added - {: insert-added:n :}
+   s\" " out XML:ENCODE
+   out VEC:COUNT attr-added insert-added + T=
+   out VEC:SPAN SPAN:$ drop {: encoded :}
    little if
-      ATTR-OUT attr-added s\" A\z\x3D\xD8\x97\xDE" T$=
+      encoded attr-added s\" A\z\x3D\xD8\x97\xDE" T$=
    else
-      ATTR-OUT attr-added s\" \zA\xD8\x3D\xDE\x97" T$=
+      encoded attr-added s\" \zA\xD8\x3D\xDE\x97" T$=
    then
-   s\" pre-" INSERT-OUT 64 XML:ENCODE {: insert-added:n :}
-   s\" " ENCODED 0 XML:ENCODE 0 T=
    XML:SOURCE-ORIGINAL$ {: original original-len:n :}
    EDIT-STORE 4 EDIT:STORAGE-BYTES original original-len EDIT:INIT
-   attr-wire attr-old ATTR-OUT attr-added EDIT:REPLACE
-   insert-wire insert-old INSERT-OUT insert-added EDIT:REPLACE
-   delete-wire delete-old ENCODED 0 EDIT:REPLACE
-   eof-wire eof-old ENCODED 0 EDIT:REPLACE
+   attr-wire attr-old encoded attr-added EDIT:REPLACE
+   insert-wire insert-old encoded attr-added + insert-added EDIT:REPLACE
+   delete-wire delete-old encoded 0 EDIT:REPLACE
+   eof-wire eof-old encoded 0 EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE XML:SOURCE-CLOSE
+   out VEC:DELETE
    attr-wire OFF>N {: a:n :}
    attr-old LEN>N {: ar:n :}
    insert-wire OFF>N {: b:n :}
@@ -436,16 +447,19 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:CONTENT {: text-off:off text-len:len :}
    XML:CLOSE
    text-off text-len XML:SOURCE-RANGE {: edit-off:off edit-len:len :}
-   s" é" ENCODED 64 XML:ENCODE {: added:n :}
-   ENCODED added s\" \xE9\z" T$=
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
+   s" é" out XML:ENCODE
+   out VEC:SPAN SPAN:$ {: encoded added:n :}
+   encoded added s\" \xE9\z" T$=
    XML:SOURCE-ORIGINAL$ {: original original-len:n :}
    EDIT-STORE 2 EDIT:STORAGE-BYTES original original-len EDIT:INIT
-   edit-off edit-len ENCODED added EDIT:REPLACE
+   edit-off edit-len encoded added EDIT:REPLACE
    $5A WRITTEN c!
    ['] WRITE-TINY catch EDIT:E-CAPACITY T=
    WRITTEN c@ $5A T=
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE XML:SOURCE-CLOSE
+   out VEC:DELETE
    WRITTEN written s\" \xFF\xFE<\za\z>\z\xE9\z<\z/\za\z>\z" T$=
    SECOND-STORE SOURCE-CAP WRITTEN written XML:SOURCE-INIT
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
@@ -464,13 +478,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : HUGE-RANGE ( XML:source -- XML:source )
    $7FFFFFFFFFFFFFFF >OFF 1 >LEN XML:SOURCE-RANGE 2drop ;
-
-: TINY-ENCODE ( XML:source -- XML:source )
-   s\" A" ENCODED 1 XML:ENCODE drop ;
-
-: ALIAS-ENCODE ( XML:source -- XML:source )
-   XML:SOURCE-ORIGINAL$ {: original size:n :}
-   s\" A" original size XML:ENCODE drop ;
 
 \ A record over the source's own storage is refused before the reader is
 \ built, and the refusal leaves the source with its caller to read and close.
@@ -496,13 +503,10 @@ CAST: ENCODING>N ( XML:encoding -- n )
    ['] END-MID-RANGE catch XML:E-BOUNDARY T=
    ['] NEGATIVE-RANGE catch XML:E-RANGE T=
    ['] HUGE-RANGE catch XML:E-RANGE T=
-   $5A ENCODED c!
-   ['] TINY-ENCODE catch XML:E-CAPACITY T=
-   ENCODED c@ $5A T=
-   ['] ALIAS-ENCODE catch XML:E-ALIAS T=
-   s\" A🚗" ENCODED 64 XML:ENCODE
-   {: added:n :}
-   added 6 T=
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
+   s\" A🚗" out XML:ENCODE
+   out VEC:COUNT 6 T=
+   out VEC:DELETE
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s\" 😀" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
@@ -547,21 +551,47 @@ CAST: ENCODING>N ( XML:encoding -- n )
    READER XML-KIND:START NEXT= XML-KIND:END NEXT=
    XML-KIND:EOF NEXT= XML:CLOSE XML:SOURCE-CLOSE ;
 
-\ The output is measured against the fewest bytes the input can need before the
-\ input is read: all of them in UTF-8, two for every three in UTF-16.
-: UNREAD-UTF8 ( XML:source -- XML:source )
-   4 [char] A GUARD-PAGE:TAIL 5 ENCODED 4 XML:ENCODE drop ;
+\ An allocator bumping through POOL whose resize moves the block and fills
+\ the old one with $A5, so a read of the old block shows.
+256 constant POOL-BYTES
+POOL-BYTES BUFFER: POOL
+variable TOP
+TYPED-VARIABLE MOVER ALLOC:allocator
 
-: UNREAD-UTF16 ( XML:source -- XML:source )
-   2 [char] A GUARD-PAGE:TAIL 3 ENCODED 1 XML:ENCODE drop ;
+: P-ALLOC ( str -- ^u8 )
+   {: st:^ len:n :}
+   TOP @ len + POOL-BYTES > if E-MEM-SIZE throw then
+   st TOP @ +  len 7 + -8 and TOP +! ;
 
-: ENCODE-BOUND ( -- )
+: P-RESIZE ( ^u8 str n -- ^u8 )
+   {: st:^ block:^ old:n new:n :}
+   st new P-ALLOC {: moved:^ :}
+   block moved old new min BYTE-COPY
+   $A5 block old SPAN:MAKE SPAN:FILL  moved ;
+
+: P-FREE ( ^u8 ^u8 -- ) 2drop ;
+
+: APPENDS-KEEP ( -- )
    s" <a/>" OPEN
-   ['] UNREAD-UTF8 catch XML:E-CAPACITY T=
-   XML:SOURCE-CLOSE
-   s\" \xFF\xFE<\za\z/\z>\z" OPEN
-   ['] UNREAD-UTF16 catch XML:E-CAPACITY T=
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
+   s" ab" out VEC:APPEND
+   s" cd" out XML:ENCODE
+   s" <e" out XML:ESCAPE-TEXT
+   s" 'f" out XML:ESCAPE-ATTR
+   out VEC:SPAN SPAN:$ s" abcd&lt;e&apos;f" T$=
+   out VEC:DELETE
    XML:SOURCE-CLOSE ;
+
+\ The vector's own bytes escaped into it while its block moves: TRIM leaves
+\ no room, so the escape grows the block.
+: ESCAPE-OWN ( -- )
+   POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] MOVER ALLOC:INIT
+   MOVER 0 [type] u8 VEC:NEW {: v:^ :}
+   s" a<b" v VEC:APPEND
+   v 3 VEC:TRIM
+   v VEC:SPAN SPAN:$ v XML:ESCAPE-TEXT
+   v VEC:SPAN SPAN:$ s" a<ba&lt;b" T$=
+   v VEC:DELETE ;
 
 \ MARKED holds a UTF-16 text built scalar by scalar; MARKED-AT holds, per
 \ lexical offset, the original offset that scalar was written at, or -1 inside
@@ -802,7 +832,8 @@ true MARKED-RANGES
 false MARKED-RANGES
 WIDE-OWNER-RANGES
 SOURCE-CAPACITY
-ENCODE-BOUND
+APPENDS-KEEP
+ESCAPE-OWN
 REFUSED-READER-KEEPS-SOURCE
 REJECTIONS
 DECLARATION-TEXTS

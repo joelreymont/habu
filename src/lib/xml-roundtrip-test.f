@@ -12,8 +12,6 @@ CAST: TOKEN>N ( XML:kind -- n )
 $1000 constant BYTE-CAP
 align
 create EDITOR 2 EDIT:STORAGE-BYTES allot
-create ATTRIBUTE-BUF BYTE-CAP allot
-create TEXT-BUF BYTE-CAP allot
 create DOCUMENT BYTE-CAP allot
 TYPED-VARIABLE READBACK ^VEC:vector<u8>
 create SINGLE 1 allot
@@ -46,15 +44,19 @@ TYPED-VARIABLE RD XML:cursor
 
 : APPLY ( ^u8 n -- n )
    {: value size:n :}
-   value size ATTRIBUTE-BUF BYTE-CAP ESCAPE-ATTR {: attr-size:n :}
-   value size TEXT-BUF BYTE-CAP ESCAPE-TEXT {: text-size:n :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: attr:^ :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: text:^ :}
+   value size attr ESCAPE-ATTR
+   value size text ESCAPE-TEXT
    ATTRIBUTE-RANGE {: attr-start:off attr-old:len :}
    TEXT-RANGE {: text-start:off text-old:len :}
    EDITOR 2 EDIT:STORAGE-BYTES ORIGINAL$ EDIT:INIT
-   attr-start attr-old ATTRIBUTE-BUF attr-size EDIT:REPLACE
-   text-start text-old TEXT-BUF text-size EDIT:REPLACE
+   attr-start attr-old attr VEC:SPAN SPAN:$ EDIT:REPLACE
+   text-start text-old text VEC:SPAN SPAN:$ EDIT:REPLACE
    DOCUMENT BYTE-CAP EDIT:WRITE {: document-size:n :}
-   EDIT:CLOSE document-size ;
+   EDIT:CLOSE
+   attr VEC:DELETE  text VEC:DELETE
+   document-size ;
 
 : READBACK-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW READBACK ! ;
 : CLEARED ( -- ^VEC:vector<u8> ) READBACK @ dup 0 VEC:RESIZE ;
