@@ -182,28 +182,18 @@ ARENA CURSORS JSON:cursor
    then
    code throw ;
 
-\ Room for a rejection's place and separators beside its texts.
-64 constant TEXT-SLACK
-
-: PUT ( ^u8 ^u8 n -- ^u8 ) {: dst:^ src:^ u:n :}
-   src dst u BYTE-COPY  dst u + ;
-
-\ `L:C: expected e, found ` for the byte at offset at of the schema text.
-: PUT-PLACE ( ^u8 ^build n ^u8 n -- ^u8 ) {: dst:^ b:^ at:n e:^ eu:n :}
+\ Opens a text `L:C: expected e, found ` for the byte at offset at of the
+\ schema text.
+: OPEN-AT ( ^build n ^u8 n -- ) {: b:^ at:n e:^ eu:n :}
    b BUILD-TEXT @ dup at + 1 1 0 REJECTION:POSITION drop
-   {: line:n col:n :}
-   dst line FMT:INT$ PUT s" :" PUT col FMT:INT$ PUT
-   s" : expected " PUT e eu PUT s" , found " PUT ;
+   REASON:OPEN REASON:AT
+   REASON:EXPECTED e eu REASON:APPEND REASON:FOUND ;
 
 \ Throws E-SCHEMA for the byte at offset at, which the reader has left,
 \ with the expected text, the found text f as given and the fix.
-: REJECT-AT ( ^build n ^u8 n ^u8 n ^u8 n -- )
-   {: b:^ at:n e:^ eu:n f:^ fu:n x:^ xu:n :}
-   b BUILD-SCRATCH @ eu fu + xu + TEXT-SLACK + ARENA:ALLOC drop
-   {: base:^ :}
-   base b at e eu PUT-PLACE f fu PUT s" ; " PUT x xu PUT
-   base - {: tu:n :}
-   base tu E-SCHEMA REASON:THROW ;
+: REJECT-AT ( ^build n ^u8 n ^u8 n ^u8 n -- ) {: f:^ fu:n x:^ xu:n :}
+   OPEN-AT  f fu REASON:APPEND
+   REASON:FIX x xu REASON:APPEND  E-SCHEMA REASON:STOP ;
 
 \ A code the JSON reader threw leaves as E-SCHEMA with its text; a source
 \ COMPILE's caller gave wrong, and every other code, as it is.
@@ -371,13 +361,12 @@ $73 constant SCALARS
    a u SPAN:MAKE nd NODE-VALUES ! ;
 
 \ Rejects the pattern string at offset at with REGEX's text as found.
-: BAD-PATTERN ( ^build n -- ) {: b:^ at:n :}
-   REGEX:E-PATTERN REASON:TEXT$ {: t:^ tu:n :}
-   s" pattern column " {: p:^ pu:n :}
-   b BUILD-SCRATCH @ pu tu + ARENA:ALLOC drop {: f:^ :}
-   f p pu PUT t tu PUT drop
-   b at s" a pattern the dialect takes" f pu tu +
-   s" rewrite the pattern as its text says" REJECT-AT ;
+: BAD-PATTERN ( ^build n -- )
+   s" a pattern the dialect takes" OPEN-AT
+   s" pattern column " REASON:APPEND
+   REGEX:E-PATTERN REASON:TEXT$ REASON:APPEND
+   REASON:FIX s" rewrite the pattern as its text says" REASON:APPEND
+   E-SCHEMA REASON:STOP ;
 
 : PATTERN-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    JSON:READ-TOKEN JSON:T-STR <> if

@@ -13,8 +13,6 @@ require src/lib/byte-buffer.f
 require src/lib/sort.f
 require src/lib/utf16.f
 require src/lib/utf8-scalar.f
-require src/lib/unicode/visible.f
-require src/lib/fmt.f
 require src/lib/reason.f
 require src/core/rejection.f
 
@@ -254,8 +252,7 @@ LINEAR: ERASE-READER ( JSON:reader -- ^n )
    state CURSOR-MORE @ w 1- cells + CELL-VIEW ;
 
 \ <found>: the input's end, `byte $HH` for a byte no line shows, else up to
-\ FOUND-CAP token bytes, made visible, in backticks, `...` if cut.
-32 constant FOUND-CAP
+\ REASON:QUOTE-MOST token bytes, made visible, in backticks, `...` if cut.
 $7F constant DEL
 
 0 constant FOUND-END
@@ -264,13 +261,6 @@ $7F constant DEL
 3 constant FOUND-CUT
 
 : END$ ( -- str ) s" the end of the input" ;
-: BYTE$ ( -- str ) s" byte $" ;
-: CUT$ ( -- str ) s" ..." ;
-: TICK$ ( -- str ) s" `" ;
-: LINE-SEP$ ( -- str ) s" :" ;
-: EXPECTED-SEP$ ( -- str ) s" : expected " ;
-: FOUND-SEP$ ( -- str ) s" , found " ;
-: FIX-SEP$ ( -- str ) s" ; " ;
 
 : SHOWN? ( n -- bool )
    dup SP >= swap DEL < and ;
@@ -286,9 +276,9 @@ $7F constant DEL
 : BARE? ( n -- bool )
    dup SHOWN? over SP <> and over STRUCTURAL? 0= and swap DQ <> and ;
 
-\ Where a token's scan stops: one byte past FOUND-CAP tells a cut.
+\ Where a token's scan stops: one byte past REASON:QUOTE-MOST tells a cut.
 : FOUND-LIM ( ^cursor n -- n ) {: state:^ off:n :}
-   off FOUND-CAP + 1+ state CURSOR-SRC-LEN @ min ;
+   off REASON:QUOTE-MOST + 1+ state CURSOR-SRC-LEN @ min ;
 
 \ A backslash before a quote or a backslash: the pair is shown together, so
 \ an escaped quote never reads as the string's close.
@@ -323,8 +313,8 @@ $7F constant DEL
 
 : FOUND-RUN ( ^cursor n -- n n ) {: state:^ off:n :}
    state state off FOUND-LIM off BARE-END off - {: len:n :}
-   len FOUND-CAP <= if len FOUND-TOKEN exit then
-   state CURSOR-SRC @ off + len FOUND-CAP UTF8:FIT FOUND-CUT ;
+   len REASON:QUOTE-MOST <= if len FOUND-TOKEN exit then
+   state CURSOR-SRC @ off + len REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
 
 \ The next index after the shown character at i, and whether it closed the
 \ string.
@@ -346,14 +336,15 @@ $7F constant DEL
       drop state lim rot STRING-STEP
    repeat ;
 
-\ Whole when it closes, or the input ends, within FOUND-CAP bytes; else cut at
-\ a byte CHAR-END does not step or at FOUND-CAP, on a character's first byte.
+\ Whole when it closes, or the input ends, within REASON:QUOTE-MOST bytes; else
+\ cut at a byte CHAR-END does not step or at REASON:QUOTE-MOST, on a
+\ character's first byte.
 : FOUND-STRING ( ^cursor n -- n n ) {: state:^ off:n :}
    state state off FOUND-LIM off STRING-END {: end:n closed:bool :}
    end off - {: len:n :}
    closed end state CURSOR-SRC-LEN @ = or
-   len FOUND-CAP <= and if len FOUND-TOKEN exit then
-   state CURSOR-SRC @ off + len FOUND-CAP UTF8:FIT FOUND-CUT ;
+   len REASON:QUOTE-MOST <= and if len FOUND-TOKEN exit then
+   state CURSOR-SRC @ off + len REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
 
 \ The length and form of the token at off. Inside a string a quote closes it;
 \ elsewhere it opens a string token.
@@ -368,27 +359,10 @@ $7F constant DEL
    b DQ = inside 0= and if state off FOUND-STRING exit then
    1 FOUND-TOKEN ;
 
-: FOUND-SIZE ( ^cursor n n n -- n ) {: state:^ off:n len:n form:n :}
-   form FOUND-END = if END$ nip exit then
-   form FOUND-BYTE = if BYTE$ nip 2 + exit then
-   state CURSOR-SRC @ off + len UNICODE-VISIBLE:LEN {: shown:n :}
-   form FOUND-CUT = if shown CUT$ nip + 2 + exit then
-   shown 2 + ;
-
-: PUT ( ^u8 n ^u8 n -- ^u8 n ) {: buf:^ at:n a:^ u:n :}
-   a buf at + u BYTE-COPY
-   buf at u + ;
-
-: PUT-FOUND ( ^u8 n ^cursor n n n -- str )
-   {: buf:^ at:n state:^ off:n len:n form:n :}
-   form FOUND-END = if buf at END$ PUT exit then
-   form FOUND-BYTE = if
-      buf at BYTE$ PUT  state off AT 2 FMT:HEX-WIDTH$ PUT exit
-   then
-   buf at TICK$ PUT over +
-   state CURSOR-SRC @ off + len UNICODE-VISIBLE:PUT over -
-   form FOUND-CUT = if CUT$ PUT then
-   TICK$ PUT ;
+: PUT-FOUND ( ^cursor n n n -- ) {: state:^ off:n len:n form:n :}
+   form FOUND-END = if END$ REASON:APPEND exit then
+   form FOUND-BYTE = if state off AT REASON:BYTE exit then
+   state CURSOR-SRC @ off + len  form FOUND-CUT =  REASON:QUOTE ;
 
 \ The line and column of off.
 : PLACE ( ^cursor n -- n n ) {: state:^ off:n :}
@@ -400,27 +374,24 @@ $7F constant DEL
    dup E-JSON-READ-STRING = over E-JSON-READ-ESCAPE = or
    swap E-JSON-READ-SURROGATE = or ;
 
-: TEXT-SIZE ( ^cursor n n n n -- n ) {: state:^ off:n eu:n fu:n code:n :}
-   state off PLACE {: line:n col:n :}
-   line FMT:INT$ nip col FMT:INT$ nip + LINE-SEP$ nip +
-   EXPECTED-SEP$ nip + FOUND-SEP$ nip + FIX-SEP$ nip + eu + fu +
-   state off state off code IN-STRING? FOUND-FORM FOUND-SIZE + ;
+\ Opens the text of the place at off, up to its expected part.
+: REJECT-HEAD ( ^cursor n -- ) {: state:^ off:n :}
+   REASON:OPEN
+   state off PLACE REASON:AT REASON:EXPECTED ;
 
-: REJECT-SCOPE ( ^cursor n str str n ^u8 NUM:alloc-byte-len -- )
-   drop {: state:^ off:n ea:^ eu:n fa:^ fu:n code:n buf:^ :}
-   state off PLACE {: line:n col:n :}
-   buf 0 line FMT:INT$ PUT LINE-SEP$ PUT col FMT:INT$ PUT
-   EXPECTED-SEP$ PUT ea eu PUT FOUND-SEP$ PUT
+\ Writes the found part and the fix, and throws code with the text.
+: REJECT-TAIL ( ^cursor n str n -- ) {: state:^ off:n fa:^ fu:n code:n :}
+   REASON:FOUND
    state off state off code IN-STRING? FOUND-FORM PUT-FOUND
-   FIX-SEP$ PUT fa fu PUT
-   code REASON:THROW ;
+   REASON:FIX fa fu REASON:APPEND
+   code REASON:STOP ;
 
-\ Throws code with the text of the place at off, sized first, SB untouched.
+\ Throws code with the text of the place at off, SB untouched.
 : REJECT ( ^cursor n ^u8 n ^u8 n n -- )
    {: state:^ off:n ea:^ eu:n fa:^ fu:n code:n :}
-   state off ea eu fa fu code
-   state off eu fu code TEXT-SIZE MEM:BYTES-ALLOC-LEN
-   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
+   state off REJECT-HEAD
+   ea eu REASON:APPEND
+   state off fa fu code REJECT-TAIL ;
 
 \ The current token's first byte: a string's or a key's opening quote.
 : TOKEN-START ( ^cursor -- n ) {: state:^ :}
@@ -1442,27 +1413,16 @@ private
 : LIST-SEP$ ( -- str ) s" , " ;
 : MEMBER-OF$ ( -- str ) s" the member `" ;
 
-\ Room for `one of ` and each name in backticks, LIST-SEP$ between them,
-\ for a list of count names in u bytes, a `?` counted though not shown.
-: LIST-SIZE ( n n -- n ) {: u:n count:n :}
-   ONE-OF$ nip  u count 1- -  +  count 2 * +
-   count 1- LIST-SEP$ nip * + ;
-
-: PUT-NAME ( ^u8 n str n n -- str n )
-   {: buf:^ at:n a:^ u:n start:n idx:n :}
+\ Writes the name at start in backticks, after LIST-SEP$ unless it is the
+\ first; answers the next name's start.
+: PUT-NAME ( str n n -- n ) {: a:^ u:n start:n idx:n :}
    a u start NAME-AT {: na:^ nu:n next:n :}
-   buf at idx 0<> if LIST-SEP$ PUT then
-   TICK$ PUT na nu BARE PUT TICK$ PUT next ;
+   idx 0<> if LIST-SEP$ REASON:APPEND then
+   s" `" REASON:APPEND  na nu BARE REASON:APPEND  s" `" REASON:APPEND
+   next ;
 
 : UNKNOWN-FIX$ ( -- str )
    s" rename the member to one of those, or remove it" ;
-
-: UNKNOWN-SCOPE ( ^cursor str n ^u8 NUM:alloc-byte-len -- )
-   drop {: state:^ a:^ u:n count:n buf:^ :}
-   buf 0 ONE-OF$ PUT
-   0 count 0 ?do a u rot i PUT-NAME loop drop
-   {: ea:^ eu:n :}
-   state state TOKEN-START ea eu UNKNOWN-FIX$ E-MEMBER REJECT ;
 
 \ Rejects the current key, which no listed name matches.
 : UNKNOWN-REJECT ( ^cursor str n -- ) {: state:^ a:^ u:n count:n :}
@@ -1470,14 +1430,10 @@ private
       state s" the object's `}`" s" remove the member"
       E-MEMBER REJECT-TOKEN
    then
-   state a u count  u count LIST-SIZE MEM:BYTES-ALLOC-LEN
-   [: UNKNOWN-SCOPE ;] MEM:WITH-BYTES ;
-
-: MISSING-SCOPE ( ^cursor str ^u8 NUM:alloc-byte-len -- )
-   drop {: state:^ na:^ nu:n buf:^ :}
-   buf 0 MEMBER-OF$ PUT na nu PUT TICK$ PUT {: ea:^ eu:n :}
-   state state TOKEN-START ea eu s" add the member to the object"
-   E-MEMBER REJECT ;
+   state state TOKEN-START REJECT-HEAD
+   ONE-OF$ REASON:APPEND
+   0 count 0 ?do a u rot i PUT-NAME loop drop
+   state state TOKEN-START UNKNOWN-FIX$ E-MEMBER REJECT-TAIL ;
 
 \ Rejects the name at start unless its member was seen or the name is
 \ optional, and answers the next name's start.
@@ -1485,8 +1441,10 @@ private
    {: start:n state:^ a:^ u:n seen:bool :}
    a u start NAME-AT {: na:^ nu:n next:n :}
    seen  na nu OPTIONAL?  or if next exit then
-   state na nu  MEMBER-OF$ nip nu + 1+ MEM:BYTES-ALLOC-LEN
-   [: MISSING-SCOPE ;] MEM:WITH-BYTES ;
+   state state TOKEN-START REJECT-HEAD
+   MEMBER-OF$ REASON:APPEND  na nu REASON:APPEND  s" `" REASON:APPEND
+   state state TOKEN-START s" add the member to the object"
+   E-MEMBER REJECT-TAIL ;
 
 \ At the object's `}`: rejects the first required name not seen.
 : REQUIRE-ALL ( ^cursor str n ^u8 -- )

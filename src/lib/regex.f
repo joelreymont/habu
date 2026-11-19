@@ -43,12 +43,12 @@ split-str
 \ MEM:WITH-BYTES scope, freed on every path.
 
 require src/lib/error.f
+require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/arena.f
 require src/lib/utf8-scalar.f
 require src/lib/reason.f
 require src/lib/sort.f
-require src/lib/unicode/visible.f
 
 package REGEX
 private
@@ -89,10 +89,6 @@ $5C constant BACKSLASH
 MEM-MAX-N INST-BYTES / 4 / constant SIZE-CAP
 \ The most pairs one class byte adds: `\S` adds 11 for its 2 bytes.
 6 constant PAIRS-PER-BYTE
-\ The column's 19 digits at most, the fixed words and the found text's own
-\ words, `the end of the pattern` the longest.
-64 constant TEXT-SLACK
-32 constant FOUND-MOST
 
 CAST: >INSTS ( ^u8 -- ^inst )
 
@@ -166,52 +162,29 @@ ARENA PARSERS parser
 
 \ ---- rejections ------------------------------------------------------------
 
-: PUT ( ^u8 ^u8 n -- ^u8 ) {: dst:^ src:^ u:n :}
-   src dst u BYTE-COPY  dst u + ;
-
-: PUT-DEC ( ^u8 n -- ^u8 ) {: dst:^ v:n :}
-   v 10 < if v [char] 0 + dst c!  dst 1+ exit then
-   dst v 10 / recurse {: d:^ :}
-   v 10 mod [char] 0 + d c!  d 1+ ;
-
-: HEX-DIGIT ( n -- n )
-   dup 10 < if [char] 0 + else 10 - [char] A + then ;
-
-: PUT-BYTE ( ^u8 n -- ^u8 ) {: dst:^ b:n :}
-   dst s" byte $" PUT {: d:^ :}
-   b 4 rshift HEX-DIGIT d c!
-   b $F and HEX-DIGIT d 1+ c!
-   d 2 + ;
-
 \ A byte a found text never shows as itself.
 : RAW? ( n -- bool ) {: b:n :} b $20 < b $7F >= or ;
 
 \ The bytes of the token a found text keeps.
-: KEPT ( ^u8 n -- ^u8 n ) over swap FOUND-MOST UTF8:FIT ;
+: KEPT ( ^u8 n -- ^u8 n ) over swap REASON:QUOTE-MOST UTF8:FIT ;
 
-: PUT-TOKEN ( ^u8 ^u8 n -- ^u8 ) {: dst:^ tok:^ u:n :}
-   tok u KEPT {: kept:^ cut:n :}
-   dst s" `" PUT kept cut UNICODE-VISIBLE:PUT
-   cut u < if s" ..." PUT then
-   s" `" PUT ;
-
-: PUT-FOUND ( ^u8 ^parser n n -- ^u8 ) {: dst:^ p:^ at:n u:n :}
-   u 0= if dst s" the end of the pattern" PUT exit then
+: PUT-FOUND ( ^parser n n -- ) {: p:^ at:n u:n :}
+   u 0= if s" the end of the pattern" REASON:APPEND exit then
    p PARSER-SRC @ at + {: tok:^ :}
-   u 1 = tok c@ RAW? and if dst tok c@ PUT-BYTE exit then
-   dst tok u PUT-TOKEN ;
+   u 1 = tok c@ RAW? and if tok c@ REASON:BYTE exit then
+   tok u KEPT {: kept:^ cut:n :}
+   kept cut  cut u <  REASON:QUOTE ;
 
-\ Y is the u bytes at offset at, the pattern's end when u is 0. The text lies
-\ in the scratch arena, which the throw releases after REASON:THROW copied it.
+\ Throws E-PATTERN with the text `C: expected e, found Y; f`, Y the u bytes at
+\ offset at, the pattern's end when u is 0.
 : REJECT ( ^parser n n ^u8 n ^u8 n -- )
    {: p:^ at:n u:n e:^ eu:n f:^ fu:n :}
-   p PARSER-SRC @ at + u KEPT UNICODE-VISIBLE:LEN {: vu:n :}
-   p PARSER-SCRATCH @ eu fu + vu + TEXT-SLACK + ARENA:ALLOC drop
-   {: base:^ :}
-   base at 1+ PUT-DEC  s" : expected " PUT  e eu PUT
-   s" , found " PUT  p at u PUT-FOUND  s" ; " PUT  f fu PUT
-   base - {: tu:n :}
-   base tu E-PATTERN REASON:THROW ;
+   REASON:OPEN
+   at 1+ FMT:INT$ REASON:APPEND  s" : " REASON:APPEND
+   REASON:EXPECTED e eu REASON:APPEND
+   REASON:FOUND p at u PUT-FOUND
+   REASON:FIX f fu REASON:APPEND
+   E-PATTERN REASON:STOP ;
 
 \ Rejects the character at the offset read next.
 : REJECT-HERE ( ^parser ^u8 n ^u8 n -- )

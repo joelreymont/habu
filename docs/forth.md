@@ -2099,7 +2099,11 @@ answers alike.
   span, replacing its earlier one, so the span may be scratch.
   `REASON:TEXT$ ( n -- ^u8 n )` answers that text when the task's last
   `REASON:THROW` threw code n, else empty; `src/lib/reason.f` states the
-  contract a thrower and a catch keep.
+  contract a thrower and a catch keep. A library writes such a text in parts
+  between `REASON:OPEN` and `REASON:STOP ( n -- )`, which throws it: `AT`,
+  `EXPECTED`, `FOUND` and `FIX` write the place and the separators of
+  `L:C: expected X, found Y; fix`, and `APPEND`, `VISIBLE`, `QUOTE` and `BYTE`
+  write the parts.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
   assertions, stack-preserving outcome adapters returning the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.

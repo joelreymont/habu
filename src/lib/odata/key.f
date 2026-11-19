@@ -12,22 +12,18 @@ require src/lib/span.f
 require src/lib/memory.f
 require src/lib/uri.f
 require src/lib/base64.f
-require src/lib/byte-buffer.f
 require src/lib/reason.f
 require src/lib/odata/metadata.f
-require src/lib/unicode/visible.f
 
 package ODATA
 private
 
-\ The predicate being written: rest is what is left of the caller's span;
-\ text is a rejection's BUF header, just after the record.
+\ The predicate being written: rest is what is left of the caller's span.
 STRUCTURE predicate DERIVE addr
    FIELD rest SPAN:span<u8>
    FIELD keys n
    FIELD written n
    FIELD v2 bool
-   FIELD text ^u8
 ;STRUCTURE
 
 CAST: >PREDICATE ( ^u8 -- ^predicate )
@@ -300,48 +296,32 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
       undeclared OF E-KEY throw ENDOF
    ;MATCH ;
 
-\ A rejection's text: SAY adds text as given, SAY-QUOTED in backticks with
-\ `...` after it when the bool says it was cut.
-: SAY ( ^predicate ^u8 n -- )
-   {: p:^ a:^ u:n :}
-   a u BUF:N>BLEN p PREDICATE-TEXT @ BUF:APPEND-SPAN ;
+: SAY-NAME ( ^property -- )
+   PROPERTY-NAME$ false REASON:QUOTE ;
 
-: SAY-QUOTED ( ^predicate str bool -- )
-   {: p:^ a:^ u:n cut:bool :}
-   p s" `" SAY a u p PREDICATE-TEXT @ UNICODE-VISIBLE:APPEND
-   cut if p s" ..." SAY then
-   p s" `" SAY ;
-
-: SAY-NAME ( ^predicate ^property -- )
-   PROPERTY-NAME$ false SAY-QUOTED ;
-
-: SAY-TYPE ( ^predicate ^property -- )
-   PROPERTY-TYPE$ false SAY-QUOTED ;
+: SAY-TYPE ( ^property -- )
+   PROPERTY-TYPE$ false REASON:QUOTE ;
 
 \ The value does not fit the property's type.
-: VALUE-TEXT ( ^predicate ^property str -- )
-   {: p:^ pr:^ v:^ vl:n :}
-   p s" expected a " SAY p pr SAY-TYPE
-   p s"  value for key property " SAY p pr SAY-NAME
-   p s" , found " SAY p v vl CUT SAY-QUOTED
-   p s" ; give " SAY p pr SAY-NAME
-   p s"  a value in that type's form" SAY ;
+: VALUE-TEXT ( ^property str -- )
+   {: pr:^ v:^ vl:n :}
+   s" expected a " REASON:APPEND pr SAY-TYPE
+   s"  value for key property " REASON:APPEND pr SAY-NAME
+   REASON:FOUND v vl QUOTE
+   REASON:FIX s" give " REASON:APPEND pr SAY-NAME
+   s"  a value in that type's form" REASON:APPEND ;
 
 \ The property's type is one the document does not declare.
-: UNDECLARED-TEXT ( ^predicate ^property -- )
-   {: p:^ pr:^ :}
-   p s" expected " SAY p pr SAY-NAME
-   p s"  to have a type the document declares, found " SAY p pr SAY-TYPE
-   p s" ; give METADATA a document that declares " SAY p pr SAY-TYPE ;
+: UNDECLARED-TEXT ( ^property -- )
+   {: pr:^ :}
+   s" expected " REASON:APPEND pr SAY-NAME
+   s"  to have a type the document declares" REASON:APPEND
+   REASON:FOUND pr SAY-TYPE
+   REASON:FIX s" give METADATA a document that declares " REASON:APPEND
+   pr SAY-TYPE ;
 
-\ Throws E-KEY with the text WRITE gives; the text is freed once
-\ REASON:THROW has copied it, and on WRITE's throw.
-: REJECT ( ^predicate [ ^predicate -- ] -- )
-   {: p:^ write :}
-   p PREDICATE-TEXT @ 64 BUF:N>BLEN BUF:INIT
-   [: p write execute
-      p PREDICATE-TEXT @ BUF:SPAN$ BUF:BLEN>N E-KEY REASON:THROW ;]
-   [: p PREDICATE-TEXT @ BUF:DISPOSE ;] finally ;
+: REJECT ( [ -- ] -- )
+   REASON:OPEN execute E-KEY REASON:STOP ;
 
 \ The value's literal; a value LITERAL throws E-KEY for is E-KEY with its
 \ text, any other code thrown on.
@@ -353,7 +333,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
          [: k KEY-REF-PROPERTY @ UNDECLARED-TEXT ;]
       else
          [: k KEY-REF-PROPERTY @ v vl VALUE-TEXT ;]
-      then p swap REJECT
+      then REJECT
    then
    code 0<> if code throw then ;
 
@@ -373,7 +353,6 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 : WRITE-PREDICATE ( ^entity-type [ ^property -- ^u8 n ] SPAN:span<u8> ^u8 NUM:alloc-byte-len -- n )
    drop {: t:^ q s at:^ :}
    at >PREDICATE {: p:^ :}
-   at PREDICATE-BYTES + p PREDICATE-TEXT !
    s p PREDICATE-REST !
    t TYPE-V2? p PREDICATE-V2 !
    t [: drop 1 p PREDICATE-KEYS +! ;] KEY-REFS-OF
@@ -387,7 +366,7 @@ public
 \ The key predicate of the entity whose key values CALLBACK gives as text,
 \ written into the span; its length.
 : KEY ( ^entity-type [ ^property -- ^u8 n ] SPAN:span<u8> -- n )
-   PREDICATE-BYTES BUF:HDR-BYTES + MEM:BYTES-ALLOC-LEN
+   PREDICATE-BYTES MEM:BYTES-ALLOC-LEN
    [: WRITE-PREDICATE ;] MEM:WITH-BYTES ;
 
 ;package

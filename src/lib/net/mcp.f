@@ -72,7 +72,6 @@ require src/lib/memory.f
 require src/lib/arena.f
 require src/lib/utf8-scalar.f
 require src/lib/adt/option.f
-require src/lib/fmt.f
 require src/lib/reason.f
 require src/core/rejection.f
 require src/lib/byte-buffer.f
@@ -889,16 +888,11 @@ CAST: HELD>N ( held -- n )
 : PUT ( ^u8 ^u8 n -- ^u8 ) {: dst:^ src:^ u:n :}
    src dst u BYTE-COPY  dst u + ;
 
-: SAY-SCOPE ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- )
-   drop {: wa:^ wu:n ta:^ tu:n buf:^ :}
-   buf wa wu PUT s"  " PUT ta tu PUT drop
-   buf wu tu + 1+ E-SCHEMA REASON:THROW ;
-
 \ Throws E-SCHEMA with the name of the text judged, then the text.
 : SAY ( ^u8 n ^u8 n -- )
    {: wa:^ wu:n ta:^ tu:n :}
-   wa wu ta tu  wu tu + 1+ MEM:BYTES-ALLOC-LEN
-   [: SAY-SCOPE ;] MEM:WITH-BYTES ;
+   REASON:OPEN wa wu REASON:APPEND s"  " REASON:APPEND ta tu REASON:APPEND
+   E-SCHEMA REASON:STOP ;
 
 \ Rejects the reader's token in the text judged, given the expected text
 \ and the fix: READ-REJECT's E-MEMBER text leaves as E-SCHEMA.
@@ -1067,25 +1061,15 @@ CAST: HELD>N ( held -- n )
       ;MATCH
    repeat drop -1 ;
 
-\ The longest page rejection: two numbers of at most 20 digits and its
-\ literals.
-128 constant PAGE-TEXT-LEN
-
-: PAGE-SCOPE ( ^u8 n ^u8 NUM:alloc-byte-len -- )
-   drop {: page:^ at:n buf:^ :}
-   page page at + 1 1 0 REJECTION:POSITION drop {: line:n col:n :}
-   buf s" page " PUT line FMT:INT$ PUT s" :" PUT col FMT:INT$ PUT
-   s" : expected UTF-8 text, found byte $" PUT
-   page at + c@ 2 FMT:HEX-WIDTH$ PUT
-   s" ; encode the page as UTF-8" PUT
-   buf - {: tu:n :}
-   buf tu E-SCHEMA REASON:THROW ;
-
 : REQUIRE-UTF8 ( ^u8 n -- ) {: page:^ pu:n :}
    page pu BAD-BYTE {: at:n :}
    at 0 < if exit then
-   page at PAGE-TEXT-LEN MEM:BYTES-ALLOC-LEN
-   [: PAGE-SCOPE ;] MEM:WITH-BYTES ;
+   REASON:OPEN s" page " REASON:APPEND
+   page page at + 1 1 0 REJECTION:POSITION drop REASON:AT
+   REASON:EXPECTED s" UTF-8 text" REASON:APPEND
+   REASON:FOUND page at + c@ REASON:BYTE
+   REASON:FIX s" encode the page as UTF-8" REASON:APPEND
+   E-SCHEMA REASON:STOP ;
 
 
 : REGISTERED-URI? ( str -- bool )

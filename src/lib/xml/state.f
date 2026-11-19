@@ -331,6 +331,15 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-LINE @ stream STREAM-COLUMN @
    stream STREAM-EOF @ 0= if COUNT-MORE else COUNT-BYTES then PLACE-MAKE ;
 
+\ Opens the text of a rejection at off in the window, up to its expected part.
+: REJECT-HEAD ( ^n n -- ) {: state off:n :}
+   state SOURCE$ drop state WINDOW-PLACE off HEAD-FROM ;
+
+\ Writes the found part at off in the window and the fix, and throws code with
+\ the text.
+: REJECT-TAIL ( ^n n str n -- ) {: state off:n fa:^ fu:n code:n :}
+   state SOURCE$ state WINDOW-PLACE off fa fu code TAIL-FROM ;
+
 \ Rejects at off in the window, placed in the whole input.
 : REJECT ( ^n n ^u8 n ^u8 n n -- )
    {: state off:n ea:^ eu:n fa:^ fu:n code:n :}

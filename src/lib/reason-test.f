@@ -15,7 +15,7 @@ package REASON-TEST
 \ Two plain codes nothing else in this process throws.
 7 constant CODE-A
 8 constant CODE-B
-\ Past reason.f's TEXT-CAP, so the buffer grows.
+\ Long enough that the text's buffer grows.
 $3000 constant LONG-U
 create LONG-TEXT LONG-U allot
 variable BARRIER
@@ -42,6 +42,15 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    FILL-LONG
    LONG-TEXT LONG-U CODE-A STATE
    CODE-A REASON:TEXT$ LONG-TEXT LONG-U T$= ;
+
+\ A text written in parts quotes the last text whole: the next text is written
+\ apart from the last, which stays readable until REASON:STOP.
+: CHECK-QUOTE ( -- )
+   s" the first text" CODE-A STATE
+   [: REASON:OPEN s" outer: " REASON:APPEND
+      CODE-A REASON:TEXT$ REASON:APPEND  CODE-B REASON:STOP ;]
+   CODE-B TTHROWSQ
+   CODE-B REASON:TEXT$ s" outer: the first text" T$= ;
 
 \ Both tasks state CODE-A before either reads it back.
 : BOTH-STATED? ( -- bool ) BARRIER atomic@ 2 >= ;
@@ -74,7 +83,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 public
 : MAIN ( -- )
-   CHECK-MAIN CHECK-LONG CHECK-TASKS
+   CHECK-MAIN CHECK-LONG CHECK-TASKS CHECK-QUOTE
    T-REPORT s" reason-test: ok" type cr ;
 ;package
 

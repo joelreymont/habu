@@ -2,7 +2,7 @@ split-str
 \ read.f - the XML event scanner: NEXT, CONTENT and TEXT.
 
 require src/lib/xml/names.f
-require src/lib/unicode/visible.f
+require src/lib/reason.f
 
 package XML
 private
@@ -96,24 +96,19 @@ private
    empty if EMPTY-END state PENDING + ! then
    state XML-KIND:START EVENT-FINISH ;
 
-\ The expected text `</NAME>` names the open element, cut as a found token is.
-: END-TAG-SCOPE ( ^n n str n str n ^u8 NUM:alloc-byte-len -- )
-   drop {: state off:n fa:^ fu:n code:n name:^ len:n form:n buf:^ :}
-   buf 0 s" `</" PUT over + name len UNICODE-VISIBLE:PUT over -
-   form FOUND-CUT = if CUT$ PUT then
-   s" >`" PUT {: size:n :} drop
-   state off buf size fa fu code REJECT ;
-
 \ Rejects the reader at off, expecting the open element's end tag.
+\ The expected text `</NAME>` names the open element, cut as a found token is.
 : END-TAG-REJECT ( ^n n str n -- )
    {: state off:n fa:^ fu:n code:n :}
    state CURRENT-FRAME {: frame :}
    state frame FRAME-NAME + @ frame FRAME-NAME-U + @ SPAN$ {: name:^ u:n :}
    name u CAPPED {: len:n form:n :}
-   name len UNICODE-VISIBLE:LEN {: shown:n :}
-   state off fa fu code name len form
-   form FOUND-CUT = if shown CUT$ nip + else shown then 5 + MEM:BYTES-ALLOC-LEN
-   [: END-TAG-SCOPE ;] MEM:WITH-BYTES ;
+   state off REJECT-HEAD
+   s" `</" REASON:APPEND
+   name len REASON:VISIBLE
+   form FOUND-CUT = if s" ..." REASON:APPEND then
+   s" >`" REASON:APPEND
+   state off fa fu code REJECT-TAIL ;
 
 : MATCH-END-NAME ( ^n -- )
    {: state :}

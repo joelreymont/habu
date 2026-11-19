@@ -10,8 +10,6 @@ split-str
 
 require src/lib/error.f
 require src/lib/span.f
-require src/lib/memory.f
-require src/lib/fmt.f
 require src/lib/reason.f
 require src/core/rejection.f
 
@@ -57,51 +55,26 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 : URL-CHAR>SEXTET ( n -- n )  [char] - [char] _ TABLE-SEXTET ;
 
 
-: LINE-SEP$ ( -- str ) s" :" ;
-: EXPECTED-SEP$ ( -- str ) s" : expected " ;
-: FOUND-SEP$ ( -- str ) s" , found " ;
-: FIX-SEP$ ( -- str ) s" ; " ;
 : END$ ( -- str ) s" the end of the input" ;
-: TICK$ ( -- str ) s" `" ;
-: BYTE$ ( -- str ) s" byte $" ;
-
-: PUT$ ( ^u8 str -- ^u8 ) {: at:^ a:^ u:n :} a at u BYTE-COPY  at u + ;
 
 : GRAPHIC? ( n -- bool ) {: c:n :} c $21 >= c $7E <= and ;
 
-: PUT-FOUND ( ^u8 str n -- ^u8 ) {: at:^ a:^ u:n off:n :}
-   off u = if at END$ PUT$ exit then
+: PUT-FOUND ( str n -- ) {: a:^ u:n off:n :}
+   off u = if END$ REASON:APPEND exit then
    a off + c@ {: c:n :}
-   c GRAPHIC? if at TICK$ PUT$ a off + 1 PUT$ TICK$ PUT$ exit then
-   at BYTE$ PUT$ c 2 FMT:HEX-WIDTH$ PUT$ ;
-
-: FOUND-LEN ( str n -- n ) {: a:^ u:n off:n :}
-   off u = if END$ nip exit then
-   a off + c@ {: c:n :}
-   c GRAPHIC? if TICK$ nip 2 * 1+ exit then
-   BYTE$ nip c 2 FMT:HEX-WIDTH$ nip + ;
-
-\ The bytes REJECT-SCOPE writes, which is all the room its buffer has.
-: TEXT-SIZE ( n n n n n -- n ) {: line:n col:n flen:n eu:n fu:n :}
-   line FMT:INT$ nip col FMT:INT$ nip + LINE-SEP$ nip +
-   EXPECTED-SEP$ nip + FOUND-SEP$ nip + FIX-SEP$ nip + eu + fu + flen + ;
-
-: REJECT-SCOPE ( n n str n str str n ^u8 NUM:alloc-byte-len -- )
-   drop {: line:n col:n a:^ u:n off:n ea:^ eu:n fa:^ fu:n code:n buf:^ :}
-   buf line FMT:INT$ PUT$ LINE-SEP$ PUT$ col FMT:INT$ PUT$
-   EXPECTED-SEP$ PUT$ ea eu PUT$ FOUND-SEP$ PUT$
-   a u off PUT-FOUND FIX-SEP$ PUT$ fa fu PUT$
-   buf - {: tu:n :}
-   buf tu code REASON:THROW ;
+   c GRAPHIC? if a off + 1 false REASON:QUOTE exit then
+   c REASON:BYTE ;
 
 \ Throws code with the header's text, ea as X and fa as the fix, placed at off
 \ in the input a u.
 : REJECT ( str n str str n -- )
    {: a:^ u:n off:n ea:^ eu:n fa:^ fu:n code:n :}
    a a off + 1 1 0 REJECTION:POSITION drop {: line:n col:n :}
-   line col a u off ea eu fa fu code
-   line col a u off FOUND-LEN eu fu TEXT-SIZE MEM:BYTES-ALLOC-LEN
-   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
+   REASON:OPEN
+   line col REASON:AT REASON:EXPECTED ea eu REASON:APPEND
+   REASON:FOUND a u off PUT-FOUND
+   REASON:FIX fa fu REASON:APPEND
+   code REASON:STOP ;
 
 : FIX$ ( bool -- str )
    if s" write the data as BASE64:ENCODE-URL writes it" exit then

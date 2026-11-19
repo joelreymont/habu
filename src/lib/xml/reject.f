@@ -6,29 +6,24 @@ split-str
 \ the input; `byte $HH` for a control byte or a byte no UTF-8 character starts;
 \ else in backticks a markup byte, a space, the run of whole characters, each an
 \ ASCII graphic byte but markup or a UTF-8 character above ASCII, or at `&` the
-\ `&`, the run after it and a `;` closing it; at most FOUND-CAP bytes of it cut
-\ on a character's first byte and made visible, and then `...` when cut or when
-\ the run reaches the span's end and input follows the span. A character the
-\ span's end cuts, with input after it, counts as reaching the span's end, and
-\ alone shows as `...`. Found counts over the span and never refills. The text's
-\ size is counted before it is written, so it needs no fixed buffer and never
-\ touches SB.
+\ `&`, the run after it and a `;` closing it; at most REASON:QUOTE-MOST bytes of
+\ it cut on a character's first byte and made visible, and then `...` when cut
+\ or when the run reaches the span's end and input follows the span. A
+\ character the span's end cuts, with input after it, counts as reaching the
+\ span's end, and alone shows as `...`. Found counts over the span and never
+\ refills. REASON writes the text, so it never touches SB.
 \ REJECT-UNITS places in UTF-16 bytes: a line ends at an LF unit, a column
 \ counts units, and <found> is the end of the input, `byte $HH` for a lone
 \ last byte, or `unit $HHHH`.
 
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
-require src/lib/unicode/visible.f
 require src/lib/utf16.f
 require src/lib/fmt.f
 require src/lib/reason.f
-require src/lib/memory.f
 require src/core/rejection.f
 
 package XML
-
-32 constant FOUND-CAP
 
 \ A place's kind: its columns count UTF-16 units for COUNT-UNITS, else bytes;
 \ input follows the span only for COUNT-MORE.
@@ -68,14 +63,7 @@ STRUCTURE place
 5 constant FOUND-UNIT-BE
 
 : END$ ( -- str ) s" the end of the input" ;
-: BYTE$ ( -- str ) s" byte $" ;
 : UNIT$ ( -- str ) s" unit $" ;
-: CUT$ ( -- str ) s" ..." ;
-: TICK$ ( -- str ) s" `" ;
-: LINE-SEP$ ( -- str ) s" :" ;
-: EXPECTED-SEP$ ( -- str ) s" : expected " ;
-: FOUND-SEP$ ( -- str ) s" , found " ;
-: FIX-SEP$ ( -- str ) s" ; " ;
 
 : MARKUP? ( n -- bool )
    dup $3C = over $3E = or over $26 = or over $3B = or over $3D = or
@@ -85,11 +73,11 @@ STRUCTURE place
 : RUN? ( n -- bool )
    dup $20 > over $7F < and swap MARKUP? 0= and ;
 
-\ The bytes of a span shown within FOUND-CAP, cut back to a character's first
-\ byte, and FOUND-CUT when any are dropped, else FOUND-TOKEN.
+\ The bytes of a span shown within REASON:QUOTE-MOST, cut back to a character's
+\ first byte, and FOUND-CUT when any are dropped, else FOUND-TOKEN.
 : CAPPED ( ^u8 n -- n n ) {: a:^ u:n :}
-   u FOUND-CAP <= if u FOUND-TOKEN exit then
-   a u FOUND-CAP UTF8:FIT FOUND-CUT ;
+   u REASON:QUOTE-MOST <= if u FOUND-TOKEN exit then
+   a u REASON:QUOTE-MOST UTF8:FIT FOUND-CUT ;
 
 \ The end of the run's character at off, or off when no run character is there.
 : RUN-STEP ( str n -- n ) {: a:^ u:n off:n :}
@@ -101,10 +89,10 @@ STRUCTURE place
       raw-byte OF 2drop off ENDOF
    ;MATCH ;
 
-\ The end of the run from start; the scan stops FOUND-CAP + 1 bytes past off,
-\ and the run's last character may end past that.
+\ The end of the run from start; the scan stops REASON:QUOTE-MOST + 1 bytes
+\ past off, and the run's last character may end past that.
 : RUN-END ( str n n -- n ) {: a:^ u:n off:n start:n :}
-   off FOUND-CAP + 1+ u min {: lim:n :}
+   off REASON:QUOTE-MOST + 1+ u min {: lim:n :}
    start begin
       dup lim < if dup a u rot RUN-STEP tuck < else false then
    while repeat ;
@@ -136,63 +124,49 @@ STRUCTURE place
    b $80 >= b $20 < or b $7F = or if 1 FOUND-BYTE exit then
    1 FOUND-TOKEN ;
 
-: FOUND-SIZE ( ^u8 n n n -- n ) {: a:^ off:n len:n form:n :}
-   form FOUND-END = if END$ nip exit then
-   form FOUND-BYTE = if BYTE$ nip 2 + exit then
-   form FOUND-UNIT-LE = form FOUND-UNIT-BE = or if UNIT$ nip 4 + exit then
-   a off + len UNICODE-VISIBLE:LEN {: shown:n :}
-   form FOUND-CUT = if shown CUT$ nip + 2 + exit then
-   shown 2 + ;
-
-: PUT ( ^u8 n ^u8 n -- ^u8 n ) {: buf:^ at:n a:^ u:n :}
-   a buf at + u BYTE-COPY
-   buf at u + ;
-
-: PUT-HEX ( str n -- str )   2 FMT:HEX-WIDTH$ PUT ;
-
-: PUT-FOUND ( ^u8 n ^u8 n n n -- str )
-   {: buf:^ at:n a:^ off:n len:n form:n :}
-   form FOUND-END = if buf at END$ PUT exit then
-   form FOUND-BYTE = if buf at BYTE$ PUT a off + c@ PUT-HEX exit then
+: PUT-FOUND ( ^u8 n n n -- ) {: a:^ off:n len:n form:n :}
+   form FOUND-END = if END$ REASON:APPEND exit then
+   form FOUND-BYTE = if a off + c@ REASON:BYTE exit then
    form FOUND-UNIT-LE = if
-      buf at UNIT$ PUT a off + 1+ c@ PUT-HEX a off + c@ PUT-HEX exit
+      UNIT$ REASON:APPEND
+      a off + 1+ c@ 2 FMT:HEX-WIDTH$ REASON:APPEND
+      a off + c@ 2 FMT:HEX-WIDTH$ REASON:APPEND exit
    then
    form FOUND-UNIT-BE = if
-      buf at UNIT$ PUT a off + c@ PUT-HEX a off + 1+ c@ PUT-HEX exit
+      UNIT$ REASON:APPEND
+      a off + c@ 2 FMT:HEX-WIDTH$ REASON:APPEND
+      a off + 1+ c@ 2 FMT:HEX-WIDTH$ REASON:APPEND exit
    then
-   buf at TICK$ PUT over + a off + len UNICODE-VISIBLE:PUT over -
-   form FOUND-CUT = if CUT$ PUT then
-   TICK$ PUT ;
+   a off + len  form FOUND-CUT =  REASON:QUOTE ;
 
-: TEXT-SIZE ( n n ^u8 n n n n n -- n )
-   {: line:n col:n a:^ off:n len:n form:n eu:n fu:n :}
-   line FMT:INT$ nip col FMT:INT$ nip + LINE-SEP$ nip +
-   EXPECTED-SEP$ nip + FOUND-SEP$ nip + FIX-SEP$ nip + eu + fu +
-   a off len form FOUND-SIZE + ;
-
-: REJECT-SCOPE
-   ( n n str n n str str n ^u8 NUM:alloc-byte-len -- )
-   drop {: line:n col:n a:^ off:n len:n form:n
-      ea:^ eu:n fa:^ fu:n code:n buf:^ :}
-   buf 0 line FMT:INT$ PUT LINE-SEP$ PUT col FMT:INT$ PUT
-   EXPECTED-SEP$ PUT ea eu PUT FOUND-SEP$ PUT
+\ Writes the found part and the fix, and throws code with the text.
+: WRITE-TAIL ( ^u8 n n n str n -- )
+   {: a:^ off:n len:n form:n fa:^ fu:n code:n :}
+   REASON:FOUND
    a off len form PUT-FOUND
-   FIX-SEP$ PUT fa fu PUT
-   code REASON:THROW ;
+   REASON:FIX fa fu REASON:APPEND
+   code REASON:STOP ;
 
-: REJECT-WRITE ( n n ^u8 n n n str str n -- )
-   {: line:n col:n a:^ off:n len:n form:n ea:^ eu:n fa:^ fu:n code:n :}
-   line col a off len form ea eu fa fu code
-   line col a off len form eu fu TEXT-SIZE MEM:BYTES-ALLOC-LEN
-   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
+\ Opens the text of a rejection at off in the span a, whose first byte sits at
+\ the place at, up to its expected part.
+: HEAD-FROM ( ^u8 place n -- ) {: a:^ at:place off:n :}
+   REASON:OPEN
+   a at off PLACE-POSITION REASON:AT REASON:EXPECTED ;
+
+\ Writes the found part at off of the span a u and the fix, and throws code
+\ with the text.
+: TAIL-FROM ( str place n str n -- )
+   {: a:^ u:n at:place off:n fa:^ fu:n code:n :}
+   at PLACE-UNMAKE nip nip COUNT-MORE = {: more:bool :}
+   a u off more FOUND-FORM {: len:n form:n :}
+   a off len form fa fu code WRITE-TAIL ;
 
 \ Rejects at off in the span a u, whose first byte sits at the place at.
 : REJECT-FROM ( str place n str str n -- )
    {: a:^ u:n at:place off:n ea:^ eu:n fa:^ fu:n code:n :}
-   a at off PLACE-POSITION {: line:n col:n :}
-   at PLACE-UNMAKE nip nip COUNT-MORE = {: more:bool :}
-   a u off more FOUND-FORM {: len:n form:n :}
-   line col a off len form ea eu fa fu code REJECT-WRITE ;
+   a at off HEAD-FROM
+   ea eu REASON:APPEND
+   a u at off fa fu code TAIL-FROM ;
 
 \ The line and column of byte off, even, in UTF-16 bytes from a, big-endian
 \ when be is set.
@@ -211,6 +185,9 @@ STRUCTURE place
          2 be if FOUND-UNIT-BE else FOUND-UNIT-LE then
       then
    then {: len:n form:n :}
-   line col a off len form ea eu fa fu code REJECT-WRITE ;
+   REASON:OPEN
+   line col REASON:AT REASON:EXPECTED
+   ea eu REASON:APPEND
+   a off len form fa fu code WRITE-TAIL ;
 
 ;package

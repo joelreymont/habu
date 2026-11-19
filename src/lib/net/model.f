@@ -32,7 +32,6 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/time.f
-require src/lib/unicode/visible.f
 
 \ One exclusive call context per worker. Results borrow its arena until the
 \ next CHAT, START, COUNT-INPUT, COMPACT, EMBED, START-EMBED, REPLAY or CLOSE.
@@ -826,40 +825,29 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
 : PUT$ ( ^u8 str -- ^u8 ) {: at:^ a:^ u:n :} a at u BYTE-COPY  at u + ;
 
-: EXPECTED$ ( -- str ) s" expected " ;
-: FOUND$ ( -- str ) s" , found " ;
 : EMPTY$ ( -- str ) s" an empty text" ;
-: FIX-SEP$ ( -- str ) s" ; " ;
 
-: REJECT-SCOPE ( str str str ^u8 NUM:alloc-byte-len -- )
-   drop {: ea:^ eu:n fa:^ fu:n xa:^ xu:n buf:^ :}
-   buf EXPECTED$ PUT$ ea eu PUT$ FOUND$ PUT$
-   fu 0= if EMPTY$ PUT$
-   else s" `" PUT$ fa fu UNICODE-VISIBLE:PUT s" `" PUT$ then
-   FIX-SEP$ PUT$ xa xu PUT$
-   buf - {: tu:n :}
-   buf tu E-CONFIG REASON:THROW ;
+\ Writes `, found ` with the found text quoted, an empty one as `an empty text`,
+\ then `; ` and the fix, and throws E-CONFIG with the text.
+: REJECT-TAIL ( str str -- )
+   {: fa:^ fu:n xa:^ xu:n :}
+   REASON:FOUND
+   fu 0= if EMPTY$ REASON:APPEND else fa fu false REASON:QUOTE then
+   REASON:FIX xa xu REASON:APPEND
+   E-CONFIG REASON:STOP ;
 
 \ Throws E-CONFIG with the text `expected <e>, found `<f>`; <fix>`, an empty f
 \ found as `an empty text`.
 : CONFIG-REJECT ( str str str -- )
    {: ea:^ eu:n fa:^ fu:n xa:^ xu:n :}
-   ea eu fa fu xa xu
-   EXPECTED$ nip eu + FOUND$ nip +  fu 0= if EMPTY$ nip else 2 then +
-   fa fu UNICODE-VISIBLE:LEN + FIX-SEP$ nip + xu + MEM:BYTES-ALLOC-LEN
-   [: REJECT-SCOPE ;] MEM:WITH-BYTES ;
-
-: NAMED-SCOPE ( str str ^u8 NUM:alloc-byte-len -- )
-   drop {: na:^ nu:n ta:^ tu:n buf:^ :}
-   buf na nu PUT$ s"  " PUT$ ta tu PUT$
-   buf - {: u:n :}
-   buf u E-CONFIG REASON:THROW ;
+   REASON:OPEN REASON:EXPECTED ea eu REASON:APPEND
+   fa fu xa xu REJECT-TAIL ;
 
 \ Throws E-CONFIG with the text `<name> <text>`.
 : NAMED-THROW ( str str -- )
    {: na:^ nu:n ta:^ tu:n :}
-   na nu ta tu  nu tu + 1+ MEM:BYTES-ALLOC-LEN
-   [: NAMED-SCOPE ;] MEM:WITH-BYTES ;
+   REASON:OPEN na nu REASON:APPEND s"  " REASON:APPEND ta tu REASON:APPEND
+   E-CONFIG REASON:STOP ;
 
 : REDACTED$ ( -- str ) s" <redacted>" ;
 
@@ -5316,16 +5304,12 @@ private
 
 : INDEX-WANT$ ( -- str ) s" VECTOR@'s index of 0 or more below the input count " ;
 
-: INDEX-SCOPE ( n n ^u8 NUM:alloc-byte-len -- )
-   drop {: idx:n count:n buf:^ :}
-   buf INDEX-WANT$ PUT$ count FMT:INT$ PUT$ buf - {: eu:n :}
-   buf eu idx FMT:INT$ s" pass the index of an input INPUT+ added" CONFIG-REJECT ;
-
 \ Throws E-CONFIG for index idx outside a call's count inputs.
 : INDEX-REJECT ( n n -- )
    {: idx:n count:n :}
-   idx count  INDEX-WANT$ nip count FMT:INT$ nip +  MEM:BYTES-ALLOC-LEN
-   [: INDEX-SCOPE ;] MEM:WITH-BYTES ;
+   REASON:OPEN REASON:EXPECTED
+   INDEX-WANT$ REASON:APPEND count FMT:INT$ REASON:APPEND
+   idx FMT:INT$ s" pass the index of an input INPUT+ added" REJECT-TAIL ;
 
 public
 
