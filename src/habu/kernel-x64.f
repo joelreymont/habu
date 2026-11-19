@@ -2642,6 +2642,8 @@ public
    s" num-parse" [: NUM-PARSE, ;] PRIM
    s" tok-imm?" [: TOK-IMM-BODY ;] PRIM
    s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
+   s" bare-tok-imm?" [: TOK-IMM-BODY ;] PRIM
+   s" bare-scope-find" [: SCOPE-FIND-BODY ;] PRIM
    s" scope-kind?" [: RAX POP,  SCOPE-KIND-LBL CALL,  RAX PUSH, ;] PRIM ;
 
 private
@@ -3133,6 +3135,7 @@ public
 
 : DICT-SEARCH, ( -- )
    s" search-wl" [: SEARCH-WL-BODY ;] PRIM
+   s" bare-search-wl" [: SEARCH-WL-BODY ;] PRIM
    s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 
 private

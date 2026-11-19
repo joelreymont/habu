@@ -4033,6 +4033,7 @@ package ENGINE-EMIT
    s" c2-records-stow" ['] BC2-RECORDS-STOW FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" search-wl" ['] BSWL FPRIM
+   s" bare-search-wl" ['] BSWL FPRIM
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" check@" ['] BCHECKFETCH FPRIM-L

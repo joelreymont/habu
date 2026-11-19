@@ -2307,6 +2307,8 @@ package ENGINE-EMIT
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM
    s" scope-find" ['] BSCOPEFIND FPRIM
+   s" bare-tok-imm?" ['] BTOKIMM FPRIM
+   s" bare-scope-find" ['] BSCOPEFIND FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
