@@ -44,7 +44,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ without restating how a handle encodes it.
 : AIO-TEST:HANDLE-IDX ( n -- n )
    HANDLE>IDX ;
+: AIO-TEST:XFER>N ( xfer -- n ) XFER>N ;
 [then]
+
+\ A handle as a number, so a case can compare two handles.
+: AIO-TEST:TICKET>N ( ticket -- n ) TICKET>N ;
 
 \ A RINGS entry's completion entries, and the active ring's.
 : AIO-TEST:RING-CQ ( n -- n )
@@ -653,11 +657,6 @@ TASK:MIN-STACK TASK:TASK FAN7
    XB-FREE
    P-R P-W PIPE-CLOSE ;
 
-\ Projecting a foreign nominal out is allowed anywhere; minting one is not, so
-\ these two read a handle without being able to make one.
-CAST: TICKET>N ( AIO:ticket -- n )
-CAST: XFER>N ( AIO:xfer -- n )
-
 : GROW-SUBMIT ( -- )
    GROW-N 0 ?do
       P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i GROW-TICKETS !
@@ -674,7 +673,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    FAN-READY @ GROW-N T= ;
 
 : GROW-IDX@ ( n -- n )
-   GROW-TICKETS @ TICKET>N ;
+   GROW-TICKETS @ AIO-TEST:TICKET>N ;
 
 \ More operations in flight than the first record chunks hold: the records
 \ grow, every operation completes, and a second round lands on the same
@@ -1101,7 +1100,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    1 >MS AIO:TIMEOUT STALE-TICKET !
    STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
    1 >MS AIO:TIMEOUT LIVE-TICKET !
-   LIVE-TICKET @ TICKET>N STALE-TICKET @ TICKET>N REUSED
+   LIVE-TICKET @ AIO-TEST:TICKET>N STALE-TICKET @ AIO-TEST:TICKET>N REUSED
    [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
    [: STALE-TICKET @ 0 ANY-GROUP AIO:GROUP+ ;] E-AIO-STATE TTHROWSQ
    [: STALE-TICKET @ ANY-GROUP AIO:GROUP- ;] E-AIO-GROUP TTHROWSQ
@@ -1120,7 +1119,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    out OUTCOME>N 1 T=
    rb rcap MEM:RELEASE-BYTES
    1 >MS AIO:TIMEOUT LIVE-TICKET !
-   LIVE-TICKET @ TICKET>N STALE-XFER @ XFER>N REUSED
+   LIVE-TICKET @ AIO-TEST:TICKET>N STALE-XFER @ AIO-TEST:XFER>N REUSED
    [: STALE-XFER @ AIO:AWAIT-XFER XFER-DROP ;] E-AIO-STATE TTHROWSQ
    LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
    P-R P-W PIPE-CLOSE ;
@@ -1134,7 +1133,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    STALE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
    XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
    P-R @ >FD buf cap XFER-N 0 AIO:READ LIVE-XFER !
-   LIVE-XFER @ XFER>N STALE-TICKET @ TICKET>N REUSED
+   LIVE-XFER @ AIO-TEST:XFER>N STALE-TICKET @ AIO-TEST:TICKET>N REUSED
    [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
    P-W @ POKE
    LIVE-XFER @ AIO:AWAIT-XFER {: rb rcap:NUM:alloc-byte-len out:AIO:outcome :}

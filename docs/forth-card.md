@@ -519,6 +519,8 @@ pointee, so `: D ( ^a -- n ) NULL-PTR - ;` keeps `a` free.
 A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 (`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
 type`).
+A cast outside a `SCRATCH-ONLY` family's package that names the family on
+either side, a phantom argument aside, is `E-CAST-SCRATCH`.
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
 holds a pointer or a quotation is the same mint. A cast that makes an `ENUM`
 or `SUMTYPE` value from a cell, a `niche-null` one aside, is `E-CAST-CLASS`,

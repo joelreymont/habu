@@ -857,7 +857,10 @@ multi-cell type rationale is `docs/design.md` "Types".
   `( [ n -- width<n> ] -- [ n -- n ] )` reads the width the source produces.
   A cell family's arguments are phantom and introduce nothing. Projections out
   (`fam -- n`, `^t -- n`, `[ … ] -- n`, `box<^u8> -- n`, `pfbox -- n`)
-  need no private section.
+  need no private section. A cast that names a `SCRATCH-ONLY` family on either
+  side other than as a phantom argument, a view's element included, is
+  declared in that family's package (`E-CAST-SCRATCH`): its values are valid
+  only in their process.
 - `LINEAR: NAME ( payload -- PKG:tok )` mints a `DEFLINEAR` token and
   `LINEAR: NAME ( PKG:tok -- payload )` erases one: the reader-keyword shape of
   `CAST:`, an identity at its call sites, and the one checked way to make a

@@ -3833,7 +3833,7 @@ variable CAST-SEEN-N
    ISROW IF RES-FALSE EXIT THEN
    t0 T-RES {: t:n :}
    sign CAST-ARG invert and CAST-NEG <> IF t sign hit execute IF RES-TRUE EXIT THEN THEN
-   t TAG T-PTR = IF t PTR>INNER CAST-BOTH hit TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-PTR = IF t PTR>INNER CAST-BOTH sign CAST-ARG and or hit TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-STALE = IF t STALE>INNER sign hit TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    t TAG T-QUOT = IF
       t Q>DIN sign CAST-FLIP hit TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
@@ -18190,6 +18190,7 @@ global
 7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
+7132 constant E-CAST-SCRATCH  \ the cast names another package's SCRATCH-ONLY family
 7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
 \ E-CAST-SCOPE: a cast would erase or introduce a scope dependency.

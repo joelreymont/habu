@@ -558,4 +558,23 @@ public
 ;package
 s" abc" >str CN-STR:MK CN-STR:UN str> nip 3 T=
 
+\ A SCRATCH-ONLY family's own package casts to and from it in any section; another
+\ package is rejected on either side: the cell, a pointee, a quotation row or a view.
+package CN-SCR
+public
+NEWTYPE cnscr SCRATCH-ONLY
+s" cast: CNSC0 ( CN-SCR:cnscr -- n )" CN-RUN:DECL 0 T=
+;package
+package CAST-NEG
+s" cast: CNSC1 ( CN-SCR:cnscr -- n )"             CN-RUN:DECL s" error[E-CAST-SCRATCH]" s" `cast: CNSC1`" CN-RUN:REJECTS
+REJECTION:BUFFER$ s" the cast names a SCRATCH-ONLY family of package `CN-SCR`" CONTAINS? TTRUE
+s" cast: CNSC2 ( ^CN-SCR:cnscr -- ^n )"           CN-RUN:DECL s" error[E-CAST-SCRATCH]" s" `cast: CNSC2`" CN-RUN:REJECTS
+s" cast: CNSC3 ( [ -- CN-SCR:cnscr ] -- [ -- n ] )" CN-RUN:DECL s" error[E-CAST-SCRATCH]" s" `cast: CNSC3`" CN-RUN:REJECTS
+s" cast: CNSC4 ( [ CN-SCR:cnscr -- ] -- [ n -- ] )" CN-RUN:DECL s" error[E-CAST-SCRATCH]" s" `cast: CNSC4`" CN-RUN:REJECTS
+s" cast: CNSC5 ( [ n -- ] -- [ CN-SCR:cnscr -- ] )" CN-RUN:DECL s" error[E-CAST-SCRATCH]" s" `cast: CNSC5`" CN-RUN:REJECTS
+s" cast: CNSC6 ( n -- CN-SCR:cnscr )"             CN-RUN:DECL s" error[E-CAST-SCRATCH]" s" `cast: CNSC6`" CN-RUN:REJECTS
+s" cast: CNSC7 ( read-view<p,q,CN-SCR:cnscr> -- ^u8 n )" CN-RUN:DECL s" error[E-CAST-SCRATCH]" s" `cast: CNSC7`" CN-RUN:REJECTS
+s" cast: CNSC8 ( CN-EN:cnph<^CN-SCR:cnscr> -- n )" CN-RUN:DECL 0 T=
+;package
+
 T-REPORT
