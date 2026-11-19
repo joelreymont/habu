@@ -5554,8 +5554,9 @@ variable LTC-P
 : LIN-TOTAL ( n n -- n )
    LIN-ROW-COUNT swap LIN-ROW-COUNT + ;
 
-: LIN-SNAPSHOT ( -- n )
-   DCUR @ RCUR @ LIN-TOTAL ;
+\ A step's data and return rows before it runs, for LIN-DELTA.
+: LIN-SNAPSHOT ( -- n n )
+   DCUR @ RCUR @ ;
 
 : LIN-EXPLICIT? ( n n -- bool )
    LIN-TOTAL 0 <> ;
@@ -5723,16 +5724,17 @@ variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
       1 +
    REPEAT drop ;
 
-\ The linear values a step made (above 0) or lost (below 0) since snapshot bef.
-: LIN-DELTA ( n -- n ) {: bef:n :}
-   DCUR @ RCUR @ LIN-TOTAL bef - ;
+\ Linear values a step made (above 0) or lost (below 0) since rows pre and rpre,
+\ both counted now: the step's bindings may show linear values pre already held.
+: LIN-DELTA ( n n -- n ) {: pre:n rpre:n :}
+   DCUR @ RCUR @ LIN-TOTAL  pre rpre LIN-TOTAL - ;
 
 : LIN-REJECT ( n -- ) {: delta:n :}
    delta 0 = IF EXIT THEN
    delta 0 > IF MD-LINEAR-COPY ELSE MD-LINEAR-DROP THEN MDIAG!
    0 OK ! ;
 
-: LIN-CHECK ( n -- )
+: LIN-CHECK ( n n -- )
    LIN-DELTA LIN-REJECT ;
 
 \ A C2 refusal names one logical value, even when its machine row contains
@@ -6336,7 +6338,6 @@ variable UNJ-WF0                    \ the width-fact count before the token
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}
    unj IF din dout pre SPLICE-SHAPE ELSE -1 0 THEN {: cells:n terms:n :}
    din dout LIN-EXPLICIT? {: exp:bool :}
-   exp IF 0 ELSE LIN-SNAPSHOT THEN {: bef:n :}
    pre WAS !
    din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
    DCUR @ din UNIFY-CALL {: fit:bool :}
@@ -6344,7 +6345,7 @@ variable UNJ-WF0                    \ the width-fact count before the token
    fit OK @ and OK !
    OK @ borrows and IF STEP-UNDERFLOW! THEN
    WAS @ dout STEP-LINEAGE DCUR !
-   OK @ exp 0= and IF bef LIN-CHECK THEN
+   OK @ exp 0= and IF pre rpre LIN-CHECK THEN
    unj 0= IF EXIT THEN
    fit 0= IF pre rpre cells dout terms UNJ-SPLICE EXIT THEN
    STEP-R @ 0= IF -1 UNJ-SPLICED ! THEN ;
@@ -6386,7 +6387,7 @@ variable RSR-EXP   variable RSR-ACT
    RS-UNDERFLOW!
    UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN ;
 : RS->R
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: din:n :}
    din STEP-BORROWS? {: borrows:bool :}
@@ -6402,10 +6403,10 @@ variable RSR-EXP   variable RSR-ACT
       UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN
    THEN
    rest DCUR !  tv RCUR @ MK-PUSH RCUR !
-   OK @ IF bef LIN-CHECK THEN ;
+   OK @ IF bef rbef LIN-CHECK THEN ;
 
 : RSR>
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
@@ -6413,10 +6414,10 @@ variable RSR-EXP   variable RSR-ACT
    pre rin UNIFY OK @ and OK !
    rest RCUR !  tv DCUR @ MK-PUSH DCUR !
    OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
-   OK @ IF bef LIN-CHECK THEN ;
+   OK @ IF bef rbef LIN-CHECK THEN ;
 
 : RSR@
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    tv rest MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
@@ -6424,10 +6425,10 @@ variable RSR-EXP   variable RSR-ACT
    pre rin UNIFY OK @ and OK !
    tv DCUR @ MK-PUSH DCUR !
    OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
-   OK @ IF bef LIN-CHECK THEN ;
+   OK @ IF bef rbef LIN-CHECK THEN ;
 
 : RS2->R
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    t2 t1 rest MK-PUSH MK-PUSH {: din:n :}
    din STEP-BORROWS? {: borrows:bool :}
@@ -6441,10 +6442,10 @@ variable RSR-EXP   variable RSR-ACT
    THEN
    rest DCUR !
    t1 RCUR @ MK-PUSH  t2 swap MK-PUSH  RCUR !
-   OK @ IF bef LIN-CHECK THEN ;
+   OK @ IF bef rbef LIN-CHECK THEN ;
 
 : RS2R>
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    t2 t1 rest MK-PUSH MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
@@ -6453,10 +6454,10 @@ variable RSR-EXP   variable RSR-ACT
    rest RCUR !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
    OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
-   OK @ IF bef LIN-CHECK THEN ;
+   OK @ IF bef rbef LIN-CHECK THEN ;
 
 : RS2R@
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    t2 t1 rest MK-PUSH MK-PUSH {: rin:n :}
    rin RS-BORROWS? {: borrows:bool :}
@@ -6464,7 +6465,7 @@ variable RSR-EXP   variable RSR-ACT
    pre rin UNIFY OK @ and OK !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
    OK @ borrows and IF mark rin pre RS-READ-UNDER! THEN
-   OK @ IF bef LIN-CHECK THEN ;
+   OK @ IF bef rbef LIN-CHECK THEN ;
 
 \ One of the two cells of a str value.
 : STR-CELL? ( n -- bool ) {: t:n :}
@@ -6730,7 +6731,7 @@ variable QUOT-LOSS
    DCUR @ din UNIFY OK @ and OK !
    rest DCUR !
    OK @ borrows and IF STEP-UNDERFLOW! THEN
-   LIN-SNAPSHOT {: bef:n :}              \ linears on the post-pop stack (pre-apply)
+   LIN-SNAPSHOT {: bef:n rbef:n :}       \ the post-pop rows (pre-apply)
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
@@ -6754,7 +6755,7 @@ variable QUOT-LOSS
         QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
         DCUR @ CWIN-DOUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
         RCUR @ CWIN-ROUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
-        OK @  RSEXEC-EXP @ 0=  and IF bef LIN-CHECK THEN
+        OK @  RSEXEC-EXP @ 0=  and IF bef rbef LIN-CHECK THEN
      THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
      \ Its effect is not statically known, so executing it in checked code
@@ -19889,7 +19890,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 : XPORT-APPLY ( str -- )
    {: a:^ u:n :}
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    a u WF-XPORT-RROW? IF RS-AT-BASE? ELSE STEP-AT-BASE? THEN {: based:bool :}   \ the row read, measured before XG-READ binds its tail
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    0  a u WF-XPORT-K 0 ?do   \ ( row cells ): each operand's logical cell of known width expanded
@@ -19910,7 +19911,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
       a u XP-DATA-SEQ$ XG-TAINT-SEQ
    THEN
    OK @ IF
-      bef LIN-DELTA
+      bef rbef LIN-DELTA
       dup 0 <> IF 0 OK !  a u C2-XPORT-REJECT THEN
       LIN-REJECT
    THEN ;
@@ -20248,14 +20249,14 @@ EXPORT CHECKER-TAPE:K-LOCAL-DECL
    OK @ IF gi idx LOC-CAPTURE-GROUP THEN ;
 
 : LOC-BIND-GROUPS ( -- )
-   LIN-SNAPSHOT {: bef:n :}
+   LIN-SNAPSHOT {: bef:n rbef:n :}
    DCUR @  #LOC @ LGRP @ -  XG-READ 0= IF EXIT THEN
    0 BEGIN dup #LOC @ LGRP @ - < WHILE
       dup LOC-GROUP-BIND
       1 +
    REPEAT drop
    XG-ROW @ DCUR !
-   OK @ IF bef LIN-CHECK THEN ;
+   OK @ IF bef rbef LIN-CHECK THEN ;
 
 \ `at` is the pre row below the locals above, 0 once that is unknown.
 : PRE-SKIP ( n n -- n ) {: at:n w:n :}

@@ -72,6 +72,12 @@ TYPED-VARIABLE TAIL-QH tailhook<[ n -- n ]>
 : TAIL-TV ( R [ -- a ] -- R a ) execute ;
 defer TAIL-HF ( R [ R -- R ] -- R ^tailhook<[ R -- R ]> )
 defer TAIL-HG ( R [ R -- R ] -- R [ -- ^tailhook<[ R -- R ]> ] )
+\ A literal's open input row binds to the linear value its callee keeps.
+DEFLINEAR CHECKER-SOUNDNESS:ltok
+: LTOK-KEEP ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok ) ;
+defer LTOK-END ( CHECKER-SOUNDNESS:ltok -- )
+: TAIL-DUPAPPLY ( a [ a -- b ] -- a b ) over swap execute ;
+: TAIL-APPLY2 ( a [ a -- b ] -- b b ) over over execute >r execute r> ;
 
 \ A type whose name is the longest a family tail may be.
 NEWTYPE wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
@@ -240,7 +246,20 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-K126 ( R [ R -- S ] -- S ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
    s" and a stale tail a binding made a push is renamed with the push's tail" T-LABEL
    s" : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ; : CS-K132 ( R [ R n -- R n ] -- R ) [: 5 swap [: [: CS-EXEC ;] catch drop drop ;] execute ;] execute ;" 70
-   s" error[E-MISMATCH]: CS-K132 ends with stale<A> on the stack" SUBJECT:REFUSED? TTRUE ;
+   s" error[E-MISMATCH]: CS-K132 ends with stale<A> on the stack" SUBJECT:REFUSED? TTRUE
+   s" a literal's call keeps the linear value its open row was bound to" T-LABEL
+   s" CS-K127 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP CHECKER-SOUNDNESS:TAIL-NAMED ;] CHECKER-SOUNDNESS:TAIL-NAMED"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" CS-K128 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP ['] CHECKER-SOUNDNESS:TAIL-NAMED execute ;] CHECKER-SOUNDNESS:TAIL-NAMED"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" and one that copies it is refused" T-LABEL
+   s" : CS-K129 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP CHECKER-SOUNDNESS:TAIL-DUPAPPLY ;] CHECKER-SOUNDNESS:TAIL-NAMED ;" 70
+   s" error[E-LINEAR-COPY]: a linear value is copied here" SUBJECT:REFUSED? TTRUE
+   s" : CS-K130 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP CHECKER-SOUNDNESS:TAIL-APPLY2 ;] CHECKER-SOUNDNESS:TAIL-NAMED ;" 70
+   s" error[E-LINEAR-COPY]: a linear value is copied here" SUBJECT:REFUSED? TTRUE
+   s" and one that drops it is refused" T-LABEL
+   s" : CS-K131 ( CHECKER-SOUNDNESS:ltok -- ) [: ['] CHECKER-SOUNDNESS:LTOK-END CHECKER-SOUNDNESS:TAIL-NAMED ;] execute ;" 70
+   s" error[E-LINEAR-DROP]: a linear value is discarded here" SUBJECT:REFUSED? TTRUE ;
 
 
 : CALLABLE-HOLDS ( -- )
