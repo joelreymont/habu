@@ -41,8 +41,9 @@ require src/lib/base64.f
 require src/lib/json.f
 require src/lib/log.f
 require src/lib/task.f
-require src/lib/arena.f
-require src/lib/byte-buffer.f
+require src/lib/allocator.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/adt/option.f
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
@@ -784,8 +785,9 @@ ENUM kept-state empty kept failed ;ENUM
 
 \ A scope's kept token: state says whether one is kept or the last ask
 \ failed; CURRENT asks again once life seconds have passed since the epoch
-\ second before the kept token's ask; asks counts the asks ended, and
-\ region holds the row's lock and BUFs.
+\ second before the kept token's ask; asks counts the asks ended; region
+\ holds the row's lock, and the vectors hold the scope, the kept token and
+\ the token endpoint's answer.
 STRUCTURE row DERIVE addr
    FIELD next ^row
    FIELD state kept-state
@@ -794,32 +796,18 @@ STRUCTURE row DERIVE addr
    FIELD code n
    FIELD asks n
    FIELD region SPAN:span<u8>
+   FIELD scope ^VEC:vector<u8>
+   FIELD token ^VEC:vector<u8>
+   FIELD answer ^VEC:vector<u8>
 ;STRUCTURE
 
-ARENA ROWS row
-\ The rows' arena, made by the first CURRENT so a saved image maps none; null
-\ until then, and never released: the rows live as long as the process.
-TYPED-VARIABLE ROW-ARENA ^ARENA:arena
 TYPED-VARIABLE NEWEST ^row
-
-0 constant LOCK-OFF
-LOCK-OFF TASK:FACILITY-BYTES + constant SCOPE-OFF
-SCOPE-OFF BUF:HDR-BYTES + constant KEPT-OFF
-KEPT-OFF BUF:HDR-BYTES + constant ANSWER-OFF
-ANSWER-OFF BUF:HDR-BYTES + constant REGION-BYTES
 
 \ Held to find a scope's row or link a new one, never across a TOKEN.
 TASK:FACILITY ROWS-LOCK
 ROWS-LOCK TASK:FACILITY-INIT
 
-: AREA ( SPAN:span<u8> n n -- ^n )
-   {: region off:n u:n :}
-   region off u SPAN:SUB SPAN:$ drop CELL-VIEW ;
-
-: GUARD ( SPAN:span<u8> -- ^n ) LOCK-OFF TASK:FACILITY-BYTES AREA ;
-: SCOPE-BUF ( SPAN:span<u8> -- ^n ) SCOPE-OFF BUF:HDR-BYTES AREA ;
-: KEPT-BUF ( SPAN:span<u8> -- ^n ) KEPT-OFF BUF:HDR-BYTES AREA ;
-: ANSWER-BUF ( SPAN:span<u8> -- ^n ) ANSWER-OFF BUF:HDR-BYTES AREA ;
+: GUARD ( SPAN:span<u8> -- ^n ) SPAN:$ drop CELL-VIEW ;
 
 : LISTED ( R [ R -- S ] -- S )
    ROWS-LOCK TASK:GET [: ROWS-LOCK TASK:RELEASE ;] finally ;
@@ -827,7 +815,7 @@ ROWS-LOCK TASK:FACILITY-INIT
 : DROP-KEPT ( -- )
    NEWEST @
    begin dup NULL-PTR <> while
-      dup ROW-REGION @ KEPT-BUF BUF:WIPE
+      dup ROW-TOKEN @ 0 VEC:RESIZE
       construct kept-state empty over ROW-STATE !
       ROW-NEXT @
    repeat drop ;
@@ -858,25 +846,37 @@ ENUM grant
 
 private
 
-: PAIR+ ( str str ^n -- )
-   {: k:^ ku:n v:^ vu:n buf:^ :}
-   buf BUF:LEN@ BUF:BLEN>N 0 > if [char] & buf BUF:APPEND-BYTE then
-   k ku BUF:N>BLEN buf BUF:APPEND-SPAN
-   [char] = buf BUF:APPEND-BYTE
-   v vu URI:FORM-LEN {: n:n :}
-   v vu buf n BUF:N>BLEN BUF:GROW URI:FORM-ENCODE drop ;
+\ The vector's count grown by n, the span of the new bytes, which are zero; the
+\ block may move.
+: GROWN ( ^VEC:vector<u8> n -- SPAN:span<u8> )
+   {: v:^ k:n :}
+   v VEC:COUNT {: old:n :}
+   v old k + VEC:ENSURE
+   v VEC:SPAN old SPAN:SKIP ;
 
-: CREDENTIALS+ ( ^n -- )
+\ v is read after GROWN, which may move the block: it must not lie in the
+\ vector.
+: PAIR+ ( str str ^VEC:vector<u8> -- )
+   {: k:^ ku:n v:^ vu:n buf:^ :}
+   buf VEC:COUNT 0 > if [char] & buf VEC:PUSH c! then
+   k ku buf VEC:APPEND
+   [char] = buf VEC:PUSH c!
+   v vu URI:FORM-LEN {: n:n :}
+   v vu buf n GROWN URI:FORM-ENCODE drop ;
+
+: CREDENTIALS+ ( ^VEC:vector<u8> -- )
    {: buf:^ :}
    s" client_id" CLIENT-ID @ SPAN:$ buf PAIR+
    SECRET @ SPAN:LEN 0= if exit then
    s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
 
-\ What the BUF held is wiped, and it has room for a form within TOKEN-CAP: the
-\ secret and the earlier answer never sit in storage a grow releases.
-: EMPTIED ( ^n -- ) {: buf:^ :} buf BUF:WIPE buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
+\ What the vector held is wiped, and it has room for a form within TOKEN-CAP:
+\ the secret and the earlier answer never sit in storage a grow releases.
+: EMPTIED ( ^VEC:vector<u8> -- )
+   {: buf:^ :}
+   buf 0 VEC:RESIZE  buf TOKEN-CAP VEC:RESERVE ;
 
-: FORM ( ^u8 n grant ^n -- )
+: FORM ( str grant ^VEC:vector<u8> -- )
    {: scope:^ su:n g buf:^ :}
    g MATCH grant
       own OF
@@ -893,7 +893,7 @@ private
          s" requested_token_use" s" on_behalf_of" buf PAIR+ ENDOF
    ;MATCH ;
 
-: REFRESH-FORM ( str str ^n -- )
+: REFRESH-FORM ( str str ^VEC:vector<u8> -- )
    {: scope:^ su:n r:^ ru:n buf:^ :}
    buf EMPTIED
    s" grant_type" s" refresh_token" buf PAIR+
@@ -916,12 +916,13 @@ private
       failed OF CURL-FAULT false ENDOF
    ;MATCH ;
 
-\ The BUF's form set as the request's body, then wiped from the BUF since the
-\ secret is in it; whether every setting took, logging the first that did not.
-: REQUESTED? ( CURL:handle ^n -- bool )
+\ The vector's form set as the request's body, then wiped from the vector
+\ since the secret is in it; whether every setting took, logging the first
+\ that did not.
+: REQUESTED? ( CURL:handle ^VEC:vector<u8> -- bool )
    {: h:CURL:handle buf:^ :}
-   h buf BUF:SPAN$ BUF:BLEN>N CURL:BODY!
-   buf BUF:WIPE
+   h buf VEC:SPAN SPAN:$ CURL:BODY!
+   buf 0 VEC:RESIZE
    SET? 0= if false exit then
    h ENDPOINT @ SPAN:$ CURL:URL! SET? 0= if false exit then
    h s" Content-Type: application/x-www-form-urlencoded" CURL:HEADER+ SET?
@@ -936,43 +937,46 @@ private
    code 400 >= code 500 < and if E-REFUSED exit then
    E-RESPONSE ;
 
-: RECEIVED ( CURL:handle ^n -- option<CURL:http-status> )
+\ REQUESTED? left the vector empty: the answer is read into its first
+\ TOKEN-CAP bytes, then the vector is cut to the answer.
+: RECEIVED ( CURL:handle ^VEC:vector<u8> -- option<CURL:http-status> )
    {: h:CURL:handle buf:^ :}
-   buf TOKEN-CAP BUF:N>BLEN BUF:GROW {: room :}
-   h room SPAN:$ >LEN CURL:PERFORM
+   buf TOKEN-CAP VEC:ENSURE
+   h buf VEC:SPAN SPAN:$ >LEN CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
-         buf BUF:CLEAR
-         room SPAN:$ drop got LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
+         buf got LEN>N VEC:RESIZE
          status OPTION:SOME ENDOF
       truncated OF
          drop {: status:CURL:http-status :}
-         buf BUF:WIPE
+         buf 0 VEC:RESIZE
          OPEN-LINE
          s" token answer " LOG:TEXT+  status CURL:HTTP-STATUS>N LOG:INT+
          s"  past " LOG:TEXT+  TOKEN-CAP LOG:INT+  s"  bytes" LOG:TEXT+
          LOG:;LINE
          status STATUS-ERROR throw ENDOF
-      failed OF buf BUF:WIPE CURL-FAULT OPTION:NONE ENDOF
+      failed OF buf 0 VEC:RESIZE CURL-FAULT OPTION:NONE ENDOF
    ;MATCH ;
 
-: POST ( CURL:handle ^n -- option<CURL:http-status> )
+: POST ( CURL:handle ^VEC:vector<u8> -- option<CURL:http-status> )
    {: h:CURL:handle buf:^ :}
    h buf REQUESTED? if h buf RECEIVED else OPTION:NONE then ;
 
-\ POST's status in place of the third cell, the handle and BUF kept for catch.
-: POSTED ( CURL:handle ^n option<CURL:http-status> -- CURL:handle ^n option<CURL:http-status> )
+\ POST's status in place of the third cell, the handle and vector kept for
+\ catch.
+: POSTED ( CURL:handle ^VEC:vector<u8> option<CURL:http-status>
+   -- CURL:handle ^VEC:vector<u8> option<CURL:http-status> )
    drop {: h:CURL:handle buf:^ :} h buf h buf POST ;
 
-: EXCHANGE ( ^n -- option<CURL:http-status> )
+: EXCHANGE ( ^VEC:vector<u8> -- option<CURL:http-status> )
    {: buf:^ :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF {: h:CURL:handle :}
          h buf OPTION:NONE [: POSTED ;] catch {: code:n :}
-         code 0<> if 2drop drop h CURL:CLEANUP buf BUF:WIPE code throw then
+         code 0<> if 2drop drop h CURL:CLEANUP buf 0 VEC:RESIZE code throw then
          nip nip h CURL:CLEANUP ENDOF
-      failed OF CURL-FAULT buf BUF:WIPE OPTION:NONE ENDOF
+      failed OF CURL-FAULT buf 0 VEC:RESIZE OPTION:NONE ENDOF
    ;MATCH ;
 
 \ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's
@@ -1038,14 +1042,15 @@ private
    E-RESPONSE throw ;
 
 \ The 2xx answer's access_token and, when renewing, its refresh_token, empty
-\ when absent, decoded into the BUF past the answer's bytes, the refresh token
-\ right after the access token, and its expires_in. They are disjoint parts of
-\ the answer and a decoded string never outgrows its text, so both fit.
-: ISSUED ( n ^n bool -- str str n )
+\ when absent, decoded into the vector past the answer's bytes, the refresh
+\ token right after the access token, and its expires_in. They are disjoint
+\ parts of the answer and a decoded string never outgrows its text, so both
+\ fit.
+: ISSUED ( n ^VEC:vector<u8> bool -- str str n )
    {: status:n buf:^ renew:bool :}
-   buf BUF:LEN@ {: u:NUM:byte-len :}
-   buf u BUF:GROW {: room :}
-   buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room renew [: PARSED ;] PARSING
+   buf VEC:COUNT {: u:n :}
+   buf u GROWN {: room :}
+   buf VEC:SPAN u SPAN:TAKE room renew [: PARSED ;] PARSING
    {: got:n secs:n kept:n :}
    got 0< if status s" an access_token string" LACKS then
    kept 0< if status s" a refresh_token string" LACKS then
@@ -1053,14 +1058,14 @@ private
    room SPAN:$ drop {: at:^ :}
    at got at got + kept secs ;
 
-: ANSWERED ( n ^n -- )
+: ANSWERED ( n ^VEC:vector<u8> -- )
    {: status:n buf:^ :}
    OPEN-LINE s" token request answered " LOG:TEXT+  status LOG:INT+
-   s" : " LOG:TEXT+  buf BUF:SPAN$ BUF:BLEN>N LOG:TEXT+  LOG:;LINE ;
+   s" : " LOG:TEXT+  buf VEC:SPAN SPAN:$ LOG:TEXT+  LOG:;LINE ;
 
 : STATED ( -- ) ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then ;
 
-: ASKED ( ^n -- n )
+: ASKED ( ^VEC:vector<u8> -- n )
    {: buf:^ :}
    buf EXCHANGE MATCH option
       none OF E-TRANSFER throw ENDOF
@@ -1074,16 +1079,16 @@ private
 public
 
 \ An access token for the scope (for Entra a resource's `api://.../.default`)
-\ from the endpoint CLIENT! names, borrowed from the BUF until the caller writes
-\ to it again, then the answer's expires_in: the token's lifetime in seconds,
-\ positive. E-TRANSFER for no answer; E-UNAVAILABLE for a status
-\ CURL:UNAVAILABLE? accepts; E-REFUSED for another 4xx, the BUF then holding
-\ the issuer's answer, empty past TOKEN-CAP; E-RESPONSE for a 2xx without an
-\ access_token string or a positive integer expires_in, or any other status.
-\ Each of those failures first logs one line tagged bearer, never a 2xx
-\ answer's text. A scope or assertion must not lie in the BUF.
+\ from the endpoint CLIENT! names, borrowed from the vector until the caller
+\ writes to it again, then the answer's expires_in: the token's lifetime in
+\ seconds, positive. E-TRANSFER for no answer; E-UNAVAILABLE for a status
+\ CURL:UNAVAILABLE? accepts; E-REFUSED for another 4xx, the vector then
+\ holding the issuer's answer, empty past TOKEN-CAP; E-RESPONSE for a 2xx
+\ without an access_token string or a positive integer expires_in, or any
+\ other status. Each of those failures first logs one line tagged bearer,
+\ never a 2xx answer's text. A scope or assertion must not lie in the vector.
 \ E-HTTP-STATE before CLIENT!.
-: TOKEN ( ^u8 n grant ^n -- ^u8 n n )
+: TOKEN ( str grant ^VEC:vector<u8> -- str n )
    {: scope:^ su:n g buf:^ :}
    STATED
    scope su g buf FORM
@@ -1094,11 +1099,11 @@ public
 \ A new access token for the scope from the endpoint CLIENT! names, by the
 \ refresh grant with the refresh token (RFC 6749 6), then the answer's refresh
 \ token, empty when it has none (the old one then stays the one to present),
-\ then expires_in. Both texts are borrowed from the BUF until the caller writes
-\ to it again. It fails as TOKEN does, and E-RESPONSE for a 2xx whose
+\ then expires_in. Both texts are borrowed from the vector until the caller
+\ writes to it again. It fails as TOKEN does, and E-RESPONSE for a 2xx whose
 \ refresh_token is not a string. A scope or refresh token must not lie in the
-\ BUF.
-: REFRESH ( ^u8 n ^u8 n ^n -- ^u8 n ^u8 n n )
+\ vector.
+: REFRESH ( str str ^VEC:vector<u8> -- str str n )
    {: scope:^ su:n r:^ ru:n buf:^ :}
    STATED
    scope su r ru buf REFRESH-FORM
@@ -1106,8 +1111,8 @@ public
 
 private
 
-: ROW-SCOPE$ ( ^row -- ^u8 n ) ROW-REGION @ SCOPE-BUF BUF:SPAN$ BUF:BLEN>N ;
-: ROW-KEPT$ ( ^row -- ^u8 n ) ROW-REGION @ KEPT-BUF BUF:SPAN$ BUF:BLEN>N ;
+: ROW-SCOPE$ ( ^row -- str ) ROW-SCOPE @ VEC:SPAN SPAN:$ ;
+: ROW-KEPT$ ( ^row -- str ) ROW-TOKEN @ VEC:SPAN SPAN:$ ;
 
 \ Under ROWS-LOCK: the scope's row, else null.
 : FOUND ( ^u8 n -- ^row )
@@ -1118,38 +1123,35 @@ private
       ROW-NEXT @
    repeat ;
 
-\ A zeroed region, its lock made ready and its scope BUF holding the scope.
-: REGION-FOR ( ^u8 n -- SPAN:span<u8> )
+: EMPTY ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+
+\ The row's lock made ready in its zeroed region and its vectors made, the
+\ scope's holding the scope; a throw leaves what was made to UNMADE.
+: MADE ( str ^row -- )
+   {: scope:^ su:n r:^ :}
+   TASK:FACILITY-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN r ROW-REGION !
+   0 r ROW-REGION @ SPAN:FILL
+   r ROW-REGION @ GUARD TASK:FACILITY-INIT
+   EMPTY r ROW-SCOPE !  EMPTY r ROW-TOKEN !  EMPTY r ROW-ANSWER !
+   scope su r ROW-SCOPE @ VEC:APPEND ;
+
+\ Frees what MADE made of an unlinked row, and the row.
+: UNMADE ( ^row -- )
+   {: r:^ :}
+   r ROW-SCOPE @ VEC:DELETE  r ROW-TOKEN @ VEC:DELETE
+   r ROW-ANSWER @ VEC:DELETE  r ROW-REGION @ MEM:FREE-SPAN
+   HEAP:ALLOCATOR r ALLOC:DELETE ;
+
+\ Under ROWS-LOCK: a new row for the scope, linked newest first; a throw leaves
+\ nothing allocated. A linked row is never freed: rows live as long as the
+\ process.
+: LINKED ( str -- ^row )
    {: scope:^ su:n :}
-   REGION-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: region :}
-   0 region SPAN:FILL
-   region GUARD TASK:FACILITY-INIT
-   [: scope su BUF:N>BLEN region SCOPE-BUF BUF:APPEND-SPAN ;] catch
-   {: code:n :}
-   code 0<> if region MEM:FREE-SPAN code throw then
-   region ;
-
-\ A zeroed row from the arena, which the first call makes.
-: ALLOTTED ( -- ^row )
-   ROW-ARENA @ NULL-PTR = if ARENA:NEW ROW-ARENA ! then
-   ROW-ARENA @ ROWS-NEW ;
-
-\ Under ROWS-LOCK: the row holds the region and is linked newest first.
-: LINK ( SPAN:span<u8> ^row -- )
-   {: region r:^ :}
-   region r ROW-REGION !
+   HEAP:ALLOCATOR [type] row ALLOC:NEW {: r:^ :}
+   [: scope su r MADE ;] catch {: code:n :}
+   code 0<> if r UNMADE code throw then
    NEWEST @ r ROW-NEXT !
-   r NEWEST ! ;
-
-\ Under ROWS-LOCK: a new row for the scope, linked; a throw leaves nothing allocated.
-: LINKED ( ^u8 n -- ^row )
-   {: scope:^ su:n :}
-   scope su REGION-FOR {: region :}
-   [: region ALLOTTED LINK ;] catch {: code:n :}
-   code 0<> if
-      region SCOPE-BUF BUF:DISPOSE  region MEM:FREE-SPAN  code throw
-   then
-   NEWEST @ ;
+   r NEWEST !  r ;
 
 \ Under ROWS-LOCK.
 : ROW-FOR ( ^u8 n -- ^row )
@@ -1183,11 +1185,10 @@ private
 \ for its expires_in less LEEWAY-S, counted from before the ask.
 : KEEP ( ^row -- )
    {: r:^ :}
-   r ROW-REGION @ {: region :}
    epoch-seconds {: asked:n :}
-   r ROW-SCOPE$ BEARER-GRANT:OWN region ANSWER-BUF TOKEN {: a:^ u:n secs:n :}
-   region KEPT-BUF BUF:WIPE
-   a u BUF:N>BLEN region KEPT-BUF BUF:APPEND-SPAN
+   r ROW-SCOPE$ BEARER-GRANT:OWN r ROW-ANSWER @ TOKEN {: a:^ u:n secs:n :}
+   r ROW-TOKEN @ {: kept:^ :}
+   kept 0 VEC:RESIZE  a u kept VEC:APPEND
    asked r ROW-SINCE !  secs LEEWAY-S - r ROW-LIFE !
    construct kept-state kept r ROW-STATE ! ;
 
@@ -1205,7 +1206,7 @@ private
    {: r:^ :}
    r STALE? 0= if exit then
    [: r KEEP ;] catch {: code:n :}
-   r ROW-REGION @ ANSWER-BUF BUF:WIPE
+   r ROW-ANSWER @ 0 VEC:RESIZE
    r code ENDED
    code 0<> if code throw then ;
 

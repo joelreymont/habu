@@ -8,15 +8,15 @@ split-str
 \ tools/test-issuer.f as a child process.
 \ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
 \ ADMIT? with the caller's claims, a 400 and a 401 refusal, the 400 leaving no
-\ byte of the longer answer before it past the BUF's length, an assertion inside
-\ the BUF; REFRESH from a public client admitted with the refresh token's oid,
-\ again with the new refresh token it answered, an expired and a foreign
-\ refresh token refused invalid_grant, a refresh token inside the BUF; a closed port,
+\ byte of the longer answer before it past the vector's count; REFRESH from a
+\ public client admitted with the refresh token's oid, again with the new
+\ refresh token it answered, an expired and a foreign refresh token refused
+\ invalid_grant; a closed port,
 \ and on /token-fault the form's exact bytes, the answer's lifetime and the
 \ answers TOKEN refuses: a 503, a 429 and a 302, a 2xx that is not JSON, one
 \ without access_token, one whose access_token is not a string, one without
 \ expires_in, one whose expires_in is a string, one whose expires_in is 0, and
-\ a 200 and a 503 past TOKEN-CAP, each leaving only zero bytes in the BUF's
+\ a 200 and a 503 past TOKEN-CAP, each leaving only zero bytes in the vector's
 \ storage; REFRESH's form from a confidential and a public client, an answer
 \ without refresh_token, an escaped refresh token decoded after an escaped
 \ token, and a refresh_token that is not a string, E-RESPONSE logged for
@@ -51,6 +51,8 @@ require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/test-issuer.f
 require src/lib/net/bearer.f
+require src/lib/heap.f
+require src/lib/vector.f
 
 package TEST-ISSUER-TEST
 private
@@ -106,17 +108,20 @@ variable COUNT-URL-U
 variable PORT-KEPT                  \ the server's port, across its restart and stop
 CAP BUFFER: AUTH
 variable AUTH-U
-create GOT-HEAD BUF:HDR-BYTES allot
-: GOT ( -- ^n ) GOT-HEAD CELL-VIEW ;
-GOT $100 BUF:N>BLEN BUF:INIT
+TYPED-VARIABLE GOT-VEC ^VEC:vector<u8>
+: GOT ( -- ^VEC:vector<u8> ) GOT-VEC @ ;
+: GOT-NEW ( -- ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW GOT-VEC ! ;
+GOT-NEW
 
-\ Whether GOT's storage past its length holds only zero bytes. The GROW spans that
-\ storage within the capacity, so nothing moves, and GOT keeps its length.
+\ Whether GOT's storage past its count holds only zero bytes. ENSURE to the
+\ capacity moves nothing, and GOT keeps its count.
 : GOT-ZEROED? ( -- bool )
-   GOT BUF:LEN@ {: len:NUM:byte-len :}
-   GOT GOT BUF:CAP@ BUF:BLEN>N len BUF:BLEN>N - BUF:N>BLEN BUF:GROW SPAN:$ {: p:^ u:n :}
+   GOT {: v:^ :}
+   v VEC:COUNT {: len:n :}
+   v v VEC:CAP VEC:ENSURE
+   v VEC:SPAN len SPAN:SKIP SPAN:$ {: p:^ u:n :}
    true u 0 ?do p i + c@ 0<> if drop false then loop
-   len GOT BUF:LEN! ;
+   v len VEC:RESIZE ;
 
 \ /token-fault's answers, by FAULT-MODE.
 0 constant ECHO                     \ keeps the form in POSTED and answers a token
@@ -549,15 +554,15 @@ $A constant LF
    s" app" LATER ASSERT
    UP ASSERTION$ BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
    BODY$ s" user-1" T$=
-   s" a 400 is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
+   s" a 400 is E-REFUSED, the vector holding the issuer's answer" T-LABEL
    [: UP s" a.b.c" BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
-   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
-   s" it leaves no byte of the earlier answer past the BUF's length" T-LABEL
+   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$=
+   s" it leaves no byte of the earlier answer past the vector's count" T-LABEL
    GOT-ZEROED? TTRUE
-   s" a wrong secret is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
+   s" a wrong secret is E-REFUSED, the vector holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
    [: [: OWN-TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED
-   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_client\"}" T$=
+   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_client\"}" T$=
    s" a refusal logs the issuer's status and answer once, tagged bearer" T-LABEL
    LINES 1 T=
    FORM-RESET S\"  error bearer: token request answered 401: " FORM+
@@ -574,23 +579,14 @@ $A constant LF
    ASSERTION-U @ 0 > TTRUE
    UP ASSERTION$ GOT BEARER:REFRESH ISSUED-S T= 2drop
    s" oid" CLAIM 200 T= BODY$ s" user-1" T$=
-   s" an expired refresh token is E-REFUSED, the BUF holding invalid_grant" T-LABEL
+   s" an expired refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
    s" cli" epoch-seconds 10 - ASSERT
    [: UP ASSERTION$ GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
-   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
-   s" another client's refresh token is E-REFUSED, the BUF holding invalid_grant" T-LABEL
+   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$=
+   s" another client's refresh token is E-REFUSED, the vector holding invalid_grant" T-LABEL
    s" app" LATER ASSERT
    [: UP ASSERTION$ GOT BEARER:REFRESH drop 2drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
-   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$= ;
-
-false [if] \ off until dot habu-add-the-checks-a49d054d
-\ Runs after BEARER-GRANTS in SERVE-CASES.
-: BEARER-BOUNDS ( -- )
-   s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
-   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:FOR-PERSON GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ
-   s" a refresh token inside the BUF is E-BUF-BOUNDS" T-LABEL
-   [: UP GOT BUF:SPAN$ BUF:BLEN>N GOT BEARER:REFRESH drop 2drop 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
-[then]
+   GOT VEC:SPAN SPAN:$ S\" {\"error\":\"invalid_grant\"}" T$= ;
 
 : BEARER-FAULTS ( -- )
    FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!
@@ -631,7 +627,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    LINES 1 T=
    FORM-RESET S\"  error bearer: token answer 200 past 65536 bytes\n" FORM+
    LINE$ FORM$ T$=
-   s" it leaves no answer byte in the BUF's storage" T-LABEL
+   s" it leaves no answer byte in the vector's storage" T-LABEL
    GOT-ZEROED? TTRUE
    s" a 503 past TOKEN-CAP is E-UNAVAILABLE" T-LABEL
    [: BUSY-OVERSIZED BEARER:E-UNAVAILABLE FAULT-THROWS ;] CAPTURED
@@ -639,7 +635,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    LINES 1 T=
    FORM-RESET S\"  error bearer: token answer 503 past 65536 bytes\n" FORM+
    LINE$ FORM$ T$=
-   s" it leaves no answer byte in the BUF's storage" T-LABEL
+   s" it leaves no answer byte in the vector's storage" T-LABEL
    GOT-ZEROED? TTRUE
    s" REFRESH decodes the token, and an answer without refresh_token gives an empty one" T-LABEL
    ECHO FAULT-MODE !
