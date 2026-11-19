@@ -8,8 +8,8 @@ split-str
 
 require src/lib/error.f
 require src/lib/le.f
-require src/lib/byte-buffer.f
 require src/lib/utf8-scalar.f
+require src/lib/vector.f
 
 package UTF16
 public
@@ -97,63 +97,63 @@ private
 
 \ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
 \ six bits each, highest first.
-: APPEND-ENCODED ( n n n ^a -- )
-   {: scalar:n lead:n tail:n buf:^ :}
-   scalar tail CONT-SHIFT * rshift lead or buf BUF:APPEND-BYTE
+: APPEND-ENCODED ( n n n ^VEC:vector<u8> -- )
+   {: scalar:n lead:n tail:n v:^ :}
+   scalar tail CONT-SHIFT * rshift lead or v VEC:PUSH c!
    tail 0 ?do
       scalar tail 1- i - CONT-SHIFT * rshift CONT-MASK and CONT-TAG or
-      buf BUF:APPEND-BYTE
+      v VEC:PUSH c!
    loop ;
 
 
-: APPEND-SCALAR ( n ^a -- )
-   {: scalar:n buf:^ :}
-   scalar ONE-LIMIT < if scalar buf BUF:APPEND-BYTE exit then
-   scalar TWO-LIMIT < if scalar TWO-LEAD 1 buf APPEND-ENCODED exit then
-   scalar PAIR-FIRST < if scalar THREE-LEAD 2 buf APPEND-ENCODED exit then
-   scalar FOUR-LEAD 3 buf APPEND-ENCODED ;
+: APPEND-SCALAR ( n ^VEC:vector<u8> -- )
+   {: scalar:n v:^ :}
+   scalar ONE-LIMIT < if scalar v VEC:PUSH c! exit then
+   scalar TWO-LIMIT < if scalar TWO-LEAD 1 v APPEND-ENCODED exit then
+   scalar PAIR-FIRST < if scalar THREE-LEAD 2 v APPEND-ENCODED exit then
+   scalar FOUR-LEAD 3 v APPEND-ENCODED ;
 
 
-: APPEND-PAIR ( n n str ^a -- n )
-   {: high:n at:n a:^ u:n buf:^ :}
+: APPEND-PAIR ( n n str ^VEC:vector<u8> -- n )
+   {: high:n at:n a:^ u:n v:^ :}
    at UNIT-BYTES + u >= if E-UTF16 throw then
    a at UNIT-BYTES + + LE:U16@ {: low:n :}
    low LOW? 0= if E-UTF16 throw then
-   high low PAIR>SCALAR buf APPEND-SCALAR
+   high low PAIR>SCALAR v APPEND-SCALAR
    at UNIT-BYTES 2 * + ;
 
 
-: DECODE-STEP ( n str ^a -- n )
-   {: at:n a:^ u:n buf:^ :}
+: DECODE-STEP ( n str ^VEC:vector<u8> -- n )
+   {: at:n a:^ u:n v:^ :}
    a at + LE:U16@ {: unit:n :}
-   unit HIGH? if unit at a u buf APPEND-PAIR exit then
+   unit HIGH? if unit at a u v APPEND-PAIR exit then
    unit LOW? if E-UTF16 throw then
-   unit buf APPEND-SCALAR
+   unit v APPEND-SCALAR
    at UNIT-BYTES + ;
 
-: APPEND-UNIT ( n ^a -- )
-   {: unit:n buf:^ :}
-   unit BYTE-MASK and buf BUF:APPEND-BYTE
-   unit BYTE-SHIFT rshift buf BUF:APPEND-BYTE ;
+: APPEND-UNIT ( n ^VEC:vector<u8> -- )
+   {: unit:n v:^ :}
+   unit BYTE-MASK and v VEC:PUSH c!
+   unit BYTE-SHIFT rshift v VEC:PUSH c! ;
 
 
-: APPEND-SCALAR-LE ( n ^a -- )
-   {: scalar:n buf:^ :}
-   scalar PAIR-FIRST < if scalar buf APPEND-UNIT exit then
+: APPEND-SCALAR-LE ( n ^VEC:vector<u8> -- )
+   {: scalar:n v:^ :}
+   scalar PAIR-FIRST < if scalar v APPEND-UNIT exit then
    scalar SCALAR>PAIR {: high:n low:n :}
-   high buf APPEND-UNIT  low buf APPEND-UNIT ;
+   high v APPEND-UNIT  low v APPEND-UNIT ;
 
 
-: ENCODE-STEP ( n str ^a -- n )
-   {: at:n a:^ u:n buf:^ :}
+: ENCODE-STEP ( n str ^VEC:vector<u8> -- n )
+   {: at:n a:^ u:n v:^ :}
    a u at UTF8:NEXT MATCH UTF8:scalar-step
-      scalar OF swap buf APPEND-SCALAR-LE ENDOF
+      scalar OF swap v APPEND-SCALAR-LE ENDOF
       raw-byte OF 2drop E-UTF8 throw ENDOF
    ;MATCH ;
 
 public
 
-\ Both conversions append to an initialised BUF without clearing it, strictly:
+\ Both conversions append to a vector without clearing it, strictly:
 \ no replacement character, BOM, terminator or normalisation; NUL is ordinary.
 \ A negative length is E-STR-BOUNDS before a byte moves. Input may not overlap
 \ the destination's storage, which an append may move. A throw while
@@ -161,20 +161,20 @@ public
 \ Two-byte little-endian units; a high-then-low pair is one scalar. An odd byte
 \ length or an unpaired surrogate, high (at the span's end included) or low, is
 \ E-UTF16.
-: APPEND-LE>UTF8 ( str ^a -- )
-   {: a:^ u:n buf:^ :}
+: APPEND-LE>UTF8 ( str ^VEC:vector<u8> -- )
+   {: a:^ u:n v:^ :}
    u 0 < if E-STR-BOUNDS throw then
    u UNIT-BYTES mod 0<> if E-UTF16 throw then
-   0 begin dup u < while a u buf DECODE-STEP repeat
+   0 begin dup u < while a u v DECODE-STEP repeat
    drop ;
 
 \ A scalar at or above U+10000 becomes a surrogate pair; every raw byte -
 \ malformed, overlong, an encoded surrogate, past U+10FFFF or truncated - is
 \ E-UTF8.
-: APPEND-UTF8>LE ( str ^a -- )
-   {: a:^ u:n buf:^ :}
+: APPEND-UTF8>LE ( str ^VEC:vector<u8> -- )
+   {: a:^ u:n v:^ :}
    u 0 < if E-STR-BOUNDS throw then
-   0 begin dup u < while a u buf ENCODE-STEP repeat
+   0 begin dup u < while a u v ENCODE-STEP repeat
    drop ;
 
 ;package
