@@ -46,11 +46,10 @@ ENUM step none mapped shadowed moved checked required objects routed open loadin
 TYPED-VARIABLE PROGRESS step
 
 public
--9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes no object or program" ERROR:CODE E-FAILED
+-9690 s" a file of this build failed: the build loads no other file and writes no object or program" ERROR:CODE E-FAILED
 -9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
 -9692 s" a store into a cell of hb's header that the target's data holds: its DATA-START is below hb's" ERROR:CODE E-HEAP-STORE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
--9694 s" a file of this build left a task running at its end: its object would hold data the task can still change" ERROR:CODE E-LIVE-TASK
 private
 
 EXPORT CHECK:READ-ALIAS
@@ -1550,7 +1549,6 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    s"  in " REJECTION:EMIT-STR  e ROUTINE.  s"  +" REJECTION:EMIT-STR  at v - REJECTION:EMIT-N ;
 
 
-: REFUSAL ( -- ) s" linker: " SAY  FILE-PATH FILE-PATH-N @ SAY  s" : " SAY ;
 : FILE-NOTE ( -- ) s" file" REJECTION:NOTE  FILE-PATH FILE-PATH-N @ REJECTION:EMIT-STR ;
 : FOUND-NOTE ( n bool -- ) s" found" REJECTION:NOTE  VALUE. ;
 
@@ -1568,6 +1566,15 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    r DECL$ {: a:^ u:n :}
    u 0= if FILE-NOTE exit then
    a u REJECTION:AT  l lu REJECTION:EMIT-STR ;
+
+
+\ Rejects the file with code c, message m and help h.
+: REJECT-FILE ( str str str -- )
+   {: c:^ cu:n m:^ mu:n h:^ hu:n :}
+   c cu REJECTION:OPEN  m mu REJECTION:EMIT-STR
+   FILE-NOTE
+   REJECTION:HELP  h hu REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ Emission e's site holding v, a code address when code is true.
@@ -1727,7 +1734,8 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
       drop  s" TYPE-WORD" pkg XREF-PKG-PRIVATE CHECKER-RESOLVE:WL-PROBE  REC>INDEX
    then {: src:n :}
    src FIRST-REC @ < if
-      REFUSAL  s" a type entry needs the build's own TYPE-WORD in package TFAM" SAY SAY-CR  E-COMP-STATE throw
+      s" E-COMP-STATE"  s" a type entry needs the build's own TYPE-WORD in package TFAM"
+      s" load src/core/type-family.f in the build before the file that declares the type" REJECT-FILE
    then
    src ;
 
@@ -5250,10 +5258,6 @@ EXPORT CHECK:STORES-OPEN
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
-: CAUGHT-REFUSED ( -- )
-   s" linker: a caught text failed and left words or data, so the build loads and writes nothing more" SAY SAY-CR
-   E-FAILED throw ;
-
 \ Fails the build once a rejection was sent since the open, caught or kept without a throw; its record is out.
 : SENT-CK ( -- )
    REJECTION:SENT OPEN-SENT @ <> if E-FAILED throw then ;
@@ -5265,7 +5269,7 @@ EXPORT CHECK:STORES-OPEN
    REJECTION:PENDING-FAILS? if
       construct step caught PROGRESS !
       E-FAILED REJECTION:PASS-PENDING
-      CAUGHT-REFUSED
+      E-FAILED throw
    then
    REJECTION:DROP-PENDING ;
 
@@ -5286,10 +5290,11 @@ EXPORT CHECK:STORES-OPEN
       open OF
          CAUGHT-CK
          DPHW-CELL HOST@ 0<> if
-            s" linker: data space was given back outside the build's files" SAY
-            s"  (a caught failure or a negative allot)" SAY
-            s" , so the build loads and writes nothing" SAY SAY-CR
-            E-FAILED throw
+            s" E-FAILED" REJECTION:OPEN
+            s" data space was given back outside the build's files" REJECTION:EMIT-STR
+            REJECTION:HELP
+            s" keep allot non-negative, and let no failure a text catches leave data behind" REJECTION:EMIT-STR
+            EXIT-STATUS:REJECTED REJECTION:STOP
          then
       ENDOF
       loading OF nested 0= if E-COMP-STATE throw then ENDOF
@@ -5297,11 +5302,9 @@ EXPORT CHECK:STORES-OPEN
       failed OF
          SENT-CK
          E-FAILED REJECTION:PASS-PENDING
-         REFUSAL s" its load failed and the failure was caught" SAY
-         s" , so the build loads and writes nothing more" SAY SAY-CR
          E-FAILED throw
       ENDOF
-      caught OF SENT-CK CAUGHT-REFUSED ENDOF
+      caught OF SENT-CK E-FAILED REJECTION:PASS-PENDING E-FAILED throw ENDOF
    ;MATCH ;
 
 
@@ -5437,20 +5440,20 @@ EXPORT CHECK:LINEAR-TEXT$
    repeat
    drop ;
 
-\ The part's exit actions, then E-FAILED (a rejection sent, a caught text that left words or data, DP moved back),
-\ then E-LIVE-TASK; all before READS-KEEP, so no task reads after the part's reads are kept.
+\ The part's exit actions, then E-FAILED (a rejection sent, a caught text that left words or data), then the
+\ rejection of DP moved back, then of a live task; all before READS-KEEP, so no task reads after the part's reads are kept.
 : END-CK ( -- )
    SPACE-EXIT {: rc:n :}
    rc 0<> if rc throw then
    CAUGHT-CK
    DPHW-CELL HOST@ 0<> if
-      REFUSAL s" it gave back data space" SAY
-      s"  (a caught failure or a negative allot)" SAY
-      s" , so the build writes nothing" SAY SAY-CR
-      E-FAILED throw
+      s" E-FAILED"  s" the file gave back data space"
+      s" keep allot non-negative, and let no failure a text catches leave data behind" REJECT-FILE
    then
    TASKS-LIVE-CELL HOST@ OPEN-TASKS @ > if
-      REFUSAL s" a task is still running at the file's end" SAY SAY-CR  E-LIVE-TASK throw
+      s" E-LIVE-TASK"
+      s" a task is still running at the file's end, so the file's object would hold data the task can still change"
+      s" end or join every task the file starts before the file ends" REJECT-FILE
    then ;
 
 
@@ -5794,20 +5797,27 @@ EXPORT CHECK:DROP-FACTS
    off u ;
 
 \ Gathers package pa pu's primitive na nu: hb's kernel record of it, and copies of both names and of the facts text
-\ the stated rows give it. With no text its calls would go unchecked: the open fails.
+\ the stated rows give it. With no text its calls would go unchecked: the open rejects it.
 : OWNED+ ( str str -- )
    {: pa:^ pu:n na:^ nu:n :}
    na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:^ :}
    src XREF-FOUND? 0= if
-      s" linker: hb has no primitive " SAY  na nu SAY
-      s" , which an owned row of " SAY  pa pu SAY  s"  names" SAY  SAY-CR
-      E-COMP-STATE throw
+      s" E-COMP-STATE" REJECTION:OPEN
+      s" hb has no primitive " REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+      s" , which an owned row of " REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR  s"  names" REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" build with a staged host whose hb has the primitive before src/habu/prims.f gives it a package row"
+      REJECTION:EMIT-STR  s\"  (docs/bootstrap.md \"Staged hosts\")" REJECTION:EMIT-STR
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    pa pu na nu OWNED-FACTS {: a:^ u:n :}
    u 0= if
-      s" linker: no facts text says owned primitive " SAY
-      pa pu SAY  s" :" SAY  na nu SAY  SAY-CR
-      E-COMP-STATE throw
+      s" E-COMP-STATE" REJECTION:OPEN
+      s" no facts text says owned primitive " REJECTION:EMIT-STR
+      pa pu REJECTION:EMIT-STR  s" :" REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
+      REJECTION:HELP
+      s" give its EPPRIM: row in src/habu/prims.f an effect a facts text can say" REJECTION:EMIT-STR
+      EXIT-STATUS:REJECTED REJECTION:STOP
    then
    OWNED-N @ OWNED-CELLS * {: at:n :}
    at OWNED-CELLS + OWNED-RESERVE
