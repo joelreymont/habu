@@ -10,9 +10,6 @@ public
 -2 constant RETIRED
 \ A package row a rollback retired; no lookup is keyed on it.
 -3 constant RETIRED-NAMESPACE
-\ WL:MAX is the largest value a wordlist id may take; it bounds every
-\ WID-indexed table and the snapshot's registry validation.
-$FFFFFFFE constant MAX
 \ The wordlist id of the kernel's built-in words.
 3 constant PRIMITIVES
 : GLOBAL? ( n -- bool ) dup BOOT:GLOBAL-WL = swap PRIMITIVES = or ;
