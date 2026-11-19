@@ -3,9 +3,12 @@ split-str
 \
 \ STORAGE CLASS. PROCESS-WIDE: every queue is shared by all tasks, the main
 \ thread included, and safe for any number of them; a live queue holds three
-\ semaphores from src/lib/task.f's pool. Elements are cells: a pointer pushed
-\ through a queue stays the sender's to keep alive.
+\ semaphores from src/lib/task.f's pool and a destroyed one keeps none of their
+\ addresses, so a build saves a queue its top level destroyed and rejects one
+\ left live. Elements are cells: a pointer pushed through a queue stays the
+\ sender's to keep alive.
 
+s" src/lib/adt/option.f" required
 s" src/lib/error.f" required
 s" src/lib/task.f" required
 s" src/lib/type/deftype.f" required
@@ -38,14 +41,14 @@ END-STRUCTURE
 
 6 constant Q-HEADER-CELLS        \ the header cells Q-REC, writes by hand
 
-\ Free slots, items, and the lock that covers the two indexes. A queue's three
-\ handles live in one typed row, so a TASK:sem is stored and read as a TASK:sem
-\ and this package never holds one as a bare cell.
+\ Free slots, items, and the lock that covers the two indexes. A slot holds
+\ `some` handle while the queue holds that semaphore and `none` once it gives
+\ it back, so no saved cell keeps a freed semaphore's address.
 3 constant Q-SEM-N
 0 constant Q-SEM-FREE-IX
 1 constant Q-SEM-ITEMS-IX
 2 constant Q-SEM-LOCK-IX
-Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS TASK:sem
+Q-MAX Q-SEM-N * TYPED-BUFFER Q-SEMS option<TASK:sem>
 
 Q-MAX TYPED-BUFFER Q-RECS ^n
 variable Q-N
@@ -88,11 +91,16 @@ variable Q-N
    dup 1 < if E-QUEUE-OPERAND throw then
    drop ;
 
-: Q-SEM-SLOT ( n n -- ^TASK:sem ) {: idx:n which:n :}
+: Q-SEM-SLOT ( n n -- ^option<TASK:sem> ) {: idx:n which:n :}
    idx Q-SEM-N * which + Q-SEMS ;
 
+\ Every caller reads a slot the queue holds: after Q-LIVE-CHECK, after
+\ Q-SEM-TAKE, or below the count. Only a call racing DESTROY reaches `none`.
 : Q-SEM@ ( n n -- TASK:sem )
-   Q-SEM-SLOT @ ;
+   Q-SEM-SLOT @ MATCH option
+      none OF E-QUEUE-OPERAND throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 : Q-FREE-SEM ( n -- TASK:sem )
    Q-SEM-FREE-IX Q-SEM@ ;
@@ -112,13 +120,14 @@ variable Q-N
 \ Each handle is stored before the count moves, so what the count says the queue
 \ holds is exactly what it holds, even when the pool refuses part way.
 : Q-SEM-TAKE ( n -- ) {: idx:n :}
-   NEW-SEMAPHORE idx idx Q-SEMS-N@ Q-SEM-SLOT !
+   NEW-SEMAPHORE OPTION:SOME idx idx Q-SEMS-N@ Q-SEM-SLOT !
    idx Q-SEMS-N@ 1 + idx Q-SEMS-N! ;
 
 : Q-SEMS-DROP ( n -- ) {: idx:n :}
    begin idx Q-SEMS-N@ 0 > while
       idx Q-SEMS-N@ 1 - idx Q-SEMS-N!
       idx idx Q-SEMS-N@ Q-SEM@ FREE-SEMAPHORE
+      OPTION:NONE idx idx Q-SEMS-N@ Q-SEM-SLOT !
    repeat ;
 
 : Q-ARM ( n -- ) {: idx:n :}

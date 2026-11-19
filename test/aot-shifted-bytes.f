@@ -567,6 +567,30 @@ variable G-IMAGE-U
    s" the program built from main.f" LABEL GE-EXPECT-OK
    S\" 42\n7\n" s" the program prints the address cell's target, then the number" LABEL GE-EXPECT-OUT ;
 
+\ A queue its top level made and destroyed keeps no semaphore address: built and run. One left live is rejected.
+: QUEUE-LIB$ ( -- str )
+   S\" require src/lib/queue.f\n4 QUEUE:QUEUE JOBS\nJOBS QUEUE:INIT\nJOBS QUEUE:DESTROY\n" ;
+: QUEUE-MAIN$ ( -- str )
+   S\" require lib.f\n: MAIN ( -- ) JOBS QUEUE:INIT 7 JOBS QUEUE:PUSH JOBS QUEUE:POP . JOBS QUEUE:DESTROY ;\n" ;
+
+: QUEUE-CASE ( -- )
+   s" queue" CASE-OPEN
+   s" lib.f" G-LIB IN-CASE G-LIB-U !
+   G-LIB G-LIB-U @ QUEUE-LIB$ FS:WRITE-ALL
+   C-MAIN$ QUEUE-MAIN$ FS:WRITE-ALL
+   WARM
+   GE-HB-RESET
+   C-IMAGE$ GE-ARGV+
+   C-IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
+   s" the program built from main.f" LABEL GE-EXPECT-OK
+   S\" 7\n" s" the program prints what it pushed through the queue" LABEL GE-EXPECT-OUT ;
+
+: LIVE-QUEUE-CASE ( -- )
+   s" live-queue" CASE-OPEN
+   S\" require src/lib/queue.f\n4 QUEUE:QUEUE JOBS\nJOBS QUEUE:INIT\n"
+   S\" require lib.f\n: MAIN ( -- ) 7 JOBS QUEUE:PUSH JOBS QUEUE:POP . ;\n"
+   ADDRESS-REFUSED ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -596,8 +620,8 @@ variable G-IMAGE-U
    ENVTOP-BUILDS
    ROOTED-WRITE ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
    SYMLINK-CASE LONG-CASE GAP-CASE FILE-END-CASE LATER-END-CASE EXTENT-END-CASE
-   OPTION-CASE HEAP-CASE DEFER-CASE
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one, a variable's address in a sum's second variant, run, a heap address there, refused, and a deferred buffer bound at top level holding an address and a number, run" type cr ;
+   OPTION-CASE HEAP-CASE DEFER-CASE QUEUE-CASE LIVE-QUEUE-CASE
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one, a variable's address in a sum's second variant, run, a heap address there, refused, a deferred buffer bound at top level holding an address and a number, run, a queue the top level destroyed, run, and one it left live, refused" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;
