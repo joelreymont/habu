@@ -12767,40 +12767,68 @@ EXPORT CHECKER-RESOLVE:PART-ROW
 -1 constant STORAGE-DEFERRED
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
-\ Counts: input side deeper, output side on top. A quotation's rows flip polarity:
-\ the word supplies the quotation's inputs and receives its outputs.
-: EN-MULT ( n n n n bool -- n n )
-   {: v:n off:n pol:bool :}
+\ LVM-IN and LVM-OUT count each var id below the effect's E-TVN@ on their side.
+256 constant LVM-INIT
+SCRATCH{
+PTR-VARIABLE LVM-IN-P   PTR-VARIABLE LVM-OUT-P   variable LVM-CAP
+}SCRATCH
+: LVM-IN ( -- ^n ) LVM-IN-P @ ;
+: LVM-OUT ( -- ^n ) LVM-OUT-P @ ;
+
+
+: LVM-ENSURE ( n -- )
+   {: need:n :}
+   need LVM-CAP @ <= IF exit THEN
+   need LVM-CAP @ 2 * max LVM-INIT max {: nc:n :}
+   LVM-IN-P @ LVM-CAP @ cells nc cells SR-GROW LVM-IN-P !
+   LVM-OUT-P @ LVM-CAP @ cells nc cells SR-GROW LVM-OUT-P !
+   nc LVM-CAP ! ;
+
+
+: LVM-CLEAR ( n -- )
+   {: tvn:n :}
+   tvn LVM-ENSURE
+   tvn 0 ?do
+      0 LVM-IN i cells + !
+      0 LVM-OUT i cells + !
+   loop ;
+
+
+: LVM-BUMP ( n n bool -- )
+   {: tvn:n v:n pol:bool :}
+   v 0 < v tvn >= or IF exit THEN
+   pol IF LVM-OUT ELSE LVM-IN THEN v cells + 1 swap +! ;
+
+
+\ A quotation's rows flip polarity: the word supplies the quotation's inputs and
+\ receives its outputs.
+: EN-COUNT ( n n bool -- )
+   {: tvn:n off:n pol:bool :}
    off 0= IF exit THEN
    off E-PTR >r
    r@ EN.TAG @ case
-      EN-VAR of
-         r@ EN.A @ v = IF
-            pol IF 1 + ELSE swap 1 + swap THEN
-         THEN
-         r> drop
-      endof
+      EN-VAR of tvn r@ EN.A @ pol LVM-BUMP r> drop endof
       EN-PUSH of
-         v r@ EN.A @ pol RECURSE
-         v r@ EN.B @ pol RECURSE
+         tvn r@ EN.A @ pol RECURSE
+         tvn r@ EN.B @ pol RECURSE
          r> drop
       endof
       EN-PTR of
-         v r@ EN.A @ pol RECURSE
+         tvn r@ EN.A @ pol RECURSE
          r> drop
       endof
       EN-QUOT of
-         v r@ EN.A @ pol 0= RECURSE
-         v r@ EN.B @ pol RECURSE
-         v r@ EN.C @ pol 0= RECURSE
-         v r@ EN.D @ pol RECURSE
+         tvn r@ EN.A @ pol 0= RECURSE
+         tvn r@ EN.B @ pol RECURSE
+         tvn r@ EN.C @ pol 0= RECURSE
+         tvn r@ EN.D @ pol RECURSE
          r> drop
       endof
-      EN-FORALL of v r@ EN.A @ pol RECURSE r> drop endof
+      EN-FORALL of tvn r@ EN.A @ pol RECURSE r> drop endof
       EN-PARAM of
          r@ {: np:^ :}
          0 BEGIN dup np EN.C @ < WHILE
-            >r v r@ cells np EN.D @ + E-PTR CELL-VIEW @ pol RECURSE r>
+            >r tvn r@ cells np EN.D @ + E-PTR CELL-VIEW @ pol RECURSE r>
             1 +
          REPEAT drop
          r> drop
@@ -12808,26 +12836,30 @@ EXPORT CHECKER-RESOLVE:PART-ROW
       r> drop
    endcase ;
 
-: LIN-VAR-MULT ( str -- n n )
-   {: h:^ v:n :}
-   0 0 v h E-DIN@ RES-FALSE EN-MULT
-   v h E-DOUT@ RES-TRUE EN-MULT ;
+
+: LVM-UNEQUAL? ( n -- bool )
+   cells dup LVM-IN + @ swap LVM-OUT + @ <> ;
+
 
 : LIN-EFF-PASS ( ^u8 -- )
    {: h:^ :}
    LIN-ANY? 0= IF exit THEN
    OK @ 0= IF exit THEN
    h ER.SYM @ CTOR-ROW?-XT IF exit THEN
-   0 BEGIN dup h E-TVN@ < WHILE
+   h E-TVN@ {: tvn:n :}
+   tvn LVM-CLEAR
+   tvn h E-DIN@ RES-FALSE EN-COUNT
+   tvn h E-DOUT@ RES-TRUE EN-COUNT
+   0 BEGIN dup tvn < WHILE
       dup {: k:n :}
       k cells EI-TV + @ {: r:n :}
       r UNBOUND <> IF
          r T-RES {: rr:n :}
          rr LIN-CON? IF
-            h k LIN-VAR-MULT <> IF MD-LINEAR-EFFECT MDIAG!  0 OK ! THEN
+            k LVM-UNEQUAL? IF MD-LINEAR-EFFECT MDIAG!  0 OK ! THEN
          ELSE
             rr TAG T-VAR = IF
-               h k LIN-VAR-MULT <> IF rr PAY LIN-TAINT THEN
+               k LVM-UNEQUAL? IF rr PAY LIN-TAINT THEN
             THEN
          THEN
       THEN
