@@ -223,7 +223,16 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" CS-K30 ( R [ R -- R ] -- R ) [: CHECKER-SOUNDNESS:TAIL-UNDER ;] swap CHECKER-SOUNDNESS:TAIL-APPLY"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" a declared callable passes on to a callee naming the input row" T-LABEL
-   s" CS-K18 ( R [ -- S ] -- S ) CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" CS-K18 ( R [ -- S ] -- S ) CHECKER-SOUNDNESS:TAIL-NAMED" CHECK-QUIET-CANDIDATE! -1 T=
+   s" a literal running a captured callable keeps the callable's row" T-LABEL
+   s" : CS-K120 ( R [ R -- R ] -- R ) {: f :} 1 [: f execute ;] execute drop ;" 70
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" : CS-K121 ( R [ R -- R ] -- R ) {: f :} 1 [: f execute ;] drop f execute drop ;" 70
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" : CS-K123 ( R [ R -- R ] -- R ) {: f :} 1 [: f CHECKER-SOUNDNESS:TAIL-NAMED ;] execute drop ;" 70
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE
+   s" : CS-K124 ( R [ R -- R ] bool -- R ) {: f b :} 1 [: b IF f execute ELSE f execute THEN ;] execute drop ;" 70
+   s" error[E-MISMATCH]: `execute` takes nothing; the stack holds n" SUBJECT:REFUSED? TTRUE ;
 
 
 : CALLABLE-HOLDS ( -- )

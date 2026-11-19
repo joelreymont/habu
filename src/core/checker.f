@@ -6514,13 +6514,28 @@ variable CWIN-DMASK                 \ the callee's intact bits over the live win
    live CWIN-DTERMS ! ;
 
 
-: QUOT-TAIL-MARK ( n -- )
-   BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT
-   PAY RVK-INFERRED! ;
+: QUOT-TAIL-HELD? ( n n n -- bool ) {: t:n floor:n mark:n :}
+   TRAIL-N @ mark ?do
+      i cells TRAIL + @ {: e:n :}
+      e 15 and {: tag:n :}   e 4 rshift {: id:n :}
+      tag 1 =  tag 13 = or {: row?:bool :}
+      row?  tag 0= or  tag 12 = or  id floor < and IF
+         row? IF id MK-ROW ELSE id MK-VAR THEN {: x:n :}
+         t x row? OCC-WALK IF RES-TRUE unloop EXIT THEN
+      THEN
+   loop RES-FALSE ;
 
-: QUOT-ROWS-GENERALIZE ( n -- ) {: q:n :}
-   q Q>DIN QUOT-TAIL-MARK q Q>DOUT QUOT-TAIL-MARK
-   q Q>RIN QUOT-TAIL-MARK q Q>ROUT QUOT-TAIL-MARK ;
+: QUOT-TAIL-MARK ( n n n -- ) {: row:n floor:n mark:n :}
+   row BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT {: t:n :}
+   t PAY floor < IF EXIT THEN
+   t floor mark QUOT-TAIL-HELD? IF EXIT THEN
+   t PAY RVK-INFERRED! ;
+
+\ Marks implicit q's end tails minted at floor or after that no older var bound
+\ since trail height mark holds: an apply must not rename an enclosing body's row.
+: QUOT-ROWS-GENERALIZE ( n n n -- ) {: q:n floor:n mark:n :}
+   q Q>DIN floor mark QUOT-TAIL-MARK q Q>DOUT floor mark QUOT-TAIL-MARK
+   q Q>RIN floor mark QUOT-TAIL-MARK q Q>ROUT floor mark QUOT-TAIL-MARK ;
 
 variable QUOT-LOSS
 
@@ -12818,7 +12833,7 @@ EXPORT CHECKER-QUOT-FRESH:MARK
 
 \ `['] W` types as the literal `[: W ;]`. A defer's declared type (IS-TOK) is a
 \ declaration and keeps EFF-QUOT's kinds.
-: TICK-QUOT ( ^u8 -- n ) EFF-QUOT dup QUOT-ROWS-GENERALIZE dup MARK ;
+: TICK-QUOT ( ^u8 -- n ) EFF-QUOT dup 0 TRAIL-N @ QUOT-ROWS-GENERALIZE dup MARK ;
 
 $200 constant PE-CAP-INIT
 
@@ -20276,7 +20291,8 @@ $A0 constant CF.XFA-OFF
 $A8 constant CF.LSC-OFF
 $B0 constant CF.QRD-OFF
 $B8 constant CF.TXI-OFF
-$C0 constant CFS-REC
+$C0 constant CF.QTR-OFF
+$C8 constant CFS-REC
 : CF.KND ( ^a -- ^a ) CF.KND-OFF + ;
 : CF.SA ( ^a -- ^a ) CF.SA-OFF + ;
 : CF.SB ( ^a -- ^a ) CF.SB-OFF + ;
@@ -20306,6 +20322,8 @@ $C0 constant CFS-REC
 : CF.LSC ( ^a -- ^a ) CF.LSC-OFF + ;
 \ CF.QRD: on a quotation frame, 0 until it reads a local, else 2 + the deepest owner (LOC-OWNER) of one.
 : CF.QRD ( ^a -- ^a ) CF.QRD-OFF + ;
+\ CF.QTR: on a quotation frame, the trail height it opened at.
+: CF.QTR ( ^a -- ^a ) CF.QTR-OFF + ;
 
 
 SCRATCH{
@@ -21132,6 +21150,7 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
    XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
    THDMASK @ CF-TOP CF.TXD !  THRMASK @ CF-TOP CF.TXR !
    THSET @ CF-TOP CF.TXS !  INHSET @ CF-TOP CF.TXI !
+   TRAIL-N @ CF-TOP CF.QTR !
    0 XSET !  0 XFACT !  0 DEADP !  0 THSET !  0 INHSET !  0 FACTS !
    QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -21176,8 +21195,9 @@ variable QTMP
      DCUR @ ROW-NO-PROOF DCUR !  RCUR @ ROW-NO-PROOF RCUR !
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
      QUOT-BLOCK-BIND
-     \ A literal infers its fixed window before its implicit tails generalize.
-     QTMP @ QUOT-ROWS-GENERALIZE
+     \ The fixed window is inferred before the tails generalize. BROW, minted
+     \ first at CF-QUOT, is the floor of the vars the literal owns.
+     QTMP @ BROW @ PAY CF-TOP CF.QTR @ QUOT-ROWS-GENERALIZE
      QTMP @ MARK
      DEADP @ XSET @ 0= and {: noret:bool :}
      QTMP @ THDMASK @ XMASK THRMASK @ XMASK QX!
