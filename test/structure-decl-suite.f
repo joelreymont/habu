@@ -1681,6 +1681,26 @@ SDBIG:SRC$ TEST-EVAL:RC 0 T=
 \ A buffer of it checks each nested instance once.
 1 TYPED-BUFFER SDND-REC sdndeep
 7 0 SDND-REC SDND-GO 7 T=
+\ 5000 structures each hold the previous by value: a closed family's width
+\ is its record's, so declaring one never walks the chain below it.
+package SDCHAIN
+5000 constant K
+$40000 constant CAP            \ bytes: K declarations of at most 45 bytes
+create SRC CAP allot
+TYPED-VARIABLE SRC-U len
+: S+ ( str -- ) SRC CAP SRC-U BUF-APPEND ;
+: S+NAME ( n -- ) s" sdc" S+  FMT:INT$ S+ ;
+: S+DECL ( n -- )
+   {: i:n :}
+   s" STRUCTURE " S+  i S+NAME  s"  FIELD x " S+
+   i 1 - S+NAME  s"  ;STRUCTURE " S+ ;
+public
+: SRC$ ( -- ^u8 n )
+   SRC-U BUF-RESET  s" STRUCTURE sdc0 FIELD x n ;STRUCTURE " S+
+   K 1 ?do i S+DECL loop
+   SRC SRC-U @ LEN>N ;
+;package
+SDCHAIN:SRC$ TEST-EVAL:RC 0 T=
 
 \ A declared type holds EFFECT-DEPTH-MAX levels, 2048: one per pointer, application
 \ and name, two per quotation. The 2049th is rejected at its token, here `n`.

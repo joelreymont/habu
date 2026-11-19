@@ -1535,19 +1535,17 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    commitn PF-COMMIT-N ! ;
 
 \ --- family facts memo (TFM). A checked use of a family's type asks
-\ SUM-NAMED-PAYLOAD?, TFAM-CONCRETE-LINEAR? and TFW-FAM-IMPL (width of a family
-\ with no parameter); each walks every variant, and certifying one generated
-\ constructor asks several times, so without the memo an ENUM's constructors are
-\ quadratic in its variants.
+\ SUM-NAMED-PAYLOAD? and TFAM-CONCRETE-LINEAR?; each walks every variant, and
+\ certifying one generated constructor asks several times, so without the memo
+\ an ENUM's constructors are quadratic in its variants.
 \ Each answer is memoized per family under TFM-EPOCH: a cell stamped with the
 \ current epoch holds the answer a walk would give. A refusal is a throw and is
 \ never memoized. Process-local, like VNX.
 
 0 constant TFM-NAMED
 1 constant TFM-LINEAR
-2 constant TFM-WIDTH
-3 constant TFM-STORE
-8 cells constant TFM-REC                    \ (stamp, answer) per fact
+2 constant TFM-STORE
+6 cells constant TFM-REC                    \ (stamp, answer) per fact
 create TFM-BOOT   TF-CAP-INIT TFM-REC * allot
 PERSISTED-PTR-VARIABLE TFM-P   TFM-BOOT TFM-P !
 variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
@@ -1803,14 +1801,12 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
    fam TFAM-SUM? fam TFAM-ENUM? or IF fam base top TFW-SUM EXIT THEN
    1 ;
 
-\ A family with no parameter has one width wherever it is applied, so it is
-\ walked once per TFM epoch and every later application reads the TFM-WIDTH
-\ memo: a chain of closed families that each carry the previous one twice is
-\ walked in linear time, not 2^N. A parametric family is walked per frame.
+\ A family with no parameter answers from its record, so a chain of closed
+\ families holding one another costs no walk. A parametric one is walked per
+\ frame.
 : TFW-FAM-IMPL ( n n n -- n ) {: fam:n base:n top:n :}
    fam TFAM-ARITY@ 0 > IF fam base top TFW-FAM-WALK EXIT THEN
-   fam TFM-WIDTH TFM@ IF EXIT THEN drop
-   fam base top TFW-FAM-WALK dup fam TFM-WIDTH TFM! ;
+   fam TFAM-WIDTH@ ;
 : TFW-FAM-INSTALL ( -- ) [: TFW-FAM-IMPL ;] is TFW-FAM ;
 TFW-FAM-INSTALL
 
@@ -1827,8 +1823,8 @@ TFW-FAM-INSTALL
    term idx 1 + count RECURSE
    w idx TFW! ;
 
-\ A closed family answers from TFW-FAM-IMPL's memo; a parametric one is walked
-\ per instance.
+\ A closed family answers from its record; a parametric one is walked per
+\ instance.
 : TFAM-INST-WIDTH@ ( n -- n ) {: term:n :}      \ instantiated logical width of a resolved layout term
    term PARAM>FAM {: fam:n :}
    fam TFAM-BOXED-OR-NICHE? IF 1 EXIT THEN
