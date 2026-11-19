@@ -5,10 +5,10 @@ split-str
 \ an arena; MEM is for page-sized storage, allocator internals and storage below
 \ the FFI. A refused mmap throws E-MEM-MAP; a kernel munmap refusal writes
 \ "memory: unmap failed" and exits 78, bypassing catch. STORAGE CLASS.
-\ CALLER-OWNED: the caller releases every mapping. WITH-BYTES's scopes are
-\ TASK-LOCAL: their chunks hang off one head cell in the MEM-ABI band
-\ (src/habu/layout.f), a halted task unwinds its scopes at TASK:PAUSE, and
-\ MEM:RELEASE-SCOPES unmaps a freed region's chunks.
+\ CALLER-OWNED: the caller releases every mapping. WITH-BYTES's and
+\ WITH-RECORD's scopes are TASK-LOCAL: their chunks hang off one head cell in
+\ the MEM-ABI band (src/habu/layout.f), a halted task unwinds its scopes at
+\ TASK:PAUSE, and MEM:RELEASE-SCOPES unmaps a freed region's chunks.
 
 s" src/lib/error.f" required
 require src/lib/num-arithmetic.f
@@ -250,11 +250,19 @@ CAST: >CHUNK ( ^u8 -- ^chunk )
 : WB-BODY ( R ^u8 NUM:alloc-byte-len [ R ^u8 NUM:alloc-byte-len -- S ] -- S )
    execute ;
 
+CAST: >RECORD ( ^u8 -- ^t )
+
 public
 
 : WITH-BYTES ( R NUM:alloc-byte-len [ R ^u8 NUM:alloc-byte-len -- S ] -- S )
    {: body :}
    WB-ENTER body [: WB-BODY ;] [: WB-LEAVE ;] finally ;
+
+\ Lends a zeroed t, released on exit and on a throw.
+: WITH-RECORD ( R width<t> [ R ^t -- S ] -- S )
+   {: body :}
+   width>n BYTES-ALLOC-LEN WB-ENTER drop >RECORD
+   body [: WB-LEAVE ;] finally ;
 
 \ Unmaps the scope chunks of the DATA region at `base`, which has no scope
 \ open, after clearing its head cell.

@@ -348,6 +348,48 @@ variable WBT-PEER-IN
 : WBT-THROW ( -- )
    MEM-64K BYTES-ALLOC-LEN [: WBT-THROW-BODY ;] WITH-BYTES ;
 
+\ A record this small is pooled, so its release shows as the next scope
+\ taking the same body.
+STRUCTURE wrt-pair DERIVE addr
+   FIELD a n
+   FIELD b n
+;STRUCTURE
+TYPED-VARIABLE WRT-SAVED ^wrt-pair
+
+: WRT-ZERO ( ^wrt-pair -- )
+   {: p:^ :}
+   s" a lent record reads 0" T-LABEL
+   p WRT-PAIR-A @ 0 T=
+   p WRT-PAIR-B @ 0 T= ;
+
+: WRT-FILL ( ^wrt-pair -- )
+   {: p:^ :}
+   p WRT-ZERO
+   p WRT-SAVED !
+   7 p WRT-PAIR-A !
+   9 p WRT-PAIR-B !
+   s" a lent record keeps what is written" T-LABEL
+   p WRT-PAIR-A @ 7 T=
+   p WRT-PAIR-B @ 9 T= ;
+
+: WRT-SAME ( ^wrt-pair -- )
+   {: p:^ :}
+   s" a record scope reuses the body the last one left" T-LABEL
+   p WRT-SAVED @ = TTRUE
+   p WRT-ZERO ;
+
+: WRT-THROW-BODY ( ^wrt-pair -- )
+   WRT-FILL E-PRIMARY throw ;
+
+: WRT-THROW ( -- )
+   [type] wrt-pair [: WRT-THROW-BODY ;] WITH-RECORD ;
+
+: WRT-REUSE ( -- )
+   [type] wrt-pair [: WRT-FILL ;] WITH-RECORD
+   [type] wrt-pair [: WRT-SAME ;] WITH-RECORD
+   [: WRT-THROW ;] E-PRIMARY TTHROWSQ
+   [type] wrt-pair [: WRT-SAME ;] WITH-RECORD ;
+
 : WBT-NORMAL-CHILD ( -- )
    WBT-RESULT MEMT-MARK-A <> if E-PRIMARY throw then
    WBT-RELEASED
@@ -460,6 +502,7 @@ TASK:MIN-STACK TASK:TASK WBT-HALT-TASK
    WBT-HALTED
    MEM-64K BYTES-ALLOC-LEN [: WBT-ALLOC-RETRY ;] WITH-BYTES
    WBT-RESULT MEMT-MARK-A T=
+   WRT-REUSE
    T-REPORT ;
 
 TEST-WITH-BYTES
