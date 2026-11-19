@@ -176,10 +176,8 @@ PTR-VARIABLE STGT-START
 : LBUF-ALIGN ( -- )
    align ;
 
-\ A store of a sum writes every cell of it, zero past the stored variant's
-\ payload, so a cell is an address cell when any variant puts an address in
-\ it: a mark made at allocation holds whichever variant is stored later. A
-\ cell's class is the set of kinds its variants put in it, one bit each.
+\ A cell's class: the kinds its variants put in it, one bit each. A sum's store
+\ zeroes the cells past its payload, so a mark holds for every variant stored.
 0 constant CELL-ABSENT
 1 constant CELL-SCALAR
 2 constant CELL-PTR
@@ -197,9 +195,9 @@ SCRATCH-VARIABLE CLS-CAP
 : CLS-SPAN ( n n n -- ) {: at:n width:n class:n :}
    width 0 ?do at i + class CLS-PUT loop ;
 
-\ The cells of term from cell at, every sum variant over the same cells; a
-\ sum's tag cell holds no address in any variant and stays absent.
-: CLASSIFY ( n n -- ) {: at:n term:n :}
+\ Classes the cells of term from cell at, every sum variant over the same
+\ cells; a tag and every cell of a byte buffer are numbers.
+: CLASSIFY ( n n n -- ) {: at:n width:n term:n :}
    term TFAM-STORAGE-QUOT? if at CELL-CODE CLS-PUT exit then
    term T-RES TAG T-PTR = if at CELL-PTR CLS-PUT exit then
    term TFAM-STORAGE-PRODUCT? if
@@ -207,38 +205,41 @@ SCRATCH-VARIABLE CLS-CAP
       at
       fam TFAM-FLD-COUNT@ 0 ?do
          fam TFAM-FLD-START@ i + {: field:n :}
-         term field TFAM-STORAGE-FIELD {: child:n width:n :}
-         dup child recurse
-         width +
+         term field TFAM-STORAGE-FIELD {: child:n cw:n :}
+         dup cw child recurse
+         cw +
       loop drop
       exit
    then drop
    term TFAM-STORAGE-SUM? if
       {: fam:n :}
       fam TFAM-NICHE? if at CELL-PTR CLS-PUT exit then
+      at width + 1 - CELL-SCALAR CLS-PUT
       fam TFAM-VAR-COUNT@ 0 ?do
          fam TFAM-VAR-START@ i + {: vid:n :}
          at
          vid SUMV-PAY-N 0 ?do
-            term vid i TFAM-STORAGE-PAY {: child:n width:n :}
-            dup child recurse
-            width +
+            term vid i TFAM-STORAGE-PAY {: child:n cw:n :}
+            dup cw child recurse
+            cw +
          loop drop
       loop
       exit
    then drop
-   at term T-WIDTH CELL-SCALAR CLS-SPAN ;
+   at width CELL-SCALAR CLS-SPAN ;
 
-\ Classifies the LBUF-W cells of an element of term.
-: CLASSIFY-ELEMENT ( n -- ) {: term:n :}
-   LBUF-W @ {: width:n :}
+\ Classifies the cells of an element of term and answers their count.
+: CLASSIFY-ELEMENT ( n -- n ) {: term:n :}
+   term T-WIDTH {: width:n :}
    CLS-P CLS-CAP width 1 max ARENA-BYTES-ENSURE
    width 0 ?do CELL-ABSENT i CLS c! loop
-   0 term CLASSIFY ;
+   0 width term CLASSIFY
+   width ;
 
-\ The first cell of the element that holds more than one kind, else -1.
-: MIXED-CELL ( -- n )
-   LBUF-W @ 0 ?do
+\ The first of the width cells of the element that holds more than one kind,
+\ else -1.
+: MIXED-CELL ( n -- n ) {: width:n :}
+   width 0 ?do
       i CLS c@ {: class:n :}
       class class 1 - and 0= 0= if i unloop exit then
    loop -1 ;
@@ -272,8 +273,7 @@ SCRATCH-VARIABLE CLS-CAP
 \ Rejects the storage name, of type text and term, when two variants put
 \ different kinds in one cell of its element.
 : MIXED-HELD? ( str str n -- bool ) {: name:^ nameu:n type:^ typeu:n term:n :}
-   term CLASSIFY-ELEMENT
-   MIXED-CELL {: at:n :}
+   term CLASSIFY-ELEMENT MIXED-CELL {: at:n :}
    at 0< if LBUF-FALSE exit then
    name nameu type typeu at MIXED-REJECT LBUF-TRUE ;
 
@@ -286,8 +286,7 @@ SCRATCH-VARIABLE CLS-CAP
    loop ;
 
 : STORAGE-MARK-FIXED ( ^n n -- ) {: base:^ term:n :}
-   LBUF-W @ {: width:n :}
-   term CLASSIFY-ELEMENT
+   term CLASSIFY-ELEMENT {: width:n :}
    LBUF-N @ 0 ?do
       base i width * cells + CLS-BASE width MARK-CELLS
    loop ;
@@ -324,12 +323,6 @@ private
 : STORAGE-HAS-ADDRESS? ( str -- bool ) TYPE-TERM HAS-ADDRESS? ;
 
 : NODE-HAS-ADDRESS? ( n -- bool ) NODE-TERM HAS-ADDRESS? ;
-
-\ Only storage the image saves, hasaddr, is checked; scratch is not saved.
-: TYPE-MIXED? ( str str bool -- bool )
-   {: name:^ nameu:n type:^ typeu:n hasaddr:bool :}
-   hasaddr 0= if LBUF-FALSE exit then
-   name nameu type typeu MIXED-SAVED? ;
 
 : NODE-SCRATCH-REJECT ( str -- ) {: name:^ nameu:n :}
    LBUF-CLEAR  LBI-T @ TYPE-TEXT LBUF-APP
@@ -410,26 +403,19 @@ public
 private
 
 \ ---- LBUF: the block -----------------------------------------------------------
-\ A buffer block starts with HEAD-CELLS header cells, indexed by OFF or REGION,
-\ CAP and CNT (allotted and live element counts) and STRIDE (an element's width
-\ in cells). A fixed block's elements follow its header in one part, so OFF
-\ holds their byte offset from the block. A deferred block's region is a part
-\ of its own, which a stripped build lays out apart from the block, so REGION
-\ holds its address, a marked cell. An unbound block reads 0 in all but STRIDE.
-\ Each routine takes the block, or the cell holding it, last. A deferred block
-\ follows the header with KINDS, the count of class bytes after it: one per
-\ element cell, or none when the element holds no address or quotation.
+\ A buffer block's header cells; an unbound block reads 0 in all but STRIDE.
 public
 
-0 constant OFF
-0 constant REGION
-1 constant CAP
-2 constant CNT
-3 constant STRIDE
+0 constant OFF        \ fixed: the elements' byte offset from the block
+1 constant CAP        \ allotted elements
+2 constant CNT        \ live elements
+3 constant STRIDE     \ an element's width in cells
 4 constant HEAD-CELLS
-4 constant KINDS
 
 private
+
+0 constant REGION     \ deferred: the region's address, marked; a build lays it apart
+4 constant KINDS      \ deferred: the count of class bytes after it, 0 or STRIDE
 
 : REGION@ ( ^n -- ^n ) REGION ptr-field @ ;
 : REGION! ( ^n ^n -- ) REGION ptr-field ! ;
@@ -443,11 +429,8 @@ private
    count 0 ?do base i wc * cells + kinds wc MARK-CELLS loop ;
 
 \ ---- DEFER-LAYOUT-BUFFER: a column sized by the model at build time ----------
-\ An unbound buffer block whose NAME-BIND ( count -- ) allots count*width cells.
-\ NAME-BIND reuses the region when the count fits, else allots a larger,
-\ zeroed one and retires the old. NAME-GROW carries the live cells over. The
-\ accessor reads the region cell on every call, so indices survive a grow; a
-\ raw pointer derived from an accessor dangles across NAME-GROW.
+\ The accessor reads the region cell on every call, so an index survives
+\ NAME-BIND and NAME-GROW; a pointer an accessor answered dangles across them.
 
 \ Retiring a moved column clears its old cells' declarations and bytes after
 \ the new region is published.
@@ -474,10 +457,8 @@ public
    count  cb CNT cells +  !
    oldbase oldcap wc cb LDEFER-RETIRE ;
 
-\ NAME-GROW extends a column, preserving written cells. Past capacity the
-\ region becomes max(2*capacity, count), its elements declared before the live
-\ cells are copied in. A within-capacity grow zeroes [old-live, count): a
-\ prior shrink may have left it dirty.
+\ A new region's cells are declared before the live ones are copied in. Within
+\ capacity [old-live, count) is zeroed: a prior shrink may have left it dirty.
 : LDEFER-GROW ( n ^n n -- )   \ count cbase wc
    {: count:n cb:^ wc:n :}
    cb REGION@ {: oldbase:^ :} cb CAP cells + @ {: oldcap:n :}
@@ -548,9 +529,9 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 \ every bind to mark by.
 : LAY-KINDS ( str bool -- ) {: type:^ typeu:n hasaddr:bool :}
    hasaddr 0= if 0 , exit then
-   type typeu TYPE-TERM CLASSIFY-ELEMENT
-   LBUF-W @ ,
-   LBUF-W @ 0 ?do i CLS c@ c, loop
+   type typeu TYPE-TERM CLASSIFY-ELEMENT {: width:n :}
+   width ,
+   width 0 ?do i CLS c@ c, loop
    LBUF-ALIGN ;
 
 \ Lays NAME's -BIND and -GROW companions over the block v.
@@ -585,8 +566,8 @@ global
    name nameu name nameu LBUF-NAME-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
    name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
+   name nameu type typeu MIXED-SAVED? if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
-   name nameu type typeu hasaddr TYPE-MIXED? if exit then
    name nameu type typeu hasaddr LBUF-FALSE LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
@@ -606,8 +587,8 @@ INTRINSIC-DECLARATION INTRINSIC
    then
    LBUF-W !  drop
    name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
+   name nameu type typeu MIXED-SAVED? if exit then
    type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
-   name nameu type typeu hasaddr TYPE-MIXED? if exit then
    name nameu CHILD-ABI:DEFERRED ['] DEFERRED-ELEMENT AS-ENTRY
    type typeu CHILD {: handle:n :}
    here {: v:^ :}
@@ -662,9 +643,9 @@ global
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
    scratch 0= if
       name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
+      name nameu type typeu MIXED-SAVED? if exit then
    then
    scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
-   name nameu type typeu hasaddr TYPE-MIXED? if exit then
    name nameu type typeu hasaddr scratch LBUF-CHILD ;
 INTRINSIC-DECLARATION INTRINSIC
 
@@ -683,9 +664,9 @@ INTRINSIC-DECLARATION INTRINSIC
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
    scratch 0= if
       name nameu type typeu STG-SCRATCH-TYPE SCRATCH-HELD? if exit then
+      name nameu type typeu MIXED-SAVED? if exit then
    then
    scratch if LBUF-FALSE else type typeu STORAGE-HAS-ADDRESS? then {: hasaddr:bool :}
-   name nameu type typeu hasaddr TYPE-MIXED? if exit then
    name nameu type typeu TDECL-STORED-CHILD {: handle:n :}
    here {: v:^ :}
    scratch if LBUF-BYTES @ SCRATCH-ALLOT else LBUF-BYTES @ allot then

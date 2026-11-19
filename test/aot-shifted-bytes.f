@@ -548,10 +548,8 @@ variable G-IMAGE-U
    S\" require lib.f\n: MAIN ( -- ) 0 HEAP-ROW @ MATCH option none OF 1 . ENDOF some OF @ . ENDOF ;MATCH ;\n"
    ADDRESS-REFUSED ;
 
-\ A deferred buffer bound and filled at top level keeps its region, an address
-\ and a number, in the program: only a build strips data and lays the kept
-\ parts out again, so the region is reached through its marked region cell and
-\ its address cell is relocated.
+\ A build lays a deferred buffer's region apart from its block, so the block reaches it through a marked address
+\ cell: bound and filled at top level, the region's address cell is relocated and its number kept.
 : DEFER-LIB$ ( -- str )
    S\" STRUCTURE dfcell FIELD p ^n FIELD x n ;STRUCTURE\nvariable DF-CELL\n42 DF-CELL !\nDEFER-LAYOUT-BUFFER DF-ROW dfcell\n3 DF-ROW-BIND\nDF-CELL 7 DFCELL:MAKE 0 DF-ROW !\n" ;
 : DEFER-MAIN$ ( -- str )

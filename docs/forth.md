@@ -2531,11 +2531,12 @@ sections above.
 - **A saved cell holds one kind in every variant.** A build relocates each
   address cell of saved storage by its type, so a sum whose variants put an
   address in one variant's cell and a number or quotation in another's at the
-  same cell cannot be relocated. `SUMTYPE z VARIANT ref ^n ;VARIANT VARIANT num
-  n ;VARIANT ;SUMTYPE` stored in `1 TYPED-BUFFER ZAM-ROW z` is rejected `E-BAD-STORAGE` ("holds an address
-  and a number in cell 0 of an element, each in another variant"); `option<^n>`
-  loads, since `none` uses no cell. Scratch storage is not saved and takes any
-  sum.
+  same cell cannot be relocated; a tag, an enum and a byte buffer's cells count
+  as numbers. `SUMTYPE zmix VARIANT ref ^n ;VARIANT VARIANT num n ;VARIANT
+  ;SUMTYPE` in `1 TYPED-BUFFER ZAM-ROW zmix` is rejected `E-BAD-STORAGE` ("holds
+  an address and a number in cell 0 of an element, each in another variant");
+  `option<^n>` loads, since `none` uses no cell. Scratch storage is not saved
+  and takes any sum.
 - **Fixed `TYPED-BUFFER` elements occupy whole cells.** `2 TYPED-BUFFER TB
   u8` is rejected `E-BAD-STORAGE`. Use `n BUFFER: B` for fixed bytes, yielding
   `( -- ^u8 )`. `DYNAMIC-BUFFER` and `ARENA` alone store `u8`, with

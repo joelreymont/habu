@@ -218,6 +218,18 @@ PTR-VARIABLE TS-DP
    0 RES-K-GET 77 T=
    2 RES-K-GET 88 T= ;
 
+\ The verifier classes an element at its type's own width, so a field past
+\ the first cell that mixes kinds is rejected as a load rejects it.
+: TS-VERIFY-WIDE ( -- )
+   s\" SUMTYPE tsamix VARIANT ref ^n ;VARIANT VARIANT num n ;VARIANT ;SUMTYPE\nSTRUCTURE tswide FIELD f1 n FIELD z tsamix ;STRUCTURE\n1 TYPED-BUFFER TSW-ROW tswide"
+   VERIFY:SOURCE-BUF-IN-SCOPE ;
+
+: TS-SECTION-VERIFY-MIXED ( -- )
+   REJECTION:CAPTURE  [: TS-VERIFY-WIDE ;] catch 70 T=
+   REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" in cell 1 of an element" CONTAINS? TTRUE
+   REJECTION:BUFFER-OFF ;
+
 \ 9. Distinct capability pin #2: a raw variable/create/constant still cannot
 \    mint a nominal family (TVK-RAW), while TYPED-VARIABLE is the sound path.
 \    The raw definers are registered through the verify-source RAW gate — the
@@ -278,6 +290,7 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
    TS-SECTION-SCRATCH
    TS-SECTION-DUP-ROLLBACK
    TS-SECTION-PIN-LAYOUT-BUFFER
+   TS-SECTION-VERIFY-MIXED
    TS-SECTION-PIN-RAW-REJECT
    TS-SECTION-QUOT-DECLARATION
    T-REPORT ;

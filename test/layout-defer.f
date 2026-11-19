@@ -1,5 +1,5 @@
 split-str
-\ layout-defer.f - DEFER-LAYOUT-BUFFER, a layout column whose offset and count
+\ layout-defer.f - DEFER-LAYOUT-BUFFER, a layout column whose region and count
 \ cells are bound at run time: its accessor checks like LAYOUT-BUFFER's,
 \ NAME-BIND sizes from the counted need reusing the largest region, and
 \ NAME-GROW carries live cells over.
