@@ -40,7 +40,8 @@ split-str
 \ which NEXT fails `oversize`. Each head's first line is judged as it arrives:
 \ bytes held that cannot begin `HTTP/1.x NNN` and a space or CR fail
 \ `malformed` before any further read, so a close or a full room after them
-\ is not `cut` or `oversize`. Dialing tries every address
+\ is not `cut` or `oversize`; a whole line whose status is outside 100 to
+\ 599 fails `malformed` too. Dialing tries every address
 \ getaddrinfo answers, in order, each with the time left divided by the
 \ addresses left.
 \ A request marked malformed or oversize while it was built fails at
@@ -709,14 +710,15 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    repeat drop true ;
 
 \ The first line, held whole with LEAD? true; keeps the status and x. A
-\ line with no CRLF held is refused.
+\ line with no CRLF held, or a status outside 100 to 599, is refused.
 : STATUS? ( ^conn -- bool ) {: c :}
    c ROOM {: r:^ :}
    c 0 LINE-AT 12 < if false exit then
    r 7 + c@ STR-DIGIT-VALUE c CONN-MINOR !
    r 9 + 3 STR-PARSE-POS MATCH option
       none OF false ENDOF
-      some OF c CONN-STATUS ! true ENDOF
+      some OF {: s:n :}
+         s 100 >= s 599 <= and dup if s c CONN-STATUS ! then ENDOF
    ;MATCH ;
 
 : INTERIM? ( ^conn -- bool ) CONN-STATUS @ dup 100 >= swap 200 < and ;

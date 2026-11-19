@@ -110,7 +110,8 @@ CONN-CAP TYPED-BUFFER PER-CONN n
 ENUM script sized chunked closing interim no-content reuse idle-close
    unread cut-head cut-body silent bad-status bad-length bad-chunk big-head
    trailing trailer big-trailer long-size interims close-asked minor-zero
-   wire-sized wire-chunked stale-byte not-http garbage bad-code ;ENUM
+   wire-sized wire-chunked stale-byte not-http garbage bad-code low-code
+   high-code ;ENUM
 TYPED-VARIABLE SCRIPT script
 TYPED-VARIABLE LINK HTTPC:conn
 TYPED-VARIABLE SPARE HTTPC:conn          \ a record OPEN finds full of bytes
@@ -142,6 +143,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : CUT-BODY$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nContent-Length: 26\r\n\r\nabc" ;
 : BAD-STATUS$ ( -- str ) S\" HTTP/1.1 2x0 OK\r\n\r\n" ;
+: LOW-CODE$ ( -- str ) S\" HTTP/1.1 099 Low\r\nContent-Length: 0\r\n\r\n" ;
+: HIGH-CODE$ ( -- str ) S\" HTTP/1.1 600 High\r\nContent-Length: 0\r\n\r\n" ;
 : BAD-LENGTH$ ( -- str )
    S\" HTTP/1.1 200 OK\r\nContent-Length: abc\r\n\r\nok" ;
 : BAD-CHUNK$ ( -- str )
@@ -213,6 +216,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       not-http OF S\" not http\r\n" true ENDOF
       garbage OF s" garbage" true ENDOF
       bad-code OF s" HTTP/1.1 2x" true ENDOF
+      low-code OF LOW-CODE$ false ENDOF
+      high-code OF HIGH-CODE$ false ENDOF
    ;MATCH ;
 
 
@@ -701,6 +706,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    MALFORMED-BY
    construct script bad-code
    s" a status code that is not digits, then the close, fails `malformed`"
+   MALFORMED-BY
+   construct script low-code s" a status below 100 fails `malformed`"
+   MALFORMED-BY
+   construct script high-code s" a status above 599 fails `malformed`"
    MALFORMED-BY ;
 
 \ A request with a stall only, in a room of SMALL-ROOM bytes, whose answer
