@@ -1696,6 +1696,13 @@ PTR-VARIABLE PARAMCPO-P   \ the node offset that copy answered
 variable TWALK-GEN   \ bumped by TWALK-RESET, so the walk stamps need no clearing
 PTR-VARIABLE PARAMWG-P   \ the TWALK-GEN of the walk that last passed each param term
 PTR-VARIABLE PARAMWC-P   \ the context that walk passed it with
+\ A param term's stamp: the term, context and CUR-LIT this UNIFY-GEN paired it
+\ with. A repeat is dropped: a drive stops at its first failure, so that passed.
+variable UNIFY-GEN
+PTR-VARIABLE PARAMUG-P   \ the UNIFY-GEN that last paired each param term
+PTR-VARIABLE PARAMUB-P   \ the term it was paired with
+PTR-VARIABLE PARAMUC-P   \ the packed context of that pair
+PTR-VARIABLE PARAMUL-P   \ the CUR-LIT of that pair
 PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
 PTR-VARIABLE PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
@@ -1710,6 +1717,10 @@ variable PARAM-CAP     variable PARAM-SCR-CAP-V
 : PARAMCPO ( -- ^n ) PARAMCPO-P @ ;
 : PARAMWG ( -- ^n ) PARAMWG-P @ ;
 : PARAMWC ( -- ^n ) PARAMWC-P @ ;
+: PARAMUG ( -- ^n ) PARAMUG-P @ ;
+: PARAMUB ( -- ^n ) PARAMUB-P @ ;
+: PARAMUC ( -- ^n ) PARAMUC-P @ ;
+: PARAMUL ( -- ^n ) PARAMUL-P @ ;
 : PARGP ( -- ^n ) PARGP-P @ ;
 : PARG-ENSURE ( n -- ) {: need:n :}
    PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
@@ -1735,6 +1746,10 @@ variable PARAM-CAP     variable PARAM-SCR-CAP-V
    PARAMCPO-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMCPO-P !
    PARAMWG-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMWG-P !
    PARAMWC-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMWC-P !
+   PARAMUG-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMUG-P !
+   PARAMUB-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMUB-P !
+   PARAMUC-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMUC-P !
+   PARAMUL-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMUL-P !
    nc PARAM-CAP ! ;
 
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The registry
@@ -3450,10 +3465,13 @@ variable QUOT-HIT        \ true when the last NO-SCOPE? walk failed at a quotati
       TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
+      \ Context 1: KEEP-QUOTS* stamps 0 under this walk's TWALK-RESET.
+      x 1 TWALK-PASSED? IF EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
          1 +
       REPEAT drop
+      x 1 TWALK-PASS
    THEN ;
 : KEEP-INNER ( n -- ) dup 0= IF drop EXIT THEN TWALK-RESET KEEP-INNER* ;
 
@@ -5030,12 +5048,15 @@ defer U-DRAIN-XT ( n -- )
 \ of the quotations its slot hands it to run; the last of those with a fact it lacks.
 variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-T
 
+\ UNIFY-GEN moves on entry and exit: no stamp holds the facts, holds and kept
+\ roles a quotation pair changes.
 : QUOT-PAIR ( n n -- )
    {: got:n want:n :}
    CUR-ROLE @ {: role:n :}   role ROLE-FLIP {: flip:n :}
    TRAIL-N @ {: mark:n :}   USP @ {: base:n :}   CUR-UPOS @ {: upos:n :}
    KEPT-ROLE @ {: kr0:n :}   KEPT-WANT @ {: kw0:n :}
    KEPT-RUN @ {: kn0:n :}   KEPT-RUN-T @ {: kt0:n :}
+   1 UNIFY-GEN +!
    role ROLE-D1 ROLE-D2 or and {: dem:n :}
    dem ROLE-D1 ROLE-D2 or = {: inv:bool :}
    want Q>BLOCK T-RES {: b:n :}
@@ -5081,7 +5102,8 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
       runs IF got Q>FACTS w Q>FACTS or w Q-FACTS! THEN
       runs  role ROLE-D2 and 0 <> and  INPUT-KIND? and IF got INH-CHARGE THEN
    THEN
-   -1 HOLD-N +! ;
+   -1 HOLD-N +!
+   1 UNIFY-GEN +! ;
 
 
 : ROLE-ALIAS ( n n -- n n )
@@ -5099,6 +5121,22 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    okb IF qa QUOT-HIT ! THEN
    oka okb and ;
 
+
+\ CUR-ROLE takes bits 0-2; the other four are flags.
+: U-CTX ( -- n )
+   CUR-ROLE @
+   CUR-STRICT @ IF 8 or THEN  CUR-QUOT @ IF 16 or THEN
+   CUR-CALL @ IF 32 or THEN  CUR-ARG @ IF 64 or THEN ;
+
+\ False stamps a with this pair.
+: PARAM-REPEAT? ( n n -- bool ) {: a:n b:n :}
+   a PAY {: pid:n :}   U-CTX {: ctx:n :}
+   pid cells PARAMUG + @ UNIFY-GEN @ =  pid cells PARAMUB + @ b =  and
+   pid cells PARAMUC + @ ctx =  and  pid cells PARAMUL + @ CUR-LIT @ =  and
+   IF RES-TRUE EXIT THEN
+   UNIFY-GEN @ pid cells PARAMUG + !  b pid cells PARAMUB + !
+   ctx pid cells PARAMUC + !  CUR-LIT @ pid cells PARAMUL + !
+   RES-FALSE ;
 
 \ A wanted side that is a variable whose chain is provided demands nothing of a
 \ literal.
@@ -5126,7 +5164,8 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
-     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN ELSE
+     2dup PARAM-REPEAT? IF 2drop ELSE
+     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN THEN ELSE
    \ only a whole-bundle transport op may bind a layout cell; a stale layout
    \ cell reaches here: a typed use of the bundle, named E-STALE-READ
    2dup LAYOUT-BLOCK? IF STALE-NOTE U-FAIL ELSE
@@ -5341,6 +5380,7 @@ U-DRAIN-INSTALL
 
 : UNIFY ( n n -- bool )
    over FORALL-INPUT-ROOT !
+   1 UNIFY-GEN +!
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  0 CUR-QUOT !
    0 FORALL-OPEN-N !
    SCOPE-INTRO-ON @ INPUT-KIND? and CUR-ARG !
@@ -21019,10 +21059,12 @@ PTR-VARIABLE OWNB-P   variable OWNB-CAP   variable OWNB-N   \ (id, term) pairs, 
       x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
+      x 2 TWALK-PASSED? IF EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
          1 +
       REPEAT drop
+      x 2 TWALK-PASS
    THEN ;
 
 \ The block variables of the declared rows' quotations, which the body's walk
@@ -23482,10 +23524,12 @@ variable NP-SEEN-N
       t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    t TAG T-PARAM = IF
+      t 3 TWALK-PASSED? IF EXIT THEN
       0 BEGIN dup t PARAM>ARGC < WHILE
          t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
          1 +
       REPEAT drop
+      t 3 TWALK-PASS
    THEN ;
 
 : NP-COLLECT-ROW ( n -- )
@@ -23724,10 +23768,13 @@ variable NP-OUT-I
       t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    t TAG T-PARAM = IF
+      \ Every write of NP-VARSET is followed by a TWALK-RESET before this walk.
+      t 4 TWALK-PASSED? IF EXIT THEN
       0 BEGIN dup t PARAM>ARGC < WHILE            \ data-stack index (RECURSE-safe)
          t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
          1 +
-      REPEAT drop EXIT
+      REPEAT drop
+      t 4 TWALK-PASS EXIT
    THEN ;
 
 : NP-CELLFAM? ( n -- bool )
