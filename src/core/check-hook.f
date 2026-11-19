@@ -270,6 +270,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 \ The shapes whose child answers or takes `^t` for its declared type t.
 : STORED-SHAPE? ( n -- bool ) {: shape:n :}
    shape CHILD-ABI:STORED =  shape CHILD-ABI:BUFFER = or
+   shape CHILD-ABI:DEFERRED = or
    shape CHILD-ABI:DYNAMIC = or  shape CHILD-ABI:SLOT = or
    shape CHILD-ABI:SLOTS = or  shape CHILD-ABI:WORK = or
    shape CHILD-ABI:WORKS = or  shape CHILD-ABI:HEAP-NEW = or

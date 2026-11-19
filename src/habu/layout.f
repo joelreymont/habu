@@ -494,11 +494,11 @@ $38D0 constant SEAL-CELL
 \ it registers. An OFF child adds its parameter, a byte offset, to `^a`,
 \ answering `^a` for CELL-OFF, `^^b` for PTR-OFF, `^u8` for BYTE-OFF.
 \ A FIELD child's parameter is a committed field id, an INDEX child's a family
-\ id, a VALUE child's the number it answers. STORED to ARENA-DISPOSE are
-\ storage children: STORED's parameter is 0, or its type's node when the
-\ declaration spells none, that of BUFFER to ARENA-DISPOSE its routine's
-\ entry, and the effects of STORED, BUFFER, DYNAMIC, SLOT, SLOTS, WORK, WORKS,
-\ ARENA-NEW and ARENA-DISPOSE answer `^t` for the type t the declaration
+\ id, a VALUE child's the number it answers. STORED to ARENA-DISPOSE and
+\ DEFERRED are storage children: STORED's parameter is 0, or its type's node
+\ when the declaration spells none, that of the others their routine's entry,
+\ and the effects of STORED, BUFFER, DEFERRED, DYNAMIC, SLOT, SLOTS, WORK,
+\ WORKS, ARENA-NEW and ARENA-DISPOSE answer `^t` for the type t the declaration
 \ spells or STORED's node is; HEAP-NEW answers it and HEAP-RELEASE takes it. An
 \ INIT-GET or INIT-SET child's parameter is the committed field id it reads or
 \ writes through its receiver. A MAKE or UNMAKE child's parameter is its
@@ -538,6 +538,7 @@ public
 25 constant NOMINAL-IN
 26 constant NOMINAL-OUT
 27 constant SPAN
+28 constant DEFERRED
 
 ;package
 

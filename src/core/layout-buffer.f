@@ -277,9 +277,9 @@ SCRATCH-VARIABLE CLS-CAP
    at 0< if LBUF-FALSE exit then
    name nameu type typeu at MIXED-REJECT LBUF-TRUE ;
 
-: MARK-CELLS ( ^n n -- ) {: base:^ width:n :}
+: MARK-CELLS ( ^n ^u8 n -- ) {: base:^ kinds:^ width:n :}
    width 0 ?do
-      i CLS c@ {: class:n :}
+      kinds i + c@ {: class:n :}
       base i cells + {: cell:^ :}
       class CELL-PTR = if cell ptr-cell-mark then
       class CELL-CODE = if cell @ cell xt! then
@@ -289,7 +289,7 @@ SCRATCH-VARIABLE CLS-CAP
    LBUF-W @ {: width:n :}
    term CLASSIFY-ELEMENT
    LBUF-N @ 0 ?do
-      base i width * cells + width MARK-CELLS
+      base i width * cells + CLS-BASE width MARK-CELLS
    loop ;
 
 \ A type node is read where its text would be parsed (STORAGE-PARSE?), into
@@ -409,20 +409,51 @@ public
 
 private
 
+\ ---- LBUF: the block -----------------------------------------------------------
+\ A buffer block starts with HEAD-CELLS header cells, indexed by OFF or REGION,
+\ CAP and CNT (allotted and live element counts) and STRIDE (an element's width
+\ in cells). A fixed block's elements follow its header in one part, so OFF
+\ holds their byte offset from the block. A deferred block's region is a part
+\ of its own, which a stripped build lays out apart from the block, so REGION
+\ holds its address, a marked cell. An unbound block reads 0 in all but STRIDE.
+\ Each routine takes the block, or the cell holding it, last. A deferred block
+\ follows the header with KINDS, the count of class bytes after it: one per
+\ element cell, or none when the element holds no address or quotation.
+public
+
+0 constant OFF
+0 constant REGION
+1 constant CAP
+2 constant CNT
+3 constant STRIDE
+4 constant HEAD-CELLS
+4 constant KINDS
+
+private
+
+: REGION@ ( ^n -- ^n ) REGION ptr-field @ ;
+: REGION! ( ^n ^n -- ) REGION ptr-field ! ;
+
+\ Declares each cell of the count elements from base by the block's class
+\ bytes, so a build relocates a saved address and keeps a saved quotation.
+: MARK-FRESH ( ^n n ^n -- ) {: base:^ count:n cb:^ :}
+   cb KINDS cells + @ {: wc:n :}
+   wc 0= if exit then
+   cb KINDS 1 + cells + BYTE-VIEW {: kinds:^ :}
+   count 0 ?do base i wc * cells + kinds wc MARK-CELLS loop ;
+
 \ ---- DEFER-LAYOUT-BUFFER: a column sized by the model at build time ----------
 \ An unbound buffer block whose NAME-BIND ( count -- ) allots count*width cells.
-\ NAME-BIND reuses the region when the count fits, else allots a larger one and
-\ retires the old; its cells are fresh and zeroed. NAME-GROW carries the live
-\ cells over. The accessor reads the offset cell on every call, so indices
-\ survive a grow; a raw pointer derived from an accessor dangles across
-\ NAME-GROW.
+\ NAME-BIND reuses the region when the count fits, else allots a larger,
+\ zeroed one and retires the old. NAME-GROW carries the live cells over. The
+\ accessor reads the region cell on every call, so indices survive a grow; a
+\ raw pointer derived from an accessor dangles across NAME-GROW.
 
-\ The region offset is measured from the block, not from `data-base`, so it
-\ relocates with the block. Retiring a moved column clears its old cells'
-\ declarations and bytes after the new region is published.
-: LDEFER-RETIRE ( n n n ^n -- ) {: oldoff:n oldcap:n wc:n cb:^ :}
-   oldcap 0= oldoff cb @ = or if exit then
-   cb oldoff + {: oldbase:^ :}
+\ Retiring a moved column clears its old cells' declarations and bytes after
+\ the new region is published.
+: LDEFER-RETIRE ( ^n n n ^n -- ) {: oldbase:^ oldcap:n wc:n cb:^ :}
+   oldcap 0= if exit then
+   oldbase cb REGION@ = if exit then
    oldbase BYTE-VIEW data-base BYTE-VIEW - oldcap wc * cells ADDRESS-CELLS:REMOVE-SPAN
    oldbase oldcap wc * cells LBUF-ZERO ;
 
@@ -431,40 +462,41 @@ public
 : LDEFER-BIND ( n ^n n -- )   \ count cbase wc
    {: count:n cb:^ wc:n :}
    count wc * {: need:n :}
-   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
-   count  cb CELL + @  > if
+   cb REGION@ {: oldbase:^ :} cb CAP cells + @ {: oldcap:n :}
+   count oldcap > if
       LBUF-ALIGN
       here {: base:^ :}
       need cells allot
-      base cb -  cb  !                                  \ off-cell = new region offset from cb
-      count  cb CELL +  !                               \ cap-cell = new allotted capacity
+      base count cb MARK-FRESH
+      base cb REGION!
+      count  cb CAP cells +  !
    then
-   count  cb 2 CELL * +  !                             \ cnt-cell = live bound
-   oldoff oldcap wc cb LDEFER-RETIRE ;
+   count  cb CNT cells +  !
+   oldbase oldcap wc cb LDEFER-RETIRE ;
 
 \ NAME-GROW extends a column, preserving written cells. Past capacity the
-\ region becomes max(2*capacity, count). A within-capacity grow
-\ zeroes [old-live, count): a prior shrink may have left it dirty.
+\ region becomes max(2*capacity, count), its elements declared before the live
+\ cells are copied in. A within-capacity grow zeroes [old-live, count): a
+\ prior shrink may have left it dirty.
 : LDEFER-GROW ( n ^n n -- )   \ count cbase wc
    {: count:n cb:^ wc:n :}
-   cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
-   count  cb CELL + @  > if
-      cb 2 CELL * + @ {: live:n :}
-      cb  cb @  + {: obase:^ :}
-      cb CELL + @ 2 *  count max {: newcap:n :}
+   cb REGION@ {: oldbase:^ :} cb CAP cells + @ {: oldcap:n :}
+   cb CNT cells + @ {: live:n :}
+   count oldcap > if
+      oldcap 2 *  count max {: newcap:n :}
       LBUF-ALIGN
       here {: nbase:^ :}
       newcap wc * cells allot                                \ allot hands the fresh region out zeroed
-      obase nbase  live wc * cells  LBUF-COPY
-      nbase cb -  cb  !
-      newcap  cb CELL +  !
-   else count  cb 2 CELL * + @  > if
-      cb  cb @  +
-      cb 2 CELL * + @ wc * cells +
-      count  cb 2 CELL * + @  -  wc * cells  LBUF-ZERO
+      nbase newcap cb MARK-FRESH
+      oldbase nbase  live wc * cells  LBUF-COPY
+      nbase cb REGION!
+      newcap  cb CAP cells +  !
+   else count live > if
+      oldbase live wc * cells +
+      count live -  wc * cells  LBUF-ZERO
    then then
-   count  cb 2 CELL * +  !
-   oldoff oldcap wc cb LDEFER-RETIRE ;
+   count  cb CNT cells +  !
+   oldbase oldcap wc cb LDEFER-RETIRE ;
 
 \ A companion's one cell, laid after it: it holds the block v and keeps the
 \ address across a save.
@@ -475,25 +507,15 @@ public
 
 private
 
-\ ---- LBUF: the routines a buffer child's body calls --------------------------
-\ A buffer block starts with HEAD-CELLS header cells, indexed by OFF (the
-\ elements' byte offset from the block), CAP and CNT (allotted and live element
-\ counts) and STRIDE (an element's width in cells). An unbound block reads 0
-\ in all but STRIDE. Each routine takes the block, or the cell holding it, last.
-public
-
-0 constant OFF
-1 constant CAP
-2 constant CNT
-3 constant STRIDE
-4 constant HEAD-CELLS
-
-private
-
 \ Element i of the block.
 : ELEMENT ( n ^n -- ^n )
    {: i:n v:^ :}
    v  v OFF cells + @ +  i v STRIDE cells + @ * cells + ;
+
+\ Element i of the deferred block.
+: DEFERRED-ELEMENT ( n ^n -- ^n )
+   {: i:n v:^ :}
+   v REGION@  i v STRIDE cells + @ * cells + ;
 
 \ Binds the block in the cell to count elements, as LDEFER-BIND does.
 : BIND ( n ^^n -- )
@@ -521,6 +543,15 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
    {: name:^ nameu:n type:^ typeu:n :}
    name nameu CHILD-ABI:BUFFER ['] ELEMENT AS-ENTRY
    type typeu CHILD ;
+
+\ Lays a deferred block's KINDS cell and class bytes, classified once here for
+\ every bind to mark by.
+: LAY-KINDS ( str bool -- ) {: type:^ typeu:n hasaddr:bool :}
+   hasaddr 0= if 0 , exit then
+   type typeu TYPE-TERM CLASSIFY-ELEMENT
+   LBUF-W @ ,
+   LBUF-W @ 0 ?do i CLS c@ c, loop
+   LBUF-ALIGN ;
 
 \ Lays NAME's -BIND and -GROW companions over the block v.
 : COMPANIONS ( str ^n -- ) {: name:^ nameu:n v:^ :}
@@ -575,9 +606,13 @@ INTRINSIC-DECLARATION INTRINSIC
    then
    LBUF-W !  drop
    name nameu type typeu STG-SCRATCH-SAVED SCRATCH-HELD? if exit then
-   name nameu type typeu BUFFER-CHILD {: handle:n :}
+   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
+   name nameu type typeu hasaddr TYPE-MIXED? if exit then
+   name nameu CHILD-ABI:DEFERRED ['] DEFERRED-ELEMENT AS-ENTRY
+   type typeu CHILD {: handle:n :}
    here {: v:^ :}
-   0 ,  0 ,  0 ,  LBUF-W @ ,
+   here ptr-cell-mark 0 ,  0 ,  0 ,  LBUF-W @ ,
+   type typeu hasaddr LAY-KINDS
    handle v CHECKER-STORAGE-DEFER
    name nameu v COMPANIONS ;
 INTRINSIC-DECLARATION INTRINSIC

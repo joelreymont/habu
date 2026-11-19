@@ -2757,7 +2757,9 @@ variable STG-TYPE-U
    name nameu s" -GROW" at DERIVED-FREE? 0= IF EXIT THEN
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFDEFER-LAYOUT-BUFFER
-   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? drop
+   name nameu type typeu STG-SCRATCH-SAVED LBUF:SCRATCH-HELD? 0= IF
+      name nameu type typeu LBUF:MIXED-SAVED? drop
+   THEN
    DISARM
    name nameu at DEF-STORAGE DEFINED-MADE ;
 

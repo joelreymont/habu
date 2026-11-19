@@ -548,6 +548,27 @@ variable G-IMAGE-U
    S\" require lib.f\n: MAIN ( -- ) 0 HEAP-ROW @ MATCH option none OF 1 . ENDOF some OF @ . ENDOF ;MATCH ;\n"
    ADDRESS-REFUSED ;
 
+\ A deferred buffer bound and filled at top level keeps its region, an address
+\ and a number, in the program: only a build strips data and lays the kept
+\ parts out again, so the region is reached through its marked region cell and
+\ its address cell is relocated.
+: DEFER-LIB$ ( -- str )
+   S\" STRUCTURE dfcell FIELD p ^n FIELD x n ;STRUCTURE\nvariable DF-CELL\n42 DF-CELL !\nDEFER-LAYOUT-BUFFER DF-ROW dfcell\n3 DF-ROW-BIND\nDF-CELL 7 DFCELL:MAKE 0 DF-ROW !\n" ;
+: DEFER-MAIN$ ( -- str )
+   S\" require lib.f\n: MAIN ( -- ) 0 DF-ROW @ DFCELL:UNMAKE {: p:^ x:n :} p @ . x . ;\n" ;
+
+: DEFER-CASE ( -- )
+   s" defer" CASE-OPEN
+   s" lib.f" G-LIB IN-CASE G-LIB-U !
+   G-LIB G-LIB-U @ DEFER-LIB$ FS:WRITE-ALL
+   C-MAIN$ DEFER-MAIN$ FS:WRITE-ALL
+   WARM
+   GE-HB-RESET
+   C-IMAGE$ GE-ARGV+
+   C-IMAGE$ PROCESS:WAIT-FOREVER GE-RUN-ENV
+   s" the program built from main.f" LABEL GE-EXPECT-OK
+   S\" 42\n7\n" s" the program prints the address cell's target, then the number" LABEL GE-EXPECT-OUT ;
+
 : BODY ( -- )
    s" aot-shifted-bytes" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
@@ -577,8 +598,8 @@ variable G-IMAGE-U
    ENVTOP-BUILDS
    ROOTED-WRITE ROOTED-BUILD ROOTED-REBUILD ROOTED-CHANGED
    SYMLINK-CASE LONG-CASE GAP-CASE FILE-END-CASE LATER-END-CASE EXTENT-END-CASE
-   OPTION-CASE HEAP-CASE
-   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one, a variable's address in a sum's second variant, run, and a heap address there, refused" type cr ;
+   OPTION-CASE HEAP-CASE DEFER-CASE
+   s" PASS: a stripped build of shifted and aligned address bytes, a refused record pointer in a declared DATA cell, a program file and a build whose loads read and set the loader's root as hb --load does, a build whose word resolves its own path as hb --load does, builds that reuse a part only while the environment variable its top level read holds, a file whose ROOT! reaches its require, built, rebuilt from its cached object and rebuilt after its required file changed, warm builds of a root set through a symlink and at the longest root, a program whose bytes dead variables around its data leave as they are, and refused builds storing the address where a file's data or an extent ends, in that file or a later one, a variable's address in a sum's second variant, run, a heap address there, refused, and a deferred buffer bound at top level holding an address and a number, run" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

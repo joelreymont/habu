@@ -2533,6 +2533,7 @@ EXPORT CHECK:REC-WIDE-PUBLISH
 \ The handle of a routine child's routine.
 : ROUTINE$ ( n -- str ) {: shape:n :}
    shape CHILD-ABI:BUFFER = if s" private LBUF ELEMENT" exit then
+   shape CHILD-ABI:DEFERRED = if s" private LBUF DEFERRED-ELEMENT" exit then
    shape CHILD-ABI:BIND = if s" private LBUF BIND" exit then
    shape CHILD-ABI:GROW = if s" private LBUF GROW" exit then
    shape CHILD-ABI:DYNAMIC = if s" private DYNAMIC-STORAGE ELEMENT" exit then
@@ -2576,7 +2577,8 @@ EXPORT CHECK:REC-WIDE-PUBLISH
    COMP-BODY:ROUTINE shape param ROUTINE ;
 
 : CHILD-ANCHORED? ( n -- bool ) {: shape:n :}
-   shape CHILD-ABI:STORED >= shape CHILD-ABI:ARENA-DISPOSE <= and ;
+   shape CHILD-ABI:STORED >= shape CHILD-ABI:ARENA-DISPOSE <= and
+   shape CHILD-ABI:DEFERRED = or ;
 
 \ A value child is recorded as a constant, which a call folds to its number, a
 \ STORED child as an address, which a call folds to an inline push.
