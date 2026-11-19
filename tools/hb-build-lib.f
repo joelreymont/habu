@@ -381,15 +381,15 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    then
    LINKER:LINKED LINKER:COMPILED HB-BUILD:CAPTURE-FILES ;
 
-\ A link that threw a status in 1..255 has its record out: the build stops with
-\ that status and prints nothing more. Any other throw prints the record it
-\ carries, else a line naming where the build was.
-: HBB-LINK-FAILED ( n -- )
-   {: rc:n :}
+\ A status in 1..255 exits as itself. Any other throw prints the record it carries, else nothing once the link
+\ sent a rejection, whose record is out, else a line naming where the build was.
+: HBB-LINK-FAILED ( n bool -- )
+   {: rc:n sent:bool :}
    rc 1 >= rc 255 <= and if HBB-CLEANUP rc HBB-EXIT then
    REJECTION:CARRIED? if
       rc ERROR:UNCAUGHT  HBB-CLEANUP  rc ERROR:STATUS HBB-EXIT
    then
+   sent if HBB-CLEANUP rc ERROR:STATUS HBB-EXIT then
    HBB-JSON @ 0= if
       s" hb-build: " HBB-WERR  HB-BUILD-CORE:WHERE$ HBB-WERR
       s"  threw " HBB-WERR
@@ -412,8 +412,9 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    EXIT-STATUS:REJECTED HBB-EXIT ;
 
 : HBB-BUILD-REST ( -- )
+   REJECTION:SENT {: sent:n :}
    ['] HBB-LINK catch {: rc:n :}
-   rc 0<> if rc HBB-LINK-FAILED then
+   rc 0<> if rc  REJECTION:SENT sent <>  HBB-LINK-FAILED then
    HBB-INSTALL-OUT
    HBB-FINISH ;
 

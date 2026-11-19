@@ -12103,6 +12103,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:PUBLISH
 \ A MULTI-ERROR load counts each refused definition and goes on.
 variable MULTI-ERR
 0 MULTI-ERR !
+variable MULTI-ERR-BASE   \ REJECTION:TALLY at MULTI-ERR-BEGIN
+0 MULTI-ERR-BASE !
 ;package
 \ A declared row's outcome: stored, left unstored with its type unresolved and
 \ no record, or rejected with its record written.
@@ -12122,10 +12124,10 @@ private
 public
 : MULTI-ERR-BEGIN ( -- )
    UEND @ RECOVERY-START
-   -1 MULTI-ERR !  0 REJECTION:TALLY ! ;
+   -1 MULTI-ERR !  REJECTION:TALLY MULTI-ERR-BASE ! ;
 
 : MULTI-ERR-END ( -- n )
-   REJECTION:TALLY @  0 MULTI-ERR !  0 REJECTION:TALLY ! ;
+   REJECTION:TALLY MULTI-ERR-BASE @ -  0 MULTI-ERR ! ;
 private
 
 EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?

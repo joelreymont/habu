@@ -1223,7 +1223,7 @@ private
 \ TDECL-FAM-REG holds the family only when the wrap left no rejection,
 \ which a multi-error load tallies and any other load throws.
 : WRAP-KEEP ( n -- ) {: tally:n :}
-   REJECTION:TALLY @ tally <> IF EXIT THEN
+   REJECTION:TALLY tally <> IF EXIT THEN
    FAM @ TDECL-FAM-REG ! ;
 
 \ Rejects `DEFTYPE` NAME at BASE, armed with reason, help and code.
@@ -1252,7 +1252,7 @@ public
 \ Answers as REPLAY-STRUCTURE; TDECL-FAM-REG is the family, or -1 if none.
 : SD-WRAP-OUTCOME ( str str str str -- str bool )
    {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
-   -1 TDECL-FAM-REG !  REJECTION:TALLY @ {: tally:n :}
+   -1 TDECL-FAM-REG !  REJECTION:TALLY {: tally:n :}
    ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
    miss 0= IF tally WRAP-KEEP THEN
    ma mu miss ;

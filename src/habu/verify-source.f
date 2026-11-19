@@ -2681,7 +2681,7 @@ variable STG-TYPE-U
    name nameu MANGLE {: tail:^ tailu:n :}
    DEFTYPE-BASE {: ba:^ bu:n based:bool :}
    based IF name nameu ba bu SD-ONE-NAME 0= IF EXIT THEN THEN
-   REJECTION:TALLY @ {: refused:n :}
+   REJECTION:TALLY {: refused:n :}
    based IF name nameu at nameu SEALED-NAME ELSE name nameu at SEALED-FAMILY THEN
    based IF
       tail tailu name nameu ba bu s" deftype" SD-WRAP-OUTCOME
@@ -2689,7 +2689,7 @@ variable STG-TYPE-U
    ELSE
       tail tailu name nameu s" deftype" CHECKER-DEFFAMILY
    THEN
-   REJECTION:TALLY @ refused <> IF EXIT THEN
+   REJECTION:TALLY refused <> IF EXIT THEN
    name nameu tail tailu ba bu DTC-BUILD-IN
    DTC-NAME$ at nameu ARM              \ the converter's own name, the TYPE's span
    DTC-NAME$ CHILD-ABI:NOMINAL-IN CHECKER-NOMINAL-REPLAY
@@ -4001,7 +4001,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ the tokens of a broken declaration are not reported as names.
 : TOP-DEFINER? ( str -- bool )
    {: a:^ u:n :}
-   REJECTION:TALLY @ {: before:n :}
+   REJECTION:TALLY {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
    \ A library definer is a replaceable dictionary call, not structural syntax.
    INDEX-ON @ native 0= and IF false EXIT THEN
@@ -4016,7 +4016,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    native 0= IF TICK-CONTEXT-UNKNOWN THEN
    native 0= IF a u at sym ENGINE-ORIGIN-USE THEN
    TOP-CLOSE
-   REJECTION:TALLY @ before <> IF -1 TOP-DEFER ! THEN
+   REJECTION:TALLY before <> IF -1 TOP-DEFER ! THEN
    0 0= ;
 
 \ `kernel:` is the engine's synonym for `:`.

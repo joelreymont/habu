@@ -5,7 +5,8 @@ split-str
 \ diagnostic's source sits: the armed source, its map and the loader's file
 \ path. Loads before the checker, where no emit exists, so bytes go out through
 \ a one-byte buffer. Every cell, buffer and first room it writes is the running
-\ task's own: its block, or its region's carry stamp.
+\ task's own: its block, or its region's carry stamp; SENT's cell, the main
+\ DATA's, is bumped atomically.
 \ A rejection is printed in parts, called in this order: OPEN, or WARN for a
 \ warning, at most one AT, any NOTEs, HELP, then STOP or KEEP. The caller
 \ writes each part's text with EMIT-STR, EMIT-U or EMIT1 before the next part
@@ -38,6 +39,7 @@ dup constant BUF-FD-OFF  1 cells +
 dup constant HELD-P-OFF  1 cells +
 dup constant HELD-CAP-OFF  1 cells +
 dup constant HELD-U-OFF  1 cells +
+dup constant HELD-N-OFF  1 cells +
 dup constant SAVED-P-OFF  1 cells +
 dup constant SAVED-CAP-OFF  1 cells +
 dup constant SAVED-U-OFF  1 cells +
@@ -145,6 +147,7 @@ create MAIN-BLOCK BLOCK-BYTES SCRATCH-ALLOT
 : HELD-P ( -- ^^u8 ) HELD-P-OFF PTR-AT ;
 : HELD-CAP ( -- ^n ) HELD-CAP-OFF CELL-AT ;        \ bytes at HELD-P, 0 for none
 : HELD-U ( -- ^n ) HELD-U-OFF CELL-AT ;
+: HELD-N ( -- ^n ) HELD-N-OFF CELL-AT ;            \ error records it holds
 \ The record SAVE kept, SAVED-U bytes, in a buffer grown as the capture is.
 : SAVED-P ( -- ^^u8 ) SAVED-P-OFF PTR-AT ;
 : SAVED-CAP ( -- ^n ) SAVED-CAP-OFF CELL-AT ;
@@ -162,16 +165,23 @@ create MAIN-BLOCK BLOCK-BYTES SCRATCH-ALLOT
 public
 : DEST ( -- ^n ) DEST-OFF CELL-AT ;   \ 0 = stdout, 1 = TEXT (sig recording)
 : TEXT-LEN ( -- ^n ) TEXT-LEN-OFF CELL-AT ;
-\ The main DATA's REJECTION-JSON-CELL from any thread: a task's region is not
-\ the main one, and main reads data-base because a cross build's host is not
-\ mapped at DATA-VA. No signature: `^n` would reject a stored flag, and the
-\ inferred row keeps data-base's kind, which takes a flag and rejects an address.
-: JSON
-   data-base TASK-TCB-CELL + @ 0= IF data-base REJECTION-JSON-CELL + EXIT THEN
-   data-base  DATA-VA data-base NULL-PTR - -  +  REJECTION-JSON-CELL + ;
+private
+\ The main DATA from any thread; main reads data-base, since a cross build's host is not mapped at DATA-VA.
+\ No signature: the inferred row keeps data-base's kind, which JSON's flag needs.
+: MAIN-DATA
+   data-base TASK-TCB-CELL + @ 0= IF data-base EXIT THEN
+   data-base  DATA-VA data-base NULL-PTR - -  + ;
+: SENT-CELL ( -- ^n ) MAIN-DATA REJECTION-SENT-CELL + cell-view ;
+: TALLY-CELL ( -- ^n ) TALLY-OFF CELL-AT ;
+public
+\ The main DATA's REJECTION-JSON-CELL. No signature: `^n` would reject a stored flag.
+: JSON  MAIN-DATA REJECTION-JSON-CELL + ;
 \ QUIET counts nested quiet-check scopes.
 : QUIET ( -- ^n ) QUIET-OFF CELL-AT ;
-: TALLY ( -- ^n ) TALLY-OFF CELL-AT ;   \ rejections counted this load
+\ The error records KEEP ended outside QUIET, sent or captured, in this task.
+: TALLY ( -- n ) TALLY-CELL @ ;
+\ The error records this process wrote to a descriptor, from any thread.
+: SENT ( -- n ) SENT-CELL @ ;
 
 private
 : TEXT-MAP ( -- )
@@ -274,7 +284,7 @@ private
 public
 
 : CAPTURE ( -- )
-   0 HELD-U !
+   0 HELD-U !  0 HELD-N !
    -1 BUF-ON ! ;
 
 \ Records go to the file descriptor again; BUFFER$ still answers the capture.
@@ -287,7 +297,8 @@ public
    BUF-ON @ 0= IF EXIT THEN
    0 BUF-ON !
    FD HELD-P @ HELD-U @ write drop
-   0 HELD-U ! ;
+   HELD-N @ SENT-CELL atomic-add drop
+   0 HELD-U !  0 HELD-N ! ;
 
 : FD! ( n -- ) 2 xor BUF-FD ! ;
 
@@ -306,6 +317,11 @@ private
    TEXT TEXT-LEN @
    0 DEST !  0 TEXT-LEN !
    BUF-APPEND ;
+
+\ Counts an error record BUF-APPEND took: sent now, or by RELEASE of the capture.
+: COUNT-SENT ( -- )
+   BUF-ON @ 0= IF  1 SENT-CELL atomic-add drop  EXIT  THEN
+   HELD-N @ 1 + HELD-N ! ;
 
 public
 : EMIT-STR ( ^u8 n -- ) {: a:^ u:n :}
@@ -1086,10 +1102,10 @@ public
       MARGIN  s" = help: " EMIT-STR
    THEN
    HELP-PART PART ! ;
-\ Ends the record and returns; a sent rejection counts in TALLY.
+\ Ends the record and returns; an error record outside QUIET counts in TALLY, and in SENT once it reaches the descriptor.
 : KEEP ( -- )
    END-RECORD
-   QUIET @ 0=  WARNING @ 0=  and IF TALLY @ 1 + TALLY ! THEN ;
+   QUIET @ 0=  WARNING @ 0=  and IF  TALLY-CELL @ 1 + TALLY-CELL !  COUNT-SENT  THEN ;
 \ Ends the record, counts it as KEEP does and throws status n.
 : STOP ( n -- )
    KEEP throw ;
@@ -1106,10 +1122,11 @@ public
    THEN
    0 data-base STAMP-CELL + !  0 TEXT-LEN !  0 DEST ! ;
 
-\ Sends the record SAVE kept, and keeps none.
+\ Sends the record SAVE kept, counted in SENT once it reaches the descriptor, and keeps none.
 : SEND-SAVED ( -- )
    0 data-base STAMP-CELL + !
    SAVED-U @ 0= IF EXIT THEN
+   COUNT-SENT
    SAVED-P @ SAVED-U @  0 SAVED-U !  BUF-APPEND ;
 
 \ Ends the record and keeps it pending for PASS-PENDING, marked to fail the build when fails, unless

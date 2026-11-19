@@ -81,6 +81,7 @@ variable SPACE-SIZE                  \ the space's size; MAP maps ROUTED-BYTES m
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
 variable OPEN-DP                     \ here's distance once open; header data is [BASE, OPEN-DP)
 variable OPEN-TASKS                  \ hb's live tasks at the open (TASKS-LIVE-CELL)
+variable OPEN-SENT                   \ REJECTION:SENT at the open
 TYPED-VARIABLE BODY [ -- renders nominal roots ]
 variable COMPILED-N                  \ files the last build compiled
 variable LINKED-N                    \ files the last build linked
@@ -5233,9 +5234,14 @@ EXPORT CHECK:STORES-OPEN
    s" linker: a caught text failed and left words or data, so the build loads and writes nothing more" SAY SAY-CR
    E-FAILED throw ;
 
+\ Fails the build once a rejection was sent since the open, caught or kept without a throw; its record is out.
+: SENT-CK ( -- )
+   REJECTION:SENT OPEN-SENT @ <> if E-FAILED throw then ;
+
 \ Fails the build, caught from then on, with the rejection of a caught text that failed and left words or
-\ data, carried by its throw; a caught text that left nothing links, so its rejection is dropped.
+\ data, carried by its throw; a caught text that left nothing and sent no rejection links, its rejection dropped.
 : CAUGHT-CK ( -- )
+   SENT-CK
    REJECTION:PENDING-FAILS? if
       construct step caught PROGRESS !
       E-FAILED REJECTION:PASS-PENDING
@@ -5269,12 +5275,13 @@ EXPORT CHECK:STORES-OPEN
       loading OF nested 0= if E-COMP-STATE throw then ENDOF
       returned OF E-COMP-STATE throw ENDOF
       failed OF
+         SENT-CK
          E-FAILED REJECTION:PASS-PENDING
          REFUSAL s" its load failed and the failure was caught" SAY
          s" , so the build loads and writes nothing more" SAY SAY-CR
          E-FAILED throw
       ENDOF
-      caught OF CAUGHT-REFUSED ENDOF
+      caught OF SENT-CK CAUGHT-REFUSED ENDOF
    ;MATCH ;
 
 
@@ -5410,9 +5417,8 @@ EXPORT CHECK:LINEAR-TEXT$
    repeat
    drop ;
 
-\ The part's exit actions run first, then E-FAILED for a caught text that left words or data or once DP moved
-\ back, then E-LIVE-TASK for a task left running.
-\ All run before READS-KEEP, so a task cannot read after the part's reads are kept and end before the refusal.
+\ The part's exit actions, then E-FAILED (a rejection sent, a caught text that left words or data, DP moved back),
+\ then E-LIVE-TASK; all before READS-KEEP, so no task reads after the part's reads are kept.
 : END-CK ( -- )
    SPACE-EXIT {: rc:n :}
    rc 0<> if rc throw then
@@ -5863,7 +5869,8 @@ EXPORT CHECK:DROP-FACTS
    MAP SHADOW MOVE-IN CHECK-IN PRIMS-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN
    OWNED-RECORDS
    here NULL-PTR - OPEN-DP !
-   TASKS-LIVE-CELL HOST@ OPEN-TASKS ! ;
+   TASKS-LIVE-CELL HOST@ OPEN-TASKS !
+   REJECTION:SENT OPEN-SENT ! ;
 
 \ ---- the close -----------------------------------------------------------------
 : RESTORE ( -- )

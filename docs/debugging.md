@@ -47,8 +47,9 @@ A stripped application prints the same record with no place and exits 67. Under
 `--load` an uncaught throw of a computed 0 (a literal `0 throw` is rejected,
 `E-THROW-ZERO`) stops its text with `E-THROW-ZERO`, placed at the word that
 threw it; out of a program's MAIN that record has no place. Both exit 67. A
-rejection prints its record and exits 70. A one-byte diagnostic and a
-clean exit means a raw engine capacity path, not a throw.
+rejection prints its record and exits 70; a build whose code goes on after a
+rejection it sent, caught or kept without a throw, exits 67 and adds nothing to
+the records sent. A one-byte diagnostic and a clean exit means a raw engine capacity path, not a throw.
 
 ## Refusing the system's memory
 

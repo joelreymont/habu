@@ -190,9 +190,9 @@ variable CA-RC                          \ how the last run's check ended
 
 : CA-RUN-BODY ( bool -- ) {: report:bool :}
    report VERIFY:REPORT-DEFERRALS
-   REJECTION:TALLY @ {: before:n :}
+   REJECTION:TALLY {: before:n :}
    [: CA-RUN-CAPTURED CA-RC ! ;] CA-RECORDS
-   CA-RC @  REJECTION:TALLY @ before -  CA-STATUS {: status:n :}
+   CA-RC @  REJECTION:TALLY before -  CA-STATUS {: status:n :}
    status 0 <> IF status throw THEN ;
 
 public

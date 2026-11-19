@@ -1,8 +1,7 @@
 split-str
-\ rollback.f - catches two failed texts that leave words and data, so its build is
-\ rejected: one throws after requiring rollback-req.f; one is rejected after an allot.
-\ The `catch drop` is the case under test: a program that swallows its own refusal.
-: FOB-TRY ( -- ) [: s" 16 allot : FOB-NO ( -- n ) dup ;" evaluate-closed ;] catch drop ;
+\ rollback.f - its build is rejected: `catch drop`, the case under test, swallows two failed texts that
+\ leave words and data and send no rejection, one thrown after requiring rollback-req.f, one after an allot.
+: FOB-TRY ( -- ) [: s" 16 allot : FOB-NO ( -- n ) 1 ; 70 throw" evaluate-closed ;] catch drop ;
 : FOB-REQ ( -- )
    [: s" require test/fixtures/file-objects/rollback-req.f 1 throw" evaluate-closed ;]
    catch drop ;

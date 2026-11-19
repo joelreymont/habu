@@ -819,6 +819,9 @@ $2D90 constant DBASE-CELL
 \ REJECTION-JSON-CELL: nonzero when rejections print as JSON. Every thread
 \ reads the main DATA's cell; a task region's stays zero.
 $2D98 constant REJECTION-JSON-CELL
+\ REJECTION-SENT-CELL: the error records the process wrote to a descriptor. Every thread bumps the main
+\ DATA's cell, a build's program hb's; a task region's stays zero.
+$2DD8 constant REJECTION-SENT-CELL
 \ MAIN-STACK-TOP-CELL: the main thread's SP once an engine's boot has stored
 \ the DATA image; every frame a Habu word makes on that thread lies below it.
 \ A stripped program leaves it at its mapping's zero.

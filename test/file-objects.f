@@ -592,23 +592,49 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build refuses the word's file by its path" LABEL  said TTRUE ;
 
-\ word-required-main.f's word catches the loader's refusal of its `required`,
-\ which comes before the file's row is stored, so the build links.
+\ Checks a failing build's stderr opens with rec and holds no second record and no line of its own, and
+\ that the build exited 67.
+: ONE-RECORD ( CMD:command n str -- CMD:command ) {: rc:n rec:^ recu:n :}
+   CMD:ERR$ {: e:^ eu:n :}
+   e eu rec recu STARTS-WITH? {: said:bool :}
+   said if  e 1 + eu 1 - s" error[" CONTAINS?  else false then {: more:bool :}
+   e eu s" hb-build" CONTAINS?  e eu s" linker:" CONTAINS?  or {: told:bool :}
+   rc 67 =  said and  more 0= and  told 0= and  0= if rc SHOW then
+   s" the build prints its rejection first" LABEL  said TTRUE
+   s" the build prints no second record" LABEL  more TFALSE
+   s" the build prints no line of its own" LABEL  told TFALSE
+   s" the build exits 67" LABEL  rc 67 T= ;
+
+\ word-required-main.f's word catches the loader's rejection of its `required`:
+\ the build exits 67 and prints that record alone.
 : CAUGHT-REQUIRE-BUILD ( CMD:command -- CMD:command )
    s" error[E-SOURCE-ROOT]: `required` got `" REFUSAL!
    s" X3" WHICH!
-   s" test/fixtures/file-objects/word-required-main.f" FIXTURE-BUILD 0= if exit then
-   CMD:ERR$ REFUSAL REFUSAL-U @ CONTAINS? {: said:bool :}
-   said 0= if 0 SHOW then
-   s" the build refuses the word's file by its path" LABEL  said TTRUE ;
+   s" test/fixtures/file-objects/word-required-main.f" FAILING-BUILD
+   REFUSAL REFUSAL-U @ ONE-RECORD ;
 
-\ An uncaught refusal ends the build's process, so each entry a word reaches
-\ the file through is its own build: included (word-load-main.f) and provided
-\ (word-provided-main.f, before it stores the file's row), each refused as a
-\ word's act in a build, required, whose refusal word-required-main.f catches
-\ and whose build links, and SOURCE-ROOT:READ-OS (word-read-main.f), refused
-\ because hb's top frame is held. SOURCE-INPUT:READ reaches the same READ-OS
-\ through the default reader, so it needs no build of its own.
+\ A rejection ends its build, so each way a rejection reaches stderr is a build of its own.
+: SENT-BUILDS ( CMD:command -- CMD:command )
+   \ A task's rejection counts in main's SENT.
+   s" X5" WHICH!  s" test/fixtures/file-objects/sent-task-main.f" FAILING-BUILD
+   s\" error[E-SENT-TASK]: a task sent it\n" ONE-RECORD
+   \ ERROR:UNCAUGHT's saved record counts when SEND-SAVED writes it.
+   s" X6" WHICH!  s" test/fixtures/file-objects/sent-uncaught-main.f" FAILING-BUILD
+   s\" error[E-THROW]: nothing caught a throw of code 12345\n" ONE-RECORD
+   \ A captured record counts when RELEASE writes it.
+   s" X7" WHICH!  s" test/fixtures/file-objects/sent-release-main.f" FAILING-BUILD
+   s\" error[E-SENT-RELEASE]: released\n" ONE-RECORD
+   \ A throw that carries its record prints it after a caught rejection was sent.
+   s" error[E-SOURCE-ROOT]: `required` got `" REFUSAL!
+   s" X8" WHICH!  s" test/fixtures/file-objects/sent-throw-main.f" FAILING-BUILD {: rc:n :}
+   CMD:ERR$ REFUSAL REFUSAL-U @ STARTS-WITH? {: said:bool :}
+   CMD:ERR$ s\" \nerror[E-THROW]: nothing caught a throw of code 12345\n" CONTAINS? {: threw:bool :}
+   said threw and 0= if rc SHOW then
+   s" the build prints the caught rejection first" LABEL  said TTRUE
+   s" the build prints the throw's record" LABEL  threw TTRUE ;
+
+\ A rejection ends its build, so each way a word reaches word-load-inc.f is a build of its own: included,
+\ provided, a caught required and SOURCE-ROOT:READ-OS, which SOURCE-INPUT:READ's default reader also reaches.
 : WORD-LOAD-BUILD ( CMD:command -- CMD:command )
    s" error[E-SOURCE-ROOT]: `included` got `" REFUSAL!
    s" X" WHICH!  s" test/fixtures/file-objects/word-load-main.f" REFUSED-BUILD
@@ -856,7 +882,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the program exits 0" LABEL  rc 0 T= ;
 
 \ Guards the text a record is built in: record-first.f's top level prints a record, and the
-\ build saves no address of the build process's mapping.
+\ build saves no address of the build process's mapping; its dropped capture leaves the build linking.
 : RECORD-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/record-main.f" FIXTURE-BUILD 0= if exit then
    RECORD-RUN ;
@@ -1056,8 +1082,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" the build exits 70" LABEL  rc 70 T= ;
 
 \ Guards a file's top level in a build: a scratch store ends with the file, a kept handle or device is refused in the program,
-\ a kept aio ticket in the build, word docs keep no address of a freed text, a task left running or a run word that loads,
-\ provides or reads a file fails it. N, the one engine build, reports its sizes.
+\ a kept aio ticket in the build, word docs keep no address of a freed text, a task left running, a run word that loads,
+\ provides or reads a file or a rejection sent fails it. N, the one engine build, reports its sizes.
 : PIECE-CASE ( CMD:command -- CMD:command )
    s" R" WHICH!  s" test/fixtures/file-objects/scratch-main.f" FIXTURE-BUILD 0= if exit then
    SCRATCH-RUN
@@ -1070,7 +1096,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" NG" WHICH!  s" test/fixtures/file-objects/kept-genio.f" FIXTURE-BUILD 0= if exit then  GENIO-RUN
    s" W" WHICH!  TASK-LEFT-BUILD
    s" W2" WHICH!  TASK-LEFT-BUILD
-   WORD-LOAD-BUILD ;
+   WORD-LOAD-BUILD  SENT-BUILDS ;
 
 \ seal-main.f's build, in a fresh hb since SEALED-FAIL ends the process it refuses in: it exits 70
 \ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
@@ -1130,16 +1156,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:ERR$ s" threw -" CONTAINS?  placed or ;
 
 \ rollback.f's build, which catches texts that leave words and data: it exits 67,
-\ rejected E-FAILED at line 11, which ran the newest of them, and its code 70.
+\ rejected E-FAILED at line 10, which ran the newest of them, and its code 70.
 : CAUGHT-CASE ( CMD:command -- CMD:command )
    s" CF" WHICH!
    s" test/fixtures/file-objects/rollback.f" FAILING-BUILD {: rc:n :}
-   s\" rollback.f:11:1\n   |\n11 | FOB-TRY\n   | ^^^^^^^ this ran the text\n"
+   s\" rollback.f:10:1\n   |\n10 | FOB-TRY\n   | ^^^^^^^ this ran the text\n"
    s" = code: 70" FAILED-AT? {: placed:bool :}
    THREW? {: threw:bool :}
    rc 67 =  placed and  threw 0= and 0= if rc SHOW then
    s" the build exits 67" LABEL  rc 67 T=
-   s" the build is rejected E-FAILED at rollback.f's line 11 with code 70" LABEL  placed TTRUE
+   s" the build is rejected E-FAILED at rollback.f's line 10 with code 70" LABEL  placed TTRUE
    s" the build prints no record of the throw beside it" LABEL  threw TFALSE ;
 
 \ rollback-load.f's build, whose text catches rollback-fail.f's failed load: it exits 67,
