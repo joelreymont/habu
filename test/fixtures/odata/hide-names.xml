@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+  <edmx:DataServices>
+    <Schema Namespace="N">
+      <EntityType Name="T">
+        <Key>
+          <PropertyRef Name="Ab"/>
+        </Key>
+        <Property Name="Ab" Type="Edm.String" Nullable="false"/>
+        <Property Name="Größe" Type="Edm.String"/>
+        <Property Name="A-b" Type="Edm.String"/>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="Ts" EntityType="N.T"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

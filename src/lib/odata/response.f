@@ -385,6 +385,7 @@ STRUCTURE copy DERIVE addr
    FIELD names-mapping SPAN:span<u8>
    FIELD dst ^u8
    FIELD cap n
+   FIELD model ^metadata
    BUFFER text 24
 ;STRUCTURE
 
@@ -549,7 +550,9 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 : IN-OBJECT ( JSON:reader ^JSON:writer n ^copy -- JSON:reader ^JSON:writer n )
    {: kind:n c:^ :}
    kind JSON:T-OBJ-END = if JSON:WRITE-OBJECT-END c CLOSE exit then
-   JSON:WRITE-COMMA c DECODE JSON:WRITE-KEY
+   c DECODE {: name:^ len:n :}
+   c COPY-MODEL @ name len HIDDEN? if SKIP-VALUE ADVANCE exit then
+   JSON:WRITE-COMMA name len JSON:WRITE-KEY
    ADVANCE c PLAIN ADVANCE ;
 
 : IN-ARRAY ( JSON:reader ^JSON:writer n ^copy -- JSON:reader ^JSON:writer n )
@@ -796,6 +799,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
       c ONCE JSON:WRITE-OBJECT-END c CLOSE exit
    then
    c DECODE {: name:^ len:n :}
+   c COPY-MODEL @ name len HIDDEN? if SKIP-VALUE ADVANCE exit then
    c name len ADD-NAME
    t name len DROPPED? if SKIP-VALUE ADVANCE exit then
    t name len FIND-PROPERTY {: p:^ :}
@@ -839,6 +843,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    0 c COPY-NAMES-USED !
    room 0 SPAN:MAKE c COPY-NAMES-MAPPING !
    dst c COPY-DST ! cap c COPY-CAP !
+   t ENTITY-TYPE-MODEL @ c COPY-MODEL !
    swap JSON:READ-TOKEN {: kind:n :}
    kind JSON:T-OBJ <> if
       s" a record object" KIND-FIX$ RESPONSE-REJECT

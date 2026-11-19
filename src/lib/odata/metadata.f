@@ -124,6 +124,8 @@ STRUCTURE type-definition DERIVE addr
 \ kept, null for none.
 \ A key-ref's `enum-type` is set when its `kind` is `enumeration`.
 \ An entity type's `rank-end` is 0 until the walk of the base types leaves it.
+\ `types` heads the ENTITY-TYPE-NEXT chain of every type. No set of a
+\ `hidden` type is served, and every navigation to one has a hidden name.
 \ A property's `complex-type` is the complex type its Type names, or names in
 \ `Collection(...)` with `many` set; null for any other.
 public
@@ -135,6 +137,7 @@ STRUCTURE metadata OPAQUE DERIVE addr
    FIELD names-cap n
    FIELD targets ^n
    FIELD targets-cap n
+   FIELD types ^entity-type
 ;STRUCTURE
 STRUCTURE entity-set OPAQUE DERIVE addr
    FIELD name SPAN:span<u8>
@@ -149,6 +152,7 @@ STRUCTURE entity-type OPAQUE DERIVE addr
    FIELD name SPAN:span<u8>
    FIELD namespace SPAN:span<u8>
    FIELD complex bool
+   FIELD hidden bool
    FIELD version version
    FIELD base-name SPAN:span<u8>
    FIELD base ^entity-type
@@ -206,12 +210,14 @@ STRUCTURE key-ref OPAQUE DERIVE addr
 
 private
 
+\ A `hidden` name hides every property and navigation of it, on every type.
 STRUCTURE named DERIVE addr
    FIELD set ^entity-set
    FIELD properties ^^property
    FIELD property-count n
    FIELD navigations ^^navigation
    FIELD navigation-count n
+   FIELD hidden bool
 ;STRUCTURE
 
 STRUCTURE set-end DERIVE addr
@@ -683,6 +689,17 @@ CAST: >RECORD ( n -- ^t )
 
 \ The `named` of NAME, null for none.
 : INDEXED ( ^metadata ^u8 n -- ^named ) rot NAMES-OF 2swap MAP-RECORD ;
+
+: HIDDEN? ( ^metadata str -- bool )
+   INDEXED {: x:^named :}
+   x NULL-PTR = if false exit then
+   x NAMED-HIDDEN @ ;
+
+\ The set NAME, null for none.
+: INDEXED-SET ( ^metadata str -- ^entity-set )
+   INDEXED {: x:^named :}
+   x NULL-PTR = if NULL-PTR exit then
+   x NAMED-SET @ ;
 
 \ The last index below COUNT whose owner's rank, as Q answers it, is at most
 \ RANK, -1 for none; the ranks rise with the index.
@@ -1805,6 +1822,25 @@ CAST: >RECORD ( n -- ^t )
       repeat drop
    loop ;
 
+: ROOT-OF ( ^entity-type -- ^entity-type )
+   begin dup ENTITY-TYPE-BASE @ dup NULL-PTR <> while nip repeat drop ;
+
+\ Whether S's type is in T's inheritance tree.
+: IN-TREE? ( ^entity-set ^entity-type -- bool )
+   ROOT-OF swap ENTITY-SET-TYPE @ ROOT-OF = ;
+
+\ The expected text of a set in the inheritance tree of the type NAME.
+: TREE-EXPECTED ( str -- )
+   s"  to name an entity set of a type in the inheritance tree of "
+   REASON:APPEND QUOTE ;
+
+\ The found and fix of S, a set outside the tree expected.
+: TREE-FOUND ( ^entity-set -- )
+   {: s:^ :}
+   REASON:FOUND s ENTITY-SET-NAME @ QUOTE-SPAN
+   s"  of `EntityType` " REASON:APPEND s ENTITY-SET-TYPE-NAME @ QUOTE-SPAN
+   s" name an entity set of a type in that tree" FIX ;
+
 : ENTITY? ( ^entity-type -- bool )
    {: t:^ :}
    t NULL-PTR = if false exit then
@@ -1963,6 +1999,16 @@ CAST: >RECORD ( n -- ^t )
       ENTITY-TYPE-NEXT @
    repeat drop ;
 
+\ Rejects E when its set is outside its End's Type's inheritance tree.
+: END-FITS ( ^doc ^set-end -- )
+   {: d:^ e:^ :}
+   e SET-END-SET @ {: s:^ :}
+   e SET-END-END @ ASSOCIATION-END-TYPE @ SPAN:$ {: tn:^ tl:n :}
+   s d tn tl FIND-TYPE IN-TREE? if exit then
+   d e SET-END-OFFSET @ PLACE
+   s" `EntitySet` of `End` " REASON:APPEND e SET-END-ROLE @ QUOTE-SPAN
+   tn tl TREE-EXPECTED s TREE-FOUND ;
+
 : SET-END ( ^set-end ^doc ^association -- )
    {: e:^ d:^ a:^ :}
    d a e SET-END-ROLE @ FIND-END {: ae:^ :}
@@ -1982,7 +2028,8 @@ CAST: >RECORD ( n -- ^t )
       e SET-END-SET-NAME @ SPAN:$
       s" declare that entity set, or name one the document declares" FOUND-QUOTED
    then
-   s e SET-END-SET ! ;
+   s e SET-END-SET !
+   d e END-FITS ;
 
 : TARGETS-OF ( ^metadata -- ^n count )
    dup METADATA-TARGETS @ swap METADATA-TARGETS-CAP @ >COUNT ;
@@ -2140,6 +2187,16 @@ CAST: >RECORD ( n -- ^t )
    b BINDING-PATH @ SPAN:$
    s" name a navigation property the type declares or inherits" FOUND-QUOTED ;
 
+\ Rejects B when the set it targets along N is outside N's target type's
+\ inheritance tree.
+: TARGET-FITS ( ^doc ^binding ^navigation -- )
+   {: d:^ b:^ n:^ :}
+   b BINDING-TARGET @ {: s:^ :}
+   n NULL-PTR = s NULL-PTR = or if exit then
+   s n NAVIGATION-TARGET-TYPE @ IN-TREE? if exit then
+   d b TARGET-PLACE
+   n NAVIGATION-TYPE @ SPAN:$ COLLECTION drop TREE-EXPECTED s TREE-FOUND ;
+
 \ V4: a second binding of N on the set is rejected; the target is kept.
 : ADD-BINDING-TARGET ( ^doc ^binding ^navigation -- )
    {: d:^ b:^ n:^ :}
@@ -2161,7 +2218,9 @@ CAST: >RECORD ( n -- ^t )
    d DOC-BINDINGS @ begin dup NULL-PTR <> while
       {: b:^ :}
       d b TARGET-RESOLVES
-      d b d b PATH-RESOLVES ADD-BINDING-TARGET
+      d b PATH-RESOLVES {: n:^ :}
+      d b n TARGET-FITS
+      d b n ADD-BINDING-TARGET
       b BINDING-NEXT @
    repeat drop ;
 
@@ -2499,6 +2558,87 @@ CAST: >RECORD ( n -- ^t )
       dup q execute KEY-REF-NEXT @
    repeat drop ;
 
+\ HIDE-TYPE through SETTLE-PASS answer true when they hid what was not hidden.
+: HIDE-TYPE ( ^entity-type -- bool )
+   {: t:^ :}
+   t ENTITY-TYPE-HIDDEN @ if false exit then
+   true t ENTITY-TYPE-HIDDEN ! true ;
+
+: HIDE-NAMED ( ^named -- bool )
+   {: x:^named :}
+   x NAMED-HIDDEN @ if false exit then
+   true x NAMED-HIDDEN ! true ;
+
+\ Hides every type of T's inheritance tree.
+: HIDE-FAMILY ( ^entity-type -- bool )
+   ROOT-OF {: r:^ :}
+   false r ENTITY-TYPE-MODEL @ METADATA-TYPES @
+   begin dup NULL-PTR <> while
+      {: u:^ :}
+      u ROOT-OF r = if u HIDE-TYPE or then
+      u ENTITY-TYPE-NEXT @
+   repeat drop ;
+
+\ Hides T, not yet hidden, when its key, its own or inherited, holds a
+\ hidden name.
+: HIDE-KEYED ( ^entity-type -- bool )
+   {: t:^ :}
+   t ENTITY-TYPE-MODEL @ {: m:^ :}
+   t [: KEY-REF-PROPERTY @ PROPERTY-NAME @ SPAN:$
+      m -rot HIDDEN? if true t ENTITY-TYPE-HIDDEN ! then ;] KEY-REFS-OF
+   t ENTITY-TYPE-HIDDEN @ ;
+
+\ Hides the name of each navigation T declares to a hidden type.
+: HIDE-LEADING ( ^entity-type -- bool )
+   {: t:^ :}
+   t ENTITY-TYPE-MODEL @ {: m:^ :}
+   false t ENTITY-TYPE-NAVIGATIONS @ begin dup NULL-PTR <> while
+      {: n:^ :}
+      n NAVIGATION-TARGET-TYPE @ ENTITY-TYPE-HIDDEN @ if
+         m n NAVIGATION-NAME @ SPAN:$ INDEXED HIDE-NAMED or
+      then
+      n NAVIGATION-NEXT @
+   repeat drop ;
+
+: SETTLE-PASS ( ^metadata -- bool )
+   false swap METADATA-TYPES @ begin dup NULL-PTR <> while
+      {: t:^ :}
+      t ENTITY-TYPE-HIDDEN @ if t HIDE-FAMILY else t HIDE-KEYED then or
+      t HIDE-LEADING or
+      t ENTITY-TYPE-NEXT @
+   repeat drop ;
+
+\ Applies the hide rules until a pass hides nothing; a rule only sets flags,
+\ so the passes end.
+: SETTLE ( ^metadata -- ) begin dup SETTLE-PASS 0= until drop ;
+
+: SERVED? ( ^entity-set -- bool ) ENTITY-SET-TYPE @ ENTITY-TYPE-HIDDEN @ 0= ;
+
+: NAME-BYTE? ( u8 -- bool )
+   dup 127 > if drop true exit then
+   dup [char] _ = if drop true exit then
+   STR-ALNUM? ;
+
+\ The index after the name bytes from I on in TEXT.
+: RUN-END ( ^u8 n n -- n )
+   {: text:^ len:n i:n :}
+   i begin
+      dup len < if dup text + c@ NAME-BYTE? else false then
+   while 1+ repeat ;
+
+\ Whether every byte of TEXT is a name byte.
+: ONE-NAME? ( str -- bool )
+   {: text:^ len:n :}
+   text len 0 RUN-END len = ;
+
+\ Whether NAME is hidden or names a set of a hidden type.
+: QUERY-HIDDEN? ( ^metadata str -- bool )
+   {: m:^ name:^ len:n :}
+   m name len HIDDEN? if true exit then
+   m name len INDEXED-SET {: s:^ :}
+   s NULL-PTR = if false exit then
+   s SERVED? 0= ;
+
 : V2-FILTERABLE? ( ^property -- bool )
    PROPERTY-ANNOTATIONS @ s" http://www.sap.com/Protocols/SAPData"
    s" filterable" ANNOTATION if s" false" STR= 0= exit then
@@ -2526,17 +2666,19 @@ public
    buf MEM:FREE-SPAN
    d DOC-NAMES @ ARENA:RELEASE
    code 0<> if code throw then
+   d DOC-TYPES @ d DOC-MODEL @ METADATA-TYPES !
    d DOC-MODEL @ ;
 
 : ENTITY-SET ( ^metadata str -- nullable<entity-set> )
-   INDEXED {: x:^named :}
-   x NULL-PTR = if NULLABLE:NONE exit then
-   x NAMED-SET @ NULLABLE:SOME ;
+   INDEXED-SET {: s:^ :}
+   s NULL-PTR = if NULLABLE:NONE exit then
+   s SERVED? 0= if NULLABLE:NONE exit then
+   s NULLABLE:SOME ;
 
 : EACH-ENTITY-SET ( ^metadata [ ^entity-set -- ] -- )
    {: m:^ q :}
    m METADATA-SETS @ begin dup NULL-PTR <> while
-      dup q execute ENTITY-SET-NEXT @
+      dup SERVED? if dup q execute then ENTITY-SET-NEXT @
    repeat drop ;
 
 : ENTITY-SET-NAME$ ( ^entity-set -- str ) ENTITY-SET-NAME @ SPAN:$ ;
@@ -2544,7 +2686,11 @@ public
 : ENTITY-TYPE ( ^entity-set -- ^entity-type ) ENTITY-SET-TYPE @ ;
 
 \ The base type's properties first, then the type's own, in declared order.
-: EACH-PROPERTY ( ^entity-type [ ^property -- ] -- ) PROPERTIES-OF ;
+: EACH-PROPERTY ( ^entity-type [ ^property -- ] -- )
+   {: t:^ q :}
+   t ENTITY-TYPE-MODEL @ {: m:^ :}
+   t [: dup PROPERTY-NAME @ SPAN:$ m -rot HIDDEN?
+      if drop else q execute then ;] PROPERTIES-OF ;
 
 \ The key in declared order: the type's own, else its nearest base type's.
 : EACH-KEY ( ^entity-type [ ^property -- ] -- )
@@ -2556,7 +2702,11 @@ public
 : NULLABLE? ( ^property -- bool ) PROPERTY-NULLABLE @ ;
 
 \ The base type's navigation properties first, then the type's own.
-: EACH-NAVIGATION ( ^entity-type [ ^navigation -- ] -- ) NAVIGATIONS-OF ;
+: EACH-NAVIGATION ( ^entity-type [ ^navigation -- ] -- )
+   {: t:^ q :}
+   t ENTITY-TYPE-MODEL @ {: m:^ :}
+   t [: dup NAVIGATION-NAME @ SPAN:$ m -rot HIDDEN?
+      if drop else q execute then ;] NAVIGATIONS-OF ;
 
 : NAVIGATION-NAME$ ( ^navigation -- str ) NAVIGATION-NAME @ SPAN:$ ;
 : TO-MANY? ( ^navigation -- bool ) NAVIGATION-MANY @ ;
@@ -2587,5 +2737,42 @@ public
    s ENTITY-SET-FILTER @ {: f:^filter :}
    f NULL-PTR = if true exit then
    f p RESTRICTS? 0= ;
+
+\ Hides the type of the set NAME and SETTLEs; false, changing nothing, when
+\ the model has no such set or NAME holds a byte no name in a query holds.
+: HIDE-SET ( ^metadata str -- bool )
+   {: m:^ name:^ len:n :}
+   name len ONE-NAME? 0= if false exit then
+   m name len INDEXED-SET {: s:^ :}
+   s NULL-PTR = if false exit then
+   true s ENTITY-SET-TYPE @ ENTITY-TYPE-HIDDEN !
+   m SETTLE true ;
+
+\ Hides every property and navigation NAME and SETTLEs; false, changing
+\ nothing, when the model has none or NAME holds a byte no name in a query
+\ holds.
+: HIDE-PROPERTY ( ^metadata str -- bool )
+   {: m:^ name:^ len:n :}
+   name len ONE-NAME? 0= if false exit then
+   m name len INDEXED {: x:^named :}
+   x NULL-PTR = if false exit then
+   x NAMED-PROPERTY-COUNT @ x NAMED-NAVIGATION-COUNT @ + 0= if
+      false exit
+   then
+   true x NAMED-HIDDEN ! m SETTLE true ;
+
+\ The first hidden name in TEXT, borrowed from it, and true; else an empty
+\ str and false.
+: HIDDEN-NAME$ ( ^metadata str -- str bool )
+   {: m:^ text:^ len:n :}
+   0 begin dup len < while
+      dup text + c@ NAME-BYTE? 0= if 1+ else
+         dup text len rot RUN-END {: at:n end:n :}
+         m text at + end at - QUERY-HIDDEN? if
+            text at + end at - true exit
+         then
+         end
+      then
+   repeat drop text 0 false ;
 
 ;package

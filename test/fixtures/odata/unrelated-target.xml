@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+  <edmx:DataServices>
+    <Schema Namespace="N">
+      <EntityType Name="A">
+        <Key>
+          <PropertyRef Name="AID"/>
+        </Key>
+        <Property Name="AID" Type="Edm.String" Nullable="false"/>
+        <NavigationProperty Name="B" Type="N.B"/>
+      </EntityType>
+      <EntityType Name="B">
+        <Key>
+          <PropertyRef Name="BID"/>
+        </Key>
+        <Property Name="BID" Type="Edm.String" Nullable="false"/>
+      </EntityType>
+      <EntityType Name="C">
+        <Key>
+          <PropertyRef Name="CID"/>
+        </Key>
+        <Property Name="CID" Type="Edm.String" Nullable="false"/>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="As" EntityType="N.A">
+          <NavigationPropertyBinding Path="B" Target="Cs"/>
+        </EntitySet>
+        <EntitySet Name="Bs" EntityType="N.B"/>
+        <EntitySet Name="Cs" EntityType="N.C"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

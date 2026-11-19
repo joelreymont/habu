@@ -8,8 +8,9 @@ split-str
 \ ODATA:KEY's literal for each type a key may hold, in both versions, over
 \ keys-v2.xml and keys-v4.xml, which hold one set per type the version writes
 \ in a key, keyed by it; a record copied as sets whose types share a member
-\ name with types they do not derive from; and a navigation of another type
-\ leading to no set.
+\ name with types they do not derive from; a navigation of another type
+\ leading to no set; sets and properties hidden by each rule, in listings and
+\ copies; and the hidden names found in a query option's text.
 \ Run: bin/hb --load src/lib/odata-test.f
 
 require src/lib/string.f
@@ -254,6 +255,12 @@ LINK-CAP BUFFER: LINK
    s\" <edmx:Edmx Version=\"4.0\" xmlns:edmx=\"http://docs.oasis-open.org/odata/ns/edmx\">\n<edmx:DataServices>\n<Schema Namespace=\"N\" xmlns=\"http://x\xE2\x80\xAEy\">\n</Schema>\n</edmx:DataServices>\n</edmx:Edmx>\n"
    s" 3:1: expected `Schema` in the CSDL namespace of OData V4, found `http://xU+202Ey`; put the `Schema` in that namespace"
    ODATA:E-METADATA SOURCE-REJECTS
+   s" test/fixtures/odata/unrelated-target.xml"
+   s" 26:11: expected `Target` of `NavigationPropertyBinding` `B` to name an entity set of a type in the inheritance tree of `N.B`, found `Cs` of `EntityType` `N.C`; name an entity set of a type in that tree"
+   REJECTS
+   s" test/fixtures/odata/unrelated-end.xml"
+   s" 47:11: expected `EntitySet` of `End` `Buyer` to name an entity set of a type in the inheritance tree of `SHOP.Customer`, found `Orders` of `EntityType` `SHOP.Order`; name an entity set of a type in that tree"
+   REJECTS
    s" test/fixtures/odata/enum-is-flags.xml"
    s" 4:7: expected `IsFlags` of `EnumType` to be true or false, found `yes`; set `IsFlags` to true or false"
    REJECTS
@@ -749,6 +756,124 @@ variable VALUE-LEN
    DESC$ S\"  navigation Orders to-many Orders\n navigation Orders to-many ArchivedOrders\n" T$=
    a ARENA:RELEASE ;
 
+: SERVES? ( ^ODATA:metadata str -- bool )
+   ODATA:ENTITY-SET MATCH nullable
+      none OF false ENDOF
+      some OF drop true ENDOF
+   ;MATCH ;
+
+: TEST-HIDE-SET ( -- )
+   0 DESC-LEN !
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/v2.xml" MODEL {: m:^ :}
+   m s" Customers" ODATA:HIDE-SET TTRUE
+   m s" Customers" ODATA:HIDE-SET TTRUE
+   m s" Parties" ODATA:HIDE-SET TFALSE
+   m s" Amount" ODATA:HIDE-PROPERTY TTRUE
+   m s" Nope" ODATA:HIDE-PROPERTY TFALSE
+   m s" Amount" ODATA:HIDE-SET TFALSE
+   m s" Customers" ODATA:HIDE-PROPERTY TFALSE
+   m [: SHOW-SET ;] ODATA:EACH-ENTITY-SET
+   DESC$ s" test/fixtures/odata/v2-hidden.txt" WANT READ T$=
+   m s" Buyer/Name" ODATA:HIDDEN-NAME$ TTRUE s" Buyer" T$=
+   a ARENA:RELEASE ;
+
+\ A2 shares A1's base A, so hiding A1 hides A2.
+: TEST-HIDE-FAMILY ( -- )
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/derived-keys.xml" MODEL {: m:^ :}
+   m s" A1s" ODATA:HIDE-SET TTRUE
+   m s" A2s" SERVES? TFALSE
+   a ARENA:RELEASE ;
+
+\ Year is in Order's key, so Order is hidden, and with it Customer's
+\ navigation Orders.
+: TEST-HIDE-KEY ( -- )
+   0 DESC-LEN !
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/v2.xml" MODEL {: m:^ :}
+   m s" Year" ODATA:HIDE-PROPERTY TTRUE
+   m s" Orders" SERVES? TFALSE
+   m s" ArchivedOrders" SERVES? TFALSE
+   m s" Customers" SET-NAMED SET !
+   m s" Customers" SET-TYPE [: SHOW-NAVIGATION ;] ODATA:EACH-NAVIGATION
+   DESC$ s" " T$=
+   a ARENA:RELEASE ;
+
+\ Hiding B hides A's navigation B, and so C, whose key is a property B.
+: TEST-HIDE-CASCADE ( -- )
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/hide-cascade.xml" MODEL {: m:^ :}
+   m s" Bs" ODATA:HIDE-SET TTRUE
+   m s" Cs" SERVES? TFALSE
+   m s" As" SERVES? TTRUE
+   m s" $root/Cs('1')/CID eq '1'" ODATA:HIDDEN-NAME$ TTRUE s" Cs" T$=
+   a ARENA:RELEASE ;
+
+: FINDS ( ^ODATA:metadata str -- )
+   ODATA:HIDDEN-NAME$ TTRUE s" Amount" T$= ;
+
+: MISSES ( ^ODATA:metadata str -- ) ODATA:HIDDEN-NAME$ TFALSE s" " T$= ;
+
+: TEST-HIDDEN-NAME ( -- )
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/v2.xml" MODEL {: m:^ :}
+   m s" Amount" ODATA:HIDE-PROPERTY TTRUE
+   m s" Amount" FINDS
+   m s" Orders/Amount" FINDS
+   m s" Orders/any(o:o/Amount gt 1)" FINDS
+   m s" Name eq 'Amount'" FINDS
+   m s\" \xc3\xa9Amount" MISSES
+   m s" AmountDue" MISSES
+   m s" amount" MISSES
+   m s" 1Amount" MISSES
+   m s" " MISSES
+   a ARENA:RELEASE ;
+
+\ hide-names.xml declares Größe, a UTF-8 name, and A-b, which no query
+\ text names.
+: GROSSE$ ( -- str ) s\" Gr\xc3\xb6\xc3\x9fe" ;
+
+: TEST-HIDE-NAMES ( -- )
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/hide-names.xml" MODEL {: m:^ :}
+   m s" A-b" ODATA:HIDE-PROPERTY TFALSE
+   m GROSSE$ ODATA:HIDE-PROPERTY TTRUE
+   m s\" $select=Ab,Gr\xc3\xb6\xc3\x9fe" ODATA:HIDDEN-NAME$ TTRUE
+   GROSSE$ T$=
+   a ARENA:RELEASE ;
+
+\ A page of Customers with City, Amount and Name hidden, written plain
+\ against hide-page.txt.
+: HIDE-PAGE ( ^ODATA:metadata -- )
+   {: m:^ :}
+   m s" City" ODATA:HIDE-PROPERTY TTRUE
+   m s" Amount" ODATA:HIDE-PROPERTY TTRUE
+   m s" Name" ODATA:HIDE-PROPERTY TTRUE
+   m s" Customers" SET-TYPE {: t:^ :}
+   m s" test/fixtures/odata/v2-hide-page.json" BODY CURSOR LINK-SPAN
+   ODATA:PAGE drop drop {: rt:^ rl:n :}
+   t rt rl PLAIN s" test/fixtures/odata/hide-page.txt" WANT READ T$= ;
+
+: ORDER$ ( -- str ) s\" {\"OrderID\":\"1\",\"Year\":1}" ;
+: BUYER$ ( -- str )
+   s\" {\"d\":{\"OrderID\":\"1\",\"Year\":1,\"Buyer\":{\"PartyID\":\"C1\",\"Name\":\"A\"}}}" ;
+: TWICE$ ( -- str )
+   s\" {\"d\":{\"OrderID\":\"1\",\"Year\":1,\"Amount\":\"1\",\"Amount\":\"2\"}}" ;
+
+\ Buyer leads to the hidden Customer; a repeated hidden Amount is dropped,
+\ not rejected.
+: TEST-HIDE-COPY ( -- )
+   ARENA:NEW {: a:^ :}
+   a s" test/fixtures/odata/v2.xml" MODEL HIDE-PAGE
+   a s" test/fixtures/odata/v2.xml" MODEL {: m:^ :}
+   m s" Customers" ODATA:HIDE-SET TTRUE
+   m s" Orders" BUYER$ COPY-AS ORDER$ T$=
+   a s" test/fixtures/odata/v2.xml" MODEL {: n:^ :}
+   n s" Amount" ODATA:HIDE-PROPERTY TTRUE
+   n s" Orders" TWICE$ COPY-AS ORDER$ T$=
+   a ARENA:RELEASE ;
+
 : TEST-MAIN ( -- )
    T-RESET
    TEST-V2
@@ -770,6 +895,13 @@ variable VALUE-LEN
    TEST-SHARED-NAMES
    TEST-FOREIGN-NAVIGATION
    TEST-UNREACHED-PAIR
+   TEST-HIDE-SET
+   TEST-HIDE-FAMILY
+   TEST-HIDE-KEY
+   TEST-HIDE-CASCADE
+   TEST-HIDDEN-NAME
+   TEST-HIDE-NAMES
+   TEST-HIDE-COPY
    T-REPORT
    s" odata-test: ok" type cr ;
 

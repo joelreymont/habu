@@ -27,7 +27,9 @@ split-str
 \ Duplicate names, names that resolve to nothing, an entity set whose type
 \ has no Key and a key property of a type the version's key predicate cannot
 \ hold are rejected; V4's holds an enumeration type and a type definition over
-\ a type it holds. A V4 key property whose type the document does not declare
+\ a type it holds. A binding or an association set End naming a set whose
+\ type is outside the inheritance tree of the navigation's or the End's type
+\ is rejected. A V4 key property whose type the document does not declare
 \ loads, and KEY rejects any value for it. A body the XML reader rejects
 \ throws the reader's code with its text. A rejected response is E-RESPONSE
 \ with text of the same form, placed as the JSON reader places its own, in the
@@ -38,6 +40,18 @@ split-str
 \ set and a navigation property of its type. A V4 binding's Target names an
 \ entity set or a singleton; a binding to a singleton or along a containment
 \ path leads to no set, and NAVIGATION-TARGET answers none for it.
+\ HIDE-SET and HIDE-PROPERTY hide parts of a model, between METADATA and sharing
+\ it. A hidden set's type is hidden with every type of its inheritance tree, and
+\ so is a type whose key holds a hidden name; a navigation to a hidden type has
+\ its name hidden, and a hidden name hides every property and navigation of
+\ that name. ENTITY-SET and EACH-ENTITY-SET then pass over the sets of hidden
+\ types, EACH-PROPERTY and EACH-NAVIGATION over members of hidden names. Each
+\ answers false, changing nothing, when the model declares nothing it names.
+\ HIDDEN-NAME$ answers the first name in a query option's text that is hidden
+\ or names a set of a hidden type, borrowed from the text, and true, else an
+\ empty text and false: a name is a maximal run of ASCII letters, digits, `_`
+\ and bytes above 127, compared exactly, quoted text included. HIDE-SET and
+\ HIDE-PROPERTY answer false for a name holding any other byte.
 \ PAGE reads a collection response by the model's version: V2
 \ `{"d":[...]}` or `{"d":{"results":[...],"__count":"N","__next":"url"}}`,
 \ V4 `{"value":[...],"@odata.count":N,"@odata.nextLink":"url"}`, 4.01's
@@ -61,10 +75,12 @@ split-str
 \ whose name holds `@` is dropped. An expanded record is written by its
 \ navigation's target type, and a complex value, or each of a collection of
 \ them, by its complex type; a complex member holding anything else but null
-\ is rejected. Members the type does not declare are copied as they stand; a
-\ record, expanded and complex ones included, that repeats a member is
-\ rejected. V2 and V4 bodies of the same records give the same members; a
-\ value both versions write in one JSON form gives the same bytes.
+\ is rejected. A member of a hidden name is dropped at every depth, declared
+\ or not, and never counts as a repeat; other members the type does not
+\ declare are copied as they stand, and a record, expanded and complex ones
+\ included, that repeats a member is rejected. V2 and V4 bodies of the same
+\ records give the same members; a value both versions write in one JSON form
+\ gives the same bytes.
 \ KEY appends to a vector an entity's key predicate from its key values'
 \ text, each checked against its property's type and written in the version's
 \ literal form, a V4 enumeration value as the type's qualified name and the
@@ -80,10 +96,11 @@ split-str
 \ each base type, and NAVIGATION-TARGET's, two cells, are freed before they
 \ return on every path, the callback's throw included. The model also holds,
 \ in the caller's arena, an index of the names of its sets and members, at
-\ most 16 cells for each set and member and 9 more, and a map of navigation
+\ most 17 cells for each set and member and 9 more, and a map of navigation
 \ targets sized once by its bindings and association set Ends. The model is
-\ read-only once METADATA returns, so tasks may read it together; the arena's
-\ one-task rule covers the METADATA call. The source bytes are not kept.
+\ read-only once METADATA and the caller's hides return, so tasks may read it
+\ together; the arena's one-task rule covers METADATA and the hides. The source
+\ bytes are not kept.
 \ PAGE and RECORD$ answer text borrowed from the caller's body and leave the
 \ caller's JSON:cursor closed; their scratch, and COPY-ENTITY's, is freed
 \ before they return on every path. No module state.
