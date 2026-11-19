@@ -3820,7 +3820,7 @@ public
 ;package
 
 package ENGINE-EMIT
-\ `search-wl ( ^u8 n n -- n )`: the routine above, minus one wordlist.
+\ `bare-search-wl ( ^u8 n n -- n )`: the routine above, minus one wordlist.
 \ Engine-helper WID records and DNAME-INT records are never raw-searchable: the
 \ first are private implementation entries, and the second would otherwise let
 \ `search-wl execute` bypass the interpreter/tick internal-word gate. The refusal
@@ -4032,7 +4032,6 @@ package ENGINE-EMIT
    s" c2-init-stow" ['] BC2-INIT-STOW FPRIM
    s" c2-records-stow" ['] BC2-RECORDS-STOW FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
-   s" search-wl" ['] BSWL FPRIM
    s" bare-search-wl" ['] BSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

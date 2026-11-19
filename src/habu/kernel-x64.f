@@ -2124,12 +2124,12 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 48 constant SF-INDEX
 56 constant SF-QUAL-PUB
 
-\ scope-find ( ^u8 n -- bound used used2 flags ). A qualified name searches
-\ the namespace record's public wid. Bare names search the open private/public
-\ wids, the enclosing package's (layout.f ENCLOSING) while a part is open,
-\ then global, while the used publics are collected independently. Two
-\ distinct used records set flag 2 and bind neither when the primary search
-\ missed; a bound seeded primitive sets flag 1.
+\ bare-scope-find ( ^u8 n -- bound used used2 flags ). A qualified name
+\ searches the namespace record's public wid. Bare names search the open
+\ private/public wids, the enclosing package's (layout.f ENCLOSING) while a
+\ part is open, then global, while the used publics are collected
+\ independently. Two distinct used records set flag 2 and bind neither when
+\ the primary search missed; a bound seeded primitive sets flag 1.
 : SCOPE-FIND-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
@@ -2305,9 +2305,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX ZERO-REG,  RAX PUSH,
    finish X64CODE:LBL, ;
 
-\ tok-imm? asks the primary scope only: a used public does not make a token
-\ immediate to a checked body. FIND-LBL supplies the same folded-name record
-\ lookup as scope-find; the immediate flag is its DNAME-IMM bit folded to 2.
+\ bare-tok-imm? asks the primary scope only: a used public does not make a
+\ token immediate to a checked body. FIND-LBL supplies the same folded-name
+\ record lookup as bare-scope-find; the immediate flag is its DNAME-IMM bit
+\ folded to 2.
 : TOK-IMM-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
@@ -2640,8 +2641,6 @@ public
    s" create" [: CREATE-BODY ;] PRIM
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" [: NUM-PARSE, ;] PRIM
-   s" tok-imm?" [: TOK-IMM-BODY ;] PRIM
-   s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
    s" bare-tok-imm?" [: TOK-IMM-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" bare-scope-find" [: SCOPE-FIND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" scope-kind?" [: RAX POP,  SCOPE-KIND-LBL CALL,  RAX PUSH, ;] PRIM ;
@@ -3104,8 +3103,8 @@ private
 : FIND-ARGS, ( -- )
    RDX R64>N X64RT:G-POP  RSI R64>N X64RT:G-POP  RDI R64>N X64RT:G-POP ;
 
-\ `search-wl ( ^u8 n n -- n )`, the twin of habu1.f BSWL: the code cell of
-\ the name's record in one wordlist, or 0. An engine helper's wid
+\ `bare-search-wl ( ^u8 n n -- n )`, the twin of habu1.f BSWL: the code cell
+\ of the name's record in one wordlist, or 0. An engine helper's wid
 \ (OWNER-API-PRI-WID) is refused before the search and a DNAME-INT record
 \ answers 0, so `search-wl execute` never reaches an internal word.
 : SEARCH-WL-BODY ( -- )
@@ -3134,7 +3133,6 @@ private
 public
 
 : DICT-SEARCH, ( -- )
-   s" search-wl" [: SEARCH-WL-BODY ;] PRIM
    s" bare-search-wl" [: SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
 

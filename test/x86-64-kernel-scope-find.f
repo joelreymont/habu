@@ -1,5 +1,5 @@
 split-str
-\ Real x86-64 kernel images exercise scope-find with and without the name
+\ Real x86-64 kernel images exercise bare-scope-find with and without the name
 \ index. The emitted ELFs remain in TMPDIR for replay on the x86-64 peer.
 require test/x86-64-boot-harness.f
 require src/os/linux/layout.f
@@ -10,7 +10,7 @@ using X64CODE
 using LINUX-LAYOUT
 
 : ROW ( ^u8 n -- ) X64HARNESS:CALL-ROW, ;
-: SCOPE, ( ^u8 n -- ) X64HARNESS:PUSH-TEXT,  s" scope-find" ROW ;
+: SCOPE, ( ^u8 n -- ) X64HARNESS:PUSH-TEXT,  s" bare-scope-find" ROW ;
 
 \ -1 means the null record; every other expected value is a record index.
 : REC?, ( n -- ) dup 0 < if drop 0 X64HARNESS:EXPECT-POP, else X64HARNESS:EXPECT-ROW, then ;

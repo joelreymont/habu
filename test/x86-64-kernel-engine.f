@@ -34,7 +34,7 @@ create FILL FILL-BYTES allot
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ The search images seed five records with X64HARNESS:RECORD. Without an index
-\ `search-wl` and `xref-search-wl` scan the one wordlist; with HIDX-BUILD first
+\ `bare-search-wl` and `xref-search-wl` scan the one wordlist; with HIDX-BUILD first
 \ they probe.
 7 constant OTHER-WID                   \ a public wordlist past the fixed ones
 
@@ -57,7 +57,7 @@ create FILL FILL-BYTES allot
    wid X64HARNESS:PUSH,
    row rowu X64HARNESS:CALL-ROW, ;
 
-: SEARCH, ( ^u8 n n -- ) s" search-wl" ASK, ;
+: SEARCH, ( ^u8 n n -- ) s" bare-search-wl" ASK, ;
 : XREF, ( str n -- ) s" xref-search-wl" ASK, ;
 
 \ Ten checks, the whole of an image's case statuses.

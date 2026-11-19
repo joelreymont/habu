@@ -1498,33 +1498,52 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" package FILE-OBJECTS-PROBE-S public variable Z ;package\n" SRC+  t tu SRC+
    s" s.f" NEST-WRITE ;
 
-\ The probe sequence in directory d: r.f's K is 1 when the current wordlist holds the name w as r.f
-\ loads, else 0, by a CHECKER-RESOLVE:WL-PROBE in h.f; no source spells w but s.f's text t.
-: WRITE-PROBE ( str str str -- ) {: d:^ du:n w:^ wu:n t:^ tu:n :}
+\ The probe sequence in directory d: r.f's K is 1 when h.f's lookup q, the code after the name w's
+\ string, finds w as r.f loads, else 0; no source spells w but s.f's text t.
+: WRITE-PROBE ( str str str str -- ) {: d:^ du:n w:^ wu:n q:^ qu:n t:^ tu:n :}
    L$ d du NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
-   s\" package FILE-OBJECTS-PROBE public\n: FOUND ( -- n ) s\" " SRC+  w wu SRC+
-   s\" \" >str get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = if 0 else 1 then ;\n;package\n" SRC+
+   s\" package FILE-OBJECTS-PROBE public\n: FOUND ( -- n ) s\" " SRC+  w wu SRC+  s\" \" " SRC+
+   q qu SRC+  s\"  ;\n;package\n" SRC+
    s" h.f" NEST-WRITE
    t tu WRITE-PROBE-S
    s\" FILE-OBJECTS-PROBE:FOUND constant FILE-OBJECTS-PROBE-K\n" SRC+  s" r.f" NEST-WRITE
    s" h.f" REQUIRE+  s" s.f" REQUIRE+  s" r.f" REQUIRE+
    s\" : MAIN ( -- ) FILE-OBJECTS-PROBE-K . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
 
+: WL-PROBE$ ( -- str ) s" >str get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = if 0 else 1 then" ;
+
 \ Guards a lookup of a name no source spells: P2, after s.f stops retiring the engine's CORE-STR=CI, and
 \ Q2, after s.f drops the word h.f probes, must compile r.f again and print what a cold build prints.
 : PROBE-CASE ( CMD:command -- CMD:command )
-   s" probe" s" CORE-STR=CI" s\" undefine CORE-STR=CI\n" WRITE-PROBE
+   s" probe" s" CORE-STR=CI" WL-PROBE$ s\" undefine CORE-STR=CI\n" WRITE-PROBE
    s" P" WHICH!  s" main.f" s" prog-p" NEST-BUILD 0= if exit then
    s" prog-p" s\" 0\n\n" s" the program prints K" NEST-RUN
    s" " WRITE-PROBE-S
    s" P2" WHICH!  s" main.f" s" prog-p" NEST-BUILD 0= if exit then
    s" prog-p" s\" 1\n\n" s" the program prints K" NEST-RUN
-   s" probe-zz" s" FILE-OBJECTS-PROBE-ZZ" s\" : FILE-OBJECTS-PROBE-ZZ ( -- ) ;\n" WRITE-PROBE
+   s" probe-zz" s" FILE-OBJECTS-PROBE-ZZ" WL-PROBE$ s\" : FILE-OBJECTS-PROBE-ZZ ( -- ) ;\n" WRITE-PROBE
    s" Q" WHICH!  s" main.f" s" prog-q" NEST-BUILD 0= if exit then
    s" prog-q" s\" 1\n\n" s" the program prints K" NEST-RUN
    s" " WRITE-PROBE-S
    s" Q2" WHICH!  s" main.f" s" prog-q" NEST-BUILD 0= if exit then
    s" prog-q" s\" 0\n\n" s" the program prints K" NEST-RUN ;
+
+\ The probe sequence of directory d through lookup q: cold it prints 0, and warm build w, after s.f
+\ stops retiring CORE-STR=CI, prints 1 as a cold build does.
+: LOOKUP-RUN ( CMD:command str str str -- CMD:command ) {: d:^ du:n q:^ qu:n w:^ wu:n :}
+   d du s" CORE-STR=CI" q qu s\" undefine CORE-STR=CI\n" WRITE-PROBE
+   d du WHICH!  s" main.f" s" prog-l" NEST-BUILD 0= if exit then
+   s" prog-l" s\" 0\n\n" s" the program prints K" NEST-RUN
+   s" " WRITE-PROBE-S
+   w wu WHICH!  s" main.f" s" prog-l" NEST-BUILD 0= if exit then
+   s" prog-l" s\" 1\n\n" s" the program prints K" NEST-RUN ;
+
+: SEARCH-WL-CASE ( CMD:command -- CMD:command )
+   s" probe-swl" s" get-current search-wl 0= if 0 else 1 then" s" probe-swl2" LOOKUP-RUN ;
+
+: SCOPE-FIND-CASE ( CMD:command -- CMD:command )
+   s" probe-find" s" scope-find drop drop drop NULL-PTR = if 0 else 1 then" s" probe-find2"
+   LOOKUP-RUN ;
 
 \ The clause sequence: h.f's definer FILE-OBJECTS-CL has a does> clause, w.f defines a word of the
 \ clause's name, one.f requires h.f, and two.f w.f then h.f.
@@ -2377,8 +2396,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       SEALED-CASE
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
-      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE CLAUSE-CASE READ-CASE LIST-CASE
-      LINK-CASE TASK-CASE
+      NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
+      CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE

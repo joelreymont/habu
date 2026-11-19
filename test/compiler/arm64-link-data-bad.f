@@ -4,9 +4,9 @@ split-str
 \ DATA pointer that holds an address outside the build's space, read by the
 \ entry, since a stripped link checks only the data its entry reaches;
 \ `header`, an empty entry, refused only by a malformed kernel object when the
-\ link writes the header cells; `eval`, an entry that calls `evaluate-closed`;
-\ `dict`, an entry that calls `search-wl`. The second argument is the kernel
-\ object the link adopts, the third the path it would write.
+\ link writes the header cells; `eval`, an entry that calls `evaluate-closed`.
+\ The second argument is the kernel object the link adopts, the third the path
+\ it would write.
 \ test/compiler/arm64-link-data.f runs each and checks it.
 
 require src/core/exit-status.f
@@ -49,12 +49,6 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    s" arm64-link-data-bad: the evaluate-closed call was not refused" EXIT-STATUS:FAILURE die ;
 
 
-: DICT-BODY ( -- )
-   s\" : LD-DW ( -- ) s\" LD-DW\" 0 search-wl drop ;" evaluate-closed
-   s" LD-DW" WORD-XT  APP-ENTRY:XT!  WRITE
-   s" arm64-link-data-bad: the wordlist lookup was not refused" EXIT-STATUS:FAILURE die ;
-
-
 public
 
 : RUN ( -- )
@@ -63,8 +57,7 @@ public
    at u s" data" STR= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
    at u s" header" STR= if s" app" RTARGET:HOST-TARGET [: HEADER-BODY ;] LINKER:WITH exit then
    at u s" eval" STR= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
-   at u s" dict" STR= if s" app" RTARGET:HOST-TARGET [: DICT-BODY ;] LINKER:WITH exit then
-   s" arm64-link-data-bad: the case is data, header, eval or dict" EXIT-STATUS:FAILURE die ;
+   s" arm64-link-data-bad: the case is data, header or eval" EXIT-STATUS:FAILURE die ;
 
 ;package
 

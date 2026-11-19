@@ -1,6 +1,6 @@
 split-str
 \ parse-name walks the live source cursor, including its end-of-input answer.
-\ tok-imm? follows the primary name binding and ignores used publics.
+\ bare-tok-imm? follows the primary name binding and ignores used publics.
 \ Runtime CREATE dispatches through the captured handler. A defining word
 \ calls it with an existing user stack and source; the call must return with
 \ that stack intact. The emitted ELFs remain in TMPDIR as hb-x64-kernel-token,
@@ -36,7 +36,7 @@ using LINUX-LAYOUT
 
 : IMM?, ( str n -- ) {: a:^ u:n want:n :}
    a u X64HARNESS:PUSH-TEXT,
-   s" tok-imm?" X64HARNESS:CALL-ROW,
+   s" bare-tok-imm?" X64HARNESS:CALL-ROW,
    want X64HARNESS:EXPECT-POP, ;
 
 : SEED-IMM, ( -- )

@@ -176,10 +176,10 @@ variable UNSAFE-COUNT
    a u s" callmap-set" XREF-STR=CI or
    a u s" addrmap-set" XREF-STR=CI or
    a u s" xref-retarget" XREF-STR=CI or
-   a u s" search-wl" XREF-STR=CI or
+   a u s" bare-search-wl" XREF-STR=CI or
    a u s" xref-search-wl" XREF-STR=CI or
-   a u s" scope-find" XREF-STR=CI or
-   a u s" tok-imm?" XREF-STR=CI or
+   a u s" bare-scope-find" XREF-STR=CI or
+   a u s" bare-tok-imm?" XREF-STR=CI or
    a u s" policy-admit" XREF-STR=CI or
    a u s" policy-seal" XREF-STR=CI or
    a u s" def-occ-resolve" XREF-STR=CI or

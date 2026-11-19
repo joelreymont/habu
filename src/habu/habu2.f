@@ -2206,7 +2206,7 @@ public
 
 package ENGINE-EMIT
 
-\ tok-imm? ( ^u8 n -- n ): live-dictionary immediate probe for the checker.
+\ bare-tok-imm? ( ^u8 n -- n ): live-dictionary immediate probe for the checker.
 \ Runs the interpret dispatch's LFIND on a token name and pushes flags&2, the
 \ DNAME-IMM bit, so DO-TOK1 can reject a live immediate as a checked body step.
 \ LFIND clobbers x3-x16 and preserves XDS (x19)/DATA (x20); the FPRIM frame
@@ -2271,11 +2271,10 @@ public
 ;package
 
 package ENGINE-EMIT
-\ scope-find ( ^u8 n -- ^n ^n ^n n ): LSCOPEREC's four answers for a
+\ bare-scope-find ( ^u8 n -- ^n ^n ^n n ): LSCOPEREC's four answers for a
 \ token (bound record, used publics' record, second used record when two hold
 \ the tail, flags), so the checker, tier 0 and the Habu interpreter bind a
-\ spelling to the record a compiled call binds. A global row, checked like any
-\ other.
+\ spelling to the record a compiled call binds.
 : BSCOPEFIND ( -- )
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr
    LSCOPEREC LABEL@ BL,
@@ -2305,8 +2304,6 @@ package ENGINE-EMIT
    s" record-rekey" ['] DEFWRITE:RECORD-REKEY FPRIM
    s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
-   s" tok-imm?" ['] BTOKIMM FPRIM
-   s" scope-find" ['] BSCOPEFIND FPRIM
    s" bare-tok-imm?" ['] BTOKIMM ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" bare-scope-find" ['] BSCOPEFIND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" scope-kind?" ['] BSCOPE-KIND FPRIM

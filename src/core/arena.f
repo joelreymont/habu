@@ -47,7 +47,7 @@ CAST: AS-ENTRY ( [ R -- S ] -- n )
 : OTHER-FREE ( str str n -- )
    {: name:^ nameu:n sfx:^ sfxu:n wid:n :}
    name nameu sfx sfxu LBUF:LBUF-SUFFIXED {: a:^ u:n :}
-   a u wid search-wl 0 <> if a u name nameu REJECT-DUPLICATE then ;
+   a u wid search-wl2 0 <> if a u name nameu REJECT-DUPLICATE then ;
 
 EXPORT CHECK:CHECKER-ARENA-INFO
 EXPORT CHECK:CHECKER-AUTH-PACKAGE-MODE@
@@ -67,7 +67,7 @@ EXPORT CHECK:STG-NO-NAME
    name nameu CHECKER-QUALIFIED? drop
    CHECKER-QPKG$ XREF-PRIVATE-WL {: wid:n :}
    wid 0= if exit then
-   CHECKER-QTAIL$ sfx sfxu LBUF:LBUF-SUFFIXED wid search-wl 0= if exit then
+   CHECKER-QTAIL$ sfx sfxu LBUF:LBUF-SUFFIXED wid search-wl2 0= if exit then
    name nameu sfx sfxu LBUF:LBUF-SUFFIXED name nameu REJECT-DUPLICATE ;
 
 \ NAME's words taken in the section the declaration does not write are

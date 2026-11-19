@@ -893,8 +893,8 @@ create FFI-T-LONG FFI-T-LONG-U allot
    s" FFI-T-STAGE ( n n -- ) FFI:VALUE!" FFI-T-CHECK-REJECTS
    s" FFI-T-RAW-ABI ( ^a ^a ^a n n -- n ) ffi-call-abi" FFI-T-CHECK-REJECTS
    s" FFI-T-MULTI ( ^u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS
-   s" FFI:" 0 search-wl 0= TTRUE
-   s" CALL0" 0 search-wl 0= TTRUE
+   s" FFI:" 0 search-wl2 0= TTRUE
+   s" CALL0" 0 search-wl2 0= TTRUE
 
    HB-TARGET-MACOS? if
       s" a library path's spelling is judged by its file name, not its directories" T-LABEL

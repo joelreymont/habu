@@ -221,9 +221,6 @@ HB-TARGET-LINUX? 0= [if]
 : BAD-EVAL ( CMD:command -- CMD:command )
    s" eval"  s" error[E-CANNOT-RUN-STRIPPED]: `LD-EV` calls `evaluate-closed`" 70 BAD-CHILD ;
 
-: BAD-DICT ( CMD:command -- CMD:command )
-   s" dict"  s" error[E-CANNOT-RUN-STRIPPED]: `LD-DW` calls `search-wl`" 70 BAD-CHILD ;
-
 
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 24 BUFFER: START-SYM                 \ a symbol's length cell, then its name
@@ -458,7 +455,6 @@ public
    [: BAD-UNENDED ;] CMD:WITH-COMMAND
    [: BAD-DP-AT-START ;] CMD:WITH-COMMAND
    [: BAD-EVAL ;] CMD:WITH-COMMAND
-   [: BAD-DICT ;] CMD:WITH-COMMAND
    RUN-HELD
    ROOT$ FS:REMOVE-TREE
    T-REPORT ;
