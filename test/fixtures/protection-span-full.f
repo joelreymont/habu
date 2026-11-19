@@ -1,11 +1,11 @@
 split-str
 \ protection-span-full.f - fills the image's code space with ordinary
-\ definitions to one empty word below the ceiling, checks a long name whose
-\ copy would reach the ceiling is rejected where an empty word still fits, then
+\ definitions to one empty word below the ceiling, checks a body and a long name
+\ that would reach the ceiling are rejected where an empty word still fits, then
 \ that `:`, `create` and `constant` are each rejected E-CODE-SPACE-FULL at the
 \ ceiling. A word that would pass the ceiling is rejected EXIT-STATUS:FULL and
-\ leaves nothing, so the body halves. `2 0 ?do loop` is much code per token
-\ read, so the fill takes seconds.
+\ leaves nothing. `2 0 ?do loop` is much code per token read, so the fill takes
+\ seconds.
 
 require src/lib/test.f
 
@@ -15,6 +15,7 @@ variable PST-U
 variable PST-N
 variable PST-UNITS
 variable PST-SLOT                         \ the bytes an empty word places
+variable PST-UNIT                         \ the bytes one `2 0 ?do loop` adds
 
 : PST+ ( str -- ) {: a:^ u:n :}
    u 0 ?do a i + c@ PST-SRC PST-U @ + i + c! loop  PST-U @ u + PST-U ! ;
@@ -39,13 +40,22 @@ variable PST-SLOT                         \ the bytes an empty word places
    rc EXIT-STATUS:FULL <>  PST-UNITS @ 0 = or if rc throw then
    PST-UNITS @ 2 / PST-TEXT ;
 
+\ A body is placed only where an empty word's room stays after it, so the fill
+\ ends at one empty word below the ceiling wherever the image's code begins.
+: PST-FITS? ( -- bool )
+   PST-UNITS @ PST-UNIT @ *  PST-SLOT @ 2 * +  PST-ROOM <= ;
 : PST-FILL ( -- )
    cp@ {: c:n :}  0 PST-TEXT PST-DEF 0 T=  cp@ c - PST-SLOT !
+   cp@ {: d:n :}  1 PST-TEXT PST-DEF 0 T=  cp@ d - PST-SLOT @ - PST-UNIT !
    100 PST-TEXT
-   begin PST-ROOM PST-SLOT @ > while PST-DEF PST-STEP repeat ;
+   begin PST-ROOM PST-SLOT @ > while
+      PST-FITS? if PST-DEF PST-STEP
+      else PST-UNITS @ 0 = if exit then  PST-UNITS @ 2 / PST-TEXT then
+   repeat ;
 
 : PST-FULL ( -- )
    PST-ROOM PST-SLOT @ T=
+   1 PST-TEXT PST-DEF EXIT-STATUS:FULL T=
    s" : PST-LONG-NAME ( -- ) ;" TEST-EVAL:RC EXIT-STATUS:FULL T=
    0 PST-TEXT PST-DEF 0 T=
    s" : PST-A ( -- ) ;" TEST-EVAL:RC EXIT-STATUS:FULL T=
