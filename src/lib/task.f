@@ -68,7 +68,6 @@ s" src/lib/ffi-abi.f" required
 require src/core/exit-status.f
 require src/lib/le.f
 s" src/lib/adt/result.f" required
-require src/core/rollback-cells.f
 require src/habu/data-floor.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
@@ -143,7 +142,6 @@ TASK-ABI:TCB-BYTES constant TASK-TCB-BYTES
 
 \ The user area's first REJECTION:BLOCK-BYTES are REJECTION's block.
 variable TASK-USER-NEXT  REJECTION:BLOCK-BYTES TASK-USER-NEXT !
-TASK-USER-NEXT ROLLBACK-CELLS:MARK
 
 \ The band is this file's run of each region's header, with no engine cell.
 USER-BAND:START constant TASK-USER-BASE
@@ -785,7 +783,6 @@ SCRATCH-VARIABLE CALLER-KEY
 PERSISTED-PTR-VARIABLE ROW-TABLE
 variable ROW-CAP
 variable ROW-N
-ROW-N ROLLBACK-CELLS:MARK
 
 : ROW-ALLOC ( n -- ^u8 ) {: size:n :}
    align
@@ -829,7 +826,6 @@ ROW-N ROLLBACK-CELLS:MARK
    r k ROW ROW-REGION atomic!
    k ROW-MOVES atomic@ 1 + k ROW-MOVES atomic! ;
 
-\ A rollback can give row k back bound.
 : ROW-DECLARE ( n -- ) {: k:n :}
    k ROW-N @ <> if E-TASK-STATE throw then
    k ROW-CAP @ >= if ROW-GROW then
@@ -951,7 +947,6 @@ ROW-N ROLLBACK-CELLS:MARK
 \ Head and links (TASK-LINK@) are declared address cells; 0 ends. Read unlocked:
 \ a live task's rollback keeps what it unlinks; TASK:FREE pools what it frees.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
-TASK-CHAIN ROLLBACK-CELLS:MARK
 
 \ The crash handler reads this chain after an instruction fetch faults in a
 \ task's guard, where task-local RBP is unavailable, so the head is published in
@@ -1536,7 +1531,6 @@ CELL constant SLOT-SIZE
 4 cells constant SLOT-DATA
 
 PERSISTED-PTR-VARIABLE SLOT-LAST
-SLOT-LAST ROLLBACK-CELLS:MARK
 
 : SLOT-LAST@ ( -- ^n )
    SLOT-LAST @ ;

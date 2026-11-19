@@ -34,7 +34,6 @@ split-str
 HB-TARGET-MACOS? HB-TARGET-LINUX-KERNEL? or ?TARGET
 s" src/core/exit-status.f" required
 s" src/lib/error.f" required
-s" src/core/rollback-cells.f" required
 s" src/lib/span.f" required
 s" src/lib/string.f" required
 s" src/lib/le.f" required
@@ -165,17 +164,11 @@ PATH-CAP 1 + constant LIB-PATH-CAP
 4 cells constant LIB-PATH-OFF
 LIB-PATH-OFF LIB-PATH-CAP + 7 + 8 / 8 * constant LIB-ROW-BYTES
 PERSISTED-PTR-VARIABLE FN-TABLE
-FN-TABLE ROLLBACK-CELLS:MARK
 PERSISTED-PTR-VARIABLE LIB-TABLE
-LIB-TABLE ROLLBACK-CELLS:MARK
 variable FN-CAP
-FN-CAP ROLLBACK-CELLS:MARK
 variable LIB-CAP
-LIB-CAP ROLLBACK-CELLS:MARK
 variable FN-N
-FN-N ROLLBACK-CELLS:MARK
 variable LIB-N
-LIB-N ROLLBACK-CELLS:MARK
 
 : ALIGNED-ROWS ( n -- ^u8 )
    {: size:n :}
@@ -909,7 +902,6 @@ variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 whe
 create RES-TEXT TYPE-CAP allot             \ the result's type as DECLARED-EFFECT reads it
 variable RES-TEXT-U
 variable CUR-LIB
-CUR-LIB ROLLBACK-CELLS:MARK
 \ skipped: the driver cannot tell what the declaration holds, so its clauses
 \ are ignored and it closes without a plan. The load never skips.
 ENUM decl-state closed open skipped ;ENUM
@@ -921,7 +913,6 @@ variable OPENER-U
 CLOSED!
 SCRATCH-VARIABLE SCOPE-WID   \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 SCRATCH-VARIABLE SCOPE-SET
-SCOPE-WID ROLLBACK-CELLS:MARK  SCOPE-SET ROLLBACK-CELLS:MARK
 
 : OPEN? ( -- bool )
    DECL @ MATCH decl-state

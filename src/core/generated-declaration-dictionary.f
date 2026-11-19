@@ -15,6 +15,20 @@ PTR-VARIABLE DP-MARK
 EXPORT BOOT:data-base
 EXPORT CODE-RECLAIM:TRUNCATE
 
+\ Rewinds DATA to cut, in DP-CELL's units, raising the release high-water to a
+\ DP it lowers, so the build refuses the data given back.
+: DATA-REWIND ( n -- )
+   {: cut:n :}
+   data-base NULL-PTR - {: base:n :}
+   cut base - ADDRESS-CELLS:KEEP-BELOW
+   cut INTERN:KEEP-BELOW
+   data-base DP-CELL + @ {: from:n :}
+   from cut > if
+      from base -  data-base DPHW-CELL + @ max  data-base DPHW-CELL + !
+   then
+   0 data-base COMMA-RUN-CELL + !
+   cut data-base DP-CELL + ! ;
+
 public
 
 : SNAPSHOT ( -- )
@@ -30,7 +44,7 @@ public
    \ stops at the DATA floor.
    data-base NULL-PTR - {: base:n :}
    DP-MARK @ NULL-PTR -  data-base DATA-FLOOR-CELL + @ base +  max
-   DATA-SPACE:REWIND ;
+   DATA-REWIND ;
 
 \ Rejects a declaration whose first word is a u when its n records do not fit,
 \ placed at the token read last, where the declaration ran out of room.

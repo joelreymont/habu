@@ -101,25 +101,27 @@ variable ERR-U
 \ ---- the refused programs, each beside its colon-body twin --------------------
 
 : CASE-CREATE-XT ( -- )
-   s" create T ' DUP , : the xt is refused as in a body, nothing is compiled" T-LABEL
+   s" create T ' DUP , : the xt is refused as in a body, the `,` lays nothing" T-LABEL
    ARM
    [: s" : TS-B1 ( -- ) ['] DUP , ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
+   HERE-N s" create TS-T3B" evaluate-closed HERE-N swap -
    ARM
    HERE-N [: s" create TS-T3 ' DUP ," evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-COMMA GOT-XT
-   HERE-N swap - 0 T=
+   HERE-N swap - swap T=
    DISARM ;
 
 : CASE-CREATE-HERE ( -- )
-   s" create T here , : the pointer is refused as in a body, nothing is compiled" T-LABEL
+   s" create T here , : the pointer is refused as in a body, the `,` lays nothing" T-LABEL
    ARM
    [: s" : TS-B2 ( -- ) here , ;" evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
+   HERE-N s" create TS-T4B" evaluate-closed HERE-N swap -
    ARM
    HERE-N [: s" create TS-T4 here ," evaluate-closed ;] 70 TTHROWSQ
    MISMATCH AT-COMMA GOT-PTR
-   HERE-N swap - 0 T=
+   HERE-N swap - swap T=
    DISARM ;
 
 : CASE-VARIABLE-HERE ( -- )
@@ -130,7 +132,7 @@ variable ERR-U
    ARM
    [: s" variable TS-NV here TS-NV !" evaluate-closed ;] 70 TTHROWSQ
    RAW-PTR AT-STORE
-   DISARM ;                 \ the refused program's TS-NV goes with its rollback
+   DISARM ;                 \ the refused program's TS-NV loses its name
 
 : CASE-VARIABLE-XT ( -- )
    s" variable W ' DUP W ! : refused by the raw-cell xt rule, W stays 0" T-LABEL
@@ -140,7 +142,7 @@ variable ERR-U
    ARM
    [: s" variable TS-NW ' DUP TS-NW !" evaluate-closed ;] 70 TTHROWSQ
    RAW-XT AT-STORE
-   DISARM ;                 \ the refused program's TS-NW goes with its rollback
+   DISARM ;                 \ the refused program's TS-NW loses its name
 
 : CASE-CONSTANT-PTR ( -- )
    s" here constant C : refused by the raw-cell rule, as here V ! is" T-LABEL

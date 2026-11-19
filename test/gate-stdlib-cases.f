@@ -211,8 +211,8 @@ SUITE compiler-native-hookless-reject
    test/compiler/native-hookless-reject.f
 ;SUITE
 
-SUITE code-reclaim
-   test/code-reclaim.f
+SUITE caught-text-keeps
+   test/caught-text-keeps.f
 ;SUITE
 
 SUITE compiler-native-plusloop

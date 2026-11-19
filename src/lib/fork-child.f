@@ -10,13 +10,10 @@ split-str
 \ STORAGE CLASS. PROCESS-WIDE: one list of rows, each in the data of the file
 \ that registered it, so a built program keeps its build's resets.
 
-require src/core/rollback-cells.f
-
 package FORK-CHILD
 private
 
 PERSISTED-PTR-VARIABLE HEAD
-HEAD ROLLBACK-CELLS:MARK
 
 \ A row is the next row's address, null for none, then the reset.
 CAST: >RESET ( ^n -- ^[ -- ] )

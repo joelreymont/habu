@@ -1,6 +1,6 @@
 split-str
-\ code-reclaim.f - the code a caught failed text keeps, and the created record
-\ a definer's does> acts on after a motion retires records.
+\ caught-text-keeps.f - the code a caught failed text keeps, and the created
+\ record a definer's does> acts on after a motion retires records.
 
 require src/core/exit-status.f
 require src/lib/string.f
@@ -14,7 +14,7 @@ private
 
 : REC ( ^u8 n -- ^n )
    XREF-FIND
-   dup XREF-FOUND? 0= if s" code-reclaim: subject not found" EXIT-STATUS:FAILURE die then ;
+   dup XREF-FOUND? 0= if s" caught-text-keeps: subject not found" EXIT-STATUS:FAILURE die then ;
 
 : REC-START ( str -- n )
    REC XREF-START ;

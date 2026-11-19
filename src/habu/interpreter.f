@@ -2841,7 +2841,6 @@ public
 
 require src/lib/memory.f
 require src/habu/address-cells.f
-require src/core/rollback-cells.f
 require src/habu/stepper.f
 require src/core/compile-reads.f
 
@@ -2984,8 +2983,6 @@ EXPORT CODE-RECLAIM:TRUNCATE
 \ An evaluated buffer's frame, which this file's frame words and rejection.f
 \ read. The clean-exit continuation at $10 stays zero: nothing reads it for a
 \ buffer this frame bounds.
-$18 constant FR-BOUND
-$20 constant FR-XDS
 $38 constant FR-DP
 
 \ The frame on its way into the catch that links it; empty at rest.
@@ -3018,21 +3015,14 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    xt 0= if 0 exit then
    xt AS-ROWS-END execute 1+ ;
 
-\ Past the frame, its mapping holds the mapping's length, then the saved cells.
-: FRAME-CELLS ( ^u8 -- ^u8 ) EVAL-FRAME-SIZE CELL + + ;
-
-\ The frame of a buffer whose caller leaves n cells on the data stack, all but
-\ its link. Its using depth is also the buffer's using floor.
-: FRAME-OPEN ( n -- ^u8 ) {: cells-in:n :}
-   EVAL-FRAME-SIZE CELL + ROLLBACK-CELLS:BYTES + {: total:n :}
-   total MEM-ALLOC-PTR {: f:^ :}
-   total f EVAL-FRAME-SIZE FR!
+\ The frame of a buffer. Its using depth is also the buffer's using floor.
+: FRAME-OPEN ( -- ^u8 )
+   EVAL-FRAME-SIZE MEM-ALLOC-PTR {: f:^ :}
    INP-CELL CELL@ f EVAL-INP FR!
    INE-CELL CELL@ f EVAL-INE FR!
    SRCLOC:INB-CELL CELL@ f EVAL-INB FR!
    TKA-CELL CELL@ f EVAL-TKA FR!
    TKL-CELL CELL@ f EVAL-TKL FR!
-   STACK-ABI:BASE-CELL CELL@ cells-in cells + f FR-XDS FR!
    cp@ f EVAL-FRAME:CP FR!
    ndict@ f EVAL-FRAME:NDICT FR!
    REQUIRE-REG:MARK f EVAL-FRAME:REQUIRES FR!
@@ -3055,15 +3045,10 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    SECTION-CELL CELL@ f EVAL-FRAME:SECTION FR!
    ROWS-MARK f EVAL-FRAME:ROWS FR!
    HELD-MARK f EVAL-FRAME:HELD FR!
-   f FRAME-CELLS ROLLBACK-CELLS:SAVE
    f ;
 
-\ It runs first in the evaluate's catch, so the nearest handler is that
-\ catch's: throw recovery pops a frame whose boundary lies at or below the
-\ nearest handler, and leaves it for a handler the buffer installs, below.
 : FRAME-LINK ( ^u8 -- ) {: f:^ :}
    NULL-PTR FRAME-ARG !
-   HND-CELL CELL@ f FR-BOUND FR!
    EVAL-TOP-CELL CELL@ f EVAL-PREV FR!
    f NULL-PTR - EVAL-TOP-CELL CELL!
    EVALD-CELL CELL@ 1+ EVALD-CELL CELL! ;
@@ -3172,15 +3157,7 @@ TYPED-VARIABLE FAILED-TEXT bool
    0= if FRAME-DONE else FRAME-LINKED then ;
 
 : FRAME-FREE ( ^u8 -- )
-   dup EVAL-FRAME-SIZE FR@ munmap 0<> if E-MEM-UNMAP throw then ;
-
-\ A text that laid data keeps the marked cells, which may point into it; one
-\ that laid none puts them back.
-: FRAME-CELLS-RESTORE ( ^u8 -- )
-   {: f:^ :}
-   DP-CELL CELL@ f FRAME-CUT = if
-      f FRAME-CELLS ROLLBACK-CELLS:RESTORE
-   then ;
+   EVAL-FRAME-SIZE munmap 0<> if E-MEM-UNMAP throw then ;
 
 \ The REPL has one source owner. A line uses a savepoint, but its successful
 \ stack, pending definition, package and usings remain for the next line.
@@ -3231,7 +3208,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
 
 : REPL-LINE ( str -- bool ) {: a:^ u:n :}
    SOURCE-ROOT:TEXT-MARK {: mark:n :}
-   depth FRAME-OPEN {: f:^ :}
+   FRAME-OPEN {: f:^ :}
    \ The session, not this line, owns a pending definition from an earlier
    \ line, yet a failed line abandons it through this savepoint's full rollback.
    0 f EVAL-FRAME:PEND FR!
@@ -3251,7 +3228,6 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
       FRAME-LINKED of
          f FRAME-UNLINK
          code f prior found REPL-RECOVER
-         f FRAME-CELLS-RESTORE
       endof
    endcase
    f FRAME-FREE
@@ -3295,7 +3271,7 @@ public
 \ The input base stays the buffer's first byte, so lines count from it. A range
 \ starting past it continues a run of the buffer and keeps its PKG-OUTSIDE-CELL.
 : EVAL-FRAMED-RANGE ( str n n -- ) {: a:^ u:n first:n end:n :}
-   depth FRAME-OPEN {: f:^ :}
+   FRAME-OPEN {: f:^ :}
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:^ :}
    ENTRY-PEND @ {: prior:n :}
@@ -3314,7 +3290,6 @@ public
       FRAME-DONE of f FRAME-LEAVE endof
       FRAME-LINKED of
          code f FRAME-RECOVER
-         f FRAME-CELLS-RESTORE
          entry 0<> if BODYLEN-CELL CELL@ ITEMS-CUT then
       endof
    endcase
@@ -3364,10 +3339,3 @@ public
    ['] VARIABLE-RUN data-base PROVIDED-XT:VARIABLE-CELL + xt! ;
 
 ;package
-
-\ Only INTERPRETER saves and puts back the marked cells, and no source after it
-\ rewinds DATA: once it binds these, they are retired.
-undefine ROLLBACK-CELLS:BYTES
-undefine ROLLBACK-CELLS:SAVE
-undefine ROLLBACK-CELLS:RESTORE
-undefine DATA-SPACE:REWIND

@@ -323,8 +323,8 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : THROWING$ ( -- str )
    s" CALLBACK: CBT-RB-IN ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK  1 throw" ;
 
-\ Non-zero cells laid over the cut, where a grown table the rollback did not
-\ keep would lie.
+\ Non-zero cells laid past the thrown text, where a grown table its storage did
+\ not keep would lie.
 : JUNK ( -- )
    s" create CBT-RB-JUNK" evaluate-closed
    4000 0 ?do 777 , loop ;
@@ -342,46 +342,59 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : BOUND$ ( -- str )
    s" CALLBACK: CBT-RB-BOUND ( -- ) ;CALLBACK  CBT-RB-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
 
-\ CBT-RB-NEXT takes slot n. A caller bind refuses a row that still names a
-\ region, which a main-region bind of the region the thrown text left would accept.
+\ CBT-RB-NEXT takes slot n and binds as the caller, then is unbound.
 : NEXT-BINDS? ( n -- bool ) {: k:n :}
    s" CALLBACK: CBT-RB-NEXT ( -- ) ;CALLBACK" evaluate-closed
    DECLARED k 1 + =
-   s" CBT-RB-NEXT TASK:CALLER-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and ;
+   s" CBT-RB-NEXT TASK:CALLER-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and
+   s" CBT-RB-NEXT FFI-CB:UNBIND" evaluate-closed ;
 
-\ Only a caller bind leaves the row owner set when the text throws.
+\ A caller bind leaves the row owner set; a bind to this context refuses it.
 : CALLER-BOUND$ ( -- str )
    s" CALLBACK: CBT-RB-CALLER ( -- ) ;CALLBACK  CBT-RB-CALLER TASK:CALLER-CONTEXT FFI-CB:ENTRY drop  1 throw" ;
 
+\ CBT-RB-SELF takes slot n and binds to this context, then is unbound.
 : SELF-BINDS? ( n -- bool ) {: k:n :}
    s" CALLBACK: CBT-RB-SELF ( -- ) ;CALLBACK" evaluate-closed
    DECLARED k 1 + =
-   s" CBT-RB-SELF TASK:SELF-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and ;
+   s" CBT-RB-SELF TASK:SELF-CONTEXT FFI-CB:ENTRY drop" TEST-EVAL:RC 0= and
+   s" CBT-RB-SELF FFI-CB:UNBIND" evaluate-closed ;
+
+\ Slot k refuses a bind to ctx while the binding a thrown text made holds it,
+\ then is unbound.
+: HELD? ( n n -- bool ) {: k:n ctx:n :}
+   k DESCRIPTOR {: cb :}
+   [: cb ctx ENTRY drop ;] catch E-TASK-STATE =
+   cb UNBIND ;
 
 \ The THROWING$ text at the edge grows the descriptor and task-row tables; C
 \ then calls through the grown tables the main region publishes.
-: CASE-ROLLBACK ( -- )
+: CASE-THROWN ( -- )
    s" == a callback declared in a text that throws" SAY
    PAD-PAST-EDGE DECLARED {: before:n :}
-   THROWING$ TEST-EVAL:RC 1 = DECLARED before = and
-      s" the rollback leaves the slot count as it was" FACT
-   BOUND$ TEST-EVAL:RC 1 = before NEXT-BINDS? and
-      s" the next declaration takes the slot a thrown text bound, unbound" FACT
-   s" CBT-RB-NEXT FFI-CB:UNBIND" evaluate-closed
+   THROWING$ TEST-EVAL:RC 1 = DECLARED before 1 + = and
+      s" a thrown text keeps the slot it declared" FACT
+   BOUND$ TEST-EVAL:RC 1 = DECLARED before 2 + = and {: bound:bool :}
+   bound if
+      before 1 + TASK:CALLER-CONTEXT HELD? before 2 + NEXT-BINDS? and
+   else false then
+      s" a slot a thrown text bound stays bound; the next declaration takes a new slot" FACT
    DECLARED {: slot:n :}
-   CALLER-BOUND$ TEST-EVAL:RC 1 = slot SELF-BINDS? and
-      s" a slot a thrown text bound as the caller binds to this context" FACT
-   s" CBT-RB-SELF FFI-CB:UNBIND" evaluate-closed
+   CALLER-BOUND$ TEST-EVAL:RC 1 = DECLARED slot 1 + = and {: caller:bool :}
+   caller if
+      slot TASK:SELF-CONTEXT HELD? slot 1 + SELF-BINDS? and
+   else false then
+      s" a slot a thrown text bound as the caller stays bound as the caller" FACT
    PAD-TO-EDGE DECLARED {: edge:n :}
    CMP TASK:SELF-CONTEXT ENTRY {: early:n :}
-   THROWING$ TEST-EVAL:RC 1 = DECLARED edge = and
-      s" a throw after a declaration that grew the tables keeps the slot count" FACT
+   THROWING$ TEST-EVAL:RC 1 = DECLARED edge 1 + = and
+      s" a throw after a declaration that grew the tables keeps its slot" FACT
    JUNK
    early SORTED-BY?
-      s" storage laid over the cut, a callback bound before it sorts" FACT
+      s" storage laid past the thrown text, a callback bound before it sorts" FACT
    DECLARE-LATE
    s" CBT-RB-LATE TASK:SELF-CONTEXT FFI-CB:ENTRY" TEST-EVAL:N SORTED-BY?
-      s" a callback declared after the rollback sorts" FACT
+      s" a callback declared after the thrown text sorts" FACT
    early SORTED-BY? s" and the earlier one still does" FACT
    s" CBT-RB-LATE FFI-CB:UNBIND" evaluate-closed
    CMP UNBIND ;
@@ -609,14 +622,14 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   a name starting with ':': E-FFI-SYNTAX" W
    s" ok   a 100-byte name is kept whole" W ;
 
-: WANT-ROLLBACK ( -- )
+: WANT-THROWN ( -- )
    s" == a callback declared in a text that throws" W
-   s" ok   the rollback leaves the slot count as it was" W
-   s" ok   the next declaration takes the slot a thrown text bound, unbound" W
-   s" ok   a slot a thrown text bound as the caller binds to this context" W
-   s" ok   a throw after a declaration that grew the tables keeps the slot count" W
-   s" ok   storage laid over the cut, a callback bound before it sorts" W
-   s" ok   a callback declared after the rollback sorts" W
+   s" ok   a thrown text keeps the slot it declared" W
+   s" ok   a slot a thrown text bound stays bound; the next declaration takes a new slot" W
+   s" ok   a slot a thrown text bound as the caller stays bound as the caller" W
+   s" ok   a throw after a declaration that grew the tables keeps its slot" W
+   s" ok   storage laid past the thrown text, a callback bound before it sorts" W
+   s" ok   a callback declared after the thrown text sorts" W
    s" ok   and the earlier one still does" W ;
 
 \ The end of a callback record as ERR-LINE+ transcribes it, its blank line last.
@@ -685,7 +698,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
-   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-ROLLBACK WANT-CAPTURE
+   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-THROWN WANT-CAPTURE
    WANT-QUALIFIED WANT-PART WANT-BODY-DEFINES WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
@@ -711,7 +724,7 @@ public
    CASE-CALLER-HELD
    CASE-ACCESSOR
    CASE-DECLARATIONS
-   CASE-ROLLBACK
+   CASE-THROWN
    CASE-CAPTURE
    CASE-QUALIFIED
    CASE-PART

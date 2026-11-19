@@ -40,8 +40,8 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
    FFI-T-OUT @ num FFI:>CELL 2 + T= ;
 
-\ The table these declarations grow lies in the storage the rollback cuts.
-: FFI-T-CUT-TEXT$ ( -- str )
+\ The table these declarations grow lies in the storage the thrown text keeps.
+: FFI-T-THROWN-TEXT$ ( -- str )
    s" include test/fixtures/ffi-grow.f  1 throw" ;
 
 : FFI-T-AFTER-TEXT$ ( -- str )
@@ -49,23 +49,15 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
 : FFI-T-FILL ( n -- ) 0 ?do 777 , loop ;
 
-: FFI-T-SELECT-TEXT$ ( -- str )
-   s" VERSIONED-LIBRARY habu-no-such 1  1 throw" ;
-
-: FFI-T-ABS-TEXT$ ( -- str )
-   s" FUNCTION: FFI-T-ABS abs ( n -- i32 ) ;FUNCTION  -9 FFI-T-ABS" ;
-
-\ Calls through rows declared before and after a rolled-back declaration.
-: FFI-T-ROLLBACK ( -- )
+\ Calls through rows declared before and after a declaration in a text that
+\ throws.
+: FFI-T-THROWN ( -- )
    -5 FFI-T-LABS 5 T=
-   FFI-T-CUT-TEXT$ TEST-EVAL:RC 1 T=
+   FFI-T-THROWN-TEXT$ TEST-EVAL:RC 1 T=
    4000 FFI-T-FILL
    -6 FFI-T-LABS 6 T=
    FFI-T-AFTER-TEXT$ TEST-EVAL:N 7 T=
-   -8 FFI-T-LABS 8 T=
-   s" a rolled-back library selection leaves the one before it" T-LABEL
-   FFI-T-SELECT-TEXT$ TEST-EVAL:RC 1 T=
-   FFI-T-ABS-TEXT$ TEST-EVAL:N 9 T= ;
+   -8 FFI-T-LABS 8 T= ;
 
 \ A declaration's syntax error prints a record naming the token it read last.
 : FFI-T-NO-DASHES$ ( -- str )
@@ -123,7 +115,7 @@ FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 : FFI-ABI-RUN ( -- )
    T-RESET
    FFI-T-OUT-PARAM
-   FFI-T-ROLLBACK
+   FFI-T-THROWN
    FFI-T-SHADOW
    FFI-T-NO-DASHES
    FFI-T-NO-PATH

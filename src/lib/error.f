@@ -13,7 +13,6 @@ split-str
 require src/habu/layout.f
 require src/habu/xref.f
 require src/core/bytes.f
-require src/core/rollback-cells.f
 require src/core/engine-error.f
 require src/lib/prelude.f
 require src/core/rejection.f
@@ -420,7 +419,6 @@ EXPORT BOOT:data-base
 255 constant NAME-CAP
 
 PERSISTED-PTR-VARIABLE HEAD
-HEAD ROLLBACK-CELLS:MARK
 
 : ROW-PREV ( ^n -- ^n )  0 ptr-field @ ;
 : ROW-CODE ( ^n -- n )  cell+ @ ;

@@ -124,9 +124,9 @@ package PB
    s" = help: shorten the name to 255 bytes or fewer" ONE-RECORD ;
 
 
-\ The cut text's row lies where FILL lays its cells, so a head left on it
-\ walks into them.
-: ROLLBACK-TEXT$ ( -- str )
+\ The thrown text keeps its code's row; FILL lays cells past it, where a list
+\ walk would read them had the row's storage been cut.
+: THROWN-TEXT$ ( -- str )
    s\" -9686 s\" the cut code\" ERROR:CODE E-CUT  1 throw" ;
 
 
@@ -137,12 +137,11 @@ package PB
 : FILL ( n -- ) 0 ?do 777 , loop ;
 
 
-: ROLLBACK-CASE ( -- )
-   s" a code rolled back by its evaluate leaves the codes before it" T-LABEL
-   ROLLBACK-TEXT$ TEST-EVAL:RC 1 T=
+: THROWN-CASE ( -- )
+   s" a caught failed evaluate leaves the codes before and after it" T-LABEL
+   THROWN-TEXT$ TEST-EVAL:RC 1 T=
    12 FILL
    -9670 ERROR:NAME$ s" ERROR-TEST:E-PACKAGED" T$=
-   -9686 ERROR:NAME$ nip 0 T=
    AFTER-TEXT$ TEST-EVAL:RC 0 T=
    -9687 ERROR:NAME$ s" ERROR-TEST:E-AFTER" T$= ;
 
@@ -161,7 +160,7 @@ package PB
    EMPTY-CASE
    NO-NAME-CASE
    LONG-NAME-CASE
-   ROLLBACK-CASE ;
+   THROWN-CASE ;
 
 ERROR-RUN
 
