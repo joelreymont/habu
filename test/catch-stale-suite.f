@@ -542,6 +542,11 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
       CHECK-QUIET-CANDIDATE! -1 T=
    s" O7 ( R [ R -- R ] -- R ) catch {: code:n :} 7 KEEPN code 0= if 1+ else 2 + then drop code 0<> if code throw then"
       CHECK-QUIET-CANDIDATE! -1 T=
+   \ each run binds a quotation's row to a row ending in the last catch's
+   \ stale row: every stale row is named by the row under all of them
+   s" O9 ( R [ R -- R ] [ S -- S ] [ T -- T ] -- R ) {: g h :} catch drop 5 [: g catch ;] execute 6 [: h catch ;] execute"
+      CS-CODE<
+   s" [ stale<A> n n -- stale<A> n n ] -- stale<A> n" CS-CODE?  CS-CODE-END
    \ a body over a row of its own cannot reach the caller's
    s" O8 ( R ^u8 -- R ^u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ nor through a quotation over the caller's row below its window

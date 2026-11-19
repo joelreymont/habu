@@ -321,10 +321,14 @@ variable RLOST   \ how many bottom values of the row pushed last RBUF could not 
 create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 
 
+\ A stale row wraps a var a later unify may bind to a row ending in another
+\ stale row; the occurs check looks through stale rows, so the chain ends.
+: STALE-TAIL ( n -- n )
+   ROW-TAIL BEGIN dup STALE-ROW? WHILE STALE>INNER ROW-TAIL REPEAT ;
+
+
 : RROW-LETTER ( n -- n )
-   {: t0:n :}
-   t0 STALE-ROW? IF t0 STALE>INNER ROW-TAIL ELSE t0 THEN {: t:n :}
-   t PAY {: id:n :}
+   STALE-TAIL PAY {: id:n :}
    0 BEGIN dup RROW-N @ < WHILE
       dup cells RROW-KEY + @ id = IF 65 + EXIT THEN
       1 +
@@ -389,13 +393,12 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
 \ The letter a second pass (RNAMES 2) writes at the bottom of a row, 0 for none.
 : RPOS-LETTER ( n n -- n )
    {: row:n owner:n :}
-   row ROW-TAIL {: t0:n :}
    \ RBUF-ROW prints a stale tail among the values, named by the tail it wraps
-   t0 STALE-ROW? IF
-      RNAMES @ 1 = IF t0 STALE>INNER ROW-TAIL owner RPOS+ THEN
+   row ROW-TAIL STALE-ROW? IF
+      RNAMES @ 1 = IF row STALE-TAIL owner RPOS+ THEN
       0 EXIT
    THEN
-   t0 {: t:n :}
+   row ROW-TAIL {: t:n :}
    RNAMES @ 1 = IF t owner RPOS+ 0 EXIT THEN
    t owner RPOS-NAMED? IF t RROW-LETTER ELSE 0 THEN ;
 
@@ -440,7 +443,7 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
       T-STALE of
         1 RQM !
         s" stale<" RSTR
-        r STALE-ROW? IF r STALE>INNER ROW-TAIL RROW-LETTER EMIT1
+        r STALE-ROW? IF r RROW-LETTER EMIT1
         ELSE r STALE>INNER d 0 RECURSE THEN
         62 EMIT1
       endof
