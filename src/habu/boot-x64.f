@@ -15,8 +15,6 @@ require src/habu/layout.f
 require src/habu/wl.f
 require src/habu/stack-abi.f
 require src/habu/address-cells.f
-require src/habu/snapshot-format.f
-require src/habu/snap-decode-x64.f
 require src/habu/fault-record.f
 require src/habu/crash-x64.f
 require src/arch/x86-64/asm.f
@@ -33,21 +31,12 @@ using LINUX-LAYOUT   \ the guard
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
 5 constant PROT-RX                  \ PROT_READ|PROT_EXEC
 2 constant STDERR
-16 constant CODE-SLOT
-\ The DATA carrier (src/os/linux-x86-64/elf.f ELF-CARRIER-VA) sits at the code
-\ region's end, this far past the text content base, and program header 5 at
-\ $158 names it: its vaddr at $168, filesz at $178 and memsz at $180.
-REGION-OFF REGION + LINUX-LAYOUT:CODE-OFF - constant CARRIER-FROM-TEXT
-$168 constant CARRIER-VADDR-AT
-$178 constant CARRIER-FILESZ-AT
-$180 constant CARRIER-MEMSZ-AT
 
 \ The four failures the boot names, one label each per image.
 variable STACK-BAD
 variable REGION-BAD
 variable DATA-BAD
 variable OCC-BAD
-variable SNAP-END
 
 : RBASE-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
@@ -105,8 +94,8 @@ public
 private
 
 \ Keep the region's RX addresses and copy its used payload into a shared
-\ memfd. Its second mapping is RW only. Both fresh and restored entry paths
-\ reach here after DATA-INIT, before any Habu code runs.
+\ memfd. Its second mapping is RW only. Every entry reaches here after
+\ DATA-INIT, before any Habu code runs.
 : REGION-VIEWS, ( -- )
    X64CODE:LBL X64CODE:LBL {: unfd:label done:label :}
    REGION-BAD @ >LABEL REGION-MEMFD,
@@ -176,118 +165,6 @@ private
    RDI LINUX-LAYOUT:DATA-VA VA>N IMM,
    LINUX-LAYOUT:DATA-SIZE MAP-DATA-RESERVE DATA-BAD @ >LABEL MAP-FIXED, ;
 
-\ Copy the carrier's bytes, as many as program header 5's filesz, to the start
-\ of the DATA rdi holds; rax stays DATA.
-: CARRIER-COPY, ( -- )
-   RCX RBASE-REG CARRIER-FILESZ-AT LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RSI RBASE-REG CARRIER-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
-   $F3 ASM-SINK BUF:APPEND-BYTE  $A4 ASM-SINK BUF:APPEND-BYTE ;   \ rep movsb
-
-\ rax = DATA, mapped and holding the bytes the image carries for it.
-: DATA-LOAD, ( -- ) DATA-REGION, CARRIER-COPY, ;
-
-\ A snapshot's carrier holds exactly its DATA-START prefix. Refuse any other
-\ program header 5, an older image's DATA segment among them, before DATA is
-\ mapped.
-: SNAP-CARRIER, ( label -- ) {: bad:label :}
-   RCX RBASE-REG CARRIER-VADDR-AT LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RDX RBASE-REG CARRIER-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
-   RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
-   RCX RBASE-REG CARRIER-FILESZ-AT LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX DATA-START >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
-   RCX RBASE-REG CARRIER-MEMSZ-AT LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX DATA-START >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC, ;
-
-\ A linked image carries its region in a PT_LOAD. The records begin at r13
-\ and the code pointer and record count are known at write time.
-: LINKED-REGION, ( n n -- ) {: records:n cp:n :}
-   DBASE-REG RBASE-REG REGION-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
-   ENGINE-GPR:X64-CP >R64 cp IMM,
-   ENGINE-GPR:X64-NDICT >R64 records IMM,
-   ENGINE-GPR:X64-INTERP >R64 ZERO-REG,
-   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RSI REGION IMM,  RDX PROT-RX IMM,
-   NR-MPROTECT SYS,
-   C-B REGION-BAD @ >LABEL JCC, ;
-
-\ The snapshot's REGION is mapped at its fixed VA and DATA-LOAD, has filled
-\ DATA's prefix. Its trailer supplies the exact live dictionary count and code
-\ pointer.
-: SNAP-REGION, ( -- )
-   DBASE-REG RBASE-REG REGION-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
-   RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
-   R9 RAX SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   ENGINE-GPR:X64-NDICT >R64 R9 SNAP-TRL-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX R9 SNAP-TRL-REGLEN MEM-OFF ASM-SINK ENC-MOV-RM
-   ENGINE-GPR:X64-CP >R64 DBASE-REG ASM-SINK ENC-MOV-RR
-   ENGINE-GPR:X64-CP >R64 RCX ASM-SINK ENC-ADD-RR
-   ENGINE-GPR:X64-INTERP >R64 ZERO-REG,
-   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RSI REGION IMM,  RDX PROT-RX IMM,
-   NR-MPROTECT SYS,
-   C-B REGION-BAD @ >LABEL JCC, ;
-
-\ Reject a malformed appended frame before the decoder reads any RX payload.
-\ R8 is the immutable cold text end and R9 points to the final 48-byte
-\ trailer; R10/R11 are the exact heap extent and wire form for the decoder.
-: SNAP-FRAME, ( label label -- ) {: bad:label badver:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: framed:label legacy:label versioned:label :}
-   R8 SNAP-END @ >LABEL MOVABS,
-   RCX RBASE-REG $60 LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX R8 ASM-SINK ENC-MOV-RR  RAX RBASE-REG ASM-SINK ENC-SUB-RR
-   RAX LINUX-LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-ADD-RI32
-   RAX SNAP-TRL-LEGACY-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
-   RCX RAX ASM-SINK ENC-CMP-RR  C-B bad JCC,
-   RAX SNAP-TRL-BYTES SNAP-TRL-LEGACY-BYTES - >IMM8 ASM-SINK ENC-ADD-RI8
-   RCX RAX ASM-SINK ENC-CMP-RR  C-B legacy JCC,
-   R9 RBASE-REG SNAP-TRL-BYTES LINUX-LAYOUT:CODE-OFF + negate MEM-OFF ASM-SINK ENC-LEA
-   R9 RCX ASM-SINK ENC-ADD-RR
-   RAX R9 MEM-AT ASM-SINK ENC-MOV-RM
-   RDX SNAP-MAGIC IMM,
-   RAX RDX ASM-SINK ENC-CMP-RR  C-E versioned JCC,
-   legacy X64CODE:LBL,
-   R9 RBASE-REG SNAP-TRL-LEGACY-BYTES LINUX-LAYOUT:CODE-OFF + negate MEM-OFF ASM-SINK ENC-LEA
-   R9 RCX ASM-SINK ENC-ADD-RR
-   RAX R9 MEM-AT ASM-SINK ENC-MOV-RM
-   RDX SNAP-MAGIC IMM,
-   RAX RDX ASM-SINK ENC-CMP-RR  C-E badver JCC,
-   bad JMP,
-   versioned X64CODE:LBL,
-   RAX R9 SNAP-TRL-VERSION MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX SNAPSHOT-FORMAT:VERSION >IMM32 ASM-SINK ENC-CMP-RI32  C-NE badver JCC,
-   R11 R9 SNAPSHOT-FORMAT:HEAP-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
-   R11 SNAPSHOT-FORMAT:HEAP-GRID >IMM8 ASM-SINK ENC-CMP-RI8  C-E framed JCC,
-   R11 SNAPSHOT-FORMAT:HEAP-RAW >IMM8 ASM-SINK ENC-CMP-RI8  C-NE bad JCC,
-   framed X64CODE:LBL,
-   RAX R9 SNAP-TRL-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
-   RAX R9 SNAP-TRL-REGLEN MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX DICT-SIZE >IMM32 ASM-SINK ENC-CMP-RI32  C-B bad JCC,
-   RAX CODE-CEILING >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
-   RAX CODE-SLOT 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
-   \ ELF64's fifth header must carry exactly the saved region span; SNAP-CARRIER,
-   \ has checked the sixth.
-   RCX RBASE-REG $130 LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RDX RBASE-REG REGION-OFF LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
-   RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
-   RCX RBASE-REG $140 LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RCX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
-   RCX RBASE-REG $148 LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX REGION >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
-   RAX R9 SNAP-TRL-DATALEN MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX DATA-START >IMM32 ASM-SINK ENC-CMP-RI32  C-B bad JCC,
-   RDX LINUX-LAYOUT:DATA-SIZE IMM,  RAX RDX ASM-SINK ENC-CMP-RR  C-A bad JCC,
-   RCX R9 ASM-SINK ENC-MOV-RR  RCX R8 ASM-SINK ENC-SUB-RR
-   RAX DATA-START >IMM32 ASM-SINK ENC-SUB-RI32
-   RAX RCX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
-   \ The saved DP, read from DATA: DATA-LOAD, has copied the carrier's
-   \ prefix there, so it is the carrier's value.
-   RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
-   R10 RAX DP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX LINUX-LAYOUT:DATA-VA VA>N DATA-START + IMM,
-   R10 RCX ASM-SINK ENC-CMP-RR  C-B bad JCC,
-   RCX LINUX-LAYOUT:DATA-VA VA>N LINUX-LAYOUT:DATA-SIZE PROF-CNT-BYTES - + IMM,
-   R10 RCX ASM-SINK ENC-CMP-RR  C-A bad JCC,
-   R9 RAX SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-MR ;
-
 \ The twin of EM-DATA-INIT: publish the text base, then rbp becomes DATA; then
 \ the global and package wid cells, the data stack's extent, the argument
 \ vector ([rsp] = argc, argv at rsp + 8, envp past argv's null) and the heap
@@ -297,7 +174,7 @@ private
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
    \ The text content size the source text-extent words read (layout.f
    \ TEXT-SIZE-CELL), from the header as kernel-x64.f DLSYM, reads it. Every
-   \ entry (START, SNAP-START,) passes here.
+   \ entry passes here.
    RAX RBASE-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX LINUX-LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
    RAX RAX LINUX-LAYOUT:IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-MOV-RM
@@ -328,7 +205,7 @@ private
 \ could not have restored. The records already counted, [0,NDICT), take the
 \ first numbers in order, as ARM64's EM-DEF-OCC LINIT issues them: slot i+1
 \ holds i+1, and the first cell, the last number issued, holds NDICT. Without
-\ them a linked or restored record has no selectable occurrence.
+\ them a linked record has no selectable occurrence.
 : OCC-INIT, ( -- )
    X64CODE:LBL X64CODE:LBL {: issue:label issued:label :}
    RDI ZERO-REG,
@@ -1053,9 +930,6 @@ public
 \ code in rdi; X64KERNEL:HELPERS, makes it and emits the routine.
 variable LEXITHOOK
 
-\ The caller binds this after the immutable text-site footer.
-: TEXT-END, ( -- ) SNAP-END @ >LABEL X64CODE:LBL, ;
-
 \ kernel is true when the caller emits X64KERNEL:KERNEL, after it, which
 \ binds the fault entry.
 : START, ( label label bool -- ) {: floor:label code-end:label kernel:bool :}
@@ -1076,43 +950,6 @@ variable LEXITHOOK
    then
    booted crash rest stub CLOSE, ;
 
-\ Full-engine entry from the cold RX extent or an appended snapshot frame.
-: SNAP-START, ( n n label [ -- ] -- ) {: records:n cp:n floor:label hidx :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: booted:label crash:label rest:label stub:label
-      cold:label ready:label bad:label badver:label :}
-   X64CODE:LBL SNAP-END !
-   OPEN,
-   RAX RBASE-REG $60 LINUX-LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX REGION-OFF >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bad JCC,
-   RCX SNAP-END @ >LABEL MOVABS,
-   RCX RBASE-REG ASM-SINK ENC-SUB-RR
-   RCX LINUX-LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-ADD-RI32
-   RAX RCX ASM-SINK ENC-CMP-RR  C-E cold JCC,
-   C-B bad JCC,
-   bad SNAP-CARRIER,
-   DATA-LOAD,
-   bad badver SNAP-FRAME,
-   bad X64SNAP:DECODE,
-   SNAP-REGION,
-   RAX LINUX-LAYOUT:DATA-VA VA>N IMM,
-   false DATA-INIT,
-   hidx execute
-   ready JMP,
-   cold X64CODE:LBL,
-   records cp LINKED-REGION,
-   DATA-LOAD,
-   false DATA-INIT,
-   ready X64CODE:LBL,
-   floor PUBLISH-FLOOR,
-   crash rest stub SETTLE,
-   booted JMP,
-   bad S\" hb: snapshot trailer corrupt\n" EXIT-STATUS:SNAPSHOT FAIL,
-   badver S\" hb: snapshot format version unsupported\n" EXIT-STATUS:SNAPSHOT FAIL,
-   REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" EXIT-STATUS:SYSTEM FAIL,
-   crash rest stub STUBS,
-   booted X64CODE:LBL, ;
-
 \ A full engine's MAIN runs a saved application before routing stdin or the
 \ terminal. An image without MAIN can run APP-ENTRY directly. A word that
 \ returns exits successfully, while an image with neither entry is broken.
@@ -1127,12 +964,6 @@ variable LEXITHOOK
    RDI ZERO-REG,  LEXITHOOK @ >LABEL CALL,
    NR-EXIT-GROUP SYS,
    none S\" hb: no entry\n" EXIT-STATUS:DISPATCH-UNSET FAIL, ;
-
-\ A write-time resolved boot-run row has its linked XT in the mapped record.
-\ Called only after SNAP-START has installed the VM registers and dictionary.
-: RECORD-CALL, ( n -- ) {: row:n :}
-   RAX DBASE-REG row DREC * MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX ASM-SINK ENC-CALL-REG ;
 
 ;using   \ LINUX-LAYOUT
 ;using
