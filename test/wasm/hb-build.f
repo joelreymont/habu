@@ -224,6 +224,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    S\"    5 CELL0 atomic!  CELL0 @ 5 <> if 9 FAIL then\n" SB-APPEND
    S\"    5 9 CELL0 atomic-cas 5 <> if 10 FAIL then  CELL0 @ 9 <> if 11 FAIL then\n" SB-APPEND
    S\"    5 1 CELL0 atomic-cas 9 <> if 12 FAIL then  CELL0 @ 9 <> if 13 FAIL then\n" SB-APPEND
+   S\"    4 CELL0 atomic-add 9 <> if 17 FAIL then  CELL0 @ 13 <> if 18 FAIL then\n" SB-APPEND
    S\"    77 SPOT !  SPOT byte-view c@ 77 <> if 14 FAIL then\n" SB-APPEND
    S\"    SPOT cell-view @ 77 <> if 15 FAIL then\n" SB-APPEND
    S\"    5 FLIP $1FFFFFFFFFFFFFFF <> if 16 FAIL then ;\n;package\n" SB-APPEND

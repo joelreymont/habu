@@ -27,7 +27,8 @@ using WCODE
 2 constant L-ADDR
 
 \ ---- division, views and atomics
-\ Local 2 of a division is its divisor; local 3 of atomic-cas is the cell as read.
+\ Local 2 of a division is its divisor; local 3 of atomic-cas and atomic-add is
+\ the cell as read.
 2 constant L-DIVISOR
 3 constant L-ACTUAL
 
@@ -183,6 +184,20 @@ variable BUF-U
       L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,
       OP-I64-STORE ALIGN-64 0 MEM,
    OP-END B,
+   L-SP GET,  L-ACTUAL GET,  OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,
+   0 I32,  OP-END B, ;
+
+\ atomic-add ( delta a -- old ) stores old + delta at a; a module runs one task, so
+\ the plain load, add and store is atomic.
+: FETCH-ADD-BODY ( -- )
+   2 U32,  1 U32,  I32 B,  2 U32,  I64 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,  L-ADDR SET,
+   L-ADDR GET,  OP-I32-WRAP-I64 B,  OP-I64-LOAD ALIGN-64 0 MEM,  L-ACTUAL SET,
+   L-ADDR GET,  OP-I32-WRAP-I64 B,
+   L-ACTUAL GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 0 MEM,  OP-I64-ADD B,
+   OP-I64-STORE ALIGN-64 0 MEM,
    L-SP GET,  L-ACTUAL GET,  OP-I64-STORE ALIGN-64 0 MEM,
    ONE-RESULT,
    0 I32,  OP-END B, ;
@@ -732,6 +747,7 @@ public
    name u s" str>" STR=CI if VIEW-BODY BODY$ true exit then
    name u s" atomic!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" atomic-cas" STR=CI if CAS-BODY BODY$ true exit then
+   name u s" atomic-add" STR=CI if FETCH-ADD-BODY BODY$ true exit then
    \ ---- floats
    name u s" f+" STR=CI if OP-F64-ADD FARITH-BODY BODY$ true exit then
    name u s" f-" STR=CI if OP-F64-SUB FARITH-BODY BODY$ true exit then
