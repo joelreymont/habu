@@ -592,10 +592,21 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build refuses the word's file by its path" LABEL  said TTRUE ;
 
-\ A refusal ends the build's process, so each entry a word reaches the file
-\ through is its own build: included (word-load-main.f) and provided
+\ word-required-main.f's word catches the loader's refusal of its `required`,
+\ which comes before the file's row is stored, so the build links.
+: CAUGHT-REQUIRE-BUILD ( CMD:command -- CMD:command )
+   s" error[E-SOURCE-ROOT]: `required` got `" REFUSAL!
+   s" X3" WHICH!
+   s" test/fixtures/file-objects/word-required-main.f" FIXTURE-BUILD 0= if exit then
+   CMD:ERR$ REFUSAL REFUSAL-U @ CONTAINS? {: said:bool :}
+   said 0= if 0 SHOW then
+   s" the build refuses the word's file by its path" LABEL  said TTRUE ;
+
+\ An uncaught refusal ends the build's process, so each entry a word reaches
+\ the file through is its own build: included (word-load-main.f) and provided
 \ (word-provided-main.f, before it stores the file's row), each refused as a
-\ word's act in a build, and SOURCE-ROOT:READ-OS (word-read-main.f), refused
+\ word's act in a build, required, whose refusal word-required-main.f catches
+\ and whose build links, and SOURCE-ROOT:READ-OS (word-read-main.f), refused
 \ because hb's top frame is held. SOURCE-INPUT:READ reaches the same READ-OS
 \ through the default reader, so it needs no build of its own.
 : WORD-LOAD-BUILD ( CMD:command -- CMD:command )
@@ -603,6 +614,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" X" WHICH!  s" test/fixtures/file-objects/word-load-main.f" REFUSED-BUILD
    s" error[E-SOURCE-ROOT]: `provided` got `" REFUSAL!
    s" X4" WHICH!  s" test/fixtures/file-objects/word-provided-main.f" REFUSED-BUILD
+   CAUGHT-REQUIRE-BUILD
    s" error[E-SOURCE-ROOT]: `SOURCE-ROOT:READ-OS` got `" REFUSAL!
    s" X2" WHICH!  s" test/fixtures/file-objects/word-read-main.f" REFUSED-BUILD ;
 

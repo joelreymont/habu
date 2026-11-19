@@ -593,9 +593,9 @@ public
 
 \ The resolver does not refuse: RESOLVE loads nothing, and in a build it
 \ searches the process's current root, so a word may ask where a file lies.
-\ Public so provided, which this file defines outside
-\ SOURCE-ROOT, refuses here too: its row would lie outside the build's space,
-\ which only the linker would catch. w is the word the program called.
+\ Each loading word refuses before it writes a row: a row a caught refusal
+\ left would lie outside the build's space. Public for provided, which this
+\ file defines outside SOURCE-ROOT. w is the word the program called.
 : BUILD-REFUSE ( str str -- ) {: w:^ wu:n path:^ pathu:n :}
    OWN-LOADER? if exit then
    w wu path pathu path pathu
@@ -2697,7 +2697,6 @@ private
 \ request token an open of a u that fails stands at, or empty.
 : LOAD-RUN ( str str str -- )
    {: t:^ tu:n w:^ wu:n a:^ u:n :}
-   w wu a u BUILD-REFUSE
    0 LAST-LOAD-EVAL-OK !
    REQUEST-AT$ {: ra:^ ru:n :}  t tu REQUEST-AT!
    [: w wu a u LOAD-RAW ;] catch {: rc:n :}
@@ -2775,6 +2774,7 @@ private
    {: w:^ wu:n a:^ u:n path:^ pathu:n known:bool :}
    a u path pathu SOURCE-EVENT:KIND-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if exit then
+   w wu path pathu BUILD-REFUSE
    REQUIRE-REG:MARK {: row:n :}
    path pathu REQUIRE-REG:STORE {: row-path:^ row-pathu:n :}
    DISCOVERY? if exit then
@@ -2791,6 +2791,7 @@ public
 : INCLUDED-AS ( str str -- )
    {: w:^ wu:n a:^ u:n :}
    w wu a u [: LOADER-FIND ;] LOADER:RESOLVE drop {: path:^ pathu:n :}
+   w wu path pathu BUILD-REFUSE
    a u path pathu SOURCE-EVENT:KIND-INCLUDED SOURCE-EVENT:STATE-FRESH EVENT-RECORD
    DISCOVERY? if exit then
    a u SRCLOC:ORIGIN$
