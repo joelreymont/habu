@@ -96,7 +96,7 @@ public
    al v VECTOR> ALLOC:FREE ;
 
 \ Room for n elements, COUNT kept; the block may move. Until COUNT passes n,
-\ ENSURE, RESIZE and PUSH neither allocate nor move the block.
+\ ENSURE, RESIZE, PUSH and APPEND neither allocate nor move the block.
 : RESERVE ( ^vector<t> n -- )
    {: v:^ k:n :}
    k 0 >=  k v VECTOR-ROOM @ <=  and if exit then
@@ -126,10 +126,49 @@ public
    v i 1 + ENSURE
    v i AT ;
 
-\ Growth and DELETE end the span, as they end an AT address.
+\ A move of the block and DELETE end the span, as they end an AT address.
 : SPAN ( ^vector<t> -- SPAN:span<t> )
    {: v:^ :}
    v VECTOR-DATA @ >ELEM  v VECTOR-COUNT @ v VECTOR-WIDTH @ *  SPAN:MAKE ;
+
+\ The elements the block holds.
+: CAP ( ^vector<t> -- n ) VECTOR-ROOM @ ;
+
+\ The block holds exactly n elements, or COUNT when that is more; the block may
+\ move.
+: TRIM ( ^vector<t> n -- )
+   {: v:^ k:n :}
+   v VECTOR-WIDTH @ {: w:n :}
+   k w CHECK-COUNT
+   k v VECTOR-COUNT @ max {: r:n :}
+   v VECTOR-ALLOCATOR @  v VECTOR-DATA @  v VECTOR-ROOM @ w *  r w *
+   ALLOC:RESIZE drop  v VECTOR-DATA !
+   r v VECTOR-ROOM ! ;
+
+private
+
+\ Answers where the bytes at s lie after RESERVE: an address in the old block,
+\ live elements or not, keeps its offset.
+: MAKE-ROOM ( ^vector<t> n ^u8 -- ^u8 )
+   {: v:^ k:n s:^ :}
+   s v VECTOR-DATA @ - {: off:n :}
+   v VECTOR-ROOM @ v VECTOR-WIDTH @ * {: held:n :}
+   v k RESERVE
+   off 0 >=  off held <  and if v VECTOR-DATA @ off + exit then
+   s ;
+
+public
+
+\ n elements read at the address, appended; a negative n is E-VEC-CAPACITY.
+\ They may be the vector's own elements, though growth moves the block.
+: APPEND ( ^t n ^vector<t> -- )
+   {: src:^ k:n v:^ :}
+   k 0 < if E-VEC-CAPACITY throw then
+   v VECTOR-COUNT @ {: old:n :}
+   v VECTOR-WIDTH @ {: w:n :}
+   v old k + src BYTE-VIEW MAKE-ROOM {: s:^ :}
+   s  v VECTOR-DATA @ old w * +  k w * BYTE-COPY
+   old k + v VECTOR-COUNT ! ;
 
 seal-package
 ;package

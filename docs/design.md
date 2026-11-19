@@ -50,6 +50,7 @@ to remove, not a row to add.
 - Compatibility with older hosts, formats or schemas: hard cutover.
 - A hook: the owner records data or makes a plain call.
 - fork without exec: fork only to exec.
+- BUF (`src/lib/byte-buffer.f`): `VEC:vector<u8>`.
 
 ## Types
 

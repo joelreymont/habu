@@ -118,13 +118,17 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
 : BAD-COUNTS ( ^ALLOC:allocator -- )
    {: al:^ :}
-   s" VEC:ENSURE, VEC:RESIZE and VEC:RESERVE refuse a negative count or one too big" T-LABEL
+   s" VEC:ENSURE, VEC:RESIZE, VEC:RESERVE, VEC:TRIM and VEC:APPEND refuse a negative count or one too big" T-LABEL
    al 1 [type] n VEC:NEW {: v:^ :}
    [: v -1 VEC:ENSURE ;] E-VEC-CAPACITY TTHROWSQ
    [: v -1 VEC:RESIZE ;] E-VEC-CAPACITY TTHROWSQ
    [: v $2000000000000001 VEC:ENSURE ;] E-VEC-CAPACITY TTHROWSQ
    [: v -1 VEC:RESERVE ;] E-VEC-CAPACITY TTHROWSQ
    [: v $2000000000000001 VEC:RESERVE ;] E-VEC-CAPACITY TTHROWSQ
+   [: v -1 VEC:TRIM ;] E-VEC-CAPACITY TTHROWSQ
+   [: v $2000000000000001 VEC:TRIM ;] E-VEC-CAPACITY TTHROWSQ
+   [: v 0 VEC:AT -1 v VEC:APPEND ;] E-VEC-CAPACITY TTHROWSQ
+   [: v 0 VEC:AT $2000000000000001 v VEC:APPEND ;] E-VEC-CAPACITY TTHROWSQ
    v VEC:DELETE ;
 
 TYPED-VARIABLE NO-VEC ^VEC:vector<n>
@@ -133,9 +137,8 @@ TYPED-VARIABLE NO-VEC ^VEC:vector<n>
    s" VEC:DELETE of NULL-PTR does nothing" T-LABEL
    [: NO-VEC @ VEC:DELETE ;] 0 TTHROWSQ ;
 
-\ An allocator bumping through POOL that counts its calls, resizes and frees,
-\ keeps the last length asked, records each freed offset in FREED, refuses over
-\ 2000 bytes or past POOL's end and moves each resized block.
+\ An allocator bumping through POOL that records its calls; each resize moves
+\ the block and fills the old one with $A5, so a read of it shows.
 4096 constant POOL-BYTES
 POOL-BYTES BUFFER: POOL
 variable TOP
@@ -156,7 +159,8 @@ TYPED-VARIABLE AL ALLOC:allocator
    {: st:^ block:^ old:n new:n :}
    1 RESIZE-CALLS +!
    st new P-ALLOC {: moved:^ :}
-   block moved old new min BYTE-COPY moved ;
+   block moved old new min BYTE-COPY
+   $A5 block old SPAN:MAKE SPAN:FILL  moved ;
 
 : P-FREE ( ^u8 ^u8 -- )
    {: st:^ p:^ :}
@@ -203,10 +207,43 @@ TYPED-VARIABLE AL ALLOC:allocator
    v VEC:COUNT 2 T=  v 0 VEC:AT @ 7 T=
    v 0 VEC:AT {: first:^ :}  ALLOCS @ {: a0:n :}
    38 0 ?do v VEC:PUSH drop loop
-   v 3 VEC:RESIZE  v 40 VEC:ENSURE  v 40 VEC:RESERVE
+   v 3 VEC:RESIZE  v 0 VEC:AT 2 v VEC:APPEND  v 3 VEC:AT @ 7 T=
+   v 40 VEC:ENSURE  v 40 VEC:RESERVE
    ALLOCS @ a0 T=  v 0 VEC:AT first = TTRUE
    v VEC:COUNT 40 T=  v 0 VEC:AT @ 7 T=
    v VEC:DELETE ;
+
+: TRIMMED ( -- )
+   s" VEC:TRIM sets the room to n, or COUNT when that is more" T-LABEL
+   AL 10 [type] n VEC:NEW {: v:^ :}
+   10 0 ?do i v i VEC:AT ! loop
+   v VEC:CAP 10 T=
+   v 100 VEC:RESERVE  v VEC:CAP 100 T=
+   v 20 VEC:TRIM  v VEC:CAP 20 T=  LAST-N @ 20 cells T=  v VEC:COUNT 10 T=
+   10 0 ?do v i VEC:AT @ i T= loop
+   v 0 VEC:TRIM  v VEC:CAP 10 T=  LAST-N @ 10 cells T=
+   v 30 VEC:TRIM  LAST-N @ 30 cells T=
+   v VEC:DELETE ;
+
+\ The source's byte offset, 16, passes the room of 3.
+: LAST-APPEND ( -- )
+   s" VEC:APPEND reads its own elements where growth moved them" T-LABEL
+   AL 3 [type] n VEC:NEW {: v:^ :}
+   3 0 ?do i 1 + v i VEC:AT ! loop
+   v 2 VEC:AT 1 v VEC:APPEND
+   v VEC:COUNT 4 T=  v 3 VEC:AT @ 3 T=
+   v VEC:DELETE ;
+
+\ The source's block lies below the vector's, which the append moves.
+: OUTSIDE-APPEND ( -- )
+   s" VEC:APPEND copies elements from outside the vector into a moved block" T-LABEL
+   AL 3 [type] u8 VEC:NEW {: u:^ :}
+   3 0 ?do i 1 + u i VEC:AT c! loop
+   AL 1 [type] u8 VEC:NEW {: v:^ :}
+   u VEC:SPAN SPAN:$ v VEC:APPEND
+   v VEC:COUNT 4 T=  v 0 VEC:AT c@ 0 T=
+   4 1 ?do v i VEC:AT c@ i T= loop
+   u VEC:DELETE  v VEC:DELETE ;
 
 \ Last on POOL: growth that does not double fills it.
 : AMORTIZED ( -- )
@@ -226,7 +263,8 @@ public
    al CELLS-N  al CELLS-R  al RECORDS  al EMPTY
    al GROWS  al PUSH-TURNS  al ENSURED  al RESIZED
    al SPANS  al BAD-COUNTS  DELETE-NULL
-   DELETES  REFUSED  REFUSED-GROWTH  RESERVED  AMORTIZED
+   DELETES  REFUSED  REFUSED-GROWTH  RESERVED  OUTSIDE-APPEND  LAST-APPEND  TRIMMED
+   AMORTIZED
    a ARENA:RELEASE ;
 
 ;package
