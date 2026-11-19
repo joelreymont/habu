@@ -1895,27 +1895,31 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" ht-main.f" NEST-WRITE
    s\" : MAIN ( -- ) ;\n" SRC+  s" o.f" NEST-WRITE ;
 
-\ The main's build, refused at link naming the fixture and the cell that holds the address. Answers
-\ its exit code.
+\ The main's build, rejected at link by one record naming the fixture, the cell that holds the
+\ address, what it found and the fix. Answers its exit code.
 : ARENA-REFUSED ( CMD:command str str str -- CMD:command n )
    {: main:^ mainu:n f:^ fu:n cell:^ cellu:n :}
    main mainu s" prog-ar" NEST-RC {: rc:n :}
    CMD:ERR$ f fu NEST-PATH$ CONTAINS? {: named:bool :}
    CMD:ERR$ cell cellu CONTAINS? {: celled:bool :}
-   CMD:ERR$ s" which an object cannot name" CONTAINS? {: unnamed:bool :}
-   named celled and unnamed and  rc 0<> and 0= if rc SHOW then
+   CMD:ERR$ s" outside hb's data and the build's space" CONTAINS? {: found:bool :}
+   CMD:ERR$ s" or clear the cell before the file ends" CONTAINS? {: fixed:bool :}
+   CMD:ERR$ s" error[" COUNT-SUB 1 = {: one:bool :}
+   named celled and found and fixed and one and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
-   s" the refusal names the fixture" LABEL  named TTRUE
-   s" the refusal names the cell" LABEL  celled TTRUE
-   s" the refusal says no object can name the address" LABEL  unnamed TTRUE
+   s" the rejection names the fixture" LABEL  named TTRUE
+   s" the rejection names the cell" LABEL  celled TTRUE
+   s" the rejection says what it found" LABEL  found TTRUE
+   s" the rejection gives the fix" LABEL  fixed TTRUE
+   s" the build prints one record" LABEL  one TTRUE
    rc ;
 
 : ARENA-OTHER ( CMD:command -- CMD:command ) s" o.f" s" prog-ao" NEST-BUILD drop ;
 
 : ARENA-KT ( CMD:command -- CMD:command )
-   s" AR" WHICH!  s" kt-main.f" s" kt.f" s"  in A +0 holds" ARENA-REFUSED {: cold:n :}
+   s" AR" WHICH!  s" kt-main.f" s" kt.f" S\" in A +0\n" ARENA-REFUSED {: cold:n :}
    s" AR2" WHICH!  ARENA-OTHER
-   s" AR3" WHICH!  s" kt-main.f" s" kt.f" s"  in A +0 holds" ARENA-REFUSED {: warm:n :}
+   s" AR3" WHICH!  s" kt-main.f" s" kt.f" S\" in A +0\n" ARENA-REFUSED {: warm:n :}
    s" the build exits as AR does" LABEL  warm cold T= ;
 
 : ARENA-KB ( CMD:command -- CMD:command )
@@ -1933,9 +1937,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" prog-ar" s\" 0\n" s" the program prints 0" NEST-RUN ;
 
 : ARENA-HT ( CMD:command -- CMD:command )
-   s" AR10" WHICH!  s" ht-main.f" s" ht.f" s"  in Q +0 holds" ARENA-REFUSED {: cold:n :}
+   s" AR10" WHICH!  s" ht-main.f" s" ht.f" S\" in Q +0\n" ARENA-REFUSED {: cold:n :}
    s" AR11" WHICH!  ARENA-OTHER
-   s" AR12" WHICH!  s" ht-main.f" s" ht.f" s"  in Q +0 holds" ARENA-REFUSED {: warm:n :}
+   s" AR12" WHICH!  s" ht-main.f" s" ht.f" S\" in Q +0\n" ARENA-REFUSED {: warm:n :}
    s" the build exits as AR10 does" LABEL  warm cold T= ;
 
 \ Guards that a build gives a program no address of memory a top level mapped.

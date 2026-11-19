@@ -51,7 +51,6 @@ public
 -9692 s" a store into a cell of hb's header that the target's data holds: its DATA-START is below hb's" ERROR:CODE E-HEAP-STORE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
 -9694 s" a file of this build left a task running at its end: its object would hold data the task can still change" ERROR:CODE E-LIVE-TASK
--9695 s" a cell a file of this build left holds an address no object can name: memory the build mapped, or a value outside hb's data and the build's space" ERROR:CODE E-ADDRESS
 private
 
 EXPORT CHECK:READ-ALIAS
@@ -1488,9 +1487,9 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    false ;
 
 
-\ ---- a refused reference --------------------------------------------------------
-\ A value no reference can name ends the build with one error line naming the file, the
-\ site and the value, then E-COMP-STATE. The scans run only on refusal.
+\ ---- a rejected reference -------------------------------------------------------
+\ A value no reference can name ends the build with one LINKER:E-ADDRESS rejection naming the
+\ file, the cell, site or defer that holds it, and the value. The scans run only on rejection.
 
 \ The record whose code holds a, as its name and a's offset in it, hb's below FIRST-REC.
 : CODE-VALUE. ( n -- )
@@ -1498,22 +1497,26 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    ndict@ 0 ?do
       i XREF-REC XREF-START {: s:n :}
       a s >=  a s i XREF-REC XREF-CODE-BYTES + <  and if
-         i FIRST-REC @ < if s" hb's " SAY then
-         i XREF-REC XREF-NAME$ SAY  s"  +" SAY  a s - SAY-INT  unloop exit
+         i FIRST-REC @ < if s" hb's " REJECTION:EMIT-STR then
+         i XREF-REC XREF-NAME$ REJECTION:EMIT-STR  s"  +" REJECTION:EMIT-STR  a s - REJECTION:EMIT-N
+         unloop exit
       then
    loop
-   s" code at " SAY  a SAY-INT  s"  in no record" SAY ;
+   s" code at " REJECTION:EMIT-STR  a REJECTION:EMIT-N  s"  in no record" REJECTION:EMIT-STR ;
 
 
 \ Where the data address v lies: hb's DATA, the build's space outside every extent, or
 \ neither.
 : DATA-VALUE. ( n -- )
    {: v:n :}
-   v DATA-N >=  v DATA-N DATA-SIZE + <  and if s" hb's data +" SAY  v DATA-N - SAY-INT exit then
-   v BASE @ >=  v BASE @ SPACE-SIZE @ + <  and if
-      s" the build's space +" SAY  v BASE @ - SAY-INT  s" , in no record's extent" SAY exit
+   v DATA-N >=  v DATA-N DATA-SIZE + <  and if
+      s" hb's data +" REJECTION:EMIT-STR  v DATA-N - REJECTION:EMIT-N exit
    then
-   v SAY-INT  s" , outside hb's data and the build's space" SAY ;
+   v BASE @ >=  v BASE @ SPACE-SIZE @ + <  and if
+      s" the build's space +" REJECTION:EMIT-STR  v BASE @ - REJECTION:EMIT-N
+      s" , in no record's extent" REJECTION:EMIT-STR exit
+   then
+   v REJECTION:EMIT-N  s" , outside hb's data and the build's space" REJECTION:EMIT-STR ;
 
 : VALUE. ( n bool -- ) if CODE-VALUE. else DATA-VALUE. then ;
 
@@ -1541,24 +1544,38 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
       w over > if 2drop i w then
    loop {: e:n v:n :}
    e 0< if exit then
-   s"  in " SAY  e ROUTINE.  s"  +" SAY  at v - SAY-INT ;
+   s"  in " REJECTION:EMIT-STR  e ROUTINE.  s"  +" REJECTION:EMIT-STR  at v - REJECTION:EMIT-N ;
 
 
 : REFUSAL ( -- ) s" linker: " SAY  FILE-PATH FILE-PATH-N @ SAY  s" : " SAY ;
-: REFUSED ( -- ) s" , which an object cannot name" SAY SAY-CR  E-ADDRESS throw ;
+: FILE-NOTE ( -- ) s" file" REJECTION:NOTE  FILE-PATH FILE-PATH-N @ REJECTION:EMIT-STR ;
+: FOUND-NOTE ( n bool -- ) s" found" REJECTION:NOTE  VALUE. ;
 
 
 \ Emission e's site holding v, a code address when code is true.
 : REFUSE-SITE ( n n n bool -- )
    {: e:n site:n v:n code:bool :}
-   REFUSAL  e ROUTINE.  s"  +" SAY  site SAY-INT  s"  names " SAY  v code VALUE.  REFUSED ;
+   s" LINKER:E-ADDRESS" REJECTION:OPEN
+   s" the file's code names an address made while the build ran" REJECTION:EMIT-STR
+   FILE-NOTE
+   s" site" REJECTION:NOTE  e ROUTINE.  s"  +" REJECTION:EMIT-STR  site REJECTION:EMIT-N
+   v code FOUND-NOTE
+   REJECTION:HELP  s" make the address when the program starts" REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 \ The space's cell at holding v, a code address when code is true.
 : REFUSE-CELL ( n n bool -- )
    {: at:n v:n code:bool :}
-   REFUSAL  s" the cell at space +" SAY  at BASE @ - SAY-INT  at OWNER.
-   s"  holds " SAY  v code VALUE.  REFUSED ;
+   s" LINKER:E-ADDRESS" REJECTION:OPEN
+   s" a cell the file keeps holds an address made while the build ran" REJECTION:EMIT-STR
+   FILE-NOTE
+   s" cell" REJECTION:NOTE  s" space +" REJECTION:EMIT-STR  at BASE @ - REJECTION:EMIT-N  at OWNER.
+   v code FOUND-NOTE
+   REJECTION:HELP
+   s" make the address when the program starts, or clear the cell before the file ends"
+   REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
 EXPORT CHECK:HELD-FACTS
@@ -1674,7 +1691,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
    rec NDICT:TRAILER-CELL {: cell:n :}
    cell 0= if 5 PIECES @ U64+ exit then
    cell DATA-REF+ if exit then
-   REFUSAL  rec XREF-NAME$ SAY  s" 's dispatch cell is " SAY  cell false VALUE.  REFUSED ;
+   s" LINKER:E-ADDRESS" REJECTION:OPEN
+   s" a defer's dispatch cell holds an address made while the build ran" REJECTION:EMIT-STR
+   FILE-NOTE
+   s" defer" REJECTION:NOTE  rec XREF-NAME$ REJECTION:EMIT-STR
+   cell false FOUND-NOTE
+   REJECTION:HELP  s" set the defer when the program starts" REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
 

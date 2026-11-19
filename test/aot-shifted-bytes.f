@@ -182,7 +182,10 @@ variable WANT-U
    RECORD$ RECORD-SOURCE$ FS:WRITE-ALL
    RECORD$ REFUSED$ HB-BUILD
    s" stripped build of a record pointer in a declared DATA cell" GE-EXPECT-NONZERO
-   s" which an object cannot name" s" the record-pointer refusal" GE-EXPECT-ERR-HAS ;
+   s" outside hb's data and the build's space" s" the record-pointer rejection's found"
+   GE-EXPECT-ERR-HAS
+   s" or clear the cell before the file ends" s" the record-pointer rejection's fix"
+   GE-EXPECT-ERR-HAS ;
 
 : PROBE-WRITE ( -- )
    PROBE-ROOT$ FS:MAKE-DIRS
@@ -493,7 +496,7 @@ variable G-IMAGE-U
    GE-HB-RESET
    s" HABU_OUT" >LEN C-OUT$ >LEN PROC-ENV-SET
    C-MAIN$ C-IMAGE$ BUILD-ARGV BUILD-RUN
-   67 s" the build of main.f" LABEL GE-EXPECT-RC
+   70 s" the build of main.f" LABEL GE-EXPECT-RC
    s" LINKER:E-ADDRESS" s" the build's error" LABEL GE-EXPECT-ERR-HAS ;
 
 \ A cell holding the address where a file's data ends, past its last datum, is refused.

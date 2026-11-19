@@ -556,9 +556,8 @@ variable RUN-FILE-U
    OUT poutu S\" 21\n" T$=
    poutu perru prc 0 EXPECT-RC ;
 
-\ The 128 TASK:NEW tasks push the cleanups' rows past the table into a mapped
-\ chunk, which no target can carry: the linker refuses the source by the
-\ address cell EXIT-CHUNKS and the build fails 67.
+\ 128 TASK:NEW tasks push the cleanups' rows into a mapped chunk, which no
+\ target can carry: the linker rejects the cell EXIT-CHUNKS, exit 70.
 : CASE-BUILD-CHUNK ( -- )
    s" cleanups-chunk.f" s" cleanups-chunk-out" CASE-PATHS
    CLEANUPS-TEXT
@@ -567,11 +566,12 @@ variable RUN-FILE-U
    S\"    TASK:MIN-STACK TASK:NEW {: t:^ :} [: ;] t TASK:AT-EXIT k 1 - RECURSE t TASK:FREE ;\n" TEXT+
    S\" 128 CHILD-HOLD\n: MAIN ( -- ) ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
-   s" a source that leaves a cleanup chunk mapped is refused" T-LABEL
-   outu erru rc 67 EXPECT-RC
+   s" a source that leaves a cleanup chunk mapped is rejected" T-LABEL
+   outu erru rc 70 EXPECT-RC
    erru SCRIPT$ ERR-HAS? TTRUE
-   erru s" in EXIT-CHUNKS +0 holds" ERR-HAS? TTRUE
-   erru s" which an object cannot name" ERR-HAS? TTRUE ;
+   erru S\" in EXIT-CHUNKS +0\n" ERR-HAS? TTRUE
+   erru s" outside hb's data and the build's space" ERR-HAS? TTRUE
+   erru s" or clear the cell before the file ends" ERR-HAS? TTRUE ;
 
 : BODY ( -- )
    PREPARE

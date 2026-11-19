@@ -86,8 +86,8 @@ variable UNSAFE-COUNT
 : ROUTINE. ( n -- )
    {: e:n :}
    e ROUTINE-NAME$ {: name:^ nameu:n :}
-   nameu 0<> if name nameu SAY exit then
-   s" emission " SAY e SAY-INT ;
+   nameu 0<> if name nameu REJECTION:EMIT-STR exit then
+   s" emission " REJECTION:EMIT-STR  e REJECTION:EMIT-N ;
 
 
 \ The dictionary record entering at a, or -1.
