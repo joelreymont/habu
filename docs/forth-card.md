@@ -140,9 +140,11 @@ open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
      {: p:^ :}
      p @ ;
   ```
-- A type var named only behind `^`, or in a family argument the family's
-  width does not read, takes any stored type: `: SAME ( ^t -- ^t ) ;`
-  takes `^turn`. Fetching, storing or stepping through it, or passing it to
+- A type var named only behind `^`, a quotation's rows included, or in a
+  family argument the family's width does not read, takes any stored type:
+  `: SAME ( ^t -- ^t ) ;` takes `^turn`. On a quotation's own row (`[ -- t ]`)
+  it is one cell; moving, dropping or running the quotation keeps its `^t`
+  stored. Fetching, storing or stepping through it, or passing it to
   a `defer`, `RECURSE` or any primitive but a distance, a pointer comparison
   and `PTR>N`, makes it one cell: a record is `E-MISMATCH` at the call.
 - A type var named only on the stack, whose body only moves it (stack words,

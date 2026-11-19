@@ -806,8 +806,9 @@ multi-cell type rationale is `docs/design.md` "Types".
     cast's input it is read and never handed out, so there, where the output
     mints no pointer and no quotation, it is any quotation: `CAST: XT>N ( [ R
     -- S ] -- n )` reads any word's cell.
-    A variable that occurs only where a type is stored, behind a pointer or
-    in a family slot the family's width does not read, is admitted:
+    A variable that occurs only where a type is stored, behind a pointer,
+    one in a quotation's row included, or in a family slot the family's
+    width does not read, is admitted:
     `CAST: >ELEM ( ^u8 -- ^t )` in a private section loads. Every type
     later bound to `t`, at a call or through a word that passes `t` on, is
     checked as a closed cast's pointee: one that may hold a linear value is
@@ -1287,12 +1288,15 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; one letter in one
   signature is one type. `n`, `f` and `r` are concrete types, not type vars.
 - A type var stands for a one-cell type, except where a checked `:`
-  definition's effect names it only in stored positions: behind a `^`, or as
-  an argument of a family whose width does not read it (a `NEWTYPE`'s, a
-  `STRUCTURE`'s phantom argument), at any depth through such positions. There
-  it stands for any stored type, a two-cell record included: `: SAME ( ^t --
-  ^t ) ;` takes `^turn`. A body that fetches, stores or steps through the
-  pointer, or hands the var to a word whose var stands for one cell (a
+  definition's effect names it only in stored positions: behind a `^`
+  anywhere, a quotation's rows included, or as an argument of a family whose
+  width does not read it (a `NEWTYPE`'s, a `STRUCTURE`'s phantom argument), at
+  any depth through such positions. There it stands for any stored type, a
+  two-cell record included: `: SAME ( ^t -- ^t ) ;` takes `^turn`. A var on a
+  quotation's own row (`[ -- t ]`) is one cell; moving, dropping or running
+  the quotation leaves a `^t` in its rows stored. A body that fetches, stores
+  or steps through the pointer, one a quotation yields included, or hands the
+  var to a word whose var stands for one cell (a
   primitive other than a distance, a pointer comparison or `PTR>N`, a
   `defer`, the word's own `RECURSE`), makes it one cell again, and a record
   is refused at the call (`E-MISMATCH`). A var a

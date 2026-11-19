@@ -63,12 +63,14 @@ defer P ( ^a -- ^a )
    {: q:qb<t> :}
    q ;
 : Q-ROW ( [ -- t ] -- [ -- t ] ) ;
+: RUN-AT ( R ^t [ R ^t -- S ] -- S ) execute ;
 defer Q-DEFER ( qb<t> -- n )
 TYPED-VARIABLE TA turn
 4 TYPED-BUFFER HELDS held<turn>
 \ Each reads one cell through its open receiver.
 : SET-OF ( ^held<b> -- ^bool ) STORED-HELD:SET ;
 : FETCH-ONE ( ^t -- n ) @ drop 0 ;
+: Q-FETCH ( [ -- ^t ] -- n ) execute @ drop 0 ;
 
 private
 
@@ -124,6 +126,7 @@ private
 : NULL-TURN ( -- bool ) TV NULL? ;
 : OLD-STEP-N ( -- bool ) 0 NB OLD-STEP  1 NB = ;
 : LOCAL-TURN ( -- bool ) TV LOCAL-DROP  TV LOCAL-KEEP TV? ;
+: RUN-AT-TURN ( -- bool ) TV [: TV? ;] RUN-AT ;
 
 \ Each stores through >ELEM and reads back through ELEM> >ELEM.
 : ELEM-N ( -- bool ) 7 ELEMS >ELEM !  ELEMS >ELEM ELEM> >ELEM @ 7 = ;
@@ -417,6 +420,19 @@ private
    S\" \"token\":\"STORED:Q-DEFER\"" MISMATCH-AT
    DISARM ;
 
+: CASE-QUOT-PTR ( -- )
+   s" a pointer in a quotation's row takes a record" T-LABEL
+   RUN-AT-TURN TTRUE ;
+
+: CASE-QUOT-FETCH ( -- )
+   s" nor does a fetch through the ^t a quotation yields" T-LABEL
+   ARM
+   [: s" : STORED-R39 ( -- n ) [: STORED:TA ;] STORED:Q-FETCH ;" evaluate-closed ;]
+      70 TTHROWSQ
+   S\" \"token\":\"STORED:Q-FETCH\"" MISMATCH-AT
+   s" `stored:turn` is 2 cells" HAS?
+   DISARM ;
+
 : CASE-ELEM ( -- )
    s" a cast's stored variable takes n, r, u8, ^u8 and a record" T-LABEL
    ELEM-N TTRUE  ELEM-R TTRUE  ELEM-U8 TTRUE  ELEM-PTR TTRUE  ELEM-TURN TTRUE ;
@@ -561,6 +577,8 @@ public
    CASE-OPEN
    CASE-QUOT-FIELD
    CASE-QUOT-ROW
+   CASE-QUOT-PTR
+   CASE-QUOT-FETCH
    CASE-ELEM
    CASE-ELEM-LINEAR
    CASE-ELEM-CLASS
