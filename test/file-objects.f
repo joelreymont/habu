@@ -1573,6 +1573,36 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" CL3" WHICH!  CLAUSE-REFUSED {: warm:n :}
    s" the build exits as CL does" LABEL  warm cold T= ;
 
+\ The derived sequence: h.f's definer FILE-OBJECTS-DV defines its argument's name plus "-W", spelled
+\ nowhere, w.f defines a word of that name, one.f requires h.f, and two.f w.f then h.f.
+: WRITE-DERIVED ( -- )
+   L$ s" derived" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
+   s\" : FILE-OBJECTS-DV ( ^u8 n -- )\n   SB-RESET SB-APPEND s\" -W\" SB-APPEND\n" SRC+
+   s\"    SB$ EFFECT:EMPTY define-word  postpone ; ;\ns\" FILE-OBJECTS-DX\" FILE-OBJECTS-DV\n" SRC+
+   s" h.f" NEST-WRITE
+   s\" : FILE-OBJECTS-DX-W ( -- ) ;\n" SRC+  s" w.f" NEST-WRITE
+   s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
+   s" w.f" REQUIRE+  s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" two.f" NEST-WRITE ;
+
+\ two.f's build, refused at h.f's use of FILE-OBJECTS-DV since w.f's word holds the name it
+\ derives. Answers its exit code.
+: DERIVED-REFUSED ( CMD:command -- CMD:command n )
+   s" two.f" s" prog-dr" NEST-RC {: rc:n :}
+   CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-DX-W`" CONTAINS? {: coded:bool :}
+   CMD:ERR$ S\" /h.f:4:21\n" CONTAINS? coded and {: named:bool :}
+   named  rc 0<>  and 0= if rc SHOW then
+   s" the build refuses the derived name" LABEL  named TTRUE
+   rc ;
+
+\ Guards a record a definer names by deriving: DR2 compiles h.f with no word of that name live.
+\ h.f's object records the name, so in DR3 w.f's word makes it not hold: h.f is refused as in DR.
+: DERIVED-CASE ( CMD:command -- CMD:command )
+   WRITE-DERIVED
+   s" DR" WHICH!  DERIVED-REFUSED {: cold:n :}
+   s" DR2" WHICH!  s" one.f" s" prog-dr" NEST-BUILD 0= if exit then
+   s" DR3" WHICH!  DERIVED-REFUSED {: warm:n :}
+   s" the build exits as DR does" LABEL  warm cold T= ;
+
 \ The read sequence's d.txt, the text f.f reads as it loads.
 : WRITE-DATA ( str -- ) SRC+  s" d.txt" NEST-WRITE ;
 
@@ -2397,7 +2427,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       STORED-CASE RETIRED-CASE ORDER-CASE PART-LINK-CASE PIECE-CASE SEAL-CASE SQUAT-CASE SPAWN-REPL-CASE CAUGHT-CASE
       CAUGHT-LOAD-CASE CAUGHT-NONE-CASE DEFINE-CASE CTOR-CASE EXPORT-CASE
       NEST-CASE KEPT-CASE SAME-CASE RETIRE-CASE PRIMITIVE-CASE HB-RETIRE-CASE PROBE-CASE SEARCH-WL-CASE SCOPE-FIND-CASE
-      CLAUSE-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
+      CLAUSE-CASE DERIVED-CASE READ-CASE LIST-CASE LINK-CASE TASK-CASE
       SAMEFILE-CASE ANCHORED-CASE SPAWN-CASE ZIP-CASE JSONL-CASE KIND-CASE ARENA-CASE PFIELD-CASE
       MUTUAL-CASE
       DIVISOR-CASE ROUTE-CASE DEVICE-CASE SPELLED-CASE FOLDED-CASE FOLDED-TOP-CASE PACKAGED-CASE EVALUATED-CASE

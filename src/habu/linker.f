@@ -5426,14 +5426,20 @@ EXPORT CHECK:DROP-FACTS
    t PIECE-STORES-TIME BUILT+ ;
 
 
-\ SPELL-HIT for each does> clause the piece made: its definer derives the clause's name, which no
+\ SPELL-HIT of the record's name, and of a type entry's tail as REC-NAME+ files it.
+: REC-HIT ( n -- )
+   {: idx:n :}
+   idx XREF-REC XREF-NAME$ {: a:^ u:n :}
+   u 0= if exit then
+   a u NAME-SUM SPELL-HIT
+   idx XREF-REC XREF-WORDLIST TYPES-WL <> if exit then
+   a u TAIL-NAME {: t:^ tu:n :}
+   tu 0<> if t tu NAME-SUM SPELL-HIT then ;
+
+\ REC-HIT of every record the piece made: a definer may derive a record's name, which no
 \ source spells, so a live word of that name makes the object not hold.
-: SPELL-CLAUSES ( -- )
-   NSHADOW:RECORDS FILE-ROW @ ?do
-      i NSHADOW:ENTRY@ 0 > if
-         i NSHADOW:RECORD@ XREF-REC XREF-NAME$ NAME-SUM SPELL-HIT
-      then
-   loop ;
+: SPELL-MADE ( -- )
+   ndict@ FILE-REC @ ?do i REC-HIT loop ;
 
 \ A name the part looked up in wordlist wid, which it did not spell: a lookup under WL:RETIRED or WL:RETIRED-NAMESPACE makes the
 \ part never link, and one in a package's public or private wordlist opens that package for the name's hit.
@@ -5446,7 +5452,7 @@ EXPORT CHECK:DROP-FACTS
 
 \ The compiling part's NAMES (NAMED!) as it ends, after READS-KEEP, before PIECE-END, so a part after a request hits the file it loaded:
 \ its source from FILE-OFF to end, then PART-TEXTS' texts and looked-up names (SPELL-LOOKUP) and, if there are any, all again, so
-\ each is scanned with every package one opened, then its clauses' names (SPELL-CLAUSES).
+\ each is scanned with every package one opened, then the names of the records it made (SPELL-MADE).
 : PART-NAMES ( n -- )
    {: end:n :}
    HITS-CLEAR
@@ -5466,7 +5472,7 @@ EXPORT CHECK:DROP-FACTS
          at 24 + u + v + 7 + 8 / 8 *
       repeat drop
    loop
-   SPELL-CLAUSES
+   SPELL-MADE
    NAMED! ;
 
 
