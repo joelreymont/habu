@@ -13,8 +13,8 @@ split-str
 \ and a refused allocation loses the line, which ;LINE replaces with NOTICE. A
 \ LINE while a line is open abandons that line, as a throw does: once the new
 \ line is closed, the abandoned line's remaining TEXT+ and ;LINE write nothing.
-\ STORAGE CLASS. TASK-LOCAL: the line, a per-task BUF header kept across lines
-\ and released once a line grows it past START-CAP; ARMED, set once this run
+\ STORAGE CLASS. TASK-LOCAL: the line, a per-task vector kept across lines and
+\ released once a line grows it past START-CAP; ARMED, set once this run
 \ has run REGISTER; PHASE, whether a line is closed, open or lost. A line
 \ logged from a TASK:AT-EXIT cleanup releases its row too: the release LINE
 \ registers then runs in the same ending.
@@ -27,7 +27,8 @@ require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
 require src/lib/task.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/span.f
 require src/lib/date.f
 require src/lib/fmt.f
@@ -50,7 +51,8 @@ $20 constant SPACE-B
 $7F constant DEL-B
 $5C constant BACKSLASH
 
-BUF:HDR-BYTES TASK:+USERS ROW u8
+\ Null until a line makes the row, and again once it is released.
+TASK:+USER ROW ^VEC:vector<u8>
 TASK:+USER ARMED n
 TASK:+USER PHASE n
 TASK:FACILITY LOCK
@@ -86,10 +88,13 @@ NOTICE-U BUFFER: NOTICE
 NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
+: ROW-FREE ( -- )  ROW @  NULL-PTR ROW !  VEC:DELETE ;
+
+
 : ROW-RELEASE ( -- )
    0 ARMED !
    CLOSED PHASE !
-   0 ROW BUF:DISPOSE ;
+   ROW-FREE ;
 
 
 \ A task's row is released at its exit; the main task has no exit chain, and its
@@ -114,13 +119,16 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 
 : ROW-READY ( -- )
-   0 ROW BUF:LIVE? if 0 ROW BUF:CLEAR exit then
-   0 ROW START-CAP BUF:N>BLEN BUF:INIT ;
+   ROW @ NULL-PTR <> if ROW @ 0 VEC:RESIZE exit then
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ROW !
+   ROW @ START-CAP VEC:RESERVE ;
 
 
 : STAMP ( -- )
-   0 ROW DATE:TIME-LEN BUF:N>BLEN BUF:GROW SPAN:$ {: at:^ u:n :}
-   epoch-seconds at u DATE:FORMAT-EPOCH-UTC 2drop ;
+   ROW @ {: v:^ :}
+   v VEC:COUNT {: old:n :}
+   v old DATE:TIME-LEN + VEC:ENSURE
+   epoch-seconds v VEC:SPAN old SPAN:SKIP SPAN:$ DATE:FORMAT-EPOCH-UTC 2drop ;
 
 
 : OPEN ( -- )
@@ -141,13 +149,13 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
    b SPACE-B < b DEL-B = or b BACKSLASH = or ;
 
 
-: HEX+ ( n -- )  s" 0123456789abcdef" drop + c@ 0 ROW BUF:APPEND-BYTE ;
+: HEX+ ( n -- )  s" 0123456789abcdef" drop + c@ ROW @ VEC:PUSH c! ;
 
 
 : ESCAPE+ ( n -- )
    {: b:n :}
-   BACKSLASH 0 ROW BUF:APPEND-BYTE
-   [char] x 0 ROW BUF:APPEND-BYTE
+   BACKSLASH ROW @ VEC:PUSH c!
+   [char] x ROW @ VEC:PUSH c!
    b 4 rshift HEX+
    b $F and HEX+ ;
 
@@ -155,14 +163,15 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 \ Appends at[from, to).
 : RUN+ ( ^u8 n n -- )
    {: at:^ from:n to:n :}
-   at from + to from - BUF:N>BLEN 0 ROW BUF:APPEND-SPAN ;
+   at from + to from - ROW @ VEC:APPEND ;
 
 
 \ TEXT+'s contract: the row's first growth, to hold the text unescaped, comes
-\ before any byte of the text is read.
+\ before any byte of the text is read. The text must not lie in the row: that
+\ growth and each escape's can move the block before the text is read.
 : ESCAPED+ ( str -- )
    {: at:^ u:n :}
-   0 ROW  0 ROW BUF:LEN@ BUF:BLEN>N u BUF:N>BLEN BUF:BLEN>N + BUF:N>BLEN  BUF:ENSURE
+   ROW @ dup VEC:COUNT u + VEC:RESERVE
    0 u 0 ?do
       at i + c@ ESCAPE? if
          at over i RUN+
@@ -202,7 +211,7 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 : ROW-OUT ( -- )
    FD:STDERR
-   [: MENDED? if FD:STDERR 0 ROW BUF:SPAN$ BUF:BLEN>N FD:TRY-WRITE-FULL WROTE then ;]
+   [: MENDED? if FD:STDERR ROW @ VEC:SPAN SPAN:$ FD:TRY-WRITE-FULL WROTE then ;]
    FD:WITH-NOSIGPIPE ;
 
 
@@ -229,15 +238,15 @@ NOTICE-TEXT$ NOTICE DATE:TIME-LEN + swap BYTE-COPY
 
 : FINISH ( -- )
    PHASE @ CLOSED = if exit then
-   PHASE @ OPENED = if [: LF 0 ROW BUF:APPEND-BYTE ;] catch MAP-REFUSED then
+   PHASE @ OPENED = if [: LF ROW @ VEC:PUSH c! ;] catch MAP-REFUSED then
    PHASE @ LOST = if [: NOTICE-OUT ;] WRITE exit then
    [: ROW-OUT ;] WRITE ;
 
 
 : SHED ( -- )
-   0 ROW BUF:LIVE? 0= if exit then
-   0 ROW BUF:CAP@ BUF:BLEN>N START-CAP <= if exit then
-   0 ROW BUF:DISPOSE ;
+   ROW @ NULL-PTR = if exit then
+   ROW @ VEC:CAP START-CAP <= if exit then
+   ROW-FREE ;
 
 public
 

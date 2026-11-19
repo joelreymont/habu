@@ -9,10 +9,10 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/span.f
 require src/lib/memory.f
-require src/habu/stack-abi.f
 require src/lib/date.f
 require src/lib/fmt.f
 require src/lib/task.f
@@ -24,7 +24,7 @@ require src/lib/test/stderr.f
 
 \ LOG's line row, read to show a task's release disposed it.
 package LOG
-: LOG-TEST:ROW ( -- ^u8 ) 0 ROW ;
+: LOG-TEST:ROW ( -- ^VEC:vector<u8> ) ROW @ ;
 ;package
 
 package LOG-TEST
@@ -43,21 +43,22 @@ $10000 constant CHUNK-U
 86400 constant DAY-SECONDS
 0 constant F-DUPFD
 $A constant SAVE-FD-MIN             \ the saved stderr lands clear of 0..2
-$4000000000000 constant HUGE-U      \ 2^50: BUF admits it, a 47- or 48-bit address space cannot map it
+$4000000000000 constant HUGE-U      \ 2^50: a vector admits it, a 47- or 48-bit address space cannot map it
 $800000000000 constant SPACE-U      \ 2^47, the first span FILL tries
 $1000 constant PAGE-MIN             \ the smallest page any target maps
+$400 constant BLOCK-MIN             \ the smallest heap block FILL takes
 256 constant HOLDS-CAP
 
 create PATH-BUF PATH-CAP allot      \ the capture file's path
 variable PATH-U
-create FILE-B BUF:HDR-BYTES allot   \ the capture file's bytes, read back
-create BIG-B BUF:HDR-BYTES allot
-create PIPE-B BUF:HDR-BYTES allot   \ what the reader drained from the pipe
+TYPED-VARIABLE FILE-B ^VEC:vector<u8>  \ the capture file's bytes, read back
+TYPED-VARIABLE BIG-B ^VEC:vector<u8>
+TYPED-VARIABLE PIPE-B ^VEC:vector<u8>  \ what the reader drained from the pipe
 create CHUNK CHUNK-U allot
 variable PIPE-R
 variable PIPE-W
 variable SAVED-ERR
-variable ROW-LIVE                   \ LIVE? of a task's row as it ended
+variable ROW-LIVE                   \ whether a task's row was made as it ended
 variable T0                         \ epoch seconds before a case's first line
 variable T1                         \ and after its last
 variable CODE-A
@@ -70,6 +71,8 @@ variable READY
 HOLDS-CAP TYPED-BUFFER HOLD-ATS n    \ each reserved span's address
 HOLDS-CAP TYPED-BUFFER HOLD-US n     \ and its bytes
 variable HOLDS
+HOLDS-CAP TYPED-BUFFER BLOCKS ^u8    \ each heap block FILL took
+variable BLOCKS-N
 
 TASK:MIN-STACK TASK:TASK WRITER-A
 TASK:MIN-STACK TASK:TASK WRITER-B
@@ -78,7 +81,7 @@ TASK:MIN-STACK TASK:TASK READER
 \ registration serves later activations.
 TASK:MIN-STACK TASK:TASK RELEASER
 
-: BLEN ( n -- NUM:byte-len )  BUF:N>BLEN ;
+: NEW-BYTES ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 : PATH$ ( -- ^u8 n )  PATH-BUF PATH-U @ ;
 
@@ -92,9 +95,9 @@ TASK:MIN-STACK TASK:TASK RELEASER
 \ The whole file, valid until the next read.
 : FILE$ ( -- str )
    PATH$ FS:FILE-SIZE {: size:n :}
-   FILE-B BUF:CLEAR
-   PATH$ FILE-B size BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
-   FILE-B BUF:SPAN$ BUF:BLEN>N ;
+   FILE-B @ size VEC:RESIZE
+   PATH$ FILE-B @ VEC:SPAN SPAN:$ FS:READ-ALL size T=
+   FILE-B @ VEC:SPAN SPAN:$ ;
 
 
 : CAPTURED ( [ -- ] -- )
@@ -171,12 +174,12 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 : BIG-MAKE ( -- )
-   BIG-B BIG-U BLEN BUF:INIT
-   BIG-B BIG-U BLEN BUF:GROW SPAN:$ {: at:^ u:n :}
+   HEAP:ALLOCATOR BIG-U [type] u8 VEC:NEW BIG-B !
+   BIG-B @ VEC:SPAN SPAN:$ {: at:^ u:n :}
    u 0 ?do i 26 mod [char] a + at i + c! loop ;
 
 
-: BIG$ ( -- str )  BIG-B BUF:SPAN$ BUF:BLEN>N ;
+: BIG$ ( -- str )  BIG-B @ VEC:SPAN SPAN:$ ;
 : BIG-HEAD$ ( -- str )  s"  error big: " ;
 
 
@@ -202,7 +205,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : SHED-CASE ( -- )
    s" a line past START-CAP leaves its row released" T-LABEL
    [: BIG-LINE ;] CAPTURED
-   LOG-TEST:ROW BUF:LIVE? TFALSE ;
+   LOG-TEST:ROW NULL-PTR = TTRUE ;
 
 
 \ The stray words find no line open: the big line's ;LINE closed it.
@@ -326,10 +329,10 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 
 \ Runs after LOG's release, which the task registers later: the exit chain runs
-\ newest first. The released row is no longer LIVE?, and the rest of the line
-\ the release closed writes nothing.
+\ newest first. The released row's cell is null, and the rest of the line the
+\ release closed writes nothing.
 : ROW-PROBE ( -- )
-   LOG-TEST:ROW BUF:LIVE? bool>n ROW-LIVE !
+   LOG-TEST:ROW NULL-PTR <> bool>n ROW-LIVE !
    [: s" late" LOG:TEXT+ LOG:;LINE ;] catch CODE-A ! ;
 
 
@@ -364,18 +367,36 @@ TASK:MIN-STACK TASK:TASK RELEASER
    true ;
 
 
+\ Takes a heap block of n bytes for EMPTY; false when the heap refuses it.
+: TAKE-BLOCK ( n -- bool )
+   {: u:n :}
+   [: HEAP:ALLOCATOR u ALLOC:BYTES drop BLOCKS-N @ BLOCKS ! ;] catch {: code:n :}
+   code 0= if 1 BLOCKS-N +! true exit then
+   code E-MEM-MAP <> if code throw then
+   false ;
+
+
 \ Reserves spans, largest first, until the kernel has no page left, so every
-\ mapping the process asks for is refused until EMPTY.
+\ mapping the process asks for is refused until EMPTY; then takes the heap's
+\ free blocks the same way, so a heap request of BLOCK-MIN or more is refused.
 : FILL ( -- )
    0 HOLDS !
    SPACE-U
    begin dup PAGE-MIN >= HOLDS @ HOLDS-CAP < and while
       dup HOLD 0= if 2 / then
    repeat drop
-   HOLDS @ HOLDS-CAP < TTRUE ;
+   HOLDS @ HOLDS-CAP < TTRUE
+   0 BLOCKS-N !
+   SPACE-U
+   begin dup BLOCK-MIN >= BLOCKS-N @ HOLDS-CAP < and while
+      dup TAKE-BLOCK 0= if 2 / then
+   repeat drop
+   BLOCKS-N @ HOLDS-CAP < TTRUE ;
 
 
 : EMPTY ( -- )
+   BLOCKS-N @ 0 ?do HEAP:ALLOCATOR i BLOCKS @ ALLOC:FREE loop
+   0 BLOCKS-N !
    HOLDS @ 0 ?do
       i HOLD-ATS @ N>PTR i HOLD-US @ munmap 0 T=
    loop
@@ -393,14 +414,13 @@ TASK:MIN-STACK TASK:TASK RELEASER
    BIG$ drop u BIG-U min LOG:TEXT+ ;
 
 
-: ROW-LEN ( -- n )  LOG-TEST:ROW BUF:LEN@ BUF:BLEN>N ;
+: ROW-LEN ( -- n )  LOG-TEST:ROW VEC:COUNT ;
 
 
-\ The row grows to at least half of STACK-ABI:PAGE-BYTES and fills, so the LF
-\ ;LINE appends needs a mapping, which FULL refuses; a heap block it may not.
+\ The row fills its block, so the LF ;LINE appends asks the heap for twice the
+\ block, more than the row and any free block below BLOCK-MIN next to it hold.
 : ROW-FILL ( -- )
-   STACK-ABI:PAGE-BYTES 2 / ROW-LEN - BIG-TEXT+
-   LOG-TEST:ROW BUF:CAP@ BUF:BLEN>N ROW-LEN - BIG-TEXT+ ;
+   LOG-TEST:ROW VEC:CAP ROW-LEN - BIG-TEXT+ ;
 
 
 : FINISH-LOST ( -- )
@@ -508,7 +528,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 : DRAIN-ONE ( -- bool )
    PIPE-R @ CHUNK CHUNK-U read {: got:n :}
    got 0 < if E-FS-IO throw then
-   CHUNK got BLEN PIPE-B BUF:APPEND-SPAN
+   CHUNK got PIPE-B @ VEC:APPEND
    got 0 > ;
 
 
@@ -521,14 +541,14 @@ TASK:MIN-STACK TASK:TASK RELEASER
 \ the two writers' lines whole.
 : PIPE-CASE ( -- )
    s" two tasks' 64 KiB lines stay whole on a pipe" T-LABEL
-   PIPE-B 1 BLEN BUF:INIT
+   NEW-BYTES PIPE-B !
    PIPE-OPEN
    [: DRAIN ;] READER TASK:ACTIVATE
    TWO-WRITERS
    PIPE-BACK
    READER TASK:JOIN JOIN-CODE {: drained:n :}
    PIPE-R @ close-rc 0 T=
-   PIPE-B BUF:SPAN$ BUF:BLEN>N TASK-LINES-OK
+   PIPE-B @ VEC:SPAN SPAN:$ TASK-LINES-OK
    LINES @ TASK-LINES 2 * T=
    BAD @ 0 T=
    0 NEXTS @ TASK-LINES T=
@@ -536,7 +556,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    drained 0 T=
    CODE-A @ 0 T=
    CODE-B @ 0 T=
-   PIPE-B BUF:DISPOSE ;
+   PIPE-B @ VEC:DELETE ;
 
 
 \ A pipe's read end refuses writes. A refused line leaves fd 2's last line
@@ -573,13 +593,13 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : TAKE-ONE ( -- bool )
    PIPE-R @ CHUNK CHUNK-U read {: got:n :}
-   got 0 > if CHUNK got BLEN PIPE-B BUF:APPEND-SPAN then
+   got 0 > if CHUNK got PIPE-B @ VEC:APPEND then
    got 0 > ;
 
 
 \ Reads what the non-blocking pipe holds into PIPE-B, until a read finds none.
 : TAKE ( -- )
-   PIPE-B BUF:CLEAR
+   PIPE-B @ 0 VEC:RESIZE
    begin TAKE-ONE 0= until ;
 
 
@@ -593,7 +613,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 \ then refuses the rest and the LF that ends the cut line at once.
 : CUT-CASE ( -- )
    s" a line fd 2 takes in part is ended before the next line" T-LABEL
-   PIPE-B 1 BLEN BUF:INIT
+   NEW-BYTES PIPE-B !
    PIPE-OPEN
    PIPE-R @ >FD FD:NONBLOCK!
    PIPE-W @ >FD FD:NONBLOCK!
@@ -603,13 +623,13 @@ TASK:MIN-STACK TASK:TASK RELEASER
    epoch-seconds T1 !
    PIPE-BACK
    PIPE-R @ close-rc 0 T=
-   PIPE-B BUF:SPAN$ BUF:BLEN>N {: at:^ u:n :}
+   PIPE-B @ VEC:SPAN SPAN:$ {: at:^ u:n :}
    u 1 DATE:TIME-LEN + KEPT-REST$ nip + T=
    at c@ LF T=
    at 1+ u 1- KEPT-REST$ LINE-OK nip 0 T=
    CODE-A @ 0 T=
    CODE-B @ 0 T=
-   PIPE-B BUF:DISPOSE ;
+   PIPE-B @ VEC:DELETE ;
 
 
 : CODE-LINES ( -- )
@@ -632,7 +652,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : LOG-RUN ( -- )
    PATH-MAKE
-   FILE-B 1 BLEN BUF:INIT
+   NEW-BYTES FILE-B !
    BIG-MAKE
    LEVELS-CASE
    BIG-CASE
@@ -650,8 +670,8 @@ TASK:MIN-STACK TASK:TASK RELEASER
    BROKEN-CASE
    CUT-CASE
    CODE-CASE
-   BIG-B BUF:DISPOSE
-   FILE-B BUF:DISPOSE ;
+   BIG-B @ VEC:DELETE
+   FILE-B @ VEC:DELETE ;
 
 LOG-RUN
 T-REPORT

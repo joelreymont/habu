@@ -33,7 +33,6 @@ require src/lib/span.f
 require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/base64.f
-require src/lib/byte-buffer.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/date.f
@@ -509,7 +508,7 @@ REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
 
 create LOG-PATH PATH-CAP allot      \ a case's stderr capture file
 variable LOG-PATH-U
-create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
+TYPED-VARIABLE LOG-B ^VEC:vector<u8>  \ the capture file's bytes, read back
 $A constant LF
 
 : LOG-PATH$ ( -- str ) LOG-PATH LOG-PATH-U @ ;
@@ -518,14 +517,14 @@ $A constant LF
    s" test-issuer-test" FS:MKTEMP-DIR {: dir:^ dir-u:n :}
    dir dir-u FS:CLEANUP-TREE+
    dir dir-u s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
-   LOG-B 1 BUF:N>BLEN BUF:INIT ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW LOG-B ! ;
 
 \ The whole capture file, valid until the next read.
 : LOG$ ( -- str )
    LOG-PATH$ FS:FILE-SIZE {: size:n :}
-   LOG-B BUF:CLEAR
-   LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
-   LOG-B BUF:SPAN$ BUF:BLEN>N ;
+   LOG-B @ size VEC:RESIZE
+   LOG-PATH$ LOG-B @ VEC:SPAN SPAN:$ FS:READ-ALL size T=
+   LOG-B @ VEC:SPAN SPAN:$ ;
 
 : LINES ( -- n )
    LOG$ {: a:^ u:n :}

@@ -5,20 +5,23 @@ split-str
 \ line starting `error[` or `warning[` to the next empty line; its gutter is the
 \ blanks before its `-->`, 1 with none, and each later line that starts with that
 \ many blanks or digits and a blank loses them and the blank.
-\ STORAGE CLASS. PROCESS-WIDE: one buffer, which each FLAT reuses.
+\ STORAGE CLASS. PROCESS-WIDE: one vector, which each FLAT reuses.
 
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/string.f
 
 package REJECTION-TEXT
 private
 
-create OUT BUF:HDR-BYTES allot
+\ null until the first FLAT
+TYPED-VARIABLE OUT ^VEC:vector<u8>
 variable GUTTER
 \ true from a record's header to the empty line after it
 variable IN-RECORD
 
-: EMIT+ ( str -- ) BUF:N>BLEN OUT BUF:APPEND-SPAN ;
+: EMIT+ ( str -- ) OUT @ VEC:APPEND ;
 
 : HEADER? ( str -- bool ) {: a:^ u:n :}
    a u s" error[" STARTS-WITH?  a u s" warning[" STARTS-WITH? or ;
@@ -45,16 +48,17 @@ variable IN-RECORD
 
 public
 
-\ The text a u with each record's gutter dropped, valid until the next FLAT.
+\ The text a u with each record's gutter dropped, valid until the next FLAT,
+\ so a u is never an earlier FLAT's answer.
 : FLAT ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   OUT BUF:LIVE? 0= IF OUT 256 BUF:N>BLEN BUF:INIT THEN
-   OUT BUF:CLEAR  false IN-RECORD !  1 GUTTER !
+   OUT @ NULL-PTR = IF HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT ! THEN
+   OUT @ 0 VEC:RESIZE  false IN-RECORD !  1 GUTTER !
    a u 10 0 BEGIN SPLIT-NEXT WHILE {: p:^ pu:n next:n :}
       p pu LINE+
-      next u <= IF 10 OUT BUF:APPEND-BYTE THEN
+      next u <= IF 10 OUT @ VEC:PUSH c! THEN
       a u 10 next
    REPEAT drop 2drop
-   OUT BUF:SPAN$ BUF:BLEN>N ;
+   OUT @ VEC:SPAN SPAN:$ ;
 
 \ Whether text a u, its records' gutters dropped, holds e eu.
 : HAS? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n e:^ eu:n :}
