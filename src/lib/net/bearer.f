@@ -763,6 +763,8 @@ public
    name nu w wu HELD? ;
 
 
+private
+
 10000 constant TOKEN-TIMEOUT-MS     \ protective: the bound on the token endpoint's whole answer
 $10000 constant TOKEN-CAP           \ protective: the largest token answer read
 
