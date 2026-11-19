@@ -609,6 +609,11 @@ SUITE fsm
    src/lib/fsm-test.f
 ;SUITE
 
+\ A table in a source file rendered as its TLA+ model's Table module.
+SUITE test-fsm
+   src/lib/test-fsm-test.f
+;SUITE
+
 \ Rotations of a 3D affine transform about a line, and points mapped by one.
 SUITE affine
    src/lib/affine-test.f
