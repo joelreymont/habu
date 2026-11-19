@@ -516,26 +516,14 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream STREAM-INPUT-CAP @
    used max 1 max {: need:n :}
    stream TOKEN-BUF BUF-CAP 4 / need <= if exit then
-   need MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-   stream TOKEN-BUF BUF:SPAN$ BUF:BLEN>N fresh SPAN:COPY
-   stream TOKEN-BUF BUF:DISPOSE
-   fresh SPAN:$ {: bytes cap:n :}
-   bytes stream STREAM-TOKEN !
-   used stream STREAM-TOKEN-LEN !
-   cap stream STREAM-TOKEN-CAP ! ;
+   stream TOKEN-BUF need BUF:N>BLEN BUF:RESIZE ;
 
 : SCOPE-TRIM ( ^stream -- )
    {: stream :}
    stream SCOPE-BUF BUF-LEN {: used:n :}
    used 16 max {: need:n :}
    stream SCOPE-BUF BUF-CAP 4 / need <= if exit then
-   need MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-   stream SCOPE-BUF BUF:SPAN$ BUF:BLEN>N fresh SPAN:COPY
-   stream SCOPE-BUF BUF:DISPOSE
-   fresh SPAN:$ {: bytes cap:n :}
-   bytes stream STREAM-SCOPE !
-   used stream STREAM-SCOPE-LEN !
-   cap stream STREAM-SCOPE-CAP ! ;
+   stream SCOPE-BUF need BUF:N>BLEN BUF:RESIZE ;
 
 : SCOPE-CUT ( ^n n -- )
    {: state ref:n :}
