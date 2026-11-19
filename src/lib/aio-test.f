@@ -44,11 +44,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ without restating how a handle encodes it.
 : AIO-TEST:HANDLE-IDX ( n -- n )
    HANDLE>IDX ;
-: AIO-TEST:XFER>N ( xfer -- n ) XFER>N ;
+: AIO-TEST:XFER>N ( xfer -- n ) XFER>REC REC.IDX @ ;
 [then]
 
-\ A handle as a number, so a case can compare two handles.
-: AIO-TEST:TICKET>N ( ticket -- n ) TICKET>N ;
+\ A ticket's record index, so a case can say two handles share a record.
+: AIO-TEST:TICKET>N ( ticket -- n ) TICKET>REC REC.IDX @ ;
 
 \ A RINGS entry's completion entries, and the active ring's.
 : AIO-TEST:RING-CQ ( n -- n )

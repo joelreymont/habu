@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-11-19T16:00:56.337856+01:00"
 blocks:
-  - habu-an-aio-ticket-291f88e0
   - habu-place-a-kept-d2e0745a
 ---
 

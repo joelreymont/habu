@@ -31,11 +31,9 @@ require src/lib/log.f
 package AIO
 public
 
-\ A submission's handle: a nominal cell over a record index, never an address.
-\ Both converters are private,
-\ so no caller can mint a ticket for a record it did not submit. Only the
-\ submitting task may AWAIT it, once.
-NEWTYPE ticket SCRATCH-ONLY
+\ A submission's handle: its record's address, in memory mapped while the
+\ program runs. Only the submitting task may AWAIT it, once.
+NEWTYPE ticket ^n SCRATCH-ONLY
 
 \ A set of tickets one AWAIT-ANY waits on, as the index a GROUP definition
 \ was given.
@@ -46,7 +44,7 @@ NEWTYPE group
 \ the submission and comes back out of AWAIT-XFER and nowhere else, so AWAIT,
 \ GROUP+ and GROUP- cannot name one and no checked code can read, write or
 \ release the bytes while the kernel is still moving them.
-NEWTYPE xfer SCRATCH-ONLY
+NEWTYPE xfer ^n SCRATCH-ONLY
 
 \ What an operation ended as. `ready` carries the poll revents the kernel
 \ reported (or zero for an operation with no mask); `refused` carries the errno
@@ -60,12 +58,12 @@ SUMTYPE outcome
 
 private
 
-CAST: >TICKET ( n -- ticket )
-CAST: TICKET>N ( ticket -- n )
+CAST: >TICKET ( ^n -- ticket )
+CAST: TICKET>REC ( ticket -- ^n )
 CAST: >GROUP ( n -- group )
 CAST: GROUP>N ( group -- n )
-CAST: >XFER ( n -- xfer )
-CAST: XFER>N ( xfer -- n )
+CAST: >XFER ( ^n -- xfer )
+CAST: XFER>REC ( xfer -- ^n )
 
 CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
 
@@ -204,6 +202,9 @@ END-STRUCTURE
 
 BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.STATE
+   \ Its index, set when its chunk is made: the stages, a ring entry's
+   \ user_data and a group row name the record by it.
+   CELL +FIELD REC.IDX
    CELL +FIELD REC.RES
    CELL +FIELD REC.FLAGS
    CELL +FIELD REC.KIND
@@ -227,11 +228,8 @@ BEGIN-STRUCTURE REC-BYTES
    MAC-REC-BYTES +FIELD REC.HOST    \ the backend's own fields
 END-STRUCTURE
 
-\ The records live in a chain of chunks: a link cell, then the records. The
-\ first chunk is static and each grown one holds as many records as all before
-\ it plus RECS-FIRST, so REC passes at most log2 links. A chunk never moves
-\ or goes back while the process runs, so a record's address is stable for
-\ the kernel and for the owner tasks that read a record without the facility.
+\ A chain of mapped chunks, a link cell then the records, each holding as many
+\ as all before it plus RECS-FIRST. None moves or goes back in the process.
 $40 constant RECS-FIRST
 CELL constant CHUNK-HEAD
 
@@ -255,24 +253,20 @@ BEGIN-STRUCTURE G-BYTES
    CELL +FIELD G.OWNER
 END-STRUCTURE
 
-\ SCRATCH-BUFFER: allots a zeroed buffer on a cell-rounded address, which is the
-\ alignment the record states need: REC.STATE is read and written with
-\ atomic@ / atomic! / atomic-cas, and those want their cell aligned. A grown
-\ chunk is a mapping, page-aligned.
-CHUNK-HEAD RECS-FIRST REC-BYTES * + SCRATCH-BUFFER: AIO-RECS
+\ SCRATCH-BUFFER: rounds the address to a cell, as the atomic words need for a
+\ link cell and G.OWNER. AIO-RECS is the chain's link cell, 0 with no chunk.
+CHUNK-HEAD SCRATCH-BUFFER: AIO-RECS
 CHUNK-HEAD GROUPS-FIRST G-BYTES * + SCRATCH-BUFFER: AIO-GROUPS
 PARAMS-BYTES BUFFER: PARAMS
 4 BUFFER: EVENTFD-ARG               \ io_uring_register's __s32 eventfd
 8 BUFFER: WAKE-IN                   \ the loop's read of WAKE-FD
 8 BUFFER: WAKE-OUT                  \ HOST-WAKE's write, under AIO-LOCK
 
-\ The records the grown chunks hold, so zero is the first chunk alone. Grown
-\ under the facility, after the chunk's link; read with atomic@ by an owner
-\ checking a handle.
+\ The records the chunks hold: grown under the facility, after the chunk's link.
 SCRATCH-VARIABLE REC-GROWN
 SCRATCH-VARIABLE REC-LIVE           \ records claimed and not yet freed, at most AIO-RECS-MAX
 
-: REC-CAP ( -- n ) REC-GROWN atomic@ RECS-FIRST + ;
+: REC-CAP ( -- n ) REC-GROWN atomic@ ;
 
 variable GROUP-N
 variable RING-LIVE                  \ the loop is running
@@ -409,11 +403,14 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    rg RING-CQ-CQES-OFF @ + rg swap CQ-AT ;
 
 \ ---- records -----------------------------------------------------------------
-: CHUNK-FIRST ( -- n )
+: CHAIN-HEAD ( -- n )
    AIO-RECS CELL-VIEW FFI:>CELL ;
 
 : CHUNK-NEXT ( n -- n )
    AIO-N>PTR atomic@ ;
+
+: CHUNK-FIRST ( -- n )
+   CHAIN-HEAD CHUNK-NEXT ;
 
 : CHUNK-REC ( n n -- ^n ) {: c:n k:n :}
    c CHUNK-HEAD + k REC-BYTES * + AIO-N>PTR ;
@@ -422,7 +419,7 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    REC-BYTES * CHUNK-HEAD + MEM:BYTES-ALLOC-LEN ;
 
 : CHUNK-LAST ( -- n )
-   CHUNK-FIRST begin dup CHUNK-NEXT dup 0<> while nip repeat drop ;
+   CHAIN-HEAD begin dup CHUNK-NEXT dup 0<> while nip repeat drop ;
 
 : REC ( n -- ^n ) {: idx:n :}
    CHUNK-FIRST idx RECS-FIRST
@@ -460,8 +457,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 : G-CHUNK-LEN ( -- NUM:alloc-byte-len )
    GROUPS-FIRST G-BYTES * CHUNK-HEAD + MEM:BYTES-ALLOC-LEN ;
 
-\ A row entry is two cells: the handle cell GROUP+ was given, then the caller's
-\ number.
+\ A row entry is two cells: the index of the record GROUP+ was given the
+\ ticket of, then the caller's number.
 : ROW-LEN ( n -- n )
    2 * cells ;
 
@@ -493,13 +490,15 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
 \ A fresh mapping is zero, every record free. The chunk is linked before
 \ REC-GROWN counts it.
 : REC-GROW ( -- )
-   REC-CAP RECS-FIRST + {: len:n :}
+   REC-CAP {: base:n :}
+   base RECS-FIRST + {: len:n :}
    len CHUNK-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
    len 0 ?do
       -1 c i CHUNK-REC REC.PEER !
+      base i + c i CHUNK-REC REC.IDX !
    loop
    c CHUNK-LAST AIO-N>PTR atomic!
-   REC-GROWN @ len + REC-GROWN atomic! ;
+   base len + REC-GROWN atomic! ;
 
 : AIO-NULL ( -- ^n )
    NULL$ drop CELL-VIEW ;
@@ -560,7 +559,8 @@ CAST: AIO-MAPPED>PTR ( n -- ^u8 )
    -1 ;
 
 : REC-FIND ( -- n )
-   CHUNK-FIRST 0 RECS-FIRST
+   CHUNK-FIRST dup 0= if drop -1 exit then
+   0 RECS-FIRST
    begin
       >r 2dup r@ CHUNK-CLAIM r> swap
       dup 0 >= if nip nip nip exit then drop
@@ -1193,7 +1193,7 @@ INSTALL-HOST
    {: f:n buf cap:NUM:alloc-byte-len count:n off:n kind:n :}
    count cap off XFER-BOUNDS
    SUBMIT-ENTER
-   f buf cap count off kind HOST-XFER SUBMIT-LEAVE >XFER ;
+   f buf cap count off kind HOST-XFER SUBMIT-LEAVE REC >XFER ;
 
 \ ---- groups ------------------------------------------------------------------
 : ROW-SLOT ( n n -- ^n ) {: row:n i:n :}
@@ -1344,25 +1344,25 @@ public
 \ leaves nothing submitted.
 : POLL ( fd n ms -- ticket ) {: f:fd events:n timeout:ms :}
    SUBMIT-ENTER
-   f FD-INT events timeout MS>N HOST-POLL SUBMIT-LEAVE >TICKET ;
+   f FD-INT events timeout MS>N HOST-POLL SUBMIT-LEAVE REC >TICKET ;
 
 \ Fires once, after ms milliseconds. The outcome is timed-out, or cancelled when
 \ a CANCEL reached it first.
 : TIMEOUT ( ms -- ticket ) {: timeout:ms :}
    SUBMIT-ENTER
-   timeout MS>N HOST-TIMEOUT SUBMIT-LEAVE >TICKET ;
+   timeout MS>N HOST-TIMEOUT SUBMIT-LEAVE REC >TICKET ;
 
 \ Asks the kernel to end that operation. It does not wait: the ticket still has
 \ to be AWAITed, and answers cancelled once the kernel has ended it.
 : CANCEL ( ticket -- )
-   TICKET>N CANCEL-HANDLE ;
+   TICKET>REC REC.IDX @ CANCEL-HANDLE ;
 
 \ Blocks until that operation has ended and answers its outcome, releasing the
 \ record. Only the task that submitted the ticket may await it, and only once.
 \ The main thread may await too.
 : AWAIT ( ticket -- outcome ) {: t:ticket :}
    RUNNING-CHECK
-   t TICKET>N AWAIT-ONE ;
+   t TICKET>REC REC.IDX @ AWAIT-ONE ;
 
 \ ---- the waker ---------------------------------------------------------------
 \ A self-pipe one parked task is woken through: other tasks change shared state
@@ -1441,7 +1441,7 @@ public
 \ the transfer may await it, and only once, as for a ticket.
 : AWAIT-XFER ( xfer -- ^u8 NUM:alloc-byte-len outcome ) {: x:xfer :}
    RUNNING-CHECK
-   x XFER>N AWAIT-XFER-ONE ;
+   x XFER>REC REC.IDX @ AWAIT-XFER-ONE ;
 
 : GROUP ( -- )
    create G-REGISTER ,
@@ -1453,12 +1453,12 @@ public
 \ of the caller's that runs after AIO's finds them empty.
 \ The number is the caller's, any value; AWAIT-ANY hands it back for this wait.
 : GROUP+ ( ticket n group -- ) {: t:ticket tag:n g:group :}
-   g GROUP>N t TICKET>N tag G-ADD ;
+   g GROUP>N t TICKET>REC REC.IDX @ tag G-ADD ;
 
-\ The group holds the handle cell GROUP+ was given: a ticket the group does not
-\ hold is E-AIO-GROUP. A group no task holds is empty: E-AIO-GROUP.
+\ A ticket the group does not hold is E-AIO-GROUP. A group no task holds is
+\ empty: E-AIO-GROUP.
 : GROUP- ( ticket group -- ) {: t:ticket g:group :}
-   g GROUP>N t TICKET>N G-FIND {: at:n :}
+   g GROUP>N t TICKET>REC REC.IDX @ G-FIND {: at:n :}
    at 0 < if E-AIO-GROUP throw then
    g GROUP>N at G-REMOVE-AT ;
 
