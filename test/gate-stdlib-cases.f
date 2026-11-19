@@ -477,7 +477,9 @@ SUITE curl-http
    src/lib/net/curl-test.f
 ;SUITE
 
-\ HTTPC's connection lifecycle against a scripted loopback HTTP/1.1 server.
+\ HTTPC's connection lifecycle against a scripted loopback HTTP/1.1 server, and
+\ its https origins against openssl s_server on loopback, with certificates
+\ made at test time.
 HB-TARGET-LINUX-KERNEL? [if]
 SUITE httpc
    src/lib/net/httpc-test.f

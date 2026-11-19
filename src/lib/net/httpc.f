@@ -1,8 +1,8 @@
 split-str
 \ httpc.f - one HTTP/1.1 client connection to one origin: dialing by name, a
 \ request written once, the answer read in pieces by its framing, and the
-\ connection kept for the next request when the answer allows it. Plain
-\ `http://` origins only; no redirects, cookies, content decoding or retries.
+\ connection kept for the next request when the answer allows it, over
+\ `http://` or `https://`. No redirects, cookies, content decoding or retries.
 \
 \ Contract. One task uses a conn at a time, and every wait is a poll(2) on the
 \ calling task, bounded by DEADLINES!. HTTP/1.1 only. A request's bytes are
@@ -11,10 +11,13 @@ split-str
 \ variables are ignored. No HEAD requests, whose answers would misframe.
 \ Linux only. A conn is OPENed fresh or after CLOSE; each exchange is REQUEST,
 \ HEADER+ and DEADLINES! as needed, one SEND, then NEXT until it answers
-\ `response` or `failed`.
-\ STORAGE CLASS. CALLER-OWNED: the conn record, the origin and room spans OPEN
-\ borrows until CLOSE, SEND's body until SEND returns and NEXT's span until
-\ NEXT returns. The library allocates nothing.
+\ `response` or `failed`. One task at a time uses HTTPC over https, as TLS's
+\ contract requires: the TLS library keeps process-wide state and no lock.
+\ STORAGE CLASS. CALLER-OWNED: the conn record, the origin, trust and room
+\ spans OPEN borrows until CLOSE, SEND's body until SEND returns and NEXT's
+\ span until NEXT returns. The record holds its TLS session inline, so it
+\ stays at one address while it holds a connection. HTTPC allocates nothing;
+\ mbedTLS allocates its own buffers from a session's START to its STOP.
 \
 \ The lifecycle is the LIFECYCLE table. SEND runs it from `starting`, NEXT from
 \ where the last run rested (`heading` after `sent`, `reading` after
@@ -32,6 +35,17 @@ split-str
 \ each with the time left divided by the addresses left. A request marked
 \ malformed or oversize while it was built fails at `starting`, with nothing
 \ dialed or written, and drops any connection the record held.
+\
+\ An https origin adds TLS over the connected socket. Its greeting STARTs the
+\ conn's own TLS session with the host and the trust file, then steps the
+\ handshake, waiting on the socket as each step asks within the deadlines: a
+\ certificate that does not verify, or a trust file that cannot be read, is
+\ `trust` with the verify flags or mbedTLS's code as CAUSE; any other failure
+\ is `handshake`. Every receive and write then goes through the session, and
+\ a write asked to wait is made again with the same bytes, as TLS requires.
+\ The probe stays a peek at the socket, so a TLS record held there makes the
+\ connection stale too. Hanging up STOPs a session that started before the
+\ socket is closed.
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
@@ -40,6 +54,7 @@ require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/adt/option.f
 require src/lib/fsm.f
+require src/lib/net/tls.f
 
 package HTTPC
 public
@@ -66,6 +81,9 @@ ENUM probe quiet stale ;ENUM
 ENUM lookup found failed ;ENUM
 ENUM dial up next failed ;ENUM
 ENUM greet up failed ;ENUM
+\ How one TLS step of the greeting ended: `done`, `waited` once the socket is
+\ ready as a want asked, or `failed` with the fault kept.
+ENUM shake done waited failed ;ENUM
 ENUM delivery sent failed ;ENUM
 ENUM head-read interim head failed ;ENUM
 ENUM piece some end failed ;ENUM
@@ -90,6 +108,11 @@ STRUCTURE conn OPAQUE DERIVE addr
    FIELD cause n
    FIELD authority ^u8
    FIELD authority-len n
+   FIELD host-len n
+   FIELD secure bool
+   FIELD trust ^u8
+   FIELD trust-len n
+   FIELD started bool
    FIELD room ^u8
    FIELD room-len n
    FIELD used n
@@ -121,6 +144,7 @@ STRUCTURE conn OPAQUE DERIVE addr
    BUFFER hints 48
    BUFFER pollfd 8
    BUFFER scratch 8
+   FIELD tls TLS:session
 ;STRUCTURE
 
 private
@@ -184,8 +208,12 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : TIMED-OUT ( ^conn -- ) construct fault timeout 0 FAIL ;
 
 
-\ Closes the socket the record holds, if any.
+\ Stops the TLS session that started, if any, then closes the socket the
+\ record holds, if any.
 : HANG-UP ( ^conn -- ) {: c :}
+   c CONN-STARTED @ if
+      c CONN-TLS TLS:STOP  false c CONN-STARTED !
+   then
    c CONN-FD @ 0 >= if c CONN-FD @ CLOSE-CALL drop then
    -1 c CONN-FD ! ;
 
@@ -239,8 +267,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    e EAGAIN = if c events why AWAIT exit then
    c why e FAIL false ;
 
-\ One receive, waiting while there is nothing to receive yet.
-: RECEIVE ( ^conn ^u8 n -- take ) {: c a:^ u:n :}
+\ One receive from the socket, waiting while there is nothing to receive yet.
+: SOCKET-RECEIVE ( ^conn ^u8 n -- take ) {: c a:^ u:n :}
    begin
       c CONN-FD @ a u 0 RECEIVE-CALL {: rc:n :}
       rc 0 > if rc construct take got exit then
@@ -250,8 +278,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       then
    again ;
 
-\ Writes the whole span; false with the fault kept.
-: WRITE-ALL ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+\ Writes the whole span to the socket; false with the fault kept.
+: SOCKET-WRITE ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
    0 begin dup u < while
       {: off:n :}
       c CONN-FD @ a off + u off - MSG-NOSIGNAL SEND-CALL {: rc:n :}
@@ -262,6 +290,55 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
          off
       then
    repeat drop true ;
+
+\ After a TLS want: true once the socket is ready for the events, else the
+\ fault or `timeout` is kept.
+: RECEIVE-WAIT? ( ^conn n -- bool ) construct fault receive AWAIT ;
+: SEND-WAIT? ( ^conn n -- bool ) construct fault send AWAIT ;
+
+: RECEIVE-FAILED ( ^conn n -- ) {: c e:n :}
+   c construct fault receive e FAIL ;
+
+: SEND-FAILED ( ^conn n -- ) {: c e:n :}
+   c construct fault send e FAIL ;
+
+\ One receive through the TLS session, waiting as it asks. Its `closed` is
+\ the peer's end.
+: TLS-RECEIVE ( ^conn ^u8 n -- take ) {: c a:^ u:n :}
+   begin
+      c CONN-TLS a u TLS:READ MATCH TLS:tls-io
+         moved OF LEN>N construct take got exit ENDOF
+         want-read OF c POLLIN RECEIVE-WAIT? ENDOF
+         want-write OF c POLLOUT RECEIVE-WAIT? ENDOF
+         closed OF construct take eof exit ENDOF
+         failed OF c swap RECEIVE-FAILED false ENDOF
+      ;MATCH
+   0= until construct take broke ;
+
+\ Writes the whole span through the TLS session; after a want the rest of
+\ the span is written again, the same bytes and length. False with the
+\ fault kept; a peer that has closed fails the write.
+: TLS-WRITE ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+   0 begin dup u < while
+      {: off:n :}
+      c CONN-TLS a off + u off - TLS:WRITE MATCH TLS:tls-io
+         moved OF LEN>N off + true ENDOF
+         want-read OF off c POLLIN SEND-WAIT? ENDOF
+         want-write OF off c POLLOUT SEND-WAIT? ENDOF
+         closed OF off c 0 SEND-FAILED false ENDOF
+         failed OF off c rot SEND-FAILED false ENDOF
+      ;MATCH
+      0= if drop false exit then
+   repeat drop true ;
+
+\ One receive over the conn's socket or its TLS session.
+: RECEIVE ( ^conn ^u8 n -- take ) {: c a:^ u:n :}
+   c CONN-SECURE @ if c a u TLS-RECEIVE else c a u SOCKET-RECEIVE then ;
+
+\ Writes the whole span over the conn's socket or its TLS session; false
+\ with the fault kept.
+: WRITE-ALL ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+   c CONN-SECURE @ if c a u TLS-WRITE else c a u SOCKET-WRITE then ;
 
 \ Answer bytes not handed out yet that were read past the head.
 : EXTRA ( ^conn -- n ) {: c :}
@@ -351,6 +428,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    u 0= u HOST-MOST > or if false exit then
    a u HOST-BYTES? 0= if false exit then
    a c NODE u BYTE-COPY  0 c NODE u + c!
+   u c CONN-HOST-LEN !
    true ;
 
 \ The port's digits as getaddrinfo's service, NUL-terminated in the record.
@@ -366,17 +444,30 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : HOST-PORT? ( ^conn ^u8 n n -- bool ) {: c a:^ u:n k:n :}
    c a k HOST?  c a k + 1+ u k - 1- PORT? and ;
 
-: AUTHORITY? ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+\ The host and its port, else the scheme's port P.
+: AUTHORITY? ( ^conn ^u8 n ^u8 n -- bool )
+   {: c a:^ u:n p:^ pu:n :}
    a c CONN-AUTHORITY !  u c CONN-AUTHORITY-LEN !
    a u [char] : INDEX-OF MATCH option
-      none OF c a u HOST? c s" 80" PORT? and ENDOF
+      none OF c a u HOST? c p pu PORT? and ENDOF
       some OF IDX>N {: k:n :} c a u k HOST-PORT? ENDOF
    ;MATCH ;
 
+\ Whether the span starts with the scheme prefix P, in any case.
+: SCHEME? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n p:^ pu:n :}
+   u pu < if false exit then
+   a pu p pu STR=CI ;
+
 : ORIGIN? ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
-   u 7 < if false exit then
-   a 7 s" http://" STR=CI 0= if false exit then
-   c a 7 + u 7 - AUTHORITY? ;
+   a u s" http://" SCHEME? if
+      false c CONN-SECURE !
+      c a 7 + u 7 - s" 80" AUTHORITY? exit
+   then
+   a u s" https://" SCHEME? if
+      true c CONN-SECURE !
+      c a 8 + u 8 - s" 443" AUTHORITY? exit
+   then
+   false ;
 
 
 \ ---- Senses and actions of the lifecycle
@@ -474,8 +565,55 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c CONN-ADDR @ 0<> if construct dial next exit then
    c UNLIST construct dial failed ;
 
-\ A plain origin has no handshake.
-: GREET ( ^conn -- greet ) drop construct greet up ;
+\ After a handshake step's want: `waited` once the socket is ready, else
+\ `failed` with the fault kept.
+: HANDSHAKE-WAIT ( ^conn n -- shake )
+   construct fault handshake AWAIT
+   if construct shake waited else construct shake failed then ;
+
+: TRUST-FAILED ( ^conn n -- shake ) {: c e:n :}
+   c construct fault trust e FAIL  construct shake failed ;
+
+: HANDSHAKE-FAILED ( ^conn n -- shake ) {: c e:n :}
+   c construct fault handshake e FAIL  construct shake failed ;
+
+\ A TLS step's answer: `distrusted` is fault trust and `failed` fault
+\ handshake, with mbedTLS's flags or code as CAUSE.
+: SHAKEN ( ^conn TLS:tls-step -- shake )
+   {: c s:TLS:tls-step :}
+   s MATCH TLS:tls-step
+      done OF construct shake done ENDOF
+      want-read OF c POLLIN HANDSHAKE-WAIT ENDOF
+      want-write OF c POLLOUT HANDSHAKE-WAIT ENDOF
+      distrusted OF c swap TRUST-FAILED ENDOF
+      failed OF c swap HANDSHAKE-FAILED ENDOF
+   ;MATCH ;
+
+\ STARTs the conn's session on its socket for the host and the trust file.
+: TLS-START ( ^conn -- shake ) {: c :}
+   true c CONN-STARTED !
+   c c CONN-TLS c CONN-FD @ >FD c NODE c CONN-HOST-LEN @
+   c CONN-TRUST @ c CONN-TRUST-LEN @ TLS:START SHAKEN ;
+
+\ Steps the handshake to its end, waiting as each step asks.
+: SHAKE ( ^conn -- greet ) {: c :}
+   begin
+      c c CONN-TLS TLS:HANDSHAKE SHAKEN MATCH shake
+         done OF construct greet up exit ENDOF
+         waited OF ENDOF
+         failed OF construct greet failed exit ENDOF
+      ;MATCH
+   again ;
+
+\ A plain origin has no handshake; an https one STARTs its session, then
+\ shakes hands within the deadlines.
+: GREET ( ^conn -- greet ) {: c :}
+   c CONN-SECURE @ 0= if construct greet up exit then
+   c TLS-START MATCH shake
+      done OF c SHAKE ENDOF
+      waited OF c SHAKE ENDOF
+      failed OF construct greet failed ENDOF
+   ;MATCH ;
 
 \ The head and the body, each written once.
 : DELIVER ( ^conn -- delivery ) {: c :}
@@ -810,13 +948,15 @@ FSM:DEFINE LIFECYCLE ( ^conn ) phase intake
 
 public
 
-\ Origin `http://host[:port]` (port 80 by default), trust file and room. Parses
-\ the origin and does no I/O; false for an origin it cannot read, `https://`
-\ among them, so the trust file's span is not read. The record holds no
+\ Origin `http://host[:port]` (port 80 by default) or `https://host[:port]`
+\ (port 443), trust file and room. Parses the origin and does no I/O; false
+\ for an origin it cannot read. An https connection trusts the certificates
+\ of the trust file, which a plain one never reads. The record holds no
 \ connection after it.
 : OPEN ( ^conn ^u8 n ^u8 n ^u8 n -- bool )
    {: c o:^ ou:n t:^ tu:n r:^ ru:n :}
-   -1 c CONN-FD !  0 c CONN-LIST !
+   -1 c CONN-FD !  0 c CONN-LIST !  false c CONN-STARTED !
+   t c CONN-TRUST !  tu c CONN-TRUST-LEN !
    c construct held none construct phase down REST
    construct fault send construct chunk-result failed c CONN-ANSWER !
    r c CONN-ROOM !  ru c CONN-ROOM-LEN !
@@ -903,7 +1043,8 @@ public
       oversize OF s" a head is larger than the room" ENDOF
    ;MATCH ;
 
-\ The errno or getaddrinfo code behind the last fault; 0 for none.
+\ The errno, getaddrinfo code, mbedTLS code or verify flags behind the last
+\ fault; 0 for none.
 : CAUSE ( ^conn -- n ) CONN-CAUSE @ ;
 
 ;package

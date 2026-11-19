@@ -7,7 +7,12 @@ split-str
 \ exchange has deadlines, so a server that fails to answer ends its case
 \ `timeout` and not in a hang. A scripted close is a half-close: the server
 \ sends its FIN and still counts any request that arrives after it.
-\ Run: bin/hb --load src/lib/net/httpc-test.f
+\ The https cases speak to `openssl s_server -www`, this test's own child on a
+\ loopback port, with a CA, an unrelated CA and a localhost certificate made
+\ in a scratch directory under TMPDIR that the test removes, as tls-test.f
+\ does: a trusted GET / reads its answer to the close, and an unrelated CA or
+\ an origin naming another host fails the greeting with `trust`.
+\ Run: bin/hb --load src/lib/net/httpc-test.f </dev/null
 HB-TARGET-LINUX-KERNEL? ?TARGET
 require src/lib/error.f
 require src/lib/string.f
@@ -17,6 +22,12 @@ require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/test.f
 require src/lib/test/wait.f
+require src/lib/span.f
+require src/lib/fd.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process.f
+require src/lib/spawn.f
 require src/lib/net/tcp4.f
 require src/lib/net/httpc.f
 
@@ -37,7 +48,7 @@ $7F000001 constant LOOPBACK
 $1000 constant REQ-CAP
 $10000 constant ROOM-CAP
 64 constant SMALL-ROOM                  \ holds a request head, not BIG-HEAD$
-$100 constant GOT-CAP
+$4000 constant GOT-CAP                  \ s_server's status page fits
 $40 constant ORIGIN-CAP
 5000 constant TOTAL-MS
 5000 constant STALL-MS
@@ -296,6 +307,9 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : GOT$ ( -- str ) GOT-BUF GOT-U @ ;
 
 : GOT+ ( n -- ) {: k:n :}
+   GOT-U @ k + GOT-CAP > if
+      s" the answer outgrows GOT-BUF" T-FAIL-AS exit
+   then
    SPAN-BUF GOT-BUF GOT-U @ + k BYTE-COPY
    k GOT-U +!  WIDEST @ k max WIDEST ! ;
 
@@ -552,6 +566,185 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    1 PER-CONN @ 1 T=
    END-CASE ;
 
+
+\ ---- An https origin
+
+$200 constant DIR-ROOM
+DIR-ROOM BUFFER: DIR                    \ the scratch directory's path
+variable DIR-U
+DIR-ROOM BUFFER: TRUST-BUF              \ the trust file's path OPEN borrows
+variable TRUST-U
+$400 constant OUT-ROOM
+OUT-ROOM BUFFER: OUT                    \ the server's output up to its port
+variable OUT-U
+variable SERVER-PID                     \ 0 while no server runs
+variable SERVER-OUT                     \ the read end of its output
+variable TLS-PORT
+$04 constant CN-MISMATCH                \ MBEDTLS_X509_BADCERT_CN_MISMATCH
+$08 constant NOT-TRUSTED                \ MBEDTLS_X509_BADCERT_NOT_TRUSTED
+
+: DIR$ ( -- str ) DIR DIR-U @ ;
+
+\ A file of the scratch directory, in SB's buffer.
+: IN-DIR ( str -- str ) {: a:^ u:n :}
+   SB-RESET DIR$ SB-APPEND s" /" SB-APPEND a u SB-APPEND SB$ ;
+
+: SCRATCH ( -- )
+   s" habu-httpc" FS:MKTEMP-DIR {: a:^ u:n :}
+   a u DIR DIR-ROOM SPAN:MAKE SPAN:COPY
+   u DIR-U ! ;
+
+\ Two CAs, and a certificate for localhost the first signs. openssl's
+\ chatter goes to a log the script shows only when a command fails.
+: KEY+ ( -- )
+   s"  -newkey ec -pkeyopt ec_paramgen_curve:P-256 -noenc" SB-APPEND ;
+
+: CERTS$ ( -- str )
+   SB-RESET
+   s" { openssl req -x509 -days 1 -subj /CN=habu-httpc-ca" SB-APPEND
+   s"  -keyout ca.key -out ca.pem" SB-APPEND KEY+
+   s"  && openssl req -x509 -days 1 -subj /CN=habu-httpc-other" SB-APPEND
+   s"  -keyout other.key -out other.pem" SB-APPEND KEY+
+   s"  && openssl req -subj /CN=localhost" SB-APPEND
+   s"  -addext subjectAltName=DNS:localhost" SB-APPEND
+   s"  -keyout server.key -out server.csr" SB-APPEND KEY+
+   s"  && openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key" SB-APPEND
+   s"  -set_serial 1 -days 1 -copy_extensions copy -out server.pem; }" SB-APPEND
+   s"  2>openssl.log || { cat openssl.log >&2; exit 1; }" SB-APPEND
+   SB$ ;
+
+: CERTS ( -- )
+   s" certificates are made in the scratch directory" T-LABEL
+   s" /bin/sh" PROCESS:NEW
+   s" -c" PROCESS:ARG
+   CERTS$ PROCESS:ARG
+   DIR$ PROCESS:CWD
+   PROCESS:SPAWN PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T= ;
+
+\ One read of the server's output, once there is some.
+: READ-OUT ( -- )
+   SERVER-OUT @ >FD FD:POLLIN PROCESS:PFD!  1 -1 >MS PROCESS:POLL drop
+   SERVER-OUT @ OUT OUT-U @ + OUT-ROOM OUT-U @ - read {: k:n :}
+   k 0 <= if E-PROC-OUTPUT throw then
+   k OUT-U +! ;
+
+: ACCEPT$ ( -- str ) s" ACCEPT 127.0.0.1:" ;
+
+\ The output after the ACCEPT line's prefix, empty until it is there.
+: TAIL$ ( -- str )
+   OUT OUT-U @ ACCEPT$ FIND-SUB MATCH option
+      none OF OUT 0 ENDOF
+      some OF IDX>N ACCEPT$ nip + dup OUT + swap OUT-U @ swap - ENDOF
+   ;MATCH ;
+
+\ The port's digits once their line has ended, else empty.
+: TLS-PORT$ ( -- str )
+   TAIL$ {: a:^ u:n :}
+   a u 10 INDEX-OF MATCH option
+      none OF a 0 ENDOF
+      some OF IDX>N a swap ENDOF
+   ;MATCH ;
+
+: S-SERVER ( -- PROCESS:request )
+   s" /usr/bin/env" PROCESS:NEW
+   s" openssl" PROCESS:ARG
+   s" s_server" PROCESS:ARG
+   s" -accept" PROCESS:ARG
+   s" 127.0.0.1:0" PROCESS:ARG
+   s" -www" PROCESS:ARG
+   s" -cert" PROCESS:ARG
+   s" server.pem" PROCESS:ARG
+   s" -key" PROCESS:ARG
+   s" server.key" PROCESS:ARG
+   DIR$ PROCESS:CWD ;
+
+\ The server's stdout and stderr share one pipe, read only up to the ACCEPT
+\ line: what it writes after that stays far below the pipe's capacity.
+: TLS-SERVE ( -- )
+   s" s_server names its loopback port" T-LABEL
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   S-SERVER 1 >FD w PROCESS:FD 2 >FD w PROCESS:FD
+   PROCESS:SPAWN PID>N SERVER-PID !
+   w FD>N close
+   r FD>N SERVER-OUT !
+   0 OUT-U !
+   begin TLS-PORT$ nip 0= while READ-OUT repeat
+   TLS-PORT$ STR-PARSE-POS MATCH option
+      none OF s" no port" T-FAIL-AS ENDOF
+      some OF TLS-PORT ! ENDOF
+   ;MATCH ;
+
+: TLS-UNSERVE ( -- )
+   SERVER-PID @ 0= if exit then
+   SERVER-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   SERVER-PID @ >PID PROCESS:WAIT PROCESS:STATUS>RC drop
+   0 SERVER-PID !
+   SERVER-OUT @ close ;
+
+\ The origin `https://` HOST `:` the server's port.
+: HTTPS-ORIGIN! ( str -- ) {: h:^ hu:n :}
+   SB-RESET s" https://" SB-APPEND h hu SB-APPEND s" :" SB-APPEND
+   TLS-PORT @ FMT:SB-U SB$ {: a:^ u:n :}
+   a ORIGIN-BUF u BYTE-COPY  u ORIGIN-U ! ;
+
+: TRUST! ( str -- )
+   IN-DIR {: a:^ u:n :}
+   a TRUST-BUF u BYTE-COPY  u TRUST-U ! ;
+
+\ A conn opened on the https origin for HOST, trusting the scratch file.
+: BEGIN-HTTPS ( str str -- ) {: h:^ hu:n f:^ fu:n :}
+   f fu TRUST!  h hu HTTPS-ORIGIN!
+   LINK ORIGIN$ TRUST-BUF TRUST-U @ ROOM-BUF ROOM-CAP HTTPC:OPEN
+   s" OPEN takes the https origin" T-LABEL TTRUE ;
+
+: ASK-ROOT ( -- )
+   LINK s" GET" s" /" HTTPC:REQUEST
+   LINK TOTAL-MS STALL-MS HTTPC:DEADLINES!
+   LINK s" " HTTPC:SEND ;
+
+: TRUST-FAULT ( HTTPC:fault -- ) {: f:HTTPC:fault :}
+   f HTTPC:FAULT$ HTTPC-FAULT:TRUST HTTPC:FAULT$ T$=
+   f HTTPC:LOST? TFALSE ;
+
+\ The first NEXT fails with `trust`, its CAUSE carrying the verify flag.
+: DISTRUSTED ( n -- ) {: flag:n :}
+   ASK-ROOT
+   LINK SPAN-BUF WIDE-SPAN >LEN HTTPC:NEXT MATCH HTTPC:chunk-result
+      chunk OF 2drop s" an answer arrived" T-FAIL-AS ENDOF
+      response OF drop s" an answer arrived" T-FAIL-AS ENDOF
+      failed OF TRUST-FAULT ENDOF
+   ;MATCH
+   LINK HTTPC:CAUSE flag and flag T= ;
+
+: TEST-HTTPS-TRUSTED ( -- )
+   s" localhost" s" ca.pem" BEGIN-HTTPS
+   ASK-ROOT WIDE-SPAN READ-ALL
+   s" a trusted https GET / answers 200 and its body to the close" T-LABEL
+   FAULTS @ 0 T=  LAST-STATUS @ 200 T=
+   GOT$ s" <HTML>" STARTS-WITH? TTRUE
+   LINK HTTPC:HEAD$ s" HTTP/1.0 200" STARTS-WITH? TTRUE
+   END-CASE ;
+
+: TEST-HTTPS-UNRELATED ( -- )
+   s" localhost" s" other.pem" BEGIN-HTTPS
+   s" a trust file of an unrelated CA fails with trust, not lost" T-LABEL
+   NOT-TRUSTED DISTRUSTED
+   END-CASE ;
+
+: TEST-HTTPS-OTHER-HOST ( -- )
+   s" 127.0.0.1" s" ca.pem" BEGIN-HTTPS
+   s" an origin naming another host fails with trust" T-LABEL
+   CN-MISMATCH DISTRUSTED
+   END-CASE ;
+
+: HTTPS-CASES ( -- )
+   CERTS TLS-SERVE
+   TEST-HTTPS-TRUSTED TEST-HTTPS-UNRELATED TEST-HTTPS-OTHER-HOST ;
+
+: TEST-HTTPS ( -- )
+   SCRATCH
+   [: HTTPS-CASES ;] [: TLS-UNSERVE DIR$ FS:REMOVE-TREE ;] finally ;
+
 public
 
 : RUN ( -- )
@@ -576,7 +769,8 @@ public
    TEST-MALFORMED
    TEST-OVERSIZE
    TEST-REFUSED
-   END-SERVER ;
+   END-SERVER
+   TEST-HTTPS ;
 
 ;package
 
