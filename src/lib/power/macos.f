@@ -45,7 +45,11 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
    drop {: name:^ len:n id:^ :}
    s" PreventUserIdleSystemSleep" CF-TEXT {: kind:n :}
    name len CF-TEXT {: label:n :}
-   kind 0= label 0= or if kind CF-FREE label CF-FREE E-ASSERTION throw then
+   kind 0= label 0= or if
+      kind CF-FREE label CF-FREE
+      LOG:ERROR s" power" LOG:LINE s" CFStringCreate refused" LOG:TEXT+ LOG:;LINE
+      E-ASSERTION throw
+   then
    kind LEVEL-ON label id PM-CREATE
    kind CF-RELEASE label CF-RELEASE
    s" IOPMAssertionCreateWithName" CHECK

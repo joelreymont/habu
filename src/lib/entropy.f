@@ -1,13 +1,14 @@
 split-str
 \ entropy.f - bytes from the kernel's secure generator through libc getentropy
 \ (macOS; glibc 2.25 and later). FILL blocks only until the generator is first
-\ seeded. A refused call is E-FILL and the span may then hold some fresh bytes,
+\ seeded. A refused call is logged with its errno, then E-FILL, and the span may then hold some fresh bytes,
 \ the caller's to discard; a negative length is E-SPAN-LENGTH before any byte
 \ is written.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
+require src/lib/log.f
 
 package ENTROPY
 public
@@ -25,13 +26,20 @@ PROCESS-SYMBOLS
 FUNCTION: GETENTROPY-CALL getentropy ( ^u8 n -- i32 )
 ;FUNCTION
 
+\ getentropy's refusal, logged with its errno.
+: REFUSED ( -- )
+   FFI:ERRNO {: errno:n :}
+   LOG:ERROR s" entropy" LOG:LINE s" getentropy refused, errno " LOG:TEXT+
+      errno LOG:INT+ LOG:;LINE
+   E-FILL throw ;
+
 public
 
 : FILL ( ^u8 n -- )
    {: buf len:n :}
    len 0 < if E-SPAN-LENGTH throw then
    len 0 ?do
-      buf i +  len i - CHUNK-MAX min  GETENTROPY-CALL 0<> if E-FILL throw then
+      buf i +  len i - CHUNK-MAX min  GETENTROPY-CALL 0<> if REFUSED then
    CHUNK-MAX +loop ;
 
 ;package
