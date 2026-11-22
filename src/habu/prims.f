@@ -52,6 +52,9 @@ public
 26 constant A-STOW-LAYOUT
 \ `str`: a string as one value, its base address and byte length.
 27 constant A-STR
+\ STORED-kind the pending pointee: any stored type, a closed record or family
+\ included, as a declared `^a` takes it.
+28 constant A-STORED
 
 private
 
@@ -143,6 +146,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-A-ADDR  A-VAR-A CODE, A-ADDR CODE, A-PTR CODE, ;
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
 : PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
+: PE-PTR-A-STORED A-VAR-A CODE, A-STORED CODE, A-PTR CODE, ;
 \ PE-Q opens a quotation the primitive runs before it returns; PE-QANY is an xt it keeps.
 : PE-Q           A-QUOT CODE, ;
 : PE-QIN         A-QUOT-IN CODE, ;
