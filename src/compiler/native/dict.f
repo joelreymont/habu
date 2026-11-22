@@ -139,6 +139,7 @@ public
 \ The engine returned the record and its start together. Readers retain that
 \ record only for this operation; later source may mutate its binding or slot.
 private
+EXPORT CHECKER-RESOLVE:CK-REC-VALUE
 
 : FIXED-ENTRY ( ^n -- n )
    {: rec:^ :}
@@ -157,10 +158,12 @@ private
 public
 
 \ A record no definer stamped is refused BEFORE the word is entered. The count
-\ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77). A
-\ caller already holding the record, as a dictionary walk does, asks REC-VALUE.
+\ settles the arity but not the TYPE. A caller already holding the record, as
+\ a dictionary walk does, asks REC-VALUE.
 : REC-VALUE ( ^n -- n )
    {: rec:^ :}
+   rec CK-REC-VALUE if exit then
+   drop
    rec FIXED-ENTRY drop
    rec XREF-START READ-FIXED ;
 

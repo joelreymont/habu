@@ -488,9 +488,11 @@ variant-block   = VARIANT variant-name field* ;VARIANT
 compact-variant = variant-name
 ```
 
-`BUFFER name N`, N a number literal above 0, lays N bytes inline from the next
-cell; the record stays whole cells, so the field after it starts at the next
-cell boundary past the bytes. `MAKE` takes one value per `FIELD` and
+`BUFFER name N`, N a number literal or a `constant`'s name, above 0, lays N
+bytes inline from the next cell; a computed size is bound with `constant`
+first. Any other name, a `variable`, a colon word or a value below 1 is
+rejected at N (`error[E-BAD-DECLARATION]`). The record stays whole cells, so
+the field after it starts at the next cell boundary past the bytes. `MAKE` takes one value per `FIELD` and
 ceil(N / CELL) values of type `n` per `BUFFER`, in declaration order, and
 `UNMAKE` answers them; those cells also fill any bytes past N in the buffer's
 last cell, which neither clears. Under `DERIVE addr` the accessor answers a
@@ -2550,7 +2552,9 @@ sections above.
   resolves to no ( -- n ) word`). Expressions such as `N 2 * TYPED-BUFFER B n`
   are evaluated by the load. A `( -- n )` word whose value is zero passes
   pre-verification, and the definer rejects it `E-BAD-STORAGE`. The same count
-  rule applies to `LAYOUT-BUFFER`.
+  rule applies to `LAYOUT-BUFFER`. A `STRUCTURE`'s `BUFFER` count is a
+  literal or a `constant`'s name, never a `( -- n )` word or expression: a
+  declaration runs no program code.
 - **Parsing operands are data.** Top-level `'` and `char`, and body `[']` and
   `[char]`, consume the next blank-delimited token, even across lines, without
   treating its spelling as a comment, quote, definition or reserved name.

@@ -894,18 +894,27 @@ private
       na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
 
-\ `BUFFER name N`: N bytes inline from the next slot, in whole cells. The count
-\ is a number literal, never a name, so the layout is fixed by the text alone.
+EXPORT CHECKER-RESOLVE:CK-REC-VALUE
+: COUNT-BAD ( -- )
+   s" buffer byte count must be a number or a constant above 0"
+   s" give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first"
+   TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
+\ A count token's value and true: an integer literal, or the value of the
+\ constant it binds; false for anything else.
+: COUNT-VALUE ( str -- n bool ) {: a:^ u:n :}
+   a u num-parse {: v:n flt:bool ok:bool :}
+   ok IF v flt 0= EXIT THEN
+   a u scope-find drop drop drop CK-REC-VALUE ;
+\ `BUFFER name N`: N bytes inline from the next slot, in whole cells. N is a
+\ number literal or a constant's name, read from the constant's record
+\ without running program code.
 : BUFFER-COUNT ( -- n )
    NEXT dup 0= IF
       2drop s" missing buffer byte count"
       s" write a byte count after the buffer's name, as in `BUFFER bytes 16`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   num-parse {: v:n flt:bool ok:bool :}
-   ok 0= flt or v 1 < or IF
-      s" buffer byte count must be a number above 0"
-      s" give the byte count as a number literal above 0, as in `BUFFER bytes 16`"
-      TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
+   COUNT-VALUE {: v:n ok:bool :}
+   ok 0= v 1 < or IF COUNT-BAD THEN
    v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ before its cells are counted
    v ;
 : EMIT-BUFFER ( str n -- ) {: na:^ nu:n bytes:n :}
