@@ -110,7 +110,7 @@ TYPED-VARIABLE LE-OUT ^VEC:vector<u8>
 \ A, two-byte, three-byte and four-byte scalars, a raw byte, then x: scalar
 \ boundaries at bytes 0 1 3 6 10 11 12, which are units 0 1 2 3 5 6 7. Unit 4
 \ is inside the pair, the one index that does not come back.
-: MIXED ( -- ^u8 n )
+: MIXED ( -- str )
    s\" a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80\x80x" ;
 
 : BYTE-TRIP ( n -- )

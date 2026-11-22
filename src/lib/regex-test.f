@@ -13,22 +13,22 @@ require src/lib/regex.f
 
 package REGEX-TEST
 
-: RUN-IN ( ^u8 n ^u8 n ^ARENA:arena -- bool )
+: RUN-IN ( str str ^ARENA:arena -- bool )
    {: p:^ pu:n t:^ tu:n a:^ :}
    p pu a REGEX:COMPILE {: re :}
    t tu re REGEX:MATCH? ;
 
 \ Whether the pattern matches the text.
-: MATCHES? ( ^u8 n ^u8 n -- bool ) [: RUN-IN ;] ARENA:WITH ;
+: MATCHES? ( str str -- bool ) [: RUN-IN ;] ARENA:WITH ;
 
-: YES ( ^u8 n ^u8 n -- ) MATCHES? TTRUE ;
-: NO ( ^u8 n ^u8 n -- ) MATCHES? TFALSE ;
+: YES ( str str -- ) MATCHES? TTRUE ;
+: NO ( str str -- ) MATCHES? TFALSE ;
 
-: COMPILE-ONLY ( ^u8 n -- )
+: COMPILE-ONLY ( str -- )
    [: REGEX:COMPILE drop ;] ARENA:WITH ;
 
 \ The pattern is rejected with exactly the text given.
-: REJECTS ( ^u8 n ^u8 n -- ) {: p:^ pu:n w:^ wu:n :}
+: REJECTS ( str str -- ) {: p:^ pu:n w:^ wu:n :}
    [: p pu COMPILE-ONLY ;] REGEX:E-PATTERN TTHROWSQ
    REGEX:E-PATTERN REASON:TEXT$ w wu T$=
    REASON:RELEASE ;
@@ -53,7 +53,7 @@ package REGEX-TEST
 
 \ Maki's name rule: not empty or only white space, the class spelling it
 \ in `\t-\r` and `\u` escapes.
-: MAKI-NAME$ ( -- ^u8 n )
+: MAKI-NAME$ ( -- str )
    s" ^[^\u0000]*[^\u0000\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000][^\u0000]*$" ;
 
 : MAKI-NAME ( -- )

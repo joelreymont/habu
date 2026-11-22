@@ -897,7 +897,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 \ PROCESS:RUN: each of a child's fds 0, 1 and 2 chosen as inherit, null or pipe.
 : PT-PIPE ( ^u8 n -- PROCESS:stdio ) SPAN:MAKE PROCESS-STDIO:PIPE ;
 
-: PT-SH-REQUEST ( ^u8 n -- PROCESS:request ) {: script:^ len :}
+: PT-SH-REQUEST ( str -- PROCESS:request ) {: script:^ len :}
    s" /bin/sh" PROCESS:NEW
    s" -c" PROCESS:ARG
    script len PROCESS:ARG ;

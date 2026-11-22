@@ -82,8 +82,8 @@ public
 \ write end w at its own number in the child; a negative w maps none. The
 \ staging is reset once the request holds its copy, so a refused spawn, which
 \ throws E-PROC-SPAWN, leaves none.
-: SPAWN ( ^u8 len fd fd fd fd -- pid ) {: a:^ u in:fd out:fd err:fd w:fd :}
-   a u PROC-ARGV-PREPARE {: pathz:^ argv :}
+: SPAWN ( str fd fd fd fd -- pid ) {: a:^ u in:fd out:fd err:fd w:fd :}
+   a u >LEN PROC-ARGV-PREPARE {: pathz:^ argv :}
    PROC-ENV-PREPARE {: envp :}
    pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
    argv PROCESS:ARGV-ROWS

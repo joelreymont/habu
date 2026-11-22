@@ -37,7 +37,7 @@ create REPORT 1 cells allot
    s" -c" >LEN PROC-ARGV+
    s" exec sleep 20" >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD w TEST-FIFO:SPAWN ;
+   s" /bin/sh" -1 >FD -1 >FD -1 >FD w TEST-FIFO:SPAWN ;
 
 : LINE$ ( -- str )
    s\" check-signal-subject: up\n" ;

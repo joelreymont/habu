@@ -110,9 +110,9 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    handle HANDLE>N bytes capacity BLEN>N READ-CALL ;
 
 
-: WRITE-RAW ( handle ^u8 NUM:byte-len -- n )
-   {: handle:handle bytes size:NUM:byte-len :}
-   handle HANDLE>N bytes size BLEN>N WRITE-CALL ;
+: WRITE-RAW ( handle str -- n )
+   {: handle:handle bytes size:n :}
+   handle HANDLE>N bytes size WRITE-CALL ;
 
 
 : CLOSE-RAW ( handle -- n ) HANDLE>N CLOSE-CALL ;
@@ -260,9 +260,9 @@ public
 \ Accepts one chunk into the kernel queue, possibly short; a zero-byte request
 \ transfers nothing at once. Success does not prove bytes reached the device. Input is
 \ borrowed for this call. Timeout is milliseconds, negative for no deadline.
-: WRITE ( handle ^u8 NUM:byte-len ms -- io-result )
-   {: handle:handle bytes size:NUM:byte-len timeout:ms :}
-   size BLEN>N 0= if size SERIAL-IO--RESULT:TRANSFERRED exit then
+: WRITE ( handle str ms -- io-result )
+   {: handle:handle bytes size:n timeout:ms :}
+   size 0= if size TRANSFERRED exit then
    timeout DEADLINE {: deadline:ns :}
    begin
       handle AIO:WRITABLE deadline AWAIT {: events:n :}

@@ -33,14 +33,14 @@ create LOG-PATH PATH-CAP allot
 create LOG-BUF LOG-CAP allot
 create HELD 3 allot
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ ;
 
 : SETUP ( -- )
    s" hb-sqlite" FS:MKTEMP-DIR {: path:^ u:n :}
    path ROOT u BYTE-COPY
    u ROOT-U ! ;
 
-: AT ( ^u8 n ^u8 -- ^u8 n )
+: AT ( str ^u8 -- str )
    {: name:^ nu:n buf:^ :}
    ROOT$ name nu buf FS:JOIN-PATH {: u:n :}
    buf u ;
@@ -48,7 +48,7 @@ create HELD 3 allot
 : MAIN$ ( -- str ) s" main.db" MAIN-PATH AT ;
 : LINK$ ( -- str ) s" link.db" LINK-PATH AT ;
 : LOG$ ( -- str ) s" log.txt" LOG-PATH AT ;
-: HELD$ ( -- ^u8 n ) HELD 3 ;
+: HELD$ ( -- str ) HELD 3 ;
 
 \ A blob with a 0 byte inside: its length crosses the FFI, never a NUL.
 : BLOB$ ( -- str ) S\" a\x00b\xff" ;
@@ -57,7 +57,7 @@ create HELD 3 allot
    s" plain text where SQLite expects its header" ;
 
 \ The answer of a one-row, one-column query.
-: COUNT ( SQLITE:connection ^u8 n -- n )
+: COUNT ( SQLITE:connection str -- n )
    [: SQLITE:STEP TTRUE 0 SQLITE:COL-INT swap ;] SQLITE:WITH-STATEMENT ;
 
 \ ---- 1: binds, columns, CHANGES, LAST-ROWID --------------------------------
@@ -156,7 +156,7 @@ create HELD 3 allot
    c s" INSERT INTO r VALUES (?)" [: REUSE-BODY ;]
    SQLITE:WITH-STATEMENT ;
 
-: LINES ( ^u8 n -- n )
+: LINES ( str -- n )
    {: a:^ u:n :}
    0 u 0 ?do a i + c@ $0A = if 1+ then loop ;
 

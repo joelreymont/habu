@@ -108,7 +108,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : WRITE-CHUNK ( n str ^session -- n ) {: offset:n data size:n session:^ :}
    session CHECK-TIME
-   session SESSION-HANDLE @ data offset + size offset - SERIAL:BYTES
+   session SESSION-HANDLE @ data offset + size offset -
    session SESSION-DEADLINE @ REMAINING SERIAL:WRITE
    MATCH SERIAL:io-result
       transferred OF BLEN>N offset + ENDOF
@@ -187,7 +187,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 : CANCEL-PEER ( ^session -- ) {: session:^ :}
    session SESSION-CONTROL SPAN:$ {: control len:n :}
    CAN control c! CAN control 1 + c! CAN control 2 + c!
-   session SESSION-HANDLE @ control len SERIAL:BYTES 0 >MS SERIAL:WRITE IGNORE-IO ;
+   session SESSION-HANDLE @ control len 0 >MS SERIAL:WRITE IGNORE-IO ;
 
 
 : RESULT ( ^session n -- transfer-result ) {: session:^ error:n :}
@@ -276,13 +276,13 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    sequence SEQUENCE>N session SESSION-NEXT @ 1 - $FF and = and ;
 
 
-: ACCEPT-PAYLOAD ( ^u8 NUM:byte-len sequence ^session -- )
-   {: data size:NUM:byte-len sequence:sequence session:^ :}
+: ACCEPT-PAYLOAD ( str sequence ^session -- )
+   {: data size:n sequence:sequence session:^ :}
    sequence SEQUENCE>N session SESSION-NEXT @ = if
-      size BLEN>N session SESSION-MAXIMUM @ session SESSION-PROGRESS @ - >
+      size session SESSION-MAXIMUM @ session SESSION-PROGRESS @ - >
       if E-SXMODEM-CAPACITY throw then
-      data size BLEN>N session SESSION-OUTPUT @ VEC:APPEND
-      size BLEN>N session ADVANCE ACK session SEND-BYTE exit
+      data size session SESSION-OUTPUT @ VEC:APPEND
+      size session ADVANCE ACK session SEND-BYTE exit
    then
    sequence session PREVIOUS? if session TRY+ ACK session SEND-BYTE exit then
    E-FRAME throw ;
@@ -292,8 +292,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    TRUE session SESSION-NEGOTIATED !
    session READ-FRAME {: size:NUM:byte-len :}
    session PACKET VEC:SPAN SPAN:$ drop size
-   session SESSION-KIND @ DECODE
-   session ACCEPT-PAYLOAD ;
+   session SESSION-KIND @ DECODE {: data len:NUM:byte-len seq:sequence :}
+   data len BLEN>N seq session ACCEPT-PAYLOAD ;
 
 
 : RECEIVE-ONE ( ^session -- bool )
@@ -344,11 +344,11 @@ public
 \ The source must be disjoint from the session and its private packet buffer.
 \ CRC mode uses the requested payload size; checksum negotiation selects 128.
 \ Success requires the peer's EOT ACK and reports the original source length.
-: SEND ( ^u8 NUM:byte-len XMODEM:payload-size ms ^session -- transfer-result )
-   {: data size:NUM:byte-len block:XMODEM:payload-size timeout:ms session:^ :}
-   size CHECK-LENGTH block PAYLOAD-SIZE>N XMODEM:BLOCK drop
+: SEND ( str XMODEM:payload-size ms ^session -- transfer-result )
+   {: data size:n block:XMODEM:payload-size timeout:ms session:^ :}
+   block PAYLOAD-SIZE>N XMODEM:BLOCK drop
    timeout session START
-   data session SESSION-SOURCE ! size BLEN>N session SESSION-SOURCE-LEN !
+   data session SESSION-SOURCE ! size session SESSION-SOURCE-LEN !
    block session SESSION-BLOCK !
    session [: dup SEND-RUN ;] catch RESULT ;
 

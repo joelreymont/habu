@@ -52,7 +52,7 @@ create BODY 1048578 allot
 
 
 : READY ( SERIAL:handle -- )
-   s" ready" SERIAL:BYTES 1000 >MS SERIAL:WRITE MOVED 5 <> if -1 throw then ;
+   s" ready" >str 1000 >MS SERIAL:WRITE MOVED 5 <> if -1 throw then ;
 
 
 : REPORT ( SERIAL:io-result -- )
@@ -158,7 +158,7 @@ def binary_io(habu, output):
    handle BODY 256 EXACT-READ
    256 0 do BODY i + c@ i <> if -1 throw then loop
    BODY 256 + c@ . BODY 257 + c@ .
-   handle BODY 256 SERIAL:BYTES 1000 >MS SERIAL:WRITE MOVED .
+   handle BODY 256 >str 1000 >MS SERIAL:WRITE MOVED .
    handle BODY 7 SERIAL:BYTES 2000 >MS SERIAL:READ MOVED .
    handle BODY 57 EXACT-READ
    57 0 do BODY i + c@ i 7 + <> if -1 throw then loop
@@ -168,7 +168,7 @@ def binary_io(habu, output):
    handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:READ REPORT
    handle SERIAL:CLOSE OK
    handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:READ REPORT
-   handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:WRITE REPORT
+   handle BODY 1 >str 0 >MS SERIAL:WRITE REPORT
    handle SERIAL:CLOSE MATCH SERIAL:status
       ok OF -1 throw ENDOF failed OF SERIAL:ERRNO>N . ENDOF
    ;MATCH
@@ -212,9 +212,9 @@ def partial_write(habu, output):
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
    handle BODY 1 EXACT-READ
-   handle BODY 1048576 SERIAL:BYTES 0 >MS SERIAL:WRITE MOVED .
+   handle BODY 1048576 >str 0 >MS SERIAL:WRITE MOVED .
    0 begin
-      handle BODY 1048576 SERIAL:BYTES 20 >MS SERIAL:WRITE MATCH SERIAL:io-result
+      handle BODY 1048576 >str 20 >MS SERIAL:WRITE MATCH SERIAL:io-result
          transferred OF BLEN>N + false ENDOF
          timeout OF true ENDOF
          closed OF -1 throw ENDOF
@@ -241,7 +241,7 @@ def disconnect(habu, output):
    s" DEVICE" OPEN {: handle:SERIAL:handle :}
    handle READY
    handle BODY 1 SERIAL:BYTES 2000 >MS SERIAL:READ REPORT
-   handle BODY 1 SERIAL:BYTES 0 >MS SERIAL:WRITE REPORT
+   handle BODY 1 >str 0 >MS SERIAL:WRITE REPORT
    handle SERIAL:CLOSE OK
    AIO:STOP ;
 RUN
@@ -289,7 +289,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
    ;MATCH {{: handle:SERIAL:handle :}}
    identity bytes c!
    16 0 do
-      handle bytes 1 SERIAL:BYTES 1000 >MS SERIAL:WRITE MOVED 1 <> if -1 throw then
+      handle bytes 1 >str 1000 >MS SERIAL:WRITE MOVED 1 <> if -1 throw then
       handle bytes expected EXACT-READ
       expected 0 do bytes i + c@ identity <> if -1 throw then loop
    loop

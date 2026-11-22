@@ -157,7 +157,7 @@ TASK:MIN-STACK TASK:TASK READER
 
 : WRITE-CASE ( -- )
    s" six bytes written at the port are accepted whole" T-LABEL
-   PORT s" forth!" SERIAL:BYTES -1 >MS SERIAL:WRITE K-MOVED 6 WANT
+   PORT s" forth!" -1 >MS SERIAL:WRITE K-MOVED 6 WANT
 
    s" ... and the master reads exactly those six" T-LABEL
    BUF 6 PEER-EXACT
@@ -221,7 +221,7 @@ TASK:MIN-STACK TASK:TASK READER
    PORT BUF 1 SERIAL:BYTES -1 >MS SERIAL:READ K-CLOSED 0 WANT
 
    s" ... and the write after it fails with EIO" T-LABEL
-   PORT s" x" SERIAL:BYTES 0 >MS SERIAL:WRITE K-FAILED EIO# WANT
+   PORT s" x" 0 >MS SERIAL:WRITE K-FAILED EIO# WANT
 
    PORT SERIAL:CLOSE CLOSED-OK ;
 

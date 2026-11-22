@@ -22,7 +22,7 @@ create FILE-BUF FILE-CAP allot      \ the capture file's bytes, read back
 variable CODE-A
 variable CODE-B
 
-: PATH$ ( -- ^u8 n )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- str )  PATH-BUF PATH-U @ ;
 
 
 : PATH-MAKE ( -- )
@@ -72,7 +72,7 @@ variable CODE-B
 : LOUD ( -- )  LINE$ ERR-OUT  LINE$ ERR-OUT  77 throw ;
 
 
-: HALVES ( ^u8 n -- )
+: HALVES ( str -- )
    {: text:^ u:n :}
    LINE$ nip {: half:n :}
    u half 2 * T=

@@ -389,7 +389,7 @@ variable IDLE-COPY-U
    CAPTURE>RC ;
 
 \ A walker's own report is its verdict; on a failure it is printed here.
-: VERDICT ( n n n ^u8 n -- )
+: VERDICT ( n n n str -- )
    {: outn:n errn:n rc:n label:^ labelu:n :}
    label labelu T-LABEL
    rc 0 T=
@@ -398,7 +398,7 @@ variable IDLE-COPY-U
       OUT outn type ERR errn type cr
    then ;
 
-: REFUSED ( ^u8 n ^u8 n -- )
+: REFUSED ( str str -- )
    {: profile:^ profileu:n label:^ labelu:n :}
    profile profileu s" walker" SANDBOXED label labelu VERDICT ;
 

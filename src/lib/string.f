@@ -184,13 +184,13 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : SB-RESET ( -- )
    0 SB-LEN ! ;
 
-: SB-APPEND-LEN ( ^u8 len -- ) {: a:^ u :}
-   u SB-CHECK-LEN-ROOM
-   a SB-BUF SB-LEN @ + u BYTE-COPY-LEN
-   SB-LEN @ u LEN>N + SB-LEN ! ;
+: SB-APPEND-LEN ( str -- ) {: a:^ u :}
+   u SB-CHECK-ROOM
+   a SB-BUF SB-LEN @ + u BYTE-COPY
+   SB-LEN @ u + SB-LEN ! ;
 
 : SB-APPEND ( ^u8 n -- )
-   STR-LEN SB-APPEND-LEN ;
+   SB-APPEND-LEN ;
 
 : SB-APPEND-C ( n -- ) {: c :}
    1 SB-CHECK-ROOM
@@ -211,15 +211,15 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : BUF-LEN@ ( ^len -- n )
    @ LEN>N ;
 
-: BUF-APPEND-LEN ( ^u8 len ^u8 len ^len -- )
+: BUF-APPEND-LEN ( str ^u8 len ^len -- )
    {: src:^ u dst:^ cap lenp:^ :}
-   u cap lenp BUF-CHECK-LEN
-   src dst lenp @ LEN>N + u BYTE-COPY-LEN
-   lenp @ LEN>N u LEN>N + >LEN lenp ! ;
+   u STR-LEN cap lenp BUF-CHECK-LEN
+   src dst lenp @ LEN>N + u BYTE-COPY
+   lenp @ LEN>N u + >LEN lenp ! ;
 
 : BUF-APPEND ( str ^u8 n ^len -- )
    {: src:^ u dst:^ cap lenp:^ :}
-   src u STR-LEN dst cap STR-LEN lenp BUF-APPEND-LEN ;
+   src u dst cap STR-LEN lenp BUF-APPEND-LEN ;
 
 : BUF-APPEND-C ( n ^u8 n ^len -- )
    {: c dst:^ cap lenp:^ :}

@@ -199,7 +199,7 @@ false STOPPED !
    OPEN-NULL LOG$ OPEN-LOG {: in:n log:n :}
    in >FD FD:FD-CLOEXEC!
    log >FD FD:FD-CLOEXEC!
-   POSTGRES$ >LEN in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N SERVER !
+   POSTGRES$ in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N SERVER !
    in close
    log close
    SERVER @ proc-watch-open WATCH !
@@ -288,7 +288,7 @@ false STOPPED !
    OPEN-NULL INITDB-LOG$ OPEN-LOG {: in:n log:n :}
    in >FD FD:FD-CLOEXEC!
    log >FD FD:FD-CLOEXEC!
-   INITDB$ >LEN in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N INITDB-PID !
+   INITDB$ in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N INITDB-PID !
    in close
    log close
    INITDB-PID @ proc-watch-open INITDB-WATCH ! ;

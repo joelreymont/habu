@@ -25,10 +25,10 @@ $1000 constant TFT-CAP
 TFT-CAP BUFFER: TFT-OUT
 TFT-CAP BUFFER: TFT-ERR
 
-: TFT-DIR$ ( -- ^u8 n ) TFT-DIR-BUF TFT-DIR-U @ ;
-: TFT-FILE$ ( -- ^u8 n ) TFT-FILE-BUF TFT-FILE-U @ ;
+: TFT-DIR$ ( -- str ) TFT-DIR-BUF TFT-DIR-U @ ;
+: TFT-FILE$ ( -- str ) TFT-FILE-BUF TFT-FILE-U @ ;
 
-: TFT-SOURCE ( -- ^u8 n )
+: TFT-SOURCE ( -- str )
    SB-RESET
    S\" FSM:DEFINE DOOR-LOCK ( ^n ) lock-state lock-input\n" SB-APPEND
    S\"    IN locked LOCK-SENSE turn - >open\n" SB-APPEND
@@ -50,10 +50,10 @@ TFT-CAP BUFFER: TFT-ERR
    TFT-DIR$ s" door.f" TFT-FILE-BUF FS:JOIN-PATH TFT-FILE-U !
    TFT-FILE$ TFT-SOURCE FS:WRITE-ALL ;
 
-: TFT-LINE ( ^u8 n -- ) SB-APPEND 10 SB-APPEND-C ;
+: TFT-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
 
 \ The module TABLE-MODULE answers for DOOR as model Door.
-: TFT-WANT$ ( -- ^u8 n )
+: TFT-WANT$ ( -- str )
    SB-RESET s" ---- MODULE DoorTable ----" TFT-LINE
    s" \* The lines of DOOR, " SB-APPEND TFT-FILE$ SB-APPEND
    s" , as <<state, input," TFT-LINE
@@ -97,7 +97,7 @@ public
 private
 
 \ The child src prints `test: 1 failure(s)` and exits FAILURE.
-: TFT-FAILS ( ^u8 n -- )
+: TFT-FAILS ( str -- )
    {: src:^ su:n :}
    src su TFT-OUT TFT-CAP >LEN TFT-ERR TFT-CAP >LEN
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: ou:len eu:len oc :}

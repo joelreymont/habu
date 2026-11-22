@@ -25,11 +25,11 @@ using SPAN
 $A5 constant CANARY
 TYPED-VARIABLE DECODED ^VEC:vector<u8>
 
-: PATH$ ( ^u8 n -- ^u8 n )
+: PATH$ ( str -- str )
    DST URI:FILE>PATH {: u:n :}
    DST $ drop u ;
 
-: PATH= ( ^u8 n ^u8 n -- )
+: PATH= ( str str -- )
    {: a:^ u:n b:^ v:n :}
    a u PATH$ b v T$= ;
 

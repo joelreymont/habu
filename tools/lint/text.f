@@ -49,7 +49,7 @@ variable LINT-OUT-ON
 
 : LINT-OUT-WRITE ( n str -- ) {: fd:n a:^ u:n :}
    LINT-OUT-ON @ IF
-      a u STR:LENGTH LINT-OUT-A@ LINT-OUT-CAP @ STR:LENGTH LINT-OUT-U STR:BUF-APPEND
+      a u LINT-OUT-A@ LINT-OUT-CAP @ STR:LENGTH LINT-OUT-U STR:BUF-APPEND
       exit
    THEN
    fd a u LINT-FD-WRITE ;
@@ -294,8 +294,8 @@ public
 : JOIN-SPLIT ( str ^u8 n ^len -- ) {: sep:^ su:n dst:^ cap:n lp:^ :}
    lp STR:BUF-RESET
    0 begin dup SN# @ < while
-      dup 0 > IF sep su STR:LENGTH dst cap STR:LENGTH lp STR:BUF-APPEND THEN
-      dup S@ STR:LENGTH dst cap STR:LENGTH lp STR:BUF-APPEND  1+
+      dup 0 > IF sep su dst cap STR:LENGTH lp STR:BUF-APPEND THEN
+      dup S@ dst cap STR:LENGTH lp STR:BUF-APPEND  1+
    repeat  drop ;
 
 ;package

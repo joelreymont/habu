@@ -52,7 +52,7 @@ variable HOLD                        \ the FIFO's write end
    s" -c" >LEN PROC-ARGV+
    WRITER$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N
+   s" /bin/sh" -1 >FD -1 >FD -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N
    i cells WRITERS + ! ;
 
 \ The helper's writer sends its output to /dev/null, so the pipe the helper
@@ -69,7 +69,7 @@ variable HOLD                        \ the FIFO's write end
    s" -c" >LEN PROC-ARGV+
    HELPER$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" /bin/sh" >LEN -1 >FD w -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N HELPER !
+   s" /bin/sh" -1 >FD w -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N HELPER !
    w FD>N close
    begin r FD>N SINK 64 read dup 0 > while drop repeat
    r FD>N close

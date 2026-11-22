@@ -70,15 +70,15 @@ create SECOND-BUF CAPACITY allot
       OUTPUT size SECOND-BUF repeated T$=
    loop ;
 
-: EQUAL ( ^u8 n ^u8 n -- )
+: EQUAL ( str str -- )
    2over 2over CASEFOLD= TTRUE
    2swap CASEFOLD= TTRUE ;
 
-: DIFFERENT ( ^u8 n ^u8 n -- )
+: DIFFERENT ( str str -- )
    2over 2over CASEFOLD= TFALSE
    2swap CASEFOLD= TFALSE ;
 
-: INVALID ( ^u8 n -- )
+: INVALID ( str -- )
    [: 2dup s" " CASEFOLD= drop ;] catch E-UTF8 T=
    [: 2dup s" " 2swap CASEFOLD= drop ;] catch E-UTF8 T=
    2drop ;

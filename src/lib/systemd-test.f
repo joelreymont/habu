@@ -66,7 +66,7 @@ variable ABSTRACT-FD
       ENDOF
    ;MATCH ;
 
-: NAMED ( ^u8 n ^u8 -- n )
+: NAMED ( str ^u8 -- n )
    {: prefix:^ prefixu:n dst:^ :}
    SB-RESET prefix prefixu SB-APPEND getpid FMT:SB-INT
    SB$ {: a:^ u:n :} a dst u BYTE-COPY u ;
@@ -94,7 +94,7 @@ variable ABSTRACT-FD
    CHILD-SOURCE ;
 
 \ A child engine per case: GETENV reads the environment the process started with.
-: RUN ( ^u8 n -- n n )   \ outu rc
+: RUN ( str -- n n )   \ outu rc
    {: value:^ valueu:n :}
    ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
    PROG CODEGEN:CONTENTS {: prog:^ progu:n :}
@@ -111,7 +111,7 @@ variable ABSTRACT-FD
 : WANT$ ( n -- str )
    SB-RESET FMT:SB-INT 10 SB-APPEND-C SB$ ;
 
-: ANSWERS ( ^u8 n n -- )
+: ANSWERS ( str n -- )
    {: value:^ valueu:n want:n :}
    value valueu RUN {: outu:n rc:n :}
    OUT outu want WANT$ T$=

@@ -389,7 +389,7 @@ public
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 : PROC-HAS-SLASH? ( ^u8 len -- bool )
-   LEN>N STR:LENGTH PROC-PATH-SLASH STR:INDEX-OF MATCH option
+   LEN>N PROC-PATH-SLASH STR:INDEX-OF MATCH option
      none OF PROC-ENV-FALSE ENDOF
      some OF drop PROC-ENV-TRUE ENDOF
    ;MATCH ;
@@ -426,7 +426,7 @@ public
       OPTION:NONE exit
    then
    0 >OFF PROC-PATH-I !
-   begin path pathu LEN>N STR:LENGTH PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT MATCH option
+   begin path pathu LEN>N PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT MATCH option
      none OF STR-FALSE ENDOF
      some OF STR-SPLIT:UNMAKE {: seg:^ segl:NUM:byte-len nx:NUM:byte-off :}
         nx PROC-CURSOR>OFF PROC-PATH-I !

@@ -229,7 +229,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    APP-SHARED @ v + APP-SHARED !
    APP-LOCK TASK:RELEASE ;
 
-: APP-ACQ-WORK ( n ^u8 n ^n -- ) {: id:n cstr:^ want:n done:^ :}
+: APP-ACQ-WORK ( n str ^n -- ) {: id:n cstr:^ want:n done:^ :}
    id TASK-LOCAL-ID !
    0 TASK-LOCAL-FFI !
    APP-ITERS 0 ?do

@@ -24,7 +24,7 @@ variable BAD-B
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: STATE ( ^u8 n n -- ) {: a:^ u:n code:n :}
+: STATE ( str n -- ) {: a:^ u:n code:n :}
    [: a u code REASON:THROW ;] code TTHROWSQ ;
 
 : CHECK-MAIN ( -- )
@@ -55,7 +55,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 \ Both tasks state CODE-A before either reads it back.
 : BOTH-STATED? ( -- bool ) BARRIER atomic@ 2 >= ;
 
-: BODY ( ^u8 n ^n -- ) {: a:^ u:n bad:^ :}
+: BODY ( str ^n -- ) {: a:^ u:n bad:^ :}
    [: a u CODE-A REASON:THROW ;] catch
    CODE-A <> if 1 bad +! then
    1 BARRIER atomic-add drop

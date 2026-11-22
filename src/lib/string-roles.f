@@ -65,12 +65,10 @@ public
 : OFFSET ( n -- NUM:byte-off )      N>BYTE-OFF ;
 : COUNT ( n -- NUM:item-count )     N>ITEM-COUNT ;
 
-: FIND-SUB ( ^u8 NUM:byte-len ^u8 NUM:byte-len -- option<NUM:index> )
-   {: a:^ u:NUM:byte-len b:^ v:NUM:byte-len :}
-   a u BYTE-LEN>N b v BYTE-LEN>N RAW-FIND-SUB IDX-OPT>INDEX-OPT ;
-: INDEX-OF ( ^u8 NUM:byte-len n -- option<NUM:index> )
-   {: a:^ u:NUM:byte-len c:n :}
-   a u BYTE-LEN>N c RAW-INDEX-OF IDX-OPT>INDEX-OPT ;
+: FIND-SUB ( str str -- option<NUM:index> )
+   RAW-FIND-SUB IDX-OPT>INDEX-OPT ;
+: INDEX-OF ( str n -- option<NUM:index> )
+   RAW-INDEX-OF IDX-OPT>INDEX-OPT ;
 
 \ SOME(slice, next) while a field remains, NONE once the start cursor is past
 \ the string end, so a caller cannot read the slice or cursor on the no-field
@@ -82,9 +80,9 @@ STRUCTURE split
   FIELD next NUM:byte-off
 ;STRUCTURE
 
-: SPLIT-NEXT ( ^u8 NUM:byte-len n NUM:byte-off -- option<str:split> )
-   {: a:^ u:NUM:byte-len sep:n start:NUM:byte-off :}
-   a u BYTE-LEN>N sep start BYTE-OFF>N RAW-SPLIT-NEXT   \ ( sub-ptr sub-rawlen raw-next more? )
+: SPLIT-NEXT ( str n NUM:byte-off -- option<str:split> )
+   {: a:^ u:n sep:n start:NUM:byte-off :}
+   a u sep start BYTE-OFF>N RAW-SPLIT-NEXT   \ ( sub-ptr sub-rawlen raw-next more? )
    {: rn:n more?:bool :}                                \ sub-ptr sub-rawlen remain on the stack
    more? if
       RAW>BYTE-LEN  rn N>BYTE-OFF  STR-SPLIT:MAKE OPTION:SOME
@@ -95,9 +93,9 @@ STRUCTURE split
 \ The caller-owned bounded byte buffer, its length cell a NUM:byte-len.
 : BUF-RESET ( ^len -- )                    RAW-BUF-RESET ;
 : BUF-LEN@ ( ^len -- NUM:byte-len )    RAW-BUF-LEN@ N>BYTE-LEN ;
-: BUF-APPEND ( ^u8 NUM:byte-len ^u8 NUM:byte-len ^len -- )
-   {: src:^ srclen:NUM:byte-len dst:^ cap:NUM:byte-len lenp:^ :}
-   src srclen BYTE-LEN>N dst cap BYTE-LEN>N lenp RAW-BUF-APPEND ;
+: BUF-APPEND ( str ^u8 NUM:byte-len ^len -- )
+   {: src:^ srclen:n dst:^ cap:NUM:byte-len lenp:^ :}
+   src srclen dst cap BYTE-LEN>N lenp RAW-BUF-APPEND ;
 : BUF-APPEND-C ( n ^u8 NUM:byte-len ^len -- )
    {: c:n dst:^ cap:NUM:byte-len lenp:^ :}
    c dst cap BYTE-LEN>N lenp RAW-BUF-APPEND-C ;

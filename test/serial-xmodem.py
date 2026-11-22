@@ -111,7 +111,7 @@ class Checks:
         source.write_bytes(data)
         output = self.out / 'received.bin'
         if sending:
-            call = f'INPUT @ VEC:SPAN SPAN:$ BYTES {block} BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
+            call = f'INPUT @ VEC:SPAN SPAN:$ {block} BLOCK {total} >MS SESSION SERIAL-XMODEM:SEND'
             expected = expected or f'completed {len(data)}'
         else:
             call = f'{maximum} BYTES OUTPUT @ {total} >MS SESSION SERIAL-XMODEM:RECEIVE'
@@ -386,9 +386,9 @@ RUN
 
     def reuse(self):
         actions = '''
-INPUT @ VEC:SPAN SPAN:$ BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:SPAN SPAN:$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
 128 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE REPORT
-INPUT @ VEC:SPAN SPAN:$ BYTES 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:SPAN SPAN:$ 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
 1024 BYTES OUTPUT @ 5000 >MS SESSION SERIAL-XMODEM:RECEIVE
 '''
         def peer(port):
@@ -416,8 +416,8 @@ INPUT @ VEC:SPAN SPAN:$ BYTES 1024 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REP
             port.expect(b'\x04')
             port.write(b'\x06')
         self.exchange('reuse-after-peer-cancel', recover, actions='''
-INPUT @ VEC:SPAN SPAN:$ BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
-INPUT @ VEC:SPAN SPAN:$ BYTES 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
+INPUT @ VEC:SPAN SPAN:$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND REPORT
+INPUT @ VEC:SPAN SPAN:$ 128 BLOCK 5000 >MS SESSION SERIAL-XMODEM:SEND
 ''', expected='cancelled completed 7')
 
     def native(self, body, *, rejected=None):
@@ -483,7 +483,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : READY ( SERIAL:handle -- )
-   s" ready" SERIAL:BYTES 1000 >MS SERIAL:WRITE MATCH SERIAL:io-result
+   s" ready" 1000 >MS SERIAL:WRITE MATCH SERIAL:io-result
       transferred OF BLEN>N 5 <> if -1 throw then ENDOF
       timeout OF -2 throw ENDOF closed OF -3 throw ENDOF failed OF SERIAL:ERRNO>N throw ENDOF
    ;MATCH ;
@@ -503,7 +503,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
    handle 1000 >MS 1000 >MS session SERIAL-XMODEM:INIT FRESH output ! handle READY
    4 0 do
       identity i + data c!
-      data 1 BYTES 128 BLOCK 5000 >MS session SERIAL-XMODEM:SEND COUNT 1 <> if -1 throw then
+      data 1 128 BLOCK 5000 >MS session SERIAL-XMODEM:SEND COUNT 1 <> if -1 throw then
       128 BYTES output @ 5000 >MS session SERIAL-XMODEM:RECEIVE COUNT 128 <> if -1 throw then
       identity i + output @ CHECK-REPLY
    loop

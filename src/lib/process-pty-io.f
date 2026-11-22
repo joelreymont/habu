@@ -140,9 +140,9 @@ variable IO-GO-R                                 \ child-side release gate
    -1 IO-TW !  -1 IO-GO-W !
    -1 IO-SOUT-W !  -1 IO-SIN-R !  -1 IO-GO-R ! ;
 
-: IO-STORE-PATH ( ^u8 len -- ) {: path:^ pathu:len :}
-   path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
-   pathu LEN>N IO-PATH-LEN ! ;
+: IO-STORE-PATH ( str -- ) {: path:^ pathu:n :}
+   path pathu >LEN IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
+   pathu IO-PATH-LEN ! ;
 
 : IO-MK-STDIO ( -- )
    FD:PIPE IO-SOUT-W ! IO-MASTER !   \ stdout: owner reads master, child writes
@@ -225,7 +225,7 @@ variable IO-GO-R                                 \ child-side release gate
    IO-COMMIT
    HANDLE>N IO-RAW ! ;
 
-: IO-SPAWN-MODE ( ^u8 len bool -- process-pty-handle ) {: path:^ pathu:len tty:bool :}
+: IO-SPAWN-MODE ( str bool -- process-pty-handle ) {: path:^ pathu:n tty:bool :}
    ROOM? 0= if E-PROC-PTY-CAPACITY throw then
    IO-RESET-STX
    tty IO-TTY !
@@ -274,7 +274,7 @@ create IO-OUTER SLOT-CAP cells allot
 
 : IO-WITH ( R str [ R process-pty-handle -- S process-pty-handle ] bool -- S )
    {: path:^ pathu:n body tty:bool :}
-   path pathu >LEN tty IO-SPAWN-MODE IO-ENTER
+   path pathu tty IO-SPAWN-MODE IO-ENTER
    body [: IO-RUN-BODY ;] [: IO-LEAVE ;] finally ;
 
 public

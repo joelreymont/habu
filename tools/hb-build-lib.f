@@ -123,7 +123,7 @@ variable HBB-ELAPSED-NS
    HBB-LF-BUF 1 HBB-WERR ;
 
 : HBB-PATH-HAS-DQ? ( str -- bool )
-   STR:LENGTH HBB-DQ STR:INDEX-OF MATCH option
+   HBB-DQ STR:INDEX-OF MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
    ;MATCH ;
