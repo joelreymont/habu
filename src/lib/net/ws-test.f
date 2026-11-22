@@ -48,6 +48,10 @@ package WS
    GEN-MASK idx GEN !
    LOCK TASK:RELEASE ;
 : WS-TEST:SILENT-MS ( -- n ) PING-MS PONG-MS + ;
+: WS-TEST:LEFT ( -- n )
+   LOCK TASK:GET
+   LEFT @
+   LOCK TASK:RELEASE ;
 ;package
 
 \ Reopens HTTP for its listener's descriptor, which the fault case polls so the
@@ -63,9 +67,9 @@ $7F000001 constant LOOPBACK
 $1F4 constant IDLE-MS
 10 constant POLL-MS
 $3E8 constant GRACE-MS            \ what a bounded wait may run past its bound on a loaded box
+60000 constant WAIT-BOUND-MS      \ the longest a wait for a condition polls before its case fails
 $190 constant STOP-BOUND-MS       \ how long WS:STOP may take
 STOP-BOUND-MS 2 / constant IDLE-STOP-MS \ an idle socket's stop: far over its few ms, under a stop that waits out its bound
-STOP-BOUND-MS GRACE-MS + constant HOLD-MS \ how long a stalled handshake holds its slot: past any stop's bound
 $400000 constant QUEUE-MAX        \ the unwritten bytes behind which a frame loses its socket
 $10000 constant PUSH-BYTES
 $200000 constant STALL-PUSH       \ what a stalled peer's socket queues: half of QUEUE-MAX, far past both ends' pinned buffers
@@ -209,8 +213,19 @@ TASK:SEMAPHORE RELEASED           \ lets the handler of `wait` return
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
 
 
+\ True, with the case failed, once WAIT-BOUND-MS has passed since the given
+\ mono-ns.
+: GIVEN-UP? ( n -- bool ) {: began:n :}
+   mono-ns began - WAIT-BOUND-MS NS-PER-MS * < if false exit then
+   T-NEXT
+   s" no answer within WAIT-BOUND-MS" T-ASSERT-DETAIL
+   true ;
+
+\ The probe's first non-zero answer, or 0 once WAIT-BOUND-MS ends the wait.
 : AWAITED ( [ -- n ] -- n ) {: probe :}
+   mono-ns {: began:n :}
    begin probe execute dup 0 = while
+      began GIVEN-UP? if exit then
       drop POLL-MS >MS TASK:SLEEP
    repeat ;
 
@@ -692,9 +707,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : TWICE ( HTTP:request HTTP:response -- )
    [: 2dup ACCEPT-TWICE ;] ROUTED ;
 
+\ Holds the handshake's slot until WS's task has left, which a stop waits for
+\ before it waits for the handshake.
 : STALL ( -- )
    1 STALLING !
-   HOLD-MS >MS TASK:SLEEP ;
+   [: WS-TEST:LEFT ;] AWAITED drop ;
 
 : STALLED ( HTTP:request HTTP:response -- )
    [: 2dup [: NOTE ;] 0 [: STALL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
@@ -721,14 +738,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /plain" [: PLAIN ;] HTTP:ROUTE ;
 
 
-: CLOSES-WITHIN ( WS:socket n -- ) {: sock:WS:socket code:n :}
+: CLOSED-WITH ( WS:socket n -- ) {: sock:WS:socket code:n :}
    sock 0 WATCH !
    [: WATCHED ;] AWAITED code T= ;
 
 : FAILED ( TCP4:connection WS:socket n -- ) {: conn:TCP4:connection sock:WS:socket code:n :}
    conn HEAR code GOT-CLOSE
    conn ENDS
-   sock code CLOSES-WITHIN ;
+   sock code CLOSED-WITH ;
 
 : AWAIT-ROUTE ( -- )
    ACCEPTED TASK:WAIT-SEM
@@ -766,7 +783,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    LOG-HEAD
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    conn ENDS
-   sock LOST CLOSES-WITHIN ;
+   sock LOST CLOSED-WITH ;
 
 \ The status line a refused handshake is answered with, and the status the
 \ route was told it was refused with: 0 when the server refused the request
@@ -885,7 +902,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn WS-OPCODE:TEXT s" 68c3a96c6c6f20e282ac" BYTES EXCHANGE
    conn WS-OPCODE:BINARY 5 PATTERN$ EXCHANGE
    conn FAREWELL
-   sock 1000 CLOSES-WITHIN ;
+   sock 1000 CLOSED-WITH ;
 
 \ The handler's text that is not UTF-8 is refused before a byte of it goes
 \ out: the first frame the client hears is the echo of its next text.
@@ -995,7 +1012,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    REQ-SEND OPENED {: conn:TCP4:connection sock:WS:socket :}
    conn HEAR WS-OPCODE:TEXT s" first" GOT
    conn FAREWELL
-   sock 1000 CLOSES-WITHIN
+   sock 1000 CLOSED-WITH
    LOG-CALLS ;
 
 : BREAKS ( str str n -- ) {: label lu:n a u:n code:n :}
@@ -1046,14 +1063,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn s" 82ff000000000010000037fa213d" SAY-RAW
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    conn ENDS
-   sock LOST CLOSES-WITHIN
+   sock LOST CLOSED-WITH
    s" fragments of exactly the bound" SECTION
    OPENS {: long:TCP4:connection long-sock:WS:socket :}
    long false WS-OPCODE:BINARY BIG PATTERN$ SAY
    long s" 80ff00000000000eee9037fa213d" SAY-RAW
    long TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    long ENDS
-   long-sock LOST CLOSES-WITHIN ;
+   long-sock LOST CLOSED-WITH ;
 
 \ A close frame's status comes back as it was sent when a frame may carry it,
 \ and is a protocol error when none may; the handler is told the status the
@@ -1086,7 +1103,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    bare true WS-OPCODE:CLOSE s" x" drop 0 SAY
    bare HEAR WS-OPCODE:CLOSE s" x" drop 0 GOT
    bare ENDS
-   bare-sock 1005 CLOSES-WITHIN
+   bare-sock 1005 CLOSED-WITH
    s" a close with a reason" SECTION
    OPENS {: reason:TCP4:connection reason-sock:WS:socket :}
    reason true WS-OPCODE:CLOSE s" 03e9627965" BYTES SAY
@@ -1113,7 +1130,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn true WS-OPCODE:CLOSE 1000 STATUS$ SAY
    conn ENDS
    s" the handler saw the client's close" T-LABEL
-   sock 1000 CLOSES-WITHIN
+   sock 1000 CLOSED-WITH
    s" status 1005 is not one to send" T-LABEL
    BAD-CODE atomic@ E-WS-CODE T=
    s" nothing is sent behind a close" T-LABEL
@@ -1137,7 +1154,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn WS-OPCODE:TEXT s" still here" EXCHANGE
    SECOND-ACCEPT @ HTTP:E-STATE T=
    conn FAREWELL
-   sock 1000 CLOSES-WITHIN
+   sock 1000 CLOSED-WITH
    s" the refused accept keeps no slot" T-LABEL
    OPEN-ALL CLOSE-ALL ;
 
@@ -1202,7 +1219,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    gone-sock FAULT-LINE
    1 THROW-ARMED !
    gone TCP4:CLOSE DROP-STATUS
-   gone-sock LOST CLOSES-WITHIN
+   gone-sock LOST CLOSED-WITH
    [: ERR-WRITTEN ;] AWAITED drop ;
 
 \ A handler that throws closes its socket under 1011, and one that throws on
@@ -1334,7 +1351,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a handle kept past its socket" SECTION
    OPENS {: held:TCP4:connection gone:WS:socket :}
    held FAREWELL
-   gone 1000 CLOSES-WITHIN
+   gone 1000 CLOSED-WITH
    OPENS drop {: conn:TCP4:connection :}
    conn WS-OPCODE:TEXT s" mine" EXCHANGE
    gone 0 PUSHED-TO !
@@ -1360,9 +1377,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : STALL-CLOSES ( TCP4:connection WS:socket -- ) {: peer:TCP4:connection sock:WS:socket :}
    sock 0 WATCH !
    peer UNREAD-N PEER-HELD !
-   mono-ns PEER-MOVED !
+   mono-ns dup PEER-MOVED ! {: began:n :}
    begin WATCHED dup 0 = while
-      drop peer UNREAD-N {: held:n :}
+      drop began GIVEN-UP? if exit then
+      peer UNREAD-N {: held:n :}
       held PEER-HELD @ <> if held PEER-HELD ! mono-ns PEER-MOVED ! then
       POLL-MS >MS TASK:SLEEP
    repeat
@@ -1391,7 +1409,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a peer that falls silent" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    mono-ns {: began:n :}
-   sock LOST CLOSES-WITHIN
+   sock LOST CLOSED-WITH
    s" lost within its quiet bound" T-LABEL
    mono-ns began - WS-TEST:SILENT-MS GRACE-MS + NS-PER-MS * < TTRUE
    conn HEAR WS-OPCODE:PING s" " GOT
@@ -1402,7 +1420,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    OPENS {: still:TCP4:connection stuck:WS:socket :}
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    stuck FLOOD-PUSH PUSH-BYTES / PUSHES E-WS-CLOSED T=
-   stuck LOST CLOSES-WITHIN
+   stuck LOST CLOSED-WITH
    conn WS-OPCODE:TEXT s" unhindered" EXCHANGE
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
@@ -1527,9 +1545,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    [: STALLING @ ;] AWAITED drop
    first conn ;
 
-\ A handshake that holds a slot past a stop's bound is answered 503 by that
-\ stop, which waits for it: it never joins the next run, here one whose limit
-\ leaves its slot out.
+\ A handshake that holds a slot until WS's task has left is answered 503 by
+\ the stop, which waits for it: it never joins the next run, here one whose
+\ limit leaves its slot out.
 : STRAGGLER-CASE ( -- )
    s" a stop while a handshake holds its slot" T-LABEL
    HOLD-SLOT {: first:TCP4:connection conn:TCP4:connection :}
@@ -1713,7 +1731,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 WS-TEST:LAST-GEN
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    conn TCP4:CLOSE DROP-STATUS
-   sock LOST CLOSES-WITHIN
+   sock LOST CLOSED-WITH
    OPENS drop {: next:TCP4:connection :}
    [: SEND-HELD ;] catch 0 T=
    next TCP4:CLOSE DROP-STATUS
