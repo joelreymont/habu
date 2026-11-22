@@ -1228,7 +1228,7 @@ variable TRACK-LR
    n 10 < if 48 n + NUMBUF c!  NUMBUF 1 type
    else 48 n 10 / + NUMBUF c!  48 n 10 mod + NUMBUF 1+ c!  NUMBUF 2 type then ;
 : REG-TYPE  ( n -- )  s" x" type DEC-TYPE ;
-: FINDING  {: fa fu reg cidx :}  ( -- )
+: FINDING ( str n n -- ) {: fa fu reg cidx :}
    s" CLOBBER " type fa fu type s"  " type
    WNAME WLEN @ type s" : " type reg REG-TYPE
    s"  written, clobbered by " type cidx C-NAME type
@@ -1237,7 +1237,7 @@ variable QUIET
 : REPORT  ( str n n -- ) {: fa:^ fu:n reg:n cidx:n :}
    QUIET @ if exit then
    fa fu reg cidx FINDING  BAD @ 1+ BAD ! ;
-: NOTE-READS  {: fa fu rmask :}  ( -- )
+: NOTE-READS ( str n -- ) {: fa fu rmask :}
    0 PR !
    begin PR @ 32 < while
       rmask CONTRACT-MASK invert and PR @ CL-HAS? if
