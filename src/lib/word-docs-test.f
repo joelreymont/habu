@@ -44,7 +44,7 @@ variable FIX-U
 : +SB ( -- )
    SB$ +FIX ;
 
-: DOCS ( ^u8 n -- )
+: DOCS ( str -- )
    WORD-DOCS:RESET WORD-DOCS:FILE ;
 
 : REC= ( n str str str -- ) {: k:n a:^ u:n p:^ pu:n e:^ eu:n :}
@@ -199,7 +199,7 @@ variable FIX-U
    size FIX-U ! ;
 
 \ Record k named a u.
-: FIND ( ^u8 n -- n ) {: a:^ u:n :}
+: FIND ( str -- n ) {: a:^ u:n :}
    WORD-DOCS:COUNT 0 ?do
       i WORD-DOCS:NAME$ a u STR= if i unloop exit then
    loop

@@ -223,7 +223,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : BUILD-PACKET ( ^session -- ) {: session:^ :}
-   session SESSION-SOURCE @ session SESSION-PROGRESS @ + session CHUNK-SIZE BYTES
+   session SESSION-SOURCE @ session SESSION-PROGRESS @ + session CHUNK-SIZE
    session SESSION-NEXT @ >SEQUENCE session SESSION-BLOCK @
    session SESSION-KIND @ session PACKET ENCODE ;
 

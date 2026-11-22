@@ -29,7 +29,7 @@ variable FILE-U
 variable FILE-FD
 variable CLOSED-FD
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ ;
 : FILE$ ( -- str ) FILE FILE-U @ ;
 : FD@ ( -- fd ) FILE-FD @ >FD ;
 : NAME$ ( -- str ) s" user.hb-xattr-test" ;
@@ -56,7 +56,7 @@ variable CLOSED-FD
    {: buf :}
    FD@ NAME$ buf XATTR:GET GOT>N ;
 
-: HOLDS ( ^u8 n -- )
+: HOLDS ( str -- )
    {: want:^ wu:n :}
    BUF GET-N wu T=
    BUF SPAN:$ drop wu want wu T$= ;

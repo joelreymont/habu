@@ -89,10 +89,10 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    sequence $FF xor output VEC:PUSH c! ;
 
 
-: PAYLOAD+ ( ^u8 NUM:byte-len n ^VEC:vector<u8> -- )
-   {: data size:NUM:byte-len block:n output:^ :}
-   data size BLEN>N output VEC:APPEND
-   block size BLEN>N - 0 ?do $1A output VEC:PUSH c! loop ;
+: PAYLOAD+ ( str n ^VEC:vector<u8> -- )
+   {: data size:n block:n output:^ :}
+   data size output VEC:APPEND
+   block size - 0 ?do $1A output VEC:PUSH c! loop ;
 
 
 : TRAILER+ ( n n ^VEC:vector<u8> -- )
@@ -131,9 +131,9 @@ public
 
 \ The borrowed payload must not alias the output vector, which ENCODE empties
 \ first. Input length may be zero.
-: ENCODE ( ^u8 NUM:byte-len sequence payload-size check-kind ^VEC:vector<u8> -- )
-   {: data size:NUM:byte-len sequence:sequence block:payload-size kind:check-kind output:^ :}
-   size BLEN>N sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
+: ENCODE ( str sequence payload-size check-kind ^VEC:vector<u8> -- )
+   {: data size:n sequence:sequence block:payload-size kind:check-kind output:^ :}
+   size sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
    output block kind PACKET-BYTES BLEN>N VEC:RESERVE output 0 VEC:RESIZE
    sequence SEQUENCE>N block PAYLOAD-SIZE>N output HEADER+
    data size block PAYLOAD-SIZE>N output PAYLOAD+

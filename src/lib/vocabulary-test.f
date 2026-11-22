@@ -52,7 +52,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    FILE$ CMD:ARG+ ;
 
 \ An empty case name loads the harness alone.
-: SPAWN ( CMD:command ^u8 n -- CMD:command )
+: SPAWN ( CMD:command str -- CMD:command )
    {: name:^ nu:n :}
    s" --load" CMD:ARG+
    STEM$ FILE-ARG+
@@ -81,14 +81,14 @@ variable CODE                          \ the last child's exit code, -1 when it 
    SB$ {: a:^ u:n :}
    a u want min ;
 
-: LOG ( CMD:command ^u8 n -- CMD:command ) {: name:^ nu:n :}
+: LOG ( CMD:command str -- CMD:command ) {: name:^ nu:n :}
    SB-RESET STEM$ SB-APPEND s"  " SB-APPEND
    nu 0 > if name nu SB-APPEND else s" -" SB-APPEND then
    s"  rc=" SB-APPEND CODE @ FMT:SB-INT s"  " SB-APPEND
    SAID+ LF SB-APPEND-C
    ARTIFACT$ SB$ FS:APPEND-FILE ;
 
-: LABEL ( ^u8 n ^u8 n -- ) {: name:^ nu:n what:^ wu:n :}
+: LABEL ( str str -- ) {: name:^ nu:n what:^ wu:n :}
    SB-RESET STEM$ SB-APPEND s"  " SB-APPEND name nu SB-APPEND
    s" : " SB-APPEND what wu SB-APPEND
    SB$ T-LABEL ;
@@ -105,7 +105,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    name nu s" stdout" LABEL
    CMD:OUT$ out ou T$= ;
 
-: RUNS ( ^u8 n n ^u8 n ^u8 n -- )
+: RUNS ( str n str str -- )
    [: RUNS-IN ;] CMD:WITH-COMMAND ;
 
 \ RUNS, and a span the whole stderr holds: the record's place or its notes.
@@ -115,12 +115,12 @@ variable CODE                          \ the last child's exit code, -1 when it 
    name nu s" stderr span" LABEL
    CMD:ERR$ span su CONTAINS? TTRUE ;
 
-: SAYS ( ^u8 n n ^u8 n ^u8 n ^u8 n -- )
+: SAYS ( str n str str str -- )
    [: SAYS-IN ;] CMD:WITH-COMMAND ;
 
 \ A rejection the engine throws: the record's first line and its place,
 \ status 70, no output.
-: REFUSES ( ^u8 n ^u8 n ^u8 n -- )
+: REFUSES ( str str str -- )
    {: name:^ nu:n line:^ lu:n place:^ pu:n :}
    name nu 70 line lu place pu s" " SAYS ;
 
@@ -130,7 +130,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ A harness the engine stops with an E-POLICY record: its first line, the
 \ notes span, the stdout.
-: STOPS ( ^u8 n ^u8 n ^u8 n -- )
+: STOPS ( str str str -- )
    {: line:^ lu:n notes:^ nu:n out:^ ou:n :}
    s" " 107 line lu notes nu out ou SAYS ;
 
@@ -260,7 +260,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" bypass" s" error[E-POLICY]: `require` is not in the vocabulary this source may use" s" test/policy/bypass.f:2:" REFUSES ;
 
 \ A record that names a path outside the root, whose head is the same for each.
-: ROOT$ ( -- ^u8 n ) s" error[E-POLICY]: `" ;
+: ROOT$ ( -- str ) s" error[E-POLICY]: `" ;
 
 \ Confined static require uses the original source paths through nested loads.
 \ A registry hit or a symlink still has to pass the resolved path boundary.

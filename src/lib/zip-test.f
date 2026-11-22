@@ -33,7 +33,7 @@ TASK:SEMAPHORE ZIP-START
 1000 constant ZIP-TASK-ROUNDS
 
 : BASE$ ( -- str ) BASE BASE-LEN @ ;
-: PATH$ ( ^u8 n -- ^u8 n )
+: PATH$ ( str -- str )
    BASE$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 : INPUT$ ( -- str ) s" input.zip" PATH$ ;
 : OTHER$ ( -- str ) s" other.zip" PATH$ ;
@@ -325,7 +325,7 @@ $10000 constant WIDE-COUNT
 
 : TYPE-REJECTIONS ( -- )
    s" WRONG-HANDLE ( ZIP:entry -- n ) ZIP:COUNT" CHECK! 0 T=
-   s" WRONG-ENTRY ( ZIP:archive ZIP:archive -- ^u8 n ) ZIP:READ" CHECK! 0 T=
+   s" WRONG-ENTRY ( ZIP:archive ZIP:archive -- str ) ZIP:READ" CHECK! 0 T=
    s" WRONG-INPUT ( ZIP:archive SPAN:span<u8> -- n ) ZIP:READ-IN" CHECK! 0 T=
    s" WRONG-SOURCE ( ZIP:entry -- ZIP:input ) ZIP:OPEN-SOURCE" CHECK! 0 T=
    s" FORGED-HANDLE ( n -- ZIP:archive )" CHECK! 0 T= ;
