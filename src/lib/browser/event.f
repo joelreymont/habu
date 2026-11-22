@@ -37,12 +37,12 @@ public
 : EVENT@ ( n -- n )
    8 * EVENT-BUF + >CELLS @ ;
 
-: DELIVERY ( -- ^u8 n )
+: DELIVERY ( -- str )
    0 EVENT@ DELIVERS? if  1 EVENT@ >BYTES 2 EVENT@  else  0 >BYTES 0  then ;
 
 \ HANDLE leaves this turn's delivery to the caller to FREE on every exit of the
 \ turn, a throw after TAKE included; one never freed keeps its pages.
-: TAKE ( -- ^u8 n )
+: TAKE ( -- str )
    true TAKEN !  DELIVERY ;
 
 \ A refused unmap, of bytes no reserve handed out, is E-MEM-UNMAP. FREE writes

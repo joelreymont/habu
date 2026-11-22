@@ -46,7 +46,7 @@ variable MARK-U
    n 0 < if [char] - emit 0 n - U-TYPE exit then
    n U-TYPE ;
 
-: KEY ( ^u8 n -- ) {: a:^ u:n :}
+: KEY ( str -- ) {: a:^ u:n :}
    s" ctx " type a u type s"  " type ;
 
 : LINE$ ( str str -- ) {: ka:^ ku:n va:^ vu:n :}
@@ -126,7 +126,7 @@ public
    FD-LINES
    ENV-LINES ;
 
-: CHILD ( ^u8 n n n ^u8 n ^u8 n -- )
+: CHILD ( str n n str str -- )
    {: la:^ lu:n want:n got:n oa:^ ou:n ea:^ eu:n :}
    s" child-outcome: " type la lu type cr
    s" child rc: want " type want N-TYPE s"  got " type got N-TYPE cr

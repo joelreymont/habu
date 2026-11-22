@@ -57,7 +57,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    EVENT-OPEN S\" ,\qresponse\q:" JSON:WRITE-RAW ;
 
 
-: PENDING ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: PENDING ( ^JSON:writer str -- ^JSON:writer )
    {: status:^ status-u:n :}
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
    s" status" status status-u JSON:WRITE-FIELD-S
@@ -134,7 +134,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    answer ROW$ HTTP:BODY! ;
 
 
-: STREAMED ( HTTP:response ^u8 n [ ^JSON:writer ^u8 n -- ^JSON:writer ] ^u8 n -- )
+: STREAMED ( HTTP:response str [ ^JSON:writer str -- ^JSON:writer ] str -- )
    {: answer:HTTP:response text:^ text-u:n body type:^ type-u:n :}
    OPENED
    type type-u 2 RESPONSE-OPEN text text-u body execute EVENT-CLOSE
@@ -165,7 +165,7 @@ public
 
 
 \ A stream ending in a completed reply whose output is exactly the JSON array.
-: OUTPUT! ( HTTP:response ^u8 n -- )
+: OUTPUT! ( HTTP:response str -- )
    [: OUTPUT-REPLY ;] s" response.completed" STREAMED ;
 
 

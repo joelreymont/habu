@@ -38,7 +38,7 @@ variable SAVED              \ the process's own stderr while a capture is open, 
 
 public
 
-: CAPTURE ( ^u8 n -- )
+: CAPTURE ( str -- )
    {: path:^ u:n :}
    SAVED @ 0<> if E-STATE throw then
    path u s" " FS:WRITE-ALL

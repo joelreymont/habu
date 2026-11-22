@@ -103,7 +103,7 @@ $BF constant BOM-THIRD
    state EVENT 0 VEC:RESIZE
    false state DATA! ;
 
-: DISPATCH ( ^state a [ a ^u8 n ^u8 n -- ] -- )
+: DISPATCH ( ^state a [ a str str -- ] -- )
    {: state:^ ctx:a cb :}
    state DATA? 0= if state RESET-EVENT exit then
    FAILED state ST!
@@ -156,7 +156,7 @@ $BF constant BOM-THIRD
    then
    state LINE 0 VEC:RESIZE ;
 
-: BYTE ( ^state n a [ a ^u8 n ^u8 n -- ] -- )
+: BYTE ( ^state n a [ a str str -- ] -- )
    {: state:^ byte:n ctx:a cb :}
    state CR@ if
       false state CR!
@@ -204,7 +204,7 @@ $BF constant BOM-THIRD
 \ does for each of them once the BOM is settled: a pending CR is answered by
 \ the first non-LF byte. Terminators and BOM bytes go through BOM-BYTE. The
 \ answer is the number of bytes consumed.
-: STEP ( ^state ^u8 n a [ a ^u8 n ^u8 n -- ] -- n )
+: STEP ( ^state str a [ a str str -- ] -- n )
    {: state:^ src:^ u:n ctx:a cb :}
    state BOM@ BOM-DONE = if
       src u TERM-AT {: run:n :}
@@ -232,7 +232,7 @@ public
    LIVE state ST!
    state DECODER-MAKE ;
 
-: FEED ( decoder ^u8 n a [ a ^u8 n ^u8 n -- ] -- )
+: FEED ( decoder str a [ a str str -- ] -- )
    {: d:decoder src:^ u:n ctx:a cb :}
    d DECODER-UNMAKE {: state:^ :}
    state CHECK-LIVE

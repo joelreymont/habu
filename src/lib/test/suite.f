@@ -55,8 +55,8 @@ defer SETUP ( -- )
 defer TEARDOWN ( n -- )
 defer DRAIN ( -- )
 defer ARGS-BEGIN ( -- )
-defer ARG+ ( ^u8 n -- )
-defer RUNNER ( ^u8 n -- )
+defer ARG+ ( str -- )
+defer RUNNER ( str -- )
 defer STDIN-RUNNER ( str str -- )
 
 : TRUE ( -- bool )
@@ -187,7 +187,7 @@ defer STDIN-RUNNER ( str str -- )
    2dup s" TEST:;SUITE" STR= if 2drop TRUE exit then
    s" ;SUITE" STR= ;
 
-: UNQUALIFIED ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: UNQUALIFIED ( str -- str ) {: a:^ u:n :}
    u 5 > if a 5 s" TEST:" STR=CI if a 5 + u 5 - exit then then
    a u ;
 
@@ -393,7 +393,7 @@ EXPORT ITEM-NAME$
 
 \ Mark every item with this name; answer whether one has it. Once any is marked,
 \ RUN and VISIT-LOAD-FILES skip the unmarked ones.
-: ONLY ( ^u8 n -- bool )
+: ONLY ( str -- bool )
    {: a:^ u:n :}
    TRUE 0=
    ITEM-N @ 0 ?do

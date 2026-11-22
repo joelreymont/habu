@@ -325,7 +325,7 @@ private
    idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY! ;
 
 
-: BUF$ ( ^n -- ^u8 n )  BUF:SPAN$ BUF:BLEN>N ;
+: BUF$ ( ^n -- str )  BUF:SPAN$ BUF:BLEN>N ;
 
 
 : NEXT-SEQ ( n -- n ) {: idx:n :}

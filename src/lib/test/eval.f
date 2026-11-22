@@ -35,7 +35,7 @@ public
 
 \ SRC$, N! and FLAG! are the hooks of the closed texts below, which run in the
 \ caller's scope and so reach them only qualified. Callers use N, FLAG, RC.
-: SRC$ ( -- ^u8 n )
+: SRC$ ( -- str )
    SRC-A @ SRC-U @ ;
 
 : N! ( n -- )
@@ -50,19 +50,19 @@ public
 \ is N!'s underdepth; two or more is the closed residue, a record: both are 70.
 \ SRC$ reads the text before it runs and N! stores after it, so N nests inside
 \ its own text.
-: N ( ^u8 n -- n )
+: N ( str -- n )
    SRC!
    s" TEST-EVAL:SRC$ evaluate TEST-EVAL:N!" evaluate-closed
    N-CELL @ ;
 
 \ FLAG's text leaves the flag itself, which FLAG! takes as N! takes N's cell.
-: FLAG ( ^u8 n -- bool )
+: FLAG ( str -- bool )
    SRC!
    s" TEST-EVAL:SRC$ evaluate TEST-EVAL:FLAG!" evaluate-closed
    FLAG-CELL @ ;
 
 \ The text's throw code, 0 when it loaded as a closed program.
-: RC ( ^u8 n -- n )
+: RC ( str -- n )
    SRC!
    [: SRC$ evaluate-closed ;] catch ;
 

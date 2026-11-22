@@ -125,14 +125,14 @@ public
 
 \ A socket bound at the name; the caller closes it exactly once. A path
 \ another socket file holds answers `failed` EADDRINUSE.
-: BIND ( ^u8 n -- open-result )
+: BIND ( str -- open-result )
    ADDRESS! {: length:n :}
    AF-UNIX SOCKADDR length DATAGRAM:BIND >OPEN-RESULT ;
 
 
 \ Sends the payload to the name. On Linux it waits while the receiver's
 \ queue is full; macOS answers `failed` ENOBUFS.
-: SEND ( socket ^u8 n ^u8 NUM:byte-len -- status )
+: SEND ( socket str ^u8 NUM:byte-len -- status )
    {: socket:socket name size:n bytes length:NUM:byte-len :}
    name size ADDRESS! {: addrlen:n :}
    socket SOCKET>N SOCKADDR addrlen bytes length DATAGRAM:SEND >STATUS ;

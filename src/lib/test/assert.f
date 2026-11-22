@@ -43,7 +43,7 @@ variable T-LABEL-U
 : T-LABEL$ ( -- str )
    T-LABEL-BUF T-LABEL-U @ ;
 
-: T-LABEL ( ^u8 n -- ) {: a:^ u:n :}
+: T-LABEL ( str -- ) {: a:^ u:n :}
    u T-LABEL-CAP > if s" test: label too long" EXIT-STATUS:FAILURE die then
    0 begin dup u < while
       dup a + c@  over T-LABEL-BUF + c!
@@ -106,7 +106,7 @@ variable T-LABEL-U
       1+
    repeat drop 0 0= ;
 
-: T$= ( ^u8 n ^u8 n -- )
+: T$= ( str str -- )
    {: a:^ u:n b:^ v:n :}
    T-NEXT
    a u b v T-STR= 0= if
@@ -176,7 +176,7 @@ variable T-LABEL-U
 \ A record's place in the file whose name ends f, asserted without pinning a
 \ line: its ` --> ` line names `f:N:col`, and its gutter line `N | ` shows a
 \ source line that contains c. Two assertions, as T= and TTRUE count them.
-: T-PLACED ( ^u8 n ^u8 n n ^u8 n -- )
+: T-PLACED ( str str n str -- )
    {: r:^ ru:n f:^ fu:n col:n c:^ cu:n :}
    r ru f fu T-PLACE-LINE {: ls:n :}
    ls 0< if -1 col T=  STR-FALSE TTRUE exit then

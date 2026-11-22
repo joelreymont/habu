@@ -374,7 +374,7 @@ RUN-IDLE RUN !
    live idx OUT-U ! ;
 
 
-: QUEUE ( n ^u8 n -- ) {: idx:n a u:n :}
+: QUEUE ( n str -- ) {: idx:n a u:n :}
    idx QUEUED 0= if mono-ns idx SINCE ! then
    idx u ROOM
    a u idx OUT @ idx OUT-U @ SPAN:SKIP SPAN:COPY
@@ -438,7 +438,7 @@ RUN-IDLE RUN !
    1 ;
 
 
-: SEND ( n n ^u8 n -- ) {: h:n wire:n a u:n :}
+: SEND ( n n str -- ) {: h:n wire:n a u:n :}
    u 0 < if E-WS-LENGTH throw then
    LOCK TASK:GET
    h wire a u [: SHIP ;] [: UNLOCK ;] finally {: got:n :}
@@ -1677,7 +1677,7 @@ public
 \ E-WS-CLOSED; a frame is never refused for its own size. A send on a socket
 \ closing, closed or gone is E-WS-CLOSED, and text that is not UTF-8 is
 \ E-WS-TEXT before anything is queued (section 5.6).
-: SEND-TEXT ( socket ^u8 n -- ) {: sock a u:n :}
+: SEND-TEXT ( socket str -- ) {: sock a u:n :}
    a u UTF8:VALID? 0= if E-WS-TEXT throw then
    sock SOCKET>N WS-OPCODE:TEXT OPCODE>WIRE a u SEND ;
 

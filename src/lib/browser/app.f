@@ -38,14 +38,14 @@ private
 
 \ The path of the named file beside this one; it holds only while this file
 \ loads.
-: PATH ( ^u8 n -- ^u8 n )
+: PATH ( str -- str )
    {: a:^ u:n :}
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
    a u SOURCE-ROOT:JOIN ;
 
 
 \ A file that changed size since it was measured is E-FS-IO, or E-FS-CAPACITY.
-: READ ( ^u8 n ^u8 n -- )
+: READ ( str ^u8 n -- )
    {: a:^ u:n dst:^ cap:n :}
    a u PATH {: path:^ pathu:n :}
    path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
@@ -95,7 +95,7 @@ DIGEST ID SHA256>HEX
 
 \ The offset of the marker in app.html at or after the offset; each marker
 \ follows the one before it.
-: MARK ( ^u8 n n -- n )
+: MARK ( str n -- n )
    {: m:^ mu:n from:n :}
    HTML HTML-U m mu from FIND-SUB-FROM MATCH option
       none OF
@@ -179,7 +179,7 @@ public
 
 \ The page id, PAGE+'s page's: the SHA-256 of app.html's bytes, then app.js's,
 \ as 64 lowercase hex digits.
-: PAGE-ID$ ( -- ^u8 n )  ID ID-U ;
+: PAGE-ID$ ( -- str )  ID ID-U ;
 
 \ A file's name, its bytes and the vector a member of a CODE-TOOL$ result's
 \ files is appended to: "<name>":"<the bytes as base64>". The name is

@@ -1419,7 +1419,7 @@ public
 \ The connection and the peer's bytes past what the worker read (valid until the
 \ handler ends); the taker closes it, or REPLY does. E-STATE outside a handler
 \ or a second time.
-: TAKE-OVER ( request -- TCP4:connection ^u8 n ) {: subject:request :}
+: TAKE-OVER ( request -- TCP4:connection str ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx HOLDING
    TAKEN idx HOLDER !
@@ -1436,7 +1436,7 @@ public
 \ (the peer has reset the connection). The head is built in the calling task's
 \ string builder, so a content type past its room is E-STR-CAPACITY. REPLY
 \ closes the connection on every way out, a throw or a TASK:HALT included.
-: REPLY ( TCP4:connection n ^u8 n ^u8 n -- bool )
+: REPLY ( TCP4:connection n str str -- bool )
    {: conn:TCP4:connection status:n type:^ type-n:n body:^ body-n:n :}
    conn TCP4:CONNECTION>N REPLYING !
    status type type-n body body-n [: SEND-REPLY ;] [: CLOSE-REPLYING ;] finally ;

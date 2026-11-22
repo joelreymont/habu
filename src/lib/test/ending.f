@@ -29,7 +29,7 @@ require src/lib/test/subject.f
    code want T=
    code want <> if src srcu out outu err erru SUBJECT:SHOW then ;
 
-: T-ENDING-EXITED= ( ^u8 n ^u8 n ^u8 n PROCESS:ending n -- )
+: T-ENDING-EXITED= ( str str str PROCESS:ending n -- )
    {: src:^ srcu:n out:^ outu:n err:^ erru:n oc want:n :}
    oc MATCH PROCESS:ending
      exited OF want src srcu out outu err erru T-CODE-MISS ENDOF

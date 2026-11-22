@@ -52,7 +52,7 @@ variable ROUTE-COUNT
    len ;
 
 
-: NAMED? ( ^u8 n -- bool ) {: bytes:^ len:n :}
+: NAMED? ( str -- bool ) {: bytes:^ len:n :}
    len 2 < if false exit then
    bytes c@ LBRACE <> if false exit then
    bytes len + 1- c@ RBRACE = ;
@@ -227,7 +227,7 @@ public
 
 \ One route. The method, the pattern and the handler are the caller's and must
 \ outlive the server, which a literal and a definition both do.
-: ROUTE ( ^u8 n ^u8 n [ request response -- ] -- )
+: ROUTE ( str str [ request response -- ] -- )
    {: method:^ methodlen:n pattern:^ patternlen:n handler :}
    method methodlen pattern patternlen -1 handler ADD-ROUTE ;
 

@@ -361,7 +361,7 @@ private
 
 \ The quotation lives in a row declared to hold one, the checker's proven
 \ quotation store (src/lib/task.f): an xt in a plain cell would lose the effect.
-1 TYPED-BUFFER ERROR-HOOK [ response n ^u8 n ^u8 n -- ]
+1 TYPED-BUFFER ERROR-HOOK [ response n str str -- ]
 
 
 : PLAIN-ERRORS ( -- )

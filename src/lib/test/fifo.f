@@ -59,7 +59,7 @@ public
 \ used, so a writer a failed case left cannot open a later case's. Its path goes
 \ to dst (PATH-CAP bytes); the read end is nonblocking and close-on-exec. A
 \ refused mkfifo or open throws E-FS-OPEN.
-: MAKE ( ^u8 n ^u8 -- n fd ) {: dir:^ diru:n dst:^ :}
+: MAKE ( str ^u8 -- n fd ) {: dir:^ diru:n dst:^ :}
    MADE @ 1+ MADE !
    SB-RESET s" fifo-" SB-APPEND MADE @ FMT:SB-INT
    dir diru SB$ dst FS:JOIN-PATH {: u:n :}
@@ -69,7 +69,7 @@ public
 \ The write end of the FIFO the environment variable name gives the path of,
 \ blocking and inheritable. A variable unset or empty, a path that is no FIFO,
 \ and a FIFO no reader has open throw E-FS-OPEN.
-: WRITER ( ^u8 n -- fd ) {: name:^ nameu:n :}
+: WRITER ( str -- fd ) {: name:^ nameu:n :}
    name nameu GETENV {: a:^ u:n :}
    u 0= if E-FS-OPEN throw then
    a u FD:TRY-FIFO-WRITER MATCH option

@@ -26,7 +26,7 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
 public
 
-: ZEROED ( ^u8 n -- )
+: ZEROED ( str -- )
    {: p:^ len:n :}
    0 len 0 ?do p i + c@ or loop 0 T= ;
 
