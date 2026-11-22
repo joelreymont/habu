@@ -166,7 +166,7 @@ ARENA PARSERS parser
 : RAW? ( n -- bool ) {: b:n :} b $20 < b $7F >= or ;
 
 \ The bytes of the token a found text keeps.
-: KEPT ( ^u8 n -- ^u8 n ) over swap REASON:QUOTE-MOST UTF8:FIT ;
+: KEPT ( str -- str ) over swap REASON:QUOTE-MOST UTF8:FIT ;
 
 : PUT-FOUND ( ^parser n n -- ) {: p:^ at:n u:n :}
    u 0= if s" the end of the pattern" REASON:APPEND exit then
@@ -177,7 +177,7 @@ ARENA PARSERS parser
 
 \ Throws E-PATTERN with the text `C: expected e, found Y; f`, Y the u bytes at
 \ offset at, the pattern's end when u is 0.
-: REJECT ( ^parser n n ^u8 n ^u8 n -- )
+: REJECT ( ^parser n n str str -- )
    {: p:^ at:n u:n e:^ eu:n f:^ fu:n :}
    REASON:OPEN
    at 1+ FMT:INT$ REASON:APPEND  s" : " REASON:APPEND
@@ -187,11 +187,11 @@ ARENA PARSERS parser
    E-PATTERN REASON:STOP ;
 
 \ Rejects the character at the offset read next.
-: REJECT-HERE ( ^parser ^u8 n ^u8 n -- )
+: REJECT-HERE ( ^parser str str -- )
    {: p:^ e:^ eu:n f:^ fu:n :}
    p p POS  p p POS WIDTH  e eu f fu REJECT ;
 
-: REJECT-END ( ^parser ^u8 n ^u8 n -- )
+: REJECT-END ( ^parser str str -- )
    {: p:^ e:^ eu:n f:^ fu:n :}
    p p PARSER-LEN @ 0 e eu f fu REJECT ;
 
@@ -963,7 +963,7 @@ ARENA GENS gen
    g tree PEND-NODE  g SPILL
    begin g GEN-TOP @ NULL-PTR <> while g g TAKE RUN-WORK repeat ;
 
-: BUILD ( ^u8 n ^ARENA:arena ^ARENA:arena -- regex )
+: BUILD ( str ^ARENA:arena ^ARENA:arena -- regex )
    {: src:^ u:n a:^ s:^ :}
    s PARSERS-NEW {: p:^ :}
    src p PARSER-SRC !  u p PARSER-LEN !  s p PARSER-SCRATCH !
@@ -1103,7 +1103,7 @@ CAST: >VM ( ^u8 -- ^vm )
    begin v VISIT swap 0= while drop repeat ;
 
 \ The scratch: the vm record, then four rows of a cell per instruction.
-: SCAN ( ^u8 n regex ^u8 NUM:alloc-byte-len -- bool )
+: SCAN ( str regex ^u8 NUM:alloc-byte-len -- bool )
    drop {: t:^ u:n re base:^ :}
    re REGEX-UNMAKE {: code:^ size:n :}
    base >VM {: v:^ :}
@@ -1119,12 +1119,12 @@ public
 
 \ The pattern's program, in arena a; a pattern outside the dialect throws
 \ E-PATTERN with its text.
-: COMPILE ( ^u8 n ^ARENA:arena -- regex )
+: COMPILE ( str ^ARENA:arena -- regex )
    {: src:^ u:n a:^ :}
    src u a [: BUILD ;] ARENA:WITH ;
 
 \ Whether the program matches anywhere in the text.
-: MATCH? ( ^u8 n regex -- bool ) {: t:^ u:n re :}
+: MATCH? ( str regex -- bool ) {: t:^ u:n re :}
    re REGEX-UNMAKE nip {: size:n :}
    t u re  VM-BYTES size 4 * cells + MEM:BYTES-ALLOC-LEN
    [: SCAN ;] MEM:WITH-BYTES ;

@@ -1546,8 +1546,8 @@ PERSISTED-PTR-VARIABLE SLOT-LAST
 : SLOT-AT ( n ^n -- ^n ) {: i:n body:^ :}
    body SLOT  i body SLOT-STRIDE + @ * + ;
 
-CAST: AS-STORAGE-LINE ( n -- [ ^u8 n -- ^u8 n ^u8 n n ] )
-CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-STORAGE-LINE ( n -- [ str -- str str n ] )
+CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 \ A slot child is made over SLOT's or SLOT-AT's entry.
 CAST: AS-SLOT-ENTRY ( [ ^n -- ^n ] -- n )
 CAST: AS-SLOTS-ENTRY ( [ n ^n -- ^n ] -- n )

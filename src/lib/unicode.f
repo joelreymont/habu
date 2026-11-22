@@ -51,9 +51,9 @@ TASK:+USER RESULT n
 \ allocation, which only the matched private free binding may consume. No
 \ callable raw binding or configurable foreign symbol escapes this package.
 VERSIONED-LIBRARY unistring 5
-FUNCTION: COMPARE-CALL u8_casecmp ( ^u8 n ^u8 n n n ^u8 -- i32 ) ;FUNCTION
-FUNCTION: FOLD-CALL u8_casefold ( ^u8 n n n n ^u8 -- ^u8 ) ;FUNCTION
-FUNCTION: LOWER-CALL u8_tolower ( ^u8 n n n n ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: COMPARE-CALL u8_casecmp ( str str n n ^u8 -- i32 ) ;FUNCTION
+FUNCTION: FOLD-CALL u8_casefold ( str n n n ^u8 -- ^u8 ) ;FUNCTION
+FUNCTION: LOWER-CALL u8_tolower ( str n n n ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: CASED-CALL uc_is_property_cased ( u32 -- u8 ) ;FUNCTION
 FUNCTION: IGNORABLE-CALL uc_is_property_case_ignorable ( u32 -- u8 )
 ;FUNCTION
@@ -159,7 +159,7 @@ $82 constant FINAL-TAIL
 
 public
 
-: CASEFOLD= ( ^u8 n ^u8 n -- bool )
+: CASEFOLD= ( str str -- bool )
    {: left:^ left-size:n right:^ right-size:n :}
    left left-size VALID-UTF8 right right-size VALID-UTF8
    0 RESULT !
@@ -170,13 +170,13 @@ public
 : FOLDED-BYTES ( str -- n )
    [: FOLD-CALL ;] MAPPED-BYTES ;
 
-: FOLD ( ^u8 n ^u8 n -- n )
+: FOLD ( str ^u8 n -- n )
    [: FOLD-CALL ;] MAP-INTO ;
 
 : LOWERED-BYTES ( str -- n )
    [: SIGMA-LOWER ;] MAPPED-BYTES ;
 
-: LOWER ( ^u8 n ^u8 n -- n )
+: LOWER ( str ^u8 n -- n )
    [: SIGMA-LOWER ;] MAP-INTO ;
 
 \ The second span is checked before the first is lowered, so nothing after

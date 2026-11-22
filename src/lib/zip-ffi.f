@@ -21,7 +21,7 @@ FUNCTION: C-DISCARD zip_discard ( ^u8 -- ) ;FUNCTION
 PROCESS-SYMBOLS
 FUNCTION: C-CLOSE-FD close ( n -- i32 ) ;FUNCTION
 FUNCTION: C-PREAD pread ( n ^u8 n n -- n ) ;FUNCTION
-FUNCTION: C-PWRITE pwrite ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: C-PWRITE pwrite ( n str n -- n ) ;FUNCTION
 
 : DETACH-OWNED ( ^n -- ^n ) {: owner:^ :}
    STATE-GET
@@ -80,6 +80,6 @@ FUNCTION: C-PWRITE pwrite ( n ^u8 n n -- n ) ;FUNCTION
 : C-STAT ( ^u8 n ^entry-stat -- n ) {: archive:^ idx:n stat:^ :}
    archive idx 0 stat BYTE-VIEW STAT-CALL ;
 
-: C-FOPEN ( str -- ^u8 ) 0 FOPEN-CALL ;
+: C-FOPEN ( ^u8 n -- ^u8 ) 0 FOPEN-CALL ;
 
 ;package

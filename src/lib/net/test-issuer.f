@@ -48,7 +48,7 @@ variable MODULUS-U
 JWS-FIXTURE:EXPONENT$ nip BUFFER: EXPONENT-ROW
 variable EXPONENT-U
 
-: RAW ( ^u8 n ^u8 n -- n )
+: RAW ( str ^u8 n -- n )
    {: text:^ tu:n row:^ ru:n :}
    text tu row ru SPAN:MAKE BASE64:DECODE-URL ;
 
@@ -67,7 +67,7 @@ DYNAMIC-BUFFER CLIENT-AT n
 DYNAMIC-BUFFER ID-LEN n
 DYNAMIC-BUFFER SECRET-LEN n
 
-: ID$ ( n -- ^u8 n )
+: ID$ ( n -- str )
    {: k:n :}
    CLIENTS @ VEC$ drop k CLIENT-AT @ + k ID-LEN @ ;
 
@@ -126,7 +126,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 
 \ The first index of the byte at or after from, else the text's length.
-: FIND ( ^u8 n n n -- n )
+: FIND ( str n n -- n )
    {: t:^ u:n from:n byte:n :}
    u from ?do t i + c@ byte = if i unloop exit then loop u ;
 
@@ -141,13 +141,13 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
    s" refresh_token" ;
 
 \ The field a decoded name is, else -1.
-: WHICH ( ^u8 n -- n )
+: WHICH ( str -- n )
    {: a:^ u:n :}
    FIELDS 0 ?do a u i NAME$ STR= if i unloop exit then loop -1 ;
 
 \ One name=value pair, a wanted name's value decoded into FORM; false when the
 \ form already holds that name (RFC 6749 3.1).
-: PAIR ( ^u8 n -- bool )
+: PAIR ( str -- bool )
    {: p:^ pu:n :}
    p pu 0 [char] = FIND {: eq:n :}
    NOTE VEC-OF 0 VEC:RESIZE
@@ -221,7 +221,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 \ The reader on an object text's member, false when the text is not an object
 \ or lacks the key; the caller closes the reader either way.
-: MEMBER ( ^u8 n ^u8 n -- JSON:reader bool )
+: MEMBER ( str str -- JSON:reader bool )
    {: t:^ tu:n k:^ ku:n :}
    CURSOR t tu JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if false exit then
@@ -294,7 +294,7 @@ private
 \ The assertion's or refresh token's claims and signature decoded into
 \ SCRATCH, the claims kept in ASSERTED: the signed text's length and the
 \ signature, true for three segments and a modulus-wide signature.
-: SPLIT ( ^u8 n -- n SPAN:span<u8> bool )
+: SPLIT ( str -- n SPAN:span<u8> bool )
    {: t:^ u:n :}
    SCRATCH VEC-OF {: v:^ :}
    v 0 VEC:RESIZE  v u VEC:ENSURE
@@ -346,7 +346,7 @@ private
    CLAIMS-CLOSE ;
 
 \ The assertion's or refresh token's claim copied as sent, when it has one.
-: COPIED ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: COPIED ( ^JSON:writer str -- ^JSON:writer )
    {: k:^ ku:n :}
    ASSERTED$ k ku MEMBER-RAW 0= if 2drop exit then {: v:^ vu:n :}
    JSON:WRITE-COMMA k ku v vu JSON:WRITE-FIELD-RAW ;
@@ -391,7 +391,7 @@ private
    JSON:WRITE-OBJECT-START s" error" SLOT WHY @ SPAN:$ JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END ;
 
 \ The error code is a literal.
-: REFUSE ( HTTP:response n ^u8 n -- )
+: REFUSE ( HTTP:response n str -- )
    {: answer:HTTP:response status:n why:^ wu:n :}
    why wu SPAN:MAKE SLOT WHY !
    answer status HTTP:STATUS!
@@ -466,7 +466,7 @@ public
 \ A client id and secret /token accepts, copied; an empty secret states a
 \ public client, which presents none and may only refresh. E-HTTP-STATE while
 \ HTTP serves.
-: CLIENT+ ( ^u8 n ^u8 n -- )
+: CLIENT+ ( str str -- )
    {: id:^ iu:n secret:^ su:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    CLIENT-COUNT @ {: k:n :}
