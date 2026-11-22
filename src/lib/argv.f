@@ -43,7 +43,7 @@ variable ARGV-QUIET
    dup 0 < if EXIT-STATUS:INTERNAL throw then
    >LEN SPAN-MAKE ;
 
-: SPAN$ ( span -- ^u8 n )
+: SPAN$ ( span -- str )
    SPAN-UNMAKE LEN>N ;
 
 : EXPLICIT? ( configured-value -- bool )
@@ -85,7 +85,7 @@ private
 
 public
 
-: FAIL ( ^u8 n -- ) {: a:^ u:n :}
+: FAIL ( str -- ) {: a:^ u:n :}
    u 0 < if EXIT-STATUS:INTERNAL throw then
    a u ARGV-ERR
    ARGV-FAIL-DONE ;
@@ -161,7 +161,7 @@ public
    idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" FAIL then
    idx ARGV-POS @ SPAN$ ;
 
-: LABEL! ( ^u8 n -- )
+: LABEL! ( str -- )
    >SPAN construct configured-value explicit ARGV-LABEL ! ;
 
 : LABEL? ( -- bool )
@@ -176,7 +176,7 @@ public
 : OUT? ( -- bool )
    ARGV-OUT @ EXPLICIT? ;
 
-: OUT$ ( -- ^u8 n )
+: OUT$ ( -- str )
    ARGV-OUT @ VALUE$ ;
 
 : JSON? ( -- bool )  ARGV-JSON @ ;

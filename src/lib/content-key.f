@@ -58,7 +58,7 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
 
 \ A fragment is its tag, its length in two little-endian bytes and its bytes:
 \ FILE+ folds the file's name, and a path of PATH-CAP bytes has to fold whole.
-: FRAG+ ( str str -- ) {: st:^ tag:n a:^ u:n :}
+: FRAG+ ( ^u8 n str -- ) {: st:^ tag:n a:^ u:n :}
    u 0 < if E-STR-BOUNDS throw then
    u CK-FRAG-MAX > if E-STR-BOUNDS throw then
    st tag U8+
@@ -98,7 +98,7 @@ public
 : WITH-FOLD ( R [ R CONTENT-KEY:fold -- S ] -- S )
    SCOPE-LEN MEM:BYTES-ALLOC-LEN [: FOLD-RUN ;] MEM:WITH-BYTES ;
 
-: TEXT+ ( CONTENT-KEY:fold ^u8 n -- CONTENT-KEY:fold ) {: a:^ u:n :}
+: TEXT+ ( CONTENT-KEY:fold str -- CONTENT-KEY:fold ) {: a:^ u:n :}
    STATE CK-TEXT-TAG a u FRAG+ ;
 
 : DIGEST+ ( CONTENT-KEY:fold ^u8 -- CONTENT-KEY:fold ) {: dg:^ :}
@@ -114,7 +114,7 @@ public
    st st FILE-DG-OFF + DIGEST-FRAG+ ;
 
 \ Digests the file's current bytes on every call.
-: FILE+ ( CONTENT-KEY:fold ^u8 n -- CONTENT-KEY:fold ) {: a:^ u:n :}
+: FILE+ ( CONTENT-KEY:fold str -- CONTENT-KEY:fold ) {: a:^ u:n :}
    a u a u FILE-NAMED+ ;
 
 : FINAL ( CONTENT-KEY:fold ^u8 -- ) {: dst:^ :}

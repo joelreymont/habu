@@ -322,7 +322,7 @@ public
 
 : .U ( n -- )     U>NUM   NUM$ type ;          \ unsigned, no trailing space, SB untouched
 : .INT ( n -- )   INT>NUM NUM$ type ;          \ signed, no trailing space, SB untouched
-: INT$ ( n -- ^u8 n )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
+: INT$ ( n -- str )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
 \ Value then width; SB untouched, valid until FMT's next render.
 : OCT-WIDTH$ ( n n -- str )   OCT-WIDTH>NUM NUM$ ;
 \ Value then width: exactly width upper-case digits; SB untouched, valid until

@@ -504,7 +504,7 @@ create STATUS STATUS-CAP allot
 variable KINFO-U                    \ sysctl's size_t in and out
 variable STATUS-U
 
-FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 str -- i32 ) ;FUNCTION
 
 : CAUGHT-BIT? ( n n -- bool ) {: set:n sig:n :}
    set 1 sig 1- lshift and 0<> ;

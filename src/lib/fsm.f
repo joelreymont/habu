@@ -49,7 +49,7 @@ PTR-VARIABLE CTX-A    variable CTX-U
 PTR-VARIABLE STATES-A variable STATES-U
 PTR-VARIABLE INPUTS-A variable INPUTS-U
 
-: AT ( ^u8 n -- ^u8 n ) 2dup SRCLOC:TOKEN! ;
+: AT ( str -- str ) 2dup SRCLOC:TOKEN! ;
 
 : NAME$ ( -- str ) NAME-A @ NAME-U @ AT ;
 : CTX$ ( -- str ) CTX-A @ CTX-U @ AT ;
@@ -139,7 +139,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
 \ The next token, made the token read last; the table cut short before
 \ `;DEFINE` fails.
-: TOKEN ( -- ^u8 n )
+: TOKEN ( -- str )
    RAW-I @ {: k:n :}
    k RAWS @ < 0= if E-SYNTAX throw then
    k 1+ RAW-I !
@@ -158,7 +158,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    a u s" (" STR= or ;
 
 \ A token a row needs: a keyword in its place cuts the row short.
-: OPERAND ( -- ^u8 n )
+: OPERAND ( -- str )
    TOKEN {: a:^ u:n :}
    a u KEYWORD? a u COMMENT? or if E-SYNTAX throw then
    a u ;
@@ -177,7 +177,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    TOKEN STATES-U ! STATES-A !
    TOKEN INPUTS-U ! INPUTS-A ! ;
 
-: LINE ( ^u8 n -- ) TOK+ OPERAND TOK+ OPERAND TOK+ LINES+ ;
+: LINE ( str -- ) TOK+ OPERAND TOK+ OPERAND TOK+ LINES+ ;
 
 
 : ROW-INPUTS ( -- str )
@@ -207,7 +207,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 \ One token after the header, in one of two states, an IN row open or not:
 \ IN and FINAL close it, and any other token but `\` or `(` is a line of the
 \ open row.
-: STEP ( bool ^u8 n -- bool ) {: open:bool a:^ u:n :}
+: STEP ( bool str -- bool ) {: open:bool a:^ u:n :}
    a u s" IN" STR= if IN-ROW true exit then
    a u s" FINAL" STR= if FINAL-ROW false exit then
    open a u COMMENT? 0= and if a u LINE true exit then
@@ -352,7 +352,7 @@ public
 
 \ Reads the table in the text through `;DEFINE` as DEFINE does, then runs Q on
 \ each line; its tokens point into the text, and Q reads no table itself.
-: LINES ( ^u8 n [ ^u8 n ^u8 n ^u8 n -- ] -- ) {: a:^ u:n q :}
+: LINES ( str [ str str str -- ] -- ) {: a:^ u:n q :}
    SRCLOC:TOKEN$ {: s:^ su:n :}
    [: [: a u TEXT-TOKENS READ-TABLE ;] [: s su SRCLOC:TOKEN! ;] finally
       ROWS @ 0 ?do i q ROW-RUN loop ;]

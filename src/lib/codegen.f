@@ -53,7 +53,7 @@ public
    c  d CB-DATA d CB-LEN@ +  c!
    d CB-LEN@ 1 + d CB-LEN! ;
 
-: APPEND-STRING ( ^u8 n ^n -- ) {: a:^ u:n d:^ :}
+: APPEND-STRING ( str ^n -- ) {: a:^ u:n d:^ :}
    0 begin dup u < while  dup a + c@ d APPEND-BYTE  1 +  repeat drop ;
 
 private
@@ -70,6 +70,6 @@ public
    v 0 < if [char] - d APPEND-BYTE then
    v 0 > if v negate else v then d CB-DIGITS ;
 
-: CONTENTS ( ^n -- ^u8 n ) {: d:^ :}  d CB-DATA d CB-LEN@ ;
+: CONTENTS ( ^n -- str ) {: d:^ :}  d CB-DATA d CB-LEN@ ;
 
 ;package

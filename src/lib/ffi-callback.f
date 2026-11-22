@@ -423,7 +423,7 @@ variable OPEN
 
 \ A rejection between the two keywords abandons the declaration, so nothing
 \ is left open for the next one.
-: REJECT ( ^u8 n ^u8 n -- )
+: REJECT ( str str -- )
    OPEN @ 0 <> if SOURCE-ROOT:CLOSED then
    0 OPEN !  FFI:SYNTAX-REJECT ;
 

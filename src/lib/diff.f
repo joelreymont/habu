@@ -541,7 +541,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    w lines CLASSIFY ;
 
 
-: OUT$ ( ^work ^u8 n -- )
+: OUT$ ( ^work str -- )
    {: w a u :}
    a u w WORK-OUT @ VEC:APPEND ;
 
@@ -860,7 +860,7 @@ STRUCTURE block
 
 
 \ A marker line and lines lo..hi-1, the last ended if it has no line end.
-: SECTION ( ^work ^u8 n n n bool -- )
+: SECTION ( ^work str n n bool -- )
    {: w a u lo hi crlf :}
    w a u OUT$ w crlf OUT-EOL
    w lo hi COPY-LINES

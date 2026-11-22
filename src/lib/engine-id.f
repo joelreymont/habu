@@ -72,7 +72,7 @@ public
 
 \ Throws E-ENGINE-PATH where the OS will not report the pathname (a sandbox, no
 \ /proc) or it is longer than PATH-CAP, which a count filling OWN-PATH-BUF shows.
-: OWN-PATH ( -- ^u8 n )
+: OWN-PATH ( -- str )
    OWN-PATH-DONE @ 0= if
       READ-OWN-PATH dup 0 <= over OWN-PATH-CAP >= or if
          drop E-ENGINE-PATH throw

@@ -49,7 +49,7 @@ private
    script scriptu PROCESS:ARG
    rp PROCESS:REAPED PROCESS:SPAWN ;
 
-: PARENT ( ^u8 n -- )
+: PARENT ( str -- )
    {: script:^ scriptu :}
    PROCESS:REAPER-START {: rp :}
    rp HB-CHILD {: a:pid :}

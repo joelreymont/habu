@@ -38,7 +38,7 @@ PATH-CAP BUFFER: JOINED
 
 \ The running engine is always executable, so a path that is not is the
 \ override's.
-: REJECT ( ^u8 n -- ) {: a:^ u:n :}
+: REJECT ( str -- ) {: a:^ u:n :}
    s" E-ENGINE-NOT-EXECUTABLE" REJECTION:OPEN
    NAME$ REJECTION:EMIT-STR  s"  names `" REJECTION:EMIT-STR
    a u REJECTION:EMIT-STR  s" `, which is not an executable file" REJECTION:EMIT-STR
@@ -52,7 +52,7 @@ PATH-CAP BUFFER: JOINED
 
 public
 
-: PATH$ ( -- ^u8 n )
+: PATH$ ( -- str )
    RESOLVE$ ABSOLUTE$ VALIDATE$ ;
 
 ;package

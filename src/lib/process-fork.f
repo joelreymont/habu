@@ -86,7 +86,7 @@ FUNCTION: SIGDEL-CALL sigdelset ( ^u8 n -- i32 )
 : MASK-OK ( n -- )
    0 <> if E-PROC-SPAWN throw then ;
 
-: UNBLOCK ( str -- )
+: UNBLOCK ( ^u8 n -- )
    SIGDEL-CALL MASK-OK ;
 
 \ The engine's crash and breakpoint handlers stay reachable: a fault raised

@@ -40,7 +40,7 @@ INSTALL-NONE
 public
 
 \ The name is UTF-8 text the OS shows beside the hold.
-: KEEP-AWAKE ( ^u8 n -- POWER:awake )
+: KEEP-AWAKE ( str -- POWER:awake )
    KEEP-HOOK >AWAKE ;
 
 \ The token is spent before the release's outcome is known: a refused release

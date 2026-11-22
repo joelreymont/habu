@@ -80,7 +80,7 @@ $FF constant OCTET
 
 
 \ The decoded length; the bytes too at out when put is set.
-: WALK ( ^u8 n ^u8 bool -- n )
+: WALK ( str ^u8 bool -- n )
    {: a u:n out put:bool :}
    0 0 0
    u 0 ?do a i + c@ out put TAKE loop
@@ -88,7 +88,7 @@ $FF constant OCTET
 
 public
 
-: DECODE ( ^u8 n SPAN:span<u8> -- n )
+: DECODE ( str SPAN:span<u8> -- n )
    {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    s SPAN:$ drop {: out :}

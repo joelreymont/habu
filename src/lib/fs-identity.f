@@ -66,7 +66,7 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
 \ writes and the NUL-padded path behind it. Both halves are narrowings, so the
 \ split cannot address past what SAMEFILE allocated. Device and inode are 0 0
 \ when the stat failed; the errno is on top.
-: IDENTITY ( ^u8 n SPAN:span<u8> -- n n n )
+: IDENTITY ( str SPAN:span<u8> -- n n n )
    {: text bytes:n work :}
    text bytes CHECK-PATH
    text bytes  work STAT-CAP PATHZ-CAP SPAN:SUB  PATHZ-INTO {: z:^ :}
@@ -97,7 +97,7 @@ FUNCTION: STAT-CALL stat ( ^u8 ^u8 -- i32 )
 public
 \ WITH-BYTES hands the quotation exactly the WORK-BYTES mapping it allocated
 \ here; ALLOCATION>SPAN preserves that producer's base and reach together.
-: SAMEFILE ( ^u8 n ^u8 n -- bool )
+: SAMEFILE ( str str -- bool )
    WORK-BYTES BYTES-ALLOC-LEN [: COMPARE-IDENTITIES ;] WITH-BYTES ;
 
 : PATH-IDENTITY ( str -- n n )

@@ -53,7 +53,7 @@ FUNCTION: MAC-FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: MAC-POLL poll ( ^u8 n n -- i32 ) ;FUNCTION
 FUNCTION: MAC-READ read ( n ^u8 n -- n ) ;FUNCTION
 FUNCTION: MAC-PREAD pread ( n ^u8 n n -- n ) ;FUNCTION
-FUNCTION: MAC-WRITE write ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: MAC-WRITE write ( n str -- n ) ;FUNCTION
 FUNCTION: MAC-SEEK lseek ( n n n -- n ) ;FUNCTION
 
 : MR ( n -- ^n ) REC REC.HOST ;

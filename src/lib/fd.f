@@ -133,7 +133,7 @@ $7FFFFFFF constant MAX-POLL-MS
 : EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;
 
 PROCESS-SYMBOLS
-FUNCTION: WRITE-CALL write ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: WRITE-CALL write ( n str -- n ) ;FUNCTION
 FUNCTION: OPEN-CALL open ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
 FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
@@ -229,7 +229,7 @@ private
 
 \ The bytes one write moved, 0 when it moved none; a count past the asked one is
 \ answered as the call gave it.
-: SENT ( n fd ^u8 n -- n )
+: SENT ( n fd str -- n )
    {: done:n f:fd src:^ u:n :}
    f FD>N src done + u done - write 0 max ;
 

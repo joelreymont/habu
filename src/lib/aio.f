@@ -349,7 +349,7 @@ FUNCTION: URING-REGISTER-CALL syscall ( n n n ^u8 n -- n )
 
 FUNCTION: EVENTFD-CALL eventfd ( n n -- i32 ) ;FUNCTION
 FUNCTION: FD-READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
-FUNCTION: FD-WRITE-CALL write ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: FD-WRITE-CALL write ( n str -- n ) ;FUNCTION
 
 \ Logs a refused system call's errno before it throws, so the errno the kernel
 \ gave is not lost behind a named code.

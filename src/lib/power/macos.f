@@ -12,7 +12,7 @@ private
 
 \ https://developer.apple.com/documentation/iokit/iopmlib_h
 LIBRARY /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
-FUNCTION: CF-STRING CFStringCreateWithBytes ( n ^u8 n n n -- n ) ;FUNCTION
+FUNCTION: CF-STRING CFStringCreateWithBytes ( n str n n -- n ) ;FUNCTION
 FUNCTION: CF-RELEASE CFRelease ( n -- ) ;FUNCTION
 
 4 constant ID-BYTES          \ IOPMAssertionID, a uint32_t
@@ -32,7 +32,7 @@ $08000100 constant UTF8      \ kCFStringEncodingUTF8
 : CF-FREE ( n -- )
    dup 0 <> if CF-RELEASE else drop then ;
 
-: CHECK ( n ^u8 n -- )
+: CHECK ( n str -- )
    {: status:n verb:^ verbu:n :}
    status 0= if exit then
    LOG:ERROR s" power" LOG:LINE verb verbu LOG:TEXT+ s"  refused, IOReturn " LOG:TEXT+

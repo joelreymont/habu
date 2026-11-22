@@ -123,7 +123,7 @@ private
 public
 \ Keep the editor below every throwing call. catch restores stack depth, so
 \ binding the other arguments to locals here could overwrite its saved slot.
-: REPLACE ( EDIT:editor off len ^u8 n -- EDIT:editor )
+: REPLACE ( EDIT:editor off len str -- EDIT:editor )
    REPLACE-ARGS APPLY-EDIT ;
 
 private

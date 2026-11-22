@@ -160,7 +160,7 @@ CAST: >ACTION ( ^u8 -- ^action )
 
 
 \ The arena's allocator: its state is the arena's own first-chunk bytes.
-: SELF-ALLOC ( str -- ^u8 ) swap >ARENA swap EXTENT BUMP ;
+: SELF-ALLOC ( ^u8 n -- ^u8 ) swap >ARENA swap EXTENT BUMP ;
 
 
 \ A shrink zeroes the cut bytes before a later growth reads them or the
