@@ -10,8 +10,6 @@ using XML
 
 $400 constant TEXT-CAP
 create OTHER-BUF TEXT-CAP allot
-3 SPAN-BUFFER: INPUT-CHUNK
-64 SPAN-BUFFER: INPUT-WHOLE
 PTR-VARIABLE INPUT-SOURCE
 variable INPUT-LEN
 variable INPUT-POS
@@ -110,21 +108,18 @@ CAST: TOKEN>N ( XML:kind -- n )
    count pos +! count ;
 
 : INPUT-OPEN ( -- XML:reader )
-   RD INPUT-POS ['] INPUT-FILL INPUT-CHUNK INIT-INPUT ;
+   RD INPUT-POS ['] INPUT-FILL INIT-INPUT ;
 
 : INPUT-FAILURE ( -- n )
    INPUT-OPEN ['] DRAIN catch swap XML:CLOSE ;
 
-\ As INPUT-FAILURE, through chunks of up to 64 bytes.
-: INPUT-WHOLE-FAILURE ( -- n )
-   RD INPUT-POS ['] INPUT-FILL INPUT-WHOLE INIT-INPUT
-   ['] DRAIN catch swap XML:CLOSE ;
-
+\ Answers one byte past the span it was lent.
 : INPUT-OVER-COUNT ( ^n SPAN:span<u8> -- n )
-   2drop 4 ;
+   {: pos:^ output :}
+   output SPAN:LEN 1 + ;
 
 : INPUT-OVER-COUNT-RC ( -- n )
-   RD INPUT-POS ['] INPUT-OVER-COUNT INPUT-CHUNK INIT-INPUT
+   RD INPUT-POS ['] INPUT-OVER-COUNT INIT-INPUT
    ['] DRAIN catch swap XML:CLOSE ;
 
 : INPUT-BAD ( str n -- )
@@ -693,11 +688,12 @@ variable URI-LEN
    KIND TOKEN>N XML-KIND:END TOKEN>N T=
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
-: INPUT-LARGE-TEXT ( -- )
+\ Fills of at most limit bytes; an unlimited one fills each span it is lent until input runs short.
+: INPUT-LARGE-TEXT ( n -- ) {: limit:n :}
    s" <r>" drop INPUT-BIG 3 BYTE-COPY
    8192 0 ?do [char] x INPUT-BIG 3 i + + c! loop
    s" </r>" drop INPUT-BIG 8195 + 4 BYTE-COPY
-   INPUT-BIG 8199 3 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   INPUT-BIG 8199 limit $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
    XML-KIND:START NEXT=
    0 INPUT-USED ! 3 INPUT-OFF !
    begin NEXT TOKEN>N XML-KIND:TEXT TOKEN>N = while
@@ -1155,7 +1151,7 @@ variable SEEN
    E-ENCODING s\" 2:4: expected a US-ASCII character, found `...`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID
    s" a US-ASCII input stream places a high byte its first chunk holds" T-LABEL
    s\" <?xml version='1.0' encoding='US-ASCII'?>\n<a>\xC3\xA9</a>"
-   $7FFFFFFFFFFFFFFF $7FFFFFFFFFFFFFFF INPUT-SET INPUT-WHOLE-FAILURE E-ENCODING T=
+   $7FFFFFFFFFFFFFFF $7FFFFFFFFFFFFFFF INPUT-SET INPUT-FAILURE E-ENCODING T=
    E-ENCODING s\" 2:4: expected a US-ASCII character, found `\xC3\xA9`; write it as a character reference such as `&#233;`, or save the document as UTF-8 and declare `encoding=\qUTF-8\q`" SAID ;
 
 DECODED-NEW
@@ -1188,7 +1184,8 @@ CHECKED-OWNERSHIP
 INPUT-BOUNDARIES
 INPUT-MARKUP
 INPUT-NEWLINE
-INPUT-LARGE-TEXT
+3 INPUT-LARGE-TEXT
+$7FFFFFFFFFFFFFFF INPUT-LARGE-TEXT
 INPUT-LARGE-SCOPE
 INPUT-NAMESPACE-SCOPES
 INPUT-DEEP-CHAIN

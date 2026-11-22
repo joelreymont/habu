@@ -9,7 +9,7 @@ require src/lib/xml/reject.f
 package XML
 public
 \ XML scalar/parser errors: -9201..-9208, -9212..-9214, -9216 and -9217.
--9201 s" a caller's span is too short for what it must hold, or an output would pass the largest size"
+-9201 s" an output would pass the largest size"
    ERROR:CODE E-CAPACITY
 -9202 s" a length, start or count is negative, past its input, or names bytes at a null address"
    ERROR:CODE E-RANGE

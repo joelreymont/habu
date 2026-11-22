@@ -177,16 +177,18 @@ NULL-PTR CURSOR-SIP NULL-PTR - constant SIP-STATE
 8 constant LEGACY-ASCII
 9 constant INPUT-ASCII
 
+\ The most bytes one refill asks an input reader's fill for.
+4096 constant CHUNK
+
 \ CLOSE releases an input reader's stream and its buffers, after a failed NEXT
 \ too. Line and column are those of the window's first byte in the whole input.
 STRUCTURE stream DERIVE addr
    FIELD fill [ ^n SPAN:span<u8> -- n ]
    FIELD ctx ^n
-   FIELD input ^u8
-   FIELD input-cap n
    FIELD eof n
    FIELD base n
    FIELD started n
+   FIELD input ^VEC:vector<u8>
    FIELD token ^VEC:vector<u8>
    FIELD scope ^VEC:vector<u8>
    FIELD line n
@@ -206,6 +208,7 @@ CAST: STREAM>BYTES ( ^stream -- ^u8 )
    {: state offset:n :}
    state INPUT? if state STREAM@ STREAM-BASE @ offset + else offset then ;
 
+: INPUT-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-INPUT @ ;
 : TOKEN-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-TOKEN @ ;
 : SCOPE-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-SCOPE @ ;
 
@@ -215,32 +218,30 @@ CAST: STREAM>BYTES ( ^stream -- ^u8 )
 \ A vector not yet made is NULL-PTR, which DELETE ignores.
 : STREAM-CLOSE ( ^stream -- )
    {: stream :}
+   stream INPUT-VEC VEC:DELETE
    stream TOKEN-VEC VEC:DELETE
    stream SCOPE-VEC VEC:DELETE
    stream STREAM>BYTES STREAM-CELLS cells
       MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
-: STREAM-OPEN-VECS ( ^stream n -- ^stream n )
-   {: stream cap:n :}
+: STREAM-OPEN-VECS ( ^stream -- ^stream )
+   {: stream :}
+   HEAP:ALLOCATOR CHUNK [type] u8 VEC:NEW stream STREAM-INPUT !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW stream STREAM-TOKEN !
-   stream TOKEN-VEC cap VEC:RESERVE
+   stream TOKEN-VEC CHUNK VEC:RESERVE
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW stream STREAM-SCOPE !
-   stream cap ;
+   stream ;
 
-: STREAM-OPEN ( ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- ^stream )
-   {: ctx fill input :}
-   input SPAN:$ {: bytes cap:n :}
-   cap 0= if E-CAPACITY throw then
+: STREAM-OPEN ( ^n [ ^n SPAN:span<u8> -- n ] -- ^stream )
+   {: ctx fill :}
    STREAM-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS
       BYTE-VIEW >STREAM {: stream :}
    fill stream STREAM-FILL !
    ctx stream STREAM-CTX !
    1 stream STREAM-LINE !
    1 stream STREAM-COLUMN !
-   bytes stream STREAM-INPUT !
-   cap stream STREAM-INPUT-CAP !
-   stream cap ['] STREAM-OPEN-VECS catch
-   >r 2drop r> {: code:n :}
+   stream ['] STREAM-OPEN-VECS catch
+   >r drop r> {: code:n :}
    code 0<> if stream STREAM-CLOSE code throw then
    stream ;
 
@@ -344,12 +345,11 @@ LINEAR: ERASE ( XML:reader -- ^n )
    {: state :}
    state STREAM@ {: stream :}
    stream STREAM-EOF @ 0<> if false exit then
-   stream STREAM-CTX @
-   stream STREAM-INPUT @ stream STREAM-INPUT-CAP @ SPAN:MAKE
-   stream STREAM-FILL @ execute {: count:n :}
-   count 0 < count stream STREAM-INPUT-CAP @ > or if E-RANGE throw then
+   stream INPUT-VEC VEC:SPAN {: input :}
+   stream STREAM-CTX @ input stream STREAM-FILL @ execute {: count:n :}
+   count 0 < count CHUNK > or if E-RANGE throw then
    count 0= if 1 stream STREAM-EOF ! false exit then
-   stream STREAM-INPUT @ count stream TOKEN-VEC VEC:APPEND
+   input SPAN:$ drop count stream TOKEN-VEC VEC:APPEND
    stream TOKEN-VEC VEC:SPAN SPAN:$
    state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
    state SOURCE-MODE + @ INPUT-ASCII = if
@@ -507,9 +507,7 @@ LINEAR: ERASE ( XML:reader -- ^n )
 
 : TOKEN-TRIM ( ^stream -- )
    {: stream :}
-   stream TOKEN-VEC VEC:COUNT {: used:n :}
-   stream STREAM-INPUT-CAP @
-   used max 1 max {: need:n :}
+   stream TOKEN-VEC VEC:COUNT CHUNK max {: need:n :}
    stream TOKEN-VEC VEC:CAP 4 / need <= if exit then
    stream TOKEN-VEC need VEC:TRIM ;
 
@@ -538,9 +536,8 @@ LINEAR: ERASE ( XML:reader -- ^n )
    state SOURCE-LEN + @ consumed - {: tail:n :}
    consumed 0= consumed tail < or if exit then
    stream TOKEN-VEC VEC:CAP {: cap:n :}
-   stream STREAM-INPUT-CAP @ {: chunk:n :}
-   state SOURCE-LEN + @ chunk + cap <=
-   cap 4 / chunk tail max <= and if exit then
+   state SOURCE-LEN + @ CHUNK + cap <=
+   cap 4 / CHUNK tail max <= and if exit then
    state SOURCE$ state WINDOW-PLACE consumed PLACE-POSITION
    stream STREAM-COLUMN ! stream STREAM-LINE !
    state SOURCE-IDX ptr-field @ consumed + tail
@@ -638,13 +635,13 @@ LINEAR: ERASE ( XML:reader -- ^n )
 
 \ The stream goes into the record before the tables, so a failed table step
 \ leaves RECORD-FREE to release both.
-: INPUT-BODY ( ^n ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- ^n ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> )
-   {: state ctx fill input :}
-   ctx fill input STREAM-OPEN
+: INPUT-BODY ( ^n ^n [ ^n SPAN:span<u8> -- n ] -- ^n ^n [ ^n SPAN:span<u8> -- n ] )
+   {: state ctx fill :}
+   ctx fill STREAM-OPEN
    STREAM>BYTES state WIRE-STORAGE-IDX ptr-field !
    INPUT-UTF8 state SOURCE-MODE + !
    state READER-TABLES
-   state ctx fill input ;
+   state ctx fill ;
 
 public
 : INIT ( ^cursor str -- XML:reader )
@@ -656,17 +653,14 @@ public
    >r 2drop drop r> {: code:n :}
    state code BUILT ;
 
-\ Reads bounded UTF-8 or declared US-ASCII through a callback that fills up to the
-\ chunk span's reach and answers its count: zero ends input, a negative count or one
-\ past the reach is E-RANGE. The context, callback and chunk span stay live through
-\ CLOSE. A long tag, comment or CDATA grows the event buffer.
-: INIT-INPUT ( ^cursor ^n [ ^n SPAN:span<u8> -- n ] SPAN:span<u8> -- XML:reader )
-   {: record ctx fill input :}
-   input SPAN:$ SPAN-CHECK
+\ Reads UTF-8 or declared US-ASCII; the fill writes the span it is lent and answers a
+\ count: 0 ends input, below 0 or past the span is E-RANGE. ctx and fill live until CLOSE.
+: INIT-INPUT ( ^cursor ^n [ ^n SPAN:span<u8> -- n ] -- XML:reader )
+   {: record ctx fill :}
    record >STATE {: state :}
    state INIT-STATE
-   state ctx fill input ['] INPUT-BODY catch
-   >r 2drop 2drop r> {: code:n :}
+   state ctx fill ['] INPUT-BODY catch
+   >r 2drop drop r> {: code:n :}
    state code BUILT ;
 
 private

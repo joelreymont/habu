@@ -160,7 +160,7 @@ private
    {: state :}
    state INPUT? if
       state POSITION + @ state VALUE-OFF + @ -
-      state STREAM@ STREAM-INPUT-CAP @ >= if false exit then
+      CHUNK >= if false exit then
    then
    state EOF? if false exit then
    state PEEK $3C <> ;
