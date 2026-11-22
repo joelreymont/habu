@@ -3,6 +3,7 @@ split-str
 \ with its package, section, stack effect and the comment above it, read through
 \ the shared lexer (src/lib/source-lex.f, package LINT-LEX).
 \ STORAGE CLASS. PROCESS-WIDE: one record set for the image.
+\ A record number runs from 0 to COUNT - 1; nothing checks it.
 
 \ Each record is one bump allocation from chunks of CHUNK-BYTES, larger for a
 \ larger record, that RESET releases together; answered spans stay valid until
@@ -164,7 +165,6 @@ variable IN-GLOBAL                            \ the open section is `global`
 
 : REC ( n -- ^u8 )
    {: k:n :}
-   LIVE? 0= if E-VEC-BOUNDS throw then
    RECS @ k VEC:AT @ ;
 
 : FIELD@ ( n n -- n ) {: k:n f:n :}
@@ -297,8 +297,7 @@ public
    a PKG !  0 PKG-U !  a PART !  0 PART-U !  false SECTION!
    [: READ-ALL ;] [: FORGET-TEXT ;] finally ;
 
-\ Drops every record and releases their storage. A record at or past COUNT,
-\ so any record after RESET, is E-VEC-BOUNDS.
+\ Drops every record and releases their storage.
 : RESET ( -- )
    LIVE? 0= if exit then
    RELEASE-CHUNKS

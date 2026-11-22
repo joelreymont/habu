@@ -98,8 +98,7 @@ variable FIX-U
    10 WORD-DOCS:EXPORT? TTRUE
    11 s" AFTER" s" " s" --" REC=
    11 WORD-DOCS:COMMENT$ nip 0 T=
-   11 WORD-DOCS:EXPORT? TFALSE
-   [: 12 WORD-DOCS:NAME$ 2drop ;] E-VEC-BOUNDS TTHROWSQ ;
+   11 WORD-DOCS:EXPORT? TFALSE ;
 
 \ A run whose first lines are bare `\` keeps a newline for each.
 : BARE-NOTES ( -- )
@@ -118,8 +117,7 @@ variable FIX-U
    WORD-DOCS:COUNT 2 T=
    1 s" TWO" s" GAMMA" s" --" REC=
    WORD-DOCS:RESET
-   WORD-DOCS:COUNT 0 T=
-   [: 0 WORD-DOCS:NAME$ 2drop ;] E-VEC-BOUNDS TTHROWSQ ;
+   WORD-DOCS:COUNT 0 T= ;
 
 \ A part's records name its path; its `;package` returns to OUTER's private
 \ section, and OUTER's own closes the package.
@@ -231,3 +229,12 @@ public
 T-RESET
 WORD-DOCS-TEST:RUN
 T-REPORT
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: WDT-BOUNDS ( -- )
+   s" a record at or past COUNT, or any after RESET, is E-VEC-BOUNDS" T-LABEL
+   s" : ONE ( -- ) ;" WORD-DOCS:FILE
+   [: 1 WORD-DOCS:NAME$ 2drop ;] E-VEC-BOUNDS TTHROWSQ
+   WORD-DOCS:RESET
+   [: 0 WORD-DOCS:NAME$ 2drop ;] E-VEC-BOUNDS TTHROWSQ ;
+[then]

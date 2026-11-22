@@ -2,7 +2,8 @@ split-str
 \ vector.f - package VEC: a typed vector<t> that takes its elements from an
 \ allocator it keeps and grows through it. COUNT elements are live; growth
 \ doubles the room the block holds, so n pushes make about log2 n resize calls.
-\ A bad count is E-VEC-CAPACITY, an index outside the elements E-VEC-BOUNDS.
+\ A bad count is E-VEC-CAPACITY. AT trusts its index: the caller keeps it within
+\ 0 to COUNT - 1.
 \ STORAGE CLASS. CALLER-OWNED: the caller frees a vector with DELETE.
 
 require src/lib/error.f
@@ -82,10 +83,8 @@ public
 
 : COUNT ( ^vector<t> -- n ) VECTOR-COUNT @ ;
 
-\ An index outside 0 to COUNT - 1 is E-VEC-BOUNDS.
 : AT ( ^vector<t> n -- ^t )
    {: v:^ i:n :}
-   i 0 <  i v VECTOR-COUNT @ >=  or if E-VEC-BOUNDS throw then
    v VECTOR-DATA @  i v VECTOR-WIDTH @ * +  >ELEM ;
 
 : DELETE ( ^vector<t> -- )

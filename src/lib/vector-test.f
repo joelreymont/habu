@@ -38,20 +38,17 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
 
 : RECORDS ( ^ALLOC:allocator -- )
    {: al:^ :}
-   s" and so of a record, past an index's error" T-LABEL
+   s" and so of a record" T-LABEL
    al 4 [type] turn VEC:NEW {: v:^ :}
    7 v 3 VEC:AT TURN-ID !  8 v 3 VEC:AT TURN-STEP !
    v 3 VEC:AT TURN-ID @ 7 T=  v 3 VEC:AT TURN-STEP @ 8 T=
-   v 2 VEC:AT TURN-STEP @ 0 T=
-   [: v 4 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
-   [: v -1 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ ;
+   v 2 VEC:AT TURN-STEP @ 0 T= ;
 
 : EMPTY ( ^ALLOC:allocator -- )
    {: al:^ :}
-   s" a vector of no elements has no index; a negative count is refused" T-LABEL
+   s" a vector of no elements has COUNT 0; a negative count is refused" T-LABEL
    al 0 [type] n VEC:NEW {: v:^ :}
    v VEC:COUNT 0 T=
-   [: v 0 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
    v VEC:DELETE
    [: al -1 [type] n VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ
    [: al $2000000000000001 [type] n VEC:NEW drop ;] E-VEC-CAPACITY TTHROWSQ
@@ -95,7 +92,6 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    10 0 ?do i 1 + v i VEC:AT ! loop
    v 4 VEC:RESIZE
    v VEC:COUNT 4 T=
-   [: v 4 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
    v 10 VEC:RESIZE
    4 0 ?do v i VEC:AT @ i 1 + T= loop
    10 4 ?do v i VEC:AT @ 0 T= loop
@@ -279,3 +275,17 @@ public
    T-REPORT ;
 
 VECT-RUN
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: VECT-BOUNDS ( ^ALLOC:allocator -- )
+   {: al:^ :}
+   s" VEC:AT refuses an index outside 0 to COUNT - 1" T-LABEL
+   al 4 [type] n VEC:NEW {: v:^ :}
+   [: v 4 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
+   [: v -1 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
+   v 2 VEC:RESIZE
+   [: v 2 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
+   v 0 VEC:RESIZE
+   [: v 0 VEC:AT drop ;] E-VEC-BOUNDS TTHROWSQ
+   v VEC:DELETE ;
+[then]
