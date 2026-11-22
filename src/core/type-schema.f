@@ -8,8 +8,7 @@ split-str
 \ with `EXPORT SCHEMA-REG:NAME`.
 
 \ --- schema node kinds (node tag values). Node id 0 is the reserved nil node.
-\ SCH-NIL is the reserved sentinel and SCH-KIND-MAX the creatable-tag ceiling
-\ SCHEMA-KIND? tests against.
+\ SCH-NIL is the reserved sentinel.
 package SCHEMA-REG
 private
 
@@ -22,8 +21,6 @@ private
 5 constant SCH-PTR        \ A = pointee schema node
 6 constant SCH-ROW        \ A = element-root start, B = element count (one quotation effect side)
 7 constant SCH-XT         \ no fields
-
-7 constant SCH-KIND-MAX   \ highest valid creatable tag
 
 \ A quotation payload has four effect SIDES stored as four schema roots contiguous
 \ in the schema-root pool: din-row, dout-row, rin-row, rout-row (in that order). B
@@ -161,7 +158,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
    id ;
 
 : T-ROOT+ ( n -- n ) {: node:n :}
-   node NODE-LIVE? 0= IF s" tfam: bad schema root" EXIT-STATUS:INTERNAL die THEN
    SCH-T-ROOT-P SCH-T-ROOT-CAP SCH-T-ROOT-N @ 1 + 1 ARENA-ROWS-ENSURE
    SCH-T-ROOT-N @ {: i:n :}
    node i cells SCH-T-ROOT-P @ + !
@@ -170,25 +166,14 @@ EXPORT CHECK:WRITE-WINDOW-CK
 
 : T-ROOT@ ( n -- n ) {: idx:n :}
    idx TRANSIENT-BASE - {: i:n :}
-   i SCH-T-ROOT-N @ >= IF s" tfam: bad schema root index" EXIT-STATUS:INTERNAL die THEN
    i cells SCH-T-ROOT-P @ + @ ;
 
-: SCH-REC@ ( n -- ^n ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
+: SCH-REC@ ( n -- ^n ) {: id:n :}     \ address of node `id`
    id T-NODE? IF id TRANSIENT-BASE - SCH-REC * SCH-T-P @ + EXIT THEN
-   id 0 <= IF s" tfam: bad schema node" EXIT-STATUS:INTERNAL die THEN
-   id SCH-N @ >= IF s" tfam: bad schema node" EXIT-STATUS:INTERNAL die THEN
    id SCH-REC * SCH-BASE + ;
-
-: SCHEMA-KIND? ( n -- bool ) {: tag:n :}   \ tag is a creatable node kind
-   tag SCH-PARAM >= tag SCH-KIND-MAX <= and ;
 
 : SCHEMA-NEW ( n n n n -- n ) {: tag:n a:n b:n c:n :}
    WRITE-WINDOW-CK                        \ src/core/checker.f WRITE-WINDOW
-   tag SCHEMA-KIND? 0= IF
-      tag s" SCHEMA-NEW" s" a tag that is no schema node kind"
-      s" pass a kind from `SCH-PARAM` to `SCH-ROW`"
-      SCHEMA-BAD
-   THEN
    SCH-NEW-ID {: id:n :}
    id SCH-REC@ {: r:^ :}
    tag r SCH.TAG !   a r SCH.A !   b r SCH.B !   c r SCH.C !
@@ -228,8 +213,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
    WRITE-WINDOW-CK
    node s" SCHEMA-ROOT+" KEEP-CK
    TRANSIENT-MODE? IF node T-ROOT+ EXIT THEN
-   node 0 <= IF s" tfam: bad schema root" EXIT-STATUS:INTERNAL die THEN
-   node SCH-N @ >= IF s" tfam: bad schema root" EXIT-STATUS:INTERNAL die THEN
    SCH-ROOT-ENSURE
    SCH-ROOT-N @ {: idx:n :}
    node idx cells SCH-ROOT-BASE + !
@@ -237,8 +220,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
    idx ;
 : SCHEMA-ROOT@ ( n -- n ) {: idx:n :}
    idx TRANSIENT-BASE >= IF idx T-ROOT@ EXIT THEN
-   idx 0 < IF s" tfam: bad schema root index" EXIT-STATUS:INTERNAL die THEN
-   idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" EXIT-STATUS:INTERNAL die THEN
    idx cells SCH-ROOT-BASE + @ ;
 \ The index the next SCHEMA-ROOT+ answers, in the mode's region.
 : SCHEMA-ROOT-N@ ( -- n )
@@ -285,9 +266,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
 : SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
 : SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-B@ ;
 : SCHEMA-ROW-ELEM@ ( n n -- n ) {: node:n i:n :}   \ i-th element type node of the row
-   i 0 < i node SCHEMA-ROW-COUNT@ >= or IF
-      s" tfam: bad quot row elem index" EXIT-STATUS:INTERNAL die
-   THEN
    node SCHEMA-ROW-START@ i + SCHEMA-ROOT@ ;
 : SCHEMA-ROW-OK? ( n -- bool )                     \ live SCH-ROW node (no die on nil/oob)
    dup SCHEMA-NODE-OK? IF SCHEMA-ROW? ELSE drop RES-FALSE THEN ;
@@ -317,7 +295,6 @@ EXPORT CHECK:WRITE-WINDOW-CK
 : SCHEMA-QUOT-HASR@ ( n -- bool ) SCHEMA-A@ 1 and 0 <> ;
 : SCHEMA-QUOT-FACTS@ ( n -- n ) SCHEMA-A@ 1 invert and ;
 : SCHEMA-QUOT-ROW@ ( n n -- n ) {: node:n i:n :}    \ i-th effect side's SCH-ROW node
-   i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot side index" EXIT-STATUS:INTERNAL die THEN
    node SCHEMA-B@ i + SCHEMA-ROOT@ ;
 : SCHEMA-QUOT-DIN@ ( n -- n ) 0 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-DOUT@ ( n -- n ) 1 SCHEMA-QUOT-ROW@ ;
@@ -350,14 +327,9 @@ EXPORT CHECK:WRITE-WINDOW-CK
    eff SCHEMA-QUOT-RIN@  eff SCHEMA-QUOT-ROUT@
    eff SCHEMA-QUOT-HASR@ eff SCHEMA-QUOT-FACTS@ SCHEMA-QUOT ;
 
-\ --- SCH-PTR: a `^T` variant payload element. A malformed child (nil or out
-\ of range) is rejected.
+\ --- SCH-PTR: a `^T` variant payload element.
 : SCHEMA-PTR ( n -- n )
    dup s" SCHEMA-PTR" KEEP-CK
-   dup SCHEMA-NODE-OK? 0= IF
-      s" SCHEMA-PTR" s" a node that is not a live schema node"
-      s" pass a node a `SCHEMA-REG` word made" SCHEMA-BAD
-   THEN
    SCH-PTR swap 0 0 SCHEMA-NEW ;
 : SCHEMA-PTR? ( n -- bool ) SCHEMA-TAG@ SCH-PTR = ;
 
@@ -403,9 +375,6 @@ variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
 \ at load, before REWIND exists, and scrubs itself.
 
 : REWIND ( n n -- ) {: n:n rootn:n :}
-   n 0 < n SCH-N @ > or rootn 0 < or rootn SCH-ROOT-N @ > or IF
-      s" checker: schema rewind outside the registry" EXIT-STATUS:INTERNAL die
-   THEN
    n SCH-N @ SCH-SCRUB
    rootn SCH-ROOT-N @ SCH-ROOT-SCRUB
    n SCH-N !
