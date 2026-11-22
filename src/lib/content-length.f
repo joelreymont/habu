@@ -307,7 +307,7 @@ public
 
 \ One message, header then body. The header is built in a row of its own, so a
 \ body built in the task's string builder (src/lib/string.f SB) goes out intact.
-: SEND ( fd ^u8 n -- )
+: SEND ( fd str -- )
    {: f:fd a:^ u:n :}
    u 0 < if E-SPAN-LENGTH throw then
    f u HEADER$ WRITE-FULL

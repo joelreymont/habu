@@ -37,7 +37,7 @@ create BODY 4096 allot
    SOURCE-ROOT:ENGINE$ 2swap SERVER FS:JOIN-PATH SERVER-U !
    SERVER SERVER-U @ ;
 
-: POISON ( ^u8 n -- )
+: POISON ( str -- )
    PROJECT-PATH s\" 86 throw\n" FS:WRITE-ALL ;
 
 : SETUP ( -- )
@@ -67,13 +67,13 @@ create BODY 4096 allot
    s" --load" CMD:ARG+
    entry entryu CMD:ARG+ ;
 
-: QUOTED ( ^u8 n -- )
+: QUOTED ( str -- )
    s" s" SB-APPEND 34 SB-APPEND-C 32 SB-APPEND-C
    SB-APPEND 34 SB-APPEND-C ;
 
 \ Keep the inherited root at the entry tree while loading the entry by its
 \ absolute path. With this nesting, CURRENT$ names that root, not the file.
-: NESTED ( ^u8 n -- ^u8 n ) {: entry:^ u:n :}
+: NESTED ( str -- str ) {: entry:^ u:n :}
    SB-RESET s" : NESTED-LOAD ( -- ) " SB-APPEND
    entry u SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME QUOTED
    s"  >str [: " SB-APPEND
@@ -143,7 +143,7 @@ create BODY 4096 allot
 : SERVER-CASE ( str str -- )
    [: SERVER-RUN ;] CMD:WITH-COMMAND ;
 
-: CHILD-RUN ( ^u8 n CMD:command -- CMD:command )
+: CHILD-RUN ( str CMD:command -- CMD:command )
    >r {: entry:^ entryu:n :} r>
    entry entryu STAGE
    s" --" CMD:ARG+

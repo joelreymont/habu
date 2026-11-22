@@ -165,7 +165,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: w :}
    w WRITTEN$ {: a:^ u:n :}
    w WRITE-CLOSE
-   FD:STDOUT a u SEND ;
+   FD:STDOUT a u >str SEND ;
 
 : REPLY-NULL ( JSON-RPC:id -- )
    {: i :}
