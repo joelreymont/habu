@@ -6,8 +6,8 @@ split-str
 \ chain: a frame is PENDING before any allocation can return, LIVE once its
 \ acquisitions are recorded, then CLOSING -> CLOSED as disposers run; at most
 \ FRAME-CAP nest (E-C2-CAPACITY).
-\ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USERS byte row
-\ (OWNER-REGION).
+\ STORAGE CLASS. TASK-LOCAL: the chain's head cells and its FRAME-CAP frames are
+\ TASK:+USER and TASK:+USERS rows.
 require src/lib/error.f
 require src/lib/task.f
 require src/lib/memory.f
@@ -27,50 +27,48 @@ CAST: INIT-LEN>N ( NUM:alloc-byte-len -- n )
 24 constant APPEND-HEADER-BYTES
 MEM-MAX-N APPEND-HEADER-BYTES 2 * - CELL 1- - constant MAX-APPEND
 32 constant FRAME-CAP
-88 constant FRAME-BYTES
-40 constant META-BYTES
-META-BYTES FRAME-CAP FRAME-BYTES * + constant REGION-BYTES
+
+\ c2-init-stow and c2-records-stow write state, resource, length and
+\ original-bound at byte offsets 0, 16, 24 and 40: the field order is fixed.
+STRUCTURE frame DERIVE addr
+   FIELD state n
+   FIELD prev n
+   FIELD resource ^u8
+   FIELD length n
+   FIELD disposer [ ^u8 NUM:alloc-byte-len -- ]
+   FIELD original-bound n
+   FIELD kind n
+   FIELD append-head ^u8
+   FIELD append-pending ^u8
+   FIELD append-cursor ^u8
+   FIELD append-remain n
+;STRUCTURE
+
+STRUCTURE meta DERIVE addr
+   FIELD head n FIELD depth n FIELD hook n FIELD loan-depth n FIELD init-bound n
+;STRUCTURE
 
 \ +USERS resolves this row through the calling task's data-base. Main has the
 \ same row in its own data region, although TASK:SELF names no TCB there.
-REGION-BYTES TASK:+USERS OWNER-REGION u8
+TASK:+USER META-ROW meta
+FRAME-CAP TASK:+USERS FRAMES frame
 
-: HEAD-CELL ( -- ^n ) 0 OWNER-REGION CELL-VIEW ;
-: DEPTH-CELL ( -- ^n ) 8 OWNER-REGION CELL-VIEW ;
-: HOOK-CELL ( -- ^n ) 16 OWNER-REGION CELL-VIEW ;
-: LOAN-DEPTH-CELL ( -- ^n ) 24 OWNER-REGION CELL-VIEW ;
-: INIT-BOUND-CELL ( -- ^n ) 32 OWNER-REGION CELL-VIEW ;
+: HEAD-CELL ( -- ^n ) META-ROW META-HEAD ;
+: DEPTH-CELL ( -- ^n ) META-ROW META-DEPTH ;
+: HOOK-CELL ( -- ^n ) META-ROW META-HOOK ;
+: LOAN-DEPTH-CELL ( -- ^n ) META-ROW META-LOAN-DEPTH ;
+: INIT-BOUND-CELL ( -- ^n ) META-ROW META-INIT-BOUND ;
 
-: FRAME-AT ( n -- ^n )
-   FRAME-BYTES * META-BYTES + OWNER-REGION CELL-VIEW ;
-
-: STATE-CELL ( ^n -- ^n ) ;
-: PREV-CELL ( ^n -- ^n ) 8 + ;
-
-\ OWNER-REGION is a byte row. The casts below retype its cells' pointees;
-\ they are C2-MEM's private words, so nothing outside C2-MEM can name them.
-CAST: >PTR-CELL ( ^n -- ^^u8 )
-CAST: >DISPOSER-CELL ( ^n -- ^[ ^u8 NUM:alloc-byte-len -- ] )
 CAST: >APPEND-PTR-CELL ( ^u8 -- ^^u8 )
 CAST: >APPEND-LEN-CELL ( ^u8 -- ^n )
 CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
-
-: RESOURCE-CELL ( ^n -- ^^u8 ) 16 + >PTR-CELL ;
-: LENGTH-CELL ( ^n -- ^n ) 24 + ;
-: DISPOSER-CELL ( ^n -- ^[ ^u8 NUM:alloc-byte-len -- ] ) 32 + >DISPOSER-CELL ;
-: ORIGINAL-BOUND-CELL ( ^n -- ^n ) 40 + ;
-: KIND-CELL ( ^n -- ^n ) 48 + ;
-: APPEND-HEAD-CELL ( ^n -- ^^u8 ) 56 + >PTR-CELL ;
-: APPEND-PENDING-CELL ( ^n -- ^^u8 ) 64 + >PTR-CELL ;
-: APPEND-CURSOR-CELL ( ^n -- ^^u8 ) 72 + >PTR-CELL ;
-: APPEND-REMAIN-CELL ( ^n -- ^n ) 80 + ;
 
 : APPEND-NEXT-CELL ( ^u8 -- ^^u8 ) >APPEND-PTR-CELL ;
 : APPEND-LENGTH-CELL ( ^u8 -- ^n ) 8 + >APPEND-LEN-CELL ;
 : APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] ) 16 + >APPEND-DISPOSER-CELL ;
 
-: HEAD-FRAME ( -- ^n )
-   HEAD-CELL @ 1- FRAME-AT ;
+: HEAD-FRAME ( -- ^frame )
+   HEAD-CELL @ 1- FRAMES ;
 
 : LOAN-ENTER ( -- ) 1 LOAN-DEPTH-CELL +! ;
 : LOAN-LEAVE ( -- ) -1 LOAN-DEPTH-CELL +! ;
@@ -79,19 +77,19 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
 \ CLOSING state while the adapter runs is a halted task's one cleanup record.
 : DISPOSE-HEAD ( -- )
    HEAD-FRAME {: frame:^ :}
-   frame RESOURCE-CELL @
-   frame LENGTH-CELL @ MEM:BYTES-ALLOC-LEN
-   frame DISPOSER-CELL @ execute ;
+   frame FRAME-RESOURCE @
+   frame FRAME-LENGTH @ MEM:BYTES-ALLOC-LEN
+   frame FRAME-DISPOSER @ execute ;
 
 \ c2-init-stow or c2-records-stow stores an INIT head's extent, 0 for an empty
 \ table. The enclosing BYTES frame owns the mapping and its release.
 : INIT-CLEAR ( -- )
    HEAD-FRAME {: frame:^ :}
-   frame RESOURCE-CELL @ {: resource:^ :}
-   frame LENGTH-CELL @ 0 ?do 0 resource i + c! loop ;
+   frame FRAME-RESOURCE @ {: resource:^ :}
+   frame FRAME-LENGTH @ 0 ?do 0 resource i + c! loop ;
 
 : DISPOSE-APPEND ( -- )
-   HEAD-FRAME APPEND-PENDING-CELL @ {: header:^ :}
+   HEAD-FRAME FRAME-APPEND-PENDING @ {: header:^ :}
    header APPEND-HEADER-BYTES +
    header APPEND-LENGTH-CELL @ MEM:BYTES-ALLOC-LEN
    header APPEND-DISPOSER-CELL @ execute ;
@@ -104,17 +102,17 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
 
 : CLOSE-APPENDS ( -- n )
    0
-   begin HEAD-FRAME APPEND-HEAD-CELL @ dup NULL$ drop <> while
+   begin HEAD-FRAME FRAME-APPEND-HEAD @ dup NULL$ drop <> while
       {: header:^ :}
-      header APPEND-NEXT-CELL @ HEAD-FRAME APPEND-HEAD-CELL !
-      header HEAD-FRAME APPEND-PENDING-CELL !
+      header APPEND-NEXT-CELL @ HEAD-FRAME FRAME-APPEND-HEAD !
+      header HEAD-FRAME FRAME-APPEND-PENDING !
       [: DISPOSE-APPEND ;] catch FIRST-ERROR
-      NULL$ drop HEAD-FRAME APPEND-PENDING-CELL !
+      NULL$ drop HEAD-FRAME FRAME-APPEND-PENDING !
    repeat drop ;
 
 : CLOSE-BYTES ( -- n )
-   NULL$ drop HEAD-FRAME APPEND-CURSOR-CELL !
-   0 HEAD-FRAME APPEND-REMAIN-CELL !
+   NULL$ drop HEAD-FRAME FRAME-APPEND-CURSOR !
+   0 HEAD-FRAME FRAME-APPEND-REMAIN !
    CLOSE-APPENDS
    [: DISPOSE-HEAD ;] catch FIRST-ERROR ;
 
@@ -122,18 +120,18 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
    TASK:DEFER-ENTER
    HEAD-CELL @ 0= if TASK:DEFER-LEAVE E-C2-STATE throw then
    HEAD-FRAME {: frame:^ :}
-   frame STATE-CELL @ {: state:n :}
+   frame FRAME-STATE @ {: state:n :}
    state PENDING <> state LIVE <> and if
       TASK:DEFER-LEAVE E-C2-STATE throw
    then
-   CLOSING frame STATE-CELL !
+   CLOSING frame FRAME-STATE !
    state LIVE = if
-      frame KIND-CELL @ BYTES-FRAME = if CLOSE-BYTES
+      frame FRAME-KIND @ BYTES-FRAME = if CLOSE-BYTES
       else INIT-CLEAR 0 then
    else 0 then {: rc:n :}
-   NULL$ drop frame RESOURCE-CELL !
-   CLOSED frame STATE-CELL !
-   frame PREV-CELL @ HEAD-CELL !
+   NULL$ drop frame FRAME-RESOURCE !
+   CLOSED frame FRAME-STATE !
+   frame FRAME-PREV @ HEAD-CELL !
    -1 DEPTH-CELL +!
    TASK:DEFER-LEAVE
    state PENDING = if TASK:DEFER-LEAVE then
@@ -166,60 +164,60 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
    DEPTH-CELL @ FRAME-CAP >= if E-C2-CAPACITY throw then
    REGISTER-EXIT
    TASK:DEFER-ENTER
-   DEPTH-CELL @ FRAME-AT {: frame:^ :}
-   HEAD-CELL @ frame PREV-CELL !
-   BYTES-FRAME frame KIND-CELL !
-   NULL$ drop frame APPEND-HEAD-CELL !
-   NULL$ drop frame APPEND-PENDING-CELL !
-   NULL$ drop frame APPEND-CURSOR-CELL !
-   0 frame APPEND-REMAIN-CELL !
-   PENDING frame STATE-CELL !
+   DEPTH-CELL @ FRAMES {: frame:^ :}
+   HEAD-CELL @ frame FRAME-PREV !
+   BYTES-FRAME frame FRAME-KIND !
+   NULL$ drop frame FRAME-APPEND-HEAD !
+   NULL$ drop frame FRAME-APPEND-PENDING !
+   NULL$ drop frame FRAME-APPEND-CURSOR !
+   0 frame FRAME-APPEND-REMAIN !
+   PENDING frame FRAME-STATE !
    DEPTH-CELL @ 1+ dup DEPTH-CELL ! HEAD-CELL ! ;
 
 \ Straight-line, nonthrowing transfer immediately after MEM returns the pair.
 : RECORD ( ^u8 NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- )
    {: resource:^ size dispose :}
    HEAD-FRAME {: frame:^ :}
-   resource frame RESOURCE-CELL !
-   size INIT-LEN>N frame LENGTH-CELL !
-   dispose frame DISPOSER-CELL !
-   LIVE frame STATE-CELL !
+   resource frame FRAME-RESOURCE !
+   size INIT-LEN>N frame FRAME-LENGTH !
+   dispose frame FRAME-DISPOSER !
+   LIVE frame FRAME-STATE !
    TASK:DEFER-LEAVE ;
 
 : INIT-OPEN ( -- )
    OPEN
-   INIT-FRAME HEAD-FRAME KIND-CELL ! ;
+   INIT-FRAME HEAD-FRAME FRAME-KIND ! ;
 
 \ BIND discovers authority only in this task's live BYTES chain. The base is
 \ supplied by WITH-INIT, which already holds the unique root byte view.
-: ROOT-FROM ( ^u8 n -- ^n ) {: base:^ id:n :}
+: ROOT-FROM ( ^u8 n -- ^frame ) {: base:^ id:n :}
    id 0= if E-C2-STATE throw then
-   id 1- FRAME-AT {: frame:^ :}
-   frame STATE-CELL @ LIVE =
-   frame KIND-CELL @ BYTES-FRAME = and
-   frame RESOURCE-CELL @ base = and if frame exit then
-   base frame PREV-CELL @ recurse ;
+   id 1- FRAMES {: frame:^ :}
+   frame FRAME-STATE @ LIVE =
+   frame FRAME-KIND @ BYTES-FRAME = and
+   frame FRAME-RESOURCE @ base = and if frame exit then
+   base frame FRAME-PREV @ recurse ;
 
-: ROOT-FRAME ( ^u8 -- ^n ) HEAD-CELL @ ROOT-FROM ;
+: ROOT-FRAME ( ^u8 -- ^frame ) HEAD-CELL @ ROOT-FROM ;
 
-: FRAME-IN? ( ^n n -- bool ) {: target:^ id:n :}
+: FRAME-IN? ( ^frame n -- bool ) {: target:^ id:n :}
    id 0= if false exit then
-   id 1- FRAME-AT {: frame:^ :}
+   id 1- FRAMES {: frame:^ :}
    frame target = if
-      frame STATE-CELL @ LIVE =
-      frame KIND-CELL @ BYTES-FRAME = and exit then
-   target frame PREV-CELL @ recurse ;
+      frame FRAME-STATE @ LIVE =
+      frame FRAME-KIND @ BYTES-FRAME = and exit then
+   target frame FRAME-PREV @ recurse ;
 
-: LIVE-BYTES-FRAME? ( ^n -- bool ) HEAD-CELL @ FRAME-IN? ;
+: LIVE-BYTES-FRAME? ( ^frame -- bool ) HEAD-CELL @ FRAME-IN? ;
 
-CAST: >NODE-CELL ( ^u8 -- ^^n )
+CAST: >NODE-CELL ( ^u8 -- ^^frame )
 
 : BIND-STATE ( str -- str )
    {: base:^ bound:n :}
    base ROOT-FRAME base >NODE-CELL !
    base bound ;
 
-: OWNER-FRAME ( ^u8 -- ^n )
+: OWNER-FRAME ( ^u8 -- ^frame )
    >NODE-CELL @ dup LIVE-BYTES-FRAME? 0= if E-C2-STATE throw then ;
 
 : APPEND-RECORD-BYTES ( n -- n )
@@ -227,35 +225,35 @@ CAST: >NODE-CELL ( ^u8 -- ^^n )
 
 \ A chunk begins with a release node in the same LIFO chain as its payloads.
 \ The next chunk leaves any unused tail of the old one until owner close.
-: APPEND-CHUNK ( ^n n -- ) {: frame:^ record-bytes:n :}
+: APPEND-CHUNK ( ^frame n -- ) {: frame:^ record-bytes:n :}
    record-bytes APPEND-HEADER-BYTES + MEM-64K max
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: chunk:^ length:NUM:alloc-byte-len :}
    \ Register ownership before any further fallible operation or yield.
-   frame APPEND-HEAD-CELL @ chunk APPEND-NEXT-CELL !
+   frame FRAME-APPEND-HEAD @ chunk APPEND-NEXT-CELL !
    length INIT-LEN>N chunk APPEND-LENGTH-CELL !
    [: RELEASE-APPEND-CHUNK ;] chunk APPEND-DISPOSER-CELL !
-   chunk frame APPEND-HEAD-CELL !
-   chunk APPEND-HEADER-BYTES + frame APPEND-CURSOR-CELL !
-   length INIT-LEN>N APPEND-HEADER-BYTES - frame APPEND-REMAIN-CELL ! ;
+   chunk frame FRAME-APPEND-HEAD !
+   chunk APPEND-HEADER-BYTES + frame FRAME-APPEND-CURSOR !
+   length INIT-LEN>N APPEND-HEADER-BYTES - frame FRAME-APPEND-REMAIN ! ;
 
-: APPEND-BODY ( ^n NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- str )
+: APPEND-BODY ( ^frame NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- str )
    {: frame:^ size:NUM:alloc-byte-len dispose :}
    size INIT-LEN>N {: bytes:n :}
    bytes MAX-APPEND > if E-MEM-SIZE throw then
    bytes APPEND-RECORD-BYTES {: record-bytes:n :}
-   frame APPEND-REMAIN-CELL @ record-bytes < if
+   frame FRAME-APPEND-REMAIN @ record-bytes < if
       frame record-bytes APPEND-CHUNK
    then
-   frame APPEND-CURSOR-CELL @ {: header:^ :}
-   frame APPEND-HEAD-CELL @ header APPEND-NEXT-CELL !
+   frame FRAME-APPEND-CURSOR @ {: header:^ :}
+   frame FRAME-APPEND-HEAD @ header APPEND-NEXT-CELL !
    bytes header APPEND-LENGTH-CELL !
    dispose header APPEND-DISPOSER-CELL !
-   header frame APPEND-HEAD-CELL !
-   header record-bytes + frame APPEND-CURSOR-CELL !
-   frame APPEND-REMAIN-CELL @ record-bytes - frame APPEND-REMAIN-CELL !
+   header frame FRAME-APPEND-HEAD !
+   header record-bytes + frame FRAME-APPEND-CURSOR !
+   frame FRAME-APPEND-REMAIN @ record-bytes - frame FRAME-APPEND-REMAIN !
    header APPEND-HEADER-BYTES + bytes ;
 
-: APPEND ( ^n NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- ^u8 n )
+: APPEND ( ^frame NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- ^u8 n )
    TASK:DEFER-ENTER
    [: APPEND-BODY ;] [: TASK:DEFER-LEAVE ;] finally ;
 
@@ -263,15 +261,15 @@ CAST: >NODE-CELL ( ^u8 -- ^^n )
 \ descriptors, arms the clear-only frame, then moves the fixed cell bundle.
 \ INIT-RUN's c2-invoke body catches a rejection and retires the pending frame.
 : INIT-STOW ( R str n [ R str -- S str | U -- U ] stow-layout | U -- R str [ R str -- S str | U -- U ] | U )
-   HEAD-FRAME c2-init-stow
+   HEAD-FRAME BYTE-VIEW c2-init-stow
    TASK:DEFER-LEAVE ;
 
 : RECORDS-STOW ( R str n n [ R str -- S str | U -- U ] stow-layout | U -- R str [ R str -- S str | U -- U ] | U )
-   HEAD-FRAME c2-records-stow
+   HEAD-FRAME BYTE-VIEW c2-records-stow
    TASK:DEFER-LEAVE ;
 
 : INIT-CLOSE ( -- )
-   HEAD-FRAME ORIGINAL-BOUND-CELL @ INIT-BOUND-CELL !
+   HEAD-FRAME FRAME-ORIGINAL-BOUND @ INIT-BOUND-CELL !
    CLOSE ;
 
 : INIT-RESTORE ( R str -- R str )
@@ -434,7 +432,7 @@ public
    MUT-UNPACK {: base:^ bound:n :}
    bound base bound MUT-PACK ;
 
-STRUCTURE owner-state OPAQUE FIELD node ^n ;STRUCTURE
+STRUCTURE owner-state OPAQUE FIELD node ^frame ;STRUCTURE
 STRUCTURE owner<a,b,c> OPAQUE FIELD state mut-view<a,b,c,init<b,owner-state>> ;STRUCTURE
 
 private
@@ -449,7 +447,7 @@ CAST: >ALLOC-DISPOSER ( [ ^u8 n -- ] -- [ ^u8 NUM:alloc-byte-len -- ] )
 public
 
 : OWNER-SIZE ( -- NUM:alloc-byte-len ) 8 MEM:BYTES-ALLOC-LEN ;
-: SEED-OWNER ( -- owner-state ) NULL$ drop CELL-VIEW OWNER-STATE-MAKE ;
+: SEED-OWNER ( -- owner-state ) NULL-PTR OWNER-STATE-MAKE ;
 : BIND ( mut-view<p,i,a,init<i,owner-state>> -- owner<p,i,a> ) OWNER-VIEW-UNPACK BIND-STATE OWNER-VIEW-PACK OWNER-MAKE ;
 : UNBIND ( owner<p,i,a> -- mut-view<p,i,a,init<i,owner-state>> ) OWNER-UNMAKE ;
 

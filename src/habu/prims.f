@@ -282,15 +282,15 @@ private
 EPRIM: finally PE-FINALLY EPRIM;
 \ The C2 runtime's scoped invocation is package C2-MEM's.
 EPPRIM: C2-MEM c2-invoke PE-C2-INVOKE ECLOSE-PRIVATE
-\ The C2 runtime passes the stow-layout, then the frame pointer; this narrow
+\ The C2 runtime passes the stow-layout, then the frame's bytes; this narrow
 \ machine transfer takes the layout whole.
 EPPRIM: C2-MEM c2-init-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-STOW-LAYOUT PE-IN PE-PTR-N PE-IN
+   PE-STOW-LAYOUT PE-IN PE-PTR-U8 PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT ECLOSE-PRIVATE
 EPPRIM: C2-MEM c2-records-stow
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-A PE-IN PE-B PE-IN
-   PE-STOW-LAYOUT PE-IN PE-PTR-N PE-IN
+   PE-STOW-LAYOUT PE-IN PE-PTR-U8 PE-IN
    PE-PTR-U8 PE-OUT PE-N PE-OUT PE-B PE-OUT ECLOSE-PRIVATE
 
 EPPRIM: SOURCE-ROOT source-file-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
