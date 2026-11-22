@@ -1362,7 +1362,7 @@ variable LONG-U
    INC$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    1 43 s" include"
-   S\" move `include` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" included`"
+   S\" move `include` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" >str included`"
    ASSERT-IMM-DIAG
    OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 
@@ -1371,7 +1371,7 @@ variable LONG-U
    REQ$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    1 43 s" require"
-   S\" move `require` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" required`"
+   S\" move `require` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" >str required`"
    ASSERT-IMM-DIAG
    OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 

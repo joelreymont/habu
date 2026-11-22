@@ -648,10 +648,11 @@ forth.md: **Errors**, **Integer arithmetic**.
 ## 7 require and load order
 
 - `require src/lib/string.f` loads once per image, keyed by canonical path;
-  `include` replays. `s" path" required` / `included` are the string forms. A
-  path resolves against the root that resolved the requiring file (for an
-  entry, the `--load` entry's or `hb prog.f` program's own directory, or a
-  stdin session's working directory), then the engine's source root
+  `include` replays. `s" path" >str required` / `included` are the string
+  forms (no `>str` in a `split-str` file). A path resolves against the root
+  that resolved the requiring file (for an entry, the `--load` entry's or
+  `hb prog.f` program's own directory, or a stdin session's working
+  directory), then the engine's source root
   (the working directory when it is a Habu tree, else the tree above the
   running `bin/hb`), then the working directory, so `require src/lib/…` names
   the tree root and a working-directory copy of a Habu library never loads in

@@ -2191,11 +2191,14 @@ PTR-VARIABLE HOLDER-FIRST
    s"  into a `:` … `;` body" EMIT-STR ;
 
 \ `include` and `require` take their path as the definition compiles, which
-\ the engine rejects; their string form w wu takes it when the word runs.
+\ the engine rejects; their string form w wu takes it when the word runs, and
+\ outside a split-str file it takes the literal as one str.
 : LOADER-HELP ( str str -- ) {: t:^ tu:n w:^ wu:n :}
    s" move " EMIT-STR  t tu CODE-SPAN
    s"  and its path out of the definition to top level, or load the file when the word runs with `s" EMIT-STR
-   34 EMIT1  s"  path" EMIT-STR  34 EMIT1  32 EMIT1  w wu EMIT-STR  96 EMIT1 ;
+   34 EMIT1  s"  path" EMIT-STR  34 EMIT1  32 EMIT1
+   CHECKER-SPLIT-STR @ 0= IF s" >str " EMIT-STR THEN
+   w wu EMIT-STR  96 EMIT1 ;
 
 \ Keyword t tu named where a word is wanted; the caller stops or keeps it.
 : KEYWORD-RECORD ( str -- )

@@ -246,12 +246,12 @@ public
 ;package
 ```
 
-- `include path.f` (`s" path.f" included`) loads the file every time; `require
-  path.f` (`s" path.f" required`) loads once, keyed by canonical absolute
-  pathname, so absolute, relative, `.`/`..` and symlink spellings are one
-  identity. Both compose source and share no namespace. Use `require` for
-  dependencies. Never include a file so two files share private helpers;
-  reopening the package does that.
+- `include path.f` (`s" path.f" >str included`) loads the file every time;
+  `require path.f` (`s" path.f" >str required`) loads once, keyed by
+  canonical absolute pathname, so absolute, relative, `.`/`..` and symlink
+  spellings are one identity. Both compose source and share no namespace.
+  Use `require` for dependencies. Never include a file so two files share
+  private helpers; reopening the package does that.
 - A loaded file is a closed program: `include`, `require` and `--load`
   run it on a data stack of its own. Its top level starts at `depth` 0, a
   token reaching its includer's cells throws 70, and a file that ends with
