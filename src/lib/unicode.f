@@ -7,7 +7,7 @@ split-str
 \ whether a span's full lowercase is another span byte for byte. They are
 \ libunistring's u8_casecmp, u8_casefold and u8_tolower with NULL language
 \ and normalization, so the case data is the installed library's. STORAGE
-\ CLASS. TASK-LOCAL: C's result cell, a TASK:+USERS row.
+\ CLASS. TASK-LOCAL: C's result cell, a TASK:+USER row.
 \ U+03A3 lowers by Unicode's Final_Sigma as Rust's str::to_lowercase does.
 
 require src/lib/unicode/class.f
@@ -42,10 +42,8 @@ private
    size VALID-LENGTH
    source size UTF8:VALID? 0= if E-UTF8 throw then ;
 
-1 cells TASK:+USERS RESULT-ROW u8
-
 \ C's four-byte int output, in a task-local cell each call zeroes first.
-: RESULT ( -- ^n ) 0 RESULT-ROW CELL-VIEW ;
+TASK:+USER RESULT n
 
 \ Exact u8_casecmp schema: two counted, read-only UTF-8 spans, two NULL
 \ policy pointers, and one four-byte writable result. u8_casefold and

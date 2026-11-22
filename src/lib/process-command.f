@@ -40,10 +40,8 @@ private
 \ so the capture sinks (quotations, which carry no data) find it. Scopes nest,
 \ and tasks never share a context. A halted task unwinds through each scope's
 \ `finally` as a throw does.
-2 TASK:+USERS CMD-TASK ^n
-
-: INNER ( -- ^^n ) 0 CMD-TASK ;
-: RUNNING ( -- ^^n ) 1 CMD-TASK ;
+TASK:+USER INNER ^n
+TASK:+USER RUNNING ^n
 
 STRUCTURE vectors DERIVE addr
    FIELD arg-bytes ^VEC:vector<u8>

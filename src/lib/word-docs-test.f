@@ -213,12 +213,6 @@ variable FIX-U
    s" CASEFOLD=" FIND {: k:n :}
    k s" CASEFOLD=" s" UNICODE" s" ^u8 n ^u8 n -- bool" REC=
    k WORD-DOCS:PUBLIC? TTRUE
-   s" RESULT" FIND {: r:n :}
-   r s" RESULT" s" UNICODE" s" -- ^n" REC=
-   r WORD-DOCS:PUBLIC? TFALSE
-   r WORD-DOCS:COMMENT$
-   s" C's four-byte int output, in a task-local cell each call zeroes first."
-   T$=
    s" UNICODE-CLASS:WHITE-SPACE?" FIND {: w:n :}
    w s" UNICODE-CLASS:WHITE-SPACE?" s" UNICODE" s" " REC=
    w WORD-DOCS:PUBLIC? TTRUE
