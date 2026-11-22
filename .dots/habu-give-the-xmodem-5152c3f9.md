@@ -1,9 +1,9 @@
 ---
 title: Give the xmodem and event-stream headers a record
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-22T12:11:01.341717+01:00"
 ---
 
-Problem: src/lib/serial-xmodem.f:41 and src/lib/net/event-stream.f:65 keep a caller-carved session header as ^n, reached through byte-offset views (serial-xmodem.f:46-51 HANDLE-FIELD and the rest, event-stream.f ST@ and the rest) and CAST: >VECTORS, as EDIT did before src/lib/byte-edit.f's header STRUCTURE. Acceptance: each header is a STRUCTURE its package allocates and frees; no cast, offset or view reaches it, and no caller sizes it. Depends: none. Claim: unassigned.
+Problem: src/lib/serial-xmodem.f:41-62 and src/lib/net/event-stream.f:63-75 keep a caller-carved session header as ^a or ^n, reached through byte-offset views and CAST: >VECTORS, and their callers size it (SERIAL-XMODEM:SESSION-BYTES, SSE:STORAGE-BYTES, src/lib/net/mcp.f:1692-1751). Acceptance: each header is a public OPAQUE STRUCTURE the caller declares as typed storage, as JSON:cursor is; no cast, offset or view reaches it; the byte-size words are gone. Depends: none. Claim: agent=worker workspace=.jj-ws.noindex/jerry-xmodem (xmodem); SSE unassigned.

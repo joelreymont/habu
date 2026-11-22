@@ -22,7 +22,7 @@ package SXMODEM-TEST
 using XMODEM
 TYPED-VARIABLE INPUT ^VEC:vector<u8>
 TYPED-VARIABLE OUTPUT ^VEC:vector<u8>
-create SESSION SERIAL-XMODEM:SESSION-BYTES allot
+TYPED-VARIABLE SESSION SERIAL-XMODEM:session
 CAST: BLEN>N ( NUM:byte-len -- n )
 : FRESH ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
@@ -463,11 +463,10 @@ RUN
         ports = [Port(master) for master, _ in terminals]
         names = [os.ttyname(slave) for _, slave in terminals]
         code = SETUP + f'''
-here FFI:>CELL 7 and 8 swap - 7 and allot
 variable ENTERED
 variable DONE
-create SESSION0 SERIAL-XMODEM:SESSION-BYTES allot
-create SESSION1 SERIAL-XMODEM:SESSION-BYTES allot
+TYPED-VARIABLE SESSION0 SERIAL-XMODEM:session
+TYPED-VARIABLE SESSION1 SERIAL-XMODEM:session
 TYPED-VARIABLE OUTPUT0 ^VEC:vector<u8>
 TYPED-VARIABLE OUTPUT1 ^VEC:vector<u8>
 create SOURCE0 8 allot
@@ -496,7 +495,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
    length 0 do data i + c@ identity <> if -1 throw then loop ;
 
 
-: WORK ( ^u8 n ^a ^^VEC:vector<u8> ^u8 n -- )
+: WORK ( ^u8 n ^SERIAL-XMODEM:session ^^VEC:vector<u8> ^u8 n -- )
    {{: path length:n session:^ output:^ data identity:n :}}
    1 ENTERED atomic-add drop
    begin ENTERED atomic@ 2 < while TASK:PAUSE repeat
