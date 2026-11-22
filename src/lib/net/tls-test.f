@@ -81,7 +81,7 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
    what WANT-WRITE = if FD:POLLOUT exit then
    0 ;
 
-: SET-UP ( fd ^u8 n ^u8 n -- n n )
+: SET-UP ( fd str str -- n n )
    {: sock:fd host:^ hu:n file:^ fu:n :}
    SESSION sock host hu file fu TEST-TLS-PEER:IN-DIR TLS:START
    >STEP ;
@@ -98,7 +98,7 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
 
 \ The span written whole; false once WRITE answers closed or failed. After a
 \ want answer the same span is written again, as WRITE requires.
-: PUT ( fd ^u8 n -- bool )
+: PUT ( fd str -- bool )
    {: sock:fd a:^ u:n :}
    0
    begin {: sent:n :}

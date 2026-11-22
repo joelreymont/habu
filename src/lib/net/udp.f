@@ -132,8 +132,8 @@ public
 
 \ Sends the payload to the name. On Linux it waits while the receiver's
 \ queue is full; macOS answers `failed` ENOBUFS.
-: SEND ( socket str ^u8 NUM:byte-len -- status )
-   {: socket:socket name size:n bytes length:NUM:byte-len :}
+: SEND ( socket str str -- status )
+   {: socket:socket name size:n bytes length:n :}
    name size ADDRESS! {: addrlen:n :}
    socket SOCKET>N SOCKADDR addrlen bytes length DATAGRAM:SEND >STATUS ;
 

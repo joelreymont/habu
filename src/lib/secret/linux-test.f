@@ -83,7 +83,7 @@ NO-PID KEY-PID !
 : SOCKETS/ ( str -- str ) SOCKETS$ 2swap JOINED FS:JOIN-PATH JOINED swap ;
 
 
-: TOOL ( ^u8 n ^u8 -- n )
+: TOOL ( str ^u8 -- n )
    {: name:^ u:n dst:^ :}
    name u >LEN dst FIND-EXECUTABLE MATCH option
       none OF
@@ -168,7 +168,7 @@ NO-PID KEY-PID !
    0 <> if E-PROC-ENV throw then ;
 
 
-: SAY ( ^u8 n -- ) s" secret-linux-test: " type type cr ;
+: SAY ( str -- ) s" secret-linux-test: " type type cr ;
 
 \ True once a line has come; false at the end of the output.
 : LINE? ( n -- bool )
@@ -263,14 +263,14 @@ NO-PID KEY-PID !
    SECRET-TOOL$ PROCESS:WAIT-FOREVER CMD:RUN-RC
    RESULT-CODE {: rc:n :} rc 0 <> if CMD:ERR$ type then rc 0 T= ;
 
-: LOOKUP ( CMD:command ^u8 n ^u8 n -- CMD:command )
+: LOOKUP ( CMD:command str str -- CMD:command )
    {: account:^ au:n want:^ wu:n :}
    CMD:RESET CMD-ROWS
    s" lookup" CMD:ARG+ account au ATTRS TOOL-RUN
    CMD:OUT$ want wu T$= ;
 
 \ secret-tool prints the attributes on stderr and the rest on stdout.
-: SEARCH ( CMD:command ^u8 n -- CMD:command ^u8 n )
+: SEARCH ( CMD:command str -- CMD:command str )
    {: account:^ au:n :}
    CMD:RESET CMD-ROWS
    s" search" CMD:ARG+ s" --all" CMD:ARG+ account au ATTRS TOOL-RUN

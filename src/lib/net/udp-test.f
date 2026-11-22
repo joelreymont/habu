@@ -36,7 +36,7 @@ variable SOCK-R
 variable SOCK-S
 
 : DIR$ ( -- str ) DIR DIR-U @ ;
-: PATH$ ( -- ^u8 n ) PATH PATH-U @ ;
+: PATH$ ( -- str ) PATH PATH-U @ ;
 : NAME$ ( -- str ) NAME NAME-U @ ;
 
 
@@ -113,7 +113,7 @@ variable SOCK-S
 
 
 : SEND-TO ( str -- ) {: name:^ size:n :}
-   SOCK-S @ UDP:>SOCKET name size SEND-BUF PAYLOAD-N STR:LENGTH UDP:SEND
+   SOCK-S @ UDP:>SOCKET name size SEND-BUF PAYLOAD-N UDP:SEND
    STATUS-ERRNO 0 T= ;
 
 

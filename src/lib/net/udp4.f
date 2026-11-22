@@ -209,8 +209,8 @@ public
 
 \ The input is borrowed for this call. SEND waits while the socket's send
 \ buffer is full; an interrupted send answers `failed`.
-: SEND ( socket address port ^u8 NUM:byte-len -- status )
-   {: socket:socket address:address port:port bytes size:NUM:byte-len :}
+: SEND ( socket address port str -- status )
+   {: socket:socket address:address port:port bytes size:n :}
    address port ENDPOINT!
    socket SOCKET>N SOCKADDR SOCKADDR-BYTES bytes size DATAGRAM:SEND >STATUS ;
 

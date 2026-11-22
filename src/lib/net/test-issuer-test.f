@@ -141,12 +141,12 @@ $10001 constant PAST-CAP            \ one byte past BEARER's TOKEN-CAP
 PAST-CAP BUFFER: OVERSIZE
 
 : BODY$ ( -- str ) BODY @ VEC:SPAN SPAN:$ ;
-: TOKEN$ ( -- ^u8 n ) TOKEN TOKEN-U @ ;
+: TOKEN$ ( -- str ) TOKEN TOKEN-U @ ;
 : CLAIMS$ ( -- str ) CLAIMS CLAIMS-U @ ;
 : ASSERTION$ ( -- str ) ASSERTION ASSERTION-U @ ;
 
 \ The text copied into a row, answering its length.
-: COPY ( ^u8 n ^u8 -- n )
+: COPY ( str ^u8 -- n )
    {: a:^ u:n row:^ :}
    a row u BYTE-COPY u ;
 
@@ -181,7 +181,7 @@ PAST-CAP BUFFER: OVERSIZE
       failed OF drop false ENDOF
    ;MATCH TTRUE ;
 
-: URL ( ^u8 n -- ^u8 n )
+: URL ( str -- str )
    {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
 
@@ -194,7 +194,7 @@ PAST-CAP BUFFER: OVERSIZE
    ;MATCH {: h:CURL:handle :}
    h url uu CURL:URL! OK h ;
 
-: OPEN ( ^u8 n -- CURL:handle ) URL OPEN-AT ;
+: OPEN ( str -- CURL:handle ) URL OPEN-AT ;
 
 \ The response's status and its body in BODY; -1 for a body past CAP, -2 for
 \ a failed transfer.
@@ -209,10 +209,10 @@ PAST-CAP BUFFER: OVERSIZE
    ;MATCH
    h CURL:CLEANUP ;
 
-: GET ( ^u8 n -- n ) OPEN FINISH ;
+: GET ( str -- n ) OPEN FINISH ;
 
 \ The body posted with the media type; the body is copied by libcurl.
-: POST ( ^u8 n ^u8 n ^u8 n -- n )
+: POST ( str str str -- n )
    {: path:^ pu:n type:^ tu:n b:^ bu:n :}
    path pu OPEN {: h:CURL:handle :}
    h type tu CURL:HEADER+ OK
@@ -240,7 +240,7 @@ PAST-CAP BUFFER: OVERSIZE
 : ON-BEHALF ( -- ) UNSCOPED s" &scope=api%3A%2F%2Fdown%2F.default" FORM+ ;
 
 \ The body is the error answer.
-: REFUSED ( n n ^u8 n -- )
+: REFUSED ( n n str -- )
    {: status:n want:n code:^ cu:n :}
    SB-RESET S\" {\"error\":\"" SB-APPEND code cu SB-APPEND S\" \"}" SB-APPEND
    BODY$ SB$ T$=
@@ -248,11 +248,11 @@ PAST-CAP BUFFER: OVERSIZE
 
 
 \ The index of the first dot at or after from, else the text's length.
-: DOT ( ^u8 n n -- n )
+: DOT ( str n -- n )
    {: t:^ u:n from:n :}
    u from ?do t i + c@ [char] . = if i unloop exit then loop u ;
 
-: DECODED ( ^u8 n ^u8 n -- n ) SPAN:MAKE BASE64:DECODE-URL ;
+: DECODED ( str ^u8 n -- n ) SPAN:MAKE BASE64:DECODE-URL ;
 
 \ The issued token copied from the answer; its header, claims and signature
 \ decoded.
@@ -277,7 +277,7 @@ PAST-CAP BUFFER: OVERSIZE
    HEAD HEAD-U @ s" typ" MEMBER$ s" JWT" T$= ;
 
 \ The answer is a 200 bearer token; the claims every issued token carries.
-: ANSWERED ( n ^u8 n -- )
+: ANSWERED ( n str -- )
    {: status:n aud:^ au:n :}
    status 200 T=
    BODY$ s" token_type" MEMBER$ s" Bearer" T$=
@@ -292,7 +292,7 @@ PAST-CAP BUFFER: OVERSIZE
    CLAIMS$ s" exp" MEMBER-INT iat ISSUED-S + T= ;
 
 \ An assertion for the client, minted into ASSERTION.
-: ASSERT ( ^u8 n n -- )
+: ASSERT ( str n -- )
    {: aud:^ au:n exp:n :}
    SB-RESET S\" {\"aud\":\"" SB-APPEND aud au SB-APPEND S\" \",\"exp\":" SB-APPEND
    exp FMT:SB-INT S\" ,\"oid\":\"user-1\",\"tid\":\"tenant-1\"}" SB-APPEND
@@ -467,7 +467,7 @@ REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
 
 \ The answer for the count, in a slot of its own, so answers in flight at
 \ once share no bytes.
-: COUNTED ( n -- ^u8 n )
+: COUNTED ( n -- str )
    {: k:n :}
    REPLIES k REPLY-SLOTS mod REPLY-CAP * + 0
    S\" {\"expires_in\":" PUT  LIFE @ FMT:INT$ PUT
@@ -484,7 +484,7 @@ REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
 
 \ The token presented to /claim, asking for the named claim: the status, the
 \ claim in BODY.
-: CLAIM ( ^u8 n ^u8 n -- n )
+: CLAIM ( str str -- n )
    {: t:^ tu:n name:^ nu:n :}
    0 AUTH-U ! s" Authorization: Bearer " AUTH+ t tu AUTH+
    s" /claim" OPEN {: h:CURL:handle :}
@@ -493,7 +493,7 @@ REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
    h name nu CURL:BODY! OK
    h FINISH ;
 
-: UP ( -- ^u8 n ) s" api://up/.default" ;
+: UP ( -- str ) s" api://up/.default" ;
 : OWN-TOKEN ( -- str n ) UP BEARER-GRANT:OWN GOT BEARER:TOKEN ;
 : ZEN ( -- str ) s" api://zen/.default" ;
 : FAULT-TOKEN ( -- str n )
@@ -684,12 +684,12 @@ TASKS!
 
 : SEEN$ ( n -- str ) {: i:n :} SEEN i SEEN-CAP * + i SEEN-U @ ;
 
-: SAW ( ^u8 n n -- )
+: SAW ( str n -- )
    {: t:^ tu:n i:n :}
    t tu SEEN i SEEN-CAP * + COPY i SEEN-U ! ;
 
 \ CURRENT's token for the scope, copied into slot i.
-: CURRENT-INTO ( ^u8 n n -- )
+: CURRENT-INTO ( str n -- )
    {: scope:^ su:n i:n :}
    scope su [: i SAW ;] BEARER:CURRENT ;
 

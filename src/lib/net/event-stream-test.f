@@ -18,19 +18,19 @@ TYPED-VARIABLE BIG ^VEC:vector<u8>
 TYPED-VARIABLE ACTIVE SSE:decoder
 variable CALLS
 
-: APPEND ( ^u8 n ^^VEC:vector<u8> -- ) @ VEC:APPEND ;
+: APPEND ( str ^^VEC:vector<u8> -- ) @ VEC:APPEND ;
 
 : FRESH ( ^^VEC:vector<u8> -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW swap ! ;
 
-: RECORD ( ^a ^u8 n ^u8 n -- )
+: RECORD ( ^a str str -- )
    {: ctx:^ kind:^ ku:n data:^ du:n :}
    ctx drop
    kind ku GOT APPEND 0 GOT @ VEC:PUSH c!
    data du GOT APPEND 0 GOT @ VEC:PUSH c!
    1 CALLS +! ;
 
-: EXPECT ( ^u8 n ^u8 n -- )
+: EXPECT ( str str -- )
    {: kind:^ ku:n data:^ du:n :}
    kind ku WANT APPEND 0 WANT @ VEC:PUSH c!
    data du WANT APPEND 0 WANT @ VEC:PUSH c! ;
@@ -45,7 +45,7 @@ variable CALLS
 : A-OPEN ( -- SSE:decoder ) DEC-A SSE:OPEN ;
 : B-OPEN ( -- SSE:decoder ) DEC-B SSE:OPEN ;
 
-: SEND ( SSE:decoder ^u8 n -- )
+: SEND ( SSE:decoder str -- )
    NULL-PTR [: RECORD ;] SSE:FEED ;
 
 : BASIC ( -- )
@@ -169,7 +169,7 @@ variable CALLS
    ACTIVE @ SSE:CLOSE
    0 CHECK ;
 
-: BOOM ( ^a ^u8 n ^u8 n -- )
+: BOOM ( ^a str str -- )
    2drop 2drop drop -12345 throw ;
 
 : CALLBACK-FAILURE ( -- )

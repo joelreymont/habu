@@ -217,7 +217,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : SCRIPT$ ( -- str )
    SCRIPT-BUF SCRIPT-U @ SPAN:TAKE SPAN:$ ;
 
-: LOG ( ^u8 n -- ) {: a u:n :}
+: LOG ( str -- ) {: a u:n :}
    a u SCRIPT-BUF SCRIPT-U @ SPAN:SKIP SPAN:COPY
    u SCRIPT-U +! ;
 
@@ -412,7 +412,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn REQ-OVER
    HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE ;
 
-: UPGRADE ( ^u8 n -- TCP4:connection )
+: UPGRADE ( str -- TCP4:connection )
    DIAL -rot UPGRADE-OVER ;
 
 : FRAME$ ( bool WS:opcode str -- str ) {: fin:bool op a u:n :}
@@ -421,7 +421,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    MASK-KEY CLIENT-TX size u SPAN:SUB WS:MASK
    CLIENT-TX size u + SPAN:TAKE SPAN:$ ;
 
-: SAY ( TCP4:connection bool WS:opcode ^u8 n -- )
+: SAY ( TCP4:connection bool WS:opcode str -- )
    {: conn:TCP4:connection fin:bool op a u:n :}
    s" > " fin op a u LOG-FRAME
    conn fin op a u FRAME$ SEND-RAW ;
@@ -431,7 +431,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    c [char] 0 - ;
 
 \ Bytes written in hex, two lowercase digits each.
-: BYTES ( ^u8 n -- ^u8 n ) {: a u:n :}
+: BYTES ( str -- str ) {: a u:n :}
    u 2 / {: k:n :}
    k 0 ?do
       a i 2 * + c@ NIBBLE 4 lshift a i 2 * + 1+ c@ NIBBLE or $FF and
@@ -494,7 +494,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    begin conn NEXT-FRAME PROBE-FRAME? 0= until
    HEARD ;
 
-: GOT ( WS:opcode ^u8 n -- ) {: op want wu:n :}
+: GOT ( WS:opcode str -- ) {: op want wu:n :}
    RX-EOF @ 0 T=
    RX-FIN @ 1 T=
    RX-OP @ OP$ op OP$ T$=
@@ -511,7 +511,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn HEAR GOT-END
    conn TCP4:CLOSE DROP-STATUS ;
 
-: EXCHANGE ( TCP4:connection WS:opcode ^u8 n -- ) {: conn:TCP4:connection op a u:n :}
+: EXCHANGE ( TCP4:connection WS:opcode str -- ) {: conn:TCP4:connection op a u:n :}
    conn true op a u SAY
    conn HEAR op a u GOT ;
 
@@ -520,7 +520,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn HEAR 1000 GOT-CLOSE
    conn ENDS ;
 
-: SECTION ( ^u8 n -- ) {: a u:n :}
+: SECTION ( str -- ) {: a u:n :}
    a u T-LABEL
    s" == " LOG a u LOG-LINE ;
 
@@ -771,7 +771,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ The status line a refused handshake is answered with, and the status the
 \ route was told it was refused with: 0 when the server refused the request
 \ before any route ran.
-: REFUSED ( ^u8 n ^u8 n n -- ) {: label lu:n want wu:n status:n :}
+: REFUSED ( str str n -- ) {: label lu:n want wu:n status:n :}
    label lu T-LABEL
    0 REFUSED-WITH !
    S\" \r\n" REQ+
@@ -951,7 +951,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ A client that does not wait for the 101: the first AT bytes of its frame ride
 \ behind the request, where the HTTP server has already read them, and it
 \ writes the rest once the 101 is in.
-: EARLY ( ^u8 n n -- ) {: a u:n at:n :}
+: EARLY ( str n -- ) {: a u:n at:n :}
    s" GET" s" /ws" REQ-START GOOD-LINES S\" \r\n" REQ+
    s" > " true WS-OPCODE:TEXT a u LOG-FRAME
    true WS-OPCODE:TEXT a u FRAME$ {: f fu:n :}
@@ -972,7 +972,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a frame whose header the handshake cut" T-LABEL
    s" early header" 1 EARLY ;
 
-: KIND$ ( n -- ^u8 n ) {: kind:n :}
+: KIND$ ( n -- str ) {: kind:n :}
    kind 0= if s" opened" exit then
    kind 1 = if s" text" exit then
    kind 2 = if s" binary" exit then
@@ -998,7 +998,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    sock 1000 CLOSES-WITHIN
    LOG-CALLS ;
 
-: BREAKS ( ^u8 n ^u8 n n -- ) {: label lu:n a u:n code:n :}
+: BREAKS ( str str n -- ) {: label lu:n a u:n code:n :}
    label lu SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    conn a u SAY-RAW
@@ -1146,7 +1146,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : ERR-PATH$ ( -- str )
    s" build/ws-stderr.txt" ;
 
-: ERR$ ( -- ^u8 n )
+: ERR$ ( -- str )
    ERR-BUF ERR-U @ SPAN:TAKE SPAN:$ ;
 
 : ERR-WANT$ ( -- str )
@@ -1723,7 +1723,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : WANT$ ( -- str )
    WANT-BUF WANT-U @ SPAN:TAKE SPAN:$ ;
 
-: W ( ^u8 n -- ) {: a u:n :}
+: W ( str -- ) {: a u:n :}
    a u WANT-BUF WANT-U @ SPAN:SKIP SPAN:COPY
    u WANT-U +!
    LF WANT-BUF WANT-U @ SPAN:U8!

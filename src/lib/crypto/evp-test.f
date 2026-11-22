@@ -524,7 +524,7 @@ create JWS-MSG JWS-CAP allot
 variable PEM-N
 variable JWS-N
 
-: ASCII, ( ^u8 n -- ) {: p u:n :}
+: ASCII, ( str -- ) {: p u:n :}
    u 0 ?do p i + c@ BYTE, loop ;
 
 : PEM-LINE ( str -- ) ASCII, 10 BYTE, ;

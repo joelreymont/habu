@@ -173,9 +173,9 @@ public
 
 \ Sends the payload to the sockaddr of that length. Success means the OS
 \ accepted the whole datagram, not that it arrived.
-: SEND ( n str ^u8 NUM:byte-len -- status )
-   {: fd:n sockaddr length:n bytes size:NUM:byte-len :}
-   fd bytes size BLEN>N 0 sockaddr length SEND-CALL 0 < if
+: SEND ( n str str -- status )
+   {: fd:n sockaddr length:n bytes size:n :}
+   fd bytes size 0 sockaddr length SEND-CALL 0 < if
       LAST-ERROR DATAGRAM-STATUS:FAILED
    else DATAGRAM-STATUS:OK then ;
 

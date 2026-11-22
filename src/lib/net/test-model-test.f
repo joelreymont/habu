@@ -38,7 +38,7 @@ TASK:SEMAPHORE IN-REC
 TASK:SEMAPHORE GO
 
 : KEY$ ( -- str ) s" test-model-key" ;
-: TEXT$ ( -- ^u8 n ) S\" {\qanswer\q:\qsay \\\qhi\\\q\q}" ;
+: TEXT$ ( -- str ) S\" {\qanswer\q:\qsay \\\qhi\\\q\q}" ;
 : REASON$ ( -- str ) s" max_output_tokens" ;
 
 : SCHEMA$ ( -- str )
@@ -80,7 +80,7 @@ TASK:SEMAPHORE GO
    s" POST" s" /compact/responses/compact" [: nip WINDOW$ TEST-MODEL:COMPACTION! ;] HTTP:ROUTE ;
 
 
-: AT ( ^u8 n -- )
+: AT ( str -- )
    {: path:^ pu:n :}
    SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND
    SB$ M MODEL:BASE-URL!
@@ -148,7 +148,7 @@ TASK:SEMAPHORE GO
    M MODEL:INPUT-TOKENS 11 T= ;
 
 
-: RECORD ( n ^u8 n -- n )
+: RECORD ( n str -- n )
    2drop drop
    IN-REC TASK:SIGNAL-SEM
    GO TASK:WAIT-SEM

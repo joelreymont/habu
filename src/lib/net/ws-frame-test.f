@@ -22,7 +22,7 @@ variable STAGED-LEN
 variable BOUND
 TYPED-VARIABLE WHO WS:sender
 
-: OUT$ ( n -- ^u8 n )
+: OUT$ ( n -- str )
    OUT SPAN:$ drop swap ;
 
 : HEX$ ( str -- str ) {: a u:n :}
@@ -55,11 +55,11 @@ TYPED-VARIABLE WHO WS:sender
 : PUT ( WS:header WS:sender -- )
    OUT WS:ENCODE-HEADER drop ;
 
-: ENCODES ( WS:header WS:sender ^u8 n -- ) {: h who want wu:n :}
+: ENCODES ( WS:header WS:sender str -- ) {: h who want wu:n :}
    want wu T-LABEL
    h who OUT WS:ENCODE-HEADER OUT$ HEX$ want wu T$= ;
 
-: DECODES ( ^u8 n WS:sender n n -- ) {: a u:n who max:n size:n :}
+: DECODES ( str WS:sender n n -- ) {: a u:n who max:n size:n :}
    a u who max STAGE
    a u T-LABEL
    DECODE-STAGED MATCH WS:decoded
@@ -71,7 +71,7 @@ TYPED-VARIABLE WHO WS:sender
       ENDOF
    ;MATCH ;
 
-: NEEDS ( ^u8 n WS:sender n -- ) {: a u:n who want:n :}
+: NEEDS ( str WS:sender n -- ) {: a u:n who want:n :}
    a u who LEN-MAX STAGE
    a u T-LABEL
    DECODE-STAGED MATCH WS:decoded
@@ -79,7 +79,7 @@ TYPED-VARIABLE WHO WS:sender
       frame OF drop drop s" a frame, not a need" T-FAIL-AS ENDOF
    ;MATCH ;
 
-: REFUSES ( ^u8 n WS:sender n n -- ) {: a u:n who max:n code:n :}
+: REFUSES ( str WS:sender n n -- ) {: a u:n who max:n code:n :}
    a u who max STAGE
    a u T-LABEL
    [: DECODE-STAGED drop ;] code TTHROWSQ ;

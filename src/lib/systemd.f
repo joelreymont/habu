@@ -6,7 +6,6 @@ split-str
 \ STORAGE CLASS. None of its own.
 require src/lib/error.f
 require src/lib/type/deftype.f
-require src/lib/string-roles.f
 require src/os/env-base.f
 require src/lib/net/udp.f
 
@@ -45,7 +44,7 @@ private
 \ The notice went or did not: a failed close changes neither.
 : SENT ( UDP:socket str -- status )
    {: socket:UDP:socket name:^ size:n :}
-   socket name size s" READY=1" STR:LENGTH UDP:SEND >STATUS
+   socket name size s" READY=1" UDP:SEND >STATUS
    socket UDP:CLOSE drop ;
 
 : NOTIFY ( str -- status )

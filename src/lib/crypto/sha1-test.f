@@ -74,7 +74,7 @@ create SIZES 1 , 63 , 64 , 65 , 127 , 200 , 999 ,
 
 \ The byte-wise stream fills the tail through every position
 \ before the length lands.
-: BOUNDARY ( n ^u8 n -- ) {: u:n want wu:n :}
+: BOUNDARY ( n str -- ) {: u:n want wu:n :}
    CTX-A u A$ SHA1:HASH want wu DIGEST=
    CTX-B SHA1:START
    u 0 do CTX-B 1 A$ SHA1:FEED loop

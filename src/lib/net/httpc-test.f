@@ -186,7 +186,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : TWO$ ( n -- str ) 0= if FIRST$ else SECOND$ then ;
 
 \ The answer to the case's request K, and whether the server closes after it.
-: REPLY ( n -- ^u8 n bool ) {: k:n :}
+: REPLY ( n -- str bool ) {: k:n :}
    SCRIPT @ MATCH script
       sized OF SIZED$ false ENDOF
       chunked OF CHUNKED$ false ENDOF
@@ -380,7 +380,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 : END-CASE ( -- ) LINK HTTPC:CLOSE ;
 
-: PREPARE ( ^u8 n ^u8 n -- ) {: m:^ mu:n t:^ tu:n :}
+: PREPARE ( str str -- ) {: m:^ mu:n t:^ tu:n :}
    LINK m mu t tu HTTPC:REQUEST
    LINK TOTAL-MS STALL-MS HTTPC:DEADLINES! ;
 
@@ -416,7 +416,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    ANSWER-RESET
    LINK SPAN-BUF span >LEN HTTPC:NEXT ANSWERED? TFALSE ;
 
-: ANSWER-IS ( n ^u8 n -- ) {: status:n a:^ u:n :}
+: ANSWER-IS ( n str -- ) {: status:n a:^ u:n :}
    FAULTS @ 0<> if
       s" httpc-test: NEXT failed: " type LAST-FAULT @ HTTPC:FAULT$ type cr
    then
@@ -582,7 +582,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    END-CASE ;
 
 \ An answer that forbids keeping its connection; the next request dials anew.
-: SHUT-BY ( script ^u8 n -- ) {: sc:script a:^ u:n :}
+: SHUT-BY ( script str -- ) {: sc:script a:^ u:n :}
    sc BEGIN-CASE
    ASK WIDE-SPAN READ-ALL
    a u T-LABEL
@@ -685,7 +685,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    HTTPC-FAULT:TIMEOUT true FAULT-IS
    END-CASE ;
 
-: MALFORMED-BY ( script ^u8 n -- ) {: sc:script a:^ u:n :}
+: MALFORMED-BY ( script str -- ) {: sc:script a:^ u:n :}
    sc BEGIN-CASE
    ASK WIDE-SPAN READ-ALL
    a u T-LABEL
@@ -714,7 +714,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ A request with a stall only, in a room of SMALL-ROOM bytes, whose answer
 \ fails `oversize`.
-: OVERSIZE-BY ( script ^u8 n -- ) {: sc:script a:^ u:n :}
+: OVERSIZE-BY ( script str -- ) {: sc:script a:^ u:n :}
    sc SMALL-ROOM BEGIN-IN
    LINK s" GET" s" /case" HTTPC:REQUEST
    LINK 0 STALL-MS HTTPC:DEADLINES!
@@ -867,7 +867,7 @@ variable TRUST-U
 
 \ The plain server answers the ClientHello by its script; the handshake
 \ fails with mbedTLS's code as CAUSE.
-: SHAKE-FAILS ( script n ^u8 n -- ) {: sc:script cause:n a:^ u:n :}
+: SHAKE-FAILS ( script n str -- ) {: sc:script cause:n a:^ u:n :}
    sc SCRIPT-IS
    s" localhost" s" ca.pem" PORT-CELL @ ROOM-CAP BEGIN-HTTPS-AT
    ASK-ROOT WIDE-SPAN READ-ALL

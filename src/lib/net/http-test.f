@@ -846,7 +846,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    status ;
 
 
-: FETCH ( ^u8 n ^u8 n -- n ) {: method:^ methodlen:n path:^ pathlen:n :}
+: FETCH ( str str -- n ) {: method:^ methodlen:n path:^ pathlen:n :}
    OPEN-HANDLE {: subject:CURL:handle :}
    subject path pathlen URL-FOR CURL:URL! DROP-CURL-STATUS
    subject method methodlen CURL:METHOD! DROP-CURL-STATUS
@@ -997,7 +997,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    RES$ want len STARTS-WITH? ;
 
 
-: HAS? ( ^u8 n -- bool ) {: want:^ len:n :}
+: HAS? ( str -- bool ) {: want:^ len:n :}
    RES$ want len CONTAINS? ;
 
 
@@ -1086,7 +1086,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
    WANT-BUF WANT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: W ( ^u8 n -- ) {: bytes:^ len:n :}
+: W ( str -- ) {: bytes:^ len:n :}
    bytes len WANT-BUF WANT-U @ SPAN:SKIP SPAN:COPY
    WANT-U @ len + WANT-U !
    LF WANT-BUF WANT-U @ SPAN:U8!
@@ -1265,7 +1265,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    ERR-PATH-BUF ERR-PATH-U @ ;
 
 
-: ERR$ ( -- ^u8 n )
+: ERR$ ( -- str )
    ERR-BUF ERR-U @ SPAN:TAKE SPAN:$ ;
 
 
@@ -2632,7 +2632,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 
 \ True when `<want><digits> ms` and its LF start at a.
-: ACCESS-AT? ( ^u8 n str -- bool ) {: a:^ u:n want:^ wantlen:n :}
+: ACCESS-AT? ( str str -- bool ) {: a:^ u:n want:^ wantlen:n :}
    a u want wantlen STARTS-WITH? 0= if false exit then
    a wantlen + u wantlen - DIGITS-SKIP {: rest:^ restlen:n :}
    restlen u wantlen - = if false exit then
