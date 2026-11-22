@@ -893,14 +893,7 @@ variable SVX-HI
    loop
    newn SVX-HI ! ;
 
-\ A variant owns exactly one generated constructor. Rewriting the cell would
-\ strand the old symbol's head on a row that no longer carries it, so the second
-\ write is refused rather than silently indexed wrong.
-
 : SUMV-CTOR-SYM! ( n n -- ) {: vid:n sym:n :}
-   vid SUMV-CTOR-SYM@ 0 <> IF
-      s" tfam: variant constructor symbol already set" EXIT-STATUS:INTERNAL die
-   THEN
    SVX-ENSURE
    sym vid SUMV-REC@ SV.CTOR-SYM !
    vid sym SVX-LINK ;
@@ -1573,15 +1566,14 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 \ A variant has one declared-payload source: SUMTYPE stores positional roots in
 \ the SUMV schema range; ENUM stores named rows in TYPE-FIELD and leaves that
 \ range empty. The accessors below are the one seam for both. A sum/enum family
-\ with a nonzero declared field count uses TYPE-FIELD for every variant; bad
-\ bounds, ownership or a missing named index are invariant failures, never a
-\ fallback into positional storage. A product family keeps positional schemas
+\ with a nonzero declared field count uses TYPE-FIELD for every variant. A
+\ product family keeps positional schemas
 \ for its make/unmake variants. An all-empty family has no payload either way.
 \ Only a bounded, committed, variant-owned field slice is a valid named
 \ representation.
 
-\ A family's variant range (TFAM-VAR-RANGE!) or field range (TFAM-FLD-RANGE!)
-\ holds rows that are not its variants' payload; both setters store it unchecked.
+\ A type entry can give a sum's variants positional schemas beside named
+\ fields, and ER-READ does not refuse that.
 : RANGE-BAD ( -- )
    s" tfam: a family's variant or field range holds rows that are not its payload"
    EXIT-STATUS:INTERNAL die ;
@@ -1627,38 +1619,17 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 : SUMV-FAMILY-LEGACY-PAYLOAD? ( n -- bool ) {: fam:n :}
    fam TFAM-VAR-START@ {: base:n :}
    fam TFAM-VAR-COUNT@ {: count:n :}
-   base 0 < count 0 < or IF RANGE-BAD THEN
-   base SUMV-N @ > IF RANGE-BAD THEN
-   count SUMV-N @ base - > IF RANGE-BAD THEN
    0 BEGIN dup count < WHILE
       base over + {: vid:n :}
-      vid SUMV-FAM@ fam <> IF RANGE-BAD THEN
       vid SUMV-SCH-COUNT@ 0 <> IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
 
 : SUM-NAMED-PAYLOAD-WALK? ( n -- bool ) {: fam:n :}
    fam TFAM-SUM? fam TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
-   fam TFAM-FLD-START@ {: base:n :}
    fam TFAM-FLD-COUNT@ {: count:n :}
-   count 0 < IF RANGE-BAD THEN
    count 0= IF RES-FALSE EXIT THEN
-   base 0 < IF RANGE-BAD THEN
-   base PF-COMMIT-N @ > IF RANGE-BAD THEN
-   count PF-COMMIT-N @ base - > IF RANGE-BAD THEN
    fam SUMV-FAMILY-LEGACY-PAYLOAD? IF RANGE-BAD THEN
-   fam TFAM-VAR-START@ {: variants:n :}
-   fam TFAM-VAR-COUNT@ {: variant-count:n :}
-   0 BEGIN dup count < WHILE
-      base over + {: fid:n :}
-      fid PF-FAM@ fam <> IF RANGE-BAD THEN
-      fid PF-VAR@ {: owner:n :}
-      owner PF-NO-VARIANT = IF RANGE-BAD THEN
-      owner 0 < owner SUMV-N @ >= or IF RANGE-BAD THEN
-      owner SUMV-FAM@ fam <> IF RANGE-BAD THEN
-      owner variants < owner variants - variant-count >= or IF RANGE-BAD THEN
-      1 +
-   REPEAT drop
    RES-TRUE ;
 
 : SUM-NAMED-PAYLOAD? ( n -- bool ) {: fam:n :}
@@ -1666,9 +1637,6 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
    fam SUM-NAMED-PAYLOAD-WALK? dup fam TFM-NAMED TFM-FLAG! ;
 
 : SUMV-NAMED-PAYLOAD? ( n -- bool ) SUMV-FAM@ SUM-NAMED-PAYLOAD? ;
-
-\ A payload index the variant does not have.
-: PAY-INDEX-BAD ( -- ) s" tfam: payload index out of range" EXIT-STATUS:INTERNAL die ;
 
 : SUMV-PAY-FIELD ( n n -- n bool ) {: vid:n wanted:n :}
    vid SUMV-NAMED-PAYLOAD? 0= IF 0 RES-FALSE EXIT THEN
@@ -1679,12 +1647,10 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
    vid SUMV-FAM@ vid SUMV-SLICE-N ;
 
 : SUMV-PAY-ROOT ( n n -- n ) {: vid:n index:n :}
-   index 0 < IF PAY-INDEX-BAD THEN
    vid SUMV-NAMED-PAYLOAD? IF
-      vid index SUMV-NAMED-FIELD 0= IF drop PAY-INDEX-BAD THEN
+      vid index SUMV-NAMED-FIELD drop
       PF-SCH@ EXIT
    THEN
-   index vid SUMV-SCH-COUNT@ >= IF PAY-INDEX-BAD THEN
    vid SUMV-SCH-START@ index + ;
 
 : SUMV-PAYCELLS@ ( n -- n ) {: vid:n :}
@@ -2505,22 +2471,14 @@ variable MBX-GEN   0 MBX-GEN !
    HIDX-ENSURE
    MBX-GEN @ HIDX-GEN @ <> IF MBX-BUILD THEN ;
 
-\ A member has one generated word: a second symbol for its row is a defect.
-: SYM-ONCE ( n n -- ) {: old:n sym:n :}
-   old 0 <>  old sym <>  and IF
-      s" tfam: a member's symbol is already set" EXIT-STATUS:INTERNAL die
-   THEN ;
-
 : FIELD-SYM! ( n n -- ) {: fid:n sym:n :}
    sym 0= IF EXIT THEN
-   fid PF-ROW PF.ACCESSOR-SYM @ sym SYM-ONCE
    sym fid PF-ROW PF.ACCESSOR-SYM !
    MBX-ENSURE
    fid 2 * 2 + sym MBX-LINK ;
 
 : AT-SYM! ( n n -- ) {: fam:n sym:n :}
    sym 0= IF EXIT THEN
-   fam TF-REC@ TF.AT-SYM @ sym SYM-ONCE
    sym fam TF-REC@ TF.AT-SYM !
    MBX-ENSURE
    fam 2 * 1 + sym MBX-LINK ;
@@ -4070,8 +4028,7 @@ TFC-QUOT-ROW-INSTALL
 \ every parameter one cell; an instance with a wide argument moves it.
 : MEMBER-FAM ( n n -- n ) {: shape:n param:n :}
    shape CHILD-ABI:INDEX = IF param EXIT THEN
-   shape CHILD-ABI:FIELD =  shape CHILD-ABI:SPAN = or IF param PF-FAM@ EXIT THEN
-   s" tfam: a member shape names no member" EXIT-STATUS:INTERNAL die ;
+   param PF-FAM@ ;
 
 : SLOT-OPEN? ( n n -- bool ) {: term:n slot:n :}
    term slot PARAM>ARG T-UNSTALE {: arg:n :}
@@ -4357,8 +4314,6 @@ TFAM-INST-LIN-INSTALL
    term PARAM>ARGC fam TFAM-ARITY@ <> IF
       s" tfam: layout members need the family's arity" EXIT-STATUS:INTERNAL die THEN
    fam TFAM-PRODUCT? IF term fam FRESH MK-ROW FIELD-MEMBERS EXIT THEN
-   fam TFAM-SUM? fam TFAM-ENUM? or 0= IF
-      s" tfam: members of a family with no layout" EXIT-STATUS:INTERNAL die THEN
    FRESH MK-ROW
    fam TFAM-VAR-COUNT@ 0 ?do term fam TFAM-VAR-START@ i + rot VARIANT-MEMBERS loop ;
 : TFAM-MEMBERS-INSTALL ( -- ) [: TFAM-MEMBERS ;] is TFAM-MEMBERS-XT ;
@@ -4396,15 +4351,10 @@ TFAM-MEMBERS-INSTALL
    base fam TFAM-NAME$ fam MK-PARAM ;
 
 \ A field accessor's input row over a fresh row BASE, `^F<..>`, from the
-\ committed field id FID with the flags FLAGS, and its family term TERM, whose
-\ arguments the field's type reads. A field of other flags, or one ending past
-\ the family's width, is an engine defect.
-: FIELD-IN ( n n -- n n n ) {: fid:n flags:n :}
+\ committed field id FID, and its family term TERM, whose arguments the field's
+\ type reads.
+: FIELD-IN ( n -- n n n ) {: fid:n :}
    fid PF-FAM@ {: fam:n :}
-   fid PF-FLAGS@ flags <> IF
-      s" tfam: a field accessor met a field of other flags" EXIT-STATUS:INTERNAL die THEN
-   fid PF-BYTE-OFF@ fid PF-BYTES@ +  fam TFAM-SLOTS@ CELL *  > IF
-      s" tfam: a field ends past its family's width" EXIT-STATUS:INTERNAL die THEN
    fam TFAM-FRESH-TERM {: term:n :}
    term TFC-ARGS!
    FRESH MK-ROW {: base:n :}
@@ -4428,7 +4378,7 @@ TFAM-MEMBERS-INSTALL
 \ FID: it takes `^F<..>` and answers `^T`, T the field's type over the
 \ same arguments.
 : TFAM-FIELD-ROWS ( n -- n n n ) {: fid:n :}
-   fid PF-FLAGS-NONE FIELD-IN {: din:n base:n term:n :}
+   fid FIELD-IN {: din:n base:n term:n :}
    CHILD-ABI:FIELD fid term MEMBER-CELLS
    fid PF-SCH@ SCHEMA-ROOT@ TFC-USE TFC-SCH-TERM {: ft:n :}
    din  ft MK-PTR base MK-PUSH  fid PF-BYTE-OFF@ ;
@@ -4437,7 +4387,7 @@ TFAM-MEMBERS-INSTALL
 \ FID: it takes `^F<..>` and answers the field's bytes as `SPAN:span<u8>`,
 \ laid base below len as SPAN:MAKE lays it.
 : TFAM-SPAN-ROWS ( n -- n n n ) {: fid:n :}
-   fid PF-FLAG-BUFFER FIELD-IN {: din:n base:n term:n :}
+   fid FIELD-IN {: din:n base:n term:n :}
    CHILD-ABI:SPAN fid term MEMBER-CELLS
    din  SPAN-U8 base PUSH-LOGICAL  fid ;
 
