@@ -152,15 +152,19 @@ $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option
 1 constant SHUT-WR
 2 constant SHUT-RDWR
 
-\ Endpoint storage is per task: a $10 sockaddr_in, a $04 socklen_t, the $04
-\ int a socket option is set from, and the $08 pollfd a transfer waits through
-\ (int fd, short events, short revents). Calls must not nest within one task;
-\ readers sharing a connection coordinate themselves.
-$20 TASK:+USERS IO-STORAGE u8
-: SOCKADDR ( -- ^u8 ) 0 IO-STORAGE ;
-: ADDRLEN ( -- ^u8 ) $10 IO-STORAGE ;
-: OPTION ( -- ^u8 ) $14 IO-STORAGE ;
-: POLLFD ( -- ^u8 ) $18 IO-STORAGE ;
+\ Endpoint storage is per task, raw bytes the kernel reads and fills: a $10
+\ sockaddr_in, a $04 socklen_t, the $04 int a socket option is set from, and
+\ the $08 pollfd a transfer waits through (int fd, short events, short
+\ revents). Calls must not nest within one task; readers sharing a connection
+\ coordinate themselves.
+$10 TASK:+USERS SOCKADDR-ROW u8
+4 TASK:+USERS ADDRLEN-ROW u8
+4 TASK:+USERS OPTION-ROW u8
+8 TASK:+USERS POLLFD-ROW u8
+: SOCKADDR ( -- ^u8 ) 0 SOCKADDR-ROW ;
+: ADDRLEN ( -- ^u8 ) 0 ADDRLEN-ROW ;
+: OPTION ( -- ^u8 ) 0 OPTION-ROW ;
+: POLLFD ( -- ^u8 ) 0 POLLFD-ROW ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 \ Each caller has shown the cell nonnegative.
