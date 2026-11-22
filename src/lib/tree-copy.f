@@ -28,7 +28,7 @@ create DEST PATH-CAP allot          variable DEST-U
    a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
 
 \ A walk callback has no context, so the root is read from INTO$.
-: MEMBER ( ^u8 n -- )
+: MEMBER ( str -- )
    {: a:^ u:n :}
    INTO$ a u CHECKOUT-REL DEST FS:JOIN-PATH DEST-U !
    DEST$ SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
@@ -36,9 +36,9 @@ create DEST PATH-CAP allot          variable DEST-U
 
 public
 
-: FILE ( ^u8 n ^u8 n -- ) INTO! MEMBER ;
+: FILE ( str str -- ) INTO! MEMBER ;
 
-: TREE ( ^u8 n ^u8 n -- ) INTO! [: MEMBER ;] FS:WALK-FILES ;
+: TREE ( str str -- ) INTO! [: MEMBER ;] FS:WALK-FILES ;
 
 \ src/ and tools/: the sources tools/hb-build.f builds from.
 : BUILD-SOURCES ( str -- )

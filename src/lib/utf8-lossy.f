@@ -12,11 +12,11 @@ require src/lib/utf8-scalar.f
 
 package UTF8-LOSSY
 
-: REPLACEMENT ( -- ^u8 n )
+: REPLACEMENT ( -- str )
    S\" \xEF\xBF\xBD" ;
 
 \ The next piece's end, and whether it is copied or replaced.
-: STEP ( ^u8 n n -- n bool ) {: source:^ length:n cursor:n :}
+: STEP ( str n -- n bool ) {: source:^ length:n cursor:n :}
    source length cursor UTF8:NEXT
    MATCH UTF8:scalar-step
       scalar OF nip true ENDOF
@@ -25,7 +25,7 @@ package UTF8-LOSSY
       ENDOF
    ;MATCH ;
 
-: PIECE ( n ^u8 n n -- n n ) {: total:n source:^ length:n cursor:n :}
+: PIECE ( n str n -- n n ) {: total:n source:^ length:n cursor:n :}
    source length cursor STEP if
       dup cursor - total + swap
    else
@@ -41,7 +41,7 @@ package UTF8-LOSSY
    r dst width BYTE-COPY
    dst width + next ;
 
-: PUT ( ^u8 ^u8 n n -- ^u8 n ) {: dst:^ source:^ length:n cursor:n :}
+: PUT ( ^u8 str n -- ^u8 n ) {: dst:^ source:^ length:n cursor:n :}
    source length cursor STEP if
       source cursor rot dst COPIED
    else

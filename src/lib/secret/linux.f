@@ -32,7 +32,7 @@ FUNCTION: SECRET-SEARCH secret_service_search_sync ( n n n n n ^u8 -- n ) ;FUNCT
 FUNCTION: SECRET-GET secret_item_get_secret ( n -- n ) ;FUNCTION
 FUNCTION: VALUE-GET secret_value_get ( n ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: VALUE-FREE secret_value_unref ( n -- ) ;FUNCTION
-FUNCTION: VALUE-NEW secret_value_new ( ^u8 n ^u8 -- n ) ;FUNCTION
+FUNCTION: VALUE-NEW secret_value_new ( str ^u8 -- n ) ;FUNCTION
 FUNCTION: SECRET-STORE secret_service_store_sync ( n n n n ^u8 n n ^u8 -- i32 ) ;FUNCTION
 
 PROCESS-SYMBOLS

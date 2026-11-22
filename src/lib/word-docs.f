@@ -137,7 +137,7 @@ variable IN-GLOBAL                            \ the open section is `global`
    dup e < if dup BYTE STR-SPACE = if 1+ then then ;
 
 \ The text of the comment line that starts at s, and the next line's start.
-: NOTE ( n -- ^u8 n n ) {: s:n :}
+: NOTE ( n -- str n ) {: s:n :}
    s LINE-END {: e:n :}
    s e INK 1+ e SKIP-SPACE {: t:n :}
    SRC@ t + e t - RTRIM
@@ -171,7 +171,7 @@ variable IN-GLOBAL                            \ the open section is `global`
    k REC f cells + CELL@ ;
 
 \ Text field f of record k: package 0, name 1, effect 2, comment 3.
-: TEXT$ ( n n -- ^u8 n ) {: k:n f:n :}
+: TEXT$ ( n n -- str ) {: k:n f:n :}
    k REC HEAD-CELLS cells +
    f 0 ?do k i FIELD@ + loop
    k f FIELD@ ;
@@ -199,7 +199,7 @@ variable IN-GLOBAL                            \ the open section is `global`
 : SECTION! ( bool -- )
    PUB !  false IN-GLOBAL ! ;
 
-: ADD ( n ^u8 n ^u8 n n -- )
+: ADD ( n str str n -- )
    {: k:n a:^ u:n e:^ eu:n flags:n :}
    k LINT-LEX:BYTE@ LINE-START {: stop:n :}
    k 0= if 0 else k 1- PAST then {: floor:n :}
@@ -236,7 +236,7 @@ variable IN-GLOBAL                            \ the open section is `global`
 \ on its line or a later one, with no `\` comment between. The lexer drops `\`
 \ comments, and only delimiters and them lie between tokens, so a byte in that
 \ gap that ends no token starts one.
-: EFFECT ( n -- ^u8 n ) {: j:n :}
+: EFFECT ( n -- str ) {: j:n :}
    j 1+ {: c:n :}
    c LINT-LEX:COUNT >= if NO-TEXT exit then
    c LINT-LEX:KIND@ LINT-LEX:COMMENT <> if NO-TEXT exit then
@@ -291,7 +291,7 @@ public
 
 \ Appends a record per `: NAME`, and per `EXPORT NAME` in a package, in source
 \ order; a lexer rejection or an unnamed definer throws E-SOURCE, records kept.
-: FILE ( ^u8 n -- ) {: a:^ u:n :}
+: FILE ( str -- ) {: a:^ u:n :}
    LIVE? 0= if INIT then
    a SRC !  u SRC-U !
    a PKG !  0 PKG-U !  a PART !  0 PART-U !  false SECTION!

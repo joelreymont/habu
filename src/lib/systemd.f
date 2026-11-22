@@ -43,12 +43,12 @@ private
    ;MATCH ;
 
 \ The notice went or did not: a failed close changes neither.
-: SENT ( UDP:socket ^u8 n -- status )
+: SENT ( UDP:socket str -- status )
    {: socket:UDP:socket name:^ size:n :}
    socket name size s" READY=1" STR:LENGTH UDP:SEND >STATUS
    socket UDP:CLOSE drop ;
 
-: NOTIFY ( ^u8 n -- status )
+: NOTIFY ( str -- status )
    {: name:^ size:n :}
    UDP:OPEN MATCH UDP:open-result
       opened OF name size SENT ENDOF

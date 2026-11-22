@@ -45,7 +45,7 @@ private
    dst count + ;
 
 \ The bytes written for the character at the cursor, and the cursor after it.
-: STEP-LEN ( ^u8 n n -- n n ) {: a:^ u:n at:n :}
+: STEP-LEN ( str n -- n n ) {: a:^ u:n at:n :}
    a u at UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF {: cp:n next:n :}
          cp HIDDEN? if cp DIGITS 2 + else next at - then next
@@ -53,12 +53,12 @@ private
       raw-byte OF nip 4 swap ENDOF
    ;MATCH ;
 
-: PUT-BYTES ( ^u8 ^u8 n -- ^u8 ) {: dst:^ src:^ n:n :}
+: PUT-BYTES ( ^u8 str -- ^u8 ) {: dst:^ src:^ n:n :}
    src dst n BYTE-COPY dst n + ;
 
 \ Writes the character at the cursor; answers the address after it and the
 \ cursor after the character.
-: STEP-PUT ( ^u8 ^u8 n n -- ^u8 n ) {: dst:^ a:^ u:n at:n :}
+: STEP-PUT ( ^u8 str n -- ^u8 n ) {: dst:^ a:^ u:n at:n :}
    a u at UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF {: cp:n next:n :}
          cp HIDDEN? if

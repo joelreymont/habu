@@ -103,7 +103,7 @@ public
    digit 9 > if E-PROP-GENERATOR throw then
    digit PROP-ZERO + BUF-C+ ;
 
-: BUF$ ( -- ^u8 n )
+: BUF$ ( -- str )
    PROP-BUF PROP-BUF-LEN @ ;
 
 ;package

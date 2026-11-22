@@ -55,13 +55,13 @@ CAST: >REQUEST ( ^u8 -- ^request )
 CAST: REQUEST>BYTES ( ^request -- ^u8 )
 CAST: >BYTES ( n -- ^u8 )
 
-: INPUT ( ^u8 n -- )
+: INPUT ( str -- )
    {: p:^ u:n :}
    u 0 <= p 0= or if E-CONFIG throw then
    u 0 ?do p i + c@ 0= if E-CONFIG throw then loop
    p u UTF8:VALID? 0= if E-CONFIG throw then ;
 
-: COPY-VALUE ( ^u8 n ^request -- )
+: COPY-VALUE ( str ^request -- )
    {: p:^ u:n req:^ :}
    u 0 < if E-ACCESS throw then
    p u req REQUEST-DEST @ VEC:APPEND

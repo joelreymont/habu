@@ -205,18 +205,18 @@ $8F constant F4-SECOND-MOST
    then
    byte CONTINUATION-LEAST CONTINUATION-MOST IN-RANGE? ;
 
-: SUBPART ( ^u8 n n n -- n ) {: at:^ limit:n lead:n index:n :}
+: SUBPART ( str n n -- n ) {: at:^ limit:n lead:n index:n :}
    index limit >= if index exit then
    lead index at index + c@ TRAIL-OK? 0= if index exit then
    at limit lead index 1+ recurse ;
 
 public
 
-: NEXT ( ^u8 n n -- scalar-step ) {: source:^ length:n cursor:n :}
+: NEXT ( str n -- scalar-step ) {: source:^ length:n cursor:n :}
    source length cursor LEAD@ {: lead:n :}
    source cursor + length cursor - cursor lead DECODE-LEAD ;
 
-: VALID? ( ^u8 n -- bool )
+: VALID? ( str -- bool )
    {: source:^ length:n :}
    length NONNEGATIVE
    0 begin dup length < while
@@ -249,7 +249,7 @@ public
 
 \ The start of the character SUBPART-END bounds that crosses the cap, else the
 \ cap. Only a non-continuation byte starts one, at most three bytes before it.
-: FIT ( ^u8 n n -- n ) {: source:^ length:n cap:n :}
+: FIT ( str n -- n ) {: source:^ length:n cap:n :}
    length NONNEGATIVE  cap NONNEGATIVE
    length cap <= if length exit then
    cap FOUR-WIDTH 1- - 0 max {: least:n :}

@@ -64,7 +64,7 @@ $14 constant LOCATOR-BYTES
    right 0 <> if left MAX-SIZE right / > if E-SIZE throw then then
    left right * ;
 
-: LE@ ( ^u8 n -- n ) {: data:^ width:n :}
+: LE@ ( str -- n ) {: data:^ width:n :}
    0 width 0 ?do data i + c@ i 8 * lshift or loop ;
 : LE! ( n ^u8 n -- ) {: value:n data:^ width:n :}
    width 0 ?do value i 8 * rshift data i + c! loop ;
@@ -228,7 +228,7 @@ $14 constant LOCATOR-BYTES
       swap step + swap step -
    repeat ;
 
-: WIDE-FIELD ( ^u8 n -- ^u8 n n ) {: data:^ len:n :}
+: WIDE-FIELD ( str -- str n ) {: data:^ len:n :}
    len 8 < if E-READ throw then
    data 8 + len 8 - data U64@ ;
 : WIDE-DISK ( str -- str ) {: data:^ len:n :}
@@ -345,7 +345,7 @@ $14 constant LOCATOR-BYTES
 : CRC-BIT ( n -- n )
    dup 1 and 0 <> if 1 rshift $EDB88320 xor else 1 rshift then ;
 : CRC-BYTE ( n n -- n ) xor 8 0 ?do CRC-BIT loop ;
-: CRC32 ( ^u8 n -- n ) {: data:^ len:n :}
+: CRC32 ( str -- n ) {: data:^ len:n :}
    U32-MAX len 0 ?do data i + c@ CRC-BYTE loop U32-MAX xor ;
 
 : EMIT-BYTES ( ^n str -- )

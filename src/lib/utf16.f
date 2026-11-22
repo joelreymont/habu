@@ -43,7 +43,7 @@ $3F constant CONT-MASK
 : SCALAR-UNITS ( n -- n )
    PAIR-FIRST < if 1 else 2 then ;
 
-: STEP ( n n ^u8 n -- n n )
+: STEP ( n n str -- n n )
    {: units:n cursor:n a:^ u:n :}
    a u cursor UTF8:NEXT MATCH UTF8:scalar-step
       scalar OF swap SCALAR-UNITS swap ENDOF
@@ -67,7 +67,7 @@ public
 \ The byte where a unit index starts: index 0 is byte 0, an index at or past the
 \ span's units is its length, and an index inside a surrogate pair rounds to the
 \ byte after that scalar. It inverts UNITS only at scalar boundaries.
-: OFFSET ( ^u8 n n -- n )
+: OFFSET ( str n -- n )
    {: a:^ u:n unit:n :}
    u 0 < if E-STR-BOUNDS throw then
    unit 0 < if E-STR-BOUNDS throw then

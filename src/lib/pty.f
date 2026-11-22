@@ -124,7 +124,7 @@ public
    ;MATCH ;
 
 
-: WRITE ( master ^u8 n -- ) {: m:master bytes size:n :}
+: WRITE ( master str -- ) {: m:master bytes size:n :}
    0 WRITTEN !
    begin WRITTEN @ size < while
       m MASTER>N bytes WRITTEN @ + size WRITTEN @ - write {: wrote:n :}

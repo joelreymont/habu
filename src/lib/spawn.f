@@ -116,7 +116,7 @@ HERM-AT 1+ constant RECORD-CELLS
    repeat 2drop ;
 
 
-: START ( ^n ^u8 n -- ^n ^u8 n )
+: START ( ^n str -- ^n str )
    {: h:^ path:^ len :}
    HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ARGS !
    HEAP:ALLOCATOR 0 [type] ^u8 VEC:NEW h ENVS !
@@ -273,7 +273,7 @@ public
 
 \ A request for the program at path, map [0 1 2], no argument, this process's
 \ environment and directory. A negative length: E-PROC-PATH.
-: NEW ( ^u8 n -- PROCESS:request )
+: NEW ( str -- PROCESS:request )
    {: path:^ len :}
    len 0 < if E-PROC-PATH throw then
    RECORD-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: h:^ :}
@@ -291,7 +291,7 @@ public
 
 \ Appends a copy of one argument; the first is argv[1], and a request with none
 \ spawns argv {path}. A negative length: E-PROC-OUTPUT.
-: ARG ( PROCESS:request ^u8 n -- PROCESS:request )
+: ARG ( PROCESS:request str -- PROCESS:request )
    rot ERASE {: a:^ len h:^ :}
    h a len [: ADD-ARG ;] catch {: rc :} drop drop drop
    rc h SETTLE
@@ -302,7 +302,7 @@ public
 \ order, then, unless HERMETIC, this process's rows read at SPAWN, skipping a name
 \ a request row gives. A negative length, an empty name or one holding `=`:
 \ E-PROC-ENV.
-: ENV ( PROCESS:request ^u8 n ^u8 n -- PROCESS:request )
+: ENV ( PROCESS:request str str -- PROCESS:request )
    {: name:^ namelen val:^ vallen :}
    ERASE {: h:^ :}
    h name namelen val vallen [: ADD-ENV ;] catch {: rc :} drop drop drop drop drop
@@ -311,7 +311,7 @@ public
 
 
 \ The child's directory; a later call replaces it. An empty one: E-PROC-PATH.
-: CWD ( PROCESS:request ^u8 n -- PROCESS:request )
+: CWD ( PROCESS:request str -- PROCESS:request )
    rot ERASE {: dir:^ len h:^ :}
    h dir len [: SET-CWD ;] catch {: rc :} drop drop drop
    rc h SETTLE

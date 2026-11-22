@@ -34,7 +34,7 @@ private
 
 VERSIONED-LIBRARY rsvg-2 2
 FUNCTION: SVG-OPEN rsvg_handle_new_from_data
-   ( ^u8 n ^u8 -- ^u8 )
+   ( str ^u8 -- ^u8 )
 ;FUNCTION
 FUNCTION: SVG-DPI rsvg_handle_set_dpi ( ^u8 r -- ) ;FUNCTION
 FUNCTION: SVG-SIZE rsvg_handle_get_intrinsic_size_in_pixels
@@ -174,7 +174,7 @@ TASK:+USER VIEW rect
 
 public
 
-: WRITE ( ^u8 n ^u8 n -- )
+: WRITE ( str str -- )
    CLEAR
    [: WRITE-BODY ;] [: RELEASE ;] finally ;
 

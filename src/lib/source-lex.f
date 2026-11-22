@@ -157,7 +157,7 @@ TABLES-RELEASED TABLES !
 : SYNC-COUNT ( -- )
    KIND-V @ VEC:COUNT TOK-N ! ;
 
-: ADD ( n ^u8 n n n n ^u8 n -- ) {: kind:n a:^ u:n byte:n line:n col:n ca:^ cu:n :}
+: ADD ( n str n n n str -- ) {: kind:n a:^ u:n byte:n line:n col:n ca:^ cu:n :}
    kind KIND-V @ VEC:PUSH !
    a ADDR-V @ VEC:PUSH !
    u LEN-V @ VEC:PUSH !
@@ -186,11 +186,11 @@ public
 : COUNT ( -- n )
    TOK-N @ ;
 
-: TOKEN ( n -- ^u8 n ) {: k:n :}
+: TOKEN ( n -- str ) {: k:n :}
    ADDR-V @ k VEC:AT @
    LEN-V @ k VEC:AT @ ;
 
-: CONTENT ( n -- ^u8 n ) {: k:n :}
+: CONTENT ( n -- str ) {: k:n :}
    CADDR-V @ k VEC:AT @
    CLEN-V @ k VEC:AT @ ;
 
@@ -725,7 +725,7 @@ public
    a u STRING-OPENER? 0= if false exit then
    k CONTENT drop a u + 1+ = ;
 
-: SOURCE ( ^u8 n -- ) {: a:^ u:n :}
+: SOURCE ( str -- ) {: a:^ u:n :}
    a SRC! u SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !
    CLEAR-ERROR
    RESET-TABLES

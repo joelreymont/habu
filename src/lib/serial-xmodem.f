@@ -118,7 +118,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    ;MATCH ;
 
 
-: WRITE-ALL ( ^u8 n ^session -- ) {: data size:n session:^ :}
+: WRITE-ALL ( str ^session -- ) {: data size:n session:^ :}
    0 begin dup size < while data size session WRITE-CHUNK repeat drop ;
 
 

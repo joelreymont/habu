@@ -126,7 +126,7 @@ public
    s V@  s STATE-LEN @ LEN-SHIFT lshift  s STATE-TAIL @ or  FINAL ;
 
 
-: BYTES ( n n ^u8 n -- n )
+: BYTES ( n n str -- n )
    {: k0:n k1:n p len:n :}
    len 0 < if E-SPAN-LENGTH throw then
    len BLOCK-MASK invert and {: whole:n :}

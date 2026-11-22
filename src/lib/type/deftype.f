@@ -36,7 +36,7 @@ public
 \ a reserved tail (a CT-role, or `ptr`, which an effect never reads as a
 \ family) and one the scope already declares (E-TFAM-DUP); a package may still
 \ shadow a global or another package's family.
-: MINT ( ^u8 n -- ) {: sa:^ su:n :}
+: MINT ( str -- ) {: sa:^ su:n :}
    sa su MANGLE {: ta:^ tu:n :}
    sa su ta tu CHECKER-DEFTYPE ;
 

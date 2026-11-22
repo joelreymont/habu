@@ -10,14 +10,14 @@ private
 
 \ CF values and the returned data remain owned through each native call.
 LIBRARY /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
-FUNCTION: CF-STRING CFStringCreateWithBytes ( n ^u8 n n n -- n ) ;FUNCTION
+FUNCTION: CF-STRING CFStringCreateWithBytes ( n str n n -- n ) ;FUNCTION
 FUNCTION: CF-DICT CFDictionaryCreateMutable ( n n n n -- n ) ;FUNCTION
 FUNCTION: CF-SET CFDictionarySetValue ( n n n -- ) ;FUNCTION
 FUNCTION: CF-REMOVE CFDictionaryRemoveValue ( n n -- ) ;FUNCTION
 FUNCTION: CF-RELEASE CFRelease ( n -- ) ;FUNCTION
 FUNCTION: CF-SIZE CFDataGetLength ( n -- n ) ;FUNCTION
 FUNCTION: CF-BYTES CFDataGetBytePtr ( n -- ^u8 ) ;FUNCTION
-FUNCTION: CF-DATA-BORROW CFDataCreateWithBytesNoCopy ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: CF-DATA-BORROW CFDataCreateWithBytesNoCopy ( n str n -- n ) ;FUNCTION
 
 LIBRARY /System/Library/Frameworks/Security.framework/Security
 FUNCTION: SEC-READ SecItemCopyMatching ( n ^u8 -- i32 ) ;FUNCTION

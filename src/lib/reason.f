@@ -75,7 +75,7 @@ public
 \ earlier one. The span is appended after the old text, then moved to the
 \ front, so it may be the caller's scratch or the old text, a rethrow's
 \ REASON:TEXT$; a copy that throws passes its own code on with no text kept.
-: THROW ( ^u8 n n -- ) {: a:^ u:n code:n :}
+: THROW ( str n -- ) {: a:^ u:n code:n :}
    0 LAST-CODE !
    LAST-TEXT {: t:^ :}
    t VEC:COUNT {: k:n :}
@@ -94,7 +94,7 @@ public
 : OPEN ( -- )  NEXT-TEXT 0 VEC:RESIZE ;
 
 \ Appends the span as given.
-: APPEND ( ^u8 n -- )  NEXT-TEXT VEC:APPEND ;
+: APPEND ( str -- )  NEXT-TEXT VEC:APPEND ;
 
 \ Appends `L:C: `, the line then the column.
 : AT ( n n -- ) {: line:n col:n :}
@@ -107,12 +107,12 @@ public
 : FIX ( -- )  s" ; " APPEND ;
 
 \ Appends the span's visible form.
-: VISIBLE ( ^u8 n -- ) {: a:^ u:n :}
+: VISIBLE ( str -- ) {: a:^ u:n :}
    a u NEXT-TEXT UNICODE-VISIBLE:APPEND ;
 
 \ Appends the span's visible form in backticks, with `...` before the closing
 \ one when the flag is true.
-: QUOTE ( ^u8 n bool -- ) {: a:^ u:n cut:bool :}
+: QUOTE ( str bool -- ) {: a:^ u:n cut:bool :}
    s" `" APPEND
    a u VISIBLE
    cut if s" ..." APPEND then
