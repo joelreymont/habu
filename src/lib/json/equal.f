@@ -12,9 +12,10 @@ split-str
 \ VALUE= compares text a with text b in two passes: an index pass reads b once
 \ into rows; the walk then reads a once against them, and reads again only each
 \ string of b it compares. Each number is read once, by the pass that meets it,
-\ into what NUMBER= compares. The scratch is one block from MEM:WITH-BYTES,
-\ sized from the texts' lengths; b's rows, and the member list and frames laid
-\ past them, move to a mapping only when they outgrow the block's tail.
+\ into what NUMBER= compares. The walk is a record MEM:WITH-RECORD lends
+\ zeroed; the rest of the scratch is one block from MEM:WITH-BYTES, sized from
+\ the texts' lengths. b's rows, and the member list and frames laid past them,
+\ move to a mapping only when they outgrow the block's tail.
 
 require src/lib/memory.f
 require src/lib/sort.f
@@ -254,11 +255,12 @@ STRUCTURE frame DERIVE addr
    FIELD count n
 ;STRUCTURE
 
-\ VALUE='s scratch over a WITH-BYTES block, which reads 0: every count starts
-\ at 0 and no record owns a stack. At rows, tail-len bytes (a mapping when
-\ mapped): b's rows, then the member list, spare and frames. level and peak:
-\ b's containers open as the index pass reads, now and at most; num-exp,
-\ num-first and num-count: a's number under record a, as a row holds b's.
+\ VALUE='s walk, a record WITH-RECORD lends zeroed: every count starts at 0
+\ and no cursor owns a stack. At rows, tail-len bytes (the WITH-BYTES block's
+\ start, or a mapping when mapped): b's rows, then the member list, spare and
+\ frames. level and peak: b's containers open as the index pass reads, now
+\ and at most; num-exp, num-first and num-count: a's number under record a,
+\ as a row holds b's.
 STRUCTURE walk DERIVE addr
    FIELD a cursor
    FIELD b cursor
@@ -290,7 +292,6 @@ STRUCTURE walk DERIVE addr
 
 CAST: >ROW ( ^n -- ^row )
 CAST: >FRAME ( ^n -- ^frame )
-CAST: >WALK ( ^n -- ^walk )
 
 \ The walk's states: a value is due under a's cursor and row due; the
 \ innermost frame reads on, past an equal value or into one just opened; the
@@ -330,16 +331,14 @@ CAST: >WALK ( ^n -- ^walk )
    {: v:n :}
    v TAIL-BOUND  v 10 / 1+ ROW-BYTES *  TAIL-FLOOR max  min ;
 
-\ The block for a's u bytes and b's v: the walk, the tail, v key bytes, then u
-\ bytes for a's strings.
+\ The block for a's u bytes and b's v: the tail, v key bytes, then u bytes
+\ for a's strings.
 : WALK-LEN ( n n -- n )
    {: u:n v:n :}
-   WALK-BYTES  v TAIL-0 +  v +  u + ;
+   v TAIL-0  v +  u + ;
 
-: WALK-INIT ( str n -- ^walk )
-   {: base:^ u:n v:n :}
-   base CELL-VIEW >WALK {: w:^ :}
-   base WALK-BYTES + {: rows:^ :}
+: WALK-INIT ( ^walk str n -- )
+   {: w:^ rows:^ u:n v:n :}
    rows v TAIL-0 + {: keys:^ :}
    rows w WALK-ROWS !
    v TAIL-0 w WALK-TAIL-LEN !
@@ -347,8 +346,7 @@ CAST: >WALK ( ^n -- ^walk )
    v w WALK-KEY-CAP !
    keys v + w WALK-BUF !
    u w WALK-CAP !
-   -1 w WALK-OPEN !
-   w ;
+   -1 w WALK-OPEN ! ;
 
 
 : FREE-TAIL ( ^walk -- )
@@ -738,9 +736,9 @@ CAST: >WALK ( ^n -- ^walk )
 
 \ VALUE= over the block at base; a throw leaves no reader stack or tail
 \ mapping behind.
-: EQUAL-IN ( str str ^u8 NUM:alloc-byte-len -- bool )
-   drop {: a:^ u:n b:^ v:n base:^ :}
-   base u v WALK-INIT {: w:^ :}
+: EQUAL-IN ( str str ^walk ^u8 NUM:alloc-byte-len -- bool )
+   drop {: a:^ u:n b:^ v:n w:^ base:^ :}
+   w base u v WALK-INIT
    false w a u b v [: EQUAL-SLOT ;] catch
    {: same spare pa ua pb ub code:n :}
    w WALK-FREE
@@ -750,8 +748,9 @@ CAST: >WALK ( ^n -- ^walk )
 
 : EQUAL-RUN ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
-   a u b v  u v WALK-LEN MEM:BYTES-ALLOC-LEN
-   [: EQUAL-IN ;] MEM:WITH-BYTES ;
+   a u b v [type] walk
+   [: u v WALK-LEN MEM:BYTES-ALLOC-LEN [: EQUAL-IN ;] MEM:WITH-BYTES ;]
+   MEM:WITH-RECORD ;
 
 public
 

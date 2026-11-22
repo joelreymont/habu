@@ -184,18 +184,14 @@ private
 64 constant WORD-BITS        \ container levels per stack word
 512 constant FIRST-MORE      \ cells in the first mapping: 32768 more levels
 
-\ A JSON:reader is the caller's record under a linear token. A linear token's
-\ payload is a scalar con, so the record crosses as raw cells only through this
-\ private cast pair, and these private rows are its only mint and erase: outside
-\ JSON a reader comes only from READ-INIT and ends only at READ-CLOSE.
-CAST: >CELLS ( ^cursor -- ^n )
-CAST: >CURSOR ( ^n -- ^cursor )
-LINEAR: MINT-READER ( ^n -- JSON:reader )
-LINEAR: ERASE-READER ( JSON:reader -- ^n )
+\ Outside JSON a reader comes only from READ-INIT and ends only at
+\ READ-CLOSE.
+LINEAR: MINT-READER ( ^cursor -- JSON:reader )
+LINEAR: ERASE-READER ( JSON:reader -- ^cursor )
 
 \ Keep the token live while exposing its record.
 : READER>STATE ( JSON:reader -- JSON:reader ^cursor )
-   ERASE-READER dup MINT-READER swap >CURSOR ;
+   ERASE-READER dup MINT-READER swap ;
 
 : INIT-STATE ( ^cursor str -- ) {: state:^ source:^ len:n :}
    source state CURSOR-SRC !
@@ -226,6 +222,7 @@ LINEAR: ERASE-READER ( JSON:reader -- ^n )
 : MORE-SPAN ( ^cursor -- SPAN:span<u8> ) {: state:^ :}
    state CURSOR-MORE @ state CURSOR-MORE-CELLS @ cells SPAN:MAKE ;
 
+\ Frees the stack mapping a cursor owns; freeing the cursor's storage first leaks it.
 : MORE-RELEASE ( ^cursor -- ) {: state:^ :}
    state MORE-SPAN {: old :}
    NULL-PTR state CURSOR-MORE !
@@ -549,24 +546,26 @@ $7F constant DEL
    len 0 < if E-READ-SOURCE throw then
    len 0 > source 0= and if E-READ-SOURCE throw then ;
 
+: CLEAR-CURSOR ( ^cursor -- ) {: state:^ :}
+   NULL-PTR 0 0 0 0 0 0 0  NULL-PTR 0 0 0 0 0 0 0  NULL-PTR 0  CURSOR-MAKE state ! ;
+
 public
 
 : READ-INIT ( ^cursor ^u8 n -- JSON:reader )
    {: state:^ source:^ len:n :}
    source len REQUIRE-SOURCE
    state source len INIT-STATE
-   state >CELLS MINT-READER ;
+   state MINT-READER ;
 
 : READ-CLOSE ( JSON:reader -- )
-   ERASE-READER >CURSOR MORE-RELEASE ;
+   ERASE-READER MORE-RELEASE ;
 
 \ Release what a record owns after a caller's throw abandoned its live reader.
 \ Idempotent. A static record that is only ever re-initialised needs no READ-DISPOSE: the
 \ next reader on the record reuses the mapping and its READ-CLOSE releases it.
 : READ-DISPOSE ( ^cursor -- ) {: state:^ :}
    state MORE-RELEASE
-   state >CELLS {: raw:^ :}
-   CURSOR-CELLS 0 ?do 0 raw i cells + ! loop ;
+   state CLEAR-CURSOR ;
 
 : READ-TOKEN ( JSON:reader -- JSON:reader n )
    READER>STATE CURSOR-KIND @ ;
@@ -1552,26 +1551,22 @@ private
 : TABLE-CELLS ( n -- n )
    5 / 3 + ;
 
-\ READ-REPEAT's scratch, zero-filled: the record, the table, the
-\ order, then the room, u bytes, which every decoded key fits.
+\ READ-REPEAT's scratch, zero-filled: the table, the order, then the
+\ room, u bytes, which every decoded key fits.
 : SCRATCH-LEN ( n -- n )
-   dup TABLE-CELLS 2 * cells + CURSOR-BYTES + ;
-
-\ Zero-filled, so the record owns no stack until it grows one.
-: RECORD ( ^u8 -- ^cursor )
-   CELL-VIEW >CURSOR ;
+   dup TABLE-CELLS 2 * cells + ;
 
 \ Cell 0 counts the keys read, k; cells 1..k+1 hold room offsets,
 \ the first 0, and key i decodes to room bytes o(i)..o(i+1).
 : TABLE ( ^u8 -- ^n )
-   CURSOR-BYTES + CELL-VIEW ;
+   CELL-VIEW ;
 
 \ Key indices, sorted by their decoded bytes once all are read.
 : ORDER ( ^u8 n -- ^n )
-   TABLE-CELLS cells + CURSOR-BYTES + CELL-VIEW ;
+   TABLE-CELLS cells + CELL-VIEW ;
 
 : ROOM ( ^u8 n -- ^u8 )
-   TABLE-CELLS 2 * cells + CURSOR-BYTES + ;
+   TABLE-CELLS 2 * cells + ;
 
 : OFFSET-AT ( ^n n -- ^n )
    1+ cells + ;
@@ -1587,22 +1582,21 @@ private
 
 
 \ On a top-level key of the record: decodes it as key k, after the k before it.
-: RECORD-KEY ( str -- )
-   {: base:^ u:n :}
+: RECORD-KEY ( ^cursor str -- )
+   {: a:^ base:^ u:n :}
    base TABLE {: table:^ :}
    base u ROOM {: room:^ :}
    table @ {: k:n :}
    table k OFFSET {: from:n :}
-   base RECORD room from + u from - STR-INNER {: ku:n :}
+   a room from + u from - STR-INNER {: ku:n :}
    from ku + table k 1+ OFFSET-AT !
    k 1+ table ! ;
 
 
-: RECORD-KEYS ( str -- )
-   {: base:^ u:n :}
-   base RECORD {: a:^ :}
+: RECORD-KEYS ( ^cursor str -- )
+   {: a:^ base:^ u:n :}
    begin a NEXT-INNER T-KEY = while
-      base u RECORD-KEY
+      a base u RECORD-KEY
       a NEXT-INNER drop
       a SKIP-INNER
    repeat ;
@@ -1652,40 +1646,28 @@ private
 
 
 \ The answer stands only once the whole text has read as well formed.
-: REPEAT-IN ( ^u8 str -- option<n> )
-   {: base:^ text:^ u:n :}
-   base RECORD {: a:^ :}
+: REPEAT-IN ( ^cursor ^u8 str -- option<n> )
+   {: a:^ base:^ text:^ u:n :}
    a text u INIT-STATE
    a NEXT-INNER T-OBJ <> if
       a s" an object" s" write the text as one JSON object"
       E-JSON-READ-STATE REJECT-TOKEN
    then
-   base u RECORD-KEYS
+   a base u RECORD-KEYS
    begin a NEXT-INNER T-END = until
    base u FIRST-REPEAT ;
 
 
-: REPEAT-SLOT ( option<n> SPAN:span<u8> str -- option<n> SPAN:span<u8> str )
-   {: scratch text:^ u:n :}
-   drop scratch SPAN:$ drop text u REPEAT-IN
-   scratch text u ;
-
-
-: SCRATCH-FREE ( SPAN:span<u8> -- )
-   {: scratch :}
-   scratch SPAN:$ drop RECORD MORE-RELEASE
-   scratch MEM:FREE-SPAN ;
+: REPEAT-WITH ( str ^cursor -- option<n> )
+   {: text:^ u:n a:^ :}
+   [: a  u SCRATCH-LEN MEM:BYTES-ALLOC-LEN [: drop text u REPEAT-IN ;] MEM:WITH-BYTES ;]
+   [: a MORE-RELEASE ;] finally ;
 
 public
 
 : READ-REPEAT ( ^u8 n -- option<n> )
    {: text:^ u:n :}
    text u REQUIRE-SOURCE
-   u SCRATCH-LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
-   OPTION:NONE scratch text u [: REPEAT-SLOT ;] catch
-   {: found spare at len code:n :}
-   scratch SCRATCH-FREE
-   code 0= if found exit then
-   code throw ;
+   text u [type] cursor [: REPEAT-WITH ;] MEM:WITH-RECORD ;
 
 ;package

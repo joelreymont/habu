@@ -9,7 +9,7 @@ split-str
 \ the reader stands, then READ-FINISH reads the rest, so a text that is not one
 \ valid JSON value throws the reader's code whatever the pointer names.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text and the pointer.
-\ POINTER-SPAN holds its cursor and the decoded token in a mapping of its own,
+\ POINTER-SPAN holds its cursor and the decoded token in storage of its own,
 \ released before it answers or throws. No module state.
 
 require src/lib/error.f
@@ -139,19 +139,10 @@ private
    then
    READ-FINISH 0 0 false ;
 
-\ The cursor record, then room for the decoded token, which is never longer
-\ than the pointer.
-: SPAN-SLOT ( n n bool SPAN:span<u8> ^u8 n ^u8 n -- n n bool SPAN:span<u8> ^u8 n ^u8 n )
-   {: scratch text:^ tu:n p:^ u:n :}
-   drop drop drop
-   scratch SPAN:$ drop {: base:^ :}
-   base RECORD text tu p u base CURSOR-BYTES + LOCATE
-   scratch text tu p u ;
-
-: POINTER-FREE ( SPAN:span<u8> -- )
-   {: scratch :}
-   scratch SPAN:$ drop RECORD MORE-RELEASE
-   scratch MEM:FREE-SPAN ;
+: LOCATE-WITH ( str str ^cursor -- n n bool )
+   {: text:^ tu:n p:^ u:n rec:^ :}
+   [: rec text tu p u  u MEM:BYTES-ALLOC-LEN [: drop LOCATE ;] MEM:WITH-BYTES ;]
+   [: rec MORE-RELEASE ;] finally ;
 
 public
 
@@ -180,11 +171,6 @@ public
    {: text:^ tu:n p:^ u:n :}
    p u POINTER? 0= if E-JSON-POINTER throw then
    text tu REQUIRE-SOURCE
-   CURSOR-BYTES u + MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
-   0 0 false scratch text tu p u [: SPAN-SLOT ;] catch
-   {: at len found spare st su sp pu code:n :}
-   scratch POINTER-FREE
-   code 0= if at len found exit then
-   code throw ;
+   text tu p u [type] cursor [: LOCATE-WITH ;] MEM:WITH-RECORD ;
 
 ;package

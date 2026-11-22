@@ -1139,12 +1139,12 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    depth JRT-DRAIN-ARR
    JSON:READ-CLOSE ;
 
-\ A reader's first stack mapping is 4096 bytes, and READ-REPEAT holds two
-\ mappings at once of at most that size here: its scratch and its record's
-\ stack. Two probes freed and mapped again land at the same addresses only when
-\ nothing took the holes, so a body that leaves such a mapping owned moves a
-\ probe elsewhere; a larger mapping, such as the rows VALUE= moves to one, can
-\ land past both holes, and the check does not see it.
+\ A reader's first stack mapping is 4096 bytes, and the only mapping
+\ READ-REPEAT holds here is its record's stack; its scratch comes from
+\ MEM:WITH-BYTES. Two probes freed and mapped again land at the same addresses
+\ only when nothing took the holes, so a body that leaves such a mapping owned
+\ moves a probe elsewhere; a larger mapping, such as the rows VALUE= moves to
+\ one, can land past both holes, and the check does not see it.
 \ This relies on the kernel's first-fit reuse of a freed mapping.
 4096 constant JRT-MORE-BYTES
 
@@ -1311,7 +1311,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-A JRT-ZERO-U8 1 JSON:READ-INIT JSON:READ-CLOSE ;
 
 : JRT-TEST-SEALED ( -- )
-   s" package JSON : FORGE ( ^n -- JSON:reader ) MINT-READER ; ;package"
+   s" package JSON : FORGE ( ^JSON:cursor -- JSON:reader ) MINT-READER ; ;package"
    {: src:^ srcu:n :}
    src srcu JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
@@ -1319,10 +1319,9 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    oc 70 T-ENDING-EXITED= ;
 
 : JRT-TEST-PRIVATE-STATE ( -- )
-   s" JRT-BAD-MINT ( ^n -- JSON:reader ) JSON:MINT-READER" JRT-REJECTED
-   s" JRT-BAD-ERASE ( JSON:reader -- ^n ) JSON:ERASE-READER" JRT-REJECTED
-   s" JRT-BAD-PRIVATE-STATE ( JSON:reader -- JSON:reader ^n ) JSON:READER>STATE" JRT-REJECTED
-   s" JRT-BAD-CELLS ( JSON:reader -- JSON:reader ^n ) JSON:READER>CELLS" JRT-REJECTED ;
+   s" JRT-BAD-MINT ( ^JSON:cursor -- JSON:reader ) JSON:MINT-READER" JRT-REJECTED
+   s" JRT-BAD-ERASE ( JSON:reader -- ^JSON:cursor ) JSON:ERASE-READER" JRT-REJECTED
+   s" JRT-BAD-PRIVATE-STATE ( JSON:reader -- JSON:reader ^JSON:cursor ) JSON:READER>STATE" JRT-REJECTED ;
 
 : JRT-TEST-OWNERSHIP ( -- )
    s" negative source length is rejected before mint" T-LABEL
@@ -1339,12 +1338,6 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    s" JRT-BAD-DUP ( JSON:reader -- JSON:reader JSON:reader ) dup" JRT-REJECTED
    s" linear reader cannot be discarded" T-LABEL
    s" JRT-BAD-DROP ( JSON:reader -- ) drop" JRT-REJECTED
-   s" raw storage cannot construct a reader" T-LABEL
-   s" JRT-BAD-RAW ( ^n -- JSON:reader ) JSON:MINT-READER" JRT-REJECTED
-   s" reader representation cannot be projected" T-LABEL
-   s" JRT-BAD-PROJECT ( JSON:reader -- JSON:reader ^n ) JSON:READER>STATE" JRT-REJECTED
-   s" reader state cannot be rehomed" T-LABEL
-   s" JRT-BAD-REHOME ( JSON:reader ^n ^u8 -- JSON:reader ) 2>r JSON-READER:UNMAKE 2drop 2r> JSON-READER:MAKE" JRT-REJECTED
    s" reader cannot be closed twice" T-LABEL
    s" JRT-BAD-CLOSE ( JSON:reader -- ) JSON:READ-CLOSE JSON:READ-CLOSE" JRT-REJECTED ;
 
