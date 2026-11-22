@@ -24492,7 +24492,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ the bytes between its quotes. The row is a trusted claim, never compared with
 \ W's body; it marks W's symbol, so a redefinition drops it, an export carries
 \ it, and a caller passing its own operand on declares its own row.
-8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ^u8 n
+8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in a string
 
 : ANNOT-REC-SYM ( ^n -- n ) {: rec:^ :}
    rec CK-REC-NAME$ {: name:^ nameu:n :}

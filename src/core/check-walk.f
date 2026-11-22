@@ -2896,7 +2896,7 @@ private
    THEN
    kind NAMES-NO-STRING = IF
       s" delete this row, or name a word whose input row ends in the string"
-      REJECTION:EMIT-STR  s"  `^u8 n` it looks up" REJECTION:EMIT-STR EXIT
+      REJECTION:EMIT-STR  s"  `str` it looks up" REJECTION:EMIT-STR EXIT
    THEN
    ta tu kind ROW-HELP ;
 
@@ -2909,13 +2909,12 @@ private
 
 : STRING-IN? ( ^u8 -- bool )
    {: rec:^ :}
-   rec E-DIN@ {: din:n :}
-   0 din EFF-ROW-CON CC-N <> IF RES-FALSE EXIT THEN
-   1 din EFF-ROW-TERM {: t:n :}
-   t 0= IF RES-FALSE EXIT THEN
-   t EFF-TAG@ EN-PTR <> IF RES-FALSE EXIT THEN
-   t EFF-A@ {: p:n :}
-   p EFF-TAG@ EN-CON =  p EFF-A@ CC-U8 =  and ;
+   rec E-INST-RESET  rec E-DIN@ E-INST SPLIT-ROW R-RES {: s:n :}
+   s TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   s P>TYPE T-RES {: t:n :}
+   t TAG T-CON <> IF RES-FALSE EXIT THEN
+   t PAY CC-N <> IF RES-FALSE EXIT THEN
+   s P>REST ROW-TOP-BYTE-PTR? ;
 
 : NAMES-TAKES-STRING? ( n n -- bool )
    {: sym:n eff1:n :}
@@ -2925,7 +2924,7 @@ private
    off E-PTR STRING-IN? ;
 
 \ A target the top-level find binds is a use. Its symbol takes the mark when its
-\ declared input row ends in the string pair ( ^u8 n ); any other word, one
+\ declared input row ends in a string (str); any other word, one
 \ with no inputs among them, refuses the row, so a row on the wrong word cannot
 \ make every string before it a use. A cold selected record with no checker
 \ symbol to key the mark leaves the row standing and binding nothing.

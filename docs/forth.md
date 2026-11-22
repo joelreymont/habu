@@ -2703,14 +2703,14 @@ sections above.
   `does>` has no created-word effect in checked bodies; the `does>` clause's
   own parsing behavior gives its products no parser facts.
 - **`names: W` marks literal references W resolves.** After W's definition,
-  this row states that W looks up its top `^u8 n` input as a name. A
+  this row states that W looks up its top `str` input as a name. A
   directly preceding unescaped string literal in a body or at top level is
   then a use of the word spelled by its bytes. A bare name resolves globally;
   `PKG:TAIL` selects that package's public word, and only a word already
   visible at the literal binds. Computed strings, strings passed through a
   caller and escaped literals bind nothing. `EXPORT` copies the claim and
   redefinition drops it; a calling wrapper needs its own `names:` row. An
-  absent target or one without a declared trailing string input is
+  absent target or one without a declared trailing `str` input is
   `E-NAMES-ROW`. The claim is not checked against W's body.
 - **A `TRUSTED:` body may return loose cells as a declared family value.**
   Payload cells sit below the tag. A checked body must build the family value

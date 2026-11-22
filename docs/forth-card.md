@@ -349,7 +349,7 @@ global one. A computed operand, a literal a caller passes on and a literal with 
 escape in it bind nothing. The row is trusted, never compared with the body;
 `EXPORT` carries it, a word that calls the declared one declares its own. A
 row with no target, naming no word or naming a word whose input row does not
-end in the string `( ^u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
+end in the string `str`, as `names: dup` does, is `E-NAMES-ROW`.
 
 A word that makes definitions at load time (anything reaching `define-word` or
 an evaluate word: `FUNCTION:`/`;FUNCTION`, `FSM:DEFINE`) makes names
