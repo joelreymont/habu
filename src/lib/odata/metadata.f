@@ -118,8 +118,8 @@ STRUCTURE type-definition DERIVE addr
    FIELD underlying SPAN:span<u8>
 ;STRUCTURE
 
-\ `names` maps a set or member name to its `named`; `targets` maps to a
-\ binding's target (V4) or an association set (V2).
+\ `names` maps the name of a set, a singleton or a type's member to its
+\ `named`; `targets` maps to a binding's target (V4) or an association set (V2).
 \ A set's `filters` are the FilterRestrictions read for it, `filter` the one
 \ kept, null for none.
 \ A key-ref's `enum-type` is set when its `kind` is `enumeration`.
@@ -210,9 +210,11 @@ STRUCTURE key-ref OPAQUE DERIVE addr
 
 private
 
-\ A `hidden` name hides every property and navigation of it, on every type.
+\ A `hidden` name hides every property and navigation of it, on every type;
+\ `singleton` is the type of the singleton of the name, null for none.
 STRUCTURE named DERIVE addr
    FIELD set ^entity-set
+   FIELD singleton ^entity-type
    FIELD properties ^^property
    FIELD property-count n
    FIELD navigations ^^navigation
@@ -236,6 +238,14 @@ STRUCTURE association-set DERIVE addr
    FIELD ends ^set-end
    FIELD offset n
    FIELD next ^association-set
+;STRUCTURE
+
+\ A singleton as read, until its type resolves.
+STRUCTURE singleton DERIVE addr
+   FIELD name SPAN:span<u8>
+   FIELD type-name SPAN:span<u8>
+   FIELD offset n
+   FIELD next ^singleton
 ;STRUCTURE
 
 STRUCTURE binding DERIVE addr
@@ -317,6 +327,7 @@ STRUCTURE doc DERIVE addr
    FIELD ranked ^^entity-type
    FIELD associations ^association
    FIELD association-sets ^association-set
+   FIELD singletons ^singleton
    FIELD bindings ^binding
    FIELD blocks ^block
    FIELD key-ref-last ^key-ref
@@ -345,6 +356,7 @@ ARENA ASSOCIATIONS association
 ARENA KEY-REFS key-ref
 ARENA SET-ENDS set-end
 ARENA ASSOCIATION-SETS association-set
+ARENA SINGLETONS singleton
 ARENA BINDINGS binding
 ARENA BLOCKS block
 ARENA ALIASES alias
@@ -937,6 +949,29 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ name:SPAN:span<u8> :}
    d PLACE-HERE XML:LOCAL$ {: el:^ el-len:n :} el el-len name NOT-NEW ;
 
+: NAME-BYTE? ( u8 -- bool )
+   dup 127 > if drop true exit then
+   dup [char] _ = if drop true exit then
+   STR-ALNUM? ;
+
+\ The index after the name bytes from I on in TEXT.
+: RUN-END ( ^u8 n n -- n )
+   {: text:^ len:n i:n :}
+   i begin
+      dup len < if dup text + c@ NAME-BYTE? else false then
+   while 1+ repeat ;
+
+\ A name a query can spell is one run of name bytes.
+: IDENTIFIER ( XML:reader ^doc SPAN:span<u8> -- XML:reader )
+   {: d:^ name:SPAN:span<u8> :}
+   name SPAN:$ {: text:^ len:n :}
+   len 0 > text len 0 RUN-END len = and if exit then
+   d PLACE-HERE XML:LOCAL$ {: el:^ el-len:n :}
+   s" `" REASON:APPEND el el-len REASON:APPEND
+   s" ` to have a name of letters, digits, `_` or bytes above 127"
+   REASON:APPEND
+   text len s" rename it to an OData identifier" FOUND-QUOTED ;
+
 : DECLARED-KEY ( ^doc kind SPAN:span<u8> -- )
    {: d:^ k:kind name:SPAN:span<u8> :}
    d k d DOC-NAMESPACE @ SPAN:$ name SPAN:$ QUALIFIED-KEY ;
@@ -1014,6 +1049,7 @@ CAST: >RECORD ( n -- ^t )
 : PROPERTY-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d s" Name" NEED {: name:SPAN:span<u8> :}
+   d name IDENTIFIER
    d d DOC-TYPE @ name MEMBER-TAKEN? if d name REPEATED then
    d DOC-ARENA @ PROPERTIES-NEW {: p:^ :}
    name p PROPERTY-NAME !
@@ -1038,6 +1074,7 @@ CAST: >RECORD ( n -- ^t )
 : NAVIGATION-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d s" Name" NEED {: name:SPAN:span<u8> :}
+   d name IDENTIFIER
    d d DOC-TYPE @ name MEMBER-TAKEN? if d name REPEATED then
    d DOC-ARENA @ NAVIGATIONS-NEW {: n:^ :}
    name n NAVIGATION-NAME !
@@ -1161,12 +1198,23 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ name:SPAN:span<u8> :}
    d KIND-MEMBER-NAME name SPAN:$ NAME-KEY d 0 REMEMBER ;
 
+: ADD-SINGLETON ( XML:reader ^doc SPAN:span<u8> -- XML:reader )
+   {: d:^ name:SPAN:span<u8> :}
+   d KIND-SINGLETON-NAME name SPAN:$ NAME-KEY d 0 REMEMBER
+   d DOC-ARENA @ SINGLETONS-NEW {: s:^ :}
+   name s SINGLETON-NAME !
+   d s" Type" NEED s SINGLETON-TYPE-NAME !
+   d DOC-OFFSET @ s SINGLETON-OFFSET !
+   d DOC-SINGLETONS @ s SINGLETON-NEXT !
+   s d DOC-SINGLETONS ! ;
+
 : MEMBER-START ( XML:reader ^doc bool -- XML:reader )
    {: d:^ singleton:bool :}
    d s" Name" NEED {: name:SPAN:span<u8> :}
+   singleton if d name IDENTIFIER then
    d name NAME-TAKEN? if d name REPEATED then
    d name ADD-MEMBER
-   singleton if d KIND-SINGLETON-NAME name SPAN:$ NAME-KEY d 0 REMEMBER then
+   singleton if d name ADD-SINGLETON then
    d SKIP-START ;
 
 : ADD-SET ( ^doc ^entity-set -- )
@@ -1180,6 +1228,7 @@ CAST: >RECORD ( n -- ^t )
 : SET-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d s" Name" NEED {: name:SPAN:span<u8> :}
+   d name IDENTIFIER
    d name NAME-TAKEN? if d name REPEATED then
    d DOC-ARENA @ SETS-NEW {: s:^ :}
    name s ENTITY-SET-NAME !
@@ -1741,11 +1790,14 @@ CAST: >RECORD ( n -- ^t )
       swap 1+ swap NAVIGATION-NEXT @
    repeat drop ;
 
-\ The model's sets and every type's members.
+\ The model's sets, the singletons and every type's members.
 : NAME-COUNT ( ^doc -- n )
    {: d:^ :}
    0 d DOC-MODEL @ METADATA-SETS @ begin dup NULL-PTR <> while
       swap 1+ swap ENTITY-SET-NEXT @
+   repeat drop
+   d DOC-SINGLETONS @ begin dup NULL-PTR <> while
+      swap 1+ swap SINGLETON-NEXT @
    repeat drop
    d DOC-TYPES @ begin dup NULL-PTR <> while
       dup OWN-MEMBERS rot + swap ENTITY-TYPE-NEXT @
@@ -1878,10 +1930,26 @@ CAST: >RECORD ( n -- ^t )
    then
    t s ENTITY-SET-TYPE ! ;
 
-: RESOLVE-SET-TYPES ( ^doc -- )
+\ S's name's `named` holds the entity type S's Type names.
+: SINGLETON-RESOLVES ( ^doc ^singleton -- )
+   {: d:^ s:^ :}
+   s SINGLETON-TYPE-NAME @ SPAN:$ {: name:^ len:n :}
+   d name len FIND-TYPE {: t:^ :}
+   t ENTITY? 0= if
+      d s SINGLETON-OFFSET @ PLACE
+      s" `Type` of `Singleton` " REASON:APPEND s SINGLETON-NAME @ QUOTE-SPAN
+      s"  to name an entity type the document declares" REASON:APPEND
+      t name len ENTITY-FOUND
+   then
+   t d s SINGLETON-NAME @ INDEX-ENTRY NAMED-SINGLETON ! ;
+
+: RESOLVE-CONTAINER-TYPES ( ^doc -- )
    {: d:^ :}
    d DOC-MODEL @ METADATA-SETS @ begin dup NULL-PTR <> while
       d over SET-TYPE ENTITY-SET-NEXT @
+   repeat drop
+   d DOC-SINGLETONS @ begin dup NULL-PTR <> while
+      d over SINGLETON-RESOLVES SINGLETON-NEXT @
    repeat drop ;
 
 : END-RESOLVES ( ^doc ^association-end -- )
@@ -2438,7 +2506,7 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ :}
    d RESOLVE-BASES
    d INDEX-NAMES
-   d RESOLVE-SET-TYPES
+   d RESOLVE-CONTAINER-TYPES
    d RESOLVE-ENDS
    d RESOLVE-NAVIGATIONS
    d RESOLVE-VALUE-TYPES
@@ -2614,28 +2682,14 @@ CAST: >RECORD ( n -- ^t )
 
 : SERVED? ( ^entity-set -- bool ) ENTITY-SET-TYPE @ ENTITY-TYPE-HIDDEN @ 0= ;
 
-: NAME-BYTE? ( u8 -- bool )
-   dup 127 > if drop true exit then
-   dup [char] _ = if drop true exit then
-   STR-ALNUM? ;
-
-\ The index after the name bytes from I on in TEXT.
-: RUN-END ( ^u8 n n -- n )
-   {: text:^ len:n i:n :}
-   i begin
-      dup len < if dup text + c@ NAME-BYTE? else false then
-   while 1+ repeat ;
-
-\ Whether every byte of TEXT is a name byte.
-: ONE-NAME? ( str -- bool )
-   {: text:^ len:n :}
-   text len 0 RUN-END len = ;
-
-\ Whether NAME is hidden or names a set of a hidden type.
+\ Whether NAME is hidden or names a set or singleton of a hidden type.
 : QUERY-HIDDEN? ( ^metadata str -- bool )
-   {: m:^ name:^ len:n :}
-   m name len HIDDEN? if true exit then
-   m name len INDEXED-SET {: s:^ :}
+   INDEXED {: x:^named :}
+   x NULL-PTR = if false exit then
+   x NAMED-HIDDEN @ if true exit then
+   x NAMED-SINGLETON @ {: t:^entity-type :}
+   t NULL-PTR <> if t ENTITY-TYPE-HIDDEN @ if true exit then then
+   x NAMED-SET @ {: s:^entity-set :}
    s NULL-PTR = if false exit then
    s SERVED? 0= ;
 
@@ -2739,21 +2793,18 @@ public
    f p RESTRICTS? 0= ;
 
 \ Hides the type of the set NAME and SETTLEs; false, changing nothing, when
-\ the model has no such set or NAME holds a byte no name in a query holds.
+\ the model has no such set.
 : HIDE-SET ( ^metadata str -- bool )
    {: m:^ name:^ len:n :}
-   name len ONE-NAME? 0= if false exit then
    m name len INDEXED-SET {: s:^ :}
    s NULL-PTR = if false exit then
    true s ENTITY-SET-TYPE @ ENTITY-TYPE-HIDDEN !
    m SETTLE true ;
 
 \ Hides every property and navigation NAME and SETTLEs; false, changing
-\ nothing, when the model has none or NAME holds a byte no name in a query
-\ holds.
+\ nothing, when the model has none.
 : HIDE-PROPERTY ( ^metadata str -- bool )
    {: m:^ name:^ len:n :}
-   name len ONE-NAME? 0= if false exit then
    m name len INDEXED {: x:^named :}
    x NULL-PTR = if false exit then
    x NAMED-PROPERTY-COUNT @ x NAMED-NAVIGATION-COUNT @ + 0= if

@@ -8,7 +8,6 @@
         </Key>
         <Property Name="Ab" Type="Edm.String" Nullable="false"/>
         <Property Name="Größe" Type="Edm.String"/>
-        <Property Name="A-b" Type="Edm.String"/>
       </EntityType>
       <EntityContainer Name="Container">
         <EntitySet Name="Ts" EntityType="N.T"/>

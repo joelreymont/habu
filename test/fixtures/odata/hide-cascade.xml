@@ -25,6 +25,8 @@
         <EntitySet Name="As" EntityType="N.A"/>
         <EntitySet Name="Bs" EntityType="N.B"/>
         <EntitySet Name="Cs" EntityType="N.C"/>
+        <Singleton Name="Me" Type="N.B"/>
+        <Singleton Name="Mine" Type="N.A"/>
       </EntityContainer>
     </Schema>
   </edmx:DataServices>

@@ -3,18 +3,18 @@ split-str
 \ into a model of its entity sets, entity types, properties, keys, navigation
 \ properties and annotations, and its JSON responses read by that model.
 \ METADATA reads the document once and resolves every name it gives to the
-\ record it names, so the accessors answer without checking. The version
-\ comes from the Edmx namespace: V2 takes the CSDL 1.0, 1.1 and 2.0
-\ namespaces, V4 Edmx Version 4.0 and 4.01; V3 is rejected. Complex types are
-\ kept as types no set names; function and action imports, singletons,
-\ actions and functions are read past, so ENTITY-SET answers none for their
-\ names. An annotation is a namespace, a name and a text, kept on entity types
-\ and properties: a V2 attribute outside the CSDL namespaces, or a V4
-\ Annotation whose value is one constant or path attribute, inline or in an
-\ `<Annotations Target>` block, its term's alias resolved through
-\ edmx:Include or a Schema's Alias. An annotation with a Qualifier is not
-\ kept, nor one whose value is a Record, a Collection or an element. An entity
-\ set's Capabilities.FilterRestrictions with no Qualifier, inline or in an
+\ record it names, so the accessors answer without checking. The version comes
+\ from the Edmx namespace: V2 takes the CSDL 1.0, 1.1 and 2.0 namespaces, V4
+\ Edmx Version 4.0 and 4.01; V3 is rejected. Complex types are kept as types
+\ no set names; function and action imports, singletons, actions and functions
+\ are read past, but for a singleton's name and type, so ENTITY-SET answers none
+\ for their names. An annotation is a namespace, a name and a text, kept on
+\ entity types and properties: a V2 attribute outside the CSDL namespaces, or a
+\ V4 Annotation whose value is one constant or path attribute, inline or in an
+\ `<Annotations Target>` block, its term's alias resolved through edmx:Include
+\ or a Schema's Alias. An annotation with a Qualifier is not kept, nor one whose
+\ value is a Record, a Collection or an element. An entity set's
+\ Capabilities.FilterRestrictions with no Qualifier, inline or in an
 \ `<Annotations>` block whose Target is the container and the set, a V2
 \ document's included, is read for FILTERABLE?: its Filterable and its
 \ NonFilterableProperties paths, every other member read past; a second on one
@@ -48,10 +48,11 @@ split-str
 \ types, EACH-PROPERTY and EACH-NAVIGATION over members of hidden names. Each
 \ answers false, changing nothing, when the model declares nothing it names.
 \ HIDDEN-NAME$ answers the first name in a query option's text that is hidden
-\ or names a set of a hidden type, borrowed from the text, and true, else an
-\ empty text and false: a name is a maximal run of ASCII letters, digits, `_`
-\ and bytes above 127, compared exactly, quoted text included. HIDE-SET and
-\ HIDE-PROPERTY answer false for a name holding any other byte.
+\ or names a set or singleton of a hidden type, borrowed from the text, and
+\ true, else an empty text and false: a name is a maximal run of ASCII
+\ letters, digits, `_` and bytes above 127, compared exactly, quoted text
+\ included. METADATA rejects a set, singleton, property or navigation name
+\ that is empty or holds any other byte.
 \ PAGE reads a collection response by the model's version: V2
 \ `{"d":[...]}` or `{"d":{"results":[...],"__count":"N","__next":"url"}}`,
 \ V4 `{"value":[...],"@odata.count":N,"@odata.nextLink":"url"}`, 4.01's
@@ -95,12 +96,12 @@ split-str
 \ path. EACH-PROPERTY's and EACH-NAVIGATION's scratch, a cell for the type and
 \ each base type, and NAVIGATION-TARGET's, two cells, are freed before they
 \ return on every path, the callback's throw included. The model also holds,
-\ in the caller's arena, an index of the names of its sets and members, at
-\ most 17 cells for each set and member and 9 more, and a map of navigation
-\ targets sized once by its bindings and association set Ends. The model is
-\ read-only once METADATA and the caller's hides return, so tasks may read it
-\ together; the arena's one-task rule covers METADATA and the hides. The source
-\ bytes are not kept.
+\ in the caller's arena, an index of the names of its sets, singletons and
+\ members, at most 18 cells for each set, singleton and member and 9 more, and
+\ a map of navigation targets sized once by its bindings and association set
+\ Ends. The model is read-only once METADATA and the caller's hides return, so
+\ tasks may read it together; the arena's one-task rule covers METADATA and
+\ the hides. The source bytes are not kept.
 \ PAGE and RECORD$ answer text borrowed from the caller's body and leave the
 \ caller's JSON:cursor closed; their scratch, and COPY-ENTITY's, is freed
 \ before they return on every path. No module state.

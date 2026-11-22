@@ -258,6 +258,24 @@ LINK-CAP BUFFER: LINK
    s" test/fixtures/odata/unrelated-target.xml"
    s" 26:11: expected `Target` of `NavigationPropertyBinding` `B` to name an entity set of a type in the inheritance tree of `N.B`, found `Cs` of `EntityType` `N.C`; name an entity set of a type in that tree"
    REJECTS
+   s" test/fixtures/odata/property-name-byte.xml"
+   s" 11:9: expected `Property` to have a name of letters, digits, `_` or bytes above 127, found `A-b`; rename it to an OData identifier"
+   REJECTS
+   s" test/fixtures/odata/set-name-byte.xml"
+   s" 14:9: expected `EntitySet` to have a name of letters, digits, `_` or bytes above 127, found `X-y`; rename it to an OData identifier"
+   REJECTS
+   s" test/fixtures/odata/singleton-name-byte.xml"
+   s" 14:9: expected `Singleton` to have a name of letters, digits, `_` or bytes above 127, found `M-e`; rename it to an OData identifier"
+   REJECTS
+   s" test/fixtures/odata/navigation-name-byte.xml"
+   s" 11:9: expected `NavigationProperty` to have a name of letters, digits, `_` or bytes above 127, found `To-B`; rename it to an OData identifier"
+   REJECTS
+   s" test/fixtures/odata/empty-set-name.xml"
+   s" 14:9: expected `EntitySet` to have a name of letters, digits, `_` or bytes above 127, found ``; rename it to an OData identifier"
+   REJECTS
+   s" test/fixtures/odata/undeclared-singleton-type.xml"
+   s" 14:9: expected `Type` of `Singleton` `Me` to name an entity type the document declares, found `N.U`; declare that entity type, or name one the document declares"
+   REJECTS
    s" test/fixtures/odata/unrelated-end.xml"
    s" 47:11: expected `EntitySet` of `End` `Buyer` to name an entity set of a type in the inheritance tree of `SHOP.Customer`, found `Orders` of `EntityType` `SHOP.Order`; name an entity set of a type in that tree"
    REJECTS
@@ -800,7 +818,9 @@ variable VALUE-LEN
    DESC$ s" " T$=
    a ARENA:RELEASE ;
 
-\ Hiding B hides A's navigation B, and so C, whose key is a property B.
+\ Hiding B hides A's navigation B, and so C, whose key is a property B, and
+\ the singleton Me of type B; the singleton Mine of the served type A is not
+\ reported.
 : TEST-HIDE-CASCADE ( -- )
    ARENA:NEW {: a:^ :}
    a s" test/fixtures/odata/hide-cascade.xml" MODEL {: m:^ :}
@@ -808,6 +828,8 @@ variable VALUE-LEN
    m s" Cs" SERVES? TFALSE
    m s" As" SERVES? TTRUE
    m s" $root/Cs('1')/CID eq '1'" ODATA:HIDDEN-NAME$ TTRUE s" Cs" T$=
+   m s" $root/Me/BID eq '1'" ODATA:HIDDEN-NAME$ TTRUE s" Me" T$=
+   m s" $root/Mine/AID eq '1'" ODATA:HIDDEN-NAME$ TFALSE s" " T$=
    a ARENA:RELEASE ;
 
 : FINDS ( ^ODATA:metadata str -- )
@@ -830,14 +852,12 @@ variable VALUE-LEN
    m s" " MISSES
    a ARENA:RELEASE ;
 
-\ hide-names.xml declares Größe, a UTF-8 name, and A-b, which no query
-\ text names.
+\ hide-names.xml declares Größe, a UTF-8 name.
 : GROSSE$ ( -- str ) s\" Gr\xc3\xb6\xc3\x9fe" ;
 
 : TEST-HIDE-NAMES ( -- )
    ARENA:NEW {: a:^ :}
    a s" test/fixtures/odata/hide-names.xml" MODEL {: m:^ :}
-   m s" A-b" ODATA:HIDE-PROPERTY TFALSE
    m GROSSE$ ODATA:HIDE-PROPERTY TTRUE
    m s\" $select=Ab,Gr\xc3\xb6\xc3\x9fe" ODATA:HIDDEN-NAME$ TTRUE
    GROSSE$ T$=
