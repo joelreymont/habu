@@ -84,7 +84,7 @@ variable OPEN-SENT                   \ REJECTION:SENT at the open
 TYPED-VARIABLE BODY [ -- renders nominal roots ]
 variable COMPILED-N                  \ files the last build compiled
 variable LINKED-N                    \ files the last build linked
-TYPED-VARIABLE PRIOR-RUNNER [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ]
+TYPED-VARIABLE PRIOR-RUNNER [ str str str [ n n -- nominal ] -- renders nominal roots ]
 
 \ The host cells a build changes; RESTORE puts them back.
 variable SAVED-DP
@@ -1162,7 +1162,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    SKIP @ 0= if src u 32 WORD-END then ;
 
 \ A scan of the text from an empty SPELLS; SPELL-TEXT after it appends another text's names.
-: SPELLED ( ^u8 n -- )
+: SPELLED ( str -- )
    {: src:^ u:n :}
    0 OPENED-N !  SPELLS @ 0 VEC:RESIZE  RUN!
    src u SPELL-TEXT ;
@@ -2312,7 +2312,7 @@ EXPORT CHECKER-RESOLVE:REC>INDEX
 
 
 \ Earlier record k's copy (COPY-BELOW) and its index.
-: OLD-REC ( n -- str )
+: OLD-REC ( n -- ^u8 n )
    {: k:n :}
    OLD-RECS @ BYTES$ drop  k DREC * +  FIRST-REC @ 1 - k + ;
 
@@ -3856,7 +3856,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 
 \ READ-INTO, false also when the path cannot be opened (too long, a 0 byte), the file read or
 \ a block of its size allocated (E-MEM-MAP); any other throw passes.
-: READ-WHOLE ( ^u8 n ^VEC:vector<u8> -- bool )
+: READ-WHOLE ( str ^VEC:vector<u8> -- bool )
    false ['] READ-KEEPING catch {: path pathu buf ok code:n :}
    code 0= if ok exit then
    code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or
@@ -5578,7 +5578,7 @@ EXPORT CHECK:DROP-FACTS
 
 \ The file's parts in turn (TURN): one links (LINK-PART) and replays its request, or compiles to its request's clean cut
 \ (NEST) or the end. A load no load holds first logs the events made since the last such load ended (EVENTS-LOG).
-: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+: LOAD ( str str str [ n n -- ] -- )
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
    LOADER$ nip 0= {: outer:bool :}
    outer if path pathu TOP-REQUEST else -1 then {: top:n :}
@@ -5672,7 +5672,7 @@ EXPORT CHECK:DROP-FACTS
 
 \ The newest request ends the part (names, REQUESTS row, object, BUILT row), then loads its file unrecorded.
 \ At a clean cut (RESUME) the next part is LOAD's turn; else it compiles on in this reader, both parts UNLINKABLE.
-: NEST ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+: NEST ( str str str [ n n -- ] -- )
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
    SOURCE-EVENT:COUNT 1 - {: ev:n :}
    ev SOURCE-EVENT:KIND@ SOURCE-EVENT:KIND-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
@@ -5731,7 +5731,7 @@ EXPORT CHECK:DROP-FACTS
    ;MATCH ;
 
 \ The load, nested when a compiling file requested it.
-: ENTER ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+: ENTER ( str str str [ n n -- ] -- )
    LOADER$ nip 0<>  LINKING? 0=  and if NEST else LOAD then
    RETURNED ;
 
@@ -5760,7 +5760,7 @@ EXPORT CHECK:DROP-FACTS
 
 \ A file's load once GOING admits it: ENTER (LOAD, or NEST for a compiling file's request), then
 \ LEFT on either exit.
-: RUN-FILE ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+: RUN-FILE ( str str str [ n n -- ] -- )
    LOADER$ nip 0<> GOING
    construct step loading PROGRESS !
    ['] ENTER ['] LEFT finally ;
@@ -5847,7 +5847,7 @@ EXPORT CHECK:DROP-FACTS
 : OWNED$ ( n n -- str ) {: r:n f:n :} r f OWNED@ OWNED-TEXT  r f 1 + OWNED@ ;
 
 \ Package a u's build record, made with its private wordlist when no earlier row made it.
-: OWNER ( ^u8 n -- ^n )
+: OWNER ( str -- ^n )
    {: a:^ u:n :}
    a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    pkg XREF-FOUND? if pkg exit then
@@ -5999,7 +5999,7 @@ public
 \ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
 \ The mode is "engine", "kernel" for a kernel build, or a stripped program's; the
 \ target is the one the program runs on, and another than hb's own makes a cross build.
-: WITH ( ^u8 n RTARGET:resolved-target [ -- renders nominal roots ] -- )
+: WITH ( str RTARGET:resolved-target [ -- renders nominal roots ] -- )
    {: mode:^ modeu:n target:RTARGET:resolved-target body :}
    IDLE? 0= if E-COMP-STATE throw then
    target TARGET !
@@ -6010,7 +6010,7 @@ public
 
 \ The kernel object at the path, written by a kernel build: the engine and
 \ program builds that follow lay their space as its kernel reads it and link it.
-: KERNEL ( ^u8 n -- ) NATIVE:READ ;
+: KERNEL ( str -- ) NATIVE:READ ;
 
 \ True while a build's space is open, from WITH's open to the end of its close.
 : OPEN? ( -- bool ) IDLE? 0= ;

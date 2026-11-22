@@ -185,7 +185,7 @@ $8000000000000000 constant MIN-N
 
 \ An optional `-`, then an optional `$` for radix 16: the index after them,
 \ whether `-` led, and the radix.
-: PREFIX ( ^u8 n -- n bool n ) {: a:^ u:n :}
+: PREFIX ( str -- n bool n ) {: a:^ u:n :}
    a u 0 [char] - AT? {: neg:bool :}
    neg if 1 else 0 then {: idx:n :}
    a u idx [char] $ AT? if idx 1+ neg 16 else idx neg 10 then ;
@@ -195,7 +195,7 @@ public
 \ The token's value (a float's bits), whether it is a float, whether it is a
 \ number, and whether its shape is a number's but its value out of range.
 \ The value and the float flag are zero unless it is a number.
-: NUMBER ( ^u8 n -- n bool bool bool ) {: a:^ u:n :}
+: NUMBER ( str -- n bool bool bool ) {: a:^ u:n :}
    a u PREFIX {: lo:n neg:bool radix:n :}
    lo u >= if NOT-NUMBER exit then
    a u lo radix RUN-END {: dot:n :}
@@ -236,7 +236,7 @@ EXPORT CHECKER-RESOLVE:bare-scope-find
 
 public
 
-: FIND ( ^u8 n -- ^n )
+: FIND ( str -- ^n )
    NDICT:SCOPE-REC ;
 
 ;package
@@ -291,7 +291,7 @@ create NL NEWLINE c,
 \ ADDR@, ADDR! and FR-ADDR@ are the file's crossings between such a cell and a
 \ byte pointer.
 : ADDR@ ( n -- ^u8 ) data-base + 0 ptr-field @ ;
-: ADDR! ( str -- ) data-base + 0 ptr-field ! ;
+: ADDR! ( ^u8 n -- ) data-base + 0 ptr-field ! ;
 
 \ A cell of a frame the engine holds.
 : FR! ( n ^u8 n -- )
@@ -303,7 +303,7 @@ create NL NEWLINE c,
 : FR-ADDR@ ( ^u8 n -- ^u8 )
    + 0 ptr-field @ ;
 
-: TOKEN$ ( -- ^u8 n )
+: TOKEN$ ( -- str )
    TKA-CELL ADDR@ TKL-CELL CELL@ ;
 
 : FOLD ( n -- n ) {: c:n :}
@@ -340,10 +340,10 @@ create NL NEWLINE c,
    TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
    true ;
 
-: SAY ( ^u8 n -- ) REJECTION:EMIT-STR ;
+: SAY ( str -- ) REJECTION:EMIT-STR ;
 
 \ Code in a rejection's text sits in backticks.
-: TICKS ( ^u8 n -- ) {: a:^ u:n :}
+: TICKS ( str -- ) {: a:^ u:n :}
    96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
 
 
@@ -399,14 +399,14 @@ create NL NEWLINE c,
    true ;
 
 \ xt runs on each using slot that exports the name a u, in using order.
-: ANSWERING ( [ n -- ] ^u8 n -- ) {: xt a:^ u:n :}
+: ANSWERING ( [ n -- ] str -- ) {: xt a:^ u:n :}
    CHECKER-USING-N 0 ?do
       a u i ANSWERS? if i xt execute then
    loop ;
 
 variable ANSWERERS   \ bit i set when using slot i exports the ambiguous name
 
-: AMBIGUOUS ( ^u8 n -- ) {: a:^ u:n :}
+: AMBIGUOUS ( str -- ) {: a:^ u:n :}
    0 ANSWERERS !
    [: 1 swap lshift ANSWERERS @ or ANSWERERS ! ;] a u ANSWERING
    a u ANSWERERS @ USING-AMBIGUOUS-REJECT
@@ -415,12 +415,12 @@ variable ANSWERERS   \ bit i set when using slot i exports the ambiguous name
 variable ANSWERED
 
 \ The first using slot that exports the name a u.
-: ANSWER ( ^u8 n -- n ) {: a:^ u:n :}
+: ANSWER ( str -- n ) {: a:^ u:n :}
    -1 ANSWERED !
    [: ANSWERED @ 0< if ANSWERED ! else drop then ;] a u ANSWERING
    ANSWERED @ ;
 
-: SHADOWED ( ^u8 n -- ) {: a:^ u:n :}
+: SHADOWED ( str -- ) {: a:^ u:n :}
    a u  a u ANSWER CHECKER-USING$ USING-SHADOW-REJECT
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
@@ -636,7 +636,7 @@ variable DECLS-CAP
 \ under the floor as a word does. The cells it leaves are the program's, so
 \ these views state its effect only to project it to the number execute-floor
 \ takes.
-CAST: STR-LITERAL ( [ -- ^u8 n ] -- n )
+CAST: STR-LITERAL ( [ -- str ] -- n )
 CAST: CSTR-LITERAL ( [ -- ^u8 ] -- n )
 CAST: CELL-LITERAL ( [ -- n ] -- n )
 \ A cell taken from the program.
@@ -721,7 +721,7 @@ variable MOVE-AT
    kw u TOKEN$ s" no name follows" REJECTION:MISSING-NAME
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-: OPERAND ( ^u8 n -- ) {: kw:^ u:n :}
+: OPERAND ( str -- ) {: kw:^ u:n :}
    TOKEN if exit then
    kw u NAME-MISSING ;
 
@@ -758,7 +758,7 @@ private
 : ROOM ( n -- ^u8 )
    here swap allot ;
 
-: TEXT ( -- ^u8 n )
+: TEXT ( -- str )
    INP-CELL ADDR@ 1 + INE-CELL ADDR@ {: s:^ e:^ :}
    s begin dup e < if dup c@ QUOTE <> else false then while 1 + repeat
    {: q:^ :}
@@ -771,7 +771,7 @@ private
    a d u BYTE-COPY
    d u ;
 
-: KEEP ( -- ^u8 n )
+: KEEP ( -- str )
    TEXT {: t:^ tu:n :}
    t tu COPY-HERE {: d:^ u:n :}
    d u t tu SRCLOC:LITERAL!
@@ -788,7 +788,7 @@ private
 
 \ An escaped literal's start, its closing quote and the count of bytes it
 \ decodes to. A bad escape refuses as a missing quote does, INP unmoved.
-: ESC-SCAN ( -- ^u8 str )
+: ESC-SCAN ( -- ^u8 ^u8 n )
    INP-CELL ADDR@ 1 + {: s:^ :}
    s INE-CELL ADDR@ ESCAPE:SPAN {: q:^ u:n ok:bool :}
    ok 0= if BAD-LITERAL then
@@ -869,7 +869,7 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
    NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF + CELL-VIEW @ ;
 
 \ The owner record's trusted-tick field holds a raw execution token.
-CAST: TICK-ACTION ( n -- [ ^u8 n -- bool ] )
+CAST: TICK-ACTION ( n -- [ str -- bool ] )
 
 : TRUSTED-TICK? ( -- bool )
    TICK-QUERY-READY? 0= if false exit then
@@ -939,7 +939,7 @@ public
 
 \ Entry n of the declaration log: the record index and its token. n is below
 \ DECL-COUNT.
-: DECL@ ( n -- n ^u8 n ) {: i:n :}
+: DECL@ ( n -- n str ) {: i:n :}
    i DECL-IDX @  i DECL-A @  i DECL-U @ ;
 
 ;package
@@ -1006,8 +1006,8 @@ EXPORT CHECK:REJECT-DUPLICATE
 \ The owner record stores raw execution tokens; these views state the
 \ signatures called here.
 CAST: PKG-AS-ACTION ( n -- [ -- ] )
-CAST: PKG-AS-NAME-ACTION ( n -- [ ^u8 n -- ] )
-CAST: PKG-AS-PACKAGE-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
+CAST: PKG-AS-NAME-ACTION ( n -- [ str -- ] )
+CAST: PKG-AS-PACKAGE-ACTION ( n -- [ str str -- ] )
 
 \ `package`, the section words and `;package` notify the target checker alone:
 \ a loading checker is the target at once, the source owner only where none was.
@@ -1468,10 +1468,10 @@ private
 
 \ The engine's cells hold the compiler entries, the body hook and the checker's
 \ declaration operations as raw execution tokens.
-CAST: AS-COMPILE ( n -- [ ^u8 n -- ] )
+CAST: AS-COMPILE ( n -- [ str -- ] )
 CAST: AS-COMPILE-FIXED ( n -- [ n n COMP:body -- ] )
 CAST: AS-BODY-HOOK ( n -- [ -- ^u8 bool ] )
-CAST: AS-DECLARE ( n -- [ ^u8 n ^u8 n -- ] )
+CAST: AS-DECLARE ( n -- [ str str -- ] )
 
 \ A head with no compiler (COMP-CELL 0), or a body token or fixed body whose
 \ latch is 0, refuses. `immediate` passes.
@@ -2642,7 +2642,7 @@ EXPORT CHECK:REC-WIDE-PUBLISH
    a u shape CHILD-RECORD  shape param ta tu CHILD-CLOSE ;
 
 \ Answers the child's effect handle. TYPE is empty for the shapes before STORED.
-: CHILD-RUN ( ^u8 n n n ^u8 n -- n )
+: CHILD-RUN ( str n n str -- n )
    {: a:^ u:n shape:n param:n ta:^ tu:n :}
    PEND-CELL CELL@ 0<> if s" child word" a u DEF-OPEN-REFUSE then
    a u DEF-ONE-TOKEN? 0= if s" child word" a u DEF-NAME-REFUSE then
@@ -3310,7 +3310,7 @@ public
    f FRAME-FREE
    out FRAME-DONE <> if code throw then ;
 
-: EVAL-FRAMED ( ^u8 n -- ) {: a:^ u:n :}
+: EVAL-FRAMED ( str -- ) {: a:^ u:n :}
    a u COMPILE-READS:TEXT+
    TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
    a u 0 u EVAL-FRAMED-RANGE ;

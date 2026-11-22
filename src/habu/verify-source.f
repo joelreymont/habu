@@ -359,7 +359,7 @@ defer COMPOSE-FILE ( str str -- renders parses nominal )
 : SOURCE@ ( -- ^u8 )
    SOURCE-A @ ;
 
-: SOURCE! ( ^u8 n -- )
+: SOURCE! ( str -- )
    SOURCE-U !
    SOURCE-A !
    0 TOKEN-BYTE ! ;
@@ -674,7 +674,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    a c@ 40 = IF 41 EXIT THEN
    0 ;
 
-: NEXT ( -- ^u8 n )
+: NEXT ( -- str )
    BEGIN
       NEXT-RAW
       dup 0= IF EXIT THEN
@@ -738,7 +738,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 
 \ The armed addresses hold until the next BODY-APPEND, which may move both
 \ buffers; every check calls BODY$ again before it reads them.
-: BODY$ ( -- ^u8 n )
+: BODY$ ( -- str )
    BODY-U @ 1 max BODY-BUF-RESERVE
    BODY-ROWS @ 2 * 1 max BODY-ROW-RESERVE
    0 BODY-BUF BODY-U @ 0 BODY-ROW BODY-ROWS @ REJECTION:MAP!
@@ -867,7 +867,7 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    REJECTION:HELP
    t tu help execute ;
 
-: TICKED ( ^u8 n -- )
+: TICKED ( str -- )
    s" `" REJECTION:EMIT-STR  REJECTION:EMIT-STR  s" `" REJECTION:EMIT-STR ;
 
 public
@@ -1043,7 +1043,7 @@ NCOMP-DISPATCH:DECL-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
    off + CELL-VIEW @ dup 0= IF OWNER-STOP THEN ;
 
-CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
+CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 : TOP-BINDING ( str -- n n n )
    CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
 
@@ -1088,7 +1088,7 @@ CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
 \ writes after the opener stands for, so it joins past that delimiter: the
 \ checker reads the literal's bytes as the engine makes them, and a names: row
 \ binds the word they name.
-: APPEND-STRING ( ^u8 n -- ) {: a:^ u:n :}
+: APPEND-STRING ( str -- ) {: a:^ u:n :}
    a u BODY-APPEND
    a u STRING-REST {: s:^ su:n :}
    s 1 + su 1 - BODY-APPEND
@@ -1111,7 +1111,7 @@ CAST: BINDING-ACTION ( n -- [ ^u8 n -- n n n ] )
    a u s" postpone" STR=CI IF 0 0= EXIT THEN
    a u s" [char]" STR=CI ;
 
-: OPERAND ( -- ^u8 n )
+: OPERAND ( -- str )
    NEXT-RAW dup 0= IF NAME-STOP THEN ;
 
 \ A definer takes its name as the next raw token, so `create s"` names a word
@@ -1238,17 +1238,17 @@ variable GROUP-AT
 
 \ The owner record stores raw execution tokens; each view states the signature
 \ of the field it calls.
-CAST: SYM-ACTION ( n -- [ ^u8 n -- n ] )
-CAST: IDENTITY-ACTION ( n -- [ n -- ^u8 n ^u8 n n ] )
+CAST: SYM-ACTION ( n -- [ str -- n ] )
+CAST: IDENTITY-ACTION ( n -- [ n -- str str n ] )
 CAST: SOURCE-ACTION ( n -- [ n -- n ] )
 CAST: CREATES-ACTION ( n -- [ n -- n ] )
-CAST: CREATED-ACTION ( n -- [ ^u8 n n -- bool ] )
-CAST: DOES-ACTION ( n -- [ ^u8 n ^u8 n ^u8 n -- n ] )
-CAST: RENDERS-ACTION ( n -- [ ^u8 n n -- bool ] )
-CAST: REACH-ACTION ( n -- [ ^u8 n ^u8 n -- ] )
-CAST: CLAUSE-ACTION ( n -- [ ^u8 n -- ] )
-CAST: DECL-ACTION ( n -- [ ^u8 n ^u8 n -- bool ] )
-CAST: TICK-ORDER-ACTION ( n -- [ ^u8 n n ^u8 [ -- nominal ] -- n nominal ] )
+CAST: CREATED-ACTION ( n -- [ str n -- bool ] )
+CAST: DOES-ACTION ( n -- [ str str str -- n ] )
+CAST: RENDERS-ACTION ( n -- [ str n -- bool ] )
+CAST: REACH-ACTION ( n -- [ str str -- ] )
+CAST: CLAUSE-ACTION ( n -- [ str -- ] )
+CAST: DECL-ACTION ( n -- [ str str -- bool ] )
+CAST: TICK-ORDER-ACTION ( n -- [ str n ^u8 [ -- nominal ] -- n nominal ] )
 
 : WITH-BODY-TICK-ORDER ( str [ -- nominal ] -- bool )
    {: a:^ u:n q :}
@@ -1256,8 +1256,8 @@ CAST: TICK-ORDER-ACTION ( n -- [ ^u8 n n ^u8 [ -- nominal ] -- n nominal ] )
    NCOMP-DISPATCH:DECL-WITH-TICK-ORDER-OFF OWNER-XT TICK-ORDER-ACTION execute 0<> ;
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
-CAST: ARM-ACTION ( n -- [ ^u8 n n n n -- ] )
-CAST: CTOR-DECL-ACTION ( n -- [ n ^u8 n n n n -- ] )
+CAST: ARM-ACTION ( n -- [ str n n n -- ] )
+CAST: CTOR-DECL-ACTION ( n -- [ n str n n n -- ] )
 CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- renders parses nominal ] -- renders parses nominal ] )
 
 \ Each file the composition scans is a visit, numbered from one counter that
@@ -1312,7 +1312,7 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
    name nameu VISIT-CUR @ at at u +
    NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF OWNER-XT ARM-ACTION execute ;
 
-: ARM ( ^u8 n n n -- )
+: ARM ( str n n -- )
    {: name:^ nameu:n at:n u:n :}
    name nameu at u SEALED-NAME
    name nameu at u ARM-UNSEALED ;
@@ -1329,7 +1329,7 @@ public
 \ path and 0 0 for a declaration in no file the composition visited, or with no
 \ location. The strings are borrowed: a word installed here consumes them
 \ before it returns.
-defer ON-CANDIDATE ( ^u8 n ^u8 n n n -- )
+defer ON-CANDIDATE ( str str n n -- )
 
 private
 
@@ -1341,8 +1341,8 @@ private
 
 CANDIDATE-INIT
 
-CAST: CURSOR-ACTION ( n -- [ n [ ^u8 n n n n -- ] -- ] )
-CAST: VISIBLE-ACTION ( n -- [ ^u8 n n [ ^u8 n n n n -- ] -- ] )
+CAST: CURSOR-ACTION ( n -- [ n [ str n n n -- ] -- ] )
+CAST: VISIBLE-ACTION ( n -- [ str n [ str n n n -- ] -- ] )
 
 \ The checker's candidate: its spelling and the declaration's visit and span,
 \ 0 0 0 for none.
@@ -1551,7 +1551,7 @@ variable DEFER-SEEN
 
 \ WHY is the deferral's cause, which picks its warning's message and help; 0
 \ when the site cannot tell.
-CAST: STRETCH-ACTION ( n -- [ ^u8 n -- ] )
+CAST: STRETCH-ACTION ( n -- [ str -- ] )
 : REPORT-STRETCH ( str n -- )
    CHECKER-DEFER-WHY!
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
@@ -1571,7 +1571,7 @@ CAST: STRETCH-ACTION ( n -- [ ^u8 n -- ] )
 \ A body the checker deferred to the run (verdict 2) is reported where the
 \ checker's judgment of it stopped, when the child reports deferrals, as a
 \ deferred stretch is at the token that opened it.
-CAST: DEFERRED-BODY-ACTION ( n -- [ -- ^u8 n ] )
+CAST: DEFERRED-BODY-ACTION ( n -- [ -- str ] )
 : DEFERRED-BODY$ ( -- str )
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-BODY-OFF OWNER-XT DEFERRED-BODY-ACTION execute ;
 : REPORT-DEFERRED ( n -- )
@@ -1866,7 +1866,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
 \ and answers whether it retained it. A name its scope already holds keeps that
 \ record either way, so only this answer tells a redeclaration the registrar
 \ retained from one it refused.
-: DECL-SIGNATURE ( ^u8 n str -- bool )
+: DECL-SIGNATURE ( str str -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute ;
 
 \ The checker's own guard refuses a colon definition, a cast, a typed storage
@@ -1957,7 +1957,7 @@ defer ON-FILE ( str str -- )
 \ place of its bytes on disk, which it still needs to resolve. Else false, and
 \ the load reads the disk. The bytes are borrowed and read-only, and stay so
 \ while the composition runs.
-defer SUPPLIED ( ^u8 n -- ^u8 n bool )
+defer SUPPLIED ( str -- str bool )
 
 private
 
@@ -2153,7 +2153,7 @@ ENGINE-TARGET-INIT
    name nameu CHECKER-CERT-DUP? 0= IF 0 EXIT THEN
    name nameu RECORD-SYM? ;
 
-: DEFINED ( ^u8 n ^u8 n ^u8 n n n n -- )
+: DEFINED ( str str str n n n -- )
    {: kind:^ kindu:n name:^ nameu:n eff:^ effu:n at:n end:n class:n :}
    name nameu RETAINED-SYM
    {: sym:n :}
@@ -2977,7 +2977,7 @@ DYNAMIC-BUFFER PRS-TERMS u8
 : PRS-OWNER-BASE ( -- n )
    SOURCE-OWNER-A @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
-CAST: TOP-ACTION ( n -- [ ^u8 n bool -- n ] )
+CAST: TOP-ACTION ( n -- [ str bool -- n ] )
 : TOP-VERDICT ( str bool -- n )
    NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
 
@@ -3251,7 +3251,7 @@ variable LOAD-END
    VISIT-CUR @ VISIT-FIRST @ <> IF EXIT THEN
    at LOAD-AT !  end LOAD-END ! ;
 
-: LOADED ( ^u8 n n -- )
+: LOADED ( str n -- )
    {: path:^ pathu:n outcome:n :}
    LOAD-END @ 0= IF EXIT THEN
    LOAD-AT @ LOAD-END @  0 LOAD-END !
@@ -4059,7 +4059,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ A parsing keyword and its operand are one value on the interpret stack, and
 \ the keyword stays the token before whatever follows: `char 0 TYPED-BUFFER B n`
 \ hands the count reader `char`, which names the count's word.
-: SCAN-TOP ( ^u8 n -- )
+: SCAN-TOP ( str -- )
    CSR-TOP
    2dup KNOWN-IF? IF 2drop ELSE
    2dup TOP-PARSER? IF TOP-OPERAND ELSE
@@ -4412,13 +4412,13 @@ public
 \ Verify src srcu, the bytes supplied for path, composing each file a loader
 \ loads under the caller's SOURCE-ROOT owner; its records name label, and a
 \ bad loader form is rejected after the packets made before it.
-: SOURCE-COMPOSE-QUIET-IN-SCOPE ( ^u8 n ^u8 n ^u8 n -- )
+: SOURCE-COMPOSE-QUIET-IN-SCOPE ( str str str -- )
    false COMPOSE-QUIET ;
 
 \ SOURCE-COMPOSE-QUIET-IN-SCOPE of entry text, the bytes the load's command
 \ line makes of its files: no file holds them, so their records name
 \ REJECTION:NO-FILE$ and a load they make stands nowhere.
-: SOURCE-COMPOSE-ENTRY-IN-SCOPE ( ^u8 n ^u8 n -- )
+: SOURCE-COMPOSE-ENTRY-IN-SCOPE ( str str -- )
    REJECTION:NO-FILE$ true COMPOSE-QUIET ;
 
 \ The file the last composition could not read, as it was resolved, or empty.
@@ -4426,7 +4426,7 @@ public
 : FAULT-TARGET$ ( -- str )
    FAULT-TARGET FAULT-U @ ;
 
-: SOURCE-BUF-IN-SCOPE ( ^u8 n -- )
+: SOURCE-BUF-IN-SCOPE ( str -- )
    SOURCE!
    RUN ;
 
@@ -4436,7 +4436,7 @@ public
 \ holds the overlay open, so a caller reading what the scan recorded by name
 \ reads it here. No second verifier scope opens inside this one
 \ (E-VERIFY-WINDOW). A scan that throws runs no action.
-: SOURCE-BUF-THEN-IN-SCOPE ( ^u8 n [ -- nominal ] -- )
+: SOURCE-BUF-THEN-IN-SCOPE ( str [ -- nominal ] -- )
    THEN-ACTION !
    SOURCE!
    [: VERIFY-THEN ;] RUN-IN-SCOPE ;
@@ -4452,7 +4452,7 @@ public
 
 \ Verify a source in a candidate scope of its own: what it defines, and the
 \ definer rows it learns, go when CHECKER-CANDIDATE-SCOPE-DONE rewinds the scope.
-: SOURCE-BUF ( ^u8 n -- )
+: SOURCE-BUF ( str -- )
    SOURCE!
    CHECKER-CANDIDATE-SCOPE-START
    [: RUN ;] catch {: rc:n :}
