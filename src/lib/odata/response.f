@@ -38,7 +38,7 @@ private
 : REPEAT-FIX$ ( -- str ) s" remove the repeated member, keeping one" ;
 : MISSING-FIX$ ( -- str ) s" add the member to the object" ;
 
-: PUT ( ^u8 n ^u8 n -- ^u8 n )
+: PUT ( ^u8 n str -- ^u8 n )
    {: buf:^ at:n a:^ u:n :}
    a buf at + u BYTE-COPY
    buf at u + ;
@@ -119,11 +119,11 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    e kind SKIP ;
 
 \ The current token is not WANT, which WHAT needs.
-: UNEXPECTED ( JSON:reader ^u8 n ^u8 n -- )
+: UNEXPECTED ( JSON:reader str str -- )
    {: what:^ wl:n want:^ nl:n :}
    want nl s"  for " what wl s" " KIND-FIX$ JOINED-REJECT ;
 
-: TWICE ( JSON:reader ^u8 n -- )
+: TWICE ( JSON:reader str -- )
    {: what:^ wl:n :}
    what wl s"  once" s" " s" " REPEAT-FIX$ JOINED-REJECT ;
 
@@ -145,14 +145,14 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
    MISSING-FIX$ JOINED-REJECT ;
 
 \ The value of one to 18 decimal digits, which no cell overflows.
-: DIGITS ( ^u8 n -- option<n> )
+: DIGITS ( str -- option<n> )
    {: a:^ u:n :}
    u 18 > if OPTION:NONE exit then
    a u STR-PARSE-POS ;
 
 \ The current string, decoded into scratch as long as its source, which
 \ decoding never outgrows, handed to Q.
-: DECODED ( JSON:reader [ JSON:reader ^u8 n -- JSON:reader ] -- JSON:reader )
+: DECODED ( JSON:reader [ JSON:reader str -- JSON:reader ] -- JSON:reader )
    {: q :}
    JSON:READ-SPAN$ nip 1 max MEM:BYTES-ALLOC-LEN
    [: MEM:ALLOCATION>SPAN SPAN:$ over >r JSON:READ-STR
@@ -513,7 +513,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    swap JSON:READ-NEXT rot swap ;
 
 \ The current string or key, decoded into the caller's scratch.
-: DECODE ( JSON:reader ^JSON:writer ^copy -- JSON:reader ^JSON:writer ^u8 n )
+: DECODE ( JSON:reader ^JSON:writer ^copy -- JSON:reader ^JSON:writer str )
    {: c:^ :}
    swap c COPY-DST @ c COPY-CAP @ JSON:READ-STR {: len:n :} swap
    c COPY-DST @ len ;
@@ -636,7 +636,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 \ The UTC milliseconds of `ms`, `-ms`, `ms+mmmm` or `ms-mmmm`, the offset's
 \ minutes taken off; none outside the years 0 to 9999.
-: TICKS ( ^u8 n -- option<n> )
+: TICKS ( str -- option<n> )
    {: a:^ u:n :}
    a u ZONED? if u 5 - else u then {: v:n :}
    v 0 > if a c@ [char] - = else false then {: neg:bool :}
@@ -650,7 +650,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
       ENDOF
    ;MATCH ;
 
-: MS ( ^u8 n -- option<n> )
+: MS ( str -- option<n> )
    {: a:^ u:n :}
    a u s" /Date(" STARTS-WITH? a u s" )/" ENDS-WITH? and 0= if
       OPTION:NONE exit
@@ -856,7 +856,7 @@ public
 
 \ The records array of a collection response, the next link's length
 \ written into SPAN, 0 for none, and the count, none when absent.
-: PAGE ( ^metadata ^u8 n ^JSON:cursor SPAN:span<u8> -- ^u8 n n option<n> )
+: PAGE ( ^metadata str ^JSON:cursor SPAN:span<u8> -- str n option<n> )
    {: m:^ body:^ len:n cur:^ link:SPAN:span<u8> :}
    ENVELOPE-CELLS cells MEM:BYTES-ALLOC-LEN
    [: drop m body len cur link PAGE-IN ;] MEM:WITH-BYTES ;

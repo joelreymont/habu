@@ -1,7 +1,7 @@
 split-str
 \ key.f - KEY, an entity's key predicate; part of package ODATA
 \ (src/lib/odata.f), which states the contract.
-\ Each value's text is read by scanners over ( ^u8 n at ): each answers the
+\ Each value's text is read by scanners over ( str at ): each answers the
 \ text and the index after what it read, and throws E-KEY where the text
 \ does not fit, so a check is a chain of scanners ending in WHOLE. An
 \ optional part that is not there answers the index it was given.
@@ -35,7 +35,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    {: a:^ u:n at:n c:u8 :}
    at u < if a at + c@ c = else false then ;
 
-: PAST ( ^u8 n n u8 -- ^u8 n n )
+: PAST ( str n u8 -- str n )
    {: a:^ u:n at:n c:u8 :}
    a u at c PEEK? FITS a u at 1+ ;
 
@@ -51,16 +51,16 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    a u at DIGIT-END {: end:n :}
    end at > FITS a u end ;
 
-: SIGN ( ^u8 n n -- ^u8 n n )
+: SIGN ( str n -- str n )
    {: a:^ u:n at:n :}
    a u at [char] - PEEK? a u at [char] + PEEK? or
    if a u at 1+ else a u at then ;
 
-: FRACTION ( ^u8 n n -- ^u8 n n )
+: FRACTION ( str n -- str n )
    {: a:^ u:n at:n :}
    a u at [char] . PEEK? if a u at 1+ DIGIT-RUN else a u at then ;
 
-: EXPONENT ( ^u8 n n -- ^u8 n n )
+: EXPONENT ( str n -- str n )
    {: a:^ u:n at:n :}
    a u at [char] e PEEK? a u at [char] E PEEK? or
    if a u at 1+ SIGN DIGIT-RUN else a u at then ;
@@ -73,15 +73,15 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 \ The bytes at AT match SHAPE: `d` a digit, `x` a hex digit, any other
 \ byte itself.
-: SHAPE ( ^u8 n n ^u8 n -- ^u8 n n )
+: SHAPE ( str n str -- str n )
    {: a:^ u:n at:n s:^ sl:n :}
    at sl + u <= FITS
    sl 0 ?do a at + i + c@ s i + c@ SHAPE-BYTE? FITS loop
    a u at sl + ;
 
-: WHOLE ( ^u8 n n -- ) {: a:^ u:n at:n :} at u = FITS ;
+: WHOLE ( str n -- ) {: a:^ u:n at:n :} at u = FITS ;
 
-: STAMP ( ^u8 n n -- ^u8 n n ) s" dddd-dd-ddTdd:dd:dd" SHAPE FRACTION ;
+: STAMP ( str n -- str n ) s" dddd-dd-ddTdd:dd:dd" SHAPE FRACTION ;
 
 \ `Z`, or an offset `+hh:mm` or `-hh:mm`.
 : ZONE ( str n -- str n )
@@ -91,43 +91,43 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    a u at 1+ s" dd:dd" SHAPE ;
 
 \ An optional `1*digit C`.
-: UNIT ( ^u8 n n u8 -- ^u8 n n )
+: UNIT ( str n u8 -- str n )
    {: a:^ u:n at:n c:u8 :}
    a u at DIGIT-END {: end:n :}
    end at > a u end c PEEK? and if a u end 1+ else a u at then ;
 
 \ An optional `1*digit [. 1*digit] S`.
-: SECONDS ( ^u8 n n -- ^u8 n n )
+: SECONDS ( str n -- str n )
    {: a:^ u:n at:n :}
    a u at DIGIT-END at = if a u at exit then
    a u at DIGIT-RUN FRACTION [char] S PAST ;
 
 \ `T`, then hours, minutes and seconds in that order, one at least.
-: CLOCK ( ^u8 n n -- ^u8 n n )
+: CLOCK ( str n -- str n )
    [char] T PAST {: a:^ u:n t:n :}
    a u t [char] H UNIT [char] M UNIT SECONDS
    dup t > FITS ;
 
-: BOOLEAN ( ^u8 n -- )
+: BOOLEAN ( str -- )
    {: a:^ u:n :}
    a u s" true" STR= a u s" false" STR= or FITS ;
 
-: INTEGER ( ^u8 n n n -- )
+: INTEGER ( str n n -- )
    {: a:^ u:n lo:n hi:n :}
    a u STR>NUMBER? MATCH option
       none OF E-KEY throw ENDOF
       some OF dup lo >= swap hi <= and FITS ENDOF
    ;MATCH ;
 
-: GUID ( ^u8 n -- )
+: GUID ( str -- )
    0 s" xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" SHAPE WHOLE ;
 
-: DECIMAL ( ^u8 n -- ) 0 SIGN DIGIT-RUN FRACTION WHOLE ;
-: FLOAT ( ^u8 n -- ) 0 SIGN DIGIT-RUN FRACTION EXPONENT WHOLE ;
-: UTC ( ^u8 n -- ) 0 STAMP [char] Z PAST WHOLE ;
+: DECIMAL ( str -- ) 0 SIGN DIGIT-RUN FRACTION WHOLE ;
+: FLOAT ( str -- ) 0 SIGN DIGIT-RUN FRACTION EXPONENT WHOLE ;
+: UTC ( str -- ) 0 STAMP [char] Z PAST WHOLE ;
 : DATE-OFFSET ( str -- ) 0 STAMP ZONE WHOLE ;
-: DATE ( ^u8 n -- ) 0 s" dddd-dd-dd" SHAPE WHOLE ;
-: TIME ( ^u8 n -- ) 0 [char] P PAST CLOCK WHOLE ;
+: DATE ( str -- ) 0 s" dddd-dd-dd" SHAPE WHOLE ;
+: TIME ( str -- ) 0 [char] P PAST CLOCK WHOLE ;
 
 : TIME-OF-DAY ( str -- )
    0 s" dd:dd" SHAPE {: a:^ u:n at:n :}
@@ -138,7 +138,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    then WHOLE ;
 
 \ `[-]P`, days, then a clock, one at least.
-: DURATION ( ^u8 n -- )
+: DURATION ( str -- )
    0 SIGN [char] P PAST {: a:^ u:n at:n :}
    at u < FITS
    a u at [char] D UNIT {: b:^ bl:n t:n :}
@@ -152,7 +152,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    {: p:^ a:^ u:n :}
    a u p PREDICATE-OUT @ URI:QUERY-ENCODE ;
 
-: QUOTED ( ^predicate ^u8 n -- )
+: QUOTED ( ^predicate str -- )
    {: p:^ a:^ u:n :}
    p s" '" RAW
    u 0 ?do
@@ -161,7 +161,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    p s" '" RAW ;
 
 \ `tag'value'`.
-: TAGGED ( ^predicate ^u8 n ^u8 n -- )
+: TAGGED ( ^predicate str str -- )
    {: p:^ tag:^ tl:n v:^ vl:n :}
    p tag tl RAW p s" '" RAW p v vl ESCAPED p s" '" RAW ;
 
@@ -185,7 +185,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and if E-KEY throw then
    code throw ;
 
-: HEX ( ^predicate ^u8 n ^u8 NUM:alloc-byte-len -- )
+: HEX ( ^predicate str ^u8 NUM:alloc-byte-len -- )
    MEM:ALLOCATION>SPAN {: p:^ v:^ vl:n s :}
    v vl s [: BASE64:DECODE ;] DECODED-LEN {: len:n :}
    s SPAN:$ drop {: bytes:^ :}
@@ -206,7 +206,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 \ V2 writes the base64 value's bytes as `X'hex'`; V4 writes the base64url
 \ value as `binary'value'`, its `=` padding optional.
-: BINARY ( ^predicate ^u8 n -- )
+: BINARY ( ^predicate str -- )
    {: p:^ v:^ vl:n :}
    p PREDICATE-V2 @ if
       p v vl vl DECODE-ROOM [: HEX ;] MEM:WITH-BYTES exit

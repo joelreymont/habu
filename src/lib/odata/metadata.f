@@ -401,7 +401,7 @@ CAST: >RECORD ( n -- ^t )
 : ENTER ( ^doc phase -- ) swap DOC-PHASE ! ;
 
 \ The text before the last dot and the text after it; all and none without one.
-: QUALIFIER ( ^u8 n -- ^u8 n ^u8 n )
+: QUALIFIER ( str -- str str )
    {: text:^ len:n :}
    len begin dup 0 > while
       1- dup text + c@ [char] . = if
@@ -411,7 +411,7 @@ CAST: >RECORD ( n -- ^t )
    text len text 0 ;
 
 \ The index of the first slash, -1 for none.
-: SLASH ( ^u8 n -- n )
+: SLASH ( str -- n )
    {: text:^ len:n :}
    len 0 ?do
       text i + c@ [char] / = if i unloop exit then
@@ -419,7 +419,7 @@ CAST: >RECORD ( n -- ^t )
    -1 ;
 
 \ The text before index I and the text after it.
-: SPLIT ( ^u8 n n -- ^u8 n ^u8 n )
+: SPLIT ( str n -- str str )
    {: text:^ len:n i:n :}
    text i text i + 1+ len i - 1- ;
 
@@ -428,7 +428,7 @@ CAST: >RECORD ( n -- ^t )
 \ CUT keeps the part of a name or value from the document a rejection shows:
 \ REASON:QUOTE-MOST bytes back to a character's first byte, and true for `...`
 \ after it.
-: CUT ( ^u8 n -- ^u8 n bool )
+: CUT ( str -- str bool )
    {: text:^ len:n :}
    len REASON:QUOTE-MOST <= if text len false exit then
    REASON:QUOTE-MOST begin
@@ -436,7 +436,7 @@ CAST: >RECORD ( n -- ^t )
    while 1- repeat
    text swap true ;
 
-: QUOTE ( ^u8 n -- )  CUT REASON:QUOTE ;
+: QUOTE ( str -- )  CUT REASON:QUOTE ;
 
 : QUOTE-SPAN ( SPAN:span<u8> -- ) SPAN:$ QUOTE ;
 
@@ -450,14 +450,14 @@ CAST: >RECORD ( n -- ^t )
    src src at + 1 1 0 REJECTION:POSITION drop REASON:AT
    REASON:EXPECTED ;
 
-: FIX ( ^u8 n -- )  REASON:FIX REASON:APPEND E-METADATA REASON:STOP ;
+: FIX ( str -- )  REASON:FIX REASON:APPEND E-METADATA REASON:STOP ;
 
 \ Found text as given: none, a count, a description.
-: FOUND ( ^u8 n ^u8 n -- )
+: FOUND ( str str -- )
    {: found:^ fl:n fix:^ xl:n :}
    REASON:FOUND found fl REASON:APPEND fix xl FIX ;
 
-: FOUND-QUOTED ( ^u8 n ^u8 n -- )
+: FOUND-QUOTED ( str str -- )
    {: found:^ fl:n fix:^ xl:n :}
    REASON:FOUND found fl QUOTE fix xl FIX ;
 
@@ -501,17 +501,17 @@ CAST: >RECORD ( n -- ^t )
    s" ` of `" REASON:APPEND el el-len REASON:APPEND
    s" `" REASON:APPEND NONE$ s" add the attribute" FOUND ;
 
-: KEEP ( ^doc ^u8 n -- SPAN:span<u8> )
+: KEEP ( ^doc str -- SPAN:span<u8> )
    {: d:^ src:^ len:n :}
    d DOC-ARENA @ len ARENA:ALLOC {: dst:^ got:n :}
    src dst len BYTE-COPY
    dst got SPAN:MAKE ;
 
-: NEED ( XML:reader ^doc ^u8 n -- XML:reader SPAN:span<u8> )
+: NEED ( XML:reader ^doc str -- XML:reader SPAN:span<u8> )
    {: d:^ name:^ len:n :}
    d name len NEED$ {: v:^ vl:n :} d v vl KEEP ;
 
-: OPTIONAL ( XML:reader ^doc ^u8 n -- XML:reader SPAN:span<u8> )
+: OPTIONAL ( XML:reader ^doc str -- XML:reader SPAN:span<u8> )
    {: d:^ name:^ len:n :}
    d name len ATTR$ drop {: v:^ vl:n :} d v vl KEEP ;
 
@@ -630,7 +630,7 @@ CAST: >RECORD ( n -- ^t )
    d MAP-OF d KEY$ >LEN MAP:HAS? ;
 
 \ The record KEY names in the map, null for none.
-: MAP-RECORD ( ^n count ^u8 n -- ^t )
+: MAP-RECORD ( ^n count str -- ^t )
    >LEN MAP:GET MATCH option
       none OF 0 >RECORD ENDOF
       some OF >RECORD ENDOF
@@ -650,7 +650,7 @@ CAST: >RECORD ( n -- ^t )
 : REMEMBER-AT ( ^doc ^t -- ) NULL-PTR - REMEMBER ;
 
 \ Names.
-: ALIAS ( ^doc ^u8 n -- ^u8 n )
+: ALIAS ( ^doc str -- str )
    {: d:^ name:^ len:n :}
    d KIND-ALIAS-NAME name len NAME-KEY
    d FIND {: a:^alias :}
@@ -701,7 +701,7 @@ CAST: >RECORD ( n -- ^t )
    dup METADATA-NAMES @ swap METADATA-NAMES-CAP @ >COUNT ;
 
 \ The `named` of NAME, null for none.
-: INDEXED ( ^metadata ^u8 n -- ^named ) rot NAMES-OF 2swap MAP-RECORD ;
+: INDEXED ( ^metadata str -- ^named ) rot NAMES-OF 2swap MAP-RECORD ;
 
 : HIDDEN? ( ^metadata str -- bool )
    INDEXED {: x:^named :}
@@ -825,7 +825,7 @@ CAST: >RECORD ( n -- ^t )
 
 \ The Annotation's Term, kept, as its qualifier and its name; rejected
 \ unless qualified.
-: TERM-OF ( XML:reader ^doc -- XML:reader ^u8 n ^u8 n )
+: TERM-OF ( XML:reader ^doc -- XML:reader str str )
    {: d:^ :}
    d s" Term" NEED {: term:SPAN:span<u8> :}
    term SPAN:$ QUALIFIER {: q:^ ql:n tail:^ tl:n :}
@@ -871,7 +871,7 @@ CAST: >RECORD ( n -- ^t )
 
 \ A namespace URI in backticks, whole and made visible, as CUT would make
 \ V2's and V3's the same; or no namespace.
-: NAMESPACE+ ( ^u8 n -- )
+: NAMESPACE+ ( str -- )
    {: uri:^ ul:n :}
    ul 0= if s" no namespace" REASON:APPEND exit then
    uri ul false REASON:QUOTE ;
@@ -954,7 +954,7 @@ CAST: >RECORD ( n -- ^t )
    STR-ALNUM? ;
 
 \ The index after the name bytes from I on in TEXT.
-: RUN-END ( ^u8 n n -- n )
+: RUN-END ( str n -- n )
    {: text:^ len:n i:n :}
    i begin
       dup len < if dup text + c@ NAME-BYTE? else false then
@@ -1552,14 +1552,14 @@ CAST: >RECORD ( n -- ^t )
    d at PLACE el el-len name NOT-NEW ;
 
 \ The open type holding NAME, null for none.
-: HOLDER ( ^doc ^u8 n -- ^entity-type )
+: HOLDER ( ^doc str -- ^entity-type )
    {: d:^ name:^ len:n :}
    d KIND-VISIBLE name len NAME-KEY d FIND {: h:^entity-type :}
    h NULL-PTR = if h exit then
    h ENTITY-TYPE-RANK-END @ 0= if h exit then
    NULL-PTR ;
 
-: HOLD ( ^doc ^entity-type SPAN:span<u8> n ^u8 n -- )
+: HOLD ( ^doc ^entity-type SPAN:span<u8> n str -- )
    {: d:^ t:^ name:SPAN:span<u8> at:n el:^ el-len:n :}
    d name SPAN:$ HOLDER NULL-PTR <> if d at name el el-len REDECLARED then
    d KIND-VISIBLE name SPAN:$ NAME-KEY d t REMEMBER-AT ;
@@ -1958,7 +1958,7 @@ CAST: >RECORD ( n -- ^t )
    t name len ENTITY-FOUND ;
 
 \ What EL named NAME is expected to hold: an End for each of two roles.
-: ENDS ( ^u8 n SPAN:span<u8> -- )
+: ENDS ( str SPAN:span<u8> -- )
    {: el:^ el-len:n name:SPAN:span<u8> :}
    s" two `End` elements in `" REASON:APPEND el el-len REASON:APPEND s" ` " REASON:APPEND
    name QUOTE-SPAN s" , one for each role" REASON:APPEND ;
@@ -1988,7 +1988,7 @@ CAST: >RECORD ( n -- ^t )
    s" `" REASON:APPEND attr al REASON:APPEND s" ` of `NavigationProperty` " REASON:APPEND
    n NAVIGATION-NAME @ QUOTE-SPAN ;
 
-: ROLE ( ^doc ^navigation ^association SPAN:span<u8> ^u8 n -- ^association-end )
+: ROLE ( ^doc ^navigation ^association SPAN:span<u8> str -- ^association-end )
    {: d:^ n:^ a:^ role:SPAN:span<u8> attr:^ al:n :}
    d a role FIND-END dup NULL-PTR <> if exit then drop
    d n attr al NAVIGATION-PLACE
@@ -2015,7 +2015,7 @@ CAST: >RECORD ( n -- ^t )
    e ASSOCIATION-END-MANY @ n NAVIGATION-MANY ! ;
 
 \ `Collection(X)` is to-many X.
-: COLLECTION ( ^u8 n -- ^u8 n bool )
+: COLLECTION ( str -- str bool )
    {: text:^ len:n :}
    text len s" Collection(" STARTS-WITH?
    len 0 > if text len + 1- c@ [char] ) = and then
@@ -2513,7 +2513,7 @@ CAST: >RECORD ( n -- ^t )
    d RESOLVE-FILTERS
    d RESOLVE-TERMS ;
 
-: PARSE ( ^doc ^u8 n -- )
+: PARSE ( ^doc str -- )
    {: d:^ src:^ len:n :}
    src len SPAN:MAKE d DOC-SOURCE !
    d DOC-NAMES @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW d DOC-SCRATCH !
@@ -2596,7 +2596,7 @@ CAST: >RECORD ( n -- ^t )
       some OF >RECORD NULLABLE:SOME ENDOF
    ;MATCH ;
 
-: ANNOTATION ( ^annotation ^u8 n ^u8 n -- ^u8 n bool )
+: ANNOTATION ( ^annotation str str -- str bool )
    {: a:^ ns:^ nl:n name:^ len:n :}
    a begin dup NULL-PTR <> while
       dup ANNOTATION-NAME @ name len SPAN=
@@ -2695,7 +2695,7 @@ CAST: >RECORD ( n -- ^t )
 
 public
 
-: METADATA ( ^ARENA:arena ^u8 n -- ^metadata )
+: METADATA ( ^ARENA:arena str -- ^metadata )
    {: arena:^ src:^ len:n :}
    arena DOCS-NEW {: d:^ :}
    arena MODELS-NEW d DOC-MODEL !
