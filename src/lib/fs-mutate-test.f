@@ -1202,16 +1202,16 @@ variable WANT-U
    FMT-ROOT$ s" tmpdir-caught.f" CAUGHT-PROG-BUF FS:JOIN-PATH CAUGHT-PROG-U ! ;
 
 : PROG-SRC$ ( -- str )
-   S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q FS:MKTEMP-DIR 2drop\n" ;
+   S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q >str FS:MKTEMP-DIR drop\n" ;
 
 : FILE-PROG-SRC$ ( -- str )
-   S\" require src/lib/fs-mutate.f\ns\q tmpdir-file\q FS:MKTEMP drop 2drop\n" ;
+   S\" require src/lib/fs-mutate.f\ns\q tmpdir-file\q >str FS:MKTEMP drop drop\n" ;
 
 : CAUGHT-PROG-SRC$ ( -- str )
-   S\" require src/lib/fs-mutate.f\n: GO ( -- ) [: s\q tmpdir-caught\q FS:MKTEMP drop 2drop ;] catch E-FS-DIR <> if 3 throw then 1 s\q on\q write drop ;\nGO\n" ;
+   S\" require src/lib/fs-mutate.f\n: GO ( -- ) [: s\q tmpdir-caught\q >str FS:MKTEMP drop drop ;] catch E-FS-DIR <> if 3 throw then 1 s\q on\q write drop ;\nGO\n" ;
 
 : CANON-PROG-SRC$ ( -- str )
-   S\" require src/lib/fs-mutate.f\n: LINE ( ^u8 n -- ) {: a:^ u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q FS:MKTEMP-DIR LINE\n" ;
+   S\" require src/lib/fs-mutate.f\n: LINE ( ^u8 n -- ) {: a:^ u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q >str FS:MKTEMP-DIR str> LINE\n" ;
 
 \ A directory one byte past the longest TMPDIR with room for the temp name
 \ PROG-SRC$ asks for, whose prefix is tmpdir-child.

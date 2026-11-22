@@ -252,7 +252,7 @@ variable CS-CHILD-ERR-U
    PROC-ARGV-RESET
    CS-ENV!
    CS-IMAGE$ >LEN
-   S\" s\" test/catch-success-image-consumer.f\" included\n" >LEN
+   S\" s\" test/catch-success-image-consumer.f\" >str included\n" >LEN
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
@@ -272,9 +272,9 @@ variable CS-CHILD-ERR-U
 : CS-IMAGE-BODY ( -- )
    CS-IMAGE-BUILD
    CS-IMAGE-RUN
-   S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-wrong-status.f\" included\n"
+   S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-wrong-status.f\" >str included\n"
       s" catch-success-wrong-status.f:11:18" CS-SAVED-REFUSAL
-   S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-override.f\" included\n"
+   S\" s\" catch-image-load: began\" type cr\ns\" test/catch-success-override.f\" >str included\n"
       s" catch-success-override.f:12:24" CS-SAVED-REFUSAL ;
 
 : CS-SECTION-IMAGE ( -- )

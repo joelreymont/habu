@@ -55,7 +55,7 @@ variable ABSTRACT-FD
    s"    SYSTEMD:NOTIFY-READY MATCH SYSTEMD:status" P+
    s"       ok OF 0 ENDOF" P+
    s"       failed OF SYSTEMD:ERRNO>N ENDOF" P+
-   s"    ;MATCH FMT:INT$ type cr ;" P+
+   s"    ;MATCH FMT:INT$ str> type cr ;" P+
    s" GO" P+ ;
 
 : BIND-AT ( str -- n )

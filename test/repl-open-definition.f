@@ -158,7 +158,7 @@ using PTY-HARNESS
       s" : AFTER-ZERO ( -- n ) 56 ;" STEP TTRUE
       s" AFTER-ZERO ." STEP TTRUE
       s" 56" IN-BUF? TTRUE
-      s\" s\" nofile.f\"" STEP TTRUE
+      s\" s\" nofile.f\" >str" STEP TTRUE
       BUF-CLEAR s" included   " SEND-LINE
       s" E-MISSING-SOURCE" WAIT-FOR TTRUE
       s" E-MISSING-SOURCE" s" habu> " WAIT-AFTER TTRUE
