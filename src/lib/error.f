@@ -788,8 +788,7 @@ generates: FAULT ( -- n )
 -9170 s" a directory could not be opened for listing" ERROR:CODE E-FS-LIST-OPEN
 -9171 s" reading a directory's entries failed" ERROR:CODE E-FS-LIST-READ
 -9172 s" a directory entry is malformed, or its name holds a newline" ERROR:CODE E-FS-LIST-ENTRY
--9173 s" the listed names or the listing's storage do not fit the buffer given" ERROR:CODE E-FS-LIST-CAPACITY
--9174 s" a context already owns an active listing" ERROR:CODE E-FS-LIST-ACTIVE
+-9173 s" the listed names do not fit the buffer given" ERROR:CODE E-FS-LIST-CAPACITY
 -9180 s" a TCP argument out of range: a length, port, timeout, address or backlog" ERROR:CODE E-TCP4-OPERAND
 -9183 s" the OS answered a socket call with a result it cannot give: a send of no bytes, a cancelled wait, a failed fcntl or a refused poll" ERROR:FAULT E-TCP4-RESULT
 -9190 s" a queue index or capacity out of range" ERROR:CODE E-QUEUE-OPERAND

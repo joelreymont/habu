@@ -1,17 +1,14 @@
 split-str
-\ fs-list.f - the entries of one directory, through raw open-rd or an openat of
-\ "." under the caller's descriptor, getdirentries64 and close; record decoding
-\ is shared with the walker in src/lib/fs.f.
-\ STORAGE CLASS. CALLER-OWNED: INIT binds an aligned caller span to one opaque
-\ context, one listing at a time (re-entry or sharing mid-listing is
-\ E-FS-LIST-ACTIVE, the first listing undisturbed); distinct contexts nest. The
-\ convenience words release a private context after one call.
+\ fs-list.f - the entries of one directory, through raw open-rd,
+\ getdirentries64 and close; record decoding is shared with the walker in
+\ src/lib/fs.f.
+\ STORAGE CLASS. Each word maps a private listing block and releases it after
+\ one call.
 
 require src/lib/error.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/fs.f
-require src/lib/ffi-abi.f
 require src/core/compile-reads.f
 
 package FS-LIST
@@ -24,7 +21,6 @@ E-FS-LIST-OPEN constant E-OPEN
 E-FS-LIST-READ constant E-READ
 E-FS-LIST-ENTRY constant E-ENTRY
 E-FS-LIST-CAPACITY constant E-CAPACITY
-E-FS-LIST-ACTIVE constant E-ACTIVE
 
 0 constant DT-UNKNOWN
 4 constant DT-DIR
@@ -34,19 +30,10 @@ E-FS-LIST-ACTIVE constant E-ACTIVE
 private
 4096 constant BLOCK-CAP
 
-public
-NEWTYPE context ^u8
-
 2 cells BLOCK-CAP + constant STORAGE-BYTES
 
-private
-
 10 constant LF
--1 constant IDLE
 -2 constant CLAIMED
-
-CAST: >CONTEXT ( ^u8 -- context )
-CAST: CONTEXT>PTR ( context -- ^u8 )
 
 : FD-CELL ( ^u8 -- ^n ) CELL-VIEW ;
 : BASE-CELL ( ^u8 -- ^n ) CELL-VIEW cell+ ;
@@ -62,14 +49,7 @@ CAST: CONTEXT>PTR ( context -- ^u8 )
 
 : FINISH ( ^u8 -- ) {: ls:^ :}
    ls FD-CELL @ {: fd:n :}
-   fd 0 >= if fd close then
-   IDLE ls FD-CELL atomic! ;
-
-: ACQUIRE ( ^u8 -- ) {: ls:^ :}
-   IDLE CLAIMED ls FD-CELL atomic-cas IDLE <> if
-      FS:CAUSE-CLEAR E-ACTIVE throw
-   then
-   0 ls BASE-CELL ! ;
+   fd 0 >= if fd close then ;
 
 
 : OPEN ( ^u8 ^u8 n -- ) {: ls:^ path:^ size:n :}
@@ -77,17 +57,6 @@ CAST: CONTEXT>PTR ( context -- ^u8 )
    path size z COMPILE-READS:FILE+
    z open-rd {: handle:n :}
    handle 0 < if E-OPEN throw then
-   handle ls FD-CELL ! ;
-
-PROCESS-SYMBOLS
-FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
-
-\ "." under the caller's directory: an open file description of its own, so
-\ the listing's offset is not the caller's.
-: OPEN-AT ( ^u8 fd -- ) {: ls:^ dir:fd :}
-   COMPILE-READS:MISS
-   dir FD>N S\" .\z" drop FS:OPEN-DIR-FLAGS OPEN-AT-CALL {: handle:n :}
-   handle 0 < if FFI:ERRNO FS:CAUSE! E-OPEN throw then
    handle ls FD-CELL ! ;
 
 
@@ -185,12 +154,6 @@ FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
    ls q TYPED-LOOP
    ls path size q ;
 
-: EACH-TYPED-AT-RUN ( ^u8 fd [ str u8 -- ] -- ^u8 fd [ str u8 -- ] )
-   {: ls:^ dir:fd q :}
-   ls dir OPEN-AT
-   ls q TYPED-LOOP
-   ls dir q ;
-
 : NAMES-STEP ( n n n ^u8 ^u8 n -- n n n bool )
    {: len:n filled:n at:n ls:^ dst:^ cap:n :}
    filled at ls NEXT if
@@ -206,58 +169,6 @@ FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
    >r ls path size dst cap r> ;
 
 public
-
-\ Refuses a span shorter than STORAGE-BYTES or not cell-aligned with
-\ E-FS-LIST-CAPACITY. The caller keeps the span alive for the context's
-\ lifetime and never INITs one that is listing. A context is reusable after
-\ success, an open or read failure, or a callback throw.
-: INIT ( SPAN:span<u8> -- context )
-   SPAN:$ {: ls:^ cap:n :}
-   cap STORAGE-BYTES < ls NULL$ drop - 1 cells mod 0<> or if
-      FS:CAUSE-CLEAR E-CAPACITY throw
-   then
-   IDLE ls FD-CELL !
-   0 ls BASE-CELL !
-   ls >CONTEXT ;
-
-: EACH-IN ( context str [ str -- ] -- )
-   {: ctx path:^ size:n q :}
-   ctx CONTEXT>PTR {: ls:^ :}
-   ls ACQUIRE
-   ls path size q [: EACH-RUN ;] catch {: code:n :}
-   drop 2drop drop
-   ls FINISH
-   code 0<> if code throw then ;
-
-: EACH-TYPED-IN ( context str [ str u8 -- ] -- )
-   {: ctx path:^ size:n q :}
-   ctx CONTEXT>PTR {: ls:^ :}
-   ls ACQUIRE
-   ls path size q [: EACH-TYPED-RUN ;] catch {: code:n :}
-   drop 2drop drop
-   ls FINISH
-   code 0<> if code throw then ;
-
-\ EACH-TYPED-IN over a directory the caller opened and may search; the
-\ caller's descriptor and offset are untouched. A refused "." is E-FS-LIST-OPEN.
-: EACH-TYPED-AT ( context fd [ str u8 -- ] -- )
-   {: ctx dir:fd q :}
-   ctx CONTEXT>PTR {: ls:^ :}
-   ls ACQUIRE
-   ls dir q [: EACH-TYPED-AT-RUN ;] catch {: code:n :}
-   2drop drop
-   ls FINISH
-   code 0<> if code throw then ;
-
-: NAMES-IN ( context str ^u8 n -- n )
-   {: ctx path:^ size:n dst:^ cap:n :}
-   cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
-   ctx CONTEXT>PTR {: ls:^ :}
-   ls ACQUIRE
-   ls path size dst cap 0 [: NAMES-RUN ;] catch {: code:n :}
-   ls FINISH
-   code 0<> if 2drop 2drop 2drop code throw then
-   >r 2drop 2drop drop r> ;
 
 \ Hands each name except . and .. to the quotation, in directory order.
 : EACH ( ^u8 n [ ^u8 n -- ] -- ) {: path:^ size:n q :}
