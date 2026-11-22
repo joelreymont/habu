@@ -489,7 +489,7 @@ public
      some OF S-IFMT and S-IFREG = ENDOF
    ;MATCH ;
 
-: DIR? ( ^u8 n -- bool )
+: DIR? ( str -- bool )
    TRY-STAT-MODE MATCH option
      none OF false ENDOF
      some OF S-IFMT and S-IFDIR = ENDOF
@@ -501,7 +501,7 @@ public
      some OF S-IFMT and S-IFIFO = ENDOF
    ;MATCH ;
 
-: SYMLINK? ( ^u8 n -- bool )
+: SYMLINK? ( str -- bool )
    TRY-LSTAT-MODE MATCH option
      none OF false ENDOF
      some OF S-IFMT and S-IFLNK = ENDOF
@@ -550,11 +550,11 @@ public
    pu 1 + nu + ;
 
 \ dst holds PATH-CAP bytes: the reach minted here is the caller's promise.
-: JOIN-PATH ( ^u8 n ^u8 n ^u8 -- n )
+: JOIN-PATH ( str str ^u8 -- n )
    PATH-CAP SPAN:MAKE JOIN-PATH-INTO ;
 
 private
-: PATH= ( ^u8 n ^u8 n -- bool )
+: PATH= ( str str -- bool )
    STR= ;
 
 : IO-FAIL ( -- )
@@ -586,7 +586,7 @@ private
    IO-RD @ 0 > ;
 
 public
-: READ-ALL ( ^u8 n ^u8 n -- n ) {: pa:^ pu dst:^ cap :}
+: READ-ALL ( str ^u8 n -- n ) {: pa:^ pu dst:^ cap :}
    cap 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
    pa pu READ-PATHZ open-rd IO-FD !
    IO-FD @ 0 < if E-FS-OPEN throw then
@@ -760,7 +760,7 @@ private
    IO-FD @ close ;
 
 public
-: WRITE-ALL ( ^u8 n ^u8 n -- )
+: WRITE-ALL ( str str -- )
    O-WRONLY O-CREAT or O-TRUNC or WRITE-BY-FLAGS ;
 
 : APPEND-FILE ( str str -- )

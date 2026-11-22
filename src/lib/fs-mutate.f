@@ -183,7 +183,7 @@ public
    a u >PATHZ mode mkdir 0 < if E-FS-IO throw then ;
 
 \ A throw sets FS:ERRNO.
-: MAKE-DIR ( ^u8 n -- )
+: MAKE-DIR ( str -- )
    MODE-DIR MKDIR-MODE ;
 
 \ A throw sets FS:ERRNO.
@@ -285,7 +285,7 @@ private
 public
 \ Removes the tree at a, unlinking a symlink root even with a trailing slash; a
 \ missing root is a no-op. Descriptors bound its depth. A throw sets FS:ERRNO.
-: REMOVE-TREE ( ^u8 n -- ) {: a:^ u :}
+: REMOVE-TREE ( str -- ) {: a:^ u :}
    u 0 <= if CAUSE-CLEAR E-FS-PATH throw then
    a u WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: REMOVE-SCOPE ;] MEM:WITH-BYTES ;
 
@@ -293,7 +293,7 @@ private
 \ Only EEXIST can mean the folder is already there, so only it is checked
 \ with a stat, which accepts a link to a directory. Any other failure throws at
 \ once with mkdir's cause; a non-directory in the way throws with EEXIST.
-: MKDIR-ONE ( ^u8 n -- ) {: a:^ u :}
+: MKDIR-ONE ( str -- ) {: a:^ u :}
    a u >PATHZ MODE-DIR mkdir 0 >= if exit then
    ERRNO EEXIST <> if E-FS-IO throw then
    a u DIR? 0= if E-FS-IO EEXIST CAUSE-FAIL then ;
@@ -380,7 +380,7 @@ private
 
 \ The WITH-BYTES body: the scope's bytes are this copy's buffer, mapped before
 \ either file opens, so a refused mapping leaves nothing to close.
-: COPY-SCOPE ( ^u8 n ^u8 n ^u8 NUM:alloc-byte-len -- )
+: COPY-SCOPE ( str str ^u8 NUM:alloc-byte-len -- )
    MEM:ALLOCATION>SPAN {: src:^ srcu dst:^ dstu buf :}
    dst dstu COPY-DST-PATHZ {: dstz:^ :}
    src srcu COPY-OPEN-SRC {: in :}
@@ -392,7 +392,7 @@ private
 public
 \ Copies src's bytes to dst, a regular file made or truncated, through a buffer
 \ of the call's own that a throw releases, so tasks may copy at once.
-: COPY-FILE-STREAM ( ^u8 n ^u8 n -- )
+: COPY-FILE-STREAM ( str str -- )
    COPY-CAP MEM:BYTES-ALLOC-LEN [: COPY-SCOPE ;] MEM:WITH-BYTES ;
 
 private
@@ -550,7 +550,7 @@ public
 \ The answer is absolute and borrowed from this task's PATHZ2 buffer until the
 \ next use of that buffer; callers retaining it copy it.
 \ This buffer survives sibling reservation and is used unchanged at rename.
-: ATOMIC-TARGET ( str -- ^u8 n )
+: ATOMIC-TARGET ( str -- str )
    {: path:^ pathu:n :}
    path pathu >PATHZ {: input:^ :}
    input PATHZ2-BUF SPAN:$ drop PATHZ-CAP realpath {: u:n :}
@@ -599,7 +599,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 
 \ A line `<CLASS> habu: <place>: <text>` on fd 2 is written in pieces: a place
 \ of PATH-CAP bytes with its text overflows the 1 KiB string builder.
-: SAY ( ^u8 n -- ) {: a:^ u :}
+: SAY ( str -- ) {: a:^ u :}
    2 a u write drop ;
 
 \ The code's declared name, else its signed number.
@@ -768,14 +768,14 @@ private
       pre preu sib sibu STAGED-REPORT
    then ;
 
-: ATOMIC-ABANDON ( n ^u8 n n n -- ) {: dir dst:^ off nameu code :}
+: ATOMIC-ABANDON ( n str n n -- ) {: dir dst:^ off nameu code :}
    ERRNO {: cause :}
    dir dst off SIBLING-Z nameu ATOMIC-DISCARD
    code cause CAUSE-FAIL ;
 
 \ Stack-preserving under `catch`; a throw after the publish leaves the new file.
 \ Answers whether it published; a claim on a taken name unlinks the sibling.
-: ATOMIC-IN-DIR ( n ^u8 n str n n bool -- n str str n n bool )
+: ATOMIC-IN-DIR ( n str str n n bool -- n str str n n bool )
    {: dir dst:^ off src:^ srcu mode seed claim?:bool :}
    mode 0 >= if MODE-PRIVATE-FILE else MODE-0644 then {: create-mode :}
    dir seed create-mode ATOMIC-RESERVE-AT {: nameu fd :}
@@ -838,7 +838,7 @@ public
 \ Replace path's file with src's bytes; a reader or crash sees old or whole new,
 \ durable as ATOMIC-SYNC-DIR says. A throw sets FS:ERRNO; one from the
 \ directory sync after the rename is E-FS-SYNC, the new file in place.
-: ATOMIC-WRITE-FILE ( ^u8 n ^u8 n -- )
+: ATOMIC-WRITE-FILE ( str str -- )
    {: path:^ pathu src:^ srcu :}
    path pathu src srcu ATOMIC-SEED false false ATOMIC-WRITE-SEED drop ;
 
@@ -852,7 +852,7 @@ public
 
 \ ATOMIC-WRITE-PRIVATE to a free name, else false, the entry untouched. A final
 \ symlink counts as its target, a dangling one E-FS-STAT. A throw sets FS:ERRNO.
-: ATOMIC-CREATE-PRIVATE ( ^u8 n ^u8 n -- bool )
+: ATOMIC-CREATE-PRIVATE ( str str -- bool )
    {: path:^ pathu src:^ srcu :}
    path pathu src srcu ATOMIC-SEED true true ATOMIC-WRITE-SEED ;
 
@@ -925,7 +925,7 @@ SIBLING-LEN-MAX 1+ constant SIB-ROOM
    fd src srcu ATOMIC-WRITE-FD
    fd HINT-WRITE ;
 
-: CREATE-FILL ( R n ^u8 n n [ R n -- R ^u8 n ^u8 n ] -- R )
+: CREATE-FILL ( R n ^u8 n n [ R n -- R str str ] -- R )
    {: dir slots:^ first size body :}
    size 0 ?do dir slots i GROUP-SLOT first i + body SLOT-FILL loop ;
 
@@ -998,7 +998,7 @@ public
 \ leaves earlier groups' names whole: one in FILL or SYNC publishes none of
 \ its group's names, one in PUBLISH keeps those it renamed; E-FS-SYNC leaves
 \ every name in place. A throw sets FS:ERRNO.
-: ATOMIC-CREATE-FILES ( R ^u8 n n [ R n -- R ^u8 n ^u8 n ] -- R )
+: ATOMIC-CREATE-FILES ( R str n [ R n -- R str str ] -- R )
    {: path:^ pathu count body :}
    count 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
    count 0= if exit then
@@ -1105,7 +1105,7 @@ private
    STAT-MODE@ S-IFMT and S-IFDIR = ;
 
 \ The answer is the canonical spelling, borrowed from this task's PATHZ2 buffer.
-: TMPDIR-CHECK ( str n -- ^u8 n ) {: a:^ u prefixu :}
+: TMPDIR-CHECK ( str n -- str ) {: a:^ u prefixu :}
    u PATH-CAP > if a u TMPDIR-LONG then
    a u TMPDIR-DIR? 0= if
       a u s" E-FS-DIR" s" TMPDIR is not a directory" TMPDIR-OPEN
@@ -1138,7 +1138,7 @@ private
    prefixu TMPDIR-CHECK ;
 
 public
-: MKTEMP-DIR ( ^u8 n -- ^u8 n )
+: MKTEMP-DIR ( str -- str )
    {: prefix:^ prefixu :}
    prefixu TEMP-ROOT prefix prefixu MKTEMP-DIR-IN ;
 
@@ -1147,7 +1147,7 @@ public
 \ stays this task's until its next FS:MKTEMP, FS:MKTEMP-DIR or
 \ FS:MKTEMP-DIR-IN, and the descriptor. The caller owns both and the removal;
 \ nothing is registered.
-: MKTEMP ( ^u8 n -- ^u8 n fd )
+: MKTEMP ( str -- str fd )
    {: prefix:^ prefixu :}
    prefixu TEMP-ROOT prefix prefixu mono-ns MKTEMP-SEED >FD ;
 
@@ -1245,13 +1245,13 @@ private
    a u kind [: CLEANUP-APPEND ;] [: CLEANUP-RELEASE ;] finally ;
 
 public
-: CLEANUP+ ( ^u8 n -- )
+: CLEANUP+ ( str -- )
    CLEANUP-FILE CLEANUP-KIND+ ;
 
-: CLEANUP-DIR+ ( ^u8 n -- )
+: CLEANUP-DIR+ ( str -- )
    CLEANUP-DIR CLEANUP-KIND+ ;
 
-: CLEANUP-TREE+ ( ^u8 n -- )
+: CLEANUP-TREE+ ( str -- )
    CLEANUP-TREE CLEANUP-KIND+ ;
 
 private
@@ -1365,12 +1365,12 @@ private
 public
 \ Renames fill's synced sibling over path, else removes it; fill must not end
 \ RESERVE-SIBLING's path. Throws set FS:ERRNO or keep fill's, E-FS-SYNC after.
-: REPLACE-STAGED ( R ^u8 n [ R ^u8 n -- R ] -- R )
+: REPLACE-STAGED ( R str [ R str -- R ] -- R )
    true STAGED-REPLACE ;
 
 \ REPLACE-STAGED without the directory sync: a crash leaves path's old file,
 \ the whole new one, or none where there was none.
-: REPLACE-CACHED ( R ^u8 n [ R ^u8 n -- R ] -- R )
+: REPLACE-CACHED ( R str [ R str -- R ] -- R )
    false STAGED-REPLACE ;
 
 ;package

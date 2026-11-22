@@ -45,7 +45,7 @@ STRUCTURE listing DERIVE addr
    fd 0 >= if fd close then ;
 
 
-: OPEN ( ^listing ^u8 n -- ) {: ls:^ path:^ size:n :}
+: OPEN ( ^listing str -- ) {: ls:^ path:^ size:n :}
    path size FS:>PATHZ {: z:^ :}
    path size z COMPILE-READS:FILE+
    z open-rd {: handle:n :}
@@ -61,7 +61,7 @@ STRUCTURE listing DERIVE addr
 
 
 \ Validate the header before field reads, then validate the name inside rec.
-: RECORD ( n n ^listing -- n n ^u8 n u8 )
+: RECORD ( n n ^listing -- n n str u8 )
    {: filled:n at:n ls:^ :}
    filled at - FS:DIRENT-NAME-OFFSET < if
       FS:CAUSE-CLEAR E-ENTRY throw
@@ -78,7 +78,7 @@ STRUCTURE listing DERIVE addr
 
 \ The next name except . and .., read from a new block when this one is spent;
 \ FALSE under an empty name once the directory has no more.
-: NEXT ( n n ^listing -- n n ^u8 n u8 bool ) {: ls:^ :}
+: NEXT ( n n ^listing -- n n str u8 bool ) {: ls:^ :}
    begin
       2dup > if
          ls RECORD >r 2dup FS:SKIP-SELF-ENTRY? 0= if r> true exit then
@@ -111,7 +111,7 @@ STRUCTURE listing DERIVE addr
    len min ;
 
 
-: INSERT ( n ^u8 n ^u8 n -- n ) {: len:n name:^ size:n dst:^ cap:n :}
+: INSERT ( n str ^u8 n -- n ) {: len:n name:^ size:n dst:^ cap:n :}
    size 0 ?do name i + c@ LF = if FS:CAUSE-CLEAR E-ENTRY throw then loop
    len 0 > if 1 else 0 then {: separator:n :}
    len size + separator + cap > if FS:CAUSE-CLEAR E-CAPACITY throw then
@@ -190,7 +190,7 @@ STRUCTURE listing DERIVE addr
 public
 
 \ Hands each name except . and .. to the quotation, in directory order.
-: EACH ( ^u8 n [ ^u8 n -- ] -- )
+: EACH ( str [ str -- ] -- )
    [type] listing [: EACH-WITH ;] MEM:WITH-RECORD ;
 
 \ d_type passes unchanged: a filesystem may omit it, so a caller handles
@@ -203,7 +203,7 @@ public
 \ The names except . and .. into the caller's buffer, newline-separated and in
 \ byte order, so two listings of one directory compare equal; answers the
 \ length. A name holding a newline is refused; a short buffer is E-FS-LIST-CAPACITY.
-: NAMES ( ^u8 n ^u8 n -- n ) {: path:^ size:n dst:^ cap:n :}
+: NAMES ( str ^u8 n -- n ) {: path:^ size:n dst:^ cap:n :}
    cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
    path size dst cap [type] listing [: NAMES-WITH ;] MEM:WITH-RECORD ;
 
