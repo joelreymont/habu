@@ -461,7 +461,7 @@ PERSISTED-PTR-VARIABLE HEAD
 
 \ Rejects code's declaration as p pu : name nameu, from token t tu after kw ku:
 \ no name, a name past NAME-CAP bytes, an empty text, or a code another holds.
-: CHECK ( n ^u8 n ^u8 n n ^u8 n ^u8 n -- )
+: CHECK ( n str str n str str -- )
    {: code:n p:^ pu:n name:^ nameu:n textu:n kw:^ ku:n t:^ tu:n :}
    kw ku t tu REJECTION:NOT-A-NAME
    nameu 0= if
@@ -500,16 +500,16 @@ PERSISTED-PTR-VARIABLE HEAD
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 
-CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 
 \ The name becomes a folded constant in the current wordlist, made with no
 \ text: a value child, whose type is empty.
-: DEFINE ( n ^u8 n -- ) {: code:n name:^ nameu:n :}
+: DEFINE ( n str -- ) {: code:n name:^ nameu:n :}
    name nameu CHILD-ABI:VALUE code NULL-PTR 0
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute drop ;
 
 
-: BYTES, ( ^u8 n -- ) {: a:^ u:n :}
+: BYTES, ( str -- ) {: a:^ u:n :}
    a here u BYTE-COPY
    u allot ;
 
@@ -520,7 +520,7 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 
 \ A row is five cells, the previous row, the code, the qualified name's length,
 \ the text's length and the fault flag (-1 or 0), then the name and the text.
-: ROW, ( n ^u8 n ^u8 n ^u8 n bool -- )
+: ROW, ( n str str str bool -- )
    {: code:n p:^ pu:n name:^ nameu:n text:^ textu:n fault:bool :}
    datum
    here CELL-VIEW {: at:^ :}
@@ -539,7 +539,7 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 
 
 \ CODE's and FAULT's declaration of the name after them, the flag saying FAULT.
-: DECLARE ( n ^u8 n bool -- )
+: DECLARE ( n str bool -- )
    {: code:n text:^ textu:n fault:bool :}
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: name:^ nameu:n :}
@@ -551,7 +551,7 @@ CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
 
 \ The text of a code a file below this one mints by `constant`, recorded under
 \ the name after it, PKG:TAIL split at its last colon; it defines no word.
-: MINTED ( n ^u8 n bool -- )
+: MINTED ( n str bool -- )
    {: code:n text:^ textu:n fault:bool :}
    SRCLOC:TOKEN$ {: kw:^ ku:n :}
    parse-name {: name:^ nameu:n :}
@@ -568,12 +568,12 @@ public
 
 \ A name the wordlist holds is E-DUPLICATE-DEFINITION; a keyword or a number
 \ is rejected as any definition's name is.
-: CODE ( n ^u8 n -- )  false DECLARE ;
+: CODE ( n str -- )  false DECLARE ;
 generates: CODE ( -- n )
 
 \ Declares a code as CODE does, refusals included, and marks it a fault: a
 \ defect in the program or its environment rather than in what its caller gave.
-: FAULT ( n ^u8 n -- )  true DECLARE ;
+: FAULT ( n str -- )  true DECLARE ;
 generates: FAULT ( -- n )
 
 \ True when a code's declaration was by FAULT; false when it was by CODE or
@@ -588,7 +588,7 @@ generates: FAULT ( -- n )
    ROW-NAME$ ;
 
 
-: TEXT$ ( n -- ^u8 n )
+: TEXT$ ( n -- str )
    FIND dup NULL-PTR = if drop s" " exit then
    ROW-TEXT$ ;
 

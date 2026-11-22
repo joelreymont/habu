@@ -55,7 +55,7 @@ SLOTS TYPED-BUFFER OP-EMIT   [ n -- ]
 SLOTS TYPED-BUFFER OP-KEY    [ -- n ]
 SLOTS TYPED-BUFFER OP-READY  [ -- bool ]
 SLOTS TYPED-BUFFER OP-READ   [ ^u8 n -- n ]
-SLOTS TYPED-BUFFER OP-WRITE  [ ^u8 n -- ]
+SLOTS TYPED-BUFFER OP-WRITE  [ str -- ]
 SLOTS TYPED-BUFFER OP-ACCEPT [ ^u8 n -- n ]
 SLOTS TYPED-BUFFER OP-FLUSH  [ -- ]
 SLOTS TYPED-BUFFER OP-CLOSE  [ -- ]
@@ -103,7 +103,7 @@ TASK:+USER SCRATCH-CELL n
 : ENGINE-ROW-OFF ( n -- n ) {: idx:n :}
    GENIO-ABI:WRITE-OFF idx 1- 8 * + ;
 
-CAST: WRITE>N ( [ ^u8 n -- ] -- n )
+CAST: WRITE>N ( [ str -- ] -- n )
 
 : ENGINE-ROW-CLEAR ( n -- )
    0 swap ENGINE-ROW-OFF data-base + ! ;
@@ -262,7 +262,7 @@ public
 \ diagnostics (crash reports, die, E-* lines) stay on descriptor 2. The funnel
 \ falls back to descriptor 1 for a write that re-entered type, a routing cell
 \ outside 1..DEVICES and an unregistered row.
-: DEVICE ( [ n -- ] [ -- n ] [ -- bool ] [ ^u8 n -- n ] [ ^u8 n -- ] [ ^u8 n -- n ] [ -- ] [ -- ] n -- device )
+: DEVICE ( [ n -- ] [ -- n ] [ -- bool ] [ ^u8 n -- n ] [ str -- ] [ ^u8 n -- n ] [ -- ] [ -- ] n -- device )
    {: qemit qkey qready qread qwrite qaccept qflush qclose state:n :}
    INSTALL-TERMINAL
    CLAIM-ROW {: idx:n :}
@@ -395,7 +395,7 @@ public
    c idx OP-EMIT @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
 
-: WRITE ( ^u8 n -- ) {: bytes:^ len:n :}
+: WRITE ( str -- ) {: bytes:^ len:n :}
    OUT-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
@@ -516,7 +516,7 @@ public
 
 \ The terminal's line is the tty editor's own, with its history; another device's
 \ comes through its accept. NULL$ is the end of input, never an empty line.
-: READ-LINE ( -- ^u8 n )
+: READ-LINE ( -- str )
    IN-ROW TERMINAL-ROW = if LINE-EDITOR:READ-LINE exit then
    LINE-OPEN
    IO-LINE @ 0 VEC:RESIZE

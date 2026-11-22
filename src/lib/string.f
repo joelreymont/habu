@@ -129,16 +129,16 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop OPTION:NONE ;
 
-: FIND-SUB ( ^u8 n ^u8 n -- option<idx> )   \ SOME first offset of b in a (empty needle -> SOME 0), else NONE
+: FIND-SUB ( str str -- option<idx> )   \ SOME first offset of b in a (empty needle -> SOME 0), else NONE
    0 FIND-SUB-FROM ;
 
-: CONTAINS? ( ^u8 n ^u8 n -- bool )
+: CONTAINS? ( str str -- bool )
    FIND-SUB MATCH option
      none OF STR-FALSE ENDOF
      some OF drop STR-TRUE ENDOF
    ;MATCH ;
 
-: INDEX-OF ( ^u8 n n -- option<idx> ) {: a:^ u:n c:n :}   \ SOME first index of byte c, else NONE
+: INDEX-OF ( str n -- option<idx> ) {: a:^ u:n c:n :}   \ SOME first index of byte c, else NONE
    0 begin dup u < while
       dup a + c@ c = if >IDX OPTION:SOME exit then
       1+
@@ -150,7 +150,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop ;
 
-: COUNT-SUB ( ^u8 n ^u8 n -- n )     \ non-overlapping occurrences of b in a; empty needle -> 0
+: COUNT-SUB ( str str -- n )     \ non-overlapping occurrences of b in a; empty needle -> 0
    {: a:^ u:n b:^ v:n :}
    v 0= if 0 exit then
    0 0 begin dup u v - <= while
@@ -172,7 +172,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       if 1- else a swap exit then
    repeat drop a 0 ;
 
-: TRIM ( ^u8 n -- ^u8 n )
+: TRIM ( str -- str )
    LTRIM RTRIM ;
 
 : SB-CHECK-LEN-ROOM ( len -- ) {: add :}
@@ -227,7 +227,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    c dst lenp @ LEN>N + c!
    lenp @ LEN>N 1+ >LEN lenp ! ;
 
-: SPLIT-NEXT ( ^u8 n n n -- ^u8 n n bool ) {: a:^ u sep start :}
+: SPLIT-NEXT ( str n n -- str n bool ) {: a:^ u sep start :}
    start 0 < if a 0 start STR-FALSE exit then
    start u > if a 0 start STR-FALSE exit then
    start begin dup u < while

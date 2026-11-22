@@ -324,7 +324,7 @@ private
 
 \ A load failure reports when a call first resolves its symbol, in any task:
 \ one write of a record built in the caller's own bytes.
-: PUT ( ^u8 n ^u8 n -- ^u8 n )
+: PUT ( ^u8 n str -- ^u8 n )
    {: line:^ at:n s:^ su:n :}
    s line at + su BYTE-COPY
    line at su + ;
@@ -344,7 +344,7 @@ private
    h hu HELP-PUT ERROR-TEXT:TYPE ;
 
 \ A record whose header line is the parts a to e, then the help h.
-: REPORT ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: REPORT ( str str str str str str -- )
    {: a:^ au:n b:^ bu:n c:^ cu:n d:^ du:n e:^ eu:n h:^ hu:n :}
    a au b bu c cu d du e eu h hu
    au bu + cu + du + eu + hu HELP-LEN + MEM:BYTES-ALLOC-LEN
@@ -526,7 +526,7 @@ public
 
 \ Every rejection comes before a byte is written, so a rejected destination keeps
 \ what it held.
-: CSTR ( ^u8 n SPAN:span<u8> -- ^u8 )
+: CSTR ( str SPAN:span<u8> -- ^u8 )
    {: src u s :}
    u s CSTR-FIT {: b :}
    src u NUL-CHECK
@@ -1219,7 +1219,7 @@ private
    s" r" TOK-IS? if R-FLOAT RES-KIND ! exit then
    SCALAR-KIND RES-KIND ! ;
 
-: INPUTS ( [ -- ^u8 n ] -- )
+: INPUTS ( [ -- str ] -- )
    {: src :}
    begin
       src TOK-SPAN
@@ -1232,7 +1232,7 @@ private
       IN-TOKEN
    again ;
 
-: OUTPUTS ( [ -- ^u8 n ] -- )
+: OUTPUTS ( [ -- str ] -- )
    {: src :}
    begin
       src TOK-SPAN
@@ -1245,7 +1245,7 @@ private
       OUT-TOKEN
    again ;
 
-: EFFECT ( [ -- ^u8 n ] -- )
+: EFFECT ( [ -- str ] -- )
    {: src :}
    src TOK@
    s" (" TOK-IS? 0= if
@@ -1929,7 +1929,7 @@ public
 : SET-STRUCT-RESULT ( n -- ) [: STRUCT-RESULT-CLAUSE ;] KEEP-REST ;
 : SET-STRUCT-ARG ( n n -- ) [: STRUCT-ARG-CLAUSE ;] KEEP-REST ;
 
-: SELECT-LIBRARY ( ^u8 n -- ) {: path:^ u:n :}
+: SELECT-LIBRARY ( str -- ) {: path:^ u:n :}
    path u [: CHECK-PATH ;] KEEP-REST
    path u LIBRARY-PATH CUR-LIB !
    RECORD-SCOPE ;
