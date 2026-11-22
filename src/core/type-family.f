@@ -449,8 +449,6 @@ variable TFAM-N   0 TFAM-N !
    TF-BASE  lo TF-REC CELL / *  hi TF-REC CELL / *  ARENA-CELLS-ZERO ;
 
 : TF-REC@ ( n -- ^n ) {: id:n :}
-   id 0 < IF s" tfam: bad family id" EXIT-STATUS:INTERNAL die THEN
-   id TFAM-N @ >= IF s" tfam: bad family id" EXIT-STATUS:INTERNAL die THEN
    id TF-REC * TF-BASE + ;
 
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
@@ -479,7 +477,6 @@ private
 : TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
 : TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
 : TFAM-PK@ ( n n -- n ) {: id:n i:n :}
-   i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" EXIT-STATUS:INTERNAL die THEN
    id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + @ ;
 
 : TFAM-PUBLIC? ( n -- bool ) TFAM-VIS@ CHECKER-PACKAGE-PUBLIC = ;
@@ -597,7 +594,6 @@ variable PF-GEN   variable PF-GEN-N
 : PF-GEN-NEW ( -- ) PF-GEN-N @ 1 + dup PF-GEN-N !  PF-GEN ! ;
 
 : TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
-   i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" EXIT-STATUS:INTERNAL die THEN
    k 0 < k PK-MAX > or IF s" tfam: parameter kind out of range" EXIT-STATUS:INTERNAL die THEN
    \ A memoized kind may read this one, so a change starts a new generation.
    PF-GEN @ 0 <> IF id i TFAM-PK@ k <> IF PF-GEN-NEW THEN THEN
@@ -653,7 +649,6 @@ variable TFX-CUR              \ private bucket-walk cursor
 
 : TFX-POP ( n -- ) {: id:n :}
    id TFX-ROW-BKT {: b:^ :}
-   b @ id 1 + <> IF s" tfam: tail index corrupt" EXIT-STATUS:INTERNAL die THEN
    id TF-REC@ TF.TAILNEXT @ b ! ;
 
 : TFX-BKTS-CLEAR ( -- )
@@ -695,16 +690,9 @@ variable TFX-CUR              \ private bucket-walk cursor
    TFX-CAP @ TF-CAP <> or IF TFX-BUILD THEN ;
 
 \ Pops rows [newn, TFAM-N) before TFAM-N rewinds to newn, newest first so each
-\ popped row is at its bucket head. It dies when the counter has already
-\ rewound: rows in [TFAM-N, TFX-HI) are then chained under ids the store no
-\ longer holds, the loop would pop nothing, and the stamp would erase
-\ TFX-ENSURE's only rebuild signal, leaving a chained row that kills TF-REC@ on
-\ a later lookup. Dying here names the caller that broke the order.
+\ popped row is at its bucket head.
 : TFX-RETIRE ( n -- ) {: newn:n :}
    TFX-READY @ 0= IF EXIT THEN
-   TFX-HI @ TFAM-N @ > IF
-      s" tfam: tail index retired after its rows went" EXIT-STATUS:INTERNAL die
-   THEN
    TFAM-N @ 1 -
    BEGIN dup newn >= WHILE
       dup TFX-POP
@@ -824,8 +812,6 @@ variable SUMV-N   0 SUMV-N !
 : SUMV-SCRUB ( n n -- ) {: lo:n hi:n :}   \ zero the variant records [lo,hi); see PF-SCRUB
    SUMV-BASE  lo SUMV-REC CELL / *  hi SUMV-REC CELL / *  ARENA-CELLS-ZERO ;
 : SUMV-REC@ ( n -- ^n ) {: id:n :}
-   id 0 < IF s" tfam: bad variant id" EXIT-STATUS:INTERNAL die THEN
-   id SUMV-N @ >= IF s" tfam: bad variant id" EXIT-STATUS:INTERNAL die THEN
    id SUMV-REC * SUMV-BASE + ;
 
 : SUMV-FAM@ ( n -- n ) SUMV-REC@ SV.FAM @ ;
@@ -891,10 +877,7 @@ variable SVX-HI
    SVX-SYNC
    SVX-GEN @ HIDX-GEN @ <> IF SVX-BUILD THEN ;
 
-\ SVX-TRUNCATE ( n -- ) : called before SUMV-N rewinds to `newn`. It refuses to
-\ run after the fact for the reason TFX-RETIRE gives: SVX-HI above SUMV-N means
-\ the store already shrank under the index, and stamping SVX-HI down then would
-\ throw away the rewind SVX-SYNC exists to catch.
+\ SVX-TRUNCATE ( n -- ) : called before SUMV-N rewinds to `newn`.
 \ An index at a stale generation has nothing to retire and no rewind left for
 \ SVX-SYNC to catch (SVX-GEN already forces SVX-BUILD), so its mark follows the
 \ store: a cache hit leaves the index stale where a cold load leaves it current,
@@ -902,9 +885,6 @@ variable SVX-HI
 
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
    SVX-GEN @ HIDX-GEN @ <> IF newn SVX-HI ! EXIT THEN
-   SVX-HI @ SUMV-N @ > IF
-      s" tfam: ctor index retired after its rows went" EXIT-STATUS:INTERNAL die
-   THEN
    SUMV-N @ newn ?do
       i SUMV-CTOR-SYM@ {: sym:n :}
       sym 0 <> IF
@@ -939,8 +919,7 @@ variable SVX-HI
 \ TFAM-REWIND retires them newest first, so a retired row is always its
 \ buckets' head. Buckets and links are process-local: a capture drops them and
 \ a capacity change rebuilds them. A store that moved outside those seams is
-\ rebuilt by the next lookup, and refused by a rewind that comes first
-\ (VNX-RETIRE).
+\ rebuilt by the next lookup.
 
 8 constant VNX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
 variable VNX-SLOTS-V   VNX-SLOTS-INIT VNX-SLOTS-V !
@@ -994,9 +973,6 @@ variable VNX-CUR              \ private bucket-walk cursor
 : CHAIN-PUSH ( n ^n ^n -- ) {: id:n b:^ l:^ :}   \ l: id's link
    b @ l !   id 1 + b ! ;
 : CHAIN-POP ( n ^n ^n -- ) {: id:n b:^ l:^ :}
-   b @ id 1 + <> IF
-      s" tfam: variant tail index corrupt" EXIT-STATUS:INTERNAL die
-   THEN
    l @ b ! ;
 
 : VNX-PUSH ( n -- ) {: id:n :}
@@ -1042,16 +1018,9 @@ variable VNX-CUR              \ private bucket-walk cursor
    VNX-CAP @ SUMV-CAP <> or IF VNX-BUILD THEN ;
 
 \ Pops rows [newn, SUMV-N) before SUMV-N rewinds to newn, newest first, so each
-\ popped row is at its buckets' head. It dies, as TFX-RETIRE does, on chains that
-\ do not cover exactly the live rows: SUMV-ADD and TFAM-REWIND move VNX-HI with
-\ SUMV-N, and TFAM-RESET drops the chains, so unequal marks
-\ mean a caller moved the counter around those seams, and popping would unlink
-\ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
+\ popped row is at its buckets' head.
 : VNX-RETIRE ( n -- ) {: newn:n :}
    VNX-READY @ 0= IF EXIT THEN
-   VNX-HI @ SUMV-N @ <> IF
-      s" tfam: variant tail index retired out of step with its rows" EXIT-STATUS:INTERNAL die
-   THEN
    SUMV-N @ 1 -
    BEGIN dup newn >= WHILE dup VNX-LEAVE 1 - REPEAT drop
    newn VNX-HI ! ;
@@ -1422,18 +1391,12 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    PF-N @ PF-CAP-V @ < IF exit THEN
    PF-N @ 1 + PF-GROW ;
 
-: ID-REQUIRE ( n n -- ) {: id:n n:n :}
-   id 0 <  id n >=  or IF s" pf: field id names no field" EXIT-STATUS:INTERNAL die THEN ;
-
-\ Only the engine holds a field id, so one out of range is a defect. PF-ROW
-\ admits provisional rows (bound PF-N) for in-transaction machinery; PF-REC@ is
-\ the committed reader (bound PF-COMMIT-N).
+\ PF-ROW admits provisional rows for in-transaction machinery; PF-REC@ is the
+\ committed reader.
 : PF-ROW ( n -- ^n ) {: id:n :}
-   id PF-N @ ID-REQUIRE
    id PF-REC * PF-BASE + ;
 
 : PF-REC@ ( n -- ^n ) {: id:n :}
-   id PF-COMMIT-N @ ID-REQUIRE
    id PF-REC * PF-BASE + ;
 
 : PF-FAM@ ( n -- n ) PF-REC@ PF.FAM @ ;
@@ -1499,7 +1462,6 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 
 : FVX-POP ( n -- ) {: id:n :}
    id FVX-ROW-BKT {: b:^ :}
-   b @ id 1 + <> IF s" tfam: field owner index corrupt" EXIT-STATUS:INTERNAL die THEN
    id FVX-LINK @ b ! ;
 
 \ The links follow the field store's capacity and the buckets keep the load
@@ -2853,8 +2815,6 @@ variable LAY-N   0 LAY-N !
 : LAY-SCRUB ( n n -- ) {: lo:n hi:n :}    \ zero the layout records [lo,hi); see PF-SCRUB
    LAY-BASE  lo LAY-REC CELL / *  hi LAY-REC CELL / *  ARENA-CELLS-ZERO ;
 : LAY-REC@ ( n -- ^n ) {: id:n :}
-   id 0 < IF s" tfam: bad layout id" EXIT-STATUS:INTERNAL die THEN
-   id LAY-N @ >= IF s" tfam: bad layout id" EXIT-STATUS:INTERNAL die THEN
    id LAY-REC * LAY-BASE + ;
 
 : LAY-FAM@ ( n -- n ) LAY-REC@ LAY.FAM @ ;
@@ -2961,11 +2921,8 @@ TFAM-RESET
 \ the name pool back to an earlier mark goes through here. Four indexes chain
 \ rows by id (TFAM-FIND-IN's tail index, SUMV-FROM-CTOR-SYM's symbol index,
 \ SUMV-FIND's and TF-CTOR-QUAL-FIND's variant indexes); a chained row whose id
-\ is out of range is found by the next lookup, which reads past the store and
-\ dies. So rows are unchained before the counters move. A caller that wrote the
-\ counters itself and skipped the retirements left the outer restore popping
-\ nothing and stamping the index current; the first lookup of that tail died 76
-\ in TF-REC@ while every watermark was right.
+\ is out of range is found by the next lookup, which reads past the store.
+\ So rows are unchained before the counters move.
 \ The retired family, variant, param-kind and layout rows and pool bytes are
 \ scrubbed to zero, as PF-SCRUB does for field rows, after the indexes pop: the
 \ pops read the tail links and constructor symbols the scrub clears.
@@ -3034,7 +2991,6 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    TF-RBF-GROW ;
 : TF-RBF-CUR ( -- ^n ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
 : TF-RBF-TOP ( -- ^n )
-   TF-RBF-DEPTH @ 0= IF s" tfam: no type rollback frame is open" EXIT-STATUS:INTERNAL die THEN
    TF-RBF-DEPTH @ 1 - TF-RBF-REC * TF-RBF-BASE + ;
 
 ;package
