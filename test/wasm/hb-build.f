@@ -297,10 +297,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    SB-RESET
    S\" require src/core/sha256.f\nSHA256-CTX-BYTES BUFFER: CTX\n32 BUFFER: DG\n" SB-APPEND
    S\" 64 BUFFER: HX\n200 BUFFER: AS\n" SB-APPEND
-   S\" : SHOW ( ^u8 n -- ) {: a:^ u:n :} CTX a u DG SHA256-IN  DG HX SHA256>HEX  HX 64 type cr ;\n" SB-APPEND
-   S\" : MAIN ( -- ) s\" abc\" SHOW\n" SB-APPEND
-   S\"    s\" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\" SHOW\n" SB-APPEND
-   S\"    200 0 do 97 AS i + c! loop  AS 200 SHOW ;\n" SB-APPEND
+   S\" : SHOW ( str -- ) {: s:str :} CTX s DG SHA256-IN  DG HX SHA256>HEX  HX 64 type cr ;\n" SB-APPEND
+   S\" : MAIN ( -- ) s\" abc\" >str SHOW\n" SB-APPEND
+   S\"    s\" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\" >str SHOW\n" SB-APPEND
+   S\"    200 0 do 97 AS i + c! loop  AS 200 >str SHOW ;\n" SB-APPEND
    SB$ s" sha.f" SOURCE! ;
 
 : SHA-HOST$ ( -- str )

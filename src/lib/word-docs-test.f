@@ -209,7 +209,7 @@ variable FIX-U
    s" src/lib/unicode.f" T-LABEL
    s" src/lib/unicode.f" READ-FILE FIX$ DOCS
    s" CASEFOLD=" FIND {: k:n :}
-   k s" CASEFOLD=" s" UNICODE" s" ^u8 n ^u8 n -- bool" REC=
+   k s" CASEFOLD=" s" UNICODE" s" str str -- bool" REC=
    k WORD-DOCS:PUBLIC? TTRUE
    s" UNICODE-CLASS:WHITE-SPACE?" FIND {: w:n :}
    w s" UNICODE-CLASS:WHITE-SPACE?" s" UNICODE" s" " REC=

@@ -35,7 +35,7 @@ create ERR $1000 allot
 : TOP-SCAN$ ( -- str )
    SB-RESET
    S\" : CDR-NOP ( -- ) ;\n" SB-APPEND
-   S\" s\\\" : CDR-Q ( -- ) parse-name 2drop ; immediate parses: CDR-Q 1\" ' CDR-NOP VERIFY:SOURCE-BUF-THEN-IN-SCOPE\n" SB-APPEND
+   S\" s\\\" : CDR-Q ( -- ) parse-name 2drop ; immediate parses: CDR-Q 1\" >str ' CDR-NOP VERIFY:SOURCE-BUF-THEN-IN-SCOPE\n" SB-APPEND
    S\" : CDR-Q ( -- ) ; immediate\n" SB-APPEND
    SB$ ;
 
