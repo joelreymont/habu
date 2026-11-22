@@ -51,8 +51,7 @@ $7F000001 constant LOOPBACK
 
 $1000 constant CAP
 TYPED-VARIABLE BODY ^VEC:vector<u8>
-CAP BUFFER: HEADS
-variable HEADS-U
+TYPED-VARIABLE HEADS ^VEC:vector<u8>
 10 SPAN-BUFFER: HELD
 
 $1000 constant TOKEN-CAP
@@ -92,8 +91,9 @@ TYPED-VARIABLE WAITED-BODY ^VEC:vector<u8>
 TYPED-VARIABLE WAITING CURL:handle
 TASK:MIN-STACK TASK:TASK WAITER
 
-: BODIES ( -- )
+: VECTORS ( -- )
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEADS !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ASKED-BODY !
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW WAITED-BODY ! ;
 
@@ -246,12 +246,6 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : BEARING ( CURL:handle -- CURL:handle ) AUTH AUTH-U @ ADD ;
 
-: HEADS-LEN ( CURL:header-result -- n )
-   MATCH CURL:header-result
-      complete OF LEN>N ENDOF
-      truncated OF drop -1 ENDOF
-   ;MATCH ;
-
 \ The response's status, its body in the emptied vector; -1 for a body past
 \ CAP, -2 for a failed transfer.
 : TAKEN ( CURL:handle ^VEC:vector<u8> -- n )
@@ -266,9 +260,9 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 
 : PERFORM ( CURL:handle -- n )
    {: h:CURL:handle :}
-   0 HEADS-U !
+   HEADS @ 0 VEC:RESIZE
    h BODY @ TAKEN {: status:n :}
-   status 0 > if h HEADS CAP >LEN CURL:HEADERS HEADS-LEN HEADS-U ! then
+   status 0 > if h HEADS @ CURL:HEADERS then
    status ;
 
 : FINISH ( CURL:handle -- n )
@@ -280,7 +274,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : REFUSED ( n ^u8 n -- )
    {: status:n want:^ wu:n :}
    SB-RESET s" WWW-Authenticate: " SB-APPEND want wu SB-APPEND 13 SB-APPEND-C 10 SB-APPEND-C
-   HEADS HEADS-U @ SB$ CONTAINS? TTRUE
+   HEADS @ VEC:SPAN SPAN:$ SB$ CONTAINS? TTRUE
    BODY @ VEC:COUNT 0 T=
    status 401 T= ;
 
@@ -680,7 +674,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 \ ISSUER! is refused while serving: the server starts again on that port.
 : SERVE-CASES ( -- )
    AIO:START
-   BODIES
+   VECTORS
    SET-ONE-FILL SET-TWO-FILL
    ROUTES
    EARLY

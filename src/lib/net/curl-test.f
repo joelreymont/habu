@@ -95,11 +95,11 @@ $80 constant BACKLOG                    \ the concurrent case connects MANY-N ti
 $2000 constant BODY-CAP                 \ a fetch's limit, and the room BODY holds
 $1000 constant REQ-CAP
 $1000 constant RES-CAP
-$1000 constant HEADER-CAP
+$1000 constant TRANSCRIPT-CAP
 $20 constant NUM-CAP
 8 constant DRAIN-TRIES                  \ reads that finish a connection the peer is closing
 100 constant STALL-MS                   \ well under the stall path's forever
-$FE constant FILL-BYTE                  \ the sentinel a refused transfer must not overwrite
+$FE constant FILL-BYTE                  \ the sentinel NEXT must not write past a chunk
 $300 constant DRIBBLE-U                 \ the dribble body, served whole but slowly
 $3003 constant STREAM-U                \ forces several memstream growths and short reads
 $7F constant STREAM-CAP                 \ much shorter than the response
@@ -129,10 +129,8 @@ create BODY-BUF BODY-CAP allot          \ the second stream's bytes
 create REQ-BUF REQ-CAP allot
 create PLAIN-BUF REQ-CAP allot          \ the plain peer's, apart from the server task's
 create RES-BUF RES-CAP allot
-create HEADER-BUF HEADER-CAP allot
-create HEADER-SAVED HEADER-CAP allot
 create TRANSCRIPT-PATH PATH-CAP allot
-create TRANSCRIPT-BUF HEADER-CAP allot
+create TRANSCRIPT-BUF TRANSCRIPT-CAP allot
 create JAR-TEXT-BUF RES-CAP allot
 create NUM-BUF NUM-CAP allot
 create DRIBBLE-BUF DRIBBLE-U allot
@@ -194,12 +192,11 @@ variable LAST-STATUS
 variable LAST-LEN
 variable LAST-CODE
 variable LAST-KIND
-variable HEADER-LEN
-variable HEADER-KIND
 variable TRANSCRIPT-U
 TYPED-VARIABLE HEADER-HANDLE CURL:handle
 PTR-VARIABLE HUGE-SENT                  \ the huge body the server writes
 TYPED-VARIABLE BODY-VEC ^VEC:vector<u8> \ the vector a fetch appends to
+TYPED-VARIABLE HEADER-VEC ^VEC:vector<u8>
 
 0 constant KIND-RESPONSE
 1 constant KIND-TRUNCATED
@@ -1134,62 +1131,43 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    BODY VEC:COUNT 0= ;
 
 
-: HEADER-FILL ( -- )
-   HEADER-CAP 0 do FILL-BYTE HEADER-BUF i + c! loop ;
+: HEADER ( -- ^VEC:vector<u8> ) HEADER-VEC @ ;
 
 
-: HEADER-UNTOUCHED? ( -- bool )
-   HEADER-CAP 0 do HEADER-BUF i + c@ FILL-BYTE <> if false unloop exit then loop
-   true ;
+: HEADER$ ( -- str )
+   HEADER VEC:SPAN SPAN:$ ;
 
 
-: HEADER-COPY ( CURL:handle n -- ) {: subject:CURL:handle capacity:n :}
-   HEADER-FILL
-   subject HEADER-BUF capacity >LEN CURL:HEADERS
-   MATCH CURL:header-result
-      complete OF LEN>N HEADER-LEN ! 0 HEADER-KIND ! ENDOF
-      truncated OF LEN>N HEADER-LEN ! 1 HEADER-KIND ! ENDOF
-   ;MATCH ;
+: HEADER-COPY ( CURL:handle -- )
+   HEADER 0 VEC:RESIZE
+   HEADER CURL:HEADERS ;
 
 
 : HEADER-EXACT ( CURL:handle str -- )
    {: subject:CURL:handle want:^ u:n :}
-   subject u HEADER-COPY
-   HEADER-KIND @ 0 T=
-   HEADER-LEN @ u T=
-   HEADER-BUF u want u T$=
-   HEADER-BUF u + c@ FILL-BYTE T= ;
+   subject HEADER-COPY
+   HEADER$ want u T$= ;
 
 
 : HEADER-REFUSED ( CURL:handle -- ) {: subject:CURL:handle :}
    subject HEADER-HANDLE !
-   HEADER-FILL
-   s" unavailable response headers leave the destination untouched" T-LABEL
-   [: HEADER-HANDLE @ HEADER-BUF HEADER-CAP >LEN CURL:HEADERS drop ;]
-      CURL:E-STATE TTHROWSQ
-   HEADER-UNTOUCHED? TTRUE ;
-
-
-: HEADER-BAD-CAP ( CURL:handle -- ) {: subject:CURL:handle :}
-   subject HEADER-HANDLE !
-   HEADER-FILL
-   s" a negative header capacity is refused before the destination is touched" T-LABEL
-   [: HEADER-HANDLE @ HEADER-BUF -1 >LEN CURL:HEADERS drop ;]
-      CURL:E-OPERAND TTHROWSQ
-   HEADER-UNTOUCHED? TTRUE ;
+   HEADER VEC:COUNT {: before:n :}
+   s" unavailable response headers leave the vector untouched" T-LABEL
+   [: HEADER-HANDLE @ HEADER CURL:HEADERS ;] CURL:E-STATE TTHROWSQ
+   HEADER VEC:COUNT before T= ;
 
 
 : HEADER-TRANSCRIPT ( -- )
    s" curl-headers-transcript.txt" TRANSCRIPT-PATH UNDER-ROOT {: pathu:n :}
    SB-RESET
    S\" result=response status=200 body-len=2\nheaders:\n" SB-APPEND
-   HEADER-BUF HEADER-LEN @ SB-APPEND
+   HEADER$ SB-APPEND
    S\" body:{}\n" SB-APPEND
    SB$ {: transcript:^ u:n :}
    transcript TRANSCRIPT-BUF u BYTE-COPY
    u TRANSCRIPT-U !
    TRANSCRIPT-PATH pathu TRANSCRIPT-BUF TRANSCRIPT-U @ FS:WRITE-ALL
-   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF HEADER-CAP FS:READ-ALL
+   TRANSCRIPT-PATH pathu TRANSCRIPT-BUF TRANSCRIPT-CAP FS:READ-ALL
       TRANSCRIPT-U @ T=
    TRANSCRIPT-BUF TRANSCRIPT-U @ SB$ T$= ;
 
@@ -1539,47 +1517,30 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" PERFORM retains the exact status-headed block and duplicate fields" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    BODY$ JSON$ T$=
-   subject HEADER-BAD-CAP
    subject HEADERS$ HEADER-EXACT
    HEADER-TRANSCRIPT
-   subject 0 HEADER-COPY
-   HEADER-KIND @ 1 T=
-   HEADER-LEN @ HEADERS$ nip T=
-   HEADER-UNTOUCHED? TTRUE
-   subject HEADER-LEN @ 1- HEADER-COPY
-   HEADER-KIND @ 1 T=
-   HEADER-LEN @ HEADERS$ nip T=
-   HEADER-BUF HEADER-LEN @ 1- + c@ FILL-BYTE T=
-   subject HEADERS$ HEADER-EXACT
-   HEADER-BUF HEADER-SAVED HEADER-LEN @ BYTE-COPY
    subject FILE-URL$ CURL:URL! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 1 T=
    subject HEADER-REFUSED
    subject CURL:CLEANUP
-   HEADER-SAVED HEADER-LEN @ HEADERS$ T$= ;
+   HEADER$ HEADERS$ T$= ;
 
 
-: TEST-HEADER-TRUNCATIONS ( -- )
+: TEST-CUT-BODY-HEADERS ( -- )
    PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
    subject 1 >LEN FETCH
-   s" body and header truncation report independent lengths" T-LABEL
+   s" a truncated body leaves the header block whole" T-LABEL
    LAST-KIND @ KIND-TRUNCATED T=
    LAST-LEN @ 1 T=
    BODY$ JSON$ drop 1 T$=
-   subject 1 HEADER-COPY
-   HEADER-KIND @ 1 T=
-   HEADER-LEN @ HEADERS$ nip T=
-   HEADER-BUF c@ $48 T=
-   HEADER-BUF 1+ c@ FILL-BYTE T=
    subject HEADERS$ HEADER-EXACT
-   subject CURL:CLEANUP
-   PATH-HEADERS$ GET-READY {: second:CURL:handle :}
-   second 1 >LEN FETCH
-   LAST-KIND @ KIND-TRUNCATED T=
-   second HEADERS$ HEADER-EXACT
-   second CURL:CLEANUP ;
+   s" HEADERS appends the block after the vector's elements" T-LABEL
+   subject HEADER CURL:HEADERS
+   SB-RESET HEADERS$ SB-APPEND HEADERS$ SB-APPEND
+   HEADER$ SB$ T$=
+   subject CURL:CLEANUP ;
 
 
 : TEST-HEADER-REDIRECT ( -- )
@@ -1594,11 +1555,9 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    PATH-REDIRECT$ GET-READY {: direct:CURL:handle :}
    direct BODY-CAP >LEN FETCH
    LAST-STATUS @ 302 T=
-   direct 0 HEADER-COPY
-   HEADER-LEN @ 600 > TTRUE
-   direct HEADER-CAP HEADER-COPY
-   HEADER-KIND @ 0 T=
-   HEADER-BUF HEADER-LEN @ S\" HTTP/1.0 302 Found\r\nLocation: /headers\r\nCache-Control: no-store\r\n" 0 TEXT-AT? TTRUE
+   direct HEADER-COPY
+   HEADER VEC:COUNT 600 > TTRUE
+   HEADER$ S\" HTTP/1.0 302 Found\r\nLocation: /headers\r\nCache-Control: no-store\r\n" 0 TEXT-AT? TTRUE
    direct CURL:CLEANUP ;
 
 
@@ -2595,7 +2554,6 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    PATH-HEADERS$ GET-READY {: subject:CURL:handle :}
    subject BODY-CAP >LEN FETCH
    subject HEADERS$ HEADER-EXACT
-   HEADER-BUF HEADER-SAVED HEADER-LEN @ BYTE-COPY
    subject PATH-HEADERS-B$ URL-FOR CURL:URL! EXPECT-OK
    BODY-EMPTY
    subject BODY-CAP >LEN BODY CURL:START EXPECT-OK
@@ -2608,8 +2566,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    subject PATH-HEADERS$ URL-FOR CURL:URL! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject HEADERS$ HEADER-EXACT
-   subject CURL:CLEANUP
-   HEADER-SAVED HEADER-LEN @ HEADERS$ T$= ;
+   subject CURL:CLEANUP ;
 
 
 : HEADER-INDEPENDENT ( ^VEC:vector<u8> -- ) {: v:^ :}
@@ -3295,7 +3252,7 @@ TIGHT-FILL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   115 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
+   114 MANY-N MANY-ROUNDS * + CEILING-HITS @ + T= ;
 
 
 : NET-TESTS? ( -- bool )
@@ -3424,6 +3381,7 @@ TIGHT-FILL
 : PREPARE ( -- )
    NEW-VEC BODY-VEC !
    BODY BODY-CAP VEC:RESERVE
+   NEW-VEC HEADER-VEC !
    MAKE-ROOT
    WRITE-FIXTURES
    DRIBBLE-FILL
@@ -3434,6 +3392,7 @@ TIGHT-FILL
 
 : TEARDOWN ( -- )
    BODY VEC:DELETE
+   HEADER VEC:DELETE
    END-SERVER
    CLOSE-SILENT
    ROOT$ FS:REMOVE-TREE ;
@@ -3458,7 +3417,7 @@ public
    TEST-LIMITS
    TEST-HUGE
    TEST-RESPONSE-HEADERS
-   TEST-HEADER-TRUNCATIONS
+   TEST-CUT-BODY-HEADERS
    TEST-HEADER-REDIRECT
    TEST-HEADER-INTERIM
    TEST-TIMEOUT

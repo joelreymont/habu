@@ -51,15 +51,14 @@ split-str
 \ record, taken from an arena when the row is made, and its region never move.
 \ A client's value is the generation OPEN gave its row from a process-wide
 \ count, and CLOSE clears the row's generation, so a closed client's value
-\ names no row even after another OPEN reuses it. The region holds six BUFs:
-\ the URL; the request, then, once BODY! has copied it, a header line and the
-\ reply's header block; the reply; the tool list TOOLS assembles; the response
-\ an event-stream reply carried; and the token TOKEN! set, empty for none. The
-\ handle of the exchange in flight, none between exchanges, and the row's run
-\ state, which REQUEST-STOP sets from another task (ROW-RUN), are read and
-\ written under LOCK. So is a record's region, except that its own client reads
-\ it without LOCK: OPEN sets it only on a free row, and only that client's
-\ CLOSE empties it.
+\ names no row even after another OPEN reuses it. The region holds six BUFs: the
+\ URL; the request, then, once BODY! has copied it, a header line; the reply;
+\ the tool list TOOLS assembles; the response an event-stream reply carried; and
+\ the token TOKEN! set, empty for none. The handle of the exchange in flight,
+\ none between exchanges, and the row's run state, which REQUEST-STOP sets from
+\ another task (ROW-RUN), are read and written under LOCK. So is a record's
+\ region, except that its own client reads it without LOCK: OPEN sets it only on
+\ a free row, and only that client's CLOSE empties it.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -2030,21 +2029,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    h ;
 
 
-\ The finished reply's header block, in the request buffer, which grows to it.
-: HEAD$ ( n CURL:handle -- str )
-   {: idx:n h:CURL:handle :}
-   idx REQUEST-BUF {: buf:^ :}
-   buf BUF:CLEAR
-   begin
-      buf BUF:SPAN$ drop {: at:^ :}
-      h at buf BUF:CAP@ BUF:BLEN>N >LEN CURL:HEADERS
-      MATCH CURL:header-result
-         complete OF LEN>N at swap buf BUF+ true ENDOF
-         truncated OF LEN>N BUF:N>BLEN buf swap BUF:ENSURE false ENDOF
-      ;MATCH
-   until
-   buf BUF$ ;
-
 \ Whether a header line is Content-Type naming text/event-stream.
 : EVENT-TYPE? ( str -- bool )
    {: a:^ u:n :}
@@ -2056,9 +2040,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    a at TRIM s" Content-Type" STR=CI 0= if false exit then
    a at + 1+ u at - 1- MEDIA-ESSENCE s" text/event-stream" STR=CI ;
 
-\ Whether the finished reply is an event stream, by its header block's lines.
-: STREAM? ( n CURL:handle -- bool )
-   HEAD$ {: a:^ u:n :}
+: EVENT-HEAD? ( str -- bool )
+   {: a:^ u:n :}
    0 begin dup u < while
       {: at:n :}
       a at + u at - 10 INDEX-OF MATCH option
@@ -2068,6 +2051,13 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       a at + len EVENT-TYPE? if true exit then
       at len + 1+
    repeat drop false ;
+
+\ Whether the finished reply is an event stream, by its header block.
+: STREAM? ( CURL:handle -- bool )
+   {: h:CURL:handle :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   [: h v CURL:HEADERS v VEC:SPAN SPAN:$ EVENT-HEAD? ;]
+   [: v VEC:DELETE ;] finally ;
 
 \ The state is read and the transfer started in one LOCK hold: a REQUEST-STOP
 \ before it is refused here, one after it finds the transfer for CANCEL-ROW.
@@ -2098,7 +2088,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
          failed OF idx CURL-FAULT ENDOF
       ;MATCH
    until
-   idx h STREAM? idx ROW PEER-STREAM ! ;
+   h STREAM? idx ROW PEER-STREAM ! ;
 
 : LIST-EXCHANGE ( n ms -- n ms )
    {: idx:n limit:ms :}

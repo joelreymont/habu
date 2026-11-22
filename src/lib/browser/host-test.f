@@ -24,11 +24,9 @@ $7F000001 constant LOOPBACK
 1 constant ONE-WORKER
 500 constant IDLE-MS
 $10000 constant CAP                    \ room for any of the page's files
-4096 constant HEAD-CAP
 TYPED-VARIABLE BODY ^VEC:vector<u8>
 CAP BUFFER: WANT
-HEAD-CAP BUFFER: HEAD
-variable HEAD-U
+TYPED-VARIABLE HEAD ^VEC:vector<u8>
 
 : OK ( CURL:status -- )
    MATCH CURL:status
@@ -65,14 +63,6 @@ variable HEAD-U
          -2 ENDOF
    ;MATCH ;
 
-\ The response's header block into HEAD; empty past HEAD-CAP.
-: HEAD! ( CURL:handle -- )
-   HEAD HEAD-CAP >LEN CURL:HEADERS
-   MATCH CURL:header-result
-      complete OF LEN>N HEAD-U ! ENDOF
-      truncated OF drop 0 HEAD-U ! ENDOF
-   ;MATCH ;
-
 \ GET of the path: answers its status, its body in BODY and its head in HEAD.
 : GET ( ^u8 n -- n )
    {: path:^ u:n :}
@@ -83,8 +73,8 @@ variable HEAD-U
    ;MATCH {: h:CURL:handle :}
    h path u URL CURL:URL! OK
    h PERFORM {: status:n :}
-   0 HEAD-U !
-   status 0 > if  h HEAD!  then
+   HEAD @ 0 VEC:RESIZE
+   status 0 > if  h HEAD @ CURL:HEADERS  then
    h CURL:CLEANUP
    status ;
 
@@ -94,12 +84,13 @@ variable HEAD-U
    file fu WANT CAP FS:READ-ALL {: u:n :}
    path pu GET 200 T=
    SB-RESET  s" Content-Type: " SB-APPEND  type tu SB-APPEND  S\" \r\n" SB-APPEND
-   HEAD HEAD-U @ SB$ CONTAINS? TTRUE
+   HEAD @ VEC:SPAN SPAN:$ SB$ CONTAINS? TTRUE
    BODY @ VEC:SPAN SPAN:$ WANT u T$= ;
 
 : SERVE-CASES ( -- )
    AIO:START
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW BODY !
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEAD !
    HTTP:ROUTES-RESET
    BROWSER-HOST:ROUTES
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START

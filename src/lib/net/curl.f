@@ -27,15 +27,16 @@ split-str
 \ back; closed, the limit cut a piece short, which ends the transfer.
 \
 \ The header capture and a streamed body are open_memstream streams libcurl
-\ writes with fwrite, and memcpy moves their bytes into caller spans. The loop
-\ task uses no CURLMOPT_SOCKETFUNCTION or CURLMOPT_TIMERFUNCTION. It
-\ wakes a stream's owner for every chunk and end, and parks in package AIO and
-\ not in libcurl: after every curl_multi_perform it asks curl_multi_fdset which
-\ descriptors libcurl is waiting on and curl_multi_timeout how long it may
-\ wait, turns those into AIO tickets, and takes the first one that ends. A
-\ streamed record's memstream is rewound once all it holds is copied into spans
-\ NEXT-ARM armed, and its receive is paused while it holds uncopied bytes, so a
-\ fast server waits in the kernel's window and not in this process's memory.
+\ writes with fwrite; the final header block is appended to a caller's vector
+\ and memcpy moves a body's bytes into caller spans. The loop task uses no
+\ CURLMOPT_SOCKETFUNCTION or CURLMOPT_TIMERFUNCTION. It wakes a stream's owner
+\ for every chunk and end, and parks in package AIO and not in libcurl: after
+\ every curl_multi_perform it asks curl_multi_fdset which descriptors libcurl
+\ is waiting on and curl_multi_timeout how long it may wait, turns those into
+\ AIO tickets, and takes the first one that ends. A streamed record's memstream
+\ is rewound once all it holds is copied into spans NEXT-ARM armed, and its
+\ receive is paused while it holds uncopied bytes, so a fast server waits in
+\ the kernel's window and not in this process's memory.
 \
 \ One byte on the wake pipe says "a record changed": a START, a NEXT-ARM, a
 \ ready window, a CANCEL, an abandoned record or the stop; the loop scans the
@@ -113,11 +114,6 @@ SUMTYPE chunk-result
    VARIANT chunk http-status len ;VARIANT
    VARIANT response http-status ;VARIANT
    VARIANT failed code ;VARIANT
-;SUMTYPE
-
-SUMTYPE header-result
-   VARIANT complete len ;VARIANT
-   VARIANT truncated len ;VARIANT
 ;SUMTYPE
 
 E-CURL-OPERAND constant E-OPERAND
@@ -2111,19 +2107,11 @@ public
 private
 
 
-\ Copies what fits of the final block, naming its whole length.
-: HEADER-BLOCK ( n ^u8 len -- header-result )
-   {: state:n target capacity:len :}
+: HEADER-BLOCK ( n ^VEC:vector<u8> -- )
+   {: state:n v:^ :}
    state STATE-RESP@ >BYTES state STATE-LEN@ FINAL-BLOCK
       {: at:n finish:n :}
-   finish at - {: u:n :}
-   u capacity LEN>N min {: copied:n :}
-   copied 0 > if
-      target state STATE-RESP@ >BYTES at + FFI:>CELL copied COPY-OUT drop
-   then
-   u >LEN
-   u capacity LEN>N > if CURL-HEADER--RESULT:TRUNCATED
-   else CURL-HEADER--RESULT:COMPLETE then ;
+   state STATE-RESP@ >BYTES at +  finish at -  v VEC:APPEND ;
 
 
 \ A streamed transfer this task started and has not left.
@@ -2135,35 +2123,34 @@ private
 
 \ A handle with no transfer in flight answers only a finished
 \ transfer's capture.
-: IDLE-HEADERS ( n ^u8 len -- header-result )
-   {: easy:n target capacity:len :}
+: IDLE-HEADERS ( n ^VEC:vector<u8> -- )
+   {: easy:n v:^ :}
    easy STATE-GET {: state:n :}
    state STATE-VALID@ VALID-WHOLE <> if E-STATE throw then
-   state target capacity HEADER-BLOCK ;
+   state v HEADER-BLOCK ;
 
 
 \ Runs under CURL-LOCK, which the loop holds to publish and replace a response;
 \ the loop drives a handle in flight unlocked, so only its record is read.
-: LOCKED-HEADERS ( n ^u8 len -- header-result )
-   {: easy:n target capacity:len :}
+: LOCKED-HEADERS ( n ^VEC:vector<u8> -- )
+   {: easy:n v:^ :}
    easy REC-FIND {: idx:n :}
-   idx 0 < if easy target capacity IDLE-HEADERS exit then
+   idx 0 < if easy v IDLE-HEADERS exit then
    idx OWN-STREAM? 0= if E-STATE throw then
    idx REC R.PRIVATE @ {: state:n :}
    state STATE-VALID@ 0= if E-STATE throw then
-   state target capacity HEADER-BLOCK ;
+   state v HEADER-BLOCK ;
 
 public
 
-\ Answers an idle handle's response, or this task's stream once its first chunk
-\ or response is ready; E-STATE leaves the span untouched.
-: HEADERS ( handle ^u8 len -- header-result )
-   {: subject:handle target capacity:len :}
+\ Appends an idle handle's final header block, or this task's stream's once its
+\ first chunk or response is ready, to the vector; E-STATE leaves it untouched.
+: HEADERS ( handle ^VEC:vector<u8> -- )
+   {: subject:handle v:^ :}
    subject HANDLE-CELL {: easy:n :}
-   capacity LEN>N 0 < if E-OPERAND throw then
-   LOOP-LIVE atomic@ 0= if easy target capacity IDLE-HEADERS exit then
+   LOOP-LIVE atomic@ 0= if easy v IDLE-HEADERS exit then
    CURL-LOCK TASK:GET
-   [: easy target capacity LOCKED-HEADERS ;]
+   [: easy v LOCKED-HEADERS ;]
    [: CURL-LOCK TASK:RELEASE ;] finally ;
 
 
