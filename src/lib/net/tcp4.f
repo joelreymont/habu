@@ -232,11 +232,11 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n str -- i32 ) ;FUNCTION
 FUNCTION: LISTEN-CALL listen ( n n -- i32 ) ;FUNCTION
-FUNCTION: CONNECT-CALL connect ( n ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL send ( n ^u8 n n -- n ) ;FUNCTION
-FUNCTION: OPTION-CALL setsockopt ( n n n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: CONNECT-CALL connect ( n str -- i32 ) ;FUNCTION
+FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
+FUNCTION: OPTION-CALL setsockopt ( n n n str -- i32 ) ;FUNCTION
 FUNCTION: SHUTDOWN-CALL shutdown ( n n -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 FUNCTION: DARWIN-ACCEPT accept ( n ^u8 ^u8 -- i32 ) ;FUNCTION

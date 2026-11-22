@@ -213,7 +213,7 @@ FUNCTION: FREE-CALL freeaddrinfo ( n -- ) ;FUNCTION
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
 FUNCTION: CONNECT-CALL connect ( n n n -- i32 ) ;FUNCTION
 FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL send ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
 FUNCTION: RECEIVE-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
@@ -305,7 +305,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    again ;
 
 \ Writes the whole span to the socket; false with the fault kept.
-: SOCKET-WRITE ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: SOCKET-WRITE ( ^conn str -- bool ) {: c a:^ u:n :}
    0 begin dup u < while
       {: off:n :}
       c CONN-FD @ a off + u off - MSG-NOSIGNAL SEND-CALL {: rc:n :}
@@ -345,7 +345,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Writes the whole span through the TLS session; after a want the rest of
 \ the span is written again, the same bytes and length. False with the
 \ fault kept; a peer that has closed fails the write.
-: TLS-WRITE ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: TLS-WRITE ( ^conn str -- bool ) {: c a:^ u:n :}
    0 begin dup u < while
       {: off:n :}
       c CONN-TLS a off + u off - TLS:WRITE MATCH TLS:tls-io
@@ -368,7 +368,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ Writes the whole span over the conn's socket or its TLS session; false
 \ with the fault kept.
-: WRITE-ALL ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: WRITE-ALL ( ^conn str -- bool ) {: c a:^ u:n :}
    c CONN-SECURE @ if c a u TLS-WRITE else c a u SOCKET-WRITE then ;
 
 \ Answer bytes not handed out yet that were read past the head.
@@ -410,7 +410,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c MARKED? if exit then
    f OPTION:SOME c CONN-MARK ! ;
 
-: APPEND ( ^conn ^u8 n -- ) {: c a:^ u:n :}
+: APPEND ( ^conn str -- ) {: c a:^ u:n :}
    c MARKED? if exit then
    c CONN-USED @ u + c CONN-ROOM-LEN @ > if
       c construct fault oversize MARK exit
@@ -427,17 +427,17 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    v 9 > if c v 10 / RECURSE then
    c v 10 mod [char] 0 + CHAR+ ;
 
-: HAS? ( ^u8 n n -- bool )
+: HAS? ( str n -- bool )
    INDEX-OF MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH ;
 
-: BREAK? ( ^u8 n -- bool ) {: a:^ u:n :}
+: BREAK? ( str -- bool ) {: a:^ u:n :}
    a u 13 HAS? a u 10 HAS? or ;
 
 \ Whether a request line's method or target holds CR, LF or SP.
-: SPLITS? ( ^u8 n -- bool ) {: a:^ u:n :}
+: SPLITS? ( str -- bool ) {: a:^ u:n :}
    a u BREAK? a u 32 HAS? or ;
 
 
@@ -450,12 +450,12 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       some OF drop false ENDOF
    ;MATCH ;
 
-: HOST-BYTES? ( ^u8 n -- bool ) {: a:^ u:n :}
+: HOST-BYTES? ( str -- bool ) {: a:^ u:n :}
    u 0 ?do a i + c@ HOST-BYTE? 0= if false unloop exit then loop
    true ;
 
 \ The host as getaddrinfo takes it, NUL-terminated in the record.
-: HOST? ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: HOST? ( ^conn str -- bool ) {: c a:^ u:n :}
    u 0= u HOST-MOST > or if false exit then
    a u HOST-BYTES? 0= if false exit then
    a c NODE u BYTE-COPY  0 c NODE u + c!
@@ -463,7 +463,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    true ;
 
 \ The port's digits as getaddrinfo's service, NUL-terminated in the record.
-: PORT? ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: PORT? ( ^conn str -- bool ) {: c a:^ u:n :}
    u 0= u PORT-DIGITS > or if false exit then
    a u STR-PARSE-POS MATCH option
       none OF false exit ENDOF
@@ -472,11 +472,11 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    a c SERVICE u BYTE-COPY  0 c SERVICE u + c!
    true ;
 
-: HOST-PORT? ( ^conn ^u8 n n -- bool ) {: c a:^ u:n k:n :}
+: HOST-PORT? ( ^conn str n -- bool ) {: c a:^ u:n k:n :}
    c a k HOST?  c a k + 1+ u k - 1- PORT? and ;
 
 \ The host and its port, else the scheme's port P.
-: AUTHORITY? ( ^conn ^u8 n ^u8 n -- bool )
+: AUTHORITY? ( ^conn str str -- bool )
    {: c a:^ u:n p:^ pu:n :}
    a c CONN-AUTHORITY !  u c CONN-AUTHORITY-LEN !
    a u [char] : INDEX-OF MATCH option
@@ -485,11 +485,11 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    ;MATCH ;
 
 \ Whether the span starts with the scheme prefix P, in any case.
-: SCHEME? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n p:^ pu:n :}
+: SCHEME? ( str str -- bool ) {: a:^ u:n p:^ pu:n :}
    u pu < if false exit then
    a pu p pu STR=CI ;
 
-: ORIGIN? ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: ORIGIN? ( ^conn str -- bool ) {: c a:^ u:n :}
    a u s" http://" SCHEME? if
       false c CONN-SECURE !
       c a 7 + u 7 - s" 80" AUTHORITY? exit
@@ -738,12 +738,12 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    0 c CONN-HEAD-LEN !
    true ;
 
-: CHUNKED? ( ^u8 n -- bool ) {: a:^ u:n :}
+: CHUNKED? ( str -- bool ) {: a:^ u:n :}
    u 7 < if false exit then
    a u + 7 - 7 s" chunked" STR=CI ;
 
 \ Whether `close` is one of a Connection field's comma-separated options.
-: CLOSE-TOKEN? ( ^u8 n -- bool ) {: a:^ u:n :}
+: CLOSE-TOKEN? ( str -- bool ) {: a:^ u:n :}
    0 begin
       {: start:n :}
       a u [char] , start SPLIT-NEXT
@@ -754,7 +754,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    repeat 2drop drop false ;
 
 \ A Content-Length that is not a number, or two that differ, is malformed.
-: LENGTH? ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: LENGTH? ( ^conn str -- bool ) {: c a:^ u:n :}
    a u STR-PARSE-POS MATCH option
       none OF false ENDOF
       some OF {: v:n :}
@@ -766,7 +766,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       ENDOF
    ;MATCH ;
 
-: FIELD? ( ^conn ^u8 n ^u8 n -- bool ) {: c k:^ ku:n v:^ vu:n :}
+: FIELD? ( ^conn str str -- bool ) {: c k:^ ku:n v:^ vu:n :}
    k ku s" Content-Length" STR=CI if c v vu LENGTH? exit then
    k ku s" Transfer-Encoding" STR=CI if
       v vu CHUNKED? c CONN-CHUNKED ! true exit
@@ -777,7 +777,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    true ;
 
 \ A line without a colon names no field this reads.
-: FIELD-LINE? ( ^conn ^u8 n -- bool ) {: c a:^ u:n :}
+: FIELD-LINE? ( ^conn str -- bool ) {: c a:^ u:n :}
    a u [char] : INDEX-OF MATCH option
       none OF true ENDOF
       some OF IDX>N {: k:n :} c a k a k + 1+ u k - 1- TRIM FIELD? ENDOF
@@ -1057,7 +1057,7 @@ public
 \ for an origin it cannot read. An https connection trusts the certificates
 \ of the trust file, which a plain one never reads. The record holds no
 \ connection after it.
-: OPEN ( ^conn ^u8 n ^u8 n ^u8 n -- bool )
+: OPEN ( ^conn str str ^u8 n -- bool )
    {: c o:^ ou:n t:^ tu:n r:^ ru:n :}
    c CLEAR-TLS
    -1 c CONN-FD !  0 c CONN-LIST !  c UNSENT
@@ -1069,7 +1069,7 @@ public
 \ Method and target. Starts a request head in the room, the request line and
 \ `Host`, and clears the deadlines. A CR, LF or SP in either marks the request
 \ malformed.
-: REQUEST ( ^conn ^u8 n ^u8 n -- ) {: c m:^ mu:n t:^ tu:n :}
+: REQUEST ( ^conn str str -- ) {: c m:^ mu:n t:^ tu:n :}
    0 c CONN-USED !  0 c CONN-HEAD-LEN !  OPTION:NONE c CONN-MARK !
    0 c CONN-TOTAL !  0 c CONN-STALL !
    m mu s" GET" STR= c CONN-GET-METHOD !
@@ -1081,7 +1081,7 @@ public
 \ One header line, without its CRLF. A line break in it, or a head that
 \ outgrows the room, marks the request so SEND fails it without touching the
 \ wire.
-: HEADER+ ( ^conn ^u8 n -- ) {: c a:^ u:n :}
+: HEADER+ ( ^conn str -- ) {: c a:^ u:n :}
    a u BREAK? if c construct fault malformed MARK exit then
    c a u APPEND  c CRLF+ ;
 
@@ -1093,7 +1093,7 @@ public
 \ The body span is borrowed until SEND returns. A `Content-Length` frames it
 \ in every request but a GET with no body, which has none. Probes or dials,
 \ then writes head and body once. A fault is kept for the first NEXT.
-: SEND ( ^conn ^u8 n -- ) {: c a:^ u:n :}
+: SEND ( ^conn str -- ) {: c a:^ u:n :}
    a c CONN-BODY !  u c CONN-BODY-LEN !
    c CONN-GET-METHOD @ u 0= and 0= if
       c s" Content-Length: " APPEND  c u DIGITS+  c CRLF+
@@ -1111,7 +1111,7 @@ public
 
 \ The answer's head, status line through the blank line, in the room; valid
 \ until the next REQUEST.
-: HEAD$ ( ^conn -- ^u8 n ) dup ROOM swap CONN-HEAD-LEN @ ;
+: HEAD$ ( ^conn -- str ) dup ROOM swap CONN-HEAD-LEN @ ;
 
 \ Drops the connection in any state; the record keeps its origin, trust and
 \ room, and its next SEND dials again.
@@ -1132,7 +1132,7 @@ public
       oversize OF false ENDOF
    ;MATCH ;
 
-: FAULT$ ( fault -- ^u8 n )
+: FAULT$ ( fault -- str )
    MATCH fault
       resolve OF s" the host name did not resolve" ENDOF
       connect OF s" no address of the host took the connection" ENDOF

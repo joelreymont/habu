@@ -59,9 +59,9 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 PROCESS-SYMBOLS
 
 FUNCTION: SOCKET-CALL socket ( n n n -- i32 ) ;FUNCTION
-FUNCTION: BIND-CALL bind ( n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n str -- i32 ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
-FUNCTION: SEND-CALL sendto ( n ^u8 n n ^u8 n -- n ) ;FUNCTION
+FUNCTION: SEND-CALL sendto ( n str n str -- n ) ;FUNCTION
 FUNCTION: RECEIVE-CALL recvfrom ( n ^u8 n n ^u8 ^u8 -- n ) ;FUNCTION
 
 : LAST-ERROR ( -- errno )
@@ -145,7 +145,7 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    then ;
 
 
-: BOUND ( ^u8 n n -- open-result ) {: sockaddr length:n fd:n :}
+: BOUND ( str n -- open-result ) {: sockaddr length:n fd:n :}
    fd sockaddr length BIND-CALL 0 < if
       LAST-ERROR fd CLOSE-CALL drop DATAGRAM-OPEN--RESULT:FAILED
    else fd DATAGRAM-OPEN--RESULT:OPENED then ;
@@ -164,7 +164,7 @@ public
 
 
 \ A socket of that family bound to the sockaddr of that length.
-: BIND ( n ^u8 n -- open-result ) {: family:n sockaddr length:n :}
+: BIND ( n str -- open-result ) {: family:n sockaddr length:n :}
    family OPEN MATCH DATAGRAM:open-result
       opened OF sockaddr length rot BOUND ENDOF
       failed OF DATAGRAM-OPEN--RESULT:FAILED ENDOF
@@ -173,7 +173,7 @@ public
 
 \ Sends the payload to the sockaddr of that length. Success means the OS
 \ accepted the whole datagram, not that it arrived.
-: SEND ( n ^u8 n ^u8 NUM:byte-len -- status )
+: SEND ( n str ^u8 NUM:byte-len -- status )
    {: fd:n sockaddr length:n bytes size:NUM:byte-len :}
    fd bytes size BLEN>N 0 sockaddr length SEND-CALL 0 < if
       LAST-ERROR DATAGRAM-STATUS:FAILED

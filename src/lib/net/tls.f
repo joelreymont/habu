@@ -122,7 +122,7 @@ FUNCTION: SSL-BIO mbedtls_ssl_set_bio ( ^u8 n n n n -- ) ;FUNCTION
 FUNCTION: SSL-HANDSHAKE mbedtls_ssl_handshake ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: SSL-VERIFY mbedtls_ssl_get_verify_result ( ^u8 -- u32 ) ;FUNCTION
 FUNCTION: SSL-READ mbedtls_ssl_read ( ^u8 ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: SSL-WRITE mbedtls_ssl_write ( ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: SSL-WRITE mbedtls_ssl_write ( ^u8 str -- i32 ) ;FUNCTION
 FUNCTION: SSL-PENDING mbedtls_ssl_check_pending ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: SSL-CLOSE mbedtls_ssl_close_notify ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: SSL-FREE mbedtls_ssl_free ( ^u8 -- ) ;FUNCTION
@@ -130,7 +130,7 @@ FUNCTION: CONFIG-FREE mbedtls_ssl_config_free ( ^u8 -- ) ;FUNCTION
 
 PROCESS-SYMBOLS
 FUNCTION: RECEIVE-CALL recv ( n ^u8 n n -- n ) ;FUNCTION
-FUNCTION: SEND-CALL send ( n ^u8 n n -- n ) ;FUNCTION
+FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
 
 
 \ The BIO mbedTLS reads and writes the socket through, given its descriptor.
@@ -146,7 +146,7 @@ FUNCTION: SEND-CALL send ( n ^u8 n n -- n ) ;FUNCTION
       e EINTR <> if RECEIVE-FAILED exit then
    again ;
 
-: SEND-BODY ( n ^u8 n -- n )
+: SEND-BODY ( n str -- n )
    {: sock:n buf:^ u:n :}
    begin
       sock buf u MSG-NOSIGNAL SEND-CALL {: put:n :}
@@ -188,7 +188,7 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 
 \ The trust file into the chain. A negative answer is a file unread or with
 \ no certificate parsed; a positive one counts those skipped beside one kept.
-: TRUST ( ^session ^u8 n -- n )
+: TRUST ( ^session str -- n )
    {: s:^ path:^ u:n :}
    path u FS:>PATHZ {: z:^ :}
    path u z COMPILE-READS:FILE+
@@ -203,7 +203,7 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 
 \ The name SNI sends and the peer's certificate must carry; BAD-INPUT for
 \ one FFI:CSTR cannot spell.
-: NAME ( ^session ^u8 n -- n )
+: NAME ( ^session str -- n )
    {: s:^ host:^ u:n :}
    u MAX-HOST > if BAD-INPUT exit then
    host u 0 INDEX-OF MATCH option
@@ -221,7 +221,7 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
    0 SSL-BIO ;
 
 \ 0 once the session is ready for its handshake, else the first failure.
-: READY ( ^session ^u8 n -- n )
+: READY ( ^session str -- n )
    {: s:^ host:^ u:n :}
    s CONFIGURE {: made:n :}
    made 0<> if made exit then
@@ -269,7 +269,7 @@ public
 \ trust file's certificates. It reads that file and leaves the socket alone.
 \ A trust path FS cannot spell is `distrusted` with X509_FILE_IO_ERROR and
 \ makes nothing; a host too long or holding a 0 byte is `failed` BAD_INPUT.
-: START ( ^session fd ^u8 n ^u8 n -- tls-step )
+: START ( ^session fd str str -- tls-step )
    {: s:^ sock:fd host:^ hu:n path:^ pu:n :}
    path pu FS:PATHZ? 0= if
       FILE-IO construct tls-step distrusted exit
@@ -303,7 +303,7 @@ public
 \ Writes 1..n bytes of the span, n at least 1. After want-read or want-write
 \ mbedtls_ssl_write must be called again with the same span and length,
 \ because it may already hold part of them in its own record.
-: WRITE ( ^session ^u8 n -- tls-io )
+: WRITE ( ^session str -- tls-io )
    {: s:^ buf:^ u:n :}
    s SSL buf u SSL-WRITE >IO ;
 

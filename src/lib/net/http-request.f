@@ -112,7 +112,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    idx IN-BUF at SPAN:U8@ ;
 
 
-: SPAN$ ( n n n -- ^u8 n ) {: idx:n at:n len:n :}
+: SPAN$ ( n n n -- str ) {: idx:n at:n len:n :}
    idx IN-BUF at len SPAN:SUB SPAN:$ ;
 
 
@@ -431,7 +431,7 @@ $5D constant CLOSE-BRACKET
 
 
 \ How many bytes come before the first c: all of them when none is c.
-: BEFORE ( ^u8 n n -- n )
+: BEFORE ( str n -- n )
    {: a u:n c:n :}
    u 0 ?do
       a i + c@ c = if i unloop exit then
@@ -529,7 +529,7 @@ $5D constant CLOSE-BRACKET
 
 \ The 16-bit groups a run split by single ":" stands for, or -1 when a group
 \ is malformed; only the last may be a dotted quad, and an empty run has none.
-: GROUPS ( ^u8 n -- n )
+: GROUPS ( str -- n )
    {: a u:n :}
    u 0= if 0 exit then
    0 0
@@ -961,7 +961,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
 
 
 \ A query pair's name and value; a pair with no "=" has the empty value.
-: PAIR ( ^u8 n -- ^u8 n ^u8 n )
+: PAIR ( str -- str str )
    {: a:^ u:n :}
    a u EQUALS INDEX-OF MATCH option
       none OF a u a u + 0 ENDOF
@@ -975,11 +975,11 @@ public
    SLOT-OF-REQUEST SLOT-METHOD$ ;
 
 
-: PATH$ ( request -- ^u8 n )
+: PATH$ ( request -- str )
    SLOT-OF-REQUEST SLOT-PATH$ ;
 
 
-: QUERY$ ( request -- ^u8 n )
+: QUERY$ ( request -- str )
    SLOT-OF-REQUEST SLOT-QUERY$ ;
 
 
@@ -1012,7 +1012,7 @@ public
 \ at all when the peer left or the deadline passed. Asked from another task it
 \ is E-HANDLE; after the handler or its TAKE-OVER, E-STATE. A body the handler
 \ never asked for closes the connection after the answer.
-: BODY$ ( request -- ^u8 n )
+: BODY$ ( request -- str )
    SLOT-OF-REQUEST {: idx:n :}
    idx BODY-READY
    idx SLOT-BODY$ ;
