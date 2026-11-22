@@ -118,8 +118,7 @@ private
 5 constant PFD-SLOTS                     \ stdout, stderr, stdin, stop, per-call cancellation
 
 PATHZ-CAP TASK:+USERS PATHZ-ROW u8
-\ Each struct pollfd (fd, events, revents) is one cell poll fills.
-PFD-SLOTS TASK:+USERS PFD-ROW n
+PFD-SLOTS TASK:+USERS PFD-ROW FD:pollfd
 1 TASK:+USERS PROBE-ROW u8
 
 STRUCTURE capture DERIVE addr
@@ -145,7 +144,7 @@ STRUCTURE capture DERIVE addr
 TASK:+USER CAPTURE capture
 
 : PATHZ-BUF ( -- ^u8 ) 0 PATHZ-ROW ;
-: PFD ( -- ^n ) 0 PFD-ROW ;
+: PFD ( -- ^FD:pollfd ) 0 PFD-ROW ;
 : PROBE ( -- ^u8 ) 0 PROBE-ROW ;
 
 public
@@ -313,20 +312,20 @@ public
 private
 \ An idx outside 0..PFD-SLOTS-1 is E-A-BOUNDS: PFD-AT! and PFD-REVENTS are
 \ public, and slot PFD-SLOTS would reach past the row.
-: PFD-SLOT ( idx -- ^n ) {: idx :}
+: PFD-SLOT ( idx -- ^FD:pollfd ) {: idx :}
    idx IDX>N 0 < if E-A-BOUNDS throw then
    idx IDX>N PFD-SLOTS >= if E-A-BOUNDS throw then
    idx IDX>N PFD-ROW ;
 
 public
 : PFD-AT! ( fd n idx -- ) {: fd events idx :}
-   events 32 lshift  fd FD>N $FFFFFFFF and  or  idx PFD-SLOT ! ;
+   fd events FD:>POLLFD idx PFD-SLOT ! ;
 
 : PFD! ( fd n -- ) {: fd events :}
    fd events 0 >IDX PFD-AT! ;
 
 : PFD-REVENTS ( idx -- n )
-   PFD-SLOT @ 48 rshift $FFFF and ;
+   PFD-SLOT @ FD:REVENTS ;
 
 \ Rounds up, so a wait for what is left never ends before the deadline
 \ (src/lib/process-test.f TEST-WAIT-REACHES-DEADLINE).

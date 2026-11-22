@@ -21,7 +21,6 @@ require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 require src/lib/fd-lock.f
-require src/lib/le.f
 require src/lib/fs.f
 require src/lib/adt/option.f
 
@@ -49,6 +48,23 @@ ENUM wrote all none part ;ENUM
 8 constant POLLERR
 16 constant POLLHUP
 32 constant POLLNVAL
+
+\ One struct pollfd in a cell, as poll(2) reads it on a little-endian
+\ LP64 host: the descriptor in the low 32 bits, the events asked in the
+\ next 16 and the revents poll fills in the top 16.
+NEWTYPE pollfd
+
+private
+CAST: N>POLLFD ( n -- pollfd )
+CAST: POLLFD>N ( pollfd -- n )
+
+public
+\ A pollfd asking for events n on fd, its revents clear.
+: >POLLFD ( fd n -- pollfd ) {: f:fd events:n :}
+   events 32 lshift  f FD>N $FFFFFFFF and  or  N>POLLFD ;
+
+: REVENTS ( pollfd -- n ) POLLFD>N 48 rshift ;
+
 4 constant EINTR#                  \ "interrupted by a signal" (POSIX, identical on Linux/macOS)
 2 constant F-SETFD
 3 constant F-GETFL
@@ -130,9 +146,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 : ERRNO-FAIL ( n -- )
    FFI:ERRNO FS:CAUSE! throw ;
 
-\ One struct pollfd, raw bytes poll reads and fills.
-8 TASK:+USERS POLL-STORAGE u8
-: POLL-FD ( -- ^u8 ) 0 POLL-STORAGE ;
+TASK:+USER POLL-ROW pollfd
 
 : FLAGS ( fd -- n )
    FD>N F-GETFL 0 fcntl dup 0 < if E-FS-IO RC-FAIL then ;
@@ -162,10 +176,8 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
       left 0 <= if E-FS-TIMEOUT throw then
       left NS-PER-MS / left NS-PER-MS mod 0<> if 1+ then
       MAX-POLL-MS min {: ms:n :}
-      f FD>N POLL-FD LE:U32!
-      POLLOUT 4 POLL-STORAGE LE:U16!
-      0 6 POLL-STORAGE LE:U16!
-      POLL-FD 1 ms poll {: rc:n :}
+      f POLLOUT >POLLFD POLL-ROW !
+      POLL-ROW 1 ms poll {: rc:n :}
       rc 0 > if exit then
       rc 0 < rc EINTR# negate <> and if rc E-FS-IO RC-FAIL then
    again ;

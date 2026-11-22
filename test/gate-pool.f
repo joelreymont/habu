@@ -54,7 +54,6 @@ require src/lib/test/suite.f
 6 constant GT-POOL-LINUX-DEFAULT
 8 constant GT-POOL-MACOS-DEFAULT
 3 constant GT-POOL-FDS                    \ stdout, stderr and the exit watch
-8 constant GT-PFD-SZ
 $64 constant GT-POOL-POLL-MS
 $1000 constant GT-POOL-CHUNK-CAP
 64 constant GT-POOL-NAME-CAP
@@ -87,7 +86,7 @@ create GT-POOL-LASTS GT-POOL-MAX cells allot
 create GT-POOL-ASKEDS GT-POOL-MAX cells allot
 create GT-POOL-LABELS GT-POOL-MAX GT-FAIL-NAME-CAP * allot
 create GT-POOL-LABEL-US GT-POOL-MAX cells allot
-create GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-PFD-SZ * allot
+GT-POOL-MAX GT-POOL-FDS * TYPED-BUFFER GT-POOL-PFDS FD:pollfd SCRATCH-ONLY
 create GT-POOL-CHUNK GT-POOL-CHUNK-CAP allot
 create GT-POOL-NUM-BUF GT-POOL-NUM-CAP allot
 create GT-POOL-NAME-BUF GT-POOL-NAME-CAP allot
@@ -1223,16 +1222,16 @@ variable GT-POOL-CPU-NS
    w bytes byten GT-POOL-FEED-STDIN
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
-: GT-POOL-PFD-SLOT ( idx -- ^n ) {: idx :}
+: GT-POOL-PFD-SLOT ( idx -- ^FD:pollfd ) {: idx :}
    idx IDX>N 0 < if E-TBL-BOUNDS throw then
    idx IDX>N GT-POOL-MAX GT-POOL-FDS * >= if E-TBL-BOUNDS throw then
-   idx IDX>N GT-PFD-SZ * GT-POOL-PFDS + ;
+   idx IDX>N GT-POOL-PFDS ;
 
 : GT-POOL-PFD! ( fd n idx -- ) {: fd events idx :}
-   events 32 lshift fd FD>N $FFFFFFFF and or idx GT-POOL-PFD-SLOT ! ;
+   fd events FD:>POLLFD idx GT-POOL-PFD-SLOT ! ;
 
 : GT-POOL-PFD-REVENTS ( idx -- n )
-   GT-POOL-PFD-SLOT @ 48 rshift $FFFF and ;
+   GT-POOL-PFD-SLOT @ FD:REVENTS ;
 
 : GT-POOL-OUT-SLOT ( idx -- idx )
    IDX>N GT-POOL-FDS * >IDX ;
@@ -1264,7 +1263,7 @@ variable GT-POOL-CPU-NS
 \ it with -EINTR: nothing failed and no descriptor is ready.
 : GT-POOL-POLL ( -- n )
    GT-POOL-POLL-BUILD
-   GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-POOL-POLL-MS poll {: rc :}
+   0 GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-POOL-POLL-MS poll {: rc :}
    rc FD:EINTR# negate = if 0 exit then
    rc 0 < if E-PROC-OUTPUT GT-POOL-THROW then
    rc ;

@@ -157,9 +157,8 @@ $400 constant MAXFD
 
 private
 
-$FFFF constant PROC-REAP-EVMASK
-
-create PROC-REAP-PFD 8 allot    \ one pollfd (8 bytes)
+\ A descriptor is valid only in its process.
+TYPED-VARIABLE PROC-REAP-PFD FD:pollfd SCRATCH-ONLY
 
 public
 
@@ -182,15 +181,6 @@ private
 : PROC-REAP-KILL-GROUP ( -- )
    0 >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop ;
 
-: PROC-REAP-PFD-SLOT ( idx -- ^n ) {: idx:idx :}
-   idx IDX>N 8 * PROC-REAP-PFD + ;
-
-: PROC-REAP-PFD! ( fd n idx -- ) {: fd:fd events:n idx:idx :}
-   events 32 lshift fd FD>N $FFFFFFFF and or idx PROC-REAP-PFD-SLOT ! ;
-
-: PROC-REAP-REVENTS ( idx -- n )
-   PROC-REAP-PFD-SLOT @ 48 rshift PROC-REAP-EVMASK and ;
-
 \ Reaper body for a spawned (exec'd) child: block until the single parent-death
 \ read end (pd) EOFs, then reap the reaper's own process group. The reaper has
 \ already joined the child's group, so this kills the child subtree. Loops only
@@ -198,10 +188,10 @@ private
 \ without signalling rather than spinning.
 : PROC-REAP-WATCH1 ( fd -- ) {: pd:fd :}
    begin
-      pd FD:POLLIN 0 >IDX PROC-REAP-PFD!
+      pd FD:POLLIN FD:>POLLFD PROC-REAP-PFD !
       PROC-REAP-PFD 1 -1 poll {: rc:n :}
       rc 0 > if
-         0 >IDX PROC-REAP-REVENTS 0 <> if PROC-REAP-KILL-GROUP then
+         PROC-REAP-PFD @ FD:REVENTS 0 <> if PROC-REAP-KILL-GROUP then
          exit
       then
       rc FD:EINTR# negate <> if exit then
