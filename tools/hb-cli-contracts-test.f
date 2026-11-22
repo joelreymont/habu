@@ -29,6 +29,10 @@ create HCT-OUT HCT-CAP allot
 create HCT-ERR HCT-CAP allot
 create HCT-EMPTY 1 allot   \ zero-length stdin
 
+\ Larger than READ-STDIN-ALL's first few rooms, so the vector grows more than once.
+20000 constant HCT-BIG-CAP
+create HCT-BIG HCT-BIG-CAP allot
+
 : HCT-COPY! ( str ^u8 ^n -- ) {: src:^ u dst:^ lenp:^ :}
    u PATH-CAP > if E-FS-CAPACITY throw then
    src dst u BYTE-COPY
@@ -45,11 +49,48 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 
 : HCT-CHILD$ ( -- str )
    SB-RESET
-   s" create HCT-BUF 32 allot" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
-   s"    HCT-BUF 32 >LEN SOURCE:READ-STDIN-ALL LEN>N dup ." SB-APPEND HCT-LF
-   s"    HCT-BUF swap type cr ;" SB-APPEND HCT-LF
+   s"    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}" SB-APPEND HCT-LF
+   s"    v SOURCE:READ-STDIN-ALL" SB-APPEND HCT-LF
+   s"    v VEC:COUNT ." SB-APPEND HCT-LF
+   s"    v VEC:SPAN SPAN:$ type cr" SB-APPEND HCT-LF
+   s"    v VEC:DELETE ;" SB-APPEND HCT-LF
    s" MAIN" SB-APPEND HCT-LF
+   SB$ ;
+
+: HCT-BIG-BYTE ( n -- n )
+   26 mod 97 + ;
+
+: HCT-BIG-FILL ( -- )
+   HCT-BIG-CAP 0 ?do i HCT-BIG-BYTE HCT-BIG i + c! loop ;
+
+\ Appends standard input, HCT-BIG-BYTE's pattern, to a vector holding `OLD`;
+\ prints the count, the first three bytes and whether the pattern follows them.
+: HCT-BIG-CHILD$ ( -- str )
+   SB-RESET
+   s" : HCT-BYTE ( n -- n ) 26 mod 97 + ;" SB-APPEND HCT-LF
+   s" : HCT-AFTER? ( ^u8 n -- bool )" SB-APPEND HCT-LF
+   s"    {: a:^ u:n :}" SB-APPEND HCT-LF
+   s"    u 3 ?do a i + c@  i 3 - HCT-BYTE <> if unloop false exit then loop" SB-APPEND HCT-LF
+   s"    true ;" SB-APPEND HCT-LF
+   s" : MAIN ( -- )" SB-APPEND HCT-LF
+   s"    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}" SB-APPEND HCT-LF
+   S\"    s\" OLD\" v VEC:APPEND" SB-APPEND HCT-LF
+   s"    v SOURCE:READ-STDIN-ALL" SB-APPEND HCT-LF
+   s"    v VEC:COUNT ." SB-APPEND HCT-LF
+   s"    v VEC:SPAN SPAN:$ {: a:^ u:n :}" SB-APPEND HCT-LF
+   s"    a 3 type cr" SB-APPEND HCT-LF
+   s"    a u HCT-AFTER? bool>n ." SB-APPEND HCT-LF
+   s"    v VEC:DELETE ;" SB-APPEND HCT-LF
+   s" MAIN" SB-APPEND HCT-LF
+   SB$ ;
+
+\ The count (HCT-BIG-CAP plus OLD's three bytes), OLD and HCT-AFTER?'s true.
+: HCT-BIG-WANT$ ( -- str )
+   SB-RESET
+   s" 20003" SB-APPEND HCT-LF
+   s" OLD" SB-APPEND HCT-LF
+   s" -1" SB-APPEND HCT-LF
    SB$ ;
 
 : HCT-WANT$ ( -- str )
@@ -114,22 +155,39 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
      ENDOF
    ;MATCH ;
 
-: HCT-EXPECT-LOAD-STDIN ( -- )
+: HCT-STDIN-LOAD ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    s" src/lib/error.f"  >LEN PROC-ARGV+
    s" src/lib/string.f"  >LEN PROC-ARGV+
    s" src/lib/memory.f"  >LEN PROC-ARGV+
    s" src/lib/fs.f"  >LEN PROC-ARGV+
+   s" src/lib/heap.f"  >LEN PROC-ARGV+
+   s" src/lib/vector.f"  >LEN PROC-ARGV+
    s" src/lib/source.f"  >LEN PROC-ARGV+
    HCT-CHILD  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+ ;
+
+: HCT-EXPECT-LOAD-STDIN ( -- )
+   HCT-STDIN-LOAD
    s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
    HCT-OUT 7 HCT-WANT$ T$= ;
+
+: HCT-EXPECT-STDIN-GROWS ( -- )
+   HCT-CHILD HCT-BIG-CHILD$ FS:WRITE-ALL
+   HCT-BIG-FILL
+   HCT-STDIN-LOAD
+   s" bin/hb" >LEN HCT-BIG HCT-BIG-CAP >LEN HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   HCT-CHILD HCT-STORE!
+   s" READ-STDIN-ALL grows the vector and appends after its bytes" T-LABEL
+   HCT-EXITED @ TTRUE HCT-RC @ 0 T=
+   HCT-ERR-U @ 0 T=
+   HCT-OUT HCT-OUT-U @ HCT-BIG-WANT$ T$= ;
 
 \ printf '' | hb --loadx  ->  rc 64, a record that names the flag, with a help
 \ that lists --load.
@@ -241,6 +299,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    T-RESET
    HCT-PREPARE
    HCT-EXPECT-LOAD-STDIN
+   HCT-EXPECT-STDIN-GROWS
    HCT-EXPECT-UNKNOWN-FLAG
    HCT-EXPECT-FLAG-BEFORE-STDIN
    HCT-EXPECT-CHECK-USAGE

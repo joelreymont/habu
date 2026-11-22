@@ -1,62 +1,35 @@
 split-str
 \ source.f - checked source materialization helpers. Callers supply output
 \ buffers: appending past one throws E-FS-CAPACITY, and file or stdin failures
-\ throw named filesystem errors. READ-STDIN-ALL probes one byte past a full
-\ buffer, so overflow fails closed.
+\ throw named filesystem errors. READ-STDIN-ALL appends all of standard input to
+\ the vector; growth leaves earlier blocks unwiped, and a full vector grows even
+\ for the read that finds the end, so a caller reading a secret first reserves
+\ more room than the secret takes.
 \ A whole read fills storage that room gives and may move, so each read goes to
 \ room's latest answer. The first room is the size sample and one byte more, at
 \ least SOURCE-ROOM-MIN, so an unchanged file fills it short and the next read
 \ finds its end; a sampled read that fills it holds more than the sample, which
 \ is E-FS-CHANGED. A read with no sample doubles a full room.
-\ STORAGE CLASS. PROCESS-WIDE: the stdin probe byte and READ-STDIN-ALL's
-\ SOURCE-LEN/SOURCE-RD are module variables; single-task.
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 \ LINT-LEX (src/lib/source-lex.f) and the loader share the token-class words.
 
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/lib/vector.f
 require src/lib/source-syntax.f
 require src/core/compile-reads.f
 
 package SOURCE
 private
 
-1 constant SOURCE-PROBE-CAP
 0 constant SOURCE-NUL
 10 constant SOURCE-LF
 13 constant SOURCE-CR
 32 constant SOURCE-SPACE
 34 constant SOURCE-DQ
 92 constant SOURCE-BACKSLASH
-
-create SOURCE-PROBE SOURCE-PROBE-CAP allot
-
-variable SOURCE-LEN
-variable SOURCE-RD
-
-: SOURCE-READ-PROBE ( -- )
-   0 SOURCE-PROBE SOURCE-PROBE-CAP read SOURCE-RD !
-   SOURCE-RD @ 0 < if E-FS-IO throw then
-   SOURCE-RD @ 0 > if E-FS-CAPACITY throw then ;
-
-public
-
-: READ-STDIN-ALL ( ^u8 len -- len ) {: dst:^ cap :}
-   cap LEN>N 0 < if E-FS-CAPACITY throw then
-   0 >LEN SOURCE-LEN !
-   begin
-      cap LEN>N SOURCE-LEN @ LEN>N - dup 0 <= if
-         drop SOURCE-READ-PROBE SOURCE-LEN @ exit
-      then
-      0 dst SOURCE-LEN @ LEN>N + rot read SOURCE-RD !
-      SOURCE-RD @ 0 < if E-FS-IO throw then
-      SOURCE-RD @ 0= if SOURCE-LEN @ exit then
-      SOURCE-LEN @ LEN>N SOURCE-RD @ + >LEN SOURCE-LEN !
-   again ;
-
-private
-
 $7FFFFFFFFFFFFFFF constant SOURCE-NO-CAP    \ more than any read holds
 4096 constant SOURCE-ROOM-MIN
 
@@ -85,6 +58,30 @@ public
 : READ-WHOLE-FD ( n [ n -- ^u8 ] -- n )
    {: fd:n room :}
    fd 0 SOURCE-NO-CAP room SOURCE-READ-LOOP ;
+
+private
+
+: STDIN-ROOM ( ^VEC:vector<u8> -- )
+   {: v:^ :}
+   v VEC:COUNT v VEC:CAP < if exit then
+   v  v VEC:CAP 2 * SOURCE-ROOM-MIN max  VEC:RESERVE ;
+
+\ One read into the spare room, appended; answers whether it found the end.
+: STDIN-STEP ( ^VEC:vector<u8> -- bool )
+   {: v:^ :}
+   v STDIN-ROOM
+   v VEC:COUNT {: old:n :}
+   v VEC:SPAN SPAN:$ drop old + {: at:^ :}
+   0 at v VEC:CAP old - read {: got:n :}
+   got 0 < if E-FS-IO throw then
+   v old got + VEC:ENSURE
+   got 0= ;
+
+public
+
+: READ-STDIN-ALL ( ^VEC:vector<u8> -- )
+   {: v:^ :}
+   begin v STDIN-STEP until ;
 
 private
 
