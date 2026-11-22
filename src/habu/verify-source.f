@@ -25,11 +25,11 @@ split-str
 \ slot holds the bytes the engine's literal makes: a plain literal's source
 \ span, an escaped one's decoded payload. It resets per NEXT-SCAN call, so at a
 \ token it holds the literal before it in the same statement, if any, or before
-\ a `>str` before it. The literal's kind is kept too, 0 when there is none: a
-\ composition rejects a string loader by it. So is where its text between the
-\ quotes starts and ends in the file, as written, escapes and all, the end 0
-\ when there is none: the span a string loader's load reports, and the text a
-\ names: call compares.
+\ the `>str` NEXT-TOP reads past. The literal's kind is kept too, 0 when there
+\ is none: a composition rejects a string loader by it. So is where its text
+\ between the quotes starts and ends in the file, as written, escapes and all,
+\ the end 0 when there is none: the span a string loader's load reports, and
+\ the text a names: call compares.
 \
 \ An escaped literal's decoded bytes are not in the source, so they live in one
 \ of two buffers. STR-DEC-TURN names the one the next decode writes, and a
@@ -227,6 +227,7 @@ variable STR-LAST-U
 variable STR-LAST-KIND
 variable STR-LAST-AT
 variable STR-LAST-END
+variable STR-LAST-PAST                        \ the slot's literal passed its `>str`
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
 PTR-VARIABLE TOP-REFUSED
@@ -498,7 +499,7 @@ variable FLAG-N
 
 : STR-LAST-RESET ( -- )
    NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND !
-   0 STR-LAST-AT !  0 STR-LAST-END ! ;
+   0 STR-LAST-AT !  0 STR-LAST-END !  0 STR-LAST-PAST ! ;
 
 \ Record the bytes A U a literal of the given kind makes and its text as
 \ written, the RAWU bytes at RAW in the bytes being scanned.
@@ -508,7 +509,8 @@ variable FLAG-N
    u STR-LAST-U !
    kind STR-LAST-KIND !
    raw SOURCE@ - STR-LAST-AT !
-   STR-LAST-AT @ rawu + STR-LAST-END ! ;
+   STR-LAST-AT @ rawu + STR-LAST-END !
+   0 STR-LAST-PAST ! ;
 
 \ The kinds of literal discovery tells apart before a loader: an `s"` or `S"`
 \ one, plain or escaped, is a path; a `c"`, `C"` or `."` one is no string a
@@ -691,16 +693,10 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
       CSR-SKIPPED
    AGAIN ;
 
-\ A `>str` after a literal is the identity it is at run time: the scan reads
-\ past it as it reads past the literal, which stays in the slot.
 : NEXT-SCAN ( -- str )
    -1 SKIP-STRINGS !
    STR-LAST-RESET
-   BEGIN
-      NEXT  2dup s" >str" STR=CI  STR-LAST-KIND @ 0<>  and
-   WHILE
-      2drop CSR-SKIPPED
-   REPEAT ;
+   NEXT ;
 
 : NEXT-BODY ( -- str )
    0 SKIP-STRINGS !
@@ -918,18 +914,27 @@ private
 
 \ The loader words the file being read has declared a word of, and those it has
 \ retired: past either, the walk, which holds no wordlists, cannot tell which
-\ word the spelling names.
+\ word the spelling names. SHADOWED holds STR-BIT too.
 variable SHADOWED
 variable RETIRED
+
+\ SHADOWED's bit for `>str`: past the file's own, a `>str` spends the literal
+\ before it.
+$20 constant STR-BIT
 
 \ The symbol of the newest definition, which an `immediate` marks: 0 from its
 \ name until it is recorded, so one after a refused definition marks nothing.
 \ A definer that can end without DEFINED clears it as it starts.
 variable NEWEST-SYM
 
-: NAME-DECLARED ( str -- )
+: NAME-DECLARED ( str -- ) {: a:^ u:n :}
    0 NEWEST-SYM !
-   LOADER-BIT SHADOWED @ or SHADOWED ! ;
+   a u LOADER-BIT SHADOWED @ or SHADOWED !
+   a u s" >str" STR=CI IF STR-BIT SHADOWED @ or SHADOWED ! THEN ;
+
+\ Whether the token is `>str` as the engine defines it, an identity at run time.
+: ENGINE-STR? ( str -- bool )
+   s" >str" STR=CI  SHADOWED @ STR-BIT and 0=  and ;
 
 : NAME-RETIRED ( str -- )
    LOADER-BIT RETIRED @ or RETIRED ! ;
@@ -956,9 +961,10 @@ variable NEWEST-SYM
 
 \ The kind (LIT-KIND) of the literal the body token before closed, 0 for none.
 variable BODY-LIT-KIND
+variable BODY-LIT-PAST                        \ that literal passed its `>str`
 
 : BODY-PREV-CLEAR ( -- )
-   0 BODY-LIT-KIND ! ;
+   0 BODY-LIT-KIND !  0 BODY-LIT-PAST ! ;
 
 \ Whether the scan models the load of a sealed engine: this one, composing. A stage source
 \ certified without composing keeps its packages open until its capture seals them.
@@ -1088,10 +1094,11 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
    a u s" include" STR=CI  a u s" require" STR=CI or
    BODY-LIT-KIND @ LIT-PATH = or IF a u QUIET-USE THEN ;
 
-\ A `>str` after a literal keeps its kind for the token after it.
 : BODY-TOKEN-SEEN ( str -- ) {: a:^ u:n :}
    a u BODY-USE
-   a u s" >str" STR=CI  BODY-LIT-KIND @ 0<>  and IF EXIT THEN
+   a u ENGINE-STR?  BODY-LIT-KIND @ 0<> and  BODY-LIT-PAST @ 0= and IF
+      -1 BODY-LIT-PAST ! EXIT
+   THEN
    BODY-PREV-CLEAR ;
 
 \ The rest starts with the opener's one delimiter, which the blank BODY-APPEND
@@ -4076,9 +4083,20 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
    2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
    2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
-   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!   \ a literal's record lasts past a `>str` to the token after
+   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!   \ a literal's record lasts the token after it, or after its `>str`
    TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
    TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP ;     \ after any file this token loaded
+
+\ The first `>str` after a literal, unless the file declared its own, is the
+\ identity it is at run time: the scan reads past it as it reads past the
+\ literal, which stays in the slot, and offers spellings in it as at a token.
+: NEXT-TOP ( -- str )
+   NEXT-SCAN
+   BEGIN
+      2dup ENGINE-STR?  STR-LAST-KIND @ 0<> and  STR-LAST-PAST @ 0= and
+   WHILE
+      2drop CSR-TOP  -1 STR-LAST-PAST !  NEXT
+   REPEAT ;
 
 \ A record no source places is placed at the top-level token.
 : VERIFY-SOURCE ( -- )
@@ -4088,7 +4106,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    0 SHADOWED !  0 RETIRED !  0 NEWEST-SYM !
    TOP-CLOSE
    BEGIN
-      NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
+      NEXT-TOP dup 0 > TICK-REMAINDER @ 0= and WHILE
       TOP-DUE
       2dup TOP-CUR-U ! TOP-CUR-A !
       [: TOP-CUR-A @ TOP-CUR-U @ SCAN-TOP ;] REJECTION:READING

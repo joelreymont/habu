@@ -176,6 +176,24 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" dyn.f" S\" required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS ;
 
+\ The first `>str` after a path literal is an identity at run time: the walk
+\ reads past it at top level and in a body, but not past a second, nor past one
+\ the file defined.
+: SDT-STR$ ( -- str )
+   S\" s\" sd-s0.f\" >str s\" sd-s1.f\" >str required\n: L ( -- ) s\" sd-s2.f\" >str required ;\n: M ( -- ) s\" sd-s3.f\" >str >str required ;\n" ;
+
+: SDT-TEST-STR ( -- )
+   s" str.f" SDT-STR$ SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   SOURCE-EVENT:COUNT 2 T=
+   0 SOURCE-EVENT:PATH@ s" sd-s1.f" SDT-PATH T$=
+   1 SOURCE-EVENT:PATH@ s" sd-s2.f" SDT-PATH T$=
+   s" str-twice.f" S\" s\" sd-s4.f\" >str >str required\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
+   s" str-own.f" S\" : >str ( ^u8 n -- str ) ;\n: N ( -- ) s\" sd-s5.f\" >str required ;\ns\" sd-s6.f\" >str required\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
+   SOURCE-EVENT:COUNT 0 T= ;
+
 : SDT-TEST-OPENER ( -- )
    s" opener.f" S\" C\\\" sd-g.f\" required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-OPENER SDT-STOPS ;
@@ -840,6 +858,7 @@ public
    SDT-TEST-WIDE
    SDT-TEST-EMIT
    SDT-TEST-DYNAMIC
+   SDT-TEST-STR
    SDT-TEST-OPENER
    SDT-TEST-COLON-BODY
    SDT-TEST-USER-DEFINER
