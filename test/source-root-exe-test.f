@@ -339,8 +339,8 @@ variable DEEP-U
    s" package SOURCE-ROOT-EXE-TREE" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   s"    SOURCE-ROOT:ENGINE$ type cr" PLINE
-   S\"    s\q src/lib/string.f\q REQUIRE-REG:ENGINE-PROVIDES? YN ;" PLINE
+   s"    SOURCE-ROOT:ENGINE$ str> type cr" PLINE
+   S\"    s\q src/lib/string.f\q >str REQUIRE-REG:ENGINE-PROVIDES? YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE ;
@@ -366,7 +366,7 @@ variable DEEP-U
 : CWD-TREE ( -- )
    s" a working directory that is a Habu tree is the root" T-LABEL
    PROG-RESET
-   s" SOURCE-ROOT:ENGINE$ type cr" PLINE
+   s" SOURCE-ROOT:ENGINE$ str> type cr" PLINE
    s" require src/lib/string.f" PLINE
    s" require test/fixtures/source-root-exe/inner.f" PLINE
    PROC-ARGV-RESET
@@ -377,11 +377,11 @@ variable DEEP-U
 : LONE ( -- )
    s" a lone engine in a tree's working directory takes that tree" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ GATE$ S\" SOURCE-ROOT:ENGINE$ type cr\n" RUN-EXE
+   s" x/hb" HB-AT$ GATE$ S\" SOURCE-ROOT:ENGINE$ str> type cr\n" RUN-EXE
    SB-RESET GATE$ LINE SB$ 0 EXPECT
    s" elsewhere it takes the working directory, and finds no library there" T-LABEL
    PROC-ARGV-RESET
-   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire test/fixtures/source-root-exe/inner.f\n"
+   s" x/hb" HB-AT$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ str> type cr\nrequire test/fixtures/source-root-exe/inner.f\n"
    RUN-EXE
    SB-RESET FOREIGN$ LINE SB$ STDOUT
    FOREIGN$ s" test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;
@@ -394,10 +394,10 @@ variable DEEP-U
    s" package SOURCE-ROOT-EXE-PARTIAL" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   s"    SOURCE-ROOT:ENGINE$ type cr" PLINE
-   S\"    s\q src/lib/string.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   s"    SOURCE-ROOT:ENGINE$ str> type cr" PLINE
+   S\"    s\q src/lib/string.f\q >str REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
    s"    REQUIRE-REG:SNAPSHOT" PLINE
-   S\"    s\q src/lib/string.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/string.f\q >str REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
    s"    REQUIRE-REG:RESTORE ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -412,7 +412,7 @@ variable DEEP-U
    s" package SOURCE-ROOT-EXE-Q" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   s"    SOURCE-ROOT:ENGINE$ type cr" PLINE
+   s"    SOURCE-ROOT:ENGINE$ str> type cr" PLINE
    s"    SOURCE-ROOT-EXE-NOT-TREE:MARK 4 = YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -427,7 +427,7 @@ variable DEEP-U
    T-LABEL
    PROG-RESET
    SB-RESET S\" s\q " SB-APPEND s" q/src/lib/error.f" A$ SB-APPEND
-   S\" \q required" SB-APPEND SB$ PLINE
+   S\" \q >str required" SB-APPEND SB$ PLINE
    NOT-TREE-RUN
    s" so is one a relative require reaches under CD" T-LABEL
    PROG-RESET
@@ -490,9 +490,9 @@ variable DEEP-U
    s" package SOURCE-ROOT-EXE-ALIAS" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   S\"    s\q src/lib/error.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
-   S\"    s\q src/core/util.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
-   S\"    s\q branch/../src/lib/error.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/error.f\q >str REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/core/util.f\q >str REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q branch/../src/lib/error.f\q >str REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT-EXE-OTHER:MARK 3 = YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -504,7 +504,7 @@ variable DEEP-U
 : FIX-1 ( -- )
    s" the root's file required through its parent directory is the engine's" T-LABEL
    PROC-ARGV-RESET
-   s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire b/src/lib/error.f\n"
+   s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ str> type cr\nrequire b/src/lib/error.f\n"
    RUN-EXE
    SB-RESET s" b" A$ LINE SB$ 0 EXPECT
    s" the root's files reached through a symlinked working directory are the engine's"
@@ -522,10 +522,10 @@ variable DEEP-U
    s" package SOURCE-ROOT-EXE-FACT" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   S\"    SOURCE-ROOT:CWD$ s\q src/lib/error.f\q SOURCE-ROOT:JOIN provided" PLINE
-   S\"    s\q test/fixtures/source-root-exe/inner.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
-   S\"    s\q src/lib/error.f\q REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
-   s"    SOURCE-ROOT:RESOLVED-ROOT$ type cr ;" PLINE
+   S\"    SOURCE-ROOT:CWD$ s\q src/lib/error.f\q >str SOURCE-ROOT:JOIN provided" PLINE
+   S\"    s\q test/fixtures/source-root-exe/inner.f\q >str SOURCE-ROOT:RESOLVE drop drop" PLINE
+   S\"    s\q src/lib/error.f\q >str REQUIRE-REG:ENGINE-PROVIDES? YN" PLINE
+   s"    SOURCE-ROOT:RESOLVED-ROOT$ str> type cr ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
    RUN-TREE
@@ -537,7 +537,7 @@ variable DEEP-U
    s" package SOURCE-ROOT-EXE-BOOT" PLINE
    s" : RUN ( -- )" PLINE
    s"    REQUIRE-REG:BOOT-OPEN" PLINE
-   S\"    SOURCE-ROOT:CWD$ s\q x.f\q SOURCE-ROOT:JOIN required ;" PLINE
+   S\"    SOURCE-ROOT:CWD$ s\q x.f\q >str SOURCE-ROOT:JOIN required ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
    s" foreign/x.f" NULL$ TEXT
@@ -608,7 +608,7 @@ variable DEEP-U
    s" CD in a root scope lasts to the end of the scope" T-LABEL
    PROG-RESET
    SB-RESET S\" : G ( -- ) s\q " SB-APPEND TOP$ SB-APPEND
-   S\" \q [: SOURCE-ROOT:CD SOURCE-ROOT:CD ;] SOURCE-ROOT:WITH SOURCE-ROOT:CD ;" SB-APPEND
+   S\" \q >str [: SOURCE-ROOT:CD SOURCE-ROOT:CD ;] SOURCE-ROOT:WITH SOURCE-ROOT:CD ;" SB-APPEND
    SB$ PLINE
    s" G cd" PLINE
    RUN-TREE

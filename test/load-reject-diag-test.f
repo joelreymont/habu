@@ -300,15 +300,15 @@ undefine include
 
 : RUNTIME-FIXTURE! ( -- )
    RUNTIME$ s" " FS:WRITE-ALL
-   S\" : RUN-I ( -- ) s\" " S\" \" included ; " RUNTIME-DEF+
-   S\" : RUN-R ( -- ) s\" " S\" \" required ; " RUNTIME-DEF+
-   S\" : RUN-P ( -- ) s\" " S\" \" provided ; RUN-I RUN-R RUN-P" RUNTIME-DEF+ ;
+   S\" : RUN-I ( -- ) s\" " S\" \" >str included ; " RUNTIME-DEF+
+   S\" : RUN-R ( -- ) s\" " S\" \" >str required ; " RUNTIME-DEF+
+   S\" : RUN-P ( -- ) s\" " S\" \" >str provided ; RUN-I RUN-R RUN-P" RUNTIME-DEF+ ;
 
 : RESIDUE-FIXTURES! ( -- )
    RES$ s" 1 2" FS:WRITE-ALL
    RTYPE$ s\" NEWTYPE lrd-length\n0" FS:WRITE-ALL
    s" require " RES$ s" " RNEST$ FRAG-FIXTURE!
-   S\" : LRD-T ( -- ) [: s\" " RES$ S\" \" required ;] catch . ; LRD-T"
+   S\" : LRD-T ( -- ) [: s\" " RES$ S\" \" >str required ;] catch . ; LRD-T"
       RCATCH$ FRAG-FIXTURE! ;
 
 : POSITIVE-FIXTURES! ( -- )
@@ -783,9 +783,10 @@ undefine include
    SB-RESET
    S\" PTR-VARIABLE LRD-TOK-A  variable LRD-TOK-U\n" SB-APPEND
    S\" parse-name LRD-HERE LRD-TOK-U ! LRD-TOK-A !\n" SB-APPEND
-   S\" : LRD-MARK ( -- )\n   s\" E-LRD-MARK\" REJECTION:OPEN  s\" a kept record\" REJECTION:EMIT-STR\n"
-      SB-APPEND
-   S\"   LRD-TOK-A @ LRD-TOK-U @ REJECTION:AT  s\" here\" REJECTION:EMIT-STR\n" SB-APPEND
+   S\" : LRD-MARK ( -- )\n   s\" E-LRD-MARK\" >str REJECTION:OPEN\n" SB-APPEND
+   S\"   s\" a kept record\" >str REJECTION:EMIT-STR\n" SB-APPEND
+   S\"   LRD-TOK-A @ LRD-TOK-U @ >str REJECTION:AT\n" SB-APPEND
+   S\"   s\" here\" >str REJECTION:EMIT-STR\n" SB-APPEND
    S\"   REJECTION:KEEP ;\nLRD-MARK\ninclude " SB-APPEND  MARK$ SB-APPEND  10 SB-APPEND-C
    BODY$ SB$ FS:WRITE-ALL
    s" a token of an outer file is placed in that file under --load" T-LABEL
@@ -828,15 +829,15 @@ undefine include
 
 : TEST-REPLAY-TASK ( -- )
    s" a replay inside a definition while a task is live is rejected" T-LABEL
-   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( ^u8 n -- ) EFFECT:EMPTY define-word [: s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\nGO\ns\" LRD-OUTER\" RPL ;\n" FS:WRITE-ALL
+   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( str -- ) EFFECT:EMPTY define-word [: s\" : RA ( -- ) ;\" >str VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\nGO\ns\" LRD-OUTER\" >str RPL ;\n" FS:WRITE-ALL
    BODY$ RUN
    ERR$ s" error[E-VERIFY-WINDOW]: the checker's replay ran inside a definition while a task is live" COUNT-SUB 1 T=
-   BODY$ s" :10:15" ASSERT-AT
+   BODY$ s" :10:20" ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ 70 T=
    s" a task started inside a replay of a definition is rejected and the definition completes" T-LABEL
-   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: GO s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n: EV ( ^u8 n -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word [: RPL ;] catch . ;\ns\" OUTER\" EV 81 ;\nOUTER . cr\n: AFTER ( -- n ) 82 ;\nAFTER . cr\n" FS:WRITE-ALL
+   BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: GO s\" : RA ( -- ) ;\" >str VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n: EV ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word [: RPL ;] catch . ;\ns\" OUTER\" >str EV 81 ;\nOUTER . cr\n: AFTER ( -- n ) 82 ;\nAFTER . cr\n" FS:WRITE-ALL
    BODY$ RUN
    OUT$ s\" -3604\n81\n\n82\n\n" STR= TTRUE
    ERR-U @ 0 T=
@@ -847,21 +848,21 @@ undefine include
 \ action is rejected where it is kept.
 : TEST-WINDOW-KEPT ( -- )
    s" a verification kept as another verification's action is rejected" T-LABEL
-   BODY$ S\" require src/habu/verify-source.f\n: LRD-IN ( -- ) s\" : RB ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;\n: LRD-NEST ( -- ) s\" : RA ( -- ) ;\" [: LRD-IN ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;\nLRD-NEST\n" FS:WRITE-ALL
+   BODY$ S\" require src/habu/verify-source.f\n: LRD-IN ( -- ) s\" : RB ( -- ) ;\" >str VERIFY:SOURCE-BUF-IN-SCOPE ;\n: LRD-NEST ( -- ) s\" : RA ( -- ) ;\" >str [: LRD-IN ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;\nLRD-NEST\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
-      s" :3:50" BODY-REJECT-AT
-   ERR$ s" = found: ^u8 n [ -- renders parses nominal ]" CONTAINS? TTRUE ;
+      s" :3:55" BODY-REJECT-AT
+   ERR$ s" = found: str [ -- renders parses nominal ]" CONTAINS? TTRUE ;
 
 \ VERIFY:ON-CANDIDATE runs while a composition is open and states no facts, so
 \ installing a composition in it is rejected at the `is`.
 : TEST-COMPOSE-KEPT ( -- )
    s" a composition installed as the candidate hook is rejected" T-LABEL
-   BODY$ S\" require src/habu/verify-source.f\n: LRD-AGAIN ( ^u8 n ^u8 n n n -- )\n   2drop 2drop 2drop  s\" \" s\" b.f\" s\" b\" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;\n: LRD-HOOK ( -- ) ['] LRD-AGAIN is VERIFY:ON-CANDIDATE ;\nLRD-HOOK\n2 VERIFY:CURSOR!\ns\" DU\" s\" lrd-a.f\" s\" lrd-a\" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE\n" FS:WRITE-ALL
+   BODY$ S\" require src/habu/verify-source.f\n: LRD-AGAIN ( str str n n -- )\n   2drop drop drop  s\" \" >str s\" b.f\" >str s\" b\" >str VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;\n: LRD-HOOK ( -- ) ['] LRD-AGAIN is VERIFY:ON-CANDIDATE ;\nLRD-HOOK\n2 VERIFY:CURSOR!\ns\" DU\" >str s\" lrd-a.f\" >str s\" lrd-a\" >str VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE\n" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
       s" :4:33" BODY-REJECT-AT
-   ERR$ s" = found: [ ^u8 n ^u8 n n n -- renders parses nominal ]" CONTAINS? TTRUE ;
+   ERR$ s" = found: [ str str n n -- renders parses nominal ]" CONTAINS? TTRUE ;
 
 \ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
@@ -1286,23 +1287,23 @@ undefine include
 \ A path no file name holds is rejected by the loader word, labelled with why.
 : TEST-EMPTY-PATH ( -- )
    s" an empty path is rejected at its loader word" T-LABEL
-   BODY$ s\" s\" \" included" FS:WRITE-ALL
+   BODY$ s\" s\" \" >str included" FS:WRITE-ALL
    BODY$ RUN
    SB-RESET
    S\" error[E-PATH-RANGE]: `included` got an empty path\n --> " SB-APPEND
-   BODY$ SB-APPEND  S\" :1:6\n  |\n1 | s\" \" included\n" SB-APPEND
-   S\"   |      ^^^^^^^^ passes a path that is empty\n  = help: pass a path of 1 to " SB-APPEND
+   BODY$ SB-APPEND  S\" :1:11\n  |\n1 | s\" \" >str included\n" SB-APPEND
+   S\"   |           ^^^^^^^^ passes a path that is empty\n  = help: pass a path of 1 to " SB-APPEND
    PATH-CAP FMT:SB-INT  S\"  bytes\n\n" SB-APPEND
    70 ASSERT-REJECTED
    s" an empty path is rejected in one JSON line under REJECTION:JSON" T-LABEL
-   BODY$ S\" -1 REJECTION:JSON !\ns\" \" included" FS:WRITE-ALL
+   BODY$ S\" -1 REJECTION:JSON !\ns\" \" >str included" FS:WRITE-ALL
    BODY$ RUN
    SB-RESET
    S\" {\"severity\":\"error\",\"code\":\"E-PATH-RANGE\"" SB-APPEND
    S\" ,\"message\":\"`included` got an empty path\",\"file\":\"" SB-APPEND
    BODY$ SB-APPEND
-   S\" \",\"line\":2,\"column\":6,\"byte_start\":25,\"byte_end\":33" SB-APPEND
-   S\" ,\"token\":\"included\",\"source_line\":\"s\\\" \\\" included\"" SB-APPEND
+   S\" \",\"line\":2,\"column\":11,\"byte_start\":30,\"byte_end\":38" SB-APPEND
+   S\" ,\"token\":\"included\",\"source_line\":\"s\\\" \\\" >str included\"" SB-APPEND
    S\" ,\"label\":\"passes a path that is empty\",\"help\":\"pass a path of 1 to " SB-APPEND
    PATH-CAP FMT:SB-INT  S\"  bytes\"}\n" SB-APPEND
    70 ASSERT-REJECTED ;
@@ -1336,19 +1337,19 @@ variable LONG-U
 : LONG$ ( -- str )
    0 LONG-U !  S\" s\" /x/" LONG+
    LONG-QS 0 ?do [char] q LONG LONG-U @ + c!  1 LONG-U +! loop
-   S\" \" SOURCE-ROOT:CANONICAL drop 2drop" LONG+
+   S\" \" >str SOURCE-ROOT:CANONICAL drop drop" LONG+
    LONG LONG-U @ ;
 
 : TEST-PATH-PASS ( -- )
    s" CANON-OS's uncaught throw on an empty path prints its record" T-LABEL
    SB-RESET
    s" error[E-PATH-RANGE]: a path is empty" SB-APPEND
-   S\" s\" \" SOURCE-ROOT:CANON-OS drop 2drop" PATH-PASS-NOWHERE
+   S\" s\" \" >str SOURCE-ROOT:CANON-OS drop drop" PATH-PASS-NOWHERE
    HELP-MOST
    s" JOIN's uncaught throw on a negative root length prints its record" T-LABEL
    SB-RESET
    s" error[E-PATH-RANGE]: a path's length is -1, below 0" SB-APPEND
-   S\" s\" r\" drop -1 s\" x\" SOURCE-ROOT:JOIN 2drop" PATH-PASS-NOWHERE
+   S\" s\" r\" drop -1 >str s\" x\" >str SOURCE-ROOT:JOIN drop" PATH-PASS-NOWHERE
    HELP-MOST
    s" CANONICAL's uncaught throw on a long path prints its record" T-LABEL
    SB-RESET
@@ -1414,13 +1415,13 @@ variable LONG-U
 \ the definition's `;`, where the check runs, with the token in a `word` note.
 : TEST-UNSOURCED-RECORD ( -- )
    s" a rejection at an evaluated token is placed where the check runs" T-LABEL
-   BODY$ S\" true REJECTION:JSON !\n: OPEN2 ( ^u8 n -- ) EFFECT:EMPTY define-word s\" drop\" evaluate-closed ;\ns\" Q\" OPEN2 ( a comment ) ;\n" FS:WRITE-ALL
+   BODY$ S\" true REJECTION:JSON !\n: OPEN2 ( str -- ) EFFECT:EMPTY define-word s\" drop\" evaluate-closed ;\ns\" Q\" >str OPEN2 ( a comment ) ;\n" FS:WRITE-ALL
    BODY$ RUN
    s" E-INPUT-UNDERFLOW" ASSERT-NAMED
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" token" GJA-REQ s" ;" GJA-ASSERT-STR
    root s" line" 3 GJA-ASSERT-INT-FIELD
-   root s" column" 27 GJA-ASSERT-INT-FIELD
+   root s" column" 32 GJA-ASSERT-INT-FIELD
    root s" notes" GJA-REQ s" word" GJA-REQ s" drop" GJA-ASSERT-STR
    root GJA-RECORD-FORM ;
 

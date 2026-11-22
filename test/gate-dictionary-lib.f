@@ -135,7 +135,7 @@ variable LABEL-U
 : WRITE-MAIN-INCLUDED ( -- )
    SB-RESET
    INC-API$ SB-S"
-   s"  included" SB-LINE
+   s"  >str included" SB-LINE
    s" APP:GET ." SB-LINE
    INC-MAIN$ SB$ FS:WRITE-ALL ;
 
@@ -1181,10 +1181,10 @@ variable LABEL-U
    s" : GD-XV-CALL ( -- i64 ) GD-XV-INSTALL-FIVE GD-XV-ACTION ;" GE-SRC-LINE ;
 
 : VECTOR-READER-BODY ( -- )
-   s" defer GD-XV-READER ( -- ^u8 n )" GE-SRC-LINE
-   s" : GD-XV-LINE ( -- ^u8 n ) 0 script-argv$ ;" GE-SRC-LINE
+   s" defer GD-XV-READER ( -- str )" GE-SRC-LINE
+   s" : GD-XV-LINE ( -- str ) 0 script-argv$ ;" GE-SRC-LINE
    s" : GD-XV-ENABLE ( -- ) [: GD-XV-LINE ;] is GD-XV-READER ;" GE-SRC-LINE
-   s" : GD-XV-READ ( -- ^u8 n ) GD-XV-ENABLE GD-XV-READER ;" GE-SRC-LINE ;
+   s" : GD-XV-READ ( -- str ) GD-XV-ENABLE GD-XV-READER ;" GE-SRC-LINE ;
 
 : EXEC-VECTORS ( -- )
    GE-HB-RESET

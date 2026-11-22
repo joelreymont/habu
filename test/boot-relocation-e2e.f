@@ -53,8 +53,8 @@ variable RC
    s" entry.f" PATH!
    S\" require src/lib/c2-memory.f\nrequire src/lib/process.f\n" ENTRY+
    S\" package BOOT-RELOCATION-CHILD\npublic\n: RUN ( -- )\n" ENTRY+
-   S\" SCRIPT-ARGC 0 > if [: PROCESS:OWN-PATH 2drop ;] catch E-ENGINE-PATH <> if 77 throw then then\n" ENTRY+
-   S\" SOURCE-ROOT:CURRENT$ s\q src/lib/c2-memory.f\q SOURCE-ROOT:JOIN REQUIRE-REG:ENGINE-PROVIDES? 0= if 76 throw then\n" ENTRY+
+   S\" SCRIPT-ARGC 0 > if [: PROCESS:OWN-PATH drop ;] catch E-ENGINE-PATH <> if 77 throw then then\n" ENTRY+
+   S\" SOURCE-ROOT:CURRENT$ s\q src/lib/c2-memory.f\q >str SOURCE-ROOT:JOIN REQUIRE-REG:ENGINE-PROVIDES? 0= if 76 throw then\n" ENTRY+
    S\" s\q boot relocation: ok\q type cr ;\n;package\nBOOT-RELOCATION-CHILD:RUN\n" ENTRY+ ;
 
 : SETUP ( -- )

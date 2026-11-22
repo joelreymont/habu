@@ -314,9 +314,9 @@ private
       i DEEP-COUNT 1- < if
          S\" s\" " SB-APPEND prefix prefixu i 1+ DEEP-NAME+
          fail i 2 mod 0= or if
-            S\" \" included\n" SB-APPEND
+            S\" \" >str included\n" SB-APPEND
          else
-            S\" \" required\n" SB-APPEND
+            S\" \" >str required\n" SB-APPEND
          then
       else
          fail if S\" 9132 throw\n" SB-APPEND else
