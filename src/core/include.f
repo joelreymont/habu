@@ -689,7 +689,7 @@ public
 
 \ The canonical path and whether it exists, until the next CANONICAL call; a
 \ missing path's resolves only its longest existing prefix.
-: CANONICAL ( ^u8 n -- ^u8 n bool )
+: CANONICAL ( str -- str bool )
    ABSOLUTE!
    JOIN-BUF JOIN-U @ TRY-CANON if
       CANON-U @ NORMAL-FIT

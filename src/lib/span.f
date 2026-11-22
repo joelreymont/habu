@@ -1,7 +1,7 @@
 split-str
 \ span.f - a pointer that carries its reach: one two-cell value, a base `^t`
-\ and a reach in bytes, every access bounds-checked against it. The read-only
-\ ( ^u8 n ) pair stays the string idiom; SPAN:COPY takes it as its source.
+\ and a reach in bytes, every access bounds-checked against it. A read-only
+\ `str` stays the string idiom; SPAN:COPY takes one as its source.
 \ STORAGE CLASS. CALLER-OWNED: a span names its producer's storage; SPAN-BUFFER:
 \ and SPAN-CELLS: allot theirs.
 
@@ -48,7 +48,7 @@ public
 : CELL-LEN ( span<cell> -- n )
    LEN CELL-BYTES / ;
 
-: $ ( span<u8> -- ^u8 n )
+: $ ( span<u8> -- str )
    SPAN-SPAN:UNMAKE ;
 
 : BYTES ( span<cell> -- span<u8> )
@@ -104,7 +104,7 @@ public
    v s i CELL-AT ! ;
 
 \ All of it or none of it.
-: COPY ( ^u8 n span<u8> -- ) {: src u s :}
+: COPY ( str span<u8> -- ) {: src u s :}
    u 0 < if E-SPAN-LENGTH throw then
    s SPAN-SPAN:UNMAKE {: b l :}
    u l > if E-SPAN-CAPACITY throw then

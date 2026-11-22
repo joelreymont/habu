@@ -1140,7 +1140,8 @@ E2E-TREE:ROOT$ FS:CLEANUP-TREE+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:RC@ 70 T=
    E2E-TREE:OUT$ str> nip 0 T=
-   na nu >str E2E-TREE:AT-A str> SOURCE-ROOT:CANONICAL drop {: pa:^ pu:n :}
+   na nu >str E2E-TREE:AT-A SOURCE-ROOT:CANONICAL drop
+   str> {: pa:^ pu:n :}
    SB-RESET ha hu SB-APPEND pa pu SB-APPEND ta tu SB-APPEND
    E2E-TREE:ERR$ SB$ >str T$= ;
 s" test/tdt-nameless-newtype.f" s\" NEWTYPE\n" >str

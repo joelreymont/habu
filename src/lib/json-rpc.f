@@ -47,12 +47,12 @@ ENUM message
    VARIANT invalid FIELD code n FIELD why ^u8 FIELD why-len n FIELD id id ;VARIANT
 ;ENUM
 
-: ID$ ( id -- ^u8 n )  JSON--RPC-ID:UNMAKE ;
+: ID$ ( id -- str )  JSON--RPC-ID:UNMAKE ;
 : NULL-ID ( -- id )  s" null" JSON--RPC-ID:MAKE ;
 
 \ Whether a method's JSON text, as >MESSAGE gives it, names this method once
 \ decoded: `"initialize"` names initialize.
-: METHOD? ( ^JSON:cursor ^u8 n ^u8 n -- bool )
+: METHOD? ( ^JSON:cursor str str -- bool )
    {: st:^ m:^ mu:n name:^ nu:n :}
    st m mu READ-INIT
    READ-NEXT drop
@@ -234,7 +234,7 @@ STRUCTURE envelope
 public
 
 \ Params absent or null are empty; a body that is not JSON is PARSE-ERROR.
-: >MESSAGE ( ^JSON:cursor ^u8 n -- message )
+: >MESSAGE ( ^JSON:cursor str -- message )
    {: st:^ body:^ len:n :}
    0 NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
    2drop drop {: m :}
@@ -266,7 +266,7 @@ public
    WRITE-COMMA  s" result" WRITE-KEY ;
 
 \ A whole error reply: `{"jsonrpc":"2.0","id":ID,"error":{"code":N,"message":M}}`.
-: ERROR ( ^JSON:writer id n ^u8 n -- ^JSON:writer )
+: ERROR ( ^JSON:writer id n str -- ^JSON:writer )
    {: code:n msg:^ mu:n :}
    ID-TEXT$ {: a:^ u:n :}
    HEAD a u ID-FIELD

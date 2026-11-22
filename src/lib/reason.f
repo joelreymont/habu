@@ -67,7 +67,7 @@ public
 
 \ The text of the calling task's last REASON:THROW when that threw code n, else
 \ empty; valid until the task's next REASON:THROW or REASON:STOP.
-: TEXT$ ( n -- ^u8 n ) {: code:n :}
+: TEXT$ ( n -- str ) {: code:n :}
    code 0=  LAST-CODE @ code <>  or if s" " exit then
    LAST-TEXT VEC:SPAN SPAN:$ ;
 

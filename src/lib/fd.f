@@ -274,7 +274,7 @@ public
 
 
 \ TRY-WRITE-FULL, with E-FS-IO for anything short of `all`.
-: WRITE-FULL ( fd ^u8 n -- )
+: WRITE-FULL ( fd str -- )
    TRY-WRITE-FULL MATCH wrote
       all OF ENDOF
       none OF E-FS-IO throw ENDOF

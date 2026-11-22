@@ -517,7 +517,7 @@ public
 \ anything else before the path E-URI-AUTHORITY, a `%` without two hex digits
 \ or a bare `?` or `#` E-URI-ESCAPE, a short span E-SPAN-CAPACITY and a
 \ negative length E-SPAN-LENGTH.
-: FILE>PATH ( ^u8 n SPAN:span<u8> -- n )
+: FILE>PATH ( str SPAN:span<u8> -- n )
    {: a:^ u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    a u PATH-AT {: at:n :}

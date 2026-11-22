@@ -77,9 +77,9 @@ public
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
 -9400 s" a notification's params lack a member the server reads, or hold one of another kind"
-   ERROR:CODE E-LSP-PARAMS
+   >str ERROR:CODE E-LSP-PARAMS
 -9401 s" a request or notification names a document that is not open: send didOpen for it first"
-   ERROR:CODE E-LSP-NOT-OPEN
+   >str ERROR:CODE E-LSP-NOT-OPEN
 
 -32002 constant NOT-INITIALIZED          \ LSP's ServerNotInitialized
 -32800 constant REQUEST-CANCELLED        \ LSP's RequestCancelled
@@ -171,9 +171,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: i :}
    WRITER i RESULT WRITE-NULL END SENT ;
 
-: REPLY-ERROR ( JSON-RPC:id n ^u8 n -- )
-   {: i code:n m:^ mu:n :}
-   WRITER i code m mu ERROR SENT ;
+: REPLY-ERROR ( JSON-RPC:id n str -- )
+   {: i code:n m :}
+   WRITER i code m ERROR SENT ;
 
 : REPLY-CAPABILITIES ( JSON-RPC:id -- )
    {: i :}
@@ -232,14 +232,14 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: v :}
    READ-SPAN$ nip {: raw:n :}
    v raw ROOM
-   v @ SPAN:$ READ-STR ;
+   v @ SPAN:$ str> READ-STR ;
 
 : STRING-AT ( JSON:reader n ^SPAN:span<u8> -- ^u8 n )
    {: v :}
    T-STR <> if E-LSP-PARAMS throw then
    v DECODE {: n:n :}
    READ-CLOSE
-   v @ SPAN:$ drop n ;
+   v @ SPAN:$ str> drop n ;
 
 : DOC-STRING ( ^u8 n ^u8 n ^SPAN:span<u8> -- ^u8 n )
    {: p:^ pu:n k:^ ku:n v :}
@@ -258,8 +258,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : PATH ( ^u8 n -- ^u8 n )
    {: u:^ uu:n :}
    PATH-SPAN uu ROOM
-   u uu PATH-SPAN @ URI:FILE>PATH {: n:n :}
-   PATH-SPAN @ SPAN:$ drop n ;
+   u uu >str PATH-SPAN @ URI:FILE>PATH {: n:n :}
+   PATH-SPAN @ SPAN:$ str> drop n ;
 
 \ A range is incremental sync, not offered.
 : CHANGE-MEMBER ( JSON:reader -- JSON:reader )
@@ -335,7 +335,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu DOC-URI OPEN-SLOT {: slot:n :}
    p pu DOC-VERSION {: v:n :}
    p pu CHANGES {: n:n :}
-   slot v TEXT-SPAN @ SPAN:$ drop n DOC-CHANGE
+   slot v TEXT-SPAN @ SPAN:$ str> drop n DOC-CHANGE
    slot READERS-DIRTY
    p pu ;
 
@@ -354,7 +354,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       s" uri" READ-STR-EQ? if
          READ-NEXT T-STR <> if E-LSP-PARAMS throw then
          URI-SPAN DECODE {: n:n :}
-         URI-SPAN @ SPAN:$ drop n PATH SOURCE-ROOT:CANONICAL drop
+         URI-SPAN @ SPAN:$ str> drop n PATH
+         >str SOURCE-ROOT:CANONICAL drop str>
          true DIRTY-DEPENDENTS
       else READ-NEXT drop READ-SKIP-VALUE then
    repeat ;
@@ -379,18 +380,18 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : GUARDED ( ^u8 n ^u8 n [ ^u8 n -- ^u8 n ] -- )
    {: m:^ mu:n p:^ pu:n q :}
    p pu q catch {: code:n :} 2drop
-   code REASON:TEXT$ {: why:^ wu:n :}
+   code REASON:TEXT$ str> {: why:^ wu:n :}
    code 0= if exit then
    code IGNORABLE? 0= if code throw then
    SB-RESET s" lsp: ignored " SB-APPEND m mu SB-APPEND
    s" : throw " SB-APPEND code FMT:SB-INT
    wu 0<> if s" : " SB-APPEND why wu SB-APPEND then
    10 SB-APPEND-C
-   FD:STDERR SB$ FD:WRITE-FULL ;
+   FD:STDERR SB$ >str FD:WRITE-FULL ;
 
-: NAMED? ( ^u8 n ^u8 n -- bool )
-   {: m:^ mu:n name:^ nu:n :}
-   JSON-ST m mu name nu METHOD? ;
+: NAMED? ( str str -- bool )
+   {: m name :}
+   JSON-ST m name METHOD? ;
 
 \ Only a running server takes a notification other than exit; the rest are
 \ dropped, as unknown ones always are. One the server cannot apply (params it
@@ -399,22 +400,32 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ response from the client is dropped: the server asks nothing.
 : NOTIFIED ( ^u8 n ^u8 n -- )
    {: m:^ mu:n p:^ pu:n :}
-   m mu s" exit" NAMED? if s" " EXIT-CODE die then
+   m mu >str {: ms :}
+   ms s" exit" >str NAMED? if s" " EXIT-CODE die then
    RUNNING? 0= if exit then
-   m mu s" textDocument/didOpen" NAMED? if m mu p pu [: DID-OPEN ;] GUARDED exit then
-   m mu s" textDocument/didChange" NAMED? if m mu p pu [: DID-CHANGE ;] GUARDED exit then
-   m mu s" textDocument/didClose" NAMED? if m mu p pu [: DID-CLOSE ;] GUARDED exit then
-   m mu s" textDocument/didSave" NAMED? if DOC-DIRTY-ALL exit then
-   m mu s" workspace/didChangeWatchedFiles" NAMED? if m mu p pu [: DID-WATCH ;] GUARDED then ;
+   ms s" textDocument/didOpen" >str NAMED? if
+      m mu p pu [: DID-OPEN ;] GUARDED exit
+   then
+   ms s" textDocument/didChange" >str NAMED? if
+      m mu p pu [: DID-CHANGE ;] GUARDED exit
+   then
+   ms s" textDocument/didClose" >str NAMED? if
+      m mu p pu [: DID-CLOSE ;] GUARDED exit
+   then
+   ms s" textDocument/didSave" >str NAMED? if DOC-DIRTY-ALL exit then
+   ms s" workspace/didChangeWatchedFiles" >str NAMED? if
+      m mu p pu [: DID-WATCH ;] GUARDED
+   then ;
 
 \ ---- held messages -----------------------------------------------------------
 
 : HELD? ( -- bool )  HELD-NEXT @ HELD-COUNT @ < ;
 
-: HELD$ ( n -- ^u8 n )
+: HELD$ ( n -- str )
    {: k:n :}
    k 0= if 0 else k 1- HELD-ENDS @ then {: at:n :}
-   HELD-B @ VEC:SPAN SPAN:$ drop at +  k HELD-ENDS @ at - ;
+   HELD-B @ VEC:SPAN SPAN:$ str> drop at +
+   k HELD-ENDS @ at - >str ;
 
 : HOLD ( ^u8 n -- )
    HELD-B @ VEC:APPEND
@@ -422,24 +433,26 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    HELD-B @ VEC:COUNT HELD-COUNT @ HELD-ENDS !
    1 HELD-COUNT +! ;
 
-: NOTICE? ( n ^u8 n -- ^u8 n bool )
-   {: k:n name:^ nu:n :}
+: NOTICE? ( n str -- ^u8 n bool )
+   {: k:n name :}
    JSON-ST k HELD$ >MESSAGE MATCH JSON-RPC:message
-      request OF 2drop 2drop ID$ 2drop s" " false ENDOF
-      notification OF {: m:^ mu:n p:^ pu:n :} p pu m mu name nu NAMED? ENDOF
-      success OF 2drop ID$ 2drop s" " false ENDOF
-      failure OF 2drop ID$ 2drop s" " false ENDOF
-      invalid OF ID$ 2drop 2drop drop s" " false ENDOF
+      request OF 2drop 2drop ID$ drop s" " false ENDOF
+      notification OF
+         {: m:^ mu:n p:^ pu:n :} p pu m mu >str name NAMED?
+      ENDOF
+      success OF 2drop ID$ drop s" " false ENDOF
+      failure OF 2drop ID$ drop s" " false ENDOF
+      invalid OF ID$ drop 2drop drop s" " false ENDOF
    ;MATCH ;
 
 \ What a cancel's id is matched against for the request with this id: a
 \ string's decoded text, in ID-SPAN, and true; else its JSON text and false.
 : ID-KEY ( JSON-RPC:id -- ^u8 n bool )
-   ID$ {: r:^ ru:n :}
+   ID$ str> {: r:^ ru:n :}
    JSON-ST r ru READ-INIT
    READ-NEXT T-STR = if ID-SPAN DECODE true else 0 false then {: n:n str:bool :}
    READ-CLOSE
-   str if ID-SPAN @ SPAN:$ drop n true exit then
+   str if ID-SPAN @ SPAN:$ str> drop n true exit then
    r ru false ;
 
 \ Whether params.id is the id this key gives: a string with this decoded text
@@ -463,7 +476,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : CANCELLED? ( JSON-RPC:id -- bool )
    ID-KEY {: k:^ ku:n str:bool :}
    HELD-COUNT @ HELD-NEXT @ ?do
-      i s" $/cancelRequest" NOTICE? if
+      i s" $/cancelRequest" >str NOTICE? if
          k ku str ID-PARAM? if true unloop exit then
       else 2drop then
    loop
@@ -481,7 +494,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    named if URI-SPAN DECODE else 0 then {: n:n :}
    READ-CLOSE
    named 0= if -1 exit then
-   URI-SPAN @ SPAN:$ drop n DOC-FIND MATCH option
+   URI-SPAN @ SPAN:$ str> drop n DOC-FIND MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -489,16 +502,17 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : CHANGED? ( n -- bool )
    {: slot:n :}
    HELD-COUNT @ HELD-NEXT @ ?do
-      i s" textDocument/didChange" NOTICE? if
+      i s" textDocument/didChange" >str NOTICE? if
          URI-SLOT slot = if true unloop exit then
       else 2drop then
    loop
    false ;
 
-: EDIT-NOTICE? ( n ^u8 n [ ^u8 n -- bool ] -- bool )
-   {: k:n name:^ nu:n affected :}
-   k name nu NOTICE? if
-      2dup [: DOC-URI PATH SOURCE-ROOT:CANONICAL drop ;] catch {: code:n :}
+: EDIT-NOTICE? ( n str [ ^u8 n -- bool ] -- bool )
+   {: k:n name affected :}
+   k name NOTICE? if
+      2dup [: DOC-URI PATH >str SOURCE-ROOT:CANONICAL drop str> ;]
+      catch {: code:n :}
       code 0<> if
          2drop 2drop
          code IGNORABLE? if false exit then
@@ -511,10 +525,14 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : HELD-EDITED? ( [ ^u8 n -- bool ] -- bool )
    {: affected :}
    HELD-COUNT @ HELD-NEXT @ ?do
-      i s" textDocument/didOpen" affected EDIT-NOTICE? if true unloop exit then
-      i s" textDocument/didChange" affected EDIT-NOTICE? if true unloop exit then
-      i s" textDocument/didClose" affected EDIT-NOTICE? if true unloop exit then
-      i s" textDocument/didSave" affected EDIT-NOTICE? if true unloop exit then
+      i s" textDocument/didOpen" >str affected EDIT-NOTICE?
+      if true unloop exit then
+      i s" textDocument/didChange" >str affected EDIT-NOTICE?
+      if true unloop exit then
+      i s" textDocument/didClose" >str affected EDIT-NOTICE?
+      if true unloop exit then
+      i s" textDocument/didSave" >str affected EDIT-NOTICE?
+      if true unloop exit then
    loop
    false ;
 
@@ -531,7 +549,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: len:n :}
    BODY-SPAN len ROOM
    INPUT BODY-SPAN @ BODY
-   BODY-SPAN @ len TAKE SPAN:$ HOLD ;
+   BODY-SPAN @ len TAKE SPAN:$ str> HOLD ;
 
 \ Whether stdin holds input, or its end, a poll that a signal cut short asked
 \ again.
@@ -568,11 +586,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : READ? ( JSON-RPC:id ^u8 n [ ^u8 n -- ^u8 n ] -- bool )
    {: i p:^ pu:n q :}
    p pu q catch {: code:n :} 2drop
-   code REASON:TEXT$ {: why:^ wu:n :}
+   code REASON:TEXT$ str> {: why:^ wu:n :}
    code 0= if true exit then
    code IGNORABLE? 0= if code throw then
    wu 0= if s" invalid params" else why wu then {: msg:^ msgu:n :}
-   i INVALID-PARAMS msg msgu REPLY-ERROR
+   i INVALID-PARAMS msg msgu >str REPLY-ERROR
    false ;
 
 : QUERY! ( ^u8 n -- ^u8 n )
@@ -580,7 +598,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu s" query" PARAM QUERY-SPAN STRING-AT QUERY-U ! drop
    p pu ;
 
-: QUERY$ ( -- ^u8 n )  QUERY-SPAN @ SPAN:$ drop QUERY-U @ ;
+: QUERY$ ( -- ^u8 n )  QUERY-SPAN @ SPAN:$ str> drop QUERY-U @ ;
 
 : SYMBOLS ( JSON-RPC:id ^u8 n -- )
    {: i p:^ pu:n :}
@@ -630,7 +648,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : UNCHANGED? ( JSON-RPC:id -- bool )
    {: i :}
    AT-SLOT @ CHANGED? 0= [: REQUEST-DEPENDS? ;] HELD-EDITED? 0= and if true exit then
-   i CONTENT-MODIFIED s" content modified" REPLY-ERROR
+   i CONTENT-MODIFIED s" content modified" >str REPLY-ERROR
    false ;
 
 \ Only a check that still owns positions can have stale inputs for a request.
@@ -646,7 +664,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    READ-WAITING
    i UNCHANGED? 0= if false exit then
    AT-SLOT @ CURRENT-INPUTS-FRESH? if true exit then
-   i CONTENT-MODIFIED s" content modified" REPLY-ERROR
+   i CONTENT-MODIFIED s" content modified" >str REPLY-ERROR
    false ;
 
 : DOCUMENT? ( JSON-RPC:id ^u8 n -- bool )
@@ -710,17 +728,17 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu s" newName" PARAM NAME-SPAN STRING-AT NAME-U ! drop
    p pu ;
 
-: NEW-NAME$ ( -- ^u8 n )  NAME-SPAN @ SPAN:$ drop NAME-U @ ;
+: NEW-NAME$ ( -- ^u8 n )  NAME-SPAN @ SPAN:$ str> drop NAME-U @ ;
 
 : RENAME! ( ^u8 n -- ^u8 n )  POSITION! NEW-NAME! ;
 
 \ The request's id copied out of the held bodies, which reading input during
 \ a check can grow and move.
 : KEEP-ID ( JSON-RPC:id -- JSON-RPC:id )
-   ID$ {: a:^ u:n :}
+   ID$ str> {: a:^ u:n :}
    KEPT-ID u ROOM
-   a u KEPT-ID @ SPAN:COPY
-   KEPT-ID @ SPAN:$ drop u JSON--RPC-ID:MAKE ;
+   a u >str KEPT-ID @ SPAN:COPY
+   KEPT-ID @ SPAN:$ str> drop u JSON--RPC-ID:MAKE ;
 
 : GATHER-CHANGED? ( -- bool )
    [: LSP-REFERENCES:TOUCHES? ;] HELD-EDITED? ;
@@ -729,11 +747,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: id :}
    READ-WAITING
    id CANCELLED? if
-      id REQUEST-CANCELLED s" request cancelled" REPLY-ERROR
+      id REQUEST-CANCELLED s" request cancelled" >str REPLY-ERROR
       true exit
    then
    GATHER-CHANGED? AT-SLOT @ CURRENT-INPUTS-FRESH? 0= or if
-      id CONTENT-MODIFIED s" content modified" REPLY-ERROR
+      id CONTENT-MODIFIED s" content modified" >str REPLY-ERROR
       true exit
    then
    false ;
@@ -776,7 +794,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    AT-BYTE!
    AT-SLOT @ AT-BYTE @ WITH-DECL @ LSP-REFERENCES:SELECT
    LSP-REFERENCES:REFUSED? if
-      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ >str REPLY-ERROR
       exit
    then
    i GATHERED? 0= if exit then
@@ -786,28 +804,28 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : RENAMEABLE? ( JSON-RPC:id -- bool )
    {: i :}
    AT-SLOT @ LSP-REFERENCES:RENAME-VERIFIED? 0= if
-      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ >str REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:REFUSED? if
-      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ >str REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:FOUND? 0= if i REPLY-NULL false exit then
    LSP-REFERENCES:PRIMITIVE? if
-      i REQUEST-FAILED LSP-REFERENCES:PRIMITIVE-RENAME$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:PRIMITIVE-RENAME$ >str REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:CONSTRUCTOR? if
-      i REQUEST-FAILED LSP-REFERENCES:CONSTRUCTOR-RENAME$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:CONSTRUCTOR-RENAME$ >str REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:SPELT? 0= if
-      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ >str REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:EXPORT? if
-      i REQUEST-FAILED LSP-REFERENCES:EXPORT$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:EXPORT$ >str REPLY-ERROR
       false exit
    then
    true ;
@@ -817,19 +835,19 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : APPLIES? ( JSON-RPC:id -- bool )
    {: i :}
    LSP-REFERENCES:SPELT? 0= if
-      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ >str REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:RE-EXPORTED? if
-      i REQUEST-FAILED LSP-REFERENCES:RE-EXPORT$ REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:RE-EXPORT$ >str REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:UNCOVERED? if
-      i REQUEST-FAILED s" Rename not applied" LSP-REFERENCES:UNCOVERED$ REPLY-ERROR
+      i REQUEST-FAILED s" Rename not applied" LSP-REFERENCES:UNCOVERED$ >str REPLY-ERROR
       false exit
    then
    NEW-NAME$ LSP-RENAME:QUALIFIED-WHY$ {: w:^ wu:n :}
-   wu 0<> if i REQUEST-FAILED w wu REPLY-ERROR false exit then
+   wu 0<> if i REQUEST-FAILED w wu >str REPLY-ERROR false exit then
    true ;
 
 : PREPARE-RENAME ( JSON-RPC:id ^u8 n -- )
@@ -844,7 +862,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i p pu [: RENAME! ;] READ? 0= if exit then
    i UNCHANGED? 0= if exit then
    NEW-NAME$ LSP-RENAME:WHY$ {: w:^ wu:n :}
-   wu 0<> if i REQUEST-FAILED w wu REPLY-ERROR exit then
+   wu 0<> if i REQUEST-FAILED w wu >str REPLY-ERROR exit then
    i CHECK-CURRENT? 0= if exit then
    AT-BYTE!
    AT-SLOT @ AT-BYTE @ true LSP-REFERENCES:SELECT
@@ -862,7 +880,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    READ-WAITING
    i UNCHANGED? 0= if exit then
    AT-SLOT @ CURRENT-INPUTS-FRESH? 0= if
-      i CONTENT-MODIFIED s" content modified" REPLY-ERROR exit
+      i CONTENT-MODIFIED s" content modified" >str REPLY-ERROR exit
    then
    WRITER i RESULT AT-SLOT @ LSP-COMPLETION:ANSWER END SENT ;
 
@@ -901,7 +919,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ file here is passed over.
 : ROOT-AT ( JSON:reader -- JSON:reader )
    URI-SPAN DECODE {: n:n :}
-   URI-SPAN @ SPAN:$ drop n
+   URI-SPAN @ SPAN:$ str> drop n
    [: 2dup PATH LSP-WORKSPACE:ROOT+ ;] catch {: code:n :} 2drop
    code 0= if exit then
    code E-PATH-RANGE =  code E-PATH-NUL = or
@@ -939,64 +957,66 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    if ROOT-AT then
    READ-CLOSE ;
 
-: STARTING-REQUEST ( JSON-RPC:id ^u8 n ^u8 n -- )
-   {: i m:^ mu:n p:^ pu:n :}
-   m mu s" initialize" NAMED? if
+: STARTING-REQUEST ( JSON-RPC:id str ^u8 n -- )
+   {: i m p:^ pu:n :}
+   m s" initialize" >str NAMED? if
       p pu MARKDOWN? HOVER-MD !
       p pu WORKSPACE!
       i REPLY-CAPABILITIES
       construct state running STATE!
    else
-      i NOT-INITIALIZED s" server not initialized" REPLY-ERROR
+      i NOT-INITIALIZED s" server not initialized" >str REPLY-ERROR
    then ;
 
-: RUNNING-REQUEST ( JSON-RPC:id ^u8 n ^u8 n -- )
-   {: i m:^ mu:n p:^ pu:n :}
+: RUNNING-REQUEST ( JSON-RPC:id str ^u8 n -- )
+   {: i m p:^ pu:n :}
    i CANCELLED? if
-      i REQUEST-CANCELLED s" request cancelled" REPLY-ERROR
+      i REQUEST-CANCELLED s" request cancelled" >str REPLY-ERROR
       exit
    then
-   m mu s" shutdown" NAMED? if
+   m s" shutdown" >str NAMED? if
       i REPLY-NULL
       construct state shut-down STATE!
       exit
    then
-   m mu s" initialize" NAMED? if
-      i INVALID-REQUEST s" server already initialized" REPLY-ERROR
+   m s" initialize" >str NAMED? if
+      i INVALID-REQUEST s" server already initialized" >str REPLY-ERROR
       exit
    then
-   m mu s" workspace/symbol" NAMED? if i p pu SYMBOLS exit then
-   m mu s" textDocument/documentSymbol" NAMED? if i p pu DOCUMENT-SYMBOLS exit then
-   m mu s" textDocument/definition" NAMED? if i p pu DEFINITION exit then
-   m mu s" textDocument/declaration" NAMED? if i p pu DEFINITION exit then
-   m mu s" textDocument/references" NAMED? if i p pu REFERENCES exit then
-   m mu s" textDocument/prepareRename" NAMED? if i p pu PREPARE-RENAME exit then
-   m mu s" textDocument/rename" NAMED? if i p pu RENAME exit then
-   m mu s" textDocument/hover" NAMED? if i p pu HOVER exit then
-   m mu s" textDocument/documentHighlight" NAMED? if i p pu HIGHLIGHT exit then
-   m mu s" textDocument/semanticTokens/full" NAMED? if i p pu SEMANTIC-TOKENS exit then
-   m mu s" textDocument/completion" NAMED? if i p pu COMPLETION exit then
-   m mu s" textDocument/documentLink" NAMED? if i p pu DOCUMENT-LINKS exit then
-   i METHOD-NOT-FOUND s" method not found" REPLY-ERROR ;
+   m s" workspace/symbol" >str NAMED? if i p pu SYMBOLS exit then
+   m s" textDocument/documentSymbol" >str NAMED? if i p pu DOCUMENT-SYMBOLS exit then
+   m s" textDocument/definition" >str NAMED? if i p pu DEFINITION exit then
+   m s" textDocument/declaration" >str NAMED? if i p pu DEFINITION exit then
+   m s" textDocument/references" >str NAMED? if i p pu REFERENCES exit then
+   m s" textDocument/prepareRename" >str NAMED? if i p pu PREPARE-RENAME exit then
+   m s" textDocument/rename" >str NAMED? if i p pu RENAME exit then
+   m s" textDocument/hover" >str NAMED? if i p pu HOVER exit then
+   m s" textDocument/documentHighlight" >str NAMED? if i p pu HIGHLIGHT exit then
+   m s" textDocument/semanticTokens/full" >str NAMED? if i p pu SEMANTIC-TOKENS exit then
+   m s" textDocument/completion" >str NAMED? if i p pu COMPLETION exit then
+   m s" textDocument/documentLink" >str NAMED? if i p pu DOCUMENT-LINKS exit then
+   i METHOD-NOT-FOUND s" method not found" >str REPLY-ERROR ;
 
-: REQUESTED ( JSON-RPC:id ^u8 n ^u8 n -- )
-   {: held m:^ mu:n p:^ pu:n :}
+: REQUESTED ( JSON-RPC:id str ^u8 n -- )
+   {: held m p:^ pu:n :}
    held KEEP-ID {: i :}
    STATE@ MATCH state
-      starting OF i m mu p pu STARTING-REQUEST ENDOF
-      running OF i m mu p pu RUNNING-REQUEST ENDOF
-      shut-down OF i INVALID-REQUEST s" server shut down" REPLY-ERROR ENDOF
+      starting OF i m p pu STARTING-REQUEST ENDOF
+      running OF i m p pu RUNNING-REQUEST ENDOF
+      shut-down OF i INVALID-REQUEST s" server shut down" >str REPLY-ERROR ENDOF
    ;MATCH ;
 
 \ ---- the loop ----------------------------------------------------------------
 
 : DISPATCH ( JSON-RPC:message -- )
    MATCH JSON-RPC:message
-      request OF REQUESTED ENDOF
+      request OF
+         {: i m:^ mu:n p:^ pu:n :} i m mu >str p pu REQUESTED
+      ENDOF
       notification OF NOTIFIED ENDOF
-      success OF 2drop ID$ 2drop ENDOF
-      failure OF 2drop ID$ 2drop ENDOF
-      invalid OF {: c:n w:^ wu:n i :} i c w wu REPLY-ERROR ENDOF
+      success OF 2drop ID$ drop ENDOF
+      failure OF 2drop ID$ drop ENDOF
+      invalid OF {: c:n w:^ wu:n i :} i c w wu >str REPLY-ERROR ENDOF
    ;MATCH ;
 
 \ The first held message served. It is passed before it is dispatched, so the
