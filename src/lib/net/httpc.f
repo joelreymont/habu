@@ -70,6 +70,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/le.f
+require src/lib/fd.f
 require src/lib/ffi-abi.f
 require src/lib/adt/option.f
 require src/lib/fsm.f
@@ -161,7 +162,7 @@ STRUCTURE conn OPAQUE DERIVE addr
    BUFFER node 256
    BUFFER service 8
    BUFFER hints 48
-   BUFFER pollfd 8
+   FIELD pollfd FD:pollfd
    BUFFER scratch 8
    FIELD tls TLS:session
 ;STRUCTURE
@@ -215,7 +216,6 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : NODE ( ^conn -- ^u8 ) CONN-NODE SPAN:$ drop ;
 : SERVICE ( ^conn -- ^u8 ) CONN-SERVICE SPAN:$ drop ;
 : HINTS ( ^conn -- ^u8 ) CONN-HINTS SPAN:$ drop ;
-: PFD ( ^conn -- ^u8 ) CONN-POLLFD SPAN:$ drop ;
 : SCRATCH ( ^conn -- ^u8 ) CONN-SCRATCH SPAN:$ drop ;
 : ROOM ( ^conn -- ^u8 ) CONN-ROOM @ ;
 
@@ -262,10 +262,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ One poll(2) of the socket: how many are ready, 0 after the timeout, or the
 \ errno negated.
 : POLL-ONCE ( ^conn n n -- n ) {: c events:n ms:n :}
-   c CONN-FD @ c PFD LE:U32!
-   events c PFD 4 + LE:U16!
-   0 c PFD 6 + LE:U16!
-   c PFD 1 ms poll ;
+   c CONN-FD @ >FD events FD:>POLLFD c CONN-POLLFD !
+   c CONN-POLLFD 1 ms poll ;
 
 \ True once the socket is ready for the events; a signal restarts the wait
 \ with what is left of it. False with the fault kept: timeout once the

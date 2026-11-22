@@ -11,6 +11,7 @@ require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/aio.f
 require src/lib/le.f
+require src/lib/fd.f
 
 package TCP4
 public
@@ -152,19 +153,17 @@ $1024 constant SO-NWRITE           \ Darwin's count of SIOCOUTQ, a socket option
 1 constant SHUT-WR
 2 constant SHUT-RDWR
 
-\ Endpoint storage is per task, raw bytes the kernel reads and fills: a $10
-\ sockaddr_in, a $04 socklen_t, the $04 int a socket option is set from, and
-\ the $08 pollfd a transfer waits through (int fd, short events, short
-\ revents). Calls must not nest within one task; readers sharing a connection
-\ coordinate themselves.
+\ Endpoint storage is per task: a $10 sockaddr_in, a $04 socklen_t and the
+\ $04 int a socket option is set from, raw bytes the kernel reads and
+\ fills, and the pollfd a transfer waits through. Calls must not nest
+\ within one task; readers sharing a connection coordinate themselves.
 $10 TASK:+USERS SOCKADDR-ROW u8
 4 TASK:+USERS ADDRLEN-ROW u8
 4 TASK:+USERS OPTION-ROW u8
-8 TASK:+USERS POLLFD-ROW u8
+TASK:+USER POLLFD-ROW FD:pollfd
 : SOCKADDR ( -- ^u8 ) 0 SOCKADDR-ROW ;
 : ADDRLEN ( -- ^u8 ) 0 ADDRLEN-ROW ;
 : OPTION ( -- ^u8 ) 0 OPTION-ROW ;
-: POLLFD ( -- ^u8 ) 0 POLLFD-ROW ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 \ Each caller has shown the cell nonnegative.
@@ -374,9 +373,8 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ no AIO loop: how many descriptors are ready, 0 once the timeout in
 \ milliseconds has passed, or the errno negated.
 : POLL-FD ( n n n -- n ) {: fd:n events:n timeout:n :}
-   fd POLLFD LE:U32!
-   events POLLFD 4 + LE:U16!
-   POLLFD 1 timeout poll ;
+   fd >FD events FD:>POLLFD POLLFD-ROW !
+   POLLFD-ROW 1 timeout poll ;
 
 
 \ Blocks until a receive on the descriptor will not wait - there is data, the
@@ -712,7 +710,7 @@ public
    CONNECTION>N {: fd:n :}
    begin
       fd HANG-EVENTS 0 POLL-FD {: rc:n :}
-      rc 0 > if POLLFD 6 + LE:U16@ HANG-BITS and 0<> exit then
+      rc 0 > if POLLFD-ROW @ FD:REVENTS HANG-BITS and 0<> exit then
       rc 0= if false exit then
       rc negate EINTR <> if E-RESULT throw then
    again ;
