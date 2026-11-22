@@ -15,7 +15,7 @@ public
 ;package
 
 : RUN ( -- )
-   SCRIPT-ARGC 0= if s" PBIG" ALLOW-PACKAGE exit then
-   s" PDEP" ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
+   SCRIPT-ARGC 0= if s" PBIG" >str ALLOW-PACKAGE exit then
+   s" PDEP" >str ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
 RUN
 ;using

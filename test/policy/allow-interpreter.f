@@ -9,6 +9,6 @@ require test/policy/foreign.f
 require test/interpreter-loop-on.f
 using VOCABULARY
 
-: RUN ( -- ) s" PDEP" ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
+: RUN ( -- ) s" PDEP" >str ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
 RUN
 ;using

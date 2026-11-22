@@ -8,5 +8,5 @@ public
 : DUP ( n n -- n ) drop ;
 ;package
 
-: RUN ( -- ) s" PKW" VOCABULARY:ALLOW-PACKAGE ;
+: RUN ( -- ) s" PKW" >str VOCABULARY:ALLOW-PACKAGE ;
 RUN

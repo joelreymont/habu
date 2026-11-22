@@ -62,5 +62,5 @@ private EXPORT BOOT:data-base global
    SCRIPT-ARG-START + ARGV ;
 
 
-: SCRIPT-ARGV$ ( n -- ^u8 n )
+: SCRIPT-ARGV$ ( n -- str )
    SCRIPT-ARGV dup ZLEN ;

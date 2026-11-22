@@ -1402,7 +1402,7 @@ public
 
 \ The root is derived once, from whether the working directory is a Habu tree, so every answer
 \ records that read: a part's reads do not depend on which part asked first.
-: ENGINE$ ( -- ^u8 n )
+: ENGINE$ ( -- str )
    ENGINE-INIT
    ENGINE-U @ 0= if CWD$ exit then
    CWD-RECORD ENGINE-BUF ENGINE-U @ ;
@@ -1753,7 +1753,7 @@ public
    >r REQUEST$ t tu CONFINE-AS r> ;
 
 \ A rejection stands at the source a u stands for, else nowhere.
-: RESOLVE ( ^u8 n -- ^u8 n bool )
+: RESOLVE ( str -- str bool )
    2dup SRCLOC:ORIGIN$ RESOLVE-AT ;
 
 private
@@ -2678,7 +2678,7 @@ public
 
 \ No WITH scope opens, so the frame's root is CURRENT$, at the top level the
 \ program's directory.
-: RUN-PROGRAM ( ^u8 n -- ) {: a:^ u:n :}
+: RUN-PROGRAM ( str -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:RUN-PROGRAM" a u BUILD-REFUSE
    NULL-PTR 0 a u [: 2drop CANONICAL ;] LOADER:RESOLVE {: path:^ pathu:n exists:bool :}
    path pathu a u NULL-PTR 0 CONFINE-AS INCLUDE-PATH0 drop
@@ -2816,12 +2816,12 @@ EXPORT REQUIRE-REG:REQUIRE-STATE
 
 global
 
-: included ( ^u8 n -- )
+: included ( str -- )
    {: a:^ u:n :}
    s" included" SOURCE-ROOT:LOAD-BEGINS
    s" included" a u INCLUDED-AS ;
 
-: required ( ^u8 n -- )
+: required ( str -- )
    {: a:^ u:n :}
    s" required" SOURCE-ROOT:LOAD-BEGINS
    s" required" a u REQUIRED-AS ;

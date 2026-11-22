@@ -7,5 +7,5 @@ public
 : TUCK ( -- n ) 7 ;
 ;package
 
-: RUN ( -- ) s" PTUCK" VOCABULARY:ALLOW-PACKAGE ;
+: RUN ( -- ) s" PTUCK" >str VOCABULARY:ALLOW-PACKAGE ;
 RUN

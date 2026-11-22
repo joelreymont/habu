@@ -3,10 +3,10 @@ require src/lib/string.f
 using VOCABULARY
 
 : RUN ( -- )
-   s" test/policy/confined" SOURCE-ROOT!
+   s" test/policy/confined" >str SOURCE-ROOT!
    RESTRICT
-   SB-RESET SOURCE-ROOT:ENGINE$ SB-APPEND
+   SB-RESET SOURCE-ROOT:ENGINE$ str> SB-APPEND
    s" /test/policy/confined/link.f" SB-APPEND
-   SB$ SOURCE-ROOT:RUN-PROGRAM ;
+   SB$ >str SOURCE-ROOT:RUN-PROGRAM ;
 RUN
 ;using
