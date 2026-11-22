@@ -44,13 +44,13 @@ variable MEM-END
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
 : RUN-AT ( ^u8 len -- n )
-   OUT OUT-BYTES >LEN  ERR ERR-BYTES >LEN  PROCESS:WAIT-FOREVER
+   LEN>N OUT OUT-BYTES >LEN  ERR ERR-BYTES >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 
 : SPAWN ( ^u8 n -- n )
-   >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
+   EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u RUN-AT ;
 
 : FIRST-LINE ( -- str )

@@ -122,7 +122,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 : ARG ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 \ The length of name's path in EXE. A missing reader fails the test by name, never skips it.
 : TOOL ( ^u8 n -- len ) {: name:^ size:n :}
-   name size >LEN EXE FIND-EXECUTABLE MATCH option
+   name size EXE FIND-EXECUTABLE MATCH option
       none OF
          s" svg-pdf-e2e: required executable missing on PATH: " type
          name size type cr
@@ -142,7 +142,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    OUTPUT outu LEN>N ;
 : RESET-COMMAND ( -- )
    PROC-ARGV-ENV-RESET
-   s" LC_ALL" >LEN s" C" >LEN PROC-ENV+
+   s" LC_ALL" s" C" PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 : RETRY ( -- )
    WRITE-VALID

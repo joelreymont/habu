@@ -109,7 +109,7 @@ variable RC
 : ARGV+ ( str -- ) >LEN PROC-ARGV+ ;
 
 : ENV! ( -- )
-   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" TMP$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ engine builds the tree it runs in into path.
@@ -123,7 +123,7 @@ variable RC
    s" -o" ARGV+
    path pathu ARGV+
    ENV!
-   engine engineu >LEN tree treeu >LEN
+   engine engineu tree treeu
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
    SUCCESS ;

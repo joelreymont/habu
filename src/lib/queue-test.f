@@ -155,7 +155,7 @@ variable Q-POOL-RC
 
 : Q-RUN-STDIN ( str -- len len PROCESS:ending ) {: src:^ srcu:n :}
    PROC-ARGV-RESET
-   s" bin/hb" >LEN src srcu >LEN
+   s" bin/hb" src srcu
    Q-OUT Q-CAPTURE-CAP >LEN Q-ERR Q-CAPTURE-CAP >LEN
    Q-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 

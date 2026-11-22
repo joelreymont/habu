@@ -99,20 +99,20 @@ variable GE-EVAL-SRC-U
    PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : GE-RUN-ENV ( str ms -- ) {: path:^ pathu:n timeout:ms :}
-   path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+   path pathu PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
    timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
-   s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   s" " [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( str str ms -- ) {: path:^ pathu:n in:^ inu:n timeout:ms :}
-   path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+   path pathu PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
    timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
-   in inu >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   in inu [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
@@ -352,7 +352,7 @@ variable GE-EVAL-SRC-U
    GE-SRC-BUF GE-SRC-U @ GE-EVAL-SRC!
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
    GE-EVAL-FORK-SPAWN
-   s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
+   s" " [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;]
    PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 

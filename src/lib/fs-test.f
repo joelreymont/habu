@@ -974,12 +974,12 @@ variable VISITS
 
 \ A system tool's path, resolved through PATH into TOOL-BUF.
 : TOOL ( str -- ^u8 len )
-   >LEN TOOL-BUF RESOLVE-EXECUTABLE TOOL-BUF swap ;
+   TOOL-BUF RESOLVE-EXECUTABLE TOOL-BUF swap ;
 
 : MAKE-FIFO ( -- )
    PROC-ARGV-RESET
    FIFO$ >LEN PROC-ARGV+
-   s" mkfifo" TOOL -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   s" mkfifo" TOOL LEN>N -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
    MATCH result
       ok OF drop ENDOF
       err OF drop E-FS-IO throw ENDOF
@@ -989,7 +989,7 @@ variable VISITS
    {: out:fd :}
    PROC-ARGV-RESET
    FIFO$ >LEN PROC-ARGV+
-   s" cat" TOOL -1 >FD out -1 >FD PROC-SPAWN-ARGV-IO ;
+   s" cat" TOOL LEN>N -1 >FD out -1 >FD PROC-SPAWN-ARGV-IO ;
 
 \ True when the attempt opened the write end, which this closes again.
 : OPENED? ( option<fd> -- bool )

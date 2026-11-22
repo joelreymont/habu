@@ -23,14 +23,14 @@ public
    drop drop drop drop drop drop drop
    rc PROC-RAW:ANSWER ;
 
-: CWDZ ( ^u8 len -- ^u8 ) {: a:^ u:len :}
-   u LEN>N 0 <= if E-PROC-OUTPUT throw then
+: CWDZ ( str -- ^u8 ) {: a:^ u:n :}
+   u 0 <= if E-PROC-OUTPUT throw then
    a u PROC-CWDZ-BUF PROCESS:PATHZ-CAP >LEN PROCESS:ZCOPY ;
 
 : ARGV-ENV-CWD-RESET ( -- )
    PROC-ARGV-ENV-RESET ;
 
-: SPAWN-ARGV-ENV-CWD-IO ( ^u8 len ^u8 len fd fd fd -- pid )
+: SPAWN-ARGV-ENV-CWD-IO ( str str fd fd fd -- pid )
    {: path:^ pathu cwd:^ cwdu infd outfd errfd :}
    [: path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE cwd cwdu CWDZ
       infd outfd errfd SPAWN-ARGV-ENV-CWD-RAW ;]
@@ -40,7 +40,7 @@ public
 
 private
 
-: PROC-RUN-ARGV-ENV-CWD-IO-RC ( ^u8 len ^u8 len fd fd fd -- result<n,n> )
+: PROC-RUN-ARGV-ENV-CWD-IO-RC ( str str fd fd fd -- result<n,n> )
    SPAWN-ARGV-ENV-CWD-IO PROCESS:WAIT PROCESS:STATUS>RC PROCESS:RC>RESULT ;
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ^u8 ^a ^a ^u8 -- )
@@ -57,10 +57,10 @@ private
 
 public
 
-: RUN-ARGV-ENV-CWD-CAPTURE ( ^u8 len ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
+: RUN-ARGV-ENV-CWD-CAPTURE ( str str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:^ pathu cwd:^ cwdu out:^ outcap err:^ errcap timeout :}
    [: path pathu PROC-ARGV-CHECK-PATH
-      cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
+      cwdu 0 <= if E-PROC-OUTPUT throw then
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
       path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
       cwd cwdu CWDZ
@@ -70,10 +70,10 @@ public
    out outcap err errcap PROCESS:RUN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ^u8 len ^u8 len ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
+: RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( str str str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:^ pathu cwd:^ cwdu in:^ inu out:^ outcap err:^ errcap timeout :}
    [: path pathu PROC-ARGV-CHECK-PATH
-      cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
+      cwdu 0 <= if E-PROC-OUTPUT throw then
       inu PROCESS:CAPTURE-CHECK-STDIN
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
       path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
@@ -84,10 +84,10 @@ public
    in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ( ^u8 len ^u8 len ^u8 len ^u8 len ^u8 len ms -- len len PROCESS:ending )
+: RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ( str str str ^u8 len ^u8 len ms -- len len PROCESS:ending )
    {: path:^ pathu cwd:^ cwdu in:^ inu out:^ outcap err:^ errcap timeout :}
    [: path pathu PROC-ARGV-CHECK-PATH
-      cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
+      cwdu 0 <= if E-PROC-OUTPUT throw then
       inu PROCESS:CAPTURE-CHECK-STDIN
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
       path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE

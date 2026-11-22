@@ -140,7 +140,7 @@ PROCESS:NO-FD FIFO-RD !
    true ;
 
 : REPORT-ENV ( -- )
-   s" PG_HOLD_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
+   s" PG_HOLD_FIFO" FIFO$ PROC-ENV+ ;
 
 \ The case ends the row itself once the case file has reported.
 : ROW-START ( -- )

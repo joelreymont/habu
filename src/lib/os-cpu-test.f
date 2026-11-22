@@ -27,7 +27,7 @@ create ERR OUT-CAP allot
 \ run answers an empty string, which no number parses from, so the case fails
 \ once.
 : CAPTURE$ ( str -- str )
-   >LEN OUT OUT-CAP >LEN ERR OUT-CAP >LEN
+   OUT OUT-CAP >LEN ERR OUT-CAP >LEN
    CAPTURE-MS >MS RUN-ARGV-CAPTURE MATCH result
       ok OF PCAP-CAPTURED:UNMAKE drop LEN>N ENDOF
       err OF PCAP-FAILED:UNMAKE 2drop drop 0 ENDOF

@@ -12,7 +12,7 @@ require src/lib/process.f
 package PROC-STDIN-ZERO-CHILD
 
 : CAT ( -- n )
-   s" /bin/cat" >LEN PROCESS:IN-R @ >FD -1 >FD -1 >FD PROCESS:RUN-IO-RC
+   s" /bin/cat" PROCESS:IN-R @ >FD -1 >FD -1 >FD PROCESS:RUN-IO-RC
    MATCH result
      ok  OF ENDOF
      err OF ENDOF

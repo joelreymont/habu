@@ -97,7 +97,7 @@ variable THROWN-U
 \ bin/hb run on the arguments staged after PROC-ARGV-RESET: the lengths of its
 \ stdout and stderr, and its exit status.
 : HB ( -- n n n )
-   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   s" bin/hb"  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: o:len e:len rc:n :}
    o LEN>N  e LEN>N  rc ;
 

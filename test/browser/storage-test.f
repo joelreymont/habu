@@ -47,7 +47,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" browser storage: module, payload and output in " type DIR u type cr ;
 
 : SPAWN ( ^u8 len -- n )
-   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !
@@ -87,7 +87,7 @@ DYNAMIC-BUFFER PAYLOAD u8
       s" --repeat-typed" ARG+ s" b" ARG+ s" 500" ARG+
    then
    s" --memory" ARG+
-   s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
 \ Asserts host-cli's memory line starts right after the output's first n

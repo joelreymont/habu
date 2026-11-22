@@ -27,7 +27,7 @@ variable ERR-U
 
 : EXEC ( ^u8 n -- len len PROCESS:ending ) {: src:^ u:n :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN  src u >LEN  OUT CAP >LEN  ERR CAP >LEN
+   ENGINE-CANDIDATE:PATH$  src u  OUT CAP >LEN  ERR CAP >LEN
    PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : SHOW ( ^u8 n n -- ) {: src:^ u:n before:n :}

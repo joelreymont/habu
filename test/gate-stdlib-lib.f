@@ -41,7 +41,7 @@ package STDLIB-GATE
 \ item's children; set before the inherit, which skips a name already present.
 : SUITE-ENV ( -- )
    PROC-ENV-RESET
-   s" HABU_UNDER_TEST" >LEN PRODUCT-ENGINE$ >LEN PROC-ENV+
+   s" HABU_UNDER_TEST" PRODUCT-ENGINE$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The registry feeds a row's argv right before it offers the row (src/lib/test/suite.f

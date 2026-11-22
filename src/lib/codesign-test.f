@@ -83,10 +83,10 @@ create CST-IN-BUF PATH-CAP allot
    PROC-ARGV-RESET
    src srcu  >LEN PROC-ARGV+
    dst dstu  >LEN PROC-ARGV+
-   s" /bin/cp" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
+   s" /bin/cp" -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : CST-TOOL-RC ( -- n )
-   CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
+   CODESIGN:TOOL -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
 
 : CST-TEAM ( -- str )
    s" 8TW82D98K7" ;
@@ -108,7 +108,7 @@ variable CST-ERR-U
 \ Runs tool with PROC-ARGV and stdin in; its stderr stays in CST-ERR.
 : CST-CAPTURE ( str str -- n ) {: tool:^ toolu:n in:^ inu:n :}
    PROC-ENV-RESET
-   tool toolu >LEN in inu >LEN
+   tool toolu in inu
    [: CST-OUT-ROOM ;] [: CST-ERR-ROOM ;]
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    {: o:len e:len oc :}

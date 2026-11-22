@@ -42,7 +42,7 @@ variable RC
 \ a name already staged, so the child sees exactly one TMPDIR: BAD.
 : RUN-CHILD ( -- )
    PROC-ARGV-ENV-RESET
-   s" TMPDIR" >LEN BAD$ >LEN PROC-ENV+
+   s" TMPDIR" BAD$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" test/zip-temp-source.f" >LEN PROC-ARGV+

@@ -49,12 +49,12 @@ variable PCT-I
 
 : PCT-CAPTURE ( str str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu cwd:^ cwdu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN cwd cwdu >LEN out outcap >LEN err errcap >LEN timeout >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   path pathu cwd cwdu out outcap >LEN err errcap >LEN timeout >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCT-CAPTURE>N ;
 
 : PCT-STDIN-CAPTURE ( str str str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu cwd:^ cwdu in:^ inu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN cwd cwdu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
+   path pathu cwd cwdu in inu out outcap >LEN err errcap >LEN timeout >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    PCT-CAPTURE>N ;
 
@@ -95,7 +95,7 @@ variable PCT-I
 : PCT-MISSING-CWD ( -- )
    PCT-RESET
    s" rel.txt"  >LEN PROC-ARGV+
-   s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
+   s" /bin/cat" s" /no/such/habu-process-cwd-test" -1 >FD -1 >FD -1 >FD
    PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;
 
 : PCT-EARLY-EOF$ ( -- str )   \ writes ok, closes 1 and 2, spins 60 s, so only its deadline ends it
@@ -128,7 +128,7 @@ variable PCT-I
    {: src:^ srcu:n deadline:ms :}
    PCT-RESET
    PCT-OUT-CLEAR
-   s" bin/hb" >LEN s" ." >LEN src srcu >LEN
+   s" bin/hb" s" ." src srcu
    PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN deadline
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ;
 
@@ -156,7 +156,7 @@ variable PCT-I
 
 : PCT-CWD-TOO-LONG ( -- )
    PCT-LONG!
-   PCT-LONG PCT-LONG-U >LEN PROC-CWD:CWDZ drop ;
+   PCT-LONG PCT-LONG-U PROC-CWD:CWDZ drop ;
 
 : PCT-NUL-CWD ( -- )
    PCT-RESET
@@ -165,13 +165,13 @@ variable PCT-I
 
 : PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT ( -- )
    PCT-RESET
-   s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN PROCESS:WAIT-FOREVER PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   s" /usr/bin/true" s" ." PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN PROCESS:WAIT-FOREVER PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 T=  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
    ;MATCH
    PCT-RESET
-   s" /usr/bin/false" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN PROCESS:WAIT-FOREVER PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   s" /usr/bin/false" s" ." PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN PROCESS:WAIT-FOREVER PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
@@ -190,7 +190,7 @@ variable PCT-I
 : PCT-REFUSED-RESETS ( -- )
    s" a refused cwd spawn leaves no staged argument" T-LABEL
    PCT-RESET PCT-STAGE-STALE
-   [: s" /bin/echo" >LEN s" " >LEN -1 >FD -1 >FD -1 >FD
+   [: s" /bin/echo" s" " -1 >FD -1 >FD -1 >FD
       PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;]
    E-PROC-OUTPUT TTHROWSQ
    PCT-ECHO-FRESH

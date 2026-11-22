@@ -238,7 +238,7 @@ private
 \ ends to the abort path: the child owns the slave only once the spawn returned.
 : SPAWN-BUILD ( -- )
    OPEN-PAIR
-   PATH-BUF PATH-U @ >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROCESS:SPAWN-IO PID>N KID !
+   PATH-BUF PATH-U @ SFD @ >FD SFD @ >FD SFD @ >FD PROCESS:SPAWN-IO PID>N KID !
    KID @ 0 <= if E-PTY-IO throw then
    SFD CLOSE-FD! ;
 

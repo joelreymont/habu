@@ -845,7 +845,7 @@ variable GT-POOL-CPU-NS
    E-PROC-OUTPUT GT-POOL-THROW ;
 
 : GT-POOL-LAUNCH ( idx str fd -- idx str fd ) {: idx:idx path:^ pathu:n stdin:fd :}
-   path pathu >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+   path pathu PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROC-ENV-PREPARE {: envp:^ :}
    pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
    argv PROCESS:ARGV-ROWS
@@ -857,7 +857,7 @@ variable GT-POOL-CPU-NS
    idx path pathu stdin ;
 
 : GT-POOL-SPAWN-FD ( idx str fd -- ) {: idx:idx path:^ pathu:n stdin:fd :}
-   path pathu >LEN PROC-ARGV-CHECK-PATH
+   path pathu PROC-ARGV-CHECK-PATH
    idx path pathu stdin [: GT-POOL-LAUNCH ;] catch {: code:n :}
    drop drop drop drop
    code 0<> if
@@ -965,7 +965,7 @@ variable GT-POOL-CPU-NS
 \ per-user one, which this process's own copy names.
 : GT-POOL-ENV-TMPDIR-OWN? ( -- bool )
    s" TMPDIR=" {: k:^ ku:n :}
-   s" TMPDIR" >LEN PROC-ENV-NAME-IDX {: i:n :}
+   s" TMPDIR" PROC-ENV-NAME-IDX {: i:n :}
    i 0 < if false exit then
    i >IDX PROC-ENV-SLOT @ {: z:^ :}
    z ku BYTE+ z ZLEN ku -
@@ -1021,7 +1021,7 @@ variable GT-POOL-CPU-NS
       0 idx GT-POOL-SOCK-PATH-U-PTR !
       code throw
    then
-   s" HB_SOCK_TMP" >LEN idx GT-POOL-SOCK$ >LEN PROC-ENV-SET ;
+   s" HB_SOCK_TMP" idx GT-POOL-SOCK$ PROC-ENV-SET ;
 
 : GT-POOL-CHILD-TMP! ( idx -- ) {: idx:idx :}
    idx GT-POOL-CHILD-SOCK!
@@ -1030,7 +1030,7 @@ variable GT-POOL-CPU-NS
    idx GT-POOL-SEQ-PTR @ s" -tmp" GT-POOL-CAPTURE-NAME
    idx GT-POOL-TMP-PATH-BUF FS:JOIN-PATH idx GT-POOL-TMP-PATH-U-PTR !
    idx GT-POOL-TMP$ FS:MAKE-DIRS
-   s" TMPDIR" >LEN idx GT-POOL-TMP$ >LEN PROC-ENV-SET ;
+   s" TMPDIR" idx GT-POOL-TMP$ PROC-ENV-SET ;
 
 \ The one place a slot leaves the live set. The child's scratch goes here,
 \ after the kill, so nothing is still writing into it.

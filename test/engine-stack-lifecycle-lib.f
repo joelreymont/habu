@@ -19,7 +19,7 @@ variable STATUS
 
 : CHILD-CAPTURE ( str -- ) {: src:^ size:n :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN src size >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
+   ENGINE-CANDIDATE:PATH$ src size OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N STATUS ! ERRLEN ! OUTLEN ! ;
 
 \ A crashed child's dump outgrows IO-CAP on either stream, and its

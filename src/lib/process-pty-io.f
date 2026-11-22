@@ -131,7 +131,7 @@ variable IO-GO-R                                 \ child-side release gate
    go IO-CLOSE-HIGH
    go FD>N IO-GOBYTE 1 read 1 <> if s" " EXIT-STATUS:EXEC die then
    go FD>N close
-   IO-PATH-BUF IO-PATH-LEN @ >LEN PROC-ARGV-PREPARE 0 IO-ENVP execve drop
+   IO-PATH-BUF IO-PATH-LEN @ PROC-ARGV-PREPARE 0 IO-ENVP execve drop
    s" " EXIT-STATUS:EXEC die ;
 
 : IO-RESET-STX ( -- )
@@ -141,7 +141,7 @@ variable IO-GO-R                                 \ child-side release gate
    -1 IO-SOUT-W !  -1 IO-SIN-R !  -1 IO-GO-R ! ;
 
 : IO-STORE-PATH ( str -- ) {: path:^ pathu:n :}
-   path pathu >LEN IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
+   path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
    pathu IO-PATH-LEN ! ;
 
 : IO-MK-STDIO ( -- )

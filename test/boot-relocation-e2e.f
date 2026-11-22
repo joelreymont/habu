@@ -83,7 +83,7 @@ variable RC
 
 : RUN-CHILD ( str -- ) {: exe:^ exeu:n :}
    PROC-ENV-INHERIT-MISSING
-   exe exeu >LEN ROOT$ >LEN
+   exe exeu ROOT$
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
@@ -106,7 +106,7 @@ variable RC
    s" the copied engine recognizes its baked module from a foreign cwd" VERDICT ;
 
 : SANDBOX$ ( -- str )
-   s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
+   s" sandbox-exec" SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" boot-relocation: required executable missing on PATH: sandbox-exec"
          EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF

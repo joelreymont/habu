@@ -88,7 +88,7 @@ PROCESS:NO-FD FIFO-RD !
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/check-signal-subject.f" >LEN PROC-ARGV+
-   s" CHECK_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+
+   s" CHECK_SIGNAL_FIFO" FIFO$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ No case expects the capture to return its result.

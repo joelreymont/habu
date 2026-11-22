@@ -193,7 +193,7 @@ variable STAT-PATH-U
    STARTED-LINUX ;
 
 : REPORT-ENV ( -- )
-   s" GATE_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+ ;
+   s" GATE_SIGNAL_FIFO" FIFO$ PROC-ENV+ ;
 
 \ TRUE once fd has bytes to read or has reached end of file, FALSE when ms ran
 \ out first, a negative ms none. A failed poll, or a descriptor the poll
@@ -297,7 +297,7 @@ variable STAT-PATH-U
    fd ;
 
 : NOHUP$ ( -- str )
-   s" nohup" >LEN NOHUP FIND-EXECUTABLE MATCH option
+   s" nohup" NOHUP FIND-EXECUTABLE MATCH option
       none OF s" gate-signal-test: required executable missing on PATH: nohup"
          EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF
@@ -320,7 +320,7 @@ variable STAT-PATH-U
 : ROOT-START ( -- )
    OPEN-FIFO
    ROOT-ARGV {: exe:^ exeu:n :}
-   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" TMP$ PROC-ENV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
    OPEN-NULL OPEN-LOG {: in:n log:n :}

@@ -569,7 +569,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    SB$ ;
 
 : TASK-SPAWN-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
-   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
+   ENGINE-CANDIDATE:PATH$ src srcu
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-ENDING-EXITED=

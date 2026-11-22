@@ -43,7 +43,7 @@ variable MOD-U
 : ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
 
 : DRIVER ( -- n )
-   s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   s" bin/hb"  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    erru LEN>N ERR-U !
    rc ;

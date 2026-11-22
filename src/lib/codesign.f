@@ -80,7 +80,7 @@ private
 
 : CODESIGN-CAPTURE ( str -- n ) {: tool:^ toolu:n :}
    PROC-ENV-RESET
-   tool toolu >LEN s" " >LEN
+   tool toolu s" "
    [: CODESIGN-OUT-ROOM ;] [: CODESIGN-ERR-ROOM ;]
    CODESIGN-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    {: o:len e:len oc :}

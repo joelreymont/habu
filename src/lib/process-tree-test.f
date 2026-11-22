@@ -55,7 +55,7 @@ variable TARGET
 : VICTIM-START ( -- )
    PROC-ARGV-RESET
    s" 30" >LEN PROC-ARGV+
-   s" /bin/sleep" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N VICTIM ! ;
+   s" /bin/sleep" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N VICTIM ! ;
 
 : VICTIM-KILL-TREE ( -- )
    VICTIM @ >PID PROC-TREE:KILL-TREE ;
@@ -87,7 +87,7 @@ variable TARGET
 \ A sleeper captured past its deadline, which reaches no result.
 : SLEEPER-CAPTURE ( -- )
    SLEEPER-ARGS
-   s" /bin/sleep" >LEN OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
+   s" /bin/sleep" OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
    RUN-ARGV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop ENDOF
      err OF PCAP-FAILED:UNMAKE drop 2drop ENDOF
@@ -96,7 +96,7 @@ variable TARGET
 \ The same deadline read as data.
 : SLEEPER-OUTCOME ( -- )
    SLEEPER-ARGS
-   s" /bin/sleep" >LEN OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
+   s" /bin/sleep" OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME T-ENDING-TIMEOUT 2drop ;
 
 : SLEEPER-REAPED ( str -- )
@@ -172,7 +172,7 @@ PROCESS:NO-FD CROWD-WR !
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    CROWD-SCRIPT$ >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N ROOT !
+   s" /bin/sh" -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N ROOT !
    CROWD-WR PROCESS:CLOSE-CELL ;
 
 \ Everything the root writes, until it closes the pipe.
@@ -269,7 +269,7 @@ PROCESS:NO-FD PING-WR !
 : RESUME-START ( -- )
    PROC-ARGV-RESET
    s" 30" >LEN PROC-ARGV+
-   s" /bin/sleep" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N RESUMED !
+   s" /bin/sleep" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N RESUMED !
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD:FD-CLOEXEC!
    w FD:FD-CLOEXEC!
@@ -278,7 +278,7 @@ PROCESS:NO-FD PING-WR !
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PINGER-SCRIPT$ >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N PINGER !
+   s" /bin/sh" -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N PINGER !
    PING-WR PROCESS:CLOSE-CELL ;
 
 \ TRUE once the pinger's line arrives; end of file is a pinger that could not
@@ -360,7 +360,7 @@ variable IDLE-COPY-U
    [: RUNS-BODY ;] [: RUNS-DIR$ FS:REMOVE-TREE ;] finally ;
 
 : SANDBOX$ ( -- str )
-   s" sandbox-exec" >LEN SANDBOX FIND-EXECUTABLE MATCH option
+   s" sandbox-exec" SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" process-tree-test: required executable missing on PATH: sandbox-exec"
          EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF LEN>N ENDOF
@@ -385,7 +385,7 @@ variable IDLE-COPY-U
    s" src/lib/process-tree-test.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
-   SANDBOX$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE
+   SANDBOX$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE
    CAPTURE>RC ;
 
 \ A walker's own report is its verdict; on a failure it is printed here.

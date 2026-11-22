@@ -31,7 +31,7 @@ variable MOD-U
 : ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
 
 : SPAWN ( ^u8 len -- n )
-   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
@@ -51,7 +51,7 @@ variable MOD-U
    PROC-ARGV-RESET
    s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+
    s" --typed" ARG+ a au ARG+  s" --typed" ARG+ b bu ARG+
-   s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
 \ taken: typed "take" answers the text in its taken pages after its run, with

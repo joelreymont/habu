@@ -62,14 +62,14 @@ public
 : RUN-ON ( str str -- )
    {: engine:^ engineu:n cwd:^ cwdu:n :}
    PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN cwd cwdu >LEN
+   engine engineu cwd cwdu
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
 : RUN-INPUT ( str str -- )
    {: engine:^ engineu:n input:^ inputu:n :}
    PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN ROOT$ >LEN input inputu >LEN
+   engine engineu ROOT$ input inputu
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
 

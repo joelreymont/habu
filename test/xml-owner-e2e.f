@@ -33,7 +33,7 @@ variable RC
 : RUN-INPUT ( str str -- )
    {: program size:n input input-size:n :}
    PROC-ENV-INHERIT-MISSING
-   program size >LEN SOURCE-ROOT:CWD$ >LEN input input-size >LEN
+   program size SOURCE-ROOT:CWD$ input input-size
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;

@@ -44,7 +44,7 @@ PATH-CAP BUFFER: FILE
    DIR u s" navigation.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : SPAWN ( ^u8 len -- n )
-   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
@@ -57,7 +57,7 @@ PATH-CAP BUFFER: FILE
    s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+ ;
 
 : HOST ( -- n )
-   s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
 : STEP+ ( str n n n n -- )

@@ -80,7 +80,7 @@ false STOPPED !
 \ (docs/bootstrap.md "Requirements"): a missing one fails the row, never skips
 \ it.
 : TOOL ( ^u8 n ^u8 -- n ) {: name:^ size:n dst:^ :}
-   name size >LEN dst FIND-EXECUTABLE MATCH option
+   name size dst FIND-EXECUTABLE MATCH option
       none OF
          s" pg-cluster: required executable missing on PATH: " type
          name size type cr
@@ -127,7 +127,7 @@ false STOPPED !
 \ RUN-ARGV-CAPTURE-OUTCOME's empty environment).
 : ENV! ( -- )
    PROC-ENV-INHERIT-MISSING
-   s" LC_ALL" >LEN s" C" >LEN PROC-ENV-SET ;
+   s" LC_ALL" s" C" PROC-ENV-SET ;
 
 : EXITED-0? ( PROCESS:ending str -- bool )
    {: what:^ whatu:n :}

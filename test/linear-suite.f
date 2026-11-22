@@ -318,7 +318,7 @@ variable PROG-U
 \ The caller stages the argv.
 : RUN ( ^u8 n -- ) {: path:^ pathu:n :}
    PROC-ENV-INHERIT-MISSING
-   path pathu >LEN  PROG$ >LEN  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   path pathu  PROG$  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N
    RC ! ERR-U ! OUT-U ! ;
 
@@ -465,7 +465,7 @@ variable PROG-U
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+  s" --" >LEN PROC-ARGV+
    PATH$ >LEN PROC-ARGV+  s" -o" >LEN PROC-ARGV+  IMAGE$ >LEN PROC-ARGV+
-   s" HABU_OUT" >LEN OBJ$ >LEN PROC-ENV+
+   s" HABU_OUT" OBJ$ PROC-ENV+
    ENGINE-CANDIDATE:PATH$ RUN ;
 
 : LINK-RUN ( -- )

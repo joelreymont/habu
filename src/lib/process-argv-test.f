@@ -57,7 +57,7 @@ variable PAT-I
       PAT-I @ 1+ PAT-I !
    repeat ;
 
-: PAT-UNREAD$ ( -- ^u8 n )
+: PAT-UNREAD$ ( -- str )
    PAT-UNREAD-CAP PAT-UNREAD-RESERVE
    0 PAT-UNREAD PAT-UNREAD-CAP ;
 
@@ -78,17 +78,17 @@ variable PAT-I
 
 : PAT-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
+   path pathu out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PAT-CAPTURE>N ;
 
 : PAT-STDIN-CAPTURE ( str str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE
+   path pathu in inu out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE
    PAT-CAPTURE>N ;
 
 : PAT-STDIN-CAPTURE-OUTCOME ( str str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   path pathu in inu out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : PAT-CHECK-WC-COUNT ( n n n -- ) {: outu erru rc :}
    rc 0 T=
@@ -101,7 +101,7 @@ variable PAT-I
    s" %s-%s"  >LEN PROC-ARGV+
    s" left"  >LEN PROC-ARGV+
    s" right"  >LEN PROC-ARGV+
-   s" /usr/bin/printf" >LEN -1 >FD PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC
+   s" /usr/bin/printf" -1 >FD PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC
    MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PAT-OUT-W @ close
    PAT-READ 10 T=
@@ -114,7 +114,7 @@ variable PAT-I
    PAT-IN-W @ s" argv-stdin" write 10 T=
    PAT-IN-W @ close
    PROC-ARGV-RESET
-   s" /bin/cat" >LEN PAT-IN-R @ PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC
+   s" /bin/cat" PAT-IN-R @ PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC
    MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PAT-IN-R @ close
    PAT-OUT-W @ close
@@ -125,7 +125,7 @@ variable PAT-I
 : PAT-SPAWN-MISSING ( -- )
    PROC-ARGV-RESET
    s" ignored"  >LEN PROC-ARGV+
-   s" /no/such/habu-process-argv-test" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;
+   s" /no/such/habu-process-argv-test" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;
 
 : PAT-ARG! ( n -- )
    {: k:n :}
@@ -187,10 +187,10 @@ variable PAT-I
 
 : PAT-PATH-BOUNDS ( -- )
    s" a path fits when its bytes and NUL fit PROCESS:PATHZ-CAP" T-LABEL
-   [: PAT-LONG PROCESS:PATHZ-CAP 1- >LEN PROC-ARGV-CHECK-PATH ;] catch 0 T=
-   [: PAT-LONG PROCESS:PATHZ-CAP >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
-   [: PAT-LONG -1 >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
-   [: PAT-LONG MEM-MAX-N >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ ;
+   [: PAT-LONG PROCESS:PATHZ-CAP 1- PROC-ARGV-CHECK-PATH ;] catch 0 T=
+   [: PAT-LONG PROCESS:PATHZ-CAP PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
+   [: PAT-LONG -1 PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
+   [: PAT-LONG MEM-MAX-N PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ ;
 
 : PAT-RUN-ARGV-CAPTURE ( -- )
    PROC-ARGV-RESET
@@ -291,13 +291,13 @@ variable PAT-I
 : PAT-RUN-ARGV-CAPTURE-RESULT ( -- )
    PROC-ARGV-RESET
    s" %s" >LEN PROC-ARGV+  s" hi" >LEN PROC-ARGV+
-   s" /usr/bin/printf" >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN 1000 >MS RUN-ARGV-CAPTURE
+   s" /usr/bin/printf" PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN 1000 >MS RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 2 T=  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
    ;MATCH
    PROC-ARGV-RESET
-   s" /usr/bin/false" >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN 1000 >MS RUN-ARGV-CAPTURE
+   s" /usr/bin/false" PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN 1000 >MS RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
@@ -320,15 +320,15 @@ variable PAT-SAVED-STDIN
 \ so inheriting its stdin times out; each default capture must supply EOF.
 : PAT-IDLE-CAPTURES ( -- )
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
+   ENGINE-CANDIDATE:PATH$ PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS RUN-ARGV-CAPTURE PAT-EOF-RESULT
-   ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
+   ENGINE-CANDIDATE:PATH$ PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS PROCESS:RUN-CAPTURE PAT-EOF-RESULT
    PROC-ARGV-RESET PROC-ENV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS RUN-ARGV-ENV-CAPTURE PAT-EOF-RESULT
    PROC-ARGV-RESET PROC-ENV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN s" ." >LEN
+   ENGINE-CANDIDATE:PATH$ s" ."
    PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PAT-EOF-RESULT ;
 
@@ -356,7 +356,7 @@ variable PAT-SAVED-STDIN
 : PAT-REFUSED-RESETS ( -- )
    s" a refused spawn leaves no staged argument" T-LABEL
    PROC-ARGV-RESET PAT-STAGE-STALE
-   [: s" " >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;]
+   [: s" " -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;]
    E-PROC-OUTPUT TTHROWSQ
    PAT-ECHO-FRESH
    PAT-STAGE-STALE

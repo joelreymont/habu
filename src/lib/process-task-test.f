@@ -282,11 +282,11 @@ variable PTT-HELD-W                      \ that stdin's write end
 \ on its fd 0 and closing the write end here releases it.
 : PTT-SPAWN-CHILDREN ( -- )
    s" sleep 0.2; exit 22" PTT-SH-ARGS
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N PTT-SLEEPER !
+   s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N PTT-SLEEPER !
    FD:PIPE-PAIR {: in-r:fd in-w:fd :}
    in-r FD:FD-CLOEXEC!  in-w FD:FD-CLOEXEC!
    PTT-HOLD-SCRIPT PTT-SH-ARGS
-   s" /bin/sh" >LEN in-r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N PTT-HELD !
+   s" /bin/sh" in-r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N PTT-HELD !
    in-r FD>N close
    in-w FD>N PTT-HELD-W ! ;
 

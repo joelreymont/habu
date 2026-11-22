@@ -208,7 +208,7 @@ create CS-PRODUCT-PATH PATH-CAP allot
 
 : CS-ENV! ( -- )
    PROC-ENV-RESET
-   s" HABU_UNDER_TEST" >LEN CS-PRODUCT$ >LEN PROC-ENV+
+   s" HABU_UNDER_TEST" CS-PRODUCT$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ Definition control summaries survive a --repl build. The built hb runs the
@@ -242,8 +242,8 @@ variable CS-CHILD-ERR-U
    s" test/catch-success-image-subject.f" >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+  CS-IMAGE$ >LEN PROC-ARGV+
    CS-ENV!
-   CS-HB$ >LEN
-   s" " >LEN
+   CS-HB$
+   s" "
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
    CS-IMAGE$ FS:EXECUTABLE? TTRUE ;
@@ -251,8 +251,8 @@ variable CS-CHILD-ERR-U
 : CS-IMAGE-RUN ( -- )
    PROC-ARGV-RESET
    CS-ENV!
-   CS-IMAGE$ >LEN
-   S\" s\" test/catch-success-image-consumer.f\" >str included\n" >LEN
+   CS-IMAGE$
+   S\" s\" test/catch-success-image-consumer.f\" >str included\n"
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
@@ -262,7 +262,7 @@ variable CS-CHILD-ERR-U
    {: src:^ size:n want:^ wantu:n :}
    PROC-ARGV-RESET
    CS-ENV!
-   CS-IMAGE$ >LEN src size >LEN
+   CS-IMAGE$ src size
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 70 T=
    CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-load: began" CONTAINS? TTRUE

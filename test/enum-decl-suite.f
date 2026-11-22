@@ -810,7 +810,7 @@ create EC-NONE 1 allot
    s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
    s" --verify-only" >LEN PROC-ARGV+  EC-FILE >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN  EC-NONE 0 >LEN  EC-OUT EC-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  EC-NONE 0  EC-OUT EC-CAP >LEN
    EC-ERR EC-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    erru LEN>N EC-ERR-U !

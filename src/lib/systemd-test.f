@@ -99,7 +99,7 @@ variable ABSTRACT-FD
    ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
    PROG CODEGEN:CONTENTS {: prog:^ progu:n :}
    PROC-ARGV-ENV-RESET
-   s" NOTIFY_SOCKET" >LEN value valueu >LEN PROC-ENV+
+   s" NOTIFY_SOCKET" value valueu PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN prog progu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER

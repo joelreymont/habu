@@ -375,7 +375,7 @@ variable FILLED                   \ FILLER's descriptors still open
 : SLEEPER ( -- )
    PROC-ARGV-RESET
    s" 60" >LEN PROC-ARGV+
-   s" /bin/sleep" >LEN PROC-ARGV-PREPARE 0 NO-ENV execve drop
+   s" /bin/sleep" PROC-ARGV-PREPARE 0 NO-ENV execve drop
    E-PROC-SPAWN throw ;
 
 \ With the parent's write end closed, the read end reaches end of file while the

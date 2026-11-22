@@ -39,7 +39,7 @@ create ERR IO-CAP allot
 : RUN ( ^u8 n -- n n n ) {: case:^ caseu:n :}   \ outu erru rc
    ENGINE-CANDIDATE:PATH$ {: engine:^ engineu:n :}
    PROC-ARGV-ENV-RESET
-   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" ROOT$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" test/tmp-path-child.f" >LEN PROC-ARGV+

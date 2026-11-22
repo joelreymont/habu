@@ -268,19 +268,19 @@ variable DEEP-U
    PROC-ENV-RESET
    s" TMPDIR" GETENV {: tmp:^ tmpu:n :}
    tmpu 0= if exit then
-   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET ;
+   s" TMPDIR" tmp tmpu PROC-ENV-SET ;
 
 : RUN-ARGS ( str str -- )
    {: exe:^ exeu:n cwd:^ cwdu:n :}
    CHILD-ENV
-   exe exeu >LEN cwd cwdu >LEN
+   exe exeu cwd cwdu
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT! ;
 
 : RUN-EXE ( str str str -- )
    {: exe:^ exeu:n cwd:^ cwdu:n in:^ inu:n :}
    CHILD-ENV
-   exe exeu >LEN cwd cwdu >LEN in inu >LEN
+   exe exeu cwd cwdu in inu
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT! ;
 

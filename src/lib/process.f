@@ -227,12 +227,12 @@ public
 : KILL-RAW ( pid n -- rc ) {: pid sig :}
    pid PID>N sig kill >RC ;
 
-: ZCOPY ( ^u8 len ^u8 len -- ^u8 ) {: a:^ u dst:^ cap :}
-   u LEN>N 0 < if E-PROC-OUTPUT throw then
-   u LEN>N cap LEN>N >= if E-PROC-OUTPUT throw then
-   a u LEN>N dst cap LEN>N SPAN:MAKE FFI:CSTR ;
+: ZCOPY ( str ^u8 len -- ^u8 ) {: a:^ u dst:^ cap :}
+   u 0 < if E-PROC-OUTPUT throw then
+   u cap LEN>N >= if E-PROC-OUTPUT throw then
+   a u dst cap LEN>N SPAN:MAKE FFI:CSTR ;
 
-: PATHZ ( ^u8 len -- ^u8 )
+: PATHZ ( str -- ^u8 )
    PATHZ-BUF PATHZ-CAP >LEN ZCOPY ;
 
 private
@@ -298,15 +298,15 @@ public
    RC>N {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
-: SPAWN-IO ( ^u8 len fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
+: SPAWN-IO ( str fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
    a u PATHZ infd outfd errfd SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: RUN-IO-RC ( ^u8 len fd fd fd -- result<n,n> )
+: RUN-IO-RC ( str fd fd fd -- result<n,n> )
    SPAWN-IO WAIT STATUS>RC RC>RESULT ;
 
-: RUN-RC ( ^u8 len -- result<n,n> )
+: RUN-RC ( str -- result<n,n> )
    -1 >FD -1 >FD -1 >FD RUN-IO-RC ;
 
 private
@@ -817,8 +817,8 @@ private
       u
    then ;
 
-: CLOSE-STDIN-DONE ( len -- ) {: inu :}
-   IN-OFF @ inu LEN>N >= if IN-W CLOSE-CELL then ;
+: CLOSE-STDIN-DONE ( n -- ) {: inu :}
+   IN-OFF @ inu >= if IN-W CLOSE-CELL then ;
 
 : BROKEN-STDIN? ( n -- bool ) {: events :}
    events FD:POLLERR and 0= 0= if 0 0= exit then
@@ -831,8 +831,8 @@ private
 \ already asked poll whether the reader is gone, so the offset stays and the
 \ next POLLOUT under the deadline resumes; a short write advances by what
 \ landed. Closing here would truncate the child's stdin.
-: WRITE-STDIN-ACTIVE ( ^u8 len -- ) {: src:^ inu :}
-   inu LEN>N IN-OFF @ - >LEN STDIN-CHUNK {: chunk :}
+: WRITE-STDIN-ACTIVE ( str -- ) {: src:^ inu :}
+   inu IN-OFF @ - >LEN STDIN-CHUNK {: chunk :}
    IN-W @ src IN-OFF @ + chunk LEN>N write {: wrote :}
    wrote 0 < if exit then
    wrote chunk LEN>N > if E-PROC-OUTPUT THROW-CAPTURE then
@@ -840,9 +840,9 @@ private
    inu CLOSE-STDIN-DONE ;
 
 public
-: WRITE-STDIN ( ^u8 len -- ) {: src:^ inu :}
+: WRITE-STDIN ( str -- ) {: src:^ inu :}
    IN-W @ 0 < if exit then
-   IN-OFF @ inu LEN>N >= if IN-W CLOSE-CELL exit then
+   IN-OFF @ inu >= if IN-W CLOSE-CELL exit then
    src inu WRITE-STDIN-ACTIVE ;
 
 private
@@ -868,7 +868,7 @@ public
    rc 0 < if E-PROC-OUTPUT THROW-CAPTURE then
    rc >COUNT ;
 
-: DRIVE-STDIN ( ^u8 len -- ) {: in:^ inu :}
+: DRIVE-STDIN ( str -- ) {: in:^ inu :}
    2 >IDX PFD-REVENTS {: events :}
    events BROKEN-STDIN? if IN-W CLOSE-CELL exit then
    events FD:POLLOUT and 0= 0= if
@@ -943,9 +943,9 @@ public
    repeat
    REAP-CAPTURE-BOUNDED ;
 
-: RUN-STDIN-CAPTURE-LOOP ( ^u8 len ^u8 len ^u8 len -- )
+: RUN-STDIN-CAPTURE-LOOP ( str ^u8 len ^u8 len -- )
    {: in:^ inu out:^ outcap err:^ errcap :}
-   inu LEN>N 0 <= if IN-W CLOSE-CELL then
+   inu 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO drop
       in inu DRIVE-STDIN
@@ -955,9 +955,9 @@ public
       then
    repeat ;
 
-: RUN-STDIN-CAPTURE-ENDING-LOOP ( ^u8 len ^u8 len ^u8 len -- )
+: RUN-STDIN-CAPTURE-ENDING-LOOP ( str ^u8 len ^u8 len -- )
    {: in:^ inu out:^ outcap err:^ errcap :}
-   inu LEN>N 0 <= if IN-W CLOSE-CELL then
+   inu 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
          drop
@@ -973,9 +973,9 @@ public
    repeat
    REAP-CAPTURE-BOUNDED ;
 
-: RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP ( ^u8 len [ n -- ^u8 ] ^u8 len -- )
+: RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP ( str [ n -- ^u8 ] ^u8 len -- )
    {: in:^ inu sink err:^ errcap :}
-   inu LEN>N 0 <= if IN-W CLOSE-CELL then
+   inu 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
          drop
@@ -991,9 +991,9 @@ public
    repeat
    REAP-CAPTURE-BOUNDED ;
 
-: RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP ( ^u8 len [ n -- ^u8 ] [ n -- ^u8 ] -- )
+: RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP ( str [ n -- ^u8 ] [ n -- ^u8 ] -- )
    {: in:^ inu out err :}
-   inu LEN>N 0 <= if IN-W CLOSE-CELL then
+   inu 0 <= if IN-W CLOSE-CELL then
    begin STDIN-CAPTURE-DONE? 0= while
       REMAINING-MS POLL-IO-ENDING dup COUNT>N 0= if
          drop
@@ -1017,8 +1017,8 @@ public
    outcap CAPTURE-CHECK-CAP
    errcap CAPTURE-CHECK-CAP ;
 
-: CAPTURE-CHECK-STDIN ( len -- ) {: inu :}
-   inu LEN>N 0 < if E-PROC-OUTPUT throw then ;
+: CAPTURE-CHECK-STDIN ( n -- ) {: inu :}
+   inu 0 < if E-PROC-OUTPUT throw then ;
 
 : CAPTURE-BEGIN ( ms -- ) {: timeout :}
    CAPTURE-RESET
@@ -1079,9 +1079,9 @@ private
    CAPTURE-ADOPT-SPAWN ;
 
 public
-: RUN-CAPTURE ( ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
+: RUN-CAPTURE ( str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   pathu LEN>N 0 < if E-PROC-OUTPUT throw then
+   pathu 0 < if E-PROC-OUTPUT throw then
    outcap errcap CAPTURE-CHECK-CAPS
    path pathu PATHZ {: pathz:^ :}
    timeout CAPTURE-BEGIN
@@ -1090,9 +1090,9 @@ public
    CAPTURE-FINISH-RC ;
 
 private
-: RUN-CAPTURE-ENDING ( ^u8 len ^u8 len ^u8 len ms -- len len ending )
+: RUN-CAPTURE-ENDING ( str ^u8 len ^u8 len ms -- len len ending )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   pathu LEN>N 0 < if E-PROC-OUTPUT throw then
+   pathu 0 < if E-PROC-OUTPUT throw then
    outcap errcap CAPTURE-CHECK-CAPS
    path pathu PATHZ {: pathz:^ :}
    timeout CAPTURE-BEGIN
@@ -1131,12 +1131,12 @@ private
    h MAP-LEN 3 ?do h i CHECK-SLOT loop ;
 
 \ The span a capture loop takes for a stream: a pipe's, else an empty one.
-: BYTES$ ( stdio -- ^u8 len )
+: BYTES$ ( stdio -- str )
    MATCH stdio
      inherit OF NULL$ ENDOF
      null OF NULL$ ENDOF
      pipe OF SPAN:$ ENDOF
-   ;MATCH >LEN ;
+   ;MATCH ;
 
 : OPEN-INPUT ( stdio ^n -- ) {: h:^ :}
    MATCH stdio
@@ -1177,7 +1177,8 @@ public
       err h 2 ERR-R ERR-W OPEN-OUTPUT ;] catch {: code:n :}
    code 0<> if h RELEASE code throw then
    [: h MINT SPAWN ;] CAPTURE-ADOPT-SPAWN
-   in BYTES$ out BYTES$ err BYTES$ RUN-STDIN-CAPTURE-ENDING-LOOP
+   in BYTES$ out BYTES$ >LEN err BYTES$ >LEN
+   RUN-STDIN-CAPTURE-ENDING-LOOP
    CLOSE-ALL-CAPTURE-FDS
    OUT-LEN @ >LEN ERR-LEN @ >LEN STATUS @ >STATUS ;
 ;package

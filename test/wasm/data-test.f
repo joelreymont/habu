@@ -52,8 +52,8 @@ DYNAMIC-BUFFER AFTER u8
 
 : SPAWN ( ^u8 n -- n )
    {: exe:^ eu:n :}
-   exe eu >LEN EXE RESOLVE-EXECUTABLE {: xu:len :}
-   EXE xu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   exe eu EXE RESOLVE-EXECUTABLE {: xu:len :}
+   EXE xu LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: ou:len er:len rc:n :}
    ou LEN>N OUT-U !

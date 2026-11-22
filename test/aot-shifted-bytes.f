@@ -226,7 +226,7 @@ variable WANT-U
 \ its top-level code, so each run builds under its own.
 : PROBE-BUILD ( -- )
    GE-HB-RESET
-   s" HABU_OUT" >LEN PROBE-OUT$ >LEN PROC-ENV-SET
+   s" HABU_OUT" PROBE-OUT$ PROC-ENV-SET
    PROBE$ PROBE-IMAGE$ BUILD-ARGV BUILD-RUN
    s" stripped build of a file whose loads read the loader" GE-EXPECT-OK
    LOADED$ s" the loader's lines in the build, as under hb --load" GE-EXPECT-OUT-HAS ;
@@ -245,7 +245,7 @@ variable WANT-U
 \ in WANT the line hb --load printed.
 : RESOLVES-BUILD ( -- )
    GE-HB-RESET
-   s" HABU_OUT" >LEN RESOLVES-OUT$ >LEN PROC-ENV-SET
+   s" HABU_OUT" RESOLVES-OUT$ PROC-ENV-SET
    RESOLVES$ RESOLVES-IMAGE$ BUILD-ARGV BUILD-RUN
    s" stripped build of a file whose word resolves its own path" GE-EXPECT-OK
    WANT$ s" the directory the word resolves in the build, as under hb --load" GE-EXPECT-OUT-HAS ;
@@ -255,8 +255,8 @@ variable WANT-U
 : ENVTOP-BUILD ( str bool str -- )
    {: val:^ valu:n fresh:bool want:^ wantu:n :}
    GE-HB-RESET
-   s" HABU_OUT" >LEN ENVTOP-OUT$ >LEN PROC-ENV-SET
-   val NULL-PTR <> if s" HABU_TEST_SIDE" >LEN val valu >LEN PROC-ENV-SET then
+   s" HABU_OUT" ENVTOP-OUT$ PROC-ENV-SET
+   val NULL-PTR <> if s" HABU_TEST_SIDE" val valu PROC-ENV-SET then
    ENVTOP$ ENVTOP-IMAGE$ BUILD-ARGV BUILD-RUN
    s" build of a file whose top level reads HABU_TEST_SIDE" GE-EXPECT-OK
    GT-OUT$ s" envtop top level" CONTAINS? {: seen:bool :}
@@ -296,7 +296,7 @@ variable WANT-U
 
 : ROOTED-BUILD ( -- )
    GE-HB-RESET
-   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   s" HABU_OUT" ROOTED-OUT$ PROC-ENV-SET
    ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
    s" stripped build of a file that requires a file only its ROOT! reaches" GE-EXPECT-OK
    s" rooted top level" s" the first build runs the file's top level" GE-EXPECT-OUT-HAS
@@ -304,7 +304,7 @@ variable WANT-U
 
 : ROOTED-REBUILD ( -- )
    GE-HB-RESET
-   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   s" HABU_OUT" ROOTED-OUT$ PROC-ENV-SET
    ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
    s" second build of it into the same out root" GE-EXPECT-OK
    s" rooted top level" s" the second build reuses the cached object, running no top-level code" EXPECT-OUT-LACKS
@@ -313,7 +313,7 @@ variable WANT-U
 : ROOTED-CHANGED ( -- )
    ROOTED-HELPER$ HELPER-CHANGED-SOURCE$ FS:WRITE-ALL
    GE-HB-RESET
-   s" HABU_OUT" >LEN ROOTED-OUT$ >LEN PROC-ENV-SET
+   s" HABU_OUT" ROOTED-OUT$ PROC-ENV-SET
    ROOTED$ ROOTED-IMAGE$ BUILD-ARGV BUILD-RUN
    s" third build of it into the same out root, after its required file changed" GE-EXPECT-OK
    S\" rooted main from beside, changed and shared\n" ROOTED-RUN ;
@@ -392,7 +392,7 @@ variable LBL-U
 
 : CASE-BUILD ( str str -- ) {: out:^ outu:n image:^ imageu:n :}
    GE-HB-RESET
-   s" HABU_OUT" >LEN out outu >LEN PROC-ENV-SET
+   s" HABU_OUT" out outu PROC-ENV-SET
    C-MAIN$ image imageu BUILD-ARGV BUILD-RUN
    s" the build of main.f" LABEL GE-EXPECT-OK ;
 
@@ -494,7 +494,7 @@ variable G-IMAGE-U
    G-LIB G-LIB-U @ lib libu FS:WRITE-ALL
    C-MAIN$ main mainu FS:WRITE-ALL
    GE-HB-RESET
-   s" HABU_OUT" >LEN C-OUT$ >LEN PROC-ENV-SET
+   s" HABU_OUT" C-OUT$ PROC-ENV-SET
    C-MAIN$ C-IMAGE$ BUILD-ARGV BUILD-RUN
    70 s" the build of main.f" LABEL GE-EXPECT-RC
    s" LINKER:E-ADDRESS" s" the build's error" LABEL GE-EXPECT-ERR-HAS ;

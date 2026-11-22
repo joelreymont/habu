@@ -85,7 +85,7 @@ NO-PID KEY-PID !
 
 : TOOL ( str ^u8 -- n )
    {: name:^ u:n dst:^ :}
-   name u >LEN dst FIND-EXECUTABLE MATCH option
+   name u dst FIND-EXECUTABLE MATCH option
       none OF
          s" secret-linux-test: required executable missing on PATH: " type
          name u type cr

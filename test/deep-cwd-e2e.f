@@ -116,7 +116,7 @@ create TAIL TAIL-BYTES allot
 : RUN-CHILD ( str str -- )
    {: prog:^ progu:n cwd:^ cwdu:n :}
    PROC-ENV-INHERIT-MISSING
-   prog progu >LEN cwd cwdu >LEN
+   prog progu cwd cwdu
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;

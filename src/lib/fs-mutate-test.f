@@ -1220,12 +1220,12 @@ variable WANT-U
 
 : CHILD-ENV ( str -- ) {: a:^ u :}
    PROC-ARGV-ENV-RESET
-   s" TMPDIR" >LEN a u >LEN PROC-ENV-SET ;
+   s" TMPDIR" a u PROC-ENV-SET ;
 
 : CAPTURE ( str -- len len PROCESS:ending ) {: prog:^ progu :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   ENGINE-CANDIDATE:PATH$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : WANT+ ( str -- ) {: a:^ u :}
@@ -1502,7 +1502,7 @@ variable SOCAT-U
 
 
 : TOOL ( str ^u8 -- len ) {: name:^ size:n dst:^ :}
-   name size >LEN dst FIND-EXECUTABLE MATCH option
+   name size dst FIND-EXECUTABLE MATCH option
       none OF
          2 s" fs-mutate-test: required executable missing: " write drop
          2 name size write drop 2 S\" \n" write drop

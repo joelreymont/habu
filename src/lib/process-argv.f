@@ -73,7 +73,7 @@ public
    u LEN>N 0 < if E-PROC-OUTPUT throw then
    u LEN>N MEM-MAX-N >= if E-PROC-OUTPUT throw then
    u LEN>N 1+ {: need:n :}
-   a u need PROC-ARGV-ROWS:BYTES need >LEN PROCESS:ZCOPY
+   a u LEN>N need PROC-ARGV-ROWS:BYTES need >LEN PROCESS:ZCOPY
    PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    PROC-ARGV-N @ COUNT>N 1+ >COUNT PROC-ARGV-N ! ;
 
@@ -92,25 +92,25 @@ public
       stdin stdinu dst cap lenp BUF-APPEND
    then ;
 
-: PROC-ARGV-PREPARE ( ^u8 len -- ^u8 ^^u8 ) {: path:^ pathu :}
-   pathu LEN>N 0 <= if E-PROC-OUTPUT throw then
+: PROC-ARGV-PREPARE ( str -- ^u8 ^^u8 ) {: path:^ pathu :}
+   pathu 0 <= if E-PROC-OUTPUT throw then
    path pathu PROCESS:PATHZ {: pathz:^ :}
    pathz 0 >IDX PROC-ARGV-SLOT !
    NULL$ drop PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    pathz 0 >IDX PROC-ARGV-SLOT ;
 
-: PROC-SPAWN-ARGV-IO ( ^u8 len fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
+: PROC-SPAWN-ARGV-IO ( str fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
    [: a u PROC-ARGV-PREPARE infd outfd errfd PROC-SPAWN-ARGV-RAW ;]
    [: PROC-ARGV-RESET ;] finally {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: PROC-RUN-ARGV-IO-RC ( ^u8 len fd fd fd -- result<n,n> )
+: PROC-RUN-ARGV-IO-RC ( str fd fd fd -- result<n,n> )
    PROC-SPAWN-ARGV-IO PROCESS:WAIT PROCESS:STATUS>RC PROCESS:RC>RESULT ;
 
-: PROC-ARGV-CHECK-PATH ( ^u8 len -- ) {: path:^ pathu :}
-   pathu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   pathu LEN>N PROCESS:PATHZ-CAP >= if E-PROC-OUTPUT throw then ;
+: PROC-ARGV-CHECK-PATH ( str -- ) {: path:^ pathu :}
+   pathu 0 <= if E-PROC-OUTPUT throw then
+   pathu PROCESS:PATHZ-CAP >= if E-PROC-OUTPUT throw then ;
 
 : PROC-SPAWN-ARGV-CAPTURE ( ^u8 ^a -- ) {: pathz:^ argv:^ :}
    [: [: pathz argv PROCESS:CAPTURE-NULL-INPUT
@@ -124,7 +124,7 @@ public
       [: PROC-ARGV-RESET ;] finally ;]
    PROCESS:CAPTURE-ADOPT-SPAWN ;
 
-: RUN-ARGV-CAPTURE ( ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
+: RUN-ARGV-CAPTURE ( str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    [: path pathu PROC-ARGV-CHECK-PATH
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
@@ -135,7 +135,7 @@ public
    out outcap err errcap PROCESS:RUN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-CAPTURE-OUTCOME ( ^u8 len ^u8 len ^u8 len ms -- len len PROCESS:ending )
+: RUN-ARGV-CAPTURE-OUTCOME ( str ^u8 len ^u8 len ms -- len len PROCESS:ending )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
    [: path pathu PROC-ARGV-CHECK-PATH
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
@@ -146,7 +146,7 @@ public
    out outcap err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
-: RUN-ARGV-STDIN-CAPTURE ( ^u8 len ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
+: RUN-ARGV-STDIN-CAPTURE ( str str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    [: path pathu PROC-ARGV-CHECK-PATH
       inu PROCESS:CAPTURE-CHECK-STDIN
@@ -158,7 +158,7 @@ public
    in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ^u8 len ^u8 len ^u8 len ^u8 len ms -- len len PROCESS:ending )
+: RUN-ARGV-STDIN-CAPTURE-OUTCOME ( str str ^u8 len ^u8 len ms -- len len PROCESS:ending )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
    [: path pathu PROC-ARGV-CHECK-PATH
       inu PROCESS:CAPTURE-CHECK-STDIN

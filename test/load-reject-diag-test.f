@@ -340,7 +340,7 @@ undefine include
 
 \ Runs the engine under test on the arguments built for PATH.
 : LAUNCH ( str -- ) {: path:^ pathu:n :}
-   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ENGINE-CANDIDATE:PATH$  EMPTY 0  OUT CAP >LEN
    ERR CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    path pathu STORE! ;
 

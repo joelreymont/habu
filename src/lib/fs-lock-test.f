@@ -117,7 +117,7 @@ variable HELD-FD
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD:FD-CLOEXEC!  w FD:FD-CLOEXEC!
    PROC-ARGV-RESET
-   s" /bin/cat" >LEN r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
+   s" /bin/cat" r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
    r FD>N close
    fd FD>N close
    ROOT$ FS-LOCK:OPEN-DIR {: again:fd :}

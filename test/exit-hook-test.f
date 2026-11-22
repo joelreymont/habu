@@ -80,7 +80,7 @@ variable TREE-U
 \ program's own exit is what the case measures.
 : RUN-PATH ( str -- n n n ) {: path:^ pathu :}
    PROC-ENV-INHERIT-MISSING
-   path pathu >LEN
+   path pathu
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -479,7 +479,7 @@ variable RUN-FILE-U
 \ E-BUILT-CASE, once, and status 67.
 : EXPECT-CASE-RECORD ( -- )
    PROC-ARGV-ENV-RESET
-   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" ROOT$ PROC-ENV+
    TREE$ RUN-PATH {: qu:n qe:n qrc:n :}
    qu qe qrc 67 EXPECT-RC
    0 TEXT-U !
@@ -498,7 +498,7 @@ variable RUN-FILE-U
    rc 0<> if exit then
    ROOT$ s" missing" RUN-FILE-BUF FS:JOIN-PATH RUN-FILE-U !
    PROC-ARGV-ENV-RESET
-   s" TMPDIR" >LEN RUN-FILE$ >LEN PROC-ENV+
+   s" TMPDIR" RUN-FILE$ PROC-ENV+
    TREE$ RUN-PATH {: pu:n pe:n prc:n :}
    pu pe prc 67 EXPECT-RC
    0 TEXT-U !

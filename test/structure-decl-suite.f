@@ -925,7 +925,7 @@ create SC-NONE 1 allot
    s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
    s" --verify-only" >LEN PROC-ARGV+  SC-FILE >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN  SC-NONE 0 >LEN  SC-OUT SC-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  SC-NONE 0  SC-OUT SC-CAP >LEN
    SC-ERR SC-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    erru LEN>N SC-ERR-U !

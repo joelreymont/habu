@@ -67,7 +67,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ PROC-ARGV-RESET; answers its exit status, its stdout in OUT and its stderr in
 \ ERR.
 : SPAWN ( ^u8 len -- n )
-   OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+   LEN>N OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
@@ -103,7 +103,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    FILE fu ARG+ ;
 
 : HOST ( -- n )
-   s" bun" >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u SPAWN ;
 
 \ ---- the lines the host prints, built in SB ---------------------------------

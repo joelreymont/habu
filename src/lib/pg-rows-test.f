@@ -49,7 +49,7 @@ TYPED-VARIABLE CONN PG:connection
    s" select id, name, nick, score, boss, active from person where id = $1" ;
 
 
-: RUN ( ^u8 n -- ) {: a:^ u:n :}
+: RUN ( str -- ) {: a:^ u:n :}
    CONN @ PG:PARAMS
    CONN @ a u [: ;] PG:WITH-RESULT ;
 
@@ -160,7 +160,7 @@ TYPED-VARIABLE CONN PG:connection
    s" select $1::int, 'head', repeat('a', $1::int), repeat('b', 3 * $1::int)" ;
 
 
-: LONG-ROW ( PG:result -- ^u8 n ^u8 n ^u8 n PG:result )
+: LONG-ROW ( PG:result -- str str str PG:result )
    1 PG:COL-TEXT rot
    2 PG:COL-TEXT rot
    3 PG:COL-TEXT rot ;

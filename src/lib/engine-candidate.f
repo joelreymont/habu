@@ -23,7 +23,7 @@ private
 PATH-CAP BUFFER: JOINED
 
 : RESOLVE$ ( -- str )
-   NAME$ >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
+   NAME$ PROC-ENV-DEFAULT$? if exit then
    2drop
    NAME$ GETENV dup 0 > if exit then
    2drop ENGINE-ID:OWN-PATH ;

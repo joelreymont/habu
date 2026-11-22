@@ -182,7 +182,7 @@ PROCESS:NO-FD FEED-WR !
 \ check.f with stdin in, stderr into LOG and stdout into OUT. The watch opens
 \ while check.f is alive: macOS cannot register a process that has exited.
 : CHECK-SPAWN-TMP ( str n -- ) {: tmp:^ tmpu:n in:n :}
-   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV+
+   s" TMPDIR" tmp tmpu PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    LOG$ OPEN-LOG {: log:n :}
    OUT$ OPEN-LOG {: out:n :}
@@ -205,8 +205,8 @@ PROCESS:NO-FD FEED-WR !
 : SUBJECT-START ( -- )
    OPEN-FIFO
    SUBJECT$ >LEN PROC-ARGV+
-   s" CHECK_SIGNAL_FIFO" >LEN FIFO$ >LEN PROC-ENV+
-   CASE-CLOSED @ if s" CHECK_SIGNAL_CLOSED" >LEN s" 1" >LEN PROC-ENV+ then
+   s" CHECK_SIGNAL_FIFO" FIFO$ PROC-ENV+
+   CASE-CLOSED @ if s" CHECK_SIGNAL_CLOSED" s" 1" PROC-ENV+ then
    OPEN-NULL CHECK-SPAWN ;
 
 : CHECK-START ( -- )
@@ -433,7 +433,7 @@ PROCESS:NO-FD FEED-WR !
    CHECK-BEGIN
    s" --" >LEN PROC-ARGV+
    SUBJECT$ >LEN PROC-ARGV+
-   s" HABU_UNDER_TEST" >LEN STANDIN$ >LEN PROC-ENV+
+   s" HABU_UNDER_TEST" STANDIN$ PROC-ENV+
    OPEN-NULL CHECK-SPAWN
    CHECK-ENDED
    s" truncated: check.f exits unavailable" T-LABEL

@@ -148,28 +148,28 @@ create PT-DRAIN-BUF PT-CHUNK allot
    {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
+   s" bin/hb" out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
 : PT-RUN-HB-SCRIPT-OUTCOME ( str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
+   s" bin/hb" out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : PT-RUN-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS PROCESS:RUN-CAPTURE
+   path pathu out outcap >LEN err errcap >LEN timeout >MS PROCESS:RUN-CAPTURE
    PT-CAPTURE>N ;
 
 : PT-READ ( n -- n )
    PT-BUF 32 read ;
 
 : TEST-SPAWN-FAIL ( -- )
-   s" /no/such/habu-process-test" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO drop ;
+   s" /no/such/habu-process-test" -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO drop ;
 
 : TEST-SPAWN-RAW-MISSING ( -- )
-   s" /no/such/habu-process-test" >LEN PROCESS:PATHZ
+   s" /no/such/habu-process-test" PROCESS:PATHZ
    -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-RAW PID>N {: code:n :}
    code 0 < TTRUE
    HB-TARGET-MACOS? if code PT-ENOENT negate T= then ;
@@ -183,25 +183,25 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-R @ 1 >MS PROCESS:POLL-IN-OR-TIMEOUT drop ;
 
 : TEST-PATHZ ( -- )
-   s" /usr/bin/true" >LEN PROCESS:PATHZ dup ZLEN 13 T=
+   s" /usr/bin/true" PROCESS:PATHZ dup ZLEN 13 T=
    13 + c@ 0 T=
-   s" /usr/bin/true" >LEN PROCESS:RUN-RC MATCH result
+   s" /usr/bin/true" PROCESS:RUN-RC MATCH result
      ok  OF 0 T= ENDOF                          \ true exits clean -> ok(0)
      err OF drop 1 0 T= ENDOF                    \ unexpected failure
    ;MATCH
-   s" /usr/bin/false" >LEN PROCESS:RUN-RC MATCH result
+   s" /usr/bin/false" PROCESS:RUN-RC MATCH result
      ok  OF drop 1 0 T= ENDOF                     \ unexpected clean exit
      err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
    ;MATCH ;
 
 : TEST-SPAWN-WAIT ( -- )
    TEST-SPAWN-RAW-MISSING
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO
+   s" /usr/bin/true" -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO
    PROCESS:WAIT PROCESS:STATUS>RC RC>N 0 T=
    [: TEST-SPAWN-FAIL ;] E-PROC-SPAWN TTHROWSQ ;
 
 : TEST-PROC-WAIT-RC ( -- )
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO
+   s" /usr/bin/false" -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO
    PROCESS:WAIT PROCESS:STATUS>RC RC>N 1 T= ;
 
 : PT-FORK-EXIT ( n -- )
@@ -234,7 +234,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-FORK-CELL @ 7 T= ;
 
 : TEST-PROC-WAIT-OUTCOME-EXIT ( -- )
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT
+   s" /usr/bin/false" -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT
    MATCH PROCESS:status
      exited OF 1 T= ENDOF                           \ /usr/bin/false -> exited 1
      signaled OF drop 1 0 T= ENDOF
@@ -244,7 +244,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -TERM $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT
+   s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT
    MATCH PROCESS:status
      exited OF drop 1 0 T= ENDOF
      signaled OF 15 T= ENDOF                        \ SIGTERM death -> signaled 15
@@ -264,15 +264,15 @@ create PT-DRAIN-BUF PT-CHUNK allot
    s" PTN2 ( n n -- rc ) PROCESS:ENDING>RC" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN3 ( PROCESS:ending PROCESS:ending -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN4 ( pid -- n n ) PROCESS:WAIT" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTN5 ( ^u8 len ^u8 len ^u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTP2 ( ^u8 len ^u8 len ^u8 len ms -- len len PROCESS:ending ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" PTN5 ( str ^u8 len ^u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTP2 ( str ^u8 len ^u8 len ms -- len len PROCESS:ending ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ A signal-killed child's rc is 128+sig, never a masked rc 0.
 : TEST-PROC-WAIT-SIGNAL-RC ( -- )
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -KILL $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
+   s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
    PROCESS:WAIT PROCESS:STATUS>RC RC>N 137 T= ;   \ SIGKILL -> 128+9
 
 : TEST-WAIT-FAIL ( -- )
@@ -356,11 +356,11 @@ create PT-DRAIN-BUF PT-CHUNK allot
    if
       PROCESS:IN-W @ PT-FILL-FD {: filled:n :}
       filled 0 > TTRUE
-      PT-CHUNK-BUF PT-CHUNK >LEN PROCESS:WRITE-STDIN
+      PT-CHUNK-BUF PT-CHUNK PROCESS:WRITE-STDIN
       PROCESS:IN-W @ 0 >= TTRUE
       PROCESS:IN-OFF @ 0 T=
       PROCESS:IN-R @ filled PT-DRAIN-FD filled T=
-      PT-CHUNK-BUF PT-CHUNK >LEN PROCESS:WRITE-STDIN
+      PT-CHUNK-BUF PT-CHUNK PROCESS:WRITE-STDIN
       PROCESS:IN-OFF @ PT-CHUNK T=
    then
    PROCESS:CLOSE-STDIN-FDS ;
@@ -433,7 +433,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : PT-EOF-START ( -- )
    PROC-ARGV-RESET
    PT-CAPTURE-EOF >LEN PROC-ARGV+
-   [: s" bin/hb" >LEN PROC-ARGV-PREPARE
+   [: s" bin/hb" PROC-ARGV-PREPARE
       PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
       PROC-SPAWN-ARGV-CAPTURE ;]
    [: PROC-ARGV-RESET ;] finally
@@ -466,7 +466,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s" kill -KILL $$" >LEN PROC-ARGV+
-   s" /bin/sh" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE-OUTCOME
+   s" /bin/sh" PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
    cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N oc PROCESS:SIGKILL T-ENDING-SIGNALED=
    erru LEN>N 0 T= outu LEN>N 0 T=
@@ -479,7 +479,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : PT-STARVED-CAPTURE ( -- )
    PROC-ARGV-RESET
    PT-CAPTURE-HANG >LEN PROC-ARGV+
-   s" bin/hb" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
+   s" bin/hb" PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N drop drop drop ;
 
 : TEST-STARVED-TIMEOUT ( -- )
@@ -496,7 +496,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    FD:PIPE-PAIR PT-OUT-W ! PT-OUT-R !
    PT-IN-W @ s" cat-in" write 6 T=
    PT-IN-W @ close
-   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD PROCESS:RUN-IO-RC MATCH result
+   s" /bin/cat" PT-IN-R @ PT-OUT-W @ -1 >FD PROCESS:RUN-IO-RC MATCH result
      ok  OF 0 T= ENDOF                          \ cat exits clean -> ok(0)
      err OF drop 1 0 T= ENDOF                    \ signaled/nonzero -> unexpected failure
    ;MATCH
@@ -507,7 +507,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    PT-OUT-R @ close ;
 
 : TEST-RUN-IO-FALSE ( -- )                          \ /usr/bin/false exits 1 -> err(1)
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:RUN-IO-RC MATCH result
+   s" /usr/bin/false" -1 >FD -1 >FD -1 >FD PROCESS:RUN-IO-RC MATCH result
      ok  OF drop 1 0 T= ENDOF                     \ unexpected clean exit
      err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
    ;MATCH ;
@@ -516,14 +516,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ ok(captured) with the two lengths; a nonzero exit matches err(failed) with the
 \ same lengths and the code.
 : TEST-RUN-CAPTURE-RESULT-OK ( -- )                 \ /bin/pwd exits clean -> ok(captured)
-   s" /bin/pwd" >LEN PT-PWD-OUT PT-PWD-CAP >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER PROCESS:RUN-CAPTURE
+   s" /bin/pwd" PT-PWD-OUT PT-PWD-CAP >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER PROCESS:RUN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 > TTRUE  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF                \ pwd must exit clean
    ;MATCH ;
 
 : TEST-RUN-CAPTURE-RESULT-ERR ( -- )                \ /usr/bin/false exits 1 -> err(failed,code=1)
-   s" /usr/bin/false" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER PROCESS:RUN-CAPTURE
+   s" /usr/bin/false" PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER PROCESS:RUN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF                  \ false must not exit clean
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
@@ -532,8 +532,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Negative checked regression: the return is the pcap result, not a (len len rc)
 \ triple, and the ok arm cannot leak the failed payload.
 : TEST-RUN-CAPTURE-RESULT-TYPES ( -- )
-   s" PTC1 ( ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
-   s" PTC2 ( ^u8 len ^u8 len ^u8 len ms -- len len rc ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTC1 ( str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" PTC2 ( str ^u8 len ^u8 len ms -- len len rc ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTC3 ( result<pcap:captured,pcap:failed> -- pcap:captured ) MATCH result ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : TEST-PROC-READ-NEG-LEN ( -- )
@@ -549,17 +549,17 @@ create PT-Z PT-Z-CAP allot
 
 : TEST-ZCOPY-EXACT ( -- )
    s" a copy fits when its bytes and NUL fit the destination" T-LABEL
-   s" 1234567" >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY ZLEN 7 T= ;
+   s" 1234567" PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY ZLEN 7 T= ;
 
 : TEST-ZCOPY-FULL ( -- )
-   s" 12345678" >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
+   s" 12345678" PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 : TEST-ZCOPY-NEG-LEN ( -- )
-   PT-BUF -1 >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
+   PT-BUF -1 PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 \ A length whose NUL wraps the sum must not reach the copy loop.
 : TEST-ZCOPY-HUGE-LEN ( -- )
-   PT-BUF MEM-MAX-N >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
+   PT-BUF MEM-MAX-N PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 100 constant PT-HOLD-MS                  \ a window the held child outlasts
 $100000000 constant PT-PID-WRAP          \ 2^32: what a C int pid_t drops
@@ -577,7 +577,7 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s su >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO ;
+   s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO ;
 
 : PT-HOLD-SCRIPT ( -- str )
    s" exec >&- 2>&-; read x; exit 5" ;
@@ -592,7 +592,7 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PT-HOLD-SCRIPT >LEN PROC-ARGV+
-   s" /bin/sh" >LEN in-r out-w out-w PROC-SPAWN-ARGV-IO PID>N PT-HOLD-PID !
+   s" /bin/sh" in-r out-w out-w PROC-SPAWN-ARGV-IO PID>N PT-HOLD-PID !
    in-r FD>N close
    out-w FD>N close
    in-w FD>N PT-HOLD-IN !
@@ -760,7 +760,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PT-UNMARKED-SCRIPT >LEN PROC-ARGV+
-   s" /bin/sh" >LEN in-r out-w -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
+   s" /bin/sh" in-r out-w -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
    in-r FD>N close
    out-w FD>N close
    out-r -1 >MS PROCESS:POLL-IN COUNT>N {: ready:n :}
@@ -833,7 +833,7 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
    s" --" >LEN PROC-ARGV+
    PT-TERM-MARKER >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
-   s" bin/hb" >LEN PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
+   s" bin/hb" PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
    pathz argv PROC-SPAWN-ARGV-CAPTURE
    PROCESS:OUT-R @ >FD -1 >MS PROCESS:POLL-IN COUNT>N

@@ -263,7 +263,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 \ Runs the source on a fresh engine's stdin and asserts its exit code.
 : FFI-T-RUN-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
+   ENGINE-CANDIDATE:PATH$ src srcu
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-ENDING-EXITED=

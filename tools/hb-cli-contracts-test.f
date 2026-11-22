@@ -170,7 +170,7 @@ create HCT-BIG HCT-BIG-CAP allot
 
 : HCT-EXPECT-LOAD-STDIN ( -- )
    HCT-STDIN-LOAD
-   s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
+   s" bin/hb" s" DATA" HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
@@ -181,7 +181,7 @@ create HCT-BIG HCT-BIG-CAP allot
    HCT-CHILD HCT-BIG-CHILD$ FS:WRITE-ALL
    HCT-BIG-FILL
    HCT-STDIN-LOAD
-   s" bin/hb" >LEN HCT-BIG HCT-BIG-CAP >LEN HCT-OUT HCT-CAP >LEN
+   s" bin/hb" HCT-BIG HCT-BIG-CAP HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    s" READ-STDIN-ALL grows the vector and appends after its bytes" T-LABEL
@@ -194,7 +194,7 @@ create HCT-BIG HCT-BIG-CAP allot
 : HCT-EXPECT-UNKNOWN-FLAG ( -- )
    PROC-ARGV-RESET
    s" --loadx"  >LEN PROC-ARGV+
-   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   s" bin/hb"  HCT-EMPTY 0  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    s" bin/hb --loadx" HCT-STORE!
    s" unknown flag exits 64" T-LABEL
@@ -209,7 +209,7 @@ create HCT-BIG HCT-BIG-CAP allot
 : HCT-EXPECT-FLAG-BEFORE-STDIN ( -- )
    PROC-ARGV-RESET
    s" --nonsense"  >LEN PROC-ARGV+
-   s" bin/hb" >LEN  s" 1 2 + . cr" >LEN  HCT-OUT HCT-CAP >LEN
+   s" bin/hb"  s" 1 2 + . cr"  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    s" bin/hb --nonsense" HCT-STORE!
    s" unknown flag rejected even with a piped program" T-LABEL
@@ -226,7 +226,7 @@ create HCT-BIG HCT-BIG-CAP allot
    json if s" --json-errors"  >LEN PROC-ARGV+ then
    s" --deadline-ms"  >LEN PROC-ARGV+
    s" x"  >LEN PROC-ARGV+
-   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   s" bin/hb"  HCT-EMPTY 0  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    json if s" bin/hb --load tools/check.f -- --json-errors --deadline-ms x"
    else s" bin/hb --load tools/check.f -- --deadline-ms x" then HCT-STORE!
@@ -255,7 +255,7 @@ create HCT-BIG HCT-BIG-CAP allot
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    HCT-CHILD >LEN PROC-ARGV+
-   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   s" bin/hb"  HCT-EMPTY 0  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    s" --load of an empty file exits 0" T-LABEL
@@ -271,7 +271,7 @@ create HCT-BIG HCT-BIG-CAP allot
 
 : HCT-EXPECT-ARGV-NONE ( -- )
    HCT-ARGV-LOAD
-   s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
+   s" bin/hb" HCT-EMPTY 0 HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    s" zero script args reject negative and zero indexes" T-LABEL
@@ -286,7 +286,7 @@ create HCT-BIG HCT-BIG-CAP allot
    s" alpha" >LEN PROC-ARGV+
    s" " >LEN PROC-ARGV+
    s" omega" >LEN PROC-ARGV+
-   s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
+   s" bin/hb" HCT-EMPTY 0 HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
    s" script argv preserves first, last, and empty values and rejects bounds" T-LABEL

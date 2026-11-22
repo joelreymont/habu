@@ -34,7 +34,7 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 
 : RUN-SOURCE ( str str -- n ) {: exe:^ exeu:n src:^ srcu:n :}
    PROC-ARGV-RESET
-   exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN
+   exe exeu src srcu OUT CAP >LEN ERR CAP >LEN
    PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE
    PCAP-RESULT:>N {: outu:n erru:n rc:n :} outu OUT-U ! erru ERR-U ! rc ;

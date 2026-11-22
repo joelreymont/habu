@@ -158,7 +158,7 @@ variable GT-PROGRESS-START-NS
 \ was given.
 : GT-RUN ( str n -- ) {: path:^ pathu timeout :}
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   path pathu >LEN s" " >LEN [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] timeout >MS
+   path pathu s" " [: GT-OUT-ROOM ;] [: GT-ERR-ROOM ;] timeout >MS
    RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    GT-STORE-RUN ;
 

@@ -256,14 +256,14 @@ public
 : ENV-ENTRY+ ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    u 0 < if E-PROC-ENV throw then
-   a u >LEN PROC-ENV-CHECK-ENTRY
+   a u PROC-ENV-CHECK-ENTRY
    h ENV-BYTES @ h ENV-OFF @ [: a u h ENV-BYTES @ CSTR+ ;] ENTRY ;
 
 : ENV+ ( CMD:command str str -- CMD:command )
    {: name:^ nameu:n val:^ valu:n :}
    CTX {: h:^ :}
    h ENV-BYTES @ h ENV-OFF @
-   [: name nameu >LEN val valu >LEN
+   [: name nameu val valu
       [: h ENV-BYTES @ swap GROW SPAN:$ drop ;] PROC-ENV-ROW drop ;]
    ENTRY ;
 
@@ -281,7 +281,7 @@ public
 : UNSETENV ( CMD:command str -- CMD:command )
    {: a:^ u:n :}
    CTX {: h:^ :}
-   a u >LEN PROC-ENV-CHECK-NAME
+   a u PROC-ENV-CHECK-NAME
    h UNSET-BYTES @ h UNSET-OFF @ [: a u h UNSET-BYTES @ CSTR+ ;] ENTRY ;
 
 private
@@ -299,7 +299,7 @@ public
 : CWD! ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    a u CWD-CHECK
-   a u >LEN h CWDZ PATHZ-CAP >LEN PROCESS:ZCOPY drop
+   a u h CWDZ PATHZ-CAP >LEN PROCESS:ZCOPY drop
    u h CWD-LEN ! ;
 
 : IN! ( CMD:command str -- CMD:command ) {: a:^ u:n :}
@@ -325,22 +325,22 @@ private
 
 : NAMES ( ^n -- ^n count ) ENV-NAMES @ 0 VEC:AT dup MAP:CAP@ ;
 
-: ROW-NAME ( ^u8 -- ^u8 len ) {: z:^ :}
-   z z z ZLEN >LEN PROC-ENV-NAME-LEN ;
+: ROW-NAME ( ^u8 -- str ) {: z:^ :}
+   z z z ZLEN PROC-ENV-NAME-LEN ;
 
 : NAMED-PUSH ( ^n ^u8 -- ) {: h:^ z:^ :}
-   h ENVP-VEC @ VEC:COUNT h NAMES z ROW-NAME MAP:SET
+   h ENVP-VEC @ VEC:COUNT h NAMES z ROW-NAME >LEN MAP:SET
    z h ENVP-VEC @ VEC:PUSH ! ;
 
-: UNSET-NAME ( ^n n -- ^u8 len )
+: UNSET-NAME ( ^n n -- str )
    {: h:^ i:n :}
-   h UNSET-BYTES @ VEC-BASE h UNSET-OFF @ i VEC:AT @ + dup ZLEN >LEN ;
+   h UNSET-BYTES @ VEC-BASE h UNSET-OFF @ i VEC:AT @ + dup ZLEN ;
 
 
 : UNSET? ( ^n ^u8 -- bool )
    {: h:^ z:^ :}
    0 begin dup h UNSET-OFF @ VEC:COUNT < while
-      h over UNSET-NAME z z ZLEN >LEN PROC-ENV-SAME-NAME? if drop PROC-ENV-TRUE exit then
+      h over UNSET-NAME z z ZLEN PROC-ENV-SAME-NAME? if drop PROC-ENV-TRUE exit then
       1+
    repeat drop PROC-ENV-FALSE ;
 
@@ -349,7 +349,7 @@ private
 \ PROC-ENV-DEFAULT+ wrote it and a parent row in this process's environment.
 : INHERIT-Z ( ^n ^u8 -- )
    {: h:^ z:^ :}
-   h NAMES z ROW-NAME MAP:HAS? if exit then
+   h NAMES z ROW-NAME >LEN MAP:HAS? if exit then
    h z UNSET? if exit then
    h z NAMED-PUSH ;
 
@@ -383,7 +383,7 @@ private
 \ with its last value, then the inherited ones, the NULL; both rebuilt every run.
 : PREPARE ( ^n str -- )
    {: h:^ path:^ pathu:n :}
-   path pathu >LEN h PATHZ PATHZ-CAP >LEN PROCESS:ZCOPY {: z:^ :}
+   path pathu h PATHZ PATHZ-CAP >LEN PROCESS:ZCOPY {: z:^ :}
    h ARGV-VEC @ 0 VEC:RESIZE
    z h ARGV-VEC @ VEC:PUSH !
    h ARG-OFF @ VEC:COUNT 0 ?do
@@ -394,7 +394,7 @@ private
    h ENVP-VEC @ 0 VEC:RESIZE
    h ENV-OFF @ VEC:COUNT 0 ?do
       h ENV-BYTES @ VEC-BASE  h ENV-OFF @ i VEC:AT @ +  {: z:^ :}
-      h NAMES z ROW-NAME MAP:GET MATCH option
+      h NAMES z ROW-NAME >LEN MAP:GET MATCH option
          none OF h z NAMED-PUSH ENDOF
          some OF z swap h ENVP-VEC @ swap VEC:AT ! ENDOF
       ;MATCH
@@ -404,7 +404,7 @@ private
 
 : CHECK-RUN ( str ms -- )
    {: path:^ pathu:n timeout:ms :}
-   path pathu >LEN PROC-ARGV-CHECK-PATH
+   path pathu PROC-ARGV-CHECK-PATH
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;
 
 
@@ -496,7 +496,7 @@ private
    timeout PROCESS:STDIN-CAPTURE-BEGIN
    cancel START-CANCEL
    h SPAWN
-   h IN-BYTES @ VEC:SPAN SPAN:$ >LEN
+   h IN-BYTES @ VEC:SPAN SPAN:$
    [: OUT-ROOM ;] [: ERR-ROOM ;] PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    h cancel timeout ;
 

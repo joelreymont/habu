@@ -115,7 +115,7 @@ variable IMDT-FORMS-U
    path pathu IMDT-ARG+
    off offu IMDT-ARG+
    count countu IMDT-ARG+
-   s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
+   s" bin/hb" IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE-OUTCOME ;
 
 : IMDT-EXPECT-EXIT ( len len PROCESS:ending n -- n n )

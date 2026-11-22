@@ -26,7 +26,7 @@ create ERR ERR-CAP allot
 : RUN ( -- )
    T-RESET
    CHILD-ARGV
-   ENGINE-CANDIDATE:PATH$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER
+   ENGINE-CANDIDATE:PATH$ OUT OUT-CAP >LEN ERR ERR-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
    s" profiler rewind child exits successfully" T-LABEL  rc 0 T=
    s" a word after a failed text gets fresh counters" T-LABEL

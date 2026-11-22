@@ -146,8 +146,8 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 
 
 : UNSET-ENV ( -- )
-   s" HABU_PROC_ENV_TEST" >LEN s" default" >LEN PROC-ENV-DEFAULT+
-   s" HABU_PROC_ENV_TEST_X" >LEN s" kept" >LEN PROC-ENV-DEFAULT+
+   s" HABU_PROC_ENV_TEST" s" default" PROC-ENV-DEFAULT+
+   s" HABU_PROC_ENV_TEST_X" s" kept" PROC-ENV-DEFAULT+
    [: UNSET-RUN ;] CMD:WITH-COMMAND
    [: UNSET-EXPLICIT ;] CMD:WITH-COMMAND
    [: CALLER-OVER-INHERITED ;] CMD:WITH-COMMAND
@@ -365,7 +365,7 @@ create NAME 5 allot                      \ V and four digits
    a u LF-COUNT ROWS T= ;
 
 \ An inner scope is its own command.
-: SAY ( CMD:command ^u8 n -- CMD:command ) {: a:^ u:n :}
+: SAY ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    a u CMD:ARG+
    s" /usr/bin/printf" PROCESS:WAIT-FOREVER MS>N RUN# 0 T= ;
 
@@ -555,7 +555,7 @@ TASK:MIN-STACK TASK:TASK TASK-B
 : BAD-YES ( str n -- n ) {: a:^ u:n ch:n :}
    0 u 0 ?do i 1 and 0<> if 10 else ch then a i + c@ <> if 1 + then loop ;
 
-: YES ( CMD:command ^u8 n -- CMD:command n ) {: a:^ u:n :}
+: YES ( CMD:command str -- CMD:command n ) {: a:^ u:n :}
    s" -c" CMD:ARG+
    a u CMD:ARG+
    s" /bin/sh" PROCESS:WAIT-FOREVER MS>N RUN# ;
@@ -621,13 +621,13 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
    ['] LATE-BODY LATE-TASK TASK:ACTIVATE
    [: LATE-PREPARED? LATE-TASK TASK:DONE? or ;] TEST-WAIT:POLL
    LATE-PREPARED? TTRUE
-   s" HABU_CMD_LATE" >LEN LATE LATE-U >LEN PROC-ENV-DEFAULT+ ;
+   s" HABU_CMD_LATE" LATE LATE-U PROC-ENV-DEFAULT+ ;
 
 : LATE-DONE? ( -- bool ) LATE-TASK TASK:DONE? ;
 
 : LATE-DEFAULT ( -- )
    LATE-U 0 ?do [char] x LATE i + c! loop
-   s" HABU_CMD_DEFAULT" >LEN s" orig" >LEN PROC-ENV-DEFAULT+
+   s" HABU_CMD_DEFAULT" s" orig" PROC-ENV-DEFAULT+
    [: LATE-WINDOW ;] FD-LOCK:WITH
    [: LATE-DONE? ;] TEST-WAIT:POLL
    LATE-TASK JOIN-0

@@ -90,7 +90,7 @@ variable LA-DANGLING-LINK-U
 : LA-ARG ( str -- )   >LEN PROC-ARGV+ ;
 
 : LA-RUN ( -- n n n )                              \ -> outu erru rc
-   s" bin/hb" >LEN LA-OUT LA-CAP >LEN LA-ERR LA-CAP >LEN PROCESS:WAIT-FOREVER
+   s" bin/hb" LA-OUT LA-CAP >LEN LA-ERR LA-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF

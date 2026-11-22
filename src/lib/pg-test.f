@@ -723,11 +723,11 @@ TYPED-VARIABLE HELD-ID n
    s" select id as key, label, length(label) as len from pqt" ;
 
 
-: SCALAR ( PG:connection ^u8 n -- n )
+: SCALAR ( PG:connection str -- n )
    [: 0 >ROW 0 >COL INT swap ;] WITH-RESULT ;
 
 
-: ATTNUM ( PG:connection ^u8 n -- n ) {: c name:^ nu:n :}
+: ATTNUM ( PG:connection str -- n ) {: c name:^ nu:n :}
    c PARAMS
    c name nu TEXT+
    c s" select attnum from pg_attribute where attrelid = 'pqt'::regclass and attname = $1"
@@ -1832,7 +1832,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
 create PATH-BUF PATH-CAP allot          \ the stderr capture file's path
 variable PATH-U
 
-: PATH$ ( -- ^u8 n )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- str )  PATH-BUF PATH-U @ ;
 
 : PATH-MAKE ( -- )
    s" pg-test" FS:MKTEMP-DIR {: dir:^ dirlen:n :}
