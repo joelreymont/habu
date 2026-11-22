@@ -76,7 +76,7 @@ variable DISK-VALID
 
 public
 
-: TEXT! ( ^u8 n -- )
+: TEXT! ( str -- )
    {: a:^ u:n :}
    a TEXT-A !
    u TEXT-U !

@@ -441,7 +441,7 @@ private
 
 public
 
-: ROOT+ ( ^u8 n -- )
+: ROOT+ ( str -- )
    SOURCE-ROOT:CANONICAL drop {: a:^ u:n :}
    ROOT-BYTES-U @ {: at:n :}
    at u + 1+ ROOT-BYTES-RESERVE

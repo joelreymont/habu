@@ -135,7 +135,7 @@ public
 \ answers it from (LSP-DEFS:DEFS-EACH): the check of the document holding the
 \ file while the store keeps one, else the latest. The order follows the store:
 \ check after check, oldest first, each check's files in first-named order.
-: ANSWER ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: ANSWER ( ^JSON:writer str -- ^JSON:writer )
    {: w q:^ qu:n :}
    w OUT !
    q QUERY-A !

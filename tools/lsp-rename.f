@@ -69,7 +69,7 @@ public
 \ its first colon is neither first nor last, making the tail a qualified name; or it
 \ holds a quote or a backslash, which a string literal naming the word (a use before
 \ a call of a names: word) could not spell.
-: WHY$ ( ^u8 n -- ^u8 n )
+: WHY$ ( str -- str )
    {: a:^ u:n :}
    u 0= if s" the new name is empty" exit then
    a u [: LINT-LEX:ENGINE-DELIM? ;] ANY-BYTE? if
@@ -83,7 +83,7 @@ public
 \ Why a name WHY$ passes cannot be written over the tails the gather placed, else
 \ empty: it holds a colon and a tail follows a qualifier, giving the token a name no
 \ word has (CHECKER-QUALIFIED?).
-: QUALIFIED-WHY$ ( ^u8 n -- ^u8 n )
+: QUALIFIED-WHY$ ( str -- str )
    {: a:^ u:n :}
    a u [: [char] : = ;] ANY-BYTE? 0= if s" " exit then
    LSP-REFERENCES:LOCATIONS 0 ?do
@@ -97,7 +97,7 @@ public
 \ the tail of each location, to the writer. The declaration is the first
 \ location, then the uses by file, P's first (LSP-REFERENCES:SETTLE), so
 \ each URI's locations are one run.
-: ANSWER ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: ANSWER ( ^JSON:writer str -- ^JSON:writer )
    {: name:^ nu:n :}
    WRITE-OBJECT-START
    s" changes" WRITE-KEY WRITE-OBJECT-START

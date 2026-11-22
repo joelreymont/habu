@@ -73,12 +73,12 @@ public
 
 : DOC-URI$ ( n -- str )  SLOTS ENTRY-URI BYTES$ ;
 : DOC-PATH$ ( n -- str )  SLOTS ENTRY-PATH BYTES$ ;
-: DOC-TEXT$ ( n -- ^u8 n )  SLOTS ENTRY-TEXT BYTES$ ;
+: DOC-TEXT$ ( n -- str )  SLOTS ENTRY-TEXT BYTES$ ;
 : DOC-VERSION@ ( n -- n )  SLOTS ENTRY-VERSION @ ;
 : DOC-ID@ ( n -- n )  SLOTS ENTRY-ID @ ;
 
 \ The checker names the document by its path's canonical spelling, taken at open.
-: DOC-CANON$ ( n -- ^u8 n )  SLOTS ENTRY-CANON BYTES$ ;
+: DOC-CANON$ ( n -- str )  SLOTS ENTRY-CANON BYTES$ ;
 
 \ Each path ended by LF.
 : DOC-DEPS$ ( n -- str )  SLOTS ENTRY-DEPS BYTES$ ;
@@ -115,7 +115,7 @@ public
       i LIVE? i but <> and if i DOC-CANON$ i DOC-TEXT$ each execute then
    loop ;
 
-: DOC-FIND ( ^u8 n -- option<n> )  [: ENTRY-URI ;] HOLDER ;
+: DOC-FIND ( str -- option<n> )  [: ENTRY-URI ;] HOLDER ;
 
 : DOC-HOLDING ( str -- option<n> )  [: ENTRY-CANON ;] HOLDER ;
 
@@ -133,7 +133,7 @@ public
    slot DOC-CLEAN
    false e ENTRY-LIVE ! ;
 
-: DOC-CHANGE ( n n ^u8 n -- )
+: DOC-CHANGE ( n n str -- )
    {: slot:n v:n t:^ tu:n :}
    t tu slot SLOTS ENTRY-TEXT STORE
    v slot SLOTS ENTRY-VERSION !
@@ -164,7 +164,7 @@ public
 \ the version and text as a change would, so each URI is held once and keeps
 \ what its checks published. A path holding a NUL, or whose canonical spelling
 \ passes PATH-CAP, throws E-PATH-NUL or E-PATH-RANGE, and nothing opens.
-: DOC-OPEN ( ^u8 n n ^u8 n ^u8 n -- )
+: DOC-OPEN ( str n str str -- )
    {: u:^ uu:n v:n p:^ pu:n t:^ tu:n :}
    u uu DOC-FIND MATCH option
       some OF v t tu DOC-CHANGE ENDOF

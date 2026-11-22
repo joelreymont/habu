@@ -1070,7 +1070,7 @@ public
    false ;
 
 : PRIMITIVE? ( -- bool )  IMPLICIT? ;
-: PRIMITIVE-RENAME$ ( -- ^u8 n )  s" Built-in words cannot be renamed" ;
+: PRIMITIVE-RENAME$ ( -- str )  s" Built-in words cannot be renamed" ;
 
 \ Selects the declaration at this byte of the text of the open document in
 \ this slot, which positions count in, and places it, finding no subjects:
@@ -1087,7 +1087,7 @@ public
    FOUND @ if slot SUBJECTS! then ;
 
 : REFUSED? ( -- bool )  REFUSED @ ;
-: BLOCKED$ ( -- ^u8 n )  MSG$ ;
+: BLOCKED$ ( -- str )  MSG$ ;
 
 \ Whether a declaration is selected, and the bytes its token starts and ends
 \ at in P's text.
@@ -1099,7 +1099,7 @@ public
 : SPELT? ( -- bool )  SPELT @ ;
 
 \ A DEFTYPE declares its two converters at its name's token, which spells neither.
-: UNSPELT$ ( -- ^u8 n )
+: UNSPELT$ ( -- str )
    DECLARED-AT
    s" , but a token naming it does not spell it" MSG+
    MSG$ ;
@@ -1109,7 +1109,7 @@ public
       some OF REC-CLASS CLASS-EXPORT = ENDOF
       none OF false ENDOF
    ;MATCH ;
-: EXPORT$ ( -- ^u8 n )
+: EXPORT$ ( -- str )
    DECLARED-AT
    s"  as an EXPORT of another word" MSG+
    MSG$ ;
@@ -1121,14 +1121,14 @@ public
       some OF REC-CLASS CLASS-CONSTRUCTOR = ENDOF
       none OF false ENDOF
    ;MATCH ;
-: CONSTRUCTOR-RENAME$ ( -- ^u8 n )
+: CONSTRUCTOR-RENAME$ ( -- str )
    s" Constructor rename cannot update MATCH arms" ;
 
 \ Whether a location placed is a token that also declares another word in its
 \ subject's file, as an EXPORT's operand does, and the first such one said. A
 \ rename that edited the token would leave that word's uses naming the old one.
 : RE-EXPORTED? ( -- bool )  RX-U @ 0<> ;
-: RE-EXPORT$ ( -- ^u8 n )  RX-AT @ RX-U @ POOL$ ;
+: RE-EXPORT$ ( -- str )  RX-AT @ RX-U @ POOL$ ;
 
 \ How many subjects the request gathers from so far: none until a
 \ declaration is selected and walked.
@@ -1136,7 +1136,7 @@ public
 
 \ A queued edit to a subject or to a file a completed probe read can change
 \ the answer being gathered. Other open documents do not affect this request.
-: TOUCHES? ( ^u8 n -- bool )
+: TOUCHES? ( str -- bool )
    {: path:^ pathu:n :}
    KNOWN-N @ 0 ?do
       i K-SUB KNOWN@ 0 >= i K-CONSUMED KNOWN@ 0 > or if
@@ -1276,7 +1276,7 @@ public
 
 : UNCOVERED? ( -- bool )  MISS-N @ 0 > ;
 
-: UNCOVERED$ ( ^u8 n -- ^u8 n )
+: UNCOVERED$ ( str -- str )
    0 MSG-U !
    MSG+
    s" : " MSG+

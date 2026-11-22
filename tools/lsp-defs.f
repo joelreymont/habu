@@ -1302,7 +1302,7 @@ public
 \ Whether the last completed check of the document in this slot read the file
 \ at this canonical path, whether or not a check of it has started since;
 \ false if the store keeps no check of it.
-: DEFS-READ? ( n ^u8 n -- bool )
+: DEFS-READ? ( n str -- bool )
    {: slot:n p:^ pu:n :}
    slot BLOCK-OF MATCH option
       some OF
@@ -1317,7 +1317,7 @@ public
 
 \ A check depends on files it read and on the loader target at which it
 \ stopped. The latter has no source group because the check read no bytes.
-: DEFS-DEPENDS? ( n ^u8 n -- bool )
+: DEFS-DEPENDS? ( n str -- bool )
    {: slot:n p:^ pu:n :}
    slot p pu DEFS-READ? if true exit then
    slot BLOCK-OF MATCH option
