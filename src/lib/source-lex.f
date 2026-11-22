@@ -5,7 +5,8 @@ split-str
 \ place while they are read.
 \ STORAGE CLASS. PROCESS-WIDE: one token table and scan state for the image;
 \ SOURCE replaces the last scan's tokens. SOURCE makes the tables on the heap
-\ when none are made; RELEASE deletes them and forgets the span.
+\ when none are made; RELEASE deletes them and forgets the span. A token word
+\ runs only between SOURCE and RELEASE; nothing checks it.
 
 require src/lib/string.f
 require src/lib/memory.f
@@ -84,10 +85,6 @@ variable IN-BODY                \ those tokens end inside a definition body
    c @ NULL-PTR = if exit then
    c @ 0 VEC:RESIZE ;
 
-\ The vector a table's cell holds; one not made is E-VEC-BOUNDS.
-: TABLE@ ( ^^VEC:vector<t> -- ^VEC:vector<t> )
-   @ dup NULL-PTR = if E-VEC-BOUNDS throw then ;
-
 : CLEAR-ERROR ( -- )
    NO-ERROR ERR-KIND !
    0 ERR-BYTE !
@@ -158,23 +155,23 @@ TABLES-RELEASED TABLES !
    LOCALS-RESET ;
 
 : SYNC-COUNT ( -- )
-   KIND-V TABLE@ VEC:COUNT TOK-N ! ;
+   KIND-V @ VEC:COUNT TOK-N ! ;
 
 : ADD ( n ^u8 n n n n ^u8 n -- ) {: kind:n a:^ u:n byte:n line:n col:n ca:^ cu:n :}
-   kind KIND-V TABLE@ VEC:PUSH !
-   a ADDR-V TABLE@ VEC:PUSH !
-   u LEN-V TABLE@ VEC:PUSH !
-   byte BYTE-V TABLE@ VEC:PUSH !
-   line LINE-V TABLE@ VEC:PUSH !
-   col COL-V TABLE@ VEC:PUSH !
-   ca CADDR-V TABLE@ VEC:PUSH !
-   cu CLEN-V TABLE@ VEC:PUSH !
-   false bool>n OPND-V TABLE@ VEC:PUSH !
+   kind KIND-V @ VEC:PUSH !
+   a ADDR-V @ VEC:PUSH !
+   u LEN-V @ VEC:PUSH !
+   byte BYTE-V @ VEC:PUSH !
+   line LINE-V @ VEC:PUSH !
+   col COL-V @ VEC:PUSH !
+   ca CADDR-V @ VEC:PUSH !
+   cu CLEN-V @ VEC:PUSH !
+   false bool>n OPND-V @ VEC:PUSH !
    SYNC-COUNT ;
 
 \ The locals state reads the marks, so a mark on a token it has read forgets it.
 : MARK-OPERAND ( n -- ) {: k:n :}
-   true bool>n OPND-V TABLE@ k VEC:AT !
+   true bool>n OPND-V @ k VEC:AT !
    k STEPPED @ < if LOCALS-RESET then ;
 
 public
@@ -190,30 +187,30 @@ public
    TOK-N @ ;
 
 : TOKEN ( n -- ^u8 n ) {: k:n :}
-   ADDR-V TABLE@ k VEC:AT @
-   LEN-V TABLE@ k VEC:AT @ ;
+   ADDR-V @ k VEC:AT @
+   LEN-V @ k VEC:AT @ ;
 
 : CONTENT ( n -- ^u8 n ) {: k:n :}
-   CADDR-V TABLE@ k VEC:AT @
-   CLEN-V TABLE@ k VEC:AT @ ;
+   CADDR-V @ k VEC:AT @
+   CLEN-V @ k VEC:AT @ ;
 
 : KIND@ ( n -- n ) {: k:n :}
-   KIND-V TABLE@ k VEC:AT @ ;
+   KIND-V @ k VEC:AT @ ;
 
 \ A token's byte offset is 0-based; its line and column are 1-based.
 : BYTE@ ( n -- n ) {: k:n :}
-   BYTE-V TABLE@ k VEC:AT @ ;
+   BYTE-V @ k VEC:AT @ ;
 
 : LINE@ ( n -- n ) {: k:n :}
-   LINE-V TABLE@ k VEC:AT @ ;
+   LINE-V @ k VEC:AT @ ;
 
 : COL@ ( n -- n ) {: k:n :}
-   COL-V TABLE@ k VEC:AT @ ;
+   COL-V @ k VEC:AT @ ;
 
 \ Token k is a raw operand: data the source never runs, so it starts nothing,
 \ ends nothing and makes no name of the token after it.
 : OPERAND? ( n -- bool ) {: k:n :}
-   OPND-V TABLE@ k VEC:AT @ 0<> ;
+   OPND-V @ k VEC:AT @ 0<> ;
 
 \ The diagnostic is one record, written at most once per scan: the writer stops
 \ the scan at the malformed site, so no token after it is exposed. A rescan by
@@ -460,13 +457,13 @@ private
 
 : LOCAL? ( str -- bool ) {: a:^ u:n :}
    LIVE 0 ?do
-      a u LOCAL-V TABLE@ i VEC:AT @ LOCAL$ STR= if true unloop exit then
+      a u LOCAL-V @ i VEC:AT @ LOCAL$ STR= if true unloop exit then
    loop
    false ;
 
 : LOCAL-PUSH ( n -- )
-   LOCAL-V TABLE@ VEC:PUSH !
-   DEPTH @ LDEPTH-V TABLE@ VEC:PUSH ! ;
+   LOCAL-V @ VEC:PUSH !
+   DEPTH @ LDEPTH-V @ VEC:PUSH ! ;
 
 : LOCALS-DROP ( -- )
    LOCAL-V CLEAR-ONE
@@ -474,11 +471,11 @@ private
 
 : BLOCK-DROP ( -- )
    begin
-      LIVE 0 > if LDEPTH-V TABLE@ LIVE 1- VEC:AT @ DEPTH @ >= else false then
+      LIVE 0 > if LDEPTH-V @ LIVE 1- VEC:AT @ DEPTH @ >= else false then
    while
       LIVE 1- {: l:n :}
-      LOCAL-V TABLE@ l VEC:RESIZE
-      LDEPTH-V TABLE@ l VEC:RESIZE
+      LOCAL-V @ l VEC:RESIZE
+      LDEPTH-V @ l VEC:RESIZE
    repeat ;
 
 \ Block word k acts unless it is a name or names a live local.
@@ -696,15 +693,15 @@ private
 : KEEP ( n -- )
    dup STEPPED @ < if LOCALS-RESET then
    {: l:n :}
-   KIND-V TABLE@ l VEC:RESIZE
-   ADDR-V TABLE@ l VEC:RESIZE
-   LEN-V TABLE@ l VEC:RESIZE
-   BYTE-V TABLE@ l VEC:RESIZE
-   LINE-V TABLE@ l VEC:RESIZE
-   COL-V TABLE@ l VEC:RESIZE
-   CADDR-V TABLE@ l VEC:RESIZE
-   CLEN-V TABLE@ l VEC:RESIZE
-   OPND-V TABLE@ l VEC:RESIZE
+   KIND-V @ l VEC:RESIZE
+   ADDR-V @ l VEC:RESIZE
+   LEN-V @ l VEC:RESIZE
+   BYTE-V @ l VEC:RESIZE
+   LINE-V @ l VEC:RESIZE
+   COL-V @ l VEC:RESIZE
+   CADDR-V @ l VEC:RESIZE
+   CLEN-V @ l VEC:RESIZE
+   OPND-V @ l VEC:RESIZE
    SYNC-COUNT ;
 
 \ Token k, read as a plain word, steers how the scan reads the token after it.
