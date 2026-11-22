@@ -141,7 +141,7 @@ TYPED-VARIABLE AL ALLOC:allocator
    FREES-MADE @ 1 T=  FREED-STATE @ 0 T=  FREED-AT @ b OFFSET T= ;
 
 
-: REFUSED ( -- )
+: NEGATIVE-SIZE ( -- )
    [: AL -1 ALLOC:BYTES drop drop ;] E-MEM-SIZE TTHROWSQ
    ALLOCS @ 1 T= ;
 
@@ -157,7 +157,7 @@ TYPED-VARIABLE AL ALLOC:allocator
 : CALLS ( -- )
    s" ALLOC:BYTES asks the function only for bytes; ALLOC:FREE hands it the state and the pointer" T-LABEL
    CELL TOP !  AL FILL
-   NO-CALLS ONE-CALL REFUSED REFILLS ;
+   NO-CALLS ONE-CALL NEGATIVE-SIZE REFILLS ;
 
 
 : GROWN ( -- ^u8 )

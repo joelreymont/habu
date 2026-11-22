@@ -7,6 +7,7 @@ require src/lib/heap.f
 require src/lib/span.f
 require src/lib/vector.f
 require src/lib/reason.f
+require src/lib/test/counting-allocator.f
 
 package XML-SOURCE-TEST
 
@@ -25,8 +26,6 @@ variable MARKED-WIRE
 variable PROBE
 100000 constant CHILDREN
 variable WIDE-BAD
-
-CAST: KIND>N ( XML:kind -- n )
 
 : LE$ ( -- str )
    s\" \xFF\xFE<\za\z \zq\z=\z'\zx\z'\z>\z&\za\zm\zp\z;\z<\z/\za\z>\z" ;
@@ -69,11 +68,11 @@ CAST: KIND>N ( XML:kind -- n )
 : DECODED$ ( -- str ) DECODED @ VEC:SPAN SPAN:$ ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
-   KIND>N {: want:n :}
-   XML:NEXT KIND>N want T= ;
+   XML-KIND:TAG {: want:n :}
+   XML:NEXT XML-KIND:TAG want T= ;
 
 : DRAIN ( XML:reader -- XML:reader )
-   begin XML:NEXT KIND>N XML-KIND:EOF KIND>N <> while repeat ;
+   begin XML:NEXT XML-KIND:EOF XML-KIND:EQ 0= while repeat ;
 
 : UTF16-READ ( -- )
    LE$ OPEN
@@ -552,51 +551,34 @@ TYPED-VARIABLE MOVER ALLOC:allocator
    XML:SOURCE-CLOSE
    v VEC:DELETE ;
 
-\ An allocator over the heap that counts the blocks it gives and frees, and
-\ refuses the request numbered REFUSED since TAKEN was last cleared, 0 none.
-variable TAKEN
-variable FREED
-variable REFUSED
-TYPED-VARIABLE COUNTER ALLOC:allocator
-
-: C-ALLOC ( str -- ^u8 )
-   {: st:^ len:n :}
-   TAKEN @ 1+ REFUSED @ = if E-MEM-SIZE throw then
-   1 TAKEN +!  HEAP:ALLOCATOR len ALLOC:BYTES drop ;
-
-: C-RESIZE ( ^u8 str n -- ^u8 )
-   {: st:^ block:^ old:n new:n :}
-   HEAP:ALLOCATOR block old new ALLOC:RESIZE drop ;
-
-: C-FREE ( ^u8 ^u8 -- )
-   {: st:^ block:^ :}
-   1 FREED +!  HEAP:ALLOCATOR block ALLOC:FREE ;
-
 : COUNTED-STORAGE ( -- )
-   NULL-PTR [: C-ALLOC ;] [: C-RESIZE ;] [: C-FREE ;] COUNTER ALLOC:INIT
+   ALLOC-TEST:COUNTING {: al:^ :}
+   0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !
    s" a rejected document takes no storage" T-LABEL
-   [: COUNTER s\" \xFF\xFE\x00\xDC" XML:SOURCE-INIT XML:SOURCE-CLOSE ;]
+   [: al s\" \xFF\xFE\x00\xDC" XML:SOURCE-INIT XML:SOURCE-CLOSE ;]
    catch XML:E-UTF16 T=
-   TAKEN @ 0 T=
+   ALLOC-TEST:TAKEN @ 0 T=
    s" a source's close frees the storage it took" T-LABEL
-   COUNTER LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE
-   TAKEN @ 0 > TTRUE TAKEN @ FREED @ T=
-   TAKEN @ {: before:n :}
-   COUNTER s" <a/>" XML:SOURCE-INIT XML:SOURCE-OWN XML:OWNER-CLOSE
-   TAKEN @ before > TTRUE TAKEN @ FREED @ T=
+   al LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE
+   ALLOC-TEST:TAKEN @ 0 > TTRUE
+   ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T=
+   ALLOC-TEST:TAKEN @ {: before:n :}
+   al s" <a/>" XML:SOURCE-INIT XML:SOURCE-OWN XML:OWNER-CLOSE
+   ALLOC-TEST:TAKEN @ before > TTRUE
+   ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T=
    s" a source refused storage midway frees what it took" T-LABEL
    1
    begin
       {: k:n :}
-      0 TAKEN !  0 FREED !  k REFUSED !
-      [: COUNTER LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE ;] catch {: code:n :}
-      TAKEN @ FREED @ T=
+      0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !  k ALLOC-TEST:REFUSED !
+      [: al LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE ;] catch {: code:n :}
+      ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T=
       code 0<>
    while
       code E-MEM-SIZE T=
       k 1+
    repeat
-   0 REFUSED ! ;
+   0 ALLOC-TEST:REFUSED ! ;
 
 \ MARKED holds a UTF-16 text built scalar by scalar; MARKED-AT holds, per
 \ lexical offset, the original offset that scalar was written at, or -1 inside

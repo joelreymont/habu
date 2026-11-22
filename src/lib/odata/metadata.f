@@ -25,6 +25,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/memory.f
+require src/lib/heap.f
 require src/lib/arena.f
 require src/lib/fmt.f
 require src/lib/reason.f
@@ -2517,7 +2518,7 @@ CAST: >RECORD ( n -- ^t )
    src len SPAN:MAKE d DOC-SOURCE !
    d DOC-NAMES @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW d DOC-SCRATCH !
    d 16 MAP-NEW
-   d DOC-CURSOR @ src len XML:INIT
+   d DOC-CURSOR @ HEAP:ALLOCATOR src len XML:INIT
    d EVENTS XML:CLOSE
    d RESOLVE ;
 

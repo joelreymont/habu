@@ -40,8 +40,6 @@ variable READING
 variable BAD-LAST
 variable INVALID-LAST
 
-CAST: KIND>N ( XML:kind -- n )
-
 : UTF16$ ( str bool -- str )
    {: ascii size:n little:bool :}
    size WIRE-CAP 2 - 2 / > if XML:E-CAPACITY throw then
@@ -69,8 +67,8 @@ CAST: KIND>N ( XML:kind -- n )
    form 1 = UTF16$ ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
-   KIND>N {: want:n :}
-   XML:NEXT KIND>N want T= ;
+   XML-KIND:TAG {: want:n :}
+   XML:NEXT XML-KIND:TAG want T= ;
 
 : STREAM$ ( -- str )
    s" <a xmlns:p='urn:x'><p:b q='&amp;'>Aé&amp;Z</p:b></a>" ;
@@ -87,7 +85,7 @@ CAST: KIND>N ( XML:kind -- n )
 
 : STREAM-READ ( -- )
    0 STREAM-POS !
-   RD STREAM-POS ['] STREAM-FILL XML:INIT-INPUT
+   RD HEAP:ALLOCATOR STREAM-POS ['] STREAM-FILL XML:INIT-INPUT
    XML-KIND:START NEXT=
    XML-KIND:START NEXT=
    XML:NAME$ s" p:b" T$=
@@ -95,11 +93,11 @@ CAST: KIND>N ( XML:kind -- n )
    XML:ATTR-NEXT TTRUE
    CLEARED XML:ATTR-TEXT DECODED$ s" &" T$=
    CLEARED drop
-   begin XML:NEXT KIND>N XML-KIND:TEXT KIND>N = while
+   begin XML:NEXT XML-KIND:TEXT XML-KIND:EQ while
       DECODED @ XML:TEXT
    repeat
    DECODED$ s" Aé&Z" T$=
-   XML:KIND KIND>N XML-KIND:END KIND>N T=
+   XML:KIND XML-KIND:TAG XML-KIND:END XML-KIND:TAG T=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE ;
 
@@ -111,7 +109,7 @@ CAST: KIND>N ( XML:kind -- n )
    XML-KIND:TEXT NEXT=
    XML:CONTENT {: start:off size:len :}
    start READING @ TEXT-OFF ! size READING @ TEXT-LEN !
-   begin XML:NEXT KIND>N XML-KIND:EOF KIND>N <> while repeat ;
+   begin XML:NEXT XML-KIND:EOF XML-KIND:EQ 0= while repeat ;
 
 : PARSE-PART ( n -- )
    dup READING ! OWNERS @ RD swap XML:OWNER-READER

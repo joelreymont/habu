@@ -4,7 +4,7 @@ split-str
 \ at one bucket, which an unkeyed hash such as FNV cannot promise. k0 is the
 \ key's bytes 0..7 little-endian, k1 bytes 8..15. ABSORB-WORD is eight
 \ ABSORB-BYTEs at any alignment; FINISH answers BYTES's hash and spends the state.
-\ STORAGE CLASS. CALLER-OWNED: distinct STATE-CELLS states serve concurrent Tasks.
+\ STORAGE CLASS. CALLER-OWNED: distinct `state` records serve concurrent Tasks.
 
 require src/lib/error.f
 require src/lib/le.f
@@ -32,18 +32,7 @@ STRUCTURE state OPAQUE DERIVE addr
    FIELD tail n
    FIELD len n
 ;STRUCTURE
-EXPORT STATE-CELLS
 private
-
-NULL-PTR STATE-V0 NULL-PTR - constant V0-OFF
-NULL-PTR STATE-V1 NULL-PTR - constant V1-OFF
-NULL-PTR STATE-V2 NULL-PTR - constant V2-OFF
-NULL-PTR STATE-V3 NULL-PTR - constant V3-OFF
-NULL-PTR STATE-TAIL NULL-PTR - constant TAIL-OFF
-NULL-PTR STATE-LEN NULL-PTR - constant LEN-OFF
-
-: TAIL-AT ( ^n -- ^n ) TAIL-OFF + ;
-: LEN-AT ( ^n -- ^n ) LEN-OFF + ;
 
 : ROTL ( n n -- n )
    {: x:n k:n :}
@@ -86,14 +75,14 @@ NULL-PTR STATE-LEN NULL-PTR - constant LEN-OFF
    k0 INIT0 xor  k1 INIT1 xor  k0 INIT2 xor  k1 INIT3 xor ;
 
 
-: V@ ( ^n -- n n n n )
+: V@ ( ^state -- n n n n )
    {: s:^ :}
-   s V0-OFF + @  s V1-OFF + @  s V2-OFF + @  s V3-OFF + @ ;
+   s STATE-V0 @  s STATE-V1 @  s STATE-V2 @  s STATE-V3 @ ;
 
 
-: V! ( n n n n ^n -- )
+: V! ( n n n n ^state -- )
    {: v0:n v1:n v2:n v3:n s:^ :}
-   v0 s V0-OFF + !  v1 s V1-OFF + !  v2 s V2-OFF + !  v3 s V3-OFF + ! ;
+   v0 s STATE-V0 !  v1 s STATE-V1 !  v2 s STATE-V2 !  v3 s STATE-V3 ! ;
 
 
 : PARTIAL@ ( str -- n )
@@ -102,39 +91,39 @@ NULL-PTR STATE-LEN NULL-PTR - constant LEN-OFF
 
 public
 
-: INIT ( ^n n n -- )
+: INIT ( ^state n n -- )
    {: s:^ k0:n k1:n :}
    k0 k1 KEYED s V!
-   0 s TAIL-AT !
-   0 s LEN-AT ! ;
+   0 s STATE-TAIL !
+   0 s STATE-LEN ! ;
 
 
-: ABSORB-BYTE ( ^n u8 -- )
+: ABSORB-BYTE ( ^state u8 -- )
    {: s:^ b:u8 :}
-   s LEN-AT @ {: len:n :}
-   b $FF and  len BLOCK-MASK and 8 * lshift  s TAIL-AT @ or {: tail:n :}
-   len 1+ s LEN-AT !
+   s STATE-LEN @ {: len:n :}
+   b $FF and  len BLOCK-MASK and 8 * lshift  s STATE-TAIL @ or {: tail:n :}
+   len 1+ s STATE-LEN !
    len BLOCK-MASK and BLOCK-MASK = if
       s V@ tail MIX s V!
-      0 s TAIL-AT !
+      0 s STATE-TAIL !
    else
-      tail s TAIL-AT !
+      tail s STATE-TAIL !
    then ;
 
 
-: ABSORB-WORD ( ^n n -- )
+: ABSORB-WORD ( ^state n -- )
    {: s:^ w:n :}
-   s LEN-AT @ BLOCK-MASK and 0= if
+   s STATE-LEN @ BLOCK-MASK and 0= if
       s V@ w MIX s V!
-      s LEN-AT @ BLOCK-BYTES + s LEN-AT !
+      s STATE-LEN @ BLOCK-BYTES + s STATE-LEN !
       exit
    then
    BLOCK-BYTES 0 ?do s  w i 8 * rshift  ABSORB-BYTE loop ;
 
 
-: FINISH ( ^n -- n )
+: FINISH ( ^state -- n )
    {: s:^ :}
-   s V@  s LEN-AT @ LEN-SHIFT lshift  s TAIL-AT @ or  FINAL ;
+   s V@  s STATE-LEN @ LEN-SHIFT lshift  s STATE-TAIL @ or  FINAL ;
 
 
 : BYTES ( n n ^u8 n -- n )

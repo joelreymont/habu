@@ -7,45 +7,45 @@ require src/lib/vector.f
 
 package XML
 private
-: EVENT-RESET ( ^n -- )
+: EVENT-RESET ( ^cursor -- )
    {: state :}
-   state POSITION + @ state RAW-OFF + !
-   0 state RAW-LEN + !
-   0 state NAME-LEN + !
-   0 state VALUE-LEN + !
-   0 state URI-OFF + !
-   0 state URI-LEN + !
-   0 state ATTR-COUNT + !
-   -1 state ATTR-INDEX + ! ;
+   state CURSOR-POSITION @ state CURSOR-RAW-OFF !
+   0 state CURSOR-RAW-LEN !
+   0 state CURSOR-NAME-LEN !
+   0 state CURSOR-VALUE-LEN !
+   0 state CURSOR-URI-OFF !
+   0 state CURSOR-URI-LEN !
+   0 state CURSOR-ATTR-COUNT !
+   -1 state CURSOR-ATTR-INDEX ! ;
 
-: EVENT-FINISH ( ^n kind -- )
+: EVENT-FINISH ( ^cursor kind -- )
    {: state token:kind :}
-   state POSITION + @ state RAW-OFF + @ - state RAW-LEN + !
-   token KIND>N state TOKEN-KIND + ! ;
+   state CURSOR-POSITION @ state CURSOR-RAW-OFF @ - state CURSOR-RAW-LEN !
+   token state CURSOR-TOKEN-KIND ! ;
 
-: VALUE-BEGIN ( ^n -- )
-   dup POSITION + @ swap VALUE-OFF + ! ;
+: VALUE-BEGIN ( ^cursor -- )
+   dup CURSOR-POSITION @ swap CURSOR-VALUE-OFF ! ;
 
-: VALUE-END ( ^n -- )
+: VALUE-END ( ^cursor -- )
    {: state :}
-   state POSITION + @ state VALUE-OFF + @ - state VALUE-LEN + ! ;
+   state CURSOR-POSITION @ state CURSOR-VALUE-OFF @ - state CURSOR-VALUE-LEN ! ;
 
-: SCAN-ELEMENT-NAME ( ^n -- )
+: SCAN-ELEMENT-NAME ( ^cursor -- )
    {: state :}
    state SCAN-NAME {: start:n size:n :}
    state start size QNAME-CHECK
-   start state NAME-OFF + !
-   size state NAME-LEN + ! ;
+   start state CURSOR-NAME-OFF !
+   size state CURSOR-NAME-LEN ! ;
 
-: OPEN-END? ( ^n -- bool )
+: OPEN-END? ( ^cursor -- bool )
    {: state :}
    state PEEK $3E = state s" />" MATCH$ or ;
 
-: SCAN-OPEN-ATTRIBUTES ( ^n -- bool )
+: SCAN-OPEN-ATTRIBUTES ( ^cursor -- bool )
    {: state :}
    begin state OPEN-END? 0= while
       state WHITE? 0= if
-         state state POSITION + @
+         state state CURSOR-POSITION @
          s" white space, `>` or `/>` after the element name or an attribute"
          s" separate attributes with white space, and end the start tag with `>` or `/>`"
          E-MALFORMED REJECT
@@ -58,34 +58,34 @@ private
    state $3E REQUIRE-BYTE
    empty ;
 
-: PUSH-CHECK ( ^n -- )
+: PUSH-CHECK ( ^cursor -- )
    {: state :}
-   state OPEN-DEPTH + @ 0= if
-      state ROOT-COUNT + @ 0<> if
-         state state POSITION + @
+   state CURSOR-OPEN-DEPTH @ 0= if
+      state CURSOR-ROOT-COUNT @ 0<> if
+         state state CURSOR-POSITION @
          s" white space, a comment or a processing instruction after the root element"
          s" wrap the elements in one root element"
          E-MALFORMED REJECT
       then
-      1 state ROOT-COUNT + !
+      1 state CURSOR-ROOT-COUNT !
    then
-   state state OPEN-DEPTH + @ 1+ FRAMES-GROW ;
+   state state CURSOR-OPEN-DEPTH @ 1+ FRAMES-GROW ;
 
-: SAVE-FRAME ( ^n -- )
+: SAVE-FRAME ( ^cursor -- )
    {: state :}
-   state state OPEN-DEPTH + @ FRAME {: frame :}
-   state state NAME-OFF + @ state NAME-LEN + @ SCOPE-REF
-   frame FRAME-NAME-U + ! frame FRAME-NAME + !
-   state NS-COUNT + @ frame FRAME-NS-COUNT + ! ;
+   state state CURSOR-OPEN-DEPTH @ FRAME {: frame :}
+   state state CURSOR-NAME-OFF @ state CURSOR-NAME-LEN @ SCOPE-REF
+   frame FRAME-NAME-U ! frame FRAME-NAME !
+   state CURSOR-NS-COUNT @ frame FRAME-NS-COUNT ! ;
 
-: PUSH-FRAME ( ^n -- )
+: PUSH-FRAME ( ^cursor -- )
    {: state :}
-   state state OPEN-DEPTH + @ FRAME {: frame :}
-   state URI-OFF + @ frame FRAME-URI + !
-   state URI-LEN + @ frame FRAME-URI-U + !
-   1 state OPEN-DEPTH + +! ;
+   state state CURSOR-OPEN-DEPTH @ FRAME {: frame :}
+   state CURSOR-URI-OFF @ frame FRAME-URI !
+   state CURSOR-URI-LEN @ frame FRAME-URI-U !
+   1 state CURSOR-OPEN-DEPTH +! ;
 
-: READ-START ( ^n -- )
+: READ-START ( ^cursor -- )
    {: state :}
    state PUSH-CHECK
    state ADVANCE
@@ -94,15 +94,15 @@ private
    state SAVE-FRAME
    state RESOLVE-ELEMENT
    state PUSH-FRAME
-   empty if EMPTY-END state PENDING + ! then
+   empty if PENDING-EMPTY-END state CURSOR-PENDING ! then
    state XML-KIND:START EVENT-FINISH ;
 
 \ Rejects the reader at off, expecting the open element's end tag.
 \ The expected text `</NAME>` names the open element, cut as a found token is.
-: END-TAG-REJECT ( ^n n str n -- )
+: END-TAG-REJECT ( ^cursor n str n -- )
    {: state off:n fa:^ fu:n code:n :}
    state CURRENT-FRAME {: frame :}
-   state frame FRAME-NAME + @ frame FRAME-NAME-U + @ SPAN$ {: name:^ u:n :}
+   state frame FRAME-NAME @ frame FRAME-NAME-U @ SPAN$ {: name:^ u:n :}
    name u CAPPED {: len:n form:n :}
    state off REJECT-HEAD
    s" `</" REASON:APPEND
@@ -111,22 +111,22 @@ private
    s" >`" REASON:APPEND
    state off fa fu code REJECT-TAIL ;
 
-: MATCH-END-NAME ( ^n -- )
+: MATCH-END-NAME ( ^cursor -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
-   state frame FRAME-NAME + @ frame FRAME-NAME-U + @ SPAN$
-   state state NAME-OFF + @ state NAME-LEN + @ SPAN$ BYTES= 0= if
-      state state NAME-OFF + @
+   state frame FRAME-NAME @ frame FRAME-NAME-U @ SPAN$
+   state state CURSOR-NAME-OFF @ state CURSOR-NAME-LEN @ SPAN$ BYTES= 0= if
+      state state CURSOR-NAME-OFF @
       s" close elements in the reverse of the order they were opened"
       E-MALFORMED END-TAG-REJECT
    then
-   frame FRAME-URI + @ state URI-OFF + !
-   frame FRAME-URI-U + @ state URI-LEN + ! ;
+   frame FRAME-URI @ state CURSOR-URI-OFF !
+   frame FRAME-URI-U @ state CURSOR-URI-LEN ! ;
 
-: READ-END ( ^n -- )
+: READ-END ( ^cursor -- )
    {: state :}
-   state OPEN-DEPTH + @ 0= if
-      state state POSITION + @ s" an end tag only after its start tag"
+   state CURSOR-OPEN-DEPTH @ 0= if
+      state state CURSOR-POSITION @ s" an end tag only after its start tag"
       s" remove the end tag, or write its start tag before it"
       E-MALFORMED REJECT
    then
@@ -135,66 +135,66 @@ private
    state MATCH-END-NAME
    state SKIP-WHITE
    state $3E REQUIRE-BYTE
-   POP-NEXT state PENDING + !
+   PENDING-POP-NEXT state CURSOR-PENDING !
    state XML-KIND:END EVENT-FINISH ;
 
-: POP-FRAME ( ^n -- )
+: POP-FRAME ( ^cursor -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
-   state frame FRAME-NS-COUNT + @ POP-BINDINGS
-   state frame FRAME-NAME + @ SCOPE-CUT
-   -1 state OPEN-DEPTH + +!
-   0 state PENDING + ! ;
+   state frame FRAME-NS-COUNT @ POP-BINDINGS
+   state frame FRAME-NAME @ SCOPE-CUT
+   -1 state CURSOR-OPEN-DEPTH +!
+   PENDING-NONE state CURSOR-PENDING ! ;
 
-: READ-EMPTY-END ( ^n -- )
+: READ-EMPTY-END ( ^cursor -- )
    {: state :}
    state CURRENT-FRAME {: frame :}
-   frame FRAME-NAME + @ state NAME-OFF + !
-   frame FRAME-NAME-U + @ state NAME-LEN + !
-   frame FRAME-URI + @ state URI-OFF + !
-   frame FRAME-URI-U + @ state URI-LEN + !
-   POP-NEXT state PENDING + !
+   frame FRAME-NAME @ state CURSOR-NAME-OFF !
+   frame FRAME-NAME-U @ state CURSOR-NAME-LEN !
+   frame FRAME-URI @ state CURSOR-URI-OFF !
+   frame FRAME-URI-U @ state CURSOR-URI-LEN !
+   PENDING-POP-NEXT state CURSOR-PENDING !
    state XML-KIND:END EVENT-FINISH ;
 
-: TEXT-CONTINUES? ( ^n -- bool )
+: TEXT-CONTINUES? ( ^cursor -- bool )
    {: state :}
    state INPUT? if
-      state POSITION + @ state VALUE-OFF + @ -
+      state CURSOR-POSITION @ state CURSOR-VALUE-OFF @ -
       CHUNK >= if false exit then
    then
    state EOF? if false exit then
    state PEEK $3C <> ;
 
-: TEXT-SCALAR ( ^n -- )
+: TEXT-SCALAR ( ^cursor -- )
    {: state :}
    state s" ]]>" MATCH$ if
-      state state POSITION + @ s" text without `]]>`"
+      state state CURSOR-POSITION @ s" text without `]]>`"
       s" write `]]&gt;` for a literal `]]>` in text" E-MALFORMED REJECT
    then
-   state OPEN-DEPTH + @ 0= if
+   state CURSOR-OPEN-DEPTH @ 0= if
       state PEEK XML-SPACE? 0= if
-         state state POSITION + @ s" only white space outside the root element"
+         state state CURSOR-POSITION @ s" only white space outside the root element"
          s" move the text inside the root element, or remove it"
          E-MALFORMED REJECT
       then
    then
    state DECODE-TEXT SCAN-DECODE
-   state POSITION + ! drop ;
+   state CURSOR-POSITION ! drop ;
 
-: READ-TEXT ( ^n -- )
+: READ-TEXT ( ^cursor -- )
    {: state :}
    state VALUE-BEGIN
    begin state TEXT-CONTINUES? while state TEXT-SCALAR repeat
    state VALUE-END
    state XML-KIND:TEXT EVENT-FINISH ;
 
-: READ-COMMENT ( ^n -- )
+: READ-COMMENT ( ^cursor -- )
    {: state :}
    state 4 ADVANCE-N
    state VALUE-BEGIN
    begin state s" -->" MATCH$ 0= while
       state s" --" MATCH$ if
-         state state POSITION + @ s" `-->` or comment text without `--`"
+         state state CURSOR-POSITION @ s" `-->` or comment text without `--`"
          s" remove `--` from the comment, or end the comment with `-->`"
          E-MALFORMED REJECT
       then
@@ -204,10 +204,10 @@ private
    state 3 ADVANCE-N
    state XML-KIND:COMMENT EVENT-FINISH ;
 
-: READ-CDATA ( ^n -- )
+: READ-CDATA ( ^cursor -- )
    {: state :}
-   state OPEN-DEPTH + @ 0= if
-      state state POSITION + @ s" a CDATA section only inside the root element"
+   state CURSOR-OPEN-DEPTH @ 0= if
+      state state CURSOR-POSITION @ s" a CDATA section only inside the root element"
       s" move the CDATA section inside the root element, or remove it"
       E-MALFORMED REJECT
    then
@@ -219,45 +219,45 @@ private
    state XML-KIND:CDATA EVENT-FINISH ;
 
 \ Whether the declaration starts the document; a plain reader's may follow a BOM.
-: DECLARATION-FIRST? ( ^n -- bool )
+: DECLARATION-FIRST? ( ^cursor -- bool )
    {: state :}
    state INPUT? if
-      state state RAW-OFF + @ ABS-OFF
-      state STREAM@ STREAM-STARTED @ 1- = exit
+      state state CURSOR-RAW-OFF @ ABS-OFF
+      state CURSOR-STREAM @ STREAM-STARTED @ 1- = exit
    then
-   state RAW-OFF + @ 0= if true exit then
-   state SOURCE-MODE + @ LEGACY-UTF8 <> if false exit then
-   state RAW-OFF + @ 3 = if
+   state CURSOR-RAW-OFF @ 0= if true exit then
+   state CURSOR-SOURCE-MODE @ MODE-LEGACY-UTF8 MODE-EQ 0= if false exit then
+   state CURSOR-RAW-OFF @ 3 = if
       state 0 3 SPAN$ s\" \xEF\xBB\xBF" BYTES= exit
    then
    false ;
 
-: DECLARATION-POSITION ( ^n -- )
+: DECLARATION-POSITION ( ^cursor -- )
    {: state :}
    state DECLARATION-FIRST? 0= if
-      state state RAW-OFF + @ s" `<?xml` only at the start of the document"
+      state state CURSOR-RAW-OFF @ s" `<?xml` only at the start of the document"
       s" move the XML declaration to the start of the document, or remove it"
       E-MALFORMED REJECT
    then ;
 
-: DECLARATION-NAME? ( ^n n str -- bool )
+: DECLARATION-NAME? ( ^cursor n str -- bool )
    {: state index:n name size:n :}
    state state index ATTRIBUTE name size NAME-MATCH? ;
 
-: DECLARATION-VALUE$ ( ^n n -- str )
+: DECLARATION-VALUE$ ( ^cursor n -- str )
    {: state index:n :}
    state state index ATTRIBUTE ATTRIBUTE-VALUE$ ;
 
-: DECLARATION-NAME-OFF ( ^n n -- n )
-   ATTRIBUTE ATTRIBUTE-NAME + @ ;
+: DECLARATION-NAME-OFF ( ^cursor n -- n )
+   ATTRIBUTE ATTRIBUTE-NAME @ ;
 
-: DECLARATION-VALUE-OFF ( ^n n -- n )
-   ATTRIBUTE ATTRIBUTE-VALUE + @ ;
+: DECLARATION-VALUE-OFF ( ^cursor n -- n )
+   ATTRIBUTE ATTRIBUTE-VALUE @ ;
 
-: VERSION-CHECK ( ^n -- )
+: VERSION-CHECK ( ^cursor -- )
    {: state :}
-   state ATTR-COUNT + @ 0= if
-      state state POSITION + @ s\" `version=\q1.0\q`"
+   state CURSOR-ATTR-COUNT @ 0= if
+      state state CURSOR-POSITION @ s\" `version=\q1.0\q`"
       s\" write `version=\q1.0\q` after `<?xml`" E-MALFORMED REJECT
    then
    state 0 s" version" DECLARATION-NAME? 0= if
@@ -270,18 +270,19 @@ private
       s\" declare `version=\q1.0\q`: the reader reads XML 1.0" E-ENCODING REJECT
    then ;
 
-: ENCODING-REQUIRED? ( ^n -- bool )
-   SOURCE-MODE + @ dup SOURCE-ASCII = over SOURCE-UTF16-LE-DECL = or
-   swap SOURCE-UTF16-BE-DECL = or ;
+: ENCODING-REQUIRED? ( ^cursor -- bool )
+   CURSOR-SOURCE-MODE @ dup MODE-SOURCE-ASCII MODE-EQ
+   over MODE-SOURCE-UTF16-LE-DECL MODE-EQ or
+   swap MODE-SOURCE-UTF16-BE-DECL MODE-EQ or ;
 
-: UTF8-OR-ASCII? ( ^n -- bool )
+: UTF8-OR-ASCII? ( ^cursor -- bool )
    {: state :}
    state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? if true exit then
    state 1 DECLARATION-VALUE$ s" US-ASCII" FOLD-EQUAL? 0= if
       false exit
    then
    state INPUT? if
-      state STREAM@ STREAM-STARTED @ 1 <>
+      state CURSOR-STREAM @ STREAM-STARTED @ 1 <>
    else
       state SOURCE$ s\" \xEF\xBB\xBF" SRC-STARTS?
    then if
@@ -291,13 +292,13 @@ private
       E-ENCODING REJECT
    then
    state 0 ASCII-WINDOW
-   state INPUT? if INPUT-ASCII else LEGACY-ASCII then
-   state SOURCE-MODE + !
+   state INPUT? if MODE-INPUT-ASCII else MODE-LEGACY-ASCII then
+   state CURSOR-SOURCE-MODE !
    true ;
 
 \ Only a UTF-16 document without a byte order mark reaches this: a US-ASCII
 \ source reader is one whose declaration names its encoding.
-: ENCODING-MISSING ( ^n n -- )
+: ENCODING-MISSING ( ^cursor n -- )
    {: state off:n :}
    state off s" `encoding` after `version`"
    s\" declare `encoding=\qUTF-16LE\q` or `encoding=\qUTF-16BE\q`, as the document's bytes are"
@@ -305,26 +306,27 @@ private
 
 \ The expected text and the fix of a declared encoding the reader's mode does
 \ not take.
-: ENCODING-TEXTS ( n -- str str ) {: mode:n :}
-   mode SOURCE-UTF16-LE-BOM = mode SOURCE-UTF16-BE-BOM = or if
+: ENCODING-TEXTS ( mode -- str str ) {: mode:mode :}
+   mode MODE-SOURCE-UTF16-LE-BOM MODE-EQ
+   mode MODE-SOURCE-UTF16-BE-BOM MODE-EQ or if
       s" `UTF-16`, as the byte order mark shows"
       s\" declare `encoding=\qUTF-16\q`" exit
    then
-   mode SOURCE-UTF16-LE-DECL = if
+   mode MODE-SOURCE-UTF16-LE-DECL MODE-EQ if
       s" `UTF-16LE`, the encoding of the document's bytes"
       s\" declare `encoding=\qUTF-16LE\q`" exit
    then
-   mode SOURCE-UTF16-BE-DECL = if
+   mode MODE-SOURCE-UTF16-BE-DECL MODE-EQ if
       s" `UTF-16BE`, the encoding of the document's bytes"
       s\" declare `encoding=\qUTF-16BE\q`" exit
    then
    s" `UTF-8` or `US-ASCII`"
    s\" save the document as UTF-8 and declare `encoding=\qUTF-8\q`" ;
 
-: ENCODING-CHECK ( ^n -- n )
+: ENCODING-CHECK ( ^cursor -- n )
    {: state :}
-   state ATTR-COUNT + @ 1 = if
-      state ENCODING-REQUIRED? if state state POSITION + @ ENCODING-MISSING then
+   state CURSOR-ATTR-COUNT @ 1 = if
+      state ENCODING-REQUIRED? if state state CURSOR-POSITION @ ENCODING-MISSING then
       1 exit
    then
    state 1 s" encoding" DECLARATION-NAME? 0= if
@@ -333,49 +335,52 @@ private
       then
       1 exit
    then
-   state SOURCE-MODE + @ case
-      SOURCE-UTF16-LE-BOM of
-         state 1 DECLARATION-VALUE$ s" UTF-16" FOLD-EQUAL? endof
-      SOURCE-UTF16-BE-BOM of
-         state 1 DECLARATION-VALUE$ s" UTF-16" FOLD-EQUAL? endof
-      SOURCE-UTF16-LE-DECL of
-         state 1 DECLARATION-VALUE$ s" UTF-16LE" FOLD-EQUAL? endof
-      SOURCE-UTF16-BE-DECL of
-         state 1 DECLARATION-VALUE$ s" UTF-16BE" FOLD-EQUAL? endof
-      SOURCE-ASCII of
-         state 1 DECLARATION-VALUE$ s" US-ASCII" FOLD-EQUAL? endof
-      SOURCE-UTF8 of
-         state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? endof
-      state UTF8-OR-ASCII? swap
-   endcase
+   state CURSOR-SOURCE-MODE @ MATCH mode
+      legacy-utf8 OF state UTF8-OR-ASCII? ENDOF
+      source-utf8 OF
+         state 1 DECLARATION-VALUE$ s" UTF-8" FOLD-EQUAL? ENDOF
+      source-utf16-le-bom OF
+         state 1 DECLARATION-VALUE$ s" UTF-16" FOLD-EQUAL? ENDOF
+      source-utf16-be-bom OF
+         state 1 DECLARATION-VALUE$ s" UTF-16" FOLD-EQUAL? ENDOF
+      source-utf16-le-decl OF
+         state 1 DECLARATION-VALUE$ s" UTF-16LE" FOLD-EQUAL? ENDOF
+      source-utf16-be-decl OF
+         state 1 DECLARATION-VALUE$ s" UTF-16BE" FOLD-EQUAL? ENDOF
+      input-utf8 OF state UTF8-OR-ASCII? ENDOF
+      source-ascii OF
+         state 1 DECLARATION-VALUE$ s" US-ASCII" FOLD-EQUAL? ENDOF
+      legacy-ascii OF state UTF8-OR-ASCII? ENDOF
+      input-ascii OF state UTF8-OR-ASCII? ENDOF
+   ;MATCH
    0= if
       state state 1 DECLARATION-VALUE-OFF
-      state SOURCE-MODE + @ ENCODING-TEXTS E-ENCODING REJECT
+      state CURSOR-SOURCE-MODE @ ENCODING-TEXTS E-ENCODING REJECT
    then
    2 ;
 
-: DECLARATION-START? ( ^n -- bool )
+: DECLARATION-START? ( ^cursor -- bool )
    {: state :}
    state s" <?xml" MATCH$ 0= if false exit then
-   state SOURCE-LEN + @ 6 < if false exit then
+   state CURSOR-SOURCE-LEN @ 6 < if false exit then
    state 5 AT XML-SPACE? ;
 
-: BOMLESS-DECLARATION ( ^n -- )
+: BOMLESS-DECLARATION ( ^cursor -- )
    {: state :}
-   state SOURCE-MODE + @ SOURCE-UTF16-LE-DECL =
-   state SOURCE-MODE + @ SOURCE-UTF16-BE-DECL = or
-   state POSITION + @ 0= and 0= if exit then
+   state CURSOR-SOURCE-MODE @ MODE-SOURCE-UTF16-LE-DECL MODE-EQ
+   state CURSOR-SOURCE-MODE @ MODE-SOURCE-UTF16-BE-DECL MODE-EQ or
+   state CURSOR-POSITION @ 0= and 0= if exit then
    state DECLARATION-START? 0= if
-      state state POSITION + @
+      state state CURSOR-POSITION @
       s" an XML declaration, which a UTF-16 document without a byte order mark begins with"
       s\" begin the document with `<?xml version=\q1.0\q encoding=\qUTF-16LE\q?>` or its `UTF-16BE` form, or with a byte order mark"
       E-ENCODING REJECT
    then ;
 
-: STANDALONE-CHECK ( ^n n -- )
+: STANDALONE-CHECK ( ^cursor n -- )
    {: state index:n :}
-   state ATTR-COUNT + @ index = if exit then
-   state ATTR-COUNT + @ index 1+ <> if
+   state CURSOR-ATTR-COUNT @ index = if exit then
+   state CURSOR-ATTR-COUNT @ index 1+ <> if
       state state index 1+ DECLARATION-NAME-OFF
       s" `?>` to end the XML declaration"
       s" write only `version`, `encoding` and `standalone`, in that order"
@@ -394,21 +399,21 @@ private
       E-MALFORMED REJECT
    then ;
 
-: READ-DECLARATION ( ^n -- )
+: READ-DECLARATION ( ^cursor -- )
    {: state :}
    state DECLARATION-POSITION
-   state state NAME-OFF + @ state NAME-LEN + @ SPAN$ s" xml" BYTES= 0= if
-      state state NAME-OFF + @ s" `xml` in lower case"
+   state state CURSOR-NAME-OFF @ state CURSOR-NAME-LEN @ SPAN$ s" xml" BYTES= 0= if
+      state state CURSOR-NAME-OFF @ s" `xml` in lower case"
       s" begin the XML declaration with `<?xml`" E-MALFORMED REJECT
    then
-   state POSITION + @ state VALUE-OFF + !
+   state CURSOR-POSITION @ state CURSOR-VALUE-OFF !
    begin state s" ?>" MATCH$ 0= while
       state EOF? if
-         state state POSITION + @ s" `?>` to end the XML declaration"
+         state state CURSOR-POSITION @ s" `?>` to end the XML declaration"
          s" end the declaration with `?>`" E-TRUNCATED REJECT
       then
       state WHITE? 0= if
-         state state POSITION + @ s" white space or `?>`"
+         state state CURSOR-POSITION @ s" white space or `?>`"
          s" separate the declaration's attributes with a space"
          E-MALFORMED REJECT
       then
@@ -419,16 +424,16 @@ private
    state state ENCODING-CHECK STANDALONE-CHECK
    state VALUE-END ;
 
-: READ-PI-CONTENT ( ^n -- )
+: READ-PI-CONTENT ( ^cursor -- )
    {: state :}
    state EOF? if
-      state state POSITION + @
+      state state CURSOR-POSITION @
       s" `?>` to end the processing instruction"
       s" end the processing instruction with `?>`" E-TRUNCATED REJECT
    then
    state s" ?>" MATCH$ 0= if
       state WHITE? 0= if
-         state state POSITION + @ s" white space or `?>` after the target"
+         state state CURSOR-POSITION @ s" white space or `?>` after the target"
          s" put a space between the target and the instruction's content"
          E-MALFORMED REJECT
       then
@@ -438,12 +443,12 @@ private
    begin state s" ?>" MATCH$ 0= while state SCAN-SCALAR drop repeat
    state VALUE-END ;
 
-: READ-PI ( ^n -- )
+: READ-PI ( ^cursor -- )
    {: state :}
    state 2 ADVANCE-N
    state SCAN-NAME
-   state NAME-LEN + ! state NAME-OFF + !
-   state state NAME-OFF + @ state NAME-LEN + @ SPAN$
+   state CURSOR-NAME-LEN ! state CURSOR-NAME-OFF !
+   state state CURSOR-NAME-OFF @ state CURSOR-NAME-LEN @ SPAN$
    s" xml" FOLD-EQUAL? if
       state READ-DECLARATION
    else
@@ -452,65 +457,69 @@ private
    state 2 ADVANCE-N
    state XML-KIND:PI EVENT-FINISH ;
 
-: READ-MARKUP ( ^n -- )
+: READ-MARKUP ( ^cursor -- )
    {: state :}
    state s" </" MATCH$ if state READ-END exit then
    state s" <!--" MATCH$ if state READ-COMMENT exit then
    state s" <![CDATA[" MATCH$ if state READ-CDATA exit then
    state s" <?" MATCH$ if state READ-PI exit then
    state s" <!DOCTYPE" MATCH$ if
-      state state POSITION + @
+      state state CURSOR-POSITION @
       s" an element, a comment or a processing instruction"
       s" remove the `<!DOCTYPE`: the reader reads no DTD" E-DTD REJECT
    then
    state s" <!" MATCH$ if
-      state state POSITION + @ s" `<!--` or `<![CDATA[`"
+      state state CURSOR-POSITION @ s" `<!--` or `<![CDATA[`"
       s" write `<!--` for a comment or `<![CDATA[` for character data"
       E-MALFORMED REJECT
    then
    state READ-START ;
 
-: READ-EOF ( ^n -- )
+: READ-EOF ( ^cursor -- )
    {: state :}
-   state OPEN-DEPTH + @ 0<> if
-      state state SOURCE-LEN + @
+   state CURSOR-OPEN-DEPTH @ 0<> if
+      state state CURSOR-SOURCE-LEN @
       s" write the rest of the document, closing each open element"
       E-TRUNCATED END-TAG-REJECT
    then
-   state ROOT-COUNT + @ 1 <> if
-      state state SOURCE-LEN + @ s" a root element"
+   state CURSOR-ROOT-COUNT @ 1 <> if
+      state state CURSOR-SOURCE-LEN @ s" a root element"
       s" write one root element that holds the document's content"
       E-MALFORMED REJECT
    then
    state XML-KIND:EOF EVENT-FINISH ;
 
-: READ-EVENT ( ^n -- )
+: READ-EVENT ( ^cursor -- )
    {: state :}
-   state PENDING + @ POP-NEXT = if state POP-FRAME then
+   state CURSOR-PENDING @ PENDING-POP-NEXT PENDING-EQ if
+      state POP-FRAME
+   then
    state INPUT? if
-      state STREAM@ {: stream :}
+      state CURSOR-STREAM @ {: stream :}
       stream STREAM-STARTED @ 0= if
          state BOM
-         state POSITION + @ 1+ stream STREAM-STARTED !
+         state CURSOR-POSITION @ 1+ stream STREAM-STARTED !
       then
       state INPUT-REBASE
    then
    state EVENT-RESET
    state BOMLESS-DECLARATION
-   state PENDING + @ EMPTY-END = if state READ-EMPTY-END exit then
+   state CURSOR-PENDING @ PENDING-EMPTY-END PENDING-EQ if
+      state READ-EMPTY-END exit
+   then
    state EOF? if state READ-EOF exit then
    state PEEK $3C = if state READ-MARKUP else state READ-TEXT then ;
 
-: NEXT-STATE ( ^n -- kind )
+: NEXT-STATE ( ^cursor -- kind )
    {: state :}
    state LIVE
-   ST-FAILED state FAILED + !
+   true state CURSOR-FAILED !
    state READ-EVENT
-   ST-LIVE state FAILED + !
-   state TOKEN-KIND + >KIND-CELL @ ;
+   false state CURSOR-FAILED !
+   state CURSOR-TOKEN-KIND @ ;
 
-: TEXT-MODE ( ^n -- n )
-   TOKEN-KIND + >KIND-CELL @ MATCH kind
+: TEXT-MODE ( ^cursor -- n )
+   CURSOR-TOKEN-KIND @ MATCH kind
       start OF E-STATE throw ENDOF
       end OF E-STATE throw ENDOF
       text OF DECODE-TEXT ENDOF
@@ -520,17 +529,17 @@ private
       eof OF E-STATE throw ENDOF
    ;MATCH ;
 
-: CONTENT-STATE ( ^n -- off len )
+: CONTENT-STATE ( ^cursor -- off len )
    {: state :}
    state LIVE
    state TEXT-MODE drop
-   state state VALUE-OFF + @ ABS-OFF >OFF state VALUE-LEN + @ >LEN ;
+   state state CURSOR-VALUE-OFF @ ABS-OFF >OFF state CURSOR-VALUE-LEN @ >LEN ;
 
-: TEXT-STATE ( ^n ^VEC:vector<u8> -- )
+: TEXT-STATE ( ^cursor ^VEC:vector<u8> -- )
    {: state v:^ :}
    state LIVE
    state TEXT-MODE {: mode:n :}
-   state state VALUE-OFF + @ state VALUE-LEN + @ SPAN$
+   state state CURSOR-VALUE-OFF @ state CURSOR-VALUE-LEN @ SPAN$
    mode v DECODE-INTO ;
 
 public

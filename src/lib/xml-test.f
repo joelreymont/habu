@@ -4,6 +4,7 @@ require src/lib/xml.f
 require src/lib/vector.f
 require src/lib/heap.f
 require src/lib/reason.f
+require src/lib/test/counting-allocator.f
 
 package XML-TEST
 using XML
@@ -31,7 +32,7 @@ CAST: TOKEN>N ( XML:kind -- n )
 
 : OPEN ( str -- XML:reader )
    {: source size:n :}
-   RD source size INIT ;
+   RD HEAP:ALLOCATOR source size INIT ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    TOKEN>N {: expected:n :}
@@ -108,7 +109,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    count pos +! count ;
 
 : INPUT-OPEN ( -- XML:reader )
-   RD INPUT-POS ['] INPUT-FILL INIT-INPUT ;
+   RD HEAP:ALLOCATOR INPUT-POS ['] INPUT-FILL INIT-INPUT ;
 
 : INPUT-FAILURE ( -- n )
    INPUT-OPEN ['] DRAIN catch swap XML:CLOSE ;
@@ -119,7 +120,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    output SPAN:LEN 1 + ;
 
 : INPUT-OVER-COUNT-RC ( -- n )
-   RD INPUT-POS ['] INPUT-OVER-COUNT INIT-INPUT
+   RD HEAP:ALLOCATOR INPUT-POS ['] INPUT-OVER-COUNT INIT-INPUT
    ['] DRAIN catch swap XML:CLOSE ;
 
 : INPUT-BAD ( str n -- )
@@ -469,31 +470,12 @@ CAST: TOKEN>N ( XML:kind -- n )
    XML:CLOSE ;
 
 : PREFIX-READERS ( -- )
-   RD s" <a xmlns:p='urn:first'/>" INIT
-   RD2 s" <b xmlns:p='urn:second'/>" INIT
+   RD HEAP:ALLOCATOR s" <a xmlns:p='urn:first'/>" INIT
+   RD2 HEAP:ALLOCATOR s" <b xmlns:p='urn:second'/>" INIT
    XML-KIND:START NEXT= s" p" s" urn:second" PREFIX=
    swap XML-KIND:START NEXT= s" p" s" urn:first" PREFIX=
    swap s" p" s" urn:second" PREFIX=
    XML:CLOSE XML:CLOSE ;
-
-\ A reader's first table mapping is one page. Freeing a page and mapping one
-\ again lands at the same address only when nothing took the hole, so a body
-\ that leaves its first table mapped moves the second probe elsewhere. This
-\ relies on the kernel's first-fit reuse of a freed mapping, as
-\ src/lib/json-read-test.f JRT-RELEASES does.
-4096 constant PROBE-BYTES
-
-: PROBE ( -- SPAN:span<u8> )
-   PROBE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
-
-: RELEASES ( [ -- ] -- )
-   PROBE {: hole :}
-   hole SPAN:$ drop {: at:^ :}
-   hole MEM:FREE-SPAN
-   execute
-   PROBE {: again :}
-   again SPAN:$ drop at = TTRUE
-   again MEM:FREE-SPAN ;
 
 77 constant CALLER-CODE
 
@@ -505,13 +487,14 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ The caller's own throw abandons a live reader, so record RD keeps its tables
 \ and, for an input reader, its stream.
 : ABANDON ( -- )
-   s" <a><b/></a>" OPEN
+   RD ALLOC-TEST:COUNTING s" <a><b/></a>" INIT
    XML-KIND:START NEXT= XML-KIND:START NEXT=
    CALLER-FAIL
    XML:CLOSE ;
 
 : ABANDON-INPUT ( -- )
-   s" <a><b/></a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   s" <a><b/></a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET
+   RD ALLOC-TEST:COUNTING INPUT-POS ['] INPUT-FILL INIT-INPUT
    XML-KIND:START NEXT=
    CALLER-FAIL
    XML:CLOSE ;
@@ -526,15 +509,42 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ INIT on a record that still holds tables releases them before it reads.
 : ABANDON-REINIT ( -- )
    [: ABANDON-INPUT ;] CALLER-CODE TTHROWSQ
-   s" <c/>" OPEN
+   RD ALLOC-TEST:COUNTING s" <c/>" INIT
    XML-KIND:START NEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE ;
+
+\ The body opens its readers on the counting allocator.
+: RELEASES ( [ -- ] -- )
+   0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !
+   execute
+   ALLOC-TEST:TAKEN @ 0 > TTRUE
+   ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T= ;
 
 : ABANDONED-RECORD ( -- )
    s" DISPOSE releases what a caller's throw abandoned" T-LABEL
    [: ABANDON-DISPOSE ;] RELEASES
-   s" a record holding a leftover reads again and nothing stays mapped" T-LABEL
+   s" a record holding a leftover reads again and gives back every block" T-LABEL
    [: ABANDON-REINIT ;] RELEASES ;
+
+\ A failed build gives back what it took: a rejected INIT, and an INIT-INPUT
+\ refused at each of its requests in turn until one build succeeds.
+: FAILED-BUILDS ( -- )
+   s" a rejected INIT keeps nothing" T-LABEL
+   [: [: RD ALLOC-TEST:COUNTING s\" \xFF\xFE<\z" INIT XML:CLOSE ;] catch
+      E-ENCODING T= ;] RELEASES
+   s" a refused INIT-INPUT request keeps nothing" T-LABEL
+   1 begin
+      {: k:n :}
+      0 ALLOC-TEST:TAKEN !  0 ALLOC-TEST:FREED !  k ALLOC-TEST:REFUSED !
+      s" <a/>" 1 $7FFFFFFFFFFFFFFF INPUT-SET
+      [: RD ALLOC-TEST:COUNTING INPUT-POS ['] INPUT-FILL INIT-INPUT XML:CLOSE ;]
+      catch {: code:n :}
+      ALLOC-TEST:TAKEN @ ALLOC-TEST:FREED @ T=
+      code 0<>
+   while
+      code E-MEM-SIZE T=  k 1+
+   repeat
+   0 ALLOC-TEST:REFUSED ! ;
 
 \ One tag of WIDE-PREFIXES declarations and as many attributes p0:a, p1:a, ...
 \ URI i has URI-SCALARS scalars, U+0061 or U+20061 by the bits of i. The two
@@ -596,7 +606,7 @@ variable URI-LEN
    tail size WIDE+
    s" />" WIDE+ ;
 
-: WIDE-OPEN ( -- XML:reader ) RD WIDE-DOC @ WIDE-LEN @ INIT ;
+: WIDE-OPEN ( -- XML:reader ) RD HEAP:ALLOCATOR WIDE-DOC @ WIDE-LEN @ INIT ;
 
 : WIDE-BAD ( str -- )
    WIDE-BUILD
@@ -1178,6 +1188,7 @@ TEXT-APPENDS
 PREFIX-RECOVERY
 PREFIX-READERS
 ABANDONED-RECORD
+FAILED-BUILDS
 WIDE-ELEMENT
 ESCAPING
 CHECKED-OWNERSHIP

@@ -27,7 +27,7 @@ TYPED-VARIABLE RD XML:cursor
 
 : OPEN ( str -- XML:reader )
    {: source size:n :}
-   RD source size INIT ;
+   RD HEAP:ALLOCATOR source size INIT ;
 
 : ATTRIBUTE-RANGE ( -- off len )
    ORIGINAL$ OPEN NEXT drop NEXT drop

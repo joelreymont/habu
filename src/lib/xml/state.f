@@ -7,175 +7,53 @@ split-str
 require src/lib/xml/source.f
 require src/lib/utf8-scalar.f
 require src/lib/vector.f
-require src/lib/heap.f
+require src/lib/allocator.f
 require src/lib/siphash.f
 require src/lib/entropy.f
 
 package XML
 public
 DEFLINEAR XML:reader
-ENUM kind start end text comment pi cdata eof ;ENUM
+ENUM kind DERIVE eq start end text comment pi cdata eof ;ENUM
 
 private
-CAST: KIND>N ( kind -- n )
-\ Views the token kind cell, which holds only KIND>N values.
-CAST: >KIND-CELL ( ^n -- ^kind )
-
-\ The reader's whole fixed state. The tables and an input reader's stream it
-\ points to are mappings the reader owns; sip is scratch for one hash.
-public
-STRUCTURE cursor OPAQUE DERIVE addr
-   FIELD source ^u8
-   FIELD source-len n
-   FIELD position n
-   FIELD frame-cap n
-   FIELD open-depth n
+STRUCTURE frame DERIVE addr
+   FIELD name n
+   FIELD name-u n
    FIELD ns-count n
-   FIELD attr-count n
-   FIELD attr-index n
-   FIELD raw-off n
-   FIELD raw-len n
-   FIELD token-kind n
-   FIELD name-off n
-   FIELD name-len n
-   FIELD value-off n
-   FIELD value-len n
-   FIELD uri-off n
-   FIELD uri-len n
-   FIELD pending n
-   FIELD root-count n
-   FIELD failed n
-   FIELD attr-cap n
-   FIELD source-mode n
-   FIELD wire-storage ^u8
-   FIELD head-columns n
-   FIELD window-kind n
-   FIELD ns-cap n
-   FIELD frames ^n
-   FIELD attrs ^n
-   FIELD namespaces ^n
-   FIELD hash-k0 n
-   FIELD hash-k1 n
-   FIELD sip SIPHASH:state
+   FIELD uri n
+   FIELD uri-u n
 ;STRUCTURE
 
-private
-CAST: >STATE ( ^cursor -- ^n )
-8 constant TABLE-START
+\ link is the older attribute in its bucket, and head the head of the bucket
+\ its own index numbers.
+STRUCTURE attribute DERIVE addr
+   FIELD name n
+   FIELD name-u n
+   FIELD value n
+   FIELD value-u n
+   FIELD raw n
+   FIELD raw-u n
+   FIELD uri n
+   FIELD uri-u n
+   FIELD name-hash n
+   FIELD link n
+   FIELD head n
+;STRUCTURE
 
-BEGIN-STRUCTURE FRAME-BYTES
-   CELL +FIELD FRAME.NAME
-   CELL +FIELD FRAME.NAME-U
-   CELL +FIELD FRAME.NS-COUNT
-   CELL +FIELD FRAME.URI
-   CELL +FIELD FRAME.URI-U
-END-STRUCTURE
+\ link is the older binding in its prefix bucket, and head the head of the
+\ bucket its own index numbers.
+STRUCTURE binding DERIVE addr
+   FIELD prefix n
+   FIELD prefix-u n
+   FIELD uri n
+   FIELD uri-u n
+   FIELD uri-hash n
+   FIELD link n
+   FIELD head n
+;STRUCTURE
 
-\ An attribute's hash is its name's; link is the older attribute in its
-\ bucket, and head the head of the bucket its own index numbers.
-BEGIN-STRUCTURE ATTR-BYTES
-   CELL +FIELD ATTRIBUTE.NAME
-   CELL +FIELD ATTRIBUTE.NAME-U
-   CELL +FIELD ATTRIBUTE.VALUE
-   CELL +FIELD ATTRIBUTE.VALUE-U
-   CELL +FIELD ATTRIBUTE.RAW
-   CELL +FIELD ATTRIBUTE.RAW-U
-   CELL +FIELD ATTRIBUTE.URI
-   CELL +FIELD ATTRIBUTE.URI-U
-   CELL +FIELD ATTRIBUTE.HASH
-   CELL +FIELD ATTRIBUTE.LINK
-   CELL +FIELD ATTRIBUTE.HEAD
-END-STRUCTURE
-
-\ A binding's hash is its URI's; link is the older binding in its prefix
-\ bucket, and head the head of the bucket its own index numbers.
-BEGIN-STRUCTURE NS-BYTES
-   CELL +FIELD BINDING.PREFIX
-   CELL +FIELD BINDING.PREFIX-U
-   CELL +FIELD BINDING.URI
-   CELL +FIELD BINDING.URI-U
-   CELL +FIELD BINDING.HASH
-   CELL +FIELD BINDING.LINK
-   CELL +FIELD BINDING.HEAD
-END-STRUCTURE
-
-FRAME-BYTES CELL / constant FRAME-CELLS
-NULL-PTR FRAME.NAME NULL-PTR - constant FRAME-NAME
-NULL-PTR FRAME.NAME-U NULL-PTR - constant FRAME-NAME-U
-NULL-PTR FRAME.NS-COUNT NULL-PTR - constant FRAME-NS-COUNT
-NULL-PTR FRAME.URI NULL-PTR - constant FRAME-URI
-NULL-PTR FRAME.URI-U NULL-PTR - constant FRAME-URI-U
-ATTR-BYTES CELL / constant ATTR-CELLS
-NULL-PTR ATTRIBUTE.NAME NULL-PTR - constant ATTRIBUTE-NAME
-NULL-PTR ATTRIBUTE.NAME-U NULL-PTR - constant ATTRIBUTE-NAME-U
-NULL-PTR ATTRIBUTE.VALUE NULL-PTR - constant ATTRIBUTE-VALUE
-NULL-PTR ATTRIBUTE.VALUE-U NULL-PTR - constant ATTRIBUTE-VALUE-U
-NULL-PTR ATTRIBUTE.RAW NULL-PTR - constant ATTRIBUTE-RAW
-NULL-PTR ATTRIBUTE.RAW-U NULL-PTR - constant ATTRIBUTE-RAW-U
-NULL-PTR ATTRIBUTE.URI NULL-PTR - constant ATTRIBUTE-URI
-NULL-PTR ATTRIBUTE.URI-U NULL-PTR - constant ATTRIBUTE-URI-U
-NULL-PTR ATTRIBUTE.HASH NULL-PTR - constant ATTRIBUTE-HASH
-NULL-PTR ATTRIBUTE.LINK NULL-PTR - constant ATTRIBUTE-LINK
-NULL-PTR ATTRIBUTE.HEAD NULL-PTR - constant ATTRIBUTE-HEAD
-NS-BYTES CELL / constant NS-CELLS
-NULL-PTR BINDING.PREFIX NULL-PTR - constant BINDING-PREFIX
-NULL-PTR BINDING.PREFIX-U NULL-PTR - constant BINDING-PREFIX-U
-NULL-PTR BINDING.URI NULL-PTR - constant BINDING-URI
-NULL-PTR BINDING.URI-U NULL-PTR - constant BINDING-URI-U
-NULL-PTR BINDING.HASH NULL-PTR - constant BINDING-HASH
-NULL-PTR BINDING.LINK NULL-PTR - constant BINDING-LINK
-NULL-PTR BINDING.HEAD NULL-PTR - constant BINDING-HEAD
-NULL-PTR CURSOR-SOURCE NULL-PTR - CELL / constant SOURCE-IDX
-NULL-PTR CURSOR-SOURCE-LEN NULL-PTR - constant SOURCE-LEN
-NULL-PTR CURSOR-POSITION NULL-PTR - constant POSITION
-NULL-PTR CURSOR-FRAME-CAP NULL-PTR - constant FRAME-CAP
-NULL-PTR CURSOR-OPEN-DEPTH NULL-PTR - constant OPEN-DEPTH
-NULL-PTR CURSOR-NS-COUNT NULL-PTR - constant NS-COUNT
-NULL-PTR CURSOR-ATTR-COUNT NULL-PTR - constant ATTR-COUNT
-NULL-PTR CURSOR-ATTR-INDEX NULL-PTR - constant ATTR-INDEX
-NULL-PTR CURSOR-RAW-OFF NULL-PTR - constant RAW-OFF
-NULL-PTR CURSOR-RAW-LEN NULL-PTR - constant RAW-LEN
-NULL-PTR CURSOR-TOKEN-KIND NULL-PTR - constant TOKEN-KIND
-NULL-PTR CURSOR-NAME-OFF NULL-PTR - constant NAME-OFF
-NULL-PTR CURSOR-NAME-LEN NULL-PTR - constant NAME-LEN
-NULL-PTR CURSOR-VALUE-OFF NULL-PTR - constant VALUE-OFF
-NULL-PTR CURSOR-VALUE-LEN NULL-PTR - constant VALUE-LEN
-NULL-PTR CURSOR-URI-OFF NULL-PTR - constant URI-OFF
-NULL-PTR CURSOR-URI-LEN NULL-PTR - constant URI-LEN
-NULL-PTR CURSOR-PENDING NULL-PTR - constant PENDING
-NULL-PTR CURSOR-ROOT-COUNT NULL-PTR - constant ROOT-COUNT
-NULL-PTR CURSOR-FAILED NULL-PTR - constant FAILED
-NULL-PTR CURSOR-ATTR-CAP NULL-PTR - constant ATTR-CAP
-NULL-PTR CURSOR-SOURCE-MODE NULL-PTR - constant SOURCE-MODE
-NULL-PTR CURSOR-WIRE-STORAGE NULL-PTR - CELL / constant WIRE-STORAGE-IDX
-\ The columns before a source reader's window on line 1, 0 for another reader.
-NULL-PTR CURSOR-HEAD-COLUMNS NULL-PTR - constant HEAD-COLUMNS
-\ The place kind of a source reader's window; another reader leaves it zero,
-\ which counts bytes.
-NULL-PTR CURSOR-WINDOW-KIND NULL-PTR - constant WINDOW-KIND
-NULL-PTR CURSOR-NS-CAP NULL-PTR - constant NS-CAP
-NULL-PTR CURSOR-FRAMES NULL-PTR - CELL / constant FRAMES-IDX
-NULL-PTR CURSOR-ATTRS NULL-PTR - CELL / constant ATTRS-IDX
-NULL-PTR CURSOR-NAMESPACES NULL-PTR - CELL / constant NS-IDX
-NULL-PTR CURSOR-HASH-K0 NULL-PTR - constant HASH-K0
-NULL-PTR CURSOR-HASH-K1 NULL-PTR - constant HASH-K1
-NULL-PTR CURSOR-SIP NULL-PTR - constant SIP-STATE
-
-\ FAILED is ST-FAILED from NEXT's entry until it returns, so a NEXT that
-\ throws leaves the reader refusing every read.
-0 constant ST-LIVE
-1 constant ST-FAILED
-
-0 constant LEGACY-UTF8
-1 constant SOURCE-UTF8
-2 constant SOURCE-UTF16-LE-BOM
-3 constant SOURCE-UTF16-BE-BOM
-4 constant SOURCE-UTF16-LE-DECL
-5 constant SOURCE-UTF16-BE-DECL
-6 constant INPUT-UTF8
-7 constant SOURCE-ASCII
-8 constant LEGACY-ASCII
-9 constant INPUT-ASCII
+ENUM pending DERIVE eq none pop-next empty-end ;ENUM
 
 \ The most bytes one refill asks an input reader's fill for.
 4096 constant CHUNK
@@ -195,145 +73,166 @@ STRUCTURE stream DERIVE addr
    FIELD column n
 ;STRUCTURE
 
-: INPUT? ( ^n -- bool )
-   SOURCE-MODE + @ dup INPUT-UTF8 = swap INPUT-ASCII = or ;
+ENUM mode DERIVE eq legacy-utf8 source-utf8 source-utf16-le-bom
+   source-utf16-be-bom source-utf16-le-decl source-utf16-be-decl input-utf8
+   source-ascii legacy-ascii input-ascii
+;ENUM
 
-CAST: >STREAM ( ^u8 -- ^stream )
-CAST: STREAM>BYTES ( ^stream -- ^u8 )
+\ The reader's whole fixed state. The tables and an input reader's stream it
+\ points to are storage the reader owns; sip is scratch for one hash.
+public
+STRUCTURE cursor OPAQUE DERIVE addr
+   FIELD source ^u8
+   FIELD source-len n
+   FIELD position n
+   FIELD open-depth n
+   FIELD ns-count n
+   FIELD attr-count n
+   FIELD attr-index n
+   FIELD raw-off n
+   FIELD raw-len n
+   FIELD token-kind kind
+   FIELD name-off n
+   FIELD name-len n
+   FIELD value-off n
+   FIELD value-len n
+   FIELD uri-off n
+   FIELD uri-len n
+   FIELD pending pending
+   FIELD root-count n
+   FIELD failed bool
+   FIELD source-mode mode
+   FIELD stream ^stream
+   FIELD head-columns n
+   FIELD window-kind counting
+   FIELD allocator ^ALLOC:allocator
+   FIELD frames ^VEC:vector<frame>
+   FIELD attrs ^VEC:vector<attribute>
+   FIELD namespaces ^VEC:vector<binding>
+   FIELD hash-k0 n
+   FIELD hash-k1 n
+   FIELD sip SIPHASH:state
+;STRUCTURE
 
-: STREAM@ ( ^n -- ^stream )
-   WIRE-STORAGE-IDX ptr-field @ >STREAM ;
+private
+8 constant TABLE-START
 
-: ABS-OFF ( ^n n -- n )
+: INPUT? ( ^cursor -- bool )
+   CURSOR-SOURCE-MODE @ dup MODE-INPUT-UTF8 MODE-EQ
+   swap MODE-INPUT-ASCII MODE-EQ or ;
+
+: ABS-OFF ( ^cursor n -- n )
    {: state offset:n :}
-   state INPUT? if state STREAM@ STREAM-BASE @ offset + else offset then ;
+   state INPUT? if state CURSOR-STREAM @ STREAM-BASE @ offset + else offset then ;
 
 : INPUT-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-INPUT @ ;
 : TOKEN-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-TOKEN @ ;
 : SCOPE-VEC ( ^stream -- ^VEC:vector<u8> ) STREAM-SCOPE @ ;
 
-: SCOPE$ ( ^n -- str )
-   STREAM@ SCOPE-VEC VEC:SPAN SPAN:$ ;
+: SCOPE$ ( ^cursor -- str )
+   CURSOR-STREAM @ SCOPE-VEC VEC:SPAN SPAN:$ ;
 
 \ A vector not yet made is NULL-PTR, which DELETE ignores.
-: STREAM-CLOSE ( ^stream -- )
-   {: stream :}
+: STREAM-CLOSE ( ^ALLOC:allocator ^stream -- )
+   {: al:^ stream :}
    stream INPUT-VEC VEC:DELETE
    stream TOKEN-VEC VEC:DELETE
    stream SCOPE-VEC VEC:DELETE
-   stream STREAM>BYTES STREAM-CELLS cells
-      MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+   al stream ALLOC:DELETE ;
 
-: STREAM-OPEN-VECS ( ^stream -- ^stream )
-   {: stream :}
-   HEAP:ALLOCATOR CHUNK [type] u8 VEC:NEW stream STREAM-INPUT !
-   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW stream STREAM-TOKEN !
+: STREAM-OPEN-VECS ( ^ALLOC:allocator ^stream -- )
+   {: al:^ stream :}
+   al CHUNK [type] u8 VEC:NEW stream STREAM-INPUT !
+   al 0 [type] u8 VEC:NEW stream STREAM-TOKEN !
    stream TOKEN-VEC CHUNK VEC:RESERVE
-   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW stream STREAM-SCOPE !
-   stream ;
+   al 0 [type] u8 VEC:NEW stream STREAM-SCOPE ! ;
 
-: STREAM-OPEN ( ^n [ ^n SPAN:span<u8> -- n ] -- ^stream )
-   {: ctx fill :}
-   STREAM-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS
-      BYTE-VIEW >STREAM {: stream :}
+: STREAM-OPEN ( ^ALLOC:allocator ^n [ ^n SPAN:span<u8> -- n ]
+                -- ^stream )
+   {: al:^ ctx fill :}
+   al [type] stream ALLOC:NEW {: stream :}
    fill stream STREAM-FILL !
    ctx stream STREAM-CTX !
    1 stream STREAM-LINE !
    1 stream STREAM-COLUMN !
-   stream ['] STREAM-OPEN-VECS catch
-   >r drop r> {: code:n :}
-   code 0<> if stream STREAM-CLOSE code throw then
+   [: al stream STREAM-OPEN-VECS ;] catch {: code:n :}
+   code 0<> if al stream STREAM-CLOSE code throw then
    stream ;
 
-1 constant POP-NEXT
-2 constant EMPTY-END
 -1 constant XML-URI
 -2 constant XMLNS-URI
 
 \ A reader token is its cursor record; only these rows cross it.
-LINEAR: MINT ( ^n -- XML:reader )
-LINEAR: ERASE ( XML:reader -- ^n )
+LINEAR: MINT ( ^cursor -- XML:reader )
+LINEAR: ERASE ( XML:reader -- ^cursor )
 
-: STATE ( XML:reader -- XML:reader ^n )
+: STATE ( XML:reader -- XML:reader ^cursor )
    ERASE dup MINT swap ;
 
-: RECORD ( ^n n n n -- ^n )
-   {: state table:n index:n size:n :}
-   state table ptr-field @ index size * cells + ;
+: FRAME ( ^cursor n -- ^frame )
+   swap CURSOR-FRAMES @ swap VEC:AT ;
 
-: FRAME ( ^n n -- ^n ) FRAMES-IDX swap FRAME-CELLS RECORD ;
-: ATTRIBUTE ( ^n n -- ^n ) ATTRS-IDX swap ATTR-CELLS RECORD ;
-: NAMESPACE ( ^n n -- ^n ) NS-IDX swap NS-CELLS RECORD ;
+: ATTRIBUTE ( ^cursor n -- ^attribute )
+   swap CURSOR-ATTRS @ swap VEC:AT ;
 
-\ Release a table and leave the record owning none, so a second release is a
-\ no-op.
-: TABLE-RELEASE ( ^n n n n -- )
-   {: state table:n cap-off:n size:n :}
-   state cap-off + @ {: cap:n :}
-   cap 0= if exit then
-   state table ptr-field @ {: old:^ :}
-   0 state cap-off + !
-   NULL-PTR state table ptr-field !
-   old cap size * MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
+: NAMESPACE ( ^cursor n -- ^binding )
+   swap CURSOR-NAMESPACES @ swap VEC:AT ;
 
-\ Doubles into a fresh mapping. Records move, so no caller keeps a record's
-\ address across a growth; a failed allocation leaves the table as it was.
-: GROW ( ^n n n n n -- )
-   {: state want:n table:n cap-off:n size:n :}
-   state cap-off + @ {: cap:n :}
+\ Doubles the slots. Records move, so no caller keeps a record's address
+\ across a growth; a failed growth leaves the table as it was.
+: GROW ( ^VEC:vector<t> n -- )
+   {: table want:n :}
+   table VEC:COUNT {: cap:n :}
    want cap <= if exit then
-   cap 2 * TABLE-START max want max {: fresh-cap:n :}
-   fresh-cap size * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh:^ :}
-   cap 0<> if
-      state table ptr-field @ BYTE-VIEW fresh BYTE-VIEW cap size * cells BYTE-COPY
-   then
-   state table cap-off size TABLE-RELEASE
-   fresh state table ptr-field !
-   fresh-cap state cap-off + ! ;
+   table cap 2 * TABLE-START max want max VEC:RESIZE ;
 
-: FRAMES-GROW ( ^n n -- ) FRAMES-IDX FRAME-CAP FRAME-CELLS GROW ;
-: ATTRS-GROW ( ^n n -- ) ATTRS-IDX ATTR-CAP ATTR-CELLS GROW ;
-: NS-GROW ( ^n n -- ) NS-IDX NS-CAP NS-CELLS GROW ;
+: FRAMES-GROW ( ^cursor n -- ) swap CURSOR-FRAMES @ swap GROW ;
+: ATTRS-GROW ( ^cursor n -- ) swap CURSOR-ATTRS @ swap GROW ;
+: NS-GROW ( ^cursor n -- ) swap CURSOR-NAMESPACES @ swap GROW ;
 
 \ Empty every prefix bucket: src/lib/xml/names.f relinks the bindings.
-: NS-HEADS-CLEAR ( ^n -- )
+: NS-HEADS-CLEAR ( ^cursor -- )
    {: state :}
-   state NS-CAP + @ 0 ?do -1 state i NAMESPACE BINDING-HEAD + ! loop ;
+   state CURSOR-NAMESPACES @ VEC:COUNT 0 ?do
+      -1 state i NAMESPACE BINDING-HEAD !
+   loop ;
 
-: SOURCE$ ( ^n -- str )
+: SOURCE$ ( ^cursor -- str )
    {: state :}
-   state SOURCE-IDX ptr-field @ state SOURCE-LEN + @ ;
+   state CURSOR-SOURCE @ state CURSOR-SOURCE-LEN @ ;
 
-: UTF16-SOURCE? ( n -- bool )
-   dup SOURCE-UTF16-LE-BOM = over SOURCE-UTF16-BE-BOM = or
-   over SOURCE-UTF16-LE-DECL = or swap SOURCE-UTF16-BE-DECL = or ;
+: UTF16-SOURCE? ( mode -- bool )
+   dup MODE-SOURCE-UTF16-LE-BOM MODE-EQ over MODE-SOURCE-UTF16-BE-BOM MODE-EQ or
+   over MODE-SOURCE-UTF16-LE-DECL MODE-EQ or
+   swap MODE-SOURCE-UTF16-BE-DECL MODE-EQ or ;
 
-\ An input reader's input follows the window until its fill has answered 0.
-: WINDOW-PLACE ( ^n -- place )
+\ An input reader's input follows the window until its fill has answered 0; an INIT
+\ reader's window starts at line 1, column 1, in bytes.
+: WINDOW-PLACE ( ^cursor -- place )
    {: state :}
    state INPUT? 0= if
-      1 state HEAD-COLUMNS + @ 1+ state WINDOW-KIND + @ PLACE-MAKE exit
+      1 state CURSOR-HEAD-COLUMNS @ 1+ state CURSOR-WINDOW-KIND @ PLACE-MAKE exit
    then
-   state STREAM@ {: stream :}
+   state CURSOR-STREAM @ {: stream :}
    stream STREAM-LINE @ stream STREAM-COLUMN @
-   stream STREAM-EOF @ 0= if COUNT-MORE else COUNT-BYTES then PLACE-MAKE ;
+   stream STREAM-EOF @ 0= if COUNTING-MORE else COUNTING-BYTES then PLACE-MAKE ;
 
 \ Opens the text of a rejection at off in the window, up to its expected part.
-: REJECT-HEAD ( ^n n -- ) {: state off:n :}
+: REJECT-HEAD ( ^cursor n -- ) {: state off:n :}
    state SOURCE$ state WINDOW-PLACE off HEAD-FROM ;
 
 \ Writes the found part at off in the window and the fix, and throws code with
 \ the text.
-: REJECT-TAIL ( ^n n str n -- ) {: state off:n fa:^ fu:n code:n :}
+: REJECT-TAIL ( ^cursor n str n -- ) {: state off:n fa:^ fu:n code:n :}
    state SOURCE$ state WINDOW-PLACE off fa fu code TAIL-FROM ;
 
 \ Rejects at off in the window, placed in the whole input.
-: REJECT ( ^n n str str n -- )
+: REJECT ( ^cursor n str str n -- )
    {: state off:n ea:^ eu:n fa:^ fu:n code:n :}
    state SOURCE$ state WINDOW-PLACE off ea eu fa fu code REJECT-FROM ;
 
 \ Rejects the first byte above $7F in the window from off on.
-: ASCII-WINDOW ( ^n n -- )
+: ASCII-WINDOW ( ^cursor n -- )
    {: state off:n :}
    state SOURCE$ {: window:^ size:n :}
    window off + size off - HIGH-BYTE off + {: high:n :}
@@ -341,9 +240,9 @@ LINEAR: ERASE ( XML:reader -- ^n )
       state high ASCII-EXPECTED$ ASCII-FIX$ E-ENCODING REJECT
    then ;
 
-: INPUT-REFILL ( ^n -- bool )
+: INPUT-REFILL ( ^cursor -- bool )
    {: state :}
-   state STREAM@ {: stream :}
+   state CURSOR-STREAM @ {: stream :}
    stream STREAM-EOF @ 0<> if false exit then
    stream INPUT-VEC VEC:SPAN {: input :}
    stream STREAM-CTX @ input stream STREAM-FILL @ execute {: count:n :}
@@ -351,156 +250,156 @@ LINEAR: ERASE ( XML:reader -- ^n )
    count 0= if 1 stream STREAM-EOF ! false exit then
    input SPAN:$ drop count stream TOKEN-VEC VEC:APPEND
    stream TOKEN-VEC VEC:SPAN SPAN:$
-   state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
-   state SOURCE-MODE + @ INPUT-ASCII = if
-      state state SOURCE-LEN + @ count - ASCII-WINDOW
+   state CURSOR-SOURCE-LEN ! state CURSOR-SOURCE !
+   state CURSOR-SOURCE-MODE @ MODE-INPUT-ASCII MODE-EQ if
+      state state CURSOR-SOURCE-LEN @ count - ASCII-WINDOW
    then
    true ;
 
-: INPUT-ENSURE ( ^n n -- bool )
+: INPUT-ENSURE ( ^cursor n -- bool )
    {: state want:n :}
    want 0 < if E-RANGE throw then
-   begin want state SOURCE-LEN + @ > while
+   begin want state CURSOR-SOURCE-LEN @ > while
       state INPUT-REFILL 0= if false exit then
    repeat
    true ;
 
-: AT ( ^n n -- n )
+: AT ( ^cursor n -- n )
    {: state index:n :}
    state INPUT? if state index 1+ INPUT-ENSURE drop then
    state SOURCE$ state WINDOW-PLACE index BYTE@ ;
 
-: EOF? ( ^n -- bool )
+: EOF? ( ^cursor -- bool )
    {: state :}
-   state INPUT? if state state POSITION + @ 1+ INPUT-ENSURE drop then
-   state POSITION + @ state SOURCE-LEN + @ = ;
+   state INPUT? if state state CURSOR-POSITION @ 1+ INPUT-ENSURE drop then
+   state CURSOR-POSITION @ state CURSOR-SOURCE-LEN @ = ;
 
-: PEEK ( ^n -- n )
-   dup POSITION + @ AT ;
+: PEEK ( ^cursor -- n )
+   dup CURSOR-POSITION @ AT ;
 
-: ADVANCE ( ^n -- )
-   POSITION + 1 swap +! ;
+: ADVANCE ( ^cursor -- )
+   CURSOR-POSITION 1 swap +! ;
 
 \ Skips count bytes the caller has already matched, so the reader holds them.
-: ADVANCE-N ( ^n n -- )
-   swap POSITION + +! ;
+: ADVANCE-N ( ^cursor n -- )
+   swap CURSOR-POSITION +! ;
 
-: SPAN$ ( ^n n n -- str )
+: SPAN$ ( ^cursor n n -- str )
    {: state start:n size:n :}
    start -2 < if
       state SCOPE$ drop start negate 3 - + size exit
    then
-   state SOURCE-IDX ptr-field @ start + size ;
+   state CURSOR-SOURCE @ start + size ;
 
-: MATCH$ ( ^n str -- bool )
+: MATCH$ ( ^cursor str -- bool )
    {: state value size:n :}
    size 0 ?do
       state INPUT? if
-         state state POSITION + @ i + 1+ INPUT-ENSURE 0= if
+         state state CURSOR-POSITION @ i + 1+ INPUT-ENSURE 0= if
             false unloop exit
          then
       then
-      state POSITION + @ i + state SOURCE-LEN + @ >= if
+      state CURSOR-POSITION @ i + state CURSOR-SOURCE-LEN @ >= if
          false unloop exit
       then
-      state SOURCE-IDX ptr-field @ state POSITION + @ i + + c@
+      state CURSOR-SOURCE @ state CURSOR-POSITION @ i + + c@
       value i + c@ <> if false unloop exit then
    loop
    true ;
 
 \ The expected text is the byte in backticks, written in the scope's three bytes.
-: BYTE-SCOPE ( ^n n ^u8 NUM:alloc-byte-len -- )
+: BYTE-SCOPE ( ^cursor n ^u8 NUM:alloc-byte-len -- )
    drop {: state byte:n buf:^ :}
    $60 buf c!  byte buf 1+ c!  $60 buf 2 + c!
-   state state POSITION + @ buf 3
+   state state CURSOR-POSITION @ buf 3
    s" write that byte here, or correct the markup before it" E-MALFORMED REJECT ;
 
-: REQUIRE-BYTE ( ^n n -- )
+: REQUIRE-BYTE ( ^cursor n -- )
    {: state byte:n :}
    state PEEK byte <> if
       state byte 3 MEM:BYTES-ALLOC-LEN [: BYTE-SCOPE ;] MEM:WITH-BYTES
    then
    state ADVANCE ;
 
-: WHITE? ( ^n -- bool )
+: WHITE? ( ^cursor -- bool )
    dup EOF? if drop false exit then
    PEEK XML-SPACE? ;
 
-: SKIP-WHITE ( ^n -- )
+: SKIP-WHITE ( ^cursor -- )
    begin dup WHITE? while dup ADVANCE repeat drop ;
 
 \ Only fills the window: the read after it rejects what UTF8:NEXT does not decode.
-: INPUT-SCALAR-ENSURE ( ^n -- )
+: INPUT-SCALAR-ENSURE ( ^cursor -- )
    {: state :}
-   state state POSITION + @ 1+ INPUT-ENSURE 0= if exit then
+   state state CURSOR-POSITION @ 1+ INPUT-ENSURE 0= if exit then
    begin
-      state SOURCE$ state POSITION + @ UTF8:CUT?
+      state SOURCE$ state CURSOR-POSITION @ UTF8:CUT?
    while
-      state state SOURCE-LEN + @ 1+ INPUT-ENSURE 0= if exit then
+      state state CURSOR-SOURCE-LEN @ 1+ INPUT-ENSURE 0= if exit then
    repeat ;
 
-: SCAN-SCALAR ( ^n -- n )
+: SCAN-SCALAR ( ^cursor -- n )
    {: state :}
    state INPUT? if state INPUT-SCALAR-ENSURE then
-   state SOURCE$ state WINDOW-PLACE state POSITION + @ SCALAR-AT
-   state POSITION + ! ;
+   state SOURCE$ state WINDOW-PLACE state CURSOR-POSITION @ SCALAR-AT
+   state CURSOR-POSITION ! ;
 
-: INPUT-NUMERIC-LOOKAHEAD ( ^n -- )
+: INPUT-NUMERIC-LOOKAHEAD ( ^cursor -- )
    {: state :}
-   state state POSITION + @ 3 + INPUT-ENSURE 0= if exit then
-   state state POSITION + @ 2 + AT $78 = if 0 3 $10 else 0 2 10 then
+   state state CURSOR-POSITION @ 3 + INPUT-ENSURE 0= if exit then
+   state state CURSOR-POSITION @ 2 + AT $78 = if 0 3 $10 else 0 2 10 then
    begin
       {: value:n count:n radix:n :}
-      state state POSITION + @ count + 1+ INPUT-ENSURE 0= if exit then
-      state state POSITION + @ count + AT
+      state state CURSOR-POSITION @ count + 1+ INPUT-ENSURE 0= if exit then
+      state state CURSOR-POSITION @ count + AT
       dup $3B = if drop exit then
       {: byte:n :}
-      state SOURCE$ state WINDOW-PLACE state POSITION + @ byte
+      state SOURCE$ state WINDOW-PLACE state CURSOR-POSITION @ byte
       HEX-DIGIT {: digit:n :}
-      state SOURCE$ state WINDOW-PLACE state POSITION + @
+      state SOURCE$ state WINDOW-PLACE state CURSOR-POSITION @
       value digit radix NUMERIC-STEP
       count 1+ radix
    again ;
 
-: INPUT-ENTITY-LOOKAHEAD ( ^n -- )
+: INPUT-ENTITY-LOOKAHEAD ( ^cursor -- )
    {: state :}
-   state state POSITION + @ 2 + INPUT-ENSURE 0= if exit then
-   state state POSITION + @ 1+ AT $23 = if
+   state state CURSOR-POSITION @ 2 + INPUT-ENSURE 0= if exit then
+   state state CURSOR-POSITION @ 1+ AT $23 = if
       state INPUT-NUMERIC-LOOKAHEAD exit
    then
    2
    begin
       {: count:n :}
       count 7 > if exit then
-      state state POSITION + @ count + INPUT-ENSURE 0= if exit then
-      state state POSITION + @ count 1- + AT $3B = if exit then
+      state state CURSOR-POSITION @ count + INPUT-ENSURE 0= if exit then
+      state state CURSOR-POSITION @ count 1- + AT $3B = if exit then
       count 1+
    again ;
 
-: SCAN-DECODE ( ^n n -- n n )
+: SCAN-DECODE ( ^cursor n -- n n )
    {: state mode:n :}
    state INPUT? if
-      state state POSITION + @ 1+ INPUT-ENSURE drop
+      state state CURSOR-POSITION @ 1+ INPUT-ENSURE drop
       mode DECODE-RAW <> state PEEK $26 = and if
          state INPUT-ENTITY-LOOKAHEAD
       else
          state INPUT-SCALAR-ENSURE
          state PEEK $D = if
-            state state POSITION + @ 2 + INPUT-ENSURE drop
+            state state CURSOR-POSITION @ 2 + INPUT-ENSURE drop
          then
       then
    then
-   state SOURCE$ state WINDOW-PLACE state POSITION + @ mode
+   state SOURCE$ state WINDOW-PLACE state CURSOR-POSITION @ mode
    DECODE-AT ;
 
 \ An input reader keeps each open frame's name and each live binding's prefix and
 \ URI in the scope buffer: SCOPE-REF appends them when the frame opens or the
 \ binding is declared, SCOPE-CUT drops a frame's strings and its bindings' when it
 \ pops. A reference below -2 is a scope offset.
-: SCOPE-REF ( ^n n n -- n n )
+: SCOPE-REF ( ^cursor n n -- n n )
    {: state start:n size:n :}
    state INPUT? 0= if start size exit then
-   state STREAM@ SCOPE-VEC {: scope :}
+   state CURSOR-STREAM @ SCOPE-VEC {: scope :}
    scope VEC:COUNT {: index:n :}
    state start size SPAN$ scope VEC:APPEND
    index negate 3 - size ;
@@ -518,10 +417,10 @@ LINEAR: ERASE ( XML:reader -- ^n )
    stream SCOPE-VEC VEC:CAP 4 / need <= if exit then
    stream SCOPE-VEC need VEC:TRIM ;
 
-: SCOPE-CUT ( ^n n -- )
+: SCOPE-CUT ( ^cursor n -- )
    {: state ref:n :}
    state INPUT? 0= if exit then
-   state STREAM@ {: stream :}
+   state CURSOR-STREAM @ {: stream :}
    stream SCOPE-VEC ref negate 3 - VEC:RESIZE
    stream SCOPE-TRIM ;
 
@@ -529,27 +428,27 @@ LINEAR: ERASE ( XML:reader -- ^n )
 \ fit or the buffer is four times what it keeps, and only once at least as many
 \ bytes were consumed as remain: each move copies fewer bytes than were read
 \ since the last one, so streaming costs time linear in the input.
-: INPUT-REBASE ( ^n -- )
+: INPUT-REBASE ( ^cursor -- )
    {: state :}
-   state STREAM@ {: stream :}
-   state POSITION + @ {: consumed:n :}
-   state SOURCE-LEN + @ consumed - {: tail:n :}
+   state CURSOR-STREAM @ {: stream :}
+   state CURSOR-POSITION @ {: consumed:n :}
+   state CURSOR-SOURCE-LEN @ consumed - {: tail:n :}
    consumed 0= consumed tail < or if exit then
    stream TOKEN-VEC VEC:CAP {: cap:n :}
-   state SOURCE-LEN + @ CHUNK + cap <=
+   state CURSOR-SOURCE-LEN @ CHUNK + cap <=
    cap 4 / CHUNK tail max <= and if exit then
    state SOURCE$ state WINDOW-PLACE consumed PLACE-POSITION
    stream STREAM-COLUMN ! stream STREAM-LINE !
-   state SOURCE-IDX ptr-field @ consumed + tail
+   state CURSOR-SOURCE @ consumed + tail
       stream TOKEN-VEC VEC:SPAN SPAN:COPY
    stream TOKEN-VEC tail VEC:RESIZE
    stream TOKEN-TRIM
    stream TOKEN-VEC VEC:SPAN SPAN:$
-      state SOURCE-LEN + ! state SOURCE-IDX ptr-field !
+      state CURSOR-SOURCE-LEN ! state CURSOR-SOURCE !
    stream STREAM-BASE @ consumed + stream STREAM-BASE !
-   0 state POSITION + ! ;
+   0 state CURSOR-POSITION ! ;
 
-: URI$ ( ^n n n -- str )
+: URI$ ( ^cursor n n -- str )
    {: state start:n size:n :}
    start XML-URI = if s" http://www.w3.org/XML/1998/namespace" exit then
    start XMLNS-URI = if s" http://www.w3.org/2000/xmlns/" exit then
@@ -571,50 +470,71 @@ LINEAR: ERASE ( XML:reader -- ^n )
    then
    source size v VEC:APPEND ;
 
-: CURRENT-FRAME ( ^n -- ^n )
-   dup OPEN-DEPTH + @ 1- FRAME ;
+: CURRENT-FRAME ( ^cursor -- ^frame )
+   dup CURSOR-OPEN-DEPTH @ 1- FRAME ;
 
 \ Release the three tables and an input reader's stream, leaving the record owning
-\ nothing and the mode LEGACY-UTF8.
-: RECORD-FREE ( ^n -- )
+\ nothing and the mode MODE-LEGACY-UTF8.
+: RECORD-FREE ( ^cursor -- )
    {: state :}
-   state FRAMES-IDX FRAME-CAP FRAME-CELLS TABLE-RELEASE
-   state ATTRS-IDX ATTR-CAP ATTR-CELLS TABLE-RELEASE
-   state NS-IDX NS-CAP NS-CELLS TABLE-RELEASE
+   state CURSOR-FRAMES @ VEC:DELETE
+   NULL-PTR state CURSOR-FRAMES !
+   state CURSOR-ATTRS @ VEC:DELETE
+   NULL-PTR state CURSOR-ATTRS !
+   state CURSOR-NAMESPACES @ VEC:DELETE
+   NULL-PTR state CURSOR-NAMESPACES !
    state INPUT? if
-      state STREAM@
-      LEGACY-UTF8 state SOURCE-MODE + !
-      NULL-PTR state WIRE-STORAGE-IDX ptr-field !
+      state CURSOR-ALLOCATOR @ state CURSOR-STREAM @
+      MODE-LEGACY-UTF8 state CURSOR-SOURCE-MODE !
+      NULL-PTR state CURSOR-STREAM !
       STREAM-CLOSE
    then ;
 
 
-\ A record a caller's throw abandoned still holds its tables: release them,
-\ then zero the record, so a failed build releases exactly what it made.
-: INIT-STATE ( ^n -- )
+\ An abandoned record still holds its tables: release them, then zero every field but
+\ sip, which each hash sets before use, so a failed build releases exactly what it made.
+: INIT-STATE ( ^cursor -- )
    {: state :}
    state RECORD-FREE
-   CURSOR-CELLS 0 ?do 0 state i cells + ! loop ;
+   NULL-PTR state CURSOR-SOURCE !  0 state CURSOR-SOURCE-LEN !
+   0 state CURSOR-POSITION !  0 state CURSOR-OPEN-DEPTH !
+   0 state CURSOR-NS-COUNT !  0 state CURSOR-ATTR-COUNT !
+   0 state CURSOR-ATTR-INDEX !  0 state CURSOR-RAW-OFF !
+   0 state CURSOR-RAW-LEN !  XML-KIND:START state CURSOR-TOKEN-KIND !
+   0 state CURSOR-NAME-OFF !  0 state CURSOR-NAME-LEN !
+   0 state CURSOR-VALUE-OFF !  0 state CURSOR-VALUE-LEN !
+   0 state CURSOR-URI-OFF !  0 state CURSOR-URI-LEN !
+   PENDING-NONE state CURSOR-PENDING !  0 state CURSOR-ROOT-COUNT !
+   false state CURSOR-FAILED !  MODE-LEGACY-UTF8 state CURSOR-SOURCE-MODE !
+   NULL-PTR state CURSOR-STREAM !
+   0 state CURSOR-HEAD-COLUMNS !
+   COUNTING-BYTES state CURSOR-WINDOW-KIND !
+   NULL-PTR state CURSOR-ALLOCATOR !
+   NULL-PTR state CURSOR-FRAMES !  NULL-PTR state CURSOR-ATTRS !
+   NULL-PTR state CURSOR-NAMESPACES !
+   0 state CURSOR-HASH-K0 !  0 state CURSOR-HASH-K1 ! ;
 
 
-: READER-TABLES ( ^n -- )
+: READER-TABLES ( ^cursor -- )
    {: state :}
-   state HASH-K0 + BYTE-VIEW 2 cells ENTROPY:FILL
-   state 1 FRAMES-GROW
-   state 1 ATTRS-GROW
-   state 1 NS-GROW
+   state CURSOR-HASH-K0 BYTE-VIEW CELL ENTROPY:FILL
+   state CURSOR-HASH-K1 BYTE-VIEW CELL ENTROPY:FILL
+   state CURSOR-ALLOCATOR @ {: al:^ :}
+   al TABLE-START [type] frame VEC:NEW state CURSOR-FRAMES !
+   al TABLE-START [type] attribute VEC:NEW state CURSOR-ATTRS !
+   al TABLE-START [type] binding VEC:NEW state CURSOR-NAMESPACES !
    state NS-HEADS-CLEAR
-   -1 state ATTR-INDEX + !
-   XML-KIND:EOF KIND>N state TOKEN-KIND + ! ;
+   -1 state CURSOR-ATTR-INDEX !
+   XML-KIND:EOF state CURSOR-TOKEN-KIND ! ;
 
 
 \ Answer the reader a build body made, or release it and rethrow the body's code.
-: BUILT ( ^n n -- XML:reader )
+: BUILT ( ^cursor n -- XML:reader )
    {: state code:n :}
    code 0<> if state RECORD-FREE code throw then
    state MINT ;
 
-: BOM ( ^n -- )
+: BOM ( ^cursor -- )
    {: state :}
    state s\" \xFF\xFE" MATCH$ state s\" \xFE\xFF" MATCH$ or
    state s\" <\z" MATCH$ or state s\" \z<" MATCH$ or if
@@ -624,10 +544,10 @@ LINEAR: ERASE ( XML:reader -- ^n )
    then
    state s\" \xEF\xBB\xBF" MATCH$ if state 3 ADVANCE-N then ;
 
-: INIT-BODY ( ^n str -- ^n str )
+: INIT-BODY ( ^cursor str -- ^cursor str )
    {: state source size:n :}
-   source state SOURCE-IDX ptr-field !
-   size state SOURCE-LEN + !
+   source state CURSOR-SOURCE !
+   size state CURSOR-SOURCE-LEN !
    state READER-TABLES
    state BOM
    state source size ;
@@ -635,83 +555,82 @@ LINEAR: ERASE ( XML:reader -- ^n )
 
 \ The stream goes into the record before the tables, so a failed table step
 \ leaves RECORD-FREE to release both.
-: INPUT-BODY ( ^n ^n [ ^n SPAN:span<u8> -- n ] -- ^n ^n [ ^n SPAN:span<u8> -- n ] )
+: INPUT-BODY ( ^cursor ^n [ ^n SPAN:span<u8> -- n ] -- ^cursor ^n [ ^n SPAN:span<u8> -- n ] )
    {: state ctx fill :}
-   ctx fill STREAM-OPEN
-   STREAM>BYTES state WIRE-STORAGE-IDX ptr-field !
-   INPUT-UTF8 state SOURCE-MODE + !
+   state CURSOR-ALLOCATOR @ ctx fill STREAM-OPEN state CURSOR-STREAM !
+   MODE-INPUT-UTF8 state CURSOR-SOURCE-MODE !
    state READER-TABLES
    state ctx fill ;
 
 public
-: INIT ( ^cursor str -- XML:reader )
-   {: record source size:n :}
+: INIT ( ^cursor ^ALLOC:allocator str -- XML:reader )
+   {: record al:^ source size:n :}
    source size SPAN-CHECK
-   record >STATE {: state :}
-   state INIT-STATE
-   state source size ['] INIT-BODY catch
+   record INIT-STATE
+   al record CURSOR-ALLOCATOR !
+   record source size ['] INIT-BODY catch
    >r 2drop drop r> {: code:n :}
-   state code BUILT ;
+   record code BUILT ;
 
 \ Reads UTF-8 or declared US-ASCII; the fill writes the span it is lent and answers a
 \ count: 0 ends input, below 0 or past the span is E-RANGE. ctx and fill live until CLOSE.
-: INIT-INPUT ( ^cursor ^n [ ^n SPAN:span<u8> -- n ] -- XML:reader )
-   {: record ctx fill :}
-   record >STATE {: state :}
-   state INIT-STATE
-   state ctx fill ['] INPUT-BODY catch
+: INIT-INPUT ( ^cursor ^ALLOC:allocator ^n [ ^n SPAN:span<u8> -- n ]
+               -- XML:reader )
+   {: record al:^ ctx fill :}
+   record INIT-STATE
+   al record CURSOR-ALLOCATOR !
+   record ctx fill ['] INPUT-BODY catch
    >r 2drop drop r> {: code:n :}
-   state code BUILT ;
+   record code BUILT ;
 
 private
-: SOURCE-READER-MODE ( ^header -- n )
+: SOURCE-READER-MODE ( ^header -- mode )
    {: source-state :}
    source-state SRC-ENCODING {: encoding:encoding :}
-   encoding XML-ENCODING:UTF8 XML-ENCODING:EQ if SOURCE-UTF8 exit then
-   encoding XML-ENCODING:US-ASCII XML-ENCODING:EQ if SOURCE-ASCII exit then
+   encoding XML-ENCODING:UTF8 XML-ENCODING:EQ if MODE-SOURCE-UTF8 exit then
+   encoding XML-ENCODING:US-ASCII XML-ENCODING:EQ if MODE-SOURCE-ASCII exit then
    source-state HEADER-BOM-LEN @ 0= if
       encoding XML-ENCODING:UTF16-LE XML-ENCODING:EQ if
-         SOURCE-UTF16-LE-DECL
+         MODE-SOURCE-UTF16-LE-DECL
       else
-         SOURCE-UTF16-BE-DECL
+         MODE-SOURCE-UTF16-BE-DECL
       then
    else
       encoding XML-ENCODING:UTF16-LE XML-ENCODING:EQ if
-         SOURCE-UTF16-LE-BOM
+         MODE-SOURCE-UTF16-LE-BOM
       else
-         SOURCE-UTF16-BE-BOM
+         MODE-SOURCE-UTF16-BE-BOM
       then
    then ;
 
 \ A source reader's window is the lexical text, after the byte order mark
 \ that starts line 1: the mark's bytes in UTF-8, one unit in UTF-16.
-: WINDOW-COLUMNS ( ^n ^header -- )
+: WINDOW-COLUMNS ( ^cursor ^header -- )
    {: state source-state :}
    source-state HEADER-BOM-LEN @ {: bom:n :}
-   state SOURCE-MODE + @ UTF16-SOURCE? if
-      COUNT-UNITS bom 2 /
+   state CURSOR-SOURCE-MODE @ UTF16-SOURCE? if
+      COUNTING-UNITS bom 2 /
    else
-      COUNT-BYTES bom
-   then state HEAD-COLUMNS + ! state WINDOW-KIND + ! ;
+      COUNTING-BYTES bom
+   then state CURSOR-HEAD-COLUMNS ! state CURSOR-WINDOW-KIND ! ;
 
-: SOURCE-BODY ( ^n ^header -- ^n ^header )
+: SOURCE-BODY ( ^cursor ^header -- ^cursor ^header )
    {: state source-state :}
    source-state SRC-LEXICAL$ {: lexical size:n :}
-   lexical state SOURCE-IDX ptr-field !
-   size state SOURCE-LEN + !
-   source-state SOURCE-READER-MODE state SOURCE-MODE + !
+   lexical state CURSOR-SOURCE !
+   size state CURSOR-SOURCE-LEN !
+   source-state SOURCE-READER-MODE state CURSOR-SOURCE-MODE !
    state source-state WINDOW-COLUMNS
    state READER-TABLES
    state source-state ;
 
-
 : SOURCE-READER ( ^cursor ^header -- XML:reader )
    {: record source-state :}
-   record >STATE {: state :}
-   state INIT-STATE
-   state source-state ['] SOURCE-BODY catch
+   record INIT-STATE
+   source-state HEADER-ALLOCATOR @ record CURSOR-ALLOCATOR !
+   record source-state ['] SOURCE-BODY catch
    >r 2drop r> {: code:n :}
-   state code BUILT ;
+   record code BUILT ;
 
 public
 \ The source stays in place under the reader's inputs, so a caller that
@@ -728,23 +647,29 @@ public
 \ Release what a record owns after a caller's throw abandoned its live reader.
 \ A second DISPOSE, or one on a closed or zero-filled record, does nothing.
 : DISPOSE ( ^cursor -- )
-   >STATE RECORD-FREE ;
+   RECORD-FREE ;
 
 private
-: LIVE ( ^n -- )
-   FAILED + @ 0<> if E-STATE throw then ;
+\ FAILED is true from NEXT's entry until it returns, so a NEXT that throws
+\ leaves the reader refusing every read.
+: LIVE ( ^cursor -- )
+   CURSOR-FAILED @ if E-STATE throw then ;
 
-: NAMED ( ^n -- )
+: NAMED ( ^cursor -- )
    {: state :}
    state LIVE
-   state NAME-LEN + @ 0= if E-STATE throw then ;
+   state CURSOR-NAME-LEN @ 0= if E-STATE throw then ;
 
-: ACTIVE-ATTRIBUTE ( ^n -- ^n )
+\ Throws E-STATE unless the token is a start tag.
+: START-ONLY ( ^cursor -- )
+   CURSOR-TOKEN-KIND @ XML-KIND:START XML-KIND:EQ 0= if E-STATE throw then ;
+
+: ACTIVE-ATTRIBUTE ( ^cursor -- ^attribute )
    {: state :}
    state LIVE
-   state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
-   state ATTR-INDEX + @ {: index:n :}
-   index 0 < index state ATTR-COUNT + @ >= or if E-STATE throw then
+   state START-ONLY
+   state CURSOR-ATTR-INDEX @ {: index:n :}
+   index 0 < index state CURSOR-ATTR-COUNT @ >= or if E-STATE throw then
    state index ATTRIBUTE ;
 
 : LOCAL-SPAN ( str -- str )
@@ -758,80 +683,80 @@ private
 
 \ Keep the reader below throwing workers' arguments. Native catch restores
 \ stack depth, so public locals could overwrite the reader's saved stack cell.
-: RAW-STATE ( ^n -- off len )
+: RAW-STATE ( ^cursor -- off len )
    {: state :}
    state LIVE
-   state state RAW-OFF + @ ABS-OFF >OFF state RAW-LEN + @ >LEN ;
+   state state CURSOR-RAW-OFF @ ABS-OFF >OFF state CURSOR-RAW-LEN @ >LEN ;
 
-: RAW$-STATE ( ^n -- str )
+: RAW$-STATE ( ^cursor -- str )
    {: state :}
    state LIVE
-   state state RAW-OFF + @ state RAW-LEN + @ SPAN$ ;
+   state state CURSOR-RAW-OFF @ state CURSOR-RAW-LEN @ SPAN$ ;
 
-: NAME$-STATE ( ^n -- str )
+: NAME$-STATE ( ^cursor -- str )
    {: state :}
    state NAMED
-   state state NAME-OFF + @ state NAME-LEN + @ SPAN$ ;
+   state state CURSOR-NAME-OFF @ state CURSOR-NAME-LEN @ SPAN$ ;
 
-: DECODE-ARGS ( XML:reader ^VEC:vector<u8> -- XML:reader ^n ^VEC:vector<u8> )
+: DECODE-ARGS ( XML:reader ^VEC:vector<u8> -- XML:reader ^cursor ^VEC:vector<u8> )
    {: v:^ :}
    STATE v ;
 
-: URI-STATE ( ^n ^VEC:vector<u8> -- )
+: URI-STATE ( ^cursor ^VEC:vector<u8> -- )
    {: state v:^ :}
    state NAMED
-   state state URI-OFF + @ state URI-LEN + @ URI$
+   state state CURSOR-URI-OFF @ state CURSOR-URI-LEN @ URI$
    v URI-INTO ;
 
-: ATTR-RESET-STATE ( ^n -- )
+: ATTR-RESET-STATE ( ^cursor -- )
    {: state :}
    state LIVE
-   state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
-   -1 state ATTR-INDEX + ! ;
+   state START-ONLY
+   -1 state CURSOR-ATTR-INDEX ! ;
 
-: ATTR-NEXT-STATE ( ^n -- bool )
+: ATTR-NEXT-STATE ( ^cursor -- bool )
    {: state :}
    state LIVE
-   state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
-   state ATTR-INDEX + @ state ATTR-COUNT + @ >= if false exit then
-   1 state ATTR-INDEX + +!
-   state ATTR-INDEX + @ state ATTR-COUNT + @ < ;
+   state START-ONLY
+   state CURSOR-ATTR-INDEX @ state CURSOR-ATTR-COUNT @ >= if false exit then
+   1 state CURSOR-ATTR-INDEX +!
+   state CURSOR-ATTR-INDEX @ state CURSOR-ATTR-COUNT @ < ;
 
-: ATTR-RAW-STATE ( ^n -- off len )
+: ATTR-RAW-STATE ( ^cursor -- off len )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr ATTRIBUTE-RAW + @ ABS-OFF >OFF attr ATTRIBUTE-RAW-U + @ >LEN ;
+   state attr ATTRIBUTE-RAW @ ABS-OFF >OFF attr ATTRIBUTE-RAW-U @ >LEN ;
 
-: ATTR-NAME$-STATE ( ^n -- str )
+: ATTR-NAME$-STATE ( ^cursor -- str )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr ATTRIBUTE-NAME + @ attr ATTRIBUTE-NAME-U + @ SPAN$ ;
+   state attr ATTRIBUTE-NAME @ attr ATTRIBUTE-NAME-U @ SPAN$ ;
 
-: ATTR-VALUE$-STATE ( ^n -- str )
+: ATTR-VALUE$-STATE ( ^cursor -- str )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$ ;
+   state attr ATTRIBUTE-VALUE @ attr ATTRIBUTE-VALUE-U @ SPAN$ ;
 
-: ATTR-VALUE-STATE ( ^n -- off len )
+: ATTR-VALUE-STATE ( ^cursor -- off len )
    {: state :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr ATTRIBUTE-VALUE + @ ABS-OFF >OFF attr ATTRIBUTE-VALUE-U + @ >LEN ;
+   state attr ATTRIBUTE-VALUE @ ABS-OFF >OFF attr ATTRIBUTE-VALUE-U @ >LEN ;
 
-: ATTR-URI-STATE ( ^n ^VEC:vector<u8> -- )
+: ATTR-URI-STATE ( ^cursor ^VEC:vector<u8> -- )
    {: state v:^ :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr ATTRIBUTE-URI + @ attr ATTRIBUTE-URI-U + @ URI$
+   state attr ATTRIBUTE-URI @ attr ATTRIBUTE-URI-U @ URI$
    v URI-INTO ;
 
-: ATTR-TEXT-STATE ( ^n ^VEC:vector<u8> -- )
+: ATTR-TEXT-STATE ( ^cursor ^VEC:vector<u8> -- )
    {: state v:^ :}
    state ACTIVE-ATTRIBUTE {: attr :}
-   state attr ATTRIBUTE-VALUE + @ attr ATTRIBUTE-VALUE-U + @ SPAN$
+   state attr ATTRIBUTE-VALUE @ attr ATTRIBUTE-VALUE-U @ SPAN$
    DECODE-ATTR v DECODE-INTO ;
 
 public
 : KIND ( XML:reader -- XML:reader kind )
-   STATE dup LIVE TOKEN-KIND + >KIND-CELL @ ;
+   STATE dup LIVE CURSOR-TOKEN-KIND @ ;
 
 : RAW ( XML:reader -- XML:reader off len )
    STATE RAW-STATE ;
@@ -846,7 +771,7 @@ public
    NAME$ LOCAL-SPAN ;
 
 : DEPTH ( XML:reader -- XML:reader n )
-   STATE dup LIVE OPEN-DEPTH + @ ;
+   STATE dup LIVE CURSOR-OPEN-DEPTH @ ;
 
 : URI ( XML:reader ^VEC:vector<u8> -- XML:reader )
    DECODE-ARGS URI-STATE ;

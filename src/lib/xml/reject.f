@@ -25,21 +25,19 @@ require src/core/rejection.f
 
 package XML
 
-\ A place's kind: its columns count UTF-16 units for COUNT-UNITS, else bytes;
-\ input follows the span only for COUNT-MORE.
-0 constant COUNT-BYTES
-1 constant COUNT-MORE
-2 constant COUNT-UNITS
+\ A place's kind: its columns count UTF-16 units for COUNTING-UNITS, else bytes;
+\ input follows the span only for COUNTING-MORE.
+ENUM counting DERIVE eq bytes more units ;ENUM
 
 \ Where a span's first byte sits in the whole input.
 STRUCTURE place
    FIELD line n
    FIELD column n
-   FIELD kind n
+   FIELD kind counting
 ;STRUCTURE
 
 \ The place of a span counted from its own first byte.
-: WHOLE ( -- place ) 1 1 COUNT-BYTES PLACE-MAKE ;
+: WHOLE ( -- place ) 1 1 COUNTING-BYTES PLACE-MAKE ;
 
 \ The line and column of byte off of the UTF-8 bytes a u, counting UTF-16
 \ units from line l, column c.
@@ -51,8 +49,8 @@ STRUCTURE place
 \ The line and column of byte off of the span a u, whose first byte sits at
 \ the place at.
 : PLACE-POSITION ( str place n -- n n ) {: a:^ u:n at:place off:n :}
-   at PLACE-UNMAKE {: l:n c:n kind:n :}
-   kind COUNT-UNITS = if a u off l c UTF16-POSITION exit then
+   at PLACE-UNMAKE {: l:n c:n kind:counting :}
+   kind COUNTING-UNITS COUNTING-EQ if a u off l c UTF16-POSITION exit then
    a a off + l c 0 REJECTION:POSITION drop ;
 
 0 constant FOUND-END
@@ -157,7 +155,7 @@ STRUCTURE place
 \ with the text.
 : TAIL-FROM ( str place n str n -- )
    {: a:^ u:n at:place off:n fa:^ fu:n code:n :}
-   at PLACE-UNMAKE nip nip COUNT-MORE = {: more:bool :}
+   at PLACE-UNMAKE nip nip COUNTING-MORE COUNTING-EQ {: more:bool :}
    a u off more FOUND-FORM {: len:n form:n :}
    a u off len form fa fu code WRITE-TAIL ;
 

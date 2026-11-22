@@ -5,8 +5,9 @@ split-str
 \ Constructors: INIT, INIT-INPUT, INIT-SOURCE and OWNER-READER
 \ (src/lib/xml/state.f). STORAGE CLASS. CALLER-OWNED record and
 \ output; a source holds storage from the allocator it was given until
-\ SOURCE-CLOSE or OWNER-CLOSE; the reader owns its record's tables until CLOSE
-\ or DISPOSE. No module state.
+\ SOURCE-CLOSE or OWNER-CLOSE; a reader holds its tables, and an input reader
+\ its stream, from the allocator it was given, a source reader its source's,
+\ until CLOSE or DISPOSE. No module state.
 require src/lib/xml/source.f
 require src/lib/xml/read.f
 require src/lib/xml/write.f
