@@ -56,7 +56,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 : NEW$ ( -- str )  NEW-B @ VEC:SPAN SPAN:$ ;
 : FILE$ ( -- str )  FILE-BUF FILE-U @ ;
 
-: ERR ( ^u8 n -- )
+: ERR ( str -- )
    {: a:^ u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
 
@@ -102,11 +102,11 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 : QUOTE ( ^JSON:writer -- ^JSON:writer )  s\" \"" WRITE-RAW ;
 
-: QUOTED ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: QUOTED ( ^JSON:writer str -- ^JSON:writer )
    {: a:^ u:n :}
    QUOTE a u WRITE-RAW QUOTE ;
 
-: SEVERITY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: SEVERITY ( ^JSON:writer str -- ^JSON:writer )
    s" severity" STRING-MEMBER 0= if 2drop exit then
    {: v:^ vu:n :}
    v vu s" error" STR= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
@@ -131,7 +131,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    w s" \n" WRITE-RAW k ku WRITE-RAW s" : " WRITE-RAW
    v vu WRITE-RAW drop ;
 
-: NOTES ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: NOTES ( ^JSON:writer str -- ^JSON:writer )
    {: w a:^ u:n :}
    JSON-ST a u READ-INIT
    READ-NEXT drop
@@ -152,7 +152,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    READ-CLOSE
    w s" \nevaluated: " WRITE-RAW v vu WRITE-RAW ;
 
-: MESSAGE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: MESSAGE ( ^JSON:writer str -- ^JSON:writer )
    {: a:^ u:n :}
    QUOTE
    a u s" message" STRING-MEMBER if WRITE-RAW else 2drop then
@@ -161,7 +161,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    a u HELP-LINE
    QUOTE ;
 
-: DIAGNOSTIC ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: DIAGNOSTIC ( ^JSON:writer str -- ^JSON:writer )
    {: a:^ u:n :}
    WRITE-OBJECT-START
    a u RANGE
@@ -176,7 +176,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ A publishDiagnostics notification begun for the URI, with the version when
 \ there is one, up to its diagnostics' opening bracket.
-: OPENING ( ^u8 n option<n> -- ^JSON:writer )
+: OPENING ( str option<n> -- ^JSON:writer )
    {: u:^ uu:n v :}
    W PUB-B WRITE-OPEN-BUF
    s" textDocument/publishDiagnostics" NOTIFY
@@ -195,7 +195,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    w WRITE-CLOSE
    FD:STDOUT a u CONTENT-LENGTH:SEND ;
 
-: ITEM ( ^u8 n -- )
+: ITEM ( str -- )
    {: a:^ u:n :}
    a u SCREENED 0= if exit then
    FILE$ LIST-A @ LIST-U @ STR= 0= if exit then
@@ -205,7 +205,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ The list for the file in LIST-A, its positions counted in the text TEXT!
 \ named, published at the URI.
-: LIST ( ^u8 n option<n> -- )
+: LIST ( str option<n> -- )
    OPENING drop
    0 ITEMS !
    PKTS-A @ PKTS-U @ [: ITEM ;] EACH-LINE
@@ -257,7 +257,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    s\" \n" NEW-B @ VEC:APPEND
    NEW$ drop at + fu ;
 
-: DEP ( ^u8 n -- )
+: DEP ( str -- )
    {: a:^ u:n :}
    a u SCREENED 0= if s" lsp: " ERR a u ERR s\" \n" ERR exit then
    FILE$ SELF @ DOC-CANON$ STR= if exit then
@@ -283,7 +283,7 @@ public
    PUB-B 1 BUF:N>BLEN BUF:INIT
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW NEW-B ! ;
 
-: PUBLISH ( n ^u8 n -- )
+: PUBLISH ( n str -- )
    {: slot:n p:^ pu:n :}
    p PKTS-A !
    pu PKTS-U !

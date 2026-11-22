@@ -92,7 +92,7 @@ variable CUR-ROOT                        \ and the root being walked
    {: at:n u:n :}
    at POOL u ;
 
-: PATH$ ( n -- ^u8 n )  dup N-PATH NODE@ swap N-PATH-U NODE@ POOL$ ;
+: PATH$ ( n -- str )  dup N-PATH NODE@ swap N-PATH-U NODE@ POOL$ ;
 : DIR$ ( n -- str )  dup N-ROOT NODE@ swap N-ROOT-U NODE@ POOL$ ;
 : F$ ( -- str )  F-AT @ F-U @ POOL$ ;
 
@@ -123,7 +123,7 @@ variable CUR-ROOT                        \ and the root being walked
    rc E-DISC-RETIRE = if s" E-DISC-RETIRE" true exit then
    s" " false ;
 
-: REFUSE ( ^u8 n -- )
+: REFUSE ( str -- )
    {: a:^ u:n :}
    u 1+ BLOCK-B-RESERVE
    a 0 BLOCK-B u BYTE-COPY
@@ -136,7 +136,7 @@ variable CUR-ROOT                        \ and the root being walked
    {: h:n a:^ u:n :}
    h a u FNV:BYTES u FNV:STEP ;
 
-: KEY ( ^u8 n ^u8 n -- n )
+: KEY ( str str -- n )
    {: a:^ u:n r:^ ru:n :}
    FNV:BASIS a u MIX r ru MIX ;
 
@@ -147,7 +147,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ The slot holding the node of this path, root and hash, else the empty slot
 \ it would take.
-: SLOT ( ^u8 n ^u8 n n -- n )
+: SLOT ( str str n -- n )
    {: a:^ u:n r:^ ru:n h:n :}
    SLOT-CAP @ 1- {: mask:n :}
    h mask and
@@ -202,7 +202,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 \ The subject at this canonical path, rooted at its directory as the checker
 \ roots a document it checks.
-: SUBJECT ( ^u8 n -- n )
+: SUBJECT ( str -- n )
    {: a:^ u:n :}
    a u a u SOURCE-ROOT:DIRNAME NODE-OF {: id:n :}
    1 id N-SUBJECT NODE!
@@ -218,7 +218,7 @@ variable CUR-ROOT                        \ and the root being walked
    tu o O-TEXT-U OPEN!
    o 1+ OPEN-N ! ;
 
-: FOUND ( ^u8 n -- )
+: FOUND ( str -- )
    {: a:^ u:n :}
    a u s" .f" ENDS-WITH? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
@@ -265,7 +265,7 @@ variable CUR-ROOT                        \ and the root being walked
       k i SOURCE-EVENT:PATH@ i SOURCE-EVENT:ROOT@ NODE-OF EDGE+
    loop ;
 
-: NAMED? ( ^u8 n -- bool )
+: NAMED? ( str -- bool )
    {: a:^ u:n :}
    BAD-N @ 0 ?do
       i BAD @ PATH$ a u STR= if true unloop exit then
@@ -458,7 +458,7 @@ public
 \ whatever its closure holds: F first when it is a subject, then by path. Both
 \ paths are copied before EACH runs; EACH calls the word it is given once per
 \ open document, with its canonical path and text.
-: REACHING ( ^u8 n ^u8 n [ [ ^u8 n ^u8 n -- ] -- ] -- )
+: REACHING ( str str [ [ str str -- ] -- ] -- )
    {: f:^ fu:n d:^ du:n each :}
    RESET
    f fu POOL+ F-AT !
@@ -501,7 +501,7 @@ public
 
 \ Whether the last REACHING refused, giving no subject, and the root it named.
 : REFUSED? ( -- bool )  BLOCKED @ ;
-: BLOCKED$ ( -- ^u8 n )  0 BLOCK-B BLOCK-U @ ;
+: BLOCKED$ ( -- str )  0 BLOCK-B BLOCK-U @ ;
 
 : SUBJECTS ( -- n )  HIT-N @ ;
 : SUBJECT$ ( n -- str )  HITS @ PATH$ ;

@@ -39,13 +39,13 @@ variable NEXT-ID
 : LIVE? ( n -- bool )  SLOTS ENTRY-LIVE @ ;
 : BYTES$ ( ^^VEC:vector<u8> -- str )  @ VEC:SPAN SPAN:$ ;
 
-: KEEP ( ^u8 n ^^VEC:vector<u8> -- )
+: KEEP ( str ^^VEC:vector<u8> -- )
    {: a:^ u:n at:^ :}
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
    v at !
    a u v VEC:APPEND ;
 
-: STORE ( ^u8 n ^^VEC:vector<u8> -- )
+: STORE ( str ^^VEC:vector<u8> -- )
    {: a:^ u:n at:^ :}
    at @ 0 VEC:RESIZE
    a u at @ VEC:APPEND ;
@@ -56,7 +56,7 @@ variable NEXT-ID
    SLOT-COUNT @
    1 SLOT-COUNT +! ;
 
-: HOLDER ( ^u8 n [ ^entry -- ^^VEC:vector<u8> ] -- option<n> )
+: HOLDER ( str [ ^entry -- ^^VEC:vector<u8> ] -- option<n> )
    {: a:^ u:n field :}
    SLOT-COUNT @ 0 ?do
       i LIVE? if
@@ -143,7 +143,7 @@ private
 
 \ A document in a free slot. Its path's canonical spelling comes first, so a
 \ path without one throws before anything changes.
-: ADD ( ^u8 n n ^u8 n ^u8 n -- )
+: ADD ( str n str str -- )
    {: u:^ uu:n v:n p:^ pu:n t:^ tu:n :}
    p pu SOURCE-ROOT:CANONICAL drop {: c:^ cu:n :}
    FREE-SLOT {: slot:n :}

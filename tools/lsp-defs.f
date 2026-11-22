@@ -237,7 +237,7 @@ TYPED-VARIABLE ESC-W JSON:writer
    {: at:n u:n :}
    at BYTES u ;
 
-: PATH$ ( n -- ^u8 n )  dup G-PATH GROUP@ swap G-PATH-U GROUP@ AT$ ;
+: PATH$ ( n -- str )  dup G-PATH GROUP@ swap G-PATH-U GROUP@ AT$ ;
 : FILE$ ( -- str )  0 FILE-B FILE-U @ ;
 : IN$ ( -- str )  0 IN-B IN-U @ ;
 
@@ -337,7 +337,7 @@ TYPED-VARIABLE ESC-W JSON:writer
    s" target_end" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-END-V ! exit then
    JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
-: DECODE ( ^u8 n -- )
+: DECODE ( str -- )
    {: a:^ u:n :}
    BYTES-U @ LINE-AT !
    CLASS-WORD CLASS-V !
@@ -370,7 +370,7 @@ TYPED-VARIABLE ESC-W JSON:writer
    begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
    JSON:READ-CLOSE ;
 
-: FOUND ( ^u8 n -- option<n> )
+: FOUND ( str -- option<n> )
    {: p:^ pu:n :}
    CUR-G @ {: cur:n :}
    cur 0 >= if
@@ -407,7 +407,7 @@ private
 
 \ A new group of this check's, for the file at this path, which does not lie
 \ in BYTES, with no file visit yet: its index.
-: GROUP+ ( ^u8 n -- n )
+: GROUP+ ( str -- n )
    {: p:^ pu:n :}
    GROUP-N @ {: g:n :}
    g 1+ GROUP-CELLS * GROUPS-RESERVE
@@ -656,7 +656,7 @@ private
    in u U-IN USE!
    1 USE-N +! ;
 
-: STEP ( ^u8 n n [ -- ] -- n )
+: STEP ( str n [ -- ] -- n )
    {: a:^ u:n o:n xt :}
    a o + u o - LF INDEX-OF MATCH option
       none OF u o - ENDOF
@@ -666,7 +666,7 @@ private
    xt execute
    o len + 1+ ;
 
-: LINES ( ^u8 n [ -- ] -- )
+: LINES ( str [ -- ] -- )
    {: a:^ u:n xt :}
    0 begin dup u < while a u rot xt STEP repeat drop ;
 

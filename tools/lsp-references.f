@@ -255,7 +255,7 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    0 BUILTIN-SYM !
    true SPELT ! ;
 
-: REFUSE ( ^u8 n ^u8 n -- )
+: REFUSE ( str str -- )
    {: p:^ pu:n w:^ wu:n :}
    0 MSG-U !
    p pu SHOWN$ MSG+
@@ -290,7 +290,7 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
    w wu POOL+ {: why:n :}
    k K-PATH KNOWN@ k K-PATH-U KNOWN@ why wu NAMED! ;
 
-: NAMED? ( ^u8 n -- bool )
+: NAMED? ( str -- bool )
    {: a:^ u:n :}
    MISS-N @ 0 ?do
       i M-PATH MISS@ i M-PATH-U MISS@ POOL$ a u STR= if true unloop exit then
@@ -786,7 +786,7 @@ private
    loop
    s" " ;
 
-: WHY ( n n -- ^u8 n )
+: WHY ( n n -- str )
    {: slot:n g:n :}
    g GROUP-STAMPED? 0= if s" no consistent source revision" exit then
    g G @ GROUP-SAME? 0= if s" source revision differs" exit then

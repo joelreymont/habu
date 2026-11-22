@@ -49,7 +49,7 @@ variable FILE-LEN
 create WHERE-BUF 64 allot  variable WHERE-U
 PTR-VARIABLE SRC-PATH
 variable SRC-LEN
-TYPED-VARIABLE OUT-Q [ -- ^u8 n ]
+TYPED-VARIABLE OUT-Q [ -- str ]
 create DIR PATH-CAP allot  variable DIR-U
 create END-PATH PATH-CAP allot  variable END-U
 create END-DIR PATH-CAP allot           \ a --repl end file's directory (REPL-END!)
@@ -68,20 +68,20 @@ variable RECORD-U                       \ the inputs file's size once INPUTS-REA
 variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS:READ-SIZED owns it, else -1
 
 : END$ ( -- str ) END-PATH END-U @ ;
-: SRC$ ( -- ^u8 n ) SRC-PATH @ SRC-LEN @ ;
-: OUT$ ( -- ^u8 n ) OUT-Q @ execute ;
+: SRC$ ( -- str ) SRC-PATH @ SRC-LEN @ ;
+: OUT$ ( -- str ) OUT-Q @ execute ;
 
 : STAGE! ( stage -- ) 0 STAGE-BUF ! ;
 : STAGE@ ( -- stage ) 0 STAGE-BUF @ ;
 : MODE$ ( -- str ) MODE-PATH @ MODE-LEN @ ;
 : FILE$ ( -- str ) FILE-PATH @ FILE-LEN @ ;
 
-: OPENING ( ^u8 n -- )
+: OPENING ( str -- )
    {: a:^ u:n :}
    a MODE-PATH !  u MODE-LEN !
    construct stage opening STAGE! ;
 
-: LOADING ( ^u8 n -- )
+: LOADING ( str -- )
    {: a:^ u:n :}
    a FILE-PATH !  u FILE-LEN !
    construct stage loading STAGE! ;
@@ -156,13 +156,13 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    BETWEEN ;
 
 
-: ROW ( n n ^u8 n -- )
+: ROW ( n n str -- )
    {: idx:n kind:n a:^ u:n :}
    kind LOAD? 0= if exit then
    a u INCLUDE-FILE
    a u s" src/core/include.f" STR= if s" src/core/source-reset.f" INCLUDE-FILE then ;
 
-: PROVIDE ( n n ^u8 n -- )
+: PROVIDE ( n n str -- )
    {: idx:n kind:n a:^ u:n :}
    kind LOAD? if a u provided then ;
 
@@ -204,7 +204,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    s" src/habu/runtime.f" REQUIRE-FILE ;
 
 
-: TEXT+ ( ^u8 n -- )
+: TEXT+ ( str -- )
    {: a:^ u:n :}
    TEXT-U @ u + TEXT-RESERVE
    a TEXT-U @ TEXT u BYTE-COPY
@@ -348,9 +348,9 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    OUT$ LINKER:WRITE ;
 
 \ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled.
-CAST: >WRITER ( n -- [ bool [ ^u8 n -- ] -- ] )
+CAST: >WRITER ( n -- [ bool [ str -- ] -- ] )
 
-: WRITER ( -- [ bool [ ^u8 n -- ] -- ] )
+: WRITER ( -- [ bool [ str -- ] -- ] )
    s" KERNEL-OBJECT" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    pkg XREF-FOUND? 0= if
       s" hb-build: the tree has no package KERNEL-OBJECT" EXIT-STATUS:INTERNAL die
@@ -377,7 +377,7 @@ SUM-U 32 + constant HEAD-U
    a  KNAME KNAME-U @ +  u BYTE-COPY
    u KNAME-U +! ;
 
-: KIND$ ( -- ^u8 n )
+: KIND$ ( -- str )
    KERNEL-ENGINE? @ if s" kernel-engine" else s" kernel-app" then ;
 
 \ The kernel directory is BUILD-OUT:OBJ$ of <profile>/kernel/<the tree root's
@@ -491,7 +491,7 @@ SUM-U 32 + constant HEAD-U
    KERNEL-ENGINE? @ ['] KERNEL-WRITE WRITER execute ;
 
 \ LINKER:WITH's build of the mode, which is idle once it returns.
-: LINK ( ^u8 n RTARGET:resolved-target [ -- renders nominal roots ] -- )
+: LINK ( str RTARGET:resolved-target [ -- renders nominal roots ] -- )
    {: mode:^ modeu:n target:RTARGET:resolved-target body :}
    mode modeu OPENING
    mode modeu target body LINKER:WITH
@@ -551,7 +551,7 @@ public
 
 \ Build this tree's hb for the target and write it to the path the quotation
 \ answers when the build writes.
-: ENGINE ( [ -- ^u8 n ] RTARGET:resolved-target -- )
+: ENGINE ( [ -- str ] RTARGET:resolved-target -- )
    {: out target:RTARGET:resolved-target :}
    target REFUSE-WASM
    out OUT-Q !
@@ -560,7 +560,7 @@ public
 
 \ Build hb with the source's files, the source's MAIN its entry, for the target
 \ and write it to the path the quotation answers when the build writes.
-: REPL ( ^u8 n [ -- ^u8 n ] RTARGET:resolved-target -- )
+: REPL ( str [ -- str ] RTARGET:resolved-target -- )
    {: src:^ srcu:n out target:RTARGET:resolved-target :}
    target REFUSE-WASM
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
@@ -569,7 +569,7 @@ public
 
 \ Build the source as a stripped program for the target and write it to
 \ the path the quotation answers when the build writes.
-: APP ( ^u8 n [ -- ^u8 n ] RTARGET:resolved-target -- )
+: APP ( str [ -- str ] RTARGET:resolved-target -- )
    {: src:^ srcu:n out target:RTARGET:resolved-target :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-Q !
    target TARGET !
