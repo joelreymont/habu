@@ -13,14 +13,15 @@ split-str
 \ into rows; the walk then reads a once against them, and reads again only each
 \ string of b it compares. Each number is read once, by the pass that meets it,
 \ into what NUMBER= compares. The walk is a record MEM:WITH-RECORD lends
-\ zeroed; the rest of the scratch is one block from MEM:WITH-BYTES, sized from
-\ the texts' lengths. b's rows, and the member list and frames laid past them,
-\ move to a mapping only when they outgrow the block's tail.
+\ zeroed; it holds b's rows, the member list, its spare and the frames as
+\ vectors on HEAP:ALLOCATOR, and one block from MEM:WITH-BYTES, sized from the
+\ texts' lengths, for b's keys and a's strings.
 
 require src/lib/memory.f
 require src/lib/sort.f
-require src/lib/span.f
 require src/lib/string.f
+require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/json/read.f
 
 package JSON
@@ -255,27 +256,23 @@ STRUCTURE frame DERIVE addr
    FIELD count n
 ;STRUCTURE
 
-\ VALUE='s walk, a record WITH-RECORD lends zeroed: every count starts at 0
-\ and no cursor owns a stack. At rows, tail-len bytes (the WITH-BYTES block's
-\ start, or a mapping when mapped): b's rows, then the member list, spare and
-\ frames. level and peak: b's containers open as the index pass reads, now
-\ and at most; num-exp, num-first and num-count: a's number under record a,
-\ as a row holds b's.
+\ VALUE='s walk, a record WITH-RECORD lends zeroed: every count starts at 0,
+\ no cursor owns a stack and no vector is made. keys and buf: the WITH-BYTES
+\ block, b's keys then a's strings. level and peak: b's containers open as
+\ the index pass reads, now and at most; num-exp, num-first and num-count:
+\ a's number under record a, as a row holds b's.
 STRUCTURE walk DERIVE addr
    FIELD a cursor
    FIELD b cursor
    FIELD s cursor
-   FIELD frames ^u8
+   FIELD frames ^VEC:vector<frame>
    FIELD depth n
-   FIELD rows ^u8
-   FIELD tail-len n
-   FIELD mapped bool
-   FIELD used n
+   FIELD rows ^VEC:vector<row>
    FIELD open n
    FIELD level n
    FIELD peak n
-   FIELD members ^u8
-   FIELD spare ^u8
+   FIELD members ^VEC:vector<n>
+   FIELD spare ^VEC:vector<n>
    FIELD member-n n
    FIELD keys ^u8
    FIELD key-cap n
@@ -290,9 +287,6 @@ STRUCTURE walk DERIVE addr
    FIELD num-count n
 ;STRUCTURE
 
-CAST: >ROW ( ^n -- ^row )
-CAST: >FRAME ( ^n -- ^frame )
-
 \ The walk's states: a value is due under a's cursor and row due; the
 \ innermost frame reads on, past an equal value or into one just opened; the
 \ two answers.
@@ -303,11 +297,11 @@ CAST: >FRAME ( ^n -- ^frame )
 
 : ROW ( ^walk n -- ^row )
    {: w:^ i:n :}
-   w WALK-ROWS @ i ROW-BYTES * + CELL-VIEW >ROW ;
+   w WALK-ROWS @ i VEC:AT ;
 
 : FRAME ( ^walk n -- ^frame )
    {: w:^ i:n :}
-   w WALK-FRAMES @ i FRAME-BYTES * + CELL-VIEW >FRAME ;
+   w WALK-FRAMES @ i VEC:AT ;
 
 : TOP ( ^walk -- ^frame )
    {: w:^ :}
@@ -316,32 +310,26 @@ CAST: >FRAME ( ^n -- ^frame )
 
 \ ---- the scratch ------------------------------------------------------------
 
-\ The tail's first length for b's v bytes. n values take at least 2n-1 bytes,
-\ and each row adds at most two member-list cells and one frame, so
-\ TAIL-BOUND bytes hold any b of v bytes with no move. TAIL-0 is the smaller
-\ of that bound and the larger of TAIL-FLOOR bytes and v/10+1 rows: a b whose
-\ bound fits the floor never moves; a longer one moves to a mapping only when
-\ it needs more than v/10+1 rows' bytes.
-2048 constant TAIL-FLOOR
+\ The rows' first room for b's v bytes. n values take at least 2n-1 bytes,
+\ so (v+1)/2 rows hold any b of v bytes. ROWS-0 is the smaller of that and
+\ the larger of v/10+1 rows and ROW-FLOOR: a b whose bound is within the floor
+\ never grows its rows; a longer one grows them only past v/10+1.
+2048 ROW-BYTES / constant ROW-FLOOR      \ the rows 2048 bytes hold
 
-: TAIL-BOUND ( n -- n )
-   1+ 2 /  ROW-BYTES 2 cells + FRAME-BYTES +  * ;
-
-: TAIL-0 ( n -- n )
+: ROWS-0 ( n -- n )
    {: v:n :}
-   v TAIL-BOUND  v 10 / 1+ ROW-BYTES *  TAIL-FLOOR max  min ;
+   v 1+ 2 /  v 10 / 1+ ROW-FLOOR max  min ;
 
-\ The block for a's u bytes and b's v: the tail, v key bytes, then u bytes
-\ for a's strings.
+\ The block for a's u bytes and b's v: v key bytes, then u bytes for a's
+\ strings.
 : WALK-LEN ( n n -- n )
    {: u:n v:n :}
-   v TAIL-0  v +  u + ;
+   v u + ;
 
 : WALK-INIT ( ^walk str n -- )
-   {: w:^ rows:^ u:n v:n :}
-   rows v TAIL-0 + {: keys:^ :}
-   rows w WALK-ROWS !
-   v TAIL-0 w WALK-TAIL-LEN !
+   {: w:^ keys:^ u:n v:n :}
+   HEAP:ALLOCATOR 0 [type] row VEC:NEW w WALK-ROWS !
+   w WALK-ROWS @  v ROWS-0  VEC:RESERVE
    keys w WALK-KEYS !
    v w WALK-KEY-CAP !
    keys v + w WALK-BUF !
@@ -349,48 +337,14 @@ CAST: >FRAME ( ^n -- ^frame )
    -1 w WALK-OPEN ! ;
 
 
-: FREE-TAIL ( ^walk -- )
+\ The member list and its spare, a place per member, and a frame for each
+\ level of b's deepest container: a frame is a container open in both texts.
+: LAY-LISTS ( ^walk -- )
    {: w:^ :}
-   w WALK-MAPPED @ 0= if exit then
-   w WALK-ROWS @  w WALK-TAIL-LEN @  SPAN:MAKE MEM:FREE-SPAN ;
-
-\ Moves the rows to a mapping of len bytes and frees the mapping they leave,
-\ if any.
-: MOVE-TAIL ( ^walk n -- )
-   {: w:^ len:n :}
-   len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
-   w WALK-ROWS @  w WALK-USED @ ROW-BYTES *  fresh SPAN:COPY
-   w FREE-TAIL
-   fresh SPAN:$  w WALK-TAIL-LEN !  w WALK-ROWS !
-   true w WALK-MAPPED ! ;
-
-\ Room for one more row: the rows move to a tail twice as long when they fill
-\ theirs.
-: ROW-ROOM ( ^walk -- )
-   {: w:^ :}
-   w WALK-USED @ 1+ ROW-BYTES *  w WALK-TAIL-LEN @ > if
-      w  w WALK-TAIL-LEN @ 2 *  MOVE-TAIL
-   then ;
-
-\ The rows, the member list and its spare, and a frame for each level of b's
-\ deepest container: a frame is a container open in both texts.
-: TAIL-NEED ( ^walk -- n )
-   {: w:^ :}
-   w WALK-USED @ ROW-BYTES *
-   w WALK-MEMBER-N @ 2 * cells +
-   w WALK-PEAK @ FRAME-BYTES * + ;
-
-\ Lays the member list, its spare and the frames past the rows, moving the
-\ tail to a mapping of the length they need when they pass its end.
-: LAY-TAIL ( ^walk -- )
-   {: w:^ :}
-   w TAIL-NEED {: need:n :}
-   need w WALK-TAIL-LEN @ > if w need MOVE-TAIL then
-   w WALK-ROWS @  w WALK-USED @ ROW-BYTES * + {: list:^ :}
-   list w WALK-MEMBERS !
-   list w WALK-MEMBER-N @ cells + {: spare:^ :}
-   spare w WALK-SPARE !
-   spare w WALK-MEMBER-N @ cells + w WALK-FRAMES ! ;
+   w WALK-MEMBER-N @ {: m:n :}
+   HEAP:ALLOCATOR m [type] n VEC:NEW w WALK-MEMBERS !
+   HEAP:ALLOCATOR m [type] n VEC:NEW w WALK-SPARE !
+   HEAP:ALLOCATOR w WALK-PEAK @ [type] frame VEC:NEW w WALK-FRAMES ! ;
 
 
 : WALK-FREE ( ^walk -- )
@@ -398,17 +352,17 @@ CAST: >FRAME ( ^n -- ^frame )
    w WALK-A MORE-RELEASE
    w WALK-B MORE-RELEASE
    w WALK-S MORE-RELEASE
-   w FREE-TAIL ;
+   w WALK-ROWS @ VEC:DELETE
+   w WALK-MEMBERS @ VEC:DELETE
+   w WALK-SPARE @ VEC:DELETE
+   w WALK-FRAMES @ VEC:DELETE ;
 
 
 \ ---- b's members -------------------------------------------------------------
 
-: LIST-CELL ( str -- ^n )
-   cells + CELL-VIEW ;
-
 : MEMBER@ ( ^walk n -- n )
    {: w:^ i:n :}
-   w WALK-MEMBERS @ i LIST-CELL @ ;
+   w WALK-MEMBERS @ i VEC:AT @ ;
 
 : MEMBER-KEY$ ( ^walk n -- str )
    {: w:^ r:n :}
@@ -425,29 +379,29 @@ CAST: >FRAME ( ^n -- ^frame )
 
 \ Whether the merge takes place i of the left run before place j of the right: on a
 \ tie the left, so equal keys of one object keep document order.
-: LEFT-NEXT? ( ^walk ^u8 n n n n -- bool )
+: LEFT-NEXT? ( ^walk ^VEC:vector<n> n n n n -- bool )
    {: w:^ src:^ i:n j:n mid:n hi:n :}
    i mid >= if false exit then
    j hi >= if true exit then
-   w  src j LIST-CELL @  src i LIST-CELL @  MEMBER< 0= ;
+   w  src j VEC:AT @  src i VEC:AT @  MEMBER< 0= ;
 
 
-: MERGE-STEP ( n n ^walk ^u8 ^u8 n n n -- n n )
+: MERGE-STEP ( n n ^walk ^VEC:vector<n> ^VEC:vector<n> n n n -- n n )
    {: i:n j:n w:^ src:^ dst:^ mid:n hi:n k:n :}
    w src i j mid hi LEFT-NEXT? if
-      src i LIST-CELL @  dst k LIST-CELL !  i 1+ j exit
+      src i VEC:AT @  dst k VEC:AT !  i 1+ j exit
    then
-   src j LIST-CELL @  dst k LIST-CELL !  i j 1+ ;
+   src j VEC:AT @  dst k VEC:AT !  i j 1+ ;
 
 
-: MERGE-RUNS ( ^walk ^u8 ^u8 n n n -- )
+: MERGE-RUNS ( ^walk ^VEC:vector<n> ^VEC:vector<n> n n n -- )
    {: w:^ src:^ dst:^ lo:n mid:n hi:n :}
    lo mid
    hi lo ?do w src dst mid hi i MERGE-STEP loop
    2drop ;
 
 
-: MERGE-PASS ( ^walk ^u8 str n -- )
+: MERGE-PASS ( ^walk ^VEC:vector<n> ^VEC:vector<n> n n -- )
    {: w:^ src:^ dst:^ n:n width:n :}
    n 0 ?do
       w src dst  i  i width + n min  i width 2 * + n min  MERGE-RUNS
@@ -504,26 +458,19 @@ CAST: >FRAME ( ^n -- ^frame )
 
 
 \ Appends a row for the value of kind under record b, a member's when the
-\ innermost open row is an object's, and answers its index; the rows first
-\ make room for it.
+\ innermost open row is an object's, and answers its index.
 : ADD-ROW ( ^walk n -- n )
    {: w:^ kind:n :}
-   w ROW-ROOM
    w WALK-B {: c:^ :}
-   w WALK-USED @ {: r:n :}
+   w WALK-ROWS @ VEC:COUNT {: r:n :}
    w WALK-OPEN @ {: obj:n :}
-   w r ROW {: row:^ :}
+   w WALK-ROWS @ VEC:PUSH {: row:^ :}
    kind row ROW-KIND !
    c CURSOR-TOK-AT @  c CURSOR-TOK-LEN @
    kind T-STR = if 2 + swap 1- swap then
    row ROW-LEN !  row ROW-START !
-   0 row ROW-COUNT !
    r 1+ row ROW-NEXT !
    obj row ROW-PARENT !
-   0 row ROW-KEY-AT !
-   0 row ROW-KEY-LEN !
-   false row ROW-MATCHED !
-   r 1+ w WALK-USED !
    obj 0 < if r exit then
    w obj ROW {: p:^ :}
    1 p ROW-COUNT +!
@@ -541,7 +488,7 @@ CAST: >FRAME ( ^n -- ^frame )
    {: w:^ :}
    w  w WALK-OPEN @  ROW {: row:^ :}
    w WALK-B CURSOR-POS @  row ROW-START @ -  row ROW-LEN !
-   w WALK-USED @ row ROW-NEXT !
+   w WALK-ROWS @ VEC:COUNT row ROW-NEXT !
    row ROW-PARENT @ w WALK-OPEN !
    -1 w WALK-LEVEL +! ;
 
@@ -593,12 +540,12 @@ CAST: >FRAME ( ^n -- ^frame )
 : LIST-ROW ( n ^walk n -- n )
    {: at:n w:^ r:n :}
    w r MEMBER? 0= if at exit then
-   r  w WALK-MEMBERS @ at LIST-CELL !  at 1+ ;
+   r  w WALK-MEMBERS @ at VEC:AT !  at 1+ ;
 
 \ The member list, in b's order.
 : LIST-MEMBERS ( ^walk -- )
    {: w:^ :}
-   0  w WALK-USED @ 0 ?do w i LIST-ROW loop drop ;
+   0  w WALK-ROWS @ VEC:COUNT 0 ?do w i LIST-ROW loop drop ;
 
 
 \ ---- a against b's rows ------------------------------------------------------
@@ -721,26 +668,26 @@ CAST: >FRAME ( ^n -- ^frame )
 
 
 \ The answer stands only once record a has read a to its end.
-: EQUAL-SLOT ( bool ^walk str str -- bool ^walk str str )
-   {: w:^ a:^ u:n b:^ v:n :}
+: EQUAL-SLOT ( bool ^walk ^u8 str str -- bool ^walk ^u8 str str )
+   {: w:^ base:^ a:^ u:n b:^ v:n :}
    drop
+   w base u v WALK-INIT
    w b v INDEX
-   w LAY-TAIL
+   w LAY-LISTS
    w LIST-MEMBERS
    w SORT-MEMBERS
    w WALK-A a u INIT-STATE
    w VALUE-EQ?
    begin w A-NEXT T-END = until
-   w a u b v ;
+   w base a u b v ;
 
 
-\ VALUE= over the block at base; a throw leaves no reader stack or tail
-\ mapping behind.
+\ VALUE= over the block at base; a throw leaves no reader stack or vector
+\ behind.
 : EQUAL-IN ( str str ^walk ^u8 NUM:alloc-byte-len -- bool )
    drop {: a:^ u:n b:^ v:n w:^ base:^ :}
-   w base u v WALK-INIT
-   false w a u b v [: EQUAL-SLOT ;] catch
-   {: same spare pa ua pb ub code:n :}
+   false w base a u b v [: EQUAL-SLOT ;] catch
+   {: same pw pbase pa ua pb ub code:n :}
    w WALK-FREE
    code 0= if same exit then
    code throw ;

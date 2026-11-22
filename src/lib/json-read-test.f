@@ -929,7 +929,14 @@ JRT-DEEP-CAP BUFFER: JRT-COPY-DST
    s" [1,2]" s" [1.0, 2]" JSON:VALUE= TTRUE
    s" [1,2]" s" [2,1]" JSON:VALUE= TFALSE
    s" [1,2]" s" [1,2,3]" JSON:VALUE= TFALSE
-   s" [1,2,3]" s" [1,2]" JSON:VALUE= TFALSE ;
+   s" [1,2,3]" s" [1,2]" JSON:VALUE= TFALSE
+   \ Thirty elements outgrow the first room b's rows get, so they grow while
+   \ b is indexed.
+   s" [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]" 2dup
+   JSON:VALUE= TTRUE
+   s" [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"
+   s" [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]"
+   JSON:VALUE= TFALSE ;
 
 : JRT-TEST-VALUE-EQ-OBJECTS ( -- )
    s" VALUE= compares objects as unordered members at every depth" T-LABEL
