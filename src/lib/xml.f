@@ -2,9 +2,9 @@ split-str
 \ xml.f - package XML: XML 1.0 pull reader, source views and escaping. A reader
 \ is a linear XML:reader over a caller-declared XML:cursor record (a STRUCTURE
 \ field, a typed variable or ALLOC:NEW); a zero-filled record owns nothing.
-\ Constructors: INIT and INIT-INPUT (src/lib/xml/state.f), INIT-SOURCE and
-\ OWNER-READER (src/lib/xml/source.f). STORAGE CLASS. CALLER-OWNED record and
-\ output; a source holds a block from the allocator it was given until
+\ Constructors: INIT, INIT-INPUT, INIT-SOURCE and OWNER-READER
+\ (src/lib/xml/state.f). STORAGE CLASS. CALLER-OWNED record and
+\ output; a source holds storage from the allocator it was given until
 \ SOURCE-CLOSE or OWNER-CLOSE; the reader owns its record's tables until CLOSE
 \ or DISPOSE. No module state.
 require src/lib/xml/source.f

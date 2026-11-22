@@ -27,7 +27,6 @@ variable PROBE
 variable WIDE-BAD
 
 CAST: KIND>N ( XML:kind -- n )
-CAST: ENCODING>N ( XML:encoding -- n )
 
 : LE$ ( -- str )
    s\" \xFF\xFE<\za\z \zq\z=\z'\zx\z'\z>\z&\za\zm\zp\z;\z<\z/\za\z>\z" ;
@@ -78,7 +77,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : UTF16-READ ( -- )
    LE$ OPEN
-   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF16-LE ENCODING>N T=
+   XML:SOURCE-ENCODING XML-ENCODING:UTF16-LE XML-ENCODING:EQ TTRUE
    XML:SOURCE-BOM$ s\" \xFF\xFE" T$=
    XML:SOURCE-LEXICAL$ s" <a q='x'>&amp;</a>" T$=
    READER
@@ -91,7 +90,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE
    BE$ OPEN
-   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF16-BE ENCODING>N T=
+   XML:SOURCE-ENCODING XML-ENCODING:UTF16-BE XML-ENCODING:EQ TTRUE
    XML:SOURCE-LEXICAL$ s" <a>x</a>" T$=
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    CLEARED XML:TEXT DECODED$ s" x" T$=
@@ -100,7 +99,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 
 : UTF8-READ ( -- )
    s\" \xEF\xBB\xBF<a>é😀</a>" OPEN
-   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF8 ENCODING>N T=
+   XML:SOURCE-ENCODING XML-ENCODING:UTF8 XML-ENCODING:EQ TTRUE
    XML:SOURCE-BOM$ s\" \xEF\xBB\xBF" T$=
    XML:SOURCE-LEXICAL$ s" <a>é😀</a>" T$=
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
@@ -111,7 +110,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 : ASCII-READ ( -- )
    s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>"
    OPEN
-   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   XML:SOURCE-ENCODING XML-ENCODING:US-ASCII XML-ENCODING:EQ TTRUE
    XML:SOURCE-BOM$ nip 0 T=
    XML:SOURCE-LEXICAL$ {: lexical size:n :}
    lexical size s\" <?xml version='1.0' encoding='us-ascii'?><a q=\q&#x4E2D;\q>&#x4E2D;</a>" T$=
@@ -123,10 +122,10 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    XML:CLOSE XML:SOURCE-CLOSE
    s\" <?xml version='1.0' encoding=\quS-aScIi\q?><a/>" OPEN
-   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   XML:SOURCE-ENCODING XML-ENCODING:US-ASCII XML-ENCODING:EQ TTRUE
    XML:SOURCE-CLOSE
    s" <?xml-stylesheet encoding='US-ASCII'?><a>é</a>" OPEN
-   XML:SOURCE-ENCODING ENCODING>N XML-ENCODING:UTF8 ENCODING>N T=
+   XML:SOURCE-ENCODING XML-ENCODING:UTF8 XML-ENCODING:EQ TTRUE
    READER XML-KIND:PI NEXT= XML-KIND:START NEXT=
    XML-KIND:TEXT NEXT= CLEARED XML:TEXT DECODED$ s" é" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
@@ -135,10 +134,10 @@ CAST: ENCODING>N ( XML:encoding -- n )
 : ASCII-OUTPUT ( -- )
    s" <?xml version='1.0' encoding='US-ASCII'?><a>old</a>" OPEN
    XML:SOURCE-OWN dup ASCII-OWNER ! {: owner :}
-   owner XML:OWNER-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   owner XML:OWNER-ENCODING XML-ENCODING:US-ASCII XML-ENCODING:EQ TTRUE
    RD owner XML:OWNER-READER
    XML-KIND:PI NEXT= XML-KIND:START NEXT=
-   owner XML:OWNER-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
+   owner XML:OWNER-ENCODING XML-ENCODING:US-ASCII XML-ENCODING:EQ TTRUE
    XML-KIND:TEXT NEXT= XML:CONTENT {: text-off:off text-len:len :}
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
    owner text-off text-len XML:OWNER-RANGE
@@ -216,10 +215,10 @@ CAST: ENCODING>N ( XML:encoding -- n )
 : INTERLEAVED ( -- )
    LE$ OPEN
    BE$ OPEN
-   XML:SOURCE-ENCODING ENCODING>N
-   XML-ENCODING:UTF16-BE ENCODING>N T=
-   swap XML:SOURCE-ENCODING ENCODING>N
-   XML-ENCODING:UTF16-LE ENCODING>N T=
+   XML:SOURCE-ENCODING
+   XML-ENCODING:UTF16-BE XML-ENCODING:EQ TTRUE
+   swap XML:SOURCE-ENCODING
+   XML-ENCODING:UTF16-LE XML-ENCODING:EQ TTRUE
    swap XML:SOURCE-CLOSE XML:SOURCE-CLOSE ;
 
 : BOMLESS-READ ( -- )
@@ -553,13 +552,16 @@ TYPED-VARIABLE MOVER ALLOC:allocator
    XML:SOURCE-CLOSE
    v VEC:DELETE ;
 
-\ An allocator over the heap that counts the blocks it gives and frees.
+\ An allocator over the heap that counts the blocks it gives and frees, and
+\ refuses the request numbered REFUSED since TAKEN was last cleared, 0 none.
 variable TAKEN
 variable FREED
+variable REFUSED
 TYPED-VARIABLE COUNTER ALLOC:allocator
 
 : C-ALLOC ( str -- ^u8 )
    {: st:^ len:n :}
+   TAKEN @ 1+ REFUSED @ = if E-MEM-SIZE throw then
    1 TAKEN +!  HEAP:ALLOCATOR len ALLOC:BYTES drop ;
 
 : C-RESIZE ( ^u8 str n -- ^u8 )
@@ -578,9 +580,23 @@ TYPED-VARIABLE COUNTER ALLOC:allocator
    TAKEN @ 0 T=
    s" a source's close frees the storage it took" T-LABEL
    COUNTER LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE
-   TAKEN @ 1 T= FREED @ 1 T=
+   TAKEN @ 0 > TTRUE TAKEN @ FREED @ T=
+   TAKEN @ {: before:n :}
    COUNTER s" <a/>" XML:SOURCE-INIT XML:SOURCE-OWN XML:OWNER-CLOSE
-   TAKEN @ 2 T= FREED @ 2 T= ;
+   TAKEN @ before > TTRUE TAKEN @ FREED @ T=
+   s" a source refused storage midway frees what it took" T-LABEL
+   1
+   begin
+      {: k:n :}
+      0 TAKEN !  0 FREED !  k REFUSED !
+      [: COUNTER LE$ XML:SOURCE-INIT XML:SOURCE-CLOSE ;] catch {: code:n :}
+      TAKEN @ FREED @ T=
+      code 0<>
+   while
+      code E-MEM-SIZE T=
+      k 1+
+   repeat
+   0 REFUSED ! ;
 
 \ MARKED holds a UTF-16 text built scalar by scalar; MARKED-AT holds, per
 \ lexical offset, the original offset that scalar was written at, or -1 inside

@@ -664,19 +664,19 @@ public
    state code BUILT ;
 
 private
-: SOURCE-READER-MODE ( ^n -- n )
+: SOURCE-READER-MODE ( ^header -- n )
    {: source-state :}
-   source-state SRC-ENCODING-N {: encoding:n :}
-   encoding XML-ENCODING:UTF8 ENCODING>N = if SOURCE-UTF8 exit then
-   encoding XML-ENCODING:US-ASCII ENCODING>N = if SOURCE-ASCII exit then
-   source-state SRC-BOM-LEN + @ 0= if
-      encoding XML-ENCODING:UTF16-LE ENCODING>N = if
+   source-state SRC-ENCODING {: encoding:encoding :}
+   encoding XML-ENCODING:UTF8 XML-ENCODING:EQ if SOURCE-UTF8 exit then
+   encoding XML-ENCODING:US-ASCII XML-ENCODING:EQ if SOURCE-ASCII exit then
+   source-state HEADER-BOM-LEN @ 0= if
+      encoding XML-ENCODING:UTF16-LE XML-ENCODING:EQ if
          SOURCE-UTF16-LE-DECL
       else
          SOURCE-UTF16-BE-DECL
       then
    else
-      encoding XML-ENCODING:UTF16-LE ENCODING>N = if
+      encoding XML-ENCODING:UTF16-LE XML-ENCODING:EQ if
          SOURCE-UTF16-LE-BOM
       else
          SOURCE-UTF16-BE-BOM
@@ -685,16 +685,16 @@ private
 
 \ A source reader's window is the lexical text, after the byte order mark
 \ that starts line 1: the mark's bytes in UTF-8, one unit in UTF-16.
-: WINDOW-COLUMNS ( ^n ^n -- )
+: WINDOW-COLUMNS ( ^n ^header -- )
    {: state source-state :}
-   source-state SRC-BOM-LEN + @ {: bom:n :}
+   source-state HEADER-BOM-LEN @ {: bom:n :}
    state SOURCE-MODE + @ UTF16-SOURCE? if
       COUNT-UNITS bom 2 /
    else
       COUNT-BYTES bom
    then state HEAD-COLUMNS + ! state WINDOW-KIND + ! ;
 
-: SOURCE-BODY ( ^n ^n -- ^n ^n )
+: SOURCE-BODY ( ^n ^header -- ^n ^header )
    {: state source-state :}
    source-state SRC-LEXICAL$ {: lexical size:n :}
    lexical state SOURCE-IDX ptr-field !
@@ -705,7 +705,7 @@ private
    state source-state ;
 
 
-: SOURCE-READER ( ^cursor ^n -- XML:reader )
+: SOURCE-READER ( ^cursor ^header -- XML:reader )
    {: record source-state :}
    record >STATE {: state :}
    state INIT-STATE

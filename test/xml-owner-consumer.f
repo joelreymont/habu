@@ -41,7 +41,6 @@ variable BAD-LAST
 variable INVALID-LAST
 
 CAST: KIND>N ( XML:kind -- n )
-CAST: ENCODING>N ( XML:encoding -- n )
 
 : UTF16$ ( str bool -- str )
    {: ascii size:n little:bool :}
@@ -163,10 +162,10 @@ CAST: ENCODING>N ( XML:encoding -- n )
    owner XML:OWNER-BOM$ nip 2 index 3 mod 0= if 1+ then T=
    owner XML:OWNER-ORIGINAL$ nip 0 > TTRUE
    owner XML:OWNER-LEXICAL$ nip 0 > TTRUE
-   owner XML:OWNER-ENCODING ENCODING>N
+   owner XML:OWNER-ENCODING
    index 3 mod 0= if XML-ENCODING:UTF8 else
       index 3 mod 1 = if XML-ENCODING:UTF16-LE else XML-ENCODING:UTF16-BE then
-   then ENCODING>N T=
+   then XML-ENCODING:EQ TTRUE
    index ATTR-LEN @ LEN>N 7 T=
    index TEXT-LEN @ LEN>N index 3 mod 0= if 7 else 12 then T= ;
 
