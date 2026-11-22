@@ -36,7 +36,7 @@ create ERR OUT-CAP allot
 
 : GETCONF$ ( -- str )
    PROC-ARGV-RESET
-   s" _NPROCESSORS_ONLN" >LEN PROC-ARGV+
+   s" _NPROCESSORS_ONLN" PROC-ARGV+
    s" /usr/bin/getconf" CAPTURE$ ;
 
 
@@ -44,10 +44,10 @@ create ERR OUT-CAP allot
 : HOST-LOAD$ ( -- str )
    PROC-ARGV-RESET
    HB-TARGET-MACOS? if
-      s" -n" >LEN PROC-ARGV+  s" vm.loadavg" >LEN PROC-ARGV+
+      s" -n" PROC-ARGV+  s" vm.loadavg" PROC-ARGV+
       s" /usr/sbin/sysctl" CAPTURE$ exit
    then
-   s" /proc/loadavg" >LEN PROC-ARGV+
+   s" /proc/loadavg" PROC-ARGV+
    s" /bin/cat" CAPTURE$ ;
 
 \ The host's one-minute average, its report's first number; an unreadable

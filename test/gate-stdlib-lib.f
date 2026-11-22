@@ -49,10 +49,10 @@ package STDLIB-GATE
 \ through as written, so a row measures what `bin/hb --load <file>` measures.
 : ROW-BEGIN ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+ ;
 
 : ROW-ARG+ ( str -- )
-   >LEN PROC-ARGV+ ;
+   PROC-ARGV+ ;
 
 : SUITE-HB-RUN ( str -- ) {: label:^ labelu:n :}
    SUITE-ENV

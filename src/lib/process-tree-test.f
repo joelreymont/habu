@@ -54,7 +54,7 @@ variable TARGET
 
 : VICTIM-START ( -- )
    PROC-ARGV-RESET
-   s" 30" >LEN PROC-ARGV+
+   s" 30" PROC-ARGV+
    s" /bin/sleep" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N VICTIM ! ;
 
 : VICTIM-KILL-TREE ( -- )
@@ -82,7 +82,7 @@ variable TARGET
 
 : SLEEPER-ARGS ( -- )
    PROC-ARGV-RESET
-   s" 30" >LEN PROC-ARGV+ ;
+   s" 30" PROC-ARGV+ ;
 
 \ A sleeper captured past its deadline, which reaches no result.
 : SLEEPER-CAPTURE ( -- )
@@ -170,8 +170,8 @@ PROCESS:NO-FD CROWD-WR !
    w FD>N CROWD-WR !
    0 LISTING-U !
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   CROWD-SCRIPT$ >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   CROWD-SCRIPT$ PROC-ARGV+
    s" /bin/sh" -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N ROOT !
    CROWD-WR PROCESS:CLOSE-CELL ;
 
@@ -268,7 +268,7 @@ PROCESS:NO-FD PING-WR !
 
 : RESUME-START ( -- )
    PROC-ARGV-RESET
-   s" 30" >LEN PROC-ARGV+
+   s" 30" PROC-ARGV+
    s" /bin/sleep" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N RESUMED !
    FD:PIPE-PAIR {: r:fd w:fd :}
    r FD:FD-CLOEXEC!
@@ -276,8 +276,8 @@ PROCESS:NO-FD PING-WR !
    r FD>N PING-RD !
    w FD>N PING-WR !
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   PINGER-SCRIPT$ >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   PINGER-SCRIPT$ PROC-ARGV+
    s" /bin/sh" -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N PINGER !
    PING-WR PROCESS:CLOSE-CELL ;
 
@@ -363,7 +363,7 @@ variable IDLE-COPY-U
    s" sandbox-exec" SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" process-tree-test: required executable missing on PATH: sandbox-exec"
          EXIT-STATUS:UNAVAILABLE die ENDOF
-      some OF LEN>N ENDOF
+      some OF ENDOF
    ;MATCH
    SANDBOX swap ;
 
@@ -378,13 +378,13 @@ variable IDLE-COPY-U
 : SANDBOXED ( str str -- n n n )
    {: profile:^ profileu:n mode:^ modeu:n :}
    PROC-ARGV-RESET
-   s" -p" >LEN PROC-ARGV+
-   profile profileu >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV+
-   s" --load" >LEN PROC-ARGV+
-   s" src/lib/process-tree-test.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   mode modeu >LEN PROC-ARGV+
+   s" -p" PROC-ARGV+
+   profile profileu PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" src/lib/process-tree-test.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   mode modeu PROC-ARGV+
    SANDBOX$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE
    CAPTURE>RC ;
 

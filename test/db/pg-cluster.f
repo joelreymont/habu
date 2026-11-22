@@ -74,7 +74,7 @@ false STOPPED !
 : PIDFILE$ ( -- str )   PIDFILE PIDFILE-U @ ;
 : CONNINFO$ ( -- str )  CONNINFO CONNINFO-U @ ;
 : CONNINFO+ ( str -- )  CONNINFO TEXT-CAP CONNINFO-U BUF-APPEND ;
-: ARG+ ( ^u8 n -- )       >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )       PROC-ARGV+ ;
 
 \ initdb and postgres on PATH are a gate requirement on every host
 \ (docs/bootstrap.md "Requirements"): a missing one fails the row, never skips
@@ -86,7 +86,7 @@ false STOPPED !
          name size type cr
          s" " E-PROC-PATH die
       ENDOF
-      some OF LEN>N ENDOF
+      some OF ENDOF
    ;MATCH ;
 
 : SOCKETS! ( str -- ) {: a:^ u:n :}
@@ -254,7 +254,7 @@ false STOPPED !
    ENV!
    OPEN-NULL {: in:n :}
    in >FD FD:FD-CLOEXEC!
-   ENGINE-CANDIDATE:PATH$ >LEN in >FD NO-FD >FD NO-FD >FD PROC-SPAWN-ARGV-ENV-IO
+   ENGINE-CANDIDATE:PATH$ in >FD NO-FD >FD NO-FD >FD PROC-SPAWN-ARGV-ENV-IO
    PID>N RUNNING !
    in close
    RUNNING @ proc-watch-open CASE-WATCH ! ;

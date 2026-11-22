@@ -922,9 +922,9 @@ create SC-NONE 1 allot
 : SC-RUN ( -- )
    SC-FILE SC-SRC$ FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
-   s" --verify-only" >LEN PROC-ARGV+  SC-FILE >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --all-errors" PROC-ARGV+
+   s" --verify-only" PROC-ARGV+  SC-FILE PROC-ARGV+
    ENGINE-CANDIDATE:PATH$  SC-NONE 0  SC-OUT SC-CAP >LEN
    SC-ERR SC-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}

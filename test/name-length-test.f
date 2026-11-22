@@ -229,8 +229,8 @@ variable LBL-U
    E2E-TREE:OUT$ s" PWWS" T$=
    s" tools/check.f takes them" T-LABEL
    s" tools/check.f" E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" test/nlt-package.f" >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" test/nlt-package.f" PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:NEED-OK ;
 

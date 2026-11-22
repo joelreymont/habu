@@ -34,10 +34,10 @@ private
 
 : VERIFY-ARGS ( str -- ) {: source:^ size:n :}
    s" tools/check.f" ARGS
-   s" --" >LEN PROC-ARGV+
-   s" --json-errors" >LEN PROC-ARGV+
-   s" --verify-only" >LEN PROC-ARGV+
-   source size >LEN PROC-ARGV+ ;
+   s" --" PROC-ARGV+
+   s" --json-errors" PROC-ARGV+
+   s" --verify-only" PROC-ARGV+
+   source size PROC-ARGV+ ;
 
 : RUN-HERE ( -- ) ENGINE-CANDIDATE:PATH$ ROOT$ RUN-ON ;
 

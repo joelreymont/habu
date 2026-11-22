@@ -92,10 +92,10 @@ variable TREE-U
 : RUN-CHILD ( -- n n n )
    SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   SCRIPT$ >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   TREE$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   SCRIPT$ PROC-ARGV+
+   s" --" PROC-ARGV+
+   TREE$ PROC-ARGV+
    RUN-ARGS ;
 
 \ hb-build with the flag, if any, the script as its source and the case's path
@@ -103,13 +103,13 @@ variable TREE-U
 : RUN-BUILD-AS ( str -- n n n ) {: flag:^ flagu :}
    SCRIPT$ TEXT$ FS:ATOMIC-WRITE-FILE
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/hb-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   flagu 0<> if flag flagu >LEN PROC-ARGV+ then
-   SCRIPT$ >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   TREE$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" tools/hb-build.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   flagu 0<> if flag flagu PROC-ARGV+ then
+   SCRIPT$ PROC-ARGV+
+   s" -o" PROC-ARGV+
+   TREE$ PROC-ARGV+
    RUN-ARGS ;
 
 : RUN-BUILD ( -- n n n ) NULL$ RUN-BUILD-AS ;

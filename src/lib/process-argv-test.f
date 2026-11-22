@@ -98,9 +98,9 @@ variable PAT-I
 : PAT-RUN-PRINTF ( -- )
    FD:PIPE-PAIR PAT-OUT-W ! PAT-OUT-R !
    PROC-ARGV-RESET
-   s" %s-%s"  >LEN PROC-ARGV+
-   s" left"  >LEN PROC-ARGV+
-   s" right"  >LEN PROC-ARGV+
+   s" %s-%s"  PROC-ARGV+
+   s" left"  PROC-ARGV+
+   s" right"  PROC-ARGV+
    s" /usr/bin/printf" -1 >FD PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC
    MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PAT-OUT-W @ close
@@ -124,7 +124,7 @@ variable PAT-I
 
 : PAT-SPAWN-MISSING ( -- )
    PROC-ARGV-RESET
-   s" ignored"  >LEN PROC-ARGV+
+   s" ignored"  PROC-ARGV+
    s" /no/such/habu-process-argv-test" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;
 
 : PAT-ARG! ( n -- )
@@ -154,8 +154,8 @@ variable PAT-I
 : PAT-MANY-ARGS ( -- )
    s" more than $100 arguments reach the child in order" T-LABEL
    PROC-ARGV-RESET
-   s" %s," >LEN PROC-ARGV+
-   PAT-MANY-N 0 ?do i PAT-ARG! PAT-ARG PAT-ARG-U >LEN PROC-ARGV+ loop
+   s" %s," PROC-ARGV+
+   PAT-MANY-N 0 ?do i PAT-ARG! PAT-ARG PAT-ARG-U PROC-ARGV+ loop
    PAT-PRINTF-ARGS {: outu:n :}
    0 PAT-AT !
    PAT-MANY-N 0 ?do i PAT-ARG! PAT-ARG PAT-ARG-U PAT-NEXT loop
@@ -165,10 +165,10 @@ variable PAT-I
 : PAT-LONG-ARGS ( -- )
    s" long arguments past $100 paths together reach the child whole" T-LABEL
    PROC-ARGV-RESET
-   s" %s," >LEN PROC-ARGV+
-   s" x" >LEN PROC-ARGV+
-   PAT-LONG-N 0 ?do i 97 + PAT-LONG! PAT-LONG PAT-LONG-CAP >LEN PROC-ARGV+ loop
-   s" y" >LEN PROC-ARGV+
+   s" %s," PROC-ARGV+
+   s" x" PROC-ARGV+
+   PAT-LONG-N 0 ?do i 97 + PAT-LONG! PAT-LONG PAT-LONG-CAP PROC-ARGV+ loop
+   s" y" PROC-ARGV+
    PAT-PRINTF-ARGS {: outu:n :}
    0 PAT-AT !
    s" x" PAT-NEXT
@@ -177,13 +177,13 @@ variable PAT-I
    PAT-AT @ outu T= ;
 
 : PAT-NEG-ARG ( -- )
-   PROC-ARGV-RESET PAT-LONG -1 >LEN PROC-ARGV+ ;
+   PROC-ARGV-RESET PAT-LONG -1 PROC-ARGV+ ;
 
 : PAT-HUGE-ARG ( -- )
-   PROC-ARGV-RESET PAT-LONG MEM-MAX-N >LEN PROC-ARGV+ ;
+   PROC-ARGV-RESET PAT-LONG MEM-MAX-N PROC-ARGV+ ;
 
 : PAT-NUL-ARG ( -- )
-   PROC-ARGV-RESET s\" a\zb" >LEN PROC-ARGV+ ;
+   PROC-ARGV-RESET s\" a\zb" PROC-ARGV+ ;
 
 : PAT-PATH-BOUNDS ( -- )
    s" a path fits when its bytes and NUL fit PROCESS:PATHZ-CAP" T-LABEL
@@ -194,9 +194,9 @@ variable PAT-I
 
 : PAT-RUN-ARGV-CAPTURE ( -- )
    PROC-ARGV-RESET
-   s" %s:%s"  >LEN PROC-ARGV+
-   s" left"  >LEN PROC-ARGV+
-   s" right"  >LEN PROC-ARGV+
+   s" %s:%s"  PROC-ARGV+
+   s" left"  PROC-ARGV+
+   s" right"  PROC-ARGV+
    s" /usr/bin/printf" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-CAPTURE
    0 T= 0 T= 10 T=
    PAT-CAP-OUT 10 s" left:right" T$=
@@ -204,16 +204,16 @@ variable PAT-I
 
 : PAT-RUN-ARGV-CAPTURE-EXACT ( -- )
    PROC-ARGV-RESET
-   s" %s"  >LEN PROC-ARGV+
-   s" abc"  >LEN PROC-ARGV+
+   s" %s"  PROC-ARGV+
+   s" abc"  PROC-ARGV+
    s" /usr/bin/printf" PAT-CAP-OUT 3 PAT-CAP-ERR 0 1000 PAT-CAPTURE
    0 T= 0 T= 3 T=
    PAT-CAP-OUT 3 s" abc" T$= ;
 
 : PAT-RUN-ARGV-CAPTURE-TRUNCATED ( -- )
    PROC-ARGV-RESET
-   s" %s"  >LEN PROC-ARGV+
-   s" abcd"  >LEN PROC-ARGV+
+   s" %s"  PROC-ARGV+
+   s" abcd"  PROC-ARGV+
    s" /usr/bin/printf" PAT-CAP-OUT 3 PAT-CAP-ERR 0 1000 PAT-CAPTURE
    2drop drop ;
 
@@ -245,7 +245,7 @@ variable PAT-I
 : PAT-RUN-ARGV-STDIN-CAPTURE-WC-LARGE ( -- )
    PROC-ARGV-RESET
    PAT-EARLY-IN!
-   s" -c"  >LEN PROC-ARGV+
+   s" -c"  PROC-ARGV+
    s" /usr/bin/wc" PAT-EARLY-IN PAT-EARLY-IN-CAP
    PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000
    PAT-STDIN-CAPTURE
@@ -258,7 +258,7 @@ variable PAT-I
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-TIMEOUT ( -- )
    PROC-ARGV-RESET
-   s" 5"  >LEN PROC-ARGV+
+   s" 5"  PROC-ARGV+
    s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 PAT-STDIN-CAPTURE
    2drop drop ;
 
@@ -272,15 +272,15 @@ variable PAT-I
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-TIMEOUT ( -- )
    PROC-ARGV-RESET
-   s" 5"  >LEN PROC-ARGV+
+   s" 5"  PROC-ARGV+
    s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 PAT-STDIN-CAPTURE-OUTCOME
    T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-STDERR-UNREAD ( -- )
    s" a child that ends before reading its input keeps its stderr and exit status" T-LABEL
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   s" echo why >&2; exit 3" >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   s" echo why >&2; exit 3" PROC-ARGV+
    s" /bin/sh" PAT-UNREAD$
    PAT-CAP-OUT 64 PAT-CAP-ERR 32 PROCESS:WAIT-FOREVER MS>N
    PAT-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
@@ -290,7 +290,7 @@ variable PAT-I
 
 : PAT-RUN-ARGV-CAPTURE-RESULT ( -- )
    PROC-ARGV-RESET
-   s" %s" >LEN PROC-ARGV+  s" hi" >LEN PROC-ARGV+
+   s" %s" PROC-ARGV+  s" hi" PROC-ARGV+
    s" /usr/bin/printf" PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN 1000 >MS RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 2 T=  e LEN>N 0 T= ENDOF
@@ -325,7 +325,7 @@ variable PAT-SAVED-STDIN
    ENGINE-CANDIDATE:PATH$ PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS PROCESS:RUN-CAPTURE PAT-EOF-RESULT
    PROC-ARGV-RESET PROC-ENV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
+   ENGINE-CANDIDATE:PATH$ PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS RUN-ARGV-ENV-CAPTURE PAT-EOF-RESULT
    PROC-ARGV-RESET PROC-ENV-RESET
    ENGINE-CANDIDATE:PATH$ s" ."
@@ -345,10 +345,10 @@ variable PAT-SAVED-STDIN
    [: PAT-IDLE-CAPTURES ;] [: PAT-RESTORE-STDIN ;] finally ;
 
 : PAT-STAGE-STALE ( -- )
-   s" stale" >LEN PROC-ARGV+ ;
+   s" stale" PROC-ARGV+ ;
 
 : PAT-ECHO-FRESH ( -- )
-   s" fresh" >LEN PROC-ARGV+
+   s" fresh" PROC-ARGV+
    s" /bin/echo" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-CAPTURE
    0 T= 0 T= {: outu:n :}
    PAT-CAP-OUT outu s\" fresh\n" T$= ;

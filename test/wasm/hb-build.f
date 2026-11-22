@@ -40,7 +40,7 @@ variable MOD-U
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm hb-build: sources and modules in " type  DIR u type cr ;
 
-: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
 
 : DRIVER ( -- n )
    s" bin/hb"  OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER

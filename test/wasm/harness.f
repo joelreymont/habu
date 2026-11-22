@@ -39,18 +39,18 @@ variable ADDR
 variable MEM-START
 variable MEM-END
 
-: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
 
 \ The program at the path, run with the arguments staged; answers its exit
 \ status, or 128 plus the signal that ended it.
-: RUN-AT ( ^u8 len -- n )
-   LEN>N OUT OUT-BYTES >LEN  ERR ERR-BYTES >LEN  PROCESS:WAIT-FOREVER
+: RUN-AT ( str -- n )
+   OUT OUT-BYTES >LEN  ERR ERR-BYTES >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 
-: SPAWN ( ^u8 n -- n )
-   EXE RESOLVE-EXECUTABLE {: u:len :}
+: SPAWN ( str -- n )
+   EXE RESOLVE-EXECUTABLE {: u:n :}
    EXE u RUN-AT ;
 
 : FIRST-LINE ( -- str )
@@ -153,7 +153,7 @@ public
    PROC-ARGV-RESET
    s" --load" ARG+  s" tools/hb-build.f" ARG+  s" --" ARG+  s" --target" ARG+  s" wasm" ARG+
    src su ARG+  s" -o" ARG+  mod mu ARG+
-   s" bin/hb" >LEN RUN-AT {: rc:n :}
+   s" bin/hb" RUN-AT {: rc:n :}
    rc 0<> if  ERR ERR-U @ type cr  then
    rc ;
 

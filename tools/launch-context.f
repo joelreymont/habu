@@ -34,8 +34,8 @@ create ERR CAP allot
 
 : CHILD-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   SELF$ >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+
+   SELF$ PROC-ARGV+ ;
 
 : REPORT-CAPTURE ( len len -- ) {: o:len e:len :}
    s" --- child report ---" type cr
@@ -45,7 +45,7 @@ create ERR CAP allot
 : SPAWN-CHILD ( -- )
    CHILD-ENV
    CHILD-ARGV
-   HB$ >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   HB$  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE REPORT-CAPTURE ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}

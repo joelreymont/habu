@@ -86,8 +86,8 @@ PROCESS:NO-FD FIFO-RD !
 
 : SUBJECT-ARGS ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/check-signal-subject.f" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/check-signal-subject.f" PROC-ARGV+
    s" CHECK_SIGNAL_FIFO" FIFO$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
@@ -101,7 +101,7 @@ PROCESS:NO-FD FIFO-RD !
 \ The subject reports its sleeper before it writes the line SHORT-CAP overflows.
 : OVERFLOW-CAPTURE ( -- )
    SUBJECT-ARGS
-   ENGINE-CANDIDATE:PATH$ >LEN OUT-BUF SHORT-CAP >LEN ERR-BUF CAP >LEN
+   ENGINE-CANDIDATE:PATH$ OUT-BUF SHORT-CAP >LEN ERR-BUF CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-CAPTURE DROP-RESULT ;
 
 \ ---- the cases ---------------------------------------------------------------

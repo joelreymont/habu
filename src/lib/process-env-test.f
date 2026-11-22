@@ -62,10 +62,10 @@ TASK:SEMAPHORE PET-ENV-START
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: PET-FIND>N ( option<len> -- n bool )
+: PET-FIND>N ( option<n> -- n bool )
    MATCH option
      none OF 0 0 0= 0= ENDOF
-     some OF LEN>N 0 0= ENDOF
+     some OF 0 0= ENDOF
    ;MATCH ;
 
 : PET-ENV+ ( str str -- )
@@ -74,7 +74,7 @@ TASK:SEMAPHORE PET-ENV-START
 
 : PET-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
+   path pathu out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
 : PET-OUTCOME ( str ^u8 n ^u8 n n -- len len PROCESS:ending )
@@ -89,7 +89,7 @@ TASK:SEMAPHORE PET-ENV-START
 
 : PET-STDIN-OUTCOME ( str str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
+   path pathu in inu out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
 
 : PET-FIND-IN-PATH ( str str ^u8 -- n bool )
@@ -99,7 +99,7 @@ TASK:SEMAPHORE PET-ENV-START
 
 : PET-RESOLVE ( str ^u8 -- n )
    {: cmd:^ cmdu dst:^ :}
-   cmd cmdu dst RESOLVE-EXECUTABLE LEN>N ;
+   cmd cmdu dst RESOLVE-EXECUTABLE ;
 
 : PET-SB-N ( n -- ) {: v:n :}
    v 0 < if E-STR-BOUNDS throw then
@@ -285,32 +285,32 @@ TASK:SEMAPHORE PET-ENV-START
 
 : PET-RUN-ARGV-ENV-CAPTURE-RESULT ( -- )
    PET-RESET
-   s" /usr/bin/true" >LEN PET-OUT PET-CAP >LEN PET-ERR PET-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-ENV-CAPTURE
+   s" /usr/bin/true" PET-OUT PET-CAP >LEN PET-ERR PET-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-ENV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 T=  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
    ;MATCH
    PET-RESET
-   s" /usr/bin/false" >LEN PET-OUT PET-CAP >LEN PET-ERR PET-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-ENV-CAPTURE
+   s" /usr/bin/false" PET-OUT PET-CAP >LEN PET-ERR PET-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-ENV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
    ;MATCH ;
 
 : PET-STAGE-STALE ( -- )
-   s" stale" >LEN PROC-ARGV+
+   s" stale" PROC-ARGV+
    s" HABU_PROC_ENV_STALE" s" 1" PET-ENV+ ;
 
 : PET-ECHO-FRESH ( -- )
    PROC-ENV-N @ COUNT>N 0 T=
-   s" fresh" >LEN PROC-ARGV+
+   s" fresh" PROC-ARGV+
    s" /bin/echo" PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    0 T= 0 T= {: outu:n :}
    PET-OUT outu s\" fresh\n" T$= ;
 
 : PET-REFUSED-RESETS ( -- )
    PET-RESET PET-STAGE-STALE
-   [: s" " >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO drop ;]
+   [: s" " -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO drop ;]
    E-PROC-OUTPUT TTHROWSQ
    PET-ECHO-FRESH
    PET-STAGE-STALE
@@ -321,7 +321,7 @@ TASK:SEMAPHORE PET-ENV-START
 
 : PET-RUN-ENV-OUTCOME-TIMEOUT ( -- )
    PET-RESET
-   s" 5"  >LEN PROC-ARGV+
+   s" 5"  PROC-ARGV+
    s" /bin/sleep" PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-OUTCOME
    T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
@@ -351,7 +351,7 @@ TASK:SEMAPHORE PET-ENV-START
 
 : PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ( -- )
    PET-RESET
-   s" 5"  >LEN PROC-ARGV+
+   s" 5"  PROC-ARGV+
    s" /bin/sleep" s" " PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-STDIN-OUTCOME
    T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
@@ -368,8 +368,8 @@ DYNAMIC-BUFFER ERR u8
 
 : SHELL ( str -- )
    PET-RESET
-   s" -c" >LEN PROC-ARGV+
-   >LEN PROC-ARGV+ ;
+   s" -c" PROC-ARGV+
+   PROC-ARGV+ ;
 
 : CAPTURE ( str [ n -- ^u8 ] [ n -- ^u8 ] ms -- len len PROCESS:ending )
    {: in:^ inu out err timeout :}
@@ -509,8 +509,8 @@ public
 : PET-BIG-INHERIT-CHILD ( -- )
    PET-BIG-ENV-BUILD
    PROC-ENV-N @ COUNT>N PET-BIG-N < TFALSE
-   s" --load" >LEN PROC-ARGV+
-   s" test/process-env-big-child.f" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/process-env-big-child.f" PROC-ARGV+
    s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    {: outu:n erru:n code:n :}
    code 0 T=

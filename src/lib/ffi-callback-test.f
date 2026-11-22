@@ -480,10 +480,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : CHILD ( str -- len len PROCESS:ending ) {: name:^ nameu:n :}
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/ffi-callback-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   name nameu >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/ffi-callback-child.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   name nameu PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -530,12 +530,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : BUILD-IMAGE ( -- len len PROCESS:ending )
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/hb-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   SUBJECT$ >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   IMAGE$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" tools/hb-build.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   SUBJECT$ PROC-ARGV+
+   s" -o" PROC-ARGV+
+   IMAGE$ PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER

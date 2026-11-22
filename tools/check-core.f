@@ -823,7 +823,7 @@ private
 \ else the engine running check.f, never a bin/hb of the working directory.
 : CHK-RUN-CAPTURE ( -- )
    PROC-ENV-INHERIT-MISSING
-   CHK-ENGINE$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
+   CHK-ENGINE$ CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-DEADLINE@
    RUN-ARGV-ENV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}

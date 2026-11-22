@@ -31,7 +31,7 @@ create CLI-TOOLS-TRUST-BUF PATH-CAP allot
    CLI-TOOLS-U @ 0 > ;
 
 : CLI-ARG+ ( str -- )
-   >LEN PROC-ARGV+ ;
+   PROC-ARGV+ ;
 
 : CLI-TOOLS? ( -- bool )
    CLI-TOOLS-OVERRIDE? ;

@@ -300,7 +300,7 @@ variable STAT-PATH-U
    s" nohup" NOHUP FIND-EXECUTABLE MATCH option
       none OF s" gate-signal-test: required executable missing on PATH: nohup"
          EXIT-STATUS:UNAVAILABLE die ENDOF
-      some OF LEN>N ENDOF
+      some OF ENDOF
    ;MATCH
    NOHUP swap ;
 
@@ -309,9 +309,9 @@ variable STAT-PATH-U
 \ the engine, so the pid spawned is the root's either way.
 : ROOT-ARGV ( -- str )
    PROC-ARGV-ENV-RESET
-   CASE-NOHUP @ if ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV+ then
-   s" --load" >LEN PROC-ARGV+
-   s" test/gate-signal-root.f" >LEN PROC-ARGV+
+   CASE-NOHUP @ if ENGINE-CANDIDATE:PATH$ PROC-ARGV+ then
+   s" --load" PROC-ARGV+
+   s" test/gate-signal-root.f" PROC-ARGV+
    CASE-NOHUP @ if NOHUP$ exit then
    ENGINE-CANDIDATE:PATH$ ;
 
@@ -324,7 +324,7 @@ variable STAT-PATH-U
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
    OPEN-NULL OPEN-LOG {: in:n log:n :}
-   exe exeu >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO
+   exe exeu in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO
    PID>N ROOT-PID !
    true ROOT-LIVE !
    in close

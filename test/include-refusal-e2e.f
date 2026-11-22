@@ -73,8 +73,8 @@ variable RC
    {: name:^ nameu:n :}
    name nameu s" .f" NAMED PROG$ FS:WRITE-ALL
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --load" >LEN PROC-ARGV+
-   name nameu s" .f" NAMED >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   name nameu s" .f" NAMED PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ CWD$
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER

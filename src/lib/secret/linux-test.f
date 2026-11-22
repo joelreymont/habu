@@ -91,7 +91,7 @@ NO-PID KEY-PID !
          name u type cr
          s" " EXIT-STATUS:UNAVAILABLE die
       ENDOF
-      some OF LEN>N ENDOF
+      some OF ENDOF
    ;MATCH ;
 
 : TOOLS ( -- )

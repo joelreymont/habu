@@ -37,7 +37,7 @@ PATH-CAP BUFFER: FILE
 variable FILE-U
 DYNAMIC-BUFFER PAYLOAD u8
 
-: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
 
 : SETUP ( -- )
    s" browser-storage" FS:MKTEMP-DIR {: a:^ u:n :}
@@ -46,8 +46,8 @@ DYNAMIC-BUFFER PAYLOAD u8
    DIR u s" payload.bin" FILE FS:JOIN-PATH FILE-U !
    s" browser storage: module, payload and output in " type DIR u type cr ;
 
-: SPAWN ( ^u8 len -- n )
-   LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+: SPAWN ( str -- n )
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !
@@ -87,7 +87,7 @@ DYNAMIC-BUFFER PAYLOAD u8
       s" --repeat-typed" ARG+ s" b" ARG+ s" 500" ARG+
    then
    s" --memory" ARG+
-   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
    EXE u SPAWN ;
 
 \ Asserts host-cli's memory line starts right after the output's first n

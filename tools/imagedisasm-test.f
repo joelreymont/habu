@@ -48,7 +48,7 @@ variable IMDT-FORMS-U
    IMDT-FORMS IMDT-FORMS-U @ ;
 
 : IMDT-ARG+ ( str -- )
-   >LEN PROC-ARGV+ ;
+   PROC-ARGV+ ;
 
 : IMDT-WRITE-RET ( -- )
    $C0 IMDT-BYTES c!

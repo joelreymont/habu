@@ -1735,8 +1735,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 : LOADED ( ^u8 n n -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   FX-PATH$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   FX-PATH$ PROC-ARGV+
    LAUNCHED ;
 
 \ The load exits RC after its record for CODE, placed at AT after the fixture's
@@ -1818,18 +1818,18 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ hb runs the fixture path as a program, exiting WANT with TEXT in its stderr.
 : RAN ( ^u8 n n -- )
-   PROC-ARGV-RESET  FX-PATH$ >LEN PROC-ARGV+  LAUNCHED ;
+   PROC-ARGV-RESET  FX-PATH$ PROC-ARGV+  LAUNCHED ;
 
 \ The arguments start tools/check.f with --json-errors.
 : CHECK-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  s" --json-errors" >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --json-errors" PROC-ARGV+ ;
 
 \ tools/check.f checks the fixture path with --json-errors, exiting WANT with
 \ TEXT in its stderr, whose records are split for FIELD=.
 : CHECKED ( ^u8 n n -- )
-   CHECK-ARGV  FX-PATH$ >LEN PROC-ARGV+
+   CHECK-ARGV  FX-PATH$ PROC-ARGV+
    LAUNCHED  GT-ERR$ GJA-SPLIT-LINES ;
 
 \ The string builder holds the resolver's unplaced record of a command-line
@@ -1884,8 +1884,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a --stdin-path over the cap" T-LABEL
    LONG-NAMED!
    CHECK-ARGV
-   s" --verify-only" >LEN PROC-ARGV+  s" --stdin-path" >LEN PROC-ARGV+
-   FX-PATH$ >LEN PROC-ARGV+
+   s" --verify-only" PROC-ARGV+  s" --stdin-path" PROC-ARGV+
+   FX-PATH$ PROC-ARGV+
    s" E-PATH-RANGE" 70 LAUNCHED  GT-ERR$ GJA-SPLIT-LINES
    [: TOO-LONG-MSG ;] RANGE-FIELDS ;
 
@@ -2311,7 +2311,7 @@ HB-TARGET-LINUX? 0= [if]
    s" E-UNDEFINED" REJECTED-AS
    0 s" nosuchword" 1 1 0 10 AT
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  FX-PATH$ >LEN PROC-ARGV+  DEP-PATH$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  FX-PATH$ PROC-ARGV+  DEP-PATH$ PROC-ARGV+
    s" error[E-UNDEFINED]" 70 LAUNCHED
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND s" :1:1" SB-APPEND
    GT-ERR$ SB$ CONTAINS? TTRUE ;

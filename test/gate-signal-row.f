@@ -49,8 +49,8 @@ variable HOLD                        \ the FIFO's write end
 
 : START-WRITER ( n -- ) {: i:n :}
    PROC-ARGV-ENV-RESET
-   s" -c" >LEN PROC-ARGV+
-   WRITER$ >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   WRITER$ PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    s" /bin/sh" -1 >FD -1 >FD -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N
    i cells WRITERS + ! ;
@@ -66,8 +66,8 @@ variable HOLD                        \ the FIFO's write end
    r FD:FD-CLOEXEC!
    w FD:FD-CLOEXEC!
    PROC-ARGV-ENV-RESET
-   s" -c" >LEN PROC-ARGV+
-   HELPER$ >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   HELPER$ PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    s" /bin/sh" -1 >FD w -1 >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N HELPER !
    w FD>N close
@@ -102,12 +102,12 @@ variable HOLD                        \ the FIFO's write end
    OPEN-HOLD
    REPORT-PID
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/gate-signal-row.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" leaf" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/gate-signal-row.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" leaf" PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-ENV-IO-RC
+   ENGINE-CANDIDATE:PATH$ -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-ENV-IO-RC
    MATCH result
       ok OF drop ENDOF
       err OF s" gate-signal-row: the leaf failed" rot die ENDOF

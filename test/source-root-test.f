@@ -252,9 +252,9 @@ private
    s" frozen engine aliases preserve physical source identity" T-LABEL
    PREP-ENGINE-ALIASES
    PROC-ARGV-RESET PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" --load" >LEN PROC-ARGV+
-   s" test/source-root-alias-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+ ROOT$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/source-root-alias-child.f" PROC-ARGV+
+   s" --" PROC-ARGV+ ROOT$ PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE INVOCATION$
    CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE

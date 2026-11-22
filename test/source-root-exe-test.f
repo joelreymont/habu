@@ -438,11 +438,11 @@ variable DEEP-U
 : APP ( -- )
    s" an app outside the tree resolves its requires through the root" T-LABEL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" app/app.f" A$ >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   FOREIGN$ >LEN PROC-ARGV+
-   s" tree" A$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" app/app.f" A$ PROC-ARGV+
+   s" --" PROC-ARGV+
+   FOREIGN$ PROC-ARGV+
+   s" tree" A$ PROC-ARGV+
    s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    S\" test: ok\n" 0 EXPECT ;
 
@@ -455,26 +455,26 @@ variable DEEP-U
 : WD ( -- )
    s" a library comes from the root, not the working or the entry directory" T-LABEL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" wd-app/wd.f" A$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" wd-app/wd.f" A$ PROC-ARGV+
    s" tree/bin/hb" HB-AT$ s" shadow" A$ RUN-ARGS
    S\" yes\n" 0 EXPECT
    s" so does one for a program file, whose own directory is its first root" T-LABEL
    PROC-ARGV-RESET
-   s" wd-app/wd.f" A$ >LEN PROC-ARGV+
+   s" wd-app/wd.f" A$ PROC-ARGV+
    s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ RUN-EXE
    S\" yes\n" 0 EXPECT
    s" a program behind a renamed symlink loads once, from its own directory" T-LABEL
    PROC-ARGV-RESET
-   s" links/tool" A$ >LEN PROC-ARGV+
+   s" links/tool" A$ PROC-ARGV+
    s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ RUN-EXE
    S\" y\nx\n" 0 EXPECT ;
 
 : ENTRY ( -- )
    s" a relative --load entry is relative to the working directory only" T-LABEL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/fixtures/source-root-exe/inner.f" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/fixtures/source-root-exe/inner.f" PROC-ARGV+
    s" tree/bin/hb" HB-AT$ FOREIGN$ RUN-ARGS
    NULL$ STDOUT
    FOREIGN$ s" test/fixtures/source-root-exe/inner.f" CANNOT-OPEN ;

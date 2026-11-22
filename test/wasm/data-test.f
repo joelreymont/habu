@@ -45,15 +45,15 @@ variable AFTER-PATH-U
 \ The module's memory as the peer dumped it after the run.
 DYNAMIC-BUFFER AFTER u8
 
-: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
 
 : NUM-ARG ( n -- )
    SB-RESET FMT:SB-U SB$ ARG+ ;
 
-: SPAWN ( ^u8 n -- n )
+: SPAWN ( str -- n )
    {: exe:^ eu:n :}
-   exe eu EXE RESOLVE-EXECUTABLE {: xu:len :}
-   EXE xu LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   exe eu EXE RESOLVE-EXECUTABLE {: xu:n :}
+   EXE xu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: ou:len er:len rc:n :}
    ou LEN>N OUT-U !

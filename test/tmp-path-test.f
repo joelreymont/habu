@@ -41,11 +41,11 @@ create ERR IO-CAP allot
    PROC-ARGV-ENV-RESET
    s" TMPDIR" ROOT$ PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" --load" >LEN PROC-ARGV+
-   s" test/tmp-path-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   case caseu >LEN PROC-ARGV+
-   engine engineu >LEN s" " >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
+   s" --load" PROC-ARGV+
+   s" test/tmp-path-child.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   case caseu PROC-ARGV+
+   engine engineu s" " OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;

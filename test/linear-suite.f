@@ -401,9 +401,9 @@ variable PROG-U
    PATH$ PROG$ FS:WRITE-ALL
    0 PROG-U !
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  s" --repl" >LEN PROC-ARGV+
-   PATH$ >LEN PROC-ARGV+  s" -o" >LEN PROC-ARGV+  IMAGE$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/hb-build.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --repl" PROC-ARGV+
+   PATH$ PROC-ARGV+  s" -o" PROC-ARGV+  IMAGE$ PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ RUN ;
 
 : REOPEN ( -- )
@@ -463,8 +463,8 @@ variable PROG-U
    src srcu AT-ROOT
    0 PROG-U !
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+  s" --" >LEN PROC-ARGV+
-   PATH$ >LEN PROC-ARGV+  s" -o" >LEN PROC-ARGV+  IMAGE$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/hb-build.f" PROC-ARGV+  s" --" PROC-ARGV+
+   PATH$ PROC-ARGV+  s" -o" PROC-ARGV+  IMAGE$ PROC-ARGV+
    s" HABU_OUT" OBJ$ PROC-ENV+
    ENGINE-CANDIDATE:PATH$ RUN ;
 

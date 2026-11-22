@@ -92,7 +92,7 @@ variable BEFORE-U
    DATA$ s" data.bin" FILE! ;
 
 
-: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
 
 : FILE-ARG+ ( str -- )
    {: name:^ nu:n :}
@@ -100,8 +100,8 @@ variable BEFORE-U
    FILE fu ARG+ ;
 
 
-: SPAWN ( ^u8 len -- n )
-   LEN>N OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+: SPAWN ( str -- n )
+   OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
@@ -123,7 +123,7 @@ variable BEFORE-U
 
 
 : HOST ( -- n )
-   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
    EXE u SPAWN ;
 
 
@@ -304,7 +304,7 @@ variable BEFORE-U
    then
    s" google-chrome" CHROME FIND-EXECUTABLE MATCH option
       none OF 0 ENDOF
-      some OF LEN>N ENDOF
+      some OF ENDOF
    ;MATCH CHROME-U ! ;
 
 : BYTES ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;

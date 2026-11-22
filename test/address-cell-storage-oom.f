@@ -14,8 +14,8 @@ create ERR 4096 allot
       s" address-cell-storage-oom: the address-space limit applies to Linux" type cr
    else
       PROC-ARGV-RESET
-      s" --load" >LEN PROC-ARGV+
-      s" test/address-cell-oom-child.f" >LEN PROC-ARGV+
+      s" --load" PROC-ARGV+
+      s" test/address-cell-oom-child.f" PROC-ARGV+
       ENGINE-CANDIDATE:PATH$ OUT 1024 >LEN ERR 4096 >LEN PROCESS:WAIT-FOREVER
       RUN-ARGV-CAPTURE
       MATCH result

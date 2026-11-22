@@ -34,8 +34,8 @@ create REPORT 1 cells allot
 \ the sleeper, so end of file means nothing the subject ran is left.
 : SLEEPER ( fd -- pid ) {: w:fd :}
    PROC-ARGV-ENV-RESET
-   s" -c" >LEN PROC-ARGV+
-   s" exec sleep 20" >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   s" exec sleep 20" PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    s" /bin/sh" -1 >FD -1 >FD -1 >FD w TEST-FIFO:SPAWN ;
 

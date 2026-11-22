@@ -109,9 +109,9 @@ create TAIL TAIL-BYTES allot
    PATH pathu data size FS:WRITE-ALL ;
 
 : ENGINE-ARGV+ ( -- )
-   ENGINE$ >LEN PROC-ARGV+
-   s" --load" >LEN PROC-ARGV+
-   ENTRY$ >LEN PROC-ARGV+ ;
+   ENGINE$ PROC-ARGV+
+   s" --load" PROC-ARGV+
+   ENTRY$ PROC-ARGV+ ;
 
 : RUN-CHILD ( str str -- )
    {: prog:^ progu:n cwd:^ cwdu:n :}
@@ -136,8 +136,8 @@ create TAIL TAIL-BYTES allot
    OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
 
 \ Each child is its own engine: each reader resolves the chain at its start.
-: ARGV ( -- ) PROC-CWD:ARGV-ENV-CWD-RESET  ENGINE$ >LEN PROC-ARGV+ ;
-: LOAD-ARGV ( str -- ) ARGV  s" --load" >LEN PROC-ARGV+  >LEN PROC-ARGV+ ;
+: ARGV ( -- ) PROC-CWD:ARGV-ENV-CWD-RESET  ENGINE$ PROC-ARGV+ ;
+: LOAD-ARGV ( str -- ) ARGV  s" --load" PROC-ARGV+  PROC-ARGV+ ;
 
 : RAN ( ^u8 n ^u8 n -- ) {: cwd:^ cwdu:n what:^ whatu:n :}
    s" /usr/bin/env" cwd cwdu RUN-CHILD
@@ -149,7 +149,7 @@ create TAIL TAIL-BYTES allot
    OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
 
 : CHAINED ( str -- ) {: cwd:^ cwdu:n :}
-   ARGV  CHAIN$ >LEN PROC-ARGV+
+   ARGV  CHAIN$ PROC-ARGV+
    cwd cwdu s" `hb P` takes an entry written past 8 KB" RAN SAID
    CHAIN$ LOAD-ARGV
    cwd cwdu s" `hb --load P` takes it" RAN SAID
@@ -157,7 +157,7 @@ create TAIL TAIL-BYTES allot
    cwd cwdu s" an include of it loads it" RAN SAID
    s" req.f" LOAD-ARGV
    cwd cwdu s" a require of it loads it" RAN SAID
-   CHECKER CHECKER-U @ LOAD-ARGV  s" --" >LEN PROC-ARGV+  CHAIN$ >LEN PROC-ARGV+
+   CHECKER CHECKER-U @ LOAD-ARGV  s" --" PROC-ARGV+  CHAIN$ PROC-ARGV+
    cwd cwdu s" tools/check.f checks it" RAN ;
 
 : CHAINS ( -- ) ROOT$ CHAINED  MID$ CHAINED ;
@@ -180,9 +180,9 @@ create WANT IO-CAP allot variable WANT-U
 
 : REMOVED ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" -c" >LEN PROC-ARGV+
-   S\" rmdir \q$PWD\q && exec \q$0\q --load \q$1\q" >LEN PROC-ARGV+
-   ENGINE$ >LEN PROC-ARGV+ ENTRY$ >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   S\" rmdir \q$PWD\q && exec \q$0\q --load \q$1\q" PROC-ARGV+
+   ENGINE$ PROC-ARGV+ ENTRY$ PROC-ARGV+
    s" /bin/sh" GONE$ RUN-CHILD
    s" gone.out" s" gone.err" KEEP
    s" a removed working directory exits 74" T-LABEL

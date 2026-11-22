@@ -54,8 +54,8 @@ REJECTION:BUFFER$ s" = help: move `split-str`, in lower case, alone to the first
    E2E-TREE:ROOT$ FS:CLEANUP-TREE+
    s" test/split-str-late.f" >str E2E-TREE:AT-A s\" : SPC ( -- ) ;\nsplit-str\n" >str FS:WRITE-ALL
    s" tools/check.f" >str E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" test/split-str-late.f" >LEN PROC-ARGV+
+   s" --" >str PROC-ARGV+
+   s" test/split-str-late.f" >str PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
 SPC-RUN
 E2E-TREE:RC@ 70 T=

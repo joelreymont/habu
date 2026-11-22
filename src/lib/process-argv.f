@@ -68,12 +68,12 @@ public
    PROC-ARGV-ROWS:SLOT ;
 
 \ A length below zero or one whose NUL would not fit a cell is refused.
-: PROC-ARGV+ ( ^u8 len -- )
+: PROC-ARGV+ ( str -- )
    {: a:^ u :}
-   u LEN>N 0 < if E-PROC-OUTPUT throw then
-   u LEN>N MEM-MAX-N >= if E-PROC-OUTPUT throw then
-   u LEN>N 1+ {: need:n :}
-   a u LEN>N need PROC-ARGV-ROWS:BYTES need >LEN PROCESS:ZCOPY
+   u 0 < if E-PROC-OUTPUT throw then
+   u MEM-MAX-N >= if E-PROC-OUTPUT throw then
+   u 1+ {: need:n :}
+   a u need PROC-ARGV-ROWS:BYTES need >LEN PROCESS:ZCOPY
    PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    PROC-ARGV-N @ COUNT>N 1+ >COUNT PROC-ARGV-N ! ;
 

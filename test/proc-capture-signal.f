@@ -35,8 +35,8 @@ create PCS-ERR PCS-ERR-CAP allot
 
 : PCS-RUN-SLEEPER ( -- n n n )
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   PCS-SCRIPT >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   PCS-SCRIPT PROC-ARGV+
    s" /bin/sh" PCS-OUT PCS-OUT-CAP >LEN PCS-ERR PCS-ERR-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE PCAP-RESULT:>N ;
 
@@ -65,8 +65,8 @@ create PCS-ERR PCS-ERR-CAP allot
    FD:PIPE-PAIR {: in-r:fd in-w:fd :}
    in-r FD:FD-CLOEXEC!  in-w FD:FD-CLOEXEC!
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   PCS-HOLD-SCRIPT >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   PCS-HOLD-SCRIPT PROC-ARGV+
    s" /bin/sh" in-r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
    in-r FD>N close
    in-w FD>N ;

@@ -20,7 +20,7 @@ CAP BUFFER: OUT
 CAP BUFFER: ERR
 PATH-CAP BUFFER: EXE
 
-: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
 
 public
 
@@ -48,8 +48,8 @@ private
    s" src/lib/browser/host-cli.mjs" ARG+ mod mu ARG+
    count 0 ?do steps execute loop
    s" --memory" ARG+
-   s" bun" EXE RESOLVE-EXECUTABLE {: eu:len :}
-   EXE eu LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   s" bun" EXE RESOLVE-EXECUTABLE {: eu:n :}
+   EXE eu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0<> if ERR erru LEN>N type cr then

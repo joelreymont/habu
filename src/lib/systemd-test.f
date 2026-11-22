@@ -101,7 +101,7 @@ variable ABSTRACT-FD
    PROC-ARGV-ENV-RESET
    s" NOTIFY_SOCKET" value valueu PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN prog progu >LEN
+   engine engineu prog progu
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}

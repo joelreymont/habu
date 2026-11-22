@@ -1068,10 +1068,10 @@ variable OPEN-N
    0 OUT-AT !
    0 ERR-LEN ! ;
 
-: STAGED ( -- ^u8 len )
-   ENGINE-CANDIDATE:PATH$ >LEN
-   s" --load" >LEN PROC-ARGV+
-   s" tools/lsp.f" >LEN PROC-ARGV+
+: STAGED ( -- str )
+   ENGINE-CANDIDATE:PATH$
+   s" --load" PROC-ARGV+
+   s" tools/lsp.f" PROC-ARGV+
    PROC-ENV-INHERIT-MISSING ;
 
 : ARTIFACT$ ( str -- str )
@@ -1159,7 +1159,7 @@ variable OPEN-N
    {: rc:n :}
    IN$ nip PROCESS:STDIN-CHUNK-CAP <= s" input past one write" HOLDS
    mono-ns {: t0:n :}
-   STAGED IN$ >LEN OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN CONVERSATION-MS >MS
+   STAGED IN$ OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN CONVERSATION-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: o:len e:len r :}
    mono-ns t0 - TOOK
    o LEN>N OUT-LEN !

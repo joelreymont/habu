@@ -346,21 +346,21 @@ undefine include
 
 : RUN ( ^u8 n -- ) {: path:^ pathu:n :}
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   path pathu >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   path pathu PROC-ARGV+
    path pathu LAUNCH ;
 
 : CHECK-RUN ( str -- ) {: path:^ pathu:n :}
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  path pathu >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+  path pathu PROC-ARGV+
    path pathu LAUNCH ;
 
 : CHECK-ALL-RUN ( str -- ) {: path:^ pathu:n :}
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  s" --all-errors" >LEN PROC-ARGV+
-   path pathu >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --all-errors" PROC-ARGV+
+   path pathu PROC-ARGV+
    path pathu LAUNCH ;
 
 : ERR$ ( -- ^u8 n )

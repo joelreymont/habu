@@ -78,8 +78,8 @@ variable RC
    PATH pathu data size FS:WRITE-ALL ;
 
 : ENGINE-ARGV+ ( -- )
-   s" --load" >LEN PROC-ARGV+
-   s" tree/entry.f" >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+
+   s" tree/entry.f" PROC-ARGV+ ;
 
 : RUN-CHILD ( str -- ) {: exe:^ exeu:n :}
    PROC-ENV-INHERIT-MISSING
@@ -109,18 +109,18 @@ variable RC
    s" sandbox-exec" SANDBOX FIND-EXECUTABLE MATCH option
       none OF s" boot-relocation: required executable missing on PATH: sandbox-exec"
          EXIT-STATUS:UNAVAILABLE die ENDOF
-      some OF LEN>N ENDOF
+      some OF ENDOF
    ;MATCH
    SANDBOX swap ;
 
 : REFUSED ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" -p" >LEN PROC-ARGV+
-   s" (version 1)(allow default)(deny process-info-pidinfo)" >LEN PROC-ARGV+
-   ENGINE$ >LEN PROC-ARGV+
+   s" -p" PROC-ARGV+
+   s" (version 1)(allow default)(deny process-info-pidinfo)" PROC-ARGV+
+   ENGINE$ PROC-ARGV+
    ENGINE-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" refused" >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" refused" PROC-ARGV+
    SANDBOX$ RUN-CHILD
    s" refused.out" s" refused.err"
    s" the copied engine finds its tree where the kernel refuses it its path" VERDICT ;

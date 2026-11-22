@@ -272,8 +272,8 @@ variable PTT-HELD-W                      \ that stdin's write end
 : PTT-SH-ARGS ( str -- )
    {: s:^ su:n :}
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   s su >LEN PROC-ARGV+ ;
+   s" -c" PROC-ARGV+
+   s su PROC-ARGV+ ;
 
 : PTT-HOLD-SCRIPT ( -- str )
    s" read x; exit 21" ;

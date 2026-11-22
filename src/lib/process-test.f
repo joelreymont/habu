@@ -147,14 +147,14 @@ create PT-DRAIN-BUF PT-CHUNK allot
 : PT-RUN-HB-SCRIPT ( str ^u8 n ^u8 n n -- n n n )
    {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
-   script scriptu  >LEN PROC-ARGV+
+   script scriptu  PROC-ARGV+
    s" bin/hb" out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
 : PT-RUN-HB-SCRIPT-OUTCOME ( str ^u8 n ^u8 n n -- len len PROCESS:ending )
    {: script:^ scriptu out:^ outcap err:^ errcap timeout :}
    PROC-ARGV-RESET
-   script scriptu  >LEN PROC-ARGV+
+   script scriptu  PROC-ARGV+
    s" bin/hb" out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : PT-RUN-CAPTURE ( str ^u8 n ^u8 n n -- n n n )
@@ -242,8 +242,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
 
 : TEST-PROC-WAIT-OUTCOME-SIGNAL ( -- )
    PROC-ARGV-RESET
-   s" -c"  >LEN PROC-ARGV+
-   s" kill -TERM $$"  >LEN PROC-ARGV+
+   s" -c"  PROC-ARGV+
+   s" kill -TERM $$"  PROC-ARGV+
    s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT
    MATCH PROCESS:status
      exited OF drop 1 0 T= ENDOF
@@ -270,8 +270,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ A signal-killed child's rc is 128+sig, never a masked rc 0.
 : TEST-PROC-WAIT-SIGNAL-RC ( -- )
    PROC-ARGV-RESET
-   s" -c"  >LEN PROC-ARGV+
-   s" kill -KILL $$"  >LEN PROC-ARGV+
+   s" -c"  PROC-ARGV+
+   s" kill -KILL $$"  PROC-ARGV+
    s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
    PROCESS:WAIT PROCESS:STATUS>RC RC>N 137 T= ;   \ SIGKILL -> 128+9
 
@@ -432,7 +432,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ The deadline starts once stdout holds bytes: a host may start the child late.
 : PT-EOF-START ( -- )
    PROC-ARGV-RESET
-   PT-CAPTURE-EOF >LEN PROC-ARGV+
+   PT-CAPTURE-EOF PROC-ARGV+
    [: s" bin/hb" PROC-ARGV-PREPARE
       PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
       PROC-SPAWN-ARGV-CAPTURE ;]
@@ -464,8 +464,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL ( -- )
    s" /bin/sh -c kill -KILL $$" {: cmd:^ cmdu:n :}
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   s" kill -KILL $$" >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   s" kill -KILL $$" PROC-ARGV+
    s" /bin/sh" PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
    cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N oc PROCESS:SIGKILL T-ENDING-SIGNALED=
@@ -478,7 +478,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ the child wins.
 : PT-STARVED-CAPTURE ( -- )
    PROC-ARGV-RESET
-   PT-CAPTURE-HANG >LEN PROC-ARGV+
+   PT-CAPTURE-HANG PROC-ARGV+
    s" bin/hb" PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N drop drop drop ;
 
@@ -575,8 +575,8 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 : PT-SH ( str -- pid )
    {: s:^ su:n :}
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   s su >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   s su PROC-ARGV+
    s" /bin/sh" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO ;
 
 : PT-HOLD-SCRIPT ( -- str )
@@ -590,8 +590,8 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
    FD:PIPE-PAIR {: out-r:fd out-w:fd :}
    in-r FD:FD-CLOEXEC!  in-w FD:FD-CLOEXEC!  out-r FD:FD-CLOEXEC!  out-w FD:FD-CLOEXEC!
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   PT-HOLD-SCRIPT >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   PT-HOLD-SCRIPT PROC-ARGV+
    s" /bin/sh" in-r out-w out-w PROC-SPAWN-ARGV-IO PID>N PT-HOLD-PID !
    in-r FD>N close
    out-w FD>N close
@@ -758,8 +758,8 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    FD:PIPE-PAIR {: out-r:fd out-w:fd :}
    in-r FD:FD-CLOEXEC!  in-w FD:FD-CLOEXEC!  out-r FD:FD-CLOEXEC!
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   PT-UNMARKED-SCRIPT >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   PT-UNMARKED-SCRIPT PROC-ARGV+
    s" /bin/sh" in-r out-w -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
    in-r FD>N close
    out-w FD>N close
@@ -828,11 +828,11 @@ create PT-LIMITS 16 allot                \ struct rlimit: soft, then hard
 : PT-TERM-START ( str -- ) {: mode:^ modeu:n :}
    PT-TERM-MARKER s" marker" FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/process-term-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   PT-TERM-MARKER >LEN PROC-ARGV+
-   mode modeu >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/process-term-child.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   PT-TERM-MARKER PROC-ARGV+
+   mode modeu PROC-ARGV+
    s" bin/hb" PROC-ARGV-PREPARE {: pathz:^ argv:^ :}
    PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
    pathz argv PROC-SPAWN-ARGV-CAPTURE

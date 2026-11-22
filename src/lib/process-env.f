@@ -291,14 +291,14 @@ public
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
-: PROC-SPAWN-ARGV-ENV-IO ( ^u8 len fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
-   [: a u LEN>N PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
+: PROC-SPAWN-ARGV-ENV-IO ( str fd fd fd -- pid ) {: a:^ u infd outfd errfd :}
+   [: a u PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
       PROC-SPAWN-ARGV-ENV-RAW ;]
    [: PROC-ARGV-ENV-RESET ;] finally {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: PROC-RUN-ARGV-ENV-IO-RC ( ^u8 len fd fd fd -- result<n,n> )
+: PROC-RUN-ARGV-ENV-IO-RC ( str fd fd fd -- result<n,n> )
    PROC-SPAWN-ARGV-ENV-IO PROCESS:WAIT PROCESS:STATUS>RC PROCESS:RC>RESULT ;
 
 : PROC-SPAWN-ARGV-ENV-CAPTURE ( ^u8 ^a ^a -- ) {: pathz:^ argv:^ envp:^ :}
@@ -314,11 +314,11 @@ public
       [: PROC-ARGV-ENV-RESET ;] finally ;]
    PROCESS:CAPTURE-ADOPT-SPAWN ;
 
-: RUN-ARGV-ENV-CAPTURE ( ^u8 len ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
+: RUN-ARGV-ENV-CAPTURE ( str ^u8 len ^u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:^ pathu out:^ outcap err:^ errcap timeout :}
-   [: path pathu LEN>N PROC-ARGV-CHECK-PATH
+   [: path pathu PROC-ARGV-CHECK-PATH
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-      path pathu LEN>N PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
@@ -348,16 +348,16 @@ public
    in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
    PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ^u8 len ^u8 len ^u8 len ^u8 len ms -- len len PROCESS:ending )
+: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( str str ^u8 len ^u8 len ms -- len len PROCESS:ending )
    {: path:^ pathu in:^ inu out:^ outcap err:^ errcap timeout :}
-   [: path pathu LEN>N PROC-ARGV-CHECK-PATH
-      inu LEN>N PROCESS:CAPTURE-CHECK-STDIN
+   [: path pathu PROC-ARGV-CHECK-PATH
+      inu PROCESS:CAPTURE-CHECK-STDIN
       outcap errcap PROCESS:CAPTURE-CHECK-CAPS
-      path pathu LEN>N PROC-ARGV-PREPARE PROC-ENV-PREPARE
+      path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE
       timeout PROCESS:STDIN-CAPTURE-BEGIN
       PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ;]
    [: PROC-ARGV-ENV-RESET ;] finally
-   in inu LEN>N out outcap err errcap
+   in inu out outcap err errcap
    PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
@@ -399,27 +399,27 @@ public
 : PROC-EXECUTABLE? ( str -- bool )
    FS:EXECUTABLE? ;
 
-: PROC-COPY-PATH ( str ^u8 -- len ) {: a:^ u dst:^ :}
+: PROC-COPY-PATH ( str ^u8 -- n ) {: a:^ u dst:^ :}
    u 0 < if E-PROC-PATH throw then
    u PATH-CAP > if E-PROC-PATH throw then
    a dst u BYTE-COPY
-   u >LEN ;
+   u ;
 
-: PROC-JOIN-PATH-SEG ( str str ^u8 -- len )
+: PROC-JOIN-PATH-SEG ( str str ^u8 -- n )
    {: seg:^ segu cmd:^ cmdu dst:^ :}
    segu 0= if
-      s" ." cmd cmdu dst FS:JOIN-PATH >LEN
+      s" ." cmd cmdu dst FS:JOIN-PATH
    else
-      seg segu cmd cmdu dst FS:JOIN-PATH >LEN
+      seg segu cmd cmdu dst FS:JOIN-PATH
    then ;
 
-: PROC-TRY-PATH-SEG ( str str ^u8 -- option<len> )
+: PROC-TRY-PATH-SEG ( str str ^u8 -- option<n> )
    {: seg:^ segu cmd:^ cmdu dst:^ :}
    seg segu cmd cmdu dst PROC-JOIN-PATH-SEG {: gotu :}
-   dst gotu LEN>N PROC-EXECUTABLE? if gotu OPTION:SOME exit then
+   dst gotu PROC-EXECUTABLE? if gotu OPTION:SOME exit then
    OPTION:NONE ;
 
-: FIND-EXECUTABLE-IN-PATH ( str str ^u8 -- option<len> )   \ SOME resolved length in dst, else NONE
+: FIND-EXECUTABLE-IN-PATH ( str str ^u8 -- option<n> )   \ SOME resolved length in dst, else NONE
    {: cmd:^ cmdu path:^ pathu dst:^ :}
    cmd cmdu PROC-HAS-SLASH? if
       cmd cmdu PROC-EXECUTABLE? if
@@ -441,12 +441,12 @@ public
    while repeat
    OPTION:NONE ;
 
-: FIND-EXECUTABLE ( str ^u8 -- option<len> ) {: cmd:^ cmdu:n dst:^ :}
+: FIND-EXECUTABLE ( str ^u8 -- option<n> ) {: cmd:^ cmdu:n dst:^ :}
    s" PATH" GETENV {: path:^ pathu :}
    pathu 0= if OPTION:NONE exit then
    cmd cmdu path pathu dst FIND-EXECUTABLE-IN-PATH ;
 
-: RESOLVE-EXECUTABLE ( str ^u8 -- len )
+: RESOLVE-EXECUTABLE ( str ^u8 -- n )
    FIND-EXECUTABLE MATCH option
      none OF E-PROC-PATH throw ENDOF
      some OF ENDOF

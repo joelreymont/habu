@@ -56,8 +56,8 @@ public
 
 : ARGS ( str -- ) {: source:^ size:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --load" >LEN PROC-ARGV+
-   source size >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+
+   source size PROC-ARGV+ ;
 
 : RUN-ON ( str str -- )
    {: engine:^ engineu:n cwd:^ cwdu:n :}

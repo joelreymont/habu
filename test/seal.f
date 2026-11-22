@@ -58,8 +58,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-RUN-LOAD ( str -- ) {: src:^ u:n :}
    SLV-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   SLV-CHILD >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   SLV-CHILD PROC-ARGV+
    ENGINE-CANDIDATE:PATH$  SLV-EMPTY 0  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  PROCESS:WAIT-FOREVER  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u SLV-STORE! ;

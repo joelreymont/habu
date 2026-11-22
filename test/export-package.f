@@ -632,8 +632,8 @@ create XPK-EMPTY 1 allot
    {: src:^ srcu:n :}
    XPK-CHILD src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   XPK-CHILD >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   XPK-CHILD PROC-ARGV+
    ENGINE-CANDIDATE:PATH$  XPK-EMPTY 0  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
@@ -650,9 +650,9 @@ create XPK-EMPTY 1 allot
 \ A tools/check.f run's arguments, up to its `--`.
 : XPK-CHECK-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+
+   s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+ ;
 
 \ Runs the arguments so far with empty stdin.
 : XPK-SPAWN ( -- )
@@ -662,23 +662,23 @@ create XPK-EMPTY 1 allot
    XPK-CHILD XPK-STORE! ;
 
 \ Adds the child file a --load run wrote to the arguments so far and runs them.
-: XPK-CHECK-CHILD ( -- )   XPK-CHILD >LEN PROC-ARGV+  XPK-SPAWN ;
+: XPK-CHECK-CHILD ( -- )   XPK-CHILD PROC-ARGV+  XPK-SPAWN ;
 
 : XPK-RUN-CHECK ( -- )  XPK-CHECK-ARGV XPK-CHECK-CHILD ;
 
 \ The verifier alone, without the run stage that would print the load's record.
 : XPK-RUN-VERIFY ( -- )
-   XPK-CHECK-ARGV  s" --verify-only" >LEN PROC-ARGV+  XPK-CHECK-CHILD ;
+   XPK-CHECK-ARGV  s" --verify-only" PROC-ARGV+  XPK-CHECK-CHILD ;
 
 \ A program build of the child file a --load run wrote.
 : XPK-RUN-BUILD ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/hb-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   XPK-CHILD >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   XPK-PROG >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" tools/hb-build.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   XPK-CHILD PROC-ARGV+
+   s" -o" PROC-ARGV+
+   XPK-PROG PROC-ARGV+
    XPK-SPAWN ;
 
 : XPK-ASSERT-RC ( n -- ) {: rc:n :}

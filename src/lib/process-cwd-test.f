@@ -70,7 +70,7 @@ variable PCT-I
 : PCT-RUN-CAT-CWD ( -- )
    PCT-SETUP-ROOT
    PCT-RESET
-   s" rel.txt"  >LEN PROC-ARGV+
+   s" rel.txt"  PROC-ARGV+
    s" /bin/cat" PCT-ROOT PCT-ROOT-U @ PCT-OUT PCT-CAP PCT-ERR PCT-CAP
    PROCESS:WAIT-FOREVER MS>N PCT-CAPTURE
    0 T= 0 T= PCT-OK-U T=
@@ -94,7 +94,7 @@ variable PCT-I
 
 : PCT-MISSING-CWD ( -- )
    PCT-RESET
-   s" rel.txt"  >LEN PROC-ARGV+
+   s" rel.txt"  PROC-ARGV+
    s" /bin/cat" s" /no/such/habu-process-cwd-test" -1 >FD -1 >FD -1 >FD
    PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;
 
@@ -178,10 +178,10 @@ variable PCT-I
    ;MATCH ;
 
 : PCT-STAGE-STALE ( -- )
-   s" stale" >LEN PROC-ARGV+ ;
+   s" stale" PROC-ARGV+ ;
 
 : PCT-ECHO-FRESH ( -- )
-   s" fresh" >LEN PROC-ARGV+
+   s" fresh" PROC-ARGV+
    s" /bin/echo" s" /" PCT-OUT PCT-CAP PCT-ERR PCT-CAP
    PROCESS:WAIT-FOREVER MS>N PCT-CAPTURE
    0 T= 0 T= {: outu:n :}

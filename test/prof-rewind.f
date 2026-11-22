@@ -20,8 +20,8 @@ create ERR ERR-CAP allot
 
 : CHILD-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/prof-rewind-child.f" >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+
+   s" test/prof-rewind-child.f" PROC-ARGV+ ;
 
 : RUN ( -- )
    T-RESET

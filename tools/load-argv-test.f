@@ -85,9 +85,9 @@ variable LA-DANGLING-LINK-U
 
 : LA-ARGV0 ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+ ;
 
-: LA-ARG ( str -- )   >LEN PROC-ARGV+ ;
+: LA-ARG ( str -- )   PROC-ARGV+ ;
 
 : LA-RUN ( -- n n n )                              \ -> outu erru rc
    s" bin/hb" LA-OUT LA-CAP >LEN LA-ERR LA-CAP >LEN PROCESS:WAIT-FOREVER

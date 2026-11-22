@@ -18,8 +18,8 @@ create ERR IO-CAP allot
 : CASES ( -- )
    s" loop obligations through the load path" T-LABEL
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/loop-obligations-subject.f" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/loop-obligations-subject.f" PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}

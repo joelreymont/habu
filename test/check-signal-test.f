@@ -176,8 +176,8 @@ PROCESS:NO-FD FEED-WR !
 
 : CHECK-BEGIN ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+
+   s" tools/check.f" PROC-ARGV+ ;
 
 \ check.f with stdin in, stderr into LOG and stdout into OUT. The watch opens
 \ while check.f is alive: macOS cannot register a process that has exited.
@@ -186,7 +186,7 @@ PROCESS:NO-FD FEED-WR !
    PROC-ENV-INHERIT-MISSING
    LOG$ OPEN-LOG {: log:n :}
    OUT$ OPEN-LOG {: out:n :}
-   ENGINE-CANDIDATE:PATH$ >LEN in >FD out >FD log >FD PROC-SPAWN-ARGV-ENV-IO
+   ENGINE-CANDIDATE:PATH$ in >FD out >FD log >FD PROC-SPAWN-ARGV-ENV-IO
    PID>N CHECK-PID !
    true CHECK-LIVE !
    in close
@@ -204,23 +204,23 @@ PROCESS:NO-FD FEED-WR !
 \ ahead of it.
 : SUBJECT-START ( -- )
    OPEN-FIFO
-   SUBJECT$ >LEN PROC-ARGV+
+   SUBJECT$ PROC-ARGV+
    s" CHECK_SIGNAL_FIFO" FIFO$ PROC-ENV+
    CASE-CLOSED @ if s" CHECK_SIGNAL_CLOSED" s" 1" PROC-ENV+ then
    OPEN-NULL CHECK-SPAWN ;
 
 : CHECK-START ( -- )
    CHECK-BEGIN
-   s" --" >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
    SUBJECT-START ;
 
 \ check.f with a deadline of DEADLINE-MS, in --json-errors mode or its default.
 : LATE-START ( bool -- ) {: json:bool :}
    CHECK-BEGIN
-   s" --" >LEN PROC-ARGV+
-   s" --deadline-ms" >LEN PROC-ARGV+
-   DEADLINE-MS FD-TEXT$ >LEN PROC-ARGV+
-   json if s" --json-errors" >LEN PROC-ARGV+ then
+   s" --" PROC-ARGV+
+   s" --deadline-ms" PROC-ARGV+
+   DEADLINE-MS FD-TEXT$ PROC-ARGV+
+   json if s" --json-errors" PROC-ARGV+ then
    SUBJECT-START ;
 
 \ check.f with no input named reads its program from stdin, a pipe this test
@@ -431,8 +431,8 @@ PROCESS:NO-FD FEED-WR !
 : TRUNCATED-BODY ( -- )
    STANDIN-WRITE
    CHECK-BEGIN
-   s" --" >LEN PROC-ARGV+
-   SUBJECT$ >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   SUBJECT$ PROC-ARGV+
    s" HABU_UNDER_TEST" STANDIN$ PROC-ENV+
    OPEN-NULL CHECK-SPAWN
    CHECK-ENDED
@@ -466,8 +466,8 @@ PROCESS:NO-FD FEED-WR !
    LOUD$ s\" : LOUD ( -- ) 40000 0 do [char] x emit loop ;\nLOUD\n"
    FS:WRITE-ALL
    CHECK-BEGIN
-   s" --" >LEN PROC-ARGV+
-   LOUD$ >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   LOUD$ PROC-ARGV+
    OPEN-NULL CHECK-SPAWN
    CHECK-ENDED
    s" loud: check.f exits its refusal status" T-LABEL
@@ -490,8 +490,8 @@ PROCESS:NO-FD FEED-WR !
 : QUOTED-BODY ( -- )
    QUOTED$ s\" : X ( -- ) ;\n" FS:WRITE-ALL
    CHECK-BEGIN
-   s" --" >LEN PROC-ARGV+
-   QUOTED$ >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   QUOTED$ PROC-ARGV+
    OPEN-NULL CHECK-SPAWN
    CHECK-ENDED
    s" quoted: check.f exits its usage status" T-LABEL
@@ -504,8 +504,8 @@ PROCESS:NO-FD FEED-WR !
 : BAD-TMP-BODY ( -- )
    BAD-TMP$ FS:MAKE-DIRS
    CHECK-BEGIN
-   s" --" >LEN PROC-ARGV+
-   SUBJECT$ >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   SUBJECT$ PROC-ARGV+
    BAD-TMP$ OPEN-NULL CHECK-SPAWN-TMP
    CHECK-ENDED
    s" tmpdir: check.f exits its usage status" T-LABEL

@@ -374,7 +374,7 @@ variable FILLED                   \ FILLER's descriptors still open
 \ The rest of a forked child's life: a minute's sleep, outliving the case.
 : SLEEPER ( -- )
    PROC-ARGV-RESET
-   s" 60" >LEN PROC-ARGV+
+   s" 60" PROC-ARGV+
    s" /bin/sleep" PROC-ARGV-PREPARE 0 NO-ENV execve drop
    E-PROC-SPAWN throw ;
 

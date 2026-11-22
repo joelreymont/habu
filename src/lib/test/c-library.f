@@ -16,12 +16,12 @@ package C-LIBRARY
 private
 
 : FLAGS ( -- )
-   s" -shared" >LEN PROC-ARGV+
-   s" -fPIC" >LEN PROC-ARGV+
-   s" -O2" >LEN PROC-ARGV+
-   s" -std=gnu11" >LEN PROC-ARGV+
-   s" -Wall" >LEN PROC-ARGV+
-   s" -Werror" >LEN PROC-ARGV+ ;
+   s" -shared" PROC-ARGV+
+   s" -fPIC" PROC-ARGV+
+   s" -O2" PROC-ARGV+
+   s" -std=gnu11" PROC-ARGV+
+   s" -Wall" PROC-ARGV+
+   s" -Werror" PROC-ARGV+ ;
 
 : FAIL ( str -- )
    {: src:^ srcu :}
@@ -31,7 +31,7 @@ private
 
 : RUN ( -- result<n,n> )
    PROC-ENV-INHERIT-MISSING
-   s" /usr/bin/cc" >LEN -1 >FD -1 >FD -1 >FD
+   s" /usr/bin/cc" -1 >FD -1 >FD -1 >FD
    PROC-RUN-ARGV-ENV-IO-RC ;
 
 public
@@ -40,9 +40,9 @@ public
 : BUILD ( str str -- )
    {: src:^ srcu lib:^ libu :}
    PROC-ARGV-ENV-RESET FLAGS
-   s" -o" >LEN PROC-ARGV+
-   lib libu >LEN PROC-ARGV+
-   src srcu >LEN PROC-ARGV+
+   s" -o" PROC-ARGV+
+   lib libu PROC-ARGV+
+   src srcu PROC-ARGV+
    RUN MATCH result
       ok OF drop ENDOF
       err OF drop src srcu FAIL ENDOF

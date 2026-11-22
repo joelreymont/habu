@@ -146,10 +146,10 @@ PROCESS:NO-FD FIFO-RD !
 : ROW-START ( -- )
    OPEN-FIFO
    PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/db/pg-cluster.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" test/db/pg-hold.f" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   s" test/db/pg-cluster.f" PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" test/db/pg-hold.f" PROC-ARGV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ s" pg row" GT-POOL-START ;

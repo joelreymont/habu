@@ -285,7 +285,7 @@ variable GE-EVAL-SRC-U
 
 : GE-ARG+ ( ^u8 n -- )
    2dup GE-ARGV+
-   >LEN PROC-ARGV+ ;
+   PROC-ARGV+ ;
 
 : GE-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ up:^ :}
    u 0 < if E-FS-PATH throw then

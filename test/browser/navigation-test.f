@@ -32,7 +32,7 @@ PATH-CAP BUFFER: MOD
 variable MOD-U
 PATH-CAP BUFFER: FILE
 
-: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
@@ -43,8 +43,8 @@ PATH-CAP BUFFER: FILE
    s" browser navigation: module and CLI output in " type DIR u type cr
    DIR u s" navigation.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
-: SPAWN ( ^u8 len -- n )
-   LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+: SPAWN ( str -- n )
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
@@ -57,7 +57,7 @@ PATH-CAP BUFFER: FILE
    s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+ ;
 
 : HOST ( -- n )
-   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
    EXE u SPAWN ;
 
 : STEP+ ( str n n n n -- )

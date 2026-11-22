@@ -81,8 +81,8 @@ create CST-IN-BUF PATH-CAP allot
 
 : CST-CP ( str str -- ) {: src:^ srcu dst:^ dstu :}
    PROC-ARGV-RESET
-   src srcu  >LEN PROC-ARGV+
-   dst dstu  >LEN PROC-ARGV+
+   src srcu  PROC-ARGV+
+   dst dstu  PROC-ARGV+
    s" /bin/cp" -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : CST-TOOL-RC ( -- n )
@@ -129,10 +129,10 @@ variable CST-ERR-U
    HB-TARGET-MACOS? 0= if exit then
    id idu CST-TEAM-REQ CST-IN-BUF CST-IN-U CST-COPY!
    PROC-ARGV-RESET
-   s" -v" >LEN PROC-ARGV+
-   s" -R" >LEN PROC-ARGV+
-   CST-IN >LEN PROC-ARGV+
-   a u >LEN PROC-ARGV+
+   s" -v" PROC-ARGV+
+   s" -R" PROC-ARGV+
+   CST-IN PROC-ARGV+
+   a u PROC-ARGV+
    CST-TOOL-RC 0 T= ;
 
 : CST-TEST-CODESIGN ( -- )
@@ -175,18 +175,18 @@ variable CST-ERR-U
    HB-TARGET-MACOS? 0= if exit then
    s" /bin/echo" CST-KEEP CST-CP
    PROC-ARGV-RESET
-   s" -s" >LEN PROC-ARGV+
-   CODESIGN:IDENTITY$ >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   s" runtime" >LEN PROC-ARGV+
-   s" --timestamp=none" >LEN PROC-ARGV+
-   s" --force" >LEN PROC-ARGV+
-   CST-KEEP >LEN PROC-ARGV+
+   s" -s" PROC-ARGV+
+   CODESIGN:IDENTITY$ PROC-ARGV+
+   s" -o" PROC-ARGV+
+   s" runtime" PROC-ARGV+
+   s" --timestamp=none" PROC-ARGV+
+   s" --force" PROC-ARGV+
+   CST-KEEP PROC-ARGV+
    CST-TOOL-RC 0 T=
    CST-KEEP CODESIGN:ENSURE
    PROC-ARGV-RESET
-   s" -dv" >LEN PROC-ARGV+
-   CST-KEEP >LEN PROC-ARGV+
+   s" -dv" PROC-ARGV+
+   CST-KEEP PROC-ARGV+
    CODESIGN:TOOL s" " CST-CAPTURE 0 T=
    0 CST-ERR CST-ERR-U @ s" (runtime)" CONTAINS? TTRUE
    CST-RELEASE ;
@@ -199,8 +199,8 @@ variable CST-ERR-U
    CST-ELF CODESIGN:ENSURE
    HB-TARGET-MACOS? 0= if exit then
    PROC-ARGV-RESET
-   s" -v" >LEN PROC-ARGV+
-   CST-ELF >LEN PROC-ARGV+
+   s" -v" PROC-ARGV+
+   CST-ELF PROC-ARGV+
    CST-TOOL-RC 0 T<> ;
 
 \ What a session prints is under test, so a child engine runs CST-IN from stdin;

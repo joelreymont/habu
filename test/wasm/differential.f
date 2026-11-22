@@ -51,7 +51,7 @@ variable PROG-U
 CAP BUFFER: THROWN                     \ the record THROW-ROW expects in ERR
 variable THROWN-U
 
-: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
 
 : TEXT+ ( ^u8 n ^u8 ^n -- )
    {: a:^ u:n buf:^ len:^ :}

@@ -157,16 +157,16 @@ create HCT-BIG HCT-BIG-CAP allot
 
 : HCT-STDIN-LOAD ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" src/lib/error.f"  >LEN PROC-ARGV+
-   s" src/lib/string.f"  >LEN PROC-ARGV+
-   s" src/lib/memory.f"  >LEN PROC-ARGV+
-   s" src/lib/fs.f"  >LEN PROC-ARGV+
-   s" src/lib/heap.f"  >LEN PROC-ARGV+
-   s" src/lib/vector.f"  >LEN PROC-ARGV+
-   s" src/lib/source.f"  >LEN PROC-ARGV+
-   HCT-CHILD  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load"  PROC-ARGV+
+   s" src/lib/error.f"  PROC-ARGV+
+   s" src/lib/string.f"  PROC-ARGV+
+   s" src/lib/memory.f"  PROC-ARGV+
+   s" src/lib/fs.f"  PROC-ARGV+
+   s" src/lib/heap.f"  PROC-ARGV+
+   s" src/lib/vector.f"  PROC-ARGV+
+   s" src/lib/source.f"  PROC-ARGV+
+   HCT-CHILD  PROC-ARGV+
+   s" --"  PROC-ARGV+ ;
 
 : HCT-EXPECT-LOAD-STDIN ( -- )
    HCT-STDIN-LOAD
@@ -193,7 +193,7 @@ create HCT-BIG HCT-BIG-CAP allot
 \ that lists --load.
 : HCT-EXPECT-UNKNOWN-FLAG ( -- )
    PROC-ARGV-RESET
-   s" --loadx"  >LEN PROC-ARGV+
+   s" --loadx"  PROC-ARGV+
    s" bin/hb"  HCT-EMPTY 0  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    s" bin/hb --loadx" HCT-STORE!
@@ -208,7 +208,7 @@ create HCT-BIG HCT-BIG-CAP allot
 \ piped program can run.
 : HCT-EXPECT-FLAG-BEFORE-STDIN ( -- )
    PROC-ARGV-RESET
-   s" --nonsense"  >LEN PROC-ARGV+
+   s" --nonsense"  PROC-ARGV+
    s" bin/hb"  s" 1 2 + . cr"  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    s" bin/hb --nonsense" HCT-STORE!
@@ -220,12 +220,12 @@ create HCT-BIG HCT-BIG-CAP allot
 \ printf '' | hb --load tools/check.f -- [--json-errors] --deadline-ms x  ->  rc 64.
 : HCT-CHECK-BAD-DEADLINE ( bool -- ) {: json:bool :}
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/check.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   json if s" --json-errors"  >LEN PROC-ARGV+ then
-   s" --deadline-ms"  >LEN PROC-ARGV+
-   s" x"  >LEN PROC-ARGV+
+   s" --load"  PROC-ARGV+
+   s" tools/check.f"  PROC-ARGV+
+   s" --"  PROC-ARGV+
+   json if s" --json-errors"  PROC-ARGV+ then
+   s" --deadline-ms"  PROC-ARGV+
+   s" x"  PROC-ARGV+
    s" bin/hb"  HCT-EMPTY 0  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    json if s" bin/hb --load tools/check.f -- --json-errors --deadline-ms x"
@@ -253,8 +253,8 @@ create HCT-BIG HCT-BIG-CAP allot
 : HCT-EXPECT-LOAD-EMPTY-FILE ( -- )
    HCT-CHILD HCT-EMPTY 0 FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   HCT-CHILD >LEN PROC-ARGV+
+   s" --load"  PROC-ARGV+
+   HCT-CHILD PROC-ARGV+
    s" bin/hb"  HCT-EMPTY 0  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!
@@ -265,8 +265,8 @@ create HCT-BIG HCT-BIG-CAP allot
 : HCT-ARGV-LOAD ( -- )
    HCT-CHILD HCT-ARGV$ FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   HCT-CHILD >LEN PROC-ARGV+ ;
+   s" --load" PROC-ARGV+
+   HCT-CHILD PROC-ARGV+ ;
 
 
 : HCT-EXPECT-ARGV-NONE ( -- )
@@ -282,10 +282,10 @@ create HCT-BIG HCT-BIG-CAP allot
 
 : HCT-EXPECT-ARGV-VALUES ( -- )
    HCT-ARGV-LOAD
-   s" --" >LEN PROC-ARGV+
-   s" alpha" >LEN PROC-ARGV+
-   s" " >LEN PROC-ARGV+
-   s" omega" >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" alpha" PROC-ARGV+
+   s" " PROC-ARGV+
+   s" omega" PROC-ARGV+
    s" bin/hb" HCT-EMPTY 0 HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    HCT-CHILD HCT-STORE!

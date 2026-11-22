@@ -135,10 +135,10 @@ private
 \ in the keychain search list.
 : CODESIGN-LIST-IDS ( -- )
    PROC-ARGV-RESET
-   s" find-identity" >LEN PROC-ARGV+
-   s" -v" >LEN PROC-ARGV+
-   s" -p" >LEN PROC-ARGV+
-   s" codesigning" >LEN PROC-ARGV+
+   s" find-identity" PROC-ARGV+
+   s" -v" PROC-ARGV+
+   s" -p" PROC-ARGV+
+   s" codesigning" PROC-ARGV+
    [: [: CODESIGN-KEEP-IDS ;] CODESIGN-SECURITY ;] [: CODESIGN-RELEASE ;] finally ;
 
 \ find-certificate -Z prints each certificate from its "SHA-1 hash: " line on,
@@ -213,9 +213,9 @@ private
 : CODESIGN-FIND-ID ( -- )
    CODESIGN-LIST-IDS
    PROC-ARGV-RESET
-   s" find-certificate" >LEN PROC-ARGV+
-   s" -a" >LEN PROC-ARGV+
-   s" -Z" >LEN PROC-ARGV+
+   s" find-certificate" PROC-ARGV+
+   s" -a" PROC-ARGV+
+   s" -Z" PROC-ARGV+
    [: [: CODESIGN-PICK ;] CODESIGN-SECURITY ;] [: CODESIGN-RELEASE ;] finally
    CODESIGN-ID? @ 0= if CODESIGN-NO-IDENTITY then ;
 
@@ -236,8 +236,8 @@ private
 : CODESIGN-MACOS-VERIFY-ARGS ( str -- ) {: a:^ u :}
    a u CODESIGN-EXPECT-EXECUTABLE
    PROC-ARGV-RESET
-   s" -v"  >LEN PROC-ARGV+
-   a u  >LEN PROC-ARGV+ ;
+   s" -v"  PROC-ARGV+
+   a u  PROC-ARGV+ ;
 
 : CODESIGN-REQ-HEAD ( -- str )
    s\" =anchor apple generic and certificate leaf[subject.OU] = \"" ;
@@ -258,35 +258,35 @@ create CODESIGN-REQ CODESIGN-REQ-HEAD nip TEAM$ nip + 1 + allot
 \ included, and for a file it cannot read.
 : CODESIGN-MACOS-TEAM? ( str -- bool ) {: a:^ u :}
    PROC-ARGV-RESET
-   s" -v"  >LEN PROC-ARGV+
-   s" -R"  >LEN PROC-ARGV+
-   CODESIGN-TEAM-REQ  >LEN PROC-ARGV+
-   a u  >LEN PROC-ARGV+
+   s" -v"  PROC-ARGV+
+   s" -R"  PROC-ARGV+
+   CODESIGN-TEAM-REQ  PROC-ARGV+
+   a u  PROC-ARGV+
    CODESIGN-RUN 0= ;
 
 : CODESIGN-SIGN-ARGS ( -- )
    IDENTITY$ {: id:^ idu:n :}
    PROC-ARGV-RESET
-   s" -s"  >LEN PROC-ARGV+
-   id idu  >LEN PROC-ARGV+
-   s" --timestamp=none"  >LEN PROC-ARGV+
-   s" --force"  >LEN PROC-ARGV+ ;
+   s" -s"  PROC-ARGV+
+   id idu  PROC-ARGV+
+   s" --timestamp=none"  PROC-ARGV+
+   s" --force"  PROC-ARGV+ ;
 
 \ A written image carries its writer's identifier (src/habu/sign-id.f); the
 \ keychain's access list names it, so the team signature keeps it.
 : CODESIGN-MACOS-FORCE ( str -- ) {: a:^ u :}
    a u CODESIGN-EXPECT-FILE
    CODESIGN-SIGN-ARGS
-   s" --preserve-metadata=identifier"  >LEN PROC-ARGV+
-   a u  >LEN PROC-ARGV+
+   s" --preserve-metadata=identifier"  PROC-ARGV+
+   a u  PROC-ARGV+
    CODESIGN-RUN-OK ;
 
 : CODESIGN-MACOS-FORCE-AS ( str str -- ) {: a:^ u id:^ idu :}
    a u CODESIGN-EXPECT-FILE
    CODESIGN-SIGN-ARGS
-   s" -i"  >LEN PROC-ARGV+
-   id idu  >LEN PROC-ARGV+
-   a u  >LEN PROC-ARGV+
+   s" -i"  PROC-ARGV+
+   id idu  PROC-ARGV+
+   a u  PROC-ARGV+
    CODESIGN-RUN-OK ;
 
 : CODESIGN-LINUX-VERIFY-RC ( str -- n )

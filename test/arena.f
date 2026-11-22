@@ -250,10 +250,10 @@ private
 : VERIFY-FILE ( str -- )
    {: rel:^ relu:n :}
    s" tools/check.f" E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" --verify-only" >LEN PROC-ARGV+
-   s" --json-errors" >LEN PROC-ARGV+
-   rel relu >LEN PROC-ARGV+
+   s" --" PROC-ARGV+
+   s" --verify-only" PROC-ARGV+
+   s" --json-errors" PROC-ARGV+
+   rel relu PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
 
 

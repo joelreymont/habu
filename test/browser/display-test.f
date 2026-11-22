@@ -34,10 +34,10 @@ variable CHROME-U
 PATH-CAP BUFFER: FILE
 variable FILE-U
 
-: ARG+ ( ^u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
 
-: SPAWN ( ^u8 len -- n )
-   LEN>N OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+: SPAWN ( str -- n )
+   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
@@ -68,7 +68,7 @@ variable FILE-U
    then
    s" google-chrome" CHROME FIND-EXECUTABLE MATCH option
       none OF 0 ENDOF
-      some OF LEN>N ENDOF
+      some OF ENDOF
    ;MATCH CHROME-U ! ;
 
 : PEER ( -- n )
@@ -84,7 +84,7 @@ variable FILE-U
    else
       s" browser display: Chrome cases run only with -- --chrome" type cr
    then
-   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
    EXE u SPAWN ;
 
 public

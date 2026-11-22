@@ -152,7 +152,7 @@ variable SIBLINGS
       s" ATOMIC_FAIL_FILE" s" 1" PROC-ENV+
    then
    PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN prog progu >LEN
+   engine engineu prog progu
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    PROCESS:ENDING>RC RC>N

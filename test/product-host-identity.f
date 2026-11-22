@@ -106,7 +106,7 @@ variable RC
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T= ;
 
-: ARGV+ ( str -- ) >LEN PROC-ARGV+ ;
+: ARGV+ ( str -- ) PROC-ARGV+ ;
 
 : ENV! ( -- )
    s" TMPDIR" TMP$ PROC-ENV+

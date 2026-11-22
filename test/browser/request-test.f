@@ -79,7 +79,7 @@ PATH-CAP BUFFER: FILE
    THREE$ s" three.bin" FILE!
    ZFF$ s" zff.bin" FILE! ;
 
-: ARG+ ( ^u8 n -- )  >LEN PROC-ARGV+ ;
+: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
@@ -89,8 +89,8 @@ PATH-CAP BUFFER: FILE
    DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
    FILE fu ARG+ ;
 
-: SPAWN ( ^u8 len -- n )
-   LEN>N OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
+: SPAWN ( str -- n )
+   OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
@@ -131,7 +131,7 @@ PATH-CAP BUFFER: FILE
    s" --fail" ARG+ ;
 
 : HOST ( -- n )
-   s" bun" EXE RESOLVE-EXECUTABLE {: u:len :}
+   s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
    EXE u SPAWN ;
 
 \ ---- the lines the host prints, built in SB ---------------------------------

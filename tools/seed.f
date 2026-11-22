@@ -157,16 +157,16 @@ variable SEED-LAST
    ;MATCH ;
 
 : SEED-ARGV+ ( str -- )
-   >LEN PROC-ARGV+ ;
+   PROC-ARGV+ ;
 
 : SEED-PREPARE-BUILD-ARGV ( -- )
    PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/hb-build.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" --engine"  >LEN PROC-ARGV+
-   s" -o"  >LEN PROC-ARGV+
-   s" bin/hb"  >LEN PROC-ARGV+ ;
+   s" --load"  PROC-ARGV+
+   s" tools/hb-build.f"  PROC-ARGV+
+   s" --"  PROC-ARGV+
+   s" --engine"  PROC-ARGV+
+   s" -o"  PROC-ARGV+
+   s" bin/hb"  PROC-ARGV+ ;
 
 : SEED-RUN-BUILD ( str -- ) {: hb:^ hbu :}
    SEED-PREPARE-BUILD-ARGV

@@ -51,8 +51,8 @@ TYPED-VARIABLE JSON-SEEN bool
 : LOADS ( ^u8 n -- )
    {: p:^ u:n :}
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   p u >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+
+   p u PROC-ARGV+
    ENGINE-CANDIDATE:PATH$  EMPTY 0  OUT CAP >LEN
    ERR CAP >LEN  PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}

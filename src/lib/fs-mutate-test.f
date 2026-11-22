@@ -1224,7 +1224,7 @@ variable WANT-U
 
 : CAPTURE ( str -- len len PROCESS:ending ) {: prog:^ progu :}
    PROC-ENV-INHERIT-MISSING
-   prog progu >LEN PROC-ARGV+
+   prog progu PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
@@ -1268,8 +1268,8 @@ variable WANT-U
 : CHECK-REJECTED ( str str n -- )
    {: prog:^ progu a:^ u code:n :}
    a u CHILD-ENV
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+
    prog progu CAPTURE {: outu:len erru:len oc :}
    prog progu outu erru oc code RECORD-ONCE ;
 
@@ -1501,7 +1501,7 @@ variable MKFIFO-U
 variable SOCAT-U
 
 
-: TOOL ( str ^u8 -- len ) {: name:^ size:n dst:^ :}
+: TOOL ( str ^u8 -- n ) {: name:^ size:n dst:^ :}
    name size dst FIND-EXECUTABLE MATCH option
       none OF
          2 s" fs-mutate-test: required executable missing: " write drop
@@ -1519,7 +1519,7 @@ variable SOCAT-U
 
 : MAKE-FIFO ( -- )
    PROC-ARGV-RESET
-   FMT-TREE-LEAF >LEN PROC-ARGV+
+   FMT-TREE-LEAF PROC-ARGV+
    MKFIFO-PATH MKFIFO-U @ -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
    MATCH result
       ok OF drop ENDOF
@@ -1533,8 +1533,8 @@ variable SOCAT-U
    SB-RESET s" UNIX-LISTEN:" SB-APPEND FMT-TREE-ROOT-FILE SB-APPEND
    s" ,unlink-close=0" SB-APPEND
    PROC-ARGV-RESET
-   SB$ >LEN PROC-ARGV+
-   s" /dev/null" >LEN PROC-ARGV+
+   SB$ PROC-ARGV+
+   s" /dev/null" PROC-ARGV+
    SOCAT-PATH SOCAT-U @ -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
    LISTENER ! ;
 

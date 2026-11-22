@@ -119,9 +119,9 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    LIMIT-ON
    [: WRITE-VALID ;] [: LIMIT-OFF ;] finally ;
 
-: ARG ( ^u8 n -- ) >LEN PROC-ARGV+ ;
+: ARG ( str -- ) PROC-ARGV+ ;
 \ The length of name's path in EXE. A missing reader fails the test by name, never skips it.
-: TOOL ( ^u8 n -- len ) {: name:^ size:n :}
+: TOOL ( ^u8 n -- n ) {: name:^ size:n :}
    name size EXE FIND-EXECUTABLE MATCH option
       none OF
          s" svg-pdf-e2e: required executable missing on PATH: " type
@@ -133,8 +133,8 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 
 : COMMAND ( ^u8 n -- ^u8 n )
    {: name:^ size:n :}
-   name size TOOL {: exeu:len :}
-   EXE exeu s" " >LEN OUTPUT CAP >LEN ERRORS CAP >LEN PROCESS:WAIT-FOREVER
+   name size TOOL {: exeu:n :}
+   EXE exeu s" " OUTPUT CAP >LEN ERRORS CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>DEADLINE-RC RC>N
    {: outu:len erru:len code:n :}
    code 0<> if OUTPUT outu LEN>N type ERRORS erru LEN>N type then

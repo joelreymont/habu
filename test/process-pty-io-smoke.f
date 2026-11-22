@@ -185,8 +185,8 @@ TASK:MIN-STACK TASK:TASK HALTEE
 
 : SIGNAL-OUTPUT ( -- )
    PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   s" sleep 0.3; printf %s habu-pty-eintr" >LEN PROC-ARGV+
+   s" -c" PROC-ARGV+
+   s" sleep 0.3; printf %s habu-pty-eintr" PROC-ARGV+
    s" /bin/sh" [: SIGNAL-OUTPUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET ;
 
 \ ---- no other spawn inherits the target's descriptors -------------------------
@@ -196,7 +196,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
 \ inherited would be an extra entry.
 : OPEN-FDS ( ^u8 -- n ) {: buf:^ :}
    PROC-ARGV-RESET
-   s" /dev/fd" >LEN PROC-ARGV+
+   s" /dev/fd" PROC-ARGV+
    s" /bin/ls" buf FDS-CAP >LEN FDS-ERR FDS-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE
    MATCH result

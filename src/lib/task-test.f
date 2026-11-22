@@ -581,9 +581,9 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 \ The pre-run check of the source, read from stdin as task-rx.f.
 : TASK-CHECK-EXITS ( str n -- len len )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  s" --verify-only" >LEN PROC-ARGV+
-   s" --stdin-path" >LEN PROC-ARGV+  s" task-rx.f" >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --verify-only" PROC-ARGV+
+   s" --stdin-path" PROC-ARGV+  s" task-rx.f" PROC-ARGV+
    TASK-SPAWN-EXITS ;
 
 : TASK-TEST-MAIN-COMPILES ( -- )

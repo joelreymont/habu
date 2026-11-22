@@ -237,10 +237,10 @@ variable CS-CHILD-ERR-U
 
 : CS-IMAGE-BUILD ( -- )
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/hb-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  s" --repl" >LEN PROC-ARGV+
-   s" test/catch-success-image-subject.f" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+  CS-IMAGE$ >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/hb-build.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --repl" PROC-ARGV+
+   s" test/catch-success-image-subject.f" PROC-ARGV+
+   s" -o" PROC-ARGV+  CS-IMAGE$ PROC-ARGV+
    CS-ENV!
    CS-HB$
    s" "

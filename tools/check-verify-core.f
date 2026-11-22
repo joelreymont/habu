@@ -36,7 +36,7 @@ variable CHK-BYTES-U
 
 
 : CHK-ARG+ ( str -- )
-   >LEN PROC-ARGV+ ;
+   PROC-ARGV+ ;
 
 
 : CHK-FS-RC? ( n -- bool )

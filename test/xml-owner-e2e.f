@@ -49,8 +49,8 @@ variable RC
 
 : SOURCE-ARGS ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   ENTRY$ >LEN PROC-ARGV+
-   ROOT$ >LEN PROC-ARGV+ ;
+   ENTRY$ PROC-ARGV+
+   ROOT$ PROC-ARGV+ ;
 
 : SOURCE-RUN ( -- )
    ENTRY$ S\" require test/xml-owner-consumer.f\nMAIN\n" FS:WRITE-ALL

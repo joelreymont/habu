@@ -35,8 +35,8 @@ s" case.f" TCE-PATH FS:JOIN-PATH TCE-PATH-U !
 : TCE-CHECK ( str str -- ) {: src:^ srcu:n wa:^ wu:n :}
    TCE-FILE src srcu FS:WRITE-ALL
    PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  TCE-FILE >LEN PROC-ARGV+
+   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
+   s" --" PROC-ARGV+  TCE-FILE PROC-ARGV+
    ENGINE-CANDIDATE:PATH$  TCE-NONE 0  TCE-OUT TCE-CAP >LEN
    TCE-ERR TCE-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
