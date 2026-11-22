@@ -2,8 +2,8 @@ split-str
 \ fs-list.f - the entries of one directory, through raw open-rd,
 \ getdirentries64 and close; record decoding is shared with the walker in
 \ src/lib/fs.f.
-\ STORAGE CLASS. Each word maps a private listing block and releases it after
-\ one call.
+\ STORAGE CLASS. Each word lends a private listing record through
+\ MEM:WITH-RECORD for the one call.
 
 require src/lib/error.f
 require src/lib/span.f
@@ -28,51 +28,45 @@ E-FS-LIST-CAPACITY constant E-CAPACITY
 10 constant DT-LNK
 
 private
-4096 constant BLOCK-CAP
-
-2 cells BLOCK-CAP + constant STORAGE-BYTES
+\ The kernel fills block with getdirentries64's records and base
+\ with its cookie.
+STRUCTURE listing DERIVE addr
+   FIELD fd n
+   FIELD base n
+   BUFFER block 4096
+;STRUCTURE
 
 10 constant LF
 -2 constant CLAIMED
 
-: FD-CELL ( ^u8 -- ^n ) CELL-VIEW ;
-: BASE-CELL ( ^u8 -- ^n ) CELL-VIEW cell+ ;
 
-
-: BLOCK ( ^u8 -- ^u8 )
-   2 cells + ;
-
-
-: MAP ( -- ^u8 NUM:alloc-byte-len )
-   STORAGE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES ;
-
-
-: FINISH ( ^u8 -- ) {: ls:^ :}
-   ls FD-CELL @ {: fd:n :}
+: FINISH ( ^listing -- ) {: ls:^ :}
+   ls LISTING-FD @ {: fd:n :}
    fd 0 >= if fd close then ;
 
 
-: OPEN ( ^u8 ^u8 n -- ) {: ls:^ path:^ size:n :}
+: OPEN ( ^listing ^u8 n -- ) {: ls:^ path:^ size:n :}
    path size FS:>PATHZ {: z:^ :}
    path size z COMPILE-READS:FILE+
    z open-rd {: handle:n :}
    handle 0 < if E-OPEN throw then
-   handle ls FD-CELL ! ;
+   handle ls LISTING-FD ! ;
 
 
-: READ-BLOCK ( ^u8 -- n ) {: ls:^ :}
-   ls FD-CELL @ ls BLOCK BLOCK-CAP ls BASE-CELL getdirentries64 {: got:n :}
+: READ-BLOCK ( ^listing -- n ) {: ls:^ :}
+   ls LISTING-FD @ ls LISTING-BLOCK SPAN:$ ls LISTING-BASE
+   getdirentries64 {: got:n :}
    got 0 < if E-READ throw then
    got ;
 
 
 \ Validate the header before field reads, then validate the name inside rec.
-: RECORD ( n n ^u8 -- n n ^u8 n u8 )
+: RECORD ( n n ^listing -- n n ^u8 n u8 )
    {: filled:n at:n ls:^ :}
    filled at - FS:DIRENT-NAME-OFFSET < if
       FS:CAUSE-CLEAR E-ENTRY throw
    then
-   ls BLOCK at + {: ent:^ :}
+   ls LISTING-BLOCK SPAN:$ drop at + {: ent:^ :}
    ent FS:DIRENT-RECLEN {: rec:n :}
    rec FS:DIRENT-NAME-OFFSET <= rec filled at - > or if
       FS:CAUSE-CLEAR E-ENTRY throw
@@ -84,7 +78,7 @@ private
 
 \ The next name except . and .., read from a new block when this one is spent;
 \ FALSE under an empty name once the directory has no more.
-: NEXT ( n n ^u8 -- n n ^u8 n u8 bool ) {: ls:^ :}
+: NEXT ( n n ^listing -- n n ^u8 n u8 bool ) {: ls:^ :}
    begin
       2dup > if
          ls RECORD >r 2dup FS:SKIP-SELF-ENTRY? 0= if r> true exit then
@@ -136,25 +130,26 @@ private
    len size + separator + ;
 
 
-: TYPED-LOOP ( ^u8 [ str u8 -- ] -- ) {: ls:^ q :}
+: TYPED-LOOP ( ^listing [ str u8 -- ] -- ) {: ls:^ q :}
    0 0 begin ls NEXT while q execute repeat drop 2drop 2drop ;
 
 \ The listing runs on the stack into these preserving words, so the catch
-\ around each gives the mapping back however it leaves - a quotation-typed
+\ around each closes the descriptor however it leaves - a quotation-typed
 \ local cannot be caught (src/lib/fs.f WALK-RUN).
-: EACH-RUN ( ^u8 str [ str -- ] -- ^u8 str [ str -- ] )
+: EACH-RUN ( ^listing str [ str -- ] -- ^listing str [ str -- ] )
    {: ls:^ path:^ size:n q :}
    ls path size OPEN
    0 0 begin ls NEXT while drop q execute repeat drop 2drop 2drop
    ls path size q ;
 
-: EACH-TYPED-RUN ( ^u8 str [ str u8 -- ] -- ^u8 str [ str u8 -- ] )
+: EACH-TYPED-RUN
+   ( ^listing str [ str u8 -- ] -- ^listing str [ str u8 -- ] )
    {: ls:^ path:^ size:n q :}
    ls path size OPEN
    ls q TYPED-LOOP
    ls path size q ;
 
-: NAMES-STEP ( n n n ^u8 ^u8 n -- n n n bool )
+: NAMES-STEP ( n n n ^listing ^u8 n -- n n n bool )
    {: len:n filled:n at:n ls:^ dst:^ cap:n :}
    filled at ls NEXT if
       drop len -rot dst cap INSERT -rot true
@@ -162,35 +157,47 @@ private
       drop 2drop len -rot false
    then ;
 
-: NAMES-RUN ( ^u8 str ^u8 n n -- ^u8 str str n )
+: NAMES-RUN ( ^listing str ^u8 n n -- ^listing str str n )
    {: ls:^ path:^ size:n dst:^ cap:n len:n :}
    ls path size OPEN
    len 0 0 begin ls dst cap NAMES-STEP while repeat 2drop
    >r ls path size dst cap r> ;
 
-public
-
-\ Hands each name except . and .. to the quotation, in directory order.
-: EACH ( ^u8 n [ ^u8 n -- ] -- ) {: path:^ size:n q :}
-   MAP {: ls:^ lsu :}
-   CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
+: EACH-WITH ( str [ str -- ] ^listing -- )
+   {: path:^ size:n q ls:^ :}
+   CLAIMED ls LISTING-FD !
    ls path size q [: EACH-RUN ;] catch {: code:n :}
    drop 2drop drop
    ls FINISH
-   ls lsu MEM:RELEASE-BYTES
    code 0<> if code throw then ;
+
+: EACH-TYPED-WITH ( str [ str u8 -- ] ^listing -- )
+   {: path:^ size:n q ls:^ :}
+   CLAIMED ls LISTING-FD !
+   ls path size q [: EACH-TYPED-RUN ;] catch {: code:n :}
+   drop 2drop drop
+   ls FINISH
+   code 0<> if code throw then ;
+
+: NAMES-WITH ( str ^u8 n ^listing -- n )
+   {: path:^ size:n dst:^ cap:n ls:^ :}
+   CLAIMED ls LISTING-FD !
+   ls path size dst cap 0 [: NAMES-RUN ;] catch {: code:n :}
+   ls FINISH
+   code 0<> if 2drop 2drop 2drop code throw then
+   >r 2drop 2drop drop r> ;
+
+public
+
+\ Hands each name except . and .. to the quotation, in directory order.
+: EACH ( ^u8 n [ ^u8 n -- ] -- )
+   [type] listing [: EACH-WITH ;] MEM:WITH-RECORD ;
 
 \ d_type passes unchanged: a filesystem may omit it, so a caller handles
 \ DT-UNKNOWN. The name is borrowed from the listing's block only for the
 \ callback.
-: EACH-TYPED ( str [ str u8 -- ] -- ) {: path:^ size:n q :}
-   MAP {: ls:^ lsu :}
-   CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
-   ls path size q [: EACH-TYPED-RUN ;] catch {: code:n :}
-   drop 2drop drop
-   ls FINISH
-   ls lsu MEM:RELEASE-BYTES
-   code 0<> if code throw then ;
+: EACH-TYPED ( str [ str u8 -- ] -- )
+   [type] listing [: EACH-TYPED-WITH ;] MEM:WITH-RECORD ;
 
 
 \ The names except . and .. into the caller's buffer, newline-separated and in
@@ -198,12 +205,6 @@ public
 \ length. A name holding a newline is refused; a short buffer is E-FS-LIST-CAPACITY.
 : NAMES ( ^u8 n ^u8 n -- n ) {: path:^ size:n dst:^ cap:n :}
    cap 0 < if FS:CAUSE-CLEAR E-CAPACITY throw then
-   MAP {: ls:^ lsu :}
-   CLAIMED ls FD-CELL ! 0 ls BASE-CELL !
-   ls path size dst cap 0 [: NAMES-RUN ;] catch {: code:n :}
-   ls FINISH
-   ls lsu MEM:RELEASE-BYTES
-   code 0<> if 2drop 2drop 2drop code throw then
-   >r 2drop 2drop drop r> ;
+   path size dst cap [type] listing [: NAMES-WITH ;] MEM:WITH-RECORD ;
 
 ;package
