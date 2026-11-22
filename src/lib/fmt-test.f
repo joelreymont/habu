@@ -18,7 +18,7 @@ using FMT
    SB-RESET s" pre:" SB-APPEND SB-HEX  SB$ a u T$= ;
 : T-HEXW ( n n str -- ) {: a:^ u :}       \ ( value width expect )
    SB-RESET s" pre:" SB-APPEND SB-HEX-WIDTH  SB$ a u T$= ;
-: T-INT ( n ^u8 n -- ) {: a:^ u :}
+: T-INT ( n str -- ) {: a:^ u :}
    SB-RESET SB-INT  SB$ a u T$= ;
 : T-SCALED ( n n str -- ) {: a:^ u :}
    SB-RESET s" pre:" SB-APPEND SB-SCALED  SB$ a u T$= ;

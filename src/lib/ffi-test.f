@@ -474,7 +474,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ^u8 n n -- i32 ) ;FUNCTION
 \ snprintf's ninth double goes on the stack on every target.
 : FFI-T-F9-FORMAT ( -- ^u8 )
    s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" drop ;
-: FFI-T-F9-WANT ( -- ^u8 n )
+: FFI-T-F9-WANT ( -- str )
    s" 1 2 3 4 5 6 7 8 9" ;
 : FFI-T-FLOAT-SPILL ( -- )
    s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ^u8 n ^u8 r r r r r r r r r -- i32 ) 3 VARIADIC ;FUNCTION"

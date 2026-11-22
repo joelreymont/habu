@@ -66,7 +66,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : SCRIPT-N ( n -- )
    SB-RESET FMT:SB-INT SB$ SCRIPT+ ;
 
-: SAY ( ^u8 n -- )
+: SAY ( str -- )
    SCRIPT+ LF SCRIPT+C ;
 
 \ A captured stream, ended by a line feed unless it is empty or ends in one.
@@ -76,7 +76,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    a u + 1 - c@ LF <> if LF SCRIPT+C then ;
 
 \ One fact: asserted under its own label and written as a transcript line.
-: FACT ( bool ^u8 n -- ) {: ok:bool a:^ u:n :}
+: FACT ( bool str -- ) {: ok:bool a:^ u:n :}
    a u T-LABEL
    ok TTRUE
    ok if s" ok   " else s" FAIL " then SCRIPT+
@@ -85,7 +85,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 : WANT$ ( -- str )
    WANT-BUF WANT-U @ ;
 
-: W ( ^u8 n -- ) {: a:^ u:n :}
+: W ( str -- ) {: a:^ u:n :}
    WANT-U @ u + 1 + SCRIPT-CAP > if E-STR-CAPACITY throw then
    a WANT-BUF WANT-U @ + u BYTE-COPY
    LF WANT-BUF WANT-U @ + u + c!
@@ -478,7 +478,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : TRANSCRIBE ( str len len PROCESS:ending -- )
    PROCESS:ENDING>RC RC>N TRANSCRIBE-RC ;
 
-: CHILD ( ^u8 n -- len len PROCESS:ending ) {: name:^ nameu:n :}
+: CHILD ( str -- len len PROCESS:ending ) {: name:^ nameu:n :}
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/ffi-callback-child.f" >LEN PROC-ARGV+

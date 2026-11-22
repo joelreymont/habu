@@ -63,7 +63,7 @@ package DECIMAL-FLOAT-TEST
 
 \ The checked decimal admission used by STR>FLOAT must agree with the
 \ engine's literal reader at its accumulator boundaries.
-: ADMISSION ( ^u8 n -- )
+: ADMISSION ( str -- )
    {: a:^ u:n :}
    a u FL-ENGINE-DECIMAL-ADMITTED? {: checked:bool :}
    a u num-parse and nip {: native:bool :}

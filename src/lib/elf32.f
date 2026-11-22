@@ -49,7 +49,6 @@ private
 $34 constant HEADER-BYTES
 $20 constant PROGRAM-BYTES
 
-CAST: BLEN>N ( NUM:byte-len -- n )
 \ Each caller has shown the cell nonnegative.
 CAST: N>BLEN ( n -- NUM:byte-len )
 
@@ -120,9 +119,9 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    row $10 + LE32@ dup 0 <> if total row $04 + LE32@ rot CHECK-RANGE else drop then
    row LE32@ 1 = if row CHECK-LOAD-EXTENT row CHECK-LOAD-ALIGNMENT then ;
 
-: SEGMENT-SPAN ( ^u8 ^u8 -- ^u8 NUM:byte-len ) {: data row :}
-   row LE32@ 0= row $10 + LE32@ 0= or if data 0 N>BLEN exit then
-   data row $04 + LE32@ + row $10 + LE32@ N>BLEN ;
+: SEGMENT-SPAN ( ^u8 ^u8 -- str ) {: data row :}
+   row LE32@ 0= row $10 + LE32@ 0= or if data 0 exit then
+   data row $04 + LE32@ + row $10 + LE32@ ;
 
 : MAKE-HEADER ( ^u8 -- header ) {: data :}
    data $10 + LE16@ >FILE-KIND data $12 + LE16@ >MACHINE-ID
@@ -131,7 +130,7 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    ELF32-HEADER:MAKE ;
 
 : MAKE-SEGMENT ( ^u8 ^u8 -- segment ) {: data row :}
-   data row SEGMENT-SPAN row LE32@ >SEGMENT-KIND
+   data row SEGMENT-SPAN N>BLEN row LE32@ >SEGMENT-KIND
    row $08 + LE32@ >ADDRESS row $0C + LE32@ >ADDRESS
    row $14 + LE32@ N>BLEN row $18 + LE32@ row $1C + LE32@
    ELF32-SEGMENT:MAKE ;
@@ -142,15 +141,15 @@ public
    AS-BLEN ;
 
 \ INFO validates the header and table bounds, not every segment or the sections.
-: INFO ( ^u8 NUM:byte-len -- header ) {: data size:NUM:byte-len :}
-   data size BLEN>N HEADER-CHECKED data MAKE-HEADER ;
+: INFO ( str -- header ) {: data size:n :}
+   data size HEADER-CHECKED data MAKE-HEADER ;
 
 \ The result borrows bytes from the unchanged input until its caller is finished.
-: PROGRAM ( ^u8 NUM:byte-len program-index -- segment )
-   {: data size:NUM:byte-len index:program-index :}
-   data size BLEN>N HEADER-CHECKED data index PROGRAM-INDEX>N CHECK-INDEX
+: PROGRAM ( str program-index -- segment )
+   {: data size:n index:program-index :}
+   data size HEADER-CHECKED data index PROGRAM-INDEX>N CHECK-INDEX
    data index PROGRAM-INDEX>N PROGRAM-ROW {: row :}
-   row size BLEN>N CHECK-ROW data row MAKE-SEGMENT ;
+   row size CHECK-ROW data row MAKE-SEGMENT ;
 
 \ Accepted: version 1, ELFCLASS32, ELFDATA2LSB, larger declared header and entry
 \ strides with valid bounds, no program entries; PN_XNUM is E-UNSUPPORTED. Every
@@ -159,8 +158,8 @@ public
 \ segment and PT_NULL answer an empty span at the input start. Physical
 \ addresses and unknown machine and segment ids pass through; ordering, dynamic
 \ linking, permissions, entry and machine flags are not checked.
-: VALIDATE ( ^u8 NUM:byte-len -- ) {: data size:NUM:byte-len :}
-   data size BLEN>N HEADER-CHECKED
-   data PH-COUNT 0 ?do data i PROGRAM-ROW size BLEN>N CHECK-ROW loop ;
+: VALIDATE ( str -- ) {: data size:n :}
+   data size HEADER-CHECKED
+   data PH-COUNT 0 ?do data i PROGRAM-ROW size CHECK-ROW loop ;
 
 ;package

@@ -22,37 +22,37 @@ create LONG PATH-CAP 1 + allot
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
-: TMP$ ( -- ^u8 n ) TMP TMP-U @ ;
-: PATH ( n ^u8 n -- ^u8 n )
+: TMP$ ( -- str ) TMP TMP-U @ ;
+: PATH ( n str -- str )
    {: idx:n name:^ u:n :}
    PATHS idx PATH-CAP * + {: out:^ :}
    TMP$ name u out FS:JOIN-PATH out swap ;
-: ROOT ( -- ^u8 n ) 0 s" root" PATH ;
-: OUTSIDE ( -- ^u8 n ) 1 s" outside" PATH ;
-: CHILD ( -- ^u8 n ) 2 s" root/child" PATH ;
-: FILE ( -- ^u8 n ) 3 s" root/child/file" PATH ;
-: LINK ( -- ^u8 n ) 4 s" root/child/link" PATH ;
-: NEXT ( -- ^u8 n ) 5 s" root/next" PATH ;
-: MOVED ( -- ^u8 n ) 6 s" root/moved" PATH ;
-: FIFO ( -- ^u8 n ) 7 s" root/fifo" PATH ;
-: BLOCKED ( -- ^u8 n ) 8 s" root/blocked" PATH ;
-: BLOCKED-FILE ( -- ^u8 n ) 9 s" root/blocked/file" PATH ;
-: OUT-FILE ( -- ^u8 n ) 10 s" outside/file" PATH ;
-: REPLACEMENT ( -- ^u8 n ) 11 s" root/replacement" PATH ;
-: DEEP ( -- ^u8 n ) 12 s" root/child/deep" PATH ;
-: DEEP-FILE ( -- ^u8 n ) 13 s" root/child/deep/file" PATH ;
-: DOT-DIR ( -- ^u8 n ) 14 s" root/child/.cache" PATH ;
-: DOT-FILE ( -- ^u8 n ) 15 s" root/child/.cache/a..b" PATH ;
-: SEARCH ( -- ^u8 n ) 25 s" search" PATH ;
-: SEARCH-A ( -- ^u8 n ) 26 s" search/a" PATH ;
-: SEARCH-B ( -- ^u8 n ) 27 s" search/a/b" PATH ;
-: SEARCH-FILE ( -- ^u8 n ) 28 s" search/a/b/f" PATH ;
-: SEARCH-LINK ( -- ^u8 n ) 29 s" search/l" PATH ;
-: SEARCH-LINK-B ( -- ^u8 n ) 30 s" search/l/b" PATH ;
-: LINKED ( -- ^u8 n ) 31 s" linked" PATH ;
-: LINKED-CHILD ( -- ^u8 n ) 32 s" linked/child" PATH ;
-: DOT-CHILD ( -- ^u8 n ) 33 s" root/./child" PATH ;
-: MISSING-DIR ( -- ^u8 n ) 34 s" root/missing" PATH ;
+: ROOT ( -- str ) 0 s" root" PATH ;
+: OUTSIDE ( -- str ) 1 s" outside" PATH ;
+: CHILD ( -- str ) 2 s" root/child" PATH ;
+: FILE ( -- str ) 3 s" root/child/file" PATH ;
+: LINK ( -- str ) 4 s" root/child/link" PATH ;
+: NEXT ( -- str ) 5 s" root/next" PATH ;
+: MOVED ( -- str ) 6 s" root/moved" PATH ;
+: FIFO ( -- str ) 7 s" root/fifo" PATH ;
+: BLOCKED ( -- str ) 8 s" root/blocked" PATH ;
+: BLOCKED-FILE ( -- str ) 9 s" root/blocked/file" PATH ;
+: OUT-FILE ( -- str ) 10 s" outside/file" PATH ;
+: REPLACEMENT ( -- str ) 11 s" root/replacement" PATH ;
+: DEEP ( -- str ) 12 s" root/child/deep" PATH ;
+: DEEP-FILE ( -- str ) 13 s" root/child/deep/file" PATH ;
+: DOT-DIR ( -- str ) 14 s" root/child/.cache" PATH ;
+: DOT-FILE ( -- str ) 15 s" root/child/.cache/a..b" PATH ;
+: SEARCH ( -- str ) 25 s" search" PATH ;
+: SEARCH-A ( -- str ) 26 s" search/a" PATH ;
+: SEARCH-B ( -- str ) 27 s" search/a/b" PATH ;
+: SEARCH-FILE ( -- str ) 28 s" search/a/b/f" PATH ;
+: SEARCH-LINK ( -- str ) 29 s" search/l" PATH ;
+: SEARCH-LINK-B ( -- str ) 30 s" search/l/b" PATH ;
+: LINKED ( -- str ) 31 s" linked" PATH ;
+: LINKED-CHILD ( -- str ) 32 s" linked/child" PATH ;
+: DOT-CHILD ( -- str ) 33 s" root/./child" PATH ;
+: MISSING-DIR ( -- str ) 34 s" root/missing" PATH ;
 
 : NONE-WITH ( option<fd> n -- ) {: o want:n :}
    o MATCH option
@@ -66,20 +66,20 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       some OF FS:ERRNO 0 T= ENDOF
    ;MATCH ;
 
-: FD-ENTRY ( ^u8 n -- )
+: FD-ENTRY ( str -- )
    2drop 1 OPEN-FDS +! ;
 : FD-COUNT ( -- n )
    0 OPEN-FDS !
    HB-TARGET-MACOS? if s" /dev/fd" else s" /proc/self/fd" then
    [: FD-ENTRY ;] FS-LIST:EACH
    OPEN-FDS @ ;
-: READ$ ( fd ^u8 n -- n ) OUT FS:READ-FILE-AT ;
-: READ-CHECK ( fd ^u8 n ^u8 n -- )
+: READ$ ( fd str -- n ) OUT FS:READ-FILE-AT ;
+: READ-CHECK ( fd str str -- )
    {: fd:fd path:^ u:n want:^ wantu:n :}
    fd path u READ$ wantu T=
    OUT wantu SPAN:TAKE SPAN:$ want wantu T$= ;
 
-: READ-CHECK-CLOSE ( fd ^u8 n ^u8 n -- )
+: READ-CHECK-CLOSE ( fd str str -- )
    {: fd:fd path:^ u:n want:^ wantu:n :}
    fd path u want wantu READ-CHECK
    fd FS:CLOSE-DIR ;
@@ -244,15 +244,15 @@ variable TEMP
 variable PLAIN
 create LINK-BUF PATH-CAP allot
 
-: AT-DIR ( -- ^u8 n ) 16 s" root/at" PATH ;
-: AT-FILE ( -- ^u8 n ) 17 s" root/at/file" PATH ;
-: AT-LINK ( -- ^u8 n ) 18 s" root/at/link" PATH ;
-: AT-SUB ( -- ^u8 n ) 19 s" root/at/sub" PATH ;
-: AT-SUB-LINK ( -- ^u8 n ) 20 s" root/at/sublink" PATH ;
-: AT-A ( -- ^u8 n ) 21 s" root/at/a" PATH ;
-: AT-C ( -- ^u8 n ) 22 s" root/at/c" PATH ;
-: MV ( -- ^u8 n ) 23 s" root/mv" PATH ;
-: MV-FILE ( -- ^u8 n ) 24 s" root/mv/f" PATH ;
+: AT-DIR ( -- str ) 16 s" root/at" PATH ;
+: AT-FILE ( -- str ) 17 s" root/at/file" PATH ;
+: AT-LINK ( -- str ) 18 s" root/at/link" PATH ;
+: AT-SUB ( -- str ) 19 s" root/at/sub" PATH ;
+: AT-SUB-LINK ( -- str ) 20 s" root/at/sublink" PATH ;
+: AT-A ( -- str ) 21 s" root/at/a" PATH ;
+: AT-C ( -- str ) 22 s" root/at/c" PATH ;
+: MV ( -- str ) 23 s" root/mv" PATH ;
+: MV-FILE ( -- str ) 24 s" root/mv/f" PATH ;
 
 : NAMED-SETUP ( -- )
    AT-DIR FS:MAKE-DIR AT-SUB FS:MAKE-DIR MV FS:MAKE-DIR
@@ -268,12 +268,12 @@ create LINK-BUF PATH-CAP allot
 : SIZE ( fd -- n ) FS:FD-STAMP nip nip ;
 : OPENED-SIZE ( option<fd> -- n )
    SOME {: f:fd :} f SIZE f FS:CLOSE-DIR ;
-: STAT-SIZE ( ^u8 n -- n ) {: a:^ u:n :}
+: STAT-SIZE ( str -- n ) {: a:^ u:n :}
    D a u FS:TRY-STAT-AT TTRUE FS:STAT-SIZE@ ;
-: ABSENT ( ^u8 n -- ) {: a:^ u:n :}
+: ABSENT ( str -- ) {: a:^ u:n :}
    D a u FS:TRY-STAT-AT FS:ENOENT FALSE-WITH ;
 \ Runs q on each name every name word refuses.
-: REFUSED ( [ fd ^u8 n -- ] -- ) {: q :}
+: REFUSED ( [ fd str -- ] -- ) {: q :}
    D s" " q execute  D s" ." q execute  D s" .." q execute
    D s" sub/x" q execute  D s\" a\zb" q execute
    D LONG PATH-CAP 1 + q execute ;
@@ -344,9 +344,9 @@ create LINK-BUF PATH-CAP allot
    gone FS:CLOSE-DIR
    [: 448 FS:TRY-MAKE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
 
-: RENAME-TO ( fd ^u8 n -- bool ) {: d:fd a:^ u:n :}
+: RENAME-TO ( fd str -- bool ) {: d:fd a:^ u:n :}
    D s" b" d a u FS:TRY-RENAME-AT ;
-: RENAME-NEW-TO ( fd ^u8 n -- bool ) {: d:fd a:^ u:n :}
+: RENAME-NEW-TO ( fd str -- bool ) {: d:fd a:^ u:n :}
    D s" b" d a u FS:TRY-RENAME-NEW-AT ;
 : RENAMES ( -- )
    D s" a" D s" b" FS:TRY-RENAME-AT TTRUE
@@ -380,7 +380,7 @@ create LINK-BUF PATH-CAP allot
    [: FS:TRY-REMOVE-FILE-AT FS:EINVAL FALSE-WITH ;] REFUSED
    [: FS:TRY-REMOVE-DIR-AT FS:EINVAL FALSE-WITH ;] REFUSED ;
 
-: LINK-AS ( fd ^u8 n -- bool ) {: d:fd a:^ u:n :}
+: LINK-AS ( fd str -- bool ) {: d:fd a:^ u:n :}
    TEMP @ >FD d a u FS:TRY-LINK-AT ;
 : TEMPS ( -- )
    D FS:TEMP-AT {: t:fd :}
@@ -427,7 +427,7 @@ HB-TARGET-LINUX-KERNEL? 0= [if]
 \ A new file of that name, written and read through the descriptor; only
 \ Linux has AT words that write.
 HB-TARGET-LINUX-KERNEL? [if]
-: WRITE-AT ( fd ^u8 n -- ) {: dir:fd name:^ u:n :}
+: WRITE-AT ( fd str -- ) {: dir:fd name:^ u:n :}
    dir FS:TEMP-AT {: t:fd :}
    t s" written" FD:WRITE-FULL
    t dir name u FS:TRY-LINK-AT TTRUE
@@ -435,10 +435,10 @@ HB-TARGET-LINUX-KERNEL? [if]
    dir name u s" written" READ-CHECK ;
 [then]
 HB-TARGET-LINUX-KERNEL? 0= [if]
-: WRITE-AT ( fd ^u8 n -- ) 2drop drop ;
+: WRITE-AT ( fd str -- ) 2drop drop ;
 [then]
 
-: FOLLOWS-TO ( ^u8 n ^u8 n ^u8 n -- )
+: FOLLOWS-TO ( str str str -- )
    {: path:^ u:n file:^ fu:n name:^ nu:n :}
    path u FS:OPEN-DIR-FOLLOW {: dir:fd :}
    dir file fu s" original" READ-CHECK

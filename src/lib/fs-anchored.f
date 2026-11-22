@@ -150,7 +150,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ A-VALIDATE checks every component before the first open. Splitting ends each
 \ component through FFI:CSTR! inside this call's snapshot, never in the caller's
 \ path.
-: A-WALK ( ^u8 n n ^u8 n bool -- )
+: A-WALK ( str n ^u8 n bool -- )
    {: path:^ u:n start:n work:^ parent:n file:bool :}
    start begin dup u < while
       {: at:n :}
