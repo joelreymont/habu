@@ -119,6 +119,8 @@ SUMTYPE take
 
 public
 
+\ found, opt and opt-len are raw bytes the OS writes: getaddrinfo's result
+\ pointer, and getsockopt's value and length.
 STRUCTURE conn OPAQUE DERIVE addr
    FIELD fd n
    FIELD held held
@@ -163,7 +165,10 @@ STRUCTURE conn OPAQUE DERIVE addr
    BUFFER service 8
    BUFFER hints 48
    FIELD pollfd FD:pollfd
-   BUFFER scratch 8
+   FIELD byte u8
+   BUFFER found 8
+   BUFFER opt 4
+   BUFFER opt-len 4
    FIELD tls TLS:session
 ;STRUCTURE
 
@@ -216,7 +221,6 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : NODE ( ^conn -- ^u8 ) CONN-NODE SPAN:$ drop ;
 : SERVICE ( ^conn -- ^u8 ) CONN-SERVICE SPAN:$ drop ;
 : HINTS ( ^conn -- ^u8 ) CONN-HINTS SPAN:$ drop ;
-: SCRATCH ( ^conn -- ^u8 ) CONN-SCRATCH SPAN:$ drop ;
 : ROOM ( ^conn -- ^u8 ) CONN-ROOM @ ;
 
 
@@ -381,16 +385,16 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    k c CONN-TAKEN +!
    k construct take got ;
 
-\ One answer byte into the scratch byte; false with the fault kept, a close
+\ One answer byte into the connection's byte; false with the fault kept, a close
 \ being `cut`.
 : BYTE? ( ^conn -- bool ) {: c :}
-   c c SCRATCH 1 PULL MATCH take
+   c c CONN-BYTE 1 PULL MATCH take
       got OF drop true ENDOF
       eof OF c CUT false ENDOF
       broke OF false ENDOF
    ;MATCH ;
 
-: LAST-BYTE ( ^conn -- n ) SCRATCH c@ ;
+: LAST-BYTE ( ^conn -- n ) CONN-BYTE c@ ;
 
 
 \ ---- Building the request head
@@ -415,7 +419,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    u c CONN-USED +! ;
 
 : CHAR+ ( ^conn n -- ) {: c b:n :}
-   b c SCRATCH c!  c c SCRATCH 1 APPEND ;
+   b c CONN-BYTE c!  c c CONN-BYTE 1 APPEND ;
 
 : CRLF+ ( ^conn -- ) {: c :} c 13 CHAR+ c 10 CHAR+ ;
 
@@ -518,7 +522,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ A held connection is quiet when a peek finds no byte and no close.
 : PROBE ( ^conn -- probe ) {: c :}
-   c CONN-FD @ c SCRATCH 1 PEEK-FLAGS RECEIVE-CALL 0 < FFI:ERRNO EAGAIN = and
+   c CONN-FD @ c CONN-BYTE 1 PEEK-FLAGS RECEIVE-CALL 0 < FFI:ERRNO EAGAIN = and
    if construct probe quiet else construct probe stale then ;
 
 : HINTS! ( ^conn -- ) {: c :}
@@ -533,9 +537,9 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Every address of the host, of either family, for a stream socket.
 : RESOLVE ( ^conn -- lookup ) {: c :}
    c HINTS!
-   c NODE c SERVICE c HINTS c SCRATCH LOOKUP-CALL {: rc:n :}
+   c NODE c SERVICE c HINTS c CONN-FOUND SPAN:$ drop LOOKUP-CALL {: rc:n :}
    rc 0<> if c construct fault resolve rc FAIL construct lookup failed exit then
-   c SCRATCH LE:U64@ {: first:n :}
+   c CONN-FOUND SPAN:$ drop LE:U64@ {: first:n :}
    first c CONN-LIST !  first c CONN-ADDR !
    first COUNT-ADDRS c CONN-ADDRS-LEFT !
    construct lookup found ;
@@ -552,10 +556,11 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c CONN-ENDS @ mono-ns - c CONN-ADDRS-LEFT @ / mono-ns + wait min ;
 
 : SOCKET-ERROR ( ^conn -- n ) {: c :}
-   4 c SCRATCH 4 + LE:U32!
-   c CONN-FD @ SOL-SOCKET SO-ERROR c SCRATCH c SCRATCH 4 + OPTION-CALL
+   4 c CONN-OPT-LEN SPAN:$ drop LE:U32!
+   c CONN-FD @ SOL-SOCKET SO-ERROR
+   c CONN-OPT SPAN:$ drop c CONN-OPT-LEN SPAN:$ drop OPTION-CALL
    0 < if FFI:ERRNO exit then
-   c SCRATCH LE:U32@ ;
+   c CONN-OPT SPAN:$ drop LE:U32@ ;
 
 \ Connects the record's socket to the address by the deadline; false with
 \ the fault kept.
