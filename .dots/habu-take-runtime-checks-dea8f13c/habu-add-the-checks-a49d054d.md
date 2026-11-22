@@ -17,3 +17,5 @@ Acceptance case 2026-11-13 (from the dot-citation recheck): test/wasm/hb-build.f
 Acceptance case (from the C4 storage lane): --checks restores src/core/dynamic-storage.f's size test, which CELL-CEIL held before C4, and adds one for RESERVE's `count width *`, which wraps unchecked (a count near the cell's maximum reserves too little).
 
 Acceptance case (C4 code 7121): code 7121 no longer exists; the switched-off rows test/dynamic-buffer.f BOUNDS-ROWS BAD-SIZE and BAD-OVERFLOW (~161-162) expect it, so the restored size test names its own code and those rows expect that.
+
+Acceptance case (from the FFI callback checks): src/lib/ffi-callback-test.f CASE-ACCESSOR and WANT-ACCESSOR sit in `false [if]` blocks; turning them on must also call CASE-ACCESSOR in RUN-SUITE and WANT-ACCESSOR in WANT-TRANSCRIPT.
