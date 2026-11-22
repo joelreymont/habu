@@ -34,8 +34,7 @@ STRUCTURE header
 ;STRUCTURE
 
 STRUCTURE segment
-   FIELD data ^u8
-   FIELD size NUM:byte-len
+   FIELD bytes str
    FIELD kind segment-kind
    FIELD virtual address
    FIELD physical address
@@ -51,12 +50,6 @@ $20 constant PROGRAM-BYTES
 
 \ Each caller has shown the cell nonnegative.
 CAST: N>BLEN ( n -- NUM:byte-len )
-
-: AS-BLEN ( n -- NUM:byte-len )
-   NUM:BYTE-LEN MATCH option
-      none OF E-BOUNDS throw ENDOF
-      some OF ENDOF
-   ;MATCH ;
 
 : CHECK-RANGE ( n n n -- ) {: total:n offset:n size:n :}
    offset 0 < size 0 < or if E-BOUNDS throw then
@@ -130,15 +123,12 @@ CAST: N>BLEN ( n -- NUM:byte-len )
    ELF32-HEADER:MAKE ;
 
 : MAKE-SEGMENT ( ^u8 ^u8 -- segment ) {: data row :}
-   data row SEGMENT-SPAN N>BLEN row LE32@ >SEGMENT-KIND
+   data row SEGMENT-SPAN row LE32@ >SEGMENT-KIND
    row $08 + LE32@ >ADDRESS row $0C + LE32@ >ADDRESS
    row $14 + LE32@ N>BLEN row $18 + LE32@ row $1C + LE32@
    ELF32-SEGMENT:MAKE ;
 
 public
-
-: FILE-BYTES ( n -- NUM:byte-len )
-   AS-BLEN ;
 
 \ INFO validates the header and table bounds, not every segment or the sections.
 : INFO ( str -- header ) {: data size:n :}
