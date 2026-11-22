@@ -24,11 +24,12 @@ split-str
 \ loader's path and a name before a call of a word a names: row marks. The
 \ slot holds the bytes the engine's literal makes: a plain literal's source
 \ span, an escaped one's decoded payload. It resets per NEXT-SCAN call, so at a
-\ token it holds the literal before it in the same statement, if any. The
-\ literal's kind is kept too, 0 when there is none: a composition rejects a
-\ string loader by it. So is where its text between the quotes starts and ends
-\ in the file, as written, escapes and all, the end 0 when there is none: the
-\ span a string loader's load reports, and the text a names: call compares.
+\ token it holds the literal before it in the same statement, if any, or before
+\ a `>str` before it. The literal's kind is kept too, 0 when there is none: a
+\ composition rejects a string loader by it. So is where its text between the
+\ quotes starts and ends in the file, as written, escapes and all, the end 0
+\ when there is none: the span a string loader's load reports, and the text a
+\ names: call compares.
 \
 \ An escaped literal's decoded bytes are not in the source, so they live in one
 \ of two buffers. STR-DEC-TURN names the one the next decode writes, and a
@@ -45,8 +46,8 @@ split-str
 \ byte, or one the resolver rejects. A declaration or `undefine` of a loader
 \ word's name rejects nothing, as the walk rejects nothing for it, but a later
 \ loader form with that word the walk reads - `include` or `require`, or a word
-\ right after a path literal - at top level or in a body, is rejected at the
-\ word as the walk rejects it.
+\ right after a path literal or its `>str` - at top level or in a body, is
+\ rejected at the word as the walk rejects it.
 \
 \ A composition loads no file a definition names: a word's run is no part of
 \ the check, so the ordinary effect checker judges its runtime loader calls.
@@ -690,10 +691,16 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
       CSR-SKIPPED
    AGAIN ;
 
+\ A `>str` after a literal is the identity it is at run time: the scan reads
+\ past it as it reads past the literal, which stays in the slot.
 : NEXT-SCAN ( -- str )
    -1 SKIP-STRINGS !
    STR-LAST-RESET
-   NEXT ;
+   BEGIN
+      NEXT  2dup s" >str" STR=CI  STR-LAST-KIND @ 0<>  and
+   WHILE
+      2drop CSR-SKIPPED
+   REPEAT ;
 
 : NEXT-BODY ( -- str )
    0 SKIP-STRINGS !
@@ -1081,8 +1088,11 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
    a u s" include" STR=CI  a u s" require" STR=CI or
    BODY-LIT-KIND @ LIT-PATH = or IF a u QUIET-USE THEN ;
 
-: BODY-TOKEN-SEEN ( str -- )
-   BODY-USE BODY-PREV-CLEAR ;
+\ A `>str` after a literal keeps its kind for the token after it.
+: BODY-TOKEN-SEEN ( str -- ) {: a:^ u:n :}
+   a u BODY-USE
+   a u s" >str" STR=CI  BODY-LIT-KIND @ 0<>  and IF EXIT THEN
+   BODY-PREV-CLEAR ;
 
 \ The rest starts with the opener's one delimiter, which the blank BODY-APPEND
 \ writes after the opener stands for, so it joins past that delimiter: the
@@ -4066,7 +4076,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
    2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
    2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
-   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!   \ a literal's record lasts the token after it
+   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!   \ a literal's record lasts past a `>str` to the token after
    TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
    TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP ;     \ after any file this token loaded
 

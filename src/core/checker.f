@@ -14305,11 +14305,22 @@ public
    data-base INB-CELL + @ REC-INB !  data-base TOKENS-CELL + @ REC-TOKENS ! ;
 
 private
+\ Whether the one token the engine read between the literal's closing quote
+\ and the token read last is `>str`.
+: STR-BETWEEN? ( -- bool )
+   LAST-TOKEN @ {: e:^ :}
+   TEXT-A @ TEXT-U @ + 1 +
+   BEGIN dup e < IF dup c@ 33 < ELSE 0 0= 0= THEN WHILE 1 + REPEAT {: p:^ :}
+   e p - 5 < IF 0 0= 0= EXIT THEN
+   p 4 s" >str" CORE-STR=CI  p 4 + c@ 33 <  and ;
+
 \ A literal's record holds while the engine reads the text it was recorded in
-\ and has read at most one token since: the loader it is passed to.
+\ and has read at most one token since, the loader it is passed to, or two
+\ when the first is `>str`, an identity at run time.
 : HELD? ( -- bool )
    data-base INB-CELL + @ REC-INB @ <> IF 0 0= 0= EXIT THEN
    data-base TOKENS-CELL + @ REC-TOKENS @ - {: k:n :}
+   k 2 = IF STR-BETWEEN? EXIT THEN
    k 0 =  k 1 =  or ;
 
 \ The source text of the last string literal when a u is exactly its copy and
