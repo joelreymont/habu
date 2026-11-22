@@ -1514,17 +1514,16 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
    commitn PF-COMMIT-N ! ;
 
 \ --- family facts memo (TFM). A checked use of a family's type asks
-\ SUM-NAMED-PAYLOAD? and TFAM-CONCRETE-LINEAR?; each walks every variant, and
-\ certifying one generated constructor asks several times, so without the memo
-\ an ENUM's constructors are quadratic in its variants.
+\ TFAM-CONCRETE-LINEAR?, which walks every variant, and certifying one
+\ generated constructor asks several times, so without the memo an ENUM's
+\ constructors are quadratic in its variants.
 \ Each answer is memoized per family under TFM-EPOCH: a cell stamped with the
 \ current epoch holds the answer a walk would give. A refusal is a throw and is
 \ never memoized. Process-local, like VNX.
 
-0 constant TFM-NAMED
-1 constant TFM-LINEAR
-2 constant TFM-STORE
-6 cells constant TFM-REC                    \ (stamp, answer) per fact
+0 constant TFM-LINEAR
+1 constant TFM-STORE
+4 cells constant TFM-REC                    \ (stamp, answer) per fact
 create TFM-BOOT   TF-CAP-INIT TFM-REC * allot
 PERSISTED-PTR-VARIABLE TFM-P   TFM-BOOT TFM-P !
 variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
@@ -1561,12 +1560,6 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 \ with a nonzero declared field count uses TYPE-FIELD for every variant. A
 \ product family keeps positional schemas
 \ for its make/unmake variants. An all-empty family has no payload either way.
-
-\ A type entry can give a sum's variants positional schemas beside named
-\ fields, and ER-READ does not refuse that.
-: RANGE-BAD ( -- )
-   s" tfam: a family's variant or field range holds rows that are not its payload"
-   EXIT-STATUS:INTERNAL die ;
 
 \ A variant's named payload is the rows of its owner chain (FVX) that sit inside
 \ its family's field slice. The chain can also hold the owner's rows outside the
@@ -1606,25 +1599,9 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
       FVX-NEXT
    REPEAT 2drop 0 RES-FALSE ;
 
-: SUMV-FAMILY-LEGACY-PAYLOAD? ( n -- bool ) {: fam:n :}
-   fam TFAM-VAR-START@ {: base:n :}
-   fam TFAM-VAR-COUNT@ {: count:n :}
-   0 BEGIN dup count < WHILE
-      base over + {: vid:n :}
-      vid SUMV-SCH-COUNT@ 0 <> IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-
-: SUM-NAMED-PAYLOAD-WALK? ( n -- bool ) {: fam:n :}
-   fam TFAM-SUM? fam TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
-   fam TFAM-FLD-COUNT@ {: count:n :}
-   count 0= IF RES-FALSE EXIT THEN
-   fam SUMV-FAMILY-LEGACY-PAYLOAD? IF RANGE-BAD THEN
-   RES-TRUE ;
-
 : SUM-NAMED-PAYLOAD? ( n -- bool ) {: fam:n :}
-   fam TFM-NAMED TFM-FLAG@ IF EXIT THEN drop
-   fam SUM-NAMED-PAYLOAD-WALK? dup fam TFM-NAMED TFM-FLAG! ;
+   fam TFAM-SUM? fam TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
+   fam TFAM-FLD-COUNT@ 0 <> ;
 
 : SUMV-NAMED-PAYLOAD? ( n -- bool ) SUMV-FAM@ SUM-NAMED-PAYLOAD? ;
 
@@ -3533,38 +3510,44 @@ create ER-MSG ER-MSG-CAP allot
 
 
 \ A node's children are built and staged before its own roots are pushed, so
-\ each node's roots stay contiguous.
-: ER-NODE ( -- n )
+\ each node's roots stay contiguous. ar is the arity of the family whose entry
+\ is read: a parameter indexes its type variables.
+: ER-NODE ( n -- n ) {: ar:n :}
    ER-TOKEN {: a:^ u:n :}
    u 1 <> IF ER-BAD THEN
    a c@ {: c:n :}
-   c 80 = IF ER-NUM SCHEMA-PARAM EXIT THEN
+   c 80 = IF
+      ER-NUM {: ix:n :}
+      ix 0 <  ix ar >=  or IF ER-BAD THEN
+      ix SCHEMA-PARAM EXIT
+   THEN
    c 67 = IF
       ER-TOKEN CT-FIND {: con:n :}
       con 0= IF ER-BAD THEN
       con SCHEMA-CON EXIT
    THEN
-   c 42 = IF recurse SCHEMA-PTR EXIT THEN
+   c 42 = IF ar recurse SCHEMA-PTR EXIT THEN
    c 65 = IF
       ER-FAM {: fam:n :}
       ER-NUM {: k:n :}
       k fam TFAM-ARITY@ <> IF ER-BAD THEN
       ES-N @ {: mark:n :}
-      k 0 ?do recurse ES-PUSH loop
+      k 0 ?do ar recurse ES-PUSH loop
       fam  mark ES-ROOTS  k SCHEMA-APP EXIT
    THEN
    c 81 = IF
       ER-NUM {: qa:n :}
       ES-N @ {: mark:n :}
-      SCH-QUOT-ROWS 0 ?do recurse ES-PUSH loop
+      SCH-QUOT-ROWS 0 ?do ar recurse ES-PUSH loop
       mark ES@  mark 1 + ES@  mark 2 + ES@  mark 3 + ES@  qa 1 and 0 <>  qa 1 invert and
       mark ES-N !
       SCHEMA-QUOT EXIT
    THEN
    c 82 = IF
       ER-NUM {: k:n :}
+      k 0 < IF ER-BAD THEN
       ES-N @ {: mark:n :}
-      k 0 ?do recurse ES-PUSH loop
+      k 0 ?do ar recurse ES-PUSH loop
       mark ES-ROOTS k SCHEMA-ROW EXIT
    THEN
    ER-BAD ;
@@ -3579,25 +3562,29 @@ create ER-MSG ER-MSG-CAP allot
    pa pu vis ta tu CHECKER-PKG-SYM ;
 
 
-: ER-VARIANT ( n -- ) {: id:n :}
+\ Reads one variant of family id; answers its positional payload count.
+: ER-VARIANT ( n -- n ) {: id:n :}
    ER-TOKEN {: na:^ nu:n :}
    ER-NUM {: tag:n :}
    ER-NUM {: pc:n :}
    ER-NAME$ {: ca:^ cu:n :}
    ER-SYM {: sym:n :}
    ER-NUM {: k:n :}
+   k 0 < IF ER-BAD THEN
    ES-N @ {: mark:n :}
-   k 0 ?do ER-NODE ES-PUSH loop
+   k 0 ?do id TFAM-ARITY@ ER-NODE ES-PUSH loop
    mark ES-ROOTS {: ss:n :}
    id na nu tag ss k pc SUMV-ADD {: v:n :}
    cu 0 <> IF v ca cu TF-INTERN cu SUMV-CTOR-PKG! THEN
-   sym 0 <> IF v sym SUMV-CTOR-SYM! THEN ;
+   sym 0 <> IF v sym SUMV-CTOR-SYM! THEN
+   k ;
 
 
 : ER-FIELD ( n n -- ) {: id:n vstart:n :}
    ER-TOKEN {: na:^ nu:n :}
    ER-NUM {: vo:n :}
    vo 0 < IF PF-NO-VARIANT ELSE vstart vo + THEN {: var:n :}
+   var SUMV-N@ >= IF ER-BAD THEN
    ER-NUM {: slot:n :}
    ER-NUM {: nc:n :}
    ER-NUM {: boff:n :}
@@ -3605,7 +3592,7 @@ create ER-MSG ER-MSG-CAP allot
    ER-NUM {: al:n :}
    ER-NUM {: flags:n :}
    ER-SYM {: sym:n :}
-   ER-NODE SCHEMA-ROOT+ {: root:n :}
+   id TFAM-ARITY@ ER-NODE SCHEMA-ROOT+ {: root:n :}
    PF-N @ {: fid:n :}
    id var na nu root slot nc boff nb al flags PF-ADD
    fid sym FIELD-SYM! ;
@@ -3641,13 +3628,22 @@ create ER-MSG ER-MSG-CAP allot
    THEN
    id TFAM-SLOTS@ ;
 
+\ A sum's or an enum's variants take named fields or positional payloads,
+\ never both: pk is the widest variant's positional count, nf the field count.
+: ER-PAYLOAD-MIX? ( n n n -- bool ) {: id:n pk:n nf:n :}
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
+   pk 0 >  nf 0 >  and ;
+
 \ Variants, fields and layout, after the families they name.
 : ER-BODY ( n -- ) {: id:n :}
    SUMV-N@ {: vstart:n :}
    ER-NUM {: nv:n :}
-   nv 0 ?do id ER-VARIANT loop
+   nv 0 < IF ER-BAD THEN
+   0  nv 0 ?do id ER-VARIANT max loop {: pk:n :}
    id vstart nv TFAM-VAR-RANGE!
    ER-NUM {: nf:n :}
+   nf 0 < IF ER-BAD THEN
+   id pk nf ER-PAYLOAD-MIX? IF ER-BAD THEN
    nf 0 > IF
       TYPE-FIELD:COUNT {: base:n :}
       nf 0 ?do id vstart ER-FIELD loop
