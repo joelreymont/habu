@@ -1,6 +1,6 @@
 ---
 title: Define private layouts once
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-16T11:17:41.726409+03:00"
@@ -16,4 +16,4 @@ Verify: test/enum-decl-suite.f and test/c2-records-types.f pass; the engine buil
 
 Depends: none.
 
-Ownership: unassigned. Claim: unassigned.
+Claim: agent=worker workspace=.jj-ws.noindex/jerry-play.
