@@ -5,8 +5,8 @@ split-str
 \ RECEIVE's timeout: zero makes one try and never reaches the AIO loop; a
 \ negative one waits with no deadline; any other is the milliseconds the call
 \ may wait in all. AIO:START must have run before the first wait.
-\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row
-\ (IO-STORAGE); the datagram spans are caller-owned.
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is two TASK:+USERS rows
+\ (SOCKADDR-ROW, ADDRLEN-ROW); the datagram spans are caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
@@ -54,10 +54,12 @@ $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $FFE3 constant MAX-PAYLOAD
 
-\ Endpoint storage is per task: a $10 sockaddr_in and a $04 socklen_t.
-$14 TASK:+USERS IO-STORAGE u8
-: SOCKADDR ( -- ^u8 ) 0 IO-STORAGE ;
-: ADDRLEN ( -- ^u8 ) $10 IO-STORAGE ;
+\ Endpoint storage is per task: a sockaddr_in, the raw bytes the OS reads and
+\ fills, and its socklen_t.
+SOCKADDR-BYTES TASK:+USERS SOCKADDR-ROW u8
+4 TASK:+USERS ADDRLEN-ROW u8
+: SOCKADDR ( -- ^u8 ) 0 SOCKADDR-ROW ;
+: ADDRLEN ( -- ^u8 ) 0 ADDRLEN-ROW ;
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;

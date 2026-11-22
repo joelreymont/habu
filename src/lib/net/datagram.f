@@ -5,9 +5,9 @@ split-str
 \ RECEIVE's timeout: zero makes one try and never reaches the AIO loop; a
 \ negative one waits with no deadline; any other is the milliseconds the call
 \ may wait in all. AIO:START must have run before the first wait.
-\ STORAGE CLASS. TASK-LOCAL on macOS: one 8-byte TASK:+USERS row holds
-\ getsockopt's answer; none on Linux. The data and address buffers are
-\ caller-owned.
+\ STORAGE CLASS. TASK-LOCAL on macOS: two 4-byte TASK:+USERS rows hold
+\ getsockopt's answer and its length; none on Linux. The data and address
+\ buffers are caller-owned.
 require src/lib/error.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
@@ -92,10 +92,11 @@ HB-TARGET-MACOS? [if]
 
 FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
-\ getsockopt's int answer at 0, its socklen_t at 4.
-8 TASK:+USERS OPTION u8
-: OPTION-VALUE ( -- ^u8 ) 0 OPTION ;
-: OPTION-LEN ( -- ^u8 ) 4 OPTION ;
+\ getsockopt's int answer and its socklen_t.
+4 TASK:+USERS VALUE-ROW u8
+4 TASK:+USERS LEN-ROW u8
+: OPTION-VALUE ( -- ^u8 ) 0 VALUE-ROW ;
+: OPTION-LEN ( -- ^u8 ) 0 LEN-ROW ;
 
 \ F_SETFD FD_CLOEXEC; answers 0 or -errno.
 : CLOSE-ON-EXEC ( n -- n )
