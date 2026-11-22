@@ -142,9 +142,9 @@ public
 
 \ Validates one entire packet, then borrows its full 128/1024-byte payload.
 \ XMODEM carries no exact binary length; never strip 0x1A from this span.
-: DECODE ( ^u8 NUM:byte-len check-kind -- ^u8 NUM:byte-len sequence )
-   {: data size:NUM:byte-len kind:check-kind :}
-   data size BLEN>N kind CHECK-KIND>N CHECK-DECODE {: block:n :}
-   data 3 + block N>BLEN data 1 + c@ >SEQUENCE ;
+: DECODE ( str check-kind -- str sequence )
+   {: data size:n kind:check-kind :}
+   data size kind CHECK-KIND>N CHECK-DECODE {: block:n :}
+   data 3 + block data 1 + c@ >SEQUENCE ;
 
 ;package

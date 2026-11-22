@@ -12,7 +12,7 @@ from xmodem import packet
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SETUP = '''split-str
+SETUP = '''
 require src/lib/aio.f
 require src/lib/fs.f
 require src/lib/heap.f
@@ -26,13 +26,13 @@ TYPED-VARIABLE SESSION SERIAL-XMODEM:session
 CAST: BLEN>N ( NUM:byte-len -- n )
 : FRESH ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
-: INPUT-READ ( ^u8 n n -- ) {: path size:n capacity:n :}
+: INPUT-READ ( str n -- ) {: path:str capacity:n :}
    HEAP:ALLOCATOR capacity [type] u8 VEC:NEW INPUT !
-   INPUT @ VEC:SPAN SPAN:$ drop {: data :}
-   path size data capacity FS:READ-ALL INPUT @ swap VEC:RESIZE ;
+   INPUT @ VEC:SPAN SPAN:$ str> drop {: data :}
+   path data capacity FS:READ-ALL INPUT @ swap VEC:RESIZE ;
 
 
-: OPEN-HANDLE ( ^u8 n -- SERIAL:handle )
+: OPEN-HANDLE ( str -- SERIAL:handle )
    115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF ENDOF failed OF drop -1 throw ENDOF unsupported OF -2 throw ENDOF
    ;MATCH ;
@@ -119,16 +119,16 @@ class Checks:
         if actions is not None:
             call = actions
         code = SETUP + f'''
-s" {source}" {len(data)} INPUT-READ
+s" {source}" >str {len(data)} INPUT-READ
 FRESH OUTPUT !
 : RUN ( -- )
    AIO:START
-   s" {os.ttyname(slave)}" OPEN-HANDLE {{: handle:SERIAL:handle :}}
+   s" {os.ttyname(slave)}" >str OPEN-HANDLE {{: handle:SERIAL:handle :}}
    handle {wait if ack_wait is None else ack_wait} >MS {wait} >MS SESSION SERIAL-XMODEM:INIT
    {'handle CLOSE-HANDLE' if close_before else ''}
    s" READY" type cr
    {call} REPORT
-   s" {output}" OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL
+   s" {output}" >str OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
    INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE
    AIO:STOP ;
@@ -483,27 +483,27 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : READY ( SERIAL:handle -- )
-   s" ready" 1000 >MS SERIAL:WRITE MATCH SERIAL:io-result
+   s" ready" >str 1000 >MS SERIAL:WRITE MATCH SERIAL:io-result
       transferred OF BLEN>N 5 <> if -1 throw then ENDOF
       timeout OF -2 throw ENDOF closed OF -3 throw ENDOF failed OF SERIAL:ERRNO>N throw ENDOF
    ;MATCH ;
 
 
 : CHECK-REPLY ( n ^VEC:vector<u8> -- ) {{: identity:n output:^ :}}
-   output VEC:SPAN SPAN:$ {{: data length:n :}}
+   output VEC:SPAN SPAN:$ str> {{: data length:n :}}
    length 128 <> if -1 throw then
    length 0 do data i + c@ identity <> if -1 throw then loop ;
 
 
-: WORK ( ^u8 n ^SERIAL-XMODEM:session ^^VEC:vector<u8> ^u8 n -- )
-   {{: path length:n session:^ output:^ data identity:n :}}
+: WORK ( str ^SERIAL-XMODEM:session ^^VEC:vector<u8> ^u8 n -- )
+   {{: path:str session:^ output:^ data identity:n :}}
    1 ENTERED atomic-add drop
    begin ENTERED atomic@ 2 < while TASK:PAUSE repeat
-   path length OPEN-HANDLE {{: handle:SERIAL:handle :}}
+   path OPEN-HANDLE {{: handle:SERIAL:handle :}}
    handle 1000 >MS 1000 >MS session SERIAL-XMODEM:INIT FRESH output ! handle READY
    4 0 do
       identity i + data c!
-      data 1 128 BLOCK 5000 >MS session SERIAL-XMODEM:SEND COUNT 1 <> if -1 throw then
+      data 1 >str 128 BLOCK 5000 >MS session SERIAL-XMODEM:SEND COUNT 1 <> if -1 throw then
       128 BYTES output @ 5000 >MS session SERIAL-XMODEM:RECEIVE COUNT 128 <> if -1 throw then
       identity i + output @ CHECK-REPLY
    loop
@@ -511,8 +511,8 @@ TASK:MIN-STACK TASK:TASK WORKER1
    1 DONE atomic-add drop ;
 
 
-: WORK0 ( -- ) s" {names[0]}" SESSION0 OUTPUT0 SOURCE0 160 WORK ;
-: WORK1 ( -- ) s" {names[1]}" SESSION1 OUTPUT1 SOURCE1 177 WORK ;
+: WORK0 ( -- ) s" {names[0]}" >str SESSION0 OUTPUT0 SOURCE0 160 WORK ;
+: WORK1 ( -- ) s" {names[1]}" >str SESSION1 OUTPUT1 SOURCE1 177 WORK ;
 
 
 : WAIT-DONE ( ^n -- ) {{: worker:^ :}}

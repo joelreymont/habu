@@ -262,13 +262,13 @@ CAST: BLEN>N ( NUM:byte-len -- n )
    session SESSION-KIND @ PACKET-BYTES ;
 
 
-: READ-FRAME ( ^session -- NUM:byte-len ) {: session:^ :}
+: READ-FRAME ( ^session -- str ) {: session:^ :}
    session SESSION-CONTROL SPAN:$ drop c@ {: header:n :}
-   header session FRAME-SIZE {: size:NUM:byte-len :}
-   session PACKET dup size BLEN>N VEC:RESIZE
+   header session FRAME-SIZE BLEN>N {: size:n :}
+   session PACKET dup size VEC:RESIZE
    VEC:SPAN SPAN:$ drop {: data :}
    header data c!
-   data 1 + size BLEN>N 1 - session READ-REST 0= if E-FRAME throw then size ;
+   data 1 + size 1 - session READ-REST 0= if E-FRAME throw then data size ;
 
 
 : PREVIOUS? ( sequence ^session -- bool ) {: sequence:sequence session:^ :}
@@ -290,10 +290,8 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 : RECEIVE-PACKET ( ^session -- ) {: session:^ :}
    TRUE session SESSION-NEGOTIATED !
-   session READ-FRAME {: size:NUM:byte-len :}
-   session PACKET VEC:SPAN SPAN:$ drop size
-   session SESSION-KIND @ DECODE {: data len:NUM:byte-len seq:sequence :}
-   data len BLEN>N seq session ACCEPT-PAYLOAD ;
+   session READ-FRAME session SESSION-KIND @ DECODE
+   session ACCEPT-PAYLOAD ;
 
 
 : RECEIVE-ONE ( ^session -- bool )

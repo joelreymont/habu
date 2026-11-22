@@ -15,13 +15,12 @@ require src/lib/vector.f
 using XMODEM
 TYPED-VARIABLE INPUT ^VEC:vector<u8>
 TYPED-VARIABLE OUTPUT ^VEC:vector<u8>
-CAST: BLEN>N ( NUM:byte-len -- n )
 : FRESH ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
-: INPUT-READ ( ^u8 n n -- ) {: path size:n capacity:n :}
+: INPUT-READ ( str n -- ) {: path:str capacity:n :}
    HEAP:ALLOCATOR capacity [type] u8 VEC:NEW INPUT !
-   INPUT @ VEC:SPAN SPAN:$ drop {: data :}
-   path size data capacity FS:READ-ALL INPUT @ swap VEC:RESIZE ;
+   INPUT @ VEC:SPAN SPAN:$ str> drop {: data :}
+   path data capacity FS:READ-ALL INPUT @ swap VEC:RESIZE ;
 '''
 
 
@@ -53,7 +52,7 @@ class Checks:
     def input(self, data):
         path = self.out / 'input.bin'
         path.write_bytes(data)
-        return SETUP + f'\ns" {path}" {len(data)} INPUT-READ\n'
+        return SETUP + f'\ns" {path}" >str {len(data)} INPUT-READ\n'
 
     def encode(self, data, sequence, size, kind, *, error=0):
         output = self.out / 'packet.bin'
@@ -62,7 +61,7 @@ FRESH OUTPUT !
 s" preserved" OUTPUT @ VEC:APPEND
 : EXERCISE ( -- )
    [: INPUT @ VEC:SPAN SPAN:$ {sequence} >SEQUENCE {size} >PAYLOAD-SIZE {kind} >CHECK-KIND OUTPUT @ ENCODE ;] catch .
-   s" {output}" OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE ;
+   s" {output}" >str OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE ;
 EXERCISE
 '''
         assert self.run(source) == [str(error)]
@@ -72,13 +71,13 @@ EXERCISE
     def decode(self, data, kind, *, error=0):
         output = self.out / 'payload.bin'
         source = self.input(data) + f'''
-: SAVE ( ^u8 NUM:byte-len sequence -- )
-   SEQUENCE>N . {{: payload size:NUM:byte-len :}}
-   s" {output}" payload size BLEN>N FS:WRITE-ALL ;
+: SAVE ( str sequence -- )
+   SEQUENCE>N . {{: payload:str :}}
+   s" {output}" >str payload FS:WRITE-ALL ;
 
 
 : EXERCISE ( -- )
-   [: INPUT @ VEC:SPAN SPAN:$ BYTES {kind} >CHECK-KIND DECODE SAVE ;] catch . INPUT @ VEC:DELETE ;
+   [: INPUT @ VEC:SPAN SPAN:$ {kind} >CHECK-KIND DECODE SAVE ;] catch . INPUT @ VEC:DELETE ;
 EXERCISE
 '''
         expected = [str(error)] if error else [str(data[1]), '0']

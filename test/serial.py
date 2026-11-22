@@ -27,7 +27,7 @@ create BODY 1048578 allot
    ;MATCH ;
 
 
-: OPEN ( ^u8 n -- SERIAL:handle )
+: OPEN ( str -- SERIAL:handle )
    115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF ENDOF
       failed OF SERIAL:ERRNO>N throw ENDOF
@@ -147,12 +147,12 @@ def binary_io(habu, output):
     body = '''
 : RUN ( -- )
    AIO:START
-   s" /dev/null" 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
+   s" /dev/null" >str 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF SERIAL:CLOSE OK -1 throw ENDOF
       failed OF SERIAL:ERRNO>N 25 <> if -1 throw then ENDOF
       unsupported OF -1 throw ENDOF
    ;MATCH
-   s" DEVICE" OPEN {: handle:SERIAL:handle :}
+   s" DEVICE" >str OPEN {: handle:SERIAL:handle :}
    handle READY
    $A5 BODY 256 + c! $5A BODY 257 + c!
    handle BODY 256 EXACT-READ
@@ -209,7 +209,7 @@ def partial_write(habu, output):
 : RUN ( -- )
    AIO:START
    1048576 0 do i $FF and BODY i + c! loop
-   s" DEVICE" OPEN {: handle:SERIAL:handle :}
+   s" DEVICE" >str OPEN {: handle:SERIAL:handle :}
    handle READY
    handle BODY 1 EXACT-READ
    handle BODY 1048576 >str 0 >MS SERIAL:WRITE MOVED .
@@ -238,7 +238,7 @@ def disconnect(habu, output):
     body = '''
 : RUN ( -- )
    AIO:START
-   s" DEVICE" OPEN {: handle:SERIAL:handle :}
+   s" DEVICE" >str OPEN {: handle:SERIAL:handle :}
    handle READY
    handle BODY 1 SERIAL:BYTES 2000 >MS SERIAL:READ REPORT
    handle BODY 1 >str 0 >MS SERIAL:WRITE REPORT
@@ -278,11 +278,11 @@ create BODY0 16 allot
 create BODY1 16 allot
 TASK:MIN-STACK TASK:TASK WORKER0
 TASK:MIN-STACK TASK:TASK WORKER1
-: WORK ( ^u8 n n ^u8 n n -- )
-   {{: path size:n speed:n bytes identity:n expected:n :}}
+: WORK ( str n ^u8 n n -- )
+   {{: path:str speed:n bytes identity:n expected:n :}}
    1 ENTERED atomic-add drop
    begin ENTERED atomic@ 2 < while TASK:PAUSE repeat
-   path size speed SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
+   path speed SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
       opened OF ENDOF
       failed OF SERIAL:ERRNO>N throw ENDOF
       unsupported OF -1 throw ENDOF
@@ -297,8 +297,8 @@ TASK:MIN-STACK TASK:TASK WORKER1
    1 DONE atomic-add drop ;
 
 
-: WORK0 ( -- ) s" {paths[0]}" {speeds[0]} BODY0 160 3 WORK ;
-: WORK1 ( -- ) s" {paths[1]}" {speeds[1]} BODY1 177 11 WORK ;
+: WORK0 ( -- ) s" {paths[0]}" >str {speeds[0]} BODY0 160 3 WORK ;
+: WORK1 ( -- ) s" {paths[1]}" >str {speeds[1]} BODY1 177 11 WORK ;
 
 
 : WAIT-DONE ( ^n -- ) {{: worker:^ :}}
@@ -356,19 +356,19 @@ def main():
     # a timeout past INT32_MAX is E-SERIAL-OPERAND.
     for length, timeout, handle, code in ((0, -1, 0, 'moved 0 0'), (1, -1, 0, '-9292'),
                                            (1, 0x80000000, 0, '-9110')):
-        for operation in ('READ', 'WRITE'):
+        for operation, data in (('READ', f'''BODY {length} NUM:BYTE-LEN MATCH option
+      none OF -1 throw ENDOF some OF ENDOF
+   ;MATCH'''), ('WRITE', f'BODY {length} >str')):
             body = f'''
 : RUN ( -- )
-   [: {handle} SERIAL:>HANDLE BODY {length} NUM:BYTE-LEN MATCH option
-      none OF -1 throw ENDOF some OF ENDOF
-   ;MATCH {timeout} >MS SERIAL:{operation} REPORT ;] catch . ; RUN
+   [: {handle} SERIAL:>HANDLE {data} {timeout} >MS SERIAL:{operation} REPORT ;] catch . ; RUN
 '''
             assert native(habu, output, body) == code.split()
             checks += 1
     for path, expected in (('/no/such/habu-serial-port', '2'), ('/dev/null', '25')):
         body = f'''
 : RUN ( -- )
- s" {path}" 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
+ s" {path}" >str 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
  opened OF SERIAL:CLOSE OK -1 throw ENDOF
  failed OF SERIAL:ERRNO>N . ENDOF unsupported OF -1 throw ENDOF ;MATCH ; RUN
 '''
@@ -377,11 +377,11 @@ def main():
     name_max = '63' if sys.platform == 'darwin' else '36'
     for prep, text, expected in (
             # An empty path is an operand error (E-SERIAL-OPERAND).
-            ('', 's" "', ['-9110']),
+            ('', 's" " >str', ['-9110']),
             # A NUL inside the path cannot cross into C (E-FFI-NUL).
-            ('0 BODY 1 + c!', 'BODY 3', ['-3504']),
+            ('0 BODY 1 + c!', 'BODY 3 >str', ['-3504']),
             # A 4096-byte path with no NUL reaches open, which answers ENAMETOOLONG.
-            ('$41 BODY 4096 SPAN:MAKE SPAN:FILL', 'BODY 4096', [name_max, '0'])):
+            ('$41 BODY 4096 SPAN:MAKE SPAN:FILL', 'BODY 4096 >str', [name_max, '0'])):
         body = f'''
 : RUN ( -- )
    {prep} [: {text} 115200 SERIAL:BAUD SERIAL:OPEN8N1 MATCH SERIAL:open-result
