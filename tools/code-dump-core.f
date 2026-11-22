@@ -28,7 +28,7 @@ private
    loop
    s" code-dump: no live record begins at this xt" EXIT-STATUS:NOINPUT die ;
 
-: STEP ( ^u8 n n -- n ) {: a:^ u:n pc:n :}
+: STEP ( str n -- n ) {: a:^ u:n pc:n :}
    pc FMT:.INT s" : " type
    a u pc DUMP-DECODE:STEP {: bytes:n :}
    bytes 0 <= bytes u > or if
@@ -36,7 +36,7 @@ private
    then
    cr bytes ;
 
-: WALK ( n ^u8 n -- ) {: xt:n a:^ u:n :}
+: WALK ( n str -- ) {: xt:n a:^ u:n :}
    0 begin dup u < while
       {: offset:n :}
       a offset + u offset - xt offset + STEP

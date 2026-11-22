@@ -61,7 +61,7 @@ CODEGEN:BUFFER OUTPUT
    UNICODE-CLASS-TOOL:CHECK-FILE-DIGEST ;
 
 \ The whole file, in a buffer the process keeps: names point into it.
-: READ-INPUT ( str -- ^u8 n )
+: READ-INPUT ( str -- str )
    2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got ;
@@ -139,7 +139,7 @@ CODEGEN:BUFFER OUTPUT
       end
    repeat drop ;
 
-: OUT$ ( ^u8 n -- )
+: OUT$ ( str -- )
    OUTPUT CODEGEN:APPEND-STRING ;
 
 : OUT-N ( n -- )
@@ -220,7 +220,7 @@ public
    COLLECT-RANGES
    true READY ! ;
 
-: RENDER ( -- ^u8 n )
+: RENDER ( -- str )
    READY @ 0= if UNICODE-CLASS-TOOL:E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-PREAMBLE

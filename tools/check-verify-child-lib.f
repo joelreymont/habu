@@ -57,7 +57,7 @@ variable OF-U                           \ 0 for the other forms
 variable JSON?   true JSON? !           \ records are JSON, false after `--prose`
 
 
-: WRITE ( n ^u8 n -- ) {: fd:n a:^ u:n :}
+: WRITE ( n str -- ) {: fd:n a:^ u:n :}
    u 0= if exit then
    fd a u write u <> if s" check-verify: write failed" EXIT-STATUS:IOERR die then ;
 
@@ -466,11 +466,11 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 
 
 \ The engine provides the path, or this child loaded it: what `require` skips.
-: HELD? ( ^u8 n -- bool )
+: HELD? ( str -- bool )
    SOURCE-ROOT:RESOLVE nip nip ;
 
 
-: RESULT ( ^u8 n -- ) {: a:^ u:n :}
+: RESULT ( str -- ) {: a:^ u:n :}
    OUT-FD s" check-verify: " WRITE
    OUT-FD a u WRITE
    OUT-FD NEWLINE ;

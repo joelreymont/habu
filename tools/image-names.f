@@ -44,7 +44,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    loop
    {: start:n :} a u 32 start SPLIT-NEXT 2drop ;
 
-: COLUMN ( ^u8 n ^u8 n -- n ) {: a:^ u:n name:^ size:n :}
+: COLUMN ( str str -- n ) {: a:^ u:n name:^ size:n :}
    1 begin
       {: col:n :}
       a u col FIELD$ dup 0= if 2drop -1 exit then
@@ -58,7 +58,7 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    0 TEXT BYTE-VIEW USED @ 10 POS @ SPLIT-NEXT
    drop POS ! ;
 
-: NUMBER ( ^u8 n -- n )
+: NUMBER ( str -- n )
    STR>NUMBER? MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH ;
 
 : NUM-COL ( str n -- n ) FIELD$ NUMBER ;
@@ -143,7 +143,7 @@ public
    ok if PATH mapu true else path pathu false then ;
 
 \ A missing map or an unknown header leaves no rows: LOADED? is false.
-: LOAD ( ^u8 n -- )
+: LOAD ( str -- )
    {: path:^ pathu:n :}
    0 USED ! 0 ATTR-OK ! 0 NS-N !
    path pathu MAP$ 0= if E-FS-CAPACITY throw then
@@ -215,7 +215,7 @@ public
    repeat ;
 
 \ The start and length of the one row of a kind, 0 0 when there is none.
-: REGION ( ^u8 n -- n n )
+: REGION ( str -- n n )
    {: kind:^ kindu:n :}
    0 0 false
    LOADED? COL-KIND @ 0 >= and if
@@ -249,7 +249,7 @@ private
    row rowu COL-SOURCE @ FIELD$ ;
 
 \ The pointer holds until the next call: a new owner may move OWNERS.
-: OWNER ( ^u8 n -- ^owner ) {: key:^ keyu:n :}
+: OWNER ( str -- ^owner ) {: key:^ keyu:n :}
    OWNER-N @ 0 ?do
       i OWNERS {: seen:^ :}
       seen OWNER-KEY @ seen OWNER-SIZE @ key keyu STR= if

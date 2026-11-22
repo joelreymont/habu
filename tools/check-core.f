@@ -144,7 +144,7 @@ variable CHK-EXP-OUT-U
 
 \ Reads the file at a path into CHK-SRC whole. The buffer may move as it grows,
 \ so a caller takes CHK-SRC-BUF after the read.
-: CHK-SRC-READ ( ^u8 n -- n )
+: CHK-SRC-READ ( str -- n )
    [: CHK-SRC-ROOM drop ;] READ-WHOLE-FILE ;
 
 : CHK-RUN-ROOM ( n -- str )
@@ -314,10 +314,10 @@ variable CHK-EXP-OUT-U
 
 public
 
-: OPT ( ^u8 n -- )
+: OPT ( str -- )
    CHK-OPT ;
 
-: FILE ( ^u8 n -- ) {: path:^ pathu:n :}
+: FILE ( str -- ) {: path:^ pathu:n :}
    CHK-SEL-MODE @
    case
       CHK-SEL-NONE of
@@ -695,7 +695,7 @@ private
 
 public
 
-: SOURCE ( ^u8 n ^u8 n -- )
+: SOURCE ( str str -- )
    {: src:^ srcu:n label:^ labelu:n :}
    CHK-SEL-MODE @ CHK-SEL-NONE <> if label labelu CHK-SECOND then
    labelu PATH-CAP > if E-FS-CAPACITY throw then

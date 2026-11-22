@@ -85,7 +85,7 @@ variable SRC-N
 
 \ ---- arguments --------------------------------------------------------------
 
-: STR= ( ^u8 n ^u8 n -- bool ) {: a:^ au b:^ bu :}
+: STR= ( str str -- bool ) {: a:^ au b:^ bu :}
    au bu <> if 0 0= 0= exit then
    0 {: bad :}
    bad au 0 ?do a i + c@ b i + c@ <> if 1 + then loop

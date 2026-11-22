@@ -39,7 +39,7 @@ variable MAPPED    \ has this line's address column been rewritten already
 \ A caller-owned builder: the shared SB is 1 KiB and a fixture may hand LINE$ a
 \ line that lives in it, which is also why the offset does not go through
 \ src/lib/fmt.f (FMT appends to SB only). A full buffer throws E-STR-CAPACITY.
-: OUT+ ( ^u8 n -- )
+: OUT+ ( str -- )
    OUT-BUF OUT-CAP OUT-U BUF-APPEND ;
 
 : DIGIT+ ( n -- )
@@ -156,7 +156,7 @@ public
    OUT-BUF OUT-U BUF-LEN@ ;
 private
 
-: LINE. ( ^u8 n -- )
+: LINE. ( str -- )
    LINE$ type cr ;
 
 \ ---- streaming stdin ----------------------------------------------------------

@@ -42,7 +42,7 @@ variable OUTCOME-U
 variable BATCH-CODE
 variable BATCH-K
 
-: ERR ( ^u8 n -- )
+: ERR ( str -- )
    {: a:^ u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
 
@@ -68,7 +68,7 @@ variable BATCH-K
 
 \ A check that completed with this verdict: said only when the verifier wrote
 \ prose.
-: COMPLETED ( ^u8 n -- )
+: COMPLETED ( str -- )
    {: a:^ u:n :}
    true PUBLISHABLE !
    VERIFY-LOG$ nip 0= if exit then
@@ -83,7 +83,7 @@ variable BATCH-K
    ;MATCH
    NEWLINE RELAY ;
 
-: OTHERS ( [ ^u8 n ^u8 n -- ] -- )  SUBJECT @ swap DOC-EACH-BUT ;
+: OTHERS ( [ str str -- ] -- )  SUBJECT @ swap DOC-EACH-BUT ;
 
 : VERIFY ( -- )
    SUBJECT @ {: slot:n :}
@@ -167,7 +167,7 @@ public
 
 \ Checks the bytes as the file at the path, silently; a completed check is the
 \ store's probe (LSP-DEFS:DEFS-PROBE) only while GATHER runs.
-: USES ( ^u8 n ^u8 n ^u8 n n [ -- ] -- )
+: USES ( str str str n [ -- ] -- )
    {: a:^ u:n p:^ pu:n t:^ tu:n owner:n gather :}
    a SRC-A !
    u SRC-U !

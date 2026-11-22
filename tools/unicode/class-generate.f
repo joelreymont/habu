@@ -68,7 +68,7 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got PARSE-BRACKETS ;
 
-: OUT$ ( ^u8 n -- )
+: OUT$ ( str -- )
    OUTPUT CODEGEN:APPEND-STRING ;
 
 : OUT-N ( n -- )
@@ -167,7 +167,7 @@ public
    LOAD-BRACKETS-FILE
    READY? 0= if E-STATE throw then ;
 
-: RENDER ( -- ^u8 n )
+: RENDER ( -- str )
    READY? 0= if E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-PREAMBLE
@@ -188,7 +188,7 @@ public
    OUTPUT CODEGEN:CONTENTS ;
 
 \ Writes into RENDER's buffer: RENDER's answer is stale after it.
-: RENDER-VISIBLE ( -- ^u8 n )
+: RENDER-VISIBLE ( -- str )
    READY? 0= if E-STATE throw then
    OUTPUT CODEGEN:RESET
    OUT-VISIBLE-PREAMBLE

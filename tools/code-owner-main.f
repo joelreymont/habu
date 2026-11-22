@@ -39,7 +39,7 @@ variable ACC
 \ `$1a2b` or plain decimal, the two spellings a debugger prints.
 : BAD ( -- ) s" code-owner: offset is not a number" EXIT-STATUS:USAGE die ;
 
-: OFFSET ( ^u8 n -- n )
+: OFFSET ( str -- n )
    HEX-BODY if HEX>N exit then
    STR>NUMBER? MATCH option
      none OF BAD ENDOF

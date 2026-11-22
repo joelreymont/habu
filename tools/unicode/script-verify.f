@@ -60,7 +60,7 @@ CODEGEN:BUFFER TEXT
    UNICODE-CLASS-TOOL:CHECK-FILE-DIGEST ;
 
 \ The whole file, in a buffer the process keeps: names point into it.
-: READ-INPUT ( str -- ^u8 n )
+: READ-INPUT ( str -- str )
    2dup FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: path:^ pathu:n buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
    buf got ;
@@ -157,7 +157,7 @@ CODEGEN:BUFFER TEXT
    c 65 >= c 90 <= and if c 32 + exit then
    c ;
 
-: TEXT$ ( ^u8 n -- )
+: TEXT$ ( str -- )
    TEXT CODEGEN:APPEND-STRING ;
 
 \ Evaluates the variant named for script idx, storing its tag through TAG!.

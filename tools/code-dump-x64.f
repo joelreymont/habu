@@ -6,7 +6,7 @@ require src/arch/x86-64/disasm.f
 package DUMP-DECODE
 public
 
-: STEP ( ^u8 n n -- n )
+: STEP ( str n -- n )
    X64DIS:DIS1 ;
 
 ;package

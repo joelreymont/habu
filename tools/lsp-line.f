@@ -19,7 +19,7 @@ private
 TYPED-VARIABLE JSON-ST JSON:cursor
 
 \ The line of the text at offset O, without its LF, and the offset after it.
-: LINE ( ^u8 n n -- ^u8 n n )
+: LINE ( str n -- str n )
    {: a:^ u:n o:n :}
    a o + u o - LF INDEX-OF MATCH option
       none OF a o + u o - u ENDOF
@@ -43,7 +43,7 @@ public
 \ The raw text of a top-level member of the line and its JSON token kind, or -1
 \ when the line has no such member: a string's text between its quotes,
 \ escapes and all, or a number's digits. The line is one JSON object.
-: MEMBER ( ^u8 n ^u8 n -- ^u8 n n )
+: MEMBER ( str str -- str n )
    {: a:^ u:n k:^ ku:n :}
    JSON-ST a u JSON:READ-INIT
    JSON:READ-NEXT drop

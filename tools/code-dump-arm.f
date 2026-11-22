@@ -7,7 +7,7 @@ require src/core/exit-status.f
 package DUMP-DECODE
 public
 
-: STEP ( ^u8 n n -- n )
+: STEP ( str n -- n )
    drop {: a:^ u:n :}
    u 4 < if s" code-dump: partial ARM instruction at recorded end" EXIT-STATUS:INTERNAL die then
    a c@ a 1 + c@ 8 lshift or

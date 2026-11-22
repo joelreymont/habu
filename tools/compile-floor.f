@@ -49,7 +49,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
       s" compile-floor: stderr write failed" EXIT-STATUS:IOERR die
    then ;
 
-: REFUSE ( ^u8 n n -- ) {: msg:^ mu thrown :}
+: REFUSE ( str n -- ) {: msg:^ mu thrown :}
    msg mu EMIT-ERR
    thrown throw ;
 

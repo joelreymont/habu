@@ -140,7 +140,7 @@ private
 
 public
 
-: INTERN ( ^u8 n -- n ) {: a:^ u :}
+: INTERN ( str -- n ) {: a:^ u :}
    a u INTERN-FIND dup 0 >= IF exit THEN drop
    a u INTERN# INTERN-STORE-NEW ;
 

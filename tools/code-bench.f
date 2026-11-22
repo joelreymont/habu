@@ -98,7 +98,7 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 \ ---- the source under the text benchmarks -----------------------------------
 
-: TEXT$ ( -- ^u8 n ) LINT-SOURCE:TEXT drop TEXT-N @ ;
+: TEXT$ ( -- str ) LINT-SOURCE:TEXT drop TEXT-N @ ;
 
 : LINES$ ( -- str ) LINT-SOURCE:TEXT drop LINES-N @ ;
 

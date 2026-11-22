@@ -27,7 +27,7 @@ TYPED-VARIABLE TIP-B ^VEC:vector<u8> SCRATCH-ONLY \ a held link's tooltip
 TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable SHOWN-N                         \ and the links written so far
 
-: PATH$ ( -- ^u8 n )  0 PATH-B PATH-U @ ;
+: PATH$ ( -- str )  0 PATH-B PATH-U @ ;
 : T+ ( str -- )  TIP-B @ VEC:APPEND ;
 : TIP$ ( -- str )  TIP-B @ VEC:SPAN SPAN:$ ;
 
@@ -43,7 +43,7 @@ variable SHOWN-N                         \ and the links written so far
    s" outcome" READ-STR-EQ? if READ-NEXT drop s" held" READ-STR-EQ? HELD ! exit then
    READ-NEXT drop READ-SKIP-VALUE ;
 
-: DECODE ( ^u8 n -- )
+: DECODE ( str -- )
    {: a:^ u:n :}
    0 PATH-U !
    false HELD !
@@ -62,7 +62,7 @@ variable SHOWN-N                         \ and the links written so far
    s" : this loader did not read it; the engine provides it or it was already recorded." T+
    TIP$ ;
 
-: LINK ( ^u8 n -- )
+: LINK ( str -- )
    {: a:^ u:n :}
    a u DECODE
    OUT @

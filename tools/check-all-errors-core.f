@@ -228,7 +228,7 @@ public
 \ Check the source file at the given path under the given label as a load runs
 \ it, every file a top-level loader statement loads included (COMPOSE-BUF). No
 \ run of the program follows, so the check reports what it leaves to one.
-: FILE ( ^u8 n ^u8 n -- ) {: labela:^ labelu:n patha:^ pathu:n :}
+: FILE ( str str -- ) {: labela:^ labelu:n patha:^ pathu:n :}
    [: labela labelu CA-START
       patha pathu CA-READ-SOURCE
       patha pathu false CA-COMPOSE-AT
@@ -256,7 +256,7 @@ public
 
 \ Check the given source bytes under the given label as one unit: a loader
 \ statement in them loads nothing, and a top-level token is not resolved.
-: BUF ( ^u8 n ^u8 n -- ) {: labela:^ labelu:n srca:^ srcu:n :}
+: BUF ( str str -- ) {: labela:^ labelu:n srca:^ srcu:n :}
    [: labela labelu CA-START
       srca srcu CA-SOURCE-BUF!
       false true CA-RUN ;] REJECTION:PRESERVE-LABEL ;

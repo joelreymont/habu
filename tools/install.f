@@ -62,7 +62,7 @@ create MSG 64 allot
 
 
 \ The part of path p below a root of ru bytes.
-: BELOW ( ^u8 n n -- ^u8 n ) {: p:^ u:n ru:n :}
+: BELOW ( str n -- str ) {: p:^ u:n ru:n :}
    p ru 1 + +  u ru 1 + - ;
 
 
@@ -75,7 +75,7 @@ create MSG 64 allot
    LIB$ s" habu.next" NEXT FS:JOIN-PATH NEXT-U ! ;
 
 
-: MISSING ( ^u8 n -- ) {: a:^ u:n :}
+: MISSING ( str -- ) {: a:^ u:n :}
    s" install: the working directory has no " {: p:^ pu:n :}
    p MSG pu BYTE-COPY
    a MSG pu + u BYTE-COPY
@@ -130,7 +130,7 @@ create MSG 64 allot
    p u FS:DIR? if p u SOURCE-ROOT:CWD$ nip BELOW TO! TO$ FS:MAKE-DIRS then
    true ;
 
-: CARRY ( ^u8 n -- ) {: p:^ u:n :}
+: CARRY ( str -- ) {: p:^ u:n :}
    p u SOURCE-ROOT:CWD$ nip BELOW TO!
    p u TO$ FS:COPY-FILE-STREAM ;
 

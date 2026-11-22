@@ -84,7 +84,7 @@ variable RESULT-SYM
    then
    JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
-: DECODE ( ^u8 n -- bool )
+: DECODE ( str -- bool )
    {: a:^ u:n :}
    0 ROW-PKG-U !  0 ROW-TAIL-U !
    -1 ROW-VIS !  0 ROW-START !  0 ROW-END !  0 ROW-FIELDS !
@@ -112,7 +112,7 @@ variable RESULT-SYM
       ROW-ID ID!
    then ;
 
-: LINE ( ^u8 n -- )
+: LINE ( str -- )
    DECODE if ROW-SELECT then ;
 
 : ROWS ( -- )
@@ -127,7 +127,7 @@ variable RESULT-SYM
       at len + 1+
    repeat drop ;
 
-: SCAN ( ^u8 n ^u8 n -- )
+: SCAN ( str str -- )
    0 COUNT !
    INDEX-MS >MS
    LSP-CHECK:INDEX-BYTES MATCH LSP-CHECK:verdict
@@ -140,7 +140,7 @@ variable RESULT-SYM
    ;MATCH ;
 
 \ The path must be in the image's own source tree; return its relative part.
-: RELATIVE ( ^u8 n -- ^u8 n bool )
+: RELATIVE ( str -- str bool )
    {: path:^ pathu:n :}
    SOURCE-ROOT:ENGINE$ {: root:^ rootu:n :}
    pathu rootu 1+ <= if NULL$ false exit then

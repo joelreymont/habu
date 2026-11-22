@@ -18,7 +18,7 @@ variable PARENS?
 : T-OFF@ ( n -- ^u8 )
    TOFF @ ;
 
-: T-OFF! ( str -- ) {: a:^ k :}
+: T-OFF! ( ^u8 n -- ) {: a:^ k :}
    a k TOFF ! ;
 
 : T-LEN@ ( n -- n )
@@ -44,7 +44,7 @@ variable PARENS?
    u TN# @ T-LEN!
    TN# @ 1+ TN# ! ;
 
-: TOK ( n -- ^u8 n ) {: k :}
+: TOK ( n -- str ) {: k :}
    k T-OFF@ k T-LEN@ ;
 
 : TOK= ( n str -- bool ) {: k a:^ u :}

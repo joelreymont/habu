@@ -1296,7 +1296,7 @@ public
 
 \ READ-IN reads PATH under ROOT and throws the read's code with no prose, for
 \ a caller that reports a member it cannot read itself; RUN-READ walks what it read.
-: READ-IN ( ^u8 n ^u8 n -- )
+: READ-IN ( str str -- )
    SELECT-ENTRY
    SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;
 

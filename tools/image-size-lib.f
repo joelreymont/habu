@@ -198,7 +198,7 @@ variable OTHER-SIZE
    bytes 1000 * ILEN @ / {: tenths:n :}
    tenths 10 / FMT:.U 46 emit  tenths 10 mod FMT:.U ;
 
-: ROW ( ^u8 n n -- )
+: ROW ( str n -- )
    {: name:^ nameu:n bytes:n :}
    name nameu type TAB bytes FMT:.U TAB bytes SHARE cr ;
 

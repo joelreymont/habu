@@ -18,7 +18,7 @@ private
 
 1 constant TEXT-KIND                     \ DocumentHighlightKind.Text
 
-: NAMED ( ^u8 n n -- option<n> )
+: NAMED ( str n -- option<n> )
    {: t:^ tu:n u:n :}
    u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
 

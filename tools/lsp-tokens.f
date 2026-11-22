@@ -67,7 +67,7 @@ variable PREV-CHAR                       \ one written last
 \ Typed by the record its spelling names (LSP-DEFS:GROUP-REC-NAMED), as hover
 \ and highlight select it. A string literal before a call of a word `names:`
 \ states is a use too.
-: USED ( ^u8 n n -- )
+: USED ( str n -- )
    {: t:^ tu:n u:n :}
    u USE-GROUP 0 < if exit then
    u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED MATCH option

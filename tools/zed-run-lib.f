@@ -166,7 +166,7 @@ public
 : AVAILABLE? ( -- bool )
    s" HABU_ZED" GETENV ENV-AVAILABLE? ;
 
-: SKIP ( ^u8 n -- )
+: SKIP ( str -- )
    s" SKIP (HABU_ZED unset/0): " type
    type cr ;
 
@@ -192,7 +192,7 @@ public
 
 \ ---- remote command execution ------------------------------------------------
 
-: RUN ( ^u8 n -- rc )
+: RUN ( str -- rc )
    SSH-EXEC ;
 
 \ Run one remote command string and hand the body its rc and the command, whose
@@ -231,11 +231,11 @@ public
    CMD$ SSH-EXEC RUN-OK
    0 SCRATCH-U ! ;
 
-: PUT-DIR ( ^u8 n -- )   \ rsync local dir into scratch/
+: PUT-DIR ( str -- )   \ rsync local dir into scratch/
    DEST-BUILD
    [: PUT-DIR-BODY ;] CMD:WITH-COMMAND ;
 
-: PUT-FILE ( ^u8 n -- )   \ scp local file into scratch/
+: PUT-FILE ( str -- )   \ scp local file into scratch/
    DEST-BUILD
    [: PUT-FILE-BODY ;] CMD:WITH-COMMAND ;
 

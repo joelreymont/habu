@@ -59,7 +59,7 @@ variable SHOWN-N                         \ and the items written so far
 
 \ The candidate line's members decoded, each once; a member it lacks is empty
 \ or 0.
-: DECODE ( ^u8 n -- )
+: DECODE ( str -- )
    {: a:^ u:n :}
    0 WORD-U !
    0 FILE-U !
@@ -97,7 +97,7 @@ variable SHOWN-N                         \ and the items written so far
    then
    OUT @ WRITE-COMMA s" detail" DETAIL$ WRITE-FIELD-S drop ;
 
-: ITEM ( ^u8 n -- )
+: ITEM ( str -- )
    DECODE
    OUT @
    SHOWN-N @ 0 > if WRITE-COMMA then

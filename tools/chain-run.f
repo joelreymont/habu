@@ -23,7 +23,7 @@ private
 300000 constant BUILD-MS
 DYNAMIC-BUFFER FILES u8
 
-: ARG ( n -- ^u8 n ) SCRIPT-ARGV$ ;
+: ARG ( n -- str ) SCRIPT-ARGV$ ;
 
 : NEED-ARGS ( -- )
    SCRIPT-ARGC 5 <> if
@@ -53,7 +53,7 @@ DYNAMIC-BUFFER FILES u8
    ;MATCH
    out outu FS:EXISTS? 0= if E-BUILD-PATH throw then ;
 
-: BUILD ( ^u8 n ^u8 n ^u8 n -- )
+: BUILD ( str str str -- )
    [: BUILD-IN ;] CMD:WITH-COMMAND ;
 
 \ Both files, A's bytes then B's. The byte reserved past them keeps index AU

@@ -93,7 +93,7 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ document's URI for its own file, else at the URI of the open document that
 \ held the file when the check completed, else at its path's file URI.
 \ containerName: the package the word was recorded under; a global has none.
-: NAMED ( ^JSON:writer n n ^u8 n -- ^JSON:writer )
+: NAMED ( ^JSON:writer n n str -- ^JSON:writer )
    {: g:n r:n nm:^ nu:n :}
    WRITE-OBJECT-START
    s" name" nm nu WRITE-FIELD-S WRITE-COMMA

@@ -38,8 +38,8 @@ variable REPORT-FD
    EXIT-STATUS:USAGE die ;
 
 : SOURCE$ ( -- str )   FIRST SCRIPT-ARGV$ ;
-: OUT$    ( -- ^u8 n )   SCRIPT-ARGC 3 - SCRIPT-ARGV$ ;
-: TEXT$   ( -- ^u8 n )   SCRIPT-ARGC 2 - SCRIPT-ARGV$ ;
+: OUT$    ( -- str )   SCRIPT-ARGC 3 - SCRIPT-ARGV$ ;
+: TEXT$   ( -- str )   SCRIPT-ARGC 2 - SCRIPT-ARGV$ ;
 : JSON$   ( -- str )   SCRIPT-ARGC 1 - SCRIPT-ARGV$ ;
 
 : DASHED? ( str -- bool )   s" -" STARTS-WITH? ;
@@ -64,7 +64,7 @@ variable REPORT-FD
 \ The reports are written by the engine straight to fd 1, which is what makes
 \ them safe to take from a signal handler. Pointing fd 1 at a file for the
 \ length of one report is therefore the whole of "write it to a file".
-: REDIRECT ( ^u8 n -- ) {: pa:^ pu:n :}
+: REDIRECT ( str -- ) {: pa:^ pu:n :}
    1 F-DUPFD REPORT-FD-MIN fcntl SAVED-OUT !
    SAVED-OUT @ 0 < if s" build-profile: cannot save stdout" EXIT-STATUS:IOERR die then
    pa pu FS:>PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS:MODE-0644 open REPORT-FD !

@@ -91,7 +91,7 @@ create EB 4 allot
 create HB 24 allot
 variable HV  variable HP
 \ The view lives in HB and dies at the next call.
-: HEX$ {: u :} ( n -- ^u8 n )
+: HEX$ {: u :} ( n -- str )
    u HV !  20 HP !  0 HN !
    begin
      HP @ 1 - HP !
@@ -145,7 +145,7 @@ variable HV  variable HP
 variable OKV
 \ FIND-DICT asks this at every 4-byte offset, where a garbage length can be 2^44: the loop
 \ stops at the first byte that is not printable ASCII.
-: PRN? {: a:^ u :} ( ^u8 n -- bool )     \ a..a+u all printable ascii?
+: PRN? {: a:^ u :} ( str -- bool )     \ a..a+u all printable ascii?
    1 OKV !
    0 begin dup u < OKV @ 0<> and while
      dup a + c@ 32 >  OKV @ and

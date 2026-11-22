@@ -70,7 +70,7 @@ variable DISK-VALID
    then
    f fu ;
 
-: ERR ( ^u8 n -- )
+: ERR ( str -- )
    {: a:^ u:n :}
    FD:STDERR a u FD:WRITE-FULL ;
 
@@ -83,7 +83,7 @@ public
    false DISK-VALID !
    CUR-RESET ;
 
-: TEXT$ ( -- ^u8 n )  TEXT-A @ TEXT-U @ ;
+: TEXT$ ( -- str )  TEXT-A @ TEXT-U @ ;
 
 \ Whether a throw of this code is a file system call's (src/lib/error.f E-FS-*).
 : FS-RC? ( n -- bool )
@@ -178,7 +178,7 @@ public
 \ byte_end, as the checker's packets do: a missing start is 0, a missing end
 \ the start; both are held to the text and the end to no less than the start,
 \ so the range is valid whatever the line says.
-: RANGE ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: RANGE ( ^JSON:writer str -- ^JSON:writer )
    {: a:^ u:n :}
    a u s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
    a u s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}

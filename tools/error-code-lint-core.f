@@ -180,7 +180,7 @@ variable JX
    u PATH-CAP > if s" error-code-lint: path too long" EXIT-STATUS:FULL die then
    a PATH u LINT-BMOVE  u PATH-U ! ;
 
-: PATH$ ( -- ^u8 n )  PATH PATH-U @ ;
+: PATH$ ( -- str )  PATH PATH-U @ ;
 
 \ ---- reservation table (E-*-FIRST/E-*-LAST range blocks) --------------------
 \ E-*-FIRST / E-*-LAST are range sentinels aliasing their block's boundary codes,
@@ -444,7 +444,7 @@ variable JX
    a u SRC-SLAB LINT-SLAB:LOAD
    SRC-SLAB LINT-SLAB:TEXT SCAN-TEXT ;
 
-: ROOT ( ^u8 n -- )
+: ROOT ( str -- )
    [: SCAN-FILE ;] FS:WALK-FILES ;
 
 : WALK ( -- )
@@ -463,7 +463,7 @@ variable JX
 
 public
 
-: COUNT ( ^u8 n -- n ) {: a:^ u:n :}
+: COUNT ( str -- n ) {: a:^ u:n :}
    SHOW? @ {: show:bool :}
    SHOW-OFF
    RESET-LEDGER
