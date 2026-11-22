@@ -41,11 +41,11 @@ using IMAGE-BYTES
 
 : IBT-TEST-COPY-PAD ( -- )
    M-RESET
-   s" habu" M-BYTES-LEN
+   s" habu" M-BYTES
    M-HERE 4 T=
    8 M-OFF M-PAD-OFF
    M-HERE 8 T=
-   s" xy" M-NAME16-LEN
+   s" xy" M-NAME16
    M-HERE 24 T=
    MBUF 8 + c@ 120 T=
    MBUF 9 + c@ 121 T=
@@ -56,7 +56,7 @@ using IMAGE-BYTES
    16 M-OFF M-BE-RESET
    $01020304 M-BE32
    $05060708090A0B0C M-BE64
-   s" Z" M-BE-BYTES-LEN
+   s" Z" M-BE-BYTES
    M-BE-HERE 29 T=
    MBUF 16 + c@ 1 T=
    MBUF 17 + c@ 2 T=
@@ -78,24 +78,24 @@ using IMAGE-BYTES
 
 : IBT-NAME-LONG ( -- )
    M-RESET
-   s" 12345678901234567" M-NAME16-LEN ;
+   s" 12345678901234567" M-NAME16 ;
 
 : IBT-FILL-OVER ( -- )
-   s" xy" M-BYTES-LEN ;
+   s" xy" M-BYTES ;
 
 : IBT-FILL-EXACT ( -- )
-   s" x" M-BYTES-LEN ;
+   s" x" M-BYTES ;
 
 : IBT-CURSOR-OVER ( -- )
    1 IMG-M8 ;
 
 : IBT-WRITE-NEG ( -- )
    M-RESET 1 IMG-M8
-   s" x" drop -1 M-BYTES-LEN ;
+   s" x" drop -1 M-BYTES ;
 
 : IBT-WRITE-MAX ( -- )
    M-RESET 1 IMG-M8
-   s" x" drop -1 1 rshift M-BYTES-LEN ;
+   s" x" drop -1 1 rshift M-BYTES ;
 
 \ One pad to the last byte serves the three room boundaries in turn. A write is
 \ measured against the room left: `>LEN` is a cast, not a validator, and a length

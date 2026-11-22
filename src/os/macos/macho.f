@@ -188,7 +188,7 @@ variable NCMDS
 
 : SEGX, ( str n n n n n n n n -- ) {: a:^ u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
    LC-SEG64 IMG-M32   72 extra + IMG-M32
-   a u M-NAME16-LEN
+   a u M-NAME16
    vma IMG-M64  vmsz IMG-M64  foff IMG-M64  fsz IMG-M64
    prot IMG-M32  prot IMG-M32  nsects IMG-M32  flags IMG-M32 ;
 
@@ -196,14 +196,14 @@ variable NCMDS
    0 SEGX, ;
 
 : SECT, ( str str n n n n n -- ) {: na:^ nu:n sa:^ su:n addr:n size:n off:n al:n fl:n :}
-   na nu M-NAME16-LEN   sa su M-NAME16-LEN
+   na nu M-NAME16   sa su M-NAME16
    addr IMG-M64  size IMG-M64  off IMG-M32  al IMG-M32
    0 IMG-M32  0 IMG-M32  fl IMG-M32  0 IMG-M32 0 IMG-M32 0 IMG-M32 ;
 
 : DYLINKER, ( -- )
    LC-DYLINKER IMG-M32  32 IMG-M32  12 IMG-M32
    s" /usr/lib/dyld" {: a:^ u :}
-   a u M-BYTES-LEN
+   a u M-BYTES
    32 12 - u - M-LEN M-ZEROS-LEN ;
 
 : MAIN, ( n -- ) {: entryoff :}
@@ -213,7 +213,7 @@ variable NCMDS
    LC-DYLIB IMG-M32  56 IMG-M32  24 IMG-M32
    2 IMG-M32  $054C0000 IMG-M32  $00010000 IMG-M32     \ ts=2, cur=1356.0.0, compat=1.0.0
    s" /usr/lib/libSystem.B.dylib" {: a:^ u :}
-   a u M-BYTES-LEN
+   a u M-BYTES
    56 24 - u - M-LEN M-ZEROS-LEN ;
 
 \ dyld searches these runpaths for basename dlopen calls. System libraries keep
@@ -325,7 +325,7 @@ variable NCMDS
    TEXTSZ CODELEN @ MACHO-CMDS,
    PATCH-HDR
    CODE-OFF M-OFF M-PAD-OFF
-   CODE CODELEN @ M-BYTES-LEN
+   CODE CODELEN @ M-BYTES
    TEXTSZ M-OFF M-PAD-OFF
    MACHO-EXTRA,
    M-HERE MLEN! ;
