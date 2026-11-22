@@ -22,15 +22,15 @@ STRUCTURE action DERIVE addr
    FIELD run [ ^u8 -- ]
 ;STRUCTURE
 
+\ A chunk after the first: the chunk before it, newest first, and its bytes.
+STRUCTURE chunk DERIVE addr FIELD prev ^chunk FIELD size n ;STRUCTURE
+
 public
 
-\ `self`, `chunks` and `prev` are a chunk's bytes: munmap and NEWEST take bytes,
-\ and munmap's `^a` refuses a record pointer.
 STRUCTURE arena OPAQUE DERIVE addr
-   FIELD self ^u8
    FIELD top n
    FIELD first-top n
-   FIELD chunks ^u8
+   FIELD chunks ^chunk
    FIELD actions ^action
    FIELD parent ^arena
    FIELD kids ^arena
@@ -43,12 +43,8 @@ private
 
 $4000 constant FIRST-BYTES         \ the first chunk, header included
 
-\ A chunk after the first: the chunk before it, newest first, and its bytes.
-STRUCTURE chunk DERIVE addr FIELD prev ^u8 FIELD size n ;STRUCTURE
-
-\ The records laid in chunk bytes, and the chunk a `^u8` link names.
+\ The records laid in chunk bytes.
 CAST: >ARENA ( ^u8 -- ^arena )
-CAST: >CHUNK ( ^u8 -- ^chunk )
 CAST: >ACTION ( ^u8 -- ^action )
 
 : FIRST-ERROR ( n n -- n ) over 0<> if drop else nip then ;
@@ -63,8 +59,8 @@ CAST: >ACTION ( ^u8 -- ^action )
 : NEWEST ( ^arena -- ^u8 n )
    {: a:^ :}
    a ARENA-CHUNKS @ {: c:^ :}
-   c NULL-PTR = if a ARENA-SELF @ FIRST-BYTES exit then
-   c c >CHUNK CHUNK-SIZE @ ;
+   c NULL-PTR = if a BYTE-VIEW FIRST-BYTES exit then
+   c BYTE-VIEW c CHUNK-SIZE @ ;
 
 
 \ `first-top` keeps the first chunk's top while a later chunk is newest. A
@@ -73,13 +69,12 @@ CAST: >ACTION ( ^u8 -- ^action )
    {: a:^ need:n :}
    a NEWEST nip {: last:n :}
    last MEM-MAX-N 2 / > if need else need last 2 * max then {: size:n :}
-   size MEM-ALLOC-PTR byte-view {: base:^ :}
-   base >CHUNK {: c:^ :}
+   size MEM-ALLOC-PTR {: c:^chunk :}
    a ARENA-CHUNKS @ c CHUNK-PREV !
    size c CHUNK-SIZE !
    a ARENA-CHUNKS @ NULL-PTR = if a ARENA-TOP @ a ARENA-FIRST-TOP ! then
    CHUNK-BYTES a ARENA-TOP !
-   base a ARENA-CHUNKS ! ;
+   c a ARENA-CHUNKS ! ;
 
 
 \ `bytes`, a positive cell multiple, from the newest chunk, or from a later one
@@ -122,12 +117,11 @@ CAST: >ACTION ( ^u8 -- ^action )
    NULL-PTR a ARENA-PARENT ! ;
 
 
-\ Answers the chunk before `base`, and E-MEM-UNMAP when the unmap was refused.
-: UNMAP-CHUNK ( ^u8 -- str )
-   {: base:^ :}
-   base >CHUNK {: c:^ :}
+\ Answers the chunk before c, and E-MEM-UNMAP when the unmap was refused.
+: UNMAP-CHUNK ( ^chunk -- ^chunk n )
+   {: c:^ :}
    c CHUNK-PREV @
-   base c CHUNK-SIZE @ munmap 0< if E-MEM-UNMAP else 0 then ;
+   c BYTE-VIEW c CHUNK-SIZE @ munmap 0< if E-MEM-UNMAP else 0 then ;
 
 
 \ The arena forgets its later chunks before any is unmapped; every one is tried.
@@ -144,7 +138,7 @@ CAST: >ACTION ( ^u8 -- ^action )
 
 : ZERO-FIRST ( ^arena -- )
    {: a:^ :}
-   0 a ARENA-SELF @ ARENA-BYTES + a ARENA-TOP @ ARENA-BYTES - SPAN:MAKE SPAN:FILL
+   0 a BYTE-VIEW ARENA-BYTES + a ARENA-TOP @ ARENA-BYTES - SPAN:MAKE SPAN:FILL
    ARENA-BYTES a ARENA-TOP ! ;
 
 
@@ -159,7 +153,7 @@ CAST: >ACTION ( ^u8 -- ^action )
    a DROP-CHUNKS FIRST-ERROR
    keep if a ZERO-FIRST exit then
    a UNLINK
-   a ARENA-SELF @ FIRST-BYTES munmap 0< if E-MEM-UNMAP FIRST-ERROR then ;
+   a BYTE-VIEW FIRST-BYTES munmap 0< if E-MEM-UNMAP FIRST-ERROR then ;
 
 
 : WITH-BODY ( R ^arena [ R ^arena -- S ] -- S ) execute ;
@@ -201,11 +195,9 @@ CAST: >ACTION ( ^u8 -- ^action )
 public
 
 : NEW ( -- ^arena )
-   FIRST-BYTES MEM-ALLOC-PTR byte-view {: self:^ :}
-   self >ARENA {: a:^ :}
-   self a ARENA-SELF !
+   FIRST-BYTES MEM-ALLOC-PTR {: a:^arena :}
    ARENA-BYTES a ARENA-TOP !
-   self [: SELF-ALLOC ;] [: SELF-RESIZE ;] [: SELF-FREE ;]
+   a BYTE-VIEW [: SELF-ALLOC ;] [: SELF-RESIZE ;] [: SELF-FREE ;]
    a ARENA-ALLOCATOR ALLOC:INIT
    a ;
 
