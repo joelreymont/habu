@@ -3548,6 +3548,7 @@ create ER-MSG ER-MSG-CAP allot
    c 65 = IF
       ER-FAM {: fam:n :}
       ER-NUM {: k:n :}
+      k fam TFAM-ARITY@ <> IF ER-BAD THEN
       ES-N @ {: mark:n :}
       k 0 ?do recurse ES-PUSH loop
       fam  mark ES-ROOTS  k SCHEMA-APP EXIT
