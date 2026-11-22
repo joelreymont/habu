@@ -2,9 +2,10 @@ split-str
 \ crypto/evp.f - AES-256-GCM sealing, HMAC-SHA-256/SHA-1 and RS256 over OpenSSL
 \ 3's libcrypto. No key management: derivation, rotation, storage format, nonce
 \ counters, JWS serialization and key selection belong above it.
-\ STORAGE CLASS. TASK-LOCAL: each task's EVP_CIPHER_CTX slot and RS256 record
-\ are TASK:+USERS rows. Input spans are borrowed per call and nothing is kept
-\ between calls; a SEAL or UNSEAL context is freed on every path, a throw included.
+\ STORAGE CLASS. TASK-LOCAL: each task's EVP_CIPHER_CTX slot and RS256 signer
+\ record are TASK:+USER rows, its out-parameter bytes TASK:+USERS u8 rows.
+\ Input spans are borrowed per call and nothing is kept between calls; a SEAL or
+\ UNSEAL context is freed on every path, a throw included.
 require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
@@ -139,25 +140,21 @@ FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
 
 \ Foreign out-parameter storage, per task: two tasks may be sealing at once and
 \ each needs its own live context.
-$00 constant CTX-OFF
-$08 constant OUTL-OFF
-$10 constant FINAL-OFF
-$20 constant MAC-LEN-OFF
-$28 constant STORAGE-BYTES
+TASK:+USER CTX-SLOT n
 
-STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
-
-: CTX-SLOT ( -- ^n )
-   CTX-OFF EVP-STORAGE CELL-VIEW ;
+\ C fills these raw byte rows: OUTL and MAC-LEN a C int, FINAL a block.
+8 TASK:+USERS OUTL-ROW u8
+16 TASK:+USERS FINAL-ROW u8
+8 TASK:+USERS MAC-LEN-ROW u8
 
 : OUTL-BUF ( -- ^u8 )
-   OUTL-OFF EVP-STORAGE ;
+   0 OUTL-ROW ;
 
 : FINAL-BUF ( -- ^u8 )
-   FINAL-OFF EVP-STORAGE ;
+   0 FINAL-ROW ;
 
 : MAC-LEN-BUF ( -- ^u8 )
-   MAC-LEN-OFF EVP-STORAGE ;
+   0 MAC-LEN-ROW ;
 
 
 \ A C int out-parameter, little-endian on both targets (src/lib/le.f).
@@ -302,30 +299,31 @@ STORAGE-BYTES TASK:+USERS EVP-STORAGE u8
    ou cu TAG-BYTES - < if E-OPERAND throw then ;
 
 \ RS256's task record owns all opaque handles and PEM's decoded private bytes.
-$00 constant RS-ACTIVE
-$08 constant RS-N
-$10 constant RS-E
-$18 constant RS-BLD
-$20 constant RS-PARAM
-$28 constant RS-IMPORT-CTX
-$30 constant RS-KEY
-$38 constant RS-CHECK-CTX
-$40 constant RS-BIO
-$48 constant RS-PEM-LABEL
-$50 constant RS-PEM-HEADER
-$58 constant RS-DER
-$60 constant RS-DER-LEN
-$68 constant RS-P8
-$70 constant RS-INNER-PTR
-$78 constant RS-INNER-LEN
-$80 constant RS-ASN-LEN
-$88 constant RS-ASN-TAG
-$90 constant RS-ASN-CLASS
-$98 constant RS-MD-CTX
-$A0 constant RS-DIGEST-CTX
-$A8 constant RS-SIG-LEN
-$B0 constant RS-RECORD-BYTES
-RS-RECORD-BYTES TASK:+USERS RS-STORAGE u8
+STRUCTURE signer DERIVE addr
+   FIELD active n
+   FIELD modulus n
+   FIELD exponent n
+   FIELD bld n
+   FIELD param n
+   FIELD import-ctx n
+   FIELD key n
+   FIELD check-ctx n
+   FIELD bio n
+   FIELD pem-label n
+   FIELD pem-header n
+   FIELD der n
+   FIELD der-len n
+   FIELD p8 n
+   FIELD inner-ptr n
+   FIELD inner-len n
+   FIELD asn-len n
+   FIELD asn-tag n
+   FIELD asn-class n
+   FIELD md-ctx n
+   FIELD digest-ctx n
+   FIELD sig-len n
+;STRUCTURE
+TASK:+USER SIGNER signer
 
 create RSA-NAME 82 c, 83 c, 65 c, 0 c,
 create BN-NAME 110 c, 0 c,
@@ -356,12 +354,8 @@ $C0000 constant ERR-REASON-FLAGS
 57 constant ERR-PROV-LIB
 $80004 constant ERR-PROV-RSA-LIB
 
-: RS-SLOT ( n -- ^n ) RS-STORAGE CELL-VIEW ;
-: RS-BUF ( n -- ^u8 ) RS-STORAGE ;
-: RS@ ( n -- n ) RS-SLOT @ ;
-: RS! ( n n -- ) RS-SLOT ! ;
-: RS-KEY@ ( -- n ) RS-KEY RS@ ;
-: RS-MD@ ( -- n ) RS-MD-CTX RS@ ;
+: RS-KEY@ ( -- n ) SIGNER SIGNER-KEY @ ;
+: RS-MD@ ( -- n ) SIGNER SIGNER-MD-CTX @ ;
 
 CAST: RS>BYTES ( n -- ^u8 )
 
@@ -373,27 +367,31 @@ CAST: RS>BYTES ( n -- ^u8 )
    0 PKEY-CTX-FREE 0 PKEY-FREE 0 PARAM-FREE
    0 PARAM-BLD-FREE 0 BN-FREE ;
 
+: RS-CLEAR ( -- )
+   0 0 0 0 0 0 0 0 0 0 0
+   0 0 0 0 0 0 0 0 0 0 0 SIGNER-MAKE SIGNER ! ;
+
 : RS-OPEN ( -- )
-   RS-ACTIVE RS@ 0 <> if E-OPERAND throw then
+   SIGNER SIGNER-ACTIVE @ 0 <> if E-OPERAND throw then
    RS-RESOLVE-FREES
-   RS-RECORD-BYTES 0 ?do 0 i RS-SLOT ! 8 +loop
-   1 RS-ACTIVE RS! ;
+   RS-CLEAR
+   1 SIGNER SIGNER-ACTIVE ! ;
 
 : RS-CLOSE ( -- )
-   RS-MD-CTX RS@ MD-CTX-FREE
-   RS-CHECK-CTX RS@ PKEY-CTX-FREE
+   SIGNER SIGNER-MD-CTX @ MD-CTX-FREE
+   SIGNER SIGNER-CHECK-CTX @ PKEY-CTX-FREE
    RS-KEY@ PKEY-FREE
-   RS-P8 RS@ P8-FREE
-   RS-DER RS@ RS-DER-LEN RS@ 0 0 CRYPTO-CLEAR-FREE
-   RS-PEM-HEADER RS@ 0 0 CRYPTO-FREE
-   RS-PEM-LABEL RS@ 0 0 CRYPTO-FREE
-   RS-BIO RS@ BIO-FREE drop
-   RS-IMPORT-CTX RS@ PKEY-CTX-FREE
-   RS-PARAM RS@ PARAM-FREE
-   RS-BLD RS@ PARAM-BLD-FREE
-   RS-E RS@ BN-FREE
-   RS-N RS@ BN-FREE
-   RS-RECORD-BYTES 0 ?do 0 i RS-SLOT ! 8 +loop ;
+   SIGNER SIGNER-P8 @ P8-FREE
+   SIGNER SIGNER-DER @ SIGNER SIGNER-DER-LEN @ 0 0 CRYPTO-CLEAR-FREE
+   SIGNER SIGNER-PEM-HEADER @ 0 0 CRYPTO-FREE
+   SIGNER SIGNER-PEM-LABEL @ 0 0 CRYPTO-FREE
+   SIGNER SIGNER-BIO @ BIO-FREE drop
+   SIGNER SIGNER-IMPORT-CTX @ PKEY-CTX-FREE
+   SIGNER SIGNER-PARAM @ PARAM-FREE
+   SIGNER SIGNER-BLD @ PARAM-BLD-FREE
+   SIGNER SIGNER-EXPONENT @ BN-FREE
+   SIGNER SIGNER-MODULUS @ BN-FREE
+   RS-CLEAR ;
 
 : RS-SPAN ( str -- )
    {: source u:n :}
@@ -425,20 +423,26 @@ CAST: RS>BYTES ( n -- ^u8 )
 
 : RS-PUBLIC-IMPORT ( str str -- n )
    {: modulus nu:n exponent eu:n :}
-   modulus nu 0 BN-FROM-BYTES dup RS-N RS! 0= if E-KEY throw then
-   exponent eu 0 BN-FROM-BYTES dup RS-E RS! 0= if E-KEY throw then
-   RS-N RS@ BN-BITS {: bits:n :}
+   modulus nu 0 BN-FROM-BYTES dup SIGNER SIGNER-MODULUS ! 0= if E-KEY throw then
+   exponent eu 0 BN-FROM-BYTES
+   dup SIGNER SIGNER-EXPONENT ! 0= if E-KEY throw then
+   SIGNER SIGNER-MODULUS @ BN-BITS {: bits:n :}
    bits RSA-MIN-BITS < bits RSA-MAX-BITS > or if E-KEY throw then
    bits RSA-EXP-LIMIT-BITS > eu RSA-LARGE-EXP-BYTES > and if E-KEY throw then
-   RS-E RS@ RS-N RS@ BN-COMPARE 0 >= if E-KEY throw then
-   PARAM-BLD-NEW dup RS-BLD RS! 0= if E-KEY throw then
-   RS-BLD RS@ BN-NAME RS-N RS@ PARAM-PUSH-BN OSSL-OK <> if E-KEY throw then
-   RS-BLD RS@ BN-E-NAME RS-E RS@ PARAM-PUSH-BN OSSL-OK <> if E-KEY throw then
-   RS-BLD RS@ PARAM-FROM-BLD dup RS-PARAM RS! 0= if E-KEY throw then
+   SIGNER SIGNER-EXPONENT @
+   SIGNER SIGNER-MODULUS @ BN-COMPARE 0 >= if E-KEY throw then
+   PARAM-BLD-NEW dup SIGNER SIGNER-BLD ! 0= if E-KEY throw then
+   SIGNER SIGNER-BLD @ BN-NAME
+   SIGNER SIGNER-MODULUS @ PARAM-PUSH-BN OSSL-OK <> if E-KEY throw then
+   SIGNER SIGNER-BLD @ BN-E-NAME
+   SIGNER SIGNER-EXPONENT @ PARAM-PUSH-BN OSSL-OK <> if E-KEY throw then
+   SIGNER SIGNER-BLD @ PARAM-FROM-BLD
+   dup SIGNER SIGNER-PARAM ! 0= if E-KEY throw then
    0 RSA-NAME DEFAULT-PROPS PKEY-CTX-FROM-NAME
-   dup RS-IMPORT-CTX RS! 0= if E-KEY throw then
-   RS-IMPORT-CTX RS@ PKEY-FROMDATA-INIT OSSL-OK <> if E-KEY throw then
-   RS-IMPORT-CTX RS@ RS-KEY RS-BUF PKEY-PUBLIC RS-PARAM RS@
+   dup SIGNER SIGNER-IMPORT-CTX ! 0= if E-KEY throw then
+   SIGNER SIGNER-IMPORT-CTX @ PKEY-FROMDATA-INIT OSSL-OK <> if E-KEY throw then
+   SIGNER SIGNER-IMPORT-CTX @ SIGNER SIGNER-KEY BYTE-VIEW PKEY-PUBLIC
+   SIGNER SIGNER-PARAM @
    PKEY-FROMDATA OSSL-OK <> if E-KEY throw then
    RS-KEY@ 0= if E-KEY throw then
    bits 7 + 8 / ;
@@ -451,9 +455,11 @@ CAST: RS>BYTES ( n -- ^u8 )
    bits 7 + 8 / {: k:n :}
    RS-KEY@ PKEY-SIZE k <> if E-KEY throw then
    0 RS-KEY@ DEFAULT-PROPS PKEY-CTX-FROM-KEY
-   dup RS-CHECK-CTX RS! 0= if E-KEY throw then
-   RS-CHECK-CTX RS@ PKEY-PUBLIC-CHECK OSSL-OK <> if E-KEY throw then
-   pair if RS-CHECK-CTX RS@ PKEY-PAIR-CHECK OSSL-OK <> if E-KEY throw then then
+   dup SIGNER SIGNER-CHECK-CTX ! 0= if E-KEY throw then
+   SIGNER SIGNER-CHECK-CTX @ PKEY-PUBLIC-CHECK OSSL-OK <> if E-KEY throw then
+   pair if
+      SIGNER SIGNER-CHECK-CTX @ PKEY-PAIR-CHECK OSSL-OK <> if E-KEY throw then
+   then
    k ;
 
 \ Whitespace is allowed around one PEM object. The exact label excludes
@@ -553,68 +559,80 @@ CAST: RS>BYTES ( n -- ^u8 )
 \ https://github.com/openssl/openssl/blob/openssl-3.0.18/providers/implementations/encode_decode/decode_der2key.c
 : RS-PRIVATE-IMPORT ( str -- )
    {: pem u:n :}
-   pem u BIO-FROM-DATA dup RS-BIO RS! 0= if E-KEY throw then
-   RS-BIO RS@ RS-PEM-LABEL RS-BUF RS-PEM-HEADER RS-BUF
-   RS-DER RS-BUF RS-DER-LEN RS-BUF PEM-FLAG-ONLY-B64 PEM-READ
+   pem u BIO-FROM-DATA dup SIGNER SIGNER-BIO ! 0= if E-KEY throw then
+   SIGNER SIGNER-BIO @ SIGNER SIGNER-PEM-LABEL BYTE-VIEW
+   SIGNER SIGNER-PEM-HEADER BYTE-VIEW
+   SIGNER SIGNER-DER BYTE-VIEW
+   SIGNER SIGNER-DER-LEN BYTE-VIEW PEM-FLAG-ONLY-B64 PEM-READ
    OSSL-OK <> if E-KEY throw then
-   RS-PEM-LABEL RS@ dup 0= if drop E-KEY throw then
+   SIGNER SIGNER-PEM-LABEL @ dup 0= if drop E-KEY throw then
    RS>BYTES RS-PEM-LABEL? 0= if E-KEY throw then
-   RS-PEM-HEADER RS@ dup 0= if drop E-KEY throw then
+   SIGNER SIGNER-PEM-HEADER @ dup 0= if drop E-KEY throw then
    RS>BYTES c@ 0 <> if E-KEY throw then
-   RS-DER RS@ 0= if E-KEY throw then
-   RS-DER-LEN RS@ {: du:n :}
+   SIGNER SIGNER-DER @ 0= if E-KEY throw then
+   SIGNER SIGNER-DER-LEN @ {: du:n :}
    du 1 < du MAX-SPAN > or if E-KEY throw then
-   RS-DER RS@ RS-INNER-PTR RS!
-   0 RS-INNER-PTR RS-BUF du P8-READ dup RS-P8 RS! 0= if E-KEY throw then
-   RS-INNER-PTR RS@ RS-DER RS@ du + <> if E-KEY throw then
-   0 RS-INNER-PTR RS-BUF RS-INNER-LEN RS-BUF 0 RS-P8 RS@ P8-KEY
+   SIGNER SIGNER-DER @ SIGNER SIGNER-INNER-PTR !
+   0 SIGNER SIGNER-INNER-PTR BYTE-VIEW du P8-READ
+   dup SIGNER SIGNER-P8 ! 0= if E-KEY throw then
+   SIGNER SIGNER-INNER-PTR @ SIGNER SIGNER-DER @ du + <> if E-KEY throw then
+   0 SIGNER SIGNER-INNER-PTR BYTE-VIEW SIGNER SIGNER-INNER-LEN BYTE-VIEW 0
+   SIGNER SIGNER-P8 @ P8-KEY
    OSSL-OK <> if E-KEY throw then
-   RS-INNER-PTR RS@ {: inner:n :}
+   SIGNER SIGNER-INNER-PTR @ {: inner:n :}
    inner 0= if E-KEY throw then
-   RS-INNER-LEN RS-BUF LE:S32@ {: iu:n :}
+   SIGNER SIGNER-INNER-LEN BYTE-VIEW LE:S32@ {: iu:n :}
    iu 1 < iu MAX-SPAN > or if E-KEY throw then
-   RS-INNER-PTR RS-BUF RS-ASN-LEN RS-BUF RS-ASN-TAG RS-BUF
-   RS-ASN-CLASS RS-BUF iu ASN1-OBJECT $20 <> if E-KEY throw then
-   RS-ASN-TAG RS-BUF LE:S32@ 16 <> if E-KEY throw then
-   RS-ASN-CLASS RS-BUF LE:S32@ 0 <> if E-KEY throw then
-   RS-ASN-LEN RS@ {: content:n :}
+   SIGNER SIGNER-INNER-PTR BYTE-VIEW SIGNER SIGNER-ASN-LEN BYTE-VIEW
+   SIGNER SIGNER-ASN-TAG BYTE-VIEW
+   SIGNER SIGNER-ASN-CLASS BYTE-VIEW iu ASN1-OBJECT $20 <> if E-KEY throw then
+   SIGNER SIGNER-ASN-TAG BYTE-VIEW LE:S32@ 16 <> if E-KEY throw then
+   SIGNER SIGNER-ASN-CLASS BYTE-VIEW LE:S32@ 0 <> if E-KEY throw then
+   SIGNER SIGNER-ASN-LEN @ {: content:n :}
    content 0 < content iu > or if E-KEY throw then
-   RS-INNER-PTR RS@ content + inner iu + <> if E-KEY throw then
-   RS-P8 RS@ 0 DEFAULT-PROPS P8>KEY dup RS-KEY RS! 0= if E-KEY throw then
+   SIGNER SIGNER-INNER-PTR @ content + inner iu + <> if E-KEY throw then
+   SIGNER SIGNER-P8 @ 0 DEFAULT-PROPS P8>KEY
+   dup SIGNER SIGNER-KEY ! 0= if E-KEY throw then
    \ EVP_PKCS82PKEY_ex can fall back to a legacy key; signing requires the
    \ requested default-provider import, not that fallback.
    RS-KEY@ PKEY-PROVIDER 0= if E-KEY throw then ;
 
 : RS-PRIVATE-PARAMS ( -- )
-   RS-KEY@ BN-NAME RS-N RS-BUF PKEY-GET-BN OSSL-OK <> if E-KEY throw then
-   RS-N RS@ 0= if E-KEY throw then
-   RS-KEY@ BN-E-NAME RS-E RS-BUF PKEY-GET-BN OSSL-OK <> if E-KEY throw then
-   RS-E RS@ 0= if E-KEY throw then
-   RS-N RS@ BN-BITS {: bits:n :}
+   RS-KEY@ BN-NAME
+   SIGNER SIGNER-MODULUS BYTE-VIEW PKEY-GET-BN OSSL-OK <> if E-KEY throw then
+   SIGNER SIGNER-MODULUS @ 0= if E-KEY throw then
+   RS-KEY@ BN-E-NAME
+   SIGNER SIGNER-EXPONENT BYTE-VIEW PKEY-GET-BN OSSL-OK <> if E-KEY throw then
+   SIGNER SIGNER-EXPONENT @ 0= if E-KEY throw then
+   SIGNER SIGNER-MODULUS @ BN-BITS {: bits:n :}
    bits RSA-MIN-BITS < bits RSA-MAX-BITS > or if E-KEY throw then
-   RS-N RS@ 0 BN-BIT? OSSL-OK <> if E-KEY throw then
-   RS-E RS@ 0 BN-BIT? OSSL-OK <> if E-KEY throw then
-   RS-E RS@ BN-BITS 2 < if E-KEY throw then
+   SIGNER SIGNER-MODULUS @ 0 BN-BIT? OSSL-OK <> if E-KEY throw then
+   SIGNER SIGNER-EXPONENT @ 0 BN-BIT? OSSL-OK <> if E-KEY throw then
+   SIGNER SIGNER-EXPONENT @ BN-BITS 2 < if E-KEY throw then
    bits RSA-EXP-LIMIT-BITS > if
-      RS-E RS@ BN-BITS RSA-LARGE-EXP-BYTES 8 * > if E-KEY throw then
+      SIGNER SIGNER-EXPONENT @ BN-BITS
+      RSA-LARGE-EXP-BYTES 8 * > if E-KEY throw then
    then
-   RS-E RS@ RS-N RS@ BN-COMPARE 0 >= if E-KEY throw then ;
+   SIGNER SIGNER-EXPONENT @
+   SIGNER SIGNER-MODULUS @ BN-COMPARE 0 >= if E-KEY throw then ;
 
 : RS-DIGEST-INIT ( bool -- )
    {: sign:bool :}
-   0 RS-DIGEST-CTX RS-BUF LE:U64!
-   MD-CTX-NEW dup RS-MD-CTX RS! 0= if
+   0 SIGNER SIGNER-DIGEST-CTX BYTE-VIEW LE:U64!
+   MD-CTX-NEW dup SIGNER SIGNER-MD-CTX ! 0= if
       sign if E-SIGN else E-VERIFY then throw
    then
    sign if
-      RS-MD@ RS-DIGEST-CTX RS-BUF SHA256-NAME 0 DEFAULT-PROPS RS-KEY@ 0
+      RS-MD@ SIGNER SIGNER-DIGEST-CTX BYTE-VIEW SHA256-NAME 0 DEFAULT-PROPS
+      RS-KEY@ 0
       DIGEST-SIGN-INIT
    else
-      RS-MD@ RS-DIGEST-CTX RS-BUF SHA256-NAME 0 DEFAULT-PROPS RS-KEY@ 0
+      RS-MD@ SIGNER SIGNER-DIGEST-CTX BYTE-VIEW SHA256-NAME 0 DEFAULT-PROPS
+      RS-KEY@ 0
       DIGEST-VERIFY-INIT
    then
    OSSL-OK <> if sign if E-SIGN else E-VERIFY then throw then
-   RS-DIGEST-CTX RS@ dup 0= if
+   SIGNER SIGNER-DIGEST-CTX @ dup 0= if
       drop sign if E-SIGN else E-VERIFY then throw
    then
    PKCS1-PADDING RSA-PADDING OSSL-OK <> if
@@ -682,15 +700,15 @@ CAST: RS>BYTES ( n -- ^u8 )
    RS-PRIVATE-PARAMS
    true RS-KEY-CHECK {: k:n :}
    true RS-DIGEST-INIT
-   0 RS-SIG-LEN RS-BUF LE:U64!
-   RS-MD@ 0 RS-SIG-LEN RS-BUF msg mu DIGEST-SIGN-SIZE OSSL-OK <>
+   0 SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64!
+   RS-MD@ 0 SIGNER SIGNER-SIG-LEN BYTE-VIEW msg mu DIGEST-SIGN-SIZE OSSL-OK <>
    if E-SIGN throw then
-   RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
+   SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64@ k <> if E-SIGN throw then
    cap k < if E-OPERAND throw then
-   k RS-SIG-LEN RS-BUF LE:U64!
-   RS-MD@ out RS-SIG-LEN RS-BUF msg mu DIGEST-SIGN
+   k SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64!
+   RS-MD@ out SIGNER SIGNER-SIG-LEN BYTE-VIEW msg mu DIGEST-SIGN
    OSSL-OK <> if E-SIGN throw then
-   RS-SIG-LEN RS-BUF LE:U64@ k <> if E-SIGN throw then
+   SIGNER SIGNER-SIG-LEN BYTE-VIEW LE:U64@ k <> if E-SIGN throw then
    k ;
 
 public
