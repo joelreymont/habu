@@ -285,7 +285,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    TEXT-LEN @ 0 < if E-LSP-PARAMS throw then
    TEXT-LEN @ ;
 
-: OPEN-SLOT ( ^u8 n -- n )
+: OPEN-SLOT ( str -- n )
    DOC-FIND MATCH option
       none OF E-LSP-NOT-OPEN throw ENDOF
       some OF ENDOF
@@ -300,21 +300,21 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ An editor event changes checks that consumed this path. A watched disk
 \ event also changes checks stopped at this path before they could read it.
 \ A document holding the path itself still supplies its editor text.
-: DIRTY-DEPENDENTS ( ^u8 n bool -- )
-   {: path:^ pathu:n include-unread:bool :}
+: DIRTY-DEPENDENTS ( str bool -- )
+   {: path include-unread:bool :}
    DOC-SLOTS 0 ?do
       i DOC-LIVE? if
-         i DOC-CANON$ path pathu STR= 0= if
+         i DOC-CANON$ str> path str> STR= 0= if
             include-unread if
-               i path pathu LSP-DEFS:DEFS-DEPENDS?
+               i path LSP-DEFS:DEFS-DEPENDS?
             else
-               i path pathu LSP-DEFS:DEFS-READ?
+               i path LSP-DEFS:DEFS-READ?
             then if i DOC-DIRTY then
          then
       then
    loop ;
 
-: READERS-DIRTY-PATH ( ^u8 n -- )  false DIRTY-DEPENDENTS ;
+: READERS-DIRTY-PATH ( str -- )  false DIRTY-DEPENDENTS ;
 
 : READERS-DIRTY ( n -- )  DOC-CANON$ READERS-DIRTY-PATH ;
 
@@ -326,22 +326,22 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    u uu PATH {: a:^ au:n :}
    p pu DOC-VERSION {: v:n :}
    p pu s" text" TEXT-SPAN DOC-STRING {: t:^ tu:n :}
-   u uu v a au t tu DOC-OPEN
-   u uu OPEN-SLOT READERS-DIRTY
+   u uu >str v a au >str t tu >str DOC-OPEN
+   u uu >str OPEN-SLOT READERS-DIRTY
    p pu ;
 
 : DID-CHANGE ( ^u8 n -- ^u8 n )
    {: p:^ pu:n :}
-   p pu DOC-URI OPEN-SLOT {: slot:n :}
+   p pu DOC-URI >str OPEN-SLOT {: slot:n :}
    p pu DOC-VERSION {: v:n :}
    p pu CHANGES {: n:n :}
-   slot v TEXT-SPAN @ SPAN:$ str> drop n DOC-CHANGE
+   slot v TEXT-SPAN @ SPAN:$ str> drop n >str DOC-CHANGE
    slot READERS-DIRTY
    p pu ;
 
 : DID-CLOSE ( ^u8 n -- ^u8 n )
    {: p:^ pu:n :}
-   p pu DOC-URI OPEN-SLOT {: slot:n :}
+   p pu DOC-URI >str OPEN-SLOT {: slot:n :}
    slot LSP-DIAG:RETRACT
    slot READERS-DIRTY
    slot LSP-DEFS:DEFS-DROP
@@ -355,7 +355,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
          READ-NEXT T-STR <> if E-LSP-PARAMS throw then
          URI-SPAN DECODE {: n:n :}
          URI-SPAN @ SPAN:$ str> drop n PATH
-         >str SOURCE-ROOT:CANONICAL drop str>
+         >str SOURCE-ROOT:CANONICAL drop
          true DIRTY-DEPENDENTS
       else READ-NEXT drop READ-SKIP-VALUE then
    repeat ;
@@ -494,7 +494,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    named if URI-SPAN DECODE else 0 then {: n:n :}
    READ-CLOSE
    named 0= if -1 exit then
-   URI-SPAN @ SPAN:$ str> drop n DOC-FIND MATCH option
+   URI-SPAN @ SPAN:$ str> drop n >str DOC-FIND MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -508,7 +508,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    loop
    false ;
 
-: EDIT-NOTICE? ( n str [ ^u8 n -- bool ] -- bool )
+: EDIT-NOTICE? ( n str [ str -- bool ] -- bool )
    {: k:n name affected :}
    k name NOTICE? if
       2dup [: DOC-URI PATH >str SOURCE-ROOT:CANONICAL drop str> ;]
@@ -518,11 +518,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
          code IGNORABLE? if false exit then
          code throw
       then
-      affected execute -rot 2drop
+      >str affected execute -rot 2drop
    else 2drop false then ;
 
 \ A queued editor notification whose path the request actually uses.
-: HELD-EDITED? ( [ ^u8 n -- bool ] -- bool )
+: HELD-EDITED? ( [ str -- bool ] -- bool )
    {: affected :}
    HELD-COUNT @ HELD-NEXT @ ?do
       i s" textDocument/didOpen" >str affected EDIT-NOTICE?
@@ -536,10 +536,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    loop
    false ;
 
-: REQUEST-DEPENDS? ( ^u8 n -- bool )
-   {: path:^ pathu:n :}
-   AT-SLOT @ DOC-CANON$ path pathu STR= if true exit then
-   AT-SLOT @ path pathu LSP-DEFS:DEFS-DEPENDS? ;
+: REQUEST-DEPENDS? ( str -- bool )
+   {: path :}
+   AT-SLOT @ DOC-CANON$ str> path str> STR= if true exit then
+   AT-SLOT @ path LSP-DEFS:DEFS-DEPENDS? ;
 
 \ ---- input -------------------------------------------------------------------
 
@@ -598,7 +598,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu s" query" PARAM QUERY-SPAN STRING-AT QUERY-U ! drop
    p pu ;
 
-: QUERY$ ( -- ^u8 n )  QUERY-SPAN @ SPAN:$ str> drop QUERY-U @ ;
+: QUERY$ ( -- str )
+   QUERY-SPAN @ SPAN:$ str> drop QUERY-U @ >str ;
 
 : SYMBOLS ( JSON-RPC:id ^u8 n -- )
    {: i p:^ pu:n :}
@@ -617,7 +618,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : SLOT! ( ^u8 n -- ^u8 n )
    {: p:^ pu:n :}
-   p pu DOC-URI OPEN-SLOT AT-SLOT !
+   p pu DOC-URI >str OPEN-SLOT AT-SLOT !
    p pu ;
 
 : POSITION! ( ^u8 n -- ^u8 n )
@@ -728,7 +729,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    p pu s" newName" PARAM NAME-SPAN STRING-AT NAME-U ! drop
    p pu ;
 
-: NEW-NAME$ ( -- ^u8 n )  NAME-SPAN @ SPAN:$ str> drop NAME-U @ ;
+: NEW-NAME$ ( -- str )
+   NAME-SPAN @ SPAN:$ str> drop NAME-U @ >str ;
 
 : RENAME! ( ^u8 n -- ^u8 n )  POSITION! NEW-NAME! ;
 
@@ -794,7 +796,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    AT-BYTE!
    AT-SLOT @ AT-BYTE @ WITH-DECL @ LSP-REFERENCES:SELECT
    LSP-REFERENCES:REFUSED? if
-      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       exit
    then
    i GATHERED? 0= if exit then
@@ -804,28 +806,28 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : RENAMEABLE? ( JSON-RPC:id -- bool )
    {: i :}
    AT-SLOT @ LSP-REFERENCES:RENAME-VERIFIED? 0= if
-      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:REFUSED? if
-      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:BLOCKED$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:FOUND? 0= if i REPLY-NULL false exit then
    LSP-REFERENCES:PRIMITIVE? if
-      i REQUEST-FAILED LSP-REFERENCES:PRIMITIVE-RENAME$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:PRIMITIVE-RENAME$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:CONSTRUCTOR? if
-      i REQUEST-FAILED LSP-REFERENCES:CONSTRUCTOR-RENAME$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:CONSTRUCTOR-RENAME$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:SPELT? 0= if
-      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:EXPORT? if
-      i REQUEST-FAILED LSP-REFERENCES:EXPORT$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:EXPORT$ REPLY-ERROR
       false exit
    then
    true ;
@@ -835,19 +837,21 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : APPLIES? ( JSON-RPC:id -- bool )
    {: i :}
    LSP-REFERENCES:SPELT? 0= if
-      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:UNSPELT$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:RE-EXPORTED? if
-      i REQUEST-FAILED LSP-REFERENCES:RE-EXPORT$ >str REPLY-ERROR
+      i REQUEST-FAILED LSP-REFERENCES:RE-EXPORT$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:UNCOVERED? if
-      i REQUEST-FAILED s" Rename not applied" LSP-REFERENCES:UNCOVERED$ >str REPLY-ERROR
+      i REQUEST-FAILED
+      s" Rename not applied" >str LSP-REFERENCES:UNCOVERED$
+      REPLY-ERROR
       false exit
    then
-   NEW-NAME$ LSP-RENAME:QUALIFIED-WHY$ {: w:^ wu:n :}
-   wu 0<> if i REQUEST-FAILED w wu >str REPLY-ERROR false exit then
+   NEW-NAME$ LSP-RENAME:QUALIFIED-WHY$ {: w :}
+   w str> nip 0<> if i REQUEST-FAILED w REPLY-ERROR false exit then
    true ;
 
 : PREPARE-RENAME ( JSON-RPC:id ^u8 n -- )
@@ -861,8 +865,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: i p:^ pu:n :}
    i p pu [: RENAME! ;] READ? 0= if exit then
    i UNCHANGED? 0= if exit then
-   NEW-NAME$ LSP-RENAME:WHY$ {: w:^ wu:n :}
-   wu 0<> if i REQUEST-FAILED w wu >str REPLY-ERROR exit then
+   NEW-NAME$ LSP-RENAME:WHY$ {: w :}
+   w str> nip 0<> if i REQUEST-FAILED w REPLY-ERROR exit then
    i CHECK-CURRENT? 0= if exit then
    AT-BYTE!
    AT-SLOT @ AT-BYTE @ true LSP-REFERENCES:SELECT
@@ -920,7 +924,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : ROOT-AT ( JSON:reader -- JSON:reader )
    URI-SPAN DECODE {: n:n :}
    URI-SPAN @ SPAN:$ str> drop n
-   [: 2dup PATH LSP-WORKSPACE:ROOT+ ;] catch {: code:n :} 2drop
+   [: 2dup PATH >str LSP-WORKSPACE:ROOT+ ;] catch {: code:n :} 2drop
    code 0= if exit then
    code E-PATH-RANGE =  code E-PATH-NUL = or
    code E-URI-LAST >= code E-URI-FIRST <= and  or 0= if code throw then ;
