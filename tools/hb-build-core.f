@@ -220,6 +220,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 
 \ A registry row below the tree root by its tree-relative name. A program's row
 \ outside it keeps its canonical path; hb's is refused.
+\ The end file starts `split-str`, so its rows fit APPEND as ^u8 n or as str.
 : REG-ROW ( str bool -- )
    {: a:^ u:n engine:bool :}
    SOURCE-ROOT:CWD$ {: c:^ cu:n :}
@@ -253,7 +254,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 : END-WRITE ( n bool -- )
    {: app:n entry:bool :}
    0 TEXT-U !
-   s\" REQUIRE-REG:BOOT-OPEN\n" TEXT+
+   s\" split-str\nREQUIRE-REG:BOOT-OPEN\n" TEXT+
    REQUIRE-REG:COUNT REQUIRE-REG:BASE ?do i REQUIRE-REG:SLOT i REQUIRE-REG:LEN i app < REG-ROW loop
    s\" REQUIRE-REG:BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
