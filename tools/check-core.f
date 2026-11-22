@@ -785,10 +785,10 @@ private
 
 : CHK-BUILD-READER ( -- )
    CHK-LF CHK-RUN-C
-   s" : CHECK-F-READ ( ^u8 n -- ^u8 n ) {: p:^ pu:n :}" CHK-RUN-LN
+   s" : CHECK-F-READ ( str -- str ) str> {: p:^ pu:n :}" CHK-RUN-LN
    s" p pu " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR= if" CHK-RUN-LN
-   CHK-SUBJECT-PATH CHK-RUN-QPATH+  s"  SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
-   s" p pu SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
+   CHK-SUBJECT-PATH CHK-RUN-QPATH+  s"  >str SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
+   s" p pu >str SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
    s" : CHECK-F-INPUT ( -- ) [: SOURCE-ROOT:CANON-OS ;] [: CHECK-F-READ ;] SOURCE-INPUT:USE ;" CHK-RUN-LN
    s" CHECK-F-INPUT" CHK-RUN-LN ;
 

@@ -324,7 +324,7 @@ private
    HELD-N @ 1 + HELD-N ! ;
 
 public
-: EMIT-STR ( ^u8 n -- ) {: a:^ u:n :}
+: EMIT-STR ( str -- ) {: a:^ u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
 \ n, read as unsigned, in decimal; the text holds until the next DIGITS or EMIT-U.
@@ -361,7 +361,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
 public
 
 \ The active file's path; empty when no file is being read.
-: PATH$ ( -- ^u8 n )
+: PATH$ ( -- str )
    FILE-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ;
 
 \ The file a rejection names when no file holds its source.
@@ -443,7 +443,7 @@ public
 : SOURCE-OFF ( -- )
    NULL-PTR SOURCE-A !  0 SOURCE-U !
    MAP-OFF ;
-: SOURCE! ( ^u8 n n n n -- )
+: SOURCE! ( str n n n -- )
    {: a:^ u:n line:n col:n byte:n :}
    a SOURCE-A !  u SOURCE-U !
    line SOURCE-LINE !  col SOURCE-COLUMN !  byte SOURCE-BYTE !
@@ -627,7 +627,7 @@ private
    0 BEGIN dup k < WHILE 32 EMIT1 1 + REPEAT drop ;
 : DIGITS ( n -- n ) {: v:n :}
    1 v BEGIN dup 9 > WHILE 10 / swap 1 + swap REPEAT drop ;
-: FIELD ( ^u8 n -- )   44 EMIT1 JSON-KEY ;
+: FIELD ( str -- )   44 EMIT1 JSON-KEY ;
 : MARGIN ( -- )   GUTTER @ 1 + BLANKS ;
 
 : PLACE-FILE! ( str -- ) {: a:^ u:n :}
@@ -756,7 +756,7 @@ private
    t ;
 \ The token that built the run t lies in, in the armed source or the buffer
 \ read; empty when no definer built the run.
-: BUILDER ( ^u8 -- ^u8 n ) {: t:^ :}
+: BUILDER ( ^u8 -- str ) {: t:^ :}
    SOURCE-U @ 0 >  ROW-N @ 0 > and  t MAP-A @ - MAP-U @ IN-SPAN? and IF
       t MAP-A @ - MAP-BUILDER EXIT
    THEN
@@ -787,7 +787,7 @@ SRCLOC:SOURCE-CELL RESERVED-PTR-U8-CELL LOADER
    fr SRCLOC:FR-PATH +  fr SRCLOC:FR-PATHLEN + cell-view @ FILE-NAME$ ;
 \ The frame of the innermost open file whose bytes hold the n bytes at t;
 \ NULL-PTR when none does.
-: HOLDER ( ^u8 n -- ^u8 ) {: t:^ tu:n :}
+: HOLDER ( str -- ^u8 ) {: t:^ tu:n :}
    LOADER @ dup NULL-PTR = IF EXIT THEN
    SRCLOC:REC-TOP FRAME@
    BEGIN dup NULL-PTR = 0= WHILE
@@ -857,7 +857,7 @@ public
 \ file's bytes, the root stream's text, a kept REPL line or an evaluated text
 \ being run, each of which stays put while it is open or runs. A zero-length
 \ token is held at any offset from 0 to the buffer's length.
-: HELD? ( ^u8 n -- bool ) {: p:^ n:n :}
+: HELD? ( str -- bool ) {: p:^ n:n :}
    p n ARMED? IF 0 0= EXIT THEN
    CLOSER$ p n HOLDS? IF 0 0= EXIT THEN
    p n HOLDER NULL-PTR = 0= IF 0 0= EXIT THEN
@@ -934,7 +934,7 @@ private
 \ `word` note, else nowhere.
 \ While the file being read is the tool's own, that token places only in an
 \ armed source.
-: PLACE ( ^u8 n -- ) {: t:^ tu:n :}
+: PLACE ( str -- ) {: t:^ tu:n :}
    0 PLACED !  0 EVALUATED !  0 WORD-U !
    t tu PLACE-IN IF EXIT THEN
    t WORD-A !  tu WORD-U !
@@ -960,7 +960,7 @@ private
    s" label" FIELD  JSON-OPEN ;
 \ The caret line copies the tabs in the line's first n bytes, before the token,
 \ and a blank for each other character, so the carets line up.
-: LEAD ( ^u8 n -- ) {: a:^ k:n :}
+: LEAD ( str -- ) {: a:^ k:n :}
    0 BEGIN dup k < WHILE
       dup a + c@ {: c:n :}
       c CONT? 0= IF c 9 = IF 9 ELSE 32 THEN EMIT1 THEN
@@ -976,7 +976,7 @@ private
 \ The bytes s to e shown of the line a u whose token starts k bytes in: all of
 \ a line of at most WIDTH, else from ROOM bytes before the token, at most WIDTH
 \ with the `...` of each cut end; neither cut splits a UTF-8 character.
-: WINDOW ( ^u8 n n -- n n ) {: a:^ u:n k:n :}
+: WINDOW ( str n -- n n ) {: a:^ u:n k:n :}
    u WIDTH <= IF 0 u EXIT THEN
    k ROOM > IF k ROOM - ELSE 0 THEN {: s0:n :}
    a s0 CHAR-START {: s:n :}
@@ -1061,15 +1061,15 @@ private
 
 public
 \ Opens a record with its code; the message follows.
-: OPEN ( ^u8 n -- ) {: code:^ cu:n :}
+: OPEN ( str -- ) {: code:^ cu:n :}
    0 WARNING !  s" error" code cu BEGIN-RECORD ;
 \ Opens a warning with its code, which KEEP does not count; the message follows.
-: WARN ( ^u8 n -- ) {: code:^ cu:n :}
+: WARN ( str -- ) {: code:^ cu:n :}
    -1 WARNING !  s" warning" code cu BEGIN-RECORD ;
 \ Places the token t tu as PLACE does; its label follows. With no place the
 \ record writes none and drops the label. In prose an evaluated token's call is
 \ labelled as such, and the label follows the evaluated place.
-: AT ( ^u8 n -- ) {: t:^ tu:n :}
+: AT ( str -- ) {: t:^ tu:n :}
    END-TEXT
    t tu PLACE
    PLACED @ 0= IF DROP-PART PART ! EXIT THEN
@@ -1092,7 +1092,7 @@ public
 \ Drops the `word` note AT added to its place.
 : NO-WORD ( -- )   0 WORD-U ! ;
 \ A note's key; its value follows.
-: NOTE ( ^u8 n -- )
+: NOTE ( str -- )
    CLOSE-PART NOTE-KEY ;
 \ Opens a record with code c and message m, and places the token t tu with
 \ label l; the label may go on.
@@ -1100,11 +1100,11 @@ public
    {: c:^ cu:n m:^ mu:n t:^ tu:n l:^ lu:n :}
    c cu OPEN  m mu EMIT-STR  t tu AT  l lu EMIT-STR ;
 \ The limit note: the number n, then the unit w wu if it has one.
-: LIMIT ( n ^u8 n -- ) {: n:n w:^ wu:n :}
+: LIMIT ( n str -- ) {: n:n w:^ wu:n :}
    s" limit" NOTE  n EMIT-U
    wu 0 > IF s"  " EMIT-STR  w wu EMIT-STR THEN ;
 \ The token a u if HELD? holds its source, else its copy c cu.
-: KEPT ( ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n c:^ cu:n :}
+: KEPT ( str str -- str ) {: a:^ u:n c:^ cu:n :}
    a u HELD? IF a u EXIT THEN
    c cu ;
 \ The help text follows.
@@ -1127,7 +1127,7 @@ public
 
 private
 \ Keeps the u bytes at a as the record, in place of the one kept before; no throw carries it yet.
-: KEEP-SAVED ( ^u8 n -- ) {: a:^ u:n :}
+: KEEP-SAVED ( str -- ) {: a:^ u:n :}
    0 SAVED-U !  u SAVED-ROOM
    a SAVED-P @ u ARENA-COPY
    u SAVED-U !  0 data-base STAMP-CELL + ! ;
@@ -1214,7 +1214,7 @@ public
 
 \ The definer kw ku has no name of one token: the record stands at t tu, which
 \ why labels. It is written through its help, and the caller stops it.
-: MISSING-NAME ( ^u8 n ^u8 n ^u8 n -- )
+: MISSING-NAME ( str str str -- )
    {: kw:^ ku:n t:^ tu:n why:^ whyu:n :}
    kw ku s" a name" t tu why whyu MISSING-OPERAND
    s" give `" EMIT-STR  kw ku EMIT-STR
@@ -1374,7 +1374,7 @@ public
 
 \ The name a u is already defined where it is defined again: the record stands
 \ at t tu. It is written through its help, and the caller stops it.
-: DUPLICATE ( ^u8 n ^u8 n -- )
+: DUPLICATE ( str str -- )
    DUPLICATE-OPEN
    HELP  s" rename this word, or remove the earlier definition" EMIT-STR ;
 
@@ -1410,7 +1410,7 @@ public
 \ The name a u would change a sealed package: the record stands at the source
 \ token t tu, which is not a u when the name is generated. It is written
 \ through its help, and the caller stops it.
-: SEALED ( ^u8 n ^u8 n -- ) {: a:^ u:n t:^ tu:n :}
+: SEALED ( str str -- ) {: a:^ u:n t:^ tu:n :}
    s" E-SEALED-PACKAGE" OPEN
    96 EMIT1  a u EMIT-STR  96 EMIT1  s"  would change a sealed package" EMIT-STR
    t tu AT  s" sealed" EMIT-STR
@@ -1461,10 +1461,10 @@ private
 : FILE-COPY ( str -- )
    FILE-BUF PATH-COPY FILE-U ! ;
 public
-: FILE! ( ^u8 n -- )
+: FILE! ( str -- )
    FILE-COPY  -1 NAMED ! ;
 \ Places in the bytes of the file p pu name label a u; the files it loads are the program's.
-: FILE-LABEL! ( ^u8 n ^u8 n -- ) {: a:^ u:n p:^ pu:n :}
+: FILE-LABEL! ( str str -- ) {: a:^ u:n p:^ pu:n :}
    a u LABEL-NAME-BUF PATH-COPY LABEL-NAME-U !
    p pu LABEL-BUF PATH-COPY LABEL-U !
    -1 LABELED ! ;
@@ -1510,7 +1510,7 @@ public
 
 \ Runs q with a u as the token the reader walking the subject is on, then puts
 \ back the one it found, on a throw too.
-: READING ( ^u8 n [ -- ] -- ) {: a:^ u:n q :}
+: READING ( str [ -- ] -- ) {: a:^ u:n q :}
    READER-A @ READER-U @ {: was:^ wu:n :}
    a READER-A !  u READER-U !
    q catch {: rc:n :}

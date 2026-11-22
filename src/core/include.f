@@ -97,20 +97,20 @@ private
 package SOURCE-INPUT
 private
 
-TYPED-VARIABLE CANON-XT [ ^u8 n -- ^u8 n bool ]
-TYPED-VARIABLE READ-XT [ ^u8 n -- ^u8 n ]
+TYPED-VARIABLE CANON-XT [ str -- str bool ]
+TYPED-VARIABLE READ-XT [ str -- str ]
 
 public
 
-: CANON ( ^u8 n -- ^u8 n bool ) CANON-XT @ execute ;
-: READ ( ^u8 n -- ^u8 n ) READ-XT @ execute ;
+: CANON ( str -- str bool ) CANON-XT @ execute ;
+: READ ( str -- str ) READ-XT @ execute ;
 
-: USE ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n -- ^u8 n ] -- )
+: USE ( [ str -- str bool ] [ str -- str ] -- )
    {: canon read :}
    canon CANON-XT !
    read READ-XT ! ;
 
-: WITH ( [ ^u8 n -- ^u8 n bool ] [ ^u8 n -- ^u8 n ] [ -- ] -- )
+: WITH ( [ str -- str bool ] [ str -- str ] [ -- ] -- )
    {: canon read action :}
    CANON-XT @ READ-XT @ {: old-canon old-read :}
    canon read USE
@@ -339,7 +339,7 @@ variable SLOT-BASE
    NULL-PTR 0 a u kind len resolved cap LOADER-PATH-RECORD
    REJECTION:SAVE  kind REJECTION:PASS ;
 
-: CHECK ( ^u8 n -- )
+: CHECK ( str -- )
    {: a:^ u:n :}
    u 0 <= if a u E-PATH-RANGE u INCLUDE-FALSE PATH-CAP PATH-PASS then ;
 
@@ -355,7 +355,7 @@ variable SLOT-BASE
 
 public
 
-: CANON-OS ( ^u8 n -- ^u8 n bool )
+: CANON-OS ( str -- str bool )
    {: a:^ u:n :}
    a u CANON-N {: n:n :}
    n 0 < if CANON-BUF 0 INCLUDE-FALSE exit then
@@ -440,7 +440,7 @@ private
 
 public
 
-: CWD$ ( -- ^u8 n ) CWD-RECORD CWD-BUF CWD-U @ ;
+: CWD$ ( -- str ) CWD-RECORD CWD-BUF CWD-U @ ;
 
 
 private
@@ -502,7 +502,7 @@ PROGRAM-BUF PATH-BYTES SCRATCH-BYTES    PROGRAM-U scratch-cell-mark
 
 public
 
-: CURRENT$ ( -- ^u8 n )
+: CURRENT$ ( -- str )
    CURRENT-U @ 0 > if CURRENT-PTR CURRENT-U @ exit then
    PROGRAM-INIT
    PROGRAM-U @ 0= if CWD$ exit then
@@ -703,12 +703,12 @@ public
 
 \ A name with no slash lies in the current directory, so its directory is `.`;
 \ PARENT-U alone would keep its first byte.
-: DIRNAME ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: DIRNAME ( str -- str ) {: a:^ u:n :}
    a u 0 SEG-END u = if s" ." exit then
    a a u PARENT-U ;
 
 
-: JOIN ( ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: JOIN ( str str -- str ) {: a:^ u:n :}
    a u CHECK
    a c@ 47 = if 2drop a u exit then
    a u JOIN!
@@ -723,14 +723,14 @@ public
    a rootu + c@ 47 = ;
 
 
-: RELATIVE ( ^u8 n ^u8 n -- ^u8 n ) {: a:^ u:n root:^ rootu:n :}
+: RELATIVE ( str str -- str ) {: a:^ u:n root:^ rootu:n :}
    a u root rootu BELOW? 0= if a u exit then
    u rootu = if s" ." exit then
    rootu 1 = if a 1+ u 1- exit then
    a rootu 1+ + u rootu 1+ - ;
 
 
-: RESOLVED-ROOT$ ( -- ^u8 n ) OWNER-BUF OWNER-U @ ;
+: RESOLVED-ROOT$ ( -- str ) OWNER-BUF OWNER-U @ ;
 
 private
 
@@ -874,7 +874,7 @@ private
 public
 
 \ The caller's root is back before the scope's is released, on a throw too.
-: WITH ( ^u8 n [ -- ] -- ) {: a:^ u:n q :}
+: WITH ( str [ -- ] -- ) {: a:^ u:n q :}
    s" SOURCE-ROOT:WITH" a u ROOT-ENTER {: old:^ oldu:n base:n :}
    JOIN-BUF JOIN-U @ CURRENT$ COMPILE-READS:ROOT+
    TOKEN-CLEAR {: t:^ tu:n :}
@@ -959,7 +959,7 @@ public
 
 \ The directory is the current root, searched first by a relative require, until
 \ the load or WITH body it runs in ends. hb's directory and engine root stay.
-: ROOT! ( ^u8 n -- ) {: a:^ u:n :}
+: ROOT! ( str -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:ROOT!" a u ROOT-SET ;
 ROOT-MOVER
 
@@ -1408,7 +1408,7 @@ public
    CWD-RECORD ENGINE-BUF ENGINE-U @ ;
 
 \ Override the fallback root; the caller restores the old one after its load.
-: ENGINE! ( ^u8 n -- ) {: a:^ u:n :}
+: ENGINE! ( str -- ) {: a:^ u:n :}
    s" SOURCE-ROOT:ENGINE!" a u ROOT-CANON
    CANON-BUF ENGINE-BUF CANON-U @ BYTE-COPY
    CANON-U @ ENGINE-U !
@@ -1436,7 +1436,7 @@ private
 
 \ A request spelled under a root, normalized but not resolved, in NORMAL-BUF: no
 \ longer than the join and a leading `/`, which may outrun PATH-CAP.
-: UNDER ( ^u8 n ^u8 n -- ^u8 n )
+: UNDER ( str str -- str )
    JOIN {: a:^ u:n :}
    a u u 1+ NORMALIZE-LIMIT
    NORMAL-BUF NORMAL-U @ ;
@@ -1468,7 +1468,7 @@ private
 \ symlinked working directory are still the engine's, and BOOT-CANDIDATE's
 \ physical test keeps another directory's file with an engine file's name its
 \ own.
-: CANDIDATE ( ^u8 n n -- ^u8 n bool bool )
+: CANDIDATE ( str n -- str bool bool )
    {: first:n :}
    2dup OWNER!
    REQUEST$ JOIN CANONICAL {: exists:bool :}
@@ -1512,7 +1512,7 @@ private
 
 \ The file a require of REQUEST$ selects, with frozen rows counted from row
 \ `first`, whether it is known and whether it was found.
-: SELECT ( n -- ^u8 n bool bool )
+: SELECT ( n -- str bool bool )
    {: first:n :}
    REQUEST-BUF c@ $2F = if
       REQUEST$ CANONICAL {: exists:bool :}
@@ -1748,7 +1748,7 @@ public
 \ RESOLVE of a u whose rejection stands at t tu, unplaced when tu is 0. SELECT
 \ and CANONICAL may reuse the buffer a u lies in, so a rejection names
 \ REQUEST$, the request's copy.
-: RESOLVE-AT ( str str -- ^u8 n bool ) {: a:^ u:n t:^ tu:n :}
+: RESOLVE-AT ( str str -- str bool ) {: a:^ u:n t:^ tu:n :}
    a u REQUEST! REQUIRE-BASE @ SELECT drop
    >r REQUEST$ t tu CONFINE-AS r> ;
 
@@ -1851,19 +1851,19 @@ package LOADER
 package SOURCE-UNIT
 private
 
-TYPED-VARIABLE LOAD-XT [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ]
+TYPED-VARIABLE LOAD-XT [ str str str [ n n -- nominal ] -- renders nominal roots ]
 
-: ORDINARY ( ^u8 n ^u8 n ^u8 n [ n n -- ] -- )
+: ORDINARY ( str str str [ n n -- ] -- )
    {: path:^ pathu:n root:^ rootu:n source:^ sourceu:n q :}
    0 sourceu q execute ;
 
 public
 
-: LOAD ( ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- ) LOAD-XT @ execute ;
+: LOAD ( str str str [ n n -- nominal ] -- ) LOAD-XT @ execute ;
 \ A runner calls the file's quotation as `0 sourceu q execute` with nothing of
 \ its own beneath it; the quotation throws for a refused file.
-: USE ( [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ] -- ) LOAD-XT ! ;
-: CURRENT ( -- [ ^u8 n ^u8 n ^u8 n [ n n -- nominal ] -- renders nominal roots ] ) LOAD-XT @ ;
+: USE ( [ str str str [ n n -- nominal ] -- renders nominal roots ] -- ) LOAD-XT ! ;
+: CURRENT ( -- [ str str str [ n n -- nominal ] -- renders nominal roots ] ) LOAD-XT @ ;
 : RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
 
 ;package
@@ -2300,7 +2300,7 @@ variable LAST-LOAD-EVAL-OK
 
 public
 
-: ACTIVE-SOURCE ( -- ^u8 n ^u8 n ^u8 n )
+: ACTIVE-SOURCE ( -- str str str )
    s" SOURCE-ROOT:ACTIVE-SOURCE" CHECK-ACTIVE
    TOP@ {: frame:^ :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
@@ -2328,7 +2328,7 @@ public
 
 \ The loader's reader, public so a reader installed with SOURCE-INPUT:USE may
 \ call it from READ-SOURCE; it fills the top frame only while that awaits its bytes.
-: READ-OS ( ^u8 n -- ^u8 n )
+: READ-OS ( str -- str )
    s" SOURCE-ROOT:READ-OS" 2over GIVEN-CHECK 2dup READ-REFUSE INCLUDE-READ-ALL ;
 
 private
@@ -2355,7 +2355,7 @@ defer INCLUDE-INTERPRET ( str n n -- nominal )
 \ The OS reader has filled the frame already, learning the size as it read;
 \ another reader's bytes come with their length, and the frame grows to fit
 \ them before they are copied in.
-: HOLD ( ^u8 n -- ^u8 n )
+: HOLD ( str -- str )
    {: a:^ u:n :}
    a SOURCE <> if
       u ROOM > if u 0 GROW then
@@ -2503,7 +2503,7 @@ variable DECL-SERIAL
 : OPEN-SINCE? ( n -- bool )
    DECL-SERIAL @ <  CLOSER-U @ 0 <> and ;
 
-: TICKED ( ^u8 n -- )
+: TICKED ( str -- )
    96 REJECTION:EMIT1  REJECTION:EMIT-STR  96 REJECTION:EMIT1 ;
 
 \ Opens the E-UNCLOSED record of the declaration t tu opened, through "is still
@@ -2523,7 +2523,7 @@ public
 \ The record of the declaration t tu opened, which c cu closes, still open at the
 \ token o ou, which may not come inside it, or, with ou 0, when its source ends;
 \ not stopped.
-: UNCLOSED ( ^u8 n ^u8 n ^u8 n -- ) {: t:^ tu:n c:^ cu:n o:^ ou:n :}
+: UNCLOSED ( str str str -- ) {: t:^ tu:n c:^ cu:n o:^ ou:n :}
    t tu UNCLOSED-HEAD
    ou 0= if
       s" when the source ends" REJECTION:EMIT-STR
@@ -2550,7 +2550,7 @@ public
 
 \ A declaration opening while another is open rejects the open one and
 \ abandons both.
-: OPENED ( ^u8 n ^u8 n [ -- ] -- ) {: t:^ tu:n c:^ cu:n q :}
+: OPENED ( str str [ -- ] -- ) {: t:^ tu:n c:^ cu:n q :}
    CLOSER-U @ 0 <> if
       OPENER-A @ OPENER-U @ CLOSER-A @ CLOSER-U @ t tu UNCLOSED
       ABANDON-XT @ execute  q execute  CLOSED
@@ -2714,7 +2714,7 @@ public
 
 \ PATH has already been resolved by the loader's resolver, under ROOT. This
 \ opens a source frame and makes ROOT current until the callback returns.
-: WITH-BYTES ( ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
+: WITH-BYTES ( str str [ str str -- ] -- )
    {: root:^ rootu:n path:^ pathu:n q :}
    s" SOURCE-ROOT:WITH-BYTES" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-BYTES" path pathu BUILD-REFUSE
@@ -2731,7 +2731,7 @@ public
 
 \ A caller that owns PATH's source bytes opens the same loader frame under ROOT,
 \ the root PATH resolved under, from those bytes rather than a disk copy.
-: WITH-SUPPLIED ( ^u8 n ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
+: WITH-SUPPLIED ( str str str [ str str -- ] -- )
    {: root:^ rootu:n path:^ pathu:n src:^ srcu:n q :}
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu GIVEN-CHECK
    s" SOURCE-ROOT:WITH-SUPPLIED" path pathu BUILD-REFUSE
@@ -2829,7 +2829,7 @@ global
 \ The `--load` argv row.
 : script-required ( ^u8 n -- ) ENTRY-REQUIRED ;
 
-: provided ( ^u8 n -- )
+: provided ( str -- )
    {: a:^ u:n :}
    s" provided" a u [: RESOLVE-AT ;] RESOLVE {: path:^ pathu:n known:bool :}
    s" provided" path pathu SOURCE-ROOT:BUILD-REFUSE
@@ -2924,7 +2924,7 @@ public
 
 \ Configure confinement before checking or sealing. The policy library passes
 \ the ordinary require xt it captured when loaded.
-: POLICY-ROOT ( ^u8 n [ -- renders parses nominal roots ] -- )
+: POLICY-ROOT ( str [ -- renders parses nominal roots ] -- )
    {: path:^ u:n require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
    s" SOURCE-ROOT:POLICY-ROOT" path u ROOT-CANON
@@ -2932,7 +2932,7 @@ public
 
 \ Scope a root and require owner for reusable source checks. A callback that
 \ seals leaves the new policy root and refuses the attempted return to the old.
-: POLICY-WITH-ROOT ( ^u8 n [ -- ] [ -- renders parses nominal roots ]
+: POLICY-WITH-ROOT ( str [ -- ] [ -- renders parses nominal roots ]
    -- )
    {: path:^ u:n q require-xt :}
    data-base POLICY-NDICT-CELL + @ 0 <> if POLICY-SEALED then
@@ -3000,7 +3000,7 @@ public
    REQUIRE-N @ REQUIRE-BOOT-N !
    INCLUDE-FALSE REQUIRE-BOOT-V ! ;
 
-: ENGINE-PROVIDES? ( ^u8 n -- bool )
+: ENGINE-PROVIDES? ( str -- bool )
    ENGINE-KNOWN? ;
 
 ;package
