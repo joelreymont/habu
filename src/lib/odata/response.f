@@ -403,7 +403,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 \ A new mapping of WANT bytes holding the HAVE bytes at FROM; the old
 \ mapping is freed.
-: MOVED ( ^u8 n n SPAN:span<u8> -- SPAN:span<u8> )
+: MOVED ( str n SPAN:span<u8> -- SPAN:span<u8> )
    {: from:^ have:n want:n old:SPAN:span<u8> :}
    want MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: grown:SPAN:span<u8> :}
    from have grown SPAN:COPY

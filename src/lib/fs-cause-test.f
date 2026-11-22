@@ -29,8 +29,8 @@ variable BAD-CODE
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: ROOT$ ( -- ^u8 n ) ROOT-BUF ROOT-U @ ;
-: PATH ( ^u8 n -- ^u8 n )
+: ROOT$ ( -- str ) ROOT-BUF ROOT-U @ ;
+: PATH ( str -- str )
    ROOT$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 : SETUP ( -- )
    s" habu-fs-cause" FS:MKTEMP-DIR {: a:^ u:n :}

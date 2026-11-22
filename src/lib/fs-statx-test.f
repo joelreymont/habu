@@ -43,8 +43,8 @@ create STATFS-BUF STATFS-BYTES allot
 create FLAGS 8 allot
 variable ROOT-U
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: PATH ( ^u8 n -- ^u8 n )
+: ROOT$ ( -- str ) ROOT ROOT-U @ ;
+: PATH ( str -- str )
    ROOT$ 2swap PATH-BUF FS:JOIN-PATH PATH-BUF swap ;
 : SETUP ( -- )
    s" habu-fs-statx" FS:MKTEMP-DIR {: a:^ u:n :}
@@ -79,7 +79,7 @@ variable ROOT-U
 : ON ( fd -- )
    s"  on " type MAGIC FS-NAME$ type cr ;
 
-: SAY ( ^u8 n fd -- ) {: a:^ u:n file:fd :}
+: SAY ( str fd -- ) {: a:^ u:n file:fd :}
    s" fs-statx-test: " type a u type file ON ;
 
 \ Birth lies between a coarse clock read before the file is made and a

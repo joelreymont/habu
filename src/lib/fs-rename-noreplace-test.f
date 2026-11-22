@@ -24,19 +24,19 @@ variable SIBLINGS
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: PATH ( n ^u8 n -- ^u8 n ) {: idx name bytes :}
+: PATH ( n str -- str ) {: idx name bytes :}
    PATHS idx PATH-CAP * + {: out :}
    out ROOT ROOT-U @ name bytes out FS:JOIN-PATH ;
 
-: TARGET ( -- ^u8 n ) 0 s" target" PATH ;
-: DEST ( -- ^u8 n ) 1 s" dest" PATH ;
-: RACE-DEST ( -- ^u8 n ) PATHS 2 PATH-CAP * + RACE-DEST-U @ ;
+: TARGET ( -- str ) 0 s" target" PATH ;
+: DEST ( -- str ) 1 s" dest" PATH ;
+: RACE-DEST ( -- str ) PATHS 2 PATH-CAP * + RACE-DEST-U @ ;
 
-: CONTENT ( ^u8 n ^u8 n -- ) {: path:^ pathu expected:^ expectedu :}
+: CONTENT ( str str -- ) {: path:^ pathu expected:^ expectedu :}
    path pathu TEXT 64 FS:READ-ALL {: got :}
    TEXT got expected expectedu T$= ;
 
-: CLAIM ( ^u8 n -- bool ) s" new bytes" FS:ATOMIC-CREATE-PRIVATE ;
+: CLAIM ( str -- bool ) s" new bytes" FS:ATOMIC-CREATE-PRIVATE ;
 
 : COUNT-ENTRY ( str -- )
    1 ENTRIES +!

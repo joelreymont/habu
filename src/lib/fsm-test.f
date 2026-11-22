@@ -349,7 +349,7 @@ variable SRC-LEN
    SRC-LEN @ u + SRC-LEN ! ;
 
 : N+ ( n -- ) FMT:INT$ SRC+ ;
-: SRC$ ( -- ^u8 n ) 0 SRC SRC-LEN @ ;
+: SRC$ ( -- str ) 0 SRC SRC-LEN @ ;
 
 
 \ A machine that runs after a rejected table: the next DEFINE starts from an

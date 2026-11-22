@@ -108,8 +108,8 @@ T-RESET
 package NUM-TEST
 private
 
-: YES   ( ^u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
-: NO    ( ^u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: YES   ( str -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO    ( str -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
 \ Every role is one cell wide, so only the nominal family separates an item count
 \ from a byte length: `some` refuses a wrong payload role and a wrong instantiation.

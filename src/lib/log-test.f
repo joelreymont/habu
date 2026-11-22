@@ -83,7 +83,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : NEW-BYTES ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
-: PATH$ ( -- ^u8 n )  PATH-BUF PATH-U @ ;
+: PATH$ ( -- str )  PATH-BUF PATH-U @ ;
 
 
 : PATH-MAKE ( -- )
@@ -121,7 +121,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
    true DATE:TIME-LEN 0 ?do at i SHAPE-AT? and loop ;
 
 
-: DIGITS ( ^u8 n -- n )
+: DIGITS ( str -- n )
    {: at:^ u:n :}
    0 u 0 ?do 10 * at i + c@ STR-ZERO - + loop ;
 

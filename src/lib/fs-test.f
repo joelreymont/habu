@@ -973,7 +973,7 @@ variable VISITS
    s" through the fifo" ;
 
 \ A system tool's path, resolved through PATH into TOOL-BUF.
-: TOOL ( ^u8 n -- ^u8 len )
+: TOOL ( str -- ^u8 len )
    >LEN TOOL-BUF RESOLVE-EXECUTABLE TOOL-BUF swap ;
 
 : MAKE-FIFO ( -- )
@@ -1069,7 +1069,7 @@ variable VISITS
    then
    r FD>N close ;
 
-: VISIT ( ^u8 n -- )
+: VISIT ( str -- )
    2drop VISITS @ 1 + VISITS ! ;
 
 : WALK-DIR ( -- )

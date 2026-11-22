@@ -676,7 +676,7 @@ public
 
 \ The fill's own refusal remains the error when removing its sibling also
 \ fails. Replacing the reserved file with a directory makes unlink refuse.
-: FMT-STAGED-CLEAN-FAIL ( ^u8 n -- )
+: FMT-STAGED-CLEAN-FAIL ( str -- )
    2dup FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U FMT-COPY!
    2dup FS:REMOVE-FILE
    FS:MAKE-DIR
@@ -760,7 +760,7 @@ public
    \ No slot names the sibling now: FMT-TEST-CLEANUP's run must leave this file.
    FMT-STAGED-FORGOT s" unowned" FS:WRITE-ALL
    s" a staged callback cannot consume its caller's context" T-LABEL
-   s" FMT-BAD-STAGED ( n ^u8 n -- ) [: 2drop drop ;] FS:REPLACE-STAGED"
+   s" FMT-BAD-STAGED ( n str -- ) [: 2drop drop ;] FS:REPLACE-STAGED"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : FMT-STAGED-MODE-FILL ( str -- ) {: path:^ pathu :}
@@ -972,7 +972,7 @@ create MANY-GOT-BUF MANY-CAP allot
    MANY-FILE ;
 
 \ The body: both files are named `twice`, the second's name taken since FILL.
-: MANY-TWICE ( n -- ^u8 n ^u8 n ) {: idx :}
+: MANY-TWICE ( n -- str str ) {: idx :}
    s" twice" idx 0= if s" first" else s" second" then ;
 
 : MANY-HOLDS ( n -- ) {: idx :}
@@ -1211,7 +1211,7 @@ variable WANT-U
    S\" require src/lib/fs-mutate.f\n: GO ( -- ) [: s\q tmpdir-caught\q >str FS:MKTEMP drop drop ;] catch E-FS-DIR <> if 3 throw then 1 s\q on\q write drop ;\nGO\n" ;
 
 : CANON-PROG-SRC$ ( -- str )
-   S\" require src/lib/fs-mutate.f\n: LINE ( ^u8 n -- ) {: a:^ u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q >str FS:MKTEMP-DIR str> LINE\n" ;
+   S\" require src/lib/fs-mutate.f\n: LINE ( str -- ) {: s :} 1 s str> write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q >str FS:MKTEMP-DIR LINE\n" ;
 
 \ A directory one byte past the longest TMPDIR with room for the temp name
 \ PROG-SRC$ asks for, whose prefix is tmpdir-child.
@@ -1222,7 +1222,7 @@ variable WANT-U
    PROC-ARGV-ENV-RESET
    s" TMPDIR" >LEN a u >LEN PROC-ENV-SET ;
 
-: CAPTURE ( ^u8 n -- len len PROCESS:ending ) {: prog:^ progu :}
+: CAPTURE ( str -- len len PROCESS:ending ) {: prog:^ progu :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -1259,7 +1259,7 @@ variable WANT-U
    ERR erru LEN>N WANT$ COUNT-SUB 1 T=
    ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TFALSE ;
 
-: REJECTED ( ^u8 n ^u8 n n -- )
+: REJECTED ( str str n -- )
    {: prog:^ progu a:^ u code:n :}
    a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
    prog progu outu erru oc code RECORD-ONCE ;
@@ -1501,7 +1501,7 @@ variable MKFIFO-U
 variable SOCAT-U
 
 
-: TOOL ( ^u8 n ^u8 -- len ) {: name:^ size:n dst:^ :}
+: TOOL ( str ^u8 -- len ) {: name:^ size:n dst:^ :}
    name size >LEN dst FIND-EXECUTABLE MATCH option
       none OF
          2 s" fs-mutate-test: required executable missing: " write drop
