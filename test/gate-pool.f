@@ -1222,10 +1222,8 @@ variable GT-POOL-CPU-NS
    w bytes byten GT-POOL-FEED-STDIN
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
-: GT-POOL-PFD-SLOT ( idx -- ^FD:pollfd ) {: idx :}
-   idx IDX>N 0 < if E-TBL-BOUNDS throw then
-   idx IDX>N GT-POOL-MAX GT-POOL-FDS * >= if E-TBL-BOUNDS throw then
-   idx IDX>N GT-POOL-PFDS ;
+\ A slot runs from 0 to GT-POOL-MAX * GT-POOL-FDS - 1; nothing checks it.
+: GT-POOL-PFD-SLOT ( idx -- ^FD:pollfd ) IDX>N GT-POOL-PFDS ;
 
 : GT-POOL-PFD! ( fd n idx -- ) {: fd events idx :}
    fd events FD:>POLLFD idx GT-POOL-PFD-SLOT ! ;

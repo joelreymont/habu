@@ -310,12 +310,8 @@ public
    -1 >FD -1 >FD -1 >FD RUN-IO-RC ;
 
 private
-\ An idx outside 0..PFD-SLOTS-1 is E-A-BOUNDS: PFD-AT! and PFD-REVENTS are
-\ public, and slot PFD-SLOTS would reach past the row.
-: PFD-SLOT ( idx -- ^FD:pollfd ) {: idx :}
-   idx IDX>N 0 < if E-A-BOUNDS throw then
-   idx IDX>N PFD-SLOTS >= if E-A-BOUNDS throw then
-   idx IDX>N PFD-ROW ;
+\ A slot runs from 0 to PFD-SLOTS - 1; nothing checks it.
+: PFD-SLOT ( idx -- ^FD:pollfd ) IDX>N PFD-ROW ;
 
 public
 : PFD-AT! ( fd n idx -- ) {: fd events idx :}
@@ -369,10 +365,9 @@ public
    again ;
 
 \ Polls slots 0..n-1 as they stand, armed or not (NO-FD leaves one out), for an event
-\ PFD-REVENTS reads. E-A-BOUNDS: n not 1..PFD-SLOTS; E-PROC-OUTPUT; E-PROC-TIMEOUT.
+\ PFD-REVENTS reads; n runs from 1 to PFD-SLOTS and nothing checks it.
+\ E-PROC-OUTPUT; E-PROC-TIMEOUT.
 : POLL ( n ms -- count ) {: nfds ms :}
-   nfds 1 < if E-A-BOUNDS throw then
-   nfds PFD-SLOTS > if E-A-BOUNDS throw then
    ms DEADLINE-AT {: deadline :}
    nfds ms MS>N deadline POLL-RESTART {: rc :}
    rc 0 < if E-PROC-OUTPUT throw then
