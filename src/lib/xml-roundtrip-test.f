@@ -10,8 +10,6 @@ package XML-ROUNDTRIP-TEST
 using XML
 CAST: TOKEN>N ( XML:kind -- n )
 $1000 constant BYTE-CAP
-align
-create EDITOR 2 EDIT:STORAGE-BYTES allot
 create DOCUMENT BYTE-CAP allot
 TYPED-VARIABLE READBACK ^VEC:vector<u8>
 create SINGLE 1 allot
@@ -50,7 +48,7 @@ TYPED-VARIABLE RD XML:cursor
    value size text ESCAPE-TEXT
    ATTRIBUTE-RANGE {: attr-start:off attr-old:len :}
    TEXT-RANGE {: text-start:off text-old:len :}
-   EDITOR 2 EDIT:STORAGE-BYTES ORIGINAL$ EDIT:INIT
+   HEAP:ALLOCATOR ORIGINAL$ EDIT:INIT
    attr-start attr-old attr VEC:SPAN SPAN:$ EDIT:REPLACE
    text-start text-old text VEC:SPAN SPAN:$ EDIT:REPLACE
    DOCUMENT BYTE-CAP EDIT:WRITE {: document-size:n :}

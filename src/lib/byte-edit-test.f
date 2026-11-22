@@ -1,25 +1,23 @@
 split-str
 require src/lib/test.f
+require src/lib/heap.f
 require src/lib/byte-edit.f
 
 package BYTE-EDIT-TEST
 using EDIT
-4 constant CAP
 $100 constant OUTPUT-CAP
-$12345678 constant CANARY
-align
-create BEFORE CANARY ,
-create STORAGE CAP STORAGE-BYTES allot
-create AFTER CANARY ,
-create ZERO-STORAGE 0 STORAGE-BYTES allot
+\ Enough edits to grow the rows several times.
+100 constant MANY
 create OUTPUT OUTPUT-CAP allot
 create BINARY $41 c, 0 c, $FF c, $42 c,
 create BINARY-EXPECTED $41 c, $7F c, 0 c, $42 c,
 create BINARY-INSERT $7F c, 0 c,
-create ODD-STORE CAP STORAGE-BYTES 1+ allot
+create MANY-SOURCE MANY allot
+create MANY-EXPECTED MANY 2 * allot
 
 : OPEN ( ^u8 n -- EDIT:editor )
-   STORAGE CAP STORAGE-BYTES 2swap INIT ;
+   {: source size:n :}
+   HEAP:ALLOCATOR source size INIT ;
 
 : RESULT= ( EDIT:editor str -- EDIT:editor )
    {: expected size:n :}
@@ -45,9 +43,9 @@ create ODD-STORE CAP STORAGE-BYTES 1+ allot
    BINARY-EXPECTED 4 RESULT= EDIT:CLOSE ;
 
 : EMPTY-PLAN ( -- )
-   ZERO-STORAGE 0 STORAGE-BYTES s" whole original" INIT
+   s" whole original" OPEN
    s" whole original" RESULT= EDIT:CLOSE
-   ZERO-STORAGE 0 STORAGE-BYTES s" " INIT
+   s" " OPEN
    s" " RESULT= EDIT:CLOSE ;
 
 : ZERO-LENGTH-EDITS ( -- )
@@ -60,11 +58,16 @@ create ODD-STORE CAP STORAGE-BYTES 1+ allot
    0 >OFF 2 >LEN s" " REPLACE
    s" " RESULT= EDIT:CLOSE ;
 
-: ODD-STORAGE ( -- )
-   ODD-STORE 1 + CAP STORAGE-BYTES s" abcd" INIT
-   1 >OFF 2 >LEN s" XYZ" REPLACE
-   4 >OFF 0 >LEN s" !" REPLACE
-   s" aXYZd!" RESULT= EDIT:CLOSE ;
+\ An insertion before every source byte: the result interleaves them.
+: MANY-EDITS ( -- )
+   MANY 0 ?do
+      [char] a i 26 mod + MANY-SOURCE i + c!
+      [char] - MANY-EXPECTED i 2 * + c!
+      [char] a i 26 mod + MANY-EXPECTED i 2 * 1 + + c!
+   loop
+   MANY-SOURCE MANY OPEN
+   MANY 0 ?do i >OFF 0 >LEN s" -" REPLACE loop
+   MANY-EXPECTED MANY 2 * RESULT= EDIT:CLOSE ;
 
 \ ---- the caught bodies of the failure cases ---------------------------------
 \ Each failure body is a word reached by `[']`, not a quotation literal: the
@@ -78,11 +81,8 @@ create ODD-STORE CAP STORAGE-BYTES 1+ allot
 : REPLACE-NEG-SIZE ( EDIT:editor -- EDIT:editor ) 1 >OFF 1 >LEN s" x" drop -1 REPLACE ;
 : REPLACE-INSIDE-LAST ( EDIT:editor -- EDIT:editor ) 3 >OFF 1 >LEN s" Y" REPLACE ;
 : REPLACE-BEFORE-LAST ( EDIT:editor -- EDIT:editor ) 0 >OFF 1 >LEN s" Y" REPLACE ;
-: REPLACE-NO-ROOM ( EDIT:editor -- EDIT:editor ) 0 >OFF 0 >LEN s" x" REPLACE ;
-: REPLACE-FROM-STORAGE ( EDIT:editor -- EDIT:editor ) 0 >OFF 0 >LEN STORAGE BYTE-VIEW 1 REPLACE ;
 : WRITE-TINY ( EDIT:editor -- EDIT:editor ) OUTPUT 1 EDIT:WRITE drop ;
 : WRITE-SOURCE ( EDIT:editor -- EDIT:editor ) BINARY 4 EDIT:WRITE drop ;
-: WRITE-STORAGE ( EDIT:editor -- EDIT:editor ) STORAGE BYTE-VIEW OUTPUT-CAP EDIT:WRITE drop ;
 : WRITE-OUTPUT ( EDIT:editor -- EDIT:editor ) OUTPUT OUTPUT-CAP EDIT:WRITE drop ;
 
 : BAD-RANGES ( -- )
@@ -111,16 +111,9 @@ create ODD-STORE CAP STORAGE-BYTES 1+ allot
    OUTPUT c@ $5A T=
    s" along replacementc" RESULT= EDIT:CLOSE ;
 
-: CAPACITY-FAILURE ( -- )
-   ZERO-STORAGE 0 STORAGE-BYTES s" abc" INIT
-   ['] REPLACE-NO-ROOM catch E-CAPACITY T=
-   s" abc" RESULT= EDIT:CLOSE ;
-
 : ALIAS-FAILURES ( -- )
    BINARY 4 OPEN
    ['] WRITE-SOURCE catch E-ALIAS T=
-   ['] WRITE-STORAGE catch E-ALIAS T=
-   ['] REPLACE-FROM-STORAGE catch E-ALIAS T=
    0 >OFF 0 >LEN OUTPUT 1 REPLACE
    ['] WRITE-OUTPUT catch E-ALIAS T=
    EDIT:CLOSE ;
@@ -136,15 +129,12 @@ MIXED-EDITS
 EXACT-PRESERVATION
 EMPTY-PLAN
 ZERO-LENGTH-EDITS
-ODD-STORAGE
+MANY-EDITS
 BAD-RANGES
 BAD-ORDER
 NO-PARTIAL-WRITE
-CAPACITY-FAILURE
 ALIAS-FAILURES
 CHECKED-OWNERSHIP
-BEFORE @ CANARY T=
-AFTER @ CANARY T=
 T-REPORT
 ;using
 ;package

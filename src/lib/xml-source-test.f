@@ -10,7 +10,6 @@ require src/lib/reason.f
 
 package XML-SOURCE-TEST
 
-create EDIT-STORE 4 EDIT:STORAGE-BYTES allot
 TYPED-VARIABLE ENCODED-OUT ^VEC:vector<u8>
 create WRITTEN 256 allot
 TYPED-VARIABLE DECODED ^VEC:vector<u8>
@@ -158,7 +157,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:E-SCALAR TTHROWSQ
    out VEC:SPAN SPAN:$ s" &#x4E2D;" T$=
    owner XML:OWNER-ORIGINAL$ {: original size:n :}
-   EDIT-STORE 1 EDIT:STORAGE-BYTES original size EDIT:INIT
+   HEAP:ALLOCATOR original size EDIT:INIT
    edit-off edit-len out VEC:SPAN SPAN:$ EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE
@@ -330,7 +329,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
       encoded added s\" \zA\xD8\x3D\xDE\x97" T$=
    then
    XML:SOURCE-ORIGINAL$ {: original original-len:n :}
-   EDIT-STORE 2 EDIT:STORAGE-BYTES original original-len EDIT:INIT
+   HEAP:ALLOCATOR original original-len EDIT:INIT
    edit-off edit-len encoded added EDIT:REPLACE
    WRITTEN 256 EDIT:WRITE {: written:n :}
    EDIT:CLOSE XML:SOURCE-CLOSE
@@ -387,7 +386,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
       encoded attr-added s\" \zA\xD8\x3D\xDE\x97" T$=
    then
    XML:SOURCE-ORIGINAL$ {: original original-len:n :}
-   EDIT-STORE 4 EDIT:STORAGE-BYTES original original-len EDIT:INIT
+   HEAP:ALLOCATOR original original-len EDIT:INIT
    attr-wire attr-old encoded attr-added EDIT:REPLACE
    insert-wire insert-old encoded attr-added + insert-added EDIT:REPLACE
    delete-wire delete-old encoded 0 EDIT:REPLACE
@@ -437,7 +436,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    out VEC:SPAN SPAN:$ {: encoded added:n :}
    encoded added s\" \xE9\z" T$=
    XML:SOURCE-ORIGINAL$ {: original original-len:n :}
-   EDIT-STORE 2 EDIT:STORAGE-BYTES original original-len EDIT:INIT
+   HEAP:ALLOCATOR original original-len EDIT:INIT
    edit-off edit-len encoded added EDIT:REPLACE
    $5A WRITTEN c!
    ['] WRITE-TINY catch EDIT:E-CAPACITY T=

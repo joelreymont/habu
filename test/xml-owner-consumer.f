@@ -19,7 +19,6 @@ private
 1024 constant OUTPUT-CAP
 create WIRE WIRE-CAP allot
 create INPUT WIRE-CAP allot
-create EDIT-STORE 3 EDIT:STORAGE-BYTES allot
 create WRITTEN OUTPUT-CAP allot
 TYPED-VARIABLE DECODED ^VEC:vector<u8>
 variable STREAM-POS
@@ -209,7 +208,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    out VEC:SPAN SPAN:$ drop {: encoded :}
    owner XML:OWNER-ORIGINAL$ {: original original-size:n :}
    end-off OFF>N original-size T=
-   EDIT-STORE 3 EDIT:STORAGE-BYTES original original-size EDIT:INIT
+   HEAP:ALLOCATOR original original-size EDIT:INIT
    attr-off attr-len encoded attr-size EDIT:REPLACE
    text-off text-len encoded attr-size + text-size EDIT:REPLACE
    end-off end-len encoded attr-size + text-size + tail-size EDIT:REPLACE
