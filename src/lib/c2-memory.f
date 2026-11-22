@@ -24,9 +24,18 @@ CAST: INIT-LEN>N ( NUM:alloc-byte-len -- n )
 3 constant CLOSING
 1 constant BYTES-FRAME
 2 constant INIT-FRAME
-24 constant APPEND-HEADER-BYTES
-MEM-MAX-N APPEND-HEADER-BYTES 2 * - CELL 1- - constant MAX-APPEND
 32 constant FRAME-CAP
+
+\ Each append allocation, and each chunk that holds them, starts with
+\ this header; its bytes follow it.
+STRUCTURE append DERIVE addr
+   FIELD next ^append
+   FIELD length n
+   FIELD disposer [ ^u8 NUM:alloc-byte-len -- ]
+;STRUCTURE
+
+: APPEND-HEADER-BYTES ( -- n ) [type] append width>n ;
+MEM-MAX-N APPEND-HEADER-BYTES 2 * - CELL 1- - constant MAX-APPEND
 
 \ c2-init-stow and c2-records-stow write state, resource, length and
 \ original-bound at byte offsets 0, 16, 24 and 40: the field order is fixed.
@@ -38,8 +47,8 @@ STRUCTURE frame DERIVE addr
    FIELD disposer [ ^u8 NUM:alloc-byte-len -- ]
    FIELD original-bound n
    FIELD kind n
-   FIELD append-head ^u8
-   FIELD append-pending ^u8
+   FIELD append-head ^append
+   FIELD append-pending ^append
    FIELD append-cursor ^u8
    FIELD append-remain n
 ;STRUCTURE
@@ -59,13 +68,7 @@ FRAME-CAP TASK:+USERS FRAMES frame
 : LOAN-DEPTH-CELL ( -- ^n ) META-ROW META-LOAN-DEPTH ;
 : INIT-BOUND-CELL ( -- ^n ) META-ROW META-INIT-BOUND ;
 
-CAST: >APPEND-PTR-CELL ( ^u8 -- ^^u8 )
-CAST: >APPEND-LEN-CELL ( ^u8 -- ^n )
-CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
-
-: APPEND-NEXT-CELL ( ^u8 -- ^^u8 ) >APPEND-PTR-CELL ;
-: APPEND-LENGTH-CELL ( ^u8 -- ^n ) 8 + >APPEND-LEN-CELL ;
-: APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] ) 16 + >APPEND-DISPOSER-CELL ;
+CAST: >APPEND ( ^u8 -- ^append )
 
 : HEAD-FRAME ( -- ^frame )
    HEAD-CELL @ 1- FRAMES ;
@@ -90,9 +93,9 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
 
 : DISPOSE-APPEND ( -- )
    HEAD-FRAME FRAME-APPEND-PENDING @ {: header:^ :}
-   header APPEND-HEADER-BYTES +
-   header APPEND-LENGTH-CELL @ MEM:BYTES-ALLOC-LEN
-   header APPEND-DISPOSER-CELL @ execute ;
+   header BYTE-VIEW APPEND-HEADER-BYTES +
+   header APPEND-LENGTH @ MEM:BYTES-ALLOC-LEN
+   header APPEND-DISPOSER @ execute ;
 
 : RELEASE-APPEND-CHUNK ( ^u8 NUM:alloc-byte-len -- )
    swap APPEND-HEADER-BYTES - swap MEM:RELEASE-BYTES ;
@@ -102,12 +105,12 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
 
 : CLOSE-APPENDS ( -- n )
    0
-   begin HEAD-FRAME FRAME-APPEND-HEAD @ dup NULL$ drop <> while
+   begin HEAD-FRAME FRAME-APPEND-HEAD @ dup NULL-PTR <> while
       {: header:^ :}
-      header APPEND-NEXT-CELL @ HEAD-FRAME FRAME-APPEND-HEAD !
+      header APPEND-NEXT @ HEAD-FRAME FRAME-APPEND-HEAD !
       header HEAD-FRAME FRAME-APPEND-PENDING !
       [: DISPOSE-APPEND ;] catch FIRST-ERROR
-      NULL$ drop HEAD-FRAME FRAME-APPEND-PENDING !
+      NULL-PTR HEAD-FRAME FRAME-APPEND-PENDING !
    repeat drop ;
 
 : CLOSE-BYTES ( -- n )
@@ -167,8 +170,8 @@ CAST: >APPEND-DISPOSER-CELL ( ^u8 -- ^[ ^u8 NUM:alloc-byte-len -- ] )
    DEPTH-CELL @ FRAMES {: frame:^ :}
    HEAD-CELL @ frame FRAME-PREV !
    BYTES-FRAME frame FRAME-KIND !
-   NULL$ drop frame FRAME-APPEND-HEAD !
-   NULL$ drop frame FRAME-APPEND-PENDING !
+   NULL-PTR frame FRAME-APPEND-HEAD !
+   NULL-PTR frame FRAME-APPEND-PENDING !
    NULL$ drop frame FRAME-APPEND-CURSOR !
    0 frame FRAME-APPEND-REMAIN !
    PENDING frame FRAME-STATE !
@@ -227,13 +230,14 @@ CAST: >NODE-CELL ( ^u8 -- ^^frame )
 \ The next chunk leaves any unused tail of the old one until owner close.
 : APPEND-CHUNK ( ^frame n -- ) {: frame:^ record-bytes:n :}
    record-bytes APPEND-HEADER-BYTES + MEM-64K max
-   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: chunk:^ length:NUM:alloc-byte-len :}
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: bytes:^ length:NUM:alloc-byte-len :}
+   bytes >APPEND {: chunk:^ :}
    \ Register ownership before any further fallible operation or yield.
-   frame FRAME-APPEND-HEAD @ chunk APPEND-NEXT-CELL !
-   length INIT-LEN>N chunk APPEND-LENGTH-CELL !
-   [: RELEASE-APPEND-CHUNK ;] chunk APPEND-DISPOSER-CELL !
+   frame FRAME-APPEND-HEAD @ chunk APPEND-NEXT !
+   length INIT-LEN>N chunk APPEND-LENGTH !
+   [: RELEASE-APPEND-CHUNK ;] chunk APPEND-DISPOSER !
    chunk frame FRAME-APPEND-HEAD !
-   chunk APPEND-HEADER-BYTES + frame FRAME-APPEND-CURSOR !
+   bytes APPEND-HEADER-BYTES + frame FRAME-APPEND-CURSOR !
    length INIT-LEN>N APPEND-HEADER-BYTES - frame FRAME-APPEND-REMAIN ! ;
 
 : APPEND-BODY ( ^frame NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- str )
@@ -244,14 +248,15 @@ CAST: >NODE-CELL ( ^u8 -- ^^frame )
    frame FRAME-APPEND-REMAIN @ record-bytes < if
       frame record-bytes APPEND-CHUNK
    then
-   frame FRAME-APPEND-CURSOR @ {: header:^ :}
-   frame FRAME-APPEND-HEAD @ header APPEND-NEXT-CELL !
-   bytes header APPEND-LENGTH-CELL !
-   dispose header APPEND-DISPOSER-CELL !
+   frame FRAME-APPEND-CURSOR @ {: at:^ :}
+   at >APPEND {: header:^ :}
+   frame FRAME-APPEND-HEAD @ header APPEND-NEXT !
+   bytes header APPEND-LENGTH !
+   dispose header APPEND-DISPOSER !
    header frame FRAME-APPEND-HEAD !
-   header record-bytes + frame FRAME-APPEND-CURSOR !
+   at record-bytes + frame FRAME-APPEND-CURSOR !
    frame FRAME-APPEND-REMAIN @ record-bytes - frame FRAME-APPEND-REMAIN !
-   header APPEND-HEADER-BYTES + bytes ;
+   at APPEND-HEADER-BYTES + bytes ;
 
 : APPEND ( ^frame NUM:alloc-byte-len [ ^u8 NUM:alloc-byte-len -- ] -- ^u8 n )
    TASK:DEFER-ENTER
