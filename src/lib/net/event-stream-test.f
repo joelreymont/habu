@@ -10,10 +10,8 @@ require src/lib/net/event-stream.f
 
 package SSE-TEST
 
-SSE:STORAGE-BYTES constant DEC-BYTES
-create DEC-A DEC-BYTES allot
-create DEC-B DEC-BYTES allot
-create DEC-ODD DEC-BYTES 1+ allot
+TYPED-VARIABLE DEC-A SSE:state
+TYPED-VARIABLE DEC-B SSE:state
 TYPED-VARIABLE GOT ^VEC:vector<u8>
 TYPED-VARIABLE WANT ^VEC:vector<u8>
 TYPED-VARIABLE BIG ^VEC:vector<u8>
@@ -44,8 +42,8 @@ variable CALLS
    CALLS @ T=
    GOT @ VEC:SPAN SPAN:$ WANT @ VEC:SPAN SPAN:$ T$= ;
 
-: A-OPEN ( -- SSE:decoder ) DEC-A DEC-BYTES SSE:OPEN ;
-: B-OPEN ( -- SSE:decoder ) DEC-B DEC-BYTES SSE:OPEN ;
+: A-OPEN ( -- SSE:decoder ) DEC-A SSE:OPEN ;
+: B-OPEN ( -- SSE:decoder ) DEC-B SSE:OPEN ;
 
 : SEND ( SSE:decoder ^u8 n -- )
    NULL-PTR [: RECORD ;] SSE:FEED ;
@@ -59,14 +57,6 @@ variable CALLS
    d s\" \xEF\xBB\xBF:ignored\r\nevent: custom\r\ndata: A\rdata: é\n\r\ndata:\n\nid: ignored\n\nevent:\ndata: z\n\n" SEND
    d SSE:FINISH d SSE:CLOSE
    3 CHECK ;
-
-: ODD-STORAGE ( -- )
-   RESET
-   s" message" s" x" EXPECT
-   DEC-ODD 1 + DEC-BYTES SSE:OPEN {: d:SSE:decoder :}
-   d s\" data: x\n\n" SEND
-   d SSE:FINISH d SSE:CLOSE
-   1 CHECK ;
 
 : SPLIT ( n -- )
    {: cut:n :}
@@ -205,13 +195,12 @@ variable CALLS
    A-OPEN ACTIVE !
    [: ACTIVE @ NULL-PTR -1 SEND ;] SSE:E-SOURCE TTHROWSQ
    [: ACTIVE @ NULL-PTR 1 SEND ;] SSE:E-SOURCE TTHROWSQ
-   ACTIVE @ SSE:CLOSE
-   [: DEC-A 1 SSE:OPEN drop ;] SSE:E-STORAGE TTHROWSQ ;
+   ACTIVE @ SSE:CLOSE ;
 
 : RUN ( -- )
    T-RESET
    GOT FRESH WANT FRESH BIG FRESH
-   BASIC ODD-STORAGE EVERY-SPLIT TWO-DECODERS EOF-DISCARD FIELDS NO-COLON
+   BASIC EVERY-SPLIT TWO-DECODERS EOF-DISCARD FIELDS NO-COLON
    BOM-SPLITS MIDSTREAM-BOM LARGE-EVENT INVALID-UTF8 CALLBACK-FAILURE
    MISUSE BAD-SOURCE
    BIG @ VEC:DELETE WANT @ VEC:DELETE GOT @ VEC:DELETE

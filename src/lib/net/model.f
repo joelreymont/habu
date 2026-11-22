@@ -238,13 +238,14 @@ CAST: >LEDGER ( ^u8 -- ^ledger )
 
 \ A chat's event stream: whether it delivered an event, whether the response
 \ ended, an error event's fault, its first output's TIME:MONO-NS, 0 if none,
-\ and the decoder reading it.
+\ the decoder reading it and the decoder's state.
 STRUCTURE stream DERIVE addr
    FIELD heard bool
    FIELD done bool
    FIELD fault n
    FIELD output-ns n
    FIELD decoder option<SSE:decoder>
+   FIELD sse SSE:state
 ;STRUCTURE
 
 CAST: >STREAM ( ^u8 -- ^stream )
@@ -370,8 +371,7 @@ OUTCOME-TEXT-HDR-AT BUF:HDR-BYTES + constant RECORD-TEXT-HDR-AT
 RECORD-TEXT-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
 COUNTS-AT TOKENS-BYTES + constant ACCOUNTS-AT
 ACCOUNTS-AT LEDGER-BYTES + constant EVENTS-AT
-EVENTS-AT STREAM-BYTES + constant DECODER-AT
-DECODER-AT SSE:STORAGE-BYTES + constant ENDING-AT
+EVENTS-AT STREAM-BYTES + constant ENDING-AT
 ENDING-AT RECEIPT-BYTES + constant HASH-AT
 \ A purpose row: the offset and length in the row text of its purpose, model,
 \ effort and service tier.
@@ -595,9 +595,6 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
    c OUTCOME-TEXT-BUF BUF:SPAN$ BUF:BLEN>N {: a:^ u:n :}
    u 0= if fault throw then
    a u fault REASON:THROW ;
-: DECODER-STORAGE ( ^call -- ^n n )
-   DECODER-AT SSE:STORAGE-BYTES REGION SPAN:$ {: a:^ u:n :}
-   a CELL-VIEW u ;
 \ A sha256 context, then the digest, then its hex.
 : HASH-WORK ( ^call -- ^u8 )
    HASH-AT SHA256-CTX-BYTES 96 + REGION SPAN:$ drop ;
@@ -4302,7 +4299,7 @@ ENUM dispatch-event armed faulted ;ENUM
    c REQUEST-URL$ c BODY$ c AS-POST
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF
-         c DECODER-STORAGE SSE:OPEN OPTION:SOME c STREAM STREAM-DECODER !
+         c STREAM STREAM-SSE SSE:OPEN OPTION:SOME c STREAM STREAM-DECODER !
       ENDOF
       embed OF ENDOF
       tally OF ENDOF

@@ -51,15 +51,15 @@ split-str
 \ record, taken from an arena when the row is made, and its region never move.
 \ A client's value is the generation OPEN gave its row from a process-wide
 \ count, and CLOSE clears the row's generation, so a closed client's value
-\ names no row even after another OPEN reuses it. The region holds six BUFs and
-\ the SSE decoder's storage. The BUFs are the URL; the request, then, once
-\ BODY! has copied it, a header line and the reply's header block; the reply;
-\ the tool list TOOLS assembles; the response an event-stream reply carried;
-\ and the token TOKEN! set, empty for none. The handle of the exchange in
-\ flight, none between exchanges, and the row's run state, which REQUEST-STOP
-\ sets from another task (ROW-RUN), are read and written under LOCK. So is a
-\ record's region, except that its own client reads it without LOCK: OPEN
-\ sets it only on a free row, and only that client's CLOSE empties it.
+\ names no row even after another OPEN reuses it. The region holds six BUFs:
+\ the URL; the request, then, once BODY! has copied it, a header line and the
+\ reply's header block; the reply; the tool list TOOLS assembles; the response
+\ an event-stream reply carried; and the token TOKEN! set, empty for none. The
+\ handle of the exchange in flight, none between exchanges, and the row's run
+\ state, which REQUEST-STOP sets from another task (ROW-RUN), are read and
+\ written under LOCK. So is a record's region, except that its own client reads
+\ it without LOCK: OPEN sets it only on a free row, and only that client's
+\ CLOSE empties it.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -1667,13 +1667,14 @@ CAST: CLIENT>N ( client -- n )
 
 \ A row's record, kept by the row for its next client: the cursor parses a
 \ reply and the writer builds a request; status is the HTTP status the last
-\ exchange ended with, and stream whether its reply was an event stream; region
-\ is the client's memory, empty for a free row.
+\ exchange ended with, and stream whether its reply was an event stream, which
+\ sse decodes; region is the client's memory, empty for a free row.
 STRUCTURE peer DERIVE addr
    FIELD cursor JSON:cursor
    FIELD writer JSON:writer
    FIELD status CURL:http-status
    FIELD stream bool
+   FIELD sse SSE:state
    FIELD region SPAN:span<u8>
 ;STRUCTURE
 
@@ -1689,8 +1690,7 @@ REQUEST-OFF BUF:HDR-BYTES + constant REPLY-OFF
 REPLY-OFF BUF:HDR-BYTES + constant LIST-OFF
 LIST-OFF BUF:HDR-BYTES + constant MESSAGE-OFF
 MESSAGE-OFF BUF:HDR-BYTES + constant TOKEN-OFF
-TOKEN-OFF BUF:HDR-BYTES + constant DECODER-OFF
-DECODER-OFF SSE:STORAGE-BYTES + constant REGION-BYTES
+TOKEN-OFF BUF:HDR-BYTES + constant REGION-BYTES
 
 \ No task is live while this file loads, so the lock is made ready here.
 TASK:FACILITY LOCK
@@ -1746,9 +1746,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : MESSAGE-BUF ( n -- ^n ) MESSAGE-OFF BUF-AT ;
 : TOKEN-BUF ( n -- ^n ) TOKEN-OFF BUF-AT ;
 
-: DECODER ( n -- SSE:decoder )
-   REGION DECODER-OFF SSE:STORAGE-BYTES SPAN:SUB SPAN:$ {: a:^ u:n :}
-   a CELL-VIEW u SSE:OPEN ;
+: DECODER ( n -- SSE:decoder ) ROW PEER-SSE SSE:OPEN ;
 
 : BUF$ ( ^n -- ^u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 : BUF+ ( str ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
@@ -2158,8 +2156,10 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx ROW PEER-STREAM @ 0= if a u exit then
    idx MESSAGE-BUF {: buf:^ :}
    buf BUF:CLEAR
+   idx ROW {: rec :}
    idx DECODER {: d:SSE:decoder :}
-   d a u idx ROW [: DECODE ;] catch {: code:n :} 2drop 2drop
+   d a u rec [: DECODE ;] catch {: code:n :} 2drop 2drop
+   \ Nothing since OPEN pauses, so a halt cannot skip this CLOSE.
    d SSE:CLOSE
    code SSE:E-UTF8 = if
       s" is an event stream that is not UTF-8" idx E-RESPONSE BAD-REPLY
