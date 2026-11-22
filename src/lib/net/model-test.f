@@ -1498,6 +1498,23 @@ variable REFUSED-BASE-U
    s" x" M MODEL:TEXT+ ;
 
 
+\ The content of a request of the TEXT+ part "valid" and the CACHE-TEXT+ part
+\ "kept".
+: CACHED-CONTENT$ ( -- str )
+   S\" [{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q},{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q,\qprompt_cache_breakpoint\q:{\qmode\q:\qexplicit\q}}]" ;
+
+
+\ The breakpoint member goes on the CACHE-TEXT+ part only.
+: CACHE-TEXT ( -- )
+   s" valid" PREP
+   s" kept" M MODEL:CACHE-TEXT+
+   M MODEL:JOURNAL-INPUT$
+   S\" [{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q},{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]"
+   CONTAINS? ASSERT
+   M MODEL:CHAT 2drop
+   MODEL-PEER:SENT$ CACHED-CONTENT$ CONTAINS? ASSERT ;
+
+
 : VALID-CHAT ( n -- n ) s" valid" PREP M MODEL:CHAT 2drop ;
 : INVALID-SCHEMA ( -- )
    s" {bad" M MODEL:SCHEMA!
@@ -4728,7 +4745,8 @@ variable COUNTED-U
 : CASES ( -- )
    SETUP
    M MODEL:CANCEL 0= ASSERT
-   BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY KEYLESS-CHAT KEYLESS-AWAIT INVALID-IMAGE INVALID-TEXT INVALID-SCHEMA
+   BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY KEYLESS-CHAT KEYLESS-AWAIT INVALID-IMAGE INVALID-TEXT CACHE-TEXT
+   INVALID-SCHEMA
    REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET
    EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE NO-INPUT-EMBED EMBED-RESENT INPUT-BOUNDS
    INPUT-MAX-EMBED

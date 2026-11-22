@@ -1590,12 +1590,19 @@ private
    c MODEL-CALL:PARTS-COUNT @ 1+ c MODEL-CALL:PARTS-COUNT !
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
 
-: TEXT-PART ( str ^JSON:writer -- )
-   {: a:^ u:n w :}
+: BREAKPOINT-MEMBER ( ^JSON:writer -- ^JSON:writer )
+   JSON:WRITE-COMMA s" prompt_cache_breakpoint" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" mode" s" explicit" JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
+
+: TEXT-PART ( str bool ^JSON:writer -- )
+   {: a:^ u:n bp:bool w :}
    w JSON:WRITE-OBJECT-START
    s" type" s" input_text" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
    s" text" a u JSON:WRITE-FIELD-S
+   bp if BREAKPOINT-MEMBER then
    JSON:WRITE-OBJECT-END drop ;
 
 \ Drops the input's parts, their journal copy and its items.
@@ -1605,6 +1612,19 @@ private
    c JOURNAL-PARTS-BUF c RESET-SCRATCH
    c ITEMS-BUF c RESET-SCRATCH
    0 c MODEL-CALL:PARTS-COUNT ! ;
+
+\ Adds a text part, the request's copy carrying the breakpoint member when the
+\ flag holds; the second text names the first in a rejection.
+: ADD-TEXT ( str bool str ^call -- )
+   {: a:^ u:n bp:bool na:^ nu:n c :}
+   c UNPREPARE drop
+   c REQUIRE-BUILDING
+   a u na nu REQUIRE-LENGTH
+   construct input-state broken c MODEL-CALL:CHAT-INPUT !
+   c PART-COMMA
+   a u bp c PART-WRITER TEXT-PART
+   a u false c JOURNAL-PART-WRITER TEXT-PART
+   c PART-ADDED ;
 
 public
 
@@ -1619,14 +1639,13 @@ public
 
 : TEXT+ ( ^u8 n ^call -- )
    {: a:^ u:n c :}
-   c UNPREPARE drop
-   c REQUIRE-BUILDING
-   a u s" TEXT+'s text" REQUIRE-LENGTH
-   construct input-state broken c MODEL-CALL:CHAT-INPUT !
-   c PART-COMMA
-   a u c PART-WRITER TEXT-PART
-   a u c JOURNAL-PART-WRITER TEXT-PART
-   c PART-ADDED ;
+   a u false s" TEXT+'s text" c ADD-TEXT ;
+
+\ TEXT+, the part asking the provider to cache the prompt up to its end. It
+\ leaves the reply, so the journal input and replay, unchanged.
+: CACHE-TEXT+ ( str ^call -- )
+   {: a:^ u:n c :}
+   a u true s" CACHE-TEXT+'s text" c ADD-TEXT ;
 
 private
 
@@ -5151,13 +5170,13 @@ public
 \ as at CHAT, so PURPOSE! comes first. A second call answers the same input.
 \ The next CHAT or START sends that request, or REPLAY restores a saved reply
 \ for it. Until then a call that changes the chat request (PARTS-RESET, TEXT+,
-\ IMAGE+, ITEM+, PURPOSE!, PURPOSE-MODEL! and the generation model, base URL,
-\ system, schema, tools, effort, service tier, cache key and output limit
-\ setters) or EMBED or START-EMBED discards it, and it is built again from
-\ PARTS-RESET. Once CHAT, START or REPLAY takes it, one that faults leaves it
-\ finished and only PARTS-RESET discards it: PURPOSE! then JOURNAL-INPUT$, CHAT
-\ or START answer or send it again under the settings then in force, the same
-\ input when none changed.
+\ CACHE-TEXT+, IMAGE+, ITEM+, PURPOSE!, PURPOSE-MODEL! and the generation
+\ model, base URL, system, schema, tools, effort, service tier, cache key and
+\ output limit setters) or EMBED or START-EMBED discards it, and it is built
+\ again from PARTS-RESET. Once CHAT, START or REPLAY takes it, one that faults
+\ leaves it finished and only PARTS-RESET discards it: PURPOSE! then
+\ JOURNAL-INPUT$, CHAT or START answer or send it again under the settings
+\ then in force, the same input when none changed.
 : JOURNAL-INPUT$ ( ^call -- str )
    {: c :}
    c REQUIRE-OPEN
