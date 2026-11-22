@@ -88,7 +88,7 @@ EXPORT TFAM:TFL-VPADS
    1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
-      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
+      REC-IX @ align 0 CW-INIT-ALIGN CWIN-ADD
    THEN ;
 
 : SCOPE-RECORDS-STEP ( -- )
@@ -145,7 +145,7 @@ EXPORT TFAM:TFL-VPADS
    1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
-      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
+      REC-IX @ align 0 CW-INIT-ALIGN CWIN-ADD
    THEN ;
 
 : SCOPE-RECORD-STEP ( -- )
@@ -189,7 +189,7 @@ EXPORT TFAM:TFL-VPADS
    1 0 0 width WF-ADD-FULL
    REC-ON @ IF
       REC-IX @ width bytes CW-INIT-WIDTH CWIN-ADD
-      REC-IX @ bytes align CW-INIT-EXTENT CWIN-ADD
+      REC-IX @ align 0 CW-INIT-ALIGN CWIN-ADD
    THEN ;
 
 \ WITH-FIELD lends from a view of an initialized record.

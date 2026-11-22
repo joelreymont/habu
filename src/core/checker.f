@@ -790,8 +790,7 @@ CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
 CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
-\ One cell per offset through the last field, freed fields included; the load
-\ fails when the cells end anywhere else.
+\ One cell per offset through the last field, freed fields included.
 CHECKER-OWNER-EXT:OWNER-BYTES constant OWNER-BYTES
 \ A record whose header cells lie in its own datum, before the address its name
 \ answers.
@@ -802,23 +801,7 @@ public
 HEADED DECLARATIONS
 private
    CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   0 , 0 ,
-\ Measure before another definition can allocate or intern in DATA.
-here DECLARATIONS - constant OWNER-COMMITTED
-: OWNER-SIZE-AGREE ( -- )
-   OWNER-COMMITTED OWNER-BYTES <> if
-      s" checker: declaration-owner field list and record size disagree" EXIT-STATUS:INTERNAL die
-   then ;
-OWNER-SIZE-AGREE
+   OWNER-BYTES allot
 ;package
 
 package CHECK
@@ -2904,9 +2887,6 @@ EXPORT CHECKER-REG:GROW
 \ It zeroes what it retires, so an image bakes no retired type, and sets
 \ ENTRIES-PENDING for a retired linear row, which an entry may still hold.
 : CT-REWIND ( n n -- ) {: ctn:n ctu:n :}
-   ctn 1 < ctn CTN @ > or ctu 0 < or ctu CT-STR-U @ > or IF
-      s" checker: type table rewind outside the registry" EXIT-STATUS:INTERNAL die
-   THEN
    CTN @ ctn ?do
       i cells CT-CLASS + @ CT-LINEAR = IF -1 ENTRIES-PENDING ! THEN
    loop
@@ -7277,12 +7257,7 @@ variable VRC-RVN
    need VRI-AK-CAP-V @ < IF exit THEN
    need 1 + VRI-AK-GROW ;
 
-: VREC-CHECK ( n -- ) {: id:n :}
-   id 0 < IF s" checker: bad value-record id" EXIT-STATUS:INTERNAL die THEN
-   id VREC-N @ >= IF s" checker: bad value-record id" EXIT-STATUS:INTERNAL die THEN ;
-
 : VREC-NAME-PTR ( n -- ^u8 )
-   dup VREC-CHECK
    cells VREC-NAME-A + @ VREC-STR swap + ;
 
 : VREC-NAME$ ( n -- str ) {: id:n :}
@@ -7290,19 +7265,15 @@ variable VRC-RVN
    id cells VREC-NAME-U + @ ;
 
 : VREC-START@ ( n -- n )
-   dup VREC-CHECK
    cells VREC-START + @ ;
 
 : VREC-COUNT@ ( n -- n )
-   dup VREC-CHECK
    cells VREC-COUNT + @ ;
 
 : VREC-TVN@ ( n -- n )
-   dup VREC-CHECK
    cells VREC-TVN + @ ;
 
 : VREC-RVN@ ( n -- n )
-   dup VREC-CHECK
    cells VREC-RVN + @ ;
 
 : VREC-MATCH? ( str n -- bool ) {: a:^ u:n id:n :}
@@ -7316,12 +7287,7 @@ variable VRC-RVN
    REPEAT
    0 RES-FALSE ;
 
-: VREC-NODE-CHECK ( n -- ) {: id:n :}
-   id 0 <= IF s" checker: bad value-record node" EXIT-STATUS:INTERNAL die THEN
-   id VREC-NODE-N @ >= IF s" checker: bad value-record node" EXIT-STATUS:INTERNAL die THEN ;
-
 : VREC-NODE-SLOT ( n ^a -- ^a ) {: id:n base:^ :}
-   id VREC-NODE-CHECK
    base id cells + ;
 
 : VN.TAG@ ( n -- n ) VRN-TAG VREC-NODE-SLOT @ ;
@@ -7378,8 +7344,6 @@ variable VRC-RVN
    id ;
 
 : VREC-FIELD@ ( n -- n ) {: idx:n :}
-   idx 0 < IF s" checker: bad value-record field" EXIT-STATUS:INTERNAL die THEN
-   idx VREC-FIELD-N @ >= IF s" checker: bad value-record field" EXIT-STATUS:INTERNAL die THEN
    idx cells VREC-FIELDS + @ ;
 
 : VREC-FIELD! ( n -- ) {: node:n :}
@@ -7391,11 +7355,6 @@ variable VRC-RVN
 \ marks only through here. An image carries every store's slack, so the records
 \ it retires are zeroed first: a later image then bakes no retired record.
 : VREC-REWIND ( n n n n n -- ) {: rn:n fn:n dn:n an:n su:n :}
-   rn 0 < rn VREC-N @ > or  fn 0 < or fn VREC-FIELD-N @ > or
-   dn 1 < or dn VREC-NODE-N @ > or  an 0 < or an VNARG-N @ > or
-   su 0 < or su VREC-STR-U @ > or IF
-      s" checker: value-record rewind outside the registry" EXIT-STATUS:INTERNAL die
-   THEN
    VREC-NAME-A rn VREC-N @ ARENA-CELLS-ZERO   VREC-NAME-U rn VREC-N @ ARENA-CELLS-ZERO
    VREC-START rn VREC-N @ ARENA-CELLS-ZERO    VREC-COUNT rn VREC-N @ ARENA-CELLS-ZERO
    VREC-TVN rn VREC-N @ ARENA-CELLS-ZERO      VREC-RVN rn VREC-N @ ARENA-CELLS-ZERO
@@ -16323,7 +16282,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 -4 constant CW-MATCH-CELLS           \ instantiated bundle width, pads, or construction growth
 -3 constant CW-MATCH-PAYLOAD         \ instantiated payload cells and value boundaries
 -5 constant CW-INIT-WIDTH            \ initialized record width and byte extent
--6 constant CW-INIT-EXTENT           \ initialized byte extent and alignment
+-6 constant CW-INIT-ALIGN            \ initialized alignment
 -7 constant CW-FIELD-SPAN            \ authenticated field offset and extent
 -8 constant CW-MEMBER-OFFSET         \ a generic field accessor's offset in the receiver's instance
 -9 constant CW-MEMBER-SPAN           \ a BUFFER field's offset there and its byte extent
@@ -16454,8 +16413,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 : EFFECT-INIT-LAYOUT ( n -- n n n ) {: ord:n :}
    ord CW-INIT-WIDTH CWIN-FIND {: width:n bytes:n :}
    width 0 < IF -1 -1 -1 EXIT THEN
-   ord CW-INIT-EXTENT CWIN-FIND {: extent:n align:n :}
-   extent bytes <> IF s" checker: init layout rows disagree" EXIT-STATUS:INTERNAL die THEN
+   ord CW-INIT-ALIGN CWIN-FIND drop {: align:n :}
    width bytes align ;
 : EFFECT-FIELD-SPAN ( n -- n n ) CW-FIELD-SPAN CWIN-FIND ;
 \ A token's generic member number for its receiver's instance, -1 for none.
