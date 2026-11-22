@@ -303,12 +303,6 @@ CALLBACK: CMP-CALLER ( ^u8 ^u8 -- i32 ) 0 FALLBACK ;CALLBACK
 : WORK-CALLER-A ( -- ) ROW-A 1 CALLER-SORT 1 MASK-BIT TASK:RETURN ;
 : WORK-CALLER-B ( -- ) ROW-B 2 CALLER-SORT 1 MASK-BIT TASK:RETURN ;
 
-\ The declared slot count: ENTRY-ADDRESS refuses the first undeclared slot.
-: SLOT? ( n -- bool ) {: k:n :}
-   [: k ENTRY-ADDRESS drop ;] catch 0= ;
-
-: DECLARED ( -- n ) 0 begin dup SLOT? while 1 + repeat ;
-
 CODEGEN:BUFFER PAD-TEXT
 variable PADS
 

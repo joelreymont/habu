@@ -115,23 +115,15 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
    rows FFI:>CELL data-base CB-XTS + atomic!
    old oldcap RETIRE-TABLE ;
 
-\ The live marshal frame of the innermost callback on this region.
+\ The live marshal frame of the innermost callback on this region. The frame
+\ words run only inside a callback, on the indexes its declaration admits;
+\ nothing checks either.
 : FRAME ( -- n )
-   data-base CB-FRAME + @ dup 0= if E-FFI-CALLBACK-STATE throw then ;
-
-: INT-CHECK ( n -- ) {: i:n :}
-   i 0 < i INT-REGS >= or if E-FFI-ARITY throw then ;
-
-: FLOAT-CHECK ( n -- ) {: i:n :}
-   i 0 < i FLOAT-REGS >= or if E-FFI-ARITY throw then ;
-
-: DECLARED-CHECK ( n -- ) {: k:n :}
-   k 0 < k SLOTS @ >= or if E-FFI-CALLBACK-STATE throw then ;
+   data-base CB-FRAME + @ ;
 
 public
 
 : ARG@ ( n -- n ) {: i:n :}
-   i INT-CHECK
    FRAME i cells + N>CELLS @ ;
 
 : I32-ARG@ ( n -- n )
@@ -144,7 +136,6 @@ public
    ARG@ N>BYTES ;
 
 : FARG@ ( n -- r ) {: i:n :}
-   i FLOAT-CHECK
    FRAME CB-FRAME-FLOATS + i cells + N>FLOATS @ ;
 
 : RESULT! ( n -- )
@@ -173,20 +164,19 @@ public
    BYTE-VIEW CELL-VIEW @ 0= if E-FFI-CALLBACK-STATE throw then ;
 
 : INSTALL ( [ -- ] n -- ) {: q k:n :}
-   k DECLARED-CHECK
    q k DISPATCH xt! ;
 
 : ENTRY-ADDRESS ( n -- n ) {: k:n :}
-   k DECLARED-CHECK
    k ENTRY-CELL @ ;
 
 : INSTALL-ENTRY ( n n -- ) {: addr:n k:n :}
-   k DECLARED-CHECK
    addr >ENTRY-XT k ENTRY-CELL >DISPATCH-CELL xt! ;
 
 : DESCRIPTOR ( n -- callback ) {: k:n :}
-   k DECLARED-CHECK
    k >CALLBACK ;
+
+\ The callbacks declared so far: their slots run from 0 to DECLARED - 1.
+: DECLARED ( -- n ) SLOTS @ ;
 
 \ Publishes the dispatch table into the main region and binds the slot before
 \ answering the stub's address. A call on an unbound slot, on a context busy on

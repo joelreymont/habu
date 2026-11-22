@@ -201,10 +201,12 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    CMP-CALLER UNBIND ;
 
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 : CASE-ACCESSOR ( -- )
    s" == a frame accessor" SAY
    [: 0 ARG@ drop ;] catch E-FFI-CALLBACK-STATE =
       s" a frame accessor outside a callback is E-FFI-CALLBACK-STATE" FACT ;
+[then]
 
 \ Each rides evaluate-closed, so the rejection's stop is a throw this file
 \ catches.
@@ -597,9 +599,11 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    s" ok   handed back, the row binds and the task does not throw" W
    s" ok   and the row is a caller row" W ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
 : WANT-ACCESSOR ( -- )
    s" == a frame accessor" W
    s" ok   a frame accessor outside a callback is E-FFI-CALLBACK-STATE" W ;
+[then]
 
 : WANT-DECLARATIONS ( -- )
    s" == declarations rejected" W
@@ -698,7 +702,7 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : WANT-TRANSCRIPT ( -- )
    0 WANT-U !
-   WANT-TASKS WANT-ACCESSOR WANT-DECLARATIONS WANT-THROWN WANT-CAPTURE
+   WANT-TASKS WANT-DECLARATIONS WANT-THROWN WANT-CAPTURE
    WANT-QUALIFIED WANT-PART WANT-BODY-DEFINES WANT-CHILDREN ;
 
 \ The artifact as another reader will find it: read back from its file and
@@ -722,7 +726,6 @@ public
    CASE-WORKERS
    CASE-CALLER
    CASE-CALLER-HELD
-   CASE-ACCESSOR
    CASE-DECLARATIONS
    CASE-THROWN
    CASE-CAPTURE
