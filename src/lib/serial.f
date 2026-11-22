@@ -199,15 +199,12 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ deadline is the poll's own linked timeout, so a signal cannot cut the wait
 \ short. The answered bits keep the POLLNVAL rule; a descriptor the kernel
 \ refuses outright arrives as EBADF on the refused arm. A wait without AIO:START
-\ is E-AIO-STATE. `cancelled` is a broken foreign result, like an impossible
-\ termios read-back: nothing here cancels, the ticket never leaves this word,
-\ and AIO's cleanup on a submitting task runs only after that task has ended.
+\ is E-AIO-STATE.
 : AWAIT ( handle n ns -- n ) {: handle:handle events:n deadline:ns :}
-   handle HANDLE>N >FD events deadline REMAINING AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   handle HANDLE>N >FD events deadline REMAINING AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF dup $20 and 0 <> if drop -9 then ENDOF
       timed-out OF 0 ENDOF
-      cancelled OF E-RESULT throw ENDOF
       refused OF negate ENDOF
    ;MATCH ;
 

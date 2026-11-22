@@ -87,16 +87,12 @@ variable IO-GO-R                                 \ child-side release gate
 
 \ One POLL on the AIO loop for the milliseconds the caller named, and one
 \ AWAIT; the deadline is the poll's own linked timeout, so a signal cannot cut
-\ the watch short and there is nothing to restart. `cancelled` cannot
-\ arrive - nothing here cancels, the ticket never leaves this word, and the
-\ cleanup AIO registers on a submitting task runs only after that task has
-\ ended - so it is a broken foreign result.
+\ the watch short and there is nothing to restart.
 : IO-POLL-READY? ( fd n -- bool ) {: wfd:fd ms:n :}
-   wfd AIO:READABLE ms >MS AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   wfd AIO:READABLE ms >MS AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF IO-WATCH-EVENT? ENDOF
       timed-out OF false ENDOF
-      cancelled OF E-PROC-OUTPUT throw ENDOF
       refused OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;
 
@@ -323,18 +319,16 @@ public
 \ gone (hang-up or end of file). A broken descriptor throws, and so does an
 \ empty buffer, which could otherwise only masquerade as a hang-up. The wait is
 \ one POLL on the AIO loop and one AWAIT, with ms -1 the unbounded wait
-\ POLL spells the same way; `cancelled` cannot arrive, for the reason
-\ IO-POLL-READY? gives. AIO:START comes first: a wait with no loop running is
-\ E-AIO-STATE. It answers ONE read, never a whole reply: a caller waiting for
+\ POLL spells the same way. AIO:START comes first: a wait with no loop running
+\ is E-AIO-STATE. It answers ONE read, never a whole reply: a caller waiting for
 \ text loops to its marker under one absolute deadline (PROCESS:DEADLINE-AT).
 : AWAIT-BYTES ( process-pty-handle ^u8 n n -- process-pty-handle n ) {: buf:^ cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}
-   m AIO:READABLE ms >MS AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   m AIO:READABLE ms >MS AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF m buf cap IO-READ-READY ENDOF
       timed-out OF 0 ENDOF
-      cancelled OF E-PROC-OUTPUT throw ENDOF
       refused OF drop E-PROC-OUTPUT throw ENDOF
    ;MATCH ;
 

@@ -350,16 +350,12 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 \ The deadline is the poll's own linked timeout, so a signal does not cut the
 \ wait short; a zero timeout still answers `ready` for a descriptor already
-\ ready. A wait without AIO:START is E-AIO-STATE. `cancelled` cannot arrive
-\ (nothing here cancels, the ticket never leaves this word, and AIO's cleanup on
-\ a submitting task runs only after the task ends), so it is a broken foreign
-\ result.
+\ ready. A wait without AIO:START is E-AIO-STATE.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
-   fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   fd >FD AIO:READABLE timeout AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF REVENTS>READY ENDOF
       timed-out OF TCP4-READY--RESULT:IDLE ENDOF
-      cancelled OF E-RESULT throw ENDOF
       refused OF >ERRNO TCP4-READY--RESULT:FAILED ENDOF
    ;MATCH ;
 

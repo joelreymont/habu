@@ -254,15 +254,12 @@ REGISTER-RESET
 \ otherwise be re-read against the deadline forever. The kernel answers that
 \ state two ways - as those bits when it still has the descriptor, and as a
 \ refused poll (EBADF) when the number no longer names one - and both name the
-\ poll. `cancelled` cannot arrive: nothing here cancels, the ticket never leaves
-\ this word, and the cleanup AIO registers on a submitting task runs only after
-\ that task has ended.
+\ poll.
 : READABLE-WITHIN? ( ms -- bool ) {: window:ms :}
-   READ-FD AIO:READABLE window AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   READ-FD AIO:READABLE window AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF FD:POLLIN and 0= if E-SIGNAL-POLL throw then true ENDOF
       timed-out OF false ENDOF
-      cancelled OF E-SIGNAL-POLL throw ENDOF
       refused OF drop E-SIGNAL-POLL throw ENDOF
    ;MATCH ;
 

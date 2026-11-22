@@ -115,15 +115,11 @@ public
 \ AIO loop (src/lib/aio.f), one POLL with its own linked timeout and one AWAIT,
 \ so no thread parks in poll(2) and a signal does not cut the window short.
 \ Call AIO:START before the first READ; with no loop it is E-AIO-STATE.
-\ `cancelled` cannot arrive (nothing cancels, the ticket stays here, AIO's
-\ cleanup runs only after the submitting task ends): it is a broken foreign
-\ result.
 : READ ( master ^u8 n ms -- n ) {: m:master bytes cap:n timeout:ms :}
-   m MASTER>N >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   m MASTER>N >FD AIO:READABLE timeout AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF drop m bytes cap READ-READY ENDOF
       timed-out OF 0 ENDOF
-      cancelled OF E-IO throw ENDOF
       refused OF drop E-IO throw ENDOF
    ;MATCH ;
 

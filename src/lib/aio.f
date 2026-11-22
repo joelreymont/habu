@@ -1364,6 +1364,26 @@ public
    RUNNING-CHECK
    t TICKET>REC REC.IDX @ AWAIT-ONE ;
 
+\ What a wait for readiness ended as: the revents the kernel reported, the
+\ deadline, or the errno of a refused poll.
+ENUM readiness
+   VARIANT ready FIELD revents n ;VARIANT
+   VARIANT timed-out ;VARIANT
+   VARIANT refused FIELD errno n ;VARIANT
+;ENUM
+
+\ POLL and AWAIT in one call, under the same rules. Nothing outside this
+\ word holds the ticket, so nothing cancels it; a kernel that still ends
+\ the poll with ECANCELED is answered as that errno.
+: WAIT-READY ( fd n ms -- readiness )
+   POLL AWAIT
+   MATCH outcome
+      ready OF AIO-READINESS:READY ENDOF
+      timed-out OF AIO-READINESS:TIMED-OUT ENDOF
+      cancelled OF ERR-CANCELED AIO-READINESS:REFUSED ENDOF
+      refused OF AIO-READINESS:REFUSED ENDOF
+   ;MATCH ;
+
 \ ---- the waker ---------------------------------------------------------------
 \ A self-pipe one parked task is woken through: other tasks change shared state
 \ and WAKE it, and the task, parked in AWAIT-ANY on WAKER-POLL's ticket among
