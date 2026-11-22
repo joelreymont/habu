@@ -159,7 +159,7 @@ DYNAMIC-BUFFER REFUSAL-U n                \ the last refusal's bytes in use, rea
 \ A `failed` outcome's SQLSTATE and message become the task's refusal text,
 \ `SQLSTATE: message`, or the message alone when libpq made the failure
 \ without a SQLSTATE; then the query is E-QUERY.
-: REFUSED ( ^u8 n ^u8 n -- ) {: sa:^ su:n ma:^ mu:n :}
+: REFUSED ( str str -- ) {: sa:^ su:n ma:^ mu:n :}
    MY-ARENA {: at:n :}
    0 at REFUSAL-U !
    at su mu + 2 + REFUSAL-ROOM
@@ -235,7 +235,7 @@ public
 \ A connection for the calling task. The refusal text is libpq's and can name
 \ the server and the user, so it stays inside the module and the caller gets
 \ the code. AWAIT waits through AIO, so AIO:START comes first.
-: OPEN ( ^u8 n -- PG:connection )
+: OPEN ( str -- PG:connection )
    OPEN-START AWAIT MATCH progress
       connected OF ENDOF
       refused OF 2drop E-CONNECT throw ENDOF
@@ -311,7 +311,7 @@ public
 \ DDL, or a command without RETURNING. Rows answered, even none, are E-QUERY.
 \ The task's reader row is taken before the statement is sent, so an undeclared
 \ task sends nothing.
-: EXEC ( PG:connection ^u8 n -- )
+: EXEC ( PG:connection str -- )
    NOT-REFUSED
    [: NO-ROWS ;] WITH-RESULT ;
 
@@ -319,7 +319,7 @@ public
 \ A statement that answers rows, run on the parameters the caller staged. The
 \ body runs on the result, whatever its row count, inside the result's scope,
 \ which clears it when the body returns or throws.
-: QUERY ( R PG:connection ^u8 n [ R PG:result -- S PG:result ] -- S )
+: QUERY ( R PG:connection str [ R PG:result -- S PG:result ] -- S )
    {: c a:^ u:n body :}
    READ-RESET
    body c a u [: RUN-ROWS ;] WITH-RESULT ;
@@ -328,7 +328,7 @@ public
 \ One parameter, one row: the read of a row by its identity. The body runs on
 \ the result once its first row is there; the scope clears the result when
 \ the body returns or throws.
-: BY-ID ( R PG:connection n ^u8 n [ R PG:result -- S PG:result ] -- S )
+: BY-ID ( R PG:connection n str [ R PG:result -- S PG:result ] -- S )
    {: c id:n a:^ u:n body :}
    READ-RESET
    c PARAMS
@@ -339,7 +339,7 @@ public
 \ The first row's columns, copied into the task's arena.
 
 \ SQL NULL is E-ROW; COL-TEXT? is the nullable reader.
-: COL-TEXT ( PG:result n -- PG:result ^u8 n )
+: COL-TEXT ( PG:result n -- PG:result str )
    CELL$ ARENA+ ;
 
 
@@ -419,7 +419,7 @@ public
 \ the parameters the caller staged. A NULL, a fraction or no row is E-ROW; a
 \ result BINARY-RESULT made binary is E-TYPE.
 \ Like EXEC, it takes the task's reader row before the statement is sent.
-: ONE-INT ( PG:connection ^u8 n -- n )
+: ONE-INT ( PG:connection str -- n )
    NOT-REFUSED
    [: FIRST-INT ;] WITH-RESULT ;
 

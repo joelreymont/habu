@@ -72,14 +72,14 @@ FUNCTION: LIB-BUSY sqlite3_busy_timeout ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-ERRMSG sqlite3_errmsg ( ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: LIB-EXTENDED sqlite3_extended_errcode ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-PREPARE sqlite3_prepare_v2
-   ( ^u8 ^u8 n ^u8 ^u8 -- i32 ) ;FUNCTION
+   ( ^u8 str ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-STEP sqlite3_step ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-RESET sqlite3_reset ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-FINALIZE sqlite3_finalize ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-STMT-DB sqlite3_db_handle ( ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: LIB-BIND-INT sqlite3_bind_int64 ( ^u8 n n -- i32 ) ;FUNCTION
-FUNCTION: LIB-BIND-TEXT sqlite3_bind_text ( ^u8 n ^u8 n n -- i32 ) ;FUNCTION
-FUNCTION: LIB-BIND-BLOB sqlite3_bind_blob ( ^u8 n ^u8 n n -- i32 ) ;FUNCTION
+FUNCTION: LIB-BIND-TEXT sqlite3_bind_text ( ^u8 n str n -- i32 ) ;FUNCTION
+FUNCTION: LIB-BIND-BLOB sqlite3_bind_blob ( ^u8 n str n -- i32 ) ;FUNCTION
 FUNCTION: LIB-BIND-NULL sqlite3_bind_null ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-DATA-COUNT sqlite3_data_count ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-COL-INT sqlite3_column_int64 ( ^u8 n -- n ) ;FUNCTION
@@ -120,11 +120,11 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    {: rc:n db:^ :}
    rc OK <> if rc db FAIL then ;
 
-: MISUSE ( ^u8 n -- )
+: MISUSE ( str -- )
    {: a:^ u:n :}
    LOG-OPEN a u LOG:TEXT+ LOG:;LINE E-SQL throw ;
 
-: OUTSIDE ( n ^u8 n -- )
+: OUTSIDE ( n str -- )
    {: v:n a:^ u:n :}
    LOG-OPEN v LOG:INT+ a u LOG:TEXT+ LOG:;LINE E-SQL throw ;
 
@@ -172,7 +172,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
 
 \ The text's first statement, NULL when only blanks and comments remain, and
 \ the address after it.
-: PREPARE ( connection ^u8 n -- ^u8 ^u8 )
+: PREPARE ( connection str -- ^u8 ^u8 )
    {: c:connection a:^ u:n :}
    c DB {: db:^ :}
    db a u C-INT OUT-CELL BYTE-VIEW TAIL-CELL BYTE-VIEW LIB-PREPARE
@@ -206,10 +206,10 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    tail  a u + tail - ;
 
 \ SQLite stops reading a text at its first NUL.
-: WHOLE ( ^u8 n -- ) NUL? if s" a text holds a NUL byte" MISUSE then ;
+: WHOLE ( str -- ) NUL? if s" a text holds a NUL byte" MISUSE then ;
 
 \ The text's statement and the address after it.
-: FIRST ( connection ^u8 n -- ^u8 ^u8 )
+: FIRST ( connection str -- ^u8 ^u8 )
    {: c:connection a:^ u:n :}
    a u WHOLE
    c a u PREPARE {: stmt:^ tail:^ :}
@@ -217,7 +217,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    stmt tail ;
 
 \ Runs in the first statement's scope, whose cleanup finalizes that one.
-: ALONE ( connection ^u8 n -- )
+: ALONE ( connection str -- )
    PREPARE drop {: next:^ :}
    next NULL-ADDR? if exit then
    next FINALIZE
@@ -229,7 +229,7 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    ALONE execute STATEMENT>PTR ;
 
 \ A zero-length value needs a base: SQLite binds NULL for a NULL one.
-: BASE ( ^u8 n -- ^u8 )
+: BASE ( str -- ^u8 )
    {: a:^ u:n :}
    u 0= if s" " drop exit then
    a ;
@@ -257,7 +257,7 @@ public
 
 \ ---- connections ---------------------------------------------------------
 
-: OPEN ( ^u8 n -- connection )
+: OPEN ( str -- connection )
    READWRITE OPEN-CREATE or NOFOLLOW or OPEN-WITH ;
 
 : OPEN-READ ( str -- connection )
@@ -274,7 +274,7 @@ public
    db ms C-INT LIB-BUSY db CHECK ;
 
 \ Every statement in the text, in order; their rows are discarded.
-: EXEC ( connection ^u8 n -- )
+: EXEC ( connection str -- )
    {: c:connection a:^ u:n :}
    a u WHOLE
    a u begin dup 0 > while c EXEC-NEXT repeat 2drop ;
@@ -294,7 +294,7 @@ private
 
 \ Begins with the text; a body or COMMIT that fails is rolled back, and its
 \ error goes on.
-: TRANSACTION ( R connection ^u8 n [ R -- S ] -- S )
+: TRANSACTION ( R connection str [ R -- S ] -- S )
    {: c:connection a:^ u:n body :}
    c a u EXEC
    c body [: COMMIT-AFTER ;] [: c ROLLBACK-OPEN ;] finally ;
@@ -366,7 +366,7 @@ public
    stmt col COL-CHECK
    stmt col LIB-COL-INT ;
 
-: COL-TEXT ( SQLITE:statement n -- SQLITE:statement ^u8 n )
+: COL-TEXT ( SQLITE:statement n -- SQLITE:statement str )
    {: col:n :}
    PEEK {: stmt:^ :}
    stmt col COL-CHECK

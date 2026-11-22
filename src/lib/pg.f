@@ -874,7 +874,7 @@ REGISTER-CHILD-RESET
    0 slot CONN-LIVE! ;
 
 
-: FILL-RES-SLOT ( str n -- n ) {: pg conn:n slot:n :}
+: FILL-RES-SLOT ( ^u8 n n -- n ) {: pg conn:n slot:n :}
    pg slot RES-PG!
    slot BUMP-RES-GEN
    TASK:SELF-N slot RES-OWNER!
@@ -1447,7 +1447,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 
 \ A transaction verb must succeed or the caller's framing is a lie, so a server
 \ refusal is E-EXEC rather than an outcome the caller could ignore.
-: VERB ( n ^u8 n -- ) {: slot:n a u:n :}
+: VERB ( n str -- ) {: slot:n a u:n :}
    slot a u RUN-VERB {: res:n :}
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK <> if
@@ -1648,7 +1648,7 @@ public
 
 \ A TASK:HALT of the waiting task ends the attempt at once, sending nothing, and
 \ frees its slot; the join answers as for any halt.
-: CONNECT ( ^u8 n -- connect-result )
+: CONNECT ( str -- connect-result )
    CONNECT-START dup CONNECTION>N CONNECT-HEAD !
    [: AWAIT-ATTEMPT ;] [: FINISH-ATTEMPT ;] finally MATCH progress
       connected OF PG-CONNECT--RESULT:CONNECTED ENDOF
@@ -1725,7 +1725,7 @@ public
    BINARY-FORMAT slot FORMAT! ;
 
 
-: TEXT+ ( connection ^u8 n -- ) {: handle:connection a u:n :}
+: TEXT+ ( connection str -- ) {: handle:connection a u:n :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
    slot PARAM-ROOM
@@ -1748,7 +1748,7 @@ public
 
 \ The bytes are the binary form of the type PostgreSQL infers from a cast or
 \ the statement's context; u = 0 is an empty value, not NULL.
-: BINARY+ ( connection ^u8 n -- )
+: BINARY+ ( connection str -- )
    {: handle:connection a u:n :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
@@ -1757,7 +1757,7 @@ public
    a u slot ARENA-BYTES u slot PARAM-OFF+ ;
 
 
-: SEND ( connection ^u8 n -- ) {: handle:connection a u:n :}
+: SEND ( connection str -- ) {: handle:connection a u:n :}
    handle CONN-SLOT a u EXEC-START ;
 
 
@@ -1898,7 +1898,7 @@ public
 \ payload's, borrowed for the call. Each is freed as act returns or throws;
 \ after a throw the rest are freed unread and the throw goes on. It answers
 \ true when any arrived.
-: NOTIFIED ( connection ms [ ^u8 n ^u8 n -- ] -- bool )
+: NOTIFIED ( connection ms [ str str -- ] -- bool )
    WAIT-NOTIFIES ;
 
 
@@ -1979,7 +1979,7 @@ public
 
 \ The span, like NAME$, is libpq's bytes in the result, valid until the scope
 \ ends (CLEAR for a progress token) or the connection closes; a body copies it.
-: TEXT$ ( PG:result row col -- PG:result ^u8 n ) {: r:row c:col :}
+: TEXT$ ( PG:result row col -- PG:result str ) {: r:row c:col :}
    PEEK r c CELL-AT VALUE$ ;
 
 
