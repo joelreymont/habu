@@ -79,14 +79,11 @@ $FF constant ROW-MASK
 SCRATCH-VARIABLE TERMINAL-READY
 
 \ Task-local: two tasks may hold two devices and neither may see the other's
-\ byte.
-$8 TASK:+USERS IO-SCRATCH u8
-
-: SCRATCH-CELL ( -- ^n )
-   0 IO-SCRATCH CELL-VIEW ;
+\ byte. The kernel reads or fills the cell's bytes (write(2), FIONREAD).
+TASK:+USER SCRATCH-CELL n
 
 : SCRATCH ( -- ^u8 )
-   0 IO-SCRATCH ;
+   SCRATCH-CELL BYTE-VIEW ;
 
 \ The current task's input and output devices are two cells of the engine's DATA
 \ header: the engine swaps DATA for each task, and the engine's output funnel
