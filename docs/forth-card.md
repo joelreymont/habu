@@ -540,9 +540,10 @@ package that declared the type: `LINEAR: MINT ( ^n -- PKG:tok )` and `LINEAR: ER
 `E-LINEAR-SCOPE`, as is a qualified `LINEAR:` name in the private section;
 in any other package or for a top-level `DEFLINEAR`
 `E-LINEAR-OWNER`, and a row that is not one token and one non-linear con (or
-pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a side that may hold a
-linear value (`E-CAST-LINEAR`); a quotation whose rows end in different tails
-(`[ R -- S ]`) counts as one, except in a cast's input outside a view's element,
+pointer to one, or to a record holding no linear value, quotation, type
+variable, atom or width) `E-LINEAR-PAYLOAD`. `CAST:` refuses a side that may
+hold a linear value (`E-CAST-LINEAR`); a quotation whose rows end in different
+tails (`[ R -- S ]`) counts as one, except in a cast's input outside a view's element,
 where it is any quotation; where the output mints, an input row ending in a row
 variable keeps that variable and its cell count in place (`E-CAST-CLASS`). A
 type variable only where a type is stored is admitted (`CAST: >ELEM ( ^u8 --

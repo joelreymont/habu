@@ -18526,7 +18526,7 @@ global
 7151 constant E-CAST-SCOPE
 \ `linear:` rejects: the arity and unknown-type shapes are the cast block's own
 \ E-CAST-ARITY and E-CAST-FAM.
-7195 constant E-LINEAR-PAYLOAD \ not one linear con and one non-linear payload
+7195 constant E-LINEAR-PAYLOAD \ not one token and a payload it may carry
 7196 constant E-LINEAR-OWNER  \ the linear type was not declared by this package
 7197 constant E-LINEAR-SCOPE  \ the row is outside its owner's private section
 private

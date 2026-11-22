@@ -2514,7 +2514,7 @@ package CAST-ERROR
    code E-CAST-LINEAR = IF s" a linear value would change hands" EXIT THEN
    code E-CAST-MINT = IF s" mints outside a private section" EXIT THEN
    code E-CAST-SCOPE = IF s" not a view cast this place may declare" EXIT THEN
-   code E-LINEAR-PAYLOAD = IF s" not one token and one payload" EXIT THEN
+   code E-LINEAR-PAYLOAD = IF s" not one token and a payload it may carry" EXIT THEN
    code E-LINEAR-OWNER = IF s" declared outside the type's package" EXIT THEN
    code E-LINEAR-SCOPE = IF s" outside its owner's private section" EXIT THEN
    s" checker: a cast rejection with no label" EXIT-STATUS:INTERNAL die ;

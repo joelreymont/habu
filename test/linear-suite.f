@@ -23,6 +23,8 @@ package LIN-OWN
 public
 DEFLINEAR LIN-OWN:tok
 DEFLINEAR LIN-OWN:aux
+STRUCTURE lrec FIELD x n ;STRUCTURE
+STRUCTURE lbox<a> FIELD value a ;STRUCTURE
 ;package
 package LIN-OTHER
 public
@@ -82,7 +84,7 @@ s" LINEAR: LIN-NO-PACKAGE:PUBLIC-MINT ( n -- LIN-OWN:tok )" LIN-RUN:DECL
    s" error[E-LINEAR-SCOPE]" s" `linear: LIN-NO-PACKAGE:PUBLIC-MINT`" s" outside its owner's private section"
    LIN-RUN:REJECTS-AT
 s" LINEAR: LIN-OWN:BAD-PAYLOAD ( n -- n )" LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LIN-OWN:BAD-PAYLOAD`" s" not one token and one payload"
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LIN-OWN:BAD-PAYLOAD`" s" not one token and a payload it may carry"
    LIN-RUN:REJECTS-AT
 s" LINEAR: LIN-OWN:BAD-OWNER ( n -- LIN-OTHER:tok )" LIN-RUN:DECL
    s" error[E-LINEAR-OWNER]" s" `linear: LIN-OWN:BAD-OWNER`" s" declared outside the type's package"
@@ -100,26 +102,46 @@ s" the declarer inside a checked body is unsafe" T-LABEL
 s" LV5 ( LIN-OWN:tok -- ) linear:"                   CHECK-QUIET-CANDIDATE! 0 T=
 s" exactly one side is linear and the other a payload" T-LABEL
 s" LINEAR: LP1 ( LIN-OWN:tok -- LIN-OWN:tok )"     LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP1`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP1`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+   REJECTION:BUFFER$ s" the row is not one linear type and one payload" CONTAINS? TTRUE
 s" LINEAR: LP2 ( LIN-OWN:tok -- LIN-OWN:aux )"     LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP2`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP2`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP3 ( n -- n )"                         LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP3`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP3`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP4 ( n -- idx )"                       LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP4`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP4`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP5 ( n -- ^LIN-OWN:tok )"           LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP5`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP5`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" a payload is a non-linear constructor or a pointer chain ending at one" T-LABEL
 s" LINEAR: LP6 ( ^LIN-OWN:aux -- LIN-OWN:tok )" LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP6`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP6`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+   REJECTION:BUFFER$ s" the payload's pointer chain ends at a linear type" CONTAINS? TTRUE
 s" LINEAR: LP7 ( ^a -- LIN-OWN:tok )"           LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP7`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP7`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP8 ( LIN-OWN:tok -- a )"               LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP8`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP8`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP9 ( LIN-OTHER:ofam -- LIN-OWN:tok )"  LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP9`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP9`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP10 ( [ -- ] -- LIN-OWN:tok )"         LIN-RUN:DECL
-   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP10`" s" not one token and one payload" LIN-RUN:REJECTS-AT
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LP10`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+s" a pointer chain may end at a record that holds no linear value, quotation, type variable, atom or width" T-LABEL
+s" LINEAR: LR1 ( ^LIN-OWN:lrec -- LIN-OWN:tok )"  LIN-RUN:DECL 0 T=
+s" LINEAR: LR2 ( LIN-OWN:tok -- ^LIN-OWN:lrec )"  LIN-RUN:DECL 0 T=
+s" LINEAR: LR3 ( LIN-OWN:lrec -- LIN-OWN:tok )"   LIN-RUN:DECL
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LR3`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+   REJECTION:BUFFER$ s" the payload is not a con, or a pointer to a con or a record" CONTAINS? TTRUE
+s" LINEAR: LR4 ( ^LIN-OWN:lbox<[ R -- R ]> -- LIN-OWN:tok )" LIN-RUN:DECL
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LR4`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+   REJECTION:BUFFER$ s" the payload's record holds a type variable or a quotation" CONTAINS? TTRUE
+s" LINEAR: LR5 ( ^LIN-OWN:lbox<LIN-OWN:aux> -- LIN-OWN:tok )" LIN-RUN:DECL
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LR5`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+   REJECTION:BUFFER$ s" the payload's record may hold a linear value" CONTAINS? TTRUE
+s" LINEAR: LR6 ( LIN-OWN:tok -- ^LIN-OWN:lbox<width<n>> )" LIN-RUN:DECL
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LR6`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+   REJECTION:BUFFER$ s" the payload's record holds an atom or a width" CONTAINS? TTRUE
+s" LINEAR: LR7 ( LIN-OWN:tok -- ^LIN-OWN:lbox<xt> )" LIN-RUN:DECL
+   s" error[E-LINEAR-PAYLOAD]" s" `linear: LR7`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
+   REJECTION:BUFFER$ s" the payload's record holds an atom or a width" CONTAINS? TTRUE
 s" the shapes cast: rejects" T-LABEL
 s" LINEAR: LA1 ( n n -- LIN-OWN:tok )"             LIN-RUN:DECL
    s" error[E-CAST-ARITY]" s" `linear: LA1`" s" input not one term" LIN-RUN:REJECTS-AT

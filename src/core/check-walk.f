@@ -25,6 +25,7 @@ EXPORT TFAM:TFAM-MATCH-PAY
 EXPORT TFAM:TFAM-MATCH-VARIANT
 EXPORT TFAM:TFAM-MEMBER-STEP?
 EXPORT TFAM:TFAM-NICHE?
+EXPORT TFAM:TFAM-PRODUCT?
 EXPORT TFAM:TFAM-SUM?
 EXPORT TFAM:TFAM-VAR-COUNT@
 EXPORT TFAM:TFL-VPADS
@@ -1295,22 +1296,47 @@ variable TAGGED-FAM
       E-CAST-SCOPE CAST-ERROR:RAISE
    THEN ;
 
-\ What a `linear:` row carries beside its token: a non-linear con or a pointer
-\ chain ending at one.
-: LINEAR-PAYLOAD? ( n -- bool )
-   T-RES BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
-   dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
-   PAY CT-LINEAR? 0= ;
+\ The clauses LINEAR-PAYLOAD? answers, one per reason it refuses a payload.
+1 constant PAYLOAD-LINEAR
+2 constant PAYLOAD-SHAPE
+3 constant PAYLOAD-OPEN
+4 constant PAYLOAD-SCOPED
+5 constant PAYLOAD-HELD
+6 constant PAYLOAD-CLASS
+\ A `linear:` row meets no CAST-WALKS class rule, so a record payload holds
+\ nothing a closed cast's pointee may not: a linear value, an atom or a width.
+\ Answers 0 when the row may carry pay, else the clause that refuses it.
+: LINEAR-PAYLOAD? ( n -- n ) {: pay:n :}
+   pay T-RES BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT {: x:n :}
+   x TAG T-CON = IF x PAY CT-LINEAR? IF PAYLOAD-LINEAR ELSE 0 THEN EXIT THEN
+   x TAG T-PARAM <> pay T-RES TAG T-PTR <> or IF PAYLOAD-SHAPE EXIT THEN
+   x PARAM>FAM dup 0 < IF drop PAYLOAD-SHAPE EXIT THEN
+   TFAM-PRODUCT? 0= IF PAYLOAD-SHAPE EXIT THEN
+   pay TYPE-CLOSED? 0= IF PAYLOAD-OPEN EXIT THEN
+   pay SCOPED-TYPE? IF PAYLOAD-SCOPED EXIT THEN
+   pay STORED-TERM-HIT dup 4 = IF drop PAYLOAD-HELD EXIT THEN
+   5 = IF PAYLOAD-CLASS EXIT THEN
+   0 ;
+\ The found text for each clause LINEAR-PAYLOAD? answers.
+: PAYLOAD-WHY$ ( n -- str ) {: why:n :}
+   why PAYLOAD-LINEAR = IF s" the payload's pointer chain ends at a linear type" EXIT THEN
+   why PAYLOAD-SHAPE = IF s" the payload is not a con, or a pointer to a con or a record" EXIT THEN
+   why PAYLOAD-OPEN = IF s" the payload's record holds a type variable or a quotation" EXIT THEN
+   why PAYLOAD-SCOPED = IF s" the payload's record holds a view" EXIT THEN
+   why PAYLOAD-HELD = IF s" the payload's record may hold a linear value" EXIT THEN
+   s" the payload's record holds an atom or a width" ;
 
 : LINEAR-CERTIFY ( -- )
    SGIN @ CAST-ROW-TERM {: in:n :}
    SGOUT @ CAST-ROW-TERM {: out:n :}
    in LIN-CON? IF in out ELSE out in THEN {: tok:n pay:n :}
-   tok LIN-CON? 0= pay LINEAR-PAYLOAD? 0= or IF
-      s" the row is not one linear type and one non-linear payload"
-      s" put the linear type on one side and its payload, a con or a pointer chain ending at one, on the other, as `( ^n -- PKG:tok )`"
-      E-LINEAR-PAYLOAD CAST-ERROR:RAISE
+   s" put the linear type on one side and its payload, a non-linear con, or a pointer chain ending at one or at a record that holds no linear value, quotation, type variable, atom or width, on the other, as `( ^n -- PKG:tok )`"
+   {: ha:^ hu:n :}
+   tok LIN-CON? 0= pay LIN-CON? or IF
+      s" the row is not one linear type and one payload" ha hu E-LINEAR-PAYLOAD CAST-ERROR:RAISE
    THEN
+   pay LINEAR-PAYLOAD? {: why:n :}
+   why 0 <> IF why PAYLOAD-WHY$ ha hu E-LINEAR-PAYLOAD CAST-ERROR:RAISE THEN
    tok T-RES PAY CT-PKG$ {: pa:^ pu:n :}
    pu 0= IF
       s" the linear type is declared at top level, so no package mints it"

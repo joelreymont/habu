@@ -864,9 +864,11 @@ multi-cell type rationale is `docs/design.md` "Types".
   token from a payload or erase one back into it. It is parsed and refused as
   a cast is first (`E-CAST-FAM`, `E-BAD-STORED-SIGNATURE`, `E-CAST-ARITY`),
   then by its own rule:
-  - One side is a linear type and the other its payload, a non-linear con or a
-    pointer chain ending at one (`E-LINEAR-PAYLOAD`): two tokens, no
-    token, a type variable, a family, a quotation or an atom is refused.
+  - One side is a linear type and the other its payload, a non-linear con, or
+    a pointer chain ending at one or at a record (a STRUCTURE or `str`) that
+    holds no linear value, quotation, type variable, atom or width
+    (`E-LINEAR-PAYLOAD`): two tokens, no token, a type variable, a family by
+    value or a non-record family, a quotation or an atom is refused.
   - The current package declared the linear type (`E-LINEAR-OWNER`).
     `DEFLINEAR` records the package it runs in, and one declared at top level
     has no owner, so nothing mints it.
