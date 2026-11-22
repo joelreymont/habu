@@ -4,7 +4,7 @@ split-str
 \ length or timeout out of range and an impossible foreign result throw. Calls
 \ must not nest within one task; close live descriptors before an image is
 \ prepared.
-\ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are one row per task,
+\ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are rows per task,
 \ so separate tasks drive separate ports; byte spans are caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -53,10 +53,12 @@ $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
 
-\ Two records: Darwin's 72-byte termios or Linux's 44-byte termios2.
-144 TASK:+USERS IO-STORAGE u8
-: TERM ( -- ^u8 ) 0 IO-STORAGE ;
-: SAVED ( -- ^u8 ) 72 IO-STORAGE ;
+\ The port's new and saved settings, raw bytes ioctl fills: Darwin's 72-byte
+\ termios or Linux's 44-byte termios2.
+72 TASK:+USERS TERM-ROW u8
+72 TASK:+USERS SAVED-ROW u8
+: TERM ( -- ^u8 ) 0 TERM-ROW ;
+: SAVED ( -- ^u8 ) 0 SAVED-ROW ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 \ Each caller has shown the cell nonnegative.

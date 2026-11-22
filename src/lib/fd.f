@@ -130,6 +130,7 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 : ERRNO-FAIL ( n -- )
    FFI:ERRNO FS:CAUSE! throw ;
 
+\ One struct pollfd, raw bytes poll reads and fills.
 8 TASK:+USERS POLL-STORAGE u8
 : POLL-FD ( -- ^u8 ) 0 POLL-STORAGE ;
 
