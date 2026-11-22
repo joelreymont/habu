@@ -263,7 +263,7 @@ create BUF BUF-CAP allot
 variable BUF-N
 
 : RESET ( -- ) 0 BUF-N ! ;
-: APPEND ( ^u8 n -- ) {: a:^ u:n :}
+: APPEND ( str -- ) str> {: a:^ u:n :}
    BUF-N @ u + BUF-CAP > IF s" local-bind test source overflow" EXIT-STATUS:FAILURE die THEN
    0 BEGIN dup u < WHILE
       a over + c@ BUF BUF-N @ + c!
@@ -271,10 +271,10 @@ variable BUF-N
       1 +
    REPEAT drop ;
 : BIND ( -- )
-   s" dup 0 > if 5 {: x:n :} x drop then " APPEND ;
+   s" dup 0 > if 5 {: x:n :} x drop then " >str APPEND ;
 : SOURCE ( -- ^u8 n )
    RESET
-   s" MANY-BINDS ( n -- n ) " APPEND
+   s" MANY-BINDS ( n -- n ) " >str APPEND
    257 0 ?do BIND loop
    BUF BUF-N @ ;
 
@@ -1453,17 +1453,20 @@ P-HEAD$ nip P-TAIL$ nip + max
 LONG-N 2 * + constant CAP
 CAP BUFFER: BUF
 variable BUF-N
-: APPEND ( ^u8 n -- ) {: a:^ u:n :}
+: APPEND ( str -- ) str> {: a:^ u:n :}
    a BUF BUF-N @ + u BYTE-COPY  BUF-N @ u + BUF-N ! ;
-: NS ( n -- ) 0 ?do s" n " APPEND loop ;
+: NS ( n -- ) 0 ?do s" n " >str APPEND loop ;
 : DECL$ ( -- ^u8 n )
-   0 BUF-N !  Q-HEAD$ APPEND  LONG-N NS  Q-TAIL$ APPEND  BUF BUF-N @ ;
+   0 BUF-N !  Q-HEAD$ >str APPEND  LONG-N NS
+   Q-TAIL$ >str APPEND  BUF BUF-N @ ;
 \ : NAME ( [ n n … -- ] -- tdpq300 ) … ; of k cells
 : CTOR$ ( ^u8 n n -- ^u8 n ) {: a:^ u:n k:n :}
-   0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( [ " APPEND
-   k NS  C-TAIL$ APPEND  BUF BUF-N @ ;
+   0 BUF-N !  s" : " >str APPEND  a u >str APPEND
+   s"  ( [ " >str APPEND  k NS  C-TAIL$ >str APPEND
+   BUF BUF-N @ ;
 : PAY$ ( -- ^u8 n )
-   0 BUF-N !  P-HEAD$ APPEND  LONG-N NS  P-TAIL$ APPEND  BUF BUF-N @ ;
+   0 BUF-N !  P-HEAD$ >str APPEND  LONG-N NS
+   P-TAIL$ >str APPEND  BUF BUF-N @ ;
 : SHORT-CTOR ( -- )
    REJECTION:CAPTURE  true REJECTION:JSON !
    s" TDPQ300-NO" LONG-N 1 - CTOR$ TDT-EVAL-CATCH 70 T=
@@ -2144,22 +2147,23 @@ variable BUF-N
 : C+ ( n -- )
    BUF-N @ BUF-CAP >= IF s" wide derive test source overflow" EXIT-STATUS:FAILURE die THEN
    BUF BUF-N @ + c!  BUF-N @ 1 + BUF-N ! ;
-: APPEND ( ^u8 n -- ) {: a:^ u:n :}
+: APPEND ( str -- ) str> {: a:^ u:n :}
    u 0 ?do  a i + c@ C+  loop ;
 : NUM+ ( n -- ) {: v:n :}   \ three decimal digits
    v 100 / 48 + C+  v 10 / 10 mod 48 + C+  v 10 mod 48 + C+ ;
 : DECL$ ( -- ^u8 n )
-   0 BUF-N !  s" STRUCTURE tdeq256 DERIVE eq hash" APPEND
-   256 0 ?do  s"  FIELD f" APPEND  i NUM+  s"  n" APPEND  loop
-   s"  ;STRUCTURE" APPEND  BUF BUF-N @ ;
+   0 BUF-N !  s" STRUCTURE tdeq256 DERIVE eq hash" >str APPEND
+   256 0 ?do  s"  FIELD f" >str APPEND  i NUM+  s"  n" >str APPEND  loop
+   s"  ;STRUCTURE" >str APPEND  BUF BUF-N @ ;
 : VALUE+ ( n -- ) {: odd:n :}   \ field i holds i, field odd holds 999
    256 0 ?do
       i odd = IF 999 ELSE i THEN NUM+  32 C+
-   loop  s" TDEQ256:MAKE " APPEND ;
+   loop  s" TDEQ256:MAKE " >str APPEND ;
 \ A word comparing the value with every field i to one whose field odd is 999.
 : EQ$ ( ^u8 n n -- str ) {: a:^ u:n odd:n :}
-   0 BUF-N !  s" : " APPEND  a u APPEND  s"  ( -- bool ) " APPEND
-   -1 VALUE+  odd VALUE+  s" TDEQ256:EQ ; " APPEND  a u APPEND
+   0 BUF-N !  s" : " >str APPEND  a u >str APPEND
+   s"  ( -- bool ) " >str APPEND  -1 VALUE+  odd VALUE+
+   s" TDEQ256:EQ ; " >str APPEND  a u >str APPEND
    BUF BUF-N @ >str ;
 
 public

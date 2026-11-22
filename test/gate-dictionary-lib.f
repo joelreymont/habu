@@ -865,9 +865,9 @@ variable LABEL-U
    s" GD-QUNDEF:TARGET ." GE-SRC-LINE
    s" TYPED-VARIABLE GD-UQ-A ^u8   variable GD-UQ-U" GE-SRC-LINE
    s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ evaluate-closed ;" GE-SRC-LINE
-   s" : GD-UQ-CATCH ( ^u8 n -- n ) GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
+   s" : GD-UQ-CATCH ( str -- n ) str> GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
-   s"  GD-UQ-CATCH ." GE-SRC-LINE
+   s"  >str GD-UQ-CATCH ." GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
    s"  >str XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
    s" : GD-QROLL-CALL ( len len -- pcap:captured ) PCAP-CAPTURED:MAKE ;" GE-SRC-LINE

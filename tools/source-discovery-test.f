@@ -294,13 +294,13 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 \ later literal load in the body is recorded, and a top-level loader taking no
 \ literal after `;` is refused at itself.
 : SDT-TEST-BODY-DYNAMIC ( -- )
-   s" body-dyn.f" S\" : L ( ^u8 n -- ) included ;\n" SDT-WRITE-ENTRY
+   s" body-dyn.f" S\" : L ( str -- ) str> included ;\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ
    SOURCE-EVENT:COUNT 0 T=
-   S\" : L ( ^u8 n -- ) included ;\nrequire sd-top.f\n" s" sd-top.f" SDT-ONE-EVENT
-   S\" : L ( ^u8 n -- ) included s\" sd-body.f\" required ;\n" s" sd-body.f" SDT-ONE-EVENT
-   s" body-dyn-top.f" S\" : L ( ^u8 n -- ) included ;\nrequired\n" SDT-WRITE-ENTRY
-   E-DISC-DYNAMIC 28 8 SDT-STOPS-AT ;
+   S\" : L ( str -- ) str> included ;\nrequire sd-top.f\n" s" sd-top.f" SDT-ONE-EVENT
+   S\" : L ( str -- ) str> included s\" sd-body.f\" required ;\n" s" sd-body.f" SDT-ONE-EVENT
+   s" body-dyn-top.f" S\" : L ( str -- ) str> included ;\nrequired\n" SDT-WRITE-ENTRY
+   E-DISC-DYNAMIC 31 8 SDT-STOPS-AT ;
 
 : SDT-TEST-BODY-OPENER ( -- )
    s" body-opener.f" S\" : L ( -- ) C\\\" sd-i.f\" required ;\n" SDT-WRITE-ENTRY
@@ -318,7 +318,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" undefine required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
    S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n;using\npackage CVT-EXP\npublic\nEXPORT required\n;package\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT
-   S\" : U ( ^u8 n -- ) undefine required ;\ns\" sd-raw.f\" required\n"
+   S\" : U ( str -- ) undefine required ;\ns\" sd-raw.f\" required\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ SOURCE, as an entry, is refused with CODE at its loader word at OFF, LEN bytes
@@ -335,8 +335,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    E-DISC-SHADOW 56 7 SDT-REPLACED-AT
    S\" package SDT-SH\nkernel: include ( -- ) ;\n;package\ninclude sd-raw.f\n"
    E-DISC-SHADOW 49 7 SDT-REPLACED-AT
-   S\" package SDT-SH\n: required ( ^u8 n -- ) 2drop ;\n;package\n: L ( -- ) s\" sd-raw.f\" required ;\n"
-   E-DISC-SHADOW 80 8 SDT-REPLACED-AT
+   S\" package SDT-SH\n: required ( str -- ) drop ;\n;package\n: L ( -- ) s\" sd-raw.f\" required ;\n"
+   E-DISC-SHADOW 77 8 SDT-REPLACED-AT
    S\" package SDT-SH\n: include ( -- ) ;\n;package\n: L ( -- ) include sd-raw.f ;\n"
    E-DISC-SHADOW 54 7 SDT-REPLACED-AT
    S\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\ns\" sd-raw.f\" required\n"

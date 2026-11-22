@@ -5432,7 +5432,7 @@ variable WS-ROOT-U
 : TEXT-RN ( -- str )
    TXT-B CLEAR
    s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ^u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
-   s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: SEEK2 ( -- ) s\" ROOK\" XREF-FIND drop ;\n" HV+
+   s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: SEEK2 ( -- ) s\" ROOK\" >str XREF-FIND drop ;\n" HV+
    s\" : TWO ( -- n ) ROOK 1 + ;\n" HV+
    TXT$ ;
 
