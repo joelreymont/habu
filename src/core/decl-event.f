@@ -144,7 +144,7 @@ public
 
 : PAYLOAD-SCHEMA@ ( n n -- n ) {: vid:n index:n :}
    vid DEV-PAYLOAD-RANGE drop index + DEV-PROV-FLD@ {: fld:n :}
-   fld PF-PENDING-SCH@ ;
+   fld PF-SCH@ ;
 
 \ Starts the next member of a MUTUAL: a header clause repeats only within one
 \ member.

@@ -1393,8 +1393,6 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    id PF-REC@ {: r:^ :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
 : PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
 
-: PF-PENDING-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
-
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-CELLS@ ( n -- n ) PF-REC@ PF.CELLS @ ;
 : PF-BYTE-OFF@ ( n -- n ) PF-REC@ PF.BYTE-OFF @ ;
@@ -1563,8 +1561,6 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 \ with a nonzero declared field count uses TYPE-FIELD for every variant. A
 \ product family keeps positional schemas
 \ for its make/unmake variants. An all-empty family has no payload either way.
-\ Only a bounded, committed, variant-owned field slice is a valid named
-\ representation.
 
 \ A type entry can give a sum's variants positional schemas beside named
 \ fields, and ER-READ does not refuse that.
@@ -1819,7 +1815,7 @@ defer TFAM-WIDTH-SLOT-FWD ( n n -- bool )   \ ( fam slot -- reads? ) forward ref
    fam TFAM-BOXED-OR-NICHE? IF RES-FALSE EXIT THEN
    fam TFAM-PRODUCT? IF
       0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-         fam TFAM-FLD-START@ over + PF-PENDING-SCH@ SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT?
+         fam TFAM-FLD-START@ over + PF-SCH@ SCHEMA-ROOT@ slot SCH-ROOT-WIDTH-SLOT?
          IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
@@ -1875,7 +1871,7 @@ defer TFAM-STORE-MASK-FWD ( n -- n )   \ ( fam -- mask ) forward ref for a neste
 : FIELDS-STORE-MASK ( n -- n )   \ the declared fields' storage slots
    {: fam:n :}
    0  fam TFAM-FLD-COUNT@ 0 ?do
-      fam TFAM-FLD-START@ i + PF-PENDING-SCH@ SCHEMA-ROOT@ RES-FALSE SCH-STORE-MASK or
+      fam TFAM-FLD-START@ i + PF-SCH@ SCHEMA-ROOT@ RES-FALSE SCH-STORE-MASK or
    loop ;
 
 
@@ -4151,7 +4147,7 @@ TFC-QUOT-ROW-INSTALL
    term PARAM>FAM {: fam:n :}
    0
    0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-      fam TFAM-FLD-START@ over + PF-PENDING-SCH@ term maybe TFAM-SCH-LIN-N
+      fam TFAM-FLD-START@ over + PF-SCH@ term maybe TFAM-SCH-LIN-N
       rot + swap
       1 +
    REPEAT drop ;

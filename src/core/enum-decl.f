@@ -304,7 +304,7 @@ ED-RESET
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    NFLD @ 0 ?do
-      FLDBASE @ i + PF-PENDING-SCH@ SCHEMA-ROOT@
+      FLDBASE @ i + PF-SCH@ SCHEMA-ROOT@
       s" payload type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop

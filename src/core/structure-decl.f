@@ -985,7 +985,7 @@ private
    FAM @ TFAM-FLD-START@ {: base:n :}  FAM @ TFAM-FLD-COUNT@ {: count:n :}
    MISSING? IF E-UNRESOLVED throw THEN
    count 0 ?do
-      base i + PF-PENDING-SCH@ SCHEMA-ROOT@
+      base i + PF-SCH@ SCHEMA-ROOT@
       s" type is a pointer to a linear value and cannot own it"
       DECL-EVENT:REQUIRE-POINTEES
    loop ;
