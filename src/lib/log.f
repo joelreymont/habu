@@ -255,7 +255,7 @@ public
 : INFO ( -- level )  INFO-N >LEVEL ;
 
 
-: TEXT+ ( ^u8 n -- )
+: TEXT+ ( str -- )
    PHASE @ OPENED <> if 2drop exit then
    [: 2dup ESCAPED+ ;] catch >r 2drop r> MAP-REFUSED ;
 
@@ -272,7 +272,7 @@ public
    s"  " TEXT+ name nameu TEXT+ s" : " TEXT+ code ERROR:TEXT$ TEXT+ ;
 
 
-: LINE ( level ^u8 n -- )
+: LINE ( level str -- )
    {: level:level tag:^ tagu:n :}
    CLOSED PHASE !
    [: OPEN  OPENED PHASE ! ;] catch MAP-REFUSED

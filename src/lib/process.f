@@ -470,7 +470,7 @@ public
 \ vanish: CODE-REPORT names it on stderr from constant text, sharing no storage.
 
 private
-: DIAG ( ^u8 n -- )
+: DIAG ( str -- )
    {: a:^ u:n :}
    2 a u write drop ;
 

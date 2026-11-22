@@ -50,7 +50,7 @@ public
 
 \ The text a u with each record's gutter dropped, valid until the next FLAT,
 \ so a u is never an earlier FLAT's answer.
-: FLAT ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: FLAT ( str -- str ) {: a:^ u:n :}
    OUT @ NULL-PTR = IF HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT ! THEN
    OUT @ 0 VEC:RESIZE  false IN-RECORD !  1 GUTTER !
    a u 10 0 BEGIN SPLIT-NEXT WHILE {: p:^ pu:n next:n :}
@@ -61,7 +61,7 @@ public
    OUT @ VEC:SPAN SPAN:$ ;
 
 \ Whether text a u, its records' gutters dropped, holds e eu.
-: HAS? ( ^u8 n ^u8 n -- bool ) {: a:^ u:n e:^ eu:n :}
+: HAS? ( str str -- bool ) {: a:^ u:n e:^ eu:n :}
    a u FLAT e eu CONTAINS? ;
 
 ;package

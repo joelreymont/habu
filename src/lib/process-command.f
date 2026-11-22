@@ -248,7 +248,7 @@ private
 
 public
 
-: ARG+ ( CMD:command ^u8 n -- CMD:command ) {: a:^ u:n :}
+: ARG+ ( CMD:command str -- CMD:command ) {: a:^ u:n :}
    CTX {: h:^ :}
    u 0 < if E-PROC-OUTPUT throw then
    h ARG-BYTES @ h ARG-OFF @ [: a u h ARG-BYTES @ CSTR+ ;] ENTRY ;
@@ -259,7 +259,7 @@ public
    a u >LEN PROC-ENV-CHECK-ENTRY
    h ENV-BYTES @ h ENV-OFF @ [: a u h ENV-BYTES @ CSTR+ ;] ENTRY ;
 
-: ENV+ ( CMD:command ^u8 n ^u8 n -- CMD:command )
+: ENV+ ( CMD:command str str -- CMD:command )
    {: name:^ nameu:n val:^ valu:n :}
    CTX {: h:^ :}
    h ENV-BYTES @ h ENV-OFF @
@@ -381,7 +381,7 @@ private
 
 \ argv: the path, each argument, the NULL. envp: the caller's rows, one per name
 \ with its last value, then the inherited ones, the NULL; both rebuilt every run.
-: PREPARE ( ^n ^u8 n -- )
+: PREPARE ( ^n str -- )
    {: h:^ path:^ pathu:n :}
    path pathu >LEN h PATHZ PATHZ-CAP >LEN PROCESS:ZCOPY {: z:^ :}
    h ARGV-VEC @ 0 VEC:RESIZE
@@ -513,7 +513,7 @@ private
 \ the child a capture pipe in its place. RUNNING names the context only while its
 \ capture runs, and is cleared on every path out, so no task row keeps a
 \ context's address past its run.
-: RUN-CAPTURE ( ^n ^u8 n ms -- )
+: RUN-CAPTURE ( ^n str ms -- )
    {: h:^ path:^ pathu:n timeout:ms :}
    h CANCEL-FD @ >FD {: cancel:fd :}
    PROCESS:NO-FD h CANCEL-FD !
@@ -553,22 +553,22 @@ public
 : RC@ ( CMD:command -- CMD:command result<n,n> )
    OUTCOME@ PROCESS:ENDING>RC PROCESS:RC>RESULT ;
 
-: RUN-RC ( CMD:command ^u8 n ms -- CMD:command result<n,n> )
+: RUN-RC ( CMD:command str ms -- CMD:command result<n,n> )
    RUN-OUTCOME drop RC@ ;
 
 \ OUT$ and ERR$ are borrowed until the next run, RESET or the end of the scope.
-: OUT$ ( CMD:command -- CMD:command ^u8 n )
+: OUT$ ( CMD:command -- CMD:command str )
    CTX {: h:^ :}
    h OUT-BASE @ h OUT-LEN @ ;
 
-: ERR$ ( CMD:command -- CMD:command ^u8 n )
+: ERR$ ( CMD:command -- CMD:command str )
    CTX {: h:^ :}
    h ERR-BASE @ h ERR-LEN @ ;
 
 \ RUN-OUTCOME, then: a clean exit returns; any other completion writes ERR$ to
 \ this process's stderr and throws code, which must be nonzero; a deadline-killed
 \ run throws E-PROC-TIMEOUT (PROCESS:ENDING>RC).
-: RUN ( CMD:command ^u8 n ms n -- CMD:command )
+: RUN ( CMD:command str ms n -- CMD:command )
    {: path:^ pathu:n timeout:ms code:n :}
    path pathu timeout RUN-OUTCOME PROCESS:ENDING>RC RC>N 0= if exit then
    ERR$ {: err:^ erru:n :}
