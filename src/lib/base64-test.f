@@ -35,20 +35,20 @@ SHA256-CTX-BYTES BUFFER: URL-CTX
 32 SPAN-BUFFER: URL-DG
 variable STAGED-LEN
 
-: OUT$ ( n -- ^u8 n )
+: OUT$ ( n -- str )
    OUT SPAN:$ drop swap ;
 
-: ENCODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
+: ENCODES ( str str -- ) {: a u:n want wu:n :}
    a u OUT BASE64:ENCODE {: k:n :}
    want wu T-LABEL
    k OUT$ want wu T$= ;
 
-: DECODES ( ^u8 n ^u8 n -- ) {: a u:n want wu:n :}
+: DECODES ( str str -- ) {: a u:n want wu:n :}
    a u OUT BASE64:DECODE {: k:n :}
    a u T-LABEL
    k OUT$ want wu T$= ;
 
-: BOTH ( ^u8 n ^u8 n -- ) {: a u:n b v:n :}
+: BOTH ( str str -- ) {: a u:n b v:n :}
    a u b v ENCODES
    b v a u DECODES ;
 
@@ -150,7 +150,7 @@ variable STAGED-LEN
 : STAGED$ ( -- str )
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
-: REFUSES ( ^u8 n n -- ) {: a u:n code:n :}
+: REFUSES ( str n -- ) {: a u:n code:n :}
    a u STAGE
    a u T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] code TTHROWSQ ;
@@ -237,7 +237,7 @@ variable STAGED-LEN
    [: STAGED$ OUT BASE64:DECODE drop ;] E-BASE64-CHAR TTHROWSQ ;
 
 
-: WANT ( ^u8 n n -- n )
+: WANT ( str n -- n )
    {: a u:n c:n :}
    u 0 ?do a i + c@ c = if i unloop exit then loop
    c [char] = = if E-BASE64-PAD else E-BASE64-CHAR then ;
@@ -249,7 +249,7 @@ variable STAGED-LEN
    OUT 0 SPAN:U8@ 2 rshift ;
 
 
-: JUDGES ( ^u8 n [ -- ] -- )
+: JUDGES ( str [ -- ] -- )
    {: a u:n q :}
    256 0 do
       s" ?AAA" STAGE i STAGED 0 SPAN:U8!

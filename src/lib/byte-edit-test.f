@@ -15,7 +15,7 @@ create BINARY-INSERT $7F c, 0 c,
 create MANY-SOURCE MANY allot
 create MANY-EXPECTED MANY 2 * allot
 
-: OPEN ( ^u8 n -- EDIT:editor )
+: OPEN ( str -- EDIT:editor )
    {: source size:n :}
    HEAP:ALLOCATOR source size INIT ;
 
@@ -121,7 +121,7 @@ create MANY-EXPECTED MANY 2 * allot
 : CHECKED-OWNERSHIP ( -- )
    s" BYTE-EDIT-DUP ( EDIT:editor -- EDIT:editor EDIT:editor ) dup" CHECK! 0 T=
    s" BYTE-EDIT-DROP ( EDIT:editor -- ) drop" CHECK! 0 T=
-   s" BYTE-EDIT-SWAP ( EDIT:editor len off ^u8 n -- EDIT:editor ) EDIT:REPLACE"
+   s" BYTE-EDIT-SWAP ( EDIT:editor len off str -- EDIT:editor ) EDIT:REPLACE"
    CHECK! 0 T= ;
 
 T-RESET

@@ -18,11 +18,11 @@ $A5 constant CANARY
 3 SPAN-BUFFER: OUT-3
 variable STAGED-LEN
 
-: OUT$ ( n -- ^u8 n )
+: OUT$ ( n -- str )
    OUT SPAN:$ drop swap ;
 
 
-: DECODES ( ^u8 n ^u8 n -- )
+: DECODES ( str str -- )
    {: a u:n want wu:n :}
    a u T-LABEL
    a u OUT BASE85:DECODE {: k:n :}
@@ -30,7 +30,7 @@ variable STAGED-LEN
 
 
 \ k bytes of value b, then the text t: what WANT holds after it.
-: BYTES ( n n ^u8 n -- ^u8 n )
+: BYTES ( n n str -- str )
    {: b:n k:n t tu:n :}
    k 0 ?do b WANT i SPAN:U8! loop
    tu 0 ?do t i + c@ WANT k i + SPAN:U8! loop
@@ -48,7 +48,7 @@ variable STAGED-LEN
    STAGED SPAN:$ drop STAGED-LEN @ ;
 
 
-: REFUSES ( ^u8 n n -- )
+: REFUSES ( str n -- )
    {: a u:n code:n :}
    a u STAGE
    a u T-LABEL

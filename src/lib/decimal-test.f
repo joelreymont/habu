@@ -42,7 +42,7 @@ create LONG-SRC 1048600 allot
 : INTEGER-NONE ( str -- )
    DECIMAL:INTEGER NONE? ;
 
-: PRIORITY ( ^u8 n -- option<i64> )
+: PRIORITY ( str -- option<i64> )
    {: a:^ u:n :}
    a u DECIMAL:INTEGER MATCH option
       none OF a u DECIMAL:EXACT ENDOF

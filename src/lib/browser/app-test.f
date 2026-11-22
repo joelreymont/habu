@@ -87,14 +87,14 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
 
 
 \ The base64 decodes to the bytes.
-: DECODES ( ^u8 n ^u8 n -- )
+: DECODES ( str str -- )
    {: c:^ cu:n w:^ wu:n :}
    c cu DECODED BASE64:DECODE {: du:n :}
    DECODED SPAN:$ drop du w wu T$= ;
 
 
 \ The base64 decodes to the file's bytes.
-: CARRIES ( ^u8 n ^u8 n -- )
+: CARRIES ( str str -- )
    {: c:^ cu:n path:^ pu:n :}
    path pu WANT CAP FS:READ-ALL {: wu:n :}
    c cu WANT wu DECODES ;

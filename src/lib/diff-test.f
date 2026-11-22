@@ -21,17 +21,17 @@ TYPED-VARIABLE WANT-VEC ^VEC:vector<u8>
 : WANT ( -- ^VEC:vector<u8> )  WANT-VEC @ ;
 : NEW ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
-: W+ ( ^u8 n -- )  WANT VEC:APPEND ;
+: W+ ( str -- )  WANT VEC:APPEND ;
 : GOT$ ( -- str )  OUT VEC:SPAN SPAN:$ ;
 : WANT$ ( -- str )  WANT VEC:SPAN SPAN:$ ;
 : SAME ( -- )  GOT$ WANT$ T$= ;
 
-: FRESH ( ^u8 n -- )  T-LABEL OUT 0 VEC:RESIZE WANT 0 VEC:RESIZE ;
+: FRESH ( str -- )  T-LABEL OUT 0 VEC:RESIZE WANT 0 VEC:RESIZE ;
 
-: PATH ( -- ^u8 n )  s" src/f.f" ;
+: PATH ( -- str )  s" src/f.f" ;
 : HEAD+ ( -- )  s\" diff --git a/src/f.f b/src/f.f\n--- a/src/f.f\n+++ b/src/f.f\n" W+ ;
-: NINE ( -- ^u8 n )  s\" 1\n2\n3\n4\n5\n6\n7\n8\n9\n" ;
-: TWENTY ( -- ^u8 n )
+: NINE ( -- str )  s\" 1\n2\n3\n4\n5\n6\n7\n8\n9\n" ;
+: TWENTY ( -- str )
    s\" 1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n" ;
 
 

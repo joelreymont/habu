@@ -53,7 +53,7 @@ variable CHILD-CODE
    r FD>N FEED-FD !
    r max BIND-ON ;
 
-: FEED ( ^u8 n -- )
+: FEED ( str -- )
    MAX-BODY FEED-MAX ;
 
 : DONE ( -- )
@@ -67,7 +67,7 @@ variable CHILD-CODE
    ;MATCH ;
 
 \ The pending body of u bytes, read into SMALL.
-: BODY$ ( n -- ^u8 n )
+: BODY$ ( n -- str )
    {: u:n :}
    R SMALL BODY
    SMALL $ drop u ;
@@ -138,7 +138,7 @@ variable CHILD-CODE
    SPENT
    DONE ;
 
-: MALFORMED ( ^u8 n -- )
+: MALFORMED ( str -- )
    FEED
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-MALFORMED TTHROWSQ
    SPENT
@@ -188,7 +188,7 @@ TYPED-VARIABLE PAD-LEN len
    LINE-CAP 1+ PAD-LINE$ MALFORMED
    3000 PAD-LINE$ MALFORMED ;
 
-: FORM ( ^u8 n ^u8 n -- )
+: FORM ( str str -- )
    {: a:^ u:n want:^ wu:n :}
    a u FEED
    NEXT-LEN wu T=
@@ -239,7 +239,7 @@ TYPED-VARIABLE PAD-LEN len
    pid PROCESS:WAIT PROCESS:STATUS>ENDING 0 T-ENDING-EXITED= ;
 
 
-: PIECE ( ^u8 n -- )
+: PIECE ( str -- )
    {: a:^ u:n :}
    CHILD-FD @ >FD a u WRITE-FULL
    PIECE-MS >MS TASK:SLEEP ;

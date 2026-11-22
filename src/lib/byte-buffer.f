@@ -244,7 +244,7 @@ public
 \ The text with every non-overlapping old replaced by new, appended; answers the
 \ count COUNT-SUB answers. No operand may overlap the storage. An empty old is
 \ its zero occurrences: FIND-SUB-FROM would answer every offset.
-: APPEND-REPLACED ( ^u8 n ^u8 n ^u8 n ^a -- n )
+: APPEND-REPLACED ( str str str ^a -- n )
    {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ :}
    ou 0= if text tu buf APPEND-SPAN-RAW 0 exit then
    0 0 begin >r text tu old ou new nu buf r> APPEND-UNTIL-OLD while swap 1+ swap repeat drop ;
