@@ -1485,7 +1485,8 @@ a stored type, so a word that measures a family pointer names the family
 (`^option<a>`).
 
 A **byte view** re-reads a pointer as bytes: `: NAME ( ^a -- ^u8 ) ;`
-certifies, because the input pointee stays generalized. A `^u8` uses
+certifies, because the input pointee stays generalized. `BYTE-VIEW` takes a
+pointer to any stored type, a closed record or family included. A `^u8` uses
 `c@`/`c!`; cell `@`/`!` on it is refused.
 
 A pointee is **invariant**: widening never applies inside a `^`, so

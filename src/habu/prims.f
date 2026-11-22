@@ -386,7 +386,7 @@ EPRIM: scratch-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: ptr-cell!  PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
 EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM;
 \ Explicit memory views preserve address bits while changing the access type.
-EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM;
+EPRIM: byte-view  PE-PTR-A-STORED PE-IN PE-PTR-U8 PE-OUT EPRIM;
 EPRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT EPRIM;
 \ The only crossing between a string's two cells and `str`, the one value they
 \ make: base below length either way.

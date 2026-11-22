@@ -1117,7 +1117,8 @@ TV-CLEAR
 10 constant TVK-BASE-ONLY
 global
 \ TVK-STORED: any stored type, a wide record included, for a declared variable
-\ in stored positions only; a one-cell use meets it away, a step makes it ANY.
+\ in stored positions only, and for `byte-view`'s pointee; a one-cell use meets
+\ it away, a step makes it ANY.
 11 constant TVK-STORED
 private
 \ TVK-ADDR: the pointee of a row that reads, writes and sizes nothing through

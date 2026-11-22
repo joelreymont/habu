@@ -382,11 +382,13 @@ private
    s" BPA-D2O ( ^option<a> -- n ) BPA-NDIST" MISMATCH
    s" BPA-QRO ( ^option<a> -- ) BPA-QR" MISMATCH ;
 
-\ A byte written through a byte view could forge a value the record's fields
-\ or the family's slots type, so the view still refuses a pointer to one.
+\ A byte view of a closed record shows no more than the view of each field
+\ (`rec FIELD BYTE-VIEW`). An open family has no layout yet, so the view still
+\ refuses a pointer to one.
 : CASE-RECORD-BYTE-VIEW ( -- )
-   s" a byte view of a pointer to a record or a family is still refused" T-LABEL
-   s" BPA-RBV ( ^bpa-rec -- ^u8 ) BYTE-VIEW" MISMATCH
+   s" a byte view of a pointer to a closed record certifies" T-LABEL
+   s" BPA-RBV ( ^bpa-rec -- ^u8 ) BYTE-VIEW" CERTIFIES
+   s" and of a pointer to an open family is still refused" T-LABEL
    s" BPA-OBV ( ^option<a> -- ^u8 ) BYTE-VIEW" MISMATCH ;
 
 \ A base row matches only a base address's own pointee. An operand still being
