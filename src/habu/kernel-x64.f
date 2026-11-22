@@ -91,7 +91,7 @@ private
 : IMM32, ( r64 n -- ) {: r:r64 v:n :}
    r R64>N >R32 v >IMM32 ASM-SINK ENC-MOV32-RI32 ;
 
-: TEXT, ( ^u8 n -- ) ASM-SINK VEC:APPEND ;
+: TEXT, ( str -- ) ASM-SINK VEC:APPEND ;
 
 : EXIT-GROUP, ( n -- ) {: rc:n :} RDI rc IMM32,  NR-EXIT-GROUP SYS, ;
 
@@ -125,7 +125,7 @@ PTR-VARIABLE ROW-A
 variable ROW-U
 : ROW$ ( -- str ) ROW-A @ ROW-U @ ;
 
-: ARGS ( ^u8 n [ -- ] -- )
+: ARGS ( str [ -- ] -- )
    is BODY  ROW-U !  ROW-A !
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
@@ -148,7 +148,7 @@ variable ROW-U
 
 public
 
-: PRIM ( ^u8 n [ -- ] -- )
+: PRIM ( str [ -- ] -- )
    ARGS
    EMIT-ROW drop ;
 
@@ -157,7 +157,7 @@ public
    ARGS
    wid EMIT-ROW ENGINE-PRIMS:WID! ;
 
-: ENTRY-LABEL ( ^u8 n -- label ) {: a:^ u:n :}
+: ENTRY-LABEL ( str -- label ) {: a:^ u:n :}
    ENGINE-PRIMS:COUNT 0 ?do
       i ENGINE-PRIMS:NAME$ a u CORE-STR= if
          i ENGINE-PRIMS:FIRST-LABEL unloop exit

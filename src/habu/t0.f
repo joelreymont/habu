@@ -123,16 +123,16 @@ EXPORT CHECKER-TAPE:K-CONTROL
 \ ---- rejections --------------------------------------------------------------
 \ Each word prints one rejection at the token it is given and throws the
 \ reject status; a body token places while the body's source is armed (RUN).
-: SAY ( ^u8 n -- ) REJECTION:EMIT-STR ;
+: SAY ( str -- ) REJECTION:EMIT-STR ;
 
 \ Code in a rejection's text sits in backticks.
-: TICKS ( ^u8 n -- ) {: a:^ u:n :}
+: TICKS ( str -- ) {: a:^ u:n :}
    96 REJECTION:EMIT1  a u SAY  96 REJECTION:EMIT1 ;
 
 : REJECT ( -- ) EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ A closer, a `;]` or an arm word with no structure of its kind open.
-: STRAY ( ^u8 n -- ) {: a:^ u:n :}
+: STRAY ( str -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    a u TICKS  s"  does not close or continue a structure open here" SAY
    a u REJECTION:AT  s" no matching structure is open" SAY
@@ -151,7 +151,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    s"  inside a `do` ... `loop`; `j` needs two nested loops" SAY
    REJECT ;
 
-: UNREACHED ( ^u8 n -- ) {: a:^ u:n :}
+: UNREACHED ( str -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    s" no path reaches " SAY  a u TICKS
    a u REJECTION:AT  s" unreachable" SAY
@@ -160,7 +160,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECT ;
 
 \ The token that ended a unit with a structure still open.
-: UNCLOSED ( ^u8 n -- ) {: a:^ u:n :}
+: UNCLOSED ( str -- ) {: a:^ u:n :}
    s" E-T0-CONTROL" REJECTION:OPEN
    s" a control structure is still open at " SAY  a u TICKS
    a u REJECTION:AT  s" the structure must close before this" SAY
@@ -205,7 +205,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
 
 \ A name bound to no record, even in an unchecked body, called in the body of
 \ d du, empty for a tick's operand.
-: NOT-FOUND ( ^u8 n ^u8 n -- ) {: a:^ u:n d:^ du:n :}
+: NOT-FOUND ( str str -- ) {: a:^ u:n d:^ du:n :}
    a u d du UNDEFINED-RECORD REJECT ;
 
 \ Rejects a tick of an engine-internal record or a scope entry.
@@ -257,7 +257,7 @@ EXPORT CHECKER-TAPE:K-CONTROL
    REJECTION:HELP  s" write each arm as `variant OF ... ENDOF`" SAY
    REJECT ;
 
-: UNMODELED ( ^u8 n -- ) {: a:^ u:n :}
+: UNMODELED ( str -- ) {: a:^ u:n :}
    s" E-UNMODELED-IMMEDIATE" REJECTION:OPEN
    a u IMM-MESSAGE
    a u REJECTION:AT  s" immediate, not modeled" SAY
@@ -681,21 +681,21 @@ variable WS-K                        \ operands the word moves
    c negate EMIT-DSP+ ;
 
 \ How many leading outputs are the bottom operands in their order.
-: KEPT ( ^u8 n -- n ) {: outs:^ u:n :}
+: KEPT ( str -- n ) {: outs:^ u:n :}
    WS-K @ u min {: m:n :}
    m 0 ?do outs i + c@ $30 -  WS-K @ 1- i -  <> if i unloop exit then loop
    m ;
 
 \ The WS-K operands replaced by outs, the operand positions of the outputs
 \ from the bottom as digits: the kept bottom ones stay, the rest are copied.
-: MOVE-WIDE ( ^u8 n -- ) {: outs:^ u:n :}
+: MOVE-WIDE ( str -- ) {: outs:^ u:n :}
    outs u KEPT {: j:n :}
    WS-K @ j - DEPTH {: c:n :}
    0 u j ?do outs i + c@ $30 - PUT-OP loop {: o:n :}
    o c NIP-CELLS ;
 
 \ A shuffle with its entry move over one-cell operands.
-: SHUFFLE ( [ -- ] ^u8 n ^u8 n -- ) {: a:^ k:n outs:^ u:n :}
+: SHUFFLE ( [ -- ] ^u8 n str -- ) {: a:^ k:n outs:^ u:n :}
    a k WIDTHS
    WIDE? if drop outs u MOVE-WIDE exit then
    execute ;
@@ -1278,7 +1278,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    then
    to loc EMIT-CALL ;
 
-: MOVE-OP ( str str -- ) {: a:^ k:n outs:^ u:n :}
+: MOVE-OP ( ^u8 n str -- ) {: a:^ k:n outs:^ u:n :}
    a k WIDTHS  outs u MOVE-WIDE ;
 
 \ ---- whole-width memory ------------------------------------------------------
@@ -1303,7 +1303,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 
 \ The wide store's calls never leave as a tail: each stores a copy of one cell,
 \ so the w cells and the address are still on the stack after the last.
-: DO-STORE ( str -- ) {: a:^ to:n :}
+: DO-STORE ( ^u8 n -- ) {: a:^ to:n :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
    a TXT$ - {: loc:n :}
@@ -1682,7 +1682,7 @@ DYNAMIC-BUFFER OP-OF n
 
 \ The index of the kernel's record named a u, retired or not: the boot lays the
 \ kernel's records first, so it is the lowest of that name below OP-N.
-: SEEDED ( ^u8 n -- n )
+: SEEDED ( str -- n )
    {: a:^ u:n :}
    OP-N @ 0 ?do
       i XREF-REC dup XREF-WORDLIST dup WL:PRIMITIVES =  swap WL:RETIRED =  or
@@ -2031,7 +2031,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    ORD @ ROWS @ >= if NDEFINITION:CLOSE$ exit then
    ORD @ ROW$ ;
 
-: FINISH ( ^u8 n -- ) {: a:^ u:n :}
+: FINISH ( str -- ) {: a:^ u:n :}
    CS-N @ 0<> if a u UNCLOSED then
    TAILED @ 0= if SPILL-ALL EMIT-RETURN then
    EMIT-CLOSE ;
@@ -2491,7 +2491,7 @@ EXPORT TFAM:PF-CELLS@
    rc SETTLE-UNIT  rc 0<> if rc throw then ;
 
 \ Compile the pending definition whose body text the engine captured.
-: COMPILE ( ^u8 n -- )
+: COMPILE ( str -- )
    IDLE-CK
    STAGE-UNIT
    COMP-BODY:COMPILED BODY-KIND !

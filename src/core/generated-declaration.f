@@ -67,7 +67,7 @@ private
 
 : CAPPED ( n -- n ) SPAN-CAP min ;
 
-: COPY-BYTES ( ^u8 n ^u8 -- ) {: a:^ u:n d:^ :}
+: COPY-BYTES ( str ^u8 -- ) {: a:^ u:n d:^ :}
    0 BEGIN dup u < WHILE
       dup a + c@  over d + c!
       1 +
@@ -85,7 +85,7 @@ private
       REPEAT drop
    THEN ;
 
-: SLOT! ( ^u8 n n -- ) {: a:^ u:n s:n :}   \ span, slot
+: SLOT! ( str n -- ) {: a:^ u:n s:n :}   \ span, slot
    u CAPPED s cells SPAN-LEN + !
    a u s SPAN-CAP * SPAN-BUF + CAP-COPY
    a u s SRC! ;
@@ -145,7 +145,7 @@ public
 
 \ OPEN ( kind -- ): every field is cleared, so nothing from the previous
 \ declaration is reported against this one.
-: OPEN ( ^u8 n -- )
+: OPEN ( str -- )
    S-KIND SLOT!
    NOTHING$ S-FAMILY SLOT!
    NOTHING$ S-TOKEN SLOT!
@@ -156,7 +156,7 @@ public
 \ Front ends record every body token here, so a fault raised inside a registry
 \ or a participant names the token that provoked it. A new token disarms any
 \ armed reason: an arming describes a fault expected at one token.
-: TOKEN! ( ^u8 n -- )
+: TOKEN! ( str -- )
    S-TOKEN SLOT!
    NOTHING$ NOTHING$ NO-CODE TDECL-ARM ;
 
@@ -168,18 +168,18 @@ public
 
 \ EXPECT ( reason fix code -- ) : arm the reason and fix for a fault a deeper
 \ owner may raise, immediately before the call that can raise it.
-: EXPECT ( ^u8 n ^u8 n n -- ) TDECL-ARM ;
+: EXPECT ( str str n -- ) TDECL-ARM ;
 
 \ REJECT ( reason fix code -- code ) answers the code instead of throwing it, so
 \ each reject site spells its own `throw` and the thrown value is visible there.
-: REJECT ( ^u8 n ^u8 n n -- n ) {: wa:^ wu:n fa:^ fu:n code:n :}
+: REJECT ( str str n -- n ) {: wa:^ wu:n fa:^ fu:n code:n :}
    wa wu fa fu code EXPECT
    code ;
 
 \ Reflection for the suites: what the record would report right now.
-: KIND$ ( -- ^u8 n ) S-KIND SLOT@ ;
+: KIND$ ( -- str ) S-KIND SLOT@ ;
 : FAMILY$ ( -- str ) S-FAMILY SLOT@ ;
-: TOKEN$ ( -- ^u8 n ) S-TOKEN SLOT@ ;
+: TOKEN$ ( -- str ) S-TOKEN SLOT@ ;
 : REASON$ ( n -- str ) PICK-REASON 2drop ;
 
 private
@@ -331,7 +331,7 @@ variable RP-SCAN-I     \ scan cursor within the body buffer
       1 +
    REPEAT ;
 
-: RP-BODY-NEXT ( -- ^u8 n )         \ next body token; zero length once the buffer is spent
+: RP-BODY-NEXT ( -- str )         \ next body token; zero length once the buffer is spent
    RP-BODY@ {: a:^ u:n :}
    a u RP-SKIP {: s:n :}
    a u s RP-TOKEN-END {: e:n :}
@@ -348,7 +348,7 @@ public
 \ (verify-source.f BODY-APPEND grows its buffers to every run). Comments pass through raw: the live
 \ keyword reads `\` or `(` as an ordinary token and refuses it, so replay must
 \ too.
-: RP-CLAIM ( ^u8 n ^u8 n -- )
+: RP-CLAIM ( str str -- )
    RP-BODY!  RP-HEAD!
    0 RP-SCAN-I !
    -1 RP-HEAD? !
@@ -584,14 +584,14 @@ private
    HEAD-I @ HEAD-U @ = IF HEAD-CLEAR THEN
    a start + size ;
 
-: RAW ( -- ^u8 n )                  \ next body token: pushback, lookahead, source
+: RAW ( -- str )                  \ next body token: pushback, lookahead, source
    PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
    HEAD-U @ 0 <> IF HEAD-NEXT EXIT THEN
    SOURCE-NEXT ;
 
 public
 
-: NEXT ( -- ^u8 n )                 \ next body token, recorded for diagnostics
+: NEXT ( -- str )                 \ next body token, recorded for diagnostics
    RAW 2dup TERMINATOR? IF -1 SEEN-END ! THEN
    2dup DECL-REJECT:TOKEN! ;
 : UNGET ( str -- ) 2dup TERMINATOR? IF 0 SEEN-END ! THEN PEND! ;
@@ -694,7 +694,7 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
 public
 
 \ RUN ( kind terminator body -- ) : one live declaration.
-: RUN ( ^u8 n ^u8 n [ -- renders parses nominal ] -- )
+: RUN ( str str [ -- renders parses nominal ] -- )
    {: ka:^ ku:n ta:^ tu:n body :}
    ka ku DECL-REJECT:OPEN
    ta tu body DRIVE DECL-REJECT:GUARD-CODE ;

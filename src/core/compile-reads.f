@@ -101,7 +101,7 @@ create WID-BUF CELL SCRATCH-ALLOT        \ NAME+'s second bytes
    then
    0 0= 0= ;
 
-: HASH ( n ^u8 n ^u8 n -- n )
+: HASH ( n str str -- n )
    {: kind:n a:^ u:n b:^ v:n :}
    FNV:BASIS kind FNV:STEP  a u FNV:BYTES  b v FNV:BYTES ;
 
@@ -126,7 +126,7 @@ create WID-BUF CELL SCRATCH-ALLOT        \ NAME+'s second bytes
    s 1- kind a u b v SAME? ;
 
 \ The slot holding this read, else the empty slot it would take.
-: PROBE ( n ^u8 n ^u8 n -- n )
+: PROBE ( n str str -- n )
    {: kind:n a:^ u:n b:^ v:n :}
    kind a u b v HASH HOME
    begin dup kind a u b v STOP? 0= while NEXT repeat ;
@@ -137,7 +137,7 @@ create WID-BUF CELL SCRATCH-ALLOT        \ NAME+'s second bytes
 
 \ A refused map marks the recording missed and throws E-MEM-MAP carrying its
 \ record.
-: FRESH ( n ^u8 n -- ^u8 )
+: FRESH ( n str -- ^u8 )
    {: bytes:n m:^ mu:n :}
    bytes map-anon 0= 0= if
       ST-MISSED STATUS !
@@ -179,7 +179,7 @@ public
 private
 
 \ Word w, which the program called, gave a span of length n.
-: NEGATIVE ( ^u8 n n -- ) {: w:^ wu:n n:n :}
+: NEGATIVE ( str n -- ) {: w:^ wu:n n:n :}
    s" E-PATH-RANGE" REJECTION:OPEN
    96 REJECTION:EMIT1  w wu REJECTION:EMIT-STR
    s" ` got a length of " REJECTION:EMIT-STR  n REJECTION:EMIT-N
@@ -187,7 +187,7 @@ private
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
 \ w is the word the program called.
-: APPEND ( ^u8 n n ^u8 n ^u8 n -- )
+: APPEND ( str n str str -- )
    {: w:^ wu:n kind:n a:^ u:n b:^ v:n :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
@@ -238,17 +238,17 @@ public
    MAP @ USED @ ;
 
 \ A root's absolute spelling and its canonical directory.
-: ROOT+ ( ^u8 n ^u8 n -- ) {: a:^ u:n b:^ v:n :}
+: ROOT+ ( str str -- ) {: a:^ u:n b:^ v:n :}
    s" COMPILE-READS:ROOT+" ROOT-READ a u b v APPEND ;
 
 \ An environment variable's name and value; a NULL-PTR value is an absent one.
-: ENV+ ( ^u8 n ^u8 n -- ) {: a:^ u:n b:^ v:n :}
+: ENV+ ( str str -- ) {: a:^ u:n b:^ v:n :}
    b NULL-PTR = if s" COMPILE-READS:ENV+" ENV-ABSENT a u b 0 APPEND exit then
    s" COMPILE-READS:ENV+" ENV-READ a u b v APPEND ;
 
 \ A text whose names the part depends on as if its source spelled them. One of
 \ length 0 or less records nothing.
-: TEXT+ ( ^u8 n -- ) {: a:^ u:n :}
+: TEXT+ ( str -- ) {: a:^ u:n :}
    u 0 <= if exit then
    s" COMPILE-READS:TEXT+" TEXT-READ a u a 0 APPEND ;
 
@@ -269,15 +269,15 @@ EXPORT CHECKER-RESOLVE:bare-tok-imm?
 global
 
 \ The name's code cell in wordlist wid, or 0; a dependency of the part that asks.
-: search-wl ( ^u8 n n -- n ) {: a:^ u:n wid:n :}
+: search-wl ( str n -- n ) {: a:^ u:n wid:n :}
    a u wid NAME+  a u wid bare-search-wl ;
 
 \ The search order's binding of the name, a dependency as the part's text is.
-: scope-find ( ^u8 n -- ^n ^n ^n n ) {: a:^ u:n :}
+: scope-find ( str -- ^n ^n ^n n ) {: a:^ u:n :}
    a u TEXT+  a u bare-scope-find ;
 
 \ The name's immediate flag (2) or 0, a dependency as scope-find's name is.
-: tok-imm? ( ^u8 n -- n ) {: a:^ u:n :}
+: tok-imm? ( str -- n ) {: a:^ u:n :}
    a u TEXT+  a u bare-tok-imm? ;
 
 private
@@ -320,14 +320,14 @@ public
 
 \ A path a word reads and z, its NUL-terminated copy, recorded with its STAMP
 \ while a recording is active; on a thread other than main, MISS.
-: FILE+ ( ^u8 n ^u8 -- ) {: a:^ u:n z:^ :}
+: FILE+ ( str ^u8 -- ) {: a:^ u:n z:^ :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
    s" COMPILE-READS:FILE+" FILE-READ a u z STAT-BUF stat64 STAT-STAMP STAMP+ ;
 
 \ FILE+ of a path a word reads without following a symlink at its end, which
 \ LSTAMP stats.
-: LFILE+ ( ^u8 n ^u8 -- ) {: a:^ u:n z:^ :}
+: LFILE+ ( str ^u8 -- ) {: a:^ u:n z:^ :}
    OFF-MAIN? if MISS exit then
    STATUS @ ST-OFF = if exit then
    s" COMPILE-READS:LFILE+" FILE-LREAD a u z STAT-BUF lstat64 STAT-STAMP STAMP+ ;
