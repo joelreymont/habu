@@ -28,7 +28,7 @@ private
 2 constant FAULT-NOTE
 variable FAULT-PART  FAULT-SHUT FAULT-PART !
 
-: TEXT+ ( ^u8 n ^u8 ^n -- )
+: TEXT+ ( str ^u8 ^n -- )
    {: a:^ u:n buf:^ len:^ :}
    len @ u + FAULT-TEXT-CAP > IF
       s" crash: a fault record's text is longer than FAULT-TEXT-CAP" EXIT-STATUS:INTERNAL die

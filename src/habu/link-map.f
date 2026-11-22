@@ -306,7 +306,7 @@ variable REGION-N
    BAND-END @ end RUNTIME-ROW+ ;
 
 \ Region kind k's name; REGION+'s callers pass only the five kinds above.
-: KIND$ ( n -- ^u8 n )
+: KIND$ ( n -- str )
    {: k:n :}
    k DATA-KIND = if s" data" exit then
    k DATA-LIST-KIND = if s" data-list" exit then

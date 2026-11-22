@@ -96,7 +96,7 @@ public
 \ decoded text is never longer than its spelling. Answers the count written and
 \ whether every escape was whole; a bad one stops the decode with the bytes
 \ before it written.
-: DECODE ( ^u8 n ^u8 -- n bool ) {: src:^ u:n dst:^ :}
+: DECODE ( str ^u8 -- n bool ) {: src:^ u:n dst:^ :}
    src u + {: e:^ :}
    src 0
    begin over e < while

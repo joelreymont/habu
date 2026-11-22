@@ -133,7 +133,7 @@ public
    dup XREF-EXT? if XREF-NAME-SLOT XREF-PTR@ exit then
    XREF-INLINE-NAME ;
 
-: XREF-NAME$ ( ^n -- ^u8 n )
+: XREF-NAME$ ( ^n -- str )
    dup XREF-NAME-A swap XREF-NAME-LEN ;
 
 : XREF-FOLD-C ( n -- n )
@@ -236,7 +236,7 @@ EXPORT BOOT:data-base
    then
    NAME-OUT ;
 
-: LIVE ( -- ^u8 n bool )
+: LIVE ( -- str bool )
    data-base PKG-REC-CELL + @
    data-base PKG-PUB-CELL + @
    data-base PKG-PRI-CELL + @
@@ -499,7 +499,7 @@ EXPORT TYPE-DECL:TDECL-THROW-AT
 \ A family or generated name is the declaration's error where SEALED-TARGET?
 \ refuses it, or in a package the verified source sealed. A head resolves as the
 \ definition's does: a part is asked by its path.
-: CHECK ( ^u8 n -- ) {: a:^ u:n :}
+: CHECK ( str -- ) {: a:^ u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF get-current XREF:SEALED-TARGET? IF a u SEALED-STOP THEN EXIT THEN
    a q HEAD-ROW {: ns:^ :}

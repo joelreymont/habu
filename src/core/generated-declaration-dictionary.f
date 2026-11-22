@@ -49,7 +49,7 @@ public
 
 \ Rejects a declaration whose first word is a u when its n records do not fit,
 \ placed at the token read last, where the declaration ran out of room.
-: PREFLIGHT ( ^u8 n n -- ) {: a:^ u:n n:n :}
+: PREFLIGHT ( str n -- ) {: a:^ u:n n:n :}
    n DICT-CAP ndict@ - > IF a u SRCLOC:TOKEN$ REJECTION:DICTIONARY-FULL THEN ;
 
 private

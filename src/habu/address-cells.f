@@ -93,7 +93,7 @@ private
    cap bytes off - CELL / > if REFUSE then ;
 
 \ The header in DATA bytes [data, data+bytes): its rows and count.
-: READ-HEADER ( ^u8 n -- ^n n )
+: READ-HEADER ( str -- ^n n )
    {: data:^ bytes:n :}
    data RELOC:XTCELL-N-CELL + cell-view {: h:^ :}
    h HEADER-MODE {: mode:n :}

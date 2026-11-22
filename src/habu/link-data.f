@@ -609,7 +609,7 @@ public
 \ Link the open space's program and write it to the path: a Wasm target's as a
 \ module, a Mach-O or ELF target's as WRITE-PROGRAM does. GOING comes first:
 \ outside a build no target is open for the match to read.
-: WRITE ( ^u8 n -- )
+: WRITE ( str -- )
    {: path:^ pathu:n :}
    false GOING
    TARGET @ RTARGET:IMAGE@ MATCH RTARGET:image

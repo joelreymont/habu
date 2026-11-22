@@ -43,7 +43,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    0 OUT OUT-U @ + LE:U64!
    8 OUT-U +! ;
 
-: BYTES+ ( ^u8 n -- )
+: BYTES+ ( str -- )
    {: a:^ u:n :}
    OUT-U @ u + OUT-RESERVE
    a  0 OUT OUT-U @ +  u BYTE-COPY
@@ -56,7 +56,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 \ Zeros up to the next multiple of 8.
 : PAD+ ( -- ) begin OUT-U @ 7 and 0<> while 0 BYTE+ repeat ;
 
-: SPAN+ ( ^u8 n -- ) BYTES+ PAD+ ;
+: SPAN+ ( str -- ) BYTES+ PAD+ ;
 
 : NAME+ ( str -- ) dup U64+ SPAN+ ;
 

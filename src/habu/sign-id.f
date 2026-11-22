@@ -11,7 +11,7 @@ public
 : PROG$ ( -- str )
    s" hb-prog" ;
 
-: ENGINE$ ( -- ^u8 n )
+: ENGINE$ ( -- str )
    s" hb" ;
 
 ;package

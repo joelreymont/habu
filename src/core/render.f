@@ -2139,7 +2139,7 @@ PTR-VARIABLE HOLDER-FIRST
          HOLDER-N @ 1 + HOLDER-N !
       THEN
    loop ;
-: QUALIFIED ( ^u8 n -- ) {: t:^ tu:n :}
+: QUALIFIED ( str -- ) {: t:^ tu:n :}
    96 EMIT1  HOLDER-FIRST @ CK-REC-NAME$ EMIT-STR
    58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
 \ The help for t tu, which nothing defines, used in the body of d du, empty
@@ -2522,7 +2522,7 @@ package CAST-ERROR
 : SIG$ ( -- str ) SIG-A @ SIG-U @ ;
 \ The message: the declaration in backticks, why wa wu, then the token TOKEN!
 \ named in backticks.
-: TITLE ( ^u8 n -- ) {: wa:^ wu:n :}
+: TITLE ( str -- ) {: wa:^ wu:n :}
    s" in `" EMIT-STR  KEY-A @ KEY-U @ EMIT-STR  32 EMIT1  WORD$ EMIT-STR
    s" `, " EMIT-STR  wa wu EMIT-STR
    TOK-U @ 0 > IF

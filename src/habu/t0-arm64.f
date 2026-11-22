@@ -419,7 +419,7 @@ DYNAMIC-BUFFER BR-ARG n
    TMP ENC-BR OUT @ W32+
    at ;
 
-: BYTES ( -- ^u8 n ) OUT @ VEC:SPAN SPAN:$ ;
+: BYTES ( -- str ) OUT @ VEC:SPAN SPAN:$ ;
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
 : PATCH ( n -- )

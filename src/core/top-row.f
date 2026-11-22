@@ -17,7 +17,7 @@ package CHECK
 \ `depth` is the anchor: each event fits the row to the live depth less the
 \ cells the event pushed, so a step the row cannot model leaves unknown cells,
 \ which a typed consumer rejects.
-: TOP-LEVEL ( ^u8 n n -- )
+: TOP-LEVEL ( str n -- )
    {: a:^ u:n cls:n :}
    data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
    depth cls TR-PUSHED - {: live:n :}

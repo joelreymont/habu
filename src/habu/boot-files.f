@@ -32,7 +32,7 @@ private
 
 \ A record is three cells - part, kind, path length - then the path bytes,
 \ padded to a cell.
-: ROW ( n n ^u8 n -- )
+: ROW ( n n str -- )
    {: part:n kind:n a:^ u:n :}
    part ,  kind ,  u ,
    u 0 ?do a i + c@ c, loop
@@ -152,7 +152,7 @@ here ROWS - constant ROWS-LEN
    off + 3 cells + ;
 
 
-: VISIT ( n n n [ n n ^u8 n -- ] -- )
+: VISIT ( n n n [ n n str -- ] -- )
    {: idx:n off:n parts:n row :}
    off PART@ parts and 0 <> if idx off KIND@ off PATH@ row execute then ;
 
@@ -161,7 +161,7 @@ public
 
 \ Call row with ( index kind path ) for each row whose part intersects parts,
 \ in table order; index is the row's place in the whole table, from 0.
-: EACH ( n [ n n ^u8 n -- ] -- )
+: EACH ( n [ n n str -- ] -- )
    {: parts:n row :}
    0 0 begin dup ROWS-LEN < while
       over over parts row VISIT

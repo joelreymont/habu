@@ -41,7 +41,7 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 
 \ A slot holds a body's address, 0 when empty; the length is the cell before it.
-: BODY$ ( n -- ^u8 n )
+: BODY$ ( n -- str )
    {: body:n :}
    NULL-PTR BYTE-VIEW body +
    body CELL - 0 CELL-AT @ ;
@@ -109,7 +109,7 @@ create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 \ One `allot` bounds and zeroes the length cell, the text and the byte past it;
 \ no `,`, so the cell never joins a created body's grid. It ends aligned.
-: LAY ( ^n ^u8 n -- n )
+: LAY ( ^n str -- n )
    {: t:^ a:^ u:n :}
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
    POINTER-STORAGE:ALIGN-APART here NULL-PTR - {: head:n :}
@@ -199,14 +199,14 @@ public
 
 \ The address of the body equal to a u in the current table, as its distance
 \ from NULL-PTR (DP-CELL's units); 0 when none.
-: FIND ( ^u8 n -- n )
+: FIND ( str -- n )
    {: a:^ u:n :}
    REWIND-REFUSE
    TABLE {: t:^ :}
    t  t a u SLOT-FOR  SLOT-CELL @ ;
 
 
-: TEXT ( ^u8 n -- n )
+: TEXT ( str -- n )
    {: a:^ u:n :}
    a u FIND {: body:n :}
    body 0 <> if body exit then

@@ -24,7 +24,7 @@ variable ROW
 variable READY
 variable VALID
 
-: PATH$ ( -- ^u8 n ) PATH PATH-U @ ;
+: PATH$ ( -- str ) PATH PATH-U @ ;
 
 : ENGINE-PATH ( -- bool )
    0 PATH-U !
@@ -57,7 +57,7 @@ variable VALID
    fd close
    read-ok ;
 
-: FIELD ( ^u8 n n -- n n )
+: FIELD ( str n -- n n )
    {: a:^ u:n from:n :}
    from
    begin dup u < if a over + c@ LINT-LEX:ENGINE-DELIM? else false then while 1+ repeat
@@ -199,7 +199,7 @@ public
 
 \ The engine path and its matched row offsets are read once per verifier
 \ child. A missing or changed source has no location for any primitive.
-: TARGET ( n -- ^u8 n n n bool )
+: TARGET ( n -- str n n bool )
    {: row:n :}
    READY @ 0= if
       1 READY !

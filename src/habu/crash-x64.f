@@ -233,11 +233,11 @@ variable DIE-CELL
 public
 \ A jump to DIE with the text and the exit status, the text laid after it. The
 \ caller places its own label before it, and rsp where its qword is the lr.
-: DIE-LINE, ( ^u8 n n -- )  0 DIE-LINE-SITE, ;
+: DIE-LINE, ( str n -- )  0 DIE-LINE-SITE, ;
 
 \ DIE-LINE, that also prints the register's value; the register is copied
 \ first, so it may be any of rax, rcx, rdx, rsi and rdi.
-: DIE-LINE-VALUE, ( ^u8 n n r64 -- )
+: DIE-LINE-VALUE, ( str n r64 -- )
    {: a:^ u:n status:n reg:r64 :}
    u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
       s" x64crash: a DIE-LINE-VALUE, text does not end with the ':' before its value"
@@ -283,7 +283,7 @@ public
 
 \ A note with the bytes at the pointer register, the length register's count
 \ of them.
-: FAULT-TEXT, ( ^u8 n r64 r64 -- ) {: k:^ ku:n p:r64 l:r64 :}
+: FAULT-TEXT, ( str r64 r64 -- ) {: k:^ ku:n p:r64 l:r64 :}
    p PUSH,  l PUSH,
    k ku NOTE+  PIECE,
    RDX POP,  RSI POP,  RDI JSON-REG MOV,  PUT-LBL CALL, ;

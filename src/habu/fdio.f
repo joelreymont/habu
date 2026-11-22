@@ -30,7 +30,7 @@ variable U
 
 public
 
-: WALL ( n ^u8 n -- )
+: WALL ( n str -- )
    U !
    A!
    FD !

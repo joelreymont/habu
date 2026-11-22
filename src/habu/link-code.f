@@ -21,7 +21,7 @@ public
 : SIZE ( -- n ) X64? if X64CODE:ASM-LEN else A64ICODE:ASM-LEN then ;
 
 : U64, ( n -- ) X64? if X64CODE:U64, else A64ICODE:DCQ, then ;
-: BYTES, ( ^u8 n -- )
+: BYTES, ( str -- )
    X64? if X64CODE:BYTES, else A64ICODE:BYTES, then ;
 
 : SPACE ( n -- ^u8 )

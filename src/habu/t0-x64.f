@@ -187,7 +187,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    RAX SINK ENC-JMP-REG
    at ;
 
-: BYTES ( -- ^u8 n ) SINK VEC:SPAN SPAN:$ ;
+: BYTES ( -- str ) SINK VEC:SPAN SPAN:$ ;
 
 \ A call's rel32 is measured from the end of its five bytes, placed at.
 : PATCH-CALL ( n n n -- ) {: at:n off:n to:n :}

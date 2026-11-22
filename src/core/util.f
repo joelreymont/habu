@@ -75,7 +75,7 @@ public
    DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
 
 \ Descriptor 2; a failed write has nowhere further to be reported.
-: TYPE ( ^u8 n -- ) {: a:^ u:n :}
+: TYPE ( str -- ) {: a:^ u:n :}
    2 a u write drop ;
 
 ;package

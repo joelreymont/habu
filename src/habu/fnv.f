@@ -13,7 +13,7 @@ $1000193 constant PRIME32
 : STEP ( n n -- n ) xor PRIME * ;              \ one byte or cell into the hash
 : STEP32 ( n n -- n ) xor PRIME32 * ;
 
-: BYTES ( n ^u8 n -- n ) {: h:n a:^ u:n :}
+: BYTES ( n str -- n ) {: h:n a:^ u:n :}
    h  u 0 ?do a i + c@ STEP loop ;
 : BYTES32 ( n str -- n ) {: h:n a:^ u:n :}
    h  u 0 ?do a i + c@ STEP32 loop ;

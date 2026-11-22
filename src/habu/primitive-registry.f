@@ -46,7 +46,7 @@ public
 : COUNT ( -- n ) USED @ ;
 : RESET ( -- ) 0 USED ! 0 NAME-BYTES ! ;
 
-: ADD ( ^u8 n label label -- n ) {: name:^ size:n first:label last:label :}
+: ADD ( str label label -- n ) {: name:^ size:n first:label last:label :}
    size RESERVE
    USED @ {: row:n :}
    row ROW-CELLS * ROWS {: dst:^ :}

@@ -22,7 +22,7 @@ package LINKER
 private
 
 \ The linker's error lines go whole to the error output.
-: SAY ( ^u8 n -- ) ERROR-TEXT:TYPE ;
+: SAY ( str -- ) ERROR-TEXT:TYPE ;
 
 : SAY-INT ( n -- )
    dup 0< if s" -" SAY then
@@ -307,7 +307,7 @@ public
 
 \ The kernel object at the path, which the links that follow adopt; one whose
 \ DATA-START is above hb's dies: hb routes only its own header's stores.
-: READ ( ^u8 n -- )
+: READ ( str -- )
    {: path:^ pathu:n :}
    0 KOBJ-U !
    pathu PATH-CAP min PATH-U !

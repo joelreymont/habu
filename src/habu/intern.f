@@ -95,7 +95,7 @@ variable PROBE
 \ ---- finding a body that is already here --------------------------------------
 \ Masked by an `and` against a positive constant so a hash whose top bit ran
 \ into the sign still lands inside the table.
-: HASH ( ^u8 n -- n ) {: a:^ u:n :} FNV:BASIS32 a u FNV:BYTES32 SLOTS 1- and ;
+: HASH ( str -- n ) {: a:^ u:n :} FNV:BASIS32 a u FNV:BYTES32 SLOTS 1- and ;
 
 : PROBE-NEXT ( -- )
    PROBE @ 1+ SLOTS 1- and PROBE ! ;
@@ -147,7 +147,7 @@ private
 
 \ A body larger than ARENA-CAP gets a segment of its own size; its USED then
 \ exceeds ARENA-CAP, so ROOM? sends the next body to a new segment.
-: ADD ( ^u8 n -- n ) {: a:^ u:n :}
+: ADD ( str -- n ) {: a:^ u:n :}
    u ROOM? 0= if u ARENA-CAP max NEW-SEGMENT then
    a u FREE-SLOT {: s:n :}
    USED @ {: off:n :}
@@ -167,7 +167,7 @@ public
 : WINDOW-OPEN ( -- ) ARENA-CAP NEW-SEGMENT ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
-: STRING ( ^u8 n -- n )
+: STRING ( str -- n )
    {: a:^ u:n :}
    SPACE? if a u SPACE-STRING exit then
    a u ROW-FIND {: k:n :}

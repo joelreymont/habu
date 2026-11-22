@@ -191,11 +191,11 @@ private
 public
 \ A branch to LDIE-LINE with the text and the exit status, the text laid
 \ after it. The caller places its own label before it.
-: DIE-LINE, ( ^u8 n n -- )  0 DIE-LINE-SITE, ;
+: DIE-LINE, ( str n -- )  0 DIE-LINE-SITE, ;
 
 \ DIE-LINE, that also prints the register's value; the register is copied
 \ first, so it may be any of x0..x4.
-: DIE-LINE-VALUE, ( ^u8 n n n -- )
+: DIE-LINE-VALUE, ( str n n -- )
    {: a:^ u:n status:n reg:n :}
    u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
       s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value"
@@ -358,7 +358,7 @@ public
 \ A note with the bytes at the pointer register, the length register's count of
 \ them. Both are among x3..x7, which the record's parts keep until a note writes
 \ x6 or x7.
-: FAULT-TEXT, ( ^u8 n n n -- ) {: k:^ ku:n p:n l:n :}
+: FAULT-TEXT, ( str n n -- ) {: k:^ ku:n p:n l:n :}
    p 3 < p 7 > or  l 3 < or  l 7 > or IF
       s" crash: a FAULT-TEXT, register is outside x3..x7" EXIT-STATUS:INTERNAL die
    THEN

@@ -218,7 +218,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    OP-RETURN B,
    CLOSE ;
 
-: BYTES ( -- ^u8 n ) SINK @ VEC:SPAN SPAN:$ ;
+: BYTES ( -- str ) SINK @ VEC:SPAN SPAN:$ ;
 
 \ A Wasm body is never placed at a host address.
 : PATCH ( n -- ) drop E-COMP-STATE throw ;

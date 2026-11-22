@@ -167,7 +167,7 @@ public
 
 \ Named-field variants carry no positional payload schema (ss=sc=pc=0); their
 \ field rows are found downstream by (family, variant id).
-: VARIANT ( n ^u8 n -- ) {: fam:n na:^ nu:n :}
+: VARIANT ( n str -- ) {: fam:n na:^ nu:n :}
    na nu TYPE-NAME:VARIANT-REQUIRE
    fam na nu DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
@@ -179,7 +179,7 @@ public
 
 \ PF-ADD throws before the event (E-TFAM-DUP, E-PF-NAME, E-TFAM-CASE), so a malformed
 \ field emits none and leaves the ordinal untouched; the event carries the row's id.
-: FIELD ( n ^u8 n n n n n n n n -- )
+: FIELD ( n str n n n n n n n -- )
    {: fam:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags PF-ADD
    DEV-K-FIELD DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT

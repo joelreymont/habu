@@ -12,7 +12,7 @@ split-str
 \ see these throws.
 7134 constant E-PATH-RANGE   \ path length negative, or no room for it and its NUL
 7165 constant E-PATH-NUL     \ a path holds a 0 byte, which would end it early
-: PATHZ ( ^u8 n ^u8 n -- )
+: PATHZ ( str ^u8 n -- )
    {: a:^ u d:^ room :}
    u 0 < IF E-PATH-RANGE throw THEN
    u room >= IF E-PATH-RANGE throw THEN
@@ -21,6 +21,6 @@ split-str
    REPEAT drop  0 d u + c! ;
 create PZB PATH-CAP 1 + allot
 
-: PATH0 ( ^u8 n -- ^u8 )
+: PATH0 ( str -- ^u8 )
    {: a:^ u :}
    a u PZB PATH-CAP 1 + PATHZ  PZB ;     \ shared scratch

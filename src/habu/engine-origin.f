@@ -9,7 +9,7 @@ package ENGINE-ORIGIN
 public
 
 \ Path, start, end and name of SYM's definition.
-: TARGET ( n -- ^u8 n n n ^u8 n bool )
+: TARGET ( n -- str n n str bool )
    drop NULL$ 0 0 NULL$ false ;
 
 \ The symbol defined at a byte of a file.

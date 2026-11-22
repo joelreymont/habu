@@ -222,11 +222,11 @@ CONTROL-CELLS 1+ cells constant WIDTH-OFF
 
 private
 
-CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 \ The children are made over the entries of ELEMENT, ENSURE and EMPTY.
 CAST: AS-ENTRY ( [ R -- S ] -- n )
 
-: CHILD ( ^u8 n n n ^u8 n -- n )
+: CHILD ( str n n str -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
 EXPORT CHECK:CHECKER-DYNAMIC-INFO

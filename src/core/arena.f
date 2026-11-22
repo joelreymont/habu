@@ -19,14 +19,14 @@ private
 : NEW-DISPOSE ( ^ARENA:arena [ ^u8 -- ] ^n -- ^u8 )
    @ swap ARENA:ALLOC-DISPOSE drop ;
 
-CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 CAST: AS-ENTRY ( [ R -- S ] -- n )
 
-: CHILD ( ^u8 n n n ^u8 n -- n )
+: CHILD ( str n n str -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
 \ Makes NAME+SFX of SHAPE over the routine's ENTRY, and lays its width cell.
-: MAKE ( ^u8 n ^u8 n n n ^u8 n n -- )
+: MAKE ( str str n n str n -- )
    {: name:^ nameu:n sfx:^ sfxu:n shape:n entry:n type:^ typeu:n width:n :}
    name nameu sfx sfxu LBUF:LBUF-SUFFIXED shape entry type typeu CHILD drop
    width , ;

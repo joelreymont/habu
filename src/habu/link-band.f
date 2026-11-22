@@ -237,7 +237,7 @@ variable UNSAFE-COUNT
 
 \ The address value machine a's emission bytes b, s of them, hold at site for a row of
 \ kind, and whether they hold one there, read by a's part of LINKER.
-: ADDRESS@ ( CTARGET:arch ^u8 n n n -- n bool )
+: ADDRESS@ ( CTARGET:arch str n n -- n bool )
    {: a:CTARGET:arch b:^ s:n site:n kind:n :}
    a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ if b s site kind ARM64:ADDRESS@ exit then
    a CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ if b s site kind X64:ADDRESS@ exit then

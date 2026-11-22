@@ -28,7 +28,7 @@ $FFFFFFFF constant RAW-MAX
 private
 \ Rejects V given to the public word W: WHAT says what V is not, OK the values
 \ the word takes, TEST the CODE-SPAN word that answers whether a value is one.
-: BAD ( n ^u8 n ^u8 n ^u8 n ^u8 n -- )
+: BAD ( n str str str str -- )
    {: v:n w:^ wu:n what:^ whatu:n ok:^ oku:n test:^ testu:n :}
    s" E-CODE-SPAN" REJECTION:OPEN
    s" `CODE-SPAN:" REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
