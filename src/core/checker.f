@@ -22111,7 +22111,10 @@ variable SPAY-B       \ raw payload start, as a byte offset into the scan text
 variable SPAY-U       \ raw payload length
 }SCRATCH
 variable SPAY-S       \ was the token just judged an `s"` literal, plain or escaped?
-variable SPAY-ARMED   \ was the token before this one? (CHECK-SCAN-WALK hands it over)
+variable SPAY-ARMED   \ was the token before this one, or before its `>str`?
+\ The armed literal's `>str`: 0 none, 1 it is the token just judged, 2 the
+\ literal passed it; one more `>str` passes nothing.
+variable SPAY-STR
 
 \ TI stood on the single delimiter after the opener when the skip started and
 \ stands one past the closing quote now, so the payload is what lies strictly

@@ -491,9 +491,20 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    0 CURSYM !
    OPERANDS-SPENT @ 0 =  n 0 >  and IF n OPERANDS-SKIP THEN ;
 
+\ The engine's `>str` is an identity at run time, so the literal armed before
+\ it names the call after it; a program's own `>str` is another word.
+: SPAY-STR-CK ( -- )
+   SPAY-ARMED @ 0=  SPAY-STR @ 0 <> or IF EXIT THEN
+   TKF TKFU @ s" >str" CORE-STR= 0= IF EXIT THEN
+   TKF TKFU @ BIND-TOK
+   TOK-REC @ {: rec:^ :}
+   rec NULL-PTR = IF EXIT THEN
+   rec CK-REC-WID WL:PRIMITIVES = IF 1 SPAY-STR ! THEN ;
+
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.
 : CALL-STEP ( str ^n -- ) {: a:^ u:n rec:^ :}
+   SPAY-STR-CK
    TKF TKFU @ SPELLED-STEP? IF EXIT THEN
    rec CALL-IMM? IF REJECT-IMMEDIATE THEN
    a u TOK-SYM @ IMM-READS  dup 0 < 0=  data-base BODY-ITEMS:EFFECT-CELL + @ 0=  and IF
@@ -658,7 +669,10 @@ private
       0 IS-PEND !  0 EV-HIT !
    THEN
    CUR-TOKEN
-   SPAY-S @ SPAY-ARMED !  0 SPAY-S !
+   SPAY-STR @ 1 = IF 2 SPAY-STR ! ELSE
+      SPAY-S @ SPAY-ARMED !  0 SPAY-STR !
+   THEN
+   0 SPAY-S !
    TOK0 @ ;
 
 : SCAN-TOK-TAIL ( n -- bool ) {: was-name:n :}
@@ -887,7 +901,7 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 \ reaches by spelling. A CALL binds the record the definer found, so nothing
 \ the building package defines captures it.
 : CHECK-SCAN-WALK ( -- )
-   0 SPAY-S !
+   0 SPAY-S !  0 SPAY-STR !
    EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ SCAN-TOKEN THEN
    TEXT-ITEMS WALK-ITEMS !  0 WALK-ITEM !
@@ -2953,10 +2967,11 @@ private
    a u CHECKER-COLON-SCAN drop 1 > IF 0 EXIT THEN
    a u CHECKER-GLOBAL-SYM? ;
 
-\ The call BIND-TOK bound, right after an `s"` literal: the literal's body as
-\ written names the word. One with an escape binds nothing, since a rename could
-\ not edit it as written, and every escape is shorter than its spelling, so the
-\ body is as written when the bytes it makes are as long.
+\ The call BIND-TOK bound, right after an `s"` literal or after the engine's
+\ `>str` that follows one: the literal's body as written names the word. One
+\ with an escape binds nothing, since a rename could not edit it as written,
+\ and every escape is shorter than its spelling, so the body is as written
+\ when the bytes it makes are as long.
 : NAMED-OPERAND-USE ( -- )
    SPAY-ARMED @ 0= IF EXIT THEN
    SPAY-BYTES nip SPAY-U @ <> IF EXIT THEN
