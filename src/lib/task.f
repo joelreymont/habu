@@ -30,8 +30,8 @@ split-str
 \ only words whose code is kept.
 \ TASK:NEW defines nothing. Task-local storage: a band in src/habu/layout.f for
 \ a module the engine bakes, else TASK:+USER and TASK:+USERS slots.
-\ STORAGE CLASS. TASK-LOCAL: REJECTION's block; SLEEP's timespecs (a
-\ TASK:+USERS slot). PROCESS-WIDE: semaphore pool, AT-EXIT rows, TCB chain and
+\ STORAGE CLASS. TASK-LOCAL: REJECTION's block; SLEEP's timespecs (TASK:+USER
+\ rows). PROCESS-WIDE: semaphore pool, AT-EXIT rows, TCB chain and
 \ pool, callback rows; a CAS per move.
 \
 \ CLEANUPS. A task's cleanups are a chain of rows. Each quotation is stored AS a
@@ -83,6 +83,9 @@ public
 \ machine shape) cannot reach TASK:WAIT-SEM.
 NEWTYPE sem ^n
 
+\ struct timespec on an LP64 host
+STRUCTURE timespec DERIVE addr FIELD sec n FIELD nsec n ;STRUCTURE
+
 : PTHREAD-ENTRY ( -- n ) task-entry ;
 
 private
@@ -117,17 +120,6 @@ $0B constant TASK-EAGAIN
 $6E constant TASK-ETIMEDOUT              \ Linux
 1 constant TASK-CLOCK-MONOTONIC          \ Linux clockid_t
 
-\ struct timespec on an LP64 host
-BEGIN-STRUCTURE TASK-TIMESPEC-SIZE
-   CELL +FIELD TIMESPEC.SEC
-   CELL +FIELD TIMESPEC.NSEC
-END-STRUCTURE
-
-NULL-PTR TIMESPEC.SEC NULL-PTR - constant TASK-SPEC-SEC-OFF
-NULL-PTR TIMESPEC.NSEC NULL-PTR - constant TASK-SPEC-NSEC-OFF
-TASK-TIMESPEC-SIZE constant TASK-TIMESPEC-BYTES
-
-TASK-TIMESPEC-BYTES 2 * constant TASK-SLEEP-BYTES  \ the request and the remainder
 1000000 constant TASK-NS-PER-MS
 1000000000 constant TASK-NS-PER-S
 $7FFFFFFFFFFFFFFF constant TASK-NS-MAX             \ the latest mono-ns deadline a cell holds
@@ -1668,22 +1660,17 @@ CAST: >SLOT-AT ( n -- ^t )
    does> ( -- TASK:sem ) CELL-VIEW >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
-\ The request and remainder timespecs are one slot: each task sleeps on its own.
-TASK-SLEEP-BYTES TASK:+USERS SLEEP-SPECS u8
+\ Each task sleeps on its own request and remainder.
+TASK:+USER SLEEP-REQ timespec
+TASK:+USER SLEEP-REM timespec
 
-: SLEEP-REQ ( -- ^n )
-   0 SLEEP-SPECS CELL-VIEW ;
+: SPEC! ( n ^timespec -- ) {: ns:n spec:^timespec :}
+   ns TASK-NS-PER-S /   spec TASK-TIMESPEC:SEC !
+   ns TASK-NS-PER-S mod spec TASK-TIMESPEC:NSEC ! ;
 
-: SLEEP-REM ( -- ^n )
-   TASK-TIMESPEC-BYTES SLEEP-SPECS CELL-VIEW ;
-
-: SPEC! ( n ^n -- ) {: ns:n spec:^ :}
-   ns TASK-NS-PER-S /   spec TASK-SPEC-SEC-OFF + !
-   ns TASK-NS-PER-S mod spec TASK-SPEC-NSEC-OFF + ! ;
-
-: SPEC@ ( ^n -- n ) {: spec:^ :}
-   spec TASK-SPEC-SEC-OFF + @ TASK-NS-PER-S *
-   spec TASK-SPEC-NSEC-OFF + @ + ;
+: SPEC@ ( ^timespec -- n ) {: spec:^timespec :}
+   spec TASK-TIMESPEC:SEC @ TASK-NS-PER-S *
+   spec TASK-TIMESPEC:NSEC @ + ;
 
 \ The bound is tested by division before the multiply and the add, so neither
 \ can wrap.

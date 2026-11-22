@@ -20,9 +20,7 @@ private
 3 constant THREAD-CPU-LINUX
 16 constant THREAD-CPU-MACOS
 
-\ clock_gettime's struct timespec on an LP64 host.
-STRUCTURE timespec DERIVE addr FIELD sec n FIELD nsec n ;STRUCTURE
-TASK:+USER CPU-SPEC timespec
+TASK:+USER CPU-SPEC TASK:timespec
 
 PROCESS-SYMBOLS
 
@@ -38,7 +36,7 @@ public
 : THREAD-CPU-NS ( -- n )
    THREAD-CPU-CLOCK CPU-SPEC BYTE-VIEW CLOCK-GETTIME-CALL
    0 <> if E-TIME-CLOCK throw then
-   CPU-SPEC TIMESPEC-SEC @ NS-PER-S *
-   CPU-SPEC TIMESPEC-NSEC @ + ;
+   CPU-SPEC TASK-TIMESPEC:SEC @ NS-PER-S *
+   CPU-SPEC TASK-TIMESPEC:NSEC @ + ;
 
 ;package
