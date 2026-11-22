@@ -770,8 +770,7 @@ generates: FAULT ( -- n )
 -9001 s" an offset, size or index outside the file or its program-header table" ERROR:CODE E-ELF32-BOUNDS
 -9002 s" an ELF32 form the reader does not accept: not version 1 little-endian, or PN_XNUM program headers" ERROR:CODE E-ELF32-UNSUPPORTED
 -9100 s" a UDP argument out of range: a length, port, timeout or dotted-quad address text" ERROR:CODE E-UDP4-OPERAND
--9110 s" a serial argument out of range: a length, baud or timeout" ERROR:CODE E-SERIAL-OPERAND
--9113 s" the OS cancelled a serial wait, which nothing here asks for" ERROR:FAULT E-SERIAL-RESULT
+-9110 s" a serial argument out of range: a negative length, or a baud outside 1 to 4294967295" ERROR:CODE E-SERIAL-OPERAND
 -9120 s" an XMODEM argument out of range: a sequence past 255, a block other than 128 or 1024 bytes, an unknown check kind, or a payload longer than its block" ERROR:CODE E-XMODEM-OPERAND
 -9121 s" a received XMODEM frame is malformed: a bad header byte, length, sequence complement or check value" ERROR:CODE E-XMODEM-FRAME
 -9122 s" an XMODEM transfer argument out of range: a wait outside 1..2147483647 ms, a negative length or a bad serial handle" ERROR:CODE E-SXMODEM-OPERAND

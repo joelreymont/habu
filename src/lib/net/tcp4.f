@@ -7,6 +7,7 @@ split-str
 require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
+require src/lib/adt/option.f
 require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/aio.f
@@ -58,7 +59,7 @@ SUMTYPE status
 
 \ One transfer's outcome. `closed` carries the bytes delivered into the caller's
 \ buffer before the peer's end of stream, which READ-EXACT reports as a partial;
-\ it is the only way a transfer answers zero bytes.
+\ it and a zero-byte request are the only ways a transfer answers zero bytes.
 SUMTYPE read-result
    VARIANT data NUM:byte-len ;VARIANT
    VARIANT closed NUM:byte-len ;VARIANT
@@ -380,8 +381,9 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 \ A stream read of zero bytes is the peer's orderly end of stream, never an
-\ empty message.
+\ empty message, so a zero-byte request answers `data` at once without one.
 : TRY-CHUNK ( n str -- try-read-result ) {: fd:n bytes size:n :}
+   size 0= if 0 N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
    begin
       fd bytes size RECEIVE-RAW dup 0 > if N>BLEN TCP4-TRY--READ--RESULT:DATA exit then
       0= if 0 N>BLEN TCP4-TRY--READ--RESULT:CLOSED exit then
@@ -416,14 +418,14 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 \ One send that never waits: `moved`, `empty` when there was no room, or
-\ `failed`. An interrupt retries it until the mono-ns deadline has passed and
-\ is `empty` after that, so no retry carries a slice past it; NO-DEADLINE
-\ retries every interrupt.
+\ `failed`. A zero-byte request is `moved` with none, at once. An interrupt
+\ retries it until the mono-ns deadline has passed and is `empty` after that,
+\ so no retry carries a slice past it; NO-DEADLINE retries every interrupt.
 : SEND-BY ( n str n -- slice-result ) {: fd:n bytes size:n deadline:n :}
+   size 0= if 0 N>BLEN TCP4-SLICE--RESULT:MOVED exit then
    begin
       fd bytes size SEND-RAW
-      dup 0 > if N>BLEN TCP4-SLICE--RESULT:MOVED exit then
-      0= if E-RESULT throw then
+      dup 0 >= if N>BLEN TCP4-SLICE--RESULT:MOVED exit then drop
       LAST-ERROR dup WOULD-BLOCK? if drop TCP4-SLICE--RESULT:EMPTY exit then
       dup INTERRUPTED? 0= if TCP4-SLICE--RESULT:FAILED exit then drop
       mono-ns deadline > if TCP4-SLICE--RESULT:EMPTY exit then
@@ -431,8 +433,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : SEND-SPAN ( NUM:byte-len -- n )
-   BLEN>N dup 1 < if E-OPERAND throw then
-   MAX-TRANSFER min ;
+   BLEN>N MAX-TRANSFER min ;
 
 
 \ Milliseconds left before a mono-ns deadline, rounded up so a poll cannot end
@@ -507,9 +508,8 @@ public
    dup 0 MAX-PORT WITHIN-RANGE >PORT ;
 
 
-\ A span's length for the transfers below, each of which checks it against its
-\ own range: READ, READ-EXACT, TRY-READ and WRITE refuse more than one call
-\ moves, and SEND-SLICE and TRY-SEND hand the OS part of a longer span.
+\ A span's length for the transfers below. SEND-SLICE and TRY-SEND hand the OS
+\ at most MAX-TRANSFER bytes of a longer span.
 : TRANSFER-BYTES ( n -- NUM:byte-len )
    LENGTH ;
 
@@ -573,23 +573,21 @@ public
    fd NONBLOCK >CONNECTION TCP4-CONNECT--RESULT:CONNECTED ;
 
 
-\ One partial read of 1..capacity bytes, waiting in poll(2) on the task's own
+\ One partial read of up to capacity bytes, waiting in poll(2) on the task's own
 \ thread, with no AIO loop or deadline, until the stream answers. The caller owns
 \ the writable span. `closed` carries zero bytes.
 : READ ( connection ^u8 NUM:byte-len -- read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
-   capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    conn CONNECTION>N bytes capacity BLEN>N READ-CHUNK ;
 
 
-\ One receive of 1..capacity bytes that never waits: `empty` when the stream
+\ One receive of up to capacity bytes that never waits: `empty` when the stream
 \ has nothing to answer yet, so one task can serve many connections from its own
 \ readiness loop even where the OS reports readiness spuriously, as Linux may.
 \ The caller owns the writable span. `closed` carries zero bytes. The connection
 \ must be non-blocking.
 : TRY-READ ( connection ^u8 NUM:byte-len -- try-read-result )
    {: conn:connection bytes capacity:NUM:byte-len :}
-   capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    conn CONNECTION>N bytes capacity BLEN>N TRY-CHUNK ;
 
 
@@ -597,7 +595,6 @@ public
 \ `closed` carrying the bytes already written into the span.
 : READ-EXACT ( connection ^u8 NUM:byte-len -- read-result )
    {: conn:connection bytes want:NUM:byte-len :}
-   want BLEN>N 1 MAX-TRANSFER WITHIN-RANGE
    0
    begin
       dup want BLEN>N < 0= if drop want TCP4-READ--RESULT:DATA exit then
@@ -650,8 +647,6 @@ public
 \ every slice holds the write for as long as it reads, but not past a halt.
 : WRITE ( connection ^u8 NUM:byte-len -- status )
    {: conn:connection bytes size:NUM:byte-len :}
-   size BLEN>N 0 MAX-TRANSFER WITHIN-RANGE
-   size BLEN>N 0= if TCP4-STATUS:OK exit then
    0
    begin {: sent:n :}
       conn bytes sent + size BLEN>N sent - N>BLEN SEND-SLICE

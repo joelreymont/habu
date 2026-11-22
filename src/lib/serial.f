@@ -1,15 +1,15 @@
 split-str
 \ serial.f - raw serial byte streams on Linux and macOS through bounded libc
 \ bindings. OS failures, a bad handle's included, are result variants; a baud
-\ or length out of range and an impossible foreign result throw. Calls
-\ must not nest within one task; close live descriptors before an image is
-\ prepared.
+\ out of range or a negative length throws. Calls must not nest within one task;
+\ close live descriptors before an image is prepared.
 \ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are rows per task,
 \ so separate tasks drive separate ports; byte spans are caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
 require src/lib/type/deftype.f
+require src/lib/adt/option.f
 require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/memory.f
@@ -41,7 +41,6 @@ SUMTYPE io-result
 ;SUMTYPE
 
 E-SERIAL-OPERAND constant E-OPERAND
-E-SERIAL-RESULT constant E-RESULT
 
 private
 
@@ -216,7 +215,11 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 public
 
 : BAUD ( n -- baud ) dup 1 $FFFFFFFF RANGE >BAUD ;
-: BYTES ( n -- NUM:byte-len ) dup 1 $7FFFF000 RANGE N>BLEN ;
+: BYTES ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH option
+      none OF E-OPERAND throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 
 \ Opens a caller-owned nonblocking, close-on-exec, O_NOCTTY raw 8N1 stream, no
