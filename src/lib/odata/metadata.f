@@ -627,11 +627,11 @@ CAST: >RECORD ( n -- ^t )
 
 : HELD? ( ^doc -- bool )
    {: d:^ :}
-   d MAP-OF d KEY$ >LEN MAP:HAS? ;
+   d MAP-OF d KEY$ MAP:HAS? ;
 
 \ The record KEY names in the map, null for none.
 : MAP-RECORD ( ^n count str -- ^t )
-   >LEN MAP:GET MATCH option
+   MAP:GET MATCH option
       none OF 0 >RECORD ENDOF
       some OF >RECORD ENDOF
    ;MATCH ;
@@ -641,11 +641,11 @@ CAST: >RECORD ( n -- ^t )
 \ Sets the key to V; a new key is copied into the names arena.
 : REMEMBER ( ^doc n -- )
    {: d:^ v:n :}
-   d HELD? if v d MAP-OF d KEY$ >LEN MAP:SET exit then
+   d HELD? if v d MAP-OF d KEY$ MAP:SET exit then
    d DOC-MAP d DOC-MAP-CAP d DOC-NAMES @ MAP:ROOM
    d DOC-NAMES @ d DOC-KEY-LEN @ ARENA:ALLOC {: copy:^ len:n :}
    d DOC-KEY @ copy len BYTE-COPY
-   v d MAP-OF copy len >LEN MAP:SET ;
+   v d MAP-OF copy len MAP:SET ;
 
 : REMEMBER-AT ( ^doc ^t -- ) NULL-PTR - REMEMBER ;
 
@@ -1805,7 +1805,7 @@ CAST: >RECORD ( n -- ^t )
    d DOC-MODEL @ name SPAN:$ INDEXED {: x:^named :}
    x NULL-PTR <> if x exit then
    d DOC-ARENA @ NAMEDS-NEW {: y:^ :}
-   y NULL-PTR - d DOC-MODEL @ NAMES-OF name SPAN:$ >LEN MAP:SET
+   y NULL-PTR - d DOC-MODEL @ NAMES-OF name SPAN:$ MAP:SET
    y ;
 
 \ Records each set under its name and counts each name's members.
@@ -2104,7 +2104,7 @@ CAST: >RECORD ( n -- ^t )
 
 : TARGET-HELD? ( ^doc -- bool )
    {: d:^ :}
-   d DOC-MODEL @ TARGETS-OF d KEY$ >LEN MAP:HAS? ;
+   d DOC-MODEL @ TARGETS-OF d KEY$ MAP:HAS? ;
 
 : TARGET-FIND ( ^doc -- ^t ) dup DOC-MODEL @ TARGETS-OF rot KEY$ MAP-RECORD ;
 
@@ -2113,7 +2113,7 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ v:n :}
    d DOC-ARENA @ d DOC-KEY-LEN @ ARENA:ALLOC {: copy:^ len:n :}
    d DOC-KEY @ copy len BYTE-COPY
-   v d DOC-MODEL @ TARGETS-OF copy len >LEN MAP:SET ;
+   v d DOC-MODEL @ TARGETS-OF copy len MAP:SET ;
 
 \ The bindings and the association sets' Ends: a targets entry each at most.
 : TARGET-COUNT ( ^doc -- n )
@@ -2566,7 +2566,7 @@ CAST: >RECORD ( n -- ^t )
    drop {: m:^ a:n b:n key:^ :}
    a key CELL-VIEW !
    b key 1 cells + CELL-VIEW !
-   m TARGETS-OF key 2 cells >LEN MAP:GET ;
+   m TARGETS-OF key 2 cells MAP:GET ;
 
 \ The targets entry under the addresses A and B, as distances from null.
 : TARGET-OF ( ^metadata n n -- option<n> )

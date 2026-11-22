@@ -57,8 +57,8 @@ HASH-MASK HEADER-CELLS - SLOT-CELLS / constant MAX-CAP
    cap COUNT>N 0 <= if E-MAP-BAD-CAP throw then
    cap COUNT>N MAX-CAP > if E-MAP-BAD-CAP throw then ;
 
-: CHECK-LEN ( len -- ) {: len :}
-   len LEN>N 0 < if E-MAP-BAD-CAP throw then ;
+: CHECK-LEN ( n -- ) {: len :}
+   len 0 < if E-MAP-BAD-CAP throw then ;
 
 public
 
@@ -146,12 +146,12 @@ private
 : SLOT-KEY-A! ( ^u8 ^a idx -- ) {: key:^ m:^ ix :}
    key m ix SLOT-KEY-A-OFF >OFF SLOT-FIELD 0 ptr-field ! ;
 
-: SLOT-KEY-U@ ( ^a idx -- len )
-   SLOT-KEY-U-OFF >OFF NUM-FIELD @ >LEN ;
+: SLOT-KEY-U@ ( ^a idx -- n )
+   SLOT-KEY-U-OFF >OFF NUM-FIELD @ ;
 
-: SLOT-KEY-U! ( len ^a idx -- ) {: len m:^ ix :}
-   len LEN>N 0 < if E-MAP-BAD-CAP throw then
-   len LEN>N m ix SLOT-KEY-U-OFF >OFF NUM-FIELD ! ;
+: SLOT-KEY-U! ( n ^a idx -- ) {: len m:^ ix :}
+   len 0 < if E-MAP-BAD-CAP throw then
+   len m ix SLOT-KEY-U-OFF >OFF NUM-FIELD ! ;
 
 : SLOT-VALUE@ ( ^a idx -- a )
    SLOT-VALUE-OFF >OFF SLOT-FIELD @ ;
@@ -162,7 +162,7 @@ private
 : SLOT-CLEAR ( ^a idx -- ) {: m:^ ix :}
    0 m ix SLOT-HASH!
    NULL$ drop m ix SLOT-KEY-A!
-   0 >LEN m ix SLOT-KEY-U!
+   0 m ix SLOT-KEY-U!
    0 m ix SLOT-VALUE-OFF >OFF NUM-FIELD !
    MAP-SLOT--STATE:EMPTY m ix SLOT-STATE! ;
 
@@ -186,10 +186,10 @@ public
 
 private
 
-: HASH ( ^a ^u8 len -- n ) {: m:^ a:^ u :}
+: HASH ( ^a str -- n ) {: m:^ a:^ u :}
    u CHECK-LEN
    m HASH-K0-OFF HEADER-FIELD @  m HASH-K1-OFF HEADER-FIELD @
-   a u LEN>N SIPHASH:BYTES HASH-MASK and ;
+   a u SIPHASH:BYTES HASH-MASK and ;
 
 : INDEX ( n count -- idx ) {: hash cap :}
    cap CHECK-CAP
@@ -205,11 +205,11 @@ private
       base inc +
    then >IDX ;
 
-: SLOT-MATCH? ( ^a idx n ^u8 len -- bool ) {: m:^ ix hash key:^ len :}
+: SLOT-MATCH? ( ^a idx n str -- bool ) {: m:^ ix hash key:^ len :}
    m ix SLOT-HASH@ hash <> if 0 0= 0= exit then
-   m ix SLOT-KEY-A@ m ix SLOT-KEY-U@ LEN>N key len LEN>N STR= ;
+   m ix SLOT-KEY-A@ m ix SLOT-KEY-U@ key len STR= ;
 
-: LOCATE-SLOT ( ^a idx ^u8 len n -- loc ) {: m:^ ix:idx key:^ len:len hash:n :}
+: LOCATE-SLOT ( ^a idx str n -- loc ) {: m:^ ix:idx key:^ len:n hash:n :}
    m ix SLOT-STATE@ MATCH slot-state
      empty OF ix MAP-LOC:FREE ENDOF
      occupied OF
@@ -221,7 +221,7 @@ private
      ENDOF
    ;MATCH ;
 
-: LOCATE ( ^a count ^u8 len -- loc n ) {: m:^ cap:count key:^ len:len :}
+: LOCATE ( ^a count str -- loc n ) {: m:^ cap:count key:^ len:n :}
    m cap CHECK-HANDLE
    len CHECK-LEN
    m key len HASH {: hash:n :}
@@ -238,7 +238,7 @@ private
    loop
    MAP-LOC:FULL hash ;
 
-: SLOT-INSERT ( a ^a idx n ^u8 len -- ) {: value m:^ ix hash key:^ len :}
+: SLOT-INSERT ( a ^a idx n str -- ) {: value m:^ ix hash key:^ len :}
    m COUNT@ COUNT>N 1 + >COUNT m COUNT!
    hash m ix SLOT-HASH!
    key m ix SLOT-KEY-A!
@@ -281,14 +281,14 @@ private
 
 public
 
-: GET ( ^n count ^u8 len -- option<n> ) {: m:^ cap:count key:^ len:len :}
+: GET ( ^n count str -- option<n> ) {: m:^ cap:count key:^ len:n :}
    m cap key len LOCATE drop MATCH loc
      full OF OPTION:NONE ENDOF
      free OF drop OPTION:NONE ENDOF
      found OF m swap SLOT-VALUE@ OPTION:SOME ENDOF
    ;MATCH ;
 
-: HAS? ( ^n count ^u8 len -- bool )
+: HAS? ( ^n count str -- bool )
    GET MATCH option
      none OF 0 0= 0= ENDOF
      some OF drop 0 0= ENDOF
@@ -296,7 +296,7 @@ public
 
 \ Stores the key's pointer and length, not a copy; a replacement keeps the first
 \ pointer: the key bytes stay alive and unchanged while the entry exists.
-: SET ( n ^n count ^u8 len -- ) {: value:n m:^ cap:count key:^ len:len :}
+: SET ( n ^n count str -- ) {: value:n m:^ cap:count key:^ len:n :}
    m cap key len LOCATE {: hash:n :}
    MATCH loc
      full OF E-MAP-FULL throw ENDOF
@@ -305,7 +305,7 @@ public
    ;MATCH ;
 
 \ Removes the key's entry; true when there was one.
-: REMOVE ( ^n count ^u8 len -- bool ) {: m:^ cap:count key:^ len:len :}
+: REMOVE ( ^n count str -- bool ) {: m:^ cap:count key:^ len:n :}
    m cap key len LOCATE drop MATCH loc
      full OF false ENDOF
      free OF drop false ENDOF
@@ -314,7 +314,7 @@ public
 
 \ Visits in storage order, which follows the map's hash key. q must not REMOVE
 \ from this map: a shift back can make EACH skip an entry or visit one twice.
-: EACH ( ^n count [ ^u8 len n -- ] -- ) {: m:^ cap q :}
+: EACH ( ^n count [ str n -- ] -- ) {: m:^ cap q :}
    m cap CHECK-HANDLE
    cap COUNT>N 0 ?do
       m i >IDX SLOT-STATE@ OCCUPIED? if

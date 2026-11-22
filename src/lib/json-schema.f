@@ -448,7 +448,7 @@ CAST: >PROPERTY ( n -- ^property )
 
 : NAME-GET ( str ^n n -- option<n> ) {: na:^ nu:n m:^ cap:n :}
    m NULL-PTR = if OPTION:NONE exit then
-   m cap >COUNT na nu >LEN MAP:GET ;
+   m cap >COUNT na nu MAP:GET ;
 
 : NAME-COUNT ( ^n -- n ) {: m:^ :}
    m NULL-PTR = if 0 exit then
@@ -458,7 +458,7 @@ CAST: >PROPERTY ( n -- ^property )
 : NAME-PUT ( n str ^^n ^n ^ARENA:arena -- )
    {: v:n na:^ nu:n mp:^ cp:^ a:^ :}
    mp cp a MAP:ROOM
-   v mp @ cp @ >COUNT na nu >LEN MAP:SET ;
+   v mp @ cp @ >COUNT na nu MAP:SET ;
 
 : APPEND-PROPERTY ( ^property ^level -- ) {: p:^ lv:^ :}
    p lv LEVEL-PROPERTY-TAIL @ !  p PROPERTY-NEXT lv LEVEL-PROPERTY-TAIL ! ;

@@ -781,7 +781,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    ROLES-RELEASE  LOCALS-RELEASE  BLOCKS-RELEASE  FLOWS-RELEASE ;
 
 : MAP-ROW  ( str -- n ) {: a:^ u:n :}
-   0 HOST-MAP MAP-CAP @ >COUNT a u >LEN MAP:GET MATCH option
+   0 HOST-MAP MAP-CAP @ >COUNT a u MAP:GET MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -986,7 +986,7 @@ variable HIDDEN
    a u HOST-NAME$ {: key:^ len:n :}
    key len MAP-ROW row PREV HOST!
    emits bool>n row EMITTER HOST!
-   row 0 HOST-MAP MAP-CAP @ >COUNT key len >LEN MAP:SET
+   row 0 HOST-MAP MAP-CAP @ >COUNT key len MAP:SET
    row 1+ HOST# ! ;
 
 \ A row for the definition named by token k.

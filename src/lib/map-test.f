@@ -94,10 +94,10 @@ create MT-KEY-Z 122 c,
    m ix >IDX SLOT-KEY-A@ ;
 
 : MT-MAP-SLOT-KEY-U@ ( ^a n -- n ) {: m:^ ix :}
-   m ix >IDX SLOT-KEY-U@ LEN>N ;
+   m ix >IDX SLOT-KEY-U@ ;
 
 : MT-MAP-SLOT-KEY-U! ( n ^a n -- ) {: len m:^ ix :}
-   len >LEN m ix >IDX SLOT-KEY-U! ;
+   len m ix >IDX SLOT-KEY-U! ;
 
 : MT-MAP-SLOT-VALUE@ ( ^a n -- a ) {: m:^ ix :}
    m ix >IDX SLOT-VALUE@ ;
@@ -109,7 +109,7 @@ create MT-KEY-Z 122 c,
    m cap >COUNT INIT ;
 
 : MT-MAP-HASH ( ^a str -- n ) {: m:^ a:^ u :}
-   m a u >LEN HASH ;
+   m a u HASH ;
 
 : MT-MAP-INDEX ( n n -- n ) {: hash cap :}
    hash cap >COUNT INDEX IDX>N ;
@@ -118,7 +118,7 @@ create MT-KEY-Z 122 c,
    hash step >COUNT cap >COUNT PROBE IDX>N ;
 
 : MT-MAP-LOCATE ( ^a n str -- loc n ) {: m:^ cap:n key:^ len:n :}
-   m cap >COUNT key len >LEN LOCATE ;
+   m cap >COUNT key len LOCATE ;
 
 : MT-LOC-KIND ( loc -- n )                           \ 0 full, 1 free, 2 found
    MATCH loc
@@ -135,19 +135,19 @@ create MT-KEY-Z 122 c,
    ;MATCH ;
 
 : MT-MAP-GET ( ^n n str -- option<n> ) {: m:^ cap:n key:^ len:n :}
-   m cap >COUNT key len >LEN GET ;
+   m cap >COUNT key len GET ;
 
 : MT-MAP-HAS? ( ^n n str -- bool ) {: m:^ cap key:^ len :}
-   m cap >COUNT key len >LEN HAS? ;
+   m cap >COUNT key len HAS? ;
 
 : MT-MAP-SET ( n ^n n str -- ) {: value m:^ cap key:^ len :}
-   value m cap >COUNT key len >LEN SET ;
+   value m cap >COUNT key len SET ;
 
-: MT-MAP-EACH ( ^n n [ ^u8 len n -- ] -- ) {: m:^ cap q :}
+: MT-MAP-EACH ( ^n n [ str n -- ] -- ) {: m:^ cap q :}
    m cap >COUNT q EACH ;
 
 : MT-MAP-REMOVE ( ^n n str -- bool ) {: m:^ cap key:^ len :}
-   m cap >COUNT key len >LEN REMOVE ;
+   m cap >COUNT key len REMOVE ;
 
 : MT-FILL-STORAGE ( -- )
    MT-CAP MT-MAP-CELLS 0 ?do
@@ -162,8 +162,8 @@ create MT-KEY-Z 122 c,
 
 \ EACH runs over MT-MAP: each visit is an entry the map finds with that value,
 \ in a slot past the one visited before it.
-: MT-EACH-RECORD ( ^u8 len n -- ) {: key:^ len value :}
-   MT-MAP MT-CAP key len LEN>N MT-MAP-LOCATE drop
+: MT-EACH-RECORD ( str n -- ) {: key:^ len value :}
+   MT-MAP MT-CAP key len MT-MAP-LOCATE drop
    dup MT-LOC-KIND 2 MT=
    MT-LOC-IDX {: slot :}
    slot MT-EACH-LAST @ > MT-ASSERT
@@ -171,7 +171,7 @@ create MT-KEY-Z 122 c,
    MT-MAP slot MT-MAP-SLOT-VALUE@ value MT=
    MT-EACH-COUNT @ 1 + MT-EACH-COUNT !
    MT-EACH-SUM @ value + MT-EACH-SUM !
-   MT-EACH-LEN-SUM @ len LEN>N + MT-EACH-LEN-SUM ! ;
+   MT-EACH-LEN-SUM @ len + MT-EACH-LEN-SUM ! ;
 
 : MT-ASSERT-CLEAR-SLOT ( n -- ) {: ix :}
    MT-MAP ix MT-MAP-SLOT-STATE@ OCCUPIED? 0= MT-ASSERT
@@ -386,7 +386,7 @@ create MT-KEY-Z 122 c,
    MT-EACH-COUNT @ 3 MT=
    MT-EACH-SUM @ 66 MT= ;
 
-: MT-ORDER-RECORD ( ^u8 len n -- )
+: MT-ORDER-RECORD ( str n -- )
    drop drop c@ MT-ORDER MT-EACH-COUNT @ + c!
    MT-EACH-COUNT @ 1 + MT-EACH-COUNT ! ;
 
@@ -471,8 +471,8 @@ create MT-KEY-Z 122 c,
 
 \ Counts EACH's visits and ORs their letters' bits: with the count equal to the
 \ list's, the mask equal to the list's means each entry was visited once.
-: MT-MIX-RECORD ( ^u8 len n -- ) {: key:^ len value :}
-   len LEN>N 1 MT=
+: MT-MIX-RECORD ( str n -- ) {: key:^ len value :}
+   len 1 MT=
    key c@ 97 - {: k :}
    k MT-LIST@ value MT=
    MT-EACH-SUM @ 1 k lshift or MT-EACH-SUM !

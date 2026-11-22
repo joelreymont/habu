@@ -329,7 +329,7 @@ private
    z z z ZLEN PROC-ENV-NAME-LEN ;
 
 : NAMED-PUSH ( ^n ^u8 -- ) {: h:^ z:^ :}
-   h ENVP-VEC @ VEC:COUNT h NAMES z ROW-NAME >LEN MAP:SET
+   h ENVP-VEC @ VEC:COUNT h NAMES z ROW-NAME MAP:SET
    z h ENVP-VEC @ VEC:PUSH ! ;
 
 : UNSET-NAME ( ^n n -- str )
@@ -349,7 +349,7 @@ private
 \ PROC-ENV-DEFAULT+ wrote it and a parent row in this process's environment.
 : INHERIT-Z ( ^n ^u8 -- )
    {: h:^ z:^ :}
-   h NAMES z ROW-NAME >LEN MAP:HAS? if exit then
+   h NAMES z ROW-NAME MAP:HAS? if exit then
    h z UNSET? if exit then
    h z NAMED-PUSH ;
 
@@ -394,7 +394,7 @@ private
    h ENVP-VEC @ 0 VEC:RESIZE
    h ENV-OFF @ VEC:COUNT 0 ?do
       h ENV-BYTES @ VEC-BASE  h ENV-OFF @ i VEC:AT @ +  {: z:^ :}
-      h NAMES z ROW-NAME >LEN MAP:GET MATCH option
+      h NAMES z ROW-NAME MAP:GET MATCH option
          none OF h z NAMED-PUSH ENDOF
          some OF z swap h ENVP-VEC @ swap VEC:AT ! ENDOF
       ;MATCH

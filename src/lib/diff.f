@@ -169,7 +169,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : CLASS ( ^work n -- n )
    {: w g :}
-   w WORK-MAP @ w WORK-CAP @ >COUNT w g LINE$ >LEN {: m cap a u :}
+   w WORK-MAP @ w WORK-CAP @ >COUNT w g LINE$ {: m cap a u :}
    m cap a u MAP:GET MATCH option
       none OF g m cap a u MAP:SET g ENDOF
       some OF ENDOF
