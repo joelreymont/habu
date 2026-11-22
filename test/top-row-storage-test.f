@@ -66,7 +66,7 @@ variable ERR-U
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( str -- ) {: s :}
-   REJECTION:BUFFER$ >str s CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s CONTAINS? TTRUE ;
 
 : CLEAR ( -- )   \ every cell a refused store would have written
    0 TS-V !  0 TS-BN !  NULL-PTR TS-PV ! ;
@@ -391,7 +391,7 @@ variable ERR-U
 \ evaluated note.
 : CASE-LABEL ( -- )
    s" a tool's file label names an evaluated step's rejection at the word that ran it" >str T-LABEL
-   S\" s\" /subject/label.f\" REJECTION:LABEL! true REJECTION:JSON ! here TS-V !"
+   S\" s\" /subject/label.f\" >str REJECTION:LABEL! true REJECTION:JSON ! here TS-V !"
    >str 70 EXITS
    S\" \"file\":\"/subject/label.f\"" >str ERR-HAS?
    S\" \"evaluated\":{\"source_line\":\"s\\\" /subject/label.f" >str ERR-HAS?
@@ -401,7 +401,7 @@ variable ERR-U
 \ is placed at <input>, never at the label.
 : CASE-LABEL-CANDIDATE ( -- )
    s" a tool's file label stays off a candidate text's rejection" >str T-LABEL
-   S\" s\" /subject/label.f\" REJECTION:LABEL! true REJECTION:JSON ! s\" TS-LC ( -- ) TS-LC-UNDEFINED\" CHECK-CANDIDATE! drop"
+   S\" s\" /subject/label.f\" >str REJECTION:LABEL! true REJECTION:JSON ! s\" TS-LC ( -- ) TS-LC-UNDEFINED\" CHECK-CANDIDATE! drop"
    >str 0 EXITS
    S\" \"file\":\"<input>\"" >str ERR-HAS?
    S\" \"code\":\"E-UNDEFINED\"" >str ERR-HAS? ;

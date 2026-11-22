@@ -119,7 +119,7 @@ public
 
 \ CAUSE? is true when the record's `= evaluated:` note's caret marks the
 \ token ta tu and a caret line of the record carries the label la lu.
-: CAUSE? ( ^u8 n ^u8 n -- bool )
+: CAUSE? ( str str -- bool )
    {: ta:^ tu:n la:^ lu:n :}
    NOTE {: e:n :}
    e 0< if false exit then

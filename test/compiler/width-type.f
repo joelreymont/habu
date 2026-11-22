@@ -21,7 +21,7 @@ private
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( str -- ) {: s :}
-   REJECTION:BUFFER$ >str s CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s CONTAINS? TTRUE ;
 
 : STORED ( -- )
    S\" \"code\":\"E-BAD-STORAGE\"" >str HAS?

@@ -46,30 +46,30 @@ variable SRC-U
 \ the word.
 : REJECTS ( n str str -- ) {: rc:n c w :}
    rc 70 T=
-   REJECTION:BUFFER$ >str c CONTAINS? TTRUE
-   REJECTION:BUFFER$ >str w CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ c CONTAINS? TTRUE
+   REJECTION:BUFFER$ w CONTAINS? TTRUE ;
 ;package
 \ arity: more than one input, more than one output term, or a return-stack
 \ effect. A record is placed at the word the line ran.
 s" cast: CNA1 ( n n -- CN:cnfam )"              CN-RUN:DECL s" error[E-CAST-ARITY]" >str s" `cast: CNA1`" >str CN-RUN:REJECTS
-REJECTION:BUFFER$ >str s" ^^^^ input not one term" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^ input not one term" >str CONTAINS? TTRUE
 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )"       CN-RUN:DECL s" error[E-CAST-ARITY]" >str s" `cast: CNA2`" >str CN-RUN:REJECTS
-REJECTION:BUFFER$ >str s" error[E-CAST-ARITY]: in `cast: CNA2`, the output is not one term over the stack below" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" cast-negative-suite.f" >str 49 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )" >str T-PLACED
-REJECTION:BUFFER$ >str s\" ^^^^^^^^^^^ evaluates the text below\n= evaluated: cast: CNA2 ( n -- CN:cnfam CN:cnfam )\n                   ^^^^ output not one term\n= signature: n -- CN:cnfam CN:cnfam\n= help: give exactly one term as the output, as `( n -- u8 )`, with one declaration per term\n" >str REJECTION-TEXT:HAS? TTRUE
+REJECTION:BUFFER$ s" error[E-CAST-ARITY]: in `cast: CNA2`, the output is not one term over the stack below" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" cast-negative-suite.f" >str 49 s" cast: CNA2 ( n -- CN:cnfam CN:cnfam )" >str T-PLACED
+REJECTION:BUFFER$ s\" ^^^^^^^^^^^ evaluates the text below\n= evaluated: cast: CNA2 ( n -- CN:cnfam CN:cnfam )\n                   ^^^^ output not one term\n= signature: n -- CN:cnfam CN:cnfam\n= help: give exactly one term as the output, as `( n -- u8 )`, with one declaration per term\n" >str REJECTION-TEXT:HAS? TTRUE
 s" cast: CNA3 ( n | U -- n | U )"               CN-RUN:DECL s" error[E-CAST-ARITY]" >str s" `cast: CNA3`" >str CN-RUN:REJECTS
-REJECTION:BUFFER$ >str s" error[E-CAST-ARITY]: in `cast: CNA3`, the signature declares a return-stack effect" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" cast-negative-suite.f" >str 49 s" cast: CNA3 ( n | U -- n | U )" >str T-PLACED
-REJECTION:BUFFER$ >str s\" ^^^^^^^^^^^ evaluates the text below\n= evaluated: cast: CNA3 ( n | U -- n | U )\n                   ^^^^ a return-stack effect\n= signature: n | U -- n | U\n= help: write the signature with no `|` clause\n" >str REJECTION-TEXT:HAS? TTRUE
+REJECTION:BUFFER$ s" error[E-CAST-ARITY]: in `cast: CNA3`, the signature declares a return-stack effect" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" cast-negative-suite.f" >str 49 s" cast: CNA3 ( n | U -- n | U )" >str T-PLACED
+REJECTION:BUFFER$ s\" ^^^^^^^^^^^ evaluates the text below\n= evaluated: cast: CNA3 ( n | U -- n | U )\n                   ^^^^ a return-stack effect\n= signature: n | U -- n | U\n= help: write the signature with no `|` clause\n" >str REJECTION-TEXT:HAS? TTRUE
 \ class: an atom is a phantom index, not a cell, and a pointer to one names no
 \ storage. A layout value wider than a cell is one term; a cast between values
 \ of different widths is refused as arity before its class is asked.
 s" cast: CNC1 ( n -- extent-a )"     CN-RUN:DECL s" error[E-CAST-CLASS]" >str s" `cast: CNC1`" >str CN-RUN:REJECTS
 s" cast: CNC2 ( n -- ^extent-a )" CN-RUN:DECL s" error[E-CAST-CLASS]" >str s" `cast: CNC2`" >str CN-RUN:REJECTS
 s" cast: CNC3 ( n -- CAST-NEG:wide )" CN-RUN:DECL s" error[E-CAST-ARITY]" >str s" `cast: CNC3`" >str CN-RUN:REJECTS
-REJECTION:BUFFER$ >str s" the input and output differ in width" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" ^^^^ `n` is 1 cell, `cast-neg:wide` is 2" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" = help: give both sides the same width in cells: `n` is 1 cell, `cast-neg:wide` is 2" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" the input and output differ in width" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^ `n` is 1 cell, `cast-neg:wide` is 2" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: give both sides the same width in cells: `n` is 1 cell, `cast-neg:wide` is 2" >str CONTAINS? TTRUE
 \ Nor does the destination introduce an atom where a call, a read or a field
 \ projection yields a value: a produced row, a pointee and a layout argument
 \ refuse one as the bare term does, even in a private section, where the mint
@@ -110,10 +110,10 @@ s" cast: CNF1 ( n -- neverdecl )"    CN-RUN:DECL s" error[E-CAST-FAM]" >str s" `
 s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL s" error[E-CAST-FAM]" >str s" `cnpbox`" >str CN-RUN:REJECTS
 s" cast: CNF3 ( n -- ^cnpbox )"   CN-RUN:DECL s" error[E-CAST-FAM]" >str s" `cnpbox`" >str CN-RUN:REJECTS
 s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL s" error[E-CAST-FAM]" >str s" `cnpbox`" >str CN-RUN:REJECTS
-REJECTION:BUFFER$ >str s" = help: give `cnpbox` 1 type argument" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: give `cnpbox` 1 type argument" >str CONTAINS? TTRUE
 \ A cast's help is a definition's: `ptr` is told how to spell a pointer.
 s" cast: CNF5 ( ptr -- n )"          CN-RUN:DECL s" error[E-CAST-FAM]" >str s" `ptr`" >str CN-RUN:REJECTS
-REJECTION:BUFFER$ >str s" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`" >str CONTAINS? TTRUE
 \ Any other signature fault, here a bare `^`, is refused before a walk reads
 \ the row, as a stored signature that does not parse is. The first fault names
 \ the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.
@@ -537,15 +537,15 @@ s" CNU1 ( n -- CN:cnfam ) cast:"                      CHECK-QUIET-CANDIDATE! 0 T
 \ str is two cells, and n is one.
 package CN-STR
 : WIDTH? ( -- bool )
-   REJECTION:BUFFER$ >str s" the input and output differ in width" >str CONTAINS? ;
+   REJECTION:BUFFER$ s" the input and output differ in width" >str CONTAINS? ;
 s" cast: CNS1 ( str -- n )" CN-RUN:DECL s" error[E-CAST-ARITY]" >str s" `cast: CNS1`" >str CN-RUN:REJECTS
 WIDTH? TTRUE
-REJECTION:BUFFER$ >str s" ^^^^ `str` is 2 cells, `n` is 1" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" = help: give both sides the same width in cells: `str` is 2 cells, `n` is 1" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^ `str` is 2 cells, `n` is 1" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: give both sides the same width in cells: `str` is 2 cells, `n` is 1" >str CONTAINS? TTRUE
 s" cast: CNS2 ( n -- str )" CN-RUN:DECL s" error[E-CAST-ARITY]" >str s" `cast: CNS2`" >str CN-RUN:REJECTS
 WIDTH? TTRUE
-REJECTION:BUFFER$ >str s" ^^^^ `n` is 1 cell, `str` is 2" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" = help: give both sides the same width in cells: `n` is 1 cell, `str` is 2" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^ `n` is 1 cell, `str` is 2" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: give both sides the same width in cells: `n` is 1 cell, `str` is 2" >str CONTAINS? TTRUE
 \ A package retypes a str as its own role and back in its private section.
 public
 STRUCTURE path OPAQUE FIELD v str ;STRUCTURE

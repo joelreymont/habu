@@ -32,12 +32,12 @@ variable RC-CELL
 
 public
 
-: ROOT$ ( -- ^u8 n ) ROOT ROOT-U @ ;
-: OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ ;
+: OUT$ ( -- str ) OUT OUT-U @ ;
+: ERR$ ( -- str ) ERR ERR-U @ ;
 : RC@ ( -- n ) RC-CELL @ ;
 
-: AT-A ( ^u8 n -- ^u8 n ) {: rel:^ relu:n :}
+: AT-A ( str -- str ) {: rel:^ relu:n :}
    ROOT$ rel relu PATH FS:JOIN-PATH PATH swap ;
 
 : LINK ( ^u8 n -- ) {: rel:^ relu:n :}
@@ -48,18 +48,18 @@ public
    SOURCE-ROOT:CWD$ rel relu TARGET FS:JOIN-PATH TARGET-U !
    TARGET TARGET-U @ rel relu AT-A FS:COPY-FILE-STREAM ;
 
-: TREE ( ^u8 n -- )
+: TREE ( str -- )
    FS:MKTEMP-DIR {: a:^ u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" src" LINK s" tools" LINK
    s" test" AT-A FS:MAKE-DIRS ;
 
-: ARGS ( ^u8 n -- ) {: source:^ size:n :}
+: ARGS ( str -- ) {: source:^ size:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
    source size >LEN PROC-ARGV+ ;
 
-: RUN-ON ( ^u8 n ^u8 n -- )
+: RUN-ON ( str str -- )
    {: engine:^ engineu:n cwd:^ cwdu:n :}
    PROC-ENV-INHERIT-MISSING
    engine engineu >LEN cwd cwdu >LEN

@@ -302,7 +302,7 @@ public
 
 : FD! ( n -- ) 2 xor BUF-FD ! ;
 
-: BUFFER$ ( -- ^u8 n )
+: BUFFER$ ( -- str )
    HELD-P @ HELD-U @ ;
 private
 
@@ -1470,7 +1470,7 @@ public
    -1 LABELED ! ;
 \ Places in the bytes of the file being read name this file; the files it
 \ loads are the program's, not the tool's own.
-: LABEL! ( ^u8 n -- )
+: LABEL! ( str -- )
    PATH$ FILE-LABEL! ;
 
 private

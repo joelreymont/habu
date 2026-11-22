@@ -764,10 +764,10 @@ private
 
 \ The run file's prefix names the subject for the checker's diagnostics.
 : CHK-BUILD-PREFIX ( -- )
-   CHK-LABEL CHK-RUN-QPATH+
+   CHK-LABEL CHK-RUN-QPATH+  s"  >str" CHK-RUN+
    CHK-SEL-BYTES? if
       CHK-SP CHK-RUN-C  CHK-SRC-PATH CHK-RUN-QPATH+
-      s"  REJECTION:FILE-LABEL!" CHK-RUN-SP
+      s"  >str REJECTION:FILE-LABEL!" CHK-RUN-SP
    else
       s"  REJECTION:LABEL!" CHK-RUN-SP
    then

@@ -42,16 +42,16 @@ variable TD-JSON-WAS   REJECTION:JSON @ TD-JSON-WAS !   false REJECTION:JSON !
    {: sa:^ su:n h l :}
    REJECTION:CAPTURE
    sa su TDT-EVAL-CATCH 70 T=
-   REJECTION:BUFFER$ >str h CONTAINS? TTRUE
-   REJECTION:BUFFER$ >str l CONTAINS? TTRUE ;
-: TDT-AT ( ^u8 n str ^u8 n ^u8 n -- )
-   {: sa:^ su:n h ta:^ tu:n la:^ lu:n :}
+   REJECTION:BUFFER$ h CONTAINS? TTRUE
+   REJECTION:BUFFER$ l CONTAINS? TTRUE ;
+: TDT-AT ( ^u8 n str str str -- )
+   {: sa:^ su:n h t l :}
    REJECTION:CAPTURE
    sa su TDT-EVAL-CATCH 70 T=
-   REJECTION:BUFFER$ >str h CONTAINS? TTRUE
-   ta tu la lu DECL-DIAG:CAUSE? TTRUE ;
+   REJECTION:BUFFER$ h CONTAINS? TTRUE
+   t l DECL-DIAG:CAUSE? TTRUE ;
 : TDT-HAS ( str -- ) {: s :}
-   REJECTION:BUFFER$ >str s CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s CONTAINS? TTRUE ;
 
 \ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
 NEWTYPE tdfoo<a,b>
@@ -619,8 +619,8 @@ s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 REJECTION:CAPTURE
 s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"  --> <input>:1:30\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"  --> <input>:1:30\n" >str CONTAINS? TTRUE
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 \ A product containing W34 is one W34 wide, not W34^2.
 STRUCTURE tdw34nest
@@ -1036,13 +1036,13 @@ s" TPC-OWNER ( span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDID
 s" TPC-OWN-PRIVATE ( tier<n> -- TDPM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEWTYPE span<a,b,c,d,e,g>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `span`\n" >str
-s" span" s" duplicate family" TDT-AT
+s" span" >str s" duplicate family" >str TDT-AT
 s\"   = help: rename the family: this package already declares a family with this name\n" >str TDT-HAS
 \ This failure creates a family and one variant before the duplicate variant
 \ rejects; the declaration transaction must retire every provisional row.
 s" SUMTYPE rolled-span<a,b,c,d,e,g> VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `rolled-span`\n" >str
-s" ok" s" duplicate variant" TDT-AT
+s" ok" >str s" duplicate variant" >str TDT-AT
 s\"   = help: give each variant of this declaration its own name\n" >str TDT-HAS
 \ The name is free again: a stranded index row would make the bucket walk reach
 \ a row the store no longer holds, and this declaration would fail.
@@ -1096,17 +1096,17 @@ STRUCTURE tfx-nest<a> FIELD a a FIELD b n ;STRUCTURE
 \ back, because a signature's qualifier folds before lookup.
 REJECTION:CAPTURE
 s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\"   = found: tdpm:span<n,n,n,n,n,n>\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" found: TDPM:span<n,n,n,n,n,n>" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\"   = found: tdpm:span<n,n,n,n,n,n>\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDPM:span<n,n,n,n,n,n>" >str CONTAINS? TFALSE
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"found\":\"tdpm:span<n,n,n,n,n,n>\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"found\":\"tdpm:span<n,n,n,n,n,n>\"" >str CONTAINS? TTRUE
 \ The body has no `;`: the record places an empty token at the text's end.
-REJECTION:BUFFER$ >str s\" \"column\":48,\"byte_start\":47,\"byte_end\":47,\"token\":\"\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"column\":48,\"byte_start\":47,\"byte_end\":47,\"token\":\"\"" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"token\":\"TDPM:span\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" takes 6 type arguments, not 3" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" takes 6 type arguments, not 3" >str CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:CAPTURE
 
@@ -1115,34 +1115,34 @@ REJECTION:CAPTURE
 \ a missing name is placed at the keyword, and its help names that keyword.
 s" NEWTYPE"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration\n" >str
-s" NEWTYPE" s" missing name" TDT-AT
+s" NEWTYPE" >str s" missing name" >str TDT-AT
 s\"   = help: write a name after `NEWTYPE`, as in `NEWTYPE meters`\n" >str TDT-HAS
 s" SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration\n" >str
-s" SUMTYPE" s" missing name" TDT-AT
+s" SUMTYPE" >str s" missing name" >str TDT-AT
 s\"   = help: write a name after `SUMTYPE`, as in `SUMTYPE shape`\n" >str TDT-HAS
 s" SUMTYPE tdshape VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdshape`\n" >str
-s" VARIANT" s" missing name" TDT-AT
+s" VARIANT" >str s" missing name" >str TDT-AT
 s\"   = help: write a name after `VARIANT`, as in `VARIANT none ;VARIANT`\n" >str TDT-HAS
 
 \ tools/check.f reads argv and stops at its first rejection, so each record runs
 \ in its own child. TDT-CHECKED: NAME holding SRC exits 70; stderr is HEAD,
 \ NAME's canonical path, then TAIL.
-s" type-decl-nameless" E2E-TREE:TREE
-E2E-TREE:ROOT$ >str FS:CLEANUP-TREE+
+s" type-decl-nameless" >str E2E-TREE:TREE
+E2E-TREE:ROOT$ FS:CLEANUP-TREE+
 : TDT-CHECKED ( ^u8 n str ^u8 n ^u8 n -- )
    {: na:^ nu:n s ha:^ hu:n ta:^ tu:n :}
-   na nu E2E-TREE:AT-A >str s FS:WRITE-ALL
-   s" tools/check.f" E2E-TREE:ARGS
+   na nu >str E2E-TREE:AT-A s FS:WRITE-ALL
+   s" tools/check.f" >str E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+
    na nu >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ str> E2E-TREE:ROOT$ E2E-TREE:RUN-ON
+   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:RC@ 70 T=
-   E2E-TREE:OUT$ nip 0 T=
-   na nu E2E-TREE:AT-A SOURCE-ROOT:CANONICAL drop {: pa:^ pu:n :}
+   E2E-TREE:OUT$ str> nip 0 T=
+   na nu >str E2E-TREE:AT-A str> SOURCE-ROOT:CANONICAL drop {: pa:^ pu:n :}
    SB-RESET ha hu SB-APPEND pa pu SB-APPEND ta tu SB-APPEND
-   E2E-TREE:ERR$ >str SB$ >str T$= ;
+   E2E-TREE:ERR$ SB$ >str T$= ;
 s" test/tdt-nameless-newtype.f" s\" NEWTYPE\n" >str
 s\" error[E-BAD-DECLARATION]: bad newtype declaration\n --> "
 s\" :1:1\n  |\n1 | NEWTYPE\n  | ^^^^^^^ missing name\n  = help: write a name after `NEWTYPE`, as in `NEWTYPE meters`\n\n"
@@ -1159,83 +1159,83 @@ TDT-CHECKED
 \ uppercase/mixed-case family names reject before storage.
 s" NEWTYPE Bad<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `Bad`\n" >str
-s" Bad" s" name must be a lowercase family tail" TDT-AT
+s" Bad" >str s" name must be a lowercase family tail" >str TDT-AT
 s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" >str TDT-HAS
 s" NEWTYPE tdBAD<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdBAD`\n" >str
-s" tdBAD" s" name must be a lowercase family tail" TDT-AT
+s" tdBAD" >str s" name must be a lowercase family tail" >str TDT-AT
 s" SUMTYPE Res<a> VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `Res`\n" >str
-s" Res" s" name must be a lowercase family tail" TDT-AT
+s" Res" >str s" name must be a lowercase family tail" >str TDT-AT
 \ qualified names are illegal in declaration position.
 s" NEWTYPE pkg:tail 1"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `pkg:tail`\n" >str
-s" pkg:tail" s" name must be a lowercase family tail" TDT-AT
+s" pkg:tail" >str s" name must be a lowercase family tail" >str TDT-AT
 \ hyphen edges / doubled hyphens are not canonical tails.
 s" NEWTYPE td--x<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `td--x`\n" >str
-s" td--x" s" name must be a lowercase family tail" TDT-AT
+s" td--x" >str s" name must be a lowercase family tail" >str TDT-AT
 s" NEWTYPE -tdx 1"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `-tdx`\n" >str
-s" -tdx" s" name must be a lowercase family tail" TDT-AT
+s" -tdx" >str s" name must be a lowercase family tail" >str TDT-AT
 \ injection-shaped text is not a canonical name token.
 s\" NEWTYPE td\" 1"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `td\"`\n" >str
-s\" td\"" s" name must be a lowercase family tail" TDT-AT
+s\" td\"" >str s" name must be a lowercase family tail" >str TDT-AT
 \ reserved signature/type tokens as family names.
 s" NEWTYPE a"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `a`\n" >str
-s" a" s" reserved name" TDT-AT
+s" a" >str s" reserved name" >str TDT-AT
 s\"   = help: pick another name: a built-in type such as `n` cannot name a family or variant\n" >str TDT-HAS
 s" SUMTYPE n VARIANT x ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `n`\n" >str
-s" n" s" reserved name" TDT-AT
+s" n" >str s" reserved name" >str TDT-AT
 \ A variant defines a word, so a keyword cannot name one.
 s" SUMTYPE tdkwv VARIANT export ;VARIANT ;SUMTYPE"
 s\" error[E-RESERVED-DEFINITION]: `export` is a keyword and cannot name a definition\n" >str
-s" export" s" reserved keyword" TDT-AT
+s" export" >str s" reserved keyword" >str TDT-AT
 s\"   = help: give the definition a name that is not a keyword\n" >str TDT-HAS
 s" NEWTYPE field<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `field`\n" >str
-s" field" s" reserved name" TDT-AT
+s" field" >str s" reserved name" >str TDT-AT
 s" NEWTYPE space-x<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `space-x`\n" >str
-s" space-x" s" reserved name" TDT-AT
+s" space-x" >str s" reserved name" >str TDT-AT
 s" NEWTYPE fresh-mask-x<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `fresh-mask-x`\n" >str
-s" fresh-mask-x" s" reserved name" TDT-AT
+s" fresh-mask-x" >str s" reserved name" >str TDT-AT
 \ An effect reads the token `ptr` ahead of any family, so the tail is reserved
 \ ahead of the global `ptr` family's duplicate check.
 s" NEWTYPE ptr"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `ptr`\n" >str
-s" ptr" s" reserved name" TDT-AT
+s" ptr" >str s" reserved name" >str TDT-AT
 \ `scratch-only` is the storage clause, so no family takes the name.
 : TDT-SCRATCH-NAME ( -- )
    REJECTION:CAPTURE
    s" NEWTYPE scratch-only" TDT-EVAL-CATCH {: rc:n :}
    s\" error[E-BAD-DECLARATION]: bad newtype declaration `scratch-only`\n" >str TDT-HAS
-   s" scratch-only" s" reserved name" DECL-DIAG:CAUSE? TTRUE
+   s" scratch-only" >str s" reserved name" >str DECL-DIAG:CAUSE? TTRUE
    rc 70 T= ;
 TDT-SCRATCH-NAME
 \ Nor can a keyword of the match protocol.
 s" SUMTYPE tdcn<a> VARIANT construct a ;VARIANT ;SUMTYPE"
 s\" error[E-RESERVED-DEFINITION]: `construct` is a keyword and cannot name a definition\n" >str
-s" construct" s" reserved keyword" TDT-AT
+s" construct" >str s" reserved keyword" >str TDT-AT
 s" SUMTYPE tdcn2<a> VARIANT match a ;VARIANT ;SUMTYPE"
 s\" error[E-RESERVED-DEFINITION]: `match` is a keyword and cannot name a definition\n" >str
-s" match" s" reserved keyword" TDT-AT
+s" match" >str s" reserved keyword" >str TDT-AT
 s" SUMTYPE tdcn3<a> VARIANT ;match a ;VARIANT ;SUMTYPE"
 s\" error[E-RESERVED-DEFINITION]: `;match` is a keyword and cannot name a definition\n" >str
-s" ;match" s" reserved keyword" TDT-AT
+s" ;match" >str s" reserved keyword" >str TDT-AT
 \ redeclaring a global family at top level is a same-scope duplicate (the
 \ top-level declaring scope IS the global scope, so the collision is a real
 \ duplicate family, not a reserved-name shadow; both classes reject)...
 s" NEWTYPE span<a,b,c>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `span`\n" >str
-s" span" s" duplicate family" TDT-AT
+s" span" >str s" duplicate family" >str TDT-AT
 s" NEWTYPE str<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `str`\n" >str
-s" str" s" duplicate family" TDT-AT
+s" str" >str s" duplicate family" >str TDT-AT
 \ The global/package same-tail case above is legal; only an exact same-package
 \ duplicate remains a duplicate family.
 \ variant names may not collide with any family the declaring scope resolves:
@@ -1243,33 +1243,33 @@ s" str" s" duplicate family" TDT-AT
 \ own tails inside that package.
 s" SUMTYPE tdvres<a> VARIANT span a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvres`\n" >str
-s" span" s" collides with a type family" TDT-AT
+s" span" >str s" collides with a type family" >str TDT-AT
 s\"   = help: rename the variant: a type family in this scope already has this name\n" >str TDT-HAS
 NEWTYPE tduserfam<a>
 s" SUMTYPE tdvres2<a> VARIANT tduserfam a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvres2`\n" >str
-s" tduserfam" s" collides with a type family" TDT-AT
+s" tduserfam" >str s" collides with a type family" >str TDT-AT
 package tvshad
 s" SUMTYPE tdvres3<a> VARIANT span a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvres3`\n" >str
-s" span" s" collides with a type family" TDT-AT
+s" span" >str s" collides with a type family" >str TDT-AT
 NEWTYPE tvloc<a>
 s" SUMTYPE tdvres4<a> VARIANT tvloc a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvres4`\n" >str
-s" tvloc" s" collides with a type family" TDT-AT
+s" tvloc" >str s" collides with a type family" >str TDT-AT
 ;package
 \ family declarations must reject a prior in-scope variant tail too; otherwise
 \ the collision verdict depends on declaration order.
 ENUM tdvowner tdfuture ;ENUM
 s" NEWTYPE tdfuture"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdfuture`\n" >str
-s" tdfuture" s" collides with a sum variant" TDT-AT
+s" tdfuture" >str s" collides with a sum variant" >str TDT-AT
 s\"   = help: rename the family: a variant declared in this scope already has this name\n" >str TDT-HAS
 package tvorder
 ENUM tvowner tvfuture ;ENUM
 s" NEWTYPE tvfuture"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tvfuture`\n" >str
-s" tvfuture" s" collides with a sum variant" TDT-AT
+s" tvfuture" >str s" collides with a sum variant" >str TDT-AT
 ;package
 \ A generated word that collides is placed at the family that generated it.
 package tdgaddr
@@ -1277,7 +1277,7 @@ private
 create TDGADDR-AT
 s" STRUCTURE tdgaddr DERIVE addr FIELD id n ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdgaddr`\n" >str
-s" tdgaddr" s" generated declaration already defined" TDT-AT
+s" tdgaddr" >str s" generated declaration already defined" >str TDT-AT
 s\" = word: TDGADDR-AT\n" >str TDT-HAS
 ;package
 \ DECL-EVENT is a part of TYPE-DECL: no name outside TYPE-DECL reaches it.
@@ -1299,77 +1299,77 @@ SUMTYPE tdvok<a>
 \ a declaration's grammar word is not a family name.
 s" SUMTYPE variant<a> VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `variant`\n" >str
-s" variant" s" reserved name" TDT-AT
+s" variant" >str s" reserved name" >str TDT-AT
 \ value-record names collide.
 VALUE-RECORD tdvrec x n END-VALUE-RECORD
 s" NEWTYPE tdvrec<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdvrec`\n" >str
-s" tdvrec" s" reserved name" TDT-AT
+s" tdvrec" >str s" reserved name" >str TDT-AT
 \ duplicate family (same package scope).
 s" NEWTYPE tdfoo<a,b>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdfoo`\n" >str
-s" tdfoo" s" duplicate family" TDT-AT
+s" tdfoo" >str s" duplicate family" >str TDT-AT
 \ malformed parameter lists in family names.
 s" NEWTYPE tdnoar<>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdnoar<>`\n" >str
-s" tdnoar<>" s" invalid type parameter header" TDT-AT
+s" tdnoar<>" >str s" invalid type parameter header" >str TDT-AT
 s\"   = help: name each type parameter once, by a letter other than `f`, `n` or `r`, as in `box<a>` or `result<a,b>`\n" >str TDT-HAS
 s" NEWTYPE tdarx<x,x>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdarx<x,x>`\n" >str
-s" tdarx<x,x>" s" invalid type parameter header" TDT-AT
+s" tdarx<x,x>" >str s" invalid type parameter header" >str TDT-AT
 s" NEWTYPE tdarneg<-1>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdarneg<-1>`\n" >str
-s" tdarneg<-1>" s" invalid type parameter header" TDT-AT
+s" tdarneg<-1>" >str s" invalid type parameter header" >str TDT-AT
 s" NEWTYPE tdarbig<a,>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdarbig<a,>`\n" >str
-s" tdarbig<a,>" s" invalid type parameter header" TDT-AT
+s" tdarbig<a,>" >str s" invalid type parameter header" >str TDT-AT
 s" NEWTYPE tdarunc<a"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdarunc<a`\n" >str
-s" tdarunc<a" s" invalid type parameter header" TDT-AT
+s" tdarunc<a" >str s" invalid type parameter header" >str TDT-AT
 s" NEWTYPE tdartrail<a>b"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdartrail<a>b`\n" >str
-s" tdartrail<a>b" s" invalid type parameter header" TDT-AT
+s" tdartrail<a>b" >str s" invalid type parameter header" >str TDT-AT
 s" NEWTYPE tdarres<n>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdarres<n>`\n" >str
-s" tdarres<n>" s" invalid type parameter header" TDT-AT
+s" tdarres<n>" >str s" invalid type parameter header" >str TDT-AT
 s" NEWTYPE tdarlong<item>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdarlong<item>`\n" >str
-s" tdarlong<item>" s" invalid type parameter header" TDT-AT
+s" tdarlong<item>" >str s" invalid type parameter header" >str TDT-AT
 s" SUMTYPE tdarv<> VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdarv<>`\n" >str
-s" tdarv<>" s" invalid type parameter header" TDT-AT
+s" tdarv<>" >str s" invalid type parameter header" >str TDT-AT
 \ an unterminated body (no ;SUMTYPE) reports the declaration record.
 s" SUMTYPE tdnoend<a> VARIANT ok a ;VARIANT"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdnoend<a>`\n" >str
-s" tdnoend<a>" s" missing ;SUMTYPE" TDT-AT
+s" tdnoend<a>" >str s" missing ;SUMTYPE" >str TDT-AT
 s\"   = help: end the declaration with `;SUMTYPE` after its last variant\n" >str TDT-HAS
 \ malformed sum bodies.
 s" SUMTYPE tdempty<a> ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdempty`\n" >str
-s" tdempty" s" empty sum" TDT-AT
+s" tdempty" >str s" empty sum" >str TDT-AT
 s\"   = help: declare at least one variant, as in `VARIANT none ;VARIANT`\n" >str TDT-HAS
 s" SUMTYPE tdnoterm<a> VARIANT ok a ;VARIANT"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdnoterm<a>`\n" >str
-s" tdnoterm<a>" s" missing ;SUMTYPE" TDT-AT
+s" tdnoterm<a>" >str s" missing ;SUMTYPE" >str TDT-AT
 s" SUMTYPE tdstray<a> stray VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdstray`\n" >str
-s" stray" s" unexpected token in sum declaration" TDT-AT
+s" stray" >str s" unexpected token in sum declaration" >str TDT-AT
 s\"   = help: write each variant as `VARIANT name type ... ;VARIANT`, after any `POLICY` and `DERIVE` clause\n" >str TDT-HAS
 s" SUMTYPE tdnovn<a> VARIANT ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdnovn`\n" >str
-s" ;VARIANT" s" name must be a lowercase family tail" TDT-AT
+s" ;VARIANT" >str s" name must be a lowercase family tail" >str TDT-AT
 s" SUMTYPE tdkw<a> VARIANT variant a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdkw`\n" >str
-s" variant" s" reserved name" TDT-AT
+s" variant" >str s" reserved name" >str TDT-AT
 s" SUMTYPE tdvcase<a> VARIANT Ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvcase`\n" >str
-s" Ok" s" name must be a lowercase family tail" TDT-AT
+s" Ok" >str s" name must be a lowercase family tail" >str TDT-AT
 s" SUMTYPE tdvdup<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvdup`\n" >str
-s" ok" s" duplicate variant" TDT-AT
+s" ok" >str s" duplicate variant" >str TDT-AT
 s" SUMTYPE tdbadptr<a> VARIANT ok ^ ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdbadptr`\n" >str
-s" ^" s" pointer without a pointee" TDT-AT
+s" ^" >str s" pointer without a pointee" >str TDT-AT
 s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" >str TDT-HAS
 \ unknown payload types: an out-of-arity letter and an unknown tail reject;
 \ parametric family applications and quotations resolve as payloads, so the
@@ -1377,30 +1377,30 @@ s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `
 \ tdres has arity 2.
 s" SUMTYPE tdpay1<a> VARIANT ok q ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay1`\n" >str
-s" q" s" unknown payload type" TDT-AT
+s" q" >str s" unknown payload type" >str TDT-AT
 s\"   = help: list the parameter in the family header, as in `box<a>`, before a payload names it\n" >str TDT-HAS
 s" SUMTYPE tdpay2<a> VARIANT ok whatnot ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay2`\n" >str
-s" whatnot" s" unknown payload type" TDT-AT
+s" whatnot" >str s" unknown payload type" >str TDT-AT
 s" SUMTYPE tdpay3<a> VARIANT ok tdres<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay3`\n" >str
-s" tdres" s" type family applied to wrong number of arguments" TDT-AT
+s" tdres" >str s" type family applied to wrong number of arguments" >str TDT-AT
 s\"   = help: give the family as many type arguments as its header declares\n" >str TDT-HAS
 s" SUMTYPE tdpay4<a> VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay4`\n" >str
-s" z" s" unknown payload type" TDT-AT
+s" z" >str s" unknown payload type" >str TDT-AT
 s\" SUMTYPE tdpay6<a> VARIANT ok tdres<a,\n a, a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpay6`\n" >str
-s" tdres" s" type family applied to wrong number of arguments" TDT-AT
+s" tdres" >str s" type family applied to wrong number of arguments" >str TDT-AT
 s\"   = help: give the family as many type arguments as its header declares\n" >str TDT-HAS
 \ A pointer payload is spelled ^T: `ptr` is an unknown payload type.
 s" SUMTYPE tdpayptr VARIANT ok ptr u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpayptr`\n" >str
-s" ptr" s" unknown payload type" TDT-AT
+s" ptr" >str s" unknown payload type" >str TDT-AT
 s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `^u8`\n" >str TDT-HAS
 s" SUMTYPE tdpayview<a,b> VARIANT ok mut-view<a,a,b,n> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpayview`\n" >str
-s" mut-view" s" takes a scope or region, which a `SUMTYPE` payload cannot hold" TDT-AT
+s" mut-view" >str s" takes a scope or region, which a `SUMTYPE` payload cannot hold" >str TDT-AT
 s\"   = help: hold it in a field of an `ENUM` whose header lists its scope and region parameters, as in `ENUM box<p,q>` with `FIELD v read-view<p,q,u8>`\n" >str TDT-HAS
 \ quotation effect sides carry full rows: an empty input side, a multi-type
 \ input side, an empty output side, and a multi-type input with a ptr element
@@ -1413,29 +1413,29 @@ SUMTYPE tdpqm VARIANT run [ n ^u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 \ when its variant ends first.
 s" SUMTYPE tdpqx VARIANT run [ n n ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqx`\n" >str
-s" ]" s" the quotation type needs `--` here" TDT-AT
+s" ]" >str s" the quotation type needs `--` here" >str TDT-AT
 s\"   = help: write the quotation type as `[ in -- out ]`\n" >str TDT-HAS
 s" SUMTYPE tdpqy VARIANT run [ n -- n ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqy`\n" >str
-s" [" s" the quotation type is not closed" TDT-AT
+s" [" >str s" the quotation type is not closed" >str TDT-AT
 s\"   = help: close the quotation type with `]`\n" >str TDT-HAS
 \ Fact words follow the last outputs, each stated once.
 SUMTYPE tdpqf VARIANT run [ -- renders ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 s" SUMTYPE tdpqf1 VARIANT run [ renders -- ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf1`\n" >str
-s" renders" s" a fact follows only the last outputs" TDT-AT
+s" renders" >str s" a fact follows only the last outputs" >str TDT-AT
 s\"   = help: write the facts after the last outputs, as `[ n -- n renders ]`\n" >str TDT-HAS
 s" SUMTYPE tdpqf2 VARIANT run [ -- renders renders ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf2`\n" >str
-s" renders" s" this fact is already stated" TDT-AT
+s" renders" >str s" this fact is already stated" >str TDT-AT
 s\"   = help: state each fact once\n" >str TDT-HAS
 s" SUMTYPE tdpqf3 VARIANT run [ -- renders n ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf3`\n" >str
-s" n" s" a type follows the facts" TDT-AT
+s" n" >str s" a type follows the facts" >str TDT-AT
 s\"   = help: write the facts after the last outputs, as `[ n -- n renders ]`\n" >str TDT-HAS
 s" SUMTYPE tdpqf4 VARIANT run [ -- renders | -- ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpqf4`\n" >str
-s" |" s" a fact follows only the last outputs" TDT-AT
+s" |" >str s" a fact follows only the last outputs" >str TDT-AT
 s\"   = help: write the facts after the last outputs, as `[ n -- n renders ]`\n" >str TDT-HAS
 
 \ A quotation side of 300 elements declares, and the constructor takes a
@@ -1467,7 +1467,7 @@ variable BUF-N
 : SHORT-CTOR ( -- )
    REJECTION:CAPTURE  true REJECTION:JSON !
    s" TDPQ300-NO" LONG-N 1 - CTOR$ TDT-EVAL-CATCH 70 T=
-   REJECTION:BUFFER$ >str s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
+   REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
    false REJECTION:JSON !  REJECTION:CAPTURE ;
 public
 : RUN ( -- )
@@ -1487,21 +1487,21 @@ LONG-DECL-TEST:RUN
 \ tdpay1/tdpay4 above.
 s" SUMTYPE tdpaq1<a> VARIANT ok [ z -- ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpaq1`\n" >str
-s" z" s" unknown payload type" TDT-AT
+s" z" >str s" unknown payload type" >str TDT-AT
 s" SUMTYPE tdpaq2<a> VARIANT ok [ -- z ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpaq2`\n" >str
-s" z" s" unknown payload type" TDT-AT
+s" z" >str s" unknown payload type" >str TDT-AT
 s" SUMTYPE tdpaq3<a> VARIANT ok [ n -- | z -- ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpaq3`\n" >str
-s" z" s" unknown payload type" TDT-AT
+s" z" >str s" unknown payload type" >str TDT-AT
 s" SUMTYPE tdpaq4<a> VARIANT ok [ n -- | -- z ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpaq4`\n" >str
-s" z" s" unknown payload type" TDT-AT
+s" z" >str s" unknown payload type" >str TDT-AT
 \ an out-of-arity parameter nested inside an application argument that itself sits
 \ on a quotation side still rejects at declaration (whole-subtree descent).
 s" SUMTYPE tdpaq5<a> VARIANT ok [ tdres<a,z> -- ] ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpaq5`\n" >str
-s" z" s" unknown payload type" TDT-AT
+s" z" >str s" unknown payload type" >str TDT-AT
 
 \ no over-tightening: in-range parameter letters in a plain element, a parametric
 \ application argument, and both quotation sides all declare; a nested-layout
@@ -1524,80 +1524,80 @@ SUMTYPE tdpgn
 \ empty / unterminated bodies.
 s" ENUM tdeempty ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdeempty`\n" >str
-s" tdeempty" s" empty enum" TDT-AT
+s" tdeempty" >str s" empty enum" >str TDT-AT
 s" ENUM tdenoterm red green"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdenoterm`\n" >str
-s" tdenoterm" s" missing ;ENUM" TDT-AT
+s" tdenoterm" >str s" missing ;ENUM" >str TDT-AT
 \ duplicate variant within one enum.
 s" ENUM tdedup red red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdedup`\n" >str
-s" red" s" duplicate variant" TDT-AT
+s" red" >str s" duplicate variant" >str TDT-AT
 \ bad variant names: uppercase, reserved single-letter, grammar keyword, and a
 \ name that collides with an existing type family.
 s" ENUM tdecase Red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdecase`\n" >str
-s" Red" s" name must be a lowercase tail" TDT-AT
+s" Red" >str s" name must be a lowercase tail" >str TDT-AT
 s" ENUM tdesl a ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdesl`\n" >str
-s" a" s" name is reserved or already taken" TDT-AT
+s" a" >str s" name is reserved or already taken" >str TDT-AT
 s" ENUM tdekw enum ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdekw`\n" >str
-s" enum" s" name is reserved or already taken" TDT-AT
+s" enum" >str s" name is reserved or already taken" >str TDT-AT
 \ `variant` in a compact body is malformed, not a reserved name: the ENUM
 \ front end has both modes, and a block keyword where a compact variant belongs
 \ confuses the two forms, reported at the token ("block keyword in a compact
 \ enum"). test/enum-decl-suite.f pins the same reading.
 s" ENUM tdekw2 red variant ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdekw2`\n" >str
-s" variant" s" block keyword in a compact enum" TDT-AT
+s" variant" >str s" block keyword in a compact enum" >str TDT-AT
 s" ENUM tdevf tdfoo ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdevf`\n" >str
-s" tdfoo" s" name is reserved or already taken" TDT-AT
+s" tdfoo" >str s" name is reserved or already taken" >str TDT-AT
 \ bad family names: uppercase, reserved single-letter, grammar keyword.
 s" ENUM Bad red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `Bad`\n" >str
-s" Bad" s" name must be a lowercase family tail" TDT-AT
+s" Bad" >str s" name must be a lowercase family tail" >str TDT-AT
 s" ENUM a red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `a`\n" >str
-s" a" s" reserved name" TDT-AT
+s" a" >str s" reserved name" >str TDT-AT
 s" ENUM sumtype red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `sumtype`\n" >str
-s" sumtype" s" reserved name" TDT-AT
+s" sumtype" >str s" reserved name" >str TDT-AT
 \ redeclaring an existing family tail (enum over enum, and enum over a sum).
 s" ENUM tdcolor red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdcolor`\n" >str
-s" tdcolor" s" duplicate family" TDT-AT
+s" tdcolor" >str s" duplicate family" >str TDT-AT
 s" ENUM tdres red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdres`\n" >str
-s" tdres" s" duplicate family" TDT-AT
+s" tdres" >str s" duplicate family" >str TDT-AT
 
 \ malformed STRUCTURE declarations: each is rejected with its reason.
 \ a dangling ptr.
 s" STRUCTURE tdpptr<a> FIELD x ^ ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpptr`\n" >str
-s" ^" s" pointer without a pointee" TDT-AT
+s" ^" >str s" pointer without a pointee" >str TDT-AT
 s\"   = help: spell a pointer `^T`, `^` joined to the type it points at, as in `FIELD next ^node`\n" >str TDT-HAS
 \ a bad field name: uppercase.
 s" STRUCTURE tdpfc<a> FIELD X a ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpfc`\n" >str
-s" X" s" name must be a lowercase tail" TDT-AT
+s" X" >str s" name must be a lowercase tail" >str TDT-AT
 s\"   = help: write the name as a lowercase tail with no package qualifier, as in `point`\n" >str TDT-HAS
 \ a control word cannot name a variant.
 s" SUMTYPE tdscw VARIANT loop ;VARIANT ;SUMTYPE"
 s\" error[E-RESERVED-DEFINITION]: `loop` is a keyword and cannot name a definition\n" >str
-s" loop" s" reserved keyword" TDT-AT
+s" loop" >str s" reserved keyword" >str TDT-AT
 \ an empty parameter list.
 s" STRUCTURE tdpna<> FIELD x a ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpna<>`\n" >str
-s" tdpna<>" s" invalid type parameter header" TDT-AT
+s" tdpna<>" >str s" invalid type parameter header" >str TDT-AT
 \ a bad family name: another declaration's grammar keyword.
 s" STRUCTURE sumtype FIELD x n ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sumtype`\n" >str
-s" sumtype" s" reserved name" TDT-AT
+s" sumtype" >str s" reserved name" >str TDT-AT
 \ field is reserved as a variant name too (case-folded dictionary).
 s" SUMTYPE tdpv2<a> VARIANT field a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpv2`\n" >str
-s" field" s" reserved name" TDT-AT
+s" field" >str s" reserved name" >str TDT-AT
 
 \ `POLICY <name>` header clause (docs/design.md "Families and layout policies").
 
@@ -1624,59 +1624,59 @@ REJECTION:CAPTURE
 \ shape but its one, a structure included.
 s" SUMTYPE tdpolns2<a> POLICY niche-null VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpolns2`\n" >str
-s" tdpolns2" s" niche-null needs an empty variant, then one pointer field" TDT-AT
+s" tdpolns2" >str s" niche-null needs an empty variant, then one pointer field" >str TDT-AT
 s\"   = help: drop `POLICY niche-null`, or declare an empty variant, then one holding a single `^` payload\n" >str TDT-HAS
 s" SUMTYPE tdpolns3<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpolns3`\n" >str
-s" boxed" s" layout policy not yet supported" TDT-AT
+s" boxed" >str s" layout policy not yet supported" >str TDT-AT
 s\"   = help: replace `boxed` with `stack-cell-tag`, `packed-tag` or `niche-null`, or drop the `POLICY` clause\n" >str TDT-HAS
 s" ENUM tdpolns4 POLICY boxed red green ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdpolns4`\n" >str
-s" boxed" s" unknown layout policy" TDT-AT
+s" boxed" >str s" unknown layout policy" >str TDT-AT
 s" STRUCTURE tdpolns5 POLICY niche-null FIELD x n ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdpolns5`\n" >str
-s" niche-null" s" niche-null needs an empty variant, then one pointer field" TDT-AT
+s" niche-null" >str s" niche-null needs an empty variant, then one pointer field" >str TDT-AT
 \ niche-null accepts its one shape, an empty variant then one `^` field; an
 \ ENUM of two empty variants is rejected.
 s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ^u8 ;VARIANT ;SUMTYPE" 0 TDT-NEG
 s" ENUM tdpolnq2 POLICY niche-null red green ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdpolnq2`\n" >str
-s" tdpolnq2" s" niche-null needs an empty variant, then one pointer field" TDT-AT
+s" tdpolnq2" >str s" niche-null needs an empty variant, then one pointer field" >str TDT-AT
 \ unknown policy names reject (incl. the v1 non-goal `custom`).
 s" SUMTYPE tdpolun1<a> POLICY bogus VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpolun1`\n" >str
-s" bogus" s" unknown layout policy" TDT-AT
+s" bogus" >str s" unknown layout policy" >str TDT-AT
 s\"   = help: name `stack-cell-tag`, `packed-tag` or `niche-null` after `POLICY`\n" >str TDT-HAS
 s" SUMTYPE tdpolun2<a> POLICY custom VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpolun2`\n" >str
-s" custom" s" unknown layout policy" TDT-AT
+s" custom" >str s" unknown layout policy" >str TDT-AT
 \ POLICY keyword with no following name.
 s" SUMTYPE tdpolmiss<a> POLICY ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpolmiss`\n" >str
-s" tdpolmiss" s" missing layout policy name" TDT-AT
+s" tdpolmiss" >str s" missing layout policy name" >str TDT-AT
 s\"   = help: name a policy after `POLICY`: `stack-cell-tag`, `packed-tag` or `niche-null`\n" >str TDT-HAS
 \ POLICY is reserved: it may not name a family or a variant.
 s" SUMTYPE policy<a> VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `policy`\n" >str
-s" policy" s" reserved name" TDT-AT
+s" policy" >str s" reserved name" >str TDT-AT
 s" SUMTYPE tdpolrv<a> VARIANT policy a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpolrv`\n" >str
-s" policy" s" reserved name" TDT-AT
+s" policy" >str s" reserved name" >str TDT-AT
 s" NEWTYPE policy<a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `policy`\n" >str
-s" policy" s" reserved name" TDT-AT
+s" policy" >str s" reserved name" >str TDT-AT
 
 \ A self-family payload makes the family recursive and rejects with
 \ the recursive reason, not an unknown payload, in ptr, inline and bare forms.
 s" SUMTYPE tdrec1<a> VARIANT leaf a ;VARIANT VARIANT node ^tdrec1<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrec1`\n" >str
-s" tdrec1" s" invalid layout policy for recursive sum" TDT-AT
+s" tdrec1" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" SUMTYPE tdrec2<a> VARIANT node tdrec2<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrec2`\n" >str
-s" tdrec2" s" invalid layout policy for recursive sum" TDT-AT
+s" tdrec2" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" SUMTYPE tdrec3 VARIANT self tdrec3 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrec3`\n" >str
-s" tdrec3" s" invalid layout policy for recursive sum" TDT-AT
+s" tdrec3" >str s" invalid layout policy for recursive sum" >str TDT-AT
 \ the recursive reject is INDEPENDENT of the stated policy: a direct self-ref
 \ rejects the same under an explicit stack-cell-tag AND under packed-tag (packed
 \ keeps the cell width, so the width cycle is just as unrepresentable), on sum
@@ -1686,25 +1686,25 @@ s" tdrec3" s" invalid layout policy for recursive sum" TDT-AT
 \ rejects earlier — at the POLICY clause, before the self-ref.
 s" SUMTYPE tdrecpk1 POLICY packed-tag VARIANT self tdrecpk1 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrecpk1`\n" >str
-s" tdrecpk1" s" invalid layout policy for recursive sum" TDT-AT
+s" tdrecpk1" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" SUMTYPE tdrecpk2<a> POLICY packed-tag VARIANT node ^tdrecpk2<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrecpk2`\n" >str
-s" tdrecpk2" s" invalid layout policy for recursive sum" TDT-AT
+s" tdrecpk2" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" SUMTYPE tdrecsc1 POLICY stack-cell-tag VARIANT self tdrecsc1 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrecsc1`\n" >str
-s" tdrecsc1" s" invalid layout policy for recursive sum" TDT-AT
+s" tdrecsc1" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" SUMTYPE tdrecbx1<a> POLICY boxed VARIANT node tdrecbx1<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrecbx1`\n" >str
-s" boxed" s" layout policy not yet supported" TDT-AT
+s" boxed" >str s" layout policy not yet supported" >str TDT-AT
 \ mutual recursion is fail-closed: a forward reference to a not-yet-declared
 \ family is an unknown payload (no cycle can be expressed, no row leaks).
 s" SUMTYPE tdmuta VARIANT mk tdmutb ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdmuta`\n" >str
-s" tdmutb" s" unknown payload type" TDT-AT
+s" tdmutb" >str s" unknown payload type" >str TDT-AT
 \ a NON-self family payload is unchanged: still the generic unknown-payload reject.
 s" SUMTYPE tdrec5<a> VARIANT node tdother<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdrec5`\n" >str
-s" tdother" s" unknown payload type" TDT-AT
+s" tdother" >str s" unknown payload type" >str TDT-AT
 \ non-recursive payloads are unaffected: a ptr-to-concrete payload still accepts.
 package tdrp
 SUMTYPE tdrec6<a>
@@ -1771,40 +1771,40 @@ STRUCTURE cprod
 \ a bogus qualifier never resolves.
 s" SUMTYPE tdqb1 VARIANT bv nopkg:qslot ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdqb1`\n" >str
-s" nopkg:qslot" s" unknown payload type" TDT-AT
+s" nopkg:qslot" >str s" unknown payload type" >str TDT-AT
 \ a PRIVATE family in another package stays unreachable, qualified or bare.
 s" SUMTYPE tdqb2 VARIANT bv tdqp:qpriv ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdqb2`\n" >str
-s" tdqp:qpriv" s" unknown payload type" TDT-AT
+s" tdqp:qpriv" >str s" unknown payload type" >str TDT-AT
 s" SUMTYPE tdqb3 VARIANT bv qpriv ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdqb3`\n" >str
-s" qpriv" s" unknown payload type" TDT-AT
+s" qpriv" >str s" unknown payload type" >str TDT-AT
 \ malformed multi-colon tokens and non-canonical tails never split/resolve.
 s" SUMTYPE tdqb4 VARIANT bv tdqp:qslot:x ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdqb4`\n" >str
-s" tdqp:qslot:x" s" unknown payload type" TDT-AT
+s" tdqp:qslot:x" >str s" unknown payload type" >str TDT-AT
 s" SUMTYPE tdqb5 VARIANT bv tdqp:QSLOT ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdqb5`\n" >str
-s" tdqp:QSLOT" s" unknown payload type" TDT-AT
+s" tdqp:QSLOT" >str s" unknown payload type" >str TDT-AT
 \ a QUALIFIED self-reference is the same recursion as the bare spelling:
 \ private, public, ptr-wrapped and STRUCTURE field forms all reject it.
 package tdqs
 s" SUMTYPE qself VARIANT wv tdqs:qself ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qself`\n" >str
-s" tdqs:qself" s" invalid layout policy for recursive sum" TDT-AT
+s" tdqs:qself" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" SUMTYPE qselfr VARIANT wv ^tdqs:qselfr ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfr`\n" >str
-s" tdqs:qselfr" s" invalid layout policy for recursive sum" TDT-AT
+s" tdqs:qselfr" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" SUMTYPE qselfa<a> VARIANT wv tdqs:qselfa<a> ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfa`\n" >str
-s" tdqs:qselfa" s" invalid layout policy for recursive sum" TDT-AT
+s" tdqs:qselfa" >str s" invalid layout policy for recursive sum" >str TDT-AT
 s" STRUCTURE qsprod FIELD child tdqs:qsprod ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `qsprod`\n" >str
-s" tdqs:qsprod" s" type cannot recursively name its owner" TDT-AT
+s" tdqs:qsprod" >str s" type cannot recursively name its owner" >str TDT-AT
 public
 s" SUMTYPE qselfp VARIANT wv tdqs:qselfp ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `qselfp`\n" >str
-s" tdqs:qselfp" s" invalid layout policy for recursive sum" TDT-AT
+s" tdqs:qselfp" >str s" invalid layout policy for recursive sum" >str TDT-AT
 ;package
 
 \ declaration rejection record: declaration-shaped, through the standard
@@ -1812,39 +1812,39 @@ s" tdqs:qselfp" s" invalid layout policy for recursive sum" TDT-AT
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" NEWTYPE tdfoo<a,b>" 70 TDT-NEG
-REJECTION:BUFFER$ >str s\" \"code\":\"E-BAD-DECLARATION\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"message\":\"bad newtype declaration `tdfoo`\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"token\":\"tdfoo\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"label\":\"duplicate family\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"help\":\"rename the family: this package already declares a family with this name\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"declared_effect\"" >str CONTAINS? TFALSE
-REJECTION:BUFFER$ >str s\" \"definition_source\"" >str CONTAINS? TFALSE
-REJECTION:BUFFER$ >str s\" \"return_stack\"" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"message\":\"bad newtype declaration `tdfoo`\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"token\":\"tdfoo\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"label\":\"duplicate family\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"help\":\"rename the family: this package already declares a family with this name\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"declared_effect\"" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"definition_source\"" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"return_stack\"" >str CONTAINS? TFALSE
 REJECTION:BUFFER-OFF  false REJECTION:JSON !
 \ prose form names the declaration kind and reason.
 s" SUMTYPE tdvd2<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdvd2`\n" >str
-s" ok" s" duplicate variant" TDT-AT
+s" ok" >str s" duplicate variant" >str TDT-AT
 \ a rejection names the source token, not storage the declaration's rollback
 \ scrubs.
 s" ENUM tdcol2 DERIVE eq red tag blue ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdcol2`\n" >str
-s" tag" s" variant name collides with a derived word" TDT-AT
+s" tag" >str s" variant name collides with a derived word" >str TDT-AT
 \ the enum kind token flows into the same declaration-shaped prose record.
 s" ENUM tdediag red red ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdediag`\n" >str
-s" red" s" duplicate variant" TDT-AT
+s" red" >str s" duplicate variant" >str TDT-AT
 \ A policy rejection flows into the same declaration-shaped prose record.
 s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdpoldg`\n" >str
-s" boxed" s" layout policy not yet supported" TDT-AT
+s" boxed" >str s" layout policy not yet supported" >str TDT-AT
 \ A private SUMTYPE's generated word whose name is taken is placed at the
 \ family and named as its word.
 package tdpq private
 : TDHUE-RED ( -- n ) 1 ;
 s" SUMTYPE tdhue VARIANT red ;VARIANT VARIANT blue ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdhue`\n" >str
-s" tdhue" s" generated declaration already defined" TDT-AT
+s" tdhue" >str s" generated declaration already defined" >str TDT-AT
 s\" = word: TDHUE-RED\n" >str TDT-HAS
 ;package
 
@@ -1972,25 +1972,25 @@ s" package tdrv"
 \ `DERIVE hash` is accepted, pinned positively below.
 s" ENUM tdrb2 DERIVE order aa bb ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb2`\n" >str
-s" order" s" derive feature not yet supported" TDT-AT
+s" order" >str s" derive feature not yet supported" >str TDT-AT
 s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb3`\n" >str
-s" frobnicate" s" unknown derive feature" TDT-AT
+s" frobnicate" >str s" unknown derive feature" >str TDT-AT
 s" ENUM tdrb4 DERIVE ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb4`\n" >str
-s" ;ENUM" s" unknown derive feature" TDT-AT
+s" ;ENUM" >str s" unknown derive feature" >str TDT-AT
 \ a feature token right after the clause reads as a feature (a repeated one
 \ rejects); a variant spelled like a derived word follows another variant and
 \ collides.
 s" ENUM tdrb7 DERIVE eq other eq ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb7`\n" >str
-s" eq" s" variant name collides with a derived word" TDT-AT
+s" eq" >str s" variant name collides with a derived word" >str TDT-AT
 
 \ rollback: a REJECTED derive declaration leaves no residue — the same family
 \ name registers cleanly afterwards and its derived words work.
 s" ENUM tdrb9 DERIVE eq bad eq ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdrb9`\n" >str
-s" eq" s" variant name collides with a derived word" TDT-AT
+s" eq" >str s" variant name collides with a derived word" >str TDT-AT
 ENUM tdrb9 DERIVE eq aa bb ;ENUM
 : TDRB9-EQ ( -- bool ) TDRB9:AA TDRB9:BB TDRB9:EQ ;
 TDRB9-EQ TFALSE
@@ -2050,19 +2050,19 @@ s" undefine TDPV:EQ"
 \ and the sum-variant name collision.
 s" SUMTYPE tdsb1 DERIVE eq VARIANT hold ^u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb1`\n" >str
-s" ^u8" s" pointer payloads have no derived equality" TDT-AT
+s" ^u8" >str s" pointer payloads have no derived equality" >str TDT-AT
 s\"   = help: drop `eq` and `hash` from `DERIVE`, or give the payload a type that is not a pointer\n" >str TDT-HAS
 s" SUMTYPE tdsb2<a> DERIVE eq VARIANT hold a ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb2`\n" >str
-s" eq" s" derive requires a concrete (arity 0) family" TDT-AT
+s" eq" >str s" derive requires a concrete (arity 0) family" >str TDT-AT
 s\"   = help: drop `eq` and `hash` from `DERIVE`, or declare the family with no type parameters\n" >str TDT-HAS
 s" SUMTYPE tdsb3 DERIVE eq VARIANT hold tdown ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb3`\n" >str
-s" tdown" s" payload type has no derived equality" TDT-AT
+s" tdown" >str s" payload type has no derived equality" >str TDT-AT
 s\"   = help: give the payload an integer type, or drop `eq` and `hash` from `DERIVE`\n" >str TDT-HAS
 s" STRUCTURE tdsb4 DERIVE eq FIELD cc tdrw ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdsb4`\n" >str
-s" tdrw" s" field family must also derive eq" TDT-AT
+s" tdrw" >str s" field family must also derive eq" >str TDT-AT
 s\"   = help: add `DERIVE eq` to the field's family, or drop `eq` from this `DERIVE`\n" >str TDT-HAS
 \ an OPAQUE family's derived words are private to its package.
 package tdsbo
@@ -2071,17 +2071,17 @@ STRUCTURE inner OPAQUE DERIVE eq hash FIELD u n ;STRUCTURE
 ;package
 s" STRUCTURE tdsb7 DERIVE eq FIELD w tdsbo:inner ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdsb7`\n" >str
-s" tdsbo:inner" s" field family's derived words are private to its package" TDT-AT
+s" tdsbo:inner" >str s" field family's derived words are private to its package" >str TDT-AT
 s\"   = help: declare the field's family in a public section of its package, or drop `eq` and `hash` from `DERIVE`\n" >str TDT-HAS
 s" SUMTYPE tdsb5 DERIVE eq VARIANT eq n ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb5`\n" >str
-s" eq" s" variant name collides with a derived word" TDT-AT
+s" eq" >str s" variant name collides with a derived word" >str TDT-AT
 s\"   = help: rename the variant: under `DERIVE` the names `eq`, `hash` and `tag` are taken\n" >str TDT-HAS
 
 \ rollback: a rejected derive leaves no residue; the name redeclares clean.
 s" SUMTYPE tdsb6 DERIVE eq VARIANT hold ^u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdsb6`\n" >str
-s" ^u8" s" pointer payloads have no derived equality" TDT-AT
+s" ^u8" >str s" pointer payloads have no derived equality" >str TDT-AT
 SUMTYPE tdsb6 DERIVE eq VARIANT hold n ;VARIANT ;SUMTYPE
 : TDSB6-EQ ( -- bool ) 4 TDSB6:HOLD 4 TDSB6:HOLD TDSB6:EQ ;
 TDSB6-EQ TTRUE
@@ -2302,16 +2302,16 @@ TDBY-SH TFALSE
 \ a sum variant named hash collides; hash-only ptr/field gates still fire.
 s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdhb1`\n" >str
-s" order" s" derive feature not yet supported" TDT-AT
+s" order" >str s" derive feature not yet supported" >str TDT-AT
 s" SUMTYPE tdhb2 DERIVE hash VARIANT hash n ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdhb2`\n" >str
-s" hash" s" variant name collides with a derived word" TDT-AT
+s" hash" >str s" variant name collides with a derived word" >str TDT-AT
 s" SUMTYPE tdhb3 DERIVE hash VARIANT hold ^u8 ;VARIANT ;SUMTYPE"
 s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdhb3`\n" >str
-s" ^u8" s" pointer payloads have no derived equality" TDT-AT
+s" ^u8" >str s" pointer payloads have no derived equality" >str TDT-AT
 s" STRUCTURE tdhb4 DERIVE hash FIELD cc tdrw ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdhb4`\n" >str
-s" tdrw" s" field family must also derive hash" TDT-AT
+s" tdrw" >str s" field family must also derive hash" >str TDT-AT
 s\"   = help: add `DERIVE hash` to the field's family, or drop `hash` from this `DERIVE`\n" >str TDT-HAS
 
 \ A family-typed field or payload compares through its family's EQ and hashes
@@ -2345,8 +2345,8 @@ TDFO-NEQ TFALSE
 REJECTION:CAPTURE
 s" STRUCTURE tdfb DERIVE hash FIELD c tdrv ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdfb`\n" >str
-s" tdrv" s" field family must also derive hash" TDT-AT
-REJECTION:BUFFER$ >str s" field family must also derive hash" >str CONTAINS? TTRUE
+s" tdrv" >str s" field family must also derive hash" >str TDT-AT
+REJECTION:BUFFER$ s" field family must also derive hash" >str CONTAINS? TTRUE
 
 \ A full-mode ENUM builds its derived words at commit, once its FIELD rows are
 \ committed, so the declaration below is the whole setup.
@@ -2378,7 +2378,7 @@ TDNU-HASH-ORDER TFALSE
 \ A pointer field rejects at its type, as a SUMTYPE pointer payload does.
 s" ENUM tdnu-bad DERIVE eq VARIANT hold FIELD raw ^u8 ;VARIANT ;ENUM"
 s\" error[E-BAD-DECLARATION]: bad enum declaration `tdnu-bad`\n" >str
-s" ^u8" s" pointer payloads have no derived equality" TDT-AT
+s" ^u8" >str s" pointer payloads have no derived equality" >str TDT-AT
 
 \ typed locals for family types: a bare arity-0 family tail is a
 \ legal {: x:fam :} annotation. Enum-tier layouts (W=1 sum/enum) assert the
@@ -2462,20 +2462,20 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ reads, and the signature's own arity diagnostic is what comes out.
 REJECTION:CAPTURE
 s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\"   = help: give `tdres` 2 type arguments\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = help: give `tdres` 2 type arguments\n" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-MISMATCH]: TDLR1 ends with tdlnom on the stack; its signature promises n\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"   = expected: n\n  = found: tdlnom\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR1 ends with tdlnom on the stack; its signature promises n\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-MISMATCH]: TDLR2 ends with tdlnom on the stack; its signature promises n\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"   = expected: n\n  = found: tdlnom\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR2 ends with tdlnom on the stack; its signature promises n\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" >str CONTAINS? TTRUE
 \ enum-tier annotation term on the EXPECTED side of the :} bind check.
 REJECTION:CAPTURE
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-MISMATCH]: `:}` takes tdlv; the stack holds tdlp\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"   = expected: tdlv\n  = found: tdlp\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: `:}` takes tdlv; the stack holds tdlp\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: tdlv\n  = found: tdlp\n" >str CONTAINS? TTRUE
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
 \ real package path; checker mirror mutation is not namespace authority.
 package tdlrpk
@@ -2484,8 +2484,8 @@ NEWTYPE tdlrfam
 ;package
 REJECTION:CAPTURE
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-MISMATCH]: TDLR4 ends with tdlrpk:tdlrfam on the stack; its signature promises n\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"   = expected: n\n  = found: tdlrpk:tdlrfam\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR4 ends with tdlrpk:tdlrfam on the stack; its signature promises n\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpk:tdlrfam\n" >str CONTAINS? TTRUE
 
 \ Same row, but the package was declared in UPPER case (TDLR4's `tdlrpk` is
 \ already lowercase). A family stores the package name as the source `package`
@@ -2499,20 +2499,20 @@ NEWTYPE tdlrfamu
 ;package
 REJECTION:CAPTURE
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-MISMATCH]: TDLR5 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" found: TDLRPKU:tdlrfamu" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR5 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" >str CONTAINS? TFALSE
 REJECTION:CAPTURE
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-MISMATCH]: TDLR6 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" found: TDLRPKU:tdlrfamu" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR6 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" >str CONTAINS? TFALSE
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"expected\":\"tdlrpku:tdlrfamu\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"expected\":\"TDLRPKU:tdlrfamu\"" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu\"" >str CONTAINS? TFALSE
 false REJECTION:JSON !
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
@@ -2520,9 +2520,9 @@ false REJECTION:JSON !
 package tdlrpku
 REJECTION:CAPTURE
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" error[E-MISMATCH]: TDLR8 ends with tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\"   = expected: n\n  = found: tdlrfamu\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" found: tdlrpku:tdlrfamu" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR8 ends with tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrfamu\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: tdlrpku:tdlrfamu" >str CONTAINS? TFALSE
 ;package
 REJECTION:CAPTURE
 
@@ -2537,11 +2537,11 @@ SUMTYPE tdlrjs VARIANT keep n ;VARIANT ;SUMTYPE
 ;package
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"family\":\"tdlrjg\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"family\":\"tdlrjg\"" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"family\":\"tdlrjp:tdlrjs\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"family\":\"tdlrjs\"" >str CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"family\":\"tdlrjs\"" >str CONTAINS? TFALSE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 
@@ -2575,8 +2575,8 @@ s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 \ tdpbopt<tdpbw2>; test/type-ctor-suite.f CLFC-RT-SOME proves that width.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"inferred\":\"n -- tdpbopt<tdpbw2>\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"inferred\":\"n -- tdpbopt<tdpbw2>\"" >str CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2603,18 +2603,18 @@ s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUI
 \ test/type-ctor-suite.f CN-OPEN pins the real load.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 \ TDNA1's expected renders tdnres<tdnw2,n> whole: its width-3 instance has its
 \ tag at slot 2, so the full run compacts to the sum type.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"expected\":\"tdnres<tdnw2,n>\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n>\"" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ >str s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s\" \"family\":\"tdnres\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"family\":\"tdnres\"" >str CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2646,13 +2646,13 @@ s" cast: TDN-CELL ( n -- tdnote )" 0 TDT-NEG
 \ A base never declared is rejected as an unknown type is.
 s" NEWTYPE tdbad tdmissing-type"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdbad`\n" >str
-s" tdmissing-type" s" unknown type" TDT-AT
+s" tdmissing-type" >str s" unknown type" >str TDT-AT
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n" >str TDT-HAS
 \ A base's letters are not the previous declaration's header parameters.
 s\" STRUCTURE tdwhead<a,q> FIELD x a ;STRUCTURE\nNEWTYPE tdwnohead read-view<q,q,a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdwnohead`\n" >str
-s" q" s" unknown type" TDT-AT
-REJECTION:BUFFER$ >str s" error[" >str COUNT-SUB 1 T=
+s" q" >str s" unknown type" >str TDT-AT
+REJECTION:BUFFER$ s" error[" >str COUNT-SUB 1 T=
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n" >str TDT-HAS
 \ The verifier replays a base on the name's line as the load registers it.
 : TDWR-VERIFY ( -- )

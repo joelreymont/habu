@@ -43,26 +43,26 @@ s" ab" SPO str> nip 2 T=
 \ split-str anywhere but a file's first line is rejected at its place.
 REJECTION:CAPTURE
 s" split-str" >str TEST-EVAL:RC 70 T=
-REJECTION:BUFFER$ >str s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" split-str-test.f" >str 20 s\" s\" split-str\" >str TEST-EVAL:RC" >str T-PLACED
-REJECTION:BUFFER$ >str s\"   = evaluated: split-str\n" >str CONTAINS? TTRUE
-REJECTION:BUFFER$ >str s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" split-str-test.f" >str 20 s\" s\" split-str\" >str TEST-EVAL:RC" >str T-PLACED
+REJECTION:BUFFER$ s\"   = evaluated: split-str\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" >str CONTAINS? TTRUE
 
 \ tools/check.f's verifier places it at split-str with its help, as the load does.
 : SPC-RUN ( -- )
-   s" split-str-check" E2E-TREE:TREE
-   E2E-TREE:ROOT$ >str FS:CLEANUP-TREE+
-   s" test/split-str-late.f" E2E-TREE:AT-A >str s\" : SPC ( -- ) ;\nsplit-str\n" >str FS:WRITE-ALL
-   s" tools/check.f" E2E-TREE:ARGS
+   s" split-str-check" >str E2E-TREE:TREE
+   E2E-TREE:ROOT$ FS:CLEANUP-TREE+
+   s" test/split-str-late.f" >str E2E-TREE:AT-A s\" : SPC ( -- ) ;\nsplit-str\n" >str FS:WRITE-ALL
+   s" tools/check.f" >str E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+
    s" test/split-str-late.f" >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ str> E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
+   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
 SPC-RUN
 E2E-TREE:RC@ 70 T=
-E2E-TREE:ERR$ >str s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" >str CONTAINS? TTRUE
-E2E-TREE:ERR$ >str s" split-str-late.f" >str 1 s" split-str" >str T-PLACED
-E2E-TREE:ERR$ >str s" ^^^^^^^^^ it takes effect only alone on the first line of a file loaded by name" >str CONTAINS? TTRUE
-E2E-TREE:ERR$ >str s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" >str CONTAINS? TTRUE
+E2E-TREE:ERR$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" >str CONTAINS? TTRUE
+E2E-TREE:ERR$ s" split-str-late.f" >str 1 s" split-str" >str T-PLACED
+E2E-TREE:ERR$ s" ^^^^^^^^^ it takes effect only alone on the first line of a file loaded by name" >str CONTAINS? TTRUE
+E2E-TREE:ERR$ s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" >str CONTAINS? TTRUE
 
 \ The verifier reads the marker as the load does.
 : SPW-ON ( -- )
