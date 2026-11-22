@@ -177,7 +177,7 @@ private
       x86-64-pc-windows-msvc OF CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH ENDOF
    ;MATCH ;
 
-: LABEL ( profile-id -- ^u8 n )
+: LABEL ( profile-id -- str )
    MATCH profile-id
       aarch64-apple-darwin OF s" aarch64-apple-darwin" ENDOF
       aarch64-unknown-linux-gnu OF s" aarch64-unknown-linux-gnu" ENDOF
@@ -210,7 +210,7 @@ private
    found false ;
 
 \ The profile NAMES spells as the name and true; else false over a filler.
-: FIND ( ^u8 n [ profile-id -- ^u8 n ] -- profile-id bool )
+: FIND ( str [ profile-id -- str ] -- profile-id bool )
    {: name:^ size:n names :}
    RTARGET-PROFILE--ID:AARCH64-APPLE-DARWIN false
    [: name size names FIND-STEP ;] EACH-PROFILE ;
@@ -220,7 +220,7 @@ private
    ['] PLATFORM-NAME FIND ;
 
 \ A platform name's or a triple's profile and true; else false over a filler.
-: PROFILE ( ^u8 n -- profile-id bool )
+: PROFILE ( str -- profile-id bool )
    {: name:^ size:n :}
    name size PLATFORM if true exit then drop
    name size ['] LABEL FIND ;
@@ -237,7 +237,7 @@ private
    [: LABEL SAY-ITEM ;] EACH-PROFILE drop ;
 
 \ The name came from a caller at run time, so the rejection has no source token.
-: UNKNOWN ( ^u8 n -- )
+: UNKNOWN ( str -- )
    {: name:^ size:n :}
    s" E-UNKNOWN-TARGET" REJECTION:OPEN
    96 REJECTION:EMIT1  name size REJECTION:EMIT-STR  96 REJECTION:EMIT1
@@ -288,7 +288,7 @@ public
 \ True for a platform name, one per target; false for a triple.
 : PLATFORM? ( str -- bool ) PLATFORM nip ;
 
-: RESOLVE ( ^u8 n -- resolved-target )
+: RESOLVE ( str -- resolved-target )
    {: name:^ size:n :}
    name size PROFILE 0= if drop name size UNKNOWN then
    dup DEFAULT-FEATURES RTARGET-RESOLVED--TARGET:MAKE ;

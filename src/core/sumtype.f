@@ -721,7 +721,7 @@ private
    PKRESET ;
 : TDECL-NEXT ( -- str ) NEXT-SIG-TOK ;
 
-defer TDECL-NAME-PREFLIGHT-XT ( ^u8 n -- )
+defer TDECL-NAME-PREFLIGHT-XT ( str -- )
 
 \ --- variant payload elements -> schema nodes (type-schema.f header): positional
 \ letter params within arity, n/f/r and concrete CT cell types, and `^T`.
@@ -1184,7 +1184,7 @@ TERM-SCHEMA-INSTALL
 \ a name that may arrive later and text past the type included, runs FAIL
 \ with the token, the reason, the code and the STG- reason when no stored
 \ form holds the type, else 0.
-: READ-TYPE ( ^u8 n [ ^u8 n ^u8 n n n -- ] [ ^u8 n -- ] -- n )
+: READ-TYPE ( str [ str str n n -- ] [ str -- ] -- n )
    {: a:^ u:n fail letter :}
    a SB!  a u BYTE-SPAN? IF u ELSE 0 THEN SL !
    READ-LETTER {: la:^ lu:n :}
@@ -1563,17 +1563,17 @@ defer TDECL-TXN-XT ( [ -- renders parses nominal ] -- renders parses nominal )
 
 defer TDECL-CAPACITY-PREFLIGHT-XT ( str n -- )
 
-CAST: AS-STORAGE-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-STORAGE-RUN ( n -- [ str n n str -- n ] )
 
 : TDECL-CHILD-RUN ( str n n str -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-STORAGE-RUN execute ;
 
-CAST: AS-OPEN ( n -- [ ^u8 n n -- ] )
+CAST: AS-OPEN ( n -- [ str n -- ] )
 
 : TDECL-DEFINE-RUN ( str n -- )
    data-base PROVIDED-XT:DEFINE-CELL + @ AS-OPEN execute ;
 
-CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
+CAST: AS-ITEM ( n -- [ str n n -- ] )
 
 \ Appends to the open definition the item of ITEM-ABI op OP, spelled A U,
 \ with argument V.
@@ -1587,7 +1587,7 @@ CAST: AS-ITEM ( n -- [ ^u8 n n n -- ] )
 
 \ Makes the stored child NAME over TYPE, as TDECL-CHILD makes a child, and
 \ answers its effect handle.
-: TDECL-STORED-CHILD ( ^u8 n ^u8 n -- n )
+: TDECL-STORED-CHILD ( str str -- n )
    {: na:^ nu:n ta:^ tu:n :}
    na nu CHILD-ABI:STORED 0 ta tu TDECL-CHILD-RUN ;
 

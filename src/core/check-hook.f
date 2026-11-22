@@ -100,7 +100,7 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
    REJECTION:SOURCE$ drop off + 5 a REJECTION:CLOSER! ;
 
 \ ROWS-ARM, then CLOSER-ARM whatever ROWS-ARM answered.
-: BODY-ARM ( ^u8 n -- bool )
+: BODY-ARM ( str -- bool )
    {: a:^ u:n :}
    a u ROWS-ARM  a u CLOSER-ARM ;
 
@@ -226,8 +226,8 @@ variable RAW-REG
 variable DECL-REG
 variable DEFCAST-REG
 variable ROW-REG
-CAST: REG-XT ( n -- [ ^u8 n ^u8 n -- ] )
-CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
+CAST: REG-XT ( n -- [ str str -- ] )
+CAST: ROW-XT ( n -- [ str str -- bool ] )
 
 
 \ The raw registrar's field entry: a created word or constant takes its text
@@ -261,7 +261,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 
 \ Declares a TRUSTED: definition's row NAME SIG as DECLARED does and answers
 \ whether the checker rejected it.
-: ROW-DECLARED ( ^u8 n ^u8 n -- bool )
+: ROW-DECLARED ( str str -- bool )
    {: na:^ nu:n sa:^ su:n :}
    na nu sa su ROW-REG @ ROW-XT execute {: rejected:bool :}
    na nu PENDING-FACTS
@@ -291,7 +291,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 
 \ Type t's bytes in storage: whole cells only when WHOLE, else as DYNAMIC
 \ admits, which takes `u8` too.
-: TYPE-BYTES ( ^u8 n bool -- n bool )
+: TYPE-BYTES ( str bool -- n bool )
    {: ta:^ tu:n whole:bool :}
    whole 0= if ta tu CHECKER-DYNAMIC-INFO exit then
    ta tu CHECKER-STORAGE-INFO {: w:n ok:bool :}
@@ -313,7 +313,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 
 \ The declaration registrars' field entries: each runs its registrar, then lays
 \ the declared name's facts.
-: DECLARED ( ^u8 n ^u8 n -- )
+: DECLARED ( str str -- )
    {: na:^ nu:n sa:^ su:n :}
    na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
 
@@ -322,7 +322,7 @@ CAST: ROW-XT ( n -- [ ^u8 n ^u8 n -- bool ] )
 \ its facts, and answers its body value and effect handle.
 \ TYPE is read only for the shapes that answer `^t`, and not for a STORED
 \ child whose PARAM is its type's node.
-: CHILD ( ^u8 n n n ^u8 n -- n n )
+: CHILD ( str n n str -- n n )
    {: na:^ nu:n shape:n param:n ta:^ tu:n :}
    shape STORED-SHAPE? if
       na nu ta tu shape
@@ -574,7 +574,7 @@ variable DENSE-N
 
 \ An effect EFFECT? admits as a signature, `( n -- n )`, in the renderer's
 \ buffer past its recorded text, where the next rendering replaces it.
-: EFFECT-TEXT ( n -- ^u8 n ) {: node:n :}
+: EFFECT-TEXT ( n -- str ) {: node:n :}
    node EFFECT-ROWS 2drop {: din:n dout:n :}
    REJECTION:TEXT-LEN @ {: at:n :}
    din dout 0 0 RES-FALSE REND-FACTS {: buf:^ len:n :}
@@ -582,7 +582,7 @@ variable DENSE-N
    buf at +  len at -  THROUGH-CLOSE ;
 
 
-: DEFERRED ( ^u8 n -- )
+: DEFERRED ( str -- )
    {: a:^ u:n :}
    a u CHECKER-DEFER  a u PENDING-FACTS ;
 
@@ -609,7 +609,7 @@ public
 \ counted and the answer is -1, which publishes the definition (zero
 \ unpublishes) so its name resolves for later definitions; the driver exits
 \ nonzero via MULTI-ERR-END.
-: DEFINITION ( ^u8 n -- n )
+: DEFINITION ( str -- n )
    {: a:^ u:n :}
    a u FIRST-TOKEN {: na:^ nu:n :}
    na nu CHECKER-CERT-DUP? if na nu  na nu SOURCE-NAME$  REJECT-DUPLICATE then

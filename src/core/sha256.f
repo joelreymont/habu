@@ -161,7 +161,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    cv SHA-TAIL-U@ n + cv SHA-TAIL-U! ;
 
 \ top the tail up from [a,u) and compress it when it fills; answers what is left
-: SHA-FILL-TAIL ( ^u8 str -- ^u8 n ) {: ctx a u:n :}
+: SHA-FILL-TAIL ( ^u8 str -- str ) {: ctx a u:n :}
    ctx CELL-VIEW {: cv :}
    cv SHA-TAIL-U@ 0 = if a u exit then
    u 0 = if a u exit then
@@ -176,7 +176,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    a need ZPTR+  u need - ;
 
 \ compress every whole block of [a,u); answers the short span left over
-: SHA-BLOCKS ( ^u8 ^u8 n -- ^u8 n )
+: SHA-BLOCKS ( ^u8 str -- str )
    {: ctx a u:n :}
    u $40 / {: nb:n :}
    ctx a nb SHA-COMPRESS
@@ -207,7 +207,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    ctx ctx SHA-PBLK-A nblk SHA-COMPRESS
    8 0 DO  cv i SHA-H@  out i 4 * ZPTR+ BE32!  LOOP ;
 
-: SHA256-IN ( ^u8 ^u8 n ^u8 -- ) {: ctx a u:n out :}
+: SHA256-IN ( ^u8 str ^u8 -- ) {: ctx a u:n out :}
    ctx SHA256-BEGIN
    ctx a u SHA256-FEED
    ctx out SHA256-END ;

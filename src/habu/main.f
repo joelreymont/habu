@@ -38,7 +38,7 @@ ENUM route load plain ;ENUM
 : SEP$ ( -- str ) s" --" ;
 
 \ Argument idx of an argv vector, a NUL-terminated string.
-: ARG ( ^^u8 n -- ^u8 n )
+: ARG ( ^^u8 n -- str )
    ptr-field @ dup ZLEN ;
 
 \ The open record has no place: no source holds an argument or stdin.
@@ -52,7 +52,7 @@ ENUM route load plain ;ENUM
    REJECTION:EMIT-STR ;
 
 \ The unknown flag a u.
-: USAGE ( ^u8 n -- ) {: a:^ u:n :}
+: USAGE ( str -- ) {: a:^ u:n :}
    s" E-HB-USAGE" REJECTION:OPEN
    s" unknown flag `" REJECTION:EMIT-STR  a u REJECTION:EMIT-STR  96 REJECTION:EMIT1
    USAGE-HELP  EXIT-STATUS:USAGE REJECT ;
@@ -79,7 +79,7 @@ ENUM route load plain ;ENUM
 \ Any other argument starting with `-` is an unknown flag (USAGE).
 \ Anything else, `--` included, is the program file. Past argv[1] only `--` is
 \ special: `--load a.f --x` loads a file named `--x`.
-: ROUTE ( ^u8 n -- route ) {: a:^ u:n :}
+: ROUTE ( str -- route ) {: a:^ u:n :}
    a u LOAD$ STR= if construct route load exit then
    a u SEP$ STR= if construct route plain exit then
    u 0 > if a c@ DASH = if a u USAGE then then
@@ -107,7 +107,7 @@ variable USED
 \ Bytes one read asks for: a Linux pipe's default capacity.
 $10000 constant READ-SIZE
 
-: APPEND ( ^u8 n -- ) {: a:^ u:n :}
+: APPEND ( str -- ) {: a:^ u:n :}
    USED @ u + TEXT-RESERVE
    a USED @ TEXT u BYTE-COPY
    USED @ u + USED ! ;
@@ -124,7 +124,7 @@ $10000 constant READ-SIZE
 
 \ One `s\" <path>" <word>` row. Through script-required the registry loads
 \ each file in its own include frame and skips one the engine holds.
-: ROW ( ^u8 n ^u8 n -- ) {: path:^ u:n word:^ w:n :}
+: ROW ( str str -- ) {: path:^ u:n word:^ w:n :}
    S\" s\\\" " APPEND
    u 0 ?do path i + APPEND-ESCAPED loop
    S\" \" " APPEND  word w APPEND  NL 1 APPEND ;
@@ -154,7 +154,7 @@ $10000 constant READ-SIZE
    data-base PROGRAM-FILE-CELL + 0 ptr-field ;
 
 \ The stream for files [first, end): one row per file, a newline between.
-: STREAM ( ^^u8 n n -- ^u8 n ) {: argv:^ first:n end:n :}
+: STREAM ( ^^u8 n n -- str ) {: argv:^ first:n end:n :}
    START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
@@ -162,7 +162,7 @@ $10000 constant READ-SIZE
    loop
    0 TEXT USED @ ;
 
-: STDIN ( -- ^u8 n )
+: STDIN ( -- str )
    START-STREAM
    begin 0 STEP until
    0 TEXT USED @ SHEBANG

@@ -264,7 +264,7 @@ public
 \ Exact spelling: a body registered under a different case is a different row
 \ and must say so. The index lives on the stack: a lookup leaves no state in
 \ the image.
-: FIND ( ^u8 n -- n ) {: a:^ u:n :}
+: FIND ( str -- n ) {: a:^ u:n :}
    0
    BEGIN dup ROW-N @ < WHILE
       dup NAME$ a u CORE-STR= IF EXIT THEN

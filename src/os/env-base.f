@@ -57,7 +57,7 @@ $2D constant ENV-DASH
 package ENV-INPUT
 public
 
-: CURRENT$ ( ^u8 n -- ^u8 n )
+: CURRENT$ ( str -- str )
    {: query:^ queryu:n :}
    ENVP-BASE 0= if NULL$ exit then
    0 begin dup ENVP 0= 0= while
@@ -68,7 +68,7 @@ public
 
 ;package
 
-: GETENV ( ^u8 n -- ^u8 n )
+: GETENV ( str -- str )
    {: query:^ queryu:n :}
    query queryu ENV-INPUT:CURRENT$ {: value:^ valueu:n :}
    query queryu value valueu COMPILE-READS:ENV+
@@ -102,7 +102,7 @@ variable TPU
 : TMP-PATH-COPY-SRC ( str -- )
    0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;
 
-: TMP-PATH ( ^u8 n -- ^u8 n )
+: TMP-PATH ( str -- str )
    TPU ! TPS!
    s" TMPDIR" GETENV dup 0 = if drop drop s" /tmp" then TPQ ! TPP !
    TPU @ TMP-PATH-CHECK

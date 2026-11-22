@@ -88,7 +88,7 @@ public
 
 \ FPRIM-L only for a body that emits no BL or BLR of its own; any other body
 \ uses FPRIM, whose frame preserves the caller's return address in x30.
-: FPRIM-L ( ^u8 n [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
+: FPRIM-L ( str [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
    FP-ARGS
    LBL FPL !  LBL FPE !
    FP-REG drop
@@ -2360,7 +2360,7 @@ package LIBC-OS
       ENGINE-EMIT:TARGET-UNKNOWN
    then then ;
 
-: SLOT, ( ^u8 n -- )   16 DATA RBASE-CELL LDR,  SLOT-AT, ;
+: SLOT, ( str -- )   16 DATA RBASE-CELL LDR,  SLOT-AT, ;
 
 \ Copy [x1, x2) of the region to the same offsets x12 bytes away, a cell at a
 \ time; x1 and x2 are 8-byte aligned. Clobbers x1, x3, x4.

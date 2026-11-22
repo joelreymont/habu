@@ -109,7 +109,7 @@ EXPORT TYPE-DECL:TDECL-NODE-CHILD
    then
    LBUF-BYTES ! LBUF-TRUE ;
 
-CAST: AS-SEAL-NAME ( n -- [ ^u8 n -- ] )
+CAST: AS-SEAL-NAME ( n -- [ str -- ] )
 
 public
 
@@ -274,7 +274,7 @@ SCRATCH-VARIABLE CLS-CAP
    at 0< if LBUF-FALSE exit then
    name nameu type typeu at MIXED-REJECT LBUF-TRUE ;
 
-: MARK-CELLS ( ^n ^u8 n -- ) {: base:^ kinds:^ width:n :}
+: MARK-CELLS ( ^n str -- ) {: base:^ kinds:^ width:n :}
    width 0 ?do
       kinds i + c@ {: class:n :}
       base i cells + {: cell:^ :}
@@ -499,13 +499,13 @@ private
 CAST: AS-ENTRY ( [ n ^n -- ^n ] -- n )
 CAST: AS-RESIZE-ENTRY ( [ n ^^n -- ] -- n )
 
-CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 
-: CHILD ( ^u8 n n n ^u8 n -- n )
+: CHILD ( str n n str -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
 \ Makes the buffer child NAME over TYPE and answers its effect handle.
-: BUFFER-CHILD ( ^u8 n ^u8 n -- n )
+: BUFFER-CHILD ( str str -- n )
    {: name:^ nameu:n type:^ typeu:n :}
    name nameu CHILD-ABI:BUFFER ['] ELEMENT AS-ENTRY
    type typeu CHILD ;
