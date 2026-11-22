@@ -77,7 +77,7 @@ variable STR-TEST-BUF2-LEN
    STR-TEST-A-CHAR SB-APPEND-C ;
 
 : STR-TEST-SB-APPEND-LEN ( n -- ) {: u:n :}
-   s" x" drop u SB-APPEND-LEN ;
+   s" x" drop u SB-APPEND ;
 
 : STR-TEST-BUILDER ( -- )
    SB-RESET
@@ -106,7 +106,7 @@ variable STR-TEST-BUF2-LEN
    s" BAD-BYTE-PLUS-RESULT ( ^u8 n -- n ) BYTE+" STR-CHECK-REJECTS
    s" BAD-BYTE-AT-RESULT ( ^u8 n -- ^u8 ) BYTE@" STR-CHECK-REJECTS
    s" BAD-BYTE-COPY-LEN ( ^u8 ^u8 off -- ) BYTE-COPY-LEN" STR-CHECK-REJECTS
-   s" BAD-SB-APPEND-LEN ( ^u8 off -- ) SB-APPEND-LEN" STR-CHECK-REJECTS
+   s" BAD-SB-APPEND-LEN ( ^u8 off -- ) SB-APPEND" STR-CHECK-REJECTS
    SB-RESET ;
 
 : STR-TEST-BUF-OVERFLOW ( -- )
@@ -401,11 +401,8 @@ CAST: STR-T-IC>RAW ( NUM:item-count -- n )
    s" SOK-INDEX ( str n -- option<NUM:index> ) STR:INDEX-OF" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
    s" SOK-SPLIT ( str n NUM:byte-off -- option<str:split> ) STR:SPLIT-NEXT" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
    s" SOK-BUF-C ( n ^u8 NUM:byte-len ^len -- ) STR:BUF-APPEND-C" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
-   s" SBAD-OFF-FOR-LEN ( ^u8 NUM:byte-off ^u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
    s" SBAD-LEN-FOR-OFF ( ^u8 NUM:byte-len n NUM:byte-len -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
-   s" SBAD-RAW-LEN ( ^u8 n ^u8 NUM:byte-len -- option<NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
    s" SBAD-RAW-OFF ( ^u8 NUM:byte-len n n -- option<str:split> ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
-   s" SBAD-OFF-FOR-INDEX ( ^u8 NUM:byte-off n -- option<NUM:index> ) STR:INDEX-OF" STR-CHECK-REJECTS
    s" SBAD-FIND-OUT ( ^u8 NUM:byte-len ^u8 NUM:byte-len -- option<NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS
    s" SBAD-BUF-C-RAW-CAP ( n ^u8 n ^len -- ) STR:BUF-APPEND-C" STR-CHECK-REJECTS ;
 

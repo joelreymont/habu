@@ -395,10 +395,10 @@ variable GDB-SKEWED
    \ PHASE ends with a value, not a call, so BUSY runs inside PHASE's frame (see
    \ GDB-PROF-PKG-SRC).
    s" : PHASE ( -- n ) BUSY 5 ;" GE-SRC-LINE
-   s" : FIND-REC ( ^u8 n -- n ) {: a:^ u:n :}" GE-SRC-LINE
+   s" : FIND-REC ( str -- n ) {: want :}" GE-SRC-LINE
    s"    -1 GDBPH-ACC !" GE-SRC-LINE
    s"    ndict@ 0 ?do i XREF-REC {: rec:^ :}" GE-SRC-LINE
-   s"       rec XREF-RETIRED? 0= if rec XREF-NAME$ str> a u STR= if i GDBPH-ACC ! then then" GE-SRC-LINE
+   s"       rec XREF-RETIRED? 0= if rec XREF-NAME$ want STR= if i GDBPH-ACC ! then then" GE-SRC-LINE
    s"    loop GDBPH-ACC @ ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
@@ -420,7 +420,7 @@ variable GDB-SKEWED
    GE-HB-RESET
    GDB-PROF-PHASE-SRC
    s" 0 prof-on GDBPH:PHASE drop prof-off" GE-SRC-LINE
-   S\" s\" PHASE\" GDBPH:FIND-REC prof-row" GE-SRC-LINE
+   S\" s\" PHASE\" >str GDBPH:FIND-REC prof-row" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler chosen row" GE-EXPECT-OK
    s" GDBPH:PHASE" s" prof-row printed no row for the word it was given" GE-EXPECT-OUT-HAS
@@ -548,7 +548,7 @@ variable GDB-SKEWED
    s" : ARM ( -- ) TARGET-XT @ DEBUG:BP+ ;" GE-SRC-LINE
    s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ SUBJECT SAVED-CODE 16 BYTE-COPY DEBUG:BP." GE-SRC-LINE
    s" ['] ARM catch . DEBUG:BP." GE-SRC-LINE
-   s" SUBJECT 16 SAVED-CODE 16 STR= if 1 else 0 then . NONE-XT @ DEBUG:BP- DEBUG:BP." GE-SRC-LINE
+   s" SUBJECT 16 >str SAVED-CODE 16 >str STR= if 1 else 0 then . NONE-XT @ DEBUG:BP- DEBUG:BP." GE-SRC-LINE
    s" VALID-XT @ DEBUG:BP- DEBUG:BP. ; CHECK ;package" GE-SRC-LINE
    s" unsupported breakpoint target" GE-HB-RUN-STDIN
    GT-OUT$ GDB-LINE$ {: at:^ atu:n :}

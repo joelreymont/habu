@@ -1663,8 +1663,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ nowhere, w.f defines a word of that name, one.f requires h.f, and two.f w.f then h.f.
 : WRITE-DERIVED ( -- )
    L$ s" derived" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
-   s\" : FILE-OBJECTS-DV ( ^u8 n -- )\n   SB-RESET SB-APPEND s\" -W\" SB-APPEND\n" SRC+
-   s\"    SB$ >str EFFECT:EMPTY define-word  postpone ; ;\ns\" FILE-OBJECTS-DX\" FILE-OBJECTS-DV\n" SRC+
+   s\" : FILE-OBJECTS-DV ( str -- )\n   SB-RESET SB-APPEND s\" -W\" >str SB-APPEND\n" SRC+
+   s\"    SB$ EFFECT:EMPTY define-word  postpone ; ;\ns\" FILE-OBJECTS-DX\" >str FILE-OBJECTS-DV\n" SRC+
    s" h.f" NEST-WRITE
    s\" : FILE-OBJECTS-DX-W ( -- ) ;\n" SRC+  s" w.f" NEST-WRITE
    s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
@@ -1675,7 +1675,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : DERIVED-REJECTED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-dr" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-DX-W`" CONTAINS? {: coded:bool :}
-   CMD:ERR$ S\" /h.f:4:21\n" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ S\" /h.f:4:26\n" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build rejects the derived name" LABEL  named TTRUE
    rc ;

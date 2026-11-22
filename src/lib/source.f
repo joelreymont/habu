@@ -120,14 +120,14 @@ public
    then
    path pathu 0 SOURCE-NO-CAP room SOURCE-READ-PATH ;
 
-: SOURCE-APPEND-BYTES ( ^u8 len ^u8 len ^len -- )
+: SOURCE-APPEND-BYTES ( str ^u8 len ^len -- )
    {: src:^ u dst:^ cap lenp:^ :}
-   u LEN>N 0 < if E-FS-CAPACITY throw then
+   u 0 < if E-FS-CAPACITY throw then
    lenp @ LEN>N 0 < if E-FS-CAPACITY throw then
    lenp @ LEN>N cap LEN>N > if E-FS-CAPACITY throw then
-   u LEN>N cap LEN>N lenp @ LEN>N - > if E-FS-CAPACITY throw then
-   src dst lenp @ LEN>N + u LEN>N BYTE-COPY
-   lenp @ LEN>N u LEN>N + >LEN lenp ! ;
+   u cap LEN>N lenp @ LEN>N - > if E-FS-CAPACITY throw then
+   src dst lenp @ LEN>N + u BYTE-COPY
+   lenp @ LEN>N u + >LEN lenp ! ;
 
 : SOURCE-APPEND-C ( n ^u8 len ^len -- )
    {: c:n dst:^ cap:len lenp:^ :}
@@ -163,10 +163,10 @@ public
 : SOURCE-QPATH-CHECK ( str -- )
    SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;
 
-: SOURCE-APPEND-QPATH ( ^u8 len ^u8 len ^len -- )
-   {: path:^ pathu:len dst:^ cap:len lenp:^ :}
-   path pathu LEN>N SOURCE-QPATH-CHECK
-   s" s" >LEN dst cap lenp SOURCE-APPEND-BYTES
+: SOURCE-APPEND-QPATH ( str ^u8 len ^len -- )
+   {: path:^ pathu:n dst:^ cap:len lenp:^ :}
+   path pathu SOURCE-QPATH-CHECK
+   s" s" dst cap lenp SOURCE-APPEND-BYTES
    SOURCE-DQ dst cap lenp SOURCE-APPEND-C
    SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
    path pathu dst cap lenp SOURCE-APPEND-BYTES

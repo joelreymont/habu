@@ -76,7 +76,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : ASCII-UPPER ( n -- n )
    dup STR-BEFORE-LOWER-A > over STR-AFTER-LOWER-Z < and if STR-SPACE - then ;
 
-: STR= ( ^u8 n ^u8 n -- bool )
+: STR= ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    u v <> if 0 0= 0= exit then
    u CELL - {: last:n :}
@@ -184,20 +184,17 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : SB-RESET ( -- )
    0 SB-LEN ! ;
 
-: SB-APPEND-LEN ( str -- ) {: a:^ u :}
+: SB-APPEND ( str -- ) {: a:^ u :}
    u SB-CHECK-ROOM
    a SB-BUF SB-LEN @ + u BYTE-COPY
    SB-LEN @ u + SB-LEN ! ;
-
-: SB-APPEND ( ^u8 n -- )
-   SB-APPEND-LEN ;
 
 : SB-APPEND-C ( n -- ) {: c :}
    1 SB-CHECK-ROOM
    c SB-BUF SB-LEN @ + c!
    SB-LEN @ 1+ SB-LEN ! ;
 
-: SB$ ( -- ^u8 n )
+: SB$ ( -- str )
    SB-BUF SB-LEN @ ;
 
 : BUF-CHECK-LEN ( len len ^len -- )

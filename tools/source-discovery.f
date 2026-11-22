@@ -1214,11 +1214,11 @@ $200 constant SD-STR-BIT
    s" provided" ;
 
 : SD-EMIT-EVENT ( n ^u8 len ^len -- ) {: ix:n dst:^ cap:len lenp:^ :}
-   ix SOURCE-EVENT:KIND@ SD-KIND-NAME >LEN dst cap lenp SOURCE-APPEND-BYTES
+   ix SOURCE-EVENT:KIND@ SD-KIND-NAME dst cap lenp SOURCE-APPEND-BYTES
    SD-SP dst cap lenp SOURCE-APPEND-C
    ix SOURCE-EVENT:STATE@ $30 + dst cap lenp SOURCE-APPEND-C
    SD-SP dst cap lenp SOURCE-APPEND-C
-   ix SOURCE-EVENT:PATH@ >LEN dst cap lenp SOURCE-APPEND-QPATH
+   ix SOURCE-EVENT:PATH@ dst cap lenp SOURCE-APPEND-QPATH
    SD-LF dst cap lenp SOURCE-APPEND-C ;
 
 : SD-WALK-IN ( -- )

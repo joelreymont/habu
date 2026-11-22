@@ -1131,8 +1131,8 @@ s\"   = help: write a name after `VARIANT`, as in `VARIANT none ;VARIANT`\n" >st
 \ NAME's canonical path, then TAIL.
 s" type-decl-nameless" >str E2E-TREE:TREE
 E2E-TREE:ROOT$ FS:CLEANUP-TREE+
-: TDT-CHECKED ( ^u8 n str ^u8 n ^u8 n -- )
-   {: na:^ nu:n s ha:^ hu:n ta:^ tu:n :}
+: TDT-CHECKED ( ^u8 n str str str -- )
+   {: na:^ nu:n s h t :}
    na nu >str E2E-TREE:AT-A s FS:WRITE-ALL
    s" tools/check.f" >str E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+
@@ -1140,21 +1140,20 @@ E2E-TREE:ROOT$ FS:CLEANUP-TREE+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:RC@ 70 T=
    E2E-TREE:OUT$ str> nip 0 T=
-   na nu >str E2E-TREE:AT-A SOURCE-ROOT:CANONICAL drop
-   str> {: pa:^ pu:n :}
-   SB-RESET ha hu SB-APPEND pa pu SB-APPEND ta tu SB-APPEND
-   E2E-TREE:ERR$ SB$ >str T$= ;
+   na nu >str E2E-TREE:AT-A SOURCE-ROOT:CANONICAL drop {: p :}
+   SB-RESET h SB-APPEND p SB-APPEND t SB-APPEND
+   E2E-TREE:ERR$ SB$ T$= ;
 s" test/tdt-nameless-newtype.f" s\" NEWTYPE\n" >str
-s\" error[E-BAD-DECLARATION]: bad newtype declaration\n --> "
-s\" :1:1\n  |\n1 | NEWTYPE\n  | ^^^^^^^ missing name\n  = help: write a name after `NEWTYPE`, as in `NEWTYPE meters`\n\n"
+s\" error[E-BAD-DECLARATION]: bad newtype declaration\n --> " >str
+s\" :1:1\n  |\n1 | NEWTYPE\n  | ^^^^^^^ missing name\n  = help: write a name after `NEWTYPE`, as in `NEWTYPE meters`\n\n" >str
 TDT-CHECKED
 s" test/tdt-nameless-sumtype.f" s\" SUMTYPE\n" >str
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration\n --> "
-s\" :1:1\n  |\n1 | SUMTYPE\n  | ^^^^^^^ missing name\n  = help: write a name after `SUMTYPE`, as in `SUMTYPE shape`\n\n"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration\n --> " >str
+s\" :1:1\n  |\n1 | SUMTYPE\n  | ^^^^^^^ missing name\n  = help: write a name after `SUMTYPE`, as in `SUMTYPE shape`\n\n" >str
 TDT-CHECKED
 s" test/tdt-nameless-variant.f" s\" SUMTYPE tdshape VARIANT ;SUMTYPE\n" >str
-s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdshape`\n --> "
-s\" :1:17\n  |\n1 | SUMTYPE tdshape VARIANT ;SUMTYPE\n  |                 ^^^^^^^ missing name\n  = help: write a name after `VARIANT`, as in `VARIANT none ;VARIANT`\n\n"
+s\" error[E-BAD-DECLARATION]: bad sumtype declaration `tdshape`\n --> " >str
+s\" :1:17\n  |\n1 | SUMTYPE tdshape VARIANT ;SUMTYPE\n  |                 ^^^^^^^ missing name\n  = help: write a name after `VARIANT`, as in `VARIANT none ;VARIANT`\n\n" >str
 TDT-CHECKED
 
 \ uppercase/mixed-case family names reject before storage.

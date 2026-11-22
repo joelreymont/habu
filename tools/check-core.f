@@ -512,7 +512,7 @@ private
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-EXP-APP ( str -- ) {: a:^ u:n :}
-   a u >LEN
+   a u
    CHK-EXP-OUT-U @ LEN>N u + CHK-SRC-ROOM >LEN CHK-EXP-OUT-U SOURCE-APPEND-BYTES ;
 
 : CHK-EXP-C ( n -- )
@@ -577,7 +577,7 @@ private
 
 : CHK-EXP-QPATH ( str -- ) {: a:^ u:n :}
    a u s" path" s" rename or move the file so its path holds none of them" CHK-QPATH-JUDGE
-   a u >LEN
+   a u
    CHK-EXP-OUT-U @ LEN>N u SOURCE-QPATH-BYTES + CHK-SRC-ROOM >LEN
    CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
 
@@ -755,7 +755,7 @@ private
    CHK-LF CHK-RUN-C ;
 
 : CHK-RUN-QPATH+ ( str -- ) {: a:^ u:n :}
-   a u >LEN
+   a u
    CHK-RUN-U @ u SOURCE-QPATH-BYTES + CHK-RUN-ROOM >LEN
    CHK-RUN-U SOURCE-APPEND-QPATH ;
 
@@ -785,10 +785,10 @@ private
 
 : CHK-BUILD-READER ( -- )
    CHK-LF CHK-RUN-C
-   s" : CHECK-F-READ ( str -- str ) str> {: p:^ pu:n :}" CHK-RUN-LN
-   s" p pu " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR= if" CHK-RUN-LN
+   s" : CHECK-F-READ ( str -- str ) {: p :}" CHK-RUN-LN
+   s" p " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  >str STR= if" CHK-RUN-LN
    CHK-SUBJECT-PATH CHK-RUN-QPATH+  s"  >str SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
-   s" p pu >str SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
+   s" p SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
    s" : CHECK-F-INPUT ( -- ) [: SOURCE-ROOT:CANON-OS ;] [: CHECK-F-READ ;] SOURCE-INPUT:USE ;" CHK-RUN-LN
    s" CHECK-F-INPUT" CHK-RUN-LN ;
 

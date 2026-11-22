@@ -417,19 +417,19 @@ variable ERR-U
 \ A child, whose `using` outlives its program: a used public retired by
 \ `undefine` resolves past it to the global or the live public, as the engine does.
 : SHADOW ( -- )
-   s" package TS-SHADOW public : drop ( n -- ) . ; undefine drop ;package using TS-SHADOW 1 drop " SB-APPEND ;
+   s" package TS-SHADOW public : drop ( n -- ) . ; undefine drop ;package using TS-SHADOW 1 drop " >str SB-APPEND ;
 : AMBIG ( -- )
-   s" package TS-AMB-A public : TS-AMB ( n -- ) drop ; ;package " SB-APPEND
-   s" package TS-AMB-B public : TS-AMB ( n -- ) drop ; undefine TS-AMB ;package " SB-APPEND
-   s" using TS-AMB-A using TS-AMB-B 1 TS-AMB " SB-APPEND ;
-: AFTER ( -- )   S\" s\" AFTER\" type cr" SB-APPEND ;
-: P3 ( -- )   S\" true REJECTION:JSON ! s\" abc\" + . cr" SB-APPEND ;
+   s" package TS-AMB-A public : TS-AMB ( n -- ) drop ; ;package " >str SB-APPEND
+   s" package TS-AMB-B public : TS-AMB ( n -- ) drop ; undefine TS-AMB ;package " >str SB-APPEND
+   s" using TS-AMB-A using TS-AMB-B 1 TS-AMB " >str SB-APPEND ;
+: AFTER ( -- )   S\" s\" AFTER\" type cr" >str SB-APPEND ;
+: P3 ( -- )   S\" true REJECTION:JSON ! s\" abc\" + . cr" >str SB-APPEND ;
 
 : RUNS-AFTER ( str -- ) {: code :}
-   SB$ >str 0 EXITS  s" AFTER" >str OUT-HAS?  code ERR-LACKS? ;
+   SB$ 0 EXITS  s" AFTER" >str OUT-HAS?  code ERR-LACKS? ;
 
 : REFUSES-P3 ( str -- ) {: code :}
-   SB$ >str 70 EXITS
+   SB$ 70 EXITS
    S\" \"code\":\"E-MISMATCH\"" >str ERR-HAS?  S\" \"token\":\".\"" >str ERR-HAS?
    code ERR-LACKS? ;
 

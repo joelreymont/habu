@@ -304,7 +304,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: path include-unread:bool :}
    DOC-SLOTS 0 ?do
       i DOC-LIVE? if
-         i DOC-CANON$ str> path str> STR= 0= if
+         i DOC-CANON$ path STR= 0= if
             include-unread if
                i path LSP-DEFS:DEFS-DEPENDS?
             else
@@ -383,11 +383,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    code REASON:TEXT$ str> {: why:^ wu:n :}
    code 0= if exit then
    code IGNORABLE? 0= if code throw then
-   SB-RESET s" lsp: ignored " SB-APPEND m mu SB-APPEND
-   s" : throw " SB-APPEND code FMT:SB-INT
-   wu 0<> if s" : " SB-APPEND why wu SB-APPEND then
+   SB-RESET s" lsp: ignored " >str SB-APPEND m mu >str SB-APPEND
+   s" : throw " >str SB-APPEND code FMT:SB-INT
+   wu 0<> if s" : " >str SB-APPEND why wu >str SB-APPEND then
    10 SB-APPEND-C
-   FD:STDERR SB$ >str FD:WRITE-FULL ;
+   FD:STDERR SB$ FD:WRITE-FULL ;
 
 : NAMED? ( str str -- bool )
    {: m name :}
@@ -466,7 +466,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       READ-TOKEN T-STR = if
          str if k ku READ-STR-EQ? else false then
       else
-         str 0= if READ-SPAN$ k ku STR= else false then
+         str 0= if READ-SPAN$ >str k ku >str STR= else false then
       then
    else false then
    {: same:bool :}
@@ -538,7 +538,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : REQUEST-DEPENDS? ( str -- bool )
    {: path :}
-   AT-SLOT @ DOC-CANON$ str> path str> STR= if true exit then
+   AT-SLOT @ DOC-CANON$ path STR= if true exit then
    AT-SLOT @ path LSP-DEFS:DEFS-DEPENDS? ;
 
 \ ---- input -------------------------------------------------------------------
@@ -1094,8 +1094,8 @@ public
 : MAIN ( -- )
    [: SERVE ;] catch {: code:n :}
    REJECTION:CARRIED? if REJECTION:SEND-SAVED then
-   SB-RESET s" lsp: stopped by throw " SB-APPEND code FMT:SB-INT
-   SB$ code ERROR:STATUS die ;
+   SB-RESET s" lsp: stopped by throw " >str SB-APPEND code FMT:SB-INT
+   SB$ str> code ERROR:STATUS die ;
 
 ;using
 ;using
