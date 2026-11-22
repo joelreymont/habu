@@ -293,11 +293,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn TCP4:CONNECTION-FD {: f:fd :}
    f FD>N PEER-SA SPAN:$ CONNECT-CALL 0 = if true exit then
    FFI:ERRNO ERRNO-INPROGRESS <> if false exit then
-   f AIO:WRITABLE -1 >MS AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   f AIO:WRITABLE -1 >MS AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF POLL-FAILED and 0= ENDOF
       timed-out OF false ENDOF
-      cancelled OF false ENDOF
       refused OF drop false ENDOF
    ;MATCH ;
 
@@ -327,11 +326,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn a u TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS ;
 
 : AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
-   conn TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   conn TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF ENDOF
-      cancelled OF ENDOF
       refused OF drop ENDOF
    ;MATCH ;
 

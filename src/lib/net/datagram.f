@@ -133,10 +133,8 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    dup 0 < if drop 0 then >MS ;
 
 
-\ One poll on the AIO loop. `cancelled` cannot arrive: nothing here cancels
-\ and the ticket never leaves this word.
-: WAIT-READABLE ( n ms -- AIO:outcome ) {: fd:n left:ms :}
-   fd >FD AIO:READABLE left AIO:POLL AIO:AWAIT ;
+: WAIT-READABLE ( n ms -- AIO:readiness ) {: fd:n left:ms :}
+   fd >FD AIO:READABLE left AIO:WAIT-READY ;
 
 
 : RECEIVED ( n NUM:byte-len -- receive-result ) {: got:n capacity:NUM:byte-len :}
@@ -194,10 +192,9 @@ public
       error dup RETRY? 0= if DATAGRAM-RECEIVE--RESULT:FAILED exit then drop
       timeout start LEFT dup MS>N 0= if drop DATAGRAM-RECEIVE--RESULT:TIMEOUT exit then
       fd swap WAIT-READABLE
-      MATCH AIO:outcome
+      MATCH AIO:readiness
          ready OF drop ENDOF
          timed-out OF DATAGRAM-RECEIVE--RESULT:TIMEOUT exit ENDOF
-         cancelled OF E-RESULT throw ENDOF
          refused OF >ERRNO DATAGRAM-RECEIVE--RESULT:FAILED exit ENDOF
       ;MATCH
    again ;

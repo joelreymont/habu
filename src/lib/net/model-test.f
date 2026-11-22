@@ -381,12 +381,11 @@ $300000 constant BIG-U
    {: conn:TCP4:connection :}
    HELD TASK:SIGNAL-SEM
    TURN TASK:SIGNAL-SEM
-   conn [: TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:POLL AIO:AWAIT ;]
+   conn [: TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:WAIT-READY ;]
    [: TURN TASK:WAIT-SEM ;] finally
-   MATCH AIO:outcome
+   MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF FAIL ENDOF
-      cancelled OF FAIL ENDOF
       refused OF drop FAIL ENDOF
    ;MATCH
    conn RAW-CLOSE ;

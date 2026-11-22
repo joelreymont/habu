@@ -134,11 +134,10 @@ TASK:MIN-STACK TASK:TASK READER
 \ Blocks until the port is readable. Any other outcome leaves its bytes
 \ missing, which the zero-window read after it reports.
 : AWAIT-INPUT ( -- )
-   HANDLE @ >FD AIO:READABLE -1 >MS AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   HANDLE @ >FD AIO:READABLE -1 >MS AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF ENDOF
-      cancelled OF ENDOF
       refused OF drop ENDOF
    ;MATCH ;
 

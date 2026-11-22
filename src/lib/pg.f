@@ -1221,11 +1221,10 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 \ Only the convenience words wait. A dispatcher consumes progress directly.
 : WAIT-EVENT ( fd n n -- fd n n )
    {: socket:fd events:n deadline:n :}
-   socket events deadline REMAINING AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   socket events deadline REMAINING AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF drop ENDOF
       timed-out OF deadline NO-DEADLINE = if E-EXEC else E-DEADLINE then throw ENDOF
-      cancelled OF E-EXEC throw ENDOF
       refused OF drop E-EXEC throw ENDOF
    ;MATCH
    socket events deadline ;
@@ -1297,11 +1296,10 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 : READABLE-WITHIN ( n n -- bool ) {: slot:n limit:n :}
    slot CONN-PG@ LIB-SOCKET {: socket:n :}
    socket 0 < if slot CONN-LOST then
-   socket >FD AIO:READABLE limit >MS AIO:POLL AIO:AWAIT
-   MATCH AIO:outcome
+   socket >FD AIO:READABLE limit >MS AIO:WAIT-READY
+   MATCH AIO:readiness
       ready OF drop true ENDOF
       timed-out OF false ENDOF
-      cancelled OF E-EXEC throw ENDOF
       refused OF drop E-EXEC throw ENDOF
    ;MATCH ;
 
