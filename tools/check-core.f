@@ -582,7 +582,7 @@ private
    CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
 
 \ A named file is loaded the way the command line loads it: the engine turns
-\ `--load PATH` into `s" PATH" script-required`, which resolves PATH as an
+\ `--load PATH` into `s" PATH" >str script-required`, which resolves PATH as an
 \ entry, so the file's own relative requires resolve against its directory. The
 \ path is the canonical one the file's closure entry holds, so the child's
 \ working directory does not matter. The child's own JSON diagnostics for a file
@@ -591,7 +591,7 @@ private
 : CHK-APPEND-ENTRY ( str -- )
    CHK-EXP-QPATH
    CHK-SP CHK-EXP-C
-   s" script-required" CHK-EXP-APP
+   s" >str script-required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
 
 \ A source list loads its files as `bin/hb --load` loads the files it names:
@@ -798,7 +798,7 @@ private
    CHK-SUBJ-U @ 0 > if CHK-BUILD-READER then
    CHK-SEL-BYTES? if
       CHK-LF CHK-RUN-C
-      CHK-SRC-PATH CHK-RUN-QPATH+  s"  script-required" CHK-RUN-LN
+      CHK-SRC-PATH CHK-RUN-QPATH+  s"  >str script-required" CHK-RUN-LN
       exit
    then
    CHK-SOURCE CHK-RUN-SOURCE+ ;

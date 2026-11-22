@@ -1954,7 +1954,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ from the load and the check alike.
 : TEST-SCRIPT-REQUIRED-EMPTY ( -- )
    s" script-required of an empty path" T-LABEL
-   s\" s\" \" script-required" s" script-empty.f" LINE-FIXTURE
+   s\" s\" \" >str script-required" s" script-empty.f" LINE-FIXTURE
    [: EMPTY-MSG ;] RANGE-RECORD
    SB$ 70 LOADED  GT-ERR$ SB$ T$=
    s" E-PATH-RANGE" 70 CHECKED

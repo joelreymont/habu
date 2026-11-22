@@ -158,7 +158,7 @@ $10000 constant READ-SIZE
    START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
-      argv i ARG s" script-required" ROW
+      argv i ARG s" >str script-required" ROW
    loop
    0 TEXT USED @ ;
 

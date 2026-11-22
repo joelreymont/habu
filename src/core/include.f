@@ -2827,7 +2827,7 @@ global
    s" required" a u REQUIRED-AS ;
 
 \ The `--load` argv row.
-: script-required ( ^u8 n -- ) ENTRY-REQUIRED ;
+: script-required ( str -- ) ENTRY-REQUIRED ;
 
 : provided ( str -- )
    {: a:^ u:n :}
