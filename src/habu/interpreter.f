@@ -255,6 +255,7 @@ EXPORT CHECK:CHECKER-USING$
 EXPORT CHECK:CHECKER-USING-N
 EXPORT CHECK:CLAUSE-NAME
 EXPORT CHECK:TYPE-OP
+EXPORT CHECK:TYPE-ARG
 EXPORT CHECK:EFFECT?
 EXPORT CHECK:TYPE-DENSE
 EXPORT CHECK:EFFECT-DENSE
@@ -2327,7 +2328,7 @@ variable LIT-AT
 
 \ Appends a local of type node T, whose index is the LOCAL items before it;
 \ its node numbers T's parameters on from the definition's effect.
-: LOCAL-ITEM ( str n -- ) {: a:^ u:n t:n :}
+: LOCAL-ITEM ( str n -- ) TYPE-ARG {: a:^ u:n t:n :}
    a u LOCAL-UNBUILT
    t TYPE-DENSE 0= if DEF-CAPTURED-NAME DEF-WIDE then
    {: dense:n :}
@@ -2351,7 +2352,7 @@ variable LIT-AT
 \ Declares variable a u of type node T. T's parameters carry the file's
 \ numbering, so they are numbered 0, 1 ... as define-word numbers an effect's;
 \ an empty name is rejected as one first.
-: VARIABLE-RUN ( str n -- ) {: a:^ u:n t:n :}
+: VARIABLE-RUN ( str n -- ) TYPE-ARG {: a:^ u:n t:n :}
    u 0 <> if t EFFECT-DENSE 0= if a u VARIABLE-WIDE then else t then
    {: dense:n :}
    a u dense LBUF:TYPED-VARIABLE-NODE ;
@@ -2363,7 +2364,9 @@ variable LIT-AT
    a u DEF-ONE-TOKEN? 0= if s" item" a u DEF-NAME-REFUSE then
    op ITEM-ABI:KEYWORD = if BODY-ITEM-KIND:KEYWORD 0 0 a u ITEM+ exit then
    op ITEM-ABI:OPERAND = if BODY-ITEM-KIND:OPERAND 0 0 a u ITEM+ exit then
-   op ITEM-ABI:TYPE = if BODY-ITEM-KIND:TYPE v 0 a u ITEM+ exit then
+   op ITEM-ABI:TYPE = if
+      BODY-ITEM-KIND:TYPE v TYPE-ARG 0 a u ITEM+ exit
+   then
    op ITEM-ABI:LOCAL = if a u v LOCAL-ITEM exit then
    op ITEM-ABI:LOCAL-REF = if
       a u LOCAL-UNBUILT  BODY-ITEM-KIND:LOCAL-REF v 0 v LOCAL$ ITEM+ exit

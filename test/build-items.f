@@ -24,7 +24,8 @@ split-str
 \ in its package would, and EFFECT:IN a type that is no effect.
 \ EFFECT:READ-TYPE reads `xt` and `[ xt -- n ]` as a signature does, and a
 \ built word takes an `xt` and runs a quotation of one; EFFECT:VARIABLE-OF of
-\ `xt` is rejected with the storage definers' reason. A build of a
+\ `xt` is rejected with the storage definers' reason, and VARIABLE-OF and
+\ TYPE-ITEM of a type forged from a number as no type. A build of a
 \ program whose source stores a definer's type is rejected with the record its
 \ load prints. A rejected built local whose type text outgrows the checker's
 \ first token buffers is named by that whole text. A program that requires
@@ -487,6 +488,22 @@ DECL-DIAG:HAS? TTRUE
 s" |                  ^^^^^^ xt in a stored type" DECL-DIAG:HAS? TTRUE
 s" = help: declare `BI-XVAR` with a quotation type such as `[ n -- n ]` in place of `xt`"
 DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
+
+\ A type a program forged from a number, given to a definer.
+CAST: >BI-TYPE ( n -- EFFECT:type )
+: BI-FORGED ( -- EFFECT:type ) $10000000000 1000 + >BI-TYPE ;
+: FORGED-VAR ( -- n )
+   [: s" BI-RPV" BI-FORGED EFFECT:VARIABLE-OF ;] catch ;
+\ : NAME ( -- n ) x ; with x the forged type
+: MAKE-FORGED-ITEM ( str -- )
+   EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
+   s" x" BI-FORGED EFFECT:TYPE-ITEM  postpone ; ;
+: FORGED-ITEM ( -- n ) [: s" BI-FORGED-ITEM" MAKE-FORGED-ITEM ;] catch ;
+: NOT-TYPE ( -- )
+   s" error[E-NOT-TYPE]: a definer was given a value that is no type"
+   DECL-DIAG:HAS? TTRUE  READING-HERE ;
+DECL-DIAG:PROSE  FORGED-VAR 70 T=  NOT-TYPE
+DECL-DIAG:PROSE  FORGED-ITEM 70 T=  NOT-TYPE  DECL-DIAG:OFF
 
 300 constant LONG-N
 s" [ -- ]" nip LONG-N 2 * + constant LONG-TYPE-CAP
