@@ -36,6 +36,8 @@ require src/lib/fmt.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/fd.f
 require src/lib/process.f
 require src/lib/adt/option.f
@@ -115,7 +117,7 @@ TYPED-VARIABLE WITH-DECL bool             \ whether a references request include
 TYPED-VARIABLE W JSON:writer
 variable TEXT-LEN                         \ the last change's text length, -1 before one is read
 variable LAST-CHECKED                     \ the slot checked last, -1 before any
-create HELD-B BUF:HDR-BYTES allot         \ the bodies of the messages held, back to back,
+TYPED-VARIABLE HELD-B ^VEC:vector<u8> SCRATCH-ONLY \ the bodies of the messages held, back to back,
 DYNAMIC-BUFFER HELD-ENDS n                \ where each one ends there,
 variable HELD-COUNT                       \ how many are held,
 variable HELD-NEXT                        \ and the first of them not yet served
@@ -412,12 +414,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : HELD$ ( n -- ^u8 n )
    {: k:n :}
    k 0= if 0 else k 1- HELD-ENDS @ then {: at:n :}
-   HELD-B BUF:SPAN$ drop at +  k HELD-ENDS @ at - ;
+   HELD-B @ VEC:SPAN SPAN:$ drop at +  k HELD-ENDS @ at - ;
 
 : HOLD ( ^u8 n -- )
-   BUF:N>BLEN HELD-B BUF:APPEND-SPAN
+   HELD-B @ VEC:APPEND
    HELD-COUNT @ 1+ HELD-ENDS-RESERVE
-   HELD-B BUF:LEN@ BUF:BLEN>N HELD-COUNT @ HELD-ENDS !
+   HELD-B @ VEC:COUNT HELD-COUNT @ HELD-ENDS !
    1 HELD-COUNT +! ;
 
 : NOTICE? ( n ^u8 n -- ^u8 n bool )
@@ -1007,7 +1009,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    HELD? if exit then
    0 HELD-NEXT !
    0 HELD-COUNT !
-   HELD-B BUF:CLEAR ;
+   HELD-B @ 0 VEC:RESIZE ;
 
 : TURNS ( -- )  begin HELD? while TURN repeat ;
 
@@ -1038,7 +1040,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    FD:STDOUT FD:FD-NOSIGPIPE!
    FD:STDERR FD:FD-NOSIGPIPE!
    REPLY-BUF 1 BUF:N>BLEN BUF:INIT
-   HELD-B 1 BUF:N>BLEN BUF:INIT
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HELD-B !
    0 HELD-COUNT !
    0 HELD-NEXT !
    false AT-END !

@@ -5,7 +5,8 @@ split-str
 
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/json.f
 require src/lib/adt/option.f
 require tools/lsp-docs.f
@@ -20,13 +21,13 @@ private
 
 10 constant LF
 
-create VALUE-B BUF:HDR-BYTES allot       \ the contents' text, grown as it is written
+TYPED-VARIABLE VALUE-B ^VEC:vector<u8> SCRATCH-ONLY \ the contents' text, grown as it is written
 TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable TARGET-G                        \ and the group of the record it shows
 
-: V+ ( str -- )  BUF:N>BLEN VALUE-B BUF:APPEND-SPAN ;
-: NL ( -- )  LF VALUE-B BUF:APPEND-BYTE ;
-: VALUE$ ( -- str )  VALUE-B BUF:SPAN$ BUF:BLEN>N ;
+: V+ ( str -- )  VALUE-B @ VEC:APPEND ;
+: NL ( -- )  LF VALUE-B @ VEC:PUSH c! ;
+: VALUE$ ( -- str )  VALUE-B @ VEC:SPAN SPAN:$ ;
 
 : WHERE+ ( str -- )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE V+ ;
 
@@ -105,7 +106,7 @@ variable TARGET-G                        \ and the group of the record it shows
 public
 
 : PREPARE ( -- )
-   VALUE-B 1 BUF:N>BLEN BUF:INIT ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW VALUE-B ! ;
 
 \ At a use the last completed check holds (LSP-DEFS:DEFS-USE-AT): the record go
 \ to definition locates (tools/lsp-definition.f) of the word as the use writes
@@ -118,7 +119,7 @@ public
 : ANSWER ( ^JSON:writer n n bool -- ^JSON:writer )
    {: w slot:n at:n md:bool :}
    w OUT !
-   VALUE-B BUF:CLEAR
+   VALUE-B @ 0 VEC:RESIZE
    slot at DEFS-USE-AT MATCH option
       some OF slot LSP-DOCS:DOC-TEXT$ rot md USE-HOVER ENDOF
       none OF slot at md DEF-HOVER ENDOF

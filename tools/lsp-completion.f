@@ -7,7 +7,8 @@ split-str
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
 
 require src/lib/string.f
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/adt/option.f
 require src/lib/json.f
 require tools/check-verify-core.f
@@ -27,15 +28,15 @@ DYNAMIC-BUFFER FILE-B u8                 \ its declaration's file, or none,
 variable FILE-U
 variable TARGET-V                        \ and the bytes its declaring token
 variable TARGET-END-V                    \ starts and ends at there
-create DETAIL-B BUF:HDR-BYTES allot      \ an item's detail
+TYPED-VARIABLE DETAIL-B ^VEC:vector<u8> SCRATCH-ONLY \ an item's detail
 TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable ASKED                           \ the slot of the document asked about,
 variable SHOWN-N                         \ and the items written so far
 
 : WORD$ ( -- str )  0 WORD-B WORD-U @ ;
 : FILE$ ( -- str )  0 FILE-B FILE-U @ ;
-: D+ ( str -- )  BUF:N>BLEN DETAIL-B BUF:APPEND-SPAN ;
-: DETAIL$ ( -- str )  DETAIL-B BUF:SPAN$ BUF:BLEN>N ;
+: D+ ( str -- )  DETAIL-B @ VEC:APPEND ;
+: DETAIL$ ( -- str )  DETAIL-B @ VEC:SPAN SPAN:$ ;
 
 : STRING>WORD ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}
@@ -88,7 +89,7 @@ variable SHOWN-N                         \ and the items written so far
    r REC-EFFECT$ {: e:^ eu:n :}
    r REC-PACKAGE$ {: p:^ pu:n :}
    eu pu or 0= if exit then
-   DETAIL-B BUF:CLEAR
+   DETAIL-B @ 0 VEC:RESIZE
    eu 0 > if s" ( " D+ e eu D+ s"  )" D+ then
    pu 0 > if
       eu 0 > if s"  " D+ then
@@ -113,7 +114,7 @@ public
 
 \ Readies the answer's storage, before any completion.
 : PREPARE ( -- )
-   DETAIL-B 1 BUF:N>BLEN BUF:INIT ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW DETAIL-B ! ;
 
 : ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}

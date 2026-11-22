@@ -10,6 +10,8 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/adt/option.f
 require src/lib/fd.f
 require src/lib/fs.f
@@ -36,7 +38,7 @@ private
 
 TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for reading a packet line
 create PUB-B BUF:HDR-BYTES allot         \ a notification's bytes, grown as written
-create NEW-B BUF:HDR-BYTES allot         \ the files this check published lists for
+TYPED-VARIABLE NEW-B ^VEC:vector<u8> SCRATCH-ONLY \ the files this check published lists for
 TYPED-VARIABLE W JSON:writer
 create FILE-BUF PATH-CAP allot        \ a packet's file, decoded
 variable FILE-U
@@ -51,7 +53,7 @@ TYPED-VARIABLE LIST-A ^u8             \ the file the list being written is for,
 variable LIST-U
 variable ITEMS                           \ and the diagnostics in it so far
 
-: NEW$ ( -- str )  NEW-B BUF:SPAN$ BUF:BLEN>N ;
+: NEW$ ( -- str )  NEW-B @ VEC:SPAN SPAN:$ ;
 : FILE$ ( -- str )  FILE-BUF FILE-U @ ;
 
 : ERR ( ^u8 n -- )
@@ -251,8 +253,8 @@ variable ITEMS                           \ and the diagnostics in it so far
 : KEEP-NEW ( str -- str )
    {: f:^ fu:n :}
    NEW$ nip {: at:n :}
-   f fu BUF:N>BLEN NEW-B BUF:APPEND-SPAN
-   s\" \n" BUF:N>BLEN NEW-B BUF:APPEND-SPAN
+   f fu NEW-B @ VEC:APPEND
+   s\" \n" NEW-B @ VEC:APPEND
    NEW$ drop at + fu ;
 
 : DEP ( ^u8 n -- )
@@ -279,14 +281,14 @@ public
 \ Readies the buffers; the server calls it once, before any other word here.
 : PREPARE ( -- )
    PUB-B 1 BUF:N>BLEN BUF:INIT
-   NEW-B 1 BUF:N>BLEN BUF:INIT ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW NEW-B ! ;
 
 : PUBLISH ( n ^u8 n -- )
    {: slot:n p:^ pu:n :}
    p PKTS-A !
    pu PKTS-U !
    slot SELF !
-   NEW-B BUF:CLEAR
+   NEW-B @ 0 VEC:RESIZE
    slot DOC-CANON$ LIST-U ! LIST-A !
    slot DOC-TEXT$ TEXT!
    slot DOC-URI$ slot DOC-VERSION@ OPTION:SOME LIST
@@ -299,7 +301,7 @@ public
 : RETRACT ( n -- )
    {: slot:n :}
    slot SELF !
-   NEW-B BUF:CLEAR
+   NEW-B @ 0 VEC:RESIZE
    slot DOC-URI$ OPTION:NONE OPENING CLOSING
    slot DOC-DEPS$ [: WITHDRAW ;] EACH-LINE ;
 

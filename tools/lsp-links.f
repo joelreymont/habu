@@ -6,7 +6,8 @@ split-str
 \ reads, resolves and parses nothing for it.
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
 
-require src/lib/byte-buffer.f
+require src/lib/heap.f
+require src/lib/vector.f
 require src/lib/json.f
 require tools/lsp-docs.f
 require tools/lsp-defs.f
@@ -22,13 +23,13 @@ TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for decoding a li
 DYNAMIC-BUFFER PATH-B u8                 \ the line's file, decoded,
 variable PATH-U
 TYPED-VARIABLE HELD bool                 \ and whether its loader held it
-create TIP-B BUF:HDR-BYTES allot         \ a held link's tooltip
+TYPED-VARIABLE TIP-B ^VEC:vector<u8> SCRATCH-ONLY \ a held link's tooltip
 TYPED-VARIABLE OUT ^JSON:writer \ the answer's writer,
 variable SHOWN-N                         \ and the links written so far
 
 : PATH$ ( -- ^u8 n )  0 PATH-B PATH-U @ ;
-: T+ ( str -- )  BUF:N>BLEN TIP-B BUF:APPEND-SPAN ;
-: TIP$ ( -- str )  TIP-B BUF:SPAN$ BUF:BLEN>N ;
+: T+ ( str -- )  TIP-B @ VEC:APPEND ;
+: TIP$ ( -- str )  TIP-B @ VEC:SPAN SPAN:$ ;
 
 : STRING>PATH ( JSON:reader -- JSON:reader )
    READ-SPAN$ nip {: raw:n :}
@@ -55,7 +56,7 @@ variable SHOWN-N                         \ and the links written so far
 \ it) says so, naming the file as hover does: relative to the server's working
 \ directory when inside it, else by its path.
 : HELD-TIP ( -- str )
-   TIP-B BUF:CLEAR
+   TIP-B @ 0 VEC:RESIZE
    s" held " T+
    PATH$ SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE T+
    s" : this loader did not read it; the engine provides it or it was already recorded." T+
@@ -76,7 +77,7 @@ variable SHOWN-N                         \ and the links written so far
 public
 
 : PREPARE ( -- )
-   TIP-B 1 BUF:N>BLEN BUF:INIT ;
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW TIP-B ! ;
 
 : ANSWER ( ^JSON:writer n -- ^JSON:writer )
    {: w slot:n :}
