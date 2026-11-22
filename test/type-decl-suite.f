@@ -55,14 +55,14 @@ variable TD-JSON-WAS   REJECTION:JSON @ TD-JSON-WAS !   false REJECTION:JSON !
 
 \ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
 NEWTYPE tdfoo<a,b>
-s" TDOK-USE ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDBAD-ARITY ( tdfoo<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDBAD-UPPER ( Tdfoo<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDOK-USE ( tdfoo<n,n> -- tdfoo<n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDBAD-ARITY ( tdfoo<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDBAD-UPPER ( Tdfoo<n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ zero-arity family: the bare token resolves through TFAM, not nominal lookup.
 NEWTYPE tdzero
-s" TDOK-ZERO ( tdzero -- tdzero )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDOK-ZERO ( tdzero -- tdzero )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDBAD-ZERO-N ( tdzero -- n )" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ A family takes no `SCRATCH-ONLY` clause: the word after its base is undefined.
 s" NEWTYPE tdscrx ^n SCRATCH-ONLY" s\" error[E-UNDEFINED]: cannot find word `SCRATCH-ONLY`\n" >str s" not found" >str TDT-REJ
@@ -85,8 +85,8 @@ SUMTYPE tdres<a,b>
   VARIANT err b ;VARIANT
 ;SUMTYPE
 \ the sum family name is usable in signatures as a logical type expression.
-s" TDOK-RES ( tdres<n,n> -- tdres<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDBAD-RES1 ( tdres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDOK-RES ( tdres<n,n> -- tdres<n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDBAD-RES1 ( tdres<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ zero-payload variant: padding-only, paycells 0 (the option `none` shape).
 SUMTYPE tdopt<a>
@@ -106,7 +106,7 @@ SUMTYPE tdwide<a,b,c,d,e,g,h,i>
   VARIANT lo a ;VARIANT
   VARIANT hi i ;VARIANT
 ;SUMTYPE
-s" TDOK-WIDE ( tdwide<n,n,n,n,n,n,n,n> -- tdwide<n,n,n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDOK-WIDE ( tdwide<n,n,n,n,n,n,n,n> -- tdwide<n,n,n,n,n,n,n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ The arity-six failure boundary exercises the first spelling after reserved f.
 STRUCTURE tdga06<a,b,c,d,e,g>
@@ -117,9 +117,9 @@ STRUCTURE tdga06<a,b,c,d,e,g>
 \ The six-parameter MEM-shaped reproducer uses a,b,c,d,e,g.  Its last field is
 \ schema parameter index 5, every generated input remains polymorphic, and both
 \ generated directions preserve exact positions.
-s" TDGA06-RT ( n bool char u8 i64 r -- n bool char u8 i64 r ) TDGA06:MAKE TDGA06:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDGA06-BAD-MAKE ( bool n char u8 i64 r -- tdga06<n,bool,char,u8,i64,r> ) TDGA06:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDGA06-BAD-UNMAKE ( tdga06<n,bool,char,u8,i64,r> -- bool n char u8 i64 r ) TDGA06:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDGA06-RT ( n bool char u8 i64 r -- n bool char u8 i64 r ) TDGA06:MAKE TDGA06:UNMAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDGA06-BAD-MAKE ( bool n char u8 i64 r -- tdga06<n,bool,char,u8,i64,r> ) TDGA06:MAKE" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDGA06-BAD-UNMAKE ( tdga06<n,bool,char,u8,i64,r> -- bool n char u8 i64 r ) TDGA06:UNMAKE" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ The maximum declaration arity keeps 23 independent schema positions.  Its
 \ generated MAKE/UNMAKE pair also executes as a physical round trip.
@@ -137,11 +137,11 @@ STRUCTURE tdga23<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>
 25.0 f= TTRUE 24 T= TFALSE
 23 T= 22 T= 21 T= 20 T= 19 T= 18 T= 17 T= 16 T= 15 T= 14 T= 13 T= 12 T=
 11 T= 10 T= 9 T= 8 T= 7 T= 6 T= 5 T= 4 T= 3 T= 2 T= 1 T=
-s" TDGA23-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n bool n r -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDGA23-UNMAKE ( tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> -- n n n n n n n n n n n n n n n n n n n n n n n bool n r ) TDGA23:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDGA23-BADF ( n n n n n n n n n n n n n n n n n n n n n n n n n r -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDGA23-BADN ( n n n n n n n n n n n n n n n n n n n n n n n bool bool r -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDGA23-BADR ( n n n n n n n n n n n n n n n n n n n n n n n bool n n -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDGA23-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n bool n r -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDGA23-UNMAKE ( tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> -- n n n n n n n n n n n n n n n n n n n n n n n bool n r ) TDGA23:UNMAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDGA23-BADF ( n n n n n n n n n n n n n n n n n n n n n n n n n r -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDGA23-BADN ( n n n n n n n n n n n n n n n n n n n n n n n bool bool r -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDGA23-BADR ( n n n n n n n n n n n n n n n n n n n n n n n bool n n -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ mixed payload widths: slots = max across variants.
 SUMTYPE tdmix<a,b>
@@ -159,14 +159,14 @@ ENUM tdcolor
   blue
 ;ENUM
 \ the bare enum tail resolves as a logical type in a signature (arity-0 family).
-s" TDE-ID ( tdcolor -- tdcolor )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDE-ID ( tdcolor -- tdcolor )" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ generated constructors: TDCOLOR:GREEN ( -- tdcolor ). A raw n is NOT the enum
 \ (docs/design.md "Families and layout policies"): a payload-free enum ctor
 \ takes no input and yields the enum type; a bare 0 cannot certify as tdcolor.
-s" TDE-MK ( -- tdcolor ) TDCOLOR:GREEN" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDE-BAD ( -- tdcolor ) 0" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDE-MK ( -- tdcolor ) TDCOLOR:GREEN" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDE-BAD ( -- tdcolor ) 0" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ a payload-free ctor rejects a spurious input just like the arity-0 sum ctors.
-s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ STRUCTURE: `STRUCTURE name[<params>] FIELD f t .. ;STRUCTURE`
 STRUCTURE tdpair<a,b>
@@ -175,86 +175,86 @@ STRUCTURE tdpair<a,b>
 ;STRUCTURE
 \ a concrete-arg product expands to hidden fields in a signature and transports
 \ as ONE whole bundle (dup/drop are width-aware); identity flows.
-s" TDP-ID ( tdpair<n,n> -- tdpair<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDP-DUP ( tdpair<n,n> -- tdpair<n,n> tdpair<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDP-DROP ( tdpair<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-ID ( tdpair<n,n> -- tdpair<n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-DUP ( tdpair<n,n> -- tdpair<n,n> tdpair<n,n> ) dup" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-DROP ( tdpair<n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ hidden fields never masquerade as bare cells: the bundle cannot split into n n.
-s" TDP-SPLIT ( tdpair<n,n> -- n n )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP-SPLIT ( tdpair<n,n> -- n n )" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ hidden physical field names never resolve in a public signature.
-s" TDP-HID ( @tdpair.slot0<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP-HID ( @tdpair.slot0<n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ concrete-field product (arity 0, all fields concrete n): width = field count.
 STRUCTURE tdpoint
   FIELD x n
   FIELD y n
 ;STRUCTURE
-s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-ID ( tdpoint -- tdpoint )" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ DERIVE init needs no package: a top-level record's init accessors check.
 STRUCTURE tdtop DERIVE init FIELD x n ;STRUCTURE
-s" TDTOP-GET ( mut-view<a,b,c,init<d,tdtop>> -- mut-view<a,b,c,init<d,tdtop>> n ) TDTOP:X@" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDTOP-SET ( mut-view<a,b,c,init<d,tdtop>> n -- mut-view<a,b,c,init<d,tdtop>> ) TDTOP:X!" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDTOP-GET ( mut-view<a,b,c,init<d,tdtop>> -- mut-view<a,b,c,init<d,tdtop>> n ) TDTOP:X@" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDTOP-SET ( mut-view<a,b,c,init<d,tdtop>> n -- mut-view<a,b,c,init<d,tdtop>> ) TDTOP:X!" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A sum, enum or product value moves as one unit through the stack words,
 \ >r/r>/r@/2>r/2r>/2r@ and a local capture; any other touch is rejected.
 
 \ a layout value flows through untouched (identity is fine).
-s" TD7-OPT-ID ( tdopt<n> -- tdopt<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD7-ENUM-ID ( tdlight -- tdlight )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-OPT-ID ( tdopt<n> -- tdopt<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-ENUM-ID ( tdlight -- tdlight )" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ whole-bundle transport ops move a sum layout value as one logical unit.
-s" TD7-DROP ( tdres<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD7-DUP ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD7-SWAP ( tdres<n,n> n -- n tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD7-OVER ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> ) over" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD7-NIP ( tdres<n,n> n -- n ) nip" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD7-TOR ( tdres<n,n> -- tdres<n,n> ) >r r>" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-DROP ( tdres<n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-DUP ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) dup" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-SWAP ( tdres<n,n> n -- n tdres<n,n> ) swap" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-OVER ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> ) over" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-NIP ( tdres<n,n> n -- n ) nip" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-TOR ( tdres<n,n> -- tdres<n,n> ) >r r>" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ an enum (zero-payload) layout value is one logical cell and transports too.
-s" TD7-ENUM-DROP ( tdlight -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-ENUM-DROP ( tdlight -- ) drop" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ a layout value captures into a local as one whole bundle.
-s" TD7-LOCAL ( tdres<n,n> -- n ) {: x :} x drop 0" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-LOCAL ( tdres<n,n> -- n ) {: x :} x drop 0" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ cell families are unaffected: a one-cell tdfoo value is dropped/duped normally.
-s" TD7-CELL-DROP ( tdfoo<n,n> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD7-CELL-DUP ( tdfoo<n,n> -- tdfoo<n,n> tdfoo<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-CELL-DROP ( tdfoo<n,n> -- n ) drop 0" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-CELL-DUP ( tdfoo<n,n> -- tdfoo<n,n> tdfoo<n,n> ) dup" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ hidden physical field names never resolve in a public signature.
-s" TD7-HID-SLOT ( @tdres.slot0<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD7-HID-TAG ( @tdopt.tag<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-HID-SLOT ( @tdres.slot0<n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-HID-TAG ( @tdopt.tag<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- the full generic stack-op surface transports a bundle ---
 \ every transport prim on a width-1 sum, a wider (slots=3) sum, and an enum,
 \ with a cell above/below to prove only the layout bundle moves as a unit.
-s" TD12-ROT ( tdres<n,n> n n -- n n tdres<n,n> ) rot" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-MROT ( n n tdres<n,n> -- tdres<n,n> n n ) -rot" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-TUCK ( n tdres<n,n> -- tdres<n,n> n tdres<n,n> ) tuck" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-2DUP ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> n ) 2dup" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-2DROP ( tdres<n,n> n -- ) 2drop" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-2SWAP ( tdres<n,n> n n n -- n n tdres<n,n> n ) 2swap" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-2OVER ( tdres<n,n> n n n -- tdres<n,n> n n n tdres<n,n> n ) 2over" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-RAT ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) >r r@ r>" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-2TOR ( tdres<n,n> n -- tdres<n,n> n ) 2>r 2r>" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-2RAT ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> n ) 2>r 2r@ 2r>" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-ROT ( tdres<n,n> n n -- n n tdres<n,n> ) rot" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-MROT ( n n tdres<n,n> -- tdres<n,n> n n ) -rot" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-TUCK ( n tdres<n,n> -- tdres<n,n> n tdres<n,n> ) tuck" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2DUP ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> n ) 2dup" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2DROP ( tdres<n,n> n -- ) 2drop" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2SWAP ( tdres<n,n> n n n -- n n tdres<n,n> n ) 2swap" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2OVER ( tdres<n,n> n n n -- tdres<n,n> n n n tdres<n,n> n ) 2over" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-RAT ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) >r r@ r>" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2TOR ( tdres<n,n> n -- tdres<n,n> n ) 2>r 2r>" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2RAT ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> n ) 2>r 2r@ 2r>" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ a wider sum (tdmix: slots=3) still moves as ONE logical cell.
-s" TD12-WIDE-DUP ( tdmix<n,n> -- tdmix<n,n> tdmix<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-WIDE-SWAP ( tdmix<n,n> n -- n tdmix<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-WIDE-DUP ( tdmix<n,n> -- tdmix<n,n> tdmix<n,n> ) dup" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-WIDE-SWAP ( tdmix<n,n> n -- n tdmix<n,n> ) swap" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ transport never lets a layout value satisfy a cell slot: swap keeps the bundle
 \ whole, so a signature that splits it (claims a bare n out) still rejects.
-s" TD12-SWAP-SPLIT ( tdres<n,n> n -- tdres<n,n> tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-SWAP-SPLIT ( tdres<n,n> n -- tdres<n,n> tdres<n,n> ) swap" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- branch-scoped locals lower ----------
 \ Branch-scoped locals pop from #LOC at their join, so a local's width is read
 \ by bind sequence, not by the live LOCW index.
-s" TD12-BRLOC-IF ( tdres<n,n> n -- tdres<n,n> ) 0 > if {: a :} a else then" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-BRLOC-CASE ( tdres<n,n> n -- tdres<n,n> ) case 0 of {: a :} a endof endcase" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BRLOC-IF ( tdres<n,n> n -- tdres<n,n> ) 0 > if {: a :} a else then" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BRLOC-CASE ( tdres<n,n> n -- tdres<n,n> ) case 0 of {: a :} a endof endcase" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ a scalar AND a wide local bound in the same branch: certifies.
-s" TD12-BRLOC-MIX ( tdres<n,n> n -- tdres<n,n> n ) 0 > if 5 {: s:n :} {: a :} a s else 0 then" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BRLOC-MIX ( tdres<n,n> n -- tdres<n,n> n ) 0 > if 5 {: s:n :} {: a :} a s else 0 then" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ a purely SCALAR branch local in a width-aware definition (the top-level wide
 \ local a triggers pass-2, which replays s's bind by sequence): certifies.
-s" TD12-BRLOC-SCALAR ( n tdres<n,n> -- tdres<n,n> n ) {: a :} 0 > if 5 {: s:n :} s else 9 then a swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BRLOC-SCALAR ( n tdres<n,n> -- tdres<n,n> n ) {: a :} 0 > if 5 {: s:n :} s else 9 then a swap" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ also certified: a wide local bound at TOP LEVEL, a scalar branch local in a
 \ NON-width-aware definition, and a top-level wide local REFERENCED inside both
 \ branches.
-s" TD12-BROK-TOPWIDE ( n tdres<n,n> -- tdres<n,n> n ) {: a :} a swap" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-BROK-SCALARBR ( n -- n ) 0 > if 5 {: s:n :} s else 9 then" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-BROK-REF ( n tdres<n,n> -- tdres<n,n> ) {: a :} 0 > if a else a then" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BROK-TOPWIDE ( n tdres<n,n> -- tdres<n,n> n ) {: a :} a swap" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BROK-SCALARBR ( n -- n ) 0 > if 5 {: s:n :} s else 9 then" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BROK-REF ( n tdres<n,n> -- tdres<n,n> ) {: a :} 0 > if a else a then" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 package LOCAL-BIND-CAP-TEST
 
@@ -281,7 +281,7 @@ variable BUF-N
 public
 
 : RUN ( -- )
-   SOURCE CHECK-QUIET-CANDIDATE! -1 T= ;
+   SOURCE >str CHECK-QUIET-CANDIDATE! -1 T= ;
 
 ;package
 
@@ -289,14 +289,14 @@ LOCAL-BIND-CAP-TEST:RUN
 
 \ --- negatives: non-transport touches still fail closed --------
 \ control predicates read the top cell: a layout value is not a flag.
-s" TD12-IF ( tdres<n,n> -- ) if then" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-IF ( tdres<n,n> -- ) if then" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ arithmetic/compare/unary inspect the cell: reject a layout value.
-s" TD12-ZEQ ( tdres<n,n> -- bool ) 0=" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD12-ADD ( tdres<n,n> n -- n ) +" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-ZEQ ( tdres<n,n> -- bool ) 0=" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-ADD ( tdres<n,n> n -- n ) +" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ higher-order apply (execute) must not consume a layout value as an xt/cell.
-s" TD12-EXEC ( tdres<n,n> -- ) execute" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-EXEC ( tdres<n,n> -- ) execute" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ memory store/fetch is a field coercion outside constructors/MATCH: reject.
-s" TD12-STORE ( tdres<n,n> ^a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-STORE ( tdres<n,n> ^a -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- possibly-linear layout transports reject -----------------------
 \ A layout family whose args carry a linear con — or an arg still unresolved,
@@ -315,40 +315,40 @@ STRUCTURE tdlinp
 SUMTYPE tdlins
   VARIANT owned tdown ;VARIANT
 ;SUMTYPE
-s" TDLIN-DUP ( tdlin<tdown> -- tdlin<tdown> tdlin<tdown> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLIN-DROP ( tdlin<tdown> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLIN-NIP ( tdlin<tdown> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLIN-2DROP ( tdlin<tdown> n -- ) 2drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLIN-LOCAL ( tdlin<tdown> -- ) {: x :} x drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-DUP ( tdlin<tdown> -- tdlin<tdown> tdlin<tdown> ) dup" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-DROP ( tdlin<tdown> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-NIP ( tdlin<tdown> n -- n ) nip" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-2DROP ( tdlin<tdown> n -- ) 2drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-LOCAL ( tdlin<tdown> -- ) {: x :} x drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ Move-class relaxation: a count-preserving move (>r r>) of a resolved linear
 \ bundle conserves the count (LIN-CHECK before=after) and certifies; copy/drop
 \ above reject. An OPEN-arg (may-later-bind-linear) layout stays fail-closed for
 \ every transport, moves included (TDLIN-VAR-DUP).
-s" TDLIN-TOR ( tdlin<tdown> -- tdlin<tdown> ) >r r>" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLIN-TOR ( tdlin<tdown> -- tdlin<tdown> ) >r r>" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ open-arg move stays rejected.
-s" TDLIN-VAR-TOR ( tdlin<a> -- tdlin<a> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-VAR-TOR ( tdlin<a> -- tdlin<a> ) >r r>" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ identity needs no transport bind: the linear-carrying layout still flows.
-s" TDLIN-ID ( tdlin<tdown> -- tdlin<tdown> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLIN-ID ( tdlin<tdown> -- tdlin<tdown> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ the same family with a non-linear arg keeps full transport.
-s" TDLIN-N-DUP ( tdlin<n> -- tdlin<n> tdlin<n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDLIN-N-DROP ( tdlin<n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLIN-N-DUP ( tdlin<n> -- tdlin<n> tdlin<n> ) dup" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLIN-N-DROP ( tdlin<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ an unresolved arg may later bind linear: fail closed.
-s" TDLIN-VAR-DUP ( tdlin<a> -- tdlin<a> tdlin<a> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-VAR-DUP ( tdlin<a> -- tdlin<a> tdlin<a> ) dup" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ the bare linear itself still rejects a raw drop (baseline discipline).
-s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-BARE ( tdown -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ Concrete schema nodes carry the same ownership obligation as family
 \ arguments. Product fields and sum payloads therefore reject copy, drop, and
 \ typed memory even though these arity-0 families have no arguments to scan.
-s" TDLINC-P-DUP ( tdlinp -- tdlinp tdlinp ) dup" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-P-DROP ( tdlinp -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-P-STORE ( tdlinp ^tdlinp -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-P-FETCH ( ^tdlinp -- tdlinp ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-P-ID ( tdlinp -- tdlinp )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDLINC-S-DUP ( tdlins -- tdlins tdlins ) dup" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-S-DROP ( tdlins -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-S-STORE ( tdlins ^tdlins -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-S-FETCH ( ^tdlins -- tdlins ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLINC-S-ID ( tdlins -- tdlins )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLINC-P-DUP ( tdlinp -- tdlinp tdlinp ) dup" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-DROP ( tdlinp -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-STORE ( tdlinp ^tdlinp -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-FETCH ( ^tdlinp -- tdlinp ) @" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-ID ( tdlinp -- tdlinp )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLINC-S-DUP ( tdlins -- tdlins tdlins ) dup" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-DROP ( tdlins -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-STORE ( tdlins ^tdlins -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-FETCH ( ^tdlins -- tdlins ) @" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-ID ( tdlins -- tdlins )" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ --- a checked word that only moves its var takes a one-cell layout value --
 \ A var the callee's body only moves (a stack word, a local, a call that only
@@ -370,43 +370,43 @@ defer TDMV-DF ( a -- a )
 : TDMV-USE ( tdlight -- ) drop ;
 : TDMV-UN dup drop ;
 : TDMV-UR dup 0= drop ;
-s" TDMV-1 ( n tdlight -- tdlight n ) TDMV-SW" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-2 ( tdcolor tdcolor -- tdcolor tdcolor ) TDMV-SW" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-3 ( tdlight -- tdlight ) TDMV-ID" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-4 ( tdlight -- tdlight tdlight ) TDMV-DUP" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-5 ( tdlight -- tdlight ) TDMV-LOC" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-6 ( n tdlight -- tdlight n ) TDMV-SW2" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-7 ( tdlight -- tdlight ) TDMV-RD" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDMV-8 ( n tdres<n,n> -- tdres<n,n> n ) TDMV-SW" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-1 ( n tdlight -- tdlight n ) TDMV-SW" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-2 ( tdcolor tdcolor -- tdcolor tdcolor ) TDMV-SW" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-3 ( tdlight -- tdlight ) TDMV-ID" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-4 ( tdlight -- tdlight tdlight ) TDMV-DUP" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-5 ( tdlight -- tdlight ) TDMV-LOC" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-6 ( n tdlight -- tdlight n ) TDMV-SW2" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-7 ( tdlight -- tdlight ) TDMV-RD" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-8 ( n tdres<n,n> -- tdres<n,n> n ) TDMV-SW" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ TDMV-LIN: SRC's rejection names its linear value.
-: TDMV-LIN ( ^u8 n -- ) {: a:^ u:n :}
-   REJECTION:CAPTURE  a u CHECK-CANDIDATE! drop
+: TDMV-LIN ( str -- ) {: s:str :}
+   REJECTION:CAPTURE  s CHECK-CANDIDATE! drop
    s" `tdmvlin` may hold a linear value" >str TDT-HAS ;
-s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" TDMV-LIN
-s" TDMV-15 ( tdmvlin -- tdmvlin ) TDMV-UN" TDMV-LIN
-s" TDMV-10 ( tdlight -- tdlight n ) [: dup TDMV-USE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-11 ( tdlight -- tdlight ) [: dup drop ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-12 ( tdlight -- tdlight bool ) [: dup 0= ;] execute" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDMV-13 ( tdlight -- tdlight ) TDMV-UN" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMV-14 ( tdlight -- tdlight ) TDMV-UR" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-9 ( tdmvlin -- tdmvlin ) TDMV-ID" >str TDMV-LIN
+s" TDMV-15 ( tdmvlin -- tdmvlin ) TDMV-UN" >str TDMV-LIN
+s" TDMV-10 ( tdlight -- tdlight n ) [: dup TDMV-USE ;] catch" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-11 ( tdlight -- tdlight ) [: dup drop ;] execute" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-12 ( tdlight -- tdlight bool ) [: dup 0= ;] execute" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMV-13 ( tdlight -- tdlight ) TDMV-UN" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMV-14 ( tdlight -- tdlight ) TDMV-UR" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- interpret-mode + frame-metadata boundaries (docs/design.md
 \ "Families and layout policies"). A layout value is a whole logical bundle, so
 \ introspection and frame-crossing words either see it whole or fail closed.
 \ depth/.s report raw physical cells, so they fail closed over any row holding
 \ hidden fields.
-s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ catch/frame words: a layout value FLOWS through a stack-preserving quotation
 \ (whole-row absorption) but cannot bind a quotation's polymorphic operand.
-s" TD12-CATCH ( tdres<n,n> -- tdres<n,n> n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-CATCH-TOUCH ( tdres<n,n> -- n ) [: drop ;] catch" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD12-EXEC-Q ( tdres<n,n> [ a -- a ] -- a ) execute" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-CATCH ( tdres<n,n> -- tdres<n,n> n ) [: ;] catch" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-CATCH-TOUCH ( tdres<n,n> -- n ) [: drop ;] catch" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-EXEC-Q ( tdres<n,n> [ a -- a ] -- a ) execute" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ nested evaluate is rejected in checked bodies outright (unsafe boundary).
-s" TD12-EVAL ( tdres<n,n> ^u8 n -- tdres<n,n> ) evaluate" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-EVAL ( tdres<n,n> ^u8 n -- tdres<n,n> ) evaluate" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ throw takes an n code: a layout value is not a throw code.
-s" TD12-THROW ( tdres<n,n> -- ) throw" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-THROW ( tdres<n,n> -- ) throw" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- storable layouts ---
 \ A layout value crosses `!`/`@` through a `^family` address; the address
@@ -420,31 +420,31 @@ SUMTYPE tdmemu<a>
   VARIANT dos ;VARIANT
 ;SUMTYPE
 variable TDS1-MEM
-s" TDS1-VP ( -- ^tdcolor ) TDS1-MEM" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-STORE ( tdcolor ^tdcolor -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDS1-FETCH ( ^tdcolor -- tdcolor ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDS1-RT ( tdcolor ^tdcolor -- tdcolor ) tuck ! @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-VP ( -- ^tdcolor ) TDS1-MEM" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-STORE ( tdcolor ^tdcolor -- ) !" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-FETCH ( ^tdcolor -- tdcolor ) @" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-RT ( tdcolor ^tdcolor -- tdcolor ) tuck ! @" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ a zero-arity width-1 SUM gets the same memory tier as the TK-ENUM.
-s" TDS1-SUM0 ( tdlight ^tdlight -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-SUM0 ( tdlight ^tdlight -- ) !" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ a parametric width-1 sum qualifies once its args are closed non-linear.
-s" TDS1-PAR ( tdmemu<n> ^tdmemu<n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-PAR ( tdmemu<n> ^tdmemu<n> -- ) !" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ family identity: untyped and mismatched addresses stay rejected.
-s" TDS1-BARE ( tdcolor ^a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-BAREF ( ^a -- tdcolor ) @" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-MIX ( tdlight ^tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-BARE ( tdcolor ^a -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-BAREF ( ^a -- tdcolor ) @" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-MIX ( tdlight ^tdcolor -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ no n<->enum laundering in either direction.
-s" TDS1-NIN ( n ^tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-NOUT ( ^tdcolor -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-NIN ( n ^tdcolor -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-NOUT ( ^tdcolor -- n ) @" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ W > 1 store/fetch certifies before the executed round-trips below.
-s" TDS2-WIDE ( tdres<n,n> ^tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDS2-WIDEF ( ^tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS2-WIDE ( tdres<n,n> ^tdres<n,n> -- ) !" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS2-WIDEF ( ^tdres<n,n> -- tdres<n,n> ) @" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ wide family mismatch and scalar laundering stay rejected.
-s" TDS2-WMIX ( tdres<n,n> ^tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS2-WNIN ( n ^tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS2-WNOUT ( ^tdres<n,n> -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WMIX ( tdres<n,n> ^tdmix<n,n> -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WNIN ( n ^tdres<n,n> -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WNOUT ( ^tdres<n,n> -- n ) @" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ linear / open args stay fail-closed even at width 1.
-s" TDS1-LIN ( tdmemu<tdown> ^tdmemu<tdown> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-OPEN ( tdmemu<a> ^tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-LIN ( tdmemu<tdown> ^tdmemu<tdown> -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-OPEN ( tdmemu<a> ^tdmemu<a> -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ executed round-trip: store an enum, fetch it, MATCH the fetched value.
 1 LAYOUT-BUFFER TDS1-BUF tdcolor
 : TDS1-P ( -- ^tdcolor ) 0 TDS1-BUF ;
@@ -503,12 +503,12 @@ STRUCTURE tdprec
   FIELD cnt n
 ;STRUCTURE
 \ generated MAKE/UNMAKE consume/produce the fields as their families.
-s" TDP1 ( tdcolor tdlight n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDP2 ( tdprec -- tdcolor tdlight n ) TDPREC:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP1 ( tdcolor tdlight n -- tdprec ) TDPREC:MAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP2 ( tdprec -- tdcolor tdlight n ) TDPREC:UNMAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ the born-typed guarantee: swapped same-width enum fields are a checker reject.
-s" TDP3 ( tdlight tdcolor n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP3 ( tdlight tdcolor n -- tdprec ) TDPREC:MAKE" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ typed field accessor: a checked composition over UNMAKE.
-s" TDP4 ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP4 ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ executed round-trip: MAKE, destructure, MATCH the enum field.
 : TDP-MK ( -- tdprec ) TDCOLOR:BLUE TDLIGHT:RED 7 TDPREC:MAKE ;
 : TDP-COL ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop ;
@@ -522,10 +522,10 @@ TDP-CODE 2 T=
 \ Wide STRUCTURE memory transports its full W=3 bundle. A different family or
 \ scalar result cannot cross the boundary even when the physical representation
 \ is cell-based.
-s" TDP-MEM-S ( tdprec ^tdprec -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDP-MEM-F ( ^tdprec -- tdprec ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDP-MEM-MIX ( tdprec ^tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDP-MEM-N ( ^tdprec -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP-MEM-S ( tdprec ^tdprec -- ) !" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-MEM-F ( ^tdprec -- tdprec ) @" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-MEM-MIX ( tdprec ^tdmix<n,n> -- ) !" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP-MEM-N ( ^tdprec -- n ) @" >str CHECK-QUIET-CANDIDATE! 0 T=
 1 LAYOUT-BUFFER TDP-BUF tdprec
 : TDP-P ( -- ^tdprec ) 0 TDP-BUF ;
 : TDP-PUT ( tdprec -- ) TDP-P ! ;
@@ -551,9 +551,9 @@ SUMTYPE tdpw
   VARIANT one n ;VARIANT
 ;SUMTYPE
 s" STRUCTURE tdpwide FIELD w tdpw ;STRUCTURE" TDT-EVAL-CATCH 0 T=
-s" TDP-WIDE-MAKE ( tdpw -- tdpwide ) TDPWIDE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-WIDE-MAKE ( tdpw -- tdpwide ) TDPWIDE:MAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
 s" SUMTYPE tdpnest VARIANT value tdpw ;VARIANT ;SUMTYPE" TDT-EVAL-CATCH 0 T=
-s" TDP-NEST-MAKE ( n -- tdpnest ) construct tdpw one construct tdpnest value" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-NEST-MAKE ( n -- tdpnest ) construct tdpw one construct tdpnest value" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A closed wide STRUCTURE is one logical value backed by one hidden parameter per
 \ physical cell.
@@ -571,7 +571,7 @@ STRUCTURE tdw12
   FIELD f10 n
   FIELD f11 n
 ;STRUCTURE
-s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" >str CHECK-QUIET-CANDIDATE! -1 T=
 STRUCTURE tdw34
   FIELD f0 n
   FIELD f1 n
@@ -608,25 +608,25 @@ STRUCTURE tdw34
   FIELD f32 n
   FIELD f33 n
 ;STRUCTURE
-s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ A published wide effect replays in later checks.
 : TDW34-STORED ( tdw34 -- tdw34 ) ;
-s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ Rejection rolls the candidate back without damaging the stored wide effect.
-s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDW34-BAD ( tdw34 -- n )" >str CHECK-QUIET-CANDIDATE! 0 T=
 REJECTION:CAPTURE
-s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-CANDIDATE! 0 T=
+s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"  --> <input>:1:30\n" >str CONTAINS? TTRUE
-s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ A product containing W34 is one W34 wide, not W34^2.
 STRUCTURE tdw34nest
   FIELD inner tdw34
 ;STRUCTURE
-s" TDW34-NEST ( tdw34nest -- tdw34nest )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDW34-NEST ( tdw34nest -- tdw34nest )" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A STRUCTURE of 256 one-cell fields: MAKE takes 256 cells and UNMAKE leaves the
 \ last field on top.
@@ -918,8 +918,8 @@ STRUCTURE tdw256
 : TDW256-READ ( -- n ) TDW256-MK TDW256-LAST ;
 TDW256-READ 255 T=
 
-s" WF6 ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" WF7 ( n -- n )" CHECK-QUIET-CANDIDATE! -1 T=
+s" WF6 ( tdres<n,n> -- ) ?dup drop drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" WF7 ( n -- n )" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ TFAM, TYPE and MATCH are reserved, so each accepting declaration also proves
 \ user source registers families without opening a reserved package.
 \ package-scoped declarations: family rows carry the active package and the
@@ -944,33 +944,33 @@ NEWTYPE tres<a>
 \ the qualifier, requires a lowercase tail, and resolves public rows only (plus
 \ the active package's own private rows).
 package tdpa
-s" TPOK-LOCAL ( tres<n> -- tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPOK-PRIV ( tpriv<n> -- tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPOK-QSELF ( tdpa:tpriv<n> -- tdpa:tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPOK-LOCAL ( tres<n> -- tres<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPOK-PRIV ( tpriv<n> -- tpriv<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPOK-QSELF ( tdpa:tpriv<n> -- tdpa:tpriv<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 ;package
 \ cross-package: a private family never resolves, qualified or not...
-s" TXBAD-PRIV ( tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TXBAD-QPRIV ( tdpa:tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TXBAD-PRIV ( tpriv<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TXBAD-QPRIV ( tdpa:tpriv<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ ...a public family outside the open package does not resolve bare...
-s" TXBAD-AMBIG ( tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TXBAD-AMBIG ( tres<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ ...and qualified references resolve each package distinctly.
-s" TQOK-A ( tdpa:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TQOK-B ( tdpb:tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TQOK-FOLD ( TDPA:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TQBAD-CASE ( TDPA:Tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TQOK-A ( tdpa:tres<n> -- tdpa:tres<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TQOK-B ( tdpb:tres<n> -- tdpb:tres<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TQOK-FOLD ( TDPA:tres<n> -- tdpa:tres<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TQBAD-CASE ( TDPA:Tres<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ same tail, different package: no unification at the SIG-parse level.
-s" TQBAD-XUNIFY ( tdpa:tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TQBAD-XUNIFY2 ( tdpb:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-XUNIFY ( tdpa:tres<n> -- tdpb:tres<n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-XUNIFY2 ( tdpb:tres<n> -- tdpa:tres<n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ inside tdpb, unqualified tres is tdpb's own — never tdpa's same tail.
 package tdpb
-s" TPOK-OWN ( tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPBAD-OTHER ( tres<n> -- tdpa:tres<n> ) " CHECK-QUIET-CANDIDATE! 0 T=
+s" TPOK-OWN ( tres<n> -- tdpb:tres<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPBAD-OTHER ( tres<n> -- tdpa:tres<n> ) " >str CHECK-QUIET-CANDIDATE! 0 T=
 ;package
 \ unknown qualifiers and malformed multi-colon tokens reject as unknown types.
-s" TQBAD-NOPKG ( nopkg:tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TQBAD-COLONS ( tdpa:tres:x<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-NOPKG ( nopkg:tres<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-COLONS ( tdpa:tres:x<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ hidden physical names never resolve in public signatures.
-s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ Inside tdpt and its parts a qualifier names tdpt's part before a top-level
 \ package of its name; outside tdpt it never reaches the part. The top-level
@@ -986,23 +986,23 @@ NEWTYPE thing
 : KEEP ( thing -- thing ) ;
 private
 NEWTYPE hid
-s" TDPT-OWN-HID ( tdpt-b:hid -- tdpt-b:hid )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-OWN-HID ( tdpt-b:hid -- tdpt-b:hid )" >str CHECK-QUIET-CANDIDATE! -1 T=
 ;package
 package tdpt-s
 public
 NEWTYPE thing
 ;package
-s" TDPT-PARENT ( tdpt-b:thing -- tdpt-b:thing )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPT-HID ( tdpt-b:hid -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDPT-SHADOW ( tdpt-s:thing -- tdpt-s:thing )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-PARENT ( tdpt-b:thing -- tdpt-b:thing )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-HID ( tdpt-b:hid -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPT-SHADOW ( tdpt-s:thing -- tdpt-s:thing )" >str CHECK-QUIET-CANDIDATE! -1 T=
 package tdpt-c
-s" TDPT-SIBLING ( tdpt-b:thing -- tdpt-b:thing )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPT-SIBLING-HID ( tdpt-b:hid -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPT-SIBLING ( tdpt-b:thing -- tdpt-b:thing )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-SIBLING-HID ( tdpt-b:hid -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
 : TDPT-TAKE ( tdpt-b:thing -- tdpt-b:thing ) tdpt-b:KEEP ;
 ;package
 ;package
-s" TDPT-OUTSIDE ( tdpt-b:thing -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDPT-TOP ( tdpt-s:thing<n> -- tdpt-s:thing<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-OUTSIDE ( tdpt-b:thing -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPT-TOP ( tdpt-s:thing<n> -- tdpt-s:thing<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A private STRUCTURE declared in a part names its family B:tail in its
 \ generated words, which the part resolves. Each step evaluates under the catch
@@ -1032,8 +1032,8 @@ NEWTYPE span<a,b,c,d,e,g>
 private
 NEWTYPE tier<a>
 
-s" TPC-OWNER ( span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-OWN-PRIVATE ( tier<n> -- TDPM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-OWNER ( span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-OWN-PRIVATE ( tier<n> -- TDPM:tier<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 s" NEWTYPE span<a,b,c,d,e,g>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `span`\n" >str
 s" span" >str s" duplicate family" >str TDT-AT
@@ -1055,22 +1055,22 @@ NEWTYPE tier<a,b>
 ;package
 
 \ The existing global span remains the bare top-level identity.
-s" TPC-GLOBAL ( span<n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-PKG-QUAL ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-GLOBAL-ARITY ( span<n,n,n,n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-PKG-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-CROSS-A ( span<n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-CROSS-B ( TDPM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-GLOBAL ( span<n,n,n> -- span<n,n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-PKG-QUAL ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-GLOBAL-ARITY ( span<n,n,n,n,n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PKG-ARITY ( TDPM:span<n,n,n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-A ( span<n,n,n> -- TDPM:span<n,n,n,n,n,n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-B ( TDPM:span<n,n,n,n,n,n> -- span<n,n,n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ A foreign private row is invisible, and a foreign public family needs its
 \ package named or imported: the one public `tier` does not resolve bare.
-s" TPC-PRIVATE-HIDDEN ( TDPM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-PRIVATE-HIDDEN ( TDPM:tier<n> -- ) drop" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ Stored effects retain exact qualified identity and arity when replayed.
 : TPC-PKG-STORED ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) ;
-s" TPC-PKG-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TPC-PKG-STORED" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-PKG-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-PKG-STORED" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PKG-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TPC-PKG-STORED" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-PKG-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-PKG-STORED" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ An inferred effect in TDPM writes the global span bare and TDPM's own span
 \ qualified; the hook certifies both only if each reads back to the same type.
@@ -1080,8 +1080,8 @@ public
 : TPC-FACTS-GLOBAL TPC-GLOBAL-KEEP ;
 : TPC-FACTS-OWN TPC-PKG-STORED ;
 ;package
-s" TPC-FACTS-GLOBAL-REPLAY ( span<n,n,n> -- span<n,n,n> ) TDPM:TPC-FACTS-GLOBAL" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-FACTS-OWN-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TDPM:TPC-FACTS-OWN" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-FACTS-GLOBAL-REPLAY ( span<n,n,n> -- span<n,n,n> ) TDPM:TPC-FACTS-GLOBAL" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-FACTS-OWN-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TDPM:TPC-FACTS-OWN" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ These load only if their facts text reads back: 24 sibling binders, 250 levels.
 : TFX-BINDERS ( forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> forall<p,[ n -- n ]> -- ) drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop drop ;
@@ -1095,16 +1095,16 @@ STRUCTURE tfx-nest<a> FIELD a a FIELD b n ;STRUCTURE
 \ author typed, so they keep `TDPM:span`. The folded row still names the family
 \ back, because a signature's qualifier folds before lookup.
 REJECTION:CAPTURE
-s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\"   = found: tdpm:span<n,n,n,n,n,n>\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s" found: TDPM:span<n,n,n,n,n,n>" >str CONTAINS? TFALSE
 REJECTION:CAPTURE  true REJECTION:JSON !
-s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"found\":\"tdpm:span<n,n,n,n,n,n>\"" >str CONTAINS? TTRUE
 \ The body has no `;`: the record places an empty token at the text's end.
 REJECTION:BUFFER$ s\" \"column\":48,\"byte_start\":47,\"byte_end\":47,\"token\":\"\"" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
-s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
+s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s" takes 6 type arguments, not 3" >str CONTAINS? TTRUE
 false REJECTION:JSON !
@@ -1514,8 +1514,8 @@ SUMTYPE tdpga<a,b>
   VARIANT quoted  [ a -- b ] ;VARIANT
 ;SUMTYPE
 \ and the in-range variants still construct through the untouched construct path.
-s" TDPGA-MK1 ( n -- tdpga<n,n> ) TDPGA:PLAIN"           CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPGA-MK2 ( tdres<n,n> -- tdpga<n,n> ) TDPGA:APPLIED" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPGA-MK1 ( n -- tdpga<n,n> ) TDPGA:PLAIN"           >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPGA-MK2 ( tdres<n,n> -- tdpga<n,n> ) TDPGA:APPLIED" >str CHECK-QUIET-CANDIDATE! -1 T=
 SUMTYPE tdpgn
   VARIANT nested tdopt<tdres<n,f>> ;VARIANT
   VARIANT nop ;VARIANT
@@ -1735,8 +1735,8 @@ SUMTYPE tdqw
 ;SUMTYPE
 \ constructor + MATCH round-trip. Checked: the constructor input IS the
 \ qualified nominal scalar (an n is not), and the qsome arm refines back to it.
-s" TDQ-ID ( tdqp:qslot -- tdqw ) TDQW:QSOME" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDQ-BADN ( n -- tdqw ) TDQW:QSOME" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDQ-ID ( tdqp:qslot -- tdqw ) TDQW:QSOME" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDQ-BADN ( n -- tdqw ) TDQW:QSOME" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ runtime: construct with the generated ctor, eliminate with MATCH, value back.
 \ An n enters tdqp:qslot only through a cast the declaring package owns.
 package tdqp
@@ -1865,14 +1865,14 @@ BIGSUM-NEQ TFALSE
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE tdme<a,b> VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE NEWTYPE tdcont<a> : TDMEW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDME-GONE ( tdme<n,n> -- tdme<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDCONT-OK ( tdcont<n> -- tdcont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMEW-OK ( n -- n ) TDMEW" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDME-GONE ( tdme<n,n> -- tdme<n,n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDCONT-OK ( tdcont<n> -- tdcont<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMEW-OK ( n -- n ) TDMEW" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ missing terminator in multi-error mode: reported, counted, load continues.
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE tdnoe<a> VARIANT ok a ;VARIANT" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDNOE-GONE ( tdnoe<n> -- tdnoe<n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDNOE-GONE ( tdnoe<n> -- tdnoe<n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ The same contract for the two unified front ends, which read the input stream
 \ as they parse: the tokens between the fault and the terminator belong to the
 \ rejected declaration, so the front end consumes them before the interpreter
@@ -1881,22 +1881,22 @@ s" TDNOE-GONE ( tdnoe<n> -- tdnoe<n> )" CHECK-QUIET-CANDIDATE! 0 T=
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmee red red blue ;ENUM NEWTYPE tdmeecont<a> : TDMEEW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDMEE-GONE ( tdmee -- tdmee )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDMEECONT-OK ( tdmeecont<n> -- tdmeecont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMEEW-OK ( n -- n ) TDMEEW" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMEE-GONE ( tdmee -- tdmee )" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMEECONT-OK ( tdmeecont<n> -- tdmeecont<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMEEW-OK ( n -- n ) TDMEEW" >str CHECK-QUIET-CANDIDATE! -1 T=
 TWX-MULTI-ERR-BEGIN
 s" STRUCTURE tdmes FIELD x n FIELD x n ;STRUCTURE NEWTYPE tdmescont<a> : TDMESW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDMES-GONE ( tdmes -- tdmes )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDMESCONT-OK ( tdmescont<n> -- tdmescont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDMESW-OK ( n -- n ) TDMESW" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMES-GONE ( tdmes -- tdmes )" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMESCONT-OK ( tdmescont<n> -- tdmescont<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMESW-OK ( n -- n ) TDMESW" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ A reject raised AFTER the terminator was consumed must not skip anything: the
 \ next tokens are the following declaration, not this one's tail. `tdmea` is an
 \ enum with no variants, which ED-CLOSE refuses once `;ENUM` is already read.
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmea ;ENUM NEWTYPE tdmeacont<a>" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDMEACONT-OK ( tdmeacont<n> -- tdmeacont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMEACONT-OK ( tdmeacont<n> -- tdmeacont<n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ Nor must one raised at the terminator itself, read where a field's type
 \ stands: both definitions after it are rejected too.
 TWX-MULTI-ERR-BEGIN
@@ -1914,13 +1914,13 @@ TWX-MULTI-ERR-END 3 T=
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmenoe red green" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDMENOE-GONE ( tdmenoe -- tdmenoe )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMENOE-GONE ( tdmenoe -- tdmenoe )" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ two bad declarations count separately.
 TWX-MULTI-ERR-BEGIN
 s" NEWTYPE Bad1<a> NEWTYPE tdok9<a> SUMTYPE tdes<a> ;SUMTYPE" evaluate
 TWX-MULTI-ERR-END 2 T=
 \ a bad declaration does not poison later checks after the mode ends.
-s" TDOK-AFTER ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDOK-AFTER ( tdfoo<n,n> -- tdfoo<n,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ unknown-family and wrong-arity SIGNATURES in multi-error mode: reported,
 \ counted, and the load continues — but the invalid declared signature must
 \ NOT be stored as a cert row (later checks stay sound).
@@ -1928,9 +1928,9 @@ TWX-MULTI-ERR-BEGIN
 s" : TDSME1 ( nope<n> -- nope<n> ) ; : TDSME2 ( tdfoo<n> -- tdfoo<n> ) ; : TDSME3 ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 2 T=
 \ A stored row resolves the call (-1, or 0 on a mismatch); with none it is undefined (0).
-s" TDSME1-USE ( n -- n ) TDSME1" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDSME2-USE ( n -- n ) TDSME2" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDSME3-USE ( n -- n ) TDSME3" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDSME1-USE ( n -- n ) TDSME1" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDSME2-USE ( n -- n ) TDSME2" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDSME3-USE ( n -- n ) TDSME3" >str CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:BUFFER-OFF
 
 \ derive: `DERIVE eq` on a PUBLIC ENUM generates PKG:TAG (discriminant) and
@@ -1950,14 +1950,14 @@ TDRV-TAG0 0 T=
 TDRV-TAG2 2 T=
 
 \ the scalar =/0= wall on layout values is UNTOUCHED by derive (TD12-ZEQ kin).
-s" TDRV-RAWEQ ( tdrv tdrv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDRV-RAWZ ( tdrv -- bool ) 0=" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDRV-RAWEQ ( tdrv tdrv -- bool ) =" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDRV-RAWZ ( tdrv -- bool ) 0=" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ the derived word is family-exact: the wrong family rejects.
 ENUM tdrw one two ;ENUM
-s" TDRW-XEQ ( tdrw tdrw -- bool ) TDRV:EQ" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDRW-XEQ ( tdrw tdrw -- bool ) TDRV:EQ" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ a non-derived enum grows no eq surface (undefined word: refused).
-s" TDRW-NOEQ ( tdrw tdrw -- bool ) TDRW:EQ" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDRW-NOEQ ( tdrw tdrw -- bool ) TDRW:EQ" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ the derived words are undefine-protected like constructors; these pins mirror
 \ the type-ctor-suite seal pins (undefine + reopen).
 s" undefine TDRV:EQ"
@@ -1998,7 +1998,7 @@ TDRB9-EQ TFALSE
 
 \ a variant named eq/tag stays legal WITHOUT derive (no reservation creep).
 ENUM tdrx eq neq ;ENUM
-s" TDRX-USE ( -- tdrx ) TDRX:EQ" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDRX-USE ( -- tdrx ) TDRX:EQ" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ derive: payload sums compare diagonally (outer MATCH binds one value's
 \ payloads, inner MATCH the other's; same-variant arms compare scalars with
@@ -2028,7 +2028,7 @@ TDSV-NEQ-X TFALSE
 TDSV-NEQ-Y TFALSE
 TDSV-TAG-P 2 T=
 \ the scalar = wall stays closed on a derived W>1 sum.
-s" TDSV-RAW ( tdsv tdsv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDSV-RAW ( tdsv tdsv -- bool ) =" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ product field-wise eq; the col field compares through TDRV:EQ.
 STRUCTURE tdpv DERIVE eq
@@ -2043,7 +2043,7 @@ TDPV-NEQ-C TFALSE
 TDPV-NEQ-N TFALSE
 \ products derive EQ only: no TAG surface (undefined -> refused), and the
 \ derived EQ is undefine-protected like a constructor.
-s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" >str CHECK-QUIET-CANDIDATE! 0 T=
 s" undefine TDPV:EQ"
    s" error[E-CTOR-PROTECTED]: `TDPV:EQ`" >str s" generated constructor" >str TDT-REJ
 
@@ -2181,11 +2181,11 @@ ENUM tdho DERIVE hash oa ob ;ENUM
 : TDHO-T ( -- n ) TDHO:OB TDHO:TAG ;
 TDHO-H TTRUE
 TDHO-T 1 T=
-s" TDHO-E ( tdho tdho -- bool ) TDHO:EQ" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDHO-E ( tdho tdho -- bool ) TDHO:EQ" >str CHECK-QUIET-CANDIDATE! 0 T=
 s" undefine TDHO:HASH"
    s" error[E-CTOR-PROTECTED]: `TDHO:HASH`" >str s" generated constructor" >str TDT-REJ
 \ eq-only families grow no hash surface.
-s" TDSV-NOH ( tdsv -- n ) TDSV:HASH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDSV-NOH ( tdsv -- n ) TDSV:HASH" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ A derived word's engine words are the ones sumtype.f found: a declaring
 \ package's own `=`, `and`, `0=`, `drop`, `swap`, `xor` and `*` capture none.
@@ -2414,42 +2414,42 @@ STRUCTURE tdlp FIELD amt n ;STRUCTURE
 TDLP-RT 7 T=
 \ negatives: wrong family, scalar-vs-family both ways, arity>0 cell tail — all
 \ reject fail-closed.
-s" TDLB1 ( tdrw -- tdrw ) {: x:tdrv :} x" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLB2 ( n -- n ) {: x:tdrv :} 5" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLB3 ( tdrv -- tdrv ) {: x:n :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB1 ( tdrw -- tdrw ) {: x:tdrv :} x" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB2 ( n -- n ) {: x:tdrv :} 5" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB3 ( tdrv -- tdrv ) {: x:n :} x" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ an annotation is read by the SIGNATURE grammar, so a parametric spelling is
 \ an annotation: tdres<n,n> is the W=2 instance the declared row carries.
-s" TDLB4 ( tdres<n,n> -- n ) {: x:tdres<n,n> :} 5" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDLB4B ( tdres<n,n> -- tdres<n,n> ) {: x:tdres<n,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB4 ( tdres<n,n> -- n ) {: x:tdres<n,n> :} 5" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB4B ( tdres<n,n> -- tdres<n,n> ) {: x:tdres<n,n> :} x" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ the same grammar means the same arity check: a bare arity>0 tail and a wrong
 \ argument count are both refused, in an annotation as in a signature.
-s" TDLB6 ( n -- n ) {: x:tdfoo :} x" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLB6B ( tdres<n,n> -- n ) {: x:tdres :} 5" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLB6C ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDLB6D ( tdres<n,n> -- n ) {: x:tdres<n,n,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6 ( n -- n ) {: x:tdfoo :} x" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6B ( tdres<n,n> -- n ) {: x:tdres :} 5" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6C ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6D ( tdres<n,n> -- n ) {: x:tdres<n,n,n> :} 5" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ the definition's own type variables are in scope in an annotation, and the
 \ declared quantifier survives the local (the parametricity seal, NP-CHECK).
 \ tdfoo is one cell; a local over tdres<a,b>, whose width is open, is refused
 \ (test/checker-soundness-suite.f OPEN-WIDTH-LOCALS).
-s" TDLB6E ( tdfoo<a,b> -- tdfoo<a,b> ) {: x:tdfoo<a,b> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB6E ( tdfoo<a,b> -- tdfoo<a,b> ) {: x:tdfoo<a,b> :} x" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ a nested family argument parses exactly as it does in a signature.
-s" TDLB6F ( tdres<tdfoo<n,n>,n> -- tdres<tdfoo<n,n>,n> ) {: x:tdres<tdfoo<n,n>,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB6F ( tdres<tdfoo<n,n>,n> -- tdres<tdfoo<n,n>,n> ) {: x:tdres<tdfoo<n,n>,n> :} x" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ and a wrong argument is still a wrong type: tdres<n,n> is not tdres<tdfoo<n,n>,n>.
-s" TDLB6G ( tdres<n,n> -- n ) {: x:tdres<tdfoo<n,n>,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6G ( tdres<n,n> -- n ) {: x:tdres<tdfoo<n,n>,n> :} 5" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ a parametric CELL family is one cell and stays its nominal scalar, so the
 \ annotation unifies with the local's var exactly as the arity-0 nominal does.
-s" TDLB6H ( tdfoo<n,n> -- tdfoo<n,n> ) {: x:tdfoo<n,n> :} x" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDLB6I ( n -- tdfoo<n,n> ) {: x:tdfoo<n,n> :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6H ( tdfoo<n,n> -- tdfoo<n,n> ) {: x:tdfoo<n,n> :} x" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB6I ( n -- tdfoo<n,n> ) {: x:tdfoo<n,n> :} x" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ an arity-0 layout of ANY width is nameable: tdsv is
 \ W=3, its annotation is the bundle's top hidden term and the bind records the
 \ full width, so the local holds the whole value.
-s" TDLB5 ( tdsv -- tdsv ) {: x:tdsv :} x" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB5 ( tdsv -- tdsv ) {: x:tdsv :} x" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ bare W>1 bundle locals keep working.
-s" TDLB7 ( tdsv -- tdsv ) {: x :} x" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB7 ( tdsv -- tdsv ) {: x :} x" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ arity-0 cell family annotation = the signature nominal.
 NEWTYPE tdlnom
-s" TDLB8 ( tdlnom -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB8 ( tdlnom -- tdlnom ) {: x:tdlnom :} x" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ E-MISMATCH family-name render: a locals-annotation family term's stored name
 \ span points into the shared TKF token-fold buffer, which later body tokens
@@ -2462,19 +2462,19 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ `:}` that would fail next: the annotation parser forces the verdict where it
 \ reads, and the signature's own arity diagnostic is what comes out.
 REJECTION:CAPTURE
-s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
+s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\"   = help: give `tdres` 2 type arguments\n" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
-s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
+s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR1 ends with tdlnom on the stack; its signature promises n\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
-s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
+s" TDLR2 ( tdlnom -- n ) dup drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR2 ends with tdlnom on the stack; its signature promises n\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" >str CONTAINS? TTRUE
 \ enum-tier annotation term on the EXPECTED side of the :} bind check.
 REJECTION:CAPTURE
-s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
+s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: `:}` takes tdlv; the stack holds tdlp\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: tdlv\n  = found: tdlp\n" >str CONTAINS? TTRUE
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
@@ -2484,7 +2484,7 @@ public
 NEWTYPE tdlrfam
 ;package
 REJECTION:CAPTURE
-s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
+s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR4 ends with tdlrpk:tdlrfam on the stack; its signature promises n\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpk:tdlrfam\n" >str CONTAINS? TTRUE
 
@@ -2499,19 +2499,19 @@ public
 NEWTYPE tdlrfamu
 ;package
 REJECTION:CAPTURE
-s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
+s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR5 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" >str CONTAINS? TFALSE
 REJECTION:CAPTURE
-s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
+s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR6 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" >str CONTAINS? TFALSE
 \ the folded qualifier still names the family back: a signature may spell it either way.
-s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" >str CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:CAPTURE  true REJECTION:JSON !
-s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
+s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu\"" >str CONTAINS? TFALSE
 false REJECTION:JSON !
@@ -2520,7 +2520,7 @@ false REJECTION:JSON !
 \ inside it rather than picking up a self-qualifier.
 package tdlrpku
 REJECTION:CAPTURE
-s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
+s" TDLR8 ( tdlrfamu -- n ) dup drop" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR8 ends with tdlrfamu on the stack; its signature promises n\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrfamu\n" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s" found: tdlrpku:tdlrfamu" >str CONTAINS? TFALSE
@@ -2537,10 +2537,10 @@ public
 SUMTYPE tdlrjs VARIANT keep n ;VARIANT ;SUMTYPE
 ;package
 REJECTION:CAPTURE  true REJECTION:JSON !
-s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
+s" TDLRJ1 ( n -- tdlrjg )" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"family\":\"tdlrjg\"" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
-s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" CHECK-CANDIDATE! 0 T=
+s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"family\":\"tdlrjs\"" >str CONTAINS? TFALSE
 false REJECTION:JSON !
@@ -2552,9 +2552,9 @@ REJECTION:BUFFER-OFF
 \ flat-tuple form.
 SUMTYPE tdpbopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 SUMTYPE tdpbres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
-s" TDPB1 ( -- tdpbopt<off len> )"  CHECK-QUIET-CANDIDATE! 0 T=
-s" TDPB2 ( -- tdpbopt<^u8 n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPB1 ( -- tdpbopt<off len> )"  >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPB2 ( -- tdpbopt<^u8 n> )" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPB3 ( -- tdpbres<n n,n> )"    >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ constructor and MATCH effects for a NAMED multi-cell layout-family arg.
 \ TDPN1-3 identity-check; TDPN4-7 construct and certify: the payload input and
@@ -2564,30 +2564,30 @@ s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
 \ slot 1). TDPA1-3 reject: wrong-width payload two ways, cross-family bundle.
 \ The raw multi-token runs (TDPB1-3) stay rejected.
 STRUCTURE tdpbw2 FIELD x n FIELD y n ;STRUCTURE
-s" TDPN1 ( tdpbopt<tdpbw2> -- tdpbopt<tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPN2 ( tdpbres<tdpbw2,n> -- tdpbres<tdpbw2,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPN3 ( tdpbres<tdpbw2,tdpbw2> -- tdpbres<tdpbw2,tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN1 ( tdpbopt<tdpbw2> -- tdpbopt<tdpbw2> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN2 ( tdpbres<tdpbw2,n> -- tdpbres<tdpbw2,n> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN3 ( tdpbres<tdpbw2,tdpbw2> -- tdpbres<tdpbw2,tdpbw2> )" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ SOME / NONE / OK / ERR on named W>1 args certify.
-s" TDPN4 ( tdpbw2 -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPN5 ( -- tdpbopt<tdpbw2> ) TDPBOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN4 ( tdpbw2 -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN5 ( -- tdpbopt<tdpbw2> ) TDPBOPT:NONE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ TDPA1: the output run is read at the width it is laid at, so it prints as one
 \ tdpbopt<tdpbw2>; test/type-ctor-suite.f CLFC-RT-SOME proves that width.
 REJECTION:CAPTURE  true REJECTION:JSON !
-s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
+s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"inferred\":\"n -- tdpbopt<tdpbw2>\"" >str CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
-s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" >str CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ TDPA4: constructing a linear-payload multi-cell sum is sound
 \ (test/type-linear-suite.f A1/A6/A7); duplicating the constructed bundle is
 \ not. With the linear con `tdown` (declared above), SOME certifies and dup
 \ rejects.
-s" TDPA4 ( tdown -- tdpbopt<tdown> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPA4 ( tdown -- tdpbopt<tdown> ) TDPBOPT:SOME" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ real compiles of wide constructs are pinned in test/type-ctor-suite.f (CN-OPEN
 \ for the rc 70 refusal); this suite stays stderr-clean.
 
@@ -2596,29 +2596,29 @@ s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUI
 STRUCTURE tdnw2 FIELD x n FIELD y n ;STRUCTURE
 SUMTYPE tdnopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 SUMTYPE tdnres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
-s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDNEST2 ( tdnres<n,n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
-s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNEST2 ( tdnres<n,n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ An open inner var leaves the layout's width unknown, so the candidate refuses;
 \ test/type-ctor-suite.f CN-OPEN pins the real load.
 REJECTION:CAPTURE  true REJECTION:JSON !
-s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
+s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 \ TDNA1's expected renders tdnres<tdnw2,n> whole: its width-3 instance has its
 \ tag at slot 2, so the full run compacts to the sum type.
 REJECTION:CAPTURE  true REJECTION:JSON !
-s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
+s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n>\"" >str CONTAINS? TTRUE
 REJECTION:CAPTURE
-s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
+s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" >str CHECK-CANDIDATE! 0 T=
 REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" >str CONTAINS? TTRUE
 REJECTION:BUFFER$ s\" \"family\":\"tdnres\"" >str CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
-s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ These load only when their facts text reads back rows of 65 and 300 values.
 : TFR-W65 ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) ;
@@ -2640,7 +2640,7 @@ s" cast: TDWR-NARROW ( n -- tdwrap )" 70 TDT-NEG
 s\" error[E-CAST-ARITY]: in `cast: TDWR-NARROW`, the input and output differ in width\n" >str TDT-HAS
 s\"   = help: give both sides the same width in cells: `n` is 1 cell, `tdwrap` is 2\n" >str TDT-HAS
 ;package
-s" TDWR-NOT ( str -- tdwrap )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDWR-NOT ( str -- tdwrap )" >str CHECK-QUIET-CANDIDATE! 0 T=
 \ A comment on the name's line is no base: the family stays one cell.
 NEWTYPE tdnote   \ a comment
 s" cast: TDN-CELL ( n -- tdnote )" 0 TDT-NEG

@@ -23,27 +23,27 @@ DEFTYPE FRAME-INDEX
 \ direction of unification.
 : NEED-SERIAL ( serial -- ) SERIAL>N drop ;
 
-s" VN-NEED-OK ( serial -- ) NEED-SERIAL"    CHECK-QUIET-CANDIDATE! -1 T=
-s" VN-NEED-N ( n -- ) NEED-SERIAL"          CHECK-QUIET-CANDIDATE!  0 T=
-s" VN-NEED-X ( frame-index -- ) NEED-SERIAL" CHECK-QUIET-CANDIDATE! 0 T=
+s" VN-NEED-OK ( serial -- ) NEED-SERIAL"    >str CHECK-QUIET-CANDIDATE! -1 T=
+s" VN-NEED-N ( n -- ) NEED-SERIAL"          >str CHECK-QUIET-CANDIDATE!  0 T=
+s" VN-NEED-X ( frame-index -- ) NEED-SERIAL" >str CHECK-QUIET-CANDIDATE! 0 T=
 ;package
 
 \ 2. package scoping: the SAME name in a different package is a DISTINCT type.
 package FRAME
 DEFTYPE SERIAL
-s" VN-F-ID ( serial -- serial )"            CHECK-QUIET-CANDIDATE! -1 T=
-s" VN-F-CROSS ( serial -- CAMERA:serial )"  CHECK-QUIET-CANDIDATE!  0 T=
-s" VN-F-CROSS2 ( CAMERA:serial -- serial )" CHECK-QUIET-CANDIDATE!  0 T=
+s" VN-F-ID ( serial -- serial )"            >str CHECK-QUIET-CANDIDATE! -1 T=
+s" VN-F-CROSS ( serial -- CAMERA:serial )"  >str CHECK-QUIET-CANDIDATE!  0 T=
+s" VN-F-CROSS2 ( CAMERA:serial -- serial )" >str CHECK-QUIET-CANDIDATE!  0 T=
 ;package
 
 \ The reverse view, from CAMERA.
 package CAMERA
-s" VN-C-CROSS ( serial -- FRAME:serial )"   CHECK-QUIET-CANDIDATE!  0 T=
-s" VN-C-SAME ( serial -- serial )"          CHECK-QUIET-CANDIDATE! -1 T=
+s" VN-C-CROSS ( serial -- FRAME:serial )"   >str CHECK-QUIET-CANDIDATE!  0 T=
+s" VN-C-SAME ( serial -- serial )"          >str CHECK-QUIET-CANDIDATE! -1 T=
 ;package
 
 \ 3. an undeclared nominal name is rejected as an unknown signature type.
-s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
+s" VN-UNDECL ( never-declared -- never-declared )" >str CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 4. the name rule: a tail an effect reads as something other than the family is
 \    a reserved name in every scope. An effect reads the token `ptr` ahead of
@@ -66,8 +66,8 @@ PTR-REJECTED
 \    declare with working converters.
 package LONGPKG
 DEFTYPE FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP
-s" VN-LONG-RT ( n -- n ) >FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP>N" CHECK-QUIET-CANDIDATE! -1 T=
-s" VN-LONG-N ( forty-byte-surface-name-past-the-old-cap -- n )" CHECK-QUIET-CANDIDATE! 0 T=
+s" VN-LONG-RT ( n -- n ) >FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP FORTY-BYTE-SURFACE-NAME-PAST-THE-OLD-CAP>N" >str CHECK-QUIET-CANDIDATE! -1 T=
+s" VN-LONG-N ( forty-byte-surface-name-past-the-old-cap -- n )" >str CHECK-QUIET-CANDIDATE! 0 T=
 ;package
 
 \ The 1000-byte name goes through the public route, a DEFTYPE text evaluated in
@@ -211,7 +211,7 @@ REJECTION:BUFFER$ s" = help: name as the base one type declared before this decl
 REJECTION:BUFFER$ s" `^u8`" >str CONTAINS? TFALSE
 \ a comment on the name's line is no base: the type stays one cell over n.
 DEFTYPE DTNOTE   \ a comment
-s" VN-NOTE-RT ( n -- n ) >DTNOTE DTNOTE>N" CHECK-QUIET-CANDIDATE! -1 T=
+s" VN-NOTE-RT ( n -- n ) >DTNOTE DTNOTE>N" >str CHECK-QUIET-CANDIDATE! -1 T=
 \ the verifier replays a base as the load registers it.
 : DT-VERIFY ( -- )
    s\" DEFTYPE REV2 str\n: DTV ( str -- rev2 ) >REV2 ;" >str VERIFY:SOURCE-BUF ;

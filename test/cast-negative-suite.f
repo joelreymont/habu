@@ -420,7 +420,7 @@ package CN-EXP-A
 public
 EXPORT CN-EXP-SRC-PKG:CN-EXP-SRC
 ;package
-s" CNEX0 ( n -- n ) CN-EXP-A:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! -1 T=
+s" CNEX0 ( n -- n ) CN-EXP-A:CN-EXP-SRC" >str CHECK-QUIET-CANDIDATE! -1 T=
 
 \ Offline verification replays a package in the verifier window's own scope. A
 \ normal simulated package verifies, restores the live provider, and leaves no
@@ -530,7 +530,7 @@ package CN
 
 \ the cast: declarer used inside a checked body is rejected unsafe (verdict 0);
 \ no window is armed — the reject is the bare token, before any name is parsed.
-s" CNU1 ( n -- CN:cnfam ) cast:"                      CHECK-QUIET-CANDIDATE! 0 T=
+s" CNU1 ( n -- CN:cnfam ) cast:"                      >str CHECK-QUIET-CANDIDATE! 0 T=
 ;package
 
 \ A cast retypes one value of any width, to a value of the same width only: a

@@ -84,7 +84,7 @@ create XE-EMPTY 1 allot
 \ The child prints "<tag><<CERT>>" or "<tag><<REJ>>"; cand must hold no '"'.
 : XE-CASE-LINE ( str str -- ) {: ta:^ tu:n ca:^ cu:n :}
    S\" .\" " SB-APPEND  ta tu SB-APPEND  S\" \"  " SB-APPEND
-   S\" s\" " SB-APPEND  ca cu SB-APPEND  S\" \" CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
+   S\" s\" " SB-APPEND  ca cu SB-APPEND  S\" \" >str CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
 
 \ All value cases run in one child; the parent reads "<tag><verdict>" back.
 : XE-VALUES-PROG$ ( -- str )

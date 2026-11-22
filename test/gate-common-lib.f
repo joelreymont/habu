@@ -276,7 +276,7 @@ variable GE-EVAL-SRC-U
 
 : GE-SRC-CHECK-LINE ( str -- )
    GE-SRC-S"
-   s"  CHECK! ." GE-SRC-LINE ;
+   s"  >str CHECK! ." GE-SRC-LINE ;
 
 : GE-SRC-FILE+ ( ^u8 n -- ) {: path:^ pathu:n :}
    path pathu GE-SRC-BUF GE-SRC-U @ + GE-SRC-CAP GE-SRC-U @ -

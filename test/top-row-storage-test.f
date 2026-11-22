@@ -401,7 +401,7 @@ variable ERR-U
 \ is placed at <input>, never at the label.
 : CASE-LABEL-CANDIDATE ( -- )
    s" a tool's file label stays off a candidate text's rejection" >str T-LABEL
-   S\" s\" /subject/label.f\" >str REJECTION:LABEL! true REJECTION:JSON ! s\" TS-LC ( -- ) TS-LC-UNDEFINED\" CHECK-CANDIDATE! drop"
+   S\" s\" /subject/label.f\" >str REJECTION:LABEL! true REJECTION:JSON ! s\" TS-LC ( -- ) TS-LC-UNDEFINED\" >str CHECK-CANDIDATE! drop"
    >str 0 EXITS
    S\" \"file\":\"<input>\"" >str ERR-HAS?
    S\" \"code\":\"E-UNDEFINED\"" >str ERR-HAS? ;
@@ -540,7 +540,7 @@ variable ERR-U
    s" a TRUSTED: word, the CHECK! probe and a TRUSTED: shim are admitted" >str T-LABEL
    [: s" TRUSTED: TS-PASSES? ( ^u8 n -- bool ) 2drop 0 0= ;" evaluate-closed ;] 0 TTHROWSQ
    [: S\" s\" some source\" TS-PASSES? drop" evaluate-closed ;] 0 TTHROWSQ
-   [: S\" s\" : TS-G ( n -- n ) 1 + ;\" CHECK! drop" evaluate-closed ;] 0 TTHROWSQ
+   [: S\" s\" : TS-G ( n -- n ) 1 + ;\" >str CHECK! drop" evaluate-closed ;] 0 TTHROWSQ
    [: s" TRUSTED: TS-SHIM ( n n -- n ) + ;  1 2 TS-SHIM drop" evaluate-closed ;] 0 TTHROWSQ ;
 
 \ A child on a terminal: only the REPL's line loop recovers from a throw and

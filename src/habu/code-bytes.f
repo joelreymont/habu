@@ -57,7 +57,7 @@ public
    at bytes TEXT-LO TEXT-HI WITHIN? if true exit then
    at bytes BAND-LO BAND-HI WITHIN? ;
 
-: AT ( n n -- ^u8 n ) {: at:n bytes:n :}
+: AT ( n n -- str ) {: at:n bytes:n :}
    at bytes IN-CODE? 0= if at bytes OUTSIDE then
    at N>U8 bytes ;
 

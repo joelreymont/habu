@@ -323,7 +323,7 @@ variable XREF-QI
    XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
-: XREF-FIND ( ^u8 n -- ^n )
+: XREF-FIND ( str -- ^n )
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then

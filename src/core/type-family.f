@@ -709,7 +709,7 @@ variable TFX-CUR              \ private bucket-walk cursor
 
 \ exact (package,tail) — the qualified-lookup and duplicate-detection primitive.
 
-: TFAM-FIND-IN ( ^u8 n ^u8 n -- n bool )
+: TFAM-FIND-IN ( str str -- n bool )
    {: pa:^ pu:n na:^ nu:n :}
    TFX-ENSURE
    na nu TFX-HASH TFX-BKT @ TFX-CUR !
@@ -1283,7 +1283,7 @@ defer TFAM-ADDR-FIND-XT ( str -- n bool )
    THEN
    drop  a u TFAM-ADDR-FIND-XT ;
 
-: TFAM-CTOR-WORD? ( ^u8 n -- bool )   \ exact generated word?
+: TFAM-CTOR-WORD? ( str -- bool )   \ exact generated word?
    TF-GEN-FIND nip ;
 
 \ The type whose generated word a definition of a u here would repeat, and true;
@@ -2380,7 +2380,7 @@ variable ER-MARK    0 ER-MARK !
    REPEAT
    drop RES-FALSE ;
 
-: PF-ADD ( n n ^u8 n n n n n n n n -- )
+: PF-ADD ( n n str n n n n n n n -- )
    {: fam:n var:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    WRITE-WINDOW-CK
    fam var PF-OWNER-OK? 0= IF

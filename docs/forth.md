@@ -1614,7 +1614,7 @@ accessors, each naming what it reaches.
 #### Reading code bytes
 
 A code address reaches checked code as a number. Reading the bytes there goes
-through `CODE-BYTES:AT ( n n -- ^u8 n )` alone, which rejects a span not
+through `CODE-BYTES:AT ( n n -- str )` alone, which rejects a span not
 wholly inside the image's code with `E-CODE-SPAN` and status 70. A site that
 only carries a code address keeps it a number.
 

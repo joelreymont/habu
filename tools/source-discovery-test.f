@@ -35,7 +35,7 @@ variable SDT-ENTRY-U
 
 : SDT-ROOT$ ( -- str )   SDT-ROOT SDT-ROOT-U @ ;
 public
-: SDT-ENTRY$ ( -- ^u8 n )  SDT-ENTRY SDT-ENTRY-U @ ;
+: SDT-ENTRY$ ( -- str )  SDT-ENTRY SDT-ENTRY-U @ ;
 private
 
 : SDT-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}

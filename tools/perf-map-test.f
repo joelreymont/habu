@@ -43,7 +43,7 @@ variable ACC
       HEXBUF HN @ + c@ SB-APPEND-C
    repeat ;
 
-: FIND-REC ( ^u8 n -- n )   \ the last live record with this name, -1 when none
+: FIND-REC ( str -- n )   \ the last live record with this name, -1 when none
    {: a:^ u:n :}
    -1 ACC !
    ndict@ 0 ?do

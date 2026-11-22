@@ -544,7 +544,7 @@ variable GDB-SKEWED
    s" TYPED-VARIABLE NONE-XT [ n -- n ]" GE-SRC-LINE
    s" CAST: TARGET>ADDR ( [ n n ^n -- n ] -- n )" GE-SRC-LINE
    s" create SAVED-CODE 16 allot" GE-SRC-LINE
-   s" : SUBJECT ( -- ^u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
+   s" : SUBJECT ( -- ^u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT str> drop ;" GE-SRC-LINE
    s" : ARM ( -- ) TARGET-XT @ DEBUG:BP+ ;" GE-SRC-LINE
    s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ SUBJECT SAVED-CODE 16 BYTE-COPY DEBUG:BP." GE-SRC-LINE
    s" ['] ARM catch . DEBUG:BP." GE-SRC-LINE

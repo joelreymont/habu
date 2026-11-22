@@ -1037,7 +1037,7 @@ package CAST-ERROR
    s" signature" REJECTION:NOTE  SIG$ SIG-TRIM REJECTION:EMIT-CUT ;
 \ Opens the declaration's rejection under code, why wa wu saying what is wrong,
 \ placed at its token; the caller writes the label.
-: PLACE ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
+: PLACE ( str n -- ) {: wa:^ wu:n code:n :}
    code CODE$ REJECTION:OPEN  wa wu TITLE  SPOT$ REJECTION:AT ;
 \ The term atop row and its width in cells, as "`str` is 2".
 : TERM-WIDTH ( n -- ) {: row:n :}
@@ -1052,14 +1052,14 @@ package CAST-ERROR
 public
 \ Runs xt on the declaration of name na nu with signature sa su under keyword
 \ ka ku, the record live until xt returns or throws.
-: DECLARE ( ^u8 n ^u8 n ^u8 n [ ^u8 n ^u8 n -- ] -- )
+: DECLARE ( str str str [ str str -- ] -- )
    >r {: na:^ nu:n sa:^ su:n ka:^ ku:n :}
    na WORD-A !  nu WORD-U !  ka KEY-A !  ku KEY-U !  sa SIG-A !  su SIG-U !
    na nu sa su r> [: CLEAR ;] finally ;
-: TOKEN! ( ^u8 n -- ) TOK-U !  TOK-A ! ;
+: TOKEN! ( str -- ) TOK-U !  TOK-A ! ;
 \ Opens the declaration's rejection under code, why wa wu saying what is wrong;
 \ the caller writes its help and stops.
-: OPEN ( ^u8 n n -- ) {: wa:^ wu:n code:n :}
+: OPEN ( str n -- ) {: wa:^ wu:n code:n :}
    wa wu code PLACE  code LABEL$ REJECTION:EMIT-STR  SIG-NOTE ;
 \ Rejects the declaration under code: why wa wu says what is wrong, label la lu
 \ the issue at its token, help ha hu what to write instead.
@@ -1069,7 +1069,7 @@ public
    REJECTION:HELP  ha hu REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 \ RAISE-LABEL under code's own label.
-: RAISE ( ^u8 n ^u8 n n -- ) {: wa:^ wu:n ha:^ hu:n code:n :}
+: RAISE ( str str n -- ) {: wa:^ wu:n ha:^ hu:n code:n :}
    wa wu code LABEL$ ha hu code RAISE-LABEL ;
 \ Rejects a cast whose input row in and output row out differ in width.
 : WIDTH-RAISE ( n n -- ) {: in:n out:n :}
@@ -1952,7 +1952,7 @@ package CHECK
    IF REJECTION:SOURCE-OFF THEN ;
 
 global
-: CHECK-CANDIDATE! ( ^u8 n -- n ) {: a:^ u:n :}
+: CHECK-CANDIDATE! ( str -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    a u ARM-TEXT {: arm:bool :}
    RECOVERY-USED? {: recovery0:bool :}
@@ -1994,7 +1994,7 @@ EXPORT CHECK:CUR-GAP
 EXPORT CHECK:OPERANDS-SPENT
 EXPORT CHECK:PU-N
 EXPORT CHECK:WRITE-WINDOW-CK
-: SCAN ( ^u8 n -- bool )
+: SCAN ( str -- bool )
    0 CHECKER-PREFIX-MISS !
    CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
    CHECK-RESET
@@ -2039,7 +2039,7 @@ package CHECK
 global
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic
 \ asks here, so the render counter stays inside this file.
-: CHECK-QUIET-CANDIDATE! ( ^u8 n -- n ) {: a:^ u:n :}
+: CHECK-QUIET-CANDIDATE! ( str -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    1 REJECTION:QUIET +!
    0 [: drop a u CHECK-CANDIDATE! ;] catch {: v rc:n :}
@@ -2064,7 +2064,7 @@ EXPORT CHECKER-TAPE:DONE
 global
 \ Like CHECK, for the text `NAME ( in -- out ) body` with no `:` or `;`: verifies
 \ the body against the declared effect and rejects a mismatch.
-: CHECK! ( ^u8 n -- n ) {: a:^ u:n :}
+: CHECK! ( str -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    0 UWIN-VALID !
    -1 VSIG !
@@ -2182,7 +2182,7 @@ package CHECKER-IDENTITY
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 \ A row that did not parse is rejected before a gate walks it; family tails read
 \ the engine's open namespace.
-: PARSE ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
+: PARSE ( str str -- ) {: na:^ nu:n sa:^ su:n :}
    sa su BYTE-SPAN? 0= IF
       s" the signature's length describes no memory"
       s" length describes no memory"
@@ -2203,7 +2203,7 @@ package CHECKER-IDENTITY
 
 \ An unsupplied output variable, a view pack's shape CAST sends elsewhere, is a
 \ bad row here.
-: ROWS ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
+: ROWS ( str str -- ) {: na:^ nu:n sa:^ su:n :}
    SGBAD-UNSUPPLIED? IF sa su na nu CAST-ERROR:REJECT-SIGNATURE THEN
    SGHASR @ 0 <> IF
       s" the signature declares a return-stack effect"
@@ -2251,7 +2251,7 @@ package CHECKER-IDENTITY
 public
 \ Refuse first, register second: a refusal throws before the engine counts the
 \ record, so it leaves no name.
-: CAST ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
+: CAST ( str str -- ) {: na:^ nu:n sa:^ su:n :}
    na nu sa su PARSE
    CAST-SCOPED? IF
       VIEW-CAST-CERTIFY
@@ -2278,7 +2278,7 @@ public
 
 \ A `linear:` record takes no DNAME-REP: minting or erasing a token changes
 \ its owner, never a scalar's representation.
-: LINEAR ( ^u8 n ^u8 n -- ) {: na:^ nu:n sa:^ su:n :}
+: LINEAR ( str str -- ) {: na:^ nu:n sa:^ su:n :}
    na nu sa su PARSE
    na nu sa su ROWS
    LINEAR-CERTIFY
@@ -4066,14 +4066,14 @@ FACTS-READ-INSTALL
 : PRIM-NAME ( str -- ) PE-SYM-OF drop ;
 
 \ Opens a row with an effect; PRIM-ATOM runs each of its atoms.
-: PRIM-OPEN ( ^u8 n -- ) PE-OPEN  0 PE-SPEC-TOS ! ;
+: PRIM-OPEN ( str -- ) PE-OPEN  0 PE-SPEC-TOS ! ;
 
 : PRIM-ATOM ( n -- ) PE-SPEC-ATOM ;
 
 \ Closes the open row on pkg's private symbol, or the global one for an empty
 \ pkg, with its flags; a symbol the prefix holds, a grammar word's, states
 \ nothing.
-: PRIM-CLOSE ( ^u8 n bool bool -- )
+: PRIM-CLOSE ( str bool bool -- )
    {: pkg:^ pkgu:n trusted:bool fixed:bool :}
    PE-SPEC-TOS @ 0 <> IF s" checker: primitive-spec operand left over" EXIT-STATUS:INTERNAL die THEN
    pkgu 0= IF  PE-NA@ PE-NU @ PE-SYM-OF

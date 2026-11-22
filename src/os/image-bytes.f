@@ -151,23 +151,23 @@ public
 : M-ZEROS ( n -- )
    M-LEN M-ZEROS-LEN ;
 
-: M-BYTES-LEN ( ^u8 len -- )
-   {: src:^ u:len :}
+: M-BYTES-LEN ( str -- )
+   M-LEN {: src:^ u:len :}
    u M-CHECK-ROOM
    src MP@ u BYTE-COPY-LEN
    u M-ADVANCE ;
 
 : M-BYTES ( str -- )
-   M-LEN M-BYTES-LEN ;
+   M-BYTES-LEN ;
 
-: M-NAME16-LEN ( ^u8 len -- )
-   dup LEN>N dup M-N ! $10 > if s" image-bytes: name exceeds 16 bytes" M-FAIL then
+: M-NAME16-LEN ( str -- )
+   dup dup M-N ! $10 > if s" image-bytes: name exceeds 16 bytes" M-FAIL then
    2dup M-BYTES-LEN
    2drop $10 M-N @ - M-ZEROS ;
 
 private
 : M-NAME16 ( str -- )
-   M-LEN M-NAME16-LEN ;
+   M-NAME16-LEN ;
 
 public
 : M-PAD-OFF ( off -- )
@@ -230,12 +230,12 @@ public
    dup 32 rshift M-BE32
    $FFFFFFFF and M-BE32 ;
 
-: M-BE-BYTES-LEN ( ^u8 len -- )
-   {: src:^ u:len :}
+: M-BE-BYTES-LEN ( str -- )
+   M-LEN {: src:^ u:len :}
    src M-BE-PTR u BYTE-COPY-LEN
    u M-BE-SKIP ;
 
 private
 : M-BE-BYTES ( str -- )
-   M-LEN M-BE-BYTES-LEN ;
+   M-BE-BYTES-LEN ;
 ;package

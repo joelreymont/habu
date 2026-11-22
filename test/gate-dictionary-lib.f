@@ -857,7 +857,7 @@ variable LABEL-U
    s" ;package" GE-SRC-LINE
    s" undefine GD-QUNDEF:TARGET" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  GD-QUNDEF:TARGET" GE-SRC+ GE-DQ GE-SRC-C
-   s"  XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
+   s"  >str XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
    s" package GD-QUNDEF" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : TARGET ( -- n ) 42 ;" GE-SRC-LINE
@@ -869,7 +869,7 @@ variable LABEL-U
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
    s"  GD-UQ-CATCH ." GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
-   s"  XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
+   s"  >str XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
    s" : GD-QROLL-CALL ( len len -- pcap:captured ) PCAP-CAPTURED:MAKE ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  checker-kept" GE-SRC+ GE-DQ GE-SRC-C
    s"  type cr" GE-SRC-LINE
