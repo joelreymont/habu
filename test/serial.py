@@ -347,15 +347,16 @@ def main():
     disconnect(habu, output)
     concurrent(habu, output)
     checks = 5
-    for expr in ('0 SERIAL:BAUD', '-1 SERIAL:BAUD', '$100000000 SERIAL:BAUD',
-                 '0 SERIAL:BYTES', '-1 SERIAL:BYTES', '$7FFFF001 SERIAL:BYTES'):
-        assert native(habu, output, f': RUN ( -- ) [: {expr} drop ;] catch . ; RUN') == ['-9110']
+    for expr, code in (('0 SERIAL:BAUD', '-9110'), ('-1 SERIAL:BAUD', '-9110'),
+                       ('$100000000 SERIAL:BAUD', '-9110'), ('-1 SERIAL:BYTES', '-9110'),
+                       ('0 SERIAL:BYTES', '0'), ('$7FFFF001 SERIAL:BYTES', '0')):
+        assert native(habu, output, f': RUN ( -- ) [: {expr} drop ;] catch . ; RUN') == [code]
         checks += 1
     # A zero-byte request transfers nothing at once. A negative timeout is no
-    # deadline, so (1, -1, 0)'s wait, with no AIO:START, is E-AIO-STATE (-9292);
-    # a timeout past INT32_MAX is E-SERIAL-OPERAND.
+    # deadline and one past INT32_MAX waits INT32_MAX ms, so either wait, with
+    # no AIO:START, is E-AIO-STATE (-9292).
     for length, timeout, handle, code in ((0, -1, 0, 'moved 0 0'), (1, -1, 0, '-9292'),
-                                           (1, 0x80000000, 0, '-9110')):
+                                           (1, 0x80000000, 0, '-9292')):
         for operation, data in (('READ', f'''BODY {length} NUM:BYTE-LEN MATCH option
       none OF -1 throw ENDOF some OF ENDOF
    ;MATCH'''), ('WRITE', f'BODY {length} >str')):
@@ -376,8 +377,8 @@ def main():
         checks += 1
     name_max = '63' if sys.platform == 'darwin' else '36'
     for prep, text, expected in (
-            # An empty path is an operand error (E-SERIAL-OPERAND).
-            ('', 's" " >str', ['-9110']),
+            # An empty path reaches open, which answers ENOENT.
+            ('', 's" " >str', ['2', '0']),
             # A NUL inside the path cannot cross into C (E-FFI-NUL).
             ('0 BODY 1 + c!', 'BODY 3 >str', ['-3504']),
             # A 4096-byte path with no NUL reaches open, which answers ENAMETOOLONG.
