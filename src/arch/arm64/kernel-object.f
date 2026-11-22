@@ -188,7 +188,7 @@ variable K0                          \ the kernel's first word position
    ;SECTION ;
 
 
-: WRITE-OUT ( bool [ ^u8 n -- ] -- )
+: WRITE-OUT ( bool [ str -- ] -- )
    {: engine:bool sink :}
    engine EMIT  engine ?PLACED
    0 OUT-U !
@@ -205,7 +205,7 @@ variable K0                          \ the kernel's first word position
 public
 
 \ The object's bytes go once to the sink, valid only during the call.
-: WRITE ( bool [ ^u8 n -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
+: WRITE ( bool [ str -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
 
 ;package
 ;using

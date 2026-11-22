@@ -82,7 +82,7 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 
 public
 
-: SRC$ ( -- ^u8 n )
+: SRC$ ( -- str )
    M-SRC @ M-SRC-U @ ;
 
 : DOES-BYTE@ ( -- n )

@@ -154,7 +154,7 @@ public
 \ An x86-64 stencil is a byte string of whole instructions
 \ (src/os/linux-x86-64/sys.f), so it is appended as it stands where ARM64's
 \ consumer reassembles four-byte words.
-: EMIT-STENCIL ( ^u8 n -- ) {: a:^ u:n :}
+: EMIT-STENCIL ( str -- ) {: a:^ u:n :}
    a u ASM-SINK VEC:APPEND ;
 
 ;using

@@ -166,9 +166,9 @@ NR-EXIT-GROUP SYS-EXIT-STENCIL SYS-NR-STENCIL!    \ llvm-mc: movl $231, %eax
 $0F SYS-SVC-STENCIL c!                             \ llvm-mc: syscall
 $05 SYS-SVC-STENCIL 1 + c!
 
-: SYS-EMIT-WRITE ( -- ^u8 n )  SYS-WRITE-STENCIL SYS-NR-STENCIL-BYTES ;
-: SYS-EMIT-EXIT ( -- ^u8 n )   SYS-EXIT-STENCIL SYS-NR-STENCIL-BYTES ;
-: SYS-EMIT-SVC ( -- ^u8 n )    SYS-SVC-STENCIL SYS-SVC-STENCIL-BYTES ;
+: SYS-EMIT-WRITE ( -- str )  SYS-WRITE-STENCIL SYS-NR-STENCIL-BYTES ;
+: SYS-EMIT-EXIT ( -- str )   SYS-EXIT-STENCIL SYS-NR-STENCIL-BYTES ;
+: SYS-EMIT-SVC ( -- str )    SYS-SVC-STENCIL SYS-SVC-STENCIL-BYTES ;
 
 \ ---- the kernel-argument translators -----------------------------------------
 \ openat(AT_FDCWD, path, 0, 0). The path register is set before AT_FDCWD so a

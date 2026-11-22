@@ -55,7 +55,7 @@ public
 
 private
 
-: REFUSE ( ^u8 n -- ) EXIT-STATUS:ENCODE die ;
+: REFUSE ( str -- ) EXIT-STATUS:ENCODE die ;
 
 : SITE-WIDTH ( n -- n ) {: kind:n :}
    kind SITE-REL8 = if 1 exit then
@@ -226,7 +226,7 @@ public
 
 : SINK-CLOSE ( -- ) FORGET ASM-SINK VEC:DELETE  NULL-PTR SINK ! ;
 
-: BYTES, ( ^u8 n -- ) ASM-SINK VEC:APPEND ;
+: BYTES, ( str -- ) ASM-SINK VEC:APPEND ;
 
 : SPACE ( n -- ^u8 )
    ASM-LEN {: k:n at:n :}

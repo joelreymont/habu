@@ -366,7 +366,7 @@ variable RELA-AT
 variable RELA-ENT
 variable RELA-BYTES
 
-: CHECK ( bool ^u8 n -- ) {: ok:bool why:^ whyu:n :}
+: CHECK ( bool str -- ) {: ok:bool why:^ whyu:n :}
    ok 0= if why whyu EXIT-STATUS:DATAERR die then ;
 
 : AT ( n n -- ^u8 ) {: off:n size:n :}
@@ -558,7 +558,7 @@ private
 
 public
 
-: OPEN ( ^u8 n -- ) {: image:^ size:n :}
+: OPEN ( str -- ) {: image:^ size:n :}
    image size MAGIC? s" elf: not an ELF file" CHECK
    image IMAGE ! size BYTES !
    CHECK-HEADER PHDRS CHECK-LOADS CHECK-DYNAMIC CHECK-TABLES ;

@@ -12,7 +12,7 @@ private
 package WASM
 
 \ Whether emission bytes b, s of them, hold the opcode and its whole field at site.
-: SITE? ( ^u8 n n -- bool )
+: SITE? ( str n -- bool )
    {: b:^ s:n site:n :}
    site 0<  site s 11 - >  or if false exit then
    b site + c@ WCODE:OP-I64-CONST = ;
@@ -30,7 +30,7 @@ public
 
 \ The address value emission bytes b, s of them, hold at site, and whether they hold
 \ one there.
-: ADDRESS@ ( ^u8 n n n -- n bool )
+: ADDRESS@ ( str n n -- n bool )
    {: b:^ s:n site:n kind:n :}
    b s site SITE? 0= if 0 false exit then
    b site + 1+ PAD64? 0= if 0 false exit then

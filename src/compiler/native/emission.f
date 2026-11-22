@@ -147,7 +147,7 @@ ADDR-CODE constant ADDR-KIND-MAX
 \ The bytes stay the backend's: they are read in place until CLEAR. OPEN over
 \ uncleared rows is refused, and the architecture it names makes a reader for
 \ another machine refuse before copying a byte.
-: OPEN ( ^u8 n n CTARGET:arch -- ) {: p:^ size:n ret:n a:CTARGET:arch :}
+: OPEN ( str n CTARGET:arch -- ) {: p:^ size:n ret:n a:CTARGET:arch :}
    ST @
    MATCH state
       empty OF ENDOF

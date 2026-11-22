@@ -163,7 +163,7 @@ DYNAMIC-BUFFER NAME-OFF n
    then
    ;SECTION ;
 
-: WRITE-OUT ( bool [ ^u8 n -- ] -- )
+: WRITE-OUT ( bool [ str -- ] -- )
    {: engine:bool sink :}
    engine EMIT
    0 OUT-U ! s" HBKERNX6" SPAN+ 4 0 ?do 0 U64+ loop
@@ -178,6 +178,6 @@ DYNAMIC-BUFFER NAME-OFF n
 : RELEASE ( -- ) OUT-RELEASE NAME-OFF-RELEASE X64CODE:SINK-CLOSE ;
 
 public
-: WRITE ( bool [ ^u8 n -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
+: WRITE ( bool [ str -- ] -- ) ['] WRITE-OUT ['] RELEASE finally ;
 
 ;package

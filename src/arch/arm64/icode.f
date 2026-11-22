@@ -720,7 +720,7 @@ variable BYU
 \ Each call is its own run, recorded as a data span: the bytes, then NUL pad to
 \ the next word. A span written as one, such as a message and its newline, is
 \ one call.
-: BYTES, ( ^u8 n -- )
+: BYTES, ( str -- )
    BYTES-ARGS
    BYTES-CAP
    BYTES-COPY

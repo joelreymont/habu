@@ -722,7 +722,7 @@ variable SITES-N
 : ROUTINE-SITES ( -- n )  SITES-N @ ;
 : ROUTINE-SITE ( n -- n )  SITES @ ;
 
-: BODY$ ( -- ^u8 n )  0 BUF BUF-U @ ;
+: BODY$ ( -- str )  0 BUF BUF-U @ ;
 
 public
 

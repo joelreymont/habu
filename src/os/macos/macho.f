@@ -442,7 +442,7 @@ private
 
 public
 
-: OPEN ( ^u8 n -- ) {: image:^ size:n :}
+: OPEN ( str -- ) {: image:^ size:n :}
    image size MAGIC? CHECK
    image IMAGE ! size BYTES !
    4 U32@ CPU-ARM64 = 12 U32@ MH-EXECUTE = and CHECK

@@ -21,7 +21,7 @@ variable DREX  variable D-HASREX  variable DPFX  variable DLOCK  variable DOP
 variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
 variable DSCALE  variable DDISP  variable DRIP  variable DQUIET
 
-: OUT ( ^u8 n -- ) {: a:^ u:n :}
+: OUT ( str -- ) {: a:^ u:n :}
    DQUIET @ if exit then  a u type ;
 
 : CHAR-OUT ( n -- ) {: c:n :}
@@ -46,7 +46,7 @@ variable DSCALE  variable DDISP  variable DRIP  variable DQUIET
 
 : HEX. ( n -- ) s" 0x" OUT HEX-N ;
 
-: REFUSE ( n ^u8 n -- ) {: code:n msg:^ u:n :}
+: REFUSE ( n str -- ) {: code:n msg:^ u:n :}
    DQUIET @ 0= if
       s" x64dis: " OUT msg u OUT s"  at " OUT
       DPC @ DI @ + HEX. cr
@@ -511,7 +511,7 @@ variable DSCALE  variable DDISP  variable DRIP  variable DQUIET
 
 private
 
-: DECODE ( ^u8 n n -- ) {: a:^ u:n pc:n :}
+: DECODE ( str n -- ) {: a:^ u:n pc:n :}
    a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK ! 0 DRIP !
    u 0 <= if TRUNC then
    PREFIXES OPCODE
@@ -536,12 +536,12 @@ private
 public
 
 \ Returns the consumed byte count (1..15).
-: DIS1 ( ^u8 n n -- n )
+: DIS1 ( str n -- n )
    false DQUIET !  DECODE DI @ ;
 
 \ The instruction's byte count (1..15) and whether its behaviour depends on its
 \ own address. It throws as DIS1 does.
-: SPAN ( ^u8 n -- n bool )
+: SPAN ( str -- n bool )
    true DQUIET !  0 DECODE  DI @ AT-PC? ;
 
 ;package

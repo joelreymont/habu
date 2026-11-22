@@ -394,7 +394,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
    OP-END PUT-BYTE ;
 
 \ ---- the sections -------------------------------------------------------------
-: BODY$ ( n -- ^u8 n )
+: BODY$ ( n -- str )
    {: k:n :}
    k FN-AT @ BODIES  k FN-LEN @ ;
 
@@ -729,7 +729,7 @@ public
    RES-FN !  1 RESERVES ! ;
 
 \ The module, run calling the function e.
-: LINK ( n -- ^u8 n )
+: LINK ( n -- str )
    {: e:n :}
    e ROWS-CK
    NCELLS @ 0 ?do  i IMAGE-CELL!  loop

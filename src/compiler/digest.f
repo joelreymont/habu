@@ -44,12 +44,12 @@ public
       dst i SLOT-BYTES * + CELL-VIEW !
    loop ;
 
-: SLOTS-ZERO ( str -- )
+: SLOTS-ZERO ( ^u8 n -- )
    {: dst:^ n:n :}
    n 0 <= if exit then
    n 0 ?do 0 dst i SLOT-BYTES * + CELL-VIEW ! loop ;
 
-: COMPUTE ( ^u8 n -- CDIGEST:digest ) {: a u:n :}
+: COMPUTE ( str -- CDIGEST:digest ) {: a u:n :}
    SHA-CTX a u DG SHA256-IN
    DG 0 SLOT@  DG 1 SLOT@  DG 2 SLOT@  DG 3 SLOT@
    CDIGEST-DIGEST:MAKE ;

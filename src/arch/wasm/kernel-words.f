@@ -73,7 +73,7 @@ public
 : BLANK ( -- )
    32 emit ;
 
-: TYPE-BYTES ( ^u8 n -- )
+: TYPE-BYTES ( str -- )
    {: a:^ u:n :}
    u 0 ?do  a i + c@ emit  loop ;
 

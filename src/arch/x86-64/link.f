@@ -15,7 +15,7 @@ private
    {: size:n at:n width:n :}
    at 0 >= width size <= and at size width - <= and ;
 
-: ADDRESS? ( ^u8 n n n -- bool )
+: ADDRESS? ( str n n -- bool )
    {: b:^ size:n at:n kind:n :}
    kind NEMIT:ADDR-CODE = kind NEMIT:ADDR-DATA = or
    size at 10 SPAN? and 0= if false exit then
@@ -38,7 +38,7 @@ public
    {: to:n at:n p:^ :}
    to p 2 + LE:U64! ;
 
-: ADDRESS@ ( ^u8 n n n -- n bool )
+: ADDRESS@ ( str n n -- n bool )
    {: b:^ size:n at:n kind:n :}
    b size at kind ADDRESS? 0= if 0 false exit then
    b at + 2 + LE:U64@ true ;

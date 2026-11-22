@@ -13,7 +13,7 @@ variable DTB-N
 
 \ Lays a DTB row [mask:8][val:8][kind:1][nlen:1][name]; the first row whose mask
 \ and value match a word decides, and DROW-EMIT prints each kind's operands.
-: ROW, ( n n n ^u8 n -- )
+: ROW, ( n n n str -- )
    {: mask val kind name:^ u :}
    mask U64,  val U64,  kind c,  u c,
    u 0 ?do name i + c@ c, loop

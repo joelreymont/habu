@@ -12,7 +12,7 @@ public
 \ spells them: multi-value for the (status, outputs) signature, and
 \ saturating-float-to-int for `f>s`, whose i64.trunc_sat_f64_s truncates,
 \ saturates and answers 0 for a NaN, and bulk-memory for clearing reused page runs.
-: FEATURES ( -- ^u8 n )
+: FEATURES ( -- str )
    s" multi-value,saturating-float-to-int,bulk-memory" ;
 
 \ The most input and output lanes a direct call passes; past either a function

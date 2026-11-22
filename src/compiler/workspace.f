@@ -62,8 +62,8 @@ variable DEFAULT-N
 1 constant SPAN-KIND
 2 constant VARIABLE-KIND
 
-CAST: AS-STORAGE-LINE ( n -- [ ^u8 n -- ^u8 n ^u8 n n ] )
-CAST: AS-CHILD-RUN ( n -- [ ^u8 n n n ^u8 n -- n ] )
+CAST: AS-STORAGE-LINE ( n -- [ str -- str str n ] )
+CAST: AS-CHILD-RUN ( n -- [ str n n str -- n ] )
 CAST: AS-WORK-ENTRY ( [ ^n -- ^u8 ] -- n )
 CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
 
@@ -85,10 +85,10 @@ CAST: AS-WORKS-ENTRY ( [ n ^n -- ^u8 ] -- n )
 
 \ The product's USED and MEM#base place the storage; the building hb makes the
 \ child.
-: CHILD ( ^u8 n n n ^u8 n -- n )
+: CHILD ( str n n str -- n )
    data-base PROVIDED-XT:CHILD-CELL + @ AS-CHILD-RUN execute ;
 
-: ACCESSOR ( ^u8 n ^u8 n n -- ) {: na:^ nu:n ta:^ tu:n kind:n :}
+: ACCESSOR ( str str n -- ) {: na:^ nu:n ta:^ tu:n kind:n :}
    kind BUFFER-KIND = if
       na nu CHILD-ABI:WORKS ['] WORK-AT AS-WORKS-ENTRY ta tu CHILD drop exit
    then
