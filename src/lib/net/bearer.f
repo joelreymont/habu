@@ -156,7 +156,7 @@ TASK:+USER FROM n
    {: off:n len:n :}
    SCRATCH SLOT SCRATCH-BYTES * off + len SPAN:SUB ;
 
-: DECODED ( ^u8 n SPAN:span<u8> -- SPAN:span<u8> )
+: DECODED ( str SPAN:span<u8> -- SPAN:span<u8> )
    {: a:^ u:n room :}
    a u room BASE64:DECODE-URL {: got:n :}
    room 0 got SPAN:SUB ;
@@ -179,7 +179,7 @@ TASK:+USER FROM n
 
 \ The worker's reader on an object text at a member's value, and its token
 \ kind, -1 when the member is absent; the caller reads and closes it.
-: MEMBER ( ^u8 n ^u8 n -- JSON:reader n )
+: MEMBER ( str str -- JSON:reader n )
    {: t:^ tu:n k:^ ku:n :}
    CURSOR t tu JSON:READ-INIT JSON:READ-NEXT drop
    k ku JSON:READ-FIND-KEY 0= if -1 exit then
@@ -203,7 +203,7 @@ TASK:+USER FROM n
    JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
 \ A string member decoded into the room; false when it is absent or no string.
-: DECODED$ ( ^u8 n ^u8 n SPAN:span<u8> -- ^u8 n bool )
+: DECODED$ ( str str SPAN:span<u8> -- str bool )
    {: room :}
    MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
    room SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE
@@ -224,11 +224,11 @@ TASK:+USER FROM n
    v 6 + c@ 32 <> if false exit then
    v 7 + vu 7 - SPAN:MAKE SLOT PRESENTED ! true ;
 
-: DOT ( ^u8 n n -- n )
+: DOT ( str n -- n )
    {: t:^ u:n from:n :}
    u from ?do t i + c@ [char] . = if i unloop exit then loop u ;
 
-: SEGMENT ( ^u8 n n -- SPAN:span<u8> )
+: SEGMENT ( str n -- SPAN:span<u8> )
    {: a:^ u:n off:n :}
    a u off HTTP:HEAD-CAP off - ROOM DECODED ;
 
@@ -239,7 +239,7 @@ TASK:+USER FROM n
    JSON:READ-NEXT JSON:T-OBJ = if JSON:READ-FINISH true exit then
    JSON:READ-CLOSE false ;
 
-: REPEATS? ( ^u8 n -- bool )
+: REPEATS? ( str -- bool )
    JSON:READ-REPEAT MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
@@ -429,7 +429,7 @@ ENUM lookup-step
    SLOT SIGNED @ SPAN:$ SLOT SIGNATURE @ SPAN:$ CRYPTO:RS256-VERIFY? ;
 
 \ One element of an array: 1 the string, 0 another, -1 past the last.
-: ELEMENT ( JSON:reader ^u8 n -- JSON:reader n )
+: ELEMENT ( JSON:reader str -- JSON:reader n )
    {: w:^ wu:n :}
    JSON:READ-NEXT {: kind:n :}
    kind JSON:T-ARR-END = if -1 exit then
@@ -466,7 +466,7 @@ ENUM lookup-step
 
 \ A string claim splits into words here, where AUDIENCE? compares aud whole
 \ (RFC 7519 4.1.3).
-: HELD? ( ^u8 n ^u8 n -- bool )
+: HELD? ( str str -- bool )
    {: name:^ nu:n w:^ wu:n :}
    WORDS-OFF HTTP:HEAD-CAP ROOM {: room :}
    CLAIMS$ name nu room DECODED$ if w wu 0 WORD-FROM? exit then
@@ -492,7 +492,7 @@ ENUM lookup-step
    [: drop epoch-seconds VALID? ;] STEP 0= if INVALID exit then
    ADMITTED ;
 
-: CHALLENGE ( HTTP:response ^u8 n -- )
+: CHALLENGE ( HTTP:response str -- )
    {: answer:HTTP:response value:^ vu:n :}
    answer 401 HTTP:STATUS!
    answer s" WWW-Authenticate" value vu HTTP:HEADER! ;
@@ -517,9 +517,9 @@ ENUM lookup-step
 : INVALID-PREFIX ( -- str ) S\" Bearer error=\"invalid_token\", " ;
 : METADATA-NAME ( -- str ) s" resource_metadata" ;
 : SCOPE-NAME ( -- str ) s" scope" ;
-: SEPARATOR ( -- ^u8 n ) s" , " ;
+: SEPARATOR ( -- str ) s" , " ;
 
-: PUT ( ^u8 n SPAN:span<u8> n -- n )
+: PUT ( str SPAN:span<u8> n -- n )
    {: a:^ u:n row off:n :}
    a u row off SPAN:SKIP SPAN:COPY
    off u + ;
@@ -533,7 +533,7 @@ ENUM lookup-step
 
 
 \ Writes nothing for an empty value, as PARAM-LEN measures nothing.
-: PARAM ( ^u8 n ^u8 n SPAN:span<u8> n -- n )
+: PARAM ( str str SPAN:span<u8> n -- n )
    {: name:^ nu:n value:^ vu:n row off:n :}
    vu 0= if off exit then
    name nu row off PUT {: past-name:n :}
@@ -542,7 +542,7 @@ ENUM lookup-step
    S\" \"" row past-value PUT ;
 
 
-: NAMING ( ^u8 n ^u8 n ^u8 n SPAN:span<u8> n -- n )
+: NAMING ( str str str SPAN:span<u8> n -- n )
    {: pre:^ pu:n url:^ uu:n scope:^ su:n row off:n :}
    pre pu row off PUT {: past-pre:n :}
    METADATA-NAME url uu row past-pre PARAM {: past-url:n :}
@@ -559,7 +559,7 @@ ENUM lookup-step
 
 \ RFC 9728 3.1: the segment METADATA!'s URL holds between its authority and
 \ the resource's path.
-: WELL-KNOWN ( -- ^u8 n ) s" /.well-known/oauth-protected-resource" ;
+: WELL-KNOWN ( -- str ) s" /.well-known/oauth-protected-resource" ;
 
 : RESOURCE-LEN ( n -- n ) dup 0= if exit then WELL-KNOWN nip - ;
 
@@ -573,7 +573,7 @@ ENUM lookup-step
 
 \ METADATA!'s statement as NAMED holds it: the allocation, NAMED-U and
 \ CHALLENGES-U; the well-known segment starts at end.
-: COMPOSED ( ^u8 n ^u8 n n -- SPAN:span<u8> n n )
+: COMPOSED ( str str n -- SPAN:span<u8> n n )
    {: url:^ uu:n scope:^ su:n end:n :}
    uu su CHALLENGES-LEN {: cu:n :}
    cu uu RESOURCE-LEN + su + {: total:n :}
@@ -692,7 +692,7 @@ public
 \ time. E-HTTP-STATE while HTTP serves; E-OPERAND for an iss or key set URL
 \ neither https nor http to a loopback IP literal, URI:ORIGIN's rejection for
 \ one it cannot read, either leaving the previous issuer in force.
-: ISSUER! ( ^u8 n ^u8 n ^u8 n -- )
+: ISSUER! ( str str str -- )
    {: iss:^ iu:n aud:^ au:n url:^ uu:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    iss iu SECURE url uu SECURE
@@ -716,7 +716,7 @@ public
 \ tokens; URI:ORIGIN's rejection for a URL it cannot read. A refused text or
 \ allocation leaves the previous statement in force. E-HTTP-STATE while HTTP
 \ serves.
-: METADATA! ( ^u8 n ^u8 n -- )
+: METADATA! ( str str -- )
    {: url:^ uu:n scope:^ su:n :}
    HTTP:RUNNING? if E-HTTP-STATE throw then
    url uu QUOTABLE
@@ -762,7 +762,7 @@ public
 \ A string claim of the admitted request this worker answers, decoded; false
 \ outside one, or for a claim that is absent or not a string. The answer is
 \ borrowed until the worker's next CLAIM$ or ADMIT?.
-: CLAIM$ ( ^u8 n -- ^u8 n bool )
+: CLAIM$ ( str -- str bool )
    {: name:^ nu:n :}
    ANSWERING? 0= if s" " false exit then
    CLAIMS$ name nu NOTE$ ;
@@ -771,7 +771,7 @@ public
 \ name: a string claim as one of its space-separated words (RFC 6749 3.3
 \ scope), as Entra's scp; an array claim as an element, as Entra's roles;
 \ false outside one.
-: CLAIM-HOLDS? ( ^u8 n ^u8 n -- bool )
+: CLAIM-HOLDS? ( str str -- bool )
    {: name:^ nu:n w:^ wu:n :}
    ANSWERING? 0= if false exit then
    name nu w wu HELD? ;
@@ -848,7 +848,7 @@ ENUM grant
 \ TOKEN and REFRESH, as literals do. E-OPERAND for a URL neither https nor
 \ http to a loopback IP literal, URI:ORIGIN's rejection for one it cannot
 \ read, either leaving the previous client in force.
-: CLIENT! ( ^u8 n ^u8 n ^u8 n -- )
+: CLIENT! ( str str str -- )
    {: url:^ uu:n id:^ iu:n secret:^ su:n :}
    url uu SECURE
    url uu SPAN:MAKE ENDPOINT !
@@ -1044,7 +1044,7 @@ private
 
 \ A 2xx answer lacking a member, logged without the answer, which can hold a
 \ token.
-: LACKS ( n ^u8 n -- )
+: LACKS ( n str -- )
    {: status:n what:^ wu:n :}
    OPEN-LINE s" token answer " LOG:TEXT+  status LOG:INT+
    s"  lacks " LOG:TEXT+  what wu LOG:TEXT+  LOG:;LINE
@@ -1124,7 +1124,7 @@ private
 : ROW-KEPT$ ( ^row -- str ) ROW-TOKEN @ VEC:SPAN SPAN:$ ;
 
 \ Under ROWS-LOCK: the scope's row, else null.
-: FOUND ( ^u8 n -- ^row )
+: FOUND ( str -- ^row )
    {: scope:^ su:n :}
    NEWEST @
    begin dup NULL-PTR <> while
@@ -1162,7 +1162,7 @@ private
    r NEWEST !  r ;
 
 \ Under ROWS-LOCK.
-: ROW-FOR ( ^u8 n -- ^row )
+: ROW-FOR ( str -- ^row )
    {: scope:^ su:n :}
    scope su FOUND dup NULL-PTR = if drop scope su LINKED then ;
 
@@ -1231,7 +1231,7 @@ public
 \ lock: the quotation copies what it keeps, does no I/O and calls no
 \ CURRENT. A failed ask throws TOKEN's code. The replaced token and the
 \ endpoint's answer are wiped. E-HTTP-STATE before CLIENT!.
-: CURRENT ( ^u8 n [ ^u8 n -- ] -- )
+: CURRENT ( str [ str -- ] -- )
    {: scope:^ su:n q :}
    STATED
    scope su [: ROW-FOR ;] LISTED {: r:^ :}

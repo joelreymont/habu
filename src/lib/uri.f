@@ -86,13 +86,13 @@ $5D constant CLOSE-BRACKET
       a u BYTE-AT nip swap 1+ swap
    repeat drop ;
 
-: PUT ( n n ^u8 n ^u8 -- n n )
+: PUT ( n n str ^u8 -- n n )
    {: at:n i:n a:^ u:n out:^ :}
    i a u BYTE-AT {: b:n next:n :}
    b out at + c!
    at 1+ next ;
 
-: DECODE ( ^u8 n ^u8 -- )
+: DECODE ( str ^u8 -- )
    {: a:^ u:n out:^ :}
    0 0 begin dup u < while a u out PUT repeat 2drop ;
 
@@ -185,7 +185,7 @@ $5D constant CLOSE-BRACKET
    NOT-DOT next false ;
 
 \ The first offset below end whose byte answers true to test, or end.
-: SCAN ( ^u8 n [ n -- bool ] -- n )
+: SCAN ( str [ n -- bool ] -- n )
    {: p:^ end:n test :}
    0 begin dup end < if dup p + c@ test execute 0= else false then
    while 1+ repeat ;
@@ -211,7 +211,7 @@ $5D constant CLOSE-BRACKET
    c STR-HEX-DIGIT? c [char] : = or  c [char] . = or ;
 
 \ The length of a bracketed address, brackets included.
-: BRACKETED ( ^u8 n -- n )
+: BRACKETED ( str -- n )
    {: a:^ u:n :}
    a 1+ u 1- [: ADDRESS-BYTE? 0= ;] SCAN 1+ {: close:n :}
    close 1 = close u = or if E-URI-HOST throw then
@@ -232,7 +232,7 @@ $5D constant CLOSE-BRACKET
    v ;
 
 \ The port the bytes after the host give: none, `:` alone or `:` and digits.
-: PORT ( ^u8 n -- n )
+: PORT ( str -- n )
    {: a:^ u:n :}
    u 0= if NO-PORT exit then
    a c@ [char] : <> if E-URI-HOST throw then
@@ -241,7 +241,7 @@ $5D constant CLOSE-BRACKET
 
 \ The host, the port and the length of the authority the bytes after `//`
 \ start with, which ends at the first `/`, `?` or `#`, or at the end.
-: AUTHORITY ( ^u8 n -- ^u8 n n n )
+: AUTHORITY ( str -- str n n )
    {: a:^ u:n :}
    a u [: AUTHORITY-END? ;] SCAN {: end:n :}
    a end HOST-LEN {: h:n :}
@@ -335,13 +335,13 @@ $5D constant CLOSE-BRACKET
 \ base's bytes it starts with, 1 when a `/` follows them, else 0, then the
 \ offsets where the target's path starts and ends.
 
-: ABSOLUTE ( ^u8 n -- n n n n )
+: ABSOLUTE ( str -- n n n n )
    {: r:^ ru:n :}
    r ru HTTP-END {: e:n :}
    0 0 e  r ru e PATH-END ;
 
 \ `//` and an authority: the base's scheme and `:`, then the reference.
-: NETWORK ( ^u8 n ^u8 n -- n n n n )
+: NETWORK ( str str -- n n n n )
    {: b:^ bu:n r:^ ru:n :}
    b bu SCHEME-LEN 1+ {: al:n :}
    MARKER$ nip {: m:n :}
@@ -365,7 +365,7 @@ $5D constant CLOSE-BRACKET
 
 \ A relative path, after the base path's last `/`, or after `/` for an empty
 \ base path (RFC 3986 section 5.2.3).
-: MERGE ( ^u8 n n ^u8 n -- n n n n )
+: MERGE ( str n str -- n n n n )
    {: b:^ bu:n be:n r:^ ru:n :}
    b bu be PATH-END {: bp:n :}
    r ru 0 PATH-END {: rp:n :}
@@ -373,7 +373,7 @@ $5D constant CLOSE-BRACKET
    b bp LAST-SLASH 1+ {: al:n :}
    al 0 be al rp + ;
 
-: PIECES ( ^u8 n ^u8 n -- n n n n )
+: PIECES ( str str -- n n n n )
    {: b:^ bu:n r:^ ru:n :}
    b bu HTTP-END {: be:n :}
    r ru SCHEME? if r ru ABSOLUTE exit then
@@ -477,7 +477,7 @@ public
 
 \ The scheme, the host, brackets kept, and the port HTTP-AT reads from an
 \ http(s) URL. Rejected as HTTP-AT rejects.
-: ORIGIN ( ^u8 n -- ^u8 n ^u8 n n )
+: ORIGIN ( str -- str str n )
    {: a:^ u:n :}
    a u HTTP-AT {: s:n h:^ hu:n p:n end:n :}
    a s h hu p ;
@@ -497,7 +497,7 @@ public
 \ A base or reference rejected as HTTP-AT rejects throws that, a span short
 \ of the target before dot-segment removal E-SPAN-CAPACITY, a negative
 \ reference length E-SPAN-LENGTH.
-: RESOLVE ( ^u8 n ^u8 n SPAN:span<u8> -- n )
+: RESOLVE ( str str SPAN:span<u8> -- n )
    {: b:^ bu:n r:^ ru:n s :}
    ru 0 < if E-SPAN-LENGTH throw then
    b bu r ru PIECES {: al:n ml:n from:n to:n :}

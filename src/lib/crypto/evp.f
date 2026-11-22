@@ -78,21 +78,21 @@ FUNCTION: ENC-CIPHER EVP_EncryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
 FUNCTION: ENC-KEY EVP_EncryptInit_ex ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: DEC-CIPHER EVP_DecryptInit_ex ( n n n n n -- i32 ) ;FUNCTION
 FUNCTION: DEC-KEY EVP_DecryptInit_ex ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
-FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ^u8 ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ^u8 ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
-FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: ENC-AAD EVP_EncryptUpdate ( n n ^u8 str -- i32 ) ;FUNCTION
+FUNCTION: DEC-AAD EVP_DecryptUpdate ( n n ^u8 str -- i32 ) ;FUNCTION
+FUNCTION: ENC-UPDATE EVP_EncryptUpdate ( n ^u8 ^u8 str -- i32 ) ;FUNCTION
+FUNCTION: DEC-UPDATE EVP_DecryptUpdate ( n ^u8 ^u8 str -- i32 ) ;FUNCTION
 FUNCTION: ENC-FINAL EVP_EncryptFinal_ex ( n ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: DEC-FINAL EVP_DecryptFinal_ex ( n ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: CTL-VALUE EVP_CIPHER_CTX_ctrl ( n n n n -- i32 ) ;FUNCTION
 FUNCTION: CTL-TAG-OUT EVP_CIPHER_CTX_ctrl ( n n n ^u8 -- i32 ) ;FUNCTION
 FUNCTION: CTL-TAG-IN EVP_CIPHER_CTX_ctrl ( n n n ^u8 -- i32 ) ;FUNCTION
-FUNCTION: HMAC-CALL HMAC ( n ^u8 n ^u8 n ^u8 ^u8 -- n ) ;FUNCTION
-FUNCTION: HMAC1-CALL HMAC ( n ^u8 n ^u8 n ^u8 ^u8 -- n ) ;FUNCTION
+FUNCTION: HMAC-CALL HMAC ( n str str ^u8 ^u8 -- n ) ;FUNCTION
+FUNCTION: HMAC1-CALL HMAC ( n str str ^u8 ^u8 -- n ) ;FUNCTION
 
 \ RS256 uses provider-owned opaque keys and parameters. No OpenSSL struct is
 \ laid out in Habu.
-FUNCTION: BN-FROM-BYTES BN_bin2bn ( ^u8 n n -- n ) ;FUNCTION
+FUNCTION: BN-FROM-BYTES BN_bin2bn ( str n -- n ) ;FUNCTION
 FUNCTION: BN-FREE BN_free ( n -- ) ;FUNCTION
 FUNCTION: BN-BITS BN_num_bits ( n -- i32 ) ;FUNCTION
 FUNCTION: BN-COMPARE BN_ucmp ( n n -- i32 ) ;FUNCTION
@@ -115,7 +115,7 @@ FUNCTION: PKEY-SIZE EVP_PKEY_get_size ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-GET-BN EVP_PKEY_get_bn_param ( n ^u8 ^u8 -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PUBLIC-CHECK EVP_PKEY_public_check ( n -- i32 ) ;FUNCTION
 FUNCTION: PKEY-PAIR-CHECK EVP_PKEY_pairwise_check ( n -- i32 ) ;FUNCTION
-FUNCTION: BIO-FROM-DATA BIO_new_mem_buf ( ^u8 n -- n ) ;FUNCTION
+FUNCTION: BIO-FROM-DATA BIO_new_mem_buf ( str -- n ) ;FUNCTION
 FUNCTION: BIO-FREE BIO_free ( n -- i32 ) ;FUNCTION
 FUNCTION: PEM-READ PEM_read_bio_ex ( n ^u8 ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: CRYPTO-FREE CRYPTO_free ( n n n -- ) ;FUNCTION
@@ -130,13 +130,13 @@ FUNCTION: MD-CTX-FREE EVP_MD_CTX_free ( n -- ) ;FUNCTION
 FUNCTION: DIGEST-VERIFY-INIT EVP_DigestVerifyInit_ex ( n ^u8 ^u8 n ^u8 n n -- i32 ) ;FUNCTION
 FUNCTION: DIGEST-SIGN-INIT EVP_DigestSignInit_ex ( n ^u8 ^u8 n ^u8 n n -- i32 ) ;FUNCTION
 FUNCTION: RSA-PADDING EVP_PKEY_CTX_set_rsa_padding ( n n -- i32 ) ;FUNCTION
-FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n ^u8 n ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-VERIFY EVP_DigestVerify ( n str str -- i32 ) ;FUNCTION
 FUNCTION: ERROR-CLEAR ERR_clear_error ( -- ) ;FUNCTION
 FUNCTION: ERROR-GET ERR_get_error ( -- n ) ;FUNCTION
-FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-SIGN-SIZE EVP_DigestSign ( n n ^u8 str -- i32 ) ;FUNCTION
 \ C writes the signature over input 1, at most the length the cell at input 2
 \ holds, and stores the length it wrote in that cell.
-FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ^u8 ^u8 ^u8 n -- i32 ) ;FUNCTION
+FUNCTION: DIGEST-SIGN EVP_DigestSign ( n ^u8 ^u8 str -- i32 ) ;FUNCTION
 
 \ Foreign out-parameter storage, per task: two tasks may be sealing at once and
 \ each needs its own live context.
@@ -726,7 +726,7 @@ public
 \ leaks the two plaintexts' XOR and the authentication key. The associated data
 \ (such as a record's row identity) is authenticated, never copied into the
 \ output: the record fails to open under any other.
-: SEAL ( ^u8 n ^u8 n ^u8 n ^u8 n ^u8 n -- n )
+: SEAL ( str str str str ^u8 n -- n )
    {: key ku:n nonce nu:n aad au:n plain pu:n out ou:n :}
    ku nu au pu ou SEAL-OPERANDS
    E-SEAL CTX-OPEN
