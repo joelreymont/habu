@@ -177,7 +177,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CAUGHT-ZERO-STOPS ( -- )
    s" caught-zero" {: label:^ labelu:n :}
    GE-HB-RESET  GE-SRC-RESET
-   S\" : K ( -- ) s\" E-KEPT\" REJECTION:OPEN  REJECTION:SAVE  1000 REJECTION:PASS ;" GE-SRC-LINE
+   S\" : K ( -- ) s\" E-KEPT\" >str REJECTION:OPEN  REJECTION:SAVE  1000 REJECTION:PASS ;" GE-SRC-LINE
    s" : ON ( -- ) [: K ;] catch drop  [: ;] catch {: rc:n :} rc throw ;" GE-SRC-LINE
    s" ON" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
@@ -285,7 +285,7 @@ variable BIG-U
    s" require src/lib/fs.f" GE-SRC-LINE
    s" 4096 BUFFER: PD-STATUS" GE-SRC-LINE
    s" /proc/self/status" GE-SRC-S"
-   s"  PD-STATUS 4096 FS:READ-ALL PD-STATUS swap type" GE-SRC-LINE
+   s"  >str PD-STATUS 4096 FS:READ-ALL PD-STATUS swap type" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    VM-PEAK {: kb:n :}

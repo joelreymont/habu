@@ -19,7 +19,7 @@ private
 \ Lines 1-3 of each child: LEAVE-FREE ( n -- ) creates words until n records
 \ are free.
 : PRELUDE$ ( -- str )
-   S\" require src/lib/fmt.f\ncreate NB 32 allot\n: LEAVE-FREE ( n -- ) DICT-CAP ndict@ - swap - 0 ?do s\" create F\" NB swap BYTE-COPY  i FMT:INT$ {: a:^ u:n :}  a NB 8 + u BYTE-COPY  NB 8 u + evaluate-closed loop ;\n" ;
+   S\" require src/lib/fmt.f\ncreate NB 32 allot\n: LEAVE-FREE ( n -- ) DICT-CAP ndict@ - swap - 0 ?do s\" create F\" NB swap BYTE-COPY  i FMT:INT$ str> {: a:^ u:n :}  a NB 8 + u BYTE-COPY  NB 8 u + evaluate-closed loop ;\n" ;
 
 \ Runs the prelude, then the case's lines from line 4.
 : RUN-CASE ( str -- ) {: a:^ u:n :}
@@ -79,7 +79,7 @@ private
 \ RPL replays RA and RB while OUTER is parked: RA takes OUTER's slot, the one
 \ free record, so RB finds none.
 : REPLAY-PARKED ( -- )
-   S\" require src/habu/verify-source.f\n: RPL ( ^u8 n -- ) EFFECT:EMPTY define-word [: s\" : RA ( -- ) ; : RB ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n1 LEAVE-FREE\ns\" OUTER\" RPL ;\n"
+   S\" require src/habu/verify-source.f\n: RPL ( str -- ) EFFECT:EMPTY define-word [: s\" : RA ( -- ) ; : RB ( -- ) ;\" >str VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n1 LEAVE-FREE\ns\" OUTER\" >str RPL ;\n"
    S\" error[E-DICTIONARY-FULL]: the dictionary has no record left for `rb`\n --> <input>:1:15\n  |\n1 | : RA ( -- ) ; : RB ( -- ) ;\n  |               ^ no record left\n  = word: rb\n  = help: define fewer words in this load\n\n"
    s" a replay that takes a parked definition's record" EXPECT ;
 

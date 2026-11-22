@@ -119,7 +119,7 @@ variable WANT-U
 \ The text is the kept block's own first 8 bytes, so no image byte but the
 \ rows' holds the address. KEPT is a PTR-VARIABLE, which a save writes as null.
 : SOURCE$ ( -- str )
-   S\" require src/lib/error.f\nrequire src/lib/memory.f\nPTR-VARIABLE KEPT\n64 MEM-ALLOC-BYTES drop KEPT !\n: LAY ( -- ) KEPT @ NULL-PTR - {: a:n :} 8 0 do a i 8 * rshift $FF and KEPT @ i + c! loop ;\nLAY\n-110001 KEPT @ 8 ERROR:CODE E-SHIFTED\n-110002 KEPT @ 8 ERROR:CODE E-ALIGN8\n: MAIN ( -- ) s\q ok\q type cr ;\n" ;
+   S\" require src/lib/error.f\nrequire src/lib/memory.f\nPTR-VARIABLE KEPT\n64 MEM-ALLOC-BYTES drop KEPT !\n: LAY ( -- ) KEPT @ NULL-PTR - {: a:n :} 8 0 do a i 8 * rshift $FF and KEPT @ i + c! loop ;\nLAY\n-110001 KEPT @ 8 >str ERROR:CODE E-SHIFTED\n-110002 KEPT @ 8 >str ERROR:CODE E-ALIGN8\n: MAIN ( -- ) s\q ok\q type cr ;\n" ;
 
 : RECORD-SOURCE$ ( -- str )
    S\" require src/habu/xref.f\n1 PERSISTED-PTR-U8-TABLE T\n0 XREF-REC BYTE-VIEW T 0 ptr-field !\n: MAIN ( -- ) s\q ok\q type cr ;\n" ;
@@ -127,19 +127,19 @@ variable WANT-U
 \ WITH takes /tmp absolute: a relative root resolves against the working
 \ directory, not the current root.
 : PROBE-SOURCE$ ( -- str )
-   S\" require sub/inner.f\nSOURCE-ROOT:ACTIVE-SOURCE s\q probe bytes \q type . drop s\q probe root \q type type cr s\q probe path \q type type cr\ns\q probe current \q type SOURCE-ROOT:CURRENT$ type cr\n: PROBE-WITH ( -- ) s\q probe with \q type SOURCE-ROOT:CURRENT$ type cr ;\ns\q /tmp\q ' PROBE-WITH SOURCE-ROOT:WITH\n: MAIN ( -- ) ;\n" ;
+   S\" require sub/inner.f\nSOURCE-ROOT:ACTIVE-SOURCE s\q probe bytes \q type str> . drop s\q probe root \q type str> type cr s\q probe path \q type str> type cr\ns\q probe current \q type SOURCE-ROOT:CURRENT$ str> type cr\n: PROBE-WITH ( -- ) s\q probe with \q type SOURCE-ROOT:CURRENT$ str> type cr ;\ns\q /tmp\q >str ' PROBE-WITH SOURCE-ROOT:WITH\n: MAIN ( -- ) ;\n" ;
 
 : INNER-SOURCE$ ( -- str )
-   S\" SOURCE-ROOT:ACTIVE-SOURCE s\q inner bytes \q type . drop s\q inner root \q type type cr s\q inner path \q type type cr\ns\q inner current \q type SOURCE-ROOT:CURRENT$ type cr\n: INNER-WITH ( -- ) s\q inner with \q type SOURCE-ROOT:CURRENT$ type cr ;\ns\q /tmp\q ' INNER-WITH SOURCE-ROOT:WITH\ns\q sub/root\q SOURCE-ROOT:ROOT!\ns\q inner root! \q type SOURCE-ROOT:CURRENT$ type cr\n" ;
+   S\" SOURCE-ROOT:ACTIVE-SOURCE s\q inner bytes \q type str> . drop s\q inner root \q type str> type cr s\q inner path \q type str> type cr\ns\q inner current \q type SOURCE-ROOT:CURRENT$ str> type cr\n: INNER-WITH ( -- ) s\q inner with \q type SOURCE-ROOT:CURRENT$ str> type cr ;\ns\q /tmp\q >str ' INNER-WITH SOURCE-ROOT:WITH\ns\q sub/root\q >str SOURCE-ROOT:ROOT!\ns\q inner root! \q type SOURCE-ROOT:CURRENT$ str> type cr\n" ;
 
 : RESOLVES-SOURCE$ ( -- str )
-   S\" : RESOLVES-DIR ( -- ) s\q resolves.f\q SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:DIRNAME s\q resolves dir \q type type cr ;\nRESOLVES-DIR\n: MAIN ( -- ) ;\n" ;
+   S\" : RESOLVES-DIR ( -- ) s\q resolves.f\q >str SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:DIRNAME s\q resolves dir \q type str> type cr ;\nRESOLVES-DIR\n: MAIN ( -- ) ;\n" ;
 
 : ENVTOP-SOURCE$ ( -- str )
-   S\" s\q envtop top level\q type cr\ns\q HABU_TEST_SIDE\q GETENV nip constant SIDE\n: MAIN ( -- ) SIDE . ;\n" ;
+   S\" s\q envtop top level\q type cr\ns\q HABU_TEST_SIDE\q >str GETENV str> nip constant SIDE\n: MAIN ( -- ) SIDE . ;\n" ;
 
 : ROOTED-SOURCE$ ( -- str )
-   S\" s\q rooted top level\q type cr\ns\q beside\q SOURCE-ROOT:ROOT!\nrequire helper.f\nrequire shared.f\n: MAIN ( -- ) s\q rooted main \q type BESIDE-WORD type s\q  and \q type SHARED-WORD type cr ;\n" ;
+   S\" s\q rooted top level\q type cr\ns\q beside\q >str SOURCE-ROOT:ROOT!\nrequire helper.f\nrequire shared.f\n: MAIN ( -- ) s\q rooted main \q type BESIDE-WORD type s\q  and \q type SHARED-WORD type cr ;\n" ;
 
 : HELPER-SOURCE$ ( -- str )
    S\" require shared.f\n: BESIDE-WORD ( -- ^u8 n ) s\q from beside\q ;\n" ;
@@ -387,7 +387,7 @@ variable LBL-U
 \ require of the helper and a MAIN that prints its value.
 : MAIN-START ( -- ) 0 TXT-U !  S\" s\q case top level\q type cr\n" TXT+ ;
 : MAIN-END ( str -- ) {: h:^ hu:n :}
-   S\"  SOURCE-ROOT:ROOT!\nrequire " TXT+  h hu TXT+  S\" \n: MAIN ( -- ) HELPER-K . ;\n" TXT+
+   S\"  >str SOURCE-ROOT:ROOT!\nrequire " TXT+  h hu TXT+  S\" \n: MAIN ( -- ) HELPER-K . ;\n" TXT+
    C-MAIN$ TXT$ FS:WRITE-ALL ;
 
 : CASE-BUILD ( str str -- ) {: out:^ outu:n image:^ imageu:n :}

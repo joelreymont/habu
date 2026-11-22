@@ -16,7 +16,7 @@ variable LINE-AT                \ the line the next accept sends
 variable BYTE-AT                \ its first byte not yet sent
 
 : LINE$ ( n -- str ) {: k:n :}
-   k 0= if s\" GENIO:READ-LINE nip . .\" DEVICE-REPL\" cr" exit then
+   k 0= if s\" GENIO:READ-LINE str> nip . .\" DEVICE-REPL\" cr" exit then
    k 1 = if XS XS-LEN exit then
    k 2 = if XS 0 exit then
    s\" .\" DEVICE-AFTER\" cr" ;

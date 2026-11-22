@@ -84,10 +84,10 @@ variable STATUS
    s" evaluate unwind restores the caller's stack before catch" T-LABEL
    CROSS-THROW 3 T= 19 T= 222 T= 111 T=
    s" after the unwind a fill to the boot stack's capacity succeeds" T-LABEL
-   S\" : X ( -- ) s\" test/engine-stack-cross-throw.f\" included ; : FILL ( n -- ) dup 0= if drop exit then dup 1 - recurse drop ; : GO ( -- ) ['] X catch drop STACK-ABI:BOOT-BYTES 8 / 1 - FILL ; GO"
+   S\" : X ( -- ) s\" test/engine-stack-cross-throw.f\" >str included ; : FILL ( n -- ) dup 0= if drop exit then dup 1 - recurse drop ; : GO ( -- ) ['] X catch drop STACK-ABI:BOOT-BYTES 8 / 1 - FILL ; GO"
    CHILD-RC 0 T=
    s" and one cell more overflows the data stack" T-LABEL
-   S\" : X ( -- ) s\" test/engine-stack-cross-throw.f\" included ; : FILL ( n -- ) dup 0= if drop exit then dup 1 - recurse drop ; : GO ( -- ) ['] X catch drop STACK-ABI:BOOT-BYTES 8 / FILL ; GO"
+   S\" : X ( -- ) s\" test/engine-stack-cross-throw.f\" >str included ; : FILL ( n -- ) dup 0= if drop exit then dup 1 - recurse drop ; : GO ( -- ) ['] X catch drop STACK-ABI:BOOT-BYTES 8 / FILL ; GO"
    REFUSED-DATA ;
 
 \ A data request below the base is the one rejection with a name: the checker
