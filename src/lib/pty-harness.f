@@ -12,6 +12,7 @@ require src/lib/type/deftype.f
 require src/lib/process.f
 require src/lib/fd-lock.f
 require src/lib/pty.f
+require src/lib/time.f
 
 package PTY-HARNESS
 public
@@ -21,6 +22,7 @@ DEFTYPE WATCH                      \ a registered never-seen needle
 private
 
 10 constant POLL-MS                \ one poll blocks at most this long
+60000000000 constant WAIT-NS       \ 60 s: one wait gives up after this long
 $4000 constant BUF-CAP
 $200 constant TAIL-KEEP            \ bytes kept when a full buffer is compacted
 $10 constant WATCH-CAP             \ registered never-seen needles
@@ -296,11 +298,14 @@ public
 
 private
 
-\ Read until the quotation holds; a hang-up answers its last answer.
+\ Read until the quotation holds; a hang-up or the deadline answers its last
+\ answer.
 : WAIT-UNTIL ( [ -- bool ] -- bool )
+   TIME:MONO-NS WAIT-NS + {: end:n :}
    begin
       dup execute if drop true exit then
       MASTER-FD READ-STEP 0 < if execute exit then
+      TIME:MONO-NS end > if execute exit then
    again ;
 
 public
