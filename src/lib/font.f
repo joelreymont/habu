@@ -49,7 +49,7 @@ $5A7A7A7A constant SCRIPT-UNKNOWN
 
 VERSIONED-LIBRARY harfbuzz 0
 FUNCTION: BLOB-CREATE hb_blob_create_or_fail
-   ( ^u8 n n ^u8 ^u8 -- ^u8 ) ;FUNCTION
+   ( str n ^u8 ^u8 -- ^u8 ) ;FUNCTION
 FUNCTION: BLOB-DESTROY hb_blob_destroy ( ^u8 -- ) ;FUNCTION
 FUNCTION: BLOB-LEN hb_blob_get_length ( ^u8 -- u32 ) ;FUNCTION
 FUNCTION: BLOB-DATA hb_blob_get_data ( ^u8 ^u8 -- ^u8 ) ;FUNCTION
@@ -62,7 +62,7 @@ FUNCTION: FONT-SCALE hb_font_set_scale ( ^u8 n n -- ) ;FUNCTION
 FUNCTION: BUF-CREATE hb_buffer_create ( -- ^u8 ) ;FUNCTION
 FUNCTION: BUF-DESTROY hb_buffer_destroy ( ^u8 -- ) ;FUNCTION
 FUNCTION: BUF-ADD hb_buffer_add_utf8
-   ( ^u8 ^u8 n n n -- ) ;FUNCTION
+   ( ^u8 str n n -- ) ;FUNCTION
 FUNCTION: BUF-GUESS hb_buffer_guess_segment_properties ( ^u8 -- ) ;FUNCTION
 FUNCTION: BUF-DIRECTION hb_buffer_get_direction ( ^u8 -- i32 ) ;FUNCTION
 FUNCTION: BUF-LEN hb_buffer_get_length ( ^u8 -- u32 ) ;FUNCTION
@@ -228,7 +228,7 @@ TASK:+USER H-SEEN n
 : BLOB-PRESENT? ( ^u8 -- bool )
    dup BLOB-LEN 0<> swap BLOB-DESTROY ;
 
-: COLOR-GLYPH? ( str -- bool ) {: font:^ glyph:n :}
+: COLOR-GLYPH? ( ^u8 n -- bool ) {: font:^ glyph:n :}
    REF-CELL @ glyph 0 NULL-PTR NULL-PTR COLOR-LAYERS 0<>
    REF-CELL @ glyph COLOR-PAINT 0<> or
    REF-CELL @ glyph COLOR-SVG BLOB-PRESENT? or
@@ -359,7 +359,7 @@ TASK:+USER H-SEEN n
    bottom top - MAX-EXACT-F32 <= and 0= if E-EXTENT throw then
    right left - 0 > bottom top - 0 > and 0= if E-RENDER throw then
    left top right bottom ;
-: FINAL-BOX? ( str n n n -- bool )
+: FINAL-BOX? ( ^u8 n n n n -- bool )
    {: draw:^ x0:n y0:n x1:n y1:n :}
    EXTENTS-BYTES MEM-ALLOC-BYTES {: box:^ cap:n :}
    draw box DRAW-EXTENTS 0= if
@@ -373,7 +373,7 @@ TASK:+USER H-SEEN n
    box cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    exact ;
 
-: BOX-RENDER ( ^u8 ^u8 str -- ^u8 r r r r )
+: BOX-RENDER ( ^u8 ^u8 ^u8 n -- ^u8 r r r r )
    {: font:^ buf:^ draw:^ ink:n :}
    EXTENTS-BYTES MEM-ALLOC-BYTES {: box:^ cap:n :}
    draw box DRAW-EXTENTS 0= if
@@ -459,7 +459,7 @@ TASK:+USER H-SEEN n
 public
 
 \ OPEN copies the font bytes, so the caller may release its input on return.
-: OPEN ( ^u8 n n -- font )
+: OPEN ( str n -- font )
    {: data:^ size:n index:n :}
    size 0 <= size MAX-FONT > or if E-OPEN throw then
    index 0 < index MAX-FONT > or if E-OPEN throw then
@@ -475,7 +475,7 @@ public
 \ scripts throw E-TEXT; a missing glyph or one drawn only from COLR, SVG or
 \ sbix/CBDT color data throws E-GLYPH; a run whose ink passes 2^24 units
 \ throws E-EXTENT. A whitespace-only run is a valid zero-size SVG.
-: RENDER ( font ^u8 n n -- image )
+: RENDER ( font str n -- image )
    {: handle:font data:^ size:n em:n :}
    data size TEXT-CHECK {: ink:n :}
    em EM-CHECK drop

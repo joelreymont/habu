@@ -34,17 +34,17 @@ private
    {: a:^ at:n :}
    a at + c@ ;
 
-: AT ( ^u8 n n -- n )
+: AT ( str n -- n )
    {: a:^ u:n at:n :}
    at u < if a at BYTE else 0 then ;
 
-: SOURCE ( ^u8 n -- )
+: SOURCE ( str -- )
    {: a:^ u:n :}
    u 0 < if E-SOURCE throw then
    u 0 > a 0= and if E-SOURCE throw then ;
 
 \ An invalid separator remains unconsumed.
-: DIGITS ( ^u8 n n bool -- n n n n )
+: DIGITS ( str n bool -- n n n n )
    {: a:^ u:n start:n repeat?:bool :}
    start 0 0 0 begin
       {: at:n count:n leading:n trailing:n :}
@@ -91,7 +91,7 @@ private
 
 \ An absent marker has zero exponent. A malformed marker remains unconsumed,
 \ so the caller's end-of-input check rejects it.
-: EXPONENT ( ^u8 n n -- n n bool )
+: EXPONENT ( str n -- n n bool )
    {: a:^ u:n start:n :}
    a u start AT dup EXP-LOWER = swap EXP-UPPER = or 0= if
       start 0 false exit
@@ -148,7 +148,7 @@ private
    total leading - wanted - trailing > if OPTION:NONE exit then
    a start end leading wanted negative? ACCUM ;
 
-: CONVERT ( ^u8 n bool -- option<i64> )
+: CONVERT ( str bool -- option<i64> )
    {: a:^ u:n integer?:bool :}
    a u SOURCE
    u 0= if OPTION:NONE exit then
@@ -177,10 +177,10 @@ private
 
 public
 
-: EXACT ( ^u8 n -- option<i64> )
+: EXACT ( str -- option<i64> )
    false CONVERT ;
 
-: INTEGER ( ^u8 n -- option<i64> )
+: INTEGER ( str -- option<i64> )
    true CONVERT ;
 
 ;package

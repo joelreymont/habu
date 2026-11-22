@@ -34,7 +34,7 @@ $7FFFFFFFFFFFFFFF constant MAGNITUDE-MASK
 BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
 
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
-: DIGITS ( ^u8 n n -- n ) {: text:^ len:n offset:n :}
+: DIGITS ( str n -- n ) {: text:^ len:n offset:n :}
    offset begin dup len < if text over + c@ DIGIT? else false then while 1+ repeat ;
 : SIGN-SKIP ( str n -- n ) {: text:^ len:n offset:n :}
    offset len < if text offset + c@ dup $2B = swap $2D = or if offset 1+ exit then then offset ;
@@ -46,7 +46,7 @@ BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
       text len offset 1+ DIGITS exit
    then then offset ;
 
-: GRAMMAR ( ^u8 n -- n ) {: text:^ len:n :}
+: GRAMMAR ( str -- n ) {: text:^ len:n :}
    len 0 <= if 1 exit then
    text len 0 SIGN-SKIP {: first:n :}
    text len first DIGITS {: integer-end:n :}
@@ -321,7 +321,7 @@ private
 
 \ Of a text GRAMMAR admits: where its digits start, its integer digits end and
 \ its fraction ends.
-: PARTS ( ^u8 n -- n n n ) {: text:^ len:n :}
+: PARTS ( str -- n n n ) {: text:^ len:n :}
    text len 0 SIGN-SKIP {: first:n :}
    text len first DIGITS {: integer-end:n :}
    first integer-end text len integer-end FRACTION-END ;
@@ -379,7 +379,7 @@ private
    count q 0 max + q negate max 3402 * 1024 / 65 + 31 + 32 / ;
 
 
-: CONVERT ( ^u8 n n n bool n n ^u8 NUM:alloc-byte-len -- result<r,fault> )
+: CONVERT ( str n n bool n n ^u8 NUM:alloc-byte-len -- result<r,fault> )
    drop {: text:^ len:n count:n q:n dropped:bool limbs:n sign:n work:^ :}
    work CELL-VIEW {: big :}
    limbs big BIG-INIT
@@ -404,7 +404,7 @@ private
 public
 \ The nearest binary64 to a signed decimal/exponent text, ties to even, zero's
 \ sign kept; padding, hex, nonfinite values and trailing bytes are refused.
-: PARSE ( ^u8 n -- result<r,fault> )
+: PARSE ( str -- result<r,fault> )
    {: text:^ len:n :}
    len 0 < if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
    text len NONFINITE-TEXT? if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then

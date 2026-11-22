@@ -26,7 +26,7 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 62 constant SYMBOL-FIRST         \ '+', or Table 2's '-'; '/' or '_' is next
 
 \ RFC 4648 section 4, Table 1: the character for each six-bit value, in order.
-: ALPHABET ( -- ^u8 n )
+: ALPHABET ( -- str )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" ;
 
 : URL-ALPHABET ( -- str )
@@ -113,7 +113,7 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
    then
    v ;
 
-: GATHER ( ^u8 n -- n ) {: p k:n :}
+: GATHER ( str -- n ) {: p k:n :}
    0 k 0 ?do p i + c@ 16 i 8 * - lshift or loop ;
 
 \ k bytes make k + 1 characters, and '=' fills the group out to four.
@@ -149,7 +149,7 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
    a u g 2 + false CHECKED-SEXTET drop
    3 ;
 
-: CHECKED ( ^u8 n -- n ) {: a u:n :}
+: CHECKED ( str -- n ) {: a u:n :}
    u 3 and 0<> if a u false REJECT-LENGTH then
    u 4 / {: groups:n :}
    0 groups 0 ?do a u i 4 * i 1+ groups = GROUP + loop ;
@@ -168,7 +168,7 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 : BITS ( ^u8 n -- n ) {: g k:n :}
    0 k 1+ 0 ?do g i + c@ CHAR>SEXTET 18 i 6 * - lshift or loop ;
 
-: URL-BITS ( str -- n ) {: g k:n :}
+: URL-BITS ( ^u8 n -- n ) {: g k:n :}
    0 k 1+ 0 ?do g i + c@ URL-CHAR>SEXTET 18 i 6 * - lshift or loop ;
 
 : PUT ( n ^u8 n -- ) {: v out k:n :}
@@ -188,7 +188,7 @@ public
 
 \ A group is gathered whole before its characters are scattered, so one group
 \ may be encoded in place.
-: ENCODE ( ^u8 n SPAN:span<u8> -- n ) {: a u:n s :}
+: ENCODE ( str SPAN:span<u8> -- n ) {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    \ The input is compared with what the span holds, three bytes to four of
    \ reach: scaled up first, a length near the maximum cell wraps the encoded
@@ -202,7 +202,7 @@ public
    loop
    len ;
 
-: DECODE ( ^u8 n SPAN:span<u8> -- n ) {: a u:n s :}
+: DECODE ( str SPAN:span<u8> -- n ) {: a u:n s :}
    u 0 < if E-SPAN-LENGTH throw then
    \ Each group of four decodes to three bytes and the last to at least one, so
    \ a span too small for that is rejected before the input is read.

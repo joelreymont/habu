@@ -73,7 +73,7 @@ TASK:+USER PROBE u8
 \ The only asserted effects are exact C entry points; Habu owns every check.
 VERSIONED-LIBRARY z 1
 FUNCTION: C-VERSION zlibVersion ( -- ^u8 ) ;FUNCTION
-FUNCTION: C-CRC32 crc32 ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: C-CRC32 crc32 ( n str -- n ) ;FUNCTION
 FUNCTION: C-INFLATE-INIT inflateInit2_ ( ^u8 n ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: C-INFLATE inflate ( ^u8 n -- i32 ) ;FUNCTION
 FUNCTION: C-INFLATE-END inflateEnd ( ^u8 -- i32 ) ;FUNCTION
@@ -118,7 +118,7 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup Z-OK = if drop exit then
    FAIL ;
 
-: STAGE ( ^u8 n ^u8 n -- )
+: STAGE ( str ^u8 n -- )
    {: src:^ srcu:n dst:^ cap:n :}
    CLEAR
    src NEXT-IN ! srcu STREAM ZSTREAM-AVAIL-IN BYTE-VIEW LE:U32!
@@ -217,13 +217,13 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
    dup U32-MAX > if E-SIZE throw then ;
 
 \ Every stream is at least one byte, so zero capacity cannot hold one.
-: DEFLATE-FOR ( ^u8 n ^u8 n n -- n )
+: DEFLATE-FOR ( str ^u8 n n -- n )
    {: src:^ srcu:n dst:^ cap:n window:n :}
    src srcu dst cap PAIR-CHECK
    cap 0= if E-CAPACITY throw then
    window src srcu dst cap [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
 
-: INFLATE-FOR ( ^u8 n ^u8 n n -- n )
+: INFLATE-FOR ( str ^u8 n n -- n )
    {: src:^ srcu:n dst:^ cap:n window:n :}
    src srcu dst cap PAIR-CHECK
    window src srcu dst cap [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;
@@ -231,7 +231,7 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 public
 
 \ The finalized IEEE CRC-32; zero for no bytes.
-: CRC32 ( ^u8 n -- u32 ) {: p:^ u:n :}
+: CRC32 ( str -- u32 ) {: p:^ u:n :}
    p u SPAN-CHECK
    0 p u C-CRC32 U32-MAX and ;
 
