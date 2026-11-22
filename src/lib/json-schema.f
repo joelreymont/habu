@@ -174,7 +174,7 @@ ARENA CURSORS JSON:cursor
 
 \ Rejects the current token: READ-REJECT's E-MEMBER text leaves as
 \ E-SCHEMA.
-: REJECT ( JSON:reader ^u8 n ^u8 n -- )
+: REJECT ( JSON:reader str str -- )
    {: ea:^ eu:n fa:^ fu:n :}
    [: ea eu fa fu JSON:READ-REJECT ;] catch {: code:n :}
    code JSON:E-MEMBER = if
@@ -184,14 +184,14 @@ ARENA CURSORS JSON:cursor
 
 \ Opens a text `L:C: expected e, found ` for the byte at offset at of the
 \ schema text.
-: OPEN-AT ( ^build n ^u8 n -- ) {: b:^ at:n e:^ eu:n :}
+: OPEN-AT ( ^build n str -- ) {: b:^ at:n e:^ eu:n :}
    b BUILD-TEXT @ dup at + 1 1 0 REJECTION:POSITION drop
    REASON:OPEN REASON:AT
    REASON:EXPECTED e eu REASON:APPEND REASON:FOUND ;
 
 \ Throws E-SCHEMA for the byte at offset at, which the reader has left,
 \ with the expected text, the found text f as given and the fix.
-: REJECT-AT ( ^build n ^u8 n ^u8 n ^u8 n -- ) {: f:^ fu:n x:^ xu:n :}
+: REJECT-AT ( ^build n str str str -- ) {: f:^ fu:n x:^ xu:n :}
    OPEN-AT  f fu REASON:APPEND
    REASON:FIX x xu REASON:APPEND  E-SCHEMA REASON:STOP ;
 
@@ -213,7 +213,7 @@ ARENA CURSORS JSON:cursor
    kind JSON:T-STR = if 1- then ;
 
 \ The current string or key, decoded into the arena.
-: DECODED ( JSON:reader ^build -- JSON:reader ^u8 n ) {: b:^ :}
+: DECODED ( JSON:reader ^build -- JSON:reader str ) {: b:^ :}
    JSON:READ-SPAN$ nip {: raw:n :}
    b BUILD-ARENA @ raw 1 max ARENA:ALLOC drop {: dst:^ :}
    dst raw JSON:READ-STR  dst swap ;
@@ -221,7 +221,7 @@ ARENA CURSORS JSON:cursor
 : NUMBER? ( n -- bool ) dup JSON:T-INT = swap JSON:T-FLOAT = or ;
 
 \ The current number's lexeme; e is the expected text for another token.
-: LEXEME ( JSON:reader ^u8 n -- JSON:reader SPAN:span<u8> ) {: e:^ eu:n :}
+: LEXEME ( JSON:reader str -- JSON:reader SPAN:span<u8> ) {: e:^ eu:n :}
    JSON:READ-TOKEN NUMBER? 0= if
       e eu s" write a number, with no quotes" REJECT
    then
@@ -229,7 +229,7 @@ ARENA CURSORS JSON:cursor
 
 \ A bound's lexeme, as LEXEME; ex is the expected text for one whose
 \ exponent NUMBER-COMPARE cannot order.
-: BOUND-LEXEME ( JSON:reader ^u8 n ^u8 n -- JSON:reader SPAN:span<u8> )
+: BOUND-LEXEME ( JSON:reader str str -- JSON:reader SPAN:span<u8> )
    {: e:^ eu:n ex:^ exu:n :}
    e eu LEXEME {: b :}
    b SPAN:$ 2dup JSON:NUMBER-COMPARE MATCH option
@@ -241,7 +241,7 @@ ARENA CURSORS JSON:cursor
 
 \ The current integer, from 0 to the largest a cell holds; e is the
 \ expected text for another token.
-: LIMIT ( JSON:reader ^u8 n -- JSON:reader n ) {: e:^ eu:n :}
+: LIMIT ( JSON:reader str -- JSON:reader n ) {: e:^ eu:n :}
    JSON:READ-TOKEN JSON:T-INT = if
       JSON:READ-SPAN$ STR>NUMBER? MATCH option
          none OF -1 ENDOF
@@ -251,7 +251,7 @@ ARENA CURSORS JSON:cursor
    dup 0 >= if exit then
    drop e eu s" write an integer in that range" REJECT ;
 
-: DIALECT$ ( -- ^u8 n ) s" https://json-schema.org/draft/2020-12/schema" ;
+: DIALECT$ ( -- str ) s" https://json-schema.org/draft/2020-12/schema" ;
 
 : DIALECT ( JSON:reader -- JSON:reader )
    JSON:READ-TOKEN JSON:T-STR = if
@@ -260,7 +260,7 @@ ARENA CURSORS JSON:cursor
    s" `$schema` as `https://json-schema.org/draft/2020-12/schema`"
    s" name the 2020-12 dialect, or remove `$schema`" REJECT ;
 
-: TYPE-NAMES$ ( -- ^u8 n )
+: TYPE-NAMES$ ( -- str )
    s" null boolean object array number string integer" ;
 7 constant TYPE-COUNT
 \ The bits of null, boolean, number, string and integer.
@@ -313,14 +313,14 @@ $73 constant SCALARS
    nd ADD-TYPE ;
 
 \ Whether an array's text holds only white space between its brackets.
-: EMPTY? ( ^u8 n -- bool ) {: a:^ u:n :}
+: EMPTY? ( str -- bool ) {: a:^ u:n :}
    u 1- 1 ?do
       a i + c@ STR-SPACE > if unloop false exit then
    loop true ;
 
-: ENUM-EXPECTED$ ( -- ^u8 n )
+: ENUM-EXPECTED$ ( -- str )
    s" `enum` as an array of one value or more" ;
-: ENUM-FIX$ ( -- ^u8 n ) s" list the values allowed in an array" ;
+: ENUM-FIX$ ( -- str ) s" list the values allowed in an array" ;
 
 \ Rejects the current token, of kind kind, when it is a number whose
 \ exponent NUMBER-COMPARE cannot order.
@@ -347,7 +347,7 @@ $73 constant SCALARS
    d ;
 
 \ The text of the array whose `[` is current, the reader left on its `]`.
-: ENUM-VALUES ( JSON:reader -- JSON:reader ^u8 n )
+: ENUM-VALUES ( JSON:reader -- JSON:reader str )
    JSON:READ-SPAN$ drop {: a:^ :}
    1 begin dup 0 > while ENUM-STEP repeat drop
    JSON:READ-SPAN$ + a -  a swap ;
@@ -406,10 +406,10 @@ $73 constant SCALARS
 
 \ The keywords READ-LISTED takes at the root, each optional; KEYWORD reads
 \ by the index in this list. A sub-schema takes the list past `$schema? `.
-: ROOT-KEYWORDS$ ( -- ^u8 n )
+: ROOT-KEYWORDS$ ( -- str )
    s" $schema? type? enum? minimum? maximum? minLength? maxLength? pattern? properties? required? additionalProperties? maxProperties? items? minItems? maxItems? uniqueItems? anyOf? oneOf? description? title? default? examples? deprecated? readOnly? writeOnly? $comment? format?" ;
 
-: KEYWORDS$ ( -- ^u8 n )
+: KEYWORDS$ ( -- str )
    ROOT-KEYWORDS$ {: a:^ u:n :}  s" $schema? " nip {: k:n :}
    a k +  u k - ;
 
@@ -423,7 +423,7 @@ $73 constant SCALARS
 \ The node of the schema object whose `{` is current, its level pushed to
 \ read it over the keyword list; base is the root index of the list's first
 \ name.
-: OPEN ( ^build ^u8 n n -- ^node ) {: b:^ list:^ lu:n base:n :}
+: OPEN ( ^build str n -- ^node ) {: b:^ list:^ lu:n base:n :}
    b BUILD-SCRATCH @ {: s:^ :}
    s LEVELS-NEW {: lv:^ :}
    b lv LEVEL-BUILD !  b BUILD-TOP @ lv LEVEL-OUTER !
@@ -437,7 +437,7 @@ $73 constant SCALARS
 
 \ The sub-schema whose first token is current, its level pushed; e is the
 \ expected text for a token that opens no object.
-: SUB ( JSON:reader ^build ^u8 n -- JSON:reader ^node ) {: b:^ e:^ eu:n :}
+: SUB ( JSON:reader ^build str -- JSON:reader ^node ) {: b:^ e:^ eu:n :}
    JSON:READ-TOKEN JSON:T-OBJ <> if
       e eu s" write a schema object, `{}` for any value" REJECT
    then
@@ -446,7 +446,7 @@ $73 constant SCALARS
 \ A property's address a map holds.
 CAST: >PROPERTY ( n -- ^property )
 
-: NAME-GET ( ^u8 n ^n n -- option<n> ) {: na:^ nu:n m:^ cap:n :}
+: NAME-GET ( str ^n n -- option<n> ) {: na:^ nu:n m:^ cap:n :}
    m NULL-PTR = if OPTION:NONE exit then
    m cap >COUNT na nu >LEN MAP:GET ;
 
@@ -455,7 +455,7 @@ CAST: >PROPERTY ( n -- ^property )
    m MAP:COUNT@ COUNT>N ;
 
 \ na nu must live as long as arena a, which holds the map.
-: NAME-PUT ( n ^u8 n ^^n ^n ^ARENA:arena -- )
+: NAME-PUT ( n str ^^n ^n ^ARENA:arena -- )
    {: v:n na:^ nu:n mp:^ cp:^ a:^ :}
    mp cp a MAP:ROOM
    v mp @ cp @ >COUNT na nu >LEN MAP:SET ;
@@ -499,9 +499,9 @@ CAST: >PROPERTY ( n -- ^property )
 : APPEND-ENTRY ( ^entry ^level -- ) {: en:^ lv:^ :}
    en lv LEVEL-ENTRY-TAIL @ !  en ENTRY-NEXT lv LEVEL-ENTRY-TAIL ! ;
 
-: REQUIRED-EXPECTED$ ( -- ^u8 n )
+: REQUIRED-EXPECTED$ ( -- str )
    s" `required` as an array of property names" ;
-: REQUIRED-FIX$ ( -- ^u8 n ) s" write the names as strings in an array" ;
+: REQUIRED-FIX$ ( -- str ) s" write the names as strings in an array" ;
 
 : REQUIRED-NAME ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}  lv LEVEL-BUILD @ {: b:^ :}
@@ -576,22 +576,22 @@ CAST: >PROPERTY ( n -- ^property )
 
 \ An alternative whose first token is current, appended at the level's
 \ branch-tail.
-: BRANCH ( JSON:reader ^level ^u8 n -- JSON:reader ) {: lv:^ e:^ eu:n :}
+: BRANCH ( JSON:reader ^level str -- JSON:reader ) {: lv:^ e:^ eu:n :}
    lv LEVEL-BUILD @ {: b:^ :}
    b e eu SUB {: child:^ :}
    b BUILD-ARENA @ BRANCHES-NEW {: br:^ :}
    child br BRANCH-NODE !
    br lv APPEND-BRANCH ;
 
-: CHOICE-FIX$ ( -- ^u8 n ) s" list the alternatives' schemas in an array" ;
+: CHOICE-FIX$ ( -- str ) s" list the alternatives' schemas in an array" ;
 
 \ The expected text for the value of choice keyword idx, 16 anyOf or 17
 \ oneOf.
-: CHOICE-EXPECTED$ ( n -- ^u8 n )
+: CHOICE-EXPECTED$ ( n -- str )
    16 = if s" `anyOf` as an array of one schema object or more" exit then
    s" `oneOf` as an array of one schema object or more" ;
 
-: ELEMENT-EXPECTED$ ( n -- ^u8 n )
+: ELEMENT-EXPECTED$ ( n -- str )
    16 = if s" an `anyOf` element as a schema object" exit then
    s" a `oneOf` element as a schema object" ;
 
@@ -663,7 +663,7 @@ CAST: >PROPERTY ( n -- ^property )
    b ROOT-KEYWORDS$ 0 OPEN ;
 
 \ s is the scratch arena; a throw leaves the cursor owning nothing.
-: READ-ROOT ( ^u8 n ^ARENA:arena ^ARENA:arena -- schema )
+: READ-ROOT ( str ^ARENA:arena ^ARENA:arena -- schema )
    {: src:^ u:n a:^ s:^ :}
    s BUILDS-NEW {: b:^ :}
    a b BUILD-ARENA !  s b BUILD-SCRATCH !  src b BUILD-TEXT !
@@ -763,7 +763,7 @@ ARENA PASSES pass
 
 : DECIDED ( ^place -- bool ) PLACE-WALK @ WALK-VERDICT @ ;
 
-: TEXT$ ( ^place -- ^u8 n ) PLACE-TEXT @ SPAN:$ ;
+: TEXT$ ( ^place -- str ) PLACE-TEXT @ SPAN:$ ;
 
 : CONTAINER? ( ^place -- bool ) PLACE-KIND @ OPENER? ;
 
@@ -778,27 +778,27 @@ ARENA PASSES pass
    JSON:READ-ANY-SPAN$ SPAN:MAKE pl PLACE-TEXT ! ;
 
 \ The current string or key, decoded into the scratch arena.
-: DECODE ( JSON:reader ^place -- JSON:reader ^u8 n ) {: pl:^ :}
+: DECODE ( JSON:reader ^place -- JSON:reader str ) {: pl:^ :}
    JSON:READ-SPAN$ nip {: raw:n :}
    pl PLACE-WALK @ WALK-SCRATCH @ raw 1 max ARENA:ALLOC drop {: dst:^ :}
    dst raw JSON:READ-STR  dst swap ;
 
-: ADD ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
+: ADD ( str ^place -- ) {: s:^ u:n pl:^ :}
    s u pl PLACE-WALK @ WALK-BUF @ VEC:APPEND ;
 
 \ Text quoted from the value or the schema is cut at CUT bytes.
 32 constant CUT
 
-: ADD-CUT ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
+: ADD-CUT ( str ^place -- ) {: s:^ u:n pl:^ :}
    s u CUT UTF8:FIT {: k:n :}
    s k pl PLACE-WALK @ WALK-BUF @ UNICODE-VISIBLE:APPEND
    k u < if s" ..." pl ADD then ;
 
-: QUOTE ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
+: QUOTE ( str ^place -- ) {: s:^ u:n pl:^ :}
    s" `" pl ADD  s u pl ADD-CUT  s" `" pl ADD ;
 
 \ `n things`, word naming one thing with a leading space.
-: COUNTED ( n ^u8 n ^place -- ) {: k:n w:^ wu:n pl:^ :}
+: COUNTED ( n str ^place -- ) {: k:n w:^ wu:n pl:^ :}
    k FMT:INT$ pl ADD  w wu pl ADD  k 1 <> if s" s" pl ADD then ;
 
 : SAY-INDEX ( n ^place -- ) {: idx:n pl:^ :}
@@ -824,7 +824,7 @@ ARENA PASSES pass
 : FOUND ( ^place -- ) {: pl:^ :}
    s" , found " pl ADD  pl TEXT$ pl QUOTE ;
 
-: FIX ( ^u8 n ^place -- ) {: s:^ u:n pl:^ :}
+: FIX ( str ^place -- ) {: s:^ u:n pl:^ :}
    s" ; " pl ADD  s u pl ADD ;
 
 \ ---- types -----------------------------------------------------------------
@@ -853,10 +853,10 @@ $40 constant INTEGER-BIT
       0 swap
    endcase ;
 
-: NAME-AT ( n -- ^u8 n n ) {: start:n :}
+: NAME-AT ( n -- str n ) {: start:n :}
    TYPE-NAMES$ STR-SPACE start SPLIT-NEXT drop ;
 
-: TYPE-NAME ( n -- ^u8 n ) {: idx:n :}
+: TYPE-NAME ( n -- str ) {: idx:n :}
    0 idx 0 ?do NAME-AT nip nip loop  NAME-AT drop ;
 
 : ORDER-LENGTH ( n -- n )
@@ -871,7 +871,7 @@ $40 constant INTEGER-BIT
       o i 4 * rshift 15 and 1- TYPE-NAME pl QUOTE
    loop ;
 
-: TYPE-FIX$ ( ^node bool -- ^u8 n ) {: nd:^ num:bool :}
+: TYPE-FIX$ ( ^node bool -- str ) {: nd:^ num:bool :}
    nd NODE-TYPES @ {: t:n :}
    num t INTEGER-BIT and 0<> and if
       s" send a whole number from -9223372036854775808 to 9223372036854775807, with no fraction or exponent"
@@ -893,7 +893,7 @@ $40 constant INTEGER-BIT
    pl FOUND  s" write the number with a smaller exponent" pl FIX ;
 
 \ Whether an element of the array text e equals the value text v.
-: ELEMENT? ( ^u8 n ^u8 n ^JSON:cursor -- bool )
+: ELEMENT? ( str str ^JSON:cursor -- bool )
    {: v:^ vu:n e:^ eu:n c:^ :}
    c e eu JSON:READ-INIT JSON:READ-NEXT drop
    begin JSON:READ-NEXT JSON:T-ARR-END <> while
@@ -947,7 +947,7 @@ $40 constant INTEGER-BIT
 \ ---- strings ---------------------------------------------------------------
 
 \ The text's Unicode characters; a byte that starts none counts one.
-: CHARACTERS ( ^u8 n -- n ) {: s:^ u:n :}
+: CHARACTERS ( str -- n ) {: s:^ u:n :}
    0 0 begin dup u < while
       s u rot UTF8:NEXT MATCH UTF8:scalar-step
          scalar OF nip ENDOF
@@ -996,7 +996,7 @@ $40 constant INTEGER-BIT
 
 \ The member named na that additionalProperties false rejects in the object
 \ at pl.
-: EXTRA ( ^u8 n ^node ^place -- ) {: na:^ nu:n nd:^ pl:^ :}
+: EXTRA ( str ^node ^place -- ) {: na:^ nu:n nd:^ pl:^ :}
    nd NODE-PROPERTIES @ {: p:^ :}
    pl EXPECTED
    p NULL-PTR = if s" no members" else s" only the member" then pl ADD
@@ -1028,7 +1028,7 @@ $40 constant INTEGER-BIT
    JUDGING-MEMBERS pl PLACE-PHASE ! ;
 
 \ Marks the name, when it is required.
-: MARK-REQUIRED ( ^u8 n ^place -- ) {: na:^ nu:n pl:^ :}
+: MARK-REQUIRED ( str ^place -- ) {: na:^ nu:n pl:^ :}
    pl PLACE-NODE @ {: nd:^ :}
    na nu nd NODE-REQUIRED-MAP @ nd NODE-REQUIRED-CAP @ NAME-GET
    MATCH option
@@ -1051,12 +1051,12 @@ $40 constant INTEGER-BIT
       JSON:READ-NEXT drop  JSON:READ-SKIP-VALUE
    repeat ;
 
-: PUSH-MEMBER ( ^node ^u8 n ^place -- ) {: nd:^ na:^ nu:n pl:^ :}
+: PUSH-MEMBER ( ^node str ^place -- ) {: nd:^ na:^ nu:n pl:^ :}
    JUDGING-MEMBER pl PLACE-PHASE !
    nd pl PLACE-WALK @ OPEN-PLACE {: kid:^ :}
    na nu SPAN:MAKE kid PLACE-NAME ! ;
 
-: FIND-PROPERTY ( ^u8 n ^node -- ^property ) {: na:^ nu:n nd:^ :}
+: FIND-PROPERTY ( str ^node -- ^property ) {: na:^ nu:n nd:^ :}
    na nu nd NODE-PROPERTY-MAP @ nd NODE-PROPERTY-CAP @ NAME-GET
    MATCH option
       none OF NULL-PTR ENDOF
@@ -1120,7 +1120,7 @@ ARENA TABLES table
 
 \ decoded is as long as the array text, and no string decodes longer than
 \ it is written.
-: NEW-TABLE ( ^u8 n n ^place -- ^table ) {: v:^ vu:n k:n pl:^ :}
+: NEW-TABLE ( str n ^place -- ^table ) {: v:^ vu:n k:n pl:^ :}
    pl PLACE-WALK @ WALK-SCRATCH @ {: s:^ :}
    s TABLES-NEW {: tb:^ :}
    v tb TABLE-TEXT !
@@ -1135,11 +1135,11 @@ ARENA TABLES table
 : RANK ( n ^table -- n ) ROW @ ;
 
 \ The element's text as written.
-: ELEMENT$ ( n ^table -- ^u8 n ) {: idx:n tb:^ :}
+: ELEMENT$ ( n ^table -- str ) {: idx:n tb:^ :}
    idx tb ROW {: r:^ :}
    tb TABLE-TEXT @ r 1 cells + @ +  r 2 cells + @ ;
 
-: DECODED$ ( n ^table -- ^u8 n ) {: idx:n tb:^ :}
+: DECODED$ ( n ^table -- str ) {: idx:n tb:^ :}
    idx tb ROW {: r:^ :}
    tb TABLE-DECODED @ r 3 cells + @ +  r 4 cells + @ ;
 
@@ -1154,7 +1154,7 @@ ARENA TABLES table
    endcase ;
 
 \ The element whose token is current, its text e, as row idx.
-: RECORD ( JSON:reader ^u8 n n ^table -- JSON:reader )
+: RECORD ( JSON:reader str n ^table -- JSON:reader )
    {: e:^ eu:n idx:n tb:^ :}
    idx tb ROW {: r:^ :}
    JSON:READ-TOKEN KIND-RANK r !
@@ -1169,7 +1169,7 @@ ARENA TABLES table
    2dup < if 2drop -1 exit then
    > if 1 else 0 then ;
 
-: BYTE-ORDER ( ^u8 n ^u8 n -- n ) {: a:^ u:n b:^ w:n :}
+: BYTE-ORDER ( str str -- n ) {: a:^ u:n b:^ w:n :}
    a u b w STR< if -1 exit then
    b w a u STR< if 1 else 0 then ;
 
@@ -1329,11 +1329,11 @@ ARENA TABLES table
 
 \ ---- anyOf and oneOf --------------------------------------------------------
 
-: ANY-OF$ ( -- ^u8 n ) s" one schema of `anyOf` takes" ;
-: ONE-OF$ ( -- ^u8 n ) s" exactly one schema of `oneOf` takes" ;
+: ANY-OF$ ( -- str ) s" one schema of `anyOf` takes" ;
+: ONE-OF$ ( -- str ) s" exactly one schema of `oneOf` takes" ;
 
 \ `P: expected a value s, found `v``.
-: CHOICE-HEAD ( ^u8 n ^place -- ) {: s:^ su:n pl:^ :}
+: CHOICE-HEAD ( str ^place -- ) {: s:^ su:n pl:^ :}
    pl EXPECTED  s" a value " pl ADD  s su pl ADD  pl FOUND ;
 
 \ `[k]` on a line of its own, then alternative br, k, pushed rooted on the
@@ -1458,7 +1458,7 @@ ARENA TABLES table
    ;MATCH ;
 
 \ s is the scratch arena.
-: WALK-ROOT ( ^u8 n schema ^VEC:vector<u8> ^ARENA:arena -- bool )
+: WALK-ROOT ( str schema ^VEC:vector<u8> ^ARENA:arena -- bool )
    {: v:^ vu:n sc buf:^ s:^ :}
    s [: dup WALK-CURSOR JSON:READ-DISPOSE WALK-VALUES JSON:READ-DISPOSE ;]
    WALKS-NEW-DISPOSE {: w:^ :}
@@ -1472,7 +1472,7 @@ public
 
 \ The schema's nodes, in arena a; a schema outside the contract throws
 \ E-SCHEMA with its text.
-: COMPILE ( ^u8 n ^ARENA:arena -- schema )
+: COMPILE ( str ^ARENA:arena -- schema )
    {: src:^ u:n a:^ :}
    src u a [: READ-ROOT ;] ARENA:WITH ;
 

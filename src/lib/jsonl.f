@@ -91,7 +91,7 @@ public
 
 private
 
-: APPEND ( ^cursor ^u8 n -- )
+: APPEND ( ^cursor str -- )
    {: cur:^ seg:^ u:n :}
    cur LINE-LEN u + cur CURSOR-MAX @ > if E-LIMIT throw then
    seg u cur CURSOR-LINE @ VEC:APPEND ;

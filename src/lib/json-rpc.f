@@ -73,7 +73,7 @@ STRUCTURE member
 ;STRUCTURE
 
 : KIND ( member -- n )  MEMBER-UNMAKE 2drop ;
-: TEXT$ ( member -- ^u8 n )  MEMBER-UNMAKE rot drop ;
+: TEXT$ ( member -- str )  MEMBER-UNMAKE rot drop ;
 : PRESENT? ( member -- bool )  KIND ABSENT <> ;
 : >ID ( member -- id )  TEXT$ JSON--RPC-ID:MAKE ;
 : NO-MEMBER ( -- member )  ABSENT s" " MEMBER-MAKE ;
@@ -94,7 +94,7 @@ STRUCTURE envelope
 : NO-ENVELOPE ( -- envelope )
    false NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER false ENVELOPE-MAKE ;
 
-: INVALID ( n ^u8 n id -- message )  JSON--RPC-MESSAGE:INVALID ;
+: INVALID ( n str id -- message )  JSON--RPC-MESSAGE:INVALID ;
 
 : NOT-JSON ( n -- message )
    {: code:n :}
@@ -278,7 +278,7 @@ public
    WRITE-OBJECT-END ;
 
 \ `{"jsonrpc":"2.0","method":M,"params":`; the caller writes params, then END.
-: NOTIFY ( ^JSON:writer ^u8 n -- ^JSON:writer )
+: NOTIFY ( ^JSON:writer str -- ^JSON:writer )
    {: m:^ mu:n :}
    HEAD
    WRITE-COMMA  s" method" m mu WRITE-FIELD-S
