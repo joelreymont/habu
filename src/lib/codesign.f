@@ -52,7 +52,7 @@ variable CODESIGN-ID?
 
 public
 
-: TOOL ( -- ^u8 n )
+: TOOL ( -- str )
    s" /usr/bin/codesign" ;
 
 private
@@ -327,12 +327,12 @@ variable CODESIGN-MAGIC-FD
 
 public
 
-: VERIFY-RC ( ^u8 n -- n ) {: a:^ u:n :}
+: VERIFY-RC ( str -- n ) {: a:^ u:n :}
    a u CODESIGN-LINUX? if a u CODESIGN-LINUX-VERIFY-RC exit then
    HB-TARGET-MACOS? if a u CODESIGN-MACOS-VERIFY-ARGS CODESIGN-RUN exit then
    CODESIGN-TARGET-UNKNOWN ;
 
-: VERIFY ( ^u8 n -- ) {: a:^ u:n :}
+: VERIFY ( str -- ) {: a:^ u:n :}
    a u CODESIGN-LINUX? if
       a u CODESIGN-EXPECT-EXECUTABLE
       exit
@@ -358,7 +358,7 @@ public
 
 \ Signs a file for the team unless it already carries a valid team signature,
 \ so an install keeps the one its build made; a written image's own is ad hoc.
-: ENSURE ( ^u8 n -- ) {: a:^ u:n :}
+: ENSURE ( str -- ) {: a:^ u:n :}
    a u CODESIGN-LINUX? 0= HB-TARGET-MACOS? and if
       a u TEAM-SIGNED? if exit then
    then
@@ -411,7 +411,7 @@ $10000 constant CMS-SLOT
 
 \ The offset of the first load command hit accepts; 0 for no 64-bit Mach-O or no
 \ hit, -1 when a command up to that one runs past the image.
-: COMMAND ( ^u8 n [ n -- bool ] -- n ) {: a:^ u:n hit :}
+: COMMAND ( str [ n -- bool ] -- n ) {: a:^ u:n hit :}
    u MACHO64-HEADER < if 0 exit then
    a LE:U32@ MACHO64-MAGIC <> if 0 exit then
    MACHO64-HEADER
@@ -463,7 +463,7 @@ $10000 constant CMS-SLOT
 
 \ Whether the images agree on the bytes before the signature's data offset
 \ doff but for its datasize and the vmsize and filesize of __LINKEDIT at seg.
-: HEAD-SAME? ( ^u8 str n n -- bool )
+: HEAD-SAME? ( ^u8 ^u8 n n n -- bool )
    {: a:^ b:^ lc:n seg:n doff:n :}
    lc seg < if
       lc SIG-DATASIZE + 4 seg SEG-VMSIZE + 8 seg SEG-FILESIZE + 8
@@ -475,7 +475,7 @@ $10000 constant CMS-SLOT
 
 \ The CMS blob's offset and length in the superblob at SIG, of SIGU bytes,
 \ 0 0 when no slot names one; false when the index or blob leaves the region.
-: CMS-SLOT-SPAN ( str n -- n n bool ) {: a:^ sig:n sigu:n :}
+: CMS-SLOT-SPAN ( ^u8 n n -- n n bool ) {: a:^ sig:n sigu:n :}
    a sig + 8 + BE:U32@ {: count:n :}
    SUPERBLOB-HEAD count SLOT-ENTRY * sigu SPAN-IN? 0= if 0 0 false exit then
    count 0 ?do

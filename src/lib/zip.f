@@ -310,9 +310,9 @@ public
 \ ZIP:E-OPEN; a snapshot that cannot be made keeps the host's code; either
 \ releases what it made, and there is no in-memory fallback. An all-stored
 \ unencrypted archive reads members from the snapshot; any other opens libzip.
-: OPEN ( ^u8 n -- archive ) READONLY-FLAG OPEN-CHECKED ;
-: EDIT ( ^u8 n -- archive ) 0 OPEN-CHECKED ;
-: OPEN-FILE ( ^u8 n -- archive ) OPEN ;
+: OPEN ( str -- archive ) READONLY-FLAG OPEN-CHECKED ;
+: EDIT ( str -- archive ) 0 OPEN-CHECKED ;
+: OPEN-FILE ( str -- archive ) OPEN ;
 : EDIT-FILE ( str -- archive ) EDIT ;
 \ The original snapshot, which pending changes do not alter. SOURCE$, NAME$ and
 \ READ answer archive-owned copies valid until a successful COMMIT or CLOSE.
@@ -333,7 +333,7 @@ public
    swap ARCHIVE-NODE dup rot ENTRY-INDEX NAME-COPY ;
 
 \ Sees a pending replacement.
-: READ ( archive entry -- ^u8 n )
+: READ ( archive entry -- str )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX READ-COPY ;
 
 \ The central directory size OPEN validated, ZIP64 included; a pending
@@ -362,7 +362,7 @@ public
 : CLOSE-ENTRY ( input -- ) CLOSE-IN-CHECKED ;
 
 \ Copies its input at once, an empty member too.
-: REPLACE ( archive entry ^u8 n -- ) {: archive:archive entry:entry data:^ len:n :}
+: REPLACE ( archive entry str -- ) {: archive:archive entry:entry data:^ len:n :}
    archive ARCHIVE-NODE {: node:^ :}
    node node entry ENTRY-INDEX data len REPLACE-COPY ;
 

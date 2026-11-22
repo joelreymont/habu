@@ -111,7 +111,7 @@ private
 
 \ The line whose LF is i bytes past pos, without its CR LF, which it must end
 \ with; pos moves past the LF. The line is valid until the next read.
-: CUT ( n ^reader -- ^u8 n )
+: CUT ( n ^reader -- str )
    {: i:n r :}
    r BUF@ r POS@ + {: a:^ :}
    i 0= if r MALFORMED then
@@ -126,7 +126,7 @@ private
    a u ;
 
 \ The next header line, read on until its LF arrives.
-: LINE ( ^reader -- ^u8 n )
+: LINE ( ^reader -- str )
    {: r :}
    begin r LF-INDEX dup 0 < while
       drop r MORE
@@ -161,7 +161,7 @@ private
 
 \ Content-Length's value: a decimal count within the reader's maximum, blanks
 \ around it aside.
-: LENGTH ( ^u8 n ^reader -- n )
+: LENGTH ( str ^reader -- n )
    {: a:^ u:n r :}
    a u TRIM SIGNIFICANT STR-PARSE-POS MATCH option
       none OF r MALFORMED ENDOF
@@ -193,7 +193,7 @@ private
 
 \ A Content-Type value, its media type and parameters split at semicolons:
 \ malformed when a charset parameter names another encoding than UTF-8.
-: CONTENT-TYPE ( ^u8 n ^reader -- )
+: CONTENT-TYPE ( str ^reader -- )
    {: a:^ u:n r :}
    a u SEMICOLON 0 begin SPLIT-NEXT while {: p:^ pu:n next:n :}
       p pu FOREIGN? if r MALFORMED then
@@ -202,7 +202,7 @@ private
 
 \ One header line: the body length it names if it is Content-Length, else the
 \ length the lines before it named, -1 while none has.
-: HEADER ( n ^u8 n ^reader -- n )
+: HEADER ( n str ^reader -- n )
    {: seen:n a:^ u:n r :}
    a u COLON INDEX-OF MATCH option
       none OF r MALFORMED ENDOF

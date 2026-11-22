@@ -41,7 +41,7 @@ NAME-MAX FFI:CSTR-ROOM TASK:+USERS NAME-ROW u8
 
 PROCESS-SYMBOLS
 FUNCTION: GET-CALL fgetxattr ( n ^u8 ^u8 n -- n ) ;FUNCTION
-FUNCTION: SET-CALL fsetxattr ( n ^u8 ^u8 n n -- i32 ) ;FUNCTION
+FUNCTION: SET-CALL fsetxattr ( n ^u8 str n -- i32 ) ;FUNCTION
 FUNCTION: REMOVE-CALL fremovexattr ( n ^u8 -- i32 ) ;FUNCTION
 
 \ The kernel answers ERANGE for these names too, which GET would read as a
@@ -51,7 +51,7 @@ FUNCTION: REMOVE-CALL fremovexattr ( n ^u8 -- i32 ) ;FUNCTION
    size 0=  size NAME-MAX >  or if FS:ERANGE FS:CAUSE! E-XATTR throw then
    name size 0 NAME-ROW NAME-MAX FFI:CSTR-ROOM SPAN:MAKE FFI:CSTR ;
 
-: FAIL ( n ^u8 n ^u8 n -- )
+: FAIL ( n str str -- )
    {: e:n call:^ cu:n name:^ nu:n :}
    e FS:ERRNO$ {: text:^ tu:n :}
    LOG:ERROR s" xattr" LOG:LINE
@@ -78,7 +78,7 @@ FUNCTION: REMOVE-CALL fremovexattr ( n ^u8 -- i32 ) ;FUNCTION
    f FD>N name nu NAMEZ val vu flags SET-CALL ;
 
 public
-: GET ( fd ^u8 n SPAN:span<u8> -- got )
+: GET ( fd str SPAN:span<u8> -- got )
    {: f:fd name:^ nu:n buf :}
    buf SPAN:$ {: dst:^ cap:n :}
    f FD>N name nu NAMEZ dst cap GET-CALL {: k:n :}
@@ -86,19 +86,19 @@ public
    k cap GOT ;
 
 \ Creates the attribute; one that exists is E-XATTR with EEXIST.
-: ADD ( fd ^u8 n ^u8 n -- )
+: ADD ( fd str str -- )
    {: f:fd name:^ nu:n val:^ vu:n :}
    f name nu val vu XATTR-CREATE SETX 0= if exit then
    FFI:ERRNO s" fsetxattr" name nu FAIL ;
 
 \ Creates the attribute or replaces its value.
-: SET ( fd ^u8 n ^u8 n -- )
+: SET ( fd str str -- )
    {: f:fd name:^ nu:n val:^ vu:n :}
    f name nu val vu 0 SETX 0= if exit then
    FFI:ERRNO s" fsetxattr" name nu FAIL ;
 
 \ An absent attribute is already erased.
-: ERASE ( fd ^u8 n -- )
+: ERASE ( fd str -- )
    {: f:fd name:^ nu:n :}
    f FD>N name nu NAMEZ REMOVE-CALL 0= if exit then
    FFI:ERRNO {: e:n :}

@@ -86,7 +86,7 @@ FUNCTION: GET-CALL ioctl ( n n ^u8 -- i32 )
 ;FUNCTION
 FUNCTION: SET-CALL ioctl ( n n ^u8 -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
-FUNCTION: WRITE-CALL write ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: WRITE-CALL write ( n str -- n ) ;FUNCTION
 FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 

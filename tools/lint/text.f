@@ -121,7 +121,7 @@ $1000000 constant MAX-BYTES
    buf s BUF!
    old 0= 0= IF old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES THEN ;
 
-: TOO-LARGE ( ^u8 n n -- ) {: path:^ pathu:n size:n :}
+: TOO-LARGE ( str n -- ) {: path:^ pathu:n size:n :}
    s" lint-slab: file exceeds maximum: " type path pathu type cr
    s" lint-slab: needed " type size .
    s" lint-slab: have " type MAX-BYTES .
@@ -136,12 +136,12 @@ public
 \ Cells a caller must reserve for one slab: `create MY-SLAB LINT-SLAB:CELLS cells allot`.
 3 constant CELLS
 
-: LOAD ( ^u8 n ^n -- ) {: path:^ pathu:n s:^ :}
+: LOAD ( str ^n -- ) {: path:^ pathu:n s:^ :}
    path pathu FS:FILE-SIZE {: size:n :}
    path pathu size s ENSURE-CAPACITY
    path pathu s BUF@ s CAP@ FS:READ-ALL s LEN! ;
 
-: TEXT ( ^n -- ^u8 n ) {: s:^ :}
+: TEXT ( ^n -- str ) {: s:^ :}
    s BUF@ s LEN@ ;
 
 ;package
@@ -155,10 +155,10 @@ create SLAB LINT-SLAB:CELLS cells allot
 
 public
 
-: LOAD ( ^u8 n -- )
+: LOAD ( str -- )
    SLAB LINT-SLAB:LOAD ;
 
-: TEXT ( -- ^u8 n )
+: TEXT ( -- str )
    SLAB LINT-SLAB:TEXT ;
 
 ;package

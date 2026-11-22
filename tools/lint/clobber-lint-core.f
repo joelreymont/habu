@@ -207,18 +207,18 @@ public
    u 6 < if LINT-FALSE exit then
    a u s" :CALL" LINT-SUFFIX? ;
 
-: MASK  ( ^u8 n n n -- n ) {: a:^ u:n addr:n len:n :}   \ clobbered registers
+: MASK  ( str n n -- n ) {: a:^ u:n addr:n len:n :}   \ clobbered registers
    \ C-FIND-GLOBAL loads a literal name, calls LFIND, then restores package
    \ state through x14. Its successful path preserves x0/x1 and clobbers
    \ x2..x17 and x30. A missing name exits the process.
    a u GLOBAL-FIND? if $3FFFC 30 CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
-: READS  ( ^u8 n n n -- n ) {: a:^ u:n addr:n len:n :}   \ input registers read
+: READS  ( str n n -- n ) {: a:^ u:n addr:n len:n :}   \ input registers read
    a u GLOBAL-FIND? if 0 exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
-: RETURNS  ( ^u8 n n n -- n ) {: a:^ u:n addr:n len:n :}   \ registers the call redefines
+: RETURNS  ( str n n -- n ) {: a:^ u:n addr:n len:n :}   \ registers the call redefines
    a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
@@ -585,7 +585,7 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
    then ;
 
 \ The instruction at token hi, of this kind, with operands from lo.
-: EFFECTS  ( ^u8 n n n n -- ) {: a:^ u:n kind:n lo:n hi:n :}
+: EFFECTS  ( str n n n -- ) {: a:^ u:n kind:n lo:n hi:n :}
    0 WMSK !  0 RMSK !  lo hi COLLECT-REGS
    kind MN-WRR = if 0 EW 1 ER 2 ER exit then
    kind MN-WR = if 0 EW 1 ER exit then
@@ -704,7 +704,7 @@ variable USING#
 
 \ Usings before globals binds as Habu does: it refuses a tail both reach. The
 \ quotation reads each candidate, folded in the pool's unused tail.
-: SCOPE-FIND ( ^u8 n [ ^u8 n -- n ] -- n ) {: a:^ u:n find :}
+: SCOPE-FIND ( str [ str -- n ] -- n ) {: a:^ u:n find :}
    a u s" :" CONTAINS? if a u KEY$ find execute exit then
    PKG-U @ 0<> if
       PKG-A @ PKG-U @ a u C-JOIN$ find execute dup 0 >= if exit then drop
@@ -822,7 +822,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    TN# @ 0 ?do UNSEEN i HREF !  OPERAND i ROLES c! loop ;
 
 \ A local's name is its text before any `:type`.
-: LOCAL-NAME  ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
+: LOCAL-NAME  ( str -- str ) {: a:^ u:n :}
    a u 58 LINT-INDEX-OF MATCH option
       none OF a u ENDOF
       some OF a swap ENDOF
@@ -1234,7 +1234,7 @@ variable TRACK-LR
    s"  written, clobbered by " type cidx C-NAME type
    s" , then read" type NL ;
 variable QUIET
-: REPORT  ( ^u8 n n n -- ) {: fa:^ fu:n reg:n cidx:n :}
+: REPORT  ( str n n -- ) {: fa:^ fu:n reg:n cidx:n :}
    QUIET @ if exit then
    fa fu reg cidx FINDING  BAD @ 1+ BAD ! ;
 : NOTE-READS  {: fa fu rmask :}  ( -- )
@@ -1483,7 +1483,7 @@ TYPED-VARIABLE SCAN-W2 ^u8  variable SCAN-U2   \ the last word
    loop ;
 
 variable STALE
-: ROW-DECLARED  ( ^u8 n -- ) {: a:^ u:n :}
+: ROW-DECLARED  ( str -- ) {: a:^ u:n :}
    a u C-FIND dup 0 >= if C-OPENED? if exit then else drop then
    s" clobber-lint: row names no opened routine: " type a u type NL
    STALE @ 1+ STALE ! ;

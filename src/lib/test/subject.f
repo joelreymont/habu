@@ -28,7 +28,7 @@ create STATUS-ERR STATUS-CAP allot
    SRC-U !
    SRC-A ! ;
 
-: SRC$ ( -- ^u8 n )
+: SRC$ ( -- str )
    SRC-A @
    SRC-U @ LEN>N ;
 
@@ -61,7 +61,7 @@ create STATUS-ERR STATUS-CAP allot
 
 public
 
-: RUN ( ^u8 n ^u8 len ^u8 len ms -- len len PROCESS:ending )
+: RUN ( str ^u8 len ^u8 len ms -- len len PROCESS:ending )
    {: src:^ srcu:n out:^ outcap:len err:^ errcap:len timeout:ms :}
    outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    src srcu SRC!
@@ -70,7 +70,7 @@ public
    out outcap err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
    PROCESS:CAPTURE-FINISH-ENDING ;
 
-: SHOW ( ^u8 n ^u8 n ^u8 n -- )
+: SHOW ( str str str -- )
    {: src:^ srcu:n out:^ outu:n err:^ erru:n :}
    s" program:" type cr src srcu type cr
    s" stdout:" type cr out outu type cr
@@ -79,7 +79,7 @@ public
 \ The capture is the only evidence of where a child stopped before its deadline,
 \ so the timeout arm prints the program and its streams, then throws
 \ E-PROC-TIMEOUT so the row still reports a timeout.
-: TIMED-OUT ( ^u8 n ^u8 n ^u8 n -- )
+: TIMED-OUT ( str str str -- )
    {: src:^ srcu:n out:^ outu:n err:^ erru:n :}
    s" timeout: the child passed its deadline" type cr
    src srcu out outu err erru SHOW
@@ -96,7 +96,7 @@ public
 private
 
 \ A signal is not an exit. A deadline is no verdict.
-: STATUS ( ^u8 n n -- len len bool )
+: STATUS ( str n -- len len bool )
    {: src:^ srcu:n want:n :}
    src srcu STATUS-OUT STATUS-CAP >LEN STATUS-ERR STATUS-CAP >LEN STATUS-MS >MS RUN
    {: outu:len erru:len oc :}
@@ -118,14 +118,14 @@ public
 
 \ src's stderr, valid until the next run, and whether src, run as the subject,
 \ exited with code want and wrote nothing to stdout.
-: REJECTED ( ^u8 n n -- ^u8 n bool )
+: REJECTED ( str n -- str bool )
    STATUS {: outu:len erru:len exited:bool :}
    STATUS-ERR erru LEN>N  exited outu LEN>N 0= and ;
 
 \ Whether src, run as the subject, exited with code want, wrote nothing to
 \ stdout and named why on stderr: a refusal the engine or the checker reports
 \ before anything runs.
-: REFUSED? ( ^u8 n n ^u8 n -- bool )
+: REFUSED? ( str n str -- bool )
    {: why:^ whyu:n :}
    REJECTED {: err:^ erru:n ok:bool :}
    ok  err erru why whyu CONTAINS? and ;

@@ -112,7 +112,7 @@ variable WATCH-N
 
 public
 
-: BUF$ ( -- ^u8 n )
+: BUF$ ( -- str )
    RBUF RN @ ;
 
 
@@ -166,7 +166,7 @@ public
 
 \ A short write is an error, never a silent truncation. A negative length is
 \ refused before the write, whose -1 error answer would equal a length of -1.
-: WRITE-ALL ( fd ^u8 n -- ) {: f:fd a:^ u:n :}
+: WRITE-ALL ( fd str -- ) {: f:fd a:^ u:n :}
    u 0 < if E-PTY-CAPACITY throw then
    f FD>N a u write u <> if E-PTY-IO throw then ;
 
@@ -189,11 +189,11 @@ public
    KID @ >PID ;
 
 
-: SEND ( ^u8 n -- ) {: a:^ u:n :}
+: SEND ( str -- ) {: a:^ u:n :}
    MASTER-FD a u WRITE-ALL ;
 
 
-: SEND-LINE ( ^u8 n -- ) {: a:^ u:n :}
+: SEND-LINE ( str -- ) {: a:^ u:n :}
    MASTER-FD a u WRITE-LINE ;
 
 
@@ -254,7 +254,7 @@ public
 \ terminal - input, output and diagnostics - and keep the master. The slave is
 \ closed here: the child holds the only copies, so its exit hangs the master up.
 \ A failed spawn throws what failed and leaves nothing open.
-: SPAWN-ON-PTY ( ^u8 n -- )
+: SPAWN-ON-PTY ( str -- )
    MFD @ 0 >= if E-PTY-IO throw then
    -1 SFD !
    STORE-PATH
@@ -276,7 +276,7 @@ public
    ;MATCH ;
 
 
-: IN-BUF? ( ^u8 n -- bool ) {: a:^ u:n :}
+: IN-BUF? ( str -- bool ) {: a:^ u:n :}
    RBUF RN @ a u CONTAINS? ;
 
 
@@ -312,7 +312,7 @@ public
 
 
 \ The text anywhere: an empty head puts the tail anywhere.
-: WAIT-FOR ( ^u8 n -- bool ) {: a:^ u:n :}
+: WAIT-FOR ( str -- bool ) {: a:^ u:n :}
    s" " a u WAIT-AFTER ;
 
 

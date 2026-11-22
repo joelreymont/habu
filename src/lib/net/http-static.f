@@ -54,11 +54,11 @@ variable ROOT-U
 PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
-: ROOT$ ( -- ^u8 n )
+: ROOT$ ( -- str )
    ROOT-BUF ROOT-U @ SPAN:TAKE SPAN:$ ;
 
 
-: TEXT+ ( ^u8 n -- n ) {: bytes:^ len:n :}
+: TEXT+ ( str -- n ) {: bytes:^ len:n :}
    TEXT-U @ {: at:n :}
    len 0= if at exit then
    at len + TEXT-ROW-RESERVE
@@ -68,7 +68,7 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
 \ The root directory's url is the one empty text, and it has no byte to point at.
-: TEXT$ ( n n -- ^u8 n ) {: at:n len:n :}
+: TEXT$ ( n n -- str ) {: at:n len:n :}
    len 0= if s" " exit then
    at TEXT-ROW len ;
 
@@ -103,11 +103,11 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 \ The rows hold quotations, the checker's proven-quotation store
 \ (src/lib/task.f): an xt in a plain cell would lose the effect.
-1 TYPED-BUFFER CACHE-HOOK [ ^u8 n -- ^u8 n ]
-1 TYPED-BUFFER FALLBACK-HOOK [ ^u8 n -- ^u8 n ]
+1 TYPED-BUFFER CACHE-HOOK [ str -- str ]
+1 TYPED-BUFFER FALLBACK-HOOK [ str -- str ]
 
 
-: NO-CACHE ( ^u8 n -- ^u8 n )
+: NO-CACHE ( str -- str )
    2drop s" no-cache" ;
 
 
@@ -236,7 +236,7 @@ DEFAULT-RULES
    baselen namelen + 1+ ;
 
 
-: ENTRY ( ^u8 n ^u8 n -- ) {: base:^ baselen:n name:^ namelen:n :}
+: ENTRY ( str str -- ) {: base:^ baselen:n name:^ namelen:n :}
    base baselen name namelen URL-JOIN {: urllen:n :}
    URL-BUF urllen SPAN:TAKE SPAN:$ UNDER-ROOT {: pathlen:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:DIR? if
