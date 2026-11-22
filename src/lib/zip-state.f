@@ -21,15 +21,26 @@ NODE-CELLS 1+ constant ARCHIVE-CELLS
 3 constant ENTRY-CELLS
 $4000 constant CHUNK-BYTES
 3 cells constant CHUNK-HEADER-BYTES
-$40 constant STAT-BYTES
+$40 constant SCRATCH-BYTES
 $10 constant READONLY-FLAG
 $4 constant STAT-SIZE-VALID
-\ LP64 zip_stat_t begins with valid, name, index, size (eight bytes each).
-3 constant STAT-SIZE-CELL
-\ libzip writes these scratch bytes.
-STAT-BYTES 1+ TASK:+USERS ZIP-SCRATCH u8
-: STAT-DATA ( -- ^n ) 0 ZIP-SCRATCH CELL-VIEW ;
-: EOF-BYTE ( -- ^u8 ) STAT-BYTES ZIP-SCRATCH ;
+\ LP64 zip_stat_t; crc, comp_method, encryption_method share cell 7, flags 8.
+STRUCTURE entry-stat DERIVE addr
+   FIELD valid n
+   FIELD name n
+   FIELD index n
+   FIELD size n
+   FIELD comp-size n
+   FIELD mtime n
+   FIELD crc-method n
+   FIELD flags n
+;STRUCTURE
+TASK:+USER STAT entry-stat
+\ pread and libzip's reads fill these rows raw.
+SCRATCH-BYTES TASK:+USERS PATCH-ROW u8
+: PATCH ( -- ^u8 ) 0 PATCH-ROW ;
+SCRATCH-BYTES TASK:+USERS DRAIN-ROW u8
+: DRAIN ( -- ^u8 ) 0 DRAIN-ROW ;
 
 \ Only the short registry operations take this lock; decompression and
 \ archive-owned buffers remain independent.

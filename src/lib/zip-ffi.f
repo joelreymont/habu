@@ -77,7 +77,7 @@ FUNCTION: C-PWRITE pwrite ( n ^u8 n n -- n ) ;FUNCTION
 
 : C-COUNT ( ^u8 -- n ) 0 COUNT-CALL ;
 
-: C-STAT ( ^u8 n ^n -- n ) {: archive:^ idx:n stat:^ :}
+: C-STAT ( ^u8 n ^entry-stat -- n ) {: archive:^ idx:n stat:^ :}
    archive idx 0 stat BYTE-VIEW STAT-CALL ;
 
 : C-FOPEN ( str -- ^u8 ) 0 FOPEN-CALL ;

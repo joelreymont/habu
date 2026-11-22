@@ -5,8 +5,8 @@ split-str
 \ ZIP:E-OPEN, E-READ and E-SIZE refuse the archive's bytes or report a libzip
 \ failure, and E-SIZE a caller's length too; a host fault ZIP sees keeps the
 \ host's code (FS:MKTEMP's, E-FS-OPEN, E-FS-IO).
-\ STORAGE CLASS. TASK-LOCAL: libzip's stat block and EOF probe byte, one
-\ TASK:+USERS row. A handle owns its buffers, entries and inputs and has one task
+\ STORAGE CLASS. TASK-LOCAL: libzip's stat record and the drain bytes,
+\ src/lib/zip-state.f's TASK:+USER rows. A handle owns its buffers, entries and inputs and has one task
 \ owner. PROCESS-WIDE: the identity registry and serial, src/lib/zip-state.f.
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -130,9 +130,9 @@ PATH-CAP CSTR-ROOM constant SNAPSHOT-ROOM   \ a temp path and its terminator
 
 : MEMBER-SIZE ( ^n n -- n ) {: node:^ idx:n :}
    node OBJECT @ NULL? if node idx MEMBER-AT PLAIN-SIZE @ exit then
-   node OBJECT @ idx STAT-DATA C-STAT 0 <> if E-READ throw then
-   STAT-DATA @ STAT-SIZE-VALID and 0= if E-READ throw then
-   STAT-DATA STAT-SIZE-CELL cells + @ dup SIZE-CHECK ;
+   node OBJECT @ idx STAT C-STAT 0 <> if E-READ throw then
+   STAT ENTRY-STAT-VALID @ STAT-SIZE-VALID and 0= if E-READ throw then
+   STAT ENTRY-STAT-SIZE @ dup SIZE-CHECK ;
 
 : CRC-FEED ( n str -- n ) {: crc:n data:^ len:n :}
    crc len 0 ?do data i + c@ CRC-BYTE loop ;
@@ -241,7 +241,7 @@ $7FFFFFFF constant PIECE-MAX
 
 : CLOSE-IN-WORK ( ^n -- ^n ) {: node:^ :}
    node INPUT-KIND @ 1 = if node exit then
-   begin node STAT-DATA BYTE-VIEW STAT-BYTES SPAN:MAKE READ-INNER 0<> while
+   begin node DRAIN SCRATCH-BYTES SPAN:MAKE READ-INNER 0<> while
    repeat node ;
 
 : CLOSE-IN-CHECKED ( input -- )

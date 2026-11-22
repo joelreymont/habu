@@ -4,14 +4,14 @@ split-str
 \ data: resources resolve, external files do not, and librsvg may omit a missing
 \ one silently. The destination is replaced by one FS:REPLACE-STAGED only after
 \ every page rendered, so a failure leaves it intact. Test: test/svg-pdf-e2e.f.
-\ STORAGE CLASS. TASK-LOCAL: foreign handles and the viewport live in STATE.
+\ STORAGE CLASS. TASK-LOCAL: the foreign handles and the viewport are TASK:+USER
+\ rows.
 require src/lib/ffi-abi.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/task.f
 require src/lib/ieee754.f
 require src/lib/fmath.f
-require src/lib/le.f
 require src/lib/span.f
 
 package SVG-PDF
@@ -64,26 +64,28 @@ FUNCTION: SCALE cairo_scale ( ^u8 r r -- ) ;FUNCTION
 FUNCTION: RECTANGLE cairo_rectangle ( ^u8 r r r r -- ) ;FUNCTION
 FUNCTION: CLIP cairo_clip ( ^u8 -- ) ;FUNCTION
 
-\ Four owned foreign handles and the four-double RsvgRectangle are one
-\ task-local row. Both writers are synchronous and expose no handles.
-4 cells constant VIEWPORT-AT
-32 constant RECT-BYTES
-VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
-: ERROR-CELL ( -- ^^u8 ) 0 STATE 0 ptr-field ;
-: SVG-CELL ( -- ^^u8 ) 1 cells STATE 0 ptr-field ;
-: SURFACE-CELL ( -- ^^u8 ) 2 cells STATE 0 ptr-field ;
-: CONTEXT-CELL ( -- ^^u8 ) 3 cells STATE 0 ptr-field ;
-: VIEWPORT ( -- ^u8 ) VIEWPORT-AT STATE ;
-: WIDTH-PTR ( -- ^u8 ) VIEWPORT-AT 16 + STATE ;
-: HEIGHT-PTR ( -- ^u8 ) VIEWPORT-AT 24 + STATE ;
-: WIDTH ( -- r ) WIDTH-PTR LE:U64@ IEEE754:BITS>F64 ;
-: HEIGHT ( -- r ) HEIGHT-PTR LE:U64@ IEEE754:BITS>F64 ;
+\ The four owned foreign handles and the RsvgRectangle are task-local rows; the
+\ rectangle holds the bits of the doubles librsvg reads and fills. Both writers
+\ are synchronous and expose no handles.
+TASK:+USER ERROR-CELL ^u8
+TASK:+USER SVG-CELL ^u8
+TASK:+USER SURFACE-CELL ^u8
+TASK:+USER CONTEXT-CELL ^u8
+STRUCTURE rect DERIVE addr
+   FIELD x n
+   FIELD y n
+   FIELD width n
+   FIELD height n
+;STRUCTURE
+TASK:+USER VIEW rect
+: WIDTH ( -- r ) VIEW RECT-WIDTH @ IEEE754:BITS>F64 ;
+: HEIGHT ( -- r ) VIEW RECT-HEIGHT @ IEEE754:BITS>F64 ;
 : NULL? ( ^a -- bool ) NULL-PTR = ;
 
 : CLEAR ( -- )
    NULL-PTR ERROR-CELL ! NULL-PTR SVG-CELL !
    NULL-PTR SURFACE-CELL ! NULL-PTR CONTEXT-CELL !
-   0 VIEWPORT LE:U64! 0 VIEWPORT-AT 8 + STATE LE:U64! ;
+   0 VIEW RECT-X ! 0 VIEW RECT-Y ! ;
 
 : RELEASE-PAGE ( -- )
    ERROR-CELL @ dup NULL? 0= if ERROR-FREE else drop then
@@ -107,7 +109,8 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    data size ERROR-CELL BYTE-VIEW SVG-OPEN SVG-CELL !
    SVG-CELL @ NULL? if E-OPEN throw then
    SVG-CELL @ 96.0 SVG-DPI
-   SVG-CELL @ WIDTH-PTR HEIGHT-PTR SVG-SIZE 0= if E-SIZE throw then
+   SVG-CELL @ VIEW RECT-WIDTH BYTE-VIEW
+   VIEW RECT-HEIGHT BYTE-VIEW SVG-SIZE 0= if E-SIZE throw then
    WIDTH POSITIVE-FINITE? HEIGHT POSITIVE-FINITE? and 0= if E-SIZE throw then
    WIDTH 0.75 f* MAX-PAGE-PT s>f f>
    HEIGHT 0.75 f* MAX-PAGE-PT s>f f> or if E-SIZE throw then ;
@@ -122,7 +125,8 @@ VIEWPORT-AT RECT-BYTES + TASK:+USERS STATE u8
    \ Clip document overflow to the authored page before rendering.
    CONTEXT-CELL @ 0.0 0.0 WIDTH HEIGHT RECTANGLE
    CONTEXT-CELL @ CLIP
-   SVG-CELL @ CONTEXT-CELL @ VIEWPORT ERROR-CELL BYTE-VIEW SVG-RENDER
+   SVG-CELL @ CONTEXT-CELL @ VIEW BYTE-VIEW ERROR-CELL BYTE-VIEW
+   SVG-RENDER
    0= if E-RENDER throw then
    CONTEXT-CELL @ CONTEXT-STATUS 0<> if E-RENDER throw then ;
 

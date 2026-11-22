@@ -1,7 +1,7 @@
 split-str
 \ zip-raw.f - byte-preserving ZIP framing; libzip only decompresses members.
-\ STORAGE CLASS. CALLER-OWNED: works on the archive handle's own buffers; no
-\ module state.
+\ STORAGE CLASS. CALLER-OWNED: works on the archive handle's own buffers.
+\ TASK-LOCAL: the patch bytes, src/lib/zip-state.f's PATCH row.
 require src/lib/zip-ffi.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -364,15 +364,15 @@ $14 constant LOCATOR-BYTES
    repeat drop ;
 : EMIT-NUMBER ( ^n n n -- )
    {: node:^ value:n width:n :}
-   value STAT-DATA BYTE-VIEW width LE!
-   node STAT-DATA BYTE-VIEW width EMIT-BYTES ;
+   value PATCH width LE!
+   node PATCH width EMIT-BYTES ;
 : EMIT-U16 ( ^n n -- ) 2 EMIT-NUMBER ;
 : EMIT-U32 ( ^n n -- ) 4 EMIT-NUMBER ;
 : EMIT-U64 ( ^n n -- ) 8 EMIT-NUMBER ;
 : READ-PATCH ( ^n n n -- ) {: node:^ off:n len:n :}
    0 begin dup len < while
       dup {: done:n :}
-      node TEMP-FD @ STAT-DATA BYTE-VIEW done + len done - off done + C-PREAD
+      node TEMP-FD @ PATCH done + len done - off done + C-PREAD
       {: got:n :}
       got 0 <= got len done - > or if E-COMMIT throw then
       got +
@@ -380,15 +380,15 @@ $14 constant LOCATOR-BYTES
 : WRITE-PATCH ( ^n n n -- ) {: node:^ off:n len:n :}
    0 begin dup len < while
       dup {: done:n :}
-      node TEMP-FD @ STAT-DATA BYTE-VIEW done + len done - off done + C-PWRITE
+      node TEMP-FD @ PATCH done + len done - off done + C-PWRITE
       {: got:n :}
       got 0 <= got len done - > or if E-COMMIT throw then
       got +
    repeat drop ;
 : OUT-AT ( ^n n n -- ^u8 )
    {: node:^ off:n len:n :}
-   len STAT-BYTES > if E-COMMIT throw then
-   node off len READ-PATCH STAT-DATA BYTE-VIEW ;
+   len SCRATCH-BYTES > if E-COMMIT throw then
+   node off len READ-PATCH PATCH ;
 : PATCH-FLUSH ( ^n n n -- ) WRITE-PATCH ;
 : REPLACED? ( ^n -- bool ) REPLACEMENT @ NULL? 0= ;
 : OUTPUT-SIZE ( ^n -- n )
