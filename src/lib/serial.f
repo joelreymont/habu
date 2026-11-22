@@ -1,7 +1,7 @@
 split-str
 \ serial.f - raw serial byte streams on Linux and macOS through bounded libc
-\ bindings. OS failures, a bad handle's included, are result variants; a baud,
-\ length or timeout out of range and an impossible foreign result throw. Calls
+\ bindings. OS failures, a bad handle's included, are result variants; a baud
+\ or length out of range and an impossible foreign result throw. Calls
 \ must not nest within one task; close live descriptors before an image is
 \ prepared.
 \ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are rows per task,
@@ -123,7 +123,6 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ every exit, the refusal of a 0 byte included.
 : PATH-OPEN ( str -- n )
    {: text size:n :}
-   size 1 < if E-OPERAND throw then
    text size size FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN
    [: MEM:ALLOCATION>SPAN FFI:CSTR OPEN-RAW
       dup 0 < if drop LAST-ERROR ERRNO>N negate then ;] MEM:WITH-BYTES ;
@@ -178,9 +177,10 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
 \ No deadline is -1 ns, which no mono-ns reading is, and REMAINING answers -1 ms.
+\ A wait longer than $7FFFFFFF ms, poll(2)'s widest, waits that long.
 : DEADLINE ( ms -- ns )
    MS>N dup 0 < if drop -1 >NS exit then
-   dup 0 $7FFFFFFF RANGE NS-PER-MS * mono-ns + >NS ;
+   $7FFFFFFF min NS-PER-MS * mono-ns + >NS ;
 
 
 : REMAINING ( ns -- ms )
@@ -228,7 +228,6 @@ public
 \ `unsupported`. A failed configure restores the old settings best-effort and
 \ closes. The caller uses CLOSE exactly once.
 : OPEN8N1 ( str baud -- open-result ) {: path size:n baud:baud :}
-   baud BAUD>N 1 $FFFFFFFF RANGE
    path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:FAILED exit then
    >HANDLE {: handle:handle :}
    handle baud CONFIGURE MATCH open-result
@@ -240,8 +239,8 @@ public
 
 \ One available chunk, up to capacity, possibly short; a zero-byte request
 \ transfers nothing at once.
-\ Timeout is 0..INT32_MAX milliseconds, negative for no deadline; zero never
-\ waits for future readiness.
+\ Timeout is milliseconds, negative for no deadline; zero never waits for
+\ future readiness.
 : READ ( handle ^u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
    capacity BLEN>N 0= if capacity SERIAL-IO--RESULT:TRANSFERRED exit then
@@ -260,8 +259,7 @@ public
 
 \ Accepts one chunk into the kernel queue, possibly short; a zero-byte request
 \ transfers nothing at once. Success does not prove bytes reached the device. Input is
-\ borrowed for this call. Timeout is 0..INT32_MAX milliseconds, negative for no
-\ deadline.
+\ borrowed for this call. Timeout is milliseconds, negative for no deadline.
 : WRITE ( handle ^u8 NUM:byte-len ms -- io-result )
    {: handle:handle bytes size:NUM:byte-len timeout:ms :}
    size BLEN>N 0= if size SERIAL-IO--RESULT:TRANSFERRED exit then

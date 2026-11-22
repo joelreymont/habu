@@ -2,7 +2,7 @@ split-str
 \ tcp4.f - Linux and Darwin IPv4 stream sockets through exact, bounded libc
 \ bindings; no protocol, framing, name resolution or connection policy. Every
 \ connection this module makes is non-blocking.
-\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USERS row; the
+\ STORAGE CLASS. TASK-LOCAL: the endpoint storage is four task-local rows; the
 \ payload spans the transfers take are caller-owned.
 require src/lib/error.f
 require src/lib/ffi-abi.f
@@ -116,7 +116,6 @@ $10 constant SOCKADDR-BYTES
 $FFFF constant MAX-PORT
 $FFFFFFFF constant MAX-ADDRESS
 $7FFFF000 constant MAX-TRANSFER    \ Linux transfers at most this many bytes per call.
-$1000 constant MAX-BACKLOG         \ Linux SOMAXCONN.
 : SOCKET-FLAGS ( -- n ) HB-TARGET-LINUX-KERNEL? if $80001 else 1 then ;   \ SOCK_STREAM, with SOCK_CLOEXEC on Linux.
 $80800 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC | SOCK_NONBLOCK on the accepted connection.
 : MSG-NOSIGNAL ( -- n ) HB-TARGET-LINUX-KERNEL? if $4000 else $80000 then ;   \ A write to a closed peer never signals.
@@ -130,7 +129,6 @@ $04 constant POLLOUT               \ a send will not block, on both.
 : HANG-EVENTS ( -- n ) HB-TARGET-LINUX-KERNEL? if $2001 else $01 then ;   \ POLLIN, with POLLRDHUP on Linux.
 : HANG-BITS ( -- n ) HB-TARGET-LINUX-KERNEL? if $2038 else $38 then ;   \ POLLERR|POLLHUP|POLLNVAL, with POLLRDHUP on Linux.
 -1 constant NO-TIMEOUT             \ poll(2) waits until ready; Darwin takes no other negative one.
-$7FFFFFFF constant MAX-TIMEOUT     \ the widest deadline this module accepts, in milliseconds.
 1000000 constant NS-PER-MS
 $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
 \ Errno values from the macOS SDK's usr/include/sys/errno.h and Linux's
@@ -202,8 +200,6 @@ CAST: N>BLEN ( n -- NUM:byte-len )
 
 
 : ENDPOINT! ( address port -- ) {: address:address port:port :}
-   address ADDRESS>N 0 MAX-ADDRESS WITHIN-RANGE
-   port PORT>N 0 MAX-PORT WITHIN-RANGE
    CLEAR-ENDPOINT
    HB-TARGET-LINUX-KERNEL? if
       2 SOCKADDR c!
@@ -270,7 +266,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 : OWN-SOCKET ( n -- n ) {: fd:n :}
    HB-TARGET-LINUX-KERNEL? if fd exit then
    fd 0 < if fd exit then
-   fd 2 1 fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
+   fd 2 1 fcntl drop
    fd ;
 
 
@@ -278,7 +274,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ other to keep, and Darwin's accepted socket, which inherits its listener's, is
 \ left with this one alone, as Linux's accept4 leaves it.
 : NONBLOCK ( n -- n ) {: fd:n :}
-   fd F-SETFL O-NONBLOCK fcntl 0 <> if fd CLOSE-CALL drop E-RESULT throw then
+   fd F-SETFL O-NONBLOCK fcntl drop
    fd ;
 
 : SOCKET-RAW ( -- n )
@@ -359,7 +355,6 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 \ a submitting task runs only after the task ends), so it is a broken foreign
 \ result.
 : WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
-   timeout MS>N MAX-TIMEOUT > if E-OPERAND throw then
    fd >FD AIO:READABLE timeout AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF REVENTS>READY ENDOF
@@ -548,7 +543,6 @@ public
 
 
 : LISTEN ( listener n -- status ) {: lis:listener backlog:n :}
-   backlog 1 MAX-BACKLOG WITHIN-RANGE
    lis LISTENER>N backlog LISTEN-RAW RC>STATUS ;
 
 
