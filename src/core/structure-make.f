@@ -11,7 +11,7 @@ using TYPE-DECL
 package TYPE-DECL
 private
 package STRUCTURE-MAKE
-EXPORT TFAM:PF-ROW
+EXPORT TFAM:PF-REC@
 
 : SM-FIELD-SCHEMA@ ( n n -- n ) {: idx:n fs:n :}
    fs idx + PF-PENDING-SCH@ ;
@@ -19,7 +19,7 @@ EXPORT TFAM:PF-ROW
 \ A field's bundle roots: its schema, or for a buffer one `n` per cell, the cells
 \ MAKE and UNMAKE carry its bytes in.
 : SM-FIELD-ROOTS+ ( n n -- ) {: idx:n fs:n :}
-   fs idx + PF-ROW {: r:^ :}
+   fs idx + PF-REC@ {: r:^ :}
    r PF.FLAGS @ PF-FLAG-BUFFER = IF
       r PF.CELLS @ 0 ?do CC-N SCHEMA-CON SCHEMA-ROOT+ drop loop
       EXIT

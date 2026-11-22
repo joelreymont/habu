@@ -492,13 +492,10 @@ variable LABEL-U
    s" type family"  TDA-A @ TDA-U @  TDA-A @ TDA-U @ TFAM-USED-MASK  UPKG-HELP ;
 
 \ --- transactional mark/restore over every store a declaration can grow.
-\ The family and variant stores go back through TFAM-REWIND (type-family.f), not
-\ here: their indexes chain rows by id, and a chained row whose id is out of
-\ range kills the next lookup, so unchaining must precede the counters. Writing
-\ the counters here left a rejected SUMTYPE's family chained past the store's
-\ end; the next lookup of its tail died 76 `tfam: bad family id` while every
-\ high-water mark was right. The schema store's marks go back through
-\ SCHEMA-REG:REWIND, which scrubs what it retires.
+\ The family and variant stores go back through TFAM-REWIND, not here: their
+\ indexes chain rows by id, so unchaining must precede lowering the counters, or
+\ a chain keeps a row past the store's end. The schema store's marks go back
+\ through SCHEMA-REG:REWIND, which scrubs what it retires.
 
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY

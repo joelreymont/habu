@@ -965,7 +965,7 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 : CHAIN-PUSH ( n ^n ^n -- ) {: id:n b:^ l:^ :}   \ l: id's link
    b @ l !   id 1 + b ! ;
-: CHAIN-POP ( n ^n ^n -- ) {: id:n b:^ l:^ :}
+: CHAIN-POP ( ^n ^n -- ) {: b:^ l:^ :}
    l @ b ! ;
 
 : VNX-PUSH ( n -- ) {: id:n :}
@@ -977,8 +977,8 @@ variable VNX-CUR              \ private bucket-walk cursor
    id VNX-PUSH
    id CPX-ROW? IF id CPX-PUSH THEN ;
 : VNX-LEAVE ( n -- ) {: id:n :}   \ unchain a row from both
-   id CPX-ROW? IF id  id CPX-ROW-BKT  id CPX-LINK  CHAIN-POP THEN
-   id  id VNX-ROW-BKT  id VNX-LINK  CHAIN-POP ;
+   id CPX-ROW? IF  id CPX-ROW-BKT  id CPX-LINK  CHAIN-POP THEN
+   id VNX-ROW-BKT  id VNX-LINK  CHAIN-POP ;
 
 \ The links follow the variant store's capacity and the buckets keep the load
 \ factor at or below one half. Both only ever grow: SUMV-CAP never shrinks.
@@ -1384,11 +1384,6 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    PF-N @ PF-CAP-V @ < IF exit THEN
    PF-N @ 1 + PF-GROW ;
 
-\ PF-ROW admits provisional rows for in-transaction machinery; PF-REC@ is the
-\ committed reader.
-: PF-ROW ( n -- ^n ) {: id:n :}
-   id PF-REC * PF-BASE + ;
-
 : PF-REC@ ( n -- ^n ) {: id:n :}
    id PF-REC * PF-BASE + ;
 
@@ -1398,7 +1393,7 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    id PF-REC@ {: r:^ :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
 : PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
 
-: PF-PENDING-SCH@ ( n -- n ) PF-ROW PF.SCH @ ;
+: PF-PENDING-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
 
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-CELLS@ ( n -- n ) PF-REC@ PF.CELLS @ ;
@@ -1443,9 +1438,8 @@ variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 : PF-ROW-OWNER? ( n n ^n -- bool ) {: fam:n var:n r:^ :}
    r PF.FAM @ fam = r PF.VAR @ var = and ;
 
-\ Read through PF-BASE, not PF-ROW: PF-ADD links its row before PF-N publishes it.
 : FVX-ROW-BKT ( n -- ^n ) {: id:n :}
-   id PF-REC * PF-BASE + {: r:^ :}
+   id PF-REC@ {: r:^ :}
    r PF.FAM @ r PF.VAR @ FVX-HASH FVX-BKT ;
 
 : FVX-PUSH ( n -- ) {: id:n :}
@@ -1585,7 +1579,7 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 : SUMV-SLICE-ROW? ( n n n -- bool ) {: fam:n vid:n id:n :}
    fam TFAM-FLD-START@ {: base:n :}
    id base <  id base fam TFAM-FLD-COUNT@ + >=  or IF RES-FALSE EXIT THEN
-   fam vid id PF-ROW PF-ROW-OWNER? ;
+   fam vid id PF-REC@ PF-ROW-OWNER? ;
 
 : SUMV-SLICE-N ( n n -- n ) {: fam:n vid:n :}    \ the variant's rows in the slice
    0  fam vid FVX-FIRST
@@ -1708,7 +1702,7 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
 
 \ A buffer's width is its row's cells: its schema names only the element.
 : TFW-FIELD ( n n n -- n ) {: id:n base:n top:n :}
-   id PF-ROW {: r:^ :}
+   id PF-REC@ {: r:^ :}
    r PF.FLAGS @ PF-FLAG-BUFFER = IF r PF.CELLS @ EXIT THEN
    r PF.SCH @ SCHEMA-ROOT@ base top TFW-NODE ;
 
@@ -2359,7 +2353,7 @@ variable ER-MARK    0 ER-MARK !
 \ The width check ER-OPEN deferred, for every field row from mark on.
 : PF-WIDTHS-REQUIRE ( n -- ) {: mark:n :}
    PF-N @ mark ?do
-      i PF-ROW {: r:^ :}
+      i PF-REC@ {: r:^ :}
       r PF.FLAGS @ PF-FLAG-BUFFER <> IF
          r PF.FAM @ r PF.SCH @ r PF.CELLS @ PF-WIDTH-REQUIRE
       THEN
@@ -2369,7 +2363,7 @@ variable ER-MARK    0 ER-MARK !
    {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
    fam var FVX-FIRST
    BEGIN dup 0 <> WHILE
-      dup 1 - PF-ROW {: r:^ :}
+      dup 1 - PF-REC@ {: r:^ :}
       fam var r PF-ROW-OWNER? IF
          slot cellsn r PF.SLOT @ r PF.CELLS @ PF-RANGE-OVERLAP? IF drop RES-TRUE EXIT THEN
          boff bytesn r PF.BYTE-OFF @ r PF.BYTES @ PF-RANGE-OVERLAP? IF drop RES-TRUE EXIT THEN
@@ -2405,7 +2399,7 @@ variable ER-MARK    0 ER-MARK !
 : PF-DUP? ( n n str -- bool ) {: fam:n var:n na:^ nu:n :}
    fam var FVX-FIRST
    BEGIN dup 0 <> WHILE
-      dup 1 - PF-ROW {: r:^ :}
+      dup 1 - PF-REC@ {: r:^ :}
       fam var r PF-ROW-OWNER? IF
          r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu CORE-STR= IF drop RES-TRUE EXIT THEN
       THEN
@@ -2431,7 +2425,7 @@ variable ER-MARK    0 ER-MARK !
    PF-ENSURE
    na nu TF-INTERN {: noff:n :}
    PF-N @ {: id:n :}
-   id PF-REC * PF-BASE + {: r:^ :}
+   id PF-REC@ {: r:^ :}
    fam r PF.FAM !   var r PF.VAR !
    noff r PF.NAME-OFF !   nu r PF.NAME-U !   sch r PF.SCH !
    slot r PF.SLOT !   cellsn r PF.CELLS !
@@ -2458,7 +2452,7 @@ variable MBX-GEN   0 MBX-GEN !
 : MBX-BUILD ( -- )
    HT-MBX IDX-HEADS-CLEAR
    PF-N @ 0 ?do
-      i PF-ROW PF.ACCESSOR-SYM @ {: sym:n :}
+      i PF-REC@ PF.ACCESSOR-SYM @ {: sym:n :}
       sym 0 <> IF i 2 * 2 + sym MBX-LINK THEN
    loop
    TFAM-N @ 0 ?do
@@ -2473,7 +2467,7 @@ variable MBX-GEN   0 MBX-GEN !
 
 : FIELD-SYM! ( n n -- ) {: fid:n sym:n :}
    sym 0= IF EXIT THEN
-   sym fid PF-ROW PF.ACCESSOR-SYM !
+   sym fid PF-REC@ PF.ACCESSOR-SYM !
    MBX-ENSURE
    fid 2 * 2 + sym MBX-LINK ;
 
@@ -2506,8 +2500,8 @@ variable MBX-GEN   0 MBX-GEN !
    THEN
    head 2 / 1 - {: fid:n :}
    fid PF-N @ < IF
-      fid PF-ROW PF.ACCESSOR-SYM @ sym = IF
-         fid PF-ROW PF.FLAGS @ PF-FLAG-BUFFER = IF CHILD-ABI:SPAN ELSE CHILD-ABI:FIELD THEN
+      fid PF-REC@ PF.ACCESSOR-SYM @ sym = IF
+         fid PF-REC@ PF.FLAGS @ PF-FLAG-BUFFER = IF CHILD-ABI:SPAN ELSE CHILD-ABI:FIELD THEN
          fid RES-TRUE EXIT
       THEN
    THEN
@@ -2689,13 +2683,11 @@ private
 \ Pointer and quotation nodes are non-owning boundaries.
 defer TFCL-NODE-XT ( n -- bool )
 
-\ Field rows go through PF-ROW, as ;STRUCTURE and ;ENUM judge their own family
-\ before its rows commit; a sum's positional payloads go through SUMV-PAY-ROOT.
 : TFAM-CONCRETE-LINEAR-WALK? ( n -- bool ) {: fam:n :}
    fam TFAM-SUM? fam TFAM-ENUM? or {: sum:bool :}
    fam TFAM-PRODUCT?  sum fam TFAM-FLD-COUNT@ 0 > and  or IF
       0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-         fam TFAM-FLD-START@ over + PF-ROW PF.SCH @ SCHEMA-ROOT@ TFCL-NODE-XT IF drop RES-TRUE EXIT THEN
+         fam TFAM-FLD-START@ over + PF-REC@ PF.SCH @ SCHEMA-ROOT@ TFCL-NODE-XT IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
@@ -3421,7 +3413,7 @@ create ET-CH 8 allot
    f PF-VAR@ dup PF-NO-VARIANT = IF ELSE vstart - THEN ET-NUM
    f PF-SLOT@ ET-NUM  f PF-CELLS@ ET-NUM  f PF-BYTE-OFF@ ET-NUM
    f PF-BYTES@ ET-NUM  f PF-ALIGN@ ET-NUM  f PF-FLAGS@ ET-NUM
-   f PF-ROW PF.ACCESSOR-SYM @ ET-SYM
+   f PF-REC@ PF.ACCESSOR-SYM @ ET-SYM
    f PF-SCH@ SCHEMA-ROOT@ ET-NODE ;
 
 
