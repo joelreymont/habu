@@ -169,7 +169,7 @@ variable READ-ERRNO
 : GET ( -- TCP4:connection )
    RAW-OPEN {: conn:TCP4:connection :}
    conn s\" GET /ok HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
-   TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS
+   TCP4:WRITE DROP-STATUS
    conn ;
 
 

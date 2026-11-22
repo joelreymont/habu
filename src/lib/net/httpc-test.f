@@ -295,7 +295,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    begin conn READ-REQUEST while
       1 idx PER-CONN atomic-add drop
       1 REQUESTS atomic-add REPLY {: a:^ u:n shut:bool :}
-      conn a u TCP4:TRANSFER-BYTES TCP4:WRITE PEER-STATUS
+      conn a u TCP4:WRITE PEER-STATUS
       1 WRITTEN atomic-add drop
       shut if conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS true exit then
    repeat false ;
@@ -1014,14 +1014,14 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
 \ to the buffer's start. False at an alert, which WITHHELD records.
 : PASS ( TCP4:connection -- bool ) {: client:TCP4:connection :}
    WHOLE {: sent:n alert:bool :}
-   client RECORDS sent TCP4:TRANSFER-BYTES TCP4:WRITE PEER-STATUS
+   client RECORDS sent TCP4:WRITE PEER-STATUS
    RECORDS sent + RECORDS RECORDS-U @ sent - BYTE-COPY
    sent negate RECORDS-U +!
    alert if true WITHHELD ! false exit then
    true ;
 
 : UP ( TCP4:connection n -- bool ) {: server:TCP4:connection k:n :}
-   server UPWARD k TCP4:TRANSFER-BYTES TCP4:WRITE PEER-STATUS true ;
+   server UPWARD k TCP4:WRITE PEER-STATUS true ;
 
 \ The client's bytes to the server; false at the client's end.
 : FROM-CLIENT ( TCP4:connection TCP4:connection -- bool )

@@ -432,8 +432,8 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    again ;
 
 
-: SEND-SPAN ( NUM:byte-len -- n )
-   BLEN>N MAX-TRANSFER min ;
+: SEND-SPAN ( n -- n )
+   MAX-TRANSFER min ;
 
 
 \ Milliseconds left before a mono-ns deadline, rounded up so a poll cannot end
@@ -508,8 +508,7 @@ public
    dup 0 MAX-PORT WITHIN-RANGE >PORT ;
 
 
-\ A span's length for the transfers below. SEND-SLICE and TRY-SEND hand the OS
-\ at most MAX-TRANSFER bytes of a longer span.
+\ A span's length for the reads below.
 : TRANSFER-BYTES ( n -- NUM:byte-len )
    LENGTH ;
 
@@ -618,8 +617,8 @@ public
 \ descriptor's owner has set O_NONBLOCK; a send on a blocking one waits in the
 \ kernel for as long as the peer takes. Nothing here pauses or weighs a bound;
 \ a caller writing a span in slices does both between them.
-: SEND-SLICE ( connection ^u8 NUM:byte-len -- slice-result )
-   {: conn:connection bytes size:NUM:byte-len :}
+: SEND-SLICE ( connection str -- slice-result )
+   {: conn:connection bytes size:n :}
    size SEND-SPAN {: span:n :}
    conn CONNECTION>N {: fd:n :}
    mono-ns SEND-SLICE-MS NS-PER-MS * + {: deadline:n :}
@@ -634,8 +633,8 @@ public
 \ One send of the span's first MAX-TRANSFER bytes at most that never waits:
 \ `moved` carries the bytes the OS took, `empty` says there was no room, and
 \ `failed` carries the errno. The connection must be non-blocking.
-: TRY-SEND ( connection ^u8 NUM:byte-len -- slice-result )
-   {: conn:connection bytes size:NUM:byte-len :}
+: TRY-SEND ( connection str -- slice-result )
+   {: conn:connection bytes size:n :}
    size SEND-SPAN {: span:n :}
    conn CONNECTION>N bytes span NO-DEADLINE SEND-BY ;
 
@@ -645,17 +644,17 @@ public
 \ Every send slice that leaves bytes to send ends in a TASK:PAUSE, where a halt
 \ ends the task, whether it moved some or none: a peer that takes a few bytes in
 \ every slice holds the write for as long as it reads, but not past a halt.
-: WRITE ( connection ^u8 NUM:byte-len -- status )
-   {: conn:connection bytes size:NUM:byte-len :}
+: WRITE ( connection str -- status )
+   {: conn:connection bytes size:n :}
    0
    begin {: sent:n :}
-      conn bytes sent + size BLEN>N sent - N>BLEN SEND-SLICE
+      conn bytes sent + size sent - SEND-SLICE
       MATCH slice-result
          moved OF BLEN>N sent + ENDOF
          empty OF sent ENDOF
          failed OF TCP4-STATUS:FAILED exit ENDOF
       ;MATCH
-      dup size BLEN>N >= if drop TCP4-STATUS:OK exit then
+      dup size >= if drop TCP4-STATUS:OK exit then
       TASK:PAUSE
    again ;
 

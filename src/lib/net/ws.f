@@ -494,7 +494,7 @@ RUN-IDLE RUN !
 
 : FLUSH ( n -- bool ) {: idx:n :}
    idx QUEUED 0= if true exit then
-   idx LINK @ idx OUT @ idx OUT-AT @ idx QUEUED SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES TCP4:TRY-SEND
+   idx LINK @ idx OUT @ idx OUT-AT @ idx QUEUED SPAN:SUB SPAN:$ TCP4:TRY-SEND
    MATCH TCP4:slice-result
       moved OF BLEN>N idx swap MOVED ENDOF
       empty OF ENDOF

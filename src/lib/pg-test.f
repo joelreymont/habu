@@ -1720,7 +1720,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    ;MATCH ;
 
 : PEER-WRITE ( TCP4:connection str -- ) {: peer a u:n :}
-   peer a u TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-ERRNO 0 T= ;
+   peer a u TCP4:WRITE STATUS-ERRNO 0 T= ;
 
 \ libpq drops a connection whose reply breaks the protocol, so pg.f's next send
 \ on it is refused: E-EXEC, and the connection is closed with it.

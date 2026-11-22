@@ -21,6 +21,8 @@ require src/lib/net/test-tls-peer.f
 package TLS-TEST
 private
 
+CAST: BLEN>N ( NUM:byte-len -- n )
+
 $4000 constant ANSWER-ROOM
 ANSWER-ROOM BUFFER: ANSWER          \ the server's answer to GET /
 variable ANSWER-U
@@ -215,7 +217,7 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
    {: from:TCP4:connection to:TCP4:connection :}
    from RELAYED RELAY-ROOM TCP4:TRANSFER-BYTES TCP4:TRY-READ
    MATCH TCP4:try-read-result
-      data OF to RELAYED rot TCP4:WRITE OK? ENDOF
+      data OF BLEN>N to RELAYED rot TCP4:WRITE OK? ENDOF
       closed OF drop false ENDOF
       empty OF true ENDOF
       failed OF drop false ENDOF

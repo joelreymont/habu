@@ -890,7 +890,7 @@ $2710 constant PARK-MS            \ far past every stop bound
 \ request has been sent, so a short write is part of the case, not a failure.
 : RAW-SEND ( TCP4:connection str -- )
    {: conn:TCP4:connection bytes:^ len:n :}
-   conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS ;
+   conn bytes len TCP4:WRITE DROP-TCP-STATUS ;
 
 
 \ RES's room past COUNT n, up to RES-CAP, for one read; COUNT is RES-CAP
@@ -2331,7 +2331,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 : KEEP-SENDING ( str -- ) {: bytes:^ len:n :}
    0 SENDER-CONN @ {: conn:TCP4:connection :}
    begin
-      conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
+      conn bytes len TCP4:WRITE
       MATCH TCP4:status
          ok OF ENDOF
          failed OF drop exit ENDOF
@@ -2979,7 +2979,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
 
 \ True once a write fails: the reset an end that has closed sends back.
 : RESET-SEEN? ( TCP4:connection -- bool )
-   s" x" TCP4:TRANSFER-BYTES TCP4:WRITE
+   s" x" TCP4:WRITE
    MATCH TCP4:status
       ok OF false ENDOF
       failed OF drop true ENDOF
@@ -2997,7 +2997,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
 
 
 : LATER-WRITE ( -- )
-   0 LATER-CONN @ s" later" TCP4:TRANSFER-BYTES TCP4:WRITE DROP-TCP-STATUS
+   0 LATER-CONN @ s" later" TCP4:WRITE DROP-TCP-STATUS
    0 LATER-CONN @ TCP4:CLOSE DROP-TCP-STATUS ;
 
 

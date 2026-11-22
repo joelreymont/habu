@@ -323,7 +323,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn ;
 
 : SEND-RAW ( TCP4:connection str -- ) {: conn:TCP4:connection a u:n :}
-   conn a u TCP4:TRANSFER-BYTES TCP4:WRITE DROP-STATUS ;
+   conn a u TCP4:WRITE DROP-STATUS ;
 
 : AWAIT ( TCP4:connection -- ) {: conn:TCP4:connection :}
    conn TCP4:CONNECTION-FD AIO:READABLE -1 >MS AIO:WAIT-READY

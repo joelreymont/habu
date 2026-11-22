@@ -345,7 +345,7 @@ $300000 constant BIG-U
 
 
 : RAW-WRITE ( TCP4:connection str -- )
-   TCP4:TRANSFER-BYTES TCP4:WRITE
+   TCP4:WRITE
    MATCH TCP4:status
       ok OF ENDOF
       failed OF TCP4:ERRNO>N drop FAIL ENDOF

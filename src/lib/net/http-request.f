@@ -924,7 +924,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
 : WRITE-SPAN ( TCP4:connection str -- bool )
    {: conn:TCP4:connection bytes:^ len:n :}
    len 0= if true exit then
-   conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
+   conn bytes len TCP4:WRITE
    MATCH TCP4:status
       ok OF true ENDOF
       failed OF drop false ENDOF
