@@ -1,8 +1,8 @@
 split-str
 \ process.f - spawn, capture, poll and reap child processes.
-\ The path buffer, pollfd array and capture slots are one TASK:+USERS row of
-\ STORAGE-BYTES bytes per task, so any number of tasks run children at once; the
-\ STOP vector is a process-wide policy. Spawn requests
+\ The path buffer, pollfd table, probe byte and capture record are TASK:+USER
+\ rows per task, so any number of tasks run children at once; the STOP vector is
+\ a process-wide policy. Spawn requests
 \ are src/lib/spawn.f's, tree kills src/lib/process-tree.f's; process-argv.f,
 \ process-env.f and process-cwd.f add spawn shapes.
 \
@@ -27,7 +27,7 @@ split-str
 \
 \ RUN. Runs a spawn.f request with stdin, stdout and stderr each chosen
 \ (stdio) and waits for it with no deadline, on this file's per-task capture
-\ row; STOP-FD is heard as in every capture. inherit keeps the slot as the
+\ record; STOP-FD is heard as in every capture. inherit keeps the slot as the
 \ request has it: by default the parent's fd of that number, closed in the
 \ child while the parent's is closed. null is /dev/null, read-only as stdin
 \ and write-only as an output. pipe as stdin has RUN write the span's bytes
@@ -109,69 +109,68 @@ public
 -1 constant NO-PID                       \ no child
 
 private
-\ The per-task row, laid out like src/lib/net/tcp4.f's: a poll array shared by
-\ two tasks hands each the other's descriptors.
-\ A fresh task's row reads 0: every entry point resets it through
-\ CAPTURE-RESET before any word reads a descriptor, and every pid guard is
-\ `0 >`, treating 0 like NO-PID. KILL-CAPTURE also runs outside a
-\ capture (tools/check-core.f answering a stop), where the row can read 0, and
+\ The rows are per task: a poll table shared by two tasks hands each the
+\ other's descriptors. A fresh task's rows read 0: every entry point resets
+\ them through CAPTURE-RESET before any word reads a descriptor, and every pid
+\ guard is `0 >`, treating 0 like NO-PID. KILL-CAPTURE also runs outside a
+\ capture (tools/check-core.f answering a stop), where the rows can read 0, and
 \ kill(0) or waitpid(0) would reach the caller's whole process group.
 5 constant PFD-SLOTS                     \ stdout, stderr, stdin, stop, per-call cancellation
-8 constant PFD-SLOT-BYTES                \ one struct pollfd: fd | events | revents
-0 constant PATHZ-OFF
-PATHZ-OFF PATHZ-CAP + 7 + $FFFFFFFFFFFFFFF8 and constant PFD-OFF
-PFD-OFF PFD-SLOTS PFD-SLOT-BYTES * + constant PROBE-OFF
-PROBE-OFF 1 + 7 + $FFFFFFFFFFFFFFF8 and constant PID-OFF
-PID-OFF     1 cells + constant RC-OFF
-RC-OFF      1 cells + constant OUT-R-OFF
-OUT-R-OFF   1 cells + constant OUT-W-OFF
-OUT-W-OFF   1 cells + constant ERR-R-OFF
-ERR-R-OFF   1 cells + constant ERR-W-OFF
-ERR-W-OFF   1 cells + constant IN-R-OFF
-IN-R-OFF    1 cells + constant IN-W-OFF
-IN-W-OFF    1 cells + constant OUT-LEN-OFF
-OUT-LEN-OFF 1 cells + constant ERR-LEN-OFF
-ERR-LEN-OFF 1 cells + constant IN-OFF-OFF
-IN-OFF-OFF  1 cells + constant DEADLINE-OFF
-DEADLINE-OFF 1 cells + constant RD-OFF
-RD-OFF      1 cells + constant STATUS-OFF
-STATUS-OFF  1 cells + constant TIMED-OUT-OFF
-TIMED-OUT-OFF 1 cells + constant CANCEL-FD-OFF
-public
-CANCEL-FD-OFF 1 cells + constant RAW-PID-OFF
-private
-RAW-PID-OFF 1 cells + constant STORAGE-BYTES
+
+PATHZ-CAP TASK:+USERS PATHZ-ROW u8
+\ Each struct pollfd (fd, events, revents) is one cell poll fills.
+PFD-SLOTS TASK:+USERS PFD-ROW n
+1 TASK:+USERS PROBE-ROW u8
+
+STRUCTURE capture DERIVE addr
+  FIELD pid n
+  FIELD rc n
+  FIELD out-r n
+  FIELD out-w n
+  FIELD err-r n
+  FIELD err-w n
+  FIELD in-r n
+  FIELD in-w n
+  FIELD out-len n
+  FIELD err-len n
+  FIELD in-off n
+  FIELD deadline n
+  FIELD rd n
+  FIELD status n
+  FIELD timed-out n
+  FIELD cancel-fd n
+  FIELD raw-pid n
+;STRUCTURE
+
+TASK:+USER CAPTURE capture
+
+: PATHZ-BUF ( -- ^u8 ) 0 PATHZ-ROW ;
+: PFD ( -- ^n ) 0 PFD-ROW ;
+: PROBE ( -- ^u8 ) 0 PROBE-ROW ;
 
 public
-STORAGE-BYTES TASK:+USERS STORAGE u8
-
-private
-: PATHZ-BUF ( -- ^u8 ) PATHZ-OFF STORAGE ;
-: PFD ( -- ^u8 ) PFD-OFF STORAGE ;
-: PROBE ( -- ^u8 ) PROBE-OFF STORAGE ;
-
-public
-\ The row's cells are `^n`: the fd, pid, rc, len and off roles are converted
+\ The record's cells are `^n`: the fd, pid, rc, len and off roles are converted
 \ where a value enters a word that names the role.
-: PID ( -- ^n ) PID-OFF STORAGE CELL-VIEW ;
-: RC ( -- ^n ) RC-OFF STORAGE CELL-VIEW ;
-: OUT-R ( -- ^n ) OUT-R-OFF STORAGE CELL-VIEW ;
-: OUT-W ( -- ^n ) OUT-W-OFF STORAGE CELL-VIEW ;
-: ERR-R ( -- ^n ) ERR-R-OFF STORAGE CELL-VIEW ;
-: ERR-W ( -- ^n ) ERR-W-OFF STORAGE CELL-VIEW ;
-: IN-R ( -- ^n ) IN-R-OFF STORAGE CELL-VIEW ;
-: IN-W ( -- ^n ) IN-W-OFF STORAGE CELL-VIEW ;
-: OUT-LEN ( -- ^n ) OUT-LEN-OFF STORAGE CELL-VIEW ;
-: ERR-LEN ( -- ^n ) ERR-LEN-OFF STORAGE CELL-VIEW ;
-: IN-OFF ( -- ^n ) IN-OFF-OFF STORAGE CELL-VIEW ;
+: PID ( -- ^n ) CAPTURE CAPTURE-PID ;
+: RC ( -- ^n ) CAPTURE CAPTURE-RC ;
+: OUT-R ( -- ^n ) CAPTURE CAPTURE-OUT-R ;
+: OUT-W ( -- ^n ) CAPTURE CAPTURE-OUT-W ;
+: ERR-R ( -- ^n ) CAPTURE CAPTURE-ERR-R ;
+: ERR-W ( -- ^n ) CAPTURE CAPTURE-ERR-W ;
+: IN-R ( -- ^n ) CAPTURE CAPTURE-IN-R ;
+: IN-W ( -- ^n ) CAPTURE CAPTURE-IN-W ;
+: OUT-LEN ( -- ^n ) CAPTURE CAPTURE-OUT-LEN ;
+: ERR-LEN ( -- ^n ) CAPTURE CAPTURE-ERR-LEN ;
+: IN-OFF ( -- ^n ) CAPTURE CAPTURE-IN-OFF ;
 private
-: DEADLINE ( -- ^n ) DEADLINE-OFF STORAGE CELL-VIEW ;
-: RD ( -- ^n ) RD-OFF STORAGE CELL-VIEW ;
-: STATUS ( -- ^n ) STATUS-OFF STORAGE CELL-VIEW ;
-: TIMED-OUT ( -- ^n ) TIMED-OUT-OFF STORAGE CELL-VIEW ;
+: DEADLINE ( -- ^n ) CAPTURE CAPTURE-DEADLINE ;
+: RD ( -- ^n ) CAPTURE CAPTURE-RD ;
+: STATUS ( -- ^n ) CAPTURE CAPTURE-STATUS ;
+: TIMED-OUT ( -- ^n ) CAPTURE CAPTURE-TIMED-OUT ;
 public
 \ Borrowed, never read, duplicated or closed. CMD installs it after BEGIN.
-: CANCEL-FD ( -- ^n ) CANCEL-FD-OFF STORAGE CELL-VIEW ;
+: CANCEL-FD ( -- ^n ) CAPTURE CAPTURE-CANCEL-FD ;
+: RAW-PID ( -- ^n ) CAPTURE CAPTURE-RAW-PID ;
 ;package
 
 \ The bodies the RAW spawn words run under catch. Each builds a HERMETIC PROCESS
@@ -185,7 +184,7 @@ CAST: >ROWS ( n -- ^^u8 )
 
 : ROWS ( ^a -- ^^u8 ) NULL-PTR - >ROWS ;
 
-: PID ( -- ^n ) PROCESS:RAW-PID-OFF PROCESS:STORAGE CELL-VIEW ;
+: PID ( -- ^n ) PROCESS:RAW-PID ;
 
 : FD ( PROCESS:request n fd -- PROCESS:request ) {: child parent :}
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
@@ -313,11 +312,11 @@ public
 
 private
 \ An idx outside 0..PFD-SLOTS-1 is E-A-BOUNDS: PFD-AT! and PFD-REVENTS are
-\ public, and slot PFD-SLOTS would reach the cells after the table (PROBE-OFF).
+\ public, and slot PFD-SLOTS would reach past the row.
 : PFD-SLOT ( idx -- ^n ) {: idx :}
    idx IDX>N 0 < if E-A-BOUNDS throw then
    idx IDX>N PFD-SLOTS >= if E-A-BOUNDS throw then
-   idx IDX>N PFD-SLOT-BYTES * PFD + CELL-VIEW ;
+   idx IDX>N PFD-ROW ;
 
 public
 : PFD-AT! ( fd n idx -- ) {: fd events idx :}
@@ -594,7 +593,7 @@ private
 
 public
 \ A capture's default stdin is EOF, whatever the parent's terminal or pipe; the
-\ fd sits in the capture row so a refused spawn closes it too.
+\ fd sits in the capture record so a refused spawn closes it too.
 : CAPTURE-NULL-INPUT ( -- fd )
    [: IN-R FS:O-RDONLY OPEN-NULL ;] FD-LOCK:WITH
    IN-R @ >FD ;
