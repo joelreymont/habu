@@ -25,11 +25,11 @@ REJECTION:CAPTURE
 include test/split-str-marked.f
 
 \ The marker ended with its file: str is one value again.
-s" : SPX ( ^u8 n -- n ) SPL ;" TEST-EVAL:RC 70 T=
+s" : SPX ( ^u8 n -- n ) SPL ;" >str TEST-EVAL:RC 70 T=
 s" abc" >str SPL 3 T=
-s" : SPSX ( ^u8 n -- n ) SPSV @ execute ;" TEST-EVAL:RC 70 T=
+s" : SPSX ( ^u8 n -- n ) SPSV @ execute ;" >str TEST-EVAL:RC 70 T=
 s" abcd" >str SPSV @ execute 4 T=
-s" : SPSQX ( ^u8 n -- n ) 0 SPSQB SPSQ:Q @ execute ;" TEST-EVAL:RC 70 T=
+s" : SPSQX ( ^u8 n -- n ) 0 SPSQB SPSQ:Q @ execute ;" >str TEST-EVAL:RC 70 T=
 s" abcd" >str 0 SPSQB SPSQ:Q @ execute 4 T=
 : SPJ-W ( spj -- n )
    MATCH spj text OF str> nip ENDOF none OF 0 ENDOF ;MATCH ;
@@ -42,45 +42,46 @@ s" ab" SPO str> nip 2 T=
 
 \ split-str anywhere but a file's first line is rejected at its place.
 REJECTION:CAPTURE
-s" split-str" TEST-EVAL:RC 70 T=
-REJECTION:BUFFER$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" split-str-test.f" 15 s\" s\" split-str\" TEST-EVAL:RC" T-PLACED
-REJECTION:BUFFER$ s\"   = evaluated: split-str\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" CONTAINS? TTRUE
+s" split-str" >str TEST-EVAL:RC 70 T=
+REJECTION:BUFFER$ >str s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ >str s" split-str-test.f" >str 20 s\" s\" split-str\" >str TEST-EVAL:RC" >str T-PLACED
+REJECTION:BUFFER$ >str s\"   = evaluated: split-str\n" >str CONTAINS? TTRUE
+REJECTION:BUFFER$ >str s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" >str CONTAINS? TTRUE
 
 \ tools/check.f's verifier places it at split-str with its help, as the load does.
 : SPC-RUN ( -- )
    s" split-str-check" E2E-TREE:TREE
-   E2E-TREE:ROOT$ FS:CLEANUP-TREE+
-   s" test/split-str-late.f" E2E-TREE:AT-A s\" : SPC ( -- ) ;\nsplit-str\n" FS:WRITE-ALL
+   E2E-TREE:ROOT$ >str FS:CLEANUP-TREE+
+   s" test/split-str-late.f" E2E-TREE:AT-A >str s\" : SPC ( -- ) ;\nsplit-str\n" >str FS:WRITE-ALL
    s" tools/check.f" E2E-TREE:ARGS
    s" --" >LEN PROC-ARGV+
    s" test/split-str-late.f" >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
+   ENGINE-CANDIDATE:PATH$ str> E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
 SPC-RUN
 E2E-TREE:RC@ 70 T=
-E2E-TREE:ERR$ s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" CONTAINS? TTRUE
-E2E-TREE:ERR$ s" split-str-late.f" 1 s" split-str" T-PLACED
-E2E-TREE:ERR$ s" ^^^^^^^^^ it takes effect only alone on the first line of a file loaded by name" CONTAINS? TTRUE
-E2E-TREE:ERR$ s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" CONTAINS? TTRUE
+E2E-TREE:ERR$ >str s" error[E-SPLIT-STR-LINE]: `split-str` is not allowed in this context" >str CONTAINS? TTRUE
+E2E-TREE:ERR$ >str s" split-str-late.f" >str 1 s" split-str" >str T-PLACED
+E2E-TREE:ERR$ >str s" ^^^^^^^^^ it takes effect only alone on the first line of a file loaded by name" >str CONTAINS? TTRUE
+E2E-TREE:ERR$ >str s" = help: move `split-str`, in lower case, alone to the first line of a file loaded by name, or delete it" >str CONTAINS? TTRUE
 
 \ The verifier reads the marker as the load does.
 : SPW-ON ( -- )
-   s\" split-str\n: SPW ( ^u8 n -- n ) SPL ;" VERIFY:SOURCE-BUF ;
+   s\" split-str\n: SPW ( ^u8 n -- n ) SPL ;" >str VERIFY:SOURCE-BUF ;
 : SPW-OFF ( -- )
-   s" : SPW ( ^u8 n -- n ) SPL ;" VERIFY:SOURCE-BUF ;
+   s" : SPW ( ^u8 n -- n ) SPL ;" >str VERIFY:SOURCE-BUF ;
 ' SPW-ON catch 0 T=
 ' SPW-OFF catch 70 T=
 \ The verifier walks a marked definition's body on the split rows.
 : SPW2-RUN ( -- )
-   s\" split-str\n: SPW2 ( str -- n ) nip ;" VERIFY:SOURCE-BUF ;
+   s\" split-str\n: SPW2 ( str -- n ) nip ;" >str VERIFY:SOURCE-BUF ;
 ' SPW2-RUN catch 0 T=
 
 \ A file the verifier scans ends its marker with it: a composition scans the
 \ subject and the file it includes.
 : SPZ-RUN ( -- )
-   s\" include test/split-str-nested.f\n: SPZ ( ^u8 n -- n ) SPL ;\n"
-   s" test/spz-subject.f" 2dup VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
+   s" test/spz-subject.f" >str {: path :}
+   s\" include test/split-str-nested.f\n: SPZ ( ^u8 n -- n ) SPL ;\n" >str
+   path path VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 ' SPZ-RUN catch 70 T=
 
 include test/split-str-deep.f
