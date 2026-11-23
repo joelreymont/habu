@@ -134,7 +134,6 @@ $04 constant POLLOUT               \ a send will not block, on both.
 $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
 \ Errno values from the macOS SDK's usr/include/sys/errno.h and Linux's
 \ include/uapi/asm-generic/errno-base.h and errno.h.
-4 constant EINTR
 12 constant ENOMEM
 23 constant ENFILE
 24 constant EMFILE
@@ -256,7 +255,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : INTERRUPTED? ( errno -- bool )
-   ERRNO>N EINTR = ;
+   ERRNO>N FD:EINTR# = ;
 
 
 : WOULD-BLOCK? ( errno -- bool )
@@ -375,7 +374,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
    begin
       fd POLLIN NO-TIMEOUT POLL-FD {: rc:n :}
       rc 0 >= if TCP4-STATUS:OK exit then
-      rc negate EINTR <> if rc negate >ERRNO TCP4-STATUS:FAILED exit then
+      rc negate FD:EINTR# <> if rc negate >ERRNO TCP4-STATUS:FAILED exit then
    again ;
 
 
@@ -452,7 +451,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
       fd POLLOUT deadline LEFT-MS POLL-FD {: rc:n :}
       rc 0 > if TCP4-READY--RESULT:READY exit then
       rc 0= if TCP4-READY--RESULT:IDLE exit then
-      rc negate EINTR <> if rc negate >ERRNO TCP4-READY--RESULT:FAILED exit then
+      rc negate FD:EINTR# <> if rc negate >ERRNO TCP4-READY--RESULT:FAILED exit then
    again ;
 
 
@@ -695,7 +694,7 @@ public
       fd HANG-EVENTS 0 POLL-FD {: rc:n :}
       rc 0 > if POLLFD-ROW @ FD:REVENTS HANG-BITS and 0<> exit then
       rc 0= if false exit then
-      rc negate EINTR <> if E-RESULT throw then
+      rc negate FD:EINTR# <> if E-RESULT throw then
    again ;
 
 

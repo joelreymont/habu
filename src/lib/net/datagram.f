@@ -49,7 +49,6 @@ SUMTYPE receive-result
 private
 
 1000000 constant NS-PER-MS
-4 constant EINTR
 
 CAST: BLEN>N ( NUM:byte-len -- n )
 \ Each caller has shown the cell nonnegative.
@@ -121,7 +120,7 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : RETRY? ( errno -- bool )
-   ERRNO>N dup EINTR = swap FD:EAGAIN# = or ;
+   ERRNO>N dup FD:EINTR# = swap FD:EAGAIN# = or ;
 
 
 \ What a RECEIVE given timeout ms and started at start ns may still wait: a

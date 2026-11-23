@@ -97,8 +97,7 @@ $FFFFFFFF constant UNVERIFIED
 0 constant STREAM                  \ MBEDTLS_SSL_TRANSPORT_STREAM
 0 constant PRESET                  \ MBEDTLS_SSL_PRESET_DEFAULT
 
-\ Linux's EINTR and send(2) flag.
-4 constant EINTR
+\ Linux's send(2) flag.
 $4000 constant MSG-NOSIGNAL
 
 VERSIONED-LIBRARY tfpsacrypto 2
@@ -143,7 +142,7 @@ FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
       got 0 >= if got exit then
       FFI:ERRNO {: e:n :}
       e FD:EAGAIN# = if WANT-READ exit then
-      e EINTR <> if RECEIVE-FAILED exit then
+      e FD:EINTR# <> if RECEIVE-FAILED exit then
    again ;
 
 : SEND-BODY ( n str -- n )
@@ -153,7 +152,7 @@ FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
       put 0 >= if put exit then
       FFI:ERRNO {: e:n :}
       e FD:EAGAIN# = if WANT-WRITE exit then
-      e EINTR <> if SEND-FAILED exit then
+      e FD:EINTR# <> if SEND-FAILED exit then
    again ;
 
 CALLBACK: BIO-RECEIVE ( n ^u8 n -- i32 ) RECEIVE-FAILED FALLBACK ;CALLBACK
