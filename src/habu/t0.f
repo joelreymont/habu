@@ -305,7 +305,8 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 
 \ ---- the virtual stack -------------------------------------------------------
 \ THE VIRTUAL STACK. The top of the data stack lives in at most EMIT-VREGS
-\ entries, each a vreg or a constant; below them it is in memory. Paths that
+\ entries, each a vreg or a constant, and one more for DO-LOCAL's stand-in until
+\ the next row drops it; below them it is in memory. Paths that
 \ meet at an `else` or `then`, a `begin` loop's head and exits and a counted
 \ loop's head and exit keep their values in registers: the opener records a
 \ layout (SNAPSHOT, every entry in a vreg of its own) and each joining path
@@ -320,7 +321,7 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 0 constant K-REG
 1 constant K-CONST
 
-DYNAMIC-BUFFER VS-KIND n            \ reserved to EMIT-VREGS by RESET-STATE
+DYNAMIC-BUFFER VS-KIND n            \ reserved to EMIT-VREGS 1+ by RESET-STATE
 DYNAMIC-BUFFER VS-VAL n
 variable VS-N
 variable FREE                       \ bit k set: no entry holds vreg k
@@ -1469,10 +1470,6 @@ EXPORT CHECKER-TAPE:K-LOCAL-REF
    READER @ 0< if r c i + EMIT-SLOT-LOAD else r c i + EMIT-ENV-LOAD then
    r ;
 
-: DO-LOCAL ( n -- ) {: k:n :}
-   ORD @ 1- ROW-OFF @ {: at:n :}
-   k at LOCAL-CELLS 0 ?do  ROOM k i at LOCAL-CELL PUSH-REG  loop ;
-
 EXPORT CHECKER-TAPE:K-UNREACHED
 
 : SKIP-ROW ( n -- n ) {: k:n :}
@@ -1658,17 +1655,22 @@ EXPORT CHECKER-TAPE:K-NAME
 \ ---- the inlined operations --------------------------------------------------
 \ THE INLINED OPERATIONS. Each operation T0 inlines is one of the engine's
 \ seeded primitives, a record below the source prefix's first
-\ (CORE-PREFIX:FIRST-RECORD), and OP-OF maps such a record's dictionary index to
-\ the operation's code in INLINE, 0 for none. The indices belong to the running
-\ engine: seeded records order differently on each target, and a cross-build
-\ loads T0 on its host. So OP-CODE maps the operations by name from the running
-\ dictionary at the first T0 compile in each process (OPS-MAP); a record at or
-\ above the boundary is never an operation, so a package's own word of that
-\ name is a call. OP-MAPPED is a scratch cell, which a written image or program
-\ holds 0, so each process maps again.
-variable OP-N                        \ the records OP-OF holds, once mapped
+\ (CORE-PREFIX:FIRST-RECORD). OP-OF maps a record's dictionary index to the
+\ operation's code in INLINE, 0 for none: a seeded record by its name, any
+\ other by its code start, which an EXPORT of a primitive shares, so a
+\ package's own word of an operation's name is a call. The indices belong to
+\ the running engine: seeded records order differently on each target, and a
+\ cross-build loads T0 on its host. So OPS-MAP maps the seeded records from
+\ the running dictionary at the first T0 compile in each process, and OP-CODE
+\ decides any other record once per index and code start: a dictionary rewound
+\ by `ndict!` gives an index to another record. OP-MAPPED is a scratch cell,
+\ which a written image or program holds 0, so each process maps again.
+variable OP-N                        \ the seeded records, once mapped
 SCRATCH-VARIABLE OP-MAPPED
 DYNAMIC-BUFFER OP-OF n
+DYNAMIC-BUFFER OP-AT n               \ above the boundary: the start decided
+variable OP-HI                       \ the highest operation code
+DYNAMIC-BUFFER OP-START n            \ by operation code: its primitive's start
 
 \ End the process: a u, a word T0 lowers itself, names no seeded primitive.
 : OP-DIE ( str -- )
@@ -1696,7 +1698,10 @@ DYNAMIC-BUFFER OP-OF n
 
 : OP-MAP ( str n -- )
    {: a:^ u:n code:n :}
-   code  a u SEEDED OP-OF ! ;
+   a u SEEDED {: r:n :}
+   code r OP-OF !
+   code 1+ OP-START-RESERVE  code OP-HI @ max OP-HI !
+   r XREF-REC XREF-START code OP-START ! ;
 
 \ data-base's kernel record, which THROWS-AT calls.
 variable BASE-REC
@@ -1717,15 +1722,55 @@ variable STORE-REC                   \ !'s
    s" 2swap" 35 OP-MAP  s" 2over" 36 OP-MAP  s" cells" 37 OP-MAP
    s" cell+" 38 OP-MAP  s" negate" 39 OP-MAP  s" invert" 40 OP-MAP
    s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP
+   s" >str" 44 OP-MAP  s" data" 45 OP-MAP  s" len" 46 OP-MAP
    s" data-base" SEEDED BASE-REC !  s" !" SEEDED STORE-REC ! ;
 
 : MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
 
+\ The operation whose primitive's code starts at to, or 0; a record with no
+\ code is none.
+: START-OP ( n -- n ) {: to:n :}
+   to 0= if 0 exit then
+   OP-HI @ 1+ 1 ?do i OP-START @ to = if i unloop exit then loop
+   0 ;
+
+: DECIDE ( n -- ) {: r:n :}
+   r 1+ OP-OF-RESERVE  r 1+ OP-AT-RESERVE
+   r XREF-REC REC-START {: to:n :}
+   r OP-AT @ to = if exit then
+   to START-OP r OP-OF !  to r OP-AT ! ;
+
 : OP-CODE ( n -- n )
    {: r:n :}
    MAP-OPS
-   r OP-N @ >= if 0 exit then
+   r OP-N @ >= if r DECIDE then
    r OP-OF @ ;
+
+\ The cell of a str that row j's `data` (0) or `len` (1) keeps, else -1.
+: STR-HALF ( n -- n ) {: j:n :}
+   j ROWS @ >= if -1 exit then
+   j ROW-KIND @ {: kind:n :}
+   kind K-NAME =  kind K-CALL =  or 0= if -1 exit then
+   j ROW-A0 @ {: r:n :}
+   r 0< if -1 exit then
+   r OP-CODE {: code:n :}
+   code 45 = if 0 exit then
+   code 46 = if 1 exit then
+   -1 ;
+
+\ A two-cell local before `data` or `len` loads only the cell that row keeps; a
+\ constant stands for the other, which the row's DROP1 or NIP1 removes. That
+\ entry holds no register and lives only until then.
+: DO-LOCAL ( n -- ) {: k:n :}
+   ORD @ 1- ROW-OFF @ {: at:n :}
+   k at LOCAL-CELLS {: c:n :}
+   c 2 = if ORD @ STR-HALF else -1 then {: h:n :}
+   h 0< if c 0 ?do ROOM k i at LOCAL-CELL PUSH-REG loop exit then
+   ROOM
+   2 0 ?do
+      i h = if k i at LOCAL-CELL PUSH-REG
+      else K-CONST 0 VS-N @ ENTRY!  1 VS-N +! then
+   loop ;
 
 \ ---- the throw on -------------------------------------------------------------
 \ THE THROW ON. A rejection's record is carried while its throw is the newest
@@ -1863,6 +1908,9 @@ DYNAMIC-BUFFER COUNT-SLOT n
       41 of a CELL1 [: lshift ;] SH-LEFT SHIFT2 true endof
       42 of a CELL1 [: rshift ;] SH-RIGHT SHIFT2 true endof
       43 of a CELL1 CELLS-OP [: + ;] OP-ADD true ALU2 true endof
+      44 of true endof                \ >str: the two cells are the str
+      45 of DROP1 true endof          \ data keeps the base, as its body does
+      46 of NIP1 true endof           \ len keeps the count, as its body does
       NO-INLINE
    endcase ;
 
@@ -1908,13 +1956,11 @@ EXPORT CHECK:WF-FACT@
 EXPORT CHECK:WF-N@
 \ ---- one token ---------------------------------------------------------------
 \ THE EVENTS. A token is what the checker filed it as (CHECKER-TAPE's kinds). A
-\ name inlines when its bound record is the engine's seeded primitive of the
-\ operation (THE INLINED OPERATIONS); a package's own word named like a
-\ primitive is a call. A word whose definer fixed a value pushes it, and a
-\ generic member call the checker gave its instance's number adds that number
-\ (WORD-CALL). Anything else is E-T0-UNSUPPORTED. A name compiled code cannot
-\ reach is rejected as undefined, even in an unchecked body whose scan did not
-\ reject it.
+\ name inlines when its bound record is an operation (THE INLINED OPERATIONS).
+\ A word whose definer fixed a value pushes it, and a generic member call the
+\ checker gave its instance's number adds that number (WORD-CALL). Anything
+\ else is E-T0-UNSUPPORTED. A name compiled code cannot reach is rejected as
+\ undefined, even in an unchecked body whose scan did not reject it.
 \ A token no path reaches (K-UNREACHED) is E-T0-CONTROL.
 \
 \ T0 passes over an immediate the body admits and rejects any other.
@@ -2052,7 +2098,7 @@ EXPORT TFAM:TFAM-NAME$
    again ;
 
 : RESET-STATE ( -- )
-   EMIT-VREGS VS-KIND-RESERVE  EMIT-VREGS VS-VAL-RESERVE  EMIT-VREGS RS-V-RESERVE
+   EMIT-VREGS 1+ VS-KIND-RESERVE  EMIT-VREGS 1+ VS-VAL-RESERVE  EMIT-VREGS RS-V-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
    0 DEAD !  0 PENDING !  0 G-CELLS !  0 REC-NEXT ! ;
 
