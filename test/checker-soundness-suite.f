@@ -166,8 +166,8 @@ create ERR CAP allot   variable ERR-U
    ok TTRUE
    e eu s" error[E-MISMATCH]: `execute` would make a stack row contain itself" CONTAINS? TTRUE
    \ the rendering indents each note by the width of the line number's gutter
-   e eu s\" = expected: A\n" CONTAINS? TTRUE
-   e eu s\" = found: A [ A -- A ]\n" CONTAINS? TTRUE
+   e eu s\" = expected: R\n" CONTAINS? TTRUE
+   e eu s\" = found: R [ R -- R ]\n" CONTAINS? TTRUE
    s" a named word's input names the row that would contain itself" T-LABEL
    s" : CS-TAKE ( R [ R -- R ] -- R ) execute ; : CS-K105 ( R [ R -- R ] -- R ) dup CS-TAKE ;" 70
    s" error[E-MISMATCH]: `CS-TAKE` would make a stack row contain itself"
@@ -225,17 +225,17 @@ create ERR CAP allot   variable ERR-U
    s" : CS-K26 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s" error[E-MISMATCH]: callable row escape" SUBJECT:REFUSED? TTRUE
    s" : CS-K26 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" = held: A would escape into C\n" SUBJECT:REFUSED? TTRUE
+   s\" = held: A would escape into R\n" SUBJECT:REFUSED? TTRUE
    s" : CS-K26 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" = found: [ C -- D ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ R -- B ]\n" SUBJECT:REFUSED? TTRUE
    s" : CS-K27 ( R [ A -- A ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP ;" 70
-   s\" = held: A would escape into B\n" SUBJECT:REFUSED? TTRUE
+   s\" = held: B would escape into A\n" SUBJECT:REFUSED? TTRUE
    s" : CS-K27 ( R [ A -- A ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP ;" 70
-   s\" = found: [ B -- B ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ A -- A ]\n" SUBJECT:REFUSED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K28 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s\" \"help\":\"declare the callable `[ R -- S ]` from the word's input row" SUBJECT:REFUSED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K72 ( R [ R -- B ] -- B ) CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
-   s\" ; held row A would escape into C\"" SUBJECT:REFUSED? TTRUE
+   s\" ; held row A would escape into R\"" SUBJECT:REFUSED? TTRUE
    s" and the declarations it names certify" T-LABEL
    s" CS-K29 ( R [ -- ] -- R ) CHECKER-SOUNDNESS:TAIL-KEEP" CHECK-QUIET-CANDIDATE! -1 T=
    s" a callable's output callable is held the same way" T-LABEL
@@ -264,7 +264,7 @@ create ERR CAP allot   variable ERR-U
    s" CS-K126 ( R [ R -- S ] -- S ) [: CHECKER-SOUNDNESS:TAIL-NAMED ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
    s" and a stale tail a binding made a push is renamed with the push's tail" T-LABEL
    s" : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ; : CS-K132 ( R [ R n -- R n ] -- R ) [: 5 swap [: [: CS-EXEC ;] catch drop drop ;] execute ;] execute ;" 70
-   s" error[E-MISMATCH]: CS-K132 ends with stale<A> on the stack" SUBJECT:REFUSED? TTRUE
+   s" error[E-MISMATCH]: CS-K132 ends with stale<R> on the stack" SUBJECT:REFUSED? TTRUE
    s" a literal's call keeps the linear value its open row was bound to" T-LABEL
    s" CS-K127 ( CHECKER-SOUNDNESS:ltok -- CHECKER-SOUNDNESS:ltok ) [: ['] CHECKER-SOUNDNESS:LTOK-KEEP CHECKER-SOUNDNESS:TAIL-NAMED ;] CHECKER-SOUNDNESS:TAIL-NAMED"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -324,9 +324,9 @@ create ERR CAP allot   variable ERR-U
       CHECK-QUIET-CANDIDATE! 0 T=
    s" the refusal names the side whose row escaped, whichever branch holds it" T-LABEL
    s" : CS-K71 ( R [ R [ R -- R ] -- R ] [ R -- R ] f -- R ) swap >r IF drop [: CHECKER-SOUNDNESS:TAIL-UNDER ;] ELSE THEN r> CHECKER-SOUNDNESS:TAIL-APPLY ;" 70
-   s\" = held: A would escape into B\n" SUBJECT:REFUSED? TTRUE
+   s\" = held: A would escape into R\n" SUBJECT:REFUSED? TTRUE
    s" : CS-K71 ( R [ R [ R -- R ] -- R ] [ R -- R ] f -- R ) swap >r IF drop [: CHECKER-SOUNDNESS:TAIL-UNDER ;] ELSE THEN r> CHECKER-SOUNDNESS:TAIL-APPLY ;" 70
-   s\" = found: [ B -- B ]\n" SUBJECT:REFUSED? TTRUE
+   s\" = found: [ R -- R ]\n" SUBJECT:REFUSED? TTRUE
    \ Joins of two values: neither may narrow the other's declared row.
    s" CS-K44 ( R [ -- S ] -- S ) [: 1 ;] swap CHECKER-SOUNDNESS:TAIL-PICK2 execute" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K45 ( R [ -- S ] -- S ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-PICK2 execute" CHECK-QUIET-CANDIDATE! 0 T=

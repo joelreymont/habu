@@ -277,6 +277,7 @@ create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
 
 
 variable RLOST   \ how many bottom values of the row pushed last RBUF could not hold
+variable RBUF-TAIL   \ the tail of the row pushed last
 \ A push past RBUF's end sets RQM: an effect's text that cannot hold every value
 \ is rejected as unsayable, never cut.
 : RBUF+ ( n -- )
@@ -300,6 +301,7 @@ variable RLOST   \ how many bottom values of the row pushed last RBUF could not 
         dup P>TYPE RBUF+  P>REST
      THEN
    REPEAT
+   dup RBUF-TAIL !
    \ a stale tail prints as its bottom value, `stale<A>`
    dup STALE-ROW? IF RBUF+ ELSE drop THEN ;
 
@@ -312,10 +314,36 @@ variable RLOST   \ how many bottom values of the row pushed last RBUF could not 
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
-\ Rows letter in their own namespace, A to Z, then '?'. Facts text (RNAMES) and
-\ RTAILS renderings name rows; every other rendering shows cells only.
+\ Rows letter in their own namespace, A to Z, then '?'. Facts text (RNAMES),
+\ RTAILS renderings and a diagnostic's pair holding a stale tail name rows;
+\ every other rendering shows cells only.
 26 constant RROW-CAP
 create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
+create RROW-LTR RROW-CAP cells allot   \ the letter each RROW-KEY row prints by
+
+\ A diagnostic names its declared rows by the letters ROWMAP holds.
+: RROW-MAP? ( -- bool ) RNAMES @ 0= ;
+
+\ Whether ROWMAP slot i's row is row id, or bound to it alone.
+: RROW-IS? ( n n -- bool ) {: i:n id:n :}
+   i cells ROWMAP + @ {: v:n :}
+   v UNBOUND = IF RES-FALSE EXIT THEN
+   v MK-ROW R-RES {: r:n :}
+   r ISROW IF r PAY id = EXIT THEN
+   RES-FALSE ;
+
+: RROW-DECLARED ( n -- n )   \ row id's declared letter, 0 for none
+   {: id:n :}
+   RROW-MAP? 0= IF 0 EXIT THEN
+   26 0 ?do i id RROW-IS? IF i 65 + unloop EXIT THEN loop 0 ;
+
+: RROW-FREE? ( n -- bool )   \ letter c names no declared or lettered row
+   {: c:n :}
+   RROW-MAP? IF c 65 - cells ROWMAP + @ UNBOUND <> IF RES-FALSE EXIT THEN THEN
+   RROW-N @ 0 ?do i cells RROW-LTR + @ c = IF RES-FALSE unloop EXIT THEN loop
+   RES-TRUE ;
+
+: RROW-NEXT ( -- n ) 91 65 ?do i RROW-FREE? IF i unloop EXIT THEN loop 63 ;
 
 
 \ A stale row wraps a var a later unify may bind to a row ending in another
@@ -326,13 +354,15 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 
 : RROW-LETTER ( n -- n )
    STALE-TAIL PAY {: id:n :}
+   id RROW-DECLARED dup 0 <> IF EXIT THEN drop
    0 BEGIN dup RROW-N @ < WHILE
-      dup cells RROW-KEY + @ id = IF 65 + EXIT THEN
+      dup cells RROW-KEY + @ id = IF cells RROW-LTR + @ EXIT THEN
       1 +
    REPEAT drop
-   RROW-N @ RROW-CAP >= IF 1 RROW-UNSAID !  1 RQM !  63 EXIT THEN
-   id RROW-N @ cells RROW-KEY + !
-   RROW-N @ 65 +  RROW-N @ 1 + RROW-N ! ;
+   RROW-NEXT {: c:n :}
+   c 63 = IF 1 RROW-UNSAID !  1 RQM !  63 EXIT THEN
+   id RROW-N @ cells RROW-KEY + !  c RROW-N @ cells RROW-LTR + !
+   RROW-N @ 1 + RROW-N !  c ;
 
 
 : QTAIL ( n -- )
@@ -541,7 +571,17 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-: DROW {: s :}  s REND-COLLECT  CUT-MARK
+\ Whether row s is a side of the diagnostic's pair (DEXP, DACT) and either
+\ side ends in a stale tail: both sides then show their tails, `R n` against
+\ `stale<R> n`.
+: PAIR-STALE? ( n -- bool ) {: s:n :}
+   DEXP @ 0=  DACT @ 0=  or IF RES-FALSE EXIT THEN
+   s DEXP @ =  s DACT @ =  or 0= IF RES-FALSE EXIT THEN
+   DEXP @ ROW-TAIL STALE-ROW?  DACT @ ROW-TAIL STALE-ROW?  or ;
+
+: DROW {: s :}  s REND-COLLECT  RBUF-TAIL @ {: t:n :}
+   s PAIR-STALE?  t ISROW  and IF t RROW-LETTER EMIT1 32 EMIT1 THEN
+   CUT-MARK
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
 
@@ -1949,7 +1989,9 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 
 : END-LABEL ( -- )
    CLOSER-PINNED? IF s" the body ends here" EMIT-STR EXIT THEN
-   DACT @ ROW-VALUES 0= IF s" the stack is empty after this" EMIT-STR EXIT THEN
+   DACT @ ROW-VALUES 0=  DACT @ ROW-TAIL STALE-ROW? 0=  and IF
+      s" the stack is empty after this" EMIT-STR EXIT
+   THEN
    s" the stack holds " EMIT-STR  DACT @ ROW-WORD  s"  after this" EMIT-STR ;
 : MISMATCH-LABEL ( -- )
    DEND @ 0 <> IF END-LABEL EXIT THEN

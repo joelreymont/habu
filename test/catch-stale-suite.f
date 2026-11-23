@@ -578,8 +578,8 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    code3 E-CS-BOOM T=
    r CS-BUF = TTRUE ;
 
-\ A caught body that reaches the open row below its window leaves it stale<A>;
-\ a helper returns that row only on the success arm.
+\ A caught body that reaches the open row below its window leaves it stale<R>,
+\ named by the declared row; a helper returns that row only on the success arm.
 : CS-EXEC ( R [ R -- R ] -- R [ R -- R ] ) dup >r execute r> ;
 : CS-TIE ( R [ R -- R ] -- R [ R -- R ] ) ;
 
@@ -587,7 +587,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ a quotation parameter over the row keeps no cell of R intact, so returning
    \ R is a stale read
    s" O1 ( R [ R -- R ] -- R n ) catch" CS-CODE<
-   s" stale<A> n" CS-CODE?  s\" \"code\":\"E-STALE-READ\"" CS-CODE?
+   s" stale<R> n" CS-CODE?  s\" \"code\":\"E-STALE-READ\"" CS-CODE?
    s" returns cells `catch` left stale: a throw path of the caught body may have overwritten them" CS-CODE?
    s\" \"help\":\"return them where the code is 0: after `code 0<> if code throw then`" CS-CODE?
    CS-CODE-END
@@ -597,10 +597,15 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    CS-NP?  s" `R` and row `S`" CS-CODE?  CS-CATCH-FIX?  CS-CODE-END
    \ a literal that runs the parameter reaches R alike
    s" O2 ( R [ R -- R ] -- R n ) {: q :} [: q execute ;] catch" CS-CODE<
-   s" stale<A> n" CS-CODE?  CS-CODE-END
+   s" stale<R> n" CS-CODE?  CS-CODE-END
    \ a literal whose window holds a quotation over the caller's row reaches it
    s" O3 ( R [ R -- R ] -- R ) [: CS-EXEC ;] catch {: code:n :} drop" CS-CODE<
-   s" stale<A>" CS-CODE?  CS-CODE-END
+   s" stale<R>" CS-CODE?  CS-CODE-END
+   \ the expected side then shows its row too, and a stale row is no empty stack
+   s" O11 ( R n [ R n -- R n ] -- R n n ) catch" CS-CODE<
+   s\" \"expected\":\"R n n\",\"found\":\"stale<R> stale<n> n\"" CS-CODE?  CS-CODE-END
+   s" O12 ( R [ R -- R ] -- R ) catch drop" CS-CODE<
+   s\" \"label\":\"the stack holds stale<R> after this\"" CS-CODE?  CS-CODE-END
    \ a stale row may be moved; taking a cell from it is a read
    s" O4 ( R [ R -- R ] -- R ) catch drop drop" CS-CODE<
    CS-STALE?  CS-CODE-END
@@ -615,7 +620,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ stale row: every stale row is named by the row under all of them
    s" O9 ( R [ R -- R ] [ S -- S ] [ T -- T ] -- R ) {: g h :} catch drop 5 [: g catch ;] execute 6 [: h catch ;] execute"
       CS-CODE<
-   s" [ stale<A> n n -- stale<A> n n ] -- stale<A> n" CS-CODE?  CS-CODE-END
+   s" [ stale<R> n n -- stale<R> n n ] -- stale<R> n" CS-CODE?  CS-CODE-END
    \ a body over a row of its own cannot reach the caller's
    s" O8 ( R ^u8 -- R ^u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ nor through a quotation over the caller's row below its window
@@ -623,11 +628,11 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
       CHECK-QUIET-CANDIDATE! -1 T=
    \ a nested literal whose window holds a quotation over the caller's row
    s" O9 ( R [ R -- R ] -- R ) [: [: CS-EXEC ;] catch drop drop ;] execute" CS-CODE<
-   s" stale<A>" CS-CODE?  CS-CODE-END
+   s" stale<R>" CS-CODE?  CS-CODE-END
    \ a stale row held only in a cell's type stays one across a literal's run
    s" O10 ( R [ R -- R ] -- R [ R -- R ] ) [: [: CS-EXEC ;] catch >r [: ;] CS-TIE r> dup 0<> if throw then drop ;] execute"
       CS-CODE<
-   s\" \"code\":\"E-MISMATCH\"" CS-CODE?  s" [ stale<A> stale<[ -- ]> --" CS-CODE?  CS-CODE-END ;
+   s\" \"code\":\"E-MISMATCH\"" CS-CODE?  s" [ stale<R> stale<[ -- ]> --" CS-CODE?  CS-CODE-END ;
 
 : RUN ( -- )
    T-RESET

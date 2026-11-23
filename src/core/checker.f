@@ -24797,7 +24797,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    RES-FALSE RECOVERY-USED!
    FO-RESET
    u TOKBUF-ENSURE
-   a TBASE !  u TBLEN !  NEW
+   a TBASE !  u TBLEN !  NEW  ROWMAP-RESET
    CHECK-CLEAR
    DOES-EFF-STEP ;                     \ only the check that FOLLOWS a clause is its definer's
 
