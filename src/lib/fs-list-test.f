@@ -28,6 +28,10 @@ create FLT-MANY-SEEN 160 allot
 create FLT-MANY-NAME 4 allot
 create FLT-LONG-NAME 240 allot
 variable FLT-LONG-SEEN
+variable FLT-AT-DIR                  \ the descriptor the AT cases list
+variable FLT-OUTER-SEEN
+variable FLT-INNER-SEEN
+create FLT-MOVED-BUF PATH-CAP allot
 create FLT-DIRENT-TYPE-FIXTURE 24 allot
 
 : FLT-ROOT$ ( -- str )
@@ -160,6 +164,59 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
    FLT-TYPED
    FLT-CHECK-TYPED-REFILL ;
 
+\ The refill fixture through a descriptor the test opened.
+: FLT-TYPED-AT ( fd -- ) {: dir:fd :}
+   FLT-TYPED-RESET
+   dir [: FLT-TYPE ;] FS-LIST:EACH-TYPED-AT
+   FLT-CHECK-TYPED-REFILL ;
+
+: FLT-INNER-COUNT ( str u8 -- )
+   drop 2drop 1 FLT-INNER-SEEN +! ;
+
+\ The outer listing's first entry lists the whole directory again through
+\ the same descriptor, before the outer one reads its second block.
+: FLT-OUTER ( str u8 -- )
+   drop 2drop 1 FLT-OUTER-SEEN +!
+   FLT-OUTER-SEEN @ 1 <> if exit then
+   FLT-AT-DIR @ >FD [: FLT-INNER-COUNT ;] FS-LIST:EACH-TYPED-AT ;
+
+: FLT-NESTED-AT ( fd -- ) {: dir:fd :}
+   dir FD>N FLT-AT-DIR !
+   0 FLT-OUTER-SEEN ! 0 FLT-INNER-SEEN !
+   dir [: FLT-OUTER ;] FS-LIST:EACH-TYPED-AT
+   FLT-INNER-SEEN @ 165 T=
+   FLT-OUTER-SEEN @ 165 T= ;
+
+: FLT-MOVED$ ( -- str )
+   FLT-ROOT-U @ {: u:n :}
+   FLT-ROOT-BUF FLT-MOVED-BUF u BYTE-COPY
+   s" -moved" {: tail:^ tailu:n :}
+   tail FLT-MOVED-BUF u + tailu BYTE-COPY
+   FLT-MOVED-BUF u tailu + ;
+
+\ The root, renamed after the test opened it, lists whole through the
+\ descriptor; its old path is gone until it is renamed back.
+: FLT-MOVED-AT ( fd -- ) {: dir:fd :}
+   FLT-ROOT$ FLT-MOVED$ FS:RENAME-FILE
+   FLT-ROOT$ FS:TRY-STAT TFALSE
+   dir FLT-TYPED-AT
+   FLT-MOVED$ FLT-ROOT$ FS:RENAME-FILE ;
+
+: FLT-AT-CLOSED ( -- )
+   FLT-AT-DIR @ >FD [: FLT-INNER-COUNT ;] FS-LIST:EACH-TYPED-AT ;
+
+\ Two listings, a nested one and a moved one leave the descriptor the test's;
+\ once closed, it is E-FS-LIST-OPEN with EBADF.
+: FLT-TEST-AT ( -- )
+   FLT-ROOT$ FS:OPEN-DIR-READ >FD {: dir:fd :}
+   dir FLT-TYPED-AT
+   dir FLT-TYPED-AT
+   dir FLT-NESTED-AT
+   dir FLT-MOVED-AT
+   dir FD>N FS:CLOSE-FD 0 T=
+   [: FLT-AT-CLOSED ;] E-FS-LIST-OPEN TTHROWSQ
+   FS:ERRNO FS:EBADF T= ;
+
 : FLT-CHECK-LONG ( str -- )
    2dup FLT-COUNT
    dup 240 = if
@@ -273,13 +330,21 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
 : FLT-TYPED-THROWING ( -- )
    FLT-ROOT$ [: FLT-TYPED-THROW ;] FS-LIST:EACH-TYPED ;
 
+: FLT-AT-THROWING ( -- )
+   FLT-AT-DIR @ >FD [: FLT-TYPED-THROW ;] FS-LIST:EACH-TYPED-AT ;
+
 : FLT-TEST-THROW-CLOSES ( -- )
    FLT-FD-NEXT {: before:n :}
    [: FLT-THROWING ;] E-A-BOUNDS TTHROWSQ
    s" a listing its quotation threw out of closed its descriptor" T-LABEL
    FLT-FD-NEXT before T=
    [: FLT-TYPED-THROWING ;] E-A-BOUNDS TTHROWSQ
-   FLT-FD-NEXT before T= ;
+   FLT-FD-NEXT before T=
+   FLT-ROOT$ FS:OPEN-DIR-READ FLT-AT-DIR !
+   FLT-FD-NEXT {: at-next:n :}
+   [: FLT-AT-THROWING ;] E-A-BOUNDS TTHROWSQ
+   FLT-FD-NEXT at-next T=
+   FLT-AT-DIR @ FS:CLOSE-FD 0 T= ;
 
 : FS-LIST-TEST-MAIN ( -- )
    FLT-ROOT!
@@ -294,6 +359,7 @@ TASK:MIN-STACK TASK:TASK FLT-LISTER
    FLT-TEST-THROW-CLOSES
    FLT-TEST-TYPES
    FLT-TEST-REFILL
+   FLT-TEST-AT
    FLT-TEST-LONG-REFILL
    FLT-ROOT$ FS:REMOVE-TREE
    T-REPORT

@@ -1,7 +1,7 @@
 split-str
-\ fs-list.f - the entries of one directory, through raw open-rd,
-\ getdirentries64 and close; record decoding is shared with the walker in
-\ src/lib/fs.f.
+\ fs-list.f - the entries of one directory, through raw open-rd or an openat of
+\ "." under the caller's descriptor, getdirentries64 and close; record decoding
+\ is shared with the walker in src/lib/fs.f.
 \ STORAGE CLASS. Each word lends a private listing record through
 \ MEM:WITH-RECORD for the one call.
 
@@ -9,6 +9,7 @@ require src/lib/error.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/fs.f
+require src/lib/ffi-abi.f
 require src/core/compile-reads.f
 
 package FS-LIST
@@ -50,6 +51,18 @@ STRUCTURE listing DERIVE addr
    path size z COMPILE-READS:FILE+
    z open-rd {: handle:n :}
    handle 0 < if E-OPEN throw then
+   handle ls LISTING-FD ! ;
+
+PROCESS-SYMBOLS
+FUNCTION: OPEN-AT-CALL openat ( n ^u8 n -- i32 ) ;FUNCTION
+
+\ "." under the caller's directory: an open file description of its own, so
+\ the listing's offset is not the caller's.
+: OPEN-AT ( ^listing fd -- ) {: ls:^ dir:fd :}
+   COMPILE-READS:MISS
+   dir FD>N S\" .\z" drop FS:OPEN-DIR-FLAGS OPEN-AT-CALL
+   {: handle:n :}
+   handle 0 < if FFI:ERRNO FS:CAUSE! E-OPEN throw then
    handle ls LISTING-FD ! ;
 
 
@@ -149,6 +162,13 @@ STRUCTURE listing DERIVE addr
    ls q TYPED-LOOP
    ls path size q ;
 
+: EACH-TYPED-AT-RUN
+   ( ^listing fd [ str u8 -- ] -- ^listing fd [ str u8 -- ] )
+   {: ls:^ dir:fd q :}
+   ls dir OPEN-AT
+   ls q TYPED-LOOP
+   ls dir q ;
+
 : NAMES-STEP ( n n n ^listing ^u8 n -- n n n bool )
    {: len:n filled:n at:n ls:^ dst:^ cap:n :}
    filled at ls NEXT if
@@ -179,6 +199,14 @@ STRUCTURE listing DERIVE addr
    ls FINISH
    code 0<> if code throw then ;
 
+: EACH-TYPED-AT-WITH ( fd [ str u8 -- ] ^listing -- )
+   {: dir:fd q ls:^ :}
+   CLAIMED ls LISTING-FD !
+   ls dir q [: EACH-TYPED-AT-RUN ;] catch {: code:n :}
+   2drop drop
+   ls FINISH
+   code 0<> if code throw then ;
+
 : NAMES-WITH ( str ^u8 n ^listing -- n )
    {: path:^ size:n dst:^ cap:n ls:^ :}
    CLAIMED ls LISTING-FD !
@@ -198,6 +226,11 @@ public
 \ callback.
 : EACH-TYPED ( str [ str u8 -- ] -- )
    [type] listing [: EACH-TYPED-WITH ;] MEM:WITH-RECORD ;
+
+\ EACH-TYPED over a directory the caller opened and may read and search; the
+\ caller's descriptor and offset are untouched. A refused "." is E-FS-LIST-OPEN.
+: EACH-TYPED-AT ( fd [ str u8 -- ] -- )
+   [type] listing [: EACH-TYPED-AT-WITH ;] MEM:WITH-RECORD ;
 
 
 \ The names except . and .. into the caller's buffer, newline-separated and in
