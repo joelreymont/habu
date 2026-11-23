@@ -253,7 +253,6 @@ EXPORT CHECK:MK-ROW
 EXPORT CHECK:MK-VAR
 EXPORT CHECK:MWIN-CELLS!
 EXPORT CHECK:NEW
-EXPORT CHECK:NMAP-RESET
 EXPORT CHECK:NOMINAL-PROVIDER
 EXPORT CHECK:NSCOPE-RAISE
 EXPORT CHECK:OPAQUE-XT
@@ -4530,10 +4529,9 @@ TFAM-MEMBERS-INSTALL
    0 ;
 
 \ A child word's input row, output row and body value, from its CHILD-ABI SHAPE
-\ and PARAM, in fresh checker terms. NEW restarts the variable ids, so NMAP is
-\ cleared with it: a stale letter would name a fresh variable.
+\ and PARAM, in fresh checker terms.
 : TFAM-CHILD-ROWS ( n n -- n n n ) {: shape:n param:n :}
-   NEW NMAP-RESET
+   NEW
    shape CHILD-ABI:FIELD = IF param TFAM-FIELD-ROWS EXIT THEN
    shape CHILD-ABI:SPAN = IF param TFAM-SPAN-ROWS EXIT THEN
    shape CHILD-ABI:INDEX = IF param TFAM-AT-ROWS EXIT THEN

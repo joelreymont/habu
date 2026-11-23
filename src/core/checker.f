@@ -5590,10 +5590,20 @@ variable WAS
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 
+\ NMAP and ROWMAP hold variable ids NEW gives out, so NEW clears them.
+SCRATCH{
+PTR-VARIABLE NMAP-P   variable NMAP-CAP   \ the slots and their count
+}SCRATCH
+create ROWMAP 26 cells allot
+: NMAP-RESET ( -- )
+   NMAP-P @ 0 NMAP-CAP @ ARENA-CELLS-UNBOUND ;
+: ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
+
 : NEW ( -- )
    TV-RESET 0 FV ! 0 SPN ! 0 QEN ! 0 PTRN !  0 STLN !
    RIGID-RESET
    0 ATOMN ! 0 TERM-NAME-N ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
+   NMAP-RESET ROWMAP-RESET
    NEW-WALK ;
 variable VSIG
 SCRATCH{
@@ -7739,16 +7749,12 @@ variable VRC-RVN
 : LETTER>IDX ( n -- n )
    dup 114 > IF 1- THEN  dup 110 > IF 1- THEN  dup 102 > IF 1- THEN  97 - ;
 SCRATCH{
-PTR-VARIABLE NMAP-P   variable NMAP-CAP   \ the slots and their count
 variable BIND-DEPTH
 create BIND-DOMAINS BINDER-DEPTH-MAX cells allot
 variable SIG-LEVEL         \ the level TERM-DEPTH gives the type SIG-TYPE reads,
                            \ less the levels its rows' other entries add
 }SCRATCH
 
-
-: NMAP-RESET ( -- )
-   NMAP-P @ 0 NMAP-CAP @ ARENA-CELLS-UNBOUND ;
 
 \ Slot N's cell, the table doubled to hold it when N is past its end.
 : NMAP-SLOT ( n -- ^n ) {: n:n :}
@@ -8692,8 +8698,6 @@ SIG-BINDER-BODY-INSTALL
    0= IF drop a u BAD-LOC-ANN THEN
    SGBAD @ sg0 0= and IF a u BAD-LOC-ANN nip THEN ;
 
-create ROWMAP 26 cells allot
-: ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
 
 \ SQUOT holds each quotation a signature text gives, numbered from 1 as its `[`
@@ -9774,7 +9778,7 @@ variable LBI-LINEAR   \ the refused stored type parsed and may hold a linear val
    0 LBI-LINEAR !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
-   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET ;
+   PKRESET FAM-RESET ;
 
 : STORAGE-PARSE? ( str -- bool ) {: a:^ u:n :}
    STORAGE-RESET
@@ -13923,8 +13927,6 @@ variable PE-EFF-ID
 : PE-OPEN ( ^u8 n -- ) {: a:^ u:n :}
    a PE-NA!  u PE-NU !
    NEW
-   NMAP-RESET
-   ROWMAP-RESET
    SGBAD-CLEAR
    FRESH MK-ROW dup PE-BASE ! dup PE-DIN ! PE-DOUT !
    0 PE-RIN !  0 PE-ROUT !  0 PE-HASR ! ;
@@ -24797,7 +24799,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    RES-FALSE RECOVERY-USED!
    FO-RESET
    u TOKBUF-ENSURE
-   a TBASE !  u TBLEN !  NEW  ROWMAP-RESET
+   a TBASE !  u TBLEN !  NEW
    CHECK-CLEAR
    DOES-EFF-STEP ;                     \ only the check that FOLLOWS a clause is its definer's
 
