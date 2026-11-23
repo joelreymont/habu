@@ -1226,7 +1226,7 @@ public
 : LEN ( n -- n ) {: idx:n :}
    idx PREFIX-N @ < if idx FROZEN-LEN else idx ROW-LEN@ then ;
 
-: APPEND ( ^u8 n -- ) {: a:^ u:n :}
+: APPEND ( str -- ) {: a:^ u:n :}
    u 0 <= u PATH-CAP > or if
       s" require: invalid path length" EXIT-STATUS:INTERNAL die
    then
