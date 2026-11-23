@@ -5456,6 +5456,11 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
 : CALL-CYCLE? ( n n -- bool )
    CELL-OCC?  UNIFY-KIND @ UK-CALL = and  CUR-QUOT @ 0= and ;
 
+\ Whether row var r meets the stale row that wraps r itself: a read of that tail.
+: SELF-STALE? ( n n -- bool ) {: r:n x:n :}
+   x STALE-ROW? 0= IF RES-FALSE EXIT THEN
+   x STALE>INNER R-RES r = ;
+
 : U-ROW ( n n -- )
    R-RES swap R-RES swap 2dup U-CALL-TAIL
    2dup = IF 2drop EXIT THEN
@@ -5463,13 +5468,16 @@ variable KEPT-ROLE   variable KEPT-WANT   variable KEPT-RUN   variable KEPT-RUN-
    over ISROW IF
       dup ROW-VALUE? 0= IF U-FAIL EXIT THEN
       2dup QUOT-ROW-BLOCK? IF U-FAIL ELSE
-         2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN
+         2dup ROW-OCC? IF
+            2dup SELF-STALE? IF STALE-NOTE THEN  2drop RES-FALSE UOK !
+         ELSE swap PAY RV! THEN
       THEN EXIT
    THEN
    dup ISROW IF
       over ROW-VALUE? 0= IF U-FAIL EXIT THEN
       2dup swap QUOT-ROW-BLOCK? IF U-FAIL ELSE
          2dup swap ROW-OCC? IF
+            2dup swap SELF-STALE? IF STALE-NOTE THEN
             2dup swap CALL-CYCLE? IF U-FAIL  -1 CYCLE-HIT ! ELSE 2drop RES-FALSE UOK ! THEN
          ELSE PAY RV! THEN
       THEN EXIT
@@ -5886,7 +5894,7 @@ variable MDIAG-LOCAL  \ ended or unbound local: the built local's index
 variable MDIAG-ZIN    \ literal 0: the callee's input it reached, its index from the top
 variable MDIAG-WIDE   \ wide value: the logical type depth or .s met
 variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
-variable MDIAG-CELL   \ one-cell, step and moved-linear rules: the layout type a variable met; fact rules: FACT-HIT
+variable MDIAG-CELL   \ one-cell, step and moved-linear rules: the layout type a variable met; fact rules: FACT-HIT; stale reads: the stale term
 variable MDIAG-CELL-VAR   \ one-cell, step and moved-linear rules: that variable's id; fact rules: FACT-TERM
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
 }SCRATCH
@@ -5966,7 +5974,9 @@ TAIL-CAPTURE-DEFAULT
    SCOPE-HIT @ 5 = IF MD-STORED-CLASS MDIAG! THEN
    \ a cell with no type left to read answers before any rule about which type
    \ it is
-   STALE-HIT @ 0 <> IF STALE-HIT @ STALE-WHY MDIAG! THEN
+   STALE-HIT @ 0 <> IF   \ the term copied only when this refusal latches the reason
+      MDIAG @  STALE-HIT @ STALE-WHY MDIAG!  MDIAG @ <> IF STALE-HIT @ MDIAG-CELL ! THEN
+   THEN
    RAW-FENCE @ FENCE-EXEC = IF MD-RAW-EXEC MDIAG! THEN
    RAW-FENCE @ FENCE-PTR = IF MD-RAW-PTR MDIAG! THEN
    RAW-FENCE @ FENCE-FAMILY = IF MD-RAW-FAMILY MDIAG! THEN

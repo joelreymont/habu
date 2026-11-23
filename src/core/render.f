@@ -1853,7 +1853,17 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
       s" restricts " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR
    endcase ;
 
+\ Whether the end check read a stale row: the body returns a tail `catch` left
+\ stale. A step that takes a cell from a stale row reads a cell.
+: STALE-ROW-READ? ( -- bool )
+   MDIAG @ MD-STALE-READ =  DEND @ 0 <>  and  MDIAG-CELL @ STALE-ROW?  and ;
+
 : REASON-MESSAGE ( -- )
+   STALE-ROW-READ? IF
+      s" stale row: " EMIT-STR  END-SUBJECT
+      s"  returns cells `catch` left stale: a throw path of the caught body may have overwritten them" EMIT-STR
+      EXIT
+   THEN
    MDIAG @ MD-SCOPED-TICK =  MDIAG @ MD-IS-UNKNOWN = or  MDIAG @ MD-IS-NOT-DEFER = or
    MDIAG @ MD-LOCAL-STRAY = or  MDIAG @ MD-ROW-CYCLE = or
    IF TOK-SPAN THEN
@@ -1980,7 +1990,9 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
       RF-NP of NP-LABEL endof
       RF-DEAD of s" never runs" EMIT-STR endof
       RF-UNCHECKABLE of s" checking stops here" EMIT-STR endof
-      RF-REASON of MDIAG @ MD-LABEL$ EMIT-STR endof
+      RF-REASON of
+         STALE-ROW-READ? IF s" stale after `catch`" ELSE MDIAG @ MD-LABEL$ THEN EMIT-STR
+      endof
       RF-RETURN of RS-LABEL$ EMIT-STR endof
       s" render: a rejection with no label" EXIT-STATUS:INTERNAL die
    endcase ;
@@ -2409,6 +2421,9 @@ PTR-VARIABLE HOLDER-FIRST
       MDIAG @ MD-MOVED-LINEAR = IF MOVED-LIN-HELP EXIT THEN
       MDIAG @ MD-FACT-UNSTATED =  MDIAG @ MD-FACT-INPUT = or  MDIAG @ MD-FACT-PASSED = or IF
          FACT-HELP EXIT
+      THEN
+      STALE-ROW-READ? IF
+         s" return them where the code is 0: after `code 0<> if code throw then`" EMIT-STR EXIT
       THEN
       MDIAG @ MD-SUGGEST$ EMIT-STR EXIT
    THEN

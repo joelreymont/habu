@@ -584,9 +584,13 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
 : CS-TIE ( R [ R -- R ] -- R [ R -- R ] ) ;
 
 : CS-SECTION-OPEN ( -- )
-   \ a quotation parameter over the row keeps no cell of R intact
+   \ a quotation parameter over the row keeps no cell of R intact, so returning
+   \ R is a stale read
    s" O1 ( R [ R -- R ] -- R n ) catch" CS-CODE<
-   s" stale<A> n" CS-CODE?  CS-CODE-END
+   s" stale<A> n" CS-CODE?  s\" \"code\":\"E-STALE-READ\"" CS-CODE?
+   s" returns cells `catch` left stale: a throw path of the caught body may have overwritten them" CS-CODE?
+   s\" \"help\":\"return them where the code is 0: after `code 0<> if code throw then`" CS-CODE?
+   CS-CODE-END
    s" D1 ( R [ R -- R ] -- n ) catch" CS-CODE<
    CS-NP?  s" `R` and the unnamed row" CS-CODE?  CS-CATCH-FIX?  CS-CODE-END
    s" D2 ( R [ R -- R ] -- S n ) catch" CS-CODE<
