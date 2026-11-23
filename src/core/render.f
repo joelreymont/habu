@@ -29,10 +29,12 @@ variable RBIND-FULL
 \ RTAILS is set while TAIL-CAPTURE, CYCLE-NOTES or NARROWED-NOTES renders: every
 \ quotation then shows its row tails.
 variable RTAILS   0 RTAILS !
-\ RNAMES is 1 while the first pass of REND-EFFECT records each row's tail (RPOS)
-\ and 2 while its second pass names the rows that share one; 0 otherwise.
+\ RNAMES is 1 while the first pass of REND-EFFECT or INFERRED-FROM records each
+\ row's tail (RPOS) and 2 while its second pass names the rows that share one;
+\ 0 otherwise. RFACTS is set while REND-EFFECT writes facts text.
 variable RNAMES   0 RNAMES !
-: RFACTS? ( -- bool ) RNAMES @ 0 <> ;
+variable RFACTS   0 RFACTS !
+: RFACTS? ( -- bool ) RFACTS @ 0 <> ;
 
 
 : EMIT-UNSAID ( -- ) 1 RQM !  63 EMIT1 ;
@@ -272,8 +274,8 @@ create RBIND BINDER-DEPTH-MAX cells allot    \ the name index of each binder in 
 \ above the rows that hold it, so QREND recurses once per level, never per value.
 create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
 
-\ An effect's text (RNAMES nonzero) says every level a record holds.
-: QDEPTH-CAP ( -- n ) RNAMES @ 0 <> IF EFFECT-DEPTH-MAX ELSE QDEPTH-MAX THEN ;
+\ Facts text says every level a record holds.
+: QDEPTH-CAP ( -- n ) RFACTS? IF EFFECT-DEPTH-MAX ELSE QDEPTH-MAX THEN ;
 
 
 variable RLOST   \ how many bottom values of the row pushed last RBUF could not hold
@@ -308,21 +310,21 @@ variable RBUF-TAIL   \ the tail of the row pushed last
 \ A diagnostic's row RBUF cut prints "(N more) " first, where its bottom
 \ values go; call it before the values print: a quotation among them resets RLOST.
 : CUT-MARK ( -- )
-   RLOST @ 0=  RNAMES @ 0 <>  or IF EXIT THEN
+   RLOST @ 0=  RFACTS?  or IF EXIT THEN
    40 EMIT1  RLOST @ RNUM  s"  more) " RSTR ;
 
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
-\ Rows letter in their own namespace, A to Z, then '?'. Facts text (RNAMES),
-\ RTAILS renderings and a diagnostic's pair holding a stale tail name rows;
-\ every other rendering shows cells only.
+\ Rows letter in their own namespace, A to Z, then '?'. REND-EFFECT, INFERRED-FROM
+\ (RNAMES), RTAILS renderings, `stale<R>` and a diagnostic's pair holding a stale
+\ tail name rows; every other rendering shows cells only.
 26 constant RROW-CAP
 create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 create RROW-LTR RROW-CAP cells allot   \ the letter each RROW-KEY row prints by
 
 \ A diagnostic names its declared rows by the letters ROWMAP holds.
-: RROW-MAP? ( -- bool ) RNAMES @ 0= ;
+: RROW-MAP? ( -- bool ) RFACTS? 0= ;
 
 \ Whether ROWMAP slot i's row is row id, or bound to it alone.
 : RROW-IS? ( n n -- bool ) {: i:n id:n :}
@@ -398,11 +400,12 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
 : RQUOT@ ( n -- n ) 1 - cells RQUOT-BLOCK-P @ + @ ;
 
 
-\ A row is named when its tail has no scope, its kind is not its unnamed form's
-\ (RVK-QUOT in a quotation, else 0), or the tail is not its owner's two rows' alone.
+\ A row is named when its tail is not its owner's two rows' alone, and in facts
+\ text, which tags them, when its tail has no scope or its kind is not its
+\ unnamed form's (RVK-QUOT in a quotation, else 0).
 : RPOS-NAMED? ( n n -- bool )
    {: t:n owner:n :}
-   t ISROW IF
+   t ISROW RFACTS? and IF
       t PAY NSCOPE@ IF RES-TRUE EXIT THEN
       t PAY TVK@  owner 2 >= IF RVK-QUOT ELSE 0 THEN  <> IF RES-TRUE EXIT THEN
    THEN
@@ -604,10 +607,10 @@ LOCSHOW-INSTALL
 : REND-EFFECT ( n n n n bool -- str )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    TEXT-LEN @ {: base:n :}
-   1 DEST !  0 RPOS-N !  0 RRESV !
+   1 DEST !  0 RPOS-N !  0 RRESV !  1 RFACTS !
    1 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
    2 RNAMES !  base TEXT-LEN !  din dout rin rout hasr REND-PASS
-   0 RNAMES !  0 DEST !  TEXT TEXT-LEN @ ;
+   0 RNAMES !  0 RFACTS !  0 DEST !  TEXT TEXT-LEN @ ;
 
 
 : FACT-TAG ( str n -- ) {: a:^ u:n letter:n :}
@@ -868,7 +871,7 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
 variable DSUGE  variable DSUGA
 
 
-\ Under RNAMES each row is named as REND-EFFECT names it (RROW-NAME).
+\ One pass of INFERRED-FROM: RROW-NAME names each row as in REND-EFFECT.
 : JEFFECT-TEXT ( n n n n bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool :}
    din 0 RROW-NAME  din DROW  s" -- " EMIT-STR  dout 0 RROW-NAME  dout DROW
@@ -876,19 +879,54 @@ variable DSUGE  variable DSUGA
       s" | " EMIT-STR  rin 1 RROW-NAME  rin DROW  s" -- " EMIT-STR  rout 1 RROW-NAME  rout DROW
    THEN ;
 
-
-: INFERRED-FROM ( n -- )   \ the body's effect so far: input row n to the current rows
+: INFERRED-PASS ( n -- )   \ input row n to the current rows
+   0 RVISIT !
    DCUR @
    SGHASR @ IF SGRIN @ ELSE RBROW @ THEN
    RCUR @
    SGHASR @ JEFFECT-TEXT ;
+
+
+\ RSEEN holds SEEN's names while INFERRED-FROM's first pass gives more.
+SCRATCH{
+PTR-VARIABLE RSEEN-P   variable RSEEN-CAP
+}SCRATCH
+
+: SEEN-SAVE ( -- )
+   RSEEN-P RSEEN-CAP SEEN-HW @ 1 ARENA-ROWS-ENSURE
+   SEEN RSEEN-P @ SEEN-HW @ ARENA-CELLS-COPY ;
+
+\ Puts back the names SEEN-SAVE copied when SEEN-HW was hw.
+: SEEN-BACK ( n -- ) {: hw:n :}
+   RSEEN-P @ SEEN hw ARENA-CELLS-COPY
+   SEEN hw SEEN-HW @ ARENA-CELLS-UNBOUND
+   hw SEEN-HW ! ;
+
+\ The names given so far, which NAMES-BACK puts back.
+: NAMES-MARK ( -- n n n n n )
+   SEEN-SAVE  SEEN-HW @ RLETS @ RNAMED @ NLET @ RROW-N @ ;
+
+: NAMES-BACK ( n n n n n -- )
+   RROW-N !  NLET !  RNAMED !  RLETS !  SEEN-BACK ;
+
+
+\ The body's effect so far, input row n to the current rows, in REND-EFFECT's
+\ two passes from the TEXT-LEN it is called with. Its names follow those the
+\ record gave; the second pass starts from the names the first started from.
+: INFERRED-FROM ( n -- )
+   {: din:n :}
+   TEXT-LEN @ {: base:n :}  NAMES-MARK
+   0 RPOS-N !  0 RRESV !  1 RNAMES !  din INFERRED-PASS
+   NAMES-BACK  base TEXT-LEN !  2 RNAMES !  din INFERRED-PASS
+   0 RNAMES ! ;
 : INFERRED-EFFECT ( -- )   \ from the declared inputs
    SGSEEN @ IF SGIN @ ELSE BROW @ THEN INFERRED-FROM ;
 
 
-\ The escape rejection (MD-TAIL-ESCAPE): the inferred effect, then the declared
-\ callable and the argument compared with it, rendered with fresh letters into
-\ TCAP before later tokens bind their rows. Naming the callable pair, not the stacks around it, it reads the same
+\ The escape rejection (MD-TAIL-ESCAPE): the declared callable, the argument
+\ compared with it, the held row, then the inferred effect, the order the record
+\ reads them, rendered with fresh letters into TCAP before later tokens bind
+\ their rows. Naming the callable pair, not the stacks around it, it reads the same
 \ whatever the definition holds beneath. The held row names the tail that
 \ escaped (checker.f TAIL-SKOLEM) and the row that would have come to equal or
 \ hold it (TAIL-ROW), so a join whose two callables read alike still says which
@@ -901,10 +939,10 @@ PERSISTED-PTR-VARIABLE TCAP-P   NULL-PTR TCAP-P !
 variable TCAP-CAP   0 TCAP-CAP !          \ bytes mapped at TCAP-P, 0 for none
 variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 : TCAP ( -- ^u8 ) TCAP-P @ ;
-: TCAP-INF$ ( -- str ) TCAP TCAP-INF @ ;
-: TCAP-EXP$ ( -- str ) TCAP TCAP-INF @ +  TCAP-EXP @ TCAP-INF @ - ;
+: TCAP-EXP$ ( -- str ) TCAP TCAP-EXP @ ;
 : TCAP-ACT$ ( -- str ) TCAP TCAP-EXP @ +  TCAP-ACT @ TCAP-EXP @ - ;
 : TCAP-HELD$ ( -- str ) TCAP TCAP-ACT @ +  TCAP-HELD @ TCAP-ACT @ -  SIG-RTRIM ;
+: TCAP-INF$ ( -- str ) TCAP TCAP-HELD @ +  TCAP-INF @ TCAP-HELD @ - ;
 
 
 : TCAP-ROW ( n -- )   \ a row: its tail's letter and cells
@@ -926,15 +964,15 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 : TAIL-CAPTURE ( -- )
    DEST @ {: dst:n :}  TEXT-LEN @ {: base:n :}  RQM @ {: qm:n :}
    1 DEST !  SEEN-RESET 0 NLET !  0 RROW-N !
-   INFERRED-EFFECT  TEXT-LEN @ base - TCAP-INF !
    -1 RTAILS !
    DF-EXP @ REND-TYPE 32 EMIT1  TEXT-LEN @ base - TCAP-EXP !
    DF-ACT @ REND-TYPE 32 EMIT1  TEXT-LEN @ base - TCAP-ACT !
    TAIL-SKOLEM @ ROW-TAIL RROW-LETTER EMIT1  s"  would escape into " EMIT-STR
    TAIL-ROW @ TCAP-ROW  TEXT-LEN @ base - TCAP-HELD !
    0 RTAILS !
-   TCAP-HELD @ TCAP-ROOM
-   0 BEGIN dup TCAP-HELD @ < WHILE
+   INFERRED-EFFECT  TEXT-LEN @ base - TCAP-INF !
+   TCAP-INF @ TCAP-ROOM
+   0 BEGIN dup TCAP-INF @ < WHILE
       dup base + TEXT + c@  over TCAP + c!  1 +
    REPEAT drop
    base TEXT-LEN !  qm RQM !  dst DEST ! ;

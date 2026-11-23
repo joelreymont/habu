@@ -382,7 +382,7 @@ create ERR CAP allot   variable ERR-U
    s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
    s\" \"token\":\"is\"" SUBJECT:REFUSED? TTRUE
    s" -1 REJECTION:JSON ! : CS-K73 ( -- ) [: CHECKER-SOUNDNESS:TAIL-G ;] is CHECKER-SOUNDNESS:TAIL-DF ;" 70
-   s\" \"inferred\":\"-- [ [ -- ] -- ]\"" SUBJECT:REFUSED? TTRUE
+   s\" \"inferred\":\"-- [ E [ A -- F ] -- F ]\"" SUBJECT:REFUSED? TTRUE
    s" CS-K42 ( ^[ -- S ] -- ) [: ;] swap !" CHECK-QUIET-CANDIDATE! 0 T=
    s" CS-K43 ( R [ R -- S ] ^[ -- S ] -- R ) !" CHECK-QUIET-CANDIDATE! 0 T=
    s" a cell over a callable whose tails differ is refused at its declaration" T-LABEL

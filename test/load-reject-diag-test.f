@@ -1081,6 +1081,16 @@ undefine include
    S\" ,\"help\":\"leave n after `drop`, or declare ( n -- )\"}\n" SB-APPEND
    70 ASSERT-REJECTED ;
 
+\ A declared row the body keeps is named in the inferred effect and the
+\ effect the help offers, on both sides and in the quotation.
+: TEST-INFERRED-ROWS ( -- )
+   s" an inferred effect names the rows it shares" T-LABEL
+   BODY$ s" : LRD-ROWS ( R [ R -- R ] -- R ) execute 1 ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-MISMATCH]: LRD-ROWS ends with n" ASSERT-NAMED
+   ERR$ S\" = inferred: R [ R -- R ] -- R n\n" CONTAINS? TTRUE
+   ERR$ s" or declare ( R [ R -- R ] -- R n )" CONTAINS? TTRUE ;
+
 : TEST-CAPTURE-RELEASE ( -- )
    s" a rejection under a capture that ends the run is printed" T-LABEL
    CAPTURE$ RUN
@@ -1546,6 +1556,7 @@ variable LONG-U
    TEST-RESIDUE
    TEST-TARGET
    TEST-DEF-ONCE
+   TEST-INFERRED-ROWS
    TEST-CAPTURE-RELEASE
    TEST-CAPTURE-SEALED
    TEST-RECURSE-HELP
