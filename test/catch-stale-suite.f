@@ -9,6 +9,7 @@ require src/lib/test.f
 require src/lib/adt/option.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/json.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -23,6 +24,10 @@ public
 package CATCH-STALE-TEST
 
 7311 constant E-CS-BOOM
+public
+DEFLINEAR CATCH-STALE-TEST:cslease
+private
+LINEAR: CS-UNLEASE ( CATCH-STALE-TEST:cslease -- n )
 public
 
 variable CS-TICK
@@ -465,6 +470,33 @@ STRUCTURE cspt
    code 0= if v exit then
    code ;
 
+\ A body that changes the stack over the same tail is applied: each cell it
+\ leaves reads only where its catch's code is 0, and it may not take a cell
+\ that may be linear, which a throw would lose.
+: CS-SPEND ( CATCH-STALE-TEST:cslease -- n ) CS-UNLEASE WMAYBEN ;
+
+: CS-SECTION-RESHAPE ( -- )
+   s" S1 ( ^u8 n -- n ) [: JSON:PARSE ;] catch nip" CHECK-QUIET-CANDIDATE! -1 T=
+   s" S2 ( ^u8 n -- n ) [: JSON:PARSE ;] catch drop JSON:TEXT$ nip" CS-CODE<
+   CS-STALE?  CS-CODE-END
+   s" S3 ( ^u8 n -- n ) [: JSON:PARSE ;] catch {: code:n :} code 0<> if code throw then JSON:TEXT$ nip"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ more, fewer and as many cells as it took, read under the guard
+   s" S4 ( n -- n n ) [: WNUMBER dup ;] catch {: code:n :} code 0<> if code throw then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" S5 ( n n -- n ) [: + WMAYBEN ;] catch {: code:n :} code 0<> if code throw then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" S6 ( ^u8 -- n ) [: c@ WMAYBEN ;] catch {: code:n :} code 0<> if code throw then"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" S7 ( CATCH-STALE-TEST:cslease -- n n ) [: CS-SPEND ;] catch" CS-CODE<
+   s\" \"code\":\"E-LINEAR-DROP\"" CS-CODE?
+   s" open the handle inside the caught body" CS-CODE?  CS-CODE-END
+   \ at top level the engine's catch gives back the depth the body took
+   REJECTION:CAPTURE  0 0= REJECTION:JSON !
+   s" ' CATCH-STALE-TEST:WNUMBER-NEW catch 2drop" TEST-EVAL:RC 70 T=
+   s\" \"code\":\"E-LAYOUT-VALUE\"" CS-CODE?
+   s" move the catch inside a definition" CS-CODE?  CS-CODE-END ;
+
 : CS-SECTION-RUNTIME ( -- )
    CS-BUF CS-RT {: p code:n :}
    code E-CS-BOOM T=
@@ -520,9 +552,9 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
       CS-CODE<  CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
    s" T10 ( ^u8 [ ^u8 -- ^u8 ] -- ^u8 n ) catch" CS-CODE<
    CS-STALE?  CS-CODE-END
-   \ a callee that never returns is fit-checked against its declared output row:
-   \ WBOOM leaves nothing where its window was, and that is the rejection: only
-   \ a `[: … ;]` literal that never returns skips that fit check, never a tick
+   \ a callee that never returns is applied by its declared output row: WBOOM
+   \ leaves nothing where its window was, so the bind reaches below the inputs;
+   \ only a `[: … ;]` literal that never returns keeps its window, never a tick
    s" T11 ( ^u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
    s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ 2swap CONTAINS? TFALSE
    CS-CODE-END
@@ -586,6 +618,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    CS-SECTION-ADMITS
    CS-SECTION-BUNDLES
    CS-SECTION-WIDTHS
+   CS-SECTION-RESHAPE
    CS-SECTION-RUNTIME
    CS-SECTION-TICK
    CS-SECTION-OPEN

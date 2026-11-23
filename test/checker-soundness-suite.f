@@ -184,10 +184,6 @@ create ERR CAP allot   variable ERR-U
    s" : W ( S -- S [ S -- S ] ) [: ;] ; : XE ( R bool -- R [ R -- R ] ) IF W EXIT THEN W W nip ;" 70
    s" error[E-MISMATCH]: `nip` takes [ [ -- ] -- [ -- ] ]; the stack holds [ -- ]"
       SUBJECT:REFUSED? TTRUE
-   s" `catch` running a callable that drops a callable on its own row keeps the mismatch text" T-LABEL
-   s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-K101 ( R [ R -- R ] -- R n ) [: drop ;] catch ;" 70
-   s" error[E-MISMATCH]: `catch` takes [ -- ]; the stack holds nothing"
-      SUBJECT:REFUSED? TTRUE
    s" a callable argument that leaves a callable on its own row keeps the mismatch text" T-LABEL
    s" : W ( S -- S [ S -- S ] ) [: ;] ; : CS-T ( [ A -- A ] -- ) drop ;  : CS-K103 ( -- ) [: W ;] CS-T ;" 70
    s" error[E-MISMATCH]: `CS-T` takes [ -- ]; the stack holds [ -- [ -- ] ]"

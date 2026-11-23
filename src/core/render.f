@@ -1003,6 +1003,8 @@ variable MDV-I   variable MDV-F
       MD-CALLABLE-NARROW of s" E-CALLABLE-NARROW" endof
       MD-RECORD-AT-WIDE of s" E-RECORD-AT-WIDE" endof
       MD-MEMBER-TOP of s" E-LAYOUT-VALUE" endof
+      MD-CATCH-TOP  of s" E-LAYOUT-VALUE" endof
+      MD-CATCH-LINEAR of s" E-LINEAR-DROP" endof
       MD-ONE-CELL   of s" E-MISMATCH" endof
       MD-OFF-STEP   of s" E-MISMATCH" endof
       MD-MOVED-LINEAR of s" E-LINEAR-COPY" endof
@@ -1074,7 +1076,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-GEN    of s" derive the index again after the mutation that outdated it" endof
       MD-RIGID-XDOM   of s" pass a region where a region is taken, an extent where an extent is, and a mutation generation where a generation is" endof
       MD-UNDERFLOW    of TOP-STEP @ IF s" push the cells the statement takes before it" ELSE s" push the missing inputs before the call, or declare them in the signature" THEN endof
-      MD-STALE-READ   of s" bind the value to a local before the `catch` and read the local after it, or drop the cell" endof
+      MD-STALE-READ   of s" bind the value to a local before the `catch` and read the local after it, or drop the cell; read a caught result where its code is 0: after `code 0<> if code throw then`" endof
       MD-TOP-UNKNOWN  of s" push the value while checking is on, or drop the cell" endof
       MD-TAIL-ESCAPE  of TAIL-SUGGEST$ endof
       MD-LIT-FIT      of s" write a literal in the type's range, or declare a wider type" endof
@@ -1130,6 +1132,8 @@ variable MDV-I   variable MDV-F
       MD-CALLABLE-NARROW of s" store a callable whose effect works for every type the cell's effect names, or declare the cell's effect with the types this one takes" endof
       MD-RECORD-AT-WIDE of s" index a `LAYOUT-BUFFER` or `TYPED-BUFFER` of the instantiated type, which steps by its width" endof
       MD-MEMBER-TOP of s" move the call inside a definition, which uses the receiver's layout" endof
+      MD-CATCH-TOP  of s" move the catch inside a definition" endof
+      MD-CATCH-LINEAR of s" open the handle inside the caught body" endof
       MD-ONE-CELL   of s" call it with a plain one-cell type (`n`, a pointer), or do the work in a word whose effect names" endof
       MD-FACT-UNSTATED of s" state" endof
       MD-FACT-INPUT of s" state" endof
@@ -1238,6 +1242,8 @@ variable MDV-I   variable MDV-F
       MD-CALLABLE-NARROW of s" the callable works on fewer types than the cell or defer it goes into holds" endof
       MD-RECORD-AT-WIDE of s" `record-at` steps by the record's declared width, and this instantiation is wider" endof
       MD-MEMBER-TOP of s" at top level the word runs with its declared layout, and the receiver's instance moves this member" endof
+      MD-CATCH-TOP  of s" at top level a throw gives back the stack the caught body took, and this body leaves another" endof
+      MD-CATCH-LINEAR of s" a throw out of the caught body loses the cells it took, and this body changes the stack" endof
       MD-ONE-CELL   of s"  is one cell" endof
       MD-OFF-STEP   of s"  is stepped by an offset" endof
       MD-MOVED-LINEAR of s"  is moved by stack words that may copy or drop it" endof
@@ -1323,6 +1329,8 @@ variable MDV-I   variable MDV-F
       MD-CALLABLE-NARROW of s" callable narrower than the cell" endof
       MD-RECORD-AT-WIDE of s" wide instantiation" endof
       MD-MEMBER-TOP of s" runs with its declared layout" endof
+      MD-CATCH-TOP  of s" changes the stack at top level" endof
+      MD-CATCH-LINEAR of s" may lose a linear value" endof
       MD-ONE-CELL   of s" takes one cell" endof
       MD-OFF-STEP   of s" steps by an offset" endof
       MD-MOVED-LINEAR of s" may copy a linear value" endof
@@ -1478,7 +1486,7 @@ variable MDV-I   variable MDV-F
    MDIAG @ MD-DEPTH-WIDE = IF DEPTH-WIDE-COUNTS EXIT THEN
    MDIAG @ MD-ONE-CELL = IF ONE-CELL-COUNTS EXIT THEN
    MDIAG @ MD-OFF-STEP = IF OFF-STEP-COUNTS EXIT THEN
-   MDIAG @ MD-MOVED-LINEAR = IF MOVED-LIN-COUNTS EXIT THEN
+   MDIAG @ MD-MOVED-LINEAR =  MDIAG @ MD-CATCH-LINEAR = or IF MOVED-LIN-COUNTS EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF DEPTH-COUNTS THEN ;
 

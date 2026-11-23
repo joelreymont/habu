@@ -266,7 +266,11 @@ split-str
 \ takes bit d, and a depth past the mask's reach was never vouched for. The
 \ walk ends at the counted window or a non-push term (the row's tail); it is
 \ as deep as the window is wide, so it needs no scratch row and declines no
-\ width.
+\ width. A body whose output row does not fit its input row but ends in the
+\ same tail is applied as `execute` applies it: a throw leaves none of its
+\ outputs, so each is `stale<t>` whose normal view is itself, and none of the
+\ cells it took may be linear. At top level the engine's `catch` gives back
+\ the depth the body took, so there such a catch is refused.
 \
 \ The signature parser: a single lowercase letter is a type variable shared
 \ across in/out of one signature; `n` = int (con 1), `f` = flag (CC-BOOL); an
@@ -5832,6 +5836,8 @@ private
 99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
 100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
 101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?)
+112 constant MD-CATCH-TOP    \ a top-level `catch` of a body that changes the stack (CATCH-RESHAPE-REFUSE)
+113 constant MD-CATCH-LINEAR \ a `catch` of a body that changes the stack takes a cell that may be linear (CATCH-RESHAPE-REFUSE)
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
 49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
 50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose lineage differs or whose proof does not carry the entry's (CP-CARRIES?), at the same depths (CF-CARRIED=)
@@ -7043,6 +7049,43 @@ variable QUOT-LOSS
    own 0= IF RES-TRUE EXIT THEN
    t q Q>DIN CWIN-DTERMS @ TERMS-OCC?  t q Q>RIN CWIN-RTERMS @ TERMS-OCC?  or ;
 
+\ The fit as a trial: a unify that fails is taken back with the cell latches it
+\ set, so a body that changes the stack is judged on rows the trial left alone.
+: CATCH-FITS? ( -- bool )
+   TRAIL-N @  STALE-HIT @  SCOPE-HIT @  RAW-FENCE @
+   CELL-HIT @  FACT-HIT @  BASE-PTR-HIT @
+   {: mark:n sh:n sc:n rf:n ch:n fh:n bh:n :}
+   DCUR @ QTT @ Q>DOUT UNIFY-IN IF RES-TRUE EXIT THEN
+   mark TRAIL-UNWIND
+   sh STALE-HIT !  sc SCOPE-HIT !  rf RAW-FENCE !
+   ch CELL-HIT !  fh FACT-HIT !  bh BASE-PTR-HIT !
+   RES-FALSE ;
+
+: CATCH-ONE-TAIL? ( -- bool )
+   QTT @ Q>DIN ROW-TAIL  QTT @ Q>DOUT ROW-TAIL = ;
+
+\ The first of row's top cnt terms that may hold a linear value.
+: ROW-LINEAR-TERM ( n n -- n bool ) {: row:n cnt:n :}
+   row  cnt 0 ?do
+      R-RES dup TAG S-PUSH <> IF drop 0 RES-FALSE unloop EXIT THEN
+      dup P>TYPE LIN-TYPE-COUNT 0 <> IF P>TYPE RES-TRUE unloop EXIT THEN
+      P>REST
+   loop drop 0 RES-FALSE ;
+
+\ Pins the live row as expected and the body's output row as found.
+: CATCH-SHAPE-REJECT ( n -- ) {: md:n :}
+   MDIAG @ 0 <> FAILSET @ 0 <> or IF 0 OK ! -1 FAILSET ! EXIT THEN
+   md MDIAG !
+   CAPTURE-CLEAR
+   DCUR @ QTT @ Q>DOUT ROWS-COVER DACT ! DEXP !  ROWS-PIN
+   0 OK !  -1 FAILSET ! ;
+
+: CATCH-RESHAPE-REFUSE ( -- )
+   TOP-STEP @ 0 <>  QDEPTH @ 0= and IF MD-CATCH-TOP CATCH-SHAPE-REJECT EXIT THEN
+   DCUR @ CWIN-DTERMS @ ROW-LINEAR-TERM 0= IF drop EXIT THEN {: t:n :}
+   MDIAG @ 0=  FAILSET @ 0= and IF t MDIAG-CELL ! THEN
+   MD-CATCH-LINEAR CATCH-SHAPE-REJECT ;
+
 : RSCATCH
    \ Catchable `throw` is not process no-return. `die` remains separate
    \ no-return metadata because it cannot be recovered by a quotation catch.
@@ -7066,29 +7109,44 @@ variable QUOT-LOSS
      QTT @ QUOT-STEP-IN
      QTT @ QTT @ Q>DIN dmine QUOT-TAIL-REACH? {: dopen:bool :}
      QTT @ QTT @ Q>RIN rmine QUOT-TAIL-REACH? {: ropen:bool :}
+     \ A body that leaves the stack it found (expected the live row, actual
+     \ what the body leaves) keeps each cell its throw paths left alone. One
+     \ that changes it over the same tail is applied as `execute` applies it.
+     noret 0=  OK @ and IF CATCH-FITS? ELSE RES-FALSE THEN {: fit:bool :}
+     noret 0=  OK @ and  fit 0= and IF CATCH-ONE-TAIL? ELSE RES-FALSE THEN {: reshape:bool :}
      noret IF
         QTT @ Q>XHAS 0= IF TOKEN-DEAD! THEN
-     ELSE
-        \ The body leaves the stack it found: expected is the live row, actual
-        \ what the body leaves.
-        DCUR @ QTT @ Q>DOUT  UNIFY-IN {: fit:bool :}
-        fit 0=  FAILSET @ 0=  and  OK @ and  IF DCUR @ QTT @ Q>DOUT UF-CAPTURE THEN
-        fit 0= IF 0 UNJ-SPLICED ! THEN   \ the rows did not apply: an unjudged scan splices
-        fit OK @ and OK !
-        QTT @ Q>ROUT RSUNI-IN
-     THEN
+     ELSE reshape IF
+        CATCH-RESHAPE-REFUSE
+     ELSE fit 0= IF
+        DCUR @ QTT @ Q>DOUT  UNIFY-IN {: fits:bool :}
+        fits 0=  FAILSET @ 0=  and  OK @ and  IF DCUR @ QTT @ Q>DOUT UF-CAPTURE THEN
+        fits 0= IF 0 UNJ-SPLICED ! THEN   \ the rows did not apply: an unjudged scan splices
+        fits OK @ and OK !
+     THEN THEN THEN
+     noret 0= IF QTT @ Q>ROUT RSUNI-IN THEN
      CWIN-LIVE
      DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
      RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
-     DCUR @ CWIN-DTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
+     reshape IF
+        QTT @ Q>DOUT DCUR !
+        DCUR @ CWIN-DOUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
+     ELSE
+        DCUR @ CWIN-DTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
+     THEN
      RCUR @ CWIN-RTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
      \ Normal output loss is per occurrence, including when this quotation
      \ has no exceptional edge of its own. Only consumed-input loss is shared.
      OK @ 0 <> returns and IF
-        \ the normal row walks beside the live one, so it is expanded alike
-        noret IF 0 ELSE QTT @ Q>DOUT CWIN-DTERMS @ ROW-EXPAND-TERMS THEN {: nd:n :}
         noret IF 0 ELSE QTT @ Q>ROUT THEN {: nr:n :}
-        DCUR @ nd CWIN-DTERMS @ CWIN-DMASK @ QTT @ Q>XHAS dopen ROW-STALE-TOP DCUR !
+        reshape IF
+           QTT @ Q>DOUT CWIN-DOUT-TERMS @ 0 0 0 CWIN-SPREAD drop {: outs:n :}
+           DCUR @ DCUR @ outs 0 QTT @ Q>XHAS dopen ROW-STALE-TOP DCUR !
+        ELSE
+           \ the normal row walks beside the live one, so it is expanded alike
+           noret IF 0 ELSE QTT @ Q>DOUT CWIN-DTERMS @ ROW-EXPAND-TERMS THEN {: nd:n :}
+           DCUR @ nd CWIN-DTERMS @ CWIN-DMASK @ QTT @ Q>XHAS dopen ROW-STALE-TOP DCUR !
+        THEN
         RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ropen ROW-STALE-TOP RCUR !
      THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
