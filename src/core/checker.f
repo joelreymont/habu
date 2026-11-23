@@ -1047,14 +1047,10 @@ TV-CLEAR
    next nc TV-PUBLISH ;
 
 : TV-ENSURE ( n -- ) {: need:n :}
-   need 0 < need TV-MAX-CAP > or IF
-      s" checker: typevar capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    need TV-CAP @ <= IF EXIT THEN
    need TV-GROW ;
 
 : TV-ENSURE-MAX ( n n -- ) {: tvn:n rvn:n :}
-   tvn 0 < rvn 0 < or IF s" checker: typevar capacity overflow" EXIT-STATUS:INTERNAL die THEN
    tvn rvn max TV-ENSURE ;
 
 : TV-READY ( -- ) 1 TV-ENSURE ;
@@ -2098,9 +2094,6 @@ variable SPN   PTR-VARIABLE SPA-P   variable SPA-CAP
 \ Every nonnull SPA base lives in the scratch region. Terms carry indices;
 \ growth preserves the full capacity, including rows saved by a trial.
 : SPA-ENSURE ( n -- ) {: need:n :}
-   need 0 <= need MAXPUSH > or IF
-      s" checker: push arena capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    need SPA-CAP @ <= IF exit THEN
    need MAXPUSH-INIT max
    SPA-CAP @ MAXPUSH 2 / <= IF SPA-CAP @ 2 * max THEN {: nc:n :}
@@ -2864,10 +2857,6 @@ EXPORT CHECKER-REG:GROW
    CT-STR-U @ add + CT-STR-CAP-V @ <= IF exit THEN
    CT-STR-U @ add + CT-STR-GROW ;
 
-: CT-CODE-CHECK ( n -- )
-   dup 0 <= IF s" checker: bad signature type code" EXIT-STATUS:INTERNAL die THEN
-   drop ;
-
 : CT-ROOM ( n -- )
    CT-STR-ENSURE ;
 
@@ -2889,7 +2878,6 @@ EXPORT CHECKER-REG:GROW
 
 : CT-SET ( str n n n n -- ) {: a:^ u:n code:n class:n width:n sign:n :}
    WRITE-WINDOW-CK
-   code CT-CODE-CHECK
    code CT-ENSURE
    a u CT-COPY {: off:n len:n :}
    off code cells CT-NAME-A + !
@@ -4225,7 +4213,6 @@ EXPORT CHECKER-QUOT-FRESH:HELD
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN
    r PARAM>HID 0 > ;
 : HIDDEN-SLOT@ ( n -- n ) {: t:n :}
-   t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" EXIT-STATUS:INTERNAL die THEN
    t T-UNSTALE PARAM>HID 1 - ;
 \ The family a row cell belongs to, stale or not: a raw PARAM>FAM on a wrapper
 \ reads the stale arena index as a param index (a fail-open garbage family).
@@ -4288,18 +4275,13 @@ EXPORT CHECKER-QUOT-FRESH:HELD
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
    slot 1 + t PAY cells PARAMHID + !
    t ;
-\ Slots 0..W-2 are payload, W-1 the tag. w is src's T-WIDTH, which the caller
-\ measures once for all W.
-: MK-HIDDEN ( n n n -- n ) {: src0:n slot:n w:n :}
-   src0 T-RES {: src:n :}
-   src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" EXIT-STATUS:INTERNAL die THEN
-   slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" EXIT-STATUS:INTERNAL die THEN
-   src slot HIDDEN-OF ;
+\ Slots 0..W-2 are payload, W-1 the tag.
+: MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
+   src0 T-RES slot HIDDEN-OF ;
 \ Renderer compaction folds a full hidden run back to this logical type;
 \ checking never consumes it. The wrapper belongs to the value.
 : MK-LOGICAL ( n -- n ) {: src0:n :}
    src0 T-UNSTALE {: src:n :}
-   src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" EXIT-STATUS:INTERNAL die THEN
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup src PARAM>ARGC < WHILE
       src over PARAM>ARG PARAM-SCR+
@@ -4312,7 +4294,7 @@ EXPORT CHECKER-QUOT-FRESH:HELD
    type T-RES {: src:n :}
    src T-WIDTH {: w:n :}
    row 0 BEGIN dup w < WHILE                 \ ( row slot )
-      dup src swap w MK-HIDDEN               \ ( row slot hid )
+      dup src swap MK-HIDDEN                 \ ( row slot hid )
       rot MK-PUSH swap                       \ push hid onto row -> ( row' slot )
       1 +
    REPEAT drop ;
@@ -4400,7 +4382,7 @@ variable NMOFF                           \ its token's offset in the checked tex
    t TAG T-STALE = {: stale:bool :}
    src T-WIDTH {: w:n :}
    rest  w 0 ?do
-      src i w MK-HIDDEN  stale IF MK-STALE THEN  swap MK-PUSH
+      src i MK-HIDDEN  stale IF MK-STALE THEN  swap MK-PUSH
    loop
    node over rest FIELDS-LINEAGE! ;
 
@@ -5615,7 +5597,6 @@ PTR-VARIABLE SGA  variable SGU
 }SCRATCH
 $1000 constant TOKBUF-INIT-CAP
 $10000 constant TOKBUF-GRAIN
-$7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
 create FAILTK-BOOT TOKBUF-INIT-CAP allot
 create TKF-BOOT TOKBUF-INIT-CAP allot
 create NMB-BOOT TOKBUF-INIT-CAP allot
@@ -5639,10 +5620,6 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
 : NMB! NMB-FIELD ! ;
 : SDEC! SDEC-FIELD ! ;
 : TOKBUF-ROUND-CAP {: need :}
-   need 0 <= IF s" checker: bad token buffer cap" EXIT-STATUS:INTERNAL die THEN
-   need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF
-      s" checker: token buffer too large" EXIT-STATUS:INTERNAL die
-   THEN
    need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
 : TOKBUF-ALLOC ( n -- ^u8 ) {: bytes:n :}
    bytes map-anon 0 <> IF drop bytes s" the checker's token buffer" REJECTION:MAP-PASS THEN ;
@@ -7594,7 +7571,6 @@ variable VRC-RVN
          x VREC-RES PAY node VN.A!
          node
       endof
-      T-SCOPE of s" checker: live scope in record schema" EXIT-STATUS:INTERNAL die endof
       T-ATOM of
          VR-ATOM VREC-NODE-NEW {: node:n :}
          x VREC-RES ATOM>A x VREC-RES ATOM>U node VREC-COPY-STR
@@ -8452,11 +8428,7 @@ variable PKHAVE
    S\" `<`, `>`, `,`, `[`, `]`, `(`, `)`, `\q` or `\\`" REJECTION:EMIT-STR
    REJECTION:HELP  s" give the linear type a name no other type has" REJECTION:EMIT-STR ;
 
-\ DEFLINEAR hands a name it read; any other caller is the engine's.
 : CT-ADD-LINEAR ( str str -- ) {: a:^ u:n pa:^ pu:n :}
-   a u BYTE-SPAN? 0= IF
-      s" checker: a linear type's name describes no memory" EXIT-STATUS:INTERNAL die
-   THEN
    a u TYPE-RESERVED? IF a u CHECKER-LINEAR-TAKEN  EXIT-STATUS:REJECTED REJECTION:STOP THEN
    a u pa pu CT-LINEAR-SET ;
 
@@ -8693,7 +8665,7 @@ SIG-BINDER-BODY-INSTALL
    rt LAYOUT-PARAM? 0= IF rt EXIT THEN
    rt LAYOUT-WIDTH-OPEN? IF rt EXIT THEN
    rt T-WIDTH {: w:n :}
-   rt w 1 - w MK-HIDDEN ;
+   rt w 1 - MK-HIDDEN ;
 
 \ A bare `^`, which SIG-TYPE rejects, is read first: its pointee is STORED, and
 \ a one-cell use of it (`p @`) makes it one cell.
@@ -10124,9 +10096,6 @@ variable VREC-TYPE-U
 \ at the record's name.
 : CHECKER-DEFRECORD ( ^u8 n ^u8 n -- )
    {: name:^ nameu:n fields:^ fieldsu:n :}
-   name nameu BYTE-SPAN? 0= IF
-      s" checker: a value record's name describes no memory" EXIT-STATUS:INTERNAL die
-   THEN
    name nameu fields fieldsu VREC-TRY {: at:n why:n :}
    why 0= IF EXIT THEN
    name nameu  fields fieldsu at VREC-TOKEN  why CHECKER-RECORD-REJECT
@@ -10276,7 +10245,6 @@ variable QCON-RN
 \ store on demand.
 $1000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
-$7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 create USIGS-BOOT USIGS-INIT-CAP allot
 PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
 USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !
@@ -10354,10 +10322,6 @@ variable CHX-HI
    MD-CONSTRUCT-WIDE MDIAG!  0 OK !  -1 FAILSET ! ;
 
 : USIGS-ROUND-CAP {: need :}
-   need 0 <= IF s" checker: bad user sig cap" EXIT-STATUS:INTERNAL die THEN
-   need USIGS-MAX-CAP USIGS-GRAIN - > IF
-      s" checker: user sigs too large" EXIT-STATUS:INTERNAL die
-   THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
 
 \ ---- navigation: where a named declaration was written ----------------------
@@ -10622,14 +10586,7 @@ variable SYM-ID
    SYM-STR-P SYM-STR-CAP-V @ nc GROW
    nc SYM-STR-CAP-V ! ;
 
-\ Every name the checker records is copied here from declaration words any
-\ source can call, so the length is compared with the room left, never added to
-\ the used mark: a length of -1 would move the mark back.
-: SYM-STR-OVERFLOW ( -- )
-   s" checker: symbol string capacity overflow" EXIT-STATUS:INTERNAL die ;
-
 : SYM-STR-ENSURE ( n -- ) {: add:n :}
-   add 0 < SYM-STR-U @ add + 0 < or IF SYM-STR-OVERFLOW THEN
    add SYM-STR-CAP-V @ SYM-STR-U @ - <= IF exit THEN
    SYM-STR-U @ add + SYM-STR-GROW ;
 
@@ -12108,11 +12065,6 @@ CHX-RESET
       1 +
    repeat drop ;
 
-: IDX-SYM-OK ( n -- ) {: sym:n :}
-   sym 1 <  sym SYM-CAP >=  or IF
-      s" checker: store record symbol outside index range" EXIT-STATUS:INTERNAL die
-   THEN ;
-
 : USX@ ( n -- n )
    HT-USX IDX-HEAD@ ;
 
@@ -12134,7 +12086,6 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 
 : USX-LINK ( n n -- ) {: off:n sym:n :}
    sym 0= IF EXIT THEN
-   sym IDX-SYM-OK
    sym USX@ off E-PTR ER.SYMPREV !
    off 1 + sym USX! ;
 
@@ -12196,7 +12147,6 @@ RECORD-HOOK-DEFAULTS
 : CHECKER-CTOR-DECL-AT! ( n str n n n -- )
    {: sym:n name:^ nameu:n visit:n start:n end:n :}
    sym USIG-NEWEST {: rec1:n :}
-   rec1 0= IF s" checker: missing constructor record" EXIT-STATUS:INTERNAL die THEN
    name nameu DLB-ADD {: noff:n :}
    rec1 1 - visit start end noff nameu DL-ROW+ ;
 
@@ -12629,9 +12579,6 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 \ A rollback lowers SYM-N and SYM-STR-U only here. The indexes retire while HIDX
 \ can read the rows; zeroed rows and bytes leave no retired symbol in an image.
 : SYM-REWIND ( n n -- ) {: symn:n symu:n :}
-   symn 1 < symn SYM-N @ > or symu 0 < or symu SYM-STR-U @ > or IF
-      s" checker: symbol rewind outside the registry" EXIT-STATUS:INTERNAL die
-   THEN
    symn HIDX-SYMS-RETIRE
    SYMS CELL-VIEW  symn SYM-REC CELL / *  SYM-N @ SYM-REC CELL / *  ARENA-CELLS-ZERO
    SYM-STR symu +  SYM-STR-U @ symu -  ARENA-ZERO
@@ -12677,9 +12624,6 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW?
 
 : CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
 : CHECKER-USING$ ( n -- str ) {: ix:n :}
-   ix 0 < ix CHECKER-USING-N >= or IF
-      s" checker: using index out of range" EXIT-STATUS:INTERNAL die
-   THEN
    ix CK-USE-SLOT ix CK-USE-LEN@ ;
 
 ;package
@@ -14214,12 +14158,7 @@ DFERS-P DFER-CAP-V 1 DFER-END STORE+
    c $5A > IF c EXIT THEN
    c $20 or ;
 
-\ A package name must have a length that describes memory: a -1 length would
-\ intern nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( str -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF
-      s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die
-   THEN
    a u SYM-PKG-INTERN  CHECKER-PACKAGE-U !  CHECKER-PACKAGE-NAME ! ;
 
 global
@@ -14294,14 +14233,6 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    a  u ix HOLD  u ARENA-COPY ;
 
 
-\ A bad index is a linker defect, never a program's, so it dies.
-: HELD-RANGE ( n n -- )
-   {: k:n limit:n :}
-   k 0 < k limit < 0= or IF
-      s" checker: held facts index out of range" EXIT-STATUS:INTERNAL die
-   THEN ;
-
-
 : HELD-ENTRY ( n -- n str )
    {: k:n :}
    k 0 HELD-CELL @   HELD-TEXT k 1 HELD-CELL @ +   k 2 HELD-CELL @ ;
@@ -14345,7 +14276,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 \ The linker's view of the held writes. HELD-FACT@ answers entry k's kind or
 \ index and its text, until a facts write unmaps or overwrites it.
 : HELD-FACTS ( -- n ) HELD-N @ ;
-: HELD-FACT@ ( n -- n str ) dup HELD-N @ HELD-RANGE HELD-ENTRY ;
+: HELD-FACT@ ( n -- n str ) HELD-ENTRY ;
 : HOLD-RETIRED ( n n -- )
    {: ix:n wid:n :}
    BUILDING? 0= IF EXIT THEN
@@ -14353,10 +14284,7 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    ix at CELL-VIEW !   wid at CELL + CELL-VIEW !   ndict@ at 2 cells + CELL-VIEW ! ;
 \ Entry k's retired record, the wordlist cell it had and the record count at the hold.
 : HELD-RETIRED@ ( n -- n n n )
-   HELD-FACT@ {: ix:n a:^ u:n :}
-   ix HELD-RETIRED <>  u 3 cells <>  or IF
-      s" checker: held entry is not a retired record" EXIT-STATUS:INTERNAL die
-   THEN
+   HELD-FACT@ drop nip {: a:^ :}
    a CELL-VIEW @   a CELL + CELL-VIEW @   a 2 cells + CELL-VIEW @ ;
 \ Holds that an amender changed record ix's facts after its
 \ text was written, and sym, the symbol they are read from. Neither can write
@@ -14368,27 +14296,20 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    ix at CELL-VIEW !   sym at CELL + CELL-VIEW ! ;
 \ Entry k's amended record and its symbol.
 : HELD-AMENDED@ ( n -- n n )
-   HELD-FACT@ {: ix:n a:^ u:n :}
-   ix HELD-AMENDED <>  u 2 cells <>  or IF
-      s" checker: held entry is not an amended record" EXIT-STATUS:INTERNAL die
-   THEN
+   HELD-FACT@ drop nip {: a:^ :}
    a CELL-VIEW @   a CELL + CELL-VIEW @ ;
 \ Keeps the first n entries.
-: DROP-FACTS ( n -- ) dup HELD-N @ 1+ HELD-RANGE HELD-KEEP ;
+: DROP-FACTS ( n -- ) HELD-KEEP ;
 \ A created word's text is laid too: the linker places where no created body is
 \ open.
 : PLACE-FACTS ( n -- )
    {: from:n :}
-   from HELD-N @ 1+ HELD-RANGE
    HELD-N @ from ?do i PLACE-FACT loop
    from HELD-KEEP ;
 
 EXPORT CHECKER-USE:NAME!
 
 : CHECKER-USING ( str -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF
-      s" checker: using name length describes no memory" EXIT-STATUS:INTERNAL die
-   THEN
    CK-USE-DEPTH {: d:n :}
    d USE-MAX >= IF s" checker: using stack overflow" EXIT-STATUS:INTERNAL die THEN
    a u HEAD-ROW {: row:^ :}
@@ -15619,9 +15540,6 @@ NCOMP-DISPATCH:TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 \ NAME, or `A:NAME` in package A.
 : PART-PATH ( str -- str ) {: a:^ u:n :}
    TOP-NAME$ {: pa:^ pu:n :}
-   a u BYTE-SPAN? 0= IF
-      s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die
-   THEN
    a u CHECKER-COLON-SCAN drop 0 <> IF a u PACKAGE-COLON-REJECT THEN
    pu 0= IF a u EXIT THEN
    pu 1 + u + {: ku:n :}
@@ -15652,9 +15570,6 @@ EXPORT CHECKER-OVERLAY:OPEN-PACKAGE
 
 \ The path a u, then the name as written t tu.
 : CHECKER-PACKAGE ( str str -- ) {: a:^ u:n t:^ tu:n :}
-   a u BYTE-SPAN? 0= IF
-      s" checker: package name length describes no memory" EXIT-STATUS:INTERNAL die
-   THEN
    a u CTOR-OWNER-XT {: pa:^ pu:n na:^ nu:n owned:bool :}
    owned IF a u t tu pa pu na nu CTOR-PKG-REJECT THEN
    CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF a u OPEN-PACKAGE THEN
@@ -16016,10 +15931,7 @@ private
 : CHECKER-PKG-SYM? ( str n str -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
 
-\ Interning stores the name, so a length that describes no memory is refused
-\ with the symbol pool's own refusal before the split reads it.
 : CHECKER-RECORD-SYM ( str -- n ) {: a u:n :}
-   a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n vis:n :}
@@ -16810,7 +16722,6 @@ variable BWIN-N   variable BWIN-CAP   variable UWIN-VALID
 
 : BWIN-ENSURE ( -- )
    BWIN-N @ BWIN-CAP @ < IF EXIT THEN
-   BWIN-N @ BWIN-MAX >= IF s" checker: call binding capacity overflow" EXIT-STATUS:INTERNAL die THEN
    BWIN-N @ 1+ BWIN-INIT max
    BWIN-CAP @ BWIN-MAX 2 / <= IF BWIN-CAP @ 2 * max THEN
    {: cap:n :}
@@ -16938,9 +16849,6 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 
 : CWIN-ENSURE ( -- )
    CWIN-N @ CWIN-CAP @ < IF EXIT THEN
-   CWIN-N @ CWIN-ROW-MAX >= IF
-      s" checker: recorded site capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    CWIN-N @ 1 + CWIN-INIT max
    CWIN-CAP @ CWIN-ROW-MAX 2 / <= IF CWIN-CAP @ 2 * max THEN
    {: cap:n :}
@@ -17266,9 +17174,6 @@ private
 \ The only way DFER-END is lowered. The table is baked, so the retired rows
 \ [n, DFER-END) are zeroed before the terminator is written.
 : DFER-REWIND ( n -- ) {: n:n :}
-   n 0 < n DFER-END @ > or IF
-      s" checker: defer table rewind outside the registry" EXIT-STATUS:INTERNAL die
-   THEN
    DFERS  n CELL /  DFER-END @ CELL /  ARENA-CELLS-ZERO
    n DFER-END !
    DFER-TERM ;
@@ -17483,11 +17388,8 @@ private
    s" `, or rename one of the two" REJECTION:EMIT-STR
    EXIT-STATUS:REJECTED REJECTION:STOP ;
 
-\ A length that describes no memory is refused with the symbol pool's refusal
-\ before the constructor scan reads it.
 : USIG-CERT-ADMIT ( str str -- )
    {: na:^ nu:n at:^ atu:n :}
-   na nu BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    na nu CTOR-EXTEND?-XT IF at atu CTOR-EXTEND-REJECT THEN
    na nu CHECKER-CERT-DUP? IF at atu CHECKER-DUP-DEFINITION THEN
    na nu at atu CHECKER-REC-NAME-AT!
@@ -17888,7 +17790,6 @@ $18 constant NORET-CREATES-OFF
 $20 constant NORET-SOURCE-OFF
 $28 constant NORET-NONZERO-OFF
 $30 constant NORET-ENTRY
-$8 constant NORET-ENTRY-ALIGN
 : NORET.SYM ( ^a -- ^a ) NORET-SYM-OFF + ;
 : NORET.FLAG ( ^a -- ^a ) NORET-FLAG-OFF + ;
 : NORET.SYMPREV ( ^a -- ^a ) NORET-SYMPREV-OFF + ;
@@ -17909,9 +17810,6 @@ variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
 : NORETS ( -- ^u8 ) NORET-P @ ;
 
 : NORET-CELL ( n -- ^n ) {: off:n :}
-   off NORET-ENTRY-ALIGN 1 - and 0 <> IF
-      s" checker: unaligned no-return cell" EXIT-STATUS:INTERNAL die
-   THEN
    NORETS off + CELL-VIEW ;
 
 : NORET-TERM ( -- )
@@ -17953,7 +17851,6 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    NRX-POS @ NORET-CELL NORET.SYM @ 0= ;
 
 : NRX-LINK ( n n -- ) {: off:n sym:n :}
-   sym IDX-SYM-OK
    sym NRX@ off NORET-CELL NORET.SYMPREV !
    off 1 + sym NRX! ;
 
@@ -17989,9 +17886,6 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ The control-flag store's only rewind. The store is baked, so the entries
 \ NRX-TRUNCATE walked are zeroed after it: a later image carries none.
 : NORET-RESTORE-END ( n -- ) {: newend:n :}
-   newend 0 < newend NORET-END @ > or IF
-      s" checker: control-flag rewind outside the registry" EXIT-STATUS:INTERNAL die
-   THEN
    newend RECORD-CONTROL-REWIND-XT
    newend NRX-TRUNCATE
    NORETS newend +  NORET-END @ newend -  ARENA-ZERO
@@ -18118,7 +18012,6 @@ private
    RECORD-LINK-ROW * RECORD-LINK-P @ + CELL-VIEW ;
 
 : RECORD-LINK-ROOM ( n -- ) {: ord:n :}
-   ord DICT-CAP >= IF s" checker: record link outside dictionary" EXIT-STATUS:INTERNAL die THEN
    ord RECORD-LINK-CAP @ < IF EXIT THEN
    RECORD-LINK-CAP @ 0= IF 64 ELSE RECORD-LINK-CAP @ THEN
    BEGIN dup ord <= WHILE 2 * REPEAT
@@ -19579,9 +19472,6 @@ variable WF-CURROW   variable WF-POS-I
 
 : WF-GROW-CAP ( n -- n ) {: need:n :}
    $7FFFFFFFFFFFFFFF WF-REC / {: lim:n :}
-   need 0 <= need lim > or if
-      s" checker: width-fact capacity overflow" EXIT-STATUS:INTERNAL die
-   then
    WF-CAP @ lim 2 / <= if WF-CAP @ 2 * need max WF-INIT max exit then
    need ;
 
@@ -19592,9 +19482,7 @@ variable WF-CURROW   variable WF-POS-I
    cap WF-CAP ! ;
 
 : WF-ROW ( n -- ^n ) WF-REC * WFS + ;
-: WF-ROW@ ( n -- ^n ) {: i:n :}
-   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" EXIT-STATUS:INTERNAL die THEN
-   i WF-ROW ;
+: WF-ROW@ ( n -- ^n ) WF-ROW ;
 : WF-N@ ( -- n ) WF-N @ ;
 : WF-OFF@ ( n -- n ) WF-ROW@ WF.OFF @ ;
 : WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
@@ -19993,8 +19881,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    base s" mut-view" C2-MUT-FAM @ MK-PARAM ;
 
 : SCOPE-ALLOC-LEN ( -- n )
-   s" NUM:alloc-byte-len" SIG-FAM? 0= IF
-      drop s" checker: mutable scope requires alloc-byte-len" EXIT-STATUS:INTERNAL die THEN
+   s" NUM:alloc-byte-len" SIG-FAM? drop
    >r PARAM-SCR-N @ s" NUM:alloc-byte-len" r> MK-PARAM ;
 
 : SCOPE-MUT-ROOT-SHAPE? ( n -- bool ) {: scheme:n :}
@@ -20637,11 +20524,6 @@ variable XG-N   variable XG-TN   variable XG-ROW
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
       t XG-READ-HID RES-TRUE EXIT THEN
-   \ Every caller expands a known layout and stops at an open one before
-   \ reading: one here is a checker bug.
-   t LAYOUT-PARAM? IF
-      s" checker: logical layout cell in a transport group" EXIT-STATUS:INTERNAL die
-   THEN
    node P>TYPE node XG-T+
    node P>REST XG-ROW !
    RES-TRUE ;
@@ -20947,9 +20829,6 @@ PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
    LOCNB start +  idx cells LOCEND + @ start - ;
 : LOC-HW ( -- ^n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
-   need 0 <= need LOC-HW-MAX-CELLS > or IF
-      s" checker: local bind capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max LOC-HW-INIT max EXIT THEN
    need ;
 : LOC-HW-ENSURE ( n -- ) {: need:n :}
@@ -20957,9 +20836,7 @@ PTR-VARIABLE LOC-HW-P   variable LOC-HW-CAP   variable LOCSEQ
    need LOC-HW-GROW-CAP {: cap:n :}
    LOC-HW-P @ LOC-HW-CAP @ cells cap cells SR-GROW LOC-HW-P !
    cap LOC-HW-CAP ! ;
-: LOCW-HW@ ( n -- n ) {: s:n :}
-   s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" EXIT-STATUS:INTERNAL die THEN
-   s cells LOC-HW + @ ;
+: LOCW-HW@ ( n -- n ) cells LOC-HW + @ ;
 : LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
 \ The no-op default keeps the call effect-known and drops the name span,
 \ length and type.
@@ -22873,12 +22750,8 @@ private
 \ reused body buffer: it may check a does> parent after its clause, then report
 \ the clause only if the parent was not deferred.
 : CHECKER-VERIFY-DEFERRED-BODY ( -- ^u8 n )
-   TBASE@ FAILB @ + REJECTION:>SOURCE 0= IF
-      drop s" checker: deferred body pin outside source" EXIT-STATUS:INTERNAL die
-   THEN {: start:n :}
-   TBASE@ FAILE @ + REJECTION:>SOURCE 0= IF
-      drop s" checker: deferred body end outside source" EXIT-STATUS:INTERNAL die
-   THEN {: end:n :}
+   TBASE@ FAILB @ + REJECTION:>SOURCE drop {: start:n :}
+   TBASE@ FAILE @ + REJECTION:>SOURCE drop {: end:n :}
    REJECTION:SOURCE$ drop start +  end start - ;
 
 \ Whether the signature token SGBAD names lies in the text at A U; an empty one
@@ -22989,10 +22862,7 @@ private
 ' TRUST-DECL CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
 ' TRUST-DECL-REJECTED? CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DECL-ROW-OFF + xt!
 
-\ A length that describes no memory is rejected with the symbol pool's error
-\ before the constructor scan reads it.
 : CHECKER-DEFER ( str -- ) {: a:^ u:n :}
-   a u BYTE-SPAN? 0= IF SYM-STR-OVERFLOW THEN
    a u CTOR-EXTEND?-XT IF a u CTOR-EXTEND-REJECT THEN
    a u CHECKER-RECORD-NAME DFER-ADD
    \ Any word may be installed, so a call may throw and keeps no input intact.
@@ -23123,9 +22993,6 @@ SIMM-ONS-P SIMM-CAP-V CELL TABLE+
 
 : SIMM-REWIND ( n -- )
    {: n:n :}
-   n 0 < n SIMM-N @ > or IF
-      s" checker: immediate table rewind outside the table" EXIT-STATUS:INTERNAL die
-   THEN
    SIMM-SYMS n SIMM-N @ ARENA-CELLS-ZERO
    SIMM-ONS n SIMM-N @ ARENA-CELLS-ZERO
    n SIMM-N ! ;
@@ -24223,10 +24090,8 @@ variable POST-A0
 \ so a package's own `compile,` does not capture it.
 : COMPILE-CALL-REC ( -- ^n n )
    s" compile," WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: run:^ :}
-   run NULL-PTR = IF s" checker: no row of compile," EXIT-STATUS:INTERNAL die THEN
    run FACTS-READ-XT
    run REC-HOME-SYM {: sym:n :}
-   sym 0= IF s" checker: no symbol for compile," EXIT-STATUS:INTERNAL die THEN
    run sym ;
 
 \ A postponed token names its record even where a local of its spelling is
@@ -25166,9 +25031,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 : ANNOT-REC-SYM ( ^n -- n ) {: rec:^ :}
    rec CK-REC-NAME$ {: name:^ nameu:n :}
    rec CK-REC-WID {: wid:n :}
-   nameu 0= wid -2 = or IF
-      s" checker: an annotated word has no live record" EXIT-STATUS:INTERNAL die
-   THEN
    wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    ndict@ 0 ?DO
       i REC-AT {: ns:^ :}
@@ -25186,7 +25048,6 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    s" checker: an annotated word's wordlist has no package" EXIT-STATUS:INTERNAL die ;
 
 : CTL-ADD-REC ( ^n n -- ) {: rec:^ flag:n :}
-   rec NULL-PTR = IF s" checker: an annotated word was not found" EXIT-STATUS:INTERNAL die THEN
    rec ANNOT-REC-SYM {: sym:n :}
    sym sym CTL-FLAGS-SYM flag or
       sym CTL-MASKS-SYM NORET-ADD-SYM
@@ -25196,11 +25057,9 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 \ The dictionary's last record and its defining wordlist identify the binding;
 \ neither the source spelling nor an active-package guess does.
 : NOMINAL-PROVIDER ( -- )
-   ndict@ 0= IF s" checker: nominal provider has no dictionary record" EXIT-STATUS:INTERNAL die THEN
    ndict@ 1- REC-AT NOMINAL-ADD-REC ;
 \ The same annotation after a word that may move the source root (CTL-ROOTS).
 : ROOT-MOVER ( -- )
-   ndict@ 0= IF s" checker: root mover has no dictionary record" EXIT-STATUS:INTERNAL die THEN
    ndict@ 1- REC-AT CTL-ROOTS CTL-ADD-REC ;
 \ The registrars above are found by name: a record's index holds only in the
 \ process that made it, and a built hb numbers its records anew.

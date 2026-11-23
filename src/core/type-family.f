@@ -238,7 +238,6 @@ EXPORT CHECK:HIDX-GEN
 EXPORT CHECK:IDX-HEAD!
 EXPORT CHECK:IDX-HEAD@
 EXPORT CHECK:IDX-HEADS-CLEAR
-EXPORT CHECK:IDX-SYM-OK
 EXPORT CHECK:ISVAR
 EXPORT CHECK:LAYOUT-WIDTH-OPEN?
 EXPORT CHECK:LOAN-FIELD-FAM
@@ -863,7 +862,6 @@ variable SVX-HI
 \ even if two rows ever carried one symbol.
 : SVX-LINK ( n n -- ) {: vid:n sym:n :}
    sym 0= IF EXIT THEN
-   sym IDX-SYM-OK
    sym SVX@ 0 <> IF EXIT THEN
    vid 1 + sym SVX! ;
 
@@ -2420,7 +2418,6 @@ variable ER-MARK    0 ER-MARK !
 variable MBX-GEN   0 MBX-GEN !
 
 : MBX-LINK ( n n -- ) {: head:n sym:n :}
-   sym IDX-SYM-OK
    head sym HT-MBX IDX-HEAD! ;
 
 : MBX-BUILD ( -- )
