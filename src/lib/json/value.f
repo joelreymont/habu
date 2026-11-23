@@ -13,9 +13,9 @@ split-str
 \ below an inner object's lo, so the stack stays below the range a check groups.
 \ The repeat earliest in the text is rejected once the whole text has read well
 \ formed.
-\ EACH and EACH-MEMBER run their quotation while the walk's cursor is open;
-\ a value it is given borrows the text, not the cursor, so it stays valid
-\ after the walk.
+\ The walks EACH, EACH-MEMBER and their -WHILE forms run their quotation
+\ while the walk's cursor is open; a value it is given borrows the text, not
+\ the cursor, so it stays valid after the walk.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows and
 \ the vector APPEND-STRING grows. The cursor record, its depth mapping, AT's
 \ decoded token and WITH-STRING's decoded text live in a MEM:WITH-BYTES scope,
@@ -223,37 +223,44 @@ private
    state CURSOR-SRC @ state TOKEN-START
    state CURSOR-TOK-LEN @ 2 + VALUE-MAKE ;
 
-: ELEMENTS ( R ^cursor [ R value -- R ] -- R )
-   {: state:^ body :}
-   state NEXT-INNER T-ARR <> if
-      state s" an array" s" walk only an array with JSON:EACH"
-      WRONG-KIND
-   then
+\ The str is the fix a wrong kind's rejection gives; it names the caller's walk.
+: ELEMENTS ( R ^cursor str [ R value -- R bool ] -- R )
+   {: state:^ fa:^ fu:n body :}
+   state NEXT-INNER T-ARR <> if state s" an array" fa fu WRONG-KIND then
    begin state NEXT-INNER T-ARR-END <> while
-      state TOKEN-VALUE body execute
+      state TOKEN-VALUE body execute 0= if exit then
    repeat ;
 
-: MEMBERS ( R ^cursor [ R value value -- R ] -- R )
-   {: state:^ body :}
-   state NEXT-INNER T-OBJ <> if
-      state s" an object" s" walk only an object with JSON:EACH-MEMBER"
-      WRONG-KIND
-   then
+\ The str is the fix, as in ELEMENTS.
+: MEMBERS ( R ^cursor str [ R value value -- R bool ] -- R )
+   {: state:^ fa:^ fu:n body :}
+   state NEXT-INNER T-OBJ <> if state s" an object" fa fu WRONG-KIND then
    begin state NEXT-INNER T-OBJ-END <> while
       state NAME-VALUE
-      state NEXT-INNER drop state TOKEN-VALUE
-      body execute
+      state NEXT-INNER drop state TOKEN-VALUE body execute 0= if exit then
    repeat ;
 
 public
 
 : EACH ( R value [ R value -- R ] -- R ) {: v body :}
-   v 0 [: drop body ELEMENTS ;] WITH-CURSOR ;
+   v 0 [: drop s" walk only an array with JSON:EACH"
+      [: body execute true ;] ELEMENTS ;] WITH-CURSOR ;
 
 \ The name is the key as written, a string value.
 : EACH-MEMBER ( R value [ R value value -- R ] -- R )
    {: v body :}
-   v 0 [: drop body MEMBERS ;] WITH-CURSOR ;
+   v 0 [: drop s" walk only an object with JSON:EACH-MEMBER"
+      [: body execute true ;] MEMBERS ;] WITH-CURSOR ;
+
+: EACH-WHILE ( R value [ R value -- R bool ] -- R )
+   {: v body :}
+   v 0 [: drop s" walk only an array with JSON:EACH-WHILE" body ELEMENTS ;]
+   WITH-CURSOR ;
+
+: EACH-MEMBER-WHILE ( R value [ R value value -- R bool ] -- R )
+   {: v body :}
+   v 0 [: drop s" walk only an object with JSON:EACH-MEMBER-WHILE" body MEMBERS ;]
+   WITH-CURSOR ;
 
 private
 

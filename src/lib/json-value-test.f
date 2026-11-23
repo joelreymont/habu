@@ -239,6 +239,40 @@ create DEEP-BUF DEPTH 2 * allot
    s" 1:1: expected an object, found an array; walk only an object with JSON:EACH-MEMBER"
    SAID ;
 
+: UNTIL-2 ( n JSON:value -- n bool ) {: k:n v :}
+   k 1+  v JSON:>N 2 <> ;
+
+: TEST-EACH-WHILE ( -- )
+   s" EACH-WHILE stops after the body that answers false" T-LABEL
+   0 s" [1,2,3]" JSON:PARSE [: UNTIL-2 ;] JSON:EACH-WHILE 2 T=
+   s" EACH-WHILE walks to the end while the body answers true" T-LABEL
+   0 s" [1,3,4]" JSON:PARSE [: UNTIL-2 ;] JSON:EACH-WHILE 3 T=
+   s" EACH-WHILE rejects an object, naming itself" T-LABEL
+   [: s" {}" JSON:PARSE [: DROP-VALUE true ;] JSON:EACH-WHILE ;]
+   JSON:E-MEMBER TTHROWSQ
+   JSON:E-MEMBER
+   s" 1:1: expected an array, found an object; walk only an array with JSON:EACH-WHILE"
+   SAID ;
+
+: UNTIL-B ( n JSON:value JSON:value -- n bool )
+   {: k:n name v :}
+   k 1+  name s" b" JSON:STRING= 0= ;
+
+: TEST-EACH-MEMBER-WHILE ( -- )
+   s" EACH-MEMBER-WHILE stops after the body that answers false" T-LABEL
+   0 s\" {\"a\":1,\"b\":2,\"c\":3}" JSON:PARSE
+   [: UNTIL-B ;] JSON:EACH-MEMBER-WHILE 2 T=
+   s" EACH-MEMBER-WHILE walks to the end while the body answers true" T-LABEL
+   0 s\" {\"a\":1,\"c\":3,\"d\":4}" JSON:PARSE
+   [: UNTIL-B ;] JSON:EACH-MEMBER-WHILE 3 T=
+   s" EACH-MEMBER-WHILE rejects an array, naming itself" T-LABEL
+   [: s" [1]" JSON:PARSE
+      [: DROP-VALUE DROP-VALUE true ;] JSON:EACH-MEMBER-WHILE ;]
+   JSON:E-MEMBER TTHROWSQ
+   JSON:E-MEMBER
+   s" 1:1: expected an object, found an array; walk only an object with JSON:EACH-MEMBER-WHILE"
+   SAID ;
+
 : TEST-STRING= ( -- )
    s" STRING= compares a string's decoded bytes" T-LABEL
    s\" \"aé\"" JSON:PARSE s" aé" JSON:STRING= TTRUE
@@ -369,6 +403,8 @@ public
    TEST-KINDS
    TEST-EACH
    TEST-EACH-MEMBER
+   TEST-EACH-WHILE
+   TEST-EACH-MEMBER-WHILE
    TEST-STRING=
    TEST-WITH-STRING
    TEST-APPEND-STRING
