@@ -1794,6 +1794,7 @@ variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM !
 variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
 variable C2-MUT-FAM    -1 C2-MUT-FAM ! \ reserved bounded exclusive-view family
 variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element family
+variable C2-ROOT-FAM   -1 C2-ROOT-FAM ! \ reserved region term of the view WITH-MUT lends
 variable WIDTH-FAM  -1 WIDTH-FAM !
 variable EFFECT-TYPE-FAM  -1 EFFECT-TYPE-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
@@ -2556,6 +2557,10 @@ CWIN-BOOT-DEFAULT
 : LOAN-FIELD? ( n -- bool )
    T-RES dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
    PARAM>FAM LOAN-FIELD-FAM @ = ;
+
+: ROOT-REGION? ( n -- bool )
+   T-RES dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
+   PARAM>FAM C2-ROOT-FAM @ = ;
 
 : FIELD-ATOM-SAME? ( n n -- bool ) {: a:n b:n :}
    a T-RES TAG T-ATOM <> IF RES-FALSE EXIT THEN
@@ -3342,7 +3347,7 @@ variable TWALK-D
       x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
    THEN
    x TAG T-PARAM = IF
-      x READ-VIEW? x MUT-VIEW? or x LOAN-FIELD? or IF RES-TRUE EXIT THEN
+      x READ-VIEW? x MUT-VIEW? or x LOAN-FIELD? or x ROOT-REGION? or IF RES-TRUE EXIT THEN
       0 BEGIN dup x PARAM>ARGC < WHILE
          x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
@@ -4612,7 +4617,7 @@ variable XT-DECL
       t PAY TVK-SCOPE TVK-RAISE-TO RES-FALSE EXIT
    THEN
    vid TVK@ TVK-REGION = IF
-      t REGION-ATOM? t LOAN-FIELD? or IF RES-FALSE EXIT THEN
+      t REGION-ATOM? t LOAN-FIELD? or t ROOT-REGION? or IF RES-FALSE EXIT THEN
       t ISVAR 0= IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
       t PAY TVK@ dup ANY-KIND? 0= swap TVK-REGION <> and IF 2 SCOPE-HIT ! RES-TRUE EXIT THEN
       t PAY TVK-REGION TVK-RAISE-TO RES-FALSE EXIT
@@ -4800,7 +4805,7 @@ variable FORALL-INPUT-ROOT
          scope PAY TVK@ TVK-REGION =
          scope FORALL-INPUT-VAR? and EXIT
       THEN
-      scope REGION-ATOM? scope LOAN-FIELD? or EXIT
+      scope REGION-ATOM? scope LOAN-FIELD? or scope ROOT-REGION? or EXIT
    THEN
    scope ISVAR IF
       scope PAY TVK@ TVK-SCOPE =
@@ -8444,8 +8449,10 @@ defer SIG-TYPE-XT ( str -- n nominal )
                ELSE a u SGBAD-SYNTAX! THEN
             ELSE region TAG T-BVAR = IF
                region B>DOMAIN BIND-REGION <> IF a u SGBAD-SYNTAX! THEN
-            ELSE region FRESH-REGION-TEMPLATE? 0= IF a u SGBAD-SYNTAX! THEN
-            THEN THEN
+            ELSE fam C2-ROOT-FAM @ = IF a u SGBAD-SYNTAX!
+            ELSE region ROOT-REGION? region FRESH-REGION-TEMPLATE? or 0= IF
+               a u SGBAD-SYNTAX! THEN
+            THEN THEN THEN
          THEN
       loop
    THEN
@@ -8740,7 +8747,8 @@ variable PD-ATOM0                        \ the first atom index this signature p
          ELSE x PARAM>FAM over TFAM-REGION-SLOT-XT IF
             x over PARAM>ARG T-RES dup ISVAR IF PAY TVK@ TVK-REGION = ELSE
                dup TAG T-BVAR = IF B>DOMAIN BIND-REGION = ELSE
-                  dup FRESH-REGION-TEMPLATE? swap LOAN-FIELD? or THEN THEN
+               dup ROOT-REGION? IF TWALK-DEEPER RECURSE TWALK-SHALLOWER ELSE
+                  dup FRESH-REGION-TEMPLATE? swap LOAN-FIELD? or THEN THEN THEN
          ELSE
             x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
          THEN THEN

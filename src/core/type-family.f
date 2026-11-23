@@ -196,6 +196,7 @@ EXPORT CHECK:C2-INIT-FAM
 EXPORT CHECK:C2-MUT-FAM
 EXPORT CHECK:C2-READ-FAM
 EXPORT CHECK:C2-RECORDS-FAM
+EXPORT CHECK:C2-ROOT-FAM
 EXPORT CHECK:C2-STOW-FAM
 EXPORT CHECK:CHECKER-AUTH-PACKAGE$
 EXPORT CHECK:CHECKER-AUTH-PACKAGE-ACTIVE?
@@ -3160,6 +3161,12 @@ variable STOW-FAM
    MUT-FAM @ 3 PK-TYPE TFAM-PK!
    MUT-FAM @ REGISTER-VIEW-FIELDS ;
 
+\ `root<a>`: the region of the view WITH-MUT lends, over its allocation region
+\ `a`. C2-MEM:BIND takes only this region, so ALLOC's fresh region never binds.
+: REGISTER-ROOT ( -- )
+   s" C2-MEM" CHECKER-PACKAGE-PUBLIC s" root" 1 TK-CELL TFAM-DECL C2-ROOT-FAM !
+   C2-ROOT-FAM @ 0 PK-REGION TFAM-PK! ;
+
 \ A reserved initialized element is a nominal product with one transparent
 \ payload schema. The field is metadata only: no make/unmake, derive, field
 \ accessor, or raw address operation is generated for this family.
@@ -3223,6 +3230,7 @@ REGISTER-WIDTH
 REGISTER-EFFECT-TYPE
 REGISTER-RECORDS
 REGISTER-STOW
+REGISTER-ROOT
 
 \ --- type entries. Inside a build each family a file declares gets a record,
 \ its type entry, named `pkg:tail` (a global's `tail`) in the program's types
