@@ -388,9 +388,8 @@ cells without reading them; those cells may only be discarded.
 **Owner frames belong to the task.** Frames form a chain in the current task's
 storage, rooted in a private slot reached through `data-base`; the main thread
 uses the same slot without a TCB. One static `TASK:AT-EXIT` callback per task
-drains remaining frames innermost first. A halted task now unwinds through
-each scope's cleanup, so the drain has no reachable case left; dot
-`habu-retire-c2-invoke-a608fd55` retires it with `c2-invoke`. The exit
+drains remaining frames innermost first. A halted task unwinds through each
+scope's cleanup, so the drain has no reachable case left. The exit
 registry is shared and fixed, so ownership uses one row per task, not per
 scope, and an exhausted registration fails before any owner is acquired. The
 process-wide byte scope stack is not reused, because it nests per image, not
