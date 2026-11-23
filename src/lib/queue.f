@@ -16,9 +16,8 @@ s" src/lib/type/deftype.f" required
 package QUEUE
 public
 
-\ The handle callers hold. It is an index into this package's table of queue
-\ records, not an address: a value that was never a queue names no record, and a
-\ handle can only ever reach storage this package allotted.
+\ The handle callers hold: an index into this package's table of queue
+\ records, minted by a QUEUE definition.
 DEFTYPE QUEUE
 
 private
@@ -54,15 +53,10 @@ Q-MAX TYPED-BUFFER Q-RECS ^n
 variable Q-N
 
 : Q-SLOT ( n -- ^^n ) {: idx:n :}
-   idx 0 < idx Q-MAX >= or if E-QUEUE-OPERAND throw then
    idx Q-RECS ;
 
-\ The one crossing from a handle back to memory, and it is a bounds check: a
-\ handle no definition minted is refused here instead of being dereferenced.
-: Q-INDEX ( queue -- n ) {: q:queue :}
-   q QUEUE>N {: idx:n :}
-   idx 0 < idx Q-N @ >= or if E-QUEUE-OPERAND throw then
-   idx ;
+: Q-INDEX ( queue -- n )
+   QUEUE>N ;
 
 : Q-REC ( n -- ^n )
    Q-SLOT @ ;
@@ -94,8 +88,8 @@ variable Q-N
 : Q-SEM-SLOT ( n n -- ^option<TASK:sem> ) {: idx:n which:n :}
    idx Q-SEM-N * which + Q-SEMS ;
 
-\ Every caller reads a slot the queue holds: after Q-LIVE-CHECK, after
-\ Q-SEM-TAKE, or below the count. Only a call racing DESTROY reaches `none`.
+\ Every caller reads a slot of a live queue, after Q-SEM-TAKE or below the
+\ count. A queue not live, or a call racing DESTROY, reaches `none`.
 : Q-SEM@ ( n n -- TASK:sem )
    Q-SEM-SLOT @ MATCH option
       none OF E-QUEUE-OPERAND throw ENDOF
@@ -147,9 +141,6 @@ variable Q-N
    idx Q-SEMS-DROP
    rc throw ;
 
-: Q-LIVE-CHECK ( n -- )
-   Q-REC Q.LIVE atomic@ 0= if E-QUEUE-STATE throw then ;
-
 \ The lock is a binary semaphore, held for the index move and the one cell copy
 \ below. They touch only the queue's own record, so only a corrupt queue throws
 \ between them: a memory fault, with the lock still held.
@@ -188,7 +179,6 @@ variable Q-N
 
 : Q-INIT ( n -- ) {: idx:n :}
    idx Q-REC {: rec:^ :}
-   rec Q.LIVE atomic@ 0 <> if E-QUEUE-STATE throw then
    0 rec Q.HEAD !
    0 rec Q.TAIL !
    0 rec Q.LEN !
@@ -204,13 +194,11 @@ variable Q-N
    idx Q-SEMS-DROP ;
 
 : Q-PUSH ( n n -- ) {: v:n idx:n :}
-   idx Q-LIVE-CHECK
    idx Q-FREE-SEM WAIT-SEM
    v idx Q-PUT-LOCKED
    idx Q-ITEM-SEM SIGNAL-SEM ;
 
 : Q-POP ( n -- n ) {: idx:n :}
-   idx Q-LIVE-CHECK
    idx Q-ITEM-SEM WAIT-SEM
    idx Q-TAKE-LOCKED {: v:n :}
    idx Q-FREE-SEM SIGNAL-SEM
@@ -219,7 +207,6 @@ variable Q-N
 \ The free-slot count is the number of free slots exactly, so taking one without
 \ blocking is the whole refusal: false means the ring was full.
 : Q-TRY-PUSH ( n n -- bool ) {: v:n idx:n :}
-   idx Q-LIVE-CHECK
    idx Q-FREE-SEM TRY-WAIT-SEM 0= if 0 0= 0= exit then
    v idx Q-PUT-LOCKED
    idx Q-ITEM-SEM SIGNAL-SEM
@@ -228,14 +215,12 @@ variable Q-N
 \ The value is zero when the flag is false: the ring was empty and nothing was
 \ taken.
 : Q-TRY-POP ( n -- n bool ) {: idx:n :}
-   idx Q-LIVE-CHECK
    idx Q-ITEM-SEM TRY-WAIT-SEM 0= if 0 0 0= 0= exit then
    idx Q-TAKE-LOCKED {: v:n :}
    idx Q-FREE-SEM SIGNAL-SEM
    v 0 0= ;
 
 : Q-COUNT ( n -- n ) {: idx:n :}
-   idx Q-LIVE-CHECK
    idx Q-LOCK-GET
    idx Q-REC Q.LEN @ {: len:n :}
    idx Q-LOCK-RELEASE
@@ -256,7 +241,7 @@ Q-MAX constant MAX-QUEUES
    does> ( -- QUEUE:queue ) @ >QUEUE ;
 
 \ Empties the queue and opens the three semaphores it borrows from package TASK.
-\ Initializing a live queue is E-QUEUE-STATE; every other word needs a live one.
+\ INIT takes a queue that is not live; every other word needs a live one.
 : INIT ( queue -- )
    Q-INDEX Q-INIT ;
 
