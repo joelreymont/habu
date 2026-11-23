@@ -32,10 +32,10 @@ public
    70 s" error[E-UNSAFE]: `C2-MEM:WITH-MUT` is a scoped entry" SUBJECT:REFUSED? TTRUE
    s" a layout wrapper rejects a raw prompt callback" T-LABEL
    S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ^u8 n -- n ^u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\n"
-   70 s" error[E-MISMATCH]: `C2-MEMORY-WRAPPER:TWICE` takes n forall<a,forall-region<b,[ n mut-view<a,a,b,u8> -- n mut-view<a,a,b,u8> ]>>;" SUBJECT:REFUSED? TTRUE
+   70 s" error[E-MISMATCH]: `C2-MEMORY-WRAPPER:TWICE` takes n forall<a,forall-region<b,[ n mut-view<a,a,c2-mem:root<b>,u8> -- n mut-view<a,a,c2-mem:root<b>,u8> ]>>;" SUBJECT:REFUSED? TTRUE
    s" an exported layout wrapper rejects a raw prompt callback" T-LABEL
    S\" require test/c2-memory-wrapper.f\npackage C2-ENTRY-ALIAS public EXPORT C2-MEMORY-WRAPPER:TWICE ;package\n: C2-ENTRY-RAW ( n ^u8 n -- n ^u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-ENTRY-ALIAS:TWICE .\n"
-   70 s" error[E-MISMATCH]: `C2-ENTRY-ALIAS:TWICE` takes n forall<a,forall-region<b,[ n mut-view<a,a,b,u8> -- n mut-view<a,a,b,u8> ]>>;" SUBJECT:REFUSED? TTRUE
+   70 s" error[E-MISMATCH]: `C2-ENTRY-ALIAS:TWICE` takes n forall<a,forall-region<b,[ n mut-view<a,a,c2-mem:root<b>,u8> -- n mut-view<a,a,c2-mem:root<b>,u8> ]>>;" SUBJECT:REFUSED? TTRUE
    ORDINARY
    T-REPORT
    s" c2-memory-entry: ok" type cr ;

@@ -275,7 +275,10 @@ remain lifetime-free.
 `C2-MEM:WITH-INIT` initializes a record in a byte view, `WITH-RECORDS` and
 `WITH-RECORD` own a table of records and lend one element, and `WITH-FIELD
 name` borrows one initialized field, each under a fresh scope nested in the
-parent's that cannot escape its callback. The comments above each word in
+parent's that cannot escape its callback. `C2-MEM:BIND` takes only a view of
+region `C2-MEM:root<a>`, which `C2-MEM:WITH-MUT` lends and `WITH-MUT-LOAN` and `PREFIX`
+keep: a `WITH-INIT` handing a view of another region to a callback that takes
+`C2-MEM:root<a>` is `E-MISMATCH`. The comments above each word in
 `src/lib/c2-memory.f` state what it admits and refuses.
 
 A caught result becomes readable on the success arm of core `code 0=` (or the

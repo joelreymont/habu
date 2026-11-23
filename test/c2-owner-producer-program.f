@@ -21,7 +21,7 @@ private
    16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC swap
    16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC rot swap ;
 
-: TWO-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- bool mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: TWO-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- bool mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND TWO
    0 67 C2-MEM:MUT-BYTE! C2-MEM:PUBLISH swap
    0 68 C2-MEM:MUT-BYTE! C2-MEM:PUBLISH
@@ -29,7 +29,7 @@ private
    0 C2-MEM:BYTE@ swap 67 = swap drop
    and swap C2-MEM:UNBIND ;
 
-: TWO-ROOT ( mut-view<p,p,a,u8> -- bool mut-view<p,p,a,u8> )
+: TWO-ROOT ( mut-view<p,p,C2-MEM:root<a>,u8> -- bool mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: TWO-INIT ;] C2-MEM:WITH-INIT ;
 
 : TWO-RESULT ( -- bool )
@@ -43,7 +43,7 @@ private
    bytes 1- C2-MEM:MUT-BYTE@ swap 99 T=
    C2-MEM:PUBLISH drop ;
 
-: ODD-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: ODD-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    1 ODD-ALLOC 7 ODD-ALLOC 9 ODD-ALLOC 17 ODD-ALLOC
    17 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC
@@ -51,19 +51,19 @@ private
    C2-MEM:PUBLISH drop
    C2-MEM:UNBIND ;
 
-: ODD-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: ODD-ROOT ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: ODD-INIT ;] C2-MEM:WITH-INIT ;
 
-: INNER-INIT ( C2-MEM:owner<p,i,a> mut-view<q,j,b,init<j,C2-MEM:owner-state>> -- C2-MEM:owner<p,i,a> read-view<p,p,u8> mut-view<q,j,b,init<j,C2-MEM:owner-state>> )
+: INNER-INIT ( C2-MEM:owner<p,i,a> mut-view<q,j,C2-MEM:root<b>,init<j,C2-MEM:owner-state>> -- C2-MEM:owner<p,i,a> read-view<p,p,u8> mut-view<q,j,C2-MEM:root<b>,init<j,C2-MEM:owner-state>> )
    C2-MEM:BIND swap FIRST rot C2-MEM:UNBIND ;
 
-: INNER-ROOT ( C2-MEM:owner<p,i,a> mut-view<q,q,b,u8> -- C2-MEM:owner<p,i,a> read-view<p,p,u8> mut-view<q,q,b,u8> )
+: INNER-ROOT ( C2-MEM:owner<p,i,a> mut-view<q,q,C2-MEM:root<b>,u8> -- C2-MEM:owner<p,i,a> read-view<p,p,u8> mut-view<q,q,C2-MEM:root<b>,u8> )
    C2-MEM:SEED-OWNER [: INNER-INIT ;] C2-MEM:WITH-INIT ;
 
 : INNER-OWNER ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> read-view<p,p,u8> )
    C2-MEM:OWNER-SIZE [: INNER-ROOT ;] C2-MEM:WITH-MUT ;
 
-: OUTER-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- bool mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: OUTER-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- bool mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    FIRST swap
    INNER-OWNER
@@ -74,7 +74,7 @@ private
    0 C2-MEM:BYTE@ swap 65 = swap drop
    r> and swap C2-MEM:UNBIND ;
 
-: OUTER-ROOT ( mut-view<p,p,a,u8> -- bool mut-view<p,p,a,u8> )
+: OUTER-ROOT ( mut-view<p,p,C2-MEM:root<a>,u8> -- bool mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: OUTER-INIT ;] C2-MEM:WITH-INIT ;
 
 public

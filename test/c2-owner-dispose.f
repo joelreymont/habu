@@ -117,55 +117,55 @@ TASK:MIN-STACK TASK:TASK WORKER-C
    bytes id CHUNK-LENGTH !
    id MARK ;
 
-: BODY-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: BODY-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 0 ACQUIRE 0 ALLOC-ID C2-MEM:UNBIND ;
 
-: BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: BODY-INIT ;] C2-MEM:WITH-INIT ;
 
-: THROW-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: THROW-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 1 ACQUIRE 1 ALLOC-ID -9363 throw ;
 
-: THROW-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: THROW-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: THROW-INIT ;] C2-MEM:WITH-INIT ;
 
 : THROW-CALL ( -- )
    16 MEM:BYTES-ALLOC-LEN [: THROW-BODY ;] C2-MEM:WITH-MUT ;
 
-: FAIL-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: FAIL-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND MEM-MAX-N MEM:BYTES-ALLOC-LEN [: DISPOSE ;] C2-MEM:ALLOC-DISPOSE
    C2-MEM:PUBLISH drop C2-MEM:UNBIND ;
 
-: FAIL-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: FAIL-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: FAIL-INIT ;] C2-MEM:WITH-INIT ;
 
 : FAIL-CALL ( -- )
    16 MEM:BYTES-ALLOC-LEN [: FAIL-BODY ;] C2-MEM:WITH-MUT ;
 
-: ACQ-FAIL-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: ACQ-FAIL-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    16 MEM:BYTES-ALLOC-LEN [: DISPOSE-EMPTY ;] C2-MEM:ALLOC-DISPOSE
    C2-MEM:PUBLISH drop
    -9364 throw ;
 
-: ACQ-FAIL-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: ACQ-FAIL-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: ACQ-FAIL-INIT ;] C2-MEM:WITH-INIT ;
 
 : ACQ-FAIL-CALL ( -- )
    16 MEM:BYTES-ALLOC-LEN [: ACQ-FAIL-BODY ;] C2-MEM:WITH-MUT ;
 
-: INNER-INIT ( C2-MEM:owner<p,i,a> mut-view<q,j,b,init<j,C2-MEM:owner-state>> -- C2-MEM:owner<p,i,a> mut-view<q,j,b,init<j,C2-MEM:owner-state>> )
+: INNER-INIT ( C2-MEM:owner<p,i,a> mut-view<q,j,C2-MEM:root<b>,init<j,C2-MEM:owner-state>> -- C2-MEM:owner<p,i,a> mut-view<q,j,C2-MEM:root<b>,init<j,C2-MEM:owner-state>> )
    C2-MEM:BIND
    8 ACQUIRE 8 ALLOC-ID C2-MEM:UNBIND
    swap 9 ACQUIRE 9 ALLOC-ID swap ;
 
-: INNER-ROOT ( C2-MEM:owner<p,i,a> mut-view<q,q,b,u8> -- C2-MEM:owner<p,i,a> mut-view<q,q,b,u8> )
+: INNER-ROOT ( C2-MEM:owner<p,i,a> mut-view<q,q,C2-MEM:root<b>,u8> -- C2-MEM:owner<p,i,a> mut-view<q,q,C2-MEM:root<b>,u8> )
    C2-MEM:SEED-OWNER [: INNER-INIT ;] C2-MEM:WITH-INIT ;
 
 : INNER-OWNER ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> )
    C2-MEM:OWNER-SIZE [: INNER-ROOT ;] C2-MEM:WITH-MUT ;
 
-: OUTER-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: OUTER-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    7 ACQUIRE 7 ALLOC-ID
    INNER-OWNER
@@ -174,71 +174,71 @@ TASK:MIN-STACK TASK:TASK WORKER-C
    9 CALLS @ 0 T=
    C2-MEM:UNBIND ;
 
-: OUTER-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: OUTER-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: OUTER-INIT ;] C2-MEM:WITH-INIT ;
 
-: TASK-A-INNER-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: TASK-A-INNER-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 17 ACQUIRE 17 ALLOC-ID C2-MEM:UNBIND ;
 
 : TASK-A-INNER-ROOT
-   ( C2-MEM:owner<p,i,a> mut-view<q,q,b,u8> -- C2-MEM:owner<p,i,a> mut-view<q,q,b,u8> )
+   ( C2-MEM:owner<p,i,a> mut-view<q,q,C2-MEM:root<b>,u8> -- C2-MEM:owner<p,i,a> mut-view<q,q,C2-MEM:root<b>,u8> )
    C2-MEM:SEED-OWNER [: TASK-A-INNER-INIT ;] C2-MEM:WITH-INIT ;
 
 : TASK-A-INNER ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> )
    C2-MEM:OWNER-SIZE [: TASK-A-INNER-ROOT ;] C2-MEM:WITH-MUT ;
 
-: TASK-A-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: TASK-A-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 16 ACQUIRE 16 ALLOC-ID TASK-A-INNER
    1 READY atomic!
    begin GO atomic@ 0= while TASK:PAUSE repeat
    C2-MEM:UNBIND ;
 
-: TASK-A-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: TASK-A-ROOT ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: TASK-A-INIT ;] C2-MEM:WITH-INIT ;
 
 : TASK-A-CALL ( -- )
    C2-MEM:OWNER-SIZE [: TASK-A-ROOT ;] C2-MEM:WITH-MUT
    123 TASK:RETURN ;
 
-: TASK-B-INNER-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: TASK-B-INNER-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 19 ACQUIRE 19 ALLOC-ID
    1 READY-B atomic!
    begin TASK:PAUSE again ;
 
 : TASK-B-INNER-ROOT
-   ( C2-MEM:owner<p,i,a> mut-view<q,q,b,u8> -- C2-MEM:owner<p,i,a> mut-view<q,q,b,u8> )
+   ( C2-MEM:owner<p,i,a> mut-view<q,q,C2-MEM:root<b>,u8> -- C2-MEM:owner<p,i,a> mut-view<q,q,C2-MEM:root<b>,u8> )
    C2-MEM:SEED-OWNER [: TASK-B-INNER-INIT ;] C2-MEM:WITH-INIT ;
 
 : TASK-B-INNER ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> )
    C2-MEM:OWNER-SIZE [: TASK-B-INNER-ROOT ;] C2-MEM:WITH-MUT ;
 
-: TASK-B-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: TASK-B-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 18 ACQUIRE 18 ALLOC-ID TASK-B-INNER C2-MEM:UNBIND ;
 
-: TASK-B-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: TASK-B-ROOT ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: TASK-B-INIT ;] C2-MEM:WITH-INIT ;
 
 : TASK-B-CALL ( -- )
    C2-MEM:OWNER-SIZE [: TASK-B-ROOT ;] C2-MEM:WITH-MUT ;
 
-: ERROR-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: ERROR-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    5 ACQUIRE 5 ALLOC-ID
    6 ACQUIRE 6 ALLOC-FAIL-ID
    -9363 throw ;
 
-: ERROR-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: ERROR-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: ERROR-INIT ;] C2-MEM:WITH-INIT ;
 
 : ERROR-CALL ( -- )
    16 MEM:BYTES-ALLOC-LEN [: ERROR-BODY ;] C2-MEM:WITH-MUT ;
 
-: HALT-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: HALT-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 3 ACQUIRE 3 ALLOC-ID
    1 READY atomic!
    begin TASK:PAUSE again ;
 
-: HALT-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: HALT-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: HALT-INIT ;] C2-MEM:WITH-INIT ;
 
 : HALT-CALL ( -- )
@@ -252,30 +252,30 @@ TASK:MIN-STACK TASK:TASK WORKER-C
 
 : WAIT-GO ( -- ) begin GO atomic@ 0= while TASK:PAUSE repeat ;
 
-: HALT-FIN-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: HALT-FIN-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 20 ACQUIRE 20 ALLOC-ID
    1 READY atomic!
    [: WAIT-GO ;] [: SEE-LIVE ;] finally C2-MEM:UNBIND ;
 
-: HALT-FIN-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: HALT-FIN-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: HALT-FIN-INIT ;] C2-MEM:WITH-INIT ;
 
 : HALT-FIN-CALL ( -- )
    16 MEM:BYTES-ALLOC-LEN [: HALT-FIN-BODY ;] C2-MEM:WITH-MUT ;
 
-: PAUSE-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: PAUSE-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 4 ACQUIRE 4 ALLOC-PAUSE-ID C2-MEM:UNBIND ;
 
-: PAUSE-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: PAUSE-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: PAUSE-INIT ;] C2-MEM:WITH-INIT ;
 
 : PAUSE-CALL ( -- )
    16 MEM:BYTES-ALLOC-LEN [: PAUSE-BODY ;] C2-MEM:WITH-MUT ;
 
-: DEFER-THROW-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: DEFER-THROW-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 2 ACQUIRE 2 ALLOC-PAUSE-FAIL-ID -9363 throw ;
 
-: DEFER-THROW-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: DEFER-THROW-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: DEFER-THROW-INIT ;] C2-MEM:WITH-INIT ;
 
 : DEFER-THROW-CALL ( -- )
@@ -287,7 +287,7 @@ TASK:MIN-STACK TASK:TASK WORKER-C
    1 RESUMED atomic!
    begin TASK:PAUSE again ;
 
-: CHUNK-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: CHUNK-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    10 ACQUIRE 10 65488 ALLOC-CHUNK-ID
    11 ACQUIRE 11 7 ALLOC-CHUNK-ID
@@ -295,45 +295,45 @@ TASK:MIN-STACK TASK:TASK WORKER-C
    13 ACQUIRE 13 17 ALLOC-CHUNK-ID
    -9363 throw ;
 
-: CHUNK-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: CHUNK-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: CHUNK-INIT ;] C2-MEM:WITH-INIT ;
 
 : CHUNK-CALL ( -- )
    C2-MEM:OWNER-SIZE [: CHUNK-BODY ;] C2-MEM:WITH-MUT ;
 
-: CHUNK-PAUSE-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: CHUNK-PAUSE-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    14 ACQUIRE 14 65488 ALLOC-CHUNK-ID
    15 ACQUIRE 15 17 ALLOC-CHUNK-PAUSE-ID
    C2-MEM:UNBIND ;
 
-: CHUNK-PAUSE-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: CHUNK-PAUSE-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: CHUNK-PAUSE-INIT ;] C2-MEM:WITH-INIT ;
 
 : CHUNK-PAUSE-CALL ( -- )
    C2-MEM:OWNER-SIZE [: CHUNK-PAUSE-BODY ;] C2-MEM:WITH-MUT ;
 
-: LIMIT-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: LIMIT-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    16 MEM:BYTES-ALLOC-LEN [: DISPOSE-EMPTY ;] C2-MEM:ALLOC-DISPOSE
    C2-MEM:PUBLISH drop
    MEM-MAX-N MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC
    C2-MEM:PUBLISH drop C2-MEM:UNBIND ;
 
-: LIMIT-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: LIMIT-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: LIMIT-INIT ;] C2-MEM:WITH-INIT ;
 
 : LIMIT-CALL ( -- )
    C2-MEM:OWNER-SIZE [: LIMIT-BODY ;] C2-MEM:WITH-MUT ;
 
-: MAP-FAIL-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: MAP-FAIL-INIT ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    16 MEM:BYTES-ALLOC-LEN [: DISPOSE-EMPTY ;] C2-MEM:ALLOC-DISPOSE
    C2-MEM:PUBLISH drop
    1 48 lshift MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC
    C2-MEM:PUBLISH drop C2-MEM:UNBIND ;
 
-: MAP-FAIL-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: MAP-FAIL-BODY ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: MAP-FAIL-INIT ;] C2-MEM:WITH-INIT ;
 
 : MAP-FAIL-CALL ( -- )
@@ -362,11 +362,11 @@ TASK:MIN-STACK TASK:TASK WORKER-C
 defer CAP-NEST ( n -- n )
 
 : CAP-INIT
-   ( n mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- n mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+   ( n mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- n mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    1 CAP-CALLS +!
    C2-MEM:BIND swap CAP-NEST swap C2-MEM:UNBIND ;
 
-: CAP-ROOT ( n mut-view<p,p,a,u8> -- n mut-view<p,p,a,u8> )
+: CAP-ROOT ( n mut-view<p,p,C2-MEM:root<a>,u8> -- n mut-view<p,p,C2-MEM:root<a>,u8> )
    1 CAP-CALLS +!
    C2-MEM:SEED-OWNER [: CAP-INIT ;] C2-MEM:WITH-INIT ;
 

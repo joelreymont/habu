@@ -1015,6 +1015,7 @@ variable MDV-I   variable MDV-F
       MD-C2-CHILD-BINDER of s" E-C2-BINDER" endof
       MD-C2-FIELD-BINDER of s" E-C2-BINDER" endof
       MD-C2-ROOT-BINDER of s" E-C2-BINDER" endof
+      MD-C2-ROOT-INIT of s" E-MISMATCH" endof
       MD-FIELD-NAME   of s" E-MISSING-NAME" endof
       MD-C2-FIELD-UNKNOWN of s" E-UNKNOWN-FIELD" endof
       MD-CALLBACK-NOT-GENERIC of s" E-CALLBACK-NOT-GENERIC" endof
@@ -1138,7 +1139,8 @@ variable MDV-I   variable MDV-F
       MD-C2-RECORDS-BINDER of s" declare the callback `forall<i inside [l,T],[ records<p,i,a,T> -- … ]>`, with `l` the view's scope and `T` the record" endof
       MD-C2-CHILD-BINDER of s" declare the callback `forall<j inside l,[ … ]>`, with `l` the parent view's scope" endof
       MD-C2-FIELD-BINDER of s" declare the callback `forall<j inside i,forall-region<c,[ mut-view<p,j,c,init<i,F>> -- … ]>>`, with `i` the view's scope and `F` the field's type" endof
-      MD-C2-ROOT-BINDER of s" declare the callback `forall<p,forall-region<a,[ mut-view<p,p,a,u8> -- … ]>>`" endof
+      MD-C2-ROOT-BINDER of s" declare the callback `forall<p,forall-region<a,[ mut-view<p,p,C2-MEM:root<a>,u8> -- … ]>>`" endof
+      MD-C2-ROOT-INIT of s" bind an owner only in a `WITH-INIT` over a `C2-MEM:root<a>` view, which `C2-MEM:WITH-MUT` lends and `WITH-MUT-LOAN` and `PREFIX` keep; seed any other view with a callback that takes its own region" endof
       MD-FIELD-NAME   of s" write the field after it, as `C2-MEM:WITH-FIELD first`" endof
       MD-C2-FIELD-UNKNOWN of s" name a field the record's `STRUCTURE` declares" endof
       MD-CALLBACK-NOT-GENERIC of s" pass a quotation written at the call whose types name no outer scope, or declare the parameter `forall<q,…>` too" endof
@@ -1248,6 +1250,7 @@ variable MDV-I   variable MDV-F
       MD-C2-CHILD-BINDER of s" the callback's binder does not fit the scope this entry lends inside" endof
       MD-C2-FIELD-BINDER of s" the callback's binder does not fit the scope and field region this entry lends" endof
       MD-C2-ROOT-BINDER of s" the callback's binder does not fit the scope and region this entry opens" endof
+      MD-C2-ROOT-INIT of s" the callback takes a `C2-MEM:root<a>` view, and the view given has another region" endof
       MD-FIELD-NAME   of s" `C2-MEM:WITH-FIELD` names the field it lends, and the definition ends first" endof
       MD-C2-FIELD-UNKNOWN of s" the record has no field of this name" endof
       MD-CALLBACK-NOT-GENERIC of s" the callback must work for every scope, and this one names an outer scope" endof
@@ -1336,6 +1339,7 @@ variable MDV-I   variable MDV-F
       MD-C2-CHILD-BINDER of s" binder does not fit this entry" endof
       MD-C2-FIELD-BINDER of s" binder does not fit this entry" endof
       MD-C2-ROOT-BINDER of s" binder does not fit this entry" endof
+      MD-C2-ROOT-INIT of s" view not lent by `WITH-MUT`" endof
       MD-FIELD-NAME   of s" no field name" endof
       MD-CALLBACK-NOT-GENERIC of s" callback bound to an outer scope" endof
       MD-SCOPED-TICK  of s" scoped entry" endof

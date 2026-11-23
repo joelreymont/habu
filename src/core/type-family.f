@@ -3162,7 +3162,7 @@ variable STOW-FAM
    MUT-FAM @ REGISTER-VIEW-FIELDS ;
 
 \ `root<a>`: the region of the view WITH-MUT lends, over its allocation region
-\ `a`. C2-MEM:BIND takes only this region, so ALLOC's fresh region never binds.
+\ `a`, so only that view's base reaches C2-MEM:BIND.
 : REGISTER-ROOT ( -- )
    s" C2-MEM" CHECKER-PACKAGE-PUBLIC s" root" 1 TK-CELL TFAM-DECL C2-ROOT-FAM !
    C2-ROOT-FAM @ 0 PK-REGION TFAM-PK! ;

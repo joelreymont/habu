@@ -121,6 +121,14 @@ split-str
 \ cell pairs only with a var or an equally stale cell, so every typed use of
 \ the group is still E-STALE-READ.
 \
+\ Root regions: a made `root<x>` needs a given `root<x>` in a word input or in
+\ an enclosing made quotation's input: no checked body makes one, and `x` alone
+\ would forge one. A given quotation's outputs meet its inputs' needs only in
+\ regions its forall chain binds. ROOT-NEEDS* builds each node's record from its
+\ children's, bottom-up: per polarity, what its made roots need when a source
+\ above reaches it through no `±` slot (NEED) and when none does (LONE), and
+\ what it holds given (HOLD). A layout value's hidden cells count once.
+\
 \ Raw cells: a raw storage definer (create, variable, constant) mints a RAW
 \ type var, and a fetch from the cell yields that var. RAW-OK? admits a plain
 \ scalar, a role con or an atom and raises a var argument to RAW; it refuses a
@@ -5785,6 +5793,7 @@ private
 87 constant MD-C2-CHILD-BINDER \ a child loan's callback is not `forall<j inside l,…>` (SCOPE-CHILD-STEP, SCOPE-RECORD-STEP)
 88 constant MD-C2-FIELD-BINDER \ WITH-FIELD's callback is not `forall<j inside i,forall-region<c,…>>`
 89 constant MD-C2-ROOT-BINDER \ WITH-MUT's callback is not `forall<p,forall-region<a,…>>` (SCOPE-MUT-ROOT-OPEN)
+111 constant MD-C2-ROOT-INIT \ WITH-INIT hands a view whose region is not `root<a>` to a callback that takes one
 90 constant MD-FIELD-NAME    \ the body ends after `WITH-FIELD` before its field name
 91 constant MD-CALLBACK-NOT-GENERIC \ a scope the call opens occurs in its rows or outside it (SCOPE-INTRO-FENCE)
 92 constant MD-SCOPED-TICK   \ a body ticks a scoped entry, which only a direct call reaches (TICK-REFUSED?)
@@ -7707,6 +7716,8 @@ variable SGBAD
 PTR-VARIABLE SGBAD-A
 variable SGBAD-U
 variable SGBAD-KIND
+\ Unsupplied kind: set when the type no input supplies is a `root<x>`.
+variable SGBAD-ROOT
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 PTR-VARIABLE SGBAD-EXP-A \ syntax kind: the word the parser expected there, if one
@@ -8763,6 +8774,381 @@ variable PD-ATOM0                        \ the first atom index this signature p
 : SCOPE-INPUT? ( n -- bool ) {: id:n :}
    id PD-IN @ RES-FALSE TYPE-VAR?* IF RES-TRUE EXIT THEN
    id PR-IN @ RES-FALSE TYPE-VAR?* ;
+\ A slot's variance places its argument at its family's polarity (VAR-KEEP), the
+\ other (VAR-FLIP) or both; a polarity set is coded alike, 0 none found yet.
+1 constant VAR-KEEP   2 constant VAR-FLIP   3 constant VAR-BOTH
+: POL-FLIP ( n -- n ) dup VAR-KEEP and 2 * swap VAR-FLIP and 2 / or ;
+\ The polarities an argument at a slot of variance V has in a family at POL.
+: POL-THROUGH ( n n -- n ) {: pol:n v:n :}
+   v VAR-KEEP and 0 <> IF pol ELSE 0 THEN
+   v VAR-FLIP and 0 <> IF pol POL-FLIP or THEN ;
+\ Per family: a stamp, current at ROOT-GEN as a rewind reuses family ids, its
+\ slots' start in ROOT-VAR-P, and -1 once computed, else its computing level.
+SCRATCH{
+variable ROOT-GEN   variable ROOT-LEVEL   variable ROOT-LOW
+PTR-VARIABLE ROOT-FAM-P   variable ROOT-FAM-CAP
+PTR-VARIABLE ROOT-VAR-P   variable ROOT-VAR-CAP   variable ROOT-VAR-N
+}SCRATCH
+3 constant ROOT-FAM-ROW
+: ROOT-FAM-CELL ( n n -- ^n ) swap ROOT-FAM-ROW * + cells ROOT-FAM-P @ + ;
+: ROOT-SLOT ( n -- ^n ) cells ROOT-VAR-P @ + ;
+\ Slot I's variance in family term X whose slots start at AT, -1 when they
+\ are not computed.
+: ROOT-SLOT-VAR ( n n n -- n ) {: x:n at:n i:n :}
+   at 0 < IF
+      x PARAM>FAM i TFAM-REGION-SLOT-XT IF VAR-KEEP ELSE VAR-BOTH THEN EXIT
+   THEN
+   at i + ROOT-SLOT @ ;
+\ Family term X over a fresh variable per slot.
+: ROOT-GENERIC ( n -- n ) {: x:n :}
+   PARAM-SCR-N @ {: base:n :}
+   x PARAM>FAM TFAM-ARITY* 0 ?do FRESH MK-VAR PARAM-SCR+ loop
+   base x PARAM>NAME-A x PARAM>NAME-U x PARAM>FAM MK-PARAM ;
+: ROOT-VAR-MARK ( n n n n -- ) {: at:n g:n pol:n x:n :}
+   g PARAM>ARGC 0 ?do
+      g i PARAM>ARG T-RES x = IF at i + ROOT-SLOT dup @ pol or swap ! THEN
+   loop ;
+\ ROOT-VAR-WALK and ROOT-VAR-AT call each other.
+defer ROOT-VAR-AT-XT ( n -- n )
+\ Ors into the slots at AT the polarities POL gives the variables of G in T.
+: ROOT-VAR-WALK ( n n n n -- ) {: t:n at:n g:n pol:n :}
+   pol 0= IF EXIT THEN
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE at g pol TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x ISVAR IF at g pol x ROOT-VAR-MARK EXIT THEN
+   x TAG T-FORALL = IF x F>BODY at g pol TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER at g pol TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER at g pol TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DOUT at g pol TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT at g pol TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DIN at g pol POL-FLIP TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN at g pol POL-FLIP TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM <> IF EXIT THEN
+   x PARAM>FAM 0 < IF EXIT THEN
+   x ROOT-VAR-AT-XT {: xat:n :}
+   0 BEGIN dup x PARAM>ARGC < WHILE
+      x over PARAM>ARG  over x xat rot ROOT-SLOT-VAR  pol swap POL-THROUGH
+      at g rot TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      1 +
+   REPEAT drop ;
+: ROOT-VAR-SUM ( n n -- n ) {: at:n cnt:n :}
+   0 cnt 0 ?do at i + ROOT-SLOT @ + loop ;
+\ Walks generic term G's members until its slots at AT stop growing: a family
+\ reads its own slots, and those of families computing around it, as found so far.
+: ROOT-VAR-SOLVE ( n n -- ) {: at:n g:n :}
+   g TFAM-MEMBERS-XT {: row:n :}
+   g PARAM>ARGC {: cnt:n :}
+   BEGIN
+      at cnt ROOT-VAR-SUM
+      row at g VAR-KEEP ROOT-VAR-WALK
+      at cnt ROOT-VAR-SUM =
+   UNTIL ;
+\ Zeroed slots for family FAM, which computes one level deeper.
+: ROOT-VAR-OPEN ( n -- n ) {: fam:n :}
+   ROOT-VAR-N @ {: at:n :}
+   at fam TFAM-ARITY* + {: end:n :}
+   ROOT-VAR-P ROOT-VAR-CAP end 1 ARENA-ROWS-ENSURE
+   ROOT-VAR-P @ at end ARENA-CELLS-ZERO
+   end ROOT-VAR-N !
+   ROOT-GEN @ fam 0 ROOT-FAM-CELL !  at fam 1 ROOT-FAM-CELL !
+   ROOT-LEVEL @ dup fam 2 ROOT-FAM-CELL !  dup ROOT-LOW !  1 + ROOT-LEVEL !
+   at ;
+\ A family that read one computing around it changes with it, so it is computed
+\ again when next read. A slot no field reaches is VAR-BOTH.
+: ROOT-VAR-CLOSE ( n n -- ) {: fam:n level:n :}
+   level ROOT-LEVEL !
+   ROOT-LOW @ level < IF 0 fam 0 ROOT-FAM-CELL ! EXIT THEN
+   fam 1 ROOT-FAM-CELL @ {: at:n :}
+   fam TFAM-ARITY* 0 ?do
+      at i + ROOT-SLOT dup @ 0= IF VAR-BOTH swap ! ELSE drop THEN
+   loop
+   -1 fam 2 ROOT-FAM-CELL ! ;
+\ Where family term X's slot variances start, computed from its fields; -1 for
+\ a C2 view, whose fields do not name its region, and a family without fields.
+: ROOT-VAR-AT ( n -- n ) {: x:n :}
+   x READ-VIEW? x MUT-VIEW? or x RECORDS? or IF -1 EXIT THEN
+   x PARAM>FAM {: fam:n :}
+   fam TFAM-LAYOUT?* 0= IF -1 EXIT THEN
+   ROOT-FAM-CAP @ ROOT-FAM-ROW * {: old:n :}
+   ROOT-FAM-P ROOT-FAM-CAP fam 1 + ROOT-FAM-ROW ARENA-ROWS-ENSURE
+   ROOT-FAM-P @ old ROOT-FAM-CAP @ ROOT-FAM-ROW * ARENA-CELLS-ZERO
+   fam 0 ROOT-FAM-CELL @ ROOT-GEN @ = IF
+      fam 2 ROOT-FAM-CELL @ dup 0 < IF drop ELSE ROOT-LOW @ min ROOT-LOW ! THEN
+      fam 1 ROOT-FAM-CELL @ EXIT
+   THEN
+   ROOT-LOW @ {: low:n :}
+   ROOT-LEVEL @ {: level:n :}
+   fam ROOT-VAR-OPEN {: at:n :}
+   at x ROOT-GENERIC ROOT-VAR-SOLVE
+   fam level ROOT-VAR-CLOSE
+   ROOT-LOW @ low min ROOT-LOW !
+   at ;
+: ROOT-VAR-AT-INSTALL ( -- ) [: ROOT-VAR-AT ;] is ROOT-VAR-AT-XT ;
+ROOT-VAR-AT-INSTALL
+\ A set has ROOT-SET-W cells, a bit per ROOT-RG-P region.
+SCRATCH{
+PTR-VARIABLE ROOT-RG-P   variable ROOT-RG-CAP   variable ROOT-RG-N
+PTR-VARIABLE ROOT-SET-P   variable ROOT-SET-CAP   variable ROOT-SET-N
+variable ROOT-SET-W
+}SCRATCH
+0 constant ROOT-NEED   2 constant ROOT-LONE   4 constant ROOT-HOLD
+: ROOT-REC-CELLS ( -- n ) ROOT-SET-W @ 6 * ;
+\ Record REC's set of KIND at polarity POL, 0 given and 1 made.
+: ROOT-REC ( n n n -- n ) {: rec:n kind:n pol:n :}
+   kind pol + ROOT-SET-W @ * rec + ;
+\ The Kth set from T.
+: ROOT-TMP ( n n -- n ) ROOT-SET-W @ * + ;
+\ Record REC's child K, the records after REC.
+: ROOT-CHILD ( n n -- n ) 1 + ROOT-REC-CELLS * + ;
+: ROOT-SET ( n -- ^n ) cells ROOT-SET-P @ + ;
+\ K zeroed sets on top of the set stack; answers the first one's offset.
+: ROOT-SETS+ ( n -- n ) {: k:n :}
+   ROOT-SET-N @ {: at:n :}
+   at k ROOT-SET-W @ * + {: end:n :}
+   ROOT-SET-P ROOT-SET-CAP end 1 ARENA-ROWS-ENSURE
+   ROOT-SET-P @ at end ARENA-CELLS-ZERO
+   end ROOT-SET-N !  at ;
+: ROOT-OP ( n n [ n n -- n ] -- ) {: dst:n src:n op :}
+   ROOT-SET-W @ 0 ?do
+      dst i + ROOT-SET dup @  src i + ROOT-SET @  op execute  swap !
+   loop ;
+: ROOT-OR ( n n -- ) [: or ;] ROOT-OP ;
+: ROOT-AND ( n n -- ) [: and ;] ROOT-OP ;
+: ROOT-ANDN ( n n -- ) [: invert and ;] ROOT-OP ;
+: ROOT-COPY ( n n -- ) [: nip ;] ROOT-OP ;
+: ROOT-SWAP ( n n -- ) {: a:n b:n :}
+   ROOT-SET-W @ 0 ?do
+      a i + ROOT-SET @  b i + ROOT-SET @  a i + ROOT-SET !  b i + ROOT-SET !
+   loop ;
+: ROOT-EMPTY? ( n -- bool ) {: s:n :}
+   0 ROOT-SET-W @ 0 ?do s i + ROOT-SET @ or loop 0= ;
+: ROOT-BITS ( -- n ) 1 cells 8 * ;
+: ROOT-BIT ( n n -- ) {: s:n idx:n :}
+   idx ROOT-BITS / s + ROOT-SET
+   dup @  1 idx ROOT-BITS 1 - and lshift or  swap ! ;
+\ DST gets the holds at P of records X and Y.
+: ROOT-UNION ( n n n n -- ) {: dst:n x:n y:n p:n :}
+   dst x ROOT-HOLD p ROOT-REC ROOT-COPY
+   dst y ROOT-HOLD p ROOT-REC ROOT-OR ;
+
+: ROOT-RG ( n -- ^n ) cells ROOT-RG-P @ + ;
+\ Region X's index in ROOT-RG-P, -1 when not listed.
+: ROOT-RG-IDX ( n -- n ) {: x:n :}
+   0 BEGIN dup ROOT-RG-N @ < WHILE
+      dup ROOT-RG @ x = IF EXIT THEN
+      1 +
+   REPEAT drop -1 ;
+: ROOT-RG+ ( n -- ) {: x:n :}
+   x ROOT-RG-IDX 0 < 0= IF EXIT THEN
+   ROOT-RG-N @ {: i:n :}
+   ROOT-RG-P ROOT-RG-CAP i 1 + 1 ARENA-ROWS-ENSURE
+   x i ROOT-RG !  i 1 + ROOT-RG-N ! ;
+\ Lists the region of each `root<x>` in T.
+: ROOT-REGIONS* ( n -- ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-FORALL = IF x F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-QUOT = IF
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   x TAG T-PARAM <> IF EXIT THEN
+   x ROOT-REGION? IF x 0 PARAM>ARG T-RES ROOT-RG+ EXIT THEN
+   x PARAM>FAM 0 < IF EXIT THEN
+   0 BEGIN dup x PARAM>ARGC < WHILE
+      x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      1 +
+   REPEAT drop ;
+: ROOT-BINDS? ( n n n -- bool ) {: x:n lo:n hi:n :}
+   x TAG T-BVAR <> IF RES-FALSE EXIT THEN
+   x B>DOMAIN BIND-REGION <> IF RES-FALSE EXIT THEN
+   x B>DEPTH lo < 0=  x B>DEPTH hi <  and ;
+\ Sets in S the regions a forall chain binding levels LO to DEPTH - 1 binds.
+: ROOT-BOUND ( n n n -- ) {: s:n depth:n lo:n :}
+   0 BEGIN dup ROOT-RG-N @ < WHILE
+      dup ROOT-RG @ lo depth ROOT-BINDS? IF s over ROOT-BIT THEN
+      1 +
+   REPEAT drop ;
+
+\ Reads record C at the other polarity.
+: ROOT-FLIP ( n -- ) {: c:n :}
+   c ROOT-NEED 0 ROOT-REC  c ROOT-NEED 1 ROOT-REC  ROOT-SWAP
+   c ROOT-LONE 0 ROOT-REC  c ROOT-LONE 1 ROOT-REC  ROOT-SWAP
+   c ROOT-HOLD 0 ROOT-REC  c ROOT-HOLD 1 ROOT-REC  ROOT-SWAP ;
+\ Reads argument record C at its family's polarity, by its slot's variance V: a
+\ `±` argument's needs count at both, no source reaches into it, and it holds none.
+: ROOT-VARY ( n n -- ) {: c:n v:n :}
+   v VAR-KEEP = IF EXIT THEN
+   v VAR-FLIP = IF c ROOT-FLIP EXIT THEN
+   c ROOT-LONE 0 ROOT-REC {: l:n :}
+   l c ROOT-LONE 1 ROOT-REC ROOT-OR
+   c ROOT-LONE 1 ROOT-REC l ROOT-COPY
+   c ROOT-NEED 0 ROOT-REC l ROOT-COPY
+   c ROOT-NEED 1 ROOT-REC l ROOT-COPY
+   c ROOT-HOLD 0 ROOT-REC dup ROOT-ANDN
+   c ROOT-HOLD 1 ROOT-REC dup ROOT-ANDN ;
+\ REC's lone at P gains LX less AL, its need NX less AL and CO: AL holds what a
+\ source meets wherever REC is, CO what only a source above meets.
+: ROOT-ADD ( n n n n n n n -- ) {: rec:n p:n lx:n nx:n al:n co:n tmp:n :}
+   tmp lx ROOT-COPY  tmp al ROOT-ANDN
+   rec ROOT-LONE p ROOT-REC tmp ROOT-OR
+   tmp nx ROOT-COPY  tmp al ROOT-ANDN  tmp co ROOT-ANDN
+   rec ROOT-NEED p ROOT-REC tmp ROOT-OR ;
+
+\ Sibling temps from T: shared holds, others' holds, empty, scratch.
+\ T gains the regions U and child C's hold at P share; U gains that hold.
+: ROOT-SIB-HOLD ( n n n n -- ) {: u:n c:n p:n t:n :}
+   c ROOT-HOLD p ROOT-REC {: h:n :}
+   t 1 ROOT-TMP {: o:n :}
+   o u ROOT-COPY  o h ROOT-AND  t o ROOT-OR  u h ROOT-OR ;
+\ REC gains child C's needs at P that no other child holds.
+: ROOT-SIB-NEED ( n n n n -- ) {: rec:n c:n p:n t:n :}
+   t 1 ROOT-TMP {: o:n :}
+   o rec ROOT-HOLD p ROOT-REC ROOT-COPY
+   o c ROOT-HOLD p ROOT-REC ROOT-ANDN  o t ROOT-OR
+   rec p c ROOT-LONE p ROOT-REC c ROOT-NEED p ROOT-REC
+   t 2 ROOT-TMP o t 3 ROOT-TMP ROOT-ADD ;
+: ROOT-SIBS-POL ( n n n n n -- ) {: rec:n from:n to:n p:n t:n :}
+   ROOT-REC-CELLS {: r:n :}
+   t dup ROOT-ANDN
+   from BEGIN dup to < WHILE
+      rec ROOT-HOLD p ROOT-REC over p t ROOT-SIB-HOLD  r +
+   REPEAT drop
+   from BEGIN dup to < WHILE  rec over p t ROOT-SIB-NEED  r +  REPEAT drop ;
+\ Joins the records after REC, one per child of a row, a family or a forall,
+\ each read at REC's polarity, and drops them.
+: ROOT-SIBS ( n -- ) {: rec:n :}
+   rec 0 ROOT-CHILD {: from:n :}
+   ROOT-SET-N @ {: to:n :}
+   4 ROOT-SETS+ {: t:n :}
+   rec from to 0 t ROOT-SIBS-POL  rec from to 1 t ROOT-SIBS-POL
+   from ROOT-SET-N ! ;
+
+\ Quotation temps from T: inputs' holds, others' holds, scratch, empty,
+\ outputs' holds, bound regions.
+\ A made quotation's inputs are a source: they meet its outputs' needs and each
+\ other's; its outputs' holds meet its inputs' needs only from a source above.
+: ROOT-QUOT-MADE ( n n -- ) {: rec:n t:n :}
+   rec 0 ROOT-CHILD {: c0:n :}  rec 1 ROOT-CHILD {: c1:n :}
+   rec 2 ROOT-CHILD {: c2:n :}  rec 3 ROOT-CHILD {: c3:n :}
+   t 0 ROOT-TMP {: hin:n :}  t 4 ROOT-TMP {: hout:n :}  t 2 ROOT-TMP {: tmp:n :}
+   hin c2 c3 1 ROOT-UNION  hout c0 c1 1 ROOT-UNION
+   rec 1 c2 ROOT-NEED 1 ROOT-REC dup c3 ROOT-HOLD 1 ROOT-REC hout tmp ROOT-ADD
+   rec 1 c3 ROOT-NEED 1 ROOT-REC dup c2 ROOT-HOLD 1 ROOT-REC hout tmp ROOT-ADD
+   rec 1 c0 ROOT-LONE 1 ROOT-REC c0 ROOT-NEED 1 ROOT-REC
+   hin c1 ROOT-HOLD 1 ROOT-REC tmp ROOT-ADD
+   rec 1 c1 ROOT-LONE 1 ROOT-REC c1 ROOT-NEED 1 ROOT-REC
+   hin c0 ROOT-HOLD 1 ROOT-REC tmp ROOT-ADD ;
+\ Child X of a given quotation REC, Y on its side: a source above meets X's needs
+\ from Y and from the other side's holds S.
+: ROOT-QUOT-SIDE ( n n n n n -- ) {: rec:n x:n y:n s:n t:n :}
+   t 1 ROOT-TMP {: co:n :}
+   co y ROOT-HOLD 0 ROOT-REC ROOT-COPY  co s ROOT-OR
+   rec 0 x ROOT-LONE 0 ROOT-REC x ROOT-NEED 0 ROOT-REC
+   t 3 ROOT-TMP co t 2 ROOT-TMP ROOT-ADD ;
+\ A given quotation's outputs meet its inputs' needs only in regions its forall
+\ chain, levels LO to DEPTH - 1, binds.
+: ROOT-QUOT-GIVEN ( n n n n -- ) {: rec:n t:n depth:n lo:n :}
+   rec 0 ROOT-CHILD {: c0:n :}  rec 1 ROOT-CHILD {: c1:n :}
+   rec 2 ROOT-CHILD {: c2:n :}  rec 3 ROOT-CHILD {: c3:n :}
+   t 0 ROOT-TMP {: hin:n :}  t 4 ROOT-TMP {: hout:n :}  t 5 ROOT-TMP {: bound:n :}
+   hin c2 c3 0 ROOT-UNION  hout c0 c1 0 ROOT-UNION
+   bound depth lo ROOT-BOUND  hout bound ROOT-AND
+   rec c2 c3 hout t ROOT-QUOT-SIDE  rec c3 c2 hout t ROOT-QUOT-SIDE
+   rec c0 c1 hin t ROOT-QUOT-SIDE  rec c1 c0 hin t ROOT-QUOT-SIDE ;
+\ Joins quotation REC's records DOUT ROUT DIN RIN, after it, and drops them.
+: ROOT-QUOT ( n n n -- ) {: rec:n depth:n lo:n :}
+   rec 2 ROOT-CHILD ROOT-FLIP  rec 3 ROOT-CHILD ROOT-FLIP
+   rec 0 ROOT-CHILD {: from:n :}
+   6 ROOT-SETS+ {: t:n :}
+   4 0 ?do
+      rec ROOT-HOLD 0 ROOT-REC  rec i ROOT-CHILD ROOT-HOLD 0 ROOT-REC  ROOT-OR
+      rec ROOT-HOLD 1 ROOT-REC  rec i ROOT-CHILD ROOT-HOLD 1 ROOT-REC  ROOT-OR
+   loop
+   rec t ROOT-QUOT-MADE  rec t depth lo ROOT-QUOT-GIVEN
+   from ROOT-SET-N ! ;
+\ A `root<x>` needs `x` made and holds it given.
+: ROOT-ROOT ( n n -- ) {: rec:n x:n :}
+   x 0 PARAM>ARG T-RES ROOT-RG-IDX {: i:n :}
+   rec ROOT-NEED 1 ROOT-REC i ROOT-BIT
+   rec ROOT-LONE 1 ROOT-REC i ROOT-BIT
+   rec ROOT-HOLD 0 ROOT-REC i ROOT-BIT ;
+
+\ A hidden cell past slot 0, whose argument terms slot 0's cell walks: a
+\ signature row holds each layout value's cells together.
+: HIDDEN-LATER? ( n -- bool ) {: t:n :}
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@ 0 <> ;
+\ The record of T, whose forall chain binds levels LO to DEPTH - 1.
+: ROOT-NEEDS* ( n n n -- n ) {: t:n depth:n lo:n :}
+   6 ROOT-SETS+ {: rec:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+         P>REST R-RES
+      REPEAT drop
+      rec ROOT-SIBS rec EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-FORALL = IF
+      x F>BODY depth 1 + lo TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      rec ROOT-SIBS rec EXIT
+   THEN
+   x TAG T-STALE = IF
+      x STALE>INNER depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      rec ROOT-SIBS rec EXIT
+   THEN
+   x TAG T-PTR = IF
+      x PTR>INNER depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      rec ROOT-SIBS rec EXIT
+   THEN
+   x TAG T-QUOT = IF
+      x Q>DOUT depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      x Q>ROUT depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      x Q>DIN depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      x Q>RIN depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      rec depth lo ROOT-QUOT rec EXIT
+   THEN
+   x TAG T-PARAM <> IF rec EXIT THEN
+   x HIDDEN-LATER? IF rec EXIT THEN
+   x ROOT-REGION? IF rec x ROOT-ROOT rec EXIT THEN
+   x PARAM>FAM 0 < IF rec EXIT THEN
+   x ROOT-VAR-AT {: at:n :}
+   0 BEGIN dup x PARAM>ARGC < WHILE
+      x over PARAM>ARG depth depth TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      over x at rot ROOT-SLOT-VAR ROOT-VARY
+      1 +
+   REPEAT drop
+   rec ROOT-SIBS rec ;
+\ Whether every made `root<x>` in a word's rows is supplied: the word joins as a
+\ made quotation no source is above.
+: ROOT-SUPPLIED? ( n n n n -- bool ) {: din:n dout:n rin:n rout:n :}
+   TWALK-RESET  0 ROOT-RG-N !
+   din ROOT-REGIONS*  dout ROOT-REGIONS*  rin ROOT-REGIONS*  rout ROOT-REGIONS*
+   ROOT-RG-N @ 0= IF RES-TRUE EXIT THEN
+   ROOT-RG-N @ ROOT-BITS 1 - + ROOT-BITS / ROOT-SET-W !
+   ROOT-GEN @ 1 + ROOT-GEN !  0 ROOT-VAR-N !  0 ROOT-LEVEL !  0 ROOT-SET-N !
+   6 ROOT-SETS+ {: rec:n :}
+   dout 0 0 ROOT-NEEDS* drop  rout 0 0 ROOT-NEEDS* drop
+   din 0 0 ROOT-NEEDS* drop  rin 0 0 ROOT-NEEDS* drop
+   rec 0 0 ROOT-QUOT
+   rec ROOT-LONE 1 ROOT-REC ROOT-EMPTY? ;
 : SCOPE-SUPPLIED?* ( n -- bool ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -8867,7 +9253,11 @@ variable PD-ATOM0                        \ the first atom index this signature p
    \ Skipped for facts text, whose cast view pack has outputs no input
    \ supplies, and a generated constructor, whose value holds only its payload.
    SIG-FACTS-MODE @ 0= ctor 0= and IF
-      dout SCOPE-SUPPLIED? rout SCOPE-SUPPLIED? and 0= IF a u SGBAD-UNSUPPLIED! THEN
+      0 SGBAD-ROOT !
+      dout SCOPE-SUPPLIED? IF rout SCOPE-SUPPLIED? ELSE RES-FALSE THEN
+      IF
+         din dout rin rout ROOT-SUPPLIED? 0= IF -1 SGBAD-ROOT !  a u SGBAD-UNSUPPLIED! THEN
+      ELSE a u SGBAD-UNSUPPLIED! THEN
    THEN ;
 
 : PSIG ( -- n n n n )
@@ -12325,6 +12715,7 @@ EXPORT CHECKER-RESOLVE:PART-ROW
    SGBAD-ARITY? IF s" wrong number of type arguments" EXIT THEN
    SGBAD-BINDERS? IF s" too many binders nest here" EXIT THEN
    SGBAD-DEPTH? IF s" nested too deep to record" EXIT THEN
+   SGBAD-UNSUPPLIED? SGBAD-ROOT @ and IF s" it gives a `C2-MEM:root<a>` view no input supplies" EXIT THEN
    SGBAD-UNSUPPLIED? IF s" its outputs name a variable no input supplies" EXIT THEN
    a u ;
 
@@ -12410,6 +12801,10 @@ EXPORT CHECKER-RESOLVE:PART-ROW
       REJECTION:EMIT-STR EXIT
    THEN
    SGBAD-DEPTH? IF DEPTH-SUGGEST$ REJECTION:EMIT-STR EXIT THEN
+   SGBAD-UNSUPPLIED? SGBAD-ROOT @ and IF
+      s" take the `C2-MEM:root<a>` view as an input: only `C2-MEM:WITH-MUT` makes one"
+      REJECTION:EMIT-STR EXIT
+   THEN
    SGBAD-UNSUPPLIED? IF
       s" name each output scope or region variable in an input too, or drop it from the outputs"
       REJECTION:EMIT-STR EXIT
@@ -19369,6 +19764,11 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
       supplied MD-C2-ROOT-BINDER C2-REJECT supplied EXIT THEN
    inner F>BODY region SCOPE-INST ;
 
+: SCOPE-ROOT-REGION ( n -- n ) {: region:n :}
+   PARAM-SCR-N @ {: base:n :}
+   region PARAM-SCR+
+   base s" root" C2-ROOT-FAM @ MK-PARAM ;
+
 \ The fixed mutable root consumes a nominal allocation length and a callback.
 \ Neither the scope nor its allocation region may survive outside the call.
 : SCOPE-MUT-ROOT-STEP ( -- )
@@ -19382,8 +19782,9 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    FRESH MK-ROW {: r:n :}
    FRESH MK-ROW {: s:n :}
    FRESH MK-ROW {: u:n :}
+   region SCOPE-ROOT-REGION {: rooted:n :}
    PARAM-SCR-N @ {: base:n :}
-   scope PARAM-SCR+ scope PARAM-SCR+ region PARAM-SCR+ PE-U8 PARAM-SCR+
+   scope PARAM-SCR+ scope PARAM-SCR+ rooted PARAM-SCR+ PE-U8 PARAM-SCR+
    base s" mut-view" C2-MUT-FAM @ MK-PARAM {: view:n :}
    view r PUSH-LOGICAL view s PUSH-LOGICAL u u MK-QUOT {: callback:n :}
    SCOPE-ALLOC-LEN r MK-PUSH callback swap MK-PUSH

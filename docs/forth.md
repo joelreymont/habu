@@ -1948,7 +1948,9 @@ byte length of an owner header; `C2-MEM:WITH-MUT` owns those bytes for one
 callback. Inside it, pass `C2-MEM:SEED-OWNER` to `C2-MEM:WITH-INIT`; its
 callback receives a unique `owner-state` view, `C2-MEM:BIND` turns that view
 into the linear owner handle, and `C2-MEM:UNBIND` returns it before the
-callback ends. This certifies and runs:
+callback ends. The view `WITH-MUT` lends has region `C2-MEM:root<a>`, and `BIND` takes
+only that region, so each signature on the way from `WITH-MUT` to `BIND` states
+`C2-MEM:root<a>`. This certifies and runs:
 
 ```forth
 require src/lib/c2-memory.f
@@ -1959,11 +1961,11 @@ package C2-EXAMPLE
 private
 : ADD ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> )
    16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC
-   s" hi" C2-BYTES:COPY$ drop
+   s" hi" >str C2-BYTES:COPY$ drop
    C2-MEM:PUBLISH drop ;
-: OWNED ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: OWNED ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND ADD C2-MEM:UNBIND ;
-: ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: ROOT ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: OWNED ;] C2-MEM:WITH-INIT ;
 public
 : RUN ( -- )

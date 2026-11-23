@@ -188,10 +188,9 @@ CAST: >APPEND ( ^u8 -- ^append )
    OPEN
    INIT-FRAME HEAD-FRAME FRAME-KIND ! ;
 
-\ BIND discovers authority only in this task's live BYTES chain. The base is
-\ supplied by WITH-INIT, which already holds the unique root byte view.
+\ BIND's view is WITH-INIT's over a u8 `root<a>` view, whose base is the one
+\ WITH-MUT allocated, so this task's live BYTES chain holds its frame.
 : ROOT-FROM ( ^u8 n -- ^frame ) {: base:^ id:n :}
-   id 0= if E-C2-STATE throw then
    id 1- FRAMES {: frame:^ :}
    frame FRAME-STATE @ LIVE =
    frame FRAME-KIND @ BYTES-FRAME = and
@@ -429,7 +428,7 @@ public
 
 : OWNER-SIZE ( -- NUM:alloc-byte-len ) 8 MEM:BYTES-ALLOC-LEN ;
 : SEED-OWNER ( -- owner-state ) NULL-PTR OWNER-STATE-MAKE ;
-: BIND ( mut-view<p,i,a,init<i,owner-state>> -- owner<p,i,a> ) OWNER-VIEW-UNPACK BIND-STATE OWNER-VIEW-PACK OWNER-MAKE ;
+: BIND ( mut-view<p,i,root<a>,init<i,owner-state>> -- owner<p,i,root<a>> ) OWNER-VIEW-UNPACK BIND-STATE OWNER-VIEW-PACK OWNER-MAKE ;
 : UNBIND ( owner<p,i,a> -- mut-view<p,i,a,init<i,owner-state>> ) OWNER-UNMAKE ;
 
 \ The disposer consumes the allocation's unique view at the owner's close.

@@ -80,14 +80,14 @@ MANY 2 * CELL * constant MANY-BYTES
    [: ;] C2-MEM:WITH-RECORDS
    C2-MEM:PUBLISH drop C2-MEM:PUBLISH drop ;
 
-: SHUFFLE-OWNER ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+: SHUFFLE-OWNER ( mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> -- mut-view<p,i,C2-MEM:root<a>,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND
    16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC
    1 2 C2--RECORDS--TYPES-PAIR:MAKE
    [: SHUFFLE-HEADER ;] C2-MEM:WITH-INIT
    C2-MEM:PUBLISH drop C2-MEM:UNBIND ;
 
-: SHUFFLE-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+: SHUFFLE-ROOT ( mut-view<p,p,C2-MEM:root<a>,u8> -- mut-view<p,p,C2-MEM:root<a>,u8> )
    C2-MEM:SEED-OWNER [: SHUFFLE-OWNER ;] C2-MEM:WITH-INIT ;
 
 : SHUFFLE-RESULT ( -- )

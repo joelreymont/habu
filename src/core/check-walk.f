@@ -34,6 +34,23 @@ EXPORT TFAM:TFL-VPADS
    {: kind:n fam:n vid:n :}
    kind  vid SUMV-TAG@  fam vid TFL-VPADS  EVENT! ;
 
+\ The type a callback takes on top of its input row, 0 when its type shows no input.
+: CALLBACK-VIEW ( n -- n )
+   T-RES BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT
+   dup TAG T-QUOT <> IF drop 0 EXIT THEN
+   Q>DIN R-RES dup TAG S-PUSH <> IF drop 0 EXIT THEN
+   P>TYPE T-RES dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
+
+\ A callback taking a `root<a>` view may BIND, which needs the frame WITH-MUT
+\ opened at the view's base; a parent of another settled region cannot feed it.
+: ROOT-INIT-OK? ( n n -- bool ) {: supplied:n parent:n :}
+   supplied CALLBACK-VIEW {: view:n :}
+   view 0= IF RES-TRUE EXIT THEN
+   view MUT-VIEW? 0= IF RES-TRUE EXIT THEN
+   view 2 PARAM>ARG ROOT-REGION? 0= IF RES-TRUE EXIT THEN
+   parent 2 PARAM>ARG T-RES {: region:n :}
+   region ROOT-REGION? region ISVAR or ;
+
 \ WITH-INIT is the only public entry that changes a byte view's element.
 \ Its dictionary code entry authenticates this transition.
 : SCOPE-INIT-STEP ( -- )
@@ -69,6 +86,7 @@ EXPORT TFAM:TFL-VPADS
       supplied F>SECOND value UNIFY-EXACT 0= or IF
          supplied MD-C2-BINDER C2-REJECT EXIT THEN
    THEN
+   supplied parent ROOT-INIT-OK? 0= IF parent MD-C2-ROOT-INIT C2-REJECT EXIT THEN
    ceiling value SCOPE-DOUBLE-FRESH {: scope:n :}
    supplied TAG T-FORALL = IF
       supplied F>BODY scope SCOPE-INST
