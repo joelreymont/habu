@@ -46,15 +46,17 @@ PTR-VARIABLE NAME-A   variable NAME-U   \ a wrap's name as written
 \ another by value only once that one is closed, so close order generates a held
 \ member before its holder. A row holds the name as listed (its span in
 \ MEM-NAMES), the family, the listed flag, the first pointee naming it while
-\ listed (its span in MEM-PTEES, M.PTEE-U 0 for none: SD-REACH) and its close
-\ rank (M.CLOSE: the members closed before it, 0 until its ;STRUCTURE); arity
-\ and field range are the family row's.
+\ listed (its span in MEM-PTEES, M.PTEE-U 0 for none: SD-REACH), its close
+\ rank (M.CLOSE: the members closed before it, 0 until its ;STRUCTURE) and
+\ whether it is OPAQUE (M.OPAQUE, set as the declaration ends: MEM-END-DECL);
+\ arity and field range are the family row's.
 0 constant M.NAME-U
 1 constant M.FAM
 2 constant M.LISTED
 3 constant M.PTEE-U
 4 constant M.CLOSE
-5 constant MEM-REC
+5 constant M.OPAQUE
+6 constant MEM-REC
 PTR-U8-TABLE-VARIABLE MEM-NAMES
 SCRATCH-VARIABLE MEM-NAMES-CAP
 PTR-U8-TABLE-VARIABLE MEM-PTEES
@@ -65,6 +67,8 @@ variable MEM-N                        \ members of the open declaration
 0 MEM-N !
 variable MEM-CLOSED                   \ its members closed so far: the next rank
 0 MEM-CLOSED !
+variable MEM-LAST                     \ members of the declaration last ended
+0 MEM-LAST !
 
 : MEM-CLEAR ( -- ) 0 MEM-N !  0 MEM-CLOSED ! ;
 : MEM-NAME ( n -- ^^u8 ) MEM-NAMES @ swap ptr-field ;
@@ -80,7 +84,7 @@ variable MEM-CLOSED                   \ its members closed so far: the next rank
    MEM-P MEM-CAP i 1 + MEM-REC ARENA-ROWS-ENSURE
    na i MEM-NAME !
    nu i M.NAME-U MEM-CELL !   fam i M.FAM MEM-CELL !   0 i M.PTEE-U MEM-CELL !
-   0 i M.CLOSE MEM-CELL !
+   0 i M.CLOSE MEM-CELL !   0 i M.OPAQUE MEM-CELL !
    listed IF -1 ELSE 0 THEN i M.LISTED MEM-CELL !
    i 1 + MEM-N ! ;
 \ The member named na nu, -1 for none.
@@ -1178,14 +1182,21 @@ EXPORT CHECKER-OVERLAY:VALUE
 
 : MUTUAL-DRIVE ( -- ) LIST BEGIN MUTUAL-STEP UNTIL ;
 
-\ The member table is cleared on both exits: a later declaration's family may
-\ reuse a rejected member's id.
+\ Clears the member table, as both exits do: a later declaration's family may
+\ reuse a rejected member's id. The rows stay until the next declaration adds,
+\ each marked OPAQUE while its family row still stands, for MEMBERS-LEFT.
+: MEM-END-DECL ( -- )
+   MEM-N @ 0 ?do
+      i M.FAM MEM-CELL @ TFAM-OPAQUE? IF -1 ELSE 0 THEN
+      i M.OPAQUE MEM-CELL !
+   loop
+   MEM-N @ MEM-LAST !  MEM-CLEAR ;
 : SD-FRONT ( -- str str [ -- renders parses nominal ] )
    SD-KIND$ s" ;structure"
-   [: SD-RESET [: DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
+   [: SD-RESET [: DRIVE ;] [: MEM-END-DECL ;] finally ;] ;
 : MUTUAL-FRONT ( -- str str [ -- renders parses nominal ] )
    s" mutual" s" ;mutual"
-   [: SD-RESET [: MUTUAL-DRIVE ;] [: MEM-CLEAR ;] finally ;] ;
+   [: SD-RESET [: MUTUAL-DRIVE ;] [: MEM-END-DECL ;] finally ;] ;
 
 \ A byte no one name holds: a package qualifier, an application or a pointer.
 : NAME-STOP? ( n -- bool ) {: c:n :}
@@ -1237,12 +1248,36 @@ EXPORT CHECKER-OVERLAY:VALUE
 \ Declares the structures a MUTUAL lists, which may point at each other.
 : DECLARE-MUTUAL ( -- ) MUTUAL-FRONT DECL-FRONT:RUN ;
 
-EXPORT CHECK:CHECKER-UNSEEN-MARK
 EXPORT CHECK:CHECKER-TYPE-MARK
-\ A family whose buffer count only the run knows has no records here, so later
-\ uses of it and its generated words defer rather than reject.
-: COUNT-LEFT ( n -- n )
-   dup DW-COUNT = IF CHECKER-UNSEEN-MARK NO CHECKER-TYPE-MARK THEN ;
+EXPORT CHECK:UNSEEN-MARK$
+EXPORT CHECK:CHECKER-PUBLIC-SYM
+EXPORT CHECK:CHECKER-PKG-SYM
+
+public
+
+\ A family left to the run has no records here, so uses of its type and its
+\ generated words defer rather than reject: the type mark goes in the
+\ declaring scope and the unseen mark where those words land, the declaring
+\ package's private wordlist for an OPAQUE or private family, else the
+\ family's own namespace. An unknown word anywhere else stays rejected. An
+\ OPAQUE family outside a package has no private wordlist its words resolve in.
+: LEFT-MARK ( str bool -- ) {: na:^ nu:n opaque:bool :}
+   NO CHECKER-TYPE-MARK
+   TFAM-ACTIVE-PKG$ {: pa:^ pu:n :}
+   opaque  TDECL-VIS CHECKER-PACKAGE-PUBLIC <>  or IF
+      pu 0= IF EXIT THEN
+      pa pu SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM drop EXIT
+   THEN
+   pa pu na nu TF-CTOR-PKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM drop ;
+
+private
+
+\ Marks each member of the declaration just replayed when its cause is not 0.
+: MEMBERS-LEFT ( n -- n )
+   dup 0= IF EXIT THEN
+   MEM-LAST @ 0 ?do
+      i MEM-NAME$  i M.OPAQUE MEM-CELL @ 0 <>  LEFT-MARK
+   loop ;
 
 public
 
@@ -1250,14 +1285,14 @@ public
 \ defining no word; a body without ;STRUCTURE is rejected "missing ;STRUCTURE".
 \ Answers the first span left to the run and its deferral cause, 0 for none.
 : REPLAY-STRUCTURE ( str str -- str n )
-   SD-FRONT DECL-FRONT:REPLAY-OUTCOME COUNT-LEFT ;
+   SD-FRONT DECL-FRONT:REPLAY-OUTCOME MEMBERS-LEFT ;
 
 \ Registers a MUTUAL from a body a tool lexed, by DECLARE-MUTUAL's grammar,
 \ defining no word: first list token, then the rest of the body, which holds
 \ the other list tokens, the members and ;MUTUAL. A body without ;MUTUAL is
 \ rejected "missing ;MUTUAL". Answers as REPLAY-STRUCTURE.
 : REPLAY-MUTUAL ( str str -- str n )
-   MUTUAL-FRONT DECL-FRONT:REPLAY-OUTCOME COUNT-LEFT ;
+   MUTUAL-FRONT DECL-FRONT:REPLAY-OUTCOME MEMBERS-LEFT ;
 
 private
 
@@ -1295,7 +1330,7 @@ public
    {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
    -1 TDECL-FAM-REG !  REJECTION:TALLY {: tally:n :}
    ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n why:n :}
-   why 0= IF tally WRAP-KEEP THEN
+   why 0= IF tally WRAP-KEEP ELSE ha hu NO LEFT-MARK THEN
    ma mu why ;
 
 private

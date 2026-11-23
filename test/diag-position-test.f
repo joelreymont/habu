@@ -3080,7 +3080,9 @@ HB-TARGET-LINUX? 0= [if]
    s" defer D ( widget -- )" SB-APPEND LF+
    s" : Y ( -- n ) ;" SB-APPEND LF+
    s" defer-type.f" FIXTURE!
-   70 1 s" widget" s" declare `widget` with `NEWTYPE`, `STRUCTURE` or `SUMTYPE` before its use" DEFER-SUGGESTS
+   70 1 s" widget"
+   s" declare `widget` before its use; a declaration left to the run is reported at its own warning"
+   DEFER-SUGGESTS
    s" a top-level name only rendered text may define" T-LABEL
    GEN-LINES
    s" MADE" SB-APPEND LF+

@@ -18639,7 +18639,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN
    why DW-TYPE = IF
       s" the check leaves type " REJECTION:EMIT-STR  t tu DW-CODE
-      s"  to the run because only rendered source may declare it" REJECTION:EMIT-STR EXIT
+      s"  to the run because no declaration the check completed declares it" REJECTION:EMIT-STR EXIT
    THEN
    why DW-RENDERED = IF
       s" the check leaves " REJECTION:EMIT-STR  t tu DW-CODE
@@ -18661,7 +18661,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-DEFER = IF s" deferred word at top level" REJECTION:EMIT-STR EXIT THEN
    why DW-PARSES = IF s" reads its operands at run time" REJECTION:EMIT-STR EXIT THEN
    why DW-RENDERER = IF s" renders undeclared source" REJECTION:EMIT-STR EXIT THEN
-   why DW-TYPE = IF s" type not declared in the source" REJECTION:EMIT-STR EXIT THEN
+   why DW-TYPE = IF s" type known only to the run" REJECTION:EMIT-STR EXIT THEN
    why DW-RENDERED = IF s" may depend on rendered source" REJECTION:EMIT-STR EXIT THEN
    why DW-ROOTS = IF s" may move the source root" REJECTION:EMIT-STR EXIT THEN
    why DW-COUNT = IF s" value known only to the run" REJECTION:EMIT-STR EXIT THEN
@@ -18689,7 +18689,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN
    why DW-TYPE = IF
       s" declare " REJECTION:EMIT-STR  t tu DW-CODE
-      s"  with `NEWTYPE`, `STRUCTURE` or `SUMTYPE` before its use" REJECTION:EMIT-STR EXIT
+      s"  before its use; a declaration left to the run is reported at its own warning" REJECTION:EMIT-STR EXIT
    THEN
    why DW-ROOTS = IF
       s" the run loads the files later requires name from the root it sets" REJECTION:EMIT-STR EXIT

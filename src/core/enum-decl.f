@@ -372,8 +372,9 @@ public
 
 \ Registers an ENUM from a body a tool lexed, by DECLARE-ENUM's grammar, defining
 \ no word; a body without ;ENUM is rejected "missing ;ENUM".
-: REPLAY-ENUM ( str str -- str n )
-   ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
+: REPLAY-ENUM ( str str -- str n ) {: na:^ nu:n ba:^ bu:n :}
+   na nu ba bu ED-FRONT DECL-FRONT:REPLAY-OUTCOME
+   dup 0 <> IF na nu DECL-FAMILY-NAME NO STRUCTURE-DECL:LEFT-MARK THEN ;
 
 ;package
 

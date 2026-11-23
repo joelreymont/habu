@@ -894,9 +894,11 @@ DECL-DIAG:OFF
 
 \ tools/check.f's declaration pre-pass replays each STRUCTURE it reads, so the
 \ source after it is checked against the family's generated words, a buffer
-\ counted by a constant whose value the source states included. One
-\ --all-errors --verify-only run reports each rejection asserted here, and no
-\ other. The dangling FIELD ends the fixture: its body runs to the end of input.
+\ counted by a constant whose value the source states included. A declaration
+\ left to the run defers each use of its type and words, from any package, and
+\ no other unknown word. One --all-errors --verify-only run reports each
+\ rejection asserted here, and no other. The dangling FIELD ends the fixture:
+\ its body runs to the end of input.
 package struct-check-test
 private
 
@@ -927,6 +929,19 @@ create SC-NONE 1 allot
    s" STRUCTURE rpsdbad FIELD one nope ;STRUCTURE" SC-LINE
    s\" 16 s\" x\" constant K drop drop" SC-LINE
    s" STRUCTURE rpsdk BUFFER id K ;STRUCTURE" SC-LINE
+   s" package pc public" SC-LINE
+   s" : HB ( -- n ) 16 ;" SC-LINE
+   s" HB constant IDH" SC-LINE
+   s" STRUCTURE hd FIELD a n BUFFER id IDH ;STRUCTURE" SC-LINE
+   s" ;package" SC-LINE
+   s" package pd public" SC-LINE
+   s" : SCPH ( -- n ) 1 2 3 PC-HD:MAKE PC-HD:UNMAKE + + ;" SC-LINE
+   s" STRUCTURE rpsdg FIELD h ^pc:hd ;STRUCTURE" SC-LINE
+   s" : SCPG ( -- ) 0 PD-RPSDG:MAKE drop ;" SC-LINE
+   s" NEWTYPE rpsdw ^pc:hd" SC-LINE
+   s" : SCPW ( rpsdw -- rpsdw ) ;" SC-LINE
+   s" ;package" SC-LINE
+   s" : SCPX ( -- ) SCPNOPE ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
    SB$ ;
 
@@ -959,7 +974,7 @@ create SC-NONE 1 allot
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 5 T=
+SC-ERR$ s" error[" COUNT-SUB 6 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -968,12 +983,18 @@ s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the
    s" :12:30" s" reaches below the inputs" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
    s" :13:29" s" unknown type" SC-RECORD
-\ A string literal between the number and `constant` leaves K's value unstated.
-SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 1 T=
+\ A string literal between the number and `constant` leaves K's value unstated,
+\ and a colon definition IDH's. Each use of hd, and of rpsdg and rpsdw over it,
+\ is deferred: one warning each, five.
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 7 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the run because only the run defines its value"
+   s" :19:34" s" value known only to the run" SC-RECORD
+s" error[E-UNDEFINED]: cannot find word `SCPNOPE`"
+   s" :28:15" s" not found" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :17:1" s" missing field name" SC-RECORD
+   s" :30:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 
@@ -1621,56 +1642,6 @@ s\" error[E-USING-SHADOW-GLOBAL]: `DREC` is both a global word and a public of u
 s" ^^^^ ambiguous here" DECL-DIAG:HAS? TTRUE
 ;using
 DECL-DIAG:OFF
-
-\ tools/check.f's pre-pass has no value for a program's own constant, so it
-\ leaves a structure that counts a buffer by one to the run, and the words that
-\ use the family with it. It spawns because that pre-pass is under test.
-package struct-bufcount-test
-private
-
-$2000 constant BC-CAP
-create BC-PATH PATH-CAP allot   variable BC-PATH-U
-create BC-OUT BC-CAP allot
-create BC-ERR BC-CAP allot   variable BC-ERR-U
-create BC-NONE 1 allot
-
-: BC-FILE ( -- str ) BC-PATH BC-PATH-U @ ;
-: BC-ERR$ ( -- str ) BC-ERR BC-ERR-U @ ;
-: BC-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
-
-: BC-SRC$ ( -- str )
-   SB-RESET
-   s" 16 constant SDBC-ID" BC-LINE
-   s" STRUCTURE sdbcheld DERIVE addr" BC-LINE
-   s"    FIELD size n" BC-LINE
-   s"    BUFFER id SDBC-ID" BC-LINE
-   s" ;STRUCTURE" BC-LINE
-   s" : SDBC-SIZE ( ^sdbcheld -- n ) SDBCHELD:SIZE @ ;" BC-LINE
-   SB$ ;
-
-: BC-RUN ( -- )
-   BC-FILE BC-SRC$ FS:WRITE-ALL
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+  s" --verify-only" >LEN PROC-ARGV+
-   BC-FILE >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN  BC-NONE 0 >LEN  BC-OUT BC-CAP >LEN
-   BC-ERR BC-CAP >LEN  PROCESS:WAIT-FOREVER
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   erru LEN>N BC-ERR-U !
-   BC-SRC$ BC-OUT outu LEN>N BC-ERR$ oc 0 T-ENDING-EXITED= ;
-
-s" habu-structure-bufcount" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
-s" structure-bufcount-check.f" BC-PATH FS:JOIN-PATH BC-PATH-U !
-BC-RUN
-BC-ERR$ s" error[" COUNT-SUB 0 T=
-SB-RESET
-s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `SDBC-ID` to the run because only the run defines its value" SB-APPEND
-s\" \n --> " SB-APPEND  BC-FILE SB-APPEND  s" :4:14" BC-LINE
-BC-ERR$ SB$ CONTAINS? TTRUE
-BC-ERR$ s\" ^ value known only to the run\n" CONTAINS? TTRUE
-FS:CLEANUP-RUN
-;package
 
 \ DERIVE eq, hash and init are each rejected with a buffer.
 DECL-DIAG:PROSE
