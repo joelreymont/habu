@@ -17,10 +17,6 @@ split-str
    {: n:n q :}
    n 0 ?do q execute loop ;
 
-: EACH ( R ^a n [ R a -- R ] -- R )
-   {: a n q :}
-   n 0 ?do a i cells + @ q execute loop ;
-
 : MAP ( R ^a n [ R a -- R a ] -- R )
    {: a n q :}
    n 0 ?do a i cells + @ q execute a i cells + ! loop ;

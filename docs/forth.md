@@ -1201,7 +1201,6 @@ DIP    ( R a [ R -- S ] -- S a )
 KEEP   ( R a [ R a -- S ] -- S a )
 BI     ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
 TIMES  ( R n [ R -- R ] -- R )
-EACH   ( R ^a n [ R a -- R ] -- R )
 FOLD   ( R ^a n b [ R b a -- R b ] -- R b )
 ```
 

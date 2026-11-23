@@ -334,16 +334,15 @@ variable LABEL-U
    s" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" GE-SRC-CHECK-LINE
    s" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" GE-SRC-CHECK-LINE
    s" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" GE-SRC-CHECK-LINE
-   \ The array's element and the quotation's operand are one type in
-   \ EACH/MAP/FOLD (`^a` with `[ .. a .. ]`); `[: + ;]` and `[: 1+ ;]` are
-   \ `n` arithmetic, so the array is `^n`.
-   s" CEACH ( i64 ^n i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
+   \ The array's element and the quotation's operand are one type in MAP and
+   \ FOLD (`^a` with `[ .. a .. ]`); `[: + ;]` and `[: 1+ ;]` are `n`
+   \ arithmetic, so the array is `^n`.
    s" CMAP ( ^n i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
    s" CFOLD ( ^n i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
    s" hb combinator/iterator verdicts" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
-   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    SB$ s" hb combinator/iterator verdicts output" GE-EXPECT-OUT ;
 
 : LOCAL-QUOT-CHECKS ( -- )

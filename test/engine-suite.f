@@ -281,8 +281,6 @@ TTRI 16 T=
 TTIMES 5 T=
 create IARR 3 cells allot
 1 IARR !  2 IARR cell+ !  3 IARR cell+ cell+ !
-: TEACH ( -- n ) 0 IARR 3 [: + ;] EACH ;
-TEACH 6 T=
 : TFOLD ( -- n ) IARR 3 0 [: + ;] FOLD ;
 TFOLD 6 T=
 : TMAP ( -- ) IARR 3 [: 1+ ;] MAP ;
