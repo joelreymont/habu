@@ -329,7 +329,7 @@ S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 \ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a
 \ fixed key, SET, GET and EACH's visit order.
 s" WMAP:STEP"
-S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( str n -- ) {: s:str v:n :}\n   s str> type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M ROOM >COUNT s\" one\" >str MAP:SET\n   2 M ROOM >COUNT s\" two\" >str MAP:SET\n   3 M ROOM >COUNT s\" three\" >str MAP:SET\n   M ROOM >COUNT s\" two\" >str MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ROOM >COUNT ['] SHOW MAP:EACH ;\n;package\n"
+S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( str n -- ) {: s:str v:n :}\n   s str> type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M s\" one\" >str MAP:SET\n   2 M s\" two\" >str MAP:SET\n   3 M s\" three\" >str MAP:SET\n   M s\" two\" >str MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ['] SHOW MAP:EACH ;\n;package\n"
 S\" 2\ntwo 2\nthree 3\none 1\n" ROW
 
 \ Core byte copying is forward, including when the destination overlaps the

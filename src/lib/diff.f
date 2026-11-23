@@ -56,7 +56,7 @@ STRUCTURE script DERIVE addr
 \ call's texts, which lie back to back in text; a line's class is the first
 \ line with the same bytes, so equal lines have equal classes. out is the
 \ caller's vector; starts holds each line's offset in text, then the end
-\ of text; ids each line's class; map (cap slots) finds a class by a line's
+\ of text; ids each line's class; map finds a class by a line's
 \ bytes. For the script being run, seen holds per class the sides that have it,
 \ and seq the lines the search runs over, the old side's then the new side's. v1
 \ and v2 hold the furthest x reached on each diagonal, forward and in reverse;
@@ -70,7 +70,6 @@ STRUCTURE work DERIVE addr
    FIELD starts ^n
    FIELD ids ^n
    FIELD map ^n
-   FIELD cap n
    FIELD seen ^n
    FIELD seq ^n
    FIELD v1 ^n
@@ -169,16 +168,15 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : CLASS ( ^work n -- n )
    {: w g :}
-   w WORK-MAP @ w WORK-CAP @ >COUNT w g LINE$ {: m cap a u :}
-   m cap a u MAP:GET MATCH option
-      none OF g m cap a u MAP:SET g ENDOF
+   w WORK-MAP @ w g LINE$ {: m a u :}
+   m a u MAP:GET MATCH option
+      none OF g m a u MAP:SET g ENDOF
       some OF ENDOF
    ;MATCH ;
 
 
 : CLASSIFY ( ^work n -- )
    {: w lines :}
-   w WORK-MAP @ w WORK-CAP @ >COUNT MAP:INIT
    lines 0 ?do w i CLASS w WORK-IDS @ i NTH! loop ;
 
 
@@ -477,11 +475,10 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 \ Scratch. Every region is cells but the text, cut last; a cut past the
 \ mapping is E-SPAN-RANGE.
 
-\ The map's slots: twice the lines, and one when there are none, as MAP
-\ admits no empty map.
+\ The map's slots: twice the lines.
 : MAP-CAP ( n -- count )
    {: lines :}
-   lines 2 * 1 max >COUNT ;
+   lines 2 * >COUNT ;
 
 
 : MAP-SPACE ( n -- n )
@@ -513,7 +510,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    lines 1+ cells CUT CELL-VIEW w WORK-STARTS !
    lines cells CUT CELL-VIEW w WORK-IDS !
    lines MAP-SPACE cells CUT CELL-VIEW w WORK-MAP !
-   lines MAP-CAP COUNT>N w WORK-CAP !
+   w WORK-MAP @ lines MAP-CAP MAP:INIT
    lines cells CUT CELL-VIEW w WORK-SEEN !
    lines cells CUT CELL-VIEW w WORK-SEQ !
    lines 2 + cells CUT CELL-VIEW w WORK-V1 !

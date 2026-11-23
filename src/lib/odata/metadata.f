@@ -136,9 +136,7 @@ STRUCTURE metadata OPAQUE DERIVE addr
    FIELD version version
    FIELD sets ^entity-set
    FIELD names ^n
-   FIELD names-cap n
    FIELD targets ^n
-   FIELD targets-cap n
    FIELD types ^entity-type
 ;STRUCTURE
 STRUCTURE entity-set OPAQUE DERIVE addr
@@ -330,7 +328,6 @@ STRUCTURE doc DERIVE addr
    FIELD key-ref-last ^key-ref
    FIELD names ^ARENA:arena
    FIELD map ^n
-   FIELD map-cap n
    FIELD key ^u8
    FIELD key-room n
    FIELD key-len n
@@ -618,31 +615,30 @@ CAST: >RECORD ( n -- ^t )
    d k KEY-NEW d a KEY-AT+ d b KEY-AT+ ;
 
 \ The names map.
-: MAP-OF ( ^doc -- ^n count ) dup DOC-MAP @ swap DOC-MAP-CAP @ >COUNT ;
+: MAP-OF ( ^doc -- ^n ) DOC-MAP @ ;
 
 : MAP-NEW ( ^doc n -- )
    {: d:^ cap:n :}
-   d DOC-NAMES @ cap >COUNT MAP:IN d DOC-MAP !
-   cap d DOC-MAP-CAP ! ;
+   d DOC-NAMES @ cap >COUNT MAP:IN d DOC-MAP ! ;
 
 : HELD? ( ^doc -- bool )
    {: d:^ :}
    d MAP-OF d KEY$ MAP:HAS? ;
 
 \ The record KEY names in the map, null for none.
-: MAP-RECORD ( ^n count str -- ^t )
+: MAP-RECORD ( ^n str -- ^t )
    MAP:GET MATCH option
       none OF 0 >RECORD ENDOF
       some OF >RECORD ENDOF
    ;MATCH ;
 
-: FIND ( ^doc -- ^t ) dup MAP-OF rot KEY$ MAP-RECORD ;
+: FIND ( ^doc -- ^t ) dup MAP-OF swap KEY$ MAP-RECORD ;
 
 \ Sets the key to V; a new key is copied into the names arena.
 : REMEMBER ( ^doc n -- )
    {: d:^ v:n :}
    d HELD? if v d MAP-OF d KEY$ MAP:SET exit then
-   d DOC-MAP d DOC-MAP-CAP d DOC-NAMES @ MAP:ROOM
+   d DOC-MAP d DOC-NAMES @ MAP:ROOM
    d DOC-NAMES @ d DOC-KEY-LEN @ ARENA:ALLOC {: copy:^ len:n :}
    d DOC-KEY @ copy len BYTE-COPY
    v d MAP-OF copy len MAP:SET ;
@@ -697,11 +693,10 @@ CAST: >RECORD ( n -- ^t )
    d KIND-SINGLETON-NAME name len NAME-KEY d HELD? ;
 
 \ The model's index of names.
-: NAMES-OF ( ^metadata -- ^n count )
-   dup METADATA-NAMES @ swap METADATA-NAMES-CAP @ >COUNT ;
+: NAMES-OF ( ^metadata -- ^n ) METADATA-NAMES @ ;
 
 \ The `named` of NAME, null for none.
-: INDEXED ( ^metadata str -- ^named ) rot NAMES-OF 2swap MAP-RECORD ;
+: INDEXED ( ^metadata str -- ^named ) rot NAMES-OF -rot MAP-RECORD ;
 
 : HIDDEN? ( ^metadata str -- bool )
    INDEXED {: x:^named :}
@@ -1855,9 +1850,8 @@ CAST: >RECORD ( n -- ^t )
 \ The map holds at most half its capacity, so it never grows.
 : INDEX-NAMES ( ^doc -- )
    {: d:^ :}
-   d NAME-COUNT 2 * 1 max {: cap:n :}
+   d NAME-COUNT 2 * {: cap:n :}
    d DOC-ARENA @ cap >COUNT MAP:IN d DOC-MODEL @ METADATA-NAMES !
-   cap d DOC-MODEL @ METADATA-NAMES-CAP !
    d TALLY-NAMES
    d DOC-TYPE-COUNT @ 0 ?do
       d DOC-RANKED @ i cells + @ {: t:^ :}
@@ -2094,8 +2088,7 @@ CAST: >RECORD ( n -- ^t )
    s e SET-END-SET !
    d e END-FITS ;
 
-: TARGETS-OF ( ^metadata -- ^n count )
-   dup METADATA-TARGETS @ swap METADATA-TARGETS-CAP @ >COUNT ;
+: TARGETS-OF ( ^metadata -- ^n ) METADATA-TARGETS @ ;
 
 \ A targets key: S's address, then R's, with no kind.
 : TARGET-KEY ( ^doc ^entity-set ^t -- )
@@ -2106,7 +2099,7 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ :}
    d DOC-MODEL @ TARGETS-OF d KEY$ MAP:HAS? ;
 
-: TARGET-FIND ( ^doc -- ^t ) dup DOC-MODEL @ TARGETS-OF rot KEY$ MAP-RECORD ;
+: TARGET-FIND ( ^doc -- ^t ) dup DOC-MODEL @ TARGETS-OF swap KEY$ MAP-RECORD ;
 
 \ Sets the key to V, the key copied into the caller's arena.
 : ADD-TARGET ( ^doc n -- )
@@ -2132,9 +2125,8 @@ CAST: >RECORD ( n -- ^t )
 : TARGETS-NEW ( ^doc -- )
    {: d:^ :}
    d TARGET-COUNT {: count:n :}
-   count 2 * 1 max {: cap:n :}
+   count 2 * {: cap:n :}
    d DOC-ARENA @ cap >COUNT MAP:IN d DOC-MODEL @ METADATA-TARGETS !
-   cap d DOC-MODEL @ METADATA-TARGETS-CAP !
    d DOC-NAMES @ count cells ARENA:ALLOC drop >SET-ENDS d DOC-SECONDS ! ;
 
 : NOTE-SECOND ( ^doc ^set-end -- )

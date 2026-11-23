@@ -2,8 +2,8 @@ split-str
 \ map-core.f - package MAP: fixed-capacity open-addressed string-key map in
 \ caller cells (CELL-COUNT sizes them; not CELLS, which would shadow `cells` in
 \ later bodies). Layout, hash, probe and locate are private; src/lib/map-test.f
-\ reopens the package. Every call takes the capacity INIT or INIT-KEYED was
-\ given; a SET into a full table throws E-MAP-FULL.
+\ reopens the package. A map holds its capacity. A SET into a full table throws
+\ E-MAP-FULL.
 \ Probing is linear from a key's home slot (its hash mod the capacity), and no
 \ empty slot lies between an entry's home and its slot, so LOCATE stops at the
 \ first empty one.
@@ -166,7 +166,7 @@ private
    a u SIPHASH:BYTES HASH-MASK and ;
 
 : INDEX ( n count -- idx ) {: hash cap :}
-   hash cap COUNT>N mod dup 0 < if cap COUNT>N + then >IDX ;
+   hash cap COUNT>N mod >IDX ;
 
 : PROBE ( n count count -- idx ) {: hash step cap :}
    hash cap INDEX IDX>N
@@ -252,14 +252,14 @@ private
 
 public
 
-: GET ( ^n count str -- option<n> ) {: m:^ cap:count key:^ len:n :}
-   m cap key len LOCATE drop MATCH loc
+: GET ( ^n str -- option<n> ) {: m:^ key:^ len:n :}
+   m m CAP@ key len LOCATE drop MATCH loc
      full OF OPTION:NONE ENDOF
      free OF drop OPTION:NONE ENDOF
      found OF m swap SLOT-VALUE@ OPTION:SOME ENDOF
    ;MATCH ;
 
-: HAS? ( ^n count str -- bool )
+: HAS? ( ^n str -- bool )
    GET MATCH option
      none OF 0 0= 0= ENDOF
      some OF drop 0 0= ENDOF
@@ -267,8 +267,8 @@ public
 
 \ Stores the key's pointer and length, not a copy; a replacement keeps the first
 \ pointer: the key bytes stay alive and unchanged while the entry exists.
-: SET ( n ^n count str -- ) {: value:n m:^ cap:count key:^ len:n :}
-   m cap key len LOCATE {: hash:n :}
+: SET ( n ^n str -- ) {: value:n m:^ key:^ len:n :}
+   m m CAP@ key len LOCATE {: hash:n :}
    MATCH loc
      full OF E-MAP-FULL throw ENDOF
      free OF value m rot hash key len SLOT-INSERT ENDOF
@@ -276,7 +276,8 @@ public
    ;MATCH ;
 
 \ Removes the key's entry; true when there was one.
-: REMOVE ( ^n count str -- bool ) {: m:^ cap:count key:^ len:n :}
+: REMOVE ( ^n str -- bool ) {: m:^ key:^ len:n :}
+   m CAP@ {: cap:count :}
    m cap key len LOCATE drop MATCH loc
      full OF false ENDOF
      free OF drop false ENDOF
@@ -285,8 +286,8 @@ public
 
 \ Visits in storage order, which follows the map's hash key. q must not REMOVE
 \ from this map: a shift back can make EACH skip an entry or visit one twice.
-: EACH ( ^n count [ str n -- ] -- ) {: m:^ cap q :}
-   cap COUNT>N 0 ?do
+: EACH ( ^n [ str n -- ] -- ) {: m:^ q :}
+   m CAP@ COUNT>N 0 ?do
       m i >IDX SLOT-STATE@ OCCUPIED? if
          m i >IDX SLOT-KEY-A@
          m i >IDX SLOT-KEY-U@

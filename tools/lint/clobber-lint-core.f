@@ -762,7 +762,7 @@ variable HOST#  variable BOUND#  variable DEF#  variable SEED#
 \ Each row's folded name, the name map's key; DECL-FILE sums NAME-CAP.
 DYNAMIC-BUFFER HOST-NAMES u8   variable NAME-CAP  variable NAME-END
 \ The name map: a folded name in HOST-NAMES to its latest row.
-DYNAMIC-BUFFER HOST-MAP n   variable MAP-CAP
+DYNAMIC-BUFFER HOST-MAP n
 \ Each token's UNKNOWN-AT? answer as a cell, UNSEEN until asked, once per pass.
 DYNAMIC-BUFFER HREF n
 -2 constant UNSEEN
@@ -781,7 +781,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    ROLES-RELEASE  LOCALS-RELEASE  BLOCKS-RELEASE  FLOWS-RELEASE ;
 
 : MAP-ROW  ( str -- n ) {: a:^ u:n :}
-   0 HOST-MAP MAP-CAP @ >COUNT a u MAP:GET MATCH option
+   0 HOST-MAP a u MAP:GET MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -986,7 +986,7 @@ variable HIDDEN
    a u HOST-NAME$ {: key:^ len:n :}
    key len MAP-ROW row PREV HOST!
    emits bool>n row EMITTER HOST!
-   row 0 HOST-MAP MAP-CAP @ >COUNT key len MAP:SET
+   row 0 HOST-MAP key len MAP:SET
    row 1+ HOST# ! ;
 
 \ A row for the definition named by token k.
@@ -1012,9 +1012,9 @@ variable HIDDEN
    DEF# @ SEED# @ + {: rows:n :}
    rows HOST-STRIDE * HOSTS-RESERVE
    NAME-CAP @ HOST-NAMES-RESERVE  0 NAME-END !
-   rows 2 * MAP-CAP !
-   MAP-CAP @ >COUNT MAP:CELL-COUNT COUNT>N HOST-MAP-RESERVE
-   0 HOST-MAP MAP-CAP @ >COUNT MAP:INIT
+   rows 2 * >COUNT {: cap:count :}
+   cap MAP:CELL-COUNT COUNT>N HOST-MAP-RESERVE
+   0 HOST-MAP cap MAP:INIT
    [: SEED-ROW ;] EMITW-NAMES  HOST-BIND ;
 
 : DEF-END  {: lo :}  ( -- hi )

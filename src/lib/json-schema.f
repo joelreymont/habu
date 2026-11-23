@@ -82,7 +82,7 @@ STRUCTURE entry DERIVE addr
 \ types: bit i for TYPE-NAMES$'s i-th name, 0 for none; type-order: each i + 1
 \ in the schema's order, 4 bits apiece. An empty span, -1 or null is no rule.
 \ property-map: each property's name to its address; required-map: each
-\ required name to its index in required. A null map has capacity 0.
+\ required name to its index in required. A map is null until its first name.
 MUTUAL node property branch
 STRUCTURE node DERIVE addr
    FIELD types n
@@ -100,10 +100,8 @@ STRUCTURE node DERIVE addr
    FIELD pattern-text SPAN:span<u8>
    FIELD properties ^property
    FIELD property-map ^n
-   FIELD property-cap n
    FIELD required ^entry
    FIELD required-map ^n
-   FIELD required-cap n
    FIELD extras extras
    FIELD additional ^node
    FIELD items ^node
@@ -446,19 +444,19 @@ $73 constant SCALARS
 \ A property's address a map holds.
 CAST: >PROPERTY ( n -- ^property )
 
-: NAME-GET ( str ^n n -- option<n> ) {: na:^ nu:n m:^ cap:n :}
+: NAME-GET ( str ^n -- option<n> ) {: na:^ nu:n m:^ :}
    m NULL-PTR = if OPTION:NONE exit then
-   m cap >COUNT na nu MAP:GET ;
+   m na nu MAP:GET ;
 
 : NAME-COUNT ( ^n -- n ) {: m:^ :}
    m NULL-PTR = if 0 exit then
    m MAP:COUNT@ COUNT>N ;
 
 \ na nu must live as long as arena a, which holds the map.
-: NAME-PUT ( n str ^^n ^n ^ARENA:arena -- )
-   {: v:n na:^ nu:n mp:^ cp:^ a:^ :}
-   mp cp a MAP:ROOM
-   v mp @ cp @ >COUNT na nu MAP:SET ;
+: NAME-PUT ( n str ^^n ^ARENA:arena -- )
+   {: v:n na:^ nu:n mp:^ a:^ :}
+   mp a MAP:ROOM
+   v mp @ na nu MAP:SET ;
 
 : APPEND-PROPERTY ( ^property ^level -- ) {: p:^ lv:^ :}
    p lv LEVEL-PROPERTY-TAIL @ !  p PROPERTY-NEXT lv LEVEL-PROPERTY-TAIL ! ;
@@ -467,7 +465,7 @@ CAST: >PROPERTY ( n -- ^property )
 : PROPERTY ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}  lv LEVEL-BUILD @ {: b:^ :}
    b DECODED {: na:^ nu:n :}
-   na nu nd NODE-PROPERTY-MAP @ nd NODE-PROPERTY-CAP @ NAME-GET
+   na nu nd NODE-PROPERTY-MAP @ NAME-GET
    MATCH option
       none OF ENDOF
       some OF
@@ -480,8 +478,7 @@ CAST: >PROPERTY ( n -- ^property )
    b BUILD-ARENA @ PROPERTIES-NEW {: p:^ :}
    na nu SPAN:MAKE p PROPERTY-NAME !  child p PROPERTY-NODE !
    p lv APPEND-PROPERTY
-   p NULL-PTR -  na nu  nd NODE-PROPERTY-MAP nd NODE-PROPERTY-CAP
-   b BUILD-ARENA @ NAME-PUT ;
+   p NULL-PTR -  na nu  nd NODE-PROPERTY-MAP b BUILD-ARENA @ NAME-PUT ;
 
 : PROPERTIES-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    JSON:READ-TOKEN JSON:T-OBJ <> if
@@ -509,7 +506,7 @@ CAST: >PROPERTY ( n -- ^property )
       REQUIRED-EXPECTED$ REQUIRED-FIX$ REJECT
    then
    b DECODED {: na:^ nu:n :}
-   na nu nd NODE-REQUIRED-MAP @ nd NODE-REQUIRED-CAP @ NAME-GET
+   na nu nd NODE-REQUIRED-MAP @ NAME-GET
    MATCH option
       none OF ENDOF
       some OF
@@ -521,7 +518,7 @@ CAST: >PROPERTY ( n -- ^property )
    na nu SPAN:MAKE en ENTRY-NAME !
    en lv APPEND-ENTRY
    nd NODE-REQUIRED-MAP @ NAME-COUNT  na nu
-   nd NODE-REQUIRED-MAP nd NODE-REQUIRED-CAP b BUILD-ARENA @ NAME-PUT ;
+   nd NODE-REQUIRED-MAP b BUILD-ARENA @ NAME-PUT ;
 
 : REQUIRED-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
    JSON:READ-TOKEN JSON:T-ARR <> if
@@ -1030,7 +1027,7 @@ $40 constant INTEGER-BIT
 \ Marks the name, when it is required.
 : MARK-REQUIRED ( str ^place -- ) {: na:^ nu:n pl:^ :}
    pl PLACE-NODE @ {: nd:^ :}
-   na nu nd NODE-REQUIRED-MAP @ nd NODE-REQUIRED-CAP @ NAME-GET
+   na nu nd NODE-REQUIRED-MAP @ NAME-GET
    MATCH option
       none OF ENDOF
       some OF pl PLACE-MARKS @ swap + 1 swap c! ENDOF
@@ -1057,7 +1054,7 @@ $40 constant INTEGER-BIT
    na nu SPAN:MAKE kid PLACE-NAME ! ;
 
 : FIND-PROPERTY ( str ^node -- ^property ) {: na:^ nu:n nd:^ :}
-   na nu nd NODE-PROPERTY-MAP @ nd NODE-PROPERTY-CAP @ NAME-GET
+   na nu nd NODE-PROPERTY-MAP @ NAME-GET
    MATCH option
       none OF NULL-PTR ENDOF
       some OF >PROPERTY ENDOF

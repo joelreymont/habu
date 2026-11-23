@@ -29,7 +29,6 @@ variable MT-EACH-LEN-SUM
 variable MT-EACH-LAST                   \ slot of the entry EACH visited last
 variable MT-COL-N
 TYPED-VARIABLE MT-ROOM-MAP ^n
-variable MT-ROOM-CAP
 
 create MT-MAP MT-CAP >COUNT CELL-COUNT COUNT>N cells allot
 create MT-FULL-MAP MT-FULL-CAP >COUNT CELL-COUNT COUNT>N cells allot
@@ -117,21 +116,6 @@ create MT-KEY-Z 122 c,
      free OF IDX>N ENDOF
      found OF IDX>N ENDOF
    ;MATCH ;
-
-: MT-MAP-GET ( ^n n str -- option<n> ) {: m:^ cap:n key:^ len:n :}
-   m cap >COUNT key len GET ;
-
-: MT-MAP-HAS? ( ^n n str -- bool ) {: m:^ cap key:^ len :}
-   m cap >COUNT key len HAS? ;
-
-: MT-MAP-SET ( n ^n n str -- ) {: value m:^ cap key:^ len :}
-   value m cap >COUNT key len SET ;
-
-: MT-MAP-EACH ( ^n n [ str n -- ] -- ) {: m:^ cap q :}
-   m cap >COUNT q EACH ;
-
-: MT-MAP-REMOVE ( ^n n str -- bool ) {: m:^ cap key:^ len :}
-   m cap >COUNT key len REMOVE ;
 
 : MT-FILL-STORAGE ( -- )
    MT-CAP MT-MAP-CELLS 0 ?do
@@ -282,16 +266,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    loop
    0 0= 0= MT-ASSERT ;
 
-: MT-ASSERT-HIT ( ^n n str n -- ) {: m:^ cap:n key:^ len:n want:n :}
-   m cap key len MT-MAP-HAS? MT-ASSERT
-   m cap key len MT-MAP-GET MATCH option
+: MT-ASSERT-HIT ( ^n str n -- ) {: m:^ key:^ len:n want:n :}
+   m key len HAS? MT-ASSERT
+   m key len GET MATCH option
      none OF 0 0= 0= MT-ASSERT ENDOF
      some OF want MT= ENDOF
    ;MATCH ;
 
-: MT-ASSERT-MISS ( ^n n str -- ) {: m:^ cap:n key:^ len:n :}
-   m cap key len MT-MAP-HAS? 0= MT-ASSERT
-   m cap key len MT-MAP-GET MATCH option
+: MT-ASSERT-MISS ( ^n str -- ) {: m:^ key:^ len:n :}
+   m key len HAS? 0= MT-ASSERT
+   m key len GET MATCH option
      none OF ENDOF
      some OF drop 0 0= 0= MT-ASSERT ENDOF
    ;MATCH ;
@@ -301,89 +285,89 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
       want = MT-ASSERT ;
 
 : MT-FULL-INSERT ( -- )
-   44 MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-MAP-SET ;
+   44 MT-FULL-MAP MT-KEY-D 1 SET ;
 
 : MT-TEST-MAP-SET-GET ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   MT-MAP MT-CAP MT-KEY-Z 1 MT-ASSERT-MISS
-   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
+   MT-MAP MT-KEY-Z 1 MT-ASSERT-MISS
+   11 MT-MAP MT-KEY-A 1 SET
    MT-MAP MT-MAP-COUNT@ 1 MT=
-   MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-HAS? MT-ASSERT
-   MT-MAP MT-CAP MT-KEY-A 1 11 MT-ASSERT-HIT
-   MT-MAP MT-CAP MT-KEY-Z 1 MT-ASSERT-MISS
-   22 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
+   MT-MAP MT-KEY-A 1 HAS? MT-ASSERT
+   MT-MAP MT-KEY-A 1 11 MT-ASSERT-HIT
+   MT-MAP MT-KEY-Z 1 MT-ASSERT-MISS
+   22 MT-MAP MT-KEY-A 1 SET
    MT-MAP MT-MAP-COUNT@ 1 MT=
-   MT-MAP MT-CAP MT-KEY-A 1 22 MT-ASSERT-HIT ;
+   MT-MAP MT-KEY-A 1 22 MT-ASSERT-HIT ;
 
 : MT-TEST-MAP-COLLISIONS ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-FIND-COLLISIONS
-   11 MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-SET
-   22 MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-SET
-   33 MT-MAP MT-CAP 2 MT-COL 1 MT-MAP-SET
+   11 MT-MAP 0 MT-COL 1 SET
+   22 MT-MAP 1 MT-COL 1 SET
+   33 MT-MAP 2 MT-COL 1 SET
    MT-MAP MT-MAP-COUNT@ 3 MT=
    0 0 MT-COL MT-ASSERT-COLLISION-SLOT
    1 1 MT-COL MT-ASSERT-COLLISION-SLOT
    2 2 MT-COL MT-ASSERT-COLLISION-SLOT
-   MT-MAP MT-CAP 0 MT-COL 1 11 MT-ASSERT-HIT
-   MT-MAP MT-CAP 1 MT-COL 1 22 MT-ASSERT-HIT
-   MT-MAP MT-CAP 2 MT-COL 1 33 MT-ASSERT-HIT
-   44 MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-SET
+   MT-MAP 0 MT-COL 1 11 MT-ASSERT-HIT
+   MT-MAP 1 MT-COL 1 22 MT-ASSERT-HIT
+   MT-MAP 2 MT-COL 1 33 MT-ASSERT-HIT
+   44 MT-MAP 1 MT-COL 1 SET
    MT-MAP MT-MAP-COUNT@ 3 MT=
-   MT-MAP MT-CAP 0 MT-COL 1 11 MT-ASSERT-HIT
-   MT-MAP MT-CAP 1 MT-COL 1 44 MT-ASSERT-HIT
-   MT-MAP MT-CAP 2 MT-COL 1 33 MT-ASSERT-HIT ;
+   MT-MAP 0 MT-COL 1 11 MT-ASSERT-HIT
+   MT-MAP 1 MT-COL 1 44 MT-ASSERT-HIT
+   MT-MAP 2 MT-COL 1 33 MT-ASSERT-HIT ;
 
 : MT-TEST-MAP-FULL ( -- )
    MT-FULL-MAP MT-FULL-CAP MT-MAP-INIT
-   11 MT-FULL-MAP MT-FULL-CAP MT-KEY-A 1 MT-MAP-SET
-   22 MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 MT-MAP-SET
-   33 MT-FULL-MAP MT-FULL-CAP MT-KEY-C 1 MT-MAP-SET
+   11 MT-FULL-MAP MT-KEY-A 1 SET
+   22 MT-FULL-MAP MT-KEY-B 1 SET
+   33 MT-FULL-MAP MT-KEY-C 1 SET
    MT-FULL-MAP MT-MAP-COUNT@ MT-FULL-CAP MT=
    [: MT-FULL-INSERT ;] catch E-MAP-FULL MT=
    MT-FULL-MAP MT-MAP-COUNT@ MT-FULL-CAP MT=
-   44 MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 MT-MAP-SET
+   44 MT-FULL-MAP MT-KEY-B 1 SET
    MT-FULL-MAP MT-MAP-COUNT@ MT-FULL-CAP MT=
-   MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 44 MT-ASSERT-HIT
-   MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-ASSERT-MISS ;
+   MT-FULL-MAP MT-KEY-B 1 44 MT-ASSERT-HIT
+   MT-FULL-MAP MT-KEY-D 1 MT-ASSERT-MISS ;
 
 : MT-TEST-MAP-EACH-EMPTY ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-EACH-RESET
-   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MT-MAP-EACH
+   MT-MAP [: MT-EACH-RECORD ;] EACH
    MT-EACH-COUNT @ 0 MT=
    MT-EACH-SUM @ 0 MT=
    MT-EACH-LEN-SUM @ 0 MT= ;
 
 : MT-TEST-MAP-EACH-INSERTS ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
-   22 MT-MAP MT-CAP MT-KEY-B 1 MT-MAP-SET
+   11 MT-MAP MT-KEY-A 1 SET
+   22 MT-MAP MT-KEY-B 1 SET
    MT-EACH-RESET
-   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MT-MAP-EACH
+   MT-MAP [: MT-EACH-RECORD ;] EACH
    MT-EACH-COUNT @ 2 MT=
    MT-EACH-SUM @ 33 MT=
    MT-EACH-LEN-SUM @ 2 MT= ;
 
 : MT-TEST-MAP-EACH-UPDATES ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
-   22 MT-MAP MT-CAP MT-KEY-B 1 MT-MAP-SET
-   33 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
+   11 MT-MAP MT-KEY-A 1 SET
+   22 MT-MAP MT-KEY-B 1 SET
+   33 MT-MAP MT-KEY-A 1 SET
    MT-EACH-RESET
-   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MT-MAP-EACH
+   MT-MAP [: MT-EACH-RECORD ;] EACH
    MT-EACH-COUNT @ 2 MT=
    MT-EACH-SUM @ 55 MT=
-   MT-MAP MT-CAP MT-KEY-A 1 33 MT-ASSERT-HIT ;
+   MT-MAP MT-KEY-A 1 33 MT-ASSERT-HIT ;
 
 : MT-TEST-MAP-EACH-COLLISIONS ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-FIND-COLLISIONS
-   11 MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-SET
-   22 MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-SET
-   33 MT-MAP MT-CAP 2 MT-COL 1 MT-MAP-SET
+   11 MT-MAP 0 MT-COL 1 SET
+   22 MT-MAP 1 MT-COL 1 SET
+   33 MT-MAP 2 MT-COL 1 SET
    MT-EACH-RESET
-   MT-MAP MT-CAP [: MT-EACH-RECORD ;] MT-MAP-EACH
+   MT-MAP [: MT-EACH-RECORD ;] EACH
    MT-EACH-COUNT @ 3 MT=
    MT-EACH-SUM @ 66 MT= ;
 
@@ -393,7 +377,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : MT-SPREAD-FILL ( ^n -- ) {: m:^ :}
    m MT-SPREAD-CAP MT-MAP-INIT
-   26 0 ?do i m MT-SPREAD-CAP i MT-LETTER 1 MT-MAP-SET loop ;
+   26 0 ?do i m i MT-LETTER 1 SET loop ;
 
 \ Each map hashes under its own secret key, so two maps given the same keys in the
 \ same order place them apart; one fixed hash would make EACH visit both in one
@@ -403,8 +387,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    MT-SPREAD-A MT-SPREAD-FILL
    MT-SPREAD-B MT-SPREAD-FILL
    0 MT-EACH-COUNT !
-   MT-SPREAD-A MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
-   MT-SPREAD-B MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
+   MT-SPREAD-A [: MT-ORDER-RECORD ;] EACH
+   MT-SPREAD-B [: MT-ORDER-RECORD ;] EACH
    MT-EACH-COUNT @ 52 MT=
    0 0= 0=
    26 0 ?do MT-ORDER i + c@ MT-ORDER 26 + i + c@ <> or loop
@@ -412,7 +396,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : MT-KEYED-FILL ( ^n -- ) {: m:^ :}
    m MT-SPREAD-CAP >COUNT $5EED $C0DE INIT-KEYED
-   26 0 ?do i m MT-SPREAD-CAP i MT-LETTER 1 MT-MAP-SET loop ;
+   26 0 ?do i m i MT-LETTER 1 SET loop ;
 
 \ A map keyed by INIT-KEYED hashes under the caller's k0 and k1, and two maps
 \ keyed alike given the same SETs in the same order visit alike.
@@ -420,12 +404,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    MT-FILL-LETTERS
    MT-SPREAD-A MT-KEYED-FILL
    MT-SPREAD-B MT-KEYED-FILL
-   MT-SPREAD-A MT-SPREAD-CAP 2 MT-LETTER 1 2 MT-ASSERT-HIT
+   MT-SPREAD-A 2 MT-LETTER 1 2 MT-ASSERT-HIT
    MT-SPREAD-A 0 MT-LETTER 1 MT-MAP-HASH
    $5EED $C0DE 0 MT-LETTER 1 SIPHASH:BYTES HASH-MASK and MT=
    0 MT-EACH-COUNT !
-   MT-SPREAD-A MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
-   MT-SPREAD-B MT-SPREAD-CAP [: MT-ORDER-RECORD ;] MT-MAP-EACH
+   MT-SPREAD-A [: MT-ORDER-RECORD ;] EACH
+   MT-SPREAD-B [: MT-ORDER-RECORD ;] EACH
    MT-EACH-COUNT @ 52 MT=
    0 0=
    26 0 ?do MT-ORDER i + c@ MT-ORDER 26 + i + c@ = and loop
@@ -445,20 +429,20 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : MT-MIX-CHECK-KEY ( n -- ) {: k :}
    k MT-LIST@ {: want :}
-   want 0 < if MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-ASSERT-MISS exit then
-   MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 want MT-ASSERT-HIT ;
+   want 0 < if MT-MIX-MAP k MT-LETTER 1 MT-ASSERT-MISS exit then
+   MT-MIX-MAP k MT-LETTER 1 want MT-ASSERT-HIT ;
 
 \ A SET of a new key into a full map throws and leaves the list as it was.
 : MT-MIX-SET ( n n -- ) {: v k :}
    k MT-LIST@ 0 <  MT-LIST-COUNT MT-MIX-CAP =  and if
-      [: v MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-MAP-SET ;] catch
+      [: v MT-MIX-MAP k MT-LETTER 1 SET ;] catch
       E-MAP-FULL MT= exit
    then
-   v MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-MAP-SET
+   v MT-MIX-MAP k MT-LETTER 1 SET
    v k MT-LIST! ;
 
 : MT-MIX-REMOVE ( n -- ) {: k :}
-   MT-MIX-MAP MT-MIX-CAP k MT-LETTER 1 MT-MAP-REMOVE bool>n
+   MT-MIX-MAP k MT-LETTER 1 REMOVE bool>n
    k MT-LIST@ 0 >= bool>n MT=
    -1 k MT-LIST! ;
 
@@ -482,7 +466,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : MT-MIX-SWEEP ( -- )
    MT-MIX-KEYS 0 ?do i MT-MIX-CHECK-KEY loop
    MT-EACH-RESET
-   MT-MIX-MAP MT-MIX-CAP [: MT-MIX-RECORD ;] MT-MAP-EACH
+   MT-MIX-MAP [: MT-MIX-RECORD ;] EACH
    MT-EACH-COUNT @ MT-LIST-COUNT MT=
    MT-EACH-SUM @ MT-LIST-MASK MT=
    MT-MIX-MAP MT-MAP-COUNT@ MT-LIST-COUNT MT= ;
@@ -501,17 +485,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : MT-TEST-ROOM ( -- )
    MT-FILL-LETTERS
    ARENA:NEW {: a:^ :}
-   NULL-PTR MT-ROOM-MAP !  0 MT-ROOM-CAP !
-   MT-ROOM-MAP MT-ROOM-CAP a ROOM
-   MT-ROOM-CAP @ 8 MT=
+   NULL-PTR MT-ROOM-MAP !
+   MT-ROOM-MAP a ROOM
    MT-ROOM-MAP @ MT-MAP-CAP@ 8 MT=
    9 0 ?do
-      MT-ROOM-MAP MT-ROOM-CAP a ROOM
-      i 100 + MT-ROOM-MAP @ MT-ROOM-CAP @ i MT-LETTER 1 MT-MAP-SET
+      MT-ROOM-MAP a ROOM
+      i 100 + MT-ROOM-MAP @ i MT-LETTER 1 SET
    loop
-   MT-ROOM-CAP @ 32 MT=
+   MT-ROOM-MAP @ MT-MAP-CAP@ 32 MT=
    9 0 ?do
-      MT-ROOM-MAP @ MT-ROOM-CAP @ i MT-LETTER 1 i 100 + MT-ASSERT-HIT
+      MT-ROOM-MAP @ i MT-LETTER 1 i 100 + MT-ASSERT-HIT
    loop
    a ARENA:RELEASE ;
 

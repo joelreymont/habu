@@ -34,13 +34,14 @@ public
 \ Room for one more entry at mp: a null map is made, and a map that entry
 \ would fill past half is doubled. Keys are not copied: they must live as long
 \ as arena a.
-: ROOM ( ^^n ^n ^ARENA:arena -- )
-   {: mp:^ cp:^ a:^ :}
-   mp @ {: old:^ :}  cp @ {: cap:n :}
-   old NULL-PTR = if a 8 >COUNT IN mp !  8 cp ! exit then
+: ROOM ( ^^n ^ARENA:arena -- )
+   {: mp:^ a:^ :}
+   mp @ {: old:^ :}
+   old NULL-PTR = if a 8 >COUNT IN mp ! exit then
+   old CAP@ COUNT>N {: cap:n :}
    old COUNT@ COUNT>N 1+ 2 * cap <= if exit then
-   cap 2 * {: ncap:n :}  a ncap >COUNT IN {: new:^ :}
-   old cap >COUNT [: -rot new ncap >COUNT 2swap SET ;] EACH
-   new mp !  ncap cp ! ;
+   a cap 2 * >COUNT IN {: new:^ :}
+   old [: -rot new -rot SET ;] EACH
+   new mp ! ;
 
 ;package

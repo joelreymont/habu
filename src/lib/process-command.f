@@ -323,7 +323,7 @@ public
 
 private
 
-: NAMES ( ^n -- ^n count ) ENV-NAMES @ 0 VEC:AT dup MAP:CAP@ ;
+: NAMES ( ^n -- ^n ) ENV-NAMES @ 0 VEC:AT ;
 
 : ROW-NAME ( ^u8 -- str ) {: z:^ :}
    z z z ZLEN PROC-ENV-NAME-LEN ;
@@ -375,7 +375,7 @@ private
 \ Twice the rows keeps the table at most half full. Keys point at the rows
 \ themselves; ENV-BYTES does not grow in PREPARE and inherited rows never move.
 : NAMES-INIT ( ^n -- ) {: h:^ :}
-   h ENV-ROWS 2 * 1 max >COUNT {: cap :}
+   h ENV-ROWS 2 * >COUNT {: cap :}
    h ENV-NAMES @ cap MAP:CELL-COUNT COUNT>N VEC:ENSURE
    h ENV-NAMES @ 0 VEC:AT cap MAP:INIT ;
 
