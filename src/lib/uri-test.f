@@ -9,10 +9,10 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/span.f
-require src/lib/allocator.f
 require src/lib/heap.f
 require src/lib/vector.f
 require src/lib/uri.f
+require src/lib/test/counting-allocator.f
 
 package URI-TEST
 using SPAN
@@ -421,30 +421,9 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" a%2Bb%26c%3Dd%2FMaterialDocument%20eq%20%274900037654%27" T$=
    v VEC:DELETE ;
 
-\ An allocator bumping through POOL whose resize moves the block and fills
-\ the old one with CANARY, so a read of the old block shows.
-256 constant POOL-BYTES
-POOL-BYTES BUFFER: POOL
-variable TOP
-TYPED-VARIABLE MOVER ALLOC:allocator
-
-: P-ALLOC ( str -- ^u8 )
-   {: st:^ len:n :}
-   TOP @ len + POOL-BYTES > if E-MEM-SIZE throw then
-   st TOP @ +  len 7 + -8 and TOP +! ;
-
-: P-RESIZE ( ^u8 str n -- ^u8 )
-   {: st:^ block:^ old:n new:n :}
-   st new P-ALLOC {: moved:^ :}
-   block moved old new min BYTE-COPY
-   CANARY block old SPAN:MAKE SPAN:FILL  moved ;
-
-: P-FREE ( ^u8 ^u8 -- ) 2drop ;
-
 \ The vector's own bytes encoded into it while its block moves.
 : QUERY-OWN ( -- )
-   POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] MOVER ALLOC:INIT
-   MOVER 0 [type] u8 VEC:NEW {: v:^ :}
+   ALLOC-TEST:MOVING 0 [type] u8 VEC:NEW {: v:^ :}
    s" a b/" v VEC:APPEND
    v VEC:SPAN $ v URI:QUERY-ENCODE
    v VEC:SPAN $ s" a b/a%20b%2F" T$=

@@ -2,7 +2,6 @@ split-str
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/byte-edit.f
-require src/lib/allocator.f
 require src/lib/heap.f
 require src/lib/span.f
 require src/lib/vector.f
@@ -504,26 +503,6 @@ variable WIDE-BAD
    LEN>N 0 T= OFF>N 13 T=
    XML:SOURCE-CLOSE ;
 
-\ An allocator bumping through POOL whose resize moves the block and fills
-\ the old one with $A5, so a read of the old block shows.
-256 constant POOL-BYTES
-POOL-BYTES BUFFER: POOL
-variable TOP
-TYPED-VARIABLE MOVER ALLOC:allocator
-
-: P-ALLOC ( str -- ^u8 )
-   {: st:^ len:n :}
-   TOP @ len + POOL-BYTES > if E-MEM-SIZE throw then
-   st TOP @ +  len 7 + -8 and TOP +! ;
-
-: P-RESIZE ( ^u8 str n -- ^u8 )
-   {: st:^ block:^ old:n new:n :}
-   st new P-ALLOC {: moved:^ :}
-   block moved old new min BYTE-COPY
-   $A5 block old SPAN:MAKE SPAN:FILL  moved ;
-
-: P-FREE ( ^u8 ^u8 -- ) 2drop ;
-
 : APPENDS-KEEP ( -- )
    s" <a/>" OPEN
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: out:^ :}
@@ -538,8 +517,7 @@ TYPED-VARIABLE MOVER ALLOC:allocator
 \ The vector's own bytes escaped and encoded into it while its block moves:
 \ TRIM leaves no room, so each append grows the block.
 : ESCAPE-OWN ( -- )
-   POOL [: P-ALLOC ;] [: P-RESIZE ;] [: P-FREE ;] MOVER ALLOC:INIT
-   MOVER 0 [type] u8 VEC:NEW {: v:^ :}
+   ALLOC-TEST:MOVING 0 [type] u8 VEC:NEW {: v:^ :}
    s" a<b" v VEC:APPEND
    v 3 VEC:TRIM
    v VEC:SPAN SPAN:$ v XML:ESCAPE-TEXT
