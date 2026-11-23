@@ -24683,13 +24683,17 @@ variable NP-OUT-I
    -1 NPBAD !  kind NPBAD-KIND !
    q1 NPBAD-Q1 !  q2 NPBAD-Q2 !  0 NPBAD-TERM ! ;
 
-: NP-ROW-ROOT ( n -- n ) cells SG-ROWS + @ R-RES ;
+\ A row's root seen through a stale tail: the row a catch left stale is the row it
+\ wraps, so a declared row bound to it aliases that row.
+: NP-ROW-RES ( n -- n )
+   R-RES dup STALE-ROW? IF STALE>INNER R-RES THEN ;
+: NP-ROW-ROOT ( n -- n ) cells SG-ROWS + @ NP-ROW-RES ;
 : NP-ROW-LET ( n -- n ) cells SG-ROWS-LET + @ ;
 
 : NP-ROW-ONE ( n -- ) {: idx:n :}
    idx NP-ROW-ROOT {: root:n :}
    root TAG S-PUSH = IF 7 idx NP-ROW-LET 0 NP-FAIL-ROW EXIT THEN
-   root SGDBASE @ R-RES = IF 6 idx NP-ROW-LET 0 NP-FAIL-ROW EXIT THEN
+   root SGDBASE @ NP-ROW-RES = IF 6 idx NP-ROW-LET 0 NP-FAIL-ROW EXIT THEN
    idx 0 ?do
       i NP-ROW-ROOT root = IF
          6 i NP-ROW-LET idx NP-ROW-LET NP-FAIL-ROW unloop EXIT
@@ -24702,7 +24706,7 @@ variable NP-OUT-I
       NPBAD @ IF unloop EXIT THEN
    loop
    SG-ROWS-N @ IF
-      SGDBASE @ R-RES TAG S-PUSH = IF 7 0 0 NP-FAIL-ROW THEN
+      SGDBASE @ NP-ROW-RES TAG S-PUSH = IF 7 0 0 NP-FAIL-ROW THEN
    THEN ;
 
 : NP-CHECK ( -- )   \ check the quantifiers captured before the body ran

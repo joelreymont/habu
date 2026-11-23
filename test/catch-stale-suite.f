@@ -120,6 +120,9 @@ variable CS-TICK
    s" R7 ( n -- bool ) {: k:n :} [: k WBOOL ;] catch {: rc:n :} rc 0<> if rc throw then 0="
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
+: CS-NP? ( -- )
+   s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CS-CODE? ;
+
 \ A zero branch proves only the matching catch completed normally. Equal
 \ numbers, another catch, and a predicate with the same effect cannot stand in
 \ for its code. The reader overwrites its input on both real paths.
@@ -579,6 +582,10 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ a quotation parameter over the row keeps no cell of R intact
    s" O1 ( R [ R -- R ] -- R n ) catch" CS-CODE<
    s" stale<A> n" CS-CODE?  CS-CODE-END
+   s" D1 ( R [ R -- R ] -- n ) catch" CS-CODE<
+   CS-NP?  s" `R` and the unnamed row" CS-CODE?  CS-CODE-END
+   s" D2 ( R [ R -- R ] -- S n ) catch" CS-CODE<
+   CS-NP?  s" `R` and row `S`" CS-CODE?  CS-CODE-END
    \ a literal that runs the parameter reaches R alike
    s" O2 ( R [ R -- R ] -- R n ) {: q :} [: q execute ;] catch" CS-CODE<
    s" stale<A> n" CS-CODE?  CS-CODE-END
