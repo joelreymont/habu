@@ -93,8 +93,8 @@ create XE-EMPTY 1 allot
    s" v2:" s" C ( -- n ) ['] A execute"         XE-CASE-LINE
    s" v3:" s" M ( n n -- n n n ) ['] A execute" XE-CASE-LINE
    s" v4:" s" H ( n -- n n ) ['] SP catch"      XE-CASE-LINE
-   s" v5:" s" I ( n -- n n ) ['] A catch"       XE-CASE-LINE
-   s" v6:" s" J ( -- ) ['] SP is ACT"           XE-CASE-LINE
+   s" v5:" s" XI ( n -- n n ) ['] A catch"      XE-CASE-LINE
+   s" v6:" s" XJ ( -- ) ['] SP is ACT"          XE-CASE-LINE
    s" v7:" s" K ( -- ) ['] A is ACT"            XE-CASE-LINE
    s" v8:" s" F ( -- ) ['] deflinear execute"     XE-CASE-LINE
    s" v9:" s" E ( n -- n ) ['] A +"             XE-CASE-LINE

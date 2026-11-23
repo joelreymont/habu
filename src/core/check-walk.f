@@ -1971,10 +1971,20 @@ package CHECK
 : DISARM-TEXT ( bool -- )
    IF REJECTION:SOURCE-OFF THEN ;
 
+\ Whether the name is a keyword or a number, which a load rejects; the
+\ record is ended. A false length is left unread, to CHECK.
+: CANDIDATE-NAME-REJECT? ( str -- bool ) {: a:^ u:n :}
+   a u BYTE-SPAN? 0= IF RES-FALSE EXIT THEN
+   a u SIG-LTRIM FIRST-TOKEN {: na:^ nu:n :}
+   na nu na nu DEF-NAME-REJECT? {: bad:bool :}
+   bad IF REJECTION:KEEP THEN
+   bad ;
+
 global
 : CHECK-CANDIDATE! ( str -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    a u ARM-TEXT {: arm:bool :}
+   a u CANDIDATE-NAME-REJECT? IF arm DISARM-TEXT 0 EXIT THEN
    RECOVERY-USED? {: recovery0:bool :}
    BIND-HORIZON @ {: horizon0:n :}
    CHK-PROBE @ {: probe0:n :}

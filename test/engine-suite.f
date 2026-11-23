@@ -304,6 +304,10 @@ TC-DIAG-OFF
 s" A ( n -- n n ) drop" CHECK-CANDIDATE! 0 T=
 TC-DIAG-ON
 s" T-CAND-THROW ( n -- n ) dup 0 < if 1 throw then" CHECK-CANDIDATE! -1 T=
+TC-DIAG-OFF
+s" I ( -- )" CHECK-CANDIDATE! 0 T=
+s" 12 ( -- )" CHECK-CANDIDATE! 0 T=
+TC-DIAG-ON
 \ The T-* boundary words below are global definitions. Each is a real word with
 \ its effect, a checked stub or a `defer`: no body runs and no defer is set,
 \ since every case hands the checker a candidate that names them. They are

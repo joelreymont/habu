@@ -12893,6 +12893,11 @@ EXPORT CHECKER-RESOLVE:PART-ROW
       a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
    REPEAT drop a 0 ;
 : SIG-TRIM ( str -- str )  SIG-LTRIM SIG-RTRIM ;
+: FIRST-TOKEN ( str -- str ) {: a:^ u:n :}
+   0 BEGIN
+      dup u < IF a over + c@ SIG-WS? 0= ELSE RES-FALSE THEN
+   WHILE 1 + REPEAT
+   a swap ;
 
 : DEPTH-REASON$ ( -- str )
    s" effect too deep to record" ;

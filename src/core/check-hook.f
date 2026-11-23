@@ -120,12 +120,6 @@ BODY-TEXT:BASE-CELL RESERVED-PTR-U8-CELL BODY-BASE
    then
    EXIT-STATUS:REJECTED throw ;
 
-\ The name as written, which is what the wall prints: the first token of the
-\ source the engine hands the hook.
-: FIRST-TOKEN ( str -- str ) {: a:^ u:n :}
-   0 begin dup u < if a over + c@ 32 > else 0 0= 0= then while 1 + repeat
-   a swap ;
-
 
 \ Appends sym's tags at REJECTION:TEXT-LEN, after the effect FACTS-SAME? left
 \ in REJECTION:TEXT. A kept `parses:` row's tag carries CTL-PARSES, so the
