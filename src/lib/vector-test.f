@@ -142,7 +142,11 @@ variable ALLOCS
 variable RESIZE-CALLS
 variable FREES
 variable LAST-N
-10 TYPED-BUFFER FREED n
+\ The free log is a ring: a case reads only the frees it made, from its own
+\ first index, and none makes more than FREED-CAP.
+4 constant FREED-CAP
+FREED-CAP TYPED-BUFFER FREED n
+: FREED-AT ( n -- ^n ) FREED-CAP mod FREED ;
 TYPED-VARIABLE AL ALLOC:allocator
 
 : P-ALLOC ( str -- ^u8 )
@@ -160,21 +164,21 @@ TYPED-VARIABLE AL ALLOC:allocator
 
 : P-FREE ( ^u8 ^u8 -- )
    {: st:^ p:^ :}
-   p NULL-PTR - st NULL-PTR - - FREES @ FREED !  1 FREES +! ;
+   p NULL-PTR - st NULL-PTR - - FREES @ FREED-AT !  1 FREES +! ;
 
 : DELETE-SOME ( -- )
    FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
    AL 3 [type] n VEC:NEW {: v:^ :}
    ALLOCS @ a0 - 2 T=  LAST-N @ 3 cells T=
    v VEC:DELETE  FREES @ f0 - 2 T=
-   f0 FREED @  h [type] VEC:vector<n> width>n +  T=
-   f0 1 + FREED @ h T= ;
+   f0 FREED-AT @  h [type] VEC:vector<n> width>n +  T=
+   f0 1 + FREED-AT @ h T= ;
 
 : DELETE-NONE ( -- )
    FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
    AL 0 [type] n VEC:NEW {: v:^ :}
    ALLOCS @ a0 - 1 T=
-   v VEC:DELETE  FREES @ f0 - 1 T=  f0 FREED @ h T= ;
+   v VEC:DELETE  FREES @ f0 - 1 T=  f0 FREED-AT @ h T= ;
 
 : DELETES ( -- )
    s" VEC:DELETE frees the data, then the header, through the vector's allocator" T-LABEL
@@ -184,7 +188,7 @@ TYPED-VARIABLE AL ALLOC:allocator
    s" a refused data request frees the header" T-LABEL
    FREES @ {: f0:n :}  TOP @ {: h:n :}  ALLOCS @ {: a0:n :}
    [: AL 1000 [type] n VEC:NEW drop ;] E-MEM-SIZE TTHROWSQ
-   ALLOCS @ a0 - 2 T=  FREES @ f0 - 1 T=  f0 FREED @ h T= ;
+   ALLOCS @ a0 - 2 T=  FREES @ f0 - 1 T=  f0 FREED-AT @ h T= ;
 
 : REFUSED-GROWTH ( -- )
    s" a growth the allocator refuses leaves the vector as it was" T-LABEL
