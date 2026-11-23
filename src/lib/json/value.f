@@ -367,9 +367,11 @@ private
 
 public
 
-\ Streams the decoding, so no buffer bounds the string.
+\ A string with an escape streams its decoding, so no buffer bounds it.
 : STRING= ( value str -- bool ) {: v want:^ len:n :}
    v STRING? 0= if false exit then
+   v INSIDE$ 2dup ESCAPED? 0= if want len STR= exit then
+   2drop
    v 0 [: drop want len MATCH-AT ;] WITH-CURSOR ;
 
 \ The text is lent for the call only: the bytes inside the quotes when the
@@ -397,8 +399,13 @@ public
      some OF ENDOF
    ;MATCH ;
 
-: >BOOL ( value -- bool )
-   0 [: drop BOOL-AT ;] WITH-CURSOR ;
+\ A value is parsed text, so `t` begins true and `f` false; the cursor
+\ rejects any other value at its place.
+: >BOOL ( value -- bool ) {: v :}
+   v FIRST-BYTE {: b:n :}
+   b CH-T = if true exit then
+   b CH-F = if false exit then
+   v 0 [: drop BOOL-AT ;] WITH-CURSOR ;
 
 private
 
