@@ -96,6 +96,7 @@ variable CS-TICK
 
 \ R1: the throw path swapped the two cells and `catch` put back only the depth.
 : CS-SECTION-REPRODUCERS ( -- )
+   s" reproducers" T-LABEL
    s" R1 ( n ^u8 -- n ^u8 n ) [: swap -99 throw ;] catch" CS-CODE<
    CS-STALE?  CS-CODE-END ;
 
@@ -105,6 +106,7 @@ variable CS-TICK
 \ and a read is E-STALE-READ, named on the token that reads it, not on the
 \ binding.
 : CS-SECTION-READS ( -- )
+   s" a stale cell is rejected where it is read" T-LABEL
    s" R3 ( ^u8 -- n ) [: WBOOM ;] catch {: v code:n :} v c@" CS-CODE<
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END
    \ arithmetic on the stale cell is named E-STALE-READ on that token, not a ptr
@@ -132,6 +134,7 @@ variable CS-TICK
 \ numbers, another catch, and a predicate with the same effect cannot stand in
 \ for its code. The reader overwrites its input on both real paths.
 : CS-SECTION-PROOF ( -- )
+   s" a read where the code is proven 0" T-LABEL
    s" P1 ( n n -- n ) [: WNUMBER ;] catch {: a ca:n :} [: WNUMBER ;] catch {: b cb:n :} cb 0= if a 1+ else 0 then" CS-CODE<
    CS-STALE? CS-CODE-END
    s" P2 ( n -- n ) [: WNUMBER ;] catch {: v code:n :} 0 0= if v 1+ else 0 then" CS-CODE<
@@ -309,6 +312,7 @@ variable CS-CHILD-ERR-U
 \ inputs every throw path left in place, and a call takes the edge with those
 \ cells kept. WMAYBE only reads its input, so R6 certifies.
 : CS-SECTION-EDGES ( -- )
+   s" throw edges" T-LABEL
    s" R6 ( ^u8 -- ^u8 n ) [: WMAYBE ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ a `finally` cleanup that throws is a throw edge of the word that runs it
    s" R7 ( ^u8 -- ^u8 n ) [: FINW ;] catch" CS-CODE<
@@ -336,6 +340,7 @@ variable CS-CHILD-ERR-U
 \ replaced is a different term, and one arm that overwrites clears the bit for
 \ every path.
 : CS-SECTION-CALLEES ( -- )
+   s" callees" T-LABEL
    \ both throw paths leave the input where it was
    s" C1 ( ^u8 -- ^u8 n ) [: WMAYBE2 ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    \ one of the two overwrote it
@@ -356,6 +361,7 @@ variable CS-CHILD-ERR-U
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END ;
 
 : CS-SECTION-ADMITS ( -- )
+   s" admitted bodies" T-LABEL
    \ window 0: a body that takes nothing has nothing to lose
    s" A1 ( -- n ) [: -99 throw ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
    s" A2 ( -- n ) [: 1 2 3 throw ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
@@ -406,6 +412,7 @@ STRUCTURE cspt
    depth d - ;
 
 : CS-SECTION-BUNDLES ( -- )
+   s" bundles" T-LABEL
    \ the stale bundle is dropped by one drop, the cspt below it by the other
    s" B1 ( cspt option<cspt> -- ) [: CS-BUNDLE-THROW ;] catch {: rc:n :} drop drop"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -451,6 +458,7 @@ STRUCTURE cspt
 : CS-OPT-ID ( option<a> -- option<a> ) ;     \ leaves the option's width open
 
 : CS-SECTION-WIDTHS ( -- )
+   s" widths" T-LABEL
    \ the cell above the deepest was consumed: reading it is refused ...
    s" W1 ( -- n ) 1 2 9 OPTION:SOME ['] CS-REPL-OPT ['] CS-WIDE-KEEP catch drop drop {: o :} nip"
       CS-CODE<  CS-STALE?  CS-CODE-END
@@ -490,6 +498,7 @@ STRUCTURE cspt
 : CS-SPEND ( CATCH-STALE-TEST:cslease -- n ) CS-UNLEASE WMAYBEN ;
 
 : CS-SECTION-RESHAPE ( -- )
+   s" a catch that changes the stack" T-LABEL
    s" S1 ( str -- n ) [: JSON:PARSE ;] catch nip" CHECK-QUIET-CANDIDATE! -1 T=
    s" S2 ( str -- n ) [: JSON:PARSE ;] catch drop JSON:TEXT$ nip" CS-CODE<
    CS-STALE?  CS-CODE-END
@@ -512,6 +521,7 @@ STRUCTURE cspt
    s" move the catch inside a definition" CS-CODE?  CS-CODE-END ;
 
 : CS-SECTION-RUNTIME ( -- )
+   s" runtime" T-LABEL
    CS-BUF CS-RT {: p code:n :}
    code E-CS-BOOM T=
    p CS-BUF = TTRUE
@@ -539,6 +549,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
 : CS-TRT ( ^u8 -- str ) ['] WMAYBE catch ;
 
 : CS-SECTION-TICK ( -- )
+   s" ticked callees" T-LABEL
    \ R1's twin with the body as a callee: the tick carries its evidence
    s" T1 ( n ^u8 -- n ^u8 n ) ['] WSWAPT catch" CS-CODE<
    CS-STALE?  CS-CODE-END
@@ -584,6 +595,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
 : CS-TIE ( R [ R -- R ] -- R [ R -- R ] ) ;
 
 : CS-SECTION-OPEN ( -- )
+   s" open rows" T-LABEL
    \ a quotation parameter over the row keeps no cell of R intact, so returning
    \ R is a stale read
    s" O1 ( R [ R -- R ] -- R n ) catch" CS-CODE<
