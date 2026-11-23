@@ -14946,6 +14946,13 @@ variable VALUES-CAP
 variable VALUES-N
 : VALUES ( -- ^u8 ) VALUES-P @ BYTE-VIEW ;
 
+\ The replay's `constant` records whose source states no value (UNSTATED!):
+\ record index. Cut back with PAIRS.
+PTR-VARIABLE UNSTATED-P
+variable UNSTATED-CAP
+variable UNSTATED-N
+: UNSTATED ( -- ^u8 ) UNSTATED-P @ BYTE-VIEW ;
+
 \ The hidden records: the index and wid of each record a lookup under the
 \ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
 \ apart from the undo log, so putting them back can never revive a record a
@@ -15115,14 +15122,16 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    -1 ON ! ;
 
 \ Definers and constants are made in index order, so a table's entries for
-\ records at ND or above are its newest.
-: CUT ( n ^^n ^n -- ) {: nd:n pv:^ nv:^ :}
-   BEGIN nv @ 0 >  IF pv @ BYTE-VIEW nv @ 1 - IX@ nd >= ELSE RES-FALSE THEN WHILE
+\ records at ND or above are its newest. A row is W cells, its index first.
+: CUT ( n ^^n ^n n -- ) {: nd:n pv:^ nv:^ w:n :}
+   BEGIN nv @ 0 >  IF pv @ BYTE-VIEW nv @ 1 - w * ROW@ nd >=
+   ELSE RES-FALSE THEN WHILE
       nv @ 1 - nv !
    REPEAT ;
 : UNPAIR ( n -- ) {: nd:n :}
-   nd PAIRS-P PAIRS-N CUT
-   nd VALUES-P VALUES-N CUT ;
+   nd PAIRS-P PAIRS-N 2 CUT
+   nd VALUES-P VALUES-N 2 CUT
+   nd UNSTATED-P UNSTATED-N 1 CUT ;
 
 \ The mappings are given back, so an image captured afterwards holds the bytes
 \ one no replay ran in does, except that with a task live at the close it also
@@ -15137,6 +15146,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    LOG-P LOG-CAP 2 ARENA-ROWS-RELEASE
    PAIRS-P PAIRS-CAP 2 ARENA-ROWS-RELEASE
    VALUES-P VALUES-CAP 2 ARENA-ROWS-RELEASE
+   UNSTATED-P UNSTATED-CAP 1 ARENA-ROWS-RELEASE
    SNAPS-P SNAPS-CAP ROW-CELLS ARENA-ROWS-RELEASE
    FLOOR0 @ SOURCE-FLOOR !
    OUTSIDE0 @ PKG-OUTSIDE-CELL DATA!
@@ -15216,6 +15226,25 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
       VALUES i IX@ ix = IF VALUES i 2 * 1 + ROW@ RES-TRUE UNLOOP EXIT THEN
    LOOP
    0 RES-FALSE ;
+
+\ Keep REC, a `constant` record the replay made, as one whose source states
+\ no value.
+: UNSTATED! ( ^n -- ) {: rec:^ :}
+   ON @ 0= IF EXIT THEN
+   rec REC>IX {: ix:n :}
+   ix MARK @ < IF EXIT THEN
+   UNSTATED-P UNSTATED-CAP UNSTATED-N @ 1 + 1 ARENA-ROWS-ENSURE
+   ix UNSTATED UNSTATED-N @ ROW!
+   UNSTATED-N @ 1 + UNSTATED-N ! ;
+
+\ Whether UNSTATED! kept REC.
+: UNSTATED? ( ^n -- bool ) {: rec:^ :}
+   rec NULL-PTR = IF RES-FALSE EXIT THEN
+   rec REC>IX {: ix:n :}
+   UNSTATED-N @ 0 ?DO
+      UNSTATED i ROW@ ix = IF RES-TRUE UNLOOP EXIT THEN
+   LOOP
+   RES-FALSE ;
 
 \ The does> clause of the definer or export at IX that is still in its
 \ wordlist: a replayed one's from PAIRS unless it is retired, as the engine's
@@ -18733,8 +18762,8 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s" the run loads the files later requires name from the root it sets" REJECTION:EMIT-STR EXIT
    THEN
    why DW-COUNT = IF
-      s" the run reads " REJECTION:EMIT-STR  t tu DW-CODE
-      s" 's value and lays the record out by it" REJECTION:EMIT-STR EXIT
+      s" write the value as a number or a constant's name directly before `constant`, and the check reads it"
+      REJECTION:EMIT-STR EXIT
    THEN
    s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;

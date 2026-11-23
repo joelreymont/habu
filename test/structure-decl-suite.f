@@ -951,7 +951,7 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
    s" MUTUAL pebuf peop" SC-LINE
    s" STRUCTURE pebuf FIELD a n BUFFER b IDE ;STRUCTURE" SC-LINE
    s" STRUCTURE peop OPAQUE FIELD x n ;STRUCTURE ;MUTUAL" SC-LINE
-   s" : SCPO ( n -- peop ) PEOP-MAKE ;" SC-LINE
+   s" : SCPO ( n -- ) PEOP-MAKE drop ;" SC-LINE
    s" ;package" SC-LINE
    s" package pz private" SC-LINE
    s" NEWTYPE wrapz ^pc:hd" SC-LINE
@@ -962,6 +962,10 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
    s" ;package" SC-LINE
    s" : SCKU ( ^rpsdk -- ^rpsdk ) ;" SC-LINE
    s" : SCNT ( nopetype -- ) drop ;" SC-LINE
+   s" ENUM rpsdcolor red blue ;ENUM" SC-LINE
+   s" STRUCTURE rpsden BUFFER id RPSDCOLOR:BLUE ;STRUCTURE" SC-LINE
+   s" package pf private 16 constant IDP ;package" SC-LINE
+   s" STRUCTURE rpsdpv BUFFER id PF:IDP ;STRUCTURE" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
    SC-SRC SC-SRC-U BUF-LEN@ ;
 
@@ -994,7 +998,7 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 9 T=
+SC-ERR$ s" error[" COUNT-SUB 11 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -1005,10 +1009,9 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
    s" :13:29" s" unknown type" SC-RECORD
 \ A string literal between the number and `constant` leaves K's value unstated,
 \ and a colon definition IDH's and IDE's. Each use of hd, and of rpsdg and rpsdw
-\ over it, is deferred, and so is SCPO's call of peop's private PEOP-MAKE: the
-\ MUTUAL is read past IDE to its end, so peop is known OPAQUE. So is each use
-\ of wrapz over hd and of rpsdk, whose declarations mark only their own types:
-\ NOPE, NOPE6 and nopetype stay rejected.
+\ over it, is deferred, and so is SCPO's call of peop's private PEOP-MAKE. So is
+\ each use of wrapz over hd and of rpsdk, whose declarations mark only their own
+\ types: NOPE, NOPE6 and nopetype stay rejected.
 SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 12 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
@@ -1016,6 +1019,8 @@ s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the ru
    s" :19:34" s" value known only to the run" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDE` to the run because only the run defines its value"
    s" :32:36" s" value known only to the run" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `PEOP-MAKE` on and leaves it to the run"
+   s" :34:17" s" not checked from here" SC-RECORD
 s" error[E-UNDEFINED]: cannot find word `SCPNOPE`"
    s" :28:15" s" not found" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `wrapz` on and leaves it to the run"
@@ -1028,8 +1033,14 @@ s" error[E-UNDEFINED]: cannot find word `NOPE6`"
    s" :40:15" s" not found" SC-RECORD
 s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `nopetype` in signature"
    s" :44:10" s" unknown type" SC-RECORD
+\ An enum variant and another package's private constant are rejected as a
+\ count, as the load rejects them.
+s" error[E-BAD-DECLARATION]: bad structure declaration `rpsden`"
+   s" :46:28" s" buffer byte count must be a number or a constant above 0" SC-RECORD
+s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdpv`"
+   s" :48:28" s" buffer byte count must be a number or a constant above 0" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :46:1" s" missing field name" SC-RECORD
+   s" :50:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 

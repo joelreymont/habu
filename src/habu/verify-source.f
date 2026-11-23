@@ -2222,6 +2222,7 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
 EXPORT CHECKER-OVERLAY:LANDS-REC
 EXPORT CHECKER-OVERLAY:VALUE
 EXPORT CHECKER-OVERLAY:VALUE!
+EXPORT CHECKER-OVERLAY:UNSTATED!
 
 \ The value a token gives and true: an integer literal, or a constant whose
 \ value its record holds or its source stated; false for anything else.
@@ -2235,14 +2236,16 @@ EXPORT CHECKER-OVERLAY:VALUE!
 
 \ The value of a `constant` is stated when the token before it gives one and
 \ nothing since can have pushed another: no string literal skipped, no stretch
-\ open. The record keeps it, as its code would.
+\ open. The record keeps it, as its code would, or that it is unstated.
 : RECORD-CONSTANT ( -- )
    STR-LAST-KIND @ 0=  TOP-DEFER @ 0= and  TOP-PREV-U @ 0<> and {: plain:bool :}
    plain IF TOP-PREV-A @ TOP-PREV-U @ STATED-VALUE ELSE 0 false THEN
    {: v:n stated:bool :}
    s" -- a" DEF-CONSTANT RAW-TRUST-NAME {: name:^ nameu:n kept:bool :}
-   kept stated and 0= IF EXIT THEN
-   name nameu LANDS-REC v VALUE! ;
+   kept 0= IF EXIT THEN
+   name nameu LANDS-REC {: rec:^ :}
+   stated IF rec v VALUE! EXIT THEN
+   rec UNSTATED! ;
 
 \ DSYM is the definer's symbol, which its caller tested before the name is
 \ taken: NAME-TOKEN consumes a token, and a token that is not a definer must

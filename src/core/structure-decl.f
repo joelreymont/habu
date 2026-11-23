@@ -926,12 +926,21 @@ EXPORT CHECKER-OVERLAY:VALUE
    rec CK-REC-VALUE {: c:n known:bool :}
    known IF c known EXIT THEN
    rec VALUE ;
-\ A count name no record here holds the value of: in a replay, a program
-\ constant only the run defines, so the declaration is left to the run. The
-\ read goes on to its end, so every member's OPAQUE flag is known.
+EXPORT CHECKER-OVERLAY:UNSTATED?
+EXPORT CHECK:UNSEEN-COVERS?
+\ Whether a count name no record here holds the value of may still name one
+\ the run makes: in a replay, a `constant` whose source states no value, or
+\ nothing yet where a word the check cannot see may define it.
+: COUNT-LATER? ( str -- bool ) {: a:^ u:n :}
+   OUTCOME-NAMES @ 0= IF NO EXIT THEN
+   a u num-parse nip nip IF NO EXIT THEN
+   a u COUNT-REC {: rec:^ :}
+   rec UNSTATED? IF YES EXIT THEN
+   rec NULL-PTR =  a u UNSEEN-COVERS?  and ;
+\ Such a count leaves the declaration to the run, and the read goes on to its
+\ end, so every member's OPAQUE flag is known; any other is rejected.
 : COUNT-UNREAD ( str -- ) {: a:^ u:n :}
-   a u num-parse nip nip 0=  OUTCOME-NAMES @ 0 <>  and IF
-      a u DW-COUNT MISSING! EXIT THEN
+   a u COUNT-LATER? IF a u DW-COUNT MISSING! EXIT THEN
    COUNT-BAD ;
 \ `BUFFER name N`: N bytes inline from the next slot, in whole cells. N is a
 \ number literal or a constant's name, read from its record: no program code
