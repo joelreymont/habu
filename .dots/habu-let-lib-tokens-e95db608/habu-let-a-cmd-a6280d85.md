@@ -3,8 +3,6 @@ title: Let a CMD command carry its record
 status: open
 priority: 2
 issue-type: task
-blocks:
-  - habu-structure-s-buf-cb3240cc
 created-at: "2026-11-22T12:32:58.577773+01:00"
 ---
 
