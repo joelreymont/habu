@@ -370,9 +370,8 @@ public
 : SPAWN ( PROCESS:request -- pid )
    COMPILE-READS:MISS
    ERASE {: h:^ :}
-   h [: dup LAUNCH ;] catch {: rc :}
-   rc 0<> if drop drop h RELEASE rc throw then
-   nip {: result :}
+   [: h LAUNCH ;] catch {: result rc :}
+   rc 0<> if h RELEASE rc throw then
    h RELEASE
    result 0 < if result negate ERRNO-CELL ! E-PROC-SPAWN throw then
    0 ERRNO-CELL !

@@ -2411,9 +2411,8 @@ private
    {: c :}
    c MODEL-CALL:HTTP-STATUS @ 413 = if true exit then
    c MODEL-CALL:HTTP-STATUS @ 400 <> if false exit then
-   c [: dup SIZE-BODY? ;] catch {: code:n :}
-   code 0= if nip exit then
-   2drop
+   [: c SIZE-BODY? ;] catch {: size code:n :}
+   code 0= if size exit then
    code JSON-FAULT? if false exit then
    code throw ;
 
@@ -3480,9 +3479,8 @@ ENUM poll none fed spoiled done ;ENUM
 \ Reads an embed reply's vectors and usage.
 : EMBED-PARSE ( ^call -- ^call )
    {: c :}
-   c [: >r r@ PARSE-EMBED r> ;] catch {: walk:n :}
-   walk 0<> if 2drop 2drop c FAULT-USAGE walk throw then
-   drop {: a:^ u:n present:bool :}
+   [: c PARSE-EMBED ;] catch {: a u present walk:n :}
+   walk 0<> if c FAULT-USAGE walk throw then
    present if
       true c TOKENS TOKENS-SEEN !
       a u c [: EMBED-TOKENS ;] catch {: code:n :} 2drop drop
@@ -4316,9 +4314,9 @@ ENUM dispatch-event armed faulted ;ENUM
 : LOOK-UP ( ^call -- lookup-event )
    {: c :}
    c MODEL-CALL:JOURNAL-READY @ 0= if construct lookup-event missed exit then
-   c [: >r r@ JOURNAL-GET? r> ;] catch {: code:n :} drop
-   code 0<> if drop code c KEEP-FAULT construct lookup-event faulted exit then
-   if c RESTORE construct lookup-event replayed exit then
+   [: c JOURNAL-GET? ;] catch {: hit code:n :}
+   code 0<> if code c KEEP-FAULT construct lookup-event faulted exit then
+   hit if c RESTORE construct lookup-event replayed exit then
    construct lookup-event missed ;
 
 : BOUND ( CURL:handle ^call -- CURL:status )

@@ -2917,7 +2917,7 @@ variable STG-TYPE-U
          pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
          [: name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
          pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
-         rc 0 <> IF rc throw THEN
+         rc 0<> IF rc throw THEN
          0= IF EXIT THEN
       THEN
    THEN

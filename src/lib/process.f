@@ -508,12 +508,9 @@ private
 \ Outlasts test/db/pg-cluster.f ANSWER's QUIT-MS wait.
 10000 constant END-GRACE-MS
 
-\ The flag rides beside the pid through the catch, so both arms leave the same
-\ depth and no storage two tasks could share holds it.
 : CATCHES-TERM? ( pid -- bool ) {: pid:pid :}
-   false pid [: nip dup SIGTERM PROC-TREE:CATCHES? swap ;] catch {: code:n :}
-   code 0= if drop exit then
-   2drop
+   [: pid SIGTERM PROC-TREE:CATCHES? ;] catch {: v code:n :}
+   code 0= if v exit then
    s" process: signals of a killed child not read, throw " code CODE-REPORT
    false ;
 
