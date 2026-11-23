@@ -703,7 +703,7 @@ public
 
 \ False when either side repeats a key. Both texts are read whole: a malformed one throws whatever
 \ the answer, as does an exponent past a cell. Time is at most n log n in the two texts' sizes.
-: VALUE= ( ^u8 n ^u8 n -- bool )
+: VALUE= ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    a u REQUIRE-SOURCE
    b v REQUIRE-SOURCE
