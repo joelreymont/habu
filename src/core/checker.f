@@ -270,7 +270,7 @@ split-str
 \ same tail is applied as `execute` applies it: a throw leaves none of its
 \ outputs, so each is `stale<t>` whose normal view is itself, and none of the
 \ cells it took may be linear. At top level the engine's `catch` gives back
-\ the depth the body took, so there such a catch is refused.
+\ the depth the body took, so there such a catch is rejected.
 \
 \ The signature parser: a single lowercase letter is a type variable shared
 \ across in/out of one signature; `n` = int (con 1), `f` = flag (CC-BOOL); an
@@ -5836,8 +5836,8 @@ private
 99 constant MD-LITERAL-RANGE \ a number token does not fit in a cell (LITERAL-TOK?); REJECTION:LITERAL-RANGE writes its record
 100 constant MD-FAM-AMBIG    \ match family token is a bare tail two used packages make public
 101 constant MD-MEMBER-TOP   \ a generic member's word at top level runs with its declared number, which the receiver's instance moves (TFAM-MEMBER-STEP?)
-112 constant MD-CATCH-TOP    \ a top-level `catch` of a body that changes the stack (CATCH-RESHAPE-REFUSE)
-113 constant MD-CATCH-LINEAR \ a `catch` of a body that changes the stack takes a cell that may be linear (CATCH-RESHAPE-REFUSE)
+112 constant MD-CATCH-TOP    \ a top-level `catch` of a body that changes the stack (CATCH-RESHAPE-REJECT)
+113 constant MD-CATCH-LINEAR \ a `catch` of a body that changes the stack takes a cell that may be linear (CATCH-RESHAPE-REJECT)
 48 constant MD-LOOP-DEPTH    \ a loop's back edge or leave holds another data depth than its start (CF-CARRIED=)
 49 constant MD-LOOP-RDEPTH   \ a loop's back edge or leave holds another return depth than its start (CF-CARRIED=)
 50 constant MD-LOOP-CARRIED  \ a loop's back edge or leave carries a cell whose lineage differs or whose proof does not carry the entry's (CP-CARRIES?), at the same depths (CF-CARRIED=)
@@ -7080,7 +7080,7 @@ variable QUOT-LOSS
    DCUR @ QTT @ Q>DOUT ROWS-COVER DACT ! DEXP !  ROWS-PIN
    0 OK !  -1 FAILSET ! ;
 
-: CATCH-RESHAPE-REFUSE ( -- )
+: CATCH-RESHAPE-REJECT ( -- )
    TOP-STEP @ 0 <>  QDEPTH @ 0= and IF MD-CATCH-TOP CATCH-SHAPE-REJECT EXIT THEN
    DCUR @ CWIN-DTERMS @ ROW-LINEAR-TERM 0= IF drop EXIT THEN {: t:n :}
    MDIAG @ 0=  FAILSET @ 0= and IF t MDIAG-CELL ! THEN
@@ -7114,10 +7114,13 @@ variable QUOT-LOSS
      \ that changes it over the same tail is applied as `execute` applies it.
      noret 0=  OK @ and IF CATCH-FITS? ELSE RES-FALSE THEN {: fit:bool :}
      noret 0=  OK @ and  fit 0= and IF CATCH-ONE-TAIL? ELSE RES-FALSE THEN {: reshape:bool :}
+     \ A catch that does not reshape the stack gives back the depth it found,
+     \ a body that never returns included: its call record states equal counts.
+     reshape 0=  REC-ON @ and IF CALL-DIN @ CALL-DOUT ! THEN
      noret IF
         QTT @ Q>XHAS 0= IF TOKEN-DEAD! THEN
      ELSE reshape IF
-        CATCH-RESHAPE-REFUSE
+        CATCH-RESHAPE-REJECT
      ELSE fit 0= IF
         DCUR @ QTT @ Q>DOUT  UNIFY-IN {: fits:bool :}
         fits 0=  FAILSET @ 0=  and  OK @ and  IF DCUR @ QTT @ Q>DOUT UF-CAPTURE THEN

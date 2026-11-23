@@ -102,6 +102,21 @@ variable ACC
    77 f ['] KEEP catch 2drop
    depth d -  swap ;
 
+\ A body that never returns, throwing over the cells it took or pushed.
+: DROP-THROW ( n -- ) drop 7311 throw ;
+
+\ ( cells over the depth at entry, the sentinel, the code ) once the catch's
+\ code and the cells its body took are popped.
+: TAKE-FRAME ( -- n n n )
+   depth {: d:n :}
+   77 5 [: DROP-THROW ;] catch {: c:n :} drop
+   depth d -  swap c ;
+
+: PUSH-FRAME ( -- n n n )
+   depth {: d:n :}
+   77 [: 1 2 9 throw ;] catch {: c:n :}
+   depth d -  swap c ;
+
 : FRAME= ( n n -- ) 77 T=  1 T= ;
 
 : DEPTH-EVENED ( -- )
@@ -110,7 +125,11 @@ variable ACC
    s" a catch whose body leaves fewer keeps the row's depth" T-LABEL
    0 SHRINK-FRAME FRAME=  1 SHRINK-FRAME FRAME=
    s" a catch whose body leaves the same keeps the row's depth" T-LABEL
-   0 KEEP-FRAME FRAME=  1 KEEP-FRAME FRAME= ;
+   0 KEEP-FRAME FRAME=  1 KEEP-FRAME FRAME=
+   s" a catch whose body takes a cell and never returns keeps it" T-LABEL
+   TAKE-FRAME 7311 T=  FRAME=
+   s" a catch whose body pushes and never returns keeps the row's depth" T-LABEL
+   PUSH-FRAME 9 T=  FRAME= ;
 
 public
 
