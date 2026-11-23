@@ -2621,6 +2621,7 @@ public
    s" 2r@" [: 2R@, ;] PRIM
    s" catch" [: CAUGHT,  RAX PUSH, ;] PRIM
    s" throw" [: RAX POP,  THROW, ;] PRIM
+   s" halt-throw" [: RAX POP,  THROW, ;] PRIM
    s" finally" [: FINALLY, ;] PRIM
    s" c2-invoke" [: C2-INVOKE, ;] PRIM
    s" c2-init-stow" [: C2-INIT-STOW, ;] PRIM

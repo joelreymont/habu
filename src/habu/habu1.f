@@ -4016,6 +4016,7 @@ package ENGINE-EMIT
 
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
+   s" halt-throw" ['] BTHROW FPRIM
    s" finally" ['] BFINALLY FPRIM
    s" c2-invoke" ['] BC2-INVOKE FPRIM
    s" c2-init-stow" ['] BC2-INIT-STOW FPRIM
