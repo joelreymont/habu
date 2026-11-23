@@ -34,6 +34,9 @@ package STR
 private EXPORT BOOT:data-base
 EXPORT STRING-ABI:SB-BUF-OFF
 EXPORT STRING-ABI:SB-LEN-OFF
+public
+EXPORT STR:data
+EXPORT STR:len
 global
 \ TASK-LOCAL: `data-base` is the running task's DATA region, at STRING-ABI's
 \ offsets (src/habu/layout.f). This module is baked into the engine below

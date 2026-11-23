@@ -3914,6 +3914,7 @@ package ENGINE-EMIT
    s" PTR>N" ['] BADDRESSVIEW FPRIM-L
    s" >str" ['] BADDRESSVIEW FPRIM-L
    s" str>" ['] BADDRESSVIEW FPRIM-L
+   s" data" ['] BDROP FPRIM-L  s" len" ['] BNIP FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM
    s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM
@@ -4998,6 +4999,7 @@ using ENGINE-PRIMS
 create NAME-PADDING 0 , 0 ,
 
 : EMIT-DICT ( -- )
+   ENGINE-PRIMS:DISTINCT
    0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE
       dup NAME-LEN DNAME-INL > IF
          LBL over NAME-LABEL!

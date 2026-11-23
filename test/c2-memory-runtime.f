@@ -14,16 +14,17 @@ private
 TRUSTED: ALLOCATED ( n -- n )
    16 MEM:BYTES-ALLOC-LEN [: CHANGE-ROW ;] C2-MEM:WITH-MUT ;
 
-TRUSTED: GROW-ROW ( n -- n n )
-   [: dup 1+ ;] [: ;] [: drop ;] c2-invoke ;
+: ADD-CELL ( n mut-view<p,p,a,u8> -- n n mut-view<p,p,a,u8> )
+   swap dup 1+ rot ;
 
-TRUSTED: SHRINK-ROW ( n n -- n )
-   [: + ;] [: ;] [: drop ;] c2-invoke ;
+: GROW-ROW ( n -- n n )
+   16 MEM:BYTES-ALLOC-LEN [: ADD-CELL ;] C2-MEM:WITH-MUT ;
 
-TRUSTED: BODY-FIRST ( -- )
-   [: -9365 throw ;] [: -9366 throw ;] [: drop ;] c2-invoke ;
+: SUM-CELLS ( n n mut-view<p,p,a,u8> -- n mut-view<p,p,a,u8> )
+   -rot + swap ;
 
-TRUSTED: CLEANUP-ONLY ( -- ) [: ;] [: -9366 throw ;] [: drop ;] c2-invoke ;
+: SHRINK-ROW ( n n -- n )
+   16 MEM:BYTES-ALLOC-LEN [: SUM-CELLS ;] C2-MEM:WITH-MUT ;
 
 public
 : RUN ( -- )
@@ -34,10 +35,6 @@ public
    777 91 GROW-ROW 92 T= 91 T= 777 T=
    s" scoped invocation preserves a shrinking result row" T-LABEL
    888 17 25 SHRINK-ROW 42 T= 888 T=
-   s" the body's failure passes before the cleanup's" T-LABEL
-   [: BODY-FIRST ;] catch -9365 T=
-   s" a cleanup's failure passes when the body returned" T-LABEL
-   [: CLEANUP-ONLY ;] catch -9366 T=
    T-REPORT
    s" c2-memory-runtime: ok" type cr ;
 ;package

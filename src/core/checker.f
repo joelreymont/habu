@@ -15557,8 +15557,9 @@ package CHECK
 
 EXPORT CHECKER-RESOLVE:TOP$
 
-\ A global record bound inside a package whose private section holds an
-\ owner-private primitive row of that name is that row.
+\ A primitive's seed record (WL:PRIMITIVES) bound inside a package whose
+\ private section holds an owner-private primitive row of that name is that
+\ row.
 : CK-REC-BIND ( str ^n -- n ) {: a:^ u:n rec:^ :}
    rec CK-REC-WID {: wid:n :}
    a u CHECKER-QUALIFIED? IF
@@ -15568,7 +15569,7 @@ EXPORT CHECKER-RESOLVE:TOP$
    THEN
    PKG-LIVE-XT drop {: pkg:^ pkgu:n :}
    wid WL:GLOBAL? IF
-      pkgu 0 <> IF
+      pkgu 0 <> wid WL:PRIMITIVES = and IF
          pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? {: own:n :}
          own PRIM-FIRST-IDX 0 <> IF own EXIT THEN
          data-base ENCLOSING:PUB + @ 0 <> IF
@@ -18596,13 +18597,13 @@ EXPORT CHECKER-RESOLVE:EXPORT-KEYWORD
    a u EXPORT-SEALED? IF a u EXPORT-SEALED THEN
    a u EXPORT-UNDEFINED ;
 
-: EXPORT-RESOLVE ( str n ^n -- ) {: a:^ u:n sym:n priv:^ :}
+: EXPORT-RESOLVE ( str n -- ) {: a:^ u:n sym:n :}
    sym HOST-DECLARATION-SYM? IF a u EXPORT-DECLARATION THEN
    sym PRIM-TRUSTED-SYM? IF a u EXPORT-UNSAFE THEN
    FEP-CLEAR  sym CHECKER-FIND-USIG-SYM drop
    FEP-HIT? WALK-USED @ 0= and IF sym a u NAV-USE-NOW EXIT THEN
    \ A primitive a package owns is one of its private words; a global one is not.
-   priv NULL-PTR <>  sym PRIM-FIRST-IDX 0 <>  and IF sym a u NAV-USE-NOW EXIT THEN
+   sym PRIM-FIRST-IDX 0 <>  sym SYM-PKG$ nip 0 <>  and IF sym a u NAV-USE-NOW EXIT THEN
    a u sym EXPORT-MISS ;
 
 \ The symbol an EXPORT operand names and, when its scope finds no word, the
@@ -18666,7 +18667,7 @@ EXPORT CHECKER-OVERLAY:EXPORT-ROOM
 \ inside a replay the operand's spelling can bind the published tail after.
 : CHECKER-EXPORT-SOURCE ( str -- n ^n ) {: a:^ u:n :}
    a u EXPORT-SYM {: src:n priv:^ :}
-   a u src priv EXPORT-RESOLVE
+   a u src EXPORT-RESOLVE
    src priv ;
 
 : CHECKER-EXPORT-ROW ( str n ^n bool -- )
@@ -23202,9 +23203,9 @@ EXPORT CHECKER-TAPE:K-IS
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
 
-\ The walk bound a primitive's record (WL:PRIMITIVES) to no symbol: its rows are
-\ other packages' private ones. A does> clause's record also binds to none and
-\ stays tickable.
+\ The walk bound a primitive's record (WL:PRIMITIVES) to no symbol: no row lets
+\ this source call it. A does> clause's record also binds to none and stays
+\ tickable.
 : HIDDEN-REC? ( n -- bool ) {: sym:n :}
    sym 0 <>  WALK-REC @ 0=  or IF RES-FALSE EXIT THEN
    BIND-REC @ CK-REC-WID WL:PRIMITIVES = ;

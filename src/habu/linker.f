@@ -5794,20 +5794,12 @@ EXPORT CHECK:DROP-FACTS
    off u + OWNED-TEXT-N !
    off u ;
 
-\ Gathers package pa pu's primitive na nu: hb's kernel record of it, and copies of both names and of the facts text
-\ the stated rows give it. With no text its calls would go unchecked: the open rejects it.
+\ Gathers package pa pu's primitive na nu: hb's kernel record, both names and the facts text its rows give; with no
+\ text the open rejects it. An hb without the primitive gets no record: the owner's first use of the name is undefined.
 : OWNED+ ( str str -- )
    {: pa:^ pu:n na:^ nu:n :}
-   na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: src:^ :}
-   src XREF-FOUND? 0= if
-      s" E-COMP-STATE" REJECTION:OPEN
-      s" hb has no primitive " REJECTION:EMIT-STR  na nu REJECTION:EMIT-STR
-      s" , which an owned row of " REJECTION:EMIT-STR  pa pu REJECTION:EMIT-STR  s"  names" REJECTION:EMIT-STR
-      REJECTION:HELP
-      s" build with a staged host whose hb has the primitive before src/habu/prims.f gives it a package row"
-      REJECTION:EMIT-STR  s\"  (docs/bootstrap.md \"Staged hosts\")" REJECTION:EMIT-STR
-      EXIT-STATUS:REJECTED REJECTION:STOP
-   then
+   na nu OWNER-API-PRI-WID CHECKER-RESOLVE:WL-PROBE {: src:^ :}
+   src XREF-FOUND? 0= if exit then
    pa pu na nu OWNED-FACTS {: a:^ u:n :}
    u 0= if
       s" E-COMP-STATE" REJECTION:OPEN

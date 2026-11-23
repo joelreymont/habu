@@ -3999,6 +3999,16 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    src NORET-CREATES@ {: creates:n :}
    sym ctl dm rm creates src CHECKER-SYM-SOURCE src NORET-NONZERO@ NORET-APPEND ;
 
+\ The effect an export of sym takes: its newest signature, else its first
+\ primitive row, which lies below the user records USIG-NEWEST indexes.
+: ALIAS-EFF ( n -- ^u8 ) {: from:n :}
+   from USIG-NEWEST {: eff:n :}
+   eff 0 <> IF eff 1 - E-PTR EXIT THEN
+   from PRIM-FIRST-IDX 0= IF
+      s" checker: an export's source has no checked effect" EXIT-STATUS:INTERNAL die
+   THEN
+   from PRIM-FIRST-SYM E-PTR ;
+
 \ An export's facts are its source's, as CHECKER-EXPORT-ROW records them.
 : ALIAS-BODY ( n n -- )
    {: ix:n src:n :}
@@ -4007,9 +4017,7 @@ PTR-VARIABLE GUEST-NMAP-P   variable GUEST-NMAP-CAP
    sym 0=  from 0= or IF
       s" checker: an export or its source has no checked symbol" EXIT-STATUS:INTERNAL die
    THEN
-   from USIG-NEWEST {: eff:n :}
-   eff 0= IF s" checker: an export's source has no checked effect" EXIT-STATUS:INTERNAL die THEN
-   eff 1 - E-PTR EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
+   from ALIAS-EFF EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
    sym CHECKER-REC-SYM !
    din dout rin rout hasr from EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
    sym from EXPORT-META-SYM

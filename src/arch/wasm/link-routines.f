@@ -171,6 +171,21 @@ variable BUF-U
 \ `>str` and `str>` leave both cells as they are.
 : VIEW-BODY ( -- )  0 U32,  0 I32,  OP-END B, ;
 
+\ STR's `data` ( str -- ^u8 ) drops the length above the base; `len`
+\ ( str -- n ) stores the length over the base.
+: DATA-BODY ( -- )
+   1 U32,  1 U32,  I32 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES I32,  OP-I32-SUB B,  L-SP SET,  SP!,
+   0 I32,  OP-END B, ;
+
+: LEN-BODY ( -- )
+   1 U32,  1 U32,  I32 B,
+   WPROF:CTX-STACK-TOP CTX@,  CELL-BYTES 2 * I32,  OP-I32-SUB B,  L-SP SET,
+   L-SP GET,  L-SP GET,  OP-I64-LOAD ALIGN-64 CELL-BYTES MEM,
+   OP-I64-STORE ALIGN-64 0 MEM,
+   ONE-RESULT,
+   0 I32,  OP-END B, ;
+
 
 \ atomic-cas ( expected new a -- actual ); a module runs one task, so the plain
 \ compare and store is atomic.
@@ -745,6 +760,8 @@ public
    name u s" PTR>N" STR=CI if VIEW-BODY BODY$ true exit then
    name u s" >str" STR=CI if VIEW-BODY BODY$ true exit then
    name u s" str>" STR=CI if VIEW-BODY BODY$ true exit then
+   name u s" data" STR=CI if DATA-BODY BODY$ true exit then
+   name u s" len" STR=CI if LEN-BODY BODY$ true exit then
    name u s" atomic!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    name u s" atomic-cas" STR=CI if CAS-BODY BODY$ true exit then
    name u s" atomic-add" STR=CI if FETCH-ADD-BODY BODY$ true exit then

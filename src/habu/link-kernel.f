@@ -367,13 +367,12 @@ private
    k 1 + N-HOSTS ! ;
 
 
-\ The object's row of the primitive with the name in wordlist w, or -1.
-: ROW-OF ( str n -- n )
-   {: a:^ u:n w:n :}
+\ The object's row of the primitive with the name, or -1. Seed names are
+\ unique across wordlists, and an owned row's wordlist differs between hbs.
+: ROW-OF ( str -- n )
+   {: a:^ u:n :}
    ROW-N 0 ?do
-      i ROW-WID w = if
-         i ROW-NAME$ a u CORE-STR=CI if i unloop exit then
-      then
+      i ROW-NAME$ a u CORE-STR=CI if i unloop exit then
    loop
    -1 ;
 
@@ -403,7 +402,7 @@ private
    else
       rec 24 +  len
    then
-   wid ROW-OF {: row:n :}
+   ROW-OF {: row:n :}
    row 0 < if exit then
    rbase rec LE:U64@ +  row INSERT ;
 

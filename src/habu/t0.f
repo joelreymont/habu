@@ -1680,12 +1680,17 @@ DYNAMIC-BUFFER OP-OF n
    m u STR-BUF k BYTE-COPY
    0 STR-BUF u k + EXIT-STATUS:INTERNAL die ;
 
+\ A wordlist the kernel lays a seed record in: a package-owned primitive's is
+\ OWNER-API-PRI-WID.
+: SEED-WL? ( n -- bool ) {: w:n :}
+   w WL:PRIMITIVES =  w OWNER-API-PRI-WID =  or  w WL:RETIRED =  or ;
+
 \ The index of the kernel's record named a u, retired or not: the boot lays the
 \ kernel's records first, so it is the lowest of that name below OP-N.
 : SEEDED ( str -- n )
    {: a:^ u:n :}
    OP-N @ 0 ?do
-      i XREF-REC dup XREF-WORDLIST dup WL:PRIMITIVES =  swap WL:RETIRED =  or
+      i XREF-REC dup XREF-WORDLIST SEED-WL?
       swap a u XREF-MATCH?  and if i unloop exit then
    loop
    a u OP-DIE ;

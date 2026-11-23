@@ -8,6 +8,7 @@ split-str
 require src/lib/prelude.f
 require src/habu/verify-source.f
 require src/lib/test.f
+require src/lib/span.f
 
 T-RESET
 
@@ -364,6 +365,14 @@ USING-TEST:UPT-V @ 6 T=
 s" package UPA using UPB ;using UPX drop ;package" UCE-CATCH 70 T=
 s" package UPA using UPB : UPV ( -- n ) UPX ; ;using ;package" VS-CATCH 0 T=
 s" using UPB" UCE-CATCH 70 T=
+
+\ === an owned primitive is no global ===
+\ STR's `len` is an engine primitive only STR binds: under `using SPAN` a bare
+\ LEN is SPAN's.
+package USING-TEST public : SPAN4 ( -- SPAN:span<u8> ) s" abcd" SPAN:MAKE ; ;package
+s" an owned primitive leaves a used public's bare tail to it" T-LABEL
+s" package USPN using SPAN public : USPN-R ( -- n ) USING-TEST:SPAN4 LEN ; ;using ;package" UCE-CATCH 0 T=
+USPN:USPN-R 4 T=  T-LABEL-CLEAR
 
 \ === a definition reusing an ambiguous used name ===
 \ A definition binds its own pending name first, so a global AW is admitted

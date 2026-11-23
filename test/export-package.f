@@ -125,6 +125,13 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
+: XPK-STR-PRIM-FORGE$ ( -- str )         \ STR's exports of its primitives
+   SB-RESET
+   S\" : P ( -- n n ) s\" abc\" STR:LEN" XPK-LINE
+   S\"    s\" abc\" STR:DATA c@ ;" XPK-LINE
+   s" P . ." XPK-LINE
+   SB$ ;
+
 : XPK-DBASE-FORGE$ ( str -- str ) {: a:^ u:n :}   \ the line a u alone
    SB-RESET  a u XPK-LINE  SB$ ;
 
@@ -723,6 +730,9 @@ create XPK-EMPTY 1 allot
    XPK-OK-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" 14" XPK-OUT? s" 10" XPK-OUT?
    s" generated ctor re-export allowed; checked alias caller compiles" T-LABEL
    XPK-CTOR-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC s" ctor-alias-ok" XPK-OUT?
+   s" a program reads STR's exports of its primitives" T-LABEL
+   XPK-STR-PRIM-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC
+   XPK-OUT XPK-OUT-U @ S\" 97\n3\n" T$=
    s" data record exports (--load)" T-LABEL
    XPK-DATA-FORGE$ XPK-RUN-LOAD 0 XPK-ASSERT-RC s" 42" XPK-OUT?
    s" an unsealed package's private word exports (--load)" T-LABEL

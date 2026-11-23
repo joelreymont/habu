@@ -74,11 +74,8 @@ public
 : SPEC-CHECK ( str -- ) {: name:^ size:n :}
    name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
 
-\ A primitive whose dictionary record is globally searchable but cannot be
-\ executed or ticked by ordinary source. The sentinel lives only in this
-\ build-side registry; the emitted record carries WL:PRIMITIVES and DNAME-INT,
-\ and DNAME-OWNED as well when a package row types the primitive (OWNED?): its
-\ owner's checked callers compile.
+\ A primitive no source may run or tick (DNAME-INT). The sentinel lives only in
+\ this build-side registry: HELPER-WID answers the emitted record's wordlist.
 -1 constant GLOBAL-INT-WID
 
 \ An engine helper is an engine-resident routine primitives reach by a direct
@@ -118,8 +115,11 @@ public
       idx NAME$ OWNED? if DNAME-OWNED or then
    then ;
 
-: HELPER-WID ( n -- n )
-   WID dup GLOBAL-INT-WID = if drop WL:PRIMITIVES then ;
+\ An owned primitive's seed row is in OWNER-API-PRI-WID, which no source lookup
+\ searches, whatever wordlist its body passed.
+: HELPER-WID ( n -- n ) {: idx:n :}
+   idx NAME$ OWNED? if OWNER-API-PRI-WID exit then
+   idx WID dup GLOBAL-INT-WID = if drop WL:PRIMITIVES then ;
 
 \ COMPLETE, run after the last body, refuses a row this backend never answered:
 \ an effect checked callers believe, with no code for the name.
@@ -140,9 +140,23 @@ private
    PRIM-SPEC:NAME$
    2dup BODY-ROW 0 < if NO-BODY else 2drop then ;
 
+: TWO-BODIES ( str -- )
+   s" prims: two backend bodies for primitive " type type cr
+   s" prims: two bodies register one primitive name" EXIT-STATUS:INTERNAL die ;
+
+\ Names fold case: rows that differ only in case register one name.
+: CHECK-UNIQUE ( n -- ) {: row:n :}
+   USED @ row 1+ ?do
+      i NAME$ row NAME$ CORE-STR=CI if row NAME$ TWO-BODIES then
+   loop ;
+
 public
 
 : COMPLETE ( -- )
    PRIM-SPEC:COUNT 0 ?do i CHECK-ROW loop ;
+
+\ Every registered name is distinct, because the link maps rows by name.
+: DISTINCT ( -- )
+   USED @ 0 ?do i CHECK-UNIQUE loop ;
 
 ;package

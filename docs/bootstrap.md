@@ -143,8 +143,9 @@ A build types the primitives by the tree's kernel object, not by the running
 hb's rows (src/habu/link-kernel.f STATE-PRIMS), so an engine carries the
 facts of a primitive its tree adds after one build. A primitive with a package
 row is the exception: the link takes its record from the running hb's kernel
-(src/habu/linker.f OWNED+), so hb must hold the primitive before the tree gives
-it a package row, or the build is rejected `E-COMP-STATE`. A kernel build checks the tree's files
+(src/habu/linker.f OWNED+), and a build whose hb lacks the primitive lays no
+record for it, so the owner's first use or `EXPORT` of it binds whatever
+else of that name is in scope, or is rejected as undefined. Build such a tree with an hb that holds the primitive. A kernel build checks the tree's files
 against the running hb's rows, package rows included, so a call through a new
 package row needs a stage that adds the row first. The running hb's no-return
 axioms each name a primitive (src/core/checker.f NORET-AXIOMS): a tree that
