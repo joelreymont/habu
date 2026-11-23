@@ -86,18 +86,6 @@ private
    rec VISIBLE-RECORD? 0= if XREF-NULL exit then
    rec ;
 
-\ ---- entering the word the spelling denoted ----------------------------------
-\ FIXED-VALUE admits only a live constant/create/variable record before entering
-\ it. The definer stamp supplies the single-cell callable layout; the value's
-\ number/address interpretation remains the caller's recorded kind.
-CAST: AS-FIXED ( n -- [ -- n ] )
-: RUN-WORD ( n -- n )
-   AS-FIXED execute ;
-
-\ A cell and not a local: a local bound AFTER the entered word ran would itself
-\ read what that word left, which is the failure this check exists to refuse.
-0 CWORK-VARIABLE FX-BASE n
-
 public
 
 : SPELL-START ( ^u8 n -- n )
@@ -139,7 +127,7 @@ public
 \ The engine returned the record and its start together. Readers retain that
 \ record only for this operation; later source may mutate its binding or slot.
 private
-EXPORT CHECKER-RESOLVE:CK-REC-VALUE
+EXPORT CHECKER-RESOLVE:CK-ENTRY-VALUE
 
 : FIXED-ENTRY ( ^n -- n )
    {: rec:^ :}
@@ -149,23 +137,14 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
    rec REC-FIXED COMP-BODY:COMPILED COMP-BODY:EQ if E-NDICT-KIND throw then
    start ;
 
-: READ-FIXED ( n -- n )
-   {: entry:n :}
-   depth FX-BASE !
-   entry RUN-WORD
-   depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
-
 public
 
-\ A record no definer stamped is refused BEFORE the word is entered. The count
-\ settles the arity but not the TYPE. A caller already holding the record, as
-\ a dictionary walk does, asks REC-VALUE.
+\ A record no definer stamped is rejected before the word is entered: the
+\ depth count settles the arity, never the type.
 : REC-VALUE ( ^n -- n )
    {: rec:^ :}
-   rec CK-REC-VALUE if exit then
-   drop
    rec FIXED-ENTRY drop
-   rec XREF-START READ-FIXED ;
+   rec XREF-START CK-ENTRY-VALUE ;
 
 : FIXED-VALUE ( ^u8 n -- n ) SPELL-REC REC-VALUE ;
 
@@ -193,7 +172,7 @@ public
       setter OF E-NDICT-KIND throw ENDOF
       bytes OF E-NDICT-KIND throw ENDOF
    ;MATCH
-   entry READ-FIXED ;
+   entry CK-ENTRY-VALUE ;
 
 private
 EXPORT CHECK:EFFECT-DIN-CELLS

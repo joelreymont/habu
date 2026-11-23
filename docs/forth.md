@@ -492,15 +492,16 @@ compact-variant = variant-name
 bytes inline from the next cell; a computed size is bound with `constant`
 first. Any other name, a `variable`, a colon word or a value below 1 is
 rejected at N (`error[E-BAD-DECLARATION]`). The record stays whole cells, so
-the field after it starts at the next cell boundary past the bytes. `MAKE` takes one value per `FIELD` and
-ceil(N / CELL) values of type `n` per `BUFFER`, in declaration order, and
-`UNMAKE` answers them; those cells also fill any bytes past N in the buffer's
-last cell, which neither clears. Under `DERIVE addr` the accessor answers a
-span of the first N bytes. A record too wide to make is rejected at the
-clause that passes it (`error[E-BAD-DECLARATION]`), and nested field
-types can still make `MAKE`'s effect too deep (`error[E-BAD-STORED-SIGNATURE]`).
-A record with a `BUFFER` rejects `DERIVE eq`, `hash` and `init`. `buffer` is reserved as a family,
-field and variant name.
+the field after it starts at the next cell boundary past the bytes. `MAKE`
+takes one value per `FIELD` and ceil(N / CELL) values of type `n` per `BUFFER`,
+in declaration order, and `UNMAKE` answers them; those cells also fill any
+bytes past N in the buffer's last cell, which neither clears. Under `DERIVE
+addr` the accessor answers a span of the first N bytes. A record too wide to
+make is rejected at the clause that passes it (`error[E-BAD-DECLARATION]`), and
+nested field types can still make `MAKE`'s effect too deep
+(`error[E-BAD-STORED-SIGNATURE]`). A record with a `BUFFER` rejects `DERIVE
+eq`, `hash` and `init`. `buffer` is reserved as a family, field and variant
+name.
 
 A multi-cell record is one logical value, at top level as in a body. A word that
 takes or returns one runs at the prompt: the interpret row carries each
@@ -2553,7 +2554,7 @@ sections above.
   are evaluated by the load. A `( -- n )` word whose value is zero passes
   pre-verification, and the definer rejects it `E-BAD-STORAGE`. The same count
   rule applies to `LAYOUT-BUFFER`. A `STRUCTURE`'s `BUFFER` count is a
-  literal or a `constant`'s name, never a `( -- n )` word or expression: a
+  literal or a `constant`'s name, never a colon word or an expression: a
   declaration runs no program code.
 - **Parsing operands are data.** Top-level `'` and `char`, and body `[']` and
   `[char]`, consume the next blank-delimited token, even across lines, without

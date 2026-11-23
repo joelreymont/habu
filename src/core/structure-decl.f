@@ -899,12 +899,24 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
    s" buffer byte count must be a number or a constant above 0"
    s" give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first"
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
+EXPORT CHECK:CK-REC-WID
+EXPORT CHECK:CHECKER-BIND
+\ Whether scope-find's answers are a using refusal: two used publics export the
+\ tail and nothing earlier binds it, or a used public exports a global's tail.
+: USING-SHAPE? ( ^n ^n n -- bool ) {: rec:^ used:^ flags:n :}
+   rec NULL-PTR = IF flags SCOPE-FIND-AMBIGUOUS and 0 <> EXIT THEN
+   rec CK-REC-WID WL:GLOBAL?  used NULL-PTR <>  and ;
+\ The record a count name binds; a using refusal is raised as a bare call's.
+: COUNT-REC ( str -- ^n ) {: a:^ u:n :}
+   a u scope-find {: rec:^ used:^ used2:^ flags:n :}
+   rec used flags USING-SHAPE? IF a u a u CHECKER-BIND drop THEN
+   rec ;
 \ A count token's value and true: an integer literal, or the value of the
 \ constant it binds; false for anything else.
 : COUNT-VALUE ( str -- n bool ) {: a:^ u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
-   a u scope-find drop drop drop CK-REC-VALUE ;
+   a u COUNT-REC CK-REC-VALUE ;
 \ A count name no record here holds the value of: in a replay, a program
 \ constant only the run defines, so the declaration is left to the run.
 : COUNT-UNREAD ( str -- ) {: a:^ u:n :}
@@ -912,8 +924,7 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
       a u DW-COUNT MISSING!  E-UNRESOLVED throw THEN
    COUNT-BAD ;
 \ `BUFFER name N`: N bytes inline from the next slot, in whole cells. N is a
-\ number literal or a constant's name, read from the constant's record
-\ without running program code.
+\ number literal or a constant's name, read from its record: no program code runs.
 : BUFFER-COUNT ( -- n )
    NEXT dup 0= IF
       2drop s" missing buffer byte count"

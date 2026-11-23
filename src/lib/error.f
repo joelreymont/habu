@@ -746,7 +746,6 @@ generates: FAULT ( -- n )
 -8576 s" the active checker counted a rejection or borrowed its recovery fact; abandon the unpublished definition and continue" ERROR:CODE E-COMP-RECOVERY
 -8579 s" the checker holds no declared effect for the pending definition" ERROR:CODE E-COMP-ARITY
 -8600 s" a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent" ERROR:CODE E-NDICT-NAME
--8601 s" the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer" ERROR:CODE E-NDICT-VALUE
 -8602 s" the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value" ERROR:CODE E-NDICT-KIND
 -8621 s" an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement" ERROR:FAULT E-NPUB-RELOC
 -8622 s" the pending record is not the unpublished slot the dictionary count points at" ERROR:FAULT E-NPUB-PENDING

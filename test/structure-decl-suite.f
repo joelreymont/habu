@@ -1521,9 +1521,9 @@ STRUCTURE oclash OPAQUE DERIVE addr FIELD x n ;STRUCTURE
 
 \ 18. BUFFER name N: N bytes inline from the next slot, in whole cells; the record
 \     stays whole cells and the fields around the bytes keep theirs. The count
-\     is a number literal or a constant's name, above 0, judged at
-\     declaration. DERIVE addr answers
-\     the bytes as a `SPAN:span<u8>` of N bytes from the field's address.
+\     is a number literal or a constant's name, above 0, judged at declaration.
+\     DERIVE addr answers the bytes as a `SPAN:span<u8>` of N bytes from the
+\     field's address.
 DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
 STRUCTURE sdbuf
    DERIVE addr
@@ -1560,7 +1560,6 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdbword BUFFER b many ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbword`\n" DECL-DIAG:HAS? TTRUE
 s" many" s" buffer byte count must be a number or a constant above 0" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first\n" DECL-DIAG:HAS? TTRUE
 13 constant SDB-LEN
 STRUCTURE sdbname
    DERIVE addr
@@ -1569,9 +1568,6 @@ STRUCTURE sdbname
    FIELD c n
 ;STRUCTURE
 1 TYPED-BUFFER SDB-NBUF sdbname
-SDBNAME:CELLS SDBUF:CELLS T=
-: SDB-NGAP ( -- n ) 0 SDB-NBUF SDBNAME:C NULL-PTR -  0 SDB-NBUF SDBNAME:A NULL-PTR -  - ;
-SDB-NGAP SDB-GAP T=
 : SDB-NN ( -- n ) 0 SDB-NBUF SDBNAME:B SPAN:LEN ;
 SDB-NN 13 T=
 0 constant SDB-ZERO
@@ -1581,17 +1577,25 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdbcz BUFFER b SDB-ZERO ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbcz`\n" DECL-DIAG:HAS? TTRUE
 s" SDB-ZERO" s" buffer byte count must be a number or a constant above 0" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdbvar BUFFER b SDB-VAR ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbvar`\n" DECL-DIAG:HAS? TTRUE
 s" SDB-VAR" s" buffer byte count must be a number or a constant above 0" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdbcolon BUFFER b SDB-N13 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbcolon`\n" DECL-DIAG:HAS? TTRUE
 s" SDB-N13" s" buffer byte count must be a number or a constant above 0" DECL-DIAG:CAUSE? TTRUE
-s\"   = help: give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first\n" DECL-DIAG:HAS? TTRUE
+\ A count name a used public shares with a global is rejected as a call of it.
+package SDBPA
+public
+13 constant DREC
+;package
+using SDBPA
+DECL-DIAG:PROSE
+s" STRUCTURE sdbshadow BUFFER b DREC ;STRUCTURE" TEST-EVAL:RC 70 T=
+s\" error[E-USING-SHADOW-GLOBAL]: `DREC` is both a global word and a public of used package `SDBPA`\n" DECL-DIAG:HAS? TTRUE
+s" ^^^^ ambiguous here" DECL-DIAG:HAS? TTRUE
+;using
 DECL-DIAG:OFF
 
 \ tools/check.f's pre-pass has no value for a program's own constant, so it

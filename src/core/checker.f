@@ -3052,27 +3052,29 @@ CAST: REC-CELLS ( ^n -- ^^u8 )
 CAST: AS-VALUE ( n -- [ -- n ] )
 \ A cell, not a local: a local bound after the body ran would read what it left.
 variable VALUE-BASE   0 VALUE-BASE !
-\ A word record live, with code, and stamped DKIND:VAL: a `constant`, whose
-\ body is the definer's own and pushes one number. A retired record or a
-\ package row has a negative wordlist cell.
+\ Whether the record is a live `constant`. A retired record or a package row
+\ has a negative wordlist cell; a record with no code has a zero code cell.
 : CONSTANT-REC? ( ^n -- bool )
    {: rec:^ :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec DICT-WORDLIST-SLOT DICT-CELL@ 0 < IF RES-FALSE EXIT THEN
-   rec 0 DICT-CELL@ 0= IF RES-FALSE EXIT THEN    \ its code cell
+   rec 0 DICT-CELL@ 0= IF RES-FALSE EXIT THEN
    rec CK-REC-FLAGS-SLOT DICT-CELL@ DKIND:MASK and
    DKIND:VAL = ;
-\ A constant's value and true, read by entering its body only after its stamp
-\ is seen; 0 and false for any other record.
+\ The value a stamped record's code pushes, entered at entry. The caller has
+\ read the definer's stamp, so any other depth is the engine's own fault.
+: CK-ENTRY-VALUE ( n -- n )
+   {: entry:n :}
+   depth VALUE-BASE !
+   entry AS-VALUE execute
+   depth VALUE-BASE @ 1 + <> IF
+      s" checker: a stamped word left other than one value"
+      EXIT-STATUS:INTERNAL die THEN ;
+\ A constant's value and true; 0 and false for any other record.
 : CK-REC-VALUE ( ^n -- n bool )
    {: rec:^ :}
    rec CONSTANT-REC? 0= IF 0 RES-FALSE EXIT THEN
-   depth VALUE-BASE !
-   rec 0 DICT-CELL@ AS-VALUE execute
-   depth VALUE-BASE @ 1 + <> IF
-      s" checker: a constant left other than one value"
-      EXIT-STATUS:INTERNAL die THEN
-   RES-TRUE ;
+   rec 0 DICT-CELL@ CK-ENTRY-VALUE RES-TRUE ;
 ;package
 package CHECK
 
