@@ -165,12 +165,12 @@ variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks fo
 
 : B-ARITH ( -- )
    ARITH-REPS 0 ?do
-      ABUF CELLS-N ARRAY:A-LEN ARRAY:A-SUM SINK !
+      ABUF CELLS-N >LEN ARRAY:A-SUM SINK !
    loop ;
 
 : B-BRANCH ( -- )
    BRANCH-REPS 0 ?do
-      ABUF CELLS-N ARRAY:A-LEN ARRAY:A-COUNT-EVEN COUNT>N SINK !
+      ABUF CELLS-N >LEN ARRAY:A-COUNT-EVEN COUNT>N SINK !
    loop ;
 
 \ PICK-NEEDLE's tail first occurs at the end, so the scan runs to the end of

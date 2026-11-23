@@ -1,207 +1,30 @@
 split-str
-\ array.f - checked cell-array helpers (package ARRAY); there is no linked-list module.
-\ A-LEN, A-IDX and A-COUNT throw E-A-BOUNDS on a negative integer, as does every
-\ out-of-range index; a range may be empty at either end. A-MIN, A-MAX, A-ARGMAX
-\ and A-MAX-INDEX throw E-A-EMPTY on an empty array, the index words answer the
-\ smallest index among ties, and mutating kernels take it as a no-op. Index-aware
-\ quotations take the index before the value. STORAGE CLASS. CALLER-OWNED.
-
-require src/lib/error.f
-require src/lib/adt/option.f
+\ array.f - cell arrays summed, counted and prefix-summed in place (package
+\ ARRAY); the caller passes a length that is not negative.
+\ STORAGE CLASS. CALLER-OWNED.
 
 package ARRAY
 
 public
 
-: A-LEN ( n -- len )
-   dup 0 < if E-A-BOUNDS throw then
-   >LEN ;
-
-: A-IDX ( n -- idx )
-   dup 0 < if E-A-BOUNDS throw then
-   >IDX ;
-
-: A-COUNT ( n -- count )
-   dup 0 < if E-A-BOUNDS throw then
-   >COUNT ;
-
-: A-CHECK-INDEX ( len idx -- ) {: len ix :}
-   len LEN>N 0 < if E-A-BOUNDS throw then
-   ix IDX>N 0 < if E-A-BOUNDS throw then
-   ix IDX>N len LEN>N >= if E-A-BOUNDS throw then ;
-
-: A-CHECK-RANGE ( len idx count -- ) {: len start cnt :}
-   len LEN>N 0 < if E-A-BOUNDS throw then
-   start IDX>N 0 < if E-A-BOUNDS throw then
-   cnt COUNT>N 0 < if E-A-BOUNDS throw then
-   start IDX>N len LEN>N > if E-A-BOUNDS throw then
-   cnt COUNT>N len LEN>N start IDX>N - > if E-A-BOUNDS throw then ;
-
-: A-CHECK-NONEMPTY ( len -- ) {: len :}
-   len LEN>N 0 < if E-A-BOUNDS throw then
-   len LEN>N 0= if E-A-EMPTY throw then ;
-
-: A-CHECK-WHOLE ( len -- ) {: len :}
-   len 0 A-IDX len LEN>N A-COUNT A-CHECK-RANGE ;
-
-: A@ ( ^a len idx -- a ) {: arr:^ len ix :}
-   len ix A-CHECK-INDEX
-   arr ix IDX>N cells + @ ;
-
-: A! ( a ^a len idx -- ) {: value arr:^ len ix :}
-   len ix A-CHECK-INDEX
-   value arr ix IDX>N cells + ! ;
-
-: A+! ( n ^n len idx -- ) {: delta arr:^ len ix :}
-   arr len ix A@ delta +
-   arr len ix A! ;
-
-: A-SWAP ( ^a len idx idx -- ) {: arr:^ len ix jx :}
-   arr len ix A@
-   arr len jx A@
-   arr len ix A!
-   arr len jx A! ;
-
-: LAST-INDEX ( len -- idx ) {: len :}
-   len A-CHECK-NONEMPTY
-   len LEN>N 1 - A-IDX ;
-
-: MIRROR-INDEX ( len idx -- idx ) {: len ix :}
-   len ix A-CHECK-INDEX
-   len LEN>N 1 - ix IDX>N - A-IDX ;
-
-: EVEN? ( n -- bool )
-   1 and 0= ;
-
 : A-SUM ( ^n len -- n ) {: arr:^ len :}
-   len A-CHECK-WHOLE
    0
    len LEN>N 0 ?do
       arr i cells + @ +
-   loop ;
-
-: A-MIN ( ^n len -- n ) {: arr:^ len :}
-   len A-CHECK-NONEMPTY
-   arr @
-   len LEN>N 1 ?do
-      arr i cells + @ min
-   loop ;
-
-: A-MAX ( ^n len -- n ) {: arr:^ len :}
-   len A-CHECK-NONEMPTY
-   arr @
-   len LEN>N 1 ?do
-      arr i cells + @ max
    loop ;
 
 : A-COUNT-EVEN ( ^n len -- count ) {: arr:^ len :}
-   len A-CHECK-WHOLE
    0
    len LEN>N 0 ?do
       arr i cells + @ 2 mod 0= if 1+ then
-   loop A-COUNT ;
-
-: A-ARGMAX ( ^n len -- idx ) {: arr:^ len :}
-   len A-CHECK-NONEMPTY
-   0 A-IDX arr @
-   len LEN>N 1 ?do
-      arr i cells + @ over > if
-         2drop
-         i A-IDX arr i cells + @
-      then
-   loop
-   drop ;
-
-: A-MAX-INDEX ( ^n len -- idx )
-   A-ARGMAX ;
-
-: A-REVERSE-RANGE! ( ^a len idx count -- ) {: arr:^ len start cnt :}
-   len start cnt A-CHECK-RANGE
-   cnt COUNT>N 2 / 0 ?do
-      arr len
-      start IDX>N i + A-IDX
-      start IDX>N cnt COUNT>N + 1 - i - A-IDX
-      A-SWAP
-   loop ;
-
-: A-REVERSE! ( ^a len -- ) {: arr:^ len :}
-   arr len 0 A-IDX len LEN>N A-COUNT A-REVERSE-RANGE! ;
+   loop >COUNT ;
 
 : A-PREFIX-SUM! ( ^n len -- ) {: arr:^ len :}
-   len A-CHECK-WHOLE
    len LEN>N 1 <= if exit then
    len LEN>N 1 ?do
       arr i 1 - cells + @
       arr i cells + @ +
       arr i cells + !
    loop ;
-
-: A-RUNMAX! ( ^n len -- ) {: arr:^ len :}
-   len A-CHECK-WHOLE
-   len LEN>N 1 <= if exit then
-   len LEN>N 1 ?do
-      arr i 1 - cells + @
-      arr i cells + @ max
-      arr i cells + !
-   loop ;
-
-: A-FILL! ( a ^a len -- ) {: value arr:^ len :}
-   len A-CHECK-WHOLE
-   len LEN>N 0 ?do
-      value arr i cells + !
-   loop ;
-
-: A-MAP! ( ^a len [ a -- a ] -- ) {: arr:^ len q :}
-   len A-CHECK-WHOLE
-   arr len LEN>N q MAP ;
-
-: A-MAPI! ( ^a len [ idx a -- a ] -- ) {: arr:^ len q :}
-   len A-CHECK-WHOLE
-   len LEN>N 0 ?do
-      i A-IDX arr len i A-IDX A@ q execute
-      arr len i A-IDX A!
-   loop ;
-
-: A-FOLD ( ^a len b [ b a -- b ] -- b ) {: arr:^ len acc q :}
-   len A-CHECK-WHOLE
-   arr len LEN>N acc q FOLD ;
-
-: A-FOLDI ( ^a len b [ b idx a -- b ] -- b ) {: arr:^ len acc q :}
-   len A-CHECK-WHOLE
-   acc len LEN>N 0 ?do
-      i A-IDX arr len i A-IDX A@ q execute
-   loop ;
-
-: A-SCAN! ( ^n len n [ n n -- n ] -- ) {: arr:^ len acc q :}
-   len A-CHECK-WHOLE
-   acc len LEN>N 0 ?do
-      arr len i A-IDX A@ q execute
-      dup arr len i A-IDX A!
-   loop
-   drop ;
-
-: A-SCAN1! ( ^n len [ n n -- n ] -- ) {: arr:^ len q :}
-   len A-CHECK-WHOLE
-   len LEN>N 1 <= if exit then
-   arr len 0 A-IDX A@
-   len LEN>N 1 ?do
-      arr len i A-IDX A@ q execute
-      dup arr len i A-IDX A!
-   loop
-   drop ;
-
-: A-FIND-INDEX ( ^a len [ a -- bool ] -- option<idx> ) {: arr:^ len:len q :}   \ SOME first value-matching index, else NONE
-   len A-CHECK-WHOLE
-   len LEN>N 0 ?do
-      arr len i A-IDX A@ q execute if i >IDX OPTION:SOME unloop exit then
-   loop
-   OPTION:NONE ;
-
-: A-FIND-INDEXI ( ^a len [ idx a -- bool ] -- option<idx> ) {: arr:^ len:len q :}   \ SOME first index-aware match, else NONE
-   len A-CHECK-WHOLE
-   len LEN>N 0 ?do
-      i A-IDX arr len i A-IDX A@ q execute if i >IDX OPTION:SOME unloop exit then
-   loop
-   OPTION:NONE ;
 
 ;package
