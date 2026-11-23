@@ -6,8 +6,8 @@ split-str
 \ A value is its document's address, its offset there and its length, so a
 \ cursor opened on it counts places from the document's start.
 \ PARSE reads the text once and keeps the decoded keys of the objects open at
-\ the cursor in the key area after its record. At an object's `{` it pushes k,
-\ the keys held, as the object's first index lo; at its `}` it pops lo, finds
+\ the cursor in key storage that grows with them. At an object's `{` it pushes
+\ k, the keys held, as the object's first index lo; at its `}` it pops lo, finds
 \ the first of keys lo..k-1 that repeats one before it, and drops those keys.
 \ The lo stack lies in the order's low cells: every enclosing object holds a key
 \ below an inner object's lo, so the stack stays below the range a check sorts.
@@ -17,11 +17,12 @@ split-str
 \ a value it is given borrows the text, not the cursor, so it stays valid
 \ after the walk.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows. The
-\ cursor record, its depth mapping, the key area, AT's decoded token and
-\ WITH-STRING's decoded text live in a MEM:WITH-BYTES scope, released on
-\ return or throw. No module state.
+\ cursor record, its depth mapping, AT's decoded token and WITH-STRING's
+\ decoded text live in a MEM:WITH-BYTES scope, and the key storage on the
+\ heap, all released on return or throw. No module state.
 
 require src/lib/memory.f
+require src/lib/vector.f
 require src/lib/adt/option.f
 require src/lib/reason.f
 require src/lib/json/read.f
@@ -67,6 +68,7 @@ private
 
 \ Pushes k as the lo of an object opened inside m others.
 : OPEN-OBJECT ( ^keys n -- n ) {: keys:^ m:n :}
+   keys KEYS-SORTED @ m 1+ VEC:ENSURE
    keys TABLE @  keys ORDER m cells + !
    m 1+ ;
 
@@ -85,7 +87,7 @@ private
    m 1- swap ;
 
 \ Takes one token, given m open objects and the earliest repeat's place,
-\ the room's size for none; true at the text's end.
+\ the text's length for none; true at the text's end.
 : WALK-STEP ( n n ^cursor ^keys -- n n bool )
    {: m:n first:n state:^ keys:^ :}
    state NEXT-INNER {: tok:n :}
@@ -95,7 +97,7 @@ private
    m first tok T-END = ;
 
 : CHECK-KEYS ( ^cursor ^keys -- ) {: state:^ keys:^ :}
-   keys KEYS-ROOM-LEN @ {: none:n :}
+   state CURSOR-SRC-LEN @ {: none:n :}
    0 none begin state keys WALK-STEP until
    nip {: first:n :}
    first none = if exit then
@@ -114,8 +116,8 @@ public
 \ member name, decoded, throws E-MEMBER at the repeat earliest in the text.
 : PARSE ( str -- value ) {: text:^ u:n :}
    text u REQUIRE-SOURCE
-   text 0 u VALUE-MAKE u KEYS-LEN
-   [: over swap OPEN-KEYS CHECK-KEYS ;] WITH-CURSOR
+   text 0 u VALUE-MAKE 0
+   [: drop [: CHECK-KEYS ;] WITH-KEYS ;] WITH-CURSOR
    text u TRIMMED ;
 
 : TEXT$ ( value -- str )

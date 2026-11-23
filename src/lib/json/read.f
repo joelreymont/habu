@@ -12,6 +12,7 @@ require src/lib/sort.f
 require src/lib/utf16.f
 require src/lib/utf8-scalar.f
 require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/reason.f
 require src/core/rejection.f
 
@@ -1190,6 +1191,15 @@ private
    state CURSOR-MATCHED @ 0= 0=
    state CURSOR-OUT @ len = and ;
 
+\ Decodes the current string or key into the vector from byte at on and
+\ answers its length, which its raw length bounds.
+: DECODE-INTO ( ^cursor ^VEC:vector<u8> n -- n )
+   {: state:^ v:^ at:n :}
+   state CURSOR-TOK-LEN @ {: raw:n :}
+   raw 0= if 0 exit then
+   v at raw + VEC:ENSURE
+   state  v at VEC:AT raw  STR-INNER ;
+
 public
 
 \ Decodes into non-null caller storage; a negative capacity is
@@ -1204,10 +1214,7 @@ public
    READER>STATE {: state:^ :}
    state REQUIRE-STRING
    v VEC:COUNT {: at:n :}
-   state CURSOR-TOK-LEN @ {: raw:n :}
-   raw 0= if exit then
-   v at raw + VEC:ENSURE
-   state  v VEC:SPAN at SPAN:SKIP SPAN:$  STR-INNER {: u:n :}
+   state v at DECODE-INTO {: u:n :}
    v at u + VEC:RESIZE ;
 
 private
@@ -1545,56 +1552,61 @@ public
 
 private
 
-\ A key is recorded after a `{` or `,`, its two quotes and its `:`, 4 bytes
-\ no other key shares, so the keys held at once in u bytes are below u/4 + 1.
-: TABLE-CELLS ( n -- n )
-   4 / 3 + ;
-
-\ Heads the key area; room-len is the text's length u.
+\ The vectors keep the most keys held at once, and the room at most
+\ their raw bytes.
 STRUCTURE keys DERIVE addr
-   FIELD table ^n
-   FIELD sorted ^n
-   FIELD places ^n
-   FIELD room ^u8
-   FIELD room-len n
+   FIELD table ^VEC:vector<n>
+   FIELD sorted ^VEC:vector<n>
+   FIELD places ^VEC:vector<n>
+   FIELD room ^VEC:vector<u8>
 ;STRUCTURE
 
-CAST: >KEYS ( ^n -- ^keys )
+\ A vector not yet made is NULL-PTR, which DELETE ignores.
+: KEYS-CLOSE ( ^keys -- )
+   {: keys:^ :}
+   keys KEYS-TABLE @ VEC:DELETE
+   keys KEYS-SORTED @ VEC:DELETE
+   keys KEYS-PLACES @ VEC:DELETE
+   keys KEYS-ROOM @ VEC:DELETE ;
 
-\ The key area, zero-filled: the keys record, the table, the order, the
-\ places, then the room, u bytes, which the decoded keys held at once fit.
-: KEYS-LEN ( n -- n )
-   dup TABLE-CELLS 3 * cells + KEYS-BYTES + ;
+\ Each vector starts with element 0, so AT 0 is its base; the table's
+\ is its count, 0 keys held.
+: KEYS-OPEN ( ^keys -- )
+   {: keys:^ :}
+   HEAP:ALLOCATOR {: al:^ :}
+   al 1 [type] n VEC:NEW keys KEYS-TABLE !
+   al 1 [type] n VEC:NEW keys KEYS-SORTED !
+   al 1 [type] n VEC:NEW keys KEYS-PLACES !
+   al 1 [type] u8 VEC:NEW keys KEYS-ROOM ! ;
 
-\ The record over a key area sized for the cursor's text.
-: OPEN-KEYS ( ^cursor ^u8 -- ^keys )
-   {: state:^ area:^ :}
-   state CURSOR-SRC-LEN @ {: u:n :}
-   area CELL-VIEW >KEYS {: keys:^ :}
-   area KEYS-BYTES + {: at:^ :}
-   u TABLE-CELLS cells {: span:n :}
-   at CELL-VIEW keys KEYS-TABLE !
-   at span + CELL-VIEW keys KEYS-SORTED !
-   at span 2 * + CELL-VIEW keys KEYS-PLACES !
-   at span 3 * + keys KEYS-ROOM !
-   u keys KEYS-ROOM-LEN !
-   keys ;
+: RUN-KEYS ( R ^keys [ R ^keys -- S ] -- S )
+   over KEYS-OPEN execute ;
+
+: KEYS-SCOPE ( R ^keys [ R ^keys -- S ] -- S )
+   {: keys:^ body :}
+   keys body
+   [: RUN-KEYS ;] [: keys KEYS-CLOSE ;] finally ;
+
+\ Runs body on empty key storage, released on return or throw.
+: WITH-KEYS ( R [ R ^keys -- S ] -- S )
+   {: body :}
+   [type] keys [: body KEYS-SCOPE ;] MEM:WITH-RECORD ;
 
 \ Cell 0 counts the keys held, k; cells 1..k+1 hold room offsets,
 \ the first 0, and key i decodes to room bytes o(i)..o(i+1).
 : TABLE ( ^keys -- ^n )
-   KEYS-TABLE @ ;
+   KEYS-TABLE @ 0 VEC:AT ;
 
 \ Key indices, a range sorted by their decoded bytes once all are read.
 : ORDER ( ^keys -- ^n )
-   KEYS-SORTED @ ;
+   KEYS-SORTED @ 0 VEC:AT ;
 
 \ Cell i holds key i's offset in the text, at its opening quote.
 : PLACES ( ^keys -- ^n )
-   KEYS-PLACES @ ;
+   KEYS-PLACES @ 0 VEC:AT ;
 
 : ROOM ( ^keys -- ^u8 )
-   KEYS-ROOM @ ;
+   KEYS-ROOM @ 0 VEC:AT ;
 
 : OFFSET-AT ( ^n n -- ^n )
    1+ cells + ;
@@ -1603,24 +1615,29 @@ CAST: >KEYS ( ^n -- ^keys )
    OFFSET-AT @ ;
 
 
-: KEY$ ( ^keys n -- str )
-   {: keys:^ idx:n :}
-   keys TABLE {: table:^ :}
+: KEY$ ( ^n ^u8 n -- str )
+   {: table:^ room:^ idx:n :}
    table idx OFFSET {: from:n :}
-   keys ROOM from +  table idx 1+ OFFSET from - ;
+   room from +  table idx 1+ OFFSET from - ;
 
+
+\ Grows the table to its count and offsets 0..k+1 and the places to hold
+\ key k; the blocks may move.
+: GROW-KEYS ( ^keys n -- )
+   {: keys:^ k:n :}
+   keys KEYS-TABLE @ k 3 + VEC:ENSURE
+   keys KEYS-PLACES @ k 1+ VEC:ENSURE ;
 
 \ On a key: records it as key k, after the k before it.
 : RECORD-KEY ( ^cursor ^keys -- )
    {: state:^ keys:^ :}
-   keys TABLE {: table:^ :}
-   table @ {: k:n :}
+   keys TABLE @ {: k:n :}
+   keys k GROW-KEYS
    state TOKEN-START  keys PLACES k cells + !
-   table k OFFSET {: from:n :}
-   keys KEYS-ROOM-LEN @ {: u:n :}
-   state keys ROOM from + u from - STR-INNER {: ku:n :}
-   from ku + table k 1+ OFFSET-AT !
-   k 1+ table ! ;
+   keys TABLE k OFFSET {: from:n :}
+   state keys KEYS-ROOM @ from DECODE-INTO {: ku:n :}
+   from ku + keys TABLE k 1+ OFFSET-AT !
+   k 1+ keys TABLE ! ;
 
 
 : RECORD-KEYS ( ^cursor ^keys -- )
@@ -1632,9 +1649,10 @@ CAST: >KEYS ( ^n -- ^keys )
    repeat ;
 
 \ Keys in order of their decoded bytes, equal keys in document order.
-: KEY< ( n n ^keys -- bool )
-   {: i:n j:n keys:^ :}
-   keys i KEY$ keys j KEY$ {: a:^ u:n b:^ v:n :}
+: KEY< ( n n ^n ^u8 -- bool )
+   {: i:n j:n table:^ room:^ :}
+   table room i KEY$  table room j KEY$
+   {: a:^ u:n b:^ v:n :}
    a u b v STR< if true exit then
    b v a u STR< if false exit then
    i j < ;
@@ -1645,19 +1663,18 @@ CAST: >KEYS ( ^n -- ^keys )
    k lo ?do i order i cells + ! loop ;
 
 
-: RANKED$ ( ^keys n -- str )
-   {: keys:^ idx:n :}
-   keys  keys ORDER idx cells + @  KEY$ ;
+: RANKED$ ( ^n ^u8 ^n n -- str )
+   {: table:^ room:^ order:^ idx:n :}
+   table room  order idx cells + @  KEY$ ;
 
 
 \ The least index of keys lo..k-1 ranked after an equal key, k when
 \ there is none.
-: LEAST-REPEAT ( ^keys n n -- n )
-   {: keys:^ lo:n k:n :}
-   keys ORDER {: order:^ :}
+: LEAST-REPEAT ( ^n ^u8 ^n n n -- n )
+   {: table:^ room:^ order:^ lo:n k:n :}
    k  k lo 1+ ?do
-      keys i 1- RANKED$
-      keys i RANKED$ STR=
+      table room order i 1- RANKED$
+      table room order i RANKED$ STR=
       if order i cells + @ min then
    loop ;
 
@@ -1666,20 +1683,22 @@ CAST: >KEYS ( ^n -- ^keys )
 \ sorted, equal keys are neighbours, the second of a run its earliest repeat.
 : FIRST-REPEAT ( ^keys n -- option<n> )
    {: keys:^ lo:n :}
-   keys ORDER {: order:^ :}
    keys TABLE @ {: k:n :}
+   keys KEYS-SORTED @ k VEC:ENSURE
+   keys ORDER {: order:^ :}
+   keys TABLE {: table:^ :}
+   keys ROOM {: room:^ :}
    order lo k FILL-ORDER
-   order lo cells + k lo - [: keys KEY< ;] SORT:SORT!
-   keys lo k LEAST-REPEAT {: at:n :}
+   order lo cells + k lo - [: table room KEY< ;] SORT:SORT!
+   table room order lo k LEAST-REPEAT {: at:n :}
    at k = if OPTION:NONE exit then
    at OPTION:SOME ;
 
 
 \ The answer stands only once the whole text has read as well formed.
-: REPEAT-IN ( ^cursor ^u8 str -- option<n> )
-   {: a:^ base:^ text:^ u:n :}
+: REPEAT-IN ( ^cursor ^keys str -- option<n> )
+   {: a:^ keys:^ text:^ u:n :}
    a text u INIT-STATE
-   a base OPEN-KEYS {: keys:^ :}
    a NEXT-INNER T-OBJ <> if
       a s" an object" s" write the text as one JSON object"
       E-JSON-READ-STATE REJECT-TOKEN
@@ -1690,7 +1709,7 @@ CAST: >KEYS ( ^n -- ^keys )
 
 : REPEAT-WITH ( str ^cursor -- option<n> )
    {: text:^ u:n a:^ :}
-   [: a  u KEYS-LEN MEM:BYTES-ALLOC-LEN [: drop text u REPEAT-IN ;] MEM:WITH-BYTES ;]
+   [: a [: text u REPEAT-IN ;] WITH-KEYS ;]
    [: a MORE-RELEASE ;] finally ;
 
 public
