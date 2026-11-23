@@ -273,4 +273,26 @@ S\" error[E-BAD-DECLARATION]: bad deftype declaration `rev3`\n"
 s" Option" s" unknown type"
 S\" = help: name as the base one type declared before this declaration: `n`, `str`, a `STRUCTURE` or an `ENUM`, as in `DEFTYPE REV str`\n" DT-REC
 
+\ 8. a base only the run defines leaves the DEFTYPE to the run: a use of either
+\    converter defers, and a misspelt one is still undefined.
+CODEGEN:BUFFER DT-LEFT-SRC
+: DT-LEFT-LINE ( str -- )
+   DT-LEFT-SRC CODEGEN:APPEND-STRING
+   10 DT-LEFT-SRC CODEGEN:APPEND-BYTE ;
+: DT-LEFT-SRC! ( -- )
+   DT-LEFT-SRC CODEGEN:RESET
+   s" : DTRH ( -- n ) 16 ;" DT-LEFT-LINE
+   s" DTRH constant DTRID" DT-LEFT-LINE
+   s" STRUCTURE dtrun BUFFER id DTRID ;STRUCTURE" DT-LEFT-LINE
+   s" DEFTYPE DTLEFT dtrun" DT-LEFT-LINE
+   s" : DTLOUT ( -- ) 0 DTLEFT>DTRUN drop ;" DT-LEFT-LINE
+   s" : DTLIN ( -- ) 0 >DTLEFT drop ;" DT-LEFT-LINE
+   s" : DTLBAD ( -- ) 0 >DTLEFX drop ;" DT-LEFT-LINE ;
+DT-LEFT-SRC!
+: DT-LEFT ( -- ) DT-LEFT-SRC CODEGEN:CONTENTS VERIFY:SOURCE-BUF ;
+REJECTION:CAPTURE
+' DT-LEFT catch 70 T=
+REJECTION:BUFFER$ s" error[E-UNDEFINED]: cannot find word `>DTLEFX`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+
 T-REPORT

@@ -16400,6 +16400,22 @@ package CHECK
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
 
+\ `unseen NAME` marks the one word NAME the run may define; the space keeps it
+\ off every token, as it keeps UNSEEN-MARK$.
+PTR-VARIABLE UNSEEN-NAME-P        \ the mark, grown on demand
+SCRATCH-VARIABLE UNSEEN-NAME-CAP  \ UNSEEN-NAME-P's room, in bytes
+
+: UNSEEN-NAME$ ( str -- str ) {: a:^ u:n :}
+   s" unseen " {: pa:^ pu:n :}
+   UNSEEN-NAME-P UNSEEN-NAME-CAP pu u + ARENA-BYTES-ENSURE
+   UNSEEN-NAME-P @ {: buf:^ :}
+   pa buf pu ARENA-COPY
+   a buf pu + u ARENA-COPY
+   buf pu u + ;
+
+\ Marks NAME in the wordlist a definition of it would land in.
+: CHECKER-UNSEEN-NAME ( str -- ) UNSEEN-NAME$ CHECKER-RECORD-SYM drop ;
+
 \ A missing nominal leaves no allocation or row; for a layout buffer (lay), a
 \ bare or pointed-to xt or another unstorable type is STG-LAYOUT-TYPE.
 : STORAGE-TYPE-REJECT ( str str bool -- )
@@ -16460,24 +16476,29 @@ package CHECK
    LOOP
    RES-FALSE ;
 
+\ Whether the wordlist holds the unseen-products mark or NAME's own.
+: UNSEEN-IN? ( str n str -- bool ) {: pkg:^ pkgu:n vis:n a:^ u:n :}
+   pkg pkgu vis UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+   pkg pkgu vis a u UNSEEN-NAME$ CHECKER-PKG-SYM? 0 <> ;
+
 \ Every wordlist CHECKER-FIND-ACTIVE-SYM walks for a token.
 : UNSEEN-COVERS? ( str -- bool ) {: a:^ u:n :}
    a u CHECKER-QUALIFIED? IF
-      CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> IF RES-TRUE EXIT THEN
+      CHECKER-QPKG$ SYM-PUBLIC CHECKER-QTAIL$ UNSEEN-IN? IF RES-TRUE EXIT THEN
    THEN
    CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:^ pkgu:n mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
-      pkg pkgu SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
-      pkg pkgu SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      pkg pkgu SYM-PRIVATE a u UNSEEN-IN? IF RES-TRUE EXIT THEN
+      pkg pkgu SYM-PUBLIC a u UNSEEN-IN? IF RES-TRUE EXIT THEN
       data-base ENCLOSING:PUB + @ 0 <> IF
-         pkg pkgu TOP$ SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
-         pkg pkgu TOP$ SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+         pkg pkgu TOP$ SYM-PRIVATE a u UNSEEN-IN? IF RES-TRUE EXIT THEN
+         pkg pkgu TOP$ SYM-PUBLIC a u UNSEEN-IN? IF RES-TRUE EXIT THEN
       THEN
    THEN
-   UNSEEN-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
+   s" " SYM-GLOBAL a u UNSEEN-IN? IF RES-TRUE EXIT THEN
    CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC UNSEEN-MARK$ SYM-FIND nip IF unloop RES-TRUE EXIT THEN
+      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u UNSEEN-IN? IF unloop RES-TRUE EXIT THEN
    LOOP
    RES-FALSE ;
 

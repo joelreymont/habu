@@ -600,6 +600,7 @@ EXPORT CHECK:CHECKER-TRY-RECORD
 EXPORT CHECK:CHECKER-TYPE-SPAN-BREAK?
 EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
 EXPORT CHECK:CHECKER-UNDEFINE
+EXPORT CHECK:CHECKER-UNSEEN-NAME
 EXPORT CHECK:CLOSE-USING
 EXPORT CHECK:DEF-NAME-REJECT?
 EXPORT CHECK:DOES-UNMADE-OPEN
@@ -2696,8 +2697,14 @@ variable STG-TYPE-U
    bu 1 = IF ba c@ 92 = IF mark SCAN-I !  s" n" 0 0= 0= EXIT THEN THEN
    ba bu 0 0= ;
 
-\ A base replays as DEFTYPE registers it; a deferred or rejected family
-\ declares no converters.
+\ A family left to the run declares no converters, so each is marked where it
+\ would land: a use defers.
+: CONVERTERS-LEFT ( str str str -- ) {: na:^ nu:n ta:^ tu:n ba:^ bu:n :}
+   na nu ta tu ba bu DTC-BUILD-IN   DTC-NAME$ CHECKER-UNSEEN-NAME
+   na nu ta tu ba bu DTC-BUILD-OUT  DTC-NAME$ CHECKER-UNSEEN-NAME ;
+
+\ A base replays as DEFTYPE registers it; a rejected family declares no
+\ converters.
 : RECORD-DEFTYPE ( -- )
    0 NEWEST-SYM !
    NAME-TOKEN {: name:^ nameu:n :}
@@ -2711,7 +2718,8 @@ variable STG-TYPE-U
    based IF name nameu at nameu SEALED-NAME ELSE name nameu at SEALED-FAMILY THEN
    based IF
       tail tailu name nameu ba bu s" deftype" SD-WRAP-OUTCOME
-      dup 0 <> IF DEFER-AT EXIT THEN drop 2drop
+      dup 0 <> IF name nameu tail tailu ba bu CONVERTERS-LEFT DEFER-AT EXIT THEN
+      drop 2drop
    ELSE
       tail tailu name nameu s" deftype" CHECKER-DEFFAMILY
    THEN
