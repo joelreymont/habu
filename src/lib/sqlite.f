@@ -134,7 +134,11 @@ FUNCTION: LIB-AUTOCOMMIT sqlite3_get_autocommit ( ^u8 -- i32 ) ;FUNCTION
    v 0 < v INT-MAX > or if v s"  is outside a C int" OUTSIDE then
    v ;
 
-: STMT-CHECK ( n ^u8 -- ) LIB-STMT-DB CHECK ;
+\ Asks for the statement's connection only to report a failure: binds and
+\ resets run once per row.
+: STMT-CHECK ( n ^u8 -- )
+   {: rc:n stmt:^ :}
+   rc OK <> if rc stmt LIB-STMT-DB FAIL then ;
 
 : PEEK ( SQLITE:statement -- SQLITE:statement ^u8 )
    STATEMENT>PTR dup >STATEMENT swap ;
