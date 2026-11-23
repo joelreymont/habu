@@ -40,8 +40,11 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 : FORMATTED-REPLAY ( -- )
    $4023FFCB923A29C7 IEEE754:BITS>F64
    DECIMAL-TEXT F64-TEXT:MAX-BYTES F64-TEXT:FORMAT
-   MATCH result ok OF ENDOF err OF drop -9899 throw ENDOF ;MATCH
+   MATCH result
+      ok OF ENDOF err OF drop s" format answered err" T-FAIL-AS 0 ENDOF
+   ;MATCH
    {: len:n :}
+   len 0= if exit then
    GE-SRC-RESET
    s" require src/lib/ieee754.f" GE-SRC-LINE
    s" : REPLAY ( -- r ) " GE-SRC+ DECIMAL-TEXT len GE-SRC+

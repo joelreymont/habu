@@ -12,11 +12,13 @@ create OUTPUT MAX-BYTES allot
 
 : FORMAT-OK ( r -- n )
    OUTPUT MAX-BYTES FORMAT MATCH result
-      ok OF ENDOF err OF drop -9899 throw ENDOF
+      ok OF ENDOF err OF drop s" format answered err" T-FAIL-AS 0 ENDOF
    ;MATCH ;
 
 : PARSE-OK ( str -- r )
-   PARSE MATCH result ok OF ENDOF err OF drop -9899 throw ENDOF ;MATCH ;
+   PARSE MATCH result
+      ok OF ENDOF err OF drop s" parse answered err" T-FAIL-AS 0 BITS>F64 ENDOF
+   ;MATCH ;
 : PARSE-BITS ( str -- n ) PARSE-OK F64>BITS ;
 
 : EXPECT ( n str -- ) {: bits:n expected:^ len:n :}
