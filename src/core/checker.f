@@ -15210,8 +15210,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    LOOP
    -1 ;
 
-\ Keep V as the value of REC, a `constant` record the replay made: the source
-\ states it, and the record has no code to push it.
+\ Keeps V as the value the source states for REC, a record the replay made.
 : VALUE! ( ^n n -- ) {: rec:^ v:n :}
    ON @ 0= IF EXIT THEN
    rec REC>IX {: ix:n :}
@@ -16434,13 +16433,11 @@ package CHECK
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
 
-\ Marks the wordlist of package pkg at vis.
 : CHECKER-UNSEEN-MARK-IN ( str n -- ) {: pkg:^ pkgu:n vis:n :}
    pkg pkgu vis UNSEEN-MARK$ CHECKER-PKG-SYM drop ;
 
 \ `unseen NAME` marks the one word NAME the run may define, and `unresolved
-\ nominal type NAME` the one type; the space keeps either off every token, as
-\ it keeps UNSEEN-MARK$ and TYPE-MARK$.
+\ nominal type NAME` the one type.
 PTR-VARIABLE MARK-NAME-P        \ the mark, grown on demand
 SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 
@@ -18661,8 +18658,6 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    sym 0 <> IF sym CTL-FLAGS-SYM sym DFER-FIND-SYM EXIT THEN
    0 RES-FALSE ;
 
-\ A renderer may register a nominal type of any name anywhere; a word that
-\ registers one may give it any name where its declarations land.
 : TYPES-MARK ( n bool -- ) {: flags:n deferred:bool :}
    flags CTL-RENDERS and 0 <> deferred or IF
       RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop EXIT

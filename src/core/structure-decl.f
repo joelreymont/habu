@@ -908,18 +908,16 @@ EXPORT CHECKER-OVERLAY:VALUE
 : COUNT-REC ( str -- ^n ) {: a:^ u:n :}
    a u a u CHECKER-BIND drop
    a u scope-find drop drop drop ;
-\ A count token's value and true: an integer literal, or the value of the
-\ constant it binds, read from its record or, for a replay's codeless record,
-\ the value its source states; false for anything else.
+\ A count token's value and true: an integer literal or the value of the
+\ constant it binds; false for anything else.
 : COUNT-VALUE ( str -- n bool ) {: a:^ u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
    a u COUNT-REC VALUE ;
 EXPORT CHECKER-OVERLAY:UNSTATED?
 EXPORT CHECK:UNSEEN-COVERS?
-\ Whether a count name no record here holds the value of may still name one
-\ the run makes: in a replay, a `constant` whose source states no value, or
-\ nothing yet where a word the check cannot see may define it.
+\ In a replay, whether the run may still give the count a value: it names a
+\ `constant` whose source states none, or nothing yet under an unseen mark.
 : COUNT-LATER? ( str -- bool ) {: a:^ u:n :}
    OUTCOME-NAMES @ 0= IF NO EXIT THEN
    a u num-parse nip nip IF NO EXIT THEN
@@ -931,9 +929,8 @@ EXPORT CHECK:UNSEEN-COVERS?
 : COUNT-UNREAD ( str -- ) {: a:^ u:n :}
    a u COUNT-LATER? IF a u DW-COUNT MISSING! EXIT THEN
    COUNT-BAD ;
-\ `BUFFER name N`: N bytes inline from the next slot, in whole cells. N is a
-\ number literal or a constant's name, read from its record: no program code
-\ runs. A count left to the run answers 0 with FIELD-MISS set.
+\ `BUFFER name N`: N bytes inline from the next slot, in whole cells, read
+\ without running program code. A count left to the run answers 0, FIELD-MISS set.
 : BUFFER-COUNT ( -- n )
    NEXT dup 0= IF
       2drop s" missing buffer byte count"
@@ -1184,9 +1181,8 @@ EXPORT CHECK:UNSEEN-COVERS?
 
 : MUTUAL-DRIVE ( -- ) LIST BEGIN MUTUAL-STEP UNTIL ;
 
-\ Clears the member table, as both exits do: a later declaration's family may
-\ reuse a rejected member's id. The rows stay until the next declaration adds,
-\ each marked OPAQUE while its family row still stands, for MEMBERS-LEFT.
+\ Both exits clear the member table: a later family may reuse a rejected
+\ member's id. Each row first keeps its OPAQUE flag for MEMBERS-LEFT.
 : MEM-END-DECL ( -- )
    MEM-N @ 0 ?do
       i M.FAM MEM-CELL @ TFAM-OPAQUE? IF -1 ELSE 0 THEN
@@ -1255,13 +1251,8 @@ EXPORT CHECK:CHECKER-UNSEEN-MARK-IN
 
 public
 
-\ A family left to the run has no records here, so uses of its type and its
-\ generated words defer rather than reject: the type's own mark goes in the
-\ declaring scope and the unseen mark where those words land, the declaring
-\ package's private wordlist for an OPAQUE or private family, else the
-\ family's own namespace. An unknown word or type anywhere else stays
-\ rejected. An OPAQUE family outside a package has no private wordlist its
-\ words resolve in.
+\ A family left to the run has no records, so its uses must defer: the type
+\ mark in the declaring scope, the unseen mark where its words land.
 : LEFT-MARK ( str bool -- ) {: na:^ nu:n opaque:bool :}
    na nu CHECKER-TYPE-MARK
    TFAM-ACTIVE-PKG$ {: pa:^ pu:n :}

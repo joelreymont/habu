@@ -548,9 +548,8 @@ public
 : TYPE! ( str -- ) TYPE-U ! TYPE-A ! ;
 : TYPE@ ( -- str ) TYPE-A @ TYPE-U @ ;
 
-\ MISSING! ( span why -- ) : only the run can resolve the span, for the
-\ deferral cause why. The first span and its cause are what a replay reports
-\ (REPLAY-OUTCOME); later ones are dropped.
+\ MISSING! ( span why -- ) : only the run can resolve the span, for cause why.
+\ A replay reports the first span and cause (REPLAY-OUTCOME).
 : MISSING! ( str n -- )
    -1 FIELD-MISS !
    MISS-U @ 0 <> IF drop 2drop EXIT THEN

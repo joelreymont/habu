@@ -1864,11 +1864,8 @@ DYNAMIC-BUFFER TICK-QUAL u8
 \ This scanner is a PRE-PASS: it reads a whole source buffer before any of it is
 \ compiled, so a definer it replays names a word that does not exist in this
 \ process and cannot be asked to prove otherwise.
-\ DECL-SIGNATURE asks the declaration owner's registrar, which registers the row
-\ and answers its outcome, a CHECKER-ROW constant. A name its scope already
-\ holds keeps that record either way, so only this answer tells a redeclaration
-\ the registrar retained from one it refused. A word whose type is left to the
-\ run makes only itself, so a quiet row marks its own name.
+\ The registrar's CHECKER-ROW outcome, which alone tells a kept redeclaration
+\ from a refused one. A quiet row's word is left to the run: it marks its name.
 : DECL-SIGNATURE ( str str -- n ) {: name:^ nameu:n sig:^ sigu:n :}
    name nameu sig sigu
    NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute
@@ -2149,10 +2146,8 @@ ENGINE-TARGET-INIT
    SEALED-LOAD? 0= IF EXIT THEN
    a u PUBLIC-WID XREF-WID-PROTECTED? IF name nameu at nameu SEAL-STOP THEN ;
 
-\ Where a guard refused a live record before the registrar ran, one there now
-\ is the record that registrar retained. A declaration DECL-SIGNATURE registers
-\ has no guard: the record found for its name is that declaration's only when
-\ DECL-SIGNATURE answered CHECKER-ROW:KEPT, so its callers ask only then.
+\ A guarded declaration's live record is the one its registrar kept; an
+\ unguarded one's only once DECL-SIGNATURE answered CHECKER-ROW:KEPT.
 : RETAINED-SYM ( str -- n )
    {: name:^ nameu:n :}
    name nameu CHECKER-CERT-DUP? 0= IF 0 EXIT THEN
@@ -2226,16 +2221,15 @@ EXPORT CHECKER-OVERLAY:VALUE
 EXPORT CHECKER-OVERLAY:VALUE!
 EXPORT CHECKER-OVERLAY:UNSTATED!
 
-\ The value a token gives and true: an integer literal, or a constant whose
-\ value its record holds or its source stated; false for anything else.
+\ The value a token gives and true: an integer literal or the value of the
+\ constant it names; false for anything else.
 : STATED-VALUE ( str -- n bool ) {: a:^ u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
    a u scope-find drop drop drop VALUE ;
 
-\ The value of a `constant` is stated when the token before it gives one and
-\ nothing since can have pushed another: no string literal skipped, no stretch
-\ open. The record keeps it, as its code would, or that it is unstated.
+\ A `constant`'s value is stated when the token before it gives one and no
+\ skipped string literal or open stretch can have pushed another.
 : RECORD-CONSTANT ( -- )
    STR-LAST-KIND @ 0=  TOP-DEFER @ 0= and  TOP-PREV-U @ 0<> and {: plain:bool :}
    plain IF TOP-PREV-A @ TOP-PREV-U @ STATED-VALUE ELSE 0 false THEN

@@ -491,7 +491,11 @@ compact-variant = variant-name
 `BUFFER name N`, N a number literal or a `constant`'s name, above 0, lays N
 bytes inline from the next cell; a computed size is bound with `constant`
 first. Any other name, a `variable`, a colon word or a value below 1 is
-rejected at N (`error[E-BAD-DECLARATION]`). The record stays whole cells, so
+rejected at N (`error[E-BAD-DECLARATION]`). The check reads the value of a
+constant hb itself holds, and of one whose source writes it as a number or a
+constant's name directly before `constant`; a count naming a constant whose value only the run computes
+(`HB constant IDH`, HB a colon word) leaves the declaration and the uses of its
+words to the run (`warning[W-CHECK-DEFERRED]`). The record stays whole cells, so
 the field after it starts at the next cell boundary past the bytes. `MAKE`
 takes one value per `FIELD` and ceil(N / CELL) values of type `n` per `BUFFER`,
 in declaration order, and `UNMAKE` answers them; those cells also fill any

@@ -1019,11 +1019,8 @@ s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the
    s" :12:30" s" reaches below the inputs" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
    s" :13:29" s" unknown type" SC-RECORD
-\ A string literal between the number and `constant` leaves K's value unstated,
-\ and a colon definition IDH's and IDE's. Each use of hd, and of rpsdg and rpsdw
-\ over it, is deferred, and so is SCPO's call of peop's private PEOP-MAKE. So is
-\ each use of wrapz over hd and of rpsdk, whose declarations mark only their own
-\ types: NOPE, NOPE6 and nopetype stay rejected.
+\ A string literal leaves K's value unstated, a colon word IDH's and IDE's: the
+\ uses of hd, rpsdg, rpsdw and peop's private PEOP-MAKE are deferred.
 SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 19 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
@@ -1035,6 +1032,8 @@ s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `PEOP-MAKE
    s" :34:17" s" not checked from here" SC-RECORD
 s" error[E-UNDEFINED]: cannot find word `SCPNOPE`"
    s" :28:15" s" not found" SC-RECORD
+\ wrapz and rpsdk mark only their own types: their uses are deferred, while
+\ NOPE, NOPE6 and nopetype stay rejected.
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `wrapz` on and leaves it to the run"
    s" :41:10" s" not checked from here" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `rpsdk` on and leaves it to the run"
@@ -1051,10 +1050,8 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsden`"
    s" :46:28" s" buffer byte count must be a number or a constant above 0" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdpv`"
    s" :48:28" s" buffer byte count must be a number or a constant above 0" SC-RECORD
-\ A definition whose signature or does> clause names hd marks only the word it
-\ makes: SCNOPE4 and SCNOPE5 stay undefined, and SCMK's and scmkhh's uses are
-\ deferred. A top-level statement that calls hd's words runs code the check did
-\ not see, so schx, which it creates, is deferred.
+\ A word made over hd marks only its own name, so SCNOPE4 and SCNOPE5 stay
+\ undefined; the statement calling PC-HD:MAKE marks its wordlist, so schx defers.
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `scmkhh` on and leaves it to the run"
    s" :53:15" s" not checked from here" SC-RECORD
 s" error[E-UNDEFINED]: cannot find word `SCNOPE4`"
