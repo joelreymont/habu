@@ -2,9 +2,9 @@ split-str
 \ uri.f - file URIs (RFC 8089) decoded to the paths they name, paths encoded,
 \ bytes encoded as a web form or a query component and decoded from a form,
 \ whether a request path holds a dot segment, and http(s) URLs read: one's
-\ origin, a reference resolved against one, two compared by origin, and the
-\ request target sliced out. A file path is bytes, as the file system takes
-\ them: a decoded NUL or `/` is kept.
+\ origin, whether a text is an origin alone, a reference resolved against
+\ one, two compared by origin, and the request target sliced out. A file path
+\ is bytes, as the file system takes them: a decoded NUL or `/` is kept.
 \ Input is checked and output measured before a byte is written, so no
 \ rejection leaves a byte behind. RESOLVE removes dot segments in place, after
 \ it writes the target: the removal never lengthens the path.
@@ -34,6 +34,7 @@ $5D constant CLOSE-BRACKET
 443 constant HTTPS-PORT
 65535 constant PORT-MAX
 -1 constant NO-PORT
+-2 constant BAD-PORT             \ not a host and an optional port
 
 : SCHEME$ ( -- str ) s" file:" ;
 : MARKER$ ( -- str ) s" //" ;
@@ -210,12 +211,12 @@ $5D constant CLOSE-BRACKET
    {: c:n :}
    c STR-HEX-DIGIT? c [char] : = or  c [char] . = or ;
 
-\ The length of a bracketed address, brackets included.
+\ The length of a bracketed address, brackets included, or 0 for none.
 : BRACKETED ( str -- n )
    {: a:^ u:n :}
    a 1+ u 1- [: ADDRESS-BYTE? 0= ;] SCAN 1+ {: close:n :}
-   close 1 = close u = or if E-URI-HOST throw then
-   a close + c@ CLOSE-BRACKET <> if E-URI-HOST throw then
+   close 1 = close u = or if 0 exit then
+   a close + c@ CLOSE-BRACKET <> if 0 exit then
    close 1+ ;
 
 \ The length of the host an authority starts with.
@@ -226,16 +227,18 @@ $5D constant CLOSE-BRACKET
 
 : PORT-DIGIT ( n n -- n )
    {: acc:n c:n :}
-   c STR-DIGIT? 0= if E-URI-HOST throw then
+   acc BAD-PORT = if BAD-PORT exit then
+   c STR-DIGIT? 0= if BAD-PORT exit then
    acc 10 * c STR-DIGIT-VALUE + {: v:n :}
-   v PORT-MAX > if E-URI-HOST throw then
+   v PORT-MAX > if BAD-PORT exit then
    v ;
 
-\ The port the bytes after the host give: none, `:` alone or `:` and digits.
+\ The port the bytes after the host give: none, `:` alone or `:` and up to
+\ PORT-MAX in digits; BAD-PORT for anything else.
 : PORT ( str -- n )
    {: a:^ u:n :}
    u 0= if NO-PORT exit then
-   a c@ [char] : <> if E-URI-HOST throw then
+   a c@ [char] : <> if BAD-PORT exit then
    u 1 = if NO-PORT exit then
    0 u 1 ?do a i + c@ PORT-DIGIT loop ;
 
@@ -245,7 +248,7 @@ $5D constant CLOSE-BRACKET
    {: a:^ u:n :}
    a u [: AUTHORITY-END? ;] SCAN {: end:n :}
    a end HOST-LEN {: h:n :}
-   h 0= if E-URI-HOST throw then
+   h 0= if a 0 BAD-PORT end exit then
    a h  a h + end h - PORT  end ;
 
 : SCHEME-IS? ( str str -- bool )
@@ -254,11 +257,12 @@ $5D constant CLOSE-BRACKET
    v w + u > if false exit then
    a v s v STR=CI  a v + w m w STR= and ;
 
-\ The length of the scheme, `http` or `https` in any case, before `://`.
+\ The length of the scheme, `http` or `https` in any case, before `://`, or
+\ 0 for another.
 : SCHEME-LEN ( str -- n )
    {: a:^ u:n :}
    a u HTTP$ SCHEME-IS? if HTTP$ nip exit then
-   a u HTTPS$ SCHEME-IS? 0= if E-URI-HTTP throw then
+   a u HTTPS$ SCHEME-IS? 0= if 0 exit then
    HTTPS$ nip ;
 
 : DEFAULT-PORT ( n n -- n )   \ a scheme's length, a port
@@ -266,17 +270,21 @@ $5D constant CLOSE-BRACKET
    p NO-PORT <> if p exit then
    s HTTP$ nip = if HTTP-PORT else HTTPS-PORT then ;
 
-\ The scheme's length, the host, the port, its scheme's default when absent
-\ or empty, and the offset where the authority ends, of an http(s) URL. Not
-\ `http://` or `https://` is E-URI-HTTP; an authority that is not one or more
-\ unreserved bytes or a bracketed address of hex digits, `:` and `.`, then an
-\ optional `:` and up to PORT-MAX in digits, is E-URI-HOST.
-: HTTP-AT ( str -- n str n n )
+\ An http(s) URL's scheme length, host, port (the scheme's default when absent
+\ or empty) and authority end, then a code: 0, E-URI-HTTP or E-URI-HOST.
+: HTTP-READ ( str -- n str n n n )
    {: a:^ u:n :}
    a u SCHEME-LEN {: s:n :}
+   s 0= if 0 a 0 0 0 E-URI-HTTP exit then
    s SEPARATOR$ nip + {: from:n :}
    a from + u from - AUTHORITY {: h:^ hu:n p:n end:n :}
-   s h hu  s p DEFAULT-PORT  from end + ;
+   p BAD-PORT = if 0 a 0 0 0 E-URI-HOST exit then
+   s h hu  s p DEFAULT-PORT  from end +  0 ;
+
+\ HTTP-READ's answers but its code, which is thrown unless 0.
+: HTTP-AT ( str -- n str n n )
+   HTTP-READ {: code:n :}
+   code 0<> if code throw then ;
 
 : HTTP-END ( str -- n )
    HTTP-AT {: s:n h:^ hu:n p:n end:n :} end ;
@@ -346,6 +354,7 @@ $5D constant CLOSE-BRACKET
    b bu SCHEME-LEN 1+ {: al:n :}
    MARKER$ nip {: m:n :}
    r m + ru m - AUTHORITY {: h:^ hu:n p:n end:n :}
+   p BAD-PORT = if E-URI-HOST throw then
    al 0  al m + end +  r ru m end + PATH-END al + ;
 
 : ABSOLUTE-PATH ( str n -- n n n n )
@@ -481,6 +490,13 @@ public
    {: a:^ u:n :}
    a u HTTP-AT {: s:n h:^ hu:n p:n end:n :}
    a s h hu p ;
+
+\ Whether the text is an http(s) URL's origin alone: `http://` or `https://`, a
+\ host and an optional port as HTTP-READ reads them, and no byte after.
+: ORIGIN? ( str -- bool )
+   {: a:^ u:n :}
+   a u HTTP-READ {: s:n h:^ hu:n p:n end:n code:n :}
+   code 0= end u = and ;
 
 \ Whether two http(s) URLs share an origin: schemes equal without case, hosts
 \ without ASCII case, ports as numbers, defaults applied. Rejected as HTTP-AT

@@ -1,8 +1,8 @@
 split-str
 \ uri-test.f - file URIs decoded to paths, paths encoded to file URIs, bytes
 \ encoded as a web form or a query component and decoded from a form, request
-\ paths checked for a dot segment, and http(s) URLs resolved, compared and
-\ sliced, through src/lib/uri.f.
+\ paths checked for a dot segment, and http(s) URLs resolved, compared, sliced
+\ and checked for an origin alone, through src/lib/uri.f.
 \ Run: bin/hb --load src/lib/uri-test.f
 
 require src/lib/error.f
@@ -404,6 +404,24 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    s" https://h/a" s" http://h/" URI:SAME-ORIGIN? TFALSE
    s" https://h/a" s" https://other/x" URI:SAME-ORIGIN? TFALSE ;
 
+\ An origin alone in each form; a path, a fragment, user information, another
+\ scheme or none, no host, a bad or unclosed address, and a bad port.
+: ORIGINS-ALONE ( -- )
+   s" https://h" URI:ORIGIN? TTRUE
+   s" HTTP://h:8080" URI:ORIGIN? TTRUE
+   s" https://[::1]:443" URI:ORIGIN? TTRUE
+   s" https://h:" URI:ORIGIN? TTRUE
+   s" https://h/" URI:ORIGIN? TFALSE
+   s" https://h#f" URI:ORIGIN? TFALSE
+   s" https://u@h" URI:ORIGIN? TFALSE
+   s" ftp://h" URI:ORIGIN? TFALSE
+   s" https://" URI:ORIGIN? TFALSE
+   s" https://[::1" URI:ORIGIN? TFALSE
+   s" https://[::1g]" URI:ORIGIN? TFALSE
+   s" https://h:65536" URI:ORIGIN? TFALSE
+   s" https://h:x8" URI:ORIGIN? TFALSE
+   s" " URI:ORIGIN? TFALSE ;
+
 \ The path and query without the fragment; none after a bare authority.
 : REQUEST-TARGETS ( -- )
    s" https://h/sap/X/A?$skiptoken=5#f" URI:REQUEST-TARGET$
@@ -451,6 +469,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
    DOT-SEGMENTS
    RESOLVES
    SAME-ORIGINS
+   ORIGINS-ALONE
    REQUEST-TARGETS
    QUERY-ENCODES
    QUERY-OWN
