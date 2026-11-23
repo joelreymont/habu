@@ -1658,14 +1658,16 @@ exceptional edge for catchable `throw` paths:
   current normal path. A word may have a normal effect and throw paths; a word
   whose every path throws kills its caller's normal path, and the edge stays
   catchable.
-- `catch` consumes a quotation that preserves both stacks, then pushes a throw
-  code (`0` on normal completion). A throw it takes abandons a definition
+- `catch` consumes a quotation whose output row ends in the same tail as its
+  input row, then pushes a throw code (`0` on normal completion). A throw it takes abandons a definition
   opened since it began and keeps one open before it. Its exceptional path
   restores the depth of both stacks, not their contents, so a cell of the
   quotation's declared input window that a throw path may have overwritten
   comes back as `stale<t>`: it may be moved, dropped or bound to an untyped
   local; reading it is `E-STALE-READ` (`keep_value_before_catch`). A cell every
-  throw path left untouched keeps its type (**Rules learned by refusal**).
+  throw path left untouched keeps its type (**Rules learned by refusal**). A
+  body that changes the stack leaves each of its outputs `stale<t>` the same
+  way, since a throw left none of them.
 
 A guard may therefore throw directly, with no dummy value for the join:
 
@@ -1890,18 +1892,17 @@ defined again binds its earlier text against every later record too.
   `: W ( n [ -- ] -- ) {: a:n q :} q execute a 0 > if a 1- q RECURSE then ;`.
 - **Checked `catch` is quotation catch**: `[: WORD drop ;] catch`, consuming
   success outputs inside and keeping the exact code as data at an explicit
-  recovery boundary; no arbitrary-xt catch. The quotation is stack-preserving,
-  because `catch` unifies the live stack with its inputs AND outputs: `( n -- n
-  )` is accepted, `( n -- )` rejected. A value the caught code needs travels on
-  the data stack through the quotation and back on every branch; no staging
-  variable. A nominal handle cannot cross `catch` as a quotation's result; a
-  one-slot `TYPED-BUFFER` holds it.
+  recovery boundary; no arbitrary-xt catch. The quotation's output row ends in
+  the same tail as its input row: `( n -- n )`, `( n -- )` and `( str --
+  JSON:value )` are accepted, a body over `[ R -- S ]` rejected. A value the
+  caught code needs travels on the data stack through the quotation; no
+  staging variable.
 
   ```forth
   : W ( n -- n )
      [: dup USE … ;] catch
      {: rc:n :}
-     CLEANUP rc 0 <> if rc throw then ;
+     CLEANUP rc 0<> if rc throw then ;
   ```
 - **`finally`** is `( R [ R -- S ] [ -- ] -- S )`: body, then cleanup on return
   or catchable throw; cleanup takes and leaves nothing, and both may read the
@@ -2119,7 +2120,7 @@ answers alike.
   `L:C: expected X, found Y; fix`, and `APPEND`, `VISIBLE`, `QUOTE` and `BYTE`
   write the parts.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
-  assertions, stack-preserving outcome adapters returning the exact code. No `…
+  assertions, outcome adapters returning a result and the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.
 - A proven-impossible state throws its owning module's named state code
   (`E-QUEUE-STATE`). Habu has no `abort"`.
@@ -2268,7 +2269,7 @@ T-REPORT
 ```
 
 - Assert the specific outcome: inside checked definitions `[: WORD ;] TTHROWSQ`
-  (it runs a `( -- )` quotation) or another stack-preserving `catch` with the
+  (it runs a `( -- )` quotation) or another `catch` with the
   exact code; top-level scripts that cannot push quotations use `' WORD
   TTHROWS`; diagnostics are captured and matched by substring.
 - Property generators use `src/lib/property.f`: `PROP:SEED!` makes a run
@@ -2790,18 +2791,12 @@ sections above.
   and hookless compilation.
 - **`catch` requires a callable with a known effect.** Literal quotations,
   callable ticks, quotation parameters already on the stack and fetched
-  typed quotations are admitted. A callback whose effect does not preserve
-  the stack needs a preserving wrapper, such as `[: INV ;] catch`.
-  The quotation literal must preserve stack depth (see **Checker & type
-  model**). `catch` restores both stacks' depths on throw, never their
-  contents. Read the returned code; keep handles needed for cleanup in
-  accessible storage or on proven-intact input cells.
-
-  ```forth
-  : INV ( ^u8 n [ ^u8 n -- ] -- ^u8 n [ ^u8 n -- ] )
-     {: a u q :}
-     a u q execute a u q ;
-  ```
+  typed quotations are admitted, whether they keep the stack or change it over
+  the same tail. At top level, where the engine's `catch` gives back the depth
+  the body took, a body that changes the stack is `E-LAYOUT-VALUE` (`move the
+  catch inside a definition`). `catch` restores both stacks' depths on throw,
+  never their contents. Read the returned code; keep handles needed for
+  cleanup in accessible storage or on proven-intact input cells.
 
 - **A caught literal leaves possibly overwritten inputs stale.** In its
   fixed input window, a cell keeps its type only if every throw path leaves
@@ -2840,7 +2835,8 @@ sections above.
   stale: reading it is `E-STALE-READ`, and dropping it is a linear refusal.
   A callee whose every throw path keeps the handle leaves it live, through
   its quotation literal or `['] W` alike. Open the handle inside the caught
-  body, or consume it before rethrowing. A multi-cell value is one logical stale
+  body, or consume it before rethrowing. A body that changes the stack takes
+  no cell that may be linear (`E-LINEAR-DROP`): a throw loses the cells it took. A multi-cell value is one logical stale
   value (`stale<option<pt>>`): one `drop` removes it, an untyped local can
   transport it, and a typed use or `MATCH` is `E-STALE-READ`.
 - **`depth` and `.s` count no value held in several cells.** They count raw

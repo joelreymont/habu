@@ -236,7 +236,9 @@ before the word runs, and `--load` exits 70.
 | a quotation literal that pushes a cell its caller pops: `[: >r ;] execute r>` | `E-RETURN-STACK` at `;]`, `fix_return_stack` |
 | a body or quotation literal that reads or pops a return cell it did not push: `: X r@ ;`, `: X ( -- ) r> drop ;`, `>r [: r> ;] execute` | `E-RETURN-STACK` at the read, `fix_return_stack` |
 | `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where `PKG` is sealed, by its `seal-package` or as an engine package, and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
-| a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
+| `[: G ;] catch` where G's output row ends in another tail than its input row | `E-MISMATCH` at `catch`, with the rows |
+| a top-level `catch` of a body that changes the stack: `s" 1" [: JSON:PARSE ;] catch` | `E-LAYOUT-VALUE` at `catch`, `move the catch inside a definition` |
+| a `catch` of a body that changes the stack and takes a cell that may be linear | `E-LINEAR-DROP` at `catch`, `open the handle inside the caught body` |
 | `( -- n ) [: 1 ;] ONCE` with `ONCE ( R [ -- S ] -- S ) execute`: a callable that names its stack, or keeps it where `[ -- S ]` is declared, passed, stored, installed with `is` or joined | `E-MISMATCH`, `callable row escape: …; held row A would escape into B`; declare `[ R -- S ]` |
 | `[: ;] swap 0 ?do dup execute drop [: swap ;] loop`: a loop pass, `;]` or unsigned `;` that narrows a quotation the body ran | `E-LOOP-CARRIED`, `this pass narrows a quotation the body ran on any stack`; at `;]` or `;` `E-MISMATCH`, `the body narrows an input quotation after running it on any stack`; carry the type it ran at, or sign the word |
 | a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-NO-LOOP`, `no loop is open here`, or `E-EXIT-IN-LOOP`, `exit inside a loop needs unloop first`, both `fix_control_flow` |
@@ -282,7 +284,9 @@ keep: a `WITH-INIT` handing a view of another region to a callback that takes
 `src/lib/c2-memory.f` state what it admits and refuses.
 
 A caught result becomes readable on the success arm of core `code 0=` (or the
-false arm of core `code 0<>`) only when `code` is that catch's own status.
+false arm of core `code 0<>`) only when `code` is that catch's own status, so
+`[: JSON:PARSE ;] catch {: code:n :} code 0<> if code throw then` leaves the
+value readable.
 Another zero or a shadowed predicate proves nothing. The value remains marked
 as replaced for a later outer catch; quotations retain that mark on their
 explicit outputs. A loop's back edge or `leave` carries each cell's mark and
@@ -642,7 +646,7 @@ holds an address**.
   and a computed one's answer is undefined;
   `$8000000000000000 -1 /` wraps to `$8000000000000000`.
 - `catch` only at explicit recovery boundaries — REPL and CLI wrappers, test
-  assertions, stack-preserving adapters returning the code as data. No
+  assertions, adapters returning a result and the code as data. No
   `catch drop`. A test asserts a refusal by its exact code:
   `[: WORD ;] E-FS-PATH TTHROWSQ` in a checked body, `' WORD TTHROWS` at top
   level.

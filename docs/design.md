@@ -135,11 +135,11 @@ checker refuses any use that would let it outlive those locals or that body.
 There is then no heap environment to own, and only plain
 execution tokens reach storage or an image.
 
-**`catch` takes a stack-preserving quotation.** Its inputs must equal its
-outputs, so the stack has one shape whether the body returned or threw, and a
-value crosses the boundary by being passed in and returned. Values restored by
-an unwind are typed `stale<T>`, because restoring depth does not restore the
-original contents of those cells.
+**`catch` hands back what its body returned only where it returned.** The
+body may leave the stack it found or another over the same tail. A throw
+restores both stacks' depth, not their contents, so a cell a throw may have
+overwritten, and every output of a body that changes the stack, is typed
+`stale<T>`, readable only where that catch's code is proved 0.
 
 **Function-valued state is a typed `defer`.** `defer ACTION ( in -- out )`
 declares the vector's effect and `is` checks the installed quotation against
