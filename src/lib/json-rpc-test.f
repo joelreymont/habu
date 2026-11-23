@@ -143,14 +143,23 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 : BAD-ID ( str -- )
    s" invalid -32600 null an id that is not a number, string or null" SORTS ;
 
-\ An id that is an object, array or boolean: INVALID-REQUEST, id null; an id
-\ named twice: the last counts.
+\ An id that is an object, array or boolean: INVALID-REQUEST, id null.
 : TEST-ENVELOPE-FAULTS ( -- )
    s\" {\"jsonrpc\":\"2.0\",\"id\":{},\"method\":\"x\"}" BAD-ID
    s\" {\"jsonrpc\":\"2.0\",\"id\":[1],\"method\":\"x\"}" BAD-ID
-   s\" {\"jsonrpc\":\"2.0\",\"id\":true,\"result\":1}" BAD-ID
+   s\" {\"jsonrpc\":\"2.0\",\"id\":true,\"result\":1}" BAD-ID ;
+
+\ A repeated method, a repeat inside params, one spelled with an escape: the
+\ message's id; an id named twice: id null.
+: TEST-REPEAT ( -- )
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\",\"method\":\"y\"}"
+   s" invalid -32600 1 a member name repeated in one object" SORTS
+   s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"x\",\"params\":{\"a\":1,\"a\":2}}"
+   s" invalid -32600 2 a member name repeated in one object" SORTS
+   s\" {\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"x\",\"m\\u0065thod\":\"x\"}"
+   s" invalid -32600 3 a member name repeated in one object" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"id\":2,\"method\":\"x\"}"
-   s\" request 2 \"x\" " SORTS ;
+   s" invalid -32600 null a member name repeated in one object" SORTS ;
 
 : NOT-ERROR ( str -- )
    s" invalid -32600 null an error that is not an error object" SORTS ;
@@ -231,6 +240,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    TEST-ROOT
    TEST-REQUEST-FAULTS
    TEST-ENVELOPE-FAULTS
+   TEST-REPEAT
    TEST-RESPONSE-FAULTS
    TEST-METHOD
    TEST-WRITE

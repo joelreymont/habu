@@ -493,7 +493,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : META-REPEATED ( -- )
    s" RESULT-META meta that repeats a top-level key faults to the host" T-LABEL
    0 META-CODE atomic!
-   29 S\" {\"a\":1,\"a\":2}" LEGACY-FRAMED FAULTED
+   29 S\" {\"twice\":true}" LEGACY-FRAMED FAULTED
    META-CODE atomic@ MCP:E-SCHEMA T=
    META-TEXT META-LEN
    S\" meta 1:8: expected each top-level member once, found `\"a\"`; remove the repeated member, keeping one"
@@ -972,8 +972,14 @@ TASK:MIN-STACK TASK:TASK STALLER
    code 0<> if code throw then ;
 
 
+\ The meta the framed tool returns for its arguments: a request cannot repeat a
+\ member, so `twice` asks for a meta that does.
+: FRAMED-META ( str -- str )
+   2dup s" flat" CONTAINS? if 2drop s" []" exit then
+   2dup s" twice" CONTAINS? if 2drop S\" {\"a\":1,\"a\":2}" exit then ;
+
 : ADD-FRAMED ( -- )
-   FRAMED [: 2dup s" flat" CONTAINS? if 2drop s" []" then META-TRY ;] MCP:ADD-TOOL ;
+   FRAMED [: FRAMED-META META-TRY ;] MCP:ADD-TOOL ;
 
 
 : BLOCKS-TRY ( str -- )
