@@ -13,7 +13,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require src/lib/string-roles.f
+require src/lib/num-types.f
 require src/lib/net/udp.f
 require src/core/exit-status.f
 
@@ -26,6 +26,14 @@ $40 constant GOT-CAP
 22 constant EINVAL
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+
+: CAP-LEN ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH option
+      none OF
+         s" systemd-test: negative capacity" EXIT-STATUS:FAILURE die
+      ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 CODEGEN:BUFFER PROG
 create SOCKETS PATH-CAP allot   variable SOCKETS-U
@@ -120,7 +128,7 @@ variable ABSTRACT-FD
 
 \ A unix datagram is queued before sendto returns, so nothing waits.
 : RECEIVED$ ( n -- str )
-   UDP:>SOCKET GOT GOT-CAP STR:LENGTH 0 >MS UDP:RECEIVE
+   UDP:>SOCKET GOT GOT-CAP CAP-LEN 0 >MS UDP:RECEIVE
    MATCH UDP:receive-result
       packet OF BLEN>N ENDOF
       truncated OF BLEN>N ENDOF

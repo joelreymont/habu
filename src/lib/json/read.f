@@ -6,7 +6,6 @@ require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/string.f
-require src/lib/string-roles.f
 require src/lib/float.f
 require src/lib/adt/option.f
 require src/lib/sort.f

@@ -2,7 +2,6 @@ split-str
 \ text.f — checked text/file helpers for native lint tools.
 
 require src/lib/string.f
-require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/adt/option.f                      \ option<n> finders
@@ -11,16 +10,6 @@ require src/core/exit-status.f
 \ ---- whole-file read -------------------------------------------------------
 create READ-PROBE 1 allot
 variable RFD  variable RGOT  variable RLEN
-TYPED-VARIABLE LINT-OUT-A ^u8
-variable LINT-OUT-CAP
-variable LINT-OUT-U
-variable LINT-OUT-ON
-
-: LINT-OUT-A@ ( -- ^u8 )
-   LINT-OUT-A @ ;
-
-: LINT-OUT-A! ( ^u8 -- )
-   LINT-OUT-A ! ;
 
 : LINT-TRUE ( -- bool )
    0 0= ;
@@ -31,28 +20,9 @@ variable LINT-OUT-ON
 : LINT-NOT ( bool -- bool )
    IF LINT-FALSE ELSE LINT-TRUE THEN ;
 
-: LINT-OUT-BUFFER! ( ^u8 n -- ) {: a:^ cap:n :}
-   a LINT-OUT-A!
-   cap LINT-OUT-CAP !
-   0 LINT-OUT-U !
-   LINT-TRUE LINT-OUT-ON ! ;
-
-: LINT-OUT-BUFFER-OFF ( -- )
-   LINT-FALSE LINT-OUT-ON ! ;
-
-: LINT-OUT$ ( -- str )
-   LINT-OUT-A@ LINT-OUT-U @ ;
-
 : LINT-FD-WRITE ( n str -- ) {: fd:n a:^ u:n :}
    u 0= IF exit THEN
    fd a u write u <> IF s" lint: write failed" EXIT-STATUS:IOERR die THEN ;
-
-: LINT-OUT-WRITE ( n str -- ) {: fd:n a:^ u:n :}
-   LINT-OUT-ON @ IF
-      a u LINT-OUT-A@ LINT-OUT-CAP @ STR:LENGTH LINT-OUT-U STR:BUF-APPEND
-      exit
-   THEN
-   fd a u LINT-FD-WRITE ;
 
 \ capacity/IO exits must name the offending file — a bare "file exceeds buffer"
 \ hides which source outgrew which lint buffer.
@@ -291,12 +261,6 @@ public
          a MARK @ +  CUR @ MARK @ -  SPLIT+
       THEN
    repeat ;
-: JOIN-SPLIT ( str ^u8 n ^len -- ) {: sep:^ su:n dst:^ cap:n lp:^ :}
-   lp STR:BUF-RESET
-   0 begin dup SN# @ < while
-      dup 0 > IF sep su dst cap STR:LENGTH lp STR:BUF-APPEND THEN
-      dup S@ dst cap STR:LENGTH lp STR:BUF-APPEND  1+
-   repeat  drop ;
 
 ;package
 : HAS-EXT? ( str str -- bool )  LINT-SUFFIX? ;

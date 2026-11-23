@@ -12,8 +12,7 @@ require src/lib/fs-mutate.f
 require src/lib/at-exit.f
 require src/lib/codesign.f
 require src/lib/source.f
-require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
-require src/lib/string-roles.f               \ package STR: the typed string surface
+require src/lib/adt/option.f
 require src/lib/build-out.f
 require src/compiler/target/model.f
 require src/habu/linker.f
@@ -123,7 +122,7 @@ variable HBB-ELAPSED-NS
    HBB-LF-BUF 1 HBB-WERR ;
 
 : HBB-PATH-HAS-DQ? ( str -- bool )
-   HBB-DQ STR:INDEX-OF MATCH option
+   HBB-DQ INDEX-OF MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
    ;MATCH ;

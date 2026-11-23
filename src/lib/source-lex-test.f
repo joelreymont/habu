@@ -5,18 +5,15 @@ split-str
 require src/core/exit-status.f
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/memory.f
+require src/lib/heap.f
+require src/lib/span.f
+require src/lib/vector.f
 require src/lib/source-lex.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 package LINT-LEX-TEST
 private
-
-\ STR:BUF-LEN@ reads a fixture buffer's length as a NUM:byte-len role, and
-\ every ( -- ^u8 n ) accessor below returns a raw span, so the length is read
-\ out here.
-CAST: BL>RAW ( NUM:byte-len -- n )
 
 variable TEST-N
 : ASSERT  ( bool -- )
@@ -30,10 +27,11 @@ variable TEST-N
 : ASSERT$  ( str str -- )  STR= ASSERT ;
 
 $22 constant DQUOTE
-$100 constant FIX-CAP
-create LEX-FIX FIX-CAP allot     variable LEX-LEN
-create BAD-FIX FIX-CAP allot     variable BAD-LEN
-create ESC-FIX FIX-CAP allot     variable ESC-LEN
+\ The fixtures are vectors RUN makes and frees.
+TYPED-VARIABLE LEX-B ^VEC:vector<u8>
+TYPED-VARIABLE BAD-B ^VEC:vector<u8>
+TYPED-VARIABLE ESC-B ^VEC:vector<u8>
+TYPED-VARIABLE ROW-B ^VEC:vector<u8>
 9000 constant BIG-LEX-TOKENS
 TYPED-VARIABLE BIG-LEX-A ^u8
 variable BIG-LEX-U
@@ -50,44 +48,38 @@ variable BIG-LEX-U
    120 BIG-LEX-A@ k 2 * + c!
    32 BIG-LEX-A@ k 2 * 1+ + c! ;
 
+: FIX-NEW  ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
+: FIX-RESET  ( ^VEC:vector<u8> -- )  0 VEC:RESIZE ;
+: FIX-C+  ( n ^VEC:vector<u8> -- )  VEC:PUSH c! ;
+: FIX$  ( ^VEC:vector<u8> -- str )  VEC:SPAN SPAN:$ ;
+
+: LEX+  ( str -- )  LEX-B @ VEC:APPEND ;
+: LEX-C+  ( n -- )  LEX-B @ FIX-C+ ;
+
 : INIT-LEX-FIX  ( -- )
-   LEX-LEN STR:BUF-RESET
-   s" : SQ ( n -- n ) s" LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   DQUOTE LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   s"  hi : ; ( x )" LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   DQUOTE LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   s"  dup " LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   92 LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   s"  skip die" LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   10 LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   99 LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   DQUOTE LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   s"  z" LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   DQUOTE LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   s"  ;" LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   10 LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C ;
-: LEX-FIX$  ( -- str )  LEX-FIX LEX-LEN STR:BUF-LEN@ BL>RAW ;
+   LEX-B @ FIX-RESET
+   s" : SQ ( n -- n ) s" LEX+  DQUOTE LEX-C+
+   s"  hi : ; ( x )" LEX+  DQUOTE LEX-C+
+   s"  dup " LEX+  92 LEX-C+
+   s"  skip die" LEX+  10 LEX-C+  99 LEX-C+  DQUOTE LEX-C+
+   s"  z" LEX+  DQUOTE LEX-C+
+   s"  ;" LEX+  10 LEX-C+ ;
+: LEX-FIX$  ( -- str )  LEX-B @ FIX$ ;
 
 \ `: BAD s" nope` - the literal opened at byte 6 never closes. It lives in its
 \ own buffer so the good fixture above is never clobbered and any test that
 \ needs a malformed scan can establish one for itself.
 : UNTERM-FIX$  ( -- str )
-   BAD-LEN STR:BUF-RESET
-   s" : BAD s" BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND
-   DQUOTE BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND-C
-   s"  nope" BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND
-   BAD-FIX BAD-LEN STR:BUF-LEN@ BL>RAW ;
+   BAD-B @ FIX-RESET
+   s" : BAD s" BAD-B @ VEC:APPEND
+   DQUOTE BAD-B @ FIX-C+
+   s"  nope" BAD-B @ VEC:APPEND
+   BAD-B @ FIX$ ;
 
-: ESC-FIX-RESET  ( -- )
-   ESC-LEN STR:BUF-RESET ;
-
-: ESC-FIX+  ( str -- )
-   ESC-FIX FIX-CAP STR:LENGTH ESC-LEN STR:BUF-APPEND ;
-
-: ESC-FIX-C+  ( n -- )
-   ESC-FIX FIX-CAP STR:LENGTH ESC-LEN STR:BUF-APPEND-C ;
-
-: ESC-FIX$  ( -- str )  ESC-FIX ESC-LEN STR:BUF-LEN@ BL>RAW ;
+: ESC-FIX-RESET  ( -- )  ESC-B @ FIX-RESET ;
+: ESC-FIX+  ( str -- )  ESC-B @ VEC:APPEND ;
+: ESC-FIX-C+  ( n -- )  ESC-B @ FIX-C+ ;
+: ESC-FIX$  ( -- str )  ESC-B @ FIX$ ;
 
 \ `: E S\" a\" b" dup ;` - the S\" opener honours backslash escapes, so the
 \ escaped quote at byte 10 must NOT close the literal. Building it byte-wise
@@ -122,17 +114,15 @@ variable BIG-LEX-U
 
 \ Rows are built byte-wise: a primitive can be NAMED `s"`, `s\"` or `."`, and
 \ writing those names as literals here would end this file's own strings.
-$400 constant ROW-CAP
 $28 constant ROW-LPAREN-C
-create ROW-FIX ROW-CAP allot     variable ROW-LEN
 
-: ROW-RESET  ( -- )  ROW-LEN STR:BUF-RESET ;
-: ROW+  ( str -- )  ROW-FIX ROW-CAP STR:LENGTH ROW-LEN STR:BUF-APPEND ;
-: ROW-C+  ( n -- )  ROW-FIX ROW-CAP STR:LENGTH ROW-LEN STR:BUF-APPEND-C ;
+: ROW-RESET  ( -- )  ROW-B @ FIX-RESET ;
+: ROW+  ( str -- )  ROW-B @ VEC:APPEND ;
+: ROW-C+  ( n -- )  ROW-B @ FIX-C+ ;
 : ROW-Q  ( -- )  DQUOTE ROW-C+ ;
 : ROW-BS  ( -- )  92 ROW-C+ ;
 : ROW-NL  ( -- )  10 ROW-C+ ;
-: ROW$  ( -- str )  ROW-FIX ROW-LEN STR:BUF-LEN@ BL>RAW ;
+: ROW$  ( -- str )  ROW-B @ FIX$ ;
 
 \ Scan a fixture that is exactly one row plus nothing else, so the whole fixture
 \ text is the expected REGISTRY token span.
@@ -189,8 +179,13 @@ variable REG-I
    repeat drop ;
 
 : INIT-FIXTURES  ( -- )
+   FIX-NEW LEX-B !  FIX-NEW BAD-B !  FIX-NEW ESC-B !  FIX-NEW ROW-B !
    INIT-LEX-FIX
    INIT-BIG-LEX ;
+
+: FREE-FIXTURES  ( -- )
+   LEX-B @ VEC:DELETE  BAD-B @ VEC:DELETE
+   ESC-B @ VEC:DELETE  ROW-B @ VEC:DELETE ;
 
 : TEST-LEXER  ( -- )
    LEX-FIX$ LINT-LEX:SOURCE
@@ -781,6 +776,7 @@ variable REG-I
    TEST-ROW-REF-OPERAND
    TEST-ROW-PARSER-IN-BODY
    TEST-BIG-LEXER
+   FREE-FIXTURES
    s" source-lex-test: ok (" type TEST-N @ 1- FMT:.INT s"  assertions)" type cr ;
 
 RUN

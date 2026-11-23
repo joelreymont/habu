@@ -7,17 +7,26 @@ split-str
 \ Run: bin/hb --load src/lib/net/udp-test.f
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/string-roles.f
+require src/lib/num-types.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/fmt.f
 require src/os/env-base.f
 require src/lib/net/udp.f
+require src/core/exit-status.f
 
 package UDP-TEST
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+
+: CAP-LEN ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH option
+      none OF
+         s" udp-test: negative capacity" EXIT-STATUS:FAILURE die
+      ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 $40 constant PAYLOAD-N             \ the datagram every case sends
 $10 constant SMALL-CAP             \ the capacity the truncating case offers
@@ -118,7 +127,7 @@ variable SOCK-S
 
 
 : RECEIVE-R ( n -- UDP:receive-result ) {: capacity:n :}
-   SOCK-R @ UDP:>SOCKET RECV-BUF capacity STR:LENGTH 0 >MS UDP:RECEIVE ;
+   SOCK-R @ UDP:>SOCKET RECV-BUF capacity CAP-LEN 0 >MS UDP:RECEIVE ;
 
 
 \ ---- cases -------------------------------------------------------------------

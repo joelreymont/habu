@@ -1,6 +1,7 @@
 split-str
-\ string.f - checked byte-string helpers over pointer and length; no word assumes
-\ NUL termination. The builders throw E-STR-CAPACITY instead of truncating.
+\ string.f - checked byte-string helpers over pointer and length (package STR);
+\ no word assumes NUL termination. The builders throw E-STR-CAPACITY instead of
+\ truncating.
 \ STORAGE CLASS: the SB builder is TASK-LOCAL (SB-BUF); the BUF-* family is
 \ CALLER-OWNED, the builder for one shared by two tasks; the rest is pure.
 
@@ -29,7 +30,7 @@ STRING-ABI:SB-BUF-BYTES constant SB-CAP
 $7FFFFFFFFFFFFFFF constant STR-MAX-I64
 STR-MAX-I64 negate 1 - constant STR-MIN-I64
 
-package STRING
+package STR
 private EXPORT BOOT:data-base
 EXPORT STRING-ABI:SB-BUF-OFF
 EXPORT STRING-ABI:SB-LEN-OFF

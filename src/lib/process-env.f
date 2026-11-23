@@ -12,7 +12,6 @@ split-str
 
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/string-roles.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
@@ -66,12 +65,6 @@ public
    DEF-CONTROL PROC-CHUNKS:REWIND ;
 
 ;package
-
-\ STR:SPLIT-NEXT answers NUM:byte-len and NUM:byte-off; PROC-TRY-PATH-SEG takes
-\ a str and the PROC-PATH-I cell an off, so two checked casts cross between
-\ them and NUM is not reopened.
-CAST: PROC-SEG>N ( NUM:byte-len -- n )
-CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 
 : PROC-ENV-TRUE ( -- bool )
    0 0= ;
@@ -391,7 +384,7 @@ public
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 : PROC-HAS-SLASH? ( str -- bool )
-   PROC-PATH-SLASH STR:INDEX-OF MATCH option
+   PROC-PATH-SLASH INDEX-OF MATCH option
      none OF PROC-ENV-FALSE ENDOF
      some OF drop PROC-ENV-TRUE ENDOF
    ;MATCH ;
@@ -428,18 +421,15 @@ public
       OPTION:NONE exit
    then
    0 >OFF PROC-PATH-I !
-   begin path pathu PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT MATCH option
-     none OF STR-FALSE ENDOF
-     some OF STR-SPLIT:UNMAKE {: seg:^ segl:NUM:byte-len nx:NUM:byte-off :}
-        nx PROC-CURSOR>OFF PROC-PATH-I !
-        seg segl PROC-SEG>N cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
-          none OF ENDOF
-          some OF OPTION:SOME exit ENDOF
-        ;MATCH
-        STR-TRUE ENDOF
-     ;MATCH
-   while repeat
-   OPTION:NONE ;
+   begin path pathu PROC-PATH-SEP PROC-PATH-I @ OFF>N SPLIT-NEXT
+   while
+      >OFF PROC-PATH-I !
+      cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
+        none OF ENDOF
+        some OF OPTION:SOME exit ENDOF
+      ;MATCH
+   repeat
+   drop 2drop OPTION:NONE ;
 
 : FIND-EXECUTABLE ( str ^u8 -- option<n> ) {: cmd:^ cmdu:n dst:^ :}
    s" PATH" GETENV {: path:^ pathu :}

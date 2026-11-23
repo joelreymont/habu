@@ -12,7 +12,7 @@ variable P2U
 
 \ ---- attributed CLI failure -------------------------------------------------
 \ A lint CLI catches its strict entry and calls `s" tool" code LINT-MAIN`, which
-\ prints `tool: threw <code> (<name>)` through LINT-OUT-WRITE and rethrows the
+\ prints `tool: threw <code> (<name>)` on standard output and rethrows the
 \ same code, so the exit status is unchanged.
 
 24 constant LINT-MAIN-NCAP
@@ -37,7 +37,7 @@ variable LINT-MAIN-NI
    LINT-MAIN-NBUF LINT-MAIN-NI @ +  LINT-MAIN-NCAP LINT-MAIN-NI @ - ;
 
 : LINT-MAIN-OUT ( str -- ) {: a:^ u:n :}
-   1 a u LINT-OUT-WRITE ;
+   1 a u LINT-FD-WRITE ;
 
 : LINT-MAIN-LF ( -- )
    10 LINT-MAIN-LFB c!

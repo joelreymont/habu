@@ -60,7 +60,7 @@ variable REPL-ROOT-U
    REPL-OUT-FD ! ;
 
 : REPL-OUT ( str -- )
-   REPL-OUT-FD @ -rot LINT-OUT-WRITE ;
+   REPL-OUT-FD @ -rot LINT-FD-WRITE ;
 
 : REPL-C! ( n -- )
    REPL-ONE c! ;
