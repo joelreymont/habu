@@ -596,6 +596,7 @@ EXPORT CHECK:CHECKER-SIG-UNRES-TAKE
 EXPORT CHECK:CHECKER-SPLIT-STR
 EXPORT CHECK:CHECKER-STORAGE-NAME-REFUSE
 EXPORT CHECK:CHECKER-STORAGE-TYPE-REJECT
+EXPORT CHECK:CHECKER-UNSEEN-PAIR
 EXPORT CHECK:CHECKER-TRY-RECORD
 EXPORT CHECK:CHECKER-TYPE-SPAN-BREAK?
 EXPORT CHECK:CHECKER-TYPE-SPAN-STEP
@@ -2921,7 +2922,9 @@ variable STG-TYPE-U
       THEN
    THEN
    type typeu CHECKER-ARENA-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+      drop
+      name nameu s" -NEW" s" -NEW-DISPOSE" CHECKER-UNSEEN-PAIR
+      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN drop
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFARENA
@@ -2940,14 +2943,16 @@ variable STG-TYPE-U
    name nameu s" -NEW" at DERIVED-FREE? 0= IF EXIT THEN
    name nameu s" -RELEASE" at DERIVED-FREE? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+      drop
+      name nameu s" -NEW" s" -RELEASE" CHECKER-UNSEEN-PAIR
+      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN drop
    name nameu at nameu ARM
    type typeu name nameu CHECKER-DEFHEAP
    DISARM ;
 
 \ Registrars resolve the whole type before publishing a word, so an unresolved
-\ type leaves only the scoped uncertainty mark.
+\ type marks only the words the definer would make.
 : STORAGE-OUTCOME ( [ -- ] -- )
    catch {: rc:n :}
    rc 0= IF EXIT THEN

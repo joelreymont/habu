@@ -16460,14 +16460,17 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
    THEN
    a u UNSEEN-NAME$ CHECKER-RECORD-SYM drop ;
 
+\ Whether the type just read fails only on a name the run may still define.
+: STORAGE-UNRESOLVED? ( -- bool )
+   SIG-UNRES @ 0 <> SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and ;
+
 \ A missing nominal leaves no allocation or row; for a layout buffer (lay), a
 \ bare or pointed-to xt or another unstorable type is STG-LAYOUT-TYPE.
 : STORAGE-TYPE-REJECT ( str str bool -- )
    {: na:^ nu:n ta:^ tu:n lay:bool :}
    tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REJECT EXIT THEN
-   SIG-UNRES @ 0 <> SGBAD @ 0= and LBI-BAD @ 0= and
-      LBI-SCHEME @ 0= and IF
-      CHECKER-UNSEEN-MARK
+   STORAGE-UNRESOLVED? IF
+      na nu CHECKER-UNSEEN-NAME
       E-CHECKER-STORAGE-UNRESOLVED throw
    THEN
    SGBAD-AMBIG? IF na nu SGBAD-A @ SGBAD-U @ STGR-AMBIG EXIT THEN
@@ -17560,7 +17563,7 @@ EXPORT CHECKER-LBUF:COUNT-OK?
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
       2drop
-      SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
+      STORAGE-UNRESOLVED? IF
          name nameu count countu 1 COUNT-OK? 0= IF EXIT THEN
       THEN
       name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
@@ -17581,7 +17584,7 @@ EXPORT CHECKER-LBUF:COUNT-OK?
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-STORAGE-INFO 0= IF
       drop
-      SIG-UNRES @ SGBAD @ 0= and LBI-BAD @ 0= and LBI-SCHEME @ 0= and IF
+      STORAGE-UNRESOLVED? IF
          name nameu count countu 1 COUNT-OK? 0= IF EXIT THEN
       THEN
       name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
@@ -17696,6 +17699,14 @@ variable LBUF-NM-I
    sfx sfxu LBUF-NM-APP
    LBUF-NM-BUF LBUF-NM-U @ ;
 
+\ When the type just read is unresolved, marks NAME+S1 and NAME+S2, the words a
+\ storage definer makes besides NAME.
+: CHECKER-UNSEEN-PAIR ( str str str -- )
+   {: name:^ nameu:n s1:^ s1u:n s2:^ s2u:n :}
+   STORAGE-UNRESOLVED? 0= IF EXIT THEN
+   name nameu s1 s1u CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME
+   name nameu s2 s2u CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME ;
+
 \ A suffix row is generated: its registration runs paused, its signature and
 \ name passed through cells to the quotation.
 PTR-VARIABLE SFX-SIG-A   variable SFX-SIG-U
@@ -17716,7 +17727,9 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    {: type:^ typeu:n name:^ nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-DYNAMIC-INFO 0= IF
-      drop name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
+      drop
+      name nameu s" -RESERVE" s" -RELEASE" CHECKER-UNSEEN-PAIR
+      name nameu type typeu CHECKER-STORAGE-TYPE-REJECT EXIT
    THEN
    drop                                    \ two control cells: the extent is dynamic
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
@@ -17748,7 +17761,9 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    {: type:^ typeu:n name:^ nameu:n :}
    name nameu CHECKER-REPLAY-NAME-OK? 0= IF EXIT THEN
    type typeu CHECKER-LAYOUT-INFO 0= IF
-      2drop name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
+      2drop
+      name nameu s" -BIND" s" -GROW" CHECKER-UNSEEN-PAIR
+      name nameu type typeu CHECKER-LAYOUT-TYPE-REJECT EXIT
    THEN
    2drop
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD

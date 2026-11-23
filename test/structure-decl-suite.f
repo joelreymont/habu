@@ -978,6 +978,12 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
    s" ;package" SC-LINE
    s" : PU:SCQ ( -- pc:hd ) 1 2 3 PC-HD:MAKE ;" SC-LINE
    s" : SCU9 ( -- ) PU:SCQ drop ;" SC-LINE
+   s" 1 TYPED-BUFFER scxb pc:hd" SC-LINE
+   s" : SCU10 ( -- ) SCNOPE10 ;" SC-LINE
+   s" package py : SCU11 ( -- ) SCNOPE11 ; ;package" SC-LINE
+   s" : SCU12 ( -- ) 0 scxb drop ;" SC-LINE
+   s" HEAP schp pc:hd" SC-LINE
+   s" : SCU13 ( -- ) schp-NEW drop ;" SC-LINE
    s" 1 2 3 PC-HD:MAKE SCHOLDS schx" SC-LINE
    s" : SCU8 ( -- ^u8 ) schx ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
@@ -1012,7 +1018,7 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 13 T=
+SC-ERR$ s" error[" COUNT-SUB 15 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -1023,7 +1029,7 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
    s" :13:29" s" unknown type" SC-RECORD
 \ A string literal leaves K's value unstated, a colon word IDH's and IDE's: the
 \ uses of hd, rpsdg, rpsdw and peop's private PEOP-MAKE are deferred.
-SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 21 T=
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 25 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the run because only the run defines its value"
@@ -1062,10 +1068,20 @@ s" error[E-UNDEFINED]: cannot find word `SCNOPE5`"
    s" :56:15" s" not found" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `SCMK` on and leaves it to the run"
    s" :57:15" s" not checked from here" SC-RECORD
+\ A storage word over hd marks only the words it makes, so SCNOPE10 and
+\ SCNOPE11 stay undefined while the uses of scxb and schp-NEW defer.
+s" error[E-UNDEFINED]: cannot find word `SCNOPE10`"
+   s" :62:16" s" not found" SC-RECORD
+s" error[E-UNDEFINED]: cannot find word `SCNOPE11`"
+   s" :63:27" s" not found" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `scxb` on and leaves it to the run"
+   s" :64:18" s" not checked from here" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schp-NEW` on and leaves it to the run"
+   s" :66:16" s" not checked from here" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schx` on and leaves it to the run"
-   s" :62:19" s" not checked from here" SC-RECORD
+   s" :68:19" s" not checked from here" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :64:1" s" missing field name" SC-RECORD
+   s" :70:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 
