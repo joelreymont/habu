@@ -14939,6 +14939,13 @@ variable PAIRS-CAP
 variable PAIRS-N
 : PAIRS ( -- ^u8 ) PAIRS-P @ BYTE-VIEW ;
 
+\ The values the source states for the replay's `constant` records, which have
+\ no code to run (VALUE!): record index, then value. Cut back with PAIRS.
+PTR-VARIABLE VALUES-P
+variable VALUES-CAP
+variable VALUES-N
+: VALUES ( -- ^u8 ) VALUES-P @ BYTE-VIEW ;
+
 \ The hidden records: the index and wid of each record a lookup under the
 \ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
 \ apart from the undo log, so putting them back can never revive a record a
@@ -15107,11 +15114,15 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    PKG-OUTSIDE-CELL DATA@ OUTSIDE0 !
    -1 ON ! ;
 
-\ Definers are made in index order, so they are the newest entries.
-: UNPAIR ( n -- ) {: nd:n :}
-   BEGIN PAIRS-N @ 0 >  IF PAIRS PAIRS-N @ 1 - IX@ nd >= ELSE RES-FALSE THEN WHILE
-      PAIRS-N @ 1 - PAIRS-N !
+\ Definers and constants are made in index order, so a table's entries for
+\ records at ND or above are its newest.
+: CUT ( n ^^n ^n -- ) {: nd:n pv:^ nv:^ :}
+   BEGIN nv @ 0 >  IF pv @ BYTE-VIEW nv @ 1 - IX@ nd >= ELSE RES-FALSE THEN WHILE
+      nv @ 1 - nv !
    REPEAT ;
+: UNPAIR ( n -- ) {: nd:n :}
+   nd PAIRS-P PAIRS-N CUT
+   nd VALUES-P VALUES-N CUT ;
 
 \ The mappings are given back, so an image captured afterwards holds the bytes
 \ one no replay ran in does, except that with a task live at the close it also
@@ -15125,6 +15136,7 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    0 UNPAIR
    LOG-P LOG-CAP 2 ARENA-ROWS-RELEASE
    PAIRS-P PAIRS-CAP 2 ARENA-ROWS-RELEASE
+   VALUES-P VALUES-CAP 2 ARENA-ROWS-RELEASE
    SNAPS-P SNAPS-CAP ROW-CELLS ARENA-ROWS-RELEASE
    FLOOR0 @ SOURCE-FLOOR !
    OUTSIDE0 @ PKG-OUTSIDE-CELL DATA!
@@ -15187,6 +15199,23 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
       PAIRS i IX@ ix = IF PAIRS i 2 * 1 + ROW@ UNLOOP EXIT THEN
    LOOP
    -1 ;
+
+\ Keep V as the value of REC, a `constant` record the replay made: the source
+\ states it, and the record has no code to push it.
+: VALUE! ( ^n n -- ) {: rec:^ v:n :}
+   ON @ 0= IF EXIT THEN
+   rec REC>IX {: ix:n :}
+   ix MARK @ < IF EXIT THEN
+   ix v VALUES-P VALUES-CAP VALUES-N PAIR+ ;
+
+\ The value VALUE! kept for REC and true; 0 and false for any other record.
+: VALUE ( ^n -- n bool ) {: rec:^ :}
+   rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
+   rec REC>IX {: ix:n :}
+   VALUES-N @ 0 ?DO
+      VALUES i IX@ ix = IF VALUES i 2 * 1 + ROW@ RES-TRUE UNLOOP EXIT THEN
+   LOOP
+   0 RES-FALSE ;
 
 \ The does> clause of the definer or export at IX that is still in its
 \ wordlist: a replayed one's from PAIRS unless it is retired, as the engine's

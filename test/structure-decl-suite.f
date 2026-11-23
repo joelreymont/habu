@@ -893,7 +893,8 @@ s\"   = help: name the structure being declared only beneath `^`, as in `FIELD n
 DECL-DIAG:OFF
 
 \ tools/check.f's declaration pre-pass replays each STRUCTURE it reads, so the
-\ source after it is checked against the family's generated words. One
+\ source after it is checked against the family's generated words, a buffer
+\ counted by a constant whose value the source states included. One
 \ --all-errors --verify-only run reports each rejection asserted here, and no
 \ other. The dangling FIELD ends the fixture: its body runs to the end of input.
 package struct-check-test
@@ -915,7 +916,17 @@ create SC-NONE 1 allot
    s" STRUCTURE rpsdbuf FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" SC-LINE
    s" : SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE ;" SC-LINE
    s" : SB1BAD ( n n n n n -- rpsdbuf ) RPSDBUF:MAKE ;" SC-LINE
+   s" package pa public" SC-LINE
+   s" 16 constant IDB  IDB constant IDC" SC-LINE
+   s" STRUCTURE held FIELD a n BUFFER id IDB ;STRUCTURE" SC-LINE
+   s" STRUCTURE heldc FIELD a n BUFFER id IDC ;STRUCTURE" SC-LINE
+   s" ;package" SC-LINE
+   s" : SCH ( -- pa:held ) 1 2 3 PA-HELD:MAKE ;" SC-LINE
+   s" : SCHBAD ( -- pa:held ) 1 2 PA-HELD:MAKE ;" SC-LINE
+   s" : SCCBAD ( -- pa:heldc ) 1 2 PA-HELDC:MAKE ;" SC-LINE
    s" STRUCTURE rpsdbad FIELD one nope ;STRUCTURE" SC-LINE
+   s\" 16 s\" x\" constant K drop drop" SC-LINE
+   s" STRUCTURE rpsdk BUFFER id K ;STRUCTURE" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
    SB$ ;
 
@@ -931,10 +942,15 @@ create SC-NONE 1 allot
    erru LEN>N SC-ERR-U !
    SC-SRC$ SC-OUT outu LEN>N SC-ERR$ oc 70 T-ENDING-EXITED= ;
 
+\ The gutter before `-->` is as wide as PLACE's line number.
+: SC-GUTTER ( str -- ) {: p:^ pu:n :}
+   1 BEGIN p over + c@ $3A <> WHILE 32 SB-APPEND-C 1 + REPEAT drop ;
+
 \ The record headed HEAD is placed at the fixture's PLACE, `:line:column`, and
 \ its caret says LABEL.
 : SC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
-   SB-RESET  h hu SB-APPEND  s\" \n --> " SB-APPEND  SC-FILE SB-APPEND
+   SB-RESET  h hu SB-APPEND  10 SB-APPEND-C
+   p pu SC-GUTTER  s" --> " SB-APPEND  SC-FILE SB-APPEND
    p pu SC-LINE
    SC-ERR$ SB$ CONTAINS? TTRUE
    SB-RESET  s" ^ " SB-APPEND  l lu SC-LINE
@@ -943,13 +959,21 @@ create SC-NONE 1 allot
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 3 T=
+SC-ERR$ s" error[" COUNT-SUB 5 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
+s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
+   s" :11:29" s" reaches below the inputs" SC-RECORD
+s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
+   s" :12:30" s" reaches below the inputs" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
-   s" :5:29" s" unknown type" SC-RECORD
+   s" :13:29" s" unknown type" SC-RECORD
+\ A string literal between the number and `constant` leaves K's value unstated.
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 1 T=
+s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
+   s" :15:27" s" value known only to the run" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :7:1" s" missing field name" SC-RECORD
+   s" :17:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 

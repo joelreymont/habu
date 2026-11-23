@@ -901,6 +901,7 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
 EXPORT CHECK:CK-REC-WID
 EXPORT CHECK:CHECKER-BIND
+EXPORT CHECKER-OVERLAY:VALUE
 \ Whether scope-find's answers are a using refusal: two used publics export the
 \ tail and nothing earlier binds it, or a used public exports a global's tail.
 : USING-SHAPE? ( ^n ^n n -- bool ) {: rec:^ used:^ flags:n :}
@@ -912,11 +913,15 @@ EXPORT CHECK:CHECKER-BIND
    rec used flags USING-SHAPE? IF a u a u CHECKER-BIND drop THEN
    rec ;
 \ A count token's value and true: an integer literal, or the value of the
-\ constant it binds; false for anything else.
+\ constant it binds, read from its record or, for a replay's codeless record,
+\ the value its source states; false for anything else.
 : COUNT-VALUE ( str -- n bool ) {: a:^ u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
-   a u COUNT-REC CK-REC-VALUE ;
+   a u COUNT-REC {: rec:^ :}
+   rec CK-REC-VALUE {: c:n known:bool :}
+   known IF c known EXIT THEN
+   rec VALUE ;
 \ A count name no record here holds the value of: in a replay, a program
 \ constant only the run defines, so the declaration is left to the run.
 : COUNT-UNREAD ( str -- ) {: a:^ u:n :}

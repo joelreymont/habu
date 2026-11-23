@@ -232,6 +232,8 @@ variable TOP-PREV-U
 PTR-VARIABLE TOP-REFUSED
 PTR-VARIABLE TOP-CUR-A
 variable TOP-CUR-U
+variable TOP-DEFER                               \ a stretch is open
+PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report is due, else 0
 DYNAMIC-BUFFER BODY-BUF u8
 \ Each run BODY-APPEND copies into BODY-BUF is a row of two cells: the body
 \ offset it starts at and the source offset it was read from. BODY$ hands the
@@ -2195,8 +2197,9 @@ ENGINE-TARGET-INIT
    s" create" ;
 
 \ Registers the effect for the word the next token names with TVK-RAW type
-\ vars, so its cell cannot launder into a nominal atom or family.
-: RAW-TRUST-NEXT ( str n -- )
+\ vars, so its cell cannot launder into a nominal atom or family. Answers the
+\ name and whether the registrar retained it.
+: RAW-TRUST-NAME ( str n -- str bool )
    {: sig:^ sigu:n class:n :}
    NAME-TOKEN
    dup 0= IF NAME-STOP THEN
@@ -2204,11 +2207,41 @@ ENGINE-TARGET-INIT
    {: name:^ nameu:n at:n :}
    STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
    NAME-DECLARED
-   name nameu at REJECT-DUPLICATE IF EXIT THEN
+   name nameu at REJECT-DUPLICATE IF name nameu false EXIT THEN
    name nameu at nameu ARM
    -1 SIG-RAW-MODE!
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
-   IF name nameu sig sigu at class DEFINED-HERE THEN ;
+   {: kept:bool :}
+   kept IF name nameu sig sigu at class DEFINED-HERE THEN
+   name nameu kept ;
+
+: RAW-TRUST-NEXT ( str n -- ) RAW-TRUST-NAME drop 2drop ;
+
+EXPORT CHECKER-RESOLVE:CK-REC-VALUE
+EXPORT CHECKER-OVERLAY:LANDS-REC
+EXPORT CHECKER-OVERLAY:VALUE
+EXPORT CHECKER-OVERLAY:VALUE!
+
+\ The value a token gives and true: an integer literal, or a constant whose
+\ value its record holds or its source stated; false for anything else.
+: STATED-VALUE ( str -- n bool ) {: a:^ u:n :}
+   a u num-parse {: v:n flt:bool ok:bool :}
+   ok IF v flt 0= EXIT THEN
+   a u scope-find drop drop drop {: rec:^ :}
+   rec CK-REC-VALUE {: c:n known:bool :}
+   known IF c known EXIT THEN
+   rec VALUE ;
+
+\ The value of a `constant` is stated when the token before it gives one and
+\ nothing since can have pushed another: no string literal skipped, no stretch
+\ open. The record keeps it, as its code would.
+: RECORD-CONSTANT ( -- )
+   STR-LAST-KIND @ 0=  TOP-DEFER @ 0= and  TOP-PREV-U @ 0<> and {: plain:bool :}
+   plain IF TOP-PREV-A @ TOP-PREV-U @ STATED-VALUE ELSE 0 false THEN
+   {: v:n stated:bool :}
+   s" -- a" DEF-CONSTANT RAW-TRUST-NAME {: name:^ nameu:n kept:bool :}
+   kept stated and 0= IF EXIT THEN
+   name nameu LANDS-REC v VALUE! ;
 
 \ DSYM is the definer's symbol, which its caller tested before the name is
 \ taken: NAME-TOKEN consumes a token, and a token that is not a definer must
@@ -3791,7 +3824,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       [: RECORD-CWORK-SPAN ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-VARIABLE ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" constant" STR=CI IF RECORD-CONSTANT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
@@ -3893,9 +3926,6 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       TICK-BODY-STEP
       APPEND-BODY-TOKEN
    AGAIN ;
-
-variable TOP-DEFER                               \ a stretch is open
-PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report is due, else 0
 
 : TOP-CLOSE ( -- )
    0 TOP-DEFER !  0 TOP-DEFER-U ! ;
