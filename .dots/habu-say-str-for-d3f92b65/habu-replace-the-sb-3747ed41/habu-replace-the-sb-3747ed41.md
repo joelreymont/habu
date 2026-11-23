@@ -3,6 +3,8 @@ title: Replace the SB string builder with vectors
 status: open
 priority: 2
 issue-type: task
+blocks:
+  - habu-reject-a-vector-0feb8b8f
 created-at: "2026-11-23T10:59:30.577142+01:00"
 ---
 
