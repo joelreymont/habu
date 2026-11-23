@@ -3,7 +3,7 @@ split-str
 \ caller cells (CELL-COUNT sizes them; not CELLS, which would shadow `cells` in
 \ later bodies). Layout, hash, probe and locate are private; src/lib/map-test.f
 \ reopens the package. Every call takes the capacity INIT or INIT-KEYED was
-\ given; a bad capacity, malformed storage or a full table throws E-MAP-*.
+\ given; a SET into a full table throws E-MAP-FULL.
 \ Probing is linear from a key's home slot (its hash mod the capacity), and no
 \ empty slot lies between an entry's home and its slot, so LOCATE stops at the
 \ first empty one.
@@ -51,19 +51,10 @@ private
 5 constant SLOT-CELLS
 
 $7FFFFFFFFFFFFFFF constant HASH-MASK
-HASH-MASK HEADER-CELLS - SLOT-CELLS / constant MAX-CAP
-
-: CHECK-CAP ( count -- ) {: cap :}
-   cap COUNT>N 0 <= if E-MAP-BAD-CAP throw then
-   cap COUNT>N MAX-CAP > if E-MAP-BAD-CAP throw then ;
-
-: CHECK-LEN ( n -- ) {: len :}
-   len 0 < if E-MAP-BAD-CAP throw then ;
 
 public
 
 : CELL-COUNT ( count -- count ) {: cap :}
-   cap CHECK-CAP
    HEADER-CELLS cap COUNT>N SLOT-CELLS * + >COUNT ;
 
 private
@@ -88,43 +79,29 @@ public
 private
 
 : CAP! ( count ^a -- ) {: cap m:^ :}
-   cap CHECK-CAP
    cap COUNT>N m CAP-OFF HEADER-FIELD ! ;
 
-: CHECK-HANDLE ( ^a count -- ) {: m:^ cap :}
-   cap CHECK-CAP
-   m CAP@ COUNT>N cap COUNT>N <> if E-MAP-BAD-CAP throw then ;
-
 : COUNT! ( count ^a -- ) {: count m:^ :}
-   count COUNT>N 0 < if E-MAP-BAD-CAP throw then
-   count COUNT>N m CAP@ COUNT>N > if E-MAP-FULL throw then
    count COUNT>N m COUNT-OFF HEADER-FIELD ! ;
 
 : SLOTS ( ^a -- ^a )
    HEADER-CELLS cells + ;
 
-: CHECK-INDEX ( ^a idx -- ) {: m:^ ix :}
-   ix IDX>N 0 < if E-MAP-BAD-CAP throw then
-   ix IDX>N m CAP@ COUNT>N >= if E-MAP-BAD-CAP throw then ;
-
 : SLOT ( ^a idx -- ^a ) {: m:^ ix :}
-   m ix CHECK-INDEX
    m SLOTS ix IDX>N SLOT-CELLS * cells + ;
 
 : SLOT-FIELD ( ^a idx off -- ^a ) {: m:^ ix off :}
-   off OFF>N 0 < if E-MAP-BAD-CAP throw then
-   off OFF>N SLOT-CELLS >= if E-MAP-BAD-CAP throw then
    m ix SLOT off OFF>N cells + ;
 
 : NUM-FIELD ( ^a idx off -- ^n )
    SLOT-FIELD BYTE-VIEW CELL-VIEW ;
 
 : SLOT-STATE@ ( ^a idx -- slot-state )
-   SLOT-STATE-OFF >OFF NUM-FIELD @ case
-      0 of MAP-SLOT--STATE:EMPTY endof
-      1 of MAP-SLOT--STATE:OCCUPIED endof
-      E-MAP-BAD-CAP throw
-   endcase ;
+   SLOT-STATE-OFF >OFF NUM-FIELD @ 0= if
+      MAP-SLOT--STATE:EMPTY
+   else
+      MAP-SLOT--STATE:OCCUPIED
+   then ;
 
 : SLOT-STATE! ( slot-state ^a idx -- ) {: m:^ ix:idx :}
    MATCH slot-state
@@ -137,7 +114,6 @@ private
    SLOT-HASH-OFF >OFF NUM-FIELD @ ;
 
 : SLOT-HASH! ( n ^a idx -- ) {: hash m:^ ix :}
-   hash 0 < if E-MAP-BAD-CAP throw then
    hash m ix SLOT-HASH-OFF >OFF NUM-FIELD ! ;
 
 : SLOT-KEY-A@ ( ^a idx -- ^u8 )
@@ -150,7 +126,6 @@ private
    SLOT-KEY-U-OFF >OFF NUM-FIELD @ ;
 
 : SLOT-KEY-U! ( n ^a idx -- ) {: len m:^ ix :}
-   len 0 < if E-MAP-BAD-CAP throw then
    len m ix SLOT-KEY-U-OFF >OFF NUM-FIELD ! ;
 
 : SLOT-VALUE@ ( ^a idx -- a )
@@ -169,7 +144,7 @@ private
 public
 
 : CLEAR ( ^a -- ) {: m:^ :}
-   m CAP@ dup CHECK-CAP {: cap :}
+   m CAP@ {: cap :}
    0 m COUNT-OFF HEADER-FIELD !
    cap COUNT>N 0 ?do
       m i >IDX SLOT-CLEAR
@@ -187,12 +162,10 @@ public
 private
 
 : HASH ( ^a str -- n ) {: m:^ a:^ u :}
-   u CHECK-LEN
    m HASH-K0-OFF HEADER-FIELD @  m HASH-K1-OFF HEADER-FIELD @
    a u SIPHASH:BYTES HASH-MASK and ;
 
 : INDEX ( n count -- idx ) {: hash cap :}
-   cap CHECK-CAP
    hash cap COUNT>N mod dup 0 < if cap COUNT>N + then >IDX ;
 
 : PROBE ( n count count -- idx ) {: hash step cap :}
@@ -222,8 +195,6 @@ private
    ;MATCH ;
 
 : LOCATE ( ^a count str -- loc n ) {: m:^ cap:count key:^ len:n :}
-   m cap CHECK-HANDLE
-   len CHECK-LEN
    m key len HASH {: hash:n :}
    cap COUNT>N 0 ?do
       m hash i >COUNT cap PROBE key len hash LOCATE-SLOT
@@ -315,7 +286,6 @@ public
 \ Visits in storage order, which follows the map's hash key. q must not REMOVE
 \ from this map: a shift back can make EACH skip an entry or visit one twice.
 : EACH ( ^n count [ str n -- ] -- ) {: m:^ cap q :}
-   m cap CHECK-HANDLE
    cap COUNT>N 0 ?do
       m i >IDX SLOT-STATE@ OCCUPIED? if
          m i >IDX SLOT-KEY-A@

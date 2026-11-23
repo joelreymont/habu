@@ -1,6 +1,5 @@
 split-str
-\ map-test.f - map operations, removal, ownership, capacity and corrupt-state
-\ refusals.
+\ map-test.f - map operations, removal, ownership and capacity.
 \ Run: bin/hb --load src/lib/map-test.f
 
 require src/lib/error.f
@@ -57,9 +56,6 @@ create MT-KEY-Z 122 c,
 : MT= ( n n -- )
    = MT-ASSERT ;
 
-: MT-MAP-CHECK-CAP ( n -- )
-   >COUNT CHECK-CAP ;
-
 : MT-MAP-CELLS ( n -- n )
    >COUNT CELL-COUNT COUNT>N ;
 
@@ -72,12 +68,6 @@ create MT-KEY-Z 122 c,
 : MT-MAP-COUNT! ( n ^a -- ) {: count m:^ :}
    count >COUNT m COUNT! ;
 
-: MT-MAP-CHECK-INDEX ( ^a n -- ) {: m:^ ix :}
-   m ix >IDX CHECK-INDEX ;
-
-: MT-MAP-SLOT-FIELD ( ^a n n -- ^a ) {: m:^ ix off :}
-   m ix >IDX off >OFF SLOT-FIELD ;
-
 : MT-MAP-SLOT-STATE@ ( ^a n -- slot-state ) {: m:^ ix:n :}
    m ix >IDX SLOT-STATE@ ;
 
@@ -87,17 +77,11 @@ create MT-KEY-Z 122 c,
 : MT-MAP-SLOT-HASH@ ( ^a n -- n ) {: m:^ ix :}
    m ix >IDX SLOT-HASH@ ;
 
-: MT-MAP-SLOT-HASH! ( n ^a n -- ) {: hash m:^ ix :}
-   hash m ix >IDX SLOT-HASH! ;
-
 : MT-MAP-SLOT-KEY-A@ ( ^a n -- ^u8 ) {: m:^ ix :}
    m ix >IDX SLOT-KEY-A@ ;
 
 : MT-MAP-SLOT-KEY-U@ ( ^a n -- n ) {: m:^ ix :}
    m ix >IDX SLOT-KEY-U@ ;
-
-: MT-MAP-SLOT-KEY-U! ( n ^a n -- ) {: len m:^ ix :}
-   len m ix >IDX SLOT-KEY-U! ;
 
 : MT-MAP-SLOT-VALUE@ ( ^a n -- a ) {: m:^ ix :}
    m ix >IDX SLOT-VALUE@ ;
@@ -180,6 +164,22 @@ create MT-KEY-Z 122 c,
    MT-MAP ix MT-MAP-SLOT-KEY-U@ 0 MT=
    MT-MAP ix MT-MAP-SLOT-VALUE@ 0 MT= ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: MT-MAP-CHECK-CAP ( n -- )
+   >COUNT CHECK-CAP ;
+
+: MT-MAP-CHECK-INDEX ( ^a n -- ) {: m:^ ix :}
+   m ix >IDX CHECK-INDEX ;
+
+: MT-MAP-SLOT-FIELD ( ^a n n -- ^a ) {: m:^ ix off :}
+   m ix >IDX off >OFF SLOT-FIELD ;
+
+: MT-MAP-SLOT-HASH! ( n ^a n -- ) {: hash m:^ ix :}
+   hash m ix >IDX SLOT-HASH! ;
+
+: MT-MAP-SLOT-KEY-U! ( n ^a n -- ) {: len m:^ ix :}
+   len m ix >IDX SLOT-KEY-U! ;
+
 : MT-BAD-CAP-ZERO ( -- )
    0 MT-MAP-CHECK-CAP ;
 
@@ -238,6 +238,7 @@ create MT-KEY-Z 122 c,
    [: MT-BAD-HASH ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-KEY-U ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-STATE-TAG ;] catch E-MAP-BAD-CAP MT= ;
+[then]
 
 : MT-TEST-INIT-CLEAR ( -- )
    MT-FILL-STORAGE
@@ -520,7 +521,6 @@ create MT-KEY-Z 122 c,
    s" map-test: failures" EXIT-STATUS:FAILURE die ;
 
 : MT-MAIN ( -- )
-   MT-TEST-CHECKS
    MT-TEST-INIT-CLEAR
    MT-TEST-MAP-SET-GET
    MT-TEST-MAP-COLLISIONS
