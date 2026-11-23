@@ -34,6 +34,7 @@ variable CS-TICK
 : WBOOM ( ^u8 -- ) drop E-CS-BOOM throw ;
 : WMAYBE ( ^u8 -- ^u8 ) dup c@ 0= IF E-CS-BOOM throw THEN ;
 : WMAYBEN ( n -- n ) dup 0= IF E-CS-BOOM throw THEN ;
+: WBOOL ( n -- bool ) dup 0 < IF E-CS-BOOM throw THEN 1 > ;
 : WKEEP ( ^u8 -- ^u8 ) dup c@ drop ;
 : CLEANMAYBE ( -- ) CS-TICK @ 0= IF E-CS-BOOM throw THEN ;
 : FINBODY ( ^u8 -- ^u8 ) dup c@ drop ;
@@ -112,7 +113,12 @@ variable CS-TICK
    CS-STALE?  s\" \"token\":\"+\"" CS-CODE?  CS-CODE-END
    \ a typed local is itself the read
    s" R5 ( ^u8 -- n ) [: WBOOM ;] catch {: v:n code:n :} code" CS-CODE<
-   CS-STALE?  CS-CODE-END ;
+   CS-STALE?  CS-CODE-END
+   \ `0=` takes any one cell and still reads it
+   s" R6 ( n -- bool ) {: k:n :} [: k WBOOL ;] catch {: rc:n :} 0=" CS-CODE<
+   CS-STALE?  s\" \"token\":\"0=\"" CS-CODE?  CS-CODE-END
+   s" R7 ( n -- bool ) {: k:n :} [: k WBOOL ;] catch {: rc:n :} rc 0<> if rc throw then 0="
+      CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ A zero branch proves only the matching catch completed normally. Equal
 \ numbers, another catch, and a predicate with the same effect cannot stand in
