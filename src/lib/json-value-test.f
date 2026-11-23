@@ -198,7 +198,12 @@ create DEEP-BUF DEPTH 2 * allot
    s" 0.5" JSON:PARSE JSON:NUMBER? TTRUE
    s\" \"1\"" JSON:PARSE JSON:NUMBER? TFALSE
    s" null" JSON:PARSE JSON:NULL? TTRUE
-   s" false" JSON:PARSE JSON:NULL? TFALSE ;
+   s" false" JSON:PARSE JSON:NULL? TFALSE
+   s" true" JSON:PARSE JSON:BOOL? TTRUE
+   s" false" JSON:PARSE JSON:BOOL? TTRUE
+   s" null" JSON:PARSE JSON:BOOL? TFALSE
+   s\" \"true\"" JSON:PARSE JSON:BOOL? TFALSE
+   s" 0" JSON:PARSE JSON:BOOL? TFALSE ;
 
 : EACH-OBJECT ( -- )
    s\" \n {\"b\":2}" JSON:PARSE [: DROP-VALUE ;] JSON:EACH ;
@@ -250,15 +255,39 @@ create DEEP-BUF DEPTH 2 * allot
 
 : N-OF ( str -- n )  JSON:PARSE JSON:>N ;
 
+\ INTEGER? is true and >N answers want.
+: WHOLE ( str n -- )
+   {: t:^ u:n want:n :}
+   t u JSON:PARSE JSON:INTEGER? TTRUE
+   t u N-OF want T= ;
+
+\ INTEGER? is false and >N rejects the value.
+: NOT-WHOLE ( str -- )
+   {: t:^ u:n :}
+   t u JSON:PARSE JSON:INTEGER? TFALSE
+   [: t u N-OF drop ;] JSON:E-MEMBER TTHROWSQ ;
+
 : TEST->N ( -- )
-   s" >N reads a whole number that fits in a cell" T-LABEL
-   s" 42" N-OF 42 T=
-   s" -7" N-OF -7 T=
-   [: s" 1.5" N-OF drop ;] JSON:E-MEMBER TTHROWSQ
+   s" >N reads a whole number that fits in a cell, as INTEGER? says" T-LABEL
+   s" 42" 42 WHOLE
+   s" 1.0" 1 WHOLE
+   s" 1e2" 100 WHOLE
+   s" 10E-1" 1 WHOLE
+   s" -0" 0 WHOLE
+   s" 0e99999999999999999999" 0 WHOLE
+   s" 9223372036854775807" MEM-MAX-N WHOLE
+   s" -9223372036854775808" MEM-MAX-N negate 1- WHOLE
+   s" 9.223372036854775807e18" MEM-MAX-N WHOLE
+   s" 1.5" NOT-WHOLE
    JSON:E-MEMBER
-   s" 1:1: expected a whole number, found `1.5`; write a whole number" SAID
-   [: s\" \"1\"" N-OF drop ;] JSON:E-MEMBER TTHROWSQ
-   [: s" 99999999999999999999" N-OF drop ;] JSON:E-MEMBER TTHROWSQ ;
+   s" 1:1: expected a whole number from -9223372036854775808 to 9223372036854775807, found `1.5`; write a whole number in that range"
+   SAID
+   s" 9223372036854775808" NOT-WHOLE
+   s" -9223372036854775809" NOT-WHOLE
+   s" 1e19" NOT-WHOLE
+   s" 1e99999999999999999999" NOT-WHOLE
+   s\" \"1\"" NOT-WHOLE
+   s" true" NOT-WHOLE ;
 
 : BOOL-OF ( str -- bool )  JSON:PARSE JSON:>BOOL ;
 

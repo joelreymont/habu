@@ -35,8 +35,8 @@ private
 \ ---- numbers by value -----------------------------------------------------
 
 MEM-MAX-N negate 1- constant LEAST-N
-MEM-MAX-N 10 / constant EXP-CUT              \ m * 10 stays a cell for m >= -EXP-CUT
-MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-CUT
+MEM-MAX-N 10 / constant TEN-CUT              \ m * 10 stays a cell for m >= -TEN-CUT
+MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-CUT
 
 : EXP-MARK? ( n -- bool )
    dup EXP-LOWER = swap EXP-UPPER = or ;
@@ -63,12 +63,12 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    while p swap MANTISSA-BYTE repeat ;
 
 
-\ Digit d onto m, the negated exponent so far: one past LEAST-N is
+\ Digit d onto m, a negated number so far: one past LEAST-N is
 \ E-JSON-READ-NUMBER, decided before the product could wrap.
-: EXP-DIGIT ( n n -- n )
+: DIGIT-ONTO ( n n -- n )
    {: m:n d:n :}
-   m EXP-CUT negate < if E-JSON-READ-NUMBER throw then
-   m EXP-CUT negate =  d EXP-LAST >  and if E-JSON-READ-NUMBER throw then
+   m TEN-CUT negate < if E-JSON-READ-NUMBER throw then
+   m TEN-CUT negate =  d TEN-LAST >  and if E-JSON-READ-NUMBER throw then
    m 10 * d - ;
 
 
@@ -80,7 +80,7 @@ MEM-MAX-N 10 mod 1+ constant EXP-LAST        \ the largest digit after m = -EXP-
    at u > if 0 exit then
    p at + c@ {: sign:n :}
    sign PLUS =  sign MINUS =  or if at 1+ else at then {: from:n :}
-   0 u from ?do p i + c@ ZERO - EXP-DIGIT loop
+   0 u from ?do p i + c@ ZERO - DIGIT-ONTO loop
    sign MINUS = if exit then
    dup LEAST-N = if E-JSON-READ-NUMBER throw then
    negate ;

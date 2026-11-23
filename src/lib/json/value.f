@@ -25,6 +25,7 @@ require src/lib/memory.f
 require src/lib/adt/option.f
 require src/lib/reason.f
 require src/lib/json/read.f
+require src/lib/json/equal.f
 require src/lib/json/pointer.f
 require src/lib/utf8-scalar.f
 
@@ -133,8 +134,69 @@ public
 : ARRAY? ( value -- bool )  FIRST-BYTE LBRACK = ;
 : NULL? ( value -- bool )  FIRST-BYTE CH-N = ;
 
+: BOOL? ( value -- bool )
+   FIRST-BYTE dup CH-T = swap CH-F = or ;
+
 : NUMBER? ( value -- bool )
    FIRST-BYTE dup MINUS = swap STR-DIGIT? or ;
+
+private
+
+\ The negated value of count significant digits from offset f, stepping over
+\ the point.
+: NEGATED-DIGITS ( ^u8 n n -- n )
+   {: p:^ f:n count:n :}
+   0 f  count 0 ?do
+      p over + c@ ZERO -  rot swap DIGIT-ONTO swap
+      i count 1- < if p swap NEXT-DIGIT then
+   loop drop ;
+
+\ The negated magnitude of 0.d1..dn * 10^x for x >= n. Each zero appended
+\ grows it tenfold, so a large x ends in E-JSON-READ-NUMBER.
+: NEGATED-WHOLE ( ^u8 n n n -- n )
+   {: p:^ x:n f:n count:n :}
+   p f count NEGATED-DIGITS
+   x count - 0 ?do 0 DIGIT-ONTO loop ;
+
+\ The lexeme's value from its negated magnitude m.
+: SIGNED ( ^u8 n -- n )
+   {: p:^ m:n :}
+   p NEGATIVE? if m exit then
+   m LEAST-N = if E-JSON-READ-NUMBER throw then
+   m negate ;
+
+\ A number lexeme's value, E-JSON-READ-NUMBER when no signed cell holds
+\ it: a fraction, or past a cell.
+: WHOLE-OF ( str -- n )
+   {: p:^ u:n :}
+   p u MANTISSA drop drop drop 0< if 0 exit then
+   p u DIGITS {: x:n f:n count:n :}
+   count x > if E-JSON-READ-NUMBER throw then
+   p  p x f count NEGATED-WHOLE  SIGNED ;
+
+\ WHOLE-OF's answer replaces the slot under the lexeme, so the quotation
+\ under catch leaves the types it was given.
+: WHOLE-SLOT ( n str -- n str )
+   {: p:^ u:n :}
+   drop  p u WHOLE-OF  p u ;
+
+\ Some for a number whose value is whole and fits a signed cell, whatever
+\ its spelling (1.0, 1e2, -0).
+: WHOLE-VALUE ( value -- option<n> )
+   {: v :}
+   v NUMBER? 0= if OPTION:NONE exit then
+   0 v TEXT$ [: WHOLE-SLOT ;] catch {: n p u code:n :}
+   code 0= if n OPTION:SOME exit then
+   code E-JSON-READ-NUMBER = if OPTION:NONE exit then
+   code throw ;
+
+public
+
+: INTEGER? ( value -- bool )
+   WHOLE-VALUE MATCH option
+     none OF false ENDOF
+     some OF drop true ENDOF
+   ;MATCH ;
 
 private
 
@@ -273,14 +335,13 @@ private
 
 \ Throws E-MEMBER at the current token, the found part the token.
 : WHOLE-REJECT ( ^cursor -- )
-   s" a whole number" s" write a whole number" E-MEMBER REJECT-TOKEN ;
+   s" a whole number from -9223372036854775808 to 9223372036854775807"
+   s" write a whole number in that range" E-MEMBER REJECT-TOKEN ;
 
-: INT-AT ( ^cursor -- n ) {: state:^ :}
-   state NEXT-INNER T-INT <> if state WHOLE-REJECT then
-   state RAW-SPAN$ STR>NUMBER? MATCH option
-     none OF state WHOLE-REJECT ENDOF
-     some OF ENDOF
-   ;MATCH ;
+\ Reads the value's token to reject it at its place.
+: NOT-WHOLE ( ^cursor -- )
+   {: state:^ :}
+   state NEXT-INNER drop  state WHOLE-REJECT ;
 
 : BOOL-AT ( ^cursor -- bool ) {: state:^ :}
    state NEXT-INNER {: tok:n :}
@@ -307,9 +368,13 @@ public
    then
    v v TEXT$ nip [: body DECODE-RUN ;] WITH-CURSOR ;
 
-\ A number with no fraction or exponent that fits in a signed cell.
+\ A number whose value is whole and fits a signed cell.
 : >N ( value -- n )
-   0 [: drop INT-AT ;] WITH-CURSOR ;
+   {: v :}
+   v WHOLE-VALUE MATCH option
+     none OF v 0 [: drop NOT-WHOLE ;] WITH-CURSOR ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : >BOOL ( value -- bool )
    0 [: drop BOOL-AT ;] WITH-CURSOR ;
