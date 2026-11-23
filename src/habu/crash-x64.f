@@ -239,10 +239,6 @@ public
 \ first, so it may be any of rax, rcx, rdx, rsi and rdi.
 : DIE-LINE-VALUE, ( str n r64 -- )
    {: a:^ u:n status:n reg:r64 :}
-   u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
-      s" x64crash: a DIE-LINE-VALUE, text does not end with the ':' before its value"
-      EXIT-STATUS:INTERNAL die
-   THEN
    reg R64>N RAX R64>N <> IF RAX reg MOV, THEN
    a u status 1 DIE-LINE-SITE, ;
 

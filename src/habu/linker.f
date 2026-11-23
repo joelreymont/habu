@@ -1727,7 +1727,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the shadow rows
 
 EXPORT CHECKER-RESOLVE:REC>INDEX
 
-\ The build's TYPE-WORD in TFAM, the word every type entry's record runs.
+\ The record index of the build's TYPE-WORD in TFAM.
 : TYPE-SOURCE ( -- n )
    s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
    -1  pkg XREF-FOUND? if

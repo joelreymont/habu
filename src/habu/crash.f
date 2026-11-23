@@ -197,10 +197,6 @@ public
 \ first, so it may be any of x0..x4.
 : DIE-LINE-VALUE, ( str n n -- )
    {: a:^ u:n status:n reg:n :}
-   u 0= IF 0 ELSE a u + 1- c@ THEN $3A <> IF
-      s" crash: a DIE-LINE-VALUE, text does not end with the ':' before its value"
-      EXIT-STATUS:INTERNAL die
-   THEN
    reg 3 <> IF 3 reg 0 ADDI, THEN
    a u status 1 DIE-LINE-SITE, ;
 

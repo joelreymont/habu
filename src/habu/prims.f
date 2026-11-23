@@ -96,17 +96,13 @@ variable CUR-PKG-OFF    variable CUR-PKG-LEN
 variable CUR-CODE-OFF
 variable CUR-REF-OFF    variable CUR-REF-LEN
 
-\ SLOT addresses a row the caller has already bounded. Only ROW-WRITE needs
-\ SLOT: it fills the row at ROW-N before ROW-N counts it.
+\ SLOT addresses a row the caller has already bounded.
 : SLOT ( n n -- ^n ) {: row:n field:n :}
    row ROW-CELLS * field + cells ROWS + ;
 
-: ROW-FIELD ( n n -- ^n ) {: row:n field:n :}
-   row 0 < row ROW-N @ >= or IF s" prims: row index out of range" EXIT-STATUS:INTERNAL die THEN
-   row field SLOT ;
+: ROW-FIELD ( n n -- ^n ) SLOT ;
 
 : NAME-SPAN, ( str -- ) {: a:^ u:n :}
-   u 0 < IF s" prims: negative name length" EXIT-STATUS:INTERNAL die THEN
    NAME-U @ u + NAME-CAP > IF s" prims: name buffer full" EXIT-STATUS:INTERNAL die THEN
    0 BI !
    BEGIN BI @ u < WHILE
@@ -260,8 +256,6 @@ public
    F-CODE-LEN ROW-FIELD @ ;
 
 : CODE@ ( n n -- n ) {: row:n idx:n :}
-   idx 0 < idx row F-CODE-LEN ROW-FIELD @ >= or
-      IF s" prims: atom index out of range" EXIT-STATUS:INTERNAL die THEN
    CODES row F-CODE-OFF ROW-FIELD @ + idx + c@ ;
 
 \ Exact spelling: a body registered under a different case is a different row

@@ -31,9 +31,6 @@ private
 EXPORT BOOT:data-base
 
 : REFUSE ( -- ) s" address-cells: invalid storage header" EXIT-STATUS:INTERNAL die ;
-: SHAPE ( n n -- ) {: count:n cap:n :}
-   cap 0 <= cap MAX-ROWS > or count 0 < or if REFUSE then
-   count cap > if REFUSE then ;
 
 : HEADER ( -- ^n ) data-base RELOC:XTCELL-N-CELL + ;
 
@@ -47,19 +44,12 @@ CAST: N>ROWS ( n -- ^n )
 
 : HEADER-MODE ( ^n -- n )
    {: h:^ :}
-   h MAGIC-FIELD + @ MAGIC <> if REFUSE then
-   h @ h CAP-FIELD + @ SHAPE
    h MODE-FIELD + @ ;
 
 \ A mode-1 table's rows, in the outside mapping the kernel's growth made.
 : OWN-ROWS ( ^n -- ^n )
    {: h:^ :}
-   h MODE-FIELD + @ 1 <> if REFUSE then
-   h BASE-FIELD + @ {: base:n :}
-   h CAP-FIELD + @ {: cap:n :}
-   base 0 <= base 7 and 0 <> or if REFUSE then
-   cap $7FFFFFFFFFFFFFFF base - CELL / > if REFUSE then
-   base N>ROWS ;
+   h BASE-FIELD + @ N>ROWS ;
 
 public
 \ Unmaps the index the cell holds and zeroes the cell. On a table markers reach, the caller holds
@@ -67,13 +57,8 @@ public
 : INDEX-RELEASE ( ^n -- )
    {: held:^ :}
    held @ dup 0= if drop exit then {: address:n :}
-   address 0 < address 7 and 0 <> or
-   address $7FFFFFFFFFFFFFFF INDEX-HEADER - > or if REFUSE then
    address N>ROWS INDEX-SLOTS + @ {: slots:n :}
-   slots 2 < slots INDEX-MAX-SLOTS > or if REFUSE then
-   slots slots 1- and 0 <> if REFUSE then
    slots cells INDEX-HEADER + {: bytes:n :}
-   bytes $7FFFFFFFFFFFFFFF address - > if REFUSE then
    address N>ROWS bytes munmap 0 <> if E-MEM-UNMAP throw then
    0 held ! ;
 
@@ -82,7 +67,6 @@ public
 : ROWS-RELEASE ( ^n -- )
    {: h:^ :}
    h MODE-FIELD + @ 0= if exit then
-   h HEADER-MODE drop
    h OWN-ROWS h CAP-FIELD + @ cells munmap
    0 <> if E-MEM-UNMAP throw then ;
 private

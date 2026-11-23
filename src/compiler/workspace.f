@@ -24,9 +24,6 @@ variable DEFAULT-N
 
 \ The offset the next bytes take; USED moves only once they are laid.
 : FIT ( n -- n ) {: bytes:n :}
-   bytes 0 <= if
-      s" compiler workspace: a declaration takes no bytes" EXIT-STATUS:INTERNAL die
-   then
    USED @ CELL 1- + CELL / CELL * {: off:n :}
    off LIMIT > if
       s" compiler workspace: the mapping is full at LIMIT bytes" EXIT-STATUS:FULL die

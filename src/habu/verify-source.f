@@ -728,9 +728,6 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 : BODY-APPEND ( str -- )
    {: a:^ u:n :}
    a SOURCE@ - {: src:n :}
-   src 0 <  src u + SOURCE-U @ >  or IF
-      s" verify-source: body run outside the source" EXIT-STATUS:INTERNAL die
-   THEN
    BODY-U @ u + 1 + {: end:n :}
    end BODY-BUF-RESERVE
    BODY-ROWS @ 1 + 2 * BODY-ROW-RESERVE

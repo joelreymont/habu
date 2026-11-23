@@ -130,8 +130,8 @@ private
       wasm64-unknown-unknown OF RTARGET-FOREIGN--ABI:WASM ENDOF
    ;MATCH ;
 
-\ Windows profiles are declarable compiler products, but their process and
-\ foreign calling conventions have no CORE implementation yet.
+\ Windows profiles are declarable targets, but CORE implements neither their
+\ process nor their foreign calling convention.
 : FOREIGN-KNOWN? ( profile-id -- bool )
    {: p:profile-id :}
    p RTARGET-PROFILE--ID:AARCH64-PC-WINDOWS-MSVC RTARGET-PROFILE--ID:EQ if false exit then
@@ -254,10 +254,6 @@ private
    HB-TARGET-LINUX-X86-64? if RTARGET-NATIVE--PROFILE--ID:LINUX-X64 exit then
    s" rtarget: the engine was built for no host it knows" EXIT-STATUS:INTERNAL die ;
 
-: WINDOWS-CORE ( -- )
-   s" rtarget: CORE reached the ABI of a Windows profile it answers unsupported"
-   EXIT-STATUS:INTERNAL die ;
-
 \ The action owner calls HOST before opening the target source window. A
 \ product engine later calls this same mapping against its own baked flags.
 : HOST-PROFILE ( -- native-profile-id )
@@ -331,10 +327,6 @@ public
 : CORE ( resolved-target -- core-result )
    {: target:resolved-target :}
    target PROFILE@ {: p:profile-id :}
-   p RTARGET-PROFILE--ID:AARCH64-PC-WINDOWS-MSVC RTARGET-PROFILE--ID:EQ if
-      RTARGET-CORE--RESULT:UNSUPPORTED exit then
-   p RTARGET-PROFILE--ID:X86-64-PC-WINDOWS-MSVC RTARGET-PROFILE--ID:EQ if
-      RTARGET-CORE--RESULT:UNSUPPORTED exit then
    p PROFILE-ARCH
    p MATCH profile-id
       aarch64-apple-darwin OF CTARGET-ABI:AAPCS64-DARWIN ENDOF
@@ -342,8 +334,8 @@ public
       x86-64-unknown-linux-gnu OF CTARGET-ABI:SYSV-AMD64 ENDOF
       wasm32-unknown-unknown OF CTARGET-ABI:HABU-WASM-CELL64-V1 ENDOF
       wasm64-unknown-unknown OF CTARGET-ABI:HABU-WASM-CELL64-V1 ENDOF
-      aarch64-pc-windows-msvc OF WINDOWS-CORE ENDOF
-      x86-64-pc-windows-msvc OF WINDOWS-CORE ENDOF
+      aarch64-pc-windows-msvc OF drop RTARGET-CORE--RESULT:UNSUPPORTED exit ENDOF
+      x86-64-pc-windows-msvc OF drop RTARGET-CORE--RESULT:UNSUPPORTED exit ENDOF
    ;MATCH
    p PROFILE-ENDIAN p PROFILE-PTR target FEATURES@ CTARGET:CONTRACT
    RTARGET-CORE--RESULT:SUPPORTED ;

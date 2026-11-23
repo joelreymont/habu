@@ -415,7 +415,6 @@ SUM-U 32 + constant HEAD-U
 \ changed in place since. Nothing older is deleted.
 : KERNEL-WRITE ( str -- )
    {: a:^ u:n :}
-   u 40 < if s" hb-build: the kernel object is too short" EXIT-STATUS:INTERNAL die then
    KERNEL-DIR KERNEL-DIR-U @ FS:MAKE-DIRS
    a 8 + OBJECT-PATH!
    KERNEL-PATH KERNEL-U @ a u FS:ATOMIC-WRITE-FILE

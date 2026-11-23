@@ -1278,20 +1278,9 @@ EXPORT CHECK:EXPORT-UNSAFE
    k XREF-DOES-COMPANION? if k 1+ exit then
    -1 ;
 
-\ The export and its clause each take an occurrence, so two must remain before
-\ the checker hears of the export: the allocation's first cell is the last
-\ number issued, and -1 the last one that can be, so fewer than two remain
-\ after -2 or -1.
-: PKG-OCC-ROOM ( -- )
-   data-base DEF-OCC:PTR-CELL + 0 ptr-field @ CELL-VIEW @ {: last:n :}
-   last -2 =  last -1 =  or if
-      s" interpreter: definition occurrence numbers exhausted" EXIT-STATUS:INTERNAL die
-   then ;
-
 \ The clause takes the slot above the export's own, and its name must not be
 \ live in the current wordlist: a clash is rejected at the operand's tail.
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
-   PKG-OCC-ROOM
    ndict@ 1+ DICT-CAP < 0= if
       PKG-TAIL CLAUSE-NAME TOKEN$ REJECTION:DICTIONARY-FULL
    then

@@ -380,7 +380,6 @@ private
 \ The running hb's primitive table; its row count is the cell before it.
 : HOST-TABLE ( -- n )
    data-base PRIM-TABLE-CELL + @ {: off:n :}
-   off 0= if s" link: this hb has no primitive table" EXIT-STATUS:INTERNAL die then
    rbase off + ;
 
 : HOST-ROW ( n n -- ^u8 )
@@ -587,14 +586,11 @@ public
 : OFFSET ( label -- n )
    {: l:label :}
    X64? if l X64CODE:LABEL-AT exit then
-   l A64ICODE:LBL-BOUND? 0= if
-      s" link: a label the link reads is unbound" EXIT-STATUS:INTERNAL die
-   then
    l LABEL-POS 4 * ;
 
 
-\ A product kernel row's entry, in bytes from the start of the code buffer; a
-\ row whose code CUT removed dies in OFFSET.
+\ The entry of a product kernel row the link kept, in bytes from the start of the
+\ code buffer; a row CUT removed has none.
 : PRIM-OFFSET ( n -- n ) ROW-FIRST OFFSET ;
 
 

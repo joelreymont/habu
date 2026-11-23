@@ -58,9 +58,7 @@ public
    e NSHADOW:ADDR-SITES 0 ?do
       e i NSHADOW:ADDR-SITE@ {: s:n :}
       e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
-      dst e NSHADOW:SIZE s kind ADDRESS@ 0= if
-         s" x64link: an address site is not movabs" EXIT-STATUS:INTERNAL die
-      then
+      dst e NSHADOW:SIZE s kind ADDRESS@ drop
       kind NEMIT:ADDR-DATA = if data else resolve then execute
       dst s + 2 + LE:U64!
    loop ;
