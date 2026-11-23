@@ -119,14 +119,11 @@ CAST: >APPEND ( ^u8 -- ^append )
    CLOSE-APPENDS
    [: DISPOSE-HEAD ;] catch FIRST-ERROR ;
 
+\ The head is a PENDING or LIVE frame this task opened and has not closed.
 : CLOSE ( -- )
    TASK:DEFER-ENTER
-   HEAD-CELL @ 0= if TASK:DEFER-LEAVE E-C2-STATE throw then
    HEAD-FRAME {: frame:^ :}
    frame FRAME-STATE @ {: state:n :}
-   state PENDING <> state LIVE <> and if
-      TASK:DEFER-LEAVE E-C2-STATE throw
-   then
    CLOSING frame FRAME-STATE !
    state LIVE = if
       frame FRAME-KIND @ BYTES-FRAME = if CLOSE-BYTES
@@ -203,16 +200,6 @@ CAST: >APPEND ( ^u8 -- ^append )
 
 : ROOT-FRAME ( ^u8 -- ^frame ) HEAD-CELL @ ROOT-FROM ;
 
-: FRAME-IN? ( ^frame n -- bool ) {: target:^ id:n :}
-   id 0= if false exit then
-   id 1- FRAMES {: frame:^ :}
-   frame target = if
-      frame FRAME-STATE @ LIVE =
-      frame FRAME-KIND @ BYTES-FRAME = and exit then
-   target frame FRAME-PREV @ recurse ;
-
-: LIVE-BYTES-FRAME? ( ^frame -- bool ) HEAD-CELL @ FRAME-IN? ;
-
 CAST: >NODE-CELL ( ^u8 -- ^^frame )
 
 : BIND-STATE ( str -- str )
@@ -220,8 +207,8 @@ CAST: >NODE-CELL ( ^u8 -- ^^frame )
    base ROOT-FRAME base >NODE-CELL !
    base bound ;
 
-: OWNER-FRAME ( ^u8 -- ^frame )
-   >NODE-CELL @ dup LIVE-BYTES-FRAME? 0= if E-C2-STATE throw then ;
+\ The owner is bound, so its node is the live BYTES frame BIND found.
+: OWNER-FRAME ( ^u8 -- ^frame ) >NODE-CELL @ ;
 
 : APPEND-RECORD-BYTES ( n -- n )
    CELL 1- + CELL negate and APPEND-HEADER-BYTES + ;
