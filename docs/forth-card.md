@@ -646,8 +646,8 @@ holds an address**.
   and a computed one's answer is undefined;
   `$8000000000000000 -1 /` wraps to `$8000000000000000`.
 - `catch` only at explicit recovery boundaries — REPL and CLI wrappers, test
-  assertions, adapters returning a result and the code as data. No
-  `catch drop`. A test asserts a refusal by its exact code:
+  assertions, adapters returning the code as data and the result only where
+  the code is 0. No `catch drop`. A test asserts a refusal by its exact code:
   `[: WORD ;] E-FS-PATH TTHROWSQ` in a checked body, `' WORD TTHROWS` at top
   level.
 

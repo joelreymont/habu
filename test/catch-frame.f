@@ -102,7 +102,7 @@ variable ACC
    77 f ['] KEEP catch 2drop
    depth d -  swap ;
 
-\ A body that never returns, throwing over the cells it took or pushed.
+\ A body that never returns leaves its catch the depth it found.
 : DROP-THROW ( n -- ) drop 7311 throw ;
 
 \ ( cells over the depth at entry, the sentinel, the code ) once the catch's

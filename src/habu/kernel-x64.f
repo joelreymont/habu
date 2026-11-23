@@ -1714,8 +1714,7 @@ private
    RCX DATA-REG THROWS-CELL MOV-STORE,
    RETHROW, ;
 
-\ The `throw` primitive's code in rax: 0 becomes -9854, E-THROW-ZERO, so a
-\ catch answers 0 only for a body that returned.
+\ The `throw` primitive's code in rax: 0 becomes -9854, E-THROW-ZERO.
 : NONZERO-CODE, ( -- )
    X64CODE:LBL {: nonzero:label :}
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE nonzero JCC,

@@ -1659,15 +1659,15 @@ exceptional edge for catchable `throw` paths:
   whose every path throws kills its caller's normal path, and the edge stays
   catchable.
 - `catch` consumes a quotation whose output row ends in the same tail as its
-  input row, then pushes a throw code (`0` on normal completion). A throw it takes abandons a definition
-  opened since it began and keeps one open before it. Its exceptional path
-  restores the depth of both stacks, not their contents, so a cell of the
-  quotation's declared input window that a throw path may have overwritten
-  comes back as `stale<t>`: it may be moved, dropped or bound to an untyped
-  local; reading it is `E-STALE-READ` (`keep_value_before_catch`). A cell every
-  throw path left untouched keeps its type (**Rules learned by refusal**). A
-  body that changes the stack leaves each of its outputs `stale<t>` the same
-  way, since a throw left none of them.
+  input row, then pushes a throw code (`0` on normal completion). A throw it
+  takes abandons a definition opened since it began and keeps one open before
+  it. Its exceptional path leaves both stacks at the depths its row states,
+  not their contents, so a cell of the quotation's declared input window that
+  a throw path may have overwritten comes back as `stale<t>`: it may be moved,
+  dropped or bound to an untyped local; reading it is `E-STALE-READ`
+  (`keep_value_before_catch`). A cell every throw path left untouched keeps its
+  type (**Rules learned by refusal**). A body that changes the stack leaves
+  each of its outputs `stale<t>` the same way, since a throw left none of them.
 
 A guard may therefore throw directly, with no dummy value for the join:
 
@@ -2120,8 +2120,8 @@ answers alike.
   `L:C: expected X, found Y; fix`, and `APPEND`, `VISIBLE`, `QUOTE` and `BYTE`
   write the parts.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
-  assertions, outcome adapters returning a result and the exact code. No `…
-  catch drop`, no `catch 2drop`, no masking.
+  assertions, outcome adapters returning the exact code, and the result only
+  where it is 0. No `… catch drop`, no `catch 2drop`, no masking.
 - A proven-impossible state throws its owning module's named state code
   (`E-QUEUE-STATE`). Habu has no `abort"`.
 - **`throw` is catchable, `die` ends the process.** `throw` is the checker's
@@ -2794,9 +2794,9 @@ sections above.
   typed quotations are admitted, whether they keep the stack or change it over
   the same tail. At top level, where the engine's `catch` gives back the depth
   the body took, a body that changes the stack is `E-LAYOUT-VALUE` (`move the
-  catch inside a definition`). `catch` restores both stacks' depths on throw,
-  never their contents. Read the returned code; keep handles needed for
-  cleanup in accessible storage or on proven-intact input cells.
+  catch inside a definition`). `catch` leaves both stacks at its row's
+  depths on throw, never their contents. Read the returned code; keep handles
+  needed for cleanup in accessible storage or on proven-intact input cells.
 
 - **A caught literal leaves possibly overwritten inputs stale.** In its
   fixed input window, a cell keeps its type only if every throw path leaves
@@ -2828,17 +2828,20 @@ sections above.
   proves otherwise. The literal and `['] W` carry W's evidence, including
   through a local bound to that same tick. A declared quotation
   parameter, typed `xt<effect>` cell or `defer` may throw and keeps no cell
-  intact, so a catch of it leaves its window stale. A tick of a never-returning callee still fits against its
-  declared output row.
+  intact, so a catch of it leaves its window stale. A tick of a
+  never-returning callee still fits against its declared output row.
 - **Linear and multi-cell values respect the stale boundary.** A linear
   handle that a throw path of the caught body may replace or consume is
   stale: reading it is `E-STALE-READ`, and dropping it is a linear refusal.
   A callee whose every throw path keeps the handle leaves it live, through
   its quotation literal or `['] W` alike. Open the handle inside the caught
   body, or consume it before rethrowing. A body that changes the stack takes
-  no cell that may be linear (`E-LINEAR-DROP`): a throw loses the cells it took. A multi-cell value is one logical stale
-  value (`stale<option<pt>>`): one `drop` removes it, an untyped local can
-  transport it, and a typed use or `MATCH` is `E-STALE-READ`.
+  no cell that may be linear (`E-LINEAR-DROP`): a throw loses the cells it
+  took. A linear output stays on the stack until the code is proved 0, and the
+  other arm throws: dropping or binding a stale handle is `E-LINEAR-DROP`. A
+  multi-cell value is one logical stale value (`stale<option<pt>>`): one `drop`
+  removes it, an untyped local can transport it, and a typed use or `MATCH` is
+  `E-STALE-READ`.
 - **`depth` and `.s` count no value held in several cells.** They count raw
   cells, so over a layout value held in more than one cell, or one whose width
   is open in the word (`( option<a> -- ) depth`), both are `E-DEPTH-WIDE`,

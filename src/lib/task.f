@@ -61,6 +61,16 @@ split-str
 \ it throws. A declaration grows the row table before a task can run. No C
 \ entry embeds a row address: the main region's CB-ROWS publishes the current
 \ base for the thunk on every call.
+\
+\ HALT UNWIND. A halted task starts its unwind once, from PAUSE or from a
+\ scope's end (TASK:HALT-UNWIND): the stop mark goes first, so every cleanup the
+\ unwind runs and the AT-EXIT chain may pause and only yield. With
+\ HALT-UNWIND-CELL set, `n halt-throw` runs each finally around it, innermost
+\ first, and rethrows past every other catch, so no code after a catch observes
+\ the halt and a body that swallows errors still ends. halt-throw carries n, 0
+\ for PAUSE, to the task's root unchanged: the halt is not a body error.
+\ TASK-RUNNER's catch takes n, or a code a cleanup threw during the unwind, or,
+\ when the halt began inside a cleanup, the body's error that cleanup ran for.
 
 s" src/lib/error.f" required
 s" src/lib/memory.f" required
@@ -1227,17 +1237,6 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 : TCB-HALT-PENDING? ( ^n -- bool ) {: tcb:^ :}
    tcb TASK-STATE@ TASK-HALT-REQ = tcb TCB.STOP @ 0= and ;
 
-\ A halted task starts its unwind here, ONCE, from PAUSE or from a scope's end
-\ (TASK:HALT-UNWIND): the stop mark goes first, so every cleanup the unwind runs
-\ and the AT-EXIT chain may pause and only yield. With HALT-UNWIND-CELL set,
-\ `n halt-throw` runs each finally around it, innermost first, and rethrows
-\ past every other catch, so no code after a catch observes the halt and a body
-\ that swallows errors still ends.
-\ halt-throw carries n, 0 for PAUSE, to the task's root unchanged: the halt is
-\ not a body error. TASK-RUNNER's catch takes n, or a code a cleanup threw
-\ during the unwind, or, when the halt began inside a cleanup, the body's error
-\ that cleanup ran for.
-\
 \ Inside a callback the request stays pending: a throw there would unwind
 \ through C's frames, holding the slot it entered through, with C's call never
 \ drained. A live marshal frame on the region (CB-FRAME) is that case; the thunk

@@ -1859,21 +1859,19 @@ DYNAMIC-BUFFER COUNT-SLOT n
    SPILL-ALL  STORE-REC @ XREF-REC REC-START loc EMIT-CALL ;
 
 \ ---- the throw path's depth ---------------------------------------------------
-\ A throw leaves a catch's input cells under its code, while the catch's row
-\ states its body's outputs. On a nonzero code, which only a throw lands, the
-\ cells under the code are evened to the row: surplus inputs cut, missing
-\ outputs pushed as 0.
+\ A throw leaves a catch's inputs under its code where its row states the
+\ body's outputs; only a throw lands a nonzero code.
 
-\ The body's output cells less its input cells at row k when it calls catch,
-\ record r, by the facts the checker filed; 0 for any other call.
+\ Out cells less in cells of the catch at row k, record r, as the checker
+\ filed them; 0 for any other call.
 : CATCH-SHIFT ( n n -- n ) {: r:n k:n :}
    r CATCH-REC @ <> if 0 exit then
    k CHECKER-OWNER:CALL-CELLS {: in:n out:n :}
    in 0<  out 0< or if k ROW$ NO-DEPTH then
    out in - ;
 
-\ The call of the catch at offset loc, then on a throw its depth moved by d
-\ cells under the code. Code follows the call, so it is never a tail call.
+\ The call of the catch at offset loc, then on a throw d cells under the code
+\ pushed as 0, or -d cut. Code follows the call, so it is never a tail call.
 : EVEN-CALL ( n n n -- ) {: to:n loc:n d:n :}
    SPILL-ALL  to loc EMIT-CALL
    ALLOC {: c:vreg :}
