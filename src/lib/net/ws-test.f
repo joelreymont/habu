@@ -47,7 +47,6 @@ package WS
    LOCK TASK:GET
    GEN-MASK idx GEN !
    LOCK TASK:RELEASE ;
-: WS-TEST:SILENT-MS ( -- n ) PING-MS PONG-MS + ;
 : WS-TEST:LEFT ( -- n )
    LOCK TASK:GET
    LEFT @
@@ -77,7 +76,7 @@ $1000 constant PEER-RCVBUF       \ the stalled peer's receive buffer, fixed befo
 $1000 constant SERVER-SNDBUF     \ the stalled peer's server end's send buffer
 $10 constant SOCKADDR-N          \ sockaddr_in
 $2000000 constant FLOOD-PUSH      \ what the overflow case may push: QUEUE-MAX and every kernel buffer, many times over
-$101 constant CROWD               \ WS:START's limit: one socket past a one-byte slot field
+$101 constant CROWD               \ the run's sockets: one past a one-byte slot field
 $400 constant LOG-CAP             \ the sockets one run may close
 CROWD 2 * $40 + AIO-FILL:FILL-CAP 2 * + constant FDS-WANT \ both ends of CROWD+1 loopback connections, the server's, the files' and the fill's
 8 constant STRAYS                 \ the wake pipe's two, the only ones a stale send's POKE writes, with room to spare
@@ -98,6 +97,7 @@ $100 constant ERR-CAP
 $18 constant HEX-MAX              \ the longest payload a transcript line spells out
 $37FA213D constant MASK-KEY       \ the masking key of RFC 6455 section 5.7's examples
 1006 constant LOST                \ the status of a socket that ended with no close frame
+$1F4 constant SHORT-MS            \ a bound a case waits out, far under its other waits
 1000000 constant NS-PER-MS
 13 constant CR
 10 constant LF
@@ -197,6 +197,7 @@ variable CLOSE-GOAL               \ the count of logged closes a case awaits
 variable BLOCKING                 \ set while the handler of `wait` waits on RELEASED
 variable FIRST-DONE               \ set once that wait has ended
 variable NEXT-SAW                 \ FIRST-DONE as the handler of `next` found it
+TYPED-VARIABLE CFG WS:config      \ the config every WS:START here is given
 variable THROW-ARMED              \ set while the next `closed` handler is to throw
 variable HOLDING                  \ set while the handler of `hold` waits on UNHELD
 variable PROBING                  \ set while the handler of `brief` sends its probes
@@ -211,6 +212,31 @@ TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
 TASK:SEMAPHORE UNHELD             \ lets the handler of `hold` return
 TASK:SEMAPHORE RELEASED           \ lets the handler of `wait` return
 TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a close
+
+: SIZED ( n -- ^WS:config )
+   CFG WS:DEFAULTS
+   CFG WS-CONFIG:SOCKETS !
+   CFG ;
+
+: STALL-SHORT ( n -- ^WS:config )
+   SIZED
+   SHORT-MS >MS CFG WS-CONFIG:STALL ! ;
+
+: PING-SHORT ( n -- ^WS:config )
+   SIZED
+   SHORT-MS >MS CFG WS-CONFIG:PING !
+   SHORT-MS >MS CFG WS-CONFIG:PONG ! ;
+
+: STALL-MS ( -- n ) CFG WS-CONFIG:STALL @ MS>N ;
+
+: SILENT-MS ( -- n )
+   CFG WS-CONFIG:PING @ MS>N
+   CFG WS-CONFIG:PONG @ MS>N + ;
+
+\ The cases that wait out a bound run on their own WS, with that bound short.
+: RESTART ( ^WS:config -- )
+   WS:STOP
+   WS:START ;
 
 
 \ True, with the case failed, once WAIT-BOUND-MS has passed since the given
@@ -1369,11 +1395,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       failed OF drop E-SILENT throw ENDOF
    ;MATCH ;
 
-\ The socket's handler is told `closed` 1006 within WS:STALL-MS of the last
-\ byte the peer's end took, as WS's own clock runs. That moment is the
-\ kernel's: a zero-window probe, sent first at BSD's 5 s persist minimum, can
-\ fill the part of a segment still free in the peer's buffer just as STALL-MS
-\ runs out, and WS rightly starts its clock again.
+\ The socket's handler is told `closed` 1006 within the config's stall of the
+\ last byte the peer's end took, as WS's own clock runs. That moment is the
+\ kernel's: a zero-window probe can fill the part of a segment still free in
+\ the peer's buffer just as the stall runs out, and WS rightly starts its
+\ clock again.
 : STALL-CLOSES ( TCP4:connection WS:socket -- ) {: peer:TCP4:connection sock:WS:socket :}
    sock 0 WATCH !
    peer UNREAD-N PEER-HELD !
@@ -1386,10 +1412,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    repeat
    LOST T=
    s" closed within the stall bound of the peer's last move" T-LABEL
-   mono-ns PEER-MOVED @ - WS:STALL-MS GRACE-MS + NS-PER-MS * < TTRUE ;
+   mono-ns PEER-MOVED @ - STALL-MS GRACE-MS + NS-PER-MS * < TTRUE ;
 
 : STALL-CASE ( -- )
    s" a stalled peer" SECTION
+   2 STALL-SHORT RESTART
    DIAL-SMALL OPENS-OVER {: still:TCP4:connection stuck:WS:socket :}
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    stuck STALL-PUSH PUSH-BYTES / PUSHES 0 T=
@@ -1402,16 +1429,17 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn FAREWELL
    still TCP4:CLOSE DROP-STATUS ;
 
-\ A peer that sends nothing and answers no ping is lost within PING-MS and
-\ PONG-MS of its socket's opening: it reads the ping, then the end of the
-\ stream, and its handler is told `closed` 1006.
+\ A peer that sends nothing and answers no ping is lost within the config's
+\ ping and pong of its socket's opening: it reads the ping, then the end of
+\ the stream, and its handler is told `closed` 1006.
 : SILENT-CASE ( -- )
    s" a peer that falls silent" SECTION
+   1 PING-SHORT RESTART
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    mono-ns {: began:n :}
    sock LOST CLOSED-WITH
    s" lost within its quiet bound" T-LABEL
-   mono-ns began - WS-TEST:SILENT-MS GRACE-MS + NS-PER-MS * < TTRUE
+   mono-ns began - SILENT-MS GRACE-MS + NS-PER-MS * < TTRUE
    conn HEAR WS-OPCODE:PING s" " GOT
    conn ENDS ;
 
@@ -1478,9 +1506,9 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ everything back, never waiting out STOP-BOUND-MS.
 : IDLE-STOP-CASE ( -- )
    s" a stop of an idle socket" T-LABEL
-   [: 0 WS:START ;] E-WS-LIMIT TTHROWSQ
-   [: $100000000 WS:START ;] E-WS-LIMIT TTHROWSQ
-   CROWD WS:START
+   [: 0 SIZED WS:START ;] E-WS-LIMIT TTHROWSQ
+   [: $100000000 SIZED WS:START ;] E-WS-LIMIT TTHROWSQ
+   CROWD SIZED WS:START
    OPENS drop {: conn:TCP4:connection :}
    mono-ns {: began:n :}
    WS:STOP
@@ -1499,7 +1527,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ reaches the handler. WS:STOP runs on its own task while this one answers.
 : CLOSING-STOP-CASE ( -- )
    s" a stop while a socket closes" SECTION
-   CROWD WS:START
+   CROWD SIZED WS:START
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    OPENS drop {: other:TCP4:connection :}
    conn true WS-OPCODE:TEXT s" bye" SAY
@@ -1521,13 +1549,13 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ it as it is.
 : SHRINK-CASE ( -- )
    s" a restart with a smaller limit" T-LABEL
-   2 WS:START
+   2 SIZED WS:START
    OPENS drop {: first:TCP4:connection :}
    OPENS drop {: second:TCP4:connection :}
    WS:STOP
    first TCP4:CLOSE DROP-STATUS
    second TCP4:CLOSE DROP-STATUS
-   1 WS:START
+   1 SIZED WS:START
    [: SEND-STALE ;] E-WS-CLOSED TTHROWSQ
    [: CLOSE-STALE ;] catch 0 T=
    WS:STOP ;
@@ -1535,7 +1563,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ WS started for two sockets, one of them open, and a handshake on /stall that
 \ holds the other's slot: the open socket's connection, then the handshake's.
 : HOLD-SLOT ( -- TCP4:connection TCP4:connection )
-   2 WS:START
+   2 SIZED WS:START
    OPENS drop {: first:TCP4:connection :}
    0 STALLING !
    0 REFUSED-WITH !
@@ -1552,7 +1580,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a stop while a handshake holds its slot" T-LABEL
    HOLD-SLOT {: first:TCP4:connection conn:TCP4:connection :}
    WS:STOP
-   1 WS:START
+   1 SIZED WS:START
    AWAIT-ROUTE
    REFUSED-WITH @ 503 T=
    conn READ-HEAD
@@ -1585,16 +1613,17 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : GATED-START ( -- )
    1 GATE-READY atomic!
    begin GATE-OPEN atomic@ 0 <> until
-   [: 2 WS:START ;] catch TASK:RETURN ;
+   [: CFG WS:START ;] catch TASK:RETURN ;
 
 : START-RACE-CASE ( -- )
    s" two starts at once" T-LABEL
    0 GATE-READY atomic!
    0 GATE-OPEN atomic!
+   2 SIZED drop
    [: GATED-START ;] STOP-TASK TASK:ACTIVATE
    [: GATE-READY atomic@ ;] AWAITED drop
    1 GATE-OPEN atomic!
-   [: 2 WS:START ;] catch {: here:n :}
+   [: CFG WS:START ;] catch {: here:n :}
    [: STOP-ENDED ;] AWAITED drop
    TASK-CODE {: there:n :}
    here there max 0 T=
@@ -1607,14 +1636,14 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : HANDLER-STOP-CASE ( -- )
    s" a stop from a handler" SECTION
    -1 HANDLER-STOP atomic!
-   2 WS:START
+   2 SIZED WS:START
    OPENS drop {: conn:TCP4:connection :}
    conn true WS-OPCODE:TEXT s" stop" SAY
    conn HEAR 1001 GOT-CLOSE
    conn ENDS
    s" a handler's stop returns" T-LABEL
    HANDLER-STOP atomic@ 0 T=
-   [: 1 WS:START ;] catch 0 T=
+   [: 1 SIZED WS:START ;] catch 0 T=
    [: WS:STOP ;] catch 0 T= ;
 
 \ A stop while a handler call blocks past its bound returns within the bound,
@@ -1624,7 +1653,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : BLOCKED-STOP-CASE ( -- )
    s" a stop while a handler call blocks" SECTION
    0 HOLDING atomic!
-   2 WS:START
+   2 SIZED WS:START
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    conn true WS-OPCODE:TEXT s" hold" SAY
    [: HOLDING atomic@ ;] AWAITED drop
@@ -1634,18 +1663,18 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    mono-ns began - STOP-BOUND-MS GRACE-MS + NS-PER-MS * < TTRUE
    conn HEAR 1001 GOT-CLOSE
    s" a start while that call is out" T-LABEL
-   [: 1 WS:START ;] E-WS-STATE TTHROWSQ
+   [: 1 SIZED WS:START ;] E-WS-STATE TTHROWSQ
    UNHELD TASK:SIGNAL-SEM
    conn ENDS
    s" a start once that call has retired its slot" T-LABEL
    sock CLOSED-OF 0 T=
-   [: 1 WS:START ;] catch 0 T=
+   [: 1 SIZED WS:START ;] catch 0 T=
    [: WS:STOP ;] catch 0 T= ;
 
 \ WS started again, 1, or 0 while a call a stop passed its bound still holds
 \ its slot (E-WS-STATE), so the next case starts on a WS no call holds.
 : RESTARTED ( -- n )
-   [: 1 WS:START ;] catch {: code:n :}
+   [: 1 SIZED WS:START ;] catch {: code:n :}
    code E-WS-STATE = if 0 exit then
    code 0<> if code throw then
    1 ;
@@ -1659,7 +1688,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a stop while a handler call runs briefly" SECTION
    0 PROBING atomic!
    0 PROBE-END atomic!
-   2 WS:START
+   2 SIZED WS:START
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    conn true WS-OPCODE:TEXT s" brief" SAY
    [: PROBING atomic@ ;] AWAITED drop
@@ -1710,7 +1739,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a task that fails" T-LABEL
    s" build" FS:MAKE-DIRS
    0 ERR-WANT-U !
-   2 WS:START
+   2 SIZED WS:START
    ERR-PATH$ STDERR:CAPTURE
    [: FAULTING ;] [: AIO-FILL:UNFILL STDERR:;CAPTURE ;] finally
    [: WS:STOP ;] catch 0 T=
@@ -1727,7 +1756,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ queued.
 : WRAP-CASE ( -- )
    s" a slot whose generation wraps" T-LABEL
-   1 WS:START
+   1 SIZED WS:START
    0 WS-TEST:LAST-GEN
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    conn TCP4:CLOSE DROP-STATUS
@@ -2092,8 +2121,9 @@ public
    AIO:START
    INSTALL-ROUTES
    LOOPBACK 0 WORKERS IDLE-MS HTTP:START
-   CROWD WS:START
+   CROWD SIZED WS:START
    CASES
+   CROWD SIZED RESTART
    STOP-CASE STALE-CASE IDLE-STOP-CASE CLOSING-STOP-CASE
    SHRINK-CASE STRAGGLER-CASE STOP-TWICE-CASE START-RACE-CASE HANDLER-STOP-CASE
    BLOCKED-STOP-CASE BRIEF-STOP-CASE

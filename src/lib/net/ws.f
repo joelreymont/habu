@@ -7,7 +7,7 @@ split-str
 \ Every handler call runs on a request worker (HTTP:SUBMIT), one at a time for
 \ each socket, and carries the value ACCEPT was given; `opened` comes first, so
 \ whatever the handler does there precedes every message. A peer gone without
-\ a word is found by ping (PING-MS). STOP waits for handler calls at most
+\ a word is found by ping (config). STOP waits for handler calls at most
 \ GOODBYE-MS and STOP-MARGIN-MS: a call it leaves running retires its own slot
 \ as it ends, and START is E-WS-STATE until then.
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
@@ -63,9 +63,25 @@ ENUM accepted
 
 $100000 constant MESSAGE-MAX
 
-\ How long a peer may take no byte of a waiting queue, or leave this end's
-\ close unanswered, before its socket closes under 1006.
-5000 constant STALL-MS
+\ How a WS run is sized and bounded; WS:START reads it once.
+\ sockets bounds open sockets (past it, 503); each maps REGION-BYTES, queues
+\ up to QUEUE-MAX and costs one AIO record, its poll, beside the task's two,
+\ the wake's and the timer's. Size it from memory and descriptors, under
+\ AIO's ceiling (SERVE).
+\ An open socket from which no byte has arrived for ping ms is pinged, and
+\ lost under 1006 once pong ms more pass with none, counted from when the
+\ ping left the queue for the kernel. The count runs only while its read is
+\ armed: bytes sent while a handler call runs are not read until the call
+\ ends, so that time says nothing of the peer. Bytes written say nothing of
+\ it either, since a vanished peer's kernel buffer still takes them.
+\ stall is how many ms a peer may take no byte of a waiting queue, or leave
+\ this end's close unanswered, before its socket closes under 1006.
+STRUCTURE config DERIVE addr
+   FIELD sockets n
+   FIELD ping ms
+   FIELD pong ms
+   FIELD stall ms
+;STRUCTURE
 
 private
 
@@ -120,14 +136,11 @@ $FFFFFFFF constant GEN-MASK
 $C8 constant GOODBYE-MS           \ how long a stop waits for the 1001 frames to be written
 $C8 constant STOP-MARGIN-MS       \ scheduling slack over GOODBYE-MS
 
-\ An open socket from which no byte has arrived for PING-MS is pinged, and
-\ lost under 1006 once PONG-MS more pass with none, counted from when the
-\ ping left the queue for the kernel. The count runs only while its read is
-\ armed: bytes sent while a handler call runs are not read until the call
-\ ends, so that time says nothing of the peer. Bytes written say nothing of it
-\ either, since a vanished peer's kernel buffer still takes them.
-30000 constant PING-MS
-10000 constant PONG-MS
+\ The run's config's ping, pong and stall in ns, set by SET-UP before its
+\ task starts.
+variable PING-NS
+variable PONG-NS
+variable STALL-NS
 $100000 constant TASK-STACK
 $18 constant NONCE-CHARS          \ sixteen bytes in base64
 $10 constant NONCE-BYTES
@@ -175,7 +188,7 @@ DYNAMIC-BUFFER OUT-AT n               \ its first byte not yet written
 DYNAMIC-BUFFER OUT-U n                \ its bytes queued
 DYNAMIC-BUFFER SINCE n                \ when the queue last moved, or was first filled
 DYNAMIC-BUFFER CLOSE-BY n             \ when a CLOSE gives up on the peer's answer
-DYNAMIC-BUFFER HEARD n                \ when PING-MS began: bytes read or a call ended
+DYNAMIC-BUFFER HEARD n                \ when the quiet spell began: bytes read or a call ended
 DYNAMIC-BUFFER PINGED pinging         \ where that spell's ping is
 DYNAMIC-BUFFER GEN n                  \ retirements
 DYNAMIC-BUFFER PHASE n
@@ -460,7 +473,7 @@ RUN-IDLE RUN !
    phase PHASE-CLOSED = if false exit then
    after PHASE-CLOSING = if
       phase PHASE-OPEN <> if false exit then
-      mono-ns STALL-MS NS-PER-MS * + idx CLOSE-BY !
+      mono-ns STALL-NS @ + idx CLOSE-BY !
       PHASE-CLOSING idx PHASE ! false exit
    then
    code idx STATUS !
@@ -512,7 +525,7 @@ RUN-IDLE RUN !
 
 \ Under LOCK.
 : GIVE-UP? ( n -- bool ) {: idx:n :}
-   idx QUEUED 0 > mono-ns idx SINCE @ - STALL-MS NS-PER-MS * >= and if true exit then
+   idx QUEUED 0 > mono-ns idx SINCE @ - STALL-NS @ >= and if true exit then
    idx PHASE @ PHASE-CLOSING = mono-ns idx CLOSE-BY @ >= and if true exit then
    STOP-AT @ 0 <> mono-ns STOP-AT @ >= and ;
 
@@ -521,7 +534,7 @@ RUN-IDLE RUN !
 \ Under LOCK.
 : DUE ( n -- n ) {: idx:n :}
    0
-   idx QUEUED 0 > if drop idx SINCE @ STALL-MS NS-PER-MS * + then
+   idx QUEUED 0 > if drop idx SINCE @ STALL-NS @ + then
    idx PHASE @ PHASE-CLOSING = if
       idx CLOSE-BY @ over 0= if nip else min then
    then
@@ -544,9 +557,9 @@ RUN-IDLE RUN !
    idx PHASE @ PHASE-OPEN <> if 0 exit then
    idx PINGED @
    MATCH pinging
-      none OF PING-MS NS-PER-MS * idx HEARD @ + ENDOF
+      none OF PING-NS @ idx HEARD @ + ENDOF
       queued OF drop 0 ENDOF
-      sent OF PONG-MS NS-PER-MS * + ENDOF
+      sent OF PONG-NS @ + ENDOF
    ;MATCH ;
 
 
@@ -565,9 +578,10 @@ RUN-IDLE RUN !
    ;MATCH ;
 
 
-\ Under LOCK: an open socket quiet for PING-MS is pinged, once a spell. A ping
-\ behind queued bytes leaves once FLUSH has written them (MOVED); one on an
-\ empty queue goes on the task's next pass, so it counts as left at once.
+\ Under LOCK: an open socket quiet for the run's ping is pinged, once a
+\ spell. A ping behind queued bytes leaves once FLUSH has written them
+\ (MOVED); one on an empty queue goes on the task's next pass, so it counts
+\ as left at once.
 : PROBE ( n -- ) {: idx:n :}
    idx UNPINGED? 0= if exit then
    idx QUIET-DUE PASSED? 0= if exit then
@@ -577,7 +591,8 @@ RUN-IDLE RUN !
    before 0 > if idx QUEUED else 0 then PING-AHEAD idx PINGED ! ;
 
 
-\ Under LOCK: the ping went unanswered for PONG-MS after it left the queue.
+\ Under LOCK: the ping went unanswered for the run's pong after it left the
+\ queue.
 : SILENT? ( n -- bool ) {: idx:n :}
    idx PINGED @
    MATCH pinging
@@ -666,11 +681,11 @@ RUN-IDLE RUN !
    idx ;
 
 
-\ Under LOCK: a closing socket's peer has STALL-MS from the end of a call to
-\ answer, since nothing was read while it ran.
+\ Under LOCK: a closing socket's peer has the run's stall from the end of a
+\ call to answer, since nothing was read while it ran.
 : EXTEND-CLOSE ( n -- ) {: idx:n :}
    idx PHASE @ PHASE-CLOSING <> if exit then
-   mono-ns STALL-MS NS-PER-MS * + idx CLOSE-BY @ max idx CLOSE-BY ! ;
+   mono-ns STALL-NS @ + idx CLOSE-BY @ max idx CLOSE-BY ! ;
 
 
 \ Under LOCK: a message's call ended. Its socket closes under 1011 when the
@@ -1545,11 +1560,14 @@ ENUM course
    true ;
 
 
-\ START's part under LOCK: the tables mapped for n sockets, then the limit and
-\ the stop's state set for the new run.
-: SET-UP ( n -- ) {: n:n :}
+\ START's part under LOCK: the tables mapped for n sockets, then the limit,
+\ the config's bounds and the stop's state set for the new run.
+: SET-UP ( ^config n -- ) {: cfg:^ n:n :}
    n TABLES-RESERVE
    n CAP !
+   cfg WS-CONFIG:PING @ MS>N NS-PER-MS * PING-NS !
+   cfg WS-CONFIG:PONG @ MS>N NS-PER-MS * PONG-NS !
+   cfg WS-CONFIG:STALL @ MS>N NS-PER-MS * STALL-NS !
    0 STOPPING !
    0 STOP-AT !
    0 LEFT ! ;
@@ -1578,32 +1596,36 @@ ENUM course
    [: SERVE ;] WS-TASK TASK:ACTIVATE ;
 
 
-: LAUNCH ( n -- n ) {: n:n :}
+: LAUNCH ( ^config -- ^config ) {: cfg:^ :}
    AIO:RUNNING? 0= if E-AIO-STATE throw then
+   cfg WS-CONFIG:SOCKETS @ {: n:n :}
    n 1 < n SLOT-MASK > or if E-WS-LIMIT throw then
    LOCK TASK:GET
-   n [: SET-UP ;] [: UNLOCK ;] finally
+   cfg n [: SET-UP ;] [: UNLOCK ;] finally
    TASK:SELF 0 STOPPER !
    PIPE-OPEN
    [: ACTIVATE-TASK ;] catch {: code:n :}
    code 0 <> if PIPE-CLOSE code throw then
-   n ;
+   cfg ;
 
 
 public
 
-\ n bounds open sockets (past it, 503); each maps REGION-BYTES, queues up to
-\ QUEUE-MAX and costs one AIO record, its poll, beside the task's two, the
-\ wake's and the timer's. Size n from memory and descriptors, under AIO's
-\ ceiling (SERVE).
+\ Leaves sockets as it is.
+: DEFAULTS ( ^config -- ) {: cfg:^ :}
+   30000 >MS cfg WS-CONFIG:PING !
+   10000 >MS cfg WS-CONFIG:PONG !
+   5000 >MS cfg WS-CONFIG:STALL ! ;
+
+
 \ While WS runs, or while a handler call an earlier STOP left running is
 \ still out, it is E-WS-STATE.
-: START ( n -- ) {: n:n :}
+: START ( ^config -- ) {: cfg:^ :}
    LOCK TASK:GET
    CLAIM-START
    LOCK TASK:RELEASE
    0= if E-WS-STATE throw then
-   n [: LAUNCH ;] catch {: code:n :} drop
+   cfg [: LAUNCH ;] catch {: code:n :} drop
    LOCK TASK:GET
    code SETTLE
    LOCK TASK:RELEASE
@@ -1650,13 +1672,11 @@ public
 \ socket, n and `opened`, then every message and, once, `closed`, short of a
 \ STOP that passes its bound (STOP), each call with n, so whatever the handler
 \ does for `opened`, such as recording the socket under n, precedes every
-\ message. A peer gone without a close is found by ping: an open socket from
-\ which no byte has arrived for 30 s, counted while no handler call runs, is
-\ pinged, and is lost under 1006 when 10 s more pass with none after the ping
-\ has left (PING-MS). A handshake that does not pass is answered
-\ 400, or 426 naming version 13, and one past START's limit, or while WS is
-\ stopping, 503, through the response once the route handler returns, and
-\ `refused` carries that status: no socket exists for it, and n is not kept.
+\ message. A peer gone without a close is found by ping (config). A handshake
+\ that does not pass is answered 400, or 426 naming version 13, and one past
+\ the config's sockets, or while WS is stopping, 503, through the response
+\ once the route handler returns, and `refused` carries that status: no
+\ socket exists for it, and n is not kept.
 \ Origin is the route handler's to check before it accepts. Outside a run or
 \ while START still starts it, it is E-WS-STATE.
 : ACCEPT ( HTTP:request HTTP:response [ socket n message -- ] n -- accepted )
@@ -1688,10 +1708,10 @@ public
 
 \ Starts the closing handshake under that status, from any task: the close
 \ frame is queued, nothing may be sent behind it, and the handler goes on
-\ receiving until the peer's close arrives, or for STALL-MS. A socket already
-\ closing or closed, or gone, is left as it is. A status no frame may carry is
-\ E-WS-CODE, and a close frame behind QUEUE-MAX unwritten bytes loses the
-\ socket and is E-WS-CLOSED.
+\ receiving until the peer's close arrives, or for the config's stall. A
+\ socket already closing or closed, or gone, is left as it is. A status no
+\ frame may carry is E-WS-CODE, and a close frame behind QUEUE-MAX unwritten
+\ bytes loses the socket and is E-WS-CLOSED.
 : CLOSE ( socket n -- ) {: sock code:n :}
    code WIRE-STATUS? 0= if E-WS-CODE throw then
    sock SOCKET>N {: h:n :}
