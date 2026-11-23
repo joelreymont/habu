@@ -98,6 +98,17 @@ STRUCTURE turn DERIVE addr FIELD id n FIELD step n ;STRUCTURE
    v 0 VEC:RESIZE  v VEC:COUNT 0 T=
    v VEC:DELETE ;
 
+: EXTENDED ( ^ALLOC:allocator -- )
+   {: al:^ :}
+   s" VEC:EXTEND answers a span over the n new elements, zeroed" T-LABEL
+   al 2 [type] n VEC:NEW {: v:^ :}
+   1 v 0 VEC:AT !  2 v 1 VEC:AT !
+   v 3 VEC:EXTEND {: s :}
+   v VEC:COUNT 5 T=  s SPAN:LEN 3 cells T=
+   3 0 ?do s i SPAN:CELL@ 0 T= loop
+   9 s 0 SPAN:CELL!  v 2 VEC:AT @ 9 T=  v 1 VEC:AT @ 2 T=
+   v VEC:DELETE ;
+
 : SPANS ( ^ALLOC:allocator -- )
    {: al:^ :}
    s" VEC:SPAN covers the elements in place" T-LABEL
@@ -261,7 +272,7 @@ public
    ARENA:NEW {: a:^ :}
    a ARENA:ALLOCATOR {: al:^ :}
    al CELLS-N  al CELLS-R  al RECORDS  al EMPTY
-   al GROWS  al PUSH-TURNS  al ENSURED  al RESIZED
+   al GROWS  al PUSH-TURNS  al ENSURED  al RESIZED  al EXTENDED
    al SPANS  al BAD-COUNTS  DELETE-NULL
    DELETES  REFUSED  REFUSED-GROWTH  RESERVED  OUTSIDE-APPEND  LAST-APPEND  TRIMMED
    AMORTIZED

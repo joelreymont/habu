@@ -130,6 +130,14 @@ public
    {: v:^ :}
    v VECTOR-DATA @ >ELEM  v VECTOR-COUNT @ v VECTOR-WIDTH @ *  SPAN:MAKE ;
 
+\ COUNT grown by n, answering the span of the n new elements, which are
+\ zero; the block may move, as ENSURE's does.
+: EXTEND ( ^vector<t> n -- SPAN:span<t> )
+   {: v:^ k:n :}
+   v VECTOR-COUNT @ {: old:n :}
+   v old k + ENSURE
+   v SPAN old v VECTOR-WIDTH @ * SPAN:SKIP ;
+
 \ The elements the block holds.
 : CAP ( ^vector<t> -- n ) VECTOR-ROOM @ ;
 

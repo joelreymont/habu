@@ -858,14 +858,6 @@ ENUM grant
 
 private
 
-\ The vector's count grown by n, the span of the new bytes, which are zero; the
-\ block may move.
-: GROWN ( ^VEC:vector<u8> n -- SPAN:span<u8> )
-   {: v:^ k:n :}
-   v VEC:COUNT {: old:n :}
-   v old k + VEC:ENSURE
-   v VEC:SPAN old SPAN:SKIP ;
-
 \ The value must not lie in the vector: each append before it is read may move
 \ the block.
 : PAIR+ ( str str ^VEC:vector<u8> -- )
@@ -874,7 +866,7 @@ private
    k ku buf VEC:APPEND
    [char] = buf VEC:PUSH c!
    v vu URI:FORM-LEN {: n:n :}
-   v vu buf n GROWN URI:FORM-ENCODE drop ;
+   v vu buf n VEC:EXTEND URI:FORM-ENCODE drop ;
 
 : CREDENTIALS+ ( ^VEC:vector<u8> -- )
    {: buf:^ :}
@@ -1058,7 +1050,7 @@ private
 : ISSUED ( n ^VEC:vector<u8> bool -- str str n )
    {: status:n buf:^ renew:bool :}
    buf VEC:COUNT {: u:n :}
-   buf u GROWN {: room :}
+   buf u VEC:EXTEND {: room :}
    buf VEC:SPAN u SPAN:TAKE room renew [: PARSED ;] PARSING
    {: got:n secs:n kept:n :}
    got 0< if status s" an access_token string" LACKS then

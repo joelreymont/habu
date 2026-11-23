@@ -150,14 +150,6 @@ MEM-MAX-CELLS MEM-CELL-BYTES * constant JW-MAX-N
    v used need + VEC:RESERVE
    w ;
 
-\ Extend the output by n bytes JW-ROOM has made room for and answer the span
-\ over them; it is valid until the next write.
-: JW-TAKE ( ^writer n -- SPAN:span<u8> ) {: w n:n :}
-   w JW-OUT {: v:^ :}
-   v VEC:COUNT {: used:n :}
-   v used n + VEC:RESIZE
-   v VEC:SPAN used SPAN:SKIP ;
-
 : JW-C ( ^writer n -- ^writer ) {: w c:n :}
    c w JW-OUT VEC:PUSH c!
    w ;
@@ -172,7 +164,7 @@ MEM-MAX-CELLS MEM-CELL-BYTES * constant JW-MAX-N
 : JW-BREAK-AT ( ^writer n n -- ^writer ) {: w count:n brk:n :}
    w count brk JW-SIZE+ JW-ROOM drop
    brk 0= if w exit then
-   w brk JW-TAKE {: s :}
+   w JW-OUT brk VEC:EXTEND {: s :}
    JW-SP s SPAN:FILL
    JW-LF s 0 SPAN:U8!
    w ;
@@ -271,7 +263,7 @@ public
 : WRITE-RAW ( ^writer str -- ^writer ) {: w a:^ u:n :}
    a u JW-SPAN
    w a u JW-ALIAS {: off:n :}
-   w u JW-TOKEN u JW-TAKE {: s :}
+   w u JW-TOKEN JW-OUT u VEC:EXTEND {: s :}
    w a u off JW-REBASE s SPAN:COPY
    w ;
 
@@ -428,7 +420,7 @@ private
    w src u JW-BODY-N {: body:n :}
    body delims JW-SIZE+ {: width:n :}
    w width sep JW-SIZE+ quoted if JW-TOKEN else JW-ROOM then drop
-   w width sep + JW-TAKE {: s :}
+   w JW-OUT width sep + VEC:EXTEND {: s :}
    quoted if
       JW-DQ s 0 SPAN:U8!
       JW-DQ s width 1- SPAN:U8!

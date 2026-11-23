@@ -1758,15 +1758,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : BUF+ ( str ^n -- ) {: a:^ u:n buf:^ :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
 : VEC$ ( ^VEC:vector<u8> -- str ) VEC:SPAN SPAN:$ ;
 
-\ The vector's count grown by n, the span of the new bytes, which are zero; the
-\ block may move.
-: GROWN ( ^VEC:vector<u8> n -- SPAN:span<u8> )
-   {: v:^ k:n :}
-   v VEC:COUNT {: old:n :}
-   v old k + VEC:ENSURE
-   v VEC:SPAN old SPAN:SKIP ;
-
-
 \ The first free row, else -1; under LOCK.
 : FREE-ROW ( -- n )
    ROW-COUNT @ 0 ?do
@@ -2016,7 +2007,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    s" Mcp-Name: " v VEC:APPEND
    name nu PLAIN-NAME? if name nu v VEC:APPEND else
       s" =?base64?" v VEC:APPEND
-      name nu v nu 2 + 3 / 4 * GROWN BASE64:ENCODE drop
+      name nu v nu 2 + 3 / 4 * VEC:EXTEND BASE64:ENCODE drop
       s" ?=" v VEC:APPEND
    then
    v VEC$ ;
