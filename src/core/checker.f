@@ -16453,7 +16453,12 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 : TYPE-MARK-NAME$ ( str -- str ) s" unresolved nominal type " 2swap MARK-NAME$ ;
 
 \ Marks NAME in the wordlist a definition of it would land in.
-: CHECKER-UNSEEN-NAME ( str -- ) UNSEEN-NAME$ CHECKER-RECORD-SYM drop ;
+: CHECKER-UNSEEN-NAME ( str -- ) {: a:^ u:n :}
+   a u CHECKER-QUALIFIED? IF
+      CHECKER-QPKG$ CHECKER-QTAIL$ UNSEEN-NAME$
+      CHECKER-PUBLIC-SYM drop EXIT
+   THEN
+   a u UNSEEN-NAME$ CHECKER-RECORD-SYM drop ;
 
 \ A missing nominal leaves no allocation or row; for a layout buffer (lay), a
 \ bare or pointed-to xt or another unstorable type is STG-LAYOUT-TYPE.

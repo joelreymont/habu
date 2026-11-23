@@ -976,6 +976,8 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
    s" : SCU5 ( -- ) SCNOPE5 ;" SC-LINE
    s" : SCU6 ( -- ) SCMK drop ;" SC-LINE
    s" ;package" SC-LINE
+   s" : PU:SCQ ( -- pc:hd ) 1 2 3 PC-HD:MAKE ;" SC-LINE
+   s" : SCU9 ( -- ) PU:SCQ drop ;" SC-LINE
    s" 1 2 3 PC-HD:MAKE SCHOLDS schx" SC-LINE
    s" : SCU8 ( -- ^u8 ) schx ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
@@ -1021,7 +1023,7 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
    s" :13:29" s" unknown type" SC-RECORD
 \ A string literal leaves K's value unstated, a colon word IDH's and IDE's: the
 \ uses of hd, rpsdg, rpsdw and peop's private PEOP-MAKE are deferred.
-SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 19 T=
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 21 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the run because only the run defines its value"
@@ -1061,9 +1063,9 @@ s" error[E-UNDEFINED]: cannot find word `SCNOPE5`"
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `SCMK` on and leaves it to the run"
    s" :57:15" s" not checked from here" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schx` on and leaves it to the run"
-   s" :60:19" s" not checked from here" SC-RECORD
+   s" :62:19" s" not checked from here" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :62:1" s" missing field name" SC-RECORD
+   s" :64:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 
