@@ -1194,6 +1194,19 @@ undefine include
       SB-APPEND
    70 ASSERT-REJECTED ;
 
+\ A TRUSTED: body's `'` gets the record a checked body's `'` gets.
+: TEST-TRUSTED-TICK ( -- )
+   s" a TRUSTED: body using ' names it a top-level keyword" T-LABEL
+   BODY$ S\" TRUSTED: LRD-TT ( n -- xt ) ' nosuchword ;\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET
+   s" error[E-UNDEFINED]: `'` is a top-level keyword, not a word" SB-APPEND
+   S\" \n --> " SB-APPEND  BODY$ SB-APPEND
+   S\" :1:29\n  |\n1 | TRUSTED: LRD-TT ( n -- xt ) ' nosuchword ;\n" SB-APPEND
+   S\"   |                             ^ keyword, not a word\n" SB-APPEND
+   S\"   = help: write `[']` in a body\n\n" SB-APPEND
+   70 ASSERT-REJECTED ;
+
 \ Under --all-errors the scan goes on past the keyword, but not into its operand.
 : TEST-BODY-OPERAND ( -- )
    s" tools/check.f --all-errors reads past a top-level [char]'s operand" T-LABEL
@@ -1519,6 +1532,7 @@ variable LONG-U
    TEST-UNDEF-HOLDER
    TEST-BODY-ONLY
    TEST-TOP-LOCALS-END
+   TEST-TRUSTED-TICK
    TEST-BODY-OPERAND
    TEST-KEYWORD-OPERAND
    TEST-DEFERRED

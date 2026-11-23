@@ -1865,15 +1865,18 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 : TOK-MESSAGE ( str -- ) {: a:^ u:n :}
    TOK-SPAN  a u EMIT-STR ;
 
-: UNDEF-MESSAGE ( -- )
-   PIN-TOK$ LOCALS-END? IF s"  closes no locals list" TOK-MESSAGE EXIT THEN
-   PIN-TOK$ TOP-KEYWORD?  PIN-TOK$ TOP-PARSER?  or IF
-      s"  is a top-level keyword, not a word" TOK-MESSAGE EXIT
+: UNDEF-MESSAGE ( str -- ) {: t:^ tu:n :}
+   t tu LOCALS-END? IF
+      t tu CODE-SPAN  s"  closes no locals list" EMIT-STR EXIT
    THEN
-   PIN-TOK$ STATE-SWITCH? IF
-      s"  switches the compiler's state, which a checked body cannot do" TOK-MESSAGE EXIT
+   t tu TOP-KEYWORD?  t tu TOP-PARSER?  or IF
+      t tu CODE-SPAN  s"  is a top-level keyword, not a word" EMIT-STR EXIT
    THEN
-   s" cannot find word " EMIT-STR  TOK-SPAN ;
+   t tu STATE-SWITCH? IF
+      t tu CODE-SPAN
+      s"  switches the compiler's state, which a checked body cannot do" EMIT-STR EXIT
+   THEN
+   s" cannot find word " EMIT-STR  t tu CODE-SPAN ;
 
 \ The message for keyword t tu named where a word is needed.
 : KEYWORD-MESSAGE ( str -- )
@@ -1908,7 +1911,7 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
 : DIAG-MESSAGE ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-MESSAGE ;AT-PIN endof
-      RF-UNDEF of UNDEF-MESSAGE endof
+      RF-UNDEF of PIN-TOK$ UNDEF-MESSAGE endof
       RF-KEYWORD of PIN-TOK$ KEYWORD-MESSAGE endof
       RF-QUAL of s" malformed qualified name " EMIT-STR  TOK-SPAN endof
       RF-IMM of PIN-TOK$ IMM-MESSAGE endof
@@ -1946,16 +1949,16 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
    SGBAD-RETURN? IF s" return-stack effect" EMIT-STR EXIT THEN
    s" here" EMIT-STR ;
 
-: UNDEF-LABEL ( -- )
-   PIN-TOK$ LOCALS-END? IF s" no `{:` open" EMIT-STR EXIT THEN
-   PIN-TOK$ TOP-KEYWORD?  PIN-TOK$ TOP-PARSER?  or IF s" keyword, not a word" EMIT-STR EXIT THEN
-   PIN-TOK$ STATE-SWITCH? IF s" state switch" EMIT-STR EXIT THEN
+: UNDEF-LABEL ( str -- ) {: t:^ tu:n :}
+   t tu LOCALS-END? IF s" no `{:` open" EMIT-STR EXIT THEN
+   t tu TOP-KEYWORD?  t tu TOP-PARSER?  or IF s" keyword, not a word" EMIT-STR EXIT THEN
+   t tu STATE-SWITCH? IF s" state switch" EMIT-STR EXIT THEN
    s" not found" EMIT-STR ;
 
 : DIAG-LABEL ( -- )
    DKIND case
       RF-MISMATCH of AT-PIN MISMATCH-LABEL ;AT-PIN endof
-      RF-UNDEF of UNDEF-LABEL endof
+      RF-UNDEF of PIN-TOK$ UNDEF-LABEL endof
       RF-KEYWORD of s" not a word" EMIT-STR endof
       RF-QUAL of s" more than one `:`" EMIT-STR endof
       RF-IMM of s" unmodeled immediate" EMIT-STR endof
@@ -2146,10 +2149,22 @@ PTR-VARIABLE HOLDER-FIRST
 : QUALIFIED ( str -- ) {: t:^ tu:n :}
    96 EMIT1  HOLDER-FIRST @ CK-REC-NAME$ EMIT-STR
    58 EMIT1  t tu EMIT-STR  96 EMIT1 ;
-\ The help for t tu, which nothing defines, used in the body of d du, empty
-\ outside one: a body's own name is found only after its `;`. Names fold case.
+\ The help for t tu, which nothing defines and which closes no locals list,
+\ used in the body of d du, empty outside one: a body's own name is found only
+\ after its `;`. Names fold case.
 : UNDEF-HELP ( str str -- )
    {: t:^ tu:n d:^ du:n :}
+   t tu TOP-PARSER? IF
+      s" write `[" EMIT-STR  t tu EMIT-STR  s" ]` in a body" EMIT-STR EXIT
+   THEN
+   t tu TOP-KEYWORD? IF
+      s" write " EMIT-STR  t tu CODE-SPAN  s"  at top level, outside any definition"
+      EMIT-STR EXIT
+   THEN
+   t tu STATE-SWITCH? IF
+      s" compute the value at top level before the definition and name it with `constant`"
+      EMIT-STR EXIT
+   THEN
    t tu d du CORE-STR=CI IF
       96 EMIT1  t tu EMIT-STR
       s" ` is the word this definition defines: " EMIT-STR
@@ -2173,17 +2188,15 @@ PTR-VARIABLE HOLDER-FIRST
 : UNDEFINED-RECORD ( str str -- )
    {: t:^ tu:n d:^ du:n :}
    s" E-UNDEFINED" REJECTION:OPEN
+   t tu UNDEF-MESSAGE
+   t tu REJECTION:AT  t tu UNDEF-LABEL
+   REJECTION:HELP
    t tu LOCALS-END? IF
-      t tu CODE-SPAN  s"  closes no locals list" EMIT-STR
-      t tu REJECTION:AT  s" no `{:` open" EMIT-STR
-      REJECTION:HELP
       du 0= IF
          s" delete it: a locals list is written only inside a definition" EMIT-STR
       ELSE LOCALS-END-HELP THEN EXIT
    THEN
-   s" cannot find word `" EMIT-STR  t tu EMIT-STR  96 EMIT1
-   t tu REJECTION:AT  s" not found" EMIT-STR
-   REJECTION:HELP  t tu d du UNDEF-HELP ;
+   t tu d du UNDEF-HELP ;
 
 \ Body keyword t tu run outside a definition; the caller stops or keeps it.
 : BODY-ONLY-RECORD ( str -- )
@@ -2360,17 +2373,6 @@ PTR-VARIABLE HOLDER-FIRST
    k RF-MISMATCH = IF DEND @ 0 <> IF END-HELP ELSE TAKES-HELP THEN EXIT THEN
    k RF-UNDEF = IF
       PIN-TOK$ LOCALS-END? IF LOCALS-END-HELP EXIT THEN
-      PIN-TOK$ TOP-PARSER? IF
-         s" write `[" EMIT-STR  PIN-TOK$ EMIT-STR  s" ]` in a body" EMIT-STR EXIT
-      THEN
-      PIN-TOK$ TOP-KEYWORD? IF
-         s" write " EMIT-STR  PIN-TOK$ CODE-SPAN  s"  at top level, outside any definition"
-         EMIT-STR EXIT
-      THEN
-      PIN-TOK$ STATE-SWITCH? IF
-         s" compute the value at top level before the definition and name it with `constant`"
-         EMIT-STR EXIT
-      THEN
       PIN-TOK$
       \ Only a call in the open body may become `recurse`: not a top-level step,
       \ a tick (no xt) or a call in a quotation (`recurse` calls the quotation).
