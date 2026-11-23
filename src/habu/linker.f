@@ -6017,10 +6017,9 @@ public
    LOADER$ nip 0= if SOURCE-EVENT:COUNT EVENTS-LOG then
    INPUTS @ BYTES$ ;
 
-\ The false beneath the catch keeps the stack's shape.
 : HOLD-CAUGHT ( str -- bool )
    {: p:^ pu:n :}
-   false [: drop p pu HOLD-ALL ;] catch {: ok rc:n :}
+   [: p pu HOLD-ALL ;] catch {: ok rc:n :}
    rc 0= if ok exit then
    rc E-PATH-RANGE <> if rc throw then
    false ;

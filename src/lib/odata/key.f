@@ -180,7 +180,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 \ A base64 failure in the value is E-KEY; any other code throws on.
 : DECODED-LEN ( str SPAN:span<u8> [ str SPAN:span<u8> -- n ] -- n )
    {: a:^ u:n s dec :}
-   0 [: drop a u s dec execute ;] catch {: len code:n :}
+   [: a u s dec execute ;] catch {: len code:n :}
    code 0= if len exit then
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and if E-KEY throw then
    code throw ;

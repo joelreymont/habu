@@ -223,7 +223,7 @@ public
    wu 0= if NULL-PTR 0 else a u then {: p:^ pu:n :}
    wu 0= if NULL-PTR 0 else w wu a u LOADER-PLACE$ then {: t:^ tu:n :}
    w wu p pu a u LOADER-PATH-CHECK
-   a u INCLUDE-FALSE [: drop t tu q execute ;] catch {: rc:n :}
+   [: a u t tu q execute ;] catch {: rc:n :}
    rc E-PATH-RANGE = if w wu p pu E-PATH-RANGE 0 INCLUDE-TRUE LOADER-PATH-STOP then
    rc 0= if exit then
    rc throw ;
@@ -2940,7 +2940,7 @@ public
    POLICY-ROOT-U @ {: old-u:n :}
    POLICY-ROOT-BUF old-u MAP-COPY {: old:^ :}
    s" SOURCE-ROOT:POLICY-WITH-ROOT" {: w:^ wu:n :}
-   NULL$ 0 [: 2drop drop w wu path u ROOT-ENTER ;] catch
+   [: w wu path u ROOT-ENTER ;] catch
    {: p pu pbase rc:n :}
    rc 0= if p pu pbase else old old-u POLICY-ROOT-RELEASE rc throw then
    {: prior:^ prioru:n prior-base:n :}

@@ -2915,7 +2915,7 @@ variable STG-TYPE-U
       mode CHECKER-PACKAGE-GLOBAL <> IF
          mode CHECKER-PACKAGE-PUBLIC = {: pub:bool :}
          pub IF CHECKER-PRIVATE ELSE CHECKER-PUBLIC THEN
-         true [: drop name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
+         [: name nameu at ARENA-WORDS-FREE? ;] catch {: rc:n :}
          pub IF CHECKER-PUBLIC ELSE CHECKER-PRIVATE THEN
          rc 0 <> IF rc throw THEN
          0= IF EXIT THEN
@@ -3262,7 +3262,7 @@ private
    name nameu at nameu SEALED-OPEN
    name nameu TOP-BINDING drop PRS-FIND {: from:n :}
    name nameu at nameu ARM-UNSEALED   \ the checker spells the record by the tail it keeps
-   false [: drop name nameu at EXPORT-CHECKED? ;] catch {: rc:n :}
+   [: name nameu at EXPORT-CHECKED? ;] catch {: rc:n :}
    DISARM
    rc 0<> IF rc throw THEN
    0= IF EXIT THEN

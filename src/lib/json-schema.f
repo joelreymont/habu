@@ -913,7 +913,7 @@ $40 constant INTEGER-BIT
    pl TEXT$ {: v:^ vu:n :}
    nd NODE-VALUES @ SPAN:$ {: e:^ eu:n :}
    pl PLACE-WALK @ WALK-VALUES {: c:^ :}
-   false [: drop v vu e eu c ELEMENT? ;] catch {: in code:n :}
+   [: v vu e eu c ELEMENT? ;] catch {: in code:n :}
    code 0= if
       in if true exit then
       nd pl UNLISTED false exit

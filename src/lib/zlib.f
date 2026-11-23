@@ -198,14 +198,14 @@ FUNCTION: C-BOUND deflateBound ( ^u8 n -- n ) ;FUNCTION
 
 : DEFLATE-SESSION ( n -- n )
    DEFLATE-OPEN
-   0 [: drop DEFLATE-RUN ;] catch {: rc:n :}
+   [: DEFLATE-RUN ;] catch {: rc:n :}
    STREAM BYTE-VIEW C-DEFLATE-END {: status:n :}
    rc 0<> if rc throw then
    status END-CHECK ;
 
 : INFLATE-SESSION ( n -- n )
    INFLATE-OPEN
-   0 [: drop INFLATE-RUN ;] catch {: rc:n :}
+   [: INFLATE-RUN ;] catch {: rc:n :}
    STREAM BYTE-VIEW C-INFLATE-END {: status:n :}
    rc 0<> if rc throw then
    status END-CHECK ;

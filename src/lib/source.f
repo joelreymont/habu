@@ -94,12 +94,11 @@ private
    fd 0 < if E-FS-OPEN throw then
    fd ;
 
-\ The file at a path, read as SOURCE-READ-LOOP reads; stack-preserving under
-\ `catch`, the count replacing the zero, so its descriptor is always closed.
+\ The file at a path, read as SOURCE-READ-LOOP reads.
 : SOURCE-READ-PATH ( str n n [ n -- ^u8 ] -- n )
    {: path:^ pathu:n first:n cap:n room :}
    path pathu SOURCE-OPEN {: fd:n :}
-   0 [: drop fd first cap room SOURCE-READ-LOOP ;] catch {: rc:n :}
+   [: fd first cap room SOURCE-READ-LOOP ;] catch {: rc:n :}
    fd close
    rc 0<> if rc throw then ;
 

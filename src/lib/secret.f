@@ -159,7 +159,7 @@ public
    {: service:^ su:n account:^ au:n dest:^ :}
    service su INPUT account au INPUT
    dest VEC:COUNT {: held:n :}
-   false [: drop service su account au dest STORE-READ @ execute ;] catch
+   [: service su account au dest STORE-READ @ execute ;] catch
    {: found code:n :}
    code 0= if found if true exit then then
    dest held VEC:RESIZE

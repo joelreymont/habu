@@ -711,7 +711,7 @@ public
    na nu ba bu DECL-REPLAY:RP-CLAIM
    ka ku DECL-REJECT:OPEN
    YES OUTCOME-NAMES !
-   0 [: drop ta tu body DRIVE ;] catch {: code rc:n :}
+   [: ta tu body DRIVE ;] catch {: code rc:n :}
    0 OUTCOME-NAMES !
    DECL-REPLAY:RP-RELEASE
    rc 0= IF code REPLAY-END EXIT THEN

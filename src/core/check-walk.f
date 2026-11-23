@@ -1994,7 +1994,7 @@ global
    CHECK-CANDIDATE-START
    -1 CHK-PROBE !
    -1 CUR-DONE !                       \ a candidate's text is not the cursor's
-   0 [: drop a u CHECK-WINDOWED ;] catch {: v rc:n :}
+   [: a u CHECK-WINDOWED ;] catch {: v rc:n :}
    arm DISARM-TEXT
    done0 CUR-DONE !
    gap0 CUR-GAP !
@@ -2051,7 +2051,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    -1 CUR-DONE !                    \ a prefix's text is not the cursor's
    -1 OPERANDS-SPENT !              \ the engine's body capture has spent parser operands
    -1 CHECKER-PREFIX-ACTIVE !
-   RES-FALSE [: drop a u SCAN ;] catch {: answer rc:n :}
+   [: a u SCAN ;] catch {: answer rc:n :}
    0 CHECKER-PREFIX-ACTIVE !
    done0 CUR-DONE !
    gap0 CUR-GAP !
@@ -2072,7 +2072,7 @@ global
 : CHECK-QUIET-CANDIDATE! ( str -- n ) {: a:^ u:n :}
    WRITE-WINDOW-CK
    1 REJECTION:QUIET +!
-   0 [: drop a u CHECK-CANDIDATE! ;] catch {: v rc:n :}
+   [: a u CHECK-CANDIDATE! ;] catch {: v rc:n :}
    -1 REJECTION:QUIET +!
    rc 0= IF v EXIT THEN
    rc throw ;
@@ -2104,7 +2104,7 @@ global
    PU-N @ {: pu0:n :}
    CUR-TAKE {: took:bool :}
    a u ARM-TEXT {: arm:bool :}
-   0 [: drop a u CHECK-WINDOWED ;] catch {: v rc:n :}
+   [: a u CHECK-WINDOWED ;] catch {: v rc:n :}
    arm DISARM-TEXT
    -1 TORDER-DEPTH +!
    TORDER-SCAN-UNKNOWN @ {: unknown:n :}
@@ -2542,7 +2542,7 @@ PTR-VARIABLE SRC-DOES-SA   variable SRC-DOES-SU   variable SRC-DOES-VERDICT
 : CHECKER-VERIFY-TOP ( str bool -- n )
    {: a:^ u:n runs:bool :}
    WRITE-WINDOW-CK
-   0 [: drop a u runs TOP-ANSWER ;] catch {: v rc:n :}
+   [: a u runs TOP-ANSWER ;] catch {: v rc:n :}
    rc 0= IF v EXIT THEN
    rc DEF-RESUMES? 0= IF rc throw THEN  DEF-RESUMED  0 ;
 

@@ -906,7 +906,7 @@ DYNAMIC-BUFFER SD-DEC u8
 \ past the cap.
 : SD-BODY-PATH? ( -- bool )
    SD-PATH$ LOADER:PATH-FAULT drop 0<> if false exit then
-   SD-PATH$ false [: drop SOURCE-ROOT:RESOLVE ;] catch {: rc:n :}
+   SD-PATH$ [: SOURCE-ROOT:RESOLVE ;] catch {: rc:n :}
    drop 2drop
    rc 0= if true exit then
    rc E-PATH-RANGE <> if rc throw then

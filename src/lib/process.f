@@ -1065,7 +1065,7 @@ public
 \ Runs a capture's spawn: a throw out of it ends the capture with its code, a
 \ negative pid with E-PROC-SPAWN; a pid becomes the child, its pipe ends closed.
 : CAPTURE-ADOPT-SPAWN ( [ -- pid ] -- ) {: spawn :}
-   0 >PID [: drop spawn execute ;] catch {: pid code:n :}
+   [: spawn execute ;] catch {: pid code:n :}
    code 0<> if code THROW-CAPTURE then
    pid PID>N 0 < if E-PROC-SPAWN THROW-CAPTURE then
    pid CAPTURE-PID!

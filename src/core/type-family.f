@@ -3872,7 +3872,7 @@ variable TFQ-COLON
    THEN
    na nu TF-HIDDEN? IF 0 SR-ABSENT EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
-   0 RES-FALSE [: 2drop pa pu na nu TFAM-RESOLVE ;] catch {: id flag rc:n :}
+   [: pa pu na nu TFAM-RESOLVE ;] catch {: id flag rc:n :}
    rc 0= IF id flag IF SR-FOUND ELSE SR-ABSENT THEN EXIT THEN
    rc E-TFAM-AMBIG = IF 0 SR-AMBIG EXIT THEN
    rc throw ;

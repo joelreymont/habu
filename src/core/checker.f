@@ -18131,7 +18131,7 @@ private
 \ Only that expected selection refusal means the saved link is stale.
 : RECORD-LINK-MATCH? ( n n -- bool )
    {: ord:n saved:n :}
-   ord 0 [: drop RECORD-LINK-SELECT ;] catch
+   [: ord RECORD-LINK-SELECT ;] catch
    dup 0= IF
       drop {: slot:n current:n :}
       slot ord = current saved = and EXIT

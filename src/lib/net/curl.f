@@ -921,7 +921,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 
 : PIECE-BODY ( ^u8 n n n -- n ) {: src:^ size:n count:n data:n :}
    data CURL-N>PTR {: r:^ :}
-   0 [: drop src size count * r PIECE-PUT ;] catch {: code:n :}
+   [: src size count * r PIECE-PUT ;] catch {: code:n :}
    code 0= if exit then
    drop code r R.THROW !
    0 ;
