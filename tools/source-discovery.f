@@ -77,6 +77,10 @@ variable SD-RETIRED                      \ and those it retired
 variable SD-HARVESTING                  \ only the harvest records declarations and rows
 variable SD-FILE-ID
 
+\ SD-SHADOWED's bit for `>str`: once the file defines or retires one, a `>str`
+\ spends the literal before it.
+$200 constant SD-STR-BIT
+
 1 constant SD-R-DECL
 2 constant SD-R-RETIRE
 3 constant SD-R-PARSES
@@ -182,7 +186,8 @@ variable SD-SCOPES
    SD-LAST$ VERIFY:RETIRE-REJECT  E-DISC-RETIRE VERIFY:DISCOVERY-STOP ;
 : SD-DYNAMIC-STOP ( -- )
    E-DISC-DYNAMIC SD-HARVEST-THROW
-   SD-LAST$ VERIFY:DYNAMIC-REJECT  E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP ;
+   SD-LAST$  SD-SHADOWED @ SD-STR-BIT and 0<>  VERIFY:DYNAMIC-REJECT
+   E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP ;
 : SD-OPENER-STOP ( -- )
    E-DISC-OPENER SD-HARVEST-THROW
    SD-LAST$ VERIFY:OPENER-REJECT  E-DISC-OPENER VERIFY:DISCOVERY-STOP ;
@@ -855,10 +860,6 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" provided" STR=CI if SD-K-PROVIDED exit then
    0 ;
 
-\ SD-SHADOWED's bit for `>str`: once the file defines or retires one, a `>str`
-\ spends the literal before it.
-$200 constant SD-STR-BIT
-
 : SD-NAME-BIT ( str -- n ) {: a:^ u:n :}
    a u s" include" STR=CI if $01 exit then
    a u s" included" STR=CI if $02 exit then
@@ -1128,7 +1129,7 @@ $200 constant SD-STR-BIT
       pend SD-PEND !  -1 SD-PEND-STR ! exit
    then
    off len SD-PARSER? if SD-RAW 2drop exit then
-   SD-DEF @ 0= off len SD-TOK$ DEFINER-KEYWORD? and if
+   SD-DEF @ 0= off len SD-TOK$ SOURCE-SYNTAX:DEFINER-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
       noff nu SD-R-DECL-NAME
       noff nu SD-TOK$ SD-SHADOW exit

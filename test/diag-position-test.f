@@ -2041,6 +2041,58 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" code" s" E-UNDEFINED" FIELD=
    0 s" >str" 2 9 22 26 FX-PATH$ CANON$ FX$ AT-IN ;
 
+\ str-dep.f defines STR-DEP, for a `>str` load the check follows.
+: STR-DEP! ( -- )
+   SB-RESET  s" : STR-DEP ( -- ) ;" SB-APPEND LF+
+   s" str-dep.f" FIXTURE! ;
+
+\ Only the walk's declaring forms end a literal at `>str`: a learned
+\ definer's `>str` does not.
+: TEST-STR-MADE ( -- )
+   s" a loader after a learned definer's `>str`" T-LABEL
+   STR-DEP!
+   SB-RESET
+   s" package MQ" SB-APPEND LF+
+   s" : MAKE ( n -- ) create , does> ( -- a ) @ ;" SB-APPEND LF+
+   s" 5 MAKE >str" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s\" s\" str-dep.f\" >str required" SB-APPEND LF+
+   s" STR-DEP" SB-APPEND LF+
+   s" str-made.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT ;
+
+\ The string builder holds a skipped arm of the line given, then a `>str`
+\ load of str-dep.f.
+: STR-ARM! ( str -- ) {: a:^ u:n :}
+   STR-DEP!
+   SB-RESET  s" HB-TARGET-WASM? [if]" SB-APPEND LF+
+   a u SB-APPEND LF+  s" [then]" SB-APPEND LF+
+   s\" s\" str-dep.f\" >str required" SB-APPEND LF+
+   s" STR-DEP" SB-APPEND LF+ ;
+
+\ The walk reads a skipped arm: a name its `:` gives is declared.
+: TEST-STR-ARM ( -- )
+   s" a loader after a skipped arm's `>str`" T-LABEL
+   s\" : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;" STR-ARM!
+   s" str-arm.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-LOADER-FORM" FIELD=
+   0 s" help" s" write the path as a literal: `require path/file.f`" FIELD=
+   0 s" required" 4 20 92 100 FX-PATH$ CANON$ FX$ AT-IN
+   s" a loader after a skipped arm's `required`" T-LABEL
+   s" : required ( str -- ) drop ;" STR-ARM!
+   s" required-arm.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-LOADER-FORM" FIELD=
+   0 s" required" 4 20 76 84 FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ A skipped arm's comment declares nothing.
+: TEST-STR-ARM-COMMENT ( -- )
+   s" a loader after a `>str` in a skipped arm's comment" T-LABEL
+   s\" \\ : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;" STR-ARM!
+   s" str-arm-comment.f" FIXTURE!
+   s" --verify-only" 0 CHECK-EXIT ;
+
 \ A literal's record lasts only the next token of its own text, or the token
 \ after a `>str` right after the literal: a path a loader is given later, in
 \ bytes its copy matches, is not placed at the literal but at the loader where
@@ -3860,6 +3912,9 @@ HB-TARGET-LINUX? 0= [if]
    TEST-STR-SHADOWED
    TEST-STR-TWICE
    TEST-STR-UNDEFINED
+   TEST-STR-MADE
+   TEST-STR-ARM
+   TEST-STR-ARM-COMMENT
    TEST-LITERAL-SPENT
    TEST-NAMED-DIR
    TEST-REQUIRED-DIR

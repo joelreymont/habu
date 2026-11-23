@@ -181,16 +181,6 @@ public
 : PARSING-KEYWORD? ( str -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
 
-\ Keywords only while the engine interprets: in a body `create` is a call and
-\ the others are undefined, so a scanner asks these outside a definition.
-: DEFINER-KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u s" cast:" STR=CI if STR-TRUE exit then
-   a u s" linear:" STR=CI if STR-TRUE exit then
-   a u s" defer" STR=CI if STR-TRUE exit then
-   a u s" create" STR=CI if STR-TRUE exit then
-   a u s" variable" STR=CI if STR-TRUE exit then
-   a u s" constant" STR=CI ;
-
 : PACKAGE-KEYWORD? ( str -- bool ) {: a:^ u:n :}
    a u s" package" STR=CI if STR-TRUE exit then
    a u s" using" STR=CI if STR-TRUE exit then

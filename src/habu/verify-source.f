@@ -887,13 +887,17 @@ public
 : RETIRE-REJECT ( str -- )
    s" loader word used after the file retired it"
    [: s" load files before `undefine` retires " REJECTION:EMIT-STR  TICKED ;] FORM-REJECT ;
-: DYNAMIC-REJECT ( str -- )
-   s" dynamic (non-literal) loader path"
+\ OWN: the file declared or retired a `>str`, which spends the literal, so the
+\ help offers only `require`.
+: DYNAMIC-REJECT ( str bool -- ) {: t:^ tu:n own:bool :}
+   t tu s" dynamic (non-literal) loader path"
    [: 2drop
-      S\" write the path as a literal: `require path/file.f` or `s\" path/file.f\" "
-      REJECTION:EMIT-STR
-      CHECKER-SPLIT-STR @ 0= IF s" >str " REJECTION:EMIT-STR THEN
-      s" required`" REJECTION:EMIT-STR ;]
+      s" write the path as a literal: `require path/file.f`" REJECTION:EMIT-STR
+      own 0= IF
+         S\"  or `s\" path/file.f\" " REJECTION:EMIT-STR
+         CHECKER-SPLIT-STR @ 0= IF s" >str " REJECTION:EMIT-STR THEN
+         s" required`" REJECTION:EMIT-STR
+      THEN ;]
    FORM-REJECT ;
 : OPENER-REJECT ( str -- )
    s" unsupported string opener before a loader word"
@@ -905,11 +909,6 @@ public
       s"  bytes" REJECTION:EMIT-STR ;] FORM-REJECT ;
 private
 
-\ A loader word u bytes long at TOKEN-BYTE with no literal path: its record,
-\ stopped as E-DISC-DYNAMIC.
-: DYNAMIC-STOP ( n -- ) {: u:n :}
-   SOURCE@ TOKEN-BYTE @ + u DYNAMIC-REJECT  E-DISC-DYNAMIC DISCOVERY-STOP ;
-
 \ A loader word's bit in SHADOWED and RETIRED, 0 for any other name: the words
 \ discovery reads as loaders, `script-required` not one.
 : LOADER-BIT ( str -- n ) {: a:^ u:n :}
@@ -920,9 +919,8 @@ private
    a u s" provided" STR=CI IF $10 EXIT THEN
    0 ;
 
-\ The loader words the file being read has declared a word of, and those it has
-\ retired: past either, the walk, which holds no wordlists, cannot tell which
-\ word the spelling names. SHADOWED also holds STR-BIT.
+\ Loader words the file declared or retired by WALK-NAMES's forms: past either,
+\ the walk, holding no wordlists, cannot tell which word a spelling names.
 variable SHADOWED
 variable RETIRED
 
@@ -932,19 +930,18 @@ $20 constant STR-BIT
 : STR-GONE ( str -- )
    s" >str" STR=CI IF STR-BIT SHADOWED @ or SHADOWED ! THEN ;
 
+\ The loader word u bytes long at TOKEN-BYTE has no literal path.
+: DYNAMIC-STOP ( n -- ) {: u:n :}
+   SOURCE@ TOKEN-BYTE @ + u  STR-BIT SHADOWED @ and 0<>  DYNAMIC-REJECT
+   E-DISC-DYNAMIC DISCOVERY-STOP ;
+
 \ The symbol of the newest definition, which an `immediate` marks: 0 from its
 \ name until it is recorded, so one after a refused definition marks nothing.
 \ A definer that can end without DEFINED clears it as it starts.
 variable NEWEST-SYM
 
-: NAME-DECLARED ( str -- ) {: a:^ u:n :}
-   0 NEWEST-SYM !
-   a u LOADER-BIT SHADOWED @ or SHADOWED !
-   a u STR-GONE ;
-
-: NAME-RETIRED ( str -- ) {: a:^ u:n :}
-   a u LOADER-BIT RETIRED @ or RETIRED !
-   a u STR-GONE ;
+: NAME-DECLARED ( -- )
+   0 NEWEST-SYM ! ;
 
 \ A loader form the walk reads, its word u bytes long at TOKEN-BYTE.
 : QUIET-USE ( str -- ) {: a:^ u:n :}
@@ -1070,9 +1067,8 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 : CORE-OP? ( str -- bool )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
 
-\ Whether the token is the engine's `>str` and the file has neither
-\ declared nor retired one: past either, the walk spends the literal before
-\ it.
+\ The engine's `>str` the file has not declared or retired (SHADOWED): past
+\ either, the walk spends the literal before it.
 : ENGINE-STR? ( str -- bool ) {: a:^ u:n :}
    a u s" >str" STR=CI 0= IF false EXIT THEN
    STR-BIT SHADOWED @ and 0<> IF false EXIT THEN
@@ -2236,7 +2232,7 @@ ENGINE-TARGET-INIT
    TOKEN-BYTE @
    {: name:^ nameu:n at:n :}
    STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    -1 SIG-RAW-MODE!
@@ -2251,7 +2247,7 @@ ENGINE-TARGET-INIT
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    STORAGE-KEYWORD name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REJECT-DUPLICATE IF 0 0= EXIT THEN
    name nameu at nameu ARM
@@ -2278,7 +2274,7 @@ ENGINE-TARGET-INIT
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    name nameu TOKEN-BYTE @ TRUST-DEFER-SIGNATURE ;
 
 variable TRUSTED-DOES
@@ -2331,7 +2327,7 @@ variable TRUSTED-DOES
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    s" trusted:" name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REJECT-DUPLICATE IF
       name nameu SIGNATURE-AT 2drop  name nameu false SCAN-TRUSTED-BODY EXIT
@@ -2354,7 +2350,7 @@ variable TRUSTED-DOES
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at REJECT-DUPLICATE IF name nameu SIGNATURE-AT 2drop EXIT THEN
    name nameu SIGNATURE-AT {: sig:^ sigu:n :}
@@ -2369,7 +2365,7 @@ variable TRUSTED-DOES
    NAME-TOKEN {: name:^ nameu:n :}
    nameu 0= IF NAME-STOP THEN
    s" linear:" name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu at NAME-REJECT? IF name nameu SIGNATURE-AT 2drop EXIT THEN
    name nameu SIGNATURE-AT {: sig:^ sigu:n :}
@@ -2395,7 +2391,6 @@ variable TRUSTED-DOES
       name nameu UNSEEN-COVERS? IF  name nameu DW-RENDERED DEFER-AT  EXIT  THEN
       name nameu XREF:UNDEFINE-INDEX drop
    THEN
-   name nameu NAME-RETIRED
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? {: sym:n :}
    sym NEWEST-SYM @ = IF 0 NEWEST-SYM ! THEN
@@ -2736,7 +2731,6 @@ variable STG-TYPE-U
    SCAN-LINE-TOKEN
    dup 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ 2over REJECTION:NOT-A-NAME
-   2dup NAME-DECLARED
    2dup CHECKER-LBUF-NAME-OK? IF
       2dup TOKEN-BYTE @ REJECT-DUPLICATE 0= IF EXIT THEN
    THEN
@@ -2897,7 +2891,6 @@ variable STG-TYPE-U
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    name nameu at nameu SEALED-NAME
@@ -2931,7 +2924,6 @@ variable STG-TYPE-U
    SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ name nameu REJECTION:NOT-A-NAME
-   name nameu NAME-DECLARED
    SCAN-STORAGE-TYPE {: type:^ typeu:n :}
    name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
    name nameu at nameu SEALED-NAME
@@ -3515,7 +3507,7 @@ private
    {: kind:^ kindu:n sig:^ sigu:n :}
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
@@ -3583,7 +3575,7 @@ private
    TOP-CUR-A @ TOP-CUR-U @ FFI-UNCLOSED
    NAME-TOKEN TOKEN-BYTE @ {: name:^ nameu:n at:n :}
    nameu 0= IF NAME-STOP THEN
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    name nameu at STRUCTURE-SIZE
    BEGIN
       NEXT-SCAN
@@ -3656,7 +3648,7 @@ variable FFI-LIT-B                          \ and the newer
    {: name:^ nameu:n :}
    name SOURCE@ - {: at:n :}
    at TOKEN-BYTE !
-   name nameu NAME-DECLARED
+   NAME-DECLARED
    name nameu at REJECT-DUPLICATE IF FFI:SKIP-FUNCTION EXIT THEN
    0 FFI-SIG-U !
    [: FFI-APPEND ;] FFI:DECLARED-TEXTS
@@ -3897,7 +3889,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    TOKEN-U @ 0= if NAME-STOP then
    TOP-CUR-A @ TOP-CUR-U @ TOKEN-A @ TOKEN-U @ REJECTION:NOT-A-NAME
    DEF-NAME!
-   DEF-NAME-A @ DEF-NAME-U @ NAME-DECLARED
+   NAME-DECLARED
    DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ REJECT-DUPLICATE IF SKIP-DEFINITION EXIT THEN
    WRAP-RESET
    BODY-PREV-CLEAR
@@ -4070,9 +4062,55 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    THEN
    0 FLAG-N ! ;
 
+\ The name after the token the scan stands past, as the walk reads it: its tail.
+: NEXT-NAME ( -- str )
+   SCAN-I @ TOKEN-FROM TOKEN-TAIL ;
+
+\ The walk's declaring forms: past a definition opener or an engine definer the
+\ next token is a name the file declares, past `undefine` one it retires.
+: WALK-NAMES ( str -- ) {: a:^ u:n :}
+   a u SOURCE-SYNTAX:BODY-OPENER?
+   a u SOURCE-SYNTAX:DEFINER-KEYWORD? or IF
+      NEXT-NAME 2dup LOADER-BIT SHADOWED @ or SHADOWED !  STR-GONE EXIT
+   THEN
+   a u s" undefine" STR=CI IF
+      NEXT-NAME 2dup LOADER-BIT RETIRED @ or RETIRED !  STR-GONE
+   THEN ;
+
+\ The byte past the comment or string the walk reads the token a u as opening,
+\ 0 when it opens neither; the scan stays where it is.
+: WALK-SKIP-END ( str -- n ) {: a:^ u:n :}
+   a u COMMENT-END {: ch:n :}
+   ch 0=  a u STRING-OPENER? 0=  and IF 0 EXIT THEN
+   SCAN-I @ {: mark:n :}
+   a u ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-QUOTE ELSE
+      ch 0= IF 34 ELSE ch THEN SKIP-PAST
+   THEN
+   SCAN-I @  mark SCAN-I ! ;
+
+\ The byte a skipped arm's walk reads on from, past its last comment or string.
+variable ARM-RESUME
+
+\ The part of the raw token just read that the walk reads as a token: empty
+\ inside a comment or string, else from ARM-RESUME on.
+: ARM-TOKEN ( -- str )
+   TOKEN-START @ ARM-RESUME @ max {: at:n :}
+   SOURCE@ at +  SCAN-I @ at - 0 max ;
+
+: ARM-STEP ( -- )
+   ARM-TOKEN {: a:^ u:n :}
+   u 0= IF EXIT THEN
+   a u WALK-SKIP-END {: end:n :}
+   end 0<> IF end ARM-RESUME ! EXIT THEN
+   a u WALK-NAMES ;
+
+\ The walk reads every arm, so WALK-NAMES reads a skipped one as the walk does;
+\ `[if]` and `[then]` count over every raw token, as the engine's skip does.
 : SKIP-ARM ( -- bool )
+   0 ARM-RESUME !
    1 BEGIN dup 0 > WHILE
       NEXT-RAW dup 0= IF 2drop drop  false EXIT THEN
+      ARM-STEP
       2dup s" [if]" STR=CI IF 2drop 1 + ELSE
          s" [then]" STR=CI IF 1 - THEN
       THEN
@@ -4093,6 +4131,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 \ hands the count reader `char`, which names the count's word.
 : SCAN-TOP ( str -- )
    CSR-TOP
+   2dup WALK-NAMES
    2dup KNOWN-IF? IF 2drop ELSE
    2dup TOP-PARSER? IF TOP-OPERAND ELSE
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE

@@ -26,6 +26,16 @@ public
    a u s" TRUSTED:" STR=CI if STR-TRUE exit then
    a u s" kernel:" STR=CI ;
 
+\ Keywords only while the engine interprets: in a body `create` is a call and
+\ the others are undefined, so a scanner asks these outside a definition.
+: DEFINER-KEYWORD? ( str -- bool ) {: a:^ u:n :}
+   a u s" cast:" STR=CI if STR-TRUE exit then
+   a u s" linear:" STR=CI if STR-TRUE exit then
+   a u s" defer" STR=CI if STR-TRUE exit then
+   a u s" create" STR=CI if STR-TRUE exit then
+   a u s" variable" STR=CI if STR-TRUE exit then
+   a u s" constant" STR=CI ;
+
 \ Block tokens alter local lifetime only after byte-exact local lookup.
 : BLOCK-OPENER? ( str -- bool ) {: a:^ u:n :}
    a u s" if" STR=CI if STR-TRUE exit then

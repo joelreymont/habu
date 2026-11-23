@@ -344,14 +344,23 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\ns\" sd-raw.f\" required\n"
    E-DISC-SHADOW 64 8 SDT-REPLACED-AT
    S\" undefine required\ns\" sd-raw.f\" required\n" E-DISC-RETIRE 31 8 SDT-REPLACED-AT
+   S\" HB-TARGET-WASM? [if]\n: required ( str -- ) drop ;\n[then]\ns\" sd-raw.f\" >str required\n"
+   E-DISC-SHADOW 75 8 SDT-REPLACED-AT
    S\" package SDT-SH\nprivate\nvariable REQUIRED\n: L ( -- n ) REQUIRED @ ;\n;package\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
-\ An engine definer takes the next token as the name it gives, whatever it
-\ spells, as a package keyword takes one (src/lib/source.f DEFINER-KEYWORD? and
-\ PACKAGE-KEYWORD?): a loader word's name there names a package, a using, an
-\ export, a cast, a linear row, storage or a deferred word, and the require
-\ after them is the one event. Each source loads.
+\ Only the walk's declaring forms end a literal at `>str`, in every `[if]` arm,
+\ outside a comment: a learned definer's `>str` does not.
+: SDT-TEST-STR-FORMS ( -- )
+   S\" package MQ\n: MAKE ( n -- ) create , does> ( -- a ) @ ;\n5 MAKE >str\n;package\ns\" sd-raw.f\" >str required\n"
+   s" sd-raw.f" SDT-ONE-EVENT
+   S\" HB-TARGET-WASM? [if]\n: >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;\n[then]\ns\" sd-raw.f\" >str required\n"
+   E-DISC-DYNAMIC 91 8 SDT-REPLACED-AT
+   S\" HB-TARGET-WASM? [if]\n\\ : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;\n[then]\ns\" sd-raw.f\" >str required\n"
+   s" sd-raw.f" SDT-ONE-EVENT ;
+
+\ An engine definer or a package keyword takes the next token as a name, a
+\ loader word's spelling too, so the require after it is the one event.
 : SDT-TEST-DEFINER-OPERAND ( -- )
    S\" package REQUIRED\npublic\n: CVT-RQ ( -- n ) 1 ;\n;package\nusing REQUIRED\n;using\nrequire sd-raw.f\n"
    s" sd-raw.f" SDT-ONE-EVENT
@@ -871,6 +880,7 @@ public
    SDT-TEST-BODY-OPENER
    SDT-TEST-LOADER-NAME
    SDT-TEST-LOADER-USE
+   SDT-TEST-STR-FORMS
    SDT-TEST-DEFINER-OPERAND
    SDT-TEST-FAMILY-BODIES
    SDT-TEST-FAMILY-SHADOW
