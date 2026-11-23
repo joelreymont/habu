@@ -982,6 +982,7 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
    s" : SCU12 ( -- ) 0 scxb drop ;" SC-LINE
    s" HEAP schp pc:hd" SC-LINE
    s" : SCU13 ( -- ) schp-NEW drop ;" SC-LINE
+   s" : SCU14 ( -- ) schp drop ;" SC-LINE
    s" 1 2 3 PC-HD:MAKE SCHOLDS schx" SC-LINE
    s" : SCU8 ( -- ^u8 ) schx ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
@@ -1028,7 +1029,7 @@ s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-NEW SC-SRC !  SC-NEW SC-ERR !  SC-NEW SC-WANT !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 15 T=
+SC-ERR$ s" error[" COUNT-SUB 16 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -1078,20 +1079,22 @@ s" error[E-UNDEFINED]: cannot find word `SCNOPE5`"
    s" :56:15" s" not found" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `SCMK` on and leaves it to the run"
    s" :57:15" s" not checked from here" SC-RECORD
-\ A storage word over hd marks only the words it makes, so SCNOPE10 and
-\ SCNOPE11 stay undefined while the uses of scxb and schp-NEW defer.
+\ A storage word over hd marks only the words it makes, so SCNOPE10, SCNOPE11
+\ and HEAP's unmade schp stay undefined while the uses of scxb and schp-NEW defer.
 s" error[E-UNDEFINED]: cannot find word `SCNOPE10`"
    s" :62:16" s" not found" SC-RECORD
 s" error[E-UNDEFINED]: cannot find word `SCNOPE11`"
    s" :63:27" s" not found" SC-RECORD
+s" error[E-UNDEFINED]: cannot find word `schp`"
+   s" :67:16" s" not found" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `scxb` on and leaves it to the run"
    s" :64:18" s" not checked from here" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schp-NEW` on and leaves it to the run"
    s" :66:16" s" not checked from here" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schx` on and leaves it to the run"
-   s" :68:19" s" not checked from here" SC-RECORD
+   s" :69:19" s" not checked from here" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :70:1" s" missing field name" SC-RECORD
+   s" :71:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 

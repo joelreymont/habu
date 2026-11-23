@@ -16537,10 +16537,7 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
 : STORAGE-TYPE-REJECT ( str str bool -- )
    {: na:^ nu:n ta:^ tu:n lay:bool :}
    tu 0= IF na nu na nu STG-NO-TYPE CHECKER-STORAGE-REJECT EXIT THEN
-   STORAGE-UNRESOLVED? IF
-      na nu CHECKER-UNSEEN-NAME
-      E-CHECKER-STORAGE-UNRESOLVED throw
-   THEN
+   STORAGE-UNRESOLVED? IF E-CHECKER-STORAGE-UNRESOLVED throw THEN
    SGBAD-AMBIG? IF na nu SGBAD-A @ SGBAD-U @ STGR-AMBIG EXIT THEN
    SGBAD-UNKNOWN? IF
       na nu SGBAD-A @ SGBAD-U @ STG-UNKNOWN-TYPE CHECKER-STORAGE-REJECT EXIT
@@ -16558,8 +16555,13 @@ SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
    IF STG-LAYOUT-TYPE ELSE why THEN
    CHECKER-STORAGE-REJECT ;
 
-: CHECKER-STORAGE-TYPE-REJECT ( str str -- ) RES-FALSE STORAGE-TYPE-REJECT ;
-: CHECKER-LAYOUT-TYPE-REJECT ( str str -- ) RES-TRUE STORAGE-TYPE-REJECT ;
+: CHECKER-STORAGE-TYPE-REJECT ( str str -- ) {: na:^ nu:n ta:^ tu:n :}
+   STORAGE-UNRESOLVED? IF na nu CHECKER-UNSEEN-NAME THEN
+   na nu ta tu RES-FALSE STORAGE-TYPE-REJECT ;
+
+: CHECKER-LAYOUT-TYPE-REJECT ( str str -- ) {: na:^ nu:n ta:^ tu:n :}
+   STORAGE-UNRESOLVED? IF na nu CHECKER-UNSEEN-NAME THEN
+   na nu ta tu RES-TRUE STORAGE-TYPE-REJECT ;
 
 \ Marks the nominal type NAME, which the run may register, where its
 \ declaration lands.
@@ -17768,12 +17770,19 @@ variable LBUF-NM-I
    LBUF-NM-BUF LBUF-NM-U @ ;
 
 \ When the type just read is unresolved, marks NAME+S1 and NAME+S2, the words a
-\ storage definer makes besides NAME.
+\ storage definer derives from NAME.
 : CHECKER-UNSEEN-PAIR ( str str str -- )
    {: name:^ nameu:n s1:^ s1u:n s2:^ s2u:n :}
    STORAGE-UNRESOLVED? 0= IF EXIT THEN
    name nameu s1 s1u CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME
    name nameu s2 s2u CHECKER-LBUF-SUFFIXED$ CHECKER-UNSEEN-NAME ;
+
+\ A storage definer that makes only NAME+S1 and NAME+S2 rejects an unstorable
+\ TYPE, marking those two when it is unresolved.
+: CHECKER-DERIVED-TYPE-REJECT ( str str str str -- )
+   {: name:^ nameu:n s1:^ s1u:n s2:^ s2u:n type:^ typeu:n :}
+   name nameu s1 s1u s2 s2u CHECKER-UNSEEN-PAIR
+   name nameu type typeu RES-FALSE STORAGE-TYPE-REJECT ;
 
 \ A suffix row is generated: its registration runs paused, its signature and
 \ name passed through cells to the quotation.
