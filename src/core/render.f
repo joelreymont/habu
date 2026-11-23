@@ -1207,7 +1207,7 @@ variable MDV-I   variable MDV-F
       MD-STORED-CLASS of s" a cast's stored type would hand out an atom or a width" endof
       MD-IS-STORED    of s" the callable takes only a cast's stored types where the cell takes any type" endof
       MD-DIV-ZERO     of s" zero divisor: a literal 0 divisor has no quotient" endof
-      MD-THROW-ZERO   of s" zero throw code: `0 throw` unwinds with the code that means no error" endof
+      MD-THROW-ZERO   of s" zero throw code: 0 means no error, so `0 throw` always throws E-THROW-ZERO" endof
       MD-LINEAR-DROP  of s" a linear value is discarded here" endof
       MD-LINEAR-COPY  of s" a linear value is copied here" endof
       MD-LINEAR-TAINT of s" a value copied while its type was open turned out linear" endof

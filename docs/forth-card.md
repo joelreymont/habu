@@ -616,10 +616,11 @@ holds an address**.
 - A literal `0 throw` is rejected (`E-THROW-ZERO`): 0 means no error; so is a
   literal 0 at an input a word with a signature throws with only stack words,
   locals, integer and string literals and calls before it. A computed 0
-  unwinds unchecked: a `catch` it reaches answers 0, and a text it unwinds (a
-  file, `evaluate`, `include`, a REPL line) stops with `E-THROW-ZERO`, its
-  record placed at the word that threw it in that text; out of a program's
-  MAIN it prints that record with no place and exits 67.
+  throws `E-THROW-ZERO`: a `catch` it reaches answers that code, so `catch`
+  answers 0 only for a body that returned, and a text it unwinds (a file,
+  `evaluate`, `include`, a REPL line) stops with its record placed at the
+  word that threw it in that text; out of a program's MAIN it prints that
+  record with no place and exits 67.
 - A caught code thrown in the body that caught it throws on: `throw` of
   the cell `catch` answered, moved by stack words, `>r` `r>` or a local,
   through arms that all hold it and after any tests and calls, keeps the

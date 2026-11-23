@@ -452,6 +452,19 @@ STRUCTURE cspt
 
 : CS-CRT ( ^u8 -- str ) [: WMAYBE ;] catch ;
 
+\ A body that returns 9 for selector 0 and throws a computed 0 for selector 1:
+\ the catch answers E-THROW-ZERO for it, so the success arm reads no cell the
+\ throw left.
+: CS-ZBODY ( n n -- n n )
+   {: p:n c:n :}
+   c 1 = if 1 1 - throw then
+   9 c ;
+: CS-ZERO ( n -- n )
+   {: sel:n :}
+   5 sel ['] CS-ZBODY catch {: v c code:n :}
+   code 0= if v exit then
+   code ;
+
 : CS-SECTION-RUNTIME ( -- )
    CS-BUF CS-RT {: p code:n :}
    code E-CS-BOOM T=
@@ -461,7 +474,9 @@ STRUCTURE cspt
    \ promised the checker
    CS-BUF CS-CRT {: q code2:n :}
    code2 E-CS-BOOM T=
-   q CS-BUF = TTRUE ;
+   q CS-BUF = TTRUE
+   0 CS-ZERO 9 T=
+   1 CS-ZERO E-THROW-ZERO T= ;
 
 \ `['] W` pushes a term of W's declared effect carrying the edge W's own
 \ definition proved, as the `[: W ;]` literal's term does. A recorded bit counts

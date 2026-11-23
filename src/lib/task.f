@@ -1230,12 +1230,13 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
 \ A halted task starts its unwind here, ONCE, from PAUSE or from a scope's end
 \ (TASK:HALT-UNWIND): the stop mark goes first, so every cleanup the unwind runs
 \ and the AT-EXIT chain may pause and only yield. With HALT-UNWIND-CELL set,
-\ `n throw` runs each finally around it, innermost first, and rethrows past
-\ every other catch, so no code after a catch observes the halt and a body that
-\ swallows errors still ends.
-\ TASK-RUNNER's catch takes n, or a code a cleanup threw during the unwind, or,
-\ when the halt began inside a cleanup, the body's error that cleanup ran for.
-\ PAUSE carries 0: the halt is not a body error.
+\ `n halt-throw` runs each finally around it, innermost first, and rethrows
+\ past every other catch, so no code after a catch observes the halt and a body
+\ that swallows errors still ends.
+\ halt-throw carries n, 0 for PAUSE, to the task's root unchanged: the halt is
+\ not a body error. TASK-RUNNER's catch takes n, or a code a cleanup threw
+\ during the unwind, or, when the halt began inside a cleanup, the body's error
+\ that cleanup ran for.
 \
 \ Inside a callback the request stays pending: a throw there would unwind
 \ through C's frames, holding the slot it entered through, with C's call never
@@ -1258,7 +1259,7 @@ TCB-CHUNK-BYTES CELL - TCB-REC-BYTES / constant TCB-POOL-N
    self TCB-HALT-DUE? if
       1 self TCB.STOP !
       1 data-base HALT-UNWIND-CELL + !
-      rc throw
+      rc halt-throw
    then ;
 
 : PAUSE ( -- )

@@ -2964,7 +2964,7 @@ private
    10 XREG-RBASE THROWS-CELL LDR,  10 10 1 ADDI,  10 XREG-RBASE THROWS-CELL STR, ;
 
 public
-\ BTHROW ( code -- ): unwind to the nearest catch handler.
+\ BTHROW ( code -- ): unwind to the nearest catch handler with the code as is.
 : BTHROW ( -- )  A G-POP  BTHROW-COUNT  BTHROW-UNWIND ;
 
 \ The fault entry: the crash handler resumes a faulting thread here with the
@@ -2972,6 +2972,13 @@ public
 : EMIT-FAULT-REC ( -- )  LFAULTREC LABEL@ LBL,  BTHROW-COUNT  BTHROW-UNWIND ;
 
 private
+\ The `throw` primitive: a code of 0 throws -9854, E-THROW-ZERO, so a catch
+\ answers 0 only for a body that returned.
+: BTHROW-NONZERO ( -- )
+   LBL {: nonzero:label :}
+   A G-POP  A nonzero CBNZ,  A -9854 LIT64,
+   nonzero LBL,  A G-PUSH  BTHROW ;
+
 \ Throws on the code in x9 that a catch frame took, for a primitive that has
 \ popped that frame: it keeps the throw count, so a record the code carried
 \ stays with it.
@@ -4015,7 +4022,7 @@ package ENGINE-EMIT
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )
-   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
+   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW-NONZERO FPRIM-L
    s" halt-throw" ['] BTHROW FPRIM
    s" finally" ['] BFINALLY FPRIM
    s" c2-invoke" ['] BC2-INVOKE FPRIM

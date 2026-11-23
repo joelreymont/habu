@@ -114,6 +114,7 @@ s" data cell text" drop DATA-CELL !
       i LEAVES drop
       i {: k:n :} [: k THROWS ;] catch k 1 + <> if 98 throw then
    loop 77 throw ;
+: THROWN-ZERO ( -- ) [: 1 1 - throw ;] catch throw ;
 package OWN
 : execute ( n -- n ) 1 + ;
 : catch ( n -- n ) 1 + ;
@@ -145,7 +146,8 @@ public
    [: READ-FINALLY ;] 710 28 WANT  [: READ-FINALLY-THROWN ;] 341 29 WANT
    [: READ-SCOPE ;] 1342 30 WANT  [: READ-DESCEND ;] 55 31 WANT
    [: READ-RSTACK ;] 42 32 WANT  [: READ-LOOP ;] 10 33 WANT
-   [: READ-BESIDE ;] 32 34 WANT  [: READ-RELEASE ;] 77 35 WANT ;
+   [: READ-BESIDE ;] 32 34 WANT  [: READ-RELEASE ;] 77 35 WANT
+   [: THROWN-ZERO ;] -9854 36 WANT ;
 
 : ZERO ( -- ) 0 >VOID execute ;
 : ZERO-CAUGHT ( -- ) 0 >VOID catch throw ;

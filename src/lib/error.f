@@ -7,8 +7,7 @@ split-str
 \ A package's block is minted in the package's file; a comment here says where.
 \ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE and ERROR:FAULT lay in data
 \ space and the persisted head cell that holds the newest one's address. A row
-\ holds its own fault flag: only this package reads a row's layout. TASK-LOCAL:
-\ the ENDED-CELL of the thread's region that CAUGHT sets and reads.
+\ holds its own fault flag: only this package reads a row's layout.
 
 require src/habu/layout.f
 require src/habu/xref.f
@@ -866,8 +865,8 @@ generates: FAULT ( -- n )
 -9604 s" the body binds other than its scan's count of locals" ERROR:FAULT E-T0-BINDS
 -9608 s" an operation over a width it cannot move" ERROR:FAULT E-T0-BUNDLE
 
-\ HELP and CAUGHT name E-THROW-ZERO, which ERROR:CODE declares outside the
-\ package, and UNCAUGHT calls HELP.
+\ HELP names E-THROW-ZERO, which ERROR:CODE declares outside the package, and
+\ UNCAUGHT calls HELP.
 package ERROR
 
 private
@@ -933,15 +932,6 @@ public
    REJECTION:CARRIED? 0= if c OPEN  c HELP  REJECTION:SAVE then
    REJECTION:SEND-SAVED ;
 
-\ Answers what catch of q answers, but E-THROW-ZERO where a computed 0 unwound q.
-: CAUGHT ( [ -- ] -- n )
-   {: q :}
-   [: q execute  true data-base ENDED-CELL + ! ;] catch {: c:n :}
-   data-base ENDED-CELL + @ 0<> {: ended:bool :}
-   false data-base ENDED-CELL + !
-   c 0<>  ended  or if c exit then
-   E-THROW-ZERO ;
-
 \ The status a process exits with when nothing caught code n: SYSTEM for a
 \ refused map, UNCAUGHT for any other.
 : STATUS ( n -- n )
@@ -952,7 +942,7 @@ public
 \ chose; any other ends the process with the record of the throw nothing caught.
 : TOP-LEVEL ( [ -- ] -- )
    {: q :}
-   q CAUGHT {: rc:n :}
+   q catch {: rc:n :}
    rc 0= if exit then
    REJECTION:RELEASE
    rc 0 >  rc 256 <  and if rc throw then

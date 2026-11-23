@@ -7,7 +7,7 @@ package APP-END
 private
 
 : ENTRY ( -- )
-   ['] MAIN ERROR:CAUGHT {: rc:n :}
+   ['] MAIN catch {: rc:n :}
    rc 0= if exit then
    REJECTION:RELEASE
    rc 0 >  rc 256 <  and if rc throw then

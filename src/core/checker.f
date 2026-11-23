@@ -18318,6 +18318,7 @@ package CHECK
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or CTL-CORE-OP or 0 1 NORET-NONZERO-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
+   s" TASK" s" halt-throw" CTL-DEAD CTL-THROW or NORET-PRIVATE-AXIOM
    s" INTERPRETER" s" die-closed" CTL-DEAD NORET-PRIVATE-AXIOM
    s" evaluate" CTL-RENDERS CTL-CORE-OP or INTRINSIC-TOP-ONLY INTRINSIC>CTL or NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
@@ -18974,9 +18975,9 @@ variable NZ-IN   variable NZ-TAKEN   variable NZ-DIV   variable NZ-THROW
 : NZ-FACT ( -- n ) NZ-DIV @ NZ-THROW @ NONZERO-PACK ;
 
 \ ---- a literal 0 at an input the callee always divides by or throws --------
-\ A zero divisor has no quotient, and `0 throw` unwinds with the code that
-\ means no error; a redefinition of an engine spelling is marked by its own
-\ body.
+\ A zero divisor has no quotient, and 0 means no error, so `0 throw` always
+\ throws E-THROW-ZERO; a redefinition of an engine spelling is marked by its
+\ own body.
 
 \ True when NODE, the callee's input I under MARKS, holds a literal 0 at a
 \ marked input; then the call is rejected.

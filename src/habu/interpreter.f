@@ -3209,7 +3209,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    SRCLOC:TOKEN$ REJECTION:AT  s" this threw" REJECTION:EMIT-STR
    c ERROR:HELP ;
 
-\ Ends the running text's inner catch with the code c ERROR:CAUGHT answered.
+\ Ends the running text's inner catch with the code c `catch` answered.
 : LEFT ( n -- )
    {: c:n :}
    c 0= if exit then
@@ -3229,7 +3229,7 @@ USE-MAX TYPED-BUFFER REPL-WIDS n
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    TOKENS-CELL CELL@ 1 + TOKENS-CELL CELL!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS ;] ERROR:CAUGHT LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN-TOKENS ;] catch LEFT ;]
    catch {: code:n :}
    code FRAME-EXIT {: out:n :}
    out case
@@ -3294,7 +3294,7 @@ public
    first 0= if 1 PKG-OUTSIDE-CELL CELL! then
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
-   [: FRAME-ARG @ FRAME-LINK [: RUN ;] ERROR:CAUGHT LEFT ;]
+   [: FRAME-ARG @ FRAME-LINK [: RUN ;] catch LEFT ;]
    catch {: code:n :}
    code FRAME-EXIT {: out:n :}
    out case

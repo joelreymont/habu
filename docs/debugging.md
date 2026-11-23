@@ -43,10 +43,11 @@ that catches the code and throws it again moves the record to its own throw,
 unless the code carried its record and the program throws it on in the body
 that caught it (docs/forth.md "A caught code thrown in its own body throws
 on").
-A stripped application prints the same record with no place and exits 67. Under
-`--load` an uncaught throw of a computed 0 (a literal `0 throw` is rejected,
-`E-THROW-ZERO`) stops its text with `E-THROW-ZERO`, placed at the word that
-threw it; out of a program's MAIN that record has no place. Both exit 67. A
+A stripped application prints the same record with no place and exits 67. A
+throw of a computed 0 (a literal `0 throw` is rejected) throws `E-THROW-ZERO`,
+which a `catch` answers; uncaught, it stops its text with that record, placed
+at the word that threw it; out of a program's MAIN that record has no place.
+Both exit 67. A
 rejection prints its record and exits 70; a build whose code goes on after a
 rejection it sent, caught or kept without a throw, exits 67 and adds nothing to
 the records sent. A one-byte diagnostic and a clean exit means a raw engine capacity path, not a throw.

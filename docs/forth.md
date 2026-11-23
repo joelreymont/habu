@@ -2483,10 +2483,11 @@ sections above.
 - **A literal `0 throw` is rejected (`E-THROW-ZERO`), and so is a literal 0 at
   a call of a word with a declared signature that throws that input, with only
   the tokens that carry a divisor (Integer arithmetic) before the `throw`, as
-  `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0 unwinds unchecked, a
-  caller bug: a `catch` it reaches answers 0, and a text it unwinds stops with
-  `E-THROW-ZERO`, its record placed at the word that threw it in that text;
-  out of a program's MAIN it prints that record with no place and exits 67.**
+  `: FAIL ( n -- ) throw ;` does in `0 FAIL`; a computed 0, a caller bug,
+  throws `E-THROW-ZERO`: a `catch` it reaches answers that code, so `catch`
+  answers 0 only for a body that returned, and a text it unwinds stops with
+  its record placed at the word that threw it in that text; out of a
+  program's MAIN it prints that record with no place and exits 67.**
 - **A caught code thrown in its own body throws on.** A `throw`, in the
   definition that caught it, of the code `catch` answered, moved by
   stack words or a local, tested, and through arms that all hold it,
