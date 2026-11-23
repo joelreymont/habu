@@ -28,6 +28,15 @@ TYPED-VARIABLE BODY ^VEC:vector<u8>
 CAP BUFFER: WANT
 TYPED-VARIABLE HEAD ^VEC:vector<u8>
 
+TYPED-VARIABLE CFG HTTP:config
+
+: SERVER-CONFIG ( -- ^HTTP:config )
+   LOOPBACK CFG HTTP-CONFIG:ADDRESS !
+   0 CFG HTTP-CONFIG:PORT !
+   ONE-WORKER CFG HTTP-CONFIG:WORKERS !
+   IDLE-MS >MS CFG HTTP-CONFIG:IDLE !
+   CFG ;
+
 : OK ( CURL:status -- )
    MATCH CURL:status
       ok OF true ENDOF
@@ -93,7 +102,7 @@ TYPED-VARIABLE HEAD ^VEC:vector<u8>
    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW HEAD !
    HTTP:ROUTES-RESET
    BROWSER-HOST:ROUTES
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   SERVER-CONFIG HTTP:START
    s" GET / answers src/lib/browser/index.html as text/html" T-LABEL
    s" /" s" src/lib/browser/index.html" s" text/html; charset=utf-8" SERVED
    s" GET /host.js answers src/lib/browser/host.js as text/javascript" T-LABEL

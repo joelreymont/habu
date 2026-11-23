@@ -95,6 +95,16 @@ $2E constant DOT-BYTE
 -9993 constant E-HOOK-OTHER
 -9994 constant E-EXIT-HOOK
 
+TYPED-VARIABLE CFG HTTP:config
+
+: SERVE-ON ( n n n n -- )
+   {: address:n port:n workers:n idle:n :}
+   address CFG HTTP-CONFIG:ADDRESS !
+   port CFG HTTP-CONFIG:PORT !
+   workers CFG HTTP-CONFIG:WORKERS !
+   idle >MS CFG HTTP-CONFIG:IDLE !
+   CFG HTTP:START ;
+
 CAST: BLEN>N ( NUM:byte-len -- n )
 
 REQ-CAP SPAN-BUFFER: REQ-BUF
@@ -1794,7 +1804,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : LARGE-INTERRUPTED-CASES ( -- )
    TRACE-RESET
    1000 HTTP:BODY-TIMEOUT!
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    RAW-OPEN {: late:TCP4:connection :}
    late LARGE-HALF
    late CLOSED-WITHIN? TTRUE
@@ -1810,7 +1820,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    TRACE-RESET
    HTTP:BODY-CAP LARGE-CAP T=
    HTTP:BODY-TIMEOUT 1000 T=
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s" GET" s" /api/ping" FETCH 200 T=
    HTTP:STOP
    HTTP:KILLED-TASKS 0 T=
@@ -1824,7 +1834,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    0 PARKED !
    0 EXIT-HANDLE-CODE !
    1 PROBE-EXIT !
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    RAW-OPEN {: held:TCP4:connection :}
    held s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" RAW-SEND
    PARK-AWAIT
@@ -1843,7 +1853,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    HTTP:BODY-CAP LARGE-CAP T=
    LARGE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 LARGE-SPAN !
    32 0 LARGE-SPAN @ SPAN:FILL
-   LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS SERVE-ON
    [: LARGE-CAP HTTP:BODY-CAP! ;] HTTP:E-STATE TTHROWSQ
    LARGE-CONTENT-CASE
    LARGE-CHUNK-CASE
@@ -1861,7 +1871,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    HTTP:BODY-CAP LARGE-CAP T=
    0 HTTP:BODY-CAP!
    TRACE-RESET
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s"  " s" /api/echo" POST-JSON 413 T=
    s" " s" /api/echo" POST-JSON 200 T=
    RES$ S\" {\qbytes\q:0}" T$=
@@ -1910,7 +1920,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 : ROUTE-CAP-CASES ( -- )
    [: REJECTED-ROUTE-CAP ;] HTTP:E-CAPACITY TTHROWSQ
    4 HTTP:BODY-CAP!
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    CAP-DEFAULT-CASE
    CAP-EXPLICIT-CASE
    CAP-FRAMING-CASE
@@ -1934,7 +1944,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    [: $80000000 HTTP:BODY-TIMEOUT! ;] HTTP:E-CAPACITY TTHROWSQ
    HTTP:BODY-TIMEOUT $7FFFFFFF T=
    0 HTTP:BODY-TIMEOUT!
-   LOOPBACK 0 ONE-WORKER 200 HTTP:START
+   LOOPBACK 0 ONE-WORKER 200 SERVE-ON
    RAW-OPEN {: old:TCP4:connection :}
    old s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\n" RAW-SEND
    300 >MS TASK:SLEEP
@@ -1945,7 +1955,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" separate body deadline" T-LABEL
    1000 HTTP:BODY-TIMEOUT!
    HTTP:BODY-TIMEOUT 1000 T=
-   LOOPBACK 0 ONE-WORKER 200 HTTP:START
+   LOOPBACK 0 ONE-WORKER 200 SERVE-ON
    [: -1 HTTP:BODY-TIMEOUT! ;] HTTP:E-STATE TTHROWSQ
    HTTP:BODY-TIMEOUT 1000 T=
    RAW-OPEN {: delayed:TCP4:connection :}
@@ -2003,7 +2013,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : READ-FAULT-CASE ( -- )
    1 HTTP:TEST-READ-FAULT !
    [: HTTP:TEST-READ-FAULT-START ;] HTTP:ON-WORKER-START
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" RAW-ONE
    s" HTTP/1.1 500" BEGINS? TTRUE
    s" Connection: close" HAS? TTRUE
@@ -2179,7 +2189,7 @@ $C8 constant STALL-MARGIN-MS
 : POLICY-CASES ( -- )
    INSTALL-POLICY
    ROOT$ HTTP:STATIC-ROOT
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s" GET" s" /api/nothing" FETCH 404 T=
    RES$ S\" {\qcode\q:\qnot_found\q,\qmessage\q:\qno route answers this path\q,\qrequest_id\q:\qr0-1\q}" T$=
    s" GET" s" /items/42" FETCH 200 T=
@@ -2207,7 +2217,7 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    TRACE-RESET
    0 PARKED !
    ROOT$ HTTP:STATIC-ROOT
-   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   LOOPBACK 0 TWO-WORKERS IDLE-MS SERVE-ON
    RAW-OPEN {: held:TCP4:connection :}
    REQ-RESET
    s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
@@ -2222,7 +2232,7 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    held CLOSED-WITHIN? TTRUE
    held TCP4:CLOSE DROP-TCP-STATUS
    TRACE-RESET
-   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   LOOPBACK 0 TWO-WORKERS IDLE-MS SERVE-ON
    s\" GET /api/version HTTP/1.0\r\nHost: x\r\n\r\n"
    S\" {\qversion\q:\qHTTP/1.0\q}" RAW-ASK TTRUE
    s" HTTP/1.1 200 OK" BEGINS? TTRUE
@@ -2238,7 +2248,7 @@ $3E8 constant IDLE-STOP-MS        \ accept wait and slack: LARGE-IDLE-MS / 5
 \ stop's, is closed by STOP as the listener leaves.
 : IDLE-STOP-CASE ( -- )
    TRACE-RESET
-   LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS SERVE-ON
    RAW-OPEN {: held:TCP4:connection :}
    REQ-RESET
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
@@ -2296,7 +2306,7 @@ variable OPENED
 : FULL-QUEUE-CASE ( -- )
    TRACE-RESET
    0 PARKED !
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    RAW-OPEN {: held:TCP4:connection :}
    REQ-RESET
    s\" GET /api/park HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
@@ -2347,7 +2357,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
 \ A peer that reads its answer to the end of the stream and then keeps sending
 \ is read until the linger deadline and no longer.
 : SENDING-PEER-CASE ( -- )
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    RAW-OPEN {: conn:TCP4:connection :}
    conn 0 SENDER-CONN !
    REQ-RESET
@@ -2431,7 +2441,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 : FLOOD-CASE ( -- )
    FLOOD-ROUTE
-   LOOPBACK 0 ONE-WORKER FLOOD-IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER FLOOD-IDLE-MS SERVE-ON
    REQ-RESET
    s" 1;" REQ+
    [char] a FLOOD-EXTENSION REQ-FILL
@@ -2471,11 +2481,11 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 
 : START-TWO ( -- )
-   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START ;
+   LOOPBACK 0 TWO-WORKERS IDLE-MS SERVE-ON ;
 
 
 : START-SAME-PORT ( -- )
-   LOOPBACK FAILED-PORT @ TWO-WORKERS IDLE-MS HTTP:START ;
+   LOOPBACK FAILED-PORT @ TWO-WORKERS IDLE-MS SERVE-ON ;
 
 
 \ Setup can fail after the queue opens. The failed start must release it and
@@ -2584,7 +2594,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 
 : ERROR-HOOK-SERVER ( -- )
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s\" GET\r\nHost: x\r\n\r\n"
    s" error_hook: the error hook did not finish this answer (request r0-1)" RAW-ASK TTRUE
    s" HTTP/1.1 400 Bad Request" BEGINS? TTRUE
@@ -2658,7 +2668,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 : LOGGED-SERVER ( -- )
    TRACE-RESET
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s\" GET /api/ping?token=q-secret HTTP/1.1\r\nHost: x\r\nX-Secret: h-secret\r\nConnection: close\r\n\r\n" RAW-ONE
    s\" GET /api/nothing HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s\" GET\r\nHost: x\r\n\r\n" RAW-ONE
@@ -2727,7 +2737,7 @@ variable REFUSED-CODE
 
 
 : START-REFUSED ( -- )
-   [: REFUSED-ADDRESS @ REFUSED-PORT @ ONE-WORKER IDLE-MS HTTP:START ;]
+   [: REFUSED-ADDRESS @ REFUSED-PORT @ ONE-WORKER IDLE-MS SERVE-ON ;]
    catch REFUSED-CODE ! ;
 
 
@@ -2778,7 +2788,7 @@ variable REFUSED-CODE
 \ be a report nobody reads and a suite hanging on its first request.
 : NO-LOOP-CASE ( -- )
    AIO:RUNNING? TFALSE
-   [: LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START ;] E-AIO-STATE TTHROWSQ
+   [: LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON ;] E-AIO-STATE TTHROWSQ
    HTTP:RUNNING? TFALSE ;
 
 
@@ -2861,7 +2871,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    TREE$ HTTP:STATIC-ROOT
    s" every file of a tree past the former bounds" T-LABEL
    HTTP:STATIC-COUNT BIG-FILES T=
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s" GET" s" /d0/f0.txt" FETCH 200 T=
    RES$ s" d0/f0.txt" T$=
    s" a file in the last directory" T-LABEL
@@ -2941,7 +2951,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    PATH-BUF len HTTP:STATIC-ROOT
    s" every file reached through a link that is no cycle" T-LABEL
    HTTP:STATIC-COUNT 5 T=
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    s" a symlinked directory is served under its link's path" T-LABEL
    s" GET" s" /linked/page.txt" FETCH 200 T=
    RES$ s" page" T$=
@@ -3296,7 +3306,7 @@ $32 constant CALL-WAIT-MS         \ far under IDLE-MS, which a held worker waits
 \ says nothing more: a call queued then runs at once, not past IDLE-MS.
 : IDLE-CALL-CASE ( -- )
    TRACE-RESET
-   LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
+   LOOPBACK 0 TWO-WORKERS IDLE-MS SERVE-ON
    RAW-OPEN {: one:TCP4:connection :}
    RAW-OPEN {: two:TCP4:connection :}
    one PING-KEPT
@@ -3353,7 +3363,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    0 PARKED !
    0 GATE TASK:SEMAPHORE-INIT
    FDS-WANT AIO-FILL:RAISE-FDS
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    RAW-OPEN {: gated:TCP4:connection :}
    gated s\" GET /api/gate HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
    PARK-AWAIT
@@ -3391,7 +3401,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    0 SCRIPT-U !
    ROOT$ HTTP:STATIC-ROOT
    HTTP:STATIC-COUNT 2 T=
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   LOOPBACK 0 ONE-WORKER IDLE-MS SERVE-ON
    HTTP:PORT 0 > TTRUE
    JSON-CASES
    REFUSAL-CASES

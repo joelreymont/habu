@@ -1443,16 +1443,29 @@ public
 
 
 \ The address and port to listen on, how many request workers to run, and how
-\ long a connection may stay silent before it is closed. Every hook and route is
-\ registered before START: a running server makes each hook and route word
-\ E-STATE, and a worker reads the route table unordered, while a word reaches a
-\ running task only through a channel that orders (src/lib/task.f). Route
-\ strings must outlive the server. The AIO loop is a
+\ long a connection may stay silent before it is closed.
+STRUCTURE config DERIVE addr
+   FIELD address n
+   FIELD port n
+   FIELD workers n
+   FIELD idle ms
+;STRUCTURE
+
+
+\ Every hook and route is registered before START: a running server makes each
+\ hook and route word E-STATE, and a worker reads the route table unordered,
+\ while a word reaches a running task only through a channel that orders
+\ (src/lib/task.f). Route strings must outlive the server. The AIO loop is a
 \ precondition and not this package's to start: every readiness wait is an AIO
 \ submission, and one with no loop is E-AIO-STATE. Thrown inside the listener's
 \ task that code is a report nobody reads (no connection is accepted and the
 \ caller hangs on the idle deadline), so it is re-thrown here.
-: START ( n n n n -- ) {: address:n port:n workers:n idle:n :}
+: START ( ^config -- )
+   {: cfg:^config :}
+   cfg HTTP-CONFIG:ADDRESS @ {: address:n :}
+   cfg HTTP-CONFIG:PORT @ {: port:n :}
+   cfg HTTP-CONFIG:WORKERS @ {: workers:n :}
+   cfg HTTP-CONFIG:IDLE @ MS>N {: idle:n :}
    RUNNING @ 0 <> if E-STATE throw then
    AIO:RUNNING? 0= if E-AIO-STATE throw then
    workers 1 < if E-WORKERS throw then

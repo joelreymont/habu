@@ -80,6 +80,16 @@ TYPED-VARIABLE BODY ^VEC:vector<u8>
 500 constant LATE-MS                \ the TOOLS limit /late runs past
 790 constant LATE-BOUND-MS          \ when that TOOLS must have thrown by
 
+TYPED-VARIABLE CFG HTTP:config
+
+: SERVE-ON ( n n -- )
+   {: port:n workers:n :}
+   LOOPBACK CFG HTTP-CONFIG:ADDRESS !
+   port CFG HTTP-CONFIG:PORT !
+   workers CFG HTTP-CONFIG:WORKERS !
+   IDLE-MS >MS CFG HTTP-CONFIG:IDLE !
+   CFG HTTP:START ;
+
 \ Expected texts too long for SB.
 CAP BUFFER: WANT
 variable WANT-U
@@ -1653,7 +1663,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" https://issuer.test" s" api://mcp-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER!
    ['] OWNER-ONLY MCP:VISIBLE!
    ADD-SECRET ADD-WHOAMI
-   LOOPBACK PORT @ TWO-WORKERS IDLE-MS HTTP:START
+   PORT @ TWO-WORKERS SERVE-ON
    s" VISIBLE! while HTTP serves throws E-STATE" T-LABEL
    [: ['] OWNER-ONLY MCP:VISIBLE! ;] MCP:E-STATE TTHROWSQ
    HIDDEN-LIST HIDDEN-CALL OWNER-LIST OWNER-CALL GUARDED-CLIENT ;
@@ -1953,7 +1963,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s" POST" s" /answer" [: ANSWER-ROUTE ;] HTTP:ROUTE
    [: 2drop true ;] MCP:VISIBLE!
    MCP:LOG
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   0 ONE-WORKER SERVE-ON
    LOGGED-ECHO LOGGED-STRICT LOGGED-UNKNOWN LOGGED-NOTIFIED LOGGED-HELD
    LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-ANSWER LOGGED-LONG ;
 
@@ -2026,7 +2036,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    WIDGET-RESOURCE PAGE MCP:ADD-RESOURCE
    PLAIN ADD-PAGE
    RESOURCE-REFUSALS
-   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   0 ONE-WORKER SERVE-ON
    s" ADD-TOOL refuses while HTTP serves" T-LABEL
    [: ADD-LATE ;] MCP:E-STATE TTHROWSQ
    s" ADD-RESOURCE refuses while HTTP serves" T-LABEL

@@ -107,6 +107,15 @@ $1F4 constant SHORT-MS            \ a bound a case waits out, far under its othe
 -9982 constant E-DIAL
 -9983 constant E-PLATFORM          \ a target this file has no socket option values for
 
+TYPED-VARIABLE SERVER-CFG HTTP:config
+
+: SERVER-CONFIG ( -- ^HTTP:config )
+   LOOPBACK SERVER-CFG HTTP-CONFIG:ADDRESS !
+   0 SERVER-CFG HTTP-CONFIG:PORT !
+   WORKERS SERVER-CFG HTTP-CONFIG:WORKERS !
+   IDLE-MS >MS SERVER-CFG HTTP-CONFIG:IDLE !
+   SERVER-CFG ;
+
 CAST: BLEN>N ( NUM:byte-len -- n )
 CAST: SOCK>N ( WS:socket -- n )
 
@@ -2120,7 +2129,7 @@ public
    0 RELEASED TASK:SEMAPHORE-INIT
    AIO:START
    INSTALL-ROUTES
-   LOOPBACK 0 WORKERS IDLE-MS HTTP:START
+   SERVER-CONFIG HTTP:START
    CROWD SIZED WS:START
    CASES
    CROWD SIZED RESTART
