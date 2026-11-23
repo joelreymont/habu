@@ -1831,19 +1831,23 @@ PTR-VARIABLE DOES-NA   variable DOES-NU
          s" ` and `" EMIT-STR  NPBAD-Q2 @ EMIT1
          s" ` are unified; each declared quantifier must stay a distinct variable" EMIT-STR endof
       6 of NP-ROWS endof
+      8 of NP-ROWS endof
       7 of NP-ROW-FIXED endof
       NPBAD-Q1 @ NP-VAR  s"  is minted into " EMIT-STR  NP-FAM-REND
       s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type" EMIT-STR
    endcase ;
+: NP-ROWS-LABEL ( -- )
+   s" unifies " EMIT-STR  NP-ROW  s"  and " EMIT-STR
+   NPBAD-Q2 @ IF s" row " EMIT-STR  NPBAD-Q2 @ VAR-SPAN ELSE s" the unnamed row" EMIT-STR THEN
+   s"  here" EMIT-STR ;
 : NP-LABEL ( -- )
    NPBAD-KIND @ case
       0 of s" makes " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  32 EMIT1  NP-FAM-REND
          s"  here" EMIT-STR endof
       1 of s" unifies " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  and " EMIT-STR
          NPBAD-Q2 @ VAR-SPAN  s"  here" EMIT-STR endof
-      6 of s" unifies " EMIT-STR  NP-ROW  s"  and " EMIT-STR
-         NPBAD-Q2 @ IF s" row " EMIT-STR  NPBAD-Q2 @ VAR-SPAN ELSE s" the unnamed row" EMIT-STR THEN
-         s"  here" EMIT-STR endof
+      6 of NP-ROWS-LABEL endof
+      8 of NP-ROWS-LABEL endof
       7 of s" gives " EMIT-STR  NP-ROW  s"  fixed cells here" EMIT-STR endof
       2 of s" mints " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR endof
       s" restricts " EMIT-STR  NPBAD-Q1 @ VAR-SPAN  s"  here" EMIT-STR
@@ -2283,6 +2287,9 @@ PTR-VARIABLE HOLDER-FIRST
          s"  and " EMIT-STR  NPBAD-Q2 @ VAR-SPAN
          s" , or keep the body from making them one type" EMIT-STR endof
       6 of s" run the quotation that yields the output row on every path, or declare the row the body leaves"
+         EMIT-STR endof
+      8 of s" declare " EMIT-STR  NP-ROW
+         s"  as the row the body leaves and read it only where the code is 0: after `code 0<> if code throw then`"
          EMIT-STR endof
       7 of s" declare the cells the body leaves in place of " EMIT-STR  NP-ROW
          s" , or keep the body generic over it" EMIT-STR endof

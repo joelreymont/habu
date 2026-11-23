@@ -123,6 +123,11 @@ variable CS-TICK
 : CS-NP? ( -- )
    s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CS-CODE? ;
 
+\ A declared row a catch left stale is read only on the success arm of its code.
+: CS-CATCH-FIX? ( -- )
+   s" declare row `R` as the row the body leaves and read it only where the code is 0: after `code 0<> if code throw then`"
+   CS-CODE? ;
+
 \ A zero branch proves only the matching catch completed normally. Equal
 \ numbers, another catch, and a predicate with the same effect cannot stand in
 \ for its code. The reader overwrites its input on both real paths.
@@ -583,9 +588,9 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    s" O1 ( R [ R -- R ] -- R n ) catch" CS-CODE<
    s" stale<A> n" CS-CODE?  CS-CODE-END
    s" D1 ( R [ R -- R ] -- n ) catch" CS-CODE<
-   CS-NP?  s" `R` and the unnamed row" CS-CODE?  CS-CODE-END
+   CS-NP?  s" `R` and the unnamed row" CS-CODE?  CS-CATCH-FIX?  CS-CODE-END
    s" D2 ( R [ R -- R ] -- S n ) catch" CS-CODE<
-   CS-NP?  s" `R` and row `S`" CS-CODE?  CS-CODE-END
+   CS-NP?  s" `R` and row `S`" CS-CODE?  CS-CATCH-FIX?  CS-CODE-END
    \ a literal that runs the parameter reaches R alike
    s" O2 ( R [ R -- R ] -- R n ) {: q :} [: q execute ;] catch" CS-CODE<
    s" stale<A> n" CS-CODE?  CS-CODE-END

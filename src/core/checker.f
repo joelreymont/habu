@@ -7903,7 +7903,8 @@ variable TORDER-DEPTH
 SCRATCH{
 variable NPBAD               \ non-parametric declared effect detected?
 variable NPBAD-KIND          \ 0 = concrete specialization; 1 = alias; 2 = phantom mint; 3 = kind refinement;
-                             \ 4 = DATA base; 5 = null; 6 = row alias; 7 = row given fixed cells
+                             \ 4 = DATA base; 5 = null; 6 = row alias; 7 = row given fixed cells;
+                             \ 8 = row alias through the stale tail a catch left
 variable NPBAD-Q1            \ offending quantifier's source letter (char code)
 variable NPBAD-Q2            \ aliasing partner's letter (char code); 0 when kind 0
 variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family naming
@@ -24534,16 +24535,26 @@ variable NP-OUT-I
 \ wraps, so a declared row bound to it aliases that row.
 : NP-ROW-RES ( n -- n )
    R-RES dup STALE-ROW? IF STALE>INNER R-RES THEN ;
-: NP-ROW-ROOT ( n -- n ) cells SG-ROWS + @ NP-ROW-RES ;
+: NP-ROW-RAW ( n -- n ) cells SG-ROWS + @ ;
+: NP-ROW-ROOT ( n -- n ) NP-ROW-RAW NP-ROW-RES ;
 : NP-ROW-LET ( n -- n ) cells SG-ROWS-LET + @ ;
+
+\ The kind of an alias between two rows: 8 when either reached it through a
+\ stale tail, 6 otherwise.
+: NP-ALIAS-KIND ( n n -- n )
+   R-RES STALE-ROW?  swap R-RES STALE-ROW?  or IF 8 EXIT THEN 6 ;
 
 : NP-ROW-ONE ( n -- ) {: idx:n :}
    idx NP-ROW-ROOT {: root:n :}
    root TAG S-PUSH = IF 7 idx NP-ROW-LET 0 NP-FAIL-ROW EXIT THEN
-   root SGDBASE @ NP-ROW-RES = IF 6 idx NP-ROW-LET 0 NP-FAIL-ROW EXIT THEN
+   root SGDBASE @ NP-ROW-RES = IF
+      idx NP-ROW-RAW SGDBASE @ NP-ALIAS-KIND
+      idx NP-ROW-LET 0 NP-FAIL-ROW EXIT
+   THEN
    idx 0 ?do
       i NP-ROW-ROOT root = IF
-         6 i NP-ROW-LET idx NP-ROW-LET NP-FAIL-ROW unloop EXIT
+         i NP-ROW-RAW idx NP-ROW-RAW NP-ALIAS-KIND
+         i NP-ROW-LET idx NP-ROW-LET NP-FAIL-ROW unloop EXIT
       THEN
    loop ;
 
