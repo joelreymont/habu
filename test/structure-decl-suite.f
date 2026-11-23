@@ -907,13 +907,17 @@ create SC-PATH PATH-CAP allot   variable SC-PATH-U
 create SC-OUT SC-CAP allot
 create SC-ERR SC-CAP allot   variable SC-ERR-U
 create SC-NONE 1 allot
+create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few bytes
 
 : SC-FILE ( -- str ) SC-PATH SC-PATH-U @ ;
 : SC-ERR$ ( -- str ) SC-ERR SC-ERR-U @ ;
-: SC-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
+: SB-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
+: SC-LINE ( str -- )
+   SC-SRC SC-CAP SC-SRC-U BUF-APPEND
+   10 SC-SRC SC-CAP SC-SRC-U BUF-APPEND-C ;
 
 : SC-SRC$ ( -- str )
-   SB-RESET
+   SC-SRC-U BUF-RESET
    s" STRUCTURE rpsdh POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE" SC-LINE
    s" STRUCTURE rpsdbuf FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" SC-LINE
    s" : SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE ;" SC-LINE
@@ -942,8 +946,15 @@ create SC-NONE 1 allot
    s" : SCPW ( rpsdw -- rpsdw ) ;" SC-LINE
    s" ;package" SC-LINE
    s" : SCPX ( -- ) SCPNOPE ;" SC-LINE
+   s" package pe public" SC-LINE
+   s" : HE ( -- n ) 16 ;  HE constant IDE" SC-LINE
+   s" MUTUAL pebuf peop" SC-LINE
+   s" STRUCTURE pebuf FIELD a n BUFFER b IDE ;STRUCTURE" SC-LINE
+   s" STRUCTURE peop OPAQUE FIELD x n ;STRUCTURE ;MUTUAL" SC-LINE
+   s" : SCPO ( n -- peop ) PEOP-MAKE ;" SC-LINE
+   s" ;package" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
-   SB$ ;
+   SC-SRC SC-SRC-U BUF-LEN@ ;
 
 : SC-RUN ( -- )
    SC-FILE SC-SRC$ FS:WRITE-ALL
@@ -966,9 +977,9 @@ create SC-NONE 1 allot
 : SC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
    SB-RESET  h hu SB-APPEND  10 SB-APPEND-C
    p pu SC-GUTTER  s" --> " SB-APPEND  SC-FILE SB-APPEND
-   p pu SC-LINE
+   p pu SB-LINE
    SC-ERR$ SB$ CONTAINS? TTRUE
-   SB-RESET  s" ^ " SB-APPEND  l lu SC-LINE
+   SB-RESET  s" ^ " SB-APPEND  l lu SB-LINE
    SC-ERR$ SB$ CONTAINS? TTRUE ;
 
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
@@ -984,17 +995,20 @@ s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
    s" :13:29" s" unknown type" SC-RECORD
 \ A string literal between the number and `constant` leaves K's value unstated,
-\ and a colon definition IDH's. Each use of hd, and of rpsdg and rpsdw over it,
-\ is deferred: one warning each, five.
-SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 7 T=
+\ and a colon definition IDH's and IDE's. Each use of hd, and of rpsdg and rpsdw
+\ over it, is deferred, and so is SCPO's call of peop's private PEOP-MAKE: the
+\ MUTUAL is read past IDE to its end, so peop is known OPAQUE.
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 9 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the run because only the run defines its value"
    s" :19:34" s" value known only to the run" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDE` to the run because only the run defines its value"
+   s" :32:36" s" value known only to the run" SC-RECORD
 s" error[E-UNDEFINED]: cannot find word `SCPNOPE`"
    s" :28:15" s" not found" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :30:1" s" missing field name" SC-RECORD
+   s" :37:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 

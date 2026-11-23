@@ -927,13 +927,15 @@ EXPORT CHECKER-OVERLAY:VALUE
    known IF c known EXIT THEN
    rec VALUE ;
 \ A count name no record here holds the value of: in a replay, a program
-\ constant only the run defines, so the declaration is left to the run.
+\ constant only the run defines, so the declaration is left to the run. The
+\ read goes on to its end, so every member's OPAQUE flag is known.
 : COUNT-UNREAD ( str -- ) {: a:^ u:n :}
    a u num-parse nip nip 0=  OUTCOME-NAMES @ 0 <>  and IF
-      a u DW-COUNT MISSING!  E-UNRESOLVED throw THEN
+      a u DW-COUNT MISSING! EXIT THEN
    COUNT-BAD ;
 \ `BUFFER name N`: N bytes inline from the next slot, in whole cells. N is a
-\ number literal or a constant's name, read from its record: no program code runs.
+\ number literal or a constant's name, read from its record: no program code
+\ runs. A count left to the run answers 0 with FIELD-MISS set.
 : BUFFER-COUNT ( -- n )
    NEXT dup 0= IF
       2drop s" missing buffer byte count"
@@ -941,7 +943,7 @@ EXPORT CHECKER-OVERLAY:VALUE
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
    {: ca:^ cu:n :}
    ca cu COUNT-VALUE {: v:n ok:bool :}
-   ok 0= IF ca cu COUNT-UNREAD THEN
+   ok 0= IF ca cu COUNT-UNREAD 0 EXIT THEN
    v 1 < IF COUNT-BAD THEN
    v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ before its cells are counted
    v ;
@@ -971,9 +973,11 @@ EXPORT CHECKER-OVERLAY:VALUE
 : BUFFER-CLAUSE ( -- )
    FIELD-NAME {: na:^ nu:n :}
    BUFFER-DERIVABLE
+   0 FIELD-MISS !
    BUFFER-COUNT {: bytes:n :}
-   bytes 1 - CELL / 1 + SD-ITEMS @ + SD-ITEMS !
-   na nu bytes EMIT-BUFFER
+   FIELD-MISS @ 0= IF
+      bytes 1 - CELL / 1 + SD-ITEMS @ + SD-ITEMS !
+      na nu bytes EMIT-BUFFER THEN
    -1 SEEN-FIELD ! ;
 
 : SD-DUP-FIX$ ( -- str ) s" rename the family: this package already declares a family with this name" ;
