@@ -115,6 +115,26 @@ s" data cell text" drop DATA-CELL !
       i {: k:n :} [: k THROWS ;] catch k 1 + <> if 98 throw then
    loop 77 throw ;
 : THROWN-ZERO ( -- ) [: 1 1 - throw ;] catch throw ;
+\ A changing catch's number: its code, the sentinel's match times 100 and
+\ its depth change times 10000; the cells its body leaves are stale.
+: GROW-KEPT ( -- )
+   depth DEPTH0 !
+   77 [: 1 2 ;] catch  depth DEPTH0 @ - {: c:n d:n :}
+   2drop 77 = bool>n negate 100 * c +  d 10000 * + throw ;
+: GROW-THROWN ( -- )
+   0 RUNS !  depth DEPTH0 !
+   77 [: RUNS @ 0= if 5 throw then 1 2 ;] catch
+   depth DEPTH0 @ - {: c:n d:n :}
+   2drop 77 = bool>n negate 100 * c +  d 10000 * + throw ;
+: SHRINK-KEPT ( -- )
+   depth DEPTH0 !
+   77 1 2 [: 2drop ;] catch  depth DEPTH0 @ - {: c:n d:n :}
+   77 = bool>n negate 100 * c +  d 10000 * + throw ;
+: SHRINK-THROWN ( -- )
+   0 RUNS !  depth DEPTH0 !
+   77 1 2 [: RUNS @ 0= if 6 throw then 2drop ;] catch
+   depth DEPTH0 @ - {: c:n d:n :}
+   77 = bool>n negate 100 * c +  d 10000 * + throw ;
 package OWN
 : execute ( n -- n ) 1 + ;
 : catch ( n -- n ) 1 + ;
@@ -147,7 +167,9 @@ public
    [: READ-SCOPE ;] 1342 30 WANT  [: READ-DESCEND ;] 55 31 WANT
    [: READ-RSTACK ;] 42 32 WANT  [: READ-LOOP ;] 10 33 WANT
    [: READ-BESIDE ;] 32 34 WANT  [: READ-RELEASE ;] 77 35 WANT
-   [: THROWN-ZERO ;] -9854 36 WANT ;
+   [: THROWN-ZERO ;] -9854 36 WANT
+   [: GROW-KEPT ;] 40100 37 WANT  [: GROW-THROWN ;] 40105 38 WANT
+   [: SHRINK-KEPT ;] 20100 39 WANT  [: SHRINK-THROWN ;] 20106 40 WANT ;
 
 : ZERO ( -- ) 0 >VOID execute ;
 : ZERO-CAUGHT ( -- ) 0 >VOID catch throw ;
