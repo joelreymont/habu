@@ -44,9 +44,9 @@ split-str
 \ - a document opened twice held twice, so two closes publish twice ...... sync
 \ - a change or close of a document not open applied or silent; a URI that is
 \   not a file URI opened; a change with a range applied under Full sync . sync
-\ - params absent, of the wrong kind or with a version past a cell, or a URI
-\   naming a path that holds a NUL, answered, applied or stopping the server;
-\   each must log one line ................................... malformed-params
+\ - params absent, of the wrong kind, with a version past a cell or naming a
+\   member twice, or a URI naming a path that holds a NUL, answered, applied
+\   or stopping the server; each must log one line ........... malformed-params
 \
 \ Framing
 \ - a header form the transport takes refused: a lower-case name, Content-Type
@@ -186,8 +186,8 @@ split-str
 \   give it: its name, kind and location at the document's URI over the
 \   token that declared it; a definition of another open document or of a
 \   file the document requires listed; a document with no definition answered
-\   other than an empty list; a document not open, or params naming none,
-\   answered other than -32602 ................................. document-symbol
+\   other than an empty list; a document not open, or params naming none or
+\   naming textDocument twice, answered other than -32602 ...... document-symbol
 \ - a request in the turn of a change answered before the check of the
 \   changed text published, or still listing a definition the change removed;
 \   a request with a change of its document read behind it answered other
@@ -1932,6 +1932,14 @@ variable PUB-COUNT
    s\" \"file:///habu-lsp-test/a%00.f\"" s" 1" s\" \"\"" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ E-PATH-NUL UNAPPLIED ;
 
+\ A close naming textDocument twice, the first copy this URI.
+: CLOSE-TWICE ( str -- )
+   {: u:^ uu:n :}
+   PAR-B CLEAR
+   s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+
+   s\" },\"textDocument\":{}}" PAR+
+   s" textDocument/didClose" PAR$ LSP:E-LSP-PARAMS UNAPPLIED ;
+
 : BAD-CHANGES ( -- )
    URI-A s" []" CHANGE-PARAMS
    s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
@@ -1939,6 +1947,7 @@ variable PUB-COUNT
    s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
    URI-A s" [{}]" CHANGE-PARAMS
    s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
+   URI-A CLOSE-TWICE
    s" textDocument/didClose" s\" {\"textDocument\":{}}" LSP:E-LSP-PARAMS UNAPPLIED ;
 
 \ None of them stops the server, and the document open among them stays open.
@@ -2599,13 +2608,18 @@ USE-MAX 1 + constant OVER-USINGS
    SAY
    s" 3" SYMBOLS-START SYMBOLS-END ;
 
-: OUTLINE-ASK ( str str -- )
+: OUTLINE-HEAD ( str str -- )
    {: i:^ iu:n p:^ pu:n :}
    MSG-CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+
    s\" ,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"" MSG+
-   p pu URI-OF MSG+ s\" \"}}}" MSG+
-   MSG$ FRAMED ;
+   p pu URI-OF MSG+ ;
+
+: OUTLINE-ASK ( str str -- )  OUTLINE-HEAD s\" \"}}}" MSG+ MSG$ FRAMED ;
+
+\ A request naming textDocument twice, the first copy this path.
+: OUTLINE-TWICE-ASK ( str str -- )
+   OUTLINE-HEAD s\" \"},\"textDocument\":{}}}" MSG+ MSG$ FRAMED ;
 
 : AT-ASK-WITH ( str str str n n str -- )
    {: m:^ mu:n i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
@@ -3409,6 +3423,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 5" SYM-NONE-PATH OUTLINE-ASK
    s" 6" DEF-A-PATH OUTLINE-ASK
    s" 7" s" textDocument/documentSymbol" ASK
+   s" 8" SYM-A-PATH OUTLINE-TWICE-ASK
    SAY
    s" 3" SYMBOLS-START
    s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
@@ -3420,7 +3435,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SYMBOLS-END
    s" 5" SYMBOLS-START SYMBOLS-END
    HEAR s" 6" -32602 REFUSED
-   HEAR s" 7" -32602 REFUSED ;
+   HEAR s" 7" -32602 REFUSED
+   HEAR s" 8" -32602 REFUSED ;
 
 : HIERARCHICAL-CLIENT ( -- )
    MSG-CLEAR

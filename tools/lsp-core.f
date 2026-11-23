@@ -78,7 +78,7 @@ public
 
 -9400 constant E-LSP-FIRST
 -9401 constant E-LSP-LAST
--9400 s" a notification's params lack a member the server reads, or hold one of another kind"
+-9400 s" params lack a member the server reads, hold one of another kind or one it does not take, or name a member twice"
    ERROR:CODE E-LSP-PARAMS
 -9401 s" a request or notification names a document that is not open: send didOpen for it first"
    ERROR:CODE E-LSP-NOT-OPEN
@@ -211,6 +211,20 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    END SENT ;
 
 \ ---- params ------------------------------------------------------------------
+
+: PARSED ( str -- str )  dup JSON:PARSE JSON:TEXT$ drop ;
+
+\ Whether params name a member twice in some object, where a reader here
+\ would take the first copy, the last or each.
+: REPEATS? ( str -- bool )
+   {: p :}
+   p str> nip 0= if false exit then
+   p [: PARSED ;] catch {: code:n :} drop
+   code 0= if false exit then
+   code JSON:E-MEMBER = if true exit then
+   code throw ;
+
+: ONCE ( str -- str )  dup REPEATS? if E-LSP-PARAMS throw then ;
 
 \ A reader on the value of the params' member KEY, and that value's kind.
 \ Params absent or null are empty.
@@ -381,7 +395,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : GUARDED ( str str [ str -- str ] -- )
    {: m p q :}
-   p q catch {: code:n :} drop
+   p [: ONCE q execute ;] catch {: code:n :} drop
    code REASON:TEXT$ {: why :}
    code 0= if exit then
    code IGNORABLE? 0= if code throw then
@@ -457,6 +471,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : ID-PARAM? ( str str bool -- bool )
    {: p k str:bool :}
    p str> nip 0= if false exit then
+   p REPEATS? if false exit then
    JSON-ST p str> READ-INIT
    READ-NEXT T-OBJ = if s" id" READ-FIND-KEY else false then
    if
@@ -482,6 +497,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : URI-SLOT ( str -- n )
    {: p :}
    p str> nip 0= if -1 exit then
+   p REPEATS? if -1 exit then
    JSON-ST p str> READ-INIT
    READ-NEXT T-OBJ =
    if s" textDocument" INTO? else false then
@@ -508,7 +524,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : EDIT-NOTICE? ( n str [ str -- bool ] -- bool )
    {: k:n name affected :}
    k name NOTICE? if
-      [: DOC-URI PATH SOURCE-ROOT:CANONICAL drop ;]
+      [: ONCE DOC-URI PATH SOURCE-ROOT:CANONICAL drop ;]
       catch {: code:n :}
       code 0<> if
          drop
@@ -582,7 +598,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : READ? ( JSON-RPC:id str [ str -- str ] -- bool )
    {: i p q :}
-   p q catch {: code:n :} drop
+   p [: ONCE q execute ;] catch {: code:n :} drop
    code REASON:TEXT$ {: why :}
    code 0= if true exit then
    code IGNORABLE? 0= if code throw then
@@ -958,11 +974,16 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    if ROOT-AT then
    READ-CLOSE ;
 
+: INITIALIZE! ( str -- str )
+   {: p :}
+   p MARKDOWN? HOVER-MD !
+   p WORKSPACE!
+   p ;
+
 : STARTING-REQUEST ( JSON-RPC:id str str -- )
    {: i m p :}
    m s" initialize" METHOD? if
-      p MARKDOWN? HOVER-MD !
-      p WORKSPACE!
+      i p [: INITIALIZE! ;] READ? 0= if exit then
       i REPLY-CAPABILITIES
       construct state running STATE!
    else

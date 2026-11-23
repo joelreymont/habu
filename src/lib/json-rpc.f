@@ -5,12 +5,14 @@ split-str
 \ result keeps its quotes and escapes. An invalid message's why is program text,
 \ or for PARSE-ERROR the reader's REASON text, valid until the task's next
 \ REASON:THROW. INVALID-REQUEST is an array (a batch, not taken), a root that is
-\ not an object, a member name repeated in any object, `jsonrpc` other than
+\ not an object, a member the envelope reads named twice: jsonrpc, id, method,
+\ params, result or error, or an error's code or message; `jsonrpc` other than
 \ "2.0", an id not a number, string or null, a method not a string, params not
 \ an object, array or null, and a message with no method unless it has an id
 \ and exactly one of result and error, an error being an object with an
 \ integer code and a string message. Member names compare decoded, so no
-\ reader picks a copy of a repeated one; other members are passed over. An
+\ reader here picks a copy; other members, and the text of params, result and
+\ an error, are passed over for their reader. An
 \ invalid message carries its own id when that id is valid, named once, and it
 \ has a method, else the null id, so a reply never answers a response. STORAGE CLASS. CALLER-OWNED. >MESSAGE and
 \ METHOD? each parse in a JSON:cursor record of their own, released on return or
@@ -76,7 +78,7 @@ public
 private
 
 -1 constant ABSENT              \ the kind of a member the envelope lacks
--2 constant TWICE               \ the kind of an id the root names again
+-2 constant TWICE               \ the kind of a member named twice
 
 \ One envelope member: its token kind, ABSENT when the root has none, and its
 \ JSON text.
@@ -93,10 +95,11 @@ STRUCTURE member
 : NO-MEMBER ( -- member )  ABSENT s" " MEMBER-MAKE ;
 
 \ What the walk over a root object met: whether jsonrpc is the string "2.0";
-\ the id, method, params, result and error; whether that error is an error
-\ object.
+\ the jsonrpc, id, method, params, result and error; whether that error is an
+\ error object.
 STRUCTURE envelope
    FIELD v2 bool
+   FIELD jsonrpc member
    FIELD id member
    FIELD method member
    FIELD params member
@@ -106,7 +109,8 @@ STRUCTURE envelope
 ;STRUCTURE
 
 : NO-ENVELOPE ( -- envelope )
-   false NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER false ENVELOPE-MAKE ;
+   false NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER NO-MEMBER false
+   ENVELOPE-MAKE ;
 
 : INVALID ( n str id -- message )  JSON--RPC-MESSAGE:INVALID ;
 
@@ -140,46 +144,83 @@ STRUCTURE envelope
    READ-TOKEN T-STR = if s" 2.0" READ-STR-EQ? exit then
    READ-SKIP-VALUE false ;
 
-\ The next member of an error object, given whether its code is an integer and
-\ its message a string so far; false after the last.
-: ERROR-MEMBER ( JSON:reader bool bool -- JSON:reader bool bool bool )
-   {: code:bool text:bool :}
-   READ-NEXT T-KEY <> if code text false exit then
+\ The jsonrpc value as a member of its kind, and whether it is "2.0".
+: >V2 ( JSON:reader -- JSON:reader member bool )
+   READ-TOKEN {: kind:n :}
+   V2? {: good:bool :}
+   kind s" " MEMBER-MAKE good ;
+
+: >PLAIN ( JSON:reader -- JSON:reader member bool )  >MEMBER true ;
+
+\ Whether this key names an error member already met, of kind K.
+: AGAIN? ( bool n -- bool )
+   {: at:bool k:n :}
+   at k ABSENT <> and ;
+
+\ The next member of an error object, given its code's and message's kinds so
+\ far, ABSENT before either, and whether one came twice; false after the last.
+: ERROR-MEMBER ( JSON:reader n n bool -- JSON:reader n n bool bool )
+   {: code:n text:n twice:bool :}
+   READ-NEXT T-KEY <> if code text twice false exit then
    s" code" READ-STR-EQ? {: at-code:bool :}
    s" message" READ-STR-EQ? {: at-text:bool :}
    READ-NEXT {: kind:n :}
    READ-SKIP-VALUE
-   at-code if kind T-INT = else code then
-   at-text if kind T-STR = else text then
+   at-code if kind else code then
+   at-text if kind else text then
+   at-code code AGAIN? at-text text AGAIN? or twice or
    true ;
 
-\ The current value as the error member, and whether it is an error object.
+\ The current value as the error member, TWICE when it names its code or
+\ message twice, and whether it is an error object.
 : ERROR-VALUE ( JSON:reader -- JSON:reader member bool )
    READ-TOKEN T-OBJ <> if >MEMBER false exit then
    READ-SPAN$ drop {: open:^ :}
-   false false begin ERROR-MEMBER 0= until and {: ok:bool :}
+   ABSENT ABSENT false begin ERROR-MEMBER 0= until
+   {: code:n text:n twice:bool :}
    READ-SPAN$ drop {: close:^ :}
-   T-OBJ open close 1+ open - MEMBER-MAKE ok ;
+   twice if TWICE else T-OBJ then open close 1+ open - MEMBER-MAKE
+   code T-INT = text T-STR = and ;
 
-\ The id at the current value, given the one before it, if any.
-: >ID-MEMBER ( JSON:reader member -- JSON:reader member )
-   {: i :}
-   >MEMBER {: n :}
-   i PRESENT? if TWICE s" " MEMBER-MAKE exit then
-   n ;
+\ The member at the current value and Q's reading of it, given the one before
+\ it: when the root named it already, TWICE and false, its value skipped.
+: >ONCE-MEMBER
+   ( JSON:reader member [ JSON:reader -- JSON:reader member bool ] --
+     JSON:reader member bool )
+   {: prior q :}
+   prior PRESENT? if
+      READ-SKIP-VALUE TWICE s" " MEMBER-MAKE false exit
+   then
+   q execute ;
 
 \ The member at the current key: recorded when the envelope names it, else
 \ passed over.
 : RECORD ( JSON:reader envelope -- JSON:reader envelope )
    {: e :}
-   e ENVELOPE-UNMAKE {: v:bool i m p r x ok:bool :}
-   s" jsonrpc" READ-STR-EQ? if READ-NEXT drop V2? i m p r x ok ENVELOPE-MAKE exit then
-   s" id" READ-STR-EQ? if READ-NEXT drop i >ID-MEMBER {: n :} v n m p r x ok ENVELOPE-MAKE exit then
-   s" method" READ-STR-EQ? if READ-NEXT drop >MEMBER {: n :} v i n p r x ok ENVELOPE-MAKE exit then
-   s" params" READ-STR-EQ? if READ-NEXT drop >MEMBER {: n :} v i m n r x ok ENVELOPE-MAKE exit then
-   s" result" READ-STR-EQ? if READ-NEXT drop >MEMBER {: n :} v i m p n x ok ENVELOPE-MAKE exit then
+   e ENVELOPE-UNMAKE {: v:bool j i m p r x ok:bool :}
+   s" jsonrpc" READ-STR-EQ? if
+      READ-NEXT drop j [: >V2 ;] >ONCE-MEMBER {: n good:bool :}
+      good n i m p r x ok ENVELOPE-MAKE exit
+   then
+   s" id" READ-STR-EQ? if
+      READ-NEXT drop i [: >PLAIN ;] >ONCE-MEMBER drop {: n :}
+      v j n m p r x ok ENVELOPE-MAKE exit
+   then
+   s" method" READ-STR-EQ? if
+      READ-NEXT drop m [: >PLAIN ;] >ONCE-MEMBER drop {: n :}
+      v j i n p r x ok ENVELOPE-MAKE exit
+   then
+   s" params" READ-STR-EQ? if
+      READ-NEXT drop p [: >PLAIN ;] >ONCE-MEMBER drop {: n :}
+      v j i m n r x ok ENVELOPE-MAKE exit
+   then
+   s" result" READ-STR-EQ? if
+      READ-NEXT drop r [: >PLAIN ;] >ONCE-MEMBER drop {: n :}
+      v j i m p n x ok ENVELOPE-MAKE exit
+   then
    s" error" READ-STR-EQ? if
-      READ-NEXT drop ERROR-VALUE {: n good:bool :} v i m p r n good ENVELOPE-MAKE exit
+      READ-NEXT drop x [: ERROR-VALUE ;] >ONCE-MEMBER {: n good:bool :}
+      v j i m p r n good ENVELOPE-MAKE exit
    then
    READ-NEXT drop READ-SKIP-VALUE e ;
 
@@ -223,7 +264,7 @@ STRUCTURE envelope
    i >ID x TEXT$ JSON--RPC-MESSAGE:FAILURE ;
 
 : SORT ( envelope -- message )
-   ENVELOPE-UNMAKE {: v:bool i m p r x ok:bool :}
+   ENVELOPE-UNMAKE {: v:bool j i m p r x ok:bool :}
    i PRESENT? if i KIND ID-KIND? 0= if
       INVALID-REQUEST s" an id that is not a number, string or null" NULL-ID INVALID exit
    then then
@@ -234,35 +275,31 @@ STRUCTURE envelope
    m PRESENT? if i m p reply CALL exit then
    i r x ok ANSWER ;
 
+: TWICE? ( member -- bool )  KIND TWICE = ;
+
+: NAMED-TWICE? ( envelope -- bool )
+   ENVELOPE-UNMAKE {: v:bool j i m p r x ok:bool :}
+   j TWICE? i TWICE? or m TWICE? or
+   p TWICE? or r TWICE? or x TWICE? or ;
+
 : REPEATED ( envelope -- message )
-   ENVELOPE-UNMAKE {: v:bool i m p r x ok:bool :}
-   INVALID-REQUEST s" a member name repeated in one object"
+   ENVELOPE-UNMAKE {: v:bool j i m p r x ok:bool :}
+   INVALID-REQUEST s" an envelope member named twice"
    i m REPLY INVALID ;
 
-: SORT-ROOT ( bool n envelope -- message )
-   {: twice:bool root:n e :}
+: SORT-ROOT ( n envelope -- message )
+   {: root:n e :}
    root T-ARR = if
       INVALID-REQUEST s" an array, a batch this reader does not take" NULL-ID INVALID exit
    then
    root T-OBJ <> if
       INVALID-REQUEST s" a body that is not an object" NULL-ID INVALID exit
    then
-   twice if e REPEATED exit then
+   e NAMED-TWICE? if e REPEATED exit then
    e SORT ;
-
-: PARSED ( str -- str )  2dup JSON:PARSE JSON:TEXT$ 2drop ;
-
-\ Whether JSON text repeats a member name in some object; text that is not
-\ JSON throws the reader's code.
-: REPEATS? ( str -- bool )
-   [: PARSED ;] catch {: code:n :} 2drop
-   code 0= if false exit then
-   code JSON:E-MEMBER = if true exit then
-   code throw ;
 
 : READ-BODY ( message ^JSON:cursor str -- message ^JSON:cursor str )
    {: prior st:^ body:^ len:n :}
-   body len REPEATS? {: twice:bool :}
    st body len READ-INIT
    READ-NEXT {: root:n :}
    root T-OBJ = if
@@ -271,7 +308,7 @@ STRUCTURE envelope
       READ-SKIP-VALUE NO-ENVELOPE
    then {: e :}
    READ-FINISH
-   twice root e SORT-ROOT  st body len ;
+   root e SORT-ROOT  st body len ;
 
 : READ-IN ( str ^JSON:cursor -- message )
    {: body:^ len:n st:^ :}

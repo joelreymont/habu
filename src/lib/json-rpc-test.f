@@ -149,17 +149,21 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":[1],\"method\":\"x\"}" BAD-ID
    s\" {\"jsonrpc\":\"2.0\",\"id\":true,\"result\":1}" BAD-ID ;
 
-\ A repeated method, a repeat inside params, one spelled with an escape: the
-\ message's id; an id named twice: id null.
+\ A repeat inside params is the params' reader's to reject: the request
+\ carries their text whole.
 : TEST-REPEAT ( -- )
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\",\"method\":\"y\"}"
-   s" invalid -32600 1 a member name repeated in one object" SORTS
+   s" invalid -32600 1 an envelope member named twice" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"x\",\"params\":{\"a\":1,\"a\":2}}"
-   s" invalid -32600 2 a member name repeated in one object" SORTS
+   s\" request 2 \"x\" {\"a\":1,\"a\":2}" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"x\",\"m\\u0065thod\":\"x\"}"
-   s" invalid -32600 3 a member name repeated in one object" SORTS
+   s" invalid -32600 3 an envelope member named twice" SORTS
+   s\" {\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"x\",\"params\":{},\"params\":{}}"
+   s" invalid -32600 4 an envelope member named twice" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"id\":2,\"method\":\"x\"}"
-   s" invalid -32600 null a member name repeated in one object" SORTS ;
+   s" invalid -32600 null an envelope member named twice" SORTS
+   s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1,\"code\":2,\"message\":\"m\"}}"
+   s" invalid -32600 null an envelope member named twice" SORTS ;
 
 : NOT-ERROR ( str -- )
    s" invalid -32600 null an error that is not an error object" SORTS ;
