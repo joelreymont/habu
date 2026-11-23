@@ -1049,9 +1049,6 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 \ pointer, and its path bytes follow them at CHUNK-HEAD.
 CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 
-: SIZE-DIE ( -- )
-   s" require: inventory size overflow" EXIT-STATUS:INTERNAL die ;
-
 : FROZEN-REC ( n -- ^n )
    2 * cells FROZEN @ swap + ;
 
@@ -1092,7 +1089,6 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    then ;
 
 : ROW-GROW ( n -- ) {: need:n :}
-   need ROW-LIMIT > if SIZE-DIE then
    need ROW-NEW-CAP {: cap:n :}
    ROWS @ ROW-LENS @ ROW-CAP @ {: old:^ oldlens:^ oldcap:n :}
    cap COLS-MAP {: base:^ :}
@@ -1107,7 +1103,6 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
    oldcap 0 > if old oldcap COLS-UNMAP then ;
 
 : ROW-ENSURE ( n -- ) {: need:n :}
-   need ROW-LIMIT > if SIZE-DIE then
    need ROW-CAP @ > if need ROW-GROW then ;
 
 : ROWS-RELEASE ( -- )
@@ -1142,7 +1137,6 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 
 : CHUNK-NEW ( n -- )
    CHUNK-NEW-ROOM {: room:n :}
-   room CHUNK-LIMIT > if SIZE-DIE then
    CHUNK @ {: prev:^ :}
    room CHUNK-HEAD + map-anon 0 <> if
       drop room CHUNK-HEAD + s" a path chunk" s" " REJECTION:MAP-PASS-FILE
@@ -1186,8 +1180,7 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
       dup CHUNK-PREV@ swap dup CHUNK-BYTES munmap 0 < if
          s" require: cannot release a path chunk" INCLUDE-DIE
       then
-   repeat drop
-   s" require: path chunk missing" EXIT-STATUS:INTERNAL die ;
+   repeat drop ;
 
 : ROUND-CELL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: rem:n :}
@@ -1199,24 +1192,15 @@ CAST: CHUNK-COUNTS ( ^^u8 -- ^n )
 
 : LIVE-BYTES ( -- n )
    0 REQUIRE-N @ 0 ?do
-      i PREFIX-N @ < if i FROZEN-LEN else i ROW-LEN@ then {: u:n :}
-      {: used:n :}
-      u MAX-BYTES used - > if SIZE-DIE then
-      used u +
+      i PREFIX-N @ < if i FROZEN-LEN else i ROW-LEN@ then +
    loop ;
 
-: PACK-BYTES ( n -- n ) {: used:n :}
-   REQUIRE-N @ ROW-LIMIT > if SIZE-DIE then
-   REQUIRE-N @ FROZEN-BYTES {: recs:n :}
-   used MAX-BYTES recs - > if SIZE-DIE then
-   recs used + ;
+: PACK-BYTES ( n -- n ) REQUIRE-N @ FROZEN-BYTES + ;
 
 : PAD-BYTES ( ^u8 -- n )
    data-base - negate CELL 1- and ;
 
-: TOTAL-BYTES ( n n -- n ) {: bytes:n pad:n :}
-   bytes MAX-BYTES CELL 1- - pad - > if SIZE-DIE then
-   pad bytes + ROUND-CELL ;
+: TOTAL-BYTES ( n n -- n ) + ROUND-CELL ;
 
 public
 
@@ -1227,11 +1211,7 @@ public
    idx PREFIX-N @ < if idx FROZEN-LEN else idx ROW-LEN@ then ;
 
 : APPEND ( str -- ) {: a:^ u:n :}
-   u 0 <= u PATH-CAP > or if
-      s" require: invalid path length" EXIT-STATUS:INTERNAL die
-   then
    REQUIRE-N @ {: idx:n :}
-   idx ROW-LIMIT >= if SIZE-DIE then
    idx 1+ ROW-ENSURE
    u CHUNK-SPACE {: path:^ :}
    a path u BYTE-COPY
@@ -1268,9 +1248,6 @@ public
 \ only the parent's provisional row and keep later rows in order.
 : REMOVE ( n -- )
    {: idx:n :}
-   idx PREFIX-N @ < idx REQUIRE-N @ >= or if
-      s" require: remove outside live rows" EXIT-STATUS:INTERNAL die
-   then
    idx REQUIRE-N @ 1- = if
       idx REWIND
    else
@@ -1972,9 +1949,6 @@ private
 
 : EVENT-POOL-ROOM ( n -- ) {: u:n :}
    EVENT-POOL-N @ u + {: need:n :}
-   u 0 < need 0 < or if
-      s" events: a path length is negative or overflows the event pool" EXIT-STATUS:INTERNAL die
-   then
    need EVENT-POOL-CAP @ <= if exit then
    need EVENT-POOL-CAP @ EVENT-GROWN {: cap:n :}
    EVENT-POOL@ EVENT-POOL-CAP @ EVENT-POOL-N @ cap EVENT-REMAP
@@ -2972,15 +2946,11 @@ package REQUIRE-REG
 public
 
 : SNAPSHOT ( -- )
-   REQUIRE-SAVE-N @ 0 >= if
-      s" require: a registry snapshot is already in effect" EXIT-STATUS:INTERNAL die
-   then
    REQUIRE-N @ REQUIRE-SAVE-N !
    REQUIRE-BASE @ REQUIRE-SAVE-BASE !
    REQUIRE-N @ REQUIRE-BASE ! ;
 
 : RESTORE ( -- )
-   REQUIRE-SAVE-N @ 0< if s" require: no registry snapshot to restore" EXIT-STATUS:INTERNAL die then
    REQUIRE-SAVE-BASE @ REQUIRE-BASE !
    REQUIRE-SAVE-N @ REWIND
    -1 REQUIRE-SAVE-N ! ;

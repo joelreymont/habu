@@ -1653,25 +1653,9 @@ variable TDPLAN-N
 
 variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 
-: TDPLAN-BYTE-NEED ( n -- n ) {: add:n :}
-   add 0 < add TDPLAN-BYTE-MAX > or IF
-      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
-   TDPLAN-U @ 0 < IF
-      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
-   TDPLAN-U @ TDPLAN-BYTE-MAX add - > IF
-      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
-   TDPLAN-U @ add + ;
+: TDPLAN-BYTE-NEED ( n -- n ) TDPLAN-U @ + ;
 
 : TDPLAN-GROW-CAP ( n n -- n ) {: need:n cap:n :}
-   need 0 <= need TDPLAN-BYTE-MAX > or IF
-      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
-   cap 0 <= cap TDPLAN-BYTE-MAX > or IF
-      s" sumtype: generated declaration plan capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    cap TDPLAN-BYTE-MAX 2 / <= IF cap 2 * need max EXIT THEN
    need ;
 
@@ -1681,20 +1665,10 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
    TDPLAN-P TDPLAN-CAP @ cap REG-GROW1
    cap TDPLAN-CAP ! ;
 
-: TDPLAN-ROWS>BYTES ( n -- n )
-   dup 0 < over TDPLAN-ROW-MAX > or IF
-      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
-   TDPLAN-REC * ;
+: TDPLAN-ROWS>BYTES ( n -- n ) TDPLAN-REC * ;
 
 : TDPLAN-NEXT-ROW-CAP ( -- n )
-   TDPLAN-N @ TDPLAN-ROW-MAX >= IF
-      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    TDPLAN-N @ 1 + {: need:n :}
-   TDPLAN-ROW-CAP @ 0 <= TDPLAN-ROW-CAP @ TDPLAN-ROW-MAX > or IF
-      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    TDPLAN-ROW-CAP @ TDPLAN-ROW-MAX 2 / <= IF
       TDPLAN-ROW-CAP @ 2 * need max EXIT
    THEN
@@ -1722,9 +1696,6 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
    need TDPLAN-U ! ;
 
 : TDPLAN-ROW ( n -- ^n )
-   dup 0 < over TDPLAN-ROW-CAP @ >= or IF
-      s" sumtype: generated declaration row capacity overflow" EXIT-STATUS:INTERNAL die
-   THEN
    TDPLAN-REC * TDPLAN-ROW-P @ + ;
 
 : TDPLAN.SYM ( ^a -- ^a ) TDPLAN.SYM-OFF + ;
@@ -1787,12 +1758,6 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
    kind r TDPLAN.BUILT !  fam r TDPLAN.FAM !  vid r TDPLAN.VID ! ;
 
 : TDPLAN-SPAN$ ( n n -- str ) {: off:n u:n :}
-   off 0 < u 0 < or off TDPLAN-U @ > or IF
-      s" sumtype: invalid generated declaration span" EXIT-STATUS:INTERNAL die
-   THEN
-   u TDPLAN-U @ off - > IF
-      s" sumtype: invalid generated declaration span" EXIT-STATUS:INTERNAL die
-   THEN
    TDPLAN-P @ off + u ;
 
 

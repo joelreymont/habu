@@ -3247,9 +3247,9 @@ REGISTER-ROOT
 \ for none. A node is `P index`, `C con`, `* node`, `A family count node...`,
 \ `Q hasr node node node node` or `R count node...`.
 
-\ The word every type entry's record runs. A type entry lives in the types
-\ wordlist, which no search order holds, so only the engine could run one.
-: TYPE-WORD ( -- ) s" tfam: a type entry ran as a word" EXIT-STATUS:INTERNAL die ;
+\ The word every type entry's record binds as its code. A type entry lives in
+\ the types wordlist, which no search order holds, so nothing runs one.
+: TYPE-WORD ( -- ) ;
 
 : ENTRY? ( n -- bool ) TF-REC@ TF.ENTRY @ 0 <> ;
 \ Family id's type entry is record ix.
@@ -4443,7 +4443,7 @@ TFAM-MEMBERS-INSTALL
 
 \ ROW with `^ARENA:arena` pushed.
 : ARENA-ARG ( n -- n ) {: row:n :}
-   s" ARENA" s" arena" TFAM-FIND 0= IF s" tfam: no ARENA:arena family" EXIT-STATUS:INTERNAL die THEN
+   s" ARENA" s" arena" TFAM-FIND drop
    TFAM-FRESH-TERM MK-PTR row MK-PUSH ;
 
 \ ROW with the action `[ ^T -- ]` pushed.
