@@ -13,7 +13,8 @@
 //   rpc    a module's tools/call rpc goes over the socket (socket.call), its
 //          view/resume P is kept by the socket and answered {} at once, and
 //          every other method is host.request(method, params); the response's
-//          result or error answers the record
+//          result or error answers the record, and a tools/call's binary
+//          messages follow it
 //   notify each server notification but view/code and view/alive, which are
 //          the shell's own, and view/open each time the socket opens, reaches
 //          the module as the viewport's notify, the path host
@@ -128,7 +129,7 @@ export async function start({ meta, files, request, restart, carried, initialize
     const step = (input, value) => restarts[phase][input](value);
     const fetching = () => {
       phase = "fetching";
-      socket.call("tools/call", { name: CODE_TOOL, arguments: {} }).then((r) => {
+      socket.call("tools/call", { name: CODE_TOOL, arguments: {} }).then(({ response: r }) => {
         if ("error" in r) throw new Error(`${CODE_TOOL}: ${JSON.stringify(r.error)}`);
         if (r.result?.isError)
           throw new Error(`${CODE_TOOL}: ${(r.result.content ?? []).filter((c) => c.type === "text").map((c) => c.text).join(" ")}`);
@@ -173,10 +174,12 @@ export async function start({ meta, files, request, restart, carried, initialize
       const p = JSON.parse(params);
       if (method === "view/resume") {
         socket.resume(p);
-        return JSON.stringify({ result: {} });
+        return { text: JSON.stringify({ result: {} }), binary: [] };
       }
-      const r = await (method === "tools/call" ? socket.call(method, p) : request(method, p));
-      return JSON.stringify("result" in r ? { result: r.result } : { error: r.error });
+      const { response: r, binary } = method === "tools/call"
+        ? await socket.call(method, p)
+        : { response: await request(method, p), binary: [] };
+      return { text: JSON.stringify("result" in r ? { result: r.result } : { error: r.error }), binary };
     };
     try {
       mounted = await mount(canvas, {

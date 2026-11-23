@@ -16,12 +16,17 @@
 //                            null: its resume is kept, and its session reused
 //                            until it expires
 //   socket.call(method, params)
-//                            -> Promise of the response message, as the host's
-//                            request resolves; it rejects a response holding
-//                            neither or both of result and error. A call sent
-//                            and unanswered when its socket closes is answered
-//                            {error: {code: -32000, message: "the view's
-//                            socket closed"}}, and every call in ended
+//                            -> Promise of {response, binary}: the response
+//                            message, as the host's request resolves, and the
+//                            ArrayBuffers the server sent before that response
+//                            while the call was the sent one, [] for every
+//                            answer the shell gives itself; the server sends a
+//                            call's binary messages first, then the response
+//                            that closes them. The promise rejects a response
+//                            holding neither or both of result and error. A
+//                            call sent and unanswered when its socket closes
+//                            is answered {error: {code: -32000, message: "the
+//                            view's socket closed"}}, and every call in ended
 //                            {error: {code: -32000, message: <the reason>}}; a
 //                            call not yet sent waits for the next socket
 //   socket.resume(params)    keeps params, the module's last view/resume
@@ -48,6 +53,7 @@
 //                result whose _meta lacks url or seconds
 //   opened       the socket opened
 //   message      a text frame
+//   binary       a binary frame, an ArrayBuffer
 //   closed       the socket closed or failed to open, with its close code
 //   silent       40 s open with nothing received; the server sends view/alive
 //                every 25 s, so only a lost socket is silent that long
@@ -68,6 +74,8 @@
 //            request, which is answered -32601; a response sends the next
 //            call, or rests when hidden and idle; a response to the sent
 //            call or a view/alive resets the backoff to 1 s
+//            binary: liveness, then kept for the sent call; with no call
+//            sent, logged and dropped
 //            closed: waiting, as in opening
 //            silent: waiting, closing the socket (4000)
 //            call: queued, and sent when none is
@@ -131,7 +139,7 @@ export function open({ request, notify, onCode, carried }) {
     if (s.sent) {
       const { id, resolve } = s.sent;
       s.sent = null;
-      resolve(failed(id, CLOSED_TEXT));
+      resolve({ response: failed(id, CLOSED_TEXT), binary: [] });
     }
   };
   const listen = () => {
@@ -172,8 +180,9 @@ export function open({ request, notify, onCode, carried }) {
       return;
     }
     s.ws = ws;
+    ws.binaryType = "arraybuffer";
     ws.onopen = () => step("opened");
-    ws.onmessage = ({ data }) => step("message", data);
+    ws.onmessage = ({ data }) => step(typeof data === "string" ? "message" : "binary", data);
     ws.onclose = ({ code }) => step("closed", code);
   };
   const connect = () => {
@@ -202,7 +211,7 @@ export function open({ request, notify, onCode, carried }) {
     s.state = "ended";
     s.reason = reason;
     document.removeEventListener("visibilitychange", seen);
-    for (const { id, resolve } of s.waiting.splice(0)) resolve(failed(id, reason));
+    for (const { id, resolve } of s.waiting.splice(0)) resolve({ response: failed(id, reason), binary: [] });
   };
   const rest = () => { if (hidden() && idle()) resting(); };
   const closed = (code) => {
@@ -231,13 +240,21 @@ export function open({ request, notify, onCode, carried }) {
       console.error(new Error(`the view's socket answered ${JSON.stringify(m.id)}, which is not the sent call`));
       return;
     }
-    const { resolve, reject } = s.sent;
+    const { resolve, reject, binary } = s.sent;
     s.sent = null;
     s.delay = FIRST_DELAY;
     if (("result" in m) === ("error" in m)) reject(new Error(`${m.id}: the message is not a JSON-RPC response`));
-    else resolve(m);
+    else resolve({ response: m, binary });
     if (hidden() && idle()) resting();
     else pump();
+  };
+  const kept = (data) => {
+    listen();
+    if (s.sent === null) {
+      console.error(new Error(`the view's socket sent ${data.byteLength} binary bytes with no call sent`));
+      return;
+    }
+    s.sent.binary.push(data);
   };
   const queue = (call) => { s.waiting.push(call); };
 
@@ -247,7 +264,7 @@ export function open({ request, notify, onCode, carried }) {
     asking: {
       asked: (session) => { s.session = session; if (hidden() && idle()) resting(); else opening(); },
       "ask-failed": (e) => { console.error(e); ended(e.message); },
-      opened: none, message: none, closed: none, silent: none, waited: none,
+      opened: none, message: none, binary: none, closed: none, silent: none, waited: none,
       hidden: none, // decided at asked
       visible: none,
       call: queue,
@@ -257,6 +274,7 @@ export function open({ request, notify, onCode, carried }) {
       asked: none, "ask-failed": none,
       opened,
       message: none, // a socket sends nothing before it opens
+      binary: none, // a socket sends nothing before it opens
       closed,
       silent: none, waited: none,
       hidden: rest,
@@ -267,6 +285,7 @@ export function open({ request, notify, onCode, carried }) {
     open: {
       asked: none, "ask-failed": none, opened: none,
       message: received,
+      binary: kept,
       closed,
       silent: () => waiting(SILENT),
       waited: none,
@@ -276,7 +295,8 @@ export function open({ request, notify, onCode, carried }) {
       dispose: () => ended(),
     },
     waiting: {
-      asked: none, "ask-failed": none, opened: none, message: none, closed: none, silent: none,
+      asked: none, "ask-failed": none, opened: none, message: none, binary: none, closed: none,
+      silent: none,
       waited: () => { if (hidden() && idle()) resting(); else connect(); },
       hidden: rest,
       visible: none,
@@ -284,16 +304,17 @@ export function open({ request, notify, onCode, carried }) {
       dispose: () => ended(),
     },
     resting: {
-      asked: none, "ask-failed": none, opened: none, message: none, closed: none, silent: none,
+      asked: none, "ask-failed": none, opened: none, message: none, binary: none, closed: none,
+      silent: none,
       waited: none, hidden: none,
       visible: connect,
       call: (call) => { queue(call); connect(); },
       dispose: () => ended(),
     },
     ended: {
-      asked: none, "ask-failed": none, opened: none, message: none, closed: none, silent: none,
-      waited: none, hidden: none, visible: none,
-      call: ({ id, resolve }) => resolve(failed(id, s.reason)),
+      asked: none, "ask-failed": none, opened: none, message: none, binary: none, closed: none,
+      silent: none, waited: none, hidden: none, visible: none,
+      call: ({ id, resolve }) => resolve({ response: failed(id, s.reason), binary: [] }),
       dispose: () => { s.reason = CLOSED_TEXT; },
     },
   };
@@ -308,7 +329,7 @@ export function open({ request, notify, onCode, carried }) {
   connect();
   return {
     call(method, params) {
-      return new Promise((resolve, reject) => step("call", { id: ++s.lastId, method, params, resolve, reject }));
+      return new Promise((resolve, reject) => step("call", { id: ++s.lastId, method, params, binary: [], resolve, reject }));
     },
     resume(params) { s.resume = params; },
     carried() { return { resume: s.resume, session: s.session }; },

@@ -28,9 +28,10 @@
 //   answered: a, b the response, c the status, d the request id, buttons and
 //     mods the buffer size when the answer arrived; a tagged request's
 //     transport failure is status 0 with String(error) as its body; a legacy
-//     post's d, buttons and mods are 0. For an rpc, a, b are the JSON of the
-//     response's result, c 1, or of its error, c 2; a transport failure is c 0
-//     with String(error)
+//     post's d, buttons and mods are 0. For an rpc, a, b name a u64 length n,
+//     the n bytes of JSON (the result when c is 1, the error when c is 2,
+//     String(error) when c is 0), then the bytes of the call's binary
+//     messages, joined in the order sent
 //   wheel: a, b signed device-pixel deltas; resize: a the page's
 //     devicePixelRatio, device pixels per CSS pixel (the screen's density
 //     times the page zoom), in thousandths, at least 1; b 0
@@ -232,7 +233,7 @@ const PICKED = 18n;
 const OCCLUDED = 19n;
 const ID_BYTES = 16;
 
-const PROTOCOL = 4n;
+const PROTOCOL = 5n;
 
 // Records.
 const HELLO = 0n;
@@ -285,8 +286,10 @@ export class Module {
   // host: hello(), fetch(path) -> Promise<Uint8Array>, post(path, body) ->
   // Promise<{ status, bytes }>, request(method, path, body, id) -> the same;
   // id is an optional diagnostic argument for the CLI.
-  // rpc(method, params, id) -> Promise of the response's JSON text,
-  // {"result":…} or {"error":…}; params is the record's JSON text.
+  // rpc(method, params, id) -> Promise of { text, binary }: text the
+  // response's JSON text, {"result":…} or {"error":…}, and binary an array of
+  // ArrayBuffers whose bytes follow the JSON in the module's delivery, []
+  // when there are none; params is the record's JSON text.
   // after(ms, token) runs tick(token) once ms have passed. read(file, offset,
   // length) -> Promise<Uint8Array> of the numbered file's bytes.
   // pick(x, y, id) -> Promise of [instance, face, depthBits], numbers as
@@ -459,14 +462,20 @@ export class Module {
       const { status, bytes } = response;
       await this.turn([ANSWERED, this.place(bytes), bytes.length, status, id, ...this.host.size()]);
     } else if (kind === RPC) {
-      let status, value;
+      let status, value, binary = [];
       try {
-        [status, value] = outcome(await this.host.rpc(method, params, id));
+        const answer = await this.host.rpc(method, params, id);
+        [status, value] = outcome(answer.text);
+        binary = answer.binary;
       } catch (error) {
         [status, value] = [0n, String(error)];
       }
-      const bytes = encoder.encode(status === 0n ? value : JSON.stringify(value));
-      await this.turn([ANSWERED, this.place(bytes), bytes.length, status, id, ...this.host.size()]);
+      const json = encoder.encode(status === 0n ? value : JSON.stringify(value));
+      const head = new Uint8Array(8);
+      new DataView(head.buffer).setBigUint64(0, BigInt(json.length), true);
+      const pieces = [head, json, ...binary];
+      const size = pieces.reduce((n, piece) => n + piece.byteLength, 0);
+      await this.turn([ANSWERED, this.place(...pieces), size, status, id, ...this.host.size()]);
     } else if (kind === READ) {
       let read, bytes;
       try {
@@ -904,14 +913,21 @@ export class Module {
     this.drew = true;
   }
 
-  // Copies a delivery into pages the module reserves, which it then owns, and
-  // answers their address; refuses one the module cannot reserve.
-  place(bytes) {
+  // Copies a delivery's pieces, each a Uint8Array or an ArrayBuffer, in order
+  // into pages the module reserves, which it then owns, and answers their
+  // address; refuses a delivery the module cannot reserve.
+  place(...pieces) {
     this.live();
-    if (bytes.length === 0) return 0n;
-    const at = this.x.reserve(BigInt(bytes.length));
-    if (at === 0n) throw new RangeError(`the module cannot reserve ${bytes.length} bytes`);
-    new Uint8Array(this.x.memory.buffer, Number(at), bytes.length).set(bytes);
+    const size = pieces.reduce((n, piece) => n + piece.byteLength, 0);
+    if (size === 0) return 0n;
+    const at = this.x.reserve(BigInt(size));
+    if (at === 0n) throw new RangeError(`the module cannot reserve ${size} bytes`);
+    let offset = Number(at);
+    for (const piece of pieces) {
+      const bytes = ArrayBuffer.isView(piece) ? piece : new Uint8Array(piece);
+      new Uint8Array(this.x.memory.buffer, offset, bytes.length).set(bytes);
+      offset += bytes.length;
+    }
     return at;
   }
 }

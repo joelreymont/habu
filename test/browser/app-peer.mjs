@@ -35,14 +35,16 @@
 // the socket while the host sees only view_code and
 // view_socket, neither view/code nor a pushed view/alive reaches the module
 // and a pushed notification does, view/resume is kept and answered {}, a
-// close answers the outstanding call -32000 and the view reopens after its
+// close answers the outstanding call -32000, the binary message the server
+// sent for it reaching no module, and the view reopens after its
 // backoff, a view/code naming other code fetches view_code over the socket,
 // then notifies the old module view/restart and, once that turn has settled,
 // restarts the view through app.js, carrying the resume the module told in it
-// and the session, the new canvas has the focus the old one had, a file
-// dropped on the restarted view reaches its module once and no listener of
-// the old view throws, and a close under 4403 makes the view ask view_socket
-// again before it reopens, and the restarted view
+// and the session, the new canvas has the focus the old one had, the
+// restarted module gets a call's binary messages after its response's JSON,
+// in the order sent, a file dropped on the restarted view reaches its module
+// once and no listener of the old view throws, and a close under 4403 makes
+// the view ask view_socket again before it reopens, and the restarted view
 // asks for no display mode. An eighth frame's sockets are closed
 // right after they open: the delays between its reopens double, and its
 // first view/alive resets them to 1 s. A ninth frame, once running, is pushed
@@ -234,14 +236,16 @@ window.addLive = (name, failure, context) => {
 // The view socket's side: the count of requests to /view, and per session its
 // messages, its open socket, its opens, the ask its last open's url names, the
 // times of its last open and of the last close the peer made, the code
-// view/code names, and whether the next tools/call closes the socket
-// unanswered; for the sessions named, how many more sockets close right after
+// view/code names, whether the next tools/call closes the socket
+// unanswered, and the binary messages it sends before its answer; for the
+// sessions named, how many more sockets close right after
 // they open, the ms from each close the peer made to the next open, and the
 // tool error view_code is answered with.
 const view = { requests: 0, log: { main: [], live: [], flaky: [], erring: [] }, sockets: {},
   opens: { main: 0, live: 0, flaky: 0, erring: 0 }, asks: {}, openedAt: {}, closedAt: {},
   codes: { main: meta.code, live: meta.code, flaky: meta.code, erring: meta.code },
   hold: { main: false, live: false, flaky: false, erring: false },
+  binary: { main: [], live: [], flaky: [], erring: [] },
   shut: { flaky: 2 }, reopens: { flaky: [] }, codeErrors: { erring: CODE_ERROR } };
 const drop = (session) => {
   view.closedAt[session] = performance.now();
@@ -269,6 +273,7 @@ const websocket = {
       ws.send(JSON.stringify({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "Method not found" } }));
       return;
     }
+    for (const piece of view.binary[session].splice(0)) ws.send(piece);
     if (view.hold[session]) { view.hold[session] = false; drop(session); return; }
     const result = m.params.name !== "view_code" ? TOOL_RESULT :
       view.codeErrors[session] ?? { content: [], _meta: { ...meta, code: view.codes[session] } };
@@ -587,6 +592,7 @@ try {
   assert.equal((await evaluate("live.log")).length, posted, "view/resume does not reach the host");
   console.log("Headless Chrome: socket: view/resume is kept and answered {} at once");
 
+  view.binary.live = [Buffer.from("kept")];
   view.hold.live = true;
   const closedError = { code: -32000, message: "the view's socket closed" };
   await liveTyped("live", "rpc", `answered 2 1 ${JSON.stringify(closedError)}`);
@@ -595,7 +601,7 @@ try {
   const gap = view.openedAt.live - view.closedAt.live;
   assert.ok(gap >= 1000, `the view reopened ${gap} ms after the close, inside its 1 s backoff`);
   assert.deepEqual(await hostTools("live"), ["view_code", "view_socket"], "a reopen within the session asks the host nothing");
-  console.log(`Headless Chrome: socket: a close answers the outstanding call ${JSON.stringify(closedError)}; the view reopens ${Math.round(gap)} ms later and the module gets view/open again`);
+  console.log(`Headless Chrome: socket: a close answers the outstanding call ${JSON.stringify(closedError)}, and the binary message the server sent for it reaches no module; the view reopens ${Math.round(gap)} ms later and the module gets view/open again`);
 
   view.codes.live = CODE_B;
   const before = (await liveShown()).length;
@@ -628,6 +634,10 @@ try {
   assert.equal((await liveMethods()).filter((m) => m === "ui/request-display-mode").length, 1,
     "the restarted view does not ask for full screen again");
   console.log("Headless Chrome: socket: view/code naming other code fetches view_code over the socket and app.js restarts the view; the old module is notified view/restart {} first, and the new module receives the view/resume {\"project\":\"p2\"} it told then; its socket reuses the session, and its canvas has the focus the old one had");
+
+  view.binary.live = [Buffer.from("ab"), Buffer.from("cd")];
+  await liveTyped("live", "rpc", `${rpcAnswer} abcd`);
+  console.log("Headless Chrome: socket: the module gets the server's binary messages for a call after its response's JSON, in the order sent");
 
   // A drop on the restarted page reaches only the new view's listener; an old
   // view's would hand the file to its disposed viewport, which throws.

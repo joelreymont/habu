@@ -13,13 +13,15 @@ function mcpName(name) {
 
 // A module's rpc for the endpoint at url: tools/call goes there as a JSON-RPC
 // 2.0 request; the rest is answered here. A JSON-RPC response to it answers
-// with its result or error whatever the HTTP status; any other body rejects.
+// with its result or error, and no binary, whatever the HTTP status; any
+// other body rejects.
 // With a token the request carries it as a bearer; with ms the fetch aborts,
 // and the rpc rejects, after ms milliseconds.
 export function mcpRpc(url, token, ms) {
   return async (method, params) => {
-    if (method === "ui/update-model-context") return '{"result":{}}';
-    if (method !== "tools/call") return '{"error":{"code":-32601,"message":"Method not found"}}';
+    if (method === "ui/update-model-context") return { text: '{"result":{}}', binary: [] };
+    if (method !== "tools/call")
+      return { text: '{"error":{"code":-32601,"message":"Method not found"}}', binary: [] };
     const id = ++rpcId;
     const call = JSON.parse(params);
     call._meta = {
@@ -54,6 +56,7 @@ export function mcpRpc(url, token, ms) {
     if (reply === null || typeof reply !== "object" || reply.jsonrpc !== "2.0" || reply.id !== id ||
         ("result" in reply) === ("error" in reply))
       throw new Error(`${url}: ${r.status}: the body is not a JSON-RPC response`);
-    return JSON.stringify("result" in reply ? { result: reply.result } : { error: reply.error });
+    const text = JSON.stringify("result" in reply ? { result: reply.result } : { error: reply.error });
+    return { text, binary: [] };
   };
 }

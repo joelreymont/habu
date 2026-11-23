@@ -151,17 +151,26 @@ variable FILE-SIZE
    at u s" draw" IS? if 2 MATRIX BYTES>N 0 MATRIX BYTES>N RECORD exit then ;
 
 
-\ answered <c> <d> <the response's bytes>
-: ANSWERED ( -- )
-   0 TEXT-U !
-   s" answered " SAY  3 EVENT@ SAY-N  4 EVENT@ SAY-N
-   1 EVENT@ 2 EVENT@ SAY-AT  TEXT-RECORD ;
-
-
 \ The u64 little-endian at a delivered address.
 : LE@ ( n -- n )
    {: at:n :}
    0  8 0 do  8 lshift  at 7 + i - >BYTES c@ or  loop ;
+
+
+: SAY-REST ( n n -- )
+   {: at:n u:n :}
+   u 0 > if 32 SAY-C  at u SAY-AT then ;
+
+
+\ answered <c> <d> <json>, then a space and the bytes after the
+\ JSON when there are any
+: ANSWERED ( -- )
+   1 EVENT@ {: at:n :}
+   at LE@ {: ju:n :}
+   0 TEXT-U !
+   s" answered " SAY  3 EVENT@ SAY-N  4 EVENT@ SAY-N
+   at 8 + ju SAY-AT
+   at 8 + ju +  2 EVENT@ 8 - ju -  SAY-REST  TEXT-RECORD ;
 
 
 \ notified <method> <params>

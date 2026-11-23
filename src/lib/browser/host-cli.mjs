@@ -313,7 +313,7 @@ function parse(args) {
       case "--answer-rpc": {
         const [id, file] = take(2);
         const key = BigInt(id);
-        steps.push(() => call(flag, key).resolve(readFileSync(file, "utf8")));
+        steps.push(() => call(flag, key).resolve({ text: readFileSync(file, "utf8"), binary: [] }));
         break;
       }
       case "--fail-rpc": {

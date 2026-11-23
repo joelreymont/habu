@@ -13,8 +13,8 @@
 //   fetch(url, init)       window.fetch's contract; the module, and every
 //                          fetch, post and request record, go through it
 //   rpc(method, paramsJSON) an rpc record's method and params JSON text ->
-//                          Promise of the response's JSON text, {"result":…}
-//                          or {"error":…}; a rejection is a transport failure
+//                          Promise of { text, binary }; a rejection is a
+//                          transport failure
 //   onTree(rows, selected) a tree record's rows and selected key (turn.js)
 //   onText(text, error)    a text record, error false; a failure after mount
 //                          resolved, error true (it is also logged)
