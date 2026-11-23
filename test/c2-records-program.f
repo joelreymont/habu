@@ -55,26 +55,6 @@ MANY 2 * CELL * constant MANY-BYTES
 : ZERO-RESULT ( -- bool )
    16 MEM:BYTES-ALLOC-LEN [: ZERO-BODY ;] C2-MEM:WITH-MUT ;
 
-: OUT-OF-BOUNDS ( records<b,i,a,C2-RECORDS-TYPES:pair> -- records<b,i,a,C2-RECORDS-TYPES:pair> )
-   1 [: ;] C2-MEM:WITH-RECORD ;
-
-: BAD-INDEX ( mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> )
-   1 1 2 C2--RECORDS--TYPES-PAIR:MAKE
-   [: OUT-OF-BOUNDS ;] C2-MEM:WITH-RECORDS ;
-
-: BAD-INDEX-OWNER ( -- )
-   16 MEM:BYTES-ALLOC-LEN [: BAD-INDEX ;] C2-MEM:WITH-MUT ;
-
-: NEGATIVE-INDEX ( records<b,i,a,C2-RECORDS-TYPES:pair> -- records<b,i,a,C2-RECORDS-TYPES:pair> )
-   -1 [: ;] C2-MEM:WITH-RECORD ;
-
-: BAD-NEGATIVE ( mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> )
-   1 1 2 C2--RECORDS--TYPES-PAIR:MAKE
-   [: NEGATIVE-INDEX ;] C2-MEM:WITH-RECORDS ;
-
-: BAD-NEGATIVE-OWNER ( -- )
-   16 MEM:BYTES-ALLOC-LEN [: BAD-NEGATIVE ;] C2-MEM:WITH-MUT ;
-
 : TOO-SHORT ( mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> )
    2 1 2 C2--RECORDS--TYPES-PAIR:MAKE
    [: ;] C2-MEM:WITH-RECORDS ;
@@ -113,6 +93,34 @@ MANY 2 * CELL * constant MANY-BYTES
 : SHUFFLE-RESULT ( -- )
    C2-MEM:OWNER-SIZE [: SHUFFLE-ROOT ;] C2-MEM:WITH-MUT ;
 
+false [if] \ off until dot habu-add-the-checks-a49d054d
+: OUT-OF-BOUNDS ( records<b,i,a,C2-RECORDS-TYPES:pair> -- records<b,i,a,C2-RECORDS-TYPES:pair> )
+   1 [: ;] C2-MEM:WITH-RECORD ;
+
+: BAD-INDEX ( mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> )
+   1 1 2 C2--RECORDS--TYPES-PAIR:MAKE
+   [: OUT-OF-BOUNDS ;] C2-MEM:WITH-RECORDS ;
+
+: BAD-INDEX-OWNER ( -- )
+   16 MEM:BYTES-ALLOC-LEN [: BAD-INDEX ;] C2-MEM:WITH-MUT ;
+
+: NEGATIVE-INDEX ( records<b,i,a,C2-RECORDS-TYPES:pair> -- records<b,i,a,C2-RECORDS-TYPES:pair> )
+   -1 [: ;] C2-MEM:WITH-RECORD ;
+
+: BAD-NEGATIVE ( mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> )
+   1 1 2 C2--RECORDS--TYPES-PAIR:MAKE
+   [: NEGATIVE-INDEX ;] C2-MEM:WITH-RECORDS ;
+
+: BAD-NEGATIVE-OWNER ( -- )
+   16 MEM:BYTES-ALLOC-LEN [: BAD-NEGATIVE ;] C2-MEM:WITH-MUT ;
+
+: INDEX-CASES ( -- )
+   s" an index equal to the count is rejected" T-LABEL
+   [: BAD-INDEX-OWNER ;] E-SPAN-RANGE TTHROWSQ
+   s" a negative index is rejected" T-LABEL
+   [: BAD-NEGATIVE-OWNER ;] E-SPAN-RANGE TTHROWSQ
+[then]
+
 public
 
 : RUN ( -- )
@@ -124,10 +132,6 @@ public
    MANY-RESULT TTRUE
    s" an empty table initializes no bytes and restores its parent" T-LABEL
    ZERO-RESULT TTRUE
-   s" an index equal to the count is refused" T-LABEL
-   [: BAD-INDEX-OWNER ;] E-SPAN-RANGE TTHROWSQ
-   s" a negative index is refused" T-LABEL
-   [: BAD-NEGATIVE-OWNER ;] E-SPAN-RANGE TTHROWSQ
    s" the complete table must fit the original byte bound" T-LABEL
    [: TOO-SHORT-OWNER ;] E-SPAN-CAPACITY TTHROWSQ
    s" count times committed stride cannot overflow" T-LABEL

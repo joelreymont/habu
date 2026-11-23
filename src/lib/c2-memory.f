@@ -327,14 +327,6 @@ CAST: ALLOC-LEN>N ( NUM:alloc-byte-len -- n )
    LOAN-ENTER
    [: LOAN-BODY ;] [: LOAN-LEAVE ;] finally ;
 
-: CHECK-INDEX ( n n -- ) {: idx:n bound:n :}
-   idx 0 < idx bound >= or if E-SPAN-RANGE throw then ;
-
-: CHECK-SLICE ( n n n -- ) {: off:n count:n bound:n :}
-   \ Subtract only after the offset is inside the bound; off + count may wrap.
-   off 0 < count 0 < or off bound > or if E-SPAN-RANGE throw then
-   count bound off - > if E-SPAN-RANGE throw then ;
-
 \ The view representation casts: a view is two cells, base and byte bound.
 \ Only C2-MEM's private section may pack; a pack keeps or narrows the cells it
 \ unpacked, or wraps the fresh allocation APPEND returns (ALLOC-DISPOSE).
@@ -376,13 +368,12 @@ public
 : WITH-RECORDS ( R ^u8 n n n [ R ^u8 n -- S ^u8 n | U -- U ] stow-layout | U -- S ^u8 n | U )
    RECORDS-RUN ;
 
-\ WITH-RECORD checks a zero-based index and lends `mut-view<p,j,a,init<i,T>>`
-\ under `forall<j inside i,...>`; `j` cannot escape, and the element is
-\ neither reconstructed nor cleared on return.
+\ WITH-RECORD takes a zero-based index below the count and lends
+\ `mut-view<p,j,a,init<i,T>>` under `forall<j inside i,...>`; `j` cannot
+\ escape, and the element is neither reconstructed nor cleared on return.
 : WITH-RECORD ( R ^u8 n n [ R ^u8 n -- S ^u8 n | U -- U ] n n n | U -- S ^u8 n | U )
    {: width:n stride:n align:n :}
    {: base:^ count:n index:n callback :}
-   index count CHECK-INDEX
    base index stride * + stride callback LOAN-RUN 2drop
    base count ;
 
@@ -396,38 +387,36 @@ public
 : WITH-FIELD ( R ^u8 n [ R ^u8 n -- S ^u8 n | U -- U ] n n | U -- S ^u8 n | U )
    {: off:n extent:n :}
    {: base:^ bound:n callback :}
-   off 0 < extent 0 <= or off bound > or if E-SPAN-RANGE throw then
-   extent bound off - > if E-SPAN-RANGE throw then
    base off + extent callback LOAN-RUN 2drop
    base bound ;
 
+\ The index is below the view's bound.
 : BYTE@ ( read-view<p,q,u8> n -- u8 read-view<p,q,u8> )
    {: idx:n :}
-   dup READ-UNPACK {: base:^ bound:n :}
-   idx bound CHECK-INDEX
+   dup READ-UNPACK drop {: base:^ :}
    base idx + c@ swap ;
 
+\ The index is below the view's bound.
 : MUT-BYTE@ ( mut-view<p,q,a,u8> n -- u8 mut-view<p,q,a,u8> )
    swap MUT-UNPACK {: idx:n base:^ bound:n :}
-   idx bound CHECK-INDEX
    base idx + c@ base bound MUT-PACK ;
 
+\ The index is below the view's bound.
 : MUT-BYTE! ( mut-view<p,q,a,u8> n u8 -- mut-view<p,q,a,u8> )
    rot MUT-UNPACK {: idx:n value:u8 base:^ bound:n :}
-   idx bound CHECK-INDEX
    value base idx + c!
    base bound MUT-PACK ;
 
+\ The offset and count lie within the view's bound.
 : SLICE ( read-view<p,q,u8> n n -- read-view<p,q,u8> )
    {: off:n count:n :}
-   READ-UNPACK {: base:^ bound:n :}
-   off count bound CHECK-SLICE
+   READ-UNPACK drop {: base:^ :}
    base off + count READ-PACK ;
 
+\ The count lies within the view's bound.
 : PREFIX ( mut-view<p,q,a,u8> n -- mut-view<p,q,a,u8> )
    {: count:n :}
-   MUT-UNPACK {: base:^ bound:n :}
-   0 count bound CHECK-SLICE
+   MUT-UNPACK drop {: base:^ :}
    base count MUT-PACK ;
 
 : LENGTH ( read-view<p,q,u8> -- n read-view<p,q,u8> )

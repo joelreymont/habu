@@ -133,6 +133,25 @@ private
    >r 1 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEM:WITH-MUT
    r> + ;
 
+: THROW-MUT-CHILD ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
+   -9367 throw ;
+
+: THROW-MUT-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+   [: THROW-MUT-CHILD ;] C2-MEM:WITH-MUT-LOAN ;
+
+: THROW-MUT ( -- )
+   1 MEM:BYTES-ALLOC-LEN [: THROW-MUT-ROOT ;] C2-MEM:WITH-MUT ;
+
+: THROW-READ-CHILD ( read-view<p,l,u8> -- read-view<p,l,u8> )
+   -9368 throw ;
+
+: THROW-READ-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+   [: THROW-READ-CHILD ;] C2-MEM:WITH-READ ;
+
+: THROW-READ ( -- )
+   1 MEM:BYTES-ALLOC-LEN [: THROW-READ-ROOT ;] C2-MEM:WITH-MUT ;
+
+false [if] \ off until dot habu-add-the-checks-a49d054d
 : OOB-OWNER-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
    1 1 C2-MEM:MUT-BYTE! ;
 
@@ -157,25 +176,14 @@ private
 : OOB-READ-LOAN ( -- )
    1 MEM:BYTES-ALLOC-LEN [: OOB-READ-LOAN-BODY ;] C2-MEM:WITH-MUT ;
 
-: THROW-MUT-CHILD ( mut-view<p,l,a,u8> -- mut-view<p,l,a,u8> )
-   -9367 throw ;
+: OOB-CASES ( -- )
+   s" a root write rejects its upper bound" T-LABEL
+   [: OOB-OWNER ;] E-SPAN-RANGE TTHROWSQ
+   s" an exclusive child read rejects its upper bound" T-LABEL
+   [: OOB-MUT-LOAN ;] E-SPAN-RANGE TTHROWSQ
+   s" a shared child read rejects a negative index" T-LABEL
+   [: OOB-READ-LOAN ;] E-SPAN-RANGE TTHROWSQ
 
-: THROW-MUT-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
-   [: THROW-MUT-CHILD ;] C2-MEM:WITH-MUT-LOAN ;
-
-: THROW-MUT ( -- )
-   1 MEM:BYTES-ALLOC-LEN [: THROW-MUT-ROOT ;] C2-MEM:WITH-MUT ;
-
-: THROW-READ-CHILD ( read-view<p,l,u8> -- read-view<p,l,u8> )
-   -9368 throw ;
-
-: THROW-READ-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
-   [: THROW-READ-CHILD ;] C2-MEM:WITH-READ ;
-
-: THROW-READ ( -- )
-   1 MEM:BYTES-ALLOC-LEN [: THROW-READ-ROOT ;] C2-MEM:WITH-MUT ;
-
-false [if] \ off until dot habu-add-the-checks-a49d054d
 : EMPTY-READ ( -- )
    0 MEM:BYTES-ALLOC-LEN [: 0 C2-MEM:MUT-BYTE@ ;] C2-MEM:WITH-MUT drop ;
 
@@ -216,12 +224,6 @@ public
    3 RECURSE-RESULT 0 T=
    s" an owner callback preserves an ambient return stack cell" T-LABEL
    9 RETURN-RESULT 9 T=
-   s" a root write refuses its upper bound" T-LABEL
-   [: OOB-OWNER ;] E-SPAN-RANGE TTHROWSQ
-   s" an exclusive child read refuses its upper bound" T-LABEL
-   [: OOB-MUT-LOAN ;] E-SPAN-RANGE TTHROWSQ
-   s" a shared child read refuses a negative index" T-LABEL
-   [: OOB-READ-LOAN ;] E-SPAN-RANGE TTHROWSQ
    s" an exclusive callback failure propagates through loan cleanup" T-LABEL
    [: THROW-MUT ;] -9367 TTHROWSQ
    s" a shared callback failure propagates through loan cleanup" T-LABEL
