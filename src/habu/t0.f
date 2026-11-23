@@ -1706,6 +1706,7 @@ DYNAMIC-BUFFER OP-START n            \ by operation code: its primitive's start
 \ data-base's kernel record, which THROWS-AT calls.
 variable BASE-REC
 variable STORE-REC                   \ !'s
+variable CATCH-REC                   \ catch's
 
 : OPS-MAP ( -- )
    CORE-PREFIX:FIRST-RECORD {: n:n :}
@@ -1723,7 +1724,8 @@ variable STORE-REC                   \ !'s
    s" cell+" 38 OP-MAP  s" negate" 39 OP-MAP  s" invert" 40 OP-MAP
    s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP
    s" >str" 44 OP-MAP  s" data" 45 OP-MAP  s" len" 46 OP-MAP
-   s" data-base" SEEDED BASE-REC !  s" !" SEEDED STORE-REC ! ;
+   s" data-base" SEEDED BASE-REC !  s" !" SEEDED STORE-REC !
+   s" catch" SEEDED CATCH-REC ! ;
 
 : MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
 
@@ -1845,6 +1847,32 @@ DYNAMIC-BUFFER COUNT-SLOT n
    [: + ;] OP-ADD true ALU2
    SWAP1
    SPILL-ALL  STORE-REC @ XREF-REC REC-START loc EMIT-CALL ;
+
+\ ---- the throw path's depth ---------------------------------------------------
+\ A throw leaves a catch's input cells under its code, while the catch's row
+\ states its body's outputs. On a nonzero code, which only a throw lands, the
+\ cells under the code are evened to the row: surplus inputs cut, missing
+\ outputs pushed as 0.
+
+\ The body's output cells less its input cells at row k when it calls catch,
+\ record r, by the facts the checker filed; 0 for any other call or no facts.
+: CATCH-SHIFT ( n n -- n ) {: r:n k:n :}
+   r CATCH-REC @ <> if 0 exit then
+   k CHECKER-OWNER:CALL-CELLS {: in:n out:n :}
+   in 0<  out 0< or if 0 exit then
+   out in - ;
+
+\ The call of the catch at offset loc, then on a throw its depth moved by d
+\ cells under the code. Code follows the call, so it is never a tail call.
+: EVEN-CALL ( n n n -- ) {: to:n loc:n d:n :}
+   SPILL-ALL  to loc EMIT-CALL
+   ALLOC {: c:vreg :}
+   c -1 EMIT-FILL
+   c 0 EMIT-CMP-LIT  CC-NE EMIT-IF-CC,
+   d 0 max 0 ?do  0 i 1- EMIT-SPILL-LIT  loop
+   c d 1- EMIT-SPILL  d EMIT-DSP+
+   EMIT-THEN,
+   c RELEASE ;
 
 : CELL1 ( ^u8 -- )
    {: a:^ :}
@@ -2005,7 +2033,9 @@ EXPORT CHECK:WF-N@
    ORD @ 1- {: k:n :}
    k COUNT-SLOT @ {: s:n :}
    k ROW-A1 @ 0<>  s 0< 0= and if s loc THROW-ON then
-   to flags DKIND:MASK and r loc WORD-CALL
+   r k CATCH-SHIFT {: d:n :}
+   d 0<> if to loc d EVEN-CALL
+   else to flags DKIND:MASK and r loc WORD-CALL then
    k ROW-A1 @ 0=  s 0< 0= and if s loc KEEP-COUNT then ;
 
 : NAME-TOKEN ( str n n -- )

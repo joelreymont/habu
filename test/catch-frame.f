@@ -77,6 +77,41 @@ variable ACC
    s" nested catch: more ?do throws than the loop stack holds" T-LABEL
    NESTED-LOOP-THROWS LOOP-SUM T= ;
 
+\ A catch's body leaves more, fewer or the same cells it took, and throws 7 on
+\ a nonzero top. On both paths the catch leaves its row's depth over 77.
+: GROW ( n -- n n ) dup 0<> if 7 throw then dup ;
+: SHRINK ( n n -- n ) 0<> if 7 throw then ;
+: KEEP ( n -- n ) dup 0<> if 7 throw then ;
+
+\ ( cells over the depth at entry, the sentinel ) after the catch.
+: GROW-FRAME ( n -- n n )
+   {: f:n :}
+   depth {: d:n :}
+   77 f ['] GROW catch drop 2drop
+   depth d -  swap ;
+
+: SHRINK-FRAME ( n -- n n )
+   {: f:n :}
+   depth {: d:n :}
+   77 1 f ['] SHRINK catch 2drop
+   depth d -  swap ;
+
+: KEEP-FRAME ( n -- n n )
+   {: f:n :}
+   depth {: d:n :}
+   77 f ['] KEEP catch 2drop
+   depth d -  swap ;
+
+: FRAME= ( n n -- ) 77 T=  1 T= ;
+
+: DEPTH-EVENED ( -- )
+   s" a catch whose body leaves more keeps the row's depth" T-LABEL
+   0 GROW-FRAME FRAME=  1 GROW-FRAME FRAME=
+   s" a catch whose body leaves fewer keeps the row's depth" T-LABEL
+   0 SHRINK-FRAME FRAME=  1 SHRINK-FRAME FRAME=
+   s" a catch whose body leaves the same keeps the row's depth" T-LABEL
+   0 KEEP-FRAME FRAME=  1 KEEP-FRAME FRAME= ;
+
 public
 
 \ The texts run outside the package and store into these, so they are public.
@@ -123,6 +158,7 @@ public
 : RUN ( -- )
    T-RESET
    IN-PROCESS
+   DEPTH-EVENED
    LIST-KEPT
    DEFER-KEPT
    REQUIRE-AGAIN
