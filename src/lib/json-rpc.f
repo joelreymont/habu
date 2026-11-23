@@ -12,13 +12,14 @@ split-str
 \ compare decoded, the last repeat counts, other members are passed over. An
 \ invalid message carries its own id when that id is valid and it has a method,
 \ else the null id, so a reply never answers a response. STORAGE CLASS. CALLER-OWNED. >MESSAGE and
-\ METHOD? parse in the caller's JSON:cursor record and the message borrows the
-\ caller's body; the module keeps no state.
+\ METHOD? each parse in a JSON:cursor record of their own, released on return or
+\ throw; the message borrows the caller's body; the module keeps no state.
 
 \ Framing is src/lib/content-length.f's.
 
 require src/lib/error.f
 require src/lib/string.f
+require src/lib/memory.f
 require src/lib/json.f
 require src/lib/reason.f
 
@@ -50,15 +51,26 @@ ENUM message
 : ID$ ( id -- str )  JSON--RPC-ID:UNMAKE ;
 : NULL-ID ( -- id )  s" null" JSON--RPC-ID:MAKE ;
 
-\ Whether a method's JSON text, as >MESSAGE gives it, names this method once
-\ decoded: `"initialize"` names initialize.
-: METHOD? ( ^JSON:cursor str str -- bool )
+private
+
+: METHOD-READ ( ^JSON:cursor str str -- bool )
    {: st:^ m:^ mu:n name:^ nu:n :}
    st m mu READ-INIT
    READ-NEXT drop
    name nu READ-STR-EQ? {: same:bool :}
    READ-CLOSE
    same ;
+
+: METHOD-IN ( str str ^JSON:cursor -- bool )
+   {: m:^ mu:n name:^ nu:n st:^ :}
+   [: st m mu name nu METHOD-READ ;] [: st READ-DISPOSE ;] finally ;
+
+public
+
+\ Whether a method's JSON text, as >MESSAGE gives it, names this method once
+\ decoded: `"initialize"` names initialize.
+: METHOD? ( str str -- bool )
+   [type] JSON:cursor [: METHOD-IN ;] MEM:WITH-RECORD ;
 
 private
 
@@ -231,16 +243,20 @@ STRUCTURE envelope
    READ-FINISH
    root e SORT-ROOT  st body len ;
 
-public
-
-\ Params absent or null are empty; a body that is not JSON is PARSE-ERROR.
-: >MESSAGE ( ^JSON:cursor str -- message )
-   {: st:^ body:^ len:n :}
+: READ-IN ( str ^JSON:cursor -- message )
+   {: body:^ len:n st:^ :}
    0 NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
    2drop drop {: m :}
+   st READ-DISPOSE
    code 0= if m exit then
    code SYNTAX? 0= if code throw then
    code NOT-JSON ;
+
+public
+
+\ Params absent or null are empty; a body that is not JSON is PARSE-ERROR.
+: >MESSAGE ( str -- message )
+   [type] JSON:cursor [: READ-IN ;] MEM:WITH-RECORD ;
 
 private
 

@@ -15,13 +15,8 @@ package JSON-RPC-TEST
 using JSON-RPC
 using JSON
 
-TYPED-VARIABLE ST JSON:cursor
 TYPED-VARIABLE OUT ^VEC:vector<u8>   \ TEST-MAIN makes and deletes it
 TYPED-VARIABLE W JSON:writer
-
-: SORTED ( ^u8 n -- JSON-RPC:message )
-   {: a:^ u:n :}
-   ST a u >MESSAGE ;
 
 : SB-SP ( -- )  s"  " SB-APPEND ;
 
@@ -45,7 +40,7 @@ TYPED-VARIABLE W JSON:writer
 
 : SORTS ( ^u8 n ^u8 n -- )
    {: a:^ u:n want:^ wu:n :}
-   a u SORTED SHOW$ want wu T$= ;
+   a u >MESSAGE SHOW$ want wu T$= ;
 
 \ Members in any order and with blanks between; params an object, an array,
 \ absent or null; ids as their exact text: an integer, a negative fraction with
@@ -94,7 +89,7 @@ TYPED-VARIABLE W JSON:writer
 
 \ The body sorts as PARSE-ERROR with the null id.
 : NOT-JSON ( str -- )
-   SORTED SHOW$ {: s:^ su:n :}
+   >MESSAGE SHOW$ {: s:^ su:n :}
    PARSE-HEAD$ nip su min {: hu:n :}
    s hu PARSE-HEAD$ T$= ;
 
@@ -178,18 +173,14 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1.5,\"message\":\"m\"}}" NOT-ERROR
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1,\"message\":false}}" NOT-ERROR ;
 
-: NAMES? ( str str -- bool )
-   {: m:^ mu:n name:^ nu:n :}
-   ST m mu name nu METHOD? ;
-
 \ METHOD? decoded: equal, escaped, a prefix, longer, another name.
 : TEST-METHOD ( -- )
-   s\" \"initialize\"" s" initialize" NAMES? TTRUE
-   s\" \"\\u0069nitiali\\u007ae\"" s" initialize" NAMES? TTRUE
-   s\" \"initialize\"" s" init" NAMES? TFALSE
-   s\" \"init\"" s" initialize" NAMES? TFALSE
-   s\" \"initialized\"" s" initialize" NAMES? TFALSE
-   s\" \"\"" s" " NAMES? TTRUE ;
+   s\" \"initialize\"" s" initialize" METHOD? TTRUE
+   s\" \"\\u0069nitiali\\u007ae\"" s" initialize" METHOD? TTRUE
+   s\" \"initialize\"" s" init" METHOD? TFALSE
+   s\" \"init\"" s" initialize" METHOD? TFALSE
+   s\" \"initialized\"" s" initialize" METHOD? TFALSE
+   s\" \"\"" s" " METHOD? TTRUE ;
 
 : WRITER ( -- ^JSON:writer )
    W OUT @ JSON:OPEN ;

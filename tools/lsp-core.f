@@ -391,10 +391,6 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    10 SB-APPEND-C
    FD:STDERR SB$ FD:WRITE-FULL ;
 
-: NAMED? ( str str -- bool )
-   {: m name :}
-   JSON-ST m name METHOD? ;
-
 \ Only a running server takes a notification other than exit; the rest are
 \ dropped, as unknown ones always are. One the server cannot apply (params it
 \ cannot read, a URI that names no file here, a document not open) changes
@@ -402,19 +398,19 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ response from the client is dropped: the server asks nothing.
 : NOTIFIED ( str str -- )
    {: ms p :}
-   ms s" exit" >str NAMED? if s" " EXIT-CODE die then
+   ms s" exit" >str METHOD? if s" " EXIT-CODE die then
    RUNNING? 0= if exit then
-   ms s" textDocument/didOpen" >str NAMED? if
+   ms s" textDocument/didOpen" >str METHOD? if
       ms p [: DID-OPEN ;] GUARDED exit
    then
-   ms s" textDocument/didChange" >str NAMED? if
+   ms s" textDocument/didChange" >str METHOD? if
       ms p [: DID-CHANGE ;] GUARDED exit
    then
-   ms s" textDocument/didClose" >str NAMED? if
+   ms s" textDocument/didClose" >str METHOD? if
       ms p [: DID-CLOSE ;] GUARDED exit
    then
-   ms s" textDocument/didSave" >str NAMED? if DOC-DIRTY-ALL exit then
-   ms s" workspace/didChangeWatchedFiles" >str NAMED? if
+   ms s" textDocument/didSave" >str METHOD? if DOC-DIRTY-ALL exit then
+   ms s" workspace/didChangeWatchedFiles" >str METHOD? if
       ms p [: DID-WATCH ;] GUARDED
    then ;
 
@@ -436,10 +432,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : NOTICE? ( n str -- str bool )
    {: k:n name :}
-   JSON-ST k HELD$ >MESSAGE MATCH JSON-RPC:message
+   k HELD$ >MESSAGE MATCH JSON-RPC:message
       request OF 2drop 2drop ID$ drop s" " >str false ENDOF
       notification OF
-         {: m:^ mu:n p:^ pu:n :} p pu >str m mu >str name NAMED?
+         {: m:^ mu:n p:^ pu:n :} p pu >str m mu >str name METHOD?
       ENDOF
       success OF 2drop ID$ drop s" " >str false ENDOF
       failure OF 2drop ID$ drop s" " >str false ENDOF
@@ -964,7 +960,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : STARTING-REQUEST ( JSON-RPC:id str str -- )
    {: i m p :}
-   m s" initialize" >str NAMED? if
+   m s" initialize" >str METHOD? if
       p MARKDOWN? HOVER-MD !
       p WORKSPACE!
       i REPLY-CAPABILITIES
@@ -979,27 +975,27 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       i REQUEST-CANCELLED s" request cancelled" >str REPLY-ERROR
       exit
    then
-   m s" shutdown" >str NAMED? if
+   m s" shutdown" >str METHOD? if
       i REPLY-NULL
       construct state shut-down STATE!
       exit
    then
-   m s" initialize" >str NAMED? if
+   m s" initialize" >str METHOD? if
       i INVALID-REQUEST s" server already initialized" >str REPLY-ERROR
       exit
    then
-   m s" workspace/symbol" >str NAMED? if i p SYMBOLS exit then
-   m s" textDocument/documentSymbol" >str NAMED? if i p DOCUMENT-SYMBOLS exit then
-   m s" textDocument/definition" >str NAMED? if i p DEFINITION exit then
-   m s" textDocument/declaration" >str NAMED? if i p DEFINITION exit then
-   m s" textDocument/references" >str NAMED? if i p REFERENCES exit then
-   m s" textDocument/prepareRename" >str NAMED? if i p PREPARE-RENAME exit then
-   m s" textDocument/rename" >str NAMED? if i p RENAME exit then
-   m s" textDocument/hover" >str NAMED? if i p HOVER exit then
-   m s" textDocument/documentHighlight" >str NAMED? if i p HIGHLIGHT exit then
-   m s" textDocument/semanticTokens/full" >str NAMED? if i p SEMANTIC-TOKENS exit then
-   m s" textDocument/completion" >str NAMED? if i p COMPLETION exit then
-   m s" textDocument/documentLink" >str NAMED? if i p DOCUMENT-LINKS exit then
+   m s" workspace/symbol" >str METHOD? if i p SYMBOLS exit then
+   m s" textDocument/documentSymbol" >str METHOD? if i p DOCUMENT-SYMBOLS exit then
+   m s" textDocument/definition" >str METHOD? if i p DEFINITION exit then
+   m s" textDocument/declaration" >str METHOD? if i p DEFINITION exit then
+   m s" textDocument/references" >str METHOD? if i p REFERENCES exit then
+   m s" textDocument/prepareRename" >str METHOD? if i p PREPARE-RENAME exit then
+   m s" textDocument/rename" >str METHOD? if i p RENAME exit then
+   m s" textDocument/hover" >str METHOD? if i p HOVER exit then
+   m s" textDocument/documentHighlight" >str METHOD? if i p HIGHLIGHT exit then
+   m s" textDocument/semanticTokens/full" >str METHOD? if i p SEMANTIC-TOKENS exit then
+   m s" textDocument/completion" >str METHOD? if i p COMPLETION exit then
+   m s" textDocument/documentLink" >str METHOD? if i p DOCUMENT-LINKS exit then
    i METHOD-NOT-FOUND s" method not found" >str REPLY-ERROR ;
 
 : REQUESTED ( JSON-RPC:id str str -- )
@@ -1032,7 +1028,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : TURN ( -- )
    HELD-NEXT @ {: k:n :}
    1 HELD-NEXT +!
-   JSON-ST k HELD$ >MESSAGE DISPATCH
+   k HELD$ >MESSAGE DISPATCH
    HELD? if exit then
    0 HELD-NEXT !
    0 HELD-COUNT !

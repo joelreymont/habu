@@ -661,7 +661,7 @@ CAST: HELD>N ( held -- n )
 
 : ENVELOPE? ( str -- bool )
    {: body:^ len:n :}
-   CURSOR body len JSON-RPC:>MESSAGE
+   body len JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
       request OF {: i m:^ mu:n p:^ pu:n :}
          i JSON-RPC:ID$ m mu p pu CALL? ENDOF
@@ -2144,7 +2144,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    {: rec:^ kind:^ ku:n data:^ du:n :}
    rec PEER-REGION @ SPAN:$ drop MESSAGE-OFF + CELL-VIEW {: buf:^ :}
    buf BUF:LEN@ BUF:BLEN>N 0<> if exit then
-   rec PEER-CURSOR data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR=
+   data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR=
    if data du buf BUF+ then ;
 
 \ Feeds the whole reply to the decoder and finishes it; answers its operands.
@@ -2206,7 +2206,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       s" is not a success" idx E-RESPONSE BAD-REPLY
    then
    idx MESSAGE$ {: m:^ mu:n :}
-   idx ROW PEER-CURSOR m mu JSON-RPC:>MESSAGE
+   m mu JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
       success OF {: id value:^ vu:n :}
          id JSON-RPC:ID$ REQUEST-ID$ STR= 0= if
