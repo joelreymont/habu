@@ -591,6 +591,12 @@ variable FREE                       \ bit k set: no entry holds vreg k
    TOP WRITE-TARGET {: d:vreg :}
    d a w EMIT-LOAD ;
 
+: STORE ( width -- ) {: w:width :}
+   2 ENSURE
+   TOP 1- MAT  TOP MAT {: s:vreg a:vreg :}
+   s a w EMIT-STORE
+   REMOVE2 ;
+
 \ ---- the stack shuffles ------------------------------------------------------
 : PICK-ENTRY ( n -- ) {: k:n :}
    k CONST? if k VS-VAL @ PUSH-CONST exit then
@@ -1311,18 +1317,15 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    w 0 ?do i DEEP i ADDR+ CELL-W FETCH loop
    w 1 NIP-CELLS ;
 
-\ The wide store's calls never leave as a tail: each stores a copy of one cell,
-\ so the w cells and the address are still on the stack after the last.
-: DO-STORE ( ^u8 n -- ) {: a:^ to:n :}
+: DO-STORE ( ^u8 -- ) {: a:^ :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
-   a TXT$ - {: loc:n :}
-   w 1 = if to loc DO-CALL exit then
+   w 1 = if CELL-W STORE exit then
    w 0 ?do
       w i - DEEP  1 DEEP  i ADDR+
-      SPILL-ALL  to loc EMIT-CALL
+      CELL-W STORE
    loop
-   w 1+ negate EMIT-DSP+ ;
+   0 w 1+ NIP-CELLS ;
 
 \ ---- strings -----------------------------------------------------------------
 \ A string is one row whose span is the payload; the checker reports its body,
@@ -1715,7 +1718,6 @@ DYNAMIC-BUFFER OP-START n            \ by operation code: its primitive's start
 
 \ data-base's kernel record, which THROWS-AT calls.
 variable BASE-REC
-variable STORE-REC                   \ !'s
 variable CATCH-REC                   \ catch's
 
 : OPS-MAP ( -- )
@@ -1734,8 +1736,8 @@ variable CATCH-REC                   \ catch's
    s" cell+" 38 OP-MAP  s" negate" 39 OP-MAP  s" invert" 40 OP-MAP
    s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP
    s" >str" 44 OP-MAP  s" data" 45 OP-MAP  s" len" 46 OP-MAP
-   s" data-base" SEEDED BASE-REC !  s" !" SEEDED STORE-REC !
-   s" catch" SEEDED CATCH-REC ! ;
+   s" c!" 47 OP-MAP
+   s" data-base" SEEDED BASE-REC !  s" catch" SEEDED CATCH-REC ! ;
 
 : MAP-OPS ( -- ) OP-MAPPED @ 0= if OPS-MAP then ;
 
@@ -1855,8 +1857,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
    TOP 1- MAT TOP MAT EMIT-CMP  REMOVE2  CC-EQ PUSH-FLAG
    [: and ;] OP-AND true ALU2
    [: + ;] OP-ADD true ALU2
-   SWAP1
-   SPILL-ALL  STORE-REC @ XREF-REC REC-START loc EMIT-CALL ;
+   SWAP1  CELL-W STORE ;
 
 \ ---- the throw path's depth ---------------------------------------------------
 \ A throw leaves a catch's inputs under its code where its row states the
@@ -1896,17 +1897,17 @@ DYNAMIC-BUFFER COUNT-SLOT n
    d k STR-BUF du BYTE-COPY
    0 STR-BUF k du + EXIT-STATUS:INTERNAL die ;
 
-\ Operation code at a, whose primitive's entry is to: false when it is not
-\ inlined after all (DIV2), so the name is a call.
-: INLINE ( ^u8 n n -- bool )
-   {: a:^ code:n to:n :}
+\ Operation code at a: false when it is not inlined after all (DIV2), so the
+\ name is a call.
+: INLINE ( ^u8 n -- bool )
+   {: a:^ code:n :}
    code case
       1 of a CELL1 [: + ;] OP-ADD true ALU2 true endof
       2 of a CELL1 [: - ;] OP-SUB false ALU2 true endof
       3 of a CELL1 MUL2 true endof
       4 of a CELL1 [: / ;] [: EMIT-DIV-LIT ;] DIV2 endof
       5 of a DO-FETCH true endof
-      6 of a to DO-STORE true endof
+      6 of a DO-STORE true endof
       7 of a CELL1 [: = bool>n ;] CC-EQ CMP2 true endof
       8 of a CELL1 [: < bool>n ;] CC-LT CMP2 true endof
       9 of a CELL1 [: > bool>n ;] CC-GT CMP2 true endof
@@ -1947,6 +1948,7 @@ DYNAMIC-BUFFER COUNT-SLOT n
       44 of true endof                \ >str: the two cells are the str
       45 of DROP1 true endof          \ data keeps the base, as its body does
       46 of NIP1 true endof           \ len keeps the count, as its body does
+      47 of a CELL1 BYTE-W STORE true endof
       NO-INLINE
    endcase ;
 
@@ -2035,7 +2037,7 @@ EXPORT CHECK:WF-N@
    r XREF-REC {: rec:^ :}
    rec REC-START {: to:n :}
    r OP-CODE {: code:n :}
-   code 0<> if a code to INLINE if exit then then
+   code 0<> if a code INLINE if exit then then
    rec XREF-FLAGS {: flags:n :}
    to 0= if a u NO-CODE then
    ORD @ 1- {: k:n :}
@@ -2505,17 +2507,16 @@ EXPORT TFAM:PF-CELLS@
    loop ;
 
 \ A setter's cells are over the view: it stores each where GET-CELLS reads it
-\ and drops them. T0 has no inline store, so each cell is a call, as in
-\ DO-STORE.
+\ and drops them.
 : SET-CELLS ( n -- ) {: fid:n :}
    fid PF-BYTE-OFF@ {: off:n :}
    fid PF-CELLS@ {: k:n :}
    k 0 ?do
       k 1- i - DEEP  k 2 + DEEP
       off i cells + PUSH-CONST  [: + ;] OP-ADD true ALU2
-      SPILL-ALL  ['] ! XT>N 0 EMIT-CALL
+      CELL-W STORE
    loop
-   k negate EMIT-DSP+ ;
+   0 k NIP-CELLS ;
 
 \ A buffer child's value is its field id: it adds the field's offset to the
 \ record pointer on top and pushes the field's byte count, base below length
@@ -2547,7 +2548,7 @@ EXPORT TFAM:PF-CELLS@
          EMIT-RETURN  EMIT-CLOSE
       ENDOF
       getter OF val GET-CELLS  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
-      setter OF val SET-CELLS  EMIT-RETURN  EMIT-CLOSE ENDOF
+      setter OF val SET-CELLS  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
       bytes OF
          val PF-BYTE-OFF@ PUSH-CONST  [: + ;] OP-ADD true ALU2
          val PF-BYTES@ PUSH-CONST

@@ -358,11 +358,12 @@ ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 
 \ ---- memory ------------------------------------------------------------------
 ARCHES TYPED-BUFFER EMIT-LOAD-XT [ vreg vreg width -- ]
+ARCHES TYPED-BUFFER EMIT-STORE-XT [ vreg vreg width -- ]
 
-\ EMIT-LOAD reads the cell or the zero-extended byte at address a into d, and
-\ does not screen the address, as the kernel's `@` and `c@` rows do not. `!` and
-\ `c!` stay calls, so the seam has no store.
+\ EMIT-LOAD sets d to the cell or zero-extended byte at a. EMIT-STORE puts s's
+\ cell or low byte at a and sets no vreg. Neither checks a, nor do kernel rows.
 : EMIT-LOAD ( vreg vreg width -- ) CUR @ EMIT-LOAD-XT @ execute ;
+: EMIT-STORE ( vreg vreg width -- ) CUR @ EMIT-STORE-XT @ execute ;
 
 \ ---- calls -------------------------------------------------------------------
 ARCHES TYPED-BUFFER EMIT-CALL-XT [ n n -- ]

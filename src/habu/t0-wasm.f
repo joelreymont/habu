@@ -354,6 +354,10 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    w WIDTH>N 1 = if OP-I64-LOAD8-U 0 0 MEM, else LD64, then
    d SET-REG ;
 
+: STORE ( vreg vreg width -- ) {: s:vreg a:vreg w:width :}
+   a GET-REG  OP-I32-WRAP-I64 B,  s GET-REG
+   w WIDTH>N 1 = if OP-I64-STORE8 ALIGN-8 0 MEM, else ST64, then ;
+
 \ ---- calls -------------------------------------------------------------------
 : CALL-SITE ( n n n -- ) {: kind:n to:n loc:n :}
    SYNC  L-CTX GET,
@@ -625,6 +629,7 @@ LEB-MOST BUFFER: LEB-ROOM             \ a shortest LEB before it is appended
    ['] SET-FLAG k EMIT-SET-FLAG-XT !
    ['] IMM? k EMIT-IMM?-XT !
    ['] LOAD k EMIT-LOAD-XT !
+   ['] STORE k EMIT-STORE-XT !
    ['] CALL k EMIT-CALL-XT !
    ['] TAIL k EMIT-TAIL-XT !
    ['] IF, k EMIT-IF,-XT !

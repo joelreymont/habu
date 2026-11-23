@@ -401,6 +401,12 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    w WIDTH>N 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
    d REG a REG MEM-AT SINK ENC-MOV-RM ;
 
+: STORE ( vreg vreg width -- )
+   {: s:vreg a:vreg w:width :}
+   s REG {: r:r64 :}
+   w WIDTH>N 1 = if r R64>N >R8 a REG MEM-AT SINK ENC-MOV8-MR exit then
+   r a REG MEM-AT SINK ENC-MOV-MR ;
+
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
    HERE-OFF NEMIT:CALL to loc EMIT-CALL-ROW+
@@ -622,6 +628,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the rel32 field that names each unit
    ['] CMP-LIT k EMIT-CMP-LIT-XT !
    ['] SET-FLAG k EMIT-SET-FLAG-XT !
    ['] LOAD k EMIT-LOAD-XT !
+   ['] STORE k EMIT-STORE-XT !
    ['] CALL k EMIT-CALL-XT !
    ['] TAIL k EMIT-TAIL-XT !
    ['] CALL-SELF k EMIT-CALL-SELF-XT !

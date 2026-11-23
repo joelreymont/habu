@@ -615,6 +615,11 @@ DYNAMIC-BUFFER BR-ARG n
    w WIDTH>N 1 = if d REG a REG 0 ENC-LDRB W exit then
    d REG a REG 0 ENC-LDR W ;
 
+: STORE ( vreg vreg width -- )
+   {: s:vreg a:vreg w:width :}
+   w WIDTH>N 1 = if s REG a REG 0 ENC-STRB W exit then
+   s REG a REG 0 ENC-STR W ;
+
 \ ---- the return stack --------------------------------------------------------
 \ RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d.
 \ Vreg i of p moved to or from the slot at x17 + off.
@@ -846,6 +851,7 @@ DYNAMIC-BUFFER BR-ARG n
    ['] CMP-LIT k EMIT-CMP-LIT-XT !
    ['] SET-FLAG k EMIT-SET-FLAG-XT !
    ['] LOAD k EMIT-LOAD-XT !
+   ['] STORE k EMIT-STORE-XT !
    ['] TOR k EMIT-TOR-XT !
    ['] RFROM k EMIT-RFROM-XT !
    ['] RFETCH k EMIT-RFETCH-XT !
