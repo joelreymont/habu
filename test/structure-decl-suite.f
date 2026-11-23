@@ -1592,6 +1592,57 @@ s" STRUCTURE sdbcolon BUFFER b SDB-N13 ;STRUCTURE" TEST-EVAL:RC 70 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdbcolon`\n" DECL-DIAG:HAS? TTRUE
 s" SDB-N13" s" buffer byte count must be a number or a constant above 0" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first\n" DECL-DIAG:HAS? TTRUE
+DECL-DIAG:OFF
+
+\ tools/check.f's pre-pass has no value for a program's own constant, so it
+\ leaves a structure that counts a buffer by one to the run, and the words that
+\ use the family with it. It spawns because that pre-pass is under test.
+package struct-bufcount-test
+private
+
+$2000 constant BC-CAP
+create BC-PATH PATH-CAP allot   variable BC-PATH-U
+create BC-OUT BC-CAP allot
+create BC-ERR BC-CAP allot   variable BC-ERR-U
+create BC-NONE 1 allot
+
+: BC-FILE ( -- str ) BC-PATH BC-PATH-U @ ;
+: BC-ERR$ ( -- str ) BC-ERR BC-ERR-U @ ;
+: BC-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
+
+: BC-SRC$ ( -- str )
+   SB-RESET
+   s" 16 constant SDBC-ID" BC-LINE
+   s" STRUCTURE sdbcheld DERIVE addr" BC-LINE
+   s"    FIELD size n" BC-LINE
+   s"    BUFFER id SDBC-ID" BC-LINE
+   s" ;STRUCTURE" BC-LINE
+   s" : SDBC-SIZE ( ^sdbcheld -- n ) SDBCHELD:SIZE @ ;" BC-LINE
+   SB$ ;
+
+: BC-RUN ( -- )
+   BC-FILE BC-SRC$ FS:WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+  s" tools/check.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+  s" --verify-only" >LEN PROC-ARGV+
+   BC-FILE >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN  BC-NONE 0 >LEN  BC-OUT BC-CAP >LEN
+   BC-ERR BC-CAP >LEN  PROCESS:WAIT-FOREVER
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
+   erru LEN>N BC-ERR-U !
+   BC-SRC$ BC-OUT outu LEN>N BC-ERR$ oc 0 T-ENDING-EXITED= ;
+
+s" habu-structure-bufcount" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
+s" structure-bufcount-check.f" BC-PATH FS:JOIN-PATH BC-PATH-U !
+BC-RUN
+BC-ERR$ s" error[" COUNT-SUB 0 T=
+SB-RESET
+s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `SDBC-ID` to the run because only the run defines its value" SB-APPEND
+s\" \n --> " SB-APPEND  BC-FILE SB-APPEND  s" :4:14" BC-LINE
+BC-ERR$ SB$ CONTAINS? TTRUE
+BC-ERR$ s\" ^ value known only to the run\n" CONTAINS? TTRUE
+FS:CLEANUP-RUN
+;package
 
 \ DERIVE eq, hash and init are each rejected with a buffer.
 DECL-DIAG:PROSE

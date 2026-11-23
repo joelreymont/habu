@@ -529,7 +529,8 @@ PTR-VARIABLE HEAD-A   variable HEAD-U   variable HEAD-I   \ a span read ahead, r
 : HEAD-CLEAR ( -- ) NULL-PTR HEAD-A ! 0 HEAD-U ! 0 HEAD-I ! ;
 
 PTR-VARIABLE TYPE-A   variable TYPE-U     \ the field type token under resolution
-PTR-VARIABLE MISS-A   variable MISS-U     \ the first unresolved type span, kept for REPLAY-END
+PTR-VARIABLE MISS-A   variable MISS-U     \ the first span left to the run, kept for REPLAY-END
+variable MISS-WHY                         \ its deferral cause, a DW- code
 \ A replay's field names, each after its count cell: one structure member's, or
 \ one variant's, since a front end's SEEN-CLEAR.
 PTR-VARIABLE SEEN-P
@@ -540,18 +541,20 @@ SCRATCH-VARIABLE SEEN-CAP                 \ SEEN-P's room, in cells
 variable SEEN-U
 variable SEEN-I
 
-: MISS-CLEAR ( -- ) NULL-PTR MISS-A ! 0 MISS-U ! ;
+: MISS-CLEAR ( -- ) NULL-PTR MISS-A ! 0 MISS-U ! 0 MISS-WHY ! ;
 
 public
 
 : TYPE! ( str -- ) TYPE-U ! TYPE-A ! ;
 : TYPE@ ( -- str ) TYPE-A @ TYPE-U @ ;
 
-\ MISSING! ( span -- ) : the type under resolution may still arrive. The first
-\ such span is what a replay reports (REPLAY-OUTCOME); later ones are dropped.
-: MISSING! ( str -- )
+\ MISSING! ( span why -- ) : only the run can resolve the span, for the
+\ deferral cause why. The first span and its cause are what a replay reports
+\ (REPLAY-OUTCOME); later ones are dropped.
+: MISSING! ( str n -- )
    -1 FIELD-MISS !
-   MISS-U @ 0= IF MISS-U ! MISS-A ! ELSE 2drop THEN ;
+   MISS-U @ 0 <> IF drop 2drop EXIT THEN
+   MISS-WHY !  MISS-U !  MISS-A ! ;
 : MISSING? ( -- bool ) MISS-U @ 0 <> ;
 
 : SEEN-CLEAR ( -- ) 0 SEEN-U ! ;
@@ -683,13 +686,14 @@ EXPORT TYPE-DECL:TDECL-TXN-XT
    rc DECL-REJECT:THROWN-ON? IF DECL-REJECT:FORGET-SRC rc throw THEN
    rc ;
 
-: REPLAY-END ( n -- str bool )    \ direct missing span after rollback
+\ The missing span after rollback and its cause; 0 for none.
+: REPLAY-END ( n -- str n )
    dup E-UNRESOLVED = IF
-      drop MISS-A @ MISS-U @
+      drop MISS-A @ MISS-U @ MISS-WHY @
       0 DECL-REJECT:GUARD-CODE
-      YES MISS-CLEAR EXIT THEN
+      MISS-CLEAR EXIT THEN
    DECL-REJECT:GUARD-CODE
-   NULL-PTR 0 NO ;
+   NULL-PTR 0 0 ;
 
 public
 
@@ -699,11 +703,11 @@ public
    ka ku DECL-REJECT:OPEN
    ta tu body DRIVE DECL-REJECT:GUARD-CODE ;
 
-\ REPLAY-OUTCOME ( name body-text kind terminator body -- span bool ) : register
+\ REPLAY-OUTCOME ( name body-text kind terminator body -- span why ) : register
 \ a declaration from tokens a tool has already lexed, defining no word, and
-\ answer whether a type it names may still arrive, and which. DRIVE throws
-\ E-UNRESOLVED on: no reason explains it.
-: REPLAY-OUTCOME ( str str str str [ -- renders parses nominal ] -- str bool )
+\ answer the first span it leaves to the run and the deferral cause, or 0 for
+\ none. DRIVE throws E-UNRESOLVED on: no reason explains it.
+: REPLAY-OUTCOME ( str str str str [ -- renders parses nominal ] -- str n )
    {: na:^ nu:n ba:^ bu:n ka:^ ku:n ta:^ tu:n body :}
    na nu ba bu DECL-REPLAY:RP-CLAIM
    ka ku DECL-REJECT:OPEN

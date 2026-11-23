@@ -372,7 +372,7 @@ public
 
 \ Registers an ENUM from a body a tool lexed, by DECLARE-ENUM's grammar, defining
 \ no word; a body without ;ENUM is rejected "missing ;ENUM".
-: REPLAY-ENUM ( str str -- str bool )
+: REPLAY-ENUM ( str str -- str n )
    ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 
 ;package

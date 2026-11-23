@@ -5864,6 +5864,7 @@ global
 6 constant DW-TYPE           \ a type that may arrive with rendered text
 7 constant DW-RENDERED       \ a word whose meaning rendered source may change
 8 constant DW-ROOTS          \ a top-level call that may move the source root
+9 constant DW-COUNT          \ a buffer byte count naming a constant only the run defines
 private
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
@@ -18618,6 +18619,10 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
       s"  to the run because " REJECTION:EMIT-STR  t tu DW-CODE
       s"  may move the source root" REJECTION:EMIT-STR EXIT
    THEN
+   why DW-COUNT = IF
+      s" the check leaves buffer byte count " REJECTION:EMIT-STR  t tu DW-CODE
+      s"  to the run because only the run defines its value" REJECTION:EMIT-STR EXIT
+   THEN
    s" the check cannot follow the source from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on and leaves it to the run" REJECTION:EMIT-STR ;
 : DW-LABEL ( n -- ) {: why:n :}
@@ -18628,6 +18633,7 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    why DW-TYPE = IF s" type not declared in the source" REJECTION:EMIT-STR EXIT THEN
    why DW-RENDERED = IF s" may depend on rendered source" REJECTION:EMIT-STR EXIT THEN
    why DW-ROOTS = IF s" may move the source root" REJECTION:EMIT-STR EXIT THEN
+   why DW-COUNT = IF s" value known only to the run" REJECTION:EMIT-STR EXIT THEN
    s" not checked from here" REJECTION:EMIT-STR ;
 \ What lifts the deferral, or what the run does where nothing can; a `parses:`
 \ row's or rendered source's has nothing to write, so no help.
@@ -18656,6 +18662,10 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    THEN
    why DW-ROOTS = IF
       s" the run loads the files later requires name from the root it sets" REJECTION:EMIT-STR EXIT
+   THEN
+   why DW-COUNT = IF
+      s" the run reads " REJECTION:EMIT-STR  t tu DW-CODE
+      s" 's value and lays the record out by it" REJECTION:EMIT-STR EXIT
    THEN
    s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;

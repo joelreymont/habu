@@ -115,7 +115,7 @@ private
 : SD-RESET ( -- )
    0 SEEN-FIELD !  0 SD-FLDS !  SELF-PTR-RESET ;
 SD-RESET
-: SD-MISSING! ( -- ) TYPE@ MISSING! ;
+: SD-MISSING! ( -- ) TYPE@ DW-TYPE MISSING! ;
 
 \ The node parser's rejections name the type as its caller does ("type",
 \ "payload type"); SD-TYPE-NODE sets the noun for one parse.
@@ -905,6 +905,12 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
    a u num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
    a u scope-find drop drop drop CK-REC-VALUE ;
+\ A count name no record here holds the value of: in a replay, a program
+\ constant only the run defines, so the declaration is left to the run.
+: COUNT-UNREAD ( str -- ) {: a:^ u:n :}
+   a u num-parse nip nip 0=  OUTCOME-NAMES @ 0 <>  and IF
+      a u DW-COUNT MISSING!  E-UNRESOLVED throw THEN
+   COUNT-BAD ;
 \ `BUFFER name N`: N bytes inline from the next slot, in whole cells. N is a
 \ number literal or a constant's name, read from the constant's record
 \ without running program code.
@@ -913,8 +919,10 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
       2drop s" missing buffer byte count"
       s" write a byte count after the buffer's name, as in `BUFFER bytes 16`"
       TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw THEN
-   COUNT-VALUE {: v:n ok:bool :}
-   ok 0= v 1 < or IF COUNT-BAD THEN
+   {: ca:^ cu:n :}
+   ca cu COUNT-VALUE {: v:n ok:bool :}
+   ok 0= IF ca cu COUNT-UNREAD THEN
+   v 1 < IF COUNT-BAD THEN
    v ITEM-ROOM CELL * > IF ITEMS-FULL THEN     \ before its cells are counted
    v ;
 : EMIT-BUFFER ( str n -- ) {: na:^ nu:n bytes:n :}
@@ -1213,19 +1221,27 @@ EXPORT CHECKER-RESOLVE:CK-REC-VALUE
 \ Declares the structures a MUTUAL lists, which may point at each other.
 : DECLARE-MUTUAL ( -- ) MUTUAL-FRONT DECL-FRONT:RUN ;
 
+EXPORT CHECK:CHECKER-UNSEEN-MARK
+EXPORT CHECK:CHECKER-TYPE-MARK
+\ A family whose buffer count only the run knows has no records here, so later
+\ uses of it and its generated words defer rather than reject.
+: COUNT-LEFT ( n -- n )
+   dup DW-COUNT = IF CHECKER-UNSEEN-MARK NO CHECKER-TYPE-MARK THEN ;
+
 public
 
 \ Registers a STRUCTURE from a body a tool lexed, by DECLARE-STRUCTURE's grammar,
 \ defining no word; a body without ;STRUCTURE is rejected "missing ;STRUCTURE".
-: REPLAY-STRUCTURE ( ^u8 n ^u8 n -- ^u8 n bool )
-   SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
+\ Answers the first span left to the run and its deferral cause, 0 for none.
+: REPLAY-STRUCTURE ( str str -- str n )
+   SD-FRONT DECL-FRONT:REPLAY-OUTCOME COUNT-LEFT ;
 
 \ Registers a MUTUAL from a body a tool lexed, by DECLARE-MUTUAL's grammar,
 \ defining no word: first list token, then the rest of the body, which holds
 \ the other list tokens, the members and ;MUTUAL. A body without ;MUTUAL is
 \ rejected "missing ;MUTUAL". Answers as REPLAY-STRUCTURE.
-: REPLAY-MUTUAL ( str str -- str bool )
-   MUTUAL-FRONT DECL-FRONT:REPLAY-OUTCOME ;
+: REPLAY-MUTUAL ( str str -- str n )
+   MUTUAL-FRONT DECL-FRONT:REPLAY-OUTCOME COUNT-LEFT ;
 
 private
 
@@ -1259,19 +1275,19 @@ public
 \ each record of the name stands at TOKEN, the name as written. KIND is the
 \ declaration's keyword, "newtype" or "deftype", which its records name.
 \ Answers as REPLAY-STRUCTURE; TDECL-FAM-REG is the family, or -1 if none.
-: SD-WRAP-OUTCOME ( str str str str -- str bool )
+: SD-WRAP-OUTCOME ( str str str str -- str n )
    {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
    -1 TDECL-FAM-REG !  REJECTION:TALLY {: tally:n :}
-   ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n miss:bool :}
-   miss 0= IF tally WRAP-KEEP THEN
-   ma mu miss ;
+   ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n why:n :}
+   why 0= IF tally WRAP-KEEP THEN
+   ma mu why ;
 
 private
 
 \ The same, raising E-UNRESOLVED instead of answering, and answering the
 \ family, or -1 when a multi-error load rejected it.
 : SD-WRAP ( ^u8 n ^u8 n ^u8 n ^u8 n -- n )
-   SD-WRAP-OUTCOME IF 2drop E-UNRESOLVED throw THEN 2drop
+   SD-WRAP-OUTCOME 0 <> IF 2drop E-UNRESOLVED throw THEN 2drop
    TDECL-FAM-REG @ ;
 
 ;package

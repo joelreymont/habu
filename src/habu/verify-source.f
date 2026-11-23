@@ -2542,7 +2542,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
       dup 0= IF 2drop 0 0= ELSE 2dup BODY-APPEND ENUM-END? THEN
    UNTIL
    name nameu BODY$ REPLAY-ENUM
-   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
+   dup 0 <> IF DEFER-AT ELSE drop 2drop THEN ;
 
 : STRUCTURE-DECL-END? ( str -- bool )
    s" ;STRUCTURE" STR=CI ;
@@ -2560,7 +2560,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
       dup 0= IF 2drop 0 0= ELSE 2dup BODY-APPEND STRUCTURE-DECL-END? THEN
    UNTIL
    name nameu BODY$ REPLAY-STRUCTURE
-   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
+   dup 0 <> IF DEFER-AT ELSE drop 2drop THEN ;
 
 : MUTUAL-END? ( str -- bool )
    s" ;MUTUAL" STR=CI ;
@@ -2591,7 +2591,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
       BEGIN MUTUAL-TOKEN UNTIL
    THEN
    name nameu BODY$ REPLAY-MUTUAL
-   IF DW-TYPE DEFER-AT ELSE 2drop THEN ;
+   dup 0 <> IF DEFER-AT ELSE drop 2drop THEN ;
 
 : LEGACY-TYPE-OUTCOME ( [ -- ] -- )
    catch {: rc:n :}
@@ -2652,7 +2652,7 @@ variable STG-TYPE-U
    tu 1 = IF ta c@ 92 = IF name nameu NEWTYPE-CELL EXIT THEN THEN
    name nameu 2dup SCAN-STORAGE-TYPE
    s" newtype" SD-WRAP-OUTCOME
-   IF DW-TYPE DEFER-AT EXIT THEN 2drop ;
+   dup 0 <> IF DEFER-AT EXIT THEN drop 2drop ;
 
 \ A DEFTYPE base is the one name on the name's line, consumed; none, or a `\`
 \ left unread, is `n`, and the bool says whether one was spelled.
@@ -2678,7 +2678,7 @@ variable STG-TYPE-U
    based IF name nameu at nameu SEALED-NAME ELSE name nameu at SEALED-FAMILY THEN
    based IF
       tail tailu name nameu ba bu s" deftype" SD-WRAP-OUTCOME
-      IF DW-TYPE DEFER-AT EXIT THEN 2drop
+      dup 0 <> IF DEFER-AT EXIT THEN drop 2drop
    ELSE
       tail tailu name nameu s" deftype" CHECKER-DEFFAMILY
    THEN
