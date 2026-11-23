@@ -15218,8 +15218,13 @@ EXPORT CHECKER-USE:SOURCE-FLOOR
    ix MARK @ < IF EXIT THEN
    ix v VALUES-P VALUES-CAP VALUES-N PAIR+ ;
 
-\ The value VALUE! kept for REC and true; 0 and false for any other record.
+EXPORT CHECKER-RESOLVE:CK-REC-VALUE
+
+\ A constant's value and true: what its code pushes or, for the replay's
+\ codeless record, what VALUE! kept; 0 and false for any other record.
 : VALUE ( ^n -- n bool ) {: rec:^ :}
+   rec CK-REC-VALUE {: c:n known:bool :}
+   known IF c known EXIT THEN
    rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
    rec REC>IX {: ix:n :}
    VALUES-N @ 0 ?DO

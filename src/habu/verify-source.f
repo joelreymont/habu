@@ -2218,7 +2218,6 @@ ENGINE-TARGET-INIT
 
 : RAW-TRUST-NEXT ( str n -- ) RAW-TRUST-NAME drop 2drop ;
 
-EXPORT CHECKER-RESOLVE:CK-REC-VALUE
 EXPORT CHECKER-OVERLAY:LANDS-REC
 EXPORT CHECKER-OVERLAY:VALUE
 EXPORT CHECKER-OVERLAY:VALUE!
@@ -2229,10 +2228,7 @@ EXPORT CHECKER-OVERLAY:UNSTATED!
 : STATED-VALUE ( str -- n bool ) {: a:^ u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
-   a u scope-find drop drop drop {: rec:^ :}
-   rec CK-REC-VALUE {: c:n known:bool :}
-   known IF c known EXIT THEN
-   rec VALUE ;
+   a u scope-find drop drop drop VALUE ;
 
 \ The value of a `constant` is stated when the token before it gives one and
 \ nothing since can have pushed another: no string literal skipped, no stretch

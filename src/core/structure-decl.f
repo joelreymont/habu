@@ -898,34 +898,23 @@ private
       na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
 
-EXPORT CHECKER-RESOLVE:CK-REC-VALUE
 : COUNT-BAD ( -- )
    s" buffer byte count must be a number or a constant above 0"
    s" give the byte count as a number literal or a constant's name, as in `BUFFER bytes 16`; bind a computed size with `constant` first"
    TYPE-DECL:E-TDECL-SYNTAX DECL-REJECT:REJECT throw ;
-EXPORT CHECK:CK-REC-WID
 EXPORT CHECK:CHECKER-BIND
 EXPORT CHECKER-OVERLAY:VALUE
-\ Whether scope-find's answers are a using refusal: two used publics export the
-\ tail and nothing earlier binds it, or a used public exports a global's tail.
-: USING-SHAPE? ( ^n ^n n -- bool ) {: rec:^ used:^ flags:n :}
-   rec NULL-PTR = IF flags SCOPE-FIND-AMBIGUOUS and 0 <> EXIT THEN
-   rec CK-REC-WID WL:GLOBAL?  used NULL-PTR <>  and ;
 \ The record a count name binds; a using refusal is raised as a bare call's.
 : COUNT-REC ( str -- ^n ) {: a:^ u:n :}
-   a u scope-find {: rec:^ used:^ used2:^ flags:n :}
-   rec used flags USING-SHAPE? IF a u a u CHECKER-BIND drop THEN
-   rec ;
+   a u a u CHECKER-BIND drop
+   a u scope-find drop drop drop ;
 \ A count token's value and true: an integer literal, or the value of the
 \ constant it binds, read from its record or, for a replay's codeless record,
 \ the value its source states; false for anything else.
 : COUNT-VALUE ( str -- n bool ) {: a:^ u:n :}
    a u num-parse {: v:n flt:bool ok:bool :}
    ok IF v flt 0= EXIT THEN
-   a u COUNT-REC {: rec:^ :}
-   rec CK-REC-VALUE {: c:n known:bool :}
-   known IF c known EXIT THEN
-   rec VALUE ;
+   a u COUNT-REC VALUE ;
 EXPORT CHECKER-OVERLAY:UNSTATED?
 EXPORT CHECK:UNSEEN-COVERS?
 \ Whether a count name no record here holds the value of may still name one
