@@ -251,6 +251,16 @@ EXPORT CHECKER-TAPE:K-CONTROL
    s" name a declared family and its variants, as `MATCH fam v OF ... ENDOF ;MATCH` or `construct fam v`" SAY
    REJECT ;
 
+\ A catch the checker filed no cell counts for: the throw path's depth is
+\ unknown.
+: NO-DEPTH ( str -- ) {: a:^ u:n :}
+   s" E-T0-UNSUPPORTED" REJECTION:OPEN
+   s" the compiler has no depth facts for " SAY  a u TICKS
+   a u REJECTION:AT  s" the caught body's cells are not proved" SAY
+   REJECTION:HELP
+   s" catch a quotation or a ticked word whose effect is declared" SAY
+   REJECT ;
+
 \ The token in place of a MATCH arm's `of`.
 : NO-OF ( str -- ) {: a:^ u:n :}
    s" E-T0-MATCH" REJECTION:OPEN
@@ -1855,11 +1865,11 @@ DYNAMIC-BUFFER COUNT-SLOT n
 \ outputs pushed as 0.
 
 \ The body's output cells less its input cells at row k when it calls catch,
-\ record r, by the facts the checker filed; 0 for any other call or no facts.
+\ record r, by the facts the checker filed; 0 for any other call.
 : CATCH-SHIFT ( n n -- n ) {: r:n k:n :}
    r CATCH-REC @ <> if 0 exit then
    k CHECKER-OWNER:CALL-CELLS {: in:n out:n :}
-   in 0<  out 0< or if 0 exit then
+   in 0<  out 0< or if k ROW$ NO-DEPTH then
    out in - ;
 
 \ The call of the catch at offset loc, then on a throw its depth moved by d

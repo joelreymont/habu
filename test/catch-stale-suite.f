@@ -476,10 +476,10 @@ STRUCTURE cspt
 : CS-SPEND ( CATCH-STALE-TEST:cslease -- n ) CS-UNLEASE WMAYBEN ;
 
 : CS-SECTION-RESHAPE ( -- )
-   s" S1 ( ^u8 n -- n ) [: JSON:PARSE ;] catch nip" CHECK-QUIET-CANDIDATE! -1 T=
-   s" S2 ( ^u8 n -- n ) [: JSON:PARSE ;] catch drop JSON:TEXT$ nip" CS-CODE<
+   s" S1 ( str -- n ) [: JSON:PARSE ;] catch nip" CHECK-QUIET-CANDIDATE! -1 T=
+   s" S2 ( str -- n ) [: JSON:PARSE ;] catch drop JSON:TEXT$ nip" CS-CODE<
    CS-STALE?  CS-CODE-END
-   s" S3 ( ^u8 n -- n ) [: JSON:PARSE ;] catch {: code:n :} code 0<> if code throw then JSON:TEXT$ nip"
+   s" S3 ( str -- n ) [: JSON:PARSE ;] catch {: code:n :} code 0<> if code throw then JSON:TEXT$ nip"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ more, fewer and as many cells as it took, read under the guard
    s" S4 ( n -- n n ) [: WNUMBER dup ;] catch {: code:n :} code 0<> if code throw then"

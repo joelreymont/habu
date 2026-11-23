@@ -119,7 +119,7 @@ create XE-EMPTY 1 allot
    s" v3:<<CERT>>" XE-HAS
    s" ['] SP catch (stack-preserving) certifies" T-LABEL
    s" v4:<<CERT>>" XE-HAS
-   s" ['] A catch (not stack-preserving) rejects" T-LABEL
+   s" ['] A catch leaves n n and the code, not ( n -- n n ), and rejects" T-LABEL
    s" v5:<<REJ>>" XE-HAS
    s" ['] SP is ACT (effect fits the defer) certifies" T-LABEL
    s" v6:<<CERT>>" XE-HAS
