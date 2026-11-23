@@ -407,25 +407,25 @@ EPRIM: fence      EPRIM;
 \ that leaves or takes cells with a record and 70, so whatever the text does
 \ its net effect is ( -- ) and the row states the string alone. `evaluate`,
 \ whose effect is the text's, stays elaborated below and unsafe in a body.
-EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPRIM: evaluate-closed PE-STR PE-IN EPRIM;
 EPPRIM: SOURCE-ROOT evaluate-range
-   PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM;
+   PE-STR PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPRIM: count      PE-PTR-U8 PE-IN  PE-STR PE-OUT REF PRIM-REF:COUNTED$ EPRIM;
 
 EPRIM: .            PE-N PE-IN EPRIM;
 EPRIM: .s           EPRIM;
 EPRIM: depth        PE-N PE-OUT EPRIM;
 EPRIM: here         PE-PTR-A-RAW PE-OUT EPRIM;
-EPPRIM: CHECKER-RESOLVE bare-tok-imm? PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: CHECKER-RESOLVE bare-tok-imm? PE-STR PE-IN PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-kind?  PE-N PE-IN PE-N PE-OUT EPRIM;
 EPRIM: allot        PE-N PE-IN EPRIM;
 EPRIM: align        EPRIM;
 EPRIM: ,            PE-N PE-IN EPRIM;
 EPRIM: c,           PE-N PE-IN EPRIM;
-EPRIM: type         PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPRIM: type         PE-STR PE-IN EPRIM;
 EPRIM: throw        PE-N PE-IN EPRIM;
-EPRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
-EPPRIM: INTERPRETER die-closed PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPRIM: die          PE-STR PE-IN PE-N PE-IN EPRIM;
+EPPRIM: INTERPRETER die-closed PE-STR PE-IN PE-N PE-IN ECLOSE-PRIVATE
 
 EPRIM: open     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: read     PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
@@ -520,7 +520,7 @@ EPPRIM: NDICT does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ `does-record ( entry len -- )` records the pending definition's `;does`
 \ clause, writes its name at CP, zero-padded to a code slot, and sets CLAUSE-CELL.
 EPPRIM: NPUB does-record PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+EPRIM: write         PE-N PE-IN PE-STR PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: close         PE-N PE-IN EPRIM;
 EPRIM: close-rc      PE-N PE-IN  PE-N PE-OUT EPRIM;   \ close returning host status (0 ok, <0 fail)
 EPRIM: epoch-seconds PE-N PE-OUT EPRIM;
@@ -578,15 +578,15 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ answer its index: [0] a fresh wid, [8] a second fresh wid when the flag is
 \ set and else 0, [40] WL:NAMESPACE. It refuses a colon at an edge of the
 \ name and a second colon: a name with one is a part's path, `A:B`.
-EPPRIM: CHECKER-OVERLAY namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
-EPPRIM: INTERPRETER namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY namespace-record PE-STR PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: INTERPRETER namespace-record PE-STR PE-IN PE-F PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
 \ namespace-private ( n -- ): give namespace row n, whose [8] is 0, a fresh
 \ private wid. It refuses an index at or above NDICT, unsigned, a row that is
 \ not a namespace row and one that already has a private wid.
 EPPRIM: INTERPRETER namespace-private PE-N PE-IN ECLOSE-PRIVATE
 \ alias-record ( ^u8 n n n -- ) name, source index, wid: a record for the source's code, as
 \ `export` makes. It refuses a negative wid and a source at or above NDICT, unsigned.
-EPPRIM: INTERPRETER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: INTERPRETER alias-record PE-STR PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
 \ wid. A row whose name holds a colon is a part, which first moves the four
@@ -606,13 +606,13 @@ EPPRIM: INTERPRETER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ waits for the body (def-close). It refuses a kind with a bit
 \ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, a negative wid, and CP at or
 \ past the code ceiling.
-EPPRIM: INTERPRETER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: INTERPRETER def-open PE-STR PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ body-capture ( ^u8 n -- ): append the bytes and one space to the body text
 \ through the capture routine `:` uses, which grows the text block when they do
 \ not fit and throws E-BODY-TEXT when it cannot. It refuses BODYLEN past the
 \ text capacity and a BODYLEN + u + 1 that wraps, with BODYLEN and u both
 \ unsigned.
-EPPRIM: INTERPRETER body-capture PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: INTERPRETER body-capture PE-STR PE-IN ECLOSE-PRIVATE
 \ literal ( n -- ): append n to the definition `define-word` opened, which the
 \ checker reads as that number; it refuses when no definition is open.
 EPRIM: literal PE-N PE-IN EPRIM;
@@ -626,12 +626,12 @@ EPRIM: ; EPRIM;
 EIMMEDIATE!
 \ trust-sig! ( ^u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
-EPPRIM: INTERPRETER trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: INTERPRETER trust-sig! PE-STR PE-IN ECLOSE-PRIVATE
 \ created-sig! ( ^u8 n -- ): the inside of the pending definition's `does>`
 \ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
 \ copy in the body text. It refuses when no definition is
 \ pending.
-EPPRIM: INTERPRETER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: INTERPRETER created-sig! PE-STR PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled:
 \ the state def-open set clears:
 \ COMP-LATCH-CELL, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
@@ -684,7 +684,7 @@ EPPRIM: INTERPRETER imm-mark ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-open ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-close ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-widn! PE-N PE-IN ECLOSE-PRIVATE
-EPPRIM: CHECKER-OVERLAY replay-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: CHECKER-OVERLAY replay-record PE-STR PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY record-wid! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: CHECKER-OVERLAY replay-private PE-N PE-IN PE-F PE-IN ECLOSE-PRIVATE
 EPRIM: DRAIN-PRETRUST EPRIM;
@@ -708,15 +708,15 @@ EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM;
 \ The design seal's two writers: admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.
-EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPRIM: policy-admit   PE-STR PE-IN EPRIM;
 EPRIM: policy-seal    EPRIM;
 EPRIM: wordlist       PE-N PE-OUT EPRIM;
 EPRIM: get-current    PE-N PE-OUT EPRIM;
-EPPRIM: CHECKER-RESOLVE bare-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
-EPPRIM: CHECKER-RESOLVE xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
-EPPRIM: CHECKER-RESOLVE bare-scope-find PE-PTR-U8 PE-IN PE-N PE-IN
+EPPRIM: CHECKER-RESOLVE bare-search-wl PE-STR PE-IN PE-N PE-IN  PE-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: CHECKER-RESOLVE xref-search-wl PE-STR PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
+EPPRIM: CHECKER-RESOLVE bare-scope-find PE-STR PE-IN
    PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
-EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
+EPRIM: parse-name     PE-STR PE-OUT EPRIM;
 \ num-parse ( ^u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile
 \ dispatches call for every literal token. It
@@ -724,13 +724,13 @@ EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
 \ bytes were a number at all. A checked stage that has to know what cell a
 \ literal spelling stands for asks this rather than reading the spelling back
 \ with a second decoder.
-EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM;
+EPRIM: num-parse      PE-STR PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM;
 \ record-facts! ( n n -- ) offset, index: stores where a record's facts text
 \ lies.
 EPPRIM: CHECK record-facts! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ sha256-blocks ( ^n ^u8 n -- n ) state cells, bytes, block count: how
 \ many blocks the CPU's SHA-256 instructions compressed.
-EPRIM: sha256-blocks PE-PTR-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
+EPRIM: sha256-blocks PE-PTR-N PE-IN PE-STR PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE

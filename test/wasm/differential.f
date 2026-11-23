@@ -299,7 +299,7 @@ s\" 2\n110\n" FAULT-ROW
 \ A variable, a created buffer and a constant link as data; ! and c! store
 \ through checked pointers.
 s" W31-STORAGE"
-s" variable W31-STORAGE-V create W31-STORAGE-B 2 allot 5 constant W31-STORAGE-K : W31-STORAGE ( -- ) W31-STORAGE-K W31-STORAGE-V ! W31-STORAGE-V @ 7 + W31-STORAGE-V ! W31-STORAGE-V @ . 65 W31-STORAGE-B c! 66 W31-STORAGE-B 1 + c! W31-STORAGE-B 2 type cr depth . ;"
+s" variable W31-STORAGE-V create W31-STORAGE-B 2 allot 5 constant W31-STORAGE-K : W31-STORAGE ( -- ) W31-STORAGE-K W31-STORAGE-V ! W31-STORAGE-V @ 7 + W31-STORAGE-V ! W31-STORAGE-V @ . 65 W31-STORAGE-B c! 66 W31-STORAGE-B 1 + c! W31-STORAGE-B 2 >str type cr depth . ;"
 s\" 12\nAB\n0\n" ROW
 
 \ true and false, which the map answers with kernel words, as conditions and as
@@ -323,19 +323,19 @@ s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-46176391
 \ JSON fields, UTF-8 bytes and the signed minimum's text through the library's
 \ writer.
 s" WJSON:STEP"
-S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" >str s\" é\" >str JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" >str STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ str> type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
+S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
 S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 
 \ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a
 \ fixed key, SET, GET and EACH's visit order.
 s" WMAP:STEP"
-S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( str n -- ) {: s:str v:n :}\n   s str> type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M s\" one\" >str MAP:SET\n   2 M s\" two\" >str MAP:SET\n   3 M s\" three\" >str MAP:SET\n   M s\" two\" >str MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ['] SHOW MAP:EACH ;\n;package\n"
+S\" require src/lib/map-core.f\npackage WMAP\nprivate\n8 constant ROOM\ncreate M ROOM >COUNT MAP:CELL-COUNT COUNT>N cells allot\n: SHOW ( str n -- ) {: s:str v:n :}\n   s type space v . ;\npublic\n: STEP ( -- )\n   M ROOM >COUNT $5EED $C0DE MAP:INIT-KEYED\n   1 M s\" one\" MAP:SET\n   2 M s\" two\" MAP:SET\n   3 M s\" three\" MAP:SET\n   M s\" two\" MAP:GET MATCH option\n     none OF -1 . ENDOF\n     some OF . ENDOF\n   ;MATCH\n   M ['] SHOW MAP:EACH ;\n;package\n"
 S\" 2\ntwo 2\nthree 3\none 1\n" ROW
 
 \ Core byte copying is forward, including when the destination overlaps the
 \ source by less than a cell. A memmove-style provider prints different bytes.
 s" WBYTES:STEP"
-S\" package WBYTES\nprivate\n16 BUFFER: B\npublic\n: STEP ( -- )\n   s\" 0123456789\" drop B 10 BYTE-COPY\n   B B 2 + 8 BYTE-COPY\n   B 10 type cr ;\n;package\n"
+S\" package WBYTES\nprivate\n16 BUFFER: B\npublic\n: STEP ( -- )\n   s\" 0123456789\" str> drop B 10 BYTE-COPY\n   B B 2 + 8 BYTE-COPY\n   B 10 >str type cr ;\n;package\n"
 S\" 0101010101\n" ROW
 
 \ Camera numeric text reaches FMT's DATA scratch, STR>FLOAT's decimal gate

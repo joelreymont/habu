@@ -64,7 +64,6 @@ PTR-VARIABLE SD-PATH-SRC                \ the bytes SD-PATH copies: the source's
 variable SD-PATH-AT                     \ where the last string literal's payload starts
 variable SD-PATH-SPAN                   \ and its length in the source
 variable SD-PEND
-variable SD-PEND-STR                     \ the pending literal passed its `>str`
 variable SD-EMIT-LEN
 variable SD-OPENER
 variable SD-TOK-OFF
@@ -72,14 +71,10 @@ variable SD-TOK-LEN
 variable SD-DEF                          \ 1 from a definition's opener to its ;
 variable SD-NAME-OFF                     \ the open definition's name, 0 0 for none
 variable SD-NAME-LEN
-variable SD-SHADOWED                     \ loader and family words the file defined, and SD-STR-BIT
+variable SD-SHADOWED                     \ loader and family words the file defined
 variable SD-RETIRED                      \ and those it retired
 variable SD-HARVESTING                  \ only the harvest records declarations and rows
 variable SD-FILE-ID
-
-\ SD-SHADOWED's bit for `>str`: once the file defines or retires one, a `>str`
-\ spends the literal before it.
-$200 constant SD-STR-BIT
 
 1 constant SD-R-DECL
 2 constant SD-R-RETIRE
@@ -186,7 +181,7 @@ variable SD-SCOPES
    SD-LAST$ VERIFY:RETIRE-REJECT  E-DISC-RETIRE VERIFY:DISCOVERY-STOP ;
 : SD-DYNAMIC-STOP ( -- )
    E-DISC-DYNAMIC SD-HARVEST-THROW
-   SD-LAST$  SD-SHADOWED @ SD-STR-BIT and 0<>  VERIFY:DYNAMIC-REJECT
+   SD-LAST$ VERIFY:DYNAMIC-REJECT
    E-DISC-DYNAMIC VERIFY:DISCOVERY-STOP ;
 : SD-OPENER-STOP ( -- )
    E-DISC-OPENER SD-HARVEST-THROW
@@ -872,20 +867,15 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" mutual" STR=CI if $100 exit then
    0 ;
 
-: SD-STR-GONE ( str -- )
-   s" >str" STR=CI if SD-STR-BIT SD-SHADOWED @ or SD-SHADOWED ! then ;
-
 \ A definition or retirement of a loader or family name refuses nothing, but
 \ a later use with that spelling is ambiguous (SD-CHECK-USE).
 : SD-SHADOW ( str -- )
    SD-TAIL$ {: a:^ u:n :}
-   a u SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED !
-   a u SD-STR-GONE ;
+   a u SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED ! ;
 
 : SD-RETIRE ( str -- )
    SD-TAIL$ {: a:^ u:n :}
-   a u SD-NAME-BIT SD-RETIRED @ or SD-RETIRED !
-   a u SD-STR-GONE ;
+   a u SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
 
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ SD-NAME-BIT {: bit:n :}
@@ -1092,11 +1082,6 @@ DYNAMIC-BUFFER SD-DEC u8
    off len SD-TOK$ SD-QCOLON 0 < if false exit then
    off len SD-TOK$ VERIFY:ROOT-MOVE? ;
 
-\ Whether the token at off len is `>str` and the file has neither defined nor
-\ retired one.
-: SD-STR? ( n n -- bool )
-   SD-TOK$ s" >str" STR=CI  SD-SHADOWED @ SD-STR-BIT and 0=  and ;
-
 \ In a body only `[char]` and `[']` parse; at top level `char` and `'` do too.
 : SD-PARSER? ( n n -- bool ) {: off:n len:n :}
    SD-BODY? if
@@ -1105,9 +1090,8 @@ DYNAMIC-BUFFER SD-DEC u8
    off len SD-TOK$ PARSING-KEYWORD? ;
 
 \ A comment is skipped first, as the loader skips it, and like blanks it keeps a
-\ pending literal path: `s" x.f" ( why ) required` loads x.f. So does the first
-\ `>str` after the literal, an identity at run time, unless the file defined or
-\ retired one. Every other token ends it. A local is looked up before the
+\ pending literal path: `s" x.f" ( why ) required` loads x.f. Every other token
+\ ends it. A local is looked up before the
 \ parsing keywords: in a body a local named `char` is that local and takes no
 \ operand. A definition's opener and, outside a definition, an engine definer,
 \ a package keyword and `undefine` take the next token as the name they give,
@@ -1118,16 +1102,13 @@ DYNAMIC-BUFFER SD-DEC u8
    {: off:n len:n :}
    len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE exit then
    len 1 = off SD-BYTE SD-LPAREN = and if SD-SKIP-PAREN exit then
-   SD-PEND @ SD-PEND-STR @ {: pend:n past:n :}
-   0 SD-PEND !  0 SD-PEND-STR !
+   SD-PEND @ {: pend:n :}
+   0 SD-PEND !
    off len SD-TOK$ s" [:" STR= if
       SD-SCOPE-OPEN SD-LOCALS @ SD-LOCAL-BASE ! exit
    then
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
-   off len SD-STR?  pend 0<> and  past 0= and if
-      pend SD-PEND !  -1 SD-PEND-STR ! exit
-   then
    off len SD-PARSER? if SD-RAW 2drop exit then
    SD-DEF @ 0= off len SD-TOK$ SOURCE-SYNTAX:DEFINER-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
@@ -1197,7 +1178,6 @@ DYNAMIC-BUFFER SD-DEC u8
 : SD-WALK ( -- )
    0 SD-I !
    0 SD-PEND !
-   0 SD-PEND-STR !
    0 SD-TOK-OFF !
    0 SD-TOK-LEN !
    0 SD-NAME-OFF !

@@ -63,7 +63,7 @@ public
   wordlist; their bodies still call the package's private words (`: P-GO ( --
   n ) HELP ;` is called `P-GO`; `P:P-GO` is `E-UNDEFINED`). Outside a
   package it is rejected `E-PKG-CONTEXT`, rc 70.
-- `[package] ( -- ^u8 n )`: the open package's name in lower case (`hb`, a
+- `[package] ( -- str )`: the open package's name in lower case (`hb`, a
   part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body. `EXPORT PKG:NAME` also takes a private
@@ -120,9 +120,9 @@ cast holds or yields one.
 `[type] t` in a body makes one for a closed type `ARENA` stores; it refuses an
 open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 
-- A row's `str` is one string value; a file whose first line is `split-str`
-  reads it as `^u8 n`, which `s"` gives. Unmarked, `s" a" LTRIM` is
-  `E-MISMATCH` and `s" a" >str LTRIM` passes (forth.md **Types**).
+- A row's `str` is one string value, which `s"` gives; a file whose first
+  line is `split-str` reads it as `^u8 n`. Unmarked, `s" a" LTRIM` passes
+  (forth.md **Types**).
 - A word reads bytes as `str` and writes them into a `^VEC:vector<u8>`; a
   row never says `^u8 n`.
 - A cell address is `^a`, `n` only a genuine scalar.
@@ -340,7 +340,7 @@ definition, and a string literal right before a call of it is then a use of
 the word between its quotes, which references list:
 
 ```forth
-names: LOOK                         \ LOOK finds ( ^u8 n ) as a name
+names: LOOK                         \ LOOK finds ( str ) as a name
 : SEEK ( -- ) s" ROOK" LOOK ;       \ ROOK between the quotes is a use of ROOK
 ```
 
@@ -388,7 +388,7 @@ value must leave the selector on top (`30 swap endcase`). `do` always takes its
 first turn: `0 0 do … loop` and `-1 0 do … loop` run once. `?do … loop` enters
 only while start < limit, signed, so `0 0`, `-1 0` and `$8000000000000000 0` run zero times
 and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
-`0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( ^u8 n -- )`
+`0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( str -- )`
 evaluates source in a body: the text's `depth` starts at 0, a token reaching
 below it throws a stack underflow and a text that leaves cells throws
 `E-EVAL-RESIDUE`, the caller's cells intact either way. An xt the text runs
@@ -600,7 +600,7 @@ holds an address**.
   (`src/lib/log.f`), the tag its package name in lower case. `LOG:CODE+`
   appends a code with its declared name and text.
 - `throw` is catchable and belongs to the checker's exception edge. `die`
-  (`^u8 n n --`, a real message and exit code) ends the process and is
+  (`str n --`, a real message and exit code) ends the process and is
   no-return (§ 3). `throw` for recoverable and interactive paths, `die` for
   build makers and CLI boundaries.
 - A task's body and a callback's are kept by quotation types that state no
@@ -648,8 +648,8 @@ forth.md: **Errors**, **Integer arithmetic**.
 ## 7 require and load order
 
 - `require src/lib/string.f` loads once per image, keyed by canonical path;
-  `include` replays. `s" path" >str required` / `included` are the string
-  forms (no `>str` in a `split-str` file). A path resolves against the root
+  `include` replays. `s" path" required` / `included` are the string
+  forms. A path resolves against the root
   that resolved the requiring file (for an entry, the `--load` entry's or
   `hb prog.f` program's own directory, or a stdin session's working
   directory), then the engine's source root

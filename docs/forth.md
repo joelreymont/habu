@@ -24,7 +24,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   level.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
-  `evaluate-closed ( ^u8 n -- )`: the text runs on a guarded data stack of
+  `evaluate-closed ( str -- )`: the text runs on a guarded data stack of
   its own, must leave nothing and must close every definition it opens
   (measured under **Rules learned by refusal**). The loader and every
   source-generating definer evaluate through it, so a loaded file
@@ -164,7 +164,7 @@ private
   no part shadows. It is refused while top-level B or any part named B
   declares the family tail X, and while it exists neither may declare X
   (**Declaring your own scalar types**).
-- `[package] ( -- ^u8 n )`: the open package's name, A-Z folded (`a:b` in a
+- `[package] ( -- str )`: the open package's name, A-Z folded (`a:b` in a
   part), empty outside one; a string literal in a body, kept as `s"` at top level.
 - `public` and `private`, valid only inside a package, switch new definitions to
   the export wordlist and back. Outside code calls a public word as `NAME:WORD`;
@@ -246,8 +246,8 @@ public
 ;package
 ```
 
-- `include path.f` (`s" path.f" >str included`) loads the file every time;
-  `require path.f` (`s" path.f" >str required`) loads once, keyed by
+- `include path.f` (`s" path.f" included`) loads the file every time;
+  `require path.f` (`s" path.f" required`) loads once, keyed by
   canonical absolute pathname, so absolute, relative, `.`/`..` and symlink
   spellings are one identity. Both compose source and share no namespace.
   Use `require` for dependencies. Never include a file so two files share
@@ -1131,7 +1131,7 @@ named words, with one word that runs them in order.
   `img` and `snap` are real types; same-cell values need them, because
   `( n n -- )` hides swaps. Informal names go in locals (`{:
   got want :}`), helper names or prose.
-- **Real types, not reflexive `n`.** A string is `^u8 n`; a dereferenced cell
+- **Real types, not reflexive `n`.** A string is `str`; a dereferenced cell
   address is `^a`; a pointer-valued cell keeps its nested pointer role; `n`
   is a genuine scalar. `^a` is only for a body that keeps the pointee
   parametric, since a declared effect must stay parametric over its quantifier:
@@ -1322,13 +1322,12 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   type variable, and renders as `bool`.
 - `r` is a 64-bit float; `f32` is a 32-bit float and does not unify or widen
   with `r`.
-- `str` is a string as one value, its base address and byte length; `>str`
-  and `str>` cross between it and `^u8 n`, which `s"` and the primitives take
-  and give. A file whose first line is `split-str`, alone and in lower case,
-  reads each `str` in the rows it checks against, its own signatures'
-  included, as `^u8 n`: there `s" a" LTRIM` passes, where an unmarked file
-  is `E-MISMATCH` until it writes `s" a" >str LTRIM`. `split-str` anywhere
-  else, or in a program read from stdin, is `E-SPLIT-STR-LINE`.
+- `str` is a string as one value, its base address and byte length, which
+  `s"` gives; `>str` and `str>` cross between it and `^u8 n`. A file whose
+  first line is `split-str`, alone and in lower case, reads each `str` in the
+  rows it checks against, its own signatures' included, as `^u8 n`.
+  `s" a" LTRIM` passes in both. `split-str` anywhere else, or in a program
+  read from stdin, is `E-SPLIT-STR-LINE`.
 - The roles are nominal one-cell types, distinct from each other and
   from every integer type.
 - `^τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation
@@ -2132,7 +2131,7 @@ answers alike.
   stays written. A fault unwinds past any lock or guard a word holds without
   `finally`, so a word that holds one across loads or stores releases it in
   `finally`. `src/habu/crash.f` states the rows in order.
-- **`die` consumes a real message and code**, `( ^u8 n n -- )`, never `0 0`
+- **`die` consumes a real message and code**, `( str n -- )`, never `0 0`
   as a fake string; model exits as no-return only at certified wrappers.
 - **`die` writes its message as one line**: the span and then exactly one
   newline, so a message never carries its own `\n`; an empty span writes
@@ -2842,7 +2841,7 @@ sections above.
   `: F ( -- n ) depth ;` called over `3 OPTION:SOME` answers its 2 cells. Take
   the value apart first (`MATCH` once its arguments are concrete, `UNMAKE`), or
   count the values another way.
-- **`evaluate-closed ( ^u8 n -- )` isolates a checked caller's stack.**
+- **`evaluate-closed ( str -- )` isolates a checked caller's stack.**
   A checked body calling `evaluate` is `E-UNSAFE`. Text under
   `evaluate-closed` starts at depth 0, cannot reach caller cells even through
   an xt, `catch` or `finally`, and must leave no cells or open definition.

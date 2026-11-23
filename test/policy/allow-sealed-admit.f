@@ -4,6 +4,6 @@ require test/policy/dep.f
 require test/policy/foreign.f
 using VOCABULARY
 
-: RUN ( -- ) s" PDEP" >str ALLOW-PACKAGE RESTRICT s" PFOREIGN" >str ALLOW-PACKAGE ;
+: RUN ( -- ) s" PDEP" ALLOW-PACKAGE RESTRICT s" PFOREIGN" ALLOW-PACKAGE ;
 RUN
 ;using

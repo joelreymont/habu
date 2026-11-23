@@ -905,7 +905,7 @@ $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
 $4CA8 constant CLAUSE-CELL
 \ Top-row event classes: what a top-level token pushed or is about to run.
 1 constant TOP-EV-NUM       \ number literal pushed ( n )
-2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ^u8 n )
+2 constant TOP-EV-STR       \ s" / S\" literal pushed ( str )
 3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ^ )
 4 constant TOP-EV-CHAR      \ char literal pushed ( n )
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt

@@ -1350,7 +1350,7 @@ public
 \ Searches only the current object, skipping each unmatched value, and stops at
 \ its close. It and READ-STR-EQ? compare decoded bytes without a buffer, so key
 \ length is not bounded by reader storage.
-: READ-FIND-KEY ( JSON:reader ^u8 n -- JSON:reader bool )
+: READ-FIND-KEY ( JSON:reader str -- JSON:reader bool )
    {: key:^ len:n :}
    READER>STATE key len FIND-INNER ;
 
@@ -1555,7 +1555,7 @@ public
 \ Whether the current string or key decodes to exactly these bytes. The bytes
 \ stream through READ-STR's decoder, so no buffer bounds the string, and the
 \ cursor stays where it was.
-: READ-STR-EQ? ( JSON:reader ^u8 n -- JSON:reader bool )
+: READ-STR-EQ? ( JSON:reader str -- JSON:reader bool )
    {: want:^ len:n :}
    READER>STATE {: state:^ :}
    state want len REQUIRE-KEY-SPAN

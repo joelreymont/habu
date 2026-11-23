@@ -62,7 +62,7 @@ variable LA-DANGLING-LINK-U
 \ and in a string, and defines a word of its own. A loader that matched on text
 \ rather than on the registry key would skip it; it must load.
 : LA-DECOY-SRC$ ( -- str )
-   s\" \\ mentions src/lib/error.f in a comment\n: LA-D ( -- ^u8 n ) s\" src/lib/error.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
+   s\" \\ mentions src/lib/error.f in a comment\n: LA-D ( -- str ) s\" src/lib/error.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
 
 : LA-SETUP ( -- )
    FS:CLEANUP-RESET

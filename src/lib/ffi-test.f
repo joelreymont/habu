@@ -226,22 +226,22 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" FUNCTION: ZZ-BASE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    s\" CODEGEN:BUFFER ZZ-DECL\n: ZZ-FILL ( -- ) 270 0 ?do\n" FFI-T-SRC+
    s\"    ZZ-DECL CODEGEN:RESET\n" FFI-T-SRC+
-   s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" >str ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    s\" FUNCTION: ZZ-OVER habu-ffi-fill-\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-DECL CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
-   s\"    s\"  ( -- n ) ;FUNCTION\" >str ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
-   s\"    ZZ-DECL CODEGEN:CONTENTS str> evaluate-closed\n" FFI-T-SRC+
+   s\"    s\"  ( -- n ) ;FUNCTION\" ZZ-DECL CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    ZZ-DECL CODEGEN:CONTENTS evaluate-closed\n" FFI-T-SRC+
    s\"    s\" undefine ZZ-OVER\" evaluate-closed\n" FFI-T-SRC+
    s\" loop ;\nZZ-FILL\n" FFI-T-SRC+ ;
 
 : FFI-T-LIBS-SRC+ ( -- )
    s\" CODEGEN:BUFFER ZZ-PATH\n" FFI-T-SRC+
    s\" : ZZ-PATH$ ( n -- str ) {: id:n :} ZZ-PATH CODEGEN:RESET\n" FFI-T-SRC+
-   s\"    s\" /tmp/habu-ffi-path-missing-\" >str ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    s\" /tmp/habu-ffi-path-missing-\" ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    id ZZ-PATH CODEGEN:APPEND-DECIMAL ZZ-PATH CODEGEN:CONTENTS ;\n" FFI-T-SRC+
    s\" : ZZ-LIBS ( -- ) 270 0 ?do i ZZ-PATH$ FFI:SELECT-LIBRARY loop ;\n" FFI-T-SRC+
    s\" ZZ-LIBS\n" FFI-T-SRC+
-   s\" : ZZ-SYSTEM$ ( -- str ) HB-TARGET-MACOS? if s\" /usr/lib/libSystem.B.dylib\" >str exit then\n" FFI-T-SRC+
-   s\"    s\" libc.so.6\" >str ;\n" FFI-T-SRC+
+   s\" : ZZ-SYSTEM$ ( -- str ) HB-TARGET-MACOS? if s\" /usr/lib/libSystem.B.dylib\" exit then\n" FFI-T-SRC+
+   s\"    s\" libc.so.6\" ;\n" FFI-T-SRC+
    s\" ZZ-SYSTEM$ FFI:SELECT-LIBRARY\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-LATE getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    s\" : ZZ-LIB-CHECK ( -- )\n" FFI-T-SRC+
@@ -280,7 +280,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\" require src/lib/ffi-abi.f\nrequire src/lib/codegen.f\n" FFI-T-SRC+
    s\" CODEGEN:BUFFER ZZ-NAME\npackage ZZ-LIB-A\npublic\n" FFI-T-SRC+
    s\" : SELECT-DISTINCT ( -- ) 10 0 ?do\n" FFI-T-SRC+
-   s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-missing-\" >str ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    ZZ-NAME CODEGEN:RESET s\" /tmp/habu-ffi-missing-\" ZZ-NAME CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    i ZZ-NAME CODEGEN:APPEND-DECIMAL\n" FFI-T-SRC+
    s\"    ZZ-NAME CODEGEN:CONTENTS FFI:SELECT-LIBRARY\n" FFI-T-SRC+
    s\"    s\" FUNCTION: ZZ-MISSING habu-missing ( -- n ) ;FUNCTION\" evaluate-closed\n" FFI-T-SRC+
@@ -361,8 +361,8 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
    s\" FUNCTION: ZZ-PROBE crc32 ( n ^u8 n -- n ) ;FUNCTION\n: ZZ-MISS ( -- )\n" FFI-T-SRC+
-   s\"    s\\\" libz.so.1\\z\" drop FFI:NOW FFI:DLOPEN 0= if s\" open\" 1 die then\n" FFI-T-SRC+
-   s\"    [: 0 s\" a\" ZZ-PROBE drop ;] catch E-FFI-DLSYM <> if s\" miss\" 1 die then ;\n" FFI-T-SRC+
+   s\"    s\\\" libz.so.1\\z\" str> drop FFI:NOW FFI:DLOPEN 0= if s\" open\" 1 die then\n" FFI-T-SRC+
+   s\"    [: 0 s\" a\" str> ZZ-PROBE drop ;] catch E-FFI-DLSYM <> if s\" miss\" 1 die then ;\n" FFI-T-SRC+
    s\" ZZ-MISS\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
@@ -603,7 +603,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 : FFI-T-LONG-FOREIGN-SRC$ ( -- str )
    FFI-T-LONG-SRC!
    s\" : ZZ-FOREIGN ( -- ) ZZ-LONG {: path:^ u:n :}\n" FFI-T-SRC+
-   s\" HB-TARGET-MACOS? if s\" .so\" else s\" .dylib\" then {: ext:^ eu:n :}\n" FFI-T-SRC+
+   s\" HB-TARGET-MACOS? if s\" .so\" else s\" .dylib\" then str> {: ext:^ eu:n :}\n" FFI-T-SRC+
    s\" ext path u eu - + eu BYTE-COPY path u >str FFI:SELECT-LIBRARY ;\nZZ-FOREIGN\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 

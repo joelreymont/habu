@@ -163,7 +163,7 @@ variable TREE-U
 : CASE-REPORT ( -- )
    s" report.f" s" report-tree" CASE-PATHS
    S\" create CHILD-BUF PATH-CAP allot\n" TEXT+
-   S\" : CHILD-INNER ( -- ) CHILD-TREE s\q inner\q >str CHILD-BUF FS:JOIN-PATH\n" TEXT+
+   S\" : CHILD-INNER ( -- ) CHILD-TREE s\q inner\q CHILD-BUF FS:JOIN-PATH\n" TEXT+
    S\"    {: u :} CHILD-BUF u >str FS:MAKE-DIR ;\n" TEXT+
    S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-INNER CHILD-TREE FS:CLEANUP-DIR+ s\q child: dying\q 9 die ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
@@ -282,11 +282,11 @@ variable STAGED-FILES
    s" staged.f" s" staged-tree" CASE-PATHS
    S\" create CHILD-BUF PATH-CAP allot\nvariable CHILD-U\n" TEXT+
    S\" : CHILD-OUT ( -- str ) CHILD-BUF CHILD-U @ >str ;\n" TEXT+
-   S\" : CHILD-OUT! ( -- ) CHILD-TREE s\q out\q >str CHILD-BUF FS:JOIN-PATH\n" TEXT+
+   S\" : CHILD-OUT! ( -- ) CHILD-TREE s\q out\q CHILD-BUF FS:JOIN-PATH\n" TEXT+
    S\"    CHILD-U ! ;\n" TEXT+
    S\" : CHILD-FILL ( str -- ) drop s\q child: dying\q 7 die ;\n" TEXT+
    S\" : CHILD-MAIN ( -- ) CHILD-TREE FS:MAKE-DIR CHILD-OUT!\n" TEXT+
-   S\"    CHILD-OUT s\q previous\q >str FS:WRITE-ALL\n" TEXT+
+   S\"    CHILD-OUT s\q previous\q FS:WRITE-ALL\n" TEXT+
    S\"    CHILD-OUT [: CHILD-FILL ;] FS:REPLACE-STAGED ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
    RUN-CHILD {: outu:n erru:n rc:n :}
@@ -359,12 +359,12 @@ variable STAGED-FILES
    S\" variable GO-R variable GO-W variable REL-R variable REL-W\ncreate BYTE 8 allot\n" TEXT+
    S\" : PIPE-RC ( n -- ) 0<> if s\q pipe\q 2 die then ;\n" TEXT+
    S\" : PIPES ( -- ) pipe PIPE-RC GO-W ! GO-R ! pipe PIPE-RC REL-W ! REL-R ! ;\n" TEXT+
-   S\" : ACT ( -- ) GO-W @ BYTE 1 write drop REL-R @ BYTE 1 read drop\n" TEXT+
+   S\" : ACT ( -- ) GO-W @ BYTE 1 >str write drop REL-R @ BYTE 1 read drop\n" TEXT+
    S\"    s\q action: done\q type cr ;\n" TEXT+
    S\" : WORK ( -- ) GO-R @ BYTE 1 read drop PROC-FORK:CHECKED {: pid:pid :}\n" TEXT+
    S\"    pid PID>N 0= if s\q \q 9 die then\n" TEXT+
    S\"    pid PROCESS:WAIT PROCESS:STATUS>RC RC>N s\q reaped \q type . cr\n" TEXT+
-   S\"    REL-W @ BYTE 1 write drop 0 TASK:RETURN ;\n" TEXT+
+   S\"    REL-W @ BYTE 1 >str write drop 0 TASK:RETURN ;\n" TEXT+
    S\" : CHILD-MAIN ( -- ) PIPES [: ACT ;] AT-EXIT:ADD\n" TEXT+
    S\"    [: WORK ;] FORKER TASK:ACTIVATE s\q main: dying\q 5 die ;\n" TEXT+
    S\" CHILD-MAIN\n" TEXT+
@@ -444,12 +444,12 @@ variable RUN-FILE-U
    S\" $10 QUEUE:QUEUE JOBS\n" TEXT+
    S\" : BUILD-ACTION ( -- ) s\q build-time exit action ran\q type cr ;\n" TEXT+
    S\" : RUN-ACTION ( -- ) s\q run-time exit action ran\q type cr ;\n" TEXT+
-   S\" : BUILT-FILE ( -- str ) s\q " TEXT+  TREE$ TEXT+  S\" .built\q >str ;\n" TEXT+
-   S\" : RUN-FILE ( -- str ) s\q " TEXT+  RUN-FILE$ TEXT+  S\" \q >str ;\n" TEXT+
+   S\" : BUILT-FILE ( -- str ) s\q " TEXT+  TREE$ TEXT+  S\" .built\q ;\n" TEXT+
+   S\" : RUN-FILE ( -- str ) s\q " TEXT+  RUN-FILE$ TEXT+  S\" \q ;\n" TEXT+
    S\" ' BUILD-ACTION AT-EXIT:ADD\n" TEXT+
-   S\" BUILT-FILE s\q b\q >str FS:WRITE-ALL BUILT-FILE FS:CLEANUP+\n" TEXT+
+   S\" BUILT-FILE s\q b\q FS:WRITE-ALL BUILT-FILE FS:CLEANUP+\n" TEXT+
    S\" : MAIN ( -- ) SRCLOC:TOKEN$ 2drop ['] RUN-ACTION AT-EXIT:ADD\n" TEXT+
-   S\"    RUN-FILE s\q r\q >str FS:WRITE-ALL RUN-FILE FS:CLEANUP+ JOBS QUEUE:INIT\n" TEXT+
+   S\"    RUN-FILE s\q r\q FS:WRITE-ALL RUN-FILE FS:CLEANUP+ JOBS QUEUE:INIT\n" TEXT+
    S\"    s\q main done\q type cr ;\n" TEXT+
    RUN-BUILD {: outu:n erru:n rc:n :}
    s" a program that reaches the checker's data builds" T-LABEL
@@ -470,9 +470,9 @@ variable RUN-FILE-U
 : RECORD-TEXT ( -- )
    0 TEXT-U !
    S\" require src/lib/fs-mutate.f\n" TEXT+
-   S\" -100001 s\q the program's own failure\q >str\n" TEXT+
+   S\" -100001 s\q the program's own failure\q\n" TEXT+
    S\" ERROR:CODE E-BUILT-CASE\n" TEXT+
-   S\" : MAIN ( -- ) s\q built\q >str FS:MKTEMP-DIR drop\n" TEXT+
+   S\" : MAIN ( -- ) s\q built\q FS:MKTEMP-DIR drop\n" TEXT+
    S\"    E-BUILT-CASE throw ;\n" TEXT+ ;
 
 \ The built program under a TMPDIR that is a directory ends with the record of

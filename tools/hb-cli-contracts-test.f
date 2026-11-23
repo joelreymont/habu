@@ -53,7 +53,7 @@ create HCT-BIG HCT-BIG-CAP allot
    s"    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}" SB-APPEND HCT-LF
    s"    v SOURCE:READ-STDIN-ALL" SB-APPEND HCT-LF
    s"    v VEC:COUNT ." SB-APPEND HCT-LF
-   s"    v VEC:SPAN SPAN:$ str> type cr" SB-APPEND HCT-LF
+   s"    v VEC:SPAN SPAN:$ type cr" SB-APPEND HCT-LF
    s"    v VEC:DELETE ;" SB-APPEND HCT-LF
    s" MAIN" SB-APPEND HCT-LF
    SB$ ;
@@ -75,11 +75,11 @@ create HCT-BIG HCT-BIG-CAP allot
    s"    true ;" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
    s"    HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}" SB-APPEND HCT-LF
-   S\"    s\" OLD\" v VEC:APPEND" SB-APPEND HCT-LF
+   S\"    s\" OLD\" str> v VEC:APPEND" SB-APPEND HCT-LF
    s"    v SOURCE:READ-STDIN-ALL" SB-APPEND HCT-LF
    s"    v VEC:COUNT ." SB-APPEND HCT-LF
    s"    v VEC:SPAN SPAN:$ str> {: a:^ u:n :}" SB-APPEND HCT-LF
-   s"    a 3 type cr" SB-APPEND HCT-LF
+   s"    a 3 >str type cr" SB-APPEND HCT-LF
    s"    a u HCT-AFTER? bool>n ." SB-APPEND HCT-LF
    s"    v VEC:DELETE ;" SB-APPEND HCT-LF
    s" MAIN" SB-APPEND HCT-LF
@@ -109,9 +109,9 @@ create HCT-BIG HCT-BIG-CAP allot
    s"    SCRIPT-ARGC ." SB-APPEND HCT-LF
    s"    HCT-ARGV-NEG" SB-APPEND HCT-LF
    s"    SCRIPT-ARGC 0= if HCT-ARGV-ZERO exit then" SB-APPEND HCT-LF
-   s"    0 SCRIPT-ARGV$ str> type cr" SB-APPEND HCT-LF
-   s"    1 SCRIPT-ARGV$ str> type cr" SB-APPEND HCT-LF
-   s"    2 SCRIPT-ARGV$ str> type cr" SB-APPEND HCT-LF
+   s"    0 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
+   s"    1 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
+   s"    2 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
    s"    HCT-ARGV-PAST ;" SB-APPEND HCT-LF
    s" HCT-ARGV-SHOW" SB-APPEND HCT-LF
    SB$ ;

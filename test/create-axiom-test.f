@@ -149,7 +149,7 @@ private
    s" : CAX-K1 constant ;" VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : VC-INERT ( -- )
-   s\" : CAX-V2 ( -- ^u8 n ) s\q variable\q ;\n: CAX-K2 ( -- ) ( constant ) ;"
+   s\" : CAX-V2 ( -- str ) s\q variable\q ;\n: CAX-K2 ( -- ) ( constant ) ;"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : VC-REJECT-CASE ( -- )

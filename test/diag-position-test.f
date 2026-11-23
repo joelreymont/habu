@@ -511,13 +511,13 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : TEST-DYN-PLACE ( -- )
    s" a dynamic required, checked alone" T-LABEL
    SB-RESET
-   S\" : RT-P ( -- ^u8 n ) s\" absent.f\" ;" SB-APPEND LF+
+   S\" : RT-P ( -- str ) s\" absent.f\" ;" SB-APPEND LF+
    s" RT-P required" SB-APPEND LF+
    s" dyn-place.f" FIXTURE!
    s" " CHECK
    GJA-LINE# @ 1 T=
    0 s" code" s" E-LOADER-FORM" FIELD=
-   0 s" required" 2 6 40 48 AT ;
+   0 s" required" 2 6 38 46 AT ;
 
 \ WIDE's inferred effect nests 33 binders, more than an effect text holds: the
 \ checker certifies it and warns, at its name, that the effect is not recorded.
@@ -1893,12 +1893,12 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ is, where an `evaluate` of them counts its places too.
 : TEST-STDIN-CAST ( -- )
    s" a cast evaluated from stdin's bytes, at its place in <stdin>" T-LABEL
-   s" parse-name x drop 26 + 32 evaluate \ cast: LRD-WIDE ( n -- ptr u8 n )"
+   s" parse-name x str> drop 31 + 32 evaluate \ cast: LRD-WIDE ( n -- ptr u8 n )"
    {: src:^ srcu:n :}
    CHECK-ARGV
    src srcu s" E-CAST-FAM" 70 PIPED  GT-ERR$ GJA-SPLIT-LINES
    GJA-LINE# @ 1 T=
-   0 s" ptr" 1 60 59 62 s" <stdin>" src srcu PLACED-IN ;
+   0 s" ptr" 1 65 64 67 s" <stdin>" src srcu PLACED-IN ;
 
 \ CALLBACK builds the duplicate's name in its own buffer, so the check places
 \ the record at the `;CALLBACK` that ran it, as the load does.
@@ -1954,7 +1954,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 \ from the load and the check alike.
 : TEST-SCRIPT-REQUIRED-EMPTY ( -- )
    s" script-required of an empty path" T-LABEL
-   s\" s\" \" >str script-required" s" script-empty.f" LINE-FIXTURE
+   s\" s\" \" script-required" s" script-empty.f" LINE-FIXTURE
    [: EMPTY-MSG ;] RANGE-RECORD
    SB$ 70 LOADED  GT-ERR$ SB$ T$=
    s" E-PATH-RANGE" 70 CHECKED
@@ -1987,7 +1987,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s\" s\\\" " {: k:^ ku:n :}
    k FX ku BYTE-COPY
    LONG-NAME-BYTES 0 ?do 120 FX ku + i + c! loop
-   s\" \\x41.f\" >str included\n" {: t:^ tu:n :}
+   s\" \\x41.f\" included\n" {: t:^ tu:n :}
    t FX ku + LONG-NAME-BYTES + tu BYTE-COPY
    ku LONG-NAME-BYTES + tu + FX-U !
    FX-PATH$ FX$ FS:WRITE-ALL ;
@@ -1999,124 +1999,59 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" literal-long.f" LONG-ESCAPED!
    s" E-PATH-RANGE" 4 LONG-NAME-BYTES 10 + LITERAL-PLACED
    s" a top-level literal naming a missing file" T-LABEL
-   s\" s\" literal-absent.f\" >str INCLUDED" s" literal-missing.f" LINE-FIXTURE
+   s\" s\" literal-absent.f\" INCLUDED" s" literal-missing.f" LINE-FIXTURE
    s" E-MISSING-SOURCE" 3 19 LITERAL-PLACED
    s" an empty top-level literal" T-LABEL
-   s\" s\" \" >str included" s" literal-empty.f" LINE-FIXTURE
-   s" E-PATH-RANGE" 10 18 LITERAL-PLACED ;
+   s\" s\" \" included" s" literal-empty.f" LINE-FIXTURE
+   s" E-PATH-RANGE" 5 13 LITERAL-PLACED ;
 
-\ Past a file's own `>str`, even after `;package`, --verify-only reads `>str`
-\ as spending the literal before it, as the walk does: the loader has no path.
-: TEST-STR-SHADOWED ( -- )
-   s" a loader after a package's own `>str`" T-LABEL
-   SB-RESET
-   s" package SHP" SB-APPEND LF+
-   s\" : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   s\" s\" nope-a.f\" >str required" SB-APPEND LF+
-   s" str-shadowed.f" FIXTURE!
-   s" --verify-only" CHECK
-   0 s" code" s" E-LOADER-FORM" FIELD=
-   0 s" required" 4 19 84 92 FX-PATH$ CANON$ FX$ AT-IN ;
-
-\ Only the first `>str` after a literal hands it on.
-: TEST-STR-TWICE ( -- )
-   s" a loader after a second `>str`" T-LABEL
-   SB-RESET
-   s" split-str" SB-APPEND LF+
-   s\" s\" missing-x.f\" >str >str included" SB-APPEND LF+
-   s" str-twice.f" FIXTURE!
-   s" --verify-only" CHECK
-   0 s" code" s" E-LOADER-FORM" FIELD=
-   0 s" included" 2 27 36 44 FX-PATH$ CANON$ FX$ AT-IN ;
-
-\ A `>str` the file retired is rejected where it stands, as the run does.
-: TEST-STR-UNDEFINED ( -- )
-   s" a `>str` after `undefine >str`" T-LABEL
-   SB-RESET
-   s" undefine >str" SB-APPEND LF+
-   s\" s\" a.f\" >str required" SB-APPEND LF+
-   s" str-undefined.f" FIXTURE!
-   s" --verify-only" CHECK
-   0 s" code" s" E-UNDEFINED" FIELD=
-   0 s" >str" 2 9 22 26 FX-PATH$ CANON$ FX$ AT-IN ;
-
-\ str-dep.f defines STR-DEP, for a `>str` load the check follows.
+\ str-dep.f defines STR-DEP, for a load the check follows.
 : STR-DEP! ( -- )
    SB-RESET  s" : STR-DEP ( -- ) ;" SB-APPEND LF+
    s" str-dep.f" FIXTURE! ;
 
-\ Only the walk's declaring forms end a literal at `>str`: a learned
-\ definer's `>str` does not.
-: TEST-STR-MADE ( -- )
-   s" a loader after a learned definer's `>str`" T-LABEL
-   STR-DEP!
-   SB-RESET
-   s" package MQ" SB-APPEND LF+
-   s" : MAKE ( n -- ) create , does> ( -- a ) @ ;" SB-APPEND LF+
-   s" 5 MAKE >str" SB-APPEND LF+
-   s" ;package" SB-APPEND LF+
-   s\" s\" str-dep.f\" >str required" SB-APPEND LF+
-   s" STR-DEP" SB-APPEND LF+
-   s" str-made.f" FIXTURE!
-   s" --verify-only" 0 CHECK-EXIT ;
-
-\ The string builder holds a skipped arm of the line given, then a `>str`
-\ load of str-dep.f.
+\ The string builder holds a skipped arm of the line given, then a load of
+\ str-dep.f.
 : STR-ARM! ( str -- ) {: a:^ u:n :}
    STR-DEP!
    SB-RESET  s" HB-TARGET-WASM? [if]" SB-APPEND LF+
    a u SB-APPEND LF+  s" [then]" SB-APPEND LF+
-   s\" s\" str-dep.f\" >str required" SB-APPEND LF+
+   s\" s\" str-dep.f\" required" SB-APPEND LF+
    s" STR-DEP" SB-APPEND LF+ ;
 
 \ The walk reads a skipped arm: a name its `:` gives is declared.
-: TEST-STR-ARM ( -- )
-   s" a loader after a skipped arm's `>str`" T-LABEL
-   s\" : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;" STR-ARM!
-   s" str-arm.f" FIXTURE!
-   s" --verify-only" CHECK
-   0 s" code" s" E-LOADER-FORM" FIELD=
-   0 s" help" s" write the path as a literal: `require path/file.f`" FIELD=
-   0 s" required" 4 20 92 100 FX-PATH$ CANON$ FX$ AT-IN
+: TEST-LOADER-ARM ( -- )
    s" a loader after a skipped arm's `required`" T-LABEL
    s" : required ( str -- ) drop ;" STR-ARM!
    s" required-arm.f" FIXTURE!
    s" --verify-only" CHECK
    0 s" code" s" E-LOADER-FORM" FIELD=
-   0 s" required" 4 20 76 84 FX-PATH$ CANON$ FX$ AT-IN ;
+   0 s" required" 4 15 71 79 FX-PATH$ CANON$ FX$ AT-IN ;
 
-\ A skipped arm's comment declares nothing.
-: TEST-STR-ARM-COMMENT ( -- )
-   s" a loader after a `>str` in a skipped arm's comment" T-LABEL
-   s\" \\ : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;" STR-ARM!
-   s" str-arm-comment.f" FIXTURE!
-   s" --verify-only" 0 CHECK-EXIT ;
-
-\ A literal's record lasts only the next token of its own text, or the token
-\ after a `>str` right after the literal: a path a loader is given later, in
-\ bytes its copy matches, is not placed at the literal but at the loader where
-\ source read it last, else nowhere, and names no word.
+\ A literal's record lasts only the next token of its own text: a path a
+\ loader is given later, in bytes its copy matches, is not placed at the
+\ literal but at the loader where source read it last, else nowhere, and names
+\ no word.
 : TEST-LITERAL-SPENT ( -- )
    s" a literal's copy rewritten and passed later" T-LABEL
    SB-RESET  s" : Z ( ^u8 -- ) 8 0 ?do 122 over i + c! loop drop ;" SB-APPEND LF+
-   s\" s\" nofile.f\" 2drop -8 allot" SB-APPEND LF+
+   s\" s\" nofile.f\" drop -8 allot" SB-APPEND LF+
    s" here 8 allot dup Z 8 >str included" SB-APPEND LF+
    s" spent-rewritten.f" FIXTURE!
    s" E-MISSING-SOURCE" 3 27 RAN-AT
    s" a literal in an evaluated buffer rewritten before the load" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" : Q ( -- ) 64 0 ?do 81 B i + c! loop ;" SB-APPEND LF+
-   s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
+   s" : PUT ( str -- ^u8 n ) str> dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
    s\" s\\\" s\\\" nofile.f\\\"\" PUT evaluate" SB-APPEND LF+
-   s" Q >str" SB-APPEND LF+  s" included" SB-APPEND LF+
+   s" Q" SB-APPEND LF+  s" included" SB-APPEND LF+
    s" spent-evaluated.f" FIXTURE!
    s" E-MISSING-SOURCE" 6 1 RAN-AT
    GT-ERR$ s" = word:" CONTAINS? TFALSE
    s" a buffer evaluated again at its address, its literal's copy held" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
-   s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
-   s\" : S2 ( -- ^u8 n ) s\" 1 2 2drop >str included\" ;" SB-APPEND LF+
+   s" : PUT ( str -- ^u8 n ) str> dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
+   s\" : S2 ( -- str ) s\" 1 2 2drop included\" ;" SB-APPEND LF+
    s\" s\\\" s\\\" nofile.f\\\"\" PUT evaluate" SB-APPEND LF+
    s" S2 PUT evaluate" SB-APPEND LF+
    s" spent-reevaluated.f" FIXTURE!
@@ -2125,7 +2060,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" a buffer evaluated closed twice in one word, its literal's copy passed later" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" PTR-VARIABLE H0" SB-APPEND LF+
-   s" : PUT ( ^u8 n -- ^u8 n ) dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
+   s" : PUT ( str -- str ) str> dup 0 ?do over i + c@ B i + c! loop nip B swap >str ;" SB-APPEND LF+
    s" : LOADX ( -- ) H0 @ 8 >str included ;" SB-APPEND LF+
    s" : TWICE ( -- )" SB-APPEND LF+
    s"    here H0 !" SB-APPEND LF+
@@ -2137,7 +2072,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GT-ERR$ s"  --> " CONTAINS? TFALSE
    GT-ERR$ s" = word:" CONTAINS? TFALSE
    s" a literal a definition passes to `included` at run time" T-LABEL
-   SB-RESET  s\" : GO ( -- ) s\" nofile.f\" >str included ;" SB-APPEND LF+
+   SB-RESET  s\" : GO ( -- ) s\" nofile.f\" included ;" SB-APPEND LF+
    s" GO" SB-APPEND LF+
    s" spent-run-time.f" FIXTURE!
    s" error[E-MISSING-SOURCE]" 70 RAN
@@ -2536,7 +2471,7 @@ HB-TARGET-LINUX? 0= [if]
    0 FX-U !
    s\" s\\\" " FX+
    steps 0 ?do s\" .\\x2F" FX+ loop
-   s\" inc-target.f\" >str included\nINCLUDED-WORD drop\n" FX+
+   s\" inc-target.f\" included\nINCLUDED-WORD drop\n" FX+
    FX-PATH$ FX$ FS:WRITE-ALL ;
 
 : VERIFY-ONLY-AT ( str n n str n n n n -- )
@@ -2576,13 +2511,13 @@ HB-TARGET-LINUX? 0= [if]
    s" inc-target.f" FIXTURE!
    s" an escaped included path" T-LABEL
    SB-RESET
-   s\" s\\\" inc-t\\x61rget.f\" >str included" SB-APPEND LF+
+   s\" s\\\" inc-t\\x61rget.f\" included" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-included.f" FIXTURE!
    CERTIFIED
    s" an escaped required path" T-LABEL
    SB-RESET
-   s\" s\\\" inc-t\\x61rget.f\" >str required" SB-APPEND LF+
+   s\" s\\\" inc-t\\x61rget.f\" required" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-required.f" FIXTURE!
    CERTIFIED
@@ -2591,24 +2526,24 @@ HB-TARGET-LINUX? 0= [if]
    s" : BS-WORD ( -- n ) 9 ;" SB-APPEND LF+
    s" bs\x41.f" FIXTURE!
    SB-RESET
-   s\" s\" bs\\x41.f\" >str included" SB-APPEND LF+
+   s\" s\" bs\\x41.f\" included" SB-APPEND LF+
    s" BS-WORD drop" SB-APPEND LF+
    s" plain-backslash-path.f" FIXTURE!
    CERTIFIED
    s" an escaped path in a body" T-LABEL
    SB-RESET
-   s\" : L ( -- ) s\\\" inc-t\\x61rget.f\" >str included ;" SB-APPEND LF+
+   s\" : L ( -- ) s\\\" inc-t\\x61rget.f\" included ;" SB-APPEND LF+
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-body-path.f" FIXTURE!
-   s" L" 2 48 VERIFY-DEFERRED-AT
+   s" L" 2 43 VERIFY-DEFERRED-AT
    s" an escaped path with no escape in a body" T-LABEL
    SB-RESET
-   s\" : L ( -- ) s\\\" inc-target.f\" >str included ;" SB-APPEND LF+
+   s\" : L ( -- ) s\\\" inc-target.f\" included ;" SB-APPEND LF+
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escape-free-body-path.f" FIXTURE!
-   s" L" 2 45 VERIFY-DEFERRED-AT
+   s" L" 2 40 VERIFY-DEFERRED-AT
    SB-RESET
    s" : BODY-A-WORD ( -- n ) 1 ;" SB-APPEND LF+
    s" body-a.f" FIXTURE!
@@ -2620,25 +2555,25 @@ HB-TARGET-LINUX? 0= [if]
    s" body-c.f" FIXTURE!
    s" three escaped paths in a body" T-LABEL
    SB-RESET
-   s\" : L ( -- ) s\\\" b\\x6Fdy-a.f\" >str included" SB-APPEND
-   s\"  s\\\" b\\x6Fdy-b.f\" >str included" SB-APPEND
-   s\"  s\\\" b\\x6Fdy-c.f\" >str included ;" SB-APPEND LF+
+   s\" : L ( -- ) s\\\" b\\x6Fdy-a.f\" included" SB-APPEND
+   s\"  s\\\" b\\x6Fdy-b.f\" included" SB-APPEND
+   s\"  s\\\" b\\x6Fdy-c.f\" included ;" SB-APPEND LF+
    s" L" SB-APPEND LF+
    s" BODY-A-WORD drop BODY-B-WORD drop BODY-C-WORD drop" SB-APPEND LF+
    s" escaped-body-paths.f" FIXTURE!
-   s" L" 2 106 VERIFY-DEFERRED-AT
+   s" L" 2 91 VERIFY-DEFERRED-AT
    s" an escaped path in a body, escaped literals before its package closes" T-LABEL
    SB-RESET
    s" package DPT-ESC" SB-APPEND LF+
    s" public" SB-APPEND LF+
-   s\" : L ( -- ) s\\\" b\\x6Fdy-a.f\" >str included ;" SB-APPEND LF+
-   s\" s\\\" X\\x41\" 2drop" SB-APPEND LF+
-   s\" s\\\" Y\\x42YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\" 2drop" SB-APPEND LF+
+   s\" : L ( -- ) s\\\" b\\x6Fdy-a.f\" included ;" SB-APPEND LF+
+   s\" s\\\" X\\x41\" drop" SB-APPEND LF+
+   s\" s\\\" Y\\x42YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\" drop" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" DPT-ESC:L" SB-APPEND LF+
    s" BODY-A-WORD drop" SB-APPEND LF+
    s" escaped-body-path-package.f" FIXTURE!
-   s" DPT-ESC:L" 7 142 VERIFY-DEFERRED-AT
+   s" DPT-ESC:L" 7 135 VERIFY-DEFERRED-AT
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
    PATH-CAP 4 / s" escaped-steps-fit.f" STEPS-FIXTURE
    CERTIFIED
@@ -2792,20 +2727,20 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RUN-UNSOURCED ( -- )
    s" an underflow at a drop a definer evaluates, after a comment" T-LABEL
    OPEN-LINES
-   s\" s\" Q\" >str OPEN2 ( a comment ) ;" SB-APPEND LF+
+   s\" s\" Q\" OPEN2 ( a comment ) ;" SB-APPEND LF+
    s" open-none.f" FIXTURE!
-   s" E-INPUT-UNDERFLOW" s" ;" 3 32 192 193 RUN-REFUSED-AT
+   s" E-INPUT-UNDERFLOW" s" ;" 3 27 187 188 RUN-REFUSED-AT
    s" a mismatch at a drop in the file after an evaluated one" T-LABEL
    OPEN-LINES
-   s\" s\" Q\" >str OPEN3 ( a comment here )" SB-APPEND LF+
+   s\" s\" Q\" OPEN3 ( a comment here )" SB-APPEND LF+
    s"   drop drop ;" SB-APPEND LF+
    s" open-after.f" FIXTURE!
-   s" E-MISMATCH" s" drop" 4 8 204 208 RUN-REFUSED-AT ;
+   s" E-MISMATCH" s" drop" 4 8 199 203 RUN-REFUSED-AT ;
 
 \ The fixture's first three lines: V reads one token, and M postpones it.
 : PP-LINES ( -- )
    SB-RESET
-   s" : V ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
+   s" : V ( -- ) parse-name drop ; immediate" SB-APPEND LF+
    s" parses: V 1" SB-APPEND LF+
    s" : M ( -- ) postpone V ; immediate" SB-APPEND LF+ ;
 
@@ -2813,7 +2748,7 @@ HB-TARGET-LINUX? 0= [if]
 : PP-UNREAD ( str -- )
    70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
-   0 s" M" 4 12 97 98 AT
+   0 s" M" 4 12 96 97 AT
    0 s" message"
    s" `M` reads the source after it and no `parses:` row says how many tokens" FIELD= ;
 
@@ -2845,14 +2780,14 @@ HB-TARGET-LINUX? 0= [if]
 \ The fixture's first two lines: V executes the xt of W, which reads one token.
 : TK-LINES ( -- )
    SB-RESET
-   s" : W ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : W ( -- ) parse-name drop ;" SB-APPEND LF+
    s" : V ( -- ) ['] W execute ; immediate" SB-APPEND LF+ ;
 
 \ The check with FLAG gives one record, the unread immediate `V` at 3:14.
 : TK-UNREAD ( str -- )
    70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
-   0 s" V" 3 14 80 81 AT
+   0 s" V" 3 14 79 80 AT
    0 s" message"
    s" `V` reads the source after it and no `parses:` row says how many tokens" FIELD= ;
 
@@ -2860,13 +2795,13 @@ HB-TARGET-LINUX? 0= [if]
 : TJ-UNREAD ( str -- )
    70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
-   0 s" V" 5 16 153 154 AT ;
+   0 s" V" 5 16 152 153 AT ;
 
 \ An xt chosen at a branch join keeps the facts of both branches' ticks.
 : TK-JOINED ( -- )
    s" an immediate executing an xt one branch ticks from a reading word" T-LABEL
    SB-RESET
-   s" : W ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : W ( -- ) parse-name drop ;" SB-APPEND LF+
    s" : NOP ( -- ) ;" SB-APPEND LF+
    s" variable FLAG  -1 FLAG !" SB-APPEND LF+
    s" : V ( -- ) FLAG @ 0= IF ['] NOP ELSE ['] W THEN execute ; immediate"
@@ -2904,7 +2839,7 @@ HB-TARGET-LINUX? 0= [if]
 : ITEM-WRITES ( str -- )
    70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
-   0 s" V" 3 16 89 90 AT
+   0 s" V" 3 16 84 85 AT
    0 s" message"
    s" `V` runs while the definition compiles and may define words or add to a definition"
    FIELD= ;
@@ -2915,7 +2850,7 @@ HB-TARGET-LINUX? 0= [if]
    s" an immediate appending a call through EFFECT:CALL" T-LABEL
    SB-RESET
    s" : NEG ( n -- n ) negate ;" SB-APPEND LF+
-   s\" : V ( -- ) s\" NEG\" >str EFFECT:CALL ; immediate" SB-APPEND LF+
+   s\" : V ( -- ) s\" NEG\" EFFECT:CALL ; immediate" SB-APPEND LF+
    s" : P ( n -- n ) V ;" SB-APPEND LF+
    s" 5 P ." SB-APPEND LF+
    s" imm-item.f" FIXTURE!
@@ -2928,7 +2863,7 @@ HB-TARGET-LINUX? 0= [if]
 \ in the word MK makes, and its type states no `parses`.
 : COMPILE-KEPT ( -- )
    0 s" code" s" E-MISMATCH" FIELD=
-   0 s" compile," 3 48 99 107 AT
+   0 s" compile," 3 48 98 106 AT
    0 s" message" s" this quotation does more than the type that keeps it states" FIELD=
    0 s" found" s" [ -- parses ]" NOTE= ;
 
@@ -2937,16 +2872,16 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-COMPILE-KEPT ( -- )
    s" compile, keeping a reader its type does not state" T-LABEL
    SB-RESET
-   s" : V ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
+   s" : V ( -- ) parse-name drop ; immediate" SB-APPEND LF+
    s" parses: V 1" SB-APPEND LF+
    s" : MK ( str -- ) EFFECT:EMPTY define-word ['] V compile, postpone ; ;" SB-APPEND LF+
-   s\" s\" Q\" >str MK" SB-APPEND LF+
+   s\" s\" Q\" MK" SB-APPEND LF+
    s" : R ( -- ) Q ; immediate" SB-APPEND LF+
    s" : P ( -- ) R x ;" SB-APPEND LF+
    s" imm-compile-kept.f" FIXTURE!
    s" " CHECK  GJA-LINE# @ 1 T=  COMPILE-KEPT
    s" --verify-only" CHECK  GJA-LINE# @ 3 T=  COMPILE-KEPT
-   1 s" code" s" E-UNDEFINED" FIELD=  1 s" Q" 5 12 146 147 AT
+   1 s" code" s" E-UNDEFINED" FIELD=  1 s" Q" 5 12 140 141 AT
    s" E-MISMATCH" s" :3:48" 70 LOADED-AT ;
 
 \ An immediate calling a word whose body the check deferred: the walk saw no fact of it, so every
@@ -2955,7 +2890,7 @@ HB-TARGET-LINUX? 0= [if]
    s" an immediate calling a word whose body the check deferred" T-LABEL
    SB-RESET
    s" : MK ( str -- ) EFFECT:EMPTY define-word postpone ; ;" SB-APPEND LF+
-   s\" s\" Q\" >str MK" SB-APPEND LF+
+   s\" s\" Q\" MK" SB-APPEND LF+
    s" : R ( -- ) Q ;" SB-APPEND LF+
    s" : S ( -- ) R ; immediate" SB-APPEND LF+
    s" : P ( -- ) S ;" SB-APPEND LF+
@@ -2970,7 +2905,7 @@ HB-TARGET-LINUX? 0= [if]
 : ROOT-MOVES ( str -- )
    70 CHECK-EXIT
    s" E-UNMODELED-IMMEDIATE" REJECTED-AS
-   0 s" V" 2 14 68 69 AT
+   0 s" V" 2 14 63 64 AT
    0 s" message"
    s" `V` runs while the definition compiles and may move the source root" FIELD=
    0 s" help" s" move the root at top level, before the definition" FIELD= ;
@@ -2979,7 +2914,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-IMM-ROOTS ( -- )
    s" an immediate moving the source root" T-LABEL
    SB-RESET
-   s\" : V ( -- ) s\" /tmp\" >str SOURCE-ROOT:ROOT! ; immediate" SB-APPEND LF+
+   s\" : V ( -- ) s\" /tmp\" SOURCE-ROOT:ROOT! ; immediate" SB-APPEND LF+
    s" : P ( -- n ) V 5 ;" SB-APPEND LF+
    s" P ." SB-APPEND LF+
    s" imm-roots.f" FIXTURE!
@@ -2992,7 +2927,7 @@ HB-TARGET-LINUX? 0= [if]
 \ one token.
 : DC-LINES ( -- )
    SB-RESET
-   s" : W ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : W ( -- ) parse-name drop ;" SB-APPEND LF+
    s" defer D ( -- )" SB-APPEND LF+
    s" : SET ( -- ) ['] W is D ;" SB-APPEND LF+
    s" SET" SB-APPEND LF+
@@ -3002,7 +2937,7 @@ HB-TARGET-LINUX? 0= [if]
 \ whose type states no `parses`.
 : DC-KEPT ( n -- ) {: k:n :}
    k s" code" s" E-MISMATCH" FIELD=
-   k s" is" 3 20 64 66 AT
+   k s" is" 3 20 63 65 AT
    k s" message" s" this quotation does more than the type that keeps it states" FIELD= ;
 
 \ A deferred word's type states what the words set in it may do: setting it to
@@ -3016,7 +2951,7 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-dc-kept.f" FIXTURE!
    s" " CHECK  GJA-LINE# @ 1 T=  0 DC-KEPT
    s" --verify-only" CHECK  GJA-LINE# @ 2 T=  0 DC-KEPT
-   1 s" code" s" E-UNDEFINED" FIELD=  1 s" a" 6 16 115 116 AT
+   1 s" code" s" E-UNDEFINED" FIELD=  1 s" a" 6 16 114 115 AT
    s" E-MISMATCH" s" :3:20" 70 LOADED-AT
    s" the same, with a parses: row on the immediate" T-LABEL
    DC-LINES
@@ -3026,15 +2961,15 @@ HB-TARGET-LINUX? 0= [if]
    s" imm-dc-read.f" FIXTURE!
    s" " CHECK  GJA-LINE# @ 1 T=  0 DC-KEPT
    s" --verify-only" CHECK  GJA-LINE# @ 3 T=  0 DC-KEPT
-   1 s" code" s" E-PARSES-ROW" FIELD=  1 s" V" 6 9 108 109 AT
-   2 s" code" s" E-UNDEFINED" FIELD=  2 s" a" 7 16 127 128 AT
+   1 s" code" s" E-PARSES-ROW" FIELD=  1 s" V" 6 9 107 108 AT
+   2 s" code" s" E-UNDEFINED" FIELD=  2 s" a" 7 16 126 127 AT
    s" E-MISMATCH" s" :3:20" 70 LOADED-AT ;
 
 \ A parses: count reads the operand on the next line.
 : TEST-IMM-LINE-END ( -- )
    s" a parses: count read across a line end" T-LABEL
    SB-RESET
-   s" : V ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
+   s" : V ( -- ) parse-name drop ; immediate" SB-APPEND LF+
    s" parses: V 1" SB-APPEND LF+
    s" : P ( -- n ) V" SB-APPEND LF+
    s"   a 5 ;" SB-APPEND LF+
@@ -3111,7 +3046,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-DEFER-SUGGEST ( -- )
    s" a top-level parsing word with no parses: row" T-LABEL
    SB-RESET
-   s" : PN ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : PN ( -- ) parse-name drop ;" SB-APPEND LF+
    s" PN foo" SB-APPEND LF+
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
    s" defer-parser.f" FIXTURE!
@@ -3125,7 +3060,7 @@ HB-TARGET-LINUX? 0= [if]
    0 0 s" D" s" call `D` from a definition" DEFER-SUGGESTS
    s" a top-level parsing word its parses: row bounds" T-LABEL
    SB-RESET
-   s" : PN ( -- ) parse-name 2drop ;" SB-APPEND LF+
+   s" : PN ( -- ) parse-name drop ;" SB-APPEND LF+
    s" parses: PN 1" SB-APPEND LF+
    s" PN foo" SB-APPEND LF+
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
@@ -3169,7 +3104,7 @@ HB-TARGET-LINUX? 0= [if]
    s" defer-roots/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots/sub/lib.f" LINE-FIXTURE
    SB-RESET
-   s\" s\" sub\" >str SOURCE-ROOT:ROOT!" SB-APPEND LF+
+   s\" s\" sub\" SOURCE-ROOT:ROOT!" SB-APPEND LF+
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots/top.f" FIXTURE!
@@ -3180,7 +3115,7 @@ HB-TARGET-LINUX? 0= [if]
    s" defer-roots-parser/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-parser/sub/lib.f" LINE-FIXTURE
    SB-RESET
-   s" : GO ( -- ) parse-name >str SOURCE-ROOT:ROOT! ;" SB-APPEND LF+
+   s" : GO ( -- ) parse-name SOURCE-ROOT:ROOT! ;" SB-APPEND LF+
    s" parses: GO 1" SB-APPEND LF+
    s" GO sub" SB-APPEND LF+
    s" require lib.f" SB-APPEND LF+
@@ -3195,7 +3130,7 @@ HB-TARGET-LINUX? 0= [if]
    SB-RESET
    s\" s\" : RX ( -- ) ;\" evaluate" SB-APPEND LF+
    s" RX" SB-APPEND LF+
-   s\" s\" sub\" >str SOURCE-ROOT:ROOT!" SB-APPEND LF+
+   s\" s\" sub\" SOURCE-ROOT:ROOT!" SB-APPEND LF+
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots-stretch/top.f" FIXTURE!
@@ -3206,7 +3141,7 @@ HB-TARGET-LINUX? 0= [if]
    s" defer-roots-caller/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-caller/sub/lib.f" LINE-FIXTURE
    SB-RESET
-   s\" : GO ( -- ) s\" sub\" >str SOURCE-ROOT:ROOT! ;" SB-APPEND LF+
+   s\" : GO ( -- ) s\" sub\" SOURCE-ROOT:ROOT! ;" SB-APPEND LF+
    s" GO" SB-APPEND LF+
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
@@ -3217,7 +3152,7 @@ HB-TARGET-LINUX? 0= [if]
    s" defer-roots-tick/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-tick/sub/lib.f" LINE-FIXTURE
    SB-RESET
-   s\" s\" sub\" >str ' SOURCE-ROOT:ROOT! execute" SB-APPEND LF+
+   s\" s\" sub\" ' SOURCE-ROOT:ROOT! execute" SB-APPEND LF+
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots-tick/top.f" FIXTURE!
@@ -3227,7 +3162,7 @@ HB-TARGET-LINUX? 0= [if]
    s" defer-roots-btick/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" : LIB-ONE ( -- n ) 1 ;" s" defer-roots-btick/sub/lib.f" LINE-FIXTURE
    SB-RESET
-   s\" : GO ( -- ) s\" sub\" >str ['] SOURCE-ROOT:ROOT! execute ;" SB-APPEND LF+
+   s\" : GO ( -- ) s\" sub\" ['] SOURCE-ROOT:ROOT! execute ;" SB-APPEND LF+
    s" GO" SB-APPEND LF+
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
@@ -3240,7 +3175,7 @@ HB-TARGET-LINUX? 0= [if]
    s" : ZZ-ONE ( -- n ) 1 ;" s" defer-engine/src/lib/zz-only.f" LINE-FIXTURE
    s" defer-engine" NAMED!
    SB-RESET
-   s\" s\" " SB-APPEND  FX-PATH$ SB-APPEND  s\" \" >str SOURCE-ROOT:ENGINE!" SB-APPEND LF+
+   s\" s\" " SB-APPEND  FX-PATH$ SB-APPEND  s\" \" SOURCE-ROOT:ENGINE!" SB-APPEND LF+
    s" require src/lib/zz-only.f" SB-APPEND LF+
    s" ZZ-ONE drop" SB-APPEND LF+
    s" defer-engine.f" FIXTURE!
@@ -3501,8 +3436,8 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-FINALLY-CARRIED ( -- )
    s" a carried record through finally's cleanup" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
    s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
@@ -3517,8 +3452,8 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RETHROW-STACK ( -- )
    s" a caught code thrown on from the stack keeps its record" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
    s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
@@ -3531,8 +3466,8 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RETHROW-LOCAL ( -- )
    s" a caught code thrown on from a local keeps its record" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
    s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
@@ -3546,8 +3481,8 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RETHROW-JOINED ( -- )
    s" a caught code joined with another value is a new throw" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : MAIN ( -- ) ['] BODY catch dup 9999 = if drop 9998 then dup 0<> if throw then drop ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
@@ -3561,11 +3496,11 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RETHROW-KEPT-SINCE ( -- )
    s" a caught code thrown on after a later kept record is a new throw" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
-   S\" : BODY2 ( -- ) s\" E-PROBE2\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe two\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY2 ( -- ) s\" E-PROBE2\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe two\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} ['] BODY2 catch drop rc 0<> if rc throw then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
@@ -3577,8 +3512,8 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RETHROW-RSTACK ( -- )
    s" a caught code thrown on through the return stack keeps its record" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
    s" : CLEAN ( -- ) ['] INNER catch drop ;" SB-APPEND LF+
@@ -3593,8 +3528,8 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RETHROW-TWO ( -- )
    s" a caught code thrown on past a second counted catch keeps its record" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : INNER ( -- ) 5000 throw ;" SB-APPEND LF+
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} ['] INNER catch {: ri:n :}" SB-APPEND
@@ -3607,8 +3542,8 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-RETHROW-QUOT ( -- )
    s" a caught local thrown from a quotation is a new throw" T-LABEL
    SB-RESET
-   S\" : BODY ( -- ) s\" E-PROBE\" >str REJECTION:OPEN" SB-APPEND
-   S\"  s\" probe text\" >str REJECTION:EMIT-STR" SB-APPEND
+   S\" : BODY ( -- ) s\" E-PROBE\" REJECTION:OPEN" SB-APPEND
+   S\"  s\" probe text\" REJECTION:EMIT-STR" SB-APPEND
    s"  REJECTION:SAVE 9999 REJECTION:PASS ;" SB-APPEND LF+
    s" : MAIN ( -- ) ['] BODY catch {: rc:n :} rc 0<> if [: rc throw ;] execute then ;" SB-APPEND LF+
    s" MAIN" SB-APPEND LF+
@@ -3625,7 +3560,7 @@ HB-TARGET-LINUX? 0= [if]
    DEP!
    SB-RESET
    S\" : R ( -- ) [: s\" " SB-APPEND  DEP-PATH$ SB-APPEND
-   S\" \" >str required ;] catch drop ; R" SB-APPEND LF+
+   S\" \" required ;] catch drop ; R" SB-APPEND LF+
    s" : fail ( -- ) -1234 throw ;" SB-APPEND LF+
    s" fail" SB-APPEND LF+
    s" caught-outer.f" FIXTURE!
@@ -3761,11 +3696,11 @@ HB-TARGET-LINUX? 0= [if]
    s" a parses: row made in a scope that rolls back" T-LABEL
    SB-RESET
    s" : Q-SCAN ( -- )" SB-APPEND LF+
-   s\"    s\\\" : Q-ONE ( -- ) parse-name 2drop ; immediate parses: Q-ONE 1\" >str"
+   s\"    s\\\" : Q-ONE ( -- ) parse-name drop ; immediate parses: Q-ONE 1\""
    SB-APPEND LF+
    s" [: ;] VERIFY:SOURCE-BUF-THEN-IN-SCOPE ;" SB-APPEND LF+
    s" ' Q-SCAN CHECK:SCOPED" SB-APPEND LF+
-   s" : Q-TWO ( -- ) parse-name 2drop ; immediate" SB-APPEND LF+
+   s" : Q-TWO ( -- ) parse-name drop ; immediate" SB-APPEND LF+
    s" : USE-TWO ( -- n ) Q-TWO 73 ;" SB-APPEND LF+
    s" stale-parses.f" FIXTURE!
    s" E-UNMODELED-IMMEDIATE" s" :6:20" 70 LOADED-AT ;
@@ -3785,7 +3720,7 @@ HB-TARGET-LINUX? 0= [if]
    0 FX-U !
    SB-RESET
    s" variable HITS" SB-APPEND PI-LINE+
-   s" : HIT ( -- ) parse-name 2drop 1 HITS +! ;" SB-APPEND PI-LINE+
+   s" : HIT ( -- ) parse-name drop 1 HITS +! ;" SB-APPEND PI-LINE+
    40 0 ?do
       s" : " SB-APPEND  i PI-NAME+  s"  ( -- ) HIT ; immediate parses: " SB-APPEND
       i PI-NAME+  s"  1" SB-APPEND PI-LINE+
@@ -3804,7 +3739,7 @@ HB-TARGET-LINUX? 0= [if]
 : TEST-PARSES-PAYLOAD ( -- )
    s" parses: payloads that spell a word, a number, ; and (" T-LABEL
    SB-RESET
-   s" : HIT ( -- ) parse-name drop drop ;" SB-APPEND LF+
+   s" : HIT ( -- ) parse-name drop ;" SB-APPEND LF+
    s" : PI00 ( -- ) HIT ; immediate parses: PI00 1" SB-APPEND LF+
    s" : USE1 ( -- n ) PI00 zz 73 ;" SB-APPEND LF+
    s" : USE2 ( -- ) PI00 73 ;" SB-APPEND LF+
@@ -3909,12 +3844,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-NAMED-DOTTED
    TEST-SCRIPT-REQUIRED-EMPTY
    TEST-LITERAL-PATH-PLACE
-   TEST-STR-SHADOWED
-   TEST-STR-TWICE
-   TEST-STR-UNDEFINED
-   TEST-STR-MADE
-   TEST-STR-ARM
-   TEST-STR-ARM-COMMENT
+   TEST-LOADER-ARM
    TEST-LITERAL-SPENT
    TEST-NAMED-DIR
    TEST-REQUIRED-DIR

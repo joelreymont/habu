@@ -84,7 +84,7 @@ create XE-EMPTY 1 allot
 \ The child prints "<tag><<CERT>>" or "<tag><<REJ>>"; cand must hold no '"'.
 : XE-CASE-LINE ( str str -- ) {: ta:^ tu:n ca:^ cu:n :}
    S\" .\" " SB-APPEND  ta tu SB-APPEND  S\" \"  " SB-APPEND
-   S\" s\" " SB-APPEND  ca cu SB-APPEND  S\" \" >str CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
+   S\" s\" " SB-APPEND  ca cu SB-APPEND  S\" \" CHECK-CANDIDATE! XE-SHOW" XE-LINE ;
 
 \ All value cases run in one child; the parent reads "<tag><verdict>" back.
 : XE-VALUES-PROG$ ( -- str )
@@ -342,7 +342,7 @@ create XE-EMPTY 1 allot
    XE-ERR$ s" does more than the type that keeps it states" CONTAINS? TFALSE
    s" a word compile, keeps states no facts" T-LABEL
    SB-RESET
-   s" : V ( -- ) parse-name 2drop ;" XE-LINE  s" : C ( -- ) ['] V compile, ;" XE-LINE
+   s" : V ( -- ) parse-name drop ;" XE-LINE  s" : C ( -- ) ['] V compile, ;" XE-LINE
    SB$ s" or keep a word without `parses`" XE-FACT-REJECTED
    s" a typed cell whose type states the facts keeps the quotation" T-LABEL
    SB-RESET

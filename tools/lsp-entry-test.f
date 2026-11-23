@@ -76,9 +76,9 @@ create BODY 4096 allot
 : NESTED ( str -- str ) {: entry:^ u:n :}
    SB-RESET s" : NESTED-LOAD ( -- ) " SB-APPEND
    entry u SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME QUOTED
-   s"  >str [: " SB-APPEND
+   s"  [: " SB-APPEND
    entry u QUOTED
-   s\"  >str required ;] SOURCE-ROOT:WITH ;\nNESTED-LOAD\n"
+   s\"  required ;] SOURCE-ROOT:WITH ;\nNESTED-LOAD\n"
    SB-APPEND
    s" driver.f" PROJECT-PATH {: path:^ pathu:n :}
    path DRIVER pathu BYTE-COPY pathu DRIVER-U !

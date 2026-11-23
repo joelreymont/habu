@@ -568,7 +568,7 @@ private
    CHK-EXP-OUT-U SOURCE-APPEND-QPATH ;
 
 \ A named file is loaded the way the command line loads it: the engine turns
-\ `--load PATH` into `s" PATH" >str script-required`, which resolves PATH as an
+\ `--load PATH` into `s" PATH" script-required`, which resolves PATH as an
 \ entry, so the file's own relative requires resolve against its directory. The
 \ path is the canonical one the file's closure entry holds, so the child's
 \ working directory does not matter. The child's own JSON diagnostics for a file
@@ -577,7 +577,7 @@ private
 : CHK-APPEND-ENTRY ( str -- )
    CHK-EXP-QPATH
    CHK-SP CHK-EXP-C
-   s" >str script-required" CHK-EXP-APP
+   s" script-required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
 
 \ A source list loads its files as `bin/hb --load` loads the files it names:
@@ -750,10 +750,10 @@ private
 
 \ The run file's prefix names the subject for the checker's diagnostics.
 : CHK-BUILD-PREFIX ( -- )
-   CHK-LABEL CHK-RUN-QPATH+  s"  >str" CHK-RUN+
+   CHK-LABEL CHK-RUN-QPATH+
    CHK-SEL-BYTES? if
       CHK-SP CHK-RUN-C  CHK-SRC-PATH CHK-RUN-QPATH+
-      s"  >str REJECTION:FILE-LABEL!" CHK-RUN-SP
+      s"  REJECTION:FILE-LABEL!" CHK-RUN-SP
    else
       s"  REJECTION:LABEL!" CHK-RUN-SP
    then
@@ -772,8 +772,8 @@ private
 : CHK-BUILD-READER ( -- )
    CHK-LF CHK-RUN-C
    s" : CHECK-F-READ ( str -- str ) {: p :}" CHK-RUN-LN
-   s" p " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  >str STR= if" CHK-RUN-LN
-   CHK-SUBJECT-PATH CHK-RUN-QPATH+  s"  >str SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
+   s" p " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR= if" CHK-RUN-LN
+   CHK-SUBJECT-PATH CHK-RUN-QPATH+  s"  SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
    s" p SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
    s" : CHECK-F-INPUT ( -- ) [: SOURCE-ROOT:CANON-OS ;] [: CHECK-F-READ ;] SOURCE-INPUT:USE ;" CHK-RUN-LN
    s" CHECK-F-INPUT" CHK-RUN-LN ;
@@ -784,7 +784,7 @@ private
    CHK-SUBJ-U @ 0 > if CHK-BUILD-READER then
    CHK-SEL-BYTES? if
       CHK-LF CHK-RUN-C
-      CHK-SRC-PATH CHK-RUN-QPATH+  s"  >str script-required" CHK-RUN-LN
+      CHK-SRC-PATH CHK-RUN-QPATH+  s"  script-required" CHK-RUN-LN
       exit
    then
    CHK-SOURCE CHK-RUN-SOURCE+ ;

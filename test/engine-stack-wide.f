@@ -38,9 +38,9 @@ package STACK-LIFECYCLE-TEST
 
 : PRIMITIVE-GROUPS ( -- )
    s" count past the capacity faults the data guard page" T-LABEL
-   S\" : COUNTED ( -- ) c\" x\" count 2drop ; " s" COUNTED" PLAIN-OVERFLOW
+   S\" : COUNTED ( -- ) c\" x\" count drop ; " s" COUNTED" PLAIN-OVERFLOW
    s" a compiled string past the capacity faults the data guard page" T-LABEL
-   S\" : TEXT ( -- ) s\" x\" 2drop ; " s" TEXT" PLAIN-OVERFLOW ;
+   S\" : TEXT ( -- ) s\" x\" drop ; " s" TEXT" PLAIN-OVERFLOW ;
 
 : PAIR-TRANSFERS ( -- )
    s" a two-cell copy past the capacity faults the data guard page" T-LABEL

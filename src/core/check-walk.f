@@ -491,17 +491,9 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
    0 CURSYM !
    OPERANDS-SPENT @ 0 =  n 0 >  and IF n OPERANDS-SKIP THEN ;
 
-\ The engine's `>str` is an identity at run time, so the literal armed before
-\ it names the call after it; a program's own `>str` is another word.
-: SPAY-STR-CK ( -- )
-   SPAY-ARMED @ 0=  SPAY-STR @ 0 <> or IF EXIT THEN
-   TKF TKFU @ s" >str" CORE-STR= 0= IF EXIT THEN
-   TKF TKFU @ TOK-CORE-OP? IF 1 SPAY-STR ! THEN ;
-
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.
 : CALL-STEP ( str ^n -- ) {: a:^ u:n rec:^ :}
-   SPAY-STR-CK
    TKF TKFU @ SPELLED-STEP? IF EXIT THEN
    rec CALL-IMM? IF REJECT-IMMEDIATE THEN
    a u TOK-SYM @ IMM-READS  dup 0 < 0=  data-base BODY-ITEMS:EFFECT-CELL + @ 0=  and IF
@@ -666,9 +658,7 @@ private
       0 IS-PEND !  0 EV-HIT !
    THEN
    CUR-TOKEN
-   SPAY-STR @ 1 = IF 2 SPAY-STR ! ELSE
-      SPAY-S @ SPAY-ARMED !  0 SPAY-STR !
-   THEN
+   SPAY-S @ SPAY-ARMED !
    0 SPAY-S !
    TOK0 @ ;
 
@@ -898,7 +888,7 @@ EXPORT CHECKER-TAPE:SCAN-TOKEN
 \ reaches by spelling. A CALL binds the record the definer found, so nothing
 \ the building package defines captures it.
 : CHECK-SCAN-WALK ( -- )
-   0 SPAY-S !  0 SPAY-STR !
+   0 SPAY-S !
    EV-START
    TAPE-FEED? IF TBASE@ TBLEN @ SCAN-TOKEN THEN
    TEXT-ITEMS WALK-ITEMS !  0 WALK-ITEM !
@@ -2964,11 +2954,10 @@ private
    a u CHECKER-COLON-SCAN drop 1 > IF 0 EXIT THEN
    a u CHECKER-GLOBAL-SYM? ;
 
-\ The call BIND-TOK bound, right after an `s"` literal or after the engine's
-\ `>str` that follows one: the literal's body as written names the word. One
-\ with an escape binds nothing, since a rename could not edit it as written,
-\ and every escape is shorter than its spelling, so the body is as written
-\ when the bytes it makes are as long.
+\ The call BIND-TOK bound, right after an `s"` literal: the literal's body as
+\ written names the word. One with an escape binds nothing, since a rename
+\ could not edit it as written, and every escape is shorter than its spelling,
+\ so the body is as written when the bytes it makes are as long.
 : NAMED-OPERAND-USE ( -- )
    SPAY-ARMED @ 0= IF EXIT THEN
    SPAY-BYTES nip SPAY-U @ <> IF EXIT THEN
@@ -3490,11 +3479,12 @@ variable TOP-MOVE-N
    TOP-MOVE-N @ ;
 
 \ ---- a literal event: pushed onto the saved row ------------------------------
-\ A literal's cells have constant types, so over a saved row that fits the live
-\ depth its event needs no step: it writes the literal's entries over the row's
-\ top in the read buffer, where the next load reads them as it reads saved ones.
-\ The cost is the change, not the row's depth. Constant types carry no
-\ variables: TOP-ROW-TV and TOP-ROW-RV stand.
+\ A number, counted-string or character literal's cells have constant types, so
+\ over a saved row that fits the live depth its event needs no step: it writes
+\ the literal's entries over the row's top in the read buffer, where the next
+\ load reads them as it reads saved ones. The cost is the change, not the row's
+\ depth. Constant types carry no variables: TOP-ROW-TV and TOP-ROW-RV stand. A
+\ string literal takes its keyword's row in a step (TOP-STR-STEP).
 
 \ A zeroed node of tag at the read buffer's used end, by offset: the buffer
 \ grows when full, and an offset survives the move.
@@ -3532,8 +3522,8 @@ variable TOP-MOVE-N
       TOP-ROW-OFF @ TOP-READ-AT EN.B @ TOP-ROW-OFF !
    REPEAT ;
 
-\ A literal of class cls: STR pushes ^u8 and n, CSTR ^u8, NUM n or r,
-\ CHAR n; an integer NUM's entry keeps its value.
+\ A literal of class cls: CSTR pushes ^u8, NUM n or r, CHAR n; an integer
+\ NUM's entry keeps its value.
 : TOP-READ-LIT ( str n -- ) {: a:^ u:n cls:n :}
    cls TOP-EV-NUM = IF
       a u FLOAT-LITERAL-ADMITTED? nip IF CC-R ELSE CC-N THEN TOP-READ-CON TOP-READ-PUSH
@@ -3542,8 +3532,7 @@ variable TOP-MOVE-N
          -1 TOP-ROW-OFF @ TOP-READ-AT EN.E !
       ELSE drop THEN EXIT
    THEN
-   cls TOP-EV-STR = cls TOP-EV-CSTR = or IF TOP-READ-PTR-U8 TOP-READ-PUSH THEN
-   cls TOP-EV-CSTR <> IF CC-N TOP-READ-CON TOP-READ-PUSH THEN ;
+   cls TOP-EV-CSTR = IF TOP-READ-PTR-U8 ELSE CC-N TOP-READ-CON THEN TOP-READ-PUSH ;
 
 : TOP-LIT-STEP ( str n -- ) {: a:^ u:n cls:n :}
    cls TOP-EV-NUM = IF
@@ -3552,8 +3541,13 @@ variable TOP-MOVE-N
          CP-LIT swap 0 0 CP-NEW DCUR @ P-PROOF!
       ELSE drop THEN EXIT
    THEN
-   cls TOP-EV-STR = cls TOP-EV-CSTR = or IF PE-PTR-U8 TOP-PUSH THEN
-   cls TOP-EV-CSTR <> IF PE-N TOP-PUSH THEN ;
+   cls TOP-EV-CSTR = IF PE-PTR-U8 ELSE PE-N THEN TOP-PUSH ;
+
+\ A string literal's cells, by its keyword's row (`s"`, `s\"` or `[package]`),
+\ as a body's literal takes them.
+: TOP-STR-STEP ( -- )
+   TOP-BEGIN
+   TKF TKFU @ PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY ;
 
 \ A literal over a live stack of n cells. Only a saved row whose fit holds
 \ exactly the live cells takes the literal in place: with no saved row, or one
@@ -3561,6 +3555,10 @@ variable TOP-MOVE-N
 \ are unknown, and only a load, step and save stores them as padding.
 : CHECKER-TOP-PUSH ( str n n -- ) {: a:^ u:n cls:n live:n :}
    a u live TOP-LEFT-MARK
+   cls TOP-EV-STR = IF
+      a TOK-SPELL-A !  u TOK-SPELL-U !  ['] TOP-STR-STEP live TOP-STEP-LOAD
+      CHECKER-TOP-SAVE EXIT
+   THEN
    live TOP-READ-FIT
    TOP-ROW-OFF @ 0 <>  TOP-ROW-CELLS @ live =  and IF a u cls TOP-READ-LIT EXIT THEN
    live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;

@@ -82,7 +82,7 @@ variable ERR-U
    s" error[E-BAD-SIGNATURE]: return-stack effect in signature ` n [ n -- | U -- U n ] | U -- n | U `"
    s" --> <input>:1:9"  70 REFUSED
    s" a generates: row declares a return-stack cell"
-   S\" package GP\n: G ( n -- ) drop parse-name 2drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
+   S\" package GP\n: G ( n -- ) drop parse-name drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
    s" error[E-GENERATES-ROW]: the `generates:` row names `G`"
    s" its signature moves the return stack"  70 REFUSED
    s" a bar on one side only"

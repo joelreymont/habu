@@ -123,10 +123,10 @@ create PT-DRAIN-BUF PT-CHUNK allot
    path pathu FS:CLEANUP+ ;
 
 : PT-WRITE-SCRIPTS ( -- )
-   PT-CAPTURE-OK s\" 111 emit 117 emit 116 emit create E 101 c, 114 c, 114 c, 2 E 3 write drop s\q \q 7 die" PT-WRITE-SCRIPT
+   PT-CAPTURE-OK s\" 111 emit 117 emit 116 emit create E 101 c, 114 c, 114 c, 2 E 3 >str write drop s\q \q 7 die" PT-WRITE-SCRIPT
    PT-CAPTURE-LONG s" 97 emit 98 emit 99 emit 100 emit 101 emit 102 emit" PT-WRITE-SCRIPT
    PT-CAPTURE-HANG s" : HANG ( -- ) begin again ; HANG" PT-WRITE-SCRIPT
-   PT-CAPTURE-ERR-LONG s" create E 97 c, 98 c, 99 c, 100 c, 101 c, 102 c, 2 E 6 write drop" PT-WRITE-SCRIPT
+   PT-CAPTURE-ERR-LONG s" create E 97 c, 98 c, 99 c, 100 c, 101 c, 102 c, 2 E 6 >str write drop" PT-WRITE-SCRIPT
    PT-CAPTURE-FALSE s\" s\q \q 1 die" PT-WRITE-SCRIPT
    PT-CAPTURE-EOF s" 111 emit 107 emit 1 close 2 close : PT-WAIT ( -- ) mono-ns 1000000000 + begin dup mono-ns > while repeat drop ; PT-WAIT" PT-WRITE-SCRIPT ;
 

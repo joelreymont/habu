@@ -171,7 +171,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ sleeper's pid. The sleeper leads a group of its own; it ends with the target,
 \ and init reaps it.
 : SLEEPER$ ( -- str )
-   s\" PROC-ARGV-RESET s\" 30\" >str PROC-ARGV+ s\" /bin/sleep\" >str -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N $BEEF . . cr" ;
+   s\" PROC-ARGV-RESET s\" 30\" PROC-ARGV+ s\" /bin/sleep\" -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PID>N $BEEF . . cr" ;
 
 \ The number the target printed on the line after 48879, or -1 when there is
 \ none.

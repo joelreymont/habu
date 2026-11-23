@@ -2493,7 +2493,7 @@ USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 1 2 1 9 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
 
 : UNDEFINED-AT-TOP ( -- str )  s\" 1 NOSUCHWORD drop\n" ;
-: DEFERRED-AT-TOP ( -- str )  s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" ;
+: DEFERRED-AT-TOP ( -- str )  s\" : GRAB ( -- ) parse-name drop ;\nGRAB x\n" ;
 
 : TOP-LEVEL-TURNS ( -- )
    SESSION-INITIALIZE
@@ -2954,7 +2954,7 @@ variable LENGTH-N
 : DEF-DEP-CANON ( -- str )  DEF-DEP-PATH SOURCE-ROOT:CANONICAL drop ;
 
 : TEXT-DEF-A ( -- str )
-   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE  1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
+   s\" : DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE  1 + ;\n: DEF-THREE ( -- n ) s\" é\" drop DEF-ONE ;\n" ;
 
 : TEXT-DEF-DEP ( -- str )
    s\" package DD\npublic\n: DEF-PUB ( -- n ) 3 ;\n;package\n: DEF-DEP ( -- n ) 4 ;\n" ;
@@ -3225,7 +3225,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 : PREFIX-STRUCT-PATH ( -- str )  s" prefix-structure.f" FIXTURE ;
 : PREFIX-STRUCT ( -- str )
-   s\" 8 constant STRUCT-NAV-WIDTH\nBEGIN-STRUCTURE STRUCT-NAV\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV.F\nchar STRUCT-NAV-WIDTH drop\n' STRUCT-NAV-WIDTH drop\nEND-STRUCTURE\n: STRUCT-SKIP ( -- ) parse-name 2drop ;\nparses: STRUCT-SKIP 1\nBEGIN-STRUCTURE STRUCT-NAV-2\nSTRUCT-SKIP STRUCT-NAV-WIDTH\n8 +FIELD STRUCT-NAV-2.F\nEND-STRUCTURE\nBEGIN-STRUCTURE STRUCT-NAV-3\n' STRUCT-SKIP drop\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV-3.F\nEND-STRUCTURE\n" ;
+   s\" 8 constant STRUCT-NAV-WIDTH\nBEGIN-STRUCTURE STRUCT-NAV\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV.F\nchar STRUCT-NAV-WIDTH drop\n' STRUCT-NAV-WIDTH drop\nEND-STRUCTURE\n: STRUCT-SKIP ( -- ) parse-name drop ;\nparses: STRUCT-SKIP 1\nBEGIN-STRUCTURE STRUCT-NAV-2\nSTRUCT-SKIP STRUCT-NAV-WIDTH\n8 +FIELD STRUCT-NAV-2.F\nEND-STRUCTURE\nBEGIN-STRUCTURE STRUCT-NAV-3\n' STRUCT-SKIP drop\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV-3.F\nEND-STRUCTURE\n" ;
 
 : PREFIX-DEF-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3339,7 +3339,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED ;
 
 : TEXT-DEF-A-MOVED ( -- str )
-   s\" \\ two lines\n\\ above\n: DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" 2drop DEF-ONE ;\n" ;
+   s\" \\ two lines\n\\ above\n: DEF-ONE ( -- n ) 1 ;\n: DEF-TWO ( -- n ) DEF-ONE 1 + ;\n: DEF-THREE ( -- n ) s\" é\" drop DEF-ONE ;\n" ;
 
 : DEF-AFTER-CHANGE-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3651,21 +3651,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" >CVT-T" s" n -- cvt-t" CVT-MD s" 7" s" markdown" 6 18 29 HOVERED
    s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 8" s" markdown" 6 30 42 HOVERED ;
 
-\ The engine's `>str` after a top-level literal is a use like any word's.
-: HOVER-STR-PATH ( -- str )  s" hover-str.f" IN-TREE ;
-: TEXT-HOVER-STR ( -- str )  s\" s\" a.f\" >str drop\n" ;
-
-: HOVER-STR-TURNS ( -- )
-   MARKDOWN-CLIENT
-   HOVER-STR-PATH TEXT-HOVER-STR 1 OPENS
-   SAY
-   SESSION-CAPABILITIES
-   HOVER-STR-PATH 1 CLEAN
-   s" 3" HOVER-STR-PATH 0 8 HOVER-ASK
-   SAY
-   TXT-B CLEAR s\" ```habu\n>str\n\\ " HV+ PRIM-SOURCE-PATH WHERE+ s\" \n```" HV+
-   s" 3" s" markdown" 0 8 12 HOVERED ;
-
 : HOVER-NONE-TURNS ( -- )
    MARKDOWN-CLIENT
    DEF-A-PATH TEXT-DEF-A-MOVED 1 OPENS
@@ -3733,7 +3718,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    i iu SYMBOLS-START
    down 2 9 HIGHLIGHT+
    down 1+ 19 26 HIGHLIGHT+
-   down 2 + 33 40 HIGHLIGHT+
+   down 2 + 32 39 HIGHLIGHT+
    SYMBOLS-END ;
 
 : HIGHLIGHT-TURNS ( -- )
@@ -3820,7 +3805,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : HD-PATH ( -- str )  s" hd.f" FIXTURE ;
 : TEXT-HU ( -- str )  s\" : HU-ONE ( -- n ) 1 ;\n: HU-BAD ( -- ) HU-ONE ;\n" ;
 : TEXT-HD ( -- str )
-   s\" : HD-ONE ( -- n ) 1 ;\n: HD-TWO ( -- n ) HD-ONE ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
+   s\" : HD-ONE ( -- n ) 1 ;\n: HD-TWO ( -- n ) HD-ONE ;\n: PN ( -- ) parse-name drop ;\nPN anything\n" ;
 
 : HIGHLIGHT-UNPROVED-TURNS ( -- )
    SESSION-INITIALIZE
@@ -3996,10 +3981,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : TOK-PATH ( -- str )  s" tok.f" FIXTURE ;
 : TEXT-TOK ( -- str )
    TXT-B CLEAR
-   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ^u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( str -- ) drop ;\nnames: LOOK\n" HV+
    s\" 7 constant K7\nvariable V7\npackage TP\n: PRIV ( -- n ) K7 V7 @ + ;\n" HV+
    s\" public\n: PUB ( -- n ) PRIV ROOK + ;\nEXPORT ROOK\n;package\n" HV+
-   s\" : SEEK ( -- n ) s\" é\" 2drop s\" ROOK\" LOOK TP:PUB dup + TP:ROOK + ;\n" HV+
+   s\" : SEEK ( -- n ) s\" é\" drop s\" ROOK\" LOOK TP:PUB dup + TP:ROOK + ;\n" HV+
    TXT$ ;
 
 : TOKENS-TURNS ( -- )
@@ -4016,7 +4001,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    2 2 4 FUNCTION+  0 14 2 READONLY+  0 3 2 VARIABLE+
    2 2 3 FUNCTION+  0 13 4 FUNCTION+  0 5 4 FUNCTION+
    1 7 4 FUNCTION+
-   2 2 4 FUNCTION+  0 29 4 FUNCTION+  0 6 4 FUNCTION+  0 5 6 FUNCTION+
+   2 2 4 FUNCTION+  0 28 4 FUNCTION+  0 6 4 FUNCTION+  0 5 6 FUNCTION+
    TOKENS-END ;
 
 : TOKENS-DEFTYPE-TURNS ( -- )
@@ -4751,9 +4736,9 @@ variable WS-ROOT-U
 : TEXT-RS ( -- str )  s\" require f.f\n: SU ( -- n ) ROOK ;\n" ;
 : TEXT-RS-BAD ( -- str )  s\" require f.f\n: SU ( -- ) ROOK ;\n" ;
 : TEXT-RS-PN ( -- str )
-   s\" require f.f\n: SU ( -- n ) ROOK ;\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
+   s\" require f.f\n: SU ( -- n ) ROOK ;\n: PN ( -- ) parse-name drop ;\nPN anything\n" ;
 : TEXT-RS-DEP ( -- str )
-   s\" require ../out/u.f\n: PN ( -- ) parse-name 2drop ;\nPN anything\n" ;
+   s\" require ../out/u.f\n: PN ( -- ) parse-name drop ;\nPN anything\n" ;
 : TEXT-RU-DEP ( -- str )
    s\" require ../w/f.f\n: OU ( -- n ) ROOK ;\n" ;
 : TEXT-RT ( -- str )  s\" require s.f\n: TU ( -- n ) ROOK SU + ;\n" ;
@@ -5449,8 +5434,8 @@ variable WS-ROOT-U
 
 : TEXT-RN ( -- str )
    TXT-B CLEAR
-   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ^u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
-   s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: SEEK2 ( -- ) s\" ROOK\" >str XREF-FIND drop ;\n" HV+
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( str -- ) drop ;\nnames: LOOK\n" HV+
+   s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: SEEK2 ( -- ) s\" ROOK\" XREF-FIND drop ;\n" HV+
    s\" : TWO ( -- n ) ROOK 1 + ;\n" HV+
    TXT$ ;
 
@@ -5805,7 +5790,7 @@ variable PROBE-DECLS
 : BI-SOURCE-REFUSED$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) drop ;\n: SCRIPT-ARG-START ( -- n ) 1 ;\n" ;
 : BI-SOURCE-PARSED$ ( -- str )
-   s\" : SKIP-DECL ( -- ) 8 0 do parse-name 2drop loop ;\nparses: SKIP-DECL 8\nSKIP-DECL : SCRIPT-ARGC ( -- n ) 1 ;\n" ;
+   s\" : SKIP-DECL ( -- ) 8 0 do parse-name drop loop ;\nparses: SKIP-DECL 8\nSKIP-DECL : SCRIPT-ARGC ( -- n ) 1 ;\n" ;
 : BI-SOURCE-UNTERM$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" unclosed\n" ;
 : BI-SOURCE-DEFERRED$ ( -- str )
@@ -5813,7 +5798,7 @@ variable PROBE-DECLS
 : BI-SOURCE-OPAQUE$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" undefine SCRIPT-ARGC\" evaluate\n" ;
 : BI-SOURCE-REPLACED-DEFINER$ ( -- str )
-   s\" package LSPRET\n: BEGIN-STRUCTURE ( -- ) 2 0 do parse-name 2drop loop ;\nBEGIN-STRUCTURE X END-STRUCTURE\n;package\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
+   s\" package LSPRET\n: BEGIN-STRUCTURE ( -- ) 2 0 do parse-name drop loop ;\nBEGIN-STRUCTURE X END-STRUCTURE\n;package\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
 : BI-SOURCE-REFUSED-TRUST$ ( -- str )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nTRUSTED: REVIEW-BAD ( -- zzz-unknown ) 1 ;\n" ;
 : BI-SOURCE-REFUSED-OPAQUE$ ( -- str )
@@ -6562,7 +6547,7 @@ variable PROBE-DECLS
 : RNN-PATH ( -- str )  s" rn-named.f" FIXTURE ;
 : TEXT-RNN ( -- str )
    TXT-B CLEAR
-   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( ^u8 n -- ) 2drop ;\nnames: LOOK\n" HV+
+   s\" : ROOK ( -- n ) 1 ;\n: LOOK ( str -- ) drop ;\nnames: LOOK\n" HV+
    s\" : SEEK ( -- ) s\" ROOK\" LOOK ;\n: TWO ( -- n ) ROOK 1 + ;\ns\" ROOK\" LOOK\n" HV+
    s\" package RNN\npublic\n: ROOK ( -- n ) 2 ;\n;package\n" HV+
    s\" : SEEK2 ( -- ) s\" RNN:ROOK\" LOOK ;\ns\" RNN:ROOK\" LOOK\n" HV+
@@ -6935,7 +6920,6 @@ variable PROBE-DECLS
    s" hover-made-scratch" [: HOVER-SCRATCH-TURNS ;] TALK
    s" hover-made-typed" [: HOVER-TYPED-TURNS ;] TALK
    s" hover-deftype" [: HOVER-DEFTYPE-TURNS ;] TALK
-   s" hover-engine-str" [: HOVER-STR-TURNS ;] TALK
    s" hover-none" [: HOVER-NONE-TURNS ;] TALK
    s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK
    s" hover-after-change" [: HOVER-AFTER-CHANGE-TURNS ;] TALK ;

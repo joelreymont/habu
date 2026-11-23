@@ -7,5 +7,5 @@ public
 VERSIONED-LIBRARY z 1
 FUNCTION: FFI-U-CRC crc32 ( n str -- n ) ;FUNCTION
 
-: FFI-U-CRC-A ( -- n ) 0 s" a" >str FFI-U-CRC ;
+: FFI-U-CRC-A ( -- n ) 0 s" a" FFI-U-CRC ;
 ;package

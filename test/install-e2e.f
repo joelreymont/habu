@@ -111,8 +111,8 @@ variable TREES-N
    ROOT$ s" reader.f" READER FS:JOIN-PATH READER-U !
    S\" require src/install-race-x.f\npackage INSTALL-E2E-READER\n" READER+
    S\" private\n1 BUFFER: CH\npublic\n" READER+
-   S\" : SAY ( ^u8 n -- )\n   {: a:^ u:n :}\n" READER+
-   S\"    1 a u write drop  10 CH c!  1 CH 1 write drop ;\n" READER+
+   S\" : SAY ( str -- )\n   {: s:str :}\n" READER+
+   S\"    1 s write drop  10 CH c!  1 CH 1 >str write drop ;\n" READER+
    S\" : AWAIT ( -- )\n" READER+
    S\"    begin 0 CH 1 read 1 = while CH c@ 10 = if exit then repeat ;\n" READER+
    S\" ;package\ns\q loaded\q INSTALL-E2E-READER:SAY\n" READER+

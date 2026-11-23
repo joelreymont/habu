@@ -176,26 +176,6 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    s" dyn.f" S\" required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS ;
 
-\ The first `>str` after a path literal is an identity at run time: the walk
-\ reads past it at top level and in a body, but not past a second, nor past one
-\ after the file defined or retired one.
-: SDT-STR$ ( -- str )
-   S\" s\" sd-s0.f\" >str s\" sd-s1.f\" >str required\n: L ( -- ) s\" sd-s2.f\" >str required ;\n: M ( -- ) s\" sd-s3.f\" >str >str required ;\n" ;
-
-: SDT-TEST-STR ( -- )
-   s" str.f" SDT-STR$ SDT-WRITE-ENTRY
-   SDT-DISCOVER
-   SOURCE-EVENT:COUNT 2 T=
-   0 SOURCE-EVENT:PATH@ s" sd-s1.f" SDT-PATH T$=
-   1 SOURCE-EVENT:PATH@ s" sd-s2.f" SDT-PATH T$=
-   s" str-twice.f" S\" s\" sd-s4.f\" >str >str required\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
-   s" str-own.f" S\" package SDQ\n: >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;\n;package\n: N ( -- ) s\" sd-s5.f\" >str required ;\ns\" sd-s6.f\" >str required\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
-   SOURCE-EVENT:COUNT 0 T=
-   s" str-undef.f" S\" undefine >str\ns\" sd-s7.f\" >str required\n" SDT-WRITE-ENTRY
-   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS ;
-
 : SDT-TEST-OPENER ( -- )
    s" opener.f" S\" C\\\" sd-g.f\" required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-OPENER SDT-STOPS ;
@@ -344,19 +324,9 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    S\" package CVT-RES\nprivate\nvariable REQUIRED\n;package\ns\" sd-raw.f\" required\n"
    E-DISC-SHADOW 64 8 SDT-REPLACED-AT
    S\" undefine required\ns\" sd-raw.f\" required\n" E-DISC-RETIRE 31 8 SDT-REPLACED-AT
-   S\" HB-TARGET-WASM? [if]\n: required ( str -- ) drop ;\n[then]\ns\" sd-raw.f\" >str required\n"
-   E-DISC-SHADOW 75 8 SDT-REPLACED-AT
+   S\" HB-TARGET-WASM? [if]\n: required ( str -- ) drop ;\n[then]\ns\" sd-raw.f\" required\n"
+   E-DISC-SHADOW 70 8 SDT-REPLACED-AT
    S\" package SDT-SH\nprivate\nvariable REQUIRED\n: L ( -- n ) REQUIRED @ ;\n;package\nrequire sd-raw.f\n"
-   s" sd-raw.f" SDT-ONE-EVENT ;
-
-\ Only the walk's declaring forms end a literal at `>str`, in every `[if]` arm,
-\ outside a comment: a learned definer's `>str` does not.
-: SDT-TEST-STR-FORMS ( -- )
-   S\" package MQ\n: MAKE ( n -- ) create , does> ( -- a ) @ ;\n5 MAKE >str\n;package\ns\" sd-raw.f\" >str required\n"
-   s" sd-raw.f" SDT-ONE-EVENT
-   S\" HB-TARGET-WASM? [if]\n: >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;\n[then]\ns\" sd-raw.f\" >str required\n"
-   E-DISC-DYNAMIC 91 8 SDT-REPLACED-AT
-   S\" HB-TARGET-WASM? [if]\n\\ : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;\n[then]\ns\" sd-raw.f\" >str required\n"
    s" sd-raw.f" SDT-ONE-EVENT ;
 
 \ An engine definer or a package keyword takes the next token as a name, a
@@ -644,14 +614,14 @@ PATH-CAP 16 / 16 * constant SDT-FIT
    \ Inside SDT-P, `SDT-Q:W` names the W of part SDT-P:SDT-Q and runs its row.
    DISCOVER:ROWS-RESET
    s" row-part.f"
-   S\" package SDT-P package SDT-Q public : W ( -- ) parse-name 2drop ; parses: W 1 ;package\nSDT-Q:W required\nrequire sd-raw.f\n;package\n"
+   S\" package SDT-P package SDT-Q public : W ( -- ) parse-name drop ; parses: W 1 ;package\nSDT-Q:W required\nrequire sd-raw.f\n;package\n"
    SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
    s" sd-raw.f" SDT-ONE-LOAD
    \ The part's W also counts against top-level SDT-Q's row, so the row selects
    \ no word and the load after `SDT-Q:W` is found.
    DISCOVER:ROWS-RESET
    s" row-part-twin.f"
-   S\" package SDT-Q public : W ( -- ) parse-name 2drop ; parses: W 1 ;package\npackage SDT-P package SDT-Q public : W ( -- ) ; ;package\nSDT-Q:W require sd-raw.f\n;package\n"
+   S\" package SDT-Q public : W ( -- ) parse-name drop ; parses: W 1 ;package\npackage SDT-P package SDT-Q public : W ( -- ) ; ;package\nSDT-Q:W require sd-raw.f\n;package\n"
    SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-SETTLE
    s" sd-raw.f" SDT-ONE-LOAD
    \ A W in SDT-R's global section is top-level, not SDT-R's, so `SDT-R:W` still
@@ -869,7 +839,6 @@ public
    SDT-TEST-WIDE
    SDT-TEST-EMIT
    SDT-TEST-DYNAMIC
-   SDT-TEST-STR
    SDT-TEST-OPENER
    SDT-TEST-COLON-BODY
    SDT-TEST-USER-DEFINER
@@ -880,7 +849,6 @@ public
    SDT-TEST-BODY-OPENER
    SDT-TEST-LOADER-NAME
    SDT-TEST-LOADER-USE
-   SDT-TEST-STR-FORMS
    SDT-TEST-DEFINER-OPERAND
    SDT-TEST-FAMILY-BODIES
    SDT-TEST-FAMILY-SHADOW

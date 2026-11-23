@@ -375,7 +375,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 : TASK-FRAMED-COMPILES$ ( -- str )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   S\" : TFC-BODY ( -- ) s\" : TFC-IN ( -- ) ;\" >str INTERPRETER:EVAL-FRAMED ;" SB-APPEND TASK-LF
+   S\" : TFC-BODY ( -- ) s\" : TFC-IN ( -- ) ;\" INTERPRETER:EVAL-FRAMED ;" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK TFC-WORKER" SB-APPEND TASK-LF
    s" ' TFC-BODY TFC-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
    SB$ ;
@@ -443,7 +443,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
    s" variable N  variable BEFORE  variable INSIDE" SB-APPEND TASK-LF
    s" : SPIN ( -- ) begin 1 N +! TASK:PAUSE again ;" SB-APPEND TASK-LF
-   S\" : REPLAY ( -- ) ndict@ BEFORE ! [: s\" : RS-R ( -- ) ;\" >str VERIFY:SOURCE-BUF-IN-SCOPE ndict@ INSIDE ! ;] CHECK:SCOPED ;" SB-APPEND TASK-LF
+   S\" : REPLAY ( -- ) ndict@ BEFORE ! [: s\" : RS-R ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ndict@ INSIDE ! ;] CHECK:SCOPED ;" SB-APPEND TASK-LF
    S\" : FOUND? ( -- bool ) [: s\" ' RS-R drop\" evaluate-closed ;] catch 0= ;" SB-APPEND TASK-LF
    s" : GREW? ( -- bool ) INSIDE @ BEFORE @ > ;" SB-APPEND TASK-LF
    s" REPLAY GREW? ndict@ BEFORE @ = and FOUND? 0= and bool>n ." SB-APPEND TASK-LF
@@ -528,13 +528,13 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" require src/lib/test.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
    s" TASK:+USER BEFORE n" SB-APPEND TASK-LF
-   s\" s\" $7FFFFFFFFFF00000 TASK:+USERS PH u8\" >str TEST-EVAL:RC ." SB-APPEND TASK-LF
-   s\" s\" 0 TASK:+USERS PC n\" >str TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
-   s\" s\" $2000000000000001 TASK:+USERS PV n\" >str TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
-   s\" s\" TASK:+USER PT no-such-type\" >str TEST-EVAL:RC ." SB-APPEND TASK-LF
-   s\" s\" ' PT drop\" >str TEST-EVAL:RC drop" SB-APPEND TASK-LF
-   s\" s\" create PX $7FFFFFFFFFFD0000 SCRATCH-ALLOT\" >str TEST-EVAL:RC ." SB-APPEND TASK-LF
-   s\" s\" create PN -16 SCRATCH-ALLOT\" >str TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" $7FFFFFFFFFF00000 TASK:+USERS PH u8\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" 0 TASK:+USERS PC n\" TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
+   s\" s\" $2000000000000001 TASK:+USERS PV n\" TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
+   s\" s\" TASK:+USER PT no-such-type\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" ' PT drop\" TEST-EVAL:RC drop" SB-APPEND TASK-LF
+   s\" s\" create PX $7FFFFFFFFFFD0000 SCRATCH-ALLOT\" TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" create PN -16 SCRATCH-ALLOT\" TEST-EVAL:RC ." SB-APPEND TASK-LF
    s" TASK:+USER AFTER n  5 AFTER !  AFTER @ ." SB-APPEND TASK-LF
    s" W AFTER TASK:HIS W BEFORE TASK:HIS - CELL - ." SB-APPEND TASK-LF
    SB$ ;
@@ -548,8 +548,8 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" TASK:MIN-STACK TASK:TASK SPINNER" SB-APPEND TASK-LF
    s" : SPIN ( -- ) begin TASK:PAUSE false until ;" SB-APPEND TASK-LF
    s" ' SPIN SPINNER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s\" s\" TASK:+USER LIVE n\" >str TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
-   s\" s\" ' LIVE drop\" >str TEST-EVAL:RC drop" SB-APPEND TASK-LF
+   s\" s\" TASK:+USER LIVE n\" TEST-EVAL:RC E-TASK-USER = bool>n ." SB-APPEND TASK-LF
+   s\" s\" ' LIVE drop\" TEST-EVAL:RC drop" SB-APPEND TASK-LF
    SB$ ;
 
 \ A slot made in a text that throws stays taken, under later data: PA and PC
@@ -560,7 +560,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    s" require src/lib/test.f" SB-APPEND TASK-LF
    s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
    s" TASK:+USER PA n" SB-APPEND TASK-LF
-   s\" s\" TASK:+USER PB n  1 throw\" >str TEST-EVAL:RC ." SB-APPEND TASK-LF
+   s\" s\" TASK:+USER PB n  1 throw\" TEST-EVAL:RC ." SB-APPEND TASK-LF
    s" create JUNK 111 , 222 , 333 , 444 , 555 ," SB-APPEND TASK-LF
    s" TASK:+USER PC n  W TASK:PREPARE" SB-APPEND TASK-LF
    s" 5 W PA TASK:HIS !  7 W PC TASK:HIS !" SB-APPEND TASK-LF

@@ -1798,7 +1798,7 @@ variable WIDTH-FAM  -1 WIDTH-FAM !
 variable EFFECT-TYPE-FAM  -1 EFFECT-TYPE-FAM !
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
 variable C2-STOW-FAM -1 C2-STOW-FAM ! \ package C2-MEM's stow-layout
-variable STR-FAM  -1 STR-FAM !          \ `str`, a string as one value
+0 constant STR-FAM          \ `str`, a string as one value: the first family
 \ Set while a file whose first line is split-str runs, and what it evaluates:
 \ rows a token is checked against read each str as ^u8 n.
 variable CHECKER-SPLIT-STR  0 CHECKER-SPLIT-STR !
@@ -4235,12 +4235,8 @@ EXPORT CHECKER-QUOT-FRESH:HELD
 \ The width vocabulary's absent answer: a row nothing can state a width for.
 -1 constant CELLS-NONE
 
-\ Cell slot of src's W cells, which share its argument tree: 0..W-2 payload,
-\ W-1 the tag. w is src's T-WIDTH, which the caller measures once for all W.
-: MK-HIDDEN ( n n n -- n ) {: src0:n slot:n w:n :}
-   src0 T-RES {: src:n :}
-   src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" EXIT-STATUS:INTERNAL die THEN
-   slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" EXIT-STATUS:INTERNAL die THEN
+\ Cell slot of param src's cells, which share its argument tree.
+: HIDDEN-OF ( n n -- n ) {: src:n slot:n :}
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup src PARAM>ARGC < WHILE
       src over PARAM>ARG PARAM-SCR+
@@ -4249,6 +4245,13 @@ EXPORT CHECKER-QUOT-FRESH:HELD
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
    slot 1 + t PAY cells PARAMHID + !
    t ;
+\ Slots 0..W-2 are payload, W-1 the tag. w is src's T-WIDTH, which the caller
+\ measures once for all W.
+: MK-HIDDEN ( n n n -- n ) {: src0:n slot:n w:n :}
+   src0 T-RES {: src:n :}
+   src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" EXIT-STATUS:INTERNAL die THEN
+   slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" EXIT-STATUS:INTERNAL die THEN
+   src slot HIDDEN-OF ;
 \ Renderer compaction folds a full hidden run back to this logical type;
 \ checking never consumes it. The wrapper belongs to the value.
 : MK-LOGICAL ( n -- n ) {: src0:n :}
@@ -6621,7 +6624,7 @@ variable RSR-EXP   variable RSR-ACT
 : STR-CELL? ( n -- bool ) {: t:n :}
    t TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
-   t PARAM>FAM STR-FAM @ = ;
+   t PARAM>FAM STR-FAM = ;
 \ A str cell as its field: slot 0, the base, as ^u8; slot 1, the length, as n.
 : STR-CELL-SPLIT ( n -- n ) {: t:n :}
    t HIDDEN-SLOT@ 0= IF CC-U8 MK-CON MK-PTR EXIT THEN
@@ -13403,7 +13406,7 @@ variable PRM-FIRST
 : PE-N ( -- n ) CC-N MK-CON ;
 : PE-R ( -- n ) CC-R MK-CON ;
 : PE-U8 ( -- n ) CC-U8 MK-CON ;
-: PE-STR ( -- n ) PARAM-SCR-N @ s" str" STR-FAM @ MK-PARAM ;
+: PE-STR ( -- n ) PARAM-SCR-N @ s" str" STR-FAM MK-PARAM ;
 : PE-PTR ( n -- n ) MK-PTR ;
 : PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
 
@@ -13470,6 +13473,11 @@ variable PE-EFF-ID
 
 : PE-OUT ( n -- )
    PE-DOUT @ PUSH-TERM PE-DOUT ! ;
+
+\ `str`'s two cells, slot 0 deepest, as PUSH-TERM lays out a `str` once the
+\ registry is in: the keyword rows are stated before it loads.
+: PE-STR-OUT ( -- )
+   PE-STR 0 HIDDEN-OF PE-OUT  PE-STR 1 HIDDEN-OF PE-OUT ;
 
 : PE-A ( -- n ) $61 VAR-OF ;
 : PE-B ( -- n ) $62 VAR-OF ;
@@ -13598,10 +13606,10 @@ PTABLE-START
 \ The prefix of a product's checker stores, baked into its DATA: the keywords'
 \ rows, which no engine record holds, and the symbols the axioms mark.
 : KEYWORD-ROWS ( -- )
-   S\" s\q" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
+   S\" s\q" PE-OPEN PE-STR-OUT PE-CLOSE
    S\" c\q" PE-OPEN PE-PTR-U8 PE-OUT PE-CLOSE
    S\" .\q" PE-OPEN PE-CLOSE
-   S\" s\\\q" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
+   S\" s\\\q" PE-OPEN PE-STR-OUT PE-CLOSE
    S\" c\\\q" PE-OPEN PE-PTR-U8 PE-OUT PE-CLOSE
    S\" .\\\q" PE-OPEN PE-CLOSE
    s" [']" PE-OPEN PE-N PE-OUT PE-CLOSE
@@ -13609,7 +13617,7 @@ PTABLE-START
    \ a body never reaches it (TRY-PRIMS), so a body `char` is a word or undefined.
    s" char" PE-OPEN PE-N PE-OUT PE-CLOSE PRIM-TOP-ONLY!
    s" [char]" PE-OPEN PE-N PE-OUT PE-CLOSE
-   s" [package]" PE-OPEN PE-PTR-U8 PE-OUT PE-N PE-OUT PE-CLOSE
+   s" [package]" PE-OPEN PE-STR-OUT PE-CLOSE
    s" constant" PE-OPEN PE-A PE-RAW! PE-IN PE-CLOSE
    s" >r" PE-SYM-OF drop
    s" r>" PE-SYM-OF drop
@@ -14305,22 +14313,11 @@ public
    data-base INB-CELL + @ REC-INB !  data-base TOKENS-CELL + @ REC-TOKENS ! ;
 
 private
-\ Whether the one token the engine read between the literal's closing quote
-\ and the token read last is `>str`.
-: STR-BETWEEN? ( -- bool )
-   LAST-TOKEN @ {: e:^ :}
-   TEXT-A @ TEXT-U @ + 1 +
-   BEGIN dup e < IF dup c@ 33 < ELSE 0 0= 0= THEN WHILE 1 + REPEAT {: p:^ :}
-   e p - 5 < IF 0 0= 0= EXIT THEN
-   p 4 s" >str" CORE-STR=CI  p 4 + c@ 33 <  and ;
-
 \ A literal's record holds while the engine reads the text it was recorded in
-\ and has read at most one token since, the loader it is passed to, or two
-\ when the first is `>str`, an identity at run time.
+\ and has read at most one token since, the loader it is passed to.
 : HELD? ( -- bool )
    data-base INB-CELL + @ REC-INB @ <> IF 0 0= 0= EXIT THEN
    data-base TOKENS-CELL + @ REC-TOKENS @ - {: k:n :}
-   k 2 = IF STR-BETWEEN? EXIT THEN
    k 0 =  k 1 =  or ;
 
 \ The source text of the last string literal when a u is exactly its copy and
@@ -22112,10 +22109,7 @@ variable SPAY-B       \ raw payload start, as a byte offset into the scan text
 variable SPAY-U       \ raw payload length
 }SCRATCH
 variable SPAY-S       \ was the token just judged an `s"` literal, plain or escaped?
-variable SPAY-ARMED   \ was the token before this one, or before its `>str`?
-\ The armed literal's `>str`: 0 none, 1 it is the token just judged, 2 the
-\ literal passed it; one more `>str` passes nothing.
-variable SPAY-STR
+variable SPAY-ARMED   \ was the token before this one?
 
 \ TI stood on the single delimiter after the opener when the skip started and
 \ stands one past the closing quote now, so the payload is what lies strictly

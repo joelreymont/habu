@@ -5,6 +5,6 @@ require test/policy/dep.f
 using VOCABULARY
 
 : LOAD ( -- ) 0 SCRIPT-ARGV$ included ;
-: RUN ( -- ) s" PDEP" >str ALLOW-PACKAGE RESTRICT [: LOAD ;] catch . ;
+: RUN ( -- ) s" PDEP" ALLOW-PACKAGE RESTRICT [: LOAD ;] catch . ;
 RUN
 ;using

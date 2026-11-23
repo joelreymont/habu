@@ -52,16 +52,16 @@ class Checks:
     def input(self, data):
         path = self.out / 'input.bin'
         path.write_bytes(data)
-        return SETUP + f'\ns" {path}" >str {len(data)} INPUT-READ\n'
+        return SETUP + f'\ns" {path}" {len(data)} INPUT-READ\n'
 
     def encode(self, data, sequence, size, kind, *, error=0):
         output = self.out / 'packet.bin'
         source = self.input(data) + f'''
 FRESH OUTPUT !
-s" preserved" OUTPUT @ VEC:APPEND
+s" preserved" str> OUTPUT @ VEC:APPEND
 : EXERCISE ( -- )
    [: INPUT @ VEC:SPAN SPAN:$ {sequence} >SEQUENCE {size} >PAYLOAD-SIZE {kind} >CHECK-KIND OUTPUT @ ENCODE ;] catch .
-   s" {output}" >str OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE ;
+   s" {output}" OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE ;
 EXERCISE
 '''
         assert self.run(source) == [str(error)]
@@ -73,7 +73,7 @@ EXERCISE
         source = self.input(data) + f'''
 : SAVE ( str sequence -- )
    SEQUENCE>N . {{: payload:str :}}
-   s" {output}" >str payload FS:WRITE-ALL ;
+   s" {output}" payload FS:WRITE-ALL ;
 
 
 : EXERCISE ( -- )

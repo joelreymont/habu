@@ -268,7 +268,7 @@ PATH-CAP BUFFER: FIFTH-BUF
 : LAIDS ( -- )
    s" laid" DIR$ FS:MAKE-DIR
    LAID-R$ s\" package FILE-OBJECTS-LAID-R public variable V ;package\n" FS:WRITE-ALL
-   LAID-S$ s\" package FILE-OBJECTS-LAID-S public : SAY ( -- ^u8 n ) s\" late\" ; ;package\n"
+   LAID-S$ s\" package FILE-OBJECTS-LAID-S public : SAY ( -- str ) s\" late\" ; ;package\n"
    FS:WRITE-ALL
    LAID-BUILD {: one:n :}
    LAID-R$ s\" package FILE-OBJECTS-LAID-R : WORDS ( -- ) s\" late\" type ; ;package\n"
@@ -711,14 +711,14 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 \ literal the quotation it stores in HOOK answers.
 : STORES-S! ( str str str str str -- )
    {: note:^ noteu:n alpha:^ alphau:n entry:^ entryu:n size:^ sizeu:n lit:^ litu:n :}
-   STORES-S$ s\" package FILE-OBJECTS-STORES-S public\n: NOTE ( -- ^u8 n ) s\" " FS:WRITE-ALL
+   STORES-S$ s\" package FILE-OBJECTS-STORES-S public\n: NOTE ( -- str ) s\" " FS:WRITE-ALL
    STORES-S$ note noteu FS:APPEND-FILE
-   STORES-S$ s\" \" ;\n: ALPHA ( -- ^u8 n ) s\" " FS:APPEND-FILE
+   STORES-S$ s\" \" ;\n: ALPHA ( -- str ) s\" " FS:APPEND-FILE
    STORES-S$ alpha alphau FS:APPEND-FILE
-   STORES-S$ s\" \" ;\n: BETA ( -- ^u8 n ) s\" beta\" ;\n2 PERSISTED-PTR-U8-TABLE T\n;package\nFILE-OBJECTS-STORES-S:"
+   STORES-S$ s\" \" ;\n: BETA ( -- str ) s\" beta\" ;\n2 PERSISTED-PTR-U8-TABLE T\n;package\nFILE-OBJECTS-STORES-S:"
    FS:APPEND-FILE
    STORES-S$ entry entryu FS:APPEND-FILE
-   STORES-S$ s\"  drop FILE-OBJECTS-STORES-S:T 0 ptr-field !\nFILE-OBJECTS-STORES-S:BETA drop FILE-OBJECTS-STORES-S:T 1 ptr-field !\n"
+   STORES-S$ s\"  str> drop FILE-OBJECTS-STORES-S:T 0 ptr-field !\nFILE-OBJECTS-STORES-S:BETA str> drop FILE-OBJECTS-STORES-S:T 1 ptr-field !\n"
    FS:APPEND-FILE
    STORES-S$ s" FILE-OBJECTS-STORES-S:T FILE-OBJECTS-STORES:TABLE !  " FS:APPEND-FILE
    STORES-S$ size sizeu FS:APPEND-FILE
@@ -862,10 +862,10 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
 : FULL-A! ( str str -- )
    {: d:^ du:n free:^ freeu:n :}
    d du FULL-A$ s\" package FILE-OBJECTS-FULL\ncreate NB 15000 allot\n: ENTRY ( n n -- ) {: k:n at:n :}\n" FS:WRITE-ALL
-   d du FULL-A$ s\"    15 0 do  s\" create F000000 \" drop i + c@  NB at 15 * + i + c!  loop\n" FS:APPEND-FILE
+   d du FULL-A$ s\"    15 0 do  s\" create F000000 \" str> drop i + c@  NB at 15 * + i + c!  loop\n" FS:APPEND-FILE
    d du FULL-A$ s\"    k  6 0 do  dup 10 mod 48 +  NB at 15 * 13 + i - + c!  10 /  loop drop ;\n" FS:APPEND-FILE
    d du FULL-A$ s\" : CHUNK ( n n -- ) {: first:n k:n :}\n   k 0 ?do  first i +  i ENTRY  loop\n" FS:APPEND-FILE
-   d du FULL-A$ s\"    NB k 15 * evaluate-closed ;\n: FILL ( n -- )\n   " FS:APPEND-FILE
+   d du FULL-A$ s\"    NB k 15 * >str evaluate-closed ;\n: FILL ( n -- )\n   " FS:APPEND-FILE
    d du FULL-A$ DICT-CAP FMT:INT$ FS:APPEND-FILE
    d du FULL-A$ s\"  ndict@ - swap - {: t:n :}\n   t 0 ?do  i  t i - 1000 min  CHUNK  1000 +loop ;\n" FS:APPEND-FILE
    d du FULL-A$ free freeu FS:APPEND-FILE

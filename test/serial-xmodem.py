@@ -119,16 +119,16 @@ class Checks:
         if actions is not None:
             call = actions
         code = SETUP + f'''
-s" {source}" >str {len(data)} INPUT-READ
+s" {source}" {len(data)} INPUT-READ
 FRESH OUTPUT !
 : RUN ( -- )
    AIO:START
-   s" {os.ttyname(slave)}" >str OPEN-HANDLE {{: handle:SERIAL:handle :}}
+   s" {os.ttyname(slave)}" OPEN-HANDLE {{: handle:SERIAL:handle :}}
    handle {wait if ack_wait is None else ack_wait} >MS {wait} >MS SESSION SERIAL-XMODEM:INIT
    {'handle CLOSE-HANDLE' if close_before else ''}
    s" READY" type cr
    {call} REPORT
-   s" {output}" >str OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL
+   s" {output}" OUTPUT @ VEC:SPAN SPAN:$ FS:WRITE-ALL
    SESSION SERIAL-XMODEM:DISPOSE {'handle CLOSE-HANDLE' if not close_before else ''}
    INPUT @ VEC:DELETE OUTPUT @ VEC:DELETE
    AIO:STOP ;
@@ -483,7 +483,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
 
 
 : READY ( SERIAL:handle -- )
-   s" ready" >str 1000 >MS SERIAL:WRITE MATCH SERIAL:io-result
+   s" ready" 1000 >MS SERIAL:WRITE MATCH SERIAL:io-result
       transferred OF BLEN>N 5 <> if -1 throw then ENDOF
       timeout OF -2 throw ENDOF closed OF -3 throw ENDOF failed OF SERIAL:ERRNO>N throw ENDOF
    ;MATCH ;
@@ -511,8 +511,8 @@ TASK:MIN-STACK TASK:TASK WORKER1
    1 DONE atomic-add drop ;
 
 
-: WORK0 ( -- ) s" {names[0]}" >str SESSION0 OUTPUT0 SOURCE0 160 WORK ;
-: WORK1 ( -- ) s" {names[1]}" >str SESSION1 OUTPUT1 SOURCE1 177 WORK ;
+: WORK0 ( -- ) s" {names[0]}" SESSION0 OUTPUT0 SOURCE0 160 WORK ;
+: WORK1 ( -- ) s" {names[1]}" SESSION1 OUTPUT1 SOURCE1 177 WORK ;
 
 
 : WAIT-DONE ( ^n -- ) {{: worker:^ :}}

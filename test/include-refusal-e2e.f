@@ -100,7 +100,7 @@ variable RC
    s" package INCLUDE-REFUSAL-WITH" PLINE
    s" public" PLINE
    S\" : RUN ( -- ) s\q " PROG+ rel relu AT PROG+
-   S\" \q >str [: ;] SOURCE-ROOT:WITH ;" PLINE
+   S\" \q [: ;] SOURCE-ROOT:WITH ;" PLINE
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-WITH:RUN" PLINE
    name nameu LOAD-CASE
@@ -122,8 +122,8 @@ variable RC
    s" SOURCE-ROOT:WITH inside a WITH callback names its own path" T-LABEL
    0 PROG-U !
    S\" : INNER ( -- ) s\q " PROG+ s" absent" AT PROG+
-   S\" \q >str [: ;] SOURCE-ROOT:WITH ;" PLINE
-   S\" s\q " PROG+ s" cases" AT PROG+ S\" \q >str ' INNER SOURCE-ROOT:WITH" PLINE
+   S\" \q [: ;] SOURCE-ROOT:WITH ;" PLINE
+   S\" s\q " PROG+ s" cases" AT PROG+ S\" \q ' INNER SOURCE-ROOT:WITH" PLINE
    s" with-nested" LOAD-CASE
    70 EXITS
    s" `SOURCE-ROOT:WITH` got `" s" absent" SB-NAMES SB$ ERR-HAS
@@ -151,9 +151,9 @@ variable RC
    0 PROG-U !
    s" create B 1024 allot" PLINE
    S\" : P ( -- ^u8 n ) s\q " PROG+ s" absent/x.f" AT PROG+
-   S\" \q {: a:^ u:n :} a B u BYTE-COPY B u ;" PLINE
+   S\" \q str> {: a:^ u:n :} a B u BYTE-COPY B u ;" PLINE
    s" : GO ( -- ) P >str required ;" PLINE
-   S\" s\q " PROG+ s" cases" AT PROG+ S\" \q >str ' GO SOURCE-ROOT:WITH" PLINE
+   S\" s\q " PROG+ s" cases" AT PROG+ S\" \q ' GO SOURCE-ROOT:WITH" PLINE
    s" with-required" LOAD-CASE
    70 EXITS
    s" cannot open `" s" absent/x.f" SB-NAMES SB$ ERR-HAS
@@ -166,9 +166,9 @@ variable RC
    0 PROG-U !
    s" : NOP ( -- ) ;" PLINE
    S\" : INNER ( -- ) s\q " PROG+ s" absent" AT PROG+
-   S\" \q >str ['] NOP ['] NOP SOURCE-ROOT:POLICY-WITH-ROOT ;" PLINE
+   S\" \q ['] NOP ['] NOP SOURCE-ROOT:POLICY-WITH-ROOT ;" PLINE
    S\" s\q " PROG+ s" cases" AT PROG+
-   S\" \q >str ' INNER ' NOP SOURCE-ROOT:POLICY-WITH-ROOT" PLINE
+   S\" \q ' INNER ' NOP SOURCE-ROOT:POLICY-WITH-ROOT" PLINE
    s" policy-nested" LOAD-CASE
    70 EXITS
    s" `SOURCE-ROOT:POLICY-WITH-ROOT` got `" s" absent" SB-NAMES SB$ ERR-HAS
@@ -199,7 +199,7 @@ variable RC
    s" public" PLINE
    s" : CANON ( -- )" PLINE
    s"    [: NONE ;] [: SOURCE-ROOT:READ-OS ;] SOURCE-INPUT:USE" PLINE
-   S\"    s\q /absent/x\q >str SOURCE-ROOT:CANONICAL drop drop ;" PLINE
+   S\"    s\q /absent/x\q SOURCE-ROOT:CANONICAL drop drop ;" PLINE
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-CANON:CANON" PLINE
    s" canon-none" LOAD-CASE
@@ -217,7 +217,7 @@ variable RC
    s" package INCLUDE-REFUSAL-READ" PLINE
    s" public" PLINE
    S\" : RUN ( -- ) s\q " PROG+ s" plain.f" AT PROG+
-   S\" \q >str SOURCE-ROOT:READ-OS drop ;" PLINE
+   S\" \q SOURCE-ROOT:READ-OS drop ;" PLINE
    s" ;package" PLINE
    s" INCLUDE-REFUSAL-READ:RUN" PLINE
    s" read-os-word" LOAD-CASE
@@ -257,7 +257,7 @@ $1A4 constant MODE-FILE
    s" cases/sp ace'q.f" AT s" 1 drop" FS:WRITE-ALL
    s" cases/sp ace'q.f" AT NO-ACCESS FS:CHMOD-MODE
    0 PROG-U !
-   S\" s\q " PROG+ s" cases/sp ace'q.f" AT PROG+ S\" \q >str included" PLINE
+   S\" s\q " PROG+ s" cases/sp ace'q.f" AT PROG+ S\" \q included" PLINE
    [: s" load-unreadable-quoted" LOAD-CASE ;]
    [: s" cases/sp ace'q.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
    74 EXITS
@@ -272,13 +272,13 @@ $1A4 constant MODE-FILE
 : REQUIRED-EMPTY ( -- )
    s" a required of an empty path is rejected at the request" T-LABEL
    0 PROG-U !
-   S\" s\q \q >str required" PLINE
+   S\" s\q \q required" PLINE
    s" required-empty" LOAD-CASE
    70 EXITS
    ERR$ s" error[" COUNT-SUB 1 T=
    s" error[E-PATH-RANGE]: `required` got an empty path" ERR-HAS
    SB-RESET s"  --> " SB-APPEND s" cases/required-empty.f" AT SB-APPEND
-   s" :1:11" SB-APPEND SB$ ERR-HAS
+   s" :1:6" SB-APPEND SB$ ERR-HAS
    s" = help: pass a path of 1 to " ERR-HAS ;
 
 4200 constant LONG-U
@@ -300,7 +300,7 @@ $1A4 constant MODE-FILE
    s" an exported required names the export as written" T-LABEL
    0 PROG-U !
    s" package INCLUDE-REFUSAL-RVX public EXPORT required ;package" PLINE
-   S\" s\q " PROG+ LONG+ S\" \q >str INCLUDE-REFUSAL-RVX:required" PLINE
+   S\" s\q " PROG+ LONG+ S\" \q INCLUDE-REFUSAL-RVX:required" PLINE
    s" required-export" LOAD-CASE
    70 EXITS
    ERR$ s" error[" COUNT-SUB 1 T=

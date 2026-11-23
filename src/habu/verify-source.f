@@ -24,8 +24,8 @@ split-str
 \ loader's path and a name before a call of a word a names: row marks. The
 \ slot holds the bytes the engine's literal makes: a plain literal's source
 \ span, an escaped one's decoded payload. It resets per NEXT-SCAN call, so at a
-\ token it holds the literal before it in the same statement, if any, or before
-\ the engine's `>str` before it. The literal's kind is kept too, 0 when there
+\ token it holds the literal before it in the same statement, if any. The
+\ literal's kind is kept too, 0 when there
 \ is none: a composition rejects a string loader by it. So is where its text
 \ between the quotes starts and ends in the file, as written, escapes and all,
 \ the end 0 when there is none: the span a string loader's load reports, and
@@ -46,7 +46,7 @@ split-str
 \ byte, or one the resolver rejects. A declaration or `undefine` of a loader
 \ word's name rejects nothing, as the walk rejects nothing for it, but a later
 \ loader form with that word the walk reads - `include` or `require`, or a word
-\ right after a path literal or its `>str` - at top level or in a body, is
+\ right after a path literal - at top level or in a body, is
 \ rejected at the word as the walk rejects it.
 \
 \ A composition loads no file a definition names: a word's run is no part of
@@ -227,11 +227,6 @@ variable STR-LAST-U
 variable STR-LAST-KIND
 variable STR-LAST-AT
 variable STR-LAST-END
-0 constant STR-NONE
-1 constant STR-LIT
-2 constant STR-AT
-3 constant STR-PAST
-variable STR-STATE
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
 PTR-VARIABLE TOP-REFUSED
@@ -503,7 +498,7 @@ variable FLAG-N
 
 : STR-LAST-RESET ( -- )
    NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND !
-   0 STR-LAST-AT !  0 STR-LAST-END !  STR-NONE STR-STATE ! ;
+   0 STR-LAST-AT !  0 STR-LAST-END ! ;
 
 \ Record the bytes A U a literal of the given kind makes and its text as
 \ written, the RAWU bytes at RAW in the bytes being scanned.
@@ -513,8 +508,7 @@ variable FLAG-N
    u STR-LAST-U !
    kind STR-LAST-KIND !
    raw SOURCE@ - STR-LAST-AT !
-   STR-LAST-AT @ rawu + STR-LAST-END !
-   STR-LIT STR-STATE ! ;
+   STR-LAST-AT @ rawu + STR-LAST-END ! ;
 
 \ The kinds of literal discovery tells apart before a loader: an `s"` or `S"`
 \ one, plain or escaped, is a path; a `c"`, `C"` or `."` one is no string a
@@ -887,17 +881,11 @@ public
 : RETIRE-REJECT ( str -- )
    s" loader word used after the file retired it"
    [: s" load files before `undefine` retires " REJECTION:EMIT-STR  TICKED ;] FORM-REJECT ;
-\ OWN: the file declared or retired a `>str`, which spends the literal, so the
-\ help offers only `require`.
-: DYNAMIC-REJECT ( str bool -- ) {: t:^ tu:n own:bool :}
-   t tu s" dynamic (non-literal) loader path"
+: DYNAMIC-REJECT ( str -- )
+   s" dynamic (non-literal) loader path"
    [: 2drop
       s" write the path as a literal: `require path/file.f`" REJECTION:EMIT-STR
-      own 0= IF
-         S\"  or `s\" path/file.f\" " REJECTION:EMIT-STR
-         CHECKER-SPLIT-STR @ 0= IF s" >str " REJECTION:EMIT-STR THEN
-         s" required`" REJECTION:EMIT-STR
-      THEN ;]
+      S\"  or `s\" path/file.f\" required`" REJECTION:EMIT-STR ;]
    FORM-REJECT ;
 : OPENER-REJECT ( str -- )
    s" unsupported string opener before a loader word"
@@ -924,15 +912,9 @@ private
 variable SHADOWED
 variable RETIRED
 
-\ SHADOWED's bit for `>str`, set once the file declares or retires one.
-$20 constant STR-BIT
-
-: STR-GONE ( str -- )
-   s" >str" STR=CI IF STR-BIT SHADOWED @ or SHADOWED ! THEN ;
-
 \ The loader word u bytes long at TOKEN-BYTE has no literal path.
 : DYNAMIC-STOP ( n -- ) {: u:n :}
-   SOURCE@ TOKEN-BYTE @ + u  STR-BIT SHADOWED @ and 0<>  DYNAMIC-REJECT
+   SOURCE@ TOKEN-BYTE @ + u DYNAMIC-REJECT
    E-DISC-DYNAMIC DISCOVERY-STOP ;
 
 \ The symbol of the newest definition, which an `immediate` marks: 0 from its
@@ -965,10 +947,9 @@ variable NEWEST-SYM
 
 \ The kind (LIT-KIND) of the literal the body token before closed, 0 for none.
 variable BODY-LIT-KIND
-variable BODY-LIT-PAST                        \ that literal passed its `>str`
 
 : BODY-PREV-CLEAR ( -- )
-   0 BODY-LIT-KIND !  0 BODY-LIT-PAST ! ;
+   0 BODY-LIT-KIND ! ;
 
 \ Whether the scan models the load of a sealed engine: this one, composing. A stage source
 \ certified without composing keeps its packages open until its capture seals them.
@@ -1067,13 +1048,6 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 : CORE-OP? ( str -- bool )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
 
-\ The engine's `>str` the file has not declared or retired (SHADOWED): past
-\ either, the walk spends the literal before it.
-: ENGINE-STR? ( str -- bool ) {: a:^ u:n :}
-   a u s" >str" STR=CI 0= IF false EXIT THEN
-   STR-BIT SHADOWED @ and 0<> IF false EXIT THEN
-   a u CORE-OP? ;
-
 \ The answer F of the engine's predicate the token a u spells, and whether
 \ the token binds that word rather than a program's.
 : ENGINE-GUARD ( str bool -- bool bool ) {: a:^ u:n f:bool :}
@@ -1107,9 +1081,6 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 
 : BODY-TOKEN-SEEN ( str -- ) {: a:^ u:n :}
    a u BODY-USE
-   a u ENGINE-STR?  BODY-LIT-KIND @ 0<> and  BODY-LIT-PAST @ 0= and IF
-      -1 BODY-LIT-PAST ! EXIT
-   THEN
    BODY-PREV-CLEAR ;
 
 \ The rest starts with the opener's one delimiter, which the blank BODY-APPEND
@@ -4071,10 +4042,10 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 : WALK-NAMES ( str -- ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BODY-OPENER?
    a u SOURCE-SYNTAX:DEFINER-KEYWORD? or IF
-      NEXT-NAME 2dup LOADER-BIT SHADOWED @ or SHADOWED !  STR-GONE EXIT
+      NEXT-NAME LOADER-BIT SHADOWED @ or SHADOWED ! EXIT
    THEN
    a u s" undefine" STR=CI IF
-      NEXT-NAME 2dup LOADER-BIT RETIRED @ or RETIRED !  STR-GONE
+      NEXT-NAME LOADER-BIT RETIRED @ or RETIRED !
    THEN ;
 
 \ The byte past the comment or string the walk reads the token a u as opening,
@@ -4137,22 +4108,10 @@ variable ARM-RESUME
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
    2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
    2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
-   \ A literal's record lasts the token after it, or after its `>str`.
-   STR-STATE @ STR-AT <> IF NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL! THEN
+   \ A literal's record lasts the token after it.
+   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!
    TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
    TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP ;     \ after any file this token loaded
-
-\ STR-STATE places the token just read: STR-NONE, the slot empty; STR-LIT,
-\ right after the slot's literal; STR-AT, the engine's `>str` right after it;
-\ STR-PAST, after that `>str`. Only a read at STR-AT keeps the slot: `>str` is
-\ an identity at run time, so its literal reaches the token after it.
-: NEXT-TOP ( -- str )
-   STR-STATE @ STR-AT = IF
-      STR-PAST STR-STATE !  NEXT
-   ELSE NEXT-SCAN THEN
-   2dup ENGINE-STR?  STR-STATE @ STR-LIT = and IF
-      STR-AT STR-STATE !
-   THEN ;
 
 \ A record no source places is placed at the top-level token.
 : VERIFY-SOURCE ( -- )
@@ -4160,10 +4119,9 @@ variable ARM-RESUME
    SOURCE@ SOURCE-U @ SPLIT-STR-FILE? CHECKER-SPLIT-STR !
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    0 SHADOWED !  0 RETIRED !  0 NEWEST-SYM !
-   STR-NONE STR-STATE !                         \ a tick's remainder can end a file at `>str`
    TOP-CLOSE
    BEGIN
-      NEXT-TOP dup 0 > TICK-REMAINDER @ 0= and WHILE
+      NEXT-SCAN dup 0 > TICK-REMAINDER @ 0= and WHILE
       TOP-DUE
       2dup TOP-CUR-U ! TOP-CUR-A !
       [: TOP-CUR-A @ TOP-CUR-U @ SCAN-TOP ;] REJECTION:READING

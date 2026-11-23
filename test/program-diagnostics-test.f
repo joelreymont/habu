@@ -160,14 +160,14 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" throw-zero" {: label:^ labelu:n :}
    GE-HB-RESET  GE-SRC-RESET
    s" : Z ( n -- ) throw ;" GE-SRC-LINE
-   S\" s\" \" nip Z" GE-SRC-LINE
+   S\" s\" \" str> nip Z" GE-SRC-LINE
    S\" s\" after\" type cr" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
    67 label labelu GE-EXPECT-RC
    s" " label labelu GE-EXPECT-OUT
    GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
    STARTS-WITH? 0= if label labelu GE-FAIL then
-   S\" \n --> <input>:2:10\n" label labelu GE-EXPECT-ERR-HAS
+   S\" \n --> <input>:2:15\n" label labelu GE-EXPECT-ERR-HAS
    s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
    label labelu GE-EXPECT-ERR-HAS ;
 
@@ -177,7 +177,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CAUGHT-ZERO-STOPS ( -- )
    s" caught-zero" {: label:^ labelu:n :}
    GE-HB-RESET  GE-SRC-RESET
-   S\" : K ( -- ) s\" E-KEPT\" >str REJECTION:OPEN  REJECTION:SAVE  1000 REJECTION:PASS ;" GE-SRC-LINE
+   S\" : K ( -- ) s\" E-KEPT\" REJECTION:OPEN  REJECTION:SAVE  1000 REJECTION:PASS ;" GE-SRC-LINE
    s" : ON ( -- ) [: K ;] catch drop  [: ;] catch {: rc:n :} rc throw ;" GE-SRC-LINE
    s" ON" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
@@ -192,7 +192,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" throw-after-eval" {: label:^ labelu:n :}
    GE-HB-RESET  GE-SRC-RESET
    s" : Z ( n -- ) throw ;" GE-SRC-LINE
-   S\" : G ( -- ) s\" 1 drop\" evaluate-closed  s\" \" nip Z ;" GE-SRC-LINE
+   S\" : G ( -- ) s\" 1 drop\" evaluate-closed  s\" \" str> nip Z ;" GE-SRC-LINE
    s" G" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
    67 label labelu GE-EXPECT-RC
@@ -285,7 +285,7 @@ variable BIG-U
    s" require src/lib/fs.f" GE-SRC-LINE
    s" 4096 BUFFER: PD-STATUS" GE-SRC-LINE
    s" /proc/self/status" GE-SRC-S"
-   s"  >str PD-STATUS 4096 FS:READ-ALL PD-STATUS swap type" GE-SRC-LINE
+   s"  PD-STATUS 4096 FS:READ-ALL PD-STATUS swap >str type" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    VM-PEAK {: kb:n :}
@@ -317,7 +317,7 @@ variable BIG-U
 
 : COVER-ROWS ( -- )
    s" test/program-diagnostic-cover.f" {: path:^ pathu:n :}
-   path pathu s" program-diagnostic-cover.f:5:40" DIAGNOSTIC
+   path pathu s" program-diagnostic-cover.f:5:45" DIAGNOSTIC
    S\" error[E-MISMATCH]: `!` takes str ^str; the stack holds ^u8 n ^str\n" path pathu GE-EXPECT-ERR-HAS
    S\" = expected: str ^str\n  = found: ^u8 n ^str\n" path pathu GE-EXPECT-ERR-HAS
    S\" error[E-MISMATCH]: `PDC-LEN` takes str; the stack holds ^u8 n\n" path pathu GE-EXPECT-ERR-HAS

@@ -43,10 +43,10 @@ package NATIVE-LEXICAL-RECOVERY
 
 : RECOVERY-CASE ( -- )
    GE-HB-RESET  GE-SRC-RESET
-   S\" TRUSTED: LEXBAD ( -- ) s\" ['] NEVER-BOUND\" evaluate ;" GE-SRC-LINE
-   S\" : LEXREST ( -- ^u8 n ) s\\\" s\\\" ; text\\\" 2drop 7\" ;" GE-SRC-LINE
+   S\" TRUSTED: LEXBAD ( -- ) s\" ['] NEVER-BOUND\" str> evaluate ;" GE-SRC-LINE
+   S\" : LEXREST ( -- str ) s\\\" s\\\" ; text\\\" drop 7\" ;" GE-SRC-LINE
    s" : MAKE-LEXWORD ( -- )" GE-SRC-LINE
-   S\"    s\" LEXWORD\" >str EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word" GE-SRC-LINE
+   S\"    s\" LEXWORD\" EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word" GE-SRC-LINE
    s"    ['] LEXBAD catch .  LEXREST evaluate-closed  postpone ; ;" GE-SRC-LINE
    s" MAKE-LEXWORD" GE-SRC-LINE
    s" LEXWORD ." GE-SRC-LINE

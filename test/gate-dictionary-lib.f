@@ -135,7 +135,7 @@ variable LABEL-U
 : WRITE-MAIN-INCLUDED ( -- )
    SB-RESET
    INC-API$ SB-S"
-   s"  >str included" SB-LINE
+   s"  included" SB-LINE
    s" APP:GET ." SB-LINE
    INC-MAIN$ SB$ FS:WRITE-ALL ;
 
@@ -857,7 +857,7 @@ variable LABEL-U
    s" ;package" GE-SRC-LINE
    s" undefine GD-QUNDEF:TARGET" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  GD-QUNDEF:TARGET" GE-SRC+ GE-DQ GE-SRC-C
-   s"  >str XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
+   s"  XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
    s" package GD-QUNDEF" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : TARGET ( -- n ) 42 ;" GE-SRC-LINE
@@ -867,9 +867,9 @@ variable LABEL-U
    s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ evaluate-closed ;" GE-SRC-LINE
    s" : GD-UQ-CATCH ( str -- n ) str> GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
-   s"  >str GD-UQ-CATCH ." GE-SRC-LINE
+   s"  GD-UQ-CATCH ." GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
-   s"  >str XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
+   s"  XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
    s" : GD-QROLL-CALL ( len len -- pcap:captured ) PCAP-CAPTURED:MAKE ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  checker-kept" GE-SRC+ GE-DQ GE-SRC-C
    s"  type cr" GE-SRC-LINE
@@ -1320,7 +1320,7 @@ variable LABEL-U
    s" ok" SRC-CQ s"  count type cr" GE-SRC-LINE
    s" : DQ ( -- ) " GE-SRC+ s" bye" SRC-DOTQ s"  ;" GE-SRC-LINE
    s" DQ cr" GE-SRC-LINE
-   s" : CQ ( -- ^u8 n ) " GE-SRC+ s" yo" SRC-CQ s"  count ;" GE-SRC-LINE
+   s" : CQ ( -- str ) " GE-SRC+ s" yo" SRC-CQ s"  count ;" GE-SRC-LINE
    s" CQ type cr" GE-SRC-LINE ;
 
 : PARSING-RUNTIME ( -- )
@@ -1333,7 +1333,7 @@ variable LABEL-U
 
 : PARSING-CHECK-BODY ( -- )
    s" : DQ ( -- ) " GE-SRC+ s" ok" SRC-DOTQ s"  ;" GE-SRC-LINE
-   s" : CQ ( -- ^u8 n ) " GE-SRC+ s" ok" SRC-CQ s"  count ;" GE-SRC-LINE ;
+   s" : CQ ( -- str ) " GE-SRC+ s" ok" SRC-CQ s"  count ;" GE-SRC-LINE ;
 
 : CHECK-POSITIVE-BATCH ( -- )
    GE-HB-RESET

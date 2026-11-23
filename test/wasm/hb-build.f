@@ -131,7 +131,7 @@ variable TEXT-U
    SB-RESET
    n FMT:SB-U  s"  BUFFER: B : MAIN ( -- ) " SB-APPEND
    n FMT:SB-U  s"  0 do 120 B i + c! loop  2 B " SB-APPEND
-   n FMT:SB-U  s"  write drop  1 B 1 write drop ;" SB-APPEND
+   n FMT:SB-U  s"  >str write drop  1 B 1 >str write drop ;" SB-APPEND
    SB$ s" err.f" SOURCE!
    s" a write to descriptor 2 grows ERR, which receives every byte, and one to 1 goes to OUT" T-LABEL
    s" err.wasm" BUILD 0 T=
@@ -139,7 +139,7 @@ variable TEXT-U
    WASM-HARNESS:ERR$ nip n T=
    WASM-HARNESS:ERR$ ALL-X? TTRUE
    WASM-HARNESS:OUT$ s" x" T$=
-   S\" : MAIN ( -- ) s\" x\" drop 1 32 lshift 1+ 1 die ;" s" huge.f" SOURCE!
+   S\" : MAIN ( -- ) s\" x\" str> drop 1 32 lshift 1+ >str 1 die ;" s" huge.f" SOURCE!
    s" a die ERR cannot grow for traps and records STREAM-GROW at ERR's end past it" T-LABEL
    s" huge.wasm" BUILD 0 T=
    RAN 2 T=
@@ -297,9 +297,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    SB-RESET
    S\" require src/core/sha256.f\nSHA256-CTX-BYTES BUFFER: CTX\n32 BUFFER: DG\n" SB-APPEND
    S\" 64 BUFFER: HX\n200 BUFFER: AS\n" SB-APPEND
-   S\" : SHOW ( str -- ) {: s:str :} CTX s DG SHA256-IN  DG HX SHA256>HEX  HX 64 type cr ;\n" SB-APPEND
-   S\" : MAIN ( -- ) s\" abc\" >str SHOW\n" SB-APPEND
-   S\"    s\" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\" >str SHOW\n" SB-APPEND
+   S\" : SHOW ( str -- ) {: s:str :} CTX s DG SHA256-IN  DG HX SHA256>HEX  HX 64 >str type cr ;\n" SB-APPEND
+   S\" : MAIN ( -- ) s\" abc\" SHOW\n" SB-APPEND
+   S\"    s\" abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\" SHOW\n" SB-APPEND
    S\"    200 0 do 97 AS i + c! loop  AS 200 >str SHOW ;\n" SB-APPEND
    SB$ s" sha.f" SOURCE! ;
 

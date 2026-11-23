@@ -91,24 +91,24 @@ variable SIBLINGS
    s" require src/lib/fmt.f" P+
    s" : SHOW ( n -- )" P+
    s"    FS:ERRNO {: code:n e:n :}" P+
-   s"    code FMT:INT$ str> type cr" P+
-   s"    e FMT:INT$ str> type cr ;" P+
+   s"    code FMT:INT$ type cr" P+
+   s"    e FMT:INT$ type cr ;" P+
    s" : GO ( -- )" P+
-   S\"    s\" ATOMIC_TARGET\" >str GETENV {: p :}" P+
-   S\"    [: p s\" new bytes\" >str FS:ATOMIC-WRITE-FILE ;]" P+
+   S\"    s\" ATOMIC_TARGET\" GETENV {: p :}" P+
+   S\"    [: p s\" new bytes\" FS:ATOMIC-WRITE-FILE ;]" P+
    s"    catch SHOW" P+
-   S\"    s\" ATOMIC_FREE\" >str GETENV {: f :}" P+
-   S\"    [: f s\" new bytes\" >str" P+
+   S\"    s\" ATOMIC_FREE\" GETENV {: f :}" P+
+   S\"    [: f s\" new bytes\"" P+
    s"       FS:ATOMIC-CREATE-PRIVATE drop ;]" P+
    s"    catch SHOW" P+
-   S\"    s\" ATOMIC_STAGED\" >str GETENV {: sp :}" P+
-   S\"    [: sp [: s\" staged bytes\" >str FS:WRITE-ALL ;]" P+
+   S\"    s\" ATOMIC_STAGED\" GETENV {: sp :}" P+
+   S\"    [: sp [: s\" staged bytes\" FS:WRITE-ALL ;]" P+
    s"    FS:REPLACE-STAGED ;] catch SHOW" P+
-   S\"    s\" ATOMIC_CACHED\" >str GETENV {: cp :}" P+
-   S\"    [: cp [: s\" cached bytes\" >str FS:WRITE-ALL ;]" P+
+   S\"    s\" ATOMIC_CACHED\" GETENV {: cp :}" P+
+   S\"    [: cp [: s\" cached bytes\" FS:WRITE-ALL ;]" P+
    s"    FS:REPLACE-CACHED ;] catch SHOW" P+
-   S\"    s\" ATOMIC_MANY\" >str GETENV {: m :}" P+
-   S\"    [: m 3 [: FMT:INT$ s\" many bytes\" >str ;]" P+
+   S\"    s\" ATOMIC_MANY\" GETENV {: m :}" P+
+   S\"    [: m 3 [: FMT:INT$ s\" many bytes\" ;]" P+
    s"    FS:ATOMIC-CREATE-FILES ;] catch SHOW ;" P+
    s" GO" P+ ;
 

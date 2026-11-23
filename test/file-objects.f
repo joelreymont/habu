@@ -1406,7 +1406,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ FLAG is true when DEF makes one.
 : WRITE-G ( bool -- ) {: make:bool :}
    s" package FILE-OBJECTS-SAME-G public : DEF ( -- ) " SRC+
-   make if s" create 0 , " else s" parse-name drop drop " then SRC+
+   make if s" create 0 , " else s" parse-name drop " then SRC+
    s" ; " SRC+  make if s" true" else s" false" then SRC+
    s\"  constant FLAG ;package\n" SRC+  s" g.f" NEST-WRITE ;
 
@@ -1461,7 +1461,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WRITE-RETIRE ( -- )
    L$ s" retire" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    s\" : FILE-OBJECTS-RETIRE-W ( -- n ) 1 ;\npackage FILE-OBJECTS-RETIRE public\n" SRC+
-   s\" : FOUND ( -- n ) s\" FILE-OBJECTS-RETIRE-W\" >str get-current search-wl 0= if 0 else 1 then ;\n" SRC+
+   s\" : FOUND ( -- n ) s\" FILE-OBJECTS-RETIRE-W\" get-current search-wl 0= if 0 else 1 then ;\n" SRC+
    s\" ;package\n" SRC+  s" h.f" NEST-WRITE
    true WRITE-RETIRE-S
    s\" FILE-OBJECTS-RETIRE:FOUND constant FILE-OBJECTS-RETIRE-K\n" SRC+  s" r.f" NEST-WRITE
@@ -1571,7 +1571,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" h.f" REQUIRE+  s" s.f" REQUIRE+  s" r.f" REQUIRE+
    s\" : MAIN ( -- ) FILE-OBJECTS-PROBE-K . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
 
-: WL-PROBE$ ( -- str ) s" >str get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = if 0 else 1 then" ;
+: WL-PROBE$ ( -- str ) s" get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR = if 0 else 1 then" ;
 
 \ Guards a lookup of a name no source spells: P2, after s.f stops retiring the engine's CORE-STR=CI, and
 \ Q2, after s.f drops the word h.f probes, must compile r.f again and print what a cold build prints.
@@ -1600,10 +1600,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" prog-l" s\" 1\n\n" s" the program prints K" NEST-RUN ;
 
 : SEARCH-WL-CASE ( CMD:command -- CMD:command )
-   s" probe-swl" s" >str get-current search-wl 0= if 0 else 1 then" s" probe-swl2" LOOKUP-RUN ;
+   s" probe-swl" s" get-current search-wl 0= if 0 else 1 then" s" probe-swl2" LOOKUP-RUN ;
 
 : SCOPE-FIND-CASE ( CMD:command -- CMD:command )
-   s" probe-find" s" >str scope-find drop drop drop NULL-PTR = if 0 else 1 then" s" probe-find2"
+   s" probe-find" s" scope-find drop drop drop NULL-PTR = if 0 else 1 then" s" probe-find2"
    LOOKUP-RUN ;
 
 \ The public-lookup sequence's s.f: package FILE-OBJECTS-QS with a private HELPER of value n.
@@ -1663,8 +1663,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ nowhere, w.f defines a word of that name, one.f requires h.f, and two.f w.f then h.f.
 : WRITE-DERIVED ( -- )
    L$ s" derived" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
-   s\" : FILE-OBJECTS-DV ( str -- )\n   SB-RESET SB-APPEND s\" -W\" >str SB-APPEND\n" SRC+
-   s\"    SB$ EFFECT:EMPTY define-word  postpone ; ;\ns\" FILE-OBJECTS-DX\" >str FILE-OBJECTS-DV\n" SRC+
+   s\" : FILE-OBJECTS-DV ( str -- )\n   SB-RESET SB-APPEND s\" -W\" SB-APPEND\n" SRC+
+   s\"    SB$ EFFECT:EMPTY define-word  postpone ; ;\ns\" FILE-OBJECTS-DX\" FILE-OBJECTS-DV\n" SRC+
    s" h.f" NEST-WRITE
    s\" : FILE-OBJECTS-DX-W ( -- ) ;\n" SRC+  s" w.f" NEST-WRITE
    s" h.f" REQUIRE+  s\" : MAIN ( -- ) ;\n" SRC+  s" one.f" NEST-WRITE
@@ -1675,7 +1675,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : DERIVED-REJECTED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-dr" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-DX-W`" CONTAINS? {: coded:bool :}
-   CMD:ERR$ S\" /h.f:4:26\n" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ S\" /h.f:4:21\n" CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build rejects the derived name" LABEL  named TTRUE
    rc ;
@@ -1698,7 +1698,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" 1" WRITE-DATA
    s\" require src/lib/fs.f\npackage FILE-OBJECTS-READ\n1 BUFFER: B\ns\" " SRC+
    s" d.txt" NEST-PATH$ SRC+
-   s\" \" >str B 1 FS:READ-ALL drop\npublic B c@ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s\" \" B 1 FS:READ-ALL drop\npublic B c@ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-READ:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ Guards a file a load reads: RD2, after d.txt's byte changes and its size does not, prints a cold
@@ -1722,7 +1722,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" 1" SRC+  s" e/a.txt" NEST-WRITE
    s\" require src/lib/fs-list.f\npackage FILE-OBJECTS-LIST\nvariable N\n: COUNTED ( -- ) s\" " SRC+
    s" e" NEST-PATH$ SRC+
-   s\" \" >str [: str> 2drop 1 N +! ;] FS-LIST:EACH ;\nCOUNTED public N @ constant K ;package\n" SRC+
+   s\" \" [: str> 2drop 1 N +! ;] FS-LIST:EACH ;\nCOUNTED public N @ constant K ;package\n" SRC+
    s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-LIST:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
@@ -1747,7 +1747,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" missing" s" l" NEST-PATH$ FS:MAKE-SYMLINK
    s\" require src/lib/fs.f\npackage FILE-OBJECTS-LINK\npublic s\" " SRC+
    s" l" NEST-PATH$ SRC+
-   s\" \" >str FS:SYMLINK? bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s\" \" FS:SYMLINK? bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-LINK:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ Guards a dangling symlink a load asks about: SL2, with nothing changed, links every file; SL3, after
@@ -1775,7 +1775,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" require src/lib/fs.f\nrequire src/lib/task.f\npackage FILE-OBJECTS-TASK\n1 BUFFER: B\n" SRC+
    s\" TASK:MIN-STACK TASK:TASK READER\n: READ-D ( -- ) s\" " SRC+
    s" d.txt" NEST-PATH$ SRC+
-   s\" \" >str B 1 FS:READ-ALL drop 0 TASK:RETURN ;\n" SRC+
+   s\" \" B 1 FS:READ-ALL drop 0 TASK:RETURN ;\n" SRC+
    s\" : RUN-READER ( -- ) ['] READ-D READER TASK:ACTIVATE\n" SRC+
    s\"    READER TASK:JOIN MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH ;\n" SRC+
    s\" RUN-READER public B c@ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
@@ -1799,8 +1799,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" 22" SRC+  s" b.txt" NEST-WRITE
    s" a.txt" s" l" NEST-PATH$ FS:MAKE-SYMLINK
    s\" require src/lib/fs-identity.f\npackage FILE-OBJECTS-SAMEFILE\npublic s\" " SRC+
-   s" a.txt" NEST-PATH$ SRC+  s\" \" >str s\" " SRC+  s" l" NEST-PATH$ SRC+
-   s\" \" >str FS:SAMEFILE bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s" a.txt" NEST-PATH$ SRC+  s\" \" s\" " SRC+  s" l" NEST-PATH$ SRC+
+   s\" \" FS:SAMEFILE bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-SAMEFILE:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ Guards a symlink a load compares through: SF2, after l is re-pointed to b.txt, prints a cold build's
@@ -1826,7 +1826,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" : READ-D ( -- n ) s\" " SRC+
    NEST-DIR NEST-DIR-U @ FS:>PATHZ NEST-PATH PATH-CAP realpath {: real:n :}
    NEST-PATH real SRC+
-   s\" \" >str FS:OPEN-DIR {: d:fd :} d s\" d.txt\" >str B FS:READ-FILE-AT d FS:CLOSE-DIR ;\n" SRC+
+   s\" \" FS:OPEN-DIR {: d:fd :} d s\" d.txt\" B FS:READ-FILE-AT d FS:CLOSE-DIR ;\n" SRC+
    s\" public READ-D constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-ANCHORED:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
@@ -1848,7 +1848,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" 1" WRITE-DATA
    s\" require src/lib/process-command.f\npackage FILE-OBJECTS-SPAWN\nvariable N\n" SRC+
    s\" : CAT ( CMD:command -- CMD:command ) s\" " SRC+  s" d.txt" NEST-PATH$ SRC+
-   s\" \" >str CMD:ARG+ s\" /bin/cat\" >str PROCESS:WAIT-FOREVER 1 CMD:RUN CMD:OUT$ str> drop c@ N ! ;\n" SRC+
+   s\" \" CMD:ARG+ s\" /bin/cat\" PROCESS:WAIT-FOREVER 1 CMD:RUN CMD:OUT$ str> drop c@ N ! ;\n" SRC+
    s\" : RUN-CAT ( -- ) [: CAT ;] CMD:WITH-COMMAND ;\nRUN-CAT public N @ constant K ;package\n" SRC+
    s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-SPAWN:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
@@ -1871,7 +1871,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" z.zip" NEST-WRITE
    s\" require src/lib/zip.f\npackage FILE-OBJECTS-ZIP\n: COUNTED ( -- n ) s\" " SRC+
    s" z.zip" NEST-PATH$ SRC+
-   s\" \" >str ZIP:OPEN {: z:ZIP:archive :} z ZIP:COUNT z ZIP:CLOSE ;\n" SRC+
+   s\" \" ZIP:OPEN {: z:ZIP:archive :} z ZIP:COUNT z ZIP:CLOSE ;\n" SRC+
    s\" public COUNTED constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-ZIP:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
@@ -1894,7 +1894,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" require src/lib/jsonl.f\npackage FILE-OBJECTS-JSONL\n" SRC+
    s\" TYPED-VARIABLE C JSONL:cursor\nvariable N\n: COUNTED ( -- ) C s\" " SRC+
    s" d.jsonl" NEST-PATH$ SRC+
-   s\" \" >str 64 JSONL:OPEN begin C JSONL:NEXT while 1 N +! repeat ;\n" SRC+
+   s\" \" 64 JSONL:OPEN begin C JSONL:NEXT while 1 N +! repeat ;\n" SRC+
    s\" COUNTED public N @ constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-JSONL:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
@@ -1917,7 +1917,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    L$ s" kind" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    s\" require src/lib/fs.f\npackage FILE-OBJECTS-KIND\npublic s\" " SRC+
    s" k" NEST-PATH$ SRC+
-   s\" \" >str FS:DIR? bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s\" \" FS:DIR? bool>n constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-KIND:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ Guards a file's kind a load asks: KD2, after a missing k becomes a directory, and KD3, after that
@@ -2180,7 +2180,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : WRITE-DEVICE ( -- )
    L$ s" device" NEST-DIR FS:JOIN-PATH NEST-DIR-U !  NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    s\" require src/lib/fs.f\npackage FILE-OBJECTS-DEVICE\n1 BUFFER: B\n" SRC+
-   s\" public s\" /dev/null\" >str B 1 FS:READ-ALL constant K ;package\n" SRC+  s" f.f" NEST-WRITE
+   s\" public s\" /dev/null\" B 1 FS:READ-ALL constant K ;package\n" SRC+  s" f.f" NEST-WRITE
    s" f.f" REQUIRE+  s\" : MAIN ( -- ) FILE-OBJECTS-DEVICE:K . ;\n" SRC+  s" main.f" NEST-WRITE ;
 
 \ Guards a read of a file no stamp covers: DV2, with nothing changed, still compiles f.f.
@@ -2398,7 +2398,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ flag is true, else 41.
 : WRITE-EAT ( bool -- )
    {: warm:bool :}
-   s" lib.f" REQUIRE+  s\" s\" BOX-EAT\" >str PL:MAKE-EAT\n" SRC+
+   s" lib.f" REQUIRE+  s\" s\" BOX-EAT\" PL:MAKE-EAT\n" SRC+
    s" : MAIN ( -- ) " SRC+  warm if s" 42" SRC+ else s" 41" SRC+ then
    s\"  . cr ;\n" SRC+  s" main.f" NEST-WRITE ;
 
@@ -2409,7 +2409,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    NEST-DIR NEST-DIR-U @ FS:MAKE-DIR
    s\" package PL\npublic\nSTRUCTURE plbox FIELD v n ;STRUCTURE\n" SRC+
    s\" : MAKE-EAT ( str -- )\n" SRC+
-   s\"    s\" PL:plbox\" >str EFFECT:NAMED EFFECT:PTR {: p :}\n" SRC+
+   s\"    s\" PL:plbox\" EFFECT:NAMED EFFECT:PTR {: p :}\n" SRC+
    s\"    EFFECT:EMPTY p EFFECT:IN define-word\n" SRC+
    s\"    postpone drop\n   postpone ; ;\n;package\n" SRC+  s" lib.f" NEST-WRITE
    false WRITE-EAT ;

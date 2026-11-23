@@ -146,7 +146,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" require src/lib/ffi-abi.f" GE-SRC-LINE
    s" 16 SPAN-BUFFER: GDB-SYM" GE-SRC-LINE
    s" : GDB-SYM-FOR ( n -- ) 1000000 * mono-ns + {: stop:n :} begin 0 GDB-SYM SPAN:$ str> drop FFI:DLSYM drop mono-ns stop >= until ;" GE-SRC-LINE
-   S\" : GDB-SYM-NAME ( -- ) s\" strlen\" >str GDB-SYM FFI:CSTR drop ; GDB-SYM-NAME" GE-SRC-LINE
+   S\" : GDB-SYM-NAME ( -- ) s\" strlen\" GDB-SYM FFI:CSTR drop ; GDB-SYM-NAME" GE-SRC-LINE
    S\" 100000 prof-on 200 GDB-SYM-FOR s\" dlsym loop done\" type cr prof-report" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler foreign-context ticks" GE-EXPECT-OK
@@ -420,7 +420,7 @@ variable GDB-SKEWED
    GE-HB-RESET
    GDB-PROF-PHASE-SRC
    s" 0 prof-on GDBPH:PHASE drop prof-off" GE-SRC-LINE
-   S\" s\" PHASE\" >str GDBPH:FIND-REC prof-row" GE-SRC-LINE
+   S\" s\" PHASE\" GDBPH:FIND-REC prof-row" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler chosen row" GE-EXPECT-OK
    s" GDBPH:PHASE" s" prof-row printed no row for the word it was given" GE-EXPECT-OUT-HAS
