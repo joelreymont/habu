@@ -109,12 +109,6 @@ public
 \ label ids (forward refs)
 variable LFIND  variable LNUM  variable LDICT
 variable LTOK  variable LFLUSH variable LFLUSHTO variable LNCOUNT
-private
-\ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder reads this,
-\ not the registry: a payload record's dictionary index is the seeded count
-\ plus its position, and the registry can grow after EMIT-DICT.
-variable SEEDED-PRIM-N
-public
 \ The process-exit trampoline, declared here because BDIE below calls it.
 variable LEXITHOOK
 private
@@ -5009,7 +5003,7 @@ create NAME-PADDING 0 , 0 ,
          -1 >LABEL over NAME-LABEL!
       THEN
       1 + REPEAT drop
-   LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT dup SEEDED-PRIM-N !  DCQ,
+   LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT DCQ,
    LDICT LABEL@ LBL,
    0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE
       dup FIRST-LABEL DLBL,
