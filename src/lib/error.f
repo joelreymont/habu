@@ -281,6 +281,9 @@ require src/os/env-base.f
 \ PG. The block is full; PG's row readers are -9320..-9329 and its growth region
 \ -9560..-9569.
 
+\ Directory change notices: -9260..-9269, minted in src/lib/inotify.f, which
+\ owns package INOTIFY.
+
 \ Process signals on a self-pipe (package SIGNAL): -9280..-9289, declared at this
 \ file's end.
 -9280 constant E-SIGNAL-FIRST

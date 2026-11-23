@@ -9,7 +9,8 @@ split-str
 \ against cross-root renames, hard links, mounts or content changes.
 \ Programs outside this tree call its public words.
 \ STORAGE CLASS. CALLER-OWNED: every descriptor answered is the caller's.
-\ TASK-LOCAL: a name's NUL copy and TRY-STAT-AT's stat, in fs.f's band.
+\ TASK-LOCAL: a name's NUL copy, FD-LINKZ's path and TRY-STAT-AT's stat, in
+\ fs.f's band.
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/core/compile-reads.f
@@ -343,14 +344,10 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
    v du begin dup 0 > while
       1- over 10 mod STR-ZERO + over dst + c!  swap 10 / swap
    repeat 2drop du ;
-\ /proc/self/fd/<fd>, NUL-terminated, in PATHZ-BUF. No FMT word renders the
-\ fd: FMT's number buffer may hold the caller's text.
-: A-FD-LINKZ ( fd -- ^u8 )
-   PATHZ-BUF SPAN:$ drop {: z:^ :}
-   s" /proc/self/fd/" {: prefix:^ pu:n :}
-   prefix z pu BYTE-COPY
-   FD>N z pu + A-DIGITS {: du:n :}
-   0 z pu du + + c!  z ;
+\ A negative n keeps its sign, so /proc/self/fd answers ENOENT for it.
+: A-SIGNED ( n ^u8 -- n ) {: v:n dst:^ :}
+   v 0 >= if v dst A-DIGITS exit then
+   $2D dst c!  v negate dst 1+ A-DIGITS 1+ ;
 : A-UNLINK ( fd str n -- bool ) {: dir:fd name:^ u:n flags:n :}
    name u A-NAME? 0= if A-REFUSE false exit then
    dir FD>N name u >PATHZ flags UNLINK-AT-CALL A-DONE ;
@@ -374,12 +371,20 @@ public
 \ O_PATH: any kind of entry, a symlink itself included, pinning its inode.
 : TRY-OPEN-ENTRY-AT ( fd str -- option<fd> )
    A-ENTRY-FLAGS A-OPEN-NAME ;
+\ /proc/self/fd/<fd>, NUL-terminated, until this task's FS builds a path.
+\ No FMT word renders the fd: FMT's number buffer may hold the caller's text.
+: FD-LINKZ ( fd -- ^u8 )
+   PATHZ-BUF SPAN:$ drop {: z:^ :}
+   s" /proc/self/fd/" {: prefix:^ pu:n :}
+   prefix z pu BYTE-COPY
+   FD>N z pu + A-SIGNED {: du:n :}
+   0 z pu du + + c!  z ;
 \ The text of /proc/self/fd/<fd>: the path, " (deleted)" after it once unlinked.
 \ readlink cuts silently, so a count that fills the buffer is E-FS-CAPACITY.
 : FD-PATH ( fd ^u8 n -- n ) {: file:fd buf:^ cap:n :}
    COMPILE-READS:MISS
    cap 1 < if CAUSE-CLEAR E-FS-CAPACITY throw then
-   file A-FD-LINKZ buf cap readlink {: got:n :}
+   file FD-LINKZ buf cap readlink {: got:n :}
    got 0 < if E-FS-STAT throw then
    got cap >= if CAUSE-CLEAR E-FS-CAPACITY throw then
    CAUSE-CLEAR got ;

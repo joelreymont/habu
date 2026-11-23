@@ -1115,6 +1115,13 @@ SUITE xattr
 ;SUITE
 [then]
 
+\ inotify is bound on the Linux kernel only.
+HB-TARGET-LINUX-KERNEL? [if]
+SUITE inotify
+   src/lib/inotify-test.f
+;SUITE
+[then]
+
 SUITE exit-hook
    test/exit-hook-test.f
 ;SUITE
