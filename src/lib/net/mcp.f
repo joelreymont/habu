@@ -29,20 +29,21 @@ split-str
 \ ADD-TOOL compiles the inputSchema with JSON-SCHEMA:COMPILE, its root typed "object", and
 \ a tools/call whose arguments break it is a tool error before the body runs: `arguments`
 \ and VALID?'s text, such as `arguments.top: expected a number of at most `500`, found
-\ `501`; send a number in that range`. A tool result's JSON is its structuredContent
-\ when its output schema's "type" is "object"; any other schema describes that JSON
-\ as structuredContent's "data", and tools/list shows that wrapper in the schema's
-\ place. The client side, OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one
-\ server over CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer
-\ token a client sends, and REQUEST-STOP stops the client from another task.
+\ `501`; send a number in that range`. So are arguments that name a member twice in
+\ one object: `arguments`, then the JSON reader's text placing the repeat. A tool
+\ result's JSON is its structuredContent when its output schema's "type" is "object";
+\ any other schema describes that JSON as structuredContent's "data", and tools/list
+\ shows that wrapper in the schema's place. The client side, OPEN, TOOLS, CALL and
+\ CLOSE, speaks the 2026-07-28 era to one server over CURL and takes a JSON or an
+\ event-stream reply. TOKEN! sets the bearer token a client sends, and REQUEST-STOP
+\ stops the client from another task.
 \ STORAGE CLASS. PROCESS-WIDE: the server info and instructions, tool and resource
 \ registries, the input schemas each compiled into an arena of its own kept for the
-\ process, and
-\ visibility hook, written before HTTP serves; tables indexed by HTTP:WORKER-SLOT holding
-\ each request's state; the held table, a row per held call and its id's and its
-\ holding request id's BUFs: a row's phase is read and written under its own lock,
-\ and a finishing row's other fields are its finisher's; and the client table, a row
-\ per open client, read and written under its own lock.
+\ process, and the visibility hook, written before HTTP serves; tables indexed by
+\ HTTP:WORKER-SLOT holding each request's state; the held table, a row per held call and
+\ its id's and its holding request id's BUFs: a row's phase is read and written under its
+\ own lock, and a finishing row's other fields are its finisher's; and the client table,
+\ a row per open client, read and written under its own lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
 \
 \ The client. A client is a row of a process-wide table that grows with the
@@ -111,7 +112,8 @@ NEWTYPE client
 NEWTYPE held
 private
 
--9480 s" a request's params or arguments are not objects (JSON-RPC -32602)" ERROR:CODE E-INPUT
+\ Thrown only through REASON, its text the why FAULTED answers.
+-9480 s" input a client sent that MCP's params rules refuse (JSON-RPC -32602 with its reason)" ERROR:CODE E-INPUT
 
 0 constant MODERN            \ 2026-07-28
 1 constant LEGACY            \ 2025-11-25
@@ -254,17 +256,45 @@ CAST: HELD>N ( held -- n )
 : OBJECT? ( str -- bool ) KIND JSON:T-OBJ = ;
 
 
-\ A member of an object's JSON text, and whether it is there; text that is not
-\ an object, absent params included, is E-INPUT.
-: FIELD? ( str str -- str bool )
-   {: data:^ len:n key:^ ku:n :}
-   len 0= if E-INPUT throw then
-   CURSOR data len JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-INPUT throw then
-   key ku JSON:READ-FIND-KEY if
-      RAW$ {: a:^ u:n :} JSON:READ-CLOSE a u true
-   else JSON:READ-CLOSE s" " false then ;
+\ Throws E-INPUT with `member`: expected <e>; <fix>.
+: INPUT-ERROR ( str str str -- )
+   {: ma:^ mu:n ea:^ eu:n fa:^ fu:n :}
+   REASON:OPEN ma mu false REASON:QUOTE s" : " REASON:APPEND
+   REASON:EXPECTED ea eu REASON:APPEND REASON:FIX fa fu REASON:APPEND
+   E-INPUT REASON:STOP ;
 
+\ Throws E-INPUT with `name`: expected a JSON object; send name as one object.
+: OBJECT-ERROR ( str -- )
+   {: na:^ nu:n :}
+   REASON:OPEN na nu false REASON:QUOTE s" : " REASON:APPEND
+   REASON:EXPECTED s" a JSON object" REASON:APPEND
+   REASON:FIX s" send " REASON:APPEND na nu REASON:APPEND s"  as one object" REASON:APPEND
+   E-INPUT REASON:STOP ;
+
+\ A member of the object called name and its copies, 0, 1, or 2 for more;
+\ text that is no object, empty included, is E-INPUT naming it.
+: MEMBER-COPIES ( str str str -- str n )
+   {: data:^ len:n na:^ nu:n key:^ ku:n :}
+   len 0= if na nu OBJECT-ERROR then
+   CURSOR data len JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE na nu OBJECT-ERROR then
+   key ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " 0 exit then
+   RAW$ {: a:^ u:n :}
+   key ku JSON:READ-FIND-KEY {: again:bool :}
+   JSON:READ-CLOSE a u  again if 2 else 1 then ;
+
+\ MEMBER-COPIES' member and whether it is there; one named twice is E-INPUT
+\ with its name and the object's.
+: FIELD? ( str str str -- str bool )
+   {: data:^ len:n na:^ nu:n key:^ ku:n :}
+   data len na nu key ku MEMBER-COPIES {: a:^ u:n copies:n :}
+   copies 2 = if
+      REASON:OPEN key ku false REASON:QUOTE
+      s" : named twice in " REASON:APPEND na nu REASON:APPEND
+      s" ; send it once" REASON:APPEND
+      E-INPUT REASON:STOP
+   then
+   a u copies 0<> ;
 
 \ Whether a JSON text is a string that decodes to the wanted bytes.
 : STRING= ( str str -- bool )
@@ -287,8 +317,6 @@ CAST: HELD>N ( held -- n )
 : GOOD ( n -- ) SLOT REPLY !  200 SLOT STATUS ! ;
 : MISMATCH ( -- ) 400 HEADER-MISMATCH s" Header mismatch" BAD ;
 : NO-METHOD ( -- ) 404 -32601 s" Method not found" BAD ;
-: BAD-INPUT ( -- ) 400 -32602 s" Invalid MCP request" BAD ;
-: BAD-ENVELOPE ( -- ) 400 -32600 s" Invalid MCP request" BAD ;
 : UNKNOWN-RESOURCE ( -- ) 404 RESOURCE-MISSING s" Resource not found" BAD ;
 
 : SERVER-INFO ( ^JSON:writer -- ^JSON:writer )
@@ -440,9 +468,10 @@ CAST: HELD>N ( held -- n )
    idx RESOURCE-TEXT @ SPAN:$ {: desc:^ du:n :}
    RESULT-START
    s" contents" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
-   s" uri" desc du s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
-   JSON:WRITE-COMMA s" mimeType" desc du s" mimeType" FIELD? drop JSON:WRITE-FIELD-RAW
-   desc du s" _meta" FIELD? if
+   s" uri" desc du s" descriptor" s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
+   JSON:WRITE-COMMA s" mimeType"
+   desc du s" descriptor" s" mimeType" FIELD? drop JSON:WRITE-FIELD-RAW
+   desc du s" descriptor" s" _meta" FIELD? if
       {: meta:^ mu:n :}
       JSON:WRITE-COMMA s" _meta" meta mu JSON:WRITE-FIELD-RAW
    else 2drop then
@@ -511,7 +540,7 @@ CAST: HELD>N ( held -- n )
 \ -32002's data: the uri the request named, which READ-RESOURCE checked.
 : URI-DATA ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
-   s" uri" PARAMS$ s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
+   s" uri" PARAMS$ s" params" s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
    JSON:WRITE-OBJECT-END ;
 
 
@@ -635,28 +664,32 @@ CAST: HELD>N ( held -- n )
 : CALL? ( str str str -- bool )
    {: id:^ iu:n m:^ mu:n p:^ pu:n :}
    iu 0<> if
-      id iu MCP-ID? 0= if BAD-ENVELOPE false exit then
+      id iu MCP-ID? 0= if
+         400 -32600 s" an id that is not a string or an integer" BAD
+         false exit
+      then
    then
    id iu SPAN:MAKE SLOT ID !
    m mu SPAN:MAKE SLOT METHOD !
    p pu SPAN:MAKE SLOT PARAMS !
-   pu 0<> if
-      p pu OBJECT? 0= if BAD-INPUT false exit then
-   then true ;
+   pu 0<> if p pu OBJECT? 0= if s" params" OBJECT-ERROR then then
+   true ;
 
 
 \ A JSON-RPC response is no request: answered without an id.
 : RESPONSE? ( JSON-RPC:id str -- bool )
-   2drop drop BAD-ENVELOPE false ;
+   2drop drop
+   400 -32600 s" a response, where MCP takes a request or a notification" BAD
+   false ;
 
 
-\ The reader's id is the reply's when it is an MCP id; its null id is unknown.
+\ The reader's code and why answer; its id is the reply's when it is an MCP
+\ id, and its null id is unknown.
 : INVALID? ( n str JSON-RPC:id -- bool )
    {: code:n why:^ wu:n reply:JSON-RPC:id :}
    reply JSON-RPC:ID$ {: id:^ iu:n :}
    id iu MCP-ID? if id iu SPAN:MAKE SLOT ID ! then
-   code JSON-RPC:PARSE-ERROR = if 400 -32700 why wu BAD false exit then
-   BAD-ENVELOPE false ;
+   400 code why wu BAD false ;
 
 
 : ENVELOPE? ( str -- bool )
@@ -677,8 +710,8 @@ CAST: HELD>N ( held -- n )
 : META ( ^u8 n -- ^u8 n bool )
    {: key:^ ku:n :}
    PARAMS$ dup 0= if false exit then
-   s" _meta" FIELD? 0= if false exit then
-   key ku FIELD? ;
+   s" params" s" _meta" FIELD? 0= if false exit then
+   s" params._meta" key ku FIELD? ;
 
 
 \ Requests carry params._meta with protocolVersion and clientCapabilities: one
@@ -722,8 +755,10 @@ CAST: HELD>N ( held -- n )
 : DECODED-NAME$ ( str -- str )
    {: header:^ len:n :}
    header len s" =?base64?" STARTS-WITH? 0= if header len exit then
-   len 11 < if E-INPUT throw then
-   header len 2 - + 2 s" ?=" STR= 0= if E-INPUT throw then
+   len 11 <  header len 2 - + 2 s" ?=" STR= 0=  or if
+      s" Mcp-Name" s" an encoded name ending in `?=`"
+      s" end the `=?base64?` name with `?=`" INPUT-ERROR
+   then
    NAMES SLOT HTTP:HEAD-CAP * HTTP:HEAD-CAP SPAN:SUB {: room :}
    header 9 + len 11 - room BASE64:DECODE {: u:n :}
    room 0 SPAN:AT u ;
@@ -739,7 +774,7 @@ CAST: HELD>N ( held -- n )
 \ messages are -32602's when the member is absent and when it is no string.
 : NAME-HEADER? ( HTTP:request str str str -- bool )
    {: asked:HTTP:request key:^ ku:n absent:^ au:n invalid:^ iu:n :}
-   PARAMS$ key ku FIELD? 0= if
+   PARAMS$ s" params" key ku FIELD? 0= if
       2drop 400 -32602 absent au BAD false exit
    then
    {: name:^ nu:n :}
@@ -778,8 +813,10 @@ CAST: HELD>N ( held -- n )
 
 
 : ARGUMENTS ( -- ^u8 n )
-   PARAMS$ s" arguments" FIELD? 0= if 2drop s" {}" exit then
-   2dup OBJECT? 0= if E-INPUT throw then ;
+   PARAMS$ s" params" s" arguments" FIELD? 0= if 2drop s" {}" exit then
+   2dup OBJECT? 0= if
+      s" arguments" OBJECT-ERROR
+   then ;
 
 
 \ A JSON string's text between its quotes, as sent, its escapes kept.
@@ -793,7 +830,7 @@ CAST: HELD>N ( held -- n )
 \ params.name, a string, between its quotes as sent, cut to NAME-MAX bytes at
 \ a character's start.
 : NAMED$ ( -- str )
-   PARAMS$ s" name" FIELD? drop UNQUOTED$
+   PARAMS$ s" params" s" name" FIELD? drop UNQUOTED$
    2dup NAME-MAX UTF8:FIT nip ;
 
 
@@ -1206,13 +1243,24 @@ CAST: HELD>N ( held -- n )
 \ The worker's violation vector.
 : VIOLATION ( -- ^VEC:vector<u8> ) SLOT VIOLATIONS WORKER-VEC ;
 
-\ Whether the arguments satisfy the tool's inputSchema; false gives the tool
-\ error `arguments` and the violation.
+\ Whether the arguments name no member twice in one object; false appends
+\ the reader's text to the violation.
+: UNREPEATED? ( str ^VEC:vector<u8> -- bool )
+   {: args:^ au:n v:^ :}
+   [: args au JSON:PARSE JSON:TEXT$ 2drop ;] catch {: code:n :}
+   code 0= if true exit then
+   code JSON:E-MEMBER <> if code throw then
+   code REASON:TEXT$ {: a:^ u:n :}
+   s"  " v VEC:APPEND  a u v VEC:APPEND  false ;
+
+\ Whether the arguments repeat no member and satisfy the tool's inputSchema;
+\ false gives the tool error `arguments` and the reader's text or the violation.
 : ADMITTED? ( ^u8 n n -- bool )
    {: args:^ au:n idx:n :}
    VIOLATION {: v:^ :}
    v 0 VEC:RESIZE  s" arguments" v VEC:APPEND
-   args au idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
+   args au v UNREPEATED?
+   dup if drop args au idx TOOL-INPUT @ v JSON-SCHEMA:VALID? then
    dup if exit then
    v VEC:SPAN SPAN:$ TOOL-ERROR ;
 
@@ -1220,8 +1268,12 @@ CAST: HELD>N ( held -- n )
 \ The body gives its result once, through RESULT, RESULT-META, RESULT-CONTENT or
 \ RESULT-ERROR, before it returns, or HOLDs the call.
 : RUN-TOOL ( -- )
-   PARAMS$ s" name" FIELD? 0= if E-INPUT throw then
-   2dup KIND JSON:T-STR <> if E-INPUT throw then
+   PARAMS$ s" params" s" name" FIELD? 0= if
+      s" name" s" a member naming the tool" s" add `name` to params" INPUT-ERROR
+   then
+   2dup KIND JSON:T-STR <> if
+      s" name" s" a JSON string" s" send the tool's name as a string" INPUT-ERROR
+   then
    TOOL-OF {: idx:n :}
    idx 0< if UNKNOWN-TOOL SEND exit then
    idx SHOWN? 0= if UNKNOWN-TOOL SEND exit then
@@ -1243,8 +1295,12 @@ CAST: HELD>N ( held -- n )
 
 \ params.uri not a string is E-INPUT, which HANDLE answers -32602.
 : READ-RESOURCE ( -- )
-   PARAMS$ s" uri" FIELD? 0= if E-INPUT throw then
-   2dup KIND JSON:T-STR <> if E-INPUT throw then
+   PARAMS$ s" params" s" uri" FIELD? 0= if
+      s" uri" s" a member naming the resource" s" add `uri` to params" INPUT-ERROR
+   then
+   2dup KIND JSON:T-STR <> if
+      s" uri" s" a JSON string" s" send the resource's uri as a string" INPUT-ERROR
+   then
    RESOURCE-OF {: idx:n :}
    idx 0< if UNKNOWN-RESOURCE SEND exit then
    idx SLOT OPENED !
@@ -1281,9 +1337,9 @@ CAST: HELD>N ( held -- n )
 : TARGET+ ( -- )
    TARGET-KEY$ {: key:^ ku:n :}
    ku 0= PARAMS$ nip 0= or if exit then
-   \ JSON-RPC's params may be an array, which FIELD? refuses.
+   \ JSON-RPC's params may be an array, which MEMBER-COPIES refuses.
    PARAMS$ KIND JSON:T-OBJ <> if exit then
-   PARAMS$ key ku FIELD? 0= if 2drop exit then
+   PARAMS$ s" params" key ku MEMBER-COPIES 1 <> if 2drop exit then
    2dup KIND JSON:T-STR <> if 2drop exit then
    s"  " LOG:TEXT+  UNQUOTED$ LOG:TEXT+ ;
 
@@ -1308,12 +1364,12 @@ CAST: HELD>N ( held -- n )
 
 
 \ A tools/call's params.arguments as sent, when params is an object that has
-\ them.
+\ them once.
 : ARGUMENTS+ ( -- )
    s" tools/call" METHOD= 0= if exit then
    PARAMS$ nip 0= if exit then
    PARAMS$ OBJECT? 0= if exit then
-   PARAMS$ s" arguments" FIELD? 0= if 2drop exit then
+   PARAMS$ s" params" s" arguments" MEMBER-COPIES 1 <> if 2drop exit then
    s"  " LOG:TEXT+  TEXT-CUT+ ;
 
 \ The method, target and arguments; `-` when no method was read.
@@ -1410,14 +1466,15 @@ CAST: HELD>N ( held -- n )
    SLOT STAGE @ IDLE = code E-INPUT = and if 0 exit then
    code ;
 
-\ A message's caught code: E-INPUT before the reply began is -32602; any
-\ other fault is rethrown.
+\ A message's caught code: E-INPUT before the reply began is -32602 with its
+\ reason's text; any other fault is rethrown.
 : FAULTED ( n -- )
    {: code:n :}
    code 0= if exit then
+   code REASON:TEXT$ {: why:^ wu:n :}
    code PASSED {: passed:n :}
    passed 0<> if passed throw then
-   BAD-INPUT SEND ;
+   400 -32602 why wu BAD SEND ;
 
 
 \ WORKER-SLOT's E-HTTP-HANDLE, on a task that is no request worker, as E-STATE.
@@ -2177,7 +2234,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 
 \ A member of a JSON object text: its text (a string with quotes), token kind
-\ and whether it is there; text that is not an object is a logged E-RESPONSE.
+\ and whether it is there; no object, or the member twice, is a logged E-RESPONSE.
 : MEMBER ( n ^u8 n ^u8 n -- ^u8 n n bool )
    {: idx:n data:^ len:n key:^ ku:n :}
    idx ROW PEER-CURSOR data len JSON:READ-INIT
@@ -2185,9 +2242,15 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       JSON:READ-CLOSE
       s" has a result that is not a JSON object" idx E-RESPONSE BAD-REPLY
    then
+   key ku JSON:READ-FIND-KEY 0= if
+      JSON:READ-CLOSE s" " JSON:T-END false exit
+   then
+   JSON:READ-TOKEN {: k:n :} RAW$ {: a:^ u:n :}
    key ku JSON:READ-FIND-KEY if
-      JSON:READ-TOKEN {: k:n :} RAW$ {: a:^ u:n :} JSON:READ-CLOSE a u k true
-   else JSON:READ-CLOSE s" " JSON:T-END false then ;
+      JSON:READ-CLOSE
+      s" has a result that names a member twice" idx E-RESPONSE BAD-REPLY
+   then
+   JSON:READ-CLOSE a u k true ;
 
 
 \ The result text of a 2xx reply answering the request, else a logged E-DENIED

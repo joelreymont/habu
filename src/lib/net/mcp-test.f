@@ -1,41 +1,40 @@
 split-str
-\ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras'
-\ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
-\ Mcp-Name checks, the transport check, unknown methods and tools, an unknown tool's
-\ name cut at 128 bytes, a body's
-\ result and tool error, an object schema's result as structuredContent and a
+\ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras' handshakes and
+\ notifications, the protocol-version, _meta, Mcp-Method and Mcp-Name checks, the
+\ transport check, unknown methods and tools, an unknown tool's name cut at 128 bytes, a
+\ body's result and tool error, an object schema's result as structuredContent and a
 \ non-object result under it, a result's _meta from RESULT-META in both eras and its
 \ refusals, an image and an embedded resource after the text from RESULT-CONTENT in both
-\ eras, an empty array of them and the refusals, bodies that give a bad result or none, malformed envelopes, arguments and JSON,
-\ ping, tools/list showing each descriptor as registered (annotations and _meta raw) with
-\ a non-object output schema's wrapper in its place, and ADD-TOOL's rejections of a bad
-\ descriptor or inputSchema. A tools/call whose arguments, given or absent, break the
-\ inputSchema is a tool error that runs no body, from HANDLE and from ANSWER. ui://
-\ resources: the resources capability, resources/list and
+\ eras, an empty array of them and the refusals, bodies that give a bad result or none,
+\ malformed envelopes, params, arguments and JSON, ping, tools/list showing each
+\ descriptor as registered (annotations and _meta raw) with a non-object output schema's
+\ wrapper in its place, and ADD-TOOL's rejections of a bad descriptor or inputSchema. A
+\ tools/call whose arguments, given or absent, break the inputSchema is a tool error that
+\ runs no body, from HANDLE and from ANSWER, and so is one whose arguments repeat a
+\ member, from HANDLE. ui:// resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
-\ refusals. The info line a tools/call and a resources/read log, without arguments,
-\ and, after MCP:LOG, each message's line after its answer with arguments and
-\ outcome.
-\ MCP:ANSWER on a request worker into a vector holding old text: a tools/call
-\ written as HANDLE sends it, a notification leaving it empty, a message that is
-\ not JSON-RPC or not JSON, an unknown tool, and ANSWER off a worker.
-\ A call its body HOLDs, FINISHed by a call SUBMIT queues for the sole worker
-\ the body gave back, answers the client in each era as the same tool answering
-\ at once; HOLD answers false under ANSWER; a body that throws after HOLD leaves
-\ the client a closed connection and no answer.
-\ MCP's client against the same server and plain routes: TOOLS across pages,
-\ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
-\ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
-\ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
-\ pages, CLOSE after a halt mid-receive, a closed client refused once its row
-\ is reused, REQUEST-STOP of TOOLS's second page, of an idle client and of a
-\ CALL, after which CALL and TOOLS throw sending nothing, a client on the row a stopped one
-\ left calling normally, and REQUEST-STOP of a closed one. Then /mcp guarded
-\ by BEARER:ADMIT?: VISIBLE! hiding a tool by the caller's claim from
-\ tools/list and tools/call, and refused while HTTP serves; a client's TOKEN!,
-\ E-DENIED for no token, an empty one and a 403, E-UNAVAILABLE for a 503 and a
-\ 429, E-RESPONSE for a 418, and TOKEN! of a closed client.
+\ refusals. The info line a tools/call and a resources/read log, without arguments, and,
+\ after MCP:LOG, each message's line after its answer with arguments and outcome.
+\ MCP:ANSWER on a request worker into a vector holding old text: a tools/call written as
+\ HANDLE sends it, a notification leaving it empty, a message that is not JSON-RPC or not
+\ JSON, an unknown tool, and ANSWER off a worker.
+\ A call its body HOLDs, FINISHed by a call SUBMIT queues for the sole worker the body
+\ gave back, answers the client in each era as the same tool answering at once; HOLD
+\ answers false under ANSWER; a body that throws after HOLD leaves the client a closed
+\ connection and no answer.
+\ MCP's client against the same server and plain routes: TOOLS across pages, CALL's
+\ result, one holding content blocks, isError, refusals, a reply past the first buffer,
+\ timeouts of CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
+\ event-stream replies and one that is not UTF-8, a result naming isError twice, TOOLS's
+\ limit shared by its pages, CLOSE after a halt mid-receive, a closed client refused once
+\ its row is reused, REQUEST-STOP of TOOLS's second page, of an idle client and of a
+\ CALL, after which CALL and TOOLS throw sending nothing, a client on the row a stopped
+\ one left calling normally, and REQUEST-STOP of a closed one. Then /mcp guarded by
+\ BEARER:ADMIT?: VISIBLE! hiding a tool by the caller's claim from tools/list and
+\ tools/call, and refused while HTTP serves; a client's TOKEN!, E-DENIED for no token, an
+\ empty one and a 403, E-UNAVAILABLE for a 503 and a 429, E-RESPONSE for a 418, and
+\ TOKEN! of a closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
 require src/lib/test.f
@@ -355,6 +354,10 @@ TASK:MIN-STACK TASK:TASK STALLER
 : FILTERS-TEXT ( -- ^u8 n )
    s" arguments: expected only the member `filter`, found `filters`; rename it to `filter` or remove it" ;
 
+\ strict's tool error for arguments naming filter twice, as JSON string text.
+: REPEAT-TEXT ( -- str )
+   S\" arguments 1:15: expected a member name not used before in this object, found `\\\"filter\\\"`; remove the repeated member" ;
+
 \ A legacy tool error with id n and the text.
 : ERROR-REPLY ( n ^u8 n -- ^u8 n )
    {: id:n text:^ tu:n :}
@@ -371,6 +374,10 @@ TASK:MIN-STACK TASK:TASK STALLER
    LEGACY 71 s" " STRICT-CALL POST
    200 71 s" arguments: expected a member `filter`, found none; add `filter`" ERROR-REPLY
    ANSWERED
+   STRICT-RAN atomic@ 0 T=
+   s" arguments that repeat a member are a tool error with the reader's text" T-LABEL
+   LEGACY 74 S\" ,\"arguments\":{\"filter\":\"x\",\"filter\":\"y\"}" STRICT-CALL POST
+   200 74 REPEAT-TEXT ERROR-REPLY ANSWERED
    STRICT-RAN atomic@ 0 T=
    s" arguments the inputSchema admits run the body" T-LABEL
    LEGACY 72 S\" ,\"arguments\":{\"filter\":\"x\"}" STRICT-CALL POST
@@ -398,11 +405,29 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 SB$ ANSWERED ;
 
 
+\ The -32600 reply to request 9 with jsonrpc "1.0".
+: ENVELOPE-REPLY ( -- str )
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600," SB-APPEND
+   S\" \"message\":\"a jsonrpc member that is not \\\"2.0\\\"\"}}" SB-APPEND SB$ ;
+
 : BAD-ENVELOPE ( -- )
-   s" a jsonrpc other than 2.0 is -32600 with the request's id" T-LABEL
+   s" a jsonrpc other than 2.0 is -32600 with the request's id and JSON-RPC's why" T-LABEL
    LEGACY S\" {\"jsonrpc\":\"1.0\",\"id\":9,\"method\":\"ping\"}" POST
-   400 S\" {\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600,\"message\":\"Invalid MCP request\"}}"
-   ANSWERED ;
+   400 ENVELOPE-REPLY ANSWERED ;
+
+: NULL-ID ( -- )
+   s" a request whose id is null is 400 -32600 with no id" T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"ping\"}" POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600," SB-APPEND
+   S\" \"message\":\"an id that is not a string or an integer\"}}" SB-APPEND
+   400 SB$ ANSWERED ;
+
+: RESPONSE-SENT ( -- )
+   s" a response sent to the server is 400 -32600 with no id" T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}" POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":" SB-APPEND
+   S\" \"a response, where MCP takes a request or a notification\"}}" SB-APPEND
+   400 SB$ ANSWERED ;
 
 
 : SHAPE-RESULT ( -- )
@@ -749,6 +774,26 @@ TASK:MIN-STACK TASK:TASK STALLER
    400 SB$ ANSWERED ;
 
 
+: SCALAR-META ( -- )
+   s" a modern request whose _meta is no object is 400 -32602 naming params._meta" T-LABEL
+   MODERN s" Mcp-Method: tools/list" ADD
+   S\" {\"jsonrpc\":\"2.0\",\"id\":85,\"method\":\"tools/list\",\"params\":{\"_meta\":5}}" POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":85,\"error\":{\"code\":-32602,\"message\":" SB-APPEND
+   S\" \"`params._meta`: expected a JSON object; send params._meta as one object\"}}" SB-APPEND
+   400 SB$ ANSWERED ;
+
+: META-TWICE ( -- )
+   s" a modern request whose _meta names a member twice is 400 -32602 naming it" T-LABEL
+   MODERN s" Mcp-Method: tools/list" ADD
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":86,\"method\":\"tools/list\",\"params\":" SB-APPEND
+   S\" {\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"," SB-APPEND
+   S\" \"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}" SB-APPEND SB$ POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":86,\"error\":{\"code\":-32602,\"message\":" SB-APPEND
+   S\" \"`io.modelcontextprotocol/protocolVersion`: named twice in params._meta;" SB-APPEND
+   S\"  send it once\"}}" SB-APPEND
+   400 SB$ ANSWERED ;
+
+
 : NO-PARAMS ( -- )
    s" a modern request without params is 400 -32602" T-LABEL
    MODERN s" Mcp-Method: tools/list" ADD
@@ -778,8 +823,32 @@ TASK:MIN-STACK TASK:TASK STALLER
    LEGACY
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":18,\"method\":\"tools/call\"," SB-APPEND
    S\" \"params\":{\"name\":\"echo\",\"arguments\":5}}" SB-APPEND SB$ POST
-   400 S\" {\"jsonrpc\":\"2.0\",\"id\":18,\"error\":{\"code\":-32602,\"message\":\"Invalid MCP request\"}}"
-   ANSWERED ;
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":18,\"error\":{\"code\":-32602," SB-APPEND
+   S\" \"message\":\"`arguments`: expected a JSON object; send arguments as one object\"}}" SB-APPEND
+   400 SB$ ANSWERED ;
+
+: PARAMS-NOT-OBJECT ( -- )
+   s" legacy params that are not an object are 400 -32602 naming params" T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":87,\"method\":\"ping\",\"params\":[1]}" POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":87,\"error\":{\"code\":-32602," SB-APPEND
+   S\" \"message\":\"`params`: expected a JSON object; send params as one object\"}}" SB-APPEND
+   400 SB$ ANSWERED ;
+
+\ A legacy tools/call with id n whose params name `name` twice.
+: NAME-TWICE ( n -- str )
+   {: id:n :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"name\":\"echo\"}}" SB-APPEND
+   SB$ ;
+
+: TWICE-TEXT ( -- str ) s" `name`: named twice in params; send it once" ;
+
+: NAME-REPEATED ( -- )
+   s" params naming name twice are 400 -32602 naming it" T-LABEL
+   LEGACY 83 NAME-TWICE POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":83,\"error\":{\"code\":-32602,\"message\":\"" SB-APPEND
+   TWICE-TEXT SB-APPEND S\" \"}}" SB-APPEND
+   400 SB$ ANSWERED ;
 
 
 : NOT-JSON-RESULT ( -- )
@@ -891,8 +960,9 @@ TASK:MIN-STACK TASK:TASK STALLER
 : URI-NOT-STRING ( -- )
    s" a resources/read uri that is no string is 400 -32602" T-LABEL
    LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"resources/read\",\"params\":{\"uri\":5}}" POST
-   400 S\" {\"jsonrpc\":\"2.0\",\"id\":36,\"error\":{\"code\":-32602,\"message\":\"Invalid MCP request\"}}"
-   ANSWERED ;
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":36,\"error\":{\"code\":-32602," SB-APPEND
+   S\" \"message\":\"`uri`: expected a JSON string; send the resource's uri as a string\"}}" SB-APPEND
+   400 SB$ ANSWERED ;
 
 
 : TEMPLATES ( -- )
@@ -1089,6 +1159,12 @@ TASK:MIN-STACK TASK:TASK STALLER
       HTTP:BODY! exit
    then
    answer S\" data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[],\"isError\":false}}\n\n"
+   HTTP:BODY! ;
+
+: TWICE-ROUTE ( HTTP:request HTTP:response -- )
+   nip {: answer:HTTP:response :}
+   answer JSON-HEADER
+   answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[],\"isError\":false,\"isError\":true}}"
    HTTP:BODY! ;
 
 \ A page with a nextCursor after PAGE-MS, or at once the last, empty page once
@@ -1327,6 +1403,14 @@ $A constant LF
    ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
    ROUTE-CLIENT @ MCP:CLOSE ;
 
+: CLIENT-TWICE ( -- )
+   s" a result naming isError twice is E-RESPONSE" T-LABEL
+   s" /twice" URL MCP:OPEN ROUTE-CLIENT !
+   [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+      MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
+   s" has a result that names a member twice: status 200" REPLY-LOGGED
+   ROUTE-CLIENT @ MCP:CLOSE ;
+
 : CLIENT-LIST-TIMEOUT ( -- )
    s" a tools/list past its limit is E-TRANSFER and the client serves the next call" T-LABEL
    ARM
@@ -1457,7 +1541,7 @@ TYPED-VARIABLE NEVER MCP:client
    s" /mcp" URL MCP:OPEN CLIENT !
    CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN
    CLIENT-BIG CLIENT-TIMEOUT CLIENT-SECRET CLIENT-LONG CLIENT-PAGES
-   CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
+   CLIENT-NAMES CLIENT-EVENTS CLIENT-TWICE CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
    CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
    CLIENT-HALTED CLIENT-STOP-PAGE CLIENT-STOP CLIENT-NEVER
@@ -1730,8 +1814,7 @@ TYPED-VARIABLE REPLIES ^VEC:vector<u8>   \ SERVE-CASES makes and deletes it
 : ANSWER-ENVELOPE ( -- )
    s" ANSWER of a message that is not JSON-RPC writes -32600" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":\"1.0\",\"id\":9,\"method\":\"ping\"}" POST
-   200 S\" {\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32600,\"message\":\"Invalid MCP request\"}}"
-   ANSWERED
+   200 ENVELOPE-REPLY ANSWERED
    s" ANSWER of a message that is not JSON writes -32700" T-LABEL
    ANSWER-OPEN S\" {\"jsonrpc\":" POST
    200 S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"1:12: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`\"}}"
@@ -1907,6 +1990,13 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    S\" if the client's list of test-server's tools names it, that list is out of date\n" W+
    W$ REQ-LOGGED ;
 
+: LOGGED-TWICE ( -- )
+   s" MCP:LOG logs params naming name twice with no target and passes no code" T-LABEL
+   [: LEGACY 84 NAME-TWICE POST 400 T= ;] CAPTURED
+   W-RESET s"  tools/call -> error -32602: " W+ TWICE-TEXT W+ S\" \n" W+
+   W$ REQ-LOGGED
+   LOG$ s" failed, throw" CONTAINS? TFALSE ;
+
 : LOGGED-NOTIFIED ( -- )
    s" MCP:LOG logs a legacy notification as notified" T-LABEL
    [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}" POST 202 T= ;]
@@ -1973,7 +2063,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    [: 2drop true ;] MCP:VISIBLE!
    MCP:LOG
    0 ONE-WORKER SERVE-ON
-   LOGGED-ECHO LOGGED-STRICT LOGGED-UNKNOWN LOGGED-NOTIFIED LOGGED-HELD
+   LOGGED-ECHO LOGGED-STRICT LOGGED-UNKNOWN LOGGED-TWICE LOGGED-NOTIFIED LOGGED-HELD
    LOGGED-FAULT LOGGED-FREED LOGGED-LATE LOGGED-ANSWER LOGGED-LONG ;
 
 
@@ -1985,6 +2075,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s" POST" s" /paged" [: PAGED-ROUTE ;] HTTP:ROUTE
    s" POST" s" /names" [: NAMES-ROUTE ;] HTTP:ROUTE
    s" POST" s" /events" [: EVENTS-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /twice" [: TWICE-ROUTE ;] HTTP:ROUTE
    s" POST" s" /slow" [: SLOW-ROUTE ;] HTTP:ROUTE
    s" POST" s" /endless" [: ENDLESS-ROUTE ;] HTTP:ROUTE
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
@@ -2058,10 +2149,12 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    STRICT-REFUSED
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
-   BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE BAD-JSON LIST PING
-   MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES NO-PARAMS MODERN-NOTIFICATION
-   LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-RESULT SILENT
-   RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
+   BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE NULL-ID RESPONSE-SENT
+   BAD-JSON LIST PING
+   MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES SCALAR-META META-TWICE
+   NO-PARAMS MODERN-NOTIFICATION LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT PARAMS-NOT-OBJECT
+   NAME-REPEATED NOT-JSON-RESULT
+   SILENT RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
    UNKNOWN-RESOURCE URI-NOT-STRING TEMPLATES
    ANSWER-CASES
    HELD-CASES
