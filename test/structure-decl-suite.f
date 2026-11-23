@@ -905,6 +905,7 @@ private
 create SC-PATH PATH-CAP allot   variable SC-PATH-U
 TYPED-VARIABLE SC-ERR ^VEC:vector<u8>
 TYPED-VARIABLE SC-SRC ^VEC:vector<u8>   \ SB holds too few bytes
+TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as long as TMPDIR makes them
 
 : SC-NEW ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 : SC-FILE ( -- str ) SC-PATH SC-PATH-U @ ;
@@ -1007,23 +1008,25 @@ TYPED-VARIABLE SC-SRC ^VEC:vector<u8>   \ SB holds too few bytes
    SC-FILE SC-SRC$ FS:WRITE-ALL
    [: SC-CHECK ;] CMD:WITH-COMMAND ;
 
+: SC-WANT+ ( str -- ) SC-WANT @ VEC:APPEND ;
+: SC-WANT-C ( n -- ) SC-WANT @ VEC:PUSH c! ;
 \ The gutter before `-->` is as wide as PLACE's line number.
 : SC-GUTTER ( str -- ) {: p:^ pu:n :}
-   1 BEGIN p over + c@ $3A <> WHILE 32 SB-APPEND-C 1 + REPEAT drop ;
+   1 BEGIN p over + c@ $3A <> WHILE 32 SC-WANT-C 1 + REPEAT drop ;
 
 \ The record headed HEAD is placed at the fixture's PLACE, `:line:column`, and
 \ its caret says LABEL.
 : SC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
-   SB-RESET  h hu SB-APPEND  10 SB-APPEND-C
-   p pu SC-GUTTER  s" --> " SB-APPEND  SC-FILE SB-APPEND
-   p pu SB-LINE
-   SC-ERR$ SB$ CONTAINS? TTRUE
+   SC-WANT @ 0 VEC:RESIZE  h hu SC-WANT+  10 SC-WANT-C
+   p pu SC-GUTTER  s" --> " SC-WANT+  SC-FILE SC-WANT+
+   p pu SC-WANT+  10 SC-WANT-C
+   SC-ERR$ SC-WANT @ VEC:SPAN SPAN:$ CONTAINS? TTRUE
    SB-RESET  s" ^ " SB-APPEND  l lu SB-LINE
    SC-ERR$ SB$ CONTAINS? TTRUE ;
 
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
-SC-NEW SC-SRC !  SC-NEW SC-ERR !
+SC-NEW SC-SRC !  SC-NEW SC-ERR !  SC-NEW SC-WANT !
 SC-RUN
 SC-ERR$ s" error[" COUNT-SUB 15 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
