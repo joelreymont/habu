@@ -238,9 +238,9 @@ split-str
 \ settled, applies its declared effect to the pre-token rows: pop exactly the
 \ input's physical cells and push the declared outputs over the remainder. A
 \ failure that cannot be spliced while a row holds a wide or open-width cell
-\ sets SCAN-INCOMPLETE, and so does a lost local bind with a local declared
-\ wide (LOC-UNJ-BIND). Otherwise the unspliced result stands and every cell
-\ lowers at the default width. A
+\ records a lost width (SCAN-LOST), and so does a lost local bind with a local
+\ declared wide (LOC-UNJ-BIND). Otherwise the unspliced result stands and
+\ every cell lowers at the default width. A
 \ spliced call whose unify never reached the row tail freezes its declared
 \ rows there, so its call record states the cells the splice popped and
 \ pushed; CHECK finalizes an unjudged scan's call records whatever its
@@ -6410,9 +6410,7 @@ variable QDEPTH
 
 PTR-VARIABLE TOK-SPELL-A   variable TOK-SPELL-U   \ the token being judged
 SCRATCH{
-variable SCAN-INCOMPLETE   \ sticky per scan: a width fact may be missing
-PTR-VARIABLE LOST-TOK-A   variable LOST-TOK-U   \ the token that set it
-variable LOST-FAM          \ the wide value's family there, -1 for none
+PTR-VARIABLE LOSTS-P   variable LOST-CAP   variable LOST-N   \ the tokens that lost a width fact
 variable UNJ-TOK           \ inside an unjudged token: the splice is armed
 variable UNJ-SPLICED       \ a committed step settled this token's rows
 variable STEP-R            \ the applying effect has a return-stack part (EFF-APPLY)
@@ -6440,13 +6438,42 @@ variable UNJ-WF0                    \ the width-fact count before the token
       P>REST
    REPEAT drop RES-FALSE ;
 
-\ The scan loses a width fact at the current token over a wide cell t; the
-\ first such token, and its value's family, are the ones a rejection names.
+\ --- lost widths -------------
+\ One record per token that lost a width fact, in scan order: its tape ordinal
+\ and its wide value's family, -1 for none.
+$0 constant LOST.ORD-OFF
+$8 constant LOST.FAM-OFF
+$10 constant LOST-REC
+: LOST.ORD ( ^a -- ^a ) LOST.ORD-OFF + ;
+: LOST.FAM ( ^a -- ^a ) LOST.FAM-OFF + ;
+$10 constant LOST-INIT
+
+: LOSTS ( -- ^n ) LOSTS-P @ ;
+
+: LOST-ENSURE ( n -- ) {: need:n :}
+   need LOST-CAP @ <= IF EXIT THEN
+   need LOST-CAP @ 2 * max LOST-INIT max {: cap:n :}
+   LOSTS-P @ LOST-CAP @ LOST-REC * cap LOST-REC * SR-GROW LOSTS-P !
+   cap LOST-CAP ! ;
+
+: LOST-ROW ( n -- ^n ) LOST-REC * LOSTS + ;
+: LOST-N@ ( -- n ) LOST-N @ ;
+: LOST-ORD@ ( n -- n ) LOST-ROW LOST.ORD @ ;
+: LOST-FAM@ ( n -- n ) LOST-ROW LOST.FAM @ ;
+
+: LOST-ADD ( n n -- ) {: ord:n fam:n :}
+   LOST-N @ 1 + LOST-ENSURE
+   LOST-N @ LOST-ROW {: r:^ :}
+   ord r LOST.ORD !  fam r LOST.FAM !
+   LOST-N @ 1 + LOST-N ! ;
+
+\ The scan loses a width fact at the current token over a wide cell t; a token
+\ that loses several keeps its first family.
 : SCAN-LOST ( n -- ) {: t:n :}
-   SCAN-INCOMPLETE @ 0 <> IF EXIT THEN
-   -1 SCAN-INCOMPLETE !
-   TOK-SPELL-A @ LOST-TOK-A !  TOK-SPELL-U @ LOST-TOK-U !
-   t CELL>FAM dup 0 < IF drop -1 THEN LOST-FAM ! ;
+   REC-IX @ {: ord:n :}
+   LOST-N @ 0 > IF LOST-N @ 1 - LOST-ORD@ ord = IF EXIT THEN THEN
+   t CELL>FAM dup 0 < IF drop -1 THEN {: fam:n :}
+   ord fam LOST-ADD ;
 
 : UNJ-LOST ( -- )   \ an unspliced failure is incomplete only where a width is at stake
    UNJ-PD @ ROW-WIDE-TYPE dup -1 = IF drop UNJ-PR @ ROW-WIDE-TYPE THEN
@@ -24657,7 +24684,7 @@ EXPORT CHECKER-QUOT-FRESH:CLEAR
    CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
-   0 WF-N !  0 RECW !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
+   0 WF-N !  0 RECW !  0 LOST-N !  0 UNJ-TOK !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !  0 CLAUSE-WALK !  0 WALK-ITEMS !
    NZ-RESET ;
 

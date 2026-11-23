@@ -640,7 +640,27 @@ undefine include
    BODY$ s" TRUSTED: LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-MATCH]: the compiler has no family facts for `lrd-nofam`"
-      s" :1:40" BODY-REJECT-AT ;
+      s" :1:40" BODY-REJECT-AT
+   s" T0 rejects an undefined word before the width it lost" T-LABEL
+   BODY$ s" TRUSTED: LRD-UNDEF ( str -- n ) nosuchword ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-UNDEFINED]: cannot find word `nosuchword`"
+      s" :1:33" BODY-REJECT-AT
+   s" T0 rejects a width lost at a row the walk has not reached in walk order" T-LABEL
+   BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOOFU ( str -- n ) 5 construct lrd-choice scalar MATCH lrd-choice scalar 10 + ENDOF ;MATCH nosuchword ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-T0-MATCH]: a `MATCH` arm's variant is not followed by `of` at `10`"
+      s" :1:164" BODY-REJECT-AT
+   s" T0 rejects a width lost at a quotation's ;]" T-LABEL
+   BODY$ s" TRUSTED: MKS ( -- str ) 0 0 ; TRUSTED: E1 ( -- [ -- ] ) [: MKS >r ;] ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-NELAB-BUNDLE]: the body of `E1` loses the width of a multi-cell value"
+      s" :1:67" BODY-REJECT-AT
+   s" T0 rejects a width lost after one lost inside a quotation" T-LABEL
+   BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: MKS ( -- str ) 0 0 ; TRUSTED: W6 ( -- n ) [: MKS @ ;] drop construct lrd-choice scalar 3 MATCH lrd-choice empty OF 0 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" error[E-NELAB-BUNDLE]: the body of `W6` loses the width of a multi-cell value"
+      s" :1:182" BODY-REJECT-AT ;
 
 \ A refused step in a TRUSTED: body lowers as the raw effect the scan splices,
 \ so `2dup` over a two-cell view copies two cells.

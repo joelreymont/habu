@@ -63,11 +63,13 @@ DYNAMIC-BUFFER ROW-A0 n
 DYNAMIC-BUFFER ROW-A1 n
 DYNAMIC-BUFFER ROW-U n               \ a string's body length
 DYNAMIC-BUFFER ROW-AT n              \ where an escaped string's body starts in BODIES, else -1
+DYNAMIC-BUFFER ROW-LOST n            \ the family of a width its token lost (-1 for none), or NO-LOSS
 DYNAMIC-BUFFER BODIES u8
 variable BODIES-N
 variable ROWS                        \ the rows laid
 variable SPLIT                       \ a does> definer's `does>` row, or -1
 -1 constant K-NONE                   \ a row the checker filed no event for: the `does>`
+-2 constant NO-LOSS                  \ a row whose token lost no width
 0 constant CF-QUOT-OPEN              \ a K-CONTROL row's a0 for `[:` (src/core/checker.f CF-CODE)
 1 constant CF-QUOT-CLOSE             \ and for `;]`
 2 constant CF-IF                     \ `if`, and so on in the checker's list
@@ -1251,11 +1253,8 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START ;
 
-\ An operand bound to no record, or to one a tick may not reach, is undefined,
-\ even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
    ORD @ ROW$ {: a:^ u:n :}
-   r 0< if a u NULL$ NOT-FOUND then
    r XREF-REC {: rec:^ :}
    rec NDICT:TICK-REFUSED? if a u NO-TICK then
    rec REC-START {: xt:n :}
@@ -1905,7 +1904,6 @@ DYNAMIC-BUFFER COUNT-SLOT n
 EXPORT CHECK:LOCW-HW-N@
 EXPORT CHECK:LOCW-HW@
 EXPORT CHECK:NAME-IMM-READS
-EXPORT CHECK:SCAN-INCOMPLETE
 EXPORT CHECK:WF-FACT@
 EXPORT CHECK:WF-N@
 \ ---- one token ---------------------------------------------------------------
@@ -1952,7 +1950,6 @@ EXPORT CHECK:WF-N@
 
 : CALL-TOKEN ( str n n -- )
    {: a:^ u:n r:n loc:n :}
-   r 0< if a u NDEFINITION:NAME$ NOT-FOUND then
    r XREF-REC {: rec:^ :}
    rec REC-START {: to:n :}
    r OP-CODE {: code:n :}
@@ -1982,6 +1979,33 @@ EXPORT CHECKER-TAPE:K-TICK
 EXPORT CHECKER-TAPE:K-IS
 EXPORT CHECKER-TAPE:K-CONSTRUCT
 
+\ A tick row holds its operand's record; the next row spells the operand.
+: BOUND-CK ( n -- ) {: k:n :}
+   k ROW-A0 @ 0< 0= if exit then
+   k ROW-KIND @ {: kind:n :}
+   kind K-NAME =  kind K-CALL =  or if k ROW$ NDEFINITION:NAME$ NOT-FOUND then
+   kind K-TICK = if k 1+ ROW$ NULL$ NOT-FOUND then ;
+
+EXPORT TFAM:TFAM-NAME$
+
+\ A token that lost a width fact leaves no cells to place its wide value from.
+: LOST-WIDTH ( n -- ) {: k:n :}
+   k ROW-LOST @ {: fam:n :}
+   s" E-NELAB-BUNDLE" REJECTION:OPEN
+   s" the body of " SAY  NDEFINITION:NAME$ TICKS
+   s"  loses the width of a multi-cell value, so its cells cannot be placed" SAY
+   k ROW$ REJECTION:AT  s" the value's width is lost here" SAY
+   fam 0< 0= if
+      s" family" REJECTION:NOTE  fam TFAM-NAME$ SAY
+   then
+   REJECTION:HELP
+   s" take the value apart with " SAY  s" MATCH" TICKS
+   s"  before a word that reads one cell, or pass it whole to a word whose signature takes its type" SAY
+   REJECT ;
+
+: LOST-CK ( n -- ) {: k:n :}
+   k ROW-LOST @ NO-LOSS <> if k LOST-WIDTH then ;
+
 \ The row at the cursor, which the walk then passes, by the event the checker
 \ filed for it (THE EVENTS). A string or character literal's span is its
 \ payload; a name lowers from its record.
@@ -1991,6 +2015,8 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    k ROW-A0 @ {: a0:n :}
    NEXT$ {: a:^ u:n :}
    a TXT$ - {: loc:n :}
+   k BOUND-CK
+   k LOST-CK   \ after BOUND-CK: a width an unbound name lost rejects the name
    event STRING-KIND? if k DO-STRING exit then
    event case
       K-NAME of a u a0 loc NAME-TOKEN endof
@@ -2021,7 +2047,7 @@ EXPORT CHECKER-TAPE:K-CONSTRUCT
    begin
       ORD @ ROWS @ >= if false exit then
       ORD @ SPLIT @ = if false exit then
-      ORD @ QUOT-END? if 1 ORD +! true exit then
+      ORD @ QUOT-END? if ORD @ LOST-CK  1 ORD +! true exit then
       COMPILE-TOKEN
    again ;
 
@@ -2134,9 +2160,9 @@ variable SCAN-LO                     \ the ordinal of its first row
    ROWS @ {: k:n :}
    k 1+ {: m:n :}
    m ROW-OFF-RESERVE  m ROW-LEN-RESERVE  m ROW-KIND-RESERVE  m ROW-A0-RESERVE
-   m ROW-A1-RESERVE  m ROW-U-RESERVE  m ROW-AT-RESERVE
+   m ROW-A1-RESERVE  m ROW-U-RESERVE  m ROW-AT-RESERVE  m ROW-LOST-RESERVE
    off k ROW-OFF !  u k ROW-LEN !  K-NONE k ROW-KIND !  0 k ROW-A0 !  0 k ROW-A1 !
-   0 k ROW-U !  -1 k ROW-AT !
+   0 k ROW-U !  -1 k ROW-AT !  NO-LOSS k ROW-LOST !
    m ROWS !
    k ;
 
@@ -2192,50 +2218,22 @@ variable SCAN-LO                     \ the ordinal of its first row
    b binds + BIND-COUNT !
    base 0= if BIND-COUNT @ HEAD-BINDS ! then ;
 
-\ A scan that lost a width fact leaves no cells to place a wide value from, so
-\ nothing lowers. ON-DONE keeps the unit's first loss, across a does> unit's
-\ two scans, as its token's place in SRC$ and the value's family; LOWER rejects
-\ it while the body's source is armed, so the record places the token.
-variable LOST-OFF   -1 LOST-OFF !     \ the token's offset in SRC$, -1 for none
-variable LOST-U                       \ its bytes
-variable LOST-AT-FAM                  \ the value's family id, -1 for none
+EXPORT CHECK:LOST-N@
+EXPORT CHECK:LOST-ORD@
+EXPORT CHECK:LOST-FAM@
 
-EXPORT CHECK:LOST-FAM
-EXPORT CHECK:LOST-TOK-A
-EXPORT CHECK:LOST-TOK-U
-EXPORT TFAM:TFAM-NAME$
-
-: LOST-KEEP ( -- )
-   LOST-OFF @ 0< 0= if exit then
-   LOST-TOK-A @ SRC$ drop - LOST-OFF !
-   LOST-TOK-U @ LOST-U !
-   LOST-FAM @ LOST-AT-FAM ! ;
-
-: LOST-WIDTH ( -- )
-   s" E-NELAB-BUNDLE" REJECTION:OPEN
-   s" the body of " SAY  NAME-A @ NAME-U @ TICKS
-   s"  loses the width of a multi-cell value, so its cells cannot be placed" SAY
-   SRC$ drop LOST-OFF @ +  LOST-U @ REJECTION:AT  s" the value's width is lost here" SAY
-   LOST-AT-FAM @ 0< 0= if
-      s" family" REJECTION:NOTE  LOST-AT-FAM @ TFAM-NAME$ SAY
-   then
-   REJECTION:HELP
-   s" take the value apart with " SAY  s" MATCH" TICKS
-   s"  before a word that reads one cell, or pass it whole to a word whose signature takes its type" SAY
-   REJECT ;
-
-: LOST-CK ( -- )
-   LOST-OFF @ 0< 0= if LOST-WIDTH then ;
+: MARK-LOST ( -- )
+   LOST-N@ 0 ?do  i LOST-FAM@  i LOST-ORD@ ROW-LOST !  loop ;
 
 EXPORT CHECKER-TAPE:EVENT
 
 \ Offsets are made whole by the scan's base.
 : ON-DONE ( str n -- )
    SCAN-VERDICT !  2drop
-   SCAN-INCOMPLETE @ 0<> if LOST-KEEP then
    ROWS @ SCAN-LO @ ?do
       i EVENT  i ROW-A1 !  i ROW-A0 !  i ROW-KIND !
    loop
+   MARK-LOST
    KEEP-MEASURES ;
 
 \ The buffers keep their mappings, grown to the largest definition seen: the
@@ -2265,7 +2263,7 @@ EXPORT CHECKER-TAPE:DISARM
 \ answer stands over the scan's.
 : SCAN ( -- )
    OBSERVE
-   0 SCAN-VERDICT !  -1 LOST-OFF !
+   0 SCAN-VERDICT !
    ARM
    [: CHECK-UNIT M-VERDICT ! ;] [: DISARM ;] finally
    M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
@@ -2368,7 +2366,6 @@ EXPORT CHECKER-TAPE:DISARM
    loop ;
 
 : LOWER ( n -- ) {: before:n :}
-   LOST-CK
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    ARITY-CK
