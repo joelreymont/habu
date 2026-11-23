@@ -16,7 +16,8 @@ split-str
 \ EACH-MEMBER walk an array or object, and EACH-WHILE and EACH-MEMBER-WHILE
 \ stop after the first body that answers false; STRING=, WITH-STRING, >N and
 \ >BOOL read scalars; STRING? OBJECT? ARRAY? NUMBER? BOOL? NULL? test a
-\ value's kind, and INTEGER? whether >N reads it.
+\ value's kind, INTEGER? whether >N reads it, and INTEGRAL? whether a number
+\ has no fractional part, whatever its size.
 \ READ-LISTED reads a closed object one member at a time,
 \ each member its list names once, one whose name ends in `?` at most once
 \ and keyed without it, and no other unless the list's last name is `*`,

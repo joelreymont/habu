@@ -168,13 +168,22 @@ private
    m LEAST-N = if E-JSON-READ-NUMBER throw then
    m negate ;
 
+\ Whether a number lexeme has no significant digit: its value is zero.
+: ZERO-TEXT? ( str -- bool )
+   MANTISSA drop drop drop 0< ;
+
+\ Whether count significant digits with point exponent x leave no fraction.
+: WHOLE-DIGITS? ( n n -- bool )
+   {: x:n count:n :}
+   count x <= ;
+
 \ A number lexeme's value, E-JSON-READ-NUMBER when no signed cell holds
 \ it: a fraction, or past a cell.
 : WHOLE-OF ( str -- n )
    {: p:^ u:n :}
-   p u MANTISSA drop drop drop 0< if 0 exit then
+   p u ZERO-TEXT? if 0 exit then
    p u DIGITS {: x:n f:n count:n :}
-   count x > if E-JSON-READ-NUMBER throw then
+   x count WHOLE-DIGITS? 0= if E-JSON-READ-NUMBER throw then
    p  p x f count NEGATED-WHOLE  SIGNED ;
 
 \ WHOLE-OF's answer replaces the slot under the lexeme, so the quotation
@@ -193,13 +202,43 @@ private
    code E-JSON-READ-NUMBER = if OPTION:NONE exit then
    code throw ;
 
+\ DIGITS's three results replace the slots under the lexeme, so the
+\ quotation under catch leaves the types it was given.
+: TEXT-DIGITS ( n n n str -- n n n str )
+   {: p:^ u:n :}
+   drop drop drop  p u DIGITS  p u ;
+
+\ Whether the exponent a lexeme states after its mantissa's end m is
+\ negative; the lexeme has one.
+: NEGATIVE-EXP? ( str n -- bool )
+   {: p:^ u:n m:n :}
+   p m + 1+ c@ MINUS = ;
+
+\ Whether a number lexeme's value has no fractional part. A point exponent no
+\ cell holds outweighs every digit, so the stated exponent's sign alone decides.
+: WHOLE-TEXT? ( str -- bool )
+   {: p:^ u:n :}
+   p u ZERO-TEXT? if true exit then
+   0 0 0 p u [: TEXT-DIGITS ;] catch
+   {: x f count q w code:n :}
+   code 0= if x count WHOLE-DIGITS? exit then
+   code E-JSON-READ-NUMBER <> if code throw then
+   p u  p u MANTISSA nip nip nip  NEGATIVE-EXP? 0= ;
+
 public
 
+\ A whole number that also fits a signed cell.
 : INTEGER? ( value -- bool )
    WHOLE-VALUE MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
    ;MATCH ;
+
+\ A number whose value has no fractional part, whatever its size.
+: INTEGRAL? ( value -- bool )
+   {: v :}
+   v NUMBER? 0= if false exit then
+   v TEXT$ WHOLE-TEXT? ;
 
 private
 

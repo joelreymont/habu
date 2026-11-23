@@ -359,6 +359,24 @@ create DEEP-BUF DEPTH 2 * allot
    s\" \"1\"" NOT-WHOLE
    s" true" NOT-WHOLE ;
 
+: INTEGRAL ( str -- )  JSON:PARSE JSON:INTEGRAL? TTRUE ;
+: NOT-INTEGRAL ( str -- )  JSON:PARSE JSON:INTEGRAL? TFALSE ;
+
+: TEST-INTEGRAL? ( -- )
+   s" INTEGRAL? is true for a number with no fraction, any size" T-LABEL
+   s" 12" INTEGRAL
+   s" -0" INTEGRAL
+   s" 1.0" INTEGRAL
+   s" 1e30" INTEGRAL
+   s" 0e5" INTEGRAL
+   s" 123456789012345678901234" INTEGRAL
+   s" 1e99999999999999999999" INTEGRAL
+   s" 1.5" NOT-INTEGRAL
+   s" 1e-1" NOT-INTEGRAL
+   s" 1e-99999999999999999999" NOT-INTEGRAL
+   s\" \"1\"" NOT-INTEGRAL
+   s" true" NOT-INTEGRAL ;
+
 : BOOL-OF ( str -- bool )  JSON:PARSE JSON:>BOOL ;
 
 : TEST->BOOL ( -- )
@@ -409,6 +427,7 @@ public
    TEST-WITH-STRING
    TEST-APPEND-STRING
    TEST->N
+   TEST-INTEGRAL?
    TEST->BOOL
    TEST-REJECT ;
 
