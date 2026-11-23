@@ -519,7 +519,7 @@ EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
 EPPRIM: CHECK wide-mark ECLOSE-PRIVATE
 EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ The native defining-word runtime patch is package NDICT's.
-EPPRIM: NDICT does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: NDICT does-patch PE-N PE-IN PE-STR PE-IN ECLOSE-PRIVATE
 \ `does-record ( entry len -- )` records the pending definition's `;does`
 \ clause, writes its name at CP, zero-padded to a code slot, and sets CLAUSE-CELL.
 EPPRIM: NPUB does-record PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
