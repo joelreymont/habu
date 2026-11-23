@@ -17,6 +17,7 @@ require src/lib/test.f
 require src/lib/vector.f
 require src/lib/json.f
 require src/lib/test/mapped.f
+require src/lib/test/counting-allocator.f
 
 package JSON-VALUE-TEST
 private
@@ -253,6 +254,37 @@ create DEEP-BUF DEPTH 2 * allot
    JSON:E-MEMBER
    s" 1:1: expected a string, found an integer; write a string" SAID ;
 
+\ Appends the string to a vector holding `x`, then checks the vector.
+: APPENDED ( str str -- ) {: t:^ tu:n w:^ wu:n :}
+   SEEN-NEW {: out :}
+   s" x" out VEC:APPEND
+   t tu JSON:PARSE out JSON:APPEND-STRING
+   out w wu SEEN= ;
+
+: APPEND-NUMBER ( -- )
+   SEEN-NEW {: out :}
+   [: s" 42" JSON:PARSE out JSON:APPEND-STRING ;]
+   [: out VEC:DELETE ;] finally ;
+
+\ The vector holds its own JSON text with no room to spare, so the growth for
+\ the escaped string moves the text and fills the old block.
+: APPEND-OWN ( -- )
+   ALLOC-TEST:MOVING 0 [type] u8 VEC:NEW {: out :}
+   s\" \"\\nabcdefghijklmnop\"" out VEC:APPEND
+   out VEC:SPAN SPAN:$ JSON:PARSE out JSON:APPEND-STRING
+   out s\" \"\\nabcdefghijklmnop\"\nabcdefghijklmnop" SEEN= ;
+
+: TEST-APPEND-STRING ( -- )
+   s" APPEND-STRING appends a string's decoded bytes" T-LABEL
+   s\" \"plain\"" s" xplain" APPENDED
+   s\" \"a\\nb\\u00e9\\ud83d\\ude00\""
+   s\" xa\nbé😀" APPENDED
+   s\" \"\"" s" x" APPENDED
+   APPEND-OWN
+   [: APPEND-NUMBER ;] JSON:E-MEMBER TTHROWSQ
+   JSON:E-MEMBER
+   s" 1:1: expected a string, found an integer; write a string" SAID ;
+
 : N-OF ( str -- n )  JSON:PARSE JSON:>N ;
 
 \ INTEGER? is true and >N answers want.
@@ -335,6 +367,7 @@ public
    TEST-EACH-MEMBER
    TEST-STRING=
    TEST-WITH-STRING
+   TEST-APPEND-STRING
    TEST->N
    TEST->BOOL
    TEST-REJECT ;

@@ -1191,14 +1191,21 @@ private
    state CURSOR-MATCHED @ 0= 0=
    state CURSOR-OUT @ len = and ;
 
-\ Decodes the current string or key into the vector from byte at on and
-\ answers its length, which its raw length bounds.
+\ Decodes the current string or key into the vector from byte at on, answering
+\ its length, which its raw length bounds; the vector may hold the text itself.
 : DECODE-INTO ( ^cursor ^VEC:vector<u8> n -- n )
    {: state:^ v:^ at:n :}
    state CURSOR-TOK-LEN @ {: raw:n :}
    raw 0= if 0 exit then
+   v at raw +  state CURSOR-SRC @  VEC:MAKE-ROOM  state CURSOR-SRC !
    v at raw + VEC:ENSURE
    state  v at VEC:AT raw  STR-INNER ;
+
+: DECODE-APPEND ( ^cursor ^VEC:vector<u8> -- )
+   {: state:^ v:^ :}
+   v VEC:COUNT {: at:n :}
+   state v at DECODE-INTO {: u:n :}
+   v at u + VEC:RESIZE ;
 
 public
 
@@ -1213,9 +1220,7 @@ public
 : READ-STR-APPEND ( JSON:reader ^VEC:vector<u8> -- JSON:reader ) {: v:^ :}
    READER>STATE {: state:^ :}
    state REQUIRE-STRING
-   v VEC:COUNT {: at:n :}
-   state v at DECODE-INTO {: u:n :}
-   v at u + VEC:RESIZE ;
+   state v DECODE-APPEND ;
 
 private
 

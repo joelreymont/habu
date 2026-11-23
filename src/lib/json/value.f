@@ -16,10 +16,11 @@ split-str
 \ EACH and EACH-MEMBER run their quotation while the walk's cursor is open;
 \ a value it is given borrows the text, not the cursor, so it stays valid
 \ after the walk.
-\ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows. The
-\ cursor record, its depth mapping, AT's decoded token and WITH-STRING's
-\ decoded text live in a MEM:WITH-BYTES scope, and the key storage on the
-\ heap, all released on return or throw. No module state.
+\ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows and
+\ the vector APPEND-STRING grows. The cursor record, its depth mapping, AT's
+\ decoded token and WITH-STRING's decoded text live in a MEM:WITH-BYTES scope,
+\ and the key storage on the heap, all released on return or throw. No module
+\ state.
 
 require src/lib/memory.f
 require src/lib/vector.f
@@ -326,12 +327,15 @@ private
      some OF drop true ENDOF
    ;MATCH ;
 
+: NEXT-STRING ( ^cursor -- ) {: state:^ :}
+   state NEXT-INNER T-STR <> if
+      state s" a string" s" write a string" WRONG-KIND
+   then ;
+
 \ The scratch holds the value, so its decoded text fits.
 : DECODE-RUN ( R ^cursor ^u8 [ R str -- S ] -- S )
    {: state:^ buf:^ body :}
-   state NEXT-INNER T-STR <> if
-      state s" a string" s" write a string" WRONG-KIND
-   then
+   state NEXT-STRING
    state buf state CURSOR-TOK-LEN @ STR-INNER {: u:n :}
    buf u body execute ;
 
@@ -369,6 +373,14 @@ public
       2drop
    then
    v v TEXT$ nip [: body DECODE-RUN ;] WITH-CURSOR ;
+
+\ Appends the string's decoded bytes after the vector's own.
+: APPEND-STRING ( value ^VEC:vector<u8> -- ) {: v out:^ :}
+   v STRING? if
+      v INSIDE$ 2dup ESCAPED? 0= if out VEC:APPEND exit then
+      2drop
+   then
+   v 0 [: drop dup NEXT-STRING out DECODE-APPEND ;] WITH-CURSOR ;
 
 \ A number whose value is whole and fits a signed cell.
 : >N ( value -- n )
