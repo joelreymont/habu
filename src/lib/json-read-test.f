@@ -802,6 +802,11 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s\" {\"a\":{\"b\":1,\"b\":2}}" JRT-UNREPEATED
    s\" {\"a\":{\"x\":[1,{\"a\":3}]},\"a\":2}" 1 JRT-REPEAT
    s\" {\"b\":1,\"a\":2,\"a\":3,\"b\":4}" 2 JRT-REPEAT
+   s\" {\"stem1\":1,\"stem2\":2,\"stem1\":3}" 2 JRT-REPEAT
+   s\" {\"ab\":1,\"abc\":2,\"abd\":3,\"ab\":4}" 3 JRT-REPEAT
+   s\" {\"a\":1,\"a\":2,\"a\":3}" 1 JRT-REPEAT
+   s\" {\"aa1\":1,\"aa2\":2,\"aa3\":3,\"bb1\":4,\"bb2\":5,\"bb3\":6,\"bb1\":7}"
+   6 JRT-REPEAT
    s" READ-REPEAT throws E-JSON-READ-STATE on an array and E-JSON-READ-EOF on a truncated object" T-LABEL
    [: s" [1]" JSON:READ-REPEAT drop ;] E-JSON-READ-STATE TTHROWSQ
    [: s\" {\"a\":1," JSON:READ-REPEAT drop ;] E-JSON-READ-EOF TTHROWSQ ;

@@ -1,6 +1,13 @@
 split-str
 \ read.f - the JSON pull/cursor reader. A file of package JSON
 \ (src/lib/json.f).
+\
+\ FIRST-REPEAT groups an object's decoded keys a byte at a time: a group
+\ agreeing on its first d bytes splits by the first byte after d its
+\ keys do not all share, a key's end a class of its own, each part kept
+\ in document order, until a part is one key, two keys compared whole or
+\ keys that all end, which are equal. The second of equal keys is their
+\ earliest repeat; each byte is read a fixed number of times.
 
 require src/lib/error.f
 require src/lib/memory.f
@@ -8,7 +15,6 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/float.f
 require src/lib/adt/option.f
-require src/lib/sort.f
 require src/lib/utf16.f
 require src/lib/utf8-scalar.f
 require src/lib/vector.f
@@ -1557,11 +1563,16 @@ public
 
 private
 
-\ The vectors keep the most keys held at once, and the room at most
-\ their raw bytes.
+\ The classes a key has at a byte: its end and the 256 byte values.
+257 constant CLASS-COUNT
+
+\ The vectors keep the most keys held at once, the room at most their
+\ raw bytes; classes is a fixed CLASS-COUNT 2 * cells.
 STRUCTURE keys DERIVE addr
    FIELD table ^VEC:vector<n>
-   FIELD sorted ^VEC:vector<n>
+   FIELD indices ^VEC:vector<n>
+   FIELD spare ^VEC:vector<n>
+   FIELD classes ^VEC:vector<n>
    FIELD places ^VEC:vector<n>
    FIELD room ^VEC:vector<u8>
 ;STRUCTURE
@@ -1570,7 +1581,9 @@ STRUCTURE keys DERIVE addr
 : KEYS-CLOSE ( ^keys -- )
    {: keys:^ :}
    keys KEYS-TABLE @ VEC:DELETE
-   keys KEYS-SORTED @ VEC:DELETE
+   keys KEYS-INDICES @ VEC:DELETE
+   keys KEYS-SPARE @ VEC:DELETE
+   keys KEYS-CLASSES @ VEC:DELETE
    keys KEYS-PLACES @ VEC:DELETE
    keys KEYS-ROOM @ VEC:DELETE ;
 
@@ -1580,7 +1593,9 @@ STRUCTURE keys DERIVE addr
    {: keys:^ :}
    HEAP:ALLOCATOR {: al:^ :}
    al 1 [type] n VEC:NEW keys KEYS-TABLE !
-   al 1 [type] n VEC:NEW keys KEYS-SORTED !
+   al 1 [type] n VEC:NEW keys KEYS-INDICES !
+   al 1 [type] n VEC:NEW keys KEYS-SPARE !
+   al CLASS-COUNT 2 * [type] n VEC:NEW keys KEYS-CLASSES !
    al 1 [type] n VEC:NEW keys KEYS-PLACES !
    al 1 [type] u8 VEC:NEW keys KEYS-ROOM ! ;
 
@@ -1602,9 +1617,18 @@ STRUCTURE keys DERIVE addr
 : TABLE ( ^keys -- ^n )
    KEYS-TABLE @ 0 VEC:AT ;
 
-\ Key indices, a range sorted by their decoded bytes once all are read.
+\ Key indices, a range grouped by decoded bytes once all are read.
 : ORDER ( ^keys -- ^n )
-   KEYS-SORTED @ 0 VEC:AT ;
+   KEYS-INDICES @ 0 VEC:AT ;
+
+\ The cells a group's keys move through, cell i beside order's.
+: SPARE ( ^keys -- ^n )
+   KEYS-SPARE @ 0 VEC:AT ;
+
+\ The first CLASS-COUNT cells count, then place, each class of a pass,
+\ zero between passes; the next CLASS-COUNT list the classes the pass saw.
+: CLASSES ( ^keys -- ^n )
+   KEYS-CLASSES @ 0 VEC:AT ;
 
 \ Cell i holds key i's offset in the text, at its opening quote.
 : PLACES ( ^keys -- ^n )
@@ -1653,49 +1677,180 @@ STRUCTURE keys DERIVE addr
       a SKIP-INNER
    repeat ;
 
-\ Keys in order of their decoded bytes, equal keys in document order.
-: KEY< ( n n ^n ^u8 -- bool )
-   {: i:n j:n table:^ room:^ :}
-   table room i KEY$  table room j KEY$
-   {: a:^ u:n b:^ v:n :}
-   a u b v STR< if true exit then
-   b v a u STR< if false exit then
-   i j < ;
-
-
 : FILL-ORDER ( ^n n n -- )
    {: order:^ lo:n k:n :}
    k lo ?do i order i cells + ! loop ;
 
+: NTH ( ^n n -- n )
+   cells + @ ;
 
-: RANKED$ ( ^n ^u8 ^n n -- str )
-   {: table:^ room:^ order:^ idx:n :}
-   table room  order idx cells + @  KEY$ ;
+\ Key idx's class at byte d: 0 where it ends, else 1 + its byte.
+: CLASS ( ^n ^u8 n n -- n )
+   {: table:^ room:^ idx:n d:n :}
+   table room idx KEY$ {: a:^ u:n :}
+   d u = if 0 exit then
+   a d + c@ 1+ ;
 
+: KEY-FROM$ ( ^n ^u8 n n -- str )
+   {: table:^ room:^ idx:n d:n :}
+   table room idx KEY$ {: a:^ u:n :}
+   a d +  u d - ;
 
-\ The least index of keys lo..k-1 ranked after an equal key, k when
-\ there is none.
-: LEAST-REPEAT ( ^n ^u8 ^n n n -- n )
-   {: table:^ room:^ order:^ lo:n k:n :}
-   k  k lo 1+ ?do
-      table room order i 1- RANKED$
-      table room order i RANKED$ STR=
-      if order i cells + @ min then
+\ Whether every key of order[a..b) has the first's byte at p.
+: AGREE? ( n ^keys n n -- bool )
+   {: p:n keys:^ a:n b:n :}
+   keys TABLE keys ROOM keys ORDER {: table:^ room:^ order:^ :}
+   table room order a NTH p CLASS {: c:n :}
+   c 0= if false exit then
+   b a 1+ ?do
+      table room order i NTH p CLASS
+      c <> if false unloop exit then
+   loop true ;
+
+\ The first byte from d on where a key of order[a..b) ends or differs
+\ from the first, so each byte before it is read once.
+: PREFIX ( ^keys n n n -- n )
+   {: keys:^ a:n b:n d:n :}
+   d begin dup keys a b AGREE? while 1+ repeat ;
+
+: SEEN-AT ( ^n n -- ^n )
+   CLASS-COUNT + cells + ;
+
+\ Counts a key of class c, listing c as seen class m when it is new;
+\ answers how many classes are seen.
+: COUNT-KEY ( n ^n n -- n )
+   {: m:n cl:^ c:n :}
+   cl c cells + {: at:^ :}
+   at @ 1+ at !
+   at @ 1 > if m exit then
+   c cl m SEEN-AT !  m 1+ ;
+
+\ Counts the keys of order[a..b) by their class at byte d; answers how
+\ many classes it saw.
+: COUNT-CLASSES ( ^keys n n n -- n )
+   {: keys:^ a:n b:n d:n :}
+   keys TABLE keys ROOM keys ORDER keys CLASSES
+   {: table:^ room:^ order:^ cl:^ :}
+   0 b a ?do
+      cl table room order i NTH d CLASS COUNT-KEY
    loop ;
 
+\ Turns a class's count into its first place, s; answers the place
+\ after the class.
+: START-CLASS ( n ^n -- n )
+   {: s:n at:^ :}
+   at @ s +  s at ! ;
 
-\ The earliest of keys lo..k-1 that decodes as one before it in the range:
-\ sorted, equal keys are neighbours, the second of a run its earliest repeat.
+\ Places the m seen classes from a in the order first seen.
+: PLACE-CLASSES ( ^n n n -- )
+   {: cl:^ a:n m:n :}
+   a m 0 ?do cl  cl i SEEN-AT @ cells +  START-CLASS loop
+   drop ;
+
+\ Puts key idx at its class's next place in spare.
+: PUT ( ^n ^u8 ^n ^n n n -- )
+   {: table:^ room:^ spare:^ cl:^ idx:n d:n :}
+   cl  table room idx d CLASS  cells + {: at:^ :}
+   idx  spare at @ cells + !
+   at @ 1+ at ! ;
+
+\ Moves the keys of order[a..b) to their classes' places through spare,
+\ each class in document order.
+: SCATTER ( ^keys n n n -- )
+   {: keys:^ a:n b:n d:n :}
+   keys TABLE keys ROOM keys SPARE keys CLASSES keys ORDER
+   {: table:^ room:^ spare:^ cl:^ order:^ :}
+   b a ?do table room spare cl order i NTH d PUT loop
+   b a ?do spare i NTH  order i cells + ! loop ;
+
+\ Lists group order[s..e), three or more keys agreeing on d bytes, in
+\ its idle spare cells s..s+2 ahead of head; answers the new head.
+: WAIT ( ^keys n n n n -- n )
+   {: keys:^ s:n e:n d:n head:n :}
+   keys SPARE s cells + {: w:^ :}
+   e w !  d w 1 cells + !  head w 2 cells + !
+   s ;
+
+\ best, or the second of order[s..s+2) when the two keys, agreeing on
+\ d bytes, are equal.
+: PAIR-REPEAT ( n ^keys n n -- n )
+   {: best:n keys:^ s:n d:n :}
+   keys TABLE keys ROOM keys ORDER {: table:^ room:^ order:^ :}
+   table room order s NTH d KEY-FROM$
+   table room order s 1+ NTH d KEY-FROM$ STR=
+   if order s 1+ NTH best min exit then best ;
+
+\ Settles group order[s..e), agreeing on d bytes: fewer than two keys
+\ are done, two compared and more wait; answers best and the head.
+: SETTLE ( n n ^keys n n n -- n n )
+   {: best:n head:n keys:^ s:n e:n d:n :}
+   e s - 2 < if best head exit then
+   e s - 2 = if best keys s d PAIR-REPEAT head exit then
+   best  keys s e d head WAIT ;
+
+\ best, or the second of order[s..e), keys that all end at the same
+\ byte, when it holds two or more.
+: ENDED-REPEAT ( n ^keys n n -- n )
+   {: best:n keys:^ s:n e:n :}
+   e s - 2 < if best exit then
+   keys ORDER s 1+ NTH best min ;
+
+\ Seen class j and the place after its keys, its cell zeroed for the
+\ next pass.
+: TAKE-CLASS ( ^n n -- n n )
+   {: cl:^ j:n :}
+   cl j SEEN-AT @ {: c:n :}
+   c  cl c cells + @
+   0 cl c cells + ! ;
+
+\ Settles seen class j of a pass at byte d, its keys from s; answers
+\ where the next class starts.
+: SETTLE-CLASS ( n n n ^keys n n -- n n n )
+   {: best:n head:n s:n keys:^ j:n d:n :}
+   keys CLASSES j TAKE-CLASS {: c:n e:n :}
+   c 0= if best keys s e ENDED-REPEAT head e exit then
+   best head keys s e d 1+ SETTLE e ;
+
+\ Settles the m classes a pass at byte d placed from a.
+: SETTLE-CLASSES ( n n ^keys n n n -- n n )
+   {: best:n head:n keys:^ a:n m:n d:n :}
+   best head a
+   m 0 ?do keys i d SETTLE-CLASS loop drop ;
+
+\ Splits group order[a..b), agreeing on d bytes, by the first byte
+\ after those all its keys share, and settles each part.
+: GROUP-PASS ( n n ^keys n n n -- n n )
+   {: best:n head:n keys:^ a:n b:n d:n :}
+   keys a b d PREFIX {: p:n :}
+   keys a b p COUNT-CLASSES {: m:n :}
+   keys CLASSES a m PLACE-CLASSES
+   keys a b p SCATTER
+   best head keys a m p SETTLE-CLASSES ;
+
+\ Takes the group at head off the list and runs its pass.
+: NEXT-GROUP ( n n ^keys -- n n )
+   {: best:n head:n keys:^ :}
+   keys SPARE head cells + {: w:^ :}
+   best  w 2 cells + @
+   keys head  w @  w 1 cells + @  GROUP-PASS ;
+
+\ The least repeat among keys lo..k-1, k when there is none; the list
+\ of waiting groups ends at k.
+: GROUP-REPEAT ( ^keys n n -- n )
+   {: keys:^ lo:n k:n :}
+   k k keys lo k 0 SETTLE
+   begin dup k <> while keys NEXT-GROUP repeat drop ;
+
+
+\ The earliest of keys lo..k-1 that decodes as one before it in the
+\ range.
 : FIRST-REPEAT ( ^keys n -- option<n> )
    {: keys:^ lo:n :}
    keys TABLE @ {: k:n :}
-   keys KEYS-SORTED @ k VEC:ENSURE
-   keys ORDER {: order:^ :}
-   keys TABLE {: table:^ :}
-   keys ROOM {: room:^ :}
-   order lo k FILL-ORDER
-   order lo cells + k lo - [: table room KEY< ;] SORT:SORT!
-   table room order lo k LEAST-REPEAT {: at:n :}
+   keys KEYS-INDICES @ k VEC:ENSURE
+   keys KEYS-SPARE @ k VEC:ENSURE
+   keys ORDER lo k FILL-ORDER
+   keys lo k GROUP-REPEAT {: at:n :}
    at k = if OPTION:NONE exit then
    at OPTION:SOME ;
 

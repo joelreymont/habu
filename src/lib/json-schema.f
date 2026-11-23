@@ -50,6 +50,7 @@ require src/lib/adt/option.f
 require src/lib/arena.f
 require src/lib/reason.f
 require src/lib/json.f
+require src/lib/sort.f
 require src/lib/map.f
 require src/lib/regex.f
 require src/lib/vector.f

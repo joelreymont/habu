@@ -69,6 +69,10 @@ private
    [: s\" {\"a\":{\"x\":1,\"x\":2},\"a\":3}" PARSED ;] JSON:E-MEMBER TTHROWSQ
    JSON:E-MEMBER
    s\" 1:13: expected a member name not used before in this object, found `\"x\"`; remove the repeated member"
+   SAID
+   [: s\" {\"a\":1,\"b\":{\"c\":1,\"d\":2,\"c\":3}}" PARSED ;] JSON:E-MEMBER TTHROWSQ
+   JSON:E-MEMBER
+   s\" 1:25: expected a member name not used before in this object, found `\"c\"`; remove the repeated member"
    SAID ;
 
 : GOT ( str str -- str ) {: t:^ tu:n n:^ nu:n :}

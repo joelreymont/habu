@@ -10,7 +10,7 @@ split-str
 \ k, the keys held, as the object's first index lo; at its `}` it pops lo, finds
 \ the first of keys lo..k-1 that repeats one before it, and drops those keys.
 \ The lo stack lies in the order's low cells: every enclosing object holds a key
-\ below an inner object's lo, so the stack stays below the range a check sorts.
+\ below an inner object's lo, so the stack stays below the range a check groups.
 \ The repeat earliest in the text is rejected once the whole text has read well
 \ formed.
 \ EACH and EACH-MEMBER run their quotation while the walk's cursor is open;
@@ -69,7 +69,7 @@ private
 
 \ Pushes k as the lo of an object opened inside m others.
 : OPEN-OBJECT ( ^keys n -- n ) {: keys:^ m:n :}
-   keys KEYS-SORTED @ m 1+ VEC:ENSURE
+   keys KEYS-INDICES @ m 1+ VEC:ENSURE
    keys TABLE @  keys ORDER m cells + !
    m 1+ ;
 

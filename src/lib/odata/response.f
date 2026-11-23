@@ -19,6 +19,7 @@ require src/lib/date.f
 require src/lib/adt/option.f
 require src/lib/reason.f
 require src/lib/json.f
+require src/lib/sort.f
 require src/lib/odata/metadata.f
 
 package ODATA
