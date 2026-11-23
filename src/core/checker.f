@@ -6913,7 +6913,7 @@ variable CWIN-DMASK                 \ the callee's intact bits over the live win
    loop RES-FALSE ;
 
 : QUOT-TAIL-MARK ( n n n -- ) {: row:n floor:n mark:n :}
-   row BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT {: t:n :}
+   row ROW-TAIL {: t:n :}
    t STALE-ROW? IF EXIT THEN
    t PAY floor < IF EXIT THEN
    t floor mark QUOT-TAIL-HELD? IF EXIT THEN
@@ -7117,6 +7117,11 @@ variable QUOT-LOSS
      \ A catch that does not reshape the stack gives back the depth it found,
      \ a body that never returns included: its call record states equal counts.
      reshape 0=  REC-ON @ and IF CALL-DIN @ CALL-DOUT ! THEN
+     \ One that reshapes it counts both rows above their one tail, after the step.
+     reshape  REC-ON @ and IF
+        QTT @ Q>DIN CALL-DIN !  QTT @ Q>DOUT CALL-DOUT !
+        CALL-FREEZE-XT
+     THEN
      noret IF
         QTT @ Q>XHAS 0= IF TOKEN-DEAD! THEN
      ELSE reshape IF

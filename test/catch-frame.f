@@ -102,6 +102,39 @@ variable ACC
    77 f ['] KEEP catch 2drop
    depth d -  swap ;
 
+\ A runner whose quotation's output row is open: the step alone binds it.
+: RUN-OPEN ( R n [ R n -- S ] -- S ) execute ;
+
+\ On a throw the two cells the body was given are stale: they are dropped and
+\ the code thrown on to the frame's own catch.
+: OPEN-DROP ( n -- )
+   ['] GROW [: RUN-OPEN ;] catch {: c:n :}
+   c 0<> if 2drop c throw then 2drop ;
+
+: OPEN-FRAME ( n -- n n )
+   {: f:n :}
+   depth {: d:n :}
+   77 1 f ['] OPEN-DROP catch 2drop
+   depth d -  swap ;
+
+\ A runner whose quotation's input row is bare: the caller's xt names its own
+\ row, so the body's rows end on that row's tail.
+: RUN-ROW ( R [ R -- S ] -- S ) execute ;
+
+variable ROW-SHIFT
+
+\ The cells over the depth at entry once the code is popped, stored on both
+\ paths before a code is thrown on.
+: ROW-STORE ( R n [ R n -- R n n ] -- R n n )
+   depth {: d:n :}
+   [: RUN-ROW ;] catch {: c:n :}
+   depth d - ROW-SHIFT !
+   2drop  1000 c + throw ;
+
+: ROW-RUN ( n -- ) ['] GROW ROW-STORE ;
+
+: ROW-FRAME ( n -- n ) ['] ROW-RUN catch drop  ROW-SHIFT @ ;
+
 \ A body that never returns leaves its catch the depth it found.
 : DROP-THROW ( n -- ) drop 7311 throw ;
 
@@ -126,6 +159,10 @@ variable ACC
    0 SHRINK-FRAME FRAME=  1 SHRINK-FRAME FRAME=
    s" a catch whose body leaves the same keeps the row's depth" T-LABEL
    0 KEEP-FRAME FRAME=  1 KEEP-FRAME FRAME=
+   s" a catch whose body's output row is open keeps the row's depth" T-LABEL
+   0 OPEN-FRAME FRAME=  1 OPEN-FRAME FRAME=
+   s" a catch whose body's xt names the caller's row keeps the row's depth" T-LABEL
+   0 ROW-FRAME 0 T=  1 ROW-FRAME 0 T=
    s" a catch whose body takes a cell and never returns keeps it" T-LABEL
    TAKE-FRAME 7311 T=  FRAME=
    s" a catch whose body pushes and never returns keeps the row's depth" T-LABEL
