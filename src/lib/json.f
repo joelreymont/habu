@@ -1,6 +1,6 @@
 split-str
 \ json.f - package JSON: a checked pull reader, an emit-only writer, a copy
-\ between them and a comparison of two values.
+\ of a JSON:value into the writer and a comparison of two values.
 \ Reading is strict RFC 8259: no comments, trailing commas or single quotes.
 \ Structure, escapes and Unicode scalar encoding are validated as the cursor
 \ advances; values decode on demand. Every E-JSON-READ code and E-MEMBER is
@@ -53,11 +53,8 @@ split-str
 \ or end outside one.
 \ WRITE-KEY writes `"k": ` when indented and `"k":` when compact.
 \ WRITE-STRING-PART appends whole UTF-8 scalars, escaped.
-\ COPY-VALUE copies one value from the reader's current token into the writer,
-\ given a decode buffer at least as large as the source value; escaped strings
-\ can never decode to more source bytes. It writes the value through the
-\ writer's tokens, keeping member order and numeric lexemes, and answers the
-\ reader at the end of that value and the writer.
+\ COPY-VALUE writes a JSON:value through the writer's tokens, keeping member
+\ order and numeric lexemes, and answers the writer.
 \ VALUE= answers whether two texts, each one JSON value, hold the same value,
 \ whatever their member order, spacing and escapes; numbers are equal when their
 \ mathematical values are, as JSON Schema defines equality: 1, 1.0, 1e0 and
@@ -69,7 +66,7 @@ split-str
 \ (zero-filled typed storage owns nothing, and READ-DISPOSE leaves it so) and the
 \ source span, and keeps both live and exclusive until READ-CLOSE or
 \ READ-FINISH: a promise the checker cannot prove. The caller owns the writer
-\ record, its output and COPY-VALUE's decode buffer. A JSON:value owns nothing.
+\ record and its output. A JSON:value owns nothing.
 \ No module state.
 require src/lib/json/read.f
 require src/lib/json/write.f

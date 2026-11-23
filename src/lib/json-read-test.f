@@ -645,58 +645,40 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
 : JRT-COPY$ ( -- str )
    s\" {\"a\":1,\"b\":[2,3]}" ;
 
-: JRT-COPY ( n -- str ) {: indent:n :}
-   JRT-COPY$ JRT-OPEN-A JSON:READ-NEXT drop
+: JRT-COPY ( str n -- str )
+   {: src:^ len:n indent:n :}
+   src len JSON:PARSE
    JRT-WRITER JRT-WRITE-OUT @ JSON:OPEN indent JSON:WRITE-INDENT!
-   JRT-BUF JRT-CAP JSON:COPY-VALUE
-   JSON:WRITTEN$ {: a:^ u:n :}
-   JSON:READ-CLOSE a u ;
+   JSON:COPY-VALUE JSON:WRITTEN$ ;
 
 \ COPY-VALUE lays the value out through the writer's tokens, as any writing.
 : JRT-TEST-COPY-LAYOUT ( -- )
    s" COPY-VALUE lays a value out at the writer's indent" T-LABEL
-   2 JRT-COPY s\" {\n  \"a\": 1,\n  \"b\": [\n    2,\n    3\n  ]\n}" T$=
-   0 JRT-COPY JRT-COPY$ T$= ;
+   JRT-COPY$ 2 JRT-COPY
+   s\" {\n  \"a\": 1,\n  \"b\": [\n    2,\n    3\n  ]\n}" T$=
+   JRT-COPY$ 0 JRT-COPY JRT-COPY$ T$= ;
+
+: JRT-SCALARS$ ( -- str )
+   s\" {\"ké\":\"a\\nb\",\"f\":1.5e3,\"t\":[true,false,null]}" ;
+
+: JRT-TEST-COPY-SCALARS ( -- )
+   s" COPY-VALUE writes strings, escapes, numbers and literals" T-LABEL
+   JRT-SCALARS$ 0 JRT-COPY JRT-SCALARS$ T$= ;
 
 \ A value nested deeper than the return stack holds frames copies whole.
-JRT-DEEP-CAP BUFFER: JRT-COPY-DST
 
 : JRT-TEST-COPY-DEEP ( -- )
    0 JRT-COPY-DEPTH JRT-DIGIT-1 JRT-DEEP-ONE$ {: src:^ len:n :}
-   src len JRT-OPEN-A JSON:READ-NEXT drop
+   src len JSON:PARSE
    JRT-WRITER JRT-WRITE-OUT @ JSON:OPEN
-   JRT-COPY-DST JRT-DEEP-CAP JSON:COPY-VALUE
-   JSON:WRITTEN$ src len T$=
-   JSON:READ-CLOSE ;
-
-: JRT-COPY-AT ( JSON:reader -- )
-   JRT-WRITER JRT-WRITE-OUT @ JSON:OPEN
-   JRT-BUF JRT-CAP JSON:COPY-VALUE drop JSON:READ-CLOSE ;
-
-: JRT-SECOND ( str -- JSON:reader )
-   JRT-OPEN-A JSON:READ-NEXT drop JSON:READ-NEXT drop ;
+   JSON:COPY-VALUE
+   JSON:WRITTEN$ src len T$= ;
 
 \ CODE's REASON text, then released, so a later case's plain throw of CODE
 \ cannot match it.
 : JRT-SAID ( n str -- ) {: code:n wa:^ wu:n :}
    code REASON:TEXT$ wa wu T$=
    REASON:RELEASE ;
-
-\ COPY-VALUE rejects a token that starts no value at that token.
-: JRT-TEST-COPY-REJECT ( -- )
-   s" COPY-VALUE rejects a member name, an object's end and the end of the input" T-LABEL
-   [: s\" {\n \"a\":1}" JRT-SECOND JRT-COPY-AT ;] E-JSON-READ-STATE TTHROWSQ
-   E-JSON-READ-STATE
-   s\" 2:2: expected a value, found `\"a\"`; read past the member name with READ-NEXT, so the reader is at its value"
-   JRT-SAID
-   [: s" {}" JRT-SECOND JRT-COPY-AT ;] E-JSON-READ-STATE TTHROWSQ
-   E-JSON-READ-STATE
-   s" 1:2: expected a value, found `}`; call COPY-VALUE at a value: it copies a value, not the close of its container"
-   JRT-SAID
-   [: s\" 1\n" JRT-SECOND JRT-COPY-AT ;] E-JSON-READ-STATE TTHROWSQ
-   E-JSON-READ-STATE
-   s" 2:1: expected a value, found the end of the input; call COPY-VALUE only at a value: there is no value left to copy"
-   JRT-SAID ;
 
 : JRT-TEST-FIND-HIT ( -- )
    s" READ-FIND-KEY stops on the found key's value" T-LABEL
@@ -2056,8 +2038,8 @@ create JRT-NAMES 400 allot
    JRT-TEST-END-SPAN
    JRT-TEST-ROUNDTRIP
    JRT-TEST-COPY-LAYOUT
+   JRT-TEST-COPY-SCALARS
    JRT-TEST-COPY-DEEP
-   JRT-TEST-COPY-REJECT
    JRT-TEST-FIND-HIT
    JRT-TEST-FIND-SKIP
    JRT-TEST-FIND-MISS

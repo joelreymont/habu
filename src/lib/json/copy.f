@@ -1,40 +1,36 @@
 split-str
-\ copy.f - COPY-VALUE, one value from a reader into a writer.
+\ copy.f - COPY-VALUE, one JSON:value into a writer.
 \
-\ COPY-VALUE walks the reader's tokens in one loop, counting containers opened
-\ minus closed, and stops after the token that brings the count back to 0: a
-\ value of any depth copies in constant stack. A comma is due before a key, a
-\ value or a start exactly when the token written last was a value or an end.
+\ COPY-VALUE walks the value's tokens with a cursor in one loop, counting
+\ containers opened minus closed, and stops after the token that brings the
+\ count back to 0: a value of any depth copies in constant stack. A comma is
+\ due before a key, a value or a start exactly when the token written last was
+\ a value or an end.
 
 require src/lib/json/read.f
 require src/lib/json/write.f
+require src/lib/json/value.f
 
 package JSON
 
 private
 
-\ T-STR through T-NULL are the scalar kinds.
-: COPY-SCALAR? ( n -- bool )
-   {: kind:n :}
-   kind T-STR >= kind T-NULL <= and ;
-
 : COPY-COMMA ( ^writer bool -- ^writer )
    if WRITE-COMMA then ;
 
-: COPY-KEY ( JSON:reader ^writer ^u8 n -- JSON:reader ^writer )
-   {: dst:^ cap:n :}
-   swap dst cap READ-STR {: len:n :} swap
+: COPY-KEY ( ^writer ^cursor ^u8 n -- ^writer )
+   {: state:^ dst:^ cap:n :}
+   state dst cap STR-INNER {: len:n :}
    dst len WRITE-KEY ;
 
-: COPY-SCALAR ( JSON:reader ^writer ^u8 n n -- JSON:reader ^writer )
-   {: dst:^ cap:n kind:n :}
+: COPY-SCALAR ( ^writer ^cursor ^u8 n n -- ^writer )
+   {: state:^ dst:^ cap:n kind:n :}
    kind T-STR = if
-      swap dst cap READ-STR {: len:n :} swap
+      state dst cap STR-INNER {: len:n :}
       dst len WRITE-STRING exit
    then
    kind T-INT = kind T-FLOAT = or if
-      swap READ-SPAN$ {: a:^ u:n :} swap
-      a u WRITE-RAW exit
+      state RAW-SPAN$ WRITE-RAW exit
    then
    kind T-TRUE = if true WRITE-BOOL exit then
    kind T-FALSE = if false WRITE-BOOL exit then
@@ -53,48 +49,34 @@ private
    w kind T-OBJ-END = if WRITE-OBJECT-END else WRITE-ARRAY-END then
    drop depth 1 - true ;
 
-\ Rejects the reader's current token, which starts no value, with the fix.
-: COPY-REJECT ( JSON:reader str -- JSON:reader ) {: fa:^ fu:n :}
-   READER>STATE s" a value" fa fu E-JSON-READ-STATE REJECT-TOKEN ;
-
-\ Write the reader's current token, of kind kind, and answer the new depth
+\ Write the cursor's current token, of kind kind, and answer the new depth
 \ and whether a comma is due before the next token.
-: COPY-STEP ( JSON:reader n n bool ^writer ^u8 n -- JSON:reader n bool )
-   {: kind:n depth:n sep:bool w dst:^ cap:n :}
+: COPY-STEP ( n n bool ^writer ^cursor ^u8 n -- n bool )
+   {: kind:n depth:n sep:bool w state:^ dst:^ cap:n :}
    kind T-OBJ = kind T-ARR = or if
       w kind depth sep COPY-OPEN exit
    then
    kind T-OBJ-END = kind T-ARR-END = or if
-      depth 0= if
-         s" call COPY-VALUE at a value: it copies a value, not the close of its container"
-         COPY-REJECT
-      then
       w kind depth COPY-CLOSE exit
    then
    kind T-KEY = if
-      depth 0= if
-         s" read past the member name with READ-NEXT, so the reader is at its value"
-         COPY-REJECT
-      then
-      w sep COPY-COMMA dst cap COPY-KEY drop depth false exit
+      w sep COPY-COMMA state dst cap COPY-KEY drop depth false exit
    then
-   kind COPY-SCALAR? 0= if
-      s" call COPY-VALUE only at a value: there is no value left to copy"
-      COPY-REJECT
-   then
-   w sep COPY-COMMA dst cap kind COPY-SCALAR drop depth true ;
+   w sep COPY-COMMA state dst cap kind COPY-SCALAR drop depth true ;
 
-: COPY-ADVANCE ( JSON:reader n bool -- JSON:reader n n bool )
-   {: depth:n sep:bool :}
-   READ-NEXT depth sep ;
+\ The scratch holds the value, so a decoded key or string fits.
+: COPY-WALK ( ^writer ^cursor ^u8 n -- ^writer )
+   {: w state:^ dst:^ cap:n :}
+   state NEXT-INNER 0 false w state dst cap COPY-STEP
+   begin over 0<> while
+      state NEXT-INNER -rot w state dst cap COPY-STEP
+   repeat drop drop w ;
 
 public
 
-: COPY-VALUE ( JSON:reader ^JSON:writer ^u8 n -- JSON:reader ^JSON:writer )
-   {: w dst:^ cap:n :}
-   READ-TOKEN 0 false w dst cap COPY-STEP
-   begin over 0<> while
-      COPY-ADVANCE w dst cap COPY-STEP
-   repeat drop drop w ;
+: COPY-VALUE ( JSON:value ^JSON:writer -- ^JSON:writer )
+   {: v w :}
+   v TEXT$ nip {: len:n :}
+   w v len [: len COPY-WALK ;] WITH-CURSOR ;
 
 ;package

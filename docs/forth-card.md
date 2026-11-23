@@ -587,7 +587,7 @@ holds an address**.
   undeclared code. `src/lib/error.f` states the refusals (CODE, CHECK).
 - A block with codes in a package (`JSON:E-READ-SOURCE`) is minted, bounds and
   all, in the file that throws its codes and that every other file throwing
-  them requires (`src/lib/json/read.f`, which `src/lib/json/copy.f` requires;
+  them requires (`src/lib/json/read.f`, which `src/lib/json/value.f` requires;
   both reopen package JSON, which `src/lib/json.f` loads), and
   `src/lib/error.f` says where.
   The engine bakes `src/lib/error.f` and every other file of a package it
