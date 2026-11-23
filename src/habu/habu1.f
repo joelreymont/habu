@@ -1302,9 +1302,9 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BCPFETCH ( -- ) 9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
-: BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BDATAFETCH ( -- ) 9 XREG-RBASE 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
 : BNULLPTR ( -- ) 31 G-PUSH ;   \ ( -- 0 ) the null: register 31 as a store source is xzr
-: BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
+: BCHECKFETCH ( -- ) 9 XREG-RBASE HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/XREG-RBASE + HOOK-CELL])
 
 private
 \ x3 = the lr, copied before FAULT-OPEN,'s calls replace x30.
@@ -1325,7 +1325,7 @@ public
 : B-TASK-GUARD ( str str -- )
    {: c:^ cu:n p:^ pu:n :}
    LBL {: ok:label :}
-   9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
+   9 XREG-RBASE TASK-TCB-CELL LDR,  9 ok CBZ,
       c cu p pu  FAULT-RECORD:TASK-GUARD$  FAULT-RECORD:TASK-GUARD-HELP$
       GUARD-RECORD,
    ok LBL, ;
@@ -1338,7 +1338,7 @@ public
 variable LDIE
 : GUARD, ( -- )
    LBL {: ok:label :}
-   9 REPLAY-SCOPE:LATCH LIT64,  9 DATA 9 ADD,  9 9 0 LDR,  9 ok CBZ,
+   9 REPLAY-SCOPE:LATCH LIT64,  9 XREG-RBASE 9 ADD,  9 9 0 LDR,  9 ok CBZ,
       LDIE LABEL@ B,
    ok LBL, ;
 ;package
@@ -1355,8 +1355,8 @@ private
 : LASTC-TRIM, ( n n -- ) {: t:n u:n :}
    LBL {: live:label :}
    t DREC MOVZ,  t NDICT t MUL,  t DBASE t ADD,        \ the first record past the count
-   u DATA LASTC-CELL LDR,  u t CMP,  C-CC live BCOND,
-   u 0 MOVZ,  u DATA LASTC-CELL STR,
+   u XREG-RBASE LASTC-CELL LDR,  u t CMP,  C-CC live BCOND,
+   u 0 MOVZ,  u XREG-RBASE LASTC-CELL STR,
    live LBL, ;
 
 : BNDSET ( -- )                                     \ ( n -- ) set NDICT — forget dict entries past a mark
@@ -1376,12 +1376,12 @@ private
    LBL LBL LBL {: owner:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
-   14 DATA NCOMP-DISPATCH:COMP-LATCH-CELL LDR,  14 bad CBZ,
+   14 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL LDR,  14 bad CBZ,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
-   14 DATA PEND-CELL LDR,  14 bad CBZ,
+   14 XREG-RBASE PEND-CELL LDR,  14 bad CBZ,
    14 B CMP,  C-EQ owner BCOND,
    14 14 DREC ADDI,  14 B CMP,  C-NE bad BCOND,
-   14 DATA CLAUSE-CELL LDR,  14 bad CBZ,
+   14 XREG-RBASE CLAUSE-CELL LDR,  14 bad CBZ,
    owner LBL,
    EM-DEF-OCC:LAPPEND LABEL@ BL,
    LHIDXADD LABEL@ BL,
@@ -1393,10 +1393,10 @@ private
 
 : BEPOCHSECONDS ( -- )
    LBL TIME-OK !
-   0 DATA GTOD-SCRATCH ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-GETTIMEOFDAY SYS,
+   0 XREG-RBASE GTOD-SCRATCH ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-GETTIMEOFDAY SYS,
    9 C-CS CSET,  9 9 0 ORR,  9 0 CMPI,  C-EQ TIME-OK LABEL@ BCOND,  BRK,
    TIME-OK LABEL@ LBL,
-   9 DATA GTOD-SCRATCH LDR,  9 G-PUSH ;
+   9 XREG-RBASE GTOD-SCRATCH LDR,  9 G-PUSH ;
 
 \ Monotonic nanoseconds for benchmarks. Darwin exposes `clock_gettime` and
 \ `mach_absolute_time` through libSystem/commpage APIs, not this raw-syscall
@@ -1421,7 +1421,7 @@ public
 \ x11 = the operation at off in the source owner's record, or 0 with no record.
 : FIND ( n -- ) {: off:n :}
    LBL {: done:label :}
-   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
+   11 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
    11 11 off LDR,
    done LBL, ;
 
@@ -1430,7 +1430,7 @@ public
 \ checker even while a build replaces the source dictionary: a distinct target
 \ checker owns this second record during source replacement.
 : TARGET ( n label -- ) {: off:n absent:label :}
-   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 absent CBZ,
+   11 XREG-RBASE NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 absent CBZ,
    11 11 off LDR,  11 absent CBZ, ;
 ;package
 
@@ -1442,23 +1442,23 @@ private
 \ through their PROVIDED-XT cell.
 : B-EVAL ( -- )
    s" E-TASK-COMPILE" s" evaluate" B-TASK-GUARD
-   9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 BR, ;
+   9 XREG-RBASE PROVIDED-XT:EVALUATE-CELL LDR,  9 BR, ;
 
 : B-EVAL-RANGE ( -- )
    s" E-TASK-COMPILE" s" evaluate-range" B-TASK-GUARD
-   9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
+   9 XREG-RBASE PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 BR, ;
 
 : B-LITERAL ( -- )
    s" E-TASK-COMPILE" s" literal" B-TASK-GUARD
-   9 DATA PROVIDED-XT:LITERAL-CELL LDR,  9 BR, ;
+   9 XREG-RBASE PROVIDED-XT:LITERAL-CELL LDR,  9 BR, ;
 
 : B-COMPILE ( -- )
    s" E-TASK-COMPILE" s" compile," B-TASK-GUARD
-   9 DATA PROVIDED-XT:COMPILE-CELL LDR,  9 BR, ;
+   9 XREG-RBASE PROVIDED-XT:COMPILE-CELL LDR,  9 BR, ;
 
 : B-END ( -- )
    s" E-TASK-COMPILE" s" ;" B-TASK-GUARD
-   9 DATA PROVIDED-XT:END-CELL LDR,  9 BR, ;
+   9 XREG-RBASE PROVIDED-XT:END-CELL LDR,  9 BR, ;
 
 : BCREATE ( -- )
    s" E-TASK-COMPILE" s" create" B-TASK-GUARD
@@ -1480,16 +1480,16 @@ private
 : B.S ( -- )
    LBL PS-LOOP !
    LBL PS-DONE !
-   9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
+   9 XREG-RBASE S0-CELL LDR,  9 XREG-RBASE SSCR-CELL STR,
    PS-LOOP LABEL@ LBL,
-      9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-CS PS-DONE LABEL@ BCOND,
+      9 XREG-RBASE SSCR-CELL LDR,  9 XDS CMP,  C-CS PS-DONE LABEL@ BCOND,
       9 9 0 LDR,  G-PRINT9
-      9 DATA SSCR-CELL LDR,  9 9 8 ADDI,  9 DATA SSCR-CELL STR,
+      9 XREG-RBASE SSCR-CELL LDR,  9 9 8 ADDI,  9 XREG-RBASE SSCR-CELL STR,
       PS-LOOP LABEL@ B,
    PS-DONE LABEL@ LBL, ;
 
 : BDEPTH ( -- )
-   A DATA S0-CELL LDR,
+   A XREG-RBASE S0-CELL LDR,
    A XDS A SUB,
    A A 3 LSRI,
    A G-PUSH ;
@@ -1658,19 +1658,19 @@ private
 \ RETURN-CELLS faults on the mapping's guard page; there is no capacity compare.
 : RSTK-PUSH ( n -- )
    RSTK-REG !
-   14 DATA RSP-CELL LDR,
+   14 XREG-RBASE RSP-CELL LDR,
    15 14 3 LSLI,
-   14 14 1 ADDI,  14 DATA RSP-CELL STR,
-   14 DATA STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
+   14 14 1 ADDI,  14 XREG-RBASE RSP-CELL STR,
+   14 XREG-RBASE STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
    RSTK-REG @ 15 0 STR, ;
 
 : RSTK-POP ( n -- )
    RSTK-REG !
-   14 DATA RSP-CELL LDR,
+   14 XREG-RBASE RSP-CELL LDR,
    14 14 1 SUBI,
    15 14 3 LSLI,
-   14 DATA RSP-CELL STR,
-   14 DATA STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
+   14 XREG-RBASE RSP-CELL STR,
+   14 XREG-RBASE STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
    RSTK-REG @ 15 0 LDR, ;
 
 : B2TOR ( -- )
@@ -1683,7 +1683,7 @@ private
    B RSTK-POP  A RSTK-POP  A RSTK-PUSH  B RSTK-PUSH  A G-PUSH  B G-PUSH ;
 
 : BHERE ( -- )
-   7 DATA 0 LDR,  7 G-PUSH ;
+   7 XREG-RBASE 0 LDR,  7 G-PUSH ;
 
 public
 \ Bound the DP heap before any allot , c, or definer stores a new DP: outside
@@ -1692,11 +1692,11 @@ public
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
-   5 DATA BOOT:DP-FLOOR-CELL LDR,
+   5 XREG-RBASE BOOT:DP-FLOOR-CELL LDR,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
       LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
-   5 DATA BOOT:DP-CEILING-CELL LDR,
+   5 XREG-RBASE BOOT:DP-CEILING-CELL LDR,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
       LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
@@ -1707,16 +1707,16 @@ private
 : DP-LOWER, ( n n n -- )
    {: new:n t:n u:n :}
    LBL {: done:label :}
-   31 DATA COMMA-RUN-CELL STR,
-   t DATA DP-CELL LDR,  t new CMP,  C-LS done BCOND,
-   t t DATA SUB,
-   u DATA DPHW-CELL LDR,  t u CMP,  C-LS done BCOND,
-   t DATA DPHW-CELL STR,
+   31 XREG-RBASE COMMA-RUN-CELL STR,
+   t XREG-RBASE DP-CELL LDR,  t new CMP,  C-LS done BCOND,
+   t t XREG-RBASE SUB,
+   u XREG-RBASE DPHW-CELL LDR,  t u CMP,  C-LS done BCOND,
+   t XREG-RBASE DPHW-CELL STR,
    done LBL, ;
 
 : BALIGN ( -- )
    s" E-TASK-COMPILE" s" align" B-TASK-GUARD
-   7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
+   7 XREG-RBASE 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 XREG-RBASE 0 STR, ;
 
 \ `,` keeps the latest run of its cells that starts at a created body: a cell
 \ written at the body start starts a run, even where the last run ended; one
@@ -1724,16 +1724,16 @@ private
 : BCOMMA ( -- )
    LBL LBL LBL {: more:label grow:label done:label :}
    s" E-TASK-COMPILE" s" ," B-TASK-GUARD
-   A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR,
-   A DATA COMMA-BASE-CELL LDR,  A 7 CMP,  C-NE more BCOND,
-   7 DATA COMMA-RUN-CELL STR,  grow B,
-   more LBL,  A DATA COMMA-END-CELL LDR,  A 7 CMP,  C-NE done BCOND,
-   grow LBL,  C DATA COMMA-END-CELL STR,
+   A G-POP  7 XREG-RBASE 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C XREG-RBASE 0 STR,
+   A XREG-RBASE COMMA-BASE-CELL LDR,  A 7 CMP,  C-NE more BCOND,
+   7 XREG-RBASE COMMA-RUN-CELL STR,  grow B,
+   more LBL,  A XREG-RBASE COMMA-END-CELL LDR,  A 7 CMP,  C-NE done BCOND,
+   grow LBL,  C XREG-RBASE COMMA-END-CELL STR,
    done LBL, ;
 
 : BCCOMMA ( -- )
    s" E-TASK-COMPILE" s" c," B-TASK-GUARD
-   A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
+   A G-POP  7 XREG-RBASE 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C XREG-RBASE 0 STR, ;
 
 public
 : BTYPE ( -- )
@@ -1794,10 +1794,10 @@ private
       HB-TARGET-LINUX? IF 10 31 0 SUB, ELSE
          HB-TARGET-MACOS? IF 10 0 0 ADDI, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
       THEN
-      10 DATA FS-ABI:ERRNO-OFF STR,
+      10 XREG-RBASE FS-ABI:ERRNO-OFF STR,
       0 0 MOVN, done B,
    ok LBL,
-   10 0 MOVZ,  10 DATA FS-ABI:ERRNO-OFF STR,
+   10 0 MOVZ,  10 XREG-RBASE FS-ABI:ERRNO-OFF STR,
    done LBL,
    0 G-PUSH ;
 
@@ -1885,7 +1885,7 @@ private
 : BCB-ENTER ( -- )
    LBL LBL LBL {: held:label busy:label go:label :}
    12 CB-SELF,
-   11 CB-OWNER MOVZ,  11 DATA 11 ADD,
+   11 CB-OWNER MOVZ,  11 XREG-RBASE 11 ADD,
    9 11 LDAR,
    10 0 MOVZ,
    9 12 CMP,  C-EQ held BCOND,
@@ -1896,14 +1896,14 @@ private
    held LBL,
    SP SP $30 SUBI,
    10 SP 0 STR,
-   9 DATA CB-XDS LDR,    9 SP $10 STR,
-   9 DATA CB-DBASE LDR,  9 SP $18 STR,
-   9 DATA CB-NDICT LDR,  9 SP $20 STR,
-   9 DATA CB-CP LDR,     9 SP $28 STR,
-   XDS DATA CB-XDS STR,
-   DBASE DATA CB-DBASE STR,
-   NDICT DATA CB-NDICT STR,
-   CP DATA CB-CP STR,
+   9 XREG-RBASE CB-XDS LDR,    9 SP $10 STR,
+   9 XREG-RBASE CB-DBASE LDR,  9 SP $18 STR,
+   9 XREG-RBASE CB-NDICT LDR,  9 SP $20 STR,
+   9 XREG-RBASE CB-CP LDR,     9 SP $28 STR,
+   XDS XREG-RBASE CB-XDS STR,
+   DBASE XREG-RBASE CB-DBASE STR,
+   NDICT XREG-RBASE CB-NDICT STR,
+   CP XREG-RBASE CB-CP STR,
    go B,
    busy LBL,
    3 SP 0 LDR,                             \ the lr, saved by the primitive's frame
@@ -1918,14 +1918,14 @@ private
 \ carry the result, so the scratch is x9..x11.
 : BCB-LEAVE ( -- )
    LBL {: kept:label :}
-   9 SP $10 LDR,  9 DATA CB-XDS STR,
-   9 SP $18 LDR,  9 DATA CB-DBASE STR,
-   9 SP $20 LDR,  9 DATA CB-NDICT STR,
-   9 SP $28 LDR,  9 DATA CB-CP STR,
+   9 SP $10 LDR,  9 XREG-RBASE CB-XDS STR,
+   9 SP $18 LDR,  9 XREG-RBASE CB-DBASE STR,
+   9 SP $20 LDR,  9 XREG-RBASE CB-NDICT STR,
+   9 SP $28 LDR,  9 XREG-RBASE CB-CP STR,
    9 SP 0 LDR,
    SP SP $30 ADDI,
    9 kept CBZ,
-      11 CB-OWNER MOVZ,  11 DATA 11 ADD,  10 0 MOVZ,  10 11 STLR,
+      11 CB-OWNER MOVZ,  11 XREG-RBASE 11 ADD,  10 0 MOVZ,  10 11 STLR,
    kept LBL, ;
 
 : BFFI-CALL ( -- )
@@ -2044,7 +2044,7 @@ private
    entry LBL,
    SP SP $A0 SUBI,
    29 19 do i SP i 19 - cells STR, loop
-   DATA 0 MOVZ,
+   XREG-RBASE 0 MOVZ,
    29 SP $50 STR, 30 SP $58 STR,
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
    29 SP $50 ADDI,                         \ previous FP/LR form the C frame
@@ -2053,15 +2053,15 @@ private
    0 19 0 ADDI,
    9 0 TASK-ABI:XT-OFF LDR,
    XDS 0 TASK-ABI:STACK-OFF LDR,
-   DATA 0 TASK-ABI:REGION-OFF LDR,
+   XREG-RBASE 0 TASK-ABI:REGION-OFF LDR,
    DBASE 0 TASK-ABI:DBASE-OFF LDR,
    NDICT 0 TASK-ABI:NDICT-OFF LDR,
    CP 0 TASK-ABI:CP-OFF LDR,
-   0 DATA TASK-TCB-CELL STR,
+   0 XREG-RBASE TASK-TCB-CELL STR,
    ISB,  9 BLR,
    C-SIGNAL-STACK-OFF
    SP SP STACK-ABI:SIGNAL-BYTES ADDI-4K,   \ the band back: sp is the frame's again
-   9 DATA TASK-TCB-CELL LDR,
+   9 XREG-RBASE TASK-TCB-CELL LDR,
    10 TASK-ABI:DONE MOVZ, 11 9 TASK-ABI:STATUS-OFF ADDI,  10 11 STLR,
    0 0 MOVZ,
    16 8 do i SP i 8 - cells $60 + ENC-LDRD EMITW loop
@@ -2131,7 +2131,7 @@ $58 constant CBT-LR                     \ C's x30
    \ C's callee-saved set is saved and restored in this body:
    \ tools/lint/clobber-lint.f proves x30 from the routine's own text.
    29 19 do i SP i 19 - cells STR, loop
-   DATA 0 MOVZ,
+   XREG-RBASE 0 MOVZ,
    29 SP CBT-FP STR, 30 SP CBT-LR STR,
    16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
    29 SP CBT-FP ADDI,                                  \ previous FP/LR form the C frame
@@ -2183,7 +2183,7 @@ $58 constant CBT-LR                     \ C's x30
    12 14 CB-FRAME LDR,  12 SP CBT-OUTER STR,
    12 SP CBT-MARSHAL ADDI,  12 14 CB-FRAME STR,
    XDS 15 0 ADDI,
-   DATA 14 0 ADDI,
+   XREG-RBASE 14 0 ADDI,
    DBASE 14 CB-DBASE LDR,
    NDICT 14 CB-NDICT LDR,
    CP 14 CB-CP LDR,
@@ -2360,7 +2360,7 @@ package LIBC-OS
       ENGINE-EMIT:TARGET-UNKNOWN
    then then ;
 
-: SLOT, ( str -- )   16 DATA RBASE-CELL LDR,  SLOT-AT, ;
+: SLOT, ( str -- )   16 XREG-RBASE RBASE-CELL LDR,  SLOT-AT, ;
 
 \ Copy [x1, x2) of the region to the same offsets x12 bytes away, a cell at a
 \ time; x1 and x2 are 8-byte aligned. Clobbers x1, x3, x4.
@@ -2504,7 +2504,7 @@ public
       LBL LBL {: span:label out:label :}
       SP SP 32 SUBI,                    \ [0] the child's memfd, [8] its filling view, [16] code end
       \ Delta 0 = no alias (a stripped image): the startup maps one anywhere but DBASE.
-      9 DATA REGION-ALIAS:DELTA-CELL LDR,  9 plain CBZ,
+      9 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  9 plain CBZ,
       failed REGION-MEMFD  0 SP 0 STR,
       4 0 0 ADDI,  0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED LIT64,  5 0 MOVZ,
       NR-MMAP SYS,  C-CS unfd BCOND,
@@ -2551,7 +2551,7 @@ public
       \ + delta, so every region's inherited delta cell stays true and none is
       \ rewritten, then RX over the inherited RX view, whose bytes the copy
       \ repeats under the code running here; the copied code is then flushed.
-      10 SP 0 LDR,  12 DATA REGION-ALIAS:DELTA-CELL LDR,
+      10 SP 0 LDR,  12 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,
       0 DBASE 12 ADD,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED-FIXED LIT64,
       4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS dead BCOND,
       0 DBASE 0 ADDI,  1 REGION LIT64,  2 5 MOVZ,  3 MAP-SHARED-FIXED LIT64,
@@ -2584,9 +2584,9 @@ public
       \ alias, at the parent's address DBASE + delta, by an alias of its RX copy
       \ and makes it RW. The delta is the parent's, so every region's inherited
       \ delta cell stays true and none is rewritten.
-      1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 done CBZ,   \ delta 0: no alias to re-establish (a stripped image)
+      1 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  1 done CBZ,   \ delta 0: no alias to re-establish (a stripped image)
       1 1 DBASE ADD,
-      0 DBASE 0 ADDI,  16 DATA RBASE-CELL LDR,  true dead REGION-REMAP
+      0 DBASE 0 ADDI,  16 XREG-RBASE RBASE-CELL LDR,  true dead REGION-REMAP
       0 0 DBASE ADD,  1 REGION LIT64,  2 3 MOVZ,  NR-MPROTECT SYS,
       C-CS dead BCOND,
       0 0 MOVZ,  done B,
@@ -2677,7 +2677,7 @@ package ENGINE-EMIT
 
 : BPATCH32 ( -- )                \ ( w addr -- ): store through the alias, cache-sync
    A G-POP  B G-POP
-   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 0 STRW,
+   11 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 0 STRW,
    C-FLUSH-X9-LINE ;
 ;package
 
@@ -2697,7 +2697,7 @@ public
    12 13 CMP,  C-CS done BCOND,
    14 12 2 LSRI,  14 14 7 ANDI,
    15 12 5 LSRI,
-   6 mapoff LIT64,  15 15 6 ADD,  15 DATA 15 ADD,
+   6 mapoff LIT64,  15 15 6 ADD,  15 XREG-RBASE 15 ADD,
    6 1 MOVZ,  6 6 14 LSLV,  6 6 7 EOR,
    14 15 0 LDRB,  14 14 6 AND,  14 15 0 STRB,
    12 12 4 ADDI,
@@ -2740,7 +2740,7 @@ public
    atcp LBL,
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
    12 0 MOVZ,                                    \ x12 = byte offset into the copy
-   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 10 15 ADD,   \ x15 = dst through the alias
+   15 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  15 10 15 ADD,   \ x15 = dst through the alias
    loop LBL,
    12 9 CMP,  C-CS done BCOND,
    13 11 12 ADD,  14 13 0 LDRW,
@@ -2776,7 +2776,7 @@ public
    9 9 DBASE SUB,
    10 9 2 LSRI,  10 10 7 ANDI,
    11 9 5 LSRI,
-   12 RELOC:CALLMAP-OFF LIT64,  11 11 12 ADD,  11 DATA 11 ADD,
+   12 RELOC:CALLMAP-OFF LIT64,  11 11 12 ADD,  11 XREG-RBASE 11 ADD,
    12 1 MOVZ,  12 12 10 LSLV,
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
@@ -2798,7 +2798,7 @@ public
    9 9 DBASE SUB,
    10 9 2 LSRI,  10 10 7 ANDI,
    11 9 5 LSRI,
-   12 RELOC:ADDRMAP-OFF LIT64,  11 11 12 ADD,  11 DATA 11 ADD,
+   12 RELOC:ADDRMAP-OFF LIT64,  11 11 12 ADD,  11 XREG-RBASE 11 ADD,
    12 1 MOVZ,  12 12 10 LSLV,
    13 11 0 LDRB,  13 13 12 ORR,  13 11 0 STRB, ;
 
@@ -2827,12 +2827,12 @@ public
    checked LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
    9 NDICT CMP,  C-EQ pending BCOND,
-   14 DATA DEF-OCC:PTR-CELL LDR,
+   14 XREG-RBASE DEF-OCC:PTR-CELL LDR,
    15 9 3 LSLI,  14 14 15 ADD,
    15 0 MOVZ,  15 14 8 STR,
    pending LBL,
    14 DREC MOVZ,  9 9 14 MUL,  9 DBASE 9 ADD,   \ x9 = &record[idx]
-   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,   \ x15 = the record through the alias
+   15 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,   \ x15 = the record through the alias
    10 15 8 STR,
    11 15 STLR,
    9 SP 8 LDR,  9 NDICT CMP,  C-EQ done BCOND,
@@ -2850,7 +2850,7 @@ package ENGINE-EMIT
    0 G-POP  NR-CLOSE SYS,  SYS-PUSH ;
 
 : BRBASE ( -- )
-   9 DATA RBASE-CELL LDR,  9 G-PUSH ;
+   9 XREG-RBASE RBASE-CELL LDR,  9 G-PUSH ;
 
 : BCALLABLE ( -- )
    LBL {: old:label :}
@@ -2880,7 +2880,7 @@ package ENGINE-EMIT
    A G-POP  A CP CMP,  C-CC old BCOND,  ISB,
    old LBL,  A BLR,
    B 0 MOVZ,
-   A DATA S0-CELL LDR,  XDS A CMP,  C-CS above BCOND,
+   A XREG-RBASE S0-CELL LDR,  XDS A CMP,  C-CS above BCOND,
       XDS A 0 ADDI,  B 0 MOVN,
    above LBL,
    B G-PUSH ;
@@ -2890,23 +2890,23 @@ public
 \ and raw state clear with their token marks: no later one or image holds them.
 : C-CLEAR-LOCALS ( -- )
    9 0 MOVZ,
-   9 DATA LOCN-CELL STR,  9 DATA CAPDEPTH-CELL STR,  9 DATA RAWNEXT-CELL STR,
-   9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR,  9 DATA TOKRAW-CELL STR, ;
+   9 XREG-RBASE LOCN-CELL STR,  9 XREG-RBASE CAPDEPTH-CELL STR,  9 XREG-RBASE RAWNEXT-CELL STR,
+   9 XREG-RBASE TOKLOCN-CELL STR,  9 XREG-RBASE TOKDEPTH-CELL STR,  9 XREG-RBASE TOKRAW-CELL STR, ;
 
 \ Definition state only: a Habu catch that survived the engine's BTHROW still owns
 \ the handler, return and loop stacks that receive the error.
 : EM-ABORT-COMPILE-STATE ( -- )
    9 0 MOVZ,
-   9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL STR,
-   9 DATA VSP-CELL STR,
-   9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-   9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
+   9 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL STR,
+   9 XREG-RBASE VSP-CELL STR,
+   9 XREG-RBASE BODYLEN-CELL STR,  9 XREG-RBASE EXITH-CELL STR,
+   9 XREG-RBASE PEND-CELL STR,  9 XREG-RBASE CMM-CELL STR,
    9 0 MOVZ,
-   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
-   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
-   9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
-   9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
-   9 DATA TRUSTED-CELL STR,
+   9 XREG-RBASE TSIG-A-CELL STR,   9 XREG-RBASE TSIG-U-CELL STR,
+   9 XREG-RBASE TCSIG-A-CELL STR,  9 XREG-RBASE TCSIG-U-CELL STR,
+   9 XREG-RBASE CRSIG-A-CELL STR,  9 XREG-RBASE CRSIG-U-CELL STR,
+   9 XREG-RBASE DOESB-CELL STR,  9 XREG-RBASE CLAUSE-CELL STR,
+   9 XREG-RBASE TRUSTED-CELL STR,
    C-CLEAR-LOCALS ;
 private
 
@@ -2925,25 +2925,25 @@ private
    A G-POP  BRECORD  BCALLABLE
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
-   11 DATA 8 LDR,  11 SP 0 STR,
+   11 XREG-RBASE 8 LDR,  11 SP 0 STR,
    19 SP 8 STR,
    13 SP STACK-ABI:CATCH-BYTES ADDI,  13 SP 16 STR,
    12 CATCH-RES LABEL@ ADR,  12 SP 24 STR,
-   11 DATA RSP-CELL LDR,     11 SP 40 STR,
-   11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,
-   11 DATA PEND-CELL LDR,  11 SP STACK-ABI:CATCH-PEND STR,
-   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
-   11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
-   11 DATA GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
-   11 DATA GENIO-ABI:ACTIVE-CELL LDR,  11 SP STACK-ABI:CATCH-ACTIVE STR,
-   14 SP 0 ADDI,  14 DATA 8 STR,
+   11 XREG-RBASE RSP-CELL LDR,     11 SP 40 STR,
+   11 XREG-RBASE LOOPSP-CELL LDR,  11 SP 48 STR,
+   11 XREG-RBASE PEND-CELL LDR,  11 SP STACK-ABI:CATCH-PEND STR,
+   11 XREG-RBASE STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
+   11 XREG-RBASE STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
+   11 XREG-RBASE GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
+   11 XREG-RBASE GENIO-ABI:ACTIVE-CELL LDR,  11 SP STACK-ABI:CATCH-ACTIVE STR,
+   14 SP 0 ADDI,  14 XREG-RBASE 8 STR,
    9 BLR,
-   11 SP 0 LDR,  11 DATA 8 STR,
+   11 SP 0 LDR,  11 XREG-RBASE 8 STR,
    30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
    CATCH-RES LABEL@ LBL,
-   31 DATA FAULT-MARK-CELL STR,
-   10 DATA PEND-CELL LDR,  10 kept CBZ,
+   31 XREG-RBASE FAULT-MARK-CELL STR,
+   10 XREG-RBASE PEND-CELL LDR,  10 kept CBZ,
    10 14 CMP,  C-EQ kept BCOND,
    10 9 0 ADDI,  EM-ABORT-COMPILE-STATE  9 10 0 ADDI,   \ it clobbers x9, the code
    kept LBL, ;
@@ -2952,23 +2952,23 @@ private
 \ The unwind of a throw whose code is in x9: to the nearest catch handler.
 : BTHROW-UNWIND ( -- )
    LBL THROW-NOH !
-   11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
+   11 XREG-RBASE 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
    11 THROW-NOH LABEL@ CBZ,
    14 11 STACK-ABI:CATCH-BASE LDR,
    19 11 8 LDR,
-   14 DATA STACK-ABI:BASE-CELL STR,
+   14 XREG-RBASE STACK-ABI:BASE-CELL STR,
    14 11 STACK-ABI:CATCH-PEND LDR,
-   10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
-   10 11 STACK-ABI:CATCH-BUSY LDR,  10 DATA GENIO-ABI:BUSY-CELL STR,
-   10 11 STACK-ABI:CATCH-ACTIVE LDR,  10 DATA GENIO-ABI:ACTIVE-CELL STR,
-   10 11 40 LDR,  10 DATA RSP-CELL STR,
-   10 11 48 LDR,  10 DATA LOOPSP-CELL STR,
-   10 11 0 LDR,  10 DATA 8 STR,
+   10 11 STACK-ABI:CATCH-CAP LDR,  10 XREG-RBASE STACK-ABI:CAP-CELL STR,
+   10 11 STACK-ABI:CATCH-BUSY LDR,  10 XREG-RBASE GENIO-ABI:BUSY-CELL STR,
+   10 11 STACK-ABI:CATCH-ACTIVE LDR,  10 XREG-RBASE GENIO-ABI:ACTIVE-CELL STR,
+   10 11 40 LDR,  10 XREG-RBASE RSP-CELL STR,
+   10 11 48 LDR,  10 XREG-RBASE LOOPSP-CELL STR,
+   10 11 0 LDR,  10 XREG-RBASE 8 STR,
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
    THROW-NOH LABEL@ LBL,
      LBL THROW-NOREC-FB !  LBL THROW-NOREC-FB2 !
-   10 DATA UNCGH-CELL LDR,  10 THROW-NOREC-FB LABEL@ CBZ, \ reporter installed? branch with x9 = code
+   10 XREG-RBASE UNCGH-CELL LDR,  10 THROW-NOREC-FB LABEL@ CBZ, \ reporter installed? branch with x9 = code
    10 BR,                                                 \ LUNCAUGHT (habu2.f): rc-map + report out-of-range codes
    THROW-NOREC-FB LABEL@ LBL,                             \ pre-install boot fallback: silent but never masked
    0 9 0 ADDI,                                            \ code in [1,255] is kernel-representable: exit(code)
@@ -2979,7 +2979,7 @@ private
 
 \ Adds 1 to THROWS-CELL, at each entry that begins a throw. It writes x10.
 : BTHROW-COUNT ( -- )
-   10 DATA THROWS-CELL LDR,  10 10 1 ADDI,  10 DATA THROWS-CELL STR, ;
+   10 XREG-RBASE THROWS-CELL LDR,  10 10 1 ADDI,  10 XREG-RBASE THROWS-CELL STR, ;
 
 public
 \ BTHROW ( code -- ): unwind to the nearest catch handler.
@@ -3003,9 +3003,9 @@ private
 \ delivers the code, so the runner ends the task.
 : BCATCH-FORWARD ( -- )
    LBL LBL {: inner:label keep:label :}
-   10 DATA HALT-UNWIND-CELL LDR,  10 keep CBZ,
-   10 DATA HND-CELL LDR,  10 inner CBNZ,
-   10 DATA HALT-UNWIND-CELL STR,                 \ the root: x10 = HND = 0 clears it
+   10 XREG-RBASE HALT-UNWIND-CELL LDR,  10 keep CBZ,
+   10 XREG-RBASE HND-CELL LDR,  10 inner CBNZ,
+   10 XREG-RBASE HALT-UNWIND-CELL STR,                 \ the root: x10 = HND = 0 clears it
    keep B,
    inner LBL,  BTHROW-UNWIND
    keep LBL, ;
@@ -3029,21 +3029,21 @@ private
 : BALLOT ( -- )
    LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label :}
    s" E-TASK-COMPILE" s" allot" B-TASK-GUARD
-   A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
+   A G-POP  7 XREG-RBASE 0 LDR,  7 7 A ADD,  7 DP-CHECK
    A 0 CMPI,  C-GE grow BCOND,
    SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,
    CHECKER-OWNER-ABI:DP-CUT-OFF no-owner DECL-OWNER:TARGET
-   9 7 DATA SUB,  9 G-PUSH  11 BLR,
+   9 7 XREG-RBASE SUB,  9 G-PUSH  11 BLR,
    no-owner LBL,
    7 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
    7 10 11 DP-LOWER,  store B,
    grow LBL,
    10 7 A SUB,                                     \ x10 = old DP
-   11 DATA DPHW-CELL LDR,  11 11 DATA ADD,  11 7 CMP,  11 11 7 C-LS CSEL,  \ x11 = min(high-water, new DP)
+   11 XREG-RBASE DPHW-CELL LDR,  11 11 XREG-RBASE ADD,  11 7 CMP,  11 11 7 C-LS CSEL,  \ x11 = min(high-water, new DP)
    zero LBL,  10 11 CMP,  C-CS store BCOND,
       31 10 0 STRB,  10 10 1 ADDI,  zero B,
    store LBL,
-   7 DATA 0 STR,
+   7 XREG-RBASE 0 STR,
    RET, ;
 
 \ Selection takes the exact record a resolver has already borrowed. Validate
@@ -3056,7 +3056,7 @@ private
    12 10 11 UDIV,  13 12 11 MUL,
    10 13 CMP,  C-NE bad BCOND,
    12 NDICT CMP,  C-CS bad BCOND,
-   14 DATA DEF-OCC:PTR-CELL LDR,
+   14 XREG-RBASE DEF-OCC:PTR-CELL LDR,
    13 12 3 LSLI,  13 14 13 ADD,  13 13 8 LDR,
    13 bad CBZ,
    12 G-PUSH  13 G-PUSH  done B,
@@ -3071,7 +3071,7 @@ private
    10 G-POP  9 G-POP
    10 stale CBZ,
    9 NDICT CMP,  C-CS stale BCOND,
-   11 DATA DEF-OCC:PTR-CELL LDR,
+   11 XREG-RBASE DEF-OCC:PTR-CELL LDR,
    12 9 3 LSLI,  12 11 12 ADD,  12 12 8 LDR,
    12 10 CMP,  C-NE stale BCOND,
    11 DREC MOVZ,  9 9 11 MUL,  9 DBASE 9 ADD,
@@ -3105,7 +3105,7 @@ private
       full LBL,
       15 13 15 ADD,
       15 9 CMP,  C-LS next BCOND,
-      12 DATA DEF-OCC:PTR-CELL LDR,
+      12 XREG-RBASE DEF-OCC:PTR-CELL LDR,
       14 10 3 LSLI,  12 12 14 ADD,
       14 0 MOVZ,  14 12 8 STR,
    next LBL,
@@ -3116,9 +3116,9 @@ private
 \ caller's extent and cursor back in force.
 : CLOSED-LEAVE ( -- )
    11 SP 24 LDR,
-   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
-   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
-   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   12 XREG-RBASE CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 XREG-RBASE CLOSED-FREE-CELL STR,
+   12 SP 0 LDR,  12 XREG-RBASE STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 XREG-RBASE STACK-ABI:CAP-CELL STR,
    XDS SP 16 LDR,
    SP SP 32 ADDI, ;
 
@@ -3133,22 +3133,22 @@ private
    s" E-TASK-COMPILE" s" evaluate-closed" B-TASK-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP 32 SUBI,
-   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
-   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
+   11 XREG-RBASE STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 XREG-RBASE STACK-ABI:CAP-CELL LDR,  12 SP 8 STR,
    XDS SP 16 STR,
-   13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
+   13 XREG-RBASE CLOSED-FREE-CELL LDR,  13 have CBNZ,
    11 9 0 ADDI,                                      \ a waits in x11: the map never writes x10 or x11
    STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP
    9 11 0 ADDI,
    take B,
    have LBL,
-   12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,       \ an idle stack's first cell links the next
+   12 13 0 LDR,  12 XREG-RBASE CLOSED-FREE-CELL STR,       \ an idle stack's first cell links the next
    take LBL,
    13 SP 24 STR,
-   13 DATA STACK-ABI:BASE-CELL STR,
-   12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
+   13 XREG-RBASE STACK-ABI:BASE-CELL STR,
+   12 STACK-ABI:PAGE-BYTES LIT64,  12 XREG-RBASE STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
-   12 DATA PROVIDED-XT:EVALUATE-CLOSED-CELL LDR,
+   12 XREG-RBASE PROVIDED-XT:EVALUATE-CLOSED-CELL LDR,
    9 G-PUSH  10 G-PUSH  12 G-PUSH                    \ a u for the cell's word, under its xt
    BCATCH-RUN
    CATCH-PUSH LABEL@ LBL,                            \ x9 = the code, 0 on return
@@ -3166,19 +3166,19 @@ private
    \ The child uses a fresh guarded stack; retain the parent action's stack
    \ interval after the loader consumed its arguments and before that swap.
    SP SP 32 SUBI,
-   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
-   12 DATA STACK-ABI:CAP-CELL LDR,   12 SP 8 STR,
+   11 XREG-RBASE STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
+   12 XREG-RBASE STACK-ABI:CAP-CELL LDR,   12 SP 8 STR,
    XDS SP 16 STR,
    9 SP 24 STR,
-   13 DATA CLOSED-FREE-CELL LDR,  13 have CBNZ,
+   13 XREG-RBASE CLOSED-FREE-CELL LDR,  13 have CBNZ,
    STACK-ABI:PAGE-BYTES 13 STACK-GUARD:EMIT-MAP
    take B,
    have LBL,
-   12 13 0 LDR,  12 DATA CLOSED-FREE-CELL STR,
+   12 13 0 LDR,  12 XREG-RBASE CLOSED-FREE-CELL STR,
    take LBL,
    9 SP 24 LDR,  13 SP 24 STR,
-   13 DATA STACK-ABI:BASE-CELL STR,
-   12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
+   13 XREG-RBASE STACK-ABI:BASE-CELL STR,
+   12 STACK-ABI:PAGE-BYTES LIT64,  12 XREG-RBASE STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
    \ Same handler shape as BCATCH, `caught` clearing FAULT-MARK-CELL as
    \ CATCH-RES does, but do not push its status on the callback's stack: the
@@ -3187,27 +3187,27 @@ private
    \ task's thread.
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
-   11 DATA 8 LDR,  11 SP 0 STR,
+   11 XREG-RBASE 8 LDR,  11 SP 0 STR,
    19 SP 8 STR,
    13 SP STACK-ABI:CATCH-BYTES ADDI,  13 SP 16 STR,
    12 caught ADR,  12 SP 24 STR,
-   11 DATA RSP-CELL LDR,     11 SP 40 STR,
-   11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,
-   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
-   11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
-   11 DATA GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
-   11 DATA GENIO-ABI:ACTIVE-CELL LDR,  11 SP STACK-ABI:CATCH-ACTIVE STR,
-   14 SP 0 ADDI,  14 DATA 8 STR,
+   11 XREG-RBASE RSP-CELL LDR,     11 SP 40 STR,
+   11 XREG-RBASE LOOPSP-CELL LDR,  11 SP 48 STR,
+   11 XREG-RBASE STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
+   11 XREG-RBASE STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
+   11 XREG-RBASE GENIO-ABI:BUSY-CELL LDR,  11 SP STACK-ABI:CATCH-BUSY STR,
+   11 XREG-RBASE GENIO-ABI:ACTIVE-CELL LDR,  11 SP STACK-ABI:CATCH-ACTIVE STR,
+   14 SP 0 ADDI,  14 XREG-RBASE 8 STR,
    9 BLR,
-   11 SP 0 LDR,  11 DATA 8 STR,
+   11 SP 0 LDR,  11 XREG-RBASE 8 STR,
    30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,
    caught LBL,
-   31 DATA FAULT-MARK-CELL STR,
+   31 XREG-RBASE FAULT-MARK-CELL STR,
    11 SP 24 LDR,
-   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
-   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
-   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   12 XREG-RBASE CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 XREG-RBASE CLOSED-FREE-CELL STR,
+   12 SP 0 LDR,  12 XREG-RBASE STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 XREG-RBASE STACK-ABI:CAP-CELL STR,
    XDS SP 16 LDR,  SP SP 32 ADDI,
    9 done CBZ,
    BRETHROW
@@ -3216,8 +3216,8 @@ private
 \ Counts a new throw for the code to go on, and moves the kept record's stamp to
 \ it when the stamp is x11, the count when that code landed. It writes x10, x12.
 : BFINALLY-COUNT ( -- )
-   12 DATA THROWS-CELL LDR,  12 12 1 ADDI,  12 DATA THROWS-CELL STR,
-   10 DATA STAMP-CELL LDR,  10 11 CMP,  10 12 10 C-EQ CSEL,  10 DATA STAMP-CELL STR, ;
+   12 XREG-RBASE THROWS-CELL LDR,  12 12 1 ADDI,  12 XREG-RBASE THROWS-CELL STR,
+   10 XREG-RBASE STAMP-CELL LDR,  10 11 CMP,  10 12 10 C-EQ CSEL,  10 XREG-RBASE STAMP-CELL STR, ;
 
 \ finally ( body cleanup -- ). Frame: [0] cleanup | [8] the body's code | [16] the halt its throw carried, set again
 \ once the cleanup ends or halts | [24] the throw count when [8] was stored. A cleanup's nonzero code goes to [8]
@@ -3229,18 +3229,18 @@ private
    A G-POP  BCALLABLE
    SP SP 32 SUBI,  9 SP 0 STR,
    BCATCH-HELD
-   9 SP 8 STR,  10 DATA THROWS-CELL LDR,  10 SP 24 STR,
-   10 DATA HALT-UNWIND-CELL LDR,  10 SP 16 STR,
-   10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
+   9 SP 8 STR,  10 XREG-RBASE THROWS-CELL LDR,  10 SP 24 STR,
+   10 XREG-RBASE HALT-UNWIND-CELL LDR,  10 SP 16 STR,
+   10 0 MOVZ,  10 XREG-RBASE HALT-UNWIND-CELL STR,
    9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
    9 keep CBZ,  10 SP 8 LDR,  10 keep CBNZ,
-   9 SP 8 STR,  10 DATA THROWS-CELL LDR,  10 SP 24 STR,
+   9 SP 8 STR,  10 XREG-RBASE THROWS-CELL LDR,  10 SP 24 STR,
    keep LBL,
-   10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
+   10 XREG-RBASE HALT-UNWIND-CELL LDR,  10 calm CBZ,
    10 SP 16 STR,
    calm LBL,
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,  SP SP 32 ADDI,
-   10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
+   10 XREG-RBASE HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
    10 throw CBNZ,
    9 FINALLY-DONE LABEL@ CBZ,
    throw LBL,
@@ -3264,21 +3264,21 @@ private
    A G-POP
    SP SP 48 SUBI,  A SP 0 STR,  10 SP 8 STR,
    BCATCH-HELD
-   9 SP 16 STR,  10 DATA THROWS-CELL LDR,  10 SP 32 STR,
-   10 DATA HALT-UNWIND-CELL LDR,  10 SP 24 STR,
-   10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
+   9 SP 16 STR,  10 XREG-RBASE THROWS-CELL LDR,  10 SP 32 STR,
+   10 XREG-RBASE HALT-UNWIND-CELL LDR,  10 SP 24 STR,
+   10 0 MOVZ,  10 XREG-RBASE HALT-UNWIND-CELL STR,
    9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
    9 C2-INVOKE-CLEAN LABEL@ CBZ,  10 SP 16 LDR,  10 C2-INVOKE-CLEAN LABEL@ CBNZ,
-   9 SP 16 STR,  10 DATA THROWS-CELL LDR,  10 SP 32 STR,
+   9 SP 16 STR,  10 XREG-RBASE THROWS-CELL LDR,  10 SP 32 STR,
    C2-INVOKE-CLEAN LABEL@ LBL,
-   10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
+   10 XREG-RBASE HALT-UNWIND-CELL LDR,  10 calm CBZ,
    10 SP 24 STR,
-   10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
+   10 0 MOVZ,  10 XREG-RBASE HALT-UNWIND-CELL STR,
    calm LBL,
    9 SP 16 LDR,  9 G-PUSH
    9 SP 8 LDR,  BRECORD  BCALLABLE  9 BLR,
    9 SP 16 LDR,  10 SP 24 LDR,  11 SP 32 LDR,  SP SP 48 ADDI,
-   10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
+   10 XREG-RBASE HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
    10 throw CBNZ,
    9 C2-INVOKE-DONE LABEL@ CBZ,
    throw LBL,
@@ -3364,10 +3364,10 @@ private
 
 : BWORDLIST ( -- )
    OVERLAY-EMIT:GUARD,
-   9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
+   9 XREG-RBASE WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 XREG-RBASE WIDN-CELL STR, ;
 
 : BGETCUR ( -- )
-   9 DATA CUR-CELL LDR,  9 G-PUSH ;
+   9 XREG-RBASE CUR-CELL LDR,  9 G-PUSH ;
 
 \ set-check ( xt -- ): install the checker hook. 0 disables checking and parks
 \ an armed hook with its preflight in the SUSP-HOOK pair; arming the parked
@@ -3384,19 +3384,19 @@ private
    9 disarm CBZ,
       9 DBASE CMP,  C-CC bad BCOND,
       9 CP CMP,     C-CS bad BCOND,
-      A DATA HOOK-CELL STR,
-      11 DATA COMPILE-PREFLIGHT-CELL LDR,  11 armed CBNZ,
-      11 DATA SUSP-HOOK-CELL LDR,  9 11 CMP,  C-NE armed BCOND,
-      11 DATA SUSP-PREFLIGHT-CELL LDR,  11 DATA COMPILE-PREFLIGHT-CELL STR,
+      A XREG-RBASE HOOK-CELL STR,
+      11 XREG-RBASE COMPILE-PREFLIGHT-CELL LDR,  11 armed CBNZ,
+      11 XREG-RBASE SUSP-HOOK-CELL LDR,  9 11 CMP,  C-NE armed BCOND,
+      11 XREG-RBASE SUSP-PREFLIGHT-CELL LDR,  11 XREG-RBASE COMPILE-PREFLIGHT-CELL STR,
    armed LBL,
-      10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR,
+      10 0 MOVZ,  10 XREG-RBASE SUSP-HOOK-CELL STR,  10 XREG-RBASE SUSP-PREFLIGHT-CELL STR,
       done B,
    disarm LBL,
-      10 DATA HOOK-CELL LDR,  10 kept CBZ,   \ already off: the parked pair stands
-      10 DATA SUSP-HOOK-CELL STR,
-      11 DATA COMPILE-PREFLIGHT-CELL LDR,  11 DATA SUSP-PREFLIGHT-CELL STR,
+      10 XREG-RBASE HOOK-CELL LDR,  10 kept CBZ,   \ already off: the parked pair stands
+      10 XREG-RBASE SUSP-HOOK-CELL STR,
+      11 XREG-RBASE COMPILE-PREFLIGHT-CELL LDR,  11 XREG-RBASE SUSP-PREFLIGHT-CELL STR,
    kept LBL,
-      A DATA HOOK-CELL STR,  A DATA COMPILE-PREFLIGHT-CELL STR,
+      A XREG-RBASE HOOK-CELL STR,  A XREG-RBASE COMPILE-PREFLIGHT-CELL STR,
       done B,
    bad LBL,
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
@@ -3410,14 +3410,14 @@ private
    LBL LBL LBL {: noquery:label query:label done:label :}
    11 0 MOVZ,  12 0 MOVZ,
    \ The cold prefix installs the bridge before its seal watermark exists.
-   9 DATA SEAL-NDICT-CELL LDR,  9 noquery CBZ,
+   9 XREG-RBASE SEAL-NDICT-CELL LDR,  9 noquery CBZ,
    \ A replacement target bypasses the source query.
-   13 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  13 query CBZ,
-   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,
+   13 XREG-RBASE NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  13 query CBZ,
+   12 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,
    13 12 CMP,  C-NE noquery BCOND,
    query LBL,
    \ This is the installed code identity, independent of later name lookup.
-   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,  12 noquery CBZ,
+   12 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,  12 noquery CBZ,
    11 12 NCOMP-DISPATCH:DECL-TRUSTED-TICK-OFF LDR,
    11 noquery CBZ,
    done B,
@@ -3428,7 +3428,7 @@ public
 \ Register n gets the latch the next `:` stores in COMP-LATCH-CELL.
 : COMP-LATCH ( n -- ) {: r:n :}
    LBL {: done:label :}
-   r DATA NCOMP-DISPATCH:COMP-CELL LDR,  r done CBZ,
+   r XREG-RBASE NCOMP-DISPATCH:COMP-CELL LDR,  r done CBZ,
    r 1 MOVZ,
    done LBL, ;
 
@@ -3437,8 +3437,8 @@ private
 \ trusted gate would run first. The verifier captures it before loading tools.
 : BTICKORDER ( -- )
    LBL LBL LBL LBL {: next:label checking:label latched:label done:label :}
-   9 DATA PEND-CELL LDR,  9 next CBZ,
-      9 DATA NCOMP-DISPATCH:COMP-LATCH-CELL LDR,
+   9 XREG-RBASE PEND-CELL LDR,  9 next CBZ,
+      9 XREG-RBASE NCOMP-DISPATCH:COMP-LATCH-CELL LDR,
       latched B,
    next LBL,
       9 COMP-LATCH
@@ -3462,7 +3462,7 @@ private
    S\" set-preflight: invalid or replaced hook\n" {: ma:^ mu:n :}
    S\" set-preflight: invalid hook\n" {: ia:^ iu:n :}
    A G-POP
-   10 DATA COMPILE-PREFLIGHT-CELL LDR,
+   10 XREG-RBASE COMPILE-PREFLIGHT-CELL LDR,
    10 empty CBZ,
       10 A CMP,  C-EQ done BCOND,
       bad B,
@@ -3470,7 +3470,7 @@ private
       A invalid CBZ,
       A DBASE CMP,  C-CC invalid BCOND,
       A CP CMP,     C-CS invalid BCOND,
-   A DATA COMPILE-PREFLIGHT-CELL STR,
+   A XREG-RBASE COMPILE-PREFLIGHT-CELL STR,
    done B,
    bad LBL,
       1 msg ADR,  2 mu MOVZ,  emit B,
@@ -3491,7 +3491,7 @@ package ENGINE-EMIT
 \ read-only. The checker calls it at signature-record time.
 : BWIDEMARK ( -- )
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1]
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 9 12 ADD,   \ x12 = the record through the alias
+   12 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  12 9 12 ADD,   \ x12 = the record through the alias
    10 12 16 LDR,  10 10 DNAME-WIDE ORRI,  10 12 16 STR, ;
 
 \ rep-mark ( n -- ): set DNAME-REP on dictionary record n, the CAST: record the
@@ -3500,7 +3500,7 @@ package ENGINE-EMIT
 : BREPMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
+   12 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
    C 12 16 LDR,  C C DNAME-REP ORRI,  C 12 16 STR, ;
 
 \ record-facts! ( n n -- ) offset, index: stores the facts offset in bytes 32-39
@@ -3509,7 +3509,7 @@ package ENGINE-EMIT
 : BRECFACTS ( -- )
    A G-POP  B G-POP                              \ x9 = record index, x10 = offset
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,      \ x9 = &record[n]
-   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
+   12 XREG-RBASE REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
    B 12 32 STR, ;
 
 \ SHA-256's 64 round constants (FIPS 180-4, 4.2.2).
@@ -3537,7 +3537,7 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
 : SHA2-PROBE, ( label -- )
    {: none:label :}
    LBL LBL {: env:label aux:label :}
-   12 DATA ENVP-CELL LDR,  12 none CBZ,
+   12 XREG-RBASE ENVP-CELL LDR,  12 none CBZ,
    env LBL,  13 12 0 LDR,  12 12 8 ADDI,  13 env CBNZ,
    aux LBL,  13 12 0 LDR,  14 12 8 LDR,  12 12 16 ADDI,
    13 none CBZ,  13 16 CMPI,  C-NE aux BCOND,
@@ -3614,7 +3614,7 @@ private
 \ Unsealed it falls through, having written x9 only.
 : POLICY-OPEN, ( -- )
    LBL {: open:label :}
-   9 DATA POLICY-NDICT-CELL LDR,  9 open CBZ,
+   9 XREG-RBASE POLICY-NDICT-CELL LDR,  9 open CBZ,
       POLICY-LR,
       s" E-POLICY" s" the vocabulary is sealed" FAULT-OPEN,
       s" admit every package before `VOCABULARY:RESTRICT`" POLICY-STOP,
@@ -3627,7 +3627,7 @@ private
    POLICY-OPEN,
    1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
    13 0 0 ADDI,                                      \ the name, for the records: the lookup leaves x13 and x1 alone
-   2 DATA BOOT:NAMESPACE-WL-CELL LDR,
+   2 XREG-RBASE BOOT:NAMESPACE-WL-CELL LDR,
    WLFIND:LENTRY LABEL@ BL,                          \ x11 = public wid, x12 = the row or 0
    14 1 0 ADDI,                                      \ the kernel's writes keep x13/x14
    12 found CBNZ,
@@ -3643,7 +3643,7 @@ private
    \ A public word spelled like a keyword would mean the keyword in one place and
    \ the word in another.
    SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  14 SP 16 STR,
-   11 G-PUSH  12 DATA POLICY-ABI:KEYWORD-CELL LDR,  12 BLR,
+   11 G-PUSH  12 XREG-RBASE POLICY-ABI:KEYWORD-CELL LDR,  12 BLR,
    15 G-POP  10 G-POP  9 G-POP
    11 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  SP SP 32 ADDI,
    15 walked CBZ,
@@ -3653,7 +3653,7 @@ private
       s" keyword" 6 7 FAULT-TEXT,
       s" rename the word in that package" POLICY-STOP,
    walked LBL,
-   14 POLICY-BITS-OFF MOVZ,  14 DATA 14 ADD,
+   14 POLICY-BITS-OFF MOVZ,  14 XREG-RBASE 14 ADD,
    14 11 15 14 16 POLICY-BITS-AT,                    \ x15 = &word, x14 = mask
    16 15 LDAR,
    16 16 14 ORR,
@@ -3665,7 +3665,7 @@ private
 \ stored value cannot read as unsealed.
 : BPOLICYSEAL ( -- )
    POLICY-OPEN,
-   NDICT DATA POLICY-NDICT-CELL STR, ;
+   NDICT XREG-RBASE POLICY-NDICT-CELL STR, ;
 
 ;package
 
@@ -3736,7 +3736,7 @@ package WLFIND
 : RETRY, ( label -- ) {: entry:label :}
    LBL {: done:label :}
    12 done CBNZ,
-   4 DATA BOOT:GLOBAL-WL-CELL LDR,  2 4 CMP,  C-NE done BCOND,
+   4 XREG-RBASE BOOT:GLOBAL-WL-CELL LDR,  2 4 CMP,  C-NE done BCOND,
    SP SP 16 SUBI,  30 SP 0 STR,  2 SP 8 STR,
    2 WL:PRIMITIVES MOVZ,  entry BL,
    30 SP 0 LDR,  2 SP 8 LDR,  SP SP 16 ADDI,
@@ -3786,7 +3786,7 @@ public
    \ Hash probe. x0 (name), x1 (len), x2 (wid), x9/x10 (first part) and x11
    \ (result) are preserved across it for the scan the two fallbacks reach.
    4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,
-   14 DATA HIDXP-CELL LDR,  14 plin CBZ,
+   14 XREG-RBASE HIDXP-CELL LDR,  14 plin CBZ,
    9 10 0 1 15 4 16 7 C-HIDX-PAIR
    6 15 2 5 C-HIDX-SLOT,
    8 HIDX-SLOTS LIT64,
@@ -3855,11 +3855,11 @@ package ENGINE-EMIT
    LBL PARSE-DONE !
    LTOK LABEL@ BL,
    0 PARSE-NONE LABEL@ CBZ,
-      9 DATA TKA-CELL LDR,  9 G-PUSH
-      9 DATA TKL-CELL LDR,  9 G-PUSH
+      9 XREG-RBASE TKA-CELL LDR,  9 G-PUSH
+      9 XREG-RBASE TKL-CELL LDR,  9 G-PUSH
       PARSE-DONE LABEL@ B,
    PARSE-NONE LABEL@ LBL,
-      9 DATA INP-CELL LDR,  9 G-PUSH
+      9 XREG-RBASE INP-CELL LDR,  9 G-PUSH
       9 0 MOVZ,  9 G-PUSH
    PARSE-DONE LABEL@ LBL, ;
 ;package
@@ -4184,10 +4184,10 @@ package ENGINE-EMIT
    3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
    C-CS fail BCOND,
    11 0 0 ADDI,
-   12 DATA BODY-TEXT:BASE-CELL LDR,
-   13 DATA BODY-TEXT:CAP-CELL LDR,
+   12 XREG-RBASE BODY-TEXT:BASE-CELL LDR,
+   13 XREG-RBASE BODY-TEXT:CAP-CELL LDR,
    12 fresh CBZ,
-   14 DATA BODYLEN-CELL LDR,  14 13 CMP,  C-LS kept BCOND,  14 13 0 ADDI,
+   14 XREG-RBASE BODYLEN-CELL LDR,  14 13 CMP,  C-LS kept BCOND,  14 13 0 ADDI,
    kept LBL,
    15 0 MOVZ,
    tloop LBL,
@@ -4195,7 +4195,7 @@ package ENGINE-EMIT
       5 12 15 ADD,  5 5 0 LDRB,  6 11 15 ADD,  5 6 0 STRB,
       15 15 1 ADDI,  tloop B,
    tdone LBL,
-   7 DATA BODY-TEXT:ROWS-CELL LDR,  7 7 4 LSLI,
+   7 XREG-RBASE BODY-TEXT:ROWS-CELL LDR,  7 7 4 LSLI,
    15 0 MOVZ,
    rloop LBL,
       15 7 CMP,  C-CS rdone BCOND,
@@ -4204,13 +4204,13 @@ package ENGINE-EMIT
       15 15 8 ADDI,  rloop B,
    rdone LBL,
    \ TCSIG-A into the old text moves with it: unsigned, x6 < old cap covers both ends
-   5 DATA TCSIG-A-CELL LDR,  6 5 12 SUB,  6 13 CMP,  C-CS done BCOND,
-      5 5 11 ADD,  5 5 12 SUB,  5 DATA TCSIG-A-CELL STR,
+   5 XREG-RBASE TCSIG-A-CELL LDR,  6 5 12 SUB,  6 13 CMP,  C-CS done BCOND,
+      5 5 11 ADD,  5 5 12 SUB,  5 XREG-RBASE TCSIG-A-CELL STR,
    done LBL,
-   0 12 0 ADDI,  1 DATA BODY-TEXT:SIZE-CELL LDR,  NR-MUNMAP SYS,
+   0 12 0 ADDI,  1 XREG-RBASE BODY-TEXT:SIZE-CELL LDR,  NR-MUNMAP SYS,
    fresh LBL,
-   11 DATA BODY-TEXT:BASE-CELL STR,  10 DATA BODY-TEXT:CAP-CELL STR,
-   1 10 4 LSLI,  1 1 10 ADD,  1 DATA BODY-TEXT:SIZE-CELL STR,
+   11 XREG-RBASE BODY-TEXT:BASE-CELL STR,  10 XREG-RBASE BODY-TEXT:CAP-CELL STR,
+   1 10 4 LSLI,  1 1 10 ADD,  1 XREG-RBASE BODY-TEXT:SIZE-CELL STR,
    16 0 MOVZ,
    back B,
    fail LBL,
@@ -4233,10 +4233,10 @@ package ENGINE-EMIT
    LBL BCAP-CP !
    LBL BCAP-CD !
    17 12 0 ADDI,                  \ len in x17: callers keep x6-x8
-   14 DATA BODYLEN-CELL LDR,
+   14 XREG-RBASE BODYLEN-CELL LDR,
    16 14 17 ADD,  16 16 1 ADDI,
-   5 DATA BODY-TEXT:BASE-CELL LDR,  5 grow CBZ,
-   5 DATA BODY-TEXT:CAP-CELL LDR,  16 5 CMP,  C-LS BCAP-OK LABEL@ BCOND,
+   5 XREG-RBASE BODY-TEXT:BASE-CELL LDR,  5 grow CBZ,
+   5 XREG-RBASE BODY-TEXT:CAP-CELL LDR,  16 5 CMP,  C-LS BCAP-OK LABEL@ BCOND,
    grow LBL,
       SP SP 16 SUBI,  30 SP 0 STR,
       gsub BL,
@@ -4245,20 +4245,20 @@ package ENGINE-EMIT
       LBGROWFAIL LABEL@ B,
    BCAP-OK LABEL@ LBL,
    17 rowed CBZ,
-   15 DATA BODY-TEXT:BASE-CELL LDR,  13 DATA BODY-TEXT:CAP-CELL LDR,  15 15 13 ADD,
-   16 DATA BODY-TEXT:ROWS-CELL LDR,
+   15 XREG-RBASE BODY-TEXT:BASE-CELL LDR,  13 XREG-RBASE BODY-TEXT:CAP-CELL LDR,  15 15 13 ADD,
+   16 XREG-RBASE BODY-TEXT:ROWS-CELL LDR,
    pop LBL,  16 put CBZ,
       13 16 1 SUBI,  13 13 4 LSLI,  13 15 13 ADD,  5 13 0 LDR,
       5 14 CMP,  C-CC put BCOND,
       16 16 1 SUBI,  pop B,
    put LBL,
    13 16 4 LSLI,  13 15 13 ADD,  14 13 0 STR,
-   16 16 1 ADDI,  16 DATA BODY-TEXT:ROWS-CELL STR,
-   15 DATA SRCLOC:INB-CELL LDR,  5 DATA INE-CELL LDR,
+   16 16 1 ADDI,  16 XREG-RBASE BODY-TEXT:ROWS-CELL STR,
+   15 XREG-RBASE SRCLOC:INB-CELL LDR,  5 XREG-RBASE INE-CELL LDR,
    \ The name and the run lie in [INB, INE); the first run is the name, seeded
    \ before PENDTKA-CELL is set.
    14 seed CBZ,
-   16 DATA PENDTKA-CELL LDR,
+   16 XREG-RBASE PENDTKA-CELL LDR,
    16 15 CMP,  C-CC none BCOND,  16 5 CMP,  C-CS none BCOND,
    seed LBL,
    11 15 CMP,  C-CC none BCOND,  11 5 CMP,  C-CS none BCOND,
@@ -4266,11 +4266,11 @@ package ENGINE-EMIT
    none LBL,  16 BODY-SOURCE:NONE LIT64,
    src LBL,  16 13 8 STR,
    rowed LBL,
-   15 DATA BODY-TEXT:BASE-CELL LDR,  15 15 14 ADD,
+   15 XREG-RBASE BODY-TEXT:BASE-CELL LDR,  15 15 14 ADD,
    BCAP-CP LABEL@ LBL,  12 BCAP-CD LABEL@ CBZ,  13 11 0 LDRB,  13 15 0 STRB,
       15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  BCAP-CP LABEL@ B,
    BCAP-CD LABEL@ LBL,  13 32 MOVZ,  13 15 0 STRB,
-   14 14 17 ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
+   14 14 17 ADD,  14 14 1 ADDI,  14 XREG-RBASE BODYLEN-CELL STR,
    RET,
    gsub BCAP-GROW ;
 
@@ -4281,20 +4281,20 @@ package ENGINE-EMIT
    LBL TOK-SCAN !
    LBL TOK-GOT !
    LBL TOK-NONE !
-   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
+   11 XREG-RBASE INP-CELL LDR,  12 XREG-RBASE INE-CELL LDR,
    TOK-SKIP LABEL@ LBL,
       11 12 CMP,  C-GE TOK-NONE LABEL@ BCOND,
       9 11 0 LDRB,  9 32 CMPI,  C-HI TOK-HAS LABEL@ BCOND,
       11 11 1 ADDI,  TOK-SKIP LABEL@ B,
-   TOK-HAS LABEL@ LBL,  11 DATA TKA-CELL STR,
+   TOK-HAS LABEL@ LBL,  11 XREG-RBASE TKA-CELL STR,
    TOK-SCAN LABEL@ LBL,
       11 12 CMP,  C-GE TOK-GOT LABEL@ BCOND,
       9 11 0 LDRB,  9 32 CMPI,  C-LS TOK-GOT LABEL@ BCOND,
       11 11 1 ADDI,  TOK-SCAN LABEL@ B,
-   TOK-GOT LABEL@ LBL,  9 DATA TKA-CELL LDR,  9 11 9 SUB,  9 DATA TKL-CELL STR,
-      9 DATA TOKENS-CELL LDR,  9 9 1 ADDI,  9 DATA TOKENS-CELL STR,
-      11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
-   TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
+   TOK-GOT LABEL@ LBL,  9 XREG-RBASE TKA-CELL LDR,  9 11 9 SUB,  9 XREG-RBASE TKL-CELL STR,
+      9 XREG-RBASE TOKENS-CELL LDR,  9 9 1 ADDI,  9 XREG-RBASE TOKENS-CELL STR,
+      11 XREG-RBASE INP-CELL STR,  0 1 MOVZ,  RET,
+   TOK-NONE LABEL@ LBL,  11 XREG-RBASE INP-CELL STR,  0 0 MOVZ,  RET, ;
 ;package
 
 package ENGINE-EMIT
@@ -4364,7 +4364,7 @@ private
       8 8 1 SUBI,  8 HIDX-EMIT:LFULL LABEL@ CBZ,
       6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  iloop B,
    iempty LBL,
-      4 DATA HIDX:CLAIMS LDR,  4 4 1 ADDI,  4 DATA HIDX:CLAIMS STR,
+      4 XREG-RBASE HIDX:CLAIMS LDR,  4 4 1 ADDI,  4 XREG-RBASE HIDX:CLAIMS STR,
    iput LBL,
       4 3 1 ADDI,  4 17 0 STRW,
    idone LBL, ;
@@ -4407,12 +4407,12 @@ private
    LBL LBL {: bhave:label ains:label :}
    LHIDXADD LABEL@ LBL,
       HIDX-SAVE,
-      14 DATA HIDXP-CELL LDR,  14 aret CBZ,
+      14 XREG-RBASE HIDXP-CELL LDR,  14 aret CBZ,
       3 NDICT 0 ADDI,  3 3 1 SUBI,
       ains LBL,
       C-HIDX-INS
       \ the load bound: compact before chains can approach a full wrap
-      4 DATA HIDX:CLAIMS LDR,  5 HIDX:LOAD-MAX LIT64,  4 5 CMP,  C-LT aret BCOND,
+      4 XREG-RBASE HIDX:CLAIMS LDR,  5 HIDX:LOAD-MAX LIT64,  4 5 CMP,  C-LT aret BCOND,
       HIDX-EMIT:LREBUILD LABEL@ BL,
       aret LBL,
       30 SP 0 LDR,  2 SP 8 LDR,  3 SP 16 LDR,  4 SP 24 LDR,  5 SP 32 LDR,
@@ -4421,7 +4421,7 @@ private
       SP SP 96 ADDI,  RET,
    HIDX-EMIT:LREKEY LABEL@ LBL,
       HIDX-SAVE,
-      14 DATA HIDXP-CELL LDR,  14 aret CBZ,
+      14 XREG-RBASE HIDXP-CELL LDR,  14 aret CBZ,
       aret C-HIDX-HELD?
       ains B,
    LHIDXBUILD LABEL@ LBL,
@@ -4433,12 +4433,12 @@ private
       30 SP 0 STR,   0 SP 8 STR,   1 SP 16 STR,  2 SP 24 STR,  3 SP 32 STR,
       4 SP 40 STR,   5 SP 48 STR,  6 SP 56 STR,  7 SP 64 STR,  8 SP 72 STR,
       13 SP 80 STR,  14 SP 88 STR, 15 SP 96 STR, 16 SP 104 STR, 17 SP 112 STR,
-      14 DATA HIDXP-CELL LDR,  14 bhave CBNZ,
+      14 XREG-RBASE HIDXP-CELL LDR,  14 bhave CBNZ,
       0 0 MOVZ,  1 HIDX-BYTES LIT64,  2 3 MOVZ,
       3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
       4 C-CS CSET,  4 bfail CBNZ,
-      14 0 0 ADDI,  14 DATA HIDXP-CELL STR,
-      4 0 MOVZ,  4 DATA HIDX:CLAIMS STR,             \ fresh pages hold no claims
+      14 0 0 ADDI,  14 XREG-RBASE HIDXP-CELL STR,
+      4 0 MOVZ,  4 XREG-RBASE HIDX:CLAIMS STR,             \ fresh pages hold no claims
       bhave LBL,
       HIDX-EMIT:LREBUILD LABEL@ BL,
       30 SP 0 LDR,   0 SP 8 LDR,   1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
@@ -4454,7 +4454,7 @@ private
       30 SP 0 STR,   2 SP 8 STR,   3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
       6 SP 40 STR,   7 SP 48 STR,  8 SP 56 STR,  13 SP 64 STR, 14 SP 72 STR,
       15 SP 80 STR,  16 SP 88 STR, 17 SP 96 STR,
-      14 DATA HIDXP-CELL LDR,  14 rret CBZ,          \ pre-build window: nothing to compact
+      14 XREG-RBASE HIDXP-CELL LDR,  14 rret CBZ,          \ pre-build window: nothing to compact
       \ NDICT <= DICT-CAP < HIDX:LOAD-MAX: the rebuilt table stays under the bound
       13 0 MOVZ,  4 0 MOVZ,  15 HIDX-BYTES LIT64,
       zloop LBL,
@@ -4462,7 +4462,7 @@ private
          17 14 13 ADD,  4 17 0 STR,
          13 13 8 ADDI,  zloop B,
       zdone LBL,
-      4 DATA HIDX:CLAIMS STR,
+      4 XREG-RBASE HIDX:CLAIMS STR,
       13 0 MOVZ,
       floop LBL,  13 NDICT CMP,  C-GE fdone BCOND,
          3 13 0 ADDI,  C-HIDX-INS
@@ -4489,7 +4489,7 @@ private
    EM-DEF-OCC:LISSUE LABEL@ LBL,
       SP SP 32 SUBI,
       9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
-      10 DATA DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
+      10 XREG-RBASE DEF-OCC:PTR-CELL LDR,  11 10 0 LDR,
       11 11 1 ADDI,  11 10 0 STR,
       12 9 3 LSLI,  12 10 12 ADD,  11 12 8 STR,
       9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
@@ -4502,7 +4502,7 @@ private
       9 10 CMP,  C-LT lower BCOND,  C-GT raise BCOND,
        done B,
        raise LBL,
-         11 DATA DEF-OCC:PTR-CELL LDR,  13 11 0 LDR,
+         11 XREG-RBASE DEF-OCC:PTR-CELL LDR,  13 11 0 LDR,
       loop LBL,
          10 9 CMP,  C-CS raised BCOND,
          13 13 1 ADDI,
@@ -4513,9 +4513,9 @@ private
          done B,
       lower LBL,
          PROF-ABI:LPROFTRIM LABEL@ BL,
-         12 DATA NDICT-HW-CELL LDR,  12 NDICT CMP,  12 12 NDICT C-HI CSEL,
-         12 DATA NDICT-HW-CELL STR,
-         11 DATA DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
+         12 XREG-RBASE NDICT-HW-CELL LDR,  12 NDICT CMP,  12 12 NDICT C-HI CSEL,
+         12 XREG-RBASE NDICT-HW-CELL STR,
+         11 XREG-RBASE DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
       clear-loop LBL,
          10 NDICT CMP,  C-CS done BCOND,
          12 10 3 LSLI,  12 11 12 ADD,
@@ -4533,7 +4533,7 @@ private
       16 SP 64 STR,  17 SP 72 STR,
       9 NDICT 1 ADDI,  EM-DEF-OCC:LCOUNT LABEL@ BL,
       \ Only APPEND publishes a new record. COUNT also restores old rows.
-      11 DATA NCOMP-DISPATCH:DECL-CELL LDR,
+      11 XREG-RBASE NCOMP-DISPATCH:DECL-CELL LDR,
       11 append-done CBZ,
       12 11 CHECKER-OWNER-ABI:HEADER-BYTES SUBI,
       13 12 0 LDR,  14 CHECKER-OWNER-ABI:MAGIC LIT64,
@@ -4550,7 +4550,7 @@ private
       SP SP 64 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
       12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
-      10 DATA DEF-OCC:PTR-CELL LDR,  11 0 MOVZ,
+      10 XREG-RBASE DEF-OCC:PTR-CELL LDR,  11 0 MOVZ,
       reset-loop LBL,
          12 DICT-CAP LIT64,  11 12 CMP,  C-CS reset BCOND,
          12 11 3 LSLI,  12 10 12 ADD,
@@ -4568,7 +4568,7 @@ private
       0 0 MOVZ,  1 DEF-OCC:STATE-BYTES LIT64,  2 3 MOVZ,
       3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
       NR-MMAP SYS,  C-CS init-bad BCOND,
-      0 DATA DEF-OCC:PTR-CELL STR,
+      0 XREG-RBASE DEF-OCC:PTR-CELL STR,
       9 NDICT 0 ADDI,  EM-DEF-OCC:LRESET LABEL@ BL,
       30 SP 0 LDR,  13 SP 8 LDR,  14 SP 16 LDR,  15 SP 24 LDR,
       SP SP 32 ADDI,  RET,
@@ -4612,7 +4612,7 @@ private
       11 DREC MOVZ,  11 13 11 MUL,  11 DBASE 11 ADD,
       EM-DEF-OCC:LMATCH LABEL@ BL,
       12 clear-next CBZ,
-      15 DATA DEF-OCC:PTR-CELL LDR,
+      15 XREG-RBASE DEF-OCC:PTR-CELL LDR,
       16 13 3 LSLI,  15 15 16 ADD,
       16 0 MOVZ,  16 15 8 STR,
    clear-next LBL,
@@ -4666,9 +4666,9 @@ private
    30 SP 0 STR,  0 SP 8 STR,  1 SP 16 STR,  9 SP 24 STR,
    10 SP 32 STR,  13 SP 40 STR,  17 SP 48 STR,
    0 9 0 ADDI,  1 17 0 ADDI,
-   2 DATA BOOT:NAMESPACE-WL-CELL LDR,
-   5 DATA ENCLOSING:REC LDR,  5 top CBNZ,
-   5 DATA PKG-REC-CELL LDR,  5 bare CBZ,
+   2 XREG-RBASE BOOT:NAMESPACE-WL-CELL LDR,
+   5 XREG-RBASE ENCLOSING:REC LDR,  5 top CBNZ,
+   5 XREG-RBASE PKG-REC-CELL LDR,  5 bare CBZ,
    top LBL,
    10 5 16 LDR,  10 10 DNAME-FLAG-BITS LSLI,  10 10 DNAME-FLAG-BITS LSRI,
    9 5 24 ADDI,
@@ -4688,7 +4688,7 @@ private
 \ x13 = 0 when the name is not in scope, else 1 | the folded record flags
 \ (bit 1 immediate, bit 3 wide-effect, bit 4 internal); on a hit x11 = the record's code cell [0], x12 = its length cell [8],
 \ and x5 = the matched record, zero on a miss. It clobbers x2-x17 and
-\ preserves XDS (x19) and DATA (x20).
+\ preserves XDS (x19) and XREG-RBASE (x20).
 \ x5 is the only way to read another cell of the record the name resolved to
 \ (the sealed-WID gate reads [40]): an xt does not name a record, because
 \ `EXPORT` publishes one body under several records and wids. The linear scan
@@ -4727,7 +4727,7 @@ private
       17 17 1 ADDI,  FIND-QSCAN LABEL@ B,
    FIND-QNONE LABEL@ LBL,
       11 0 MOVZ,                                               \ a bare name
-      2 DATA PKG-PRI-CELL LDR,  FIND-START LABEL@ B,
+      2 XREG-RBASE PKG-PRI-CELL LDR,  FIND-START LABEL@ B,
    FIND-QHAS LABEL@ LBL,
       17 0 CMPI,  C-EQ FIND-QNONE LABEL@ BCOND,
       14 17 1 ADDI,  14 10 CMP,  C-GE FIND-QNONE LABEL@ BCOND,
@@ -4751,8 +4751,8 @@ private
    FIND-START LABEL@ LBL,
       \ The hash probe answers as WLFIND's does and keeps x2 (wid), x9/x10
       \ (name) and x13 (result) for the linear scan.
-      14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 0 CMPI,  2 14 2 C-EQ CSEL,
-      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,
+      14 XREG-RBASE BOOT:GLOBAL-WL-CELL LDR,  2 0 CMPI,  2 14 2 C-EQ CSEL,
+      14 XREG-RBASE HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,
       9 10 15 4 16 7 C-HIDX-HASH
       6 15 2 5 C-HIDX-SLOT,
       8 HIDX-SLOTS LIT64,
@@ -4825,19 +4825,19 @@ private
       \ enclosing package.
       13 FIND-FOUND LABEL@ CBNZ,
       2 WL:PRIMITIVES CMPI,  C-EQ FIND-MISS LABEL@ BCOND,
-      14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 14 CMP,  C-EQ primitives BCOND,
-      14 DATA PKG-PRI-CELL LDR,  14 2 CMP,  C-NE open-pub BCOND,
-         2 DATA PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
+      14 XREG-RBASE BOOT:GLOBAL-WL-CELL LDR,  2 14 CMP,  C-EQ primitives BCOND,
+      14 XREG-RBASE PKG-PRI-CELL LDR,  14 2 CMP,  C-NE open-pub BCOND,
+         2 XREG-RBASE PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
       open-pub LBL,
-      14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE enclosing-pri BCOND,
+      14 XREG-RBASE PKG-PUB-CELL LDR,  14 2 CMP,  C-NE enclosing-pri BCOND,
          11 global CBNZ,
-         2 DATA ENCLOSING:PRI LDR,  FIND-START LABEL@ B,
+         2 XREG-RBASE ENCLOSING:PRI LDR,  FIND-START LABEL@ B,
       enclosing-pri LBL,
       11 FIND-MISS LABEL@ CBNZ,
-      14 DATA ENCLOSING:PRI LDR,  14 2 CMP,  C-NE enclosing-pub BCOND,
-         2 DATA ENCLOSING:PUB LDR,  FIND-START LABEL@ B,
+      14 XREG-RBASE ENCLOSING:PRI LDR,  14 2 CMP,  C-NE enclosing-pub BCOND,
+         2 XREG-RBASE ENCLOSING:PUB LDR,  FIND-START LABEL@ B,
       enclosing-pub LBL,
-      14 DATA ENCLOSING:PUB LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
+      14 XREG-RBASE ENCLOSING:PUB LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
       global LBL,
          2 0 MOVZ,  FIND-START LABEL@ B,
       primitives LBL,

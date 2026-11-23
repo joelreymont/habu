@@ -63,7 +63,7 @@ using A64ASM
 31 constant SP                        \ as a base or an add/sub operand
 4 constant REC-ARG                    \ x4, a reading quotation's record on entry
 
-\ Registers. x19 is the data stack and grows up. x19, x20 (DATA), x26, x27
+\ Registers. x19 is the data stack and grows up. x19, x20 (XREG-RBASE), x26, x27
 \ and x28 are the engine's; compiled code writes none of them except x19 as
 \ the stack. x18 is Darwin's. x29 caches the innermost loop index, and any
 \ callee may write it. x16 and x17 are this file's temporaries, a literal and

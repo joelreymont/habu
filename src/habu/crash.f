@@ -426,8 +426,8 @@ private
 \ task's or a callback's entry until DATA loads, the frame sp across an FFI
 \ call's BLR.
 : C-CRASH-DATA>R24 ( -- )
-   HB-TARGET-LINUX? IF 24 21 LINUX-MCTX-X0-OFF DATA 8 * + LDR, exit THEN
-   24 21 SS-OFF DATA 8 * + LDR, ;
+   HB-TARGET-LINUX? IF 24 21 LINUX-MCTX-X0-OFF XREG-RBASE 8 * + LDR, exit THEN
+   24 21 SS-OFF XREG-RBASE 8 * + LDR, ;
 
 : C-CRASH-MCTX>R21 ( -- )
    HB-TARGET-LINUX? IF 21 19 LINUX-UC-MCTX-OFF ADDI, exit THEN
@@ -837,7 +837,7 @@ public
 \ whose trampoline passes the number in x0 on Linux and macOS alike. The crash
 \ handler is the raw sa_tramp and reads it from x2 on macOS (C-CRASH-ENTRY).
 \
-\ IT READS THE FD WORD BY ITS ABSOLUTE ADDRESS, never as `DATA <off>`: it runs
+\ IT READS THE FD WORD BY ITS ABSOLUTE ADDRESS, never as `XREG-RBASE <off>`: it runs
 \ on whichever thread the kernel picks, whose x20 is its own task region, so the
 \ offset form would read a different word per task and zero on a new one.
 \ DATA-VA is fixed (src/habu/layout.f package SIGNAL-ABI).

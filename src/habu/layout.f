@@ -149,8 +149,6 @@ $600000 constant CFSTK-OFF
 80 constant PROF-STATE-BYTES
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
-20 constant DATA
-
 0 constant DP-CELL
 8 constant HND-CELL
 16 constant LOCN-CELL

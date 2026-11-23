@@ -396,7 +396,7 @@ public
 \ the main loop, engine helpers, gaps between spans), new (deferred ticks whose pc
 \ no live record owns), defer (ticks in code compiled after prof-on, still
 \ unnamed), spill (deferred ticks the buffer had no room for), foreign (ticks
-\ without the engine's DATA and dictionary registers charged to no word; a
+\ without the engine's XREG-RBASE and dictionary registers charged to no word; a
 \ foreign leaf that keeps both lands in other), foreign charged to callers
 \ (foreign ticks a calling word took, already in words), frames (caller frames
 \ attributed), dropped (caller edges a full probe window could not key), indexed
@@ -762,7 +762,7 @@ public
    10 7 PROF-IN ADDI,  9 9 10 LDADDAL, ;
 
 \ THE HANDLER TAKES NOTHING FROM THE LIVE REGISTERS: a foreign callee (libc's
-\ dlsym, libzip's inflate) reuses x20 (DATA), x26 (DBASE) and x27 (NDICT).
+\ dlsym, libzip's inflate) reuses x20 (XREG-RBASE), x26 (DBASE) and x27 (NDICT).
 \ The handler runs on the crash handler's alternate signal stack, so a deep
 \ machine stack never pushes the frame over the data stack.
 \
@@ -1339,7 +1339,7 @@ private
    dflt LBL,  10 PROF-STACK-BYTES LIT64,
    have LBL,  C-PROF-OWNER-RELEASE  2 OS-THREAD-HANDLE
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
-   2 0 ARN-OWNER-TID STR,  DATA 0 ARN-OWNER-DATA STR,
+   2 0 ARN-OWNER-TID STR,  XREG-RBASE 0 ARN-OWNER-DATA STR,
    11 CB-SELF,  11 0 ARN-OWNER STR,
    9 PROF-THREAD-VA LIT64,  9 9 0 LDR,  9 11 CMP,  C-NE other BCOND,
    9 PROF-TOP-VA LIT64,  9 9 0 LDR,  9 0 ARN-STACK-TOP STR,

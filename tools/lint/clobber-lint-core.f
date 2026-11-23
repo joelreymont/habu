@@ -103,7 +103,6 @@ variable RX  variable RACC
    a u s" DBASE" LINT-STR= if 26 exit then
    a u s" NDICT" LINT-STR= if 27 exit then
    a u s" CP"    LINT-STR= if 28 exit then
-   a u s" DATA"  LINT-STR= if 20 exit then
    a u CL-NUM-REG ;
 
 : START-L?  ( str -- bool ) {: a:^ u :}

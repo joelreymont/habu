@@ -67,7 +67,7 @@ HB-TARGET-LINUX? [if]
    6 start TEXT-AT,  7 end TEXT-AT,
    10 CARRIER-OFF LINUX-LAYOUT:CODE-OFF - LIT64,  10 9 10 ADD,
    more LBL,  6 7 CMP,  C-CS done BCOND,
-      11 6 0 LDR,  1 6 8 LDR,  6 6 16 ADDI,  11 DATA 11 ADD,
+      11 6 0 LDR,  1 6 8 LDR,  6 6 16 ADDI,  11 XREG-RBASE 11 ADD,
       0 10 0 ADDI,  2 1 0 ADDI,  3 MREMAP-MOVE-FIXED MOVZ,  4 11 0 ADDI,
       NR-MREMAP SYS,
       0 11 CMP,  C-EQ moved BCOND,
@@ -87,7 +87,7 @@ HB-TARGET-MACOS? [if]
    text0 TEXT-BASE,
    1 start TEXT-AT,  2 end TEXT-AT,
    more LBL,  1 2 CMP,  C-CS done BCOND,
-      3 1 0 LDR,  4 1 8 LDR,  1 1 16 ADDI,  3 DATA 3 ADD,
+      3 1 0 LDR,  4 1 8 LDR,  1 1 16 ADDI,  3 XREG-RBASE 3 ADD,
       each LBL,  4 more CBZ,
          5 1 0 LDR,  5 3 0 STR,
          1 1 8 ADDI,  3 3 8 ADDI,  4 4 1 SUBI,  each B,
@@ -109,7 +109,7 @@ HB-TARGET-MACOS? [if]
       22 22 8 ADDI,  more B,
    done LBL, ;
 
-: SLIDE, ( n label label label -- ) DATA SLIDE-AT, ;
+: SLIDE, ( n label label label -- ) XREG-RBASE SLIDE-AT, ;
 
 
 \ Copy the record image [start, end) to x16, the dictionary band's alias, a
@@ -127,9 +127,9 @@ HB-TARGET-MACOS? [if]
 
 
 : RUNTIME-CELLS, ( -- )
-   XDS DATA STACK-ABI:BASE-CELL STR,
-   7 STACK-ABI:BOOT-BYTES LIT64,  7 DATA STACK-ABI:CAP-CELL STR,
-   13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR, ;
+   XDS XREG-RBASE STACK-ABI:BASE-CELL STR,
+   7 STACK-ABI:BOOT-BYTES LIT64,  7 XREG-RBASE STACK-ABI:CAP-CELL STR,
+   13 XREG-RBASE ARGC-CELL STR,  14 XREG-RBASE ARGV-CELL STR,  15 XREG-RBASE ENVP-CELL STR, ;
 
 
 \ The process's entry: argc/argv/envp into x13-x15, which RUNTIME-CELLS, keeps,
@@ -146,7 +146,7 @@ HB-TARGET-MACOS? [if]
 \ lists none); the text size comes from the header the slid RBASE-CELL finds.
 : DATA, ( n label label label label label -- )
    {: linked:n text0:label image:label image-end:label list:label list-end:label :}
-   EM-MMAP-DATA-REGION  DATA 0 0 ADDI,
+   EM-MMAP-DATA-REGION  XREG-RBASE 0 0 ADDI,
    text0 image image-end PLACE-RUNS,
    linked text0 list list-end SLIDE,
    RUNTIME-CELLS,
@@ -168,14 +168,14 @@ HB-TARGET-MACOS? [if]
 \ BRK words through the region's RW alias (x17 = alias - base), their address in
 \ BPTRAMP-CELL; CP starts after them.
 : TRAMPOLINES, ( -- )
-   9 CP 0 ADDI,  9 DATA BPTRAMP-CELL STR,
+   9 CP 0 ADDI,  9 XREG-RBASE BPTRAMP-CELL STR,
    10 $D4200000D4200000 LIT64,  11 CP 17 ADD,
    BPTRAMP-BYTES 0 ?do 10 11 i STR, 8 +loop
    CP CP BPTRAMP-BYTES ADDI, ;
 
 : CALL-EXIT, ( n -- )
    {: cell:n :}
-   9 DATA cell LDR,  9 BLR,
+   9 XREG-RBASE cell LDR,  9 BLR,
    0 0 MOVZ,  LEXITHOOK LABEL@ BL,  NR-EXIT-GROUP SYS, ;
 
 
@@ -190,7 +190,7 @@ public
    text0 ENTRY,
    NDICT 0 MOVZ,
    linked text0 image image-end list list-end DATA,
-   DBASE DATA RBASE-CELL LDR,  9 DATA TEXT-SIZE-CELL LDR,
+   DBASE XREG-RBASE RBASE-CELL LDR,  9 XREG-RBASE TEXT-SIZE-CELL LDR,
    DBASE DBASE 9 ADD,  CP DBASE 0 ADDI,
    text0 STACKS,
    APP-ENTRY:XT-CELL CALL-EXIT, ;
@@ -210,10 +210,10 @@ public
    16 DBASE 17 ADD,  text0 recs recs-end COPY-RECORDS,
    16 DBASE 17 ADD,  linked text0 rlist rlist-end 16 SLIDE-AT,
    linked text0 image image-end list list-end DATA,
-   17 DATA REGION-ALIAS:DELTA-CELL STR,
-   9 SP 0 ADDI,  9 DATA MAIN-STACK-TOP-CELL STR,
-   9 CB-SELF,  9 DATA MAIN-THREAD-CELL STR,
-   DBASE DATA DBASE-CELL STR,
+   17 XREG-RBASE REGION-ALIAS:DELTA-CELL STR,
+   9 SP 0 ADDI,  9 XREG-RBASE MAIN-STACK-TOP-CELL STR,
+   9 CB-SELF,  9 XREG-RBASE MAIN-THREAD-CELL STR,
+   DBASE XREG-RBASE DBASE-CELL STR,
    TRAMPOLINES,
    EM-DEF-OCC:LINIT LABEL@ BL,
    text0 STACKS,  text0 TRAP,
