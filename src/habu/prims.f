@@ -55,6 +55,8 @@ public
 \ STORED-kind the pending pointee: any stored type, a closed record or family
 \ included, as a declared `^a` takes it.
 28 constant A-STORED
+\ CELL-kind the pending var: a one-cell value the primitive reads.
+29 constant A-CELL
 
 private
 
@@ -147,6 +149,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
 : PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
 : PE-PTR-A-STORED A-VAR-A CODE, A-STORED CODE, A-PTR CODE, ;
+: PE-A-CELL      A-VAR-A CODE, A-CELL CODE, ;
 \ PE-Q opens a quotation the primitive runs before it returns; PE-QANY is an xt it keeps.
 : PE-Q           A-QUOT CODE, ;
 : PE-QIN         A-QUOT-IN CODE, ;
