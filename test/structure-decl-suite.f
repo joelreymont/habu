@@ -14,7 +14,7 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/process-argv.f
+require src/lib/process-command.f
 require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
@@ -902,22 +902,19 @@ DECL-DIAG:OFF
 package struct-check-test
 private
 
-$4000 constant SC-CAP
 create SC-PATH PATH-CAP allot   variable SC-PATH-U
-create SC-OUT SC-CAP allot
-create SC-ERR SC-CAP allot   variable SC-ERR-U
-create SC-NONE 1 allot
-create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few bytes
+TYPED-VARIABLE SC-ERR ^VEC:vector<u8>
+TYPED-VARIABLE SC-SRC ^VEC:vector<u8>   \ SB holds too few bytes
 
+: SC-NEW ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 : SC-FILE ( -- str ) SC-PATH SC-PATH-U @ ;
-: SC-ERR$ ( -- str ) SC-ERR SC-ERR-U @ ;
+: SC-ERR$ ( -- str ) SC-ERR @ VEC:SPAN SPAN:$ ;
 : SB-LINE ( str -- ) SB-APPEND 10 SB-APPEND-C ;
 : SC-LINE ( str -- )
-   SC-SRC SC-CAP SC-SRC-U BUF-APPEND
-   10 SC-SRC SC-CAP SC-SRC-U BUF-APPEND-C ;
+   SC-SRC @ VEC:APPEND  10 SC-SRC @ VEC:PUSH c! ;
 
 : SC-SRC$ ( -- str )
-   SC-SRC-U BUF-RESET
+   SC-SRC @ 0 VEC:RESIZE
    s" STRUCTURE rpsdh POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE" SC-LINE
    s" STRUCTURE rpsdbuf FIELD a n BUFFER b 13 FIELD c n ;STRUCTURE" SC-LINE
    s" : SB1 ( n n n n -- rpsdbuf ) RPSDBUF:MAKE ;" SC-LINE
@@ -987,19 +984,28 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
    s" 1 2 3 PC-HD:MAKE SCHOLDS schx" SC-LINE
    s" : SCU8 ( -- ^u8 ) schx ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
-   SC-SRC SC-SRC-U BUF-LEN@ ;
+   SC-SRC @ VEC:SPAN SPAN:$ ;
+
+: SC-ARGS ( CMD:command -- CMD:command )
+   s" --load" CMD:ARG+  s" tools/check.f" CMD:ARG+
+   s" --" CMD:ARG+  s" --all-errors" CMD:ARG+
+   s" --verify-only" CMD:ARG+  SC-FILE CMD:ARG+ ;
+
+: SC-KEEP ( CMD:command -- CMD:command )
+   CMD:ERR$ {: err:^ erru:n :}
+   SC-ERR @ 0 VEC:RESIZE  err erru SC-ERR @ VEC:APPEND ;
+
+\ The child's stdin is CMD's empty one.
+: SC-CHECK ( CMD:command -- CMD:command )
+   SC-ARGS  ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER
+   CMD:RUN-OUTCOME {: oc :}
+   CMD:OUT$ {: out:^ outu:n :}
+   CMD:ERR$ {: err:^ erru:n :}
+   SC-SRC$ out outu err erru oc 70 T-ENDING-EXITED=  SC-KEEP ;
 
 : SC-RUN ( -- )
    SC-FILE SC-SRC$ FS:WRITE-ALL
-   PROC-ARGV-RESET
-   s" --load" PROC-ARGV+  s" tools/check.f" PROC-ARGV+
-   s" --" PROC-ARGV+  s" --all-errors" PROC-ARGV+
-   s" --verify-only" PROC-ARGV+  SC-FILE PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$  SC-NONE 0  SC-OUT SC-CAP >LEN
-   SC-ERR SC-CAP >LEN  PROCESS:WAIT-FOREVER
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   erru LEN>N SC-ERR-U !
-   SC-SRC$ SC-OUT outu LEN>N SC-ERR$ oc 70 T-ENDING-EXITED= ;
+   [: SC-CHECK ;] CMD:WITH-COMMAND ;
 
 \ The gutter before `-->` is as wide as PLACE's line number.
 : SC-GUTTER ( str -- ) {: p:^ pu:n :}
@@ -1017,6 +1023,7 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
 
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
+SC-NEW SC-SRC !  SC-NEW SC-ERR !
 SC-RUN
 SC-ERR$ s" error[" COUNT-SUB 15 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
