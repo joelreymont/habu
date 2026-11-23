@@ -2005,6 +2005,42 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s\" s\" \" >str included" s" literal-empty.f" LINE-FIXTURE
    s" E-PATH-RANGE" 10 18 LITERAL-PLACED ;
 
+\ Past a file's own `>str`, even after `;package`, --verify-only reads `>str`
+\ as spending the literal before it, as the walk does: the loader has no path.
+: TEST-STR-SHADOWED ( -- )
+   s" a loader after a package's own `>str`" T-LABEL
+   SB-RESET
+   s" package SHP" SB-APPEND LF+
+   s\" : >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s\" s\" nope-a.f\" >str required" SB-APPEND LF+
+   s" str-shadowed.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-LOADER-FORM" FIELD=
+   0 s" required" 4 19 84 92 FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ Only the first `>str` after a literal hands it on.
+: TEST-STR-TWICE ( -- )
+   s" a loader after a second `>str`" T-LABEL
+   SB-RESET
+   s" split-str" SB-APPEND LF+
+   s\" s\" missing-x.f\" >str >str included" SB-APPEND LF+
+   s" str-twice.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-LOADER-FORM" FIELD=
+   0 s" included" 2 27 36 44 FX-PATH$ CANON$ FX$ AT-IN ;
+
+\ A `>str` the file retired is rejected where it stands, as the run does.
+: TEST-STR-UNDEFINED ( -- )
+   s" a `>str` after `undefine >str`" T-LABEL
+   SB-RESET
+   s" undefine >str" SB-APPEND LF+
+   s\" s\" a.f\" >str required" SB-APPEND LF+
+   s" str-undefined.f" FIXTURE!
+   s" --verify-only" CHECK
+   0 s" code" s" E-UNDEFINED" FIELD=
+   0 s" >str" 2 9 22 26 FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ A literal's record lasts only the next token of its own text, or the token
 \ after a `>str` right after the literal: a path a loader is given later, in
 \ bytes its copy matches, is not placed at the literal but at the loader where
@@ -3821,6 +3857,9 @@ HB-TARGET-LINUX? 0= [if]
    TEST-NAMED-DOTTED
    TEST-SCRIPT-REQUIRED-EMPTY
    TEST-LITERAL-PATH-PLACE
+   TEST-STR-SHADOWED
+   TEST-STR-TWICE
+   TEST-STR-UNDEFINED
    TEST-LITERAL-SPENT
    TEST-NAMED-DIR
    TEST-REQUIRED-DIR

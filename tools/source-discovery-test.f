@@ -178,7 +178,7 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ The first `>str` after a path literal is an identity at run time: the walk
 \ reads past it at top level and in a body, but not past a second, nor past one
-\ the file defined.
+\ after the file defined or retired one.
 : SDT-STR$ ( -- str )
    S\" s\" sd-s0.f\" >str s\" sd-s1.f\" >str required\n: L ( -- ) s\" sd-s2.f\" >str required ;\n: M ( -- ) s\" sd-s3.f\" >str >str required ;\n" ;
 
@@ -190,9 +190,11 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
    1 SOURCE-EVENT:PATH@ s" sd-s2.f" SDT-PATH T$=
    s" str-twice.f" S\" s\" sd-s4.f\" >str >str required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
-   s" str-own.f" S\" : >str ( ^u8 n -- str ) ;\n: N ( -- ) s\" sd-s5.f\" >str required ;\ns\" sd-s6.f\" >str required\n" SDT-WRITE-ENTRY
+   s" str-own.f" S\" package SDQ\n: >str ( ^u8 n -- str ) 2drop s\" b.f\" >str ;\n;package\n: N ( -- ) s\" sd-s5.f\" >str required ;\ns\" sd-s6.f\" >str required\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS
-   SOURCE-EVENT:COUNT 0 T= ;
+   SOURCE-EVENT:COUNT 0 T=
+   s" str-undef.f" S\" undefine >str\ns\" sd-s7.f\" >str required\n" SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC SDT-STOPS ;
 
 : SDT-TEST-OPENER ( -- )
    s" opener.f" S\" C\\\" sd-g.f\" required\n" SDT-WRITE-ENTRY

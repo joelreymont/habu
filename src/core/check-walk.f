@@ -496,10 +496,7 @@ EXPORT CHECKER-PREFLIGHT:BODY-TOK?
 : SPAY-STR-CK ( -- )
    SPAY-ARMED @ 0=  SPAY-STR @ 0 <> or IF EXIT THEN
    TKF TKFU @ s" >str" CORE-STR= 0= IF EXIT THEN
-   TKF TKFU @ BIND-TOK
-   TOK-REC @ {: rec:^ :}
-   rec NULL-PTR = IF EXIT THEN
-   rec CK-REC-WID WL:PRIMITIVES = IF 1 SPAY-STR ! THEN ;
+   TKF TKFU @ TOK-CORE-OP? IF 1 SPAY-STR ! THEN ;
 
 \ The steps of a token no keyword, mode or literal form took, a call's or a
 \ number's; a call's binding is made on the first ask.

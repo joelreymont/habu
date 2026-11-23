@@ -72,7 +72,7 @@ variable SD-TOK-LEN
 variable SD-DEF                          \ 1 from a definition's opener to its ;
 variable SD-NAME-OFF                     \ the open definition's name, 0 0 for none
 variable SD-NAME-LEN
-variable SD-SHADOWED                     \ loader and family words and `>str` the file defined
+variable SD-SHADOWED                     \ loader and family words the file defined, and SD-STR-BIT
 variable SD-RETIRED                      \ and those it retired
 variable SD-HARVESTING                  \ only the harvest records declarations and rows
 variable SD-FILE-ID
@@ -855,8 +855,8 @@ DYNAMIC-BUFFER SD-DEC u8
    a u s" provided" STR=CI if SD-K-PROVIDED exit then
    0 ;
 
-\ SD-SHADOWED's bit for `>str`: past the file's own, a `>str` spends the
-\ literal before it.
+\ SD-SHADOWED's bit for `>str`: once the file defines or retires one, a `>str`
+\ spends the literal before it.
 $200 constant SD-STR-BIT
 
 : SD-NAME-BIT ( str -- n ) {: a:^ u:n :}
@@ -871,15 +871,20 @@ $200 constant SD-STR-BIT
    a u s" mutual" STR=CI if $100 exit then
    0 ;
 
+: SD-STR-GONE ( str -- )
+   s" >str" STR=CI if SD-STR-BIT SD-SHADOWED @ or SD-SHADOWED ! then ;
+
 \ A definition or retirement of a loader or family name refuses nothing, but
 \ a later use with that spelling is ambiguous (SD-CHECK-USE).
 : SD-SHADOW ( str -- )
    SD-TAIL$ {: a:^ u:n :}
    a u SD-NAME-BIT SD-SHADOWED @ or SD-SHADOWED !
-   a u s" >str" STR=CI if SD-STR-BIT SD-SHADOWED @ or SD-SHADOWED ! then ;
+   a u SD-STR-GONE ;
 
 : SD-RETIRE ( str -- )
-   SD-TAIL$ SD-NAME-BIT SD-RETIRED @ or SD-RETIRED ! ;
+   SD-TAIL$ {: a:^ u:n :}
+   a u SD-NAME-BIT SD-RETIRED @ or SD-RETIRED !
+   a u SD-STR-GONE ;
 
 : SD-CHECK-USE ( n n -- ) {: off:n len:n :}
    off len SD-TOK$ SD-NAME-BIT {: bit:n :}
@@ -1086,7 +1091,8 @@ $200 constant SD-STR-BIT
    off len SD-TOK$ SD-QCOLON 0 < if false exit then
    off len SD-TOK$ VERIFY:ROOT-MOVE? ;
 
-\ Whether the token at off len is `>str` as the engine defines it.
+\ Whether the token at off len is `>str` and the file has neither defined nor
+\ retired one.
 : SD-STR? ( n n -- bool )
    SD-TOK$ s" >str" STR=CI  SD-SHADOWED @ SD-STR-BIT and 0=  and ;
 
@@ -1099,13 +1105,14 @@ $200 constant SD-STR-BIT
 
 \ A comment is skipped first, as the loader skips it, and like blanks it keeps a
 \ pending literal path: `s" x.f" ( why ) required` loads x.f. So does the first
-\ `>str` after the literal, an identity at run time, unless the file defined its
-\ own. Every other token ends it. A local is looked up before the parsing
-\ keywords: in a body a local named `char` is that local and takes no operand. A definition's opener and,
-\ outside a definition, an engine definer, a package keyword and `undefine`
-\ take the next token as the name they give, take or retire, a loader word's
-\ too, and load nothing; a name missing at the source's end is theirs to
-\ refuse. A name given or retired is a loader word's spelling replaced.
+\ `>str` after the literal, an identity at run time, unless the file defined or
+\ retired one. Every other token ends it. A local is looked up before the
+\ parsing keywords: in a body a local named `char` is that local and takes no
+\ operand. A definition's opener and, outside a definition, an engine definer,
+\ a package keyword and `undefine` take the next token as the name they give,
+\ take or retire, a loader word's too, and load nothing; a name missing at the
+\ source's end is theirs to refuse. A name given or retired is a loader word's
+\ spelling replaced.
 : SD-STEP ( n n -- )
    {: off:n len:n :}
    len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE exit then

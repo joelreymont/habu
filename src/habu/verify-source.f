@@ -25,7 +25,7 @@ split-str
 \ slot holds the bytes the engine's literal makes: a plain literal's source
 \ span, an escaped one's decoded payload. It resets per NEXT-SCAN call, so at a
 \ token it holds the literal before it in the same statement, if any, or before
-\ the `>str` NEXT-TOP reads past. The literal's kind is kept too, 0 when there
+\ the engine's `>str` before it. The literal's kind is kept too, 0 when there
 \ is none: a composition rejects a string loader by it. So is where its text
 \ between the quotes starts and ends in the file, as written, escapes and all,
 \ the end 0 when there is none: the span a string loader's load reports, and
@@ -36,9 +36,9 @@ split-str
 \ decode that answers its buffer flips it, so the last answer is never in the
 \ buffer the next decode writes, or that a reserve for it moves. No reader
 \ reads an older answer after the next decode. A top-level literal's answer
-\ goes to the slot, which the handler of the token NEXT-SCAN answers reads
-\ before the next NEXT-SCAN resets it. Only the string loaders and a call of a
-\ word a names: row marks read the slot; a body literal keeps only its kind.
+\ goes to the slot, which the handlers of the tokens after it read before the
+\ next NEXT-SCAN resets it. Only the string loaders and a call of a word a
+\ names: row marks read the slot; a body literal keeps only its kind.
 \
 \ A composition rejects the top-level loader forms discovery rejects, where it
 \ meets them, so that walk need not run first: a path that is no literal, a
@@ -227,7 +227,11 @@ variable STR-LAST-U
 variable STR-LAST-KIND
 variable STR-LAST-AT
 variable STR-LAST-END
-variable STR-LAST-PAST                        \ the slot's literal passed its `>str`
+0 constant STR-NONE
+1 constant STR-LIT
+2 constant STR-AT
+3 constant STR-PAST
+variable STR-STATE
 PTR-VARIABLE TOP-PREV-A
 variable TOP-PREV-U
 PTR-VARIABLE TOP-REFUSED
@@ -499,7 +503,7 @@ variable FLAG-N
 
 : STR-LAST-RESET ( -- )
    NULL-PTR STR-LAST-A !  0 STR-LAST-U !  0 STR-LAST-KIND !
-   0 STR-LAST-AT !  0 STR-LAST-END !  0 STR-LAST-PAST ! ;
+   0 STR-LAST-AT !  0 STR-LAST-END !  STR-NONE STR-STATE ! ;
 
 \ Record the bytes A U a literal of the given kind makes and its text as
 \ written, the RAWU bytes at RAW in the bytes being scanned.
@@ -510,7 +514,7 @@ variable FLAG-N
    kind STR-LAST-KIND !
    raw SOURCE@ - STR-LAST-AT !
    STR-LAST-AT @ rawu + STR-LAST-END !
-   0 STR-LAST-PAST ! ;
+   STR-LIT STR-STATE ! ;
 
 \ The kinds of literal discovery tells apart before a loader: an `s"` or `S"`
 \ one, plain or escaped, is a path; a `c"`, `C"` or `."` one is no string a
@@ -885,7 +889,11 @@ public
    [: s" load files before `undefine` retires " REJECTION:EMIT-STR  TICKED ;] FORM-REJECT ;
 : DYNAMIC-REJECT ( str -- )
    s" dynamic (non-literal) loader path"
-   [: 2drop S\" write the path as a literal: `require path/file.f` or `s\" path/file.f\" required`" REJECTION:EMIT-STR ;]
+   [: 2drop
+      S\" write the path as a literal: `require path/file.f` or `s\" path/file.f\" "
+      REJECTION:EMIT-STR
+      CHECKER-SPLIT-STR @ 0= IF s" >str " REJECTION:EMIT-STR THEN
+      s" required`" REJECTION:EMIT-STR ;]
    FORM-REJECT ;
 : OPENER-REJECT ( str -- )
    s" unsupported string opener before a loader word"
@@ -914,13 +922,15 @@ private
 
 \ The loader words the file being read has declared a word of, and those it has
 \ retired: past either, the walk, which holds no wordlists, cannot tell which
-\ word the spelling names. SHADOWED holds STR-BIT too.
+\ word the spelling names. SHADOWED also holds STR-BIT.
 variable SHADOWED
 variable RETIRED
 
-\ SHADOWED's bit for `>str`: past the file's own, a `>str` spends the literal
-\ before it.
+\ SHADOWED's bit for `>str`, set once the file declares or retires one.
 $20 constant STR-BIT
+
+: STR-GONE ( str -- )
+   s" >str" STR=CI IF STR-BIT SHADOWED @ or SHADOWED ! THEN ;
 
 \ The symbol of the newest definition, which an `immediate` marks: 0 from its
 \ name until it is recorded, so one after a refused definition marks nothing.
@@ -930,14 +940,11 @@ variable NEWEST-SYM
 : NAME-DECLARED ( str -- ) {: a:^ u:n :}
    0 NEWEST-SYM !
    a u LOADER-BIT SHADOWED @ or SHADOWED !
-   a u s" >str" STR=CI IF STR-BIT SHADOWED @ or SHADOWED ! THEN ;
+   a u STR-GONE ;
 
-\ Whether the token is `>str` as the engine defines it, an identity at run time.
-: ENGINE-STR? ( str -- bool )
-   s" >str" STR=CI  SHADOWED @ STR-BIT and 0=  and ;
-
-: NAME-RETIRED ( str -- )
-   LOADER-BIT RETIRED @ or RETIRED ! ;
+: NAME-RETIRED ( str -- ) {: a:^ u:n :}
+   a u LOADER-BIT RETIRED @ or RETIRED !
+   a u STR-GONE ;
 
 \ A loader form the walk reads, its word u bytes long at TOKEN-BYTE.
 : QUIET-USE ( str -- ) {: a:^ u:n :}
@@ -1062,6 +1069,14 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 
 : CORE-OP? ( str -- bool )
    TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-CORE-OP and 0<> ;
+
+\ Whether the token is the engine's `>str` and the file has neither
+\ declared nor retired one: past either, the walk spends the literal before
+\ it.
+: ENGINE-STR? ( str -- bool ) {: a:^ u:n :}
+   a u s" >str" STR=CI 0= IF false EXIT THEN
+   STR-BIT SHADOWED @ and 0<> IF false EXIT THEN
+   a u CORE-OP? ;
 
 \ The answer F of the engine's predicate the token a u spells, and whether
 \ the token binds that word rather than a program's.
@@ -4083,20 +4098,22 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
    2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
    2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN THEN
-   NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL!   \ a literal's record lasts the token after it, or after its `>str`
+   \ A literal's record lasts the token after it, or after its `>str`.
+   STR-STATE @ STR-AT <> IF NULL-PTR 0 NULL-PTR 0 SRCLOC:LITERAL! THEN
    TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
    TOP-CUR-A @ TOP-CUR-U @ FLAG-STEP ;     \ after any file this token loaded
 
-\ The first `>str` after a literal, unless the file declared its own, is the
-\ identity it is at run time: the scan reads past it as it reads past the
-\ literal, which stays in the slot, and offers spellings in it as at a token.
+\ STR-STATE places the token just read: STR-NONE, the slot empty; STR-LIT,
+\ right after the slot's literal; STR-AT, the engine's `>str` right after it;
+\ STR-PAST, after that `>str`. Only a read at STR-AT keeps the slot: `>str` is
+\ an identity at run time, so its literal reaches the token after it.
 : NEXT-TOP ( -- str )
-   NEXT-SCAN
-   BEGIN
-      2dup ENGINE-STR?  STR-LAST-KIND @ 0<> and  STR-LAST-PAST @ 0= and
-   WHILE
-      2drop CSR-TOP  -1 STR-LAST-PAST !  NEXT
-   REPEAT ;
+   STR-STATE @ STR-AT = IF
+      STR-PAST STR-STATE !  NEXT
+   ELSE NEXT-SCAN THEN
+   2dup ENGINE-STR?  STR-STATE @ STR-LIT = and IF
+      STR-AT STR-STATE !
+   THEN ;
 
 \ A record no source places is placed at the top-level token.
 : VERIFY-SOURCE ( -- )
@@ -4104,6 +4121,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    SOURCE@ SOURCE-U @ SPLIT-STR-FILE? CHECKER-SPLIT-STR !
    NULL-PTR TOP-PREV-A !  0 TOP-PREV-U !  NULL-PTR TOP-REFUSED !
    0 SHADOWED !  0 RETIRED !  0 NEWEST-SYM !
+   STR-NONE STR-STATE !                         \ a tick's remainder can end a file at `>str`
    TOP-CLOSE
    BEGIN
       NEXT-TOP dup 0 > TICK-REMAINDER @ 0= and WHILE

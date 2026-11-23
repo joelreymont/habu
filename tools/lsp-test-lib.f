@@ -3648,6 +3648,21 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" >CVT-T" s" n -- cvt-t" CVT-MD s" 7" s" markdown" 6 18 29 HOVERED
    s" CVT-T>N" s" cvt-t -- n" CVT-MD s" 8" s" markdown" 6 30 42 HOVERED ;
 
+\ The engine's `>str` after a top-level literal is a use like any word's.
+: HOVER-STR-PATH ( -- str )  s" hover-str.f" IN-TREE ;
+: TEXT-HOVER-STR ( -- str )  s\" s\" a.f\" >str drop\n" ;
+
+: HOVER-STR-TURNS ( -- )
+   MARKDOWN-CLIENT
+   HOVER-STR-PATH TEXT-HOVER-STR 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   HOVER-STR-PATH 1 CLEAN
+   s" 3" HOVER-STR-PATH 0 8 HOVER-ASK
+   SAY
+   TXT-B CLEAR s\" ```habu\n>str\n\\ " HV+ PRIM-SOURCE-PATH WHERE+ s\" \n```" HV+
+   s" 3" s" markdown" 0 8 12 HOVERED ;
+
 : HOVER-NONE-TURNS ( -- )
    MARKDOWN-CLIENT
    DEF-A-PATH TEXT-DEF-A-MOVED 1 OPENS
@@ -6917,6 +6932,7 @@ variable PROBE-DECLS
    s" hover-made-scratch" [: HOVER-SCRATCH-TURNS ;] TALK
    s" hover-made-typed" [: HOVER-TYPED-TURNS ;] TALK
    s" hover-deftype" [: HOVER-DEFTYPE-TURNS ;] TALK
+   s" hover-engine-str" [: HOVER-STR-TURNS ;] TALK
    s" hover-none" [: HOVER-NONE-TURNS ;] TALK
    s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK
    s" hover-after-change" [: HOVER-AFTER-CHANGE-TURNS ;] TALK ;
