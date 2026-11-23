@@ -830,12 +830,13 @@ ARENA PASSES pass
 $10 constant NUMBER-BIT
 $40 constant INTEGER-BIT
 
-\ An integer lexeme is of type integer when a signed cell holds it.
-: INTEGER-TYPES ( JSON:reader -- JSON:reader n )
-   JSON:READ-SPAN$ STR>NUMBER? MATCH option
-      none OF NUMBER-BIT ENDOF
-      some OF drop NUMBER-BIT INTEGER-BIT or ENDOF
-   ;MATCH ;
+\ A number is of type integer when its value has no fractional part,
+\ whatever its size.
+: NUMBER-TYPES ( JSON:reader -- JSON:reader n )
+   JSON:READ-SPAN$ JSON:PARSE JSON:INTEGRAL? if
+      NUMBER-BIT INTEGER-BIT or exit
+   then
+   NUMBER-BIT ;
 
 \ The bits of the types the current value has.
 : VALUE-TYPES ( JSON:reader -- JSON:reader n )
@@ -845,9 +846,9 @@ $40 constant INTEGER-BIT
       JSON:T-FALSE of 2 endof
       JSON:T-OBJ of 4 endof
       JSON:T-ARR of 8 endof
-      JSON:T-FLOAT of NUMBER-BIT endof
+      JSON:T-FLOAT of NUMBER-TYPES endof
       JSON:T-STR of $20 endof
-      JSON:T-INT of INTEGER-TYPES endof
+      JSON:T-INT of NUMBER-TYPES endof
       0 swap
    endcase ;
 
@@ -872,8 +873,7 @@ $40 constant INTEGER-BIT
 : TYPE-FIX$ ( ^node bool -- str ) {: nd:^ num:bool :}
    nd NODE-TYPES @ {: t:n :}
    num t INTEGER-BIT and 0<> and if
-      s" send a whole number from -9223372036854775808 to 9223372036854775807, with no fraction or exponent"
-      exit
+      s" send a whole number" exit
    then
    t dup 1- and 0= if s" send a value of that type" exit then
    s" send a value of one of those types" ;

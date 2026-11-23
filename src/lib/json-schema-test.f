@@ -180,7 +180,7 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    FAILS
    s" VALID? rejects a fraction where an integer belongs" T-LABEL
    SAPD$ s\" {\"filter\":\"x\",\"top\":1.5}"
-   s" .top: expected a value of type `integer`, found `1.5`; send a whole number from -9223372036854775808 to 9223372036854775807, with no fraction or exponent"
+   s" .top: expected a value of type `integer`, found `1.5`; send a whole number"
    FAILS
    s" VALID? rejects a number above the maximum" T-LABEL
    SAPD$ s\" {\"filter\":\"x\",\"top\":501}"
@@ -189,10 +189,6 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" VALID? rejects a number below the minimum" T-LABEL
    SAPD$ s\" {\"filter\":\"x\",\"top\":-1}"
    s" .top: expected a number of at least `0`, found `-1`; send a number in that range"
-   FAILS
-   s" VALID? rejects an exponent past a cell as no integer" T-LABEL
-   SAPD$ s\" {\"filter\":\"x\",\"top\":1e99999999999999999999}"
-   s" .top: expected a value of type `integer`, found `1e99999999999999999999`; send a whole number from -9223372036854775808 to 9223372036854775807, with no fraction or exponent"
    FAILS
    s" VALID? rejects a member additionalProperties' schema rejects" T-LABEL
    SAPD$ s\" {\"filter\":\"x\",\"key\":{\"a\":1}}"
@@ -212,6 +208,14 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" VALID? rejects an exponent past a cell at a bound" T-LABEL
    s\" {\"type\":\"number\",\"minimum\":0}" s" 1e99999999999999999999"
    s" : expected a number whose exponent a signed 64-bit cell holds, found `1e99999999999999999999`; write the number with a smaller exponent"
+   FAILS
+   s" VALID? types a whole number of any size or spelling as integer, a fraction not" T-LABEL
+   s\" {\"type\":\"integer\"}" s" 1.0" PASSES
+   s\" {\"type\":\"integer\"}" s" 1e2" PASSES
+   s\" {\"type\":\"integer\"}" s" 12345678901234567890" PASSES
+   s\" {\"type\":\"integer\"}" s" 1e99999999999999999999" PASSES
+   s\" {\"type\":\"integer\"}" s" 1e-1"
+   s" : expected a value of type `integer`, found `1e-1`; send a whole number"
    FAILS
    s" VALID? names two types with or" T-LABEL
    s\" {\"type\":[\"integer\",\"null\"]}" s\" \"x\""
