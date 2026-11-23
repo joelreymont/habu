@@ -186,7 +186,6 @@ $04 constant POLLOUT
 1 constant SOL-SOCKET
 4 constant SO-ERROR
 4 constant EINTR
-11 constant EAGAIN
 115 constant EINPROGRESS
 \ glibc's struct addrinfo on a 64-bit Linux target.
 4 constant AI-FAMILY
@@ -290,7 +289,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ events when the socket was not ready; else the fault WHY is kept.
 : RETRY? ( ^conn n n fault -- bool ) {: c e:n events:n why:fault :}
    e EINTR = if true exit then
-   e EAGAIN = if c events why AWAIT exit then
+   e FD:EAGAIN# = if c events why AWAIT exit then
    c why e FAIL false ;
 
 \ One receive from the socket, waiting while there is nothing to receive yet.
@@ -522,7 +521,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ A held connection is quiet when a peek finds no byte and no close.
 : PROBE ( ^conn -- probe ) {: c :}
-   c CONN-FD @ c CONN-BYTE 1 PEEK-FLAGS RECEIVE-CALL 0 < FFI:ERRNO EAGAIN = and
+   c CONN-FD @ c CONN-BYTE 1 PEEK-FLAGS RECEIVE-CALL 0 < FFI:ERRNO FD:EAGAIN# = and
    if construct probe quiet else construct probe stale then ;
 
 : HINTS! ( ^conn -- ) {: c :}

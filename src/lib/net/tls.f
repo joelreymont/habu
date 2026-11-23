@@ -27,6 +27,7 @@ require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
 require src/lib/task.f
 require src/lib/fs.f
+require src/lib/fd.f
 require src/core/compile-reads.f
 
 package TLS
@@ -96,9 +97,8 @@ $FFFFFFFF constant UNVERIFIED
 0 constant STREAM                  \ MBEDTLS_SSL_TRANSPORT_STREAM
 0 constant PRESET                  \ MBEDTLS_SSL_PRESET_DEFAULT
 
-\ Linux's errno values and send(2) flag.
+\ Linux's EINTR and send(2) flag.
 4 constant EINTR
-11 constant EAGAIN
 $4000 constant MSG-NOSIGNAL
 
 VERSIONED-LIBRARY tfpsacrypto 2
@@ -142,7 +142,7 @@ FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
       sock buf u 0 RECEIVE-CALL {: got:n :}
       got 0 >= if got exit then
       FFI:ERRNO {: e:n :}
-      e EAGAIN = if WANT-READ exit then
+      e FD:EAGAIN# = if WANT-READ exit then
       e EINTR <> if RECEIVE-FAILED exit then
    again ;
 
@@ -152,7 +152,7 @@ FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
       sock buf u MSG-NOSIGNAL SEND-CALL {: put:n :}
       put 0 >= if put exit then
       FFI:ERRNO {: e:n :}
-      e EAGAIN = if WANT-WRITE exit then
+      e FD:EAGAIN# = if WANT-WRITE exit then
       e EINTR <> if SEND-FAILED exit then
    again ;
 

@@ -66,6 +66,7 @@ public
 : REVENTS ( pollfd -- n ) POLLFD>N 48 rshift ;
 
 4 constant EINTR#                  \ "interrupted by a signal" (POSIX, identical on Linux/macOS)
+: EAGAIN# ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;   \ "try again", EWOULDBLOCK on both
 2 constant F-SETFD
 3 constant F-GETFL
 4 constant F-SETFL
@@ -130,7 +131,6 @@ private
 6 constant ENXIO                     \ the same number on macOS and Linux
 1000000 constant NS-PER-MS
 $7FFFFFFF constant MAX-POLL-MS
-: EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;
 
 PROCESS-SYMBOLS
 FUNCTION: WRITE-CALL write ( n str -- n ) ;FUNCTION
@@ -194,7 +194,7 @@ public
    k 0 > if k exit then
    k 0= if E-FS-IO throw then
    FFI:ERRNO {: cause:n :}
-   cause EINTR# = cause EAGAIN = or if 0 exit then
+   cause EINTR# = cause EAGAIN# = or if 0 exit then
    cause FS:CAUSE! E-FS-IO throw ;
 
 private

@@ -42,8 +42,6 @@ private
 \ IN_NONBLOCK and IN_CLOEXEC: O_NONBLOCK and O_CLOEXEC on arm64 and x86-64.
 $800 constant IN-NONBLOCK
 $80000 constant IN-CLOEXEC
-\ Linux's EAGAIN on arm64 and x86-64.
-11 constant EAGAIN
 
 \ Holds at least one event: 16 bytes and a name of at most NAME_MAX + 1.
 4096 constant SINK-CAP
@@ -66,7 +64,7 @@ FUNCTION: READ-CALL read ( n ^u8 n -- n ) ;FUNCTION
    FD>N SINK SINK-CAP READ-CALL {: k:n :}
    k 0 >= if k  k 0 > exit then
    FFI:ERRNO {: e:n :}
-   e EAGAIN = if 0 false exit then
+   e FD:EAGAIN# = if 0 false exit then
    e FD:EINTR# = if 0 true exit then
    e FAIL ;
 

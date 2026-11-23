@@ -138,7 +138,6 @@ $7FFFFFFFFFFFFFFF constant NO-DEADLINE   \ a mono-ns deadline that never passes.
 12 constant ENOMEM
 23 constant ENFILE
 24 constant EMFILE
-: EAGAIN ( -- n ) HB-TARGET-LINUX-KERNEL? if 11 else 35 then ;   \ EWOULDBLOCK on both.
 : ECONNABORTED ( -- n ) HB-TARGET-LINUX-KERNEL? if 103 else 53 then ;
 : ENOBUFS ( -- n ) HB-TARGET-LINUX-KERNEL? if 105 else 55 then ;
 6 constant IPPROTO-TCP
@@ -261,7 +260,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : WOULD-BLOCK? ( errno -- bool )
-   ERRNO>N EAGAIN = ;
+   ERRNO>N FD:EAGAIN# = ;
 
 
 : OWN-SOCKET ( n -- n ) {: fd:n :}
@@ -486,7 +485,7 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : ACCEPT-ABORTED? ( n -- bool ) {: code:n :}
-   code ECONNABORTED = code EAGAIN = or if true exit then
+   code ECONNABORTED = code FD:EAGAIN# = or if true exit then
    HB-TARGET-LINUX-KERNEL? if code LINUX-PENDING? exit then
    false ;
 

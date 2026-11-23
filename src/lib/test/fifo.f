@@ -33,7 +33,6 @@ $180 constant MODE                   \ 0600
 10 constant SLICE-MS                 \ how late EOF-WITHIN sees end of file on macOS
 4 constant EINTR
 64 constant SINK-CAP
-: EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;
 
 create SINK SINK-CAP allot
 variable MADE
@@ -104,7 +103,7 @@ public
       got 0= if 1 exit then
       got 0 < if
          FFI:ERRNO {: cause:n :}
-         cause EAGAIN <> cause EINTR <> and if cause negate exit then
+         cause FD:EAGAIN# <> cause EINTR <> and if cause negate exit then
          ms 0 < if SLICE-MS else
             deadline PROCESS:LEFT-MS MS>N SLICE-MS min
          then {: left:n :}

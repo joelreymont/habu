@@ -16,6 +16,7 @@ require src/lib/num-types.f
 require src/lib/task.f
 require src/lib/aio.f
 require src/lib/le.f
+require src/lib/fd.f
 
 -9240 constant E-DATAGRAM-FIRST
 -9249 constant E-DATAGRAM-LAST
@@ -70,7 +71,6 @@ FUNCTION: RECEIVE-CALL recvfrom ( n ^u8 n n ^u8 ^u8 -- n ) ;FUNCTION
 
 HB-TARGET-LINUX-KERNEL? [if]
 $80002 constant SOCKET-TYPE        \ SOCK_DGRAM | SOCK_CLOEXEC
-11 constant EAGAIN
 
 \ SOCK_CLOEXEC set the flag.
 : CLOSE-ON-EXEC ( n -- n )
@@ -88,7 +88,6 @@ $80002 constant SOCKET-TYPE        \ SOCK_DGRAM | SOCK_CLOEXEC
 
 HB-TARGET-MACOS? [if]
 2 constant SOCKET-TYPE             \ SOCK_DGRAM
-35 constant EAGAIN
 
 FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
@@ -122,7 +121,7 @@ FUNCTION: OPTION-CALL getsockopt ( n n n ^u8 ^u8 -- i32 ) ;FUNCTION
 
 
 : RETRY? ( errno -- bool )
-   ERRNO>N dup EINTR = swap EAGAIN = or ;
+   ERRNO>N dup EINTR = swap FD:EAGAIN# = or ;
 
 
 \ What a RECEIVE given timeout ms and started at start ns may still wait: a
