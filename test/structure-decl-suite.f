@@ -966,6 +966,18 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
    s" STRUCTURE rpsden BUFFER id RPSDCOLOR:BLUE ;STRUCTURE" SC-LINE
    s" package pf private 16 constant IDP ;package" SC-LINE
    s" STRUCTURE rpsdpv BUFFER id PF:IDP ;STRUCTURE" SC-LINE
+   s" : SCMK ( -- pc:hd ) 1 2 3 PC-HD:MAKE ;" SC-LINE
+   s" : SCHOLDS ( pc:hd -- ) PC-HD:UNMAKE drop drop drop create ;" SC-LINE
+   s" : SCMKH ( -- ) create does> ( -- pc:hd ) drop 1 2 3 PC-HD:MAKE ;" SC-LINE
+   s" SCMKH scmkhh" SC-LINE
+   s" : SCU7 ( -- ) scmkhh drop ;" SC-LINE
+   s" : SCU4 ( -- ) SCNOPE4 ;" SC-LINE
+   s" package pu public" SC-LINE
+   s" : SCU5 ( -- ) SCNOPE5 ;" SC-LINE
+   s" : SCU6 ( -- ) SCMK drop ;" SC-LINE
+   s" ;package" SC-LINE
+   s" 1 2 3 PC-HD:MAKE SCHOLDS schx" SC-LINE
+   s" : SCU8 ( -- ^u8 ) schx ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
    SC-SRC SC-SRC-U BUF-LEN@ ;
 
@@ -998,7 +1010,7 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 11 T=
+SC-ERR$ s" error[" COUNT-SUB 13 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -1012,7 +1024,7 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
 \ over it, is deferred, and so is SCPO's call of peop's private PEOP-MAKE. So is
 \ each use of wrapz over hd and of rpsdk, whose declarations mark only their own
 \ types: NOPE, NOPE6 and nopetype stay rejected.
-SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 12 T=
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 19 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the run because only the run defines its value"
@@ -1039,8 +1051,22 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsden`"
    s" :46:28" s" buffer byte count must be a number or a constant above 0" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdpv`"
    s" :48:28" s" buffer byte count must be a number or a constant above 0" SC-RECORD
+\ A definition whose signature or does> clause names hd marks only the word it
+\ makes: SCNOPE4 and SCNOPE5 stay undefined, and SCMK's and scmkhh's uses are
+\ deferred. A top-level statement that calls hd's words runs code the check did
+\ not see, so schx, which it creates, is deferred.
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `scmkhh` on and leaves it to the run"
+   s" :53:15" s" not checked from here" SC-RECORD
+s" error[E-UNDEFINED]: cannot find word `SCNOPE4`"
+   s" :54:15" s" not found" SC-RECORD
+s" error[E-UNDEFINED]: cannot find word `SCNOPE5`"
+   s" :56:15" s" not found" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `SCMK` on and leaves it to the run"
+   s" :57:15" s" not checked from here" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `schx` on and leaves it to the run"
+   s" :60:19" s" not checked from here" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :50:1" s" missing field name" SC-RECORD
+   s" :62:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 

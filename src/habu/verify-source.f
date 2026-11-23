@@ -1249,7 +1249,7 @@ CAST: DOES-ACTION ( n -- [ str str str -- n ] )
 CAST: RENDERS-ACTION ( n -- [ str n -- bool ] )
 CAST: REACH-ACTION ( n -- [ str str -- ] )
 CAST: CLAUSE-ACTION ( n -- [ str -- ] )
-CAST: DECL-ACTION ( n -- [ str str -- bool ] )
+CAST: DECL-ACTION ( n -- [ str str -- n ] )
 CAST: TICK-ORDER-ACTION ( n -- [ str n ^u8 [ -- nominal ] -- n nominal ] )
 
 : WITH-BODY-TICK-ORDER ( str [ -- nominal ] -- bool )
@@ -1865,11 +1865,14 @@ DYNAMIC-BUFFER TICK-QUAL u8
 \ compiled, so a definer it replays names a word that does not exist in this
 \ process and cannot be asked to prove otherwise.
 \ DECL-SIGNATURE asks the declaration owner's registrar, which registers the row
-\ and answers whether it retained it. A name its scope already holds keeps that
-\ record either way, so only this answer tells a redeclaration the registrar
-\ retained from one it refused.
-: DECL-SIGNATURE ( str str -- bool )
-   NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute ;
+\ and answers its outcome, a CHECKER-ROW constant. A name its scope already
+\ holds keeps that record either way, so only this answer tells a redeclaration
+\ the registrar retained from one it refused. A word whose type is left to the
+\ run makes only itself, so a quiet row marks its own name.
+: DECL-SIGNATURE ( str str -- n ) {: name:^ nameu:n sig:^ sigu:n :}
+   name nameu sig sigu
+   NCOMP-DISPATCH:DECL-VERIFY-DECL-OFF OWNER-XT DECL-ACTION execute
+   dup CHECKER-ROW:QUIET = IF name nameu CHECKER-UNSEEN-NAME THEN ;
 
 \ The checker's own guard refuses a colon definition, a cast, a typed storage
 \ definition and a re-export whose name its scope already holds, but a colon
@@ -2149,7 +2152,7 @@ ENGINE-TARGET-INIT
 \ Where a guard refused a live record before the registrar ran, one there now
 \ is the record that registrar retained. A declaration DECL-SIGNATURE registers
 \ has no guard: the record found for its name is that declaration's only when
-\ DECL-SIGNATURE answered true, so its callers ask only then.
+\ DECL-SIGNATURE answered CHECKER-ROW:KEPT, so its callers ask only then.
 : RETAINED-SYM ( str -- n )
    {: name:^ nameu:n :}
    name nameu CHECKER-CERT-DUP? 0= IF 0 EXIT THEN
@@ -2212,7 +2215,7 @@ ENGINE-TARGET-INIT
    name nameu at nameu ARM
    -1 SIG-RAW-MODE!
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
-   {: kept:bool :}
+   CHECKER-ROW:KEPT = {: kept:bool :}
    kept IF name nameu sig sigu at class DEFINED-HERE THEN
    name nameu kept ;
 
@@ -2268,11 +2271,12 @@ EXPORT CHECKER-OVERLAY:UNSTATED!
    name nameu at nameu ARM
    -1 SIG-STATES-FACTS !
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-STATES-FACTS ! ;] finally
-   {: kept:bool :}
+   {: row:n :}
+   row CHECKER-ROW:KEPT = {: kept:bool :}
    kept IF name nameu CHECKER-DEFER THEN
    DISARM
-   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE
-   ELSE QUIET-TYPE-REPORT THEN ;
+   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
+   row CHECKER-ROW:QUIET = IF QUIET-TYPE-REPORT THEN ;
 
 : TRUST-DEFER ( -- )
    NAME-TOKEN {: name:^ nameu:n :}
@@ -2339,9 +2343,10 @@ variable TRUSTED-DOES
    name nameu SIGNATURE-AT {: sig:^ sigu:n :}
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
-   {: kept:bool :}
+   {: row:n :}
+   row CHECKER-ROW:KEPT = {: kept:bool :}
    DISARM
-   kept 0= IF QUIET-TYPE-REPORT THEN
+   row CHECKER-ROW:QUIET = IF QUIET-TYPE-REPORT THEN
    name nameu kept SCAN-TRUSTED-BODY
    TICK-REMAINDER @ IF EXIT THEN
    name nameu at TRUSTED-DOES @ 0<> REFUSE-SHAPE IF EXIT THEN
@@ -3512,7 +3517,7 @@ private
    s" END-STRUCTURE" STR=CI ;
 
 : TRUST-STRUCTURE-FIELD ( str str -- bool )
-   DECL-SIGNATURE ;
+   DECL-SIGNATURE CHECKER-ROW:KEPT = ;
 
 : RECORD-STRUCTURE-FIELD ( str str -- )
    {: kind:^ kindu:n sig:^ sigu:n :}
@@ -3528,7 +3533,7 @@ private
 : STRUCTURE-SIZE ( str n -- ) {: name:^ nameu:n at:n :}
    name nameu at REJECT-DUPLICATE IF EXIT THEN
    name nameu at nameu ARM
-   name nameu s" -- n" DECL-SIGNATURE
+   name nameu s" -- n" DECL-SIGNATURE CHECKER-ROW:KEPT =
    DISARM
    IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN ;
 
@@ -3665,7 +3670,7 @@ variable FFI-LIT-B                          \ and the newer
    [: FFI-APPEND ;] FFI:DECLARED-TEXTS
    0 FFI-SIG FFI-SIG-U @ {: sig:^ sigu:n :}
    name nameu at nameu ARM
-   name nameu sig sigu DECL-SIGNATURE
+   name nameu sig sigu DECL-SIGNATURE CHECKER-ROW:KEPT =
    DISARM
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE
    ELSE FFI:SKIP-FUNCTION THEN ;

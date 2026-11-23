@@ -22880,9 +22880,6 @@ private
    CHECKER-REC-SYM @ CK-CLOSE!                  \ published after this, as a checked one is
    row ;
 
-: TRUST-DECL? ( ^u8 n ^u8 n -- bool )
-   TRUST-DECL-ROW CHECKER-ROW:KEPT = ;
-
 : TRUST-DECL-REJECTED? ( ^u8 n ^u8 n -- bool )
    TRUST-DECL-ROW CHECKER-ROW:REJECTED = ;
 

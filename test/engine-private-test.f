@@ -77,8 +77,6 @@ s\" : EPV-ROW ( -- bool ) s\q EPV-ONE\q s\q -- n n\q CHECK:ROW-DECLARED ;"
 \ passing a name span no memory has would fault in the registration.
 s\" NULL-PTR 5 s\q -- n\q TRUST-DECL-ROW ."
    s" error[E-UNDEFINED]: cannot find word `TRUST-DECL-ROW`" ENGINE-PRIVATE:TCE-REJECTS
-s\" : EPV-KEPT ( -- bool ) s\q EPV-ONE\q s\q -- n n\q TRUST-DECL? ;"
-   s" error[E-UNDEFINED]: cannot find word `TRUST-DECL?`" ENGINE-PRIVATE:TCE-REJECTS
 s\" : EPV-REJ ( -- bool ) s\q EPV-ONE\q s\q -- n n\q TRUST-DECL-REJECTED? ;"
    s" error[E-UNDEFINED]: cannot find word `TRUST-DECL-REJECTED?`" ENGINE-PRIVATE:TCE-REJECTS
 
