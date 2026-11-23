@@ -1253,26 +1253,25 @@ EXPORT CHECKER-OVERLAY:VALUE
 : DECLARE-MUTUAL ( -- ) MUTUAL-FRONT DECL-FRONT:RUN ;
 
 EXPORT CHECK:CHECKER-TYPE-MARK
-EXPORT CHECK:UNSEEN-MARK$
-EXPORT CHECK:CHECKER-PUBLIC-SYM
-EXPORT CHECK:CHECKER-PKG-SYM
+EXPORT CHECK:CHECKER-UNSEEN-MARK-IN
 
 public
 
 \ A family left to the run has no records here, so uses of its type and its
-\ generated words defer rather than reject: the type mark goes in the
+\ generated words defer rather than reject: the type's own mark goes in the
 \ declaring scope and the unseen mark where those words land, the declaring
 \ package's private wordlist for an OPAQUE or private family, else the
-\ family's own namespace. An unknown word anywhere else stays rejected. An
-\ OPAQUE family outside a package has no private wordlist its words resolve in.
+\ family's own namespace. An unknown word or type anywhere else stays
+\ rejected. An OPAQUE family outside a package has no private wordlist its
+\ words resolve in.
 : LEFT-MARK ( str bool -- ) {: na:^ nu:n opaque:bool :}
-   NO CHECKER-TYPE-MARK
+   na nu CHECKER-TYPE-MARK
    TFAM-ACTIVE-PKG$ {: pa:^ pu:n :}
    opaque  TDECL-VIS CHECKER-PACKAGE-PUBLIC <>  or IF
       pu 0= IF EXIT THEN
-      pa pu SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM drop EXIT
+      pa pu SYM-PRIVATE CHECKER-UNSEEN-MARK-IN EXIT
    THEN
-   pa pu na nu TF-CTOR-PKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM drop ;
+   pa pu na nu TF-CTOR-PKG$ SYM-PUBLIC CHECKER-UNSEEN-MARK-IN ;
 
 private
 
@@ -1334,7 +1333,7 @@ public
    {: ha:^ hu:n ta:^ tu:n ba:^ bu:n ka:^ ku:n :}
    -1 TDECL-FAM-REG !  REJECTION:TALLY {: tally:n :}
    ha hu ba bu ta tu ka ku WRAP-FRONT DECL-FRONT:REPLAY-OUTCOME {: ma:^ mu:n why:n :}
-   why 0= IF tally WRAP-KEEP ELSE ha hu NO LEFT-MARK THEN
+   why 0= IF tally WRAP-KEEP ELSE ha hu DECL-FAMILY-NAME CHECKER-TYPE-MARK THEN
    ma mu why ;
 
 private

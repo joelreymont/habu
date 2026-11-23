@@ -16400,18 +16400,26 @@ package CHECK
 
 : CHECKER-UNSEEN-MARK ( -- ) UNSEEN-MARK$ CHECKER-RECORD-SYM drop ;
 
-\ `unseen NAME` marks the one word NAME the run may define; the space keeps it
-\ off every token, as it keeps UNSEEN-MARK$.
-PTR-VARIABLE UNSEEN-NAME-P        \ the mark, grown on demand
-SCRATCH-VARIABLE UNSEEN-NAME-CAP  \ UNSEEN-NAME-P's room, in bytes
+\ Marks the wordlist of package pkg at vis.
+: CHECKER-UNSEEN-MARK-IN ( str n -- ) {: pkg:^ pkgu:n vis:n :}
+   pkg pkgu vis UNSEEN-MARK$ CHECKER-PKG-SYM drop ;
 
-: UNSEEN-NAME$ ( str -- str ) {: a:^ u:n :}
-   s" unseen " {: pa:^ pu:n :}
-   UNSEEN-NAME-P UNSEEN-NAME-CAP pu u + ARENA-BYTES-ENSURE
-   UNSEEN-NAME-P @ {: buf:^ :}
+\ `unseen NAME` marks the one word NAME the run may define, and `unresolved
+\ nominal type NAME` the one type; the space keeps either off every token, as
+\ it keeps UNSEEN-MARK$ and TYPE-MARK$.
+PTR-VARIABLE MARK-NAME-P        \ the mark, grown on demand
+SCRATCH-VARIABLE MARK-NAME-CAP  \ MARK-NAME-P's room, in bytes
+
+\ PREFIX then NAME, valid until the next call.
+: MARK-NAME$ ( str str -- str ) {: pa:^ pu:n a:^ u:n :}
+   MARK-NAME-P MARK-NAME-CAP pu u + ARENA-BYTES-ENSURE
+   MARK-NAME-P @ {: buf:^ :}
    pa buf pu ARENA-COPY
    a buf pu + u ARENA-COPY
    buf pu u + ;
+
+: UNSEEN-NAME$ ( str -- str ) s" unseen " 2swap MARK-NAME$ ;
+: TYPE-MARK-NAME$ ( str -- str ) s" unresolved nominal type " 2swap MARK-NAME$ ;
 
 \ Marks NAME in the wordlist a definition of it would land in.
 : CHECKER-UNSEEN-NAME ( str -- ) UNSEEN-NAME$ CHECKER-RECORD-SYM drop ;
@@ -16446,31 +16454,36 @@ SCRATCH-VARIABLE UNSEEN-NAME-CAP  \ UNSEEN-NAME-P's room, in bytes
 : CHECKER-STORAGE-TYPE-REJECT ( str str -- ) RES-FALSE STORAGE-TYPE-REJECT ;
 : CHECKER-LAYOUT-TYPE-REJECT ( str str -- ) RES-TRUE STORAGE-TYPE-REJECT ;
 
-: CHECKER-TYPE-MARK ( bool -- )
-   IF RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop
-   ELSE TYPE-MARK$ CHECKER-RECORD-SYM drop THEN ;
+\ Marks the nominal type NAME, which the run may register, where its
+\ declaration lands.
+: CHECKER-TYPE-MARK ( str -- ) TYPE-MARK-NAME$ CHECKER-RECORD-SYM drop ;
+
+\ Whether the wordlist holds the nominal-types mark or NAME's own.
+: TYPE-MARK-IN? ( str n str -- bool ) {: pkg:^ pkgu:n vis:n a:^ u:n :}
+   pkg pkgu vis TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+   pkg pkgu vis a u TYPE-MARK-NAME$ CHECKER-PKG-SYM? 0 <> ;
 
 \ Asked only after the nominal resolver found no family.
 : CHECKER-TYPE-MARK-COVERS? ( str -- bool ) {: a:^ u:n :}
    RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
    a u CHECKER-QUALIFIED? IF
-      CHECKER-QPKG$ TYPE-MARK$ CHECKER-PUBLIC-SYM? 0 <> IF RES-TRUE EXIT THEN
+      CHECKER-QPKG$ SYM-PUBLIC CHECKER-QTAIL$ TYPE-MARK-IN? IF RES-TRUE EXIT THEN
       CHECKER-QPKG$ SIG-SCOPE$ CORE-STR=CI IF
-         CHECKER-QPKG$ SYM-PRIVATE TYPE-MARK$ CHECKER-PKG-SYM? 0 <> EXIT
+         CHECKER-QPKG$ SYM-PRIVATE CHECKER-QTAIL$ TYPE-MARK-IN? EXIT
       THEN RES-FALSE EXIT
    THEN
    CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
    SIG-SCOPE$ {: pkg:^ pkgu:n :}
    pkgu 0 <> IF
-      pkg pkgu SYM-PRIVATE TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
-      pkg pkgu SYM-PUBLIC TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      pkg pkgu SYM-PRIVATE a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
+      pkg pkgu SYM-PUBLIC a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
       pkg pkgu CHECKER-COLON-SCAN drop 0 <> IF
-         pkg pkgu TOP$ SYM-PRIVATE TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+         pkg pkgu TOP$ SYM-PRIVATE a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
       THEN
    THEN
-   TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
+   s" " SYM-GLOBAL a u TYPE-MARK-IN? IF RES-TRUE EXIT THEN
    CHECKER-USING-N 0 ?DO
-      i CHECKER-USING$ SYM-PUBLIC TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF
+      i CHECKER-USING$ SYM-PUBLIC a u TYPE-MARK-IN? IF
          RES-TRUE unloop EXIT
       THEN
    LOOP
@@ -18614,17 +18627,21 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    sym 0 <> IF sym CTL-FLAGS-SYM sym DFER-FIND-SYM EXIT THEN
    0 RES-FALSE ;
 
+\ A renderer may register a nominal type of any name anywhere; a word that
+\ registers one may give it any name where its declarations land.
+: TYPES-MARK ( n bool -- ) {: flags:n deferred:bool :}
+   flags CTL-RENDERS and 0 <> deferred or IF
+      RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop EXIT
+   THEN
+   flags CTL-NOMINAL and 0 <> IF TYPE-MARK$ CHECKER-RECORD-SYM drop THEN ;
+
 \ May the word define words no source text spells? A deferred word may: it runs
 \ whatever word was set, a renderer or a definer among them.
 : CHECKER-VERIFY-RENDERS ( str n -- bool )
    {: a:^ u:n mask:n :}
    a u CHECKER-TOP-SYM IF
       TOP-CONTROL {: flags:n deferred:bool :}
-      mask CTL-NOMINAL and 0 <> IF
-         flags CTL-RENDERS and 0 <> deferred or IF RES-TRUE CHECKER-TYPE-MARK ELSE
-            flags CTL-NOMINAL and 0 <> IF RES-FALSE CHECKER-TYPE-MARK THEN
-         THEN
-      THEN
+      mask CTL-NOMINAL and 0 <> IF flags deferred TYPES-MARK THEN
       flags mask and 0 <> deferred or
    ELSE drop RES-FALSE THEN
    dup IF CHECKER-UNSEEN-MARK THEN ;

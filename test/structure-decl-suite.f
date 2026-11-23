@@ -902,7 +902,7 @@ DECL-DIAG:OFF
 package struct-check-test
 private
 
-$2000 constant SC-CAP
+$4000 constant SC-CAP
 create SC-PATH PATH-CAP allot   variable SC-PATH-U
 create SC-OUT SC-CAP allot
 create SC-ERR SC-CAP allot   variable SC-ERR-U
@@ -953,6 +953,15 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
    s" STRUCTURE peop OPAQUE FIELD x n ;STRUCTURE ;MUTUAL" SC-LINE
    s" : SCPO ( n -- peop ) PEOP-MAKE ;" SC-LINE
    s" ;package" SC-LINE
+   s" package pz private" SC-LINE
+   s" NEWTYPE wrapz ^pc:hd" SC-LINE
+   s" : SCZ5 ( -- ) NOPE ;" SC-LINE
+   s" public" SC-LINE
+   s" : SCZ6 ( -- ) NOPE6 ;" SC-LINE
+   s" : SCZW ( wrapz -- wrapz ) ;" SC-LINE
+   s" ;package" SC-LINE
+   s" : SCKU ( ^rpsdk -- ^rpsdk ) ;" SC-LINE
+   s" : SCNT ( nopetype -- ) drop ;" SC-LINE
    s" STRUCTURE rpsddangle FIELD" SC-LINE
    SC-SRC SC-SRC-U BUF-LEN@ ;
 
@@ -985,7 +994,7 @@ create SC-SRC SC-CAP allot   TYPED-VARIABLE SC-SRC-U len   \ SB holds too few by
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 6 T=
+SC-ERR$ s" error[" COUNT-SUB 9 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -997,8 +1006,10 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
 \ A string literal between the number and `constant` leaves K's value unstated,
 \ and a colon definition IDH's and IDE's. Each use of hd, and of rpsdg and rpsdw
 \ over it, is deferred, and so is SCPO's call of peop's private PEOP-MAKE: the
-\ MUTUAL is read past IDE to its end, so peop is known OPAQUE.
-SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 9 T=
+\ MUTUAL is read past IDE to its end, so peop is known OPAQUE. So is each use
+\ of wrapz over hd and of rpsdk, whose declarations mark only their own types:
+\ NOPE, NOPE6 and nopetype stay rejected.
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 12 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the run because only the run defines its value"
@@ -1007,8 +1018,18 @@ s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDE` to the ru
    s" :32:36" s" value known only to the run" SC-RECORD
 s" error[E-UNDEFINED]: cannot find word `SCPNOPE`"
    s" :28:15" s" not found" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `wrapz` on and leaves it to the run"
+   s" :41:10" s" not checked from here" SC-RECORD
+s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `rpsdk` on and leaves it to the run"
+   s" :43:11" s" not checked from here" SC-RECORD
+s" error[E-UNDEFINED]: cannot find word `NOPE`"
+   s" :38:15" s" not found" SC-RECORD
+s" error[E-UNDEFINED]: cannot find word `NOPE6`"
+   s" :40:15" s" not found" SC-RECORD
+s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `nopetype` in signature"
+   s" :44:10" s" unknown type" SC-RECORD
 s" error[E-BAD-DECLARATION]: bad structure declaration `rpsddangle`"
-   s" :37:1" s" missing field name" SC-RECORD
+   s" :46:1" s" missing field name" SC-RECORD
 FS:CLEANUP-RUN
 ;package
 
