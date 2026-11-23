@@ -15960,9 +15960,6 @@ package CHECK
 
 EXPORT CHECKER-RESOLVE:TOP$
 
-\ A primitive's seed record (WL:PRIMITIVES) bound inside a package whose
-\ private section holds an owner-private primitive row of that name is that
-\ row.
 : CK-REC-BIND ( str ^n -- n ) {: a:^ u:n rec:^ :}
    rec CK-REC-WID {: wid:n :}
    a u CHECKER-QUALIFIED? IF
@@ -15971,17 +15968,7 @@ EXPORT CHECKER-RESOLVE:TOP$
       CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT
    THEN
    PKG-LIVE-XT drop {: pkg:^ pkgu:n :}
-   wid WL:GLOBAL? IF
-      pkgu 0 <> wid WL:PRIMITIVES = and IF
-         pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? {: own:n :}
-         own PRIM-FIRST-IDX 0 <> IF own EXIT THEN
-         data-base ENCLOSING:PUB + @ 0 <> IF
-            pkg pkgu TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? {: top:n :}
-            top PRIM-FIRST-IDX 0 <> IF top EXIT THEN
-         THEN
-      THEN
-      a u CHECKER-GLOBAL-SYM? EXIT
-   THEN
+   wid WL:GLOBAL? IF a u CHECKER-GLOBAL-SYM? EXIT THEN
    wid data-base PKG-PRI-CELL + @ = IF pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
    wid data-base PKG-PUB-CELL + @ = IF pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
    wid data-base ENCLOSING:PRI + @ = IF pkg pkgu TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN

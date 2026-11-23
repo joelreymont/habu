@@ -227,15 +227,12 @@ private
 : REC-BINDING ( ^n -- n n )
    true REC-CODE ;
 
-\ Where a compiled CALL to the bound record may branch, or zero: an internal
-\ record always, since every one a lookup binds is owned (DNAME-OWNED) and the
-\ checker decides that call; any other when visible.
+\ Where a compiled CALL to the bound record may branch, or zero when the record
+\ is not visible.
 : REC-CALL ( ^n -- n n )
    {: rec:^ :}
    rec XREF-FOUND? 0= if 0 0 exit then
-   rec XREF-FLAGS DNAME-INT and 0= if
-      rec VISIBLE-RECORD? 0= if 0 0 exit then
-   then
+   rec VISIBLE-RECORD? 0= if 0 0 exit then
    rec REC-BINDING ;
 
 \ A `PACKAGE:WORD` spelling's record among the publics of the top-level package

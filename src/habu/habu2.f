@@ -807,7 +807,7 @@ public
 ;package
 
 \ The bodies of the definition and replay writers: each checks before it writes
-\ a row, so no reader sees a half-written one. FPRIM-WID frames x30 around each.
+\ a row, so no reader sees a half-written one. FPRIM frames x30 around each.
 package DEFWRITE
 
 \ The refusal at the label: the text and the primitive's lr, which BLs in the
@@ -1850,7 +1850,7 @@ public
 
 ;package
 
-\ The def-abort and stack-clear bodies; FPRIM-WID frames x30 around each.
+\ The def-abort and stack-clear bodies; FPRIM frames x30 around each.
 package DEFWRITE
 
 public
@@ -2283,29 +2283,29 @@ package ENGINE-EMIT
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
    s" does-patch" ['] DOESPATCH:PRIM FPRIM
-   s" does-record" ['] DOES-REC:NATIVE-PRIM ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" namespace-record" ['] DEFWRITE:NAMESPACE-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" namespace-private" ['] DEFWRITE:NAMESPACE-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" alias-record" ['] DEFWRITE:ALIAS-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" package-scope!" ['] DEFWRITE:PACKAGE-SCOPE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-open" ['] DEFWRITE:DEF-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" body-capture" ['] DEFWRITE:BODY-APPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" trust-sig!" ['] DEFWRITE:TRUST-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" created-sig!" ['] DEFWRITE:CREATED-SIG ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-close" ['] DEFWRITE:DEF-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-abort" ['] DEFWRITE:DEF-ABORT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" stack-clear" ['] DEFWRITE:STACK-CLEAR ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" replay-record" ['] DEFWRITE:REPLAY-RECORD ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" record-wid!" ['] DEFWRITE:RECORD-WID ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" does-record" ['] DOES-REC:NATIVE-PRIM FPRIM
+   s" namespace-record" ['] DEFWRITE:NAMESPACE-RECORD FPRIM
+   s" namespace-private" ['] DEFWRITE:NAMESPACE-PRIVATE FPRIM
+   s" alias-record" ['] DEFWRITE:ALIAS-RECORD FPRIM
+   s" package-scope!" ['] DEFWRITE:PACKAGE-SCOPE FPRIM
+   s" def-open" ['] DEFWRITE:DEF-OPEN FPRIM
+   s" body-capture" ['] DEFWRITE:BODY-APPEND FPRIM
+   s" trust-sig!" ['] DEFWRITE:TRUST-SIG FPRIM
+   s" created-sig!" ['] DEFWRITE:CREATED-SIG FPRIM
+   s" def-close" ['] DEFWRITE:DEF-CLOSE FPRIM
+   s" def-abort" ['] DEFWRITE:DEF-ABORT FPRIM
+   s" stack-clear" ['] DEFWRITE:STACK-CLEAR FPRIM
+   s" imm-mark" ['] C-IMMEDIATE FPRIM
+   s" replay-open" ['] DEFWRITE:REPLAY-OPEN FPRIM
+   s" replay-close" ['] DEFWRITE:REPLAY-CLOSE FPRIM
+   s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN FPRIM
+   s" replay-record" ['] DEFWRITE:REPLAY-RECORD FPRIM
+   s" record-wid!" ['] DEFWRITE:RECORD-WID FPRIM
    s" record-rekey" ['] DEFWRITE:RECORD-REKEY FPRIM
-   s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
-   s" bare-tok-imm?" ['] BTOKIMM ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" bare-scope-find" ['] BSCOPEFIND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" bare-tok-imm?" ['] BTOKIMM FPRIM
+   s" bare-scope-find" ['] BSCOPEFIND FPRIM
    s" scope-kind?" ['] BSCOPE-KIND FPRIM
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM

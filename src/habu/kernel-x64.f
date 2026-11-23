@@ -130,11 +130,10 @@ variable ROW-U
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
 \ The record spans [first, last): the body and the ret after it.
-: EMIT-ROW ( -- n )
+: EMIT-ROW ( -- )
    X64CODE:LBL X64CODE:LBL {: first:label last:label :}
-   ROW$ first last ENGINE-PRIMS:ADD {: row:n :}
-   first X64CODE:LBL,  BODY  ASM-SINK ENC-RET  last X64CODE:LBL,
-   row ;
+   ROW$ first last ENGINE-PRIMS:ADD drop
+   first X64CODE:LBL,  BODY  ASM-SINK ENC-RET  last X64CODE:LBL, ;
 
 : STDERR-WRITE, ( label n -- ) {: msg:label len:n :}
    RDI STDERR IMM32,  RSI msg MOVABS,  RDX len IMM32,  NR-WRITE SYS, ;
@@ -150,12 +149,7 @@ public
 
 : PRIM ( str [ -- ] -- )
    ARGS
-   EMIT-ROW drop ;
-
-\ The twin of habu1.f FPRIM-WID.
-: PRIM-WID ( str [ -- ] n -- ) {: wid:n :}
-   ARGS
-   wid EMIT-ROW ENGINE-PRIMS:WID! ;
+   EMIT-ROW ;
 
 : ENTRY-LABEL ( str -- label ) {: a:^ u:n :}
    ENGINE-PRIMS:COUNT 0 ?do
@@ -2632,20 +2626,20 @@ public
    s" c2-init-stow" [: C2-INIT-STOW, ;] PRIM
    s" c2-records-stow" [: C2-RECORDS-STOW, ;] PRIM
    s" die" [: DIE, ;] PRIM
-   s" die-closed" [: DIE-CLOSED, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" source-file-run" [: false CLOSED-CALL, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" die-closed" [: DIE-CLOSED, ;] PRIM
+   s" source-file-run" [: false CLOSED-CALL, ;] PRIM
    s" evaluate" [: PROVIDED-XT:EVALUATE-CELL PROVIDED, ;] PRIM
    s" evaluate-closed" [: true CLOSED-CALL, ;] PRIM
    s" evaluate-range" [: PROVIDED-XT:EVALUATE-RANGE-CELL PROVIDED, ;]
-      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+      PRIM
    s" literal" [: PROVIDED-XT:LITERAL-CELL PROVIDED, ;] PRIM
    s" compile," [: PROVIDED-XT:COMPILE-CELL PROVIDED, ;] PRIM
    s" ;" [: PROVIDED-XT:END-CELL PROVIDED, ;] PRIM
    s" create" [: CREATE-BODY ;] PRIM
    s" parse-name" [: PARSE-NAME-BODY ;] PRIM
    s" num-parse" [: NUM-PARSE, ;] PRIM
-   s" bare-tok-imm?" [: TOK-IMM-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" bare-scope-find" [: SCOPE-FIND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" bare-tok-imm?" [: TOK-IMM-BODY ;] PRIM
+   s" bare-scope-find" [: SCOPE-FIND-BODY ;] PRIM
    s" scope-kind?" [: RAX POP,  SCOPE-KIND-LBL CALL,  RAX PUSH, ;] PRIM ;
 
 private
@@ -3098,7 +3092,7 @@ public
    s" addrmap-set" [: RELOC:SITE-ADDR SITE-SET, ;] PRIM
    s" reloc-maps-clear" [: RSI POP,  RDI POP,  DROP-SITES-LBL CALL, ;] PRIM
    s" xref-retarget" [: RETARGET, ;] PRIM
-   s" rep-mark" [: REP-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" rep-mark" [: REP-MARK, ;] PRIM
    s" does-record" [: DOES-RECORD, ;] PRIM ;
 
 private
@@ -3136,8 +3130,8 @@ private
 public
 
 : DICT-SEARCH, ( -- )
-   s" bare-search-wl" [: SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" bare-search-wl" [: SEARCH-WL-BODY ;] PRIM
+   s" xref-search-wl" [: XREF-SEARCH-WL-BODY ;] PRIM ;
 
 private
 
@@ -3309,9 +3303,9 @@ private
 \ The checker's hooks and the suspended pair live in sealed DATA cells, so a
 \ direct store from the row is their only writer once the engine is sealed.
 : HOOKS, ( -- )
-   s" set-check" [: SET-CHECK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" set-check" [: SET-CHECK-BODY ;] PRIM
    s" check@" [: RAX HOOK-CELL CELL@,  RAX PUSH, ;] PRIM
-   s" set-preflight" [: SET-PREFLIGHT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" set-preflight" [: SET-PREFLIGHT-BODY ;] PRIM ;
 
 \ The twins of habu1.f BCPFETCH .. BDATAFETCH, BRBASE, BCPSET, BNDSET and
 \ BNDAPPEND; a row that moves r14 keeps the index authoritative through HIDX.
@@ -3464,9 +3458,9 @@ private
       DEF-CODE-RECLAIM-BODY
       CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
    s" ndict!" [: NDICT-SET-BODY ;] PRIM
-   s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-occ-select" [: DEF-SELECT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID ;
+   s" ndict-append" [: NDICT-APPEND-BODY ;] PRIM
+   s" def-occ-select" [: DEF-SELECT-BODY ;] PRIM
+   s" def-occ-resolve" [: DEF-RESOLVE-BODY ;] PRIM ;
 
 \ The twin of habu2.f BDRAINPRETRUST. The pending pre-trust defer table at
 \ PD-TABLE-OFF is a count and PD-SLOT byte slots, each a name and a signature
@@ -4382,8 +4376,7 @@ public
 \ EXIT-STATUS:SEAL-VIOLATION. The exception is an open overlay in def-open,
 \ namespace-private and alias-record: OVERLAY-GUARD, throws E-OVERLAY-OPEN.
 \ Past the checks the index helper exits EXIT-STATUS:SYSTEM when its mapping fails,
-\ or EXIT-STATUS:INTERNAL for an internal index invariant. Each record carries
-\ ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
+\ or EXIT-STATUS:INTERNAL for an internal index invariant.
 
 private
 
@@ -5287,25 +5280,25 @@ public
    X64CODE:LBL REPLAY-TRAP-CELL !
    REPLAY-TRAP-LBL X64CODE:LBL,
    s" E-REPLAY-RECORD habu: replay record executed" EXIT-STATUS:INTERNAL X64CRASH:DIE-LINE,
-   s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" alias-record" [: ALIAS-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" package-scope!" [: PACKAGE-SCOPE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-open" [: DEF-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" body-capture" [: BODY-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" trust-sig!" [: TRUST-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" created-sig!" [: CREATED-SIG-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" def-abort" [: DEF-ABORT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" replay-open" [: REPLAY-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" replay-close" [: REPLAY-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" replay-widn!" [: REPLAY-WIDN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" replay-record" [: REPLAY-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" record-wid!" [: RECORD-WID-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" namespace-record" [: NAMESPACE-RECORD-BODY ;] PRIM
+   s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] PRIM
+   s" alias-record" [: ALIAS-RECORD-BODY ;] PRIM
+   s" package-scope!" [: PACKAGE-SCOPE-BODY ;] PRIM
+   s" def-open" [: DEF-OPEN-BODY ;] PRIM
+   s" body-capture" [: BODY-APPEND-BODY ;] PRIM
+   s" trust-sig!" [: TRUST-SIG-BODY ;] PRIM
+   s" created-sig!" [: CREATED-SIG-BODY ;] PRIM
+   s" def-close" [: DEF-CLOSE-BODY ;] PRIM
+   s" def-abort" [: DEF-ABORT-BODY ;] PRIM
+   s" replay-open" [: REPLAY-OPEN-BODY ;] PRIM
+   s" replay-close" [: REPLAY-CLOSE-BODY ;] PRIM
+   s" replay-widn!" [: REPLAY-WIDN-BODY ;] PRIM
+   s" replay-record" [: REPLAY-RECORD-BODY ;] PRIM
+   s" record-wid!" [: RECORD-WID-BODY ;] PRIM
    s" record-rekey" [: RECORD-REKEY-BODY ;] PRIM
-   s" replay-private" [: REPLAY-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-private" [: REPLAY-PRIVATE-BODY ;] PRIM
+   s" stack-clear" [: STACK-CLEAR-BODY ;] PRIM
+   s" imm-mark" [: IMM-MARK-BODY ;] PRIM
    s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
 \ The arithmetic, comparison, shuffle, memory and float rows, each the twin of

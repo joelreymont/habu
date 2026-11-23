@@ -65,18 +65,16 @@ public
    0 NAMES BYTE-VIEW row 3 ROW-FIELD @ + row NAME-LEN ;
 : NAME-LABEL ( n -- label ) 4 ROW-FIELD @ >LABEL ;
 : NAME-LABEL! ( label n -- ) swap LABEL>N swap 4 ROW-FIELD ! ;
+private
 : WID ( n -- n ) 5 ROW-FIELD @ ;
 : WID! ( n n -- ) 5 ROW-FIELD ! ;
+public
 
 \ The table is which primitives exist: every body registers under a name
 \ src/habu/prims.f specifies; the row states the effect, the body the machine
 \ code. SPEC-CHECK refuses a body with no row, COMPLETE a row no body answered.
 : SPEC-CHECK ( str -- ) {: name:^ size:n :}
    name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
-
-\ A primitive no source may run or tick (DNAME-INT). The sentinel lives only in
-\ this build-side registry: HELPER-WID answers the emitted record's wordlist.
--1 constant GLOBAL-INT-WID
 
 \ An engine helper is an engine-resident routine primitives reach by a direct
 \ branch (a shared refusal, a bounds loop). HELPER-REGISTER records it as a
@@ -89,8 +87,7 @@ public
 private
 
 \ Whether a package row (src/habu/prims.f EPPRIM: ... ECLOSE-PRIVATE) states the
-\ primitive's effect. An internal primitive with one is its owner's to call, so
-\ DNAME stamps it DNAME-OWNED (src/habu/layout.f).
+\ primitive's effect.
 : OWNED? ( str -- bool ) {: name:^ size:n :}
    PRIM-SPEC:COUNT 0 ?do
       i PRIM-SPEC:KIND@ PRIM-SPEC:K-PKG-PRIVATE = if
@@ -107,19 +104,15 @@ private
 
 public
 
-: DNAME ( n -- n ) {: idx:n :}
-   idx NAME-LEN  idx NAME$ IMM-BIT or
-   idx WID {: wid:n :}
-   wid OWNER-API-PRI-WID =  wid GLOBAL-INT-WID = or if DNAME-INT or then
-   wid GLOBAL-INT-WID = if
-      idx NAME$ OWNED? if DNAME-OWNED or then
-   then ;
-
 \ An owned primitive's seed row is in OWNER-API-PRI-WID, which no source lookup
 \ searches, whatever wordlist its body passed.
 : HELPER-WID ( n -- n ) {: idx:n :}
    idx NAME$ OWNED? if OWNER-API-PRI-WID exit then
-   idx WID dup GLOBAL-INT-WID = if drop WL:PRIMITIVES then ;
+   idx WID ;
+
+: DNAME ( n -- n ) {: idx:n :}
+   idx NAME-LEN  idx NAME$ IMM-BIT or
+   idx HELPER-WID OWNER-API-PRI-WID = if DNAME-INT or then ;
 
 \ COMPLETE, run after the last body, refuses a row this backend never answered:
 \ an effect checked callers believe, with no code for the name.

@@ -75,14 +75,14 @@ variable FPL  variable FPE
    is FP-EMIT  FP-U !  FP-A !
    FP-A@ FP-U @ ENGINE-PRIMS:SPEC-CHECK ;
 
-: FP-REG ( -- n )
-   FP-A@ FP-U @ FPL LABEL@ FPE LABEL@ ENGINE-PRIMS:ADD ;
+: FP-REG ( -- )
+   FP-A@ FP-U @ FPL LABEL@ FPE LABEL@ ENGINE-PRIMS:ADD drop ;
 
 public
 : FPRIM ( str [ -- ] -- )
    FP-ARGS
    LBL FPL !  LBL FPE !
-   FP-REG drop
+   FP-REG
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
@@ -91,21 +91,9 @@ public
 : FPRIM-L ( str [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
    FP-ARGS
    LBL FPL !  LBL FPE !
-   FP-REG drop
+   FP-REG
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
-private
-variable FP-WID
-
-: FPRIM-WID ( str [ -- ] n -- )
-   FP-WID !
-   FP-ARGS
-   LBL FPL !  LBL FPE !
-   FP-REG FP-WID @ swap ENGINE-PRIMS:WID!
-   FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
-   FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
-
-public
 \ label ids (forward refs)
 variable LFIND  variable LNUM  variable LDICT
 variable LTOK  variable LFLUSH variable LFLUSHTO variable LNCOUNT
@@ -3937,7 +3925,7 @@ package ENGINE-EMIT
    s" compile," ['] B-COMPILE FPRIM-L
    s" ;" ['] B-END FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
-   s" source-file-run" ['] B-SOURCE-FILE-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
+   s" source-file-run" ['] B-SOURCE-FILE-RUN FPRIM ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
@@ -3965,19 +3953,19 @@ package ENGINE-EMIT
    s" NULL-PTR" ['] BNULLPTR FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
-   s" ndict-append" ['] BNDAPPEND ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-occ-select" ['] BDEFSELECT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" def-occ-resolve" ['] BDEFRESOLVE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" wide-mark" ['] BWIDEMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" ndict-append" ['] BNDAPPEND FPRIM
+   s" def-occ-select" ['] BDEFSELECT FPRIM
+   s" def-occ-resolve" ['] BDEFRESOLVE FPRIM
+   s" wide-mark" ['] BWIDEMARK FPRIM
    s" record-facts!" ['] BRECFACTS FPRIM
    s" sha256-blocks" ['] BSHA256BLOCKS FPRIM
-   s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" rep-mark" ['] BREPMARK FPRIM
    s" policy-admit" ['] BPOLICYADMIT FPRIM
    s" policy-seal" ['] BPOLICYSEAL FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L
-   s" die-closed" ['] BDIECLOSED ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
+   s" die-closed" ['] BDIECLOSED FPRIM ;
 
 ;package
 
@@ -4018,10 +4006,10 @@ package ENGINE-EMIT
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
    s" patch32" ['] BPATCH32 FPRIM
    s" reloc-maps-clear" ['] RELOC-EMIT:BCLEAR-MAPS FPRIM-L
-   s" code-publish" ['] NPUBWIN:BCODEPUBLISH ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" code-publish" ['] NPUBWIN:BCODEPUBLISH FPRIM
    s" callmap-set" ['] NPUBWIN:BCALLMAPSET FPRIM
    s" addrmap-set" ['] NPUBWIN:BADDRMAPSET FPRIM
-   s" xref-retarget" ['] NPUBWIN:BXREFRETARGET ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" xref-retarget" ['] NPUBWIN:BXREFRETARGET FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" close-rc" ['] BCLOSE-RC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
@@ -4033,12 +4021,12 @@ package ENGINE-EMIT
    s" c2-init-stow" ['] BC2-INIT-STOW FPRIM
    s" c2-records-stow" ['] BC2-RECORDS-STOW FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
-   s" bare-search-wl" ['] BSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
-   s" set-check" ['] BSETCHECK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" bare-search-wl" ['] BSWL FPRIM
+   s" xref-search-wl" ['] BCOMPILERSWL FPRIM
+   s" set-check" ['] BSETCHECK FPRIM
    s" check@" ['] BCHECKFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
-   s" set-preflight" ['] BSETPREFLIGHT ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID ;
+   s" set-preflight" ['] BSETPREFLIGHT FPRIM ;
 ;package
 
 package ENGINE-EMIT

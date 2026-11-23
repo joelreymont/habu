@@ -39,9 +39,6 @@ EXPORT CHECK:CHECKER-NATIVE-DOES-COMMIT
 : PUBLISH-REC ( n n n -- )
    xref-retarget ;
 
-\ ndict-append is a seed record the engine marks internal
-\ (ENGINE-PRIMS:GLOBAL-INT-WID); package NPUB's own rows (src/habu/prims.f)
-\ admit the calls here.
 : WIDE-REC ( -- )
    wide-mark ;
 
