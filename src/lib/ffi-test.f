@@ -1,4 +1,3 @@
-split-str
 \ ffi-test.f - checked C-ABI FFI tests against libc.
 \ Run: bin/hb --load src/lib/ffi-test.f
 
@@ -53,8 +52,8 @@ variable FFI-T-MATH
 : FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH FFI:NOW FFI:DLOPEN ;
 : FFI-T-SYM ( ^u8 -- n ) {: name:^ :}  FFI-T-LIB @ name FFI:DLSYM ;
 : FFI-T-SYM$ ( str -- n )
-   {: name:^ nameu:n :}
-   name nameu FFI-T-SYM-BUF FFI:CSTR {: sym:^ :}
+   {: name:str :}
+   name FFI-T-SYM-BUF FFI:CSTR {: sym:^ :}
    FFI-T-LIB @ sym FFI:DLSYM ;
 : FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH FFI:NOW FFI:DLOPEN ;
 : FFI-T-MSYM ( ^u8 -- n ) {: name:^ :}  FFI-T-MATH @ name FFI:DLSYM ;
@@ -70,7 +69,7 @@ FUNCTION: FFI-T-CTX-CALL getpid ( n -- i32 ) ;FUNCTION
 
 \ crc32 through the process: the engine does not link libz, so process-wide
 \ resolution finds it exactly when a libz open made its symbols global.
-FUNCTION: FFI-T-GLOBAL-PROBE crc32 ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-GLOBAL-PROBE crc32 ( n str -- n ) ;FUNCTION
 
 \ A declaration with no result drops the machine return cell, so the word is
 \ stack-neutral for its caller.
@@ -258,22 +257,23 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 : FFI-T-ERR$ ( len -- str ) {: u:len :}
-   FFI-T-ERR u LEN>N ;
+   FFI-T-ERR u LEN>N >str ;
 
 \ Runs the source on a fresh engine's stdin and asserts its exit code.
-: FFI-T-RUN-EXITS ( str n -- len len ) {: src:^ srcu:n want:n :}
+: FFI-T-RUN-EXITS ( str n -- len len ) {: src:str want:n :}
    PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ src srcu
+   ENGINE-CANDIDATE:PATH$ src
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-ENDING-EXITED=
+   src FFI-T-OUT outu LEN>N >str FFI-T-ERR erru LEN>N >str
+   oc want T-ENDING-EXITED=
    outu erru ;
 
 : FFI-T-GROW-ALIAS ( -- )
    s" descriptors and library paths grow past 256 and later declarations call" T-LABEL
    FFI-T-GROW-SRC$ 0 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
-   FFI-T-OUT outu LEN>N s\" growth-alias:ok\n" T$=
+   FFI-T-OUT outu LEN>N >str s\" growth-alias:ok\n" T$=
    erru LEN>N 0 T= ;
 : FFI-T-LIBRARY-SHARED-SRC$ ( -- str )
    FFI-T-SRC CODEGEN:RESET
@@ -308,16 +308,16 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" repeated library selections share a callable binding" T-LABEL
    FFI-T-LIBRARY-SHARED-SRC$ 0 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
-   FFI-T-OUT outu LEN>N s\" shared-library:ok\n" T$=
+   FFI-T-OUT outu LEN>N >str s\" shared-library:ok\n" T$=
    erru LEN>N 0 T= ;
 
 \ Runs a rejected case with its record captured, so stderr carries none,
 \ and asserts the record's header line.
 : FFI-T-RECORD ( [ -- ] str -- )
-   {: h:^ hu:n :}
+   {: h:str :}
    DECL-DIAG:PROSE
    70 TTHROWSQ
-   h hu DECL-DIAG:HAS? TTRUE
+   h DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF ;
 
 : FFI-T-SCOPE-RECORD ( [ -- ] -- )
@@ -332,12 +332,13 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-PATH-LENGTH ( -- )
    s" path length is exact from one through PATH-CAP" T-LABEL
    1 REJECTION:QUIET +!
-   [: FFI-T-LONG-PATH 0 FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
+   [: FFI-T-LONG-PATH 0 >str FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
    -1 REJECTION:QUIET +!
    FFI-T-LONG-PATH!
-   FFI-T-LONG-PATH PATH-CAP FFI:SELECT-LIBRARY
+   FFI-T-LONG-PATH PATH-CAP >str FFI:SELECT-LIBRARY
    1 REJECTION:QUIET +!
-   [: FFI-T-LONG-PATH PATH-CAP 1+ FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
+   [: FFI-T-LONG-PATH PATH-CAP 1+ >str FFI:SELECT-LIBRARY ;]
+   70 TTHROWSQ
    -1 REJECTION:QUIET +!
    FFI:SELECT-PROCESS ;
 
@@ -354,7 +355,8 @@ create FFI-T-LONG-PATH PATH-CAP allot
 \ process is the scope and not the library. The second open promotes the
 \ already loaded library, as dlopen(3) does for a reopen with RTLD_GLOBAL.
 : FFI-T-GLOBAL-LIB$ ( -- ^u8 )
-   HB-TARGET-MACOS? if s\" libz.1.dylib\z" drop exit then s\" libz.so.1\z" drop ;
+   HB-TARGET-MACOS? if s\" libz.1.dylib\z" STR:DATA exit then
+   s\" libz.so.1\z" STR:DATA ;
 
 \ The miss prints its record, so it runs in a child whose stderr is asserted.
 : FFI-T-LOCAL-SRC$ ( -- str )
@@ -382,7 +384,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" an FFI:NOW open finds the function through its own handle" T-LABEL
    FFI-T-GLOBAL-LIB$ FFI:NOW FFI:DLOPEN {: h:n :}
    h 0 T<>
-   h s\" crc32\z" drop FFI:DLSYM 0 T<>
+   h s\" crc32\z" STR:DATA FFI:DLSYM 0 T<>
    HB-TARGET-MACOS? if
       s" macOS: an FFI:NOW open is global, so the process resolves it" T-LABEL
       0 s" a" FFI-T-GLOBAL-PROBE $E8B7BE43 T=
@@ -450,30 +452,31 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ^u8 n n -- i32 ) ;FUNCTION
 \ the call.
 : FFI-T-PRINTF-COUNTED ( -- n )
    MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: fmt:^ fmtu :}
-   s\" %ld %ld %ld%n\z" {: src:^ srcu:n :}
-   src fmt srcu BYTE-COPY
-   fmt srcu FFI-T-PROT-READ FFI-T-MPROTECT 0 T=
+   s\" %ld %ld %ld%n\z" {: src:str :}
+   src STR:DATA fmt src STR:LEN BYTE-COPY
+   fmt src STR:LEN FFI-T-PROT-READ FFI-T-MPROTECT 0 T=
    FFI-T-PRINT-BUF 64 fmt 11 22 33 FFI-T-COUNT FFI-T-PRINTF-COUNT
    fmt fmtu MEM:RELEASE-BYTES ;
 
 
 : FFI-T-VARARGS ( -- )
-   FFI-T-PRINT-BUF 64 s\" %ld %.1f %s\z" drop 42 1.5 s\" ok\z" drop FFI-T-PRINTF
-   FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$=
-   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %ld %ld %ld %ld\z" drop
+   FFI-T-PRINT-BUF 64 s\" %ld %.1f %s\z" STR:DATA
+      42 1.5 s\" ok\z" STR:DATA FFI-T-PRINTF
+   FFI-T-PRINT-BUF swap >str s" 42 1.5 ok" T$=
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %ld %ld %ld %ld\z" STR:DATA
       1 2 3 4 5 6 7 8 FFI-T-PRINTF-INTS
-   FFI-T-PRINT-BUF swap s" 1 2 3 4 5 6 7 8" T$=
-   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %.1f %ld\z" drop
+   FFI-T-PRINT-BUF swap >str s" 1 2 3 4 5 6 7 8" T$=
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %.1f %ld\z" STR:DATA
       11 22 33 44 5.5 66 FFI-T-PRINTF-MIXED
-   FFI-T-PRINT-BUF swap s" 11 22 33 44 5.5 66" T$=
+   FFI-T-PRINT-BUF swap >str s" 11 22 33 44 5.5 66" T$=
    0 FFI-T-COUNT LE:U32!
    FFI-T-PRINTF-COUNTED
-   FFI-T-PRINT-BUF swap s" 11 22 33" T$=
+   FFI-T-PRINT-BUF swap >str s" 11 22 33" T$=
    FFI-T-COUNT LE:U32@ 8 T= ;
 
 \ snprintf's ninth double goes on the stack on every target.
 : FFI-T-F9-FORMAT ( -- ^u8 )
-   s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" drop ;
+   s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" STR:DATA ;
 : FFI-T-F9-WANT ( -- str )
    s" 1 2 3 4 5 6 7 8 9" ;
 : FFI-T-FLOAT-SPILL ( -- )
@@ -484,24 +487,24 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ^u8 n n -- i32 ) ;FUNCTION
       FFI-T-SRC+
    s"  1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 FFI-T-PRINTF-F9"
       FFI-T-SRC+
-   s"  FFI-T-PRINT-BUF swap FFI-T-F9-WANT T$= ; FFI-T-F9-CHECK"
+   s"  FFI-T-PRINT-BUF swap >str FFI-T-F9-WANT T$= ; FFI-T-F9-CHECK"
       FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS evaluate-closed ;
 
 : FFI-T-VARARG-KEY ( -- )
    s" a short variadic binding resolves before a longer one" T-LABEL
-   FFI-T-PRINT-BUF 64 s\" %ld\z" drop 9 FFI-T-SNPRINT-SHORT 1 T=
-   FFI-T-PRINT-BUF 1 s" 9" T$=
+   FFI-T-PRINT-BUF 64 s\" %ld\z" STR:DATA 9 FFI-T-SNPRINT-SHORT 1 T=
+   FFI-T-PRINT-BUF 1 >str s" 9" T$=
    s" a longer binding preserves its ABI arguments and output" T-LABEL
-   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %ld %ld %ld\z" drop
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %ld %ld %ld\z" STR:DATA
       1 2 3 4 5 6 7 FFI-T-SNPRINT-LONG 13 T=
-   FFI-T-PRINT-BUF 13 s" 1 2 3 4 5 6 7" T$= ;
+   FFI-T-PRINT-BUF 13 >str s" 1 2 3 4 5 6 7" T$= ;
 
 \ A library selected by base name and soname version: libz.so.1 here and
 \ libz.1.dylib on macOS both exist, so the symbol resolves through the rendered
 \ selection at the first call on either target.
 VERSIONED-LIBRARY z 1
-FUNCTION: FFI-T-VERSIONED-CRC crc32 ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-VERSIONED-CRC crc32 ( n str -- n ) ;FUNCTION
 PROCESS-SYMBOLS
 
 : FFI-T-VERSIONED-CALL ( -- )
@@ -510,7 +513,7 @@ PROCESS-SYMBOLS
 \ A version list: no libz 10000 exists on either target, so the first call is
 \ served by the second version written.
 VERSIONED-LIBRARY z 10000,1
-FUNCTION: FFI-T-LISTED-CRC crc32 ( n ^u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-LISTED-CRC crc32 ( n str -- n ) ;FUNCTION
 PROCESS-SYMBOLS
 
 : FFI-T-LISTED-CALL ( -- )
@@ -536,9 +539,9 @@ create FFI-T-LONG FFI-T-LONG-U allot
 
 : FFI-T-LONG$ ( -- str )
    FFI-T-LONG-U 0 ?do [char] x FFI-T-LONG i + c! loop
-   s" habu-ffi-long-" {: p:^ pu:n :}
-   p FFI-T-LONG pu BYTE-COPY
-   FFI-T-LONG FFI-T-LONG-U ;
+   s" habu-ffi-long-" {: p:str :}
+   p STR:DATA FFI-T-LONG p STR:LEN BYTE-COPY
+   FFI-T-LONG FFI-T-LONG-U >str ;
 
 : FFI-T-LONG+ ( -- ) FFI-T-LONG$ FFI-T-SRC+ ;
 
@@ -552,7 +555,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
 \ inaccessible page: the length is refused before the spelling check reads it.
 : FFI-T-GUARDED-PATH ( -- )
    PATH-CAP 1+ [char] a GUARD-PAGE:TAIL
-   PATH-CAP 1+ 1+ FFI:SELECT-LIBRARY ;
+   PATH-CAP 1+ 1+ >str FFI:SELECT-LIBRARY ;
 
 \ A literal spelled in the OTHER target's convention names no file here, so the
 \ declarer rejects it where it is stated. The rejection ends the load, which is
@@ -614,10 +617,11 @@ create FFI-T-LONG FFI-T-LONG-U allot
    outu LEN>N 0 T=
    erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]" STR:CONTAINS? TTRUE
    FFI-T-LONG-PATH!
-   HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:^ eu:n :}
-   ext FFI-T-LONG-PATH PATH-CAP eu - + eu BYTE-COPY
+   HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:str :}
+   ext STR:DATA FFI-T-LONG-PATH PATH-CAP ext STR:LEN - +
+   ext STR:LEN BYTE-COPY
    erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: library 'aaaa" STR:CONTAINS? TTRUE
-   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP STR:CONTAINS? TTRUE
+   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP >str STR:CONTAINS? TTRUE
    SB-RESET s" = help: name it with VERSIONED-LIBRARY, which spells it for " SB-APPEND
    FFI-T-TARGET$ SB-APPEND
    erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE ;
@@ -705,13 +709,14 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-LONG-PATH!
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY " FFI-T-SRC+
-   FFI-T-LONG-PATH u FFI-T-SRC+
+   FFI-T-LONG-PATH u >str FFI-T-SRC+
    s\"  1\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 \ The longest base whose name at version 1 fits a path.
 : FFI-T-BASE-MAX ( -- n )
-   PATH-CAP  HB-TARGET-MACOS? if s" lib.1.dylib" else s" lib.so.1" then nip - ;
+   PATH-CAP  HB-TARGET-MACOS? if s" lib.1.dylib" else s" lib.so.1" then
+   STR:LEN - ;
 
 : FFI-T-HUGE-BASE ( -- )
    s" a base whose library name fills a path loads" T-LABEL
@@ -735,7 +740,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-LONG-PATH!
    FFI-T-SRC CODEGEN:RESET
    s\" require src/lib/ffi-abi.f\nLIBRARY " FFI-T-SRC+
-   FFI-T-LONG-PATH PATH-CAP FFI-T-SRC+  s\" a\n" FFI-T-SRC+
+   FFI-T-LONG-PATH PATH-CAP >str FFI-T-SRC+  s\" a\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 
 : FFI-T-HUGE-PATH ( -- )
@@ -753,26 +758,26 @@ create FFI-T-LONG FFI-T-LONG-U allot
    {: outu:len erru:len :}
    outu LEN>N 0 T=
    erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE
-   FFI-T-NO-SUCH2-NAME$ {: a:^ au:n :}
-   FFI-T-NO-SUCH1-NAME$ {: b:^ bu:n :}
+   FFI-T-NO-SUCH2-NAME$ {: a:str :}
+   FFI-T-NO-SUCH1-NAME$ {: b:str :}
    \ The first name carries no reason; the last one tried carries the loader's.
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
-   a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
-   a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
-   b bu SB-APPEND s" ': " SB-APPEND
+   a SB-APPEND s\" '\n  = note: tried '" SB-APPEND
+   a SB-APPEND s\" '\n  = note: tried '" SB-APPEND
+   b SB-APPEND s" ': " SB-APPEND
    erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
-   SB-RESET s" tried '" SB-APPEND a au SB-APPEND
+   SB-RESET s" tried '" SB-APPEND a SB-APPEND
    erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
-   SB-RESET s" tried '" SB-APPEND b bu SB-APPEND
+   SB-RESET s" tried '" SB-APPEND b SB-APPEND
    erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
    s" a missing symbol names the version that opened, never one that did not" T-LABEL
-   FFI-T-Z1-NAME$ {: z1:^ z1u:n :}
-   FFI-T-Z9999-NAME$ {: z9:^ z9u:n :}
+   FFI-T-Z1-NAME$ {: z1:str :}
+   FFI-T-Z9999-NAME$ {: z9:str :}
    SB-RESET
    s" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' in '" SB-APPEND
-   z1 z1u SB-APPEND S\" '\n" SB-APPEND
+   z1 SB-APPEND S\" '\n" SB-APPEND
    erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE
-   erru FFI-T-ERR$ z9 z9u STR:CONTAINS? TFALSE
+   erru FFI-T-ERR$ z9 STR:CONTAINS? TFALSE
    s" a 100-byte base name reaches the loader whole" T-LABEL
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
    FFI-T-LONG-NAME+ s\" '\n  = note: tried '" SB-APPEND
@@ -795,9 +800,9 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-HELLO FFI-T-HELP 4 FFI-T-STRNCMP$ 0 T<>
 
    s" C int results preserve zero, positive and negative values" T-LABEL
-   s\" 0\z" drop FFI-T-ATOI 0 T=
-   s\" 2147483647\z" drop FFI-T-ATOI 2147483647 T=
-   s\" -2147483648\z" drop FFI-T-ATOI -2147483648 T=
+   s\" 0\z" STR:DATA FFI-T-ATOI 0 T=
+   s\" 2147483647\z" STR:DATA FFI-T-ATOI 2147483647 T=
+   s\" -2147483648\z" STR:DATA FFI-T-ATOI -2147483648 T=
    -1 FFI-T-CLOSE -1 T=
    FFI:ERRNO 9 T=                                \ EBADF immediately after close(-1)
    s" an unsigned int result is masked to its low half" T-LABEL
@@ -813,9 +818,9 @@ create FFI-T-LONG FFI-T-LONG-U allot
    s" a mixed floating call returns the output buffer and writes its value" T-LABEL
    72.5 5 FFI-T-GCVT-BUF FFI-T-GCVT {: converted:^ :}
    converted FFI-T-GCVT-BUF - 0 T=
-   converted converted FFI-T-STRLEN$ s" 72.5" T$=
+   converted converted FFI-T-STRLEN$ >str s" 72.5" T$=
 
-   FFI-T-CSTR-SRC 5 FFI-T-CSTR-DST FFI:CSTR       \ build "world\0" then strlen==5
+   FFI-T-CSTR-SRC 5 >str FFI-T-CSTR-DST FFI:CSTR       \ build "world\0" then strlen==5
    FFI-T-STRLEN$ 5 T=
 
    s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
@@ -833,11 +838,11 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-DEPTH-AFTER @ FFI-T-DEPTH-BEFORE @ T=
    FFI-T-DEPTH-PROBE 0 T<>
 
-   FFI-T-CSTR-DST SPAN:$ drop FFI-T-HELLO 6 FFI-T-MEMCPY drop
-   FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
+   FFI-T-CSTR-DST SPAN:$ STR:DATA FFI-T-HELLO 6 FFI-T-MEMCPY drop
+   FFI-T-CSTR-DST SPAN:$ STR:DATA FFI-T-STRLEN$ 5 T=
    s" a writable span of 0 bytes is called and left as it was" T-LABEL
-   FFI-T-CSTR-DST SPAN:$ drop FFI-T-HELLO 0 FFI-T-MEMCPY drop
-   FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
+   FFI-T-CSTR-DST SPAN:$ STR:DATA FFI-T-HELLO 0 FFI-T-MEMCPY drop
+   FFI-T-CSTR-DST SPAN:$ STR:DATA FFI-T-STRLEN$ 5 T=
 
    [: FFI-T-BAD-PTR ;]
    s" error[E-FFI-SYNTAX]: expected 'u8' after '^'" FFI-T-RECORD
@@ -910,18 +915,20 @@ create FFI-T-LONG FFI-T-LONG-U allot
       FFI:SELECT-PROCESS
    then
    s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
-   [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
-   [: FFI-T-CSTR-SRC STR:MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 >str FFI-T-CSTR-DST FFI:CSTR drop ;]
+   E-SPAN-LENGTH TTHROWSQ
+   [: FFI-T-CSTR-SRC STR:MIN-I64 >str FFI-T-CSTR-DST FFI:CSTR drop ;]
+   E-SPAN-LENGTH TTHROWSQ
    [: s" abcdefgh" FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-CAPACITY TTHROWSQ
    1 REJECTION:QUIET +!
-   [: FFI-T-CSTR-SRC -1 FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
-   [: FFI-T-CSTR-SRC STR:MIN-I64 FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
+   [: FFI-T-CSTR-SRC -1 >str FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
+   [: FFI-T-CSTR-SRC STR:MIN-I64 >str FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
    [: FFI-T-GUARDED-PATH ;] 70 TTHROWSQ
    -1 REJECTION:QUIET +!
    s" a string holding a 0 byte is refused before it reaches C" T-LABEL
    0 FFI-T-CSTR-DST SPAN:FILL
    [: s\" a\zb" FFI-T-CSTR-DST FFI:CSTR drop ;] E-FFI-NUL TTHROWSQ
-   FFI-T-CSTR-DST SPAN:$ drop c@ 0 T=                  \ a refused copy wrote nothing
+   FFI-T-CSTR-DST SPAN:$ STR:DATA c@ 0 T=                  \ a refused copy wrote nothing
    [: s\" lib\zz" FFI:SELECT-LIBRARY ;] E-FFI-NUL TTHROWSQ
    s" a version list opens the first version present, in the order written" T-LABEL
    FFI-T-LISTED-CALL

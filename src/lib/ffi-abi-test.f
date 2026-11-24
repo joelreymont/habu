@@ -1,4 +1,3 @@
-split-str
 \ ffi-abi-test.f - target-independent FFI ABI and marshalling tests.
 \ Run: bin/hb --load src/lib/ffi-abi-test.f
 
@@ -35,7 +34,7 @@ FUNCTION: FFI-T-STRTOL strtol ( ^u8 ^u8 n -- n ) ;FUNCTION
 FUNCTION: FFI-T-LABS labs ( n -- n ) ;FUNCTION
 
 : FFI-T-OUT-PARAM ( -- )
-   s\" 42x\z" drop {: num:^ :}
+   s\" 42x\z" STR:DATA {: num:^ :}
    0 FFI-T-OUT !
    num FFI-T-OUT BYTE-VIEW 10 FFI-T-STRTOL 42 T=
    FFI-T-OUT @ num FFI:>CELL 2 + T= ;

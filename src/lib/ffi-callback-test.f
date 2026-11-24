@@ -1,4 +1,3 @@
-split-str
 \ ffi-callback-test.f - C calling back into checked Habu: qsort, bsearch and
 \ pthread_create are the C callers. Each case's facts, with every child's and
 \ the stripped image's exit status and streams, form a transcript written to
@@ -52,12 +51,12 @@ CALLBACK: PAD-D ( -- ) ;CALLBACK
 CALLBACK: PAD-E ( -- ) ;CALLBACK
 
 : SCRIPT$ ( -- str )
-   SCRIPT-BUF SCRIPT-U @ ;
+   SCRIPT-BUF SCRIPT-U @ >str ;
 
-: SCRIPT+ ( str -- ) {: a:^ u:n :}
-   SCRIPT-U @ u + SCRIPT-CAP > if E-STR-CAPACITY throw then
-   a SCRIPT-BUF SCRIPT-U @ + u BYTE-COPY
-   u SCRIPT-U +! ;
+: SCRIPT+ ( str -- ) {: s:str :}
+   SCRIPT-U @ s STR:LEN + SCRIPT-CAP > if E-STR-CAPACITY throw then
+   s STR:DATA SCRIPT-BUF SCRIPT-U @ + s STR:LEN BYTE-COPY
+   s STR:LEN SCRIPT-U +! ;
 
 : SCRIPT+C ( n -- ) {: c:n :}
    SCRIPT-U @ SCRIPT-CAP >= if E-STR-CAPACITY throw then
@@ -71,26 +70,26 @@ CALLBACK: PAD-E ( -- ) ;CALLBACK
    SCRIPT+ LF SCRIPT+C ;
 
 \ A captured stream, ended by a line feed unless it is empty or ends in one.
-: STREAM+ ( str -- ) {: a u:n :}
-   u 0= if exit then
-   a u SCRIPT+
-   a u + 1 - c@ LF <> if LF SCRIPT+C then ;
+: STREAM+ ( str -- ) {: s:str :}
+   s STR:LEN 0= if exit then
+   s SCRIPT+
+   s STR:DATA s STR:LEN + 1 - c@ LF <> if LF SCRIPT+C then ;
 
 \ One fact: asserted under its own label and written as a transcript line.
-: FACT ( bool str -- ) {: ok:bool a:^ u:n :}
-   a u T-LABEL
+: FACT ( bool str -- ) {: ok:bool s:str :}
+   s T-LABEL
    ok TTRUE
    ok if s" ok   " else s" FAIL " then SCRIPT+
-   a u SAY ;
+   s SAY ;
 
 : WANT$ ( -- str )
-   WANT-BUF WANT-U @ ;
+   WANT-BUF WANT-U @ >str ;
 
-: W ( str -- ) {: a:^ u:n :}
-   WANT-U @ u + 1 + SCRIPT-CAP > if E-STR-CAPACITY throw then
-   a WANT-BUF WANT-U @ + u BYTE-COPY
-   LF WANT-BUF WANT-U @ + u + c!
-   u 1 + WANT-U +! ;
+: W ( str -- ) {: s:str :}
+   WANT-U @ s STR:LEN + 1 + SCRIPT-CAP > if E-STR-CAPACITY throw then
+   s STR:DATA WANT-BUF WANT-U @ + s STR:LEN BYTE-COPY
+   LF WANT-BUF WANT-U @ + s STR:LEN + c!
+   s STR:LEN 1 + WANT-U +! ;
 
 : SORT-FACTS ( n -- ) {: mask:n :}
    mask 1 and 0 <> s" qsort sorts through a callback; a stack cell, a local and a loop index survive" FACT
@@ -254,17 +253,17 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" CALLBACK: CBT-NAME-100-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK  CBT-NAME-100-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX FFI-CB:CLEAR" evaluate-closed ;
 
 \ The quotation stops with the rejection status after a record of code c cu.
-: REJECTS? ( [ -- ] str -- bool ) {: q c:^ cu:n :}
+: REJECTS? ( [ -- ] str -- bool ) {: q c:str :}
    REJECTION:CAPTURE
    q catch 70 =
-   REJECTION:BUFFER$ c cu STR:CONTAINS? and
+   REJECTION:BUFFER$ c STR:CONTAINS? and
    REJECTION:BUFFER-OFF ;
 
 \ Whether Q stops with the rejection status after a record holding HEAD and HELP.
 : RECORD? ( [ -- ] str str -- bool )
-   {: q h:^ hu:n p:^ pu:n :}
+   {: q h:str p:str :}
    DECL-DIAG:PROSE  q catch 70 =
-   h hu DECL-DIAG:HAS? and  p pu DECL-DIAG:HAS? and
+   h DECL-DIAG:HAS? and  p DECL-DIAG:HAS? and
    DECL-DIAG:OFF ;
 
 : INT-ARITY$ ( -- str )
@@ -456,42 +455,42 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ A callback's record notes C's lr as `caller`, which varies with the build,
 \ and ends with help the case does not pin: the transcript keeps both keys and
 \ drops their values.
-: ERR-LINE+ ( str -- ) {: a:^ u:n :}
-   a u s"   = caller: " STR:STARTS-WITH? if s"   = caller:" SAY exit then
-   a u s"   = help: " STR:STARTS-WITH? if s"   = help:" SAY exit then
-   a u SAY ;
+: ERR-LINE+ ( str -- ) {: s:str :}
+   s s"   = caller: " STR:STARTS-WITH? if s"   = caller:" SAY exit then
+   s s"   = help: " STR:STARTS-WITH? if s"   = help:" SAY exit then
+   s SAY ;
 
 \ A captured stderr as STREAM+ writes it, each line through ERR-LINE+.
-: ERR-STREAM+ ( str -- ) {: a:^ u:n :}
-   a u LF 0 begin STR:SPLIT-NEXT while {: p:^ pu:n next:n :}
-      pu 0 <>  next u > 0=  or if p pu ERR-LINE+ then
-      a u LF next
-   repeat drop 2drop ;
+: ERR-STREAM+ ( str -- ) {: s:str :}
+   s LF 0 begin STR:SPLIT-NEXT while {: p:str next:n :}
+      p STR:LEN 0 <>  next s STR:LEN > 0=  or if p ERR-LINE+ then
+      s LF next
+   repeat 2drop ;
 
 \ The name, the exit status and both streams of one spawned process.
 : TRANSCRIBE-RC ( str len len n -- )
-   {: name:^ nameu:n outu:len erru:len rc:n :}
-   s" == child " SCRIPT+ name nameu SCRIPT+ s" : exit " SCRIPT+ rc SCRIPT-N LF SCRIPT+C
-   OUT outu LEN>N STREAM+
+   {: name:str outu:len erru:len rc:n :}
+   s" == child " SCRIPT+ name SCRIPT+ s" : exit " SCRIPT+ rc SCRIPT-N LF SCRIPT+C
+   OUT outu LEN>N >str STREAM+
    s" --" SAY
-   ERR erru LEN>N ERR-STREAM+ ;
+   ERR erru LEN>N >str ERR-STREAM+ ;
 
 : TRANSCRIBE ( str len len PROCESS:ending -- )
    PROCESS:ENDING>RC RC>N TRANSCRIBE-RC ;
 
-: CHILD ( str -- len len PROCESS:ending ) {: name:^ nameu:n :}
+: CHILD ( str -- len len PROCESS:ending ) {: name:str :}
    PROC-ARGV-ENV-RESET
    s" --load" PROC-ARGV+
    s" test/ffi-callback-child.f" PROC-ARGV+
    s" --" PROC-ARGV+
-   name nameu PROC-ARGV+
+   name PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-: CHILD-CASE ( str -- ) {: name:^ nameu:n :}
-   name nameu name nameu CHILD TRANSCRIBE ;
+: CHILD-CASE ( str -- ) {: name:str :}
+   name name CHILD TRANSCRIBE ;
 
 : CASE-CHILDREN ( -- )
    s" outside" CHILD-CASE
@@ -516,8 +515,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    BSEARCH 0= s" a fallback of 1 reaches C too: no row matches" FACT
    UNSET-ONE UNBIND ;
 
-: SUBJECT$ ( -- str ) SUBJECT-BUF SUBJECT-U @ ;
-: IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ ;
+: SUBJECT$ ( -- str ) SUBJECT-BUF SUBJECT-U @ >str ;
+: IMAGE$ ( -- str ) IMAGE-BUF IMAGE-U @ >str ;
 
 : WRITE-SUBJECT ( -- )
    SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" FS:WRITE-ALL
@@ -551,7 +550,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : LINKED ( len len PROCESS:ending -- )
    PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
-   rc 0 <> if OUT outu LEN>N type ERR erru LEN>N type then
+   rc 0 <> if OUT outu LEN>N >str type ERR erru LEN>N >str type then
    rc 0= s" hb-build links test/stripped-callback-subject.f stripped" FACT ;
 
 : STRIPPED-BODY ( -- )
@@ -586,12 +585,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" subject.f" SUBJECT-BUF GT-PATH SUBJECT-U !
    VERIFY$ SUBJECT$ [: drop ;] PROCESS:WAIT-FOREVER true LSP-CHECK:VERIFY-BYTES
    REFUSED? {: refused:bool :}
-   LSP-CHECK:VERIFY-OUT$ {: out:^ outu:n :}
-   refused  out outu s" E-MISMATCH" STR:CONTAINS? and
-   out outu s" CBV-BAD" STR:CONTAINS? and
+   LSP-CHECK:VERIFY-OUT$ {: out:str :}
+   refused  out s" E-MISMATCH" STR:CONTAINS? and
+   out s" CBV-BAD" STR:CONTAINS? and
       s" it refuses the definition after the declaration: E-MISMATCH" FACT
    \ A wrong type on CBV or CBV-BODY, or a deferral, adds a record with its code.
-   out outu S\" \"code\":" STR:COUNT-SUB 1 =
+   out S\" \"code\":" STR:COUNT-SUB 1 =
       s" it reports nothing else: it finds and types the declaration's words" FACT ;
 
 : CASE-VERIFY ( -- )
@@ -751,7 +750,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" build/ffi-callback-transcript.txt" BACK-BUF SCRIPT-CAP FS:READ-ALL {: got:n :}
    WANT-TRANSCRIPT
    s" build/ffi-callback-transcript.txt is the transcript this file expects" T-LABEL
-   BACK-BUF got WANT$ T$= ;
+   BACK-BUF got >str WANT$ T$= ;
 
 public
 
