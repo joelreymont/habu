@@ -4,9 +4,9 @@ split-str
 \ transport check, unknown methods and tools, an unknown tool's name cut at 128 bytes, a
 \ body's result and tool error, an object schema's result as structuredContent and a
 \ non-object result under it, a result's _meta from RESULT-META in both eras and its
-\ refusals, an image and an embedded resource after the text from RESULT-CONTENT in both
-\ eras, an empty array of them and the refusals, bodies that give a bad result or none,
-\ malformed envelopes, params, arguments and JSON, ping, tools/list showing each
+\ refusals, an image and an embedded resource from RESULT-CONTENT in both eras and a text
+\ of the tool's own, an empty array of them and the refusals, bodies that give a bad
+\ result or none, malformed envelopes, params, arguments and JSON, ping, tools/list showing each
 \ descriptor as registered (annotations and _meta raw) with a non-object output schema's
 \ wrapper in its place, and ADD-TOOL's rejections of a bad descriptor or inputSchema. A
 \ tools/call whose arguments, given or absent, break the inputSchema is a tool error that
@@ -381,8 +381,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    STRICT-RAN atomic@ 0 T=
    s" arguments the inputSchema admits run the body" T-LABEL
    LEGACY 72 S\" ,\"arguments\":{\"filter\":\"x\"}" STRICT-CALL POST
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":72,\"result\":{\"content\":" SB-APPEND
-   S\" [{\"type\":\"text\",\"text\":\"{\\\"ran\\\":true}\"}]," SB-APPEND
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":72,\"result\":{\"content\":[]," SB-APPEND
    S\" \"structuredContent\":{\"data\":{\"ran\":true}},\"isError\":false}}" SB-APPEND
    200 SB$ ANSWERED
    STRICT-RAN atomic@ 1 T= ;
@@ -399,7 +398,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: =?base64?ZWNobw==?=" ADD
    ECHO-A1 POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"resultType\":\"complete\"," SB-APPEND
-   S\" \"content\":[{\"type\":\"text\",\"text\":\"{\\\"a\\\":1}\"}]," SB-APPEND
+   S\" \"content\":[]," SB-APPEND
    S\" \"structuredContent\":{\"data\":{\"a\":1}},\"isError\":false," SB-APPEND
    SERVER S\" }}" SB-APPEND
    200 SB$ ANSWERED ;
@@ -434,8 +433,8 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" an object schema's result is the structuredContent itself" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\",\"params\":{\"name\":\"shape\"}}" POST
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":21,\"result\":{\"content\":[{\"type\":\"text\"," SB-APPEND
-   S\" \"text\":\"{\\\"sources\\\":[\\\"a\\\"]}\"}],\"structuredContent\":{\"sources\":[\"a\"]}," SB-APPEND
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":21,\"result\":{\"content\":[]," SB-APPEND
+   S\" \"structuredContent\":{\"sources\":[\"a\"]}," SB-APPEND
    S\" \"isError\":false}}" SB-APPEND
    200 SB$ ANSWERED ;
 
@@ -478,8 +477,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"result\":{" SB-APPEND
    modern if S\" \"resultType\":\"complete\"," SB-APPEND then
-   S\" \"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true}\"}]," SB-APPEND
-   S\" \"structuredContent\":{\"ok\":true},\"isError\":false" SB-APPEND ;
+   S\" \"content\":[],\"structuredContent\":{\"ok\":true},\"isError\":false" SB-APPEND ;
 
 
 : META-LEGACY ( -- )
@@ -539,8 +537,14 @@ TASK:MIN-STACK TASK:TASK STALLER
 : PAIR ( -- ^u8 n )
    S\" [{\"type\":\"image\",\"data\":\"iVBORw0KGgo=\",\"mimeType\":\"image/png\"}, {\"type\":\"resource\",\"resource\":{\"uri\":\"zen://versions/7/original\",\"mimeType\":\"application/pdf\",\"blob\":\"JVBERi0=\"}} ]" ;
 
-\ PAIR's objects after the text block, as content holds them.
-: PAIR-CONTENT ( -- str ) PAIR {: a:^ u:n :} a 1+ u 2 - ;
+\ pictured's blocks for said: a text of the tool's own.
+: OWN-TEXT ( -- ^u8 n )
+   S\" [{\"type\":\"text\",\"text\":\"500 of 568090 records\"}]" ;
+
+\ The objects of a JSON array, as content holds them.
+: INSIDE ( str -- str ) {: a:^ u:n :} a 1+ u 2 - ;
+
+: PAIR-CONTENT ( -- str ) PAIR INSIDE ;
 
 
 : PICTURED-CALL ( n str bool -- n )
@@ -553,38 +557,43 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" }}" SB-APPEND SB$ POST ;
 
 
-\ pictured's reply to the given id, PAIR's objects after its text block when
-\ paired, in SB.
-: PICTURED-RESULT ( n bool bool -- )
-   {: id:n modern:bool paired:bool :}
+\ pictured's reply to the given id, the content's objects as given, in SB.
+: PICTURED-RESULT ( n bool str -- )
+   {: id:n modern:bool blocks:^ bu:n :}
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
    S\" ,\"result\":{" SB-APPEND
    modern if S\" \"resultType\":\"complete\"," SB-APPEND then
-   S\" \"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true}\"}" SB-APPEND
-   paired if s" ," SB-APPEND PAIR-CONTENT SB-APPEND then
+   S\" \"content\":[" SB-APPEND blocks bu SB-APPEND
    S\" ],\"structuredContent\":{\"ok\":true},\"isError\":false" SB-APPEND
    modern if s" ," SB-APPEND SERVER then
    S\" }}" SB-APPEND ;
 
 
 : BLOCKS-LEGACY ( -- )
-   s" a legacy result's content is the text, then RESULT-CONTENT's content blocks as given" T-LABEL
+   s" a legacy result's content is RESULT-CONTENT's content blocks as given" T-LABEL
    41 S\" {\"pair\":1}" false PICTURED-CALL
-   41 false true PICTURED-RESULT
+   41 false PAIR-CONTENT PICTURED-RESULT
    200 SB$ ANSWERED ;
 
 
 : BLOCKS-MODERN ( -- )
-   s" a modern result's content is the text, then RESULT-CONTENT's content blocks as given" T-LABEL
+   s" a modern result's content is RESULT-CONTENT's content blocks as given" T-LABEL
    42 S\" {\"pair\":1}" true PICTURED-CALL
-   42 true true PICTURED-RESULT
+   42 true PAIR-CONTENT PICTURED-RESULT
+   200 SB$ ANSWERED ;
+
+
+: BLOCKS-OWN-TEXT ( -- )
+   s" RESULT-CONTENT's text block is the whole content, its JSON structuredContent" T-LABEL
+   45 S\" {\"said\":1}" true PICTURED-CALL
+   45 true OWN-TEXT INSIDE PICTURED-RESULT
    200 SB$ ANSWERED ;
 
 
 : BLOCKS-EMPTY ( -- )
    s" RESULT-CONTENT of an empty array gives the result RESULT gives" T-LABEL
    43 S\" {\"none\":1}" true PICTURED-CALL
-   43 true false PICTURED-RESULT
+   43 true s" " PICTURED-RESULT
    200 SB$ ANSWERED ;
 
 
@@ -1062,6 +1071,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : BLOCKS-OF ( str -- str )
    {: args:^ au:n :}
    args au s" pair" CONTAINS? if PAIR exit then
+   args au s" said" CONTAINS? if OWN-TEXT exit then
    args au s" none" CONTAINS? if s" [ ]" exit then
    args au s" flat" CONTAINS? if S\" {\"type\":\"image\"}" exit then
    args au s" scalar" CONTAINS? if S\" [{\"type\":\"text\",\"text\":\"a\"},1]" exit then
@@ -1216,15 +1226,14 @@ TASK:MIN-STACK TASK:TASK STALLER
 : CLIENT-RESULT ( -- )
    s" CALL answers the result object, isError false" T-LABEL
    s" echo" S\" {\"a\":1}" ASK TFALSE
-   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":" W+
-   S\" \"{\\\"a\\\":1}\"}],\"structuredContent\":{\"data\":{\"a\":1}},\"isError\":false," W+
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[]," W+
+   S\" \"structuredContent\":{\"data\":{\"a\":1}},\"isError\":false," W+
    W-SERVER s" }" W+ W$ T$= ;
 
 : CLIENT-BLOCKS ( -- )
    s" CALL answers a result whose content holds RESULT-CONTENT's content blocks" T-LABEL
    s" pictured" S\" {\"pair\":1}" ASK TFALSE
-   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":" W+
-   S\" \"{\\\"ok\\\":true}\"}," W+ PAIR-CONTENT W+
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[" W+ PAIR-CONTENT W+
    S\" ],\"structuredContent\":{\"ok\":true},\"isError\":false," W+
    W-SERVER s" }" W+ W$ T$= ;
 
@@ -1237,8 +1246,8 @@ TASK:MIN-STACK TASK:TASK STALLER
 : CLIENT-BIG ( -- )
    s" a result past the first reply buffer arrives whole" T-LABEL
    s" big" s" {}" ASK TFALSE
-   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"\\\"" W+
-   BIG 1+ BIG-U 2 - W+ S\" \\\"\"}],\"structuredContent\":{\"data\":" W+
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[]," W+
+   S\" \"structuredContent\":{\"data\":" W+
    BIG BIG-U W+ S\" },\"isError\":false," W+ W-SERVER s" }" W+ W$ T$= ;
 
 create LOG-PATH PATH-CAP allot      \ a case's stderr capture file
@@ -1672,8 +1681,8 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" tools/call runs the tool for the caller the hook admits" T-LABEL
    OWNER LEGACY BEARING
    S\" {\"jsonrpc\":\"2.0\",\"id\":23,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}" POST
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":23,\"result\":{\"content\":[{\"type\":\"text\"," SB-APPEND
-   S\" \"text\":\"{}\"}],\"structuredContent\":{\"data\":{}},\"isError\":false}}" SB-APPEND
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":23,\"result\":{\"content\":[]," SB-APPEND
+   S\" \"structuredContent\":{\"data\":{}},\"isError\":false}}" SB-APPEND
    200 SB$ ANSWERED ;
 
 
@@ -1705,8 +1714,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    OWNER
    CLIENT @ 0 >MS MCP:TOOLS W-RESET s" [" W+ LATER-ITEMS WHOAMI-ENTRY s" ]" W+ W$ T$=
    s" whoami" s" {}" ASK TFALSE
-   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":" W+
-   S\" \"{\\\"azp\\\":\\\"zen-app\\\",\\\"oid\\\":\\\"o-1\\\"}\"}]," W+
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[]," W+
    S\" \"structuredContent\":{\"data\":{\"azp\":\"zen-app\",\"oid\":\"o-1\"}},\"isError\":false," W+
    W-SERVER s" }" W+ W$ T$=
    s" TOKEN! of an empty text sends none" T-LABEL
@@ -2149,7 +2157,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    STRICT-REFUSED
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
-   BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE NULL-ID RESPONSE-SENT
+   BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-OWN-TEXT BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE NULL-ID RESPONSE-SENT
    BAD-JSON LIST PING
    MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES SCALAR-META META-TWICE
    NO-PARAMS MODERN-NOTIFICATION LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT PARAMS-NOT-OBJECT

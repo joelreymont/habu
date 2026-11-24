@@ -19,10 +19,9 @@ split-str
 \ as UNKNOWN-TOOL states.
 \ A tool body gets the arguments' object, borrowed for the call, and gives its
 \ result once through RESULT, RESULT-META to give the result a _meta object, RESULT-CONTENT
-\ to add content blocks, such as an image or an embedded resource, after the result's
-\ text, or RESULT-ERROR for a tool error, refused arguments included; bodies may run at
-\ once on several HTTP workers. A body that must wait gives its worker back:
-\ HOLD takes the call's connection and keeps the call in a row of the held
+\ to give the result's content blocks, or RESULT-ERROR for a tool error, refused arguments
+\ included; bodies may run at once on several HTTP workers. A body that must wait gives its
+\ worker back: HOLD takes the call's connection and keeps the call in a row of the held
 \ table, and the body returns with no result; later FINISH, on any request
 \ worker, runs a quotation as that call's body and sends the response HANDLE
 \ would have sent on the kept connection.
@@ -31,9 +30,9 @@ split-str
 \ and VALID?'s text, such as `arguments.top: expected a number of at most `500`, found
 \ `501`; send a number in that range`. So are arguments that name a member twice in
 \ one object: `arguments`, then the JSON reader's text placing the repeat. A tool
-\ result's JSON is its structuredContent when its output schema's "type" is "object";
-\ any other schema describes that JSON as structuredContent's "data", and tools/list
-\ shows that wrapper in the schema's place. The client side, OPEN, TOOLS, CALL and
+\ result's JSON goes only in structuredContent, as itself when its output schema's "type"
+\ is "object"; any other schema describes that JSON as structuredContent's "data", and
+\ tools/list shows that wrapper in the schema's place. The client side, OPEN, TOOLS, CALL and
 \ CLOSE, speaks the 2026-07-28 era to one server over CURL and takes a JSON or an
 \ event-stream reply. TOKEN! sets the bearer token a client sends, and REQUEST-STOP
 \ stops the client from another task.
@@ -186,7 +185,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER CODE n
 HTTP:MAX-WORKERS TYPED-BUFFER TEXT SPAN:span<u8>      \ an error's message, or a tool's result
 HTTP:MAX-WORKERS TYPED-BUFFER FAULT bool              \ the tool result is isError
 HTTP:MAX-WORKERS TYPED-BUFFER META-SPAN SPAN:span<u8>     \ the tool result's _meta, or empty
-\ The tool result's content after its text block: content blocks and the commas
+\ The content of a result that is not a tool error: content blocks and the commas
 \ between them, or empty.
 HTTP:MAX-WORKERS TYPED-BUFFER CONTENT-SPAN SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER CALLED n                \ the tool a tools/call runs
@@ -484,16 +483,24 @@ CAST: HELD>N ( held -- n )
    JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-END CACHED-END ;
 
 
+: TEXT-BLOCK ( ^JSON:writer -- ^JSON:writer )
+   JSON:WRITE-OBJECT-START s" type" s" text" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" text" TEXT$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
+
+
+: RESULT-BLOCKS ( ^JSON:writer -- ^JSON:writer )
+   SLOT CONTENT-SPAN @ SPAN:$ {: blocks:^ bu:n :}
+   bu 0<> if blocks bu JSON:WRITE-RAW then ;
+
+
 : CALL-BODY ( ^JSON:writer -- ^JSON:writer )
    JSON:WRITE-OBJECT-START
    LEGACY? 0= if
       s" resultType" s" complete" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    then
    s" content" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
-   JSON:WRITE-OBJECT-START s" type" s" text" JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" text" TEXT$ JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END
-   SLOT CONTENT-SPAN @ SPAN:$ {: blocks:^ bu:n :}
-   bu 0<> if JSON:WRITE-COMMA blocks bu JSON:WRITE-RAW then
+   SLOT FAULT @ if TEXT-BLOCK else RESULT-BLOCKS then
    JSON:WRITE-ARRAY-END
    SLOT FAULT @ 0= if
       JSON:WRITE-COMMA
@@ -1634,9 +1641,9 @@ public
 : RESULT-META ( ^u8 n ^u8 n -- ) s" []" false RESULT! ;
 
 
-\ RESULT, plus a JSON array of MCP content blocks, such as an image or an embedded resource,
-\ that follow the result's text block in content as given; E-SCHEMA unless blocks is one
-\ JSON array of objects, each with one string "type".
+\ RESULT, plus a JSON array of MCP content blocks, such as a text of the tool's own, an
+\ image or an embedded resource, that is the result's content as given; E-SCHEMA unless
+\ blocks is one JSON array of objects, each with one string "type".
 : RESULT-CONTENT ( ^u8 n ^u8 n -- )
    {: text:^ u:n extra:^ eu:n :}
    text u s" " extra eu false RESULT! ;
