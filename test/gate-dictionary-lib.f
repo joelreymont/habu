@@ -943,6 +943,14 @@ variable LABEL-U
    s" package B defer sq-unmake ( -- ) public : SQ-UNMAKE ( -- n ) 1 ; ;package" GE-SRC-LINE
    $46 s" = private: sq-unmake (0 -- 0)" s" checker spells a defer's private twin as declared" CHECK-BUF-BAD ;
 
+: TRUSTED-NAME-SPELLING ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" PROCESS-SYMBOLS" GE-SRC-LINE
+   s" FUNCTION: A:B:C getpid ( -- n )" GE-SRC-LINE
+   s" ;FUNCTION" GE-SRC-LINE
+   $46 s" `A:B:C`" s" checker spells a trusted record's name as written" CHECK-BUF-BAD ;
+
 : RUN-LOAD-ONE ( str str -- ) {: path:^ pathu:n label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -1410,6 +1418,7 @@ public
    PACKAGE-SHADOW-POSITIVES
    PACKAGE-DUPLICATE-CHECK
    DEFER-TWIN-SPELLING
+   TRUSTED-NAME-SPELLING
    PACKAGE-MULTIFILE-LOAD
    PACKAGE-INCLUDE
    PACKAGE-MISUSE

@@ -22930,12 +22930,11 @@ private
 : TRUST-USIG-SYM! ( str str n -- n )
    {: na:^ nu:n sa:^ su:n sym:n :}
    na CHECKER-REC-A !  nu CHECKER-REC-U !
-   na nu TOKFOLD drop
    \ A nonzero SYM keys the row and the name is only refused when malformed:
    \ a does> after a refused definition passes it empty; interning that dies 76.
-   sym 0= IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop ELSE
-      TKF TKFU @ CHECKER-QUALIFIED? drop
-      CHECKER-QBAD-TOK @ IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop THEN
+   sym 0= IF na nu na nu CHECKER-RECORD-NAME-AT 2drop ELSE
+      na nu CHECKER-QUALIFIED? drop
+      CHECKER-QBAD-TOK @ IF na nu na nu CHECKER-RECORD-NAME-AT 2drop THEN
       sym CHECKER-REC-SYM !
    THEN
    sa su  na nu RES-TRUE USIG-ADD-AS ;
