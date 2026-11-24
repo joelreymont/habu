@@ -70,8 +70,10 @@ public
 
 : ROW-ATOM? ( str -- bool ) {: a:^ u:n :}
    u 3 >= if a 3 s" PE-" STR=CI if STR-TRUE exit then then
-   u 4 >= if a 4 s" ;PE-" STR=CI exit then
-   STR-FALSE ;
+   u 4 >= if a 4 s" ;PE-" STR=CI if STR-TRUE exit then then
+   a u s" ETRUSTED-ONLY" STR=CI if STR-TRUE exit then
+   a u s" EIMMEDIATE" STR=CI if STR-TRUE exit then
+   a u s" EFIXED-ABI" STR=CI ;
 
 : ROW-REF? ( str -- bool ) s" REF" STR=CI ;
 

@@ -95,6 +95,7 @@ variable CUR-NAME-OFF   variable CUR-NAME-LEN
 variable CUR-PKG-OFF    variable CUR-PKG-LEN
 variable CUR-CODE-OFF
 variable CUR-REF-OFF    variable CUR-REF-LEN
+variable CUR-FLAGS
 
 \ SLOT addresses a row the caller has already bounded.
 : SLOT ( n n -- ^n ) {: row:n field:n :}
@@ -160,6 +161,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    kind CUR-KIND !
    0 CUR-PKG-OFF !  0 CUR-PKG-LEN !
    0 CUR-REF-OFF !  0 CUR-REF-LEN !
+   0 CUR-FLAGS !
    CODE-U @ CUR-CODE-OFF ! ;
 
 : ROW-NAME ( -- )
@@ -175,13 +177,14 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    CUR-PKG-LEN @   ROW-N @ F-PKG-LEN SLOT !
    CUR-CODE-OFF @  ROW-N @ F-CODE-OFF SLOT !
    CODE-U @ CUR-CODE-OFF @ - ROW-N @ F-CODE-LEN SLOT !
-   0               ROW-N @ F-FLAGS SLOT !
+   CUR-FLAGS @     ROW-N @ F-FLAGS SLOT !
    CUR-REF-OFF @   ROW-N @ F-REF-OFF SLOT !
    CUR-REF-LEN @   ROW-N @ F-REF-LEN SLOT !
    ROW-N @ 1 + ROW-N ! ;
 
-\ A row body holds only atoms, `PE-...` or `;PE-...`, which parse nothing, and
-\ `REF name` clauses, so the first closer outside a REF clause ends the row.
+\ A row body holds only atoms, `PE-...` or `;PE-...`, and flag words, which
+\ parse nothing, and `REF name` clauses, so the first closer outside a REF
+\ clause ends the row.
 : EPRIM: ( -- )
    K-PRIM ROW-OPEN ROW-NAME ;
 
@@ -207,21 +210,19 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    NAME-U @ CUR-REF-OFF !
    parse-name dup CUR-REF-LEN ! NAME-SPAN, ;
 
-\ The just-written row's checker row is a trust boundary: a CHECKED caller is
-\ refused, while a TRUSTED: body may use it.
-: ETRUSTED-ONLY! ( -- )
-   ROW-N @ 0 <= IF s" prims: trusted-only before any row" EXIT-STATUS:INTERNAL die THEN
-   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-TRUSTED-ONLY or swap ! ;
+\ Marks the open row's checker row a trust boundary: a CHECKED caller is
+\ rejected, while a TRUSTED: body may use it.
+: ETRUSTED-ONLY ( -- )
+   CUR-FLAGS @ FL-TRUSTED-ONLY or CUR-FLAGS ! ;
 
-\ The just-written row's primitive is immediate.
-: EIMMEDIATE! ( -- )
-   ROW-N @ 0 <= IF s" prims: immediate before any row" EXIT-STATUS:INTERNAL die THEN
-   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-IMMEDIATE or swap ! ;
+\ Marks the open row's primitive immediate.
+: EIMMEDIATE ( -- )
+   CUR-FLAGS @ FL-IMMEDIATE or CUR-FLAGS ! ;
 
-\ The machine body uses the row's widths and glue without instantiating them.
-: EFIXED-ABI! ( -- )
-   ROW-N @ 0 <= IF s" prims: fixed ABI before any row" EXIT-STATUS:INTERNAL die THEN
-   ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-FIXED-ABI or swap ! ;
+\ Marks the open row's machine body as using the row's widths and glue
+\ without instantiating them.
+: EFIXED-ABI ( -- )
+   CUR-FLAGS @ FL-FIXED-ABI or CUR-FLAGS ! ;
 
 : ELAB: ( -- )
    K-ELAB ROW-OPEN ROW-NAME ROW-WRITE ;
@@ -375,12 +376,12 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 \ quotations), so `xt!` into a plain integer cell type-checks today and would
 \ have the loader shift an ordinary integer.
 \ A plain `!` of a quotation into such a cell is already refused.
-EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
+EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EFIXED-ABI EPRIM;
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: scratch-cell-mark PE-PTR-A PE-IN EPRIM;
 \ ptr-cell! is xt!'s store for a cell that holds a DATA pointer: it writes the
 \ value and declares the cell as ptr-cell-mark declares it.
-EPRIM: ptr-cell!  PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
+EPRIM: ptr-cell!  PE-A PE-IN PE-PTR-A PE-IN EFIXED-ABI EPRIM;
 EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM;
 \ Explicit memory views preserve address bits while changing the access type.
 EPRIM: byte-view  PE-PTR-A-STORED PE-IN PE-PTR-U8 PE-OUT EPRIM;
@@ -545,10 +546,8 @@ EPRIM: check@         PE-N PE-OUT EPRIM;
 \ The compiler's prospective trusted-tick order and the owner whose installed
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
-EPPRIM: CHECK set-check PE-A PE-IN ECLOSE-PRIVATE
-EFIXED-ABI!
-EPPRIM: CHECK set-preflight PE-A PE-IN ECLOSE-PRIVATE
-EFIXED-ABI!
+EPPRIM: CHECK set-check PE-A PE-IN EFIXED-ABI ECLOSE-PRIVATE
+EPPRIM: CHECK set-preflight PE-A PE-IN EFIXED-ABI ECLOSE-PRIVATE
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 EPPRIM: CHECKER-OVERLAY ndict! PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: GENERATED-DECL-DICTIONARY ndict! PE-N PE-IN ECLOSE-PRIVATE
@@ -623,8 +622,7 @@ EPRIM: literal PE-N PE-IN EPRIM;
 EPRIM: compile, PE-QANY EPRIM;
 \ ; ( -- ): end the definition define-word opened, as `;` ends a colon
 \ definition; it refuses when none is open.
-EPRIM: ; EPRIM;
-EIMMEDIATE!
+EPRIM: ; EIMMEDIATE EPRIM;
 \ trust-sig! ( ^u8 n -- ): the pending definition's signature span into
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPPRIM: INTERPRETER trust-sig! PE-STR PE-IN ECLOSE-PRIVATE
@@ -732,8 +730,8 @@ EPPRIM: CHECK record-facts! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ sha256-blocks ( ^n ^u8 n -- n ) state cells, bytes, block count: how
 \ many blocks the CPU's SHA-256 instructions compressed.
 EPRIM: sha256-blocks PE-PTR-N PE-IN PE-STR PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
-ETRUSTED-ONLY!
+EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT
+   ETRUSTED-ONLY EPRIM;
 EPPRIM: TASK task-entry PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: dlopen-entry PE-N PE-OUT EPRIM;
 EPRIM: dlsym-entry PE-N PE-OUT EPRIM;

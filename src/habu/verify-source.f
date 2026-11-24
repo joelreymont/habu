@@ -111,8 +111,9 @@ split-str
 \ ordinary words. A row is read as its opener reads it: the name, and a package
 \ row's package before it, are read raw, so either may be spelled as a definer
 \ or parsing word (`EPRIM: create EPRIM;`). The body is read raw too: it holds
-\ only atoms, spelled `PE-...` or `;PE-...`, and `REF` clauses, `REF` and the
-\ token after it; any other body token makes the row malformed. prims.f's
+\ only atoms, spelled `PE-...` or `;PE-...`, the flags `ETRUSTED-ONLY`,
+\ `EIMMEDIATE` and `EFIXED-ABI`, and `REF` clauses, `REF` and the token after
+\ it; any other body token makes the row malformed. prims.f's
 \ `EPRIM:` and `EPPRIM:` rows end at the first `EPRIM;` or `ECLOSE-PRIVATE`
 \ that is not a `REF` operand. A row is known by its opener's spelling: a
 \ binding cannot tell prims.f's opener from its own definition when the scan
@@ -3451,7 +3452,9 @@ public
    REJECTION:HELP
    s" a row's name and package are neither an opener nor a closer, "
    REJECTION:EMIT-STR
-   s" its body holds only `PE-` or `;PE-` atoms and `REF` clauses, "
+   s" its body holds only `PE-` or `;PE-` atoms, `REF` clauses "
+   REJECTION:EMIT-STR
+   s" and the flags `ETRUSTED-ONLY`, `EIMMEDIATE` and `EFIXED-ABI`, "
    REJECTION:EMIT-STR
    s" and it ends at `EPRIM;` or `ECLOSE-PRIVATE`: " REJECTION:EMIT-STR
    tu 0= IF s" close the row"

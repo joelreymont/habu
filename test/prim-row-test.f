@@ -18,6 +18,10 @@ private
    s\" EPRIM: FOO REF s\" REF EPRIM; REF : EPRIM;"
       s" src/habu/prims.f" s" <input>" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
 
+: FLAG-BODY ( -- )
+   s" EPRIM: FOO PE-N PE-IN EFIXED-ABI EPRIM;"
+      s" src/habu/prims.f" s" <input>" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
+
 : PARSER-BODY ( -- )
    s" EPRIM: FOO postpone EPRIM; PE-N EPRIM;"
       s" src/habu/prims.f" s" <input>" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;
@@ -37,14 +41,17 @@ private
    T-LABEL
    [: REF-OPERAND ;] LOADED TTHROWSQ
 
+   s" a flag before the closer is part of the row" T-LABEL
+   [: FLAG-BODY ;] LOADED TTHROWSQ
+
    s" a parsing word in a row body makes the row malformed" T-LABEL
    [: PARSER-BODY ;]
-   S\" error[E-MALFORMED-REGISTRY-ROW]: found `postpone` in the primitive-axiom row opened at 1:1\n --> <input>:1:12\n  |\n1 | EPRIM: FOO postpone EPRIM; PE-N EPRIM;\n  |            ^^^^^^^^ breaks the row\n  = help: a row's name and package are neither an opener nor a closer, its body holds only `PE-` or `;PE-` atoms and `REF` clauses, and it ends at `EPRIM;` or `ECLOSE-PRIVATE`: close the row before this token or replace it\n"
+   S\" error[E-MALFORMED-REGISTRY-ROW]: found `postpone` in the primitive-axiom row opened at 1:1\n --> <input>:1:12\n  |\n1 | EPRIM: FOO postpone EPRIM; PE-N EPRIM;\n  |            ^^^^^^^^ breaks the row\n  = help: a row's name and package are neither an opener nor a closer, its body holds only `PE-` or `;PE-` atoms, `REF` clauses and the flags `ETRUSTED-ONLY`, `EIMMEDIATE` and `EFIXED-ABI`, and it ends at `EPRIM;` or `ECLOSE-PRIVATE`: close the row before this token or replace it\n"
    REJECTED
 
    s" a source that ends inside a row makes the row malformed" T-LABEL
    [: OPEN-ROW ;]
-   S\" error[E-MALFORMED-REGISTRY-ROW]: found the end of the source in the primitive-axiom row opened at 1:1\n --> <input>:1:16\n  |\n1 | EPRIM: FOO PE-N\n  |                ^ the source ends before the row closes\n  = help: a row's name and package are neither an opener nor a closer, its body holds only `PE-` or `;PE-` atoms and `REF` clauses, and it ends at `EPRIM;` or `ECLOSE-PRIVATE`: close the row\n"
+   S\" error[E-MALFORMED-REGISTRY-ROW]: found the end of the source in the primitive-axiom row opened at 1:1\n --> <input>:1:16\n  |\n1 | EPRIM: FOO PE-N\n  |                ^ the source ends before the row closes\n  = help: a row's name and package are neither an opener nor a closer, its body holds only `PE-` or `;PE-` atoms, `REF` clauses and the flags `ETRUSTED-ONLY`, `EIMMEDIATE` and `EFIXED-ABI`, and it ends at `EPRIM;` or `ECLOSE-PRIVATE`: close the row\n"
    REJECTED
 
    s" a closer where a row's name stands makes the row malformed" T-LABEL

@@ -345,11 +345,11 @@ private
 \ (src/habu/prims.f) writes `EPRIM: name ... EPRIM;` and `EPPRIM: pkg name ...
 \ ECLOSE-PRIVATE`, and names a definer: `EPRIM: create EPRIM;` read word at a
 \ time defines `EPRIM;`. Fields are raw and share the engine delimiter rule. A
-\ body field is an atom, spelled `PE-...` or `;PE-...`, or a `REF` clause, `REF`
-\ and the field after it. A complete row is one REGISTRY token spanning the
-\ row, at its opener, with empty CONTENT; a row with any other field is
-\ MALFORMED-REGISTRY at that field, and one the source ends inside at the
-\ source's end.
+\ body field is an atom, spelled `PE-...` or `;PE-...`, a flag, `ETRUSTED-ONLY`,
+\ `EIMMEDIATE` or `EFIXED-ABI`, or a `REF` clause, `REF` and the field after
+\ it. A complete row is one REGISTRY token spanning the row, at its opener,
+\ with empty CONTENT; a row with any other field is MALFORMED-REGISTRY at that
+\ field, and one the source ends inside at the source's end.
 
 : SKIP-RAW-WS ( -- )
    begin GAP? while ADV drop repeat ;
