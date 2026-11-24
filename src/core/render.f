@@ -29,11 +29,10 @@ variable RBIND-FULL
 \ RTAILS is set while TAIL-CAPTURE, CYCLE-NOTES or NARROWED-NOTES renders: every
 \ quotation then shows its row tails.
 variable RTAILS   0 RTAILS !
-\ RNAMES is 1 while the first pass of REND-EFFECT or INFERRED-FROM records each
-\ row's tail (RPOS) and 2 while its second pass names the rows that share one;
-\ 0 otherwise. RFACTS is set while REND-EFFECT writes facts text.
+\ RNAMES is 1 while a first pass (REND-EFFECT, INFERRED-FROM) records each row's
+\ tail (RPOS), 2 while its second pass names the rows that share one, else 0.
 variable RNAMES   0 RNAMES !
-variable RFACTS   0 RFACTS !
+variable RFACTS   0 RFACTS !   \ set while REND-EFFECT writes facts text
 : RFACTS? ( -- bool ) RFACTS @ 0 <> ;
 
 
@@ -316,9 +315,8 @@ variable RBUF-TAIL   \ the tail of the row pushed last
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
-\ Rows letter in their own namespace, A to Z, then '?'. REND-EFFECT, INFERRED-FROM
-\ (RNAMES), RTAILS renderings, `stale<R>` and a diagnostic's pair holding a stale
-\ tail name rows; every other rendering shows cells only.
+\ Rows letter in their own namespace, A to Z, then '?'. RNAMES and RTAILS passes,
+\ a stale tail and the sides of a stale pair name rows; others show cells only.
 26 constant RROW-CAP
 create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 create RROW-LTR RROW-CAP cells allot   \ the letter each RROW-KEY row prints by
@@ -401,8 +399,7 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
 
 
 \ A row is named when its tail is not its owner's two rows' alone, and in facts
-\ text, which tags them, when its tail has no scope or its kind is not its
-\ unnamed form's (RVK-QUOT in a quotation, else 0).
+\ text also when that tail has no scope or a kind its unnamed form does not have.
 : RPOS-NAMED? ( n n -- bool )
    {: t:n owner:n :}
    t ISROW RFACTS? and IF
@@ -574,9 +571,8 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-\ Whether row s is a side of the diagnostic's pair (DEXP, DACT) and either
-\ side ends in a stale tail: both sides then show their tails, `R n` against
-\ `stale<R> n`.
+\ The expected and found rows show their tails when either ends in a stale tail:
+\ `R n` against `stale<R> n`.
 : PAIR-STALE? ( n -- bool ) {: s:n :}
    DEXP @ 0=  DACT @ 0=  or IF RES-FALSE EXIT THEN
    s DEXP @ =  s DACT @ =  or 0= IF RES-FALSE EXIT THEN
@@ -910,9 +906,8 @@ PTR-VARIABLE RSEEN-P   variable RSEEN-CAP
    RROW-N !  NLET !  RNAMED !  RLETS !  SEEN-BACK ;
 
 
-\ The body's effect so far, input row n to the current rows, in REND-EFFECT's
-\ two passes from the TEXT-LEN it is called with. Its names follow those the
-\ record gave; the second pass starts from the names the first started from.
+\ The body's effect so far, input row n to the current rows, in two passes that
+\ both start from the letters already given, so its names follow the record's.
 : INFERRED-FROM ( n -- )
    {: din:n :}
    TEXT-LEN @ {: base:n :}  NAMES-MARK
@@ -923,15 +918,8 @@ PTR-VARIABLE RSEEN-P   variable RSEEN-CAP
    SGSEEN @ IF SGIN @ ELSE BROW @ THEN INFERRED-FROM ;
 
 
-\ The escape rejection (MD-TAIL-ESCAPE): the declared callable, the argument
-\ compared with it, the held row, then the inferred effect, the order the record
-\ reads them, rendered with fresh letters into TCAP before later tokens bind
-\ their rows. Naming the callable pair, not the stacks around it, it reads the same
-\ whatever the definition holds beneath. The held row names the tail that
-\ escaped (checker.f TAIL-SKOLEM) and the row that would have come to equal or
-\ hold it (TAIL-ROW), so a join whose two callables read alike still says which
-\ side escaped. MDIAG gates every read, so a capture an abandoned trial made is
-\ never rendered.
+\ The escape rejection's callable pair, held row and inferred effect, in the order
+\ the record reads them, captured into TCAP before later tokens bind their rows.
 \ TCAP is mapped by the first capture. Its lengths are 0 until a capture, so a
 \ reader reads nothing.
 4096 constant TCAP-FIRST                  \ bytes of the first mapping

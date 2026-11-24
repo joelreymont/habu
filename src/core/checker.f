@@ -5984,7 +5984,7 @@ TAIL-CAPTURE-DEFAULT
    SCOPE-HIT @ 5 = IF MD-STORED-CLASS MDIAG! THEN
    \ a cell with no type left to read answers before any rule about which type
    \ it is
-   STALE-HIT @ 0 <> IF   \ the term copied only when this refusal latches the reason
+   STALE-HIT @ 0 <> IF
       MDIAG @  STALE-HIT @ STALE-WHY MDIAG!  MDIAG @ <> IF STALE-HIT @ MDIAG-CELL ! THEN
    THEN
    RAW-FENCE @ FENCE-EXEC = IF MD-RAW-EXEC MDIAG! THEN
@@ -24551,8 +24551,6 @@ variable NP-OUT-I
 : NP-ROW-ROOT ( n -- n ) NP-ROW-RAW NP-ROW-RES ;
 : NP-ROW-LET ( n -- n ) cells SG-ROWS-LET + @ ;
 
-\ The kind of an alias between two rows: 8 when either reached it through a
-\ stale tail, 6 otherwise.
 : NP-ALIAS-KIND ( n n -- n )
    R-RES STALE-ROW?  swap R-RES STALE-ROW?  or IF 8 EXIT THEN 6 ;
 
