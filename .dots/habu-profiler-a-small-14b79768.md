@@ -32,6 +32,8 @@ Measured at 1 ms with the program (bin/hb --load x.f): PW-P shows 0 exclusive an
 PW-MAIN
 ```
 
+The same scan moves exclusive samples: an arm64 sample inside C goes to the first code address found up from sp, stale or not. In an Omabox idle-pass profile (100 us, 19,642 samples, 9,935 of them foreign charged to callers), RECONCILE:CONFLICT-FROM, a binary search over an empty vector, showed 1,700 exclusive samples, about 42 ms a pass, where a thread CPU timer around its 16,222 calls a pass measured under 4 ms.
+
 Fix: the walk steps frame to frame instead of scanning. A tier-0 word that calls keeps its return address at sp + its slot bytes once the prologue has run, so the index must give each word's slot bytes and whether it calls. Not designed: the frames of primitives, tier-1 and kernel code, and a sample taken inside a prologue or epilogue. A filter that skips particular cells is a workaround. The design goes to Joel before a worker starts.
 
 Acceptance: the program shows no row and no caller edge for a word that was not on the call path; the build profile (bin/hb --load tools/build-profile.f -- /tmp/e /tmp/p.txt /tmp/p.json on a warm out root) lists no such word; docs/debugging.md 'Limits' states any case left. Files: src/habu/prof.f, src/habu/prof-abi.f, src/habu/t0-arm64.f (the frame facts the index records), docs/debugging.md. Verify: the program's two runs; the build profile. Depends: none; habu-write-the-profiler-b7cacfe0 moves the report, not the walk. Ownership: src/habu/prof.f. Claim: unassigned; the cause hunt is done.
