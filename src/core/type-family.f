@@ -488,6 +488,7 @@ private
 4 constant DRV-ADDR              \ address surface: one accessor per field
 8 constant DRV-INIT              \ initialized-record field accessors
 16 constant DRV-TAG              \ checked conversion from a tag, TAG>
+DRV-EQ DRV-HASH or DRV-ADDR or DRV-INIT or DRV-TAG or constant DRV-ALL
 
 : TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
 
@@ -2328,8 +2329,6 @@ variable ER-MARK    0 ER-MARK !
    drop RES-FALSE ;
 : PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   flags PF-FLAGS-NONE <> flags PF-FLAG-BUFFER <> and IF
-      s" pf: field flags set undefined bits" EXIT-STATUS:INTERNAL die THEN
    slot cellsn PF-RANGE-OK? 0= IF
       s" pf: a field's slot or cells is out of range" EXIT-STATUS:INTERNAL die THEN
    boff bytesn PF-RANGE-OK? 0= IF
@@ -3554,6 +3553,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    ER-TOKEN {: a:^ u:n :}
    u 1 = IF a c@ 45 = IF 0 EXIT THEN THEN
    a u ER-INT {: vis:n :}
+   vis SYM-GLOBAL <  vis SYM-PUBLIC >  or IF ER-BAD THEN
    ER-NAME$ {: pa:^ pu:n :}
    ER-TOKEN {: ta:^ tu:n :}
    pa pu vis ta tu CHECKER-PKG-SYM ;
@@ -3563,7 +3563,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
 : ER-VARIANT ( n -- n ) {: id:n :}
    ER-TOKEN {: na:^ nu:n :}
    ER-NUM {: tag:n :}
-   ER-NUM {: pc:n :}
+   PF-MAX-N CELL / ER-UPTO {: pc:n :}
    ER-NAME$ {: ca:^ cu:n :}
    ER-SYM {: sym:n :}
    ER-NUM {: k:n :}
@@ -3577,17 +3577,18 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    k ;
 
 
-: ER-FIELD ( n n -- ) {: id:n vstart:n :}
+: ER-FIELD ( n n n -- ) {: id:n vstart:n nv:n :}
    ER-TOKEN {: na:^ nu:n :}
    ER-NUM {: vo:n :}
+   vo PF-NO-VARIANT <  vo nv >=  or IF ER-BAD THEN
    vo 0 < IF PF-NO-VARIANT ELSE vstart vo + THEN {: var:n :}
-   var SUMV-N@ >= IF ER-BAD THEN
    ER-NUM {: slot:n :}
    ER-NUM {: nc:n :}
    ER-NUM {: boff:n :}
    ER-NUM {: nb:n :}
    ER-NUM {: al:n :}
    ER-NUM {: flags:n :}
+   flags PF-FLAGS-NONE <>  flags PF-FLAG-BUFFER <>  and IF ER-BAD THEN
    ER-SYM {: sym:n :}
    id TFAM-ARITY@ ER-NODE SCHEMA-ROOT+ {: root:n :}
    PF-N @ {: fid:n :}
@@ -3600,14 +3601,19 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    ER-NUM {: kind:n :}
    kind TFAM-KIND-VALID? 0= IF ER-BAD THEN
    ER-NUM {: vis:n :}
-   ER-NUM {: arity:n :}
-   arity 0 < IF ER-BAD THEN
+   vis CHECKER-PACKAGE-PRIVATE <>  vis CHECKER-PACKAGE-PUBLIC <>  and
+   IF ER-BAD THEN
+   TFAM-DECL-PARAM-COUNT ER-UPTO {: arity:n :}
    pa pu vis ta tu arity kind TFAM-DECL {: id:n :}
    id ix ENTRY!
    arity 0 ?do id i PK-MAX ER-UPTO TFAM-PK! loop
    id TL-MAX ER-UPTO TFAM-LAYOUT!
-   ER-NUM id TF-REC@ TF.DERIVE !
-   ER-NUM id TF-REC@ TF.OPAQUE !
+   ER-NUM {: drv:n :}
+   drv DRV-ALL invert and 0 <> IF ER-BAD THEN
+   ER-NUM {: opq:n :}
+   opq 0 <>  opq -1 <>  and IF ER-BAD THEN
+   drv id TF-REC@ TF.DERIVE !
+   opq id TF-REC@ TF.OPAQUE !
    id ER-SYM AT-SYM!
    id ;
 
@@ -3647,7 +3653,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    id pk nf ER-PAYLOAD-MIX? IF ER-BAD THEN
    nf 0 > IF
       TYPE-FIELD:COUNT {: base:n :}
-      nf 0 ?do id vstart ER-FIELD loop
+      nf 0 ?do id vstart nv ER-FIELD loop
       PF-COMMIT
       id base nf TFAM-FLD-RANGE!
    THEN
