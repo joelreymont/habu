@@ -95,8 +95,44 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    repeat ;
 
 
-: TABLE-FAULT ( -- )
-   s" check-verify: malformed open documents" EXIT-STATUS:INTERNAL die ;
+: BATCH-HELP ( -- )
+   s" stdin is frames, each a line `PU " REJECTION:EMIT-STR
+   s" SU` then PU bytes of a subject's " REJECTION:EMIT-STR
+   s" path and SU bytes of its text, " REJECTION:EMIT-STR
+   s" then its open documents (each a " REJECTION:EMIT-STR
+   s" line `PU U` then PU bytes of PATH " REJECTION:EMIT-STR
+   s" and U bytes of TEXT) and an empty " REJECTION:EMIT-STR
+   s" line; a `0 0` line ends it" REJECTION:EMIT-STR ;
+
+: OPEN-HELP ( -- )
+   s" stdin is the open documents, each " REJECTION:EMIT-STR
+   s" a line `PU U` then PU bytes of " REJECTION:EMIT-STR
+   s" PATH and U bytes of TEXT, the " REJECTION:EMIT-STR
+   s" counts in decimal; then an empty " REJECTION:EMIT-STR
+   s" line; then BYTES, to the end" REJECTION:EMIT-STR ;
+
+
+\ Places the record at the len bytes from IN's byte at. It goes to stderr:
+\ stdout is the subject's records.
+: FRAME-REJECT ( n n str -- ) {: at:n len:n want:^ wantu:n :}
+   false REJECTION:JSON !
+   2 REJECTION:FD!
+   NULL$ REJECTION:FILE!
+   0 IN IN-U @ 1 1 0 REJECTION:SOURCE!
+   s" E-CHECK-FRAME" REJECTION:OPEN
+   s" stdin does not follow the frame" REJECTION:EMIT-STR
+   IN-U @ 0 > if
+      at IN len REJECTION:AT
+      s" expected " REJECTION:EMIT-STR  want wantu REJECTION:EMIT-STR
+   then
+   REJECTION:HELP
+   BATCH? @ if BATCH-HELP else OPEN-HELP then
+   EXIT-STATUS:DATAERR REJECTION:STOP ;
+
+
+: COUNT-WANT ( n -- str )
+   LF = if s" a decimal count, then a newline" exit then
+   s" a decimal count, then a space" ;
 
 
 \ The count in IN from POS up to the byte C, POS moved past C. READ-IN keeps
@@ -106,12 +142,15 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: k:n :}
-   k 0 < if TABLE-FAULT then
+   k 0 < if
+      POS @  IN-U @ POS @ -
+      c COUNT-WANT FRAME-REJECT
+   then
    POS @ IN k STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH {: count:n :}
-   count 0 < if TABLE-FAULT then
+   count 0 < if POS @ k s" a decimal count" FRAME-REJECT then
    POS @ k + 1+ POS !
    count ;
 
@@ -119,9 +158,13 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ The open document whose line starts at POS, into OPEN-AT, POS moved past its
 \ text.
 : OPEN-ENTRY ( -- )
+   POS @ {: line:n :}
    STR:SPACE COUNT-TO {: pu:n :}
    LF COUNT-TO {: tu:n :}
-   POS @ pu + tu + IN-U @ > if TABLE-FAULT then
+   IN-U @ POS @ - {: rest:n :}
+   pu rest >  tu rest pu - >  or if
+      line  POS @ line - 1-  s" PU + U bytes after this line" FRAME-REJECT
+   then
    OPEN-N @ 4 * {: at:n :}
    at 4 + OPEN-AT-RESERVE
    POS @ at OPEN-AT !
@@ -138,7 +181,9 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    0 POS !
    0 OPEN-N !
    begin
-      POS @ IN-U @ >= if TABLE-FAULT then
+      POS @ IN-U @ >= if
+         IN-U @ 1-  1  s" an empty line before the subject's bytes" FRAME-REJECT
+      then
       POS @ IN c@ LF <>
    while
       OPEN-ENTRY
@@ -574,10 +619,24 @@ public
 \ Each frame owns its subject and its open-document snapshot. The zero path
 \ length ends the stream. A new scope and fresh output deduplication follow.
 : BATCH-NEXT ( -- bool )
+   POS @ {: line:n :}
    STR:SPACE COUNT-TO {: pu:n :}
    LF COUNT-TO {: su:n :}
-   pu 0= if su 0<> POS @ IN-U @ <> or if TABLE-FAULT then false exit then
-   POS @ pu + su + IN-U @ > if TABLE-FAULT then
+   pu 0= if
+      su 0<> if
+         line  POS @ line - 1-
+         s" a `0 0` line, or a path length above 0" FRAME-REJECT
+      then
+      POS @ IN-U @ <> if
+         line  POS @ line - 1-
+         s" nothing after the `0 0` line" FRAME-REJECT
+      then
+      false exit
+   then
+   IN-U @ POS @ - {: rest:n :}
+   pu rest >  su rest pu - >  or if
+      line  POS @ line - 1-  s" PU + SU bytes after this line" FRAME-REJECT
+   then
    POS @ SUBJECT-PATH-AT !
    pu SUBJECT-PATH-U !
    POS @ pu + SUBJECT-AT !
@@ -585,7 +644,10 @@ public
    POS @ pu + su + POS !
    0 OPEN-N !
    begin
-      POS @ IN-U @ >= if TABLE-FAULT then
+      POS @ IN-U @ >= if
+         IN-U @ 1-  1
+         s" an empty line after the frame's open documents" FRAME-REJECT
+      then
       POS @ IN c@ LF <>
    while OPEN-ENTRY repeat
    POS @ 1+ POS !

@@ -21,6 +21,10 @@ split-str
 \ (VERIFY:SUPPLIED); of two entries for one PATH the first holds. The file
 \ must still be on disk: the loader resolves it there, and one that is not is
 \ no such source. check.f's pre-pass, the second form, sends none.
+\ Under --batch and --batch-ref, STDIN is frames instead, each a line `PU SU`
+\ then PU bytes of a subject's path and SU bytes of its text, then its open
+\ documents as above and an empty line; a `0 0` line ends the stream, and
+\ nothing follows it.
 \
 \ The child is the engine, which carries the verifier, with this file and
 \ tools/check-verify-child-lib.f, its body, so no tool's word stands in for, or
