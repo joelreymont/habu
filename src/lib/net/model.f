@@ -2649,15 +2649,22 @@ private
    1 <> if E-RESPONSE throw then ;
 
 \ An incomplete reply keeps its reason in the content buffer: it has no
-\ content, and its decoded reason is no longer than the response that holds it.
-: READ-INCOMPLETE ( ^call -- )
-   {: c :}
-   s" incomplete_details" c REPLY-AT
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" reason" DESCEND
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:INCOMPLETE-U !
-   JSON:READ-CLOSE E-INCOMPLETE throw ;
+\ content.
+: READ-INCOMPLETE ( JSON:value ^call -- )
+   {: v c :}
+   v s" incomplete_details" JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH {: d :}
+   d JSON:OBJECT? 0= if E-RESPONSE throw then
+   d s" reason" JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH {: r :}
+   r JSON:STRING? 0= if E-RESPONSE throw then
+   r [: dup c MODEL-CALL:INCOMPLETE-U !
+      BUF:N>BLEN c CONTENT-BUF BUF:REPLACE ;] JSON:WITH-STRING
+   E-INCOMPLETE throw ;
 
 \ The fault a failed reply's error object names by its code.
 : CODE-FAULT ( JSON:value -- n )
@@ -2674,10 +2681,8 @@ private
    E-HTTP ;
 
 \ A failed reply keeps its error message as the call's error text.
-: READ-FAILURE ( ^call -- )
-   {: c :}
-   c RESPONSE$ JSON:PARSE {: v :}
-   v JSON:OBJECT? 0= if E-RESPONSE throw then
+: READ-FAILURE ( JSON:value ^call -- )
+   {: v c :}
    v s" error" JSON:FIND MATCH option
       none OF E-RESPONSE throw ENDOF
       some OF ENDOF
@@ -2687,20 +2692,22 @@ private
    e CODE-FAULT throw ;
 
 \ Throws the fault of a reply whose status is other than completed.
-: REPLY-STATUS ( ^call -- )
-   {: c :}
-   s" status" c REPLY-AT
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" incomplete" JSON:READ-STR-EQ? if JSON:READ-CLOSE c READ-INCOMPLETE then
-   s" failed" JSON:READ-STR-EQ? if JSON:READ-CLOSE c READ-FAILURE then
-   s" completed" JSON:READ-STR-EQ? {: done:bool :}
-   JSON:READ-CLOSE
-   done 0= if E-RESPONSE throw then ;
+: REPLY-STATUS ( JSON:value ^call -- )
+   {: v c :}
+   v s" status" JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH {: st :}
+   st JSON:STRING? 0= if E-RESPONSE throw then
+   st s" incomplete" JSON:STRING= if v c READ-INCOMPLETE then
+   st s" failed" JSON:STRING= if v c READ-FAILURE then
+   st s" completed" JSON:STRING= 0= if E-RESPONSE throw then ;
 
 : ACCEPT-CHAT ( ^call -- )
    {: c :}
-   c RESPONSE$ JSON-OBJECT? 0= if E-RESPONSE throw then
-   c REPLY-STATUS
+   c RESPONSE$ JSON:PARSE {: v :}
+   v JSON:OBJECT? 0= if E-RESPONSE throw then
+   v c REPLY-STATUS
    c MODEL-CALL:FORM @ MATCH reply-form
       none OF E-RESPONSE throw ENDOF
       schema OF
