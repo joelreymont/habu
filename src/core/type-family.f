@@ -2310,8 +2310,9 @@ variable ER-MARK    0 ER-MARK !
 : PF-POLICY-OK? ( n -- bool )   \ a policy that lays out fields
    TFAM-LAYOUT-POLICY@ {: p:n :}
    p TL-STACK-CELL-TAG =  p TL-PACKED-TAG =  or  p TL-NICHE =  or ;
-\ A field row hb writes. Each test reads only what the tests before it found
-\ in range: a live family, a schema root, cells that fit.
+\ A field row's numbers in the ranges hb writes, all but its width
+\ (PF-WIDTHS-REQUIRE). Each test reads only what the tests before it found in
+\ range: a live family, a schema root, cells that fit.
 : PF-ROW-OK? ( n n n n n n n n n -- bool )
    {: fam:n var:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    fam var PF-OWNER-OK? 0= IF RES-FALSE EXIT THEN
@@ -3727,7 +3728,7 @@ EXPORT BOOT:TYPES-WL
                rec CK-REC-NAME$ CT-FIND drop
             ELSE
                rec CK-REC-NAME$ SPLIT-NAME 0= IF
-                  s" tfam: bad type entry name" EXIT-STATUS:INTERNAL die THEN
+                  s" type entry"  rec CK-REC-NAME$  DAMAGED-OBJECT THEN
                TFAM-FIND drop drop
             THEN
          THEN

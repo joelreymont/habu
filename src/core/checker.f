@@ -18484,25 +18484,34 @@ PROW-P PROW-CAP-V 1 PROW-END STORE+
    {: sym:n :}
    BUILDING? IF sym HOLD-UNDEFINE THEN
    sym UNDEFINE-SYM ;
-\ Ends the process on a saved object hb did not write: what is damaged (a
-\ type entry, an undefine) and its name.
-: DAMAGED-OBJECT ( str str -- )
+\ The record of a saved object hb did not write: w is what is damaged (a type
+\ entry, an undefine), n its name, escaped.
+: DAMAGED-RECORD ( str str -- )
    {: w:^ wu:n n:^ nu:n :}
    s" E-DAMAGED-OBJECT" REJECTION:OPEN
    s" a saved object's " REJECTION:EMIT-STR  w wu REJECTION:EMIT-STR
-   s"  `" REJECTION:EMIT-STR  n nu REJECTION:EMIT-STR
+   s"  `" REJECTION:EMIT-STR  n nu REJECTION:EMIT-ESC
    s" ` does not read as hb wrote it" REJECTION:EMIT-STR
    s" objects" REJECTION:NOTE
    s" <out>/obj, where <out> is $HABU_OUT, else .out in the working directory"
    REJECTION:EMIT-STR
    REJECTION:HELP
    s" delete <out>/obj and build again; if hb's own image holds it, reinstall hb"
-   REJECTION:EMIT-STR
-   EXIT-STATUS:DATAERR REJECTION:STOP ;
-\ A malformed text names, as far as it reads, the package and the tail.
+   REJECTION:EMIT-STR ;
+\ Rejects with status DATAERR a saved object hb did not write. The record
+\ prints under QUIET too; a quiet scope that catches the throw finds QUIET as
+\ it left it.
+: DAMAGED-OBJECT ( str str -- )
+   {: w:^ wu:n n:^ nu:n :}
+   REJECTION:QUIET @ {: q:n :}
+   0 REJECTION:QUIET !
+   [: w wu n nu DAMAGED-RECORD  EXIT-STATUS:DATAERR REJECTION:STOP ;]
+   [: q REJECTION:QUIET ! ;] finally ;
+\ A malformed text names its package and tail bytes, or nothing when it is
+\ too short to hold them.
 : READ-UNDEFINE ( str -- )
    {: a:^ u:n :}
-   u CELL 2 + < IF s" undefine" a u DAMAGED-OBJECT THEN
+   u CELL 2 + < IF s" undefine" a 0 DAMAGED-OBJECT THEN
    a CELL-VIEW @ {: pkgu:n :}
    a CELL + c@ {: vis:n :}
    pkgu 0 <  u CELL 2 + - pkgu <  or  vis SYM-PUBLIC >  or IF
