@@ -2923,22 +2923,12 @@ private
    c [: dup ACCEPT-CHAT ;] catch {: code:n :} drop
    code RESPONSE-ERROR ;
 
-\ The bytes of the usage member of the JSON object in the bytes, and whether
-\ it is there as an object; no bytes when it is absent or not one.
-: USAGE ( ^u8 n ^call -- ^u8 n bool )
-   {: a:^ u:n c :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:T-OBJ EXPECT
-   s" usage" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE a 0 false exit then
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE a 0 false exit then
-   JSON:READ-VALUE-SPAN$ {: o:^ o-u:n :}
-   JSON:READ-CLOSE o o-u true ;
-
-\ The current usage count: an integer, or none for null.
-: USAGE-COUNT ( JSON:reader -- JSON:reader option<n> )
-   JSON:READ-TOKEN dup JSON:T-INT = if drop JSON:READ-INT OPTION:SOME exit then
-   JSON:T-NULL <> if JSON:READ-CLOSE E-RESPONSE throw then
-   OPTION:NONE ;
+\ A usage count: an integer, or none for null.
+: USAGE-COUNT ( JSON:value -- option<n> )
+   {: v :}
+   v JSON:NULL? if OPTION:NONE exit then
+   v JSON:INTEGER? 0= if E-RESPONSE throw then
+   v JSON:>N OPTION:SOME ;
 
 \ A count, 0 when absent.
 : OR-ZERO ( option<n> -- n )
@@ -2947,85 +2937,107 @@ private
       some OF ENDOF
    ;MATCH ;
 
-\ The usage count at the key: none when the key is absent or null.
-: COUNT-AT ( JSON:reader str -- JSON:reader option<n> )
-   JSON:READ-FIND-KEY 0= if OPTION:NONE exit then
-   USAGE-COUNT ;
+\ The count at the key of an object, such as a usage object: none when the
+\ key is absent or null.
+: USAGE-AT ( JSON:value str -- option<n> )
+   JSON:FIND MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF USAGE-COUNT ENDOF
+   ;MATCH ;
 
-\ The count at the key of the JSON object the bytes hold, such as a usage
-\ object. Each count reads the object again, as providers order its members
-\ freely.
-: USAGE-AT ( str ^call str -- option<n> )
-   {: a:^ u:n c key:^ key-u:n :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:T-OBJ EXPECT
-   key key-u COUNT-AT {: got :}
-   JSON:READ-CLOSE got ;
+\ The count at the key of a member object of the usage object; none when that
+\ member is absent or not an object.
+: DETAIL-AT ( JSON:value str str -- option<n> )
+   {: v detail:^ detail-u:n key:^ key-u:n :}
+   v detail detail-u JSON:FIND MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF {: d :}
+         d JSON:OBJECT? 0= if OPTION:NONE exit then
+         d key key-u USAGE-AT
+      ENDOF
+   ;MATCH ;
 
-\ The count at the key of a member object of the usage object the bytes hold;
-\ none when that member is absent or not an object.
-: DETAIL-AT ( str ^call str str -- option<n> )
-   {: a:^ u:n c detail:^ detail-u:n key:^ key-u:n :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:T-OBJ EXPECT
-   detail detail-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE OPTION:NONE exit then
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE OPTION:NONE exit then
-   key key-u COUNT-AT {: got :}
-   JSON:READ-CLOSE got ;
+\ The reply's usage object, none when absent or not an object; marks the
+\ call's usage seen when there is one.
+: USAGE? ( JSON:value ^call -- option<JSON:value> )
+   {: v c :}
+   v s" usage" JSON:FIND MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF {: u :}
+         u JSON:OBJECT? 0= if OPTION:NONE exit then
+         true c TOKENS TOKENS-SEEN !
+         u OPTION:SOME
+      ENDOF
+   ;MATCH ;
 
-\ The bytes' usage object and whether they carry one; marks the call's usage
-\ seen.
-: USAGE? ( str ^call -- str bool )
-   {: a:^ u:n c :}
-   a u c USAGE {: o:^ o-u:n present:bool :}
-   present if true c TOKENS TOKENS-SEEN ! then
-   o o-u present ;
+\ A usage object's counts, in the Responses protocol's names.
+: USAGE-COUNTS ( JSON:value ^call -- )
+   {: u c :}
+   u s" input_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
+   u s" output_tokens" USAGE-AT c TOKENS TOKENS-OUTPUT !
+   u s" input_tokens_details" s" cached_tokens" DETAIL-AT
+   c TOKENS TOKENS-CACHED !
+   u s" input_tokens_details" s" cache_write_tokens" DETAIL-AT
+   c TOKENS TOKENS-WRITTEN !
+   u s" output_tokens_details" s" reasoning_tokens" DETAIL-AT
+   c TOKENS TOKENS-REASONING ! ;
 
-\ A chat or compaction reply's usage counts, in the Responses protocol's
-\ names.
+\ A chat or compaction reply's usage counts.
 : ACCEPT-USAGE ( ^call -- )
    {: c :}
-   c RESPONSE$ c USAGE? {: a:^ u:n present:bool :}
-   present 0= if exit then
-   a u c s" input_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
-   a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-OUTPUT !
-   a u c s" input_tokens_details" s" cached_tokens" DETAIL-AT
-   c TOKENS TOKENS-CACHED !
-   a u c s" input_tokens_details" s" cache_write_tokens" DETAIL-AT
-   c TOKENS TOKENS-WRITTEN !
-   a u c s" output_tokens_details" s" reasoning_tokens" DETAIL-AT
-   c TOKENS TOKENS-REASONING ! ;
+   c RESPONSE$ JSON:PARSE c USAGE? MATCH option
+      none OF ENDOF
+      some OF c USAGE-COUNTS ENDOF
+   ;MATCH ;
+
+\ An embeddings usage object's prompt_tokens.
+: PROMPT-TOKENS ( JSON:value ^call -- )
+   {: u c :}
+   u s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT ! ;
 
 \ An embeddings reply's prompt_tokens, from its usage object's bytes.
 : EMBED-TOKENS ( str ^call -- str ^call )
    {: a:^ u:n c :}
-   a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
+   a u JSON:PARSE c PROMPT-TOKENS
    a u c ;
+
+: FAULT-TOKENS ( ^call -- ^call )
+   {: c :}
+   c RESPONSE$ JSON:PARSE c USAGE? MATCH option
+      none OF ENDOF
+      some OF c PROMPT-TOKENS ENDOF
+   ;MATCH c ;
 
 \ The prompt_tokens of a reply the walk rejected, read from the whole reply;
 \ the walk's fault is the one passed on.
 : FAULT-USAGE ( ^call -- )
-   [: dup >r RESPONSE$ r@ USAGE? if r@ EMBED-TOKENS drop then 2drop r> ;]
-   catch {: code:n :} drop ;
+   [: FAULT-TOKENS ;] catch {: code:n :} drop ;
 
 : PARSE-USAGE ( ^call -- )
    {: c :}
    c [: dup ACCEPT-USAGE ;] catch {: code:n :} drop
    code RESPONSE-ERROR ;
 
-\ The tier the reply says served it, when it names one: a nonempty string, or
-\ null for none.
-: ACCEPT-TIER ( ^call -- )
-   {: c :}
-   c MODEL-CALL:READER c RESPONSE$ JSON:READ-INIT
-   JSON:T-OBJ EXPECT
-   s" service_tier" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
-   JSON:READ-TOKEN dup JSON:T-NULL = if drop JSON:READ-CLOSE exit then
-   JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c REPLY-STR {: a:^ u:n :}
-   JSON:READ-CLOSE
+\ Keeps the served tier's name; an empty one is E-RESPONSE.
+: SERVED! ( str ^call -- )
+   {: a:^ u:n c :}
    u 0= if E-RESPONSE throw then
    a u BUF:N>BLEN c SERVED-BUF BUF:REPLACE ;
+
+\ A served tier: a nonempty string, or null for none.
+: SERVED-TIER ( JSON:value ^call -- )
+   {: t c :}
+   t JSON:NULL? if exit then
+   t JSON:STRING? 0= if E-RESPONSE throw then
+   t [: c SERVED! ;] JSON:WITH-STRING ;
+
+\ The tier the reply says served it, when it names one.
+: ACCEPT-TIER ( ^call -- )
+   {: c :}
+   c RESPONSE$ JSON:PARSE s" service_tier" JSON:FIND MATCH option
+      none OF ENDOF
+      some OF c SERVED-TIER ENDOF
+   ;MATCH ;
 
 : PARSE-TIER ( ^call -- )
    {: c :}
@@ -3485,7 +3497,7 @@ ENUM poll none fed spoiled done ;ENUM
 \ A count reply's input_tokens, at its top level: an integer.
 : ACCEPT-COUNT ( ^call -- )
    {: c :}
-   c RESPONSE$ c s" input_tokens" USAGE-AT MATCH option
+   c RESPONSE$ JSON:PARSE s" input_tokens" USAGE-AT MATCH option
       none OF E-RESPONSE throw ENDOF
       some OF c MODEL-CALL:COUNTED ! ENDOF
    ;MATCH ;
