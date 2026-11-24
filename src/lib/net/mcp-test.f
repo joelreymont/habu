@@ -2142,6 +2142,9 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    s" `description`, `title`, `default`, `examples`, `deprecated`, `readOnly`, `writeOnly`, " SB-APPEND
    S\" `$comment`, `format`, found `\"multipleOf\"`; rename the member to one of those, or remove it" SB-APPEND
    SB$ SAID
+   s" ADD-TOOL rejects an inputSchema that repeats a key" T-LABEL
+   [: S\" {\"name\":\"t\",\"inputSchema\":{\"type\":\"object\",\"type\":\"string\"},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   S\" inputSchema 1:18: expected a member name not used before in this object, found `\"type\"`; remove the repeated member" SAID
    s" ADD-TOOL rejects an inputSchema without a type" T-LABEL
    [: S\" {\"name\":\"t\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    S\" inputSchema 1:2: expected a member `type`, found `}`; add `\"type\":\"object\"`" SAID

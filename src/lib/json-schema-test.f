@@ -11,12 +11,16 @@ require src/lib/heap.f
 require src/lib/span.f
 require src/lib/vector.f
 require src/lib/reason.f
+require src/lib/json.f
 require src/lib/json-schema.f
 
 package JSON-SCHEMA-TEST
 
+: PARSED ( ^u8 n ^ARENA:arena -- JSON-SCHEMA:schema ) {: t:^ u:n a:^ :}
+   t u JSON:PARSE a JSON-SCHEMA:COMPILE ;
+
 : COMPILE-ONLY ( ^u8 n -- )
-   [: JSON-SCHEMA:COMPILE drop ;] ARENA:WITH ;
+   [: PARSED drop ;] ARENA:WITH ;
 
 : ACCEPTS ( ^u8 n -- ) {: t:^ u:n :}
    [: t u COMPILE-ONLY ;] catch 0 T= ;
@@ -42,10 +46,6 @@ package JSON-SCHEMA-TEST
    s\" {\"type\":\"integer\",\"multipleOf\":2}"
    s\" 1:19: expected one of `$schema`, `type`, `enum`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `properties`, `required`, `additionalProperties`, `maxProperties`, `items`, `minItems`, `maxItems`, `uniqueItems`, `anyOf`, `oneOf`, `description`, `title`, `default`, `examples`, `deprecated`, `readOnly`, `writeOnly`, `$comment`, `format`, found `\"multipleOf\"`; rename the member to one of those, or remove it"
    REJECTS
-   s" COMPILE rejects a keyword repeated in one schema at its second key" T-LABEL
-   s\" {\"type\":\"string\",\"type\":\"integer\"}"
-   s\" 1:18: expected each member once, found `\"type\"`; remove the repeated member, keeping one"
-   REJECTS
    s" COMPILE rejects `$schema` in a sub-schema" T-LABEL
    s\" {\"items\":{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}}"
    s\" 1:11: expected one of `type`, `enum`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `properties`, `required`, `additionalProperties`, `maxProperties`, `items`, `minItems`, `maxItems`, `uniqueItems`, `anyOf`, `oneOf`, `description`, `title`, `default`, `examples`, `deprecated`, `readOnly`, `writeOnly`, `$comment`, `format`, found `\"$schema\"`; rename the member to one of those, or remove it"
@@ -58,17 +58,17 @@ package JSON-SCHEMA-TEST
    s\" {\"type\":\"text\"}"
    s\" 1:9: expected `type` as one of `null`, `boolean`, `object`, `array`, `number`, `string` and `integer`, found `\"text\"`; write one of those type names"
    REJECTS
-   s" COMPILE rejects an empty type array at its `]`" T-LABEL
+   s" COMPILE rejects an empty type array at its `[`" T-LABEL
    s\" {\"type\":[]}"
-   s\" 1:10: expected `type` as an array of one type name or more, found `]`; name a type, or remove `type`"
+   s\" 1:9: expected `type` as an array of one type name or more, found `[`; name a type, or remove `type`"
    REJECTS
    s" COMPILE rejects a repeated type at its second copy" T-LABEL
    s\" {\"type\":[\"string\",\"null\",\"string\"]}"
    s\" 1:26: expected `type` naming each type once, found `\"string\"`; remove the repeated type name"
    REJECTS
-   s" COMPILE rejects an empty enum at its `]`" T-LABEL
+   s" COMPILE rejects an empty enum at its `[`" T-LABEL
    s\" {\"enum\":[ ]}"
-   s\" 1:11: expected `enum` as an array of one value or more, found `]`; list the values allowed in an array"
+   s\" 1:9: expected `enum` as an array of one value or more, found `[`; list the values allowed in an array"
    REJECTS
    s" COMPILE rejects a negative minLength" T-LABEL
    s\" {\"minLength\":-1}"
@@ -84,15 +84,11 @@ package JSON-SCHEMA-TEST
    REJECTS
    s" COMPILE rejects a pattern REGEX rejects, with REGEX's text" T-LABEL
    s\" {\"type\":\"string\",\"pattern\":\"(a\"}"
-   s\" 1:28: expected a pattern the dialect takes, found pattern column 3: expected `)` to close a group, found the end of the pattern; close each `(` with `)`; rewrite the pattern as its text says"
+   s\" 1:28: expected a pattern the dialect takes, found `\"(a\"`; pattern column 3: expected `)` to close a group, found the end of the pattern; close each `(` with `)`; rewrite the pattern as its text says"
    REJECTS
    s" COMPILE rejects properties that are no object" T-LABEL
    s\" {\"properties\":[\"a\"]}"
    s\" 1:15: expected `properties` as an object of schema objects, found `[`; write an object mapping each property name to its schema"
-   REJECTS
-   s" COMPILE rejects a property name repeated at its second copy" T-LABEL
-   s\" {\"properties\":{\"a\":{},\"a\":{\"type\":\"string\"}}}"
-   s\" 1:23: expected `properties` naming each property once, found `\"a\"`; remove the repeated property, keeping one"
    REJECTS
    s" COMPILE rejects a required name that is no string" T-LABEL
    s\" {\"required\":[\"a\",1]}"
@@ -110,9 +106,9 @@ package JSON-SCHEMA-TEST
    s\" {\"type\":\"array\",\"items\":true}"
    s\" 1:25: expected `items` as a schema object, found `true`; write a schema object, `{}` for any value"
    REJECTS
-   s" COMPILE rejects an empty anyOf at its `]`" T-LABEL
+   s" COMPILE rejects an empty anyOf at its `[`" T-LABEL
    s\" {\"anyOf\":[]}"
-   s\" 1:11: expected `anyOf` as an array of one schema object or more, found `]`; list the alternatives' schemas in an array"
+   s\" 1:10: expected `anyOf` as an array of one schema object or more, found `[`; list the alternatives' schemas in an array"
    REJECTS
    s" COMPILE rejects uniqueItems beside object items, at its `true`" T-LABEL
    s\" {\"type\":\"array\",\"uniqueItems\":true,\"items\":{\"type\":\"object\"}}"
@@ -129,10 +125,6 @@ package JSON-SCHEMA-TEST
    s" COMPILE rejects an enum number nested in a value, at the number" T-LABEL
    s\" {\"enum\":[{\"a\":[1,1e99999999999999999999]}]}"
    s\" 1:18: expected `enum` values whose exponents a signed 64-bit cell holds, found `1e99999999999999999999`; write each number with a smaller exponent"
-   REJECTS
-   s" COMPILE rejects text that ends inside the schema" T-LABEL
-   s\" {\"type\":"
-   s\" 1:9: expected a value, found the end of the input; write the rest of the document, closing each open array with `]` and object with `}`"
    REJECTS ;
 
 \ Each cell holds a vector, NULL-PTR while it is not made.
@@ -149,7 +141,7 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
 
 : CHECKED ( ^u8 n ^u8 n ^ARENA:arena -- bool )
    {: v:^ vu:n s:^ su:n a:^ :}
-   s su a JSON-SCHEMA:COMPILE {: sc :}
+   s su a PARSED {: sc :}
    v vu sc VIOLATION @ JSON-SCHEMA:VALID? ;
 
 \ The value v checked against the schema s, the vector cleared first.

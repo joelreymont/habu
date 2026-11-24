@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-11-24T17:22:27.440196+01:00"
 blocks:
-  - habu-compile-a-json-92f9f4cf
   - habu-validate-a-json-9ec8e7c9
 ---
 

@@ -1085,12 +1085,14 @@ CAST: HELD>N ( held -- n )
 : INPUT-SCHEMA ( ^u8 n n -- )
    {: in:^ iu:n idx:n :}
    ARENA:NEW {: ar:^ :}
-   [: in iu ar JSON-SCHEMA:COMPILE idx TOOL-INPUT !  in iu OBJECT-ROOT ;] catch
+   [: in iu JSON:PARSE ar JSON-SCHEMA:COMPILE idx TOOL-INPUT !
+      in iu OBJECT-ROOT ;] catch
    {: code:n :}
    code REASON:TEXT$ {: ta:^ tu:n :}
    code 0<> if ar ARENA:RELEASE then
    code JSON-SCHEMA:E-SCHEMA = if s" inputSchema" ta tu SAY then
-   code 0<> if code throw then ;
+   s" inputSchema" code SCHEMA-CODE {: rest:n :}
+   rest 0<> if rest throw then ;
 
 
 \ The offset of the first byte UTF8:NEXT answers raw-byte for, else -1.

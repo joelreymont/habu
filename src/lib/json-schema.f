@@ -1,6 +1,6 @@
 split-str
-\ json-schema.f - JSON Schema, package JSON-SCHEMA: COMPILE reads a schema's
-\ text into nodes that state what a JSON value must be; VALID? checks a
+\ json-schema.f - JSON Schema, package JSON-SCHEMA: COMPILE reads a schema, a
+\ JSON:value, into nodes that state what a JSON value must be; VALID? checks a
 \ value against them.
 \
 \ CONTRACT. COMPILE takes one schema object of the 2020-12 dialect. Its
@@ -12,13 +12,13 @@ split-str
 \ names https://json-schema.org/draft/2020-12/schema. A sub-schema is an
 \ object; additionalProperties may also be true or false. uniqueItems is
 \ true only beside an `items` whose `type` names scalar types only. Another
-\ keyword, a keyword repeated in one schema, a value its keyword does not
-\ take, a bound or enum number whose exponent a signed cell does not hold,
-\ or text that is no JSON throws E-SCHEMA through REASON:THROW with the
-\ text `L:C: expected X, found Y; fix`, line and byte column in the schema
-\ text. COMPILE makes no nested call per sub-schema: each open schema object
-\ is a level on a stack in the scratch arena, read one member or element a
-\ step, so memory, not the machine stack, bounds a schema's depth.
+\ keyword, a value its keyword does not take, or a bound or enum number whose
+\ exponent a signed cell does not hold throws E-SCHEMA through REASON:THROW
+\ with the text `L:C: expected X, found Y; fix`, line and byte column in the
+\ text the schema lies in. COMPILE makes no nested call per sub-schema:
+\ JSON:WALK gives the schema's events in one pass, and each open schema
+\ object is a level on a stack in the scratch arena, so memory, not the
+\ machine stack, bounds a schema's depth.
 \ VALID? ( str schema ^VEC:vector<u8> -- bool ) answers whether a JSON value text the
 \ reader admits satisfies the schema, and false appends the first
 \ violation, `P: expected X, found Y; fix` with P `.name` per member and
@@ -131,21 +131,21 @@ STRUCTURE schema OPAQUE
 
 private
 
-\ What a level reads next: its own keywords, the members of its
-\ `properties` object, or the elements of its anyOf or oneOf array.
-ENUM reading keywords properties choice ;ENUM
+\ What a level reads next: a keyword's name or value, a `properties` member's
+\ name or schema, or an element of its anyOf or oneOf array.
+ENUM reading keywords value properties member choice ;ENUM
 
-\ build: one COMPILE call. Rejections are placed from text's start; top is the
-\ innermost open level, NULL-PTR once the root's `}` is read.
-\ level: one open schema object. base is the root index of names' first name; a
-\ tail is where its list's next record goes; unique-at is 0 for no `true`.
+\ build: one COMPILE call. top is the innermost open level, null outside the
+\ root; skip counts the containers open in a value judged whole at its close.
+\ level: one open schema object. Root indexes: base of names' first name,
+\ keyword of the keyword or choice being read. name's schema is read next.
 MUTUAL build level
 STRUCTURE build DERIVE addr
    FIELD arena ^ARENA:arena
    FIELD scratch ^ARENA:arena
-   FIELD text ^u8
    FIELD root ^node
    FIELD top ^level
+   FIELD skip n
 ;STRUCTURE
 STRUCTURE level DERIVE addr
    FIELD build ^build
@@ -157,9 +157,8 @@ STRUCTURE level DERIVE addr
    FIELD phase reading
    FIELD names SPAN:span<u8>
    FIELD base n
-   FIELD seen ^u8
-   FIELD choice n
-   FIELD unique-at n
+   FIELD keyword n
+   FIELD name SPAN:span<u8>
 ;STRUCTURE
 ;MUTUAL
 
@@ -169,120 +168,116 @@ ARENA BRANCHES branch
 ARENA ENTRIES entry
 ARENA BUILDS build
 ARENA LEVELS level
-ARENA CURSORS JSON:cursor
 
 \ ---- rejections ------------------------------------------------------------
 
-\ Rejects the current token: READ-REJECT's E-MEMBER text leaves as
+\ Rejects the value at its first byte: JSON:REJECT's E-MEMBER text leaves as
 \ E-SCHEMA.
-: REJECT ( JSON:reader str str -- )
-   {: ea:^ eu:n fa:^ fu:n :}
-   [: ea eu fa fu JSON:READ-REJECT ;] catch {: code:n :}
+: REJECT ( JSON:value str str -- )
+   {: v ea:^ eu:n fa:^ fu:n :}
+   [: v ea eu fa fu JSON:REJECT ;] catch {: code:n :}
    code JSON:E-MEMBER = if
       JSON:E-MEMBER REASON:TEXT$ E-SCHEMA REASON:THROW
    then
    code throw ;
 
-\ Opens a text `L:C: expected e, found ` for the byte at offset at of the
-\ schema text.
-: OPEN-AT ( ^build n str -- ) {: b:^ at:n e:^ eu:n :}
-   b BUILD-TEXT @ dup at + 1 1 0 REJECTION:POSITION drop
-   REASON:OPEN REASON:AT
-   REASON:EXPECTED e eu REASON:APPEND REASON:FOUND ;
+: PUT ( ^u8 str -- ^u8 ) {: dst:^ a:^ u:n :}
+   a dst u BYTE-COPY  dst u + ;
 
-\ Throws E-SCHEMA for the byte at offset at, which the reader has left,
-\ with the expected text, the found text f as given and the fix.
-: REJECT-AT ( ^build n str str str -- ) {: f:^ fu:n x:^ xu:n :}
-   OPEN-AT  f fu REASON:APPEND
-   REASON:FIX x xu REASON:APPEND  E-SCHEMA REASON:STOP ;
+: JOIN ( str str ^ARENA:arena -- str ) {: a:^ u:n b:^ bu:n s:^ :}
+   s u bu + 1 max ARENA:ALLOC drop {: dst:^ :}
+   dst a u PUT b bu PUT drop
+   dst u bu + ;
 
-\ A code the JSON reader threw leaves as E-SCHEMA with its text; a source
-\ COMPILE's caller gave wrong, and every other code, as it is.
-: RETHROW ( n -- ) {: code:n :}
-   code E-JSON-READ-FIRST <=  code E-JSON-READ-LAST >=  and
-   code JSON:E-READ-SOURCE <> and if
-      code REASON:TEXT$ E-SCHEMA REASON:THROW
-   then
-   code throw ;
+\ Puts the blank-separated list's name at start in backticks, after a
+\ comma unless it is the first; answers the next name's start.
+: PUT-NAME ( ^u8 n str -- ^u8 n ) {: dst:^ start:n a:^ u:n :}
+   a u STR:SPACE start STR:SPLIT-NEXT drop {: na:^ nu:n next:n :}
+   dst  start 0<> if s" , " PUT then
+   s" `" PUT na nu PUT s" `" PUT  next ;
+
+\ "one of `a`, `b`" for the list's names, in the arena.
+: ONE-OF ( str ^ARENA:arena -- str ) {: a:^ u:n s:^ :}
+   s u 3 * 16 + ARENA:ALLOC drop {: dst:^ :}
+   dst s" one of " PUT
+   0 begin dup u < while a u PUT-NAME repeat drop
+   dst - dst swap ;
+
+\ found, or idx when the list's name at start is w; the next start and idx.
+: NAME-STEP ( n n n str str -- n n n )
+   {: found:n start:n idx:n w:^ wu:n a:^ u:n :}
+   a u STR:SPACE start STR:SPLIT-NEXT drop {: na:^ nu:n next:n :}
+   found 0<  w wu na nu STR:=  and if idx else found then
+   next idx 1+ ;
+
+\ The index of name w in the blank-separated list, or -1.
+: NAME-INDEX ( str str -- n ) {: w:^ wu:n a:^ u:n :}
+   -1 0 0 begin over u < while w wu a u NAME-STEP repeat
+   2drop ;
 
 \ ---- values ----------------------------------------------------------------
 
-\ The offset of the current token's first byte, a string's opening quote.
-: TOKEN-AT ( JSON:reader ^build -- JSON:reader n ) {: b:^ :}
-   JSON:READ-TOKEN {: kind:n :}
-   JSON:READ-SPAN$ drop  b BUILD-TEXT @ -
-   kind JSON:T-STR = if 1- then ;
+: COPIED ( ^ARENA:arena str -- str ) {: a:^ t:^ u:n :}
+   a u 1 max ARENA:ALLOC drop {: dst:^ :}
+   dst t u PUT drop  dst u ;
 
-\ The current string or key, decoded into the arena.
-: DECODED ( JSON:reader ^build -- JSON:reader str ) {: b:^ :}
-   JSON:READ-SPAN$ nip {: raw:n :}
-   b BUILD-ARENA @ raw 1 max ARENA:ALLOC drop {: dst:^ :}
-   dst raw JSON:READ-STR  dst swap ;
+\ The string's decoded text, in the build's arena.
+: DECODED ( JSON:value ^build -- str ) {: v b:^ :}
+   b BUILD-ARENA @ v [: COPIED ;] JSON:WITH-STRING ;
 
-: NUMBER? ( n -- bool ) dup JSON:T-INT = swap JSON:T-FLOAT = or ;
-
-\ The current number's lexeme; e is the expected text for another token.
-: LEXEME ( JSON:reader str -- JSON:reader SPAN:span<u8> ) {: e:^ eu:n :}
-   JSON:READ-TOKEN NUMBER? 0= if
-      e eu s" write a number, with no quotes" REJECT
+\ The number's lexeme; e is the expected text for another value.
+: LEXEME ( JSON:value str -- SPAN:span<u8> ) {: v e:^ eu:n :}
+   v JSON:NUMBER? 0= if
+      v e eu s" write a number, with no quotes" REJECT
    then
-   JSON:READ-SPAN$ SPAN:MAKE ;
+   v JSON:TEXT$ SPAN:MAKE ;
 
 \ A bound's lexeme, as LEXEME; ex is the expected text for one whose
 \ exponent NUMBER-COMPARE cannot order.
-: BOUND-LEXEME ( JSON:reader str str -- JSON:reader SPAN:span<u8> )
-   {: e:^ eu:n ex:^ exu:n :}
-   e eu LEXEME {: b :}
+: BOUND-LEXEME ( JSON:value str str -- SPAN:span<u8> )
+   {: v e:^ eu:n ex:^ exu:n :}
+   v e eu LEXEME {: b :}
    b SPAN:$ 2dup JSON:NUMBER-COMPARE MATCH option
       none OF
-         ex exu s" write the bound with a smaller exponent" REJECT
+         v ex exu s" write the bound with a smaller exponent" REJECT
       ENDOF
       some OF drop ENDOF
    ;MATCH b ;
 
-\ The current integer, from 0 to the largest a cell holds; e is the
-\ expected text for another token.
-: LIMIT ( JSON:reader str -- JSON:reader n ) {: e:^ eu:n :}
-   JSON:READ-TOKEN JSON:T-INT = if
-      JSON:READ-SPAN$ STR:>NUMBER? MATCH option
+\ The integer, from 0 to the largest a cell holds, written with no fraction
+\ or exponent; e is the expected text for another value.
+: LIMIT ( JSON:value str -- n ) {: v e:^ eu:n :}
+   v JSON:NUMBER? if
+      v JSON:TEXT$ STR:>NUMBER? MATCH option
          none OF -1 ENDOF
          some OF ENDOF
       ;MATCH
    else -1 then
    dup 0 >= if exit then
-   drop e eu s" write an integer in that range" REJECT ;
+   drop v e eu s" write an integer in that range" REJECT ;
 
 : DIALECT$ ( -- str ) s" https://json-schema.org/draft/2020-12/schema" ;
 
-: DIALECT ( JSON:reader -- JSON:reader )
-   JSON:READ-TOKEN JSON:T-STR = if
-      DIALECT$ JSON:READ-STR-EQ? if exit then
-   then
-   s" `$schema` as `https://json-schema.org/draft/2020-12/schema`"
+: DIALECT ( JSON:value -- ) {: v :}
+   v DIALECT$ JSON:STRING= if exit then
+   v s" `$schema` as `https://json-schema.org/draft/2020-12/schema`"
    s" name the 2020-12 dialect, or remove `$schema`" REJECT ;
 
 : TYPE-NAMES$ ( -- str )
    s" null boolean object array number string integer" ;
-7 constant TYPE-COUNT
 \ The bits of null, boolean, number, string and integer.
 $73 constant SCALARS
 
-\ found, or the bit of name idx, which starts at start, when the current
-\ string is that name; and the next name's start.
-: TYPE-STEP ( JSON:reader n n n -- JSON:reader n n )
-   {: found:n start:n idx:n :}
-   TYPE-NAMES$ STR:SPACE start STR:SPLIT-NEXT drop {: na:^ nu:n next:n :}
-   na nu JSON:READ-STR-EQ? if 1 idx lshift else found then  next ;
+\ The bit of the type the name names, 0 for none.
+: TYPE-BIT ( str -- n )
+   TYPE-NAMES$ NAME-INDEX dup 0< if drop 0 exit then
+   1 swap lshift ;
 
-\ The bit of the type the current string names, 0 for none.
-: TYPE-BIT ( JSON:reader -- JSON:reader n )
-   0 0 TYPE-COUNT 0 ?do i TYPE-STEP loop drop ;
-
-\ The bit of the type the current token names.
-: NAMED-TYPE ( JSON:reader -- JSON:reader n )
-   JSON:READ-TOKEN JSON:T-STR = if TYPE-BIT else 0 then
+\ The bit of the type the value names.
+: NAMED-TYPE ( JSON:value -- n ) {: v :}
+   v JSON:STRING? if v [: TYPE-BIT ;] JSON:WITH-STRING else 0 then
    dup 0<> if exit then
-   drop
+   drop v
    s" `type` as one of `null`, `boolean`, `object`, `array`, `number`, `string` and `integer`"
    s" write one of those type names" REJECT ;
 
@@ -294,24 +289,21 @@ $73 constant SCALARS
    0 begin o over rshift 0<> while 4 + repeat {: at:n :}
    bit BIT-INDEX 1+ at lshift o or nd NODE-TYPE-ORDER ! ;
 
-: ADD-TYPE ( JSON:reader ^node -- JSON:reader ) {: nd:^ :}
-   NAMED-TYPE {: bit:n :}
+: ADD-TYPE ( JSON:value ^node -- ) {: v nd:^ :}
+   v NAMED-TYPE {: bit:n :}
    nd NODE-TYPES @ bit and 0<> if
-      s" `type` naming each type once" s" remove the repeated type name"
+      v s" `type` naming each type once" s" remove the repeated type name"
       REJECT
    then
    nd NODE-TYPES @ bit or nd NODE-TYPES !
    bit nd ADD-ORDER ;
 
-: TYPE-LIST ( JSON:reader ^node -- JSON:reader ) {: nd:^ :}
-   begin JSON:READ-NEXT JSON:T-ARR-END <> while nd ADD-TYPE repeat
+: TYPE-RULE ( JSON:value ^node -- ) {: v nd:^ :}
+   v JSON:ARRAY? 0= if v nd ADD-TYPE exit then
+   v [: nd ADD-TYPE ;] JSON:EACH
    nd NODE-TYPES @ 0<> if exit then
-   s" `type` as an array of one type name or more"
+   v s" `type` as an array of one type name or more"
    s" name a type, or remove `type`" REJECT ;
-
-: TYPE-RULE ( JSON:reader ^node -- JSON:reader ) {: nd:^ :}
-   JSON:READ-TOKEN JSON:T-ARR = if nd TYPE-LIST exit then
-   nd ADD-TYPE ;
 
 \ Whether an array's text holds only white space between its brackets.
 : EMPTY? ( str -- bool ) {: a:^ u:n :}
@@ -319,99 +311,87 @@ $73 constant SCALARS
       a i + c@ STR:SPACE > if unloop false exit then
    loop true ;
 
-: ENUM-EXPECTED$ ( -- str )
-   s" `enum` as an array of one value or more" ;
 : ENUM-FIX$ ( -- str ) s" list the values allowed in an array" ;
 
-\ Rejects the current token, of kind kind, when it is a number whose
-\ exponent NUMBER-COMPARE cannot order.
-: ENUM-NUMBER ( JSON:reader n -- JSON:reader ) {: kind:n :}
-   kind NUMBER? 0= if exit then
-   JSON:READ-SPAN$ 2dup JSON:NUMBER-COMPARE MATCH option
+\ Rejects a number whose exponent NUMBER-COMPARE cannot order.
+: ENUM-NUMBER ( JSON:value -- ) {: v :}
+   v JSON:NUMBER? 0= if exit then
+   v JSON:TEXT$ 2dup JSON:NUMBER-COMPARE MATCH option
       none OF
-         s" `enum` values whose exponents a signed 64-bit cell holds"
+         v s" `enum` values whose exponents a signed 64-bit cell holds"
          s" write each number with a smaller exponent" REJECT
       ENDOF
       some OF drop ENDOF
    ;MATCH ;
 
-: OPENER? ( n -- bool ) dup JSON:T-OBJ = swap JSON:T-ARR = or ;
-: CLOSER? ( n -- bool )
-   dup JSON:T-OBJ-END = swap JSON:T-ARR-END = or ;
+: DROP-VALUE ( JSON:value -- ) {: v :} ;
 
-\ Reads the next token of an enum array at depth d; the depth after it.
-: ENUM-STEP ( JSON:reader n -- JSON:reader n ) {: d:n :}
-   JSON:READ-NEXT {: kind:n :}
-   kind ENUM-NUMBER
-   kind OPENER? if d 1+ exit then
-   kind CLOSER? if d 1- exit then
-   d ;
+: ENUM-EVENT ( JSON:event -- bool ) {: e :}
+   e MATCH JSON:event
+      open-object OF ENDOF
+      open-array OF ENDOF
+      name OF DROP-VALUE ENDOF
+      scalar OF ENUM-NUMBER ENDOF
+      close OF DROP-VALUE ENDOF
+   ;MATCH true ;
 
-\ The text of the array whose `[` is current, the reader left on its `]`.
-: ENUM-VALUES ( JSON:reader -- JSON:reader str )
-   JSON:READ-SPAN$ drop {: a:^ :}
-   1 begin dup 0 > while ENUM-STEP repeat drop
-   JSON:READ-SPAN$ + a -  a swap ;
+: ENUM-EXPECTED$ ( -- str ) s" `enum` as an array of one value or more" ;
 
-: ENUM-RULE ( JSON:reader ^node -- JSON:reader ) {: nd:^ :}
-   JSON:READ-TOKEN JSON:T-ARR <> if
-      ENUM-EXPECTED$ ENUM-FIX$ REJECT
-   then
-   ENUM-VALUES {: a:^ u:n :}
-   a u EMPTY? if ENUM-EXPECTED$ ENUM-FIX$ REJECT then
-   a u SPAN:MAKE nd NODE-VALUES ! ;
+: ENUM-RULE ( JSON:value ^node -- ) {: v nd:^ :}
+   v JSON:ARRAY? 0= if v ENUM-EXPECTED$ ENUM-FIX$ REJECT then
+   v [: ENUM-EVENT ;] JSON:WALK
+   v JSON:TEXT$ EMPTY? if v ENUM-EXPECTED$ ENUM-FIX$ REJECT then
+   v JSON:TEXT$ SPAN:MAKE nd NODE-VALUES ! ;
 
-\ Rejects the pattern string at offset at with REGEX's text as found.
-: BAD-PATTERN ( ^build n -- )
-   s" a pattern the dialect takes" OPEN-AT
-   s" pattern column " REASON:APPEND
-   REGEX:E-PATTERN REASON:TEXT$ REASON:APPEND
-   REASON:FIX s" rewrite the pattern as its text says" REASON:APPEND
-   E-SCHEMA REASON:STOP ;
+\ Rejects the pattern with REGEX's text before the fix.
+: BAD-PATTERN ( JSON:value ^build -- ) {: v b:^ :}
+   b BUILD-SCRATCH @ {: s:^ :}
+   s" pattern column " REGEX:E-PATTERN REASON:TEXT$ s JOIN
+   s" ; rewrite the pattern as its text says" s JOIN {: fx:^ fu:n :}
+   v s" a pattern the dialect takes" fx fu REJECT ;
 
-: PATTERN-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   JSON:READ-TOKEN JSON:T-STR <> if
-      s" `pattern` as a string" s" write the pattern as a JSON string"
+: PATTERN-RULE ( JSON:value ^level -- ) {: v lv:^ :}
+   v JSON:STRING? 0= if
+      v s" `pattern` as a string" s" write the pattern as a JSON string"
       REJECT
    then
    lv LEVEL-BUILD @ {: b:^ :}  lv LEVEL-NODE @ {: nd:^ :}
-   b TOKEN-AT {: at:n :}
-   b DECODED {: p:^ pu:n :}
+   v b DECODED {: p:^ pu:n :}
    p pu SPAN:MAKE nd NODE-PATTERN-TEXT !  true nd NODE-PATTERNED !
    [: p pu b BUILD-ARENA @ REGEX:COMPILE nd NODE-PATTERN ! ;] catch
    {: code:n :}
-   code REGEX:E-PATTERN = if b at BAD-PATTERN then
+   code REGEX:E-PATTERN = if v b BAD-PATTERN then
    code 0<> if code throw then ;
 
-\ The first token of keyword idx's value is current; idx 0 is `$schema`.
-: VALUE-KEYWORD ( JSON:reader n ^level -- JSON:reader ) {: idx:n lv:^ :}
+\ Keyword idx's whole value; idx 0 is `$schema`.
+: VALUE-KEYWORD ( JSON:value n ^level -- ) {: v idx:n lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}
    idx case
-      0 of DIALECT endof
-      1 of nd TYPE-RULE endof
-      2 of nd ENUM-RULE endof
-      3 of s" `minimum` as a number"
+      0 of v DIALECT endof
+      1 of v nd TYPE-RULE endof
+      2 of v nd ENUM-RULE endof
+      3 of v s" `minimum` as a number"
          s" `minimum` as a number whose exponent a signed 64-bit cell holds"
          BOUND-LEXEME nd NODE-MINIMUM ! endof
-      4 of s" `maximum` as a number"
+      4 of v s" `maximum` as a number"
          s" `maximum` as a number whose exponent a signed 64-bit cell holds"
          BOUND-LEXEME nd NODE-MAXIMUM ! endof
-      5 of s" `minLength` as an integer from 0 to 9223372036854775807"
+      5 of v s" `minLength` as an integer from 0 to 9223372036854775807"
          LIMIT nd NODE-MIN-LENGTH ! endof
-      6 of s" `maxLength` as an integer from 0 to 9223372036854775807"
+      6 of v s" `maxLength` as an integer from 0 to 9223372036854775807"
          LIMIT nd NODE-MAX-LENGTH ! endof
-      7 of lv PATTERN-RULE endof
+      7 of v lv PATTERN-RULE endof
    endcase ;
 
 \ ---- objects ---------------------------------------------------------------
 
-\ The keywords READ-LISTED takes at the root, each optional; KEYWORD reads
-\ by the index in this list. A sub-schema takes the list past `$schema? `.
+\ The keywords a root schema takes; KEYWORD reads by the index in this list.
+\ A sub-schema takes the list past `$schema `.
 : ROOT-KEYWORDS$ ( -- str )
-   s" $schema? type? enum? minimum? maximum? minLength? maxLength? pattern? properties? required? additionalProperties? maxProperties? items? minItems? maxItems? uniqueItems? anyOf? oneOf? description? title? default? examples? deprecated? readOnly? writeOnly? $comment? format?" ;
+   s" $schema type enum minimum maximum minLength maxLength pattern properties required additionalProperties maxProperties items minItems maxItems uniqueItems anyOf oneOf description title default examples deprecated readOnly writeOnly $comment format" ;
 
 : KEYWORDS$ ( -- str )
-   ROOT-KEYWORDS$ {: a:^ u:n :}  s" $schema? " nip {: k:n :}
+   ROOT-KEYWORDS$ {: a:^ u:n :}  s" $schema " nip {: k:n :}
    a k +  u k - ;
 
 : NEW-NODE ( ^build -- ^node )
@@ -421,28 +401,21 @@ $73 constant SCALARS
    -1 nd NODE-MIN-ITEMS !  -1 nd NODE-MAX-ITEMS !
    nd ;
 
-\ The node of the schema object whose `{` is current, its level pushed to
-\ read it over the keyword list; base is the root index of the list's first
-\ name.
+\ The node of the schema object the walk just opened, its level pushed to
+\ read it over the list, whose first name has root index base.
 : OPEN ( ^build str n -- ^node ) {: b:^ list:^ lu:n base:n :}
-   b BUILD-SCRATCH @ {: s:^ :}
-   s LEVELS-NEW {: lv:^ :}
+   b BUILD-SCRATCH @ LEVELS-NEW {: lv:^ :}
    b lv LEVEL-BUILD !  b BUILD-TOP @ lv LEVEL-OUTER !
    b NEW-NODE {: nd:^ :}  nd lv LEVEL-NODE !
    nd NODE-PROPERTIES lv LEVEL-PROPERTY-TAIL !
    nd NODE-REQUIRED lv LEVEL-ENTRY-TAIL !  READING-KEYWORDS lv LEVEL-PHASE !
    list lu SPAN:MAKE lv LEVEL-NAMES !  base lv LEVEL-BASE !
-   s list lu JSON:SEEN-BYTES ARENA:ALLOC drop lv LEVEL-SEEN !
    lv b BUILD-TOP !
    nd ;
 
-\ The sub-schema whose first token is current, its level pushed; e is the
-\ expected text for a token that opens no object.
-: SUB ( JSON:reader ^build str -- JSON:reader ^node ) {: b:^ e:^ eu:n :}
-   JSON:READ-TOKEN JSON:T-OBJ <> if
-      e eu s" write a schema object, `{}` for any value" REJECT
-   then
-   b KEYWORDS$ 1 OPEN ;
+: SUB ( ^build -- ^node ) KEYWORDS$ 1 OPEN ;
+
+: SUB-FIX$ ( -- str ) s" write a schema object, `{}` for any value" ;
 
 \ A property's address a map holds.
 CAST: >PROPERTY ( n -- ^property )
@@ -464,37 +437,16 @@ CAST: >PROPERTY ( n -- ^property )
 : APPEND-PROPERTY ( ^property ^level -- ) {: p:^ lv:^ :}
    p lv LEVEL-PROPERTY-TAIL @ !  p PROPERTY-NEXT lv LEVEL-PROPERTY-TAIL ! ;
 
-\ The key is current; its value's level is pushed.
-: PROPERTY ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   lv LEVEL-NODE @ {: nd:^ :}  lv LEVEL-BUILD @ {: b:^ :}
-   b DECODED {: na:^ nu:n :}
-   na nu nd NODE-PROPERTY-MAP @ NAME-GET
-   MATCH option
-      none OF ENDOF
-      some OF
-         drop s" `properties` naming each property once"
-         s" remove the repeated property, keeping one" REJECT
-      ENDOF
-   ;MATCH
-   JSON:READ-NEXT drop
-   b s" a property's schema as an object" SUB {: child:^ :}
+\ The `{` of the schema of the member named last; its level is pushed.
+: OPEN-MEMBER ( ^level -- ) {: lv:^ :}
+   lv LEVEL-BUILD @ {: b:^ :}
+   READING-PROPERTIES lv LEVEL-PHASE !
+   b SUB {: child:^ :}
    b BUILD-ARENA @ PROPERTIES-NEW {: p:^ :}
-   na nu SPAN:MAKE p PROPERTY-NAME !  child p PROPERTY-NODE !
+   lv LEVEL-NAME @ p PROPERTY-NAME !  child p PROPERTY-NODE !
    p lv APPEND-PROPERTY
-   p NULL-PTR -  na nu  nd NODE-PROPERTY-MAP b BUILD-ARENA @ NAME-PUT ;
-
-: PROPERTIES-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   JSON:READ-TOKEN JSON:T-OBJ <> if
-      s" `properties` as an object of schema objects"
-      s" write an object mapping each property name to its schema" REJECT
-   then
-   READING-PROPERTIES lv LEVEL-PHASE ! ;
-
-: PROPERTIES-STEP ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   JSON:READ-NEXT JSON:T-OBJ-END = if
-      READING-KEYWORDS lv LEVEL-PHASE ! exit
-   then
-   lv PROPERTY ;
+   p NULL-PTR -  lv LEVEL-NAME @ SPAN:$
+   lv LEVEL-NODE @ NODE-PROPERTY-MAP  b BUILD-ARENA @ NAME-PUT ;
 
 : APPEND-ENTRY ( ^entry ^level -- ) {: en:^ lv:^ :}
    en lv LEVEL-ENTRY-TAIL @ !  en ENTRY-NEXT lv LEVEL-ENTRY-TAIL ! ;
@@ -503,17 +455,17 @@ CAST: >PROPERTY ( n -- ^property )
    s" `required` as an array of property names" ;
 : REQUIRED-FIX$ ( -- str ) s" write the names as strings in an array" ;
 
-: REQUIRED-NAME ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
+: REQUIRED-NAME ( JSON:value ^level -- ) {: v lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}  lv LEVEL-BUILD @ {: b:^ :}
-   JSON:READ-TOKEN JSON:T-STR <> if
-      REQUIRED-EXPECTED$ REQUIRED-FIX$ REJECT
+   v JSON:STRING? 0= if
+      v REQUIRED-EXPECTED$ REQUIRED-FIX$ REJECT
    then
-   b DECODED {: na:^ nu:n :}
+   v b DECODED {: na:^ nu:n :}
    na nu nd NODE-REQUIRED-MAP @ NAME-GET
    MATCH option
       none OF ENDOF
       some OF
-         drop s" `required` naming each property once"
+         drop v s" `required` naming each property once"
          s" remove the repeated name" REJECT
       ENDOF
    ;MATCH
@@ -523,62 +475,59 @@ CAST: >PROPERTY ( n -- ^property )
    nd NODE-REQUIRED-MAP @ NAME-COUNT  na nu
    nd NODE-REQUIRED-MAP b BUILD-ARENA @ NAME-PUT ;
 
-: REQUIRED-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   JSON:READ-TOKEN JSON:T-ARR <> if
-      REQUIRED-EXPECTED$ REQUIRED-FIX$ REJECT
+: REQUIRED-RULE ( JSON:value ^level -- ) {: v lv:^ :}
+   v JSON:ARRAY? 0= if
+      v REQUIRED-EXPECTED$ REQUIRED-FIX$ REJECT
    then
-   begin JSON:READ-NEXT JSON:T-ARR-END <> while lv REQUIRED-NAME repeat ;
+   v [: lv REQUIRED-NAME ;] JSON:EACH ;
 
-: EXTRAS-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   lv LEVEL-NODE @ {: nd:^ :}
-   JSON:READ-TOKEN {: kind:n :}
-   kind JSON:T-TRUE = if EXTRAS-OPEN nd NODE-EXTRAS ! exit then
-   kind JSON:T-FALSE = if EXTRAS-CLOSED nd NODE-EXTRAS ! exit then
-   lv LEVEL-BUILD @
-   s" `additionalProperties` as `true`, `false` or a schema object" SUB
-   nd NODE-ADDITIONAL !  EXTRAS-RULED nd NODE-EXTRAS ! ;
+\ A schema object opens a level of its own.
+: EXTRAS-RULE ( JSON:value ^level -- ) {: v lv:^ :}
+   v JSON:BOOL? if
+      v JSON:>BOOL if EXTRAS-OPEN else EXTRAS-CLOSED then
+      lv LEVEL-NODE @ NODE-EXTRAS ! exit
+   then
+   v s" `additionalProperties` as `true`, `false` or a schema object"
+   SUB-FIX$ REJECT ;
 
-: OBJECT-KEYWORD ( JSON:reader n ^level -- JSON:reader ) {: idx:n lv:^ :}
+\ Keywords 8 to 11 whose value opens no schema or `properties` object.
+: OBJECT-KEYWORD ( JSON:value n ^level -- ) {: v idx:n lv:^ :}
    idx case
-      8 of lv PROPERTIES-RULE endof
-      9 of lv REQUIRED-RULE endof
-      10 of lv EXTRAS-RULE endof
-      11 of s" `maxProperties` as an integer from 0 to 9223372036854775807"
+      8 of v s" `properties` as an object of schema objects"
+         s" write an object mapping each property name to its schema"
+         REJECT endof
+      9 of v lv REQUIRED-RULE endof
+      10 of v lv EXTRAS-RULE endof
+      11 of v s" `maxProperties` as an integer from 0 to 9223372036854775807"
          LIMIT lv LEVEL-NODE @ NODE-MAX-PROPERTIES ! endof
    endcase ;
 
 \ ---- arrays and choices ----------------------------------------------------
 
-: UNIQUE-RULE ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   JSON:READ-TOKEN {: kind:n :}
-   kind JSON:T-FALSE = if exit then
-   kind JSON:T-TRUE <> if
-      s" `uniqueItems` as `true` or `false`" s" write `true` or `false`"
-      REJECT
-   then
-   lv LEVEL-BUILD @ TOKEN-AT lv LEVEL-UNIQUE-AT !
-   true lv LEVEL-NODE @ NODE-UNIQUE ! ;
+: UNIQUE-RULE ( JSON:value ^level -- ) {: v lv:^ :}
+   v JSON:BOOL? if v JSON:>BOOL lv LEVEL-NODE @ NODE-UNIQUE ! exit then
+   v s" `uniqueItems` as `true` or `false`" s" write `true` or `false`"
+   REJECT ;
 
-: ARRAY-KEYWORD ( JSON:reader n ^level -- JSON:reader ) {: idx:n lv:^ :}
+\ Keywords 12 to 15 whose value opens no schema.
+: ARRAY-KEYWORD ( JSON:value n ^level -- ) {: v idx:n lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}
    idx case
-      12 of lv LEVEL-BUILD @ s" `items` as a schema object" SUB
-         nd NODE-ITEMS ! endof
-      13 of s" `minItems` as an integer from 0 to 9223372036854775807"
+      12 of v s" `items` as a schema object" SUB-FIX$ REJECT endof
+      13 of v s" `minItems` as an integer from 0 to 9223372036854775807"
          LIMIT nd NODE-MIN-ITEMS ! endof
-      14 of s" `maxItems` as an integer from 0 to 9223372036854775807"
+      14 of v s" `maxItems` as an integer from 0 to 9223372036854775807"
          LIMIT nd NODE-MAX-ITEMS ! endof
-      15 of lv UNIQUE-RULE endof
+      15 of v lv UNIQUE-RULE endof
    endcase ;
 
 : APPEND-BRANCH ( ^branch ^level -- ) {: br:^ lv:^ :}
    br lv LEVEL-BRANCH-TAIL @ !  br BRANCH-NEXT lv LEVEL-BRANCH-TAIL ! ;
 
-\ An alternative whose first token is current, appended at the level's
-\ branch-tail.
-: BRANCH ( JSON:reader ^level str -- JSON:reader ) {: lv:^ e:^ eu:n :}
+\ The `{` of an alternative; its level is pushed and its branch appended.
+: OPEN-BRANCH ( ^level -- ) {: lv:^ :}
    lv LEVEL-BUILD @ {: b:^ :}
-   b e eu SUB {: child:^ :}
+   b SUB {: child:^ :}
    b BUILD-ARENA @ BRANCHES-NEW {: br:^ :}
    child br BRANCH-NODE !
    br lv APPEND-BRANCH ;
@@ -595,32 +544,31 @@ CAST: >PROPERTY ( n -- ^property )
    16 = if s" an `anyOf` element as a schema object" exit then
    s" a `oneOf` element as a schema object" ;
 
-: CHOICE-KEYWORD ( JSON:reader n ^level -- JSON:reader ) {: idx:n lv:^ :}
-   JSON:READ-TOKEN JSON:T-ARR <> if
-      idx CHOICE-EXPECTED$ CHOICE-FIX$ REJECT
-   then
+: CHOICE-LIST ( ^level -- ^^branch ) {: lv:^ :}
    lv LEVEL-NODE @ {: nd:^ :}
-   idx 16 = if nd NODE-ANY-OF else nd NODE-ONE-OF then lv LEVEL-BRANCH-TAIL !
-   idx lv LEVEL-CHOICE !  READING-CHOICE lv LEVEL-PHASE ! ;
+   lv LEVEL-KEYWORD @ 16 = if nd NODE-ANY-OF exit then
+   nd NODE-ONE-OF ;
 
-: CHOICE-STEP ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   lv LEVEL-CHOICE @ {: idx:n :}  lv LEVEL-NODE @ {: nd:^ :}
-   idx 16 = if nd NODE-ANY-OF else nd NODE-ONE-OF then {: head:^ :}
-   JSON:READ-NEXT JSON:T-ARR-END <> if
-      lv idx ELEMENT-EXPECTED$ BRANCH exit
+: OPEN-CHOICE ( ^level -- ) {: lv:^ :}
+   lv CHOICE-LIST lv LEVEL-BRANCH-TAIL !
+   READING-CHOICE lv LEVEL-PHASE ! ;
+
+\ At the choice array's `]`, the whole array.
+: CLOSE-CHOICE ( JSON:value ^level -- ) {: v lv:^ :}
+   lv CHOICE-LIST @ NULL-PTR = if
+      v lv LEVEL-KEYWORD @ CHOICE-EXPECTED$ CHOICE-FIX$ REJECT
    then
-   head @ NULL-PTR = if idx CHOICE-EXPECTED$ CHOICE-FIX$ REJECT then
    READING-KEYWORDS lv LEVEL-PHASE ! ;
 
 \ ---- schemas ---------------------------------------------------------------
 
-\ Keywords from 18 on state no rule.
-: KEYWORD ( JSON:reader n ^level -- JSON:reader ) {: idx:n lv:^ :}
-   idx 8 < if idx lv VALUE-KEYWORD exit then
-   idx 12 < if idx lv OBJECT-KEYWORD exit then
-   idx 16 < if idx lv ARRAY-KEYWORD exit then
-   idx 18 < if idx lv CHOICE-KEYWORD exit then
-   JSON:READ-SKIP-VALUE ;
+\ Keyword idx's value when it opens no level, `properties` object or
+\ choice array; keywords from 18 on state no rule.
+: KEYWORD ( JSON:value n ^level -- ) {: v idx:n lv:^ :}
+   idx 8 < if v idx lv VALUE-KEYWORD exit then
+   idx 12 < if v idx lv OBJECT-KEYWORD exit then
+   idx 16 < if v idx lv ARRAY-KEYWORD exit then
+   idx 18 < if v idx CHOICE-EXPECTED$ CHOICE-FIX$ REJECT then ;
 
 \ Whether the node's items state scalar types only.
 : SCALAR-ITEMS? ( ^node -- bool )
@@ -629,53 +577,162 @@ CAST: >PROPERTY ( n -- ^property )
    t 0= if false exit then
    t SCALARS invert and 0= ;
 
-\ At the schema's `}`: uniqueItems true needs items of scalar types.
-: CHECK-UNIQUE ( ^level -- ) {: lv:^ :}
-   lv LEVEL-UNIQUE-AT @ 0= if exit then
-   lv LEVEL-NODE @ SCALAR-ITEMS? if exit then
-   lv LEVEL-BUILD @ lv LEVEL-UNIQUE-AT @
+\ At the schema's `}`, the whole schema: uniqueItems true needs items of
+\ scalar types.
+: CHECK-UNIQUE ( JSON:value ^level -- ) {: v lv:^ :}
+   lv LEVEL-NODE @ {: nd:^ :}
+   nd NODE-UNIQUE @ 0= if exit then
+   nd SCALAR-ITEMS? if exit then
+   v s" uniqueItems" JSON:GET
    s" `uniqueItems` beside `items` whose `type` names scalar types only"
-   s" `true`"
    s" remove `uniqueItems`, or give `items` a `type` of scalars only"
-   REJECT-AT ;
+   REJECT ;
 
-\ The next keyword; at the schema's `}` its level is popped.
-: KEYWORDS-STEP ( JSON:reader ^level -- JSON:reader ) {: lv:^ :}
-   lv LEVEL-NAMES @ SPAN:$ lv LEVEL-SEEN @ JSON:READ-LISTED {: idx:n :}
-   idx 0< if
-      lv CHECK-UNIQUE
-      lv LEVEL-OUTER @ lv LEVEL-BUILD @ BUILD-TOP ! exit
+: SKIP ( ^build -- ) 1 swap BUILD-SKIP ! ;
+
+\ The `{` of keyword idx's value.
+: OPEN-VALUE-OBJECT ( ^level -- ) {: lv:^ :}
+   lv LEVEL-BUILD @ {: b:^ :}  lv LEVEL-NODE @ {: nd:^ :}
+   lv LEVEL-KEYWORD @ {: idx:n :}
+   idx 8 = if READING-PROPERTIES lv LEVEL-PHASE ! exit then
+   idx 10 <> idx 12 <> and if b SKIP exit then
+   READING-KEYWORDS lv LEVEL-PHASE !
+   b SUB {: child:^ :}
+   idx 10 = if
+      child nd NODE-ADDITIONAL !  EXTRAS-RULED nd NODE-EXTRAS ! exit
    then
-   idx lv LEVEL-BASE @ + lv KEYWORD ;
+   child nd NODE-ITEMS ! ;
 
-: STEP ( JSON:reader ^build -- JSON:reader )
-   BUILD-TOP @ {: lv:^ :}
+: OPEN-VALUE-ARRAY ( ^level -- ) {: lv:^ :}
+   lv LEVEL-KEYWORD @ {: idx:n :}
+   idx 16 = idx 17 = or if lv OPEN-CHOICE exit then
+   lv LEVEL-BUILD @ SKIP ;
+
+\ A `{` comes only after a name or in an array: never in the keywords or
+\ properties phase.
+: OPENED-OBJECT ( ^build -- ) {: b:^ :}
+   b BUILD-TOP @ {: lv:^ :}
    lv LEVEL-PHASE @ MATCH reading
-      keywords OF lv KEYWORDS-STEP ENDOF
-      properties OF lv PROPERTIES-STEP ENDOF
-      choice OF lv CHOICE-STEP ENDOF
+      keywords OF ENDOF
+      value OF lv OPEN-VALUE-OBJECT ENDOF
+      properties OF ENDOF
+      member OF lv OPEN-MEMBER ENDOF
+      choice OF lv OPEN-BRANCH ENDOF
    ;MATCH ;
 
-: ROOT ( JSON:reader ^build -- JSON:reader ^node ) {: b:^ :}
-   JSON:READ-TOKEN JSON:T-OBJ <> if
-      s" a schema object" s" write the schema as a JSON object" REJECT
-   then
-   b ROOT-KEYWORDS$ 0 OPEN ;
+: OPENED-ARRAY ( ^build -- ) {: b:^ :}
+   b BUILD-TOP @ {: lv:^ :}
+   lv LEVEL-PHASE @ MATCH reading
+      keywords OF ENDOF
+      value OF lv OPEN-VALUE-ARRAY ENDOF
+      properties OF ENDOF
+      member OF b SKIP ENDOF
+      choice OF b SKIP ENDOF
+   ;MATCH ;
 
-\ s is the scratch arena; a throw leaves the cursor owning nothing.
-: READ-ROOT ( str ^ARENA:arena ^ARENA:arena -- schema )
-   {: src:^ u:n a:^ s:^ :}
+\ The index in the level's list of the name, or -1.
+: LISTED-INDEX ( ^level str -- n ) {: lv:^ w:^ wu:n :}
+   w wu lv LEVEL-NAMES @ SPAN:$ NAME-INDEX ;
+
+: KEYWORD-NAME ( JSON:value ^level -- ) {: v lv:^ :}
+   lv v [: LISTED-INDEX ;] JSON:WITH-STRING {: idx:n :}
+   idx 0< if
+      v lv LEVEL-NAMES @ SPAN:$ lv LEVEL-BUILD @ BUILD-SCRATCH @ ONE-OF
+      s" rename the member to one of those, or remove it" REJECT
+   then
+   idx lv LEVEL-BASE @ + lv LEVEL-KEYWORD !
+   READING-VALUE lv LEVEL-PHASE ! ;
+
+: MEMBER-NAME ( JSON:value ^level -- ) {: v lv:^ :}
+   v lv LEVEL-BUILD @ DECODED SPAN:MAKE lv LEVEL-NAME !
+   READING-MEMBER lv LEVEL-PHASE ! ;
+
+\ Names come only in the keywords and properties phases.
+: NAMED ( JSON:value ^build -- ) {: v b:^ :}
+   b BUILD-TOP @ {: lv:^ :}
+   lv LEVEL-PHASE @ MATCH reading
+      keywords OF v lv KEYWORD-NAME ENDOF
+      value OF ENDOF
+      properties OF v lv MEMBER-NAME ENDOF
+      member OF ENDOF
+      choice OF ENDOF
+   ;MATCH ;
+
+\ A scalar, or a container closed while skipped, in the phase that reads a
+\ value; names come in the others.
+: WHOLE ( JSON:value ^level -- ) {: v lv:^ :}
+   lv LEVEL-PHASE @ MATCH reading
+      keywords OF ENDOF
+      value OF
+         v lv LEVEL-KEYWORD @ lv KEYWORD
+         READING-KEYWORDS lv LEVEL-PHASE !
+      ENDOF
+      properties OF ENDOF
+      member OF v s" a property's schema as an object" SUB-FIX$ REJECT ENDOF
+      choice OF
+         v lv LEVEL-KEYWORD @ ELEMENT-EXPECTED$ SUB-FIX$ REJECT
+      ENDOF
+   ;MATCH ;
+
+: POP ( JSON:value ^level -- ) {: v lv:^ :}
+   v lv CHECK-UNIQUE
+   lv LEVEL-OUTER @ lv LEVEL-BUILD @ BUILD-TOP ! ;
+
+\ A close never ends a value or a member's schema before it began.
+: CLOSED ( JSON:value ^build -- ) {: v b:^ :}
+   b BUILD-TOP @ {: lv:^ :}
+   lv LEVEL-PHASE @ MATCH reading
+      keywords OF v lv POP ENDOF
+      value OF ENDOF
+      properties OF READING-KEYWORDS lv LEVEL-PHASE ! ENDOF
+      member OF ENDOF
+      choice OF v lv CLOSE-CHOICE ENDOF
+   ;MATCH ;
+
+: SKIPPED ( JSON:value ^build -- ) {: v b:^ :}
+   -1 b BUILD-SKIP +!
+   b BUILD-SKIP @ 0= if v b BUILD-TOP @ WHOLE then ;
+
+: SKIP-STEP ( JSON:event ^build -- ) {: e b:^ :}
+   e MATCH JSON:event
+      open-object OF 1 b BUILD-SKIP +! ENDOF
+      open-array OF 1 b BUILD-SKIP +! ENDOF
+      name OF DROP-VALUE ENDOF
+      scalar OF DROP-VALUE ENDOF
+      close OF b SKIPPED ENDOF
+   ;MATCH ;
+
+\ Takes one event of the walk; false once the root's `}` is read. The root
+\ is an object, so the first event opens it.
+: STEP ( JSON:event ^build -- bool ) {: e b:^ :}
+   b BUILD-TOP @ NULL-PTR = if
+      b ROOT-KEYWORDS$ 0 OPEN b BUILD-ROOT !  true exit
+   then
+   b BUILD-SKIP @ 0<> if e b SKIP-STEP true exit then
+   e MATCH JSON:event
+      open-object OF b OPENED-OBJECT ENDOF
+      open-array OF b OPENED-ARRAY ENDOF
+      name OF b NAMED ENDOF
+      scalar OF b BUILD-TOP @ WHOLE ENDOF
+      close OF b CLOSED ENDOF
+   ;MATCH
+   b BUILD-TOP @ NULL-PTR <> ;
+
+\ s is the scratch arena.
+: READ-ROOT ( JSON:value ^ARENA:arena ^ARENA:arena -- schema )
+   {: root a:^ s:^ :}
+   root JSON:OBJECT? 0= if
+      root s" a schema object" s" write the schema as a JSON object" REJECT
+   then
    s BUILDS-NEW {: b:^ :}
-   a b BUILD-ARENA !  s b BUILD-SCRATCH !  src b BUILD-TEXT !
-   s CURSORS-NEW {: c:^ :}
-   [: c src u JSON:READ-INIT JSON:READ-NEXT drop
-      b ROOT b BUILD-ROOT !
-      begin b BUILD-TOP @ NULL-PTR <> while b STEP repeat
-      JSON:READ-FINISH ;] catch {: code:n :}
-   code 0<> if c JSON:READ-DISPOSE code RETHROW then
+   a b BUILD-ARENA !  s b BUILD-SCRATCH !
+   root [: b STEP ;] JSON:WALK
    b BUILD-ROOT @ SCHEMA-MAKE ;
 
 \ ---- checking values -------------------------------------------------------
+
+: NUMBER? ( n -- bool ) dup JSON:T-INT = swap JSON:T-FLOAT = or ;
+: OPENER? ( n -- bool ) dup JSON:T-OBJ = swap JSON:T-ARR = or ;
 
 \ What a place reads next: its value's first token, its object's next
 \ member, its array's next element, the verdict of the place it pushed, or
@@ -1474,11 +1531,11 @@ ARENA TABLES table
 
 public
 
-\ The schema's nodes, in arena a; a schema outside the contract throws
+\ The schema value's nodes, in arena a; a schema outside the contract throws
 \ E-SCHEMA with its text.
-: COMPILE ( str ^ARENA:arena -- schema )
-   {: src:^ u:n a:^ :}
-   src u a [: READ-ROOT ;] ARENA:WITH ;
+: COMPILE ( JSON:value ^ARENA:arena -- schema )
+   {: v a:^ :}
+   v a [: READ-ROOT ;] ARENA:WITH ;
 
 \ Whether the value text satisfies the schema; false appends the first
 \ violation's text to the vector.
