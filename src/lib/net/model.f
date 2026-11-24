@@ -3475,36 +3475,46 @@ ENUM poll none fed spoiled done ;ENUM
    code RESPONSE-ERROR
    c ;
 
-\ The reader past the window's next item, an object, and the item's bytes;
-\ false past the last.
-: NEXT-ITEM ( JSON:reader -- JSON:reader str bool )
-   JSON:READ-NEXT dup JSON:T-ARR-END = if drop s" " false exit then
-   JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-VALUE-SPAN$ true ;
+\ The reply's output array; E-RESPONSE unless the reply is one JSON object
+\ with one.
+: WINDOW-ITEMS ( ^call -- JSON:value )
+   RESPONSE$ JSON:PARSE {: v :}
+   v JSON:OBJECT? 0= if E-RESPONSE throw then
+   v s" output" JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH {: out :}
+   out JSON:ARRAY? 0= if E-RESPONSE throw then
+   out ;
 
-\ Keeps the item's bytes under the reader in place of the item before it.
-: KEEP-LAST ( str JSON:reader str -- str JSON:reader )
-   {: a:^ u:n :}
-   >r 2drop a u r> ;
+\ OPTION:NONE's effect is one cell; this one names the item's width.
+: NO-ITEM ( -- option<JSON:value> ) OPTION:NONE ;
 
-\ Whether the item's bytes are a compaction item.
-: COMPACTION? ( str ^call -- bool )
-   {: a:^ u:n c :}
-   c MODEL-CALL:READER a u JSON:READ-INIT
-   JSON:T-OBJ EXPECT TYPE-AT
-   s" compaction" JSON:READ-STR-EQ? {: hit:bool :}
-   JSON:READ-CLOSE hit ;
+\ The item, an object, in place of the one before it; else E-RESPONSE.
+: LAST-ITEM ( option<JSON:value> JSON:value -- option<JSON:value> )
+   {: prev v :}
+   v JSON:OBJECT? 0= if E-RESPONSE throw then
+   v OPTION:SOME ;
 
-\ A compaction reply is one JSON object whose output is a nonempty array of
-\ objects, the last a compaction item; else E-RESPONSE.
+\ Whether the item is a compaction item; E-RESPONSE unless its type is a
+\ string.
+: COMPACTION? ( JSON:value -- bool )
+   s" type" JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF ENDOF
+   ;MATCH {: kind :}
+   kind JSON:STRING? 0= if E-RESPONSE throw then
+   kind s" compaction" JSON:STRING= ;
+
+\ A compaction reply's output is a nonempty array of objects, the last a
+\ compaction item; else E-RESPONSE.
 : CHECK-WINDOW ( ^call -- )
    {: c :}
-   c RESPONSE$ JSON-OBJECT? 0= if E-RESPONSE throw then
-   s" " c OUTPUT-AT
-   begin NEXT-ITEM while KEEP-LAST repeat
-   2drop JSON:READ-CLOSE {: last:^ last-u:n :}
-   last-u 0= if E-RESPONSE throw then
-   last last-u c COMPACTION? 0= if E-RESPONSE throw then ;
+   NO-ITEM c WINDOW-ITEMS [: LAST-ITEM ;] JSON:EACH
+   MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF COMPACTION? 0= if E-RESPONSE throw then ENDOF
+   ;MATCH ;
 
 \ Replaces the finished input with the reply's window: its output items, in
 \ order, and no parts; the input is broken until the window is whole.
@@ -3512,9 +3522,8 @@ ENUM poll none fed spoiled done ;ENUM
    {: c :}
    construct input-state broken c MODEL-CALL:CHAT-INPUT !
    c EMPTY-INPUT
-   c OUTPUT-AT
-   begin NEXT-ITEM while c ITEM-JOIN repeat
-   2drop JSON:READ-CLOSE
+   \ ITEM-JOIN writes ITEMS-BUF, so the response text the items borrow stays.
+   c WINDOW-ITEMS [: JSON:TEXT$ c ITEM-JOIN ;] JSON:EACH
    c PART-OPEN
    construct input-state building c MODEL-CALL:CHAT-INPUT !
    c PART-FINISH ;
