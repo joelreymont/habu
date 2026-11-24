@@ -1,4 +1,3 @@
-split-str
 \ app-test.f - MCP-APP:PAGE+ into a vector holding a prefix, with a title holding
 \ <&"', and MCP-APP:CODE+ of a small module. The prefix is kept; the page after
 \ it is valid UTF-8, holds the escaped title, the page id and app.js's base64,
@@ -45,29 +44,29 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
 : FILE$ ( -- str )  FILE @ VEC:SPAN SPAN:$ ;
 
 : AFTER$ ( -- str )
-   PAGE$ {: a:^ u:n :}
-   PREFIX$ nip {: pu:n :}
-   a pu + u pu - ;
+   PAGE$ {: s:str :}
+   PREFIX$ STR:LEN {: pu:n :}
+   s STR:DATA pu + s STR:LEN pu - >str ;
 
 
 \ FILE+'s member, after the prefix.
 : MEMBER-AFTER$ ( -- str )
-   FILE$ {: a:^ u:n :}
-   PREFIX$ nip {: pu:n :}
-   a pu + u pu - ;
+   FILE$ {: s:str :}
+   PREFIX$ STR:LEN {: pu:n :}
+   s STR:DATA pu + s STR:LEN pu - >str ;
 
 
 \ The text in the span after the first opener and before the next closer,
 \ empty when either is missing.
 : BETWEEN$ ( str str str -- str )
-   {: a:^ u:n o:^ ou:n c:^ cu:n :}
-   a u o ou STR:FIND-SUB MATCH option
-      none OF a 0 ENDOF
-      some OF IDX>N ou + {: at:n :}
-         a at + u at - {: s:^ su:n :}
-         s su c cu STR:FIND-SUB MATCH option
-            none OF s 0 ENDOF
-            some OF IDX>N s swap ENDOF
+   {: t:str o:str c:str :}
+   t o STR:FIND-SUB MATCH option
+      none OF t STR:DATA 0 >str ENDOF
+      some OF IDX>N o STR:LEN + {: at:n :}
+         t STR:DATA at + t STR:LEN at - >str {: s:str :}
+         s c STR:FIND-SUB MATCH option
+            none OF s STR:DATA 0 >str ENDOF
+            some OF IDX>N s STR:DATA swap >str ENDOF
          ;MATCH
       ENDOF
    ;MATCH ;
@@ -75,35 +74,35 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
 
 \ The text of the page's element of this id.
 : SCRIPT$ ( str -- str )
-   {: id:^ iu:n :}
-   SB-RESET  s\" id=\"" SB-APPEND  id iu SB-APPEND  s\" \">" SB-APPEND
+   {: id:str :}
+   SB-RESET  s\" id=\"" SB-APPEND  id SB-APPEND  s\" \">" SB-APPEND
    AFTER$ SB$ s" </script>" BETWEEN$ ;
 
 
 \ The string of CODE+'s member of this name.
 : MEMBER$ ( str -- str )
-   {: name:^ nu:n :}
-   SB-RESET  s\" \"" SB-APPEND  name nu SB-APPEND  s\" \":\"" SB-APPEND
+   {: name:str :}
+   SB-RESET  s\" \"" SB-APPEND  name SB-APPEND  s\" \":\"" SB-APPEND
    CODE$ SB$ s\" \"" BETWEEN$ ;
 
 
 \ The base64 decodes to the bytes.
 : DECODES ( str str -- )
-   {: c:^ cu:n w:^ wu:n :}
-   c cu DECODED BASE64:DECODE {: du:n :}
-   DECODED SPAN:$ drop du w wu T$= ;
+   {: c:str w:str :}
+   c DECODED BASE64:DECODE {: du:n :}
+   DECODED SPAN:$ STR:DATA du >str w T$= ;
 
 
 \ The base64 decodes to the file's bytes.
 : CARRIES ( str str -- )
-   {: c:^ cu:n path:^ pu:n :}
-   path pu WANT CAP FS:READ-ALL {: wu:n :}
-   c cu WANT wu DECODES ;
+   {: c:str path:str :}
+   path WANT CAP FS:READ-ALL {: wu:n :}
+   c WANT wu >str DECODES ;
 
 
 : PAGE-CASES ( -- )
    s" the prefix is kept" T-LABEL
-   PAGE$ drop PREFIX$ nip PREFIX$ T$=
+   PAGE$ STR:DATA PREFIX$ STR:LEN >str PREFIX$ T$=
    s" the page is valid UTF-8" T-LABEL
    AFTER$ UTF8:VALID? TTRUE
    s" the page starts as an HTML document" T-LABEL
@@ -111,7 +110,7 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
    s" the title is HTML-escaped into the page's title element" T-LABEL
    AFTER$ ESCAPED$ STR:COUNT-SUB 1 T=
    s" the page id is 64 hex digits" T-LABEL
-   s" page-id" SCRIPT$ nip 64 T=
+   s" page-id" SCRIPT$ STR:LEN 64 T=
    s" PAGE-ID$ is the page's id" T-LABEL
    s" page-id" SCRIPT$ MCP-APP:PAGE-ID$ T$=
    s" app.js's base64 decodes to src/lib/browser/app.js" T-LABEL
@@ -154,11 +153,11 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
    MODULE$ CODE @ MCP-APP:CODE+
    PAGE-CASES
    CODE-CASES
-   PAGE$ {: u:n :} drop
+   PAGE$ STR:LEN {: u:n :}
    s" a title that is not XML text is refused" T-LABEL
    [: s\" bad\z" PAGE @ MCP-APP:PAGE+ ;] XML:E-SCALAR TTHROWSQ
    s" a refused title leaves the vector as it was" T-LABEL
-   PAGE$ nip u T=
+   PAGE$ STR:LEN u T=
    CODE @ VEC:DELETE
    PAGE @ VEC:DELETE ;
 
@@ -171,11 +170,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : NEGATIVE-LENGTH-CASE ( -- )
    BYTES PAGE !
    PREFIX$ PAGE @ VEC:APPEND
-   PAGE$ {: u:n :} drop
+   PAGE$ STR:LEN {: u:n :}
    s" a negative module length is refused" T-LABEL
-   [: MODULE$ drop -1 PAGE @ MCP-APP:CODE+ ;] E-STR-BOUNDS TTHROWSQ
+   [: MODULE$ STR:DATA -1 >str PAGE @ MCP-APP:CODE+ ;] E-STR-BOUNDS TTHROWSQ
    s" a refused length leaves the vector as it was" T-LABEL
-   PAGE$ nip u T=
+   PAGE$ STR:LEN u T=
    PAGE @ VEC:DELETE ;
 
 T-RESET

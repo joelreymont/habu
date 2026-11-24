@@ -1,4 +1,3 @@
-split-str
 \ base64-test.f - RFC 4648 base64: the section 10 vectors, the whole alphabet,
 \ every refusal, and the RFC 6455 handshake it exists to answer.
 \ Run: bin/hb --load src/lib/base64-test.f
@@ -36,35 +35,35 @@ SHA256-CTX-BYTES BUFFER: URL-CTX
 variable STAGED-LEN
 
 : OUT$ ( n -- str )
-   OUT SPAN:$ drop swap ;
+   OUT SPAN:$ STR:DATA swap >str ;
 
-: ENCODES ( str str -- ) {: a u:n want wu:n :}
-   a u OUT BASE64:ENCODE {: k:n :}
-   want wu T-LABEL
-   k OUT$ want wu T$= ;
+: ENCODES ( str str -- ) {: s:str want:str :}
+   s OUT BASE64:ENCODE {: k:n :}
+   want T-LABEL
+   k OUT$ want T$= ;
 
-: DECODES ( str str -- ) {: a u:n want wu:n :}
-   a u OUT BASE64:DECODE {: k:n :}
-   a u T-LABEL
-   k OUT$ want wu T$= ;
+: DECODES ( str str -- ) {: s:str want:str :}
+   s OUT BASE64:DECODE {: k:n :}
+   s T-LABEL
+   k OUT$ want T$= ;
 
-: BOTH ( str str -- ) {: a u:n b v:n :}
-   a u b v ENCODES
-   b v a u DECODES ;
+: BOTH ( str str -- ) {: s:str b:str :}
+   s b ENCODES
+   b s DECODES ;
 
-: URL-ENCODES ( str str -- ) {: a u:n want wu:n :}
-   a u OUT BASE64:ENCODE-URL {: k:n :}
-   want wu T-LABEL
-   k OUT$ want wu T$= ;
+: URL-ENCODES ( str str -- ) {: s:str want:str :}
+   s OUT BASE64:ENCODE-URL {: k:n :}
+   want T-LABEL
+   k OUT$ want T$= ;
 
-: URL-DECODES ( str str -- ) {: a u:n want wu:n :}
-   a u OUT BASE64:DECODE-URL {: k:n :}
-   a u T-LABEL
-   k OUT$ want wu T$= ;
+: URL-DECODES ( str str -- ) {: s:str want:str :}
+   s OUT BASE64:DECODE-URL {: k:n :}
+   s T-LABEL
+   k OUT$ want T$= ;
 
-: URL-BOTH ( str str -- ) {: a u:n b v:n :}
-   a u b v URL-ENCODES
-   b v a u URL-DECODES ;
+: URL-BOTH ( str str -- ) {: s:str b:str :}
+   s b URL-ENCODES
+   b s URL-DECODES ;
 
 \ RFC 4648's tail shapes without padding, and RFC 7636 Appendix A's -/_ case.
 : URL-VECTORS ( -- )
@@ -80,13 +79,13 @@ variable STAGED-LEN
    255 ALL 2 SPAN:U8!
    224 ALL 3 SPAN:U8!
    193 ALL 4 SPAN:U8!
-   ALL SPAN:$ drop 5 s" A-z_4ME" URL-BOTH ;
+   ALL SPAN:$ STR:DATA 5 >str s" A-z_4ME" URL-BOTH ;
 
 \ RFC 7636 Appendix B: encode the SHA-256 of the ASCII verifier, then decode
 \ the published challenge back to those digest bytes.
 : PKCE ( -- )
    URL-CTX s" dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
-      URL-DG SPAN:$ drop SHA256-IN
+      URL-DG SPAN:$ STR:DATA SHA256-IN
    URL-DG SPAN:$ s" E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" URL-ENCODES
    s" E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
       URL-DG SPAN:$ URL-DECODES ;
@@ -101,10 +100,10 @@ variable STAGED-LEN
    s" fooba" s" Zm9vYmE=" BOTH
    s" foobar" s" Zm9vYmFy" BOTH ;
 
-: HEX$ ( str -- str ) {: a u:n :}
-   HEX SPAN:$ drop {: h :}
-   u 0 ?do a i + c@ h i 2 * + BYTE>HEX loop
-   h u 2 * ;
+: HEX$ ( str -- str ) {: s:str :}
+   HEX SPAN:$ STR:DATA {: h :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ h i 2 * + BYTE>HEX loop
+   h s STR:LEN 2 * >str ;
 
 : ALPHABET ( -- )
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -117,7 +116,7 @@ variable STAGED-LEN
    T$=
    ALPHABET-BYTES OUT$ ALL-TEXT BASE64:ENCODE {: t:n :}
    s" and those bytes encode to the alphabet" T-LABEL
-   ALL-TEXT SPAN:$ drop t
+   ALL-TEXT SPAN:$ STR:DATA t >str
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" T$= ;
 
 : URL-ALPHABET ( -- )
@@ -129,7 +128,7 @@ variable STAGED-LEN
    s" 00108310518720928b30d38f41149351559761969b71d79f8218a39259a7a29aabb2dbafc31cb3d35db7e39ebbf3dfbf"
    T$=
    k OUT$ ALL-TEXT BASE64:ENCODE-URL {: t:n :}
-   ALL-TEXT SPAN:$ drop t
+   ALL-TEXT SPAN:$ STR:DATA t >str
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" T$= ;
 
 \ Every byte value, through both words and back.
@@ -138,30 +137,30 @@ variable STAGED-LEN
    ALL SPAN:$ ALL-TEXT BASE64:ENCODE {: t:n :}
    s" 256 bytes encode to 344 characters" T-LABEL
    t ALL-CHARS T=
-   ALL-TEXT SPAN:$ drop t OUT BASE64:DECODE {: k:n :}
+   ALL-TEXT SPAN:$ STR:DATA t >str OUT BASE64:DECODE {: k:n :}
    s" and decode back to every byte value" T-LABEL
    k OUT$ ALL SPAN:$ T$= ;
 
 \ A refusal runs in a quotation, which sees no locals, so its input is staged.
-: STAGE ( str -- ) {: a u:n :}
-   a u STAGED SPAN:COPY
-   u STAGED-LEN ! ;
+: STAGE ( str -- ) {: s:str :}
+   s STAGED SPAN:COPY
+   s STR:LEN STAGED-LEN ! ;
 
 : STAGED$ ( -- str )
-   STAGED SPAN:$ drop STAGED-LEN @ ;
+   STAGED SPAN:$ STR:DATA STAGED-LEN @ >str ;
 
-: REFUSES ( str n -- ) {: a u:n code:n :}
-   a u STAGE
-   a u T-LABEL
+: REFUSES ( str n -- ) {: s:str code:n :}
+   s STAGE
+   s T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] code TTHROWSQ ;
 
-: URL-REFUSES ( str n -- ) {: a u:n code:n :}
-   a u STAGE
-   a u T-LABEL
+: URL-REFUSES ( str n -- ) {: s:str code:n :}
+   s STAGE
+   s T-LABEL
    [: STAGED$ OUT BASE64:DECODE-URL drop ;] code TTHROWSQ ;
 
-: SAID ( n str -- ) {: code:n wa:^ wu:n :}
-   code REASON:TEXT$ wa wu T$=
+: SAID ( n str -- ) {: code:n ws:str :}
+   code REASON:TEXT$ ws T$=
    REASON:RELEASE ;
 
 : URL-REFUSALS ( -- )
@@ -209,15 +208,15 @@ variable STAGED-LEN
    s" Zg" OUT-2 BASE64:DECODE-URL 1 T=
    s" Zm8" OUT-2 BASE64:DECODE-URL 2 T=
    s" Zm9v" OUT-3 BASE64:DECODE-URL 3 T=
-   [: 0 OUT$ drop -1 OUT BASE64:ENCODE-URL drop ;] E-SPAN-LENGTH TTHROWSQ
-   [: 0 OUT$ drop -1 OUT BASE64:DECODE-URL drop ;] E-SPAN-LENGTH TTHROWSQ
-   [: 0 OUT$ drop MEM-MAX-N negate 1- OUT BASE64:DECODE-URL drop ;]
+   [: 0 OUT$ STR:DATA -1 >str OUT BASE64:ENCODE-URL drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ STR:DATA -1 >str OUT BASE64:DECODE-URL drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ STR:DATA MEM-MAX-N negate 1- >str OUT BASE64:DECODE-URL drop ;]
       E-SPAN-LENGTH TTHROWSQ
-   [: 7 [char] A GUARD-PAGE:TAIL 8 OUT-3 BASE64:DECODE-URL drop ;]
+   [: 7 [char] A GUARD-PAGE:TAIL 8 >str OUT-3 BASE64:DECODE-URL drop ;]
       E-SPAN-CAPACITY TTHROWSQ
-   [: 7 [char] A GUARD-PAGE:TAIL MEM-MAX-N 3 invert and OUT-3
+   [: 7 [char] A GUARD-PAGE:TAIL MEM-MAX-N 3 invert and >str OUT-3
       BASE64:DECODE-URL drop ;] E-SPAN-CAPACITY TTHROWSQ
-   [: 0 OUT$ drop MEM-MAX-N 2 - OUT BASE64:ENCODE-URL drop ;]
+   [: 0 OUT$ STR:DATA MEM-MAX-N 2 - >str OUT BASE64:ENCODE-URL drop ;]
       E-SPAN-CAPACITY TTHROWSQ ;
 
 : LENGTHS ( -- )
@@ -238,8 +237,8 @@ variable STAGED-LEN
 
 
 : WANT ( str n -- n )
-   {: a u:n c:n :}
-   u 0 ?do a i + c@ c = if i unloop exit then loop
+   {: s:str c:n :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ c = if i unloop exit then loop
    c [char] = = if E-BASE64-PAD else E-BASE64-CHAR then ;
 
 
@@ -250,11 +249,11 @@ variable STAGED-LEN
 
 
 : JUDGES ( str [ -- ] -- )
-   {: a u:n q :}
+   {: s:str q :}
    256 0 do
       s" ?AAA" STAGE i STAGED 0 SPAN:U8!
       s" each byte as a group's first character" T-LABEL
-      q DECODED a u i WANT T=
+      q DECODED s i WANT T=
    loop ;
 
 
@@ -302,18 +301,18 @@ variable STAGED-LEN
    s" DECODE fills a span of exactly three" T-LABEL
    s" Zm9v" OUT-3 BASE64:DECODE 3 T=
    s" ENCODE refuses a negative length" T-LABEL
-   [: 0 OUT$ drop -1 OUT BASE64:ENCODE drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ STR:DATA -1 >str OUT BASE64:ENCODE drop ;] E-SPAN-LENGTH TTHROWSQ
    s" DECODE refuses a negative length" T-LABEL
-   [: 0 OUT$ drop -1 OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
-   [: 0 OUT$ drop MEM-MAX-N negate 1- OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ STR:DATA -1 >str OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: 0 OUT$ STR:DATA MEM-MAX-N negate 1- >str OUT BASE64:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ
    \ Eight characters decode to at least four bytes, so a three-byte span is
    \ refused before the input, which ends at an inaccessible page, is read.
    s" DECODE measures the span before it reads the input" T-LABEL
-   [: 7 [char] A GUARD-PAGE:TAIL 8 OUT-3 BASE64:DECODE drop ;] E-SPAN-CAPACITY TTHROWSQ
-   [: 7 [char] A GUARD-PAGE:TAIL MEM-MAX-N 3 invert and OUT-3 BASE64:DECODE drop ;]
+   [: 7 [char] A GUARD-PAGE:TAIL 8 >str OUT-3 BASE64:DECODE drop ;] E-SPAN-CAPACITY TTHROWSQ
+   [: 7 [char] A GUARD-PAGE:TAIL MEM-MAX-N 3 invert and >str OUT-3 BASE64:DECODE drop ;]
       E-SPAN-CAPACITY TTHROWSQ
    s" ENCODE refuses a length whose encoded size wraps" T-LABEL
-   [: 0 OUT$ drop MEM-MAX-N 2 - OUT BASE64:ENCODE drop ;] E-SPAN-CAPACITY TTHROWSQ ;
+   [: 0 OUT$ STR:DATA MEM-MAX-N 2 - >str OUT BASE64:ENCODE drop ;] E-SPAN-CAPACITY TTHROWSQ ;
 
 \ RFC 6455 section 1.3: the key decodes to sixteen bytes, and the accept value
 \ is the base64 of SHA-1 over the key and the protocol's GUID, fed as a server

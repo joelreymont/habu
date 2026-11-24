@@ -1,4 +1,3 @@
-split-str
 \ host-test.f - BROWSER-HOST:ROUTES answered over a real loopback port. CURL
 \ fetches /, /host.js, /viewport.js, /turn.js and /page.js from Habu's HTTP
 \ server; each is answered 200 with its content type, and its body is the bytes
@@ -43,9 +42,9 @@ TYPED-VARIABLE CFG HTTP:config
       failed OF drop false ENDOF
    ;MATCH TTRUE ;
 
-: URL ( ^u8 n -- ^u8 n )
-   {: path:^ u:n :}
-   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path u SB-APPEND
+: URL ( str -- str )
+   {: path:str :}
+   SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  path SB-APPEND
    SB$ ;
 
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
@@ -73,14 +72,14 @@ TYPED-VARIABLE CFG HTTP:config
    ;MATCH ;
 
 \ GET of the path: answers its status, its body in BODY and its head in HEAD.
-: GET ( ^u8 n -- n )
-   {: path:^ u:n :}
+: GET ( str -- n )
+   {: path:str :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
       failed OF drop CURL:EMPTY-HANDLE ENDOF
    ;MATCH {: h:CURL:handle :}
-   h path u URL CURL:URL! OK
+   h path URL CURL:URL! OK
    h PERFORM {: status:n :}
    HEAD @ 0 VEC:RESIZE
    status 0 > if  h HEAD @ CURL:HEADERS  then
@@ -88,13 +87,13 @@ TYPED-VARIABLE CFG HTTP:config
    status ;
 
 \ The path answered 200 with the content type, its body the file's bytes.
-: SERVED ( ^u8 n ^u8 n ^u8 n -- )
-   {: path:^ pu:n file:^ fu:n type:^ tu:n :}
-   file fu WANT CAP FS:READ-ALL {: u:n :}
-   path pu GET 200 T=
-   SB-RESET  s" Content-Type: " SB-APPEND  type tu SB-APPEND  S\" \r\n" SB-APPEND
+: SERVED ( str str str -- )
+   {: path:str file:str type:str :}
+   file WANT CAP FS:READ-ALL {: u:n :}
+   path GET 200 T=
+   SB-RESET  s" Content-Type: " SB-APPEND  type SB-APPEND  S\" \r\n" SB-APPEND
    HEAD @ VEC:SPAN SPAN:$ SB$ STR:CONTAINS? TTRUE
-   BODY @ VEC:SPAN SPAN:$ WANT u T$= ;
+   BODY @ VEC:SPAN SPAN:$ WANT u >str T$= ;
 
 : SERVE-CASES ( -- )
    AIO:START

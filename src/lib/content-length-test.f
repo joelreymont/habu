@@ -1,4 +1,3 @@
-split-str
 \ content-length-test.f - Content-Length framing over real pipes, through
 \ src/lib/content-length.f. Each TEST- word names the failures it covers.
 \ Run: bin/hb --load src/lib/content-length-test.f
@@ -46,9 +45,9 @@ variable CHILD-CODE
 \ A pipe that holds these bytes and then ends; a reader taking bodies up to the
 \ maximum reads its read end.
 : FEED-MAX ( str n -- )
-   {: a:^ u:n max:n :}
+   {: s:str max:n :}
    FD:PIPE-PAIR {: r:fd w:fd :}
-   w a u WRITE-FULL
+   w s WRITE-FULL
    w FD>N close
    r FD>N FEED-FD !
    r max BIND-ON ;
@@ -70,22 +69,24 @@ variable CHILD-CODE
 : BODY$ ( n -- str )
    {: u:n :}
    R SMALL BODY
-   SMALL $ drop u ;
+   SMALL $ STR:DATA u >str ;
 
 : SPENT ( -- )
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ ;
 
 : PATTERN! ( SPAN:span<u8> -- )
-   $ {: p:^ u:n :}
-   u 0 ?do i PATTERN-MOD mod p i + c! loop ;
+   $ {: p:str :}
+   p STR:LEN 0 ?do i PATTERN-MOD mod p STR:DATA i + c! loop ;
 
 : PATTERN? ( SPAN:span<u8> -- bool )
-   $ {: p:^ u:n :}
-   u 0 ?do p i + c@ i PATTERN-MOD mod <> if false unloop exit then loop
+   $ {: p:str :}
+   p STR:LEN 0 ?do
+      p STR:DATA i + c@ i PATTERN-MOD mod <> if false unloop exit then
+   loop
    true ;
 
 : CHILD-EXIT ( n -- )
-   s" " rot die ;
+   s" " swap die ;
 
 \ The rest of a forked child's life: its part runs under catch, and the exit
 \ code is 1 for a throw, else the code the part chose.
@@ -134,7 +135,7 @@ variable CHILD-CODE
    s\" Content-Length: 2\r\n" TRUNCATED-HEADER
    s\" Content-Length: 10\r\n\r\n{}" FEED
    NEXT-LEN 10 T=
-   [: 10 BODY$ 2drop ;] E-CONTENT-LENGTH-TRUNCATED TTHROWSQ
+   [: 10 BODY$ drop ;] E-CONTENT-LENGTH-TRUNCATED TTHROWSQ
    SPENT
    DONE ;
 
@@ -156,7 +157,7 @@ TYPED-VARIABLE PAD-LEN len
    s" X-Pad: " PAD-BUF PAD-CAP PAD-LEN BUF-APPEND
    u 7 - 0 ?do [char] a PAD-BUF PAD-CAP PAD-LEN BUF-APPEND-C loop
    s\" \r\nContent-Length: 2\r\n\r\n{}" PAD-BUF PAD-CAP PAD-LEN BUF-APPEND
-   PAD-BUF PAD-LEN BUF-LEN@ ;
+   PAD-BUF PAD-LEN BUF-LEN@ >str ;
 
 \ MALFORMED, and the reader is spent: no Content-Length; a value with letters,
 \ a sign, nothing, an inner blank; a value past a cell, with and without leading
@@ -189,10 +190,10 @@ TYPED-VARIABLE PAD-LEN len
    3000 PAD-LINE$ MALFORMED ;
 
 : FORM ( str str -- )
-   {: a:^ u:n want:^ wu:n :}
-   a u FEED
-   NEXT-LEN wu T=
-   wu BODY$ want wu T$=
+   {: s:str want:str :}
+   s FEED
+   NEXT-LEN want STR:LEN T=
+   want STR:LEN BODY$ want T$=
    NEXT-LEN -1 T=
    DONE ;
 
@@ -212,7 +213,7 @@ TYPED-VARIABLE PAD-LEN len
    s\" Content-Type: application/json; foo=bar;CHARSET=\"UTF8\"\r\nContent-Length: 2\r\n\r\n{}" s" {}" FORM
    LINE-CAP PAD-LINE$ s" {}" FORM
    s\" Content-Length: 0\r\n\r\nContent-Length: 1\r\n\r\nz" FEED
-   NEXT-LEN 0 T=  0 BODY$ nip 0 T=
+   NEXT-LEN 0 T=  0 BODY$ STR:LEN 0 T=
    NEXT-LEN 1 T=  1 BODY$ s" z" T$=
    NEXT-LEN -1 T=
    DONE ;
@@ -240,8 +241,8 @@ TYPED-VARIABLE PAD-LEN len
 
 
 : PIECE ( str -- )
-   {: a:^ u:n :}
-   CHILD-FD @ >FD a u WRITE-FULL
+   {: s:str :}
+   CHILD-FD @ >FD s WRITE-FULL
    PIECE-MS >MS TASK:SLEEP ;
 
 : PIECE-WRITER ( -- )
@@ -279,7 +280,7 @@ TYPED-VARIABLE PAD-LEN len
    [: SHORT-BIND ;] E-CONTENT-LENGTH-STATE TTHROWSQ
    [: NEGATIVE-BIND ;] E-CONTENT-LENGTH-STATE TTHROWSQ
    s\" Content-Length: 5\r\n\r\nhello" FEED
-   [: 0 BODY$ 2drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ
+   [: 0 BODY$ drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ
    NEXT-LEN 5 T=
    [: NEXT-LEN drop ;] E-CONTENT-LENGTH-STATE TTHROWSQ
    [: R SMALL 4 TAKE BODY ;] E-SPAN-CAPACITY TTHROWSQ
@@ -293,7 +294,7 @@ TYPED-VARIABLE PAD-LEN len
    PAD-LEN BUF-RESET
    SB$ PAD-BUF PAD-CAP PAD-LEN BUF-APPEND
    LONG 0 ?do [char] b PAD-BUF PAD-CAP PAD-LEN BUF-APPEND-C loop
-   PAD-BUF PAD-LEN BUF-LEN@ ;
+   PAD-BUF PAD-LEN BUF-LEN@ >str ;
 
 : LONG-BODY ( -- )
    R BIG-BODY @ LONG TAKE BODY ;
@@ -328,7 +329,7 @@ TYPED-VARIABLE PAD-LEN len
       full OF ENDOF
       eof OF drop 1 0 T= ENDOF
    ;MATCH
-   SMALL $ drop u ;
+   SMALL $ STR:DATA u >str ;
 
 : NO-READER ( -- )
    CHILD-FD @ >FD s" lost" SEND ;
@@ -350,7 +351,7 @@ TYPED-VARIABLE PAD-LEN len
    r FD>N FEED-FD !
    r MAX-BODY BIND-ON
    NEXT-LEN 2 T=  2 BODY$ s" {}" T$=
-   NEXT-LEN 0 T=  0 BODY$ nip 0 T=
+   NEXT-LEN 0 T=  0 BODY$ STR:LEN 0 T=
    NEXT-LEN -1 T=
    DONE
    FD:PIPE-PAIR {: r2:fd w2:fd :}

@@ -1,4 +1,3 @@
-split-str
 \ be-test.f - big-endian reads and stores through src/lib/be.f.
 \ Run: bin/hb --load src/lib/be-test.f
 \
@@ -18,7 +17,7 @@ create SCRATCH SCRATCH-BYTES allot
 : FRESH ( -- ) SCRATCH-BYTES 0 do $AA SCRATCH i + c! loop ;
 
 \ The scratch bytes from offset 0 through the stored field and one past it.
-: SEEN$ ( n -- str ) SCRATCH swap ;
+: SEEN$ ( n -- str ) SCRATCH swap >str ;
 
 \ 1 shl 63, C2BC928F996E0000h and 0123456789ABCDEFh, composed so no literal
 \ passes the signed cell.
@@ -28,23 +27,23 @@ create SCRATCH SCRATCH-BYTES allot
 
 : READS ( -- )
    s" unsigned reads" T-LABEL
-   s\" \x12\x34" drop BE:U16@ $1234 T=
-   s\" \xFF\xFE" drop BE:U16@ $FFFE T=
-   s\" \x12\x34\x56\x78" drop BE:U32@ $12345678 T=
-   s\" \xFF\xFF\xFF\xFF" drop BE:U32@ $FFFFFFFF T=
-   s\" \x01\x23\x45\x67\x89\xAB\xCD\xEF" drop BE:U64@ COUNTING T=
-   s\" \x80\x00\x00\x00\x00\x00\x00\x00" drop BE:U64@ HIGH-BIT T=
-   s\" \xC2\xBC\x92\x8F\x99\x6E\x00\x00" drop BE:U64@ UNSET-BITS T= ;
+   s\" \x12\x34" STR:DATA BE:U16@ $1234 T=
+   s\" \xFF\xFE" STR:DATA BE:U16@ $FFFE T=
+   s\" \x12\x34\x56\x78" STR:DATA BE:U32@ $12345678 T=
+   s\" \xFF\xFF\xFF\xFF" STR:DATA BE:U32@ $FFFFFFFF T=
+   s\" \x01\x23\x45\x67\x89\xAB\xCD\xEF" STR:DATA BE:U64@ COUNTING T=
+   s\" \x80\x00\x00\x00\x00\x00\x00\x00" STR:DATA BE:U64@ HIGH-BIT T=
+   s\" \xC2\xBC\x92\x8F\x99\x6E\x00\x00" STR:DATA BE:U64@ UNSET-BITS T= ;
 
 : SIGNED ( -- )
    s" signed reads at each boundary" T-LABEL
-   s\" \x00\x00" drop BE:S16@ 0 T=
-   s\" \x7F\xFF" drop BE:S16@ 32767 T=
-   s\" \x80\x00" drop BE:S16@ -32768 T=
-   s\" \xFF\xFF" drop BE:S16@ -1 T=
-   s\" \x7F\xFF\xFF\xFF" drop BE:S32@ 2147483647 T=
-   s\" \x80\x00\x00\x00" drop BE:S32@ -2147483648 T=
-   s\" \xFF\xFF\xFF\xFE" drop BE:S32@ -2 T= ;
+   s\" \x00\x00" STR:DATA BE:S16@ 0 T=
+   s\" \x7F\xFF" STR:DATA BE:S16@ 32767 T=
+   s\" \x80\x00" STR:DATA BE:S16@ -32768 T=
+   s\" \xFF\xFF" STR:DATA BE:S16@ -1 T=
+   s\" \x7F\xFF\xFF\xFF" STR:DATA BE:S32@ 2147483647 T=
+   s\" \x80\x00\x00\x00" STR:DATA BE:S32@ -2147483648 T=
+   s\" \xFF\xFF\xFF\xFE" STR:DATA BE:S32@ -2 T= ;
 
 : STORES ( -- )
    s" stores at odd offsets keep their neighbours" T-LABEL

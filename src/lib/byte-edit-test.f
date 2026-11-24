@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 require src/lib/heap.f
 require src/lib/byte-edit.f
@@ -16,13 +15,13 @@ create MANY-SOURCE MANY allot
 create MANY-EXPECTED MANY 2 * allot
 
 : OPEN ( str -- EDIT:editor )
-   {: source size:n :}
-   HEAP:ALLOCATOR source size INIT ;
+   {: source:str :}
+   HEAP:ALLOCATOR source INIT ;
 
 : RESULT= ( EDIT:editor str -- EDIT:editor )
-   {: expected size:n :}
+   {: expected:str :}
    OUTPUT OUTPUT-CAP EDIT:WRITE
-   OUTPUT swap expected size T$= ;
+   OUTPUT swap >str expected T$= ;
 
 : MIXED-EDITS ( -- )
    s" abcdefgh" OPEN
@@ -38,9 +37,9 @@ create MANY-EXPECTED MANY 2 * allot
    16 >OFF 3 >LEN s" new&amp;more" REPLACE
    s" <?xml?><a k='v'>new&amp;more</a><!-- unchanged -->" RESULT=
    EDIT:CLOSE
-   BINARY 4 OPEN
-   1 >OFF 2 >LEN BINARY-INSERT 2 REPLACE
-   BINARY-EXPECTED 4 RESULT= EDIT:CLOSE ;
+   BINARY 4 >str OPEN
+   1 >OFF 2 >LEN BINARY-INSERT 2 >str REPLACE
+   BINARY-EXPECTED 4 >str RESULT= EDIT:CLOSE ;
 
 : EMPTY-PLAN ( -- )
    s" whole original" OPEN
@@ -65,9 +64,9 @@ create MANY-EXPECTED MANY 2 * allot
       [char] - MANY-EXPECTED i 2 * + c!
       [char] a i 26 mod + MANY-EXPECTED i 2 * 1 + + c!
    loop
-   MANY-SOURCE MANY OPEN
+   MANY-SOURCE MANY >str OPEN
    MANY 0 ?do i >OFF 0 >LEN s" -" REPLACE loop
-   MANY-EXPECTED MANY 2 * RESULT= EDIT:CLOSE ;
+   MANY-EXPECTED MANY 2 * >str RESULT= EDIT:CLOSE ;
 
 \ ---- the caught bodies of the failure cases ---------------------------------
 \ Each failure body is a word reached by `[']`, not a quotation literal: the
@@ -78,7 +77,7 @@ create MANY-EXPECTED MANY 2 * allot
 : REPLACE-PAST-END ( EDIT:editor -- EDIT:editor ) 4 >OFF 0 >LEN s" x" REPLACE ;
 : REPLACE-PAST-LEN ( EDIT:editor -- EDIT:editor ) 1 >OFF 3 >LEN s" x" REPLACE ;
 : REPLACE-NEG-LEN ( EDIT:editor -- EDIT:editor ) 1 >OFF -1 >LEN s" x" REPLACE ;
-: REPLACE-NEG-SIZE ( EDIT:editor -- EDIT:editor ) 1 >OFF 1 >LEN s" x" drop -1 REPLACE ;
+: REPLACE-NEG-SIZE ( EDIT:editor -- EDIT:editor ) 1 >OFF 1 >LEN s" x" STR:DATA -1 >str REPLACE ;
 : REPLACE-INSIDE-LAST ( EDIT:editor -- EDIT:editor ) 3 >OFF 1 >LEN s" Y" REPLACE ;
 : REPLACE-BEFORE-LAST ( EDIT:editor -- EDIT:editor ) 0 >OFF 1 >LEN s" Y" REPLACE ;
 : WRITE-TINY ( EDIT:editor -- EDIT:editor ) OUTPUT 1 EDIT:WRITE drop ;
@@ -112,9 +111,9 @@ create MANY-EXPECTED MANY 2 * allot
    s" along replacementc" RESULT= EDIT:CLOSE ;
 
 : ALIAS-FAILURES ( -- )
-   BINARY 4 OPEN
+   BINARY 4 >str OPEN
    ['] WRITE-SOURCE catch E-ALIAS T=
-   0 >OFF 0 >LEN OUTPUT 1 REPLACE
+   0 >OFF 0 >LEN OUTPUT 1 >str REPLACE
    ['] WRITE-OUTPUT catch E-ALIAS T=
    EDIT:CLOSE ;
 

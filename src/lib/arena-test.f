@@ -1,4 +1,3 @@
-split-str
 \ arena-test.f - package ARENA through its public words, in one loaded program.
 \ The cases catch an arena that: hands out bytes not zeroed, not cell-aligned
 \ or overlapping; moves or clobbers earlier bytes when it maps a chunk; serves
@@ -32,12 +31,13 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 
 : CHECK ( bool -- ) 0= if 1 BAD +! then ;
 : ALIGNED? ( ^u8 -- bool ) NULL-PTR - CELL mod 0= ;
-: FILL-FF ( str -- ) SPAN:MAKE $FF swap SPAN:FILL ;
+: FILL-FF ( str -- ) {: s:str :}
+   s STR:DATA s STR:LEN SPAN:MAKE $FF swap SPAN:FILL ;
 
 
 : ZEROED? ( str -- bool )
-   {: p:^ len:n :}
-   true len 0 ?do p i + c@ 0<> if drop false then loop ;
+   {: p:str :}
+   true p STR:LEN 0 ?do p STR:DATA i + c@ 0<> if drop false then loop ;
 
 
 : NOTE ( ^u8 -- ) c@ ORDER @ 10 * + ORDER ! ;
@@ -50,9 +50,9 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
 : NEXT-ALLOC ( ^ARENA:arena n ^u8 -- n ^u8 )
    {: a:^ jumps:n prev:^ :}
    a 1000 ARENA:ALLOC {: q:^ qn:n :}
-   q qn ZEROED? CHECK
+   q qn >str ZEROED? CHECK
    q ALIGNED? CHECK
-   q qn FILL-FF
+   q qn >str FILL-FF
    q prev - 1000 = if jumps else jumps 1+ then q ;
 
 
@@ -63,12 +63,12 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    ARENA:NEW {: a:^ :}
    a 5 ARENA:ALLOC {: first:^ fn:n :}
    fn 5 T=
-   first fn ZEROED? TTRUE
+   first fn >str ZEROED? TTRUE
    first ALIGNED? TTRUE
    5 0 do i 1+ first i + c! loop
    a 1000 ARENA:ALLOC {: prev:^ pn:n :}
    prev first - 8 T=
-   prev pn FILL-FF
+   prev pn >str FILL-FF
    0 prev 120 0 do a -rot NEXT-ALLOC loop drop
    2 >= TTRUE
    BAD @ 0 T=
@@ -82,9 +82,9 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    ARENA:NEW {: a:^ :}
    a 40000 ARENA:ALLOC {: p:^ pn:n :}
    pn 40000 T=
-   p pn ZEROED? TTRUE
-   p pn FILL-FF
-   a 16 ARENA:ALLOC ZEROED? TTRUE
+   p pn >str ZEROED? TTRUE
+   p pn >str FILL-FF
+   a 16 ARENA:ALLOC >str ZEROED? TTRUE
    p pn + 1- c@ $FF T=
    a ARENA:RELEASE ;
 
@@ -107,12 +107,12 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    s" reset-zeroes" T-LABEL
    ARENA:NEW {: a:^ :}
    a 64 ARENA:ALLOC {: p:^ pn:n :}
-   p pn FILL-FF
-   a 40000 ARENA:ALLOC FILL-FF
+   p pn >str FILL-FF
+   a 40000 ARENA:ALLOC >str FILL-FF
    a ARENA:RESET
    a 64 ARENA:ALLOC {: q:^ qn:n :}
    q p = TTRUE
-   q qn ZEROED? TTRUE
+   q qn >str ZEROED? TTRUE
    a ARENA:RELEASE ;
 
 
@@ -141,7 +141,7 @@ variable ORDER                     \ the ids actions saw in run order, a digit e
    kid 4 TAGGED
    r ARENA:RESET
    ORDER @ 547 T=
-   r 8 ARENA:ALLOC ZEROED? TTRUE
+   r 8 ARENA:ALLOC >str ZEROED? TTRUE
    r ARENA:RELEASE
    ORDER @ 547 T=
    0 ORDER !
@@ -230,12 +230,12 @@ public
    ARENA:NEW r ROOT-STORE !
    r ROOT-STORE @ ITEM-BYTES [: ITEM-NOTE ;] ERASE-ITEM ARENA:ALLOC-DISPOSE drop
    >ITEM 9 swap ITEM-ID !
-   r ROOT-STORE @ 100 ARENA:ALLOC FILL-FF
-   r ROOT-STORE @ 40000 ARENA:ALLOC FILL-FF
+   r ROOT-STORE @ 100 ARENA:ALLOC >str FILL-FF
+   r ROOT-STORE @ 40000 ARENA:ALLOC >str FILL-FF
    r ROOT-STORE @ ARENA:RELEASE
    ORDER @ 9 T=
    ARENA:NEW r ROOT-STORE !
-   r ROOT-STORE @ 200 ARENA:ALLOC ZEROED? TTRUE
+   r ROOT-STORE @ 200 ARENA:ALLOC >str ZEROED? TTRUE
    r ROOT-STORE @ ARENA:RELEASE
    ORDER @ 9 T=
    r ROOTS-RELEASE ;
@@ -265,10 +265,10 @@ CAP BUFFER: CAP-ERR
 
 
 : EXPECT-FAULT ( str -- )
-   {: src:^ srcu:n :}
-   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   {: src:str :}
+   src CAP-OUT CAP >LEN CAP-ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc
+   src CAP-OUT outu LEN>N >str CAP-ERR erru LEN>N >str oc
    110 T-ENDING-EXITED= ;
 
 
@@ -318,12 +318,13 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 : RESIZE-MOVES ( ^ALLOC:allocator -- ^u8 )
    {: al:^ :}
    al 16 ALLOC:BYTES drop {: block:^ :}
-   block 16 FILL-FF
+   block 16 >str FILL-FF
    al block 16 40 ALLOC:RESIZE 40 T= {: grown:^ :}
    grown block = TTRUE
    al 16 ALLOC:BYTES drop {: mid:^ :}
    al grown 40 64 ALLOC:RESIZE 64 T= {: moved:^ :}
-   moved grown <> TTRUE  moved 15 + c@ $FF T=  moved 16 + 48 ZEROED? TTRUE
+   moved grown <> TTRUE  moved 15 + c@ $FF T=
+   moved 16 + 48 >str ZEROED? TTRUE
    grown c@ $FF T=  grown 15 + c@ $FF T=
    al mid 16 8 ALLOC:RESIZE 8 T= mid = TTRUE
    moved ;
@@ -333,13 +334,14 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 \ there; a growth past the first chunk moves the block and keeps its bytes.
 : RESIZE-REGROWS ( ^ALLOC:allocator ^u8 -- )
    {: al:^ block:^ :}
-   block 64 FILL-FF
+   block 64 >str FILL-FF
    al block 64 20 ALLOC:RESIZE 20 T= block = TTRUE
    al block 20 128 ALLOC:RESIZE 128 T= block = TTRUE
-   block 19 + c@ $FF T=  block 20 + 108 ZEROED? TTRUE
+   block 19 + c@ $FF T=  block 20 + 108 >str ZEROED? TTRUE
    al block 128 $5000 ALLOC:RESIZE $5000 T= {: far:^ :}
    far block <> TTRUE
-   far c@ $FF T=  far 19 + c@ $FF T=  far 20 + $5000 20 - ZEROED? TTRUE ;
+   far c@ $FF T=  far 19 + c@ $FF T=
+   far 20 + $5000 20 - >str ZEROED? TTRUE ;
 
 
 \ 12. ALLOC:RESIZE through an arena's allocator: in place, by a move, after a

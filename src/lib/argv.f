@@ -1,4 +1,3 @@
-split-str
 \ argv.f - checked argv parser for `bin/hb script.f args...` scripts (ARGV).
 \ PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$, which start after the `--` ending
 \ `bin/hb --load a.f -- args` (file-source mode leaves non-tty stdin to the
@@ -40,11 +39,12 @@ variable ARGV-QUIET
 : ARGV-TRUE ( -- bool )  0 0= ;
 
 : >SPAN ( str -- span )
-   dup 0 < if EXIT-STATUS:INTERNAL throw then
-   >LEN SPAN-MAKE ;
+   {: s:str :}
+   s STR:LEN 0 < if EXIT-STATUS:INTERNAL throw then
+   s STR:DATA s STR:LEN >LEN SPAN-MAKE ;
 
 : SPAN$ ( span -- str )
-   SPAN-UNMAKE LEN>N ;
+   SPAN-UNMAKE LEN>N >str ;
 
 : EXPLICIT? ( configured-value -- bool )
    MATCH configured-value
@@ -58,15 +58,16 @@ variable ARGV-QUIET
       explicit OF SPAN$ ENDOF
    ;MATCH ;
 
-: ARGV-BYTES= ( str str -- bool ) {: a:^ u b:^ v :}
-   u v <> if ARGV-FALSE exit then
-   0 begin dup u < while
-      dup a + c@  over b + c@  <> if drop ARGV-FALSE exit then
+: ARGV-BYTES= ( str str -- bool ) {: s:str t:str :}
+   s STR:LEN t STR:LEN <> if ARGV-FALSE exit then
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@  over t STR:DATA + c@  <>
+      if drop ARGV-FALSE exit then
       1 +
    repeat drop ARGV-TRUE ;
 
-: ARGV-ERR ( str -- ) {: a:^ u:n :}   \ one piece of a refusal line
-   ARGV-QUIET @ 0 = if 2 a u write drop then ;
+: ARGV-ERR ( str -- ) {: s:str :}   \ one piece of a refusal line
+   ARGV-QUIET @ 0 = if 2 s write drop then ;
 
 public
 
@@ -85,21 +86,21 @@ private
 
 public
 
-: FAIL ( str -- ) {: a:^ u:n :}
-   u 0 < if EXIT-STATUS:INTERNAL throw then
-   a u ARGV-ERR
+: FAIL ( str -- ) {: s:str :}
+   s STR:LEN 0 < if EXIT-STATUS:INTERNAL throw then
+   s ARGV-ERR
    ARGV-FAIL-DONE ;
 
 private
 
-: ARGV-UNKNOWN ( str -- ) {: a:^ u :}
+: ARGV-UNKNOWN ( str -- ) {: s:str :}
    s" unknown option: " ARGV-ERR
-   a u ARGV-ERR
+   s ARGV-ERR
    ARGV-FAIL-DONE ;
 
-: ARGV-MISSING ( str -- ) {: a:^ u :}
+: ARGV-MISSING ( str -- ) {: s:str :}
    s" missing value for " ARGV-ERR
-   a u ARGV-ERR
+   s ARGV-ERR
    ARGV-FAIL-DONE ;
 
 public
@@ -141,13 +142,14 @@ public
 : TOK$ ( n -- str )
    ARGV-TOKEN SPAN$ ;
 
-: TOK= ( n str -- bool ) {: idx:n a:^ u:n :}
-   idx TOK$ a u ARGV-BYTES= ;
+: TOK= ( n str -- bool ) {: idx:n s:str :}
+   idx TOK$ s ARGV-BYTES= ;
 
 private
 
-: ARGV-DASH? ( str -- bool ) {: a:^ u :}
-   u 1 > if a c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
+: ARGV-DASH? ( str -- bool ) {: s:str :}
+   s STR:LEN 1 >
+   if s STR:DATA c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
 
 : ARGV-POS+ ( span bool -- ) {: arg:span dry:bool :}
    dry 0= if arg ARGV-SCAN-NPOS @ ARGV-POS ! then

@@ -1,4 +1,3 @@
-split-str
 \ content-key-test.f - focused tests for content-key folds and file keys.
 \ Run: bin/hb --load src/lib/content-key-test.f
 
@@ -30,19 +29,19 @@ create CKT-INT-A 80 allot
 create CKT-INT-B 80 allot
 
 
-: CKT-COPY! ( str ^u8 ^n -- ) {: a:^ u:n dst:^ lenp:^ :}
-   a dst u BYTE-COPY
-   u lenp ! ;
+: CKT-COPY! ( str ^u8 ^n -- ) {: s:str dst:^ lenp:^ :}
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN lenp ! ;
 
 : CKT-PATH! ( str str ^u8 ^n -- )
-   {: pa:^ pu:n na:^ nu:n dst:^ lenp:^ :}
-   pa pu na nu dst FS:JOIN-PATH lenp ! ;
+   {: ps:str ns:str dst:^ lenp:^ :}
+   ps ns dst FS:JOIN-PATH lenp ! ;
 
 : CKT-ROOT$ ( -- str )
-   CKT-ROOT CKT-ROOT-U @ ;
+   CKT-ROOT CKT-ROOT-U @ >str ;
 
 : CKT-SRC$ ( -- str )
-   CKT-SRC CKT-SRC-U @ ;
+   CKT-SRC CKT-SRC-U @ >str ;
 
 : CKT-SETUP ( -- )
    FS:CLEANUP-RESET
@@ -93,12 +92,12 @@ create CKT-INT-B 80 allot
 : CKT-FOLD-OVERLAP-MATCHES ( -- )
    CKT-FOLD-SEQUENTIAL
    CKT-FOLD-OVERLAPPED
-   CKT-SEQ-A CKT-KEY-LEN CKT-INT-A CKT-KEY-LEN STR:= TTRUE
-   CKT-SEQ-B CKT-KEY-LEN CKT-INT-B CKT-KEY-LEN STR:= TTRUE
+   CKT-SEQ-A CKT-KEY-LEN >str CKT-INT-A CKT-KEY-LEN >str STR:= TTRUE
+   CKT-SEQ-B CKT-KEY-LEN >str CKT-INT-B CKT-KEY-LEN >str STR:= TTRUE
    \ and the two keys are genuinely different keys, so the equalities above are
    \ not both passing on one repeated value.
-   CKT-SEQ-A CKT-KEY-LEN CKT-SEQ-B CKT-KEY-LEN STR:= TFALSE
-   CKT-INT-A CKT-KEY-LEN CKT-INT-B CKT-KEY-LEN STR:= TFALSE ;
+   CKT-SEQ-A CKT-KEY-LEN >str CKT-SEQ-B CKT-KEY-LEN >str STR:= TFALSE
+   CKT-INT-A CKT-KEY-LEN >str CKT-INT-B CKT-KEY-LEN >str STR:= TFALSE ;
 
 \ Each fold owns its scope storage, so 64 folds open at once all fold and
 \ finish, each to the key one lone fold of the same text gives.
@@ -118,7 +117,7 @@ defer CKT-NEST ( n -- )
    CKT-NEST-TEXT
    swap CKT-NEST
    CKT-KEY2 FINAL-HEX
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN STR:= if 1 CKT-NEST-DONE +! then ;
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str STR:= if 1 CKT-NEST-DONE +! then ;
 
 : CKT-NEST-IMPL ( n -- )
    dup 0= if drop exit then
@@ -137,7 +136,7 @@ CKT-NEST-INSTALL
 
 : CKT-MISSING-BODY ( CONTENT-KEY:fold -- )
    CKT-ROOT$ s" missing.f" CKT-COPY-PATH FS:JOIN-PATH {: u:n :}
-   CKT-COPY-PATH u FILE+ CKT-KEY2 FINAL-HEX ;
+   CKT-COPY-PATH u >str FILE+ CKT-KEY2 FINAL-HEX ;
 
 : CKT-MISSING-FOLD ( -- )
    [: CKT-MISSING-BODY ;] WITH-FOLD ;
@@ -168,7 +167,7 @@ CKT-NEST-INSTALL
    s" a fold after the refusal folds and finishes" T-LABEL
    [: CKT-NEST-REF-BODY ;] WITH-FOLD
    [: CKT-NEST-KEY2-BODY ;] WITH-FOLD
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$= ;
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$= ;
 
 \ The fold is linear: a body that copies it to finalize twice or to fold after
 \ FINAL is refused, and so is one that drops it unfinalized. The first body is
@@ -181,22 +180,22 @@ CKT-NEST-INSTALL
    s" CKT-C-TWICE ( CONTENT-KEY:fold -- ) dup CKT-KEY1 FINAL-HEX CKT-KEY2 FINAL-HEX"
    CHECK-QUIET-CANDIDATE! 0 T=
    s" keeping a fold to fold after FINAL is refused" T-LABEL
-   s" CKT-C-AFTER ( CONTENT-KEY:fold -- ) >r r@ CKT-KEY1 FINAL-HEX r> CKT-SEQ-A 1 TEXT+ CKT-KEY2 FINAL-HEX"
+   s" CKT-C-AFTER ( CONTENT-KEY:fold -- ) >r r@ CKT-KEY1 FINAL-HEX r> CKT-SEQ-A 1 >str TEXT+ CKT-KEY2 FINAL-HEX"
    CHECK-QUIET-CANDIDATE! 0 T=
    s" dropping a fold unfinalized is refused" T-LABEL
-   s" CKT-C-DROP ( CONTENT-KEY:fold -- ) CKT-SEQ-A 1 TEXT+ drop"
+   s" CKT-C-DROP ( CONTENT-KEY:fold -- ) CKT-SEQ-A 1 >str TEXT+ drop"
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : CKT-NAMED-BODY ( str str ^u8 CONTENT-KEY:fold -- )
-   >r {: a:^ u:n name:^ size:n key:^ :} r>
-   a u name size FILE-NAMED+ key FINAL-HEX ;
+   >r {: s:str name:str key:^ :} r>
+   s name FILE-NAMED+ key FINAL-HEX ;
 
 : CKT-NAMED-KEY ( str str ^u8 -- )
    [: CKT-NAMED-BODY ;] WITH-FOLD ;
 
 : CKT-FILE-BODY ( str ^u8 CONTENT-KEY:fold -- )
-   >r {: a:^ u:n key:^ :} r>
-   a u FILE+ key FINAL-HEX ;
+   >r {: s:str key:^ :} r>
+   s FILE+ key FINAL-HEX ;
 
 : CKT-FILE-KEY ( str ^u8 -- )
    [: CKT-FILE-BODY ;] WITH-FOLD ;
@@ -204,22 +203,22 @@ CKT-NEST-INSTALL
 : CKT-LOGICAL-NAME ( -- )
    CKT-ROOT$ s" copy.f" CKT-COPY-PATH FS:JOIN-PATH {: copyu:n :}
    CKT-SRC$ s" first" FS:WRITE-ALL
-   CKT-SRC$ CKT-COPY-PATH copyu FS:COPY-FILE-STREAM
+   CKT-SRC$ CKT-COPY-PATH copyu >str FS:COPY-FILE-STREAM
    CKT-SRC$ s" source.f" CKT-KEY1 CKT-NAMED-KEY
-   CKT-COPY-PATH copyu s" source.f" CKT-KEY2 CKT-NAMED-KEY
+   CKT-COPY-PATH copyu >str s" source.f" CKT-KEY2 CKT-NAMED-KEY
    s" one logical name and content ignore the physical location" T-LABEL
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$=
-   CKT-COPY-PATH copyu s" renamed.f" CKT-KEY2 CKT-NAMED-KEY
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$=
+   CKT-COPY-PATH copyu >str s" renamed.f" CKT-KEY2 CKT-NAMED-KEY
    s" different logical names remain different inputs" T-LABEL
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<>
-   CKT-COPY-PATH copyu s" second" FS:WRITE-ALL
-   CKT-COPY-PATH copyu s" source.f" CKT-KEY2 CKT-NAMED-KEY
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$<>
+   CKT-COPY-PATH copyu >str s" second" FS:WRITE-ALL
+   CKT-COPY-PATH copyu >str s" source.f" CKT-KEY2 CKT-NAMED-KEY
    s" the named file is still read from its physical path" T-LABEL
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<>
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$<>
    CKT-SRC$ CKT-KEY1 CKT-FILE-KEY
    CKT-SRC$ CKT-SRC$ CKT-KEY2 CKT-NAMED-KEY
    s" FILE+ retains its path-as-name contract" T-LABEL
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$= ;
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$= ;
 
 \ A fragment carries its length in two bytes (FRAG+), so a logical name of
 \ any length the tree's paths take folds whole: 256 bytes, one past what one
@@ -231,7 +230,7 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
    CK-FRAG-MAX 1+ 0 ?do [char] a CKT-NAME i + c! loop ;
 
 : CKT-NAMED ( n ^u8 -- ) {: u:n key:^ :}
-   CKT-SRC$ CKT-NAME u key CKT-NAMED-KEY ;
+   CKT-SRC$ CKT-NAME u >str key CKT-NAMED-KEY ;
 
 : CKT-LONG-NAME ( n -- ) {: u:n :}
    CKT-NAME u + 1- {: last:^ :}
@@ -239,17 +238,18 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
    [char] b last c!
    u CKT-KEY2 CKT-NAMED
    [char] a last c!
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<> ;
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$<> ;
 
 \ The second length byte is what keeps preimages apart. Counted in one byte, a
 \ 256-byte text would read as an empty one, and its bytes as the fragments that
 \ follow it: here a text tag, a length of 254 and 254 bytes, which is exactly
 \ what an empty text then a 254-byte text fold.
 : CKT-WHOLE-TEXT-BODY ( CONTENT-KEY:fold -- )
-   CKT-NAME 256 TEXT+ CKT-KEY1 FINAL-HEX ;
+   CKT-NAME 256 >str TEXT+ CKT-KEY1 FINAL-HEX ;
 
 : CKT-SPLIT-TEXT-BODY ( CONTENT-KEY:fold -- )
-   CKT-NAME 0 TEXT+ CKT-NAME 2 + 254 TEXT+ CKT-KEY2 FINAL-HEX ;
+   CKT-NAME 0 >str TEXT+ CKT-NAME 2 + 254 >str TEXT+
+   CKT-KEY2 FINAL-HEX ;
 
 : CKT-LENGTH-UNAMBIGUOUS ( -- )
    CK-TEXT-TAG CKT-NAME c!
@@ -257,12 +257,12 @@ create CKT-NAME CK-FRAG-MAX 1+ allot
    [: CKT-WHOLE-TEXT-BODY ;] WITH-FOLD
    [: CKT-SPLIT-TEXT-BODY ;] WITH-FOLD
    CKT-NAME-FILL
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN T$<> ;
+   CKT-KEY1 CKT-KEY-LEN >str CKT-KEY2 CKT-KEY-LEN >str T$<> ;
 
 \ One byte past what two bytes count is refused before a byte is folded, and
 \ the refusal leaves the fold's scope, which releases it.
 : CKT-OVER-BODY ( CONTENT-KEY:fold -- )
-   CKT-NAME CK-FRAG-MAX 1+ TEXT+ CKT-KEY1 FINAL-HEX ;
+   CKT-NAME CK-FRAG-MAX 1+ >str TEXT+ CKT-KEY1 FINAL-HEX ;
 
 : CKT-OVER-FOLD ( -- )
    [: CKT-OVER-BODY ;] WITH-FOLD ;

@@ -1,4 +1,3 @@
-split-str
 \ content-length.f - LSP/DAP Content-Length message framing over a blocking
 \ descriptor; the module knows nothing of what a body holds. NEXT-LENGTH reads a
 \ header block and BODY the body into the caller's span, so the module allocates
@@ -98,7 +97,7 @@ private
 \ Where the first LF the buffer holds is, counted from pos; -1 while none is.
 : LF-INDEX ( ^reader -- n )
    {: r :}
-   r BUF@ r POS@ +  r HELD  LF STR:INDEX-OF MATCH option
+   r BUF@ r POS@ +  r HELD >str  LF STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -118,13 +117,13 @@ private
    i 0= if r MALFORMED then
    a i 1- + c@ CR <> if r MALFORMED then
    i 1- {: u:n :}
-   a u CR STR:INDEX-OF MATCH option
+   a u >str CR STR:INDEX-OF MATCH option
       none OF ENDOF
       some OF drop r MALFORMED ENDOF
    ;MATCH
    u LINE-CAP > if r MALFORMED then
    r POS@ i + 1+ r POS!
-   a u ;
+   a u >str ;
 
 \ The next header line, read on until its LF arrives.
 : LINE ( ^reader -- str )
@@ -147,24 +146,24 @@ private
 
 \ Whether a header name is a token: one tchar or more.
 : TOKEN? ( str -- bool )
-   {: a:^ u:n :}
-   u 0= if false exit then
-   u 0 ?do a i + c@ TCHAR? 0= if false unloop exit then loop
+   {: s:str :}
+   s STR:LEN 0= if false exit then
+   s STR:LEN 0 ?do s STR:DATA i + c@ TCHAR? 0= if false unloop exit then loop
    true ;
 
 \ The digits from the first that is not a zero, the last kept, so that only a
 \ count's value decides whether it fits a cell.
 : SIGNIFICANT ( str -- str )
-   {: a:^ u:n :}
-   0 begin dup u 1- < if dup a + c@ [char] 0 = else false then while 1+ repeat
+   {: s:str :}
+   0 begin dup s STR:LEN 1- < if dup s STR:DATA + c@ [char] 0 = else false then while 1+ repeat
    {: z:n :}
-   a z +  u z - ;
+   s STR:DATA z +  s STR:LEN z - >str ;
 
 \ Content-Length's value: a decimal count within the reader's maximum, blanks
 \ around it aside.
 : LENGTH ( str ^reader -- n )
-   {: a:^ u:n r :}
-   a u STR:TRIM SIGNIFICANT STR:PARSE-POS MATCH option
+   {: s:str r :}
+   s STR:TRIM SIGNIFICANT STR:PARSE-POS MATCH option
       none OF r MALFORMED ENDOF
       some OF ENDOF
    ;MATCH
@@ -172,56 +171,58 @@ private
 
 \ A parameter value without the quotes around a quoted string.
 : UNQUOTE ( str -- str )
-   {: a:^ u:n :}
-   u 2 < if a u exit then
-   a c@ DQ <> if a u exit then
-   a u 1- + c@ DQ <> if a u exit then
-   a 1+  u 2 - ;
+   {: s:str :}
+   s STR:LEN 2 < if s exit then
+   s STR:DATA c@ DQ <> if s exit then
+   s STR:DATA s STR:LEN 1- + c@ DQ <> if s exit then
+   s STR:DATA 1+  s STR:LEN 2 - >str ;
 
 \ Whether one `name=value` parameter of a Content-Type is a charset other than
 \ UTF-8: utf-8, or utf8 as older LSP clients send it, in any case, bare or
 \ quoted.
 : FOREIGN? ( str -- bool )
-   {: a:^ u:n :}
-   a u EQUALS STR:INDEX-OF MATCH option
+   {: s:str :}
+   s EQUALS STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: e:n :}
    e 0 < if false exit then
-   a e STR:TRIM s" charset" STR:=CI 0= if false exit then
-   a e 1+ +  u e 1+ -  STR:TRIM UNQUOTE {: v:^ vu:n :}
-   v vu s" utf-8" STR:=CI  v vu s" utf8" STR:=CI  or 0= ;
+   s STR:DATA e >str STR:TRIM s" charset" STR:=CI 0= if false exit then
+   s STR:DATA e 1+ +  s STR:LEN e 1+ - >str
+   STR:TRIM UNQUOTE {: v:str :}
+   v s" utf-8" STR:=CI  v s" utf8" STR:=CI  or 0= ;
 
 \ A Content-Type value, its media type and parameters split at semicolons:
 \ malformed when a charset parameter names another encoding than UTF-8.
 : CONTENT-TYPE ( str ^reader -- )
-   {: a:^ u:n r :}
-   a u SEMICOLON 0 begin STR:SPLIT-NEXT while {: p:^ pu:n next:n :}
-      p pu FOREIGN? if r MALFORMED then
-      a u SEMICOLON next
-   repeat drop 2drop ;
+   {: s:str r :}
+   s SEMICOLON 0 begin STR:SPLIT-NEXT while {: p:str next:n :}
+      p FOREIGN? if r MALFORMED then
+      s SEMICOLON next
+   repeat drop drop ;
 
 \ One header line: the body length it names if it is Content-Length, else the
 \ length the lines before it named, -1 while none has.
 : HEADER ( n str ^reader -- n )
-   {: seen:n a:^ u:n r :}
-   a u COLON STR:INDEX-OF MATCH option
+   {: seen:n s:str r :}
+   s COLON STR:INDEX-OF MATCH option
       none OF r MALFORMED ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: c:n :}
-   a c TOKEN? 0= if r MALFORMED then
-   a c 1+ +  u c 1+ - {: v:^ vu:n :}
-   a c s" Content-Type" STR:=CI if v vu r CONTENT-TYPE then
-   a c s" Content-Length" STR:=CI 0= if seen exit then
+   s STR:DATA c >str TOKEN? 0= if r MALFORMED then
+   s STR:DATA c 1+ +  s STR:LEN c 1+ - >str {: v:str :}
+   s STR:DATA c >str s" Content-Type" STR:=CI
+   if v r CONTENT-TYPE then
+   s STR:DATA c >str s" Content-Length" STR:=CI 0= if seen exit then
    seen 0 >= if r MALFORMED then
-   v vu r LENGTH ;
+   v r LENGTH ;
 
 \ The header lines up to the empty one, and the body length they name.
 : HEADERS ( ^reader -- n )
    {: r :}
-   -1 begin r LINE dup 0 > while
+   -1 begin r LINE dup STR:LEN 0 > while
       r HEADER
-   repeat 2drop
+   repeat drop
    dup 0 < if r MALFORMED then ;
 
 \ The part of a body the buffer did not hold, read straight into the span. The
@@ -254,12 +255,12 @@ HEADER-CAP TASK:+USERS HEADER-ROW u8
 : HEADER$ ( n -- str )
    {: u:n :}
    0 HEADER-ROW {: h:^ :}
-   s" Content-Length: " {: p:^ pu:n :}
-   p h pu BYTE-COPY
-   u h pu DIGITS! {: i:n :}
-   s\" \r\n\r\n" {: t:^ tu:n :}
-   t h i + tu BYTE-COPY
-   h  i tu + ;
+   s" Content-Length: " {: p:str :}
+   p STR:DATA h p STR:LEN BYTE-COPY
+   u h p STR:LEN DIGITS! {: i:n :}
+   s\" \r\n\r\n" {: t:str :}
+   t STR:DATA h i + t STR:LEN BYTE-COPY
+   h  i t STR:LEN + >str ;
 
 public
 
@@ -268,10 +269,11 @@ public
 \ E-CONTENT-LENGTH-STATE.
 : BIND ( ^reader fd SPAN:span<u8> n -- )
    {: r f:fd s max:n :}
-   s $ {: p:^ u:n :}
-   u LINE-CAP 2 + < if E-CONTENT-LENGTH-STATE throw then
+   s $ {: bytes:str :}
+   bytes STR:LEN LINE-CAP 2 + < if E-CONTENT-LENGTH-STATE throw then
    max 0 < if E-CONTENT-LENGTH-STATE throw then
-   f p u 0 0 -1 max CONTENT--LENGTH-READER:MAKE r ! ;
+   f bytes STR:DATA bytes STR:LEN 0 0 -1 max
+   CONTENT--LENGTH-READER:MAKE r ! ;
 
 \ The next message's body length, or NONE when the stream ended on a message
 \ boundary, the one end of input that is not an error. End of file inside a
@@ -297,7 +299,7 @@ public
    want 0 < if E-CONTENT-LENGTH-STATE throw then
    s LEN want < if E-SPAN-CAPACITY throw then
    r HELD want min {: k:n :}
-   r BUF@ r POS@ +  k  s COPY
+   r BUF@ r POS@ +  k >str  s COPY
    r POS@ k + r POS!
    -1 r WANT!
    want k > if r s want k REST then ;
@@ -309,10 +311,10 @@ public
 \ One message, header then body. The header is built in a row of its own, so a
 \ body built in the task's string builder (src/lib/string.f SB) goes out intact.
 : SEND ( fd str -- )
-   {: f:fd a:^ u:n :}
-   u 0 < if E-SPAN-LENGTH throw then
-   f u HEADER$ WRITE-FULL
-   f a u WRITE-FULL ;
+   {: f:fd s:str :}
+   s STR:LEN 0 < if E-SPAN-LENGTH throw then
+   f s STR:LEN HEADER$ WRITE-FULL
+   f s WRITE-FULL ;
 
 ;using
 ;using

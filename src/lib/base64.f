@@ -1,4 +1,3 @@
-split-str
 \ base64.f - RFC 4648 standard base64 and unpadded base64url (section 5's -_).
 \ DECODE accepts exactly what ENCODE writes, so every byte string has one
 \ encoding: no whitespace or wrapping, padding only at the end of the last group
@@ -33,10 +32,10 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
    s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" ;
 
 : SEXTET>CHAR ( n -- n ) {: v:n :}
-   ALPHABET drop v + c@ ;
+   ALPHABET STR:DATA v + c@ ;
 
 : URL-SEXTET>CHAR ( n -- n ) {: v:n :}
-   URL-ALPHABET drop v + c@ ;
+   URL-ALPHABET STR:DATA v + c@ ;
 
 
 \ A character's six bits by its range in Table 1, or as the symbol sym62 or
@@ -59,21 +58,21 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 
 : GRAPHIC? ( n -- bool ) {: c:n :} c $21 >= c $7E <= and ;
 
-: PUT-FOUND ( str n -- ) {: a:^ u:n off:n :}
-   off u = if END$ REASON:APPEND exit then
-   a off + c@ {: c:n :}
-   c GRAPHIC? if a off + 1 false REASON:QUOTE exit then
+: PUT-FOUND ( str n -- ) {: s:str off:n :}
+   off s STR:LEN = if END$ REASON:APPEND exit then
+   s STR:DATA off + c@ {: c:n :}
+   c GRAPHIC? if s STR:DATA off + 1 >str false REASON:QUOTE exit then
    c REASON:BYTE ;
 
 \ Throws code with the header's text, ea as X and fa as the fix, placed at off
 \ in the input a u.
 : REJECT ( str n str str n -- )
-   {: a:^ u:n off:n ea:^ eu:n fa:^ fu:n code:n :}
-   a a off + 1 1 0 REJECTION:POSITION drop {: line:n col:n :}
+   {: s:str off:n es:str fs:str code:n :}
+   s STR:DATA s STR:DATA off + 1 1 0 REJECTION:POSITION drop {: line:n col:n :}
    REASON:OPEN
-   line col REASON:AT REASON:EXPECTED ea eu REASON:APPEND
-   REASON:FOUND a u off PUT-FOUND
-   REASON:FIX fa fu REASON:APPEND
+   line col REASON:AT REASON:EXPECTED es REASON:APPEND
+   REASON:FOUND s off PUT-FOUND
+   REASON:FIX fs REASON:APPEND
    code REASON:STOP ;
 
 : FIX$ ( bool -- str )
@@ -84,37 +83,37 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
    if s" a character of A-Z, a-z, 0-9, - or _" exit then
    s" a character of A-Z, a-z, 0-9, + or /" ;
 
-: REJECT-CHAR ( str n bool -- ) {: a:^ u:n off:n url:bool :}
-   a u off url EXPECTED$ url FIX$ E-BASE64-CHAR REJECT ;
+: REJECT-CHAR ( str n bool -- ) {: s:str off:n url:bool :}
+   s off url EXPECTED$ url FIX$ E-BASE64-CHAR REJECT ;
 
-: REJECT-PAD ( str n bool -- ) {: a:^ u:n off:n url:bool :}
-   a u off url EXPECTED$
+: REJECT-PAD ( str n bool -- ) {: s:str off:n url:bool :}
+   s off url EXPECTED$
    url if s" leave `=` out: DECODE-URL takes no padding"
    else s" use `=` only to end the last group" then
    E-BASE64-PAD REJECT ;
 
-: REJECT-SPARE ( str n bool -- ) {: a:^ u:n off:n url:bool :}
-   a u off s" a character whose unused low bits are zero"
+: REJECT-SPARE ( str n bool -- ) {: s:str off:n url:bool :}
+   s off s" a character whose unused low bits are zero"
    url FIX$ E-BASE64-PAD REJECT ;
 
-: REJECT-LENGTH ( str bool -- ) {: a:^ u:n url:bool :}
-   a u u
+: REJECT-LENGTH ( str bool -- ) {: s:str url:bool :}
+   s s STR:LEN
    url if s" a length that leaves 0, 2 or 3 characters in the last group of four"
    else s" a length that is a multiple of four" then
    url FIX$ E-BASE64-LENGTH REJECT ;
 
 \ The six bits of the byte at off in the input a u, by Table 2 when url; '=' is
 \ padding out of place, and any other byte outside the table a bad character.
-: CHECKED-SEXTET ( str n bool -- n ) {: a:^ u:n off:n url:bool :}
-   a off + c@ {: c:n :}
+: CHECKED-SEXTET ( str n bool -- n ) {: s:str off:n url:bool :}
+   s STR:DATA off + c@ {: c:n :}
    url if c URL-CHAR>SEXTET else c CHAR>SEXTET then {: v:n :}
    v 0< if
-      c PAD-CHAR = if a u off url REJECT-PAD else a u off url REJECT-CHAR then
+      c PAD-CHAR = if s off url REJECT-PAD else s off url REJECT-CHAR then
    then
    v ;
 
-: GATHER ( str -- n ) {: p k:n :}
-   0 k 0 ?do p i + c@ 16 i 8 * - lshift or loop ;
+: GATHER ( str -- n ) {: p:str :}
+   0 p STR:LEN 0 ?do p STR:DATA i + c@ 16 i 8 * - lshift or loop ;
 
 \ k bytes make k + 1 characters, and '=' fills the group out to four.
 : SCATTER ( n ^u8 n -- ) {: v out k:n :}
@@ -133,36 +132,36 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 
 \ The bytes the group at g in the input a u decodes to, once checked: 3, or for
 \ the last group 2 when it ends "=" and 1 when "==", its spare bits zero.
-: GROUP ( str n bool -- n ) {: a:^ u:n g:n last:bool :}
-   a u g false CHECKED-SEXTET drop
-   a u g 1+ false CHECKED-SEXTET {: v1:n :}
-   last a g + 3 + PAD? and if
-      a g + 2 + PAD? if
-         v1 ONE-BYTE-SPARE and 0<> if a u g 1+ false REJECT-SPARE then
+: GROUP ( str n bool -- n ) {: s:str g:n last:bool :}
+   s g false CHECKED-SEXTET drop
+   s g 1+ false CHECKED-SEXTET {: v1:n :}
+   last s STR:DATA g + 3 + PAD? and if
+      s STR:DATA g + 2 + PAD? if
+         v1 ONE-BYTE-SPARE and 0<> if s g 1+ false REJECT-SPARE then
          1 exit
       then
-      a u g 2 + false CHECKED-SEXTET TWO-BYTE-SPARE and
-      0<> if a u g 2 + false REJECT-SPARE then
+      s g 2 + false CHECKED-SEXTET TWO-BYTE-SPARE and
+      0<> if s g 2 + false REJECT-SPARE then
       2 exit
    then
-   a u g 3 + false CHECKED-SEXTET drop
-   a u g 2 + false CHECKED-SEXTET drop
+   s g 3 + false CHECKED-SEXTET drop
+   s g 2 + false CHECKED-SEXTET drop
    3 ;
 
-: CHECKED ( str -- n ) {: a u:n :}
-   u 3 and 0<> if a u false REJECT-LENGTH then
-   u 4 / {: groups:n :}
-   0 groups 0 ?do a u i 4 * i 1+ groups = GROUP + loop ;
+: CHECKED ( str -- n ) {: s:str :}
+   s STR:LEN 3 and 0<> if s false REJECT-LENGTH then
+   s STR:LEN 4 / {: groups:n :}
+   0 groups 0 ?do s i 4 * i 1+ groups = GROUP + loop ;
 
-: URL-CHECKED ( str -- ) {: a u:n :}
-   u 0 ?do a u i true CHECKED-SEXTET drop loop
-   u 3 and 2 = if
-      a u 1- + c@ URL-CHAR>SEXTET ONE-BYTE-SPARE and
-      0<> if a u u 1- true REJECT-SPARE then
+: URL-CHECKED ( str -- ) {: s:str :}
+   s STR:LEN 0 ?do s i true CHECKED-SEXTET drop loop
+   s STR:LEN 3 and 2 = if
+      s STR:DATA s STR:LEN 1- + c@ URL-CHAR>SEXTET ONE-BYTE-SPARE and
+      0<> if s s STR:LEN 1- true REJECT-SPARE then
    then
-   u 3 and 3 = if
-      a u 1- + c@ URL-CHAR>SEXTET TWO-BYTE-SPARE and
-      0<> if a u u 1- true REJECT-SPARE then
+   s STR:LEN 3 and 3 = if
+      s STR:DATA s STR:LEN 1- + c@ URL-CHAR>SEXTET TWO-BYTE-SPARE and
+      0<> if s s STR:LEN 1- true REJECT-SPARE then
    then ;
 
 : BITS ( ^u8 n -- n ) {: g k:n :}
@@ -188,52 +187,59 @@ public
 
 \ A group is gathered whole before its characters are scattered, so one group
 \ may be encoded in place.
-: ENCODE ( str SPAN:span<u8> -- n ) {: a u:n s :}
-   u 0 < if E-SPAN-LENGTH throw then
+: ENCODE ( str SPAN:span<u8> -- n ) {: src:str s :}
+   src STR:LEN 0 < if E-SPAN-LENGTH throw then
    \ The input is compared with what the span holds, three bytes to four of
    \ reach: scaled up first, a length near the maximum cell wraps the encoded
    \ size negative and every span looks large enough.
-   s SPAN:$ 4 / 3 * u < if E-SPAN-CAPACITY throw then {: out :}
-   u 2 + 3 / {: groups:n :}
+   s SPAN:$ STR:LEN 4 / 3 * src STR:LEN <
+   if E-SPAN-CAPACITY throw then
+   s SPAN:$ STR:DATA {: out :}
+   src STR:LEN 2 + 3 / {: groups:n :}
    groups 4 * {: len:n :}
    groups 0 ?do
-      u i 3 * - 3 min {: k:n :}
-      a i 3 * + k GATHER out i 4 * + k SCATTER
+      src STR:LEN i 3 * - 3 min {: k:n :}
+      src STR:DATA i 3 * + k >str GATHER out i 4 * + k SCATTER
    loop
    len ;
 
-: DECODE ( str SPAN:span<u8> -- n ) {: a u:n s :}
-   u 0 < if E-SPAN-LENGTH throw then
+: DECODE ( str SPAN:span<u8> -- n ) {: src:str s :}
+   src STR:LEN 0 < if E-SPAN-LENGTH throw then
    \ Each group of four decodes to three bytes and the last to at least one, so
    \ a span too small for that is rejected before the input is read.
-   u 4 / 3 * 2 - s SPAN:$ nip > if E-SPAN-CAPACITY throw then
-   a u CHECKED {: len:n :}
-   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out :}
-   u 4 / 0 ?do
+   src STR:LEN 4 / 3 * 2 - s SPAN:$ STR:LEN >
+   if E-SPAN-CAPACITY throw then
+   src CHECKED {: len:n :}
+   s SPAN:$ STR:LEN len < if E-SPAN-CAPACITY throw then
+   s SPAN:$ STR:DATA {: out :}
+   src STR:LEN 4 / 0 ?do
       len i 3 * - 3 min {: k:n :}
-      a i 4 * + k BITS out i 3 * + k PUT
+      src STR:DATA i 4 * + k BITS out i 3 * + k PUT
    loop
    len ;
 
-: ENCODE-URL ( str SPAN:span<u8> -- n ) {: a u:n s :}
-   u 0 < if E-SPAN-LENGTH throw then
-   s SPAN:$ nip u swap URL-ENCODE-LEN {: len:n :}
-   s SPAN:$ drop {: out :}
-   u 2 + 3 / 0 ?do
-      u i 3 * - 3 min {: k:n :}
-      a i 3 * + k GATHER out i 4 * + k URL-SCATTER
+: ENCODE-URL ( str SPAN:span<u8> -- n ) {: src:str s :}
+   src STR:LEN 0 < if E-SPAN-LENGTH throw then
+   s SPAN:$ STR:LEN src STR:LEN swap URL-ENCODE-LEN {: len:n :}
+   s SPAN:$ STR:DATA {: out :}
+   src STR:LEN 2 + 3 / 0 ?do
+      src STR:LEN i 3 * - 3 min {: k:n :}
+      src STR:DATA i 3 * + k >str GATHER
+      out i 4 * + k URL-SCATTER
    loop
    len ;
 
-: DECODE-URL ( str SPAN:span<u8> -- n ) {: a u:n s :}
+: DECODE-URL ( str SPAN:span<u8> -- n ) {: src:str s :}
+   src STR:LEN {: u:n :}
    u 0 < if E-SPAN-LENGTH throw then
-   u 3 and 1 = if a u true REJECT-LENGTH then
+   u 3 and 1 = if src true REJECT-LENGTH then
    u 4 / 3 * u 3 and dup 0<> if 1- then + {: len:n :}
-   s SPAN:$ len < if E-SPAN-CAPACITY throw then {: out :}
-   a u URL-CHECKED
+   s SPAN:$ STR:LEN len < if E-SPAN-CAPACITY throw then
+   s SPAN:$ STR:DATA {: out :}
+   src URL-CHECKED
    u 4 / u 3 and 0<> if 1+ then 0 ?do
       len i 3 * - 3 min {: k:n :}
-      a i 4 * + k URL-BITS out i 3 * + k PUT
+      src STR:DATA i 4 * + k URL-BITS out i 3 * + k PUT
    loop
    len ;
 

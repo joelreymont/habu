@@ -1,4 +1,3 @@
-split-str
 \ codesign-test.f - focused tests for src/lib/codesign.f.
 \ Run: bin/hb --load src/lib/codesign-test.f
 
@@ -35,42 +34,42 @@ create CST-ELF-BUF PATH-CAP allot
 create CST-UNSIGNED-BUF PATH-CAP allot
 create CST-IN-BUF PATH-CAP allot
 
-: CST-COPY! ( str ^u8 ^n -- ) {: a:^ u dst:^ lenp:^ :}
-   u PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   u lenp ! ;
+: CST-COPY! ( str ^u8 ^n -- ) {: s:str dst:^ lenp:^ :}
+   s STR:LEN PATH-CAP > if E-FS-PATH throw then
+   s STR:DATA dst s STR:LEN BYTE-COPY
+   s STR:LEN lenp ! ;
 
-: CST-PATH! ( str str ^u8 ^n -- ) {: pa:^ pu na:^ nu dst:^ lenp:^ :}
-   pa pu na nu dst FS:JOIN-PATH lenp ! ;
+: CST-PATH! ( str str ^u8 ^n -- ) {: ps:str ns:str dst:^ lenp:^ :}
+   ps ns dst FS:JOIN-PATH lenp ! ;
 
 : CST-ROOT ( -- str )
-   CST-ROOT-BUF CST-ROOT-U @ ;
+   CST-ROOT-BUF CST-ROOT-U @ >str ;
 
 : CST-SIGN ( -- str )
-   CST-SIGN-BUF CST-SIGN-U @ ;
+   CST-SIGN-BUF CST-SIGN-U @ >str ;
 
 : CST-ENSURE ( -- str )
-   CST-ENSURE-BUF CST-ENSURE-U @ ;
+   CST-ENSURE-BUF CST-ENSURE-U @ >str ;
 
 : CST-RESIGN ( -- str )
-   CST-RESIGN-BUF CST-RESIGN-U @ ;
+   CST-RESIGN-BUF CST-RESIGN-U @ >str ;
 
 : CST-KEEP ( -- str )
-   CST-KEEP-BUF CST-KEEP-U @ ;
+   CST-KEEP-BUF CST-KEEP-U @ >str ;
 
 : CST-ELF ( -- str )
-   CST-ELF-BUF CST-ELF-U @ ;
+   CST-ELF-BUF CST-ELF-U @ >str ;
 
 : CST-UNSIGNED ( -- str )
-   CST-UNSIGNED-BUF CST-UNSIGNED-U @ ;
+   CST-UNSIGNED-BUF CST-UNSIGNED-U @ >str ;
 
 : CST-IN ( -- str )
-   CST-IN-BUF CST-IN-U @ ;
+   CST-IN-BUF CST-IN-U @ >str ;
 
 : CST-PREPARE ( -- )
    FS:CLEANUP-RESET
-   s" habu-codesign" FS:MKTEMP-DIR {: a:^ u :}
-   a u CST-ROOT-BUF CST-ROOT-U CST-COPY!
+   s" habu-codesign" FS:MKTEMP-DIR {: s:str :}
+   s CST-ROOT-BUF CST-ROOT-U CST-COPY!
    CST-ROOT FS:CLEANUP-TREE+
    CST-ROOT s" sign-echo" CST-SIGN-BUF CST-SIGN-U CST-PATH!
    CST-ROOT s" ensure-script" CST-ENSURE-BUF CST-ENSURE-U CST-PATH!
@@ -79,10 +78,10 @@ create CST-IN-BUF PATH-CAP allot
    CST-ROOT s" elf" CST-ELF-BUF CST-ELF-U CST-PATH!
    CST-ROOT s" unsigned-script" CST-UNSIGNED-BUF CST-UNSIGNED-U CST-PATH! ;
 
-: CST-CP ( str str -- ) {: src:^ srcu dst:^ dstu :}
+: CST-CP ( str str -- ) {: src:str dst:str :}
    PROC-ARGV-RESET
-   src srcu  PROC-ARGV+
-   dst dstu  PROC-ARGV+
+   src  PROC-ARGV+
+   dst  PROC-ARGV+
    s" /bin/cp" -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : CST-TOOL-RC ( -- n )
@@ -106,33 +105,33 @@ variable CST-ERR-U
    CST-ERR-RELEASE ;
 
 \ Runs tool with PROC-ARGV and stdin in; its stderr stays in CST-ERR.
-: CST-CAPTURE ( str str -- n ) {: tool:^ toolu:n in:^ inu:n :}
+: CST-CAPTURE ( str str -- n ) {: tool:str in:str :}
    PROC-ENV-RESET
-   tool toolu in inu
+   tool in
    [: CST-OUT-ROOM ;] [: CST-ERR-ROOM ;]
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    {: o:len e:len oc :}
    e LEN>N CST-ERR-U !
    oc PROCESS:ENDING>RC RC>N ;
 
-: CST-TEAM-REQ ( str -- str ) {: id:^ idu :}
+: CST-TEAM-REQ ( str -- str ) {: id:str :}
    SB-RESET
    s\" =anchor apple generic and identifier \"" SB-APPEND
-   id idu SB-APPEND
+   id SB-APPEND
    s\" \" and certificate leaf[subject.OU] = \"" SB-APPEND
    CST-TEAM SB-APPEND
    s\" \"" SB-APPEND
-   SB-BUF SB-LEN @ ;
+   SB-BUF SB-LEN @ >str ;
 
 \ codesign -v exits 3 for a valid signature of another signer, ad hoc included.
-: CST-EXPECT-TEAM ( str str -- ) {: a:^ u id:^ idu :}
+: CST-EXPECT-TEAM ( str str -- ) {: s:str id:str :}
    HB-TARGET-MACOS? 0= if exit then
-   id idu CST-TEAM-REQ CST-IN-BUF CST-IN-U CST-COPY!
+   id CST-TEAM-REQ CST-IN-BUF CST-IN-U CST-COPY!
    PROC-ARGV-RESET
    s" -v" PROC-ARGV+
    s" -R" PROC-ARGV+
    CST-IN PROC-ARGV+
-   a u PROC-ARGV+
+   s PROC-ARGV+
    CST-TOOL-RC 0 T= ;
 
 : CST-TEST-CODESIGN ( -- )
@@ -188,7 +187,7 @@ variable CST-ERR-U
    s" -dv" PROC-ARGV+
    CST-KEEP PROC-ARGV+
    CODESIGN:TOOL s" " CST-CAPTURE 0 T=
-   0 CST-ERR CST-ERR-U @ s" (runtime)" STR:CONTAINS? TTRUE
+   0 CST-ERR CST-ERR-U @ >str s" (runtime)" STR:CONTAINS? TTRUE
    CST-RELEASE ;
 
 \ A Linux executable built on a Mac (--target) is an ELF file: ENSURE leaves it
@@ -206,20 +205,20 @@ variable CST-ERR-U
 \ What a session prints is under test, so a child engine runs CST-IN from stdin;
 \ its exit status is returned.
 : CST-CHILD ( -- n )
-   SB-BUF SB-LEN @ CST-IN-BUF CST-IN-U CST-COPY!
+   SB-BUF SB-LEN @ >str CST-IN-BUF CST-IN-U CST-COPY!
    PROC-ARGV-RESET
    PROCESS:OWN-PATH CST-IN CST-CAPTURE ;
 
 : CST-ERR-HAS? ( str -- bool )
-   {: a:^ u :}
-   0 CST-ERR CST-ERR-U @ a u STR:CONTAINS? ;
+   {: s:str :}
+   0 CST-ERR CST-ERR-U @ >str s STR:CONTAINS? ;
 
-: CST-UNSIGNED-CHILD ( str -- n ) {: w:^ wu :}
+: CST-UNSIGNED-CHILD ( str -- n ) {: w:str :}
    SB-RESET
    s\" require src/lib/codesign.f\ns\" " SB-APPEND
    CST-UNSIGNED SB-APPEND
    s\" \" CODESIGN:" SB-APPEND
-   w wu SB-APPEND
+   w SB-APPEND
    s\" \n" SB-APPEND
    CST-CHILD ;
 
@@ -283,7 +282,7 @@ create CST-IMG-B 128 allot
 
 \ The command is CST-LC-SIGNATURE for a signed image, another for an unsigned
 \ one; the signature offset is the command's, so it may lie past the image.
-: CST-IMAGE ( str n -- ) {: a:^ cmd:n sig:n :}
+: CST-IMAGE ( ^u8 n n -- ) {: a:^ cmd:n sig:n :}
    128 0 ?do 0 a i + c! loop
    CST-MACHO-MAGIC a LE:U32!
    1 a 16 + LE:U32!
@@ -319,7 +318,8 @@ create CST-IMG-B 128 allot
    CST-IMG-B off + c@ 1 xor CST-IMG-B off + c! ;
 
 : CST-SAME-IMAGE? ( n -- bool ) {: bu:n :}
-   CST-IMG-A CST-IMG-BYTES CST-IMG-B bu CODESIGN:SAME-IMAGE? ;
+   CST-IMG-A CST-IMG-BYTES >str CST-IMG-B bu >str
+   CODESIGN:SAME-IMAGE? ;
 
 : CST-TEST-SAME-IMAGE ( -- )
    s" images that differ only in the CMS blob are the same image" T-LABEL
@@ -347,7 +347,8 @@ create CST-IMG-B 128 allot
    CST-IMG-BYTES CST-SAME-IMAGE? TFALSE
    s" a short LC_CODE_SIGNATURE at the image end is not the same image" T-LABEL
    CST-IMG-A CST-SHORT-SIG  CST-IMG-B CST-SHORT-SIG
-   CST-IMG-A CST-SHORT-BYTES CST-IMG-B CST-SHORT-BYTES CODESIGN:SAME-IMAGE? TFALSE ;
+   CST-IMG-A CST-SHORT-BYTES >str CST-IMG-B CST-SHORT-BYTES >str
+   CODESIGN:SAME-IMAGE? TFALSE ;
 
 : CODESIGN-TEST-MAIN ( -- )
    T-RESET

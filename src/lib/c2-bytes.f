@@ -1,4 +1,3 @@
-split-str
 \ Bounded operations on borrowed C2 byte views.
 require src/lib/c2-memory.f
 
@@ -11,11 +10,12 @@ public
 : MUT-LENGTH ( mut-view<p,q,a,u8> -- n mut-view<p,q,a,u8> ) C2-MEM:MUT-LENGTH ;
 
 : COPY$ ( mut-view<p,q,a,u8> str -- mut-view<p,q,a,u8> n )
-   {: source:^ size:n :}
+   {: source:str :}
+   source STR:LEN {: size:n :}
    MUT-LENGTH swap {: cap:n :}
    size 0 < if E-SPAN-RANGE throw then
    size cap > if E-SPAN-CAPACITY throw then
-   size 0 ?do i source + c@ i swap C2-MEM:MUT-BYTE! loop
+   size 0 ?do i source STR:DATA + c@ i swap C2-MEM:MUT-BYTE! loop
    size ;
 
 : SLICE ( read-view<p,q,u8> n n -- read-view<p,q,u8> ) C2-MEM:SLICE ;

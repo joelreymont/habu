@@ -1,4 +1,3 @@
-split-str
 \ base85.f - Adobe Ascii85, the data between `<~` and `~>` without those marks.
 \ Five digits `!`..`u` are one 32-bit value written as four bytes, most
 \ significant first; `z` between groups is four zero bytes; white space is
@@ -81,19 +80,19 @@ $FF constant OCTET
 
 \ The decoded length; the bytes too at out when put is set.
 : WALK ( str ^u8 bool -- n )
-   {: a u:n out put:bool :}
+   {: s:str out put:bool :}
    0 0 0
-   u 0 ?do a i + c@ out put TAKE loop
+   s STR:LEN 0 ?do s STR:DATA i + c@ out put TAKE loop
    out put FINISH ;
 
 public
 
 : DECODE ( str SPAN:span<u8> -- n )
-   {: a u:n s :}
-   u 0 < if E-SPAN-LENGTH throw then
-   s SPAN:$ drop {: out :}
-   a u out false WALK {: len:n :}
-   s SPAN:$ nip len < if E-SPAN-CAPACITY throw then
-   a u out true WALK ;
+   {: src:str s :}
+   src STR:LEN 0 < if E-SPAN-LENGTH throw then
+   s SPAN:$ STR:DATA {: out :}
+   src out false WALK {: len:n :}
+   s SPAN:$ STR:LEN len < if E-SPAN-CAPACITY throw then
+   src out true WALK ;
 
 ;package

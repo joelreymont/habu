@@ -1,4 +1,3 @@
-split-str
 \ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server; the
 \ page-module turn protocol is the header of turn.js. The page's six files, beside
 \ this one, are read into dictionary buffers as it loads, so an application image
@@ -17,16 +16,16 @@ private
 \ The path of the named file beside this one; it holds only while this file
 \ loads.
 : PATH ( str -- str )
-   {: a:^ u:n :}
-   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
-   a u SOURCE-ROOT:JOIN ;
+   {: s:str :}
+   SOURCE-ROOT:ACTIVE-SOURCE drop drop SOURCE-ROOT:DIRNAME
+   s SOURCE-ROOT:JOIN ;
 
 \ The file at the path into the buffer of its size; a file that changed size
 \ since it was measured is E-FS-IO, or FS:READ-ALL's E-FS-CAPACITY.
 : READ ( str ^u8 n -- )
-   {: a:^ u:n dst:^ cap:n :}
-   a u PATH {: path:^ pathu:n :}
-   path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
+   {: s:str dst:^ cap:n :}
+   s PATH {: path:str :}
+   path dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
 s" index.html" PATH FS:FILE-SIZE constant INDEX-U
 INDEX-U BUFFER: INDEX
@@ -53,27 +52,27 @@ MCP-U BUFFER: MCP
 s" mcp.js" MCP MCP-U READ
 
 : SEND ( HTTP:response str str -- )
-   {: r:HTTP:response a:^ u:n type:^ tu:n :}
-   r s" Content-Type" type tu HTTP:HEADER!
-   r a u HTTP:BODY! ;
+   {: r:HTTP:response s:str type:str :}
+   r s" Content-Type" type HTTP:HEADER!
+   r s HTTP:BODY! ;
 
 : INDEX-PAGE ( HTTP:request HTTP:response -- )
-   nip INDEX INDEX-U s" text/html; charset=utf-8" SEND ;
+   nip INDEX INDEX-U >str s" text/html; charset=utf-8" SEND ;
 
 : HOST-SCRIPT ( HTTP:request HTTP:response -- )
-   nip HOST-JS HOST-JS-U s" text/javascript; charset=utf-8" SEND ;
+   nip HOST-JS HOST-JS-U >str s" text/javascript; charset=utf-8" SEND ;
 
 : VIEWPORT-SCRIPT ( HTTP:request HTTP:response -- )
-   nip VIEWPORT VIEWPORT-U s" text/javascript; charset=utf-8" SEND ;
+   nip VIEWPORT VIEWPORT-U >str s" text/javascript; charset=utf-8" SEND ;
 
 : TURN-SCRIPT ( HTTP:request HTTP:response -- )
-   nip TURN TURN-U s" text/javascript; charset=utf-8" SEND ;
+   nip TURN TURN-U >str s" text/javascript; charset=utf-8" SEND ;
 
 : PAGE-SCRIPT ( HTTP:request HTTP:response -- )
-   nip PAGE PAGE-U s" text/javascript; charset=utf-8" SEND ;
+   nip PAGE PAGE-U >str s" text/javascript; charset=utf-8" SEND ;
 
 : MCP-SCRIPT ( HTTP:request HTTP:response -- )
-   nip MCP MCP-U s" text/javascript; charset=utf-8" SEND ;
+   nip MCP MCP-U >str s" text/javascript; charset=utf-8" SEND ;
 
 public
 

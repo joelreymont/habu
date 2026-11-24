@@ -1,4 +1,3 @@
-split-str
 \ content-key.f - package CONTENT-KEY: manifest-hashed content cache keys, built
 \ in one WITH-FOLD scope through a linear fold naming the scope's own storage,
 \ so keys folded at overlapping times cannot mix bytes. Each fold owns a SHA-256
@@ -51,28 +50,28 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
    c 0 < if E-STR-BOUNDS throw then
    c STR:BYTE-MAX > if E-STR-BOUNDS throw then
    c st BYTE-OFF + c!
-   st st BYTE-OFF + 1 SHA256-FEED ;
+   st st BYTE-OFF + 1 >str SHA256-FEED ;
 
-: BYTES+ ( ^u8 str -- ) {: st:^ a:^ u:n :}
-   st a u SHA256-FEED ;
+: BYTES+ ( ^u8 str -- ) {: st:^ s:str :}
+   st s SHA256-FEED ;
 
 \ A fragment is its tag, its length in two little-endian bytes and its bytes:
 \ FILE+ folds the file's name, and a path of PATH-CAP bytes has to fold whole.
-: FRAG+ ( ^u8 n str -- ) {: st:^ tag:n a:^ u:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   u CK-FRAG-MAX > if E-STR-BOUNDS throw then
+: FRAG+ ( ^u8 n str -- ) {: st:^ tag:n s:str :}
+   s STR:LEN 0 < if E-STR-BOUNDS throw then
+   s STR:LEN CK-FRAG-MAX > if E-STR-BOUNDS throw then
    st tag U8+
-   st u STR:BYTE-MAX and U8+
-   st u 8 rshift U8+
-   st a u BYTES+ ;
+   st s STR:LEN STR:BYTE-MAX and U8+
+   st s STR:LEN 8 rshift U8+
+   st s BYTES+ ;
 
 : DIGEST-FRAG+ ( ^u8 ^u8 -- ) {: st:^ dg:^ :}
    st CK-DIGEST-TAG U8+
    st DIGEST-LEN U8+
-   st dg DIGEST-LEN BYTES+ ;
+   st dg DIGEST-LEN >str BYTES+ ;
 
-: FILE-DIGEST! ( ^u8 str -- ) {: st:^ a:^ u:n :}
-   st FILE-CTX-OFF + a u st FILE-DG-OFF + SHA256-FILE-IN
+: FILE-DIGEST! ( ^u8 str -- ) {: st:^ s:str :}
+   st FILE-CTX-OFF + s st FILE-DG-OFF + SHA256-FILE-IN
    dup 0 <> if throw then drop ;
 
 \ FINAL consumes whichever fold it is handed, and a nested body holds its outer
@@ -98,8 +97,8 @@ public
 : WITH-FOLD ( R [ R CONTENT-KEY:fold -- S ] -- S )
    SCOPE-LEN MEM:BYTES-ALLOC-LEN [: FOLD-RUN ;] MEM:WITH-BYTES ;
 
-: TEXT+ ( CONTENT-KEY:fold str -- CONTENT-KEY:fold ) {: a:^ u:n :}
-   STATE CK-TEXT-TAG a u FRAG+ ;
+: TEXT+ ( CONTENT-KEY:fold str -- CONTENT-KEY:fold ) {: s:str :}
+   STATE CK-TEXT-TAG s FRAG+ ;
 
 : DIGEST+ ( CONTENT-KEY:fold ^u8 -- CONTENT-KEY:fold ) {: dg:^ :}
    STATE dg DIGEST-FRAG+ ;
@@ -107,15 +106,15 @@ public
 \ Reads the physical path but folds the logical name, so a build naming sources
 \ root-relative shares its key across identical trees in different workspaces.
 : FILE-NAMED+ ( CONTENT-KEY:fold str str -- CONTENT-KEY:fold )
-   {: a:^ u:n name:^ size:n :}
+   {: s:str name:str :}
    STATE {: st:^ :}
-   st CK-FILE-TAG name size FRAG+
-   st a u FILE-DIGEST!
+   st CK-FILE-TAG name FRAG+
+   st s FILE-DIGEST!
    st st FILE-DG-OFF + DIGEST-FRAG+ ;
 
 \ Digests the file's current bytes on every call.
-: FILE+ ( CONTENT-KEY:fold str -- CONTENT-KEY:fold ) {: a:^ u:n :}
-   a u a u FILE-NAMED+ ;
+: FILE+ ( CONTENT-KEY:fold str -- CONTENT-KEY:fold ) {: s:str :}
+   s s FILE-NAMED+ ;
 
 : FINAL ( CONTENT-KEY:fold ^u8 -- ) {: dst:^ :}
    ERASE {: st:^ :}

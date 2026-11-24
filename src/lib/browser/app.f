@@ -1,4 +1,3 @@
-split-str
 \ app.f - MCP-APP: an MCP App's view (ext-apps "2026-01-26") of a Habu Wasm
 \ module, in two parts. The kept page, PAGE+, is app.html and app.js, all a
 \ host keeps between its reads of the ui:// resource: app.html with the title
@@ -40,16 +39,16 @@ private
 \ The path of the named file beside this one; it holds only while this file
 \ loads.
 : PATH ( str -- str )
-   {: a:^ u:n :}
-   SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop SOURCE-ROOT:DIRNAME
-   a u SOURCE-ROOT:JOIN ;
+   {: s:str :}
+   SOURCE-ROOT:ACTIVE-SOURCE drop drop SOURCE-ROOT:DIRNAME
+   s SOURCE-ROOT:JOIN ;
 
 
 \ A file that changed size since it was measured is E-FS-IO, or E-FS-CAPACITY.
 : READ ( str ^u8 n -- )
-   {: a:^ u:n dst:^ cap:n :}
-   a u PATH {: path:^ pathu:n :}
-   path pathu dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
+   {: s:str dst:^ cap:n :}
+   s PATH {: path:str :}
+   path dst cap FS:READ-ALL cap <> if E-FS-IO throw then ;
 
 s" app.html" PATH FS:FILE-SIZE constant HTML-U
 HTML-U BUFFER: HTML
@@ -89,16 +88,16 @@ ID-U BUFFER: ID
 SHA256-CTX-BYTES SCRATCH-BUFFER: SHA
 $20 SCRATCH-BUFFER: DIGEST
 SHA SHA256-BEGIN
-SHA HTML HTML-U SHA256-FEED
-SHA APP APP-U SHA256-FEED
+SHA HTML HTML-U >str SHA256-FEED
+SHA APP APP-U >str SHA256-FEED
 SHA DIGEST SHA256-END
 DIGEST ID SHA256>HEX
 
 \ The offset of the marker in app.html at or after the offset; each marker
 \ follows the one before it.
 : MARK ( str n -- n )
-   {: m:^ mu:n from:n :}
-   HTML HTML-U m mu from STR:FIND-SUB-FROM MATCH option
+   {: m:str from:n :}
+   HTML HTML-U >str m from STR:FIND-SUB-FROM MATCH option
       none OF
          s" hb: src/lib/browser/app.html lacks a marker in order" EXIT-STATUS:INTERNAL die
       ENDOF
@@ -111,15 +110,15 @@ DIGEST ID SHA256>HEX
 : APP-MARK ( -- str )  s" <!--app.js-->" ;
 
 TITLE-MARK 0 MARK constant TITLE-AT
-TITLE-AT TITLE-MARK nip + constant TITLE-END
+TITLE-AT TITLE-MARK STR:LEN + constant TITLE-END
 ID-MARK TITLE-END MARK constant ID-AT
-ID-AT ID-MARK nip + constant ID-END
+ID-AT ID-MARK STR:LEN + constant ID-END
 APP-MARK ID-END MARK constant APP-AT
-APP-AT APP-MARK nip + constant APP-END
+APP-AT APP-MARK STR:LEN + constant APP-END
 
 : GAP+ ( n n ^VEC:vector<u8> -- )
    {: from:n to:n v:^ :}
-   HTML from + to from - v VEC:APPEND ;
+   HTML from + to from - >str v VEC:APPEND ;
 
 
 \ The n zero bytes appended to the vector.
@@ -132,64 +131,64 @@ APP-AT APP-MARK nip + constant APP-END
 
 \ The bytes are read after the vector grows, so it must not hold them.
 : BASE64+ ( str ^VEC:vector<u8> -- )
-   {: a:^ u:n v:^ :}
-   v u 2 + 3 / 4 * TAIL+ {: out :}
-   a u out BASE64:ENCODE drop ;
+   {: s:str v:^ :}
+   v s STR:LEN 2 + 3 / 4 * TAIL+ {: out :}
+   s out BASE64:ENCODE drop ;
 
 
 \ The escaped title and the vector.
 : COMPOSE ( str ^VEC:vector<u8> -- )
-   {: t:^ tu:n v:^ :}
-   0 TITLE-AT v GAP+  t tu v VEC:APPEND
-   TITLE-END ID-AT v GAP+  ID ID-U v VEC:APPEND
-   ID-END APP-AT v GAP+  APP APP-U v BASE64+
+   {: t:str v:^ :}
+   0 TITLE-AT v GAP+  t v VEC:APPEND
+   TITLE-END ID-AT v GAP+  ID ID-U >str v VEC:APPEND
+   ID-END APP-AT v GAP+  APP APP-U >str v BASE64+
    APP-END HTML-U v GAP+ ;
 
 
 \ Escapes the title into a scratch vector before the page vector is touched,
 \ so a title ESCAPE-TEXT rejects leaves the page vector as it was.
 : ESCAPED ( str ^VEC:vector<u8> ^ARENA:arena -- )
-   ARENA:ALLOCATOR {: t:^ tu:n v:^ al:^ :}
+   ARENA:ALLOCATOR {: t:str v:^ al:^ :}
    al 0 [type] u8 VEC:NEW {: s:^ :}
-   t tu s XML:ESCAPE-TEXT
+   t s XML:ESCAPE-TEXT
    s VEC:SPAN SPAN:$ v COMPOSE ;
 
 
 \ CODE-ID+'s files, in its order, fed to the SHA-256 context.
 : FILES-FED ( ^u8 -- )
    {: sha:^ :}
-   sha VIEW-HTML VIEW-HTML-U SHA256-FEED
-   sha VIEW-JS VIEW-JS-U SHA256-FEED
-   sha TURN TURN-U SHA256-FEED
-   sha VIEWPORT VIEWPORT-U SHA256-FEED
-   sha PAGE PAGE-U SHA256-FEED
-   sha SOCKET SOCKET-U SHA256-FEED ;
+   sha VIEW-HTML VIEW-HTML-U >str SHA256-FEED
+   sha VIEW-JS VIEW-JS-U >str SHA256-FEED
+   sha TURN TURN-U >str SHA256-FEED
+   sha VIEWPORT VIEWPORT-U >str SHA256-FEED
+   sha PAGE PAGE-U >str SHA256-FEED
+   sha SOCKET SOCKET-U >str SHA256-FEED ;
 
 
 \ The scratch bytes hold the SHA-256 context, then the digest; the vector
 \ grows only once the digest is done.
 : HASHED ( str ^VEC:vector<u8> ^u8 NUM:alloc-byte-len -- )
-   drop {: m:^ mu:n v:^ sha:^ :}
-   sha SHA256-BEGIN  sha m mu SHA256-FEED  sha FILES-FED
+   drop {: m:str v:^ sha:^ :}
+   sha SHA256-BEGIN  sha m SHA256-FEED  sha FILES-FED
    sha SHA256-CTX-BYTES + {: dg:^ :}
    sha dg SHA256-END
-   v ID-U TAIL+ SPAN:$ drop {: hex:^ :}
+   v ID-U TAIL+ SPAN:$ STR:DATA {: hex:^ :}
    dg hex SHA256>HEX ;
 
 public
 
 \ The page id, PAGE+'s page's: the SHA-256 of app.html's bytes, then app.js's,
 \ as 64 lowercase hex digits.
-: PAGE-ID$ ( -- str )  ID ID-U ;
+: PAGE-ID$ ( -- str )  ID ID-U >str ;
 
 \ A file's name, its bytes and the vector a member of a CODE-TOOL$ result's
 \ files is appended to: "<name>":"<the bytes as base64>". The name is
 \ written as it is, so it must be printable ASCII with no " or \. The vector
 \ must hold neither the name nor the bytes.
 : FILE+ ( str str ^VEC:vector<u8> -- )
-   {: name:^ nu:n a:^ u:n v:^ :}
-   s\" \"" v VEC:APPEND  name nu v VEC:APPEND
-   s\" \":\"" v VEC:APPEND  a u v BASE64+  s\" \"" v VEC:APPEND ;
+   {: name:str s:str v:^ :}
+   s\" \"" v VEC:APPEND  name v VEC:APPEND
+   s\" \":\"" v VEC:APPEND  s v BASE64+  s\" \"" v VEC:APPEND ;
 
 
 \ The title and the vector the page is appended to; a title that is not XML
@@ -218,16 +217,16 @@ public
 \ "view.js":…,"turn.js":…,"viewport.js":…,"page.js":…,"socket.js":…,
 \ "module":…}}. The vector must not hold the module.
 : CODE+ ( str ^VEC:vector<u8> -- )
-   {: m:^ mu:n v:^ :}
-   s\" {\"page\":\"" v VEC:APPEND  ID ID-U v VEC:APPEND
-   s\" \",\"code\":\"" v VEC:APPEND  m mu v CODE-ID+
+   {: m:str v:^ :}
+   s\" {\"page\":\"" v VEC:APPEND  ID ID-U >str v VEC:APPEND
+   s\" \",\"code\":\"" v VEC:APPEND  m v CODE-ID+
    s\" \",\"files\":{" v VEC:APPEND
-   s" view.html" VIEW-HTML VIEW-HTML-U v FILE+  s" ," v VEC:APPEND
-   s" view.js" VIEW-JS VIEW-JS-U v FILE+  s" ," v VEC:APPEND
-   s" turn.js" TURN TURN-U v FILE+  s" ," v VEC:APPEND
-   s" viewport.js" VIEWPORT VIEWPORT-U v FILE+  s" ," v VEC:APPEND
-   s" page.js" PAGE PAGE-U v FILE+  s" ," v VEC:APPEND
-   s" socket.js" SOCKET SOCKET-U v FILE+  s" ," v VEC:APPEND
-   s" module" m mu v FILE+  s" }}" v VEC:APPEND ;
+   s" view.html" VIEW-HTML VIEW-HTML-U >str v FILE+  s" ," v VEC:APPEND
+   s" view.js" VIEW-JS VIEW-JS-U >str v FILE+  s" ," v VEC:APPEND
+   s" turn.js" TURN TURN-U >str v FILE+  s" ," v VEC:APPEND
+   s" viewport.js" VIEWPORT VIEWPORT-U >str v FILE+  s" ," v VEC:APPEND
+   s" page.js" PAGE PAGE-U >str v FILE+  s" ," v VEC:APPEND
+   s" socket.js" SOCKET SOCKET-U >str v FILE+  s" ," v VEC:APPEND
+   s" module" m v FILE+  s" }}" v VEC:APPEND ;
 
 ;package

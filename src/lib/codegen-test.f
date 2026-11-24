@@ -1,4 +1,3 @@
-split-str
 \ codegen-test.f - the shared codegen byte buffer (src/lib/codegen.f): a text
 \ past the first mapping is kept whole, and a negative decimal keeps its sign.
 \ Run: bin/hb --load src/lib/test.f src/lib/codegen.f src/lib/codegen-test.f
@@ -16,12 +15,12 @@ CODEGEN:BUFFER CGT-W
    CGT-D CODEGEN:RESET
    CGT-LONG 0 ?do  i CGT-DIGIT CGT-D CODEGEN:APPEND-BYTE  loop ;
 : CGT-LONG-KEPT? ( -- bool )
-   CGT-D CODEGEN:CONTENTS {: a:^ u:n :}
-   true  u 0 ?do  a i + c@ i CGT-DIGIT = and  loop ;
+   CGT-D CODEGEN:CONTENTS {: s:str :}
+   true  s STR:LEN 0 ?do  s STR:DATA i + c@ i CGT-DIGIT = and  loop ;
 
 : CGT-GROW ( -- )
    CGT-LONG-FILL
-   CGT-D CODEGEN:CONTENTS nip CGT-LONG T=
+   CGT-D CODEGEN:CONTENTS STR:LEN CGT-LONG T=
    CGT-LONG-KEPT? TTRUE ;
 
 : CGT-DEC$ ( n -- str )

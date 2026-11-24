@@ -1,4 +1,3 @@
-split-str
 \ byte-buffer-test.f - focused tests for the owned growable byte buffer.
 
 require src/lib/error.f
@@ -31,6 +30,9 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-TLEN ( ^a -- n )  BUF:LEN@ BUFT-BL>RAW ;
 : BUFT-TCAP ( ^a -- n )  BUF:CAP@ BUFT-BL>RAW ;
 
+: BUFT-BLEN ( str -- ^u8 NUM:byte-len ) {: s:str :}
+   s STR:DATA s STR:LEN BUF:N>BLEN ;
+
 : BUFT-CHECK-REJECTS ( str -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
@@ -48,57 +50,57 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    67 BUFT-BUF BUF:APPEND-BYTE                 \ 'C' grows (2 -> 4)
    BUFT-BUF BUFT-TLEN 3 T=
    BUFT-BUF BUFT-TCAP 4 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" ABC" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" ABC" T$= ;
 
 : BUFT-APPEND-SPAN ( -- )
    4 BUFT-FRESH
-   s" ab" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   s" cdef" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN    \ 2+4 = 6 > 4: grows to 8
+   s" ab" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" cdef" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN    \ 2+4 = 6 > 4: grows to 8
    BUFT-BUF BUFT-TLEN 6 T=
    BUFT-BUF BUFT-TCAP 8 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdef" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abcdef" T$= ;
 
 \ A borrowed source can be this buffer's own active prefix or a substring.
 \ Growth must keep that source's block until the append has copied its bytes.
 : BUFT-APPEND-SELF ( -- )
    64 BUFT-FRESH
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-   BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
    T$=
    8 BUFT-FRESH
-   s" abcd" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" abcd" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdabcd" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abcdabcd" T$= ;
 
 : BUFT-APPEND-PART ( -- )
    8 BUFT-FRESH
-   s" abcdefgh" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" abcdefgh" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ drop 2 + 3 BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdefghcde" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abcdefghcde" T$= ;
 
 \ Reacquire the active span after growth; stored row offsets remain valid.
 : BUFT-CONTENT ( -- )
    8 BUFT-FRESH
    BUFT-BUF BUF:SPAN SPAN:LEN 0 T=
-   s" abc" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" abc" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN 3 0 SPAN:SUB SPAN:LEN 0 T=
    [: BUFT-BUF BUF:SPAN 3 1 SPAN:SUB SPAN:LEN drop ;] E-SPAN-RANGE TTHROWSQ
    1 2 {: off:n len:n :}
-   s" defghijk" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" defghijk" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN off len SPAN:SUB SPAN:$ s" bc" T$= ;
 
 : BUFT-RESERVE ( -- )
    4 BUFT-FRESH
-   s" xy" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" xy" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF 100 BUF:N>BLEN BUF:RESERVE            \ exact: cap becomes 100, not doubled
    BUFT-BUF BUFT-TCAP 100 T=
    BUFT-BUF BUFT-TLEN 2 T=
    BUFT-BUF 50 BUF:N>BLEN BUF:RESERVE            \ 50 <= 100: no-op
    BUFT-BUF BUFT-TCAP 100 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xy" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" xy" T$= ;
 
 : BUFT-RESET ( -- )
    BUFT-BUF BUF:DISPOSE
@@ -106,11 +108,11 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-BUF BUFT-TCAP 16 T=
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF 100 BUF:N>BLEN BUF:RESERVE
-   s" xy" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" xy" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF 16 BUF:N>BLEN BUF:RESET
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF BUFT-TCAP 100 T=
-   s" xy" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" xy" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF 200 BUF:N>BLEN BUF:RESET
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF BUFT-TCAP 200 T= ;
@@ -118,40 +120,40 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 \ RESIZE sets the capacity exactly, either way, and keeps the active bytes.
 : BUFT-RESIZE ( -- )
    4 BUFT-FRESH
-   s" xy" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" xy" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF 100 BUF:N>BLEN BUF:RESIZE
    BUFT-BUF BUFT-TCAP 100 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xy" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" xy" T$=
    BUFT-BUF BUF:CLEAR
    BUFT-BUF 16 BUF:N>BLEN BUF:RESIZE
    BUFT-BUF BUFT-TCAP 16 T=
    BUFT-BUF BUFT-TLEN 0 T=
-   s" ab" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" ab" T$= ;
+   s" ab" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" ab" T$= ;
 
 : BUFT-ENSURE ( -- )
    8 BUFT-FRESH
-   s" abc" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" abc" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF 9 BUF:N>BLEN BUF:ENSURE
    BUFT-BUF BUFT-TCAP 16 T=
    BUFT-BUF BUFT-TLEN 3 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abc" T$= ;
 
 : BUFT-GROW-TAIL ( -- )
    4 BUFT-FRESH
    BUFT-BUF 3 BUF:N>BLEN BUF:GROW {: s :}
    s SPAN:LEN 3 T=
-   s SPAN:$ drop BUFT-BUF BUF:SPAN$ drop = TTRUE
+   s SPAN:$ STR:DATA BUFT-BUF BUF:SPAN$ drop = TTRUE
    s" abc" s SPAN:COPY
    BUFT-BUF 2 BUF:N>BLEN BUF:GROW {: t :}       \ 3+2 = 5 > 4: doubles to 8
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUFT-TLEN 5 T=
    t SPAN:LEN 2 T=
-   t SPAN:$ drop BUFT-BUF BUF:SPAN$ drop 3 + = TTRUE
+   t SPAN:$ STR:DATA BUFT-BUF BUF:SPAN$ drop 3 + = TTRUE
    s" de" t SPAN:COPY
    BUFT-BUF 0 BUF:N>BLEN BUF:GROW SPAN:LEN 0 T=  \ zero keeps the capacity
    BUFT-BUF BUFT-TCAP 8 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcde" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abcde" T$= ;
 
 : BUFT-GROW-TAIL-OVERFLOW ( -- )
    2 BUFT-FRESH
@@ -160,28 +162,28 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
 : BUFT-REPLACE ( -- )
    8 BUFT-FRESH
-   s" hi" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   s" replacement" BUF:N>BLEN BUFT-BUF BUF:REPLACE
+   s" hi" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" replacement" BUFT-BLEN BUFT-BUF BUF:REPLACE
    BUFT-BUF BUFT-TLEN 11 T=
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" replacement" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" replacement" T$= ;
 
 : BUFT-CLEAR ( -- )
    8 BUFT-FRESH
-   s" data" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" data" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ drop {: before:^ :}
    BUFT-BUF BUF:CLEAR
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUF:SPAN$ drop before = TTRUE
-   s" new" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" new" T$= ;
+   s" new" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" new" T$= ;
 
 \ CLEAR leaves the longer text's tail past the length; WIPE zeroes it too.
 : BUFT-WIPE ( -- )
    8 BUFT-FRESH
-   s" a longer secret" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" a longer secret" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:CLEAR
-   s" short" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" short" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUFT-TCAP {: cap:n :}
    BUFT-BUF BUF:WIPE
    BUFT-BUF BUFT-TLEN 0 T=
@@ -195,43 +197,43 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
 : BUFT-LEN-STORE ( -- )
    8 BUFT-FRESH
-   s" data" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" data" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ drop {: before:^ :}
    2 BUF:N>BLEN BUFT-BUF BUF:LEN!
    BUFT-BUF BUFT-TLEN 2 T=
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW {: data:^ len:n :}
    data before = TTRUE
-   data len s" da" T$=
-   s" X" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" daX" T$=
+   data len >str s" da" T$=
+   s" X" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" daX" T$=
    8 BUF:N>BLEN BUFT-BUF BUF:LEN!
    BUFT-BUF BUFT-TLEN 8 T=
    BUFT-BUF BUFT-TCAP 8 T= ;
 
 : BUFT-APPEND-REPLACED ( -- )
    4 BUFT-FRESH
-   s" pre" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" pre" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    s" ab-cd-ef" s" -" s" +++" BUFT-BUF BUF:APPEND-REPLACED 2 T=      \ grows across the pieces
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" preab+++cd+++ef" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" preab+++cd+++ef" T$=
    8 BUFT-FRESH
    s" xx-yy-" s" -" s" " BUFT-BUF BUF:APPEND-REPLACED 2 T=          \ an empty new removes every old
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xxyy" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" xxyy" T$=
    BUFT-BUF BUF:CLEAR
    s" --a--" s" --" s" x" BUFT-BUF BUF:APPEND-REPLACED 2 T=         \ old at both ends
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xax" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" xax" T$=
    BUFT-BUF BUF:CLEAR
    s" aaa" s" aa" s" b" BUFT-BUF BUF:APPEND-REPLACED 1 T=           \ non-overlapping, as STR:COUNT-SUB counts
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" ba" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" ba" T$=
    BUFT-BUF BUF:CLEAR
    s" abc" s" z" s" q" BUFT-BUF BUF:APPEND-REPLACED 0 T=            \ absent old: the text as it is
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abc" T$=
    BUFT-BUF BUF:CLEAR
    s" abc" s" " s" q" BUFT-BUF BUF:APPEND-REPLACED 0 T=             \ empty old: STR:COUNT-SUB's zero
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
-   s" -" s" -" BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 + 0
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abc" T$=
+   s" -" s" -" BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 + 0 >str
    BUFT-BUF BUF:APPEND-REPLACED 1 T=                                \ an empty new inside overlaps nothing
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abc" T$= ;
 
 \ Address reuse proves a mapping was freed.
 : BUFT-GROW-RELEASES ( -- )
@@ -272,25 +274,25 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    BUFT-LIVE-BUF BUF:LIVE? TFALSE ;
 
 : BUFT-APPEND-NEW ( -- )
-   s" abc" BUF:N>BLEN BUFT-NEW-BUF BUF:APPEND-SPAN
-   BUFT-NEW-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
+   s" abc" BUFT-BLEN BUFT-NEW-BUF BUF:APPEND-SPAN
+   BUFT-NEW-BUF BUF:SPAN$ BUFT-BL>RAW >str s" abc" T$=
    BUFT-NEW-BUF BUF:DISPOSE ;
 
 : BUFT-GROW-FAIL-ATOMIC ( -- )
    BUFT-CAP0 BUFT-REL-INIT
-   s" keep" BUF:N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
+   s" keep" BUFT-BLEN BUFT-REL-BUF BUF:APPEND-SPAN
    BUFT-REL-BUF BUF:SPAN$ drop {: before:^ :}
    [: BUFT-REL-BUF MEM-MAX-N BUF:N>BLEN BUF:RESERVE ;] E-MEM-MAP TTHROWSQ   \ mmap of the whole space fails
    BUFT-REL-BUF BUF:SPAN$ drop before = TTRUE
    BUFT-REL-BUF BUFT-TLEN 4 T=
    BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T=
-   BUFT-REL-BUF BUF:SPAN$ BUFT-BL>RAW s" keep" T$= ;
+   BUFT-REL-BUF BUF:SPAN$ BUFT-BL>RAW >str s" keep" T$= ;
 
 : BUFT-CAP-ZERO ( -- )    0 BUFT-FRESH ;
 : BUFT-APPEND-OVERFLOW ( -- )
    2 BUFT-FRESH
    65 BUFT-BUF BUF:APPEND-BYTE
-   s" x" drop MEM-MAX-N BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN ;  \ 1 + MAX-BYTES wraps below zero
+   s" x" STR:DATA MEM-MAX-N BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN ;  \ 1 + MAX-BYTES wraps below zero
 
 : BUFT-CHUNK-FILL ( -- )
    1024 0 ?do  i 255 and  BUFT-CHUNK i +  c!  loop ;
@@ -346,7 +348,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
       i 1 + BUFT-BUF BUFT-TLEN T=
       BUFT-BUF BUFT-TCAP  BUFT-BUF BUFT-TLEN  >= TTRUE
    loop
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW  BUFT-REF PROP:COUNT@  T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str  BUFT-REF PROP:COUNT@ >str  T$= ;
 
 : BUFT-RUN ( -- )
    T-RESET
@@ -410,7 +412,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" a grow whose length would wrap is refused" T-LABEL
    [: BUFT-GROW-TAIL-OVERFLOW ;] E-BUF-CAPACITY TTHROWSQ
    s" a refused grow leaves the length where it was" T-LABEL
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" A" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" A" T$=
    BUFT-REL-BUF BUF:DISPOSE
    s" two megabytes appended in chunks grow from a heap block to a mapping and keep every byte" T-LABEL
    BUFT-BIG-FILL
@@ -435,15 +437,16 @@ BUFT-RUN
 false [if] \ off until dot habu-add-the-checks-a49d054d
 : BUFT-REPLACED-NEG ( n n n -- )
    {: tu:n ou:n nu:n :}
-   s" a-b" drop tu s" -" drop ou s" +" drop nu BUFT-BUF BUF:APPEND-REPLACED drop ;
+   s" a-b" STR:DATA tu >str  s" -" STR:DATA ou >str  s" +" STR:DATA nu >str
+   BUFT-BUF BUF:APPEND-REPLACED drop ;
 
 : BUFT-REPLACED-NEGATIVE ( -- )
    4 BUFT-FRESH
-   s" a-b" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" a-b" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    [: -1 1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
    [: 3 -1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
    [: 3 1 -1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" a-b" T$=
    BUFT-BUF BUF:DISPOSE ;
 
 T-RESET BUFT-REPLACED-NEGATIVE T-REPORT
@@ -487,20 +490,21 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : BUFT-LEN-ABOVE-CAP ( -- )
    8 BUFT-FRESH
-   s" data" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
+   s" data" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
    9 BUF:N>BLEN BUFT-BUF BUF:LEN! ;
 
 \ An operand inside the buffer's block would dangle once an append grew it.
 : BUFT-REPLACED-SELF ( -- )
    4 BUFT-FRESH
-   s" a-b" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" -" s" +" BUFT-BUF BUF:APPEND-REPLACED drop ;
+   s" a-b" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" -" s" +" BUFT-BUF BUF:APPEND-REPLACED drop ;
 
 \ So would one that starts below the block and runs into it.
 : BUFT-REPLACED-STRADDLE ( -- )
    4 BUFT-FRESH
-   s" a-b" BUF:N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 - 2 s" -" s" +" BUFT-BUF BUF:APPEND-REPLACED drop ;
+   s" a-b" BUFT-BLEN BUFT-BUF BUF:APPEND-SPAN
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 - 2 >str s" -" s" +"
+   BUFT-BUF BUF:APPEND-REPLACED drop ;
 
 : BUFT-CHECKS-RUN ( -- )
    T-RESET
@@ -518,11 +522,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    [: BUFT-INIT-LIVE-REJECTS ;] E-BUF-STATE TTHROWSQ
    BUFT-REL-BUF BUF:DISPOSE                                          \ the refused re-init left the buffer owned
    [: BUFT-REPLACED-SELF ;] E-BUF-BOUNDS TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=                        \ refused before a byte moved
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" a-b" T$=                        \ refused before a byte moved
    [: BUFT-REPLACED-STRADDLE ;] E-BUF-BOUNDS TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" a-b" T$=
    [: BUFT-LEN-ABOVE-CAP ;] E-BUF-BOUNDS TTHROWSQ
-   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" data" T$=                       \ refused before the length moved
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW >str s" data" T$=                       \ refused before the length moved
    T-REPORT ;
 
 BUFT-CHECKS-RUN

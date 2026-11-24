@@ -1,4 +1,3 @@
-split-str
 \ byte-edit.f - ordered replacement spans over arbitrary bytes (package EDIT).
 \ The editor takes its storage from the allocator INIT takes and grows it per
 \ edit; the source and borrowed replacements stay live until CLOSE. Edits are
@@ -45,18 +44,18 @@ LINEAR: ERASE ( EDIT:editor -- ^header )
    ERASE dup MINT swap ;
 
 : REQUIRE-SPAN ( str -- )
-   {: source:^ size:n :}
-   size 0 < if E-RANGE throw then
-   source ADDRESS {: start:n :}
+   {: source:str :}
+   source STR:LEN 0 < if E-RANGE throw then
+   source STR:DATA ADDRESS {: start:n :}
    start 0 < if E-RANGE throw then
-   size 0 > start 0= and if E-RANGE throw then
-   size MAX-SIZE start - > if E-RANGE throw then ;
+   source STR:LEN 0 > start 0= and if E-RANGE throw then
+   source STR:LEN MAX-SIZE start - > if E-RANGE throw then ;
 
 : OVERLAPS? ( str str -- bool )
-   {: first:^ first-len:n second:^ second-len:n :}
-   first-len 0= second-len 0= or if false exit then
-   first ADDRESS second ADDRESS second-len + <
-   second ADDRESS first ADDRESS first-len + < and ;
+   {: first:str second:str :}
+   first STR:LEN 0= second STR:LEN 0= or if false exit then
+   first STR:DATA ADDRESS second STR:DATA ADDRESS second STR:LEN + <
+   second STR:DATA ADDRESS first STR:DATA ADDRESS first STR:LEN + < and ;
 
 : ROWS@ ( ^header -- ^VEC:vector<row> )
    HEADER-ROWS @ ;
@@ -73,14 +72,14 @@ LINEAR: ERASE ( EDIT:editor -- ^header )
 
 public
 : INIT ( ^ALLOC:allocator str -- EDIT:editor )
-   {: al:^ source size:n :}
-   source size REQUIRE-SPAN
+   {: al:^ source:str :}
+   source REQUIRE-SPAN
    al [type] header ALLOC:NEW {: state :}
    [: al 0 [type] row VEC:NEW state HEADER-ROWS ! ;] catch {: code:n :}
    code 0<> if al state ALLOC:DELETE code throw then
-   source size state HEADER-SOURCE !
+   source state HEADER-SOURCE !
    al state HEADER-ALLOCATOR !
-   size state HEADER-RESULT-LEN !
+   source STR:LEN state HEADER-RESULT-LEN !
    state MINT ;
 
 : CLOSE ( EDIT:editor -- )
@@ -90,35 +89,35 @@ public
 
 private
 : EDIT-CHECK ( ^header n n str -- )
-   {: state start:n removed:n replacement added:n :}
-   replacement added REQUIRE-SPAN
+   {: state start:n removed:n replacement:str :}
+   replacement REQUIRE-SPAN
    start 0 < removed 0 < or if E-RANGE throw then
-   start state SOURCE$ nip > if E-RANGE throw then
-   removed state SOURCE$ nip start - > if E-RANGE throw then
+   start state SOURCE$ STR:LEN > if E-RANGE throw then
+   removed state SOURCE$ STR:LEN start - > if E-RANGE throw then
    start state HEADER-LAST-END @ < if E-ORDER throw then
-   added MAX-SIZE state HEADER-RESULT-LEN @ removed - - > if
+   replacement STR:LEN MAX-SIZE state HEADER-RESULT-LEN @ removed - - > if
       E-CAPACITY throw
    then ;
 
 \ PUSH grows the rows before any header cell changes, so a refused growth
 \ leaves the plan as it was.
 : SAVE-EDIT ( ^header n n str -- )
-   {: state start:n removed:n replacement added:n :}
+   {: state start:n removed:n replacement:str :}
    state ROWS@ VEC:PUSH {: row:^ :}
    start row ROW-START !
    removed row ROW-REMOVED !
-   replacement added row ROW-REPLACEMENT !
+   replacement row ROW-REPLACEMENT !
    start removed + state HEADER-LAST-END !
-   state HEADER-RESULT-LEN @ removed - added + state HEADER-RESULT-LEN ! ;
+   state HEADER-RESULT-LEN @ removed - replacement STR:LEN + state HEADER-RESULT-LEN ! ;
 
 : REPLACE-ARGS ( EDIT:editor off len str -- EDIT:editor ^header n n str )
-   {: start:off removed:len replacement added:n :}
-   STATE start OFF>N removed LEN>N replacement added ;
+   {: start:off removed:len replacement:str :}
+   STATE start OFF>N removed LEN>N replacement ;
 
 : APPLY-EDIT ( ^header n n str -- )
-   {: state start:n removed:n replacement added:n :}
-   state start removed replacement added EDIT-CHECK
-   state start removed replacement added SAVE-EDIT ;
+   {: state start:n removed:n replacement:str :}
+   state start removed replacement EDIT-CHECK
+   state start removed replacement SAVE-EDIT ;
 
 public
 \ Keep the editor below every throwing call. catch restores stack depth, so
@@ -128,22 +127,23 @@ public
 
 private
 : DESTINATION-CHECK ( ^header str -- )
-   {: state destination cap:n :}
-   destination cap REQUIRE-SPAN
-   state HEADER-RESULT-LEN @ cap > if E-CAPACITY throw then
-   state SOURCE$ destination cap OVERLAPS? if E-ALIAS throw then
+   {: state destination:str :}
+   destination REQUIRE-SPAN
+   state HEADER-RESULT-LEN @ destination STR:LEN > if E-CAPACITY throw then
+   state SOURCE$ destination OVERLAPS? if E-ALIAS throw then
    state USED 0 ?do
-      state i ROW ROW-REPLACEMENT @ destination cap OVERLAPS? if E-ALIAS throw then
+      state i ROW ROW-REPLACEMENT @ destination OVERLAPS? if E-ALIAS throw then
    loop ;
 
 : COPY-SPAN ( str ^u8 -- ^u8 )
-   {: source size:n destination :}
-   source destination size >LEN BYTE-COPY-LEN
-   destination size + ;
+   {: source:str destination :}
+   source STR:DATA destination source STR:LEN >LEN BYTE-COPY-LEN
+   destination source STR:LEN + ;
 
 : COPY-EDIT ( ^header ^row n ^u8 -- n ^u8 )
    {: state row:^ prior:n destination :}
-   state SOURCE$ drop prior + row ROW-START @ prior - destination COPY-SPAN
+   state SOURCE$ STR:DATA prior + row ROW-START @ prior - >str
+   destination COPY-SPAN
    {: next :}
    row ROW-START @ row ROW-REMOVED @ +
    row ROW-REPLACEMENT @ next COPY-SPAN ;
@@ -156,8 +156,8 @@ private
       state state i ROW prior next COPY-EDIT
    loop
    {: prior:n next :}
-   state SOURCE$ drop prior +
-   state SOURCE$ nip prior - next COPY-SPAN drop ;
+   state SOURCE$ STR:DATA prior +
+   state SOURCE$ STR:LEN prior - >str next COPY-SPAN drop ;
 
 : WRITE-ARGS ( EDIT:editor ^u8 n -- EDIT:editor ^header ^u8 n )
    {: destination cap:n :}
@@ -165,7 +165,7 @@ private
 
 : WRITE-STATE ( ^header ^u8 n -- n )
    {: state destination cap:n :}
-   state destination cap DESTINATION-CHECK
+   state destination cap >str DESTINATION-CHECK
    state destination WRITE-EDITS
    state HEADER-RESULT-LEN @ ;
 

@@ -1,4 +1,3 @@
-split-str
 \ event.f - BROWSER-EVENT: a browser module's side of the turn protocol's events
 \ (src/lib/browser/turn.js). A module built by tools/hb-build.f answers hello
 \ with EVENT's address and the turn protocol revision its events and records
@@ -38,7 +37,8 @@ public
    8 * EVENT-BUF + >CELLS @ ;
 
 : DELIVERY ( -- str )
-   0 EVENT@ DELIVERS? if  1 EVENT@ >BYTES 2 EVENT@  else  0 >BYTES 0  then ;
+   0 EVENT@ DELIVERS? if  1 EVENT@ >BYTES 2 EVENT@ >str
+   else  0 >BYTES 0 >str  then ;
 
 \ HANDLE leaves this turn's delivery to the caller to FREE on every exit of the
 \ turn, a throw after TAKE included; one never freed keeps its pages.
@@ -55,6 +55,7 @@ public
 
 : HANDLE ( [ -- ] -- )
    false TAKEN !
-   [: TAKEN @ 0= if DELIVERY FREE then ;] finally ;
+   [: TAKEN @ 0= if DELIVERY dup STR:DATA swap STR:LEN FREE then ;]
+   finally ;
 
 ;package

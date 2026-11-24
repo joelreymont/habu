@@ -1,4 +1,3 @@
-split-str
 \ base85-test.f - Adobe Ascii85: whole groups, every tail length, `z`, each
 \ white-space byte, the largest group and every refusal.
 \ Run: bin/hb --load src/lib/base85-test.f
@@ -19,39 +18,39 @@ $A5 constant CANARY
 variable STAGED-LEN
 
 : OUT$ ( n -- str )
-   OUT SPAN:$ drop swap ;
+   OUT SPAN:$ STR:DATA swap >str ;
 
 
 : DECODES ( str str -- )
-   {: a u:n want wu:n :}
-   a u T-LABEL
-   a u OUT BASE85:DECODE {: k:n :}
-   k OUT$ want wu T$= ;
+   {: s:str want:str :}
+   s T-LABEL
+   s OUT BASE85:DECODE {: k:n :}
+   k OUT$ want T$= ;
 
 
 \ k bytes of value b, then the text t: what WANT holds after it.
 : BYTES ( n n str -- str )
-   {: b:n k:n t tu:n :}
+   {: b:n k:n t:str :}
    k 0 ?do b WANT i SPAN:U8! loop
-   tu 0 ?do t i + c@ WANT k i + SPAN:U8! loop
-   WANT SPAN:$ drop k tu + ;
+   t STR:LEN 0 ?do t STR:DATA i + c@ WANT k i + SPAN:U8! loop
+   WANT SPAN:$ STR:DATA k t STR:LEN + >str ;
 
 
 \ A refusal runs in a quotation, which sees no locals, so its input is staged.
 : STAGE ( str -- )
-   {: a u:n :}
-   a u STAGED SPAN:COPY
-   u STAGED-LEN ! ;
+   {: s:str :}
+   s STAGED SPAN:COPY
+   s STR:LEN STAGED-LEN ! ;
 
 
 : STAGED$ ( -- str )
-   STAGED SPAN:$ drop STAGED-LEN @ ;
+   STAGED SPAN:$ STR:DATA STAGED-LEN @ >str ;
 
 
 : REFUSES ( str n -- )
-   {: a u:n code:n :}
-   a u STAGE
-   a u T-LABEL
+   {: s:str code:n :}
+   s STAGE
+   s T-LABEL
    [: STAGED$ OUT BASE85:DECODE drop ;] code TTHROWSQ ;
 
 
@@ -77,7 +76,7 @@ variable STAGED-LEN
    s" Man ....ab" WANT SPAN:COPY
    4 0 do 0 WANT i 4 + SPAN:U8! loop
    s" 9jqo^ z.@:E" STAGE $0A STAGED 7 SPAN:U8!
-   STAGED$ WANT SPAN:$ drop 10 DECODES
+   STAGED$ WANT SPAN:$ STR:DATA 10 >str DECODES
    s"  9.j.q.o.^." STAGE
    $09 STAGED 2 SPAN:U8!  $0A STAGED 4 SPAN:U8!  $0D STAGED 6 SPAN:U8!
    $0C STAGED 8 SPAN:U8!  $00 STAGED 10 SPAN:U8!
@@ -102,7 +101,7 @@ variable STAGED-LEN
    s" a span of exactly the decoded size" T-LABEL
    s" @:E^" OUT-3 BASE85:DECODE 3 T=
    s" a negative count" T-LABEL
-   [: 0 OUT$ drop -1 OUT BASE85:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ ;
+   [: 0 OUT$ STR:DATA -1 >str OUT BASE85:DECODE drop ;] E-SPAN-LENGTH TTHROWSQ ;
 
 public
 

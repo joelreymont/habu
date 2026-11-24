@@ -1,4 +1,3 @@
-split-str
 \ evp-test.f - focused tests for src/lib/crypto/evp.f against published vectors.
 \ Run: bin/hb --load src/lib/crypto/evp-test.f
 \ AES-256-GCM: Test Cases 13 and 16 of McGrew and Viega's GCM specification (the
@@ -86,11 +85,11 @@ variable FILL-N
    value FILL-AT FILL-N @ + c!
    FILL-N @ 1+ FILL-N ! ;
 
-: HEX, ( str -- ) {: text u:n :}
-   u 2 mod 0 <> if E-VECTOR throw then
-   u 2 / 0 ?do
-      text i 2 * + c@ NIBBLE 4 lshift
-      text i 2 * + 1+ c@ NIBBLE or
+: HEX, ( str -- ) {: text:str :}
+   text STR:LEN 2 mod 0 <> if E-VECTOR throw then
+   text STR:LEN 2 / 0 ?do
+      text STR:DATA i 2 * + c@ NIBBLE 4 lshift
+      text STR:DATA i 2 * + 1+ c@ NIBBLE or
       BYTE,
    loop ;
 
@@ -155,12 +154,12 @@ variable FILL-N
    FILLED WANT-N ! ;
 
 
-: KEY$ ( -- str )     KEY-BUF KEY-N @ ;
-: NONCE$ ( -- str )   NONCE-BUF NONCE-N @ ;
-: AAD$ ( -- str )     AAD-BUF AAD-N @ ;
-: PLAIN$ ( -- str )   PLAIN-BUF PLAIN-N @ ;
-: SEALED$ ( -- str )  SEALED-BUF SEALED-N @ ;
-: WANT$ ( -- str )    WANT-BUF WANT-N @ ;
+: KEY$ ( -- str )     KEY-BUF KEY-N @ >str ;
+: NONCE$ ( -- str )   NONCE-BUF NONCE-N @ >str ;
+: AAD$ ( -- str )     AAD-BUF AAD-N @ >str ;
+: PLAIN$ ( -- str )   PLAIN-BUF PLAIN-N @ >str ;
+: SEALED$ ( -- str )  SEALED-BUF SEALED-N @ >str ;
+: WANT$ ( -- str )    WANT-BUF WANT-N @ >str ;
 
 : SEAL-VECTOR ( -- )
    KEY$ NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL SEALED-N ! ;
@@ -168,14 +167,14 @@ variable FILL-N
 \ The unsealed plaintext lands in BACK-BUF; the answer is the length `ok` carried,
 \ or the negated refusal code, so one assertion covers both arms.
 : UNSEAL-VECTOR ( -- n )
-   KEY$ NONCE$ AAD$ SEALED$ BACK-BUF TEXT-CAP CRYPTO:UNSEAL
+   KEY$ NONCE$ AAD$ SEALED$ BACK-BUF TEXT-CAP >str CRYPTO:UNSEAL
    MATCH CRYPTO:unseal-result
       ok OF LEN>N ENDOF
       failed OF CRYPTO:CODE>N negate ENDOF
    ;MATCH ;
 
 : BACK$ ( -- str )
-   BACK-BUF PLAIN-N @ ;
+   BACK-BUF PLAIN-N @ >str ;
 
 : PAINT-BACK ( -- )
    TEXT-CAP 0 ?do $A5 BACK-BUF i + c! loop ;
@@ -192,13 +191,13 @@ variable FILL-N
 
 \ RFC 4231 HMAC-SHA-256.
 
-: MAC-KEY$ ( -- str )   MAC-KEY-BUF MAC-KEY-N @ ;
-: MSG$ ( -- str )       MSG-BUF MSG-N @ ;
-: MAC$ ( -- str )       MAC-BUF CRYPTO:MAC-BYTES ;
-: MAC-WANT$ ( -- str )  MAC-WANT-BUF MAC-WANT-N @ ;
+: MAC-KEY$ ( -- str )   MAC-KEY-BUF MAC-KEY-N @ >str ;
+: MSG$ ( -- str )       MSG-BUF MSG-N @ >str ;
+: MAC$ ( -- str )       MAC-BUF CRYPTO:MAC-BYTES >str ;
+: MAC-WANT$ ( -- str )  MAC-WANT-BUF MAC-WANT-N @ >str ;
 
 : MAC-VECTOR ( -- )
-   MAC-KEY$ MSG$ MAC-BUF MAC-CAP CRYPTO:HMAC-SHA256 ;
+   MAC-KEY$ MSG$ MAC-BUF MAC-CAP >str CRYPTO:HMAC-SHA256 ;
 
 : RFC4231-1 ( -- )
    MAC-KEY-BUF MAC-KEY-CAP INTO  $0B $14 REPEAT,  FILLED MAC-KEY-N !
@@ -250,30 +249,30 @@ variable FILL-N
    MAC-WANT-BUF MAC-CAP INTO
    s" b617318655057264e28bc0b6fb378c8ef146be00" HEX, FILLED MAC-WANT-N !
    $A5 MAC-BUF CRYPTO:MAC1-BYTES + c!
-   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES CRYPTO:HMAC-SHA1
-   MAC-BUF CRYPTO:MAC1-BYTES MAC-WANT$ T$=
+   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES >str CRYPTO:HMAC-SHA1
+   MAC-BUF CRYPTO:MAC1-BYTES >str MAC-WANT$ T$=
    MAC-BUF CRYPTO:MAC1-BYTES + c@ $A5 T=
 
    s" RFC 6238 SHA-1: time 59, 30-second step, eight digits" T-LABEL
    MSG-BUF MSG-CAP INTO 0 7 REPEAT, 59 30 / BYTE, FILLED MSG-N !
-   s" 12345678901234567890" MSG$ MAC-BUF CRYPTO:MAC1-BYTES CRYPTO:HMAC-SHA1
+   s" 12345678901234567890" MSG$ MAC-BUF CRYPTO:MAC1-BYTES >str CRYPTO:HMAC-SHA1
    TOTP1 94287082 T= ;
 
 
 \ Each quotation differs from a working call in exactly one operand.
 
 : SHORT-KEY ( -- )
-   KEY-BUF KEY-CAP 1- NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
+   KEY-BUF KEY-CAP 1- >str NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
 
 : LONG-KEY ( -- )
-   KEY-BUF KEY-CAP 1+ NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
+   KEY-BUF KEY-CAP 1+ >str NONCE$ AAD$ PLAIN$ SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
 
 : SHORT-NONCE ( -- )
-   KEY$ NONCE-BUF CRYPTO:NONCE-BYTES 1- AAD$ PLAIN$
+   KEY$ NONCE-BUF CRYPTO:NONCE-BYTES 1- >str AAD$ PLAIN$
    SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
 
 : LONG-NONCE ( -- )
-   KEY$ NONCE-BUF CRYPTO:NONCE-BYTES 1+ AAD$ PLAIN$
+   KEY$ NONCE-BUF CRYPTO:NONCE-BYTES 1+ >str AAD$ PLAIN$
    SEALED-BUF SEALED-CAP CRYPTO:SEAL drop ;
 
 \ One byte short of the ciphertext plus its tag.
@@ -282,18 +281,18 @@ variable FILL-N
    SEALED-BUF PLAIN-N @ CRYPTO:TAG-BYTES + 1- CRYPTO:SEAL drop ;
 
 : UNSEAL-NO-ROOM ( -- )
-   KEY$ NONCE$ AAD$ SEALED$ BACK-BUF PLAIN-N @ 1- CRYPTO:UNSEAL drop ;
+   KEY$ NONCE$ AAD$ SEALED$ BACK-BUF PLAIN-N @ 1- >str CRYPTO:UNSEAL drop ;
 
 \ A record shorter than a bare tag carries no ciphertext at all.
 : UNSEAL-NO-TAG ( -- )
-   KEY$ NONCE$ AAD$ SEALED-BUF CRYPTO:TAG-BYTES 1-
-   BACK-BUF TEXT-CAP CRYPTO:UNSEAL drop ;
+   KEY$ NONCE$ AAD$ SEALED-BUF CRYPTO:TAG-BYTES 1- >str
+   BACK-BUF TEXT-CAP >str CRYPTO:UNSEAL drop ;
 
 : MAC-NO-ROOM ( -- )
-   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC-BYTES 1- CRYPTO:HMAC-SHA256 ;
+   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC-BYTES 1- >str CRYPTO:HMAC-SHA256 ;
 
 : MAC1-NO-ROOM ( -- )
-   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES 1- CRYPTO:HMAC-SHA1 ;
+   MAC-KEY$ MSG$ MAC-BUF CRYPTO:MAC1-BYTES 1- >str CRYPTO:HMAC-SHA1 ;
 
 : RANDOM-NO-SPAN ( -- )
    MAC-BUF 0 CRYPTO:RANDOM-BYTES ;
@@ -306,8 +305,8 @@ create DRAW-B DRAW-CAP allot
 : PAINT-DRAWS ( -- )
    DRAW-CAP 0 ?do 0 DRAW-A i + c! 0 DRAW-B i + c! loop ;
 
-: ALL-ZERO? ( str -- bool ) {: span u:n :}
-   u 0 ?do span i + c@ 0 <> if false unloop exit then loop
+: ALL-ZERO? ( str -- bool ) {: span:str :}
+   span STR:LEN 0 ?do span STR:DATA i + c@ 0 <> if false unloop exit then loop
    true ;
 
 
@@ -335,9 +334,9 @@ variable BIG-UNSEALED
    base BIG-BYTES + {: sealed :}
    base BIG-BYTES 2 * CRYPTO:TAG-BYTES + + {: unsealed :}
    plain BIG-FILL
-   KEY$ NONCE$ AAD$ plain BIG-BYTES sealed BIG-BYTES CRYPTO:TAG-BYTES +
+   KEY$ NONCE$ AAD$ plain BIG-BYTES >str sealed BIG-BYTES CRYPTO:TAG-BYTES +
    CRYPTO:SEAL BIG-SEALED !
-   KEY$ NONCE$ AAD$ sealed BIG-SEALED @ unsealed BIG-BYTES CRYPTO:UNSEAL
+   KEY$ NONCE$ AAD$ sealed BIG-SEALED @ >str unsealed BIG-BYTES >str CRYPTO:UNSEAL
    MATCH CRYPTO:unseal-result
       ok OF LEN>N ENDOF
       failed OF CRYPTO:CODE>N negate ENDOF
@@ -486,9 +485,9 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ^u8 -- i32 ) ;FUNCTION
    PAINT-DRAWS
    DRAW-A DRAW-CAP CRYPTO:RANDOM-BYTES
    DRAW-B DRAW-CAP CRYPTO:RANDOM-BYTES
-   DRAW-A DRAW-CAP ALL-ZERO? TFALSE
-   DRAW-B DRAW-CAP ALL-ZERO? TFALSE
-   DRAW-A DRAW-CAP DRAW-B DRAW-CAP T$<> ;
+   DRAW-A DRAW-CAP >str ALL-ZERO? TFALSE
+   DRAW-B DRAW-CAP >str ALL-ZERO? TFALSE
+   DRAW-A DRAW-CAP >str DRAW-B DRAW-CAP >str T$<> ;
 
 
 : BIG-MESSAGE ( -- )
@@ -524,8 +523,8 @@ create JWS-MSG JWS-CAP allot
 variable PEM-N
 variable JWS-N
 
-: ASCII, ( str -- ) {: p u:n :}
-   u 0 ?do p i + c@ BYTE, loop ;
+: ASCII, ( str -- ) {: p:str :}
+   p STR:LEN 0 ?do p STR:DATA i + c@ BYTE, loop ;
 
 : PEM-LINE ( str -- ) ASCII, 10 BYTE, ;
 
@@ -548,11 +547,11 @@ variable JWS-N
    FILLED JWS-N ! ;
 
 : RFC-VERIFY ( -- bool )
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
    CRYPTO:RS256-VERIFY? ;
 
 : RFC-SIGN ( -- n )
-   RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-SIGN ;
 
 : RSA-VECTORS ( -- )
@@ -561,17 +560,17 @@ variable JWS-N
    RFC-VERIFY TTRUE
    s" RFC 7515 A.2 PKCS#8 key signs to the exact 256 RFC bytes" T-LABEL
    RFC-SIGN RSA-BYTES T=
-   RSA-OUT RSA-BYTES RSA-SIG RSA-BYTES T$=
+   RSA-OUT RSA-BYTES >str RSA-SIG RSA-BYTES >str T$=
    s" tampered payload is a signature mismatch" T-LABEL
    JWS-MSG dup c@ 1 xor swap c!
    RFC-VERIFY TFALSE
    JWS-MSG dup c@ 1 xor swap c!
    s" a shortened signature is a mismatch" T-LABEL
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES 1-
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES 1- >str
    CRYPTO:RS256-VERIFY? TFALSE
    s" short output capacity is an operand refusal before writing" T-LABEL
    $A5 RSA-OUT c!
-   [: RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-OUT RSA-BYTES 1-
+   [: RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES 1- >str
       CRYPTO:RS256-SIGN drop ;] CRYPTO:E-OPERAND TTHROWSQ
    RSA-OUT c@ $A5 T= ;
 
@@ -622,7 +621,7 @@ variable RSA-ISSUE-N
    FILLED RSA-BYTES T= ;
 
 : RSA-OTHER-KEY ( -- bool )
-   RSA-SECOND RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   RSA-SECOND RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
    CRYPTO:RS256-VERIFY? ;
 
 : RSA-STALE-QUEUE ( -- )
@@ -632,43 +631,43 @@ variable RSA-ISSUE-N
    RSA-OTHER-KEY TFALSE
    STALE-ERROR-NEW
    4 $C0100 0 STALE-ERROR-SET
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-EMPTY RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-EMPTY RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TFALSE
    STALE-ERROR-NEW
    4 $C0100 0 STALE-ERROR-SET
    RFC-VERIFY TTRUE ;
 
 : RSA-VERIFY-BAD-EXP ( -- bool )
-   RSA-N RSA-BYTES RSA-E 1 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 1 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
    CRYPTO:RS256-VERIFY? ;
 
 : RSA-VERIFY-SHORT-N ( -- bool )
-   RSA-N 1+ RSA-BYTES 1- RSA-E 3 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   RSA-N 1+ RSA-BYTES 1- >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
    CRYPTO:RS256-VERIFY? ;
 
 : RSA-VERIFY-LONG-N ( -- bool )
-   RSA-BAD CRYPTO:RS256-MAX-BYTES 1+ RSA-E 3
-   JWS-MSG JWS-N @ RSA-SIG RSA-BYTES CRYPTO:RS256-VERIFY? ;
+   RSA-BAD CRYPTO:RS256-MAX-BYTES 1+ >str RSA-E 3 >str
+   JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str CRYPTO:RS256-VERIFY? ;
 
 : RSA-SIGN-SHORT-PEM ( -- n )
-   RSA-PEM PEM-N @ 10 - JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-PEM PEM-N @ 10 - >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-SIGN ;
 
 : RSA-SIGN-OVERLAP-KEY ( -- n )
-   RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-PEM RSA-BYTES
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-PEM RSA-BYTES >str
    CRYPTO:RS256-SIGN ;
 
 : RSA-SIGN-OVERLAP-MSG ( -- n )
-   RSA-PEM PEM-N @ JWS-MSG JWS-N @ JWS-MSG RSA-BYTES
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str JWS-MSG RSA-BYTES >str
    CRYPTO:RS256-SIGN ;
 
 : RSA-KEY-REFUSALS ( -- )
    s" malformed JWK integers are key errors" T-LABEL
-   [: RSA-N 0 RSA-E 3 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   [: RSA-N 0 >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-KEY TTHROWSQ
-   [: RSA-N 0 RSA-E 3 JWS-MSG JWS-N @ RSA-SIG 0
+   [: RSA-N 0 >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG 0 >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-KEY TTHROWSQ
-   [: RSA-N RSA-BYTES RSA-E 0 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   [: RSA-N RSA-BYTES >str RSA-E 0 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-KEY TTHROWSQ
    [: RSA-VERIFY-BAD-EXP drop ;] CRYPTO:E-KEY TTHROWSQ
    0 RSA-E c!
@@ -680,20 +679,20 @@ variable RSA-ISSUE-N
    [: RSA-VERIFY-SHORT-N drop ;] CRYPTO:E-KEY TTHROWSQ
    RSA-N RSA-BAD 1+ RSA-BYTES BYTE-COPY
    0 RSA-BAD c!
-   [: RSA-BAD RSA-BYTES 1+ RSA-E 3 JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   [: RSA-BAD RSA-BYTES 1+ >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-KEY TTHROWSQ
    $80 RSA-BAD c!
    [: RSA-VERIFY-LONG-N drop ;] CRYPTO:E-KEY TTHROWSQ
    RSA-N RSA-BYTES 1- + dup c@ 1 xor swap c!
    [: RFC-VERIFY drop ;] CRYPTO:E-KEY TTHROWSQ
    RSA-N RSA-BYTES 1- + dup c@ 1 xor swap c!
-   [: RSA-N RSA-BYTES RSA-N RSA-BYTES JWS-MSG JWS-N @ RSA-SIG RSA-BYTES
+   [: RSA-N RSA-BYTES >str RSA-N RSA-BYTES >str JWS-MSG JWS-N @ >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-KEY TTHROWSQ
    s" malformed and non-PKCS#8 PEM is a key error" T-LABEL
    [: RSA-SIGN-SHORT-PEM drop ;] CRYPTO:E-KEY TTHROWSQ
-   [: s" -----BEGIN RSA PRIVATE KEY-----" JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   [: s" -----BEGIN RSA PRIVATE KEY-----" JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
       CRYPTO:RS256-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
-   [: s" -----BEGIN ENCRYPTED PRIVATE KEY-----" JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   [: s" -----BEGIN ENCRYPTED PRIVATE KEY-----" JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
       CRYPTO:RS256-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
    RFC-VERIFY TTRUE ;
 
@@ -702,57 +701,57 @@ variable RSA-ISSUE-N
    RSA-CONTROLS
    RSA-STALE-QUEUE
    RSA-OTHER-KEY TFALSE
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-PSS RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-PSS RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TFALSE
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-EMPTY RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-EMPTY RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TFALSE
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-N RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-N RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TFALSE
    RSA-BYTES 0 ?do 0 RSA-OUT i + c! loop
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TFALSE
    RSA-SIG RSA-OUT RSA-BYTES BYTE-COPY
    0 RSA-OUT RSA-BYTES + c!
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-OUT RSA-BYTES 1+
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES 1+ >str
    CRYPTO:RS256-VERIFY? TFALSE
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-OUT 0
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-OUT 0 >str
    CRYPTO:RS256-VERIFY? TFALSE
    RSA-SIG dup c@ 1 xor swap c!
    RFC-VERIFY TFALSE
    RSA-SIG dup c@ 1 xor swap c!
    s" empty and binary messages sign and verify" T-LABEL
-   RSA-PEM PEM-N @ JWS-MSG 0 RSA-OUT RSA-BYTES CRYPTO:RS256-SIGN RSA-BYTES T=
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG 0 RSA-OUT RSA-BYTES
+   RSA-PEM PEM-N @ >str JWS-MSG 0 >str RSA-OUT RSA-BYTES >str CRYPTO:RS256-SIGN RSA-BYTES T=
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG 0 >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE
    0 JWS-MSG c! $FF JWS-MSG 1+ c! 10 JWS-MSG 2 + c!
-   RSA-PEM PEM-N @ JWS-MSG 3 RSA-OUT RSA-BYTES CRYPTO:RS256-SIGN RSA-BYTES T=
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG 3 RSA-OUT RSA-BYTES
+   RSA-PEM PEM-N @ >str JWS-MSG 3 >str RSA-OUT RSA-BYTES >str CRYPTO:RS256-SIGN RSA-BYTES T=
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG 3 >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE
    RFC-RSA ;
 
 : RSA-OUTPUT-CASES ( -- )
    s" exact and larger output capacities preserve surrounding bytes" T-LABEL
    $A5 RSA-OUT c! $5A RSA-OUT RSA-BYTES 1+ + c!
-   RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-OUT 1+ RSA-BYTES
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT 1+ RSA-BYTES >str
    CRYPTO:RS256-SIGN RSA-BYTES T=
    RSA-OUT c@ $A5 T=
    RSA-OUT RSA-BYTES 1+ + c@ $5A T=
-   RSA-OUT 1+ RSA-BYTES RSA-SIG RSA-BYTES T$=
+   RSA-OUT 1+ RSA-BYTES >str RSA-SIG RSA-BYTES >str T$=
    $5A RSA-OUT RSA-BYTES 1+ + c!
-   RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-OUT 1+ RSA-BYTES 1+
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT 1+ RSA-BYTES 1+ >str
    CRYPTO:RS256-SIGN RSA-BYTES T=
    RSA-OUT RSA-BYTES 1+ + c@ $5A T=
    s" overlapping spans and invalid counts are operands" T-LABEL
    [: RSA-SIGN-OVERLAP-KEY drop ;] CRYPTO:E-OPERAND TTHROWSQ
    [: RSA-SIGN-OVERLAP-MSG drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-OUT -1
+   [: RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT -1 >str
       CRYPTO:RS256-SIGN drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-OUT $80000000
+   [: RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT $80000000 >str
       CRYPTO:RS256-SIGN drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: RSA-N RSA-BYTES RSA-E 3 JWS-MSG -1 RSA-SIG RSA-BYTES
+   [: RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG -1 >str RSA-SIG RSA-BYTES >str
       CRYPTO:RS256-VERIFY? drop ;] CRYPTO:E-OPERAND TTHROWSQ
-   [: $7FFFFFFFFFFFFFF0 >RSA-U8 32 RSA-E 3 JWS-MSG JWS-N @
-      RSA-SIG RSA-BYTES CRYPTO:RS256-VERIFY? drop ;]
+   [: $7FFFFFFFFFFFFFF0 >RSA-U8 32 >str RSA-E 3 >str JWS-MSG JWS-N @ >str
+      RSA-SIG RSA-BYTES >str CRYPTO:RS256-VERIFY? drop ;]
    CRYPTO:E-OPERAND TTHROWSQ
    RFC-SIGN RSA-BYTES T= ;
 
@@ -761,7 +760,7 @@ variable RSA-ISSUE-N
 : RSA-B64URL, ( n -- )
    {: u:n :}
    u 0 ?do
-      RSA-B64 SPAN:$ drop i + c@ {: c:n :}
+      RSA-B64 SPAN:$ STR:DATA i + c@ {: c:n :}
       c [char] = <> if
          c [char] + = if [char] - BYTE, else
             c [char] / = if [char] _ BYTE, else c BYTE, then
@@ -781,7 +780,7 @@ variable RSA-ISSUE-N
    FILLED RSA-ISSUE-N !
    JWS-MSG JWS-CAP INTO
    s" eyJhbGciOiJSUzI1NiJ9." ASCII,
-   RSA-ISSUE RSA-ISSUE-N @ RSA-B64 BASE64:ENCODE RSA-B64URL,
+   RSA-ISSUE RSA-ISSUE-N @ >str RSA-B64 BASE64:ENCODE RSA-B64URL,
    FILLED JWS-N ! ;
 
 : RSA-ISSUE-BUILD ( -- )
@@ -791,23 +790,23 @@ variable RSA-ISSUE-N
 : RSA-NONCE-TRIP ( -- )
    RSA-ISSUE-BUILD
    s" runtime nonce in issuer payload signs, verifies and detects change" T-LABEL
-   RSA-PEM PEM-N @ JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-PEM PEM-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-SIGN RSA-BYTES T=
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE
    RSA-NONCE dup c@ 1 xor swap c!
    RSA-ISSUE-FROM-NONCE
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TFALSE
    RSA-NONCE dup c@ 1 xor swap c!
    RSA-ISSUE-FROM-NONCE
-   RSA-N RSA-BYTES RSA-E 3 JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E 3 >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE
    SCRIPT-ARGC 4 >= if
-      0 SCRIPT-ARGV$ JWS-MSG JWS-N @ FS:WRITE-ALL
-      1 SCRIPT-ARGV$ RSA-OUT RSA-BYTES FS:WRITE-ALL
-      2 SCRIPT-ARGV$ RSA-N RSA-BYTES FS:WRITE-ALL
-      3 SCRIPT-ARGV$ RSA-E 3 FS:WRITE-ALL
+      0 SCRIPT-ARGV$ JWS-MSG JWS-N @ >str FS:WRITE-ALL
+      1 SCRIPT-ARGV$ RSA-OUT RSA-BYTES >str FS:WRITE-ALL
+      2 SCRIPT-ARGV$ RSA-N RSA-BYTES >str FS:WRITE-ALL
+      3 SCRIPT-ARGV$ RSA-E 3 >str FS:WRITE-ALL
    then ;
 
 
@@ -854,18 +853,18 @@ TASK:MIN-STACK TASK:TASK RSA-WORK-B
 
 : RSA-WORK-A-RUN ( -- )
    16 0 ?do
-      RSA-PEM PEM-N @ s" worker-alpha" RSA-WORK-A-OUT RSA-BYTES
+      RSA-PEM PEM-N @ >str s" worker-alpha" RSA-WORK-A-OUT RSA-BYTES >str
       CRYPTO:RS256-SIGN RSA-BYTES <> if 1 TASK:RETURN unloop exit then
-      RSA-N RSA-BYTES RSA-E 3 s" worker-alpha" RSA-WORK-A-OUT RSA-BYTES
+      RSA-N RSA-BYTES >str RSA-E 3 >str s" worker-alpha" RSA-WORK-A-OUT RSA-BYTES >str
       CRYPTO:RS256-VERIFY? 0= if 2 TASK:RETURN unloop exit then
    loop
    0 TASK:RETURN ;
 
 : RSA-WORK-B-RUN ( -- )
    16 0 ?do
-      RSA-SECOND-PEM RSA-SECOND-PEM-N @ s" worker-beta" RSA-WORK-B-OUT RSA-BYTES
+      RSA-SECOND-PEM RSA-SECOND-PEM-N @ >str s" worker-beta" RSA-WORK-B-OUT RSA-BYTES >str
       CRYPTO:RS256-SIGN RSA-BYTES <> if 1 TASK:RETURN unloop exit then
-      RSA-SECOND RSA-BYTES RSA-E 3 s" worker-beta" RSA-WORK-B-OUT RSA-BYTES
+      RSA-SECOND RSA-BYTES >str RSA-E 3 >str s" worker-beta" RSA-WORK-B-OUT RSA-BYTES >str
       CRYPTO:RS256-VERIFY? 0= if 2 TASK:RETURN unloop exit then
    loop
    0 TASK:RETURN ;
@@ -889,20 +888,20 @@ create RSA-CASE-PEM PEM-CAP allot
 variable RSA-CASE-N
 
 : RSA-CASE-SIGN ( -- n )
-   RSA-CASE-PEM RSA-CASE-N @ JWS-MSG JWS-N @ RSA-OUT RSA-BYTES
+   RSA-CASE-PEM RSA-CASE-N @ >str JWS-MSG JWS-N @ >str RSA-OUT RSA-BYTES >str
    CRYPTO:RS256-SIGN ;
 
 : RSA-CASE-TRAILING-DER ( -- )
    RSA-CASE-PEM PEM-CAP INTO
-   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1-
-   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" nip - 1- ASCII,
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" STR:LEN - 1-
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" STR:LEN - 1- >str ASCII,
    s" 03k2+ZQwVK0JKSHuLFkuQ3UFAA==" PEM-LINE
    s" -----END PRIVATE KEY-----" PEM-LINE
    FILLED RSA-CASE-N ! ;
 
 : RSA-CASE-HIDDEN-DER ( -- )
    RSA-CASE-PEM PEM-CAP INTO
-   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1- ASCII,
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" STR:LEN - 1- >str ASCII,
    s" -" PEM-LINE
    s" BQAFAAUA" PEM-LINE
    s" -----END PRIVATE KEY-----" PEM-LINE
@@ -910,23 +909,23 @@ variable RSA-CASE-N
 
 : RSA-CASE-INLINE-HIDDEN-DER ( -- )
    RSA-CASE-PEM PEM-CAP INTO
-   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1-
-   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" nip - 1- ASCII,
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" STR:LEN - 1-
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" STR:LEN - 1- >str ASCII,
    s" 03k2+ZQwVK0JKSHuLFkuQ3U=-BQAFAAUA" PEM-LINE
    s" -----END PRIVATE KEY-----" PEM-LINE
    FILLED RSA-CASE-N ! ;
 
 : RSA-CASE-AFTER-PAD ( -- )
    RSA-CASE-PEM PEM-CAP INTO
-   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1- ASCII,
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" STR:LEN - 1- >str ASCII,
    s" BQAFAAUA" PEM-LINE
    s" -----END PRIVATE KEY-----" PEM-LINE
    FILLED RSA-CASE-N ! ;
 
 : RSA-CASE-INLINE-FOOTER ( -- )
    RSA-CASE-PEM PEM-CAP INTO
-   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" nip - 1-
-   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" nip - 1- ASCII,
+   RSA-PEM PEM-N @ s" -----END PRIVATE KEY-----" STR:LEN - 1-
+   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" STR:LEN - 1- >str ASCII,
    s" 03k2+ZQwVK0JKSHuLFkuQ3U=" ASCII,
    s" -----END PRIVATE KEY-----" PEM-LINE
    FILLED RSA-CASE-N ! ;
@@ -935,14 +934,14 @@ variable RSA-CASE-N
    RSA-CASE-TRAILING-DER
    \ Increase the outer SEQUENCE and PKCS#8 OCTET STRING lengths by two;
    \ the embedded RSA SEQUENCE still ends before the appended NULL object.
-   RSA-CASE-PEM s" -----BEGIN PRIVATE KEY-----" nip 1+ + {: head :}
+   RSA-CASE-PEM s" -----BEGIN PRIVATE KEY-----" STR:LEN 1+ + {: head :}
    [char] w head 5 + c!
    [char] k head 34 + c! ;
 
 : RSA-CASE-TRAILING-SEQ ( -- )
    RSA-CASE-TRAILING-INNER
    \ The ASN.1 envelope is complete, but the RSA SEQUENCE has an extra item.
-   RSA-CASE-PEM s" -----BEGIN PRIVATE KEY-----" nip 1+ +
+   RSA-CASE-PEM s" -----BEGIN PRIVATE KEY-----" STR:LEN 1+ +
    [char] l swap 39 + c! ;
 
 : RSA-CASE-EC ( -- )
@@ -1129,7 +1128,7 @@ variable RSA-CASE-N
    FILLED RSA-CASE-N !
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
    RSA-CASE-PEM PEM-CAP INTO
-   RSA-PEM PEM-N @ ASCII,
+   RSA-PEM PEM-N @ >str ASCII,
    s" -----BEGIN PRIVATE KEY-----" ASCII,
    FILLED RSA-CASE-N !
    [: RSA-CASE-SIGN drop ;] CRYPTO:E-KEY TTHROWSQ
@@ -1145,7 +1144,7 @@ variable RSA-CASE-N
    FILLED RSA-CASE-N !
    s" whitespace and CRLF around one PKCS#8 PEM are accepted" T-LABEL
    RSA-CASE-SIGN RSA-BYTES T=
-   RSA-OUT RSA-BYTES RSA-SIG RSA-BYTES T$= ;
+   RSA-OUT RSA-BYTES >str RSA-SIG RSA-BYTES >str T$= ;
 
 : RSA-PRIVATE-ADJACENT ( bool -- )
    {: crlf:bool :}
@@ -1161,7 +1160,7 @@ variable RSA-CASE-N
    FILLED RSA-CASE-N !
    $A5 RSA-OUT RSA-BYTES + c!
    RSA-CASE-SIGN RSA-BYTES T=
-   RSA-OUT RSA-BYTES RSA-SIG RSA-BYTES T$=
+   RSA-OUT RSA-BYTES >str RSA-SIG RSA-BYTES >str T$=
    RSA-OUT RSA-BYTES + c@ $A5 T= ;
 
 : RSA-PRIVATE-MARKER-SPACE ( -- )
@@ -1234,12 +1233,12 @@ variable RSA-ODD-PEM-N
 : RSA-ODD-WIDTH ( -- )
    RSA-ODD-FIXTURE
    s" a 2049-bit RSA key signs and verifies exactly 257 bytes" T-LABEL
-   RSA-ODD-N 257 RSA-E 3 s" non-byte-aligned RSA modulus"
-   RSA-ODD-SIG 257 CRYPTO:RS256-VERIFY? TTRUE
+   RSA-ODD-N 257 >str RSA-E 3 >str s" non-byte-aligned RSA modulus"
+   RSA-ODD-SIG 257 >str CRYPTO:RS256-VERIFY? TTRUE
    $5A RSA-ODD-OUT 257 + c!
-   RSA-ODD-PEM RSA-ODD-PEM-N @ s" non-byte-aligned RSA modulus"
-   RSA-ODD-OUT 258 CRYPTO:RS256-SIGN 257 T=
-   RSA-ODD-OUT 257 RSA-ODD-SIG 257 T$=
+   RSA-ODD-PEM RSA-ODD-PEM-N @ >str s" non-byte-aligned RSA modulus"
+   RSA-ODD-OUT 258 >str CRYPTO:RS256-SIGN 257 T=
+   RSA-ODD-OUT 257 >str RSA-ODD-SIG 257 >str T$=
    RSA-ODD-OUT 257 + c@ $5A T= ;
 
 
@@ -1259,7 +1258,7 @@ create RSA-E3-SIG RSA-BYTES allot
    s" 6f26bb394394be672a6a03f7aabfa38e8b97f2269a660d0a6656c8aae6416f67" HEX,
    s" 9555cb8da7d893f3854eabab8a6384b7b7df73cc41aceee166e3786061a786e2" HEX,
    FILLED RSA-BYTES T=
-   RSA-N RSA-BYTES RSA-E3 1 JWS-MSG JWS-N @ RSA-E3-SIG RSA-BYTES
+   RSA-N RSA-BYTES >str RSA-E3 1 >str JWS-MSG JWS-N @ >str RSA-E3-SIG RSA-BYTES >str
    CRYPTO:RS256-VERIFY? TTRUE ;
 
 
@@ -1307,10 +1306,10 @@ create RSA-LARGE-E 9 allot
    FILLED 512 T=
    RSA-LARGE-E 9 INTO s" 010000000000000001" HEX, FILLED 9 T=
    s" 4096-bit RSA verifies and rejects a 65-bit exponent" T-LABEL
-   RSA-LARGE-N 512 RSA-E 3 s" large RSA public key" RSA-LARGE-SIG 512
+   RSA-LARGE-N 512 >str RSA-E 3 >str s" large RSA public key" RSA-LARGE-SIG 512 >str
    CRYPTO:RS256-VERIFY? TTRUE
-   [: RSA-LARGE-N 512 RSA-LARGE-E 9 s" large RSA public key"
-      RSA-LARGE-SIG 512 CRYPTO:RS256-VERIFY? drop ;]
+   [: RSA-LARGE-N 512 >str RSA-LARGE-E 9 >str s" large RSA public key"
+      RSA-LARGE-SIG 512 >str CRYPTO:RS256-VERIFY? drop ;]
    CRYPTO:E-KEY TTHROWSQ ;
 
 : RUN ( -- )

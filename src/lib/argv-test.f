@@ -1,4 +1,3 @@
-split-str
 \ argv-test.f -- focused tests for src/lib/argv.f.
 \ Run mocks:  cat src/lib/error.f src/lib/string.f src/lib/argv.f src/lib/argv-test.f | bin/hb
 
@@ -141,14 +140,14 @@ variable TEST-FAIL
 
 : EXPECT-TOKEN-BOUNDS ( -- )
    -1 QUIET!
-   [: -1 TOK$ 2drop ;] catch 64 ASSERT=
-   [: COUNT TOK$ 2drop ;] catch 64 ASSERT=
+   [: -1 TOK$ drop ;] catch 64 ASSERT=
+   [: COUNT TOK$ drop ;] catch 64 ASSERT=
    0 QUIET! ;
 
 : TEST-TOKEN-BOUNDS ( -- )
    QUIET-MOCK PARSE
    POS# 0 ASSERT=
-   [: 0 POS$ 2drop ;] catch 64 ASSERT=
+   [: 0 POS$ drop ;] catch 64 ASSERT=
    EXPECT-TOKEN-BOUNDS
    s" one" MOCK+
    0 TOK$ s" one" ASSERT$
@@ -222,8 +221,8 @@ variable TEST-FAIL
    POS# MANY-ARGS ASSERT=
    0 POS$ s" first" ASSERT$
    MANY-ARGS 1- POS$ s" last" ASSERT$
-   [: -1 POS$ 2drop ;] catch 64 ASSERT=
-   [: MANY-ARGS POS$ 2drop ;] catch 64 ASSERT=
+   [: -1 POS$ drop ;] catch 64 ASSERT=
+   [: MANY-ARGS POS$ drop ;] catch 64 ASSERT=
    QUIET-MOCK
    s" --json" MOCK+ s" --" MOCK+
    MANY-ARGS 0 do s" -rest" MOCK+ loop
@@ -234,7 +233,7 @@ variable TEST-FAIL
    EXPECT-TOKEN-BOUNDS
    QUIET-MOCK
    s" kept" MOCK+
-   [: s" bad" drop -1 MOCK+ ;] catch 76 ASSERT=
+   [: s" bad" STR:DATA -1 >str MOCK+ ;] catch 76 ASSERT=
    COUNT 1 ASSERT=
    0 TOK$ s" kept" ASSERT$
    POS# MANY-ARGS ASSERT=
@@ -262,13 +261,13 @@ create MSG-TEXT MSG-LEN allot
 
 : TEST-MSG-BOUNDS ( -- )
    MSG-LEN 0 do 117 MSG-TEXT i + c! loop
-   MSG-TEXT MSG-LEN USAGE!
+   MSG-TEXT MSG-LEN >str USAGE!
    -1 QUIET!
    [: s" x" FAIL ;] catch 64 ASSERT-RC
    -1 QUIET!
-   [: MSG-TEXT MSG-LEN FAIL ;] catch 64 ASSERT-RC
+   [: MSG-TEXT MSG-LEN >str FAIL ;] catch 64 ASSERT-RC
    -1 QUIET!
-   [: MSG-TEXT -1 FAIL ;] catch 76 ASSERT-RC
+   [: MSG-TEXT -1 >str FAIL ;] catch 76 ASSERT-RC
    s" usage" USAGE! ;
 
 : TEST-MOCKS ( -- )
