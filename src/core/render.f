@@ -371,7 +371,7 @@ create RROW-LTR RROW-CAP cells allot   \ the letter each RROW-KEY row prints by
 
 
 \ RPOS holds a (tail, owner) pair per row a first pass (RNAMES 1) visits: owner
-\ 0 is the effect's data rows, 1 its return rows, 2v and 2v+1 the v-th quotation's.
+\ 0 is the effect's data rows, 1 its return rows, 2v and 2v+1 a quotation's.
 PERSISTED-PTR-VARIABLE RPOS-P   NULL-PTR RPOS-P !
 variable RPOS-CAP   0 RPOS-CAP !          \ pairs mapped at RPOS-P, 0 for none
 variable RPOS-N   variable RVISIT
@@ -385,17 +385,28 @@ variable RPOS-N   variable RVISIT
    RPOS-N @ 1 + RPOS-N ! ;
 
 
-\ RQUOT-BLOCK holds, per quotation RVISIT numbered (from 1, as its `[` is
-\ written), its resolved block part, for REND-FACTS's block and noblock tags.
+\ RQUOT holds, per RVISIT (from 1, as its `[` is written), the quotation, which
+\ RQUOT-OWNER matches, and its resolved block part, which REND-FACTS tags.
 SCRATCH{
-PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
+PTR-VARIABLE RQUOT-P   variable RQUOT-CAP
 }SCRATCH
 
-: RQUOT+ ( n -- ) {: q:n :}
-   RQUOT-BLOCK-P RQUOT-BLOCK-CAP RVISIT @ 1 ARENA-ROWS-ENSURE
-   q Q>BLOCK T-RES  RVISIT @ 1 - cells RQUOT-BLOCK-P @ + ! ;
+: RQUOT ( n -- ^n ) 1 - 2 * cells RQUOT-P @ + ;
 
-: RQUOT@ ( n -- n ) 1 - cells RQUOT-BLOCK-P @ + @ ;
+: RQUOT+ ( n -- ) {: q:n :}
+   RQUOT-P RQUOT-CAP RVISIT @ 2 ARENA-ROWS-ENSURE
+   q  RVISIT @ RQUOT !
+   q Q>BLOCK T-RES  RVISIT @ RQUOT cell+ ! ;
+
+: RQUOT@ ( n -- n ) RQUOT cell+ @ ;
+
+\ A quotation's owner 2v: v is its first visit in a diagnostic, so its rows count
+\ once; in facts text, which reads each `[`'s unnamed rows as its own, this visit.
+: RQUOT-OWNER ( -- n )
+   RNAMES @ 0= IF 0 EXIT THEN
+   RFACTS? IF RVISIT @ 2 * EXIT THEN
+   RVISIT @ RQUOT @ {: q:n :}
+   1 BEGIN dup RQUOT @ q <> WHILE 1 + REPEAT 2 * ;
 
 
 \ A row is named when its tail is not its owner's two rows' alone, and in facts
@@ -477,16 +488,19 @@ PTR-VARIABLE RQUOT-BLOCK-P   variable RQUOT-BLOCK-CAP
       T-QUOT of
         d QDEPTH-CAP < IF
            RTAILS @ 0 <> {: named:bool :}
-           RNAMES @ 0 <> IF RVISIT @ 1 + RVISIT !  r RQUOT+ THEN  RVISIT @ 2 * {: owner:n :}
+           RNAMES @ 0 <> IF RVISIT @ 1 + RVISIT !  r RQUOT+ THEN
+           RQUOT-OWNER {: owner:n :}
+           \ A later visit records no tails: RPOS-NAMED? would count them twice.
+           RNAMES @ 1 =  owner RVISIT @ 2 * <>  and {: seen:bool :}
            91 EMIT1 32 EMIT1  named IF r Q>DIN QTAIL THEN
-           r Q>DIN owner RROW-NAME  r Q>DIN d 1+ 1 RECURSE
+           seen 0= IF r Q>DIN owner RROW-NAME THEN  r Q>DIN d 1+ 1 RECURSE
            45 EMIT1 45 EMIT1 32 EMIT1  named IF r Q>DOUT QTAIL THEN
-           r Q>DOUT owner RROW-NAME  r Q>DOUT d 1+ 1 RECURSE
+           seen 0= IF r Q>DOUT owner RROW-NAME THEN  r Q>DOUT d 1+ 1 RECURSE
            r QRET? IF
               RNAMES @ 0 <> IF 1 RQM !  1 RROW-UNSAID ! THEN
               124 EMIT1 32 EMIT1  r Q>RIN d 1+ 1 RECURSE
               45 EMIT1 45 EMIT1 32 EMIT1  r Q>ROUT d 1+ 1 RECURSE
-           ELSE RNAMES @ 0 <> IF r owner 1 + QRET-NAME THEN THEN
+           ELSE RNAMES @ 0 <> seen 0= and IF r owner 1 + QRET-NAME THEN THEN
            r Q>FACTS CTL-STATABLE and {: facts:n :}
            63 0 ?do
               facts 1 i lshift and 0 <> IF i CTL-BIT>TAG$ RSTR 32 EMIT1 THEN
