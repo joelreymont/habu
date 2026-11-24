@@ -20,6 +20,8 @@ NEWTYPE callback
 
 private
 EXPORT BOOT:data-base
+EXPORT CHECK:INTRINSIC
+EXPORT CHECK:INTRINSIC-TOP-ONLY
 
 CAST: >CALLBACK ( n -- callback )
 CAST: CALLBACK>N ( callback -- n )
