@@ -247,7 +247,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 : MEMBER-OF? ( ^enum-type str -- bool )
    {: e:^ s:str :}
    e ENUM-TYPE-MEMBERS @ begin dup NULL-PTR <> while
-      dup ENUM-MEMBER-NAME @ s SPAN= if drop true exit then
+      dup ENUM-MEMBER-NAME @ s STR:= if drop true exit then
       ENUM-MEMBER-NEXT @
    repeat drop false ;
 
@@ -265,8 +265,8 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 : ENUM-LITERAL ( ^predicate ^enum-type str -- )
    {: p:^ e:^ s:str :}
    e ENUM-TYPE-FLAGS @ if e s FLAGS else e s MEMBER-OF? FITS then
-   p e ENUM-TYPE-NAMESPACE @ SPAN:$ ESCAPED p s" ." RAW
-   p e ENUM-TYPE-NAME @ SPAN:$ ESCAPED
+   p e ENUM-TYPE-NAMESPACE @ ESCAPED p s" ." RAW
+   p e ENUM-TYPE-NAME @ ESCAPED
    p s" '" RAW p s ESCAPED p s" '" RAW ;
 
 \ Each arm checks the value, then writes its literal; V2's datetime

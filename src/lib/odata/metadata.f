@@ -54,22 +54,22 @@ ENUM version v2 v4 ;ENUM
 
 \ An annotation's namespace and name, and its value's text.
 STRUCTURE annotation DERIVE addr
-   FIELD namespace SPAN:span<u8>
-   FIELD name SPAN:span<u8>
-   FIELD text SPAN:span<u8>
+   FIELD namespace str
+   FIELD name str
+   FIELD text str
    FIELD offset n
    FIELD next ^annotation
 ;STRUCTURE
 
 STRUCTURE path DERIVE addr
-   FIELD text SPAN:span<u8>
+   FIELD text str
    FIELD next ^path
 ;STRUCTURE
 
 \ A V4 Capabilities.FilterRestrictions: its term's namespace, an alias resolved
 \ when read, its Filterable and its NonFilterableProperties paths.
 STRUCTURE filter DERIVE addr
-   FIELD namespace SPAN:span<u8>
+   FIELD namespace str
    FIELD filterable bool
    FIELD paths ^path
    FIELD offset n
@@ -78,16 +78,16 @@ STRUCTURE filter DERIVE addr
 
 \ A V2 Association End: many when its Multiplicity is `*`.
 STRUCTURE association-end DERIVE addr
-   FIELD role SPAN:span<u8>
-   FIELD type SPAN:span<u8>
+   FIELD role str
+   FIELD type str
    FIELD many bool
    FIELD offset n
    FIELD next ^association-end
 ;STRUCTURE
 
 STRUCTURE association DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD namespace SPAN:span<u8>
+   FIELD name str
+   FIELD namespace str
    FIELD ends ^association-end
    FIELD offset n
    FIELD next ^association
@@ -102,21 +102,21 @@ ENUM key-kind DERIVE eq
 ;ENUM
 
 STRUCTURE enum-member DERIVE addr
-   FIELD name SPAN:span<u8>
+   FIELD name str
    FIELD next ^enum-member
 ;STRUCTURE
 
 \ A V4 EnumType; a value of a `flags` one names one or more members.
 STRUCTURE enum-type DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD namespace SPAN:span<u8>
+   FIELD name str
+   FIELD namespace str
    FIELD flags bool
    FIELD members ^enum-member
 ;STRUCTURE
 
 \ A V4 TypeDefinition's UnderlyingType.
 STRUCTURE type-definition DERIVE addr
-   FIELD underlying SPAN:span<u8>
+   FIELD underlying str
 ;STRUCTURE
 
 \ `names` maps the name of a set, a singleton or a type's member to its
@@ -139,8 +139,8 @@ STRUCTURE metadata OPAQUE DERIVE addr
    FIELD types ^entity-type
 ;STRUCTURE
 STRUCTURE entity-set OPAQUE DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD type-name SPAN:span<u8>
+   FIELD name str
+   FIELD type-name str
    FIELD type ^entity-type
    FIELD filters ^filter
    FIELD filter ^filter
@@ -148,12 +148,12 @@ STRUCTURE entity-set OPAQUE DERIVE addr
    FIELD next ^entity-set
 ;STRUCTURE
 STRUCTURE entity-type OPAQUE DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD namespace SPAN:span<u8>
+   FIELD name str
+   FIELD namespace str
    FIELD complex bool
    FIELD hidden bool
    FIELD version version
-   FIELD base-name SPAN:span<u8>
+   FIELD base-name str
    FIELD base ^entity-type
    FIELD derived ^entity-type
    FIELD sibling ^entity-type
@@ -172,8 +172,8 @@ STRUCTURE entity-type OPAQUE DERIVE addr
    FIELD next ^entity-type
 ;STRUCTURE
 STRUCTURE property OPAQUE DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD type SPAN:span<u8>
+   FIELD name str
+   FIELD type str
    FIELD nullable bool
    FIELD complex-type ^entity-type
    FIELD many bool
@@ -183,11 +183,11 @@ STRUCTURE property OPAQUE DERIVE addr
    FIELD next ^property
 ;STRUCTURE
 STRUCTURE navigation OPAQUE DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD type SPAN:span<u8>
-   FIELD relationship SPAN:span<u8>
-   FIELD from-role SPAN:span<u8>
-   FIELD to-role SPAN:span<u8>
+   FIELD name str
+   FIELD type str
+   FIELD relationship str
+   FIELD from-role str
+   FIELD to-role str
    FIELD association ^association
    FIELD from ^association-end
    FIELD to ^association-end
@@ -198,7 +198,7 @@ STRUCTURE navigation OPAQUE DERIVE addr
    FIELD next ^navigation
 ;STRUCTURE
 STRUCTURE key-ref OPAQUE DERIVE addr
-   FIELD name SPAN:span<u8>
+   FIELD name str
    FIELD property ^property
    FIELD kind key-kind
    FIELD enum-type ^enum-type
@@ -222,8 +222,8 @@ STRUCTURE named DERIVE addr
 ;STRUCTURE
 
 STRUCTURE set-end DERIVE addr
-   FIELD role SPAN:span<u8>
-   FIELD set-name SPAN:span<u8>
+   FIELD role str
+   FIELD set-name str
    FIELD end ^association-end
    FIELD set ^entity-set
    FIELD offset n
@@ -231,8 +231,8 @@ STRUCTURE set-end DERIVE addr
 ;STRUCTURE
 
 STRUCTURE association-set DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD association-name SPAN:span<u8>
+   FIELD name str
+   FIELD association-name str
    FIELD association ^association
    FIELD ends ^set-end
    FIELD offset n
@@ -241,16 +241,16 @@ STRUCTURE association-set DERIVE addr
 
 \ A singleton as read, until its type resolves.
 STRUCTURE singleton DERIVE addr
-   FIELD name SPAN:span<u8>
-   FIELD type-name SPAN:span<u8>
+   FIELD name str
+   FIELD type-name str
    FIELD offset n
    FIELD next ^singleton
 ;STRUCTURE
 
 STRUCTURE binding DERIVE addr
    FIELD set ^entity-set
-   FIELD path SPAN:span<u8>
-   FIELD target-name SPAN:span<u8>
+   FIELD path str
+   FIELD target-name str
    FIELD target ^entity-set
    FIELD offset n
    FIELD next ^binding
@@ -258,7 +258,7 @@ STRUCTURE binding DERIVE addr
 
 \ An `<Annotations Target>` block, attached at the end of the read.
 STRUCTURE block DERIVE addr
-   FIELD target SPAN:span<u8>
+   FIELD target str
    FIELD annotations ^annotation
    FIELD filters ^filter
    FIELD next ^block
@@ -266,7 +266,7 @@ STRUCTURE block DERIVE addr
 
 \ The namespace an edmx:Include's or a Schema's Alias names.
 STRUCTURE alias DERIVE addr
-   FIELD namespace SPAN:span<u8>
+   FIELD namespace str
 ;STRUCTURE
 
 \ Keys of the names map. `member-name`: a container child but an entity set;
@@ -300,9 +300,9 @@ STRUCTURE doc DERIVE addr
    FIELD depth n
    FIELD resume phase
    FIELD offset n
-   FIELD namespace SPAN:span<u8>
-   FIELD container SPAN:span<u8>
-   FIELD container-namespace SPAN:span<u8>
+   FIELD namespace str
+   FIELD container str
+   FIELD container-namespace str
    FIELD containers n
    FIELD type ^entity-type
    FIELD property ^property
@@ -332,7 +332,7 @@ STRUCTURE doc DERIVE addr
    FIELD key-len n
    FIELD seconds ^^set-end
    FIELD second-count n
-   FIELD source SPAN:span<u8>
+   FIELD source str
 ;STRUCTURE
 
 ARENA DOCS doc
@@ -434,14 +434,12 @@ CAST: >RECORD ( n -- ^t )
 
 : QUOTE ( str -- )  CUT REASON:QUOTE ;
 
-: QUOTE-SPAN ( SPAN:span<u8> -- ) SPAN:$ QUOTE ;
-
 \ PLACE opens a rejection at a byte of the document, the caller adds what was
 \ expected, and FOUND or FOUND-QUOTED adds what was found and the fix and
 \ throws.
 : PLACE ( ^doc n -- )
    {: d:^ at:n :}
-   d DOC-SOURCE @ SPAN:$ STR:DATA {: src:^ :}
+   d DOC-SOURCE @ STR:DATA {: src:^ :}
    REASON:OPEN
    src src at + 1 1 0 REJECTION:POSITION drop REASON:AT
    REASON:EXPECTED ;
@@ -462,9 +460,6 @@ CAST: >RECORD ( n -- ^t )
    d d DOC-OFFSET @ PLACE ;
 
 : NONE$ ( -- str ) s" none" ;
-: SPAN= ( SPAN:span<u8> str -- bool )
-   {: s:SPAN:span<u8> t:str :}
-   s SPAN:$ t STR:= ;
 
 \ Attributes. Each answer is a view of scratch, overwritten by the next.
 : SCRATCH$ ( ^doc -- str ) DOC-SCRATCH @ VEC:SPAN SPAN:$ ;
@@ -497,17 +492,17 @@ CAST: >RECORD ( n -- ^t )
    s" ` of `" REASON:APPEND el REASON:APPEND
    s" `" REASON:APPEND NONE$ s" add the attribute" FOUND ;
 
-: KEEP ( ^doc str -- SPAN:span<u8> )
+: KEEP ( ^doc str -- str )
    {: d:^ src:str :}
    d DOC-ARENA @ src STR:LEN ARENA:ALLOC {: dst:^ got:n :}
    src STR:DATA dst src STR:LEN BYTE-COPY
-   dst got SPAN:MAKE ;
+   dst got >str ;
 
-: NEED ( XML:reader ^doc str -- XML:reader SPAN:span<u8> )
+: NEED ( XML:reader ^doc str -- XML:reader str )
    {: d:^ name:str :}
    d name NEED$ {: v:str :} d v KEEP ;
 
-: OPTIONAL ( XML:reader ^doc str -- XML:reader SPAN:span<u8> )
+: OPTIONAL ( XML:reader ^doc str -- XML:reader str )
    {: d:^ name:str :}
    d name ATTR$ drop {: v:str :} d v KEEP ;
 
@@ -650,7 +645,7 @@ CAST: >RECORD ( n -- ^t )
    d KIND-ALIAS-NAME name NAME-KEY
    d FIND {: a:^alias :}
    a NULL-PTR = if name exit then
-   a ALIAS-NAMESPACE @ SPAN:$ ;
+   a ALIAS-NAMESPACE @ ;
 
 \ A qualified name, its qualifier an alias or a namespace, as a key of K.
 : REFERENCE-KEY ( ^doc kind str -- )
@@ -675,9 +670,9 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ name:str :}
    d KIND-ASSOCIATION-NAME name REFERENCE-KEY d FIND ;
 
-: FIND-END ( ^doc ^association SPAN:span<u8> -- ^association-end )
-   {: d:^ a:^ role:SPAN:span<u8> :}
-   d KIND-END-ROLE a role SPAN:$ OWNED-KEY d FIND ;
+: FIND-END ( ^doc ^association str -- ^association-end )
+   {: d:^ a:^ role:str :}
+   d KIND-END-ROLE a role OWNED-KEY d FIND ;
 
 : FIND-SET ( ^doc str -- ^entity-set )
    {: d:^ name:str :}
@@ -762,8 +757,8 @@ CAST: >RECORD ( n -- ^t )
    name STR:LEN 0 ?do name STR:DATA i + c@ [char] : = if true unloop exit then loop
    false ;
 
-: ADD-ANNOTATION ( ^doc ^^annotation SPAN:span<u8> SPAN:span<u8> SPAN:span<u8> -- )
-   {: d:^ list:^ ns:SPAN:span<u8> nm:SPAN:span<u8> tx:SPAN:span<u8> :}
+: ADD-ANNOTATION ( ^doc ^^annotation str str str -- )
+   {: d:^ list:^ ns:str nm:str tx:str :}
    d DOC-ARENA @ ANNOTATIONS-NEW {: a:^ :}
    ns a ANNOTATION-NAMESPACE !
    nm a ANNOTATION-NAME !
@@ -783,9 +778,9 @@ CAST: >RECORD ( n -- ^t )
    name PREFIXED? 0= name XMLNS? or if exit then
    d CLEARED XML:ATTR-URI
    d SCRATCH$ FOREIGN? 0= if exit then
-   d d SCRATCH$ KEEP {: ns:SPAN:span<u8> :}
+   d d SCRATCH$ KEEP {: ns:str :}
    XML:ATTR-LOCAL$ {: local:str :}
-   d local KEEP {: nm:SPAN:span<u8> :}
+   d local KEEP {: nm:str :}
    d ATTR-TEXT$ {: v:str :}
    d list ns nm d v KEEP ADD-ANNOTATION ;
 
@@ -821,11 +816,11 @@ CAST: >RECORD ( n -- ^t )
 \ unless qualified.
 : TERM-OF ( XML:reader ^doc -- XML:reader str str )
    {: d:^ :}
-   d s" Term" NEED {: term:SPAN:span<u8> :}
-   term SPAN:$ QUALIFIER {: q:str tail:str :}
+   d s" Term" NEED {: term:str :}
+   term QUALIFIER {: q:str tail:str :}
    tail STR:LEN 0= if
       d PLACE-HERE s" `Term` of `Annotation` to be a qualified name" REASON:APPEND
-      term SPAN:$ s" write the term's namespace or alias, a dot and its name"
+      term s" write the term's namespace or alias, a dot and its name"
       FOUND-QUOTED
    then
    q tail ;
@@ -838,7 +833,7 @@ CAST: >RECORD ( n -- ^t )
    d TERM-OF {: q:str tail:str :}
    FIND-VALUE if
       d ATTR-TEXT$ {: v:str :}
-      d list q STR:DATA q STR:LEN SPAN:MAKE tail STR:DATA tail STR:LEN SPAN:MAKE d v KEEP ADD-ANNOTATION
+      d list q tail d v KEEP ADD-ANNOTATION
    then
    d SKIP-START ;
 
@@ -886,8 +881,8 @@ CAST: >RECORD ( n -- ^t )
    s" make the root element `edmx:Edmx` in that namespace" FIX ;
 
 \ The element's Alias, when it has one, for the namespace NS.
-: ADD-ALIAS ( XML:reader ^doc SPAN:span<u8> -- XML:reader )
-   {: d:^ ns:SPAN:span<u8> :}
+: ADD-ALIAS ( XML:reader ^doc str -- XML:reader )
+   {: d:^ ns:str :}
    d s" Alias" ATTR$ 0= if drop exit then
    {: nm:str :}
    d DOC-NAMES @ ALIASES-NEW {: a:^ :}
@@ -896,7 +891,7 @@ CAST: >RECORD ( n -- ^t )
 
 : INCLUDE-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Namespace" NEED {: ns:SPAN:span<u8> :}
+   d s" Namespace" NEED {: ns:str :}
    d ns ADD-ALIAS
    d SKIP-START ;
 
@@ -913,7 +908,7 @@ CAST: >RECORD ( n -- ^t )
 
 : SCHEMA-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Namespace" NEED {: ns:SPAN:span<u8> :}
+   d s" Namespace" NEED {: ns:str :}
    ns d DOC-NAMESPACE !
    d ns ADD-ALIAS
    d PHASE-SCHEMA ENTER ;
@@ -932,14 +927,14 @@ CAST: >RECORD ( n -- ^t )
    d SCRATCH$ s" put the `Schema` in that namespace" NAMESPACE-FOUND ;
 
 \ Duplicate names are rejected where the second is read.
-: NOT-NEW ( str SPAN:span<u8> -- )
-   {: el:str name:SPAN:span<u8> :}
+: NOT-NEW ( str str -- )
+   {: el:str name:str :}
    s" `" REASON:APPEND el REASON:APPEND
    s" ` to have a name not declared before" REASON:APPEND
-   name SPAN:$ s" rename or remove it" FOUND-QUOTED ;
+   name s" rename or remove it" FOUND-QUOTED ;
 
-: REPEATED ( XML:reader ^doc SPAN:span<u8> -- XML:reader )
-   {: d:^ name:SPAN:span<u8> :}
+: REPEATED ( XML:reader ^doc str -- XML:reader )
+   {: d:^ name:str :}
    d PLACE-HERE XML:LOCAL$ {: el:str :} el name NOT-NEW ;
 
 : NAME-BYTE? ( u8 -- bool )
@@ -955,9 +950,8 @@ CAST: >RECORD ( n -- ^t )
    while 1+ repeat ;
 
 \ A name a query can spell is one run of name bytes.
-: IDENTIFIER ( XML:reader ^doc SPAN:span<u8> -- XML:reader )
-   {: d:^ name:SPAN:span<u8> :}
-   name SPAN:$ {: text:str :}
+: IDENTIFIER ( XML:reader ^doc str -- XML:reader )
+   {: d:^ text:str :}
    text STR:LEN 0 > text 0 RUN-END text STR:LEN = and if exit then
    d PLACE-HERE XML:LOCAL$ {: el:str :}
    s" `" REASON:APPEND el REASON:APPEND
@@ -965,21 +959,21 @@ CAST: >RECORD ( n -- ^t )
    REASON:APPEND
    text s" rename it to an OData identifier" FOUND-QUOTED ;
 
-: DECLARED-KEY ( ^doc kind SPAN:span<u8> -- )
-   {: d:^ k:kind name:SPAN:span<u8> :}
-   d k d DOC-NAMESPACE @ SPAN:$ name SPAN:$ QUALIFIED-KEY ;
+: DECLARED-KEY ( ^doc kind str -- )
+   {: d:^ k:kind name:str :}
+   d k d DOC-NAMESPACE @ name QUALIFIED-KEY ;
 
 \ A schema's entity, complex, enumeration and defined types share one name
 \ space.
-: TYPE-TAKEN? ( ^doc SPAN:span<u8> -- bool )
-   {: d:^ name:SPAN:span<u8> :}
+: TYPE-TAKEN? ( ^doc str -- bool )
+   {: d:^ name:str :}
    d KIND-TYPE-NAME name DECLARED-KEY d HELD?
    d KIND-ENUM-NAME name DECLARED-KEY d HELD? or
    d KIND-DEFINITION-NAME name DECLARED-KEY d HELD? or ;
 
 : TYPE-START ( XML:reader ^doc bool -- XML:reader )
    {: d:^ complex:bool :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name TYPE-TAKEN? if d name REPEATED then
    d DOC-ARENA @ TYPES-NEW {: t:^ :}
    name t ENTITY-TYPE-NAME !
@@ -1000,10 +994,10 @@ CAST: >RECORD ( n -- ^t )
    d PHASE-TYPE-BODY ENTER ;
 
 \ T's own members only: a base type's are checked when the walk holds them.
-: MEMBER-TAKEN? ( ^doc ^entity-type SPAN:span<u8> -- bool )
-   {: d:^ t:^ name:SPAN:span<u8> :}
-   d KIND-PROPERTY-NAME t name SPAN:$ OWNED-KEY d HELD?
-   d KIND-NAVIGATION-NAME t name SPAN:$ OWNED-KEY d HELD? or ;
+: MEMBER-TAKEN? ( ^doc ^entity-type str -- bool )
+   {: d:^ t:^ name:str :}
+   d KIND-PROPERTY-NAME t name OWNED-KEY d HELD?
+   d KIND-NAVIGATION-NAME t name OWNED-KEY d HELD? or ;
 
 \ V, the value of NAME on the element EL at AT, as a boolean; rejected unless
 \ true or false.
@@ -1036,12 +1030,12 @@ CAST: >RECORD ( n -- ^t )
       drop p d DOC-TYPE @ ENTITY-TYPE-PROPERTIES !
    else PROPERTY-NEXT p swap ! then
    p d DOC-PROPERTY-LAST !
-   d KIND-PROPERTY-NAME d DOC-TYPE @ p PROPERTY-NAME @ SPAN:$ OWNED-KEY
+   d KIND-PROPERTY-NAME d DOC-TYPE @ p PROPERTY-NAME @ OWNED-KEY
    d p REMEMBER-AT ;
 
 : PROPERTY-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name IDENTIFIER
    d d DOC-TYPE @ name MEMBER-TAKEN? if d name REPEATED then
    d DOC-ARENA @ PROPERTIES-NEW {: p:^ :}
@@ -1061,12 +1055,12 @@ CAST: >RECORD ( n -- ^t )
       drop n d DOC-TYPE @ ENTITY-TYPE-NAVIGATIONS !
    else NAVIGATION-NEXT n swap ! then
    n d DOC-NAVIGATION-LAST !
-   d KIND-NAVIGATION-NAME d DOC-TYPE @ n NAVIGATION-NAME @ SPAN:$ OWNED-KEY
+   d KIND-NAVIGATION-NAME d DOC-TYPE @ n NAVIGATION-NAME @ OWNED-KEY
    d n REMEMBER-AT ;
 
 : NAVIGATION-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name IDENTIFIER
    d d DOC-TYPE @ name MEMBER-TAKEN? if d name REPEATED then
    d DOC-ARENA @ NAVIGATIONS-NEW {: n:^ :}
@@ -1116,13 +1110,13 @@ CAST: >RECORD ( n -- ^t )
    then
    d SKIP-START ;
 
-: ASSOCIATION-TAKEN? ( ^doc SPAN:span<u8> -- bool )
-   {: d:^ name:SPAN:span<u8> :}
+: ASSOCIATION-TAKEN? ( ^doc str -- bool )
+   {: d:^ name:str :}
    d KIND-ASSOCIATION-NAME name DECLARED-KEY d HELD? ;
 
 : ASSOCIATION-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name ASSOCIATION-TAKEN? if d name REPEATED then
    d DOC-ARENA @ ASSOCIATIONS-NEW {: a:^ :}
    name a ASSOCIATION-NAME !
@@ -1142,15 +1136,15 @@ CAST: >RECORD ( n -- ^t )
    v s" set `Multiplicity` to 1, 0..1 or *" FOUND-QUOTED ;
 
 \ The two `End` elements of EL NAME share ROLE.
-: ROLE-TWICE ( str SPAN:span<u8> SPAN:span<u8> -- )
-   {: el:str name:SPAN:span<u8> role:SPAN:span<u8> :}
+: ROLE-TWICE ( str str str -- )
+   {: el:str name:str role:str :}
    s" the two `End` elements of `" REASON:APPEND el REASON:APPEND s" ` " REASON:APPEND
-   name QUOTE-SPAN s"  to have different roles" REASON:APPEND
-   role SPAN:$ s" give one `End` the other role" FOUND-QUOTED ;
+   name QUOTE s"  to have different roles" REASON:APPEND
+   role s" give one `End` the other role" FOUND-QUOTED ;
 
 : END-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Role" NEED {: role:SPAN:span<u8> :}
+   d s" Role" NEED {: role:str :}
    d DOC-ASSOCIATION @ {: a:^ :}
    d a role FIND-END NULL-PTR <> if
       d PLACE-HERE
@@ -1162,7 +1156,7 @@ CAST: >RECORD ( n -- ^t )
    d MULTIPLICITY e ASSOCIATION-END-MANY !
    d DOC-OFFSET @ e ASSOCIATION-END-OFFSET !
    a ASSOCIATION-ENDS @ e ASSOCIATION-END-NEXT ! e a ASSOCIATION-ENDS !
-   d KIND-END-ROLE a role SPAN:$ OWNED-KEY d e REMEMBER-AT
+   d KIND-END-ROLE a role OWNED-KEY d e REMEMBER-AT
    d SKIP-START ;
 
 : IN-ASSOCIATION ( XML:reader ^doc -- XML:reader )
@@ -1172,28 +1166,28 @@ CAST: >RECORD ( n -- ^t )
 
 : CONTAINER-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d DOC-CONTAINERS @ 0<> if
       d PLACE-HERE s" no `EntityContainer` after the first" REASON:APPEND
-      name SPAN:$ s" move its contents into the first and remove it" FOUND-QUOTED
+      name s" move its contents into the first and remove it" FOUND-QUOTED
    then
    1 d DOC-CONTAINERS !
    name d DOC-CONTAINER !
    d DOC-NAMESPACE @ d DOC-CONTAINER-NAMESPACE !
    d PHASE-CONTAINER ENTER ;
 
-: NAME-TAKEN? ( ^doc SPAN:span<u8> -- bool )
-   {: d:^ name:SPAN:span<u8> :}
-   d name SPAN:$ FIND-SET NULL-PTR <>
-   d name SPAN:$ MEMBER? or ;
+: NAME-TAKEN? ( ^doc str -- bool )
+   {: d:^ name:str :}
+   d name FIND-SET NULL-PTR <>
+   d name MEMBER? or ;
 
-: ADD-MEMBER ( ^doc SPAN:span<u8> -- )
-   {: d:^ name:SPAN:span<u8> :}
-   d KIND-MEMBER-NAME name SPAN:$ NAME-KEY d 0 REMEMBER ;
+: ADD-MEMBER ( ^doc str -- )
+   {: d:^ name:str :}
+   d KIND-MEMBER-NAME name NAME-KEY d 0 REMEMBER ;
 
-: ADD-SINGLETON ( XML:reader ^doc SPAN:span<u8> -- XML:reader )
-   {: d:^ name:SPAN:span<u8> :}
-   d KIND-SINGLETON-NAME name SPAN:$ NAME-KEY d 0 REMEMBER
+: ADD-SINGLETON ( XML:reader ^doc str -- XML:reader )
+   {: d:^ name:str :}
+   d KIND-SINGLETON-NAME name NAME-KEY d 0 REMEMBER
    d DOC-ARENA @ SINGLETONS-NEW {: s:^ :}
    name s SINGLETON-NAME !
    d s" Type" NEED s SINGLETON-TYPE-NAME !
@@ -1203,7 +1197,7 @@ CAST: >RECORD ( n -- ^t )
 
 : MEMBER-START ( XML:reader ^doc bool -- XML:reader )
    {: d:^ singleton:bool :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    singleton if d name IDENTIFIER then
    d name NAME-TAKEN? if d name REPEATED then
    d name ADD-MEMBER
@@ -1216,11 +1210,11 @@ CAST: >RECORD ( n -- ^t )
       drop s d DOC-MODEL @ METADATA-SETS !
    else ENTITY-SET-NEXT s swap ! then
    s d DOC-SET-LAST !
-   d KIND-SET-NAME s ENTITY-SET-NAME @ SPAN:$ NAME-KEY d s REMEMBER-AT ;
+   d KIND-SET-NAME s ENTITY-SET-NAME @ NAME-KEY d s REMEMBER-AT ;
 
 : SET-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name IDENTIFIER
    d name NAME-TAKEN? if d name REPEATED then
    d DOC-ARENA @ SETS-NEW {: s:^ :}
@@ -1233,7 +1227,7 @@ CAST: >RECORD ( n -- ^t )
 
 : ASSOCIATION-SET-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name NAME-TAKEN? if d name REPEATED then
    d name ADD-MEMBER
    d DOC-ARENA @ ASSOCIATION-SETS-NEW {: a:^ :}
@@ -1258,7 +1252,7 @@ CAST: >RECORD ( n -- ^t )
 \ `binding-second` the one before it: the first two in DOC-BINDINGS.
 : ADD-BINDING ( ^doc ^binding -- )
    {: d:^ b:^ :}
-   b BINDING-SET @ b BINDING-PATH @ SPAN:$ {: s:^ p:str :}
+   b BINDING-SET @ b BINDING-PATH @ {: s:^ p:str :}
    d KIND-BINDING-PATH s p OWNED-KEY d FIND {: old:^binding :}
    old NULL-PTR <> if
       d KIND-BINDING-SECOND s p OWNED-KEY d old REMEMBER-AT
@@ -1291,7 +1285,7 @@ CAST: >RECORD ( n -- ^t )
    d TERM-OF {: q:str tail:str :}
    tail FILTER-NAME? 0= if d SKIP-START exit then
    d DOC-ARENA @ FILTERS-NEW {: f:^ :}
-   q STR:DATA q STR:LEN SPAN:MAKE f FILTER-NAMESPACE !
+   q f FILTER-NAMESPACE !
    true f FILTER-FILTERABLE !
    d DOC-OFFSET @ f FILTER-OFFSET !
    list @ f FILTER-NEXT ! f list !
@@ -1341,7 +1335,7 @@ CAST: >RECORD ( n -- ^t )
 
 : ENUM-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name TYPE-TAKEN? if d name REPEATED then
    d DOC-ARENA @ ENUM-TYPES-NEW {: e:^ :}
    name e ENUM-TYPE-NAME !
@@ -1366,7 +1360,7 @@ CAST: >RECORD ( n -- ^t )
 
 : DEFINITION-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   d s" Name" NEED {: name:SPAN:span<u8> :}
+   d s" Name" NEED {: name:str :}
    d name TYPE-TAKEN? if d name REPEATED then
    d DOC-NAMES @ DEFINITIONS-NEW {: t:^ :}
    d s" UnderlyingType" NEED t TYPE-DEFINITION-UNDERLYING !
@@ -1528,11 +1522,11 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ t:^ :}
    d t ENTITY-TYPE-OFFSET @ PLACE
    s" `BaseType` of `" REASON:APPEND t TYPE-ELEMENT$ REASON:APPEND s" ` " REASON:APPEND
-   t ENTITY-TYPE-NAME @ QUOTE-SPAN ;
+   t ENTITY-TYPE-NAME @ QUOTE ;
 
 : BASE ( ^doc ^entity-type -- )
    {: d:^ t:^ :}
-   t ENTITY-TYPE-BASE-NAME @ SPAN:$ {: bn:str :}
+   t ENTITY-TYPE-BASE-NAME @ {: bn:str :}
    bn STR:LEN 0= if exit then
    d bn FIND-TYPE dup NULL-PTR = if
       drop d t BASE-PLACE
@@ -1541,8 +1535,8 @@ CAST: >RECORD ( n -- ^t )
    then
    t ENTITY-TYPE-BASE ! ;
 
-: REDECLARED ( ^doc n SPAN:span<u8> str -- )
-   {: d:^ at:n name:SPAN:span<u8> el:str :}
+: REDECLARED ( ^doc n str str -- )
+   {: d:^ at:n name:str el:str :}
    d at PLACE el name NOT-NEW ;
 
 \ The open type holding NAME, null for none.
@@ -1553,10 +1547,10 @@ CAST: >RECORD ( n -- ^t )
    h ENTITY-TYPE-RANK-END @ 0= if h exit then
    NULL-PTR ;
 
-: HOLD ( ^doc ^entity-type SPAN:span<u8> n str -- )
-   {: d:^ t:^ name:SPAN:span<u8> at:n el:str :}
-   d name SPAN:$ HOLDER NULL-PTR <> if d at name el REDECLARED then
-   d KIND-VISIBLE name SPAN:$ NAME-KEY d t REMEMBER-AT ;
+: HOLD ( ^doc ^entity-type str n str -- )
+   {: d:^ t:^ name:str at:n el:str :}
+   d name HOLDER NULL-PTR <> if d at name el REDECLARED then
+   d KIND-VISIBLE name NAME-KEY d t REMEMBER-AT ;
 
 : HOLD-MEMBERS ( ^doc ^entity-type -- )
    {: d:^ t:^ :}
@@ -1621,10 +1615,10 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ k:^ p:^ :}
    d V2? if s" 2" else s" 4" then {: ver:str :}
    d k KEY-REF-OFFSET @ PLACE
-   s" `Type` of key property " REASON:APPEND k KEY-REF-NAME @ QUOTE-SPAN
+   s" `Type` of key property " REASON:APPEND k KEY-REF-NAME @ QUOTE
    s"  to be a type OData V" REASON:APPEND ver REASON:APPEND
    s"  writes in a key" REASON:APPEND
-   REASON:FOUND p PROPERTY-TYPE @ QUOTE-SPAN
+   REASON:FOUND p PROPERTY-TYPE @ QUOTE
    REASON:FIX s" give the key property a type OData V" REASON:APPEND
    ver REASON:APPEND
    s"  writes in a key, or take it out of the `Key`" REASON:APPEND
@@ -1649,7 +1643,7 @@ CAST: >RECORD ( n -- ^t )
 
 : ENUM-KIND ( ^doc ^key-ref ^property -- )
    {: d:^ k:^ p:^ :}
-   p PROPERTY-TYPE @ SPAN:$ {: t:str :}
+   p PROPERTY-TYPE @ {: t:str :}
    d t FIND-ENUM {: e:^enum-type :}
    e NULL-PTR = if
       t QUALIFIED? 0= d t FIND-TYPE NULL-PTR <> or if d k p UNKEYED then
@@ -1662,12 +1656,12 @@ CAST: >RECORD ( n -- ^t )
 \ over one or enumeration type, else `undeclared`, rejecting any other.
 : KEY-REF-TYPE ( ^doc ^key-ref ^property -- )
    {: d:^ k:^ p:^ :}
-   p PROPERTY-TYPE @ SPAN:$ {: t:str :}
+   p PROPERTY-TYPE @ {: t:str :}
    t PRIMITIVE? if d k p t EDM-KIND exit then
    d V2? if d k p UNKEYED then
    d t FIND-DEFINITION {: def:^type-definition :}
    def NULL-PTR = if d k p ENUM-KIND exit then
-   d k p def TYPE-DEFINITION-UNDERLYING @ SPAN:$ EDM-KIND ;
+   d k p def TYPE-DEFINITION-UNDERLYING @ EDM-KIND ;
 
 \ A property in T's Key is marked under `keyed`.
 : KEYED? ( ^doc ^entity-type ^property -- bool )
@@ -1676,7 +1670,7 @@ CAST: >RECORD ( n -- ^t )
 
 : KEY-REF ( ^doc ^entity-type ^key-ref -- )
    {: d:^ t:^ k:^ :}
-   k KEY-REF-NAME @ SPAN:$ {: name:str :}
+   k KEY-REF-NAME @ {: name:str :}
    d name HOLDER {: h:^entity-type :}
    h NULL-PTR = if NULL-PTR else
       d KIND-PROPERTY-NAME h name OWNED-KEY d FIND
@@ -1684,8 +1678,8 @@ CAST: >RECORD ( n -- ^t )
    p NULL-PTR = p NULL-PTR <> if d t p KEYED? or then if
       d k KEY-REF-OFFSET @ PLACE
       s" `Name` of `PropertyRef` to name a property of " REASON:APPEND
-      t ENTITY-TYPE-NAME @ QUOTE-SPAN s"  once" REASON:APPEND
-      k KEY-REF-NAME @ SPAN:$
+      t ENTITY-TYPE-NAME @ QUOTE s"  once" REASON:APPEND
+      k KEY-REF-NAME @
       s" name a property the type declares or inherits, each once" FOUND-QUOTED
    then
    d KIND-KEYED t p PAIR-KEY d 0 REMEMBER
@@ -1794,12 +1788,12 @@ CAST: >RECORD ( n -- ^t )
 
 \ NAME's `named`, made in the caller's arena under the name's own bytes
 \ when the name is new.
-: INDEX-ENTRY ( ^doc SPAN:span<u8> -- ^named )
-   {: d:^ name:SPAN:span<u8> :}
-   d DOC-MODEL @ name SPAN:$ INDEXED {: x:^named :}
+: INDEX-ENTRY ( ^doc str -- ^named )
+   {: d:^ name:str :}
+   d DOC-MODEL @ name INDEXED {: x:^named :}
    x NULL-PTR <> if x exit then
    d DOC-ARENA @ NAMEDS-NEW {: y:^ :}
-   y NULL-PTR - d DOC-MODEL @ NAMES-OF name SPAN:$ MAP:SET
+   y NULL-PTR - d DOC-MODEL @ NAMES-OF name MAP:SET
    y ;
 
 \ Records each set under its name and counts each name's members.
@@ -1826,7 +1820,7 @@ CAST: >RECORD ( n -- ^t )
 \ counts again from 0.
 : FILE-PROPERTY ( ^doc ^property -- )
    {: d:^ p:^ :}
-   d DOC-MODEL @ p PROPERTY-NAME @ SPAN:$ INDEXED {: x:^named :}
+   d DOC-MODEL @ p PROPERTY-NAME @ INDEXED {: x:^named :}
    x NAMED-PROPERTIES @ NULL-PTR = if
       d DOC-ARENA @ x NAMED-PROPERTY-COUNT @ cells ARENA:ALLOC drop >PROPS
       x NAMED-PROPERTIES !
@@ -1837,7 +1831,7 @@ CAST: >RECORD ( n -- ^t )
 
 : FILE-NAVIGATION ( ^doc ^navigation -- )
    {: d:^ n:^ :}
-   d DOC-MODEL @ n NAVIGATION-NAME @ SPAN:$ INDEXED {: x:^named :}
+   d DOC-MODEL @ n NAVIGATION-NAME @ INDEXED {: x:^named :}
    x NAMED-NAVIGATIONS @ NULL-PTR = if
       d DOC-ARENA @ x NAMED-NAVIGATION-COUNT @ cells ARENA:ALLOC drop >NAVS
       x NAMED-NAVIGATIONS !
@@ -1877,8 +1871,8 @@ CAST: >RECORD ( n -- ^t )
 \ The found and fix of S, a set outside the tree expected.
 : TREE-FOUND ( ^entity-set -- )
    {: s:^ :}
-   REASON:FOUND s ENTITY-SET-NAME @ QUOTE-SPAN
-   s"  of `EntityType` " REASON:APPEND s ENTITY-SET-TYPE-NAME @ QUOTE-SPAN
+   REASON:FOUND s ENTITY-SET-NAME @ QUOTE
+   s"  of `EntityType` " REASON:APPEND s ENTITY-SET-TYPE-NAME @ QUOTE
    s" name an entity set of a type in that tree" FIX ;
 
 : ENTITY? ( ^entity-type -- bool )
@@ -1901,18 +1895,18 @@ CAST: >RECORD ( n -- ^t )
 
 : SET-TYPE ( ^doc ^entity-set -- )
    {: d:^ s:^ :}
-   s ENTITY-SET-TYPE-NAME @ SPAN:$ {: name:str :}
+   s ENTITY-SET-TYPE-NAME @ {: name:str :}
    d name FIND-TYPE {: t:^ :}
    t ENTITY? 0= if
       d s ENTITY-SET-OFFSET @ PLACE
-      s" `EntityType` of `EntitySet` " REASON:APPEND s ENTITY-SET-NAME @ QUOTE-SPAN
+      s" `EntityType` of `EntitySet` " REASON:APPEND s ENTITY-SET-NAME @ QUOTE
       s"  to name an entity type the document declares" REASON:APPEND
       t name ENTITY-FOUND
    then
    t ENTITY-TYPE-KEY-HOLDER @ ENTITY-TYPE-KEY @ NULL-PTR = if
       d s ENTITY-SET-OFFSET @ PLACE
-      s" `EntityType` " REASON:APPEND s ENTITY-SET-TYPE-NAME @ QUOTE-SPAN
-      s"  of `EntitySet` " REASON:APPEND s ENTITY-SET-NAME @ QUOTE-SPAN
+      s" `EntityType` " REASON:APPEND s ENTITY-SET-TYPE-NAME @ QUOTE
+      s"  of `EntitySet` " REASON:APPEND s ENTITY-SET-NAME @ QUOTE
       s"  to have a `Key`" REASON:APPEND
       NONE$ s" give the entity type a `Key`" FOUND
    then
@@ -1921,11 +1915,11 @@ CAST: >RECORD ( n -- ^t )
 \ S's name's `named` holds the entity type S's Type names.
 : SINGLETON-RESOLVES ( ^doc ^singleton -- )
    {: d:^ s:^ :}
-   s SINGLETON-TYPE-NAME @ SPAN:$ {: name:str :}
+   s SINGLETON-TYPE-NAME @ {: name:str :}
    d name FIND-TYPE {: t:^ :}
    t ENTITY? 0= if
       d s SINGLETON-OFFSET @ PLACE
-      s" `Type` of `Singleton` " REASON:APPEND s SINGLETON-NAME @ QUOTE-SPAN
+      s" `Type` of `Singleton` " REASON:APPEND s SINGLETON-NAME @ QUOTE
       s"  to name an entity type the document declares" REASON:APPEND
       t name ENTITY-FOUND
    then
@@ -1942,19 +1936,19 @@ CAST: >RECORD ( n -- ^t )
 
 : END-RESOLVES ( ^doc ^association-end -- )
    {: d:^ e:^ :}
-   e ASSOCIATION-END-TYPE @ SPAN:$ {: name:str :}
+   e ASSOCIATION-END-TYPE @ {: name:str :}
    d name FIND-TYPE {: t:^ :}
    t ENTITY? if exit then
    d e ASSOCIATION-END-OFFSET @ PLACE
-   s" `Type` of `End` " REASON:APPEND e ASSOCIATION-END-ROLE @ QUOTE-SPAN
+   s" `Type` of `End` " REASON:APPEND e ASSOCIATION-END-ROLE @ QUOTE
    s"  to name an entity type the document declares" REASON:APPEND
    t name ENTITY-FOUND ;
 
 \ What EL named NAME is expected to hold: an End for each of two roles.
-: ENDS ( str SPAN:span<u8> -- )
-   {: el:str name:SPAN:span<u8> :}
+: ENDS ( str str -- )
+   {: el:str name:str :}
    s" two `End` elements in `" REASON:APPEND el REASON:APPEND s" ` " REASON:APPEND
-   name QUOTE-SPAN s" , one for each role" REASON:APPEND ;
+   name QUOTE s" , one for each role" REASON:APPEND ;
 
 : ENDS-FOUND ( n -- )
    FMT:INT$ s" give it one `End` for each of the two roles" FOUND ;
@@ -1979,24 +1973,24 @@ CAST: >RECORD ( n -- ^t )
    {: d:^ n:^ attr:str :}
    d n NAVIGATION-OFFSET @ PLACE
    s" `" REASON:APPEND attr REASON:APPEND s" ` of `NavigationProperty` " REASON:APPEND
-   n NAVIGATION-NAME @ QUOTE-SPAN ;
+   n NAVIGATION-NAME @ QUOTE ;
 
-: ROLE ( ^doc ^navigation ^association SPAN:span<u8> str -- ^association-end )
-   {: d:^ n:^ a:^ role:SPAN:span<u8> attr:str :}
+: ROLE ( ^doc ^navigation ^association str str -- ^association-end )
+   {: d:^ n:^ a:^ role:str attr:str :}
    d a role FIND-END dup NULL-PTR <> if exit then drop
    d n attr NAVIGATION-PLACE
    s"  to name a role an `End` of `Association` " REASON:APPEND
-   a ASSOCIATION-NAME @ QUOTE-SPAN s"  declares" REASON:APPEND
-   role SPAN:$ s" name a role an `End` of the `Association` declares"
+   a ASSOCIATION-NAME @ QUOTE s"  declares" REASON:APPEND
+   role s" name a role an `End` of the `Association` declares"
    FOUND-QUOTED ;
 
 : V2-NAVIGATION ( ^doc ^navigation -- )
    {: d:^ n:^ :}
-   d n NAVIGATION-RELATIONSHIP @ SPAN:$ FIND-ASSOCIATION {: a:^ :}
+   d n NAVIGATION-RELATIONSHIP @ FIND-ASSOCIATION {: a:^ :}
    a NULL-PTR = if
       d n s" Relationship" NAVIGATION-PLACE
       s"  to name an `Association` the document declares" REASON:APPEND
-      n NAVIGATION-RELATIONSHIP @ SPAN:$
+      n NAVIGATION-RELATIONSHIP @
       s" declare that `Association`, or name one the document declares"
       FOUND-QUOTED
    then
@@ -2004,7 +1998,7 @@ CAST: >RECORD ( n -- ^t )
    d n a n NAVIGATION-FROM-ROLE @ s" FromRole" ROLE n NAVIGATION-FROM !
    d n a n NAVIGATION-TO-ROLE @ s" ToRole" ROLE {: e:^ :}
    e n NAVIGATION-TO !
-   d e ASSOCIATION-END-TYPE @ SPAN:$ FIND-TYPE n NAVIGATION-TARGET-TYPE !
+   d e ASSOCIATION-END-TYPE @ FIND-TYPE n NAVIGATION-TARGET-TYPE !
    e ASSOCIATION-END-MANY @ n NAVIGATION-MANY ! ;
 
 \ `Collection(X)` is to-many X.
@@ -2017,19 +2011,19 @@ CAST: >RECORD ( n -- ^t )
 
 : V4-NAVIGATION ( ^doc ^navigation -- )
    {: d:^ n:^ :}
-   n NAVIGATION-TYPE @ SPAN:$ COLLECTION n NAVIGATION-MANY !
+   n NAVIGATION-TYPE @ COLLECTION n NAVIGATION-MANY !
    {: tn:str :}
    d tn FIND-TYPE {: t:^ :}
    t ENTITY? 0= if
       d n s" Type" NAVIGATION-PLACE
       s"  to name an entity type the document declares" REASON:APPEND
-      t n NAVIGATION-TYPE @ SPAN:$ ENTITY-FOUND
+      t n NAVIGATION-TYPE @ ENTITY-FOUND
    then
    t n NAVIGATION-TARGET-TYPE ! ;
 
 : VALUE-TYPE ( ^doc ^property -- )
    {: d:^ p:^ :}
-   p PROPERTY-TYPE @ SPAN:$ COLLECTION {: tn:str many:bool :}
+   p PROPERTY-TYPE @ COLLECTION {: tn:str many:bool :}
    d tn FIND-TYPE {: t:^ :}
    t NULL-PTR = if exit then
    t ENTITY-TYPE-COMPLEX @ 0= if exit then
@@ -2059,10 +2053,10 @@ CAST: >RECORD ( n -- ^t )
 : END-FITS ( ^doc ^set-end -- )
    {: d:^ e:^ :}
    e SET-END-SET @ {: s:^ :}
-   e SET-END-END @ ASSOCIATION-END-TYPE @ SPAN:$ {: tn:str :}
+   e SET-END-END @ ASSOCIATION-END-TYPE @ {: tn:str :}
    s d tn FIND-TYPE IN-TREE? if exit then
    d e SET-END-OFFSET @ PLACE
-   s" `EntitySet` of `End` " REASON:APPEND e SET-END-ROLE @ QUOTE-SPAN
+   s" `EntitySet` of `End` " REASON:APPEND e SET-END-ROLE @ QUOTE
    tn TREE-EXPECTED s TREE-FOUND ;
 
 : SET-END ( ^set-end ^doc ^association -- )
@@ -2071,17 +2065,17 @@ CAST: >RECORD ( n -- ^t )
    ae NULL-PTR = if
       d e SET-END-OFFSET @ PLACE
       s" `Role` of `End` to name a role of `Association` " REASON:APPEND
-      a ASSOCIATION-NAME @ QUOTE-SPAN
-      e SET-END-ROLE @ SPAN:$ s" name a role an `End` of the `Association` declares"
+      a ASSOCIATION-NAME @ QUOTE
+      e SET-END-ROLE @ s" name a role an `End` of the `Association` declares"
       FOUND-QUOTED
    then
    ae e SET-END-END !
-   d e SET-END-SET-NAME @ SPAN:$ FIND-SET {: s:^ :}
+   d e SET-END-SET-NAME @ FIND-SET {: s:^ :}
    s NULL-PTR = if
       d e SET-END-OFFSET @ PLACE
-      s" `EntitySet` of `End` " REASON:APPEND e SET-END-ROLE @ QUOTE-SPAN
+      s" `EntitySet` of `End` " REASON:APPEND e SET-END-ROLE @ QUOTE
       s"  to name an entity set the document declares" REASON:APPEND
-      e SET-END-SET-NAME @ SPAN:$
+      e SET-END-SET-NAME @
       s" declare that entity set, or name one the document declares" FOUND-QUOTED
    then
    s e SET-END-SET !
@@ -2151,12 +2145,12 @@ CAST: >RECORD ( n -- ^t )
 
 : ASSOCIATION-SET ( ^doc ^association-set -- )
    {: d:^ x:^ :}
-   d x ASSOCIATION-SET-ASSOCIATION-NAME @ SPAN:$ FIND-ASSOCIATION {: a:^ :}
+   d x ASSOCIATION-SET-ASSOCIATION-NAME @ FIND-ASSOCIATION {: a:^ :}
    a NULL-PTR = if
       d x ASSOCIATION-SET-PLACE
-      s" `Association` of `AssociationSet` " REASON:APPEND x ASSOCIATION-SET-NAME @ QUOTE-SPAN
+      s" `Association` of `AssociationSet` " REASON:APPEND x ASSOCIATION-SET-NAME @ QUOTE
       s"  to name an `Association` the document declares" REASON:APPEND
-      x ASSOCIATION-SET-ASSOCIATION-NAME @ SPAN:$
+      x ASSOCIATION-SET-ASSOCIATION-NAME @
       s" declare that `Association`, or name one the document declares"
       FOUND-QUOTED
    then
@@ -2188,19 +2182,19 @@ CAST: >RECORD ( n -- ^t )
 \ a containment path (a slash and navigations after it) leads to no set.
 : CONTAINER-PATH? ( ^doc str -- bool )
    {: d:^ s:str :}
-   s d DOC-CONTAINER @ SPAN:$ STR:= if true exit then
+   s d DOC-CONTAINER @ STR:= if true exit then
    s QUALIFIER {: q:str tail:str :}
-   tail d DOC-CONTAINER @ SPAN:$ STR:= 0= if false exit then
-   d q ALIAS d DOC-CONTAINER-NAMESPACE @ SPAN:$ STR:= ;
+   tail d DOC-CONTAINER @ STR:= 0= if false exit then
+   d q ALIAS d DOC-CONTAINER-NAMESPACE @ STR:= ;
 
 : TARGET-PLACE ( ^doc ^binding -- )
    {: d:^ b:^ :}
    d b BINDING-OFFSET @ PLACE
-   s" `Target` of `NavigationPropertyBinding` " REASON:APPEND b BINDING-PATH @ QUOTE-SPAN ;
+   s" `Target` of `NavigationPropertyBinding` " REASON:APPEND b BINDING-PATH @ QUOTE ;
 
 : TARGET-RESOLVES ( ^doc ^binding -- )
    {: d:^ b:^ :}
-   b BINDING-TARGET-NAME @ SPAN:$ {: text:str :}
+   b BINDING-TARGET-NAME @ {: text:str :}
    text SLASH {: i:n :}
    i 0 < if
       text
@@ -2214,8 +2208,8 @@ CAST: >RECORD ( n -- ^t )
       d owner FIND-SET NULL-PTR = d owner SINGLETON? 0= and if
          d b TARGET-PLACE
          s"  to name an entity set or singleton of " REASON:APPEND
-         d DOC-CONTAINER @ QUOTE-SPAN
-         b BINDING-TARGET-NAME @ SPAN:$
+         d DOC-CONTAINER @ QUOTE
+         b BINDING-TARGET-NAME @
          s" name an entity set or singleton the container declares" FOUND-QUOTED
       then
       NULL-PTR b BINDING-TARGET ! exit
@@ -2225,20 +2219,20 @@ CAST: >RECORD ( n -- ^t )
    d name SINGLETON? if exit then
    d b TARGET-PLACE
    s"  to name an entity set or singleton the document declares" REASON:APPEND
-   b BINDING-TARGET-NAME @ SPAN:$
+   b BINDING-TARGET-NAME @
    s" declare that entity set or singleton, or name one the document declares"
    FOUND-QUOTED ;
 
 \ The navigation a Path without a slash names; null for a Path with one.
 : PATH-RESOLVES ( ^doc ^binding -- ^navigation )
    {: d:^ b:^ :}
-   b BINDING-PATH @ SPAN:$ HAS-SLASH? if NULL-PTR exit then
+   b BINDING-PATH @ HAS-SLASH? if NULL-PTR exit then
    b BINDING-SET @ ENTITY-SET-TYPE @
-   b BINDING-PATH @ SPAN:$ FIND-NAVIGATION dup NULL-PTR <> if exit then
+   b BINDING-PATH @ FIND-NAVIGATION dup NULL-PTR <> if exit then
    drop d b BINDING-OFFSET @ PLACE
    s" `Path` of `NavigationPropertyBinding` to name a navigation property of " REASON:APPEND
-   b BINDING-SET @ ENTITY-SET-TYPE @ ENTITY-TYPE-NAME @ QUOTE-SPAN
-   b BINDING-PATH @ SPAN:$
+   b BINDING-SET @ ENTITY-SET-TYPE @ ENTITY-TYPE-NAME @ QUOTE
+   b BINDING-PATH @
    s" name a navigation property the type declares or inherits" FOUND-QUOTED ;
 
 \ Rejects B when the set it targets along N is outside N's target type's
@@ -2249,20 +2243,20 @@ CAST: >RECORD ( n -- ^t )
    n NULL-PTR = s NULL-PTR = or if exit then
    s n NAVIGATION-TARGET-TYPE @ IN-TREE? if exit then
    d b TARGET-PLACE
-   n NAVIGATION-TYPE @ SPAN:$ COLLECTION drop TREE-EXPECTED s TREE-FOUND ;
+   n NAVIGATION-TYPE @ COLLECTION drop TREE-EXPECTED s TREE-FOUND ;
 
 \ V4: a second binding of N on the set is rejected; the target is kept.
 : ADD-BINDING-TARGET ( ^doc ^binding ^navigation -- )
    {: d:^ b:^ n:^ :}
    n NULL-PTR = d V2? or if exit then
    b BINDING-SET @ {: s:^ :}
-   d KIND-BINDING-SECOND s b BINDING-PATH @ SPAN:$ OWNED-KEY
+   d KIND-BINDING-SECOND s b BINDING-PATH @ OWNED-KEY
    d FIND {: c:^binding :}
    c NULL-PTR <> if
       d c BINDING-OFFSET @ PLACE
       s" a `Path` no other `NavigationPropertyBinding` of `EntitySet` " REASON:APPEND
-      s ENTITY-SET-NAME @ QUOTE-SPAN s"  has" REASON:APPEND
-      c BINDING-PATH @ SPAN:$ s" remove one of the two bindings" FOUND-QUOTED
+      s ENTITY-SET-NAME @ QUOTE s"  has" REASON:APPEND
+      c BINDING-PATH @ s" remove one of the two bindings" FOUND-QUOTED
    then
    d s n TARGET-KEY
    d b BINDING-TARGET @ NULL-PTR - ADD-TARGET ;
@@ -2298,10 +2292,10 @@ CAST: >RECORD ( n -- ^t )
    d KIND-LINK-SECOND ae s PAIR-KEY d FIND {: y:^association-set :}
    d s ae TARGET-KEY d TARGET-FIND {: x:^association-set :}
    d y ASSOCIATION-SET-PLACE
-   s" `AssociationSet` " REASON:APPEND y ASSOCIATION-SET-NAME @ QUOTE-SPAN
-   s"  to be the only one for `EntitySet` " REASON:APPEND s ENTITY-SET-NAME @ QUOTE-SPAN
-   s"  and `NavigationProperty` " REASON:APPEND n NAVIGATION-NAME @ QUOTE-SPAN
-   x ASSOCIATION-SET-NAME @ SPAN:$ s" remove one of the two association sets"
+   s" `AssociationSet` " REASON:APPEND y ASSOCIATION-SET-NAME @ QUOTE
+   s"  to be the only one for `EntitySet` " REASON:APPEND s ENTITY-SET-NAME @ QUOTE
+   s"  and `NavigationProperty` " REASON:APPEND n NAVIGATION-NAME @ QUOTE
+   x ASSOCIATION-SET-NAME @ s" remove one of the two association sets"
    FOUND-QUOTED ;
 
 \ N reaches a second at its FromRole end whose set's type ranks in its owner's
@@ -2357,7 +2351,7 @@ CAST: >RECORD ( n -- ^t )
 \ the container its filters; others, as SAP's navigations, are read past.
 : BLOCK ( ^doc ^block -- )
    {: d:^ b:^ :}
-   b BLOCK-TARGET @ SPAN:$ {: text:str :}
+   b BLOCK-TARGET @ {: text:str :}
    text SLASH {: i:n :}
    i 0 < if
       d text FIND-TYPE dup NULL-PTR = if drop exit then
@@ -2383,15 +2377,14 @@ CAST: >RECORD ( n -- ^t )
 \ An alias becomes its namespace.
 : TERM ( ^doc ^annotation -- )
    {: d:^ a:^ :}
-   d a ANNOTATION-NAMESPACE @ SPAN:$ ALIAS {: ns:str :}
-   ns STR:DATA ns STR:LEN SPAN:MAKE a ANNOTATION-NAMESPACE ! ;
+   d a ANNOTATION-NAMESPACE @ ALIAS a ANNOTATION-NAMESPACE ! ;
 
 \ A's term on the target whose list starts at LIST.
 : TERM-KEY ( ^doc ^annotation ^annotation -- )
    {: d:^ list:^ a:^ :}
-   a ANNOTATION-NAMESPACE @ SPAN:$ {: ns:str :}
+   a ANNOTATION-NAMESPACE @ {: ns:str :}
    d KIND-TERM KEY-NEW d list KEY-AT+ d ns STR:LEN KEY-CELL+ d ns KEY+
-   d a ANNOTATION-NAME @ SPAN:$ KEY+ ;
+   d a ANNOTATION-NAME @ KEY+ ;
 
 \ The earlier of A and B in the document; either may be null.
 : EARLIER ( ^annotation ^annotation -- ^annotation )
@@ -2410,11 +2403,11 @@ CAST: >RECORD ( n -- ^t )
    d a REMEMBER-AT held ;
 
 \ The Annotation at AT is rejected as a second of the term NAMESPACE, NAME.
-: SECOND-TERM ( ^doc n SPAN:span<u8> SPAN:span<u8> -- )
-   {: d:^ at:n ns:SPAN:span<u8> nm:SPAN:span<u8> :}
+: SECOND-TERM ( ^doc n str str -- )
+   {: d:^ at:n ns:str nm:str :}
    d at PLACE
-   s" one `Annotation` of term " REASON:APPEND nm QUOTE-SPAN
-   s"  of " REASON:APPEND ns QUOTE-SPAN s"  per target" REASON:APPEND
+   s" one `Annotation` of term " REASON:APPEND nm QUOTE
+   s"  of " REASON:APPEND ns QUOTE s"  per target" REASON:APPEND
    s" a second" s" remove one of the two" FOUND ;
 
 \ A, unless null, is rejected as a second annotation of its term.
@@ -2460,7 +2453,7 @@ CAST: >RECORD ( n -- ^t )
 \ Whether F's term, its alias resolved, is in Org.OData.Capabilities.V1.
 : CAPABILITIES? ( ^doc ^filter -- bool )
    {: d:^ f:^ :}
-   d f FILTER-NAMESPACE @ SPAN:$ ALIAS CAPABILITIES$ STR:= ;
+   d f FILTER-NAMESPACE @ ALIAS CAPABILITIES$ STR:= ;
 
 \ The earliest CAPABILITIES? filter on LIST other than BUT, null for none.
 : EARLIEST ( ^doc ^filter ^filter -- ^filter )
@@ -2480,8 +2473,8 @@ CAST: >RECORD ( n -- ^t )
    first s ENTITY-SET-FILTER !
    d list first EARLIEST {: second:^filter :}
    second NULL-PTR = if exit then
-   d second FILTER-OFFSET @ CAPABILITIES$ dup STR:DATA swap STR:LEN SPAN:MAKE
-   s" FilterRestrictions" dup STR:DATA swap STR:LEN SPAN:MAKE SECOND-TERM ;
+   d second FILTER-OFFSET @ CAPABILITIES$
+   s" FilterRestrictions" SECOND-TERM ;
 
 : RESOLVE-FILTERS ( ^doc -- )
    {: d:^ :}
@@ -2507,7 +2500,7 @@ CAST: >RECORD ( n -- ^t )
 
 : PARSE ( ^doc str -- )
    {: d:^ src:str :}
-   src STR:DATA src STR:LEN SPAN:MAKE d DOC-SOURCE !
+   src d DOC-SOURCE !
    d DOC-NAMES @ ARENA:ALLOCATOR 0 [type] u8 VEC:NEW d DOC-SCRATCH !
    d 16 MAP-NEW
    d DOC-CURSOR @ HEAP:ALLOCATOR src XML:INIT
@@ -2591,9 +2584,9 @@ CAST: >RECORD ( n -- ^t )
 : ANNOTATION ( ^annotation str str -- str bool )
    {: a:^ ns:str name:str :}
    a begin dup NULL-PTR <> while
-      dup ANNOTATION-NAME @ name SPAN=
-      over ANNOTATION-NAMESPACE @ ns SPAN= and if
-         ANNOTATION-TEXT @ SPAN:$ true exit
+      dup ANNOTATION-NAME @ name STR:=
+      over ANNOTATION-NAMESPACE @ ns STR:= and if
+         ANNOTATION-TEXT @ true exit
       then
       ANNOTATION-NEXT @
    repeat drop name STR:DATA 0 >str false ;
@@ -2630,7 +2623,7 @@ CAST: >RECORD ( n -- ^t )
 : HIDE-KEYED ( ^entity-type -- bool )
    {: t:^ :}
    t ENTITY-TYPE-MODEL @ {: m:^ :}
-   t [: KEY-REF-PROPERTY @ PROPERTY-NAME @ SPAN:$
+   t [: KEY-REF-PROPERTY @ PROPERTY-NAME @
       m swap HIDDEN? if true t ENTITY-TYPE-HIDDEN ! then ;] KEY-REFS-OF
    t ENTITY-TYPE-HIDDEN @ ;
 
@@ -2641,7 +2634,7 @@ CAST: >RECORD ( n -- ^t )
    false t ENTITY-TYPE-NAVIGATIONS @ begin dup NULL-PTR <> while
       {: n:^ :}
       n NAVIGATION-TARGET-TYPE @ ENTITY-TYPE-HIDDEN @ if
-         m n NAVIGATION-NAME @ SPAN:$ INDEXED HIDE-NAMED or
+         m n NAVIGATION-NAME @ INDEXED HIDE-NAMED or
       then
       n NAVIGATION-NEXT @
    repeat drop ;
@@ -2681,7 +2674,7 @@ CAST: >RECORD ( n -- ^t )
    {: f:^ p:^ :}
    f FILTER-FILTERABLE @ 0= if true exit then
    f FILTER-PATHS @ begin dup NULL-PTR <> while
-      dup PATH-TEXT @ p PROPERTY-NAME @ SPAN:$ SPAN= if drop true exit then
+      dup PATH-TEXT @ p PROPERTY-NAME @ STR:= if drop true exit then
       PATH-NEXT @
    repeat drop false ;
 
@@ -2713,7 +2706,7 @@ public
       dup SERVED? if dup q execute then ENTITY-SET-NEXT @
    repeat drop ;
 
-: ENTITY-SET-NAME$ ( ^entity-set -- str ) ENTITY-SET-NAME @ SPAN:$ ;
+: ENTITY-SET-NAME$ ( ^entity-set -- str ) ENTITY-SET-NAME @ ;
 
 : ENTITY-TYPE ( ^entity-set -- ^entity-type ) ENTITY-SET-TYPE @ ;
 
@@ -2721,7 +2714,7 @@ public
 : EACH-PROPERTY ( ^entity-type [ ^property -- ] -- )
    {: t:^ q :}
    t ENTITY-TYPE-MODEL @ {: m:^ :}
-   t [: dup PROPERTY-NAME @ SPAN:$ m swap HIDDEN?
+   t [: dup PROPERTY-NAME @ m swap HIDDEN?
       if drop else q execute then ;] PROPERTIES-OF ;
 
 \ The key in declared order: the type's own, else its nearest base type's.
@@ -2729,18 +2722,18 @@ public
    {: q :}
    [: KEY-REF-PROPERTY @ q execute ;] KEY-REFS-OF ;
 
-: PROPERTY-NAME$ ( ^property -- str ) PROPERTY-NAME @ SPAN:$ ;
-: PROPERTY-TYPE$ ( ^property -- str ) PROPERTY-TYPE @ SPAN:$ ;
+: PROPERTY-NAME$ ( ^property -- str ) PROPERTY-NAME @ ;
+: PROPERTY-TYPE$ ( ^property -- str ) PROPERTY-TYPE @ ;
 : NULLABLE? ( ^property -- bool ) PROPERTY-NULLABLE @ ;
 
 \ The base type's navigation properties first, then the type's own.
 : EACH-NAVIGATION ( ^entity-type [ ^navigation -- ] -- )
    {: t:^ q :}
    t ENTITY-TYPE-MODEL @ {: m:^ :}
-   t [: dup NAVIGATION-NAME @ SPAN:$ m swap HIDDEN?
+   t [: dup NAVIGATION-NAME @ m swap HIDDEN?
       if drop else q execute then ;] NAVIGATIONS-OF ;
 
-: NAVIGATION-NAME$ ( ^navigation -- str ) NAVIGATION-NAME @ SPAN:$ ;
+: NAVIGATION-NAME$ ( ^navigation -- str ) NAVIGATION-NAME @ ;
 : TO-MANY? ( ^navigation -- bool ) NAVIGATION-MANY @ ;
 
 \ The set the navigation leads to from SET; none when SET's type lacks it or no

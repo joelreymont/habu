@@ -367,7 +367,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: t:^ p:^ :}
    p NULL-PTR = if false exit then
    t TYPE-V2? 0= if false exit then
-   p PROPERTY-TYPE @ SPAN:$ {: ty:str :}
+   p PROPERTY-TYPE @ {: ty:str :}
    ty s" Edm.DateTime" STR:= ty s" Edm.DateTimeOffset" STR:= or ;
 
 : COMPLEX? ( ^property -- bool )
@@ -444,14 +444,14 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : DATE-REJECT ( JSON:value ^property -- )
    {: v p:^ :}
-   v s" /Date(ms)/ or null for member `" p PROPERTY-NAME @ SPAN:$
-   s" ` of type " p PROPERTY-TYPE @ SPAN:$
+   v s" /Date(ms)/ or null for member `" p PROPERTY-NAME @
+   s" ` of type " p PROPERTY-TYPE @
    s" write the value as /Date(ms)/, /Date(ms+mmmm)/ or /Date(ms-mmmm)/ in the years 0 to 9999, or null"
    JOINED-REJECT ;
 
 : NAV-KEY ( ^JSON:writer ^navigation -- ^JSON:writer )
    {: n:^ :}
-   JSON:WRITE-COMMA n NAVIGATION-NAME @ SPAN:$ JSON:WRITE-KEY ;
+   JSON:WRITE-COMMA n NAVIGATION-NAME @ JSON:WRITE-KEY ;
 
 : NAV-WANT ( ^navigation -- str )
    {: n:^ :}
@@ -463,7 +463,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : NAV-REJECT ( JSON:value ^navigation -- )
    {: v n:^ :}
-   v n NAV-WANT s"  for navigation `" n NAVIGATION-NAME @ SPAN:$ s" `"
+   v n NAV-WANT s"  for navigation `" n NAVIGATION-NAME @ s" `"
    KIND-FIX$ JOINED-REJECT ;
 
 : COMPLEX-WANT ( ^property -- str )
@@ -472,7 +472,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : COMPLEX-REJECT ( JSON:value ^property -- )
    {: v p:^ :}
-   v p COMPLEX-WANT s"  for member `" p PROPERTY-NAME @ SPAN:$ s" `"
+   v p COMPLEX-WANT s"  for member `" p PROPERTY-NAME @ s" `"
    KIND-FIX$ JOINED-REJECT ;
 
 \ Rejects the value read as the slot, whose member the frame holds.
@@ -604,7 +604,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : PROPERTY-KEYED ( ^JSON:writer ^frame slot -- ^JSON:writer )
    {: f:^ s:slot :}
-   f FRAME-PROPERTY @ PROPERTY-NAME @ SPAN:$ f s KEYED ;
+   f FRAME-PROPERTY @ PROPERTY-NAME @ f s KEYED ;
 
 \ A member of a record of the frame's type, by its decoded name.
 : MEMBER ( ^JSON:writer str ^copy ^frame -- ^JSON:writer )
