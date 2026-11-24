@@ -78,7 +78,8 @@ public
    ERROR:CODE E-HANDLE
 -9257 s" more live connections or results than CONFIGURE declared, a parameter past PostgreSQL's 65535, or a declaration out of range or changed after use"
    ERROR:CODE E-CAPACITY
--9259 s" an empty statement or name" ERROR:CODE E-STATEMENT
+-9259 s" an empty statement or name, parameters where a statement takes none, a poll with nothing pending, or an operation while the connection connects or another is pending"
+   ERROR:CODE E-STATEMENT
 -9560 s" a wait past the connection's DEADLINE! bound, which closed it" ERROR:CODE E-DEADLINE
 -9561 s" a DEADLINE! bound outside 0..WAIT-MAX ms, or a negative NOTIFIED? or NOTIFIED wait"
    ERROR:CODE E-BOUND
