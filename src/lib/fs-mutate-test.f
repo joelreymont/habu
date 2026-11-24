@@ -730,15 +730,15 @@ public
    FMT-STAGED-TMP s" removable" FS:WRITE-ALL
    FMT-ATOMIC-PATH FS:REMOVE-FILE ;
 
-: FMT-STAGED-SPAN ( SPAN:span<u8> str -- SPAN:span<u8> )
-   {: data path:str :}
-   path data SPAN:$ FS:WRITE-ALL
+: FMT-STAGED-STR ( str str -- str )
+   {: data:str path:str :}
+   path data FS:WRITE-ALL
    data ;
 
-: FMT-STAGED-FAIL ( SPAN:span<u8> str -- SPAN:span<u8> )
-   {: data path:str :}
+: FMT-STAGED-FAIL ( str str -- str )
+   {: data:str path:str :}
    path FMT-STAGED-FORGOT-BUF FMT-STAGED-FORGOT-U FMT-COPY!
-   path data SPAN:$ FS:WRITE-ALL
+   path data FS:WRITE-ALL
    E-FS-IO throw ;
 
 : FMT-STAGED-FORGOT ( -- str )
@@ -746,13 +746,13 @@ public
 
 : FMT-TEST-STAGED-CONTEXT ( -- )
    s" staged callbacks preserve a complete layout value" T-LABEL
-   s" context" dup STR:DATA swap STR:LEN SPAN:MAKE FMT-ATOMIC-PATH [: FMT-STAGED-SPAN ;] FS:REPLACE-STAGED
-   SPAN:$ s" context" T$=
+   s" context" FMT-ATOMIC-PATH [: FMT-STAGED-STR ;] FS:REPLACE-STAGED
+   s" context" T$=
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
    FMT-READ-BUF 7 >str s" context" T$=
    s" a throwing callback preserves the old file and releases its sibling" T-LABEL
-   [: s" partial" dup STR:DATA swap STR:LEN SPAN:MAKE FMT-ATOMIC-PATH
-      [: FMT-STAGED-FAIL ;] FS:REPLACE-STAGED SPAN:$ drop ;] E-FS-IO TTHROWSQ
+   [: s" partial" FMT-ATOMIC-PATH
+      [: FMT-STAGED-FAIL ;] FS:REPLACE-STAGED drop ;] E-FS-IO TTHROWSQ
    FMT-ATOMIC-PATH FMT-READ-BUF 64 FS:READ-ALL 7 T=
    FMT-READ-BUF 7 >str s" context" T$=
    FMT-STAGED-FORGOT FS:EXISTS? TFALSE

@@ -84,9 +84,9 @@ PTR-VARIABLE ISSUER-AT   SCRATCH-VARIABLE ISSUER-LEN
 PTR-VARIABLE AUDIENCE-AT   SCRATCH-VARIABLE AUDIENCE-LEN
 PTR-VARIABLE KEYS-URL-AT   SCRATCH-VARIABLE KEYS-URL-LEN
 
-: ISSUER ( -- SPAN:span<u8> ) ISSUER-AT @ ISSUER-LEN @ SPAN:MAKE ;
-: AUDIENCE ( -- SPAN:span<u8> ) AUDIENCE-AT @ AUDIENCE-LEN @ SPAN:MAKE ;
-: KEYS-URL ( -- SPAN:span<u8> ) KEYS-URL-AT @ KEYS-URL-LEN @ SPAN:MAKE ;
+: ISSUER$ ( -- str ) ISSUER-AT @ ISSUER-LEN @ >str ;
+: AUDIENCE$ ( -- str ) AUDIENCE-AT @ AUDIENCE-LEN @ >str ;
+: KEYS-URL$ ( -- str ) KEYS-URL-AT @ KEYS-URL-LEN @ >str ;
 
 \ NAMED-LEN bytes at NAMED, an allocation holding METADATA!'s statement: the
 \ two challenges naming its URL and scope, CHALLENGES-U bytes, the no-token
@@ -331,7 +331,7 @@ TASK:+USER FROM n
 
 : TRANSFER ( CURL:handle -- n )
    {: h:CURL:handle :}
-   h KEYS-URL SPAN:$ CURL:URL! OK? 0= if -1 exit then
+   h KEYS-URL$ CURL:URL! OK? 0= if -1 exit then
    h KEYS-TIMEOUT-MS >MS CURL:TIMEOUT! OK? 0= if -1 exit then
    h KEYS-CAP >LEN FETCHED @ CURL:PERFORM FETCHED-LEN ;
 
@@ -461,7 +461,7 @@ ENUM lookup-step
       some OF w CONTAINS? ENDOF
    ;MATCH ;
 
-: AUDIENCE? ( -- bool ) CLAIMS@ s" aud" AUDIENCE SPAN:$ HOLDS? ;
+: AUDIENCE? ( -- bool ) CLAIMS@ s" aud" AUDIENCE$ HOLDS? ;
 
 \ The offset of the first space at or after from, or the end.
 : SPACE-AT ( str n -- n )
@@ -492,7 +492,7 @@ ENUM lookup-step
 
 : VALID? ( n -- bool )
    {: now:n :}
-   CLAIMS@ s" iss" ISSUER SPAN:$ false MEMBER-IS? 0= if false exit then
+   CLAIMS@ s" iss" ISSUER$ false MEMBER-IS? 0= if false exit then
    AUDIENCE? 0= if false exit then
    CLAIMS@ s" exp" MEMBER-INT 0= if drop false exit then
    now LEEWAY-S - > 0= if false exit then
@@ -673,7 +673,7 @@ ENUM lookup-step
    JSON:WRITE-OBJECT-START
    s" resource" RESOURCE$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" authorization_servers" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
-   ISSUER SPAN:$ JSON:WRITE-STRING JSON:WRITE-ARRAY-END
+   ISSUER$ JSON:WRITE-STRING JSON:WRITE-ARRAY-END
    SCOPE$ {: s:str :}
    s STR:LEN 0 > if
       JSON:WRITE-COMMA s" scopes_supported" JSON:WRITE-KEY
@@ -734,7 +734,7 @@ public
 \ scope. E-HTTP-STATE before ISSUER! or with no METADATA! URL stated.
 : RESOURCE-METADATA ( HTTP:request HTTP:response -- )
    nip {: answer:HTTP:response :}
-   ISSUER SPAN:LEN 0= RESOURCE-U @ 0= or if E-HTTP-STATE throw then
+   ISSUER$ STR:LEN 0= RESOURCE-U @ 0= or if E-HTTP-STATE throw then
    answer 200 HTTP:STATUS!
    answer [: RESOURCE-BODY ;] HTTP:JSON! ;
 
@@ -748,7 +748,7 @@ public
 \ E-HTTP-STATE before ISSUER!.
 : ADMIT? ( HTTP:request HTTP:response -- bool )
    {: asked:HTTP:request answer:HTTP:response :}
-   ISSUER SPAN:LEN 0= if E-HTTP-STATE throw then
+   ISSUER$ STR:LEN 0= if E-HTTP-STATE throw then
    0 PASSED !
    asked OUTCOME {: outcome:n :}
    outcome ADMITTED <> if answer outcome REFUSE false exit then

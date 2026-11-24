@@ -689,16 +689,16 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    msg
    MATCH WS:message
       opened OF ENDOF
-      text OF >str sock TEXT-IN ENDOF
-      binary OF >str sock BINARY-IN ENDOF
+      text OF sock TEXT-IN ENDOF
+      binary OF sock BINARY-IN ENDOF
       closed OF sock CLOSED-IN THROW-IN-CLOSED ENDOF
    ;MATCH ;
 
 : KIND ( WS:message -- n )
    MATCH WS:message
       opened OF 0 ENDOF
-      text OF 2drop 1 ENDOF
-      binary OF 2drop 2 ENDOF
+      text OF drop 1 ENDOF
+      binary OF drop 2 ENDOF
       closed OF drop 3 ENDOF
    ;MATCH ;
 

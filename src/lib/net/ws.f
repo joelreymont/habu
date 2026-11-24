@@ -34,21 +34,21 @@ NEWTYPE socket
 
 \ What a handler is handed, with the socket and the value ACCEPT was given:
 \ first, once, that the socket has opened; then each whole text or binary
-\ message, its bytes BORROWED until the handler returns, and their count; and
-\ last, once, that the socket has closed, unless a STOP passes its bound first
-\ (STOP), with its status: the close frame's, 1005 when it carried none, 1006
-\ when the stream ended without one (section 7.1.5). A handler runs on a
-\ request worker (HTTP:SUBMIT) and may block; its socket's next call waits for
-\ it. Its throw is one LOG line, tag ws, `socket <handle> failed, throw
-\ <code>`, and a throw on `opened` or a message also closes the socket under
-\ 1011. A peer that breaks the protocol fails the connection: 1002 for a frame
-\ the codec refuses or one out of order, 1007 for text that is not UTF-8, 1009
-\ for a message past MESSAGE-MAX. A ping is answered with a pong even once this
-\ end has sent its close.
+\ message as one str, its bytes BORROWED until the handler returns; and
+\ last, once, that the socket has closed, unless a STOP passes its bound
+\ first (STOP), with its status: the close frame's, 1005 when it carried
+\ none, 1006 when the stream ended without one (section 7.1.5). A handler
+\ runs on a request worker (HTTP:SUBMIT) and may block; its socket's next
+\ call waits for it. Its throw is one LOG line, tag ws, `socket <handle>
+\ failed, throw <code>`, and a throw on `opened` or a message also closes
+\ the socket under 1011. A peer that breaks the protocol fails the
+\ connection: 1002 for a frame the codec refuses or one out of order, 1007
+\ for text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
+\ answered with a pong even once this end has sent its close.
 ENUM message
    VARIANT opened ;VARIANT
-   VARIANT text FIELD chars ^u8 FIELD count n ;VARIANT
-   VARIANT binary FIELD bytes ^u8 FIELD len n ;VARIANT
+   VARIANT text FIELD chars str ;VARIANT
+   VARIANT binary FIELD bytes str ;VARIANT
    VARIANT closed FIELD status n ;VARIANT
 ;ENUM
 
@@ -667,8 +667,8 @@ RUN-IDLE RUN !
    PENDING @
    MATCH message
       opened OF false ENDOF
-      text OF drop drop false ENDOF
-      binary OF drop drop false ENDOF
+      text OF drop false ENDOF
+      binary OF drop false ENDOF
       closed OF drop true ENDOF
    ;MATCH ;
 
@@ -918,7 +918,7 @@ RUN-IDLE RUN !
 
 
 : DELIVER ( n -- ) {: idx:n :}
-   idx MESSAGE$ str>
+   idx MESSAGE$
    idx MSG-WIRE @ TEXT? if WS-MESSAGE:TEXT else WS-MESSAGE:BINARY then {: msg :}
    0 idx MSG-U !
    0 idx MSG-WIRE !
