@@ -1882,8 +1882,7 @@ TFAM-STORE-MASK-INSTALL
    REPEAT drop
    0 RES-FALSE ;
 
-\ PF-ADD validation. Field rows carry explicit logical-cell and memory-layout
-\ metadata under every policy; no policy implies CELL-sized storage.
+\ The most bytes a field row reaches.
 $7FFFFFFFFFFFFFFF constant PF-MAX-N
 
 0 constant PF-FLAGS-NONE
@@ -2255,35 +2254,10 @@ defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward r
 : TFAM-SCH-ROW-ARITY-INSTALL ( -- ) [: TFAM-SCH-ROW-ARITY-IMPL ;] is TFAM-SCH-ROW-ARITY ;
 TFAM-SCH-ROW-ARITY-INSTALL
 
-: PF-RANGE-OK? ( n n -- bool ) {: off:n len:n :}
-   off 0 >= len 0 > and IF off PF-MAX-N len - <= ELSE RES-FALSE THEN ;
-: PF-POW2? ( n -- bool ) {: n:n :}
-   n 0 > IF n n 1 - and 0= ELSE RES-FALSE THEN ;
 : PF-RANGE-OVERLAP? ( n n n n -- bool ) {: a:n au:n b:n bu:n :}
    a b bu + < b a au + < and ;
-: PF-CELL-BYTES ( n -- n ) {: n:n :}
-   n 0 < n PF-MAX-N CELL / > or IF
-      s" pf: a field's slot or cells is too large to count in bytes" EXIT-STATUS:INTERNAL die THEN
-   n cells ;
-: PF-CELL-SLOTS-REQUIRE ( n n n n n n -- )   \ a field laid out in whole cells
-   {: slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   slot PF-CELL-BYTES boff <> IF
-      s" pf: a field's byte-off is not its slot in bytes" EXIT-STATUS:INTERNAL die THEN
-   flags PF-FLAG-BUFFER = IF                  \ a buffer's bytes end in its last cell
-      bytesn 1 - CELL / 1 + cellsn <> IF
-         s" pf: a buffer's cells do not end with its bytes" EXIT-STATUS:INTERNAL die THEN
-   ELSE
-      cellsn PF-CELL-BYTES bytesn <> IF
-         s" pf: a field's bytes is not its cells in bytes" EXIT-STATUS:INTERNAL die THEN
-   THEN
-   al CELL <> IF s" pf: a field's align is not the cell size" EXIT-STATUS:INTERNAL die THEN ;
 : PF-U8? ( n -- bool ) {: node:n :}   \ a buffer's schema: the con u8
    node SCHEMA-CON? IF node SCHEMA-A@ CC-U8 = ELSE RES-FALSE THEN ;
-
-\ A field that is no buffer is as many cells as its schema is wide.
-: PF-WIDTH-REQUIRE ( n n n -- ) {: fam:n sch:n cellsn:n :}
-   fam sch SCHEMA-ROOT@ TFAM-SCH-WIDTH cellsn <> IF
-      s" pf: a field's cells is not its schema's width" EXIT-STATUS:INTERNAL die THEN ;
 
 \ --- entry reads (TFAM-FIND, below). A family read from its type entry is
 \ first its head (ER-HEAD: declared, with its layout policy), then,
@@ -2292,9 +2266,9 @@ TFAM-SCH-ROW-ARITY-INSTALL
 \ read state. MUTUAL members name each other, so a member's body can be read
 \ while a member it holds by value has only its head and no fields, which
 \ would measure 0 cells wide. The read as a whole is one machine, ER-STATE:
-\   ER-IDLE  no entry is being read; PF-ADD checks a field's width as it adds it.
-\   ER-OPEN  an entry is being read, from field row ER-MARK on; PF-ADD defers
-\            each field's width check.
+\   ER-IDLE  no entry is being read.
+\   ER-OPEN  an entry is being read; the width check of each field row from
+\            ER-MARK on waits for the outermost read's end.
 \ IDLE -> OPEN  the outermost TFAM-FIND starts reading an entry: ER-MARK := PF-N.
 \ OPEN -> OPEN  a read inside it, which adds rows past ER-MARK.
 \ OPEN -> IDLE  the outermost read returns, every body read; it then checks the
@@ -2305,15 +2279,6 @@ TFAM-SCH-ROW-ARITY-INSTALL
 1 constant ER-OPEN
 variable ER-STATE   ER-IDLE ER-STATE !
 variable ER-MARK    0 ER-MARK !
-
-\ The width check ER-OPEN deferred, for every field row from mark on.
-: PF-WIDTHS-REQUIRE ( n -- ) {: mark:n :}
-   PF-N @ mark ?do
-      i PF-REC@ {: r:^ :}
-      r PF.FLAGS @ PF-FLAG-BUFFER <> IF
-         r PF.FAM @ r PF.SCH @ r PF.CELLS @ PF-WIDTH-REQUIRE
-      THEN
-   loop ;
 
 : PF-OVERLAP? ( n n n n n n -- bool )
    {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
@@ -2327,29 +2292,35 @@ variable ER-MARK    0 ER-MARK !
       FVX-NEXT
    REPEAT
    drop RES-FALSE ;
-: PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
-   {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   slot cellsn PF-RANGE-OK? 0= IF
-      s" pf: a field's slot or cells is out of range" EXIT-STATUS:INTERNAL die THEN
-   boff bytesn PF-RANGE-OK? 0= IF
-      s" pf: a field's byte-off or bytes is out of range" EXIT-STATUS:INTERNAL die THEN
-   al PF-POW2? 0= IF s" pf: a field's align is not a power of two" EXIT-STATUS:INTERNAL die THEN
-   boff al mod 0 <> IF
-      s" pf: a field's byte-off is not a multiple of its align" EXIT-STATUS:INTERNAL die THEN
-   flags PF-FLAG-BUFFER = IF
-      sch SCHEMA-ROOT@ PF-U8? 0= IF
-         s" pf: a buffer's schema is not u8" EXIT-STATUS:INTERNAL die
-      THEN
-   ELSE
-      ER-STATE @ ER-IDLE = IF fam sch cellsn PF-WIDTH-REQUIRE THEN
-   THEN
-   fam TFAM-LAYOUT-POLICY@ {: policy:n :}
-   policy TL-STACK-CELL-TAG =  policy TL-PACKED-TAG = or  policy TL-NICHE = or
-   0= IF
-      s" pf: a field was added to a family whose layout policy lays out no fields"
-      EXIT-STATUS:INTERNAL die
-   THEN
-   slot cellsn boff bytesn al flags PF-CELL-SLOTS-REQUIRE ;
+
+\ A field's slot and cells: whole cells that end within PF-MAX-N bytes.
+: PF-SLOTS-OK? ( n n -- bool ) {: slot:n cellsn:n :}
+   slot 0 < cellsn 1 < or IF RES-FALSE EXIT THEN
+   cellsn PF-MAX-N CELL / slot - <= ;
+\ A field starts at its slot's first byte, aligned to a cell.
+: PF-CELL-ALIGNED? ( n n n -- bool ) {: slot:n boff:n al:n :}
+   al CELL =  boff slot cells =  and ;
+\ A buffer is u8 bytes, at least one, that end in its last cell; any other
+\ field fills its cells.
+: PF-BYTES-OK? ( n n n n -- bool ) {: sch:n cellsn:n bytesn:n flags:n :}
+   flags PF-FLAG-BUFFER <> IF bytesn cellsn cells = EXIT THEN
+   sch SCHEMA-ROOT@ PF-U8? 0= IF RES-FALSE EXIT THEN
+   bytesn 1 < IF RES-FALSE EXIT THEN
+   bytesn 1 - CELL / 1 + cellsn = ;
+: PF-POLICY-OK? ( n -- bool )   \ a policy that lays out fields
+   TFAM-LAYOUT-POLICY@ {: p:n :}
+   p TL-STACK-CELL-TAG =  p TL-PACKED-TAG =  or  p TL-NICHE =  or ;
+\ A field row hb writes. Each test reads only what the tests before it found
+\ in range: a live family, a schema root, cells that fit.
+: PF-ROW-OK? ( n n n n n n n n n -- bool )
+   {: fam:n var:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   fam var PF-OWNER-OK? 0= IF RES-FALSE EXIT THEN
+   fam sch PF-SCHEMA-OK? 0= IF RES-FALSE EXIT THEN
+   fam PF-POLICY-OK? 0= IF RES-FALSE EXIT THEN
+   slot cellsn PF-SLOTS-OK? 0= IF RES-FALSE EXIT THEN
+   slot boff al PF-CELL-ALIGNED? 0= IF RES-FALSE EXIT THEN
+   sch cellsn bytesn flags PF-BYTES-OK? 0= IF RES-FALSE EXIT THEN
+   fam var slot cellsn boff bytesn PF-OVERLAP? 0= ;
 : PF-DUP? ( n n str -- bool ) {: fam:n var:n na:^ nu:n :}
    fam var FVX-FIRST
    BEGIN dup 0 <> WHILE
@@ -2364,18 +2335,8 @@ variable ER-MARK    0 ER-MARK !
 : PF-ADD ( n n str n n n n n n n -- )
    {: fam:n var:n na:^ nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    WRITE-WINDOW-CK
-   fam var PF-OWNER-OK? 0= IF
-      s" pf: a field's owner is not a product, or a sum or enum variant of the family"
-      EXIT-STATUS:INTERNAL die
-   THEN
    na nu PF-NAME-REQUIRE
    fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
-   fam sch PF-SCHEMA-OK? 0= IF
-      s" pf: a field's schema does not fit its family's parameter kinds" EXIT-STATUS:INTERNAL die
-   THEN
-   fam sch slot cellsn boff bytesn al flags PF-LAYOUT-REQUIRE
-   fam var slot cellsn boff bytesn PF-OVERLAP? IF
-      s" pf: a field overlaps another field of its owner" EXIT-STATUS:INTERNAL die THEN
    PF-ENSURE
    na nu TF-INTERN {: noff:n :}
    PF-N @ {: id:n :}
@@ -3591,6 +3552,7 @@ PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
    flags PF-FLAGS-NONE <>  flags PF-FLAG-BUFFER <>  and IF ER-BAD THEN
    ER-SYM {: sym:n :}
    id TFAM-ARITY@ ER-NODE SCHEMA-ROOT+ {: root:n :}
+   id var root slot nc boff nb al flags PF-ROW-OK? 0= IF ER-BAD THEN
    PF-N @ {: fid:n :}
    id var na nu root slot nc boff nb al flags PF-ADD
    fid sym FIELD-SYM! ;
@@ -3709,6 +3671,22 @@ EXPORT BOOT:TYPES-WL
    id ENTRY-TEXT$ ix FACTS@ CORE-STR= 0= IF ER-BAD THEN
    sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
    id ;
+
+\ A row that is no buffer is as many cells as its schema is wide.
+: PF-WIDTH-OK? ( n -- bool ) {: id:n :}
+   id PF-REC@ {: r:^ :}
+   r PF.FLAGS @ PF-FLAG-BUFFER = IF RES-TRUE EXIT THEN
+   r PF.FAM @ r PF.SCH @ SCHEMA-ROOT@ TFAM-SCH-WIDTH
+   r PF.CELLS @ = ;
+\ The width check ER-OPEN deferred, for every field row from mark on; a
+\ wrong row names its family's entry.
+: PF-WIDTHS-REQUIRE ( n -- ) {: mark:n :}
+   PF-N @ mark ?do
+      i PF-WIDTH-OK? 0= IF
+         s" type entry"  i PF-REC@ PF.FAM @ ENTRY-NAME$
+         DAMAGED-OBJECT
+      THEN
+   loop ;
 
 \ TFAM-FIND-IN, else the family's type entry `pkg:tail` read into the registry
 \ (ER-READ), the outermost read moving ER-STATE.
