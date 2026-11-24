@@ -255,20 +255,41 @@ private
 
 : HEX-CHAR ( n -- n ) {: d:n :} d 10 < IF d 48 + ELSE d 55 + THEN ;
 
-\ Escapes per RFC 8259 section 7: \n \r \t \" \\ by letter, every other control
-\ byte as \u00XX in uppercase hex.
-: JSON-CHAR {: c :}
+\ ESCAPES: for each byte up to `\`, its escape's length, then the escape.
+\ RFC 8259 section 7: \n \r \t \" \\ by letter, else \u00XX, uppercase hex.
+92 constant LAST-ESCAPED
+8 constant ESC-WIDTH
+: ZEROS, ( n -- ) 0 ?do 0 c, loop ;
+: PAIR, ( n -- ) 2 c, 92 c, c, 5 ZEROS, ;
+: ESCAPE, ( n -- ) {: c:n :}
    c case
-      10 of 92 EMIT-RAW 110 EMIT-RAW endof
-      13 of 92 EMIT-RAW 114 EMIT-RAW endof
-      9 of 92 EMIT-RAW 116 EMIT-RAW endof
-      34 of 92 EMIT-RAW c EMIT-RAW endof
-      92 of 92 EMIT-RAW c EMIT-RAW endof
+      10 of 110 PAIR, endof
+      13 of 114 PAIR, endof
+      9 of 116 PAIR, endof
+      34 of c PAIR, endof
+      92 of c PAIR, endof
       c 32 < IF
-         92 EMIT-RAW 117 EMIT-RAW 48 EMIT-RAW 48 EMIT-RAW
-         c 4 rshift HEX-CHAR EMIT-RAW  c 15 and HEX-CHAR EMIT-RAW
-      ELSE c EMIT-RAW THEN
+         6 c, 92 c, 117 c, 48 c, 48 c,
+         c 4 rshift HEX-CHAR c,  c 15 and HEX-CHAR c,  0 c,
+      ELSE ESC-WIDTH ZEROS, THEN
    endcase ;
+: ESCAPES, ( -- ) LAST-ESCAPED 1 + 0 ?do i ESCAPE, loop ;
+create ESCAPES  ESCAPES,
+
+public
+\ The bytes that stand for byte c inside a record's JSON string, empty for a
+\ byte that stands for itself.
+: JSON-ESCAPE$ ( u8 -- str ) {: c:u8 :}
+   c LAST-ESCAPED > IF ESCAPES 0 EXIT THEN
+   ESCAPES c ESC-WIDTH * + {: e:^u8 :}
+   e 1 +  e c@ ;
+private
+
+: RAW-STR ( str -- ) {: a:^ u:n :}
+   u 0 ?do a i + c@ EMIT-RAW loop ;
+: JSON-CHAR ( u8 -- ) {: c:u8 :}
+   c JSON-ESCAPE$ {: e:^ eu:n :}
+   eu 0= IF c EMIT-RAW ELSE e eu RAW-STR THEN ;
 
 public
 \ Between JSON-OPEN and JSON-CLOSE every byte is escaped: a package may be named `\`.

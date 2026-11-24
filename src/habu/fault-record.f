@@ -10,6 +10,7 @@ split-str
 \ async-signal-safe), a stack past its bounds, a callback thread with no Habu
 \ frame, a stop that must not be caught.
 require src/core/exit-status.f
+require src/core/rejection.f
 require src/lib/string.f
 require src/lib/heap.f
 require src/lib/span.f
@@ -53,15 +54,13 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
 : JSON+ ( str -- )  JSON VEC:APPEND ;
 : BOTH+ ( str -- ) {: a:^ u:n :}  a u PROSE+  a u JSON+ ;
 
-\ A site's text is laid as is in a JSON string, so it holds no byte JSON escapes.
-: PLAIN? ( n -- bool ) {: c:n :}
-   c 32 >=  c 34 <> and  c 92 <> and ;
-: CHECK-TEXT ( str -- ) {: a:^ u:n :}
-   u 0 ?do
-      a i + c@ PLAIN? 0= IF
-         s" crash: a fault record's text holds a byte JSON escapes" EXIT-STATUS:INTERNAL die
-      THEN
-   loop ;
+\ The byte at the pointer, as a JSON string holds it.
+: ESC-BYTE ( ^u8 -- ) {: p:^ :}
+   p c@ REJECTION:JSON-ESCAPE$ {: e:^ eu:n :}
+   eu 0= IF p 1 JSON+ ELSE e eu JSON+ THEN ;
+\ A caller's text, as a JSON string holds it.
+: ESC+ ( str -- ) {: a:^ u:n :}
+   u 0 ?do a i + ESC-BYTE loop ;
 
 : PART? ( n -- ) {: want:n :}
    FAULT-PART @ want <> IF
@@ -75,20 +74,20 @@ variable FAULT-PART  FAULT-SHUT FAULT-PART !
 public
 \ A note's key, after the text before it.
 : NOTE+ ( str -- ) {: k:^ ku:n :}
-   NOTE-PART?  k ku CHECK-TEXT
+   NOTE-PART?
    S\" \n  = " PROSE+  k ku PROSE+  s" : " PROSE+
    S\" \"," JSON+
    FAULT-PART @ FAULT-MESSAGE = IF S\" \"notes\":{" JSON+ THEN
-   S\" \"" JSON+  k ku JSON+  S\" \":\"" JSON+
+   S\" \"" JSON+  k ku ESC+  S\" \":\"" JSON+
    FAULT-NOTE FAULT-PART ! ;
 
 \ The record's start: its code and message.
 : FAULT-OPEN ( str str -- )
    {: code:^ cu:n msg:^ mu:n :}
-   FAULT-SHUT PART?  code cu CHECK-TEXT  msg mu CHECK-TEXT
+   FAULT-SHUT PART?
    s" error[" PROSE+  code cu PROSE+  s" ]: " PROSE+  msg mu PROSE+
-   S\" {\"severity\":\"error\",\"code\":\"" JSON+  code cu JSON+
-   S\" \",\"message\":\"" JSON+  msg mu JSON+
+   S\" {\"severity\":\"error\",\"code\":\"" JSON+  code cu ESC+
+   S\" \",\"message\":\"" JSON+  msg mu ESC+
    FAULT-MESSAGE FAULT-PART ! ;
 
 \ A note whose value is an address, `0x` and its hex digits.
@@ -104,20 +103,20 @@ public
 
 \ The record's end, with its help, for a site that exits.
 : FAULT-STOP ( str -- ) {: h:^ hu:n :}
-   NOTE-PART?  h hu CHECK-TEXT
+   NOTE-PART?
    S\" \n  = help: " PROSE+  h hu PROSE+  S\" \n\n" PROSE+
    FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
-   S\" ,\"help\":\"" JSON+  h hu JSON+  S\" \"}\n" JSON+
+   S\" ,\"help\":\"" JSON+  h hu ESC+  S\" \"}\n" JSON+
    FAULT-SHUT FAULT-PART ! ;
 
 \ The record's end, with its help, none for an empty text, for a site that
 \ returns.
 : FAULT-KEEP ( str -- ) {: h:^ hu:n :}
-   NOTE-PART?  h hu CHECK-TEXT
+   NOTE-PART?
    hu 0 <> IF S\" \n  = help: " PROSE+  h hu PROSE+ THEN
    S\" \n\n" PROSE+
    FAULT-PART @ FAULT-NOTE = IF S\" \"}" ELSE S\" \"" THEN JSON+
-   hu 0 <> IF S\" ,\"help\":\"" JSON+  h hu JSON+  S\" \"" JSON+ THEN
+   hu 0 <> IF S\" ,\"help\":\"" JSON+  h hu ESC+  S\" \"" JSON+ THEN
    S\" }\n" JSON+
    FAULT-SHUT FAULT-PART ! ;
 
