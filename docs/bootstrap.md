@@ -151,7 +151,11 @@ package row needs a stage that adds the row first. The running hb's no-return
 axioms each name a primitive (src/core/checker.f NORET-AXIOMS): a tree that
 drops one needs a stage that drops the axiom first, or the build stops with
 `checker: the kernel object has no row for <name>, which a no-return axiom
-names`.
+names`. A word a build runs from hb (src/habu/interpreter.f HOST-WORD?) is
+looked up where the tree's binding of it comes from: a tree that moves such a
+word to another package or section needs a stage whose hb holds it there, or
+the build stops `E-UNDEFINED` at its first use; a moved `nominal-provider` or
+`root-mover` runs the tree's copy instead.
 
 A change in one commit that no revision can stage leaves a host whose hb
 predates it unable to build the tree: a package renamed together with the owner

@@ -29,10 +29,9 @@ split-str
 \ declaration's own; a top-only word acts on the program's state, so the
 \ target's copy runs. `intrinsic`, `nominal-provider`, `root-mover` and
 \ `undefine` act on the checker that checks the build, so hb's run by their
-\ spelling, as do the file loaders (LOADER?). hb's global wordlist is 0, as
-\ every linked program's; a declaration private to a package is in its private
-\ wordlist, whose row is in hb's own namespace (WL:NAMESPACE): a build points
-\ BOOT:NAMESPACE-WL at the target's.
+\ spelling, as do the file loaders (LOADER?). hb's word is the one where the
+\ target's binding comes from, looked up in hb's own wordlists: a build points
+\ BOOT:GLOBAL-WL and BOOT:NAMESPACE-WL at the target's.
 
 require src/core/exit-status.f
 require src/lib/prelude.f
@@ -266,6 +265,11 @@ EXPORT CHECK:TOP-MOVE
 EXPORT CHECK:USING-AMBIGUOUS-REJECT
 EXPORT CHECK:USING-SHADOW-REJECT
 EXPORT CHECK:CHECKER-VERIFY-TOP-BINDING
+EXPORT CHECK:CHECKER-SYM-SOURCE
+EXPORT CHECK:SYM-PKG$
+EXPORT CHECK:SYM-NAME$
+EXPORT CHECK:SYM-ROW
+EXPORT CHECK:SYM.VIS
 EXPORT CHECK:UNDEFINED-RECORD
 EXPORT CHECK:KEYWORD-RECORD
 EXPORT CHECKER-TAPE:COUNTED-MAX
@@ -2924,23 +2928,38 @@ EXPORT CODE-RECLAIM:TRUNCATE
    s" required" TOKEN-IS? if true exit then
    s" provided" TOKEN-IS? ;
 
+\ A row's private wid of 0 means no private section, not hb's global wordlist.
+: HOST-PKG-REC ( n -- ^n ) {: src:n :}
+   src SYM-PKG$ WL:NAMESPACE WL-PROBE {: row:^ :}
+   row XREF-FOUND? 0= if XREF-NULL exit then
+   src SYM-ROW SYM.VIS @ SYM-PUBLIC = if
+      src SYM-NAME$ row XREF-PKG-PUBLIC XREF-FIND-WL exit
+   then
+   row XREF-PKG-PRIVATE {: wid:n :}
+   wid 0= if XREF-NULL exit then
+   src SYM-NAME$ wid XREF-FIND-WL ;
+
+\ hb's record of the word a binding comes from, an EXPORT's source; hb's global
+\ wordlist is 0, as every linked program's.
+: HOST-REC ( n -- ^n ) {: sym:n :}
+   sym 0= if XREF-NULL exit then
+   sym CHECKER-SYM-SOURCE {: src:n :}
+   src SYM-PKG$ nip 0<> if src HOST-PKG-REC exit then
+   src SYM-NAME$ 0 XREF-FIND-WL ;
+
 \ Whether a build runs hb's own word for the token rather than the target's.
 : HOST-WORD? ( -- bool )
    data-base BOOT:IMAGE-BASE-CELL + @ 0= if false exit then
+   TOKEN$ CHECKER-VERIFY-TOP-BINDING nip {: sym:n ctl:n :}
    s" nominal-provider" TOKEN-IS?  s" root-mover" TOKEN-IS? or {: annot:bool :}
    annot  s" intrinsic" TOKEN-IS? or  LOADER? or  s" undefine" TOKEN-IS? or
    0= if
-      TOKEN$ CHECKER-VERIFY-TOP-BINDING nip nip
-      CHECKER-OWNER-ABI:BINDING-ID-MASK and
+      ctl CHECKER-OWNER-ABI:BINDING-ID-MASK and
       CHECKER-OWNER-ABI:BINDING-ID-SHIFT rshift {: id:n :}
       id CHECKER-OWNER-ABI:BINDING-PARSES-ID < if false exit then
       id CHECKER-OWNER-ABI:BINDING-DECLARATION-ID > if false exit then
    then
-   TOKEN$ 0 XREF-FIND-WL REC !
-   REC @ XREF-FOUND? 0= if
-      OPEN-PKG-NAME WL:NAMESPACE WL-PROBE {: pkg:^ :}
-      pkg NULL-PTR <> if TOKEN$ pkg XREF-PKG-PRIVATE XREF-FIND-WL REC ! then
-   then
+   sym HOST-REC REC !
    REC @ XREF-FOUND? 0= if annot if false exit then UNDEFINED then
    true ;
 
