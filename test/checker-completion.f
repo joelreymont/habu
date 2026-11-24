@@ -752,6 +752,14 @@ DEP-CAP BUFFER: DEP-BUF
    s" QALPK:" s" QALPK:QalW" QALW-AT
    s" qalpk:Q" s" qalpk:QalW" QALW-AT ;
 
+\ A qualified declaration's row holds its whole token: the word is offered
+\ once, as that token spells it, at that token.
+: CASE-QUALIFIED-DECL ( -- )
+   s" cmpq:" KEPT-RESET
+   s" package CMPQP : CMPQ:Cmqy ( -- n ) 1 ; ;package" s" CMPQ:C" TOP-AT
+   KEPT-ALL
+   s" CMPQ:Cmqy" SUBJECT-PATH$ s" CMPQ:Cmqy" 0 SPAN-FROM OFFERED ;
+
 \ 9. A public only the dictionary holds.
 \ QALD:QALDEF;does is offered under a bare prefix, the package's edge colon
 \ and a qualified prefix, as the dictionary spells it, with no location; its
@@ -893,6 +901,7 @@ DEP-CAP BUFFER: DEP-BUF
    CASE-DEPENDENCY
    CASE-REWOUND
    CASE-QUALIFIED-ANY
+   CASE-QUALIFIED-DECL
    CASE-DICTIONARY
    CASE-PART-IN
    CASE-PART-OUT

@@ -14,13 +14,13 @@ defer D ( t -- t )
 : G ( ^t -- t ) @ ;
 STRUCTURE box<a> DERIVE addr FIELD item a FIELD rest n ;STRUCTURE
 : IN-BOX ( box<t> -- box<t> ) ;
-: STEP ( ^t -- ^t ) 8 + ;
+: Step ( ^t -- ^t ) 8 + ;   \ mixed case: a record names it as written
 
 PROGRAM-DIAG-CELL:START
 : QUOT-ROW ( -- ) ['] W AP drop ;
 : DEFER-CALL ( -- pr ) 1 2 PR:MAKE D ;
 : BODY-FETCH ( ^pr -- pr ) G ;
 : BOX-WIDTH ( box<pr> -- box<pr> ) IN-BOX ;
-: PTR-STEP ( ^pr -- ^pr ) STEP ;
+: PTR-STEP ( ^pr -- ^pr ) Step ;
 PROGRAM-DIAG-CELL:FINISH
 s" ok" type cr

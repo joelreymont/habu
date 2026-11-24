@@ -17365,16 +17365,44 @@ private
 : SBA-SECTION$ ( n -- str ) {: vis:n :}
    vis CHECKER-PACKAGE-GLOBAL = IF s" global" EXIT THEN  s" public" ;
 
-\ The private twin's name as its dictionary row spells it.
-: SBA-PRIVATE$ ( n -- str ) {: sym:n :}
-   sym SYM-NAME$ {: a:^ u:n :}
-   sym SYM-PKG$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:^ :}
-   pkg NULL-PTR = IF a u EXIT THEN
-   pkg CELL + @ {: wid:n :}
-   wid 0= IF a u EXIT THEN
-   a u wid CHECKER-RESOLVE:WL-PROBE {: row:^ :}
-   row NULL-PTR = IF a u EXIT THEN
-   row CK-REC-NAME$ ;
+: SCOPE-SYM-WID ( n -- n ) {: sym:n :}
+   sym SYM-PKG$ {: pkg:^ pkgu:n :}
+   pkgu 0= IF BOOT:GLOBAL-WL EXIT THEN
+   pkg pkgu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
+   rec NULL-PTR = IF -1 EXIT THEN
+   sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
+   sym SYM-ROW SYM.VIS @ SYM-PRIVATE <> IF -1 EXIT THEN
+   rec CELL + @ {: wid:n :}
+   wid 0= IF -1 EXIT THEN
+   wid ;
+
+\ The dictionary record a symbol names in its own wordlist; NULL-PTR for a word
+\ only the checker knows.
+: VIS-SYM-REC ( n -- ^n )
+   {: sym:n :}
+   sym SCOPE-SYM-WID {: wid:n :}
+   wid 0 < IF NULL-PTR EXIT THEN
+   sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE ;
+
+\ Row name RA RU's last NU bytes, when they spell name NA NU and are the whole
+\ row name or follow a qualifier's `:`.
+: DECL-TAIL ( str str -- str bool ) {: ra:^ ru:n na:^ nu:n :}
+   nu ru > IF na nu RES-FALSE EXIT THEN
+   ra ru nu - + {: ta:^ :}
+   ta nu na nu SYM-STR=CI 0= IF na nu RES-FALSE EXIT THEN
+   ta nu  ru nu = IF RES-TRUE EXIT THEN
+   ta 1 - c@ 58 = ;
+
+\ The verifier compiles nothing, so only a declaration keeps the source's case;
+\ it may write a qualifier first, or the name a generated word was made from.
+: SYM-SPELLING$ ( n -- str ) {: sym:n :}
+   sym USIG-NEWEST-VISIBLE DL-ROW-OF {: i:n named:bool :}
+   named IF
+      i DL-NAME$ sym SYM-NAME$ DECL-TAIL IF EXIT THEN 2drop
+   THEN
+   sym VIS-SYM-REC {: rec:^ :}
+   rec NULL-PTR <> IF rec CK-REC-NAME$ EXIT THEN
+   sym SYM-NAME$ ;
 
 \ The DECLARED rows and the name of the colon definition about to be published,
 \ then that name as written, p pu, where the record is placed.
@@ -17390,11 +17418,11 @@ private
    s" E-SHADOWED-ARITY" REJECTION:OPEN
    vis SBA-SECTION$ REJECTION:EMIT-STR  s"  `" REJECTION:EMIT-STR  priv vis p pu SBA-WORD
    s" ` has a different stack effect from its package's private `" REJECTION:EMIT-STR
-   priv SBA-PRIVATE$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
+   priv SYM-SPELLING$ REJECTION:EMIT-STR  96 REJECTION:EMIT1
    p pu REJECTION:AT
    s" its name binds the private word" REJECTION:EMIT-STR
    vis SBA-SECTION$ REJECTION:NOTE  priv vis p pu SBA-WORD  32 REJECTION:EMIT1  nin nout SBA-CELLS-TXT
-   s" private" REJECTION:NOTE  priv SBA-PRIVATE$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
+   s" private" REJECTION:NOTE  priv SYM-SPELLING$ REJECTION:EMIT-STR  32 REJECTION:EMIT1  pin pout SBA-CELLS-TXT
    REJECTION:HELP
    s" declare the same stack effect on both, as the private word's `" REJECTION:EMIT-STR
    pin pout SBA-CELLS-TXT
@@ -19727,15 +19755,6 @@ public
    k 0 <>  e 0 =  or IF k EXIT THEN
    0  9 2 ?do  BUILD-SCOPES i cells + @ e = IF drop i THEN  loop ;
 private
-
-: SCOPE-SYM-WID ( n -- n ) {: sym:n :}
-   sym SYM-PKG$ {: pkg:^ pkgu:n :}
-   pkgu 0= IF BOOT:GLOBAL-WL EXIT THEN
-   pkg pkgu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:^ :}
-   rec NULL-PTR = IF -1 EXIT THEN
-   sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
-   sym SYM-ROW SYM.VIS @ SYM-PRIVATE = IF rec CELL + @ EXIT THEN
-   -1 ;
 
 : SCOPE-KIND-SYM ( n -- n ) {: sym:n :}
    sym 0= IF 0 EXIT THEN
@@ -23324,14 +23343,6 @@ defer VIS-VISIT ( str n n n -- )
    u ru < IF RES-FALSE EXIT THEN
    a ru  VIS-A @ qu + 1 +  ru CORE-STR=CI ;
 
-\ The dictionary record a selected symbol names: the one its own wordlist holds
-\ under its name; NULL-PTR for a word only the checker knows.
-: VIS-SYM-REC ( n -- ^n )
-   {: sym:n :}
-   sym SCOPE-SYM-WID {: wid:n :}
-   wid 0 < IF NULL-PTR EXIT THEN
-   sym SYM-NAME$ wid CHECKER-RESOLVE:WL-PROBE ;
-
 \ The dictionary record a walk's selection of SYM binds: the one the engine's
 \ lookup found under live authority (WALK-REC), else the symbol's own.
 : VIS-WALK-REC ( n -- ^n )
@@ -23473,18 +23484,16 @@ defer VIS-VISIT ( str n n n -- )
    row CK-REC-NAME$ {: ra:^ ru:n :}
    ra ru qu - + qu ;
 
-\ The name a selection of SYM, REC1 and dictionary record DREC spells, from the
-\ selection alone, and where it was declared: the name and location REC1's
-\ declaration wrote, else the dictionary record's name, else the store's folded
-\ name - a word only the checker generated, whose case nothing kept - with no
-\ location, 0 0 0. The spelling the name was generated from never lends its
-\ case.
+\ A selection's name and its declaration's location, from the selection alone;
+\ 0 0 0 where it has no location.
 : VIS-NAME ( n n ^n -- str n n n )
    {: sym:n rec1:n drec:^ :}
    rec1 DL-ROW-OF {: i:n named:bool :}
-   named IF i DL-NAME$  i DL-AT drop  EXIT THEN
+   named IF
+      i DL-NAME$ sym SYM-NAME$ DECL-TAIL IF i DL-AT drop EXIT THEN 2drop
+   THEN
    drec NULL-PTR <> IF drec CK-REC-NAME$ 0 0 0 EXIT THEN
-   sym SYM-NAME$ 0 0 0 ;
+   sym SYM-SPELLING$ 0 0 0 ;
 
 \ The spelling a selection is offered as, and its location: its name, behind
 \ the candidate's qualifier PKG when it has one (0 bytes for none).

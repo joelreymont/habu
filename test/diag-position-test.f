@@ -446,8 +446,8 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    GJA-LINE# @ 1 T=
    0 s" SHADE" 8 13 100 105 AT ;
 
-\ The public F moves other cells than the private F, whose tail it shares: the
-\ rejection names the folded tail and is placed at the public definition's name.
+\ The public F moves other cells than its private twin: the rejection names the
+\ private F as written, at the public definition's name.
 : SHADOWED-FIXTURE ( -- )
    SB-RESET
    s" package SAT-A" SB-APPEND LF+
@@ -461,7 +461,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : SHADOWED-AT ( str -- )
    {: path:^ pathu:n :}
    0 s" code" s" E-SHADOWED-ARITY" FIELD=
-   0 s" message" s" private `f`" FIELD-HAS
+   0 s" message" s" private `F`" FIELD-HAS
    0 s" F" 5 5 47 48 path pathu FX$ AT-IN ;
 
 : TEST-SHADOWED-ARITY ( -- )
@@ -1775,6 +1775,47 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" --load" PROC-ARGV+
    FX-PATH$ PROC-ARGV+
    LAUNCHED ;
+
+\ The check, which compiles nothing, names a mixed-case private twin as the
+\ load does: as its declaration spells it, never folded.
+: CASE-MSG$ ( -- str )
+   s" public `Pk:EE` has a different stack effect from its package's private `Ee`" ;
+
+: TEST-SHADOWED-CASE ( -- )
+   s" a public whose mixed-case private twin moves other cells" T-LABEL
+   SB-RESET
+   s" package Pk" SB-APPEND LF+
+   s" : Ee ( -- ) ;" SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : EE ( -- n ) 1 ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" shadowed-case.f" FIXTURE!
+   SB-RESET  s" error[E-SHADOWED-ARITY]: " SB-APPEND  CASE-MSG$ SB-APPEND
+   SB$ 70 LOADED
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   0 s" message" CASE-MSG$ FIELD=
+   0 s" private" s" Ee (0 -- 0)" NOTE= ;
+
+\ A definition named across a package boundary is spelled by the check, as by
+\ the load, without the qualifier its declaration wrote.
+: QUAL-MSG$ ( -- str )
+   s" `t` in `Yy`'s effect is one cell; `thing2` is 2 cells" ;
+
+: TEST-QUALIFIED-CASE ( -- )
+   s" a call of a mixed-case word defined under a qualifier" T-LABEL
+   SB-RESET
+   s" STRUCTURE thing2 FIELD x n FIELD y n ;STRUCTURE" SB-APPEND LF+
+   s" package P" SB-APPEND LF+
+   s" : Q:Yy ( ^t -- n ) @ drop 0 ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   s" : USE ( ^thing2 -- n ) Q:Yy ;" SB-APPEND LF+
+   s" qualified-case.f" FIXTURE!
+   SB-RESET  s" error[E-MISMATCH]: " SB-APPEND  QUAL-MSG$ SB-APPEND
+   SB$ 70 LOADED
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   0 s" message" QUAL-MSG$ FIELD= ;
 
 \ The load exits RC after its record for CODE, placed at AT after the fixture's
 \ path (`:line:column`, or nothing for a record with no place).
@@ -3893,6 +3934,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-IS-SHADOW
    TEST-SHADOWED-ARITY
    TEST-SHADOWED-FUNCTION
+   TEST-SHADOWED-CASE
+   TEST-QUALIFIED-CASE
    TEST-ALL-RESERVED
    TEST-ALL-ORDER
    TEST-DYN-PLACE

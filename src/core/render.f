@@ -1547,7 +1547,7 @@ variable MDV-I   variable MDV-F
    AT-PIN  s" `" EMIT-STR  MDIAG-CELL-VAR @ MK-VAR REND-TYPE  s" `" EMIT-STR  ;AT-PIN
    CELL-VAR-SYM {: sym:n :}
    sym 0= IF EXIT THEN
-   s"  in `" EMIT-STR  sym SYM-NAME$ EMIT-STR  s" `'s effect" EMIT-STR ;
+   s"  in `" EMIT-STR  sym SYM-SPELLING$ EMIT-STR  s" `'s effect" EMIT-STR ;
 
 \ The declared type a one-cell variable met, after the reason's prose: its
 \ cells, or that it is a declared type where it fits one cell.
@@ -2432,7 +2432,7 @@ PTR-VARIABLE HOLDER-FIRST
 : OFF-STEP-HELP ( -- )
    CELL-VAR-SYM {: sym:n :}
    sym 0 <> IF
-      s" declare `" EMIT-STR  sym SYM-NAME$ EMIT-STR  s" `" EMIT-STR
+      s" declare `" EMIT-STR  sym SYM-SPELLING$ EMIT-STR  s" `" EMIT-STR
    ELSE s" declare the word" EMIT-STR THEN
    s"  for the plain cell type it steps, or step `" EMIT-STR
    AT-PIN  CELL-TYPE REND-TYPE  ;AT-PIN  s" ` by its size" EMIT-STR ;
@@ -2443,7 +2443,7 @@ PTR-VARIABLE HOLDER-FIRST
    s" ` in place of " EMIT-STR
    CELL-VAR-SYM {: sym:n :}
    sym 0= IF s" the stack words that move it" EMIT-STR EXIT THEN
-   s" `" EMIT-STR  sym SYM-NAME$ EMIT-STR  s" `, which moves any type" EMIT-STR ;
+   s" `" EMIT-STR  sym SYM-SPELLING$ EMIT-STR  s" `, which moves any type" EMIT-STR ;
 
 \ The latched FACT-HIT's facts in bit order, joined by one space.
 : FACT-NAMES ( -- )

@@ -370,12 +370,12 @@ variable BIG-U
    s" test/native-multi-error-recovery.f" s" native-multi-error-recovery.f:25:18" DIAGNOSTIC
    s" error[E-MISMATCH]: `c@` takes ^u8; the stack holds n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-one-cell.f" s" program-diagnostic-one-cell.f:20:25" DIAGNOSTIC
-   s" error[E-MISMATCH]: `t` in `ap`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
-   s" error[E-MISMATCH]: `t` in `d`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
-   s" error[E-MISMATCH]: `t` in `g`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
-   s" error[E-MISMATCH]: `t` in `in-box`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
-   s" error[E-MISMATCH]: `t` in `step`'s effect is stepped by an offset; `pr` is not a plain cell type" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
-   s" help: declare `step` for the plain cell type it steps, or step `pr` by its size" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" error[E-MISMATCH]: `t` in `AP`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" error[E-MISMATCH]: `t` in `D`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" error[E-MISMATCH]: `t` in `G`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" error[E-MISMATCH]: `t` in `IN-BOX`'s effect is one cell; `pr` is 2 cells" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" error[E-MISMATCH]: `t` in `Step`'s effect is stepped by an offset; `pr` is not a plain cell type" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
+   s" help: declare `Step` for the plain cell type it steps, or step `pr` by its size" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
    s" in a word whose effect names `pr`" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-HAS
    s" @pr.tag" s" test/program-diagnostic-one-cell.f" GE-EXPECT-ERR-LACKS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
