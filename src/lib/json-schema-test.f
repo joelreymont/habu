@@ -142,7 +142,7 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
 : CHECKED ( ^u8 n ^u8 n ^ARENA:arena -- bool )
    {: v:^ vu:n s:^ su:n a:^ :}
    s su a PARSED {: sc :}
-   v vu sc VIOLATION @ JSON-SCHEMA:VALID? ;
+   v vu JSON:PARSE sc VIOLATION @ JSON-SCHEMA:VALID? ;
 
 \ The value v checked against the schema s, the vector cleared first.
 : VERDICT ( ^u8 n ^u8 n -- bool ) {: s:^ su:n v:^ vu:n :}
@@ -366,6 +366,27 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s" : expected at most 1 item, found 2 items; remove an item" FAILS
    NESTED UNMAKE ;
 
+: CHOICE-LEVEL$ ( -- ^u8 n )
+   s\" : expected a value one schema of `anyOf` takes, found `\"a\"`; meet one of them:\n  [0]" ;
+
+: INNERMOST$ ( -- ^u8 n )
+   s\" [0]: expected a value of type `integer`, found `\"a\"`; send a value of that type" ;
+
+\ Each level's text, then the innermost alternative's violation.
+: DEEP-CHOICES ( -- )
+   s" VALID? judges anyOf nested 100000 levels deep" T-LABEL
+   NESTED MAKE
+   s\" {\"anyOf\":[" s\" {\"type\":\"integer\"}" s" ]}" NEST drop
+   NESTED @ VEC:SPAN SPAN:$ {: t:^ u:n :}
+   t u s" 1" PASSES
+   t u s\" \"a\"" VERDICT TFALSE
+   VIOLATION$ {: w:^ wu:n :}
+   CHOICE-LEVEL$ {: h:^ hu:n :}  INNERMOST$ {: m:^ mu:n :}
+   w hu h hu T$=
+   w wu + mu -  mu  m mu T$=
+   wu  hu DEPTH *  mu + 3 -  T=
+   NESTED UNMAKE ;
+
 : CHOICES ( -- )
    s" VALID? takes anyOf's second alternative after the first fails" T-LABEL
    s\" {\"anyOf\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}" s" 5"
@@ -394,13 +415,22 @@ TYPED-VARIABLE NESTED ^VEC:vector<u8>
    s\" {\"oneOf\":[{\"type\":\"integer\"},{\"type\":\"number\"},{\"type\":\"string\"}]}"
    s" 1"
    s" : expected a value exactly one schema of `oneOf` takes, found `1`, which schemas [0] and [1] take; send a value only one of them takes"
+   FAILS
+   s" VALID? reuses an element's lanes, a nested anyOf's text in them" T-LABEL
+   s\" {\"items\":{\"anyOf\":[{\"anyOf\":[{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},{\"type\":\"boolean\"}]},{\"type\":\"integer\"}]}}"
+   s" [1,{}]"
+   s\" [1]: expected a value one schema of `anyOf` takes, found `{}`; meet one of them:\n  [0]: expected a value one schema of `anyOf` takes, found `{}`; meet one of them:\n  [0]: expected a value one schema of `anyOf` takes, found `{}`; meet one of them:\n  [0]: expected a value of type `string`, found `{}`; send a value of that type\n  [1]: expected a value of type `null`, found `{}`; send a value of that type\n  [1]: expected a value of type `boolean`, found `{}`; send a value of that type\n  [1]: expected a value of type `integer`, found `{}`; send a value of that type"
+   FAILS
+   s" VALID? names the three oneOf alternatives that take a value" T-LABEL
+   s\" {\"oneOf\":[{},{\"type\":\"string\"},{},{}]}" s" 0"
+   s" : expected a value exactly one schema of `oneOf` takes, found `0`, which schemas [0], [2] and [3] take; send a value only one of them takes"
    FAILS ;
 
 : RUN ( -- )
    T-RESET
    TAKEN REJECTED
    VIOLATION MAKE
-   SAPD VALUES ARRAYS DEEP CHOICES
+   SAPD VALUES ARRAYS DEEP DEEP-CHOICES CHOICES
    VIOLATION UNMAKE
    T-REPORT ;
 

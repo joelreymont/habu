@@ -1250,7 +1250,7 @@ CAST: HELD>N ( held -- n )
    {: args:^ au:n idx:n :}
    VIOLATION {: v:^ :}
    v 0 VEC:RESIZE  s" arguments" v VEC:APPEND
-   args au idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
+   args au JSON:PARSE idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
    dup if exit then
    v VEC:SPAN SPAN:$ TOOL-ERROR ;
 

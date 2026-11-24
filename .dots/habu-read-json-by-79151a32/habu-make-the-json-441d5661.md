@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-11-24T17:22:27.523891+01:00"
 blocks:
-  - habu-validate-a-json-9ec8e7c9
   - habu-read-mcp-requests-4c03d74e
   - habu-answer-mcp-client-b40eb00f
   - habu-read-json-by-a447b521
