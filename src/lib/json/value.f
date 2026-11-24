@@ -13,17 +13,20 @@ split-str
 \ below an inner object's lo, so the stack stays below the range a check groups.
 \ The repeat earliest in the text is rejected once the whole text has read well
 \ formed.
-\ The walks EACH, EACH-MEMBER and their -WHILE forms run their quotation
-\ while the walk's cursor is open; a value it is given borrows the text, not
-\ the cursor, so it stays valid after the walk.
+\ The walks EACH, EACH-MEMBER, their -WHILE forms and WALK run their
+\ quotation while the walk's cursor is open; a value it is given borrows the
+\ text, not the cursor, so it stays valid after the walk. WALK keeps each open
+\ container's start on a stack that grows with its depth, so a walk of any
+\ depth takes constant machine stack.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the text a value borrows and
-\ the vector APPEND-STRING grows. The cursor record, its depth mapping, AT's
-\ decoded token and WITH-STRING's decoded text live in a MEM:WITH-BYTES scope,
-\ and the key storage on the heap, all released on return or throw. No module
-\ state.
+\ the vector APPEND-STRING grows. The cursor record, AT's decoded token and
+\ WITH-STRING's decoded text live in MEM scopes, the cursor's depth mapping in
+\ a mapping of its own, and the key storage and WALK's stack of starts on the
+\ heap, all released on return or throw. No module state.
 
 require src/lib/memory.f
 require src/lib/vector.f
+require src/lib/heap.f
 require src/lib/adt/option.f
 require src/lib/reason.f
 require src/lib/json/read.f
@@ -300,6 +303,56 @@ public
    {: v body :}
    v 0 [: drop s" walk only an object with JSON:EACH-MEMBER-WHILE" body MEMBERS ;]
    WITH-CURSOR ;
+
+\ An event WALK gives. A name is the member's name as written, a string value;
+\ a close carries the whole container that just ended.
+ENUM event
+   VARIANT open-object ;VARIANT
+   VARIANT open-array ;VARIANT
+   VARIANT name FIELD value value ;VARIANT
+   VARIANT scalar FIELD value value ;VARIANT
+   VARIANT close FIELD value value ;VARIANT
+;ENUM
+
+private
+
+: PUSH-START ( ^cursor ^VEC:vector<n> -- ) {: state:^ starts:^ :}
+   state TOKEN-START starts VEC:PUSH ! ;
+
+\ The container the cursor just closed; its start is popped.
+: CLOSED ( ^cursor ^VEC:vector<n> -- value ) {: state:^ starts:^ :}
+   starts VEC:COUNT 1- {: top:n :}
+   starts top VEC:AT @ {: at:n :}
+   starts top VEC:RESIZE
+   state CURSOR-SRC @ at  state CURSOR-TOK-AT @ 1+ at -  VALUE-MAKE ;
+
+: NEXT-EVENT ( ^cursor ^VEC:vector<n> -- event ) {: state:^ starts:^ :}
+   state NEXT-INNER {: tok:n :}
+   tok OPENER? if state starts PUSH-START then
+   tok T-OBJ = if JSON-EVENT:OPEN-OBJECT exit then
+   tok T-ARR = if JSON-EVENT:OPEN-ARRAY exit then
+   tok CLOSER? if state starts CLOSED JSON-EVENT:CLOSE exit then
+   tok T-KEY = if state NAME-VALUE JSON-EVENT:NAME exit then
+   state TOKEN-VALUE JSON-EVENT:SCALAR ;
+
+\ The walk ends after the root's close, or a scalar root's one event, when no
+\ container is open.
+: EVENTS ( R ^cursor ^VEC:vector<n> [ R event -- R bool ] -- R )
+   {: state:^ starts:^ body :}
+   begin
+      state starts NEXT-EVENT body execute 0= if exit then
+      starts VEC:COUNT 0<>
+   while repeat ;
+
+public
+
+\ Reads the value once and runs the body on each event in text order: an open
+\ before its container's names and values, a name before its member's value, a
+\ close after them. It stops after the event the body answers false.
+: WALK ( R value [ R event -- R bool ] -- R ) {: v body :}
+   HEAP:ALLOCATOR 0 [type] n VEC:NEW {: starts:^ :}
+   [: v 0 [: drop starts body EVENTS ;] WITH-CURSOR ;]
+   [: starts VEC:DELETE ;] finally ;
 
 private
 

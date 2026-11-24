@@ -5,7 +5,8 @@ split-str
 \ cursor's depth mapping released. JSON:GET, JSON:FIND and JSON:AT: lookups,
 \ their rejections placed in the document, and pointers that name nothing. The
 \ kind tests, the walks and the scalar readers, and their wrong-kind rejections
-\ with the document's place. JSON:REJECT's rejection of a value at its place.
+\ with the document's place. JSON:WALK's events, its early stop and a walk 100000
+\ levels deep. JSON:REJECT's rejection of a value at its place.
 \ Run: bin/hb --load src/lib/json-value-test.f
 
 require src/lib/error.f
@@ -273,6 +274,87 @@ create DEEP-BUF DEPTH 2 * allot
    s" 1:1: expected an object, found an array; walk only an object with JSON:EACH-MEMBER-WHILE"
    SAID ;
 
+\ Appends the tag, the value's text and a `;`.
+: TAGGED ( ^VEC:vector<u8> str JSON:value -- ^VEC:vector<u8> )
+   {: seen a:^ u:n v :}
+   a u seen VEC:APPEND  seen v SEE-TEXT ;
+
+: SEE-EVENT ( ^VEC:vector<u8> JSON:event -- ^VEC:vector<u8> bool )
+   {: seen e :}
+   e MATCH JSON:event
+      open-object OF seen s" {" SEE ENDOF
+      open-array OF seen s" [" SEE ENDOF
+      name OF {: v :} seen s" name " v TAGGED ENDOF
+      scalar OF {: v :} seen s" scalar " v TAGGED ENDOF
+      close OF {: v :} seen s" close " v TAGGED ENDOF
+   ;MATCH true ;
+
+: CLOSE? ( JSON:event -- bool ) {: e :}
+   e MATCH JSON:event
+      open-object OF false ENDOF
+      open-array OF false ENDOF
+      name OF DROP-VALUE false ENDOF
+      scalar OF DROP-VALUE false ENDOF
+      close OF DROP-VALUE true ENDOF
+   ;MATCH ;
+
+: TO-CLOSE ( ^VEC:vector<u8> JSON:event -- ^VEC:vector<u8> bool )
+   {: seen e :}
+   seen e SEE-EVENT drop  e CLOSE? 0= ;
+
+\ Checks the events WALK gives for the text.
+: WALKED ( str str -- ) {: t:^ tu:n w:^ wu:n :}
+   SEEN-NEW t tu JSON:PARSE [: SEE-EVENT ;] JSON:WALK
+   w wu SEEN= ;
+
+: TEST-WALK ( -- )
+   s" WALK gives an array's events in text order" T-LABEL
+   s\" [1, \"a\",true]"
+   s\" [;scalar 1;scalar \"a\";scalar true;close [1, \"a\",true];" WALKED
+   s" WALK gives an object's names and values" T-LABEL
+   s\" {\"a\": 1,\"b\\\"c\":null}"
+   s\" {;name \"a\";scalar 1;name \"b\\\"c\";scalar null;close {\"a\": 1,\"b\\\"c\":null};"
+   WALKED
+   s" WALK closes each nested container with its whole text" T-LABEL
+   s\" [ {\"a\" : [2, {} ] } , [ ] ]"
+   s\" [;{;name \"a\";[;scalar 2;{;close {};close [2, {} ];close {\"a\" : [2, {} ] };[;close [ ];close [ {\"a\" : [2, {} ] } , [ ] ];"
+   WALKED
+   s" WALK gives a scalar root as one event" T-LABEL
+   s\"  \"x\" " s\" scalar \"x\";" WALKED
+   s" WALK stops after the event the body answers false" T-LABEL
+   SEEN-NEW s" [[1],2]" JSON:PARSE [: TO-CLOSE ;] JSON:WALK
+   s" [;[;scalar 1;close [1];" SEEN= ;
+
+\ 100000 levels: a recursive walker overflows the machine stack and one that
+\ rescans each child takes the depth squared.
+100000 constant FAR
+variable LEVEL
+variable PEAK
+variable CLOSES
+
+: NEST$ ( -- ^VEC:vector<u8> )
+   SEEN-NEW {: buf :}
+   FAR 0 ?do [char] [ buf VEC:PUSH c! loop
+   FAR 0 ?do [char] ] buf VEC:PUSH c! loop
+   buf ;
+
+: COUNT-LEVEL ( JSON:event -- bool ) {: e :}
+   e MATCH JSON:event
+      open-object OF ENDOF
+      open-array OF 1 LEVEL +!  LEVEL @ PEAK @ max PEAK ! ENDOF
+      name OF DROP-VALUE ENDOF
+      scalar OF DROP-VALUE ENDOF
+      close OF DROP-VALUE -1 LEVEL +!  1 CLOSES +! ENDOF
+   ;MATCH true ;
+
+: TEST-WALK-FAR ( -- )
+   s" WALK reads 100000 levels in one pass" T-LABEL
+   0 LEVEL !  0 PEAK !  0 CLOSES !
+   NEST$ {: buf :}
+   buf VEC:SPAN SPAN:$ JSON:PARSE [: COUNT-LEVEL ;] JSON:WALK
+   buf VEC:DELETE
+   PEAK @ FAR T=  CLOSES @ FAR T=  LEVEL @ 0 T= ;
+
 : TEST-STRING= ( -- )
    s" STRING= compares a string's decoded bytes" T-LABEL
    s\" \"aé\"" JSON:PARSE s" aé" JSON:STRING= TTRUE
@@ -423,6 +505,8 @@ public
    TEST-EACH-MEMBER
    TEST-EACH-WHILE
    TEST-EACH-MEMBER-WHILE
+   TEST-WALK
+   TEST-WALK-FAR
    TEST-STRING=
    TEST-WITH-STRING
    TEST-APPEND-STRING
