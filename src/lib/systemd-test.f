@@ -1,6 +1,6 @@
 split-str
-\ systemd-test.f - SYSTEMD:NOTIFY-READY against unix datagram sockets this
-\ test binds.
+\ systemd-test.f - SYSTEMD:NOTIFY-READY and SYSTEMD:NOTIFY-EXTEND-TIMEOUT
+\ against unix datagram sockets this test binds.
 HB-TARGET-LINUX? ?TARGET
 
 require src/lib/string.f
@@ -16,6 +16,7 @@ require src/lib/engine-candidate.f
 require src/lib/num-types.f
 require src/lib/net/udp.f
 require src/core/exit-status.f
+require src/lib/systemd.f
 
 package SYSTEMD-TEST
 private
@@ -55,12 +56,14 @@ variable ABSTRACT-FD
    PROG CODEGEN:APPEND-STRING
    10 PROG CODEGEN:APPEND-BYTE ;
 
-: CHILD-SOURCE ( -- )
+: CHILD-SOURCE ( str -- )   \ the call that answers a SYSTEMD:status
+   {: call:^ callu:n :}
    PROG CODEGEN:RESET
    s" require src/lib/systemd.f" P+
    s" require src/lib/fmt.f" P+
    s" : GO ( -- )" P+
-   s"    SYSTEMD:NOTIFY-READY MATCH SYSTEMD:status" P+
+   call callu P+
+   s"    MATCH SYSTEMD:status" P+
    s"       ok OF 0 ENDOF" P+
    s"       failed OF SYSTEMD:ERRNO>N ENDOF" P+
    s"    ;MATCH FMT:INT$ type cr ;" P+
@@ -99,7 +102,7 @@ variable ABSTRACT-FD
    s" @habu-sd-" ABSTRACT NAMED ABSTRACT-U !
    BOUND$ BIND-AT BOUND-FD !
    ABSTRACT$ BIND-AT ABSTRACT-FD !
-   CHILD-SOURCE ;
+   s"    SYSTEMD:NOTIFY-READY" CHILD-SOURCE ;
 
 \ A child engine per case: GETENV reads the environment the process started with.
 : RUN ( str -- n n )   \ outu rc
@@ -164,6 +167,21 @@ variable ABSTRACT-FD
    s" a path nothing is bound to answers ENOENT" T-LABEL
    MISSING$ ENOENT ANSWERS ;
 
+: EXTEND-CASE ( -- )
+   s"    90000 >MS SYSTEMD:NOTIFY-EXTEND-TIMEOUT" CHILD-SOURCE
+   s" an extension to a bound path socket: the child answers ok" T-LABEL
+   BOUND$ 0 ANSWERS
+   s" ... and the socket holds EXTEND_TIMEOUT_USEC in microseconds" T-LABEL
+   BOUND-FD @ RECEIVED$ s" EXTEND_TIMEOUT_USEC=90000000" T$= ;
+
+\ In this process: the bound is checked before NOTIFY_SOCKET is read.
+: NEGATIVE-CASE ( -- )
+   s" a negative extension answers EINVAL" T-LABEL
+   -1 >MS SYSTEMD:NOTIFY-EXTEND-TIMEOUT MATCH SYSTEMD:status
+      ok OF 0 ENDOF
+      failed OF SYSTEMD:ERRNO>N ENDOF
+   ;MATCH EINVAL T= ;
+
 : TEARDOWN ( -- )
    BOUND-FD @ UDP:>SOCKET UDP:CLOSE drop
    ABSTRACT-FD @ UDP:>SOCKET UDP:CLOSE drop
@@ -181,6 +199,8 @@ public
    RELATIVE-CASE
    ROOT-CASE
    MISSING-CASE
+   EXTEND-CASE
+   NEGATIVE-CASE
    TEARDOWN
    T-REPORT
    s" systemd: ok" type cr ;

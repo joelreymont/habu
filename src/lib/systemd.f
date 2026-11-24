@@ -1,10 +1,14 @@
 split-str
-\ systemd.f - tells systemd's service manager a service is ready, by the
-\ sd_notify(3) protocol: the datagram READY=1 to the unix datagram socket
+\ systemd.f - tells systemd's service manager a service is ready, or that its
+\ start or stop needs longer, by the sd_notify(3) protocol: the datagram
+\ READY=1 or EXTEND_TIMEOUT_USEC=<usec> to the unix datagram socket
 \ NOTIFY_SOCKET names, a leading @ naming an abstract socket. With the variable
 \ unset or empty, or off Linux, nothing is sent; no other message is spoken.
-\ STORAGE CLASS. None of its own.
+\ STORAGE CLASS. None of its own; EXTEND_TIMEOUT_USEC's text is assembled in
+\ the task's SB.
 require src/lib/error.f
+require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/type/deftype.f
 require src/os/env-base.f
 require src/lib/net/udp.f
@@ -42,26 +46,38 @@ private
    ;MATCH ;
 
 \ The notice went or did not: a failed close changes neither.
-: SENT ( UDP:socket str -- status )
-   {: socket:UDP:socket name:^ size:n :}
-   socket name size s" READY=1" UDP:SEND >STATUS
+: SENT ( UDP:socket str str -- status )
+   {: socket:UDP:socket name:^ size:n msg:^ msgu:n :}
+   socket name size msg msgu UDP:SEND >STATUS
    socket UDP:CLOSE drop ;
 
+\ Off Linux no service manager speaks this protocol.
+: SOCKET$ ( -- str )
+   HB-TARGET-LINUX-KERNEL? 0= if s" " exit then
+   s" NOTIFY_SOCKET" GETENV ;
+
 : NOTIFY ( str -- status )
-   {: name:^ size:n :}
+   {: msg:^ msgu:n :}
+   SOCKET$ {: name:^ size:n :}
+   size 0= if SYSTEMD-STATUS:OK exit then
+   name size NAME? 0= if INVALID exit then
    UDP:OPEN MATCH UDP:open-result
-      opened OF name size SENT ENDOF
+      opened OF name size msg msgu SENT ENDOF
       failed OF UDP:ERRNO>N >ERRNO SYSTEMD-STATUS:FAILED ENDOF
    ;MATCH ;
 
 public
 
-\ Once the service serves. Off Linux no service manager speaks this protocol.
+\ Once the service serves.
 : NOTIFY-READY ( -- status )
-   HB-TARGET-LINUX-KERNEL? 0= if SYSTEMD-STATUS:OK exit then
-   s" NOTIFY_SOCKET" GETENV {: name:^ size:n :}
-   size 0= if SYSTEMD-STATUS:OK exit then
-   name size NAME? 0= if INVALID exit then
-   name size NOTIFY ;
+   s" READY=1" NOTIFY ;
+
+\ systemd's timeout for the current start, run or stop ends no sooner than ms
+\ from now. A negative ms, or one past a cell in microseconds, answers EINVAL.
+: NOTIFY-EXTEND-TIMEOUT ( ms -- status )
+   MS>N {: t:n :}
+   t 0<  t STR:MAX-I64 1000 / >  or if INVALID exit then
+   SB-RESET s" EXTEND_TIMEOUT_USEC=" SB-APPEND  t 1000 * FMT:SB-INT
+   SB$ NOTIFY ;
 
 ;package
