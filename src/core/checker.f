@@ -5913,12 +5913,14 @@ variable MDIAG-OPEN   \ wide value: -1 when its width is open where it was met
 variable MDIAG-CELL   \ one-cell, step and moved-linear rules: the layout type a variable met; fact rules: FACT-HIT; stale reads: the stale term
 variable MDIAG-CELL-VAR   \ one-cell, step and moved-linear rules: that variable's id; fact rules: FACT-TERM; stale reads: STALE-SELF
 variable DEFER-WHY    \ the next deferral warning's cause (a DW- code; 0 = none)
+variable DEFER-STOP   \ -1 when the next deferral warning is where the check stops
 }SCRATCH
 
-\ The source pre-pass records a deferral's cause here before it reports the
-\ deferral; the warning reads and clears it.
-: CHECKER-DEFER-WHY! ( n -- )
-   DEFER-WHY ! ;
+\ The source pre-pass records a deferral's cause, and whether the check stops
+\ there, before it reports the deferral; the warning reads and clears both.
+: CHECKER-DEFER-WHY! ( n bool -- ) {: why:n stop:bool :}
+   why DEFER-WHY !
+   stop IF -1 ELSE 0 THEN DEFER-STOP ! ;
 
 : MDIAG! ( n -- ) {: code:n :}
    MDIAG @ 0 <> IF EXIT THEN
@@ -18790,17 +18792,23 @@ EXPORT CHECKER-EFFECT-AUTHORITY:ENFORCED?
    s" rewrite the code from " REJECTION:EMIT-STR  t tu DW-CODE
    s"  on with words whose effects the check knows" REJECTION:EMIT-STR ;
 
-\ A stretch or definition left to the run is a warning at its token a u. Its
-\ cause is cleared once written, so a deferral whose site records none says
-\ only that the check could not follow it.
+\ A deferral warns at its token a u. Its cause and stop clear once written, so
+\ one whose site records no cause says only that the check could not follow it.
 : CHECKER-VERIFY-DEFERRED ( str -- )
    {: a:^ u:n :}
    DEFER-WHY @ {: why:n :}
-   s" W-CHECK-DEFERRED" REJECTION:WARN  a u why DW-MESSAGE
+   DEFER-STOP @ 0 <> {: stop:bool :}
+   stop IF s" W-CHECK-STOPPED" ELSE s" W-CHECK-DEFERRED" THEN REJECTION:WARN
+   a u why DW-MESSAGE
+   stop IF
+      s" ; the check stops at " REJECTION:EMIT-STR  a u DW-CODE
+      s"  and checks nothing after it in this file or any file that loads it"
+      REJECTION:EMIT-STR
+   THEN
    a u REJECTION:AT  why DW-LABEL
    a u why DW-HELP
    REJECTION:KEEP
-   0 DEFER-WHY ! ;
+   0 DEFER-WHY !  0 DEFER-STOP ! ;
 
 \ The body is asserted, never walked, but what running it may do is what its
 \ calls may do, and one bound nowhere may name any word, so it brings them all.

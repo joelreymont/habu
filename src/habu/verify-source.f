@@ -1541,11 +1541,11 @@ variable DEFER-REPORT                            \ the child reports deferrals
 \ it, and each writes the packet that locates it when the child asks for one.
 variable DEFER-SEEN
 
-\ WHY is the deferral's cause, which picks its warning's message and help; 0
-\ when the site cannot tell.
+\ WHY, the deferral's cause or 0, picks its warning's message and help; a site
+\ that stops the scan sets TICK-REMAINDER before it reports.
 CAST: STRETCH-ACTION ( n -- [ str -- ] )
 : REPORT-STRETCH ( str n -- )
-   CHECKER-DEFER-WHY!
+   TICK-REMAINDER @ CHECKER-DEFER-WHY!
    NCOMP-DISPATCH:DECL-VERIFY-DEFERRED-OFF OWNER-XT STRETCH-ACTION execute ;
 
 : DEFER-AT ( str n -- )
@@ -1776,11 +1776,8 @@ DYNAMIC-BUFFER TICK-QUAL u8
       TICK-CONTEXT-UNKNOWN
    THEN ;
 
-\ The created effect is the clause's declaration, recorded unless the definer's
-\ body or its clause was refused. One deferred to the run keeps it, as a
-\ deferred colon definition keeps its declared signature, and the run judges
-\ the deferred text. The definition reports one deferral: its clause's only
-\ when the definer's body was not deferred.
+\ The clause's declaration is recorded unless body or clause stops or is
+\ refused. A body deferral hides the clause's, never the clause's stop.
 : VERIFY-DOES ( -- bool )
    TOKEN-A @ TOKEN-U @ {: opener:^ openeru:n :}
    false DOES-ACCEPTED !
@@ -1820,10 +1817,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
          TICK-REMAINDER @ DOES-PARENT-REFUSED @ or IF false EXIT THEN
          sig sigu DEF-NAME-A @ DEF-NAME-U @ VERIFY-DOES-BODY
          {: clause:n :}
-         TICK-REMAINDER @ IF
-            DOES-DEF-VERDICT @ 2 <> IF clause REPORT-DEFERRED THEN
-            false EXIT
-         THEN
+         TICK-REMAINDER @ IF clause REPORT-DEFERRED  false EXIT THEN
          clause 0= IF false EXIT THEN
          gate unknown or IF
             clause 2 = IF
@@ -2300,8 +2294,8 @@ variable TRUSTED-DOES
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR:=CI  and IF
          \ This scan skips the clause body, so its acceptance is unknown.
          INDEX-ON @ IF
-            TOKEN-A @ TOKEN-U @ 0 DEFER-AT
-            true TICK-REMAINDER ! EXIT
+            true TICK-REMAINDER !
+            TOKEN-A @ TOKEN-U @ 0 DEFER-AT EXIT
          THEN
          TOKEN-A @ TOKEN-U @ SIGNATURE-AT
          kept IF na nu DEFINER-RECORD-AS ELSE 2drop THEN
@@ -3048,8 +3042,8 @@ CAST: TOP-ACTION ( n -- [ str bool -- n ] )
 \ source index has already seen included.
 : TOP-OPAQUE ( str n -- )
    {: a:^ u:n why:n :}
-   a u why DEFER-AT
-   true TICK-REMAINDER ! ;
+   true TICK-REMAINDER !
+   a u why DEFER-AT ;
 
 public
 
@@ -4403,6 +4397,11 @@ public
 
 : DEFERRED? ( -- bool )
    DEFER-SEEN @ 0<> ;
+
+\ The last run stopped where it could not follow the source, and checked
+\ nothing after it.
+: STOPPED? ( -- bool )
+   TICK-REMAINDER @ ;
 
 \ The colon definitions the last run certified, and those it deferred to the
 \ run, up to where it stopped.

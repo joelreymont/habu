@@ -54,7 +54,7 @@ split-str
 \ engine primitive; a load line for each top-level loader of the subject whose
 \ load reached a file. It answers
 
-\    check-verify: verified | refused | deferred | held | full
+\    check-verify: verified | refused | deferred | stopped | held | full
 \                | missing TARGET | unread TARGET
 \    check-verify: file {"file":F,"source":"subject|document|disk",
 \       "size":S,"mtime_sec":MS,"mtime_ns":MN,
@@ -133,7 +133,8 @@ split-str
 \
 \ deferred: nothing is rejected, but a stretch of top-level source or a
 \ definition was deferred to the run, and a W-CHECK-DEFERRED record locates
-\ each: those tokens are not verified.
+\ each: those tokens are not verified. stopped: nothing is rejected, but the
+\ check stopped at a W-CHECK-STOPPED record and verified nothing after it.
 \ held is answered before anything is verified: this child holds SUBJECT though
 \ the engine does not provide it (this file, tools/check-verify-child-lib.f,
 \ and the verifier's source on an engine that does not carry it), so it

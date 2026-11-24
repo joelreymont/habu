@@ -154,11 +154,10 @@ variable CA-COMPOSING                   \ the run is a composition
 : CA-STOPPED ( n -- ) {: rc:n :}
    rc 0= IF CA-LEX drop THEN ;
 
-\ The status the run fails with: its stop's, else a rejection's when the run
-\ counted one, else none.
-: CA-STATUS ( n n -- n ) {: rc:n rejects:n :}
+: CA-STATUS ( n n bool -- n ) {: rc:n rejects:n stopped:bool :}
    rc 0 <> IF rc exit THEN
    rejects 0 > IF EXIT-STATUS:REJECTED exit THEN
+   stopped IF EXIT-STATUS:FAILURE exit THEN
    0 ;
 
 : CA-CHECK-SOURCE ( -- )
@@ -188,11 +187,14 @@ variable CA-COMPOSING                   \ the run is a composition
 
 variable CA-RC                          \ how the last run's check ended
 
+\ REPORT is true when no run of the program follows to check what the check
+\ leaves, so only then does a stop fail the run.
 : CA-RUN-BODY ( bool -- ) {: report:bool :}
    report VERIFY:REPORT-DEFERRALS
    REJECTION:TALLY {: before:n :}
    [: CA-RUN-CAPTURED CA-RC ! ;] CA-RECORDS
-   CA-RC @  REJECTION:TALLY before -  CA-STATUS {: status:n :}
+   CA-RC @  REJECTION:TALLY before -  report VERIFY:STOPPED? and  CA-STATUS
+   {: status:n :}
    status 0 <> IF status throw THEN ;
 
 public

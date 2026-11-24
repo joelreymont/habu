@@ -317,14 +317,14 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `bye` | none; a file ends at its last line, and `s" why" n die` exits with status n |
 | `set-current` | the section keywords: `public`, `private` or `global` inside `package … ;package` |
 
-A top-level word that parses or is a `defer` is `W-CHECK-DEFERRED` at the word
-under `--verify-only`, verdict `deferred`, exit 0 unless something is refused,
-and the check discovers nothing after it: no definition, package, load or use
-in the rest of the file or of the file that loads it. A top-level call or tick
-of a word that may move the source root (`SOURCE-ROOT:ROOT!`,
-`SOURCE-ROOT:CD`, `SOURCE-ROOT:POPPATH`, `SOURCE-ROOT:ENGINE!`, or a word that
-calls or ticks one) ends the check the same way. State what such a word
-reads, after its definition, and the check goes on after its operands:
+A top-level word that parses or is a `defer` is `W-CHECK-STOPPED` at the word,
+verdict `deferred`; `--verify-only` and check-all-errors exit 1 unless something
+is refused, and the check discovers nothing after it: no definition, package,
+load or use in this file or any file that loads it. A top-level call or tick
+of a word that may move the source root (`SOURCE-ROOT:ROOT!`, `SOURCE-ROOT:CD`,
+`SOURCE-ROOT:POPPATH`, `SOURCE-ROOT:ENGINE!`, or a word that calls or ticks
+one) ends the check the same way. State what such a word reads, after its
+definition, and the check goes on after its operands:
 
 ```forth
 parses: PN 1                        \ PN reads one token
@@ -382,10 +382,11 @@ An immediate V in a checked body runs while the body compiles: its effect is
 no source), it writes nothing, no word and nothing into the body, and it moves
 no source root. Any other is `E-UNMODELED-IMMEDIATE` at V.
 
-After a resident immediate in a body or a top-level loader, later ordering is
-uncertain: `--verify-only` reports a trusted-only tick as `W-CHECK-DEFERRED`
-and leaves dependent source to the run. A `require`/`include` can reach
-replaceable source providers, so its spelling alone settles nothing.
+After a top-level call other than a number or a string opener, `immediate`,
+`undefine`, a non-native definer, a resident immediate in a body or a loader,
+later ordering is uncertain: a trusted-only tick is then `W-CHECK-STOPPED` and
+ends the check as above. A `require`/`include` can reach replaceable source
+providers, so its spelling alone settles nothing.
 
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`

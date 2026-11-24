@@ -571,6 +571,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    [: VERIFY-ALL ;] SCOPED {: rc:n :}
    rc 0<> if rc STOP-RESULT exit then
    FAILED @ 0<> if s" refused" RESULT exit then
+   VERIFY:STOPPED? if s" stopped" RESULT exit then
    VERIFY:DEFERRED? if s" deferred" RESULT exit then
    s" verified" RESULT ;
 

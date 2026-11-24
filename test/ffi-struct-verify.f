@@ -101,12 +101,12 @@ variable FFI-SV-SRC-U
    kind 1 T=
    LSP-CHECK:VERIFY-OUT$ code codeu STR:CONTAINS? TTRUE ;
 
-\ The source is deferred, with W-CHECK-DEFERRED in the output.
-: FFI-SV-DEFERS ( n -- )
-   {: kind:n :}
+\ The source is deferred, with the warning STR in the output.
+: FFI-SV-WARNS ( n str -- )
+   {: kind:n w:^ wu:n :}
    kind 2 <> IF FFI-SV-SHOW THEN
    kind 2 T=
-   S\" W-CHECK-DEFERRED" FFI-SV-SAYS ;
+   w wu FFI-SV-SAYS ;
 
 : FFI-SV-REFUSED ( str str -- )
    {: decl:^ declu:n code:^ codeu:n :}
@@ -298,7 +298,7 @@ variable FFI-SV-SRC-U
    S\" \"help\":\"close it with `END-STRUCTURE` before `include`\"" FFI-SV-SAYS
    \ A renderer in a structure body is deferred at its token.
    S\" BEGIN-STRUCTURE FFI-SV-S\ns\" include ffi-sv-none.f\" evaluate\nEND-STRUCTURE"
-   2dup T-LABEL  FFI-SV-SOURCE FFI-SV-DEFERS
+   2dup T-LABEL  FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
    s" ;FUNCTION"
    S\" \"message\":\";FUNCTION with no declaration open\""
    S\" \"token\":\";FUNCTION\"" FFI-SV-UNOPENED
@@ -312,7 +312,7 @@ variable FFI-SV-SRC-U
    S\" : FFI-SV-DEF: ( -- ) FFI:OPEN-FUNCTION ;\nparses: FFI-SV-DEF: 9\nFFI-SV-DEF: FFI-SV-G printf ( ^u8 n -- n )\n1 VARIADIC\n;FUNCTION"
    {: src:^ srcu:n :}
    src srcu T-LABEL
-   src srcu FFI-SV-SOURCE FFI-SV-DEFERS
+   src srcu FFI-SV-SOURCE s" W-CHECK-DEFERRED" FFI-SV-WARNS
    LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" STR:CONTAINS?
    dup IF FFI-SV-SHOW THEN TFALSE ;
 
@@ -328,10 +328,10 @@ variable FFI-SV-SRC-U
    S\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" FFI-SV-REFUSES ;
 
 \ A program's own `;FUNCTION` closes no group: called at top level, this
-\ defer leaves the rest of the source to the run, which rejects the group.
+\ defer stops the check, and the run rejects the group.
 : FFI-SV-GROUP-REDEFINED ( -- )
    S\" package FFI-SV-P\npublic\n: NOP ( -- ) ;\ndefer ;FUNCTION ( -- )\n: SET ( -- ) ['] NOP is ;FUNCTION ;\nSET\nPROCESS-SYMBOLS FUNCTION: FFI-SV-H no_symbol ( ^u8 n -- i32 ) ;FUNCTION\n;package"
-   2dup T-LABEL  FFI-SV-SOURCE FFI-SV-DEFERS ;
+   2dup T-LABEL  FFI-SV-SOURCE s" W-CHECK-STOPPED" FFI-SV-WARNS ;
 
 
 \ A clause is the declarer's word only where the token resolves to it: a

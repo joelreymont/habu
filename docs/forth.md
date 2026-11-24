@@ -2697,7 +2697,7 @@ sections above.
   to an unknown word is.
 - **Unknown top-level parsers stop discovery unless declared.** A word whose
   body reaches `parse-name` or `create`, or a `defer`, may consume or define
-  following tokens. In `--verify-only`, it is `W-CHECK-DEFERRED`; later text
+  following tokens. In `--verify-only`, it is `W-CHECK-STOPPED`; later text
   in the file or included file is not scanned because operands can cross
   lines. A reached renderer marks its wordlist under the rule above. A source
   row after a word's definition can bound its operands: `parses: W n`

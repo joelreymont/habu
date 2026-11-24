@@ -657,6 +657,19 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    1 s" message" s" rendered source may change what it does" FIELD-HAS
    1 s" W" 2 10 39 40 FX-PATH$ CANON$ FX$ AT-IN ;
 
+\ --verify-only fails a body whose trusted-only tick it meets under unknown
+\ order: it stops there.
+: TEST-TICK-STOPPED ( -- )
+   s" a trusted-only tick under unknown order" T-LABEL
+   SB-RESET
+   s" : IM ( -- ) ; immediate" SB-APPEND LF+
+   s" : F ( -- ) IM ['] ffi-call drop ;" SB-APPEND LF+
+   s" tick-stopped.f" FIXTURE!
+   s" --verify-only" 1 CHECK-EXIT
+   GJA-LINE# @ 1 T=
+   0 s" code" s" W-CHECK-STOPPED" FIELD=
+   0 s" ffi-call" 2 19 42 50 FX-PATH$ CANON$ FX$ AT-IN ;
+
 \ A program's word of a target predicate's spelling is no engine answer to
 \ --verify-only: its `[if]` is left to the run, as any other flag is.
 : TEST-PROGRAM-TARGET-WORD ( -- )
@@ -667,9 +680,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" HB-TARGET-LINUX? [if] require target-absent.f [then]" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" package-target.f" FIXTURE!
-   s" --verify-only" 0 CHECK-EXIT
+   s" --verify-only" 1 CHECK-EXIT
    GJA-LINE# @ 1 T=
-   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" code" s" W-CHECK-STOPPED" FIELD=
    0 s" [if]" 3 18 66 70 FX-PATH$ CANON$ FX$ AT-IN
    s" a target predicate undefined and redefined" T-LABEL
    SB-RESET
@@ -677,9 +690,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" : HB-TARGET-LINUX? ( -- bool ) false ;" SB-APPEND LF+
    s" HB-TARGET-LINUX? 0= [if] require target-absent.f [then]" SB-APPEND LF+
    s" redefined-target.f" FIXTURE!
-   s" --verify-only" 0 CHECK-EXIT
+   s" --verify-only" 1 CHECK-EXIT
    GJA-LINE# @ 1 T=
-   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" code" s" W-CHECK-STOPPED" FIELD=
    0 s" [if]" 3 21 85 89 FX-PATH$ CANON$ FX$ AT-IN ;
 
 \ The fixture's one rejection, E-PARSES-ROW at TOK, under the check and under
@@ -1675,11 +1688,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    {: text:^ textu:n name:^ nameu:n :}
    s" : MK ( -- ) create ; parses: MK 1" text textu name nameu MK-FIXTURE ;
 
-: MK-DEFERRED ( n n -- )
-   {: k:n bs:n :}
-   k s" code" s" W-CHECK-DEFERRED" FIELD=
+: MK-WARNED ( n n str -- )
+   {: k:n bs:n code:^ codeu:n :}
+   k s" code" code codeu FIELD=
    k s" severity" s" warning" FIELD=
    k s" MK" 2 1 bs bs 2 + FX-PATH$ CANON$ FX$ AT-IN ;
+
+: MK-DEFERRED ( n n -- )
+   s" W-CHECK-DEFERRED" MK-WARNED ;
 
 : RUN-REFUSED-AT ( str str n n n n -- )
    {: c:^ cu:n tok:^ toku:n line:n col:n bs:n be:n :}
@@ -1825,6 +1841,23 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 : CHECKED ( ^u8 n n -- )
    CHECK-ARGV  FX-PATH$ PROC-ARGV+
    LAUNCHED  GT-ERR$ GJA-SPLIT-LINES ;
+
+\ tools/check-all-errors.f reads argv, so it is spawned; it fails a check that
+\ stops in a file the subject requires.
+: TEST-ALL-ERRORS-STOPPED ( -- )
+   s" check-all-errors on a stop in a required file" T-LABEL
+   SB-RESET
+   s" defer D ( -- )" SB-APPEND LF+
+   s" D" SB-APPEND LF+
+   s" all-errors-stop-dep.f" FIXTURE!
+   SB-RESET
+   s" require all-errors-stop-dep.f" SB-APPEND LF+
+   s" all-errors-stop.f" FIXTURE!
+   PROC-ARGV-RESET
+   s" --load" PROC-ARGV+  s" tools/check-all-errors.f" PROC-ARGV+
+   s" --" PROC-ARGV+  s" --label" PROC-ARGV+  s" all-errors-stop.f" PROC-ARGV+
+   FX-PATH$ PROC-ARGV+
+   s" W-CHECK-STOPPED" 1 LAUNCHED ;
 
 \ The string builder holds the resolver's unplaced record of a command-line
 \ path, its message appended by MSG.
@@ -2479,15 +2512,15 @@ HB-TARGET-LINUX? 0= [if]
    1 s" severity" s" warning" FIELD=
    1 tok toku line col bs be FX-PATH$ CANON$ FX$ AT-IN ;
 
-: VERIFY-DEFERRED-AT ( str n n -- )
+: VERIFY-STOPPED-AT ( str n n -- )
    {: call:^ callu:n cline:n cbs:n :}
    s" " 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
    s" --all-errors" 0 CHECK-EXIT
    GJA-LINE# @ 0 T=
-   s" --verify-only" 0 CHECK-EXIT
+   s" --verify-only" 1 CHECK-EXIT
    GJA-LINE# @ 1 T=
-   0 s" code" s" W-CHECK-DEFERRED" FIELD=
+   0 s" code" s" W-CHECK-STOPPED" FIELD=
    0 s" severity" s" warning" FIELD=
    0 s" label" s" may move the source root" FIELD=
    0 call callu cline 1 cbs cbs callu + FX-PATH$ CANON$ FX$ AT-IN ;
@@ -2530,14 +2563,14 @@ HB-TARGET-LINUX? 0= [if]
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escaped-body-path.f" FIXTURE!
-   s" L" 2 43 VERIFY-DEFERRED-AT
+   s" L" 2 43 VERIFY-STOPPED-AT
    s" an escaped path with no escape in a body" T-LABEL
    SB-RESET
    s\" : L ( -- ) s\\\" inc-target.f\" included ;" SB-APPEND LF+
    s" L" SB-APPEND LF+
    s" INCLUDED-WORD drop" SB-APPEND LF+
    s" escape-free-body-path.f" FIXTURE!
-   s" L" 2 40 VERIFY-DEFERRED-AT
+   s" L" 2 40 VERIFY-STOPPED-AT
    SB-RESET
    s" : BODY-A-WORD ( -- n ) 1 ;" SB-APPEND LF+
    s" body-a.f" FIXTURE!
@@ -2555,7 +2588,7 @@ HB-TARGET-LINUX? 0= [if]
    s" L" SB-APPEND LF+
    s" BODY-A-WORD drop BODY-B-WORD drop BODY-C-WORD drop" SB-APPEND LF+
    s" escaped-body-paths.f" FIXTURE!
-   s" L" 2 91 VERIFY-DEFERRED-AT
+   s" L" 2 91 VERIFY-STOPPED-AT
    s" an escaped path in a body, escaped literals before its package closes" T-LABEL
    SB-RESET
    s" package DPT-ESC" SB-APPEND LF+
@@ -2567,7 +2600,7 @@ HB-TARGET-LINUX? 0= [if]
    s" DPT-ESC:L" SB-APPEND LF+
    s" BODY-A-WORD drop" SB-APPEND LF+
    s" escaped-body-path-package.f" FIXTURE!
-   s" DPT-ESC:L" 7 135 VERIFY-DEFERRED-AT
+   s" DPT-ESC:L" 7 135 VERIFY-STOPPED-AT
    s" an escaped path over the capacity as written, within it decoded" T-LABEL
    PATH-CAP 4 / s" escaped-steps-fit.f" STEPS-FIXTURE
    CERTIFIED
@@ -2640,9 +2673,9 @@ HB-TARGET-LINUX? 0= [if]
    s" that signature and a call of MADE, with no row for MK" T-LABEL
    s" : MK ( -- ) create ;" s" : X ( -- zz ) MADE ;" s" made-stop.f" MK-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 RUN-REFUSED-AT
-   s" --verify-only" 0 CHECK-EXIT
+   s" --verify-only" 1 CHECK-EXIT
    GJA-LINE# @ 1 T=
-   0 21 MK-DEFERRED
+   0 21 s" W-CHECK-STOPPED" MK-WARNED
    s" E-UNKNOWN-SIGNATURE-TYPE" s" :3:10" 70 LOADED-AT ;
 
 \ The fixture's first line: RAW-IMM, an immediate whose effect is not ( -- ),
@@ -3024,14 +3057,24 @@ HB-TARGET-LINUX? 0= [if]
    s\" : GEN ( -- ) s\" : MADE ( -- ) ;\" evaluate-closed ;" SB-APPEND LF+
    s" GEN" SB-APPEND LF+ ;
 
-: DEFER-SUGGESTS ( n n str str -- )
-   {: want:n k:n tok:^ toku:n sug:^ sugu:n :}
+: SUGGESTS ( str n n str str -- )
+   {: code:^ codeu:n want:n k:n tok:^ toku:n sug:^ sugu:n :}
    s" --verify-only" want CHECK-EXIT
-   k s" code" s" W-CHECK-DEFERRED" FIELD=
+   k s" code" code codeu FIELD=
    k s" token" tok toku FIELD=
    sugu 0 > IF k s" help" sug sugu FIELD= EXIT THEN
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
    k GJA-LINE$ GJA-PARSE s" help" FIELD-ABSENT ;
+
+: DEFER-SUGGESTS ( n n str str -- )
+   {: want:n k:n tok:^ toku:n sug:^ sugu:n :}
+   s" W-CHECK-DEFERRED" want k tok toku sug sugu SUGGESTS ;
+
+\ A stop fails --verify-only when nothing is refused.
+: STOP-SUGGESTS ( n str str -- )
+   {: k:n tok:^ toku:n sug:^ sugu:n :}
+   s" W-CHECK-STOPPED" 1 k tok toku sug sugu SUGGESTS
+   k s" message" s" checks nothing after it" FIELD-HAS ;
 
 \ A deferral's help names what lifts its cause. A body the check defers, and a
 \ stretch opened at a name with no known cause, record none and keep the
@@ -3044,14 +3087,14 @@ HB-TARGET-LINUX? 0= [if]
    s" PN foo" SB-APPEND LF+
    s" : Y ( -- ) NOPE ;" SB-APPEND LF+
    s" defer-parser.f" FIXTURE!
-   0 0 s" PN" s" write `parses: PN n` or `parses-through: PN n ( END )` after the definition of `PN`, or call it through a word that has such a row" DEFER-SUGGESTS
+   0 s" PN" s" write `parses: PN n` or `parses-through: PN n ( END )` after the definition of `PN`, or call it through a word that has such a row" STOP-SUGGESTS
    s" a top-level call of a deferred word" T-LABEL
    SB-RESET
    s" defer D ( -- )" SB-APPEND LF+
    s" D" SB-APPEND LF+
    s" : Y ( -- n ) ;" SB-APPEND LF+
    s" defer-defer.f" FIXTURE!
-   0 0 s" D" s" call `D` from a definition" DEFER-SUGGESTS
+   0 s" D" s" call `D` from a definition" STOP-SUGGESTS
    s" a top-level parsing word its parses: row bounds" T-LABEL
    SB-RESET
    s" : PN ( -- ) parse-name drop ;" SB-APPEND LF+
@@ -3104,7 +3147,7 @@ HB-TARGET-LINUX? 0= [if]
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots/top.f" FIXTURE!
-   0 0 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   0 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" STOP-SUGGESTS
    s" " 0 CHECK-EXIT
    s" a top-level parsing word that moves the source root before a require under it" T-LABEL
    s" defer-roots-parser" NAMED!  FX-PATH$ FS:MAKE-DIR
@@ -3117,7 +3160,7 @@ HB-TARGET-LINUX? 0= [if]
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots-parser/top.f" FIXTURE!
-   0 0 s" GO" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   0 s" GO" s" the run loads the files later requires name from the root it sets" STOP-SUGGESTS
    s" " 0 CHECK-EXIT
    s" a root move inside an open stretch before a require under it" T-LABEL
    s" defer-roots-stretch" NAMED!  FX-PATH$ FS:MAKE-DIR
@@ -3130,7 +3173,7 @@ HB-TARGET-LINUX? 0= [if]
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots-stretch/top.f" FIXTURE!
-   0 2 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   2 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" STOP-SUGGESTS
    s" " 0 CHECK-EXIT
    s" a call of a word that moves the source root before a require under it" T-LABEL
    s" defer-roots-caller" NAMED!  FX-PATH$ FS:MAKE-DIR
@@ -3142,7 +3185,7 @@ HB-TARGET-LINUX? 0= [if]
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots-caller/top.f" FIXTURE!
-   0 0 s" GO" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   0 s" GO" s" the run loads the files later requires name from the root it sets" STOP-SUGGESTS
    s" a top-level tick of a word that moves the source root before a require under it" T-LABEL
    s" defer-roots-tick" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" defer-roots-tick/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
@@ -3152,7 +3195,7 @@ HB-TARGET-LINUX? 0= [if]
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots-tick/top.f" FIXTURE!
-   0 0 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   0 s" SOURCE-ROOT:ROOT!" s" the run loads the files later requires name from the root it sets" STOP-SUGGESTS
    s" a call of a word that ticks a word that moves the source root before a require under it" T-LABEL
    s" defer-roots-btick" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" defer-roots-btick/sub" NAMED!  FX-PATH$ FS:MAKE-DIR
@@ -3163,7 +3206,7 @@ HB-TARGET-LINUX? 0= [if]
    s" require lib.f" SB-APPEND LF+
    s" LIB-ONE drop" SB-APPEND LF+
    s" defer-roots-btick/top.f" FIXTURE!
-   0 0 s" GO" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   0 s" GO" s" the run loads the files later requires name from the root it sets" STOP-SUGGESTS
    s" a top-level move of the engine root before a require under it" T-LABEL
    s" defer-engine" NAMED!  FX-PATH$ FS:MAKE-DIR
    s" defer-engine/src" NAMED!  FX-PATH$ FS:MAKE-DIR
@@ -3175,7 +3218,7 @@ HB-TARGET-LINUX? 0= [if]
    s" require src/lib/zz-only.f" SB-APPEND LF+
    s" ZZ-ONE drop" SB-APPEND LF+
    s" defer-engine.f" FIXTURE!
-   0 0 s" SOURCE-ROOT:ENGINE!" s" the run loads the files later requires name from the root it sets" DEFER-SUGGESTS
+   0 s" SOURCE-ROOT:ENGINE!" s" the run loads the files later requires name from the root it sets" STOP-SUGGESTS
    s" " 0 CHECK-EXIT ;
 
 \ A control-flow word with no structure open, or another structure's, is one
@@ -3854,6 +3897,8 @@ HB-TARGET-LINUX? 0= [if]
    TEST-SOURCE-IMMEDIATE
    TEST-UNDEFINE-ABSENT
    TEST-UNDEFINE-RENDERED
+   TEST-TICK-STOPPED
+   TEST-ALL-ERRORS-STOPPED
    TEST-PROGRAM-TARGET-WORD
    TEST-PARSES-REJECT
    TEST-GENERATES

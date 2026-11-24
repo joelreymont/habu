@@ -75,7 +75,7 @@ variable CHK-BYTES-U
 public
 
 \ Only verified and refused judge PATH, refused for any file of its closure;
-\ deferred leaves W-CHECK-DEFERRED tokens to the run; held: verifier only.
+\ deferred leaves its warnings' tokens to the run; held: verifier only.
 ENUM verdict
    VARIANT verified ;VARIANT
    VARIANT refused ;VARIANT
@@ -99,6 +99,7 @@ $0A constant VFY-LF
 5 constant VFY-DEFERRED
 6 constant VFY-UNREAD
 7 constant VFY-FULL
+8 constant VFY-STOPPED
 
 DYNAMIC-BUFFER VFY-OUT u8               \ the child's stdout, then VERIFY-OUT$
 DYNAMIC-BUFFER VFY-LOG u8
@@ -330,6 +331,7 @@ variable VFY-EXE-U
    a u s" check-verify: refused" STR:= if VFY-REFUSED exit then
    a u s" check-verify: full" STR:= if VFY-FULL exit then
    a u s" check-verify: deferred" STR:= if VFY-DEFERRED exit then
+   a u s" check-verify: stopped" STR:= if VFY-STOPPED exit then
    a u s" check-verify: held" STR:= if VFY-HELD exit then
    a u s" check-verify: missing" VFY-MISSING VFY-TARGET-ANSWER {: m:n :}
    m VFY-NONE <> if m exit then
@@ -535,6 +537,7 @@ variable VFY-EXE-U
       VFY-ANSWER @ VFY-UNREAD = if LSP--CHECK-VERDICT:REFUSED exit then
       VFY-ANSWER @ VFY-FULL = if LSP--CHECK-VERDICT:REFUSED exit then
       VFY-ANSWER @ VFY-DEFERRED = if LSP--CHECK-VERDICT:DEFERRED exit then
+      VFY-ANSWER @ VFY-STOPPED = if LSP--CHECK-VERDICT:DEFERRED exit then
       VFY-ANSWER @ VFY-HELD = if LSP--CHECK-VERDICT:HELD exit then
    then
    o LSP--CHECK-VERDICT:INCOMPLETE ;
@@ -543,7 +546,6 @@ variable VFY-EXE-U
 : VFY-PREVERDICT ( PROCESS:ending -- result<n,PROCESS:ending> ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
-      VFY-ANSWER @ VFY-DEFERRED = if 0 RESULT:OK exit then
       VFY-ANSWER @ VFY-REFUSED = if EXIT-STATUS:REJECTED RESULT:OK exit then
       VFY-ANSWER @ VFY-MISSING = if EXIT-STATUS:REJECTED RESULT:OK exit then
       VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR RESULT:OK exit then
@@ -1112,10 +1114,10 @@ public
    true VFY-ENTRY !
    src srcu path pathu deadline json VFY-PREPASS-RUN ;
 
-\ The status the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 for a
-\ rejection, a missing source among them, 74 for a source found but not
-\ readable, 77 for a full dictionary, 0 when nothing was rejected.
+\ What the last VERIFY-BYTES or PREVERIFY-BYTES failed with: 70 refused or a
+\ source missing, 74 one unreadable, 77 a full dictionary, 1 a stop, else 0.
 : VERIFY-STATUS ( -- n )
+   VFY-ANSWER @ VFY-STOPPED = if EXIT-STATUS:FAILURE exit then
    VFY-ANSWER @ VFY-UNREAD = if EXIT-STATUS:IOERR exit then
    VFY-ANSWER @ VFY-FULL = if EXIT-STATUS:FULL exit then
    VFY-ANSWER @ VFY-REFUSED =  VFY-ANSWER @ VFY-MISSING =  or if EXIT-STATUS:REJECTED exit then

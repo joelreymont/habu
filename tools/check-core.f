@@ -1077,6 +1077,8 @@ private
       incomplete OF CHK-VERIFIER-STATUS EXIT-STATUS:UNAVAILABLE CHK-THROW ENDOF
       deferred OF
          s" check.f: a stretch or definition deferred to the run is not verified" CHK-OUT-LN
+         VERIFY-STATUS {: st:n :}
+         st 0<> if st CHK-THROW then
       ENDOF
    ;MATCH ;
 
