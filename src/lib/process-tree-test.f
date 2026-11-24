@@ -1,4 +1,3 @@
-split-str
 \ process-tree-test.f - a walk the kernel refuses says so; a big tree dies whole.
 \ KILL-TREE decides who is in a tree from what the kernel answers, so a refusal
 \ must never read as "nobody there". On macOS libproc answers a refused listing
@@ -100,8 +99,8 @@ variable TARGET
    RUN-ARGV-CAPTURE-OUTCOME T-ENDING-TIMEOUT 2drop ;
 
 : SLEEPER-REAPED ( str -- )
-   {: label:^ labelu:n :}
-   label labelu T-LABEL
+   {: label:str :}
+   label T-LABEL
    PROCESS:PID @ PROCESS:NO-PID T=
    PROCESS:RC @ 128 PROCESS:SIGKILL + T= ;
 
@@ -341,8 +340,8 @@ variable RUNS-DIR-U
 create IDLE-COPY PATH-CAP allot
 variable IDLE-COPY-U
 
-: RUNS-DIR$ ( -- str ) RUNS-DIR RUNS-DIR-U @ ;
-: IDLE-COPY$ ( -- str ) IDLE-COPY IDLE-COPY-U @ ;
+: RUNS-DIR$ ( -- str ) RUNS-DIR RUNS-DIR-U @ >str ;
+: IDLE-COPY$ ( -- str ) IDLE-COPY IDLE-COPY-U @ >str ;
 
 : RUNS-BODY ( -- )
    RUNS-DIR$ s" hb" IDLE-COPY FS:JOIN-PATH IDLE-COPY-U !
@@ -354,9 +353,9 @@ variable IDLE-COPY-U
 
 \ MKTEMP-DIR's answer lasts until this task's next temp, so RUNS-DIR keeps it.
 : RUNS ( -- )
-   s" proc-tree-runs" FS:MKTEMP-DIR {: dir:^ diru:n :}
-   dir RUNS-DIR diru BYTE-COPY
-   diru RUNS-DIR-U !
+   s" proc-tree-runs" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA RUNS-DIR dir STR:LEN BYTE-COPY
+   dir STR:LEN RUNS-DIR-U !
    [: RUNS-BODY ;] [: RUNS-DIR$ FS:REMOVE-TREE ;] finally ;
 
 : SANDBOX$ ( -- str )
@@ -365,7 +364,7 @@ variable IDLE-COPY-U
          EXIT-STATUS:UNAVAILABLE die ENDOF
       some OF ENDOF
    ;MATCH
-   SANDBOX swap ;
+   SANDBOX swap >str ;
 
 : CAPTURE>RC ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn rc
    MATCH result
@@ -376,31 +375,31 @@ variable IDLE-COPY-U
 \ This file again as the walker named mode, under a profile that denies one
 \ operation: its stdout and stderr lengths and its exit code.
 : SANDBOXED ( str str -- n n n )
-   {: profile:^ profileu:n mode:^ modeu:n :}
+   {: profile:str mode:str :}
    PROC-ARGV-RESET
    s" -p" PROC-ARGV+
-   profile profileu PROC-ARGV+
+   profile PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ PROC-ARGV+
    s" --load" PROC-ARGV+
    s" src/lib/process-tree-test.f" PROC-ARGV+
    s" --" PROC-ARGV+
-   mode modeu PROC-ARGV+
+   mode PROC-ARGV+
    SANDBOX$ OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER RUN-ARGV-CAPTURE
    CAPTURE>RC ;
 
 \ A walker's own report is its verdict; on a failure it is printed here.
 : VERDICT ( n n n str -- )
-   {: outn:n errn:n rc:n label:^ labelu:n :}
-   label labelu T-LABEL
+   {: outn:n errn:n rc:n label:str :}
+   label T-LABEL
    rc 0 T=
    rc 0<> if
       s" the walker's output:" type cr
-      OUT outn type ERR errn type cr
+      OUT outn >str type ERR errn >str type cr
    then ;
 
 : REFUSED ( str str -- )
-   {: profile:^ profileu:n label:^ labelu:n :}
-   profile profileu s" walker" SANDBOXED label labelu VERDICT ;
+   {: profile:str label:str :}
+   profile s" walker" SANDBOXED label VERDICT ;
 
 \ What stderr gets from src/lib/process.f for n walks the kernel refused.
 : WALK-LINES$ ( n -- str ) {: walks:n :}
@@ -418,7 +417,7 @@ variable IDLE-COPY-U
    outn errn rc
    s" a capture whose tree walk is refused keeps its own answer" VERDICT
    s" the walker's stderr names each refused walk" T-LABEL
-   ERR errn CAPTURES WALK-LINES$ T$= ;
+   ERR errn >str CAPTURES WALK-LINES$ T$= ;
 
 : REFUSED-PTY ( -- )
    s" (version 1)(allow default)(deny process-info-listpids)"
@@ -426,7 +425,7 @@ variable IDLE-COPY-U
    outn errn rc
    s" a session whose tree walk is refused is torn down" VERDICT
    s" the walker's stderr names each refused walk" T-LABEL
-   ERR errn SUPERVISED WALK-LINES$ T$= ;
+   ERR errn >str SUPERVISED WALK-LINES$ T$= ;
 
 : CASES ( -- )
    T-RESET

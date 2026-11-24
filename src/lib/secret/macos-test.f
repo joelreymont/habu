@@ -1,4 +1,3 @@
-split-str
 \ E2E against the login keychain via the public SECRET words, dummy items only,
 \ removed even when a case fails. It writes into the user's login keychain, so
 \ it runs by hand and in no suite. Fails on: a wrong item; missing read as
@@ -46,8 +45,8 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
 \ Attempts one erase whatever came before; keeps the first failure code.
 : TEST-ERASE-KEEP ( n str str -- n )
-   [: 2over 2over SECRET:ERASE drop ;] catch {: code:n :}
-   2drop 2drop {: first:n :}
+   {: first:n service:str account:str :}
+   [: service account SECRET:ERASE drop ;] catch {: code:n :}
    first 0 <> if first else code then ;
 
 
@@ -64,10 +63,10 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
 
 : TEST-FOUND ( str str str -- )
-   {: service:^ su:n account:^ au:n expected:^ eu:n :}
-   service su account au OUT SECRET:READ TTRUE
-   OUT VEC:COUNT eu T=
-   OUT$ expected eu STR:= TTRUE
+   {: service:str account:str expected:str :}
+   service account OUT SECRET:READ TTRUE
+   OUT VEC:COUNT expected STR:LEN T=
+   OUT$ expected STR:= TTRUE
    CLEAR-OUT ;
 
 
@@ -134,7 +133,7 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
    [: TEST-SERVICE$ s\" a\x00b" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
    [: TEST-SERVICE$ s\" a\xFFb" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
    s" write rejects a negative value length and keeps the item" T-LABEL
-   [: TEST-SERVICE$ s" first" s" x" drop -1 SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
+   [: TEST-SERVICE$ s" first" s" x" STR:DATA -1 >str SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
    TEST-SERVICE$ s" first" s" " TEST-FOUND ;
 
 

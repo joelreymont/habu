@@ -1,4 +1,3 @@
-split-str
 \ signal-test.f - package SIGNAL against real deliveries. This process raises
 \ only SIGUSR1 and SIGUSR2: SIGTERM and SIGINT would end the run on any path
 \ that reaches them before their disposition is installed. SIGSTOP and SIGCONT
@@ -614,16 +613,16 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 \ A file under the scratch root, made by this process, so the child only
 \ registers it.
 : DIE-FILE ( str ^u8 -- n )
-   {: name:^ nameu dst:^ :}
-   DIE-ROOT DIE-ROOT-U @ name nameu dst FS:JOIN-PATH {: u :}
-   dst u s" made" FS:ATOMIC-WRITE-FILE
+   {: name:str dst:^ :}
+   DIE-ROOT DIE-ROOT-U @ >str name dst FS:JOIN-PATH {: u :}
+   dst u >str s" made" FS:ATOMIC-WRITE-FILE
    u ;
 
 \ Raises SIGTERM at itself and answers it as a program that caught stops does.
 : STOP-SELF ( -- )
    SIGNAL:SIGTERM RAISE
    SIGNAL:TAKE MATCH SIGNAL:signal-result
-      signal OF s" signal-test: stopped" rot SIGNAL:DIE-OF ENDOF
+      signal OF s" signal-test: stopped" swap SIGNAL:DIE-OF ENDOF
       timeout OF s" signal-test: no SIGTERM taken" 3 die ENDOF
    ;MATCH ;
 
@@ -631,7 +630,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
 : DIE-CHILD ( -- )
    SIGNAL:INIT
    SIGNAL:SIGTERM SIGNAL:CATCH
-   DIE-PATH DIE-PATH-U @ FS:CLEANUP+
+   DIE-PATH DIE-PATH-U @ >str FS:CLEANUP+
    [: E-FS-IO throw ;] AT-EXIT:ADD
    STOP-SELF ;
 
@@ -642,9 +641,10 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    pid PROCESS:WAIT PROCESS:STATUS>ENDING ;
 
 : DIE-OF-CASE ( -- )
-   s" signal-test" FS:MKTEMP-DIR {: root:^ rootu :}
-   root DIE-ROOT rootu BYTE-COPY  rootu DIE-ROOT-U !
-   DIE-ROOT DIE-ROOT-U @ FS:CLEANUP-TREE+
+   s" signal-test" FS:MKTEMP-DIR {: root:str :}
+   root STR:DATA DIE-ROOT root STR:LEN BYTE-COPY
+   root STR:LEN DIE-ROOT-U !
+   DIE-ROOT DIE-ROOT-U @ >str FS:CLEANUP-TREE+
 
    s" stopped" DIE-PATH DIE-FILE DIE-PATH-U !
    [: DIE-CHILD ;] DIE-WAIT {: done :}
@@ -653,7 +653,7 @@ FUNCTION: WAITPID-CALL waitpid ( n ^u8 n -- i32 )
    s" DIE-CHILD" s" " s" " done SIGNAL:SIGTERM T-ENDING-SIGNALED=
 
    s" ... once its exit actions removed the path it registered" T-LABEL
-   DIE-PATH DIE-PATH-U @ FS:EXISTS? 0= TTRUE ;
+   DIE-PATH DIE-PATH-U @ >str FS:EXISTS? 0= TTRUE ;
 
 public
 

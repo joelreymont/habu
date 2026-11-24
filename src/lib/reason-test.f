@@ -1,4 +1,3 @@
-split-str
 \ reason-test.f - a failure's stated text through REASON:THROW and REASON:TEXT$,
 \ on the main task and on two tasks stating the same code at once.
 \ Run: bin/hb --load src/lib/reason-test.f
@@ -24,24 +23,24 @@ variable BAD-B
 TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 
-: STATE ( str n -- ) {: a:^ u:n code:n :}
-   [: a u code REASON:THROW ;] code TTHROWSQ ;
+: STATE ( str n -- ) {: s:str code:n :}
+   [: s code REASON:THROW ;] code TTHROWSQ ;
 
 : CHECK-MAIN ( -- )
    s" the layout needs 300 x 200 mm" CODE-A STATE
    CODE-A REASON:TEXT$ s" the layout needs 300 x 200 mm" T$=
-   CODE-B REASON:TEXT$ nip 0 T=
+   CODE-B REASON:TEXT$ STR:LEN 0 T=
    s" a second statement" CODE-B STATE
    CODE-B REASON:TEXT$ s" a second statement" T$=
-   CODE-A REASON:TEXT$ nip 0 T= ;
+   CODE-A REASON:TEXT$ STR:LEN 0 T= ;
 
 : FILL-LONG ( -- )
    LONG-U 0 do [char] a i 26 mod + LONG-TEXT i + c! loop ;
 
 : CHECK-LONG ( -- )
    FILL-LONG
-   LONG-TEXT LONG-U CODE-A STATE
-   CODE-A REASON:TEXT$ LONG-TEXT LONG-U T$= ;
+   LONG-TEXT LONG-U >str CODE-A STATE
+   CODE-A REASON:TEXT$ LONG-TEXT LONG-U >str T$= ;
 
 \ A text written in parts quotes the last text whole: the next text is written
 \ apart from the last, which stays readable until REASON:STOP.
@@ -55,12 +54,12 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 \ Both tasks state CODE-A before either reads it back.
 : BOTH-STATED? ( -- bool ) BARRIER atomic@ 2 >= ;
 
-: BODY ( str ^n -- ) {: a:^ u:n bad:^ :}
-   [: a u CODE-A REASON:THROW ;] catch
+: BODY ( str ^n -- ) {: s:str bad:^ :}
+   [: s CODE-A REASON:THROW ;] catch
    CODE-A <> if 1 bad +! then
    1 BARRIER atomic-add drop
    [: BOTH-STATED? ;] TEST-WAIT:POLL
-   CODE-A REASON:TEXT$ a u STR:= 0= if 1 bad +! then
+   CODE-A REASON:TEXT$ s STR:= 0= if 1 bad +! then
    0 TASK:RETURN ;
 
 : A-BODY ( -- ) s" stated by task a" BAD-A BODY ;
@@ -79,7 +78,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    WORKER-A JOIN-OK WORKER-B JOIN-OK
    BAD-A @ 0 T=
    BAD-B @ 0 T=
-   CODE-A REASON:TEXT$ LONG-TEXT LONG-U T$= ;
+   CODE-A REASON:TEXT$ LONG-TEXT LONG-U >str T$= ;
 
 public
 : MAIN ( -- )

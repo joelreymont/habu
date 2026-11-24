@@ -1,4 +1,3 @@
-split-str
 \ secret/linux.f - SECRET:READ and SECRET:WRITE through libsecret's Secret
 \ Service, loaded by src/lib/secret.f on a Linux target. An item is the one
 \ whose two attributes hold the service and the account, with no schema, as
@@ -48,11 +47,11 @@ false ITEM-BOUND !
 
 : SERVICE-KEY ( -- ^u8 )
    ITEM-BOUND @ if 0 ITEM-NAMES exit then
-   s\" service\z" drop ;
+   s\" service\z" STR:DATA ;
 
 : ACCOUNT-KEY ( -- ^u8 )
    ITEM-BOUND @ if ITEM-ACCOUNT-AT @ ITEM-NAMES exit then
-   s\" account\z" drop ;
+   s\" account\z" STR:DATA ;
 
 : ITEM-LABEL ( ^request -- ^u8 )
    ITEM-BOUND @ if drop ITEM-LABEL-AT @ ITEM-NAMES exit then
@@ -60,10 +59,10 @@ false ITEM-BOUND !
 
 \ Copies the name to offset at with its NUL; answers the offset after it.
 : ITEM-PUT ( str n -- n )
-   {: a:^ u:n at:n :}
-   a at ITEM-NAMES u BYTE-COPY
-   0 at u + ITEM-NAMES c!
-   at u + 1+ ;
+   {: s:str at:n :}
+   s STR:DATA at ITEM-NAMES s STR:LEN BYTE-COPY
+   0 at s STR:LEN + ITEM-NAMES c!
+   at s STR:LEN + 1+ ;
 
 : OWNED ( n -- n )
    dup 0= if drop E-ACCESS throw then ;
@@ -79,11 +78,11 @@ false ITEM-BOUND !
    cell >BYTES u FFI:CSTR-ROOM SPAN:MAKE ;
 
 : ID-ALLOC ( n -- n )
-   FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop FFI:>CELL ;
+   FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ STR:DATA FFI:>CELL ;
 
 : ID-COPY ( str n -- )
-   {: text u:n cell:n :}
-   text u cell u ID-SPAN FFI:CSTR drop ;
+   {: text:str cell:n :}
+   text cell text STR:LEN ID-SPAN FFI:CSTR drop ;
 
 : ID-FREE ( n n -- )
    {: cell:n u:n :}
@@ -92,26 +91,28 @@ false ITEM-BOUND !
 
 : LINUX-OPEN ( ^request -- )
    {: req:^ :}
-   s\" libglib-2.0.so.0\z" drop FFI:NOW FFI:DLOPEN AVAILABLE req REQUEST-LIBRARY !
-   req REQUEST-LIBRARY @ s\" g_str_hash\z" drop FFI:DLSYM AVAILABLE
-   req REQUEST-LIBRARY @ s\" g_str_equal\z" drop FFI:DLSYM AVAILABLE
+   s\" libglib-2.0.so.0\z" STR:DATA FFI:NOW FFI:DLOPEN AVAILABLE req REQUEST-LIBRARY !
+   req REQUEST-LIBRARY @ s\" g_str_hash\z" STR:DATA FFI:DLSYM AVAILABLE
+   req REQUEST-LIBRARY @ s\" g_str_equal\z" STR:DATA FFI:DLSYM AVAILABLE
    HASH-NEW OWNED req REQUEST-QUERY !
    req REQUEST-SERVICE-LEN @ ID-ALLOC req REQUEST-SERVICE-OBJ !
-   req REQUEST-SERVICE @ req REQUEST-SERVICE-LEN @ req REQUEST-SERVICE-OBJ @ ID-COPY
+   req REQUEST-SERVICE @ req REQUEST-SERVICE-LEN @ >str
+      req REQUEST-SERVICE-OBJ @ ID-COPY
    req REQUEST-ACCOUNT-LEN @ ID-ALLOC req REQUEST-ACCOUNT-OBJ !
-   req REQUEST-ACCOUNT @ req REQUEST-ACCOUNT-LEN @ req REQUEST-ACCOUNT-OBJ @ ID-COPY
+   req REQUEST-ACCOUNT @ req REQUEST-ACCOUNT-LEN @ >str
+      req REQUEST-ACCOUNT-OBJ @ ID-COPY
    req REQUEST-QUERY @ SERVICE-KEY req REQUEST-SERVICE-OBJ @ HASH-INSERT drop
    req REQUEST-QUERY @ ACCOUNT-KEY req REQUEST-ACCOUNT-OBJ @ HASH-INSERT drop ;
 
 \ A GError's message follows its two 32-bit fields, domain and code.
 : ERROR-TEXT ( n -- str )
-   >BYTES 8 + CELL-VIEW @ >BYTES dup ZLEN ;
+   >BYTES 8 + CELL-VIEW @ >BYTES dup ZLEN >str ;
 
 \ Logs the request's GError after the text, then throws E-ACCESS.
 : GERROR-FAILED ( ^request str -- )
-   {: req:^ what:^ wu:n :}
+   {: req:^ what:str :}
    LOG:ERROR s" secret" LOG:LINE
-   what wu LOG:TEXT+ s" : " LOG:TEXT+
+   what LOG:TEXT+ s" : " LOG:TEXT+
    req REQUEST-ERROR @ ERROR-TEXT LOG:TEXT+ LOG:;LINE
    E-ACCESS throw ;
 
@@ -128,14 +129,14 @@ false ITEM-BOUND !
    req REQUEST-LIST @ 0 LIST-DATA SECRET-GET req REQUEST-VALUE !
    req REQUEST-VALUE @ 0= if E-ACCESS throw then
    req REQUEST-VALUE @ req REQUEST-SIZE BYTE-VIEW VALUE-GET
-   req REQUEST-SIZE @ req COPY-VALUE ;
+   req REQUEST-SIZE @ >str req COPY-VALUE ;
 
 \ The NULL collection is the default one; an item with the same attributes
 \ is replaced.
 : LINUX-WRITE ( ^request -- )
    {: req:^ :}
    req LINUX-OPEN
-   req REQUEST-DATA @ req REQUEST-LEN @ s\" text/plain\z" drop
+   req REQUEST-DATA @ req REQUEST-LEN @ >str s\" text/plain\z" STR:DATA
       VALUE-NEW OWNED req REQUEST-VALUE !
    0 0 req REQUEST-QUERY @ 0 req ITEM-LABEL req REQUEST-VALUE @ 0
       req REQUEST-ERROR BYTE-VIEW SECRET-STORE drop
@@ -169,13 +170,13 @@ public
 \ service. A name that is empty, holds a NUL or is malformed UTF-8, or two
 \ equal keys, throw E-CONFIG and bind nothing.
 : LINUX-ITEM! ( str str str -- )
-   {: sk:^ su:n ak:^ au:n label:^ lu:n :}
-   sk su INPUT ak au INPUT label lu INPUT
-   sk su ak au STR:= if E-CONFIG throw then
-   su au + lu + 3 + ITEM-NAMES-RESERVE
-   sk su 0 ITEM-PUT dup ITEM-ACCOUNT-AT !
-   ak au rot ITEM-PUT dup ITEM-LABEL-AT !
-   label lu rot ITEM-PUT drop
+   {: sk:str ak:str label:str :}
+   sk INPUT ak INPUT label INPUT
+   sk ak STR:= if E-CONFIG throw then
+   sk STR:LEN ak STR:LEN + label STR:LEN + 3 + ITEM-NAMES-RESERVE
+   sk 0 ITEM-PUT dup ITEM-ACCOUNT-AT !
+   ak swap ITEM-PUT dup ITEM-LABEL-AT !
+   label swap ITEM-PUT drop
    true ITEM-BOUND ! ;
 
 ;package

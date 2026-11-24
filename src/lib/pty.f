@@ -1,4 +1,3 @@
-split-str
 \ pty.f - pseudoterminal pairs, and the one place a pair is opened: tests,
 \ src/lib/pty-harness.f and src/lib/process-pty-io.f open pairs here and open
 \ the slave themselves (src/lib/serial.f opens it like any serial device). Only
@@ -47,9 +46,9 @@ variable WRITTEN
    count ;
 
 : SLAVE-PATH! ( n ^u8 -- n ) {: number:n path :}
-   s" /dev/pts/" {: prefix plen:n :}
-   plen 0 do prefix i + c@ path i + c! loop
-   number path plen + DIGITS! plen + ;
+   s" /dev/pts/" {: prefix:str :}
+   prefix STR:LEN 0 do prefix STR:DATA i + c@ path i + c! loop
+   number path prefix STR:LEN + DIGITS! prefix STR:LEN + ;
 
 \ A failed ioctl leaves no master behind: the pair is not open until the name is.
 : IOCTL-CK ( n n -- ) {: m:n rc:n :}
@@ -124,10 +123,12 @@ public
    ;MATCH ;
 
 
-: WRITE ( master str -- ) {: m:master bytes size:n :}
+: WRITE ( master str -- ) {: m:master bytes:str :}
    0 WRITTEN !
-   begin WRITTEN @ size < while
-      m MASTER>N bytes WRITTEN @ + size WRITTEN @ - write {: wrote:n :}
+   begin WRITTEN @ bytes STR:LEN < while
+      m MASTER>N
+      bytes STR:DATA WRITTEN @ +  bytes STR:LEN WRITTEN @ -  >str
+      write {: wrote:n :}
       wrote 0 <= if E-IO throw then
       wrote WRITTEN +!
    repeat ;

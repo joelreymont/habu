@@ -1,4 +1,3 @@
-split-str
 \ signal.f - process signals delivered to a program on a self-pipe.
 \ No Forth word is async-signal-safe: the handler is the engine's stub
 \ (src/habu/crash.f EMIT-SIGNAL-HANDLER), which writes the four-byte signal
@@ -415,11 +414,11 @@ public
 
 \ The end of an answer: the exit actions run while the stub still absorbs a
 \ second signal, then the process dies OF the signal, as an uncaught one ends it.
-: DIE-OF ( str n -- ) {: msg:^ msgu:n sig:n :}
+: DIE-OF ( str n -- ) {: msg:str sig:n :}
    AT-EXIT:RUN-NOW
    RELEASE
    getpid >PID sig PROCESS:KILL-RAW drop
    \ Reached only when another thread took the signal: a shell's status for it.
-   msg msgu 128 sig + die ;
+   msg 128 sig + die ;
 
 ;package

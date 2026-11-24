@@ -1,4 +1,3 @@
-split-str
 \ serial.f - raw serial byte streams on Linux and macOS through bounded libc
 \ bindings. OS failures, a bad handle's included, are result variants; a baud
 \ out of range or a negative length throws. Calls must not nest within one task;
@@ -111,8 +110,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 
 : WRITE-RAW ( handle str -- n )
-   {: handle:handle bytes size:n :}
-   handle HANDLE>N bytes size WRITE-CALL ;
+   {: handle:handle bytes:str :}
+   handle HANDLE>N bytes WRITE-CALL ;
 
 
 : CLOSE-RAW ( handle -- n ) HANDLE>N CLOSE-CALL ;
@@ -121,8 +120,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ The OS answers a path too long for it; the copy's mapping is released on
 \ every exit, the refusal of a 0 byte included.
 : PATH-OPEN ( str -- n )
-   {: text size:n :}
-   text size size FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN
+   {: text:str :}
+   text text STR:LEN FFI:CSTR-ROOM MEM:BYTES-ALLOC-LEN
    [: MEM:ALLOCATION>SPAN FFI:CSTR OPEN-RAW
       dup 0 < if drop LAST-ERROR ERRNO>N negate then ;] MEM:WITH-BYTES ;
 
@@ -227,8 +226,8 @@ public
 \ speeds), keeps HUPCL, and reads the settings back: anything short of that is
 \ `unsupported`. A failed configure restores the old settings best-effort and
 \ closes. The caller uses CLOSE exactly once.
-: OPEN8N1 ( str baud -- open-result ) {: path size:n baud:baud :}
-   path size PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:FAILED exit then
+: OPEN8N1 ( str baud -- open-result ) {: path:str baud:baud :}
+   path PATH-OPEN dup 0 < if negate >ERRNO SERIAL-OPEN--RESULT:FAILED exit then
    >HANDLE {: handle:handle :}
    handle baud CONFIGURE MATCH open-result
       opened OF SERIAL-OPEN--RESULT:OPENED ENDOF
@@ -261,14 +260,14 @@ public
 \ transfers nothing at once. Success does not prove bytes reached the device. Input is
 \ borrowed for this call. Timeout is milliseconds, negative for no deadline.
 : WRITE ( handle str ms -- io-result )
-   {: handle:handle bytes size:n timeout:ms :}
-   size 0= if size TRANSFERRED exit then
+   {: handle:handle bytes:str timeout:ms :}
+   bytes STR:LEN 0= if bytes STR:LEN TRANSFERRED exit then
    timeout DEADLINE {: deadline:ns :}
    begin
       handle AIO:WRITABLE deadline AWAIT {: events:n :}
       events 0 < if events negate >ERRNO SERIAL-IO--RESULT:FAILED exit then
       events 0= if SERIAL-IO--RESULT:TIMEOUT exit then
-      handle bytes size WRITE-RAW dup 0 > if TRANSFERRED exit then
+      handle bytes WRITE-RAW dup 0 > if TRANSFERRED exit then
       0= if SERIAL-IO--RESULT:CLOSED exit then
       LAST-ERROR dup RETRY? 0= if SERIAL-IO--RESULT:FAILED exit then drop
       events $18 and 0 <> if SERIAL-IO--RESULT:CLOSED exit then

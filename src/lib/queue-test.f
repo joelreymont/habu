@@ -1,4 +1,3 @@
-split-str
 \ queue-test.f - bounded queue shapes, blocking, refusals and a producer soak.
 
 require src/lib/error.f
@@ -159,19 +158,20 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    ix Q-SRC CODEGEN:APPEND-DECIMAL
    Q-SRC-LF ;
 
-: Q-RUN-STDIN ( str -- len len PROCESS:ending ) {: src:^ srcu:n :}
+: Q-RUN-STDIN ( str -- len len PROCESS:ending ) {: src:str :}
    PROC-ARGV-RESET
-   s" bin/hb" src srcu
+   s" bin/hb" src
    Q-OUT Q-CAPTURE-CAP >LEN Q-ERR Q-CAPTURE-CAP >LEN
    Q-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 \ hb exits 67 on an uncaught throw.
 : Q-EXPECT-THROW ( n -- ) {: code:n :}
-   Q-SRC CODEGEN:CONTENTS {: src:^ srcu:n :}
-   src srcu Q-RUN-STDIN {: outu:len erru:len oc :}
-   src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc 67 T-ENDING-EXITED=
+   Q-SRC CODEGEN:CONTENTS {: src:str :}
+   src Q-RUN-STDIN {: outu:len erru:len oc :}
+   src Q-OUT outu LEN>N >str Q-ERR erru LEN>N >str oc 67
+   T-ENDING-EXITED=
    outu LEN>N 0 T=
-   Q-ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
+   Q-ERR erru LEN>N >str code TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
 
 : QUEUE-TEST-BAD-CAPACITY ( -- )
    Q-SRC-HEAD

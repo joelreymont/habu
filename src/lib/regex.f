@@ -1,4 +1,3 @@
-split-str
 \ regex.f - regular expressions, package REGEX, matched with no backtracking.
 \ COMPILE reads a UTF-8 pattern into a program; MATCH? answers whether the
 \ program matches anywhere in a UTF-8 text, in time the text's length times
@@ -153,7 +152,7 @@ ARENA PARSERS parser
 \ none, 0 at the end.
 : WIDTH ( ^parser n -- n ) {: p:^ at:n :}
    at p PARSER-LEN @ >= if 0 exit then
-   p PARSER-SRC @ p PARSER-LEN @ at UTF8:NEXT
+   p PARSER-SRC @ p PARSER-LEN @ >str at UTF8:NEXT
    MATCH UTF8:scalar-step
       scalar OF nip at - ENDOF
       raw-byte OF 2drop 1 ENDOF
@@ -166,34 +165,35 @@ ARENA PARSERS parser
 : RAW? ( n -- bool ) {: b:n :} b $20 < b $7F >= or ;
 
 \ The bytes of the token a found text keeps.
-: KEPT ( str -- str ) over swap REASON:QUOTE-MOST UTF8:FIT ;
+: KEPT ( str -- str )
+   dup STR:DATA swap REASON:QUOTE-MOST UTF8:FIT >str ;
 
 : PUT-FOUND ( ^parser n n -- ) {: p:^ at:n u:n :}
    u 0= if s" the end of the pattern" REASON:APPEND exit then
    p PARSER-SRC @ at + {: tok:^ :}
    u 1 = tok c@ RAW? and if tok c@ REASON:BYTE exit then
-   tok u KEPT {: kept:^ cut:n :}
-   kept cut  cut u <  REASON:QUOTE ;
+   tok u >str KEPT {: kept:str :}
+   kept  kept STR:LEN u <  REASON:QUOTE ;
 
 \ Throws E-PATTERN with the text `C: expected e, found Y; f`, Y the u bytes at
 \ offset at, the pattern's end when u is 0.
 : REJECT ( ^parser n n str str -- )
-   {: p:^ at:n u:n e:^ eu:n f:^ fu:n :}
+   {: p:^ at:n u:n e:str f:str :}
    REASON:OPEN
    at 1+ FMT:INT$ REASON:APPEND  s" : " REASON:APPEND
-   REASON:EXPECTED e eu REASON:APPEND
+   REASON:EXPECTED e REASON:APPEND
    REASON:FOUND p at u PUT-FOUND
-   REASON:FIX f fu REASON:APPEND
+   REASON:FIX f REASON:APPEND
    E-PATTERN REASON:STOP ;
 
 \ Rejects the character at the offset read next.
 : REJECT-HERE ( ^parser str str -- )
-   {: p:^ e:^ eu:n f:^ fu:n :}
-   p p POS  p p POS WIDTH  e eu f fu REJECT ;
+   {: p:^ e:str f:str :}
+   p p POS  p p POS WIDTH  e f REJECT ;
 
 : REJECT-END ( ^parser str str -- )
-   {: p:^ e:^ eu:n f:^ fu:n :}
-   p p PARSER-LEN @ 0 e eu f fu REJECT ;
+   {: p:^ e:str f:str :}
+   p p PARSER-LEN @ 0 e f REJECT ;
 
 : NOT-UTF8 ( ^parser -- )
    s" a UTF-8 character" s" write the pattern as UTF-8" REJECT-HERE ;
@@ -300,7 +300,7 @@ ARENA PARSERS parser
 
 \ The code point at the offset read next and its byte width.
 : DECODE ( ^parser -- n n ) {: p:^ :}
-   p PARSER-SRC @ p PARSER-LEN @ p POS UTF8:NEXT
+   p PARSER-SRC @ p PARSER-LEN @ >str p POS UTF8:NEXT
    MATCH UTF8:scalar-step
       scalar OF p POS - ENDOF
       raw-byte OF 2drop p NOT-UTF8 ENDOF
@@ -379,8 +379,10 @@ ENUM escaped
    -1 ;
 
 : SYNTAX? ( n -- bool ) {: c:n :}
-   s" ^$\.*+?()[]{}|/-" {: a:^ u:n :}
-   u 0 ?do a i + c@ c = if unloop true exit then loop
+   s" ^$\.*+?()[]{}|/-" {: set:str :}
+   set STR:LEN 0 ?do
+      set STR:DATA i + c@ c = if unloop true exit then
+   loop
    false ;
 
 \ At `0` after the backslash at offset at.
@@ -964,9 +966,9 @@ ARENA GENS gen
    begin g GEN-TOP @ NULL-PTR <> while g g TAKE RUN-WORK repeat ;
 
 : BUILD ( str ^ARENA:arena ^ARENA:arena -- regex )
-   {: src:^ u:n a:^ s:^ :}
+   {: src:str a:^ s:^ :}
    s PARSERS-NEW {: p:^ :}
-   src p PARSER-SRC !  u p PARSER-LEN !  s p PARSER-SCRATCH !
+   src STR:DATA p PARSER-SRC !  src STR:LEN p PARSER-LEN !  s p PARSER-SCRATCH !
    p READ-PATTERN {: tree:^ :}
    tree NODE-SIZE @ 1+ {: size:n :}
    a size INST-BYTES * ARENA:ALLOC drop >INSTS {: code:^ :}
@@ -1083,7 +1085,7 @@ CAST: >VM ( ^u8 -- ^vm )
 
 \ The code point at offset at and the offset after it.
 : POINT ( ^vm n -- n n ) {: v:^ at:n :}
-   v VM-TEXT @ v VM-LEN @ at UTF8:NEXT
+   v VM-TEXT @ v VM-LEN @ >str at UTF8:NEXT
    MATCH UTF8:scalar-step
       scalar OF ENDOF
       raw-byte OF nip REPLACEMENT swap ENDOF
@@ -1104,11 +1106,12 @@ CAST: >VM ( ^u8 -- ^vm )
 
 \ The scratch: the vm record, then four rows of a cell per instruction.
 : SCAN ( str regex ^u8 NUM:alloc-byte-len -- bool )
-   drop {: t:^ u:n re base:^ :}
+   drop {: t:str re base:^ :}
    re REGEX-UNMAKE {: code:^ size:n :}
    base >VM {: v:^ :}
    base VM-BYTES + CELL-VIEW {: row:^ :}
-   code v VM-CODE !  t v VM-TEXT !  u v VM-LEN !
+   code v VM-CODE !
+   t STR:DATA v VM-TEXT !  t STR:LEN v VM-LEN !
    row v VM-NOW !
    row size cells + v VM-WAS !
    row size 2 * cells + v VM-MARKS !
@@ -1120,13 +1123,13 @@ public
 \ The pattern's program, in arena a; a pattern outside the dialect throws
 \ E-PATTERN with its text.
 : COMPILE ( str ^ARENA:arena -- regex )
-   {: src:^ u:n a:^ :}
-   src u a [: BUILD ;] ARENA:WITH ;
+   {: src:str a:^ :}
+   src a [: BUILD ;] ARENA:WITH ;
 
 \ Whether the program matches anywhere in the text.
-: MATCH? ( str regex -- bool ) {: t:^ u:n re :}
+: MATCH? ( str regex -- bool ) {: s:str re :}
    re REGEX-UNMAKE nip {: size:n :}
-   t u re  VM-BYTES size 4 * cells + MEM:BYTES-ALLOC-LEN
+   s re  VM-BYTES size 4 * cells + MEM:BYTES-ALLOC-LEN
    [: SCAN ;] MEM:WITH-BYTES ;
 
 ;package

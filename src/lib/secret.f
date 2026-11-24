@@ -1,4 +1,3 @@
-split-str
 \ secret.f - credential storage, package SECRET: the native desktop store
 \ (src/lib/secret/macos.f; src/lib/secret/linux.f reads and writes, its ERASE
 \ throws E-CONFIG) unless the host binds its own with STORE!. No
@@ -56,15 +55,15 @@ CAST: REQUEST>BYTES ( ^request -- ^u8 )
 CAST: >BYTES ( n -- ^u8 )
 
 : INPUT ( str -- )
-   {: p:^ u:n :}
-   u 0 <= p 0= or if E-CONFIG throw then
-   u 0 ?do p i + c@ 0= if E-CONFIG throw then loop
-   p u UTF8:VALID? 0= if E-CONFIG throw then ;
+   {: s:str :}
+   s STR:LEN 0 <= s STR:DATA 0= or if E-CONFIG throw then
+   s STR:LEN 0 ?do s STR:DATA i + c@ 0= if E-CONFIG throw then loop
+   s UTF8:VALID? 0= if E-CONFIG throw then ;
 
 : COPY-VALUE ( str ^request -- )
-   {: p:^ u:n req:^ :}
-   u 0 < if E-ACCESS throw then
-   p u req REQUEST-DEST @ VEC:APPEND
+   {: s:str req:^ :}
+   s STR:LEN 0 < if E-ACCESS throw then
+   s req REQUEST-DEST @ VEC:APPEND
    true req REQUEST-FOUND ! ;
 
 defer NATIVE-READ ( ^request -- )
@@ -87,10 +86,10 @@ INSTALL-DEFAULT
 
 \ A zeroed request for checked identifiers; REQ-FREE releases it.
 : REQ-OPEN ( str str -- ^request )
-   {: service:^ su:n account:^ au:n :}
-   REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop >REQUEST {: req:^ :}
-   service req REQUEST-SERVICE ! su req REQUEST-SERVICE-LEN !
-   account req REQUEST-ACCOUNT ! au req REQUEST-ACCOUNT-LEN !
+   {: service:str account:str :}
+   REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ STR:DATA >REQUEST {: req:^ :}
+   service STR:DATA req REQUEST-SERVICE ! service STR:LEN req REQUEST-SERVICE-LEN !
+   account STR:DATA req REQUEST-ACCOUNT ! account STR:LEN req REQUEST-ACCOUNT-LEN !
    req ;
 
 
@@ -107,8 +106,8 @@ INSTALL-DEFAULT
 
 \ A value's copies inside the native store or its framework are not Habu's.
 : OS-READ ( str str ^VEC:vector<u8> -- bool )
-   {: service:^ su:n account:^ au:n dest:^ :}
-   service su account au REQ-OPEN {: req:^ :}
+   {: service:str account:str dest:^ :}
+   service account REQ-OPEN {: req:^ :}
    dest req REQUEST-DEST !
    req [: dup NATIVE-READ ;] catch {: code:n :}
    drop
@@ -119,9 +118,9 @@ INSTALL-DEFAULT
 
 
 : OS-WRITE ( str str str -- )
-   {: service:^ su:n account:^ au:n value:^ vu:n :}
-   service su account au REQ-OPEN {: req:^ :}
-   value req REQUEST-DATA ! vu req REQUEST-LEN !
+   {: service:str account:str value:str :}
+   service account REQ-OPEN {: req:^ :}
+   value STR:DATA req REQUEST-DATA ! value STR:LEN req REQUEST-LEN !
    req [: dup NATIVE-WRITE ;] catch {: code:n :}
    drop
    req code REQ-CLOSE {: error:n :}
@@ -156,10 +155,10 @@ public
 \ Appends a found item, its room reserved before its first byte lands. A miss or
 \ a throw leaves the elements as they were. Neither identifier may lie in dest.
 : READ ( str str ^VEC:vector<u8> -- bool )
-   {: service:^ su:n account:^ au:n dest:^ :}
-   service su INPUT account au INPUT
+   {: service:str account:str dest:^ :}
+   service INPUT account INPUT
    dest VEC:COUNT {: held:n :}
-   [: service su account au dest STORE-READ @ execute ;] catch
+   [: service account dest STORE-READ @ execute ;] catch
    {: found code:n :}
    code 0= if found if true exit then then
    dest held VEC:RESIZE
@@ -171,17 +170,17 @@ public
 \ duplicate (on macOS its access control stays). The value may be empty or hold
 \ NULs; a negative length or a null address throws E-CONFIG. The caller keeps the bytes.
 : WRITE ( str str str -- )
-   {: service:^ su:n account:^ au:n value:^ vu:n :}
-   vu 0 < value 0= or if E-CONFIG throw then
-   service su INPUT account au INPUT
-   service su account au value vu STORE-WRITE @ execute ;
+   {: service:str account:str value:str :}
+   value STR:LEN 0 < value STR:DATA 0= or if E-CONFIG throw then
+   service INPUT account INPUT
+   service account value STORE-WRITE @ execute ;
 
 
 \ Removes the item; a missing item returns false.
 : ERASE ( str str -- bool )
-   {: service:^ su:n account:^ au:n :}
-   service su INPUT account au INPUT
-   service su account au STORE-ERASE @ execute ;
+   {: service:str account:str :}
+   service INPUT account INPUT
+   service account STORE-ERASE @ execute ;
 
 ;package
 

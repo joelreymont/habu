@@ -1,4 +1,3 @@
-split-str
 \ E2E of SECRET:WRITE and SECRET:READ on Linux under the attribute keys and
 \ label SECRET:LINUX-ITEM! binds, against a private D-Bus session bus and a
 \ gnome-keyring-daemon on it, unlocked with a fixed password: both this
@@ -62,12 +61,12 @@ NO-PID BUS-PID !
 NO-PID KEY-PID !
 -1 KEY-WATCH !
 
-: DBUS-DAEMON$ ( -- str ) DBUS-DAEMON DBUS-DAEMON-U @ ;
-: KEYRING$ ( -- str ) KEYRING KEYRING-U @ ;
-: GDBUS$ ( -- str ) GDBUS GDBUS-U @ ;
-: SECRET-TOOL$ ( -- str ) SECRET-TOOL SECRET-TOOL-U @ ;
-: ROOT$ ( -- str ) ROOT ROOT-U @ ;
-: SOCKETS$ ( -- str ) SOCKETS SOCKETS-U @ ;
+: DBUS-DAEMON$ ( -- str ) DBUS-DAEMON DBUS-DAEMON-U @ >str ;
+: KEYRING$ ( -- str ) KEYRING KEYRING-U @ >str ;
+: GDBUS$ ( -- str ) GDBUS GDBUS-U @ >str ;
+: SECRET-TOOL$ ( -- str ) SECRET-TOOL SECRET-TOOL-U @ >str ;
+: ROOT$ ( -- str ) ROOT ROOT-U @ >str ;
+: SOCKETS$ ( -- str ) SOCKETS SOCKETS-U @ >str ;
 : ADDRESS$ ( -- str ) ADDRESS CODEGEN:CONTENTS ;
 
 : SERVICE-KEY$ ( -- str ) s" app" ;
@@ -79,16 +78,16 @@ NO-PID KEY-PID !
 
 
 \ A path under ROOT or SOCKETS, borrowed until the next one.
-: ROOT/ ( str -- str ) ROOT$ 2swap JOINED FS:JOIN-PATH JOINED swap ;
-: SOCKETS/ ( str -- str ) SOCKETS$ 2swap JOINED FS:JOIN-PATH JOINED swap ;
+: ROOT/ ( str -- str ) ROOT$ swap JOINED FS:JOIN-PATH JOINED swap >str ;
+: SOCKETS/ ( str -- str ) SOCKETS$ swap JOINED FS:JOIN-PATH JOINED swap >str ;
 
 
 : TOOL ( str ^u8 -- n )
-   {: name:^ u:n dst:^ :}
-   name u dst FIND-EXECUTABLE MATCH option
+   {: name:str dst:^ :}
+   name dst FIND-EXECUTABLE MATCH option
       none OF
          s" secret-linux-test: required executable missing on PATH: " type
-         name u type cr
+         name type cr
          s" " EXIT-STATUS:UNAVAILABLE die
       ENDOF
       some OF ENDOF
@@ -104,12 +103,12 @@ NO-PID KEY-PID !
 \ The bus and keyring sockets go under HB_SOCK_TMP, the short directory a gate
 \ pool gives each row: sun_path holds 108 bytes and TMPDIR there about 100.
 : SOCKETS-MAKE ( -- )
-   s" HB_SOCK_TMP" GETENV dup 0 > if
+   s" HB_SOCK_TMP" GETENV dup STR:LEN 0 > if
       s" kr" FS:MKTEMP-DIR-IN
    else
-      2drop s" habu-kr" FS:MKTEMP-DIR
-   then {: a:^ u:n :}
-   a SOCKETS u BYTE-COPY u SOCKETS-U !
+      drop s" habu-kr" FS:MKTEMP-DIR
+   then {: dir:str :}
+   dir STR:DATA SOCKETS dir STR:LEN BYTE-COPY dir STR:LEN SOCKETS-U !
    SOCKETS$ FS:CLEANUP-TREE+ ;
 
 : CONF+ ( str -- ) CONF CODEGEN:APPEND-STRING ;
@@ -126,8 +125,8 @@ NO-PID KEY-PID !
    s" bus.conf" ROOT/ CONF CODEGEN:CONTENTS FS:WRITE-ALL ;
 
 : DIRS ( -- )
-   s" habu-secret-linux" FS:MKTEMP-DIR {: a:^ u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
+   s" habu-secret-linux" FS:MKTEMP-DIR {: dir:str :}
+   dir STR:DATA ROOT dir STR:LEN BYTE-COPY dir STR:LEN ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
    SOCKETS-MAKE
    s" home" ROOT/ FS:MAKE-DIR
@@ -164,7 +163,7 @@ NO-PID KEY-PID !
 
 \ libsecret's GDBus reads the variable at its first connection.
 : BUS-ENV! ( -- )
-   s\" DBUS_SESSION_BUS_ADDRESS\z" drop ADDRESS$ FS:>PATHZ 1 ENV-SET
+   s\" DBUS_SESSION_BUS_ADDRESS\z" STR:DATA ADDRESS$ FS:>PATHZ 1 ENV-SET
    0 <> if E-PROC-ENV throw then ;
 
 
@@ -255,25 +254,25 @@ NO-PID KEY-PID !
 
 
 : ATTRS ( CMD:command str -- CMD:command )
-   {: account:^ au:n :}
+   {: account:str :}
    SERVICE-KEY$ CMD:ARG+ SERVICE$ CMD:ARG+
-   ACCOUNT-KEY$ CMD:ARG+ account au CMD:ARG+ ;
+   ACCOUNT-KEY$ CMD:ARG+ account CMD:ARG+ ;
 
 : TOOL-RUN ( CMD:command -- CMD:command )
    SECRET-TOOL$ PROCESS:WAIT-FOREVER CMD:RUN-RC
    RESULT-CODE {: rc:n :} rc 0 <> if CMD:ERR$ type then rc 0 T= ;
 
 : LOOKUP ( CMD:command str str -- CMD:command )
-   {: account:^ au:n want:^ wu:n :}
+   {: account:str want:str :}
    CMD:RESET CMD-ROWS
-   s" lookup" CMD:ARG+ account au ATTRS TOOL-RUN
-   CMD:OUT$ want wu T$= ;
+   s" lookup" CMD:ARG+ account ATTRS TOOL-RUN
+   CMD:OUT$ want T$= ;
 
 \ secret-tool prints the attributes on stderr and the rest on stdout.
 : SEARCH ( CMD:command str -- CMD:command str )
-   {: account:^ au:n :}
+   {: account:str :}
    CMD:RESET CMD-ROWS
-   s" search" CMD:ARG+ s" --all" CMD:ARG+ account au ATTRS TOOL-RUN
+   s" search" CMD:ARG+ s" --all" CMD:ARG+ account ATTRS TOOL-RUN
    CMD:OUT$ ;
 
 : LABEL-LINE$ ( -- str )
@@ -297,10 +296,10 @@ NO-PID KEY-PID !
    s" a second write replaces the item's value without a second item" T-LABEL
    SERVICE$ s" written" s" second" SECRET:WRITE
    s" written" s" second" LOOKUP
-   s" written" SEARCH {: out:^ outu:n :}
-   out outu s" label = " STR:COUNT-SUB 1 T=
+   s" written" SEARCH {: out:str :}
+   out s" label = " STR:COUNT-SUB 1 T=
    s" the written item's label is the bound label" T-LABEL
-   out outu LABEL-LINE$ STR:CONTAINS? TTRUE ;
+   out LABEL-LINE$ STR:CONTAINS? TTRUE ;
 
 : STORED ( CMD:command -- CMD:command )
    s" a read finds the item secret-tool stored under the bound keys" T-LABEL
@@ -319,13 +318,13 @@ NO-PID KEY-PID !
 
 \ The call logged one line, a secret line holding the text.
 : LOGGED-ONCE ( str -- )
-   {: text:^ tu:n :}
+   {: text:str :}
    s" stderr.txt" ROOT/ LOGGED LOG-CAP FS:READ-ALL {: u:n :}
-   LOGGED u NEWLINE STR:COUNT-CHAR 1 T=
+   LOGGED u >str NEWLINE STR:COUNT-CHAR 1 T=
    EXPECTED CODEGEN:RESET
    s" secret: " EXPECTED CODEGEN:APPEND-STRING
-   text tu EXPECTED CODEGEN:APPEND-STRING
-   LOGGED u EXPECTED CODEGEN:CONTENTS STR:CONTAINS? TTRUE ;
+   text EXPECTED CODEGEN:APPEND-STRING
+   LOGGED u >str EXPECTED CODEGEN:CONTENTS STR:CONTAINS? TTRUE ;
 
 : STOPPED ( -- )
    s" with the keyring stopped a write and a read are E-ACCESS, logged" T-LABEL

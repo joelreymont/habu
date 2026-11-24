@@ -1,4 +1,3 @@
-split-str
 \ source-test.f - focused tests for checked source materialization helpers.
 \ Run: bin/hb --load src/lib/source-test.f
 
@@ -29,18 +28,18 @@ create ST-QP-BUF ST-CAP allot
    s" x" ST-BUF 4 >LEN ST-APPEND-LEN SOURCE-APPEND-BYTES ;
 
 : ST-QP$ ( -- str )
-   ST-QP-BUF ST-QP-U @ LEN>N ;
+   ST-QP-BUF ST-QP-U @ LEN>N >str ;
 
-: ST-QPATH ( str -- ) {: a:^ u:n :}
+: ST-QPATH ( str -- ) {: s:str :}
    0 >LEN ST-QP-U !
-   a u ST-QP-BUF ST-CAP >LEN ST-QP-U SOURCE-APPEND-QPATH ;
+   s ST-QP-BUF ST-CAP >LEN ST-QP-U SOURCE-APPEND-QPATH ;
 
-: ST-QPATH-WANT$ ( str -- str ) {: a:^ u:n :}
+: ST-QPATH-WANT$ ( str -- str ) {: s:str :}
    SB-RESET
    s" s" SB-APPEND
    34 SB-APPEND-C
    32 SB-APPEND-C
-   a u SB-APPEND
+   s SB-APPEND
    34 SB-APPEND-C
    SB$ ;
 

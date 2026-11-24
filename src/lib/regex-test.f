@@ -1,4 +1,3 @@
-split-str
 \ regex-test.f - patterns through REGEX:COMPILE and REGEX:MATCH?: the ones
 \ consumers state, written as their JSON strings decode, the dialect's
 \ parts, the time bound, a nesting too deep to recurse through and each
@@ -14,9 +13,9 @@ require src/lib/regex.f
 package REGEX-TEST
 
 : RUN-IN ( str str ^ARENA:arena -- bool )
-   {: p:^ pu:n t:^ tu:n a:^ :}
-   p pu a REGEX:COMPILE {: re :}
-   t tu re REGEX:MATCH? ;
+   {: p:str t:str a:^ :}
+   p a REGEX:COMPILE {: re :}
+   t re REGEX:MATCH? ;
 
 \ Whether the pattern matches the text.
 : MATCHES? ( str str -- bool ) [: RUN-IN ;] ARENA:WITH ;
@@ -28,28 +27,28 @@ package REGEX-TEST
    [: REGEX:COMPILE drop ;] ARENA:WITH ;
 
 \ The pattern is rejected with exactly the text given.
-: REJECTS ( str str -- ) {: p:^ pu:n w:^ wu:n :}
-   [: p pu COMPILE-ONLY ;] REGEX:E-PATTERN TTHROWSQ
-   REGEX:E-PATTERN REASON:TEXT$ w wu T$=
+: REJECTS ( str str -- ) {: p:str w:str :}
+   [: p COMPILE-ONLY ;] REGEX:E-PATTERN TTHROWSQ
+   REGEX:E-PATTERN REASON:TEXT$ w T$=
    REASON:RELEASE ;
 
 : MAKI ( -- )
    s" Maki's tool patterns" T-LABEL
    s" ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-   2dup s" 123e4567-e89b-12d3-a456-426614174000" YES
+   dup s" 123e4567-e89b-12d3-a456-426614174000" YES
    s" 123e4567-e89b-12d3-a456-42661417400" NO
    s" ^[0-9a-f]{32}$"
-   2dup s" 0123456789abcdef0123456789abcdef" YES
+   dup s" 0123456789abcdef0123456789abcdef" YES
    s" 0123456789abcdef0123456789abcdeF" NO
-   s" ^[^\u0000]*$" 2dup s" project" YES S\" pro\x00ject" NO
-   s" ^[a-z0-9][a-z0-9-]*$" 2dup s" my-project1" YES s" -lead" NO
-   s" ^[^/]+$" 2dup s" file.txt" YES s" dir/file.txt" NO
+   s" ^[^\u0000]*$" dup s" project" YES S\" pro\x00ject" NO
+   s" ^[a-z0-9][a-z0-9-]*$" dup s" my-project1" YES s" -lead" NO
+   s" ^[^/]+$" dup s" file.txt" YES s" dir/file.txt" NO
    s" ^[0-9a-f]{64}$"
-   2dup s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+   dup s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
    YES
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde"
    NO
-   s" \S" 2dup s"  x " YES S\"  \t\n " NO ;
+   s" \S" dup s"  x " YES S\"  \t\n " NO ;
 
 \ Maki's name rule: not empty or only white space, the class spelling it
 \ in `\t-\r` and `\u` escapes.
@@ -64,24 +63,24 @@ package REGEX-TEST
 : ZEN ( -- )
    s" Zen's date and digest patterns" T-LABEL
    s" ^[0-9]{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12][0-9]|3[01]))?)?$"
-   2dup s" 2026-11-17" YES s" 2026-13" NO
+   dup s" 2026-11-17" YES s" 2026-13" NO
    s" ^[0-9a-f]{64}$"
-   2dup s" 89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567"
+   dup s" 89abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567"
    YES
    s" 89abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456" NO ;
 
 : DIALECT ( -- )
    s" an unanchored search, `.`, a pair escape, classes, counts, groups"
    T-LABEL
-   s" b+c" 2dup s" aabbbcd" YES s" aabd" NO
+   s" b+c" dup s" aabbbcd" YES s" aabd" NO
    s" ^b" s" ab" NO
-   s" a.c" 2dup s" a-c" YES S\" a\nc" NO
-   s" a.c" 2dup S\" a\rc" NO S\" a\xE2\x80\xA8c" NO
-   s" ^\uD83D\uDE00$" 2dup S\" \xF0\x9F\x98\x80" YES s" a" NO
-   s" ^[α-ω]+$" 2dup s" λογος" YES s" Λ" NO
-   s" ^a{2,3}$" 2dup s" a" NO 2dup s" aa" YES
-   2dup s" aaa" YES s" aaaa" NO
-   s" ^(cat|dog)s?$" 2dup s" dogs" YES s" cow" NO ;
+   s" a.c" dup s" a-c" YES S\" a\nc" NO
+   s" a.c" dup S\" a\rc" NO S\" a\xE2\x80\xA8c" NO
+   s" ^\uD83D\uDE00$" dup S\" \xF0\x9F\x98\x80" YES s" a" NO
+   s" ^[α-ω]+$" dup s" λογος" YES s" Λ" NO
+   s" ^a{2,3}$" dup s" a" NO dup s" aa" YES
+   dup s" aaa" YES s" aaaa" NO
+   s" ^(cat|dog)s?$" dup s" dogs" YES s" cow" NO ;
 
 100000 constant AS-LEN
 AS-LEN BUFFER: AS
@@ -90,7 +89,7 @@ AS-LEN BUFFER: AS
 : LINEAR ( -- )
    s" `(a*)*b` over 100000 `a`s answers false" T-LABEL
    AS-LEN 0 ?do [char] a AS i + c! loop
-   s" (a*)*b" AS AS-LEN NO ;
+   s" (a*)*b" AS AS-LEN >str NO ;
 
 100000 constant DEPTH
 DEPTH 2 * 1+ constant NESTED-LEN
@@ -104,7 +103,7 @@ NESTED-LEN BUFFER: NESTED
 
 : DEEP ( -- )
    s" `a` in 100000 nested groups compiles and matches `a`" T-LABEL
-   NEST NESTED NESTED-LEN s" a" YES ;
+   NEST NESTED NESTED-LEN >str s" a" YES ;
 
 : EMPTY-COUNT ( -- )
    s" an empty group counted at least 10^12 times compiles and matches `ab`" T-LABEL

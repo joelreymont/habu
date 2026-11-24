@@ -1,4 +1,3 @@
-split-str
 \ E2E of the public SECRET words with no store bound for one case, then over a
 \ host store bound with SECRET:STORE!. Fails on: no store bound refused as
 \ anything but E-CONFIG; a host store bypassed, called before the checks or
@@ -38,8 +37,8 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
 \ Attempts one erase whatever came before; keeps the first failure code.
 : TEST-ERASE-KEEP ( n str str -- n )
-   [: 2over 2over SECRET:ERASE drop ;] catch {: code:n :}
-   2drop 2drop {: first:n :}
+   {: first:n service:str account:str :}
+   [: service account SECRET:ERASE drop ;] catch {: code:n :}
    first 0 <> if first else code then ;
 
 
@@ -69,33 +68,33 @@ variable HOST-CALLS
 
 
 : HOST-HELD? ( str str -- bool )
-   {: service:^ su:n account:^ au:n :}
-   service su HOST-SERVICE CODEGEN:CONTENTS STR:=
-   account au HOST-ACCOUNT CODEGEN:CONTENTS STR:= and ;
+   {: service:str account:str :}
+   service HOST-SERVICE CODEGEN:CONTENTS STR:=
+   account HOST-ACCOUNT CODEGEN:CONTENTS STR:= and ;
 
 
 \ The account late is a store that appends bytes and then does not answer;
 \ stale, one that appends bytes and answers false.
 : HOST-READ ( str str ^VEC:vector<u8> -- bool )
-   {: service:^ su:n account:^ au:n dest:^ :}
+   {: service:str account:str dest:^ :}
    1 HOST-CALLS +!
-   account au s" late" STR:= if
+   account s" late" STR:= if
       s" partial" dest VEC:APPEND SECRET:E-UNAVAILABLE throw
    then
-   account au s" stale" STR:= if
+   account s" stale" STR:= if
       s" partial" dest VEC:APPEND false exit
    then
-   service su account au HOST-HELD? 0= if false exit then
+   service account HOST-HELD? 0= if false exit then
    HOST-VALUE$ dest VEC:APPEND
    true ;
 
 
 : HOST-WRITE ( str str str -- )
-   {: service:^ su:n account:^ au:n value:^ vu:n :}
+   {: service:str account:str value:str :}
    1 HOST-CALLS +!
-   HOST-SERVICE CODEGEN:RESET service su HOST-SERVICE CODEGEN:APPEND-STRING
-   HOST-ACCOUNT CODEGEN:RESET account au HOST-ACCOUNT CODEGEN:APPEND-STRING
-   HOST-VALUE CODEGEN:RESET value vu HOST-VALUE CODEGEN:APPEND-STRING ;
+   HOST-SERVICE CODEGEN:RESET service HOST-SERVICE CODEGEN:APPEND-STRING
+   HOST-ACCOUNT CODEGEN:RESET account HOST-ACCOUNT CODEGEN:APPEND-STRING
+   HOST-VALUE CODEGEN:RESET value HOST-VALUE CODEGEN:APPEND-STRING ;
 
 
 : HOST-ERASE ( str str -- bool )
@@ -104,9 +103,9 @@ variable HOST-CALLS
 
 
 : HOST-FOUND ( str str str -- )
-   {: service:^ su:n account:^ au:n want:^ wu:n :}
-   HOLD service su account au OUT SECRET:READ TTRUE
-   OUT$ want wu T$=
+   {: service:str account:str want:str :}
+   HOLD service account OUT SECRET:READ TTRUE
+   OUT$ want T$=
    CLEAR-OUT ;
 
 
@@ -133,7 +132,7 @@ variable HOST-CALLS
    [: s" " s" key" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s\" a\x00b" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s" " s" x" SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
-   [: s" host" s" key" s" x" drop -1 SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
+   [: s" host" s" key" s" x" STR:DATA -1 >str SECRET:WRITE ;] SECRET:E-CONFIG TTHROWSQ
    [: s\" a\x00b" s" key" SECRET:ERASE drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s\" a\xFFb" s" key" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ
    [: s" host" s\" a\xFFb" OUT SECRET:READ drop ;] SECRET:E-CONFIG TTHROWSQ

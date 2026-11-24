@@ -1,4 +1,3 @@
-split-str
 \ property.f - checked helpers for property-based tests in `package PROP`.
 \ The PRNG is a deterministic LCG, so a seed reproduces a run.
 \ A property that runs generated checked source owns its own audited `evaluate`
@@ -83,10 +82,10 @@ public
 : BUF-RESET ( -- )
    0 PROP-BUF-LEN ! ;
 
-: BUF+ ( str -- ) {: a:^ u:n :}
-   u BUF-CHECK-ROOM
-   0 begin dup u < while
-      dup a + c@ PROP-BUF PROP-BUF-LEN @ + c!
+: BUF+ ( str -- ) {: s:str :}
+   s STR:LEN BUF-CHECK-ROOM
+   0 begin dup s STR:LEN < while
+      dup s STR:DATA + c@ PROP-BUF PROP-BUF-LEN @ + c!
       PROP-BUF-LEN @ 1+ PROP-BUF-LEN !
       1+
    repeat drop ;
@@ -104,6 +103,6 @@ public
    digit PROP-ZERO + BUF-C+ ;
 
 : BUF$ ( -- str )
-   PROP-BUF PROP-BUF-LEN @ ;
+   PROP-BUF PROP-BUF-LEN @ >str ;
 
 ;package

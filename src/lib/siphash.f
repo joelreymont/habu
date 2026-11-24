@@ -1,4 +1,3 @@
-split-str
 \ siphash.f - keyed SipHash-2-4 with a 64-bit result. Keyed with a secret drawn
 \ per owner (src/lib/entropy.f), a table spreads names an adversary cannot aim
 \ at one bucket, which an unkeyed hash such as FNV cannot promise. k0 is the
@@ -86,8 +85,8 @@ private
 
 
 : PARTIAL@ ( str -- n )
-   {: p bytes:n :}
-   0 bytes 0 ?do p i + c@ i 8 * lshift or loop ;
+   {: s:str :}
+   0 s STR:LEN 0 ?do s STR:DATA i + c@ i 8 * lshift or loop ;
 
 public
 
@@ -127,11 +126,12 @@ public
 
 
 : BYTES ( n n str -- n )
-   {: k0:n k1:n p len:n :}
-   len 0 < if E-SPAN-LENGTH throw then
-   len BLOCK-MASK invert and {: whole:n :}
+   {: k0:n k1:n s:str :}
+   s STR:LEN 0 < if E-SPAN-LENGTH throw then
+   s STR:LEN BLOCK-MASK invert and {: whole:n :}
    k0 k1 KEYED
-   whole 0 ?do p i + LE:U64@ MIX BLOCK-BYTES +loop
-   p whole + len whole - PARTIAL@  len LEN-SHIFT lshift or  FINAL ;
+   whole 0 ?do s STR:DATA i + LE:U64@ MIX BLOCK-BYTES +loop
+   s STR:DATA whole +  s STR:LEN whole -  >str PARTIAL@
+   s STR:LEN LEN-SHIFT lshift or  FINAL ;
 
 ;package

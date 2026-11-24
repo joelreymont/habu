@@ -1,4 +1,3 @@
-split-str
 \ secret/macos.f - SECRET:READ, WRITE and ERASE through the Security framework's
 \ generic passwords, loaded by src/lib/secret.f on macOS. Contract:
 \ src/lib/secret.f.
@@ -66,32 +65,32 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 
 : MAC-OPEN ( ^request -- )
    {: req:^ :}
-   s\" /System/Library/Frameworks/Security.framework/Security\z" drop FFI:NOW FFI:DLOPEN
+   s\" /System/Library/Frameworks/Security.framework/Security\z" STR:DATA FFI:NOW FFI:DLOPEN
       AVAILABLE req REQUEST-LIBRARY !
-   s\" /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation\z" drop FFI:NOW FFI:DLOPEN
+   s\" /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation\z" STR:DATA FFI:NOW FFI:DLOPEN
       AVAILABLE req REQUEST-LIBRARY2 !
    \ NULL callbacks borrow exact exported key identities and the owned CF values below.
    0 0 0 0 CF-DICT CREATED req REQUEST-QUERY !
-   0 req REQUEST-SERVICE @ req REQUEST-SERVICE-LEN @ $08000100 0 CF-STRING
+   0 req REQUEST-SERVICE @ req REQUEST-SERVICE-LEN @ >str $08000100 0 CF-STRING
       CREATED req REQUEST-SERVICE-OBJ !
-   0 req REQUEST-ACCOUNT @ req REQUEST-ACCOUNT-LEN @ $08000100 0 CF-STRING
+   0 req REQUEST-ACCOUNT @ req REQUEST-ACCOUNT-LEN @ >str $08000100 0 CF-STRING
       CREATED req REQUEST-ACCOUNT-OBJ !
-   req REQUEST-QUERY @ req s\" kSecClass\z" drop SEC-SYMBOL
-      req s\" kSecClassGenericPassword\z" drop SEC-SYMBOL CF-SET
-   req REQUEST-QUERY @ req s\" kSecAttrService\z" drop SEC-SYMBOL req REQUEST-SERVICE-OBJ @ CF-SET
-   req REQUEST-QUERY @ req s\" kSecAttrAccount\z" drop SEC-SYMBOL req REQUEST-ACCOUNT-OBJ @ CF-SET ;
+   req REQUEST-QUERY @ req s\" kSecClass\z" STR:DATA SEC-SYMBOL
+      req s\" kSecClassGenericPassword\z" STR:DATA SEC-SYMBOL CF-SET
+   req REQUEST-QUERY @ req s\" kSecAttrService\z" STR:DATA SEC-SYMBOL req REQUEST-SERVICE-OBJ @ CF-SET
+   req REQUEST-QUERY @ req s\" kSecAttrAccount\z" STR:DATA SEC-SYMBOL req REQUEST-ACCOUNT-OBJ @ CF-SET ;
 
 
 : MAC-READ ( ^request -- )
    {: req:^ :}
    req MAC-OPEN
-   req REQUEST-QUERY @ req s\" kSecReturnData\z" drop SEC-SYMBOL
-      req s\" kCFBooleanTrue\z" drop CF-SYMBOL CF-SET
+   req REQUEST-QUERY @ req s\" kSecReturnData\z" STR:DATA SEC-SYMBOL
+      req s\" kCFBooleanTrue\z" STR:DATA CF-SYMBOL CF-SET
    req REQUEST-QUERY @ req REQUEST-VALUE BYTE-VIEW SEC-READ {: status:n :}
    status SEC-NOT-FOUND = if exit then
    status SEC-STATUS
    req REQUEST-VALUE @ RETURNED {: value:n :}
-   value CF-BYTES value CF-SIZE req COPY-VALUE ;
+   value CF-BYTES value CF-SIZE >str req COPY-VALUE ;
 
 
 \ Updating in place keeps an existing item's access control. An add that meets
@@ -100,9 +99,10 @@ FUNCTION: LIB-CLOSE dlclose ( n -- i32 ) ;FUNCTION
 : MAC-WRITE ( ^request -- )
    {: req:^ :}
    req MAC-OPEN
-   0 req REQUEST-DATA @ req REQUEST-LEN @ req s\" kCFAllocatorNull\z" drop CF-SYMBOL
+   0 req REQUEST-DATA @ req REQUEST-LEN @ >str
+      req s\" kCFAllocatorNull\z" STR:DATA CF-SYMBOL
       CF-DATA-BORROW CREATED req REQUEST-VALUE !
-   req s\" kSecValueData\z" drop SEC-SYMBOL {: data-key:n :}
+   req s\" kSecValueData\z" STR:DATA SEC-SYMBOL {: data-key:n :}
    0 0 0 0 CF-DICT CREATED req REQUEST-ATTRS !
    req REQUEST-ATTRS @ data-key req REQUEST-VALUE @ CF-SET
    req REQUEST-QUERY @ req REQUEST-ATTRS @ SEC-UPDATE {: status:n :}

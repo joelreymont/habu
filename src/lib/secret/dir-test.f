@@ -1,4 +1,3 @@
-split-str
 \ E2E of SECRET:DIR-BIND through the public SECRET words over a fresh
 \ directory under TMPDIR, removed whatever the cases do. Fails on: a wrong or
 \ truncated item; a miss read as empty or the reverse; an item longer than
@@ -30,7 +29,7 @@ $180 constant FIFO-MODE                \ 0600
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
-: ROOT$ ( -- str ) ROOT SPAN:$ drop ROOT-U @ ;
+: ROOT$ ( -- str ) ROOT SPAN:$ STR:DATA ROOT-U @ >str ;
 : SERVICE$ ( -- str ) s" org.habu.secret-dir-test" ;
 : OUT ( -- ^VEC:vector<u8> ) OUT-VEC @ ;
 : OUT$ ( -- str ) OUT VEC:SPAN SPAN:$ ;
@@ -46,14 +45,14 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 \ The path of the named entry in ROOT, borrowed until the next call.
 : ENTRY ( str -- str )
-   {: name:^ u:n :}
-   ROOT$ name u ENTRY-PATH FS:JOIN-PATH-INTO {: k:n :}
-   ENTRY-PATH SPAN:$ drop k ;
+   {: name:str :}
+   ROOT$ name ENTRY-PATH FS:JOIN-PATH-INTO {: k:n :}
+   ENTRY-PATH SPAN:$ STR:DATA k >str ;
 
 
 : SETUP ( -- )
-   s" habu-secret-dir" FS:MKTEMP-DIR {: a:^ u:n :}
-   a u ROOT SPAN:COPY u ROOT-U !
+   s" habu-secret-dir" FS:MKTEMP-DIR {: dir:str :}
+   dir ROOT SPAN:COPY dir STR:LEN ROOT-U !
    s" key" ENTRY s\" dir\x00value" FS:WRITE-ALL
    s" empty" ENTRY s" " FS:WRITE-ALL ;
 
@@ -64,9 +63,9 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
 
 
 : FOUND ( str str -- )
-   {: account:^ au:n want:^ wu:n :}
-   SERVICE$ account au OUT SECRET:READ TTRUE
-   OUT$ want wu T$=
+   {: account:str want:str :}
+   SERVICE$ account OUT SECRET:READ TTRUE
+   OUT$ want T$=
    CLEAR-OUT ;
 
 
