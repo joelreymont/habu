@@ -51,6 +51,9 @@ to remove, not a row to add.
 - A hook: the owner records data or makes a plain call.
 - fork without exec: fork only to exec.
 - BUF (`src/lib/byte-buffer.f`): `VEC:vector<u8>`.
+- The source verifier (`src/habu/verify-source.f`) and the loader walk
+  (`tools/source-discovery.f`): `hb --check`, the load itself
+  ([architecture.md](architecture.md#tools)).
 
 ## Types
 
