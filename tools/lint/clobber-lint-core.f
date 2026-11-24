@@ -19,6 +19,10 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require src/lib/fmt.f
 require src/lib/map.f
+require src/lib/heap.f
+require src/lib/vector.f
+require src/lib/span.f
+require src/lib/arena.f
 require src/core/exit-status.f
 
 package CLOBBER-CENSUS
@@ -344,8 +348,8 @@ package CLOBBER
    a u s" BRK," LINT-STR= if MN-TRAP exit then
    MN-NONE ;
 
-16 constant RRMAX
-create RRS RRMAX cells allot   variable RR#
+\ The registers the current instruction names, in operand order.
+TYPED-VARIABLE RRS ^VEC:vector<n>
 variable RK
 \ Each token's role in its definition, which DEF-LOCALS gives it.
 DYNAMIC-BUFFER ROLES u8
@@ -360,17 +364,14 @@ DYNAMIC-BUFFER ROLES u8
 \ A local, or a token of its group, whatever its spelling.
 : LOCAL-AT?  ( n -- bool )  ROLE@ dup IN-GROUP = swap LOCAL-USE = or ;
 
-: RR-CHECK-ROOM ( -- )
-   RR# @ RRMAX >= if s" clobber-lint: too many regs in instruction" EXIT-STATUS:FULL die then ;
-: RR+  ( n -- )
-   RR-CHECK-ROOM
-   RRS RR# @ cells + !  RR# @ 1+ RR# ! ;
+: RR#  ( -- n )  RRS @ VEC:COUNT ;
+: RR+  ( n -- )  RRS @ VEC:PUSH ! ;
 : RR@  ( n -- n )
-   dup RR# @ < if RRS swap cells + @ else drop -1 then ;
+   dup RR# < if RRS @ swap VEC:AT @ else drop -1 then ;
 \ Only an operand token names a register: a local's value and the cells a
 \ group binds name none.
 : COLLECT-REGS  ( n n -- ) {: lo hi :}
-   0 RR# !  lo RK !
+   RRS @ 0 VEC:RESIZE  lo RK !
    begin RK @ hi < while
       RK @ ROLE@ OPERAND = if
          RK @ TOK REG-OF dup 0 >= if RR+ else drop then
@@ -589,7 +590,7 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
    kind MN-WRR = if 0 EW 1 ER 2 ER exit then
    kind MN-WR = if 0 EW 1 ER exit then
    kind MN-W = if 0 EW exit then
-   kind MN-KEEP = if RR# @ 0 > if 0 EW 0 ER then exit then
+   kind MN-KEEP = if RR# 0 > if 0 EW 0 ER then exit then
    \ A full-width store to the machine stack saves its register, which the lint
    \ does not follow through memory: the save reads only SP.
    kind MN-RR = if
@@ -614,39 +615,59 @@ DYNAMIC-BUFFER FLOWS n   variable FLOW#
    kind MN-BLR = if 1 18 lshift 1 -  30 CL-ADD CL-WOR  0 ER exit then
    kind MN-NONE = if a u PSEUDO-EFFECTS then ;
 
-$800 constant CMAX      \ callable labels plus discovered call targets
-$2000 constant EMAX     \ unique BL graph edges
-$10000 constant CNBUF-CAP
-create CNBUF CNBUF-CAP allot   variable CEND
-\ Each collected name's start is an address into the name buffer, so the starts
-\ are declared pointer storage; the lengths beside them stay plain cells.
-CMAX TYPED-BUFFER CNOFF ^u8
-create CNLEN CMAX cells allot
-create CWS CMAX cells allot     variable CN#
-create COPENED CMAX cells allot \ nonzero once pass 1 opens the entry
-create EFROM EMAX cells allot   create ETO EMAX cells allot   variable EN#
+\ A callable label or a discovered call target: its folded name, an offset
+\ and a length in CNBUF, the registers it writes, nonzero once pass 1 opens it.
+STRUCTURE routine DERIVE addr
+   FIELD off n
+   FIELD len n
+   FIELD ws n
+   FIELD opened n
+;STRUCTURE
+\ A unique BL graph edge, from the caller's label to the callee's.
+STRUCTURE edge DERIVE addr
+   FIELD caller n
+   FIELD callee n
+;STRUCTURE
+\ The labels' folded names, then the scratch C-JOIN$ and KEY$ fold. Growth
+\ moves the bytes, so a routine holds its offset.
+TYPED-VARIABLE CNBUF ^VEC:vector<u8>
+TYPED-VARIABLE LABELS ^VEC:vector<routine>
+TYPED-VARIABLE EDGES ^VEC:vector<edge>
 variable CX  variable EX
 
+: CN#  ( -- n )  LABELS @ VEC:COUNT ;
+: EN#  ( -- n )  EDGES @ VEC:COUNT ;
+: C-ROW  ( n -- ^routine )  LABELS @ swap VEC:AT ;
 : C-NAME  ( n -- str )
-   dup CNOFF @  swap CNLEN swap cells + @ ;
-: CWS@  ( n -- n )  CWS swap cells + @ ;
-: CWS!  ( n n -- )  CWS swap cells + ! ;
+   C-ROW {: l:^ :}
+   CNBUF @ l ROUTINE-OFF @ VEC:AT  l ROUTINE-LEN @ ;
+: CWS@  ( n -- n )  C-ROW ROUTINE-WS @ ;
+: CWS!  ( n n -- )  C-ROW ROUTINE-WS ! ;
 : C-WOR  ( n n -- ) {: idx m :}  idx CWS@ m or idx CWS! ;
-: C-OPENED!  ( n -- )  -1 swap cells COPENED + ! ;
-: C-OPENED?  ( n -- bool )  cells COPENED + @ 0<> ;
+: C-OPENED!  ( n -- )  -1 swap C-ROW ROUTINE-OPENED ! ;
+: C-OPENED?  ( n -- bool )  C-ROW ROUTINE-OPENED @ 0<> ;
 : C-FIND  ( str -- n ) {: a:^ u :}
    0 CX !
-   begin CX @ CN# @ < while
+   begin CX @ CN# < while
       CX @ C-NAME a u LINT-STR=CI if CX @ exit then
       CX @ 1+ CX !
    repeat  -1 ;
+: POOL-END  ( -- n )
+   CN# 0= if 0 exit then
+   CN# 1- C-ROW {: l:^ :}
+   l ROUTINE-OFF @  l ROUTINE-LEN @ + ;
+\ n bytes past the labels' names, n above 0; bytes already there stay.
+: SCRATCH  ( n -- ^u8 ) {: u:n :}
+   POOL-END {: end:n :}
+   CNBUF @ end u + VEC:RESIZE
+   CNBUF @ end VEC:AT ;
+\ The name may be the scratch itself, which SCRATCH leaves in place.
 : C-ADD  {: a u :}  ( -- idx )
-   CN# @ CMAX >= if s" clobber-lint: too many labels" EXIT-STATUS:FULL die then
-   CEND @ u + CNBUF-CAP > if s" clobber-lint: label store full" EXIT-STATUS:FULL die then
-   a u CNBUF CEND @ + FOLD-TO
-   CNBUF CEND @ +  CN# @ CNOFF !  u CNLEN CN# @ cells + !
-   0 CWS CN# @ cells + !  0 COPENED CN# @ cells + !
-   CEND @ u + CEND !  CN# @ dup 1+ CN# ! ;
+   POOL-END {: end:n :}
+   a u  u SCRATCH FOLD-TO
+   LABELS @ VEC:PUSH {: l:^ :}
+   end l ROUTINE-OFF !  u l ROUTINE-LEN !
+   CN# 1- ;
 : C-ENSURE  {: a u :}  ( -- idx )
    a u C-FIND dup 0 >= if exit then
    drop a u C-ADD ;
@@ -656,36 +677,43 @@ variable PKG-U
 
 \ The usings in force, innermost last: each one's package name and whether
 \ the open package opened it, so that its `;package` closes it.
-16 constant USING-MAX
-USING-MAX TYPED-BUFFER USING-A ^u8
-create USING-U USING-MAX cells allot
-create USING-IN USING-MAX cells allot
-variable USING#
+STRUCTURE use DERIVE addr
+   FIELD name ^u8
+   FIELD len n
+   FIELD in n
+;STRUCTURE
+TYPED-VARIABLE USINGS ^VEC:vector<use>
+
+: USING#  ( -- n )  USINGS @ VEC:COUNT ;
+: USE-ROW  ( n -- ^use )  USINGS @ swap VEC:AT ;
+: USING$  ( n -- str )
+   USE-ROW {: e:^ :}
+   e USE-NAME @  e USE-LEN @ ;
 
 : USING+ ( str -- ) {: a:^ u:n :}
-   USING# @ USING-MAX >= if s" clobber-lint: too many usings" EXIT-STATUS:FULL die then
-   a USING# @ USING-A !  u USING-U USING# @ cells + !
-   PKG-U @ 0<> bool>n USING-IN USING# @ cells + !
-   USING# @ 1+ USING# ! ;
+   USINGS @ VEC:PUSH {: e:^ :}
+   a e USE-NAME !  u e USE-LEN !
+   PKG-U @ 0<> bool>n e USE-IN ! ;
+
+: USING-POP ( -- )  USINGS @ USING# 1- VEC:RESIZE ;
 
 : USING-DROP ( -- )
-   USING# @ 0= if s" clobber-lint: ;using with no using open" EXIT-STATUS:DATAERR die then
-   USING# @ 1- USING# ! ;
+   USING# 0= if s" clobber-lint: ;using with no using open" EXIT-STATUS:DATAERR die then
+   USING-POP ;
 
 : USINGS-CLOSE ( -- )
-   begin USING# @ 0 > if USING# @ 1- cells USING-IN + @ 0<> else LINT-FALSE then while
-      USING# @ 1- USING# !
+   begin USING# 0 > if USING# 1- USE-ROW USE-IN @ 0<> else LINT-FALSE then while
+      USING-POP
    repeat ;
 
 \ A file starts outside any package and using.
-: SCOPE-START ( -- )  0 PKG-U !  0 USING# ! ;
+: SCOPE-START ( -- )  0 PKG-U !  USINGS @ 0 VEC:RESIZE ;
 
 \ `PKG:name` folded in the unused tail of the name pool, scratch until C-ADD
 \ commits a name.
 : C-JOIN$ ( str str -- str ) {: pa:^ pu:n a:^ u:n :}
    pu u + 1+ {: size:n :}
-   size CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" EXIT-STATUS:FULL die then
-   CNBUF CEND @ + {: dst:^ :}
+   size SCRATCH {: dst:^ :}
    pa pu dst FOLD-TO
    58 dst pu + c!
    a u dst pu 1+ + FOLD-TO
@@ -697,9 +725,9 @@ variable USING#
 
 \ The folded copy of a name in the label pool's unused tail.
 : KEY$  ( str -- str ) {: a:^ u:n :}
-   u CNBUF-CAP CEND @ - > if s" clobber-lint: label store full" EXIT-STATUS:FULL die then
-   a u CNBUF CEND @ + FOLD-TO
-   CNBUF CEND @ + u ;
+   u SCRATCH {: dst:^ :}
+   a u dst FOLD-TO
+   dst u ;
 
 \ Usings before globals binds as Habu does: it refuses a tail both reach. The
 \ quotation reads each candidate, folded in the pool's unused tail.
@@ -708,8 +736,8 @@ variable USING#
    PKG-U @ 0<> if
       PKG-A @ PKG-U @ a u C-JOIN$ find execute dup 0 >= if exit then drop
    then
-   USING# @ begin dup 0 > while
-      1- dup USING-A @  over cells USING-U + @  a u C-JOIN$ find execute
+   USING# begin dup 0 > while
+      1- dup USING$ a u C-JOIN$ find execute
       dup 0 >= if nip exit then drop
    repeat drop
    a u KEY$ find execute ;
@@ -717,20 +745,21 @@ variable USING#
 : C-LABEL$ ( str -- str ) {: a:^ u:n :}
    a u [: C-FIND ;] SCOPE-FIND dup 0 >= if C-NAME exit then drop
    a u ;
+: EFROM@  ( n -- n )  EDGES @ swap VEC:AT EDGE-CALLER @ ;
+: ETO@  ( n -- n )  EDGES @ swap VEC:AT EDGE-CALLEE @ ;
 : EDGE?  ( n n -- bool ) {: from to :}
    0 EX !
-   begin EX @ EN# @ < while
-      EX @ cells EFROM + @ from =  EX @ cells ETO + @ to = and if LINT-TRUE exit then
+   begin EX @ EN# < while
+      EX @ EFROM@ from =  EX @ ETO@ to = and if LINT-TRUE exit then
       EX @ 1+ EX !
    repeat  LINT-FALSE ;
 : EDGE+  {: from to :}  ( -- )
    from to EDGE? if exit then
-   EN# @ EMAX >= if s" clobber-lint: too many BL edges" EXIT-STATUS:FULL die then
-   from EFROM EN# @ cells + !  to ETO EN# @ cells + !
-   EN# @ 1+ EN# ! ;
+   EDGES @ VEC:PUSH {: e:^ :}
+   from e EDGE-CALLER !  to e EDGE-CALLEE ! ;
 
-$80 constant OMAX
-create OPENINGS OMAX cells allot   variable ON#
+\ The token of each label opening in the current definition.
+TYPED-VARIABLE OPENINGS ^VEC:vector<n>
 TYPED-VARIABLE CALA ^u8   \ start of the callee name CALLEE? resolved
 variable DI  variable OX  variable OPLO  variable CALU
 variable RNEXT  variable RDONE  variable CUR
@@ -758,8 +787,8 @@ DYNAMIC-BUFFER HOSTS n
 1 constant EMITTER   \ -1 when its body emits, else 0
 2 constant HOST-STRIDE
 variable HOST#  variable BOUND#  variable DEF#  variable SEED#
-\ Each row's folded name, the name map's key; DECL-FILE sums NAME-CAP.
-DYNAMIC-BUFFER HOST-NAMES u8   variable NAME-CAP  variable NAME-END
+\ Each row's folded name, the name map's key, where the map's copy never moves.
+TYPED-VARIABLE HOST-NAMES ^ARENA:arena
 \ The name map: a folded name in HOST-NAMES to its latest row.
 DYNAMIC-BUFFER HOST-MAP n
 \ Each token's UNKNOWN-AT? answer as a cell, UNSEEN until asked, once per pass.
@@ -776,7 +805,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
    v row HOST-STRIDE * field + HOSTS ! ;
 
 : HOSTS-CLOSE  ( -- )
-   HOSTS-RELEASE  HOST-NAMES-RELEASE  HOST-MAP-RELEASE  HREF-RELEASE
+   HOSTS-RELEASE  HOST-NAMES @ ARENA:RELEASE  HOST-MAP-RELEASE  HREF-RELEASE
    ROLES-RELEASE  LOCALS-RELEASE  BLOCKS-RELEASE  FLOWS-RELEASE ;
 
 : MAP-ROW  ( str -- n ) {: a:^ u:n :}
@@ -974,10 +1003,8 @@ variable HIDDEN
 
 \ The folded copy of a row's name in HOST-NAMES, kept while the map holds it.
 : HOST-NAME$  ( str -- str ) {: a:^ u:n :}
-   NAME-END @ u + NAME-CAP @ > if s" clobber-lint: host name store full" EXIT-STATUS:FULL die then
-   a u NAME-END @ HOST-NAMES FOLD-TO
-   NAME-END @ HOST-NAMES u
-   NAME-END @ u + NAME-END ! ;
+   HOST-NAMES @ u ARENA:ALLOC {: dst:^ len:n :}
+   a u dst FOLD-TO  dst len ;
 
 \ A row for the qualified name, whose body emits or not.
 : HOST-ROW  ( str bool -- ) {: a:^ u:n emits:bool :}
@@ -1000,17 +1027,17 @@ variable HIDDEN
 : EMITW-NAMES  ( [ str -- ] -- ) {: visit :}
    s" EMITW" visit execute  s" A64ICODE:EMITW" visit execute ;
 
-: SEED-SIZE  ( str -- )
-   nip NAME-CAP @ + NAME-CAP !  SEED# @ 1+ SEED# ! ;
+: SEED-COUNT  ( str -- )
+   2drop  SEED# @ 1+ SEED# ! ;
 
 : SEED-ROW  ( str -- )  LINT-TRUE HOST-ROW ;
 
 \ A row for each EMITW spelling and each colon definition DECL-FILE counted.
 : HOSTS-OPEN  ( -- )
-   0 SEED# !  [: SEED-SIZE ;] EMITW-NAMES
+   0 SEED# !  [: SEED-COUNT ;] EMITW-NAMES
    DEF# @ SEED# @ + {: rows:n :}
    rows HOST-STRIDE * HOSTS-RESERVE
-   NAME-CAP @ HOST-NAMES-RESERVE  0 NAME-END !
+   ARENA:NEW HOST-NAMES !
    rows 2 * >COUNT {: cap:count :}
    cap MAP:CELL-COUNT COUNT>N HOST-MAP-RESERVE
    0 HOST-MAP cap MAP:INIT
@@ -1052,14 +1079,13 @@ variable WI  variable WE
 
 \ Declarations precede body analysis, including labels owned by another file.
 \ Colon bodies are skipped so emitter operands cannot declare a label; DEF#
-\ counts them and NAME-CAP their qualified names' bytes.
+\ counts them.
 : DECL-FILE ( str -- )
    LINT-SOURCE:LOAD LINT-SOURCE:TEXT TOKENIZE SCOPE-START
    0 begin dup TN# @ < while
       {: k:n :}
       k TOK s" :" LINT-STR= if
          DEF# @ 1+ DEF# !
-         k 1+ TN# @ < if k 1+ TOK C-QUALIFIED$ nip NAME-CAP @ + NAME-CAP ! then
          k DEF-END 1+
       else
          k TOK s" variable" LINT-STR=CI k 1+ TN# @ < and if
@@ -1068,10 +1094,9 @@ variable WI  variable WE
          k SCOPE-STEP 1+
       then
    repeat drop ;
-: OPEN@  ( n -- n )  OPENINGS swap cells + @ ;
-: OPEN+  ( n -- )
-   ON# @ OMAX >= if s" clobber-lint: too many labels in definition" EXIT-STATUS:FULL die then
-   OPENINGS ON# @ cells + !  ON# @ 1+ ON# ! ;
+: ON#  ( -- n )  OPENINGS @ VEC:COUNT ;
+: OPEN@  ( n -- n )  OPENINGS @ swap VEC:AT @ ;
+: OPEN+  ( n -- )  OPENINGS @ VEC:PUSH ! ;
 \ The kind of the instruction at token k+2 when tokens k and k+1 name a label
 \ through LABEL@, else MN-NONE.
 : LABEL-SITE ( n n -- n ) {: k:n hi:n :}
@@ -1082,7 +1107,7 @@ variable WI  variable WE
 : LABEL-OPEN? ( n n -- bool )  LABEL-SITE MN-LBL = ;
 : BL-CALL-SITE? ( n n -- bool )  LABEL-SITE MN-BL = ;
 : COLLECT-OPENINGS ( n n -- ) {: lo:n hi:n :}
-   0 ON# !  lo OX !
+   OPENINGS @ 0 VEC:RESIZE  lo OX !
    begin OX @ hi < while
       OX @ hi LABEL-OPEN? if OX @ OPEN+ CLOBBER-CENSUS:ROUTINE+ then
       OX @ hi BL-CALL-SITE? if CLOBBER-CENSUS:CALL+ then
@@ -1102,7 +1127,7 @@ variable WI  variable WE
    DI @ OPLO ! ;
 
 : ROUTINE-NEXT-OPEN? ( -- bool )
-   RNEXT @ ON# @ >= if LINT-FALSE exit then
+   RNEXT @ ON# >= if LINT-FALSE exit then
    DI @ RNEXT @ OPEN@ = ;
 
 \ The walk ends at an opening only when no state lives: a path parked in a
@@ -1167,7 +1192,7 @@ variable WI  variable WE
 : PASS1-DEF  {: lo hi :}  ( -- )
    lo hi COLLECT-OPENINGS
    0 OX !
-   begin OX @ ON# @ < while
+   begin OX @ ON# < while
       OX @ OPEN@ TOK C-LABEL$ C-ENSURE dup CUR !  C-OPENED!
       CUR @ OX @ hi ROUTINE-SCAN
       OX @ 1+ OX !
@@ -1200,12 +1225,12 @@ variable CHANGED  variable EFF
    -1 CHANGED !
    begin CHANGED @ while
       0 CHANGED !  0 CX !
-      begin CX @ CN# @ < while
+      begin CX @ CN# < while
          CX @ CWS@ EFF !
          0 EX !
-         begin EX @ EN# @ < while
-            EX @ cells EFROM + @ CX @ = if
-               EFF @  EX @ cells ETO + @ CWS@  or EFF !
+         begin EX @ EN# < while
+            EX @ EFROM@ CX @ = if
+               EFF @  EX @ ETO@ CWS@  or EFF !
             then
             EX @ 1+ EX !
          repeat
@@ -1216,20 +1241,24 @@ variable CHANGED  variable EFF
    repeat ;
 
 variable APPLY-MASK
-create WNAME 128 allot       variable WLEN
+\ The folded name of the definition being read.
+TYPED-VARIABLE WNAME ^VEC:vector<u8>
 create NUMBUF 2 allot
 variable BAD  variable PR  variable CW  variable RETS  variable CALIDX
 variable TRACK-LR
 
 : WORD-NAME!  ( n -- )
-   TOK dup WLEN !  WNAME FOLD-TO ;
+   TOK {: a:^ u:n :}
+   WNAME @ u VEC:RESIZE
+   a u  WNAME @ 0 VEC:AT FOLD-TO ;
+: WNAME$  ( -- str )  WNAME @ VEC:SPAN SPAN:$ ;
 : DEC-TYPE  ( n -- ) {: n :}
    n 10 < if 48 n + NUMBUF c!  NUMBUF 1 type
    else 48 n 10 / + NUMBUF c!  48 n 10 mod + NUMBUF 1+ c!  NUMBUF 2 type then ;
 : REG-TYPE  ( n -- )  s" x" type DEC-TYPE ;
 : FINDING ( str n n -- ) {: fa fu reg cidx :}
    s" CLOBBER " type fa fu type s"  " type
-   WNAME WLEN @ type s" : " type reg REG-TYPE
+   WNAME$ type s" : " type reg REG-TYPE
    s"  written, clobbered by " type cidx C-NAME type
    s" , then read" type NL ;
 variable QUIET
@@ -1458,9 +1487,24 @@ variable LBL#  variable LX  variable GROWN
    s" src/habu/prof.f" visit execute
    s" src/habu/habu2.f" visit execute ;
 
+\ The tables one analysis grows.
+: TABLES-NEW  ( -- )
+   HEAP:ALLOCATOR {: al:^ :}
+   al 0 [type] n VEC:NEW RRS !
+   al 0 [type] u8 VEC:NEW CNBUF !
+   al 0 [type] routine VEC:NEW LABELS !
+   al 0 [type] edge VEC:NEW EDGES !
+   al 0 [type] use VEC:NEW USINGS !
+   al 0 [type] n VEC:NEW OPENINGS !
+   al 0 [type] u8 VEC:NEW WNAME ! ;
+: TABLES-DELETE  ( -- )
+   RRS @ VEC:DELETE  CNBUF @ VEC:DELETE  LABELS @ VEC:DELETE
+   EDGES @ VEC:DELETE  USINGS @ VEC:DELETE
+   OPENINGS @ VEC:DELETE  WNAME @ VEC:DELETE ;
+
 : FRESH-SCAN  ( -- )
-   0 PARENS? !  0 CN# !  0 CEND !  0 EN# !  CLOBBER-CENSUS:RESET
-   0 HOST# !  0 BOUND# !  0 DEF# !  0 NAME-CAP ! ;
+   0 PARENS? !  TABLES-NEW  CLOBBER-CENSUS:RESET
+   0 HOST# !  0 BOUND# !  0 DEF# ! ;
 
 \ The plain scan reads every token of a file outside comments, code outside
 \ definitions included, and counts `Lname LABEL@ LBL,` openings and
@@ -1500,7 +1544,7 @@ variable UNBOUND
    k TOK [: C-FIND ;] SCOPE-FIND {: c:n :}
    c 0 >= if c C-OPENED? if exit then then
    s" clobber-lint: call names no opened routine: " type fa fu type s"  " type
-   WNAME WLEN @ type s"  calls " type
+   WNAME$ type s"  calls " type
    c 0 >= if c C-NAME else k TOK then type NL
    UNBOUND @ 1+ UNBOUND ! ;
 
@@ -1533,7 +1577,7 @@ variable UNBOUND
    CLOSE-CLOBBERS
    PASS2-START
    [: PASS2-FILE ;] files execute
-   HOSTS-CLOSE ;
+   HOSTS-CLOSE  TABLES-DELETE ;
 
 : CLOBBER-LINT  ( -- )
    [: EACH-FILE ;] ANALYZE
