@@ -3552,51 +3552,42 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-OUT-BUF c MODEL-CALL:JOURNAL-GET @ execute ;
 
-: JOURNAL-FIELD ( str ^call -- str )
-   {: key:^ key-u:n c :}
-   c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-TOKEN {: kind:n :}
-   kind JSON:T-OBJ = if
-      JSON:READ-VALUE-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a u exit
-   then
-   kind JSON:T-STR = if
-      JSON:READ-SPAN$ {: a:^ u:n :} JSON:READ-CLOSE a 1- u 2 + exit
-   then
-   JSON:READ-CLOSE E-RESPONSE throw ;
+\ The member a journal record must carry, an object or a string.
+: JOURNAL-FIELD ( JSON:value str -- JSON:value )
+   JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF {: f :}
+         f JSON:OBJECT? f JSON:STRING? or 0= if E-RESPONSE throw then
+         f
+      ENDOF
+   ;MATCH ;
 
-: JOURNAL-DECODE ( str SPAN:span<u8> ^call -- n )
-   {: raw:^ raw-u:n target:SPAN:span<u8> c :}
-   c MODEL-CALL:READER raw raw-u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   target SPAN:$ JSON:READ-STR {: got:n :}
-   JSON:READ-CLOSE got ;
+: JOURNAL-STRING ( JSON:value str -- JSON:value )
+   JOURNAL-FIELD {: f :}
+   f JSON:STRING? 0= if E-RESPONSE throw then
+   f ;
 
-: JOURNAL-STRING-BUF ( str ^n ^call -- )
-   {: key:^ key-u:n buf:^ c :}
-   key key-u c JOURNAL-FIELD {: raw:^ raw-u:n :}
-   buf raw-u c RESET-SIZED
-   buf raw-u BUF:N>BLEN BUF:ENSURE
-   raw raw-u buf BUF:SPAN$ drop raw-u SPAN:MAKE c JOURNAL-DECODE
-   {: got:n :}
-   buf BUF:SPAN$ drop got BUF:N>BLEN buf BUF:REPLACE ;
+: JOURNAL-STRING-BUF ( JSON:value str ^n ^call -- )
+   {: rec key:^ key-u:n buf:^ c :}
+   rec key key-u JOURNAL-STRING {: f :}
+   buf f JSON:TEXT$ nip c RESET-SIZED
+   f [: BUF:N>BLEN buf BUF:REPLACE ;] JSON:WITH-STRING ;
 
-: JOURNAL-RESPONSE ( ^call -- )
-   {: c :}
-   s" response" c JOURNAL-FIELD {: raw:^ raw-u:n :}
-   raw raw-u raw-u c RESPONSE-BUF ROOM c JOURNAL-DECODE
-   c MODEL-CALL:RESPONSE-U ! ;
+: JOURNAL-RESPONSE ( JSON:value ^call -- )
+   {: rec c :}
+   rec s" response" JOURNAL-STRING
+   [: c KEEP-REPLY ;] JSON:WITH-STRING ;
 
-: JOURNAL-ORIGIN ( ^call -- )
-   {: c :}
-   s" origin" c JOURNAL-FIELD {: raw:^ raw-u:n :}
-   c MODEL-CALL:READER raw raw-u JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" kind" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-SPAN$ nip 0= if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-CLOSE ;
+: JOURNAL-ORIGIN ( JSON:value -- )
+   s" origin" JOURNAL-FIELD {: o :}
+   o JSON:OBJECT? 0= if E-RESPONSE throw then
+   o s" kind" JSON:FIND MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF {: k :}
+         k JSON:STRING? 0= if E-RESPONSE throw then
+         k s" " JSON:STRING= if E-RESPONSE throw then
+      ENDOF
+   ;MATCH ;
 
 \ The recorded call id a journal record carries, 0 when it has none.
 : JOURNAL-CALL-ID ( JSON:value -- n )
@@ -3627,18 +3618,18 @@ ENUM poll none fed spoiled done ;ENUM
    rec JSON:OBJECT? 0= if E-RESPONSE throw then
    rec JOURNAL-REFUSAL-FAULT {: refusal:n :}
    refusal 0<> if refusal throw then
-   c JOURNAL-ORIGIN
-   s" configuration" c JOURNAL-FIELD {: config:^ config-u:n :}
-   config config-u JSON-OBJECT? 0= if E-RESPONSE throw then
+   rec JOURNAL-ORIGIN
+   rec s" configuration" JOURNAL-FIELD {: config :}
+   config JSON:OBJECT? 0= if E-RESPONSE throw then
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN-CONFIG-BYTES ENDOF
       embed OF c EMBED-CONFIG-BYTES ENDOF
       tally OF c GEN-CONFIG-BYTES ENDOF
       compaction OF c GEN-CONFIG-BYTES ENDOF
    ;MATCH {: v:^ :}
-   v 0 VEC:RESIZE  config config-u v VEC:APPEND
-   c JOURNAL-RESPONSE
-   s" content" c REPLAY-CONTENT-BUF c JOURNAL-STRING-BUF
+   v 0 VEC:RESIZE  config JSON:TEXT$ v VEC:APPEND
+   rec c JOURNAL-RESPONSE
+   rec s" content" c REPLAY-CONTENT-BUF c JOURNAL-STRING-BUF
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF
          c PARSE-CHAT
