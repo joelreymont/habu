@@ -6,6 +6,7 @@ require src/lib/fs-anchored.f
 require src/lib/fs-list.f
 require src/lib/fd.f
 require src/lib/fmt.f
+require src/lib/task.f
 
 package FS-ANCHORED-TEST
 
@@ -212,6 +213,47 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
       FD-COUNT before T=
    loop
    s" repeated anchored reads leave no descriptors open" T-LABEL
+   FD-COUNT before T= ;
+
+\ Two tasks walking at once each get a work area: a shared one makes a task
+\ read the other's file, throw, or close a descriptor the other holds.
+16 SPAN-BUFFER: OUT-A
+16 SPAN-BUFFER: OUT-B
+variable PAR-READY
+variable PAR-BAD
+2000 constant PAR-ITERS
+TASK:MIN-STACK TASK:TASK PAR-A
+TASK:MIN-STACK TASK:TASK PAR-B
+
+: PAR-ROUND ( str SPAN:span<u8> str -- ) {: p:^ pu:n buf want:^ wu:n :}
+   ANCHOR @ >FD p pu buf FS:READ-FILE-AT {: got:n :}
+   got wu = if buf wu SPAN:TAKE SPAN:$ want wu STR:= if exit then then
+   1 PAR-BAD atomic-add drop ;
+: PAR-WORK ( str SPAN:span<u8> str -- ) {: p:^ pu:n buf want:^ wu:n :}
+   1 PAR-READY atomic-add drop
+   begin PAR-READY atomic@ 2 < while TASK:PAUSE repeat
+   PAR-ITERS 0 do p pu buf want wu PAR-ROUND loop
+   0 TASK:RETURN ;
+: PAR-WORK-A ( -- ) s" child/file" OUT-A s" original" PAR-WORK ;
+: PAR-WORK-B ( -- ) s" child/deep/file" OUT-B s" deep" PAR-WORK ;
+: PAR-JOIN ( ^n -- )
+   TASK:JOIN MATCH result
+      ok OF 0 T= ENDOF
+      err OF 0 T= ENDOF
+   ;MATCH ;
+: PARALLEL ( -- )
+   FD-COUNT {: before:n :}
+   ROOT FS:OPEN-DIR {: root:fd :}
+   root FD>N ANCHOR !
+   0 PAR-BAD !  0 PAR-READY !
+   ['] PAR-WORK-A PAR-A TASK:ACTIVATE
+   ['] PAR-WORK-B PAR-B TASK:ACTIVATE
+   s" each walking task finishes" T-LABEL
+   PAR-A PAR-JOIN PAR-B PAR-JOIN
+   s" each walking task reads its own file" T-LABEL
+   PAR-BAD @ 0 T=
+   root FS:CLOSE-DIR
+   s" two walking tasks leave no descriptors open" T-LABEL
    FD-COUNT before T= ;
 
 \ a grants search only: a path through it resolves, a read-open of it is
@@ -461,7 +503,7 @@ HB-TARGET-LINUX-KERNEL? 0= [if]
 public
 : MAIN ( -- )
    T-RESET SETUP
-   [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS
+   [: BASIC BAD-PATHS REPLACED TYPES ERRORS LEAKS PARALLEL
       SEARCH-ONLY NAMED FOLLOWS ;]
    [: TMP$ FS:REMOVE-TREE ;] finally
    T-REPORT s" fs-anchored-test: ok" type cr ;

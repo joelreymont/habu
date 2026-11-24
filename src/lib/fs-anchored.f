@@ -1,20 +1,21 @@
 split-str
 \ fs-anchored.f - descriptor-anchored lookup, and on Linux the opens, links,
 \ renames, removals, directories and stats of one name under a directory
-\ descriptor, and the path an open descriptor names. A walk owns one mapping
-\ and two fds. Each component opens relative to the live parent with
+\ descriptor, and the path an open descriptor names. A walk owns its task's
+\ work area and two fds. Each component opens relative to the live parent with
 \ O_NOFOLLOW (directories also O_DIRECTORY), so a replaced symlink cannot
 \ redirect a lookup and an open directory stays the anchor across a rename.
 \ The walk does not prove the anchor is the intended root, nor guard a lookup
 \ against cross-root renames, hard links, mounts or content changes.
 \ Programs outside this tree call its public words.
 \ STORAGE CLASS. CALLER-OWNED: every descriptor answered is the caller's.
-\ TASK-LOCAL: a name's NUL copy, FD-LINKZ's path and TRY-STAT-AT's stat, in
-\ fs.f's band.
+\ TASK-LOCAL: a walk's work area, a TASK:+USERS row apart from every band a
+\ caller's path may live in; a name's NUL copy, FD-LINKZ's path and
+\ TRY-STAT-AT's stat, in fs.f's band.
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/core/compile-reads.f
-require src/lib/memory.f
+require src/lib/task.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/string.f
@@ -30,6 +31,9 @@ private
 A-PATH-OFF PATHZ-CAP + CELL 1- + CELL negate and constant A-STAT-OFF
 A-STAT-OFF STAT-CAP + constant A-PROBE-OFF
 A-PROBE-OFF 1 + constant A-WORK-BYTES
+\ The work area: the descriptor cells cleanup closes, the path snapshot, the
+\ stat buffer and the probe byte.
+A-WORK-BYTES TASK:+USERS A-WORK-ROW u8
 4 constant A-INTERRUPTED
 
 PROCESS-SYMBOLS
@@ -46,10 +50,11 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : A-STAT-BUF ( ^u8 -- ^u8 ) A-STAT-OFF + ;
 : A-PROBE-BUF ( ^u8 -- ^u8 ) A-PROBE-OFF + ;
 
-: A-MAP ( -- ^u8 NUM:alloc-byte-len )
-   A-WORK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: work:^ len:NUM:alloc-byte-len :}
-   -1 work A-CUR! -1 work A-NEXT!
-   work len ;
+\ No walk calls another, so one area per task serves every walk it makes.
+: A-WORK ( -- ^u8 )
+   0 A-WORK-ROW {: work:^ :}
+   -1 work A-CUR! -1 work A-NEXT! 0 work A-RESULT-CELL A-SLOT !
+   work ;
 
 \ close(2) can have retired a descriptor even on failure. Clear its slot first.
 : A-CLOSE-SLOT ( ^u8 n -- n ) {: work:^ idx:n :}
@@ -65,14 +70,13 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ The call's code and its cause, 0 0 when it succeeded. The primary cause was
 \ taken before cleanup's close calls replaced libc errno.
-: A-SETTLE ( ^u8 NUM:alloc-byte-len n n -- n n )
-   {: work:^ len:NUM:alloc-byte-len code:n cause:n :}
+: A-SETTLE ( ^u8 n n -- n n )
+   {: work:^ code:n cause:n :}
    work A-CLEANUP {: closing:n :}
-   work len MEM:RELEASE-BYTES
    code 0<> if code cause exit then
    closing 0<> if E-FS-IO closing exit then
    0 0 ;
-: A-FINISH ( ^u8 NUM:alloc-byte-len n n -- )
+: A-FINISH ( ^u8 n n -- )
    A-SETTLE {: code:n cause:n :}
    cause CAUSE!
    code 0<> if code throw then ;
@@ -181,13 +185,13 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : A-DIR-AT ( fd str -- n n n ) {: anchor:fd src:^ u:n :}
    COMPILE-READS:MISS
    0 CAUSE!
-   A-MAP {: work:^ len:NUM:alloc-byte-len :}
+   A-WORK {: work:^ :}
    anchor src u work [: A-OPEN-AT-RUN ;] catch {: code:n :}
    drop 2drop drop
    ERRNO {: cause:n :}
    work A-CUR@ {: opened:n :}
    code 0= if -1 work A-CUR! then
-   opened work len code cause A-SETTLE ;
+   opened work code cause A-SETTLE ;
 
 \ TRY-OPEN-DIR-AT's cause for the walk's code: EINVAL for a refused path.
 : A-DIR-CAUSE ( n n -- n ) {: code:n cause:n :}
@@ -254,13 +258,13 @@ public
 : OPEN-DIR ( str -- fd ) {: src:^ u:n :}
    COMPILE-READS:MISS
    0 CAUSE!
-   A-MAP {: work:^ len:NUM:alloc-byte-len :}
+   A-WORK {: work:^ :}
    src u work [: A-OPEN-RUN ;] catch {: code:n :}
    drop 2drop
    ERRNO {: cause:n :}
    work A-CUR@ {: opened:n :}
    code 0= if -1 work A-CUR! then
-   work len code cause A-FINISH
+   work code cause A-FINISH
    opened >FD ;
 : OPEN-DIR-AT ( fd str -- fd )
    A-DIR-AT {: opened:n code:n cause:n :}
@@ -281,12 +285,12 @@ public
    {: anchor:fd src:^ u:n dst :}
    COMPILE-READS:MISS
    0 CAUSE!
-   A-MAP {: work:^ len:NUM:alloc-byte-len :}
+   A-WORK {: work:^ :}
    anchor src u dst work [: A-READ-RUN ;] catch {: code:n :}
    drop 2drop 2drop
    ERRNO {: cause:n :}
    work A-RESULT-CELL A-SLOT @ {: got:n :}
-   work len code cause A-FINISH
+   work code cause A-FINISH
    got ;
 : CLOSE-DIR ( fd -- )
    0 CAUSE!
