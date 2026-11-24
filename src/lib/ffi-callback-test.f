@@ -280,11 +280,11 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" == declarations rejected" SAY
    [: DECL-BAD-TOKEN ;]
       s" error[E-FFI-SYNTAX]: unknown argument type 'nosuch'"
-      s" = help: an argument is n, i32, u32, r or ^u8" RECORD?
-      s" an argument type outside n i32 u32 r ^u8: E-FFI-SYNTAX" FACT
+      s" = help: an argument is n, i32, u32, r, str or ^u8" RECORD?
+      s" an argument type outside n i32 u32 r str ^u8: E-FFI-SYNTAX" FACT
    [: DECL-PTR-WORD ;]
       s" error[E-FFI-SYNTAX]: unknown argument type 'ptr'"
-      s" = help: an argument is n, i32, u32, r or ^u8" RECORD?
+      s" = help: an argument is n, i32, u32, r, str or ^u8" RECORD?
       s" a pointer spelled ptr, not ^u8: E-FFI-SYNTAX" FACT
    [: DECL-BAD-PTR ;] s" E-FFI-SYNTAX" REJECTS? s" a pointer that is not ^u8: E-FFI-SYNTAX" FACT
    [: DECL-TWO-RESULTS ;] s" E-FFI-SYNTAX" REJECTS? s" two results: E-FFI-SYNTAX" FACT
@@ -639,7 +639,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : WANT-DECLARATIONS ( -- )
    s" == declarations rejected" W
-   s" ok   an argument type outside n i32 u32 r ^u8: E-FFI-SYNTAX" W
+   s" ok   an argument type outside n i32 u32 r str ^u8: E-FFI-SYNTAX" W
    s" ok   a pointer spelled ptr, not ^u8: E-FFI-SYNTAX" W
    s" ok   a pointer that is not ^u8: E-FFI-SYNTAX" W
    s" ok   two results: E-FFI-SYNTAX" W

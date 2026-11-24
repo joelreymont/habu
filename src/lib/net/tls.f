@@ -1,4 +1,3 @@
-split-str
 \ tls.f - TLS client sessions over mbedTLS 4, Arch's mbedtls, Linux only. A
 \ session speaks TLS on a connected, non-blocking stream socket the caller
 \ owns and closes. No word waits: want-read or want-write asks the caller to
@@ -147,9 +146,9 @@ FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
    again ;
 
 : SEND-BODY ( n str -- n )
-   {: sock:n buf:^ u:n :}
+   {: sock:n buf:str :}
    begin
-      sock buf u MSG-NOSIGNAL SEND-CALL {: put:n :}
+      sock buf MSG-NOSIGNAL SEND-CALL {: put:n :}
       put 0 >= if put exit then
       FFI:ERRNO {: e:n :}
       e FD:EAGAIN# = if WANT-WRITE exit then
@@ -158,13 +157,13 @@ FUNCTION: SEND-CALL send ( n str n -- n ) ;FUNCTION
 
 CALLBACK: BIO-RECEIVE ( n ^u8 n -- i32 ) RECEIVE-FAILED FALLBACK ;CALLBACK
 ' RECEIVE-BODY BIO-RECEIVE-BODY !
-CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
+CALLBACK: BIO-SEND ( n str -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 ' SEND-BODY BIO-SEND-BODY !
 
 
-: SSL ( ^session -- ^u8 ) SESSION-SSL SPAN:$ drop ;
-: CONFIG ( ^session -- ^u8 ) SESSION-CONFIG SPAN:$ drop ;
-: CHAIN ( ^session -- ^u8 ) SESSION-CHAIN SPAN:$ drop ;
+: SSL ( ^session -- ^u8 ) SESSION-SSL SPAN:$ STR:DATA ;
+: CONFIG ( ^session -- ^u8 ) SESSION-CONFIG SPAN:$ STR:DATA ;
+: CHAIN ( ^session -- ^u8 ) SESSION-CHAIN SPAN:$ STR:DATA ;
 
 : PREPARE ( ^session fd -- )
    {: s:^ sock:fd :}
@@ -189,9 +188,9 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 \ The trust file into the chain. A negative answer is a file unread or with
 \ no certificate parsed; a positive one counts those skipped beside one kept.
 : TRUST ( ^session str -- n )
-   {: s:^ path:^ u:n :}
-   path u FS:>PATHZ {: z:^ :}
-   path u z COMPILE-READS:FILE+
+   {: s:^ path:str :}
+   path FS:>PATHZ {: z:^ :}
+   path z COMPILE-READS:FILE+
    s CHAIN z CHAIN-PARSE ;
 
 : CONFIGURE ( ^session -- n )
@@ -204,13 +203,13 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 \ The name SNI sends and the peer's certificate must carry; BAD-INPUT for
 \ one FFI:CSTR cannot spell.
 : NAME ( ^session str -- n )
-   {: s:^ host:^ u:n :}
-   u MAX-HOST > if BAD-INPUT exit then
-   host u 0 STR:INDEX-OF MATCH option
+   {: s:^ host:str :}
+   host STR:LEN MAX-HOST > if BAD-INPUT exit then
+   host 0 STR:INDEX-OF MATCH option
       none OF ENDOF
       some OF drop BAD-INPUT exit ENDOF
    ;MATCH
-   host u s SESSION-HOST FFI:CSTR {: z:^ :}
+   host s SESSION-HOST FFI:CSTR {: z:^ :}
    s SSL z SSL-HOST ;
 
 : BIND ( ^session -- )
@@ -222,10 +221,10 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 
 \ 0 once the session is ready for its handshake, else the first failure.
 : READY ( ^session str -- n )
-   {: s:^ host:^ u:n :}
+   {: s:^ host:str :}
    s CONFIGURE {: made:n :}
    made 0<> if made exit then
-   s host u NAME {: named:n :}
+   s host NAME {: named:n :}
    named 0<> if named exit then
    s BIND 0 ;
 
@@ -270,16 +269,16 @@ public
 \ A trust path FS cannot spell is `distrusted` with X509_FILE_IO_ERROR and
 \ makes nothing; a host too long or holding a 0 byte is `failed` BAD_INPUT.
 : START ( ^session fd str str -- tls-step )
-   {: s:^ sock:fd host:^ hu:n path:^ pu:n :}
-   path pu FS:PATHZ? 0= if
+   {: s:^ sock:fd host:str path:str :}
+   path FS:PATHZ? 0= if
       FILE-IO construct tls-step distrusted exit
    then
    s sock PREPARE
    CRYPTO-INIT {: init:n :}
    init 0<> if init construct tls-step failed exit then
-   s path pu TRUST {: kept:n :}
+   s path TRUST {: kept:n :}
    kept 0 < if kept construct tls-step distrusted exit then
-   s host hu READY >STEP ;
+   s host READY >STEP ;
 
 \ One step of the handshake. `done` frees the trust chain; the configuration
 \ keeps naming it, emptied.
@@ -304,8 +303,8 @@ public
 \ mbedtls_ssl_write must be called again with the same span and length,
 \ because it may already hold part of them in its own record.
 : WRITE ( ^session str -- tls-io )
-   {: s:^ buf:^ u:n :}
-   s SSL buf u SSL-WRITE >IO ;
+   {: s:^ buf:str :}
+   s SSL buf SSL-WRITE >IO ;
 
 \ Whether the session holds bytes read from the socket that READ has not
 \ handed out: decrypted data past what READ took, or record bytes not yet

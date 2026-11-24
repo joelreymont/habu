@@ -223,6 +223,8 @@ CODEGEN:BUFFER ROW-TEXT              \ the body's row
 2 constant BY-U32
 3 constant BY-PTR
 4 constant BY-R
+5 constant BY-STR                    \ a str's pointer; BY-LEN reads its length
+6 constant BY-LEN
 
 \ The argument reads, in order: each one's register index and reader (BY-*).
 INT-REGS FLOAT-REGS + TYPED-BUFFER READ-AT n
@@ -309,6 +311,7 @@ variable OPEN
    a u s" n" STR:= if i f BY-N INT+ exit then
    a u s" i32" STR:= if i f BY-I32 INT+ exit then
    a u s" u32" STR:= if i f BY-U32 INT+ exit then
+   a u s" str" STR:= if i f BY-STR INT+ BY-LEN INT+ exit then
    a u 1 min s" ^" STR:= if
       a u s" ^u8" STR:= 0= if
          s" expected u8 after ^, found " a 1 + u 1 -
@@ -322,7 +325,7 @@ variable OPEN
       i f 1 + exit
    then
    s" unknown argument type " a u
-   s" an argument is n, i32, u32, r or ^u8" TOKEN-REJECT ;
+   s" an argument is n, i32, u32, r, str or ^u8" TOKEN-REJECT ;
 
 : OUT-TOKEN ( str -- )
    {: a:^ u:n :}
@@ -378,6 +381,8 @@ variable OPEN
    by BY-I32 = if postpone I32-ARG@ exit then
    by BY-U32 = if postpone U32-ARG@ exit then
    by BY-PTR = if postpone PTR-ARG@ exit then
+   by BY-STR = if postpone PTR-ARG@ exit then
+   by BY-LEN = if postpone ARG@  postpone >str exit then
    postpone FARG@ ;
 
 : STORE-ITEM ( -- )
@@ -391,10 +396,13 @@ variable OPEN
 \ The type of the argument reader BY (BY-*) hands the body.
 : ARG-TYPE$ ( n -- str ) {: by:n :}
    by BY-PTR = if s" ^u8" exit then
+   by BY-STR = if s" str" exit then
+   by BY-LEN = if s" " exit then
    by BY-R = if s" r" exit then
    s" n" ;
 
 : ROW+ ( str -- )
+   dup 0= if 2drop exit then
    ROW-TEXT CODEGEN:APPEND-STRING  32 ROW-TEXT CODEGEN:APPEND-BYTE ;
 
 \ The body's row: the arguments as it takes them, then its result.
