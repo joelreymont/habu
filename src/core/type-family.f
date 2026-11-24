@@ -220,6 +220,7 @@ EXPORT CHECK:CW-MEMBER-OFFSET
 EXPORT CHECK:CW-MEMBER-SPAN
 EXPORT CHECK:CW-MEMBER-STRIDE
 EXPORT CHECK:CWIN-ADD
+EXPORT CHECK:DAMAGED-OBJECT
 EXPORT CHECK:DCUR
 EXPORT CHECK:EFFECT-TYPE-FAM
 EXPORT CHECK:ENTRIES-PENDING
@@ -3410,17 +3411,10 @@ create ET-CH 8 allot
 
 PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
 PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
-200 constant ER-MSG-CAP
-create ER-MSG ER-MSG-CAP allot
 
-\ A text this tree's writer did not write: a broken build, or a first-generation
-\ engine whose host laid its entries in an older ENTRY-TEXT$ text.
+\ The type entry being read does not read as this tree's writer wrote it.
 : ER-BAD ( -- )
-   s" tfam: bad type entry " {: a:^ u:n :}
-   u 0 ?do a i + c@ ER-MSG i + c! loop
-   ER-NAME-U @ ER-MSG-CAP u - min {: k:n :}
-   k 0 ?do ER-NAME @ i + c@ ER-MSG u + i + c! loop
-   ER-MSG u k + EXIT-STATUS:INTERNAL die ;
+   s" type entry"  ER-NAME @ ER-NAME-U @  DAMAGED-OBJECT ;
 
 
 \ The index of the last ':' in a name, -1 for none.

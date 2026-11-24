@@ -1,9 +1,9 @@
 ---
-title: "Treat a malformed object's facts as stale"
-status: open
+title: "Stop loudly on a damaged object's facts"
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-23T18:45:09.566911+01:00"
 ---
 
-Problem: a type entry's or undefine's text crosses a piece or image file (src/habu/linker.f:5417), but its reader (type-family.f ER-HEAD/ER-FIELD about :3600-3660; checker.f READ-UNDEFINE :17950-17954) passes raw numbers on and dies in TFAM-DECL, TFAM-PK!, TFAM-LAYOUT!, LAY-ADD, PF-ADD; linker.f FACTS-CK (:3798) checks only the row kind. A corrupt object on disk reaches 27 internal dies (census .out/census/dies-b.md class REJECT, a.md class OTHER). Acceptance: the reader checks each field once and FACTS-CK marks such an object BAD, so a warm build recompiles it as a cold build would; the dies in the declaration words go. Depends: none. Claim: unassigned.
+Problem: a saved object's type entry is read lazily after its link (src/core/type-family.f ER-READ, ER-HEAD, ER-BODY, ER-FIELD, ER-NODE), and an undefine's text during it (src/core/checker.f READ-UNDEFINE). A malformed text ends the build in an internal die (ER-BAD, READ-UNDEFINE's, or TFAM-DECL's, TFAM-PK!'s, TFAM-LAYOUT!'s, LAY-ADD's and PF-ADD's range dies) that names no damaged object and no fix. docs/architecture.md "Builds": a damaged object stops the build. Acceptance: (1) each malformed text ends the build in one E-DAMAGED-OBJECT record naming the type or word and how to recover, exit DATAERR; (2) the reader checks each number's range once where it reads it, and the declaration words' dies that only the reader could reach go. Depends: none. Claim: agent=worker workspace=.jj-ws.noindex/jerry-objbad.

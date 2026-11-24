@@ -233,6 +233,12 @@ stamp>/<target>/<mode>/<source path>.hfo`, so a new hb compiles every file
 once. hb-build replaces its output only when the image differs apart from its
 signature, and writes a file it generates only when the text differs.
 
+**A damaged object stops the build.** hb syncs an object before it renames it
+into place (src/lib/fs-mutate.f REPLACE-CACHED), so a crash leaves the old
+file, the whole new one or none. An object that does not read as hb wrote it
+was changed outside hb: the build ends with an error that says what is damaged
+and how to recover, and never compiles around it.
+
 **A part whose load a link could not repeat never links** and compiles on
 every build: one that starts or ends inside an open package or `using`, one
 whose request is not a plain one at its top level (made inside a definition,
