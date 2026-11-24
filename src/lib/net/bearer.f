@@ -11,8 +11,10 @@ split-str
 \ As a client, TOKEN gets a token from the token endpoint CLIENT! names, for
 \ the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of), and
 \ REFRESH renews one with a refresh grant (RFC 6749 6); CURRENT keeps the
-\ client's own token per scope. Every URL BEARER fetches or advertises is
-\ https, or http to a loopback IP literal for tests.
+\ client's own token per scope. IDENTITY-TOKEN appends a managed identity's
+\ token for a resource from Azure's metadata service at an origin (IMDS$),
+\ kept per origin and resource. Every other URL BEARER fetches or advertises
+\ is https, or http to a loopback IP literal for tests.
 \ STORAGE CLASS. PROCESS-WIDE: the issuer, and the challenges, resource and
 \ scope METADATA! states, written before HTTP serves; the key set, read and
 \ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
@@ -20,8 +22,9 @@ split-str
 \ under KEYS-LOCK, and the semaphore that wakes them, which ISSUER! sets up;
 \ tables indexed by HTTP:WORKER-SLOT holding each request's token and
 \ scratch; the client CLIENT! states, written before any TOKEN or REFRESH;
-\ and the rows CURRENT keeps, one per scope, written under ROWS-LOCK when
-\ linked and each under its own lock after, which CLIENT! empties.
+\ and the rows CURRENT keeps, one per scope, and IDENTITY-TOKEN keeps, one
+\ per origin and resource, written under ROWS-LOCK when linked and each under
+\ its own lock after; CLIENT! empties CURRENT's.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
 \
 \ Key lookup: a worker looks for the token's kid in the cached key set under
@@ -34,6 +37,7 @@ split-str
 \ has not returned counts itself again and waits.
 
 require src/lib/string.f
+require src/lib/string-option.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/base64.f
@@ -796,18 +800,21 @@ private
 
 ENUM kept-state empty kept failed ;ENUM
 
-\ A scope's kept token: state says whether one is kept or the last ask
-\ failed; CURRENT asks again once life seconds have passed since the epoch
-\ second before the kept token's ask; asks counts the asks ended, and
-\ region holds the row's lock.
+\ A kept token: CURRENT's for a scope, or, when identity is set,
+\ IDENTITY-TOKEN's for the resource in scope from the IMDS at origin. state
+\ says whether one is kept or the last ask failed; it is asked again once
+\ life seconds have passed since the epoch second before the kept token's
+\ ask; asks counts the asks ended, and region holds the row's lock.
 STRUCTURE row DERIVE addr
    FIELD next ^row
+   FIELD identity bool
    FIELD state kept-state
    FIELD since n
    FIELD life n
    FIELD code n
    FIELD asks n
    FIELD region SPAN:span<u8>
+   FIELD origin ^VEC:vector<u8>
    FIELD scope ^VEC:vector<u8>
    FIELD token ^VEC:vector<u8>
    FIELD answer ^VEC:vector<u8>
@@ -815,7 +822,7 @@ STRUCTURE row DERIVE addr
 
 TYPED-VARIABLE NEWEST ^row
 
-\ Held to find a scope's row or link a new one, never across a TOKEN.
+\ Held to find, link or walk the rows, never across an ask.
 TASK:FACILITY ROWS-LOCK
 ROWS-LOCK TASK:FACILITY-INIT
 
@@ -824,13 +831,17 @@ ROWS-LOCK TASK:FACILITY-INIT
 : LISTED ( R [ R -- S ] -- S )
    ROWS-LOCK TASK:GET [: ROWS-LOCK TASK:RELEASE ;] finally ;
 
+\ Empties CURRENT's rows. The walk holds ROWS-LOCK: IDENTITY-TOKEN may link
+\ a row while CLIENT! runs.
 : DROP-KEPT ( -- )
-   NEWEST @
-   begin dup NULL-PTR <> while
-      dup ROW-TOKEN @ 0 VEC:RESIZE
-      construct kept-state empty over ROW-STATE !
-      ROW-NEXT @
-   repeat drop ;
+   [: NEWEST @
+      begin dup NULL-PTR <> while
+         dup ROW-IDENTITY @ 0= if
+            dup ROW-TOKEN @ 0 VEC:RESIZE
+            construct kept-state empty over ROW-STATE !
+         then
+         ROW-NEXT @
+      repeat drop ;] LISTED ;
 
 public
 
@@ -941,10 +952,11 @@ private
    code 400 >= code 500 < and if E-REFUSED exit then
    E-RESPONSE ;
 
-\ REQUESTED? left the vector empty with EMPTIED's room: the answer is appended
-\ to it, at most TOKEN-CAP bytes, so the block never moves.
-: RECEIVED ( CURL:handle ^VEC:vector<u8> -- option<CURL:http-status> )
-   {: h:CURL:handle buf:^ :}
+\ The vector is empty with EMPTIED's room: the answer is appended to it, at
+\ most TOKEN-CAP bytes, so the block never moves.
+: RECEIVED ( CURL:handle ^VEC:vector<u8> [ CURL:http-status -- n ]
+   -- option<CURL:http-status> )
+   {: h:CURL:handle buf:^ map :}
    h TOKEN-CAP >LEN buf CURL:PERFORM
    MATCH CURL:fetch-result
       response OF drop OPTION:SOME ENDOF
@@ -955,28 +967,22 @@ private
          s" token answer " LOG:TEXT+  status CURL:HTTP-STATUS>N LOG:INT+
          s"  past " LOG:TEXT+  TOKEN-CAP LOG:INT+  s"  bytes" LOG:TEXT+
          LOG:;LINE
-         status STATUS-ERROR throw ENDOF
+         status map execute throw ENDOF
       failed OF buf 0 VEC:RESIZE CURL-FAULT OPTION:NONE ENDOF
    ;MATCH ;
 
-: POST ( CURL:handle ^VEC:vector<u8> -- option<CURL:http-status> )
-   {: h:CURL:handle buf:^ :}
-   h buf REQUESTED? if h buf RECEIVED else OPTION:NONE then ;
-
-\ POST's status in place of the third cell, the handle and vector kept for
-\ catch.
-: POSTED ( CURL:handle ^VEC:vector<u8> option<CURL:http-status>
-   -- CURL:handle ^VEC:vector<u8> option<CURL:http-status> )
-   drop {: h:CURL:handle buf:^ :} h buf h buf POST ;
-
-: EXCHANGE ( ^VEC:vector<u8> -- option<CURL:http-status> )
-   {: buf:^ :}
+: EXCHANGE ( ^VEC:vector<u8> [ CURL:handle -- bool ]
+   [ CURL:http-status -- n ] -- option<CURL:http-status> )
+   {: buf:^ set map :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF {: h:CURL:handle :}
-         h buf OPTION:NONE [: POSTED ;] catch {: code:n :}
-         code 0<> if 2drop drop h CURL:CLEANUP buf 0 VEC:RESIZE code throw then
-         nip nip h CURL:CLEANUP ENDOF
+         [: h set execute
+            if h buf map RECEIVED else OPTION:NONE then ;] catch
+         {: got code:n :}
+         h CURL:CLEANUP
+         code 0<> if buf 0 VEC:RESIZE code throw then
+         got ENDOF
       failed OF CURL-FAULT buf 0 VEC:RESIZE OPTION:NONE ENDOF
    ;MATCH ;
 
@@ -989,9 +995,23 @@ private
       some OF room INTO-ROOM ENDOF
    ;MATCH ;
 
-\ The positive integer expires_in of a token answer, -1 when it lacks one.
+: SECONDS ( JSON:value -- n )
+   {: v :}
+   v JSON:STRING? if
+      v [: STR:PARSE-POS MATCH option
+         none OF -1 ENDOF
+         some OF ENDOF
+      ;MATCH ;] JSON:WITH-STRING exit
+   then
+   v INT-OF 0= if drop -1 then ;
+
+\ The positive expires_in of a token answer, a JSON integer or a digit
+\ string (IMDS and Entra's v1 endpoint send one), -1 when it lacks one.
 : LIFETIME ( JSON:value -- n )
-   s" expires_in" MEMBER-INT 0= if drop -1 exit then {: secs:n :}
+   s" expires_in" JSON:FIND MATCH option
+      none OF -1 ENDOF
+      some OF SECONDS ENDOF
+   ;MATCH {: secs:n :}
    secs 0 > if secs else -1 then ;
 
 \ The refresh_token string of a token answer decoded into room, its length;
@@ -1059,16 +1079,47 @@ private
 
 : STATED ( -- ) ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then ;
 
-: ASKED ( ^VEC:vector<u8> -- n )
-   {: buf:^ :}
-   buf EXCHANGE MATCH option
+: ASKED ( ^VEC:vector<u8> [ CURL:handle -- bool ]
+   [ CURL:http-status -- n ] -- n )
+   {: buf:^ set map :}
+   buf set map EXCHANGE MATCH option
       none OF E-TRANSFER throw ENDOF
       some OF ENDOF
    ;MATCH {: status:CURL:http-status :}
    status CURL:HTTP-STATUS>N {: code:n :}
    code 200 >= code 300 < and if code exit then
    code buf ANSWERED
-   status STATUS-ERROR throw ;
+   status map execute throw ;
+
+\ The IMDS request for the resource set on the handle, its URL built in the
+\ vector, then emptied to EMPTIED's room for RECEIVED; whether every setting
+\ took, logging the first that did not. IMDS must bypass proxies.
+: IMDS-SET? ( CURL:handle str str ^VEC:vector<u8> -- bool )
+   {: h:CURL:handle o:^ ou:n res:^ ru:n buf:^ :}
+   buf EMPTIED  o ou buf VEC:APPEND
+   s" /metadata/identity/oauth2/token?api-version=2018-02-01&resource="
+   buf VEC:APPEND  res ru buf URI:QUERY-ENCODE
+   h buf VEC:SPAN SPAN:$ CURL:URL!  buf 0 VEC:RESIZE
+   SET? 0= if false exit then
+   h s" Metadata: true" CURL:HEADER+ SET? 0= if false exit then
+   h s" " CURL:PROXY! SET? 0= if false exit then
+   h TOKEN-TIMEOUT-MS >MS CURL:TIMEOUT! SET? ;
+
+\ 404 and 410 are E-UNAVAILABLE: Azure answers them while IMDS updates.
+: IMDS-ERROR ( CURL:http-status -- n )
+   {: status:CURL:http-status :}
+   status CURL:HTTP-STATUS>N {: code:n :}
+   code 404 = code 410 = or if E-UNAVAILABLE exit then
+   status STATUS-ERROR ;
+
+\ The resource's token from the IMDS at the origin, borrowed from the vector
+\ as TOKEN's, then its expires_in.
+: IMDS-TOKEN ( str str ^VEC:vector<u8> -- str n )
+   {: o:^ ou:n res:^ ru:n buf:^ :}
+   buf [: o ou res ru buf IMDS-SET? ;] [: IMDS-ERROR ;] ASKED
+   buf false ISSUED
+   {: a:^ u:n r:^ rn:n secs:n :}
+   a u secs ;
 
 public
 
@@ -1079,14 +1130,16 @@ public
 \ CURL:UNAVAILABLE? accepts; E-REFUSED for another 4xx, the vector then
 \ holding the issuer's answer, empty past TOKEN-CAP; E-RESPONSE for a 2xx
 \ that is not JSON naming each member once or lacks an access_token string or
-\ a positive integer expires_in, or any other status. Each of those failures first logs one line tagged bearer,
-\ never a 2xx answer's text. A scope or assertion must not lie in the vector.
+\ a positive integer expires_in, a number or a digit string, or any other
+\ status. Each of those failures first logs one line tagged bearer, never a
+\ 2xx answer's text. A scope or assertion must not lie in the vector.
 \ E-HTTP-STATE before CLIENT!.
 : TOKEN ( str grant ^VEC:vector<u8> -- str n )
    {: scope:^ su:n g buf:^ :}
    STATED
    scope su g buf FORM
-   buf ASKED buf false ISSUED {: a:^ u:n r:^ ru:n secs:n :}
+   buf [: buf REQUESTED? ;] [: STATUS-ERROR ;] ASKED
+   buf false ISSUED {: a:^ u:n r:^ ru:n secs:n :}
    a u secs ;
 
 
@@ -1101,55 +1154,65 @@ public
    {: scope:^ su:n r:^ ru:n buf:^ :}
    STATED
    scope su r ru buf REFRESH-FORM
-   buf ASKED buf true ISSUED ;
+   buf [: buf REQUESTED? ;] [: STATUS-ERROR ;] ASKED
+   buf true ISSUED ;
 
 private
 
+: ROW-ORIGIN$ ( ^row -- str ) ROW-ORIGIN @ VEC:SPAN SPAN:$ ;
 : ROW-SCOPE$ ( ^row -- str ) ROW-SCOPE @ VEC:SPAN SPAN:$ ;
 : ROW-KEPT$ ( ^row -- str ) ROW-TOKEN @ VEC:SPAN SPAN:$ ;
 
-\ Under ROWS-LOCK: the scope's row, else null.
-: FOUND ( str -- ^row )
-   {: scope:^ su:n :}
+\ Under ROWS-LOCK: the row of the kind, origin and scope, else null.
+: FOUND ( bool str str -- ^row )
+   {: id:bool o:^ ou:n scope:^ su:n :}
    NEWEST @
    begin dup NULL-PTR <> while
-      dup ROW-SCOPE$ scope su STR:= if exit then
+      dup ROW-IDENTITY @ bool>n id bool>n =
+      over ROW-ORIGIN$ o ou STR:= and
+      over ROW-SCOPE$ scope su STR:= and if exit then
       ROW-NEXT @
    repeat ;
 
 : EMPTY ( -- ^VEC:vector<u8> ) HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 \ The row's lock made ready in its zeroed region and its vectors made, the
-\ scope's holding the scope; a throw leaves what was made to UNMADE.
-: MADE ( str ^row -- )
-   {: scope:^ su:n r:^ :}
+\ origin's and scope's holding them; a throw leaves what was made to UNMADE.
+: MADE ( bool str str ^row -- )
+   {: id:bool o:^ ou:n scope:^ su:n r:^ :}
+   id r ROW-IDENTITY !
    TASK:FACILITY-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN r ROW-REGION !
    0 r ROW-REGION @ SPAN:FILL
    r ROW-REGION @ GUARD TASK:FACILITY-INIT
-   EMPTY r ROW-SCOPE !  EMPTY r ROW-TOKEN !  EMPTY r ROW-ANSWER !
+   EMPTY r ROW-ORIGIN !  EMPTY r ROW-SCOPE !
+   EMPTY r ROW-TOKEN !  EMPTY r ROW-ANSWER !
+   o ou r ROW-ORIGIN @ VEC:APPEND
    scope su r ROW-SCOPE @ VEC:APPEND ;
 
 \ Frees what MADE made of an unlinked row, and the row.
 : UNMADE ( ^row -- )
    {: r:^ :}
-   r ROW-SCOPE @ VEC:DELETE  r ROW-TOKEN @ VEC:DELETE
+   r ROW-ORIGIN @ VEC:DELETE  r ROW-SCOPE @ VEC:DELETE
+   r ROW-TOKEN @ VEC:DELETE
    r ROW-ANSWER @ VEC:DELETE  r ROW-REGION @ MEM:FREE-SPAN
    HEAP:ALLOCATOR r ALLOC:DELETE ;
 
-\ Under ROWS-LOCK: a new row for the scope, linked newest first and never
-\ freed; a throw leaves nothing allocated.
-: LINKED ( str -- ^row )
-   {: scope:^ su:n :}
+\ Under ROWS-LOCK: a new row for the kind, origin and scope, linked newest
+\ first and never freed; a throw leaves nothing allocated.
+: LINKED ( bool str str -- ^row )
+   {: id:bool o:^ ou:n scope:^ su:n :}
    HEAP:ALLOCATOR [type] row ALLOC:NEW {: r:^ :}
-   [: scope su r MADE ;] catch {: code:n :}
+   [: id o ou scope su r MADE ;] catch {: code:n :}
    code 0<> if r UNMADE code throw then
    NEWEST @ r ROW-NEXT !
    r NEWEST !  r ;
 
 \ Under ROWS-LOCK.
-: ROW-FOR ( str -- ^row )
-   {: scope:^ su:n :}
-   scope su FOUND dup NULL-PTR = if drop scope su LINKED then ;
+: ROW-FOR ( bool str str -- ^row )
+   {: id:bool o:^ ou:n scope:^ su:n :}
+   id o ou scope su FOUND dup NULL-PTR = if
+      drop id o ou scope su LINKED
+   then ;
 
 : FAILED? ( ^row -- bool )
    ROW-STATE @ MATCH kept-state
@@ -1167,26 +1230,36 @@ private
       failed OF true ENDOF
    ;MATCH ;
 
-\ Under the row's lock: a failed ask that ended after CURRENT read the asks
+\ Under the row's lock: a failed ask that ended after HELD read the asks
 \ count throws its code to the task that waited on it.
 : WAITED ( ^row n -- )
    {: r:^ seen:n :}
    r ROW-ASKS @ seen > 0= if exit then
    r FAILED? if r ROW-CODE @ throw then ;
 
+\ The row's token and expires_in: the IMDS's for an identity row, else
+\ TOKEN's with own.
+: ISSUED-FOR ( ^row -- str n )
+   {: r:^ :}
+   r ROW-IDENTITY @ if
+      r ROW-ORIGIN$ r ROW-SCOPE$ r ROW-ANSWER @ IMDS-TOKEN
+   else
+      r ROW-SCOPE$ BEARER-GRANT:OWN r ROW-ANSWER @ TOKEN
+   then ;
+
 \ Under the row's lock: the answer's token in place of the old one, kept
 \ for its expires_in less LEEWAY-S, counted from before the ask.
 : KEEP ( ^row -- )
    {: r:^ :}
    epoch-seconds {: asked:n :}
-   r ROW-SCOPE$ BEARER-GRANT:OWN r ROW-ANSWER @ TOKEN {: a:^ u:n secs:n :}
+   r ISSUED-FOR {: a:^ u:n secs:n :}
    r ROW-TOKEN @ {: kept:^ :}
    kept 0 VEC:RESIZE  a u kept VEC:APPEND
    asked r ROW-SINCE !  secs LEEWAY-S - r ROW-LIFE !
    construct kept-state kept r ROW-STATE ! ;
 
 \ Under the row's lock: one more ask ended, failed with the code unless it is
-\ 0; asks is stored atomic! for CURRENT's read outside the lock.
+\ 0; asks is stored atomic! for HELD's read outside the lock.
 : ENDED ( ^row n -- )
    {: r:^ code:n :}
    code 0<> if
@@ -1202,6 +1275,15 @@ private
    r ROW-ANSWER @ 0 VEC:RESIZE
    r code ENDED
    code 0<> if code throw then ;
+
+\ Runs the quotation on the row's token under the row's lock, asked first
+\ when stale; a waiter on a failed ask throws its code.
+: HELD ( ^row [ str -- ] -- )
+   {: r:^ q :}
+   r ROW-ASKS atomic@ {: seen:n :}
+   r ROW-REGION @ GUARD TASK:GET
+   [: r seen WAITED r FRESH r ROW-KEPT$ q execute ;]
+   [: r ROW-REGION @ GUARD TASK:RELEASE ;] finally ;
 
 public
 
@@ -1219,10 +1301,24 @@ public
 : CURRENT ( str [ str -- ] -- )
    {: scope:^ su:n q :}
    STATED
-   scope su [: ROW-FOR ;] LISTED {: r:^ :}
-   r ROW-ASKS atomic@ {: seen:n :}
-   r ROW-REGION @ GUARD TASK:GET
-   [: r seen WAITED r FRESH r ROW-KEPT$ q execute ;]
-   [: r ROW-REGION @ GUARD TASK:RELEASE ;] finally ;
+   false s" " scope su [: ROW-FOR ;] LISTED q HELD ;
+
+\ Azure's metadata service (IMDS); production passes it to IDENTITY-TOKEN.
+: IMDS$ ( -- str ) s" http://169.254.169.254" ;
+
+\ Appends to the vector the managed identity's token for the resource (for
+\ Azure PostgreSQL `https://ossrdbms-aad.database.windows.net`) from the
+\ IMDS at the origin, kept per origin and resource as CURRENT keeps a
+\ scope's: asked again once LEEWAY-S or less of its expires_in remains, one
+\ task at a time, a task that waited on a failed ask throwing its code.
+\ Callable from any task. E-TRANSFER for no answer; E-UNAVAILABLE for 404,
+\ 410 and a status CURL:UNAVAILABLE? accepts; E-REFUSED for another 4xx;
+\ E-RESPONSE as TOKEN. Each failed ask first logs one line tagged bearer,
+\ never a 2xx answer's text. The caller wipes the vector (`0 VEC:RESIZE`)
+\ when done.
+: IDENTITY-TOKEN ( str str ^VEC:vector<u8> -- )
+   {: o:^ ou:n res:^ ru:n dest:^ :}
+   true o ou res ru [: ROW-FOR ;] LISTED
+   [: dest VEC:APPEND ;] HELD ;
 
 ;package

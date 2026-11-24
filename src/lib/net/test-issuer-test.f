@@ -12,18 +12,25 @@ split-str
 \ public client admitted with the refresh token's oid, again with the new
 \ refresh token it answered, an expired and a foreign refresh token refused
 \ invalid_grant; a closed port,
-\ and on /token-fault the form's exact bytes, the answer's lifetime and the
-\ answers TOKEN refuses: a 503, a 429 and a 302, a 2xx that is not JSON, one
-\ without access_token, one whose access_token is not a string, one without
-\ expires_in, one whose expires_in is a string, one whose expires_in is 0, and
-\ a 200 and a 503 past TOKEN-CAP, each leaving only zero bytes in the vector's
-\ storage; REFRESH's form from a confidential and a public client, an answer
-\ without refresh_token, an escaped refresh token decoded after an escaped
-\ token, and a refresh_token that is not a string, E-RESPONSE logged for
-\ REFRESH and ignored by TOKEN. CURRENT on /token-count: a token kept per
+\ and on /token-fault the form's exact bytes, the answer's lifetime as a
+\ number and as a digit string, and the answers TOKEN refuses: a 503, a 429
+\ and a 302, a 2xx that is not JSON, one without access_token, one whose
+\ access_token is not a string, one without expires_in, one whose expires_in
+\ is a string not all digits, one whose expires_in is 0, and a 200 and a 503
+\ past TOKEN-CAP, each leaving only zero bytes in the vector's storage;
+\ REFRESH's form from a confidential and a public client, an answer without
+\ refresh_token, an escaped refresh token decoded after an escaped token,
+\ and a refresh_token that is not a string, E-RESPONSE logged for REFRESH
+\ and ignored by TOKEN. CURRENT on /token-count: a token kept per
 \ scope, asked again when it lasts LEEWAY-S or less, asked once for four tasks
 \ at once, a failed ask's code thrown to the tasks waiting on it, and asked
 \ again after a failed ask and after CLIENT!.
+\ IDENTITY-TOKEN on the IMDS route, which answers 400 unless the request
+\ has Metadata: true, the api-version and the case's resource as sent:
+\ a token appended after the vector's bytes and kept across CLIENT!, asked
+\ again when it lasts LEEWAY-S or less, asked once for four tasks at once,
+\ and a 404, a 410 and a 410 past TOKEN-CAP as E-UNAVAILABLE, a 400 as
+\ E-REFUSED.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -145,6 +152,7 @@ GOT-NEW
 12 constant RENEWED                 \ an escaped token and an escaped refresh token
 13 constant RENEWAL-NUMBER          \ a refresh_token that is a number
 14 constant REPEATED                \ access_token named twice
+15 constant LIFETIME-NOT-DIGITS
 variable FAULT-MODE
 CAP BUFFER: POSTED
 variable POSTED-U
@@ -458,6 +466,7 @@ OVERSIZE-FILL
    mode NOT-STRING = if answer S\" {\"access_token\":1,\"expires_in\":60}" HTTP:BODY! exit then
    mode NO-LIFETIME = if answer S\" {\"access_token\":\"t\"}" HTTP:BODY! exit then
    mode LIFETIME-STRING = if answer S\" {\"access_token\":\"t\",\"expires_in\":\"3600\"}" HTTP:BODY! exit then
+   mode LIFETIME-NOT-DIGITS = if answer S\" {\"access_token\":\"t\",\"expires_in\":\"36x\"}" HTTP:BODY! exit then
    mode LIFETIME-ZERO = if answer S\" {\"access_token\":\"t\",\"expires_in\":0}" HTTP:BODY! exit then
    mode RENEWED = if answer S\" {\"access_token\":\"fault\\/token\",\"expires_in\":60,\"refresh_token\":\"r\\/2\\u0041\"}" HTTP:BODY! exit then
    mode RENEWAL-NUMBER = if answer S\" {\"access_token\":\"t\",\"expires_in\":60,\"refresh_token\":1}" HTTP:BODY! exit then
@@ -494,6 +503,55 @@ REPLY-CAP REPLY-SLOTS * BUFFER: REPLIES
    [: HOLD atomic@ 0= ;] TEST-WAIT:POLL
    FAIL atomic@ 0<> if answer 503 HTTP:STATUS! exit then
    answer k COUNTED HTTP:BODY! ;
+
+\ The IMDS route's state: the tokens it has answered or holds, the resource
+\ a case asks for, and the status it answers, 200 for a token.
+variable IMDS-ASKS
+variable IMDS-STATUS
+200 IMDS-STATUS !
+variable IMDS-OVERSIZED             \ while set, another status has a body past TOKEN-CAP
+URL-CAP BUFFER: RESOURCE
+variable RESOURCE-U
+: RESOURCE$ ( -- str ) RESOURCE RESOURCE-U @ ;
+: RESOURCE! ( str -- ) RESOURCE COPY RESOURCE-U ! ;
+
+\ The token answer for the count, expires_in as a digit string as IMDS
+\ sends it.
+: IMDS-COUNTED ( n -- str )
+   {: k:n :}
+   REPLIES k REPLY-SLOTS mod REPLY-CAP * + 0
+   S\" {\"access_token\":\"i" PUT  k FMT:INT$ PUT
+   S\" \",\"expires_in\":\"" PUT  LIFE @ FMT:INT$ PUT  S\" \"}" PUT ;
+
+\ Whether the query's parameter, decoded into the vector, is the text.
+: PARAM-IS? ( HTTP:request str str ^VEC:vector<u8> -- bool )
+   {: asked:HTTP:request k:^ ku:n want:^ wu:n v:^ :}
+   v 0 VEC:RESIZE
+   asked k ku v HTTP:PARAM+ 0= if false exit then
+   v VEC:SPAN SPAN:$ want wu STR:= ;
+
+: IMDS-ASKED? ( HTTP:request ^VEC:vector<u8> -- bool )
+   {: asked:HTTP:request v:^ :}
+   asked s" Metadata" HTTP:HEADER-OF$ 0= if 2drop false exit then
+   s" true" STR:= 0= if false exit then
+   asked s" api-version" s" 2018-02-01" v PARAM-IS? 0= if false exit then
+   asked s" resource" RESOURCE$ v PARAM-IS? ;
+
+: IMDS-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   asked v IMDS-ASKED? {: ok:bool :}
+   v VEC:DELETE
+   ok 0= if answer 400 HTTP:STATUS! exit then
+   IMDS-STATUS @ {: status:n :}
+   status 200 <> if
+      answer status HTTP:STATUS!
+      IMDS-OVERSIZED @ 0<> if answer OVERSIZE PAST-CAP HTTP:BODY! then
+      exit
+   then
+   1 IMDS-ASKS atomic-add 1+ {: k:n :}
+   [: HOLD atomic@ 0= ;] TEST-WAIT:POLL
+   answer k IMDS-COUNTED HTTP:BODY! ;
 
 : AUTH+ ( str -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
 
@@ -634,8 +692,11 @@ $A constant LF
    FORM-RESET s"  error bearer: token answer 200 lacks " FORM+
    S\" a positive integer expires_in\n" FORM+
    LINE$ FORM$ T$=
-   s" a 200 whose expires_in is a string is E-RESPONSE" T-LABEL
-   LIFETIME-STRING BEARER:E-RESPONSE FAULT-THROWS
+   s" TOKEN reads an expires_in sent as a digit string" T-LABEL
+   LIFETIME-STRING FAULT-MODE !
+   FAULT-TOKEN 3600 T= s" t" T$=
+   s" a 200 whose expires_in is a string not all digits is E-RESPONSE" T-LABEL
+   LIFETIME-NOT-DIGITS BEARER:E-RESPONSE FAULT-THROWS
    s" a 200 whose expires_in is 0 is E-RESPONSE" T-LABEL
    LIFETIME-ZERO BEARER:E-RESPONSE FAULT-THROWS
    s" a 200 past TOKEN-CAP is E-RESPONSE" T-LABEL
@@ -681,13 +742,13 @@ $A constant LF
    POSTED POSTED-U @ FORM$ T$= ;
 
 8 constant ASKERS
-4 constant AT-ONCE                  \ the tasks the asked-at-once case runs
+4 constant AT-ONCE                  \ the tasks the asked-at-once cases run
 $40 constant SEEN-CAP
 \ The token text each asker ran on; slot ASKERS is the main task's.
 SEEN-CAP ASKERS 1+ * BUFFER: SEEN
 ASKERS 1+ TYPED-BUFFER SEEN-U n
 ASKERS TYPED-BUFFER CAUGHT n        \ the code each waiter's CURRENT threw
-variable ENTERED                    \ the tasks that have begun their CURRENT
+variable ENTERED                    \ the tasks that have begun their ask
 TASK:MIN-STACK TASK:TASK ASKER-0
 TASK:MIN-STACK TASK:TASK ASKER-1
 TASK:MIN-STACK TASK:TASK ASKER-2
@@ -744,10 +805,10 @@ TASKS!
 
 : ALL-JOINED ( n -- ) 0 ?do i TASKS @ JOINED loop ;
 
-\ Waits until n tasks have begun their CURRENT and one has asked.
-: ALL-ASKING ( n -- )
-   {: n:n :}
-   [: ENTERED atomic@ n = ASKS atomic@ 1 >= and ;] TEST-WAIT:POLL ;
+\ Waits until n tasks have begun their ask and the count has one.
+: ALL-ASKING ( n ^n -- )
+   {: n:n asks:^ :}
+   [: ENTERED atomic@ n = asks atomic@ 1 >= and ;] TEST-WAIT:POLL ;
 
 : ASKED-AT-ONCE ( -- )
    s" CURRENT from four tasks at once asks once, and each runs on its token" T-LABEL
@@ -756,7 +817,7 @@ TASKS!
    [: 1 ASKER ;] ASKER-1 TASK:ACTIVATE
    [: 2 ASKER ;] ASKER-2 TASK:ACTIVATE
    [: 3 ASKER ;] ASKER-3 TASK:ACTIVATE
-   AT-ONCE ALL-ASKING
+   AT-ONCE ASKS ALL-ASKING
    0 HOLD atomic!
    AT-ONCE ALL-JOINED
    AT-ONCE 0 ?do i SEEN$ s" t1" T$= loop
@@ -766,7 +827,7 @@ TASKS!
    s" tasks that waited on a failed ask throw its code, asking no more" T-LABEL
    3600 ASKING  0 ENTERED atomic!  1 FAIL atomic!  1 HOLD atomic!
    ASKERS 0 ?do [: WAITER ;] i TASKS @ TASK:ACTIVATE loop
-   ASKERS ALL-ASKING
+   ASKERS ASKS ALL-ASKING
    0 HOLD atomic!
    ASKERS ALL-JOINED
    ASKERS 0 ?do i CAUGHT @ BEARER:E-UNAVAILABLE T= loop
@@ -798,6 +859,70 @@ TASKS!
    ECHO FAULT-MODE !
    COUNT-CLIENT 30 ASKING
    DUE CURRENT$ s" t1" T$=  ASKS atomic@ 1 T= ;
+
+\ The IMDS origin: the test server's own.
+: ORIGIN$ ( -- str ) ISSUER$ ;
+: GOT$ ( -- str ) GOT VEC:SPAN SPAN:$ ;
+: IDENTITY ( -- ) ORIGIN$ RESOURCE$ GOT BEARER:IDENTITY-TOKEN ;
+: IMDS-ASKING ( n -- ) LIFE ! 0 IMDS-ASKS atomic! ;
+
+\ IDENTITY-TOKEN's token for the resource, copied into slot i.
+: IMDS-ASKER ( n -- )
+   {: i:n :}
+   1 ENTERED atomic-add drop
+   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}
+   ORIGIN$ RESOURCE$ v BEARER:IDENTITY-TOKEN
+   v VEC:SPAN SPAN:$ i SAW  v VEC:DELETE  0 TASK:RETURN ;
+
+: IMDS-AT-ONCE ( -- )
+   s" IDENTITY-TOKEN from four tasks at once asks once" T-LABEL
+   s" https://storage.azure.com/" RESOURCE!
+   3600 IMDS-ASKING  0 ENTERED atomic!  1 HOLD atomic!
+   [: 0 IMDS-ASKER ;] ASKER-0 TASK:ACTIVATE
+   [: 1 IMDS-ASKER ;] ASKER-1 TASK:ACTIVATE
+   [: 2 IMDS-ASKER ;] ASKER-2 TASK:ACTIVATE
+   [: 3 IMDS-ASKER ;] ASKER-3 TASK:ACTIVATE
+   AT-ONCE IMDS-ASKS ALL-ASKING
+   0 HOLD atomic!
+   AT-ONCE ALL-JOINED
+   AT-ONCE 0 ?do i SEEN$ s" i1" T$= loop
+   IMDS-ASKS atomic@ 1 T= ;
+
+\ IMDS answering the status makes IDENTITY-TOKEN throw the code.
+: IMDS-THROWS ( n n -- )
+   {: status:n code:n :}
+   status IMDS-STATUS !
+   [: IDENTITY ;] code TTHROWSQ ;
+
+: BEARER-IDENTITY ( -- )
+   s" IDENTITY-TOKEN appends the IMDS token after the vector's bytes" T-LABEL
+   s" https://ossrdbms-aad.database.windows.net" RESOURCE!
+   3600 IMDS-ASKING
+   GOT 0 VEC:RESIZE  s" pw:" GOT VEC:APPEND
+   IDENTITY GOT$ s" pw:i1" T$=  IMDS-ASKS atomic@ 1 T=
+   s" a second IDENTITY-TOKEN asks nothing more" T-LABEL
+   GOT 0 VEC:RESIZE  IDENTITY GOT$ s" i1" T$=  IMDS-ASKS atomic@ 1 T=
+   s" CLIENT! keeps identity tokens" T-LABEL
+   COUNT-CLIENT
+   GOT 0 VEC:RESIZE  IDENTITY GOT$ s" i1" T$=  IMDS-ASKS atomic@ 1 T=
+   s" IDENTITY-TOKEN asks again for a token that lasts LEEWAY-S or less" T-LABEL
+   s" https://vault.azure.net/?a=1&b=2+3" RESOURCE!
+   30 IMDS-ASKING
+   GOT 0 VEC:RESIZE  IDENTITY GOT$ s" i1" T$=
+   GOT 0 VEC:RESIZE  IDENTITY GOT$ s" i2" T$=
+   IMDS-AT-ONCE
+   s" https://management.azure.com/" RESOURCE!
+   s" an IMDS 404 is E-UNAVAILABLE" T-LABEL
+   404 BEARER:E-UNAVAILABLE IMDS-THROWS
+   s" an IMDS 410 is E-UNAVAILABLE" T-LABEL
+   410 BEARER:E-UNAVAILABLE IMDS-THROWS
+   s" an IMDS 410 past TOKEN-CAP is E-UNAVAILABLE" T-LABEL
+   1 IMDS-OVERSIZED !
+   410 BEARER:E-UNAVAILABLE IMDS-THROWS
+   0 IMDS-OVERSIZED !
+   s" an IMDS 400 is E-REFUSED" T-LABEL
+   400 BEARER:E-REFUSED IMDS-THROWS
+   200 IMDS-STATUS !  GOT 0 VEC:RESIZE ;
 
 \ Run once the server has stopped: its port is closed.
 : BEARER-UNREACHED ( -- )
@@ -886,13 +1011,14 @@ TASKS!
    s" POST" s" /claim" [: CLAIM-ROUTE ;] HTTP:ROUTE
    s" POST" s" /token-fault" [: FAULT-ROUTE ;] HTTP:ROUTE
    s" POST" s" /token-count" [: COUNT-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /metadata/identity/oauth2/token" [: IMDS-ROUTE ;] HTTP:ROUTE
    0 SERVE-ON
    ADDRESSES
    HTTP:STOP
    ISSUER$ s" api://up" KEYS-URL$ BEARER:ISSUER!
    PORT-KEPT @ SERVE-ON
    DISCOVERY KEYS CLIENT-CREDENTIALS CLIENTS REQUESTS OBO MINTS
-   BEARER-GRANTS BEARER-CURRENT BEARER-FAULTS
+   BEARER-GRANTS BEARER-CURRENT BEARER-IDENTITY BEARER-FAULTS
    HTTP:STOP
    BEARER-UNREACHED BEARER-LONG
    TOOL
