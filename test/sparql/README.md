@@ -66,7 +66,12 @@ A compiler load failure is an audit failure, not a skipped test or a score.
 The adapter covers Habu parsing/SQL construction and PostgreSQL evaluation;
 it does not execute the public Habu result writer or MCP transport.
 
-The former Rust implementation recorded 839/855. Its source, ABI probes and
-result artifacts remain in Git history at `50baa2a`; they were removed from
-the current tree with the obsolete crate and build route. That historical
-score must not be reported as a result for this engine.
+On 2026-11-24, the x86-64 T0 compiler and PostgreSQL 18.7 passed all
+316 syntax cases and 532 of 539 evaluation cases. All 24 fixtures with
+explicit row indexes passed. The seven strict mismatches concern numeric
+lexical forms in AVG DISTINCT, SUM DISTINCT, decimal and double casts,
+float casts, TSV results and COALESCE. Numeric values and datatypes agreed.
+For example, one TSV fixture expects `1.0e6` when the source literal is
+`1.0E6`. The harness retains the distinction.
+
+The historical Rust implementation and its results are in Git at `50baa2a`.
