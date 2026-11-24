@@ -12,7 +12,7 @@ Acceptance: each listed site whose base the designed rule refuses reads through 
 
 Files: the tools files above.
 
-Verify: the lint, check, build or JSON end-to-end tests selected from the changed paths pass; a change to shared checker code also needs the repository native suite on a matching engine; once 331a9731's refusal is on a candidate engine, the changed tools load under it.
+Verify: the check, build or JSON end-to-end tests selected from the changed paths pass; a change to shared checker code also needs the repository native suite on a matching engine; once 331a9731's refusal is on a candidate engine, the changed tools load under it.
 
 Depends: none (331a9731's refusal comes after this).
 

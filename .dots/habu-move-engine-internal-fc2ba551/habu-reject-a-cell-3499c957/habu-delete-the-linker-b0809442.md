@@ -8,4 +8,4 @@ blocks:
   - habu-checked-src-reads-4f721c9b
 ---
 
-Problem: src/habu/linker.f:2385 and :2406 reject a build's header store off a header boundary. A program file still stores into a header cell through a stepped pointer (`NULL-PTR DATA-VA + $2C48 +`), which habu-checked-src-reads-4f721c9b refuses. Acceptance: once no program file steps a pointer, the rejection and the code only it uses are gone, and the engine is a fixpoint. Depends: habu-checked-src-reads-4f721c9b. Claim: unassigned.
+Problem: src/habu/linker.f MARKED+ (:2446-2452, E-COMP-STATE at :2451) rejects a build's header store off a header boundary. A program file still stores into a header cell through a stepped pointer (`NULL-PTR DATA-VA + $2C48 +`), which habu-checked-src-reads-4f721c9b refuses. Acceptance: once no program file steps a pointer, the rejection and the code only it uses are gone, and the engine is a fixpoint. Depends: habu-checked-src-reads-4f721c9b. Claim: unassigned.

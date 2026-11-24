@@ -6,6 +6,6 @@ issue-type: task
 created-at: "2026-10-15T17:16:31.146951+03:00"
 ---
 
-Problem: tools carry private tokenizers: source-discovery.f:569-585, 664-719. tools/lint/text.f redefines string.f words (LINT-STR= used in 17 files). Acceptance: these tools tokenize through source-lex.f and use string.f and fs.f directly; the private copies are deleted; lint outputs unchanged. Files: those named, plus the users of lint/text.f. Verify: lint fixture rows. Depends: carl-final-core chain landed on master (it edits these files); start from master after it lands. (source-discovery.f is in it.) Ownership: listed files. Claim: unassigned.
+Problem: tools carry private tokenizers: source-discovery.f:569-585, 664-719. tools/lint/text.f redefines string.f words (LINT-STR= used in 2 files). Acceptance: these tools tokenize through source-lex.f and use string.f and fs.f directly; the private copies are deleted; the tools' outputs are unchanged. Files: those named, plus the users of lint/text.f. Depends: carl-final-core chain landed on master (it edits these files); start from master after it lands. (source-discovery.f is in it.) Ownership: listed files. Claim: unassigned.
 
 Census 2026-11-04: a disagreement between two implementations of one thing; it is closed by its parent removing the second implementation, not by patching that copy.
