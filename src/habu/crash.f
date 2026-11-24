@@ -179,11 +179,21 @@ public
    0 5 0 ADDI,  NR-EXIT-GROUP SYS, ;
 
 private
+: BAD-DIE-TEXT ( str -- )
+   {: a:^ u:n :}
+   s" E-FAULT-SITE" REJECTION:OPEN
+   s" the die line's text is empty, or is longer than the room "
+   REJECTION:EMIT-STR  s" its frame holds" REJECTION:EMIT-STR
+   s" text" REJECTION:NOTE  a u REJECTION:EMIT-STR
+   s" length" REJECTION:NOTE  u REJECTION:EMIT-U
+   s" room" REJECTION:NOTE  DIE-LINE-ROOM REJECTION:EMIT-U
+   REJECTION:HELP  s" give the line a text of 1 to " REJECTION:EMIT-STR
+   DIE-LINE-ROOM REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
 : DIE-LINE-SITE, ( str n n -- )
    LBL {: a:^ u:n status:n flag:n msg:label :}
-   u 0= u DIE-LINE-ROOM > or IF
-      s" crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" EXIT-STATUS:INTERNAL die
-   THEN
+   u 0= u DIE-LINE-ROOM > or IF a u BAD-DIE-TEXT THEN
    0 status MOVZ,  1 msg ADR,  2 u MOVZ,  4 flag MOVZ,
    LDIE-LINE LABEL@ B,
    msg LBL,  a u BYTES, ;
@@ -323,6 +333,18 @@ private
       7 10 0 ADDI,  7 digit CBNZ,
    RET, ;
 
+: BAD-TEXT-REGS ( n n -- )
+   {: p:n l:n :}
+   s" E-FAULT-SITE" REJECTION:OPEN
+   s" `FAULT-TEXT,` takes its pointer and length in x3..x7"
+   REJECTION:EMIT-STR
+   s" pointer register" REJECTION:NOTE  p REJECTION:EMIT-N
+   s" length register" REJECTION:NOTE  l REJECTION:EMIT-N
+   REJECTION:HELP
+   s" pass registers among x3..x7, which the record's parts keep"
+   REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
 public
 \ Opens a record with its code and message: sp drops FAULT-FRAME, x14 = its
 \ start, x17 = the JSON flag.
@@ -357,9 +379,7 @@ public
 \ them. Both are among x3..x7, which the record's parts keep until a note writes
 \ x6 or x7.
 : FAULT-TEXT, ( str n n -- ) {: k:^ ku:n p:n l:n :}
-   p 3 < p 7 > or  l 3 < or  l 7 > or IF
-      s" crash: a FAULT-TEXT, register is outside x3..x7" EXIT-STATUS:INTERNAL die
-   THEN
+   p 3 < p 7 > or  l 3 < or  l 7 > or IF p l BAD-TEXT-REGS THEN
    k ku NOTE+  PIECE,
    10 p 0 ADDI,  11 l 0 ADDI,  9 17 0 ADDI,  LFAULT-PUT LABEL@ BL, ;
 

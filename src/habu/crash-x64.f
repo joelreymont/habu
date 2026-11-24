@@ -223,11 +223,21 @@ variable DIE-CELL
    FLUSH,
    RDI R10 MOV,  NR-EXIT-GROUP SYS, ;
 
+: BAD-DIE-TEXT ( str -- )
+   {: a:^ u:n :}
+   s" E-FAULT-SITE" REJECTION:OPEN
+   s" the die line's text is empty, or is longer than the room "
+   REJECTION:EMIT-STR  s" its frame holds" REJECTION:EMIT-STR
+   s" text" REJECTION:NOTE  a u REJECTION:EMIT-STR
+   s" length" REJECTION:NOTE  u REJECTION:EMIT-U
+   s" room" REJECTION:NOTE  DIE-LINE-ROOM REJECTION:EMIT-U
+   REJECTION:HELP  s" give the line a text of 1 to " REJECTION:EMIT-STR
+   DIE-LINE-ROOM REJECTION:EMIT-U  s"  bytes" REJECTION:EMIT-STR
+   EXIT-STATUS:REJECTED REJECTION:STOP ;
+
 : DIE-LINE-SITE, ( str n n -- )
    LBL {: a:^ u:n status:n flag:n msg:label :}
-   u 0= u DIE-LINE-ROOM > or IF
-      s" x64crash: a DIE-LINE, text is empty or longer than DIE-LINE-ROOM" EXIT-STATUS:INTERNAL die
-   THEN
+   u 0= u DIE-LINE-ROOM > or IF a u BAD-DIE-TEXT THEN
    RDI status IMM32,  RSI msg MOVABS,  RDX u IMM32,  RCX flag IMM32,
    DIE-LBL JMP,
    msg LBL,  a u BYTES, ;
