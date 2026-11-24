@@ -25,17 +25,15 @@ split-str
 \ table, and the body returns with no result; later FINISH, on any request
 \ worker, runs a quotation as that call's body and sends the response HANDLE
 \ would have sent on the kept connection.
-\ ADD-TOOL compiles the inputSchema with JSON-SCHEMA:COMPILE, its root typed "object", and
-\ a tools/call whose arguments break it is a tool error before the body runs: `arguments`
-\ and VALID?'s text, such as `arguments.top: expected a number of at most `500`, found
-\ `501`; send a number in that range`. So are arguments that name a member twice in
-\ one object: `arguments`, then the JSON reader's text placing the repeat. A tool
-\ result's JSON goes only in structuredContent, as itself when its output schema's "type"
-\ is "object"; any other schema describes that JSON as structuredContent's "data", and
-\ tools/list shows that wrapper in the schema's place. The client side, OPEN, TOOLS, CALL and
-\ CLOSE, speaks the 2026-07-28 era to one server over CURL and takes a JSON or an
-\ event-stream reply. TOKEN! sets the bearer token a client sends, and REQUEST-STOP
-\ stops the client from another task.
+\ ADD-TOOL compiles the inputSchema with JSON-SCHEMA:COMPILE, its root typed
+\ "object", and a tools/call whose arguments break it is a tool error before
+\ the body runs, its text `arguments` and VALID?'s. A tool result's JSON goes
+\ only in structuredContent, as itself when its output schema's "type" is
+\ "object"; any other schema describes that JSON as structuredContent's
+\ "data", and tools/list shows that wrapper in the schema's place. The client
+\ side, OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one server
+\ over CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer
+\ token a client sends, and REQUEST-STOP stops the client from another task.
 \ STORAGE CLASS. PROCESS-WIDE: the server info and instructions, tool and resource
 \ registries, the input schemas each compiled into an arena of its own kept for the
 \ process, and the visibility hook, written before HTTP serves; tables indexed by
@@ -270,30 +268,16 @@ CAST: HELD>N ( held -- n )
    REASON:FIX s" send " REASON:APPEND na nu REASON:APPEND s"  as one object" REASON:APPEND
    E-INPUT REASON:STOP ;
 
-\ A member of the object called name and its copies, 0, 1, or 2 for more;
-\ text that is no object, empty included, is E-INPUT naming it.
-: MEMBER-COPIES ( str str str -- str n )
+\ A member of the object called name and whether it is there; text that is
+\ no object, empty included, is E-INPUT naming it.
+: FIELD? ( str str str -- str bool )
    {: data:^ len:n na:^ nu:n key:^ ku:n :}
    len 0= if na nu OBJECT-ERROR then
    CURSOR data len JSON:READ-INIT
    JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE na nu OBJECT-ERROR then
-   key ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " 0 exit then
+   key ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " false exit then
    RAW$ {: a:^ u:n :}
-   key ku JSON:READ-FIND-KEY {: again:bool :}
-   JSON:READ-CLOSE a u  again if 2 else 1 then ;
-
-\ MEMBER-COPIES' member and whether it is there; one named twice is E-INPUT
-\ with its name and the object's.
-: FIELD? ( str str str -- str bool )
-   {: data:^ len:n na:^ nu:n key:^ ku:n :}
-   data len na nu key ku MEMBER-COPIES {: a:^ u:n copies:n :}
-   copies 2 = if
-      REASON:OPEN key ku false REASON:QUOTE
-      s" : named twice in " REASON:APPEND na nu REASON:APPEND
-      s" ; send it once" REASON:APPEND
-      E-INPUT REASON:STOP
-   then
-   a u copies 0<> ;
+   JSON:READ-CLOSE a u true ;
 
 \ Whether a JSON text is a string that decodes to the wanted bytes.
 : STRING= ( str str -- bool )
@@ -524,7 +508,7 @@ CAST: HELD>N ( held -- n )
 
 
 : RESULT-BODY ( ^JSON:writer -- ^JSON:writer )
-   ID$ JSON--RPC-ID:MAKE JSON-RPC:RESULT
+   ID$ JSON:PARSE JSON-RPC:RESULT
    SLOT REPLY @ {: kind:n :}
    kind DISCOVER-REPLY = if DISCOVER-BODY else
    kind INIT-REPLY = if INIT-BODY else
@@ -684,29 +668,37 @@ CAST: HELD>N ( held -- n )
 
 
 \ A JSON-RPC response is no request: answered without an id.
-: RESPONSE? ( JSON-RPC:id str -- bool )
-   2drop drop
+: RESPONSE? ( JSON:value JSON:value -- bool )
+   drop drop
    400 -32600 s" a response, where MCP takes a request or a notification" BAD
    false ;
 
 
 \ The reader's code and why answer; its id is the reply's when it is an MCP
 \ id, and its null id is unknown.
-: INVALID? ( n str JSON-RPC:id -- bool )
-   {: code:n why:^ wu:n reply:JSON-RPC:id :}
-   reply JSON-RPC:ID$ {: id:^ iu:n :}
+: INVALID? ( n str JSON:value -- bool )
+   {: code:n why:^ wu:n reply :}
+   reply JSON:TEXT$ {: id:^ iu:n :}
    id iu MCP-ID? if id iu SPAN:MAKE SLOT ID ! then
    400 code why wu BAD false ;
+
+
+\ The text of params a message carries, empty for none.
+: GIVEN$ ( option<JSON:value> -- str )
+   MATCH option
+      none OF s" " ENDOF
+      some OF JSON:TEXT$ ENDOF
+   ;MATCH ;
 
 
 : ENVELOPE? ( str -- bool )
    {: body:^ len:n :}
    body len JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
-      request OF {: i m:^ mu:n p:^ pu:n :}
-         i JSON-RPC:ID$ m mu p pu CALL? ENDOF
-      notification OF {: m:^ mu:n p:^ pu:n :}
-         s" " m mu p pu CALL? ENDOF
+      request OF {: i m p :}
+         i JSON:TEXT$ m JSON:TEXT$ p GIVEN$ CALL? ENDOF
+      notification OF {: m p :}
+         s" " m JSON:TEXT$ p GIVEN$ CALL? ENDOF
       success OF RESPONSE? ENDOF
       failure OF RESPONSE? ENDOF
       invalid OF INVALID? ENDOF
@@ -1250,24 +1242,13 @@ CAST: HELD>N ( held -- n )
 \ The worker's violation vector.
 : VIOLATION ( -- ^VEC:vector<u8> ) SLOT VIOLATIONS WORKER-VEC ;
 
-\ Whether the arguments name no member twice in one object; false appends
-\ the reader's text to the violation.
-: UNREPEATED? ( str ^VEC:vector<u8> -- bool )
-   {: args:^ au:n v:^ :}
-   [: args au JSON:PARSE JSON:TEXT$ 2drop ;] catch {: code:n :}
-   code 0= if true exit then
-   code JSON:E-MEMBER <> if code throw then
-   code REASON:TEXT$ {: a:^ u:n :}
-   s"  " v VEC:APPEND  a u v VEC:APPEND  false ;
-
-\ Whether the arguments repeat no member and satisfy the tool's inputSchema;
-\ false gives the tool error `arguments` and the reader's text or the violation.
+\ Whether the arguments satisfy the tool's inputSchema; false gives the tool
+\ error `arguments` and the violation.
 : ADMITTED? ( ^u8 n n -- bool )
    {: args:^ au:n idx:n :}
    VIOLATION {: v:^ :}
    v 0 VEC:RESIZE  s" arguments" v VEC:APPEND
-   args au v UNREPEATED?
-   dup if drop args au idx TOOL-INPUT @ v JSON-SCHEMA:VALID? then
+   args au idx TOOL-INPUT @ v JSON-SCHEMA:VALID?
    dup if exit then
    v VEC:SPAN SPAN:$ TOOL-ERROR ;
 
@@ -1344,9 +1325,9 @@ CAST: HELD>N ( held -- n )
 : TARGET+ ( -- )
    TARGET-KEY$ {: key:^ ku:n :}
    ku 0= PARAMS$ nip 0= or if exit then
-   \ JSON-RPC's params may be an array, which MEMBER-COPIES refuses.
+   \ JSON-RPC's params may be an array, which FIELD? refuses.
    PARAMS$ KIND JSON:T-OBJ <> if exit then
-   PARAMS$ s" params" key ku MEMBER-COPIES 1 <> if 2drop exit then
+   PARAMS$ s" params" key ku FIELD? 0= if 2drop exit then
    2dup KIND JSON:T-STR <> if 2drop exit then
    s"  " LOG:TEXT+  UNQUOTED$ LOG:TEXT+ ;
 
@@ -1371,12 +1352,12 @@ CAST: HELD>N ( held -- n )
 
 
 \ A tools/call's params.arguments as sent, when params is an object that has
-\ them once.
+\ them.
 : ARGUMENTS+ ( -- )
    s" tools/call" METHOD= 0= if exit then
    PARAMS$ nip 0= if exit then
    PARAMS$ OBJECT? 0= if exit then
-   PARAMS$ s" params" s" arguments" MEMBER-COPIES 1 <> if 2drop exit then
+   PARAMS$ s" params" s" arguments" FIELD? 0= if 2drop exit then
    s"  " LOG:TEXT+  TEXT-CUT+ ;
 
 \ The method, target and arguments; `-` when no method was read.
@@ -1734,6 +1715,8 @@ private
 CAST: >CLIENT ( n -- client )
 CAST: CLIENT>N ( client -- n )
 
+\ What MESSAGE$'s buffer holds.
+ENUM found nothing stray response ;ENUM
 \ A row's record, kept by the row for its next client: the cursor parses a
 \ reply and the writer builds a request in request, the client's vector, NULL
 \ for a free row; status is the HTTP status the last exchange ended with, and
@@ -1747,6 +1730,7 @@ STRUCTURE peer DERIVE addr
    FIELD stream bool
    FIELD sse SSE:state
    FIELD region SPAN:span<u8>
+   FIELD found found
 ;STRUCTURE
 
 ARENA PEERS peer
@@ -1957,17 +1941,23 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    LOG:;LINE
    E-TRANSFER throw ;
 
-: BAD-REPLY ( str n n -- )
-   {: what:^ wu:n idx:n code:n :}
+\ The row's reply logged with what is wrong with it, then why when there is
+\ a why, its status and its body.
+: REPLY-LINE ( str str n -- )
+   {: what:^ wu:n why:^ yu:n idx:n :}
    idx URL-BUF BUF$ HOST$ {: host:^ hu:n :}
    idx REPLY-BUF BUF$ {: body:^ bu:n :}
    LOG:ERROR s" mcp" LOG:LINE  s" reply" LOG:TEXT+
    hu 0<> if s"  from " LOG:TEXT+  host hu LOG:TEXT+ then
    s"  " LOG:TEXT+  what wu LOG:TEXT+
+   yu 0<> if s" : " LOG:TEXT+  why yu LOG:TEXT+ then
    s" : status " LOG:TEXT+  idx ROW PEER-STATUS @ CURL:HTTP-STATUS>N LOG:INT+
    bu 0<> if s"  body: " LOG:TEXT+  body bu LOG:TEXT+ then
-   LOG:;LINE
-   code throw ;
+   LOG:;LINE ;
+
+: BAD-REPLY ( str n n -- )
+   {: what:^ wu:n idx:n code:n :}
+   what wu s" " idx REPLY-LINE  code throw ;
 
 : CHECK ( CURL:status n -- )
    {: idx:n :}
@@ -2194,22 +2184,60 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ The id of a response, empty for any other message.
 : RESPONSE-ID$ ( JSON-RPC:message -- str )
    MATCH JSON-RPC:message
-      success OF 2drop JSON-RPC:ID$ ENDOF
-      failure OF 2drop JSON-RPC:ID$ ENDOF
-      request OF 2drop 2drop drop s" " ENDOF
-      notification OF 2drop 2drop s" " ENDOF
+      success OF drop JSON:TEXT$ ENDOF
+      failure OF drop JSON:TEXT$ ENDOF
+      request OF drop drop drop s" " ENDOF
+      notification OF drop drop s" " ENDOF
       invalid OF 2drop 2drop s" " ENDOF
    ;MATCH ;
 
-\ An event of an event-stream reply, given the row's record: the first whose
-\ data is the response to the client's request is kept in the message buffer,
-\ and every other event is passed over.
+\ Empty data, which a server's priming event carries, is no message.
+: >FOUND ( str -- found )
+   {: a:^ u:n :}
+   u 0= if construct found nothing exit then
+   a u JSON-RPC:>MESSAGE {: m :}
+   m RESPONSE-ID$ REQUEST-ID$ STR:= if construct found response exit then
+   m MATCH JSON-RPC:message
+      invalid OF 2drop 2drop construct found stray ENDOF
+      success OF 2drop construct found nothing ENDOF
+      failure OF 2drop construct found nothing ENDOF
+      request OF drop 2drop construct found nothing ENDOF
+      notification OF 2drop construct found nothing ENDOF
+   ;MATCH ;
+
+: FOUND! ( ^peer ^u8 n found -- )
+   {: rec:^ data:^ du:n k:found :}
+   rec PEER-REGION @ SPAN:$ drop MESSAGE-OFF + CELL-VIEW {: buf:^ :}
+   buf BUF:CLEAR data du buf BUF+
+   k rec PEER-FOUND ! ;
+
+: WHILE-NOTHING ( ^peer ^u8 n -- )
+   {: rec:^ data:^ du:n :}
+   data du >FOUND {: k:found :}
+   k MATCH found
+      response OF rec data du k FOUND! ENDOF
+      stray OF rec data du k FOUND! ENDOF
+      nothing OF ENDOF
+   ;MATCH ;
+
+: WHILE-STRAY ( ^peer ^u8 n -- )
+   {: rec:^ data:^ du:n :}
+   data du >FOUND {: k:found :}
+   k MATCH found
+      response OF rec data du k FOUND! ENDOF
+      stray OF ENDOF
+      nothing OF ENDOF
+   ;MATCH ;
+
+\ Keeps in the row's message buffer the first event answering the request,
+\ and until one does, the first that is not JSON-RPC.
 : EVENT ( ^peer ^u8 n ^u8 n -- )
    {: rec:^ kind:^ ku:n data:^ du:n :}
-   rec PEER-REGION @ SPAN:$ drop MESSAGE-OFF + CELL-VIEW {: buf:^ :}
-   buf BUF:LEN@ BUF:BLEN>N 0<> if exit then
-   data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR:=
-   if data du buf BUF+ then ;
+   rec PEER-FOUND @ MATCH found
+      nothing OF rec data du WHILE-NOTHING ENDOF
+      stray OF rec data du WHILE-STRAY ENDOF
+      response OF ENDOF
+   ;MATCH ;
 
 \ Feeds the whole reply to the decoder and finishes it; answers its operands.
 : DECODE ( SSE:decoder ^u8 n ^peer -- SSE:decoder ^u8 n ^peer )
@@ -2218,8 +2246,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    d SSE:FINISH
    d a u rec ;
 
-\ The reply's JSON-RPC text: its body, or the data of the stream's event that
-\ answers the request, else a logged E-RESPONSE; the decoder is always closed.
+\ The reply's JSON-RPC text: its body, or the event EVENT keeps, else a logged
+\ E-RESPONSE; the decoder is always closed.
 : MESSAGE$ ( n -- str )
    {: idx:n :}
    idx REPLY-BUF BUF$ {: a:^ u:n :}
@@ -2227,6 +2255,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx MESSAGE-BUF {: buf:^ :}
    buf BUF:CLEAR
    idx ROW {: rec :}
+   construct found nothing rec PEER-FOUND !
    idx DECODER {: d:SSE:decoder :}
    d a u rec [: DECODE ;] catch {: code:n :} 2drop 2drop
    \ Nothing since OPEN pauses, so a halt cannot skip this CLOSE.
@@ -2235,13 +2264,18 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       s" is an event stream that is not UTF-8" idx E-RESPONSE BAD-REPLY
    then
    code 0<> if code throw then
-   buf BUF$ dup 0= if
-      s" has no event answering the request" idx E-RESPONSE BAD-REPLY
-   then ;
+   rec PEER-FOUND @ MATCH found
+      nothing OF
+         s" has no event answering the request" idx E-RESPONSE BAD-REPLY
+      ENDOF
+      stray OF ENDOF
+      response OF ENDOF
+   ;MATCH
+   buf BUF$ ;
 
 
 \ A member of a JSON object text: its text (a string with quotes), token kind
-\ and whether it is there; no object, or the member twice, is a logged E-RESPONSE.
+\ and whether it is there; no object is a logged E-RESPONSE.
 : MEMBER ( n ^u8 n ^u8 n -- ^u8 n n bool )
    {: idx:n data:^ len:n key:^ ku:n :}
    idx ROW PEER-CURSOR data len JSON:READ-INIT
@@ -2253,10 +2287,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       JSON:READ-CLOSE s" " JSON:T-END false exit
    then
    JSON:READ-TOKEN {: k:n :} RAW$ {: a:^ u:n :}
-   key ku JSON:READ-FIND-KEY if
-      JSON:READ-CLOSE
-      s" has a result that names a member twice" idx E-RESPONSE BAD-REPLY
-   then
    JSON:READ-CLOSE a u k true ;
 
 
@@ -2278,19 +2308,20 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx MESSAGE$ {: m:^ mu:n :}
    m mu JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
-      success OF {: id value:^ vu:n :}
-         id JSON-RPC:ID$ REQUEST-ID$ STR:= 0= if
+      success OF {: id value :}
+         id JSON:TEXT$ REQUEST-ID$ STR:= 0= if
             s" answers another request" idx E-RESPONSE BAD-REPLY
          then
-         value vu ENDOF
-      request OF 2drop 2drop drop
+         value JSON:TEXT$ ENDOF
+      request OF drop drop drop
          s" is a request, not a response" idx E-RESPONSE BAD-REPLY ENDOF
-      notification OF 2drop 2drop
+      notification OF drop drop
          s" is a notification, not a response" idx E-RESPONSE BAD-REPLY ENDOF
-      failure OF 2drop drop
+      failure OF drop drop
          s" is a JSON-RPC error" idx E-RESPONSE BAD-REPLY ENDOF
-      invalid OF 2drop 2drop
-         s" is not JSON-RPC" idx E-RESPONSE BAD-REPLY ENDOF
+      invalid OF drop {: why:^ wu:n :} drop
+         s" is not JSON-RPC" why wu idx REPLY-LINE
+         E-RESPONSE throw ENDOF
    ;MATCH ;
 
 

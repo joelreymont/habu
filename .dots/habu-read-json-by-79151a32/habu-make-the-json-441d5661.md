@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-11-24T17:22:27.523891+01:00"
 blocks:
   - habu-walk-a-json-da90ebe1
-  - habu-hold-a-json-9050c2d4
   - habu-compile-a-json-92f9f4cf
   - habu-validate-a-json-9ec8e7c9
   - habu-read-mcp-requests-4c03d74e

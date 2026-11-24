@@ -44,9 +44,10 @@ split-str
 \ - a document opened twice held twice, so two closes publish twice ...... sync
 \ - a change or close of a document not open applied or silent; a URI that is
 \   not a file URI opened; a change with a range applied under Full sync . sync
-\ - params absent, of the wrong kind, with a version past a cell or naming a
-\   member twice, or a URI naming a path that holds a NUL, answered, applied
-\   or stopping the server; each must log one line ........... malformed-params
+\ - params absent, of the wrong kind or with a version past a cell, or a URI
+\   naming a path that holds a NUL, answered, applied or stopping the server,
+\   each must log one line; params naming a member twice answered other than
+\   -32600 with id null, or stopping the server ............... malformed-params
 \
 \ Framing
 \ - a header form the transport takes refused: a lower-case name, Content-Type
@@ -186,8 +187,8 @@ split-str
 \   give it: its name, kind and location at the document's URI over the
 \   token that declared it; a definition of another open document or of a
 \   file the document requires listed; a document with no definition answered
-\   other than an empty list; a document not open, or params naming none or
-\   naming textDocument twice, answered other than -32602 ...... document-symbol
+\   other than an empty list; a document not open, or params naming none,
+\   answered other than -32602 ................................. document-symbol
 \ - a request in the turn of a change answered before the check of the
 \   changed text published, or still listing a definition the change removed;
 \   a request with a change of its document read behind it answered other
@@ -1938,7 +1939,18 @@ variable PUB-COUNT
    PAR-B CLEAR
    s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+
    s\" },\"textDocument\":{}}" PAR+
-   s" textDocument/didClose" PAR$ LSP:E-LSP-PARAMS UNAPPLIED ;
+   s" textDocument/didClose" PAR$ TELL ;
+
+\ The reply to CLOSE-TWICE of URI-A: -32600, the null id and the reader's
+\ text placing the second textDocument.
+: TWICE-REFUSED ( -- )
+   MSG-CLEAR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600," MSG+
+   s\" \"message\":\"1:112: expected a member name not used before in " MSG+
+   s\" this object, found `\\\"textDocument\\\"`; " MSG+
+   s\" remove the repeated member\"}}" MSG+
+   MSG$ HEAR-FOR
+   MSG$ HEARD ;
 
 : BAD-CHANGES ( -- )
    URI-A s" []" CHANGE-PARAMS
@@ -1957,6 +1969,7 @@ variable PUB-COUNT
    BAD-CHANGES
    URI-A CLOSE-DOC
    SAY
+   TWICE-REFUSED
    URI-A PUBLISHED ;
 
 \ ---- diagnostics ------------------------------------------------------------------
@@ -2617,9 +2630,6 @@ USE-MAX 1 + constant OVER-USINGS
 
 : OUTLINE-ASK ( str str -- )  OUTLINE-HEAD s\" \"}}}" MSG+ MSG$ FRAMED ;
 
-\ A request naming textDocument twice, the first copy this path.
-: OUTLINE-TWICE-ASK ( str str -- )
-   OUTLINE-HEAD s\" \"},\"textDocument\":{}}}" MSG+ MSG$ FRAMED ;
 
 : AT-ASK-WITH ( str str str n n str -- )
    {: m:^ mu:n i:^ iu:n p:^ pu:n l:n c:n x:^ xu:n :}
@@ -3423,7 +3433,6 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 5" SYM-NONE-PATH OUTLINE-ASK
    s" 6" DEF-A-PATH OUTLINE-ASK
    s" 7" s" textDocument/documentSymbol" ASK
-   s" 8" SYM-A-PATH OUTLINE-TWICE-ASK
    SAY
    s" 3" SYMBOLS-START
    s" QUX-A" 12 SYM-A-PATH URI-OF 1 2 7 s" " SYMBOL+
@@ -3435,8 +3444,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    SYMBOLS-END
    s" 5" SYMBOLS-START SYMBOLS-END
    HEAR s" 6" -32602 REFUSED
-   HEAR s" 7" -32602 REFUSED
-   HEAR s" 8" -32602 REFUSED ;
+   HEAR s" 7" -32602 REFUSED ;
 
 : HIERARCHICAL-CLIENT ( -- )
    MSG-CLEAR

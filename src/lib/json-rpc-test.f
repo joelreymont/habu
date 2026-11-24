@@ -20,20 +20,29 @@ TYPED-VARIABLE W JSON:writer
 
 : SB-SP ( -- )  s"  " SB-APPEND ;
 
+: VALUE+ ( JSON:value -- )  JSON:TEXT$ SB-APPEND ;
+
+\ Params as their text, nothing for none.
+: PARAMS+ ( option<JSON:value> -- )
+   MATCH option
+      none OF ENDOF
+      some OF VALUE+ ENDOF
+   ;MATCH ;
+
 : SHOW$ ( JSON-RPC:message -- str )
    SB-RESET
    MATCH JSON-RPC:message
-      request OF {: i m:^ mu:n p:^ pu:n :}
-         s" request" SB-APPEND SB-SP i ID$ SB-APPEND SB-SP
-         m mu SB-APPEND SB-SP p pu SB-APPEND ENDOF
-      notification OF {: m:^ mu:n p:^ pu:n :}
-         s" notification" SB-APPEND SB-SP m mu SB-APPEND SB-SP p pu SB-APPEND ENDOF
-      success OF {: i v:^ vu:n :}
-         s" success" SB-APPEND SB-SP i ID$ SB-APPEND SB-SP v vu SB-APPEND ENDOF
-      failure OF {: i v:^ vu:n :}
-         s" failure" SB-APPEND SB-SP i ID$ SB-APPEND SB-SP v vu SB-APPEND ENDOF
+      request OF {: i m p :}
+         s" request" SB-APPEND SB-SP i VALUE+ SB-SP
+         m VALUE+ SB-SP p PARAMS+ ENDOF
+      notification OF {: m p :}
+         s" notification" SB-APPEND SB-SP m VALUE+ SB-SP p PARAMS+ ENDOF
+      success OF {: i v :}
+         s" success" SB-APPEND SB-SP i VALUE+ SB-SP v VALUE+ ENDOF
+      failure OF {: i v :}
+         s" failure" SB-APPEND SB-SP i VALUE+ SB-SP v VALUE+ ENDOF
       invalid OF {: c:n w:^ wu:n i :}
-         s" invalid" SB-APPEND SB-SP c FMT:SB-INT SB-SP i ID$ SB-APPEND SB-SP
+         s" invalid" SB-APPEND SB-SP c FMT:SB-INT SB-SP i VALUE+ SB-SP
          w wu SB-APPEND ENDOF
    ;MATCH
    SB$ ;
@@ -71,8 +80,8 @@ TYPED-VARIABLE W JSON:writer
    s\" {\"extra\":{\"method\":\"y\",\"id\":3},\"jsonrpc\":\"2.0\",\"method\":\"x\"}"
    s\" notification \"x\" " SORTS ;
 
-\ A result (null, a string with its quotes, an object) and an error answering an
-\ id, the error's members in any order with data holding a `code`.
+\ Results null, a quoted string and an object; errors with members in any order,
+\ data holding a `code`, and a whole code written `1.0`.
 : TEST-RESPONSE ( -- )
    s\" {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":null}"
    s\" success 7 null" SORTS
@@ -83,7 +92,9 @@ TYPED-VARIABLE W JSON:writer
    s\" {\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32601,\"message\":\"m\"}}"
    s\" failure 9 {\"code\":-32601,\"message\":\"m\"}" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":10,\"error\":{\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}}"
-   s\" failure 10 {\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}" SORTS ;
+   s\" failure 10 {\"message\":\"m\",\"data\":{\"code\":\"x\"},\"code\":1}" SORTS
+   s\" {\"jsonrpc\":\"2.0\",\"id\":11,\"error\":{\"code\":1.0,\"message\":\"m\"}}"
+   s\" failure 11 {\"code\":1.0,\"message\":\"m\"}" SORTS ;
 
 : PARSE-HEAD$ ( -- str )  s" invalid -32700 null " ;
 
@@ -149,28 +160,27 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":[1],\"method\":\"x\"}" BAD-ID
    s\" {\"jsonrpc\":\"2.0\",\"id\":true,\"result\":1}" BAD-ID ;
 
-\ A repeat inside params is the params' reader's to reject: the request
-\ carries their text whole.
+\ A member named twice in any object, decoded: in the envelope, in params or
+\ in an error. INVALID-REQUEST with the reader's text and the null id.
 : TEST-REPEAT ( -- )
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\",\"method\":\"y\"}"
-   s" invalid -32600 1 an envelope member named twice" SORTS
+   s\" invalid -32600 null 1:38: expected a member name not used before in this object, found `\"method\"`; remove the repeated member" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"x\",\"params\":{\"a\":1,\"a\":2}}"
-   s\" request 2 \"x\" {\"a\":1,\"a\":2}" SORTS
+   s\" invalid -32600 null 1:54: expected a member name not used before in this object, found `\"a\"`; remove the repeated member" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"x\",\"m\\u0065thod\":\"x\"}"
-   s" invalid -32600 3 an envelope member named twice" SORTS
+   s\" invalid -32600 null 1:38: expected a member name not used before in this object, found `\"m\\u0065thod\"`; remove the repeated member" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"x\",\"params\":{},\"params\":{}}"
-   s" invalid -32600 4 an envelope member named twice" SORTS
+   s\" invalid -32600 null 1:50: expected a member name not used before in this object, found `\"params\"`; remove the repeated member" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"id\":2,\"method\":\"x\"}"
-   s" invalid -32600 null an envelope member named twice" SORTS
+   s\" invalid -32600 null 1:25: expected a member name not used before in this object, found `\"id\"`; remove the repeated member" SORTS
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1,\"code\":2,\"message\":\"m\"}}"
-   s" invalid -32600 null an envelope member named twice" SORTS ;
+   s\" invalid -32600 null 1:43: expected a member name not used before in this object, found `\"code\"`; remove the repeated member" SORTS ;
 
 : NOT-ERROR ( str -- )
    s" invalid -32600 null an error that is not an error object" SORTS ;
 
-\ No method and no id; a result without an id; both result and error; neither;
-\ an error that is not an object, an empty one, one whose code is a fraction or
-\ whose message is not a string: INVALID-REQUEST, id null.
+\ INVALID-REQUEST, id null: no method or id, no id, both or neither of result and
+\ error, and an error not an object, empty, or with a bad code or message.
 : TEST-RESPONSE-FAULTS ( -- )
    s\" {\"jsonrpc\":\"2.0\"}"
    s" invalid -32600 null a message with neither a method nor an id" SORTS
@@ -184,16 +194,8 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{}}" NOT-ERROR
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1.5,\"message\":false}}" NOT-ERROR
    s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1.5,\"message\":\"m\"}}" NOT-ERROR
-   s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1,\"message\":false}}" NOT-ERROR ;
-
-\ METHOD? decoded: equal, escaped, a prefix, longer, another name.
-: TEST-METHOD ( -- )
-   s\" \"initialize\"" s" initialize" METHOD? TTRUE
-   s\" \"\\u0069nitiali\\u007ae\"" s" initialize" METHOD? TTRUE
-   s\" \"initialize\"" s" init" METHOD? TFALSE
-   s\" \"init\"" s" initialize" METHOD? TFALSE
-   s\" \"initialized\"" s" initialize" METHOD? TFALSE
-   s\" \"\"" s" " METHOD? TTRUE ;
+   s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":1,\"message\":false}}" NOT-ERROR
+   s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":9223372036854775808,\"message\":\"m\"}}" NOT-ERROR ;
 
 : WRITER ( -- ^JSON:writer )
    W OUT @ JSON:OPEN ;
@@ -204,16 +206,10 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    w JSON:CLOSE
    a u ;
 
-: ID ( ^u8 n -- JSON-RPC:id )  JSON--RPC-ID:MAKE ;
-
-: EMPTY-RESULT ( -- )
-   WRITER s" " ID RESULT CLOSED$ 2drop ;
-
-: EMPTY-ERROR ( -- )
-   WRITER s" " ID INTERNAL-ERROR s" m" ERROR CLOSED$ 2drop ;
+: ID ( ^u8 n -- JSON:value )  JSON:PARSE ;
 
 \ RESULT, ERROR and NOTIFY: exact bytes, a message escaped, each read back by
-\ >MESSAGE; an empty id is E-JSON-RPC-ID with nothing written.
+\ >MESSAGE.
 : TEST-WRITE ( -- )
    WRITER s" 2" ID RESULT WRITE-NULL END CLOSED$
    2dup s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}" T$=
@@ -228,11 +224,7 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    WRITER s" textDocument/publishDiagnostics" NOTIFY
    WRITE-ARRAY-START WRITE-ARRAY-END END CLOSED$
    2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":[]}" T$=
-   s\" notification \"textDocument/publishDiagnostics\" []" SORTS
-   [: EMPTY-RESULT ;] E-JSON-RPC-ID TTHROWSQ
-   W CLOSED$ nip 0 T=
-   [: EMPTY-ERROR ;] E-JSON-RPC-ID TTHROWSQ
-   W CLOSED$ nip 0 T= ;
+   s\" notification \"textDocument/publishDiagnostics\" []" SORTS ;
 
 : TEST-MAIN ( -- )
    T-RESET
@@ -246,7 +238,6 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    TEST-ENVELOPE-FAULTS
    TEST-REPEAT
    TEST-RESPONSE-FAULTS
-   TEST-METHOD
    TEST-WRITE
    OUT @ VEC:DELETE
    T-REPORT

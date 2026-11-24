@@ -328,11 +328,6 @@ require src/os/env-base.f
 -9380 constant E-CONTENT-LENGTH-FIRST
 -9389 constant E-CONTENT-LENGTH-LAST
 
-\ JSON-RPC 2.0 envelope (package JSON-RPC, src/lib/json-rpc.f): -9390..-9399,
-\ declared at this file's end.
--9390 constant E-JSON-RPC-FIRST
--9399 constant E-JSON-RPC-LAST
-
 \ Language server: -9400..-9401, minted by tools/lsp-core.f, which owns package
 \ LSP.
 
@@ -856,7 +851,6 @@ generates: FAULT ( -- n )
 -9380 s" a header block that names no single decimal body length within the reader's maximum or a charset other than UTF-8, or a line that is not `token: value` ended by CR LF within LINE-CAP" ERROR:CODE E-CONTENT-LENGTH-MALFORMED
 -9381 s" end of file inside a header block or a body" ERROR:CODE E-CONTENT-LENGTH-TRUNCATED
 -9382 s" a reader used before BIND or after a rejection, NEXT-LENGTH with a body pending, BODY with none, or BIND with a buffer under LINE-CAP + 2 bytes or a negative maximum" ERROR:CODE E-CONTENT-LENGTH-STATE
--9390 s" a response written with an empty id" ERROR:CODE E-JSON-RPC-ID
 -9410 s" a send on a socket that is closing, closed or gone, or one whose queue overflowed and lost it" ERROR:CODE E-WS-CLOSED
 -9411 s" a close status no endpoint may send: outside 1000..4999, reserved or unassigned" ERROR:CODE E-WS-CODE
 -9414 s" SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)" ERROR:CODE E-WS-TEXT

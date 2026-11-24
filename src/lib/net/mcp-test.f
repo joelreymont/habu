@@ -10,8 +10,8 @@ split-str
 \ descriptor as registered (annotations and _meta raw) with a non-object output schema's
 \ wrapper in its place, and ADD-TOOL's rejections of a bad descriptor or inputSchema. A
 \ tools/call whose arguments, given or absent, break the inputSchema is a tool error that
-\ runs no body, from HANDLE and from ANSWER, and so is one whose arguments repeat a
-\ member, from HANDLE. ui:// resources: the resources capability, resources/list and
+\ runs no body, from HANDLE and from ANSWER, and params that name a member twice are
+\ 400 -32600 with no id. ui:// resources: the resources capability, resources/list and
 \ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
 \ refusals. The info line a tools/call and a resources/read log, without arguments, and,
@@ -354,10 +354,6 @@ TASK:MIN-STACK TASK:TASK STALLER
 : FILTERS-TEXT ( -- ^u8 n )
    s" arguments: expected only the member `filter`, found `filters`; rename it to `filter` or remove it" ;
 
-\ strict's tool error for arguments naming filter twice, as JSON string text.
-: REPEAT-TEXT ( -- str )
-   S\" arguments 1:15: expected a member name not used before in this object, found `\\\"filter\\\"`; remove the repeated member" ;
-
 \ A legacy tool error with id n and the text.
 : ERROR-REPLY ( n ^u8 n -- ^u8 n )
    {: id:n text:^ tu:n :}
@@ -374,10 +370,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    LEGACY 71 s" " STRICT-CALL POST
    200 71 s" arguments: expected a member `filter`, found none; add `filter`" ERROR-REPLY
    ANSWERED
-   STRICT-RAN atomic@ 0 T=
-   s" arguments that repeat a member are a tool error with the reader's text" T-LABEL
-   LEGACY 74 S\" ,\"arguments\":{\"filter\":\"x\",\"filter\":\"y\"}" STRICT-CALL POST
-   200 74 REPEAT-TEXT ERROR-REPLY ANSWERED
    STRICT-RAN atomic@ 0 T=
    s" arguments the inputSchema admits run the body" T-LABEL
    LEGACY 72 S\" ,\"arguments\":{\"filter\":\"x\"}" STRICT-CALL POST
@@ -791,18 +783,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" \"`params._meta`: expected a JSON object; send params._meta as one object\"}}" SB-APPEND
    400 SB$ ANSWERED ;
 
-: META-TWICE ( -- )
-   s" a modern request whose _meta names a member twice is 400 -32602 naming it" T-LABEL
-   MODERN s" Mcp-Method: tools/list" ADD
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":86,\"method\":\"tools/list\",\"params\":" SB-APPEND
-   S\" {\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"," SB-APPEND
-   S\" \"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}" SB-APPEND SB$ POST
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":86,\"error\":{\"code\":-32602,\"message\":" SB-APPEND
-   S\" \"`io.modelcontextprotocol/protocolVersion`: named twice in params._meta;" SB-APPEND
-   S\"  send it once\"}}" SB-APPEND
-   400 SB$ ANSWERED ;
-
-
 : NO-PARAMS ( -- )
    s" a modern request without params is 400 -32602" T-LABEL
    MODERN s" Mcp-Method: tools/list" ADD
@@ -850,13 +830,17 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"name\":\"echo\"}}" SB-APPEND
    SB$ ;
 
-: TWICE-TEXT ( -- str ) s" `name`: named twice in params; send it once" ;
+\ The reader's text for NAME-TWICE's body, either side of the repeated name.
+: TWICE-HEAD ( -- str )
+   s" 1:72: expected a member name not used before in this object, found `" ;
+: TWICE-TAIL ( -- str ) s" `; remove the repeated member" ;
 
 : NAME-REPEATED ( -- )
-   s" params naming name twice are 400 -32602 naming it" T-LABEL
+   s" params naming name twice are 400 -32600 with no id and the reader's text" T-LABEL
    LEGACY 83 NAME-TWICE POST
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":83,\"error\":{\"code\":-32602,\"message\":\"" SB-APPEND
-   TWICE-TEXT SB-APPEND S\" \"}}" SB-APPEND
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"" SB-APPEND
+   TWICE-HEAD SB-APPEND S\" \\\"name\\\"" SB-APPEND TWICE-TAIL SB-APPEND
+   S\" \"}}" SB-APPEND
    400 SB$ ANSWERED ;
 
 
@@ -1151,17 +1135,24 @@ TASK:MIN-STACK TASK:TASK STALLER
    answer JSON-HEADER
    answer NB NB-U @ HTTP:BODY! ;
 
-\ Event-stream replies: a notification and, for a call, a request with the
-\ client's id before the response, except for a call of "none", whose stream
-\ ends with no response, and of "bad", whose one event is not UTF-8.
+\ A notification, then for a call a ping with the client's id, then the
+\ response. "none" starts with a priming event, "twice" ends with a stray.
 : EVENTS-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    answer s" Content-Type" s" text/event-stream" HTTP:HEADER!
+   asked HTTP:BODY$ S\" \"name\":\"twice\"" STR:CONTAINS? if
+      answer S\" data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[],\"isError\":false,\"isError\":true}}\n\ndata: x\n\n"
+      HTTP:BODY! exit
+   then
+   asked HTTP:BODY$ S\" \"name\":\"stray\"" STR:CONTAINS? if
+      answer S\" data: x\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[],\"isError\":false}}\n\ndata: y\n\n"
+      HTTP:BODY! exit
+   then
    asked HTTP:BODY$ S\" \"name\":\"bad\"" STR:CONTAINS? if
       answer s\" data: \xFF\n\n" HTTP:BODY! exit
    then
    asked HTTP:BODY$ S\" \"name\":\"none\"" STR:CONTAINS? if
-      answer S\" data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
+      answer S\" id: 0\ndata:\n\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
       HTTP:BODY! exit
    then
    asked HTTP:BODY$ s" tools/list" STR:CONTAINS? if
@@ -1400,6 +1391,9 @@ $A constant LF
    s" CALL takes the response past a notification and a request event" T-LABEL
    ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE
    S\" {\"content\":[],\"isError\":false}" T$=
+   s" CALL takes the response past events that are not JSON-RPC" T-LABEL
+   ROUTE-CLIENT @ s" stray" s" {}" 0 >MS MCP:CALL TFALSE
+   S\" {\"content\":[],\"isError\":false}" T$=
    s" a stream with no response is E-RESPONSE and the client serves the next call" T-LABEL
    [: [: ROUTE-CLIENT @ s" none" s" {}" 0 >MS MCP:CALL 2drop drop ;]
       MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
@@ -1413,11 +1407,23 @@ $A constant LF
    ROUTE-CLIENT @ MCP:CLOSE ;
 
 : CLIENT-TWICE ( -- )
-   s" a result naming isError twice is E-RESPONSE" T-LABEL
+   s" a reply naming isError twice is E-RESPONSE, logged with the reader's text" T-LABEL
    s" /twice" URL MCP:OPEN ROUTE-CLIENT !
    [: [: ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL 2drop drop ;]
       MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
-   s" has a result that names a member twice: status 200" REPLY-LOGGED
+   W-RESET s" is not JSON-RPC: 1:64: expected a member name not used before in this object, " W+
+   S\" found `\"isError\"`; remove the repeated member: status 200" W+
+   W$ REPLY-LOGGED
+   ROUTE-CLIENT @ MCP:CLOSE ;
+
+: CLIENT-EVENT-TWICE ( -- )
+   s" an event naming isError twice is E-RESPONSE, logged with the reader's text" T-LABEL
+   s" /events" URL MCP:OPEN ROUTE-CLIENT !
+   [: [: ROUTE-CLIENT @ s" twice" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+      MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
+   W-RESET s" is not JSON-RPC: 1:64: expected a member name not used before in this object, " W+
+   S\" found `\"isError\"`; remove the repeated member: status 200" W+
+   W$ REPLY-LOGGED
    ROUTE-CLIENT @ MCP:CLOSE ;
 
 : CLIENT-LIST-TIMEOUT ( -- )
@@ -1550,7 +1556,7 @@ TYPED-VARIABLE NEVER MCP:client
    s" /mcp" URL MCP:OPEN CLIENT !
    CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN
    CLIENT-BIG CLIENT-TIMEOUT CLIENT-SECRET CLIENT-LONG CLIENT-PAGES
-   CLIENT-NAMES CLIENT-EVENTS CLIENT-TWICE CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
+   CLIENT-NAMES CLIENT-EVENTS CLIENT-TWICE CLIENT-EVENT-TWICE CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
    CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
    CLIENT-HALTED CLIENT-STOP-PAGE CLIENT-STOP CLIENT-NEVER
@@ -1999,9 +2005,10 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    W$ REQ-LOGGED ;
 
 : LOGGED-TWICE ( -- )
-   s" MCP:LOG logs params naming name twice with no target and passes no code" T-LABEL
+   s" MCP:LOG logs params naming name twice as -32600 with no method and passes no code" T-LABEL
    [: LEGACY 84 NAME-TWICE POST 400 T= ;] CAPTURED
-   W-RESET s"  tools/call -> error -32602: " W+ TWICE-TEXT W+ S\" \n" W+
+   W-RESET s"  - -> error -32600: " W+
+   TWICE-HEAD W+ S\" \"name\"" W+ TWICE-TAIL W+ S\" \n" W+
    W$ REQ-LOGGED
    LOG$ s" failed, throw" STR:CONTAINS? TFALSE ;
 
@@ -2159,7 +2166,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    META-NOT-OBJECT META-REPEATED META-SERVER-INFO
    BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-OWN-TEXT BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE NULL-ID RESPONSE-SENT
    BAD-JSON LIST PING
-   MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES SCALAR-META META-TWICE
+   MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES SCALAR-META
    NO-PARAMS MODERN-NOTIFICATION LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT PARAMS-NOT-OBJECT
    NAME-REPEATED NOT-JSON-RESULT
    SILENT RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
