@@ -87,7 +87,7 @@ CODEGEN:BUFFER TEXT
 : EACH-LINE ( str [ str -- ] -- ) {: a:^ u:n q :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SCRIPT-MISMATCH throw then
       line lineu q execute
       next
@@ -95,9 +95,9 @@ CODEGEN:BUFFER TEXT
 
 \ The field of a `;`-separated line that starts at start, trimmed.
 : FIELD-AT ( str n -- str n ) {: a:^ u:n start:n :}
-   a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
+   a u SEMICOLON start STR:SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
    valid 0= if E-SCRIPT-MISMATCH throw then
-   fa fu TRIM next ;
+   fa fu STR:TRIM next ;
 
 : NAME+ ( str -- ) {: a:^ u:n :}
    NAME-N @ NAME-CAPACITY >= if E-SCRIPT-MISMATCH throw then
@@ -107,14 +107,14 @@ CODEGEN:BUFFER TEXT
 
 : ALIAS-LINE ( str -- ) {: a:^ u:n :}
    a u 0 FIELD-AT {: pa:^ pu:n next:n :}
-   pa pu s" sc" STR= 0= if exit then
+   pa pu s" sc" STR:= 0= if exit then
    a u next FIELD-AT {: code:^ codeu:n next2:n :}
    codeu 4 <> if E-SCRIPT-MISMATCH throw then
    a u next2 FIELD-AT drop NAME+ ;
 
 : NAME-INDEX ( str -- n ) {: a:^ u:n :}
    NAME-N @ 0 ?do
-      a u i NAME-A @ i NAME-U @ STR= if i unloop exit then
+      a u i NAME-A @ i NAME-U @ STR:= if i unloop exit then
    loop
    E-SCRIPT-MISMATCH throw ;
 
@@ -138,7 +138,7 @@ CODEGEN:BUFFER TEXT
    a pos PARSE-HEX a pos 2 + + u pos 2 + - PARSE-HEX ;
 
 : SCRIPTS-LINE ( str -- ) {: line:^ lineu:n :}
-   line line lineu HASH BYTE-INDEX TRIM {: a:^ u:n :}
+   line line lineu HASH BYTE-INDEX STR:TRIM {: a:^ u:n :}
    u 0= if exit then
    a u 0 FIELD-AT {: ra:^ ru:n next:n :}
    a u next FIELD-AT drop NAME-INDEX {: tag:n :}
@@ -195,7 +195,7 @@ CODEGEN:BUFFER TEXT
    UNICODE-SCRIPT-TOOL:LOAD-PINNED
    UNICODE-SCRIPT-TOOL:RENDER {: generated:^ generatedu:n :}
    DATA-PATH$ READ-INPUT {: buf:^ got:n :}
-   generated generatedu buf got STR= 0= if E-SCRIPT-MISMATCH throw then ;
+   generated generatedu buf got STR:= 0= if E-SCRIPT-MISMATCH throw then ;
 
 public
 

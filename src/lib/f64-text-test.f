@@ -23,7 +23,7 @@ create OUTPUT MAX-BYTES allot
 
 : EXPECT ( n str -- ) {: bits:n expected:^ len:n :}
    bits BITS>F64 FORMAT-OK {: actual:n :}
-   OUTPUT actual expected len STR= TTRUE
+   OUTPUT actual expected len STR:= TTRUE
    OUTPUT actual PARSE-OK F64>BITS bits T= ;
 
 \ In LONG: head, then count zeros, then tail.

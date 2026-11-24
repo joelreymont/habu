@@ -195,7 +195,7 @@ GT-POOL-ABORT-BARE!
 
 : GT-POOL-NUM+ ( n -- ) {: v:n :}
    v 10 >= if v 10 / RECURSE then
-   v 10 mod STR-ZERO + GT-POOL-NUM-C+ ;
+   v 10 mod STR:ZERO + GT-POOL-NUM-C+ ;
 
 : GT-POOL-NUM$ ( n -- str ) {: v:n :}
    v 0 < if E-STR-BOUNDS GT-POOL-ABORT then
@@ -969,7 +969,7 @@ variable GT-POOL-CPU-NS
    i 0 < if false exit then
    i >IDX PROC-ENV-SLOT @ {: z:^ :}
    z ku BYTE+ z ZLEN ku -
-   s" TMPDIR" GETENV STR= 0= ;
+   s" TMPDIR" GETENV STR:= 0= ;
 
 \ The code making the slot's socket directory threw, 0 once it is made.
 : GT-POOL-SOCK-MAKE ( idx -- n )

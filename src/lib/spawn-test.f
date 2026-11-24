@@ -104,7 +104,7 @@ variable SCRIPT-LEN
    ENVP dup ZLEN {: z:^ u :}
    z u NAME-LEN {: nu :}
    nu 0 > nu u < and
-   z nu s" DYLD_" STARTS-WITH? 0= and ;
+   z nu s" DYLD_" STR:STARTS-WITH? 0= and ;
 
 : PARENT-ROW ( -- n )
    0 begin
@@ -124,7 +124,7 @@ variable SCRIPT-LEN
 : AT? ( n str -- bool )
    {: pos s:^ u :}
    pos u + OUT-LEN @ > if false exit then
-   pos OUT u s u STR= ;
+   pos OUT u s u STR:= ;
 
 : LINE-IS? ( n str -- bool )
    {: pos s:^ u :}

@@ -748,54 +748,54 @@ public
 : ROUTINE-BODY ( str -- str bool )
    {: name:^ u:n :}
    0 BUF-U !  0 SITES-N !
-   name u s" emit" STR=CI if EMIT-BODY BODY$ true exit then
-   name u s" write" STR=CI if WRITE-BODY BODY$ true exit then
-   name u s" !" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
-   name u s" c!" STR=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
+   name u s" emit" STR:=CI if EMIT-BODY BODY$ true exit then
+   name u s" write" STR:=CI if WRITE-BODY BODY$ true exit then
+   name u s" !" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name u s" c!" STR:=CI if OP-I64-STORE8 ALIGN-8 STORE-BODY BODY$ true exit then
    \ A module saves no image, so xt! is a plain store.
-   name u s" xt!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name u s" xt!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
    \ ---- division, views and atomics
-   name u s" /" STR=CI if OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
-   name u s" mod" STR=CI if OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then
-   name u s" cell-view" STR=CI if VIEW-BODY BODY$ true exit then
-   name u s" byte-view" STR=CI if VIEW-BODY BODY$ true exit then
-   name u s" PTR>N" STR=CI if VIEW-BODY BODY$ true exit then
-   name u s" >str" STR=CI if VIEW-BODY BODY$ true exit then
-   name u s" str>" STR=CI if VIEW-BODY BODY$ true exit then
-   name u s" data" STR=CI if DATA-BODY BODY$ true exit then
-   name u s" len" STR=CI if LEN-BODY BODY$ true exit then
-   name u s" atomic!" STR=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
-   name u s" atomic-cas" STR=CI if CAS-BODY BODY$ true exit then
-   name u s" atomic-add" STR=CI if FETCH-ADD-BODY BODY$ true exit then
+   name u s" /" STR:=CI if OP-I64-DIV-S true DIVIDE-BODY BODY$ true exit then
+   name u s" mod" STR:=CI if OP-I64-REM-S false DIVIDE-BODY BODY$ true exit then
+   name u s" cell-view" STR:=CI if VIEW-BODY BODY$ true exit then
+   name u s" byte-view" STR:=CI if VIEW-BODY BODY$ true exit then
+   name u s" PTR>N" STR:=CI if VIEW-BODY BODY$ true exit then
+   name u s" >str" STR:=CI if VIEW-BODY BODY$ true exit then
+   name u s" str>" STR:=CI if VIEW-BODY BODY$ true exit then
+   name u s" data" STR:=CI if DATA-BODY BODY$ true exit then
+   name u s" len" STR:=CI if LEN-BODY BODY$ true exit then
+   name u s" atomic!" STR:=CI if OP-I64-STORE ALIGN-64 STORE-BODY BODY$ true exit then
+   name u s" atomic-cas" STR:=CI if CAS-BODY BODY$ true exit then
+   name u s" atomic-add" STR:=CI if FETCH-ADD-BODY BODY$ true exit then
    \ ---- floats
-   name u s" f+" STR=CI if OP-F64-ADD FARITH-BODY BODY$ true exit then
-   name u s" f-" STR=CI if OP-F64-SUB FARITH-BODY BODY$ true exit then
-   name u s" f*" STR=CI if OP-F64-MUL FARITH-BODY BODY$ true exit then
-   name u s" f/" STR=CI if OP-F64-DIV FARITH-BODY BODY$ true exit then
-   name u s" fsqrt" STR=CI if FSQRT-BODY BODY$ true exit then
-   name u s" fnegate" STR=CI if OP-F64-NEG FSIGN-BODY BODY$ true exit then
-   name u s" fabs" STR=CI if OP-F64-ABS FSIGN-BODY BODY$ true exit then
-   name u s" f<" STR=CI if OP-F64-LT FCOMPARE-BODY BODY$ true exit then
-   name u s" f>" STR=CI if OP-F64-GT FCOMPARE-BODY BODY$ true exit then
-   name u s" f=" STR=CI if OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
-   name u s" f<=" STR=CI if OP-F64-LE FCOMPARE-BODY BODY$ true exit then
-   name u s" f>=" STR=CI if OP-F64-GE FCOMPARE-BODY BODY$ true exit then
-   name u s" f0<" STR=CI if OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
-   name u s" f0=" STR=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
-   name u s" s>f" STR=CI if S>F-BODY BODY$ true exit then
-   name u s" f>s" STR=CI if F>S-BODY BODY$ true exit then
+   name u s" f+" STR:=CI if OP-F64-ADD FARITH-BODY BODY$ true exit then
+   name u s" f-" STR:=CI if OP-F64-SUB FARITH-BODY BODY$ true exit then
+   name u s" f*" STR:=CI if OP-F64-MUL FARITH-BODY BODY$ true exit then
+   name u s" f/" STR:=CI if OP-F64-DIV FARITH-BODY BODY$ true exit then
+   name u s" fsqrt" STR:=CI if FSQRT-BODY BODY$ true exit then
+   name u s" fnegate" STR:=CI if OP-F64-NEG FSIGN-BODY BODY$ true exit then
+   name u s" fabs" STR:=CI if OP-F64-ABS FSIGN-BODY BODY$ true exit then
+   name u s" f<" STR:=CI if OP-F64-LT FCOMPARE-BODY BODY$ true exit then
+   name u s" f>" STR:=CI if OP-F64-GT FCOMPARE-BODY BODY$ true exit then
+   name u s" f=" STR:=CI if OP-F64-EQ FCOMPARE-BODY BODY$ true exit then
+   name u s" f<=" STR:=CI if OP-F64-LE FCOMPARE-BODY BODY$ true exit then
+   name u s" f>=" STR:=CI if OP-F64-GE FCOMPARE-BODY BODY$ true exit then
+   name u s" f0<" STR:=CI if OP-F64-LT FCOMPARE0-BODY BODY$ true exit then
+   name u s" f0=" STR:=CI if OP-F64-EQ FCOMPARE0-BODY BODY$ true exit then
+   name u s" s>f" STR:=CI if S>F-BODY BODY$ true exit then
+   name u s" f>s" STR:=CI if F>S-BODY BODY$ true exit then
    \ ---- map-anon and munmap
-   name u s" map-anon" STR=CI if MAP-BODY BODY$ true exit then
-   name u s" munmap" STR=CI if UNMAP-BODY BODY$ true exit then
+   name u s" map-anon" STR:=CI if MAP-BODY BODY$ true exit then
+   name u s" munmap" STR:=CI if UNMAP-BODY BODY$ true exit then
    \ ---- throw, die and execute
-   name u s" throw" STR=CI if THROW-BODY BODY$ true exit then
-   name u s" die" STR=CI if DIE-BODY BODY$ true exit then
-   name u s" execute" STR=CI if EXECUTE-BODY BODY$ true exit then
+   name u s" throw" STR:=CI if THROW-BODY BODY$ true exit then
+   name u s" die" STR:=CI if DIE-BODY BODY$ true exit then
+   name u s" execute" STR:=CI if EXECUTE-BODY BODY$ true exit then
    \ ---- catch and finally
-   name u s" catch" STR=CI if CATCH-BODY BODY$ true exit then
-   name u s" finally" STR=CI if FINALLY-BODY BODY$ true exit then
+   name u s" catch" STR:=CI if CATCH-BODY BODY$ true exit then
+   name u s" finally" STR:=CI if FINALLY-BODY BODY$ true exit then
    \ ---- depth
-   name u s" depth" STR=CI if DEPTH-BODY BODY$ true exit then
+   name u s" depth" STR:=CI if DEPTH-BODY BODY$ true exit then
    s" " false ;
 
 ;using

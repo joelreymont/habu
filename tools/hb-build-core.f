@@ -109,7 +109,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    size u <> if file FD>N close false exit then
    size PRESENT-RESERVE
    file 0 PRESENT size FS:READ-SIZED
-   0 PRESENT size a u STR=
+   0 PRESENT size a u STR:=
    PRESENT-RELEASE ;
 
 
@@ -160,7 +160,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
    {: idx:n kind:n a:^ u:n :}
    kind LOAD? 0= if exit then
    a u INCLUDE-FILE
-   a u s" src/core/include.f" STR= if s" src/core/source-reset.f" INCLUDE-FILE then ;
+   a u s" src/core/include.f" STR:= if s" src/core/source-reset.f" INCLUDE-FILE then ;
 
 : PROVIDE ( n n str -- )
    {: idx:n kind:n a:^ u:n :}
@@ -223,7 +223,7 @@ variable INPUTS-FD                      \ INPUTS-READ's open descriptor until FS
 : REG-ROW ( str bool -- )
    {: a:^ u:n engine:bool :}
    SOURCE-ROOT:CWD$ {: c:^ cu:n :}
-   u cu 1 + > if a cu c cu STR= a cu + c@ FS:SLASH = and else false then
+   u cu 1 + > if a cu c cu STR:= a cu + c@ FS:SLASH = and else false then
    {: below:bool :}
    below 0= engine and if a u LOADING  E-BUILD-PATH throw then
    s\" s\\\" " TEXT+

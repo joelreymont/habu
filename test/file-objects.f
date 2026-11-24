@@ -176,7 +176,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" HABU_OUT" out outu CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ last lastu ENDS-WITH? {: done:bool :}
+   CMD:OUT$ last lastu STR:ENDS-WITH? {: done:bool :}
    done  rc 0 =  and 0= if rc SHOW then
    s" the build's last line is the one expected" LABEL  done TTRUE
    s" the build exits 0" LABEL  rc 0 T=
@@ -191,7 +191,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : RUN-PROG ( CMD:command str -- CMD:command ) {: out:^ outu:n :}
    CMD:RESET
    out outu s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ s\" Hi\nok\n" STR=  rc 0 =  and 0= if rc SHOW then
+   CMD:OUT$ s\" Hi\nok\n" STR:=  rc 0 =  and 0= if rc SHOW then
    s" the program prints Hi and ok" LABEL  CMD:OUT$ s\" Hi\nok\n" T$=
    s" the program exits 0" LABEL  rc 0 T= ;
 
@@ -248,11 +248,11 @@ variable CLASS-N                        \ the class CLASS+ read
 : ROOT! ( ^u8 n -- ) {: out:^ outu:n :}
    out outu s" obj" ROOT FS:JOIN-PATH ROOT-U ! ;
 
-: OBJ-SEEN ( str -- ) s" .hfo" ENDS-WITH? if 1 OBJ-N +! then ;
+: OBJ-SEEN ( str -- ) s" .hfo" STR:ENDS-WITH? if 1 OBJ-N +! then ;
 
 : TAIL-SEEN ( str -- )
    {: p:^ pu:n :}
-   p pu TAIL-I @ TAIL$ ENDS-WITH? 0= if exit then
+   p pu TAIL-I @ TAIL$ STR:ENDS-WITH? 0= if exit then
    1 TAIL-N +!  p FOUND pu BYTE-COPY  pu FOUND-U ! ;
 
 : COUNT-WALK ( -- ) ROOT ROOT-U @ ['] OBJ-SEEN FS:WALK-FILES ;
@@ -287,7 +287,7 @@ variable CLASS-N                        \ the class CLASS+ read
    BYTES-A PIECES-FIELD + LE:U64@ {: at:n :}
    BYTES-B PIECES-FIELD + LE:U64@ at <> if false exit then
    at au > if false exit then
-   BYTES-A at +  au at -  BYTES-B at +  au at -  STR= ;
+   BYTES-A at +  au at -  BYTES-B at +  au at -  STR:= ;
 
 \ A's object of tail i equals the peer's from PIECES on. The head before PIECES is not compared:
 \ it holds the pieces' times, which differ between out roots.
@@ -315,7 +315,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : SAME-FILE? ( str str str str -- bool )
    {: a:^ au:n an:^ anu:n b:^ bu:n bn:^ bnu:n :}
    [: dup a au an anu IN$ WHOLE-FILE
-      rot b bu bn bnu IN$ WHOLE-FILE STR= ;] ARENA:WITH ;
+      rot b bu bn bnu IN$ WHOLE-FILE STR:= ;] ARENA:WITH ;
 
 \ EXPECT: the regular file's stamp, its change time seconds, its type over its change time nanoseconds
 \ and its size, each low byte first.
@@ -346,41 +346,41 @@ variable CLASS-N                        \ the class CLASS+ read
 : CHECK-EDIT ( -- )
    s" C" WHICH!
    s" the mixed builds compile 0, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" mixed: compiled 0 1 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" mixed: compiled 0 1 0\n" STR:CONTAINS? TTRUE
    s" the edit builds compile 2, 2 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" edit: compiled 2 2 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" edit: compiled 2 2 0\n" STR:CONTAINS? TTRUE
    s" the tail builds compile 2, 1, 0 and 1 files" LABEL
-   STATE-W STATE-W-U @ s\" tail: compiled 2 1 0 1\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" tail: compiled 2 1 0 1\n" STR:CONTAINS? TTRUE
    s" the share builds compile 2, 2 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" STR:CONTAINS? TTRUE
    s" the laid builds compile 2, 2 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" laid: compiled 2 2 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" laid: compiled 2 2 0\n" STR:CONTAINS? TTRUE
    s" the private builds compile 2, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" private: compiled 2 1 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" private: compiled 2 1 0\n" STR:CONTAINS? TTRUE
    s" the parts builds compile 3, 2 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" parts: compiled 3 2 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" parts: compiled 3 2 0\n" STR:CONTAINS? TTRUE
    s" the twin builds compile 1, 1, 0 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" STR:CONTAINS? TTRUE
    s" the order builds compile 4, 3, 0 and 3 files" LABEL
-   STATE-W STATE-W-U @ s\" order: compiled 4 3 0 3\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" order: compiled 4 3 0 3\n" STR:CONTAINS? TTRUE
    s" the build after the body's caught text that left a record is rejected E-FAILED" LABEL
-   STATE-W STATE-W-U @ s\" none: compiled -9690\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" none: compiled -9690\n" STR:CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 0\n" STR:CONTAINS? TTRUE
    s" the words builds compile 5, 4, 0, 2, 1, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" words: compiled 5 4 0 2 1 1 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" words: compiled 5 4 0 2 1 1 0\n" STR:CONTAINS? TTRUE
    s" the ran builds compile 4, 1, 3, 0, 3 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" ran: compiled 4 1 3 0 3 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" ran: compiled 4 1 3 0 3 0\n" STR:CONTAINS? TTRUE
    s" the stores builds compile 4, 1, 2, 2, 2, 0 and 2 files" LABEL
-   STATE-W STATE-W-U @ s\" stores: compiled 4 1 2 2 2 0 2\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" stores: compiled 4 1 2 2 2 0 2\n" STR:CONTAINS? TTRUE
    s" the gain builds compile 3, 2, 2 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" gain: compiled 3 2 2 0\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" gain: compiled 3 2 2 0\n" STR:CONTAINS? TTRUE
    s" the own builds compile 2, 0, 2 and 0 files, the edited quotation's Q as a cold build's" LABEL
-   STATE-W STATE-W-U @ s\" own: compiled 2 0 2 0 q 42 42 43 43 cold 2 q 43\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" own: compiled 2 0 2 0 q 42 42 43 43 cold 2 q 43\n" STR:CONTAINS? TTRUE
    s" the through builds compile 4, 0, 3 and 0 files, the edited quotation's Q as a cold build's" LABEL
-   STATE-W STATE-W-U @ s\" through: compiled 4 0 3 0 q 42 42 43 43 cold 4 q 43\n" CONTAINS? TTRUE
+   STATE-W STATE-W-U @ s\" through: compiled 4 0 3 0 q 42 42 43 43 cold 4 q 43\n" STR:CONTAINS? TTRUE
    s" the full builds compile 2 and 0 files, then are rejected twice with 77 and the record a cold build prints" LABEL
-   STATE-W STATE-W-U @ s\" full: compiled 2 0 77 77 cold 77 same record -1\n" CONTAINS? TTRUE ;
+   STATE-W STATE-W-U @ s\" full: compiled 2 0 77 77 cold 77 same record -1\n" STR:CONTAINS? TTRUE ;
 
 \ A's map lists RUN as a word main.f loaded; a map lists only the code its
 \ program holds.
@@ -388,7 +388,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" A" WHICH!
    [: A$ s" prog.map" IN$ WHOLE-FILE
       s" the map lists RUN as main.f's" LABEL
-      s\"  RUN word loaded test/fixtures/file-objects/main.f\n" CONTAINS? TTRUE ;]
+      s\"  RUN word loaded test/fixtures/file-objects/main.f\n" STR:CONTAINS? TTRUE ;]
    ARENA:WITH ;
 
 \ E's build, a fresh process as every build is: E2's process then holds E's
@@ -404,7 +404,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : E-LINE ( str -- )
    {: a:^ u:n :}
    s" the build prints " a u 1 - s" " LABEL-NAMING
-   STATE-E STATE-E-U @ a u CONTAINS? TTRUE ;
+   STATE-E STATE-E-U @ a u STR:CONTAINS? TTRUE ;
 
 \ The callers compile and run; the misuse and the dead code are refused, by TAKE and FAIL.
 : CHECK-E ( -- )
@@ -412,10 +412,10 @@ variable CLASS-N                        \ the class CLASS+ read
    s\" after: 0\n" E-LINE  s\" wrap: 0\n" E-LINE  s\" Hi\n" E-LINE  s\" after ran\n" E-LINE
    s\" misuse: 70\n" E-LINE  s\" dead: 70\n" E-LINE
    s" the misuse refusal names TAKE" LABEL
-   ERR-E ERR-E-U @ s" error[E-MISMATCH]" CONTAINS? TTRUE
-   ERR-E ERR-E-U @ s" `FILE-OBJECTS-FACTS:TAKE`" CONTAINS? TTRUE
+   ERR-E ERR-E-U @ s" error[E-MISMATCH]" STR:CONTAINS? TTRUE
+   ERR-E ERR-E-U @ s" `FILE-OBJECTS-FACTS:TAKE`" STR:CONTAINS? TTRUE
    s" the dead-code refusal names FAIL" LABEL
-   ERR-E ERR-E-U @ s" error[E-DEAD-CODE]: `2` never runs: `FILE-OBJECTS-FACTS:FAIL`" CONTAINS? TTRUE ;
+   ERR-E ERR-E-U @ s" error[E-DEAD-CODE]: `2` never runs: `FILE-OBJECTS-FACTS:FAIL`" STR:CONTAINS? TTRUE ;
 
 : COLD ( CMD:command -- CMD:command )
    s" A" WHICH!  A$ s" " s\" compiled 7\n" STATE-A BUILD 0 max STATE-A-U !
@@ -575,7 +575,7 @@ variable CLASS-N                        \ the class CLASS+ read
 \ top level.
 : REFUSED-BUILD ( CMD:command str -- CMD:command ) {: src:^ srcu:n :}
    src srcu FAILING-BUILD {: rc:n :}
-   CMD:ERR$ REFUSAL REFUSAL-U @ CONTAINS? {: said:bool :}
+   CMD:ERR$ REFUSAL REFUSAL-U @ STR:CONTAINS? {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build refuses the word's file by its path" LABEL  said TTRUE ;
@@ -584,9 +584,9 @@ variable CLASS-N                        \ the class CLASS+ read
 \ that the build exited want.
 : ONE-RECORD ( CMD:command n n str -- CMD:command ) {: rc:n want:n rec:^ recu:n :}
    CMD:ERR$ {: e:^ eu:n :}
-   e eu rec recu STARTS-WITH? {: said:bool :}
-   said if  e 1 + eu 1 - s" error[" CONTAINS?  else false then {: more:bool :}
-   e eu s" hb-build" CONTAINS?  e eu s" linker:" CONTAINS?  or {: told:bool :}
+   e eu rec recu STR:STARTS-WITH? {: said:bool :}
+   said if  e 1 + eu 1 - s" error[" STR:CONTAINS?  else false then {: more:bool :}
+   e eu s" hb-build" STR:CONTAINS?  e eu s" linker:" STR:CONTAINS?  or {: told:bool :}
    rc want =  said and  more 0= and  told 0= and  0= if rc SHOW then
    s" the build prints its rejection first" LABEL  said TTRUE
    s" the build prints no second record" LABEL  more TFALSE
@@ -637,8 +637,8 @@ variable CLASS-N                        \ the class CLASS+ read
    \ A throw that carries its record prints it after a caught rejection was sent.
    s" error[E-SOURCE-ROOT]: `required` got `" REFUSAL!
    s" X8" WHICH!  s" test/fixtures/file-objects/sent-throw-main.f" FAILING-BUILD {: rc:n :}
-   CMD:ERR$ REFUSAL REFUSAL-U @ STARTS-WITH? {: said:bool :}
-   CMD:ERR$ s\" \nerror[E-THROW]: nothing caught a throw of code 12345\n" CONTAINS? {: threw:bool :}
+   CMD:ERR$ REFUSAL REFUSAL-U @ STR:STARTS-WITH? {: said:bool :}
+   CMD:ERR$ s\" \nerror[E-THROW]: nothing caught a throw of code 12345\n" STR:CONTAINS? {: threw:bool :}
    said threw and 0= if rc SHOW then
    s" the build prints the caught rejection first" LABEL  said TTRUE
    s" the build prints the throw's record" LABEL  threw TTRUE
@@ -661,14 +661,14 @@ variable CLASS-N                        \ the class CLASS+ read
 : LOG-UNLOCKED ( -- )
    HB-TARGET-MACOS? 0= if exit then
    [: L$ s" prog" IN$ WHOLE-FILE
-      s" the program holds no mutex the build locked" LABEL  s" ZTUM" CONTAINS? TFALSE ;]
+      s" the program holds no mutex the build locked" LABEL  s" ZTUM" STR:CONTAINS? TFALSE ;]
    ARENA:WITH ;
 
 \ L's program, run in its own process: the boundary under test is the written file.
 : LOG-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:ERR$ s\"  warn main: ran\n" ENDS-WITH? {: ran:bool :}
+   CMD:ERR$ s\"  warn main: ran\n" STR:ENDS-WITH? {: ran:bool :}
    ran  rc 0 =  and 0= if rc SHOW then
    s" the program logs MAIN's line" LABEL  ran TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
@@ -700,14 +700,14 @@ variable CLASS-N                        \ the class CLASS+ read
 
 : MARK-SEEN ( str -- )
    {: p:^ pu:n :}
-   p pu s" .hfo" ENDS-WITH? 0= if exit then
+   p pu s" .hfo" STR:ENDS-WITH? 0= if exit then
    p pu FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    cs cns LATER? 0= if exit then
    cs MARK-S !  cns MARK-NS ! ;
 
 : NEWER-SEEN ( str -- )
    {: p:^ pu:n :}
-   p pu s" .hfo" ENDS-WITH? 0= if exit then
+   p pu s" .hfo" STR:ENDS-WITH? 0= if exit then
    p pu FS:FILE-META {: size:n ms:n mns:n cs:n cns:n :}
    cs cns LATER? 0= if exit then
    1 NEWER-N +!  p FOUND pu BYTE-COPY  pu FOUND-U ! ;
@@ -734,7 +734,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : PATH-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ s\" /prog\n" ENDS-WITH? {: own:bool :}
+   CMD:OUT$ s\" /prog\n" STR:ENDS-WITH? {: own:bool :}
    own  rc 0 =  and 0= if rc SHOW then
    s" the program reports its own path" LABEL  own TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
@@ -744,7 +744,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : BARE-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ s\" valued\n" STR= {: same:bool :}
+   CMD:OUT$ s\" valued\n" STR:= {: same:bool :}
    same  rc 0 =  and 0= if rc SHOW then
    s" the program prints the enum its MAIN fetched" LABEL  same TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
@@ -844,9 +844,9 @@ variable CLASS-N                        \ the class CLASS+ read
 
 : SIZE-RUN ( CMD:command -- CMD:command )
    s" the size report groups the code by package" LABEL
-   CMD:OUT$ s\" \nby package\n" CONTAINS? TTRUE
+   CMD:OUT$ s\" \nby package\n" STR:CONTAINS? TTRUE
    s" the size report groups the code by source" LABEL
-   CMD:OUT$ s\" \nby source\n" CONTAINS? TTRUE ;
+   CMD:OUT$ s\" \nby source\n" STR:CONTAINS? TTRUE ;
 
 \ Guards a lock across a build: L's program holds no mutex the build locked and takes HELD, which log-first.f left
 \ held; and linker.f OWNED-RECORDS: L2, after M rewrites app-end.f's object, rewrites only that object.
@@ -860,7 +860,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build links log-first.f" LOG-FIRST LINKED
    F$ REWRITTEN {: n:n :}
    s" the build rewrites only app-end.f's object" LABEL  n 1 T=
-   s" the object it rewrites is app-end.f's" LABEL  FOUND$ s" /app-end.f.hfo" ENDS-WITH? TTRUE
+   s" the object it rewrites is app-end.f's" LABEL  FOUND$ s" /app-end.f.hfo" STR:ENDS-WITH? TTRUE
    LOG-RUN ;
 
 \ Guards a kept parses-through: row: T2 compiles pt-use.f's BLK use against pt-def.f's kept object
@@ -870,8 +870,8 @@ variable CLASS-N                        \ the class CLASS+ read
    F$ s" T" PT-DEF FOUND? 0= if exit then
    FOUND$ BYTES-A CAP FS:READ-ALL {: u:n :}
    s" pt-def.f's object holds BLK's parses-through row" LABEL
-   BYTES-A u s" parses-through 0 ( ;BLK )" CONTAINS? TTRUE
-   s" pt-def.f's object holds no parses row" LABEL  BYTES-A u s" parses " CONTAINS? TFALSE
+   BYTES-A u s" parses-through 0 ( ;BLK )" STR:CONTAINS? TTRUE
+   s" pt-def.f's object holds no parses row" LABEL  BYTES-A u s" parses " STR:CONTAINS? TFALSE
    PT-DEF KEEP
    F$ s" T" PT-USE FOUND? 0= if exit then
    FOUND$ BYTES-B CAP FS:READ-ALL {: bu:n :}
@@ -880,7 +880,7 @@ variable CLASS-N                        \ the class CLASS+ read
    s" the build links pt-def.f" PT-DEF LINKED
    F$ REWRITTEN {: n:n :}
    s" the build rewrites only pt-use.f's object" LABEL  n 1 T=
-   s" the object it rewrites is pt-use.f's" LABEL  FOUND$ PT-USE TAIL$ ENDS-WITH? TTRUE
+   s" the object it rewrites is pt-use.f's" LABEL  FOUND$ PT-USE TAIL$ STR:ENDS-WITH? TTRUE
    FOUND$ BYTES-A CAP FS:READ-ALL {: au:n :}
    s" it has T's bytes from PIECES on" LABEL  au bu FROM-PIECES? TTRUE
    s\" PT\n" s" the program prints PT" PRINTS-RUN ;
@@ -889,7 +889,7 @@ variable CLASS-N                        \ the class CLASS+ read
 : RECORD-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:ERR$ s\" error[E-MAIN]: ran\n\n" STR= {: ran:bool :}
+   CMD:ERR$ s\" error[E-MAIN]: ran\n\n" STR:= {: ran:bool :}
    ran  rc 0 =  and 0= if rc SHOW then
    s" the program prints MAIN's record" LABEL  ran TTRUE
    s" the program exits 0" LABEL  rc 0 T= ;
@@ -905,8 +905,8 @@ variable CLASS-N                        \ the class CLASS+ read
 : ZERO-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:ERR$ s" error[E-THROW-ZERO]" STARTS-WITH? {: opened:bool :}
-   CMD:ERR$ s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`" CONTAINS?
+   CMD:ERR$ s" error[E-THROW-ZERO]" STR:STARTS-WITH? {: opened:bool :}
+   CMD:ERR$ s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`" STR:CONTAINS?
    opened and {: said:bool :}
    said  rc 67 =  and 0= if rc SHOW then
    s" the program prints E-THROW-ZERO's record" LABEL  said TTRUE
@@ -932,7 +932,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : PART-RUN ( CMD:command -- CMD:command )
    CMD:RESET
    L$ s" prog" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:ERR$ s\" E-BAD-TAG habu: layout tag 7 outside 0..1\n" STR= {: trapped:bool :}
+   CMD:ERR$ s\" E-BAD-TAG habu: layout tag 7 outside 0..1\n" STR:= {: trapped:bool :}
    trapped  rc 85 =  and 0= if rc SHOW then
    s" the program dies with the bad-tag error" LABEL  trapped TTRUE
    s" the program exits 85" LABEL  rc 85 T= ;
@@ -970,7 +970,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    {: i:n a:^ u:n :}
    i FIXTURE-OBJECT {: ou:n :}
    ou 0 < if -1 exit then
-   0 FIXTURE-BYTES ou a u FIND-SUB MATCH option
+   0 FIXTURE-BYTES ou a u STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -1085,9 +1085,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ kept-aio.f's build: it exits 70 with LINKER:E-ADDRESS naming OLD at kept-aio.f's line 9.
 : KEPT-AIO-REJECTED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/kept-aio.f" false BUILD-RC {: rc:n :}
-   CMD:ERR$ s" error[LINKER:E-ADDRESS]" CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" in OLD +0" CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:9" CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" error[LINKER:E-ADDRESS]" STR:CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" in OLD +0" STR:CONTAINS? classed and {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/kept-aio.f:9" STR:CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build rejects OLD" LABEL  named TTRUE
    s" the rejection names kept-aio.f's line 9" LABEL  placed TTRUE
@@ -1113,10 +1113,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ with E-SEALED-PACKAGE naming the definition and seal-main.f's line.
 : SEAL-REFUSED ( CMD:command -- CMD:command )
    s" test/fixtures/file-objects/seal-main.f" false BUILD-RC {: rc:n :}
-   CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:7" CONTAINS? {: placed:bool :}
-   CMD:ERR$ s" E-FAILED" CONTAINS? {: failed:bool :}
+   CMD:ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" `FILE-OBJECTS-SEAL:D` would change a sealed package" STR:CONTAINS? classed and {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/seal-main.f:7" STR:CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" E-FAILED" STR:CONTAINS? {: failed:bool :}
    named placed and  rc 70 =  and  failed 0= and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses FILE-OBJECTS-SEAL:D" LABEL  named TTRUE
@@ -1133,9 +1133,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ it exits 70 with E-SEALED-PACKAGE naming CHECKER-RESOLVE and squat-main.f's line 4.
 : SQUAT-REFUSED ( CMD:command bool -- CMD:command ) {: repl:bool :}
    s" test/fixtures/file-objects/squat-main.f" repl BUILD-RC {: rc:n :}
-   CMD:ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" CONTAINS? classed and {: named:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:5" CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" `CHECKER-RESOLVE` would change a sealed package" STR:CONTAINS? classed and {: named:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/squat-main.f:5" STR:CONTAINS? {: placed:bool :}
    named placed and  rc 70 =  and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
    s" the build refuses CHECKER-RESOLVE" LABEL  named TTRUE
@@ -1155,16 +1155,16 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ the line that ran the failed text, and the caught code's note c cu.
 : FAILED-AT? ( CMD:command str str -- CMD:command bool )
    {: p:^ pu:n c:^ cu:n :}
-   CMD:ERR$ s" error[E-FAILED]: a text failed and its failure was caught" CONTAINS? {: coded:bool :}
-   CMD:ERR$ p pu CONTAINS? {: placed:bool :}
-   CMD:ERR$ c cu CONTAINS? {: caught:bool :}
+   CMD:ERR$ s" error[E-FAILED]: a text failed and its failure was caught" STR:CONTAINS? {: coded:bool :}
+   CMD:ERR$ p pu STR:CONTAINS? {: placed:bool :}
+   CMD:ERR$ c cu STR:CONTAINS? {: caught:bool :}
    coded placed and  caught and ;
 
 \ Whether the build's output holds a record or line of the failed throw beside
 \ its E-FAILED rejection, which that throw carries.
 : THREW? ( CMD:command -- CMD:command bool )
-   CMD:ERR$ s" this threw" CONTAINS? {: placed:bool :}
-   CMD:ERR$ s" threw -" CONTAINS?  placed or ;
+   CMD:ERR$ s" this threw" STR:CONTAINS? {: placed:bool :}
+   CMD:ERR$ s" threw -" STR:CONTAINS?  placed or ;
 
 \ rollback.f's build, which catches texts that leave words and data: it exits 67,
 \ rejected E-FAILED at line 10, which ran the newest of them, and its code 70.
@@ -1185,7 +1185,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/fixtures/file-objects/rollback-passed.f" FAILING-BUILD {: rc:n :}
    s\" rollback-passed.f:5:1\n  |\n5 | FOB-TRY\n  | ^^^^^^^ this ran the text\n"
    s" = code: 70" FAILED-AT? {: placed:bool :}
-   CMD:ERR$ s" E-PATH-RANGE" CONTAINS? {: passed:bool :}
+   CMD:ERR$ s" E-PATH-RANGE" STR:CONTAINS? {: passed:bool :}
    rc 67 =  placed and  passed 0= and 0= if rc SHOW then
    s" the build exits 67" LABEL  rc 67 T=
    s" the build is rejected E-FAILED at rollback-passed.f's line 5 with code 70" LABEL  placed TTRUE
@@ -1200,7 +1200,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s\" rollback-load.f:6:1\n  |\n6 | FOB-LOAD\n  | ^^^^^^^^ this ran the text\n"
    s" = code: 12345" FAILED-AT? {: placed:bool :}
    \ The note prints the path absolute.
-   CMD:ERR$ s\" /test/fixtures/file-objects/rollback-dep.f\n" CONTAINS? {: noted:bool :}
+   CMD:ERR$ s\" /test/fixtures/file-objects/rollback-dep.f\n" STR:CONTAINS? {: noted:bool :}
    THREW? {: threw:bool :}
    rc 67 =  placed and  noted and  threw 0= and 0= if rc SHOW then
    s" the build exits 67" LABEL  rc 67 T=
@@ -1223,7 +1223,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" DF2" WHICH!
    s" test/fixtures/file-objects/rollback-define.f" FAILING-BUILD {: rc2:n :}
    s" the warm rebuild exits 67" LABEL  rc2 67 T=
-   s" the warm rebuild prints DF's text" LABEL  CMD:ERR$ buf eu STR= TTRUE ;
+   s" the warm rebuild prints DF's text" LABEL  CMD:ERR$ buf eu STR:= TTRUE ;
 
 \ rollback-define.f's build (DF) and its warm rebuild (DF2), whose top level catches
 \ texts that define a word: DF is rejected E-FAILED at line 8, the newest such text
@@ -1258,8 +1258,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ E-CTOR-PROTECTED at ctor-main.f's line 6. Answers its exit code.
 : CTOR-REFUSED ( CMD:command -- CMD:command n )
    s" test/fixtures/file-objects/ctor-main.f" false BUILD-RC {: rc:n :}
-   CMD:ERR$ s" error[E-CTOR-PROTECTED]" CONTAINS? {: coded:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/ctor-main.f:7:" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ s" error[E-CTOR-PROTECTED]" STR:CONTAINS? {: coded:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/ctor-main.f:7:" STR:CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the build refuses with E-CTOR-PROTECTED" LABEL  named TTRUE
@@ -1292,7 +1292,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    CMD:OUT$ s\" 42\n5\n3\n9\n42\n5\n3\n9\n11\n" T$=
    s" the image refuses the undefined export" LABEL
    CMD:ERR$ s\" error[E-UNDEFINED]: cannot find word `FILE-OBJECTS-EXP:GONE`\n --> <input>:5:1\n"
-   CONTAINS? TTRUE
+   STR:CONTAINS? TTRUE
    s" the image exits 70" LABEL  rc 70 T= ;
 
 \ Guards an image's exports: EX compiles export-main.f into a --repl image, EX2 links its object
@@ -1363,7 +1363,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    {: prog:^ progu:n want:^ wantu:n label:^ labelu:n :}
    CMD:RESET
    L$ prog progu IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ want wantu STR=  rc 0 =  and 0= if rc SHOW then
+   CMD:OUT$ want wantu STR:=  rc 0 =  and 0= if rc SHOW then
    label labelu LABEL  CMD:OUT$ want wantu T$= ;
 
 \ r.f, m.f after x.f's K changes, which rewrites x.f's object and leaves r.f's, then r.f again: U3's
@@ -1524,8 +1524,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : HB-UNDEFINED ( CMD:command str -- CMD:command n )
    {: out:^ outu:n :}
    s" main.f" s" prog-h" out outu OUT-RC {: rc:n :}
-   CMD:ERR$ s" error[E-UNDEFINED]: cannot find word `dup`" CONTAINS? {: coded:bool :}
-   CMD:ERR$ s\" /main.f:2:17\n" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ s" error[E-UNDEFINED]: cannot find word `dup`" STR:CONTAINS? {: coded:bool :}
+   CMD:ERR$ s\" /main.f:2:17\n" STR:CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build rejects main.f's dup" LABEL  named TTRUE
    rc ;
@@ -1552,7 +1552,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" H6" WHICH!  L$ HB-UNDEFINED drop
    L$ REWRITTEN {: n6:n :}
    s" build six rewrites only main.f's first object" LABEL  n6 1 T=
-   s" the object it rewrites is main.f's" LABEL  FOUND$ s" /main.f.hfo" ENDS-WITH? TTRUE ;
+   s" the object it rewrites is main.f's" LABEL  FOUND$ s" /main.f.hfo" STR:ENDS-WITH? TTRUE ;
 
 \ The probe sequence's s.f: a package with no store, then the text.
 : WRITE-PROBE-S ( str -- ) {: t:^ tu:n :}
@@ -1628,7 +1628,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" PL2" WHICH!  s" main.f" s" prog-pl" NEST-BUILD 0= if exit then
    L$ REWRITTEN {: n:n :}
    s" build two rewrites only s.f's object" LABEL  n 1 T=
-   s" the object it rewrites is s.f's" LABEL  FOUND$ s" /s.f.hfo" ENDS-WITH? TTRUE
+   s" the object it rewrites is s.f's" LABEL  FOUND$ s" /s.f.hfo" STR:ENDS-WITH? TTRUE
    s" prog-pl" s\" 8\n\n" s" the program prints K" NEST-RUN ;
 
 \ The clause sequence: h.f's definer FILE-OBJECTS-CL has a does> clause, w.f defines a word of the
@@ -1644,8 +1644,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ clause. Answers its exit code.
 : CLAUSE-REJECTED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-c" NEST-RC {: rc:n :}
-   CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-CL;does`" CONTAINS? {: coded:bool :}
-   CMD:ERR$ S\" /h.f:1:3\n" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-CL;does`" STR:CONTAINS? {: coded:bool :}
+   CMD:ERR$ S\" /h.f:1:3\n" STR:CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build rejects the clause's name" LABEL  named TTRUE
    rc ;
@@ -1674,8 +1674,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ derives. Answers its exit code.
 : DERIVED-REJECTED ( CMD:command -- CMD:command n )
    s" two.f" s" prog-dr" NEST-RC {: rc:n :}
-   CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-DX-W`" CONTAINS? {: coded:bool :}
-   CMD:ERR$ S\" /h.f:4:21\n" CONTAINS? coded and {: named:bool :}
+   CMD:ERR$ s" error[E-DUPLICATE-DEFINITION]: `FILE-OBJECTS-DX-W`" STR:CONTAINS? {: coded:bool :}
+   CMD:ERR$ S\" /h.f:4:21\n" STR:CONTAINS? coded and {: named:bool :}
    named  rc 0<>  and 0= if rc SHOW then
    s" the build rejects the derived name" LABEL  named TTRUE
    rc ;
@@ -1961,12 +1961,12 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : ARENA-REFUSED ( CMD:command str str str str -- CMD:command n )
    {: main:^ mainu:n f:^ fu:n line:^ lineu:n cell:^ cellu:n :}
    main mainu s" prog-ar" NEST-RC {: rc:n :}
-   CMD:ERR$ f fu NEST-PATH$ CONTAINS? {: named:bool :}
-   CMD:ERR$ line lineu CONTAINS? {: shown:bool :}
-   CMD:ERR$ cell cellu CONTAINS? {: celled:bool :}
-   CMD:ERR$ s" outside hb's data and the build's space" CONTAINS? {: found:bool :}
-   CMD:ERR$ s" or clear the cell before the file ends" CONTAINS? {: fixed:bool :}
-   CMD:ERR$ s" error[" COUNT-SUB 1 = {: one:bool :}
+   CMD:ERR$ f fu NEST-PATH$ STR:CONTAINS? {: named:bool :}
+   CMD:ERR$ line lineu STR:CONTAINS? {: shown:bool :}
+   CMD:ERR$ cell cellu STR:CONTAINS? {: celled:bool :}
+   CMD:ERR$ s" outside hb's data and the build's space" STR:CONTAINS? {: found:bool :}
+   CMD:ERR$ s" or clear the cell before the file ends" STR:CONTAINS? {: fixed:bool :}
+   CMD:ERR$ s" error[" STR:COUNT-SUB 1 = {: one:bool :}
    named shown and celled and found and fixed and one and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the rejection is placed at the declaration" LABEL  named TTRUE
@@ -2114,10 +2114,10 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : DIVISOR-REJECTED ( CMD:command -- CMD:command n )
    s" dz-main.f" s" prog-dz" NEST-RC {: rc:n :}
    CMD:ERR$ s" error[E-DIV-ZERO]: zero divisor: a literal 0 divisor has no quotient"
-      CONTAINS? {: said:bool :}
+      STR:CONTAINS? {: said:bool :}
    CMD:ERR$ s" 2 | : MAIN ( -- ) 7 0 H2 . ;"
-      CONTAINS? {: compiled:bool :}
-   CMD:ERR$ s" dz-main.f" NEST-PATH$ CONTAINS? {: named:bool :}
+      STR:CONTAINS? {: compiled:bool :}
+   CMD:ERR$ s" dz-main.f" NEST-PATH$ STR:CONTAINS? {: named:bool :}
    said compiled and named and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the rejection gives the zero divisor's reason" LABEL  said TTRUE
@@ -2283,8 +2283,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" prog-top" s\" 8\n" s" the program prints set's offset" NEST-RUN
    true WRITE-THING
    s" HT2" WHICH!  s" top.f" s" prog-top" NEST-RC {: rc:n :}
-   CMD:ERR$ s" error[E-LAYOUT-VALUE]" CONTAINS? {: said:bool :}
-   CMD:ERR$ s" top.f" NEST-PATH$ CONTAINS? {: named:bool :}
+   CMD:ERR$ s" error[E-LAYOUT-VALUE]" STR:CONTAINS? {: said:bool :}
+   CMD:ERR$ s" top.f" NEST-PATH$ STR:CONTAINS? {: named:bool :}
    said named and  rc 70 =  and 0= if rc SHOW then
    s" the build exits 70" LABEL  rc 70 T=
    s" the rejection gives the moved member's reason" LABEL  said TTRUE
@@ -2452,8 +2452,8 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : CAST-REFUSED ( CMD:command -- CMD:command n )
    s" b.f" NEST-PATH$ FAILING-BUILD {: rc:n :}
    CMD:ERR$ s" error[E-CAST-LINEAR]: a cast's stored type would hold a linear value"
-   CONTAINS? {: coded:bool :}
-   CMD:ERR$ s" /b.f:4:30" CONTAINS? coded and {: said:bool :}
+   STR:CONTAINS? {: coded:bool :}
+   CMD:ERR$ s" /b.f:4:30" STR:CONTAINS? coded and {: said:bool :}
    rc 0 =  said 0=  or if rc SHOW then
    s" the build exits nonzero" LABEL  rc 0<> TTRUE
    s" the build refuses AT at a linear type" LABEL  said TTRUE
@@ -2488,7 +2488,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" WASM2" WHICH!  WASM-BUILD
    s" the build rewrites no object" LABEL  F$ REWRITTEN 0 T=
    m L$ s" prog" IN$ WHOLE-FILE {: p2:^ u2:n :}
-   s" the module is the first build's" LABEL  p1 u1 p2 u2 STR= TTRUE ;
+   s" the module is the first build's" LABEL  p1 u1 p2 u2 STR:= TTRUE ;
 
 \ Guards a cross build's objects, which hold each definition's target and host copies: a second Wasm build
 \ links every file and writes the first's module.
@@ -2507,9 +2507,9 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" TR" WHICH!
    TOOL-ARGS  s" --target" CMD:ARG+  s" wasm" CMD:ARG+
    s" test/fixtures/file-objects/target-run.f" TOOL-RUN {: rc:n :}
-   CMD:ERR$ s" error[E-TARGET-WORD]" CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" target word `FO-TAIL`" CONTAINS? {: tail:bool :}
-   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:9:" CONTAINS? tail and {: placed:bool :}
+   CMD:ERR$ s" error[E-TARGET-WORD]" STR:CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" target word `FO-TAIL`" STR:CONTAINS? {: tail:bool :}
+   CMD:ERR$ s" test/fixtures/file-objects/target-run.f:9:" STR:CONTAINS? tail and {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the build fails" LABEL  rc 0<> TTRUE
    s" the refusal is E-TARGET-WORD" LABEL  classed TTRUE

@@ -342,7 +342,7 @@ $1000 constant A-EMPTY-PATH                  \ AT_EMPTY_PATH
 : A-DIGITS ( n ^u8 -- n ) {: v:n dst:^ :}
    v A-DIGIT-COUNT {: du:n :}
    v du begin dup 0 > while
-      1- over 10 mod STR-ZERO + over dst + c!  swap 10 / swap
+      1- over 10 mod STR:ZERO + over dst + c!  swap 10 / swap
    repeat 2drop du ;
 \ A negative n keeps its sign, so /proc/self/fd answers ENOENT for it.
 : A-SIGNED ( n ^u8 -- n ) {: v:n dst:^ :}

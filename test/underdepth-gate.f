@@ -132,9 +132,9 @@ public
 : UDG-ASSERT-AT ( str str str -- ) {: h:^ hu:n a:^ u:n l:^ lu:n :}
    UDG-EXITED @ TTRUE
    UDG-RC @ 70 T=
-   UDG-ERR$ h hu CONTAINS? TTRUE
-   UDG-ERR$ a u CONTAINS? TTRUE
-   UDG-ERR$ u l lu UDG-CARETS$ CONTAINS? TTRUE ;
+   UDG-ERR$ h hu STR:CONTAINS? TTRUE
+   UDG-ERR$ a u STR:CONTAINS? TTRUE
+   UDG-ERR$ u l lu UDG-CARETS$ STR:CONTAINS? TTRUE ;
 
 : UDG-UNDERFLOW$ ( -- str )
    s" error[E-INPUT-UNDERFLOW]: input underflow" ;
@@ -149,7 +149,7 @@ public
    UDG-RC @ 0 T= ;
 
 : UDG-ASSERT-OUT ( str -- ) {: a:^ u:n :}
-   UDG-OUT$ a u CONTAINS? TTRUE ;
+   UDG-OUT$ a u STR:CONTAINS? TTRUE ;
 
 package UDG-MINIMUM
 
@@ -293,7 +293,7 @@ public
 : UDG-COMB-UNDER ( str str str -- ) {: comb:^ cu:n v:^ vu:n at:^ atu:n :}
    comb cu v vu UDG-COMB$ UDG-EXEC:SUBJECT
    at atu UDG-ASSERT-UNDERDEPTH
-   UDG-ERR$ s" (needs 2, has 1)" CONTAINS? TTRUE ;
+   UDG-ERR$ s" (needs 2, has 1)" STR:CONTAINS? TTRUE ;
 
 : UDG-RUNQ$ ( -- str )
    s" : RUNQ ( R [ R -- R ] -- R ) execute ;" ;
@@ -311,14 +311,14 @@ public
    s" : STEP3 ( n n -- n ) + ;  : APPLY2 ( R n [ R n -- S ] -- S ) execute ;"
    s" : V ( -- ) ['] STEP3 APPLY2 ;" UDG-COMB$ UDG-EXEC:SUBJECT
    s" APPLY2" UDG-ASSERT-UNDERDEPTH
-   UDG-ERR$ s" (needs 3, has 1)" CONTAINS? TTRUE ;
+   UDG-ERR$ s" (needs 3, has 1)" STR:CONTAINS? TTRUE ;
 
 \ --- recursion negatives: RECURSE takes its inputs as a call does ----------
 
 : UDG-NEG-RECURSE ( -- )
    s" RECURSE on no cells is an input underflow" T-LABEL
    s" : X ( n -- ) drop RECURSE ;" s" RECURSE" UDG-BODY-UNDER
-   UDG-ERR$ s" (needs 1, has 0)" CONTAINS? TTRUE ;
+   UDG-ERR$ s" (needs 1, has 0)" STR:CONTAINS? TTRUE ;
 
 \ --- positives: the public top-level surface is untouched -------------------
 

@@ -55,7 +55,7 @@ create ERR CAP allot
 
 : CHILD-MODE? ( -- bool )
    SCRIPT-ARGC 0= if 0 0= 0= exit then
-   0 SCRIPT-ARGV$ s" child" STR= ;
+   0 SCRIPT-ARGV$ s" child" STR:= ;
 
 public
 

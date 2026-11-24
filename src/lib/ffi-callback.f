@@ -265,7 +265,7 @@ variable OPEN
 \ The name's words are NAME, NAME-BODY and the like: one ':' between a
 \ package and a word makes them the package's; any other ':' names nothing.
 : NAME! ( str -- ) {: a:^ u:n :}
-   a u [char] : COUNT-CHAR 1 > if
+   a u [char] : STR:COUNT-CHAR 1 > if
       s" more than one ':' in callback name " a u COLON-HELP$
       TOKEN-REJECT
    then
@@ -300,17 +300,17 @@ variable OPEN
 
 : IN-TOKEN ( n n str -- n n )
    {: i:n f:n a:^ u:n :}
-   a u s" n" STR= if i f BY-N INT+ exit then
-   a u s" i32" STR= if i f BY-I32 INT+ exit then
-   a u s" u32" STR= if i f BY-U32 INT+ exit then
-   a u 1 min s" ^" STR= if
-      a u s" ^u8" STR= 0= if
+   a u s" n" STR:= if i f BY-N INT+ exit then
+   a u s" i32" STR:= if i f BY-I32 INT+ exit then
+   a u s" u32" STR:= if i f BY-U32 INT+ exit then
+   a u 1 min s" ^" STR:= if
+      a u s" ^u8" STR:= 0= if
          s" expected u8 after ^, found " a 1 + u 1 -
          s" a pointer argument is ^u8" TOKEN-REJECT
       then
       i f BY-PTR INT+ exit
    then
-   a u s" r" STR= if
+   a u s" r" STR:= if
       f FLOAT-REGS >= if FLOAT-REGS s"  float arguments" TOO-MANY then
       f BY-R ARG+
       i f 1 + exit
@@ -325,8 +325,8 @@ variable OPEN
       s" keep one result after --: n, i32, u32 or r"
       FFI:SYNTAX-REJECT
    then
-   a u s" r" STR= if R-FLOAT RES-KIND ! exit then
-   a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
+   a u s" r" STR:= if R-FLOAT RES-KIND ! exit then
+   a u s" n" STR:= a u s" i32" STR:= or a u s" u32" STR:= or if
       R-VALUE RES-KIND ! exit
    then
    s" unknown result type " a u
@@ -336,8 +336,8 @@ variable OPEN
 \ One input token: true at the -- that ends the inputs.
 : INPUT? ( n n -- n n bool )
    TOK@ {: i:n f:n a:^ u:n :}
-   a u s" --" STR= if i f true exit then
-   a u s" )" STR= if
+   a u s" --" STR:= if i f true exit then
+   a u s" )" STR:= if
       s" expected '--' before ')'"
       s" write the effect as ( in -- out )"
       FFI:SYNTAX-REJECT
@@ -347,8 +347,8 @@ variable OPEN
 \ One output token: true at the ) that ends the effect.
 : OUTPUT? ( -- bool )
    TOK@ {: a:^ u:n :}
-   a u s" )" STR= if true exit then
-   a u s" --" STR= if
+   a u s" )" STR:= if true exit then
+   a u s" --" STR:= if
       s" a second '--' in the effect"
       s" write one -- between the arguments and the result"
       FFI:SYNTAX-REJECT
@@ -444,7 +444,7 @@ public
    R-NONE RES-KIND ! 0 FB-SET !
    0 READS !
    \ A name may sit on a later line, so only '(' says it is missing.
-   TOK@ 2dup s" (" STR= if
+   TOK@ 2dup s" (" STR:= if
       s" expected a callback name, found " s" ("
       s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
    then
@@ -454,7 +454,7 @@ public
    s" -DISPATCH" NAME+ na nu LBUF:CLAIM-NAME
    s" -ENTRY" NAME+ na nu LBUF:CLAIM-NAME
    TOK@ {: a:^ u:n :}
-   a u s" (" STR= 0= if
+   a u s" (" STR:= 0= if
       s" expected '(' after the callback name, found " a u
       s" write CALLBACK: NAME ( in -- out )" TOKEN-REJECT
    then

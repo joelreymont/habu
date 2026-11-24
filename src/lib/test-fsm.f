@@ -42,7 +42,7 @@ ARENA RENDERED SPAN:span<u8>
 \ The first offset at or after from of k in t, else -1.
 : FIND-AT ( n str str -- n )
    {: from:n t:^ tu:n k:^ ku:n :}
-   t tu k ku from FIND-SUB-FROM MATCH option
+   t tu k ku from STR:FIND-SUB-FROM MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;

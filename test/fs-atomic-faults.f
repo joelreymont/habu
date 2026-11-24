@@ -182,7 +182,7 @@ variable SIBLINGS
    SB$ ;
 
 : COUNT-SIBLING ( str -- )
-   s" .tmp-" STARTS-WITH? if 1 SIBLINGS +! then ;
+   s" .tmp-" STR:STARTS-WITH? if 1 SIBLINGS +! then ;
 
 : NO-LEFTOVER ( -- )
    s" ... and the claimed name is still free" T-LABEL
@@ -204,7 +204,7 @@ variable SIBLINGS
 
 : FAULTS-CASE ( -- )
    false RUN {: outu:n erru:n rc:n :}
-   OUT outu WANT$ STR= 0= rc 0 <> or if ERR erru type cr then
+   OUT outu WANT$ STR:= 0= rc 0 <> or if ERR erru type cr then
    s" write E-FS-SYNC, EIO; claim E-FS-IO, EINVAL; staged E-FS-SYNC, EIO; cached 0, 0; create E-FS-IO, EINVAL"
    T-LABEL
    OUT outu WANT$ T$=
@@ -229,7 +229,7 @@ variable SIBLINGS
 : FILE-FAULTS-CASE ( -- )
    OLD-BYTES
    true RUN {: outu:n erru:n rc:n :}
-   OUT outu FILE-WANT$ STR= 0= rc 0 <> or if ERR erru type cr then
+   OUT outu FILE-WANT$ STR:= 0= rc 0 <> or if ERR erru type cr then
    s" a file fsync's EIO: write, claim, staged, cached, create E-FS-IO, EIO"
    T-LABEL
    OUT outu FILE-WANT$ T$=

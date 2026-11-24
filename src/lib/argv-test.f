@@ -24,7 +24,7 @@ variable TEST-FAIL
 
 : ASSERT= ( n n -- )  = ASSERT ;
 
-: ASSERT$ ( str str -- )  STR= ASSERT ;
+: ASSERT$ ( str str -- )  STR:= ASSERT ;
 
 : ASSERT-RC ( n n -- )
    0 QUIET!

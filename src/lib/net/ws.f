@@ -1302,8 +1302,8 @@ ENUM course
 \ server checks before any handler runs.
 : GET-OK? ( HTTP:request -- bool )
    {: asked:HTTP:request :}
-   asked HTTP:METHOD$ s" GET" STR= 0= if false exit then
-   asked HTTP:VERSION$ s" HTTP/1.1" STR= ;
+   asked HTTP:METHOD$ s" GET" STR:= 0= if false exit then
+   asked HTTP:VERSION$ s" HTTP/1.1" STR:= ;
 
 
 \ 0 for an opening handshake this server accepts, else the HTTP status that
@@ -1316,7 +1316,7 @@ ENUM course
    asked w KEY-OK? 0= if 400 exit then
    asked s" sec-websocket-version" SOLE {: va vu:n found:bool :}
    found 0= if 426 exit then
-   va vu s" 13" STR= 0= if 426 exit then
+   va vu s" 13" STR:= 0= if 426 exit then
    0 ;
 
 

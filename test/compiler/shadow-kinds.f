@@ -57,7 +57,7 @@ CAST: CODE>BYTES ( n -- ^u8 )
 : MARK? ( n -- bool ) {: at:n :}
    at 4 + SRC-U @ > if false exit then
    at 0= if true else SRC at 1- + c@ 10 = then
-   SRC at + 4 s" \ ==" STR= and ;
+   SRC at + 4 s" \ ==" STR:= and ;
 
 \ The first section line at or past from, or the end of the text.
 : NEXT-MARK ( n -- n ) {: from:n :}

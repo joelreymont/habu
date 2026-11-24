@@ -44,17 +44,17 @@ PATH-CAP BUFFER: PROG-BUF
 : MODE$ ( -- str )
    SCRIPT-ARGC 1 = if s" " exit then
    SCRIPT-ARGC 2 = if
-      1 SCRIPT-ARGV$ s" second" STR= if s" second" exit then
-      1 SCRIPT-ARGV$ s" shifted" STR= if s" shifted" exit then
-      1 SCRIPT-ARGV$ s" stop" STR= if s" stop" exit then
-      1 SCRIPT-ARGV$ s" facts" STR= if s" facts" exit then
+      1 SCRIPT-ARGV$ s" second" STR:= if s" second" exit then
+      1 SCRIPT-ARGV$ s" shifted" STR:= if s" shifted" exit then
+      1 SCRIPT-ARGV$ s" stop" STR:= if s" stop" exit then
+      1 SCRIPT-ARGV$ s" facts" STR:= if s" facts" exit then
    then
    s" build: unknown argument" EXIT-STATUS:USAGE die ;
 
-: SECOND? ( -- bool ) MODE$ s" second" STR= ;
-: SHIFTED? ( -- bool ) MODE$ s" shifted" STR= ;
-: STOP? ( -- bool ) MODE$ s" stop" STR= ;
-: FACTS? ( -- bool ) MODE$ s" facts" STR= ;
+: SECOND? ( -- bool ) MODE$ s" second" STR:= ;
+: SHIFTED? ( -- bool ) MODE$ s" shifted" STR:= ;
+: STOP? ( -- bool ) MODE$ s" stop" STR:= ;
+: FACTS? ( -- bool ) MODE$ s" facts" STR:= ;
 
 \ The case's code is the one wanted, or the build ends rc 1 with the message.
 : EXPECT ( n n ^u8 n -- )
@@ -426,14 +426,14 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
    u AT +!  1 OBJ-SKIP
    OBJ-U64 {: role:n :}
    role 3 =  role 4 =  or if 3 OBJ-SKIP then        \ a role 3 or 4 names its package
-   name nu s" LOW" STR= if RECS @ LOW-REC ! then
-   name nu s" HIGH" STR= if RECS @ HIGH-REC ! then
-   name nu s" FILE-OBJECTS-CRAFT" STR= {: craft:bool :}
-   name nu s" FILE-OBJECTS-CRAFT-LATE" STR= {: late:bool :}
+   name nu s" LOW" STR:= if RECS @ LOW-REC ! then
+   name nu s" HIGH" STR:= if RECS @ HIGH-REC ! then
+   name nu s" FILE-OBJECTS-CRAFT" STR:= {: craft:bool :}
+   name nu s" FILE-OBJECTS-CRAFT-LATE" STR:= {: late:bool :}
    kind 1 =  craft and if RECS @ PKG-REC ! then
    1 RECS +!
    kind 0 = if
-      name nu s" MID" STR= if DEFS @ MID-EM ! then
+      name nu s" MID" STR:= if DEFS @ MID-EM ! then
       1 DEFS +!
       REF-SKIP exit
    then
@@ -501,7 +501,7 @@ variable SLOT-AT                         \ the first does> slot's P: its offset
 \ A path of the walk that ends with CRAFT-TAIL into CRAFT-PATH.
 : CRAFT-SEEN ( str -- )
    {: p:^ pu:n :}
-   p pu CRAFT-TAIL CRAFT-TAIL-U @ ENDS-WITH? 0= if exit then
+   p pu CRAFT-TAIL CRAFT-TAIL-U @ STR:ENDS-WITH? 0= if exit then
    p CRAFT-PATH pu BYTE-COPY  pu CRAFT-PATH-U ! ;
 
 \ The object under <out>/obj whose path ends with the tail, into CRAFT-FIRST and CRAFT-PATH.
@@ -891,14 +891,14 @@ RECORD-CAP BUFFER: WARM-RECORD   variable WARM-RECORD-U
    REJECTION:BUFFER$ {: c:^ cu:n :}
    WARM-RECORD WARM-RECORD-U @ {: w:^ wu:n :}
    s" full-cold" DIR$ {: d:^ du:n :}
-   c cu d du FIND-SUB MATCH option
+   c cu d du STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N du + 5 - ENDOF
    ;MATCH {: k:n :}
    k 0< if false exit then
    wu cu 5 - <> if false exit then
-   w k c k STR= 0= if false exit then
-   w k + wu k - c k + 5 + wu k - STR= ;
+   w k c k STR:= 0= if false exit then
+   w k + wu k - c k + 5 + wu k - STR:= ;
 
 \ a.f leaves eight records free, b.f links, and then two, fewer than b.f's three: b.f's object must not link past the
 \ dictionary's end, so b.f compiles and is rejected as a cold build of the same sources is. A fourth build, after

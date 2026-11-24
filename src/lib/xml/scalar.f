@@ -134,8 +134,8 @@ $7FFFFFFFFFFFFFFF constant MAX-SIZE
 \ The value of a digit of the reference at amp.
 : HEX-DIGIT ( str place n n -- n )
    {: source size:n at:place amp:n byte:n :}
-   byte STR-HEX-DIGIT? 0= if source size at amp DIGIT-REJECT then
-   byte STR-HEX-DIGIT-VALUE ;
+   byte STR:HEX-DIGIT? 0= if source size at amp DIGIT-REJECT then
+   byte STR:HEX-DIGIT-VALUE ;
 
 \ The value of the reference at amp after one more digit.
 : NUMERIC-STEP ( str place n n n n -- n )

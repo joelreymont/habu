@@ -60,7 +60,7 @@ variable NEXT-ID
    {: a:^ u:n field :}
    SLOT-COUNT @ 0 ?do
       i LIVE? if
-         i SLOTS field execute BYTES$ a u STR= if i OPTION:SOME unloop exit then
+         i SLOTS field execute BYTES$ a u STR:= if i OPTION:SOME unloop exit then
       then
    loop
    OPTION:NONE ;

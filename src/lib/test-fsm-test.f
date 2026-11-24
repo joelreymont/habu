@@ -103,7 +103,7 @@ private
    PROCESS:WAIT-FOREVER SUBJECT:RUN {: ou:len eu:len oc :}
    src su TFT-OUT ou LEN>N TFT-ERR eu LEN>N oc
    EXIT-STATUS:FAILURE T-ENDING-EXITED=
-   TFT-OUT ou LEN>N s" test: 1 failure(s)" CONTAINS? TTRUE ;
+   TFT-OUT ou LEN>N s" test: 1 failure(s)" STR:CONTAINS? TTRUE ;
 
 : TFT-MISSING ( -- )
    s" fails without the table" T-LABEL

@@ -235,8 +235,8 @@ private
 
 : DAY-NAME= ( str bool str -- bool )
    {: a:^ u:n short:bool name:^ len:n :}
-   short IF a u name DATE-NAME-LEN STR= exit THEN
-   a u name len STR= ;
+   short IF a u name DATE-NAME-LEN STR:= exit THEN
+   a u name len STR:= ;
 
 : DAY-NAME? ( str bool -- bool )
    {: a:^ u:n short:bool :}   \ short: the name's first three bytes
@@ -253,7 +253,7 @@ private
    s" JanFebMarAprMayJunJulAugSepOctNovDec" drop {: names:^ :}
    DATE-DEC 0 ?do
       a pos + DATE-NAME-LEN
-      names i DATE-NAME-LEN * + DATE-NAME-LEN STR=
+      names i DATE-NAME-LEN * + DATE-NAME-LEN STR:=
       IF i 1+ unloop OPTION:SOME exit THEN
    loop OPTION:NONE ;
 
@@ -349,7 +349,7 @@ private
 
 : ASCTIME-DAY ( ^u8 -- option<n> )
    {: a:^ :}   \ two digits, or a space and one
-   a DATE-ASCTIME-DAY + c@ STR-SPACE =
+   a DATE-ASCTIME-DAY + c@ STR:SPACE =
    IF a DATE-ASCTIME-DAY 1+ 1 N exit THEN
    a DATE-ASCTIME-DAY DATE-PART-LEN N ;
 

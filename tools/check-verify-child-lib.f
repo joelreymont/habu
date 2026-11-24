@@ -102,12 +102,12 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ The count in IN from POS up to the byte C, POS moved past C. READ-IN keeps
 \ room past IN-U, so POS at IN-U is an index of IN.
 : COUNT-TO ( n -- n ) {: c:n :}
-   POS @ IN IN-U @ POS @ - c INDEX-OF MATCH option
+   POS @ IN IN-U @ POS @ - c STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: k:n :}
    k 0 < if TABLE-FAULT then
-   POS @ IN k STR>NUMBER? MATCH option
+   POS @ IN k STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH {: count:n :}
@@ -119,7 +119,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
 \ The open document whose line starts at POS, into OPEN-AT, POS moved past its
 \ text.
 : OPEN-ENTRY ( -- )
-   STR-SPACE COUNT-TO {: pu:n :}
+   STR:SPACE COUNT-TO {: pu:n :}
    LF COUNT-TO {: tu:n :}
    POS @ pu + tu + IN-U @ > if TABLE-FAULT then
    OPEN-N @ 4 * {: at:n :}
@@ -373,7 +373,7 @@ variable JSON?   true JSON? !           \ records are JSON, false after `--prose
    OF-U @ 0= if false exit then
    sym VERIFY:SYM-IDENTITY drop {: tail:^ tailu:n :} 2drop
    REF-BATCH? @ if
-      tail tailu OF-A @ OF-U @ STR=CI
+      tail tailu OF-A @ OF-U @ STR:=CI
    else
       tail tailu OF-A @ OF-U @ CORE-STR=
    then ;
@@ -558,7 +558,7 @@ public
 : CURSOR-ARG ( -- n )
    SCRIPT-ARGC 3 < if -1 exit then
    1 SCRIPT-ARGV$ s" --at" CORE-STR= 0= if -1 exit then
-   2 SCRIPT-ARGV$ STR>NUMBER? MATCH option
+   2 SCRIPT-ARGV$ STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF -1 ENDOF
    ;MATCH ;
@@ -574,7 +574,7 @@ public
 \ Each frame owns its subject and its open-document snapshot. The zero path
 \ length ends the stream. A new scope and fresh output deduplication follow.
 : BATCH-NEXT ( -- bool )
-   STR-SPACE COUNT-TO {: pu:n :}
+   STR:SPACE COUNT-TO {: pu:n :}
    LF COUNT-TO {: su:n :}
    pu 0= if su 0<> POS @ IN-U @ <> or if TABLE-FAULT then false exit then
    POS @ pu + su + IN-U @ > if TABLE-FAULT then

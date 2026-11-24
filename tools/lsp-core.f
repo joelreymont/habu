@@ -320,7 +320,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    {: path include-unread:bool :}
    DOC-SLOTS 0 ?do
       i DOC-LIVE? if
-         i DOC-CANON$ path STR= 0= if
+         i DOC-CANON$ path STR:= 0= if
             include-unread if
                i path LSP-DEFS:DEFS-DEPENDS?
             else
@@ -478,7 +478,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       READ-TOKEN T-STR = if
          str if k READ-STR-EQ? else false then
       else
-         str 0= if READ-SPAN$ >str k STR= else false then
+         str 0= if READ-SPAN$ >str k STR:= else false then
       then
    else false then
    {: same:bool :}
@@ -551,7 +551,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : REQUEST-DEPENDS? ( str -- bool )
    {: path :}
-   AT-SLOT @ DOC-CANON$ path STR= if true exit then
+   AT-SLOT @ DOC-CANON$ path STR:= if true exit then
    AT-SLOT @ path LSP-DEFS:DEFS-DEPENDS? ;
 
 \ ---- input -------------------------------------------------------------------

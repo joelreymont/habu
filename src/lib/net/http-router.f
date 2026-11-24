@@ -70,8 +70,8 @@ variable ROUTE-COUNT
       {: at:n :}
       at len >= if exit then
       bytes at + c@ PERCENT = at 3 + len <= and if
-         bytes at 1+ + c@ STR-HEX-DIGIT-VALUE HEX-BASE *
-         bytes at 2 + + c@ STR-HEX-DIGIT-VALUE + idx SEGMENT+C
+         bytes at 1+ + c@ STR:HEX-DIGIT-VALUE HEX-BASE *
+         bytes at 2 + + c@ STR:HEX-DIGIT-VALUE + idx SEGMENT+C
          at 3 +
       else
          bytes at + c@ idx SEGMENT+C
@@ -105,7 +105,7 @@ variable ROUTE-COUNT
       pa pu NAMED? if
          hu 0= if false exit then
       else
-         pa pu ha hu STR= 0= if false exit then
+         pa pu ha hu STR:= 0= if false exit then
       then
       patend pathend
    again ;
@@ -132,7 +132,7 @@ variable ROUTE-COUNT
 
 
 : METHOD-MATCH? ( n n -- bool ) {: route:n idx:n :}
-   idx SLOT-METHOD$ route ROUTE-METHOD$ STR= ;
+   idx SLOT-METHOD$ route ROUTE-METHOD$ STR:= ;
 
 
 : FIND-ROUTE ( n -- n ) {: idx:n :}
@@ -160,7 +160,7 @@ variable ROUTE-COUNT
       pat patlen at 1+ SEG-END {: end:n :}
       pat at 1+ + end at - 1- {: pa:^ pu:n :}
       pa pu NAMED? if
-         pa pu SEGMENT-NAME$ name namelen STR= if count exit then
+         pa pu SEGMENT-NAME$ name namelen STR:= if count exit then
          end count 1+
       else
          end count

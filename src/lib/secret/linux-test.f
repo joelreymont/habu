@@ -298,9 +298,9 @@ NO-PID KEY-PID !
    SERVICE$ s" written" s" second" SECRET:WRITE
    s" written" s" second" LOOKUP
    s" written" SEARCH {: out:^ outu:n :}
-   out outu s" label = " COUNT-SUB 1 T=
+   out outu s" label = " STR:COUNT-SUB 1 T=
    s" the written item's label is the bound label" T-LABEL
-   out outu LABEL-LINE$ CONTAINS? TTRUE ;
+   out outu LABEL-LINE$ STR:CONTAINS? TTRUE ;
 
 : STORED ( CMD:command -- CMD:command )
    s" a read finds the item secret-tool stored under the bound keys" T-LABEL
@@ -321,11 +321,11 @@ NO-PID KEY-PID !
 : LOGGED-ONCE ( str -- )
    {: text:^ tu:n :}
    s" stderr.txt" ROOT/ LOGGED LOG-CAP FS:READ-ALL {: u:n :}
-   LOGGED u NEWLINE COUNT-CHAR 1 T=
+   LOGGED u NEWLINE STR:COUNT-CHAR 1 T=
    EXPECTED CODEGEN:RESET
    s" secret: " EXPECTED CODEGEN:APPEND-STRING
    text tu EXPECTED CODEGEN:APPEND-STRING
-   LOGGED u EXPECTED CODEGEN:CONTENTS CONTAINS? TTRUE ;
+   LOGGED u EXPECTED CODEGEN:CONTENTS STR:CONTAINS? TTRUE ;
 
 : STOPPED ( -- )
    s" with the keyring stopped a write and a read are E-ACCESS, logged" T-LABEL

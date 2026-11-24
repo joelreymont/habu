@@ -1333,7 +1333,7 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   `s"` gives; `>str` and `str>` cross between it and `^u8 n`. A file whose
   first line is `split-str`, alone and in lower case, reads each `str` in the
   rows it checks against, its own signatures' included, as `^u8 n`.
-  `s" a" LTRIM` passes in both. `split-str` anywhere else, or in a program
+  `s" a" STR:LTRIM` passes in both. `split-str` anywhere else, or in a program
   read from stdin, is `E-SPLIT-STR-LINE`.
 - The roles are nominal one-cell types, distinct from each other and
   from every integer type.

@@ -26,7 +26,7 @@ FUNCTION: PID-THREADS proc_pidinfo ( n n n ^u8 n -- i32 )
    1 THREAD-N +! ;
 
 : ADD-NAME ( str -- )
-   STR>NUMBER? MATCH option
+   STR:>NUMBER? MATCH option
       some OF ADD-ID ENDOF
       none OF s" thread snapshot: invalid task name" EXIT-STATUS:FAILURE die ENDOF
    ;MATCH ;

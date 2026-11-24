@@ -259,7 +259,7 @@ variable BEFORE-U
    {: cmd:^ cu:n why:^ wu:n :}
    HOST-OPEN  cmd cu s\" hello\n" REFUSED
    cmd cu s" the failure names the reason" MALFORMED
-   ERR$ why wu CONTAINS? TTRUE ;
+   ERR$ why wu STR:CONTAINS? TTRUE ;
 
 
 \ A read after the file event: its line is printed before the refusal.
@@ -270,7 +270,7 @@ variable BEFORE-U
    a BEFORE u BYTE-COPY  u BEFORE-U !
    HOST-OPEN  FILE+  cmd cu BEFORE BEFORE-U @ REFUSED
    cmd cu s" the failure names the reason" MALFORMED
-   ERR$ why wu CONTAINS? TTRUE ;
+   ERR$ why wu STR:CONTAINS? TTRUE ;
 
 
 : MALFORMED-CASES ( -- )
@@ -286,15 +286,15 @@ variable BEFORE-U
    \ TextDecoder's wording is the engine's.
    HOST-OPEN  s" bad utf8" s\" hello\n" REFUSED
    s" bad utf8" s" the failure names the reason" MALFORMED
-   ERR$ s" Invalid byte sequence" CONTAINS?
-   ERR$ s" encoded data was not valid" CONTAINS?  or TTRUE ;
+   ERR$ s" Invalid byte sequence" STR:CONTAINS?
+   ERR$ s" encoded data was not valid" STR:CONTAINS?  or TTRUE ;
 
 : MAC-CHROME ( -- str )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
 
 : CHROME-ASKED? ( -- bool )
    SCRIPT-ARGC 0 ?do
-      i SCRIPT-ARGV$ s" --chrome" STR= if unloop true exit then
+      i SCRIPT-ARGV$ s" --chrome" STR:= if unloop true exit then
    loop false ;
 
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.

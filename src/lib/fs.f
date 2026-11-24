@@ -366,7 +366,7 @@ public
 : PATHZ? ( str -- bool ) {: a:^ u:n :}
    u 0 < if false exit then
    u PATH-CAP > if false exit then
-   a u 0 INDEX-OF MATCH option
+   a u 0 STR:INDEX-OF MATCH option
       none OF true ENDOF
       some OF drop false ENDOF
    ;MATCH ;
@@ -555,7 +555,7 @@ public
 
 private
 : PATH= ( str str -- bool )
-   STR= ;
+   STR:= ;
 
 : IO-FAIL ( -- )
    IO-FD @ close E-FS-IO throw ;

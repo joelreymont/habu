@@ -83,7 +83,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 
 
 : FL-KEEP-DIGITS ( str -- ) {: a:^ u:n :}
-   u 0 ?do a i + c@ STR-DIGIT-VALUE FL-KEEP-DIGIT loop ;
+   u 0 ?do a i + c@ STR:DIGIT-VALUE FL-KEEP-DIGIT loop ;
 
 
 : FL-SIG-VALUE ( n -- r )
@@ -93,12 +93,12 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 \ ---- field splitting ------------------------------------------------------
 : FL-STRIP-SIGN ( str -- str bool ) {: a:^ u :}
    u 0= if a 0 0 0= 0= exit then
-   a c@ STR-MINUS = if a 1+ u 1- 0 0= exit then
-   a c@ STR-PLUS  = if a 1+ u 1- 0 0= 0= exit then
+   a c@ STR:MINUS = if a 1+ u 1- 0 0= exit then
+   a c@ STR:PLUS  = if a 1+ u 1- 0 0= 0= exit then
    a u 0 0= 0= ;
 : FL-FIND-E ( str -- option<idx> ) {: a:^ u:n :}
-   a u FL-E-LOWER INDEX-OF MATCH option
-     none OF a u FL-E-UPPER INDEX-OF ENDOF
+   a u FL-E-LOWER STR:INDEX-OF MATCH option
+     none OF a u FL-E-UPPER STR:INDEX-OF ENDOF
      some OF OPTION:SOME ENDOF
    ;MATCH ;
 
@@ -107,12 +107,12 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 \ ask the engine's own reader whether its cell accumulators admit the value.
 : FL-ENGINE-DECIMAL? ( str -- bool ) {: a:^ u:n :}
    u 0= if 0 0= 0= exit then
-   a c@ STR-PLUS = if 0 0= 0= exit then
+   a c@ STR:PLUS = if 0 0= 0= exit then
    a u FL-FIND-E MATCH option
      none OF 0 0= 0= ENDOF
      some OF drop 0 0= ENDOF
    ;MATCH if 0 0= 0= exit then
-   a u FL-DOT INDEX-OF MATCH option
+   a u FL-DOT STR:INDEX-OF MATCH option
      none OF 0 0= 0= ENDOF
      some OF IDX>N u 1- <> ENDOF
    ;MATCH ;
@@ -136,7 +136,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
    {: a0:^ u0:n :}
    a0 u0 FL-ENGINE-DECIMAL? 0= if true exit then
    a0 u0 FL-STRIP-SIGN drop {: a:^ u:n :}
-   a u FL-DOT INDEX-OF MATCH option
+   a u FL-DOT STR:INDEX-OF MATCH option
       none OF false exit ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: dot:n :}
@@ -147,13 +147,13 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 
 \ ---- significand (no sign, no exponent) -----------------------------------
 : FL-SCALED-SIG ( str n -- option<r> ) {: a:^ u:n exponent:n :}
-   a u FL-DOT INDEX-OF MATCH option                  \ split at the dot: ilen fa flen
+   a u FL-DOT STR:INDEX-OF MATCH option                  \ split at the dot: ilen fa flen
      none OF u  a u +  0 ENDOF                        \ no dot: int = whole string, empty fraction
      some OF IDX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
    ;MATCH {: ilen:n fa:^ flen:n :}
    ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
-   ilen 0 > if a ilen STR-DIGITS? 0= if OPTION:NONE exit then then
-   flen 0 > if fa flen STR-DIGITS? 0= if OPTION:NONE exit then then
+   ilen 0 > if a ilen STR:DIGITS? 0= if OPTION:NONE exit then then
+   flen 0 > if fa flen STR:DIGITS? 0= if OPTION:NONE exit then then
    flen negate FL-RESET-SIG
    a ilen FL-KEEP-DIGITS
    fa flen FL-KEEP-DIGITS
@@ -161,7 +161,7 @@ variable FL-SCALE                           \ omitted digits minus fraction leng
 
 \ ---- exponent -------------------------------------------------------------
 : FL-EXP-AT ( str n -- n ) {: a:^ u epos :}
-   a epos 1+ + u epos 1+ - STR>NUMBER? MATCH option
+   a epos 1+ + u epos 1+ - STR:>NUMBER? MATCH option
      none OF 0 FL-VALID ! ENDOF
      some OF FL-EXPV ! ENDOF
    ;MATCH

@@ -55,7 +55,7 @@ THROWN 99 T=
    postpone ; ;
 : NESTED ( -- n ) [: s" NESTED-DEF" MAKE-NESTED ;] catch ;
 REJECTION:CAPTURE  NESTED 70 T=  REJECTION:BUFFER-OFF
-REJECTION:BUFFER$ s" error[E-UNMODELED-IMMEDIATE]: `NESTED-IMM` runs while the definition compiles and may define words or add to a definition" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-UNMODELED-IMMEDIATE]: `NESTED-IMM` runs while the definition compiles and may define words or add to a definition" STR:CONTAINS? TTRUE
 
 \ : NAME ( -- n ) 5 ; after a refusal the definer catches.
 : MAKE-KEPT ( str -- )
@@ -75,7 +75,7 @@ public
 : MAKE-CUT ( str -- )
    EFFECT:EMPTY EFFECT:N EFFECT:IN EFFECT:N EFFECT:OUT define-word
    REJECTION:CAPTURE  [: s" CUT:CUT-IMM" evaluate-closed ;] catch 70 T=  REJECTION:BUFFER-OFF
-   REJECTION:BUFFER$ s" `CUT:CUT-IMM` runs while the definition compiles and may define words or add to a definition" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" `CUT:CUT-IMM` runs while the definition compiles and may define words or add to a definition" STR:CONTAINS? TTRUE
    postpone CUT-ONE
    postpone ; ;
 ;package

@@ -301,7 +301,7 @@ PROCESS:NO-FD FEED-WR !
 \ finish (PROCESS:WALK-REPORT).
 : LOG-THREW? ( -- bool )
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL {: a:^ u:n :}
-   a u s" threw" CONTAINS? a u s" not walked" CONTAINS? or ;
+   a u s" threw" STR:CONTAINS? a u s" not walked" STR:CONTAINS? or ;
 
 \ The ways a stopped check.f can leak, each asserted here:
 \ - an orphaned child: check.f's child leads its own process group, so a
@@ -517,7 +517,7 @@ PROCESS:NO-FD FEED-WR !
    s\" \n  = found: a double quote at byte " SB-APPEND
    pu 2 - FMT:SB-INT
    s\" \n  = help: set TMPDIR to a directory whose path holds none of them\n\n" SB-APPEND
-   SB$ ENDS-WITH? TTRUE ;
+   SB$ STR:ENDS-WITH? TTRUE ;
 
 : LEFT-ENDED ( -- )
    FIFO-DONE @ 0= if

@@ -119,7 +119,7 @@ variable RESULT-SYM
    LSP-CHECK:VERIFY-INDEX$ {: a:^ u:n :}
    0 begin dup u < while
       {: at:n :}
-      a at + u at - 10 INDEX-OF MATCH option
+      a at + u at - 10 STR:INDEX-OF MATCH option
          some OF IDX>N ENDOF
          none OF u at - ENDOF
       ;MATCH {: len:n :}

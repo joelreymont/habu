@@ -221,13 +221,13 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    s" --a--" s" --" s" x" BUFT-BUF BUF:APPEND-REPLACED 2 T=         \ old at both ends
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xax" T$=
    BUFT-BUF BUF:CLEAR
-   s" aaa" s" aa" s" b" BUFT-BUF BUF:APPEND-REPLACED 1 T=           \ non-overlapping, as COUNT-SUB counts
+   s" aaa" s" aa" s" b" BUFT-BUF BUF:APPEND-REPLACED 1 T=           \ non-overlapping, as STR:COUNT-SUB counts
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" ba" T$=
    BUFT-BUF BUF:CLEAR
    s" abc" s" z" s" q" BUFT-BUF BUF:APPEND-REPLACED 0 T=            \ absent old: the text as it is
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
    BUFT-BUF BUF:CLEAR
-   s" abc" s" " s" q" BUFT-BUF BUF:APPEND-REPLACED 0 T=             \ empty old: COUNT-SUB's zero
+   s" abc" s" " s" q" BUFT-BUF BUF:APPEND-REPLACED 0 T=             \ empty old: STR:COUNT-SUB's zero
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abc" T$=
    s" -" s" -" BUFT-BUF BUF:SPAN$ BUFT-BL>RAW drop 1 + 0
    BUFT-BUF BUF:APPEND-REPLACED 1 T=                                \ an empty new inside overlaps nothing

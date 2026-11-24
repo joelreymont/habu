@@ -194,7 +194,7 @@ TYPED-VARIABLE DECODED ^VEC:vector<u8>
 : FORM-WANT ( n -- str )
    {: b:n :}
    b FORM-SAFE? if b WANT c! WANT 1 exit then
-   b STR-SPACE = if [char] + WANT c! WANT 1 exit then
+   b STR:SPACE = if [char] + WANT c! WANT 1 exit then
    [char] % WANT c!
    HEX$ drop b 4 rshift + c@ WANT 1+ c!
    HEX$ drop b $F and + c@ WANT 2 + c!

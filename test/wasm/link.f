@@ -342,7 +342,7 @@ $350000 constant PAGE-53-END
    {: k:n :}
    k k 1+ CHAIN-BODY
    k BODY@ {: at:n u:n :}
-   MBUF at + u  BODY$  STR= ;
+   MBUF at + u  BODY$  STR:= ;
 
 \ Run's body, calling the entry at index 135.
 : RUN-135 ( -- )

@@ -54,10 +54,10 @@ private
    S\" \"message\":\"return stack: the return row does not balance at exit\"" ;
 
 : HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 
 : LACKS? ( str -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE ;
 
 \ Each shape is refused with its own named diagnostic (the code and the prose
 \ naming what was laundered), not a bare mismatch.

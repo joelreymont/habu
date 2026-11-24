@@ -58,7 +58,7 @@ variable FILE-U
 
 : CHROME-ASKED? ( -- bool )
    SCRIPT-ARGC 0 ?do
-      i SCRIPT-ARGV$ s" --chrome" STR= if unloop true exit then
+      i SCRIPT-ARGV$ s" --chrome" STR:= if unloop true exit then
    loop false ;
 
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.

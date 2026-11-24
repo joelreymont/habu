@@ -28,7 +28,7 @@ private
 \ one no word has: their first colon is neither first nor last.
 : QUALIFIES? ( str -- bool )
    {: a:^ u:n :}
-   a u [char] : INDEX-OF MATCH option
+   a u [char] : STR:INDEX-OF MATCH option
       some OF IDX>N {: k:n :} k 0 >  k u 1- <  and ENDOF
       none OF false ENDOF
    ;MATCH ;
@@ -45,7 +45,7 @@ private
 : NEW-URI? ( n -- bool )
    {: k:n :}
    k 0= if true exit then
-   k LSP-REFERENCES:LOC-URI$ k 1- LSP-REFERENCES:LOC-URI$ STR= 0= ;
+   k LSP-REFERENCES:LOC-URI$ k 1- LSP-REFERENCES:LOC-URI$ STR:= 0= ;
 
 public
 

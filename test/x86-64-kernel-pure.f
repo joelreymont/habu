@@ -93,14 +93,14 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 : IN, ( n -- )
    N,
    FLOATS @ 0= if exit then
-   SUBJ$ s" s>f" STR= if exit then
+   SUBJ$ s" s>f" STR:= if exit then
    s" s>f" CALL ;
 
 \ A case's answer back to a cell: through the kernel's `f>s` row when a float
 \ set's answer is a real.
 : OUT, ( -- )
    FLOATS @ 0= if exit then
-   SUBJ$ s" f>s" STR= if exit then
+   SUBJ$ s" f>s" STR:= if exit then
    s" f>s" CALL ;
 
 \ ---- the memory scenarios ----------------------------------------------------
@@ -110,19 +110,19 @@ TYPED-VARIABLE FLOATS bool              \ set while the float sets run
 : STORED ( n -- ) {: v:n :}  v N, 0 AT, s" !" CALL ;
 
 : MEM-SCENARIO ( n -- ) {: v:n :}
-   SUBJ$ s" !" STR= if  v STORED  0 AT, s" @" CALL  exit then
-   SUBJ$ s" c!" STR= if  v N, 0 AT, s" c!" CALL  0 AT, s" c@" CALL  exit then
-   SUBJ$ s" +!" STR= if
+   SUBJ$ s" !" STR:= if  v STORED  0 AT, s" @" CALL  exit then
+   SUBJ$ s" c!" STR:= if  v N, 0 AT, s" c!" CALL  0 AT, s" c@" CALL  exit then
+   SUBJ$ s" +!" STR:= if
       v STORED  BUMP N, 0 AT, s" +!" CALL  0 AT, s" @" CALL  exit then
-   SUBJ$ s" count" STR= if
+   SUBJ$ s" count" STR:= if
       v N, 0 AT, s" c!" CALL  0 AT, s" count" CALL
       2 G-POP  1 WANT-AT  2 G-PUSH  exit then
-   SUBJ$ s" byte-view" STR= if
+   SUBJ$ s" byte-view" STR:= if
       v STORED  0 AT, s" byte-view" CALL s" c@" CALL  exit then
-   SUBJ$ s" cell-view" STR= if
+   SUBJ$ s" cell-view" STR:= if
       v N, 0 AT, s" cell-view" CALL s" !" CALL
       0 AT, s" cell-view" CALL s" @" CALL  exit then
-   SUBJ$ s" PTR>N" STR= if v AT, s" PTR>N" CALL 0 AT, s" -" CALL exit then
+   SUBJ$ s" PTR>N" STR:= if v AT, s" PTR>N" CALL 0 AT, s" -" CALL exit then
    s" x64k-pure: no memory scenario for " type SUBJ$ type cr
    s" x64k-pure: unwired memory row" SETUP-RC die ;
 

@@ -256,7 +256,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 : REJECTS? ( [ -- ] str -- bool ) {: q c:^ cu:n :}
    REJECTION:CAPTURE
    q catch 70 =
-   REJECTION:BUFFER$ c cu CONTAINS? and
+   REJECTION:BUFFER$ c cu STR:CONTAINS? and
    REJECTION:BUFFER-OFF ;
 
 \ Whether Q stops with the rejection status after a record holding HEAD and HELP.
@@ -456,13 +456,13 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 \ and ends with help the case does not pin: the transcript keeps both keys and
 \ drops their values.
 : ERR-LINE+ ( str -- ) {: a:^ u:n :}
-   a u s"   = caller: " STARTS-WITH? if s"   = caller:" SAY exit then
-   a u s"   = help: " STARTS-WITH? if s"   = help:" SAY exit then
+   a u s"   = caller: " STR:STARTS-WITH? if s"   = caller:" SAY exit then
+   a u s"   = help: " STR:STARTS-WITH? if s"   = help:" SAY exit then
    a u SAY ;
 
 \ A captured stderr as STREAM+ writes it, each line through ERR-LINE+.
 : ERR-STREAM+ ( str -- ) {: a:^ u:n :}
-   a u LF 0 begin SPLIT-NEXT while {: p:^ pu:n next:n :}
+   a u LF 0 begin STR:SPLIT-NEXT while {: p:^ pu:n next:n :}
       pu 0 <>  next u > 0=  or if p pu ERR-LINE+ then
       a u LF next
    repeat drop 2drop ;

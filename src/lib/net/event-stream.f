@@ -136,13 +136,13 @@ $BF constant BOM-THIRD
    state LINE VEC:SPAN SPAN:$ {: src:^ u:n :}
    src c@ COLON = if exit then
    src u SPLIT-FIELD {: name:^ nu:n value:^ vu:n :}
-   name nu s" data" STR= if
+   name nu s" data" STR:= if
       value vu state BODY VEC:APPEND
       LF state BODY VEC:PUSH c!
       true state DATA!
       exit
    then
-   name nu s" event" STR= if
+   name nu s" event" STR:= if
       state EVENT 0 VEC:RESIZE
       value vu state EVENT VEC:APPEND
    then ;

@@ -417,13 +417,13 @@ variable FLAG-N
    s b +  e b - ;
 
 : STRUCTURE-PTR-FIELD? ( str -- bool )
-   s" PTR-FIELD:" STR=CI ;
+   s" PTR-FIELD:" STR:=CI ;
 
 : STRUCTURE-CFIELD? ( str -- bool )
-   s" CFIELD:" STR=CI ;
+   s" CFIELD:" STR:=CI ;
 
 : STRUCTURE-CELL-FIELD? ( str -- bool )
-   s" +FIELD" STR=CI ;
+   s" +FIELD" STR:=CI ;
 
 : STRUCTURE-FIELD? ( str -- bool ) {: a:^ u:n :}
    a u STRUCTURE-PTR-FIELD?  a u STRUCTURE-CFIELD? or
@@ -432,8 +432,8 @@ variable FLAG-N
 \ The definer t tu has no name after it: the record the loader writes for
 \ that definer, else the general one, written through its help.
 : NO-NAME-RECORD ( str -- ) {: t:^ tu:n :}
-   t tu s" defer" STR=CI IF t tu INTERPRETER:DEFER-NO-NAME EXIT THEN
-   t tu s" undefine" STR=CI IF t tu UNDEFINE-NO-NAME EXIT THEN
+   t tu s" defer" STR:=CI IF t tu INTERPRETER:DEFER-NO-NAME EXIT THEN
+   t tu s" undefine" STR:=CI IF t tu UNDEFINE-NO-NAME EXIT THEN
    t tu STRUCTURE-FIELD? IF t tu t tu STRUCT-NO-NAME EXIT THEN
    t tu t tu s" no name follows" REJECTION:MISSING-NAME ;
 
@@ -809,14 +809,6 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
    dup $5A > IF EXIT THEN
    $20 or ;
 
-: STR=CI ( str str -- bool ) {: a:^ u:n b:^ v:n :}
-   u v <> IF 0 0= 0= EXIT THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@ FOLD-C
-      over b + c@ FOLD-C <> IF drop 0 0= 0= EXIT THEN
-      1+
-   REPEAT drop 0 0= ;
-
 \ The tokens a straight line has none of. The checker's own classifier cannot
 \ be reused for the question: it pushes a frame for every token it recognises,
 \ so asking it would move the checker's state. These are its token list, plus
@@ -824,34 +816,34 @@ variable LOCAL-DEPTH                          \ blocks open, counted while a loc
 \ case-folded, as the engine's keywords ignore case, so `EXIT` ends the line as
 \ `exit` does.
 : WRAP-COND-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u s" if" STR=CI
-   a u s" else" STR=CI or
-   a u s" then" STR=CI or
-   a u s" case" STR=CI or
-   a u s" of" STR=CI or
-   a u s" endof" STR=CI or
-   a u s" endcase" STR=CI or ;
+   a u s" if" STR:=CI
+   a u s" else" STR:=CI or
+   a u s" then" STR:=CI or
+   a u s" case" STR:=CI or
+   a u s" of" STR:=CI or
+   a u s" endof" STR:=CI or
+   a u s" endcase" STR:=CI or ;
 
 : WRAP-LOOP-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u s" begin" STR=CI
-   a u s" while" STR=CI or
-   a u s" repeat" STR=CI or
-   a u s" until" STR=CI or
-   a u s" again" STR=CI or
-   a u s" do" STR=CI or
-   a u s" ?do" STR=CI or
-   a u s" loop" STR=CI or
-   a u s" +loop" STR=CI or
-   a u s" leave" STR=CI or
-   a u s" exit" STR=CI or ;
+   a u s" begin" STR:=CI
+   a u s" while" STR:=CI or
+   a u s" repeat" STR:=CI or
+   a u s" until" STR:=CI or
+   a u s" again" STR:=CI or
+   a u s" do" STR:=CI or
+   a u s" ?do" STR:=CI or
+   a u s" loop" STR:=CI or
+   a u s" +loop" STR:=CI or
+   a u s" leave" STR:=CI or
+   a u s" exit" STR:=CI or ;
 
 : WRAP-BRACKET-TOK? ( str -- bool ) {: a:^ u:n :}
-   a u s" [:" STR=CI
-   a u s" ;]" STR=CI or
-   a u s" [" STR=CI or
-   a u s" ]" STR=CI or
-   a u s" postpone" STR=CI or
-   a u s" recurse" STR=CI or ;
+   a u s" [:" STR:=CI
+   a u s" ;]" STR:=CI or
+   a u s" [" STR:=CI or
+   a u s" ]" STR:=CI or
+   a u s" postpone" STR:=CI or
+   a u s" recurse" STR:=CI or ;
 
 : WRAP-CTL-TOK? ( str -- bool ) {: a:^ u:n :}
    a u WRAP-COND-TOK?
@@ -901,11 +893,11 @@ private
 \ A loader word's bit in SHADOWED and RETIRED, 0 for any other name: the words
 \ discovery reads as loaders, `script-required` not one.
 : LOADER-BIT ( str -- n ) {: a:^ u:n :}
-   a u s" include" STR=CI IF $01 EXIT THEN
-   a u s" included" STR=CI IF $02 EXIT THEN
-   a u s" require" STR=CI IF $04 EXIT THEN
-   a u s" required" STR=CI IF $08 EXIT THEN
-   a u s" provided" STR=CI IF $10 EXIT THEN
+   a u s" include" STR:=CI IF $01 EXIT THEN
+   a u s" included" STR:=CI IF $02 EXIT THEN
+   a u s" require" STR:=CI IF $04 EXIT THEN
+   a u s" required" STR:=CI IF $08 EXIT THEN
+   a u s" provided" STR:=CI IF $10 EXIT THEN
    0 ;
 
 \ Loader words the file declared or retired by WALK-NAMES's forms: past either,
@@ -1058,26 +1050,26 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 \ The flag the engine's target predicate the token a u binds pushes, and
 \ whether the token binds one.
 : TARGET-GUARD ( str -- bool bool ) {: a:^ u:n :}
-   a u s" HB-TARGET-LINUX?" STR=CI IF
+   a u s" HB-TARGET-LINUX?" STR:=CI IF
       a u HB-TARGET-LINUX? ENGINE-GUARD EXIT
    THEN
-   a u s" HB-TARGET-MACOS?" STR=CI IF
+   a u s" HB-TARGET-MACOS?" STR:=CI IF
       a u HB-TARGET-MACOS? ENGINE-GUARD EXIT
    THEN
-   a u s" HB-TARGET-LINUX-X86-64?" STR=CI IF
+   a u s" HB-TARGET-LINUX-X86-64?" STR:=CI IF
       a u HB-TARGET-LINUX-X86-64? ENGINE-GUARD EXIT
    THEN
-   a u s" HB-TARGET-LINUX-KERNEL?" STR=CI IF
+   a u s" HB-TARGET-LINUX-KERNEL?" STR:=CI IF
       a u HB-TARGET-LINUX-KERNEL? ENGINE-GUARD EXIT
    THEN
-   a u s" HB-TARGET-WASM?" STR=CI IF
+   a u s" HB-TARGET-WASM?" STR:=CI IF
       a u HB-TARGET-WASM? ENGINE-GUARD EXIT
    THEN
    false false ;
 
 : BODY-USE ( str -- ) {: a:^ u:n :}
    COMPOSE-ON @ 0= IF EXIT THEN
-   a u s" include" STR=CI  a u s" require" STR=CI or
+   a u s" include" STR:=CI  a u s" require" STR:=CI or
    BODY-LIT-KIND @ LIT-PATH = or IF a u QUIET-USE THEN ;
 
 : BODY-TOKEN-SEEN ( str -- ) {: a:^ u:n :}
@@ -1100,16 +1092,16 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 \ A parsing keyword's operand is its next token, data whatever it spells; a body
 \ local is looked up first.
 : CHAR-KEYWORD? ( str -- bool )
-   s" char" STR=CI ;
+   s" char" STR:=CI ;
 
 : TOP-PARSER? ( str -- bool ) {: a:^ u:n :}
    a u CHAR-KEYWORD? IF 0 0= EXIT THEN
-   a u s" '" STR=CI ;
+   a u s" '" STR:=CI ;
 
 : BODY-PARSER? ( str -- bool ) {: a:^ u:n :}
-   a u s" [']" STR=CI IF 0 0= EXIT THEN
-   a u s" postpone" STR=CI IF 0 0= EXIT THEN
-   a u s" [char]" STR=CI ;
+   a u s" [']" STR:=CI IF 0 0= EXIT THEN
+   a u s" postpone" STR:=CI IF 0 0= EXIT THEN
+   a u s" [char]" STR:=CI ;
 
 : OPERAND ( -- str )
    NEXT-RAW dup 0= IF NAME-STOP THEN ;
@@ -1150,7 +1142,7 @@ CAST: BINDING-ACTION ( n -- [ str -- n n n ] )
 : BLOCK-STEP ( str -- ) {: a:^ u:n :}
    LOCAL-N @ 0= IF EXIT THEN
    a u BLOCK-OPENER? IF LOCAL-DEPTH @ 1 + LOCAL-DEPTH ! EXIT THEN
-   a u s" else" STR=CI IF BLOCK-DROP EXIT THEN
+   a u s" else" STR:=CI IF BLOCK-DROP EXIT THEN
    a u BLOCK-CLOSER? IF BLOCK-DROP LOCAL-DEPTH @ 1 - LOCAL-DEPTH ! THEN ;
 
 : GROUP-TOKEN ( str -- bool ) {: a:^ u:n :}
@@ -1725,7 +1717,7 @@ variable WRAP-MAKES                           \ a `create` or definer call befor
 : WRAP-TOKEN ( str -- ) {: a:^ u:n :}
    WRAP-CTL @ IF EXIT THEN
    a u WRAP-CTL-TOK? IF -1 WRAP-CTL ! EXIT THEN
-   a u s" create" STR=CI IF -1 WRAP-MAKES ! EXIT THEN
+   a u s" create" STR:=CI IF -1 WRAP-MAKES ! EXIT THEN
    a u DEFINER-OF dup 0<> IF
       1 - WRAP-ROW !
       WRAP-DEFINERS @ 1 + WRAP-DEFINERS !  -1 WRAP-MAKES !  EXIT
@@ -1975,15 +1967,15 @@ private
 \ even the original include/require entry can call replaced source providers.
 : TICK-NATIVE-DEFINER? ( str -- bool )
    {: a:^ u:n :}
-   a u s" package" STR=CI  a u s" ;package" STR=CI or
-   a u s" public" STR=CI or  a u s" private" STR=CI or  a u s" global" STR=CI or
-   a u s" using" STR=CI or  a u s" ;using" STR=CI or
-   a u s" seal-package" STR=CI or  a u s" host" STR=CI or
-   a u s" target" STR=CI or IF 0 0= EXIT THEN
-   a u s" export" STR=CI  a u s" trusted:" STR=CI or
-   a u s" cast:" STR=CI or  a u s" linear:" STR=CI or
-   a u s" defer" STR=CI or  a u s" create" STR=CI or
-   a u s" variable" STR=CI or  a u s" constant" STR=CI or ;
+   a u s" package" STR:=CI  a u s" ;package" STR:=CI or
+   a u s" public" STR:=CI or  a u s" private" STR:=CI or  a u s" global" STR:=CI or
+   a u s" using" STR:=CI or  a u s" ;using" STR:=CI or
+   a u s" seal-package" STR:=CI or  a u s" host" STR:=CI or
+   a u s" target" STR:=CI or IF 0 0= EXIT THEN
+   a u s" export" STR:=CI  a u s" trusted:" STR:=CI or
+   a u s" cast:" STR:=CI or  a u s" linear:" STR:=CI or
+   a u s" defer" STR:=CI or  a u s" create" STR:=CI or
+   a u s" variable" STR:=CI or  a u s" constant" STR:=CI or ;
 
 : DEFINITION-NONE ( str str n str n n n n -- )
    2drop 2drop 2drop drop 2drop 2drop ;
@@ -2054,8 +2046,8 @@ ENGINE-TARGET-INIT
 \ not a use of the older one.
 : COLON-NAME-USE? ( n n -- bool )
    {: s:n e:n :}
-   TOP-CUR-A @ TOP-CUR-U @ s" :" STR=CI
-   TOP-CUR-A @ TOP-CUR-U @ s" kernel:" STR=CI or
+   TOP-CUR-A @ TOP-CUR-U @ s" :" STR:=CI
+   TOP-CUR-A @ TOP-CUR-U @ s" kernel:" STR:=CI or
    s DEF-NAME-BYTE @ = and
    e DEF-NAME-BYTE @ DEF-NAME-U @ + = and ;
 
@@ -2157,7 +2149,7 @@ ENGINE-TARGET-INIT
    {: sym:n :}
    sym NEWEST-SYM !
    sym 0= IF EXIT THEN
-   kind kindu name nameu sym eff effu TRIM at end class VISIT-CUR @ ON-DEFINITION ;
+   kind kindu name nameu sym eff effu STR:TRIM at end class VISIT-CUR @ ON-DEFINITION ;
 
 : DEFINED-HERE ( str str n n -- )
    {: name:^ nameu:n eff:^ effu:n at:n class:n :}
@@ -2189,8 +2181,8 @@ ENGINE-TARGET-INIT
 \ `create`.
 : STORAGE-KEYWORD ( -- str )
    TOP-CUR-A @ TOP-CUR-U @ {: a:^ u:n :}
-   a u s" constant" STR=CI IF s" constant" EXIT THEN
-   a u s" variable" STR=CI IF s" variable" EXIT THEN
+   a u s" constant" STR:=CI IF s" constant" EXIT THEN
+   a u s" variable" STR:=CI IF s" variable" EXIT THEN
    s" create" ;
 
 \ Registers the effect for the word the next token names with TVK-RAW type
@@ -2287,9 +2279,9 @@ variable TRUSTED-DOES
    a u s" {:" CORE-STR=  a u BODY-PARSER? or  a u STRING-OPENER? or IF EXIT THEN
    a u num-parse nip nip IF EXIT THEN
    a u WRAP-CTL-TOK? IF EXIT THEN
-   a u s" i" STR=CI  a u s" j" STR=CI or  a u s" unloop" STR=CI or IF EXIT THEN
-   a u s" is" STR=CI IF OPERAND 2drop EXIT THEN
-   a u s" [package]" STR=CI IF EXIT THEN
+   a u s" i" STR:=CI  a u s" j" STR:=CI or  a u s" unloop" STR:=CI or IF EXIT THEN
+   a u s" is" STR:=CI IF OPERAND 2drop EXIT THEN
+   a u s" [package]" STR:=CI IF EXIT THEN
    a u na nu TRUSTED-REACH ;
 
 \ A trusted body is ASSERTED, never verified, but its `does>` clause is a
@@ -2305,7 +2297,7 @@ variable TRUSTED-DOES
       BODY!
       TOKEN-U @ 0= IF UNCLOSED-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
-      LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
+      LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR:=CI  and IF
          \ This scan skips the clause body, so its acceptance is unknown.
          INDEX-ON @ IF
             TOKEN-A @ TOKEN-U @ 0 DEFER-AT
@@ -2483,10 +2475,10 @@ DYNAMIC-BUFFER NOM-TAIL u8
    name nameu CHECKER-DEFLINEAR ;
 
 : VALUE-RECORD-END? ( str -- bool )
-   s" END-VALUE-RECORD" STR=CI ;
+   s" END-VALUE-RECORD" STR:=CI ;
 
 : SUMTYPE-END? ( str -- bool )
-   s" ;SUMTYPE" STR=CI ;
+   s" ;SUMTYPE" STR:=CI ;
 
 \ A SUMTYPE defines its constructors when it loads; the scan replays its body
 \ through the same front end, which publishes their checked effects, so a later
@@ -2502,7 +2494,7 @@ variable SUM-VAR-NEXT
       TOKEN-BYTE @ SUM-VAR-N @ SUM-VAR-AT !
       SUM-VAR-N @ 1+ SUM-VAR-N !
    THEN
-   a u s" VARIANT" STR=CI SUM-VAR-NEXT ! ;
+   a u s" VARIANT" STR:=CI SUM-VAR-NEXT ! ;
 
 \ Constructor symbols belong to the variants just registered. Give each its
 \ source name token, in the same order the declaration registered the variants.
@@ -2557,7 +2549,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
    name nameu [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
 
 : ENUM-END? ( str -- bool )
-   s" ;ENUM" STR=CI ;
+   s" ;ENUM" STR:=CI ;
 
 \ The body keeps its ;ENUM, which the front end parses itself; one the input
 \ ends inside replays without it, and the front end refuses "missing ;ENUM".
@@ -2575,7 +2567,7 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
    dup 0 <> IF DEFER-AT ELSE drop 2drop THEN ;
 
 : STRUCTURE-DECL-END? ( str -- bool )
-   s" ;STRUCTURE" STR=CI ;
+   s" ;STRUCTURE" STR:=CI ;
 
 \ The replay registers MAKE/UNMAKE, so `FAMILY:MAKE` resolves later in this
 \ source; an unclosed body replays as RECORD-ENUM's does: "missing ;STRUCTURE".
@@ -2593,13 +2585,13 @@ EXPORT TYPE-DECL:TDECL-SUMTYPE
    dup 0 <> IF DEFER-AT ELSE drop 2drop THEN ;
 
 : MUTUAL-END? ( str -- bool )
-   s" ;MUTUAL" STR=CI ;
+   s" ;MUTUAL" STR:=CI ;
 
 \ Whether a MUTUAL's first token names a family to seal: a member's STRUCTURE,
 \ ;MUTUAL and a nameless header do not. The replay judges every later entry.
 : MUTUAL-LISTED? ( str -- bool ) {: a:^ u:n :}
    a u DECL-FAMILY-NAME nip 0<>
-   a u s" STRUCTURE" STR=CI 0= and  a u MUTUAL-END? 0= and ;
+   a u s" STRUCTURE" STR:=CI 0= and  a u MUTUAL-END? 0= and ;
 
 \ Appends the next MUTUAL body token; answers whether the body ended.
 : MUTUAL-TOKEN ( -- bool )
@@ -2659,7 +2651,7 @@ variable STG-TYPE-U
 \ other is left unread.
 : SCAN-SCRATCH-CLAUSE? ( -- bool )
    SCAN-I @ {: mark:n :}
-   SCAN-LINE-TOKEN s" scratch-only" STR=CI IF 0 0= EXIT THEN
+   SCAN-LINE-TOKEN s" scratch-only" STR:=CI IF 0 0= EXIT THEN
    mark SCAN-I !  0 0= 0= ;
 
 : NEWTYPE-CELL ( str -- ) {: name:^ nameu:n :}
@@ -3037,7 +3029,7 @@ CAST: TOP-ACTION ( n -- [ str bool -- n ] )
 : RENDER-GAP ( str -- )
    {: a:^ u:n :}
    \ `;` is reserved: it ends a definition its opener began, and its gap is the opener's.
-   a u s" ;" STR=CI IF EXIT THEN
+   a u s" ;" STR:=CI IF EXIT THEN
    a u DECLARED-RENDER? IF EXIT THEN
    a u TOP-BINDING nip nip CHECKER-OWNER-ABI:BINDING-DEFER and 0<>
    IF a u DW-DEFER DEFER-AT EXIT THEN
@@ -3386,14 +3378,14 @@ variable LOAD-U
    q TOKEN-BYTE @ u RUN-LOADER ;
 
 : QUIET-TOP? ( str -- bool ) {: a:^ u:n :}
-   a u s" include" STR=CI IF u true QUIET-WORD-LOAD true EXIT THEN
-   a u s" require" STR=CI IF u false QUIET-WORD-LOAD true EXIT THEN
-   a u s" included" STR=CI IF u true FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
-   a u s" required" STR=CI IF u false FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
-   a u s" script-required" STR=CI IF
+   a u s" include" STR:=CI IF u true QUIET-WORD-LOAD true EXIT THEN
+   a u s" require" STR:=CI IF u false QUIET-WORD-LOAD true EXIT THEN
+   a u s" included" STR:=CI IF u true FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
+   a u s" required" STR:=CI IF u false FILE-LOAD QUIET-STRING-LOAD true EXIT THEN
+   a u s" script-required" STR:=CI IF
       u [: LOAD$ COMPOSE-SCRIPT-REQUIRED ;] QUIET-STRING-LOAD true EXIT
    THEN
-   a u s" provided" STR=CI IF
+   a u s" provided" STR:=CI IF
       u [: 2dup LOAD$ COMPOSE-PROVIDED ;] QUIET-STRING-LOAD true EXIT
    THEN
    false ;
@@ -3407,9 +3399,9 @@ variable LOAD-U
    [: oa ou SRCLOC:TOKEN! ;] finally ;
 
 : LOADER-WORD? ( str -- bool ) {: a:^ u:n :}
-   a u s" include" STR=CI  a u s" require" STR=CI or
-   a u s" included" STR=CI or  a u s" required" STR=CI or
-   a u s" script-required" STR=CI or  a u s" provided" STR=CI or ;
+   a u s" include" STR:=CI  a u s" require" STR:=CI or
+   a u s" included" STR:=CI or  a u s" required" STR:=CI or
+   a u s" script-required" STR:=CI or  a u s" provided" STR:=CI or ;
 
 \ The source now scanned opened the FUNCTION: group still open. Nested files
 \ share FFI's open group, as they share the load's open declaration.
@@ -3421,7 +3413,7 @@ variable LOAD-U
 
 \ The load words; `provided` loads nothing.
 : LOADS? ( str -- bool ) {: a:^ u:n :}
-   a u LOADER-WORD?  a u s" provided" STR=CI 0= and ;
+   a u LOADER-WORD?  a u s" provided" STR:=CI 0= and ;
 
 \ The load word w wu is called while the declaration t tu opened, which c cu
 \ closes, is open: the load's record.
@@ -3512,7 +3504,7 @@ private
    COMPOSE-CUR-PATH-A @ COMPOSE-CUR-PATH-U @ REQUIRE-REG:ENGINE-PROVIDES? ;
 
 : STRUCTURE-END? ( str -- bool )
-   s" END-STRUCTURE" STR=CI ;
+   s" END-STRUCTURE" STR:=CI ;
 
 : TRUST-STRUCTURE-FIELD ( str str -- bool )
    DECL-SIGNATURE CHECKER-ROW:KEPT = ;
@@ -3567,11 +3559,11 @@ private
 \ A declaration opening, or a package scope opening or closing, inside the
 \ structure rejects the structure.
 : STRUCTURE-OPENED ( str -- ) {: o:^ ou:n :}
-   o ou s" BEGIN-STRUCTURE" STR=CI  o ou s" FUNCTION:" STR=CI or
-   o ou s" CALLBACK:" STR=CI or
-   o ou s" package" STR=CI or  o ou s" ;package" STR=CI or
-   o ou s" using" STR=CI or  o ou s" ;using" STR=CI or
-   o ou s" seal-package" STR=CI or 0= IF EXIT THEN
+   o ou s" BEGIN-STRUCTURE" STR:=CI  o ou s" FUNCTION:" STR:=CI or
+   o ou s" CALLBACK:" STR:=CI or
+   o ou s" package" STR:=CI or  o ou s" ;package" STR:=CI or
+   o ou s" using" STR:=CI or  o ou s" ;using" STR:=CI or
+   o ou s" seal-package" STR:=CI or 0= IF EXIT THEN
    TOP-CUR-A @ TOP-CUR-U @ s" END-STRUCTURE" o ou UNCLOSED-DECL-STOP ;
 
 \ A load word inside the structure rejects the structure.
@@ -3581,9 +3573,9 @@ private
 
 \ A section word inside the structure switches the section, as at top level.
 : STRUCTURE-SECTION ( str -- ) {: w:^ wu:n :}
-   w wu s" public" STR=CI IF RECORD-PUBLIC EXIT THEN
-   w wu s" private" STR=CI IF RECORD-PRIVATE EXIT THEN
-   w wu s" global" STR=CI IF RECORD-GLOBAL THEN ;
+   w wu s" public" STR:=CI IF RECORD-PUBLIC EXIT THEN
+   w wu s" private" STR:=CI IF RECORD-PRIVATE EXIT THEN
+   w wu s" global" STR:=CI IF RECORD-GLOBAL THEN ;
 
 : RECORD-STRUCTURE ( -- )
    TOP-CUR-A @ TOP-CUR-U @ FFI-UNCLOSED
@@ -3675,7 +3667,7 @@ variable FFI-LIT-B                          \ and the newer
 
 : FFI-CLOSER? ( str -- bool )
    {: a:^ u:n :}
-   a u s" ;FUNCTION" STR=CI ;
+   a u s" ;FUNCTION" STR:=CI ;
 
 : FFI-LITERAL ( str -- )
    {: a:^ u:n :}
@@ -3688,15 +3680,15 @@ variable FFI-LIT-B                          \ and the newer
    {: a:^ u:n :}
    a u TOKEN-TAIL {: t:^ tu:n :}
    FFI-LIT-N @ {: lits:n :}
-   t tu s" STRUCT-ARG" STR=CI IF
+   t tu s" STRUCT-ARG" STR:=CI IF
       lits 2 < IF FFI:SKIP-FUNCTION EXIT THEN
       FFI-LIT-A @ FFI-LIT-B @ [: FFI:SET-STRUCT-ARG ;] a u FFI-AT EXIT
    THEN
-   t tu s" STRUCT-RESULT" STR=CI IF
+   t tu s" STRUCT-RESULT" STR:=CI IF
       lits 1 < IF FFI:SKIP-FUNCTION EXIT THEN
       FFI-LIT-B @ [: FFI:SET-STRUCT-RESULT ;] a u FFI-AT EXIT
    THEN
-   t tu s" VARIADIC" STR=CI 0= IF EXIT THEN
+   t tu s" VARIADIC" STR:=CI 0= IF EXIT THEN
    lits 1 < IF FFI:SKIP-FUNCTION EXIT THEN
    FFI-LIT-B @ [: FFI:SET-VARIADIC ;] a u FFI-AT ;
 
@@ -3741,7 +3733,7 @@ variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
 \ the load refuses.
 : LIBRARY-DEFINER? ( str n str -- bool )
    {: a:^ u:n code:n name:^ nameu:n :}
-   a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
+   a u TOKEN-TAIL name nameu STR:=CI 0= IF false EXIT THEN
    a u scope-find drop drop drop {: rec:^ :}
    rec XREF-FOUND? 0= IF false EXIT THEN
    rec XREF-START code = IF true EXIT THEN
@@ -3761,7 +3753,7 @@ variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
 \ its row is reached; Q is its qualified name.
 : TASK-DEFINER? ( str str str -- bool )
    {: a:^ u:n q:^ qu:n name:^ nameu:n :}
-   a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
+   a u TOKEN-TAIL name nameu STR:=CI 0= IF false EXIT THEN
    q qu XREF-FIND {: rec:^ :}
    rec XREF-FOUND? 0= IF false EXIT THEN
    a u rec XREF-START name nameu LIBRARY-DEFINER? ;
@@ -3783,33 +3775,33 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u TOP-BINDING nip nip BINDING-ID {: id:n :}
    id CHECKER-OWNER-ABI:BINDING-DECLARATION-ID =
    id CHECKER-OWNER-ABI:BINDING-TOP-ONLY-ID = or {: decl:bool :}
-   a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
-   a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
-   a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
-   a u s" global" STR=CI IF RECORD-GLOBAL 0 0= EXIT THEN
-   a u s" host" STR=CI IF 0 0= EXIT THEN
-   a u s" target" STR=CI IF 0 0= EXIT THEN
-   a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
-   a u s" seal-package" STR=CI IF SEAL-ROW 0 0= EXIT THEN
-   a u s" using" STR=CI IF RECORD-USING 0 0= EXIT THEN
-   a u s" ;using" STR=CI IF a u RECORD-END-USING 0 0= EXIT THEN
-   a u s" split-str" STR=CI IF
+   a u s" package" STR:=CI IF RECORD-PACKAGE 0 0= EXIT THEN
+   a u s" public" STR:=CI IF RECORD-PUBLIC 0 0= EXIT THEN
+   a u s" private" STR:=CI IF RECORD-PRIVATE 0 0= EXIT THEN
+   a u s" global" STR:=CI IF RECORD-GLOBAL 0 0= EXIT THEN
+   a u s" host" STR:=CI IF 0 0= EXIT THEN
+   a u s" target" STR:=CI IF 0 0= EXIT THEN
+   a u s" ;package" STR:=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
+   a u s" seal-package" STR:=CI IF SEAL-ROW 0 0= EXIT THEN
+   a u s" using" STR:=CI IF RECORD-USING 0 0= EXIT THEN
+   a u s" ;using" STR:=CI IF a u RECORD-END-USING 0 0= EXIT THEN
+   a u s" split-str" STR:=CI IF
       CHECKER-SPLIT-STR @ 0= IF
          a u INTERPRETER:SPLIT-STR-REJECT  EXIT-STATUS:REJECTED REJECTION:STOP
       THEN
       0 0= EXIT
    THEN
-   a u s" deftype" STR=CI decl and IF RECORD-DEFTYPE 0 0= EXIT THEN
-   a u s" deflinear" STR=CI decl and IF RECORD-DEFLINEAR 0 0= EXIT THEN
-   a u s" value-record" STR=CI decl and IF
+   a u s" deftype" STR:=CI decl and IF RECORD-DEFTYPE 0 0= EXIT THEN
+   a u s" deflinear" STR:=CI decl and IF RECORD-DEFLINEAR 0 0= EXIT THEN
+   a u s" value-record" STR:=CI decl and IF
       [: RECORD-VALUE-RECORD ;] VALUE-RECORD-OUTCOME 0 0= EXIT THEN
-   a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
-   a u s" structure" STR=CI decl and IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
-   a u s" mutual" STR=CI decl and IF RECORD-MUTUAL 0 0= EXIT THEN
-   a u s" newtype" STR=CI decl and IF RECORD-NEWTYPE 0 0= EXIT THEN
-   a u s" sumtype" STR=CI decl and IF
+   a u s" begin-structure" STR:=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
+   a u s" structure" STR:=CI decl and IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
+   a u s" mutual" STR:=CI decl and IF RECORD-MUTUAL 0 0= EXIT THEN
+   a u s" newtype" STR:=CI decl and IF RECORD-NEWTYPE 0 0= EXIT THEN
+   a u s" sumtype" STR:=CI decl and IF
       [: RECORD-SUMTYPE ;] LEGACY-TYPE-OUTCOME 0 0= EXIT THEN
-   a u s" enum" STR=CI decl and IF RECORD-ENUM 0 0= EXIT THEN
+   a u s" enum" STR:=CI decl and IF RECORD-ENUM 0 0= EXIT THEN
    a u LAYOUT-BUFFER-XT @ s" LAYOUT-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-LAYOUT-BUFFER ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u DEFER-LAYOUT-BUFFER-XT @ s" DEFER-LAYOUT-BUFFER" LIBRARY-DEFINER? IF
@@ -3834,25 +3826,25 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       [: RECORD-CWORK-SPAN ;] STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-VARIABLE ;] STORAGE-OUTCOME 0 0= EXIT THEN
-   a u s" constant" STR=CI IF RECORD-CONSTANT 0 0= EXIT THEN
-   a u s" create" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" variable" STR=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
-   a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
-   a u s" EPRIM:" STR=CI IF ENGINE-FILE? IF RECORD-PRIM-ROW 0 0= EXIT THEN THEN
-   a u s" EPPRIM:" STR=CI IF ENGINE-FILE? IF RECORD-PPRIM 0 0= EXIT THEN THEN
-   a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
-   a u s" cast:" STR=CI IF
+   a u s" constant" STR:=CI IF RECORD-CONSTANT 0 0= EXIT THEN
+   a u s" create" STR:=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" variable" STR:=CI IF s" -- ^a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" defer" STR:=CI IF TRUST-DEFER 0 0= EXIT THEN
+   a u s" EPRIM:" STR:=CI IF ENGINE-FILE? IF RECORD-PRIM-ROW 0 0= EXIT THEN THEN
+   a u s" EPPRIM:" STR:=CI IF ENGINE-FILE? IF RECORD-PPRIM 0 0= EXIT THEN THEN
+   a u s" trusted:" STR:=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
+   a u s" cast:" STR:=CI IF
       [: CAST-DECLARATION ;] IDENTITY-OUTCOME 0 0= EXIT THEN
-   a u s" linear:" STR=CI IF
+   a u s" linear:" STR:=CI IF
       [: LINEAR-DECLARATION ;] IDENTITY-OUTCOME 0 0= EXIT THEN
-   a u s" undefine" STR=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
-   a u s" generates:" STR=CI decl and IF RECORD-GENERATES 0 0= EXIT THEN
-   a u s" FUNCTION:" STR=CI decl and IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
+   a u s" undefine" STR:=CI IF TICK-CONTEXT-UNKNOWN UNDEFINE-WORD 0 0= EXIT THEN
+   a u s" generates:" STR:=CI decl and IF RECORD-GENERATES 0 0= EXIT THEN
+   a u s" FUNCTION:" STR:=CI decl and IF a u RECORD-FFI-FUNCTION 0 0= EXIT THEN
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
-   a u s" immediate" STR=CI IF
+   a u s" immediate" STR:=CI IF
       TICK-CONTEXT-UNKNOWN  NEWEST-SYM @ CHECKER-IMMEDIATE 0 0= EXIT
    THEN
-   a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
+   a u s" export" STR:=CI IF RECORD-EXPORT 0 0= EXIT THEN
    \ `;FUNCTION` defines only the word the `FUNCTION:` arm recorded, so it marks
    \ nothing.
    a u FFI-CLOSER? decl and IF
@@ -3922,7 +3914,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
          ELSE drop THEN EXIT
       THEN
       LOCAL-TOKEN? 0= IF
-         TOKEN-A @ TOKEN-U @ s" does>" STR=CI IF
+         TOKEN-A @ TOKEN-U @ s" does>" STR:=CI IF
             DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ true REFUSE-SHAPE IF
                SKIP-DEFINITION EXIT
             THEN
@@ -3953,14 +3945,14 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" {:" CORE-STR= IF
       BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN s" :}" CORE-STR= UNTIL EXIT
    THEN
-   a u s" [type]" STR=CI IF
+   a u s" [type]" STR:=CI IF
       0 BEGIN
          SCAN-I @ TOKEN-FROM TYPE-SPAN-END? IF drop EXIT THEN
          NEXT-RAW dup 0= IF 2drop drop EXIT THEN
          CHECKER-TYPE-SPAN-STEP
       UNTIL drop EXIT
    THEN
-   a u s" is" STR=CI IF NEXT-BODY 2drop EXIT THEN
+   a u s" is" STR:=CI IF NEXT-BODY 2drop EXIT THEN
    a u BODY-PARSER? IF NEXT-RAW 2drop THEN ;
 
 \ Every answer but a binding reports the token itself, so BOUND-CALL reports a
@@ -4014,7 +4006,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 : TOP-TOKEN ( str -- )
    {: a:^ u:n :}
    a u num-parse nip nip IF EXIT THEN
-   a u s" [package]" STR=CI IF EXIT THEN   \ pushes a name, calls nothing
+   a u s" [package]" STR:=CI IF EXIT THEN   \ pushes a name, calls nothing
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
    a u NOMINAL-MARK
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}
@@ -4041,7 +4033,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    INDEX-ON @ native 0= and IF false EXIT THEN
    TOKEN-BYTE @ {: at:n :}
    a u TOP-BINDING nip {: sym:n ctl:n :}
-   a u s" host" STR=CI  a u s" target" STR=CI or {: section:bool :}
+   a u s" host" STR:=CI  a u s" target" STR:=CI or {: section:bool :}
    \ A refused name goes on as an ordinary word, refused as one.
    ctl CHECKER-OWNER-ABI:BINDING-REFUSED and 0<>
    section and IF false EXIT THEN
@@ -4055,7 +4047,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 
 \ `kernel:` is the engine's synonym for `:`.
 : COLON? ( str -- bool ) {: a:^ u:n :}
-   a u s" :" CORE-STR=  a u s" kernel:" STR=CI or ;
+   a u s" :" CORE-STR=  a u s" kernel:" STR:=CI or ;
 
 : FLAG-TOP ( -- ^bool )
    FLAG-N @ 1 - FLAGS ;
@@ -4067,7 +4059,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
 : FLAG-STEP ( str -- ) {: a:^ u:n :}
    TOP-DEFER @ 0<> IF 0 FLAG-N ! EXIT THEN
    a u TARGET-GUARD IF FLAG-PUSH EXIT THEN drop
-   a u s" 0=" STR=CI IF a u CORE-OP? ELSE false THEN IF
+   a u s" 0=" STR:=CI IF a u CORE-OP? ELSE false THEN IF
       FLAG-N @ 0= IF EXIT THEN
       FLAG-TOP @ 0= FLAG-TOP ! EXIT
    THEN
@@ -4084,7 +4076,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u SOURCE-SYNTAX:DEFINER-KEYWORD? or IF
       NEXT-NAME LOADER-BIT SHADOWED @ or SHADOWED ! EXIT
    THEN
-   a u s" undefine" STR=CI IF
+   a u s" undefine" STR:=CI IF
       NEXT-NAME LOADER-BIT RETIRED @ or RETIRED !
    THEN ;
 
@@ -4122,8 +4114,8 @@ variable ARM-RESUME
    1 BEGIN dup 0 > WHILE
       NEXT-RAW dup 0= IF 2drop drop  false EXIT THEN
       ARM-STEP
-      2dup s" [if]" STR=CI IF 2drop 1 + ELSE
-         s" [then]" STR=CI IF 1 - THEN
+      2dup s" [if]" STR:=CI IF 2drop 1 + ELSE
+         s" [then]" STR:=CI IF 1 - THEN
       THEN
    REPEAT drop
    true ;
@@ -4132,7 +4124,7 @@ variable ARM-RESUME
 \ reads only the text that flag chooses.
 : KNOWN-IF? ( str -- bool ) {: a:^ u:n :}
    STR-LAST-KIND @ 0<> IF 0 FLAG-N ! THEN
-   a u s" [if]" STR=CI 0= FLAG-N @ 1 <> or IF false EXIT THEN
+   a u s" [if]" STR:=CI 0= FLAG-N @ 1 <> or IF false EXIT THEN
    0 FLAGS @ IF true EXIT THEN
    SKIP-ARM 0= IF a u 0 TOP-OPAQUE THEN
    true ;

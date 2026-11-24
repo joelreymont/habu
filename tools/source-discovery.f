@@ -204,7 +204,7 @@ variable SD-SCOPES
 
 : SD-FILE-FIND ( str -- n ) {: a:^ u:n :}
    SD-F-N @ 0 ?do
-      a u i SD-F-AT @ SD-R-BYTES i SD-F-U @ STR= if i unloop exit then
+      a u i SD-F-AT @ SD-R-BYTES i SD-F-U @ STR:= if i unloop exit then
    loop
    -1 ;
 
@@ -349,9 +349,9 @@ variable SD-X-N
 \ A bare name reaches package (outer, name) open here and, inside part A:B,
 \ (none, A) as well.
 : SD-C-OPEN? ( str str -- bool ) {: out:^ outu:n pkg:^ pkgu:n :}
-   pkg pkgu SD-C-PKG @ SD-C-PKG$ STR=CI
-   out outu SD-C-OUTER @ SD-C-PKG$ STR=CI and if true exit then
-   outu 0= pkg pkgu SD-C-OUTER @ SD-C-PKG$ STR=CI and ;
+   pkg pkgu SD-C-PKG @ SD-C-PKG$ STR:=CI
+   out outu SD-C-OUTER @ SD-C-PKG$ STR:=CI and if true exit then
+   outu 0= pkg pkgu SD-C-OUTER @ SD-C-PKG$ STR:=CI and ;
 
 : SD-R-TOP$ ( n -- str ) {: r:n :}
    r SD-R-OUTER-U @ 0<> if r SD-R-OUTER$ exit then
@@ -382,15 +382,15 @@ variable SD-X-N
 
 : SD-R-KEY-MATCH? ( str n -- bool ) {: a:^ u:n r:n :}
    r SD-R-KEY$ {: pkg:^ pkgu:n tail:^ tailu:n :}
-   pkgu 0= if a u tail tailu STR=CI exit then
+   pkgu 0= if a u tail tailu STR:=CI exit then
    a u SD-QCOLON 0 < if
-      a u tail tailu STR=CI 0= if false exit then
+      a u tail tailu STR:=CI 0= if false exit then
       r SD-R-OPEN? exit
    then
    u pkgu tailu + 1+ <> if false exit then
-   a pkgu pkg pkgu STR=CI 0= if false exit then
+   a pkgu pkg pkgu STR:=CI 0= if false exit then
    a pkgu + c@ $3A <> if false exit then
-   a pkgu 1+ + tailu tail tailu STR=CI ;
+   a pkgu 1+ + tailu tail tailu STR:=CI ;
 
 \ A package opened inside another is a part (the engine refuses every other
 \ nested `package`), whose close returns to it.
@@ -428,11 +428,11 @@ variable SD-X-N
    old SD-R-OFF @ new SD-R-OFF @ <> if false exit then
    old SD-R-KIND @ new SD-R-KIND @ <> if false exit then
    old SD-R-COUNT @ new SD-R-COUNT @ <> if false exit then
-   old SD-R-NAME$ new SD-R-NAME$ STR= 0= if false exit then
-   old SD-R-PKG$ new SD-R-PKG$ STR= 0= if false exit then
-   old SD-R-OUTER$ new SD-R-OUTER$ STR= 0= if false exit then
+   old SD-R-NAME$ new SD-R-NAME$ STR:= 0= if false exit then
+   old SD-R-PKG$ new SD-R-PKG$ STR:= 0= if false exit then
+   old SD-R-OUTER$ new SD-R-OUTER$ STR:= 0= if false exit then
    old SD-R-TERMS @ SD-R-BYTES old SD-R-TERMS-U @
-   new SD-R-TERMS @ SD-R-BYTES new SD-R-TERMS-U @ STR= ;
+   new SD-R-TERMS @ SD-R-BYTES new SD-R-TERMS-U @ STR:= ;
 
 : SD-R-FROZEN-OF ( n -- n ) {: row:n :}
    SD-R-F-N @ 0 ?do
@@ -497,17 +497,17 @@ variable SD-X-N
    pkgu 0= if true exit then
    r SD-R-NAME$ {: name:^ nameu:n :}
    name nameu SD-QCOLON {: col:n :}
-   col 0 >= if name col pkg pkgu STR=CI exit then
-   r SD-R-PKG$ pkg pkgu STR=CI ;
+   col 0 >= if name col pkg pkgu STR:=CI exit then
+   r SD-R-PKG$ pkg pkgu STR:=CI ;
 
 \ Two packages share a bare scope when either is global, they are one package,
 \ or one is the other's outer; two parts of one package share none.
 : SD-SHARE? ( str str str str -- bool )
    {: ao:^ aou:n an:^ anu:n bo:^ bou:n bn:^ bnu:n :}
    anu 0= bnu 0= or if true exit then
-   an anu bn bnu STR=CI ao aou bo bou STR=CI and if true exit then
-   aou 0= bo bou an anu STR=CI and if true exit then
-   bou 0= ao aou bn bnu STR=CI and ;
+   an anu bn bnu STR:=CI ao aou bo bou STR:=CI and if true exit then
+   aou 0= bo bou an anu STR:=CI and if true exit then
+   bou 0= ao aou bn bnu STR:=CI and ;
 
 : SD-R-SHARES-ID? ( str str n -- bool ) {: o:^ ou:n p:^ pu:n r:n :}
    r SD-R-IDS 0 ?do
@@ -532,7 +532,7 @@ variable SD-X-N
       kind SD-R-DECL = if 1 else kind SD-R-RETIRE = if 2 else 0 then then
       {: w:n :}
       w 0<> i SD-R-ACTIVE @ 0<> and if
-         i SD-R-NAME$ SD-TAIL$ tail tailu STR=CI if
+         i SD-R-NAME$ SD-TAIL$ tail tailu STR:=CI if
             row i SD-R-AFFECTS? if swap w + swap then
             row i SD-R-SHARES? if w + then
          then
@@ -549,7 +549,7 @@ variable SD-X-N
    row SD-R-NEXT @
    begin dup 0 >= while
       {: r:n :}
-      r SD-R-KIND @ SD-R-DECL = r SD-R-NAME$ SD-TAIL$ tail tailu STR=CI and
+      r SD-R-KIND @ SD-R-DECL = r SD-R-NAME$ SD-TAIL$ tail tailu STR:=CI and
       row r SD-R-AFFECTS? and if true exit then
       r SD-R-NEXT @
    repeat drop false ;
@@ -667,7 +667,7 @@ variable SD-X-N
    repeat ;
 
 : SD-R-TERM-MATCH? ( n n n n -- bool ) {: off:n len:n start:n stop:n :}
-   off len SD-TOK$ start SD-R-BYTES stop start - STR= ;
+   off len SD-TOK$ start SD-R-BYTES stop start - STR:= ;
 
 : SD-R-TERM? ( n n n -- bool ) {: off:n len:n row:n :}
    row SD-R-TERMS @
@@ -730,11 +730,11 @@ variable SD-TERM-END
 \ describe operands safely; malformed declarations remain ordinary source.
 : SD-R-LIST ( -- bool )
    -1 SD-TERM-START !
-   SD-RAW SD-TOK$ s" (" STR= 0= if false exit then
+   SD-RAW SD-TOK$ s" (" STR:= 0= if false exit then
    begin
       SD-RAW {: off:n len:n :}
       len 0= if false exit then
-      off len SD-TOK$ s" )" STR= if SD-TERM-START @ 0 >= exit then
+      off len SD-TOK$ s" )" STR:= if SD-TERM-START @ 0 >= exit then
       SD-TERM-START @ 0 < if off SD-TERM-START ! then
       off len + SD-TERM-END !
    again ;
@@ -778,7 +778,7 @@ variable SD-TERM-END
    begin
       SD-RAW {: off:n len:n :}
       len 0= if exit then
-      off len SD-TOK$ s" :}" STR=
+      off len SD-TOK$ s" :}" STR:=
    until ;
 
 : SD-STR-LEAD ( n -- n )
@@ -850,21 +850,21 @@ DYNAMIC-BUFFER SD-DEC u8
 
 : SD-LOADER-KIND ( n n -- n )
    SD-TOK$ {: a:^ u:n :}
-   a u s" included" STR=CI if SD-K-INCLUDED exit then
-   a u s" required" STR=CI if SD-K-REQUIRED exit then
-   a u s" provided" STR=CI if SD-K-PROVIDED exit then
+   a u s" included" STR:=CI if SD-K-INCLUDED exit then
+   a u s" required" STR:=CI if SD-K-REQUIRED exit then
+   a u s" provided" STR:=CI if SD-K-PROVIDED exit then
    0 ;
 
 : SD-NAME-BIT ( str -- n ) {: a:^ u:n :}
-   a u s" include" STR=CI if $01 exit then
-   a u s" included" STR=CI if $02 exit then
-   a u s" require" STR=CI if $04 exit then
-   a u s" required" STR=CI if $08 exit then
-   a u s" provided" STR=CI if $10 exit then
-   a u s" structure" STR=CI if $20 exit then
-   a u s" enum" STR=CI if $40 exit then
-   a u s" sumtype" STR=CI if $80 exit then
-   a u s" mutual" STR=CI if $100 exit then
+   a u s" include" STR:=CI if $01 exit then
+   a u s" included" STR:=CI if $02 exit then
+   a u s" require" STR:=CI if $04 exit then
+   a u s" required" STR:=CI if $08 exit then
+   a u s" provided" STR:=CI if $10 exit then
+   a u s" structure" STR:=CI if $20 exit then
+   a u s" enum" STR:=CI if $40 exit then
+   a u s" sumtype" STR:=CI if $80 exit then
+   a u s" mutual" STR:=CI if $100 exit then
    0 ;
 
 \ A definition or retirement of a loader or family name refuses nothing, but
@@ -962,7 +962,7 @@ DYNAMIC-BUFFER SD-DEC u8
 : SD-LOCAL? ( n n -- bool ) {: off:n len:n :}
    SD-LOCALS @ SD-LOCAL-BASE @ ?do
       off len SD-TOK$
-      i SD-LOCAL-OFF @ i SD-LOCAL-LEN @ SD-TOK$ STR= if true unloop exit then
+      i SD-LOCAL-OFF @ i SD-LOCAL-LEN @ SD-TOK$ STR:= if true unloop exit then
    loop
    false ;
 
@@ -990,7 +990,7 @@ DYNAMIC-BUFFER SD-DEC u8
    begin
       SD-RAW {: off:n len:n :}
       len 0= if SD-GROUP-STOP then
-      off len SD-TOK$ s" :}" STR= if exit then
+      off len SD-TOK$ s" :}" STR:= if exit then
       off len SD-LOCAL+
    again ;
 
@@ -1014,8 +1014,8 @@ DYNAMIC-BUFFER SD-DEC u8
 
 
 : SD-SCOPE-STEP ( n n -- ) {: off:n len:n :}
-   off len SD-TOK$ s" ;" STR= if SD-LOCALS-RESET 0 SD-DEF ! exit then
-   off len SD-TOK$ s" else" STR=CI if SD-SCOPE-RESTORE exit then
+   off len SD-TOK$ s" ;" STR:= if SD-LOCALS-RESET 0 SD-DEF ! exit then
+   off len SD-TOK$ s" else" STR:=CI if SD-SCOPE-RESTORE exit then
    off len SD-TOK$ BLOCK-OPENER? if SD-SCOPE-OPEN exit then
    off len SD-TOK$ BLOCK-CLOSER? if SD-SCOPE-CLOSE then ;
 
@@ -1026,22 +1026,22 @@ DYNAMIC-BUFFER SD-DEC u8
 \ itself spell a closer or a loader word.
 : SD-FAMILY-KIND ( n n -- n )
    SD-TOK$ {: a:^ u:n :}
-   a u s" structure" STR=CI if 1 exit then
-   a u s" enum" STR=CI if 2 exit then
-   a u s" sumtype" STR=CI if 3 exit then
-   a u s" mutual" STR=CI if 4 exit then
+   a u s" structure" STR:=CI if 1 exit then
+   a u s" enum" STR:=CI if 2 exit then
+   a u s" sumtype" STR:=CI if 3 exit then
+   a u s" mutual" STR:=CI if 4 exit then
    0 ;
 
 : SD-SECTION? ( n n -- bool ) {: off:n len:n :}
-   off len SD-TOK$ s" global" STR=CI
-   off len SD-TOK$ s" public" STR=CI or
-   off len SD-TOK$ s" private" STR=CI or ;
+   off len SD-TOK$ s" global" STR:=CI
+   off len SD-TOK$ s" public" STR:=CI or
+   off len SD-TOK$ s" private" STR:=CI or ;
 
 : SD-FAMILY-END? ( n n n -- bool ) {: off:n len:n kind:n :}
-   kind 1 = if off len SD-TOK$ s" ;structure" STR=CI exit then
-   kind 2 = if off len SD-TOK$ s" ;enum" STR=CI exit then
-   kind 4 = if off len SD-TOK$ s" ;mutual" STR=CI exit then
-   off len SD-TOK$ s" ;sumtype" STR=CI ;
+   kind 1 = if off len SD-TOK$ s" ;structure" STR:=CI exit then
+   kind 2 = if off len SD-TOK$ s" ;enum" STR:=CI exit then
+   kind 4 = if off len SD-TOK$ s" ;mutual" STR:=CI exit then
+   off len SD-TOK$ s" ;sumtype" STR:=CI ;
 
 : SD-CHECK-FAMILY ( n n -- ) {: off:n len:n :}
    off len SD-CHECK-USE
@@ -1054,8 +1054,8 @@ DYNAMIC-BUFFER SD-DEC u8
    begin
       SD-RAW {: off:n len:n :}
       len 0= if true exit then
-      off len SD-TOK$ s" ;mutual" STR=CI if true exit then
-      off len SD-TOK$ s" structure" STR=CI if SD-RAW 2drop false exit then
+      off len SD-TOK$ s" ;mutual" STR:=CI if true exit then
+      off len SD-TOK$ s" structure" STR:=CI if SD-RAW 2drop false exit then
    again ;
 
 : SD-FAMILY-BODY ( n -- ) {: kind:n :}
@@ -1064,10 +1064,10 @@ DYNAMIC-BUFFER SD-DEC u8
    begin
       SD-RAW {: off:n len:n :}
       len 0= if exit then
-      off len SD-TOK$ s" field" STR=CI
-      off len SD-TOK$ s" buffer" STR=CI or
-      off len SD-TOK$ s" variant" STR=CI or
-      kind 4 = off len SD-TOK$ s" structure" STR=CI and or if
+      off len SD-TOK$ s" field" STR:=CI
+      off len SD-TOK$ s" buffer" STR:=CI or
+      off len SD-TOK$ s" variant" STR:=CI or
+      kind 4 = off len SD-TOK$ s" structure" STR:=CI and or if
          SD-RAW 2drop                   \ member name or header
       else
          off len kind SD-FAMILY-END? if exit then
@@ -1104,10 +1104,10 @@ DYNAMIC-BUFFER SD-DEC u8
    len 1 = off SD-BYTE SD-LPAREN = and if SD-SKIP-PAREN exit then
    SD-PEND @ {: pend:n :}
    0 SD-PEND !
-   off len SD-TOK$ s" [:" STR= if
+   off len SD-TOK$ s" [:" STR:= if
       SD-SCOPE-OPEN SD-LOCALS @ SD-LOCAL-BASE ! exit
    then
-   off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
+   off len SD-TOK$ s" ;]" STR:= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
    off len SD-PARSER? if SD-RAW 2drop exit then
    SD-DEF @ 0= off len SD-TOK$ SOURCE-SYNTAX:DEFINER-KEYWORD? and if
@@ -1115,24 +1115,24 @@ DYNAMIC-BUFFER SD-DEC u8
       noff nu SD-R-DECL-NAME
       noff nu SD-TOK$ SD-SHADOW exit
    then
-   SD-DEF @ 0= off len SD-TOK$ s" package" STR=CI and if
+   SD-DEF @ 0= off len SD-TOK$ s" package" STR:=CI and if
       SD-RAW {: poff:n pu:n :}
       poff poff pu SD-R-PACKAGE SD-R-RECORD drop
       poff SD-R-AT {: r:n :}
       r 0 >= if r SD-C-PACKAGE-OPEN then
       0 SD-C-GLOBAL ! exit
    then
-   SD-DEF @ 0= off len SD-TOK$ s" ;package" STR=CI and if
+   SD-DEF @ 0= off len SD-TOK$ s" ;package" STR:=CI and if
       off off 0 SD-R-END-PACKAGE SD-R-RECORD drop
       off SD-R-AT 0 >= if SD-C-PACKAGE-CLOSE then
       0 SD-C-GLOBAL ! exit
    then
    SD-DEF @ 0= off len SD-SECTION? and if
-      off len SD-TOK$ s" global" STR=CI if 1 else 0 then SD-C-GLOBAL ! exit
+      off len SD-TOK$ s" global" STR:=CI if 1 else 0 then SD-C-GLOBAL ! exit
    then
    SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
-      off len SD-TOK$ s" export" STR=CI if noff nu SD-R-DECL-NAME then
+      off len SD-TOK$ s" export" STR:=CI if noff nu SD-R-DECL-NAME then
       exit
    then
    SD-BODY? 0= if
@@ -1140,7 +1140,7 @@ DYNAMIC-BUFFER SD-DEC u8
          off len SD-CHECK-FAMILY SD-FAMILY-BODY exit
       then drop
    then
-   off len SD-TOK$ s" {:" STR= if
+   off len SD-TOK$ s" {:" STR:= if
       SD-BODY? 0= if SD-SKIP-GROUP exit then
       off SD-OPENER ! SD-LOCAL-GROUP exit
    then
@@ -1148,7 +1148,7 @@ DYNAMIC-BUFFER SD-DEC u8
    opener 0= 0= if off SD-OPENER ! opener SD-PEND ! len 3 = SD-SCAN-STRING exit then
    off len SD-LOADER-KIND {: lkind:n :}
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
-   off len SD-TOK$ s" :" STR= if
+   off len SD-TOK$ s" :" STR:= if
       SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
       noff nu SD-NAMED
       noff nu SD-R-DECL-NAME
@@ -1159,18 +1159,18 @@ DYNAMIC-BUFFER SD-DEC u8
       noff nu SD-NAMED
       noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
    then
-   SD-DEF @ 0= off len SD-TOK$ s" undefine" STR=CI and if
+   SD-DEF @ 0= off len SD-TOK$ s" undefine" STR:=CI and if
       SD-RAW {: noff:n nu:n :}
       noff nu SD-R-RETIRE-NAME noff nu SD-TOK$ SD-RETIRE exit
    then
-   SD-BODY? 0= off len SD-TOK$ s" parses:" STR=CI and if
+   SD-BODY? 0= off len SD-TOK$ s" parses:" STR:=CI and if
       SD-R-PARSES SD-R-ROW exit
    then
-   SD-BODY? 0= off len SD-TOK$ s" parses-through:" STR=CI and if
+   SD-BODY? 0= off len SD-TOK$ s" parses-through:" STR:=CI and if
       SD-R-THROUGH SD-R-ROW exit
    then
-   off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
-   off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then
+   off len SD-TOK$ s" include" STR:=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
+   off len SD-TOK$ s" require" STR:=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then
    off len SD-ROOT-MOVE? if SD-U @ SD-I ! exit then
    off len SD-R-USE? if exit then
    off len SD-SCOPE-STEP ;

@@ -50,7 +50,7 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
    s" hello" CMD:ARG+
    s" /bin/echo" PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 0<> if PTT-CAP-BAD+ then
-   CMD:OUT$ S\" hello\n" STR= 0= if PTT-CAP-BAD+ then
+   CMD:OUT$ S\" hello\n" STR:= 0= if PTT-CAP-BAD+ then
    PTT-DID @ 1 + PTT-DID ! ;
 
 : PTT-CAPTURE-ALL ( CMD:command -- CMD:command )
@@ -151,7 +151,7 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
    r 1 + PTT-A-READY atomic!
    PTT-B-DONE r 1 + PTT-B TEST-WAIT:FOR-CELL
    PTT-PRINT
-   CMD:OUT$ s" alpha" STR= if bad else bad 1 + then
+   CMD:OUT$ s" alpha" STR:= if bad else bad 1 + then
    r 1 + ;
 
 : PTT-A-RUN ( CMD:command -- n CMD:command )
@@ -167,7 +167,7 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
    CMD:RESET
    s" beta" CMD:ARG+
    PTT-PRINT
-   CMD:OUT$ s" beta" STR= {: kept:bool :}
+   CMD:OUT$ s" beta" STR:= {: kept:bool :}
    r 1 + PTT-B-DONE atomic!
    kept if bad else bad 1 + then
    r 1 + ;
@@ -220,14 +220,14 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    CMD:ENV-HERMETIC
    s" HABU_CMD_TASK" ix PTT-VALUE$ CMD:ENV+
    s" /usr/bin/env" PTT-RUN-OK
-   CMD:OUT$ ix PTT-ENV-OUT$ STR= if bad else bad 1 + then ;
+   CMD:OUT$ ix PTT-ENV-OUT$ STR:= if bad else bad 1 + then ;
 
 : PTT-STDIN-ROUND ( CMD:command n n -- CMD:command n )
    {: bad:n ix:n :}
    CMD:RESET
    ix PTT-STDIN$ CMD:IN!
    s" /bin/cat" PTT-RUN-OK
-   CMD:OUT$ ix PTT-STDIN$ STR= if bad else bad 1 + then ;
+   CMD:OUT$ ix PTT-STDIN$ STR:= if bad else bad 1 + then ;
 
 : PTT-T-ROUND ( CMD:command n n n -- CMD:command n n ) {: bad:n r:n ix:n :}
    bad ix PTT-ENV-ROUND ix PTT-STDIN-ROUND
@@ -301,7 +301,7 @@ variable PTT-HELD-W                      \ that stdin's write end
    s" -c" CMD:ARG+
    script scriptu CMD:ARG+
    s" /bin/sh" PTT-RUN-OK
-   CMD:OUT$ want wantu STR= if 0 else 1 then swap ;
+   CMD:OUT$ want wantu STR:= if 0 else 1 then swap ;
 
 : PTT-CAPTURER-RUN ( CMD:command -- n CMD:command )
    s" sleep 0.2; printf capture-ok" s" capture-ok" PTT-SH-PRINTS ;
@@ -351,8 +351,8 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    {: mark:^ marku:n in:^ :}
    CMD:OUT$ {: out:^ outu:n :}
    outu marku PTT-GROW-U + <> if 1 exit then
-   out marku mark marku STR=
-   out marku + PTT-GROW-U in PTT-GROW-U STR= and if 0 else 1 then ;
+   out marku mark marku STR:=
+   out marku + PTT-GROW-U in PTT-GROW-U STR:= and if 0 else 1 then ;
 
 : PTT-GROW-A-RUN ( CMD:command -- n CMD:command )
    s" alpha" s" echo A:$PTT_MARK; /bin/cat" PTT-GROW-STAGE
@@ -451,7 +451,7 @@ variable PTT-FD-BASE-U
 : PTT-LS-RUN ( CMD:command -- CMD:command )
    begin
       PTT-LIST-FDS PTT-INHERIT-COUNT
-      CMD:OUT$ PTT-FD-BASE PTT-FD-BASE-U @ STR= 0= if
+      CMD:OUT$ PTT-FD-BASE PTT-FD-BASE-U @ STR:= 0= if
          1 PTT-INHERIT-LEAKS atomic-add drop
       then
       PTT-INHERIT-ON atomic@ 0=

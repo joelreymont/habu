@@ -1836,7 +1836,7 @@ private
    TOKEN$ {: a:^ u:n :}
    LOCN-CELL CELL@ 0 ?do
       i LOCAL-END @ i LOCAL-START - u = if
-         a u  i LOCAL-START LOCAL-NAMES  u STR= if true unloop exit then
+         a u  i LOCAL-START LOCAL-NAMES  u STR:= if true unloop exit then
       then
    loop
    false ;
@@ -1973,8 +1973,8 @@ TYPED-VARIABLE GROUP-OPEN ^u8
       row XREF-WORDLIST wid = if
          row XREF-NAME$ {: name:^ size:n :}
          size stemu sufu + = if
-            name stemu stem stemu STR=CI
-            name stemu + sufu suffix sufu STR=CI and if
+            name stemu stem stemu STR:=CI
+            name stemu + sufu suffix sufu STR:=CI and if
                stem stemu suffix sufu
                DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ REJECTION:CLAUSE-TAKEN
                EXIT-STATUS:REJECTED REJECTION:STOP
@@ -2193,9 +2193,9 @@ EXPORT TFAM:TFAM-DECL-PARAM-COUNT
 \ `private` then the package's path and TAIL.
 : HANDLE-REC ( str -- ^n ) {: h:^ hu:n :}
    h hu HANDLE-SPLIT {: k:^ ku:n r:^ ru:n :}
-   k ku s" global" STR= if r ru BOOT:GLOBAL-WL HANDLE-PROBE exit then
+   k ku s" global" STR:= if r ru BOOT:GLOBAL-WL HANDLE-PROBE exit then
    r ru HANDLE-SPLIT {: pa:^ pu:n t:^ tu:n :}
-   pa pu  k ku s" public" STR=  t tu HOME-REC ;
+   pa pu  k ku s" public" STR:=  t tu HOME-REC ;
 
 \ The record of the word A U run with no definition open, up to its help.
 : NO-DEFINITION ( str -- ) {: a:^ u:n :}

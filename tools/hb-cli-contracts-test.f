@@ -200,9 +200,9 @@ create HCT-BIG HCT-BIG-CAP allot
    s" unknown flag exits 64" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
    s" the record names the offending flag" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" error[E-HB-USAGE]: unknown flag `--loadx`" CONTAINS? TTRUE
+   HCT-ERR HCT-ERR-U @ s" error[E-HB-USAGE]: unknown flag `--loadx`" STR:CONTAINS? TTRUE
    s" its help names the known --load flag" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" = help: usage: hb file.f [args ...], hb --load" CONTAINS? TTRUE ;
+   HCT-ERR HCT-ERR-U @ s" = help: usage: hb file.f [args ...], hb --load" STR:CONTAINS? TTRUE ;
 
 \ printf '1 2 + . cr' | hb --nonsense  ->  rc 64: the flag is rejected before the
 \ piped program can run.
@@ -236,17 +236,17 @@ create HCT-BIG HCT-BIG-CAP allot
 : HCT-EXPECT-CHECK-USAGE ( -- )
    false HCT-CHECK-BAD-DEADLINE
    s" a bad --deadline-ms is one E-CHECK-USAGE record" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" error[E-CHECK-USAGE]: " STARTS-WITH? TTRUE
-   HCT-ERR HCT-ERR-U @ s" error[" COUNT-SUB 1 T=
+   HCT-ERR HCT-ERR-U @ s" error[E-CHECK-USAGE]: " STR:STARTS-WITH? TTRUE
+   HCT-ERR HCT-ERR-U @ s" error[" STR:COUNT-SUB 1 T=
    s" the record names the bad value" T-LABEL
-   HCT-ERR HCT-ERR-U @ s" not `x`" CONTAINS? TTRUE
+   HCT-ERR HCT-ERR-U @ s" not `x`" STR:CONTAINS? TTRUE
    s" its help is the usage line" T-LABEL
-   HCT-ERR HCT-ERR-U @ s"   = help: usage: tools/check.f [" CONTAINS? TTRUE
+   HCT-ERR HCT-ERR-U @ s"   = help: usage: tools/check.f [" STR:CONTAINS? TTRUE
    true HCT-CHECK-BAD-DEADLINE
    s" with --json-errors the record is one JSON line on stderr" T-LABEL
-   HCT-ERR HCT-ERR-U @ S\" {\"severity\":\"error\",\"code\":\"E-CHECK-USAGE\"," STARTS-WITH? TTRUE
-   HCT-ERR HCT-ERR-U @ 10 COUNT-CHAR 1 T=
-   HCT-ERR HCT-ERR-U @ S\" }\n" ENDS-WITH? TTRUE ;
+   HCT-ERR HCT-ERR-U @ S\" {\"severity\":\"error\",\"code\":\"E-CHECK-USAGE\"," STR:STARTS-WITH? TTRUE
+   HCT-ERR HCT-ERR-U @ 10 STR:COUNT-CHAR 1 T=
+   HCT-ERR HCT-ERR-U @ S\" }\n" STR:ENDS-WITH? TTRUE ;
 
 \ printf '' | hb --load FILE, FILE empty  ->  rc 0: a known flag with an empty
 \ file loads.

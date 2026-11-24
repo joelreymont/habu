@@ -64,14 +64,14 @@ using FMT
    7     s" 7"      T-U
    12345 s" 12345"  T-U
    99    s" 99"     T-U
-   STR-MAX-I64 s" 9223372036854775807" T-U    \ largest unsigned i64 renders exactly
+   STR:MAX-I64 s" 9223372036854775807" T-U    \ largest unsigned i64 renders exactly
    0     s" pre:0" T-HEX
    9     s" pre:9" T-HEX
    10    s" pre:A" T-HEX
    15    s" pre:F" T-HEX
    16    s" pre:10" T-HEX
    $7FFF s" pre:7FFF" T-HEX
-   STR-MAX-I64 s" pre:7FFFFFFFFFFFFFFF" T-HEX
+   STR:MAX-I64 s" pre:7FFFFFFFFFFFFFFF" T-HEX
    255 2 s" pre:FF" T-HEXW
    10 4 s" pre:000A" T-HEXW
    0 1 s" pre:0" T-HEXW
@@ -82,9 +82,9 @@ using FMT
    42    s" 42"     T-INT
    -123  s" -123"   T-INT
    0     s" 0"      T-INT
-   STR-MAX-I64 s" 9223372036854775807" T-INT
-   STR-MIN-I64 s" -9223372036854775808" T-INT \ i64 min: no positive magnitude, table-emitted
-   STR-MIN-I64 1+ s" -9223372036854775807" T-INT \ its neighbour, which negates without overflowing
+   STR:MAX-I64 s" 9223372036854775807" T-INT
+   STR:MIN-I64 s" -9223372036854775808" T-INT \ i64 min: no positive magnitude, table-emitted
+   STR:MIN-I64 1+ s" -9223372036854775807" T-INT \ its neighbour, which negates without overflowing
    5500 3 s" pre:5.5" T-SCALED
    5001 3 s" pre:5.001" T-SCALED
    -1 3 s" pre:-0.001" T-SCALED
@@ -94,9 +94,9 @@ using FMT
    1 18 s" pre:0.000000000000000001" T-SCALED
    -1 18 s" pre:-0.000000000000000001" T-SCALED
    10 18 s" pre:0.00000000000000001" T-SCALED
-   STR-MAX-I64 18 s" pre:9.223372036854775807" T-SCALED
-   STR-MIN-I64 18 s" pre:-9.223372036854775808" T-SCALED
-   STR-MIN-I64 0 s" pre:-9223372036854775808" T-SCALED
+   STR:MAX-I64 18 s" pre:9.223372036854775807" T-SCALED
+   STR:MIN-I64 18 s" pre:-9.223372036854775808" T-SCALED
+   STR:MIN-I64 0 s" pre:-9223372036854775808" T-SCALED
    1000000000000000000 18 s" pre:1" T-SCALED
    3.14    2 s" 3.14"   T-FIX
    0.5     3 s" 0.500"  T-FIX
@@ -128,12 +128,12 @@ using FMT
    \ public printers: the shared builder survives a print
    99                   T-PU
    -123                 T-PINT
-   STR-MIN-I64          T-PINT             \ the table-emitted magnitude prints too
+   STR:MIN-I64          T-PINT             \ the table-emitted magnitude prints too
    -7 s" -7" T-INT$
    $1ED 4 s" 0755" T-OCT
    $3FF 4 s" 1777" T-OCT
    0 4 s" 0000" T-OCT
-   STR-MAX-I64 21 s" 777777777777777777777" T-OCT
+   STR:MAX-I64 21 s" 777777777777777777777" T-OCT
    2.5     1 s" 2.5"    T-PFN
    \ fail-closed domain guards
    [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ

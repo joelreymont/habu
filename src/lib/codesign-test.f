@@ -188,7 +188,7 @@ variable CST-ERR-U
    s" -dv" PROC-ARGV+
    CST-KEEP PROC-ARGV+
    CODESIGN:TOOL s" " CST-CAPTURE 0 T=
-   0 CST-ERR CST-ERR-U @ s" (runtime)" CONTAINS? TTRUE
+   0 CST-ERR CST-ERR-U @ s" (runtime)" STR:CONTAINS? TTRUE
    CST-RELEASE ;
 
 \ A Linux executable built on a Mac (--target) is an ELF file: ENSURE leaves it
@@ -212,7 +212,7 @@ variable CST-ERR-U
 
 : CST-ERR-HAS? ( str -- bool )
    {: a:^ u :}
-   0 CST-ERR CST-ERR-U @ a u CONTAINS? ;
+   0 CST-ERR CST-ERR-U @ a u STR:CONTAINS? ;
 
 : CST-UNSIGNED-CHILD ( str -- n ) {: w:^ wu :}
    SB-RESET

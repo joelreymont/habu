@@ -199,7 +199,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    OUT OUT-U @ SB$ T$= ;
 
 : TRAP$ ( -- str )
-   ERR ERR-U @ 10 INDEX-OF MATCH option
+   ERR ERR-U @ 10 STR:INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
@@ -216,7 +216,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    OUT OUT-U @ SB$ T$=
    TRAP$ {: t:^ u:n :}
    s" trapped: the host names the fault kind the module recorded" T-LABEL
-   t u s" fault kind 102 at " STARTS-WITH? TTRUE
+   t u s" fault kind 102 at " STR:STARTS-WITH? TTRUE
    s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL
    SB-RESET  t u LINE  t u ENDED-LINE  t u ENDED-LINE  t u ENDED-LINE
    ERR ERR-U @ SB$ T$= ;

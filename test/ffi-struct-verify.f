@@ -76,16 +76,16 @@ variable FFI-SV-SRC-U
 
 : FFI-SV-SAYS ( str -- )
    {: s:^ su:n :}
-   LSP-CHECK:VERIFY-OUT$ s su CONTAINS? 0= IF FFI-SV-SHOW THEN
-   LSP-CHECK:VERIFY-OUT$ s su CONTAINS? TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ s su STR:CONTAINS? 0= IF FFI-SV-SHOW THEN
+   LSP-CHECK:VERIFY-OUT$ s su STR:CONTAINS? TTRUE ;
 
 
 \ The source certifies: verified, and no packet, deferred or refused.
 : FFI-SV-CLEAN ( n -- )
    {: kind:n :}
-   kind 0<> LSP-CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? or IF FFI-SV-SHOW THEN
+   kind 0<> LSP-CHECK:VERIFY-OUT$ S\" \"code\":" STR:CONTAINS? or IF FFI-SV-SHOW THEN
    kind 0 T=
-   LSP-CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? TFALSE ;
+   LSP-CHECK:VERIFY-OUT$ S\" \"code\":" STR:CONTAINS? TFALSE ;
 
 : FFI-SV-PASS ( str -- )
    {: decl:^ declu:n :}
@@ -99,7 +99,7 @@ variable FFI-SV-SRC-U
    {: kind:n code:^ codeu:n :}
    kind 1 <> IF FFI-SV-SHOW THEN
    kind 1 T=
-   LSP-CHECK:VERIFY-OUT$ code codeu CONTAINS? TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ code codeu STR:CONTAINS? TTRUE ;
 
 \ The source is deferred, with W-CHECK-DEFERRED in the output.
 : FFI-SV-DEFERS ( n -- )
@@ -135,10 +135,10 @@ variable FFI-SV-SRC-U
 \ its header and its help, placed at ;FUNCTION with the definer's label.
 : FFI-SV-RECORD ( str str -- )
    {: head:^ headu:n help:^ helpu:n :}
-   LSP-CHECK:VERIFY-OUT$ head headu CONTAINS? TTRUE
-   LSP-CHECK:VERIFY-OUT$ S\" \"token\":\";FUNCTION\",\"source_line\":" CONTAINS? TTRUE
-   LSP-CHECK:VERIFY-OUT$ S\" \"label\":\"the definer was reading here\"" CONTAINS? TTRUE
-   LSP-CHECK:VERIFY-OUT$ help helpu CONTAINS? TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ head headu STR:CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-OUT$ S\" \"token\":\";FUNCTION\",\"source_line\":" STR:CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-OUT$ S\" \"label\":\"the definer was reading here\"" STR:CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-OUT$ help helpu STR:CONTAINS? TTRUE ;
 
 : FFI-SV-STAGED ( -- )
    S\" \"code\":\"E-FFI-ARITY\",\"message\":\"a struct call stages at most 16 cells of stack inputs and record copies\""
@@ -313,7 +313,7 @@ variable FFI-SV-SRC-U
    {: src:^ srcu:n :}
    src srcu T-LABEL
    src srcu FFI-SV-SOURCE FFI-SV-DEFERS
-   LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" CONTAINS?
+   LSP-CHECK:VERIFY-OUT$ s" E-FFI-SYNTAX" STR:CONTAINS?
    dup IF FFI-SV-SHOW THEN TFALSE ;
 
 
@@ -368,7 +368,7 @@ variable FFI-SV-SRC-U
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:RC@ 70 T=
    E2E-TREE:ERR$ s" error[E-FFI-SYNTAX]: the clause names an input that is not ^u8"
-   CONTAINS? TTRUE ;
+   STR:CONTAINS? TTRUE ;
 
 : FFI-SV-REEXPORTED ( -- )
    s" a bare re-export of STRUCT-ARG is the clause" T-LABEL
@@ -396,10 +396,10 @@ variable FFI-SV-SRC-U
 \ read and selects none gets the same record from the load and the check.
 : FFI-SV-UNSELECTED-HAS ( str -- )
    {: out:^ outu:n :}
-   out outu s" error[E-FFI-SYNTAX]: expected '(' after the C symbol" CONTAINS? TTRUE
-   out outu s" ffi-sv.f:2:20" CONTAINS? TTRUE
+   out outu s" error[E-FFI-SYNTAX]: expected '(' after the C symbol" STR:CONTAINS? TTRUE
+   out outu s" ffi-sv.f:2:20" STR:CONTAINS? TTRUE
    out outu s" = help: write FUNCTION: NAME symbol ( inputs -- output ) ;FUNCTION"
-   CONTAINS? TTRUE ;
+   STR:CONTAINS? TTRUE ;
 
 : FFI-SV-UNSELECTED ( -- )
    s" an unreadable declaration with no library selected" T-LABEL

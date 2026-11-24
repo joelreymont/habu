@@ -100,7 +100,7 @@ TASK:FACILITY DIR-LOCK
 
 : DIR-READ-LOCKED ( str str ^VEC:vector<u8> -- bool )
    {: sa:^ su:n aa:^ au:n dst:^ :}
-   sa su DIR-SERVICE$ STR= 0= if E-CONFIG throw then
+   sa su DIR-SERVICE$ STR:= 0= if E-CONFIG throw then
    aa au DIR-PLAIN? 0= if E-CONFIG throw then
    au DIR-ITEM-LEN PATH-CAP > if E-CONFIG throw then
    DIR-PATH$ aa au DIR-ITEM FS:JOIN-PATH-INTO DIR-ITEM-U !

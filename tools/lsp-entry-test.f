@@ -135,10 +135,10 @@ create BODY 4096 allot
    name nameu s" .err" STREAM-PATH err erru FS:WRITE-ALL
    rc 1 <> if err erru type cr then rc 1 T=
    err erru s\" lsp: input ended before exit\n" T$=
-   out outu s\" \"version\":1,\"diagnostics\":[]" CONTAINS? TTRUE
-   out outu s\" \"id\":2,\"result\":[{\"range\":{\"start\":{\"line\":1,\"character\":2},\"end\":{\"line\":1,\"character\":3}},\"kind\":1}" CONTAINS? TTRUE
-   out outu s\" \"id\":3,\"result\":[{\"range\":" CONTAINS? TTRUE
-   out outu s" dep.f" PROJECT-PATH CONTAINS? TTRUE ;
+   out outu s\" \"version\":1,\"diagnostics\":[]" STR:CONTAINS? TTRUE
+   out outu s\" \"id\":2,\"result\":[{\"range\":{\"start\":{\"line\":1,\"character\":2},\"end\":{\"line\":1,\"character\":3}},\"kind\":1}" STR:CONTAINS? TTRUE
+   out outu s\" \"id\":3,\"result\":[{\"range\":" STR:CONTAINS? TTRUE
+   out outu s" dep.f" PROJECT-PATH STR:CONTAINS? TTRUE ;
 
 : SERVER-CASE ( str str -- )
    [: SERVER-RUN ;] CMD:WITH-COMMAND ;
@@ -151,7 +151,7 @@ create BODY 4096 allot
    s\" \nrequire dep.f\n: A ( -- n ) DEP ;\n" CMD:IN!
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-RC RC>N {: rc:n :}
    rc 0 <> if CMD:ERR$ type cr then rc 0 T=
-   CMD:OUT$ s" check-verify: verified" CONTAINS? TTRUE ;
+   CMD:OUT$ s" check-verify: verified" STR:CONTAINS? TTRUE ;
 
 : CHILD-CASE ( str -- )
    [: CHILD-RUN ;] CMD:WITH-COMMAND ;

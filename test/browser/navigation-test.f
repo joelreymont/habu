@@ -194,7 +194,7 @@ PATH-CAP BUFFER: FILE
    HOST-OPEN command cu TYPED+
    HOST 1 T=
    s" malformed browser record is rejected" T-LABEL
-   ERR ERR-U @ why wu CONTAINS? TTRUE ;
+   ERR ERR-U @ why wu STR:CONTAINS? TTRUE ;
 
 : INVALID-CASES ( -- )
    s" json" s" tree JSON" REJECT

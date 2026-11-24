@@ -67,7 +67,7 @@ variable WATCH-N
 : SCAN-ONE ( n n -- ) {: old:n w:n :}
    w NEEDLE-SEEN-AT @ 0 <> if exit then
    old w SCAN-START {: from:n :}
-   RBUF from +  RN @ from -  w NEEDLE$ CONTAINS? if 1 w NEEDLE-SEEN-AT ! then ;
+   RBUF from +  RN @ from -  w NEEDLE$ STR:CONTAINS? if 1 w NEEDLE-SEEN-AT ! then ;
 
 
 \ Every watched needle is asked of the bytes appended since `old`, so the fact
@@ -272,14 +272,14 @@ public
 \ or -1.
 : FIND-FROM ( n str -- n ) {: from:n a:^ u:n :}
    from 0 < from RN @ > or if -1 exit then
-   RBUF from +  RN @ from -  a u FIND-SUB MATCH option
+   RBUF from +  RN @ from -  a u STR:FIND-SUB MATCH option
      none OF -1 ENDOF
      some OF IDX>N from + ENDOF
    ;MATCH ;
 
 
 : IN-BUF? ( str -- bool ) {: a:^ u:n :}
-   RBUF RN @ a u CONTAINS? ;
+   RBUF RN @ a u STR:CONTAINS? ;
 
 
 \ Offset of the tail at or after the END of the first head, or -1: the two
@@ -348,7 +348,7 @@ public
 \ With no window there is no claim and the answer is false.
 : WINDOW-ABSENT? ( str -- bool ) {: a:^ u:n :}
    WEND @ 0 < if false exit then
-   RBUF WEND @ a u CONTAINS? 0= ;
+   RBUF WEND @ a u STR:CONTAINS? 0= ;
 
 
 \ Register a needle the reads from here on are asked about. The fact survives

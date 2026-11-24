@@ -92,9 +92,9 @@ DYNAMIC-BUFFER AFTER u8
    BEFORE-PATH BEFORE-PATH-U @ FS:FILE-SIZE ;
 
 : LAST-LINE ( str -- str )
-   RTRIM {: a:^ u:n :}
+   STR:RTRIM {: a:^ u:n :}
    u begin dup 0 > while
-      a over 1- + c@ STR-LF = if a over + u rot - exit then
+      a over 1- + c@ STR:LF = if a over + u rot - exit then
       1-
    repeat drop a u ;
 
@@ -105,7 +105,7 @@ DYNAMIC-BUFFER AFTER u8
 \ data-region.f prints the dynamic buffer's address last.
 : DYN-BASE ( -- n )
    OUT$ LAST-LINE {: a:^ u:n :}
-   a u STR>NUMBER? MATCH option
+   a u STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF a u NO-BASE ENDOF
    ;MATCH ;
@@ -128,9 +128,9 @@ public
    s" the run keeps the byte the peer stored in the page it grew" T-LABEL
    host HOST-OFFSET + AFTER c@ HOST-BYTE T=
    s" OUT starts with the stack depth line" T-LABEL
-   OUT$ s\" stack depth ok\n" STARTS-WITH? TTRUE
+   OUT$ s\" stack depth ok\n" STR:STARTS-WITH? TTRUE
    s" OUT holds the static owner line and the stored byte" T-LABEL
-   OUT$ s\" static owner intact\n137\n" CONTAINS? TTRUE
+   OUT$ s\" static owner intact\n137\n" STR:CONTAINS? TTRUE
    DYN-BASE {: b:n :}
    s" the dynamic buffer lies past the page the peer grew" T-LABEL
    b host WPROF:PAGE-BYTES + >= TTRUE

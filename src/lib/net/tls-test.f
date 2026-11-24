@@ -140,7 +140,7 @@ create LONG PATH-CAP 1 + allot      \ a trust path FS cannot spell
    sock SHAKE 0 T= DONE T=
    sock S\" GET / HTTP/1.0\r\n\r\n" PUT TTRUE
    sock TAKE CLOSED T=
-   ANSWER ANSWER-U @ s" HTTP/1.0 200" STARTS-WITH? TTRUE
+   ANSWER ANSWER-U @ s" HTTP/1.0 200" STR:STARTS-WITH? TTRUE
    sock HANG-UP ;
 
 : OTHER-HOST ( -- )

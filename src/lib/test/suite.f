@@ -159,17 +159,17 @@ defer STDIN-RUNNER ( str str -- )
    parse-name dup 0= if 2drop E-STR-BOUNDS throw then ;
 
 : RESERVED-NAME? ( str -- bool ) {: a:^ u:n :}
-   a u s" GROUP"       STR=CI
-   a u s" SUITE"       STR=CI or
-   a u s" SUITE-STDIN" STR=CI or
-   a u s" ;GROUP"      STR=CI or
-   a u s" ;SUITE"      STR=CI or
-   a u s" SEQ"         STR=CI or
-   a u s" PARA"        STR=CI or ;
+   a u s" GROUP"       STR:=CI
+   a u s" SUITE"       STR:=CI or
+   a u s" SUITE-STDIN" STR:=CI or
+   a u s" ;GROUP"      STR:=CI or
+   a u s" ;SUITE"      STR:=CI or
+   a u s" SEQ"         STR:=CI or
+   a u s" PARA"        STR:=CI or ;
 
 : MODE-OF ( str -- n ) {: a:^ u:n :}
-   a u s" SEQ"  STR=CI if GROUP-SEQUENTIAL else
-   a u s" PARA" STR=CI if GROUP-PARALLEL else
+   a u s" SEQ"  STR:=CI if GROUP-SEQUENTIAL else
+   a u s" PARA" STR:=CI if GROUP-PARALLEL else
       E-SUITE-MODE throw
    then then ;
 
@@ -184,11 +184,11 @@ defer STDIN-RUNNER ( str str -- )
    REQUIRED-NAME CHECK-NAME ;
 
 : ;SUITE? ( str -- bool )              \ suite terminator: qualified TEST:;SUITE or bare ;SUITE under `using TEST`
-   2dup s" TEST:;SUITE" STR= if 2drop TRUE exit then
-   s" ;SUITE" STR= ;
+   2dup s" TEST:;SUITE" STR:= if 2drop TRUE exit then
+   s" ;SUITE" STR:= ;
 
 : UNQUALIFIED ( str -- str ) {: a:^ u:n :}
-   u 5 > if a 5 s" TEST:" STR=CI if a 5 + u 5 - exit then then
+   u 5 > if a 5 s" TEST:" STR:=CI if a 5 + u 5 - exit then then
    a u ;
 
 \ A row opener, bare or TEST:-qualified. Such a token can never be an argument:
@@ -196,10 +196,10 @@ defer STDIN-RUNNER ( str str -- )
 \ SEQ/PARA are absent on purpose — they are mode tokens, reserved only as names.
 : ROW-KEYWORD? ( str -- bool )
    UNQUALIFIED {: a:^ u:n :}
-   a u s" SUITE"          STR=CI
-   a u s" SUITE-STDIN"    STR=CI or
-   a u s" GROUP"          STR=CI or
-   a u s" ;GROUP"         STR=CI or ;
+   a u s" SUITE"          STR:=CI
+   a u s" SUITE-STDIN"    STR:=CI or
+   a u s" GROUP"          STR:=CI or
+   a u s" ;GROUP"         STR:=CI or ;
 
 : ITEM-ALLOC ( -- n )
    ITEM-N @ ITEM-MAX >= if E-TBL-BOUNDS throw then
@@ -262,12 +262,12 @@ defer STDIN-RUNNER ( str str -- )
    then
    u 0= if id ROW-UNTERMINATED then
    a u ROW-KEYWORD? if id ROW-UNTERMINATED then
-   a u s" --" STR= if
+   a u s" --" STR:= if
       DEF-ENTRIES @ if id ENTRY-PRESENT? 0= if id ROW-BAD-ENTRIES then then
       0 0= DEF-SCRIPT !
    then
    DEF-SCRIPT @ 0= if
-      a u s" ENTRIES" STR=CI if
+      a u s" ENTRIES" STR:=CI if
          DEF-ENTRIES @ if id ROW-BAD-ENTRIES then
          id ITEM-ARG-COUNT@ ITEM-PRELOAD-COUNTS id ITEM-CELL !
          0 0= DEF-ENTRIES ! exit
@@ -397,7 +397,7 @@ EXPORT ITEM-NAME$
    {: a:^ u:n :}
    TRUE 0=
    ITEM-N @ 0 ?do
-      i ITEM-NAME$ a u STR= if
+      i ITEM-NAME$ a u STR:= if
          TRUE ITEM-CHOSEN i ITEM-CELL !
          TRUE CHOSEN? !
          drop TRUE
@@ -411,7 +411,7 @@ EXPORT ITEM-NAME$
    id ITEM-ARG-OFF@
    id ITEM-ARG-COUNT@ 0 ?do
       dup ARGS + @ {: u:n :}
-      dup ARGS + cell + u s" --" STR= if drop unloop exit then
+      dup ARGS + cell + u s" --" STR:= if drop unloop exit then
       dup ARGS + cell + {: path:^ :}
       id i id ITEM-PRELOAD-COUNT@ >= path u visit execute
       cell + u +

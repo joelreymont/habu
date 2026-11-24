@@ -68,7 +68,7 @@ public
 
 : MAIN ( -- )
    SCRIPT-ARGC 0= if SH-RUNS PARENT exit then
-   0 SCRIPT-ARGV$ s" stopped" STR= if SH-STOPS PARENT exit then
+   0 SCRIPT-ARGV$ s" stopped" STR:= if SH-STOPS PARENT exit then
    CHILD ;
 
 ;package

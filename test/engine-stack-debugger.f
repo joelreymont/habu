@@ -10,12 +10,12 @@ package STACK-LIFECYCLE-TEST
 
 : DEBUGGER-HITS ( -- n )
    0 ERRLEN @ 8 - 0 max 0 ?do
-      ERR i + 8 s" habu-bp:" STR= if 1+ then
+      ERR i + 8 s" habu-bp:" STR:= if 1+ then
    loop ;
 
 : DEBUGGER-VALUES ( -- n )
    0 ERRLEN @ 16 - 0 max 0 ?do
-      ERR i + 16 s" 0000000000000011" STR= if 1+ then
+      ERR i + 16 s" 0000000000000011" STR:= if 1+ then
    loop ;
 
 \ GO runs its word on `evaluate-closed`'s own stack, so only the live depth
@@ -25,14 +25,14 @@ package STACK-LIFECYCLE-TEST
    S\" require src/habu/debug.f package SBP : EMPTY ( -- ) ; ' EMPTY DEBUG:BP+ : GO ( -- ) s\" EMPTY\" evaluate-closed ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
-   ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
-   ERR ERRLEN @ S\" habu-bp-stack:\n" ENDS-WITH? TTRUE
+   ERR ERRLEN @ s" habu-bp:" STR:CONTAINS? TTRUE
+   ERR ERRLEN @ S\" habu-bp-stack:\n" STR:ENDS-WITH? TTRUE
    DEBUGGER-LINES 5 T=
    s" breakpoint on a valid allocation preserves its value" T-LABEL
    S\" require src/habu/debug.f package SBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) s\" ONE\" evaluate-closed ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
-   ERR ERRLEN @ s" 0000000000000011" CONTAINS? TTRUE
+   ERR ERRLEN @ s" 0000000000000011" STR:CONTAINS? TTRUE
    DEBUGGER-VALUES 2 T=
    DEBUGGER-LINES 7 T= ;
 
@@ -42,20 +42,20 @@ package STACK-LIFECYCLE-TEST
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
    s" require src/habu/debug.f package PBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
    CHILD-RC 0 T=
-   OUT OUTLEN @ s" 17" CONTAINS? TTRUE
-   OUT OUTLEN @ s" 25" CONTAINS? TTRUE
+   OUT OUTLEN @ s" 17" STR:CONTAINS? TTRUE
+   OUT OUTLEN @ s" 25" STR:CONTAINS? TTRUE
    DEBUGGER-HITS 2 T=
    s" persistent breakpoint runs an entry out of line and resumes" T-LABEL
    s" require src/habu/debug.f package PBP : TWICE ( n -- n ) dup + ; ' TWICE DEBUG:BP* : GO ( -- ) 21 TWICE . 3 TWICE . ; GO ;package"
    CHILD-RC 0 T=
-   OUT OUTLEN @ s" 42" CONTAINS? TTRUE
-   OUT OUTLEN @ s" 6" CONTAINS? TTRUE
+   OUT OUTLEN @ s" 42" STR:CONTAINS? TTRUE
+   OUT OUTLEN @ s" 6" STR:CONTAINS? TTRUE
    DEBUGGER-HITS 2 T=
    s" persistent breakpoint on a calling word returns" T-LABEL
    s" require src/habu/debug.f package PBP : INC ( n -- n ) 1+ ; : CALLS ( n -- n ) INC 2 * ; ' CALLS DEBUG:BP* : GO ( -- ) 20 CALLS . 4 CALLS . ; GO ;package"
    CHILD-RC 0 T=
-   OUT OUTLEN @ s" 42" CONTAINS? TTRUE
-   OUT OUTLEN @ s" 10" CONTAINS? TTRUE
+   OUT OUTLEN @ s" 42" STR:CONTAINS? TTRUE
+   OUT OUTLEN @ s" 10" STR:CONTAINS? TTRUE
    DEBUGGER-HITS 2 T= ;
 
 public

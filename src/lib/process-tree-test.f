@@ -449,9 +449,9 @@ public
 
 : MAIN ( -- )
    SCRIPT-ARGC 0 > if
-      0 SCRIPT-ARGV$ s" walker" STR= if WALK exit then
-      0 SCRIPT-ARGV$ s" capture" STR= if CAPTURE-WALK exit then
-      0 SCRIPT-ARGV$ s" pty" STR= if PTY-WALK exit then
+      0 SCRIPT-ARGV$ s" walker" STR:= if WALK exit then
+      0 SCRIPT-ARGV$ s" capture" STR:= if CAPTURE-WALK exit then
+      0 SCRIPT-ARGV$ s" pty" STR:= if PTY-WALK exit then
       s" process-tree-test: unknown mode" EXIT-STATUS:USAGE die
    then
    CASES

@@ -165,7 +165,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 
 : AFTER ( ^u8 n ^u8 n -- ^u8 n )
    {: data:^ size:n key:^ keyu:n :}
-   data size key keyu FIND-SUB MATCH option
+   data size key keyu STR:FIND-SUB MATCH option
       none OF s" PDF field missing" EXIT-STATUS:FAILURE die ENDOF
       some OF IDX>N keyu + {: off:n :} data off + size off - ENDOF
    ;MATCH ;
@@ -199,7 +199,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
 
 : LINE-AT ( str str -- str )
    {: data:^ size:n key:^ keyu:n :}
-   data size key keyu FIND-SUB MATCH option
+   data size key keyu STR:FIND-SUB MATCH option
       none OF s" PDF path missing" EXIT-STATUS:FAILURE die ENDOF
       some OF IDX>N ENDOF
    ;MATCH
@@ -239,7 +239,7 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    s" qpdf" COMMAND 2drop ;
 : INSPECT-PAGES ( -- )
    RESET-COMMAND s" -box" ARG DEST$ ARG
-   s" pdfinfo" COMMAND s" Pages:           2" CONTAINS? TTRUE
+   s" pdfinfo" COMMAND s" Pages:           2" STR:CONTAINS? TTRUE
    DEST$ VECTOR-ONLY
    s" 1" [: FIRST-QDF$ ;] PAGE-QDF
    FIRST-QDF$ PDF-READ 72.28125 36.46875 PAGE-SIZE
@@ -252,13 +252,13 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
       SPAN:MAKE 2 PAGES !
    DEST$ 0 PAGES 3 SVG-PDF:WRITE-PAGES
    RESET-COMMAND s" -box" ARG DEST$ ARG
-   s" pdfinfo" COMMAND s" Pages:           3" CONTAINS? TTRUE
+   s" pdfinfo" COMMAND s" Pages:           3" STR:CONTAINS? TTRUE
    s" 3" [: THIRD-QDF$ ;] PAGE-QDF
    THIRD-QDF$ PDF-READ 171.5625 108.375 PAGE-SIZE ;
 : INSPECT-SINGLE ( -- )
    WRITE-SINGLE
    RESET-COMMAND s" -box" ARG SINGLE$ ARG
-   s" pdfinfo" COMMAND s" Pages:           1" CONTAINS? TTRUE
+   s" pdfinfo" COMMAND s" Pages:           1" STR:CONTAINS? TTRUE
    SINGLE$ VECTOR-ONLY
    RESET-COMMAND s" --qdf" ARG s" --object-streams=disable" ARG
    s" --stream-data=uncompress" ARG SINGLE$ ARG SINGLE-QDF$ ARG

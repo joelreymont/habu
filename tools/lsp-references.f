@@ -293,7 +293,7 @@ REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 : NAMED? ( str -- bool )
    {: a:^ u:n :}
    MISS-N @ 0 ?do
-      i M-PATH MISS@ i M-PATH-U MISS@ POOL$ a u STR= if true unloop exit then
+      i M-PATH MISS@ i M-PATH-U MISS@ POOL$ a u STR:= if true unloop exit then
    loop
    false ;
 
@@ -313,10 +313,10 @@ public
 \ bytes after it spell the tail; else -1.
 : TAIL-FROM ( n n -- n )
    SPAN-IN {: w:^ wu:n a:n :}
-   w wu NAME$ STR=CI if a exit then
+   w wu NAME$ STR:=CI if a exit then
    w wu QUALIFIER-AT {: at:n :}
    at 0 < if -1 exit then
-   w at + wu at - NAME$ STR=CI if a at + else -1 then ;
+   w at + wu at - NAME$ STR:=CI if a at + else -1 then ;
 
 private
 
@@ -326,7 +326,7 @@ private
 : FILE-AT ( str str -- n )
    {: a:^ u:n ua:^ uu:n :}
    FILE-N @ 0 ?do
-      i FILE$ a u STR= if i unloop exit then
+      i FILE$ a u STR:= if i unloop exit then
    loop
    FILE-N @ {: f:n :}
    f 1+ FILE-CELLS * FILES-RESERVE
@@ -401,7 +401,7 @@ private
    {: a:^ u:n :}
    a u 0 KNOWN-N @ KNOWN-FROM {: at:n :}
    at KNOWN-N @ < if
-      at BY-PATH @ KNOWN$ a u STR= if at BY-PATH @ exit then
+      at BY-PATH @ KNOWN$ a u STR:= if at BY-PATH @ exit then
    then
    a u at KNOWN+ ;
 
@@ -440,7 +440,7 @@ private
 
 : KEY? ( str str n -- bool )
    {: w:^ wu:n k:^ ku:n v:n :}
-   w wu NAME$ STR=  k ku PKG$ STR= and  v KEY-VIS @ = and ;
+   w wu NAME$ STR:=  k ku PKG$ STR:= and  v KEY-VIS @ = and ;
 
 : DECL-KEY? ( n -- bool )
    {: d:n :}
@@ -647,7 +647,7 @@ private
    {: slot:n at:n :}
    PRIM-SOURCE:ENGINE-PATH$ {: path:^ pathu:n ready:bool :}
    ready 0= if exit then
-   slot DOC-CANON$ path pathu STR= 0= if exit then
+   slot DOC-CANON$ path pathu STR:= 0= if exit then
    path pathu TEXT-OF!
    LSP-TEXT:TEXT$ at PRIM-SOURCE:MARKER-IN
    {: marker:n start:n end:n located:bool :}
@@ -724,7 +724,7 @@ private
 \ whose checks say what they read.
 : UNREAD+ ( str str -- )
    {: p:^ pu:n w:^ wu:n :}
-   p pu P$ STR= p pu D$ STR= or if exit then
+   p pu P$ STR:= p pu D$ STR:= or if exit then
    p pu w wu MISS+ ;
 
 \ P is the first subject, so that its own uses are read even when the walk
@@ -869,7 +869,7 @@ private
 
 : OTHER+ ( n -- )
    {: u:n :}
-   u USE-NAME$ NAME$ STR=CI 0= if exit then
+   u USE-NAME$ NAME$ STR:=CI 0= if exit then
    u USE-IN GROUP-PATH$ KNOWN-AT {: k:n :}
    u USE-BYTES {: from:n to:n :}
    OTHER-N @ {: o:n :}
@@ -999,7 +999,7 @@ private
    {: k:n from:n to:n :}
    LOC-N @ FIRST-USE ?do
       i L-FROM LOC@ from = i L-TO LOC@ to = and if
-         i L-FILE LOC@ FILE$ k KNOWN$ STR= if i OPTION:SOME unloop exit then
+         i L-FILE LOC@ FILE$ k KNOWN$ STR:= if i OPTION:SOME unloop exit then
       then
    loop
    OPTION:NONE ;
@@ -1028,7 +1028,7 @@ private
    L-FILE LOC@ {: f:n :}
    f F-AGAIN FILE@ 0<> if exit then
    1 f F-AGAIN FILE!
-   f FILE$ P$ STR= if exit then
+   f FILE$ P$ STR:= if exit then
    f FILE$ LSP-WORKSPACE:REACHING-AGAIN
    LSP-WORKSPACE:SUBJECTS 0 ?do i LSP-WORKSPACE:SUBJECT$ SUBJECT+ loop ;
 
@@ -1037,8 +1037,8 @@ private
    a L-FILE LOC@ {: fa:n :}
    b L-FILE LOC@ {: fb:n :}
    fa fb <> if
-      fa FILE$ P$ STR= if true exit then
-      fb FILE$ P$ STR= if false exit then
+      fa FILE$ P$ STR:= if true exit then
+      fb FILE$ P$ STR:= if false exit then
       fa FILE$ fb FILE$ LSP-WORKSPACE:PATH< exit
    then
    a L-FROM LOC@ b L-FROM LOC@ <> if a L-FROM LOC@ b L-FROM LOC@ < exit then
@@ -1140,7 +1140,7 @@ public
    {: path:^ pathu:n :}
    KNOWN-N @ 0 ?do
       i K-SUB KNOWN@ 0 >= i K-CONSUMED KNOWN@ 0 > or if
-         i KNOWN$ path pathu STR= if true unloop exit then
+         i KNOWN$ path pathu STR:= if true unloop exit then
       then
    loop
    false ;

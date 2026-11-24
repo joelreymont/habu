@@ -418,7 +418,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
 
 : ERR-HAS ( str -- )
    {: a:^ u:n :}
-   ERR ERR-U @ a u CONTAINS? TTRUE ;
+   ERR ERR-U @ a u STR:CONTAINS? TTRUE ;
 
 : NO-MODULE ( -- )  MOD MOD-U @ FS:EXISTS? TFALSE ;
 
@@ -794,7 +794,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" negative-native.f" SOURCE!
    s" native BYTE-COPY dies through catch on a negative length" T-LABEL
    NATIVE 76 T=
-   ERR ERR-U @ RTRIM s" byte: negative length" T$=
+   ERR ERR-U @ STR:RTRIM s" byte: negative length" T$=
    S\" 8 BUFFER: B : BAD ( -- ) B B -1 BYTE-COPY ; : MAIN ( -- ) ['] BAD catch . ;"
    s" negative-wasm.f" SOURCE!
    s" Wasm BYTE-COPY prints the same diagnostic and traps through catch" T-LABEL

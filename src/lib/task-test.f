@@ -596,7 +596,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    {: src:^ srcu:n line:^ lineu:n :}
    src srcu 79 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" 7\n" T$=
-   TASK-ERR erru LEN>N line lineu STARTS-WITH? TTRUE
+   TASK-ERR erru LEN>N line lineu STR:STARTS-WITH? TTRUE
    erru ;
 
 \ The record's first line and its note `in`, the word that called the
@@ -604,7 +604,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 : TASK-EXPECT-REJECTED-IN ( str str str -- )
    {: src:^ srcu:n line:^ lineu:n in:^ inu:n :}
    src srcu line lineu TASK-REJECTED-ERR {: erru:len :}
-   TASK-ERR erru LEN>N in inu CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N in inu STR:CONTAINS? TTRUE ;
 
 \ A body kept by TASK:ACTIVATE that does more than its type states: status
 \ 70 at the keeping site, before the program prints.
@@ -614,8 +614,8 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    outu LEN>N 0 T=
    TASK-ERR erru LEN>N
    s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
-   STARTS-WITH? TTRUE
-   TASK-ERR erru LEN>N site siteu CONTAINS? TTRUE ;
+   STR:STARTS-WITH? TTRUE
+   TASK-ERR erru LEN>N site siteu STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-TASK-COMPILES ( -- )
    TASK-COMPILES$ s" --> <input>:4:23" TASK-EXPECT-KEPT ;
@@ -634,17 +634,17 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
 : TASK-TEST-ROLLBACK-LIVE ( -- )
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
-   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-SCOPED-LIVE ( -- )
    TASK-SCOPED-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" -1\n-1\n" T$=
-   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `RS-R`" CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `RS-R`" STR:CONTAINS? TTRUE ;
 
 : TASK-EXPECT-FAIL ( str n str -- ) {: src:^ srcu:n want:n needle:^ needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
    outu LEN>N 0 T=
-   TASK-ERR erru LEN>N needle needleu CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N needle needleu STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-WORKER-DIE ( -- )
    TASK-DIE$ 98 s" task died" TASK-EXPECT-FAIL ;
@@ -675,7 +675,7 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    SB-RESET v FMT:SB-U
    SB$ {: a:^ u :}
    0 0 begin dup u < while
-      swap 10 * over a + c@ STR-ZERO - + swap 1+
+      swap 10 * over a + c@ STR:ZERO - + swap 1+
    repeat drop
    v <> if BUILD-BAD+ then ;
 
@@ -715,11 +715,11 @@ FUNCTION: TASK-STRLEN strlen ( ^u8 -- n ) ;FUNCTION
    TASK-USER-WRAP$ 67 needle needleu TASK-EXPECT-FAIL
    TASK-USER-LIVE$ 0 TASK-RUN-EXITS {: liveu:len liverr:len :}
    TASK-OUT liveu LEN>N S\" -1\n" T$=
-   TASK-ERR liverr LEN>N s" error[E-UNDEFINED]: cannot find word `LIVE`" CONTAINS? TTRUE
+   TASK-ERR liverr LEN>N s" error[E-UNDEFINED]: cannot find word `LIVE`" STR:CONTAINS? TTRUE
    TASK-USER-HUGE$ 0 TASK-RUN-EXITS {: hugeu:len hugerr:len :}
    TASK-OUT hugeu LEN>N S\" -9850\n-1\n-1\n70\n-9850\n-9850\n5\n0\n" T$=
-   TASK-ERR hugerr LEN>N s" error[E-BAD-STORAGE]: the type of `PT` names no known type" CONTAINS? TTRUE
-   TASK-ERR hugerr LEN>N s" error[E-UNDEFINED]: cannot find word `PT`" CONTAINS? TTRUE ;
+   TASK-ERR hugerr LEN>N s" error[E-BAD-STORAGE]: the type of `PT` names no known type" STR:CONTAINS? TTRUE
+   TASK-ERR hugerr LEN>N s" error[E-UNDEFINED]: cannot find word `PT`" STR:CONTAINS? TTRUE ;
 
 : TASK-TEST-ROLLBACK-SLOT ( -- )
    TASK-ROLLBACK-SLOT$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
@@ -2275,7 +2275,7 @@ variable BIND-PAIR-Q-WON
 : TASK-TEST-WORKER-ACTIVATES ( -- )
    TASK-WORKER-ACTIVATES$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
-   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" CONTAINS? TTRUE ;
+   TASK-ERR erru LEN>N s" error[E-UNDEFINED]: cannot find word `MISSING-WORD`" STR:CONTAINS? TTRUE ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS

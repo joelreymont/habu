@@ -171,7 +171,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    src srcu Q-RUN-STDIN {: outu:len erru:len oc :}
    src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc 67 T-ENDING-EXITED=
    outu LEN>N 0 T=
-   Q-ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE ;
+   Q-ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
 
 : QUEUE-TEST-BAD-CAPACITY ( -- )
    Q-SRC-HEAD

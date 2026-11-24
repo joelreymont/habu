@@ -117,7 +117,7 @@ T-RESET
 \ JSON.
 variable RR-JSON-WAS   REJECTION:JSON @ RR-JSON-WAS !   false REJECTION:JSON !
 : RR-CHECK ( str -- n ) REJECTION:CAPTURE CHECK-CANDIDATE! ;
-: RR-DIAG? ( str -- bool ) REJECTION:BUFFER$ 2swap CONTAINS? ;
+: RR-DIAG? ( str -- bool ) REJECTION:BUFFER$ 2swap STR:CONTAINS? ;
 
 \ (1) two accesses within one region+generation certify.
 s" C-CERT ( -- ) RR-SHARE RR-UEQ"  RR-CHECK -1 T=

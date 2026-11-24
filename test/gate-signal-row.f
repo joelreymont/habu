@@ -117,7 +117,7 @@ public
 
 : MAIN ( -- )
    SCRIPT-ARGC 0= if ROW exit then
-   0 SCRIPT-ARGV$ s" leaf" STR= if LEAF exit then
+   0 SCRIPT-ARGV$ s" leaf" STR:= if LEAF exit then
    s" gate-signal-row: unknown mode" EXIT-STATUS:USAGE die ;
 
 ;package

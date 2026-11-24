@@ -42,16 +42,16 @@ variable TD-JSON-WAS   REJECTION:JSON @ TD-JSON-WAS !   false REJECTION:JSON !
    {: src:str h l :}
    REJECTION:CAPTURE
    src TDT-EVAL-CATCH 70 T=
-   REJECTION:BUFFER$ h CONTAINS? TTRUE
-   REJECTION:BUFFER$ l CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ h STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ l STR:CONTAINS? TTRUE ;
 : TDT-AT ( str str str str -- )
    {: src:str h t l :}
    REJECTION:CAPTURE
    src TDT-EVAL-CATCH 70 T=
-   REJECTION:BUFFER$ h CONTAINS? TTRUE
+   REJECTION:BUFFER$ h STR:CONTAINS? TTRUE
    t l DECL-DIAG:CAUSE? TTRUE ;
 : TDT-HAS ( str -- ) {: s :}
-   REJECTION:BUFFER$ s CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s STR:CONTAINS? TTRUE ;
 
 \ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
 NEWTYPE tdfoo<a,b>
@@ -619,8 +619,8 @@ s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 REJECTION:CAPTURE
 s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"  --> <input>:1:30\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-UNDEFINED]: cannot find word `TDW34-BAD`\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"  --> <input>:1:30\n" STR:CONTAINS? TTRUE
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 \ A product containing W34 is one W34 wide, not W34^2.
 STRUCTURE tdw34nest
@@ -1096,17 +1096,17 @@ STRUCTURE tfx-nest<a> FIELD a a FIELD b n ;STRUCTURE
 \ back, because a signature's qualifier folds before lookup.
 REJECTION:CAPTURE
 s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\"   = found: tdpm:span<n,n,n,n,n,n>\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" found: TDPM:span<n,n,n,n,n,n>" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\"   = found: tdpm:span<n,n,n,n,n,n>\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDPM:span<n,n,n,n,n,n>" STR:CONTAINS? TFALSE
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"found\":\"tdpm:span<n,n,n,n,n,n>\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"found\":\"tdpm:span<n,n,n,n,n,n>\"" STR:CONTAINS? TTRUE
 \ The body has no `;`: the record places an empty token at the text's end.
-REJECTION:BUFFER$ s\" \"column\":48,\"byte_start\":47,\"byte_end\":47,\"token\":\"\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"column\":48,\"byte_start\":47,\"byte_end\":47,\"token\":\"\"" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" takes 6 type arguments, not 3" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"token\":\"TDPM:span\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" takes 6 type arguments, not 3" STR:CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:CAPTURE
 
@@ -1470,7 +1470,7 @@ variable BUF-N
 : SHORT-CTOR ( -- )
    REJECTION:CAPTURE  true REJECTION:JSON !
    s" TDPQ300-NO" LONG-N 1 - CTOR$ TDT-EVAL-CATCH 70 T=
-   REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
    false REJECTION:JSON !  REJECTION:CAPTURE ;
 public
 : RUN ( -- )
@@ -1815,14 +1815,14 @@ s" tdqs:qselfp" s" invalid layout policy for recursive sum" TDT-AT
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" NEWTYPE tdfoo<a,b>" 70 TDT-NEG
-REJECTION:BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"message\":\"bad newtype declaration `tdfoo`\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"token\":\"tdfoo\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"label\":\"duplicate family\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"help\":\"rename the family: this package already declares a family with this name\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"declared_effect\"" CONTAINS? TFALSE
-REJECTION:BUFFER$ s\" \"definition_source\"" CONTAINS? TFALSE
-REJECTION:BUFFER$ s\" \"return_stack\"" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"message\":\"bad newtype declaration `tdfoo`\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"token\":\"tdfoo\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"label\":\"duplicate family\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"help\":\"rename the family: this package already declares a family with this name\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"declared_effect\"" STR:CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"definition_source\"" STR:CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"return_stack\"" STR:CONTAINS? TFALSE
 REJECTION:BUFFER-OFF  false REJECTION:JSON !
 \ prose form names the declaration kind and reason.
 s" SUMTYPE tdvd2<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE"
@@ -2350,7 +2350,7 @@ REJECTION:CAPTURE
 s" STRUCTURE tdfb DERIVE hash FIELD c tdrv ;STRUCTURE"
 s\" error[E-BAD-DECLARATION]: bad structure declaration `tdfb`\n"
 s" tdrv" s" field family must also derive hash" TDT-AT
-REJECTION:BUFFER$ s" field family must also derive hash" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" field family must also derive hash" STR:CONTAINS? TTRUE
 
 \ A full-mode ENUM builds its derived words at commit, once its FIELD rows are
 \ committed, so the declaration below is the whole setup.
@@ -2466,20 +2466,20 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ reads, and the signature's own arity diagnostic is what comes out.
 REJECTION:CAPTURE
 s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\"   = help: give `tdres` 2 type arguments\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = help: give `tdres` 2 type arguments\n" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR1 ends with tdlnom on the stack; its signature promises n\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR1 ends with tdlnom on the stack; its signature promises n\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR2 ends with tdlnom on the stack; its signature promises n\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR2 ends with tdlnom on the stack; its signature promises n\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlnom\n" STR:CONTAINS? TTRUE
 \ enum-tier annotation term on the EXPECTED side of the :} bind check.
 REJECTION:CAPTURE
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: `:}` takes tdlv; the stack holds tdlp\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = expected: tdlv\n  = found: tdlp\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: `:}` takes tdlv; the stack holds tdlp\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: tdlv\n  = found: tdlp\n" STR:CONTAINS? TTRUE
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
 \ real package path; checker mirror mutation is not namespace authority.
 package tdlrpk
@@ -2488,8 +2488,8 @@ NEWTYPE tdlrfam
 ;package
 REJECTION:CAPTURE
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR4 ends with tdlrpk:tdlrfam on the stack; its signature promises n\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpk:tdlrfam\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR4 ends with tdlrpk:tdlrfam on the stack; its signature promises n\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpk:tdlrfam\n" STR:CONTAINS? TTRUE
 
 \ Same row, but the package was declared in UPPER case (TDLR4's `tdlrpk` is
 \ already lowercase). A family stores the package name as the source `package`
@@ -2503,20 +2503,20 @@ NEWTYPE tdlrfamu
 ;package
 REJECTION:CAPTURE
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR5 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR5 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" STR:CONTAINS? TFALSE
 REJECTION:CAPTURE
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR6 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR6 ends with tdlrpku:tdlrfamu on the stack; its signature promises n\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrpku:tdlrfamu\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: TDLRPKU:tdlrfamu" STR:CONTAINS? TFALSE
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu\"" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu\"" STR:CONTAINS? TFALSE
 false REJECTION:JSON !
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
@@ -2524,9 +2524,9 @@ false REJECTION:JSON !
 package tdlrpku
 REJECTION:CAPTURE
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR8 ends with tdlrfamu on the stack; its signature promises n\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrfamu\n" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" found: tdlrpku:tdlrfamu" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" error[E-MISMATCH]: TDLR8 ends with tdlrfamu on the stack; its signature promises n\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\"   = expected: n\n  = found: tdlrfamu\n" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: tdlrpku:tdlrfamu" STR:CONTAINS? TFALSE
 ;package
 REJECTION:CAPTURE
 
@@ -2541,11 +2541,11 @@ SUMTYPE tdlrjs VARIANT keep n ;VARIANT ;SUMTYPE
 ;package
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"family\":\"tdlrjg\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"family\":\"tdlrjg\"" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"family\":\"tdlrjs\"" CONTAINS? TFALSE
+REJECTION:BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"family\":\"tdlrjs\"" STR:CONTAINS? TFALSE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 
@@ -2579,8 +2579,8 @@ s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 \ tdpbopt<tdpbw2>; test/type-ctor-suite.f CLFC-RT-SOME proves that width.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"inferred\":\"n -- tdpbopt<tdpbw2>\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"inferred\":\"n -- tdpbopt<tdpbw2>\"" STR:CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2607,18 +2607,18 @@ s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUI
 \ test/type-ctor-suite.f CN-OPEN pins the real load.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 \ TDNA1's expected renders tdnres<tdnw2,n> whole: its width-3 instance has its
 \ tag at slot 2, so the full run compacts to the sum type.
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n>\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n>\"" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"family\":\"tdnres\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-MISMATCH\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"family\":\"tdnres\"" STR:CONTAINS? TTRUE
 false REJECTION:JSON !
 REJECTION:BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2656,7 +2656,7 @@ s\"   = help: name a type declared before this declaration: `n`, `^u8`, a `STRUC
 s\" STRUCTURE tdwhead<a,q> FIELD x a ;STRUCTURE\nNEWTYPE tdwnohead read-view<q,q,a>"
 s\" error[E-BAD-DECLARATION]: bad newtype declaration `tdwnohead`\n"
 s" q" s" unknown type" TDT-AT
-REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
 s\"   = help: name a type declared before this declaration: `n`, `^u8`, a `STRUCTURE` or an `ENUM`\n" TDT-HAS
 \ The verifier replays a base on the name's line as the load registers it.
 : TDWR-VERIFY ( -- )

@@ -164,10 +164,10 @@ create ERR CAP allot   variable ERR-U
    s" a callable left under its own copy names the row that would contain itself" T-LABEL
    s" : CS-K98 ( R [ R -- R ] -- R ) dup execute ;" 70 SUBJECT:REJECTED {: e:^ eu:n ok:bool :}
    ok TTRUE
-   e eu s" error[E-MISMATCH]: `execute` would make a stack row contain itself" CONTAINS? TTRUE
+   e eu s" error[E-MISMATCH]: `execute` would make a stack row contain itself" STR:CONTAINS? TTRUE
    \ the rendering indents each note by the width of the line number's gutter
-   e eu s\" = expected: R\n" CONTAINS? TTRUE
-   e eu s\" = found: R [ R -- R ]\n" CONTAINS? TTRUE
+   e eu s\" = expected: R\n" STR:CONTAINS? TTRUE
+   e eu s\" = found: R [ R -- R ]\n" STR:CONTAINS? TTRUE
    s" a named word's input names the row that would contain itself" T-LABEL
    s" : CS-TAKE ( R [ R -- R ] -- R ) execute ; : CS-K105 ( R [ R -- R ] -- R ) dup CS-TAKE ;" 70
    s" error[E-MISMATCH]: `CS-TAKE` would make a stack row contain itself"

@@ -32,12 +32,12 @@ EXPORT BOOT:data-base
 : FMT-DV ( -- ^n )
    data-base FMT-ABI:DV-OFF + ;
 
-\ The widest text is a sign byte and STR-I64-DIGITS decimal digits, or the
+\ The widest text is a sign byte and STR:I64-DIGITS decimal digits, or the
 \ octal digits of the largest cell, so the renderers need no capacity check.
 21 constant OCT-CELL-DIGITS
-STR-I64-DIGITS 1+ OCT-CELL-DIGITS max constant FMT-NUM-CAP
+STR:I64-DIGITS 1+ OCT-CELL-DIGITS max constant FMT-NUM-CAP
 \ src/habu/layout.f is loaded before src/lib/string.f and cannot see
-\ STR-I64-DIGITS, so FMT-ABI:NUM-BUF-BYTES states the width there and this
+\ STR:I64-DIGITS, so FMT-ABI:NUM-BUF-BYTES states the width there and this
 \ executes the agreement once at load. A narrower band would let the renderer
 \ overrun the band's top into STRING-ABI; a wider one would reserve bytes no
 \ renderer uses.
@@ -103,14 +103,14 @@ BAND-AGREE
       1- value over 3 * rshift 7 and FMT-ZERO + NUM-C+
    repeat drop ;
 
-: INT>NUM ( n -- )                         \ signed (STR-MIN-I64 has no positive magnitude)
+: INT>NUM ( n -- )                         \ signed (STR:MIN-I64 has no positive magnitude)
    0 FMT-NUM-U !
-   dup STR-MIN-I64 = if
-      drop STR-MINUS NUM-C+
-      STR-MIN-I64$ FMT-NUM-BUF FMT-NUM-U @ + STR-I64-DIGITS BYTE-COPY
-      FMT-NUM-U @ STR-I64-DIGITS + FMT-NUM-U ! exit
+   dup STR:MIN-I64 = if
+      drop STR:MINUS NUM-C+
+      STR:MIN-I64$ FMT-NUM-BUF FMT-NUM-U @ + STR:I64-DIGITS BYTE-COPY
+      FMT-NUM-U @ STR:I64-DIGITS + FMT-NUM-U ! exit
    then
-   dup 0 < if STR-MINUS NUM-C+ negate then DIGITS>NUM ;
+   dup 0 < if STR:MINUS NUM-C+ negate then DIGITS>NUM ;
 
 public
 
@@ -126,7 +126,7 @@ public
 \ Interpret value as value / 10^places, places 0 through 18. Trailing
 \ fractional zeros and a bare point are trimmed, and the zero before a fraction
 \ below one is kept: 5500 3 is 5.5, -1 3 is -0.001. The integer renderer
-\ supplies all digits, including STR-MIN-I64, without taking a magnitude that
+\ supplies all digits, including STR:MIN-I64, without taking a magnitude that
 \ could overflow; the point and fraction append separately so FMT-NUM-CAP
 \ stays unchanged.
 : SB-SCALED ( n n -- )
@@ -148,7 +148,7 @@ public
       1 FMT-IX +!
    repeat
 
-   sign 0<> if STR-MINUS SB-APPEND-C then
+   sign 0<> if STR:MINUS SB-APPEND-C then
    digits places > if
       p digits places - SB-APPEND
    else
@@ -183,17 +183,17 @@ private
    repeat ;
 
 \ Fits-i64 guard: a nonnegative rounded magnitude is representable iff it stays
-\ below 2^63 (STR-MAX-I64 s>f rounds to 2^63, the first double f>s cannot hold).
-\ Beyond that, f>s would saturate to STR-MAX-I64 and print wrong digits.
+\ below 2^63 (STR:MAX-I64 s>f rounds to 2^63, the first double f>s cannot hold).
+\ Beyond that, f>s would saturate to STR:MAX-I64 and print wrong digits.
 : FIT-I64 ( r -- )
-   STR-MAX-I64 s>f f< 0= if E-FMT-OVERFLOW throw then ;
+   STR:MAX-I64 s>f f< 0= if E-FMT-OVERFLOW throw then ;
 
 \ SB-FIX appends a float with exactly k decimal places, rounded half-up (k=0
 \ omits the point).
 public
 
 : SB-FIX ( r n -- ) {: k :}
-   dup f0< if STR-MINUS SB-APPEND-C fnegate then
+   dup f0< if STR:MINUS SB-APPEND-C fnegate then
    k POW10 f*  0.5 f+                       \ rounded scaled magnitude ( r >= 0 )
    dup FIT-I64
    f>s {: scaled:n :}
@@ -307,13 +307,13 @@ public
    then
    drop
    bits SCI-MAG-MASK and 0= if
-      bits 0 < if STR-MINUS SB-APPEND-C then
+      bits 0 < if STR:MINUS SB-APPEND-C then
       0.0 k SB-FIX
       s" e0" SB-APPEND exit
    then
    bits SCI-MAG-MASK and k SCI-DECIMAL
       {: coefficient:n exponent:n :}
-   bits 0 < if STR-MINUS SB-APPEND-C then
+   bits 0 < if STR:MINUS SB-APPEND-C then
    k POW10I {: scale:n :}
    coefficient scale / SB-U
    k 0 > if FMT-DOT SB-APPEND-C  coefficient scale mod k SB-FRAC then

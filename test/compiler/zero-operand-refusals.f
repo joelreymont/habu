@@ -26,7 +26,7 @@ private
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 
 : TOKEN? ( str -- )
    SB-RESET

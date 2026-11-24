@@ -241,19 +241,19 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ The request head's length through its blank line; 0 while incomplete.
 : HEAD-U ( -- n )
-   REQ-BUF REQ-U @ S\" \r\n\r\n" FIND-SUB MATCH option
+   REQ-BUF REQ-U @ S\" \r\n\r\n" STR:FIND-SUB MATCH option
       none OF 0 ENDOF
       some OF IDX>N 4 + ENDOF
    ;MATCH ;
 
 \ The body length a request head of H bytes declares; 0 for none.
 : BODY-U ( n -- n ) {: h:n :}
-   REQ-BUF h s" Content-Length: " FIND-SUB MATCH option
+   REQ-BUF h s" Content-Length: " STR:FIND-SUB MATCH option
       none OF 0 ENDOF
       some OF IDX>N 16 + {: at:n :}
-         REQ-BUF at + h at - 13 INDEX-OF MATCH option
+         REQ-BUF at + h at - 13 STR:INDEX-OF MATCH option
             none OF 0 ENDOF
-            some OF IDX>N REQ-BUF at + swap STR-PARSE-POS
+            some OF IDX>N REQ-BUF at + swap STR:PARSE-POS
                MATCH option none OF 0 ENDOF some OF ENDOF ;MATCH
             ENDOF
          ;MATCH
@@ -433,7 +433,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ Whether the last request head the server answered names a Content-Length.
 : SEEN-LENGTH? ( -- bool )
-   SEEN-BUF SEEN-U @ s" Content-Length" FIND-SUB MATCH option
+   SEEN-BUF SEEN-U @ s" Content-Length" STR:FIND-SUB MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH ;
@@ -575,7 +575,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" POST" s" /case" PREPARE  LINK s" " HTTPC:SEND  WIDE-SPAN READ-ALL
    s" an empty POST sends Content-Length: 0" T-LABEL
    200 s" second" ANSWER-IS
-   SEEN-BUF SEEN-U @ S\" \r\nContent-Length: 0\r\n" FIND-SUB MATCH option
+   SEEN-BUF SEEN-U @ S\" \r\nContent-Length: 0\r\n" STR:FIND-SUB MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH TTRUE
@@ -834,8 +834,8 @@ variable TRUST-U
    ASK-ROOT WIDE-SPAN READ-ALL
    s" a trusted https GET / answers 200 and its body to close_notify" T-LABEL
    FAULTS @ 0 T=  LAST-STATUS @ 200 T=
-   GOT$ s" <HTML>" STARTS-WITH? TTRUE
-   LINK HTTPC:HEAD$ s" HTTP/1.0 200" STARTS-WITH? TTRUE
+   GOT$ s" <HTML>" STR:STARTS-WITH? TTRUE
+   LINK HTTPC:HEAD$ s" HTTP/1.0 200" STR:STARTS-WITH? TTRUE
    END-CASE ;
 
 : TEST-HTTPS-UNRELATED ( -- )
@@ -1101,7 +1101,7 @@ TASK:MIN-STACK TASK:TASK RELAY-TASK
    T-LABEL
    HTTPC-FAULT:CUT true FAULT-IS
    LAST-STATUS @ 200 T=
-   GOT$ s" <HTML>" STARTS-WITH? TTRUE ;
+   GOT$ s" <HTML>" STR:STARTS-WITH? TTRUE ;
 
 : HTTPS-CASES ( -- )
    TEST-TLS-PEER:CERTS

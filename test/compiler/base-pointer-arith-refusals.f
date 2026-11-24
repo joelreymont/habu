@@ -78,10 +78,10 @@ private
    s" declare the pointee the base address reaches" ;
 
 : HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 
 : LACKS? ( str -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE ;
 
 \ Asserting the reason, not only the code, keeps each rule's prose its own.
 : REFUSED-CODE ( str -- )   \ leaves the diagnostic armed for the reason assertions

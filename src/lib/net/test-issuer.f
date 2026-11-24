@@ -76,7 +76,7 @@ DYNAMIC-BUFFER SECRET-LEN n
 : KNOWN? ( str str -- bool )
    {: id:^ iu:n secret:^ su:n :}
    CLIENT-COUNT @ 0 ?do
-      i ID$ id iu STR= i SECRET$ secret su STR= and if true unloop exit then
+      i ID$ id iu STR:= i SECRET$ secret su STR:= and if true unloop exit then
    loop false ;
 
 
@@ -139,7 +139,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 \ The field a decoded name is, else -1.
 : WHICH ( str -- n )
    {: a:^ u:n :}
-   FIELDS 0 ?do a u i NAME$ STR= if i unloop exit then loop -1 ;
+   FIELDS 0 ?do a u i NAME$ STR:= if i unloop exit then loop -1 ;
 
 \ One name=value pair, a wanted name's value decoded into FORM; false when the
 \ form already holds that name (RFC 6749 3.1).
@@ -180,7 +180,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 : FIELD= ( n str -- bool )
    {: k:n w:^ wu:n :}
    k FIELD$ 0= if 2drop false exit then
-   w wu STR= ;
+   w wu STR:= ;
 
 \ A form without client_secret presents a public client's empty one.
 : CLIENT? ( -- bool )
@@ -198,7 +198,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 \ The scope without a trailing /.default, as Entra names the audience.
 : AUDIENCE$ ( -- str )
    SCOPE FIELD$ drop {: s:^ su:n :}
-   s su s" /.default" ENDS-WITH? if s su 9 - exit then
+   s su s" /.default" STR:ENDS-WITH? if s su 9 - exit then
    s su ;
 
 
@@ -396,7 +396,7 @@ private
 : FORM-TYPE? ( HTTP:request -- bool )
    s" Content-Type" HTTP:HEADER-OF$ 0= if 2drop false exit then {: t:^ u:n :}
    t u 0 [char] ; FIND {: end:n :}
-   t end TRIM s" application/x-www-form-urlencoded" STR=CI ;
+   t end STR:TRIM s" application/x-www-form-urlencoded" STR:=CI ;
 
 \ The grant the form asks for, issued or refused as Entra v2 answers; no
 \ audience, or one that is not UTF-8 (claims are JSON text), no token

@@ -32,7 +32,7 @@ create ERR OUT-CAP allot
       ok OF PCAP-CAPTURED:UNMAKE drop LEN>N ENDOF
       err OF PCAP-FAILED:UNMAKE 2drop drop 0 ENDOF
    ;MATCH {: outu:n :}
-   OUT outu TRIM ;
+   OUT outu STR:TRIM ;
 
 : GETCONF$ ( -- str )
    PROC-ARGV-RESET
@@ -54,8 +54,8 @@ create ERR OUT-CAP allot
 \ report answers NaN, which no bound holds, so the case fails once.
 : HOST-LOAD ( -- r )
    HOST-LOAD$ {: text:^ len:n :}
-   text len SPACE-BYTE 0 SPLIT-NEXT drop {: next:n :}
-   HB-TARGET-MACOS? if 2drop text len SPACE-BYTE next SPLIT-NEXT drop drop then
+   text len SPACE-BYTE 0 STR:SPLIT-NEXT drop {: next:n :}
+   HB-TARGET-MACOS? if 2drop text len SPACE-BYTE next STR:SPLIT-NEXT drop drop then
    F64-TEXT:PARSE MATCH result
       ok OF ENDOF
       err OF drop NAN-BITS IEEE754:BITS>F64 ENDOF
@@ -64,7 +64,7 @@ create ERR OUT-CAP allot
 
 : MATCHES-GETCONF ( -- )
    OS-CPU:ONLINE {: count:n :}
-   GETCONF$ STR>NUMBER? MATCH option
+   GETCONF$ STR:>NUMBER? MATCH option
       some OF count T= ENDOF
       none OF 1 0 T= ENDOF
    ;MATCH ;

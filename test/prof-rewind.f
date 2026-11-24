@@ -30,17 +30,17 @@ create ERR ERR-CAP allot
    RUN-ARGV-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
    s" profiler rewind child exits successfully" T-LABEL  rc 0 T=
    s" a word after a failed text gets fresh counters" T-LABEL
-   OUT outu s\" \qword\q:\qPROF-TRIM-NEW\q" CONTAINS? TFALSE
+   OUT outu s\" \qword\q:\qPROF-TRIM-NEW\q" STR:CONTAINS? TFALSE
    s" prof-row resolves a word a failed text defined" T-LABEL
-   OUT outu s" PROF-TRIM-NEW" CONTAINS? TTRUE
+   OUT outu s" PROF-TRIM-NEW" STR:CONTAINS? TTRUE
    s" a failed text's word keeps its deferred samples" T-LABEL
-   OUT outu s\" \qword\q:\qPROF-LATE-TRIM\q" CONTAINS? TTRUE
+   OUT outu s\" \qword\q:\qPROF-LATE-TRIM\q" STR:CONTAINS? TTRUE
    s" a word after a failed text is sampled as itself" T-LABEL
-   OUT outu s\" \qword\q:\qPROF-RECLAIM-TARGET\q" CONTAINS? TTRUE
+   OUT outu s\" \qword\q:\qPROF-RECLAIM-TARGET\q" STR:CONTAINS? TTRUE
    s" that word receives exclusive samples" T-LABEL
-   OUT outu s\" \qword\q:\qPROF-RECLAIM-TARGET\q,\qexcl\q:0" CONTAINS? TFALSE
+   OUT outu s\" \qword\q:\qPROF-RECLAIM-TARGET\q,\qexcl\q:0" STR:CONTAINS? TFALSE
    s" a failed text's word that never ran is never charged" T-LABEL
-   OUT outu s\" \qword\q:\qPROF-RECLAIM-DONOR\q" CONTAINS? TFALSE
+   OUT outu s\" \qword\q:\qPROF-RECLAIM-DONOR\q" STR:CONTAINS? TFALSE
    s" profiler child writes no diagnostic" T-LABEL  erru 0 T=
    s" prof-rewind report artifact:" type cr
    OUT outu type

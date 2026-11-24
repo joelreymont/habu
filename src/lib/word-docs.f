@@ -99,11 +99,11 @@ variable IN-GLOBAL                            \ the open section is `global`
    SRC@ + c@ ;
 
 : LINE-START ( n -- n )
-   begin dup 0 > if dup 1- BYTE STR-LF <> else false then while 1- repeat ;
+   begin dup 0 > if dup 1- BYTE STR:LF <> else false then while 1- repeat ;
 
 \ The newline that ends the line holding byte i, or the text's end.
 : LINE-END ( n -- n )
-   begin dup SRC-U @ < if dup BYTE STR-LF <> else false then while 1+ repeat ;
+   begin dup SRC-U @ < if dup BYTE STR:LF <> else false then while 1+ repeat ;
 
 \ The first byte in [i, e) that ends no token, or e.
 : INK ( n n -- n ) {: e:n :}
@@ -134,13 +134,13 @@ variable IN-GLOBAL                            \ the open section is `global`
    begin dup floor NOTE-ABOVE? while 1- LINE-START repeat ;
 
 : SKIP-SPACE ( n n -- n ) {: e:n :}
-   dup e < if dup BYTE STR-SPACE = if 1+ then then ;
+   dup e < if dup BYTE STR:SPACE = if 1+ then then ;
 
 \ The text of the comment line that starts at s, and the next line's start.
 : NOTE ( n -- str n ) {: s:n :}
    s LINE-END {: e:n :}
    s e INK 1+ e SKIP-SPACE {: t:n :}
-   SRC@ t + e t - RTRIM
+   SRC@ t + e t - STR:RTRIM
    e 1+ ;
 
 : NOTES-LEN ( n n -- n ) {: top:n stop:n :}
@@ -158,7 +158,7 @@ variable IN-GLOBAL                            \ the open section is `global`
    begin dup stop < while
       dup top <> {: later:bool :}
       NOTE {: a:^ u:n next:n :}
-      later if STR-LF over c! 1+ then
+      later if STR:LF over c! 1+ then
       a over u BYTE-COPY u +
       next
    repeat 2drop ;
@@ -243,7 +243,7 @@ variable IN-GLOBAL                            \ the open section is `global`
    c LINT-LEX:TOKEN drop c@ LPAREN <> if NO-TEXT exit then
    c LINT-LEX:BYTE@ {: e:n :}
    j PAST e INK e <> if NO-TEXT exit then
-   c LINT-LEX:CONTENT TRIM ;
+   c LINT-LEX:CONTENT STR:TRIM ;
 
 : COLON ( n -- ) {: k:n :}
    k NAMED {: j:n :}
@@ -268,14 +268,14 @@ variable IN-GLOBAL                            \ the open section is `global`
    k LINT-LEX:KIND@ LINT-LEX:WORD <> if exit then
    k LINT-LEX:OPERAND? if exit then
    k LINT-LEX:TOKEN {: a:^ u:n :}
-   a u s" :" STR= if k COLON exit then
-   a u s" package" STR=CI if k OPEN-PKG exit then
+   a u s" :" STR:= if k COLON exit then
+   a u s" package" STR:=CI if k OPEN-PKG exit then
    PKG-U @ 0= if exit then
-   a u s" ;package" STR=CI if CLOSE-PKG exit then
-   a u s" public" STR=CI if true SECTION! exit then
-   a u s" private" STR=CI if false SECTION! exit then
-   a u s" global" STR=CI if false PUB !  true IN-GLOBAL ! exit then
-   a u s" EXPORT" STR=CI if k EXPORT-AT then ;
+   a u s" ;package" STR:=CI if CLOSE-PKG exit then
+   a u s" public" STR:=CI if true SECTION! exit then
+   a u s" private" STR:=CI if false SECTION! exit then
+   a u s" global" STR:=CI if false PUB !  true IN-GLOBAL ! exit then
+   a u s" EXPORT" STR:=CI if k EXPORT-AT then ;
 
 : READ-ALL ( -- )
    SRC@ SRC-U @ LINT-LEX:SOURCE LEXED

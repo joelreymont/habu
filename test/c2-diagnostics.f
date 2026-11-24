@@ -26,9 +26,9 @@ create ERR CAP allot
       timeout OF source source-u OUT out-u LEN>N ERR err-u LEN>N T-TIMED-OUT ENDOF
    ;MATCH
    TTRUE
-   ERR err-u LEN>N operation operation-u CONTAINS? TTRUE
-   ERR err-u LEN>N culprit culprit-u CONTAINS? TTRUE
-   ERR err-u LEN>N reason reason-u CONTAINS? TTRUE ;
+   ERR err-u LEN>N operation operation-u STR:CONTAINS? TTRUE
+   ERR err-u LEN>N culprit culprit-u STR:CONTAINS? TTRUE
+   ERR err-u LEN>N reason reason-u STR:CONTAINS? TTRUE ;
 
 public
 : RUN ( -- )

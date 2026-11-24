@@ -62,7 +62,7 @@ variable PROBE
 : PROBE! ( str -- ) {: a:^ u:n :}
    FNV:BASIS a u FNV:BYTES HASH-CAP 1- and PROBE !
    begin SLOT-ID 0<> while
-      SLOT-ID 1- FILE$ a u STR= if exit then
+      SLOT-ID 1- FILE$ a u STR:= if exit then
       PROBE @ 1+ HASH-CAP 1- and PROBE !
    repeat ;
 
@@ -96,13 +96,13 @@ variable PROBE
 : REF ( ^u8 n n n -- )
    {: a:^ u:n line:n kind:n :}
    kind LOAD-REFS:LAUNCHES <> {: import:bool :}
-   a u 0 INDEX-OF MATCH option
+   a u 0 STR:INDEX-OF MATCH option
       some OF drop exit ENDOF
       none OF ENDOF
    ;MATCH
    a u FS:FILE? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop {: path:^ pathu:n :}
-   import 0= path pathu s" .f" ENDS-WITH? 0= and if exit then
+   import 0= path pathu s" .f" STR:ENDS-WITH? 0= and if exit then
    path pathu INTERN line import EDGE+ ;
 
 : SCAN ( n -- ) {: id:n :}

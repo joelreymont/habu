@@ -121,7 +121,7 @@ variable PENDING-NAME-U
    repeat ;
 
 : NEXT-FIELD ( str n -- str n ) {: a:^ u:n start:n :}
-   a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
+   a u SEMICOLON start STR:SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
    valid 0= next u > or if E-SYNTAX throw then
    fa fu next ;
 
@@ -162,14 +162,14 @@ variable PENDING-NAME-U
    E-SYNTAX throw ;
 
 : FIRST-NAME? ( str -- bool )
-   s" , First>" ENDS-WITH? ;
+   s" , First>" STR:ENDS-WITH? ;
 
 : LAST-NAME? ( str -- bool )
-   s" , Last>" ENDS-WITH? ;
+   s" , Last>" STR:ENDS-WITH? ;
 
 : SAME-RANGE-NAME? ( str -- bool ) {: a:^ u:n :}
    u 7 < PENDING-NAME-U @ 8 < or if FALSE-VALUE exit then
-   a u 7 - PENDING-NAME-A @ PENDING-NAME-U @ 8 - STR= ;
+   a u 7 - PENDING-NAME-A @ PENDING-NAME-U @ 8 - STR:= ;
 
 : RANGE-APPEND ( n n ^n ^n ^n -- )
    {: lo:n hi:n los:^ his:^ countp:^ :}
@@ -241,15 +241,15 @@ variable PENDING-NAME-U
    FALSE-VALUE PENDING ! ;
 
 : UNICODE-ROW ( str -- ) {: line:^ lineu:n :}
-   line lineu TRIM {: row:^ rowu:n :}
+   line lineu STR:TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
-   row rowu SEMICOLON COUNT-CHAR 14 <> if E-SYNTAX throw then
+   row rowu SEMICOLON STR:COUNT-CHAR 14 <> if E-SYNTAX throw then
    row rowu 0 NEXT-FIELD {: cpa:^ cpu:n next1:n :}
    row rowu next1 NEXT-FIELD {: name:^ nameu:n next2:n :}
    row rowu next2 NEXT-FIELD {: cat:^ catu:n next3:n :}
    next3 drop
-   cpa cpu TRIM PARSE-HEX {: cp:n :}
-   cat catu TRIM CATEGORY {: class:n :}
+   cpa cpu STR:TRIM PARSE-HEX {: cp:n :}
+   cat catu STR:TRIM CATEGORY {: class:n :}
    PENDING @ if
       name nameu LAST-NAME? 0= if E-SYNTAX throw then
       cp name nameu class CLOSE-RANGE
@@ -267,7 +267,7 @@ variable PENDING-NAME-U
 : SCAN-UNICODE ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SYNTAX throw then
       line lineu UNICODE-ROW
       next
@@ -276,20 +276,20 @@ variable PENDING-NAME-U
 
 : RANGE-PART ( str -- n n ) {: a:^ u:n :}
    a u DOT BYTE-INDEX {: pos:n :}
-   pos u = if a u TRIM PARSE-HEX dup exit then
+   pos u = if a u STR:TRIM PARSE-HEX dup exit then
    pos 0= pos 1+ u >= or if E-SYNTAX throw then
    a pos + 1+ c@ DOT <> if E-SYNTAX throw then
-   a pos TRIM PARSE-HEX
-   a pos 2 + + u pos 2 + - TRIM PARSE-HEX ;
+   a pos STR:TRIM PARSE-HEX
+   a pos 2 + + u pos 2 + - STR:TRIM PARSE-HEX ;
 
 : RANGE-ROW ( str [ n n str -- ] -- )
    {: line:^ lineu:n q :}
    line lineu HASH BYTE-INDEX {: comment:n :}
-   line comment TRIM {: row:^ rowu:n :}
+   line comment STR:TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
    row rowu 0 NEXT-FIELD {: range:^ rangeu:n next:n :}
-   range rangeu TRIM RANGE-PART
-   row next + rowu next - TRIM q execute ;
+   range rangeu STR:TRIM RANGE-PART
+   row next + rowu next - STR:TRIM q execute ;
 
 public
 
@@ -299,7 +299,7 @@ public
 : RANGE-ROWS ( str [ n n str -- ] -- ) {: a:^ u:n q :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SYNTAX throw then
       line lineu q RANGE-ROW
       next
@@ -308,13 +308,13 @@ public
 private
 
 : SPACE-PROPERTY? ( str -- bool )
-   TRIM s" White_Space" STR= ;
+   STR:TRIM s" White_Space" STR:= ;
 
 : PROP+ ( n n str -- ) {: lo:n hi:n prop:^ propu:n :}
-   prop propu s" Other_Uppercase" STR= if
+   prop propu s" Other_Uppercase" STR:= if
       lo hi 0 OTHER-UPPER-LO 0 OTHER-UPPER-HI OTHER-UPPER-N RANGE-APPEND exit
    then
-   prop propu s" Other_Alphabetic" STR= if
+   prop propu s" Other_Alphabetic" STR:= if
       lo hi 0 OTHER-LO 0 OTHER-HI OTHER-N RANGE-APPEND exit
    then
    prop propu SPACE-PROPERTY? 0= if lo hi SCALAR-RANGE exit then
@@ -348,18 +348,18 @@ private
 
 : BRACKET-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu HASH BYTE-INDEX {: comment:n :}
-   line comment TRIM {: row:^ rowu:n :}
+   line comment STR:TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
    row rowu 0 NEXT-FIELD {: cpa:^ cpu:n next1:n :}
    row rowu next1 NEXT-FIELD {: pa:^ pu:n next2:n :}
-   row next2 + rowu next2 - TRIM {: ta:^ tu:n :}
+   row next2 + rowu next2 - STR:TRIM {: ta:^ tu:n :}
    tu 1 <> if E-SYNTAX throw then
-   cpa cpu TRIM PARSE-HEX pa pu TRIM PARSE-HEX ta c@ BRACKET+ ;
+   cpa cpu STR:TRIM PARSE-HEX pa pu STR:TRIM PARSE-HEX ta c@ BRACKET+ ;
 
 : SCAN-BRACKETS ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-SYNTAX throw then
       line lineu BRACKET-ROW
       next

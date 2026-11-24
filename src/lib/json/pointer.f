@@ -80,7 +80,7 @@ private
 \ not a digit or an index at or past cap.
 : INDEX-STEP ( n n n -- n bool )
    {: k:n c:n cap:n :}
-   c STR-DIGIT? 0= if 0 false exit then
+   c STR:DIGIT? 0= if 0 false exit then
    k 10 * c ZERO - + {: next:n :}
    next cap >= if 0 false exit then
    next true ;

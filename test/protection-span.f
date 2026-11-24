@@ -55,11 +55,11 @@ variable LONG-U
    s" require test/fixtures/protection-span-full.f" {: src:^ u:n :}
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   ERR erru LEN>N s" the code space is full at `PST0" CONTAINS? TTRUE
-   ERR erru LEN>N s" the code space is full at `PST-LONG-NAME`" CONTAINS? TTRUE
-   ERR erru LEN>N s" the code space is full at `PST-A`" CONTAINS? TTRUE
-   ERR erru LEN>N s" the code space is full at `PST-B`" CONTAINS? TTRUE
-   ERR erru LEN>N s" the code space is full at `PST-C`" CONTAINS? TTRUE ;
+   ERR erru LEN>N s" the code space is full at `PST0" STR:CONTAINS? TTRUE
+   ERR erru LEN>N s" the code space is full at `PST-LONG-NAME`" STR:CONTAINS? TTRUE
+   ERR erru LEN>N s" the code space is full at `PST-A`" STR:CONTAINS? TTRUE
+   ERR erru LEN>N s" the code space is full at `PST-B`" STR:CONTAINS? TTRUE
+   ERR erru LEN>N s" the code space is full at `PST-C`" STR:CONTAINS? TTRUE ;
 
 public
 

@@ -17,8 +17,8 @@ package INT-CONVERT-TEST
    was REJECTION:JSON ! ;
 
 : SAYS ( ^u8 n ^u8 n -- ) {: code:^ codeu:n note:^ noteu:n :}
-   REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
-   REJECTION:BUFFER$ note noteu CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
+   REJECTION:BUFFER$ code codeu STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ note noteu STR:CONTAINS? TTRUE  REJECTION:BUFFER-OFF ;
 
 : LOW8 ( -- u8 ) 300 >U8 ;
 : LOW16 ( -- u16 ) 70000 >U16 ;

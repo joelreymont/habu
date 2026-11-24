@@ -91,23 +91,23 @@ create FLT-DIRENT-TYPE-FIXTURE 24 allot
 
 : FLT-TYPE ( str u8 -- ) {: name:^ size:n kind:u8 :}
    1 FLT-TYPED-SEEN +!
-   name size s" a.txt" STR= if
+   name size s" a.txt" STR:= if
       1 FLT-TYPED-A +!
       kind FS-LIST:DT-REG FLT-TYPE-KIND exit
    then
-   name size s" b.txt" STR= if
+   name size s" b.txt" STR:= if
       1 FLT-TYPED-B +!
       kind FS-LIST:DT-REG FLT-TYPE-KIND exit
    then
-   name size s" sub" STR= if
+   name size s" sub" STR:= if
       1 FLT-TYPED-DIR +!
       kind FS-LIST:DT-DIR FLT-TYPE-KIND exit
    then
-   name size s" dangling" STR= if
+   name size s" dangling" STR:= if
       1 FLT-TYPED-LINK +!
       kind FS-LIST:DT-LNK FLT-TYPE-KIND exit
    then
-   name size FLT-LONG-NAME 240 STR= if
+   name size FLT-LONG-NAME 240 STR:= if
       1 FLT-TYPED-LONG +!
       kind FS-LIST:DT-REG FLT-TYPE-KIND exit
    then

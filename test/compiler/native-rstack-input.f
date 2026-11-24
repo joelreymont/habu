@@ -55,7 +55,7 @@ variable ERR-U
    label lu T-LABEL  src u OUT$ ERR$ oc rc T-ENDING-EXITED=
    label lu T-LABEL  OUT$ s" " T$=
    label lu T-LABEL  ERR ERR-U @ du min diag du T$=
-   label lu T-LABEL  ERR$ note nu CONTAINS? TTRUE
+   label lu T-LABEL  ERR$ note nu STR:CONTAINS? TTRUE
    src u before SHOW ;
 
 \ ---- refused at the declaration ----------------------------------------------

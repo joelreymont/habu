@@ -122,7 +122,7 @@ STRUCTURE xbox<a> FIELD item a ;STRUCTURE
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : XC-CODE? ( str -- )   \ assert the captured diagnostic names this code
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 : XC-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 \ The raw cell and the defer below are compiled here, because a candidate binds

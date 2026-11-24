@@ -812,7 +812,7 @@ TASKS!
    ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!   \ CLIENT! borrows the URL
    url MEM:FREE-SPAN
    LINES 1 T=
-   LINE$ s"  error bearer: token request failed: curl 43: " STARTS-WITH? TTRUE ;
+   LINE$ s"  error bearer: token request failed: curl 43: " STR:STARTS-WITH? TTRUE ;
 
 
 \ The child's stdout read as far as it has written; true once a line ended or
@@ -826,7 +826,7 @@ TASKS!
 
 \ The URL the issuer line names, empty when the child printed none.
 : CHILD-URL ( -- str )
-   LINE LINE-U @ s" issuer " STARTS-WITH? TTRUE
+   LINE LINE-U @ s" issuer " STR:STARTS-WITH? TTRUE
    LINE-U @ 8 - {: u:n :}
    u 0 > if LINE 7 + u exit then
    s" " ;

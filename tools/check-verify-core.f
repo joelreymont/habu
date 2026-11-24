@@ -312,7 +312,7 @@ variable VFY-EXE-U
 \ PATH-CAP.
 : VFY-TARGET-ANSWER ( str str n -- n )
    {: a:^ u:n tag:^ tagu:n answer:n :}
-   a u tag tagu STARTS-WITH? 0= if VFY-NONE exit then
+   a u tag tagu STR:STARTS-WITH? 0= if VFY-NONE exit then
    u tagu = if 0 VFY-TARGET-U ! answer exit then
    a tagu + c@ $20 <> if VFY-NONE exit then
    u tagu - 1- {: tu:n :}
@@ -326,11 +326,11 @@ variable VFY-EXE-U
 \ excluded.
 : VFY-ANSWER-AT ( n n -- n ) {: at:n end:n :}
    at VFY-OUT end at - {: a:^ u:n :}
-   a u s" check-verify: verified" STR= if VFY-VERIFIED exit then
-   a u s" check-verify: refused" STR= if VFY-REFUSED exit then
-   a u s" check-verify: full" STR= if VFY-FULL exit then
-   a u s" check-verify: deferred" STR= if VFY-DEFERRED exit then
-   a u s" check-verify: held" STR= if VFY-HELD exit then
+   a u s" check-verify: verified" STR:= if VFY-VERIFIED exit then
+   a u s" check-verify: refused" STR:= if VFY-REFUSED exit then
+   a u s" check-verify: full" STR:= if VFY-FULL exit then
+   a u s" check-verify: deferred" STR:= if VFY-DEFERRED exit then
+   a u s" check-verify: held" STR:= if VFY-HELD exit then
    a u s" check-verify: missing" VFY-MISSING VFY-TARGET-ANSWER {: m:n :}
    m VFY-NONE <> if m exit then
    a u s" check-verify: unread" VFY-UNREAD VFY-TARGET-ANSWER ;
@@ -469,27 +469,27 @@ variable VFY-EXE-U
    {: at:n :}
    at VFY-LINE-END
    {: end:n :}
-   at VFY-OUT end at - VFY-FILE$ STARTS-WITH? if
+   at VFY-OUT end at - VFY-FILE$ STR:STARTS-WITH? if
       at end VFY-FILE-LINE
       end 1+ exit
    then
-   at VFY-OUT end at - VFY-DEFINITION$ STARTS-WITH? if
+   at VFY-OUT end at - VFY-DEFINITION$ STR:STARTS-WITH? if
       at end VFY-DEF-LINE
       end 1+ exit
    then
-   at VFY-OUT end at - VFY-USE$ STARTS-WITH? if
+   at VFY-OUT end at - VFY-USE$ STR:STARTS-WITH? if
       at end VFY-USE-LINE
       end 1+ exit
    then
-   at VFY-OUT end at - VFY-LOAD$ STARTS-WITH? if
+   at VFY-OUT end at - VFY-LOAD$ STR:STARTS-WITH? if
       at end VFY-LOAD-LINE
       end 1+ exit
    then
-   at VFY-OUT end at - VFY-CAND$ STARTS-WITH? if
+   at VFY-OUT end at - VFY-CAND$ STR:STARTS-WITH? if
       at end VFY-CAND-LINE
       end 1+ exit
    then
-   at VFY-OUT end at - VFY-INDEX$ STARTS-WITH? if
+   at VFY-OUT end at - VFY-INDEX$ STR:STARTS-WITH? if
       at end VFY-INDEX-LINE
       end 1+ exit
    then
@@ -749,7 +749,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
 : VFY-BATCH-MARK ( n -- n )
    {: k:n :}
    VFY-BATCH-POS @ {: at:n :}
-   at VFY-BATCH-OUT VFY-BATCH-OUT-U @ at - k VFY-BATCH-MARK$ FIND-SUB
+   at VFY-BATCH-OUT VFY-BATCH-OUT-U @ at - k VFY-BATCH-MARK$ STR:FIND-SUB
    MATCH option
       some OF IDX>N at + ENDOF
       none OF -1 ENDOF

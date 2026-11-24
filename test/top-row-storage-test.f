@@ -66,7 +66,7 @@ variable ERR-U
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( str -- ) {: s :}
-   REJECTION:BUFFER$ s CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s STR:CONTAINS? TTRUE ;
 
 : CLEAR ( -- )   \ every cell a refused store would have written
    0 TS-V !  0 TS-BN !  NULL-PTR TS-PV ! ;
@@ -301,9 +301,9 @@ variable ERR-U
    src CHILD {: oc :}
    src OUT$ ERR$ oc want T-ENDING-EXITED= ;
 
-: ERR-HAS? ( str -- ) {: s :}   ERR$ s CONTAINS? TTRUE ;
-: ERR-LACKS? ( str -- ) {: s :}   ERR$ s CONTAINS? TFALSE ;
-: OUT-HAS? ( str -- ) {: s :}   OUT$ s CONTAINS? TTRUE ;
+: ERR-HAS? ( str -- ) {: s :}   ERR$ s STR:CONTAINS? TTRUE ;
+: ERR-LACKS? ( str -- ) {: s :}   ERR$ s STR:CONTAINS? TFALSE ;
+: OUT-HAS? ( str -- ) {: s :}   OUT$ s STR:CONTAINS? TTRUE ;
 
 \ A child: unchecked, this program reads below the closed floor or branches to
 \ xt 0, which crashes the process.

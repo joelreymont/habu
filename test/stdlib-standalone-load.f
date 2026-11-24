@@ -39,7 +39,7 @@ TYPED-VARIABLE JSON-SEEN bool
 
 : SUFFIX? ( str str -- bool ) {: a:^ u:n sa:^ su:n :}
    u su < if FALSE exit then
-   a u su - +  su  sa su  STR= ;
+   a u su - +  su  sa su  STR:= ;
 
 \ A flat module is src/lib/<name>.f and not a -test.f: two '/' bytes; a nested
 \ src/lib/<sub>/<name>.f has three.
@@ -62,7 +62,7 @@ TYPED-VARIABLE JSON-SEEN bool
 : COLLECT ( ^u8 n -- ) {: a:^ u:n :}     \ FS:WALK-FILES callback
    a u FLAT-MODULE? 0= if exit then
    MODULES-N @ 1+ MODULES-N !
-   a u s" src/lib/json.f" STR= if TRUE JSON-SEEN ! then
+   a u s" src/lib/json.f" STR:= if TRUE JSON-SEEN ! then
    a u LOADS ;
 
 public

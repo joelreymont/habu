@@ -128,6 +128,6 @@ public
 : REFUSED? ( str n str -- bool )
    {: why:^ whyu:n :}
    REJECTED {: err:^ erru:n ok:bool :}
-   ok  err erru why whyu CONTAINS? and ;
+   ok  err erru why whyu STR:CONTAINS? and ;
 
 ;package

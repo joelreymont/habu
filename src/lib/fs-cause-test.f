@@ -129,7 +129,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENOENT T=
    FS:ERRNO FS:ERRNO$ s" No such file or directory" T$=
    FS:ERRNO FS:ENOENT T=
-   100000 FS:ERRNO$ s" Unknown error" STARTS-WITH? TTRUE
+   100000 FS:ERRNO$ s" Unknown error" STR:STARTS-WITH? TTRUE
    FS:ENOENT FS:ERRNO$ drop {: a:^ :}
    FS:EACCES FS:ERRNO$ {: v:n :} drop
    a v s" Permission denied" T$= ;

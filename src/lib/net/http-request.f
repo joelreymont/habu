@@ -291,8 +291,8 @@ private
    len 0 ?do
       idx at i + AT-BYTE PERCENT = if
          i 2 + len >= if false unloop exit then
-         idx at i + 1+ AT-BYTE STR-HEX-DIGIT? 0= if false unloop exit then
-         idx at i + 2 + AT-BYTE STR-HEX-DIGIT? 0= if false unloop exit then
+         idx at i + 1+ AT-BYTE STR:HEX-DIGIT? 0= if false unloop exit then
+         idx at i + 2 + AT-BYTE STR:HEX-DIGIT? 0= if false unloop exit then
       then
    loop
    true ;
@@ -333,8 +333,8 @@ private
 
 
 : VERSION-OK? ( n n n -- bool ) {: idx:n at:n len:n :}
-   idx at len SPAN$ s" HTTP/1.1" STR= if true exit then
-   idx at len SPAN$ s" HTTP/1.0" STR= ;
+   idx at len SPAN$ s" HTTP/1.1" STR:= if true exit then
+   idx at len SPAN$ s" HTTP/1.0" STR:= ;
 
 
 : SPLIT-TARGET ( n n n -- ) {: idx:n at:n len:n :}
@@ -400,7 +400,7 @@ private
 
 : HEADER-MATCH ( n n str -- n ) {: idx:n at:n name:^ len:n :}
    at idx HEADER-N@ >= if -1 exit then
-   idx at HEADER-NAME$ name len STR=CI if at exit then
+   idx at HEADER-NAME$ name len STR:=CI if at exit then
    idx at 1+ name len RECURSE ;
 
 
@@ -411,7 +411,7 @@ private
 : COUNT-FROM ( n n str -- n ) {: idx:n at:n name:^ len:n :}
    at idx HEADER-N@ >= if 0 exit then
    idx at 1+ name len RECURSE {: rest:n :}
-   idx at HEADER-NAME$ name len STR=CI if rest 1+ exit then
+   idx at HEADER-NAME$ name len STR:=CI if rest 1+ exit then
    rest ;
 
 
@@ -453,15 +453,15 @@ $5D constant CLOSE-BRACKET
    {: c:n :}
    c $41 >= c $5A <= and if true exit then
    c $61 >= c $7A <= and if true exit then
-   c STR-DIGIT? if true exit then
-   s" -._~!$&'()*+,;=" c COUNT-CHAR 0 > ;
+   c STR:DIGIT? if true exit then
+   s" -._~!$&'()*+,;=" c STR:COUNT-CHAR 0 > ;
 
 
 \ The "%" at that offset begins an escape: two hex digits follow it.
 : ESCAPE? ( str n -- bool )
    {: a u:n at:n :}
    at 2 + u >= if false exit then
-   a at + 1+ 2 [: STR-HEX-DIGIT? ;] EVERY? ;
+   a at + 1+ 2 [: STR:HEX-DIGIT? ;] EVERY? ;
 
 
 \ reg-name (RFC 3986 3.2.2), which an IPv4address is too, never empty (RFC
@@ -485,29 +485,29 @@ $5D constant CLOSE-BRACKET
    {: a u:n :}
    u 0= if true exit then
    a c@ COLON <> if false exit then
-   a 1+ u 1- [: STR-DIGIT? ;] EVERY? ;
+   a 1+ u 1- [: STR:DIGIT? ;] EVERY? ;
 
 
 \ h16: one to four hex digits.
 : HEX16? ( str -- bool )
    {: a u:n :}
    u 1 < u 4 > or if false exit then
-   a u [: STR-HEX-DIGIT? ;] EVERY? ;
+   a u [: STR:HEX-DIGIT? ;] EVERY? ;
 
 
 \ dec-octet: 0 to 255, with no leading zero.
 : DEC-OCTET? ( str -- bool )
    {: a u:n :}
    u 1 < u 3 > or if false exit then
-   a u STR-DIGITS? 0= if false exit then
-   u 1 > a c@ STR-ZERO = and if false exit then
-   a u s" 255" STR-DIGITS<= ;
+   a u STR:DIGITS? 0= if false exit then
+   u 1 > a c@ STR:ZERO = and if false exit then
+   a u s" 255" STR:DIGITS<= ;
 
 
 \ IPv4address: four dec-octets split by ".".
 : IPV4? ( str -- bool )
    {: a u:n :}
-   a u DOT COUNT-CHAR 3 <> if false exit then
+   a u DOT STR:COUNT-CHAR 3 <> if false exit then
    0
    4 0 ?do
       {: at:n :}
@@ -546,7 +546,7 @@ $5D constant CLOSE-BRACKET
 \ since it stands for one at least, and no dotted quad before it.
 : ELIDED? ( str n -- bool )
    {: a u:n at:n :}
-   a at DOT COUNT-CHAR 0 <> if false exit then
+   a at DOT STR:COUNT-CHAR 0 <> if false exit then
    a at GROUPS {: left:n :}
    a at + 2 + u at - 2 - GROUPS {: right:n :}
    left 0 < right 0 < or if false exit then
@@ -557,7 +557,7 @@ $5D constant CLOSE-BRACKET
 \ "::" that stands for the rest.
 : IPV6? ( str -- bool )
    {: a u:n :}
-   a u s" ::" FIND-SUB
+   a u s" ::" STR:FIND-SUB
    MATCH option
       none OF a u GROUPS H16-GROUPS = ENDOF
       some OF IDX>N {: at:n :} a u at ELIDED? ENDOF
@@ -576,7 +576,7 @@ $5D constant CLOSE-BRACKET
    {: a u:n :}
    a u DOT BEFORE {: k:n :}
    k 0= k 1+ u >= or if false exit then
-   a k [: STR-HEX-DIGIT? ;] EVERY? 0= if false exit then
+   a k [: STR:HEX-DIGIT? ;] EVERY? 0= if false exit then
    a k + 1+ u k - 1- [: FUTURE-BYTE? ;] EVERY? ;
 
 
@@ -584,7 +584,7 @@ $5D constant CLOSE-BRACKET
 : IP-LITERAL? ( str -- bool )
    {: a u:n :}
    u 0= if false exit then
-   a 1 s" v" STR=CI if a 1+ u 1- FUTURE? exit then
+   a 1 s" v" STR:=CI if a 1+ u 1- FUTURE? exit then
    a u IPV6? ;
 
 
@@ -601,7 +601,7 @@ $5D constant CLOSE-BRACKET
 \ a reg-name up to the first ":".
 : HOST-VALUE? ( str -- bool )
    {: a u:n :}
-   a u s" [" STARTS-WITH? if a 1+ u 1- LITERAL-HOST? exit then
+   a u s" [" STR:STARTS-WITH? if a 1+ u 1- LITERAL-HOST? exit then
    a u COLON BEFORE {: k:n :}
    a k REG-NAME? 0= if false exit then
    a k + u k - PORT-PART? ;
@@ -613,7 +613,7 @@ $5D constant CLOSE-BRACKET
    {: idx:n :}
    idx s" host" COUNT-HEADER {: count:n :}
    count 1 > if false exit then
-   count 0= if idx SLOT-VERSION$ s" HTTP/1.0" STR= exit then
+   count 0= if idx SLOT-VERSION$ s" HTTP/1.0" STR:= exit then
    idx s" host" HEADER$ drop HOST-VALUE? ;
 
 
@@ -624,9 +624,9 @@ public
 : LIST-HAS? ( str str -- bool )
    {: list:^ listu:n token:^ tokenu:n :}
    0 begin {: start:n :}
-      list listu CH-COMMA start SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
+      list listu CH-COMMA start STR:SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
       found 0= if false exit then
-      fa fu TRIM token tokenu STR=CI if true exit then
+      fa fu STR:TRIM token tokenu STR:=CI if true exit then
       next start <= if false exit then
       next
    again ;
@@ -635,7 +635,7 @@ public
 private
 
 : KEEP-ALIVE-DEFAULT ( n -- bool ) {: idx:n :}
-   idx SLOT-VERSION$ s" HTTP/1.1" STR= ;
+   idx SLOT-VERSION$ s" HTTP/1.1" STR:= ;
 
 
 : DECIDE-KEEP-ALIVE ( n -- ) {: idx:n :}
@@ -725,8 +725,8 @@ private
    at end >= if value exit then
    idx at AT-BYTE {: c:n :}
    c SEMICOLON = if value exit then
-   c STR-HEX-DIGIT? 0= if -1 exit then
-   c STR-HEX-DIGIT-VALUE {: digit:n :}
+   c STR:HEX-DIGIT? 0= if -1 exit then
+   c STR:HEX-DIGIT-VALUE {: digit:n :}
    value MEM-MAX-N digit - HEX-BASE / > if -1 exit then
    value HEX-BASE * digit + {: next:n :}
    idx at 1+ end next RECURSE ;
@@ -782,8 +782,8 @@ private
    count 1 > if -2 exit then
    idx s" content-length" HEADER$ drop {: va:^ vu:n :}
    vu 0= if -2 exit then
-   va vu STR-DIGITS? 0= if -2 exit then
-   va vu STR>NUMBER?
+   va vu STR:DIGITS? 0= if -2 exit then
+   va vu STR:>NUMBER?
    MATCH option
       some OF ENDOF
       none OF -2 ENDOF
@@ -793,7 +793,7 @@ private
 : CHUNKED? ( n -- bool ) {: idx:n :}
    idx s" transfer-encoding" HEADER$ {: va:^ vu:n found:bool :}
    found 0= if false exit then
-   va vu TRIM s" chunked" STR=CI ;
+   va vu STR:TRIM s" chunked" STR:=CI ;
 
 
 \ The body framing the head declares, refused from the headers alone before
@@ -915,10 +915,10 @@ E-HTTP-BODY-READ constant E-BODY-READ
 
 \ RFC 9110 10.1.1: answer 100-continue in HTTP/1.1, ignore it in HTTP/1.0.
 : EXPECTS-CONTINUE? ( n -- bool ) {: idx:n :}
-   idx SLOT-VERSION$ s" HTTP/1.1" STR= 0= if false exit then
+   idx SLOT-VERSION$ s" HTTP/1.1" STR:= 0= if false exit then
    idx s" expect" HEADER$ {: va:^ vu:n found:bool :}
    found 0= if false exit then
-   va vu s" 100-continue" STR=CI ;
+   va vu s" 100-continue" STR:=CI ;
 
 
 : WRITE-SPAN ( TCP4:connection str -- bool )
@@ -963,7 +963,7 @@ E-HTTP-BODY-READ constant E-BODY-READ
 \ A query pair's name and value; a pair with no "=" has the empty value.
 : PAIR ( str -- str str )
    {: a:^ u:n :}
-   a u EQUALS INDEX-OF MATCH option
+   a u EQUALS STR:INDEX-OF MATCH option
       none OF a u a u + 0 ENDOF
       some OF IDX>N {: at:n :} a at a at + 1+ u at - 1- ENDOF
    ;MATCH ;
@@ -992,7 +992,7 @@ public
    {: subject:request key:^ keyu:n v:^ :}
    subject QUERY$ {: q:^ qu:n :}
    0 begin {: start:n :}
-      q qu AMPERSAND start SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
+      q qu AMPERSAND start STR:SPLIT-NEXT {: fa:^ fu:n next:n found:bool :}
       found 0= if false exit then
       fa fu PAIR {: na:^ nu:n va:^ vu:n :}
       na nu key keyu URI:FORM= if va vu v URI:FORM-DECODE+ true exit then

@@ -26,7 +26,7 @@ public
 : SAE-CATCH ( str -- n )  SAE-U ! SAE-A !  [: SAE-GO ;] catch ;
 
 \ The captured rejection record contains the text.
-: SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
 
 ;package
 

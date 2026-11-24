@@ -169,7 +169,7 @@ private
 \ answers at and false.
 : APPEND-UNTIL-OLD ( str str str ^a n -- n bool )
    {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ at:n :}
-   text tu old ou at FIND-SUB-FROM MATCH option
+   text tu old ou at STR:FIND-SUB-FROM MATCH option
       none OF text at + tu at - buf APPEND-SPAN-RAW at false ENDOF
       some OF IDX>N dup at - text at + swap buf APPEND-SPAN-RAW
               new nu buf APPEND-SPAN-RAW ou + true ENDOF
@@ -242,8 +242,8 @@ public
    src u BLEN>N buf REPLACE-RAW ;
 
 \ The text with every non-overlapping old replaced by new, appended; answers the
-\ count COUNT-SUB answers. No operand may overlap the storage. An empty old is
-\ its zero occurrences: FIND-SUB-FROM would answer every offset.
+\ count STR:COUNT-SUB answers. No operand may overlap the storage. An empty old is
+\ its zero occurrences: STR:FIND-SUB-FROM would answer every offset.
 : APPEND-REPLACED ( str str str ^a -- n )
    {: text:^ tu:n old:^ ou:n new:^ nu:n buf:^ :}
    ou 0= if text tu buf APPEND-SPAN-RAW 0 exit then

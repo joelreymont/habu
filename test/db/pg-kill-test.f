@@ -108,11 +108,11 @@ PROCESS:NO-FD FIFO-RD !
 \ The second field of the segment line, whose fields postmaster.pid
 \ right-aligns in nine columns; -1 when it holds no number there.
 : SHMID ( -- n )
-   SHM SHM-U @ LTRIM {: a:^ u:n :}
-   0 begin dup u < if a over + c@ STR-SPACE <> else false then while 1+ repeat
-   begin dup u < if a over + c@ STR-SPACE = else false then while 1+ repeat
+   SHM SHM-U @ STR:LTRIM {: a:^ u:n :}
+   0 begin dup u < if a over + c@ STR:SPACE <> else false then while 1+ repeat
+   begin dup u < if a over + c@ STR:SPACE = else false then while 1+ repeat
    {: at:n :}
-   a at + u at - STR>NUMBER? MATCH option
+   a at + u at - STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;

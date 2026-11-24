@@ -115,7 +115,7 @@ variable REPL-ROOT-U
    s" src/habu/debug.f" ADD-REPL-PATH ;
 
 : PATH-ID<  ( n n -- bool ) {: left:n right:n :}
-   left INTERN$  right INTERN$  STR< ;
+   left INTERN$  right INTERN$  STR:< ;
 
 : SWAP-PATH-IDS  ( n n -- ) {: left:n right:n :}
    left PATH-ID@ REPL-TMP !

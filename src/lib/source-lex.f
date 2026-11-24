@@ -336,7 +336,7 @@ private
 \ is the body: read word at a time, the body would yield a declaration the
 \ engine never performs.
 : PRINT-OPEN? ( str -- bool )
-   s" .(" STR= ;
+   s" .(" STR:= ;
 
 \ Primitive-axiom rows. The engine reads a row's name (and a package row's
 \ package) with `parse-name`, so a row may name a primitive `s"`, `c"`, `."`,
@@ -368,7 +368,7 @@ private
 
 \ The family of the row an opener opens.
 : ROW-FAMILY ( str -- n )
-   s" EPPRIM:" STR=CI if ROW-PKG exit then ROW-BARE ;
+   s" EPPRIM:" STR:=CI if ROW-PKG exit then ROW-BARE ;
 
 \ A package row names its package before the primitive.
 : PKG-ROW? ( -- bool )
@@ -428,7 +428,7 @@ private
 \ than opening a row.
 : NAMER? ( str -- bool ) {: a:^ u:n :}
    a u SOURCE-SYNTAX:BODY-OPENER? if true exit then
-   a u s" undefine" STR=CI ;
+   a u s" undefine" STR:=CI ;
 
 \ Token k is a name: the word before it is a namer. A `:` that is itself an
 \ operand (`' :`) is data and names nothing.
@@ -457,7 +457,7 @@ private
 
 : LOCAL? ( str -- bool ) {: a:^ u:n :}
    LIVE 0 ?do
-      a u LOCAL-V @ i VEC:AT @ LOCAL$ STR= if true unloop exit then
+      a u LOCAL-V @ i VEC:AT @ LOCAL$ STR:= if true unloop exit then
    loop
    false ;
 
@@ -487,7 +487,7 @@ private
    a u SOURCE:BLOCK-OPENER? if
       k a u BLOCK-WORD? if DEPTH @ 1+ DEPTH ! then exit
    then
-   a u s" else" STR=CI if
+   a u s" else" STR:=CI if
       k a u BLOCK-WORD? if BLOCK-DROP then exit
    then
    a u SOURCE:BLOCK-CLOSER? if
@@ -499,15 +499,15 @@ private
    k KIND@ WORD <> if exit then
    k TOKEN {: a:^ u:n :}
    IN-GROUP @ if
-      a u s" :}" STR= if false IN-GROUP ! exit then
+      a u s" :}" STR:= if false IN-GROUP ! exit then
       k LOCAL-PUSH exit
    then
    k OPERAND? if exit then
-   a u s" ;" STR= if LOCALS-DROP false IN-BODY ! exit then
+   a u s" ;" STR:= if LOCALS-DROP false IN-BODY ! exit then
    a u SOURCE-SYNTAX:BODY-OPENER? if
       LOCALS-DROP k NAMED-AT? 0= if true IN-BODY ! then exit
    then
-   a u s" {:" STR= if
+   a u s" {:" STR:= if
       k NAMED-AT? 0= if true IN-GROUP ! then exit
    then
    LIVE 0= if exit then
@@ -550,7 +550,7 @@ private
 \ A group opener; named after `:` or `undefine`, it is a name. No local is
 \ spelled `{:`, nor a row opener, since a local's name ends before its `:`.
 : GROUP-START? ( -- bool )
-   CUR$ s" {:" STR= 0= if false exit then
+   CUR$ s" {:" STR:= 0= if false exit then
    NAME-POS? 0= ;
 
 : ROW-START? ( -- bool )
@@ -595,7 +595,7 @@ private
 \ The names of a `{: … :}` group, read raw and marked, up to its plain closer.
 : GROUP ( -- )
    begin RAW-WORD while
-      CUR$ s" :}" STR= if exit then
+      CUR$ s" :}" STR:= if exit then
       COUNT 1- MARK-OPERAND
    repeat ;
 
@@ -707,7 +707,7 @@ private
 \ Token k, read as a plain word, steers how the scan reads the token after it.
 : STEERS? ( n -- bool ) {: k:n :}
    k TOKEN {: a:^ u:n :}
-   a u s" {:" STR= if true exit then
+   a u s" {:" STR:= if true exit then
    a u NAMER? if true exit then
    a u SOURCE:PARSING-KEYWORD? 0= if false exit then
    k BODY-AT? 0= if true exit then

@@ -49,21 +49,21 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : MISSING-DEFINITION-NAME ( -- )
    s" a lone colon rejects at the engine reader" T-LABEL
    HB$ s" :" RUN-SOURCE 70 T=
-   ERR$ s" error[E-MISSING-NAME]: `:` needs a name" CONTAINS? TTRUE ;
+   ERR$ s" error[E-MISSING-NAME]: `:` needs a name" STR:CONTAINS? TTRUE ;
 
 : COMMENT-NAME ( -- )
    s" a colon named by a comment opener rejects at the name" T-LABEL
    HB$ s" : \ ( -- ) ;" RUN-SOURCE 70 T=
-   ERR$ s" error[E-MISSING-NAME]: `:` needs a name" CONTAINS? TTRUE
-   ERR$ s" a comment, not a name" CONTAINS? TTRUE
+   ERR$ s" error[E-MISSING-NAME]: `:` needs a name" STR:CONTAINS? TTRUE
+   ERR$ s" a comment, not a name" STR:CONTAINS? TTRUE
    s" a type definer named by a signature opener rejects at the name" T-LABEL
    HB$ s" DEFLINEAR ( -- )" RUN-SOURCE 70 T=
-   ERR$ s" error[E-MISSING-NAME]: `DEFLINEAR` needs a name" CONTAINS? TTRUE
-   ERR$ s" a signature, not a name" CONTAINS? TTRUE
+   ERR$ s" error[E-MISSING-NAME]: `DEFLINEAR` needs a name" STR:CONTAINS? TTRUE
+   ERR$ s" a signature, not a name" STR:CONTAINS? TTRUE
    s" a typed variable named by a comment opener rejects at the name" T-LABEL
    HB$ s" TYPED-VARIABLE \ n" RUN-SOURCE 70 T=
-   ERR$ s" error[E-MISSING-NAME]: `TYPED-VARIABLE` needs a name" CONTAINS? TTRUE
-   ERR$ s" a comment, not a name" CONTAINS? TTRUE ;
+   ERR$ s" error[E-MISSING-NAME]: `TYPED-VARIABLE` needs a name" STR:CONTAINS? TTRUE
+   ERR$ s" a comment, not a name" STR:CONTAINS? TTRUE ;
 
 : KEYWORD-SOURCE$ ( str -- str ) {: tok:^ toku:n :}
    SB-RESET
@@ -79,17 +79,17 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" keyword definition names the constraint" T-LABEL
    SB-RESET s" error[E-RESERVED-DEFINITION]: `" SB-APPEND tok toku SB-APPEND
    s" ` is a keyword" SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ SB$ STR:CONTAINS? TTRUE
    s" keyword definition stops before later source" T-LABEL
-   OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
+   OUT$ s" AFTER" STR:CONTAINS? 0= TTRUE ;
 
 : DEFINER-REJECT ( str str str -- )
    {: src:^ srcu:n msg:^ msgu:n at:^ atu:n :}
    s" a definer's own keyword or number name rejects at the name" T-LABEL
    HB$ src srcu RUN-SOURCE 70 T=
-   ERR$ msg msgu CONTAINS? TTRUE
-   ERR$ at atu CONTAINS? TTRUE
-   OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
+   ERR$ msg msgu STR:CONTAINS? TTRUE
+   ERR$ at atu STR:CONTAINS? TTRUE
+   OUT$ s" AFTER" STR:CONTAINS? 0= TTRUE ;
 
 : KEYWORD-DEFINITION ( -- )
    \ One keyword of each kind a definer rejects: a body's, the top level's,
@@ -121,20 +121,20 @@ variable ERR-U         \ bytes the last child wrote to fd 2
    s" keyword definition names CASE" T-LABEL
    HB$ S\" package KW-UPPER private : CASE ( -- ) ; s\" AFTER\" type ;package"
       RUN-SOURCE 70 T=
-   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" CONTAINS? TTRUE
+   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" STR:CONTAINS? TTRUE
    s" qualified keyword definition rejects at its tail" T-LABEL
    HB$ s" : KW-QUAL:CASE ( -- ) ;" RUN-SOURCE 70 T=
-   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" CONTAINS? TTRUE
+   ERR$ s" error[E-RESERVED-DEFINITION]: `CASE` is a keyword" STR:CONTAINS? TTRUE
    \ FOLD is a normal, non-immediate dictionary word, not engine syntax. Its
    \ same-name private definition must remain callable through ordinary lookup.
    s" ordinary FOLD definition remains callable" T-LABEL
    HB$ s" package KW-FOLD private : FOLD ( n -- n ) 1+ ; : CALL-FOLD ( -- n ) 41 FOLD ; CALL-FOLD . ;package"
       RUN-SOURCE 0 T=
    s" ordinary FOLD definition returns through dictionary lookup" T-LABEL
-   OUT$ s" 42" CONTAINS? TTRUE
+   OUT$ s" 42" STR:CONTAINS? TTRUE
    s" qualified ordinary FOLD definition remains callable" T-LABEL
    HB$ s" : KW-FOLD-Q:FOLD ( n -- n ) 1+ ; 41 KW-FOLD-Q:FOLD ." RUN-SOURCE 0 T=
-   OUT$ s" 42" CONTAINS? TTRUE ;
+   OUT$ s" 42" STR:CONTAINS? TTRUE ;
 
 : POST-SEAL-BRIDGE ( -- )
    s" post-seal package reaches checker bridge" T-LABEL

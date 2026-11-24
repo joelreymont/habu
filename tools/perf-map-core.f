@@ -99,8 +99,8 @@ variable MAPPED    \ has this line's address column been rewritten already
    ACC @ ;
 
 : HEX? ( str -- bool ) {: a:^ u:n :}
-   u ADDR-MIN < if STR-FALSE exit then
-   u ADDR-MAX > if STR-FALSE exit then
+   u ADDR-MIN < if STR:FALSE exit then
+   u ADDR-MAX > if STR:FALSE exit then
    1 OK !
    u 0 ?do a i + c@ HEX-DIGIT 0 < if 0 OK ! then loop
    OK @ 0<> ;
@@ -115,17 +115,17 @@ variable MAPPED    \ has this line's address column been rewritten already
 
 \ ---- one line ------------------------------------------------------------------
 : SEP? ( n -- bool ) {: c:n :}
-   c STR-SPACE = c TAB = or ;
+   c STR:SPACE = c TAB = or ;
 
 : INDENTED? ( str -- bool ) {: a:^ u:n :}
-   u 0= if STR-FALSE exit then
+   u 0= if STR:FALSE exit then
    a 0 + c@ SEP? ;
 
 \ The address column is the first token of an indented line, and only that
 \ one: a sample's unindented header holds a decimal pid and period that are
 \ also valid hex.
 : ADDR-HERE? ( str -- bool ) {: a:^ u:n :}
-   MAPPED @ 0<> if STR-FALSE exit then
+   MAPPED @ 0<> if STR:FALSE exit then
    a u HEX? ;
 
 public
@@ -143,7 +143,7 @@ public
          a CUR @ + 1 OUT+  CUR @ 1+ CUR !
       else
          CUR @ TOK !
-         begin CUR @ u < if a CUR @ + c@ SEP? 0= else STR-FALSE then while
+         begin CUR @ u < if a CUR @ + c@ SEP? 0= else STR:FALSE then while
             CUR @ 1+ CUR !
          repeat
          a TOK @ +  CUR @ TOK @ -  2dup ADDR-HERE? if
@@ -186,7 +186,7 @@ public
    ARM
    0 LINE-U !
    begin NEXT-BYTE dup 0 >= while
-      dup STR-LF = if
+      dup STR:LF = if
          drop
          LINE-BUF LINE-U @ LINE.  0 LINE-U !
       else

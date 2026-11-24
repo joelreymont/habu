@@ -803,7 +803,7 @@ variable URI-LEN
 : DEEP-EVENT ( XML:reader XML:kind n -- XML:reader )
    {: expected:XML:kind level:n :}
    NEXT TOKEN>N expected TOKEN>N = 0= if 1 DEEP-BAD +! exit then
-   NAME$ level LEVEL-NAME STR= 0= if 1 DEEP-BAD +! then ;
+   NAME$ level LEVEL-NAME STR:= 0= if 1 DEEP-BAD +! then ;
 
 \ A chain 100000 elements deep streams through one-byte fills. Each level's name,
 \ which its end tag must match, and the root's binding live in scope storage

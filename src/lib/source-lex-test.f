@@ -24,7 +24,7 @@ variable TEST-N
    s" source-lex-test failed at assertion " type TEST-N @ FMT:.INT cr
    s" source-lex-test failed" EXIT-STATUS:FAILURE die ;
 : ASSERT=  ( n n -- )  = ASSERT ;
-: ASSERT$  ( str str -- )  STR= ASSERT ;
+: ASSERT$  ( str str -- )  STR:= ASSERT ;
 
 $22 constant DQUOTE
 \ The fixtures are vectors RUN makes and frees.
@@ -148,13 +148,13 @@ variable REG-I
 
 : ASSERT-BARE-ROW  ( n n n -- ) {: k:n line:n len:n :}
    k line len ASSERT-ROW-SPAN
-   k LINT-LEX:TOKEN s" EPRIM:" STARTS-WITH? ASSERT
-   k LINT-LEX:TOKEN s" EPRIM;" ENDS-WITH? ASSERT ;
+   k LINT-LEX:TOKEN s" EPRIM:" STR:STARTS-WITH? ASSERT
+   k LINT-LEX:TOKEN s" EPRIM;" STR:ENDS-WITH? ASSERT ;
 
 : ASSERT-PKG-ROW  ( n n n -- ) {: k:n line:n len:n :}
    k line len ASSERT-ROW-SPAN
-   k LINT-LEX:TOKEN s" EPPRIM:" STARTS-WITH? ASSERT
-   k LINT-LEX:TOKEN s" ECLOSE-PRIVATE" ENDS-WITH? ASSERT ;
+   k LINT-LEX:TOKEN s" EPPRIM:" STR:STARTS-WITH? ASSERT
+   k LINT-LEX:TOKEN s" ECLOSE-PRIVATE" STR:ENDS-WITH? ASSERT ;
 
 : ASSERT-BAD-AT  ( n n n -- ) {: byte:n line:n col:n :}
    LINT-LEX:ERROR? ASSERT

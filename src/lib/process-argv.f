@@ -84,7 +84,7 @@ public
    {: exe:^ exeu:n stdin:^ stdinu:n dst:^ cap:n lenp:^ :}
    exe exeu dst cap lenp BUF-APPEND
    PROC-ARGV-N @ COUNT>N 0 ?do
-      STR-SPACE dst cap lenp BUF-APPEND-C
+      STR:SPACE dst cap lenp BUF-APPEND-C
       i 1+ >IDX PROC-ARGV-SLOT @ dup ZLEN dst cap lenp BUF-APPEND
    loop
    stdinu 0 > if

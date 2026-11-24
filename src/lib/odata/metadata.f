@@ -372,15 +372,15 @@ CAST: >RECORD ( n -- ^t )
 
 : EDM2? ( str -- bool )
    {: uri:^ len:n :}
-   uri len s" http://schemas.microsoft.com/ado/2008/09/edm" STR=
-   uri len s" http://schemas.microsoft.com/ado/2007/05/edm" STR= or
-   uri len s" http://schemas.microsoft.com/ado/2006/04/edm" STR= or ;
+   uri len s" http://schemas.microsoft.com/ado/2008/09/edm" STR:=
+   uri len s" http://schemas.microsoft.com/ado/2007/05/edm" STR:= or
+   uri len s" http://schemas.microsoft.com/ado/2006/04/edm" STR:= or ;
 
 : SPACE-OF ( str -- space )
    {: uri:^ len:n :}
-   uri len EDMX2$ STR= if SPACE-EDMX2 exit then
-   uri len EDMX4$ STR= if SPACE-EDMX4 exit then
-   uri len EDM4$ STR= if SPACE-EDM4 exit then
+   uri len EDMX2$ STR:= if SPACE-EDMX2 exit then
+   uri len EDMX4$ STR:= if SPACE-EDMX4 exit then
+   uri len EDM4$ STR:= if SPACE-EDM4 exit then
    uri len EDM2? if SPACE-EDM2 exit then
    SPACE-OTHER ;
 
@@ -465,7 +465,7 @@ CAST: >RECORD ( n -- ^t )
 : NONE$ ( -- str ) s" none" ;
 : SPAN= ( SPAN:span<u8> str -- bool )
    {: s:SPAN:span<u8> t:^ tl:n :}
-   s SPAN:$ t tl STR= ;
+   s SPAN:$ t tl STR:= ;
 
 \ Attributes. Each answer is a view of scratch, overwritten by the next.
 : SCRATCH$ ( ^doc -- str ) DOC-SCRATCH @ VEC:SPAN SPAN:$ ;
@@ -476,7 +476,7 @@ CAST: >RECORD ( n -- ^t )
    {: name:^ len:n :}
    XML:ATTR-RESET
    begin XML:ATTR-NEXT while
-      XML:ATTR-NAME$ name len STR= if true exit then
+      XML:ATTR-NAME$ name len STR:= if true exit then
    repeat
    false ;
 
@@ -516,7 +516,7 @@ CAST: >RECORD ( n -- ^t )
 : IS? ( XML:reader ^doc space str -- XML:reader bool )
    {: d:^ sp:space name:^ len:n :}
    d DOC-SPACE @ sp SPACE-EQ 0= if false exit then
-   XML:LOCAL$ name len STR= ;
+   XML:LOCAL$ name len STR:= ;
 
 \ Skipping: `skip` counts the elements it enters until the one it began at
 \ ends.
@@ -754,9 +754,9 @@ CAST: >RECORD ( n -- ^t )
 \ a V4 Annotation whose value is one constant or path attribute.
 : XMLNS? ( str -- bool )
    {: name:^ len:n :}
-   name len s" xmlns" STR=
-   name len s" xmlns:" STARTS-WITH? or
-   name len s" xml:" STARTS-WITH? or ;
+   name len s" xmlns" STR:=
+   name len s" xmlns:" STR:STARTS-WITH? or
+   name len s" xml:" STR:STARTS-WITH? or ;
 
 : PREFIXED? ( str -- bool )
    {: name:^ len:n :}
@@ -800,16 +800,16 @@ CAST: >RECORD ( n -- ^t )
 
 : VALUE-NAME? ( str -- bool )
    {: name:^ len:n :}
-   name len s" String" STR= name len s" Bool" STR= or
-   name len s" Int" STR= or name len s" Decimal" STR= or
-   name len s" Float" STR= or name len s" Date" STR= or
-   name len s" DateTimeOffset" STR= or name len s" TimeOfDay" STR= or
-   name len s" Duration" STR= or name len s" Guid" STR= or
-   name len s" Binary" STR= or name len s" EnumMember" STR= or
-   name len s" Path" STR= or name len s" PropertyPath" STR= or
-   name len s" NavigationPropertyPath" STR= or
-   name len s" AnnotationPath" STR= or
-   name len s" ModelElementPath" STR= or ;
+   name len s" String" STR:= name len s" Bool" STR:= or
+   name len s" Int" STR:= or name len s" Decimal" STR:= or
+   name len s" Float" STR:= or name len s" Date" STR:= or
+   name len s" DateTimeOffset" STR:= or name len s" TimeOfDay" STR:= or
+   name len s" Duration" STR:= or name len s" Guid" STR:= or
+   name len s" Binary" STR:= or name len s" EnumMember" STR:= or
+   name len s" Path" STR:= or name len s" PropertyPath" STR:= or
+   name len s" NavigationPropertyPath" STR:= or
+   name len s" AnnotationPath" STR:= or
+   name len s" ModelElementPath" STR:= or ;
 
 : FIND-VALUE ( XML:reader -- XML:reader bool )
    XML:ATTR-RESET
@@ -846,8 +846,8 @@ CAST: >RECORD ( n -- ^t )
 \ The document's root fixes the version.
 : VERSION-OK? ( ^doc str -- bool )
    {: d:^ v:^ vl:n :}
-   d V2? if v vl s" 1.0" STR= exit then
-   v vl s" 4.0" STR= v vl s" 4.01" STR= or ;
+   d V2? if v vl s" 1.0" STR:= exit then
+   v vl s" 4.0" STR:= v vl s" 4.01" STR:= or ;
 
 : EDMX-START ( XML:reader ^doc version -- XML:reader )
    {: d:^ ver:version :}
@@ -921,7 +921,7 @@ CAST: >RECORD ( n -- ^t )
 
 : IN-DATA-SERVICES ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
-   XML:LOCAL$ s" Schema" STR= 0= if d SKIP-START exit then
+   XML:LOCAL$ s" Schema" STR:= 0= if d SKIP-START exit then
    d d CSDL s" Schema" IS? if d SCHEMA-START exit then
    d PLACE-HERE
    d V2? if
@@ -946,7 +946,7 @@ CAST: >RECORD ( n -- ^t )
 : NAME-BYTE? ( u8 -- bool )
    dup 127 > if drop true exit then
    dup [char] _ = if drop true exit then
-   STR-ALNUM? ;
+   STR:ALNUM? ;
 
 \ The index after the name bytes from I on in TEXT.
 : RUN-END ( str n -- n )
@@ -1010,8 +1010,8 @@ CAST: >RECORD ( n -- ^t )
 \ true or false.
 : BOOL-OF ( ^doc n str str str -- bool )
    {: d:^ at:n name:^ len:n el:^ el-len:n v:^ vl:n :}
-   v vl s" true" STR= if true exit then
-   v vl s" false" STR= if false exit then
+   v vl s" true" STR:= if true exit then
+   v vl s" false" STR:= if false exit then
    d at PLACE
    s" `" REASON:APPEND name len REASON:APPEND
    s" ` of `" REASON:APPEND el el-len REASON:APPEND
@@ -1137,8 +1137,8 @@ CAST: >RECORD ( n -- ^t )
 : MULTIPLICITY ( XML:reader ^doc -- XML:reader bool )
    {: d:^ :}
    d s" Multiplicity" NEED$ {: v:^ vl:n :}
-   v vl s" *" STR= if true exit then
-   v vl s" 1" STR= v vl s" 0..1" STR= or if false exit then
+   v vl s" *" STR:= if true exit then
+   v vl s" 1" STR:= v vl s" 0..1" STR:= or if false exit then
    d PLACE-HERE s" `Multiplicity` of `End` to be 1, 0..1 or *" REASON:APPEND
    v vl s" set `Multiplicity` to 1, 0..1 or *" FOUND-QUOTED ;
 
@@ -1277,7 +1277,7 @@ CAST: >RECORD ( n -- ^t )
    d b ADD-BINDING
    d SKIP-START ;
 
-: FILTER-NAME? ( str -- bool ) s" FilterRestrictions" STR= ;
+: FILTER-NAME? ( str -- bool ) s" FilterRestrictions" STR:= ;
 
 : FILTER-TERM? ( XML:reader ^doc -- XML:reader bool )
    {: d:^ :}
@@ -1400,10 +1400,10 @@ CAST: >RECORD ( n -- ^t )
 : PROPERTY-VALUE-START ( XML:reader ^doc -- XML:reader )
    {: d:^ :}
    d s" Property" ATTR$ drop {: name:^ len:n :}
-   name len s" NonFilterableProperties" STR= if
+   name len s" NonFilterableProperties" STR:= if
       d PHASE-PATHS-VALUE ENTER exit
    then
-   name len s" Filterable" STR= if d FILTERABLE-START exit then
+   name len s" Filterable" STR:= if d FILTERABLE-START exit then
    d SKIP-START ;
 
 : IN-FILTER-RECORD ( XML:reader ^doc -- XML:reader )
@@ -1576,40 +1576,40 @@ CAST: >RECORD ( n -- ^t )
 \ none for a name it does not list.
 : SHARED-KIND ( str -- option<key-kind> )
    {: n:^ nl:n :}
-   n nl s" String" STR= if KEY-KIND-STRING OPTION:SOME exit then
-   n nl s" Boolean" STR= if KEY-KIND-BOOLEAN OPTION:SOME exit then
-   n nl s" Guid" STR= if KEY-KIND-GUID OPTION:SOME exit then
-   n nl s" Binary" STR= if KEY-KIND-BINARY OPTION:SOME exit then
-   n nl s" Byte" STR= if KEY-KIND-BYTE OPTION:SOME exit then
-   n nl s" SByte" STR= if KEY-KIND-SBYTE OPTION:SOME exit then
-   n nl s" Int16" STR= if KEY-KIND-INT16 OPTION:SOME exit then
-   n nl s" Int32" STR= if KEY-KIND-INT32 OPTION:SOME exit then
-   n nl s" Int64" STR= if KEY-KIND-INT64 OPTION:SOME exit then
-   n nl s" Decimal" STR= if KEY-KIND-DECIMAL OPTION:SOME exit then
-   n nl s" Double" STR= if KEY-KIND-DOUBLE OPTION:SOME exit then
-   n nl s" Single" STR= if KEY-KIND-SINGLE OPTION:SOME exit then
-   n nl s" DateTimeOffset" STR= if
+   n nl s" String" STR:= if KEY-KIND-STRING OPTION:SOME exit then
+   n nl s" Boolean" STR:= if KEY-KIND-BOOLEAN OPTION:SOME exit then
+   n nl s" Guid" STR:= if KEY-KIND-GUID OPTION:SOME exit then
+   n nl s" Binary" STR:= if KEY-KIND-BINARY OPTION:SOME exit then
+   n nl s" Byte" STR:= if KEY-KIND-BYTE OPTION:SOME exit then
+   n nl s" SByte" STR:= if KEY-KIND-SBYTE OPTION:SOME exit then
+   n nl s" Int16" STR:= if KEY-KIND-INT16 OPTION:SOME exit then
+   n nl s" Int32" STR:= if KEY-KIND-INT32 OPTION:SOME exit then
+   n nl s" Int64" STR:= if KEY-KIND-INT64 OPTION:SOME exit then
+   n nl s" Decimal" STR:= if KEY-KIND-DECIMAL OPTION:SOME exit then
+   n nl s" Double" STR:= if KEY-KIND-DOUBLE OPTION:SOME exit then
+   n nl s" Single" STR:= if KEY-KIND-SINGLE OPTION:SOME exit then
+   n nl s" DateTimeOffset" STR:= if
       KEY-KIND-DATE-TIME-OFFSET OPTION:SOME exit
    then
    OPTION:NONE ;
 
 : V2-KIND ( str -- option<key-kind> )
    {: n:^ nl:n :}
-   n nl s" DateTime" STR= if KEY-KIND-DATE-TIME OPTION:SOME exit then
-   n nl s" Time" STR= if KEY-KIND-TIME OPTION:SOME exit then
+   n nl s" DateTime" STR:= if KEY-KIND-DATE-TIME OPTION:SOME exit then
+   n nl s" Time" STR:= if KEY-KIND-TIME OPTION:SOME exit then
    n nl SHARED-KIND ;
 
 : V4-KIND ( str -- option<key-kind> )
    {: n:^ nl:n :}
-   n nl s" Date" STR= if KEY-KIND-DATE OPTION:SOME exit then
-   n nl s" TimeOfDay" STR= if KEY-KIND-TIME-OF-DAY OPTION:SOME exit then
-   n nl s" Duration" STR= if KEY-KIND-DURATION OPTION:SOME exit then
+   n nl s" Date" STR:= if KEY-KIND-DATE OPTION:SOME exit then
+   n nl s" TimeOfDay" STR:= if KEY-KIND-TIME-OF-DAY OPTION:SOME exit then
+   n nl s" Duration" STR:= if KEY-KIND-DURATION OPTION:SOME exit then
    n nl SHARED-KIND ;
 
 : PRIMITIVE? ( str -- bool )
    {: t:^ tl:n :}
    tl 4 < if false exit then
-   t 4 s" Edm." STR= ;
+   t 4 s" Edm." STR:= ;
 
 \ The kind of key the type TYPE is in VERSION's key predicate, none for a
 \ type that version writes in no key.
@@ -1645,7 +1645,7 @@ CAST: >RECORD ( n -- ^t )
 \ declare; `Collection(...)` is not.
 : QUALIFIED? ( str -- bool )
    {: t:^ tl:n :}
-   t tl s" Collection(" STARTS-WITH? if false exit then
+   t tl s" Collection(" STR:STARTS-WITH? if false exit then
    t tl QUALIFIER {: q:^ ql:n n:^ nl:n :} nl 0 > ;
 
 : ENUM-KIND ( ^doc ^key-ref ^property -- )
@@ -2011,7 +2011,7 @@ CAST: >RECORD ( n -- ^t )
 \ `Collection(X)` is to-many X.
 : COLLECTION ( str -- str bool )
    {: text:^ len:n :}
-   text len s" Collection(" STARTS-WITH?
+   text len s" Collection(" STR:STARTS-WITH?
    len 0 > if text len + 1- c@ [char] ) = and then
    if s" Collection(" nip {: open:n :} text open + len open - 1- true exit then
    text len false ;
@@ -2189,10 +2189,10 @@ CAST: >RECORD ( n -- ^t )
 \ a containment path (a slash and navigations after it) leads to no set.
 : CONTAINER-PATH? ( ^doc str -- bool )
    {: d:^ p:^ pl:n :}
-   p pl d DOC-CONTAINER @ SPAN:$ STR= if true exit then
+   p pl d DOC-CONTAINER @ SPAN:$ STR:= if true exit then
    p pl QUALIFIER {: q:^ ql:n tail:^ tl:n :}
-   tail tl d DOC-CONTAINER @ SPAN:$ STR= 0= if false exit then
-   d q ql ALIAS d DOC-CONTAINER-NAMESPACE @ SPAN:$ STR= ;
+   tail tl d DOC-CONTAINER @ SPAN:$ STR:= 0= if false exit then
+   d q ql ALIAS d DOC-CONTAINER-NAMESPACE @ SPAN:$ STR:= ;
 
 : TARGET-PLACE ( ^doc ^binding -- )
    {: d:^ b:^ :}
@@ -2460,7 +2460,7 @@ CAST: >RECORD ( n -- ^t )
 \ Whether F's term, its alias resolved, is in Org.OData.Capabilities.V1.
 : CAPABILITIES? ( ^doc ^filter -- bool )
    {: d:^ f:^ :}
-   d f FILTER-NAMESPACE @ SPAN:$ ALIAS CAPABILITIES$ STR= ;
+   d f FILTER-NAMESPACE @ SPAN:$ ALIAS CAPABILITIES$ STR:= ;
 
 \ The earliest CAPABILITIES? filter on LIST other than BUT, null for none.
 : EARLIEST ( ^doc ^filter ^filter -- ^filter )
@@ -2673,7 +2673,7 @@ CAST: >RECORD ( n -- ^t )
 
 : V2-FILTERABLE? ( ^property -- bool )
    PROPERTY-ANNOTATIONS @ s" http://www.sap.com/Protocols/SAPData"
-   s" filterable" ANNOTATION if s" false" STR= 0= exit then
+   s" filterable" ANNOTATION if s" false" STR:= 0= exit then
    2drop true ;
 
 \ Whether F makes no property filterable or lists P's name.

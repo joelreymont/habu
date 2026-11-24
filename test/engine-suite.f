@@ -414,7 +414,7 @@ public
    a u OUTCOME
    REJECTION:BUFFER-OFF  q REJECTION:QUIET ! ;
 \ Whether the captured records hold the text a u.
-: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
 
 ;package
 
@@ -438,7 +438,7 @@ s" error[E-UNDEFINED]" ES-RES-REFUSE:HAS  REJECTION:BUFFER$ s" engine-suite.f" 5
 s" engine resolution: a duplicate tail is refused case-folded" T-LABEL
 -1 REJECTION:QUIET +!  REJECTION:CAPTURE
 s" 9 constant t-label-cap" ES-RES-REFUSE:OUTCOME 70 T=
-REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  1 REJECTION:QUIET +!
 s" engine resolution: the global row survived the refusals" T-LABEL
 T-LABEL-CAP 256 T=
@@ -500,7 +500,7 @@ s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
    REJECTION:CAPTURE
    2dup T-LABEL
    CHECK-CANDIDATE! 0 T=
-   REJECTION:BUFFER$ ta tu CONTAINS? TTRUE
+   REJECTION:BUFFER$ ta tu STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 \ An effect's text renders quotation effects to EFFECT-DEPTH-MAX levels, so a
 \ quot nested past a diagnostic's budget still records.
@@ -508,7 +508,7 @@ REJECTION:CAPTURE
 s" quot nested past the diagnostic budget certifies" T-LABEL
 s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-CANDIDATE! -1 T=
 s" quot nested past the diagnostic budget records" T-LABEL
-REJECTION:BUFFER$ s" effect not recorded" CONTAINS? TFALSE
+REJECTION:BUFFER$ s" effect not recorded" STR:CONTAINS? TFALSE
 \ Past its 23 letters an effect's text names a type variable or binder by its
 \ ordinal, so a word with any number of names records.
 defer T-V14 ( -- a b c d e g h i j k l m o p )
@@ -536,9 +536,9 @@ REJECTION:CAPTURE
 s" a body leaving numbered type variables rejects" T-LABEL
 s" RSV46C ( -- ) RSV46" CHECK-CANDIDATE! 0 T=
 s" its help leaves nothing" T-LABEL
-REJECTION:BUFFER$ S\" = help: leave nothing after `RSV46`\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" = help: leave nothing after `RSV46`\n" STR:CONTAINS? TTRUE
 s" its help offers no declaration" T-LABEL
-REJECTION:BUFFER$ s" or declare" CONTAINS? TFALSE
+REJECTION:BUFFER$ s" or declare" STR:CONTAINS? TFALSE
 REJECTION:CAPTURE
 \ RSN7's effect nests quotations past the depth a diagnostic renders, so its
 \ text holds `?` and the help for a body that leaves it offers no declaration.
@@ -547,9 +547,9 @@ defer T-NEST7 ( -- [ -- [ -- [ -- [ -- [ -- [ -- [ -- ] ] ] ] ] ] ] )
 s" a body leaving an unsaid effect rejects" T-LABEL
 s" RSN7C ( -- ) RSN7" CHECK-CANDIDATE! 0 T=
 s" its help leaves nothing" T-LABEL
-REJECTION:BUFFER$ S\" = help: leave nothing after `RSN7`\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" = help: leave nothing after `RSN7`\n" STR:CONTAINS? TTRUE
 s" its help offers no declaration of the unsaid effect" T-LABEL
-REJECTION:BUFFER$ s" or declare" CONTAINS? TFALSE
+REJECTION:BUFFER$ s" or declare" STR:CONTAINS? TFALSE
 REJECTION:CAPTURE
 \ RSF33's inferred effect nests one binder per call of T-UN, 33 in all.
 defer T-MK ( -- a )
@@ -557,8 +557,8 @@ defer T-MK ( -- a )
 s" 33 nested binders certify" T-LABEL
 s" RSF33 T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN" CHECK-CANDIDATE! -1 T=
 s" 33 nested binders: the warning names the reason" T-LABEL
-REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `RSF33`" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" = reason: more than 32 nested binders" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" warning[W-EFFECT-NOT-RECORDED]: the effect of `RSF33`" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = reason: more than 32 nested binders" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" a source signature cannot name a type variable by its ordinal" T-LABEL
 s" RSO23 ( 23 -- 23 )" CHECK-QUIET-CANDIDATE! -1 = TFALSE
@@ -602,9 +602,9 @@ s" qualified diag verdict" T-LABEL
 s" CBAD-QUAL-DIAG ( -- n ) a:b:c" CHECK-CANDIDATE! 0 T=
 0 0= 0= ES-JSON-DIAGS!
 s" qualified diag code" T-LABEL
-REJECTION:BUFFER$ s" E-BAD-QUALIFIED" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" E-BAD-QUALIFIED" STR:CONTAINS? TTRUE
 s" qualified diag token" T-LABEL
-REJECTION:BUFFER$ s" a:b:c" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a:b:c" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 : T-PHASE-ID ( img -- img ) ;
 s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" T-CHECK-PASSES
@@ -685,8 +685,8 @@ REJECTION:CAPTURE
 s" locals inside a quotation reject" T-LABEL
 s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
 s" quotation locals keep E-BAD-LOCAL-SHAPE" T-LABEL
-REJECTION:BUFFER$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" a local cannot be bound inside a quotation, or bound on a dead path" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" E-BAD-LOCAL-SHAPE" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a local cannot be bound inside a quotation, or bound on a dead path" STR:CONTAINS? TTRUE
 defer QL-ACT ( -- )
 TYPED-VARIABLE QL-KEPT [ -- ]
 : QL-KEEP ( [ -- ] -- ) is QL-ACT ;
@@ -694,32 +694,32 @@ TYPED-VARIABLE QL-KEPT [ -- ]
 REJECTION:CAPTURE
 s" a stored reading quotation rejects" T-LABEL
 s" CBAD-QL-STORED ( n -- ) {: a:n :} [: a . ;] QL-KEPT !" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" an installed reading quotation rejects" T-LABEL
 s" CBAD-QL-INSTALLED ( n -- ) {: a:n :} [: a . ;] is QL-ACT" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation handed to a keeper rejects" T-LABEL
 s" CBAD-QL-KEEPER ( n -- ) {: a:n :} [: a . ;] QL-KEEP" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a returned reading quotation rejects" T-LABEL
 s" CBAD-QL-RETURNED ( n -- [ -- ] ) {: a:n :} [: a . ;]" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation held past its local's block rejects" T-LABEL
 s" CBAD-QL-PAST-BLOCK ( n -- ) 1 = if 7 {: a:n :} [: a . ;] else [: ;] then execute" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" an inner reading quotation left on its enclosing one's stack rejects" T-LABEL
 s" CBAD-QL-INNER-LEFT ( n -- ) {: a:n :} [: [: a . ;] ;] execute execute" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 \ A word that returns a quotation literal taking a callback would record its binder.
 REJECTION:CAPTURE
 s" an inferred effect holding a misplaced binder rejects" T-LABEL
 s" CBAD-QB [: T-UN ;]" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a callback binder would sit outside" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a callback binder would sit outside" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a binder only on a word's return row certifies" T-LABEL
 s" COK-QB-RET ['] T-FQ >r 1 throw" CHECK-CANDIDATE! 0 T<>
@@ -746,67 +746,67 @@ s" COK-QL-COPIED ( n -- ) {: a:n :} [: a . ;] dup {: q :} execute q execute" CHE
 REJECTION:CAPTURE
 s" a do loop narrowing a run quotation at its back edge rejects" T-LABEL
 s" CBAD-QW-DO ( n -- ) [: ;] swap 0 ?do dup execute drop [: swap ;] loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" = found: [ B b b -- B b b ]" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = found: [ B b b -- B b b ]" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a do loop narrowing a quotation finally ran as cleanup rejects at its back edge" T-LABEL
 s" CBAD-QW-FINALLY ( n -- ) [: ;] swap 0 ?do [: ;] over finally drop [: swap ;] loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" an again edge narrowing a run quotation rejects" T-LABEL
 s" CBAD-QW-AGAIN ( -- ) [: ;] begin dup execute drop [: swap ;] again" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a back edge narrowing a quotation catch ran rejects" T-LABEL
 s" CBAD-QW-CATCH ( n -- ) [: ;] swap 0 ?do dup catch drop drop [: swap ;] loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" an until edge narrowing a run quotation carried on the return stack rejects" T-LABEL
 s" CBAD-QW-RET ( n -- ) [: ;] >r begin r> dup execute drop [: swap ;] >r 1- dup 0= until drop r> drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" error[E-LOOP-CARRIED]: this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-LOOP-CARRIED]: this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a repeat edge narrowing a run quotation rejects" T-LABEL
 s" CBAD-QW-REPEAT ( n -- ) [: ;] swap begin dup 0 > while 1- >r dup execute drop [: swap ;] r> repeat 2drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" an until edge narrowing a run quotation rejects" T-LABEL
 s" CBAD-QW-UNTIL ( n -- ) [: ;] swap begin 1- >r dup execute drop [: swap ;] r> dup 0 <= until 2drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a leave join narrowing a run quotation rejects at the loop" T-LABEL
 s" CBAD-QW-LEAVE ( n -- ) [: ;] swap 0 ?do dup execute i 0 > if drop [: swap ;] leave then loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a forward join in a loop narrowing a run quotation rejects at the loop" T-LABEL
 s" CBAD-QW-THEN ( n -- ) [: ;] swap 0 ?do dup execute i 0 > if drop [: swap ;] then loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a back edge narrowing a quotation a carried one returns, after running it, rejects" T-LABEL
 s" CBAD-QW-NESTED ( n -- ) [: [: ;] ;] swap 0 ?do dup execute execute drop [: [: swap ;] ;] loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a back edge tying a run quotation to a declared row rejects" T-LABEL
 s" CBAD-QW-ROW ( [ R -- R ] n -- ) [: ;] swap 0 ?do dup execute dup execute drop dup loop 2drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 STRUCTURE qwbox<a> FIELD v a ;STRUCTURE
 : QW-W2 ( [ n n -- n n ] -- ) drop ;
 : QW-MKS ( -- [ [ n n -- n n ] -- [ n n -- n n ] [ n n -- n n ] ] ) [: drop [: swap ;] [: swap ;] ;] ;
 REJECTION:CAPTURE
 s" a back edge narrowing a run quotation in a family argument rejects" T-LABEL
 s" CBAD-QW-FAMILY ( n -- ) [: ;] QWBOX:MAKE swap 0 ?do dup QWBOX:UNMAKE execute drop [: swap ;] QWBOX:MAKE loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a back edge narrowing a quotation a run bound to a cell, then ran, rejects" T-LABEL
 s" CBAD-QW-V6 ( n -- ) [: dup ;] swap 0 ?do 5 [: ;] rot dup >r execute execute drop . r> drop QW-MKS loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a loop handing a run quotation to a declared slot, then narrowing it at the back edge, rejects" T-LABEL
 s" CBAD-QW-V7 ( n -- ) [: dup ;] swap 0 ?do 5 [: ;] rot dup >r execute execute dup QW-W2 drop . r> drop QW-MKS loop drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a loop inside a quotation literal narrowing a run quotation rejects" T-LABEL
 s" CBAD-QW-V4 ( -- ) 1 2 2 [: swap ;] [: swap 0 ?do i 0= if drop [: ;] then dup execute drop [: swap ;] loop drop ;] execute . ." CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" this pass narrows a quotation the body ran on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a loop handing a run quotation to a declared slot that never runs it certifies" T-LABEL
 s" COK-QW-CALL ( n -- ) [: ;] swap 0 ?do dup execute dup QW-W2 loop drop" CHECK-CANDIDATE! 0 T<>
@@ -827,22 +827,22 @@ s" COK-QW-SWAP ( n -- ) [: ;] [: ;] rot 0 ?do over execute swap loop 2drop" CHEC
 REJECTION:CAPTURE
 s" an unsigned definition narrowing an input quotation it ran rejects" T-LABEL
 s" CBAD-QW-T7 IF drop [: ;] THEN 5 over execute drop swap IF drop [: swap ;] THEN" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" the body narrows an input quotation after running it on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" the body narrows an input quotation after running it on any stack" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a literal narrowing an input quotation it ran rejects at its end" T-LABEL
 s" CBAD-QW-LIT ( -- ) [: IF drop [: ;] THEN 5 over execute drop swap IF drop [: swap ;] THEN ;] drop" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" the body narrows an input quotation after running it on any stack" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" the body narrows an input quotation after running it on any stack" STR:CONTAINS? TTRUE
 : QW-N1 ( [ n -- n ] -- ) drop ;
 : QW-T10 IF drop [: ;] THEN QW-N1 ;
 REJECTION:CAPTURE
 s" a narrower quotation passed where a handed-on input became a callback rejects" T-LABEL
 s" CBAD-QW-T10 ( -- ) [: 1 + ;] false QW-T10" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" error[E-MISMATCH]: `QW-T10` takes [ -- ] bool" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-MISMATCH]: `QW-T10` takes [ -- ] bool" STR:CONTAINS? TTRUE
 : QW-T6O IF drop [: ;] THEN dup [: ;] swap execute drop ;
 REJECTION:CAPTURE
 s" a narrower quotation passed where a run input became a callback rejects" T-LABEL
 s" CBAD-QW-T6O ( -- ) [: 1 + ;] false QW-T6O 5 swap execute ." CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" error[E-MISMATCH]: `QW-T6O` takes [ -- ] bool" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-MISMATCH]: `QW-T6O` takes [ -- ] bool" STR:CONTAINS? TTRUE
 : QW-T6P IF drop [: ;] THEN ;
 REJECTION:CAPTURE
 s" a quotation passed through an input never run certifies" T-LABEL
@@ -864,23 +864,23 @@ QL-KEEPER QL-MADE-KEEP
 REJECTION:CAPTURE
 s" a reading quotation handed to an exported keeper rejects" T-LABEL
 s" CBAD-QL-EXPORTED ( n -- ) {: a:n :} [: a . ;] ES-QL:QL-KEEP" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation handed to a created keeper rejects" T-LABEL
 s" CBAD-QL-CREATED ( n -- ) {: a:n :} [: a . ;] QL-MADE-KEEP" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation handed to a package's keeper rejects" T-LABEL
 s" CBAD-QL-PACKAGE ( n -- ) {: a:n :} [: a . ;] ES-QL:KEEP" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation returned through exit rejects" T-LABEL
 s" CBAD-QL-EXIT ( n -- [ -- ] ) {: a:n :} [: a . ;] exit" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation held past its loop body's local rejects" T-LABEL
 s" CBAD-QL-PAST-LOOP ( n -- ) [: ;] swap 0 ?do drop i {: a:n :} [: a . ;] loop execute" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation handed to an exported runner certifies" T-LABEL
 s" COK-QL-EXPORTED ( n -- ) {: a:n :} [: a . ;] ES-QL:QL-RUN" CHECK-CANDIDATE! 0 T<>
@@ -893,15 +893,15 @@ SUMTYPE qljob VARIANT none ;VARIANT VARIANT some [ -- ] ;VARIANT ;SUMTYPE
 REJECTION:CAPTURE
 s" a reading quotation handed to a structure's MAKE rejects" T-LABEL
 s" CBAD-QL-MAKE ( n -- qlbox ) {: a:n :} [: a . ;] QLBOX:MAKE" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation handed to a variant constructor rejects" T-LABEL
 s" CBAD-QL-VARIANT ( n -- qljob ) {: a:n :} [: a . ;] QLJOB:SOME" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation handed to construct rejects" T-LABEL
 s" CBAD-QL-CONSTRUCT ( n -- qljob ) {: a:n :} [: a . ;] construct qljob some" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a plain quotation handed to a structure's MAKE certifies" T-LABEL
 s" COK-QL-MAKE ( -- qlbox ) [: 7 . ;] QLBOX:MAKE" CHECK-CANDIDATE! 0 T<>
@@ -918,19 +918,19 @@ s" COK-QL-SEED-JOIN ( n -- ) {: a:n :} [: 7 . ;] {: q :} q 1 2 QLPAIR:MAKE QLBOX
 REJECTION:CAPTURE
 s" a reading quotation recursed into and kept at the base rejects" T-LABEL
 s" CBAD-QL-RECURSE-LATE ( n [ -- ] -- ) {: a:n q :} a 0 > if a 1- [: a . ;] RECURSE then a 0= if q QL-KEPT ! then" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation recursed into and run rejects" T-LABEL
 s" CBAD-QL-RECURSE-RUN ( n [ -- ] -- ) {: a:n q :} q execute a 0 > if a 1- [: a . ;] RECURSE then" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation handed to RECURSE in a quotation rejects" T-LABEL
 s" CBAD-QL-RECURSE-QUOT ( n [ -- ] -- ) {: a:n q :} a 0 > if a 1- [: a . ;] [: RECURSE ;] execute then" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a reading quotation RECURSE returns rejects" T-LABEL
 s" CBAD-QL-RECURSE-OUT ( n [ -- ] [ -- ] -- [ -- ] ) {: a:n p q :} a 0= if p exit then a 1- [: a . ;] q [: RECURSE ;] execute" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" a quotation that reads a local would outlive it" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" a word passing its own quotation parameter to RECURSE certifies" T-LABEL
 s" COK-QL-RECURSE-OWN ( n [ -- ] -- ) {: a:n q :} q execute a 0 > if a 1- q RECURSE then" CHECK-CANDIDATE! 0 T<>
@@ -938,20 +938,20 @@ REJECTION:CAPTURE
 s" -- in a locals group rejects" T-LABEL
 s" CBAD-LOC-DASH ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
 s" -- in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
-REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]: a locals group names only locals; the signature declares the outputs" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" `--`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]: a locals group names only locals; the signature declares the outputs" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `--`" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" | in a locals group rejects" T-LABEL
 s" CBAD-LOC-BAR ( n n -- n ) {: a | :} a" CHECK-CANDIDATE! 0 T=
 s" | in a locals group names E-BAD-LOCAL-SHAPE and the reason" T-LABEL
-REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]: a locals group names only locals; Habu has no uninitialised locals" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" `|`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-LOCAL-SHAPE]: a locals group names only locals; Habu has no uninitialised locals" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `|`" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" -- in a locals group JSON packet" T-LABEL
 s" CBAD-LOC-DASH-JSON ( n -- n ) {: a -- b :} a" CHECK-CANDIDATE! 0 T=
 s" -- in a locals group JSON code and reason" T-LABEL
-REJECTION:BUFFER$ s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"message\":\"a locals group names only locals; the signature declares the outputs\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"message\":\"a locals group names only locals; the signature declares the outputs\"" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  false REJECTION:JSON !
 \ multi-error load mode: rejects do not abort the load; the declared sig is
 \ retained so later definitions keep checking.
@@ -979,9 +979,9 @@ s" DNI-XCAST ( n -- exposure-us ) >frame-idx" T-CHECK-REJECTS
 REJECTION:CAPTURE  true REJECTION:JSON !
 s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
-REJECTION:BUFFER$ s\" \"found\":\"frame-idx\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"found\":\"frame-idx\"" STR:CONTAINS? TTRUE
 s" nominal declared effect renders bare" T-LABEL
-REJECTION:BUFFER$ s\" \"declared\":\"frame-idx -- n\"" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"declared\":\"frame-idx -- n\"" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF  false REJECTION:JSON !
 : T-SIGLESS-CERTIFIES ( -- )
    s" sigless nominal certifies" T-LABEL
@@ -1067,12 +1067,12 @@ REJECTION:CAPTURE
 s" arity-6 mismatch diagnostic rejects" T-LABEL
 s" CBAD-BIG6-REND ( -- n ) T-BIG6-MK" CHECK-CANDIDATE! 0 T=
 s" arity-6 diagnostic renders all six args" T-LABEL
-REJECTION:BUFFER$ s" tfam6r-big<n,f32,u8,u16,i64,bool>" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" tfam6r-big<n,f32,u8,u16,i64,bool>" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 s" SC-QUOT mismatch diagnostic rejects" T-LABEL
 s" CBAD-SCQ-REND ( -- n ) T-SCQ-MK" CHECK-CANDIDATE! 0 T=
 s" SC-QUOT diagnostic renders quot rows" T-LABEL
-REJECTION:BUFFER$ s" scq-fam<[ n -- n ],f32>" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" scq-fam<[ n -- n ],f32>" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 : T-NEED-I64 ( i64 -- ) drop ;
 : T-NEED-U32 ( u32 -- ) drop ;
@@ -1151,7 +1151,7 @@ REJECTION:CAPTURE
 s" linear-local reject carries E-LINEAR-LOCAL" T-LABEL
 s" CBAD-OWN-LOCAL-DIAG ( ES-OWN:own -- ES-OWN:own ES-OWN:own ) {: x:ES-OWN:own :} x x" CHECK-CANDIDATE! 0 T=
 s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
-REJECTION:BUFFER$ s" E-LINEAR-LOCAL" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" E-LINEAR-LOCAL" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `ES-OWN:nosuch` in the annotation of local `x`" T-CHECK-SAYS
 \ A bare family tail two used packages make public is ambiguous, not unknown.
@@ -1162,12 +1162,12 @@ REJECTION:CAPTURE
 s" a family two used packages make public is rejected" T-LABEL
 s" CBAD-FAM-AMBIG ( es-amb<n> -- ) drop" CHECK-CANDIDATE! 0 T=
 s" its record says the family is ambiguous" T-LABEL
-REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: type family `es-amb` is public in more than one used package" CONTAINS? TTRUE
-REJECTION:BUFFER$ s" ^^^^^^ ambiguous here" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: type family `es-amb` is public in more than one used package" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s" ^^^^^^ ambiguous here" STR:CONTAINS? TTRUE
 s" its note names both packages" T-LABEL
-REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" STR:CONTAINS? TTRUE
 s" its help gives each qualified spelling" T-LABEL
-REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 \ A local's annotation verdict is pinned at the local's token `x:es-amb<n>`:
 \ the help spells the family, never that token.
@@ -1175,9 +1175,9 @@ REJECTION:CAPTURE
 s" a family two used packages make public is rejected in a local's annotation" T-LABEL
 s" CBAD-LOCAL-AMBIG ( n -- ) {: x:es-amb<n> :}" CHECK-CANDIDATE! 0 T=
 s" its record names the family and the local" T-LABEL
-REJECTION:BUFFER$ s" type family `es-amb` in the annotation of local `x` is public in more than one used package" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" type family `es-amb` in the annotation of local `x` is public in more than one used package" STR:CONTAINS? TTRUE
 s" its help gives each qualified spelling of the family" T-LABEL
-REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 \ A built definition's type naming that family is ambiguous too.
 : ES-AMB-READ ( -- n ) [: s" es-amb<n>" EFFECT:READ-TYPE drop ;] catch ;
@@ -1185,11 +1185,11 @@ REJECTION:CAPTURE
 s" a built type naming that family is rejected" T-LABEL
 ES-AMB-READ 70 T=
 s" its record says the family is ambiguous" T-LABEL
-REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: ambiguous type family 'es-amb' in the type 'es-amb<n>'" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-USING-AMBIGUOUS]: ambiguous type family 'es-amb' in the type 'es-amb<n>'" STR:CONTAINS? TTRUE
 s" its note names both packages" T-LABEL
-REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = packages: ES-AMB-A, ES-AMB-B" STR:CONTAINS? TTRUE
 s" its help gives each qualified spelling" T-LABEL
-REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" = help: write the package's name before the type family, as `ES-AMB-A:es-amb` or `ES-AMB-B:es-amb`" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 \ A variant payload naming that family is ambiguous too.
 s" a variant payload naming that family is rejected" T-LABEL
@@ -1671,62 +1671,62 @@ s" ESNP-FETCH-N-OK ( ^n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:CAPTURE
 s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-CANDIDATE! 0 T=
 s" specialize diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
-REJECTION:BUFFER$ s" E-NONPARAMETRIC-EFFECT" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" E-NONPARAMETRIC-EFFECT" STR:CONTAINS? TTRUE
 s" specialize diag: names the offending quantifier" T-LABEL
-REJECTION:BUFFER$ s" type variable `a`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" type variable `a`" STR:CONTAINS? TTRUE
 s" specialize diag: names the forged family" T-LABEL
-REJECTION:BUFFER$ s" family `esnp`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" family `esnp`" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 REJECTION:CAPTURE
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-CANDIDATE! 0 T=
 s" aliasing diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
-REJECTION:BUFFER$ s" E-NONPARAMETRIC-EFFECT" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" E-NONPARAMETRIC-EFFECT" STR:CONTAINS? TTRUE
 s" aliasing diag: names both quantifiers" T-LABEL
-REJECTION:BUFFER$ s" `a` and `b`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `a` and `b`" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 REJECTION:CAPTURE
 s" ESNP-ROW-PAIR ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
 s" row alias diag: names both rows" T-LABEL
-REJECTION:BUFFER$ s" `R` and row `S`" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `R` and row `S`" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" ESNP-ROW-BASE ( R n -- ) drop" CHECK-CANDIDATE! 0 T=
 s" row alias diag: names the unnamed row" T-LABEL
-REJECTION:BUFFER$ s" `R` and the unnamed row" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `R` and the unnamed row" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" ESNP-ROW-CELLS ( R -- S ) 1" CHECK-CANDIDATE! 0 T=
 s" row cells diag: names the row" T-LABEL
-REJECTION:BUFFER$ s" `S` is bound to fixed cells" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" `S` is bound to fixed cells" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 true REJECTION:JSON !
 s" ESNP-ROW-JSON ( R [ R -- S ] -- S ) drop" CHECK-CANDIDATE! 0 T=
 false REJECTION:JSON !
 s" row alias JSON: the message names both rows" T-LABEL
-REJECTION:BUFFER$ s\" \"message\":\"declared row variable `R` and row `S` are unified" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"message\":\"declared row variable `R` and row `S` are unified" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 s" ESNP-ROW-UNNAMED ( R -- ) 1" CHECK-CANDIDATE! 0 T=
 s" row cells diag: names the unnamed row" T-LABEL
-REJECTION:BUFFER$ s" the unnamed row is bound to fixed cells" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" the unnamed row is bound to fixed cells" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 REJECTION:CAPTURE
 true REJECTION:JSON !
 s" ESNP-ROW-UNNAMED-JSON ( R -- ) 1" CHECK-CANDIDATE! 0 T=
 false REJECTION:JSON !
 s" row cells JSON: the message names the unnamed row, not a quantifier" T-LABEL
-REJECTION:BUFFER$ s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" CONTAINS? TTRUE
-REJECTION:BUFFER$ s\" \"message\":\"the unnamed row is bound to fixed cells" CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"code\":\"E-NONPARAMETRIC-EFFECT\"" STR:CONTAINS? TTRUE
+REJECTION:BUFFER$ s\" \"message\":\"the unnamed row is bound to fixed cells" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 \ the ptr instance rejects via the mismatch diagnostic, which names the family.
 REJECTION:CAPTURE
 s" ESNP-PSPEC ( -- ^a ) 0 ESNP-AT" CHECK-CANDIDATE! 0 T=
 s" ptr-family diag names the forged family" T-LABEL
-REJECTION:BUFFER$ s" esnp" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" esnp" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 s" reject then re-reject is stable" T-LABEL

@@ -815,7 +815,7 @@ variable SESSION-CELL
    DIGITS,                                                       \ rsi = the first digit
    RDX RSP NUM-BYTES MEM-OFF LEA,  RDX RSI ASM-SINK ENC-SUB-RR
    R8 RDX ASM-SINK ENC-SUB-RR                                    \ the columns the digits leave
-   RCX STR-SPACE IMM32,
+   RCX STR:SPACE IMM32,
    pad LBL,
       R8 TEST,  C-LE done JCC,
       RSI DEC,  RCX R64>N >R8 RSI MEM-AT ASM-SINK ENC-MOV8-MR

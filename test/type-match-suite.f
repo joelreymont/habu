@@ -261,9 +261,9 @@ package MAMB-B public SUMTYPE mamb VARIANT b1 n ;VARIANT ;SUMTYPE ;package
 REJECTION:CAPTURE
 s" package MAMB-C using MAMB-A using MAMB-B : MAMB1 ( MAMB-A:mamb -- n ) MATCH mamb a1 OF ENDOF ;MATCH ; ;package"
 TEST-EVAL:RC 70 T=
-REJECTION:BUFFER$ s\" error[E-USING-AMBIGUOUS]: bad match: ambiguous type family\n" STARTS-WITH? TTRUE
+REJECTION:BUFFER$ s\" error[E-USING-AMBIGUOUS]: bad match: ambiguous type family\n" STR:STARTS-WITH? TTRUE
 SB-RESET  s" --> " SB-APPEND  SOURCE-ROOT:CWD$ SB-APPEND  s" /test/type-match-suite.f:" SB-APPEND
-REJECTION:BUFFER$ SB$ CONTAINS? TTRUE
+REJECTION:BUFFER$ SB$ STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" MATCH-SCOPE" type cr
 
@@ -276,7 +276,7 @@ s" MATCH-SCOPE" type cr
    CHECK-CANDIDATE! 0 T= ;
 : MDG? ( str -- )
    T-NEXT
-   REJECTION:BUFFER$ 2swap CONTAINS? 0= if
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
 : MDG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
@@ -342,7 +342,7 @@ MDG-END
 \ prose shape: the `bad match: missing variants` text, prose mode.
 REJECTION:CAPTURE
 s" G18 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" bad match: missing variants: aa cc" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" bad match: missing variants: aa cc" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" MATCH-DIAG" type cr
 

@@ -60,8 +60,8 @@ variable HELD-U
 
 : TYPED ( -- )
    SHOW-HELD
-   DELIVERY s" take" STR= if  HOLD  DELIVERY TEXT-RECORD exit  then
-   DELIVERY s" boom" STR= if  HOLD  93 throw  then ;
+   DELIVERY s" take" STR:= if  HOLD  DELIVERY TEXT-RECORD exit  then
+   DELIVERY s" boom" STR:= if  HOLD  93 throw  then ;
 
 : DISPATCH ( -- )
    0 EVENT@ {: kind:n :}

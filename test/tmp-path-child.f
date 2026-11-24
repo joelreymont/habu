@@ -23,10 +23,10 @@ create NAME PATH-CAP allot
    PATH-CAP s" TMPDIR" GETENV nip - 1 - ;
 
 : NAME-U ( ^u8 n -- n ) {: a:^ u:n :}
-   a u s" exact" STR= if ROOM exit then
-   a u s" over" STR= if ROOM 1 + exit then
-   a u s" negative" STR= if -1 exit then
-   a u s" huge" STR= if MEM-MAX-N exit then
+   a u s" exact" STR:= if ROOM exit then
+   a u s" over" STR:= if ROOM 1 + exit then
+   a u s" negative" STR:= if -1 exit then
+   a u s" huge" STR:= if MEM-MAX-N exit then
    s" tmp-path-child: unknown case" EXIT-STATUS:USAGE die ;
 
 public

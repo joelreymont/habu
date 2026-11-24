@@ -107,7 +107,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 : ENDS-LF? ( str -- bool )
    {: a:^ u:n :}
    u 0= if false exit then
-   a u 1- + c@ STR-LF = ;
+   a u 1- + c@ STR:LF = ;
 
 
 : CLOSE-KEEP ( PG:connection -- PG:connection )
@@ -1356,7 +1356,7 @@ variable STMT-U
    c s" copy pqtcopy from stdin"
    [: OUTCOME-TAG TAG-FAILED T=
       FAILED-SQLSTATE$ s" 57014" T$=
-      FAILED-MESSAGE$ s" COPY from stdin failed: COPY is not supported" CONTAINS? TTRUE ;]
+      FAILED-MESSAGE$ s" COPY from stdin failed: COPY is not supported" STR:CONTAINS? TTRUE ;]
    WITH-RESULT
    c SELECT-ONE
    s" A COPY TO STDOUT the server fails midway is the server's failure" T-LABEL
@@ -1984,22 +1984,22 @@ variable WARN-LINES
 
 \ libpq's default notice processor writes the message as is.
 : BARE? ( str -- bool ) {: a:^ u:n :}
-   a u s" FATAL:" STARTS-WITH?
-   a u s" NOTICE:" STARTS-WITH? or
-   a u s" WARNING:" STARTS-WITH? or ;
+   a u s" FATAL:" STR:STARTS-WITH?
+   a u s" NOTICE:" STR:STARTS-WITH? or
+   a u s" WARNING:" STR:STARTS-WITH? or ;
 
 
 : PG-ERROR? ( str -- bool ) {: a:^ u:n :}
    u DATE:TIME-LEN < if false exit then
    a DATE:TIME-LEN + u DATE:TIME-LEN - {: r:^ ru:n :}
-   r ru s"  error pg: " STARTS-WITH?
-   r ru s" terminating connection due to administrator command" CONTAINS?
+   r ru s"  error pg: " STR:STARTS-WITH?
+   r ru s" terminating connection due to administrator command" STR:CONTAINS?
    and ;
 
 
 : PG-WARN? ( str -- bool ) {: a:^ u:n :}
    u DATE:TIME-LEN < if false exit then
-   a DATE:TIME-LEN + u DATE:TIME-LEN - s"  warn pg: WARNING:  w" STR= ;
+   a DATE:TIME-LEN + u DATE:TIME-LEN - s"  warn pg: WARNING:  w" STR:= ;
 
 
 : LINE-COUNT ( str -- ) {: a:^ u:n :}
@@ -2013,7 +2013,7 @@ variable WARN-LINES
 : LINES-COUNT ( str -- ) {: at:^ u:n :}
    0 ALL-LINES !  0 BARE-LINES !  0 PG-LINES !  0 WARN-LINES !
    0 begin
-      at u rot STR-LF swap SPLIT-NEXT
+      at u rot STR:LF swap STR:SPLIT-NEXT
    while
       >r LINE-COUNT r>
    repeat

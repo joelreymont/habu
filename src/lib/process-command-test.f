@@ -608,9 +608,9 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
    CMD:OUT$ {: a:^ u:n :}
    S\" HABU_CMD_DEFAULT=orig\n" {: first:^ firstu:n :}
    0 LATE-FIRST !
-   u firstu >= if a firstu first firstu STR= if 1 LATE-FIRST ! then then
+   u firstu >= if a firstu first firstu STR:= if 1 LATE-FIRST ! then then
    0 LATE-SEEN !
-   a u s" HABU_CMD_LATE=" CONTAINS? if 1 LATE-SEEN ! then ;
+   a u s" HABU_CMD_LATE=" STR:CONTAINS? if 1 LATE-SEEN ! then ;
 
 : LATE-BODY ( -- ) [: LATE-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
 

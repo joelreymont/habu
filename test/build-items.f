@@ -333,7 +333,7 @@ variable BUILT-DIAG-U
 \ A record's first line, and its notes from `= declared:` on: the twins' places
 \ differ, the built one's at the definer's call.
 : CUT ( ^u8 n ^u8 n -- n ) {: a:^ u:n ka:^ ku:n :}
-   a u ka ku FIND-SUB MATCH option
+   a u ka ku STR:FIND-SUB MATCH option
       none OF u ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -567,8 +567,8 @@ public
    s" BITEM:LNEG-GO" 70 SUBJECT:REJECTED {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" reads built local -1, which no `{:` group bound before it"
-   CONTAINS? TTRUE
-   e eu s" block has ended" CONTAINS? TFALSE ;
+   STR:CONTAINS? TTRUE
+   e eu s" block has ended" STR:CONTAINS? TFALSE ;
 
 \ A built body's rejection names the line of the definer's call, and a built
 \ local by its declared type, not a listing index.
@@ -576,8 +576,8 @@ public
    s" include test/fixtures/build-items/placed.f" 70 SUBJECT:REJECTED
    {: e:^ eu:n exited:bool :}
    exited TTRUE
-   e eu s" placed.f:20" CONTAINS? TTRUE
-   e eu s" `n` reads built local 0" CONTAINS? TTRUE ;
+   e eu s" placed.f:20" STR:CONTAINS? TTRUE
+   e eu s" `n` reads built local 0" STR:CONTAINS? TTRUE ;
 
 \ A read pinned after an earlier failure is placed at the definer's call.
 : UNBOUND-CHILD ( -- )
@@ -585,9 +585,9 @@ public
    {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" error[E-UNDEFINED]: reads built local 9, which no `{:` group bound before it"
-   CONTAINS? TTRUE
-   e eu s\" 14 | s\" BI-UNBOUND\" MAKE-UNBOUND" CONTAINS? TTRUE
-   e eu s" unbound.f:14:16" CONTAINS? TTRUE ;
+   STR:CONTAINS? TTRUE
+   e eu s\" 14 | s\" BI-UNBOUND\" MAKE-UNBOUND" STR:CONTAINS? TTRUE
+   e eu s" unbound.f:14:16" STR:CONTAINS? TTRUE ;
 
 \ A call an evaluated string appends is placed in no line of the file whose
 \ text opened the definition: the string's offsets are not the file's.
@@ -595,8 +595,8 @@ public
    s" include test/fixtures/build-items/evaluated.f" 70 SUBJECT:REJECTED
    {: e:^ eu:n exited:bool :}
    exited TTRUE
-   e eu s" input underflow" CONTAINS? TTRUE
-   e eu S\" evaluated.f:1\n" CONTAINS? TFALSE ;
+   e eu s" input underflow" STR:CONTAINS? TTRUE
+   e eu S\" evaluated.f:1\n" STR:CONTAINS? TFALSE ;
 
 \ A read no group bound, in a body text finishes, names the local by its
 \ index, never by its listing token.
@@ -604,8 +604,8 @@ public
    s" BITEM:UNREAD-GO 1 + ;" 70 SUBJECT:REJECTED {: e:^ eu:n exited:bool :}
    exited TTRUE
    e eu s" reads built local 9, which no `{:` group bound before it"
-   CONTAINS? TTRUE
-   e eu s" l9" CONTAINS? TFALSE ;
+   STR:CONTAINS? TTRUE
+   e eu s" l9" STR:CONTAINS? TFALSE ;
 
 \ Two built locals of one type read in a body text finishes are two locals.
 s" SUB2-GO - ;" evaluate-closed  10 3 BI-SUB2 7 T=
@@ -616,11 +616,11 @@ private
 : JSON-ON ( -- )  REJECTION:CAPTURE  true REJECTION:JSON ! ;
 : JSON-OFF ( -- )  false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 : UNREAD-JSON ( -- n ) [: s" UNREAD-GO 1 + ;" evaluate-closed ;] catch ;
-: JSON-HAS ( str -- ) REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+: JSON-HAS ( str -- ) REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 JSON-ON  UNREAD-JSON 70 T=  JSON-OFF
 S\" \"code\":\"E-UNDEFINED\"" JSON-HAS
 S\" \"message\":\"reads built local 9, which no `{:` group bound before it" JSON-HAS
-REJECTION:BUFFER$ s" l9" CONTAINS? TFALSE
+REJECTION:BUFFER$ s" l9" STR:CONTAINS? TFALSE
 : JSON-FORM ( -- ) REJECTION:BUFFER$ GJA-PARSE GJA-RECORD-FORM ;
 JSON-FORM
 ;package
@@ -682,8 +682,8 @@ PATH-CAP BUFFER: PATH
    s" test/fixtures/postpone-stored-use.f" s" stored" s" stored-app" BUILD
    70 SHOW {: rc:n :}
    CMD:ERR$ s" a definer's type ends with the load that built it: build it where it is used"
-   CONTAINS? TTRUE
-   CMD:ERR$ s" HELD" CONTAINS? TTRUE
+   STR:CONTAINS? TTRUE
+   CMD:ERR$ s" HELD" STR:CONTAINS? TTRUE
    rc 70 T= ;
 
 \ Built program NAME's bytes, in storage its size makes.
@@ -710,7 +710,7 @@ PATH-CAP BUFFER: PATH
    s" c2-bytes-cold" s" c2-bytes-warm" SAME-PROGS
    CMD:RESET  s" c2-bytes-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 0 SHOW {: rc:n :}
-   CMD:OUT$ S\" bitem-c2-bytes: a\n" STR= TTRUE
+   CMD:OUT$ S\" bitem-c2-bytes: a\n" STR:= TTRUE
    rc 0 T= ;
 
 : CAP-BUILD ( CMD:command ^u8 n -- CMD:command bool ) {: prog:^ progu:n :}
@@ -726,7 +726,7 @@ PATH-CAP BUFFER: PATH
    s" cap-grown-cold" s" cap-grown-warm" SAME-PROGS
    CMD:RESET  s" cap-grown-cold" IN$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 0 SHOW {: rc:n :}
-   CMD:OUT$ S\" 42\n-1\n1\n" STR= TTRUE
+   CMD:OUT$ S\" 42\n-1\n1\n" STR:= TTRUE
    rc 0 T= ;
 
 \ The build's own C2-MEM entries are scoped entries too.
@@ -734,8 +734,8 @@ PATH-CAP BUFFER: PATH
    s" test/fixtures/build-items/scoped-tick.f" s" tick" s" tick-app" BUILD
    70 SHOW {: rc:n :}
    CMD:ERR$ s" `C2-MEM:WITH-INIT` is a scoped entry, which only a direct call may reach"
-   CONTAINS? TTRUE
-   CMD:ERR$ s" scoped-tick.f:8:" CONTAINS? TTRUE
+   STR:CONTAINS? TTRUE
+   CMD:ERR$ s" scoped-tick.f:8:" STR:CONTAINS? TTRUE
    rc 70 T= ;
 
 : CHECKS ( -- ) [: STORED C2-BYTES CAP-GROWN TICK ;] CMD:WITH-COMMAND ;
@@ -760,9 +760,9 @@ private
    s" --load" CMD:ARG+  s" test/fixtures/build-items/long-type.f" CMD:ARG+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N 70 T=
-   CMD:ERR$ s" error[E-UNDEFINED]: `[ ^^" CONTAINS? TTRUE
-   CMD:ERR$ s" ^u8 -- ]` is a built local outside a `{:` group" CONTAINS? TTRUE
-   CMD:ERR$ s" long-type.f:24:13" CONTAINS? TTRUE ;
+   CMD:ERR$ s" error[E-UNDEFINED]: `[ ^^" STR:CONTAINS? TTRUE
+   CMD:ERR$ s" ^u8 -- ]` is a built local outside a `{:` group" STR:CONTAINS? TTRUE
+   CMD:ERR$ s" long-type.f:24:13" STR:CONTAINS? TTRUE ;
 
 public
 : RUN ( -- ) [: LONG ;] CMD:WITH-COMMAND ;

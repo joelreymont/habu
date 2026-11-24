@@ -20,7 +20,7 @@ package PROCESS-TERM-CHILD
    1 s" ready" write drop ;
 
 : MODE? ( str -- bool ) {: a:^ u:n :}
-   1 SCRIPT-ARGV$ a u STR= ;
+   1 SCRIPT-ARGV$ a u STR:= ;
 
 : ANSWER ( n -- ) {: sig:n :}
    s" exit" MODE? 0= if exit then

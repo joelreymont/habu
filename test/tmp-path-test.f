@@ -57,7 +57,7 @@ create ERR IO-CAP allot
    s" ... as a path of PATH-CAP bytes" T-LABEL
    outu PATH-CAP 1 + T=
    s" ... that starts with the root" T-LABEL
-   OUT ROOT-U @ ROOT$ STR= TTRUE
+   OUT ROOT-U @ ROOT$ STR:= TTRUE
    s" ... then the slash" T-LABEL
    OUT ROOT-U @ + c@ SLASH T=
    s" ... and ends with the name's last byte" T-LABEL
@@ -70,7 +70,7 @@ create ERR IO-CAP allot
    label labelu T-LABEL
    rc 77 T=
    s" ... by TMP-PATH's own message" T-LABEL
-   ERR erru s" env: TMP-PATH exceeds buffer" CONTAINS? TTRUE
+   ERR erru s" env: TMP-PATH exceeds buffer" STR:CONTAINS? TTRUE
    s" ... before anything is typed" T-LABEL
    outu 0 T= ;
 

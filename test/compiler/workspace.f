@@ -74,7 +74,7 @@ create CWK-ERR CWK-CAP allot
    src srcu CWK-OUT outl LEN>N err erru oc 77 T-ENDING-EXITED=
    err erru
    s" compiler workspace: the default table is full at DEFAULT-CAP rows"
-   CONTAINS? TTRUE ;
+   STR:CONTAINS? TTRUE ;
 ;package
 
 CWKT:CWK-V T=

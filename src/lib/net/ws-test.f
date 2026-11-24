@@ -414,7 +414,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : READ-HEAD ( TCP4:connection -- ) {: conn:TCP4:connection :}
    0 HEAD-U !
    begin
-      HEAD$ S\" \r\n\r\n" ENDS-WITH? if exit then
+      HEAD$ S\" \r\n\r\n" STR:ENDS-WITH? if exit then
       conn HEAD-BUF HEAD-U @ 1 SPAN:SUB READ-N 0= if exit then
       1 HEAD-U +!
    again ;
@@ -460,7 +460,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : UPGRADE-OVER ( TCP4:connection str -- TCP4:connection ) {: conn:TCP4:connection path pu:n :}
    s" GET" path pu REQ-START GOOD-LINES S\" \r\n" REQ+
    conn REQ-OVER
-   HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE ;
+   HEAD$ s" HTTP/1.1 101 " STR:STARTS-WITH? TTRUE ;
 
 : UPGRADE ( str -- TCP4:connection )
    DIAL -rot UPGRADE-OVER ;
@@ -535,7 +535,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    NEXT-FRAME HEARD ;
 
 : PROBE-FRAME? ( -- bool )
-   RX-EOF @ 0= RX-OP @ OP$ s" text" STR= and ;
+   RX-EOF @ 0= RX-OP @ OP$ s" text" STR:= and ;
 
 \ The probes the handler of `brief` sent are read past unlogged, since how
 \ many it sent before the stop is the scheduler's; the frame after them is
@@ -658,16 +658,16 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 : TEXT-IN ( str WS:socket -- ) {: a u:n sock:WS:socket :}
    sock 0 NOTED !
-   a u s" throw" STR= if E-HANDLER throw then
-   a u s" stop" STR= if [: WS:STOP ;] catch HANDLER-STOP atomic! exit then
-   a u s" badtext" STR= if [: SEND-BAD ;] catch BAD-TEXT atomic! exit then
-   a u s" go" STR= if sock CLOSE-FIRST exit then
-   a u s" bye" STR= if sock 4000 WS:CLOSE exit then
-   a u s" blast" STR= if sock BLAST exit then
-   a u s" wait" STR= if sock BLOCK exit then
-   a u s" hold" STR= if HOLD exit then
-   a u s" brief" STR= if PROBE exit then
-   a u s" next" STR= if FIRST-DONE atomic@ NEXT-SAW atomic! then
+   a u s" throw" STR:= if E-HANDLER throw then
+   a u s" stop" STR:= if [: WS:STOP ;] catch HANDLER-STOP atomic! exit then
+   a u s" badtext" STR:= if [: SEND-BAD ;] catch BAD-TEXT atomic! exit then
+   a u s" go" STR:= if sock CLOSE-FIRST exit then
+   a u s" bye" STR:= if sock 4000 WS:CLOSE exit then
+   a u s" blast" STR:= if sock BLAST exit then
+   a u s" wait" STR:= if sock BLOCK exit then
+   a u s" hold" STR:= if HOLD exit then
+   a u s" brief" STR:= if PROBE exit then
+   a u s" next" STR:= if FIRST-DONE atomic@ NEXT-SAW atomic! then
    sock a u WS:SEND-TEXT ;
 
 : BINARY-IN ( str WS:socket -- ) {: a u:n sock:WS:socket :}
@@ -803,7 +803,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" Connection" s" close" LINE+
    S\" \r\n" REQ+
    REQ-SEND {: conn:TCP4:connection :}
-   HEAD$ s" HTTP/1.1 200 OK" STARTS-WITH? TTRUE
+   HEAD$ s" HTTP/1.1 200 OK" STR:STARTS-WITH? TTRUE
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U ! ;
 
@@ -811,10 +811,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 : HANDSHAKE-CASE ( -- )
    s" handshake" SECTION
    OPENS {: conn:TCP4:connection sock:WS:socket :}
-   HEAD$ S\" \r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n" CONTAINS? TTRUE
-   HEAD$ S\" \r\nUpgrade: websocket\r\n" CONTAINS? TTRUE
-   HEAD$ S\" \r\nConnection: Upgrade\r\n" CONTAINS? TTRUE
-   HEAD$ s" Content-Length" CONTAINS? TFALSE
+   HEAD$ S\" \r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n" STR:CONTAINS? TTRUE
+   HEAD$ S\" \r\nUpgrade: websocket\r\n" STR:CONTAINS? TTRUE
+   HEAD$ S\" \r\nConnection: Upgrade\r\n" STR:CONTAINS? TTRUE
+   HEAD$ s" Content-Length" STR:CONTAINS? TFALSE
    LOG-HEAD
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    conn ENDS
@@ -829,7 +829,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    S\" \r\n" REQ+
    REQ-SEND {: conn:TCP4:connection :}
    status 0 <> if AWAIT-ROUTE then
-   HEAD$ want wu STARTS-WITH? TTRUE
+   HEAD$ want wu STR:STARTS-WITH? TTRUE
    label lu LOG s" : " LOG HEAD$ FIRST-LINE LOG-LINE
    conn TCP4:CLOSE DROP-STATUS
    REFUSED-WITH @ status T= ;
@@ -911,8 +911,8 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" Sec-WebSocket-Version" s" 12" LINE+
    s" version 12" s" HTTP/1.1 426 Upgrade Required" 426 REFUSED
    s" a 426 names the version and the protocol" T-LABEL
-   HEAD$ S\" \r\nSec-WebSocket-Version: 13\r\n" CONTAINS? TTRUE
-   HEAD$ S\" \r\nUpgrade: websocket\r\n" CONTAINS? TTRUE ;
+   HEAD$ S\" \r\nSec-WebSocket-Version: 13\r\n" STR:CONTAINS? TTRUE
+   HEAD$ S\" \r\nUpgrade: websocket\r\n" STR:CONTAINS? TTRUE ;
 
 \ Header names and the two tokens are matched whatever their case, and the
 \ Connection header is a list.
@@ -925,7 +925,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" sec-websocket-version" s" 13" LINE+
    S\" \r\n" REQ+
    REQ-SEND OPENED drop {: conn:TCP4:connection :}
-   HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
+   HEAD$ s" HTTP/1.1 101 " STR:STARTS-WITH? TTRUE
    conn WS-OPCODE:TEXT s" ok" EXCHANGE
    conn FAREWELL ;
 
@@ -1009,7 +1009,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    true WS-OPCODE:TEXT a u FRAME$ {: f fu:n :}
    f at REQ+
    REQ-SEND OPENED drop {: conn:TCP4:connection :}
-   HEAD$ s" HTTP/1.1 101 " STARTS-WITH? TTRUE
+   HEAD$ s" HTTP/1.1 101 " STR:STARTS-WITH? TTRUE
    at fu < if conn f at + fu at - SEND-RAW then
    conn HEAR WS-OPCODE:TEXT a u GOT
    conn FAREWELL ;
@@ -1229,7 +1229,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 : ERR-WRITTEN ( -- n )
    ERR-READ
-   ERR$ LF COUNT-CHAR ERR-WANT$ LF COUNT-CHAR >= if 1 else 0 then ;
+   ERR$ LF STR:COUNT-CHAR ERR-WANT$ LF STR:COUNT-CHAR >= if 1 else 0 then ;
 
 
 \ Drops each line's LOG stamp from what was read back, in place.
@@ -1364,7 +1364,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 : PONG-IN ( -- )
    RX-EOF @ 0 <> if exit then
-   RX-OP @ OP$ s" pong" STR= RX-LEN @ 0= and if 1 PONGS +! then ;
+   RX-OP @ OP$ s" pong" STR:= RX-LEN @ 0= and if 1 PONGS +! then ;
 
 \ Pings that arrive many to a read are each answered: the client writes
 \ BURST-PINGS of them at once and reads a pong for every one.
@@ -1470,7 +1470,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" GET" s" /ws" REQ-START GOOD-LINES S\" \r\n" REQ+
    REQ-SEND {: conn:TCP4:connection :}
    AWAIT-ROUTE
-   HEAD$ s" HTTP/1.1 503 " STARTS-WITH? TTRUE
+   HEAD$ s" HTTP/1.1 503 " STR:STARTS-WITH? TTRUE
    REFUSED-WITH @ 503 T=
    conn TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U !
@@ -1593,7 +1593,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    AWAIT-ROUTE
    REFUSED-WITH @ 503 T=
    conn READ-HEAD
-   HEAD$ s" HTTP/1.1 503 " STARTS-WITH? TTRUE
+   HEAD$ s" HTTP/1.1 503 " STR:STARTS-WITH? TTRUE
    conn TCP4:CLOSE DROP-STATUS
    first TCP4:CLOSE DROP-STATUS
    0 STREAM-AT ! 0 STREAM-U !

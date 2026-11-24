@@ -668,7 +668,7 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : ROW-OF ( str ^call -- n )
    {: a:^ u:n c :}
    c ROW-COUNT 0 ?do
-      i 0 c ROW$ a u STR= if i 1+ unloop exit then
+      i 0 c ROW$ a u STR:= if i 1+ unloop exit then
    loop 0 ;
 
 : EVENT-ROW-COUNT ( ^call -- n )
@@ -686,7 +686,7 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 : COUNT-EVENT ( str ^call -- )
    {: a:^ u:n c :}
    c EVENT-ROW-COUNT {: rows:n :}
-   rows rows 0 ?do i c EVENT-TYPE$ a u STR= if drop i leave then loop {: idx:n :}
+   rows rows 0 ?do i c EVENT-TYPE$ a u STR:= if drop i leave then loop {: idx:n :}
    idx rows = if
       c EVENT-TEXT-BUF BUF:LEN@ BUF:BLEN>N {: off:n :}
       a u BUF:N>BLEN c EVENT-TEXT-BUF BUF:APPEND-SPAN
@@ -1050,8 +1050,8 @@ CAST: >VEC-CELL ( ^u8 -- ^^VEC:vector<u8> )
 
 : SCHEME-LEN ( str -- n )
    {: a:^ u:n :}
-   a u s" https://" STARTS-WITH? if 8 exit then
-   a u s" http://" STARTS-WITH? if 7 exit then
+   a u s" https://" STR:STARTS-WITH? if 8 exit then
+   a u s" http://" STR:STARTS-WITH? if 7 exit then
    0 ;
 
 \ A base byte is printable and no userinfo, query or fragment delimiter, so
@@ -1681,10 +1681,10 @@ private
 
 : IMAGE-MIME? ( str -- bool )
    {: a:^ u:n :}
-   a u s" image/png" STR= if true exit then
-   a u s" image/jpeg" STR= if true exit then
-   a u s" image/webp" STR= if true exit then
-   a u s" image/gif" STR= ;
+   a u s" image/png" STR:= if true exit then
+   a u s" image/jpeg" STR:= if true exit then
+   a u s" image/webp" STR:= if true exit then
+   a u s" image/gif" STR:= ;
 
 : DIGEST-KEEP ( str ^call -- str ^call )
    {: data:^ du:n c :}
@@ -2335,8 +2335,8 @@ private
 \ Ollama's error text for an input longer than the model's context.
 : OLLAMA-SIZE? ( str -- bool )
    {: a:^ u:n :}
-   a u s" exceeds the context length" CONTAINS?
-   a u s" exceeds maximum context length" CONTAINS? or ;
+   a u s" exceeds the context length" STR:CONTAINS?
+   a u s" exceeds maximum context length" STR:CONTAINS? or ;
 
 \ Whether a member of OpenAI's error object, the reader at its value, names a
 \ refusal for size: by its code, or by its message where the code is null, as
@@ -2344,12 +2344,12 @@ private
 : SIZE-MEMBER? ( JSON:reader str ^call -- JSON:reader bool )
    {: key:^ key-u:n c :}
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-SKIP-VALUE false exit then
-   key key-u s" code" STR= if
+   key key-u s" code" STR:= if
       s" context_length_exceeded" JSON:READ-STR-EQ? if true exit then
       s" string_above_max_length" JSON:READ-STR-EQ? exit
    then
-   key key-u s" message" STR= if
-      c REPLY-STR s" This model's maximum context length" STARTS-WITH? exit
+   key key-u s" message" STR:= if
+      c REPLY-STR s" This model's maximum context length" STR:STARTS-WITH? exit
    then
    false ;
 
@@ -2778,7 +2778,7 @@ private
 : READ-BASE64 ( JSON:reader ^call -- JSON:reader )
    {: c :}
    JSON:READ-SPAN$ {: a:^ u:n :}
-   a u [char] \ INDEX-OF MATCH option
+   a u [char] \ STR:INDEX-OF MATCH option
       none OF a u c VECTOR-ROOM drop ENDOF
       some OF
          drop c VECTORS-U {: t:n :}
@@ -2800,7 +2800,7 @@ private
 
 : EMBED-MEMBER ( JSON:reader str ^call -- JSON:reader )
    {: key:^ key-u:n c :}
-   key key-u s" index" STR= if
+   key key-u s" index" STR:= if
       c MODEL-CALL:PARSED-INDEX @ -1 <> if JSON:READ-CLOSE E-RESPONSE throw then
       JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
       JSON:READ-INT {: idx:n :}
@@ -2809,7 +2809,7 @@ private
       then
       idx c MODEL-CALL:PARSED-INDEX ! exit
    then
-   key key-u s" embedding" STR= if
+   key key-u s" embedding" STR:= if
       c MODEL-CALL:VECTOR-SEEN @ if JSON:READ-CLOSE E-RESPONSE throw then
       JSON:READ-TOKEN JSON:T-STR = if c READ-BASE64 else c READ-NUMBERS then
       exit
@@ -3225,7 +3225,7 @@ private
    \ The span of a string token holds its bytes without the quotes.
    JSON:READ-SPAN$ {: t:^ t-u:n :}
    t t-u c COUNT-EVENT
-   s STREAM-OUTPUT-NS @ 0= t t-u s" response.output_" STARTS-WITH? and if
+   s STREAM-OUTPUT-NS @ 0= t t-u s" response.output_" STR:STARTS-WITH? and if
       TIME:MONO-NS s STREAM-OUTPUT-NS !
    then
    s" keepalive" JSON:READ-STR-EQ? {: keepalive:bool :}
@@ -3659,7 +3659,7 @@ ENUM poll none fed spoiled done ;ENUM
       chat OF
          c PARSE-CHAT
          c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-         c REPLAY-CONTENT$ STR= 0= if E-RESPONSE throw then
+         c REPLAY-CONTENT$ STR:= 0= if E-RESPONSE throw then
       ENDOF
       embed OF
          c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then

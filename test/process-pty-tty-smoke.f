@@ -181,7 +181,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    at 7 + {: from:n :}
    from S\" \r" FIND-FROM {: end:n :}
    end 0 < if -1 exit then
-   BUF$ drop from + end from - STR>NUMBER? MATCH option
+   BUF$ drop from + end from - STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;

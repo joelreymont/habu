@@ -57,7 +57,7 @@ DYNAMIC-BUFFER READ-BUF u8
    {: first:n label:^ labelu:n :}
    SUBJECT$ first [: READ-ROOM ;] SOURCE:READ-WHOLE-SAMPLED {: u:n :}
    label labelu T-LABEL
-   0 READ-BUF u TEXT TEXT-LEN STR= TTRUE ;
+   0 READ-BUF u TEXT TEXT-LEN STR:= TTRUE ;
 
 : SHORT-READ ( -- )
    SUBJECT$ 1 [: READ-ROOM ;] SOURCE:READ-WHOLE-SAMPLED drop ;
@@ -73,9 +73,9 @@ DYNAMIC-BUFFER READ-BUF u8
    {: outu:len erru:len rc:n :}
    s" the language server counts a file it cannot read as empty" T-LABEL
    rc 0 T=
-   ERR erru LEN>N s" missing.f: not read: throw " CONTAINS? TTRUE
+   ERR erru LEN>N s" missing.f: not read: throw " STR:CONTAINS? TTRUE
    s" ... and still publishes the packet, ranged at the start" T-LABEL
-   OUT outu LEN>N S\" \"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}}" CONTAINS? TTRUE ;
+   OUT outu LEN>N S\" \"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}}" STR:CONTAINS? TTRUE ;
 
 public
 

@@ -67,7 +67,7 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
    {: service:^ su:n account:^ au:n expected:^ eu:n :}
    service su account au OUT SECRET:READ TTRUE
    OUT VEC:COUNT eu T=
-   OUT$ expected eu STR= TTRUE
+   OUT$ expected eu STR:= TTRUE
    CLEAR-OUT ;
 
 
@@ -91,7 +91,7 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
    s" an item follows the bytes the vector holds, which it keeps" T-LABEL
    HOLD
    TEST-SERVICE$ s" first" OUT SECRET:READ TTRUE
-   OUT$ s\" heldnative\x00dummy" STR= TTRUE
+   OUT$ s\" heldnative\x00dummy" STR:= TTRUE
    CLEAR-OUT ;
 
 

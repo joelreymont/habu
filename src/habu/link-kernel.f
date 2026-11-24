@@ -161,10 +161,10 @@ variable PATH-U
 
 : CHECK ( -- )
    KOBJ-U @ 40 < if BAD then
-   0 KOBJ 8 s" HBKERNX6" STR= X64!
-   X64? 0= if 0 KOBJ 8 s" HBKERNEL" STR= 0= if BAD then then
+   0 KOBJ 8 s" HBKERNX6" STR:= X64!
+   X64? 0= if 0 KOBJ 8 s" HBKERNEL" STR:= 0= if BAD then then
    SHA-CTX  0 KOBJ 40 +  KOBJ-U @ 40 -  SUM SHA256-IN
-   SUM 32  0 KOBJ 8 + 32  STR= 0= if
+   SUM 32  0 KOBJ 8 + 32  STR:= 0= if
       SAY-OBJECT
       s" link: the kernel object fails its checksum" EXIT-STATUS:DATAERR die
    then ;
@@ -219,7 +219,7 @@ public
       {: at:n :}
       at KOBJ@ {: len:n :}
       at 8 +  len 7 + -8 and + {: value-at:n :}
-      0 KOBJ at 8 + +  len  a u  STR= if value-at KOBJ@ unloop exit then
+      0 KOBJ at 8 + +  len  a u  STR:= if value-at KOBJ@ unloop exit then
       value-at 8 +
    loop
    drop

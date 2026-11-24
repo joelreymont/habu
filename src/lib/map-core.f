@@ -180,7 +180,7 @@ private
 
 : SLOT-MATCH? ( ^a idx n str -- bool ) {: m:^ ix hash key:^ len :}
    m ix SLOT-HASH@ hash <> if 0 0= 0= exit then
-   m ix SLOT-KEY-A@ m ix SLOT-KEY-U@ key len STR= ;
+   m ix SLOT-KEY-A@ m ix SLOT-KEY-U@ key len STR:= ;
 
 : LOCATE-SLOT ( ^a idx str n -- loc ) {: m:^ ix:idx key:^ len:n hash:n :}
    m ix SLOT-STATE@ MATCH slot-state

@@ -60,8 +60,8 @@ BIG-AT FORMAT-LIMBS 2 + 8 * + constant FORMAT-BYTES
 
 : NONFINITE-TEXT? ( str -- bool )
    2dup 0 SIGN-SKIP {: offset:n :} offset - swap offset + swap
-   2dup s" nan" STR=CI if 2drop true exit then
-   2dup s" inf" STR=CI if 2drop true exit then s" infinity" STR=CI ;
+   2dup s" nan" STR:=CI if 2drop true exit then
+   2dup s" inf" STR:=CI if 2drop true exit then s" infinity" STR:=CI ;
 
 : POW10 ( n -- n ) 1 swap 0 ?do 10 * loop ;
 : PUT-DIGITS ( n ^u8 n -- ) {: value:n out:^ width:n :}

@@ -72,7 +72,7 @@ variable TREE-U
    rc want T= ;
 
 : ERR-HAS? ( n ^u8 n -- bool ) {: erru:n want:^ wantu :}
-   ERR erru want wantu CONTAINS? ;
+   ERR erru want wantu STR:CONTAINS? ;
 
 \ The child runs the program at the path with the arguments put so far, and
 \ with this process's environment, so TMPDIR and the working directory are the
@@ -120,7 +120,7 @@ variable TREE-U
    TREE$ RUN-PATH ;
 
 : OUT-HAS? ( n ^u8 n -- bool ) {: outu:n want:^ wantu :}
-   OUT outu want wantu CONTAINS? ;
+   OUT outu want wantu STR:CONTAINS? ;
 
 \ A normal top-level exit reaches the vector.
 : CASE-NORMAL ( -- )
@@ -484,7 +484,7 @@ variable RUN-FILE-U
    qu qe qrc 67 EXPECT-RC
    0 TEXT-U !
    S\" error[E-BUILT-CASE]: the program's own failure\n  = code: -100001\n" TEXT+
-   ERR qe TEXT$ COUNT-SUB 1 T=
+   ERR qe TEXT$ STR:COUNT-SUB 1 T=
    qe s" uncaught throw" ERR-HAS? TFALSE ;
 
 \ A built program ends an uncaught throw with one record and status 67, no
@@ -505,7 +505,7 @@ variable RUN-FILE-U
    S\" error[E-FS-DIR]: TMPDIR is not a directory\n  = TMPDIR: " TEXT+
    RUN-FILE$ TEXT+
    S\" \n  = help: point TMPDIR at an existing directory, or unset it to use /tmp\n" TEXT+
-   ERR pe TEXT$ COUNT-SUB 1 T=
+   ERR pe TEXT$ STR:COUNT-SUB 1 T=
    pe s" uncaught throw" ERR-HAS? TFALSE
    s" a built program prints the record of a code its throw carries none for" T-LABEL
    EXPECT-CASE-RECORD ;

@@ -1257,7 +1257,7 @@ public
 private
 : CLEANUP-NAMES? ( str n -- bool ) {: a:^ u idx :}
    idx CLEANUP-AT @ u <> if 0 0= 0= exit then
-   idx CLEANUP-PATH a u STR= ;
+   idx CLEANUP-PATH a u STR:= ;
 
 : CLEANUP-FIND ( str -- n ) {: a:^ u :}
    CLEANUP-N @ begin dup 0 > while

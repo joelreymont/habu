@@ -38,7 +38,7 @@ variable IMAGE-U
 
 \ stderr starts with the record's first line.
 : EXPECT-LINE ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu STARTS-WITH? 0= if label labelu GE-FAIL then ;
+   GT-ERR$ want wantu STR:STARTS-WITH? 0= if label labelu GE-FAIL then ;
 
 : RUN-SRC ( str -- ) {: src:^ srcu:n :}
    GE-HB-RESET
@@ -73,7 +73,7 @@ variable IMAGE-U
    S\" error[E-MEMORY-FAULT]: a read or write faulted\n" ;
 
 : FAULT-LINE ( str -- ) {: label:^ labelu:n :}
-   GT-ERR$ FAULT-LINE$ STARTS-WITH? 0= if label labelu GE-FAIL then ;
+   GT-ERR$ FAULT-LINE$ STR:STARTS-WITH? 0= if label labelu GE-FAIL then ;
 
 \ The stripped application's own startup registers the alternate stack before it
 \ installs the handler (src/arch/arm64/boot.f ENTRY,). It has no interpreter
@@ -149,7 +149,7 @@ variable IMAGE-U
    FAULT$ RUN-SRC
    110 label labelu GE-EXPECT-RC
    FAULT-RECORD$ label labelu GE-EXPECT-ERR
-   GT-ERR$ S\" }}\n" ENDS-WITH? 0= if label labelu GE-FAIL then
+   GT-ERR$ S\" }}\n" STR:ENDS-WITH? 0= if label labelu GE-FAIL then
    s" PASS: a memory fault's JSON record, notes and no help" type cr ;
 
 : BODY ( -- )

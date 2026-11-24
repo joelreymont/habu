@@ -141,7 +141,7 @@ public
    FIRST-BYTE dup CH-T = swap CH-F = or ;
 
 : NUMBER? ( value -- bool )
-   FIRST-BYTE dup MINUS = swap STR-DIGIT? or ;
+   FIRST-BYTE dup MINUS = swap STR:DIGIT? or ;
 
 private
 
@@ -368,7 +368,7 @@ private
    doc at + 1+ len 2 - ;
 
 : ESCAPED? ( str -- bool )
-   BACKSLASH INDEX-OF MATCH option
+   BACKSLASH STR:INDEX-OF MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
    ;MATCH ;
@@ -409,7 +409,7 @@ public
 \ A string with an escape streams its decoding, so no buffer bounds it.
 : STRING= ( value str -- bool ) {: v want:^ len:n :}
    v STRING? 0= if false exit then
-   v INSIDE$ 2dup ESCAPED? 0= if want len STR= exit then
+   v INSIDE$ 2dup ESCAPED? 0= if want len STR:= exit then
    2drop
    v 0 [: drop want len MATCH-AT ;] WITH-CURSOR ;
 

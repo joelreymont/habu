@@ -158,7 +158,7 @@ TASK:SEMAPHORE ZIP-START
 
 : RAW-HAS ( str -- ) {: expected:^ len:n :}
    INPUT$ RAW RAW-CAP FS:READ-ALL {: size:n :}
-   RAW size expected len CONTAINS? TTRUE ;
+   RAW size expected len STR:CONTAINS? TTRUE ;
 
 : PRESERVED ( -- )
    KEEP-LOCAL$ RAW-HAS
@@ -178,7 +178,7 @@ TASK:SEMAPHORE ZIP-START
    result 3 s" second" MEMBER=
    result ZIP:CLOSE
    INPUT$ RAW RAW-CAP FS:READ-ALL {: size:n :}
-   RAW size s" stored value" CONTAINS? TFALSE ;
+   RAW size s" stored value" STR:CONTAINS? TFALSE ;
 
 : DISCARD-CHANGES ( -- )
    INPUT$ EDIT {: archive:ZIP:archive :}
@@ -212,7 +212,7 @@ TASK:SEMAPHORE ZIP-START
    path RAW len BYTE-COPY RAW len INPUT$ FS:RENAME-FILE ;
 
 : NO-TEMP ( str -- )
-   FS:BASENAME s" .tmp-" STARTS-WITH? TFALSE ;
+   FS:BASENAME s" .tmp-" STR:STARTS-WITH? TFALSE ;
 
 : INSTALL-FAILURE ( -- )
    INPUT$ ORIGINAL$ FS:WRITE-ALL INPUT$ EDIT {: archive:ZIP:archive :}
@@ -669,8 +669,8 @@ $10000 constant WIDE-COUNT
    path path-len ZIP:OPEN {: archive:ZIP:archive :}
    archive ZIP:COUNT 5 <> if E-READ throw then
    archive idx ENTRY {: member:ZIP:entry :}
-   archive member NAME$ name name-len STR= 0= if E-READ throw then
-   archive member ZIP:READ data data-len STR= 0= if E-READ throw then
+   archive member NAME$ name name-len STR:= 0= if E-READ throw then
+   archive member ZIP:READ data data-len STR:= 0= if E-READ throw then
    archive ZIP:CLOSE ;
 
 : TASK-PATH-A$ ( -- str ) TASK-PATH-A TASK-PATH-A-LEN @ ;

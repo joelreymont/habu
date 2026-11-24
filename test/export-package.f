@@ -693,10 +693,10 @@ create XPK-EMPTY 1 allot
    XPK-RC @ rc T= ;
 
 : XPK-OUT? ( str -- ) {: a:^ u:n :}
-   XPK-OUT XPK-OUT-U @ a u CONTAINS? TTRUE ;
+   XPK-OUT XPK-OUT-U @ a u STR:CONTAINS? TTRUE ;
 
 : XPK-ERR? ( str -- ) {: a:^ u:n :}
-   XPK-ERR XPK-ERR-U @ a u CONTAINS? TTRUE ;
+   XPK-ERR XPK-ERR-U @ a u STR:CONTAINS? TTRUE ;
 
 : XPK-PREPARE ( -- )
    FS:CLEANUP-RESET

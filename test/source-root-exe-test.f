@@ -297,14 +297,14 @@ variable DEEP-U
 \ Exactly this stdout and exit status, and nothing on stderr.
 : EXPECT ( ^u8 n n -- )
    {: want:^ wantu:n rc:n :}
-   RC @ rc = OUT$ want wantu STR= and ERR-U @ 0= and 0= if SHOW then
+   RC @ rc = OUT$ want wantu STR:= and ERR-U @ 0= and 0= if SHOW then
    RC @ rc T=
    OUT$ want wantu T$=
    ERR-U @ 0 T= ;
 
 : STDOUT ( ^u8 n -- )
    {: want:^ wantu:n :}
-   OUT$ want wantu STR= 0= if SHOW then
+   OUT$ want wantu STR:= 0= if SHOW then
    OUT$ want wantu T$= ;
 
 \ The loader's rejection of the missing request name, which it looked for at
@@ -313,25 +313,25 @@ variable DEEP-U
    {: dir:^ diru:n name:^ nameu:n :}
    SB-RESET s" error[E-MISSING-SOURCE]: cannot open `" SB-APPEND
    name nameu SB-APPEND 96 SB-APPEND-C
-   RC @ 70 = ERR$ SB$ CONTAINS? and 0= if SHOW then
+   RC @ 70 = ERR$ SB$ STR:CONTAINS? and 0= if SHOW then
    RC @ 70 T=
-   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ SB$ STR:CONTAINS? TTRUE
    SB-RESET dir diru SB-APPEND 47 SB-APPEND-C name nameu SB-APPEND
-   ERR$ SB$ CONTAINS? dup 0= if SHOW then TTRUE ;
+   ERR$ SB$ STR:CONTAINS? dup 0= if SHOW then TTRUE ;
 
 \ A rejection record: exit 70, nothing on stdout, this code on
 \ stderr.
 : REJECTED ( ^u8 n -- )
    {: code:^ codeu:n :}
-   RC @ 70 = OUT-U @ 0= and ERR$ code codeu CONTAINS? and 0= if SHOW then
+   RC @ 70 = OUT-U @ 0= and ERR$ code codeu STR:CONTAINS? and 0= if SHOW then
    RC @ 70 T=
    OUT-U @ 0 T=
-   ERR$ code codeu CONTAINS? TTRUE ;
+   ERR$ code codeu STR:CONTAINS? TTRUE ;
 
 \ The record says this too.
 : SAYS ( ^u8 n -- )
    {: want:^ wantu:n :}
-   ERR$ want wantu CONTAINS? dup 0= if SHOW then TTRUE ;
+   ERR$ want wantu STR:CONTAINS? dup 0= if SHOW then TTRUE ;
 
 \ The root, whether a frozen row answers, then a library only a root holds.
 : ROOT-PROGRAM ( -- )

@@ -915,7 +915,7 @@ variable OPEN-N
    then
    s" /" N>BLEN PATH-B APPEND-SPAN
    SHARED? @ WORKSPACE? @ and if
-      a u s" /" FIND-SUB MATCH option
+      a u s" /" STR:FIND-SUB MATCH option
          none OF a u ENDOF
          some OF {: cut:idx :} a cut IDX>N 1+ + u cut IDX>N 1+ - ENDOF
       ;MATCH
@@ -973,7 +973,7 @@ variable OPEN-N
    SHARED? @ 0= if 2drop exit then
    {: p:^ pu:n :}
    OPEN-N @ 0 ?do
-      i OPEN-PATH p pu STR= if
+      i OPEN-PATH p pu STR:= if
          OPEN-N @ 1- {: last:n :}
          i last <> if
             last OPEN-PATH i OPEN-AT swap BYTE-COPY
@@ -1136,11 +1136,11 @@ variable OPEN-N
    CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
    src srcu OUT-SPAN SPAN:$ drop outu LEN>N
    ERR-SPAN SPAN:$ drop erru LEN>N r 67 T-ENDING-EXITED=
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" CONTAINS? TTRUE
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" CONTAINS? TTRUE
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" CONTAINS? TTRUE
-   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stderr" CONTAINS? TTRUE
-   ERR-SPAN SPAN:$ drop erru LEN>N E-PROC-TIMEOUT TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE ;
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" STR:CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" STR:CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" STR:CONTAINS? TTRUE
+   OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stderr" STR:CONTAINS? TTRUE
+   ERR-SPAN SPAN:$ drop erru LEN>N E-PROC-TIMEOUT TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
 
 : TOOK ( n -- )
    {: ns:n :}
@@ -1178,12 +1178,12 @@ variable OPEN-N
 : FRAME-LEN ( str -- n )
    {: a:^ u:n :}
    s" Content-Length: " nip {: name:n :}
-   a u s\" \r\n\r\n" FIND-SUB MATCH option
+   a u s\" \r\n\r\n" STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: end:n :}
    end name < if -1 exit then
-   a name + end name - STR>NUMBER? MATCH option
+   a name + end name - STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -1200,7 +1200,7 @@ variable OPEN-N
    a u FRAME-LEN {: len:n :}
    len 0 < if MISFRAMED exit then
    len HEAD$ {: h:^ hu:n :}
-   a u h hu STARTS-WITH? 0= if MISFRAMED exit then
+   a u h hu STR:STARTS-WITH? 0= if MISFRAMED exit then
    hu len + u > if MISFRAMED exit then
    hu len + OUT-AT +!
    a hu + len ;
@@ -1218,7 +1218,7 @@ variable OPEN-N
    s\" {\"jsonrpc\":\"2.0\",\"id\":" MSG+ i iu MSG+ s\" ,\"error\":{\"code\":" MSG+
    code INT$ MSG+ s\" ,\"message\":\"" MSG+
    b bu MSG$ nip min MSG$ ALIKE
-   b bu s\" \"}}" ENDS-WITH? LABEL$ T-LABEL TTRUE ;
+   b bu s\" \"}}" STR:ENDS-WITH? LABEL$ T-LABEL TTRUE ;
 
 : CAPABILITIES ( -- )
    MSG-CLEAR
@@ -1649,7 +1649,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    LSP-CHECK:VERIFY-OUT$ {: at:n a:^ u:n :}
    at u min {: from:n :}
    a from + u from - {: p:^ pu:n :}
-   p pu 10 INDEX-OF MATCH option
+   p pu 10 STR:INDEX-OF MATCH option
       none OF p pu ENDOF
       some OF IDX>N p swap ENDOF
    ;MATCH ;
@@ -1713,7 +1713,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 : RANGE+ ( n n n n -- )
    {: l1:n c1:n l2:n c2:n :}
-   EXP$ s" [" ENDS-WITH? 0= if s" ," EXP+ then
+   EXP$ s" [" STR:ENDS-WITH? 0= if s" ," EXP+ then
    s\" {\"range\":{\"start\":{\"line\":" EXP+ l1 INT$ EXP+
    s\" ,\"character\":" EXP+ c1 INT$ EXP+
    s\" },\"end\":{\"line\":" EXP+ l2 INT$ EXP+
@@ -1776,7 +1776,7 @@ variable PUB-COUNT
    EXP$ {: want:^ wantu:n :}
    PUB-COUNT @ 0 ?do
       i PUB-USED @ 0= if
-         PUB-BODIES i ptr-field @ i PUB-LENS @ want wantu STR= if
+         PUB-BODIES i ptr-field @ i PUB-LENS @ want wantu STR:= if
             true i PUB-USED ! unloop exit
          then
       then
@@ -1792,12 +1792,12 @@ variable PUB-COUNT
 \ request marks the end of the batch, so every preceding frame must be an
 \ empty diagnostic publication.
 : CLEANUP-REPLY? ( str -- bool )
-   2dup s\" {\"jsonrpc\":\"2.0\",\"id\":99999999,\"error\":{\"code\":-32601,\"message\":\"" STARTS-WITH?
-   >r s\" \"}}" ENDS-WITH? r> and ;
+   2dup s\" {\"jsonrpc\":\"2.0\",\"id\":99999999,\"error\":{\"code\":-32601,\"message\":\"" STR:STARTS-WITH?
+   >r s\" \"}}" STR:ENDS-WITH? r> and ;
 
 : CLEANUP-EMPTY? ( str -- bool )
-   2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" STARTS-WITH?
-   >r s\" \",\"diagnostics\":[]}}" ENDS-WITH? r> and ;
+   2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" STR:STARTS-WITH?
+   >r s\" \",\"diagnostics\":[]}}" STR:ENDS-WITH? r> and ;
 
 : CLEANUP-DRAIN ( -- )
    begin
@@ -2197,7 +2197,7 @@ variable PUB-COUNT
    S-PATH 1 EXPECT PUBLISHES
    \ A document opened by an alias publishes at that URI. Withdraw the prior
    \ disk list at the canonical URI as well, so it cannot leave stale errors.
-   DEP-CANON DEP-PATH STR= 0= if DEP-CANON -1 EXPECT PUBLISHES then
+   DEP-CANON DEP-PATH STR:= 0= if DEP-CANON -1 EXPECT PUBLISHES then
    DEP-PATH CLOSES
    SAY
    DEP-PATH -1 EXPECT PUBLISHES
@@ -2575,7 +2575,7 @@ USE-MAX 1 + constant OVER-USINGS
 
 : SYMBOL+ ( str n str n n n str -- )
    {: w:^ wu:n k:n u:^ uu:n l:n c1:n c2:n p:^ pu:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"name\":\"" MSG+ w wu MSG+
    s\" \",\"kind\":" MSG+ k INT$ MSG+
    s\" ,\"location\":{\"uri\":\"" MSG+ u uu MSG+
@@ -3051,7 +3051,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    {: size:n t:^ tu:n :}
    size 0 ?do
       i 0= if 0 0= else i 1- TREE-TEXT c@ 10 = then
-      if i TREE-TEXT size i - t tu STARTS-WITH? if i unloop exit then then
+      if i TREE-TEXT size i - t tu STR:STARTS-WITH? if i unloop exit then then
    loop
    SB-RESET s" lsp-test: no line starts with " SB-APPEND t tu SB-APPEND
    SB$ EXIT-STATUS:FAILURE die ;
@@ -3721,7 +3721,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ character C1 to C2 of line L.
 : HIGHLIGHT+ ( n n n -- )
    {: l:n c1:n c2:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
@@ -3979,7 +3979,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ index in the legend and its modifiers' bits.
 : TOKEN+ ( n n n n n -- )
    {: dl:n dc:n len:n ty:n mods:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    dl INT$ MSG+ s" ," MSG+ dc INT$ MSG+ s" ," MSG+ len INT$ MSG+ s" ," MSG+
    ty INT$ MSG+ s" ," MSG+ mods INT$ MSG+ ;
 
@@ -4181,8 +4181,8 @@ create WAS-B HDR-BYTES allot
    slot LSP-DEFS:DEFS-DECL-RANGE ?do
       i LSP-DEFS:DECL-GROUP g =
       i LSP-DEFS:DECL-BYTES e = swap s = and and
-      i LSP-DEFS:DECL-NAME$ nm nu STR= and
-      i LSP-DEFS:DECL-PACKAGE$ p pu STR= and
+      i LSP-DEFS:DECL-NAME$ nm nu STR:= and
+      i LSP-DEFS:DECL-PACKAGE$ p pu STR:= and
       i LSP-DEFS:DECL-VIS v = and
       if i LSP-DEFS:DECL-VISIT unloop exit then
    loop
@@ -4297,7 +4297,7 @@ create WAS-B HDR-BYTES allot
 
 : ITEM+ ( str str -- )
    {: w:^ wu:n d:^ du:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"label\":\"" MSG+ w wu MSG+ s\" \"" MSG+
    du 0 > if s\" ,\"detail\":\"" MSG+ d du MSG+ s\" \"" MSG+ then
    s" }" MSG+ ;
@@ -4464,7 +4464,7 @@ create WAS-B HDR-BYTES allot
 
 : LINK+ ( n n n str -- )
    {: l:n c1:n c2:n p:^ pu:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+
@@ -4805,7 +4805,7 @@ variable WS-ROOT-U
 
 : REF+ ( str n n n -- )
    {: u:^ uu:n l:n c1:n c2:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"uri\":\"" MSG+ u uu MSG+
    s\" \",\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
@@ -4852,7 +4852,7 @@ variable WS-ROOT-U
 : CONFLICT-FIRST? ( -- bool )
    s\" \"}}" EXP+
    HEAR
-   NEXT-BODY EXP$ STR= ;
+   NEXT-BODY EXP$ STR:= ;
 
 : ELSEWHERE+ ( str n str -- )
    {: p:^ pu:n l:n s:^ su:n :}
@@ -4867,7 +4867,7 @@ variable WS-ROOT-U
    OUT-AT @ {: from:n :}
    i iu -32803 REFUSED
    OUT-SPAN SPAN:$ drop from + OUT-AT @ from -
-   p pu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE CONTAINS?
+   p pu SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE STR:CONTAINS?
    s" -32803 names the file" HOLDS ;
 
 : ROOK-DECL+ ( -- )  REF-A-PATH URI-OF 0 2 6 REF+ ;
@@ -5359,14 +5359,14 @@ variable WS-ROOT-U
    s" refs-cnf/w/z.f" DISK-URI 0 14 18 REF+
    SYMBOLS-END ;
 
-\ d.f checks z.f inside REVIEW, where DUP and ASCII-LOWER are private.
+\ d.f checks z.f inside REVIEW, where DUP and CORE-FOLD-C are private.
 \ z.f alone, and e.f requiring it, check the same bytes outside REVIEW,
 \ binding the engine's primitive and image word. These checks verify, so each
 \ shared token conflicts.
 : TEXT-ENG-D ( -- str )
-   s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: ASCII-LOWER ( n -- n ) ;\nrequire z.f\n;package\n" ;
+   s\" package REVIEW\n: DUP ( n -- n n ) 0 over + ;\n: CORE-FOLD-C ( n -- n ) ;\nrequire z.f\n;package\n" ;
 : TEXT-ENG-Z ( -- str )
-   s\" : ZU ( n -- n n ) DUP ;\n: AU ( n -- n ) ASCII-LOWER ;\n" ;
+   s\" : ZU ( n -- n n ) DUP ;\n: AU ( n -- n ) CORE-FOLD-C ;\n" ;
 : TEXT-ENG-E ( -- str )  s\" require z.f\n" ;
 
 : REFS-ENG-TURNS ( -- )
@@ -6224,12 +6224,12 @@ variable PROBE-DECLS
 
 : EDITS-IN ( str -- )
    {: u:^ uu:n :}
-   MSG$ s" {" ENDS-WITH? 0= if s" ]," MSG+ then
+   MSG$ s" {" STR:ENDS-WITH? 0= if s" ]," MSG+ then
    s\" \"" MSG+ u uu MSG+ s\" \":[" MSG+ ;
 
 : EDIT-AS+ ( n n n str -- )
    {: l:n c1:n c2:n t:^ tu:n :}
-   MSG$ s" [" ENDS-WITH? 0= if s" ," MSG+ then
+   MSG$ s" [" STR:ENDS-WITH? 0= if s" ," MSG+ then
    s\" {\"range\":{\"start\":{\"line\":" MSG+ l INT$ MSG+
    s\" ,\"character\":" MSG+ c1 INT$ MSG+
    s\" },\"end\":{\"line\":" MSG+ l INT$ MSG+

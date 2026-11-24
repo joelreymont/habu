@@ -373,7 +373,7 @@ undefine include
 \ stdout, exit-kind EXIT, rc 70 — the silent-exit-70 red/green discriminator.
 : ASSERT-NAMED ( str -- ) {: name:^ nameu:n :}
    ERR-U @ 0 > TTRUE
-   ERR$ name nameu CONTAINS? TTRUE
+   ERR$ name nameu STR:CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ 70 T= ;
@@ -386,13 +386,13 @@ undefine include
 : ASSERT-OK-OUT ( str -- )
    {: a:^ u:n :}
    ASSERT-OK
-   OUT$ a u CONTAINS? TTRUE ;
+   OUT$ a u STR:CONTAINS? TTRUE ;
 
 \ stderr places the record at PATH's PLACE, `:line:column`.
 : ASSERT-AT ( str str -- ) {: path:^ pathu:n place:^ placeu:n :}
    SB-RESET  s"  --> " SB-APPEND  path pathu SB-APPEND  place placeu SB-APPEND
    10 SB-APPEND-C
-   ERR$ SB$ CONTAINS? TTRUE ;
+   ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ body.f is rejected with the record HEAD at PLACE.
 : BODY-REJECT-AT ( str str -- ) {: head:^ headu:n place:^ placeu:n :}
@@ -432,7 +432,7 @@ undefine include
    s" checked-body reject names word and token" T-LABEL
    BODY$ RUN
    s" error[E-MISMATCH]" s" :1:20" BODY-REJECT-AT
-   ERR$ s" the stack is empty after this" CONTAINS? TTRUE ;
+   ERR$ s" the stack is empty after this" STR:CONTAINS? TTRUE ;
 
 \ Store/fetch target mismatch: `!`/`@` need
 \ a cell-width `^a`; a `^u8` must name the pair, not just the token.
@@ -441,8 +441,8 @@ undefine include
    BPS$ RUN
    s" error[E-MISMATCH]: `!` takes ^a" ASSERT-NAMED
    BPS$ s" :1:86" ASSERT-AT
-   ERR$ S\" = expected: ^a\n" CONTAINS? TTRUE
-   ERR$ S\" = found: ^u8\n" CONTAINS? TTRUE ;
+   ERR$ S\" = expected: ^a\n" STR:CONTAINS? TTRUE
+   ERR$ S\" = found: ^u8\n" STR:CONTAINS? TTRUE ;
 
 \ Each control-flow case is a load of its own: a load stops at its first refusal.
 \ Its record HEAD names the reason, placed at the token at PLACE.
@@ -456,7 +456,7 @@ undefine include
 \ A depth change names the start row, or the else arm's, as expected and the
 \ changed row as found.
 : CF-ROWS? ( -- )
-   ERR$ S\" = expected: n\n  = found: n n\n" CONTAINS? TTRUE ;
+   ERR$ S\" = expected: n\n  = found: n n\n" STR:CONTAINS? TTRUE ;
 
 : TEST-CONTROL-FLOW ( -- )
    s" a loop body that changes depth names both rows" T-LABEL
@@ -505,8 +505,8 @@ undefine include
    BPF$ RUN
    s" error[E-MISMATCH]: `@` takes ^a" ASSERT-NAMED
    BPF$ s" :1:88" ASSERT-AT
-   ERR$ S\" = expected: ^a\n" CONTAINS? TTRUE
-   ERR$ S\" = found: ^u8\n" CONTAINS? TTRUE ;
+   ERR$ S\" = expected: ^a\n" STR:CONTAINS? TTRUE
+   ERR$ S\" = found: ^u8\n" STR:CONTAINS? TTRUE ;
 
 \ body.f holding the one line SRC is rejected with this whole record: MSG, the
 \ token at column COL marked by MARK (its carets and label), then TAIL (notes
@@ -521,7 +521,7 @@ undefine include
    S\" \n  |\n1 | " SB-APPEND  src srcu SB-APPEND  S\" \n  |" SB-APPEND
    col 0 ?do 32 SB-APPEND-C loop
    mark marku SB-APPEND  S\" \n  " SB-APPEND  tail tailu SB-APPEND  S\" \n\n" SB-APPEND
-   ERR$ SB$ STR= TTRUE ;
+   ERR$ SB$ STR:= TTRUE ;
 
 : TEST-PARAMETRIC ( -- )
    s" generic output cannot forge a pointer through an integer" T-LABEL
@@ -578,7 +578,7 @@ undefine include
    BODY$ RUN
    s" error[E-LITERAL-RANGE]: the number `99999999999999999999999` is out of range" s" :1:27"
       BODY-REJECT-AT
-   ERR$ s" = range: a cell holds `-9223372036854775808` to `9223372036854775807`" CONTAINS? TTRUE ;
+   ERR$ s" = range: a cell holds `-9223372036854775808` to `9223372036854775807`" STR:CONTAINS? TTRUE ;
 
 \ A top-level `target` beside the program's own TARGET could mean either, and is refused by name.
 : TEST-SECTION-CLASH ( -- )
@@ -615,22 +615,22 @@ undefine include
    BODY$ s" TRUSTED: LRD-DEAD ( -- n ) 1 exit DUP ; LRD-DEAD . cr" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-CONTROL]: no path reaches `DUP`" s" :1:35" BODY-REJECT-AT
-   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
    s" T0 refuses a dead string literal at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADS ( -- n ) 1 exit s\" ab\" drop ;" FS:WRITE-ALL
    BODY$ RUN
    S\" error[E-T0-CONTROL]: no path reaches `s\"`" s" :1:36" BODY-REJECT-AT
-   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
    s" T0 refuses a dead quotation inside a quotation at its opener" T-LABEL
    BODY$ s" TRUSTED: LRD-DEADQ ( -- [ -- n ] ) [: 1 exit [: 2 ;] ;] ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-CONTROL]: no path reaches `[:`" s" :1:46" BODY-REJECT-AT
-   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
    s" T0 refuses a dead string holding ;] inside a quotation at its opener" T-LABEL
    BODY$ S\" TRUSTED: LRD-DEADQS ( -- [ -- n ] ) [: 1 exit s\" a ;] b\" drop ;] ;" FS:WRITE-ALL
    BODY$ RUN
    S\" error[E-T0-CONTROL]: no path reaches `s\"`" s" :1:47" BODY-REJECT-AT
-   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
    s" T0 refuses a construct of an unknown variant" T-LABEL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-BADVAR ( -- n ) construct lrd-choice bogus 1 ;" FS:WRITE-ALL
    BODY$ RUN
@@ -682,7 +682,7 @@ undefine include
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    head headu ASSERT-NAMED
-   ERR$ s" ^ unknown type" CONTAINS? TTRUE ;
+   ERR$ s" ^ unknown type" STR:CONTAINS? TTRUE ;
 
 : TEST-STORAGE ( -- )
    s" undefined storage types are named refusals" T-LABEL
@@ -702,7 +702,7 @@ undefine include
    {: src:^ srcu:n head:^ headu:n place:^ placeu:n rc:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
-   ERR$ head headu CONTAINS? TTRUE
+   ERR$ head headu STR:CONTAINS? TTRUE
    BODY$ place placeu ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
@@ -755,9 +755,9 @@ undefine include
 : ASSERT-EVALUATED ( str str -- )
    {: text:^ textu:n label:^ labelu:n :}
    SB-RESET s" = evaluated: " SB-APPEND text textu SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE
+   ERR$ SB$ STR:CONTAINS? TTRUE
    SB-RESET s" ^ " SB-APPEND label labelu SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE ;
+   ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 : TEST-EVALUATED-PLACE ( -- )
    s" an evaluated string's rejection is placed at its evaluate" T-LABEL
@@ -796,7 +796,7 @@ undefine include
    EXITED @ TTRUE
    RC @ 0 T=
    SB-RESET  s"  --> " SB-APPEND  BODY$ SB-APPEND  s" :2:12" SB-APPEND  10 SB-APPEND-C
-   ERR$ SB$ COUNT-SUB 2 T= ;
+   ERR$ SB$ STR:COUNT-SUB 2 T= ;
 
 : TEST-OUTER-FILE-PLACE ( -- )
    MARK$ s" LRD-MARK" FS:WRITE-ALL
@@ -851,7 +851,7 @@ undefine include
    s" a replay inside a definition while a task is live is rejected" T-LABEL
    BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( str -- ) EFFECT:EMPTY define-word [: s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\nGO\ns\" LRD-OUTER\" RPL ;\n" FS:WRITE-ALL
    BODY$ RUN
-   ERR$ s" error[E-VERIFY-WINDOW]: the checker's replay ran inside a definition while a task is live" COUNT-SUB 1 T=
+   ERR$ s" error[E-VERIFY-WINDOW]: the checker's replay ran inside a definition while a task is live" STR:COUNT-SUB 1 T=
    BODY$ s" :10:15" ASSERT-AT
    OUT-U @ 0 T=
    EXITED @ TTRUE
@@ -859,7 +859,7 @@ undefine include
    s" a task started inside a replay of a definition is rejected and the definition completes" T-LABEL
    BODY$ S\" require src/lib/task.f\nrequire src/lib/test/wait.f\nrequire src/habu/verify-source.f\nTASK:MIN-STACK TASK:TASK WORKER\nvariable READY\n: SPIN ( -- ) 1 READY atomic! begin TASK:PAUSE again ;\n: GO ( -- ) ['] SPIN WORKER TASK:ACTIVATE  READY 1 WORKER TEST-WAIT:FOR-CELL ;\n: RPL ( -- ) [: GO s\" : RA ( -- ) ;\" VERIFY:SOURCE-BUF-IN-SCOPE ;] CHECK:SCOPED ;\n: EV ( str -- ) EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word [: RPL ;] catch . ;\ns\" OUTER\" EV 81 ;\nOUTER . cr\n: AFTER ( -- n ) 82 ;\nAFTER . cr\n" FS:WRITE-ALL
    BODY$ RUN
-   OUT$ s\" -3604\n81\n\n82\n\n" STR= TTRUE
+   OUT$ s\" -3604\n81\n\n82\n\n" STR:= TTRUE
    ERR-U @ 0 T=
    EXITED @ TTRUE
    RC @ 0 T= ;
@@ -872,7 +872,7 @@ undefine include
    BODY$ RUN
    s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
       s" :3:50" BODY-REJECT-AT
-   ERR$ s" = found: str [ -- renders parses nominal ]" CONTAINS? TTRUE ;
+   ERR$ s" = found: str [ -- renders parses nominal ]" STR:CONTAINS? TTRUE ;
 
 \ VERIFY:ON-CANDIDATE runs while a composition is open and states no facts, so
 \ installing a composition in it is rejected at the `is`.
@@ -882,7 +882,7 @@ undefine include
    BODY$ RUN
    s" error[E-MISMATCH]: this quotation does more than the type that keeps it states"
       s" :4:33" BODY-REJECT-AT
-   ERR$ s" = found: [ str str n n -- renders parses nominal ]" CONTAINS? TTRUE ;
+   ERR$ s" = found: [ str str n n -- renders parses nominal ]" STR:CONTAINS? TTRUE ;
 
 \ A refused `cast:` names its code, place, word and reason.
 : TEST-CAST ( -- )
@@ -901,7 +901,7 @@ undefine include
    BODY$ RUN
    s" error[E-UNSAFE]: `evaluate` reads source or changes the compiler's or checker's state, which no stack effect describes"
       s" :1:23" BODY-REJECT-AT
-   ERR$ s" `evaluate-closed`" CONTAINS? TTRUE ;
+   ERR$ s" `evaluate-closed`" STR:CONTAINS? TTRUE ;
 
 \ A top-level keyword in a checked body is named as a keyword, with writing it
 \ at top level as the help.
@@ -911,7 +911,7 @@ undefine include
    BODY$ RUN
    s" error[E-UNDEFINED]: `public` is a top-level keyword, not a word"
       s" :1:17" BODY-REJECT-AT
-   ERR$ s" outside any definition" CONTAINS? TTRUE ;
+   ERR$ s" outside any definition" STR:CONTAINS? TTRUE ;
 
 \ A top-level parser in a checked body is named as a keyword, with its bracket
 \ form as the help.
@@ -921,7 +921,7 @@ undefine include
    BODY$ RUN
    s" error[E-UNDEFINED]: `char` is a top-level keyword, not a word"
       s" :1:20" BODY-REJECT-AT
-   ERR$ s" help: write `[char]` in a body" CONTAINS? TTRUE ;
+   ERR$ s" help: write `[char]` in a body" STR:CONTAINS? TTRUE ;
 
 : TEST-KEYWORD-TICK ( -- )
    s" a checked body using ' names it a top-level keyword" T-LABEL
@@ -929,7 +929,7 @@ undefine include
    BODY$ RUN
    s" error[E-UNDEFINED]: `'` is a top-level keyword, not a word"
       s" :1:19" BODY-REJECT-AT
-   ERR$ s" help: write `[']` in a body" CONTAINS? TTRUE ;
+   ERR$ s" help: write `[']` in a body" STR:CONTAINS? TTRUE ;
 
 \ A `:}` with no `{:` open is told it closes no locals list.
 : TEST-LOCALS-END ( -- )
@@ -938,14 +938,14 @@ undefine include
    BODY$ RUN
    s" error[E-UNDEFINED]: `:}` closes no locals list"
       s" :1:17" BODY-REJECT-AT
-   ERR$ s" ^^ no `{:` open" CONTAINS? TTRUE
+   ERR$ s" ^^ no `{:` open" STR:CONTAINS? TTRUE
    ERR$ s" help: a locals list begins with `{:` and this `:}` closes none: delete it, or write `{:` where the list begins"
-      CONTAINS? TTRUE ;
+      STR:CONTAINS? TTRUE ;
 
 : ASSERT-CONSTANT-KEYWORD ( str -- ) {: at:^ atu:n :}
    s" error[E-UNDEFINED]: `constant` is a top-level keyword, not a word"
       at atu BODY-REJECT-AT
-   ERR$ s" outside any definition" CONTAINS? TTRUE ;
+   ERR$ s" outside any definition" STR:CONTAINS? TTRUE ;
 
 \ A checked body's `constant` is named a keyword under either loader, whatever
 \ inputs the body declares.
@@ -972,32 +972,32 @@ undefine include
    EXITED @ TTRUE
    RC @ 70 T=
    OUT-U @ 0 T=
-   ERR$ s" error[E-EVAL-RESIDUE]: " STARTS-WITH? TTRUE
-   ERR$ msg msgu CONTAINS? TTRUE
-   ERR$ s" E-EVAL-RESIDUE" COUNT-SUB 1 T=
-   ERR$ at atu CONTAINS? TTRUE
-   ERR$ s" uncaught throw" CONTAINS? TFALSE ;
+   ERR$ s" error[E-EVAL-RESIDUE]: " STR:STARTS-WITH? TTRUE
+   ERR$ msg msgu STR:CONTAINS? TTRUE
+   ERR$ s" E-EVAL-RESIDUE" STR:COUNT-SUB 1 T=
+   ERR$ at atu STR:CONTAINS? TTRUE
+   ERR$ s" uncaught throw" STR:CONTAINS? TFALSE ;
 
 : TEST-RESIDUE ( -- )
    s" residue names the cell count and the file" T-LABEL
    RES$ RUN
    s" this file leaves 2 cells" s" /residue.f:1:1" ASSERT-RESIDUE
-   ERR$ s" = left: n n" CONTAINS? TTRUE
+   ERR$ s" = left: n n" STR:CONTAINS? TTRUE
    s" a declaration's leftover cell is residue too" T-LABEL
    RTYPE$ RUN
    s" this file leaves 1 cell " s" /residue-type.f:2:1" ASSERT-RESIDUE
    s" nested residue is named once, at the innermost file" T-LABEL
    RNEST$ RUN
    s" this file leaves 2 cells" s" /residue.f:1:1" ASSERT-RESIDUE
-   ERR$ s" residue-nest.f" CONTAINS? TFALSE
+   ERR$ s" residue-nest.f" STR:CONTAINS? TFALSE
    s" caught residue prints its record and keeps its code" T-LABEL
    RCATCH$ RUN
    EXITED @ TTRUE
    RC @ 0 T=
-   OUT$ S\" 70\n" STR= TTRUE
-   ERR$ s" error[E-EVAL-RESIDUE]: this file leaves 2 cells" STARTS-WITH? TTRUE
-   ERR$ s" /residue.f:1:1" CONTAINS? TTRUE
-   ERR$ s" E-EVAL-RESIDUE" COUNT-SUB 1 T= ;
+   OUT$ S\" 70\n" STR:= TTRUE
+   ERR$ s" error[E-EVAL-RESIDUE]: this file leaves 2 cells" STR:STARTS-WITH? TTRUE
+   ERR$ s" /residue.f:1:1" STR:CONTAINS? TTRUE
+   ERR$ s" E-EVAL-RESIDUE" STR:COUNT-SUB 1 T= ;
 
 : ASSERT-REJECTED ( n -- )
    {: rc:n :}
@@ -1089,8 +1089,8 @@ undefine include
    FS:WRITE-ALL
    BODY$ RUN
    s" error[E-MISMATCH]: LRD-ROWS ends with [ -- ] n" ASSERT-NAMED
-   ERR$ S\" = inferred: R [ R -- R ] -- R [ R -- R ] n\n" CONTAINS? TTRUE
-   ERR$ s" or declare ( R [ R -- R ] -- R [ R -- R ] n )" CONTAINS? TTRUE
+   ERR$ S\" = inferred: R [ R -- R ] -- R [ R -- R ] n\n" STR:CONTAINS? TTRUE
+   ERR$ s" or declare ( R [ R -- R ] -- R [ R -- R ] n )" STR:CONTAINS? TTRUE
    BODY$
    s" : LRD-ROWS ( R [ R -- R ] -- R [ R -- R ] n ) dup >r execute r> 1 ;"
    FS:WRITE-ALL
@@ -1263,8 +1263,8 @@ undefine include
    s" tools/check.f --all-errors ends a top-level [type]'s operand before ;]" T-LABEL
    BODY$ S\" [type] ;]\n" FS:WRITE-ALL
    BODY$ CHECK-ALL-RUN
-   ERR$ s" error[E-UNDEFINED]" COUNT-SUB 2 T=
-   ERR$ s" `;]` works only inside a definition" CONTAINS? TTRUE
+   ERR$ s" error[E-UNDEFINED]" STR:COUNT-SUB 2 T=
+   ERR$ s" `;]` works only inside a definition" STR:CONTAINS? TTRUE
    RC @ 70 T=
    s" tools/check.f --all-errors reads a top-level is past a comment" T-LABEL
    BODY$ S\" is ( c ) zzq\n" FS:WRITE-ALL
@@ -1362,7 +1362,7 @@ undefine include
    S\" \n  = help: " SB-APPEND
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
-   ERR$ SB$ STARTS-WITH? TTRUE
+   ERR$ SB$ STR:STARTS-WITH? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
    RC @ 67 T= ;
@@ -1371,7 +1371,7 @@ undefine include
 : HELP-MOST ( -- )
    SB-RESET  s" = help: pass a path of 1 to " SB-APPEND
    PATH-CAP FMT:SB-INT  S\"  bytes\n" SB-APPEND
-   ERR$ SB$ CONTAINS? TTRUE ;
+   ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 4220 constant LONG-QS
 create LONG LONG-QS 64 + allot
@@ -1412,7 +1412,7 @@ variable LONG-U
    1 43 s" include"
    S\" move `include` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" included`"
    ASSERT-IMM-DIAG
-   OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
+   OUT$ s" LRD-FRAGMENT-EXECUTED" STR:CONTAINS? TFALSE ;
 
 : TEST-IMM-REQUIRE ( -- )
    s" checked require rejects before executing its fragment" T-LABEL
@@ -1421,15 +1421,15 @@ variable LONG-U
    1 43 s" require"
    S\" move `require` and its path out of the definition to top level, or load the file when the word runs with `s\" path\" required`"
    ASSERT-IMM-DIAG
-   OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
+   OUT$ s" LRD-FRAGMENT-EXECUTED" STR:CONTAINS? TFALSE ;
 
 : TEST-IMM-CHECK ( -- )
    s" check.f loads nothing for a body's include" T-LABEL
    MISS$ CHECK-RUN
    EXITED @ TTRUE
    RC @ 70 T=
-   ERR$ s" E-UNMODELED-IMMEDIATE" COUNT-SUB 1 T=
-   ERR$ s" E-MISSING-SOURCE" CONTAINS? TFALSE ;
+   ERR$ s" E-UNMODELED-IMMEDIATE" STR:COUNT-SUB 1 T=
+   ERR$ s" E-MISSING-SOURCE" STR:CONTAINS? TFALSE ;
 
 : TEST-IMM-CALLER ( -- )
    s" an unmodeled immediate gets one canonical preflight diagnostic" T-LABEL
@@ -1488,7 +1488,7 @@ variable LONG-U
    BODY$ s" TRUSTED: LRD-NO-TARGET ( -- ) [: ;] is ;" FS:WRITE-ALL
    BODY$ RUN
    s" error[E-T0-DEFER]: `is` names no deferred word" s" :1:37" BODY-REJECT-AT
-   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   ERR$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
    s" a trusted is naming no word is refused" T-LABEL
    BODY$ s" TRUSTED: LRD-NO-DEFER ( -- ) [: ;] is LRD-NO-SUCH-DEFER ;" FS:WRITE-ALL
    BODY$ RUN
@@ -1524,7 +1524,7 @@ variable LONG-U
    BODY$ SB$ FS:WRITE-ALL
    BODY$ RUN
    s" E-BAD-DECLARATION" ASSERT-NAMED
-   ERR$ s" E-TASK-COMPILE" CONTAINS? TFALSE ;
+   ERR$ s" E-TASK-COMPILE" STR:CONTAINS? TFALSE ;
 
 : MAIN ( -- )
    T-RESET

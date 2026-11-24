@@ -86,7 +86,7 @@ variable RC
    OUT-U @ 0 T= ;
 
 : ERR-HAS ( str -- ) {: a:^ u:n :}
-   ERR$ a u CONTAINS? TTRUE ;
+   ERR$ a u STR:CONTAINS? TTRUE ;
 
 \ The string builder holds <pre><root>/<rel>`.
 : SB-NAMES ( str str -- )
@@ -127,7 +127,7 @@ variable RC
    s" with-nested" LOAD-CASE
    70 EXITS
    s" `SOURCE-ROOT:WITH` got `" s" absent" SB-NAMES SB$ ERR-HAS
-   ERR$ s" with-nested.f:2:" CONTAINS? TFALSE ;
+   ERR$ s" with-nested.f:2:" STR:CONTAINS? TFALSE ;
 
 \ A loaded file is a closed program: its `;package` of the package its includer
 \ opened is rejected where it stands, not at the includer's own `;package`.
@@ -157,7 +157,7 @@ variable RC
    s" with-required" LOAD-CASE
    70 EXITS
    s" cannot open `" s" absent/x.f" SB-NAMES SB$ ERR-HAS
-   ERR$ s"  --> " CONTAINS? TFALSE ;
+   ERR$ s"  --> " STR:CONTAINS? TFALSE ;
 
 \ A POLICY-WITH-ROOT opened inside another one's callback: its record names its
 \ own path and stands nowhere on the line of the outer call.
@@ -172,7 +172,7 @@ variable RC
    s" policy-nested" LOAD-CASE
    70 EXITS
    s" `SOURCE-ROOT:POLICY-WITH-ROOT` got `" s" absent" SB-NAMES SB$ ERR-HAS
-   ERR$ s" policy-nested.f:3:" CONTAINS? TFALSE ;
+   ERR$ s" policy-nested.f:3:" STR:CONTAINS? TFALSE ;
 
 \ A program whose one line requires the absolute path <root>/<rel>, and the
 \ loader's missing-source rejection naming that path.
@@ -241,7 +241,7 @@ $1A4 constant MODE-FILE
    [: s" require-unreadable" LOAD-CASE ;]
    [: s" cases/locked.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
    74 EXITS
-   ERR$ s" error[" COUNT-SUB 1 T=
+   ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" error[E-UNREADABLE-SOURCE]: cannot read `locked.f`" ERR-HAS
    SB-RESET s"  --> " SB-APPEND s" cases/require-unreadable.f" AT SB-APPEND
    s" :1:9" SB-APPEND SB$ ERR-HAS
@@ -261,7 +261,7 @@ $1A4 constant MODE-FILE
    [: s" load-unreadable-quoted" LOAD-CASE ;]
    [: s" cases/sp ace'q.f" AT MODE-FILE FS:CHMOD-MODE ;] finally
    74 EXITS
-   ERR$ s" error[" COUNT-SUB 1 T=
+   ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" error[E-UNREADABLE-SOURCE]" ERR-HAS
    SB-RESET s" = help: if the file is yours, make it readable with `chmod u+r '" SB-APPEND
    s" cases/sp ace" AT SB-APPEND  S\" '\\''q.f'`; else ask its owner to let you read it"
@@ -275,7 +275,7 @@ $1A4 constant MODE-FILE
    S\" s\q \q required" PLINE
    s" required-empty" LOAD-CASE
    70 EXITS
-   ERR$ s" error[" COUNT-SUB 1 T=
+   ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" error[E-PATH-RANGE]: `required` got an empty path" ERR-HAS
    SB-RESET s"  --> " SB-APPEND s" cases/required-empty.f" AT SB-APPEND
    s" :1:6" SB-APPEND SB$ ERR-HAS
@@ -295,7 +295,7 @@ $1A4 constant MODE-FILE
    s" INCLUDE " PROG+ LONG+ S\" \n" PROG+
    s" include-long" LOAD-CASE
    70 EXITS
-   ERR$ s" error[" COUNT-SUB 1 T=
+   ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" error[E-PATH-RANGE]: `INCLUDE` got" ERR-HAS
    s" an exported required names the export as written" T-LABEL
    0 PROG-U !
@@ -303,7 +303,7 @@ $1A4 constant MODE-FILE
    S\" s\q " PROG+ LONG+ S\" \q INCLUDE-REFUSAL-RVX:required" PLINE
    s" required-export" LOAD-CASE
    70 EXITS
-   ERR$ s" error[" COUNT-SUB 1 T=
+   ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" error[E-PATH-RANGE]: `INCLUDE-REFUSAL-RVX:required` got" ERR-HAS ;
 
 public

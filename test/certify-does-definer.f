@@ -378,8 +378,8 @@ variable CDD-SRC-U
    {: wa:^ wu:n :}
    REJECTION:CAPTURE
    70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[E-GENERATES-ROW]" CONTAINS? TTRUE
-   REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[E-GENERATES-ROW]" STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ wa wu STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
 : CDD-SECTION-GENERATES-REFUSED ( -- )
@@ -414,7 +414,7 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    {: sa:^ su:n wa:^ wu:n :}
    REJECTION:CAPTURE
    sa su TEST-EVAL:RC  70 T=
-   REJECTION:BUFFER$ wa wu CONTAINS? TTRUE
+   REJECTION:BUFFER$ wa wu STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
 : CDD-NP-REFUSED ( str -- )
@@ -441,10 +441,10 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    REJECTION:CAPTURE
    s" -1 REJECTION:JSON ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       TEST-EVAL:RC  70 T=
-   REJECTION:BUFFER$ s\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s\" \"label\":\"unknown type\"" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s\" \"code\":\"E-UNKNOWN-SIGNATURE-TYPE\"" STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ s\" \"label\":\"unknown type\"" STR:CONTAINS? TTRUE
    \ The `}` closes the evaluated object: the token is the text's, not the file's.
-   REJECTION:BUFFER$ s\" \"token\":\"cdd-zz\"}" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s\" \"token\":\"cdd-zz\"}" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    s" 0 REJECTION:JSON !" TEST-EVAL:RC 0 T=
    s" a clause that never returns owes no output" T-LABEL
@@ -461,7 +461,7 @@ defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
    REJECTION:CAPTURE
    [: [: CDD-QUIET$ s" cdd-quiet.f" s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] CHECK:SCOPED ;] catch
    0 T=
-   REJECTION:BUFFER$ s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `cdd-qt`" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" warning[W-CHECK-DEFERRED]: the check cannot follow the source from `cdd-qt`" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    VERIFY:CENSUS 1 T= drop ;
 

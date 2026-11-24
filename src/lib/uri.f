@@ -48,16 +48,16 @@ $5D constant CLOSE-BRACKET
 : LOCAL? ( str -- bool )
    {: a:^ u:n :}   \ an authority naming this machine
    u 0= if true exit then
-   a u LOCALHOST$ STR=CI ;
+   a u LOCALHOST$ STR:=CI ;
 
 : PATH-AT ( str -- n )
    {: a:^ u:n :}
    SCHEME$ nip {: s:n :}
    u s < if E-URI-SCHEME throw then
-   a s SCHEME$ STR=CI 0= if E-URI-SCHEME throw then
-   a s + u s - MARKER$ STARTS-WITH? 0= if E-URI-AUTHORITY throw then
+   a s SCHEME$ STR:=CI 0= if E-URI-SCHEME throw then
+   a s + u s - MARKER$ STR:STARTS-WITH? 0= if E-URI-AUTHORITY throw then
    s MARKER$ nip + {: from:n :}
-   a from + u from - SLASH INDEX-OF MATCH option
+   a from + u from - SLASH STR:INDEX-OF MATCH option
       none OF E-URI-AUTHORITY throw ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: len:n :}
@@ -66,7 +66,7 @@ $5D constant CLOSE-BRACKET
 
 : NIBBLE ( n -- n )
    {: c:n :}
-   HEX-DIGITS c ASCII-UPPER INDEX-OF MATCH option
+   HEX-DIGITS c STR:ASCII-UPPER STR:INDEX-OF MATCH option
       none OF E-URI-ESCAPE throw ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -99,7 +99,7 @@ $5D constant CLOSE-BRACKET
 
 : ALNUM? ( n -- bool )
    {: c:n :}
-   c ASCII-UPPER {: up:n :}
+   c STR:ASCII-UPPER {: up:n :}
    up [char] A >= up [char] Z <= and
    c [char] 0 >= c [char] 9 <= and or ;
 
@@ -136,12 +136,12 @@ $5D constant CLOSE-BRACKET
 
 : FORM-WIDTH ( n -- n )
    {: c:n :}
-   c FORM-KEPT? c STR-SPACE = or if 1 else ESCAPE-WIDTH then ;
+   c FORM-KEPT? c STR:SPACE = or if 1 else ESCAPE-WIDTH then ;
 
 : FORM-BYTE ( n ^u8 n -- n )
    {: c:n out:^ at:n :}
    c FORM-KEPT? if c out at + c! at 1+ exit then
-   c STR-SPACE = if [char] + out at + c! at 1+ exit then
+   c STR:SPACE = if [char] + out at + c! at 1+ exit then
    c out at ESCAPE ;
 
 \ The byte at that offset with one `%XX` decoded, and the offset after it; a
@@ -153,14 +153,14 @@ $5D constant CLOSE-BRACKET
    at ESCAPE-WIDTH + u > if c at 1+ exit then
    a at + 1+ c@ {: hi:n :}
    a at + 2 + c@ {: lo:n :}
-   hi STR-HEX-DIGIT? lo STR-HEX-DIGIT? and 0= if c at 1+ exit then
+   hi STR:HEX-DIGIT? lo STR:HEX-DIGIT? and 0= if c at 1+ exit then
    hi NIBBLE NIBBLE-BITS lshift lo NIBBLE or at ESCAPE-WIDTH + ;
 
 \ The byte form-encoded text spells at that offset, and the offset after it:
 \ `+` is a space.
 : DECODED-AT ( str n -- n n )
    {: a:^ u:n at:n :}
-   a at + c@ [char] + = if STR-SPACE at 1+ exit then
+   a at + c@ [char] + = if STR:SPACE at 1+ exit then
    a u at PERCENT-AT ;
 
 : DOTS? ( n -- bool )
@@ -209,7 +209,7 @@ $5D constant CLOSE-BRACKET
 
 : ADDRESS-BYTE? ( n -- bool )
    {: c:n :}
-   c STR-HEX-DIGIT? c [char] : = or  c [char] . = or ;
+   c STR:HEX-DIGIT? c [char] : = or  c [char] . = or ;
 
 \ The length of a bracketed address, brackets included, or 0 for none.
 : BRACKETED ( str -- n )
@@ -228,8 +228,8 @@ $5D constant CLOSE-BRACKET
 : PORT-DIGIT ( n n -- n )
    {: acc:n c:n :}
    acc BAD-PORT = if BAD-PORT exit then
-   c STR-DIGIT? 0= if BAD-PORT exit then
-   acc 10 * c STR-DIGIT-VALUE + {: v:n :}
+   c STR:DIGIT? 0= if BAD-PORT exit then
+   acc 10 * c STR:DIGIT-VALUE + {: v:n :}
    v PORT-MAX > if BAD-PORT exit then
    v ;
 
@@ -255,7 +255,7 @@ $5D constant CLOSE-BRACKET
    {: a:^ u:n s:^ v:n :}
    SEPARATOR$ {: m:^ w:n :}
    v w + u > if false exit then
-   a v s v STR=CI  a v + w m w STR= and ;
+   a v s v STR:=CI  a v + w m w STR:= and ;
 
 \ The length of the scheme, `http` or `https` in any case, before `://`, or
 \ 0 for another.
@@ -310,10 +310,10 @@ $5D constant CLOSE-BRACKET
 : DOT-STEP ( str n n -- n n )
    {: a:^ u:n w:n r:n :}
    a r + u r - {: in:^ iu:n :}
-   in iu s" /./" STARTS-WITH? if w r 2 + exit then
-   in iu s" /." STR= if a w SLASH-AT u exit then
-   in iu s" /../" STARTS-WITH? if a w LAST-SLASH r 3 + exit then
-   in iu s" /.." STR= if a  a w LAST-SLASH  SLASH-AT u exit then
+   in iu s" /./" STR:STARTS-WITH? if w r 2 + exit then
+   in iu s" /." STR:= if a w SLASH-AT u exit then
+   in iu s" /../" STR:STARTS-WITH? if a w LAST-SLASH r 3 + exit then
+   in iu s" /.." STR:= if a  a w LAST-SLASH  SLASH-AT u exit then
    a u w r SEGMENT ;
 
 \ Removes the dot segments of a path that is empty or starts with `/`, in
@@ -332,7 +332,7 @@ $5D constant CLOSE-BRACKET
    {: a:^ u:n :}
    a u [: SCHEME-BYTE? 0= ;] SCAN {: at:n :}
    at 0= at u = or if false exit then
-   a c@ ALNUM? a c@ STR-DIGIT? 0= and  a at + c@ [char] : = and ;
+   a c@ ALNUM? a c@ STR:DIGIT? 0= and  a at + c@ [char] : = and ;
 
 : STARTS? ( str n -- bool )   \ whether the first byte is the byte
    {: a:^ u:n c:n :}
@@ -386,7 +386,7 @@ $5D constant CLOSE-BRACKET
    {: b:^ bu:n r:^ ru:n :}
    b bu HTTP-END {: be:n :}
    r ru SCHEME? if r ru ABSOLUTE exit then
-   r ru MARKER$ STARTS-WITH? if b bu r ru NETWORK exit then
+   r ru MARKER$ STR:STARTS-WITH? if b bu r ru NETWORK exit then
    r ru SLASH STARTS? if r ru be ABSOLUTE-PATH exit then
    r ru QUESTION STARTS? if b bu be QUERY-ONLY exit then
    ru 0= r ru HASH STARTS? or if b bu be SAME-DOCUMENT exit then
@@ -505,7 +505,7 @@ public
    {: a:^ u:n b:^ v:n :}
    a u ORIGIN {: s:^ su:n h:^ hu:n p:n :}
    b v ORIGIN {: t:^ tu:n k:^ ku:n q:n :}
-   s su t tu STR=CI  h hu k ku STR=CI and  p q = and ;
+   s su t tu STR:=CI  h hu k ku STR:=CI and  p q = and ;
 
 \ Writes the URL a reference names against an http(s) base (RFC 3986 section
 \ 5.2.2, strict): a reference with a scheme must itself be an http(s) URL,

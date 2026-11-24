@@ -156,7 +156,7 @@ DUPS-C 162 T=
 
 \ Each rejection's code and place: a name no source holds is placed at the
 \ word the file ran and named in the `word` note.
-: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: HAS ( ^u8 n -- ) {: a:^ u:n :}   REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
 
 : NOT-EFFECT ( -- n ) [: s" NOT-BUILT" EFFECT:N define-word ;] catch ;
 REJECTION:CAPTURE

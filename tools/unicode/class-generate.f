@@ -46,7 +46,7 @@ create UC-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : VERIFY-FILE-DIGEST ( str str -- ) {: path:^ pathu:n want:^ wantu:n :}
    wantu SHA256-HEX-LENGTH <> if E-DIGEST throw then
    UC-FSHA-CTX path pathu INPUT-DIGEST SHA256-FILE-HEX-IN 0 <> if E-DIGEST throw then
-   INPUT-DIGEST SHA256-HEX-LENGTH want wantu STR= 0= if E-DIGEST throw then ;
+   INPUT-DIGEST SHA256-HEX-LENGTH want wantu STR:= 0= if E-DIGEST throw then ;
 
 : CHECK-INPUT-DIGESTS ( -- )
    UNICODE-PATH$ EXPECTED-UNICODE-DIGEST$ VERIFY-FILE-DIGEST

@@ -122,7 +122,7 @@ variable HBB-ELAPSED-NS
    HBB-LF-BUF 1 HBB-WERR ;
 
 : HBB-PATH-HAS-DQ? ( str -- bool )
-   HBB-DQ INDEX-OF MATCH option
+   HBB-DQ STR:INDEX-OF MATCH option
      none OF false ENDOF
      some OF drop true ENDOF
    ;MATCH ;
@@ -142,7 +142,7 @@ variable HBB-ELAPSED-NS
    SCRIPT-ARGV$ ;
 
 : HBB-ARG= ( n str -- bool ) {: idx pat:^ patu :}
-   idx HBB-ARG$ pat patu STR= ;
+   idx HBB-ARG$ pat patu STR:= ;
 
 : HBB-TARGET-OPTION ( -- )
    HBB-INC-I
@@ -163,9 +163,9 @@ variable HBB-ELAPSED-NS
    HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I true exit then
    HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I true exit then
    HBB-I @ s" --target" HBB-ARG= if HBB-TARGET-OPTION true exit then
-   HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I false exit then
+   HBB-I @ HBB-ARG$ s" --" STR:= if HBB-INC-I false exit then
    HBB-ENGINE @ if HBB-I @ s" -o" HBB-ARG= if false exit then then
-   HBB-I @ HBB-ARG$ s" -" STARTS-WITH? if HBB-USAGE then
+   HBB-I @ HBB-ARG$ s" -" STR:STARTS-WITH? if HBB-USAGE then
    false ;
 
 : HBB-PARSE-OPTIONS ( -- )
@@ -272,7 +272,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
 \ them; the team check runs codesign, so it goes last.
 : HBB-SAME-PAIR ( -- )
    HBB-GOT$ HBB-OUT$ [: CODESIGN:SAME-CODE? ;] HBB-SAME-FILE? 0= if exit then
-   HBB-MAP-SRC$ HBB-MAP-DST$ [: STR= ;] HBB-SAME-FILE? 0= if exit then
+   HBB-MAP-SRC$ HBB-MAP-DST$ [: STR:= ;] HBB-SAME-FILE? 0= if exit then
    HBB-OUT$ CODESIGN:TEAM-SIGNED? HBB-SAME-OUT ! ;
 
 \ True when -o is team-signed and it and its map hold what the build made, so the
@@ -289,7 +289,7 @@ TYPED-VARIABLE HBB-SAME-OUT bool
    HBB-GOT$ tmp tmpu FS:COPY-FILE-STREAM ;
 
 : HBB-SAME-MODULE ( -- )
-   HBB-GOT$ HBB-OUT$ [: STR= ;] HBB-SAME-FILE? HBB-SAME-OUT ! ;
+   HBB-GOT$ HBB-OUT$ [: STR:= ;] HBB-SAME-FILE? HBB-SAME-OUT ! ;
 
 \ True when -o already holds the module's bytes, as HBB-SAME-OUT? tells a program's.
 : HBB-SAME-MODULE? ( -- bool )

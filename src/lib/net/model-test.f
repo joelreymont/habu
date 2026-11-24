@@ -57,7 +57,7 @@ variable READ-FAULT    \ the code each read throws, 0 for none
 : FIND ( ^u8 n ^u8 n -- n )
    {: s:^ su:n a:^ au:n :}
    ITEMS 0 ?do
-      i SERVICE-AT s su STR= i ACCOUNT-AT a au STR= and if i unloop exit then
+      i SERVICE-AT s su STR:= i ACCOUNT-AT a au STR:= and if i unloop exit then
    loop
    -1 ;
 
@@ -182,7 +182,7 @@ $300000 constant BIG-U
 
 : AUTHORIZED? ( HTTP:request -- bool )
    s" Authorization" HTTP:HEADER-OF$ if
-      s" Bearer local-test-key" STR=
+      s" Bearer local-test-key" STR:=
    else 2drop false then ;
 
 
@@ -553,26 +553,26 @@ $300000 constant BIG-U
 \ Answers a tool scenario by its name, or answers false.
 : TOOL-REPLY? ( HTTP:response str -- bool )
    {: response:HTTP:response t:^ t-u:n :}
-   t t-u s" tool-call" STR= if
+   t t-u s" tool-call" STR:= if
       response [: TOOL-HEAD FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;] COMPLETED$ STREAMED
       true exit
    then
-   t t-u s" tool-message" STR= if
+   t t-u s" tool-message" STR:= if
       response [: TOOL-HEAD TEXT-ITEM$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
       COMPLETED$ STREAMED true exit
    then
-   t t-u s" tool-none" STR= if
+   t t-u s" tool-none" STR:= if
       response [: TOOL-HEAD REPLY-TAIL ;] COMPLETED$ STREAMED true exit
    then
-   t t-u s" tool-two" STR= if
+   t t-u s" tool-two" STR:= if
       response [: TOOL-HEAD FUNCTION-CALL$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
       COMPLETED$ STREAMED true exit
    then
-   t t-u s" tool-refusal" STR= if
+   t t-u s" tool-refusal" STR:= if
       response [: TOOL-HEAD REFUSAL-ITEM$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
       COMPLETED$ STREAMED true exit
    then
-   t t-u s" tool-other" STR= if
+   t t-u s" tool-other" STR:= if
       response [: TOOL-HEAD OTHER-ITEM$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
       COMPLETED$ STREAMED true exit
    then
@@ -625,152 +625,152 @@ $300000 constant BIG-U
 : REPLY ( HTTP:request HTTP:response ^u8 n -- )
    {: r:HTTP:request response:HTTP:response t:^ t-u:n :}
    response t t-u TOOL-REPLY? if exit then
-   t t-u s" image" STR= if
+   t t-u s" image" STR:= if
       r IMAGE-ECHO
       response [: ECHO$ COMPLETED ;] COMPLETED$ STREAMED exit
    then
-   t t-u s" refusal" STR= if response [: REFUSAL$ JSON:WRITE-RAW ;] COMPLETED$ STREAMED exit then
-   t t-u s" usage" STR= if response [: USAGE-RESPONSE ;] COMPLETED$ STREAMED exit then
-   t t-u s" tiered" STR= if response [: S\" \qflex\q" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
-   t t-u s" tier-null" STR= if response [: s" null" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
-   t t-u s" tier-number" STR= if response [: s" 7" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
-   t t-u s" tier-empty" STR= if response [: S\" \q\q" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
-   t t-u s" length" STR= if
+   t t-u s" refusal" STR:= if response [: REFUSAL$ JSON:WRITE-RAW ;] COMPLETED$ STREAMED exit then
+   t t-u s" usage" STR:= if response [: USAGE-RESPONSE ;] COMPLETED$ STREAMED exit then
+   t t-u s" tiered" STR:= if response [: S\" \qflex\q" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
+   t t-u s" tier-null" STR:= if response [: s" null" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
+   t t-u s" tier-number" STR:= if response [: s" 7" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
+   t t-u s" tier-empty" STR:= if response [: S\" \q\q" TIERED-RESPONSE ;] COMPLETED$ STREAMED exit then
+   t t-u s" length" STR:= if
       response [: CUT$ JSON:WRITE-RAW ;] INCOMPLETE$ STREAMED exit
    then
-   t t-u s" filtered" STR= if
+   t t-u s" filtered" STR:= if
       response [: s" content_filter" INCOMPLETE ;] INCOMPLETE$ STREAMED
       exit
    then
-   t t-u s" long-finish" STR= if
+   t t-u s" long-finish" STR:= if
       response [: LONG-FINISH$ INCOMPLETE ;] INCOMPLETE$ STREAMED
       exit
    then
-   t t-u s" bad-content" STR= if
+   t t-u s" bad-content" STR:= if
       response [: BAD-CONTENT$ JSON:WRITE-RAW ;] COMPLETED$ STREAMED exit
    then
-   t t-u s" note-first" STR= if
+   t t-u s" note-first" STR:= if
       response [: s" completed" REPLY-HEAD NOTE-MESSAGE ANSWER-MESSAGE REPLY-TAIL ;]
       COMPLETED$ STREAMED exit
    then
-   t t-u s" note-last" STR= if
+   t t-u s" note-last" STR:= if
       response [: s" completed" REPLY-HEAD ANSWER-MESSAGE NOTE-MESSAGE REPLY-TAIL ;]
       COMPLETED$ STREAMED exit
    then
-   t t-u s" note-only" STR= if
+   t t-u s" note-only" STR:= if
       response [: s" completed" REPLY-HEAD NOTE-MESSAGE REPLY-TAIL ;] COMPLETED$ STREAMED
       exit
    then
-   t t-u s" answer-twice" STR= if
+   t t-u s" answer-twice" STR:= if
       response [: s" completed" REPLY-HEAD ANSWER-MESSAGE ANSWER-MESSAGE REPLY-TAIL ;]
       COMPLETED$ STREAMED exit
    then
-   t t-u s" phase-null" STR= if response [: s" null" ONE-PHASE ;] COMPLETED$ STREAMED exit then
-   t t-u s" phase-other" STR= if
+   t t-u s" phase-null" STR:= if response [: s" null" ONE-PHASE ;] COMPLETED$ STREAMED exit then
+   t t-u s" phase-other" STR:= if
       response [: S\" \qanalysis\q" ONE-PHASE ;] COMPLETED$ STREAMED exit
    then
-   t t-u s" answer-other" STR= if
+   t t-u s" answer-other" STR:= if
       response [: s" completed" REPLY-HEAD ANSWER-MESSAGE
          S\" {\qnote\q:true}" S\" \qanalysis\q" PHASED REPLY-TAIL ;]
       COMPLETED$ STREAMED exit
    then
-   t t-u s" failed-server" STR= if
+   t t-u s" failed-server" STR:= if
       response [: s" server_error" s" The server had an error." FAILED ;] FAILED$ STREAMED
       exit
    then
-   t t-u s" failed-size" STR= if
+   t t-u s" failed-size" STR:= if
       response [: s" context_length_exceeded" s" Your input exceeds the context window of this model." FAILED ;] FAILED$ STREAMED
       exit
    then
-   t t-u s" failed-other" STR= if
+   t t-u s" failed-other" STR:= if
       response [: s" invalid_prompt" s" bad prompt" FAILED ;] FAILED$ STREAMED exit
    then
-   t t-u s" error-event" STR= if response FLAT-ERROR$ true BAD-STREAM exit then
-   t t-u s" error-nested" STR= if response NESTED-ERROR$ true BAD-STREAM exit then
-   t t-u s" error-overloaded" STR= if response OVERLOADED$ true BAD-STREAM exit then
-   t t-u s" flex-out" STR= if response FLEX-OUT$ true BAD-STREAM exit then
+   t t-u s" error-event" STR:= if response FLAT-ERROR$ true BAD-STREAM exit then
+   t t-u s" error-nested" STR:= if response NESTED-ERROR$ true BAD-STREAM exit then
+   t t-u s" error-overloaded" STR:= if response OVERLOADED$ true BAD-STREAM exit then
+   t t-u s" flex-out" STR:= if response FLEX-OUT$ true BAD-STREAM exit then
    \ flex-out to a request that names a service tier, else valid's reply.
-   t t-u s" flex-then" STR= if
+   t t-u s" flex-then" STR:= if
       r TIERED? if response FLEX-OUT$ true BAD-STREAM exit then
       response [: CHAT-RESPONSE ;] COMPLETED$ STREAMED exit
    then
    \ flex-out to a request that names a service tier, else valid's reply
    \ once the gate lets it go.
-   t t-u s" flex-gate" STR= if
+   t t-u s" flex-gate" STR:= if
       r TIERED? if response FLEX-OUT$ true BAD-STREAM exit then
       GATE
       response [: CHAT-RESPONSE ;] COMPLETED$ STREAMED exit
    then
    \ flex-out to a request that names a service tier, else hold's stream.
-   t t-u s" flex-hold" STR= if
+   t t-u s" flex-hold" STR:= if
       r TIERED? if response FLEX-OUT$ true BAD-STREAM exit then
       r STREAM-OPEN s" resp_hold" OPENING RAW-STREAM HOLD-OPEN exit
    then
-   t t-u s" plain-json" STR= if response [: PLAIN$ JSON:WRITE-RAW ;] HTTP:JSON! exit then
-   t t-u s" bad-type" STR= if response BAD-TYPE$ true BAD-STREAM exit then
-   t t-u s" no-id" STR= if response NO-ID$ false BAD-STREAM exit then
-   t t-u s" bad-utf8" STR= if STREAM-OPEN BAD-UTF8$ JSON:WRITE-RAW response swap STREAM! exit then
+   t t-u s" plain-json" STR:= if response [: PLAIN$ JSON:WRITE-RAW ;] HTTP:JSON! exit then
+   t t-u s" bad-type" STR:= if response BAD-TYPE$ true BAD-STREAM exit then
+   t t-u s" no-id" STR:= if response NO-ID$ false BAD-STREAM exit then
+   t t-u s" bad-utf8" STR:= if STREAM-OPEN BAD-UTF8$ JSON:WRITE-RAW response swap STREAM! exit then
    \ The terminal event arrives and then the connection drops mid-body.
-   t t-u s" done-drop" STR= if
+   t t-u s" done-drop" STR:= if
       r STREAM-OPEN s" resp_1" PRELUDE
       COMPLETED$ LAST-SEQ 1+ RESPONSE-OPEN CHAT-RESPONSE EVENT-CLOSE RAW-STREAM RAW-CLOSE exit
    then
    \ A keepalive and then a drop, before an event names the response.
-   t t-u s" early-drop" STR= if
+   t t-u s" early-drop" STR:= if
       r STREAM-OPEN s" keepalive" 0 EVENT-OPEN EVENT-CLOSE RAW-STREAM RAW-CLOSE exit
    then
    \ A keepalive, resp_1's OPENING, a keepalive and then a drop.
-   t t-u s" twice-drop" STR= if
+   t t-u s" twice-drop" STR:= if
       r STREAM-OPEN s" keepalive" 0 EVENT-OPEN EVENT-CLOSE s" resp_1" OPENING
       s" keepalive" 2 EVENT-OPEN EVENT-CLOSE
       RAW-STREAM RAW-CLOSE exit
    then
    \ resp_1's PRELUDE and then a drop, before the response ends.
-   t t-u s" id-drop" STR= if
+   t t-u s" id-drop" STR:= if
       r STREAM-OPEN s" resp_1" PRELUDE RAW-STREAM RAW-CLOSE exit
    then
    \ resp_quiet's stream ends after its created event.
-   t t-u s" no-progress" STR= if
+   t t-u s" no-progress" STR:= if
       STREAM-OPEN s" resp_quiet" CREATED response swap STREAM! exit
    then
    \ The held stream sends its created and in_progress events, then stays
    \ open until the client closes it.
-   t t-u s" hold" STR= if
+   t t-u s" hold" STR:= if
       r STREAM-OPEN s" resp_hold" OPENING RAW-STREAM HOLD-OPEN exit
    then
-   t t-u s" http-error" STR= if
+   t t-u s" http-error" STR:= if
       response 429 HTTP:STATUS!
       response [: S\" {\qerror\q:{\qmessage\q:\qrate limit\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
-   t t-u s" http-busy" STR= if
+   t t-u s" http-busy" STR:= if
       response 503 HTTP:STATUS!
       response [: S\" {\qerror\q:{\qmessage\q:\qoverloaded\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
-   t t-u s" http-bad" STR= if
+   t t-u s" http-bad" STR:= if
       response 400 HTTP:STATUS!
       response [: S\" {\qerror\q:{\qmessage\q:\qbad request\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    \ Ollama's error member is the message itself.
-   t t-u s" http-text" STR= if
+   t t-u s" http-text" STR:= if
       response 404 HTTP:STATUS!
       response [: S\" {\qerror\q:\qmodel not found\q}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    \ A FastAPI server's error names its reason outside an error member.
-   t t-u s" http-detail" STR= if
+   t t-u s" http-detail" STR:= if
       response 422 HTTP:STATUS!
       response [: S\" {\qdetail\q:\qbad field\q}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
-   t t-u s" forbidden" STR= if response 403 HTTP:STATUS! exit then
-   t t-u s" too-large" STR= if response TOO-LARGE exit then
-   t t-u s" oversized" STR= if response 413 HTTP:STATUS! exit then
-   t t-u s" big" STR= if response [: BIG$ COMPLETED ;] COMPLETED$ STREAMED exit then
+   t t-u s" forbidden" STR:= if response 403 HTTP:STATUS! exit then
+   t t-u s" too-large" STR:= if response TOO-LARGE exit then
+   t t-u s" oversized" STR:= if response 413 HTTP:STATUS! exit then
+   t t-u s" big" STR:= if response [: BIG$ COMPLETED ;] COMPLETED$ STREAMED exit then
    \ Every other scenario, the journal's long text included, starts "valid".
-   t t-u 5 min s" valid" STR= if
+   t t-u 5 min s" valid" STR:= if
       response [: CHAT-RESPONSE ;] COMPLETED$ STREAMED exit
    then
    response 400 HTTP:STATUS! ;
@@ -820,7 +820,7 @@ variable COUNTED-U    \ the byte length of the last count request's body
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
    r response FAILED-NEXT? if exit then
-   r FIRST-TEXT s" too-large" STR= if response TOO-LARGE exit then
+   r FIRST-TEXT s" too-large" STR:= if response TOO-LARGE exit then
    r HTTP:BODY$ nip COUNTED-U !
    response [: COUNTED ;] HTTP:JSON! ;
 
@@ -891,14 +891,14 @@ variable KEPT-U
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
    r response FAILED-NEXT? if exit then
    r FIRST-TEXT {: t:^ t-u:n :}
-   t t-u s" too-large" STR= if response TOO-LARGE exit then
+   t t-u s" too-large" STR:= if response TOO-LARGE exit then
    t-u 64 > if FAIL then
    t t-u KEPT 64 SPAN:MAKE SPAN:COPY t-u KEPT-U !
    r HTTP:BODY$ nip COMPACTED-U !
-   t t-u s" bad-compact" STR= if response [: NO-WINDOW ;] HTTP:JSON! exit then
-   t t-u s" empty-window" STR= if response [: EMPTY-WINDOW ;] HTTP:JSON! exit then
-   t t-u s" number-window" STR= if response [: NUMBER-WINDOW ;] HTTP:JSON! exit then
-   t t-u s" late-window" STR= if response [: LATE-WINDOW ;] HTTP:JSON! exit then
+   t t-u s" bad-compact" STR:= if response [: NO-WINDOW ;] HTTP:JSON! exit then
+   t t-u s" empty-window" STR:= if response [: EMPTY-WINDOW ;] HTTP:JSON! exit then
+   t t-u s" number-window" STR:= if response [: NUMBER-WINDOW ;] HTTP:JSON! exit then
+   t t-u s" late-window" STR:= if response [: LATE-WINDOW ;] HTTP:JSON! exit then
    response [: WINDOW ;] HTTP:JSON! ;
 
 
@@ -951,29 +951,29 @@ variable KEPT-U
 : BASE64-CASE? ( HTTP:response str -- bool )
    {: response:HTTP:response i:^ i-u:n :}
    \ The first z escaped as \u007a: 0.1 0.2 0.3.
-   i i-u s" escaped" STR= if
+   i i-u s" escaped" STR:= if
       response [: S\" \q\\u007aczMPc3MTD6amZk+\q" ONE-VECTOR ;] HTTP:JSON!
       true exit
    then
    \ Two values, 0.1 0.2.
-   i i-u s" b64-short" STR= if
+   i i-u s" b64-short" STR:= if
       response [: S\" \qzczMPc3MTD4=\q" ONE-VECTOR ;] HTTP:JSON! true exit
    then
    \ Four values, 0.1 0.2 0.3 0.4.
-   i i-u s" b64-long" STR= if
+   i i-u s" b64-long" STR:= if
       response [: S\" \qzczMPc3MTD6amZk+zczMPg==\q" ONE-VECTOR ;] HTTP:JSON!
       true exit
    then
    \ A character outside the base64 alphabet.
-   i i-u s" b64-bad" STR= if
+   i i-u s" b64-bad" STR:= if
       response [: S\" \qzczMPc3MTD6amZk*\q" ONE-VECTOR ;] HTTP:JSON! true exit
    then
    \ 0.1, a quiet NaN ($7FC00000), 0.3.
-   i i-u s" b64-nan" STR= if
+   i i-u s" b64-nan" STR:= if
       response [: S\" \qzczMPQAAwH+amZk+\q" ONE-VECTOR ;] HTTP:JSON! true exit
    then
    \ 0.1, positive infinity ($7F800000), 0.3.
-   i i-u s" b64-inf" STR= if
+   i i-u s" b64-inf" STR:= if
       response [: S\" \qzczMPQAAgH+amZk+\q" ONE-VECTOR ;] HTTP:JSON! true exit
    then
    false ;
@@ -991,34 +991,34 @@ variable KEPT-U
    JSON:READ-TOKEN JSON:T-STR = ASSERT
    s" base64" JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE
    r INPUT-LINES RECEIVED$ {: i:^ i-u:n :}
-   i i-u 1 min s" x" STR= if
+   i i-u 1 min s" x" STR:= if
       response [: LENGTH-VECTOR ;] HTTP:JSON! exit
    then
-   i i-u 1 min s" y" STR= if
+   i i-u 1 min s" y" STR:= if
       response [: INDEX-VECTORS ;] HTTP:JSON! exit
    then
-   i i-u S\" one\ntwo" STR= if
+   i i-u S\" one\ntwo" STR:= if
       \ The provider may list them out of order; index decides each slot.
       response [: BASE64-VECTORS ;] HTTP:JSON! exit
    then
    response i i-u BASE64-CASE? if exit then
-   i i-u s" wide" STR= if
+   i i-u s" wide" STR:= if
       response [: WIDE-VECTOR ;] HTTP:JSON! exit
    then
-   i i-u s" wrong-dims" STR= if
+   i i-u s" wrong-dims" STR:= if
       response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2],\qindex\q:0}]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
-   i i-u s" bad-data" STR= if
+   i i-u s" bad-data" STR:= if
       response [: S\" {\qobject\q:\qlist\q,\qdata\q:\qx\q,\qusage\q:{\qprompt_tokens\q:2,\qtotal_tokens\q:2}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
-   i i-u s" wrong-index" STR= if
+   i i-u s" wrong-index" STR:= if
       response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2,0.3],\qindex\q:1}]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    \ OpenAI's embeddings refusal names its cause only by the message.
-   i i-u s" too-large" STR= if
+   i i-u s" too-large" STR:= if
       response 400 HTTP:STATUS!
       response [: S\" {\qerror\q:{\qmessage\q:\qThis model's maximum context length is 8192 tokens, however you requested 9000 tokens (9000 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:null,\qcode\q:null}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
@@ -1034,29 +1034,29 @@ variable KEPT-U
    r s" Authorization" HTTP:HEADER-OF$ {: a:^ u:n present:bool :}
    present if response 401 HTTP:STATUS! exit then
    r s" truncate" BODY-MEMBER JSON:READ-TOKEN JSON:T-FALSE = ASSERT JSON:READ-CLOSE
-   r HTTP:BODY$ s" encoding_format" CONTAINS? 0= ASSERT
+   r HTTP:BODY$ s" encoding_format" STR:CONTAINS? 0= ASSERT
    r INPUT-LINES RECEIVED$ {: i:^ i-u:n :}
-   i i-u S\" one\ntwo" STR= if
+   i i-u S\" one\ntwo" STR:= if
       response [: S\" {\qembeddings\q:[[0.1,0.2,0.3],[0,1,2]]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
-   i i-u s" bad-count" STR= if
+   i i-u s" bad-count" STR:= if
       response [: S\" {\qembeddings\q:[]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
    \ No reply: the connection stays open until the client closes it.
-   i i-u s" hold" STR= if r HTTP:TAKE-OVER 2drop HOLD-OPEN exit then
-   i i-u s" bad-dims" STR= if
+   i i-u s" hold" STR:= if r HTTP:TAKE-OVER 2drop HOLD-OPEN exit then
+   i i-u s" bad-dims" STR:= if
       response [: S\" {\qembeddings\q:[[0,1]]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
-   i i-u s" bad-finite" STR= if
+   i i-u s" bad-finite" STR:= if
       response [: S\" {\qembeddings\q:[[1e309,0,1]]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
    \ Finite as a double, past binary32's range.
-   i i-u s" bad-single" STR= if
+   i i-u s" bad-single" STR:= if
       response [: S\" {\qembeddings\q:[[1e39,0,1]]}" JSON:WRITE-RAW ;]
       HTTP:JSON! exit
    then
-   i i-u s" too-large" STR= if
+   i i-u s" too-large" STR:= if
       response 400 HTTP:STATUS!
       response [: S\" {\qerror\q:\qthe input length exceeds the context length\q}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
@@ -1194,7 +1194,7 @@ variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
 : VECTOR-CODE ( -- n ) 0 [: drop 0 M MODEL:VECTOR@ 2drop 0 ;] CODE-OF ;
 : PREP ( str -- ) M MODEL:PARTS-RESET M MODEL:TEXT+ ;
 : INPUTS ( ^u8 n -- ) M MODEL:INPUT-RESET M MODEL:INPUT+ ;
-: CHAT ( -- ) s" valid" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;
+: CHAT ( -- ) s" valid" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT ;
 : FAILS ( ^u8 n n -- ) {: a:^ u:n want:n :} a u PREP CHAT-CODE want = ASSERT ;
 : INPUT-LEN ( n -- n ) {: u:n :} PAD u M MODEL:INPUT+ u ;
 : DIMS ( n -- n ) {: d:n :} s" test-embedding" d 60000 M MODEL:EMBEDDING-MODEL! d ;
@@ -1238,7 +1238,7 @@ variable REFUSED-BASE-U
 : LINE? ( str str -- bool )
    {: line:^ line-u:n want:^ want-u:n :}
    line-u DATE:TIME-LEN < if false exit then
-   line DATE:TIME-LEN + line-u DATE:TIME-LEN - want want-u STR= ;
+   line DATE:TIME-LEN + line-u DATE:TIME-LEN - want want-u STR:= ;
 
 
 \ Whether a captured line, after its stamp, passes the test against the text.
@@ -1293,10 +1293,10 @@ variable REFUSED-BASE-U
    line-u DATE:TIME-LEN - want-u - 3 - {: digits:n :}
    digits 1 < if false exit then
    line DATE:TIME-LEN + {: text:^ :}
-   text want-u want want-u STR= 0= if false exit then
-   text want-u + digits + 3 s"  ms" STR= 0= if false exit then
+   text want-u want want-u STR:= 0= if false exit then
+   text want-u + digits + 3 s"  ms" STR:= 0= if false exit then
    0 digits 0 ?do
-      text want-u + i + c@ dup STR-DIGIT? 0= if 2drop false unloop exit then
+      text want-u + i + c@ dup STR:DIGIT? 0= if 2drop false unloop exit then
       [char] 0 - swap 10 * +
    loop
    TIME:MONO-NS CHAT-NS @ - 1000000 / <= ;
@@ -1363,7 +1363,7 @@ variable REFUSED-BASE-U
 : IMAGE ( -- )
    s" image" PREP
    s" image/png" s" aGVsbG8=" M MODEL:IMAGE+
-   M MODEL:CHAT S\" {\qimages\q:[\qdata:image/png;base64,aGVsbG8=\q]}" STR= ASSERT ;
+   M MODEL:CHAT S\" {\qimages\q:[\qdata:image/png;base64,aGVsbG8=\q]}" STR:= ASSERT ;
 
 
 : SERVICE$ ( -- str ) KEY-SERVICE$ ;
@@ -1520,9 +1520,9 @@ variable REFUSED-BASE-U
    s" kept" M MODEL:CACHE-TEXT+
    M MODEL:JOURNAL-INPUT$
    S\" [{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q},{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]"
-   CONTAINS? ASSERT
+   STR:CONTAINS? ASSERT
    M MODEL:CHAT 2drop
-   MODEL-PEER:SENT$ CACHED-CONTENT$ CONTAINS? ASSERT ;
+   MODEL-PEER:SENT$ CACHED-CONTENT$ STR:CONTAINS? ASSERT ;
 
 
 : VALID-CHAT ( n -- n ) s" valid" PREP M MODEL:CHAT 2drop ;
@@ -1542,21 +1542,21 @@ variable REFUSED-BASE-U
    MODEL-PEER:REFUSAL$ SB-APPEND
    s" response.completed" STREAMED-LOGGED
    s" length" MODEL:E-INCOMPLETE FAILS
-   M MODEL:INCOMPLETE-REASON$ s" max_output_tokens" STR= ASSERT
+   M MODEL:INCOMPLETE-REASON$ s" max_output_tokens" STR:= ASSERT
    s" warn" CHAT-ID-LINE s" MODEL:E-INCOMPLETE incomplete max_output_tokens" SB-APPEND
    s" response.incomplete" STREAMED-LOGGED
    s" filtered" MODEL:E-INCOMPLETE FAILS
-   M MODEL:INCOMPLETE-REASON$ s" content_filter" STR= ASSERT
+   M MODEL:INCOMPLETE-REASON$ s" content_filter" STR:= ASSERT
    s" long-finish" MODEL:E-INCOMPLETE FAILS
-   M MODEL:INCOMPLETE-REASON$ MODEL-PEER:LONG-FINISH$ STR= ASSERT
+   M MODEL:INCOMPLETE-REASON$ MODEL-PEER:LONG-FINISH$ STR:= ASSERT
    s" bad-content" MODEL:E-RESPONSE FAILS
    M MODEL:INCOMPLETE-REASON$ nip 0= ASSERT
    s" error" CHAT-ID-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
    MODEL-PEER:BAD-CONTENT$ SB-APPEND
    s" response.completed" STREAMED-LOGGED
-   s" note-first" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
-   s" note-last" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
-   s" phase-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" note-first" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   s" note-last" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
+   s" phase-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" note-only" MODEL:E-RESPONSE FAILS
    s" answer-twice" MODEL:E-RESPONSE FAILS
    s" phase-other" MODEL:E-RESPONSE FAILS
@@ -1566,28 +1566,28 @@ variable REFUSED-BASE-U
    s" response.failed" STREAMED-LOGGED
    s" failed-size" MODEL:E-CAPACITY FAILS
    s" failed-other" MODEL:E-HTTP FAILS
-   M MODEL:ERROR$ s" bad prompt" STR= ASSERT
+   M MODEL:ERROR$ s" bad prompt" STR:= ASSERT
    s" error-event" MODEL:E-UNAVAILABLE FAILS
-   M MODEL:ERROR$ s" The server had an error." STR= ASSERT
+   M MODEL:ERROR$ s" The server had an error." STR:= ASSERT
    s" error" CHAT-ID-LINE
    s" MODEL:E-UNAVAILABLE status 200: The server had an error. body: " SB-APPEND
    MODEL-PEER:FLAT-ERROR$ SB-APPEND
    s" ; events response.created=1 response.in_progress=1 error=1; no output" SB-APPEND
    SB-LOGGED
    s" error-nested" MODEL:E-UNAVAILABLE FAILS
-   M MODEL:ERROR$ s" The server had an error." STR= ASSERT
+   M MODEL:ERROR$ s" The server had an error." STR:= ASSERT
    s" error-overloaded" MODEL:E-UNAVAILABLE FAILS
-   s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR= ASSERT
+   s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR:= ASSERT
    s" http-bad" MODEL:E-HTTP FAILS
    M MODEL:HTTP-STATUS 400 = ASSERT
-   M MODEL:ERROR$ s" bad request" STR= ASSERT
+   M MODEL:ERROR$ s" bad request" STR:= ASSERT
    s" error" s" MODEL:E-HTTP status 400: bad request" CHAT-LOGGED
    CHAT M MODEL:ERROR$ nip 0= ASSERT
    0 [: drop s" http-text" PREP M MODEL:CHAT 2drop 0 ;]
    s" expected a generation model the provider serves, found `test-generation`; pass GENERATION-MODEL! or PURPOSE-MODEL! a model the provider serves: it answered status 404"
    CONFIG-SAYS
    M MODEL:HTTP-STATUS 404 = ASSERT
-   M MODEL:ERROR$ s" model not found" STR= ASSERT
+   M MODEL:ERROR$ s" model not found" STR:= ASSERT
    s" error" s" MODEL:E-CONFIG status 404: model not found" CHAT-LOGGED
    s" http-detail" MODEL:E-HTTP FAILS
    s" error" S\" MODEL:E-HTTP status 422 body: {\qdetail\q:\qbad field\q}" CHAT-LOGGED
@@ -1616,7 +1616,7 @@ variable REFUSED-BASE-U
 \ A stream that ends before the response ends the call; one that drops after
 \ it does not.
 : EARLY-ENDS ( -- )
-   s" done-drop" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" done-drop" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    M MODEL:HTTP-STATUS 200 = ASSERT
    s" early-drop" MODEL:E-TRANSPORT FAILS
    s" error" CHAT-LINE s" MODEL:E-TRANSPORT curl 18: " SB-APPEND
@@ -1801,7 +1801,7 @@ variable REFUSED-BASE-U
 : PREPARED-CHAT ( -- )
    MODEL-PEER:CALLS@ {: before:n :}
    s" valid" PREPARE
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT
    CHAT-CODE MODEL:E-STATE = ASSERT
    s" valid" PREPARE
@@ -1837,18 +1837,18 @@ variable REFUSED-BASE-U
 \ PARTS-RESET; CONTENT$ reads only the chat AWAIT last ended.
 : STARTED-CALLS ( -- )
    CHAT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    AWAIT-CODE MODEL:E-STATE = ASSERT
    s" valid" PREPARE
    AWAIT-CODE MODEL:E-STATE = ASSERT
    CONTENT-CODE MODEL:E-STATE = ASSERT
    MODEL-PEER:CALLS@ {: before:n :}
    M MODEL:START M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT
    s" valid" PREP
    M MODEL:START M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 2 + = ASSERT
    s" one" INPUTS
    s" two" M MODEL:INPUT+
@@ -1914,7 +1914,7 @@ variable KEPT-U
    MODEL-PEER:SENT$ {: a:^ u:n :}
    a u KEPT 65536 SPAN:MAKE SPAN:COPY u KEPT-U ! ;
 \ The peer received the body it received before the resend.
-: SENT-AGAIN ( -- ) MODEL-PEER:SENT$ KEPT$ STR= ASSERT ;
+: SENT-AGAIN ( -- ) MODEL-PEER:SENT$ KEPT$ STR:= ASSERT ;
 : RETRY ( -- ) s" retry" M MODEL:PURPOSE! ;
 
 
@@ -1928,7 +1928,7 @@ variable KEPT-U
    CHAT-CODE code = ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT
    KEEP-SENT
-   RETRY M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   RETRY M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 2 + = ASSERT
    SENT-AGAIN ;
 
@@ -1947,7 +1947,7 @@ variable KEPT-U
    RETRY s" valid" PREP CHAT-CODE MODEL:E-KEY = ASSERT
    MODEL-PEER:CALLS@ before = ASSERT
    FIXTURE-KEY
-   RETRY M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   RETRY M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
@@ -1986,7 +1986,7 @@ variable KEPT-U
    M MODEL:START M SERVED
    M MODEL:SERVE ASSERT
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT
    SERVE-CODE MODEL:E-STATE = ASSERT
    SERVICE$ s" missing" M MODEL:API-KEY!
@@ -2018,7 +2018,7 @@ variable KEPT-U
    ['] AWAIT-WORK WORK-TASK TASK:ACTIVATE STATE-WORK
    M SERVED
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT
    M MODEL:CLOSE ;
 
@@ -2091,12 +2091,12 @@ variable LANDED
    M SERVED
    AWAIT-CODE MODEL:E-CANCELLED = ASSERT
    1 CALL MODEL:AWAIT
-   1 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   1 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    2 CALL MODEL:AWAIT
    0 2 CALL MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
    1 2 CALL MODEL:VECTOR@ $3ECCCCCD $3F000000 $3F19999A VECTOR-IS
    3 CALL MODEL:AWAIT
-   3 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   3 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 4 + = ASSERT
    1 CALL MODEL:CLOSE 2 CALL MODEL:CLOSE 3 CALL MODEL:CLOSE ;
 
@@ -2245,9 +2245,9 @@ variable LANDED
 \ The call answers the embedding model it was last given.
 : EMBEDDING-NAMED ( -- )
    s" named-embedding" 3 60000 M MODEL:EMBEDDING-MODEL!
-   M MODEL:EMBEDDING-MODEL$ s" named-embedding" STR= ASSERT
+   M MODEL:EMBEDDING-MODEL$ s" named-embedding" STR:= ASSERT
    3 DIMS drop
-   M MODEL:EMBEDDING-MODEL$ s" test-embedding" STR= ASSERT ;
+   M MODEL:EMBEDDING-MODEL$ s" test-embedding" STR:= ASSERT ;
 
 
 \ Rejected bases: another scheme, no host, a blank, a trailing slash, and
@@ -2291,7 +2291,7 @@ variable LANDED
 : JOURNAL-GET ( n str ^n -- bool )
    {: ctx:n input:^ input-u:n out:^ :}
    JOURNAL-READY @ 0= if false exit then
-   input input-u JOURNAL-INPUT JOURNAL-INPUT-U @ STR= ASSERT
+   input input-u JOURNAL-INPUT JOURNAL-INPUT-U @ STR:= ASSERT
    JOURNAL-RECORD JOURNAL-RECORD-U @ BUF:N>BLEN out BUF:REPLACE
    true ;
 
@@ -2491,7 +2491,7 @@ variable PAUSED-ROWS
    ROWS-MADE @ 0= ASSERT
    FIXTURE-KEY
    PURPOSE
-   s" usage" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" usage" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    ROWS-MADE @ 1 = ASSERT
    M MODEL:CALL-ID 1 = ASSERT
    s" kind" ROW s" generation" STR-IS
@@ -2667,7 +2667,7 @@ variable KEYLESS-U
    s" test:extract:7" M MODEL:CACHE-KEY!
    PURPOSE CHAT
    s" prompt_cache_key" SENT s" test:extract:7" STR-IS
-   INPUT$ KEYLESS KEYLESS-U @ STR= ASSERT
+   INPUT$ KEYLESS KEYLESS-U @ STR:= ASSERT
    PURPOSE CHAT
    s" prompt_cache_key" SENT s" test:extract:7" STR-IS
    s" embed" M MODEL:PURPOSE!
@@ -2760,7 +2760,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    0 [: COUNT-GET ;] [: CAPTURE-PUT ;] M MODEL:JOURNAL!
    0 LOOKUPS !
    RESEND-MARK
-   PURPOSE s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   PURPOSE s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 2 = ASSERT
    ROWS-SINCE 2 = ASSERT
    LOOKUPS @ 2 = ASSERT
@@ -2788,7 +2788,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" outcome" ROW s" tier_unavailable" STR-IS
    MODEL-PEER:LET-GO
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 2 = ASSERT
    ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
@@ -2812,7 +2812,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" " M MODEL:SERVICE-TIER!
    RESEND-MARK
    s" flexed" M MODEL:PURPOSE!
-   s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" flex-then" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 2 = ASSERT
    ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
@@ -2874,7 +2874,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW s" flex" STR-IS
    PURPOSE s" flex-out" MODEL:E-TIER FAILS
-   M MODEL:ERROR$ s" Flex processing is temporarily unavailable. Please try again later or use standard processing." STR= ASSERT
+   M MODEL:ERROR$ s" Flex processing is temporarily unavailable. Please try again later or use standard processing." STR:= ASSERT
    s" error" CHAT-ID-LINE
    s" MODEL:E-TIER status 200: Flex processing is temporarily unavailable. Please try again later or use standard processing. body: " SB-APPEND
    MODEL-PEER:FLEX-OUT$ SB-APPEND
@@ -2887,7 +2887,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" service_tier" ROW NULL-IS
    TIER-RESENDS
    s" auto" M MODEL:SERVICE-TIER!
-   PURPOSE s" tiered" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   PURPOSE s" tiered" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" service_tier" SENT s" auto" STR-IS
    s" service_tier" ROW s" flex" STR-IS
    s" requested_tier" ROW s" auto" STR-IS
@@ -2896,7 +2896,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    s" kind" ROW s" embedding" STR-IS
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW NULL-IS
-   PURPOSE s" tier-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   PURPOSE s" tier-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" service_tier" ROW NULL-IS
    s" requested_tier" ROW s" auto" STR-IS
    PURPOSE s" tier-number" MODEL:E-RESPONSE FAILS
@@ -2923,7 +2923,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
 
 : LONG-CHAT ( -- )
    PURPOSE JOURNAL-TEXT JOURNAL-U PREP
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT ;
 
 
 \ Keeps only the journaled record's configuration and an incomplete refusal,
@@ -2968,7 +2968,7 @@ variable LOOKUPS    \ COUNT-GET's lookups
    M MODEL:AWAIT
    MODEL-PEER:CALLS@ calls = ASSERT
    ROWS-MADE @ rows = ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    M MODEL:CALL-ID id = ASSERT
    \ A refusal its live call journaled replays with no request and no line.
    false JOURNAL-READY !
@@ -3030,10 +3030,10 @@ variable ASKED-U
    MODEL-PEER:CALLS@ {: before:n :}
    PURPOSE s" valid" ASK
    MODEL-PEER:CALLS@ before = ASSERT
-   M MODEL:JOURNAL-INPUT$ ASKED$ STR= ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:JOURNAL-INPUT$ ASKED$ STR:= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT
-   INPUT$ ASKED$ STR= ASSERT
+   INPUT$ ASKED$ STR:= ASSERT
    M MODEL:CALL-ID {: id:n :}
    ROWS-MADE @ {: rows:n :}
    MODEL-PEER:CALLS@ {: calls:n :}
@@ -3041,7 +3041,7 @@ variable ASKED-U
    0 [: NEGATIVE-REPLAY ;]
    s" expected REPLAY's record, found `-1`; pass the text with its length in bytes"
    CONFIG-SAYS
-   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR= ASSERT
+   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ calls = ASSERT
    ROWS-MADE @ rows = ASSERT
    M MODEL:CALL-ID id = ASSERT
@@ -3054,7 +3054,7 @@ variable ASKED-U
    s" reason" s" test-generation" s" low" s" " M MODEL:PURPOSE-MODEL!
    s" reason" M MODEL:PURPOSE! s" valid" ASK
    ASKED$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY ASSERT s" low" STR-IS
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" effort" ROW s" low" STR-IS
    \ A saved refusal replays as the refusal, with no request and no line, and
    \ keeps the request, which JOURNAL-INPUT$ answers again.
@@ -3063,7 +3063,7 @@ variable ASKED-U
    PURPOSE s" too-large" ASK
    [: REPLAY-CODE MODEL:E-CAPACITY = ASSERT ;] QUIET
    MODEL-PEER:CALLS@ refused = ASSERT
-   PURPOSE M MODEL:JOURNAL-INPUT$ ASKED$ STR= ASSERT ;
+   PURPOSE M MODEL:JOURNAL-INPUT$ ASKED$ STR:= ASSERT ;
 
 
 create GOT 32768 allot    \ the journal input KEEP-GET last received
@@ -3094,16 +3094,16 @@ variable GOT-NS           \ TIME:MONO-NS as KEEP-GET last ran
    ROWS-MADE @ rows 1+ = ASSERT
    s" purpose" ROW s" assemble" STR-IS
    s" outcome" ROW s" failed" STR-IS
-   GOT$ ASKED$ STR= ASSERT
+   GOT$ ASKED$ STR:= ASSERT
    KEEP-SENT
    0 GOT-U ! 0 JOURNAL-INPUT-U !
-   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ calls 2 + = ASSERT
    ROWS-MADE @ rows 2 + = ASSERT
    s" purpose" ROW s" assemble" STR-IS
    s" outcome" ROW s" ok" STR-IS
-   GOT$ ASKED$ STR= ASSERT
-   INPUT$ ASKED$ STR= ASSERT
+   GOT$ ASKED$ STR:= ASSERT
+   INPUT$ ASKED$ STR:= ASSERT
    SENT-AGAIN ;
 
 
@@ -3264,21 +3264,21 @@ variable MATCHES   \ COUNT-BY's count
    M MODEL:START
    SERVE-TO-REST
    same before ONE-LINE
-   GOT$ ASKED$ STR= ASSERT
+   GOT$ ASKED$ STR:= ASSERT
    KEEP-SENT
    0 GOT-U ! 0 GOT-NS ! 0 JOURNAL-INPUT-U !
    M MODEL:RESEND-DUE {: due:n :}
    mono-ns due < ASSERT
    M MODEL:AWAIT
    GOT-NS @ due >= ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 2 = ASSERT
    ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
    s" purpose" ROW s" assemble" STR-IS
    SENT-AGAIN
-   GOT$ ASKED$ STR= ASSERT
-   INPUT$ ASKED$ STR= ASSERT
+   GOT$ ASKED$ STR:= ASSERT
+   INPUT$ ASKED$ STR:= ASSERT
    same before ONE-LINE
    s" " M MODEL:SERVICE-TIER! ;
 
@@ -3390,7 +3390,7 @@ variable LANDED-CANCELLED   \ CANCEL-ROW's CANCEL answer
    ROWS-SINCE 0= ASSERT
    0 READ-FAULT!
    M MODEL:AWAIT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 1 = ASSERT
    ROWS-SINCE 1 = ASSERT
    LINES before 2 + = ASSERT
@@ -3798,7 +3798,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
    AWAIT-CODE 0= ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 3 = ASSERT
    ROWS-SINCE 3 = ASSERT
    s" outcome" ROW s" ok" STR-IS
@@ -3891,7 +3891,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    RESEND-MARK
    PURPOSE s" flex-then" PREP M MODEL:START
    AWAIT-CODE 0= ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 3 = ASSERT
    ROWS-SINCE 3 = ASSERT
    s" outcome" ROW s" ok" STR-IS
@@ -3915,7 +3915,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" http-busy" MODEL-PEER:FAIL-NEXT
    PURPOSE s" valid" PREP M MODEL:START
    AWAIT-CODE 0= ASSERT
-   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR:= ASSERT
    SENDS-SINCE 2 = ASSERT
    ROWS-SINCE 2 = ASSERT
    s" outcome" ROW s" ok" STR-IS
@@ -4024,10 +4024,10 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" valid" ASK
    s" schema" INPUT-HEAD SCHEMA$ SB-APPEND
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
-   ASKED$ SB$ STR= ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   ASKED$ SB$ STR:= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SCHEMA-REQUEST
-   MODEL-PEER:SENT$ SB$ STR= ASSERT ;
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT ;
 
 
 \ History items in OpenAI's shapes; OUTPUT$ keeps a space between members.
@@ -4046,7 +4046,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 \ The array or object the reader is on is exactly these source bytes.
 : RAW-IS ( JSON:reader str -- )
    {: want:^ want-u:n :}
-   JSON:READ-VALUE-SPAN$ want want-u STR= ASSERT JSON:READ-CLOSE ;
+   JSON:READ-VALUE-SPAN$ want want-u STR:= ASSERT JSON:READ-CLOSE ;
 
 
 \ ITEM+ before PARTS-RESET, after CHAT or after JOURNAL-INPUT$ is E-STATE, the
@@ -4074,8 +4074,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    SB-RESET
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
    CALLED$ SB-APPEND s" ," SB-APPEND OUTPUT$ SB-APPEND s" ]}" SB-APPEND
-   a u SB$ ENDS-WITH? ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   a u SB$ STR:ENDS-WITH? ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SB-RESET s" [" SB-APPEND HEAD$ SB-APPEND s" ," SB-APPEND
    CALLED$ SB-APPEND s" ," SB-APPEND OUTPUT$ SB-APPEND s" ]" SB-APPEND
    s" input" SENT SB$ RAW-IS ;
@@ -4088,8 +4088,8 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    M MODEL:JOURNAL-INPUT$ {: a:^ u:n :}
    SB-RESET S\" ,\qparts\q:[],\qitems\q:[" SB-APPEND
    USER-ITEM$ SB-APPEND s" ]}" SB-APPEND
-   a u SB$ ENDS-WITH? ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   a u SB$ STR:ENDS-WITH? ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SB-RESET s" [" SB-APPEND USER-ITEM$ SB-APPEND s" ]" SB-APPEND
    s" input" SENT SB$ RAW-IS ;
 
@@ -4109,7 +4109,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    S\" \qx\q" ITEM-CODE MODEL:E-CONFIG = ASSERT
    s" {}{}" ITEM-CODE MODEL:E-CONFIG = ASSERT
    s" {" ITEM-CODE MODEL:E-CONFIG = ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    SB-RESET s" [" SB-APPEND HEAD$ SB-APPEND s" ," SB-APPEND
    CALLED$ SB-APPEND s" ]" SB-APPEND
    s" input" SENT SB$ RAW-IS ;
@@ -4140,15 +4140,15 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
 : TOOLS-BODY ( -- )
    TOOLS s" tool-call" PREP
    M MODEL:CHAT nip 0= ASSERT
-   TOOLS-REQUEST MODEL-PEER:SENT$ SB$ STR= ASSERT
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT ;
+   TOOLS-REQUEST MODEL-PEER:SENT$ SB$ STR:= ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT ;
 
 
 \ The last of SCHEMA! and TOOLS! decides the call's form.
 : FORM-LAST ( -- )
    TOOLS SCHEMA$ M MODEL:SCHEMA!
    CHAT
-   SCHEMA-REQUEST MODEL-PEER:SENT$ SB$ STR= ASSERT ;
+   SCHEMA-REQUEST MODEL-PEER:SENT$ SB$ STR:= ASSERT ;
 
 
 : TOOLS-CODE ( str -- n ) M MODEL:TOOLS! s" tool-call" PREP CHAT-CODE ;
@@ -4203,7 +4203,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" tools" INPUT-HEAD TOOLS$ SB-APPEND
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
    CALLED$ SB-APPEND s" ]}" SB-APPEND
-   a u SB$ STR= ASSERT ;
+   a u SB$ STR:= ASSERT ;
 
 
 \ The record a tools call saved holds empty content and replays with no
@@ -4217,7 +4217,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" tool-call" ASK
    RECORD$ M MODEL:REPLAY nip 0= ASSERT
    MODEL-PEER:CALLS@ calls = ASSERT
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT ;
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT ;
 
 
 : COUNT-CODE ( ^MODEL:call -- n )
@@ -4249,7 +4249,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" tool-call" COUNT-HEAD s" ," SB-APPEND CALLED$ SB-APPEND
    S\" ],\qtools\q:" SB-APPEND TOOLS$ SB-APPEND
    S\" ,\qtool_choice\q:\qrequired\q,\qparallel_tool_calls\q:false}" SB-APPEND
-   MODEL-PEER:SENT$ SB$ STR= ASSERT
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT
    tools-n MODEL-PEER:SENT$ nip = ASSERT
    SCHEMA$ M MODEL:SCHEMA!
    s" valid" PREP
@@ -4257,7 +4257,7 @@ variable GET-CANCELLED   \ CANCEL-GET's CANCEL answer
    s" valid" COUNT-HEAD
    S\" ],\qtext\q:{\qformat\q:{\qtype\q:\qjson_schema\q,\qname\q:\qanswer\q," SB-APPEND
    S\" \qstrict\q:true,\qschema\q:" SB-APPEND SCHEMA$ SB-APPEND s" }}}" SB-APPEND
-   MODEL-PEER:SENT$ SB$ STR= ASSERT
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT
    schema-n MODEL-PEER:SENT$ nip = ASSERT
    s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER!
    0 M MODEL:MAX-OUTPUT! ;
@@ -4279,7 +4279,7 @@ variable COUNTED-U
    JSON:READ-CLOSE
    M MODEL:CHAT nip 0= ASSERT
    s" input" SENT COUNTED$ RAW-IS
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT
    SCHEMA$ M MODEL:SCHEMA! ;
 
 
@@ -4306,7 +4306,7 @@ variable COUNTED-U
    S\" /responses/input_tokens\q},\qinstructions\q:\qRead source evidence.\q,\qschema\q:" SB-APPEND
    SCHEMA$ SB-APPEND
    S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
-   INPUT$ SB$ STR= ASSERT
+   INPUT$ SB$ STR:= ASSERT
    MODEL-PEER:CALLS@ {: calls:n :}
    true JOURNAL-READY !
    0 [: JOURNAL-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
@@ -4315,9 +4315,9 @@ variable COUNTED-U
    MODEL-PEER:CALLS@ calls = ASSERT
    ROWS-MADE @ 1 = ASSERT
    CAPTURE
-   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    PURPOSE s" valid" ASK
-   ASKED$ INPUT$ STR= ASSERT
+   ASKED$ INPUT$ STR:= ASSERT
    M MODEL:CLOSE SETUP ;
 
 
@@ -4329,11 +4329,11 @@ variable COUNTED-U
    s" valid" ASK
    M COUNT-CODE MODEL:E-STATE = ASSERT
    MODEL-PEER:CALLS@ before = ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT
    s" valid" ASK
    M COUNT-CODE MODEL:E-STATE = ASSERT
-   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR= ASSERT
+   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
@@ -4405,7 +4405,7 @@ variable COUNTED-U
    S\" \qservice_tier\q:\qflex\q,\qinstructions\q:\qRead source evidence.\q,\qinput\q:[" SB-APPEND
    S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}," SB-APPEND
    CALLED$ SB-APPEND s" ]}" SB-APPEND
-   MODEL-PEER:SENT$ SB$ STR= ASSERT
+   MODEL-PEER:SENT$ SB$ STR:= ASSERT
    s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER!
    SCHEMA$ M MODEL:SCHEMA! ;
 
@@ -4424,7 +4424,7 @@ variable COUNTED-U
    M MODEL:CHAT nip 0= ASSERT
    s" tool-call" body-u WINDOW s" input" SENT SB$ RAW-IS
    s" tools" SENT TOOLS$ RAW-IS
-   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR:= ASSERT
    SCHEMA$ M MODEL:SCHEMA! ;
 
 
@@ -4459,7 +4459,7 @@ variable COUNTED-U
    S\" /responses/compact\q},\qinstructions\q:\qRead source evidence.\q," SB-APPEND
    S\" \qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
    CALLED$ SB-APPEND s" ]}" SB-APPEND
-   INPUT$ SB$ STR= ASSERT
+   INPUT$ SB$ STR:= ASSERT
    MODEL-PEER:CALLS@ {: calls:n :}
    true JOURNAL-READY !
    0 [: JOURNAL-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
@@ -4481,7 +4481,7 @@ variable COUNTED-U
    s" valid" ASK
    M COMPACT-CODE MODEL:E-STATE = ASSERT
    MODEL-PEER:CALLS@ before = ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ before 1+ = ASSERT ;
 
 
@@ -4599,13 +4599,13 @@ variable COUNTED-U
    JOURNAL-TEXT 5 + JOURNAL-U 5 - XS
    CAPTURE
    JOURNAL-TEXT JOURNAL-U PREP
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    s" " M MODEL:BASE-URL!
    s" https://api.openai.com/v1" BASE-IS
    0 [: OPENAI-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
    MODEL-PEER:CALLS@ {: calls:n :}
    JOURNAL-TEXT JOURNAL-U PREP
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    MODEL-PEER:CALLS@ calls = ASSERT ;
 
 
@@ -4673,7 +4673,7 @@ variable COUNTED-U
 \ and closes them.
 : APPLIED ( ^u8 n -- )
    SVC$ ST MODEL:SETTINGS-OPEN
-   ST MODEL:SETTINGS-BASE$ 2swap STR= ASSERT
+   ST MODEL:SETTINGS-BASE$ 2swap STR:= ASSERT
    ST M MODEL:SETTINGS-APPLY
    ST MODEL:SETTINGS-CLOSE ;
 
@@ -4688,9 +4688,9 @@ variable COUNTED-U
    M MODEL:OPEN
    SVC$ ST MODEL:SETTINGS-OPEN
    0 [: ST-OPEN ;] CODE-OF MODEL:E-STATE = ASSERT
-   ST MODEL:SETTINGS-SERVICE$ SVC$ STR= ASSERT
-   ST MODEL:SETTINGS-MODEL$ s" settings-generation" STR= ASSERT
-   ST MODEL:SETTINGS-BASE$ MODEL-PEER:BASE-URL$ STR= ASSERT
+   ST MODEL:SETTINGS-SERVICE$ SVC$ STR:= ASSERT
+   ST MODEL:SETTINGS-MODEL$ s" settings-generation" STR:= ASSERT
+   ST MODEL:SETTINGS-BASE$ MODEL-PEER:BASE-URL$ STR:= ASSERT
    ST M MODEL:SETTINGS-APPLY
    ST MODEL:SETTINGS-CLOSE
    0 [: ST-APPLY ;] CODE-OF MODEL:E-STATE = ASSERT
@@ -4740,7 +4740,7 @@ variable COUNTED-U
    9200 MAX-OUTPUT-IS
    PURPOSE s" valid" PREP M MODEL:COUNT-INPUT drop
    NO-MAX-OUTPUT
-   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR:= ASSERT
    9200 MAX-OUTPUT-IS
    s" max_output_tokens" CONFIG 9200 INT-IS
    PURPOSE s" valid" PREP CALLED$ ITEM M MODEL:COMPACT
@@ -4813,7 +4813,7 @@ public
    STORE-INSTALL
    LOG-INIT
    [: CAPTURED ;] CURL:WITH-LOOPS
-   LOG$ KEY$ CONTAINS? 0= ASSERT
+   LOG$ KEY$ STR:CONTAINS? 0= ASSERT
    LOG-B BUF:DISPOSE
    s" model-test: " type T-CASES FMT:.INT s"  checks" type cr
    T-REPORT ;

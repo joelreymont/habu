@@ -39,27 +39,27 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    0
    col 0 ?do
       {: start:n :}
-      a u 32 start SPLIT-NEXT 0= if drop 2drop s" " unloop exit then
+      a u 32 start STR:SPLIT-NEXT 0= if drop 2drop s" " unloop exit then
       {: field:^ size:n next:n :} next
    loop
-   {: start:n :} a u 32 start SPLIT-NEXT 2drop ;
+   {: start:n :} a u 32 start STR:SPLIT-NEXT 2drop ;
 
 : COLUMN ( str str -- n ) {: a:^ u:n name:^ size:n :}
    1 begin
       {: col:n :}
       a u col FIELD$ dup 0= if 2drop -1 exit then
-      name size STR= if col 1- exit then
+      name size STR:= if col 1- exit then
       col 1+
    again ;
 
 : LOADED? ( -- bool ) USED @ 0<> ;
 
 : LINE$ ( -- str )
-   0 TEXT BYTE-VIEW USED @ 10 POS @ SPLIT-NEXT
+   0 TEXT BYTE-VIEW USED @ 10 POS @ STR:SPLIT-NEXT
    drop POS ! ;
 
 : NUMBER ( str -- n )
-   STR>NUMBER? MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH ;
+   STR:>NUMBER? MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH ;
 
 : NUM-COL ( str n -- n ) FIELD$ NUMBER ;
 
@@ -72,18 +72,18 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
 : KIND? ( str str -- bool )
    {: row:^ rowu:n kind:^ kindu:n :}
-   row rowu COL-KIND @ FIELD$ kind kindu STR= ;
+   row rowu COL-KIND @ FIELD$ kind kindu STR:= ;
 
 : ROW-CHARGED? ( str -- bool ) {: a:^ u:n :}
-   a u COL-KIND @ FIELD$ s" runtime" STR= if true exit then
-   a u COL-KIND @ FIELD$ s" word" STR= ;
+   a u COL-KIND @ FIELD$ s" runtime" STR:= if true exit then
+   a u COL-KIND @ FIELD$ s" word" STR:= ;
 
 : ORIGIN+ ( str n -- ) {: a:^ u:n bytes:n :}
-   a u COL-ORIGIN @ FIELD$ s" baked" STR= if
+   a u COL-ORIGIN @ FIELD$ s" baked" STR:= if
       ATTR-BAKED @ bytes + ATTR-BAKED ! exit then
-   a u COL-ORIGIN @ FIELD$ s" loaded" STR= if
+   a u COL-ORIGIN @ FIELD$ s" loaded" STR:= if
       ATTR-LOADED @ bytes + ATTR-LOADED ! exit then
-   a u COL-ORIGIN @ FIELD$ s" generated" STR= if
+   a u COL-ORIGIN @ FIELD$ s" generated" STR:= if
       ATTR-GENERATED @ bytes + ATTR-GENERATED ! exit then
    ATTR-UNKNOWN @ bytes + ATTR-UNKNOWN ! ;
 
@@ -100,24 +100,24 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
    begin POS @ USED @ < while
       LINE$ {: row:^ rowu:n :}
       COL-KIND @ 0 >= if
-         row rowu COL-KIND @ FIELD$ s" namespace" STR=
+         row rowu COL-KIND @ FIELD$ s" namespace" STR:=
       else false then if row rowu NS+ then
    repeat ;
 
 \ The kinds of the rows after the code: the regions the link appended and the pad before one.
 : TAIL? ( str -- bool )
    {: kind:^ kindu:n :}
-   kind kindu s" data" STR= if true exit then
-   kind kindu s" data-list" STR= if true exit then
-   kind kindu s" names" STR= if true exit then
-   kind kindu s" records" STR= if true exit then
-   kind kindu s" record-list" STR= if true exit then
-   kind kindu s" pad" STR= ;
+   kind kindu s" data" STR:= if true exit then
+   kind kindu s" data-list" STR:= if true exit then
+   kind kindu s" names" STR:= if true exit then
+   kind kindu s" records" STR:= if true exit then
+   kind kindu s" record-list" STR:= if true exit then
+   kind kindu s" pad" STR:= ;
 
 : UNCHARGED? ( str -- bool )
    {: kind:^ kindu:n :}
-   kind kindu s" namespace" STR= if true exit then
-   kind kindu s" alias" STR= if true exit then
+   kind kindu s" namespace" STR:= if true exit then
+   kind kindu s" alias" STR:= if true exit then
    kind kindu TAIL? ;
 
 \ At most 64 bytes of the kind: a corrupt map's field can pass the string builder.
@@ -154,9 +154,9 @@ public
    map mapu 0 TEXT BYTE-VIEW size FS:READ-ALL size <> if
       s" image-names: short read" EXIT-STATUS:IOERR die then
    size USED ! 0 POS !
-   LINE$ s" habu-names 1" STR= 0= if 0 USED ! exit then
+   LINE$ s" habu-names 1" STR:= 0= if 0 USED ! exit then
    LINE$ {: header:^ headeru:n :}
-   header headeru 0 FIELD$ s" columns" STR= 0= if 0 USED ! exit then
+   header headeru 0 FIELD$ s" columns" STR:= 0= if 0 USED ! exit then
    header headeru s" start" COLUMN COL-START !
    header headeru s" len" COLUMN COL-LEN !
    header headeru s" wid" COLUMN COL-WID !
@@ -252,7 +252,7 @@ private
 : OWNER ( str -- ^owner ) {: key:^ keyu:n :}
    OWNER-N @ 0 ?do
       i OWNERS {: seen:^ :}
-      seen OWNER-KEY @ seen OWNER-SIZE @ key keyu STR= if
+      seen OWNER-KEY @ seen OWNER-SIZE @ key keyu STR:= if
          seen unloop exit
       then
    loop

@@ -204,7 +204,7 @@ variable TREES-N
    READ-SOME dup 0 > if OUT-U +! true exit then
    drop false ;
 
-: LINE? ( -- bool ) OUT OUT-U @ S\" \n" CONTAINS? ;
+: LINE? ( -- bool ) OUT OUT-U @ S\" \n" STR:CONTAINS? ;
 
 : AWAIT-LINE ( fd -- )
    begin LINE? 0= if dup MORE else false then while repeat drop ;
@@ -224,7 +224,7 @@ variable TREES-N
    in-r FD>N close  out-w FD>N close
    0 OUT-U !
    out-r AWAIT-LINE
-   OUT OUT-U @ S\" loaded\n" STR= if
+   OUT OUT-U @ S\" loaded\n" STR:= if
       TREE-B$ INSTALL 2 HELD  TREE-B$ INSTALL 3 HELD  in-w GO
    then
    in-w FD>N close

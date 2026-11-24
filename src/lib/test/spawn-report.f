@@ -39,7 +39,7 @@ variable MARK-U
 \ inline.
 : U-TYPE ( n -- ) {: n:n :}
    n 10 >= if n 10 / RECURSE then
-   n 10 mod STR-ZERO + emit ;
+   n 10 mod STR:ZERO + emit ;
 
 \ fcntl answers -errno for a closed fd's flags, so they print signed.
 : N-TYPE ( n -- ) {: n:n :}

@@ -72,8 +72,8 @@ s" : CVPS-F3 ( n -- n ) ;" CVPS:REPLAY 0 T=
 s" CVPS-FIRST: a rejecting replay is rejected, not a context error" T-LABEL
 s" : CVPS-FBAD ( n -- n ) dup ;" CVPS:REPLAY-QUIET 0 T<>
 s" CVPS-FIRST: the rejection is the word's stack mismatch, so it was a real source reject" T-LABEL
-CVPS:DIAG$ s" error[E-MISMATCH]" CONTAINS? TTRUE
-CVPS:DIAG$ s" : CVPS-FBAD" CONTAINS? TTRUE
+CVPS:DIAG$ s" error[E-MISMATCH]" STR:CONTAINS? TTRUE
+CVPS:DIAG$ s" : CVPS-FBAD" STR:CONTAINS? TTRUE
 s" CVPS-FIRST: replay after the throwing one certifies" T-LABEL
 s" : CVPS-F4 ( n -- n ) ;" CVPS:REPLAY 0 T=
 
@@ -116,8 +116,8 @@ s" : CVPS-T2 ( n -- n ) ;" CVPS:REPLAY 0 T=
 s" package CVPS-PA package CVPS-PB ;package : CVPS-PP ( -- n ) 1 ; ;package : CVPS-PQ ( -- n ) CVPS-PP ;"
 CVPS:REPLAY-QUIET drop
 s" a part's ;package: the package's private word is undefined after it closes" T-LABEL
-CVPS:DIAG$ s" error[E-UNDEFINED]" CONTAINS? TTRUE
-CVPS:DIAG$ s" `CVPS-PP`" CONTAINS? TTRUE
+CVPS:DIAG$ s" error[E-UNDEFINED]" STR:CONTAINS? TTRUE
+CVPS:DIAG$ s" `CVPS-PP`" STR:CONTAINS? TTRUE
 
 \ A replay reopening a part the engine holds binds the part's words.
 package CVPS-HOST package CVPS-PART public : CVPS-PW ( -- n ) 42 ; ;package ;package
@@ -131,13 +131,13 @@ CVPS:REPLAY-NEUTRAL 0 T=
 s" package CVPS-SE private BEGIN-STRUCTURE REC-SIZE public CELL +FIELD REC.A PTR-FIELD: REC.B 40 +FIELD REC.C CELL +FIELD REC.D END-STRUCTURE REC-SIZE constant REC-BYTES NULL-PTR REC.D NULL-PTR - constant D-OFF ;package package CVPS-SF private : SHOW ( -- ) CVPS-SE:D-OFF . CVPS-SE:REC-BYTES . NULL-PTR CVPS-SE:REC.B NULL-PTR - . cr ; ;package"
 CVPS:REPLAY-QUIET drop
 s" a section switch inside a structure moves the words after it" T-LABEL
-CVPS:DIAG$ s" E-UNDEFINED" CONTAINS? TFALSE
+CVPS:DIAG$ s" E-UNDEFINED" STR:CONTAINS? TFALSE
 
 \ A structure closes in the package scope it opened in.
 s" package CVPS-SG private BEGIN-STRUCTURE REC-SIZE CELL +FIELD REC.A ;package END-STRUCTURE"
 CVPS:REPLAY-QUIET drop
 s" a package closing inside a structure rejects the structure" T-LABEL
-CVPS:DIAG$ s" error[E-UNCLOSED]: `BEGIN-STRUCTURE` is still open at `;package`" CONTAINS? TTRUE
+CVPS:DIAG$ s" error[E-UNCLOSED]: `BEGIN-STRUCTURE` is still open at `;package`" STR:CONTAINS? TTRUE
 
 \ ---- nested neutral scopes ---------------------------------------------------
 \ The inner scope's replay starts at using depth 0, so its `using` fills the slot

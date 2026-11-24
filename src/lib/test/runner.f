@@ -311,7 +311,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 : GT-U-TYPE ( n -- ) {: n :}
    n 0 < if E-TBL-FIELD throw then
    n 10 >= if n 10 / RECURSE then
-   n 10 mod STR-ZERO + emit ;
+   n 10 mod STR:ZERO + emit ;
 
 : GT-PROGRESS-PASS ( str -- ) {: label:^ labelu :}
    s" PASS: " type label labelu type
@@ -326,7 +326,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    GT-RC@ want name nameu GT-CHECK-N ;
 
 : GT-STDOUT-HAS ( str str -- ) {: needle:^ needleu name:^ nameu :}
-   GT-OUT$ needle needleu CONTAINS? name nameu GT-CHECK ;
+   GT-OUT$ needle needleu STR:CONTAINS? name nameu GT-CHECK ;
 
 : GT-REPORT-OVERFLOW ( -- )
    GT-FAIL# @ GT-FAIL-MAX > if

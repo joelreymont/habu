@@ -128,7 +128,7 @@ variable T-LABEL-U
 
 : T-DIGITS-END ( str n -- n ) {: a:^ u:n i:n :}
    i begin dup u < while
-      dup a + c@ STR-DIGIT? 0= if exit then
+      dup a + c@ STR:DIGIT? 0= if exit then
       1+
    repeat ;
 
@@ -139,7 +139,7 @@ variable T-LABEL-U
    repeat ;
 
 : T-FROM ( str str n -- n )
-   FIND-SUB-FROM MATCH option
+   STR:FIND-SUB-FROM MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
@@ -158,20 +158,20 @@ variable T-LABEL-U
 : T-GUTTER-AT? ( str str str n -- bool )
    {: r:^ ru:n d:^ du:n c:^ cu:n h:n :}
    h du + 3 + {: s:n :}
-   s ru > if STR-FALSE exit then
-   h 1- r + c@ 10 <> if STR-FALSE exit then
-   h du + r + 3 s"  | " STR= 0= if STR-FALSE exit then
-   s r +  r ru s T-LINE-END s -  c cu CONTAINS? ;
+   s ru > if STR:FALSE exit then
+   h 1- r + c@ 10 <> if STR:FALSE exit then
+   h du + r + 3 s"  | " STR:= 0= if STR:FALSE exit then
+   s r +  r ru s T-LINE-END s -  c cu STR:CONTAINS? ;
 
 : T-GUTTER? ( str str str -- bool )
    {: r:^ ru:n d:^ du:n c:^ cu:n :}
-   du 0= if STR-FALSE exit then
+   du 0= if STR:FALSE exit then
    1 begin
       >r r ru d du r> T-FROM
       dup 0< 0= while
-      dup >r r ru d du c cu r> T-GUTTER-AT? if drop STR-TRUE exit then
+      dup >r r ru d du c cu r> T-GUTTER-AT? if drop STR:TRUE exit then
       1+
-   repeat drop STR-FALSE ;
+   repeat drop STR:FALSE ;
 
 \ A record's place in the file whose name ends f, asserted without pinning a
 \ line: its ` --> ` line names `f:N:col`, and its gutter line `N | ` shows a
@@ -179,11 +179,11 @@ variable T-LABEL-U
 : T-PLACED ( str str n str -- )
    {: r:^ ru:n f:^ fu:n col:n c:^ cu:n :}
    r ru f fu T-PLACE-LINE {: ls:n :}
-   ls 0< if -1 col T=  STR-FALSE TTRUE exit then
+   ls 0< if -1 col T=  STR:FALSE TTRUE exit then
    r ru ls T-DIGITS-END {: le:n :}
-   le ru < if le r + c@ [char] : = else STR-FALSE then
+   le ru < if le r + c@ [char] : = else STR:FALSE then
    if
-      le 1+ r +  r ru le 1+ T-DIGITS-END le 1+ -  STR-PARSE-POS MATCH option
+      le 1+ r +  r ru le 1+ T-DIGITS-END le 1+ -  STR:PARSE-POS MATCH option
         none OF -1 ENDOF
         some OF ENDOF
       ;MATCH

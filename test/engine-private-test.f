@@ -40,7 +40,7 @@ s" case.f" TCE-PATH FS:JOIN-PATH TCE-PATH-U !
    ENGINE-CANDIDATE:PATH$  TCE-NONE 0  TCE-OUT TCE-CAP >LEN
    TCE-ERR TCE-CAP >LEN  PROCESS:WAIT-FOREVER
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   TCE-ERR erru LEN>N wa wu CONTAINS? TTRUE
+   TCE-ERR erru LEN>N wa wu STR:CONTAINS? TTRUE
    src srcu TCE-OUT outu LEN>N TCE-ERR erru LEN>N oc 70
    T-ENDING-EXITED= ;
 
@@ -52,7 +52,7 @@ public
 : TCE-REJECTS ( str str -- ) {: src:^ srcu:n wa:^ wu:n :}
    src TCE-A !  srcu TCE-U !
    REJECTION:CAPTURE  [: TCE-GO ;] catch  REJECTION:BUFFER-OFF
-   70 T=  REJECTION:BUFFER$ wa wu STARTS-WITH? TTRUE
+   70 T=  REJECTION:BUFFER$ wa wu STR:STARTS-WITH? TTRUE
    src srcu wa wu TCE-CHECK ;
 
 ;package

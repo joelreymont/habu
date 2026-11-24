@@ -109,7 +109,7 @@ variable LA-DANGLING-LINK-U
    s" --load of a boot-prefix path exits 0" T-LABEL
    rc 0 T=
    s" --load of a boot-prefix path reaches user source" T-LABEL
-   outu LA-OUT$ s" load-argv: reached" CONTAINS? TTRUE
+   outu LA-OUT$ s" load-argv: reached" STR:CONTAINS? TTRUE
    s" --load of a boot-prefix path says nothing on stderr" T-LABEL
    erru 0 T= ;
 
@@ -119,7 +119,7 @@ variable LA-DANGLING-LINK-U
    LA-RUN {: outu:n erru:n rc:n :}
    s" a path repeated on one --load line is loaded once" T-LABEL
    rc 0 T=
-   outu LA-OUT$ s" load-argv: reached" CONTAINS? TTRUE ;
+   outu LA-OUT$ s" load-argv: reached" STR:CONTAINS? TTRUE ;
 
 \ ...and the loader did not simply become a no-op: a path the prefix does NOT
 \ carry still loads, even though its text names a seeded path in a comment and
@@ -129,8 +129,8 @@ variable LA-DANGLING-LINK-U
    LA-RUN {: outu:n erru:n rc:n :}
    s" an unseeded --load file still loads" T-LABEL
    rc 0 T=
-   outu LA-OUT$ s" load-argv: decoy loaded" CONTAINS? TTRUE
-   outu LA-OUT$ s" load-argv: reached" CONTAINS? TTRUE ;
+   outu LA-OUT$ s" load-argv: decoy loaded" STR:CONTAINS? TTRUE
+   outu LA-OUT$ s" load-argv: reached" STR:CONTAINS? TTRUE ;
 
 \ A mistyped command line names the path it could not open.
 : LA-MISSING-PATH-NAMED ( -- )
@@ -139,8 +139,8 @@ variable LA-DANGLING-LINK-U
    s" a missing --load file exits 70" T-LABEL
    rc 70 T=
    s" a missing --load file is named on stderr" T-LABEL
-   erru LA-ERR$ LA-MISS$ CONTAINS? TTRUE
-   erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
+   erru LA-ERR$ LA-MISS$ STR:CONTAINS? TTRUE
+   erru LA-ERR$ s" cannot open" STR:CONTAINS? TTRUE ;
 
 \ A path below a dangling directory symlink is refused naming the exact requested
 \ path, not while canonicalizing the invocation root.
@@ -150,9 +150,9 @@ variable LA-DANGLING-LINK-U
    s" a --load path below a dangling symlink exits 70" T-LABEL
    rc 70 T=
    s" a dangling-symlink --load path is named on stderr" T-LABEL
-   erru LA-ERR$ LA-DANGLING$ CONTAINS? TTRUE
+   erru LA-ERR$ LA-DANGLING$ STR:CONTAINS? TTRUE
    s" a dangling-symlink --load path keeps the open diagnostic" T-LABEL
-   erru LA-ERR$ s" cannot open" CONTAINS? TTRUE ;
+   erru LA-ERR$ s" cannot open" STR:CONTAINS? TTRUE ;
 
 \ Nesting each argv file in its own evaluate keeps an uncaught throw's record
 \ and status.
@@ -162,7 +162,7 @@ variable LA-DANGLING-LINK-U
    s" an uncaught throw in a --load file exits 67" T-LABEL
    rc 67 T=
    s" an uncaught throw in a --load file names its code" T-LABEL
-   erru LA-ERR$ 7141 TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE ;
+   erru LA-ERR$ 7141 TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE ;
 
 public
 

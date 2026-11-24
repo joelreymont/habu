@@ -480,7 +480,7 @@ CAST: RS>BYTES ( n -- ^u8 )
    {: source u:n at:n want wu:n :}
    at 0 < if false exit then
    wu u at - > if false exit then
-   source at + wu want wu STR= ;
+   source at + wu want wu STR:= ;
 
 : RS-PEM-LF ( str n -- n )
    {: pem u:n at:n :}

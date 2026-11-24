@@ -588,7 +588,7 @@ PTR-VARIABLE OBJ-BASE
    0 begin dup pu < while
       {: at:n :}
       p at + LE:U64@ {: len:n :}
-      p at + 8 + len  a u  STR= if at exit then
+      p at + 8 + len  a u  STR:= if at exit then
       at 8 + len +
    repeat
    drop  a u buf FIELD+  pu ;
@@ -656,7 +656,7 @@ PTR-VARIABLE OBJ-BASE
 : KEY-PATH ( -- n )
    LOAD-PATHS @ BYTES$ {: a:^ u:n :}
    0 begin dup u < while
-      a over + KEY-BYTES  FILE-KEY KEY-BYTES  STR= if KEY-BYTES + exit then
+      a over + KEY-BYTES  FILE-KEY KEY-BYTES  STR:= if KEY-BYTES + exit then
       KEY-BYTES +  a over + LE:U64@ +  8 +
    repeat ;
 
@@ -729,7 +729,7 @@ PTR-VARIABLE OBJ-BASE
    REFS @ BYTES$ {: refs:^ refsu:n :}
    refsu FILES-ROW-BYTES / {: n:n :}
    n 0 ?do
-      refs i FILES-ROW-BYTES * +  KEY-BYTES 8 +  at KEY-BYTES 8 +  STR= if i unloop exit then
+      refs i FILES-ROW-BYTES * +  KEY-BYTES 8 +  at KEY-BYTES 8 +  STR:= if i unloop exit then
    loop
    n ;
 
@@ -1110,7 +1110,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    to from > if src from +  to from -  NAME-SUM SPELL-HIT then ;
 
 \ True when the word [from, to) is `\` and its line's first: the line is a comment. A `\` later
-\ in a line may be text a parsing word takes (`[char] \ INDEX-OF`), so it starts none.
+\ in a line may be text a parsing word takes (`[char] \ STR:INDEX-OF`), so it starts none.
 : COMMENT? ( ^u8 n n -- bool )
    {: src:^ from:n to:n :}
    FIRST-WORD @  to from - 1 =  and if src from + c@ 92 = else false then ;
@@ -1351,7 +1351,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : OWN-HEADER? ( -- bool )
    HOLDS-HEADER @ if true exit then
    BUILT-N 0 ?do
-      i BUILT-AT KEY-BYTES  FILE-KEY KEY-BYTES  STR=  i HEADER-HELD?  and if true unloop exit then
+      i BUILT-AT KEY-BYTES  FILE-KEY KEY-BYTES  STR:=  i HEADER-HELD?  and if true unloop exit then
    loop
    false ;
 
@@ -2868,7 +2868,7 @@ variable RD-END
    {: a:^ u:n :}
    RD-AT @ {: at:n :}
    u RD-STEP 0= if exit then
-   at OBJ-PTR u  a u  STR= 0= if BAD then ;
+   at OBJ-PTR u  a u  STR:= 0= if BAD then ;
 
 
 \ A count of rows of at least n bytes each; bad, and 0, when the rest cannot hold them.
@@ -3050,7 +3050,7 @@ variable RD-END
 \ the BUILT row's.
 : ROW-FITS? ( ^u8 ^u8 -- bool )
    {: f:^ b:^ :}
-   f KEY-BYTES 8 +  b KEY-BYTES 8 +  STR= 0= if false exit then
+   f KEY-BYTES 8 +  b KEY-BYTES 8 +  STR:= 0= if false exit then
    f BUILT-TIME + LE:U64@ {: t:n :}
    t 0=  t  b BUILT-TIME + LE:U64@  =  or ;
 
@@ -3384,16 +3384,16 @@ variable RD-END
    {: a:^ u:n b:^ v:n :}
    a u SOURCE-ROOT:ROOT? {: c:^ cu:n ok:bool :}
    ok 0= if false exit then
-   c cu b v STR= ;
+   c cu b v STR:= ;
 
 \ Whether an object's root is the current one or still resolves to itself, as SOURCE-ROOT:WITH and ROOT! need.
 : ROOT-STANDS? ( str -- bool )
    {: a:^ u:n :}
-   a u SOURCE-ROOT:CURRENT$ STR= if true exit then
+   a u SOURCE-ROOT:CURRENT$ STR:= if true exit then
    a u a u ROOT-HOLDS? ;
 
 \ Whether a part's entry root is the current one, as its link needs.
-: ENTRY-HOLDS? ( str -- bool ) SOURCE-ROOT:CURRENT$ STR= ;
+: ENTRY-HOLDS? ( str -- bool ) SOURCE-ROOT:CURRENT$ STR:= ;
 
 \ Whether the environment variable holds the value it held, or is absent when value is NULL-PTR.
 : ENV-HOLDS? ( str str -- bool )
@@ -3401,7 +3401,7 @@ variable RD-END
    a u ENV-INPUT:CURRENT$ {: e:^ eu:n :}
    b NULL-PTR = if e NULL-PTR = exit then
    e NULL-PTR = if false exit then
-   e eu b v STR= ;
+   e eu b v STR:= ;
 
 : NUL-FREE? ( str -- bool )
    {: a:^ u:n :}
@@ -3460,7 +3460,7 @@ variable RD-END
 \ The path resolved as SOURCE-ROOT:RESOLVE resolves it with root current; the answer lasts until the next resolve.
 : RESOLVE-UNDER ( str str -- str bool )
    {: a:^ u:n root:^ rootu:n :}
-   root rootu SOURCE-ROOT:CURRENT$ STR= if a u SOURCE-ROOT:RESOLVE exit then
+   root rootu SOURCE-ROOT:CURRENT$ STR:= if a u SOURCE-ROOT:RESOLVE exit then
    root rootu [:
       a u SOURCE-ROOT:RESOLVE UNDER-KNOWN !
       dup PATH-CAP > if E-PATH-RANGE throw then
@@ -3480,7 +3480,7 @@ variable RD-END
 : REQ-RESOLVE ( str str str -- str bool bool )
    {: s:^ su:n x:^ xu:n l:^ lu:n :}
    s su x xu RESOLVE-UNDER {: c:^ cu:n known:bool :}
-   c cu known  c cu l lu STR=  c cu FS:FILE?  and ;
+   c cu known  c cu l lu STR:=  c cu FS:FILE?  and ;
 
 
 \ A record reference (file, sum, count) naming a package: an earlier entry of KIND-PACKAGE, or an
@@ -3880,7 +3880,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    {: buf:^ :}
    buf BYTES$ {: a:^ len:n :}
    len HEADER-BYTES < if false exit then
-   a 8  s" HABUFOBJ" STR= 0= if false exit then
+   a 8  s" HABUFOBJ" STR:= 0= if false exit then
    PAIRS-AT {: pairs:n :}
    a pairs + 16 + LE:U64@  a pairs + 24 + LE:U64@ {: foff:n fu:n :}
    a pairs + 80 + LE:U64@  a pairs + 88 + LE:U64@ {: poff:n pu:n :}
@@ -3917,8 +3917,8 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    PRIOR @ KEYS-IN 0= if false exit then
    PRIOR @ BYTES$ {: a:^ len:n :}
    len HEADER-BYTES < if false exit then
-   a 8  s" HABUFOBJ" STR= 0= if false exit then
-   a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR= 0= if false exit then
+   a 8  s" HABUFOBJ" STR:= 0= if false exit then
+   a 8 + KEY-BYTES  FILE-KEY KEY-BYTES  STR:= 0= if false exit then
    PAIRS-AT {: pairs:n :}
    pairs 16 + PRIOR-PAIR?  pairs 32 + PRIOR-PAIR? and  TIMES-FIELD PRIOR-PAIR? and  PIECES-FIELD PRIOR-PAIR? and
    0= if false exit then
@@ -3940,7 +3940,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    files 8 + PRIOR@ FILES-ROW-BYTES /  refsu FILES-ROW-BYTES /  min {: n:n :}
    n 0 ?do
       refs i FILES-ROW-BYTES * +  KEY-BYTES 8 +
-      old i FILES-ROW-BYTES * +  KEY-BYTES 8 +  STR= 0= if i unloop exit then
+      old i FILES-ROW-BYTES * +  KEY-BYTES 8 +  STR:= 0= if i unloop exit then
    loop
    n ;
 
@@ -4077,7 +4077,7 @@ variable PRIOR-STORES-SIZE
    {: start:n noff:n nu:n ooff:n ou:n :}
    ooff 0<  ou 0<  or  ooff PRIOR-SIZE @ >  or  ou PRIOR-SIZE @ ooff - >  or if false exit then
    nu ou <> if false exit then
-   PIECES @ BYTES$ drop start + noff +  nu  PRIOR @ BYTES$ drop PRIOR-AT @ + ooff +  ou  STR= ;
+   PIECES @ BYTES$ drop start + noff +  nu  PRIOR @ BYTES$ drop PRIOR-AT @ + ooff +  ou  STR:= ;
 
 \ Whether word w's range s holds the bytes of the old word's at offset old in PRIOR (SPAN=).
 : SAME-SPAN? ( n n n n -- bool )
@@ -4181,7 +4181,7 @@ variable PRIOR-STORES-SIZE
    ok 0=  t 0=  or if now exit then
    PIECES @ BYTES$ {: a:^ len:n :}
    len start - u <> if now exit then
-   a start + u  PRIOR @ BYTES$ drop at + u  STR= 0= if now exit then
+   a start + u  PRIOR @ BYTES$ drop at + u  STR:= 0= if now exit then
    REFS-KEPT? 0= if now exit then
    t ;
 
@@ -4230,7 +4230,7 @@ variable PRIOR-STORES-SIZE
    0 begin dup pu < while
       {: at:n :}
       p at + LE:U64@ {: len:n :}
-      p at + 8 + len  a u  STR= if true exit then
+      p at + 8 + len  a u  STR:= if true exit then
       at 8 + len +
    repeat drop
    false ;
@@ -4458,10 +4458,10 @@ TYPED-VARIABLE LOG-ROOTS ^VEC:vector<u8>
    {: p:^ kind:n s:^ su:n c:n cu:n e:n eu:n :}
    kind LOAD-KIND? 0=  su 0=  or if false exit then
    s su  p CUR-ROOT$  RESOLVE-UNDER {: a:^ au:n known:bool :}
-   a au  p c + cu  STR= 0= if false exit then
+   a au  p c + cu  STR:= 0= if false exit then
    SOURCE-ROOT:RESOLVED-ROOT$ SOURCE-ROOT:ROOT? {: o:^ ou:n ok:bool :}
    ok 0= if false exit then
-   o ou  p e + eu  STR= 0= if false exit then
+   o ou  p e + eu  STR:= 0= if false exit then
    kind SOURCE-UNIT:LOAD-REQUIRE = if
       p c + cu  REQUIRE-KNOWN? if false exit then
       p c + cu REG+
@@ -4476,7 +4476,7 @@ TYPED-VARIABLE LOG-ROOTS ^VEC:vector<u8>
    p pu at1 LOG-PATH {: s:^ su:n at2:n :}
    p pu at2 LOG-PATH {: l:^ lu:n at3:n :}
    at3 0< if false exit then
-   l lu  p c + cu  STR= 0= if false exit then
+   l lu  p c + cu  STR:= 0= if false exit then
    p kind s su c cu e eu LOADS? ;
 
 \ The request no part made that loaded the part, and the part's entry by NEXT-REC; the part's path and entry root sit
@@ -4488,11 +4488,11 @@ TYPED-VARIABLE LOG-ROOTS ^VEC:vector<u8>
    p pu at2 LOG-PATH {: s:^ su:n at3:n :}
    at3 0< if -1 exit then
    NEXT-REC @ MATCH expect
-      outside OF  r ru p CUR-ROOT$ STR=  dup if drop p kind s su c cu e eu LOADS? then  ENDOF
+      outside OF  r ru p CUR-ROOT$ STR:=  dup if drop p kind s su c cu e eu LOADS? then  ENDOF
       requested OF  kind -1 =  dup if drop p pu c cu e eu REQUESTED? then  ENDOF
       resumed OF
-         kind -1 =  p e + eu p CUR-ROOT$ STR=  and
-         p c + cu  p LOG-PART @ + LOG-PART-U @  STR=  and
+         kind -1 =  p e + eu p CUR-ROOT$ STR:=  and
+         p c + cu  p LOG-PART @ + LOG-PART-U @  STR:=  and
       ENDOF
    ;MATCH
    if at3 else -1 then ;
@@ -4506,7 +4506,7 @@ TYPED-VARIABLE LOG-ROOTS ^VEC:vector<u8>
    at4 0<  su 0=  or if -1 exit then
    kind SOURCE-EVENT:KIND-REQUIRED <>  kind SOURCE-EVENT:KIND-PROVIDED <>  and if -1 exit then
    s su r ru ACT-RESOLVE {: a:^ au:n known:bool stands:bool :}
-   stands  a au c cu STR=  and 0= if -1 exit then
+   stands  a au c cu STR:=  and 0= if -1 exit then
    kind SOURCE-EVENT:KIND-PROVIDED = if c cu REG+ at4 exit then
    c cu REQUIRE-KNOWN? if at4 else -1 then ;
 
@@ -4556,9 +4556,9 @@ TYPED-VARIABLE LOG-ROOTS ^VEC:vector<u8>
    p pu at1 LOG-PATH {: s:^ su:n at2:n :}
    p pu at2 LOG-PATH {: c:^ cu:n at3:n :}
    at3 0<  su 0=  or if -1 exit then
-   r ru  p CUR-ROOT$  STR= 0= if -1 exit then
+   r ru  p CUR-ROOT$  STR:= 0= if -1 exit then
    s su  p CUR-ROOT$  RESOLVE-UNDER {: a:^ au:n known:bool :}
-   a au c cu STR= 0= if -1 exit then
+   a au c cu STR:= 0= if -1 exit then
    kind INPUT-PROVIDE = if c cu REG+ at3 exit then
    c cu REQUIRE-KNOWN? if at3 else -1 then ;
 
@@ -4934,7 +4934,7 @@ EXPORT TFAM:TFAM-N@
    FILE-EM @ e + COPY-EDGES+  want start REC-EDGES!
    does if
       want 1 + XREF-REC {: rec:^ :}
-      rec XREF-NAME$ da du STR= 0=  rec XREF-WORDLIST dwid <>  or if E-COMP-STATE throw then
+      rec XREF-NAME$ da du STR:= 0=  rec XREF-WORDLIST dwid <>  or if E-COMP-STATE throw then
       dflags want 1 + SET-FLAGS
       EDGES-N @ {: does-start:n :}
       FILE-EM @ e + COPY-EDGES+  want 1 + does-start REC-EDGES!
@@ -5335,7 +5335,7 @@ EXPORT CHECK:TYPE-END
    ev SOURCE-EVENT:KIND@ {: kind:n :}
    kind SOURCE-EVENT:KIND-INCLUDED =
    kind SOURCE-EVENT:KIND-REQUIRED =  ev SOURCE-EVENT:STATE@ SOURCE-EVENT:STATE-FRESH =  and  or
-   ev SOURCE-EVENT:PATH@ path pathu STR=  and  if ev else -2 then ;
+   ev SOURCE-EVENT:PATH@ path pathu STR:=  and  if ev else -2 then ;
 
 
 \ The scope a build's top-level file starts in: no package or part open, the build's global
@@ -5358,7 +5358,7 @@ EXPORT CHECK:TYPE-END
       RD-NAME RD-NAME {: a:^ u:n root:^ rootu:n :}
       GOOD? 0= if E-COMP-STATE throw then
       kind SOURCE-EVENT:KIND-PROVIDED = if
-         root rootu SOURCE-ROOT:CURRENT$ STR= if
+         root rootu SOURCE-ROOT:CURRENT$ STR:= if
             a u provided
          else
             root rootu [: a u provided ;] SOURCE-ROOT:WITH
@@ -5399,7 +5399,7 @@ EXPORT CHECK:TYPE-END
 \ request REPLAY loads and the next part resolve from it.
 : LINK-ROOT ( -- )
    1 INPUT-AT FIELD$ {: x:^ xu:n :}
-   x xu SOURCE-ROOT:CURRENT$ STR= 0= if x xu SOURCE-ROOT:ROOT! then ;
+   x xu SOURCE-ROOT:CURRENT$ STR:= 0= if x xu SOURCE-ROOT:ROOT! then ;
 
 
 EXPORT CHECK:LINEAR?
@@ -5995,8 +5995,8 @@ public
    {: mode:^ modeu:n target:RTARGET:resolved-target body :}
    IDLE? 0= if E-COMP-STATE throw then
    target TARGET !
-   mode modeu s" engine" STR= ENGINE? !
-   mode modeu s" kernel" STR= KERNEL? !
+   mode modeu s" engine" STR:= ENGINE? !
+   mode modeu s" kernel" STR:= KERNEL? !
    body BODY !
    [: ['] RUN ['] CLOSE finally ;] INTERPRETER:WITHOUT-PACKAGE ;
 

@@ -270,12 +270,12 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 \ and the method are matched exactly because HTTP does.
 : REQ-AT? ( str n -- bool ) {: needle:^ needleu:n at:n :}
    at needleu + HEAD-U @ > if false exit then
-   REQ-BUF at + needleu needle needleu STR= ;
+   REQ-BUF at + needleu needle needleu STR:= ;
 
 
 : REQ-AT-CI? ( str n -- bool ) {: needle:^ needleu:n at:n :}
    at needleu + HEAD-U @ > if false exit then
-   REQ-BUF at + needleu needle needleu STR=CI ;
+   REQ-BUF at + needleu needle needleu STR:=CI ;
 
 
 : REQ-HAS? ( str -- bool ) {: needle:^ needleu:n :}
@@ -298,7 +298,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    REQ-U @ {: u:n :}
    u marku < if 0 exit then
    u marku - 1+ 0 ?do
-      REQ-BUF i + marku mark marku STR= if i marku + unloop exit then
+      REQ-BUF i + marku mark marku STR:= if i marku + unloop exit then
    loop 0 ;
 
 
@@ -326,11 +326,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : METHOD-IS? ( str -- bool ) {: want:^ wantu:n :}
-   METHOD$ want wantu STR= ;
+   METHOD$ want wantu STR:= ;
 
 
 : PATH-IS? ( str -- bool ) {: want:^ wantu:n :}
-   PATH$ want wantu STR= ;
+   PATH$ want wantu STR:= ;
 
 
 : RES-RESET ( -- )
@@ -459,7 +459,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    PATH-RETRY$ PATH-IS? 0= if false exit then
    s" Content-Length: 3" REQ-HAS-CI? 0= if false exit then
    conn FORM$ nip BODY-READ 0= if false exit then
-   REQ-BUF HEAD-U @ + FORM$ nip FORM$ STR= ;
+   REQ-BUF HEAD-U @ + FORM$ nip FORM$ STR:= ;
 
 
 : RETRY-COUNT ( TCP4:connection -- ) {: conn:TCP4:connection :}
@@ -655,7 +655,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : H2-STREAM ( TCP4:connection -- n bool ) {: conn:TCP4:connection :}
    HEAD-U @ {: at:n :}
    conn at 6 + REQ-HOLDS? 0= if 0 false exit then
-   REQ-BUF at + 6 S\" SM\r\n\r\n" STR= 0= if 0 false exit then
+   REQ-BUF at + 6 S\" SM\r\n\r\n" STR:= 0= if 0 false exit then
    at 6 +
    begin
       conn swap H2-FRAME 0= if 2drop drop 0 false exit then
@@ -773,7 +773,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : LENGTH-AT ( n -- n ) {: at:n :}
-   REQ-BUF at + at TOKEN-END at - STR>NUMBER?
+   REQ-BUF at + at TOKEN-END at - STR:>NUMBER?
    MATCH option
       some OF ENDOF
       none OF 1 SERVER-BAD +! 0 ENDOF
@@ -885,7 +885,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : ROUTE ( TCP4:connection -- )
    {: conn:TCP4:connection :}
    s" PRI" METHOD-IS? if conn SERVE-H2 exit then
-   PATH$ s" http://" STARTS-WITH? if
+   PATH$ s" http://" STR:STARTS-WITH? if
       s" 200 OK" PROXY-BODY$ RESPOND conn SEND-RESPONSE exit
    then
    PATH-RETRY$ PATH-IS? if
@@ -1175,7 +1175,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 : TEXT-AT? ( str str n -- bool )
    {: text:^ u:n needle:^ needleu:n at:n :}
    at needleu + u > if false exit then
-   text at + needleu needle needleu STR= ;
+   text at + needleu needle needleu STR:= ;
 
 
 \ The jar is libcurl's Netscape format, where the name and the value are two
@@ -1323,7 +1323,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" a request body past 64 MiB reaches the server whole" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 200 T=
-   BODY$ STR>NUMBER?
+   BODY$ STR:>NUMBER?
    MATCH option
       some OF ENDOF
       none OF -1 ENDOF
@@ -1346,7 +1346,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : ECHO-STARTS? ( str -- bool ) {: line:^ lineu:n :}
-   BODY$ line lineu STARTS-WITH? ;
+   BODY$ line lineu STR:STARTS-WITH? ;
 
 
 : FORM-TO ( CURL:handle str -- ) {: subject:CURL:handle path:^ pathu:n :}
@@ -1369,7 +1369,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject ECHO-FETCH
    subject CURL:CLEANUP
    s" a borrowed body is sent as it is when the transfer runs" T-LABEL
-   BODY$ FORM$ ENDS-WITH? TTRUE ;
+   BODY$ FORM$ STR:ENDS-WITH? TTRUE ;
 
 
 : NO-BODY-HEADERS ( -- )
@@ -1393,7 +1393,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    s" a form POST follows 307 as POST with its body" T-LABEL
    s" POST /echo " ECHO-STARTS? TTRUE
    s" Content-Length: 3" ECHO-HAS? TTRUE
-   BODY$ FORM$ ENDS-WITH? TTRUE
+   BODY$ FORM$ STR:ENDS-WITH? TTRUE
    subject PATH-FOUND$ FORM-TO
    subject s" POST" CURL:METHOD! EXPECT-OK
    subject ECHO-FETCH
@@ -1494,7 +1494,7 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    LAST-STATUS @ 200 T=
    LAST-LEN @ HUGE-U T=
    v VEC:COUNT HUGE-U T=
-   v VEC:SPAN SPAN:$ SENT-BYTES HUGE-U STR= TTRUE ;
+   v VEC:SPAN SPAN:$ SENT-BYTES HUGE-U STR:= TTRUE ;
 
 
 : HUGE-CASE ( -- )
@@ -2363,7 +2363,7 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
 : BOUNDED-TAKE ( CURL:handle len -- ) {: subject:CURL:handle u:len :}
    u LEN>N {: count:n :}
    BOUNDED-READ @ count + HUGE-U <= if
-      BOUNDED-BUF count SENT-BYTES BOUNDED-READ @ + count STR= 0=
+      BOUNDED-BUF count SENT-BYTES BOUNDED-READ @ + count STR:= 0=
    else true then
    if 1 BOUNDED-BAD +! then
    BOUNDED-READ @ count + BOUNDED-READ !
@@ -3256,7 +3256,7 @@ TIGHT-FILL
 
 
 : NET-TESTS? ( -- bool )
-   s" HABU_NET_TESTS" GETENV s" 1" STR= ;
+   s" HABU_NET_TESTS" GETENV s" 1" STR:= ;
 
 
 : TEST-HTTPS ( -- )
@@ -3341,10 +3341,10 @@ TIGHT-FILL
    AIO:STOP
    CURL:E-LOOP T=
    s" CURL logs the refused pipe and the code it was refused with" T-LABEL
-   text tu s"  error curl: the host refused the wake pipe: " CONTAINS? TTRUE
-   text tu E-FS-IO ERROR:NAME$ CONTAINS? TTRUE
+   text tu s"  error curl: the host refused the wake pipe: " STR:CONTAINS? TTRUE
+   text tu E-FS-IO ERROR:NAME$ STR:CONTAINS? TTRUE
    s" CURL logs the host's text for EMFILE" T-LABEL
-   text tu FS:EMFILE FS:ERRNO$ CONTAINS? TTRUE
+   text tu FS:EMFILE FS:ERRNO$ STR:CONTAINS? TTRUE
    a ARENA:RELEASE ;
 
 

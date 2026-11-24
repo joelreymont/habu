@@ -280,7 +280,7 @@ s" DN-X ( -- n ) [: ;] [: [: 5 throw ;] true DEADPATH-FIX:CHOOSE DEADPATH-FIX:AP
    [: s" : DP-Y ( -- n ) [: 5 throw ;] execute 7 ;" evaluate-closed ;] 70 TTHROWSQ
    REJECTION:BUFFER$
    s" error[E-DEAD-CODE]: `7` never runs: `execute` before it never returns"
-   STARTS-WITH? TTRUE  REJECTION:BUFFER-OFF ;
+   STR:STARTS-WITH? TTRUE  REJECTION:BUFFER-OFF ;
 DP-NAMES-EXECUTE
 
 T-REPORT

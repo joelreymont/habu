@@ -29,7 +29,7 @@ create ERR 4096 allot
             OUT outu LEN>N
             S\" address-cell-oom: ready\naddress-cell-oom: duplicate-ok\naddress-cell-oom: caught -9855\naddress-cell-oom: after-catch-ok\n" T$=
             s" the uncaught throw prints the E-XTCELL-GROW record" T-LABEL
-            ERR erru LEN>N s" error[E-XTCELL-GROW]" STARTS-WITH? TTRUE
+            ERR erru LEN>N s" error[E-XTCELL-GROW]" STR:STARTS-WITH? TTRUE
             s" the uncaught throw ends the child" T-LABEL
             rc RC>N 67 T=
          ENDOF

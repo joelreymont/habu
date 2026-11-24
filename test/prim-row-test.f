@@ -34,7 +34,7 @@ private
 : REJECTED ( [ -- ] ^u8 n -- ) {: q h:^ hu:n :}
    REJECTION:CAPTURE  q catch  REJECTION:BUFFER-OFF
    70 T=
-   REJECTION:BUFFER$ h hu STARTS-WITH? TTRUE ;
+   REJECTION:BUFFER$ h hu STR:STARTS-WITH? TTRUE ;
 
 : ROW-CASE ( -- )
    s" a REF operand is one raw token, a string opener or a closer included"

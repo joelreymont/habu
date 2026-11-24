@@ -108,7 +108,7 @@ private
 
 \ The output after the ACCEPT line's prefix, empty until it is there.
 : TAIL$ ( -- str )
-   OUT OUT-U @ ACCEPT$ FIND-SUB MATCH option
+   OUT OUT-U @ ACCEPT$ STR:FIND-SUB MATCH option
       none OF OUT 0 ENDOF
       some OF IDX>N ACCEPT$ nip + dup OUT + swap OUT-U @ swap - ENDOF
    ;MATCH ;
@@ -116,7 +116,7 @@ private
 \ The port's digits once their line has ended, else empty.
 : PORT$ ( -- str )
    TAIL$ {: a:^ u:n :}
-   a u 10 INDEX-OF MATCH option
+   a u 10 STR:INDEX-OF MATCH option
       none OF a 0 ENDOF
       some OF IDX>N a swap ENDOF
    ;MATCH ;
@@ -150,7 +150,7 @@ private
    r FD>N SERVER-OUT !
    0 OUT-U !
    begin PORT$ nip 0= while READ-OUT repeat
-   PORT$ STR-PARSE-POS MATCH option
+   PORT$ STR:PARSE-POS MATCH option
       none OF s" no port" T-FAIL-AS ENDOF
       some OF SERVER-PORT ! ENDOF
    ;MATCH ;
@@ -190,7 +190,7 @@ public
 \ handshake before any byte SCRIPTED gives that session, so a session that
 \ has answered is counted.
 : HANDSHAKES ( -- n )
-   DRAIN-OUT  OUT OUT-U @ s" CIPHER is" COUNT-SUB ;
+   DRAIN-OUT  OUT OUT-U @ s" CIPHER is" STR:COUNT-SUB ;
 
 : UNSERVE ( -- )
    SERVER-PID @ 0= if exit then

@@ -146,7 +146,7 @@ LINK-CAP BUFFER: LINK
    s" test/fixtures/odata/derived-annotations.txt" DESCRIBES ;
 
 : SHOW-HOUSEHOLD ( ^ODATA:navigation -- )
-   dup ODATA:NAVIGATION-NAME$ s" Household" STR=
+   dup ODATA:NAVIGATION-NAME$ s" Household" STR:=
    if SHOW-NAVIGATION else drop then ;
 
 \ Customers' Household is bound to the singleton Shop.
@@ -713,7 +713,7 @@ variable VALUE-LEN
    REJECTS-KEY ;
 
 : ORDER-VALUE ( ^ODATA:property -- str )
-   ODATA:PROPERTY-NAME$ s" Year" STR= if s" 2024" else s" it's a/b" then ;
+   ODATA:PROPERTY-NAME$ s" Year" STR:= if s" 2024" else s" it's a/b" then ;
 
 : MULTI-KEY ( ^ODATA:metadata -- )
    s" Orders" SET-TYPE {: t:^ :}

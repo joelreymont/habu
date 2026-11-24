@@ -52,7 +52,7 @@ variable RC
    RUN-ARGV-ENV-CAPTURE PCAP-RESULT:>N RC ! ERR-U ! OUT-U !
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T=
-   OUT OUT-U @ s" test: ok" CONTAINS? TTRUE ;
+   OUT OUT-U @ s" test: ok" STR:CONTAINS? TTRUE ;
 
 public
 

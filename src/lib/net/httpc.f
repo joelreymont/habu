@@ -427,7 +427,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    c v 10 mod [char] 0 + CHAR+ ;
 
 : HAS? ( str n -- bool )
-   INDEX-OF MATCH option
+   STR:INDEX-OF MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH ;
@@ -444,7 +444,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : HOST-BYTE? ( n -- bool ) {: b:n :}
    b 33 < b 126 > or if false exit then
-   s" /?#@[]" b INDEX-OF MATCH option
+   s" /?#@[]" b STR:INDEX-OF MATCH option
       none OF true ENDOF
       some OF drop false ENDOF
    ;MATCH ;
@@ -464,7 +464,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ The port's digits as getaddrinfo's service, NUL-terminated in the record.
 : PORT? ( ^conn str -- bool ) {: c a:^ u:n :}
    u 0= u PORT-DIGITS > or if false exit then
-   a u STR-PARSE-POS MATCH option
+   a u STR:PARSE-POS MATCH option
       none OF false exit ENDOF
       some OF dup 1 < swap PORT-MOST > or if false exit then ENDOF
    ;MATCH
@@ -478,7 +478,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : AUTHORITY? ( ^conn str str -- bool )
    {: c a:^ u:n p:^ pu:n :}
    a c CONN-AUTHORITY !  u c CONN-AUTHORITY-LEN !
-   a u [char] : INDEX-OF MATCH option
+   a u [char] : STR:INDEX-OF MATCH option
       none OF c a u HOST? c p pu PORT? and ENDOF
       some OF IDX>N {: k:n :} c a u k HOST-PORT? ENDOF
    ;MATCH ;
@@ -486,7 +486,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Whether the span starts with the scheme prefix P, in any case.
 : SCHEME? ( str str -- bool ) {: a:^ u:n p:^ pu:n :}
    u pu < if false exit then
-   a pu p pu STR=CI ;
+   a pu p pu STR:=CI ;
 
 : ORIGIN? ( ^conn str -- bool ) {: c a:^ u:n :}
    a u s" http://" SCHEME? if
@@ -657,7 +657,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ Whether the room holds the blank line after the head, searched from FROM;
 \ the head's length is kept when it does.
 : HEAD-END? ( ^conn n -- bool ) {: c from:n :}
-   c ROOM c CONN-FILLED @ S\" \r\n\r\n" from FIND-SUB-FROM MATCH option
+   c ROOM c CONN-FILLED @ S\" \r\n\r\n" from STR:FIND-SUB-FROM MATCH option
       none OF false ENDOF
       some OF IDX>N 4 + c CONN-HEAD-LEN ! true ENDOF
    ;MATCH ;
@@ -680,7 +680,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 \ Where the first CRLF held at or after FROM begins; -1 while none is.
 : LINE-AT ( ^conn n -- n ) {: c from:n :}
-   c ROOM c CONN-FILLED @ S\" \r\n" from FIND-SUB-FROM MATCH option
+   c ROOM c CONN-FILLED @ S\" \r\n" from STR:FIND-SUB-FROM MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -689,9 +689,9 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ `HTTP/1.`, a digit, a space, three digits, then a space or CR.
 : LEAD-BYTE? ( n n -- bool ) {: b:n i:n :}
    i 7 < if s" HTTP/1." drop i + c@ b = exit then
-   i 7 = if b STR-DIGIT? exit then
+   i 7 = if b STR:DIGIT? exit then
    i 8 = if b 32 = exit then
-   i 12 < if b STR-DIGIT? exit then
+   i 12 < if b STR:DIGIT? exit then
    b 32 = b 13 = or ;
 
 \ Whether the bytes held can begin a status line.
@@ -716,8 +716,8 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : STATUS? ( ^conn -- bool ) {: c :}
    c ROOM {: r:^ :}
    c 0 LINE-AT 12 < if false exit then
-   r 7 + c@ STR-DIGIT-VALUE c CONN-MINOR !
-   r 9 + 3 STR-PARSE-POS MATCH option
+   r 7 + c@ STR:DIGIT-VALUE c CONN-MINOR !
+   r 9 + 3 STR:PARSE-POS MATCH option
       none OF false ENDOF
       some OF {: s:n :}
          s 100 >= s 599 <= and dup if s c CONN-STATUS ! then ENDOF
@@ -739,22 +739,22 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : CHUNKED? ( str -- bool ) {: a:^ u:n :}
    u 7 < if false exit then
-   a u + 7 - 7 s" chunked" STR=CI ;
+   a u + 7 - 7 s" chunked" STR:=CI ;
 
 \ Whether `close` is one of a Connection field's comma-separated options.
 : CLOSE-TOKEN? ( str -- bool ) {: a:^ u:n :}
    0 begin
       {: start:n :}
-      a u [char] , start SPLIT-NEXT
+      a u [char] , start STR:SPLIT-NEXT
    while
       {: t:^ tu:n next:n :}
-      t tu TRIM s" close" STR=CI if true exit then
+      t tu STR:TRIM s" close" STR:=CI if true exit then
       next
    repeat 2drop drop false ;
 
 \ A Content-Length that is not a number, or two that differ, is malformed.
 : LENGTH? ( ^conn str -- bool ) {: c a:^ u:n :}
-   a u STR-PARSE-POS MATCH option
+   a u STR:PARSE-POS MATCH option
       none OF false ENDOF
       some OF {: v:n :}
          c CONN-LENGTH @ MATCH option
@@ -766,20 +766,20 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    ;MATCH ;
 
 : FIELD? ( ^conn str str -- bool ) {: c k:^ ku:n v:^ vu:n :}
-   k ku s" Content-Length" STR=CI if c v vu LENGTH? exit then
-   k ku s" Transfer-Encoding" STR=CI if
+   k ku s" Content-Length" STR:=CI if c v vu LENGTH? exit then
+   k ku s" Transfer-Encoding" STR:=CI if
       v vu CHUNKED? c CONN-CHUNKED ! true exit
    then
-   k ku s" Connection" STR=CI if
+   k ku s" Connection" STR:=CI if
       v vu CLOSE-TOKEN? if true c CONN-CLOSE-ASKED ! then
    then
    true ;
 
 \ A line without a colon names no field this reads.
 : FIELD-LINE? ( ^conn str -- bool ) {: c a:^ u:n :}
-   a u [char] : INDEX-OF MATCH option
+   a u [char] : STR:INDEX-OF MATCH option
       none OF true ENDOF
-      some OF IDX>N {: k:n :} c a k a k + 1+ u k - 1- TRIM FIELD? ENDOF
+      some OF IDX>N {: k:n :} c a k a k + 1+ u k - 1- STR:TRIM FIELD? ENDOF
    ;MATCH ;
 
 : FIELDS-RESET ( ^conn -- ) {: c :}
@@ -789,7 +789,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 \ The line ending at or after FROM in the head, as its end; the head always
 \ ends in one.
 : LINE-END ( ^conn n -- n ) {: c from:n :}
-   c ROOM c CONN-HEAD-LEN @ S\" \r\n" from FIND-SUB-FROM MATCH option
+   c ROOM c CONN-HEAD-LEN @ S\" \r\n" from STR:FIND-SUB-FROM MATCH option
       none OF c CONN-HEAD-LEN @ ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -879,10 +879,10 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 : SIZE-LINE? ( ^conn -- bool ) {: c :}
    0 0 begin
       c BYTE? 0= if 2drop false exit then
-      c LAST-BYTE STR-HEX-DIGIT?
+      c LAST-BYTE STR:HEX-DIGIT?
    while
       1+ dup SIZE-DIGITS > if 2drop c MALFORMED false exit then
-      swap 4 lshift c LAST-BYTE STR-HEX-DIGIT-VALUE or swap
+      swap 4 lshift c LAST-BYTE STR:HEX-DIGIT-VALUE or swap
    repeat
    {: size:n k:n :}
    k 0= c LAST-BYTE SIZE-END? 0= or if c MALFORMED false exit then
@@ -1071,7 +1071,7 @@ public
 : REQUEST ( ^conn str str -- ) {: c m:^ mu:n t:^ tu:n :}
    0 c CONN-USED !  0 c CONN-HEAD-LEN !  OPTION:NONE c CONN-MARK !
    0 c CONN-TOTAL !  0 c CONN-STALL !
-   m mu s" GET" STR= c CONN-GET-METHOD !
+   m mu s" GET" STR:= c CONN-GET-METHOD !
    m mu SPLITS? t tu SPLITS? or if c construct fault malformed MARK then
    c m mu APPEND  c 32 CHAR+  c t tu APPEND  c s"  HTTP/1.1" APPEND  c CRLF+
    c s" Host: " APPEND  c c CONN-AUTHORITY @ c CONN-AUTHORITY-LEN @ APPEND

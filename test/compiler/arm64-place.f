@@ -79,7 +79,7 @@ create PROG-BUF PATH-CAP allot
 : RUN-PROG ( CMD:command str str -- CMD:command )
    {: file:^ file-n:n out:^ out-n:n :}
    file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ out out-n STR=  rc 0=  and 0= if
+   CMD:OUT$ out out-n STR:=  rc 0=  and 0= if
       s" arm64-place: " type file file-n type s"  exited " type rc .
       s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr
    then
@@ -94,7 +94,7 @@ create PROG-BUF PATH-CAP allot
 \ Whether the map has a row for the word: a row's name stands between spaces.
 : ROW? ( str str -- bool )
    {: map:^ map-n:n name:^ name-n:n :}
-   map map-n PROG$ FILE-BYTES name name-n CONTAINS? ;
+   map map-n PROG$ FILE-BYTES name name-n STR:CONTAINS? ;
 
 
 : RUN-MAP ( -- )
@@ -138,7 +138,7 @@ create PROG-BUF PATH-CAP allot
 
 : SAME-BYTES ( -- )
    s" a second link of run writes the same bytes" T-LABEL
-   s" run" PROG$ FILE-BYTES s" run-again" PROG$ FILE-BYTES STR= TTRUE ;
+   s" run" PROG$ FILE-BYTES s" run-again" PROG$ FILE-BYTES STR:= TTRUE ;
 
 
 : UNSAFE-RUN ( CMD:command -- CMD:command )
@@ -148,7 +148,7 @@ create PROG-BUF PATH-CAP allot
    s" refusal: the child arms before the link" T-LABEL
    CMD:OUT$ s\" ARM64-PLACE-UNSAFE-ARMED\n" T$=
    s" rejection: the child names the caller and the word" T-LABEL
-   CMD:ERR$ s" error[E-CANNOT-RUN-STRIPPED]: `PL-MAKE` calls `create`" CONTAINS? TTRUE
+   CMD:ERR$ s" error[E-CANNOT-RUN-STRIPPED]: `PL-MAKE` calls `create`" STR:CONTAINS? TTRUE
    s" rejection: the child exits 70 and writes no program" T-LABEL
    rc 70 T=  s" make" PROG$ FS:EXISTS? TFALSE ;
 

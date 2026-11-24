@@ -71,7 +71,7 @@ variable SI
 
 \ The `= evaluated:` note's offset, else -1.
 : NOTE ( -- n )
-   CAPTURED$ s" = evaluated: " FIND-SUB MATCH option
+   CAPTURED$ s" = evaluated: " STR:FIND-SUB MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;

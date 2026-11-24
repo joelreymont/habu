@@ -31,7 +31,7 @@ package PROGRAM-DIAGNOSTICS
 : EXPECT-OK-END ( str -- ) {: label:^ labelu:n :}
    GT-OUT$ {: out:^ outu:n :}
    outu 3 < if label labelu GE-FAIL then
-   out outu 3 - + 2 s" ok" STR= 0= if label labelu GE-FAIL then
+   out outu 3 - + 2 s" ok" STR:= 0= if label labelu GE-FAIL then
    out outu 1- + c@ GE-LF <> if label labelu GE-FAIL then ;
 
 : NEGATIVE ( ^u8 n n ^u8 n ^u8 n -- )
@@ -65,8 +65,8 @@ package PROGRAM-DIAGNOSTICS
    SB$ {: want:^ wantu:n :}
    GT-ERR$ {: err:^ erru:n :}
    erru wantu 17 + <> if label labelu GE-FAIL then
-   err wantu want wantu STR= 0= if label labelu GE-FAIL then
-   true erru 1- wantu ?do err i + c@ STR-HEX-DIGIT? and loop
+   err wantu want wantu STR:= 0= if label labelu GE-FAIL then
+   true erru 1- wantu ?do err i + c@ STR:HEX-DIGIT? and loop
    0= if label labelu GE-FAIL then
    err erru + 1- c@ GE-LF <> if label labelu GE-FAIL then ;
 
@@ -85,7 +85,7 @@ package PROGRAM-DIAGNOSTICS
 
 \ How many rejection records stderr holds.
 : RECORDS ( -- n )
-   GT-ERR$ s" error[" COUNT-SUB ;
+   GT-ERR$ s" error[" STR:COUNT-SUB ;
 
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 96 s" ADDRESS-CELL-KIND-ARMED"
@@ -136,7 +136,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/program-diagnostic-badsig.f" {: path:^ pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
-   GT-OUT$ S\" 1\n1\n1\nok\n" STR= 0= if s" badsig counts" GE-FAIL then
+   GT-OUT$ S\" 1\n1\n1\nok\n" STR:= 0= if s" badsig counts" GE-FAIL then
    RECORDS 3 <> if s" badsig reports" GE-FAIL then
    s" error[E-UNKNOWN-SIGNATURE-TYPE]: unknown type `zz` in signature" path pathu GE-EXPECT-ERR-HAS
    s" error[E-BAD-STORED-SIGNATURE]: the signature of `PDB-TRUSTED`" path pathu GE-EXPECT-ERR-HAS
@@ -148,7 +148,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" test/program-diagnostic-quiet-count.f" {: path:^ pathu:n :}
    path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
-   GT-OUT$ S\" 0\n1\n1\nok\n" STR= 0= if s" quiet count" GE-FAIL then
+   GT-OUT$ S\" 0\n1\n1\nok\n" STR:= 0= if s" quiet count" GE-FAIL then
    RECORDS 1 <> if s" quiet count reports" GE-FAIL then
    s" error[E-INPUT-UNDERFLOW]" path pathu GE-EXPECT-ERR-HAS
    s" (needs 1, has 0)" path pathu GE-EXPECT-ERR-HAS ;
@@ -166,7 +166,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    67 label labelu GE-EXPECT-RC
    s" " label labelu GE-EXPECT-OUT
    GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
-   STARTS-WITH? 0= if label labelu GE-FAIL then
+   STR:STARTS-WITH? 0= if label labelu GE-FAIL then
    S\" \n --> <input>:2:15\n" label labelu GE-EXPECT-ERR-HAS
    s" throw a computed code only when it is nonzero: `rc 0<> if rc throw then`"
    label labelu GE-EXPECT-ERR-HAS ;
@@ -183,7 +183,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ PROCESS:WAIT-FOREVER GE-RUN-STDIN
    67 label labelu GE-EXPECT-RC
    GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
-   STARTS-WITH? 0= if label labelu GE-FAIL then
+   STR:STARTS-WITH? 0= if label labelu GE-FAIL then
    S\" \n --> <input>:3:1\n" label labelu GE-EXPECT-ERR-HAS ;
 
 \ An evaluate that returns gives the place back to the outer text: a later throw
@@ -198,7 +198,7 @@ false [if] \ off until dot habu-add-the-checks-a49d054d
    67 label labelu GE-EXPECT-RC
    s" " label labelu GE-EXPECT-OUT
    GT-ERR$ s" error[E-THROW-ZERO]: a computed 0 was thrown"
-   STARTS-WITH? 0= if label labelu GE-FAIL then
+   STR:STARTS-WITH? 0= if label labelu GE-FAIL then
    S\" \n --> <input>:3:1\n" label labelu GE-EXPECT-ERR-HAS ;
 
 : GENERATED-DUPLICATE ( -- )
@@ -263,7 +263,7 @@ variable BIG-U
 
 \ The offset of k in a u, or u when a u lacks it.
 : KEY-AT ( str str -- n ) {: a:^ u:n k:^ ku:n :}
-   a u k ku FIND-SUB MATCH option
+   a u k ku STR:FIND-SUB MATCH option
       none OF u ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -273,7 +273,7 @@ variable BIG-U
    GT-OUT$ {: out:^ outu:n :}
    out outu s" VmPeak:" KEY-AT 7 + outu min {: at:n :}
    out at +  outu at - {: a:^ u:n :}
-   a  a u s"  kB" KEY-AT  TRIM STR>NUMBER? MATCH option
+   a  a u s"  kB" KEY-AT  STR:TRIM STR:>NUMBER? MATCH option
       none OF 0 ENDOF
       some OF ENDOF
    ;MATCH ;

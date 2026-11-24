@@ -18,7 +18,7 @@ T-RESET
    CHECK-CANDIDATE! 0 T= ;
 : SCG? ( str -- )   \ assert the captured diag contains the needle
    T-NEXT
-   REJECTION:BUFFER$ 2swap CONTAINS? 0= if
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? 0= if
       s" diag needle missing" T-ASSERT-DETAIL
    then ;
 : SCG-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
@@ -108,7 +108,7 @@ SCG-END
 \    with E-CTOR-PROTECTED, as for sum and product constructors.
 : SC-PROTECTED ( str -- )   \ the text is rejected with E-CTOR-PROTECTED
    REJECTION:CAPTURE  TEST-EVAL:RC 70 T=
-   REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 s" STRUCTURE scprot FIELD x n FIELD y n ;STRUCTURE" evaluate-closed
 s" package scprot" SC-PROTECTED

@@ -558,9 +558,9 @@ variable GOT-N
    past LBL,
    start end ;
 
-\ An ordinary count trim is HIDE's boundary. Reuse its ordinal before any
+\ An ordinary count str:trim is HIDE's boundary. Reuse its ordinal before any
 \ report can observe the lowered count: the target gets its own copied name
-\ and no inherited samples. A second trim hides that target from the index
+\ and no inherited samples. A second str:trim hides that target from the index
 \ and prof-row without publishing a replacement.
 : TRIM-CASE ( -- )
    COLD-SPAN, {: keep:label keep-end:label :}

@@ -23,7 +23,7 @@ DYNAMIC-BUFFER TAIL u8
 
 : MANGLE ( str -- str ) {: a:^ u:n :}
    u TAIL-RESERVE
-   u 0 ?do  a i + c@ ASCII-LOWER i TAIL c!  loop
+   u 0 ?do  a i + c@ STR:ASCII-LOWER i TAIL c!  loop
    0 TAIL u ;
 
 public

@@ -118,10 +118,10 @@ private
    [: s\" a\zb.f" A-PATH required ;] 70 TTHROWSQ
    REJECTION:BUFFER$
    S\" error[E-PATH-NUL]: `required` got a path with a NUL byte, which no file name holds\n"
-   STARTS-WITH? TTRUE
-   REJECTION:BUFFER$ s"  --> " CONTAINS? TFALSE
+   STR:STARTS-WITH? TTRUE
+   REJECTION:BUFFER$ s"  --> " STR:CONTAINS? TFALSE
    REJECTION:BUFFER$
-   S\" = help: remove the NUL byte from the path\n" CONTAINS? TTRUE
+   S\" = help: remove the NUL byte from the path\n" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -132,9 +132,9 @@ private
       [: 2drop s\" a\zb.f" SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
    REJECTION:BUFFER$
-   S\" error[E-PATH-NUL]: `SOURCE-ROOT:READ-OS` got a path with a NUL byte" STARTS-WITH? TTRUE
+   S\" error[E-PATH-NUL]: `SOURCE-ROOT:READ-OS` got a path with a NUL byte" STR:STARTS-WITH? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -145,10 +145,10 @@ private
       [: SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
-   REJECTION:BUFFER$ s" error[E-SOURCE-ROOT]: " STARTS-WITH? TTRUE
-   REJECTION:BUFFER$ s" SOURCE-INPUT:CANON" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s" NUL byte" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
+   REJECTION:BUFFER$ s" error[E-SOURCE-ROOT]: " STR:STARTS-WITH? TTRUE
+   REJECTION:BUFFER$ s" SOURCE-INPUT:CANON" STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" NUL byte" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -159,10 +159,10 @@ private
       [: SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH required ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
-   REJECTION:BUFFER$ s" error[E-SOURCE-ROOT]: " STARTS-WITH? TTRUE
-   REJECTION:BUFFER$ s" SOURCE-INPUT:CANON" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s" does not begin with" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
+   REJECTION:BUFFER$ s" error[E-SOURCE-ROOT]: " STR:STARTS-WITH? TTRUE
+   REJECTION:BUFFER$ s" SOURCE-INPUT:CANON" STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" does not begin with" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -174,9 +174,9 @@ private
       [: 2drop LONG-PATH CAP SOURCE-ROOT:READ-OS ;]
       [: s" src/leaf.f" A-PATH included ;] SOURCE-INPUT:WITH ;]
    70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
    REJECTION:BUFFER$
-   s" error[E-PATH-RANGE]: `SOURCE-ROOT:READ-OS` got a path " STARTS-WITH? TTRUE
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:READ-OS` got a path " STR:STARTS-WITH? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -184,9 +184,9 @@ private
    s" an empty path is rejected by SOURCE-ROOT:WITH, which the record names" T-LABEL
    REJECTION:CAPTURE
    [: s" " [: ;] SOURCE-ROOT:WITH ;] 70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
    REJECTION:BUFFER$
-   s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got an empty path" STARTS-WITH? TTRUE
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got an empty path" STR:STARTS-WITH? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -205,9 +205,9 @@ private
    CAP 2 * 0 ?do 97 LONG-ROOT i + c! loop
    REJECTION:CAPTURE
    [: LONG-ROOT CAP 2 * [: ;] SOURCE-ROOT:WITH ;] 70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
    REJECTION:BUFFER$
-   s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got a path" STARTS-WITH? TTRUE
+   s" error[E-PATH-RANGE]: `SOURCE-ROOT:WITH` got a path" STR:STARTS-WITH? TTRUE
    REJECTION:BUFFER-OFF
    RESTORED ;
 
@@ -261,7 +261,7 @@ private
    PCAP-RESULT:>N {: outu:n erru:n rc:n :}
    rc 0 <> if CHILD-OUT outu type CHILD-ERR erru type then
    rc 0 T= erru 0 T=
-   CHILD-OUT outu s" source root aliases: ok" CONTAINS? TTRUE
+   CHILD-OUT outu s" source root aliases: ok" STR:CONTAINS? TTRUE
    RESTORED ;
 
 \ Each file resumes after its child. Distinct entry/exit ordinals expose

@@ -4,7 +4,7 @@ split-str
 require src/lib/string.f
 
 package FILE-OBJECTS-PT
-: END? ( str -- bool ) {: p:^ u:n :} u 0=  p u s" ;BLK" STR=  or ;
+: END? ( str -- bool ) {: p:^ u:n :} u 0=  p u s" ;BLK" STR:=  or ;
 public
 : BLK ( -- ) begin parse-name END? until ;
 ;package

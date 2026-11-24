@@ -205,7 +205,7 @@ CALLBACK: BIO-SEND ( n ^u8 n -- i32 ) SEND-FAILED FALLBACK ;CALLBACK
 : NAME ( ^session str -- n )
    {: s:^ host:^ u:n :}
    u MAX-HOST > if BAD-INPUT exit then
-   host u 0 INDEX-OF MATCH option
+   host u 0 STR:INDEX-OF MATCH option
       none OF ENDOF
       some OF drop BAD-INPUT exit ENDOF
    ;MATCH

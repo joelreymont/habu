@@ -36,7 +36,7 @@ public
    s" package C2IA STRUCTURE badwidth<a> DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
       70 REFUSED? TTRUE
    s" invalid width reports the fixed-cell requirement" T-LABEL
-   ERR ERR-U @ s" canonical fixed-cell record" CONTAINS? TTRUE
+   ERR ERR-U @ s" canonical fixed-cell record" STR:CONTAINS? TTRUE
    s" an accessor name a private word holds is refused" T-LABEL
    s" package C2IA private : PO-A@ ( -- n ) 1 ; STRUCTURE po OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE ;package"
       70 REFUSED? TTRUE

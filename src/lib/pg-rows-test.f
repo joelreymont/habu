@@ -252,8 +252,8 @@ TYPED-VARIABLE CONN PG:connection
 
 
 : REFUSAL-NAMES ( str -- ) {: a:^ u:n :}
-   PG:REFUSED$ s" 42P01: " STARTS-WITH? TTRUE
-   PG:REFUSED$ a u CONTAINS? TTRUE ;
+   PG:REFUSED$ s" 42P01: " STR:STARTS-WITH? TTRUE
+   PG:REFUSED$ a u STR:CONTAINS? TTRUE ;
 
 
 : NO-REFUSAL ( -- )
@@ -387,7 +387,7 @@ TYPED-VARIABLE LOST-B PG:connection
 
 : A-ENDED ( -- )
    PG:REFUSED$ s" terminating connection due to administrator command"
-   CONTAINS? TTRUE ;
+   STR:CONTAINS? TTRUE ;
 
 
 : LOST-CASES ( -- )
@@ -515,12 +515,12 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    k SIDE-CONN @ k 1 + NAME-OF {: a:^ u:n :}
    k 0= if
       [: 0 SIDE-MISSING ;] catch PG:E-QUERY =
-      PG:REFUSED$ s" side_missing_q" CONTAINS? and
+      PG:REFUSED$ s" side_missing_q" STR:CONTAINS? and
       if 1 else 0 then SIDE-REFUSED !
    then
    k ARRIVE
    begin ARRIVED atomic@ 2 < while TASK:PAUSE repeat
-   a u k SIDE-NAME$ STR= if 1 else 0 then k SIDE-KEPT !
+   a u k SIDE-NAME$ STR:= if 1 else 0 then k SIDE-KEPT !
    k SIDE-CONN @ PG:CLOSE ;
 
 

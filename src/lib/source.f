@@ -142,18 +142,18 @@ private
 \ path. A NUL is rejected too: no path holding one names a file, and a label holding
 \ one would carry it into a diagnostic.
 : SOURCE-PATH-BYTE-SAFE? ( n -- bool ) {: c:n :}
-   c SOURCE-NUL = if STR-FALSE exit then
-   c SOURCE-DQ = if STR-FALSE exit then
-   c SOURCE-BACKSLASH = if STR-FALSE exit then
-   c SOURCE-LF = if STR-FALSE exit then
-   c SOURCE-CR = if STR-FALSE exit then
-   STR-TRUE ;
+   c SOURCE-NUL = if STR:FALSE exit then
+   c SOURCE-DQ = if STR:FALSE exit then
+   c SOURCE-BACKSLASH = if STR:FALSE exit then
+   c SOURCE-LF = if STR:FALSE exit then
+   c SOURCE-CR = if STR:FALSE exit then
+   STR:TRUE ;
 
 : SOURCE-PATH-SAFE? ( str -- bool ) {: a:^ u:n :}
    0 begin dup u < while
-      a over + c@ SOURCE-PATH-BYTE-SAFE? 0= if drop STR-FALSE exit then
+      a over + c@ SOURCE-PATH-BYTE-SAFE? 0= if drop STR:FALSE exit then
       1+
-   repeat drop STR-TRUE ;
+   repeat drop STR:TRUE ;
 
 public
 
@@ -181,9 +181,9 @@ public
    a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
 
 : PACKAGE-KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u s" package" STR=CI if STR-TRUE exit then
-   a u s" using" STR=CI if STR-TRUE exit then
-   a u s" export" STR=CI ;
+   a u s" package" STR:=CI if STR:TRUE exit then
+   a u s" using" STR:=CI if STR:TRUE exit then
+   a u s" export" STR:=CI ;
 
 \ A local a block declares ends with the block, and `else` ends the true arm's.
 \ A local of a control word's name is that local: ask after the local lookup.
@@ -196,7 +196,7 @@ public
 private
 
 : STRING-LEAD? ( n -- bool )
-   ASCII-LOWER {: c:n :}
+   STR:ASCII-LOWER {: c:n :}
    c 115 = c 99 = or c $2E = or ;
 
 public
@@ -206,15 +206,15 @@ public
 \ and `.\"` the same with a backslash escaping the byte after it.
 : NORMAL-STRING-OPENER? ( str -- bool )
    {: a:^ u:n :}
-   u 2 <> if STR-FALSE exit then
-   a 1 BYTE@ $22 <> if STR-FALSE exit then
+   u 2 <> if STR:FALSE exit then
+   a 1 BYTE@ $22 <> if STR:FALSE exit then
    a 0 BYTE@ STRING-LEAD? ;
 
 : ESC-STRING-OPENER? ( str -- bool )
    {: a:^ u:n :}
-   u 3 <> if STR-FALSE exit then
-   a 1 BYTE@ $5C <> if STR-FALSE exit then
-   a 2 BYTE@ $22 <> if STR-FALSE exit then
+   u 3 <> if STR:FALSE exit then
+   a 1 BYTE@ $5C <> if STR:FALSE exit then
+   a 2 BYTE@ $22 <> if STR:FALSE exit then
    a 0 BYTE@ STRING-LEAD? ;
 
 ;package

@@ -167,11 +167,11 @@ variable FIX-U
 : MANY-FIXTURE ( -- )
    0 FIX-U !
    MANY 0 ?do
-      SB-RESET s" \ note " SB-APPEND i FMT:SB-U STR-LF SB-APPEND-C
-      s" : W" SB-APPEND i FMT:SB-U s"  ( -- ) ;" SB-APPEND STR-LF SB-APPEND-C +SB
+      SB-RESET s" \ note " SB-APPEND i FMT:SB-U STR:LF SB-APPEND-C
+      s" : W" SB-APPEND i FMT:SB-U s"  ( -- ) ;" SB-APPEND STR:LF SB-APPEND-C +SB
    loop
    LONG-LINES 0 ?do
-      SB-RESET s" \ " SB-APPEND LONG-WIDTH 0 ?do X-BYTE SB-APPEND-C loop STR-LF SB-APPEND-C +SB
+      SB-RESET s" \ " SB-APPEND LONG-WIDTH 0 ?do X-BYTE SB-APPEND-C loop STR:LF SB-APPEND-C +SB
    loop
    s" : LONG ( -- ) ;" +FIX ;
 
@@ -187,7 +187,7 @@ variable FIX-U
    MANY WORD-DOCS:COMMENT$ {: c:^ cu:n :}
    cu LONG-LINES LONG-WIDTH 1+ * 1- T=
    c c@ X-BYTE T=
-   c LONG-WIDTH + c@ STR-LF T=
+   c LONG-WIDTH + c@ STR:LF T=
    c cu + 1- c@ X-BYTE T=
    WORD-DOCS:RESET ;
 
@@ -201,7 +201,7 @@ variable FIX-U
 \ Record k named a u.
 : FIND ( str -- n ) {: a:^ u:n :}
    WORD-DOCS:COUNT 0 ?do
-      i WORD-DOCS:NAME$ a u STR= if i unloop exit then
+      i WORD-DOCS:NAME$ a u STR:= if i unloop exit then
    loop
    -1 ;
 

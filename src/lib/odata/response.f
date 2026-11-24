@@ -149,7 +149,7 @@ CAST: >ENVELOPE ( ^u8 -- ^envelope )
 : DIGITS ( str -- option<n> )
    {: a:^ u:n :}
    u 18 > if OPTION:NONE exit then
-   a u STR-PARSE-POS ;
+   a u STR:PARSE-POS ;
 
 \ The current string, decoded into scratch as long as its source, which
 \ decoding never outgrows, handed to Q.
@@ -480,7 +480,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : NAME< ( n n ^u8 -- bool )
    {: i:n j:n base:^ :}
-   base i NAME$ base j NAME$ STR< ;
+   base i NAME$ base j NAME$ STR:< ;
 
 \ The name in the slot the order holds at I.
 : NTH-NAME ( ^n n ^u8 -- str )
@@ -492,7 +492,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 : SAME-NEIGHBOUR? ( ^n n ^u8 -- str bool )
    {: order:^ k:n base:^ :}
    k 1 ?do
-      order i 1- base NTH-NAME  order i base NTH-NAME STR=
+      order i 1- base NTH-NAME  order i base NTH-NAME STR:=
       if order i base NTH-NAME true unloop exit then
    loop base 0 false ;
 
@@ -603,7 +603,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 \ V2's `__metadata` and every V4 member whose name holds `@`.
 : DROPPED? ( ^entity-type str -- bool )
    {: t:^ name:^ len:n :}
-   t TYPE-V2? if name len s" __metadata" STR= exit then
+   t TYPE-V2? if name len s" __metadata" STR:= exit then
    len 0 ?do name i + c@ [char] @ = if unloop true exit then loop
    false ;
 
@@ -611,7 +611,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    {: t:^ p:^ :}
    t TYPE-V2? 0= if false exit then
    p PROPERTY-TYPE @ SPAN:$ {: ty:^ tl:n :}
-   ty tl s" Edm.DateTime" STR= ty tl s" Edm.DateTimeOffset" STR= or ;
+   ty tl s" Edm.DateTime" STR:= ty tl s" Edm.DateTimeOffset" STR:= or ;
 
 86400000 constant MS-DAY
 0 1 1 DATE:YMD>DAYS MS-DAY * constant MS-FIRST
@@ -623,7 +623,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
    u 6 < if false exit then
    a u + 5 - c@ {: sign:n :}
    sign [char] + = sign [char] - = or 0= if false exit then
-   a u + 4 - 4 STR-DIGITS? ;
+   a u + 4 - 4 STR:DIGITS? ;
 
 \ The offset of `+mmmm` or `-mmmm` in milliseconds, 0 when there is none.
 : ZONE-MS ( str -- n )
@@ -653,7 +653,7 @@ CAST: >FRAMES ( ^u8 -- ^frame )
 
 : MS ( str -- option<n> )
    {: a:^ u:n :}
-   a u s" /Date(" STARTS-WITH? a u s" )/" ENDS-WITH? and 0= if
+   a u s" /Date(" STR:STARTS-WITH? a u s" )/" STR:ENDS-WITH? and 0= if
       OPTION:NONE exit
    then
    s" /Date(" nip {: open:n :}

@@ -181,7 +181,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
    BEARER:CLAIM-HOLDS? at FLAG! ;
 
 : APP-1? ( str bool -- bool )
-   if s" app-1" STR= else 2drop false then ;
+   if s" app-1" STR:= else 2drop false then ;
 
 : ROLES-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -284,7 +284,7 @@ TASK:MIN-STACK TASK:TASK CLAIMER
 : REFUSED ( n ^u8 n -- )
    {: status:n want:^ wu:n :}
    SB-RESET s" WWW-Authenticate: " SB-APPEND want wu SB-APPEND 13 SB-APPEND-C 10 SB-APPEND-C
-   HEADS @ VEC:SPAN SPAN:$ SB$ CONTAINS? TTRUE
+   HEADS @ VEC:SPAN SPAN:$ SB$ STR:CONTAINS? TTRUE
    BODY @ VEC:COUNT 0 T=
    status 401 T= ;
 

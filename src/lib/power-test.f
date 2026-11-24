@@ -35,7 +35,7 @@ create BAD-NAME $FF c,
    CMD:RESET
    s" -g" CMD:ARG+ s" assertions" CMD:ARG+
    s" /usr/bin/pmset" PMSET-MS >MS 1 CMD:RUN
-   CMD:OUT$ NAME$ CONTAINS? ;
+   CMD:OUT$ NAME$ STR:CONTAINS? ;
 
 : LISTED ( CMD:command -- CMD:command )
    NAME$ POWER:KEEP-AWAKE swap

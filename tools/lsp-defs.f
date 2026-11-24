@@ -375,10 +375,10 @@ TYPED-VARIABLE ESC-W JSON:writer
    {: p:^ pu:n :}
    CUR-G @ {: cur:n :}
    cur 0 >= if
-      cur PATH$ p pu STR= if cur OPTION:SOME exit then
+      cur PATH$ p pu STR:= if cur OPTION:SOME exit then
    then
    GROUP-N @ BLOCK-N @ 1- B-GROUP BLOCK@ ?do
-      i PATH$ p pu STR= if i OPTION:SOME unloop exit then
+      i PATH$ p pu STR:= if i OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;
 
@@ -413,7 +413,7 @@ private
    GROUP-N @ {: g:n :}
    g 1+ GROUP-CELLS * GROUPS-RESERVE
    KEPT-SLOT {: slot:n :}
-   slot 0 >= if p pu slot DOC-CANON$ STR= else false then {: own:bool :}
+   slot 0 >= if p pu slot DOC-CANON$ STR:= else false then {: own:bool :}
    0 g G-OVER GROUP!
    ST-UNSEEN g G-STAMP GROUP!
    p pu BYTES+ g G-PATH GROUP!
@@ -498,7 +498,7 @@ private
 : SAME? ( n -- bool )
    {: r:n :}
    r R-START REC@ START-V @ <> if false exit then
-   r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR= ;
+   r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR:= ;
 
 : HOLDER ( n -- option<n> )
    G-FIRST GROUP@
@@ -511,7 +511,7 @@ private
 : ALIKE? ( n -- bool )
    {: r:n :}
    r R-START REC@ START-V @ <> if false exit then
-   r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR=CI ;
+   r R-WORD REC@ r R-WORD-U REC@ AT$ WORD-AT @ WORD-U @ AT$ STR:=CI ;
 
 : SEVERAL! ( n -- bool )
    false swap G-FIRST GROUP@
@@ -577,7 +577,7 @@ private
             ST-DOCUMENT STAMP-V !
          ENDOF
          none OF
-            PROBE-DISK-VALID @ 0<> FILE$ PROBE-PATH PROBE-PATH-U @ STR= and if
+            PROBE-DISK-VALID @ 0<> FILE$ PROBE-PATH PROBE-PATH-U @ STR:= and if
                ST-DISK STAMP-V !
                PROBE-SIZE @ SIZE-V ! PROBE-MSEC @ MSEC-V !
                PROBE-MNS @ MNS-V ! PROBE-CSEC @ CSEC-V ! PROBE-CNS @ CNS-V !
@@ -659,7 +659,7 @@ private
 
 : STEP ( str n [ -- ] -- n )
    {: a:^ u:n o:n xt :}
-   a o + u o - LF INDEX-OF MATCH option
+   a o + u o - LF STR:INDEX-OF MATCH option
       none OF u o - ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: len:n :}
@@ -685,7 +685,7 @@ private
    {: g:n :}
    GROUP-N @ 0 ?do
       i g OUTRANKS? if
-         i PATH$ g PATH$ STR= if unloop true exit then
+         i PATH$ g PATH$ STR:= if unloop true exit then
       then
    loop
    false ;
@@ -1067,7 +1067,7 @@ public
 : GROUP-SAME? ( n n -- bool )
    {: a:n b:n :}
    a GROUP-STAMPED? b GROUP-STAMPED? and 0= if false exit then
-   a PATH$ b PATH$ STR= 0= if false exit then
+   a PATH$ b PATH$ STR:= 0= if false exit then
    a G-STAMP GROUP@ b G-STAMP GROUP@ <> if false exit then
    a G-STAMP GROUP@ ST-DOCUMENT = if
       a G-SOURCE GROUP@ b G-SOURCE GROUP@ =
@@ -1209,14 +1209,14 @@ public
    drop swap 1 = if OPTION:SOME else drop OPTION:NONE then ;
 
 \ Where name W's tail starts when W is qualified by one colon neither its
-\ first byte nor its last: the byte after that colon; else -1. SPLIT-NEXT's
+\ first byte nor its last: the byte after that colon; else -1. STR:SPLIT-NEXT's
 \ flag says only that its start was valid: the position it returns lies past
 \ W's end when no colon follows that start.
 : QUALIFIER-AT ( str -- n )
    {: w:^ wu:n :}
-   w wu [char] : 0 SPLIT-NEXT drop nip nip
+   w wu [char] : 0 STR:SPLIT-NEXT drop nip nip
    {: at:n :}
-   w wu [char] : at SPLIT-NEXT drop nip nip
+   w wu [char] : at STR:SPLIT-NEXT drop nip nip
    {: at2:n :}
    at 1 >  at wu < and  at2 wu > and if at else -1 then ;
 
@@ -1227,7 +1227,7 @@ private
    g G-FIRST GROUP@
    begin dup 0 >= while
       dup REC-BYTES te = swap ts = and if
-         dup REC-WORD$ w wu STR=CI if OPTION:SOME exit then
+         dup REC-WORD$ w wu STR:=CI if OPTION:SOME exit then
       then
       R-NEXT REC@
    repeat
@@ -1279,7 +1279,7 @@ private
 : GROUP-IN ( n str -- option<n> )
    {: k:n p:^ pu:n :}
    k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ?do
-      i PATH$ p pu STR= if i OPTION:SOME unloop exit then
+      i PATH$ p pu STR:= if i OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;
 
@@ -1325,7 +1325,7 @@ public
       some OF
          {: k:n :}
          k B-UNREAD-U BLOCK@ 0<> if
-            k UNREAD-PATH$ p pu STR=
+            k UNREAD-PATH$ p pu STR:=
          else false then
       ENDOF
       none OF false ENDOF

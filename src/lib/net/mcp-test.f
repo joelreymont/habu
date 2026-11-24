@@ -225,7 +225,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ A tool body's fault reaches the host, which answers 500.
 : FAULTED ( n -- )
    {: status:n :}
-   BODY$ s" internal: the handler did not finish this request" STARTS-WITH? TTRUE
+   BODY$ s" internal: the handler did not finish this request" STR:STARTS-WITH? TTRUE
    status 500 T= ;
 
 : SERVER ( -- )
@@ -1035,7 +1035,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : ADD-SHAPE ( -- )
    S\" {\"name\":\"shape\",\"description\":\"Answer sources.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"typ\\u0065\":\"object\",\"properties\":{\"sources\":{\"type\":\"array\"}}},\"annotations\":{\"readOnlyHint\":true}}"
-   [: s" flat" CONTAINS? if s" []" else S\" {\"sources\":[\"a\"]}" then SHAPE-TRY ;]
+   [: s" flat" STR:CONTAINS? if s" []" else S\" {\"sources\":[\"a\"]}" then SHAPE-TRY ;]
    MCP:ADD-TOOL ;
 
 
@@ -1054,8 +1054,8 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ The meta the framed tool returns for its arguments: a request cannot repeat a
 \ member, so `twice` asks for a meta that does.
 : FRAMED-META ( str -- str )
-   2dup s" flat" CONTAINS? if 2drop s" []" exit then
-   2dup s" twice" CONTAINS? if 2drop S\" {\"a\":1,\"a\":2}" exit then ;
+   2dup s" flat" STR:CONTAINS? if 2drop s" []" exit then
+   2dup s" twice" STR:CONTAINS? if 2drop S\" {\"a\":1,\"a\":2}" exit then ;
 
 : ADD-FRAMED ( -- )
    FRAMED [: FRAMED-META META-TRY ;] MCP:ADD-TOOL ;
@@ -1070,14 +1070,14 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : BLOCKS-OF ( str -- str )
    {: args:^ au:n :}
-   args au s" pair" CONTAINS? if PAIR exit then
-   args au s" said" CONTAINS? if OWN-TEXT exit then
-   args au s" none" CONTAINS? if s" [ ]" exit then
-   args au s" flat" CONTAINS? if S\" {\"type\":\"image\"}" exit then
-   args au s" scalar" CONTAINS? if S\" [{\"type\":\"text\",\"text\":\"a\"},1]" exit then
-   args au s" untyped" CONTAINS? if S\" [{\"data\":\"x\"}]" exit then
-   args au s" numbered" CONTAINS? if S\" [{\"type\":5}]" exit then
-   args au s" twice" CONTAINS? if S\" [{\"type\":\"text\",\"type\":5}]" exit then
+   args au s" pair" STR:CONTAINS? if PAIR exit then
+   args au s" said" STR:CONTAINS? if OWN-TEXT exit then
+   args au s" none" STR:CONTAINS? if s" [ ]" exit then
+   args au s" flat" STR:CONTAINS? if S\" {\"type\":\"image\"}" exit then
+   args au s" scalar" STR:CONTAINS? if S\" [{\"type\":\"text\",\"text\":\"a\"},1]" exit then
+   args au s" untyped" STR:CONTAINS? if S\" [{\"data\":\"x\"}]" exit then
+   args au s" numbered" STR:CONTAINS? if S\" [{\"type\":5}]" exit then
+   args au s" twice" STR:CONTAINS? if S\" [{\"type\":\"text\",\"type\":5}]" exit then
    S\" [{\"type\":" ;
 
 
@@ -1131,11 +1131,11 @@ TASK:MIN-STACK TASK:TASK STALLER
 : PAGED-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    answer JSON-HEADER
-   asked HTTP:BODY$ S\" \"cursor\":\"p2\"" CONTAINS? if
+   asked HTTP:BODY$ S\" \"cursor\":\"p2\"" STR:CONTAINS? if
       answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[ ],\"nextCursor\":\"p3\"}}"
       HTTP:BODY! exit
    then
-   asked HTTP:BODY$ S\" \"cursor\":\"p3\"" CONTAINS? if
+   asked HTTP:BODY$ S\" \"cursor\":\"p3\"" STR:CONTAINS? if
       answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"b\"}]}}"
       HTTP:BODY! exit
    then
@@ -1157,14 +1157,14 @@ TASK:MIN-STACK TASK:TASK STALLER
 : EVENTS-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    answer s" Content-Type" s" text/event-stream" HTTP:HEADER!
-   asked HTTP:BODY$ S\" \"name\":\"bad\"" CONTAINS? if
+   asked HTTP:BODY$ S\" \"name\":\"bad\"" STR:CONTAINS? if
       answer s\" data: \xFF\n\n" HTTP:BODY! exit
    then
-   asked HTTP:BODY$ S\" \"name\":\"none\"" CONTAINS? if
+   asked HTTP:BODY$ S\" \"name\":\"none\"" STR:CONTAINS? if
       answer S\" data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
       HTTP:BODY! exit
    then
-   asked HTTP:BODY$ s" tools/list" CONTAINS? if
+   asked HTTP:BODY$ s" tools/list" STR:CONTAINS? if
       answer S\" data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"s\"}]}}\n\n"
       HTTP:BODY! exit
    then
@@ -1195,7 +1195,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : LATE-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    answer JSON-HEADER
-   asked HTTP:BODY$ S\" \"cursor\":\"late\"" CONTAINS? if
+   asked HTTP:BODY$ S\" \"cursor\":\"late\"" STR:CONTAINS? if
       1 ENTERED atomic!
       [: RELEASED atomic@ 0<> ;] TEST-WAIT:POLL
       1 LEFT atomic!
@@ -1278,7 +1278,7 @@ $A constant LF
       a i + c@ LF = if 1+ then
       i 0= if true else a i 1- + c@ LF = then if
          a i DATE:TIME-LEN 1- + +  u i - DATE:TIME-LEN 1- -
-         s" Z info mcp: " STARTS-WITH? if 1- then
+         s" Z info mcp: " STR:STARTS-WITH? if 1- then
       then
    loop ;
 
@@ -1293,7 +1293,7 @@ $A constant LF
    LINES 1 T=
    SB-RESET s"  error mcp: reply from 127.0.0.1:" SB-APPEND
    HTTP:PORT FMT:SB-U s"  " SB-APPEND rest ru SB-APPEND
-   LOG$ SB$ CONTAINS? TTRUE ;
+   LOG$ SB$ STR:CONTAINS? TTRUE ;
 
 \ The server shares this process's fd 2, so its lines land in the capture.
 : SERVER-LOGGED ( -- )
@@ -1302,9 +1302,9 @@ $A constant LF
    [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":40,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"secret\":\"kept\"}}}" POST 200 T=
       LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":41,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/widget.html\"}}" POST 200 T= ;]
    CAPTURED
-   LOG$ S\"  info mcp: tools/call echo\n" CONTAINS? TTRUE
-   LOG$ S\"  info mcp: resources/read ui://test/widget.html\n" CONTAINS? TTRUE
-   LOG$ s" kept" CONTAINS? TFALSE ;
+   LOG$ S\"  info mcp: tools/call echo\n" STR:CONTAINS? TTRUE
+   LOG$ S\"  info mcp: resources/read ui://test/widget.html\n" STR:CONTAINS? TTRUE
+   LOG$ s" kept" STR:CONTAINS? TFALSE ;
 
 : CLIENT-UNKNOWN ( -- )
    s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
@@ -1320,7 +1320,7 @@ $A constant LF
    LINES 1 T=
    SB-RESET s"  error mcp: exchange with 127.0.0.1:" SB-APPEND
    HTTP:PORT FMT:SB-U s"  failed: curl 28: Timeout was reached" SB-APPEND
-   LOG$ SB$ CONTAINS? TTRUE
+   LOG$ SB$ STR:CONTAINS? TTRUE
    1 RELEASED atomic!
    CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop SETTLE ;
 
@@ -1337,18 +1337,18 @@ $A constant LF
 
 : SECRET-CUT ( str -- )
    {: a:^ u:n :}
-   a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl " CONTAINS? TTRUE
-   a u s" user" CONTAINS? TFALSE
-   a u s" SECRET" CONTAINS? TFALSE
-   a u s" api_key" CONTAINS? TFALSE
-   a u s" /mcp" CONTAINS? TFALSE ;
+   a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl " STR:CONTAINS? TTRUE
+   a u s" user" STR:CONTAINS? TFALSE
+   a u s" SECRET" STR:CONTAINS? TFALSE
+   a u s" api_key" STR:CONTAINS? TFALSE
+   a u s" /mcp" STR:CONTAINS? TFALSE ;
 
 : HOST-HIDDEN ( str -- )
    {: a:^ u:n :}
-   a u s"  error mcp: exchange failed: curl " CONTAINS? TTRUE
-   a u s" user" CONTAINS? TFALSE
-   a u s" PASS" CONTAINS? TFALSE
-   a u s" WORD" CONTAINS? TFALSE ;
+   a u s"  error mcp: exchange failed: curl " STR:CONTAINS? TTRUE
+   a u s" user" STR:CONTAINS? TFALSE
+   a u s" PASS" STR:CONTAINS? TFALSE
+   a u s" WORD" STR:CONTAINS? TFALSE ;
 
 \ Port 1 refuses the connection.
 : CLIENT-SECRET ( -- )
@@ -1375,8 +1375,8 @@ $A constant LF
    LONG-URL {: url :}
    url SPAN:$ FAILED-ON {: a:^ u:n :}
    a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl 43: "
-   CONTAINS? TTRUE
-   a u s" LONGPW" CONTAINS? TFALSE
+   STR:CONTAINS? TTRUE
+   a u s" LONGPW" STR:CONTAINS? TFALSE
    url MEM:FREE-SPAN ;
 
 : CLIENT-PAGES ( -- )
@@ -1631,9 +1631,9 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 \ Hides echo, the first tool listed, and secret from every caller but owner-app.
 : OWNER-ONLY ( ^u8 n -- bool )
    {: a:^ u:n :}
-   a u s" echo" STR= a u s" secret" STR= or 0= if true exit then
+   a u s" echo" STR:= a u s" secret" STR:= or 0= if true exit then
    s" azp" BEARER:CLAIM$ 0= if 2drop false exit then
-   s" owner-app" STR= ;
+   s" owner-app" STR:= ;
 
 : ADD-SECRET ( -- )
    S\" {\"name\":\"secret\",\"description\":\"Answer the owner.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
@@ -1732,8 +1732,8 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" the log line leaves out the URL's userinfo" T-LABEL
    SB-RESET s" http://user:SECRET@127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U
    s" /denied" SB-APPEND SB$ MCP:E-DENIED s" refused the client" URL-THROWS
-   LOG$ s" user" CONTAINS? TFALSE
-   LOG$ s" SECRET" CONTAINS? TFALSE
+   LOG$ s" user" STR:CONTAINS? TFALSE
+   LOG$ s" SECRET" STR:CONTAINS? TFALSE
    s" TOKEN! refuses a closed client" T-LABEL
    [: CLIENT @ s" t" MCP:TOKEN! ;] MCP:E-STATE TTHROWSQ
    s" no transfer is left in flight" T-LABEL
@@ -1875,10 +1875,10 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 \ anything else HOLDs.
 : WAIT-BODY ( str -- )
    {: args:^ au:n :}
-   args au s" freed" CONTAINS? if FREED-ERROR exit then
-   args au S\" \"late\"" CONTAINS? if WAIT-RESULT MCP:E-STATE throw then
-   args au s" now" CONTAINS? if WAIT-RESULT exit then
-   args au s" fail" CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
+   args au s" freed" STR:CONTAINS? if FREED-ERROR exit then
+   args au S\" \"late\"" STR:CONTAINS? if WAIT-RESULT MCP:E-STATE throw then
+   args au s" now" STR:CONTAINS? if WAIT-RESULT exit then
+   args au s" fail" STR:CONTAINS? if MCP:HOLD 2drop MCP:E-STATE throw then
    MCP:HOLD HELD-WAIT ;
 
 : ADD-WAIT ( -- )
@@ -1903,7 +1903,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : KEPT-NOW ( n -- )
    {: status:n :}
    status 200 T=
-   BODY$ S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"result\":{" STARTS-WITH? TTRUE
+   BODY$ S\" {\"jsonrpc\":\"2.0\",\"id\":60,\"result\":{" STR:STARTS-WITH? TTRUE
    W-RESET BODY$ W+ ;
 
 \ The held call's answer is W, given by one FINISH.
@@ -1963,13 +1963,13 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : REQ-ID$ ( str -- str )
    {: rest:^ ru:n :}
    LOG$ {: a:^ u:n :}
-   a u rest ru FIND-SUB MATCH option
+   a u rest ru STR:FIND-SUB MATCH option
       some OF {: at:idx :} at IDX>N ENDOF
       none OF -1 ENDOF
    ;MATCH {: at:n :}
    at 0< if s" no line holds the rest" T-FAIL-AS s" " exit then
    a at LINE-START DATE:TIME-LEN 1- + {: head:n :}
-   a head + at head - REQ-HEAD STARTS-WITH? TTRUE
+   a head + at head - REQ-HEAD STR:STARTS-WITH? TTRUE
    head REQ-HEAD nip + {: from:n :}
    a from + at from - 0 max
    2dup REQ-ID? TTRUE ;
@@ -1981,7 +1981,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    [: LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":80,\"method\":\"tools/call\",\"params\":{\"name\":\"echo\",\"arguments\":{\"a\":1}}}" POST 200 T= ;]
    CAPTURED
    S\"  tools/call echo {\"a\":1} -> ok\n" REQ-LOGGED
-   LOG$ S\" Z info mcp: tools/call echo\n" CONTAINS? TFALSE ;
+   LOG$ S\" Z info mcp: tools/call echo\n" STR:CONTAINS? TFALSE ;
 
 : LOGGED-STRICT ( -- )
    s" MCP:LOG logs a schema refusal as a tool error" T-LABEL
@@ -2003,7 +2003,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
    [: LEGACY 84 NAME-TWICE POST 400 T= ;] CAPTURED
    W-RESET s"  tools/call -> error -32602: " W+ TWICE-TEXT W+ S\" \n" W+
    W$ REQ-LOGGED
-   LOG$ s" failed, throw" CONTAINS? TFALSE ;
+   LOG$ s" failed, throw" STR:CONTAINS? TFALSE ;
 
 : LOGGED-NOTIFIED ( -- )
    s" MCP:LOG logs a legacy notification as notified" T-LABEL
@@ -2046,7 +2046,7 @@ variable HOLD-FALSE                 \ set when the wait tool's HOLD answered fal
 : LOGGED-ANSWER ( -- )
    s" MCP:LOG logs ANSWER's message under the id -" T-LABEL
    [: ANSWER-OPEN ECHO-A1 POST 200 T= ;] CAPTURED
-   LOG$ S\" Z info mcp: req - tools/call echo {\"a\":1} -> ok\n" CONTAINS? TTRUE ;
+   LOG$ S\" Z info mcp: req - tools/call echo {\"a\":1} -> ok\n" STR:CONTAINS? TTRUE ;
 
 \ An echo call whose arguments, {"b":<BIG>}, pass the 4096 bytes LOG writes of a text.
 : LONG-CALL ( -- str )

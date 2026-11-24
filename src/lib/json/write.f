@@ -506,15 +506,15 @@ public
 : WRITE-INT ( ^writer n -- ^writer )
    {: v:n :}
    v 0 >= if v WRITE-U exit then
-   v STR-MIN-I64 = if
-      STR-I64-DIGITS 1+ JW-TOKEN
-      STR-MINUS JW-C
+   v STR:MIN-I64 = if
+      STR:I64-DIGITS 1+ JW-TOKEN
+      STR:MINUS JW-C
       v JW-RADIX / negate JW-DIGITS
       v JW-RADIX mod negate JW-ZERO + JW-C exit
    then
    v negate {: m:n :}
    m JW-DIGIT-COUNT 1+ JW-TOKEN
-   STR-MINUS JW-C
+   STR:MINUS JW-C
    m JW-DIGITS ;
 
 \ Only for a known-valid JSON fragment.

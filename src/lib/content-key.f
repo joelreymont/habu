@@ -49,7 +49,7 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
 
 : U8+ ( ^u8 n -- ) {: st:^ c:n :}
    c 0 < if E-STR-BOUNDS throw then
-   c STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   c STR:BYTE-MAX > if E-STR-BOUNDS throw then
    c st BYTE-OFF + c!
    st st BYTE-OFF + 1 SHA256-FEED ;
 
@@ -62,7 +62,7 @@ LINEAR: ERASE ( CONTENT-KEY:fold -- ^u8 )
    u 0 < if E-STR-BOUNDS throw then
    u CK-FRAG-MAX > if E-STR-BOUNDS throw then
    st tag U8+
-   st u STR-BYTE-MAX and U8+
+   st u STR:BYTE-MAX and U8+
    st u 8 rshift U8+
    st a u BYTES+ ;
 

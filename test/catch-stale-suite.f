@@ -84,7 +84,7 @@ variable CS-TICK
    REJECTION:CAPTURE  0 0= REJECTION:JSON !
    CHECK-CANDIDATE! 0 T= ;
 : CS-CODE? ( str -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 : CS-CODE-END ( -- ) 0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 \ A body's stale read is the catch's, never the interpret row's unknown cell,
 \ so its help keeps the value in a local before the catch.
@@ -277,8 +277,8 @@ variable CS-CHILD-ERR-U
    S\" s\" test/catch-success-image-consumer.f\" included\n"
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 0 T=
-   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" CONTAINS? TTRUE
-   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-fresh: ok" CONTAINS? TTRUE ;
+   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image: ok" STR:CONTAINS? TTRUE
+   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-fresh: ok" STR:CONTAINS? TTRUE ;
 
 : CS-SAVED-REFUSAL ( str str -- )
    {: src:^ size:n want:^ wantu:n :}
@@ -287,9 +287,9 @@ variable CS-CHILD-ERR-U
    CS-IMAGE$ src size
    CS-CHILD-OUT CS-CHILD-CAP >LEN CS-CHILD-ERR CS-CHILD-CAP >LEN
    PROCESS:WAIT-FOREVER RUN-ARGV-ENV-STDIN-CAPTURE CS-IMAGE-RC 70 T=
-   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-load: began" CONTAINS? TTRUE
-   CS-CHILD-ERR CS-CHILD-ERR-U @ s" error[E-STALE-READ]: stale cell" CONTAINS? TTRUE
-   CS-CHILD-ERR CS-CHILD-ERR-U @ want wantu CONTAINS? TTRUE ;
+   CS-CHILD-OUT CS-CHILD-OUT-U @ s" catch-image-load: began" STR:CONTAINS? TTRUE
+   CS-CHILD-ERR CS-CHILD-ERR-U @ s" error[E-STALE-READ]: stale cell" STR:CONTAINS? TTRUE
+   CS-CHILD-ERR CS-CHILD-ERR-U @ want wantu STR:CONTAINS? TTRUE ;
 
 : CS-IMAGE-BODY ( -- )
    CS-IMAGE-BUILD
@@ -581,7 +581,7 @@ TYPED-VARIABLE CS-XT [ ^u8 -- ^u8 ]
    \ leaves nothing where its window was, so the bind reaches below the inputs;
    \ only a `[: … ;]` literal that never returns keeps its window, never a tick
    s" T11 ( ^u8 -- n ) ['] WBOOM catch {: v code:n :} code" CS-CODE<
-   s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ 2swap CONTAINS? TFALSE
+   s\" \"code\":\"E-STALE-READ\"" REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE
    CS-CODE-END
    \ and the intact cell is honest at run time through the tick as well: WMAYBE
    \ reads the byte and throws, and the catch hands back the address pushed here

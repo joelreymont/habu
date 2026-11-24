@@ -42,7 +42,7 @@ MEM-MAX-N 10 mod 1+ constant TEN-LAST        \ the largest digit after m = -TEN-
    dup EXP-LOWER = swap EXP-UPPER = or ;
 
 : SIGNIFICANT? ( n -- bool )
-   dup STR-DIGIT? swap ZERO <> and ;
+   dup STR:DIGIT? swap ZERO <> and ;
 
 
 \ One mantissa byte at offset i onto the offsets of the first and the last
@@ -374,7 +374,7 @@ STRUCTURE walk DERIVE addr
    {: w:^ p:n q:n :}
    w p ROW ROW-PARENT @  w q ROW ROW-PARENT @ {: pp:n qp:n :}
    pp qp <> if pp qp < exit then
-   w p MEMBER-KEY$  w q MEMBER-KEY$  STR< ;
+   w p MEMBER-KEY$  w q MEMBER-KEY$  STR:< ;
 
 
 \ Whether the merge takes place i of the left run before place j of the right: on a
@@ -438,11 +438,11 @@ STRUCTURE walk DERIVE addr
    w obj ROW {: o:^ :}
    o ROW-FIRST @  dup o ROW-COUNT @ + {: lo:n hi:n :}
    lo hi
-   [: w swap MEMBER@ w swap MEMBER-KEY$ key len STR< ;]
+   [: w swap MEMBER@ w swap MEMBER-KEY$ key len STR:< ;]
    SORT:PARTITION-POINT {: at:n :}
    at hi = if -1 exit then
    w at MEMBER@ {: q:n :}
-   w q MEMBER-KEY$ key len STR= if q else -1 then ;
+   w q MEMBER-KEY$ key len STR:= if q else -1 then ;
 
 
 \ ---- the index pass ----------------------------------------------------------

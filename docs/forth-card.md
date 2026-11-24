@@ -121,7 +121,7 @@ cast holds or yields one.
 open, linear, `xt`, `u32` or quotation type (`E-BAD-STORAGE`).
 
 - A row's `str` is one string value, which `s"` gives; a file whose first
-  line is `split-str` reads it as `^u8 n`. Unmarked, `s" a" LTRIM` passes
+  line is `split-str` reads it as `^u8 n`. Unmarked, `s" a" STR:LTRIM` passes
   (forth.md **Types**).
 - A word reads bytes as `str` and writes them into a `^VEC:vector<u8>`; a
   row never says `^u8 n`.
@@ -303,9 +303,9 @@ These classic words are absent — naming one is `E-UNDEFINED`.
 | `within` | `{: v lo hi :} v lo >= v hi < and` |
 | `move` | `BYTE-COPY`, `src/core/bytes.f` |
 | `fill`, `erase` | none; write it: `u 0 ?do 0 a i + c! loop` |
-| `bl` | `STR-SPACE`, `src/lib/string.f` |
+| `bl` | `STR:SPACE`, `src/lib/string.f` |
 | `*/` | none; `*` then `/` |
-| `s>number?` | `STR>NUMBER?`, `src/lib/string.f` |
+| `s>number?` | `STR:>NUMBER?`, `src/lib/string.f` |
 | `'` in a compiled body | `[: WORD ;]`; `'` is top level only |
 | `0>` | `0 >` |
 | `0>=` | `0 >=` |

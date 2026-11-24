@@ -268,7 +268,7 @@ variable WR-DYN                      \ (i32) -> (i32): an indirect call's
 \ The index of the type in TY, which a type equal to it already has.
 : INTERN ( -- n )
    NTYPES @ 0 ?do
-      i TYPE$  TY TY-U @  STR= if i unloop exit then
+      i TYPE$  TY TY-U @  STR:= if i unloop exit then
    loop
    NTYPES @ {: k:n :}
    k 1+ TYPE-AT-RESERVE  k 1+ TYPE-LEN-RESERVE

@@ -45,13 +45,13 @@ variable FILL-CALLS
 : TRY-REMOVE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
    2dup ZIP:REMOVE ;
 : TRY-COMMIT ( ZIP:archive -- ZIP:archive ) dup ZIP:COMMIT ;
-: NO-TEMP ( str -- ) FS:BASENAME s" .tmp-" STARTS-WITH? TFALSE ;
+: NO-TEMP ( str -- ) FS:BASENAME s" .tmp-" STR:STARTS-WITH? TFALSE ;
 
 : CHECK-ARTIFACT ( str -- ) {: local:^ local-len:n :}
    ARCHIVE$ RAW RAW-CAP FS:READ-ALL {: size:n :}
    RAW local-len local local-len T$=
-   RAW size s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" CONTAINS? TFALSE
-   RAW size s" preview.bin" CONTAINS? TFALSE
+   RAW size s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" STR:CONTAINS? TFALSE
+   RAW size s" preview.bin" STR:CONTAINS? TFALSE
    ARCHIVE$ ZIP:OPEN {: archive:ZIP:archive :}
    archive ZIP:COUNT 1 T=
    archive 0 ZIP:ENTRY {: entry:ZIP:entry :}
@@ -127,8 +127,8 @@ variable FILL-CALLS
    ARCHIVE$ ZIP:OPEN {: result:ZIP:archive :}
    result ZIP:COUNT 0 T= result ZIP:CLOSE
    ARCHIVE$ RAW RAW-CAP FS:READ-ALL {: size:n :}
-   RAW size s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" CONTAINS? TFALSE
-   RAW size s" kept member bytes" CONTAINS? TFALSE ;
+   RAW size s" ZIP-REMOVED-PREVIEW-PAYLOAD-9C52E6" STR:CONTAINS? TFALSE
+   RAW size s" kept member bytes" STR:CONTAINS? TFALSE ;
 
 public
 : RUN ( -- )

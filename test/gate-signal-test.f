@@ -158,10 +158,10 @@ variable STAT-PATH-U
 
 \ The first index from at, below end, that is not a space; then that is one.
 : PAST-SPACES ( n n -- n ) {: at:n end:n :}
-   at begin dup end < if STAT over + c@ STR-SPACE = else false then while 1+ repeat ;
+   at begin dup end < if STAT over + c@ STR:SPACE = else false then while 1+ repeat ;
 
 : PAST-WORD ( n n -- n ) {: at:n end:n :}
-   at begin dup end < if STAT over + c@ STR-SPACE <> else false then while 1+ repeat ;
+   at begin dup end < if STAT over + c@ STR:SPACE <> else false then while 1+ repeat ;
 
 \ comm may hold spaces and parentheses, so the fields are counted from after
 \ the LAST `)`.
@@ -182,7 +182,7 @@ variable STAT-PATH-U
    STAT-START-FIELD 1- 0 ?do got PAST-SPACES got PAST-WORD loop
    got PAST-SPACES {: start:n :}
    start got PAST-WORD {: stop:n :}
-   STAT start + stop start - STR>NUMBER? MATCH option
+   STAT start + stop start - STR:>NUMBER? MATCH option
       none OF 0 ENDOF
       some OF ENDOF
    ;MATCH ;

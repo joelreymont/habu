@@ -127,43 +127,43 @@ variable IMDT-FORMS-U
 : IMDT-TEST-RET ( -- )
    IMDT-RET$ s" 0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
-   IMDT-OUT outu s" ret" CONTAINS? TTRUE ;
+   IMDT-OUT outu s" ret" STR:CONTAINS? TTRUE ;
 
 : IMDT-TEST-HEX-OFFSET ( -- )
    IMDT-RET$ s" $0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
-   IMDT-OUT outu s" ret" CONTAINS? TTRUE ;
+   IMDT-OUT outu s" ret" STR:CONTAINS? TTRUE ;
 
 : IMDT-TEST-LDRB ( -- )
    IMDT-LDRB$ s" 0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
-   IMDT-OUT outu s" ldrb" CONTAINS? TTRUE ;
+   IMDT-OUT outu s" ldrb" STR:CONTAINS? TTRUE ;
 
 : IMDT-TEST-FORMS ( -- )
    IMDT-FORMS$ s" 0" s" 16" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    outu 192 T=
-   IMDT-OUT outu s\" str-post 5 19 8\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" ldr-pre 11 19 -8\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" blr 9\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" and 0 1 255\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" and 0 1 -1152921436155805681\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" cmp 9 16\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" b.ne -16\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" adr 3 -3\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" cbz 2 24\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" b -4\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" ? 9240FC20\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" ? 0E201C00\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" movz 0 1 16\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" movk 1 2 48\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" add 0 1 4096\n" CONTAINS? TTRUE
-   IMDT-OUT outu s\" cmp 9 12288\n" CONTAINS? TTRUE ;
+   IMDT-OUT outu s\" str-post 5 19 8\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" ldr-pre 11 19 -8\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" blr 9\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" and 0 1 255\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" and 0 1 -1152921436155805681\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" cmp 9 16\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" b.ne -16\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" adr 3 -3\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" cbz 2 24\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" b -4\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" ? 9240FC20\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" ? 0E201C00\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" movz 0 1 16\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" movk 1 2 48\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" add 0 1 4096\n" STR:CONTAINS? TTRUE
+   IMDT-OUT outu s\" cmp 9 12288\n" STR:CONTAINS? TTRUE ;
 
 : IMDT-TEST-RANGE ( -- )
    IMDT-RET$ s" 4" s" 1" IMDT-RUN 64 IMDT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
-   IMDT-ERR erru s" imagedisasm: range outside image" CONTAINS? TTRUE ;
+   IMDT-ERR erru s" imagedisasm: range outside image" STR:CONTAINS? TTRUE ;
 
 \ Invalid digits and overflowing hex inputs are absent from the CLI fixtures.
 : IMDT-NUM-NONE ( str -- ) {: a:^ u:n :}

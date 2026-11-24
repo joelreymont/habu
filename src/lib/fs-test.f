@@ -121,7 +121,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    0= FS-TEST-ASSERT ;
 
 : FS-TEST$= ( str str -- )
-   STR= FS-TEST-ASSERT ;
+   STR:= FS-TEST-ASSERT ;
 
 \ Fills dst[0,u) with c; FS-TEST-PARALLEL compares the bytes, so a wrong fill
 \ fails there.
@@ -454,22 +454,22 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 
 : FS-TEST-WALK-CB ( str -- ) {: a:^ u :}
    FS-TEST-WALK-COUNT @ 1 + FS-TEST-WALK-COUNT !
-   a u s" /alpha/aa-child/deep.txt" ENDS-WITH? if
+   a u s" /alpha/aa-child/deep.txt" STR:ENDS-WITH? if
       FS-TEST-WALK-COUNT @ FS-TEST-DEEP-IDX !
    then
-   a u s" /alpha/zz-after.txt" ENDS-WITH? if
+   a u s" /alpha/zz-after.txt" STR:ENDS-WITH? if
       FS-TEST-WALK-COUNT @ FS-TEST-AFTER-IDX !
    then
-   a u s" /beta.txt" ENDS-WITH? if
+   a u s" /beta.txt" STR:ENDS-WITH? if
       FS-TEST-WALK-COUNT @ FS-TEST-BETA-IDX !
    then
-   a u s" /dotted.txt" ENDS-WITH? if
+   a u s" /dotted.txt" STR:ENDS-WITH? if
       FS-TEST-DOTTED-COUNT @ 1 + FS-TEST-DOTTED-COUNT !
    then ;
 
 : FS-TEST-FILE-CB ( str -- ) {: a:^ u :}
    FS-TEST-FILE-COUNT @ 1 + FS-TEST-FILE-COUNT !
-   a u s" /beta.txt" ENDS-WITH? FS-TEST-TRUE ;
+   a u s" /beta.txt" STR:ENDS-WITH? FS-TEST-TRUE ;
 
 : FS-TEST-WALK ( -- )
    FS-TEST-ROOT [: FS-TEST-WALK-CB ;] FS:WALK-FILES
@@ -485,7 +485,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-GONE-CB ( str -- ) {: a:^ u :}
    FS-TEST-GONE-N @ 1 + FS-TEST-GONE-N !
    FS-TEST-GONE-N @ 1 = if
-      a u s" /one.txt" ENDS-WITH? if s" gone-walk/two.txt"
+      a u s" /one.txt" STR:ENDS-WITH? if s" gone-walk/two.txt"
       else s" gone-walk/one.txt" then
       FS-TEST-UNDER$ FS:REMOVE-FILE
    then ;
@@ -615,7 +615,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
 
 : FS-TEST-UNDER? ( str str -- bool ) {: a:^ u ra:^ ru :}
    u ru <= if false exit then
-   a ru ra ru STR= ;
+   a ru ra ru STR:= ;
 
 : FS-TEST-WA-CB ( str -- ) {: a:^ u :}
    a u FS-TEST-WA FS-TEST-UNDER? 0= if 1 FS-TEST-WALK-BAD atomic-add drop then

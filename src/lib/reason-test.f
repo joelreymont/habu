@@ -60,7 +60,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    CODE-A <> if 1 bad +! then
    1 BARRIER atomic-add drop
    [: BOTH-STATED? ;] TEST-WAIT:POLL
-   CODE-A REASON:TEXT$ a u STR= 0= if 1 bad +! then
+   CODE-A REASON:TEXT$ a u STR:= 0= if 1 bad +! then
    0 TASK:RETURN ;
 
 : A-BODY ( -- ) s" stated by task a" BAD-A BODY ;

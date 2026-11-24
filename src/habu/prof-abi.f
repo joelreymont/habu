@@ -9,7 +9,7 @@ require src/habu/layout.f
 
 package PROF-ABI
 public
-\ The trim and reclaim callers are emitted before prof.f loads, so their labels
+\ The str:trim and reclaim callers are emitted before prof.f loads, so their labels
 \ are declared in this early ABI package and assigned by habu2.f.
 variable LPROFTRIM
 variable LPROFRECLAIM

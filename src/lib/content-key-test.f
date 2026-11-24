@@ -93,12 +93,12 @@ create CKT-INT-B 80 allot
 : CKT-FOLD-OVERLAP-MATCHES ( -- )
    CKT-FOLD-SEQUENTIAL
    CKT-FOLD-OVERLAPPED
-   CKT-SEQ-A CKT-KEY-LEN CKT-INT-A CKT-KEY-LEN STR= TTRUE
-   CKT-SEQ-B CKT-KEY-LEN CKT-INT-B CKT-KEY-LEN STR= TTRUE
+   CKT-SEQ-A CKT-KEY-LEN CKT-INT-A CKT-KEY-LEN STR:= TTRUE
+   CKT-SEQ-B CKT-KEY-LEN CKT-INT-B CKT-KEY-LEN STR:= TTRUE
    \ and the two keys are genuinely different keys, so the equalities above are
    \ not both passing on one repeated value.
-   CKT-SEQ-A CKT-KEY-LEN CKT-SEQ-B CKT-KEY-LEN STR= TFALSE
-   CKT-INT-A CKT-KEY-LEN CKT-INT-B CKT-KEY-LEN STR= TFALSE ;
+   CKT-SEQ-A CKT-KEY-LEN CKT-SEQ-B CKT-KEY-LEN STR:= TFALSE
+   CKT-INT-A CKT-KEY-LEN CKT-INT-B CKT-KEY-LEN STR:= TFALSE ;
 
 \ Each fold owns its scope storage, so 64 folds open at once all fold and
 \ finish, each to the key one lone fold of the same text gives.
@@ -118,7 +118,7 @@ defer CKT-NEST ( n -- )
    CKT-NEST-TEXT
    swap CKT-NEST
    CKT-KEY2 FINAL-HEX
-   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN STR= if 1 CKT-NEST-DONE +! then ;
+   CKT-KEY1 CKT-KEY-LEN CKT-KEY2 CKT-KEY-LEN STR:= if 1 CKT-NEST-DONE +! then ;
 
 : CKT-NEST-IMPL ( n -- )
    dup 0= if drop exit then

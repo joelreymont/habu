@@ -360,7 +360,7 @@ private
    CHK-ARG-I @ SCRIPT-ARGC >= if s" --deadline-ms" CHK-NO-VALUE then
    CHK-DEADLINE @ 0<> if s" --deadline-ms" CHK-TWICE then
    CHK-ARG-I @ CHK-ARG$ {: a:^ u:n :}
-   a u STR>NUMBER? MATCH option
+   a u STR:>NUMBER? MATCH option
       none OF a u CHK-BAD-DEADLINE ENDOF
       some OF {: ms:n :} a u ms CHK-DEADLINE-SET ENDOF
    ;MATCH ;
@@ -772,7 +772,7 @@ private
 : CHK-BUILD-READER ( -- )
    CHK-LF CHK-RUN-C
    s" : CHECK-F-READ ( str -- str ) {: p :}" CHK-RUN-LN
-   s" p " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR= if" CHK-RUN-LN
+   s" p " CHK-RUN+  CHK-SUBJ$ CHK-RUN-QPATH+  s"  STR:= if" CHK-RUN-LN
    CHK-SUBJECT-PATH CHK-RUN-QPATH+  s"  SOURCE-ROOT:READ-OS exit then" CHK-RUN-LN
    s" p SOURCE-ROOT:READ-OS ;" CHK-RUN-LN
    s" : CHECK-F-INPUT ( -- ) [: SOURCE-ROOT:CANON-OS ;] [: CHECK-F-READ ;] SOURCE-INPUT:USE ;" CHK-RUN-LN

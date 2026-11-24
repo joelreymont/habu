@@ -51,7 +51,7 @@ variable SRC-U
    WASM-HARNESS:OUT$ {: a:^ u:n :}
    WANT$ {: w:^ wu:n :}
    a  wu u min  w wu T$=
-   a wu u min +  u wu - 0 max  RTRIM STR>NUMBER? MATCH option
+   a wu u min +  u wu - 0 max  STR:RTRIM STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF 0 ENDOF
    ;MATCH ;

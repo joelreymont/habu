@@ -37,15 +37,15 @@ private
    S\" \"code\":\"E-MISMATCH\"" ;
 
 : HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 
 : LACKS? ( str -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TFALSE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TFALSE ;
 
 : TOKEN=? ( str -- bool )
    SB-RESET
    S\" \"token\":\"" SB-APPEND  SB-APPEND  34 SB-APPEND-C
-   REJECTION:BUFFER$ SB$ CONTAINS? ;
+   REJECTION:BUFFER$ SB$ STR:CONTAINS? ;
 
 : TOKEN? ( str -- )
    TOKEN=? TTRUE ;

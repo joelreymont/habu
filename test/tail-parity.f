@@ -37,9 +37,9 @@ variable SAVED-KEPT-U
 \ A line, its gutter indent dropped, that tells where a record is: the place
 \ line, a source line or an `= evaluated:` note.
 : PLACE? ( str -- bool ) {: a:^ u:n :}
-   a u s" -->" STARTS-WITH?
-   a u s" = evaluated:" STARTS-WITH? or
-   u 0 > if a c@ STR-DIGIT? else false then or ;
+   a u s" -->" STR:STARTS-WITH?
+   a u s" = evaluated:" STR:STARTS-WITH? or
+   u 0 > if a c@ STR:DIGIT? else false then or ;
 
 : KEEP+ ( str ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
    a u dst CAP lenp BUF-APPEND
@@ -49,14 +49,14 @@ variable SAVED-KEPT-U
 \ label past its carets; the carets, and an evaluating call's label
 \ `evaluates the text below`, only tell where the record is.
 : LINE+ ( str ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
-   a u LTRIM {: t:^ tu:n :}
+   a u STR:LTRIM {: t:^ tu:n :}
    t tu PLACE? if exit then
-   t tu s" |" STARTS-WITH?  t tu s" ^" STARTS-WITH? or if
-      t tu 94 INDEX-OF MATCH option
+   t tu s" |" STR:STARTS-WITH?  t tu s" ^" STR:STARTS-WITH? or if
+      t tu 94 STR:INDEX-OF MATCH option
         none OF ENDOF
         some OF IDX>N {: at:n :}
            t at + tu at - PAST-CARETS {: l:^ lu:n :}
-           l lu s"  evaluates the text below" STR= 0= if l lu dst lenp KEEP+ then ENDOF
+           l lu s"  evaluates the text below" STR:= 0= if l lu dst lenp KEEP+ then ENDOF
       ;MATCH exit
    then
    t tu dst lenp KEEP+ ;
@@ -65,7 +65,7 @@ variable SAVED-KEPT-U
 : KEPT ( ^u8 n ^u8 ^len -- ) {: a:^ u:n dst:^ lenp:^ :}
    lenp BUF-RESET
    0 begin
-      >r a u 10 r> SPLIT-NEXT
+      >r a u 10 r> STR:SPLIT-NEXT
    while
       >r dst lenp LINE+ r>
    repeat drop 2drop ;
@@ -75,7 +75,7 @@ variable SAVED-KEPT-U
 23 constant LR-TAIL
 : PAST-LR ( str -- str ) {: a:^ u:n :}
    u LR-TAIL < if a u exit then
-   a u + LR-TAIL - 6 s"  lr 0x" STR= if a u LR-TAIL - else a u then ;
+   a u + LR-TAIL - 6 s"  lr 0x" STR:= if a u LR-TAIL - else a u then ;
 
 public
 

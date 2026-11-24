@@ -74,7 +74,7 @@ create PROG-BUF PATH-CAP allot
 : RUN-PROG ( CMD:command str ^u8 n n -- CMD:command )
    {: file:^ file-n:n out:^ out-n:n want:n :}
    file file-n PROG$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ out out-n STR=  rc want =  and 0= if
+   CMD:OUT$ out out-n STR:=  rc want =  and 0= if
       s" arm64-link-run: " type file file-n type s"  exited " type rc .
       s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr
    then
@@ -87,7 +87,7 @@ create PROG-BUF PATH-CAP allot
 : RUN-DEEP ( CMD:command -- CMD:command ) s" deep" s" " 102 RUN-PROG
    s" deep" T-LABEL
    CMD:ERR$ S\" error[E-STACK-BOUNDS]: the machine stack ran past its bounds\n"
-   STARTS-WITH? TTRUE ;
+   STR:STARTS-WITH? TTRUE ;
 
 
 8 BUFFER: TEXT-LOAD
@@ -114,7 +114,7 @@ $20000 BUFFER: HI-BYTES
    file file-n FS:FILE-SIZE $20000 min {: size:n :}
    file file-n 0 HI-BYTES size FS:READ-AT
    s" hi keeps no profiler code" T-LABEL
-   HI-BYTES size s" profiler not armed" CONTAINS? TFALSE ;
+   HI-BYTES size s" profiler not armed" STR:CONTAINS? TFALSE ;
 
 
 \ ---- the kernel build's inputs log, replayed -------------------------------------

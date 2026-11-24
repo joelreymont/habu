@@ -594,8 +594,8 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    {: w g :}
    w g LINE$ drop c@ {: c :}
    c [char] _ = c [char] $ = or if true exit then
-   c ASCII-LOWER {: l :}
-   l STR-BEFORE-LOWER-A > l STR-AFTER-LOWER-Z < and ;
+   c STR:ASCII-LOWER {: l :}
+   l STR:BEFORE-LOWER-A > l STR:AFTER-LOWER-Z < and ;
 
 
 \ git's function line for a hunk whose old text starts at line a: the nearest
@@ -613,7 +613,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 : OUT-FUNC ( ^work n -- )
    {: w g :}
    g NO-FUNC = if exit then
-   w g LINE$ FUNC-MAX min RTRIM {: a u :}
+   w g LINE$ FUNC-MAX min STR:RTRIM {: a u :}
    w 32 OUT-BYTE w a u OUT$ ;
 
 
@@ -671,7 +671,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 
 : QUOTE-BYTE? ( n -- bool )
    {: c :}
-   c STR-SPACE < c 127 < 0= or c [char] " = or c [char] \ = or ;
+   c STR:SPACE < c 127 < 0= or c [char] " = or c [char] \ = or ;
 
 
 \ A byte of a quoted path: C's escape letter for BEL..CR, a backslash before
@@ -680,7 +680,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    {: w c :}
    c QUOTE-BYTE? 0= if w c OUT-BYTE exit then
    w [char] \ OUT-BYTE
-   c 7 < 0= c STR-CR > 0= and if w s" abtnvfr" drop c 7 - + c@ OUT-BYTE exit then
+   c 7 < 0= c STR:CR > 0= and if w s" abtnvfr" drop c 7 - + c@ OUT-BYTE exit then
    c [char] " = c [char] \ = or if w c OUT-BYTE exit then
    w c 6 rshift [char] 0 + OUT-BYTE
    w c 3 rshift 7 and [char] 0 + OUT-BYTE
@@ -701,7 +701,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
 : OUT-SIDE ( ^work str str -- )
    {: w pre pu p u :}
    w pre pu p u OUT-NAME
-   p u [: STR-SPACE = ;] ANY-BYTE? if w STR-TAB OUT-BYTE then
+   p u [: STR:SPACE = ;] ANY-BYTE? if w STR:TAB OUT-BYTE then
    w LF OUT-BYTE ;
 
 
@@ -727,7 +727,7 @@ CAST: >SCRIPT ( ^u8 -- ^script )
    {: w s p u k :}
    s SCRIPT-COUNT @ 0= k EDIT? and if exit then
    w s" diff --git " OUT$ w s" a/" p u OUT-NAME
-   w STR-SPACE OUT-BYTE w s" b/" p u OUT-NAME w LF OUT-BYTE
+   w STR:SPACE OUT-BYTE w s" b/" p u OUT-NAME w LF OUT-BYTE
    w k OUT-MODE
    s SCRIPT-COUNT @ 0= if exit then
    w p u k OUT-NAMES
@@ -811,7 +811,7 @@ STRUCTURE block
    {: w g :}
    w g LINE$ {: a u :}
    u 2 < if false exit then
-   a u + 2 - c@ STR-CR = a u + 1- c@ LF = and ;
+   a u + 2 - c@ STR:CR = a u + 1- c@ LF = and ;
 
 : >EOL ( bool -- eol )  if construct eol crlf else construct eol lf then ;
 
@@ -852,7 +852,7 @@ STRUCTURE block
 
 : OUT-EOL ( ^work bool -- )
    {: w crlf :}
-   crlf if w STR-CR OUT-BYTE then
+   crlf if w STR:CR OUT-BYTE then
    w LF OUT-BYTE ;
 
 

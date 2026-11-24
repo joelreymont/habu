@@ -29,10 +29,10 @@ create TEXT CAP allot                  variable TEXT-U
    dup 0= if OUT$ type ERR$ type then ;
 
 : SAYS ( ^u8 n -- ) {: a:^ u:n :}
-   ERR$ a u CONTAINS? SHOW TTRUE ;
+   ERR$ a u STR:CONTAINS? SHOW TTRUE ;
 
 : PRINTS ( ^u8 n -- ) {: a:^ u:n :}
-   OUT$ a u CONTAINS? SHOW TTRUE ;
+   OUT$ a u STR:CONTAINS? SHOW TTRUE ;
 
 : SUBJECT-STORE! ( len len PROCESS:ending str -- ) {: outu:len erru:len oc src:^ u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !

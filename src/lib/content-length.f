@@ -97,7 +97,7 @@ private
 \ Where the first LF the buffer holds is, counted from pos; -1 while none is.
 : LF-INDEX ( ^reader -- n )
    {: r :}
-   r BUF@ r POS@ +  r HELD  LF INDEX-OF MATCH option
+   r BUF@ r POS@ +  r HELD  LF STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -117,7 +117,7 @@ private
    i 0= if r MALFORMED then
    a i 1- + c@ CR <> if r MALFORMED then
    i 1- {: u:n :}
-   a u CR INDEX-OF MATCH option
+   a u CR STR:INDEX-OF MATCH option
       none OF ENDOF
       some OF drop r MALFORMED ENDOF
    ;MATCH
@@ -136,10 +136,10 @@ private
 \ Whether a byte is RFC 7230's tchar, the bytes a header name is made of.
 : TCHAR? ( n -- bool )
    {: c:n :}
-   c STR-DIGIT? if true exit then
-   c ASCII-LOWER {: l:n :}
+   c STR:DIGIT? if true exit then
+   c STR:ASCII-LOWER {: l:n :}
    l [char] a >= l [char] z <= and if true exit then
-   s" !#$%&'*+-.^_`|~" c INDEX-OF MATCH option
+   s" !#$%&'*+-.^_`|~" c STR:INDEX-OF MATCH option
       none OF false ENDOF
       some OF drop true ENDOF
    ;MATCH ;
@@ -163,7 +163,7 @@ private
 \ around it aside.
 : LENGTH ( str ^reader -- n )
    {: a:^ u:n r :}
-   a u TRIM SIGNIFICANT STR-PARSE-POS MATCH option
+   a u STR:TRIM SIGNIFICANT STR:PARSE-POS MATCH option
       none OF r MALFORMED ENDOF
       some OF ENDOF
    ;MATCH
@@ -182,20 +182,20 @@ private
 \ quoted.
 : FOREIGN? ( str -- bool )
    {: a:^ u:n :}
-   a u EQUALS INDEX-OF MATCH option
+   a u EQUALS STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: e:n :}
    e 0 < if false exit then
-   a e TRIM s" charset" STR=CI 0= if false exit then
-   a e 1+ +  u e 1+ -  TRIM UNQUOTE {: v:^ vu:n :}
-   v vu s" utf-8" STR=CI  v vu s" utf8" STR=CI  or 0= ;
+   a e STR:TRIM s" charset" STR:=CI 0= if false exit then
+   a e 1+ +  u e 1+ -  STR:TRIM UNQUOTE {: v:^ vu:n :}
+   v vu s" utf-8" STR:=CI  v vu s" utf8" STR:=CI  or 0= ;
 
 \ A Content-Type value, its media type and parameters split at semicolons:
 \ malformed when a charset parameter names another encoding than UTF-8.
 : CONTENT-TYPE ( str ^reader -- )
    {: a:^ u:n r :}
-   a u SEMICOLON 0 begin SPLIT-NEXT while {: p:^ pu:n next:n :}
+   a u SEMICOLON 0 begin STR:SPLIT-NEXT while {: p:^ pu:n next:n :}
       p pu FOREIGN? if r MALFORMED then
       a u SEMICOLON next
    repeat drop 2drop ;
@@ -204,14 +204,14 @@ private
 \ length the lines before it named, -1 while none has.
 : HEADER ( n str ^reader -- n )
    {: seen:n a:^ u:n r :}
-   a u COLON INDEX-OF MATCH option
+   a u COLON STR:INDEX-OF MATCH option
       none OF r MALFORMED ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: c:n :}
    a c TOKEN? 0= if r MALFORMED then
    a c 1+ +  u c 1+ - {: v:^ vu:n :}
-   a c s" Content-Type" STR=CI if v vu r CONTENT-TYPE then
-   a c s" Content-Length" STR=CI 0= if seen exit then
+   a c s" Content-Type" STR:=CI if v vu r CONTENT-TYPE then
+   a c s" Content-Length" STR:=CI 0= if seen exit then
    seen 0 >= if r MALFORMED then
    v vu r LENGTH ;
 
@@ -236,9 +236,9 @@ private
    ;MATCH
    cap r CAP! ;
 
-\ SEND's header is `Content-Length: ` (16 bytes), at most the STR-I64-DIGITS
+\ SEND's header is `Content-Length: ` (16 bytes), at most the STR:I64-DIGITS
 \ digits of a cell, and CR LF CR LF.
-16 STR-I64-DIGITS + 4 + constant HEADER-CAP
+16 STR:I64-DIGITS + 4 + constant HEADER-CAP
 HEADER-CAP TASK:+USERS HEADER-ROW u8
 
 \ u's decimal digits into h from index i on, most significant first; the index

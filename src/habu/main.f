@@ -80,15 +80,15 @@ ENUM route load plain ;ENUM
 \ Anything else, `--` included, is the program file. Past argv[1] only `--` is
 \ special: `--load a.f --x` loads a file named `--x`.
 : ROUTE ( str -- route ) {: a:^ u:n :}
-   a u LOAD$ STR= if construct route load exit then
-   a u SEP$ STR= if construct route plain exit then
+   a u LOAD$ STR:= if construct route load exit then
+   a u SEP$ STR:= if construct route plain exit then
    u 0 > if a c@ DASH = if a u USAGE then then
    construct route plain ;
 
 \ The first `--` from argv[2] on, or argc: where a list's files end.
 : LIST-END ( ^^u8 n -- n ) {: argv:^ argc:n :}
    argc 2 ?do
-      argv i ARG SEP$ STR= if i unloop exit then
+      argv i ARG SEP$ STR:= if i unloop exit then
    loop
    argc ;
 

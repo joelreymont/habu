@@ -220,7 +220,7 @@ TASK:+USER FROM n
    asked s" Authorization" HTTP:HEADER-COUNT-OF 1 <> if false exit then
    asked s" Authorization" HTTP:HEADER-OF$ drop {: v:^ vu:n :}
    vu 7 <= if false exit then
-   v 6 s" Bearer" STR=CI 0= if false exit then
+   v 6 s" Bearer" STR:=CI 0= if false exit then
    v 6 + c@ 32 <> if false exit then
    v 7 + vu 7 - SPAN:MAKE SLOT PRESENTED ! true ;
 
@@ -460,7 +460,7 @@ ENUM lookup-step
    {: t:^ u:n w:^ wu:n from:n :}
    from begin {: at:n :} at u < while
       t u at SPACE-AT {: to:n :}
-      to at > if t at + to at - w wu STR= if true exit then then
+      to at > if t at + to at - w wu STR:= if true exit then then
       to 1+
    repeat false ;
 
@@ -621,14 +621,14 @@ ENUM lookup-step
 : OCTET? ( str -- bool )
    {: a:^ u:n :}
    u 1 < u 3 > or if false exit then
-   a u STR-DIGITS? 0= if false exit then
+   a u STR:DIGITS? 0= if false exit then
    u 1 > a c@ [char] 0 = and if false exit then
-   a u s" 255" STR-DIGITS<= ;
+   a u s" 255" STR:DIGITS<= ;
 
 \ A dotted-quad IPv4 literal in 127.0.0.0/8.
 : LOOPBACK-V4? ( str -- bool )
    {: h:^ hu:n :}
-   h hu s" 127." STARTS-WITH? 0= if false exit then
+   h hu s" 127." STR:STARTS-WITH? 0= if false exit then
    h hu 4 DOT {: d1:n :}
    h hu d1 1+ DOT {: d2:n :}
    d2 hu >= if false exit then
@@ -641,8 +641,8 @@ ENUM lookup-step
 \ rejection for one it cannot read.
 : SECURE ( str -- )
    URI:ORIGIN drop {: s:^ su:n h:^ hu:n :}
-   s su s" https" STR=CI if exit then
-   h hu V6-LOOPBACK STR= if exit then
+   s su s" https" STR:=CI if exit then
+   h hu V6-LOOPBACK STR:= if exit then
    h hu LOOPBACK-V4? 0= if E-OPERAND throw then ;
 
 \ The resource's path: nothing, or `/` and no query or fragment.
@@ -650,7 +650,7 @@ ENUM lookup-step
    {: p:^ pu:n :}
    pu 0= if true exit then
    p c@ [char] / <> if false exit then
-   p pu s" ?" CONTAINS? 0= p pu s" #" CONTAINS? 0= and ;
+   p pu s" ?" STR:CONTAINS? 0= p pu s" #" STR:CONTAINS? 0= and ;
 
 \ Where the well-known segment starts in METADATA!'s URL, 0 for an empty
 \ URL; SECURE's rejection, or E-OPERAND for a URL not of RFC 9728 3.1's form.
@@ -660,7 +660,7 @@ ENUM lookup-step
    url uu SECURE
    url uu URI:REQUEST-TARGET$ drop url - {: end:n :}
    url end + uu end - {: rest:^ ru:n :}
-   rest ru WELL-KNOWN STARTS-WITH? 0= if E-OPERAND throw then
+   rest ru WELL-KNOWN STR:STARTS-WITH? 0= if E-OPERAND throw then
    rest WELL-KNOWN nip + ru WELL-KNOWN nip - PATH? 0= if E-OPERAND throw then
    end ;
 
@@ -1120,7 +1120,7 @@ private
    {: scope:^ su:n :}
    NEWEST @
    begin dup NULL-PTR <> while
-      dup ROW-SCOPE$ scope su STR= if exit then
+      dup ROW-SCOPE$ scope su STR:= if exit then
       ROW-NEXT @
    repeat ;
 

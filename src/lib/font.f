@@ -290,7 +290,7 @@ TASK:+USER H-SEEN n
    repeat E-RENDER throw ;
 : FIND-PATH-AT ( str n -- n )
    {: svg:^ size:n start:n :}
-   svg start + size start - s" <path d=" FIND-SUB MATCH option
+   svg start + size start - s" <path d=" STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N start + ENDOF
    ;MATCH ;

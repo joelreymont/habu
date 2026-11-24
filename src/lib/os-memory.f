@@ -46,8 +46,8 @@ $7FFFFFFFFFFFFFFF KB / constant KB-MAX    \ the most kB a cell holds as bytes
 
 \ True when text holds KEY$ at offset i, at the start of a line.
 : KEY-AT? ( str n -- bool ) {: a:^ u:n i:n :}
-   i 0 > if a i + 1- c@ STR-LF <> if false exit then then
-   a i + u i - KEY$ STARTS-WITH? ;
+   i 0 > if a i + 1- c@ STR:LF <> if false exit then then
+   a i + u i - KEY$ STR:STARTS-WITH? ;
 
 \ The offset just past the key of the text's MemAvailable line.
 : KEY-END ( str -- n ) {: a:^ u:n :}
@@ -58,15 +58,15 @@ $7FFFFFFFFFFFFFFF KB / constant KB-MAX    \ the most kB a cell holds as bytes
 
 \ The text up to its first LF.
 : LINE-OF ( str -- str ) {: a:^ u:n :}
-   a u STR-LF INDEX-OF MATCH option
+   a u STR:LF STR:INDEX-OF MATCH option
       none OF a u ENDOF
       some OF IDX>N a swap ENDOF
    ;MATCH ;
 
 \ The bytes a trimmed `<n> kB` field states.
 : FIELD-BYTES ( str -- n ) {: a:^ u:n :}
-   a u s"  kB" ENDS-WITH? 0= if s" MemAvailable is not in kB" FAIL then
-   a u 3 - RTRIM STR-PARSE-POS MATCH option
+   a u s"  kB" STR:ENDS-WITH? 0= if s" MemAvailable is not in kB" FAIL then
+   a u 3 - STR:RTRIM STR:PARSE-POS MATCH option
       none OF s" MemAvailable is not a decimal count" FAIL ENDOF
       some OF ENDOF
    ;MATCH {: kb:n :}
@@ -75,7 +75,7 @@ $7FFFFFFFFFFFFFFF KB / constant KB-MAX    \ the most kB a cell holds as bytes
 
 : TEXT-BYTES ( str -- n ) {: a:^ u:n :}
    a u KEY-END {: at:n :}
-   a at + u at - LINE-OF TRIM FIELD-BYTES ;
+   a at + u at - LINE-OF STR:TRIM FIELD-BYTES ;
 
 : READ-BYTES ( ^u8 NUM:alloc-byte-len -- n )
    drop {: buf:^ :}

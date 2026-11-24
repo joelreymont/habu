@@ -645,7 +645,7 @@ variable REJECTS
    s" the window goes past the redeclaration" T-LABEL 0 T=
    s" and rejects it alone" T-LABEL
    REJECTS @ 1 T=
-   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" STARTS-WITH? TTRUE
+   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" STR:STARTS-WITH? TTRUE
    KEPT-ALL
    s" CMPA" PLACED ;
 

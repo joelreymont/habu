@@ -37,7 +37,7 @@ create ERR CAP allot
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc 110
    T-ENDING-EXITED=
-   ERR erru LEN>N FAULT-RECORD$ STARTS-WITH? TTRUE ;
+   ERR erru LEN>N FAULT-RECORD$ STR:STARTS-WITH? TTRUE ;
 
 : ACCEPTS ( ^u8 n -- )  0 EXPECT ;
 

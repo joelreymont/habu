@@ -517,21 +517,21 @@ FUNCTION: LIB-GET-COPY-DATA PQgetCopyData ( ^u8 ^u8 n -- i32 ) ;FUNCTION
    value DEC-BASE mod DIGIT-ZERO + slot ARENA-BYTE+ ;
 
 
-\ STR-MIN-I64 has no positive magnitude, so its digits come from the canonical
+\ STR:MIN-I64 has no positive magnitude, so its digits come from the canonical
 \ table rather than a negate that would overflow.
 : ARENA-MIN-I64 ( n -- ) {: slot:n :}
-   STR-MINUS slot ARENA-BYTE+
-   slot STR-I64-DIGITS ARENA-ENSURE
-   STR-MIN-I64$ slot ARENA-BASE slot ARENA-U@ + STR-I64-DIGITS BYTE-COPY
-   slot ARENA-U@ STR-I64-DIGITS + slot ARENA-U! ;
+   STR:MINUS slot ARENA-BYTE+
+   slot STR:I64-DIGITS ARENA-ENSURE
+   STR:MIN-I64$ slot ARENA-BASE slot ARENA-U@ + STR:I64-DIGITS BYTE-COPY
+   slot ARENA-U@ STR:I64-DIGITS + slot ARENA-U! ;
 
 
 : ARENA-INT ( n n -- n ) {: value:n slot:n :}
    slot ARENA-U@ {: off:n :}
-   value STR-MIN-I64 = if
+   value STR:MIN-I64 = if
       slot ARENA-MIN-I64
    else
-      value 0 < if STR-MINUS slot ARENA-BYTE+ then
+      value 0 < if STR:MINUS slot ARENA-BYTE+ then
       value 0 < if value negate else value then slot ARENA-DIGITS
    then
    0 slot ARENA-BYTE+
@@ -947,7 +947,7 @@ REGISTER-CHILD-RESET
 
 : -TRAILING-LF ( str -- str )
    {: a:^ u:n :}
-   u 0 > if a u 1- + c@ STR-LF = if a u 1- exit then then
+   u 0 > if a u 1- + c@ STR:LF = if a u 1- exit then then
    a u ;
 
 
@@ -963,10 +963,10 @@ $7FFFFFFF constant NOTICE-MAX
 
 
 : NOTICE-DROPPED? ( str -- bool ) {: a:^ u:n :}
-   a u s" NOTICE:" STARTS-WITH?
-   a u s" INFO:" STARTS-WITH? or
-   a u s" DEBUG:" STARTS-WITH? or
-   a u s" LOG:" STARTS-WITH? or ;
+   a u s" NOTICE:" STR:STARTS-WITH?
+   a u s" INFO:" STR:STARTS-WITH? or
+   a u s" DEBUG:" STR:STARTS-WITH? or
+   a u s" LOG:" STR:STARTS-WITH? or ;
 
 
 \ libpq's PQnoticeProcessor ( void *arg, const char *message ): the message is
@@ -976,7 +976,7 @@ $7FFFFFFF constant NOTICE-MAX
    msg NULL-ADDR? if exit then
    msg dup NOTICE-LEN -TRAILING-LF {: a:^ u:n :}
    a u NOTICE-DROPPED? if exit then
-   a u s" WARNING:" STARTS-WITH? if LOG:WARN else LOG:ERROR then
+   a u s" WARNING:" STR:STARTS-WITH? if LOG:WARN else LOG:ERROR then
    s" pg" LOG:LINE  a u LOG:TEXT+  LOG:;LINE ;
 
 CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
@@ -1514,7 +1514,7 @@ CALLBACK: NOTICE ( ^u8 ^u8 -- ) ;CALLBACK
 : CMD-COUNT ( n -- n ) {: slot:n :}
    slot RES-PG@ LIB-CMD-TUPLES CSTR$ {: a u:n :}
    u 0= if 0 exit then
-   a u STR>NUMBER? MATCH option
+   a u STR:>NUMBER? MATCH option
       none OF E-TYPE throw ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -1994,7 +1994,7 @@ public
    PEEK r c CELL-AT {: slot:n ri:n ci:n :}
    slot ci BINARY-COLUMN? if E-TYPE throw then
    slot ri ci CELL-NULL? if E-TYPE throw then
-   slot ri ci VALUE$ STR>NUMBER? MATCH option
+   slot ri ci VALUE$ STR:>NUMBER? MATCH option
       none OF E-TYPE throw ENDOF
       some OF ENDOF
    ;MATCH ;

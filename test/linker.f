@@ -121,7 +121,7 @@ variable REWOUND
    AT1 @ CELL - HERE-N >= if DECOY then
    HERE-N HERE-D !
    s\" : LK-D1 ( -- ^u8 n ) s\" hello\" ;" evaluate-closed
-   D1$ CALL$ s" hello" STR= BYTES-OK !
+   D1$ CALL$ s" hello" STR:= BYTES-OK !
    D1$ CALL$ drop NULL-PTR - {: at:n :}
    at AT-D !
    at LEN-AT @ LEN1 ! ;
@@ -234,8 +234,8 @@ variable RC-2
    RC-2 @ 0 T=
    s" m: two builds may define one name with different effects" SAY ;
 
-: N1 ( -- ) s" : STR= ( n -- n ) ;" evaluate-closed ;
-: N2 ( -- ) s" : LK-N1 ( -- n ) 5 STR= ;" evaluate-closed ;
+: N1 ( -- ) s" : CORE-FOLD-C ( -- n ) 5 ;" evaluate-closed ;
+: N2 ( -- ) s" : LK-N1 ( -- n ) CORE-FOLD-C ;" evaluate-closed ;
 
 : BODY-N ( -- )
    [: N1 ;] catch RC-1 !
@@ -248,8 +248,8 @@ variable RC-2
    HOST-CHECK
    RC-1 @ 0 T=
    RC-2 @ 0 T=
-   s\" : LK-N2 ( -- bool ) s\" a\" s\" a\" STR= ;" TEST-EVAL:RC 0 T=
-   s" : LK-N3 ( -- n ) 5 STR= ;" TEST-EVAL:RC 70 T=
+   s" : LK-N2 ( -- n ) 65 CORE-FOLD-C ;" TEST-EVAL:RC 0 T=
+   s" : LK-N3 ( -- n ) CORE-FOLD-C ;" TEST-EVAL:RC 70 T=
    s" n: a build may redefine an hb word; hb's effect stays" SAY ;
 
 : O1 ( -- )

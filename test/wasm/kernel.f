@@ -38,7 +38,7 @@ CAP BUFFER: ERR-K
 \ A rejection's first line, its code and message: the place below it quotes the
 \ case's own spelling.
 : HEAD ( ^u8 n -- ^u8 n ) {: a:^ u:n :}
-   a u 10 INDEX-OF MATCH option
+   a u 10 STR:INDEX-OF MATCH option
       some OF IDX>N a swap ENDOF
       none OF a u ENDOF
    ;MATCH ;

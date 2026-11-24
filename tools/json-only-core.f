@@ -66,7 +66,7 @@ variable JSON-ONLY-ROW-OBJECT
       JSON-ONLY-SOURCE @ JSON-ONLY-SOURCE-U @ JSON-ONLY-POS @ JSONL:SPLIT-LINE
       0= if 2drop drop false exit then
       JSON-ONLY-POS !
-      TRIM JSON-ONLY-LINE-U ! JSON-ONLY-LINE !
+      STR:TRIM JSON-ONLY-LINE-U ! JSON-ONLY-LINE !
       JSON-ONLY-LINE-U @ 0 > if JSON-ONLY-OBJECT? if true exit then then
    again ;
 

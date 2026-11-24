@@ -332,8 +332,8 @@ CAST: HELD>N ( held -- n )
 
 \ An object's JSON text without its braces and the space around them.
 : MEMBERS ( ^u8 n -- ^u8 n )
-   TRIM {: a:^ u:n :}
-   a 1+ u 2 - TRIM ;
+   STR:TRIM {: a:^ u:n :}
+   a 1+ u 2 - STR:TRIM ;
 
 
 \ _meta: the members of meta, empty or an object's text, then serverInfo.
@@ -621,10 +621,10 @@ CAST: HELD>N ( held -- n )
 \ A media type without its parameters.
 : MEDIA-ESSENCE ( str -- str )
    {: media:^ size:n :}
-   media size 59 INDEX-OF MATCH option
+   media size 59 STR:INDEX-OF MATCH option
       some OF IDX>N media swap ENDOF
       none OF media size ENDOF
-   ;MATCH TRIM ;
+   ;MATCH STR:TRIM ;
 
 
 \ Whether a comma-separated header value lists the media type.
@@ -633,7 +633,7 @@ CAST: HELD>N ( held -- n )
    0 len 1+ 0 ?do
       i len = if true else value i + c@ 44 = then if
          {: start:n :}
-         value start + i start - MEDIA-ESSENCE wanted wu STR=CI if
+         value start + i start - MEDIA-ESSENCE wanted wu STR:=CI if
             unloop true exit
          then
          i 1+
@@ -649,7 +649,7 @@ CAST: HELD>N ( held -- n )
 
 : CONTENT-TYPE? ( HTTP:request -- bool )
    s" Content-Type" HEADER$ 0= if 2drop false exit then
-   MEDIA-ESSENCE s" application/json" STR=CI ;
+   MEDIA-ESSENCE s" application/json" STR:=CI ;
 
 
 \ A JSON body, and Accept offering both application/json and text/event-stream
@@ -738,10 +738,10 @@ CAST: HELD>N ( held -- n )
 
 : ERA? ( str -- bool )
    {: value:^ vu:n :}
-   value vu s" 2026-07-28" STR= if
+   value vu s" 2026-07-28" STR:= if
       MODERN SLOT ERA ! value vu MODERN? exit
    then
-   value vu s" 2025-11-25" STR= if LEGACY SLOT ERA ! true exit then
+   value vu s" 2025-11-25" STR:= if LEGACY SLOT ERA ! true exit then
    value vu SPAN:MAKE SLOT ASKED !
    400 UNSUPPORTED-VERSION s" Unsupported protocol version" BAD false ;
 
@@ -761,8 +761,8 @@ CAST: HELD>N ( held -- n )
 \ An Mcp-Name value, decoded into the worker's row when it is =?base64?...?=.
 : DECODED-NAME$ ( str -- str )
    {: header:^ len:n :}
-   header len s" =?base64?" STARTS-WITH? 0= if header len exit then
-   len 11 <  header len 2 - + 2 s" ?=" STR= 0=  or if
+   header len s" =?base64?" STR:STARTS-WITH? 0= if header len exit then
+   len 11 <  header len 2 - + 2 s" ?=" STR:= 0=  or if
       s" Mcp-Name" s" an encoded name ending in `?=`"
       s" end the `=?base64?` name with `?=`" INPUT-ERROR
    then
@@ -912,7 +912,7 @@ CAST: HELD>N ( held -- n )
 : REGISTERED? ( str -- bool )
    {: name:^ nu:n :}
    TOOL-COUNT @ 0 ?do
-      name nu i TOOL-NAME @ SPAN:$ STR= if true unloop exit then
+      name nu i TOOL-NAME @ SPAN:$ STR:= if true unloop exit then
    loop false ;
 
 
@@ -954,7 +954,7 @@ CAST: HELD>N ( held -- n )
 \ Puts the text with the key between its first two backticks, "``".
 : PUT-KEYED ( ^u8 ^u8 n ^u8 n -- ^u8 )
    {: dst:^ ta:^ tu:n ka:^ ku:n :}
-   ta tu s" ``" FIND-SUB MATCH option
+   ta tu s" ``" STR:FIND-SUB MATCH option
       none OF tu ENDOF
       some OF IDX>N 1+ ENDOF
    ;MATCH {: at:n :}
@@ -1124,7 +1124,7 @@ CAST: HELD>N ( held -- n )
 : REGISTERED-URI? ( str -- bool )
    {: uri:^ uu:n :}
    RESOURCE-COUNT @ 0 ?do
-      uri uu i RESOURCE-URI @ SPAN:$ STR= if true unloop exit then
+      uri uu i RESOURCE-URI @ SPAN:$ STR:= if true unloop exit then
    loop false ;
 
 
@@ -1924,8 +1924,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 : SCHEME-LEN ( str -- n )
    {: a:^ u:n :}
-   u 8 < 0= if a 8 s" https://" STR=CI if 8 exit then then
-   u 7 < 0= if a 7 s" http://" STR=CI if 7 exit then then
+   u 8 < 0= if a 8 s" https://" STR:=CI if 8 exit then then
+   u 7 < 0= if a 7 s" http://" STR:=CI if 7 exit then then
    0 ;
 
 : AUTHORITY-BYTE? ( n -- bool )
@@ -1940,7 +1940,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    from begin
       dup u < if dup a + c@ AUTHORITY-BYTE? else false then
    while 1+ repeat {: end:n :}
-   a end + u end - s" @" CONTAINS? if a 0 exit then
+   a end + u end - s" @" STR:CONTAINS? if a 0 exit then
    from end from ?do a i + c@ [char] @ = if drop i 1+ then loop {: start:n :}
    a start + end start - ;
 
@@ -2112,19 +2112,19 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ Whether a header line is Content-Type naming text/event-stream.
 : EVENT-TYPE? ( str -- bool )
    {: a:^ u:n :}
-   a u 58 INDEX-OF MATCH option
+   a u 58 STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: at:n :}
    at 0< if false exit then
-   a at TRIM s" Content-Type" STR=CI 0= if false exit then
-   a at + 1+ u at - 1- MEDIA-ESSENCE s" text/event-stream" STR=CI ;
+   a at STR:TRIM s" Content-Type" STR:=CI 0= if false exit then
+   a at + 1+ u at - 1- MEDIA-ESSENCE s" text/event-stream" STR:=CI ;
 
 : EVENT-HEAD? ( str -- bool )
    {: a:^ u:n :}
    0 begin dup u < while
       {: at:n :}
-      a at + u at - 10 INDEX-OF MATCH option
+      a at + u at - 10 STR:INDEX-OF MATCH option
          none OF u at - ENDOF
          some OF IDX>N ENDOF
       ;MATCH {: len:n :}
@@ -2208,7 +2208,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    {: rec:^ kind:^ ku:n data:^ du:n :}
    rec PEER-REGION @ SPAN:$ drop MESSAGE-OFF + CELL-VIEW {: buf:^ :}
    buf BUF:LEN@ BUF:BLEN>N 0<> if exit then
-   data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR=
+   data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR:=
    if data du buf BUF+ then ;
 
 \ Feeds the whole reply to the decoder and finishes it; answers its operands.
@@ -2279,7 +2279,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    m mu JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
       success OF {: id value:^ vu:n :}
-         id JSON-RPC:ID$ REQUEST-ID$ STR= 0= if
+         id JSON-RPC:ID$ REQUEST-ID$ STR:= 0= if
             s" answers another request" idx E-RESPONSE BAD-REPLY
          then
          value vu ENDOF

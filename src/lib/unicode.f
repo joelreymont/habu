@@ -114,7 +114,7 @@ $82 constant FINAL-TAIL
 \ already lowered leaves it none to apply.
 : SIGMA-LOWER ( str n n n ^u8 -- ^u8 )
    {: text:^ size:n lang:n form:n buf:n out:^ :}
-   text size s" Σ" CONTAINS? 0= if
+   text size s" Σ" STR:CONTAINS? 0= if
       text size lang form buf out LOWER-CALL exit
    then
    size ALLOC-CALL MATCH nullable
@@ -186,7 +186,7 @@ public
    target target-size VALID-UTF8
    source size [: SIGMA-LOWER ;] ALLOCATE-MAP
    {: lowered:^ lowered-size:n :}
-   lowered lowered-size target target-size STR=
+   lowered lowered-size target target-size STR:=
    lowered RELEASE ;
 
 seal-package

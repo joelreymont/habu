@@ -169,7 +169,7 @@ variable RX  variable RACC
       30 CL-ADD row execute
    \ LEXITHOOK spills x0 and x30 around the hook it calls.
    s" ENGINE-EMIT:Lexithook" 0 0 CL-ADD 30 CL-ADD row execute
-   \ Trim and reclaim save x0..x17 and x30 on entry and restore them at their one return.
+   \ STR:TRIM and reclaim save x0..x17 and x30 on entry and restore them at their one return.
    s" PROF-ABI:Lproftrim" $3FFFF 30 CL-ADD row execute
    s" PROF-ABI:Lprofreclaim" $3FFFF 30 CL-ADD row execute
    s" ENGINE-EMIT:Lhidxadd"
@@ -692,7 +692,7 @@ variable USING#
    dst size ;
 
 : C-QUALIFIED$ ( str -- str ) {: a:^ u:n :}
-   PKG-U @ 0= a u s" :" CONTAINS? or if a u exit then
+   PKG-U @ 0= a u s" :" STR:CONTAINS? or if a u exit then
    PKG-A @ PKG-U @ a u C-JOIN$ ;
 
 \ The folded copy of a name in the label pool's unused tail.
@@ -704,7 +704,7 @@ variable USING#
 \ Usings before globals binds as Habu does: it refuses a tail both reach. The
 \ quotation reads each candidate, folded in the pool's unused tail.
 : SCOPE-FIND ( str [ str -- n ] -- n ) {: a:^ u:n find :}
-   a u s" :" CONTAINS? if a u KEY$ find execute exit then
+   a u s" :" STR:CONTAINS? if a u KEY$ find execute exit then
    PKG-U @ 0<> if
       PKG-A @ PKG-U @ a u C-JOIN$ find execute dup 0 >= if exit then drop
    then
@@ -877,7 +877,7 @@ DYNAMIC-BUFFER BLOCKS n   variable BLOCK#
 \ Whether a token spells a number: decimal with an optional sign and within a
 \ signed cell, or `$` and one to sixteen hex digits.
 : NUMBER?  ( str -- bool ) {: a:^ u:n :}
-   a u START-DOLLAR? if a 1+ u 1- HEX>NUMBER? else a u STR>NUMBER? then
+   a u START-DOLLAR? if a 1+ u 1- STR:HEX>NUMBER? else a u STR:>NUMBER? then
    MATCH option
       none OF LINT-FALSE ENDOF
       some OF drop LINT-TRUE ENDOF

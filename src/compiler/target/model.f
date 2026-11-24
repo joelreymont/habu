@@ -188,7 +188,7 @@ private
       wasm64-unknown-unknown OF s" wasm64-unknown-unknown" ENDOF
    ;MATCH ;
 
-: NAME? ( str str -- bool ) STR= ;
+: NAME? ( str str -- bool ) STR:= ;
 
 \ Q runs on each profile, in declaration order.
 : EACH-PROFILE ( R [ R profile-id -- R ] -- R )

@@ -74,13 +74,13 @@ CODEGEN:BUFFER OUTPUT
    NAME-N @ 1+ NAME-N ! ;
 
 : NEXT-FIELD ( str n -- str n bool ) {: a:^ u:n start:n :}
-   a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
-   fa fu TRIM next valid ;
+   a u SEMICOLON start STR:SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
+   fa fu STR:TRIM next valid ;
 
 \ An `sc ; Code ; Long_Name [; Alias]` row adds its long name.
 : ALIAS-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu 0 NEXT-FIELD {: pa:^ pu:n next1:n ok1:bool :}
-   pa pu s" sc" STR= 0= if exit then
+   pa pu s" sc" STR:= 0= if exit then
    line lineu next1 NEXT-FIELD {: ca:^ cu:n next2:n ok2:bool :}
    line lineu next2 NEXT-FIELD {: la:^ lu:n next3:n ok3:bool :}
    ok1 ok2 and ok3 and 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
@@ -90,7 +90,7 @@ CODEGEN:BUFFER OUTPUT
 : SCAN-ALIASES ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if UNICODE-CLASS-TOOL:E-SYNTAX throw then
       line lineu ALIAS-ROW
       next
@@ -98,7 +98,7 @@ CODEGEN:BUFFER OUTPUT
 
 : NAME-INDEX ( str -- n ) {: a:^ u:n :}
    NAME-N @ 0 ?do
-      a u i NAME-A @ i NAME-U @ STR= if i unloop exit then
+      a u i NAME-A @ i NAME-U @ STR:= if i unloop exit then
    loop
    UNICODE-CLASS-TOOL:E-SYNTAX throw ;
 

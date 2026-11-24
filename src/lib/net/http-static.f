@@ -87,17 +87,17 @@ PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
 : CONTENT-TYPE$ ( str -- str ) {: path:^ len:n :}
-   path len s" .html" ENDS-WITH? if s" text/html; charset=utf-8" exit then
-   path len s" .js" ENDS-WITH? if s" text/javascript; charset=utf-8" exit then
-   path len s" .css" ENDS-WITH? if s" text/css; charset=utf-8" exit then
-   path len s" .json" ENDS-WITH? if s" application/json" exit then
-   path len s" .map" ENDS-WITH? if s" application/json" exit then
-   path len s" .svg" ENDS-WITH? if s" image/svg+xml" exit then
-   path len s" .png" ENDS-WITH? if s" image/png" exit then
-   path len s" .jpg" ENDS-WITH? if s" image/jpeg" exit then
-   path len s" .ico" ENDS-WITH? if s" image/vnd.microsoft.icon" exit then
-   path len s" .woff2" ENDS-WITH? if s" font/woff2" exit then
-   path len s" .txt" ENDS-WITH? if s" text/plain; charset=utf-8" exit then
+   path len s" .html" STR:ENDS-WITH? if s" text/html; charset=utf-8" exit then
+   path len s" .js" STR:ENDS-WITH? if s" text/javascript; charset=utf-8" exit then
+   path len s" .css" STR:ENDS-WITH? if s" text/css; charset=utf-8" exit then
+   path len s" .json" STR:ENDS-WITH? if s" application/json" exit then
+   path len s" .map" STR:ENDS-WITH? if s" application/json" exit then
+   path len s" .svg" STR:ENDS-WITH? if s" image/svg+xml" exit then
+   path len s" .png" STR:ENDS-WITH? if s" image/png" exit then
+   path len s" .jpg" STR:ENDS-WITH? if s" image/jpeg" exit then
+   path len s" .ico" STR:ENDS-WITH? if s" image/vnd.microsoft.icon" exit then
+   path len s" .woff2" STR:ENDS-WITH? if s" font/woff2" exit then
+   path len s" .txt" STR:ENDS-WITH? if s" text/plain; charset=utf-8" exit then
    s" application/octet-stream" ;
 
 
@@ -285,13 +285,13 @@ DEFAULT-RULES
 
 : SERVED-PATH$ ( n -- str ) {: idx:n :}
    idx SLOT-PATH$ {: path:^ len:n :}
-   path len s" /" STR= if s" /index.html" exit then
+   path len s" /" STR:= if s" /index.html" exit then
    path len ;
 
 
 : FIND-FILE ( str -- n ) {: path:^ len:n :}
    FILE-COUNT @ 0 ?do
-      i FILE-PATH$ path len STR= if i unloop exit then
+      i FILE-PATH$ path len STR:= if i unloop exit then
    loop
    -1 ;
 
@@ -310,8 +310,8 @@ DEFAULT-RULES
 : MATCHES-ETAG? ( n n -- bool ) {: idx:n at:n :}
    idx s" if-none-match" HEADER$ {: va:^ vu:n found:bool :}
    found 0= if false exit then
-   va vu TRIM s" *" STR= if true exit then
-   va vu at FILE-ETAG$ CONTAINS? ;
+   va vu STR:TRIM s" *" STR:= if true exit then
+   va vu at FILE-ETAG$ STR:CONTAINS? ;
 
 
 : STATIC-HEADERS ( n n -- ) {: idx:n at:n :}
@@ -324,7 +324,7 @@ DEFAULT-RULES
 \ names no file, and answering it plainly beats letting it look like a typo.
 : SERVE-STATIC ( n -- bool ) {: idx:n :}
    FILE-COUNT @ 0= if false exit then
-   idx SLOT-METHOD$ s" GET" STR= idx SLOT-METHOD$ s" HEAD" STR= or 0= if false exit then
+   idx SLOT-METHOD$ s" GET" STR:= idx SLOT-METHOD$ s" HEAD" STR:= or 0= if false exit then
    idx SLOT-PATH$ TRAVERSAL? if
       idx RESPONSE-OF 400 s" bad_path"
       s" the path of a static file may not climb out of the root" ERROR!

@@ -85,12 +85,6 @@ variable SRC-N
 
 \ ---- arguments --------------------------------------------------------------
 
-: STR= ( str str -- bool ) {: a:^ au b:^ bu :}
-   au bu <> if 0 0= 0= exit then
-   0 {: bad :}
-   bad au 0 ?do a i + c@ b i + c@ <> if 1 + then loop
-   0= ;
-
 : USAGE ( -- )
    s" usage: bin/hb --load tools/tier0-profile.f -- corpus|trivial <usec> <arg>..."
    EXIT-STATUS:USAGE die ;
@@ -129,7 +123,7 @@ public
    usec 0 > 0= if USAGE then
    0 script-argv$ {: mode:^ mu :}
    usec prof-rate
-   mode mu s" corpus" STR= if
+   mode mu s" corpus" STR:= if
       ndict@ {: first :}
       \ prof-on indexes the dictionary as it stands: every word the workload
       \ defines, and its top-level code, lands in `new`, so the rows are the
@@ -143,7 +137,7 @@ public
       prof-report
       exit
    then
-   mode mu s" trivial" STR= 0= if USAGE then
+   mode mu s" trivial" STR:= 0= if USAGE then
    2 script-argv$ ARG>N {: n :}
    0 prof-on
    mono-ns

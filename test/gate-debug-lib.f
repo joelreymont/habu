@@ -42,34 +42,34 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ What separates a field name from its value: a space in the text report, a
 \ quote and a colon in the JSON one. Both reports are read by the same helper.
 : GDB-GAP? ( n -- bool ) {: c:n :}
-   c STR-SPACE = c [char] " = or c [char] : = or ;
+   c STR:SPACE = c [char] " = or c [char] : = or ;
 
 : GDB-NUM-AT ( n str -- n )   \ the digit run at or after offset i, -1 when none
    {: i:n a:^ u:n :}
    i GDB-I !
-   begin GDB-I @ u < if a GDB-I @ + c@ GDB-GAP? else STR-FALSE then while
+   begin GDB-I @ u < if a GDB-I @ + c@ GDB-GAP? else STR:FALSE then while
       GDB-I @ 1+ GDB-I !
    repeat
    GDB-I @ GDB-D !
-   begin GDB-I @ u < if a GDB-I @ + c@ STR-DIGIT? else STR-FALSE then while
+   begin GDB-I @ u < if a GDB-I @ + c@ STR:DIGIT? else STR:FALSE then while
       GDB-I @ 1+ GDB-I !
    repeat
    GDB-I @ GDB-D @ = if -1 exit then
-   a GDB-D @ + GDB-I @ GDB-D @ - STR>NUMBER? MATCH option
+   a GDB-D @ + GDB-I @ GDB-D @ - STR:>NUMBER? MATCH option
      none OF -1 ENDOF
      some OF ENDOF
    ;MATCH ;
 
 : GDB-FIELD ( str str -- n )   \ the integer printed after <name>, -1 when absent
    {: a:^ u:n b:^ v:n :}
-   a u b v FIND-SUB MATCH option
+   a u b v STR:FIND-SUB MATCH option
      none OF -1 ENDOF
      some OF IDX>N v + a u GDB-NUM-AT ENDOF
    ;MATCH ;
 
 : GDB-AFTER ( str str -- str )   \ the tail past the first <b>, empty when absent
    {: a:^ u:n b:^ v:n :}
-   a u b v FIND-SUB MATCH option
+   a u b v STR:FIND-SUB MATCH option
      none OF a 0 ENDOF
      some OF IDX>N v + GDB-CUT !  a GDB-CUT @ +  u GDB-CUT @ -  ENDOF
    ;MATCH ;
@@ -77,7 +77,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ The bytes before the first line feed, all of them when none.
 : GDB-LINE$ ( str -- str )
    {: a:^ u:n :}
-   a u S\" \n" FIND-SUB MATCH option
+   a u S\" \n" STR:FIND-SUB MATCH option
      none OF a u ENDOF
      some OF IDX>N a swap ENDOF
    ;MATCH ;
@@ -398,7 +398,7 @@ variable GDB-SKEWED
    s" : FIND-REC ( str -- n ) {: want :}" GE-SRC-LINE
    s"    -1 GDBPH-ACC !" GE-SRC-LINE
    s"    ndict@ 0 ?do i XREF-REC {: rec:^ :}" GE-SRC-LINE
-   s"       rec XREF-RETIRED? 0= if rec XREF-NAME$ want STR= if i GDBPH-ACC ! then then" GE-SRC-LINE
+   s"       rec XREF-RETIRED? 0= if rec XREF-NAME$ want STR:= if i GDBPH-ACC ! then then" GE-SRC-LINE
    s"    loop GDBPH-ACC @ ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
@@ -424,7 +424,7 @@ variable GDB-SKEWED
    GDB-PROF-RUN
    s" profiler chosen row" GE-EXPECT-OK
    s" GDBPH:PHASE" s" prof-row printed no row for the word it was given" GE-EXPECT-OUT-HAS
-   GT-OUT$ s" by inclusive" CONTAINS? if
+   GT-OUT$ s" by inclusive" STR:CONTAINS? if
       s" prof-row printed a whole report instead of one row" GE-FAIL
    then
    s" PASS: prof-row prints a chosen word whatever its rank" type cr ;
@@ -548,7 +548,7 @@ variable GDB-SKEWED
    s" : ARM ( -- ) TARGET-XT @ DEBUG:BP+ ;" GE-SRC-LINE
    s" : CHECK ( -- ) VALID-XT @ DEBUG:BP+ SUBJECT SAVED-CODE 16 BYTE-COPY DEBUG:BP." GE-SRC-LINE
    s" ['] ARM catch . DEBUG:BP." GE-SRC-LINE
-   s" SUBJECT 16 >str SAVED-CODE 16 >str STR= if 1 else 0 then . NONE-XT @ DEBUG:BP- DEBUG:BP." GE-SRC-LINE
+   s" SUBJECT 16 >str SAVED-CODE 16 >str STR:= if 1 else 0 then . NONE-XT @ DEBUG:BP- DEBUG:BP." GE-SRC-LINE
    s" VALID-XT @ DEBUG:BP- DEBUG:BP. ; CHECK ;package" GE-SRC-LINE
    s" unsupported breakpoint target" GE-HB-RUN-STDIN
    GT-OUT$ GDB-LINE$ {: at:^ atu:n :}

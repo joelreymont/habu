@@ -71,9 +71,9 @@ variable LBL-U
    src srcu RUN-AT {: outu:len erru:len oc :}
    RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
    RELABEL outu LEN>N 0 T=
-   RELABEL ERR erru LEN>N REJECTION-TEXT:FLAT head headu STARTS-WITH? TTRUE
+   RELABEL ERR erru LEN>N REJECTION-TEXT:FLAT head headu STR:STARTS-WITH? TTRUE
    RELABEL ERR erru LEN>N note noteu REJECTION-TEXT:HAS? TTRUE
-   RELABEL ERR erru LEN>N S\" \nerror[" CONTAINS? TFALSE ;
+   RELABEL ERR erru LEN>N S\" \nerror[" STR:CONTAINS? TFALSE ;
 
 \ ---- a long name -------------------------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.

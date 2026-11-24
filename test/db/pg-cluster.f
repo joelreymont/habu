@@ -226,7 +226,7 @@ false STOPPED !
    got 0 <= if false exit then
    STATUS-LINE got LINE-AT {: at:n :}
    at 0 < if false exit then
-   OUT at + got at - s" ready" STARTS-WITH? ;
+   OUT at + got at - s" ready" STR:STARTS-WITH? ;
 
 \ A server that outlives ms is killed with its tree (src/lib/process-tree.f) and
 \ leaves its shared-memory segment.

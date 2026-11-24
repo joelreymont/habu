@@ -233,7 +233,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer SCRATCH-ONLY
 \ same length as GET.
 : NO-BODY? ( n -- bool ) {: idx:n :}
    idx SLOT-STATUS@ BODYLESS? if true exit then
-   idx SLOT-METHOD$ s" HEAD" STR= ;
+   idx SLOT-METHOD$ s" HEAD" STR:= ;
 
 
 \ The head is followed by either a borrowed span or a streamed file. A short

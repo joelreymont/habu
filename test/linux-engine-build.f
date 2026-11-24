@@ -97,8 +97,8 @@ PATH-CAP BUFFER: PROG     variable PROG-U
    SRC$ BIND-SOURCE$ FS:WRITE-ALL
    SRC$ PROG$ BUILD {: rc:n :}
    CMD:ERR$ s" error[E-TARGET-WORD]: a build cannot run target word `MAIN-BASE`"
-      CONTAINS? {: classed:bool :}
-   CMD:ERR$ s" callback.f:3:23" CONTAINS? {: placed:bool :}
+      STR:CONTAINS? {: classed:bool :}
+   CMD:ERR$ s" callback.f:3:23" STR:CONTAINS? {: placed:bool :}
    classed placed and  rc 0<> and 0= if rc SHOW then
    s" the binding program's cross-build fails" T-LABEL  rc 0<> TTRUE
    s" the rejection is E-TARGET-WORD" T-LABEL  classed TTRUE

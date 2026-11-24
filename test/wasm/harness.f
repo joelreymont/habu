@@ -54,8 +54,8 @@ variable MEM-END
    EXE u RUN-AT ;
 
 : FIRST-LINE ( -- str )
-   ERR ERR-U @ RTRIM {: a:^ u:n :}
-   a u 10 INDEX-OF MATCH option
+   ERR ERR-U @ STR:RTRIM {: a:^ u:n :}
+   a u 10 STR:INDEX-OF MATCH option
       some OF IDX>N a swap ENDOF
       none OF a u ENDOF
    ;MATCH ;
@@ -68,8 +68,8 @@ variable MEM-END
 
 : THROWN ( -- n )
    FIRST-LINE {: a:^ u:n :}
-   a u s" throw " STARTS-WITH? 0= if  a u NO-THROW-LINE  then
-   a 6 + u 6 - STR>NUMBER? MATCH option
+   a u s" throw " STR:STARTS-WITH? 0= if  a u NO-THROW-LINE  then
+   a 6 + u 6 - STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF a u NO-THROW-LINE ENDOF
    ;MATCH ;
@@ -83,15 +83,15 @@ variable MEM-END
 
 : FAULT-FIELD ( str str -- n )
    {: line:^ lu:n a:^ u:n :}
-   a u STR>NUMBER? MATCH option
+   a u STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF line lu NO-FAULT-LINE ENDOF
    ;MATCH ;
 
 : FAULTED ( -- )
-   ERR ERR-U @ 10 TAIL @ SPLIT-NEXT drop {: a:^ u:n next:n :}
-   a u s" fault " STARTS-WITH? 0= if  ERR ERR-U @ NO-FAULT-LINE  then
-   a 6 + u 6 - 32 INDEX-OF MATCH option
+   ERR ERR-U @ 10 TAIL @ STR:SPLIT-NEXT drop {: a:^ u:n next:n :}
+   a u s" fault " STR:STARTS-WITH? 0= if  ERR ERR-U @ NO-FAULT-LINE  then
+   a 6 + u 6 - 32 STR:INDEX-OF MATCH option
       some OF IDX>N ENDOF
       none OF a u NO-FAULT-LINE ENDOF
    ;MATCH {: k:n :}
@@ -107,7 +107,7 @@ variable MEM-END
 
 : MEMORY-FIELD ( str str -- n )
    {: line:^ lu:n a:^ u:n :}
-   a u STR>NUMBER? MATCH option
+   a u STR:>NUMBER? MATCH option
       some OF ENDOF
       none OF line lu NO-MEMORY-LINE ENDOF
    ;MATCH ;
@@ -115,8 +115,8 @@ variable MEM-END
 \ True at run.mjs's memory line, whose next line starts at next: TAIL moves there.
 : MEMORY? ( str n -- bool )
    {: a:^ u:n next:n :}
-   a u s" memory " STARTS-WITH? 0= if false exit then
-   a 7 + u 7 - 32 INDEX-OF MATCH option
+   a u s" memory " STR:STARTS-WITH? 0= if false exit then
+   a 7 + u 7 - 32 STR:INDEX-OF MATCH option
       some OF IDX>N ENDOF
       none OF a u NO-MEMORY-LINE ENDOF
    ;MATCH {: k:n :}
@@ -127,7 +127,7 @@ variable MEM-END
 \ The first memory line is run.mjs's: ERR bytes after it may hold another.
 : MEMORY ( -- )
    0 MEM-START !  0 MEM-END !  ERR-U @ TAIL !
-   0 begin  >r ERR ERR-U @ 10 r> SPLIT-NEXT  while
+   0 begin  >r ERR ERR-U @ 10 r> STR:SPLIT-NEXT  while
       dup >r MEMORY? if  r> drop exit  then  r>
    repeat drop drop drop ;
 

@@ -118,7 +118,7 @@ TASK:MIN-STACK TASK:TASK READER
    PORT BUF 5 SERIAL:BYTES -1 >MS SERIAL:READ K-MOVED 5 WANT
 
    s" ... and they are the bytes the master wrote" T-LABEL
-   BUF 5 s" habu!" STR= TTRUE ;
+   BUF 5 s" habu!" STR:= TTRUE ;
 
 : IDLE-CASE ( -- )
    mono-ns {: started:n :}
@@ -161,7 +161,7 @@ TASK:MIN-STACK TASK:TASK READER
 
    s" ... and the master reads exactly those six" T-LABEL
    BUF 6 PEER-EXACT
-   BUF 6 s" forth!" STR= TTRUE ;
+   BUF 6 s" forth!" STR:= TTRUE ;
 
 \ A task asserts nothing: the reader records what its READ answered.
 

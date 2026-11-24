@@ -305,11 +305,11 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
 
 : FIELD-BYTE? ( -- bool )
    CUR @ STAT-U @ >= if false exit then
-   STAT CUR @ + c@ STR-SPACE <> ;
+   STAT CUR @ + c@ STR:SPACE <> ;
 
 : SKIP-SPACES ( -- )
    begin
-      CUR @ STAT-U @ < if STAT CUR @ + c@ STR-SPACE = else false then
+      CUR @ STAT-U @ < if STAT CUR @ + c@ STR:SPACE = else false then
    while
       CUR @ 1+ CUR !
    repeat ;
@@ -318,7 +318,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
    SKIP-SPACES
    CUR @ {: start:n :}
    begin FIELD-BYTE? while CUR @ 1+ CUR ! repeat
-   STAT start + CUR @ start - STR>NUMBER? MATCH option
+   STAT start + CUR @ start - STR:>NUMBER? MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -347,7 +347,7 @@ ENUM load DERIVE eq loaded gone refused ;ENUM
    pid ppid pgid VISIT ;
 
 : VISIT-LINUX ( str -- ) {: name:^ nameu:n :}
-   name nameu STR>NUMBER? MATCH option
+   name nameu STR:>NUMBER? MATCH option
       none OF ENDOF
       some OF name nameu rot PROCESS-ROW ENDOF
    ;MATCH ;
@@ -529,13 +529,13 @@ FUNCTION: SYSCTL sysctl ( ^u8 n ^u8 ^u8 str -- i32 ) ;FUNCTION
    STATUS-U @ 0 ?do
       i 0= if true else STATUS i 1- + c@ 10 = then
       if
-         STATUS i + STATUS-U @ i - key keyu STARTS-WITH? if i keyu + unloop exit then
+         STATUS i + STATUS-U @ i - key keyu STR:STARTS-WITH? if i keyu + unloop exit then
       then
    loop
    E-PROC-OUTPUT throw ;
 
 : BLANK? ( n -- bool ) {: c:n :}
-   c 9 = c STR-SPACE = or ;
+   c 9 = c STR:SPACE = or ;
 
 : HEX-AT ( n -- n ) {: at:n :}
    at begin
@@ -637,7 +637,7 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ^u8 -- i32 ) ;FUNCTION
    TAKE-TIMES TICKS @ + TICKS ! ;
 
 : CPU-VISIT-LINUX ( str -- ) {: name:^ nameu:n :}
-   name nameu STR>NUMBER? MATCH option
+   name nameu STR:>NUMBER? MATCH option
       none OF ENDOF
       some OF name nameu rot CPU-ROW ENDOF
    ;MATCH ;
@@ -714,7 +714,7 @@ variable RUN-N
    TASK-DIR TASK-DIR-U BUF-LEN@ ;
 
 : EXE-VISIT-LINUX ( str -- ) {: name:^ nameu:n :}
-   name nameu STR>NUMBER? MATCH option
+   name nameu STR:>NUMBER? MATCH option
       none OF ENDOF
       some OF drop name nameu EXE-PATH-LINUX EXE-MATCH ENDOF
    ;MATCH ;

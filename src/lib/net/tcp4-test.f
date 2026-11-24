@@ -886,7 +886,7 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
       CLIENT-FD @ TCP4:>CONNECTION FLOOD sent + FLOOD-BYTES sent -
          TCP4:SEND-SLICE
       start ELAPSED-MS {: took:n :}
-      STR-SPACE emit took FMT:.INT
+      STR:SPACE emit took FMT:.INT
       MATCH TCP4:slice-result
          moved OF BLEN>N sent + ENDOF
          empty OF sent ENDOF

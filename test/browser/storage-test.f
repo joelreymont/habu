@@ -96,7 +96,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    {: at:n :}
    OUT-U @ at - 0 max {: u:n :}
    s" the memory line follows the expected output at once" T-LABEL
-   OUT at + u s" memory " STARTS-WITH? TTRUE ;
+   OUT at + u s" memory " STR:STARTS-WITH? TTRUE ;
 
 public
 

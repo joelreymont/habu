@@ -210,20 +210,20 @@ variable GE-EVAL-SRC-U
    GT-ERR$ nip 0 <> if label labelu GE-FAIL then ;
 
 : GE-EXPECT-OUT ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-OUT$ want wantu STR= 0= if label labelu GE-FAIL then ;
+   GT-OUT$ want wantu STR:= 0= if label labelu GE-FAIL then ;
 
 : GE-EXPECT-OUT-HAS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-OUT$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
+   GT-OUT$ want wantu STR:CONTAINS? 0= if label labelu GE-FAIL then ;
 
 \ The whole of stderr, byte for byte - the check a one-line diagnostic asks for.
 : GE-EXPECT-ERR ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu STR= 0= if label labelu GE-FAIL then ;
+   GT-ERR$ want wantu STR:= 0= if label labelu GE-FAIL then ;
 
 : GE-EXPECT-ERR-HAS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
+   GT-ERR$ want wantu STR:CONTAINS? 0= if label labelu GE-FAIL then ;
 
 : GE-EXPECT-ERR-LACKS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-ERR$ want wantu CONTAINS? if label labelu GE-FAIL then ;
+   GT-ERR$ want wantu STR:CONTAINS? if label labelu GE-FAIL then ;
 
 : GE-SB-LF ( -- )
    GE-LF SB-APPEND-C ;
@@ -237,7 +237,7 @@ variable GE-EVAL-SRC-U
 
 : GE-SRC-C ( n -- ) {: c:n :}
    c 0 < if E-STR-BOUNDS throw then
-   c STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   c STR:BYTE-MAX > if E-STR-BOUNDS throw then
    GE-SRC-U @ 1 + GE-SRC-CAP > if E-STR-CAPACITY throw then
    c GE-SRC-BUF GE-SRC-U @ + c!
    GE-SRC-U @ 1+ GE-SRC-U ! ;
@@ -245,7 +245,7 @@ variable GE-EVAL-SRC-U
 : GE-SRC-U+ ( n -- ) {: n:n :}
    n 0 < if E-STR-BOUNDS throw then
    n 10 >= if n 10 / recurse then
-   n 10 mod STR-ZERO + GE-SRC-C ;
+   n 10 mod STR:ZERO + GE-SRC-C ;
 
 : GE-SRC-REPEAT-C ( n n -- ) {: u:n c:n :}
    u 0 < if E-STR-BOUNDS throw then
@@ -371,7 +371,7 @@ variable GE-EVAL-SRC-U
    label labelu GT-PROGRESS-PASS ;
 
 : GE-BIN-HB? ( str -- bool )
-   s" bin/hb" STR= ;
+   s" bin/hb" STR:= ;
 
 : GE-REMOVE-BIN-OTHER ( str -- ) {: path:^ pathu:n :}
    path pathu FS:FILE? if

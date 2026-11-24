@@ -27,7 +27,7 @@ package WASM
 : NAMED-ENTRY ( str -- n )
    {: name:^ u:n :}
    ndict@ 0 ?do
-      i XREF-REC XREF-NAME$ name u STR=CI if i XREF-REC XREF-START unloop exit then
+      i XREF-REC XREF-NAME$ name u STR:=CI if i XREF-REC XREF-START unloop exit then
    loop
    0 ;
 
@@ -49,7 +49,7 @@ public
 : PROVIDER ( n -- n )
    NAME-AT WKMAP:WORD-OF {: w:^ wu:n :}
    wu 0= if 0 exit then
-   w wu [char] : INDEX-OF MATCH option
+   w wu [char] : STR:INDEX-OF MATCH option
       none OF 0 ENDOF
       some OF IDX>N {: c:n :} w c  w c + 1+  wu c - 1-  PUBLIC-ENTRY ENDOF
    ;MATCH ;

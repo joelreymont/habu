@@ -183,7 +183,7 @@ public
    a u PROC-ENV-NAME-LEN {: au :}
    b v PROC-ENV-NAME-LEN {: bv :}
    au bv <> if PROC-ENV-FALSE exit then
-   a au b bv STR= ;
+   a au b bv STR:= ;
 
 : PROC-ENV-VEC-NAME? ( n str ^^u8 -- bool ) {: i:n a:^ u:n tab:^ :}
    i cells tab + @ {: z:^ :}
@@ -384,7 +384,7 @@ public
    PROCESS:CAPTURE-FINISH-ENDING ;
 
 : PROC-HAS-SLASH? ( str -- bool )
-   PROC-PATH-SLASH INDEX-OF MATCH option
+   PROC-PATH-SLASH STR:INDEX-OF MATCH option
      none OF PROC-ENV-FALSE ENDOF
      some OF drop PROC-ENV-TRUE ENDOF
    ;MATCH ;
@@ -421,7 +421,7 @@ public
       OPTION:NONE exit
    then
    0 >OFF PROC-PATH-I !
-   begin path pathu PROC-PATH-SEP PROC-PATH-I @ OFF>N SPLIT-NEXT
+   begin path pathu PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:SPLIT-NEXT
    while
       >OFF PROC-PATH-I !
       cmd cmdu dst PROC-TRY-PATH-SEG MATCH option

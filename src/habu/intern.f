@@ -106,7 +106,7 @@ variable PROBE
 : ROW-FIND ( str -- n ) {: a:^ u:n :}
    a u HASH PROBE !
    begin SLOT@ 0<> while
-      SLOT@ 1- ROW$ a u STR= if SLOT@ 1- exit then
+      SLOT@ 1- ROW$ a u STR:= if SLOT@ 1- exit then
       PROBE-NEXT
    repeat
    -1 ;

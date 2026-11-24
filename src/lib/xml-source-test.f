@@ -515,7 +515,7 @@ variable WIDE-BAD
    XML:SOURCE-CLOSE ;
 
 \ The vector's own bytes escaped and encoded into it while its block moves:
-\ TRIM leaves no room, so each append grows the block.
+\ STR:TRIM leaves no room, so each append grows the block.
 : ESCAPE-OWN ( -- )
    ALLOC-TEST:MOVING 0 [type] u8 VEC:NEW {: v:^ :}
    s" a<b" v VEC:APPEND

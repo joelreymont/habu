@@ -38,7 +38,7 @@ variable WANT-U
 \ A walk callback has no context, so the file name is read from WANT$.
 : KEEP-MATCH ( str -- )
    {: a:^ u:n :}
-   a u FS:BASENAME WANT$ STR= 0= if exit then
+   a u FS:BASENAME WANT$ STR:= 0= if exit then
    a FOUND u BYTE-COPY u FOUND-U ! ;
 
 : WALK-ROOT ( str -- ) {: a:^ u:n :}
@@ -112,7 +112,7 @@ variable WANT-U
 : PATH-COUNT ( str -- n ) {: svg:^ size:n :}
    size 5 < if 0 exit then
    0 size 4 - 0 ?do
-      svg i + 5 s" <path" STR= if 1+ then
+      svg i + 5 s" <path" STR:= if 1+ then
    loop ;
 
 : DRAW-CHECK ( FONT:font -- )
@@ -125,23 +125,23 @@ variable WANT-U
    y top f< T-ASSERT
    x w f+ right f> T-ASSERT
    y h f+ 0.0 f= T-ASSERT
-   accents FONT:SVG$ s" viewBox='" CONTAINS? 0= T-ASSERT
-   accents FONT:SVG$ box box-len CONTAINS? TTRUE
+   accents FONT:SVG$ s" viewBox='" STR:CONTAINS? 0= T-ASSERT
+   accents FONT:SVG$ box box-len STR:CONTAINS? TTRUE
    accents FONT:FREE
 
    ROUND-CASE {: em:n view:^ view-len:n :}
    face s" o" em FONT:RENDER {: round:FONT:image :}
-   round FONT:SVG$ view view-len CONTAINS? TTRUE
+   round FONT:SVG$ view view-len STR:CONTAINS? TTRUE
    round FONT:FREE
 
    face s\" \xD0\x94" 400 FONT:RENDER {: greek:FONT:image :}
-   greek FONT:SVG$ s" <path" CONTAINS? TTRUE
+   greek FONT:SVG$ s" <path" STR:CONTAINS? TTRUE
    greek FONT:FREE
 
    face s"  " 1000 FONT:RENDER {: spaces:FONT:image :}
    spaces FONT:BOUNDS {: sx:r sy:r sw:r sh:r :}
    sx 0.0 f= sy 0.0 f= and sw 0.0 f= and sh 0.0 f= and T-ASSERT
-   spaces FONT:SVG$ s" width='0' height='0'" CONTAINS? TTRUE
+   spaces FONT:SVG$ s" width='0' height='0'" STR:CONTAINS? TTRUE
    spaces FONT:FREE
 
    face s" A" 250 FONT:RENDER {: small:FONT:image :}
@@ -167,7 +167,7 @@ variable WANT-U
    face s" j" 23 FONT:RENDER {: img:FONT:image :}
    \ Both platforms' faces give this box; Nimbus Roman's ink box of `j` ends at 5,
    \ and its emitted path passes it.
-   img FONT:SVG$ s\" viewBox=\"-2 -16 7 22\"" CONTAINS? TTRUE
+   img FONT:SVG$ s\" viewBox=\"-2 -16 7 22\"" STR:CONTAINS? TTRUE
    img FONT:FREE face FONT:CLOSE ;
 
 : COLOR-ONLY ( -- )

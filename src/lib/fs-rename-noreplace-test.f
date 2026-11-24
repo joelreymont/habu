@@ -40,7 +40,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 : COUNT-ENTRY ( str -- )
    1 ENTRIES +!
-   s" .tmp-" STARTS-WITH? if 1 SIBLINGS +! then ;
+   s" .tmp-" STR:STARTS-WITH? if 1 SIBLINGS +! then ;
 : COUNT-ENTRIES ( str -- )
    0 ENTRIES !  0 SIBLINGS !
    [: COUNT-ENTRY ;] FS-LIST:EACH ;

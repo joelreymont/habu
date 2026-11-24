@@ -28,11 +28,11 @@ public
 \ output's other lines; E-PROC-OUTPUT without one.
 : MEMORY ( ^u8 n -- n )
    {: out:^ u:n :}
-   out u s\" \nmemory " FIND-SUB MATCH option
+   out u s\" \nmemory " STR:FIND-SUB MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF IDX>N ENDOF
    ;MATCH 8 + {: at:n :}
-   out at + u at - TRIM STR>NUMBER? MATCH option
+   out at + u at - STR:TRIM STR:>NUMBER? MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF ENDOF
    ;MATCH ;

@@ -228,7 +228,7 @@ create HELD 3 allot
    [: STDERR:;CAPTURE ;] finally
    LOG$ LOG-BUF LOG-CAP FS:READ-ALL {: n:n :}
    LOG-BUF n LINES 1 T=
-   LOG-BUF n s" (extended code 5)" CONTAINS? TTRUE ;
+   LOG-BUF n s" (extended code 5)" STR:CONTAINS? TTRUE ;
 
 : READ-TX ( -- )
    MAIN$ SQLITE:OPEN {: a:SQLITE:connection :}

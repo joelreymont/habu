@@ -30,12 +30,12 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 : CONTAINS-CI? ( str str -- bool )
    {: a:^ u:n b:^ v:n :}
    u v - 1+ 0 ?do
-      a i + v b v STR=CI if unloop true exit then
+      a i + v b v STR:=CI if unloop true exit then
    loop
    false ;
 
 : COLON-IN ( str -- n )
-   [char] : INDEX-OF MATCH option
+   [char] : STR:INDEX-OF MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -62,7 +62,7 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
    r REC-WORD$ QUERY-A @ QUERY-U @ CONTAINS-CI? if true exit then
    COLON-AT @ 0 < if false exit then
    r REC-PUBLIC? 0= if false exit then
-   r REC-PACKAGE$ PACKAGE$ STR=CI 0= if false exit then
+   r REC-PACKAGE$ PACKAGE$ STR:=CI 0= if false exit then
    r REC-TAIL$ TAIL$ CONTAINS-CI? ;
 
 \ The name the header gives record R: its word, or PKG:TAIL built in NAME-B

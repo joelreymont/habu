@@ -6,7 +6,7 @@ require src/lib/error.f
 require src/lib/test.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
-require src/lib/string.f               \ SB / CONTAINS? - the child's stderr is matched here
+require src/lib/string.f               \ SB / STR:CONTAINS? - the child's stderr is matched here
 require src/lib/fmt.f                  \ the path cap a huge base's rejection prints
 require src/lib/process.f
 require src/lib/process-argv.f         \ the growth case needs a child engine
@@ -373,10 +373,10 @@ create FFI-T-LONG-PATH PATH-CAP allot
    outu LEN>N 0 T=
    erru FFI-T-ERR$
    s" error[E-FFI-DLSYM]: no C symbol 'crc32' among the process's symbols"
-   CONTAINS? TTRUE
+   STR:CONTAINS? TTRUE
    erru FFI-T-ERR$
    s" = help: name the library that defines it with LIBRARY, or open it with FFI:PROCESS-WIDE"
-   CONTAINS? TTRUE ;
+   STR:CONTAINS? TTRUE ;
 
 : FFI-T-GLOBAL ( -- )
    s" an FFI:NOW open finds the function through its own handle" T-LABEL
@@ -580,10 +580,10 @@ create FFI-T-LONG FFI-T-LONG-U allot
    SB-RESET s" error[E-FFI-LIBRARY]: library '" SB-APPEND
    FFI-T-FOREIGN-NAME$ SB-APPEND
    s" ' is spelled for the other target" SB-APPEND
-   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE
    SB-RESET s" = help: name it with VERSIONED-LIBRARY, which spells it for " SB-APPEND
    FFI-T-TARGET$ SB-APPEND
-   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
+   erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ A fresh engine has made no selection, which this file's PROCESS-SYMBOLS has,
 \ and the rejection ends the load: the case runs in a child.
@@ -598,7 +598,7 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-UNSELECTED-SRC$ 70 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: FUNCTION: with no library selected" CONTAINS? TTRUE ;
+   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: FUNCTION: with no library selected" STR:CONTAINS? TTRUE ;
 
 : FFI-T-LONG-FOREIGN-SRC$ ( -- str )
    FFI-T-LONG-SRC!
@@ -612,15 +612,15 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-LONG-FOREIGN-SRC$ 70 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]" CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]" STR:CONTAINS? TTRUE
    FFI-T-LONG-PATH!
    HB-TARGET-MACOS? if s" .so" else s" .dylib" then {: ext:^ eu:n :}
    ext FFI-T-LONG-PATH PATH-CAP eu - + eu BYTE-COPY
-   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: library 'aaaa" CONTAINS? TTRUE
-   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" error[E-FFI-LIBRARY]: library 'aaaa" STR:CONTAINS? TTRUE
+   erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP STR:CONTAINS? TTRUE
    SB-RESET s" = help: name it with VERSIONED-LIBRARY, which spells it for " SB-APPEND
    FFI-T-TARGET$ SB-APPEND
-   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
+   erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 : FFI-T-NO-LIB$ ( -- str )
    HB-TARGET-MACOS? if s" libhabu-no-such-library.dylib" exit then
@@ -656,33 +656,33 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-NO-LIB-SRC$ 67 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
    FFI-T-NO-LIB$ SB-APPEND s\" '\n  = note: tried '" SB-APPEND
    FFI-T-NO-LIB$ SB-APPEND s" ': " SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
    erru FFI-T-ERR$
    s" = help: install the library, or name a path the loader finds"
-   COUNT-SUB 1 T=
+   STR:COUNT-SUB 1 T=
    s" a missing process symbol fails with its name" T-LABEL
    erru FFI-T-ERR$
    S\" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' among the process's symbols\n"
-   CONTAINS? TTRUE
+   STR:CONTAINS? TTRUE
    erru FFI-T-ERR$
    s" = help: name the library that defines it with LIBRARY, or open it with FFI:PROCESS-WIDE"
-   CONTAINS? TTRUE
+   STR:CONTAINS? TTRUE
    s" a missing library symbol fails with its name and the library's path" T-LABEL
    SB-RESET
    s" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' in '" SB-APPEND
    FFI-T-LIBC$ SB-APPEND S\" '\n" SB-APPEND
-   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE
    erru FFI-T-ERR$
    s" = help: check the symbol's spelling against the library's exports"
-   CONTAINS? TTRUE
+   STR:CONTAINS? TTRUE
    s" a 100-byte name and symbol reach the call whole" T-LABEL
    SB-RESET s" error[E-FFI-DLSYM]: no C symbol '" SB-APPEND FFI-T-LONG$ SB-APPEND
    s" ' in '" SB-APPEND FFI-T-LIBC$ SB-APPEND S\" '\n" SB-APPEND
-   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
+   erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ No version of the list exists, so the first call reports every name and a
 \ second call nothing; the final uncaught error ends the load, so it runs in a child.
@@ -723,12 +723,12 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-BASE-MAX 1+ FFI-T-HUGE-BASE-SRC$ 70 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library name made from this base" CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library name made from this base" STR:CONTAINS? TTRUE
    SB-RESET s" = limit: " SB-APPEND PATH-CAP FMT:SB-INT s"  bytes" SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
    SB-RESET s" = found: " SB-APPEND PATH-CAP 1+ FMT:SB-INT s"  bytes" SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
-   erru FFI-T-ERR$ s" error[" COUNT-SUB 1 T= ;
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
+   erru FFI-T-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ LIBRARY's path one byte past the path cap: its record names the length found.
 : FFI-T-HUGE-PATH-SRC$ ( -- str )
@@ -743,16 +743,16 @@ create FFI-T-LONG FFI-T-LONG-U allot
    FFI-T-HUGE-PATH-SRC$ 70 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library path is longer than a path can be" CONTAINS? TTRUE
+   erru FFI-T-ERR$ s" error[E-FFI-SYNTAX]: the library path is longer than a path can be" STR:CONTAINS? TTRUE
    SB-RESET s" = found: " SB-APPEND PATH-CAP 1+ FMT:SB-INT s"  bytes" SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T= ;
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T= ;
 
 : FFI-T-NO-VERSION ( -- )
    s" a version list with none present names each version in order, once" T-LABEL
    FFI-T-NO-VERSION-SRC$ 67 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    outu LEN>N 0 T=
-   erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE
+   erru FFI-T-ERR$ E-FFI-DLOPEN TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE
    FFI-T-NO-SUCH2-NAME$ {: a:^ au:n :}
    FFI-T-NO-SUCH1-NAME$ {: b:^ bu:n :}
    \ The first name carries no reason; the last one tried carries the loader's.
@@ -760,24 +760,24 @@ create FFI-T-LONG FFI-T-LONG-U allot
    a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
    a au SB-APPEND s\" '\n  = note: tried '" SB-APPEND
    b bu SB-APPEND s" ': " SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
    SB-RESET s" tried '" SB-APPEND a au SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
    SB-RESET s" tried '" SB-APPEND b bu SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T=
    s" a missing symbol names the version that opened, never one that did not" T-LABEL
    FFI-T-Z1-NAME$ {: z1:^ z1u:n :}
    FFI-T-Z9999-NAME$ {: z9:^ z9u:n :}
    SB-RESET
    s" error[E-FFI-DLSYM]: no C symbol 'habu-no-such-symbol' in '" SB-APPEND
    z1 z1u SB-APPEND S\" '\n" SB-APPEND
-   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE
-   erru FFI-T-ERR$ z9 z9u CONTAINS? TFALSE
+   erru FFI-T-ERR$ SB$ STR:CONTAINS? TTRUE
+   erru FFI-T-ERR$ z9 z9u STR:CONTAINS? TFALSE
    s" a 100-byte base name reaches the loader whole" T-LABEL
    SB-RESET s" error[E-FFI-DLOPEN]: cannot open library '" SB-APPEND
    FFI-T-LONG-NAME+ s\" '\n  = note: tried '" SB-APPEND
    FFI-T-LONG-NAME+ s" ': " SB-APPEND
-   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T= ;
+   erru FFI-T-ERR$ SB$ STR:COUNT-SUB 1 T= ;
 
 : FFI-RUN ( -- )
    T-RESET
@@ -911,11 +911,11 @@ create FFI-T-LONG FFI-T-LONG-U allot
    then
    s" a negative or over-long length is refused before a byte is copied or read" T-LABEL
    [: FFI-T-CSTR-SRC -1 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
-   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
+   [: FFI-T-CSTR-SRC STR:MIN-I64 FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-LENGTH TTHROWSQ
    [: s" abcdefgh" FFI-T-CSTR-DST FFI:CSTR drop ;] E-SPAN-CAPACITY TTHROWSQ
    1 REJECTION:QUIET +!
    [: FFI-T-CSTR-SRC -1 FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
-   [: FFI-T-CSTR-SRC STR-MIN-I64 FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
+   [: FFI-T-CSTR-SRC STR:MIN-I64 FFI:SELECT-LIBRARY ;] 70 TTHROWSQ
    [: FFI-T-GUARDED-PATH ;] 70 TTHROWSQ
    -1 REJECTION:QUIET +!
    s" a string holding a 0 byte is refused before it reaches C" T-LABEL

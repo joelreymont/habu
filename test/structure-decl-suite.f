@@ -591,20 +591,20 @@ s" sdgself" DECL-DIAG:HAS? TFALSE
 \ A type parameter used in two kinds is rejected at its later use.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgkind<a,q> FIELD v read-view<a,q,n> FIELD x a ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" `a` is a value type here, but field `v` uses it as a scope" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgkind`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" `a` is a scope here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgkind<a,q> FIELD x a FIELD v read-view<a,q,n> ;STRUCTURE\n                                                                ^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgtype<a,q> FIELD x a FIELD w read-view<q,q,a> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtype`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" `a` is an element type here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
@@ -614,19 +614,19 @@ s" STRUCTURE sdglong<a,q> FIELD ffffffffffffffffffffffffffffffffffffffffffffffff
 s" a" s" `a` is a scope here, but field `fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgheld<a,q> FIELD p ^a FIELD w read-view<a,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgheld`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" `a` is a scope here, but field `p` uses it as a pointee or quotation element" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each kind its own header parameter, as in `STRUCTURE box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 s" STRUCTURE sdgok<a,q> FIELD p ^a FIELD w read-view<q,q,a> ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdgptee<a,q> FIELD w read-view<a,q,n> FIELD p ^a ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s" a" s" `a` is a pointee or quotation element here, but field `w` uses it as a scope" DECL-DIAG:CAUSE? TTRUE
 \ A pointer reaches the declared family through another family's arguments.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgnest<q> FIELD next ^option<sdgnest<n>> FIELD w read-view<q,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnest`\n" DECL-DIAG:HAS? TTRUE
 s" sdgnest" s" a pointer cannot reach `sdgnest`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
@@ -634,33 +634,33 @@ s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTUR
 \ name, the declared family included, whether the parameter comes before or after.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgprv<p,q> FIELD x ^read-view<p,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgprv`\n" DECL-DIAG:HAS? TTRUE
 s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgparg<p,q> FIELD x SPAN:span<^read-view<p,q,n>> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgparg`\n" DECL-DIAG:HAS? TTRUE
 s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgnode<q> FIELD next ^sdgnode<n> FIELD w read-view<q,q,n> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnode`\n" DECL-DIAG:HAS? TTRUE
 s" sdgnode" s" a pointer cannot reach `sdgnode`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgnode<q> FIELD next ^sdgnode<n> FIELD w read-view<q,q,n> ;STRUCTURE\n                                              ^^^^^^^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgnodeq<a,q> FIELD next ^sdgnodeq<a,q> FIELD w read-view<q,q,a> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgnodeq`\n" DECL-DIAG:HAS? TTRUE
 s" sdgnodeq" s" a pointer cannot reach `sdgnodeq`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgnodeq<a,q> FIELD next ^sdgnodeq<a,q> FIELD w read-view<q,q,a> ;STRUCTURE\n                                                 ^^^^^^^^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTURE node<a>` with `FIELD next ^node<a>`, and `STRUCTURE walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdgafter<q> FIELD w read-view<q,q,n> FIELD next ^sdgafter<q> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgafter`\n" DECL-DIAG:HAS? TTRUE
 s" sdgafter" s" a pointer cannot reach `sdgafter`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:TEXT$ s\" = evaluated: STRUCTURE sdgafter<q> FIELD w read-view<q,q,n> FIELD next ^sdgafter<q> ;STRUCTURE\n                                                                        ^^^^^^^^" REJECTION-TEXT:HAS? TTRUE
@@ -668,7 +668,7 @@ s\"   = help: keep the view out of the family a pointer reaches, as in `STRUCTUR
 \ Beneath a pointer a family's arguments are judged as the pointee itself.
 DECL-DIAG:PROSE
 s" STRUCTURE sdgopt<p,q> FIELD x ^option<read-view<p,q,n>> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgopt`\n" DECL-DIAG:HAS? TTRUE
 s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
@@ -688,7 +688,7 @@ DECL-DIAG:PROSE
 s" STRUCTURE sdgscoped<p> FIELD v read-view<p,p,u8> ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdgtoscoped<p> FIELD q ^sdgscoped<p> ;STRUCTURE" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgtoscoped`\n" DECL-DIAG:HAS? TTRUE
 s" sdgscoped" s" a pointer cannot reach `sdgscoped`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
@@ -697,11 +697,11 @@ s\"   = help: hold the view in the field itself, as in `STRUCTURE box<p,q>` with
 REJECTION:CAPTURE
 : SDG-RV ( -- ) s" STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
 ' SDG-RV catch 70 T=
-REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgrv`\n --> <input>:1:35\n  |\n1 | STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE\n  |                                   ^ type argument must be a scope parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgrv`\n --> <input>:1:35\n  |\n1 | STRUCTURE sdgrv FIELD x read-view<n,n,n> ;STRUCTURE\n  |                                   ^ type argument must be a scope parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q>` with `FIELD v read-view<p,q,u8>`\n\n" STR:CONTAINS? TTRUE
 REJECTION:CAPTURE
 : SDG-MV ( -- ) s" STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
 ' SDG-MV catch 70 T=
-REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgmv`\n --> <input>:1:43\n  |\n1 | STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE\n  |                                           ^ type argument must be a region parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n\n" CONTAINS? TTRUE
+REJECTION:BUFFER$ S\" error[E-BAD-DECLARATION]: bad structure declaration `sdgmv`\n --> <input>:1:43\n  |\n1 | STRUCTURE sdgmv<p,q> FIELD x mut-view<p,q,n> ;STRUCTURE\n  |                                           ^ type argument must be a region parameter\n  = help: pass a parameter the header lists, as in `STRUCTURE box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n\n" STR:CONTAINS? TTRUE
 \ A type spaced across one line is marked for its whole written span.
 : SDG-SPACED ( -- ) s" STRUCTURE sdgsp FIELD f option<n,    n> ;STRUCTURE" VERIFY:SOURCE-BUF ;
 DECL-DIAG:PROSE
@@ -844,8 +844,8 @@ s" STRUCTURE sdgforge FIELD duplicate n FIELD duplicate n ;STRUCTURE" TEST-EVAL:
 s\" error[E-BAD-DECLARATION]: bad structure declaration `sdgforge`\n" DECL-DIAG:HAS? TTRUE
 s" duplicate" s" duplicate field name" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each field of the structure its own name\n" DECL-DIAG:HAS? TTRUE
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
-DECL-DIAG:TEXT$ REJECTION:PATH$ CONTAINS? TTRUE   \ the record names the loading file
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ REJECTION:PATH$ STR:CONTAINS? TTRUE   \ the record names the loading file
 
 \ a family name spelled like one of the JSON packet's own keys keeps key and
 \ value distinguishable, and a token carrying a double quote is escaped rather
@@ -1021,15 +1021,15 @@ TYPED-VARIABLE SC-WANT ^VEC:vector<u8>  \ a record's head and path lines, as lon
    SC-WANT @ 0 VEC:RESIZE  h hu SC-WANT+  10 SC-WANT-C
    p pu SC-GUTTER  s" --> " SC-WANT+  SC-FILE SC-WANT+
    p pu SC-WANT+  10 SC-WANT-C
-   SC-ERR$ SC-WANT @ VEC:SPAN SPAN:$ CONTAINS? TTRUE
+   SC-ERR$ SC-WANT @ VEC:SPAN SPAN:$ STR:CONTAINS? TTRUE
    SB-RESET  s" ^ " SB-APPEND  l lu SB-LINE
-   SC-ERR$ SB$ CONTAINS? TTRUE ;
+   SC-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 s" habu-structure-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" structure-decl-check.f" SC-PATH FS:JOIN-PATH SC-PATH-U !
 SC-NEW SC-SRC !  SC-NEW SC-ERR !  SC-NEW SC-WANT !
 SC-RUN
-SC-ERR$ s" error[" COUNT-SUB 16 T=
+SC-ERR$ s" error[" STR:COUNT-SUB 16 T=
 s" error[E-MISMATCH]: SB1BAD ends with n rpsdbuf on the stack; its signature promises rpsdbuf"
    s" :4:35" s" the stack holds n rpsdbuf after this" SC-RECORD
 s" error[E-INPUT-UNDERFLOW]: input underflow: the call takes more cells than the definition's declared inputs leave (needs 3, has 2)"
@@ -1040,7 +1040,7 @@ s" error[E-BAD-DECLARATION]: bad structure declaration `rpsdbad`"
    s" :13:29" s" unknown type" SC-RECORD
 \ A string literal leaves K's value unstated, a colon word IDH's and IDE's: the
 \ uses of hd, rpsdg, rpsdw and peop's private PEOP-MAKE are deferred.
-SC-ERR$ s" warning[W-CHECK-DEFERRED]" COUNT-SUB 25 T=
+SC-ERR$ s" warning[W-CHECK-DEFERRED]" STR:COUNT-SUB 25 T=
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `K` to the run because only the run defines its value"
    s" :15:27" s" value known only to the run" SC-RECORD
 s" warning[W-CHECK-DEFERRED]: the check leaves buffer byte count `IDH` to the run because only the run defines its value"

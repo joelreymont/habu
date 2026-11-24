@@ -143,7 +143,7 @@ variable CUR-ROOT                        \ and the root being walked
 : SAME? ( n str str n -- bool )
    {: id:n a:^ u:n r:^ ru:n h:n :}
    id N-HASH NODE@ h <> if false exit then
-   id PATH$ a u STR= id DIR$ r ru STR= and ;
+   id PATH$ a u STR:= id DIR$ r ru STR:= and ;
 
 \ The slot holding the node of this path, root and hash, else the empty slot
 \ it would take.
@@ -220,14 +220,14 @@ variable CUR-ROOT                        \ and the root being walked
 
 : FOUND ( str -- )
    {: a:^ u:n :}
-   a u s" .f" ENDS-WITH? 0= if exit then
+   a u s" .f" STR:ENDS-WITH? 0= if exit then
    a u SOURCE-ROOT:CANONICAL drop SUBJECT drop ;
 
 \ Repository and tool state is not workspace source.
 : WALKED? ( str -- bool )
    FS:BASENAME {: a:^ u:n :}
-   a u s" .jj" STR= a u s" .jj-ws.noindex" STR= or a u s" .git" STR= or
-   a u s" .out" STR= or a u s" .dots" STR= or 0= ;
+   a u s" .jj" STR:= a u s" .jj-ws.noindex" STR:= or a u s" .git" STR:= or
+   a u s" .out" STR:= or a u s" .dots" STR:= or 0= ;
 
 : WALK ( -- )
    CUR-ROOT @ ROOT-PATH$ [: WALKED? ;] [: FOUND ;] FS:WALK-FILES-IF ;
@@ -268,7 +268,7 @@ variable CUR-ROOT                        \ and the root being walked
 : NAMED? ( str -- bool )
    {: a:^ u:n :}
    BAD-N @ 0 ?do
-      i BAD @ PATH$ a u STR= if true unloop exit then
+      i BAD @ PATH$ a u STR:= if true unloop exit then
    loop
    false ;
 
@@ -300,7 +300,7 @@ variable CUR-ROOT                        \ and the root being walked
 : OPEN-OF ( n -- n )
    {: k:n :}
    OPEN-N @ 0 ?do
-      i O-NODE OPEN@ PATH$ k PATH$ STR= if i unloop exit then
+      i O-NODE OPEN@ PATH$ k PATH$ STR:= if i unloop exit then
    loop
    -1 ;
 
@@ -363,7 +363,7 @@ variable CUR-ROOT                        \ and the root being walked
 
 : MARK ( -- )
    NODE-N @ 0 ?do
-      i PATH$ F$ STR= if 1 i N-REACH NODE! then
+      i PATH$ F$ STR:= if 1 i N-REACH NODE! then
    loop ;
 
 : LIFT ( n -- bool )
@@ -410,8 +410,8 @@ private
 
 : BEFORE? ( n n -- bool )
    {: a:n b:n :}
-   a PATH$ F$ STR= if true exit then
-   b PATH$ F$ STR= if false exit then
+   a PATH$ F$ STR:= if true exit then
+   b PATH$ F$ STR:= if false exit then
    a PATH$ b PATH$ PATH< ;
 
 : ORDER ( -- )

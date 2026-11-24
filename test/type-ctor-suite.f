@@ -39,7 +39,7 @@ TYPED-VARIABLE TCE-A ^u8   variable TCE-U
    [: TCE-GO ;] catch ;
 : TCE-PROTECTED ( str -- )   \ the text is rejected with E-CTOR-PROTECTED
    REJECTION:CAPTURE  TCE-CATCH 70 T=
-   REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[E-CTOR-PROTECTED]" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
 \ An engine family's generated word is protected before anything names the family.
@@ -721,7 +721,7 @@ TYPED-VARIABLE RFB-ON option<n>
 s" RFB-SOME-DROP ( rfbtag -- ) OPTION:SOME drop" CHECK-QUIET-CANDIDATE! -1 T=
 REJECTION:CAPTURE
 s" RFB-SOME-WRONG ( rfbtag -- ) OPTION:SOME RFB-ON !" CHECK-CANDIDATE! 0 T=
-REJECTION:BUFFER$ s" found: option<rfbtag>" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" found: option<rfbtag>" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 s" RFB-OK-FREE ( rfbtag -- ) RESULT:OK drop" CHECK-QUIET-CANDIDATE! 0 T=
 : RFB-REST# ( option<rfbtag> -- n ) MATCH option some OF RFB-TAG# ENDOF none OF 0 ENDOF ;MATCH ;
@@ -762,26 +762,26 @@ s" : RFB-PTR-CON-BAD ( zpub:rfbwone<^a> -- result<zpub:rfbwone<^a>,n> ) construc
 \ is rejected as stored: the build could not tell which the cell holds.
 SUMTYPE zaddrmix VARIANT ref ^n ;VARIANT VARIANT num n ;VARIANT ;SUMTYPE
 REJECTION:CAPTURE  s" 1 TYPED-BUFFER ZAM-ROW zaddrmix" TCE-CATCH 70 T=
-REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 \ A sum's tag, its last cell, and an enum are numbers, so one in another
 \ variant's address cell is rejected the same.
 SUMTYPE zn VARIANT inner option<n> ;VARIANT VARIANT pair n ^n ;VARIANT ;SUMTYPE
 REJECTION:CAPTURE  s" 1 TYPED-BUFFER ZN-ROW zn" TCE-CATCH 70 T=
-REJECTION:BUFFER$ s" in cell 1 of an element" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" in cell 1 of an element" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 ENUM zhue red green blue ;ENUM
 SUMTYPE zc VARIANT ref ^n ;VARIANT VARIANT tint zhue ;VARIANT ;SUMTYPE
 REJECTION:CAPTURE  s" 1 TYPED-BUFFER ZC-ROW zc" TCE-CATCH 70 T=
-REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 \ Every cell of a byte buffer is a number, not only its first.
 STRUCTURE zbb BUFFER bytes 16 ;STRUCTURE
 SUMTYPE zb VARIANT blob zbb ;VARIANT VARIANT pair n ^n ;VARIANT ;SUMTYPE
 REJECTION:CAPTURE  s" 1 TYPED-BUFFER ZB-ROW zb" TCE-CATCH 70 T=
-REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" CONTAINS? TTRUE
+REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" STR:CONTAINS? TTRUE
 REJECTION:BUFFER-OFF
 
 T-REPORT

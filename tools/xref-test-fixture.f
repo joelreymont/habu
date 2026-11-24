@@ -61,7 +61,7 @@ public
 \ A reader given no record prints the E-XREF-NULL rejection and stops with the
 \ checker's status instead of reading address 0.
 : XRT-SAID-NULL ( -- )
-   REJECTION:BUFFER$ s" E-XREF-NULL" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" E-XREF-NULL" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 : XRT-NULL ( -- )
    REJECTION:CAPTURE

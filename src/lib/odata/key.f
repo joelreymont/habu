@@ -43,7 +43,7 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 : DIGIT-END ( str n -- n )
    {: a:^ u:n at:n :}
    at begin
-      dup u < if dup a + c@ STR-DIGIT? else false then
+      dup u < if dup a + c@ STR:DIGIT? else false then
    while 1+ repeat ;
 
 : DIGIT-RUN ( str n -- str n )
@@ -67,8 +67,8 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 : SHAPE-BYTE? ( u8 u8 -- bool )
    {: c:u8 k:u8 :}
-   k [char] d = if c STR-DIGIT? exit then
-   k [char] x = if c STR-HEX-DIGIT? exit then
+   k [char] d = if c STR:DIGIT? exit then
+   k [char] x = if c STR:HEX-DIGIT? exit then
    c k = ;
 
 \ The bytes at AT match SHAPE: `d` a digit, `x` a hex digit, any other
@@ -110,11 +110,11 @@ CAST: >PREDICATE ( ^u8 -- ^predicate )
 
 : BOOLEAN ( str -- )
    {: a:^ u:n :}
-   a u s" true" STR= a u s" false" STR= or FITS ;
+   a u s" true" STR:= a u s" false" STR:= or FITS ;
 
 : INTEGER ( str n n -- )
    {: a:^ u:n lo:n hi:n :}
-   a u STR>NUMBER? MATCH option
+   a u STR:>NUMBER? MATCH option
       none OF E-KEY throw ENDOF
       some OF dup lo >= swap hi <= and FITS ENDOF
    ;MATCH ;

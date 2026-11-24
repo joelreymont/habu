@@ -100,7 +100,7 @@ private
 
    s" `create` inside a string is a string" T-LABEL
    [: LOAD-IN-STRING ;] LOADED TTHROWSQ
-   s\" CAX-B5 s\q create\q STR=" TEST-EVAL:FLAG TTRUE
+   s\" CAX-B5 s\q create\q STR:=" TEST-EVAL:FLAG TTRUE
 
    s" `create` inside a comment is a comment" T-LABEL
    [: LOAD-IN-COMMENT ;] LOADED TTHROWSQ

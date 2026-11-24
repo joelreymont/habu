@@ -578,7 +578,7 @@ private
    {: path:^ u:n next:n :}
    LIB-N @ 0 ?do
       i LIB-LEN@ u = i LIB-NEXT@ next = and if
-         path u i LIB-PATH u STR= if i 1+ unloop exit then
+         path u i LIB-PATH u STR:= if i 1+ unloop exit then
       then
    loop
    0 ;
@@ -689,7 +689,7 @@ private
    idx FN-SPILL@ spills <> if false exit then
    idx FN-RELOC@ reloc <> if false exit then
    idx NAME-LEN u <> if false exit then
-   name u idx FN-NAME u STR= ;
+   name u idx FN-NAME u STR:= ;
 
 \ The symbol and its 0 byte are allotted where the declaration is accepted and
 \ never move; the row's pointer cell reaches them across a save or a link.
@@ -851,9 +851,9 @@ $10 constant TYPE-CAP
 \ An input type's C size in bytes.
 : TYPE-SIZE ( str -- n )
    {: a:^ u:n :}
-   a u s" u8" STR= a u s" char" STR= or if 1 exit then
-   a u s" u16" STR= if 2 exit then
-   a u s" u32" STR= a u s" i32" STR= or a u s" f32" STR= or if 4 exit then
+   a u s" u8" STR:= a u s" char" STR:= or if 1 exit then
+   a u s" u16" STR:= if 2 exit then
+   a u s" u32" STR:= a u s" i32" STR:= or a u s" f32" STR:= or if 4 exit then
    8 ;
 
 0 constant R-NONE
@@ -1007,7 +1007,7 @@ private
    execute 2dup TOK! ;
 
 : TOK-IS? ( str -- bool )
-   TOK$ STR= ;
+   TOK$ STR:= ;
 
 : NAME! ( -- )
    TOK$ {: a:^ u:n :}
@@ -1024,9 +1024,9 @@ private
 \ The base's length before a target's suffix in it: `.dylib` or `.so` at its
 \ end, else `.so.` within it; its whole length when it holds none.
 : SUFFIX-CUT ( str -- n ) {: a:^ u:n :}
-   a u s" .dylib" ENDS-WITH? if u 6 - exit then
-   a u s" .so" ENDS-WITH? if u 3 - exit then
-   a u s" .so." FIND-SUB MATCH option
+   a u s" .dylib" STR:ENDS-WITH? if u 6 - exit then
+   a u s" .so" STR:ENDS-WITH? if u 3 - exit then
+   a u s" .so." STR:FIND-SUB MATCH option
       none OF u ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
@@ -1049,7 +1049,7 @@ private
    u BASE-U ! ;
 
 : >VERSION ( str -- n )
-   STR-PARSE-POS MATCH option
+   STR:PARSE-POS MATCH option
       none OF
          s" a library version is not a number"
          s" write versions as numbers split by commas: VERSIONED-LIBRARY z 1,2"
@@ -1080,7 +1080,7 @@ private
 \ first version's row. Every name is checked before a row is added.
 : VERSION-ROWS ( str str -- n )
    {: t:^ tu:n list:^ u:n :}
-   list u [char] , INDEX-OF MATCH option
+   list u [char] , STR:INDEX-OF MATCH option
       none OF u ENDOF
       some OF IDX>N ENDOF
    ;MATCH {: cut:n :}
@@ -1130,7 +1130,7 @@ private
    ARG-N @ 1 + ARG-N ! ;
 
 \ A pointer is `^u8`, a byte span: a token that opens with `^` names one.
-: PTR-TOK? ( -- bool )  TOK$ 1 min s" ^" STR= ;
+: PTR-TOK? ( -- bool )  TOK$ 1 min s" ^" STR:= ;
 
 \ Refuses a pointer token other than `^u8`.
 : PTR-TAIL ( -- )
@@ -1540,11 +1540,11 @@ private
 : FOREIGN-SPELLING? ( str -- bool )
    BASENAME {: path:^ u:n :}
    HB-TARGET-MACOS? if
-      path u s" .dylib" ENDS-WITH? if false exit then
-      path u s" .so" ENDS-WITH? path u s" .so." CONTAINS? or exit
+      path u s" .dylib" STR:ENDS-WITH? if false exit then
+      path u s" .so" STR:ENDS-WITH? path u s" .so." STR:CONTAINS? or exit
    then
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
-      path u s" .dylib" ENDS-WITH? exit
+      path u s" .dylib" STR:ENDS-WITH? exit
    then
    E-FFI-LIBRARY throw ;
 
@@ -1843,7 +1843,7 @@ private
 
 : CLAUSE-TARGET ( n -- ) {: idx:n :}
    idx 0 < idx ARG-N @ >= or if NO-INPUT then
-   idx ARG-TEXT$ s" ^u8" STR= 0= if NOT-SPAN then
+   idx ARG-TEXT$ s" ^u8" STR:= 0= if NOT-SPAN then
    idx ARG-SBYTES@ 0 <> if TAKEN then
    STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if DEST-TAKEN then ;
 

@@ -49,8 +49,8 @@ CAST: MAP>BYTES ( n -- ^u8 )
 
 : IMGD-HEX-DIGIT ( n -- option<n> )
    {: c:n :}
-   c STR-ZERO >= c 57 <= and IF c STR-ZERO - OPTION:SOME EXIT THEN
-   c ASCII-LOWER IMGD-LOWER !
+   c STR:ZERO >= c 57 <= and IF c STR:ZERO - OPTION:SOME EXIT THEN
+   c STR:ASCII-LOWER IMGD-LOWER !
    IMGD-LOWER @ 97 >= IMGD-LOWER @ 102 <= and IF IMGD-LOWER @ 87 - OPTION:SOME EXIT THEN
    OPTION:NONE ;
 
@@ -80,20 +80,20 @@ CAST: MAP>BYTES ( n -- ^u8 )
 : IMGD-HEX-BODY ( str -- str bool )
    {: a:^ u :}
    u 1 > IF
-      a c@ 36 = IF a 1 + u 1 - STR-TRUE EXIT THEN
+      a c@ 36 = IF a 1 + u 1 - STR:TRUE EXIT THEN
    THEN
    u 2 > IF
-      a c@ STR-ZERO = a 1 + c@ ASCII-LOWER 120 = and IF
-         a 2 + u 2 - STR-TRUE EXIT
+      a c@ STR:ZERO = a 1 + c@ STR:ASCII-LOWER 120 = and IF
+         a 2 + u 2 - STR:TRUE EXIT
       THEN
    THEN
-   a u STR-FALSE ;
+   a u STR:FALSE ;
 
 public
 
 : IMGD>NUMBER? ( str -- option<n> )   \ accepts $hex, 0xhex and decimal
    IMGD-HEX-BODY IF IMGD-PARSE-HEX EXIT THEN
-   STR>NUMBER? ;
+   STR:>NUMBER? ;
 
 private
 

@@ -42,7 +42,7 @@ variable EXITED
 : EXPECT-OUT ( str -- )
    0 EXPECT-RC
    ERR-U @ 0 T=
-   OUT$ STR= TTRUE ;
+   OUT$ STR:= TTRUE ;
 
 : SCOPE-SOURCE$ ( -- str )
    S\" package LC-SUBJECT\npublic\n: LATEST ( n n -- n ) {: item:n ITEM:n :} ITEM ;\n: EARLIER ( n n -- n ) {: item:n ITEM:n :} item ;\n: REPEATED ( n n -- n ) {: v:n v:n :} v ;\n: SHADOW ( n -- n ) {: value:n :} value 0 > if false {: value:bool :} value if 1 else 2 then else 0 then value + ;\n: DISTINCT ( n -- n ) {: value:n :} value 0 > if 100 {: VALUE:n :} VALUE value + else 0 then ;\n;package\n3 9 LC-SUBJECT:LATEST . 3 9 LC-SUBJECT:EARLIER . 3 9 LC-SUBJECT:REPEATED . 5 LC-SUBJECT:SHADOW . -1 LC-SUBJECT:SHADOW . 5 LC-SUBJECT:DISTINCT .\n" ;
@@ -78,7 +78,7 @@ variable EXITED
    RUN-SOURCE
    70 EXPECT-RC
    OUT-U @ 0 T=
-   ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE ;
+   ERR$ s" E-BAD-LOCAL-SHAPE" STR:CONTAINS? TTRUE ;
 
 public
 

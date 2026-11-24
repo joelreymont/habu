@@ -172,7 +172,7 @@ PATH-CAP BUFFER: FILE
    what wu SB-APPEND  32 SB-APPEND-C  body bu DECIMALS  10 SB-APPEND-C ;
 
 : ERR-LINE$ ( -- str )
-   ERR ERR-U @ 10 INDEX-OF MATCH option
+   ERR ERR-U @ 10 STR:INDEX-OF MATCH option
       none OF ERR 0 ENDOF
       some OF IDX>N ERR swap ENDOF
    ;MATCH ;
@@ -229,7 +229,7 @@ PATH-CAP BUFFER: FILE
    ERR-LINE$ {: t:^ u:n :}
    t TRAP u BYTE-COPY  u TRAP-U !
    s" trapped: the host names the fault the fixture's trap recorded" T-LABEL
-   TRAP$ s" fault kind 102 at " STARTS-WITH? TTRUE
+   TRAP$ s" fault kind 102 at " STR:STARTS-WITH? TTRUE
    HELLO  ID1$ STATE-LINE
    s" trapped: after a trap the module prints nothing more" T-LABEL
    OUT$ s" trapped.out" SAME
@@ -362,7 +362,7 @@ PATH-CAP BUFFER: FILE
    {: cmd:^ cu:n why:^ wu:n :}
    cmd cu REFUSED
    cmd cu s" the failure names the reason" MALFORMED
-   ERR$ why wu CONTAINS? TTRUE ;
+   ERR$ why wu STR:CONTAINS? TTRUE ;
 
 : MALFORMED-CASES ( -- )
    s" short header" s" request header" REJECT
@@ -381,8 +381,8 @@ PATH-CAP BUFFER: FILE
    \ TextDecoder's wording is the engine's.
    s" bad utf8" REFUSED
    s" bad utf8" s" the failure names the reason" MALFORMED
-   ERR$ s" Invalid byte sequence" CONTAINS?
-   ERR$ s" encoded data was not valid" CONTAINS?  or TTRUE ;
+   ERR$ s" Invalid byte sequence" STR:CONTAINS?
+   ERR$ s" encoded data was not valid" STR:CONTAINS?  or TTRUE ;
 
 public
 

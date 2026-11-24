@@ -71,7 +71,7 @@ public
 \ The row whose C name this is; the build dies on a name the table lacks.
 : IMPORT-ROW ( str -- n )
    {: a:^ u:n :}
-   IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
+   IMPORTS 0 ?do i IMPORT$ a u STR:= if i unloop exit then loop
    SB-RESET  s" macho: no such import " SB-APPEND  a u SB-APPEND
    SB$ EXIT-STATUS:IMAGE die ;
 
@@ -82,7 +82,7 @@ private
 \ Darwin's plain realpath is its legacy entry, which reads every parent
 \ directory of a relative path; C programs link realpath$DARWIN_EXTSN.
 : SUFFIX$ ( str -- str )
-   s" realpath" STR= if s" $DARWIN_EXTSN" else s" " then ;
+   s" realpath" STR:= if s" $DARWIN_EXTSN" else s" " then ;
 
 \ A name's symbol is an underscore, the name, then the suffix.
 : SYMBOL-LEN ( str -- n )
@@ -364,7 +364,7 @@ variable CURSOR
 : U64@ ( n -- n ) 8 AT LE:U64@ ;
 
 : NAME? ( n str -- bool ) {: off:n name:^ size:n :}
-   off 16 AT size name size STR= 0= if false exit then
+   off 16 AT size name size STR:= 0= if false exit then
    size 16 < if off size + 1 AT c@ 0= else true then ;
 
 : UNIQUE! ( n ^n -- ) {: off:n slot:^ :}

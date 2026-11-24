@@ -112,8 +112,8 @@ TASK:MIN-STACK TASK:TASK RELEASER
    {: at:^ i:n :}
    s" 0000-00-00T00:00:00Z" drop i + c@ {: want:n :}
    at i + c@ {: got:n :}
-   want STR-ZERO <> if got want = exit then
-   got STR-ZERO >= got STR-ZERO 9 + <= and ;
+   want STR:ZERO <> if got want = exit then
+   got STR:ZERO >= got STR:ZERO 9 + <= and ;
 
 
 : SHAPE? ( ^u8 -- bool )
@@ -123,7 +123,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : DIGITS ( str -- n )
    {: at:^ u:n :}
-   0 u 0 ?do 10 * at i + c@ STR-ZERO - + loop ;
+   0 u 0 ?do 10 * at i + c@ STR:ZERO - + loop ;
 
 
 \ The stamp's epoch seconds, -1 for a date PARSE-YMD refuses.
@@ -155,7 +155,7 @@ TASK:MIN-STACK TASK:TASK RELEASER
 
 : LEVEL-LINES ( -- )
    LOG:ERROR s" model" LOG:LINE s" refused " LOG:TEXT+ -42 LOG:INT+ LOG:;LINE
-   LOG:WARN s" crew" LOG:LINE s" min " LOG:TEXT+ STR-MIN-I64 LOG:INT+ LOG:;LINE
+   LOG:WARN s" crew" LOG:LINE s" min " LOG:TEXT+ STR:MIN-I64 LOG:INT+ LOG:;LINE
    LOG:INFO s" mcp" LOG:LINE s" ping" LOG:TEXT+ LOG:;LINE ;
 
 
@@ -461,8 +461,8 @@ TASK:MIN-STACK TASK:TASK RELEASER
    SB$ {: head:^ hu:n :}
    at DATE:TIME-LEN + {: rest:^ :}
    u DATE:TIME-LEN - hu PAD-U + <> if 1 BAD +! exit then
-   rest hu head hu STR= 0= if 1 BAD +! exit then
-   rest hu + PAD-U PAD$ STR= 0= if 1 BAD +! exit then
+   rest hu head hu STR:= 0= if 1 BAD +! exit then
+   rest hu + PAD-U PAD$ STR:= 0= if 1 BAD +! exit then
    1 tag NEXT +! ;
 
 

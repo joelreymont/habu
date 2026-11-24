@@ -30,8 +30,8 @@ TASK:SEMAPHORE DATE-START
      none OF 0 0= 0= exit ENDOF
      some OF days <> if 0 0= 0= exit then ENDOF
    ;MATCH
-   days buf DATE-TEST-BUF-LEN DATE:FORMAT-YMD datea dateu STR= 0= if 0 0= 0= exit then
-   seconds buf DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC timea timeu STR= ;
+   days buf DATE-TEST-BUF-LEN DATE:FORMAT-YMD datea dateu STR:= 0= if 0 0= 0= exit then
+   seconds buf DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC timea timeu STR:= ;
 
 : DATE-WORK-A ( -- )
    DATE-READY TASK:SIGNAL-SEM

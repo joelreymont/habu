@@ -95,7 +95,7 @@ variable STATUS
 \ and exits 70.
 : NAMED-UNDERDEPTH ( str str -- ) {: src:^ size:n diag:^ diagu:n :}
    src size CHILD-RC 70 T=
-   ERR ERRLEN @ diag diagu CONTAINS? TTRUE ;
+   ERR ERRLEN @ diag diagu STR:CONTAINS? TTRUE ;
 
 \ Tier-0 2>r/2r> use the guarded VM return mapping. EDGE n fills n slots, one
 \ `>r` a level, moves a pair at the top and checks each level's cell on the way

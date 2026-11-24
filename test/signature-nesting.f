@@ -182,7 +182,7 @@ variable ERR-U
    {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    SRC$ OUT outu LEN>N ERR erru LEN>N oc 70 T-ENDING-EXITED=
-   ERR erru LEN>N why whyu CONTAINS? TTRUE ;
+   ERR erru LEN>N why whyu STR:CONTAINS? TTRUE ;
 
 \ The text in SRC-BUF, run as the subject, exits 0: a facts text that cannot
 \ say an effect ends the load with status 76.
@@ -219,9 +219,9 @@ variable JSON-WAS   REJECTION:JSON @ JSON-WAS !   false REJECTION:JSON !
 \ holds all three: checked as a candidate, or compiled to walk a does> clause.
 : PACKET-HOLDS ( str str str -- )
    {: code:^ codeu:n token:^ tokenu:n why:^ whyu:n :}
-   REJECTION:BUFFER$ code codeu CONTAINS? TTRUE
-   REJECTION:BUFFER$ token tokenu CONTAINS? TTRUE
-   REJECTION:BUFFER$ why whyu CONTAINS? TTRUE
+   REJECTION:BUFFER$ code codeu STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ token tokenu STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ why whyu STR:CONTAINS? TTRUE
    0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF ;
 
 
@@ -363,8 +363,8 @@ public
    S\" \"help\":\"declare the definition's stack effect after its name" VERDICT-UNCHECKABLE PACKET-HAS
    s" a RECURSE with no declared effect writes no declared note" T-LABEL
    PACKET-OPEN  SRC$ CHECK-CANDIDATE! VERDICT-UNCHECKABLE T=
-   REJECTION:BUFFER$ S\" \"code\":\"E-UNCHECKABLE\"" CONTAINS? TTRUE
-   REJECTION:BUFFER$ S\" \"declared\"" CONTAINS? TFALSE
+   REJECTION:BUFFER$ S\" \"code\":\"E-UNCHECKABLE\"" STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ S\" \"declared\"" STR:CONTAINS? TFALSE
    0 0= 0= REJECTION:JSON ! REJECTION:BUFFER-OFF
    PACKET-PASSES
    s" a RECURSE in a does> clause is uncheckable for calling the defining word, and says where to recurse" T-LABEL

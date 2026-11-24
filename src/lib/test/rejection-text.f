@@ -24,7 +24,7 @@ variable IN-RECORD
 : EMIT+ ( str -- ) OUT @ VEC:APPEND ;
 
 : HEADER? ( str -- bool ) {: a:^ u:n :}
-   a u s" error[" STARTS-WITH?  a u s" warning[" STARTS-WITH? or ;
+   a u s" error[" STR:STARTS-WITH?  a u s" warning[" STR:STARTS-WITH? or ;
 
 \ Whether a u begins with the gutter: GUTTER blanks or digits, then a blank.
 : GUTTERED? ( str -- bool ) {: a:^ u:n :}
@@ -33,7 +33,7 @@ variable IN-RECORD
    a g + c@ 32 <> IF false EXIT THEN
    g 0 ?DO
       a i + c@ {: c:n :}
-      c 32 =  c STR-DIGIT? or 0= IF false unloop EXIT THEN
+      c 32 =  c STR:DIGIT? or 0= IF false unloop EXIT THEN
    LOOP true ;
 
 \ The line a u, its newline excluded, onto OUT, its record's gutter dropped.
@@ -41,8 +41,8 @@ variable IN-RECORD
    a u HEADER? IF 1 GUTTER !  true IN-RECORD !  a u EMIT+ EXIT THEN
    IN-RECORD @ 0= IF a u EMIT+ EXIT THEN
    u 0= IF false IN-RECORD ! EXIT THEN
-   a u LTRIM {: t:^ tu:n :}
-   t tu s" -->" STARTS-WITH? IF u tu - GUTTER !  t tu EMIT+ EXIT THEN
+   a u STR:LTRIM {: t:^ tu:n :}
+   t tu s" -->" STR:STARTS-WITH? IF u tu - GUTTER !  t tu EMIT+ EXIT THEN
    a u GUTTERED? IF GUTTER @ 1 + {: g:n :}  a g +  u g -  EMIT+ EXIT THEN
    a u EMIT+ ;
 
@@ -53,7 +53,7 @@ public
 : FLAT ( str -- str ) {: a:^ u:n :}
    OUT @ NULL-PTR = IF HEAP:ALLOCATOR 0 [type] u8 VEC:NEW OUT ! THEN
    OUT @ 0 VEC:RESIZE  false IN-RECORD !  1 GUTTER !
-   a u 10 0 BEGIN SPLIT-NEXT WHILE {: p:^ pu:n next:n :}
+   a u 10 0 BEGIN STR:SPLIT-NEXT WHILE {: p:^ pu:n next:n :}
       p pu LINE+
       next u <= IF 10 OUT @ VEC:PUSH c! THEN
       a u 10 next
@@ -62,6 +62,6 @@ public
 
 \ Whether text a u, its records' gutters dropped, holds e eu.
 : HAS? ( str str -- bool ) {: a:^ u:n e:^ eu:n :}
-   a u FLAT e eu CONTAINS? ;
+   a u FLAT e eu STR:CONTAINS? ;
 
 ;package

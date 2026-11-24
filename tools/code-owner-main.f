@@ -22,7 +22,7 @@ package CODE-OWNER-CLI
 
 : DIGIT ( n -- n ) {: c:n :}
    c 48 >= c 57 <= and if c 48 - exit then
-   c ASCII-LOWER {: l:n :}
+   c STR:ASCII-LOWER {: l:n :}
    l 97 >= l 102 <= and if l 87 - exit then
    -1 ;
 
@@ -41,7 +41,7 @@ variable ACC
 
 : OFFSET ( str -- n )
    HEX-BODY if HEX>N exit then
-   STR>NUMBER? MATCH option
+   STR:>NUMBER? MATCH option
      none OF BAD ENDOF
      some OF ENDOF
    ;MATCH ;

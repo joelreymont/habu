@@ -161,7 +161,7 @@ private
    M-SRC @ {: src:^ :}
    M-DOES @ {: cut:n :}
    cut DOES-SPAN < cut M-SRC-U @ > or if E-NFEED-CUT throw then
-   src cut DOES-SPAN - + DOES-SPAN 1- s" does>" STR=CI 0= if E-NFEED-CUT throw then
+   src cut DOES-SPAN - + DOES-SPAN 1- s" does>" STR:=CI 0= if E-NFEED-CUT throw then
    src cut 1- + c@ 32 <> if E-NFEED-CUT throw then ;
 
 EXPORT CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?

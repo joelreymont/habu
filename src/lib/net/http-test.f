@@ -554,7 +554,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 \ Only a path the build hashes may be cached for a year.
 : IMMUTABLE-CACHE ( str -- str ) {: path:^ len:n :}
-   path len s" /_app/immutable/" STARTS-WITH?
+   path len s" /_app/immutable/" STR:STARTS-WITH?
    if s" public, max-age=31536000, immutable" exit then
    s" no-cache" ;
 
@@ -571,7 +571,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 \ A single-page application's client routes: anything outside /api/ whose last
 \ segment names no file extension is answered with the one page.
 : CLIENT-ROUTE ( str -- str ) {: path:^ len:n :}
-   path len s" /api/" STARTS-WITH? if path 0 exit then
+   path len s" /api/" STR:STARTS-WITH? if path 0 exit then
    path len EXTENSION? if path 0 exit then
    s" /index.html" ;
 
@@ -956,10 +956,10 @@ $2710 constant PARK-MS            \ far past every stop bound
    {: conn:TCP4:connection want:^ len:n :}
    RES @ 0 VEC:RESIZE
    begin
-      RES$ want len CONTAINS? if true exit then
+      RES$ want len STR:CONTAINS? if true exit then
       RES @ VEC:COUNT RES-CAP >= if false exit then
       conn RAW-AWAIT
-      conn RAW-READ-STEP 0= if RES$ want len CONTAINS? exit then
+      conn RAW-READ-STEP 0= if RES$ want len STR:CONTAINS? exit then
    again ;
 
 
@@ -1004,29 +1004,29 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 : BEGINS? ( str -- bool ) {: want:^ len:n :}
-   RES$ want len STARTS-WITH? ;
+   RES$ want len STR:STARTS-WITH? ;
 
 
 : HAS? ( str -- bool ) {: want:^ len:n :}
-   RES$ want len CONTAINS? ;
+   RES$ want len STR:CONTAINS? ;
 
 
 : RESPONSES ( -- n )
    0
    RES @ VEC:COUNT 0 ?do
-      i RES-FROM s" HTTP/1.1 " STARTS-WITH? if 1+ then
+      i RES-FROM s" HTTP/1.1 " STR:STARTS-WITH? if 1+ then
    loop ;
 
 
 : TAKE-ETAG ( -- )
    0 ETAG-U !
-   RES$ s" ETag: " FIND-SUB
+   RES$ s" ETag: " STR:FIND-SUB
    MATCH option
       some OF {: at:idx :} at IDX>N 6 + ENDOF
       none OF -1 ENDOF
    ;MATCH {: start:n :}
    start 0 < if exit then
-   start RES-FROM s\" \r" FIND-SUB
+   start RES-FROM s\" \r" STR:FIND-SUB
    MATCH option
       some OF {: stop:idx :} stop IDX>N ENDOF
       none OF 0 ENDOF
@@ -1061,7 +1061,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 : HEAD-START ( n -- n ) {: at:n :}
-   at RES-FROM s" HTTP/1.1 " FIND-SUB
+   at RES-FROM s" HTTP/1.1 " STR:FIND-SUB
    MATCH option
       some OF {: off:idx :} off IDX>N at + ENDOF
       none OF -1 ENDOF
@@ -1069,7 +1069,7 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 : HEAD-END ( n -- n ) {: start:n :}
-   start RES-FROM BLANK-LINE$ FIND-SUB
+   start RES-FROM BLANK-LINE$ STR:FIND-SUB
    MATCH option
       some OF {: off:idx :} off IDX>N start + ENDOF
       none OF RES @ VEC:COUNT ENDOF
@@ -1358,9 +1358,9 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 \ request from a cleared writer.
 : BIG-ANSWER? ( str -- bool ) {: bytes:^ len:n :}
    len BIG-ANSWER-BYTES <> if false exit then
-   bytes 8 S\" {\qbig\q:\q" STR= 0= if false exit then
-   bytes len + 2 - 2 S\" \q}" STR= 0= if false exit then
-   bytes 8 + BIG-VALUE-BYTES BIG-VALUE BIG-VALUE-BYTES STR= ;
+   bytes 8 S\" {\qbig\q:\q" STR:= 0= if false exit then
+   bytes len + 2 - 2 S\" \q}" STR:= 0= if false exit then
+   bytes 8 + BIG-VALUE-BYTES BIG-VALUE BIG-VALUE-BYTES STR:= ;
 
 
 : BIG-JSON-CASE ( -- )
@@ -1382,7 +1382,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" -o" CMD:ARG+  s" rss=" CMD:ARG+
    s" -p" CMD:ARG+  getpid FMT:INT$ CMD:ARG+
    s" /bin/ps" PROCESS:WAIT-FOREVER 1 CMD:RUN
-   CMD:OUT$ TRIM STR>NUMBER? MATCH option
+   CMD:OUT$ STR:TRIM STR:>NUMBER? MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF ENDOF
    ;MATCH swap ;
@@ -2090,7 +2090,7 @@ $C8 constant STALL-MARGIN-MS
    s" Content-Type: text/html; charset=utf-8" HAS? TTRUE
    S\" Content-Length: 40\r\n" HAS? TTRUE
    s" <!doctype html>" HAS? TFALSE
-   RES$ S\" \r\n\r\n" ENDS-WITH? TTRUE ;
+   RES$ S\" \r\n\r\n" STR:ENDS-WITH? TTRUE ;
 
 
 : CLOSE-CASE ( -- )
@@ -2175,8 +2175,8 @@ $C8 constant STALL-MARGIN-MS
 : HOOK-TRACE-CASES ( -- )
    0
    ONE-WORKER 0 ?do
-      i TRACE$ s" ab" STARTS-WITH? TTRUE
-      i TRACE$ s" yx" ENDS-WITH? TTRUE
+      i TRACE$ s" ab" STR:STARTS-WITH? TTRUE
+      i TRACE$ s" yx" STR:ENDS-WITH? TTRUE
       i MARK-START-1 MARK-COUNT 1 T=
       i MARK-START-2 MARK-COUNT 1 T=
       i MARK-EXIT-1 MARK-COUNT 1 T=
@@ -2472,8 +2472,8 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 \ Every activated worker runs its exit hooks before the failed START throws.
 : FAILED-TRACE ( -- )
    TWO-WORKERS 0 ?do
-      i TRACE$ s" abt" STARTS-WITH? TTRUE
-      i TRACE$ s" zyx" ENDS-WITH? TTRUE
+      i TRACE$ s" abt" STR:STARTS-WITH? TTRUE
+      i TRACE$ s" zyx" STR:ENDS-WITH? TTRUE
       i MARK-REQUEST MARK-COUNT 0 T=
       i MARK-EXIT-1 MARK-COUNT 1 T=
       i MARK-EXIT-2 MARK-COUNT 1 T=
@@ -2624,11 +2624,11 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
    READ-STDERR
-   ERR$ s\"  error http: request r0-1 failed, throw -9992\n" CONTAINS? TTRUE
-   ERR$ s\"  error http: request r0-2 failed, throw -9990\n" CONTAINS? TTRUE
-   ERR$ s\"  error http: request r0-2 failed, throw -9992\n" CONTAINS? TTRUE
-   ERR$ s\"  error http: request r0-4 failed, throw -9992\n" CONTAINS? TTRUE
-   ERR$ s" failed, throw -9347" CONTAINS? TFALSE
+   ERR$ s\"  error http: request r0-1 failed, throw -9992\n" STR:CONTAINS? TTRUE
+   ERR$ s\"  error http: request r0-2 failed, throw -9990\n" STR:CONTAINS? TTRUE
+   ERR$ s\"  error http: request r0-2 failed, throw -9992\n" STR:CONTAINS? TTRUE
+   ERR$ s\"  error http: request r0-4 failed, throw -9992\n" STR:CONTAINS? TTRUE
+   ERR$ s" failed, throw -9347" STR:CONTAINS? TFALSE
    RENDERS @ 3 T= ;
 
 
@@ -2643,10 +2643,10 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
 
 \ True when `<want><digits> ms` and its LF start at a.
 : ACCESS-AT? ( str str -- bool ) {: a:^ u:n want:^ wantlen:n :}
-   a u want wantlen STARTS-WITH? 0= if false exit then
+   a u want wantlen STR:STARTS-WITH? 0= if false exit then
    a wantlen + u wantlen - DIGITS-SKIP {: rest:^ restlen:n :}
    restlen u wantlen - = if false exit then
-   rest restlen S\"  ms\n" STARTS-WITH? ;
+   rest restlen S\"  ms\n" STR:STARTS-WITH? ;
 
 
 \ True when fd 2 holds `<want><ms> ms` and its LF.
@@ -2662,7 +2662,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    ERR$ {: err:^ errlen:n :}
    0
    errlen 0 ?do
-      err i + errlen i - s"  info http: " STARTS-WITH? if 1+ then
+      err i + errlen i - s"  info http: " STR:STARTS-WITH? if 1+ then
    loop ;
 
 
@@ -2710,7 +2710,7 @@ TASK:MIN-STACK TASK:TASK HOLD-TASK
    s" req r0-6 HEAD /api/nothing 404 0 B " ACCESS? TTRUE
    s" req r0-7 POST /api/uploads 413 109 B " ACCESS? TTRUE
    s" req r0-8 POST /api/uploads unanswered " ACCESS? TTRUE
-   ERR$ s" secret" CONTAINS? TFALSE ;
+   ERR$ s" secret" STR:CONTAINS? TFALSE ;
 
 
 $C0000201 constant TEST-NET-1     \ 192.0.2.1, reserved for documentation: no host holds it
@@ -2763,20 +2763,20 @@ variable REFUSED-CODE
    SB$ {: want:^ wantlen:n :}
    DATE:TIME-LEN wantlen + {: head:n :}
    errlen head 2 + < if false exit then
-   err DATE:TIME-LEN + wantlen want wantlen STR= 0= if false exit then
-   err errlen S\" \n" ENDS-WITH? 0= if false exit then
-   err head + errlen head - 1- STR-DIGITS? ;
+   err DATE:TIME-LEN + wantlen want wantlen STR:= 0= if false exit then
+   err errlen S\" \n" STR:ENDS-WITH? 0= if false exit then
+   err head + errlen head - 1- STR:DIGITS? ;
 
 
 : REFUSED-LISTEN-CASE ( -- )
    HOLD
    LOOPBACK HELD-PORT @ s" 127.0.0.1" REFUSED-START
-   ERR$ s" error http:" COUNT-SUB 1 T=
+   ERR$ s" error http:" STR:COUNT-SUB 1 T=
    REFUSED-LINE? TTRUE
    REFUSED-CODE @ E-HTTP-SOCKET T=
    HTTP:RUNNING? TFALSE
    TEST-NET-1 HELD-PORT @ s" 192.0.2.1" REFUSED-START
-   ERR$ s" error http:" COUNT-SUB 1 T=
+   ERR$ s" error http:" STR:COUNT-SUB 1 T=
    REFUSED-LINE? TTRUE
    REFUSED-CODE @ E-HTTP-SOCKET T=
    HTTP:RUNNING? TFALSE
@@ -3247,10 +3247,10 @@ variable CALL-DONE
 
 : ID-FIELDS ( -- str str str )
    RES$ {: a:^ u:n :}
-   a u STR-SPACE 0 SPLIT-NEXT drop {: one:^ onelen:n at:n :}
-   a u STR-SPACE at SPLIT-NEXT drop {: two:^ twolen:n third:n :}
+   a u STR:SPACE 0 STR:SPLIT-NEXT drop {: one:^ onelen:n at:n :}
+   a u STR:SPACE at STR:SPLIT-NEXT drop {: two:^ twolen:n third:n :}
    one onelen two twolen
-   a u STR-SPACE third SPLIT-NEXT 2drop ;
+   a u STR:SPACE third STR:SPLIT-NEXT 2drop ;
 
 
 : SERVED-ID-CASE ( -- )
@@ -3344,7 +3344,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
 \ left, which ends the wait where a refused poll ends the listener or worker.
 : REFUSED-OR-LEFT? ( -- bool )
    READ-STDERR
-   ERR$ s" poll refused" CONTAINS? HTTP-TEST:LEFT 0<> or ;
+   ERR$ s" poll refused" STR:CONTAINS? HTTP-TEST:LEFT 0<> or ;
 
 
 \ Each queued peer is read to its end while AIO is full: its worker's refused
@@ -3352,7 +3352,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
 : REARMING ( -- )
    GATE TASK:SIGNAL-SEM
    ['] REFUSED-OR-LEFT? TEST-WAIT:POLL
-   ERR$ s" poll refused" CONTAINS? 0= if exit then
+   ERR$ s" poll refused" STR:CONTAINS? 0= if exit then
    OPENED @ 0 ?do i QUEUED-CONN @ RAW-DRAIN loop ;
 
 
@@ -3376,7 +3376,7 @@ $1388 constant SERVED-MS          \ a dial's deadline: far past the listener's p
    [: REARMING ;] [: AIO-FILL:UNFILL STDERR:;CAPTURE ;] finally
    s" the listener's re-arm refused at the ceiling is a warning" T-LABEL
    READ-STDERR
-   ERR$ s" warn http: poll refused, throw " CONTAINS? TTRUE
+   ERR$ s" warn http: poll refused, throw " STR:CONTAINS? TTRUE
    s" the listener outlives its re-arm refused at the ceiling" T-LABEL
    SERVED? TTRUE
    gated TCP4:CLOSE DROP-TCP-STATUS

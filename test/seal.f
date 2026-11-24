@@ -76,8 +76,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-ASSERT-PROT-PUBLISH ( str -- ) {: prose:^ proseu:n :}
    SLV-EXITED @ TTRUE
    SLV-RC @ 70 T=
-   SLV-ERR$ s" error[E-SEALED-PACKAGE]" CONTAINS? TTRUE
-   SLV-ERR$ prose proseu CONTAINS? TTRUE ;
+   SLV-ERR$ s" error[E-SEALED-PACKAGE]" STR:CONTAINS? TTRUE
+   SLV-ERR$ prose proseu STR:CONTAINS? TTRUE ;
 
 : SLV-LINE ( str -- )
    SB-APPEND SLV-LF ;

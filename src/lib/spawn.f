@@ -225,7 +225,7 @@ HERM-AT 1+ constant RECORD-CELLS
    a NAME-LEN {: alen :}
    b NAME-LEN {: blen :}
    alen blen <> if false exit then
-   a alen b blen STR= ;
+   a alen b blen STR:= ;
 
 \ A request row names the variable of z. The vector is re-read each turn, as
 \ PUSH may move it. It holds the rows already inherited too, so an inherited

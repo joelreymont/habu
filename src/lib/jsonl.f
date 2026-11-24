@@ -105,7 +105,7 @@ private
    n cur CURSOR-END !
    n 0 > ;
 
-\ SPLIT-NEXT answers end+1 as the next position of a segment the block ends
+\ STR:SPLIT-NEXT answers end+1 as the next position of a segment the block ends
 \ before its LF.
 : FRAME ( ^cursor -- ^cursor )
    {: cur:^ :}
@@ -113,7 +113,7 @@ private
       cur CURSOR-POS @ cur CURSOR-END @ >= if
          cur FILL 0= if cur exit then
       then
-      cur CURSOR-STORAGE @ cur CURSOR-END @ LF cur CURSOR-POS @ SPLIT-NEXT drop
+      cur CURSOR-STORAGE @ cur CURSOR-END @ LF cur CURSOR-POS @ STR:SPLIT-NEXT drop
       {: seg:^ segu:n next:n :}
       cur seg segu APPEND
       next cur CURSOR-END @ > if
@@ -157,7 +157,7 @@ public
    u 0 > a 0= and if E-SOURCE throw then
    pos 0 < if E-SOURCE throw then
    pos u >= if a pos + 0 pos false exit then
-   a u LF pos SPLIT-NEXT {: la:^ lu:n next:n found:bool :}
+   a u LF pos STR:SPLIT-NEXT {: la:^ lu:n next:n found:bool :}
    la lu next u min found ;
 
 ;package

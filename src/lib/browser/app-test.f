@@ -60,11 +60,11 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
 \ empty when either is missing.
 : BETWEEN$ ( str str str -- str )
    {: a:^ u:n o:^ ou:n c:^ cu:n :}
-   a u o ou FIND-SUB MATCH option
+   a u o ou STR:FIND-SUB MATCH option
       none OF a 0 ENDOF
       some OF IDX>N ou + {: at:n :}
          a at + u at - {: s:^ su:n :}
-         s su c cu FIND-SUB MATCH option
+         s su c cu STR:FIND-SUB MATCH option
             none OF s 0 ENDOF
             some OF IDX>N s swap ENDOF
          ;MATCH
@@ -106,9 +106,9 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
    s" the page is valid UTF-8" T-LABEL
    AFTER$ UTF8:VALID? TTRUE
    s" the page starts as an HTML document" T-LABEL
-   AFTER$ s" <!doctype html>" STARTS-WITH? TTRUE
+   AFTER$ s" <!doctype html>" STR:STARTS-WITH? TTRUE
    s" the title is HTML-escaped into the page's title element" T-LABEL
-   AFTER$ ESCAPED$ COUNT-SUB 1 T=
+   AFTER$ ESCAPED$ STR:COUNT-SUB 1 T=
    s" the page id is 64 hex digits" T-LABEL
    s" page-id" SCRIPT$ nip 64 T=
    s" PAGE-ID$ is the page's id" T-LABEL
@@ -116,7 +116,7 @@ TYPED-VARIABLE FILE ^VEC:vector<u8>
    s" app.js's base64 decodes to src/lib/browser/app.js" T-LABEL
    s" app.js" SCRIPT$ s" src/lib/browser/app.js" CARRIES
    s" no marker is left in the page" T-LABEL
-   AFTER$ s" <!--" COUNT-SUB 0 T= ;
+   AFTER$ s" <!--" STR:COUNT-SUB 0 T= ;
 
 
 : CODE-CASES ( -- )

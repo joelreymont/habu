@@ -148,7 +148,7 @@ public
    [: s" cast: CAST-WIDE ( n -- ^u8 n )" evaluate-closed ;] catch
    REJECTION:BUFFER-OFF
    70 <> if s" native cast rejection status" 1 die then
-   REJECTION:BUFFER$ s" error[E-CAST-ARITY]" CONTAINS? 0= if s" native cast refusal code" 1 die then
+   REJECTION:BUFFER$ s" error[E-CAST-ARITY]" STR:CONTAINS? 0= if s" native cast refusal code" 1 die then
    FINISH 1 <> if s" native cast refusal count" 1 die then
    s" CAST-WIDE" get-current search-wl 0<> if s" native refused cast published" 1 die then ;
 

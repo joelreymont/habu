@@ -64,7 +64,7 @@ package PB
    s" the same name declared again in its package is rejected as E-DUPLICATE-DEFINITION" T-LABEL
    REJECTION:CAPTURE
    [: s" test/fixtures/error/again.f" included ;] 70 TTHROWSQ
-   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]: `E-AGAIN`" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]: `E-AGAIN`" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
 
@@ -84,9 +84,9 @@ package PB
 
 \ The capture holds one record, whose head line is h hu and help line p pu.
 : ONE-RECORD ( str str -- ) {: h:^ hu:n p:^ pu:n :}
-   REJECTION:BUFFER$ h hu CONTAINS? TTRUE
-   REJECTION:BUFFER$ p pu CONTAINS? TTRUE
-   REJECTION:BUFFER$ s" error[" COUNT-SUB 1 T=
+   REJECTION:BUFFER$ h hu STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ p pu STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[" STR:COUNT-SUB 1 T=
    REJECTION:BUFFER-OFF ;
 
 
@@ -94,7 +94,7 @@ package PB
    s" a taken code is rejected naming the constant that holds it" T-LABEL
    REJECTION:CAPTURE
    [: s" test/fixtures/error/taken.f" included ;] 70 TTHROWSQ
-   REJECTION:BUFFER$ s"  ^^^^^^^^^^^ declared again" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s"  ^^^^^^^^^^^ declared again" STR:CONTAINS? TTRUE
    s" error[E-DUPLICATE-DEFINITION]: code -9673 is already `ERROR-TEST:E-TAKEN-OLD`"
    s" = help: give `ERROR-TEST:E-TAKEN-NEW` a code its block has not declared" ONE-RECORD ;
 
@@ -103,7 +103,7 @@ package PB
    s" an empty text is rejected at the declaring word" T-LABEL
    REJECTION:CAPTURE
    [: s" test/fixtures/error/empty.f" included ;] 70 TTHROWSQ
-   REJECTION:BUFFER$ s"  ^^^^^^^^^^ declared here" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s"  ^^^^^^^^^^ declared here" STR:CONTAINS? TTRUE
    s" error[E-BAD-DECLARATION]: code -9674 has an empty text"
    s" = help: give the code a text that says what failed" ONE-RECORD ;
 

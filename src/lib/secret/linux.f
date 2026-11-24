@@ -171,7 +171,7 @@ public
 : LINUX-ITEM! ( str str str -- )
    {: sk:^ su:n ak:^ au:n label:^ lu:n :}
    sk su INPUT ak au INPUT label lu INPUT
-   sk su ak au STR= if E-CONFIG throw then
+   sk su ak au STR:= if E-CONFIG throw then
    su au + lu + 3 + ITEM-NAMES-RESERVE
    sk su 0 ITEM-PUT dup ITEM-ACCOUNT-AT !
    ak au rot ITEM-PUT dup ITEM-LABEL-AT !

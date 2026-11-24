@@ -618,8 +618,8 @@ private
    state CURSOR-STATE ! ;
 
 : HEX-DIGIT ( n -- n )
-   dup STR-HEX-DIGIT? 0= if E-JSON-READ-ESCAPE throw then
-   STR-HEX-DIGIT-VALUE ;
+   dup STR:HEX-DIGIT? 0= if E-JSON-READ-ESCAPE throw then
+   STR:HEX-DIGIT-VALUE ;
 
 : SCAN-HEX ( ^cursor n -- n ) {: state:^ value:n :}
    state EOF? if E-JSON-READ-ESCAPE throw then
@@ -765,7 +765,7 @@ create UNESC-MAP
    again ;
 
 : NUM-CHAR? ( n -- bool )
-   dup STR-DIGIT? if drop true exit then
+   dup STR:DIGIT? if drop true exit then
    dup MINUS = if drop true exit then
    dup PLUS = if drop true exit then
    dup DOT = if drop true exit then
@@ -776,7 +776,7 @@ create UNESC-MAP
 : DIGITS-END ( str n -- n )
    {: src:^ len:n i:n :}
    i begin
-      dup len < if dup src + c@ STR-DIGIT? else false then
+      dup len < if dup src + c@ STR:DIGIT? else false then
    while 1+ repeat ;
 
 
@@ -912,7 +912,7 @@ create UNESC-MAP
    c CH-F = if state READ-FALSE exit then
    c CH-N = if state READ-NULL exit then
    c MINUS = if state READ-NUMBER exit then
-   c STR-DIGIT? if state READ-NUMBER exit then
+   c STR:DIGIT? if state READ-NUMBER exit then
    E-JSON-READ-MALFORMED throw ;
 
 : DO-ELEM ( ^cursor n -- n ) {: state:^ c:n :}
@@ -1000,7 +1000,7 @@ private
 
 : INT-INNER ( ^cursor -- n ) {: state:^ :}
    state CURSOR-KIND @ T-INT <> if state s" an integer" KIND-REJECT then
-   state RAW-SPAN$ STR>NUMBER? MATCH option
+   state RAW-SPAN$ STR:>NUMBER? MATCH option
      none OF
         state s" an integer from -9223372036854775808 to 9223372036854775807"
         s" write an integer in that range, or read it with READ-U64 or READ-FLOAT"
@@ -1013,7 +1013,7 @@ private
 \ a negative one included, or after U64-TENTH and above U64-LAST overflows.
 \ Halving -1 unsigned, then dividing by five, divides 2^64-1 by ten.
 -1 1 rshift 5 / constant U64-TENTH
--1 U64-TENTH STR-BASE * - constant U64-LAST
+-1 U64-TENTH STR:BASE * - constant U64-LAST
 
 : U64-REJECT ( ^cursor -- ) {: state:^ :}
    state s" an integer from 0 to 18446744073709551615"
@@ -1023,7 +1023,7 @@ private
 : U64-DIGIT ( ^cursor n n -- n ) {: state:^ acc:n d:n :}
    acc 0<  acc U64-TENTH > or if state U64-REJECT then
    acc U64-TENTH = d U64-LAST > and if state U64-REJECT then
-   acc STR-BASE * d + ;
+   acc STR:BASE * d + ;
 
 \ SCAN-NUMBER leaves a T-INT token an optional minus and digits.
 : U64-INNER ( ^cursor -- n ) {: state:^ :}
@@ -1032,7 +1032,7 @@ private
    kind T-INT <> if state s" an integer" KIND-REJECT then
    state RAW-SPAN$ {: a:^ u:n :}
    a c@ MINUS = if state U64-REJECT then
-   0 u 0 ?do state swap a i + c@ STR-DIGIT-VALUE U64-DIGIT loop ;
+   0 u 0 ?do state swap a i + c@ STR:DIGIT-VALUE U64-DIGIT loop ;
 
 : FLOAT-INNER ( ^cursor -- r ) {: state:^ :}
    state CURSOR-KIND @ dup T-INT = swap T-FLOAT = or 0= if
@@ -1084,7 +1084,7 @@ private
 
 : HEX-NEXT ( ^cursor str -- n ) {: state:^ a:^ value:n :}
    value HEX-BASE *
-   a state CURSOR-IN @ + c@ STR-HEX-DIGIT-VALUE
+   a state CURSOR-IN @ + c@ STR:HEX-DIGIT-VALUE
    +
    state CURSOR-IN dup @ 1+ swap ! ;
 
@@ -1401,7 +1401,7 @@ private
 
 \ The name that starts at start, as listed, and the next name's start.
 : NAME-AT ( str n -- str n ) {: a:^ u:n start:n :}
-   a u SP start SPLIT-NEXT drop ;
+   a u SP start STR:SPLIT-NEXT drop ;
 
 \ A listed name that ends in `?` names an optional member.
 : OPTIONAL? ( ^u8 n -- bool ) {: a:^ u:n :}
@@ -1777,7 +1777,7 @@ STRUCTURE keys DERIVE addr
    {: best:n keys:^ s:n d:n :}
    keys TABLE keys ROOM keys ORDER {: table:^ room:^ order:^ :}
    table room order s NTH d KEY-FROM$
-   table room order s 1+ NTH d KEY-FROM$ STR=
+   table room order s 1+ NTH d KEY-FROM$ STR:=
    if order s 1+ NTH best min exit then best ;
 
 \ Settles group order[s..e), agreeing on d bytes: fewer than two keys

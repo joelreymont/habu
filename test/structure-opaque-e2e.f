@@ -42,7 +42,7 @@ private
 : RUN-HERE ( -- ) ENGINE-CANDIDATE:PATH$ ROOT$ RUN-ON ;
 
 : ERR-HAS ( str -- ) {: a:^ u:n :}
-   ERR$ a u CONTAINS? TTRUE ;
+   ERR$ a u STR:CONTAINS? TTRUE ;
 
 : VERIFY ( -- )
    s" test/structure-opaque-verify.f" VERIFY-ARGS RUN-HERE

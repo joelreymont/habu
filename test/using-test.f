@@ -22,7 +22,7 @@ TYPED-VARIABLE UCE-A ^u8   variable UCE-U
 : VS-CATCH ( str -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
 
 \ The captured rejection record contains the text.
-: UCE-SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u CONTAINS? TTRUE ;
+: UCE-SAID ( str -- )  {: a:^ u:n :}  REJECTION:BUFFER$ a u STR:CONTAINS? TTRUE ;
 
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package

@@ -483,7 +483,7 @@ public
    20 CALLS @ 1 T=
    T-REPORT
    s" c2-owner-dispose release-order:" type
-   RELEASES @ 0 ?do STR-SPACE emit i ORDER @ FMT:.INT loop cr
+   RELEASES @ 0 ?do STR:SPACE emit i ORDER @ FMT:.INT loop cr
    s" c2-owner-dispose: ok" type cr ;
 ;package
 

@@ -24,14 +24,14 @@ variable SAVED-OUT
 variable REPORT-FD
 
 : OPTION? ( -- bool )
-   SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s" --target" STR= else false then ;
+   SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s" --target" STR:= else false then ;
 
 \ The index of `--engine` or the source: past `--target name` when it leads.
 : FIRST ( -- n )
    OPTION? if 2 else 0 then ;
 
 : OPERANDS ( -- n )   SCRIPT-ARGC FIRST - ;
-: ENGINE? ( -- bool )   FIRST SCRIPT-ARGV$ s" --engine" STR= ;
+: ENGINE? ( -- bool )   FIRST SCRIPT-ARGV$ s" --engine" STR:= ;
 
 : USAGE ( -- )
    s" usage: bin/hb --load tools/build-profile.f -- [--target name] (--engine | source.f) <out> <text-report> <json-report>"
@@ -42,7 +42,7 @@ variable REPORT-FD
 : TEXT$   ( -- str )   SCRIPT-ARGC 2 - SCRIPT-ARGV$ ;
 : JSON$   ( -- str )   SCRIPT-ARGC 1 - SCRIPT-ARGV$ ;
 
-: DASHED? ( str -- bool )   s" -" STARTS-WITH? ;
+: DASHED? ( str -- bool )   s" -" STR:STARTS-WITH? ;
 
 : ARGS-OK? ( -- bool )
    OPERANDS 4 <> if false exit then

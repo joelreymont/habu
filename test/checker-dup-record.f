@@ -100,8 +100,8 @@ CDR:DIAG$ nip 0 T=
 s" a refused body under a certified name is refused as a duplicate" T-LABEL
 s" : CDR-THREE ( -- n ) 1 2 ;" CDR:MULTI-QUIET 1 T= 0 T=
 s" the duplicate is refused at its name, its body unchecked" T-LABEL
-CDR:DIAG$ s" error[E-DUPLICATE-DEFINITION]: `CDR-THREE`" CONTAINS? TTRUE
-CDR:DIAG$ s" E-MISMATCH" CONTAINS? 0= TTRUE
+CDR:DIAG$ s" error[E-DUPLICATE-DEFINITION]: `CDR-THREE`" STR:CONTAINS? TTRUE
+CDR:DIAG$ s" E-MISMATCH" STR:CONTAINS? 0= TTRUE
 s" a caller verified after it certifies" T-LABEL
 s" : CDR-THREE-USE ( -- n ) CDR-THREE ;" CDR:VERIFY-QUIET 0 T=
 CDR:DIAG$ nip 0 T=

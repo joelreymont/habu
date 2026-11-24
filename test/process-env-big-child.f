@@ -25,11 +25,11 @@ variable BIG-I
 : BIG-U-TYPE ( n -- ) {: n:n :}
    n 0 < if E-STR-BOUNDS throw then
    n 10 >= if n 10 / RECURSE then
-   n 10 mod STR-ZERO + emit ;
+   n 10 mod STR:ZERO + emit ;
 
 : BIG-OWN ( -- n )
    0 0 begin over ENVP 0= 0= while
-      over ENVP dup ZLEN BIG-NAME$ STARTS-WITH? if 1 + then
+      over ENVP dup ZLEN BIG-NAME$ STR:STARTS-WITH? if 1 + then
       swap 1 + swap
    repeat nip ;
 
@@ -37,7 +37,7 @@ variable BIG-I
 \ that happens to contain the prefix is not counted.
 : BIG-LINE-AT? ( str n -- bool ) {: a:^ u:n i:n :}
    i 0 > if a i 1 - + c@ $0A = 0= if 0 0= 0= exit then then
-   a i + u i - BIG-NAME$ STARTS-WITH? ;
+   a i + u i - BIG-NAME$ STR:STARTS-WITH? ;
 
 : BIG-SEEN ( str -- n ) {: a:^ u:n :}
    0

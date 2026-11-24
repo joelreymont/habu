@@ -407,7 +407,7 @@ private
 : FIRST-INT ( PG:result -- n PG:result )
    FIRST-ROW
    0 >ROW 0 >COL NOT-BINARY
-   0 0 AT$ STR>NUMBER? MATCH option
+   0 0 AT$ STR:>NUMBER? MATCH option
       none OF E-ROW throw ENDOF
       some OF ENDOF
    ;MATCH swap ;

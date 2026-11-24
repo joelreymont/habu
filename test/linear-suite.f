@@ -49,14 +49,14 @@ variable SRC-U
 \ the word.
 : REJECTS ( n ^u8 n ^u8 n -- ) {: rc:n c:^ cu:n w:^ wu:n :}
    rc 70 T=
-   REJECTION:BUFFER$ c cu CONTAINS? TTRUE
-   REJECTION:BUFFER$ w wu CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ c cu STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ w wu STR:CONTAINS? TTRUE ;
 \ REJECTS, and the record quotes the evaluated text and labels its cause.
 : REJECTS-AT ( n str str str -- )
    {: rc:n c:^ cu:n w:^ wu:n l:^ lu:n :}
    rc c cu w wu REJECTS
-   REJECTION:BUFFER$ s" = evaluated: " CONTAINS? TTRUE
-   REJECTION:BUFFER$ l lu CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ s" = evaluated: " STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ l lu STR:CONTAINS? TTRUE ;
 ;package
 
 T-RESET
@@ -103,7 +103,7 @@ s" LV5 ( LIN-OWN:tok -- ) linear:"                   CHECK-QUIET-CANDIDATE! 0 T=
 s" exactly one side is linear and the other a payload" T-LABEL
 s" LINEAR: LP1 ( LIN-OWN:tok -- LIN-OWN:tok )"     LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP1`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
-   REJECTION:BUFFER$ s" the row is not one linear type and one payload" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" the row is not one linear type and one payload" STR:CONTAINS? TTRUE
 s" LINEAR: LP2 ( LIN-OWN:tok -- LIN-OWN:aux )"     LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP2`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP3 ( n -- n )"                         LIN-RUN:DECL
@@ -115,7 +115,7 @@ s" LINEAR: LP5 ( n -- ^LIN-OWN:tok )"           LIN-RUN:DECL
 s" a payload is a non-linear constructor or a pointer chain ending at one" T-LABEL
 s" LINEAR: LP6 ( ^LIN-OWN:aux -- LIN-OWN:tok )" LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP6`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
-   REJECTION:BUFFER$ s" the payload's pointer chain ends at a linear type" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" the payload's pointer chain ends at a linear type" STR:CONTAINS? TTRUE
 s" LINEAR: LP7 ( ^a -- LIN-OWN:tok )"           LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LP7`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
 s" LINEAR: LP8 ( LIN-OWN:tok -- a )"               LIN-RUN:DECL
@@ -129,19 +129,19 @@ s" LINEAR: LR1 ( ^LIN-OWN:lrec -- LIN-OWN:tok )"  LIN-RUN:DECL 0 T=
 s" LINEAR: LR2 ( LIN-OWN:tok -- ^LIN-OWN:lrec )"  LIN-RUN:DECL 0 T=
 s" LINEAR: LR3 ( LIN-OWN:lrec -- LIN-OWN:tok )"   LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LR3`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
-   REJECTION:BUFFER$ s" the payload is not a con, or a pointer to a con or a record" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" the payload is not a con, or a pointer to a con or a record" STR:CONTAINS? TTRUE
 s" LINEAR: LR4 ( ^LIN-OWN:lbox<[ R -- R ]> -- LIN-OWN:tok )" LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LR4`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
-   REJECTION:BUFFER$ s" the payload's record holds a type variable or a quotation" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" the payload's record holds a type variable or a quotation" STR:CONTAINS? TTRUE
 s" LINEAR: LR5 ( ^LIN-OWN:lbox<LIN-OWN:aux> -- LIN-OWN:tok )" LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LR5`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
-   REJECTION:BUFFER$ s" the payload's record may hold a linear value" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" the payload's record may hold a linear value" STR:CONTAINS? TTRUE
 s" LINEAR: LR6 ( LIN-OWN:tok -- ^LIN-OWN:lbox<width<n>> )" LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LR6`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
-   REJECTION:BUFFER$ s" the payload's record holds an atom or a width" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" the payload's record holds an atom or a width" STR:CONTAINS? TTRUE
 s" LINEAR: LR7 ( LIN-OWN:tok -- ^LIN-OWN:lbox<xt> )" LIN-RUN:DECL
    s" error[E-LINEAR-PAYLOAD]" s" `linear: LR7`" s" not one token and a payload it may carry" LIN-RUN:REJECTS-AT
-   REJECTION:BUFFER$ s" the payload's record holds an atom or a width" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" the payload's record holds an atom or a width" STR:CONTAINS? TTRUE
 s" the shapes cast: rejects" T-LABEL
 s" LINEAR: LA1 ( n n -- LIN-OWN:tok )"             LIN-RUN:DECL
    s" error[E-CAST-ARITY]" s" `linear: LA1`" s" input not one term" LIN-RUN:REJECTS-AT
@@ -272,9 +272,9 @@ variable ERR-U
 : ERR$ ( -- ^u8 n ) ERR ERR-U @ ;
 \ The child's record carries the code and the word.
 : SAYS ( ^u8 n ^u8 n -- ) {: c:^ cu:n w:^ wu:n :}
-   ERR$ c cu CONTAINS? TTRUE
-   ERR$ w wu CONTAINS? TTRUE ;
-: HAS ( ^u8 n -- ) {: a:^ u:n :}   ERR$ a u CONTAINS? TTRUE ;
+   ERR$ c cu STR:CONTAINS? TTRUE
+   ERR$ w wu STR:CONTAINS? TTRUE ;
+: HAS ( ^u8 n -- ) {: a:^ u:n :}   ERR$ a u STR:CONTAINS? TTRUE ;
 ;package
 s" the keyword with nothing after it names itself" T-LABEL
 s" linear:" LIN-CHILD:RUN 70 T=
@@ -489,7 +489,7 @@ SLOTS TYPED-BUFFER KEPT-NS n
 : KEPT$ ( n -- str ) {: i:n :} i KEPT-PATH i KEPT-U @ ;
 
 : TAIL-SEEN ( str -- ) {: p:^ pu:n :}
-   p pu TAIL$ ENDS-WITH? 0= if exit then
+   p pu TAIL$ STR:ENDS-WITH? 0= if exit then
    1 FOUND-N +!  p FOUND-BUF pu BYTE-COPY  pu FOUND-U ! ;
 
 \ Holds in slot i the size and change time of the one object under OBJ$ whose path ends with
@@ -522,38 +522,38 @@ SLOTS TYPED-BUFFER KEPT-NS n
    s" and refuses a row in a public section by its code" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
-   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" CONTAINS? TTRUE
-   ERR$ S\" \"message\":\"in `linear: MINT`, the row is outside its owner's private section\"" CONTAINS? TTRUE
-   ERR$ S\" lin-bad.f\",\"line\":4," CONTAINS? TTRUE
+   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\"" STR:CONTAINS? TTRUE
+   ERR$ S\" \"message\":\"in `linear: MINT`, the row is outside its owner's private section\"" STR:CONTAINS? TTRUE
+   ERR$ S\" lin-bad.f\",\"line\":4," STR:CONTAINS? TTRUE
    s" and without --json-errors prints the record as prose" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK-PROSE
    RC @ 70 T=
-   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`, the row is outside its owner's private section" CONTAINS? TTRUE
-   ERR$ s" lin-bad.f:4:" CONTAINS? TTRUE
-   ERR$ S\" \"code\":" CONTAINS? TFALSE
+   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`, the row is outside its owner's private section" STR:CONTAINS? TTRUE
+   ERR$ s" lin-bad.f:4:" STR:CONTAINS? TTRUE
+   ERR$ S\" \"code\":" STR:CONTAINS? TFALSE
    s" and takes a label that starts with -" T-LABEL
    BAD-FIXTURE s" lin-bad.f" s" DASH-LABEL-CHILD" CHECK-IN
    RC @ 70 T=
-   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`" CONTAINS? TTRUE
-   ERR$ s" -lin-bad.f:4:" CONTAINS? TTRUE
+   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: MINT`" STR:CONTAINS? TTRUE
+   ERR$ s" -lin-bad.f:4:" STR:CONTAINS? TTRUE
    s" and refuses a qualified public destination" T-LABEL
    QUAL-FIXTURE s" lin-qual.f" CHECK-PROSE
    RC @ 70 T=
-   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: LIN-FQ:MINT`, a qualified name publishes past the private section" CONTAINS? TTRUE
-   ERR$ s" lin-qual.f:6:" CONTAINS? TTRUE
+   ERR$ s" error[E-LINEAR-SCOPE]: in `linear: LIN-FQ:MINT`, a qualified name publishes past the private section" STR:CONTAINS? TTRUE
+   ERR$ s" lin-qual.f:6:" STR:CONTAINS? TTRUE
    s" and refuses an identity whose stack tails differ" T-LABEL
    TAIL-FIXTURE s" lin-tail.f" CHECK-PROSE
    RC @ 70 T=
-   ERR$ s" error[E-CAST-ARITY]: in `linear: MINT`, the input and output rows end in different tails" CONTAINS? TTRUE
-   ERR$ s" lin-tail.f:6:" CONTAINS? TTRUE
+   ERR$ s" error[E-CAST-ARITY]: in `linear: MINT`, the input and output rows end in different tails" STR:CONTAINS? TTRUE
+   ERR$ s" lin-tail.f:6:" STR:CONTAINS? TTRUE
    s" an hb built with --repl keeps the owner of a type in its grown table" T-LABEL
    SAVE
    RC @ 0 T=
    IMAGE$ FS:EXECUTABLE? TTRUE
    s" so it knows its source, its reopened owner mints and erases, and another package may not" T-LABEL
    REOPEN
-   OUT$ s\" 42\n" CONTAINS? TTRUE
-   ERR$ s" error[E-LINEAR-OWNER]: in `linear: XM`, the linear type belongs to package `LIM`" CONTAINS? TTRUE
+   OUT$ s\" 42\n" STR:CONTAINS? TTRUE
+   ERR$ s" error[E-LINEAR-OWNER]: in `linear: XM`, the linear type belongs to package `LIM`" STR:CONTAINS? TTRUE
    RC @ 70 T=
    s" a build compiles a linear type its own file and another file name" T-LABEL
    LINK-SOURCES
@@ -561,7 +561,7 @@ SLOTS TYPED-BUFFER KEPT-NS n
    RC @ 0 T=
    IMAGE$ FS:EXECUTABLE? TTRUE
    LINK-RUN
-   OUT$ s" 42" CONTAINS? TTRUE
+   OUT$ s" 42" STR:CONTAINS? TTRUE
    RC @ 0 T=
    s" /lb-own.f.hfo" 0 KEEP
    s" /lb-use.f.hfo" 1 KEEP
@@ -572,17 +572,17 @@ SLOTS TYPED-BUFFER KEPT-NS n
    s" and links the file that owns the type" 0 LINKED
    s" and links the file that uses it" 1 LINKED
    LINK-RUN
-   OUT$ s" 42" CONTAINS? TTRUE
+   OUT$ s" 42" STR:CONTAINS? TTRUE
    RC @ 0 T=
    s" and a type declared twice is refused the same by both" T-LABEL
    TWICE-SOURCE
    s" lb-twice.f" s" twice-objs" LINK-BUILD
    RC @  dup 0 T<>
-   ERR$ s" error[E-BAD-DECLARATION]: `DEFLINEAR LB:tok`" CONTAINS? TTRUE
+   ERR$ s" error[E-BAD-DECLARATION]: `DEFLINEAR LB:tok`" STR:CONTAINS? TTRUE
    s" /lb-own.f.hfo" 0 KEEP
    s" lb-twice.f" s" twice-objs" LINK-BUILD
    RC @ T=
-   ERR$ s" error[E-BAD-DECLARATION]: `DEFLINEAR LB:tok`" CONTAINS? TTRUE
+   ERR$ s" error[E-BAD-DECLARATION]: `DEFLINEAR LB:tok`" STR:CONTAINS? TTRUE
    s" and the second build links the file's first load" 0 LINKED
    FS:CLEANUP-RUN ;
 

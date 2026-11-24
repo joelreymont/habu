@@ -116,7 +116,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    k 1+ RAW-A-RESERVE  k 1+ RAW-U-RESERVE
    a k RAW-A !  u k RAW-U !
    k 1+ RAWS !
-   a u s" ;DEFINE" STR= 0= ;
+   a u s" ;DEFINE" STR:= 0= ;
 
 : SOURCE-TOKENS ( -- ) begin parse-name KEEP? 0= until ;
 
@@ -146,16 +146,16 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    k RAW-A @ k RAW-U @ AT ;
 
 : KEYWORD? ( str -- bool ) {: a:^ u:n :}
-   a u s" IN" STR=
-   a u s" FINAL" STR= or
-   a u s" ;DEFINE" STR= or ;
+   a u s" IN" STR:=
+   a u s" FINAL" STR:= or
+   a u s" ;DEFINE" STR:= or ;
 
 \ DEFINE reads the table with parse-name, so `\` and `(` are tokens where a
 \ reader sees a comment; no line holds either, and `(` only opens a row's
 \ inputs right after its SENSE.
 : COMMENT? ( str -- bool ) {: a:^ u:n :}
-   a u s" \" STR=
-   a u s" (" STR= or ;
+   a u s" \" STR:=
+   a u s" (" STR:= or ;
 
 \ A token a row needs: a keyword in its place cuts the row short.
 : OPERAND ( -- str )
@@ -166,11 +166,11 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
 : HEADER ( -- )
    TOKEN NAME-U ! NAME-A !
-   TOKEN s" (" STR= 0= if E-SYNTAX throw then
+   TOKEN s" (" STR:= 0= if E-SYNTAX throw then
    TOKEN {: a:^ u:n :}
    a CTX-A ! 0 CTX-U !
    a u
-   begin 2dup s" )" STR= 0= while
+   begin 2dup s" )" STR:= 0= while
       + CTX-A @ - CTX-U !
       TOKEN
    repeat 2drop
@@ -182,8 +182,8 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
 : ROW-INPUTS ( -- str )
    OPERAND {: i:^ iu:n :}
-   i iu s" )" STR= if E-SYNTAX throw then
-   TOKEN s" )" STR= 0= if E-SYNTAX throw then
+   i iu s" )" STR:= if E-SYNTAX throw then
+   TOKEN s" )" STR:= 0= if E-SYNTAX throw then
    i iu ;
 
 
@@ -193,7 +193,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
    ROW+
    OPERAND TOK+  OPERAND TOK+
    TOKEN {: t:^ tu:n :}
-   t tu s" (" STR= if
+   t tu s" (" STR:= if
       ROW-INPUTS TOK+ TOKEN
    else
       INPUTS$ TOK+ t tu
@@ -208,15 +208,15 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 \ IN and FINAL close it, and any other token but `\` or `(` is a line of the
 \ open row.
 : STEP ( bool str -- bool ) {: open:bool a:^ u:n :}
-   a u s" IN" STR= if IN-ROW true exit then
-   a u s" FINAL" STR= if FINAL-ROW false exit then
+   a u s" IN" STR:= if IN-ROW true exit then
+   a u s" FINAL" STR:= if FINAL-ROW false exit then
    open a u COMMENT? 0= and if a u LINE true exit then
    E-SYNTAX throw ;
 
 : READ-TABLE ( -- )
    HEADER
    false
-   begin TOKEN 2dup s" ;DEFINE" STR= 0= while STEP repeat
+   begin TOKEN 2dup s" ;DEFINE" STR:= 0= while STEP repeat
    2drop drop ;
 
 
@@ -250,12 +250,12 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 \ <word> ( CTX -- ) runs the ACTION, `drop` for `-`.
 : ACT-WORD ( str str -- ) {: w:^ wu:n a:^ au:n :}
    w wu EFFECT:EMPTY CTX-TYPE EFFECT:IN define-word
-   a au s" -" STR= if postpone drop else a au EFFECT:CALL then
+   a au s" -" STR:= if postpone drop else a au EFFECT:CALL then
    postpone ; ;
 
 \ A line's word, unless its ACTION is `-`.
 : LINE-ACT ( n n -- ) {: k:n l:n :}
-   l 1+ TOK$ s" -" STR= if exit then
+   l 1+ TOK$ s" -" STR:= if exit then
    k l LINE-NAME l 1+ TOK$ ACT-WORD ;
 
 : ROW-ACTS ( n -- ) {: r:n :}
@@ -277,7 +277,7 @@ PTR-VARIABLE TEXT-A  variable TEXT-U  variable TEXT-I
 
 : LINE-ARM ( n n -- ) {: k:n l:n :}
    l TOK$ EFFECT:OPERAND  s" of" EFFECT:KEYWORD
-   l 1+ TOK$ s" -" STR= 0= k l NEXT-ITEMS
+   l 1+ TOK$ s" -" STR:= 0= k l NEXT-ITEMS
    s" endof" EFFECT:KEYWORD ;
 
 \ <NAME>/<state> ( CTX -- STATES ) dup SENSE match <inputs> … ;match

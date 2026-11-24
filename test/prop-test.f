@@ -503,7 +503,7 @@ variable ARG-N  variable ARG-I  variable ARG-L
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
 
 : SCRIPT-ARG-U ( n -- n )
-   SCRIPT-ARGV$ STR>NUMBER? MATCH option
+   SCRIPT-ARGV$ STR:>NUMBER? MATCH option
      none OF USAGE ENDOF
      some OF ENDOF
    ;MATCH ;

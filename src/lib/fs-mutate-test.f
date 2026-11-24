@@ -712,7 +712,7 @@ public
    u wantu 1+ > TTRUE
    FMT-ERR-BUF wantu want wantu T$=
    FMT-ERR-BUF u + 1- c@ 10 T=
-   FMT-ERR-BUF wantu + u wantu - 1- STR>NUMBER? MATCH option
+   FMT-ERR-BUF wantu + u wantu - 1- STR:>NUMBER? MATCH option
       none OF false TTRUE ENDOF
       some OF 0 > TTRUE ENDOF
    ;MATCH
@@ -1129,7 +1129,7 @@ public
    FMT-COLLIDE s" slash" FS:MKTEMP-DIR-IN {: temp:^ tempu:n :}
    temp tempu FS:DIR? TTRUE
    FMT-MKDIR-PATH s" slash-" FMT-UNIQUE-BUF FS:JOIN-PATH {: wantu:n :}
-   temp tempu FMT-UNIQUE-BUF wantu STARTS-WITH? TTRUE
+   temp tempu FMT-UNIQUE-BUF wantu STR:STARTS-WITH? TTRUE
    temp tempu FS:REMOVE-DIR ;
 
 : FMT-TEST-MKTEMP ( -- )
@@ -1139,7 +1139,7 @@ public
    FMT-COLLIDE FS:CLEANUP+
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then FMT-REAL
    s" habu-fs-mkf-" FMT-UNIQUE-BUF FS:JOIN-PATH {: wantu:n :}
-   FMT-COLLIDE FMT-UNIQUE-BUF wantu STARTS-WITH? TTRUE
+   FMT-COLLIDE FMT-UNIQUE-BUF wantu STR:STARTS-WITH? TTRUE
    FMT-COLLIDE FS:STAT-MODE FMT-MODE-PERM and FMT-MODE-0600 T=
    file FD>N s" mkstemp" write 7 T=
    file FD>N FMT-READ-BUF 64 read 0 T=
@@ -1256,8 +1256,8 @@ variable WANT-U
      signaled OF s" exit" s" signal" T-ENDING-MISS ENDOF
      timeout OF prog progu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
-   ERR erru LEN>N WANT$ COUNT-SUB 1 T=
-   ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ CONTAINS? TFALSE ;
+   ERR erru LEN>N WANT$ STR:COUNT-SUB 1 T=
+   ERR erru LEN>N code TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TFALSE ;
 
 : REJECTED ( str str n -- )
    {: prog:^ progu a:^ u code:n :}
@@ -1291,7 +1291,7 @@ variable WANT-U
    FMT-PARENT-LINK CHILD-ENV
    CANON-PROG$ CAPTURE {: outu:len erru:len oc :}
    CANON-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
-   OUT outu LEN>N NL 0 SPLIT-NEXT 2drop {: td:^ tdu:n :}
+   OUT outu LEN>N NL 0 STR:SPLIT-NEXT 2drop {: td:^ tdu:n :}
    td tdu td tdu FMT-REAL T$=
    td tdu FS:REMOVE-DIR
    FMT-PARENT-LINK FS:REMOVE-FILE
@@ -1734,7 +1734,7 @@ create P-CBD PATH-CAP allot  variable P-CBD-U
    path u A-TMP SPAN:COPY  u A-TMP-U !
    round A-READY atomic!
    B-DONE round WORKER-B TEST-WAIT:FOR-CELL
-   path u A-TMP$ STR= 0= if 1 T1-BAD atomic-add drop then
+   path u A-TMP$ STR:= 0= if 1 T1-BAD atomic-add drop then
    A-TMP$ FS:REMOVE-DIR ;
 
 : T1-B-ROUND ( n -- ) {: round :}
@@ -1860,7 +1860,7 @@ variable T6-BAD
 \ callback gets starts at the walked root, and both files are still found.
 : UNDER? ( str str -- bool ) {: a:^ u ra:^ ru :}
    u ru <= if false exit then
-   a ru ra ru STR= ;
+   a ru ra ru STR:= ;
 
 : T6-CB ( str -- ) {: a:^ u :}
    a u W5$ UNDER? 0= if 1 T6-BAD +! then
@@ -1903,7 +1903,7 @@ variable T7-READY
 : T7-CHECK ( str ^u8 ^u8 ^n -- )
    {: dst:^ dstu src:^ got:^ bad:^ :}
    dst dstu got T7-LEN FS:READ-ALL {: u :}
-   got u src T7-LEN STR= 0= if 1 bad atomic-add drop then ;
+   got u src T7-LEN STR:= 0= if 1 bad atomic-add drop then ;
 
 : T7-A-ROUND ( -- )
    CAS$ CAD$ FS:COPY-FILE-STREAM

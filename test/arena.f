@@ -266,25 +266,25 @@ private
    s" test/arena-taken.f" E2E-TREE:AT-A VERIFY-TAKEN-SRC$ FS:WRITE-ALL
    s" test/arena-qual.f" E2E-TREE:AT-A VERIFY-QUAL-SRC$ FS:WRITE-ALL
    s" test/arena-uses.f" VERIFY-FILE
-   E2E-TREE:OUT$ s" deferred to the run" CONTAINS? 0= TTRUE
+   E2E-TREE:OUT$ s" deferred to the run" STR:CONTAINS? 0= TTRUE
    E2E-TREE:ERR$ nip 0 T=
    E2E-TREE:RC@ 0 T=
    s" and refuses each called with the wrong effect" T-LABEL
    s" test/arena-wrong.f" VERIFY-FILE
-   E2E-TREE:ERR$ S\" \"code\":\"" COUNT-SUB 2 T=
-   E2E-TREE:ERR$ S\" \"code\":\"E-MISMATCH\"" COUNT-SUB 2 T=
-   E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW\"," COUNT-SUB 1 T=
-   E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW-DISPOSE\"," COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"code\":\"" STR:COUNT-SUB 2 T=
+   E2E-TREE:ERR$ S\" \"code\":\"E-MISMATCH\"" STR:COUNT-SUB 2 T=
+   E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW\"," STR:COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"token\":\"Q:X-NEW-DISPOSE\"," STR:COUNT-SUB 1 T=
    E2E-TREE:RC@ 0 <> TTRUE
    s" and rejects a qualified one whose word is taken in that package's private section" T-LABEL
    s" test/arena-taken.f" VERIFY-FILE
-   E2E-TREE:ERR$ S\" \"code\":\"" COUNT-SUB 1 T=
-   E2E-TREE:ERR$ S\" \"code\":\"E-DUPLICATE-DEFINITION\"" COUNT-SUB 1 T=
-   E2E-TREE:ERR$ S\" \"token\":\"Q:X\"," COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"code\":\"" STR:COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"code\":\"E-DUPLICATE-DEFINITION\"" STR:COUNT-SUB 1 T=
+   E2E-TREE:ERR$ S\" \"token\":\"Q:X\"," STR:COUNT-SUB 1 T=
    E2E-TREE:RC@ 0 <> TTRUE
    s" and admits a qualified one whose words are free, called as declared" T-LABEL
    s" test/arena-qual.f" VERIFY-FILE
-   E2E-TREE:OUT$ s" deferred to the run" CONTAINS? 0= TTRUE
+   E2E-TREE:OUT$ s" deferred to the run" STR:CONTAINS? 0= TTRUE
    E2E-TREE:ERR$ nip 0 T=
    E2E-TREE:RC@ 0 T= ;
 

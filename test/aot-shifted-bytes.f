@@ -259,7 +259,7 @@ variable WANT-U
    val NULL-PTR <> if s" HABU_TEST_SIDE" val valu PROC-ENV-SET then
    ENVTOP$ ENVTOP-IMAGE$ BUILD-ARGV BUILD-RUN
    s" build of a file whose top level reads HABU_TEST_SIDE" GE-EXPECT-OK
-   GT-OUT$ s" envtop top level" CONTAINS? {: seen:bool :}
+   GT-OUT$ s" envtop top level" STR:CONTAINS? {: seen:bool :}
    fresh if seen 0= else seen then if
       s" the build compiles the top level exactly when HABU_TEST_SIDE changed" GE-FAIL
    then
@@ -277,7 +277,7 @@ variable WANT-U
    NULL-PTR 0 true S\" 0\n" ENVTOP-BUILD ;
 
 : EXPECT-OUT-LACKS ( str str -- ) {: want:^ wantu:n label:^ labelu:n :}
-   GT-OUT$ want wantu CONTAINS? if label labelu GE-FAIL then ;
+   GT-OUT$ want wantu STR:CONTAINS? if label labelu GE-FAIL then ;
 
 : ROOTED-WRITE ( -- )
    ROOTED-DIR$ FS:MAKE-DIRS
@@ -484,7 +484,7 @@ variable G-IMAGE-U
    C-MAIN$ GAP-MAIN$ FS:WRITE-ALL
    GAP-LIB$ C-OUT$ C-IMAGE$ GAP-BUILD
    GAP-LEAN$ G-OUT$ G-IMAGE$ GAP-BUILD
-   C-IMAGE$ PROGRAM-BYTES G-IMAGE$ PROGRAM-BYTES STR= 0= if
+   C-IMAGE$ PROGRAM-BYTES G-IMAGE$ PROGRAM-BYTES STR:= 0= if
       s" dead variables around the data MAIN reads leave the program's bytes as they are" LABEL GE-FAIL
    then ;
 

@@ -135,7 +135,7 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    DEST$ CMD:ARG+
    SCP$ PUT-RUN ;
 
-\ ---- newline/whitespace trim (mktemp output) ---------------------------------
+\ ---- newline/whitespace str:trim (mktemp output) ---------------------------------
 
 : WS-BYTE? ( n -- bool ) {: c:n :}   \ trailing whitespace: LF $0A, CR $0D, space $20
    c $0A = c $0D = or c $20 = or ;
@@ -160,7 +160,7 @@ public
 
 : ENV-AVAILABLE? ( str -- bool ) {: a:^ u:n :}
    u 0= if NO exit then
-   a u s" 0" STR= if NO exit then
+   a u s" 0" STR:= if NO exit then
    YES ;
 
 : AVAILABLE? ( -- bool )

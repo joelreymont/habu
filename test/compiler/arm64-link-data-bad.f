@@ -54,9 +54,9 @@ public
 : RUN ( -- )
    1 SCRIPT-ARGV$ LINKER:KERNEL
    0 SCRIPT-ARGV$ {: at:^ u:n :}
-   at u s" data" STR= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
-   at u s" header" STR= if s" app" RTARGET:HOST-TARGET [: HEADER-BODY ;] LINKER:WITH exit then
-   at u s" eval" STR= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
+   at u s" data" STR:= if s" app" RTARGET:HOST-TARGET [: DATA-BODY ;] LINKER:WITH exit then
+   at u s" header" STR:= if s" app" RTARGET:HOST-TARGET [: HEADER-BODY ;] LINKER:WITH exit then
+   at u s" eval" STR:= if s" app" RTARGET:HOST-TARGET [: EVAL-BODY ;] LINKER:WITH exit then
    s" arm64-link-data-bad: the case is data, header or eval" EXIT-STATUS:FAILURE die ;
 
 ;package

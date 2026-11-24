@@ -71,20 +71,20 @@ variable SKIP-AT
 \ A value: sixteen lowercase digits, the most significant first.
 : VALUE-LINE ( n -- ) {: v:n :}
    DIGITS 0 ?do  v DIGITS 1- i - 4 * rshift 15 and HEX-CHAR WANT-BYTE  loop
-   STR-LF WANT-BYTE ;
+   STR:LF WANT-BYTE ;
 
 \ A code cell: its eight bytes in address order, two digits each.
 : MEMORY-LINE ( n -- ) {: v:n :}
    CELL 0 ?do
       v i 8 * rshift  dup 4 rshift 15 and HEX-CHAR WANT-BYTE  15 and HEX-CHAR WANT-BYTE
    loop
-   STR-LF WANT-BYTE ;
+   STR:LF WANT-BYTE ;
 
 \ rsp's line, whose digits no check reads.
 : RSP-LINE ( -- )
    WANT-N @ SKIP-AT !
    DIGITS 0 ?do  [char] ? WANT-BYTE  loop
-   STR-LF WANT-BYTE ;
+   STR:LF WANT-BYTE ;
 
 : HEAD$ ( -- str )
    S\" habu-crash regs [sig rax rcx rdx rbx rsp rbp rsi rdi r8..r15 rip] code [rip-8 rip rip+8], hex one-per-line:\n" ;

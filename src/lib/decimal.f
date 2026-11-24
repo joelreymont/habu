@@ -74,7 +74,7 @@ private
 \ Exponent magnitude is capped beyond any useful decimal shift. A nonzero
 \ mantissa spans at most u digits, so values beyond u+19 cannot fit i64.
 : EXP-CAP ( n -- n )
-   STR-MAX-I64 20 - min 20 + ;
+   STR:MAX-I64 20 - min 20 + ;
 
 : EXP-MAGNITUDE ( ^u8 n n n -- n )
    {: a:^ start:n end:n cap:n :}

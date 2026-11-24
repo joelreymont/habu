@@ -167,7 +167,7 @@ private
    false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 
 : HAS? ( ^u8 n -- )
-   REJECTION:BUFFER$ 2swap CONTAINS? TTRUE ;
+   REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
 
 \ The refusal is a mismatch at the call token the string names.
 : MISMATCH-AT ( str -- )

@@ -1146,7 +1146,7 @@ CALLBACK: PIECE-WRITE ( ^u8 n n n -- n ) 0 FALLBACK ;CALLBACK
 
 : HEADER-STATUS? ( ^u8 n n -- bool ) {: source at:n u:n :}
    at 5 + u > if false exit then
-   source at + 5 s" HTTP/" STR= ;
+   source at + 5 s" HTTP/" STR:= ;
 
 
 : HEADER-LF ( ^u8 n n -- n ) {: source at:n u:n :}

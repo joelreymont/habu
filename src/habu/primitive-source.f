@@ -78,7 +78,7 @@ variable VALID
    token LINT-LEX:TOKEN {: a:^ u:n :}
    a u after FIELD {: name:n name-end:n :}
    name-end name <= if false exit then
-   a name + name-end name - row PRIM-SPEC:NAME$ STR= 0= if false exit then
+   a name + name-end name - row PRIM-SPEC:NAME$ STR:= 0= if false exit then
    token LINT-LEX:BYTE@ name + row STARTS !
    token LINT-LEX:BYTE@ name-end + row ENDS !
    true ;
@@ -91,13 +91,13 @@ variable VALID
    a opener + after opener - {: op:^ opu:n :}
    row PRIM-SPEC:KIND@ {: kind:n :}
    kind PRIM-SPEC:K-PRIM = if
-      op opu s" EPRIM:" STR=CI 0= if false exit then
+      op opu s" EPRIM:" STR:=CI 0= if false exit then
       token row after MATCH-NAME exit
    then
    kind PRIM-SPEC:K-PKG-PRIVATE <> if false exit then
-   op opu s" EPPRIM:" STR=CI 0= if false exit then
+   op opu s" EPPRIM:" STR:=CI 0= if false exit then
    a u after FIELD {: pkg:n pkg-end:n :}
-   a pkg + pkg-end pkg - row PRIM-SPEC:PKG$ STR= 0= if false exit then
+   a pkg + pkg-end pkg - row PRIM-SPEC:PKG$ STR:= 0= if false exit then
    token row pkg-end MATCH-NAME ;
 
 : MATCH-ELAB ( n n -- bool )
@@ -105,7 +105,7 @@ variable VALID
    row PRIM-SPEC:KIND@ PRIM-SPEC:K-ELAB <> if false exit then
    token 1+ LINT-LEX:COUNT >= if false exit then
    token 1+ LINT-LEX:KIND@ LINT-LEX:WORD <> if false exit then
-   token 1+ LINT-LEX:TOKEN row PRIM-SPEC:NAME$ STR= 0= if false exit then
+   token 1+ LINT-LEX:TOKEN row PRIM-SPEC:NAME$ STR:= 0= if false exit then
    token 1+ LINT-LEX:BYTE@ {: start:n :}
    token 1+ LINT-LEX:TOKEN nip start + {: end:n :}
    start row STARTS !
@@ -127,7 +127,7 @@ variable VALID
          row 1+ ROW !
       else
          ROW @ 0 > if
-            i LINT-LEX:TOKEN s" ELAB:" STR=CI if
+            i LINT-LEX:TOKEN s" ELAB:" STR:=CI if
                ROW @ SPEC-NEXT {: row:n :}
                row PRIM-SPEC:COUNT >= if false unloop exit then
                i row MATCH-ELAB 0= if false unloop exit then
@@ -152,8 +152,8 @@ variable VALID
       i PRIM-SPEC:KIND@ {: kind:n :}
       kind PRIM-SPEC:K-PRIM = kind PRIM-SPEC:K-PKG-PRIVATE = or
       kind PRIM-SPEC:K-ELAB = or if
-         i PRIM-SPEC:PKG$ pkg pkgu STR=CI
-         i PRIM-SPEC:NAME$ name nameu STR=CI and if i unloop exit then
+         i PRIM-SPEC:PKG$ pkg pkgu STR:=CI
+         i PRIM-SPEC:NAME$ name nameu STR:=CI and if i unloop exit then
       then
    loop
    row ;

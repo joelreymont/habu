@@ -21,7 +21,7 @@ TYPED-VARIABLE JSON-ST JSON:cursor
 \ The line of the text at offset O, without its LF, and the offset after it.
 : LINE ( str n -- str n )
    {: a:^ u:n o:n :}
-   a o + u o - LF INDEX-OF MATCH option
+   a o + u o - LF STR:INDEX-OF MATCH option
       none OF a o + u o - u ENDOF
       some OF IDX>N dup >r a o + swap o r> + 1+ ENDOF
    ;MATCH ;
@@ -37,7 +37,7 @@ public
 : HAS-LINE? ( str str -- bool )
    {: a:^ u:n k:^ ku:n :}
    0 begin dup u < while
-      a u rot LINE >r k ku STR= if r> drop true exit then r>
+      a u rot LINE >r k ku STR:= if r> drop true exit then r>
    repeat drop false ;
 
 \ The raw text of a top-level member of the line and its JSON token kind, or -1
@@ -56,7 +56,7 @@ public
 \ A member that is an integer a cell holds; any other is as good as absent.
 : INT-MEMBER ( str str -- n bool )
    MEMBER JSON:T-INT <> if 2drop 0 false exit then
-   STR>NUMBER? MATCH option
+   STR:>NUMBER? MATCH option
       none OF 0 false ENDOF
       some OF true ENDOF
    ;MATCH ;

@@ -821,14 +821,14 @@ create EC-NONE 1 allot
 : EC-RECORD ( str str str -- ) {: h:^ hu:n p:^ pu:n l:^ lu:n :}
    SB-RESET  h hu SB-APPEND  s\" \n --> " SB-APPEND  EC-FILE SB-APPEND
    p pu EC-LINE
-   EC-ERR$ SB$ CONTAINS? TTRUE
+   EC-ERR$ SB$ STR:CONTAINS? TTRUE
    SB-RESET  s" ^ " SB-APPEND  l lu EC-LINE
-   EC-ERR$ SB$ CONTAINS? TTRUE ;
+   EC-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 s" habu-enum-decl" FS:MKTEMP-DIR 2dup FS:CLEANUP-TREE+
 s" enum-decl-check.f" EC-PATH FS:JOIN-PATH EC-PATH-U !
 EC-RUN
-EC-ERR$ s" error[" COUNT-SUB 4 T=
+EC-ERR$ s" error[" STR:COUNT-SUB 4 T=
 s" error[E-MISMATCH]: R1BAD ends with rpcompact on the stack; its signature promises n"
    s" :3:18" s" the stack holds rpcompact after this" EC-RECORD
 s" error[E-BAD-DECLARATION]: bad enum declaration `rpbadv`"
@@ -1083,20 +1083,20 @@ s" n" s" type argument must be a region parameter" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: pass a parameter the header lists, as in `ENUM box<p,q,s>` with `FIELD v mut-view<p,q,s,u8>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM edkind<a,q> VARIANT vone FIELD x a ;VARIANT VARIANT wtwo FIELD y read-view<a,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edkind`\n" DECL-DIAG:HAS? TTRUE
 s" a" s" `a` is a scope here, but field `x` uses it as a value type" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: give each kind its own header parameter, as in `ENUM box<a,p,q>` with `FIELD x a` and `FIELD v read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `ednode`\n" DECL-DIAG:HAS? TTRUE
 s" ednode" s" a pointer cannot reach `ednode`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 DECL-DIAG:TEXT$ s\" = evaluated: ENUM ednode<q> VARIANT one FIELD next ^ednode<n> FIELD w read-view<q,q,n> ;VARIANT ;ENUM\n                                                    ^^^^^^" REJECTION-TEXT:HAS? TTRUE
 s\"   = help: keep the view out of the family a pointer reaches, as in `ENUM node<a>` with `FIELD next ^node<a>`, and `ENUM walk<a,p,q>` with `FIELD at ^node<a>` and `FIELD w read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM edopt<p,q> VARIANT one FIELD x ^option<read-view<p,q,n>> ;VARIANT ;ENUM" TEST-EVAL:RC 70 T=
-DECL-DIAG:TEXT$ s" error[" COUNT-SUB 1 T=
+DECL-DIAG:TEXT$ s" error[" STR:COUNT-SUB 1 T=
 s\" error[E-BAD-DECLARATION]: bad enum declaration `edopt`\n" DECL-DIAG:HAS? TTRUE
 s" read-view" s" a pointer cannot reach `read-view`, which takes a scope or region" DECL-DIAG:CAUSE? TTRUE
 s\"   = help: hold the view in the field itself, as in `ENUM box<p,q>` with `FIELD x read-view<p,q,n>`\n" DECL-DIAG:HAS? TTRUE

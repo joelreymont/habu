@@ -33,15 +33,15 @@ create ERR CAP allot
 : REPORTED? ( str n str str -- bool )
    {: expected:n why:^ whyu:n said:^ saidu:n :}
    expected EXITED? {: outu:len erru:len exited:bool :}
-   exited ERR erru LEN>N why whyu CONTAINS? and
-   OUT outu LEN>N said saidu CONTAINS? and ;
+   exited ERR erru LEN>N why whyu STR:CONTAINS? and
+   OUT outu LEN>N said saidu STR:CONTAINS? and ;
 
 \ Exited with the expected status, FIELDS and HELP in its JSON rejection.
 : JSON-REPORTED? ( str n str str -- bool )
    {: expected:n fields:^ fieldsu:n help:^ helpu:n :}
    expected EXITED? {: outu:len erru:len exited:bool :}
-   exited ERR erru LEN>N fields fieldsu CONTAINS? and
-   ERR erru LEN>N help helpu CONTAINS? and ;
+   exited ERR erru LEN>N fields fieldsu STR:CONTAINS? and
+   ERR erru LEN>N help helpu STR:CONTAINS? and ;
 
 : STORED ( -- )
    s" an ordinary quotation may be stored in a typed global" T-LABEL

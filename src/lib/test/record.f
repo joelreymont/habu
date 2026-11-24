@@ -26,7 +26,7 @@ variable TREC-U
 \ Tab/CR/LF in a payload would break the one-line TSV record contract, so they
 \ degrade to spaces.
 : TREC-PAYLOAD-C ( n -- n )
-   dup STR-TAB = over STR-LF = or over STR-CR = or if drop STR-SPACE then ;
+   dup STR:TAB = over STR:LF = or over STR:CR = or if drop STR:SPACE then ;
 
 : TREC-$+ ( str -- ) {: a:^ u:n :}
    0 begin dup u < while
@@ -36,10 +36,10 @@ variable TREC-U
 
 : TREC-DIGITS+ ( n -- )
    dup 10 >= if dup 10 / RECURSE then
-   10 mod STR-ZERO + TREC-C+ ;
+   10 mod STR:ZERO + TREC-C+ ;
 
 : TREC-N+ ( n -- )
-   dup 0 < if STR-MINUS TREC-C+ negate then
+   dup 0 < if STR:MINUS TREC-C+ negate then
    TREC-DIGITS+ ;
 
 : TREC$ ( -- str )
@@ -50,11 +50,11 @@ variable TREC-U
    {: la:^ lu:n id:n ba:^ bu:n :}
    TREC-RESET
    s" TFAIL" TREC-$+
-   STR-TAB TREC-C+
+   STR:TAB TREC-C+
    la lu TREC-$+
-   STR-TAB TREC-C+
+   STR:TAB TREC-C+
    id TREC-N+
-   STR-TAB TREC-C+
+   STR:TAB TREC-C+
    ba bu TREC-$+
    TREC$ ;
 

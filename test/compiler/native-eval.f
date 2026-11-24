@@ -234,7 +234,7 @@ create ERR IO-CAP allot
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
    ERR erru S\" error[E-STACK-BOUNDS]: the data stack ran past its bounds\n"
-   STARTS-WITH? TTRUE ;
+   STR:STARTS-WITH? TTRUE ;
 
 \ RESIDUE's text with no catch around it.
 : RESIDUE-RECORD ( -- )
@@ -243,8 +243,8 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and its record counts the cells it left" T-LABEL
-   ERR erru s" error[E-EVAL-RESIDUE]" CONTAINS? TTRUE
-   ERR erru s" = cells: 2" CONTAINS? TTRUE ;
+   ERR erru s" error[E-EVAL-RESIDUE]" STR:CONTAINS? TTRUE
+   ERR erru s" = cells: 2" STR:CONTAINS? TTRUE ;
 
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
@@ -257,9 +257,9 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 67 T=
    nip LEN>N {: erru:n :}
    s" and the uncaught throw is E-UNDERFLOW's -9851" T-LABEL
-   ERR erru E-UNDERFLOW TEST-EVAL:THROWN-HEAD$ CONTAINS? TTRUE
+   ERR erru E-UNDERFLOW TEST-EVAL:THROWN-HEAD$ STR:CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
-   ERR erru s" E-STACK-BOUNDS" CONTAINS? TFALSE ;
+   ERR erru s" E-STACK-BOUNDS" STR:CONTAINS? TFALSE ;
 
 \ UNFINISHED's text with no catch around it. The child inherits this
 \ process's dictionary, which UNFINISHED left holding NATIVE-EVAL-D.
@@ -272,10 +272,10 @@ create ERR IO-CAP allot
    PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
-   ERR erru s" error[E-VS-UNTERMINATED-DEFINITION]: " CONTAINS? TTRUE
-   ERR erru s" the definition of `NATIVE-EVAL-F`" CONTAINS? TTRUE
-   ERR erru s" = evaluated: : NATIVE-EVAL-F ( -- n ) 42" CONTAINS? TTRUE
-   ERR erru s" never closed" CONTAINS? TTRUE ;
+   ERR erru s" error[E-VS-UNTERMINATED-DEFINITION]: " STR:CONTAINS? TTRUE
+   ERR erru s" the definition of `NATIVE-EVAL-F`" STR:CONTAINS? TTRUE
+   ERR erru s" = evaluated: : NATIVE-EVAL-F ( -- n ) 42" STR:CONTAINS? TTRUE
+   ERR erru s" never closed" STR:CONTAINS? TTRUE ;
 
 \ ---- a definition a thrown text takes back keeps no row ----------------------
 \ A text that throws takes back what it defined, and its frame cuts the
@@ -297,7 +297,7 @@ variable ERR-U
 : OUT$ ( -- ^u8 n ) OUT OUT-U @ ;
 
 : SAYS ( ^u8 n -- ) {: a:^ u:n :}
-   ERR ERR-U @ a u CONTAINS? TTRUE ;
+   ERR ERR-U @ a u STR:CONTAINS? TTRUE ;
 
 \ A text that defines X-FORGET and then throws takes X-FORGET back, row and
 \ all, so the next X-FORGET is no duplicate.

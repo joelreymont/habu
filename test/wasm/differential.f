@@ -125,7 +125,7 @@ variable THROWN-U
    {: want:^ wu:n rc:n code:n :}
    want wu rc NATIVE-RUN {: e:n :}
    rc 0= if  LABEL  ERR e s" " T$=  then
-   rc 67 = if  LABEL  ERR e code THROWN-LINE$ STARTS-WITH? TTRUE  then ;
+   rc 67 = if  LABEL  ERR e code THROWN-LINE$ STR:STARTS-WITH? TTRUE  then ;
 
 \ The program as a module, valid and run: it prints want and answers status, a
 \ throw's code whole; a run that returns writes nothing to ERR.
@@ -237,7 +237,7 @@ public
 false [if] \ off until dot habu-add-the-checks-a49d054d
 \ Stderr is the native engine's record of a caught memory fault.
 : FAULT-RECORD? ( str -- bool )
-   S\" error[E-MEMORY-FAULT]: a read or write faulted\n" STARTS-WITH? ;
+   S\" error[E-MEMORY-FAULT]: a read or write faulted\n" STR:STARTS-WITH? ;
 
 \ FAULT-ROW's program catches a memory fault and ends with status 0; natively
 \ the engine reports the fault on stderr, the module reports nothing.
@@ -323,7 +323,7 @@ s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-46176391
 \ JSON fields, UTF-8 bytes and the signed minimum's text through the library's
 \ writer.
 s" WJSON:STEP"
-S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
+S\" require src/lib/heap.f\nrequire src/lib/vector.f\nrequire src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\npublic\n: STEP ( -- )\n   HEAP:ALLOCATOR 0 [type] u8 VEC:NEW {: v:^ :}\n   W v JSON:OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR:MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr\n   W JSON:CLOSE  v VEC:DELETE ;\n;package\n"
 S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 
 \ MAP's keyed words, held to one order on native and wasm: INIT-KEYED under a

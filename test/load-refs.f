@@ -24,8 +24,8 @@ private
 TYPED-VARIABLE VISIT [ ^u8 n n n -- ]
 
 : IMPORT? ( str -- bool ) {: a:^ u:n :}
-   a u s" require" STR=CI
-   a u s" include" STR=CI or ;
+   a u s" require" STR:=CI
+   a u s" include" STR:=CI or ;
 
 \ Token idx is an `s"` or `s\"` literal, which leaves its string.
 : STRING? ( n -- bool )
@@ -34,13 +34,13 @@ TYPED-VARIABLE VISIT [ ^u8 n n n -- ]
    idx LINT-LEX:TOKEN drop c@ dup 115 = swap 83 = or ;
 
 : STRING-IMPORT? ( str -- bool ) {: a:^ u:n :}
-   a u s" required" STR=CI
-   a u s" included" STR=CI or ;
+   a u s" required" STR:=CI
+   a u s" included" STR:=CI or ;
 
 : IMPORT-KIND ( str -- n )
    {: a:^ u:n :}
-   a u s" require" STR=CI
-   a u s" required" STR=CI or if REQUIRES else INCLUDES then ;
+   a u s" require" STR:=CI
+   a u s" required" STR:=CI or if REQUIRES else INCLUDES then ;
 
 \ ---- references ---------------------------------------------------------------
 
@@ -71,25 +71,25 @@ DYNAMIC-BUFFER DEC u8
 \ These consumers take the path span directly. A later consumer is not proof
 \ that an earlier string survived the words between them.
 : DIRECT-LOAD? ( str -- bool ) {: a:^ u:n :}
-   a u s" GE-SRC-FILE+" STR=CI
-   a u s" GE-ARG+" STR=CI or
-   a u s" ARG" STR=CI or
-   a u s" ARG+" STR=CI or
-   a u s" ARGS" STR=CI or
-   a u s" CHILD-RUN" STR=CI or ;
+   a u s" GE-SRC-FILE+" STR:=CI
+   a u s" GE-ARG+" STR:=CI or
+   a u s" ARG" STR:=CI or
+   a u s" ARG+" STR:=CI or
+   a u s" ARGS" STR:=CI or
+   a u s" CHILD-RUN" STR:=CI or ;
 
 : DIAGNOSTIC-LOAD? ( str -- bool ) {: a:^ u:n :}
-   a u s" DIAGNOSTIC" STR=CI
-   a u s" DIAGNOSTIC-WB" STR=CI or ;
+   a u s" DIAGNOSTIC" STR:=CI
+   a u s" DIAGNOSTIC-WB" STR:=CI or ;
 
 : LITERAL-LOAD? ( n -- bool ) {: idx:n :}
    idx NEXT-CODE {: next:n :}
    next LINT-LEX:COUNT >= if false exit then
    next LINT-LEX:TOKEN DIRECT-LOAD? if true exit then
-   next LINT-LEX:TOKEN s" >LEN" STR=CI if
+   next LINT-LEX:TOKEN s" >LEN" STR:=CI if
       next NEXT-CODE {: consumer:n :}
       consumer LINT-LEX:COUNT >= if false exit then
-      consumer LINT-LEX:TOKEN s" PROC-ARGV+" STR=CI exit
+      consumer LINT-LEX:TOKEN s" PROC-ARGV+" STR:=CI exit
    then
    next STRING? if
       next NEXT-CODE {: consumer:n :}

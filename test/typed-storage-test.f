@@ -185,8 +185,8 @@ PTR-VARIABLE TS-DP
    \ redefining an existing name rejects and rolls the allocation back
    here TS-DP 0 ptr-field !
    REJECTION:CAPTURE  TS-DUP-RC 70 T=
-   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s" `TSV`" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[E-DUPLICATE-DEFINITION]" STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" `TSV`" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF
    here TS-DP 0 ptr-field @ = TTRUE
    \ a rejected admissibility decl also defines nothing and rolls back
@@ -218,8 +218,8 @@ PTR-VARIABLE TS-DP
 
 : TS-SECTION-VERIFY-MIXED ( -- )
    REJECTION:CAPTURE  [: TS-VERIFY-WIDE ;] catch 70 T=
-   REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" CONTAINS? TTRUE
-   REJECTION:BUFFER$ s" in cell 1 of an element" CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" error[E-BAD-STORAGE]" STR:CONTAINS? TTRUE
+   REJECTION:BUFFER$ s" in cell 1 of an element" STR:CONTAINS? TTRUE
    REJECTION:BUFFER-OFF ;
 
 \ 9. Distinct capability pin #2: a raw variable/create/constant still cannot

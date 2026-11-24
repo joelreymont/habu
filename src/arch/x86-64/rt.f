@@ -87,7 +87,7 @@ private
 : PRINT-OPEN, ( -- )
    RSP PRINT-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    RSI RSP PRINT-BYTES MEM-OFF ASM-SINK ENC-LEA
-   RCX STR-LF MOV32,  RCX PUT-BYTE, ;
+   RCX STR:LF MOV32,  RCX PUT-BYTE, ;
 
 \ Write the frame from rsi to its top and close it.
 : PRINT-CLOSE, ( -- )

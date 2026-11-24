@@ -242,7 +242,7 @@ ARENA CURSORS JSON:cursor
 \ expected text for another token.
 : LIMIT ( JSON:reader str -- JSON:reader n ) {: e:^ eu:n :}
    JSON:READ-TOKEN JSON:T-INT = if
-      JSON:READ-SPAN$ STR>NUMBER? MATCH option
+      JSON:READ-SPAN$ STR:>NUMBER? MATCH option
          none OF -1 ENDOF
          some OF ENDOF
       ;MATCH
@@ -269,7 +269,7 @@ $73 constant SCALARS
 \ string is that name; and the next name's start.
 : TYPE-STEP ( JSON:reader n n n -- JSON:reader n n )
    {: found:n start:n idx:n :}
-   TYPE-NAMES$ STR-SPACE start SPLIT-NEXT drop {: na:^ nu:n next:n :}
+   TYPE-NAMES$ STR:SPACE start STR:SPLIT-NEXT drop {: na:^ nu:n next:n :}
    na nu JSON:READ-STR-EQ? if 1 idx lshift else found then  next ;
 
 \ The bit of the type the current string names, 0 for none.
@@ -314,7 +314,7 @@ $73 constant SCALARS
 \ Whether an array's text holds only white space between its brackets.
 : EMPTY? ( str -- bool ) {: a:^ u:n :}
    u 1- 1 ?do
-      a i + c@ STR-SPACE > if unloop false exit then
+      a i + c@ STR:SPACE > if unloop false exit then
    loop true ;
 
 : ENUM-EXPECTED$ ( -- str )
@@ -853,7 +853,7 @@ $40 constant INTEGER-BIT
    endcase ;
 
 : NAME-AT ( n -- str n ) {: start:n :}
-   TYPE-NAMES$ STR-SPACE start SPLIT-NEXT drop ;
+   TYPE-NAMES$ STR:SPACE start STR:SPLIT-NEXT drop ;
 
 : TYPE-NAME ( n -- str ) {: idx:n :}
    0 idx 0 ?do NAME-AT nip nip loop  NAME-AT drop ;
@@ -1168,8 +1168,8 @@ ARENA TABLES table
    > if 1 else 0 then ;
 
 : BYTE-ORDER ( str str -- n ) {: a:^ u:n b:^ w:n :}
-   a u b w STR< if -1 exit then
-   b w a u STR< if 1 else 0 then ;
+   a u b w STR:< if -1 exit then
+   b w a u STR:< if 1 else 0 then ;
 
 \ -1, 0 or 1 as element i's value is below, equal to or above element j's.
 \ NUMBER-COMPARE answers some: ORDERABLE? has rejected what it cannot order.

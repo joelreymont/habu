@@ -82,7 +82,7 @@ public
 : INTERN-FIND ( str -- n ) {: a:^ u :}
    INTERN-INIT-ONCE
    0 begin dup INTERN# < while
-      dup INTERN$ a u STR= IF exit THEN
+      dup INTERN$ a u STR:= IF exit THEN
       1+
    repeat drop -1 ;
 

@@ -191,7 +191,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    k GJA-LINE$ GJA-PARSE key keyu GJA-FIELD? 0= IF drop key keyu FIELD-MISSING EXIT THEN
    {: v:SPAN:span<u8> :}
    v GJA-KIND JSON:T-STR <> IF key keyu s" a string" FIELD-NOT EXIT THEN
-   v GJA-STRING$ want wantu CONTAINS? TTRUE ;
+   v GJA-STRING$ want wantu STR:CONTAINS? TTRUE ;
 
 : NOTE= ( n str str -- )
    {: k:n key:^ keyu:n want:^ wantu:n :}
@@ -536,7 +536,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" message" s" `WIDE`" FIELD-HAS
    0 s" WIDE" 3 5 71 75 path pathu FX$ AT-IN
    1 begin dup GJA-LINE# @ < while
-      dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
+      dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" STR:CONTAINS? TFALSE
       1 +
    repeat drop ;
 
@@ -1721,7 +1721,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    STORE!
    RC @ want T=
    textu 0= IF GT-ERR-U @ 0 T= EXIT THEN
-   GT-ERR$ text textu CONTAINS? TTRUE ;
+   GT-ERR$ text textu STR:CONTAINS? TTRUE ;
 
 : LAUNCHED ( str n -- )
    {: text:^ textu:n want:n :}
@@ -1740,7 +1740,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB-RESET s" error[" SB-APPEND c cu SB-APPEND s" ]" SB-APPEND
    SB$ rc LOADED
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND at atu SB-APPEND
-   GT-ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ The fixture path names NAME under the test's root, without making it.
 : NAMED! ( str -- ) {: name:^ nameu:n :}
@@ -1960,7 +1960,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    SB$ 70 RAN
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :" SB-APPEND
    l FMT:SB-U  s" :" SB-APPEND  col FMT:SB-U  LF+
-   GT-ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ The run, the check and --verify-only place the record for CODE at the
 \ fixture's bytes BS to BE on line 1.
@@ -2041,7 +2041,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" Q" SB-APPEND LF+  s" included" SB-APPEND LF+
    s" spent-evaluated.f" FIXTURE!
    s" E-MISSING-SOURCE" 6 1 RAN-AT
-   GT-ERR$ s" = word:" CONTAINS? TFALSE
+   GT-ERR$ s" = word:" STR:CONTAINS? TFALSE
    s" a buffer evaluated again at its address, its literal's copy held" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" : PUT ( str -- ^u8 n ) str> dup 0 ?do over i + c@ B i + c! loop nip B swap ;" SB-APPEND LF+
@@ -2050,7 +2050,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" S2 PUT evaluate" SB-APPEND LF+
    s" spent-reevaluated.f" FIXTURE!
    s" E-MISSING-SOURCE" 5 8 RAN-AT
-   GT-ERR$ s" = word:" CONTAINS? TFALSE
+   GT-ERR$ s" = word:" STR:CONTAINS? TFALSE
    s" a buffer evaluated closed twice in one word, its literal's copy passed later" T-LABEL
    SB-RESET  s" create B 64 allot" SB-APPEND LF+
    s" PTR-VARIABLE H0" SB-APPEND LF+
@@ -2063,15 +2063,15 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    s" TWICE" SB-APPEND LF+
    s" spent-closed-twice.f" FIXTURE!
    s" error[E-MISSING-SOURCE]" 70 RAN
-   GT-ERR$ s"  --> " CONTAINS? TFALSE
-   GT-ERR$ s" = word:" CONTAINS? TFALSE
+   GT-ERR$ s"  --> " STR:CONTAINS? TFALSE
+   GT-ERR$ s" = word:" STR:CONTAINS? TFALSE
    s" a literal a definition passes to `included` at run time" T-LABEL
    SB-RESET  s\" : GO ( -- ) s\" nofile.f\" included ;" SB-APPEND LF+
    s" GO" SB-APPEND LF+
    s" spent-run-time.f" FIXTURE!
    s" error[E-MISSING-SOURCE]" 70 RAN
-   GT-ERR$ s"  --> " CONTAINS? TFALSE
-   GT-ERR$ s" = word:" CONTAINS? TFALSE ;
+   GT-ERR$ s"  --> " STR:CONTAINS? TFALSE
+   GT-ERR$ s" = word:" STR:CONTAINS? TFALSE ;
 
 \ The named directory gets the load's record of a read that fails with EISDIR,
 \ and its status, from the load and the check alike.
@@ -2219,7 +2219,7 @@ HB-TARGET-LINUX? 0= [if]
 : UNSEARCHABLE-LOADED ( -- )
    SB-RESET  s" = help: if the directory `" SB-APPEND  UNSEARCHABLE$ SB-APPEND
    s" ` is" SB-APPEND
-   GT-ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ Appends the searched note of a request for x.f under UNSEARCHABLE$.
 : UNSEARCHABLE-NOTE ( -- )
@@ -2258,7 +2258,7 @@ HB-TARGET-LINUX? 0= [if]
    s" error[E-UNREADABLE-SOURCE]" 74 LOADED
    UNSEARCHABLE-LOADED
    SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /lnk/x.f" SB-APPEND  LF+
-   GT-ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ A request through `lnk`, a link into UNSEARCHABLE$, names UNSEARCHABLE$,
 \ not the searchable directory holding the link.
@@ -2283,7 +2283,7 @@ HB-TARGET-LINUX? 0= [if]
    s" error[E-UNREADABLE-SOURCE]" 74 LOADED
    UNSEARCHABLE-LOADED
    SB-RESET  s" = searched: " SB-APPEND  BASE$ SB-APPEND  s" /alnk/../x.f" SB-APPEND  LF+
-   GT-ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ A required file a directory without search permission hides is unreadable, not
 \ missing; its mode goes back to $1ED so the tree can be deleted.
@@ -2331,7 +2331,7 @@ HB-TARGET-LINUX? 0= [if]
    s" --load" PROC-ARGV+  FX-PATH$ PROC-ARGV+  DEP-PATH$ PROC-ARGV+
    s" error[E-UNDEFINED]" 70 LAUNCHED
    SB-RESET s" --> " SB-APPEND FX-PATH$ SB-APPEND s" :1:1" SB-APPEND
-   GT-ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 \ The load rejects a malformed qualified name at its `:`, as the check does.
 : TEST-MALFORMED-LOAD ( -- )
@@ -2426,7 +2426,7 @@ HB-TARGET-LINUX? 0= [if]
    PROC-ARGV-RESET
    s" STRUCTURE a11x<q> FIELD next ^a11x<n> FIELD w read-view<q,q,n> ;STRUCTURE"
    s" --> <input>:1:31" 70 PIPED
-   GT-ERR$ s" = word:" CONTAINS? TFALSE ;
+   GT-ERR$ s" = word:" STR:CONTAINS? TFALSE ;
 
 \ The loader rejects a VALUE-RECORD field where the source wrote it.
 : TEST-VALUE-RECORD-LOAD ( -- )
@@ -2707,7 +2707,7 @@ HB-TARGET-LINUX? 0= [if]
    s" " EV-WRITES
    s" --verify-only" EV-WRITES
    s" E-UNMODELED-IMMEDIATE" s" :2:38" 70 LOADED-AT
-   GT-ERR$ s" may define words or add to a definition" CONTAINS? TTRUE ;
+   GT-ERR$ s" may define words or add to a definition" STR:CONTAINS? TTRUE ;
 
 \ The fixture's first two lines: OPEN2 and OPEN3, definers that evaluate `drop`
 \ and `1 1` into the definition they open.
@@ -2763,7 +2763,7 @@ HB-TARGET-LINUX? 0= [if]
    s" " PP-UNREAD
    s" --verify-only" PP-UNREAD
    s" E-UNMODELED-IMMEDIATE" s" :4:12" 70 LOADED-AT
-   GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
+   GT-ERR$ s" reads the source after it" STR:CONTAINS? TTRUE
    s" a postponed reading immediate with its parses: row" T-LABEL
    PP-LINES
    s" parses: M 1" SB-APPEND LF+
@@ -2817,7 +2817,7 @@ HB-TARGET-LINUX? 0= [if]
    s" " TK-UNREAD
    s" --verify-only" TK-UNREAD
    s" E-UNMODELED-IMMEDIATE" s" :3:14" 70 LOADED-AT
-   GT-ERR$ s" reads the source after it" CONTAINS? TTRUE
+   GT-ERR$ s" reads the source after it" STR:CONTAINS? TTRUE
    s" an immediate executing a ticked reading word, with its parses: row" T-LABEL
    TK-LINES
    s" parses: V 1" SB-APPEND LF+
@@ -2825,7 +2825,7 @@ HB-TARGET-LINUX? 0= [if]
    s" P ." SB-APPEND LF+
    s" imm-tk-read.f" FIXTURE!
    THREE-ADMIT
-   GT-OUT$ s" 5" CONTAINS? TTRUE
+   GT-OUT$ s" 5" STR:CONTAINS? TTRUE
    TK-JOINED ;
 
 \ The check with FLAG gives one record, the immediate `V` at 3:16, which may
@@ -2851,7 +2851,7 @@ HB-TARGET-LINUX? 0= [if]
    s" " ITEM-WRITES
    s" --verify-only" ITEM-WRITES
    s" E-UNMODELED-IMMEDIATE" s" :3:16" 70 LOADED-AT
-   GT-ERR$ s" may define words or add to a definition" CONTAINS? TTRUE ;
+   GT-ERR$ s" may define words or add to a definition" STR:CONTAINS? TTRUE ;
 
 \ Record 0 of the check: `compile,` at 3:48 keeps V, which reads the source,
 \ in the word MK makes, and its type states no `parses`.
@@ -2915,7 +2915,7 @@ HB-TARGET-LINUX? 0= [if]
    s" " ROOT-MOVES
    s" --verify-only" ROOT-MOVES
    s" E-UNMODELED-IMMEDIATE" s" :2:14" 70 LOADED-AT
-   GT-ERR$ s" may move the source root" CONTAINS? TTRUE ;
+   GT-ERR$ s" may move the source root" STR:CONTAINS? TTRUE ;
 
 \ The fixture's first five lines: V calls the deferred D, set to W, which reads
 \ one token.
@@ -2970,7 +2970,7 @@ HB-TARGET-LINUX? 0= [if]
    s" P ." SB-APPEND LF+
    s" imm-line-end.f" FIXTURE!
    THREE-ADMIT
-   GT-OUT$ s" 5" CONTAINS? TTRUE ;
+   GT-OUT$ s" 5" STR:CONTAINS? TTRUE ;
 
 : TEST-HEAD-CLOSER ( -- )
    s" an if open at the does> ending a definer's head, after a comment" T-LABEL
@@ -2980,7 +2980,7 @@ HB-TARGET-LINUX? 0= [if]
    s"    0= if does> ( -- n ) @ ;" SB-APPEND LF+
    s" head-open-cmt.f" FIXTURE!
    s\" \"line\":3,\"column\":10,\"byte_start\":72,\"byte_end\":77" 70 LOADED
-   GT-ERR$ s\" \"token\":\"does>\"" CONTAINS? TTRUE ;
+   GT-ERR$ s\" \"token\":\"does>\"" STR:CONTAINS? TTRUE ;
 
 : TEST-VARIANT-COLLIDE ( -- )
    s" a variant spelled like a derived word" T-LABEL
@@ -3406,14 +3406,14 @@ HB-TARGET-LINUX? 0= [if]
    s" fail" SB-APPEND LF+
    s" uncaught.f" FIXTURE!
    s" E-THROW" s" :2:1" 67 LOADED-AT
-   GT-ERR$ s" error[" COUNT-SUB 1 T=
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    FX-P DEP-P FX-PU @ BYTE-COPY  FX-PU @ DEP-PU !
    s" a throw nothing catches in a required file" T-LABEL
    s" require uncaught.f" s" uncaught-outer.f" LINE-FIXTURE
    s" error[E-THROW]" 67 LOADED
    SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :2:1" SB-APPEND
-   GT-ERR$ SB$ CONTAINS? TTRUE
-   GT-ERR$ s" error[" COUNT-SUB 1 T=
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
    s" a throw nothing catches in an evaluated text" T-LABEL
    SB-RESET
    s" : EV ( -- ) s" SB-APPEND  34 SB-APPEND-C
@@ -3423,9 +3423,9 @@ HB-TARGET-LINUX? 0= [if]
    s" uncaught-eval.f" FIXTURE!
    s" error[" 67 LOADED
    SB-RESET  s" --> " SB-APPEND  FX-PATH$ SB-APPEND  s" :2:1" SB-APPEND
-   GT-ERR$ SB$ CONTAINS? TTRUE
-   GT-ERR$ s" = evaluated:" CONTAINS? TTRUE
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE
+   GT-ERR$ s" = evaluated:" STR:CONTAINS? TTRUE
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ A record its throw carried survives a finally whose cleanup throws and
 \ catches: the load prints that record, not E-THROW.
@@ -3441,7 +3441,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" finally-carried.f" FIXTURE!
    s" error[E-PROBE]: probe text" 67 LOADED
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ A caught code thrown on in the body that caught it keeps its record, after a
 \ cleanup that throws and catches, whether the stack or a local holds it.
@@ -3457,7 +3457,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-stack.f" FIXTURE!
    s" error[E-PROBE]: probe text" 67 LOADED
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-LOCAL ( -- )
    s" a caught code thrown on from a local keeps its record" T-LABEL
@@ -3471,7 +3471,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-local.f" FIXTURE!
    s" error[E-PROBE]: probe text" 67 LOADED
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ A caught code joined with another value at an arm is a new throw.
 : TEST-RETHROW-JOINED ( -- )
@@ -3484,8 +3484,8 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-joined.f" FIXTURE!
    s" error[E-THROW]: nothing caught a throw of code 9998" 67 LOADED
-   GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" E-PROBE" STR:CONTAINS? TFALSE
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ A record kept after the catch answered its code is not the caught throw's: the
 \ code thrown on is a new throw.
@@ -3502,8 +3502,8 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-kept-since.f" FIXTURE!
    s" error[E-THROW]: nothing caught a throw of code 9999" 67 LOADED
-   GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" E-PROBE" STR:CONTAINS? TFALSE
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-RSTACK ( -- )
    s" a caught code thrown on through the return stack keeps its record" T-LABEL
@@ -3517,7 +3517,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-rstack.f" FIXTURE!
    s" error[E-PROBE]: probe text" 67 LOADED
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ `ri throw` never runs, but it counts INNER's catch, so each catch keeps a slot
 \ of its own: a slot shared with BODY's would lose the record.
@@ -3533,7 +3533,7 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-two.f" FIXTURE!
    s" error[E-PROBE]: probe text" 67 LOADED
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 : TEST-RETHROW-QUOT ( -- )
    s" a caught local thrown from a quotation is a new throw" T-LABEL
@@ -3545,8 +3545,8 @@ HB-TARGET-LINUX? 0= [if]
    s" MAIN" SB-APPEND LF+
    s" rethrow-quot.f" FIXTURE!
    s" error[E-THROW]: nothing caught a throw of code 9999" 67 LOADED
-   GT-ERR$ s" E-PROBE" CONTAINS? TFALSE
-   GT-ERR$ s" error[" COUNT-SUB 1 T= ;
+   GT-ERR$ s" E-PROBE" STR:CONTAINS? TFALSE
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T= ;
 
 \ A nested require's throw the program caught prints nothing, even when the
 \ same code later goes uncaught.
@@ -3561,8 +3561,8 @@ HB-TARGET-LINUX? 0= [if]
    s" fail" SB-APPEND LF+
    s" caught-outer.f" FIXTURE!
    s" E-THROW" s" :3:1" 67 LOADED-AT
-   GT-ERR$ s" error[" COUNT-SUB 1 T=
-   GT-ERR$ s" caught-dep.f" CONTAINS? TFALSE ;
+   GT-ERR$ s" error[" STR:COUNT-SUB 1 T=
+   GT-ERR$ s" caught-dep.f" STR:CONTAINS? TFALSE ;
 
 : AMBIG-FIXTURE ( bool str -- )
    {: global:bool body:^ bodyu:n :}
@@ -3728,7 +3728,7 @@ HB-TARGET-LINUX? 0= [if]
    FX-PATH$ FX$ FS:WRITE-ALL
    CERTIFIED
    s" " 0 LOADED
-   GT-OUT$ s\" 40\n73\n" CONTAINS? TTRUE ;
+   GT-OUT$ s\" 40\n73\n" STR:CONTAINS? TTRUE ;
 
 \ The load runs a declared parsing immediate on its payload, so the check leaves the payload out of
 \ the body, whatever it spells, and the body takes none of its facts: a top-level call is certified.
@@ -3756,8 +3756,8 @@ HB-TARGET-LINUX? 0= [if]
    s" : Q1 ( n -- ) {: c:? :} ;" SB-APPEND LF+
    s" show-layout-local.f" FIXTURE!
    s" " 0 LOADED
-   GT-OUT$ s\" inferred c: option<n>\n" CONTAINS? TTRUE
-   GT-OUT$ s\" inferred c: n\n" CONTAINS? TTRUE ;
+   GT-OUT$ s\" inferred c: option<n>\n" STR:CONTAINS? TTRUE
+   GT-OUT$ s\" inferred c: n\n" STR:CONTAINS? TTRUE ;
 
 \ The top-level dp-held, after DP-HOLD's public dp-held, is rejected in
 \ each check mode, and the last run names DP-HOLD in its help.
@@ -3796,7 +3796,7 @@ HB-TARGET-LINUX? 0= [if]
    0 s" ;package" 1 1 0 8 DEP-AT
    s" error[E-PKG-CONTEXT]" 70 LOADED
    SB-RESET  s" --> " SB-APPEND  DEP-PATH$ SB-APPEND  s" :1:1" SB-APPEND
-   GT-ERR$ SB$ CONTAINS? TTRUE ;
+   GT-ERR$ SB$ STR:CONTAINS? TTRUE ;
 
 : MAIN ( -- )
    T-RESET

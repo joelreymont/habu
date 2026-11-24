@@ -149,7 +149,7 @@ variable GROWN-FN                     \ the C entry the thrown text answered
    OUTER 10 ROW-SORTED? if s" grown-bind: sorted" type cr then ;
 
 : CASE? ( str -- bool )
-   0 SCRIPT-ARGV$ STR= ;
+   0 SCRIPT-ARGV$ STR:= ;
 
 : DISPATCH ( -- )
    SCRIPT-ARGC 1 <> if s" ffi-callback-child: one case name" EXIT-STATUS:USAGE die then

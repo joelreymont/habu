@@ -96,7 +96,7 @@ variable RC
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    label labelu T-LABEL
    RC @ 0 T=
-   OUT OUT-U @ s" boot relocation: ok" CONTAINS? TTRUE ;
+   OUT OUT-U @ s" boot relocation: ok" STR:CONTAINS? TTRUE ;
 
 : PLAIN ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET

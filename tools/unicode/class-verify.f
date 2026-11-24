@@ -95,7 +95,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    repeat ;
 
 : NEXT-FIELD ( str n -- str n ) {: a:^ u:n start:n :}
-   a u SEMICOLON start SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
+   a u SEMICOLON start STR:SPLIT-NEXT {: fa:^ fu:n next:n valid:bool :}
    valid 0= next u > or if E-MISMATCH throw then
    fa fu next ;
 
@@ -136,10 +136,10 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    E-MISMATCH throw ;
 
 : FIRST-NAME? ( str -- bool )
-   s" , First>" ENDS-WITH? ;
+   s" , First>" STR:ENDS-WITH? ;
 
 : LAST-NAME? ( str -- bool )
-   s" , Last>" ENDS-WITH? ;
+   s" , Last>" STR:ENDS-WITH? ;
 
 : SCALAR ( n -- n ) {: cp:n :}
    cp 0 < cp SCALAR-MAX > or if E-MISMATCH throw then
@@ -163,15 +163,15 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    lo hi bit MARK-RANGE-AT ;
 
 : VERIFY-UNICODE-ROW ( str -- ) {: line:^ lineu:n :}
-   line lineu TRIM {: row:^ rowu:n :}
+   line lineu STR:TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
-   row rowu SEMICOLON COUNT-CHAR 14 <> if E-MISMATCH throw then
+   row rowu SEMICOLON STR:COUNT-CHAR 14 <> if E-MISMATCH throw then
    row rowu 0 NEXT-FIELD {: cpa:^ cpu:n next1:n :}
    row rowu next1 NEXT-FIELD {: name:^ nameu:n next2:n :}
    row rowu next2 NEXT-FIELD {: cat:^ catu:n next3:n :}
    next3 drop
-   cpa cpu TRIM PARSE-HEX {: cp:n :}
-   cat catu TRIM CLASS-BIT {: bit:n :}
+   cpa cpu STR:TRIM PARSE-HEX {: cp:n :}
+   cat catu STR:TRIM CLASS-BIT {: bit:n :}
    VERIFY-PENDING @ if
       name nameu LAST-NAME? 0= if E-MISMATCH throw then
       bit VERIFY-PENDING-BIT @ <> if E-MISMATCH throw then
@@ -192,7 +192,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
    false VERIFY-PENDING !
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-MISMATCH throw then
       line lineu VERIFY-UNICODE-ROW
       next
@@ -201,29 +201,29 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : RANGE-PART ( str -- n n ) {: a:^ u:n :}
    a u DOT BYTE-INDEX {: pos:n :}
-   pos u = if a u TRIM PARSE-HEX dup exit then
+   pos u = if a u STR:TRIM PARSE-HEX dup exit then
    pos 0= pos 1+ u >= or if E-MISMATCH throw then
    a pos + 1+ c@ DOT <> if E-MISMATCH throw then
-   a pos TRIM PARSE-HEX
-   a pos 2 + + u pos 2 + - TRIM PARSE-HEX ;
+   a pos STR:TRIM PARSE-HEX
+   a pos 2 + + u pos 2 + - STR:TRIM PARSE-HEX ;
 
 : VERIFY-PROP-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu HASH BYTE-INDEX {: comment:n :}
-   line comment TRIM {: row:^ rowu:n :}
+   line comment STR:TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
    row rowu 0 NEXT-FIELD {: range:^ rangeu:n next:n :}
-   row next + rowu next - TRIM {: name:^ nameu:n :}
-   name nameu s" White_Space" STR= if SPACE-BIT else
-      name nameu s" Other_Alphabetic" STR= if ALPHABETIC-BIT else
-         name nameu s" Other_Uppercase" STR= if UPPERCASE-BIT else exit then
+   row next + rowu next - STR:TRIM {: name:^ nameu:n :}
+   name nameu s" White_Space" STR:= if SPACE-BIT else
+      name nameu s" Other_Alphabetic" STR:= if ALPHABETIC-BIT else
+         name nameu s" Other_Uppercase" STR:= if UPPERCASE-BIT else exit then
       then
    then {: bit:n :}
-   range rangeu TRIM RANGE-PART bit MARK-RANGE ;
+   range rangeu STR:TRIM RANGE-PART bit MARK-RANGE ;
 
 : VERIFY-PROPS-BYTES ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-MISMATCH throw then
       line lineu VERIFY-PROP-ROW
       next
@@ -242,19 +242,19 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 
 : VERIFY-BRACKET-ROW ( str -- ) {: line:^ lineu:n :}
    line lineu HASH BYTE-INDEX {: comment:n :}
-   line comment TRIM {: row:^ rowu:n :}
+   line comment STR:TRIM {: row:^ rowu:n :}
    rowu 0= if exit then
    row rowu 0 NEXT-FIELD {: cpa:^ cpu:n next1:n :}
    row rowu next1 NEXT-FIELD {: pa:^ pu:n next2:n :}
-   row next2 + rowu next2 - TRIM BRACKET-BIT {: bit:n :}
-   cpa cpu TRIM PARSE-HEX {: cp:n :}
-   cp pa pu TRIM PARSE-HEX PAIR+
+   row next2 + rowu next2 - STR:TRIM BRACKET-BIT {: bit:n :}
+   cpa cpu STR:TRIM PARSE-HEX {: cp:n :}
+   cp pa pu STR:TRIM PARSE-HEX PAIR+
    cp bit TRUTH+ ;
 
 : VERIFY-BRACKETS-BYTES ( str -- ) {: a:^ u:n :}
    0 begin dup u <= while
       {: start:n :}
-      a u LINE-FEED start SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
+      a u LINE-FEED start STR:SPLIT-NEXT {: line:^ lineu:n next:n valid:bool :}
       valid 0= if E-MISMATCH throw then
       line lineu VERIFY-BRACKET-ROW
       next
@@ -278,7 +278,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : CHECK-DIGEST ( str str -- ) {: path:^ pathu:n want:^ wantu:n :}
    wantu 64 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
    UCV-FSHA-CTX path pathu DIGEST-HEX SHA256-FILE-HEX-IN 0 <> if UNICODE-CLASS-TOOL:E-DIGEST throw then
-   DIGEST-HEX 64 want wantu STR= 0= if UNICODE-CLASS-TOOL:E-DIGEST throw then ;
+   DIGEST-HEX 64 want wantu STR:= 0= if UNICODE-CLASS-TOOL:E-DIGEST throw then ;
 
 : CHECK-DIGESTS ( -- )
    UNICODE-PATH$ EXPECTED-UNICODE-DIGEST$ CHECK-DIGEST
@@ -362,7 +362,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 : CHECK-FILE ( str str -- ) {: generated:^ generatedu:n path:^ pathu:n :}
    path pathu FS:FILE-SIZE 1+ MEM-ALLOC-64K-SPAN {: buf:^ cap:n :}
    path pathu buf cap FS:READ-ALL {: got:n :}
-   generated generatedu buf got STR= 0= if E-MISMATCH throw then ;
+   generated generatedu buf got STR:= 0= if E-MISMATCH throw then ;
 
 : CHECK-REGENERATION ( -- )
    UNICODE-CLASS-TOOL:LOAD-PINNED

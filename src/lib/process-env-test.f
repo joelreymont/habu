@@ -54,7 +54,7 @@ TASK:SEMAPHORE PET-ENV-START
 : PET-U-TYPE ( n -- ) {: n:n :}
    n 0 < if E-STR-BOUNDS throw then
    n 10 >= if n 10 / RECURSE then
-   n 10 mod STR-ZERO + emit ;
+   n 10 mod STR:ZERO + emit ;
 
 : PET-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
@@ -104,15 +104,15 @@ TASK:SEMAPHORE PET-ENV-START
 : PET-SB-N ( n -- ) {: v:n :}
    v 0 < if E-STR-BOUNDS throw then
    v 10 >= if v 10 / RECURSE then
-   v 10 mod STR-ZERO + SB-APPEND-C ;
+   v 10 mod STR:ZERO + SB-APPEND-C ;
 
 \ HABU_BIG_001 .. HABU_BIG_600: fixed width, so the child can count them by
 \ prefix and the parent never has to parse the name back.
 : PET-BIG-NAME$ ( n -- str ) {: i:n :}
    s" HABU_BIG_" PET-BIG-NAME swap BYTE-COPY
-   i 100 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U + c!
-   i 100 mod 10 / STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 1 + + c!
-   i 10 mod STR-ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 2 + + c!
+   i 100 / STR:ZERO + PET-BIG-NAME PET-BIG-PREFIX-U + c!
+   i 100 mod 10 / STR:ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 1 + + c!
+   i 10 mod STR:ZERO + PET-BIG-NAME PET-BIG-PREFIX-U 2 + + c!
    PET-BIG-NAME PET-BIG-NAME-U ;
 
 : PET-ENV-CMD$ ( -- str )
@@ -153,8 +153,8 @@ TASK:SEMAPHORE PET-ENV-START
    $3D expected nameu 1+ + c!
    val expected nameu 2 + + valu BYTE-COPY
    $0A expected lineu + c!
-   out outu expected 1+ lineu STARTS-WITH?
-   out outu expected lineu 1+ CONTAINS? or ;
+   out outu expected 1+ lineu STR:STARTS-WITH?
+   out outu expected lineu 1+ STR:CONTAINS? or ;
 
 : PET-HAS-ENV-LINE? ( str str str -- bool )
    {: out:^ outu:n name:^ nameu:n val:^ valu:n :}
@@ -177,7 +177,7 @@ TASK:SEMAPHORE PET-ENV-START
 : PET-GETENV-CHECK ( str str -- n )
    {: name:^ nameu:n expected:^ expectedu:n :}
    PET-ENV-ROUNDS 0 ?do
-      name nameu GETENV expected expectedu STR= 0= if unloop 0 exit then
+      name nameu GETENV expected expectedu STR:= 0= if unloop 0 exit then
    loop
    1 ;
 
@@ -209,7 +209,7 @@ TASK:SEMAPHORE PET-ENV-START
    PET-ENV-START TASK:SEMAPHORE-DESTROY ;
 
 : PET-INHERIT-ENV-OUT ( n -- ) {: outu:n :}
-   PET-OUT outu PET-ALPHA-LINE$ CONTAINS? TTRUE
+   PET-OUT outu PET-ALPHA-LINE$ STR:CONTAINS? TTRUE
    outu s" HOME" PET-EXPECT-INHERITED
    outu s" PATH" PET-EXPECT-INHERITED ;
 
@@ -244,7 +244,7 @@ TASK:SEMAPHORE PET-ENV-START
    PROC-ENV-INHERIT-MISSING
    PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
+   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" STR:CONTAINS? TFALSE
    outu PET-INHERIT-ENV-OUT ;
 
 \ PROC-ENV-SET replaces an existing row in place and appends an absent name;
@@ -258,7 +258,7 @@ TASK:SEMAPHORE PET-ENV-START
    PROC-ENV-INHERIT-MISSING
    PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
+   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" STR:CONTAINS? TFALSE
    outu PET-INHERIT-ENV-OUT ;
 
 : PET-SET-APPENDS-NEW ( -- )
@@ -514,7 +514,7 @@ public
    s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PROCESS:WAIT-FOREVER MS>N PET-CAPTURE
    {: outu:n erru:n code:n :}
    code 0 T=
-   PET-OUT outu PET-BIG-EXPECT$ CONTAINS? TTRUE ;
+   PET-OUT outu PET-BIG-EXPECT$ STR:CONTAINS? TTRUE ;
 
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
@@ -605,27 +605,27 @@ public
    s" an entry's length is checked before it is read" T-LABEL
    [: MEM-MAX-N PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: -1 PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
-   [: STR-MIN-I64 PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR:MIN-I64 PET-ENTRY-UNREAD ;] E-PROC-ENV TTHROWSQ
    s" and so is a row's name, appended, set or defaulted" T-LABEL
    [: MEM-MAX-N PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: -1 PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
-   [: STR-MIN-I64 PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR:MIN-I64 PET-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: MEM-MAX-N PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: -1 PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
-   [: STR-MIN-I64 PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR:MIN-I64 PET-SET-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: MEM-MAX-N PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
    [: -1 PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
-   [: STR-MIN-I64 PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
+   [: STR:MIN-I64 PET-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ
    s" and so is a row's value, appended, set or defaulted" T-LABEL
    [: -1 PET-VAL-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
    [: MEM-MAX-N PET-VAL-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
-   [: STR-MIN-I64 PET-VAL-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: STR:MIN-I64 PET-VAL-ROW-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
    [: -1 PET-VAL-SET-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
    [: MEM-MAX-N PET-VAL-SET-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
-   [: STR-MIN-I64 PET-VAL-SET-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: STR:MIN-I64 PET-VAL-SET-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
    [: -1 PET-VAL-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
    [: MEM-MAX-N PET-VAL-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
-   [: STR-MIN-I64 PET-VAL-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
+   [: STR:MIN-I64 PET-VAL-DEF-UNREAD ;] E-PROC-ENV TTHROWSQ PET-NONE-STAGED
    PET-RESET ;
 
 \ More rows and bytes than a fixed table holds reach /usr/bin/env whole and in
@@ -648,10 +648,10 @@ create LINE LINE-U allot
 DYNAMIC-BUFFER OUT u8
 
 : DIGITS! ( n ^u8 -- ) {: k:n dst:^ :}
-   k 1000 / STR-ZERO + dst c!
-   k 1000 mod 100 / STR-ZERO + dst 1 + c!
-   k 100 mod 10 / STR-ZERO + dst 2 + c!
-   k 10 mod STR-ZERO + dst 3 + c! ;
+   k 1000 / STR:ZERO + dst c!
+   k 1000 mod 100 / STR:ZERO + dst 1 + c!
+   k 100 mod 10 / STR:ZERO + dst 2 + c!
+   k 10 mod STR:ZERO + dst 3 + c! ;
 
 : LINE! ( n ^u8 -- ) {: k:n prefix:^ :}
    prefix LINE PREFIX-U BYTE-COPY
@@ -682,7 +682,7 @@ DYNAMIC-BUFFER OUT u8
       i 1+ LINE-U * outu > if
          1+
       else
-         i LINE-U * OUT LINE-U LINE LINE-U STR= 0= if 1+ then
+         i LINE-U * OUT LINE-U LINE LINE-U STR:= 0= if 1+ then
       then
    loop ;
 

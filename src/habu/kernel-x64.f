@@ -237,7 +237,7 @@ CELL 4 * constant DIAG-BYTES
    scan X64CODE:LBL,
    R9 R10 ASM-SINK ENC-CMP-RR  C-AE line JCC,
    RAX R9 MEM-AT ASM-SINK ENC-MOVZX-8-RM
-   RAX STR-LF >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+   RAX STR:LF >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
    R8 ASM-SINK ENC-INC
    next X64CODE:LBL,  R9 ASM-SINK ENC-INC  scan JMP,
    line X64CODE:LBL,
@@ -1695,7 +1695,7 @@ private
    done X64CODE:LBL,  ASM-SINK ENC-RET
    head X64CODE:LBL,  s" hb: uncaught throw code " TEXT,
    minus X64CODE:LBL,  $2D ASM-SINK VEC:PUSH c!
-   nl X64CODE:LBL,  STR-LF ASM-SINK VEC:PUSH c! ;
+   nl X64CODE:LBL,  STR:LF ASM-SINK VEC:PUSH c! ;
 
 \ Forward the code in rax without beginning another throw. Habu's `evaluate`
 \ recovers through `catch`; the handler's frame is restored and resumed.
@@ -2093,7 +2093,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX ASM-SINK ENC-PUSH
    RDX RDX ASM-SINK ENC-TEST-RR  C-LE quiet JCC,
    RDI STDERR IMM32,  NR-WRITE SYS,
-   RCX STR-LF IMM32,  RCX ASM-SINK ENC-PUSH
+   RCX STR:LF IMM32,  RCX ASM-SINK ENC-PUSH
    RDI STDERR IMM32,  RSI RSP ASM-SINK ENC-MOV-RR  RDX 1 IMM32,  NR-WRITE SYS,
    RCX ASM-SINK ENC-POP
    quiet X64CODE:LBL, ;
@@ -3249,8 +3249,8 @@ private
       RAX DATA-REG S0-CELL MEM-OFF ASM-SINK ENC-SUB-RM
       RAX 3 >IMM8 ASM-SINK ENC-SHR-RI8  RAX PUSH, ;] PRIM
    s" emit" [: RAX POP,  G-EMITC ;] PRIM
-   s" cr" [: RAX STR-LF IMM32,  G-EMITC ;] PRIM
-   s" space" [: RAX STR-SPACE IMM32,  G-EMITC ;] PRIM
+   s" cr" [: RAX STR:LF IMM32,  G-EMITC ;] PRIM
+   s" space" [: RAX STR:SPACE IMM32,  G-EMITC ;] PRIM
    s" type" [: RDX POP,  RSI POP,  G-OUT ;] PRIM ;
 
 \ Branch to the label unless rax is a live code entry, DBASE <= rax < CP,
@@ -4995,7 +4995,7 @@ variable GROW-CELL
    RDI BODY-TEXT:BASE-CELL CELL@,
    RDI RAX ASM-SINK ENC-ADD-RR                        \ the run lands at BODYLEN
    COPY-BYTES,
-   RAX STR-SPACE IMM32,
+   RAX STR:SPACE IMM32,
    0 >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
    RDX BODYLEN-CELL CELL!, ;
 
@@ -5078,7 +5078,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    scan X64CODE:LBL,
    RCX RDX ASM-SINK ENC-CMP-RR  C-GE done JCC,
    RAX RSI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
-   RAX STR-SPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
+   RAX STR:SPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E done JCC,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
    RCX ASM-SINK ENC-INC
    scan JMP,
@@ -5476,7 +5476,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
    R8 POP,                                          \ the bits
    RSP FDOT-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    RSI RSP FDOT-BYTES MEM-OFF ASM-SINK ENC-LEA
-   STR-LF CHAR,
+   STR:LF CHAR,
    RAX R8 ASM-SINK ENC-MOV-RR
    RAX 1 >IMM8 ASM-SINK ENC-SHL-RI8  RAX 1 >IMM8 ASM-SINK ENC-SHR-RI8
    XMM1 RAX ASM-SINK ENC-MOVQ-XR                    \ |x|

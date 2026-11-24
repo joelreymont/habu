@@ -159,7 +159,7 @@ private
 
 \ The offset of b in a at or after from, else u.
 : CODESIGN-FIND ( n str str -- n ) {: from:n a:^ u:n b:^ v:n :}
-   a u b v from FIND-SUB-FROM MATCH option
+   a u b v from STR:FIND-SUB-FROM MATCH option
      none OF u ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
@@ -168,7 +168,7 @@ private
 : CODESIGN-TEAM-AT? ( n str -- bool ) {: at:n a:^ u:n :}
    at CODESIGN-OU-MARK nip + CODESIGN-OU-SKIP + {: team:n :}
    team TEAM$ nip + u > if false exit then
-   a team + TEAM$ nip TEAM$ STR= ;
+   a team + TEAM$ nip TEAM$ STR:= ;
 
 : CODESIGN-TEAM-IN? ( str -- bool ) {: a:^ u:n :}
    0 begin
@@ -193,7 +193,7 @@ private
    at CODESIGN-CERT-MARK nip + {: hash:n :}
    hash CODESIGN-ID-LEN + next > if false exit then
    a at + next at - CODESIGN-TEAM-CERT? 0= if false exit then
-   CODESIGN-IDS$ a hash + CODESIGN-ID-LEN CONTAINS? 0= if false exit then
+   CODESIGN-IDS$ a hash + CODESIGN-ID-LEN STR:CONTAINS? 0= if false exit then
    a hash + CODESIGN-ID CODESIGN-ID-LEN BYTE-COPY
    -1 CODESIGN-ID? !
    true ;
@@ -305,7 +305,7 @@ variable CODESIGN-MAGIC-FD
 
 : CODESIGN-MAGIC-READ ( -- bool )
    CODESIGN-MAGIC-FD @ >FD CODESIGN-MAGIC FD:READ-EXACT MATCH FD:fill
-      full OF CODESIGN-MAGIC SPAN:$ CODESIGN-ELF-MAG STR= ENDOF
+      full OF CODESIGN-MAGIC SPAN:$ CODESIGN-ELF-MAG STR:= ENDOF
       eof OF drop false ENDOF
    ;MATCH ;
 
@@ -442,7 +442,7 @@ $10000 constant CMS-SLOT
 : LINKEDIT? ( ^u8 n -- bool ) {: a:^ at:n :}
    a at + LE:U32@ LC-SEGMENT-64 <> if false exit then
    a at + 4 + LE:U32@ SEGMENT-SIZE < if false exit then
-   a at + SEG-NAME + LINKEDIT-NAME nip LINKEDIT-NAME STR= 0= if false exit then
+   a at + SEG-NAME + LINKEDIT-NAME nip LINKEDIT-NAME STR:= 0= if false exit then
    a at + SEG-NAME + LINKEDIT-NAME nip + c@ 0= ;
 
 \ The offset of the image's __LINKEDIT segment command, as COMMAND answers.
@@ -453,7 +453,7 @@ $10000 constant CMS-SLOT
 \ bytes from from up to it, else -1; -1 when from is.
 : SAME-TO ( n ^u8 ^u8 n n -- n ) {: from:n a:^ b:^ at:n len:n :}
    from 0< if -1 exit then
-   a from + at from - b from + at from - STR= if at len + else -1 then ;
+   a from + at from - b from + at from - STR:= if at len + else -1 then ;
 
 \ Whether the signature command at lc and the segment command at seg end
 \ before the data offset doff.
@@ -516,16 +516,16 @@ public
    b bu CMS-SPAN {: bs:n bl:n bok:bool :}
    aok bok and 0= if false exit then
    as bs <> al bl <> or if false exit then
-   a as b as STR= 0= if false exit then
+   a as b as STR:= 0= if false exit then
    as al + {: tail:n :}
-   a tail + au tail - b tail + bu tail - STR= ;
+   a tail + au tail - b tail + bu tail - STR:= ;
 
 \ Whether two images match up to one shared signature offset, outside the sizes
 \ signing sets in LC_CODE_SIGNATURE and __LINKEDIT; unsigned ones match whole.
 : SAME-CODE? ( str str -- bool ) {: a:^ au:n b:^ bu:n :}
    a au SIG-COMMAND {: lc:n :}
    lc b bu SIG-COMMAND <> lc 0< or if false exit then
-   lc 0= if a au b bu STR= exit then
+   lc 0= if a au b bu STR:= exit then
    a au LINKEDIT-COMMAND {: seg:n :}
    seg b bu LINKEDIT-COMMAND <> seg 0 <= or if false exit then
    a lc + SIG-DATAOFF + LE:U32@ {: doff:n :}

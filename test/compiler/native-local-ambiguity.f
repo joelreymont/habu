@@ -39,7 +39,7 @@ variable EXITED
 : EXPECT-OUT ( str -- ) {: exp:^ expu:u :}
    0 EXPECT-RC
    ERR-U @ 0 T=
-   OUT$ exp expu STR= TTRUE ;
+   OUT$ exp expu STR:= TTRUE ;
 
 : SOURCE$ ( -- str )
    S\" package PRE\npublic\n: TARGET ( n -- n ) 9 + ;\n;package\npackage ONE\npublic\n: LAYERS ( n -- n ) 1 + ;\n;package\npackage TWO\npublic\n: LAYERS ( n -- n ) 2 + ;\n;package\npackage SUBJECT\nusing PRE\nusing ONE\nusing TWO\nprivate\n: TARGET ( n n -- n ) {: layers:n :} layers + ;\npublic\n: NLA-RUN ( -- n ) 3 4 TARGET ;\n;package\nSUBJECT:NLA-RUN .\n" ;

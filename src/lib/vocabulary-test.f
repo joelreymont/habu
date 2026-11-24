@@ -65,7 +65,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 : ERR-LINE$ ( CMD:command -- CMD:command str )
    CMD:ERR$ {: a:^ u:n :}
-   a u LF INDEX-OF MATCH option
+   a u LF STR:INDEX-OF MATCH option
      none OF a u ENDOF
      some OF IDX>N a swap ENDOF
    ;MATCH ;
@@ -113,7 +113,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    >r {: name:^ nu:n rc:n line:^ lu:n span:^ su:n out:^ ou:n :} r>
    >r name nu rc line lu out ou r> RUNS-IN
    name nu s" stderr span" LABEL
-   CMD:ERR$ span su CONTAINS? TTRUE ;
+   CMD:ERR$ span su STR:CONTAINS? TTRUE ;
 
 : SAYS ( str n str str str -- )
    [: SAYS-IN ;] CMD:WITH-COMMAND ;

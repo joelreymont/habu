@@ -111,8 +111,8 @@ variable ITEMS                           \ and the diagnostics in it so far
 : SEVERITY ( ^JSON:writer str -- ^JSON:writer )
    s" severity" STRING-MEMBER 0= if 2drop exit then
    {: v:^ vu:n :}
-   v vu s" error" STR= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
-   v vu s" warning" STR= if WRITE-COMMA s" severity" WARNING-SEVERITY WRITE-FIELD-U then ;
+   v vu s" error" STR:= if WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit then
+   v vu s" warning" STR:= if WRITE-COMMA s" severity" WARNING-SEVERITY WRITE-FIELD-U then ;
 
 : CODE-FIELD ( ^JSON:writer str -- ^JSON:writer )
    s" code" STRING-MEMBER 0= if 2drop exit then
@@ -200,7 +200,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 : ITEM ( str -- )
    {: a:^ u:n :}
    a u SCREENED 0= if exit then
-   FILE$ LIST-A @ LIST-U @ STR= 0= if exit then
+   FILE$ LIST-A @ LIST-U @ STR:= 0= if exit then
    ITEMS @ 0 > if W WRITE-COMMA drop then
    W a u DIAGNOSTIC drop
    1 ITEMS +! ;
@@ -262,7 +262,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 : DEP ( str -- )
    {: a:^ u:n :}
    a u SCREENED 0= if s" lsp: " ERR a u ERR s\" \n" ERR exit then
-   FILE$ SELF @ DOC-CANON$ STR= if exit then
+   FILE$ SELF @ DOC-CANON$ STR:= if exit then
    NEW$ FILE$ HAS-LINE? if exit then
    FILE$ HELD-OPEN? if exit then
    FILE$ KEEP-NEW LIST-U ! LIST-A !

@@ -10,30 +10,30 @@ public
 \ The kernel-words word answering an engine name, or an empty spelling.
 : WORD-OF ( str -- str )
    {: a:^ u:n :}
-   a u s" ." STR=CI if s" WKWORDS:DOT" exit then
-   a u s" .s" STR=CI if s" WKWORDS:DOT-S" exit then
-   a u s" u." STR=CI if s" WKWORDS:U-DOT" exit then
-   a u s" f." STR=CI if s" WKWORDS:F-DOT" exit then
-   a u s" fdrop" STR=CI if s" WKWORDS:F-DROP" exit then
-   a u s" fdup" STR=CI if s" WKWORDS:F-DUP" exit then
-   a u s" type" STR=CI if s" WKWORDS:TYPE-BYTES" exit then
-   a u s" cr" STR=CI if s" WKWORDS:NEWLINE" exit then
-   a u s" space" STR=CI if s" WKWORDS:BLANK" exit then
-   a u s" negate" STR=CI if s" WKWORDS:NEG" exit then
-   a u s" abs" STR=CI if s" WKWORDS:ABSOLUTE" exit then
-   a u s" min" STR=CI if s" WKWORDS:MINIMUM" exit then
-   a u s" max" STR=CI if s" WKWORDS:MAXIMUM" exit then
-   a u s" /mod" STR=CI if s" WKWORDS:DIVREM" exit then
-   a u s" 0<" STR=CI if s" WKWORDS:ZERO-NEG?" exit then
-   a u s" 0<>" STR=CI if s" WKWORDS:NONZERO?" exit then
-   a u s" true" STR=CI if s" WKWORDS:YES" exit then
-   a u s" false" STR=CI if s" WKWORDS:NO" exit then
-   a u s" NULL-PTR" STR=CI if s" WKWORDS:NIL" exit then
-   a u s" data-base" STR=CI if s" WKWORDS:DATA-START" exit then
-   a u s" +!" STR=CI if s" WKWORDS:ADD-STORE" exit then
-   a u s" BYTE-COPY-LEN" STR=CI if s" WKWORDS:COPY-LEN" exit then
-   a u s" BYTE-COPY" STR=CI if s" WKWORDS:COPY-BYTES" exit then
-   a u s" sha256-blocks" STR=CI if s" WKWORDS:SHA-BLOCKS" exit then
+   a u s" ." STR:=CI if s" WKWORDS:DOT" exit then
+   a u s" .s" STR:=CI if s" WKWORDS:DOT-S" exit then
+   a u s" u." STR:=CI if s" WKWORDS:U-DOT" exit then
+   a u s" f." STR:=CI if s" WKWORDS:F-DOT" exit then
+   a u s" fdrop" STR:=CI if s" WKWORDS:F-DROP" exit then
+   a u s" fdup" STR:=CI if s" WKWORDS:F-DUP" exit then
+   a u s" type" STR:=CI if s" WKWORDS:TYPE-BYTES" exit then
+   a u s" cr" STR:=CI if s" WKWORDS:NEWLINE" exit then
+   a u s" space" STR:=CI if s" WKWORDS:BLANK" exit then
+   a u s" negate" STR:=CI if s" WKWORDS:NEG" exit then
+   a u s" abs" STR:=CI if s" WKWORDS:ABSOLUTE" exit then
+   a u s" min" STR:=CI if s" WKWORDS:MINIMUM" exit then
+   a u s" max" STR:=CI if s" WKWORDS:MAXIMUM" exit then
+   a u s" /mod" STR:=CI if s" WKWORDS:DIVREM" exit then
+   a u s" 0<" STR:=CI if s" WKWORDS:ZERO-NEG?" exit then
+   a u s" 0<>" STR:=CI if s" WKWORDS:NONZERO?" exit then
+   a u s" true" STR:=CI if s" WKWORDS:YES" exit then
+   a u s" false" STR:=CI if s" WKWORDS:NO" exit then
+   a u s" NULL-PTR" STR:=CI if s" WKWORDS:NIL" exit then
+   a u s" data-base" STR:=CI if s" WKWORDS:DATA-START" exit then
+   a u s" +!" STR:=CI if s" WKWORDS:ADD-STORE" exit then
+   a u s" BYTE-COPY-LEN" STR:=CI if s" WKWORDS:COPY-LEN" exit then
+   a u s" BYTE-COPY" STR:=CI if s" WKWORDS:COPY-BYTES" exit then
+   a u s" sha256-blocks" STR:=CI if s" WKWORDS:SHA-BLOCKS" exit then
    s" " ;
 
 ;package

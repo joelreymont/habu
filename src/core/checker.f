@@ -6099,7 +6099,7 @@ variable SG-ROWS-PUBLISH
    UF>DIAG
    CELL-DIAG!
    \ a row that would contain itself shows the row variable and the row holding
-   \ it, which the whole rows trim away
+   \ it, which the whole rows str:trim away
    CYCLE-HIT @ IF
       MDIAG @  MD-ROW-CYCLE MDIAG!  MDIAG @ <> IF UF-EXP @ DEXP !  UF-ACT @ DACT ! THEN
    THEN

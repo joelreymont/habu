@@ -45,7 +45,7 @@ TYPED-VARIABLE TEST-OUT ^VEC:vector<u8>
 
 \ OUT holds what HOLD put there.
 : TEST-UNTOUCHED ( -- )
-   OUT VEC:COUNT 4 T= OUT$ s" held" STR= TTRUE ;
+   OUT VEC:COUNT 4 T= OUT$ s" held" STR:= TTRUE ;
 
 
 : UNBOUND-READ ( -- )
@@ -70,8 +70,8 @@ variable HOST-CALLS
 
 : HOST-HELD? ( str str -- bool )
    {: service:^ su:n account:^ au:n :}
-   service su HOST-SERVICE CODEGEN:CONTENTS STR=
-   account au HOST-ACCOUNT CODEGEN:CONTENTS STR= and ;
+   service su HOST-SERVICE CODEGEN:CONTENTS STR:=
+   account au HOST-ACCOUNT CODEGEN:CONTENTS STR:= and ;
 
 
 \ The account late is a store that appends bytes and then does not answer;
@@ -79,10 +79,10 @@ variable HOST-CALLS
 : HOST-READ ( str str ^VEC:vector<u8> -- bool )
    {: service:^ su:n account:^ au:n dest:^ :}
    1 HOST-CALLS +!
-   account au s" late" STR= if
+   account au s" late" STR:= if
       s" partial" dest VEC:APPEND SECRET:E-UNAVAILABLE throw
    then
-   account au s" stale" STR= if
+   account au s" stale" STR:= if
       s" partial" dest VEC:APPEND false exit
    then
    service su account au HOST-HELD? 0= if false exit then
@@ -118,7 +118,7 @@ variable HOST-CALLS
    s" a bound host store answers write, read and erase" T-LABEL
    0 HOST-CALLS !
    s" host" s" key" s\" host\x00value" SECRET:WRITE
-   HOST-VALUE$ s\" host\x00value" STR= TTRUE
+   HOST-VALUE$ s\" host\x00value" STR:= TTRUE
    s" host" s" key" s\" heldhost\x00value" HOST-FOUND
    s" host" s" other" HOST-MISSING
    HOST-CALLS @ 3 T=

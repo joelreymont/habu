@@ -43,7 +43,7 @@ variable RC
    RC @ 0 T= ;
 
 : MARKER ( str -- ) {: marker size:n :}
-   OUT OUT-U @ marker size CONTAINS? TTRUE ;
+   OUT OUT-U @ marker size STR:CONTAINS? TTRUE ;
 
 : ENTRY$ ( -- str ) s" source-run.f" FILE$ ;
 

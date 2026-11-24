@@ -133,7 +133,7 @@ create TAIL TAIL-BYTES allot
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    s" the entry loads from a long directory within PATH-CAP" T-LABEL
    RC @ 0 T=
-   OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
+   OUT OUT-U @ s" deep cwd: ok" STR:CONTAINS? TTRUE ;
 
 \ Each child is its own engine: each reader resolves the chain at its start.
 : ARGV ( -- ) PROC-CWD:ARGV-ENV-CWD-RESET  ENGINE$ PROC-ARGV+ ;
@@ -146,7 +146,7 @@ create TAIL TAIL-BYTES allot
 
 : SAID ( -- )
    s" and runs it" T-LABEL
-   OUT OUT-U @ s" deep cwd: ok" CONTAINS? TTRUE ;
+   OUT OUT-U @ s" deep cwd: ok" STR:CONTAINS? TTRUE ;
 
 : CHAINED ( str -- ) {: cwd:^ cwdu:n :}
    ARGV  CHAIN$ PROC-ARGV+

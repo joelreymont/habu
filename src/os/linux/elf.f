@@ -102,7 +102,7 @@ public
 \ The row whose C name this is; the build dies on a name the table lacks.
 : IMPORT-ROW ( str -- n )
    {: a:^ u:n :}
-   IMPORTS 0 ?do i IMPORT$ a u STR= if i unloop exit then loop
+   IMPORTS 0 ?do i IMPORT$ a u STR:= if i unloop exit then loop
    SB-RESET  s" elf: no such import " SB-APPEND  a u SB-APPEND
    SB$ EXIT-STATUS:IMAGE die ;
 

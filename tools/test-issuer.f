@@ -40,7 +40,7 @@ SINK-CAP BUFFER: SINK
    0 begin dup argc < while
       {: at:n :}
       at 2 + argc >= if USAGE then
-      at SCRIPT-ARGV$ s" --client" STR= 0= if USAGE then
+      at SCRIPT-ARGV$ s" --client" STR:= 0= if USAGE then
       at 1+ SCRIPT-ARGV$ at 2 + SCRIPT-ARGV$ TEST-ISSUER:CLIENT+
       at 3 +
    repeat drop ;

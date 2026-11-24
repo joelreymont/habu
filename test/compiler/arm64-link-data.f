@@ -120,7 +120,7 @@ DYNAMIC-BUFFER SECOND-LINK u8
    s" main" PROG$ LINKER:WRITE
    s" main" PROG$ FILE-BYTES {: b:^ b-n:n :}
    s" a second link writes the same bytes" T-LABEL
-   b b-n  0 SECOND-LINK a-n  STR= TTRUE
+   b b-n  0 SECOND-LINK a-n  STR:= TTRUE
    FIRST-LINK-RELEASE SECOND-LINK-RELEASE ;
 
 
@@ -171,7 +171,7 @@ HB-TARGET-LINUX? 0= [if]
 
 : RUN-OVER ( CMD:command -- CMD:command )
    s" over" RUN-PROG {: rc:n :}
-   CMD:OUT$ STR>NUMBER? MATCH option
+   CMD:OUT$ STR:>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH {: got:n :}
@@ -180,7 +180,7 @@ HB-TARGET-LINUX? 0= [if]
    s" over allots within a step of that room" T-LABEL
    got OVER-ROOM OVER-STEP - > TTRUE
    s" and rethrows the E-DATA-SPACE it caught uncaught" T-LABEL
-   CMD:ERR$ s" hb: uncaught throw code -9850" CONTAINS? TTRUE
+   CMD:ERR$ s" hb: uncaught throw code -9850" STR:CONTAINS? TTRUE
    s" over exits 67" T-LABEL  rc 67 T= ;
 
 
@@ -204,7 +204,7 @@ HB-TARGET-LINUX? 0= [if]
    label label-n s" the child arms before the link" CHILD-LABEL
    CMD:OUT$ s\" ARM64-LINK-DATA-BAD-ARMED\n" T$=
    label label-n s" the link's reason" CHILD-LABEL
-   CMD:ERR$ err err-n CONTAINS? TTRUE
+   CMD:ERR$ err err-n STR:CONTAINS? TTRUE
    label label-n s" the link's status" CHILD-LABEL  rc want T= ;
 
 : BAD-CHILD ( CMD:command str str n -- CMD:command )
@@ -216,7 +216,7 @@ HB-TARGET-LINUX? 0= [if]
 : BAD-DATA ( CMD:command -- CMD:command )
    s" data"  s" error[E-LINK-DATA-POINTER]" 70 BAD-CHILD
    s" data" NAMES-LABEL
-   CMD:ERR$ s" the data address 1 lies outside the build's space" CONTAINS? TTRUE ;
+   CMD:ERR$ s" the data address 1 lies outside the build's space" STR:CONTAINS? TTRUE ;
 
 : BAD-EVAL ( CMD:command -- CMD:command )
    s" eval"  s" error[E-CANNOT-RUN-STRIPPED]: `LD-EV` calls `evaluate-closed`" 70 BAD-CHILD ;
@@ -230,7 +230,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 : START-AT ( str str -- n )
    {: a:^ u:n name:^ name-n:n :}
    name-n START-SYM LE:U64!  name START-SYM 8 + name-n BYTE-COPY
-   a u START-SYM name-n 8 + FIND-SUB MATCH option
+   a u START-SYM name-n 8 + STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N 8 +  name-n 7 + -8 and + ENDOF
    ;MATCH ;
@@ -275,7 +275,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 : UNENDED ( -- )
    HB-BUILD-CORE:KERNEL$ FILE-BYTES {: a:^ u:n :}
    SB-RESET  MACHO:IMPORTS 0 ?do i MACHO:IMPORT$ SB-APPEND  0 SB-APPEND-C loop
-   a u SB$ FIND-SUB MATCH option
+   a u SB$ STR:FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N SB$ nip + 1 - ENDOF
    ;MATCH {: at:n :}
@@ -292,7 +292,7 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    s" data"  name name-n PROG$ CHILD-RC {: rc:n :}
    name name-n s" nothing on stdout" CHILD-LABEL  CMD:OUT$ nip 0 T=
    name name-n s" the read's reason" CHILD-LABEL
-   CMD:ERR$ err err-n CONTAINS? TTRUE
+   CMD:ERR$ err err-n STR:CONTAINS? TTRUE
    name name-n s" the read exits 65" CHILD-LABEL  rc 65 T= ;
 
 : BAD-FLIPPED ( CMD:command -- CMD:command )
@@ -393,8 +393,8 @@ variable START                       \ the start of the mapping being read
 : FIELD-KB ( ^u8 n -- n )
    {: a:^ u:n :}
    IN-DATA? 0= if 0 exit then
-   a u s" Rss:" STARTS-WITH? if a u DEC exit then
-   a u s" Anonymous:" STARTS-WITH? if a u DEC negate exit then
+   a u s" Rss:" STR:STARTS-WITH? if a u DEC exit then
+   a u s" Anonymous:" STR:STARTS-WITH? if a u DEC negate exit then
    0 ;
 
 : LINE-KB ( ^u8 n -- n )

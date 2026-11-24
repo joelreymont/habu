@@ -151,7 +151,7 @@ variable EVAL-U
    s" --verify-only" PROC-ARGV+
    s" test/heap-use.f" PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
-   E2E-TREE:OUT$ s" deferred to the run" CONTAINS? 0= TTRUE
+   E2E-TREE:OUT$ s" deferred to the run" STR:CONTAINS? 0= TTRUE
    E2E-TREE:ERR$ nip 0 T=
    E2E-TREE:RC@ 0 T= ;
 
