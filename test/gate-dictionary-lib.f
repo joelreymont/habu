@@ -936,6 +936,13 @@ variable LABEL-U
    s" ;package" GE-SRC-LINE
    $46 s" error[E-DUPLICATE-DEFINITION]" s" checker rejects package duplicate definition" CHECK-BUF-BAD ;
 
+: DEFER-TWIN-SPELLING ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package A STRUCTURE sq FIELD x n ;STRUCTURE ;package" GE-SRC-LINE
+   s" package B defer sq-unmake ( -- ) public : SQ-UNMAKE ( -- n ) 1 ; ;package" GE-SRC-LINE
+   $46 s" = private: sq-unmake (0 -- 0)" s" checker spells a defer's private twin as declared" CHECK-BUF-BAD ;
+
 : RUN-LOAD-ONE ( str str -- ) {: path:^ pathu:n label:^ labelu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -1402,6 +1409,7 @@ public
    EXPLICIT-REDEFINITION
    PACKAGE-SHADOW-POSITIVES
    PACKAGE-DUPLICATE-CHECK
+   DEFER-TWIN-SPELLING
    PACKAGE-MULTIFILE-LOAD
    PACKAGE-INCLUDE
    PACKAGE-MISUSE

@@ -314,10 +314,13 @@ split-str
 \ caller, its file visit and its byte range. A named registrar attaches it to
 \ the record it retained (DL-TAKE), copying the name; DL-NEW is that record when
 \ the registrar's own step built one, and the registrar zeroes it before a step
-\ that may retain nothing. DECL-LOCS holds one row per located record,
-\ ascending by offset, its names appended in row order to their own bytes; a
-\ use copies a row out when it binds (NAV-USE). The tables are process-local:
-\ no record field, wire format, unit file or image carries them.
+\ that may retain nothing. While the verifier's window is open, a registrar
+\ that runs unarmed, as a generated one does, gives its record a row with the
+\ name it registered and location 0 0 0, which reads as none. DECL-LOCS holds
+\ one row per named record, ascending by offset, its names appended in row order
+\ to their own bytes; a use copies a row out when it binds (NAV-USE). The tables
+\ are process-local: no record field, wire format, unit file or image carries
+\ them.
 \
 \ The symbol hash index: a process-local mmap cache; SYMS and the
 \ USIGS/NORETS/DFERS/PES stores stay authoritative. Buckets map folded
@@ -10406,21 +10409,13 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    noff p 4 cells + !  nu p 5 cells + !
    DL-N @ 1 + DL-N ! ;
 
-\ The record a named registrar just retained takes the armed location, spelled
-\ A U: the armed name, or the part of it the record is kept under.
-: DL-TAKE-AS ( str -- )
-   {: a:^ u:n :}
-   DL-NEW @ {: rec1:n :}
-   0 DL-NEW !
-   DL-ON @ 0= rec1 0= or IF EXIT THEN
+: DL-ROW-NAMED ( n str n n n -- )
+   {: rec1:n a:^ u:n visit:n start:n end:n :}
    a u DLB-ADD {: noff:n :}
-   rec1 1 - DL-VISIT @ DL-START @ DL-END @ noff u DL-ROW+ ;
+   rec1 1 - visit start end noff u DL-ROW+ ;
 
-: DL-TAKE ( -- )
-   DL-NA @ DL-NU @ DL-TAKE-AS ;
-
-\ A generated registrar takes no location: it runs between NAV-PAUSE and
-\ NAV-RESUME, so neither its arming nor its newest record reaches DL-TAKE.
+\ A generated registration runs between NAV-PAUSE and NAV-RESUME so it does
+\ not take the location armed for the statement that generates it.
 : NAV-PAUSE ( -- n n )
    DL-ON @  DL-NEW @  0 DL-ON !  0 DL-NEW ! ;
 
@@ -12168,12 +12163,17 @@ RECORD-HOOK-DEFAULTS
    USX-ENSURE
    sym USX@ ;
 
-\ The verifier learns a generated constructor's declaring token after replay.
-: CHECKER-CTOR-DECL-AT! ( n str n n n -- )
-   {: sym:n name:^ nameu:n visit:n start:n end:n :}
-   sym USIG-NEWEST {: rec1:n :}
-   name nameu DLB-ADD {: noff:n :}
-   rec1 1 - visit start end noff nameu DL-ROW+ ;
+\ The verifier learns a generated constructor's declaring token after replay,
+\ and places there the row its unarmed registration took.
+: CHECKER-CTOR-DECL-AT! ( n n n n -- )
+   {: sym:n visit:n start:n end:n :}
+   sym USIG-NEWEST DL-ROW-OF {: i:n named:bool :}
+   named 0= IF
+      s" checker: generated constructor without a declaration row"
+      EXIT-STATUS:INTERNAL die
+   THEN
+   DL-P i DL-ROW NAV-CELL {: p:^ :}
+   visit p CELL + !  start p 2 cells + !  end p 3 cells + ! ;
 
 \ ---- source-order visibility under the binding horizon ------------------------
 : HORIZON-VISIBLE? ( n -- bool ) {: off1:n :}   \ record offset+1
@@ -17281,6 +17281,22 @@ EXPORT CHECKER-RESOLVE:REJECT-QUALIFIED
 : CHECKER-REC-U@ ( -- n )
    CHECKER-REC-U @ ;
 
+\ A U: the armed name, or the part of it the record is kept under.
+: DL-TAKE-AS ( str -- )
+   {: a:^ u:n :}
+   DL-NEW @ {: rec1:n :}
+   0 DL-NEW !
+   rec1 0= IF EXIT THEN
+   DL-ON @ IF
+      rec1 a u DL-VISIT @ DL-START @ DL-END @ DL-ROW-NAMED EXIT
+   THEN
+   CHECKER-VERIFY-WINDOW @ VERIFY-WINDOW-NONE <> IF
+      rec1 CHECKER-REC-A@ CHECKER-REC-U@ ROW-TAIL$ 0 0 0 DL-ROW-NAMED
+   THEN ;
+
+: DL-TAKE ( -- )
+   DL-NA @ DL-NU @ DL-TAKE-AS ;
+
 EXPORT CHECKER-OVERLAY:DUPLICATE?
 EXPORT CHECKER-OVERLAY:LANDS-REC
 
@@ -17394,7 +17410,7 @@ private
    ta 1 - c@ 58 = ;
 
 \ The verifier compiles nothing, so only a declaration keeps the source's case;
-\ it may write a qualifier first, or the name a generated word was made from.
+\ it may write a qualifier first.
 : SYM-SPELLING$ ( n -- str ) {: sym:n :}
    sym USIG-NEWEST-VISIBLE DL-ROW-OF {: i:n named:bool :}
    named IF
@@ -22913,6 +22929,7 @@ private
 \ The registration TRUST-DECL and TRUST-RAW share; it answers the row's outcome.
 : TRUST-USIG-SYM! ( str str n -- n )
    {: na:^ nu:n sa:^ su:n sym:n :}
+   na CHECKER-REC-A !  nu CHECKER-REC-U !
    na nu TOKFOLD drop
    \ A nonzero SYM keys the row and the name is only refused when malformed:
    \ a does> after a refused definition passes it empty; interning that dies 76.

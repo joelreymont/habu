@@ -1252,7 +1252,7 @@ CAST: TICK-ORDER-ACTION ( n -- [ str n ^u8 [ -- nominal ] -- n nominal ] )
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
 CAST: ARM-ACTION ( n -- [ str n n n -- ] )
-CAST: CTOR-DECL-ACTION ( n -- [ n str n n n -- ] )
+CAST: CTOR-DECL-ACTION ( n -- [ n n n n -- ] )
 CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- renders parses nominal ] -- renders parses nominal ] )
 
 \ Each file the composition scans is a visit, numbered from one counter that
@@ -2509,7 +2509,7 @@ variable SUM-VAR-NEXT
       sym 0 <> IF
          vid SUMV-NAME$ {: name:^ nameu:n :}
          i SUM-VAR-AT @ {: at:n :}
-         sym name nameu VISIT-CUR @ at at nameu +
+         sym VISIT-CUR @ at at nameu +
             NCOMP-DISPATCH:DECL-VERIFY-CTOR-DECL-OFF OWNER-XT CTOR-DECL-ACTION execute
          s" VARIANT" name nameu sym NULL$ at at nameu + DEF-CONSTRUCTOR VISIT-CUR @ ON-DEFINITION
       THEN

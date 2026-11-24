@@ -1797,6 +1797,37 @@ FUNCTION: MKFIFO-CALL mkfifo ( ^u8 n -- i32 ) ;FUNCTION
    0 s" message" CASE-MSG$ FIELD=
    0 s" private" s" Ee (0 -- 0)" NOTE= ;
 
+: GEN-CASE-MSG ( str -- ) {: w:^ wu:n :}
+   s" public `Q:" SB-APPEND  w wu SB-APPEND
+   s" ` has a different stack effect from its package's private `" SB-APPEND
+   w wu SB-APPEND  s" `" SB-APPEND ;
+
+\ The check names a generated private twin W as the load does: in the bytes
+\ the load builds for it from declaration DECL, never folded.
+: GEN-CASE ( str str str str -- )
+   {: decl:^ declu:n name:^ nameu:n w:^ wu:n note:^ noteu:n :}
+   SB-RESET
+   s" package Q" SB-APPEND LF+
+   decl declu SB-APPEND LF+
+   s" public" SB-APPEND LF+
+   s" : " SB-APPEND  w wu SB-APPEND  s"  ( -- ) ;" SB-APPEND LF+
+   s" ;package" SB-APPEND LF+
+   name nameu FIXTURE!
+   SB-RESET  s" error[E-SHADOWED-ARITY]: " SB-APPEND  w wu GEN-CASE-MSG
+   SB$ 70 LOADED
+   s" --verify-only" CHECK
+   GJA-LINE# @ 1 T=
+   SB-RESET  w wu GEN-CASE-MSG
+   0 s" message" SB$ FIELD=
+   0 s" private" note noteu NOTE= ;
+
+: TEST-GENERATED-CASE ( -- )
+   s" a public whose generated private twin moves other cells" T-LABEL
+   s" STRUCTURE sq FIELD x n ;STRUCTURE" s" generated-case-sq.f"
+   s" SQ-MAKE" s" SQ-MAKE (1 -- 1)" GEN-CASE
+   s" SUMTYPE shp VARIANT circ n ;VARIANT ;SUMTYPE" s" generated-case-shp.f"
+   s" SHP-CIRC" s" SHP-CIRC (1 -- 2)" GEN-CASE ;
+
 \ A definition named across a package boundary is spelled by the check, as by
 \ the load, without the qualifier its declaration wrote.
 : QUAL-MSG$ ( -- str )
@@ -3935,6 +3966,7 @@ HB-TARGET-LINUX? 0= [if]
    TEST-SHADOWED-ARITY
    TEST-SHADOWED-FUNCTION
    TEST-SHADOWED-CASE
+   TEST-GENERATED-CASE
    TEST-QUALIFIED-CASE
    TEST-ALL-RESERVED
    TEST-ALL-ORDER

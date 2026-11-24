@@ -139,7 +139,7 @@ $1E0 constant VERIFY-SYM-SOURCE-OFF
 CHECKER-OWNER-EXT:RECORD-PUBLISHED-OFF constant RECORD-PUBLISHED-OFF      \ ( n -- )
 CHECKER-OWNER-EXT:DP-CUT-OFF constant DP-CUT-OFF                         \ ( n -- )
 CHECKER-OWNER-EXT:PUBLICATION-USE-OFF constant PUBLICATION-USE-OFF \ ( [ n -- ] -- )
-CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( sym name len visit start end -- )
+CHECKER-OWNER-EXT:VERIFY-CTOR-DECL-OFF constant VERIFY-CTOR-DECL-OFF \ ( n n n n -- )
 CHECKER-OWNER-EXT:DECL-ROW-OFF constant DECL-ROW-OFF \ ( ^u8 n ^u8 n -- bool )
 
 \ These cells precede the record; callable offsets count from the record

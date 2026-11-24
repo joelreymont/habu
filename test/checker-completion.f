@@ -760,6 +760,18 @@ DEP-CAP BUFFER: DEP-BUF
    KEPT-ALL
    s" CMPQ:Cmqy" SUBJECT-PATH$ s" CMPQ:Cmqy" 0 SPAN-FROM OFFERED ;
 
+\ A generated constructor is offered once, as the load spells the word it
+\ makes, at its variant's token.
+: CASE-GENERATED-DECL ( -- )
+   s" shp:" KEPT-RESET
+   s" SUMTYPE shp VARIANT circ ;VARIANT ;SUMTYPE" s" SHP:C" TOP-AT
+   KEPT-ALL
+   s" SHP:CIRC" SUBJECT-PATH$ s" circ" 0 SPAN-FROM OFFERED
+   s" hue-" KEPT-RESET
+   s" package PV SUMTYPE hue VARIANT red ;VARIANT ;SUMTYPE" s" HUE-R" TOP-AT
+   KEPT-ALL
+   s" HUE-RED" SUBJECT-PATH$ s" red" 0 SPAN-FROM OFFERED ;
+
 \ 9. A public only the dictionary holds.
 \ QALD:QALDEF;does is offered under a bare prefix, the package's edge colon
 \ and a qualified prefix, as the dictionary spells it, with no location; its
@@ -902,6 +914,7 @@ DEP-CAP BUFFER: DEP-BUF
    CASE-REWOUND
    CASE-QUALIFIED-ANY
    CASE-QUALIFIED-DECL
+   CASE-GENERATED-DECL
    CASE-DICTIONARY
    CASE-PART-IN
    CASE-PART-OUT
