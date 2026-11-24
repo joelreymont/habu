@@ -1,4 +1,3 @@
-split-str
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
 \ and the deliveries src/lib/browser/host-cli.mjs reserves through the module
 \ share one allocator (src/lib/browser/event.f). The module is built by
@@ -37,38 +36,38 @@ PATH-CAP BUFFER: FILE
 variable FILE-U
 DYNAMIC-BUFFER PAYLOAD u8
 
-: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
+: ARG+ ( str -- ) PROC-ARGV+ ;
 
 : SETUP ( -- )
-   s" browser-storage" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY u DIR-U !
-   DIR u s" storage.wasm" MOD FS:JOIN-PATH MOD-U !
-   DIR u s" payload.bin" FILE FS:JOIN-PATH FILE-U !
-   s" browser storage: module, payload and output in " type DIR u type cr ;
+   s" browser-storage" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY d STR:LEN DIR-U !
+   d s" storage.wasm" MOD FS:JOIN-PATH MOD-U !
+   d s" payload.bin" FILE FS:JOIN-PATH FILE-U !
+   s" browser storage: module, payload and output in " type d type cr ;
 
 : SPAWN ( str -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !
-   rc 0<> if ERR erru LEN>N type cr then
+   rc 0<> if ERR erru LEN>N >str type cr then
    rc ;
 
 : BUILD ( -- n )
-   s" test/browser/storage.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/storage.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
 
-: SUM ( ^u8 n -- n )
-   {: a:^ u:n :}
-   0 u 0 ?do 31 * a i + c@ + $FFFFFFFF and loop ;
+: SUM ( str -- n )
+   {: s:str :}
+   0 s STR:LEN 0 ?do 31 * s STR:DATA i + c@ + $FFFFFFFF and loop ;
 
 : PAYLOAD! ( -- n )
    WPROF:PAGE-BYTES 8 * 13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do i i 509 / + $FF and i PAYLOAD c! loop
-   FILE FILE-U @ 0 PAYLOAD u FS:WRITE-ALL
-   0 PAYLOAD u SUM ;
+   FILE FILE-U @ >str 0 PAYLOAD u >str FS:WRITE-ALL
+   0 PAYLOAD u >str SUM ;
 
-: WANT ( n -- ^u8 n )
+: WANT ( n -- str )
    {: sum:n :}
    SB-RESET
    S\" hello\ntext loading\nfetch fixture\ntext " SB-APPEND
@@ -79,8 +78,8 @@ DYNAMIC-BUFFER PAYLOAD u8
 : HOST ( bool -- n )
    {: repeated:bool :}
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+
-   s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ ARG+
+   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ >str ARG+
+   s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ >str ARG+
    s" --pointer" ARG+ s" 3" ARG+ s" 4" ARG+ s" 1" ARG+ s" 0" ARG+
    repeated if
       s" --repeat-typed" ARG+ s" a" ARG+ s" 500" ARG+
@@ -88,7 +87,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    then
    s" --memory" ARG+
    s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u SPAWN ;
+   EXE u >str SPAWN ;
 
 \ Asserts host-cli's memory line starts right after the output's first n
 \ bytes, so nothing follows the text the caller compared exactly.
@@ -96,7 +95,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    {: at:n :}
    OUT-U @ at - 0 max {: u:n :}
    s" the memory line follows the expected output at once" T-LABEL
-   OUT at + u s" memory " STR:STARTS-WITH? TTRUE ;
+   OUT at + u >str s" memory " STR:STARTS-WITH? TTRUE ;
 
 public
 
@@ -110,25 +109,25 @@ public
    s" it validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    PAYLOAD! {: sum:n :}
-   sum WANT {: want:^ wu:n :}
+   sum WANT {: want:str :}
    s" the buffer grows beside the fetched bytes, keeps them, and its freed pages return cleared" T-LABEL
    false HOST {: status:n :}
    status 0 T=
-   OUT wu want wu T$=
-   wu MEMORY-NEXT
+   OUT want STR:LEN >str want T$=
+   want STR:LEN MEMORY-NEXT
    OUT OUT-U @ BROWSER-MEMORY-TEST:MEMORY {: base:n :}
-   DIR DIR-U @ s" payload.bin" FILE FS:JOIN-PATH FILE-U !
+   DIR DIR-U @ >str s" payload.bin" FILE FS:JOIN-PATH FILE-U !
    s" each freed keystroke's pages serve the next, and the fetched bytes keep their checksum" T-LABEL
    true HOST 0 T=
-   sum WANT drop drop
+   sum WANT drop
    s\" text typed 1000\n" SB-APPEND
-   SB$ {: all:^ allu:n :}
-   DIR DIR-U @ s" actual.txt" FILE FS:JOIN-PATH FILE-U !
-   FILE FILE-U @ OUT OUT-U @ FS:WRITE-ALL
-   DIR DIR-U @ s" expected.txt" FILE FS:JOIN-PATH FILE-U !
-   FILE FILE-U @ all allu FS:WRITE-ALL
-   OUT allu all allu T$=
-   allu MEMORY-NEXT
+   SB$ {: all:str :}
+   DIR DIR-U @ >str s" actual.txt" FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ >str OUT OUT-U @ >str FS:WRITE-ALL
+   DIR DIR-U @ >str s" expected.txt" FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ >str all FS:WRITE-ALL
+   OUT all STR:LEN >str all T$=
+   all STR:LEN MEMORY-NEXT
    s" 1000 keystrokes leave memory as the first run left it" T-LABEL
    OUT OUT-U @ BROWSER-MEMORY-TEST:MEMORY base T=
    T-REPORT ;

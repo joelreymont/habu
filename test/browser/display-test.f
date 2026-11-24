@@ -1,4 +1,3 @@
-split-str
 \ display-test.f - checked Wasm fixture through the foreign display peer; the
 \ printed directory retains the module and exact CLI output. Chrome runs only
 \ when the test is loaded with `-- --chrome`: then --chrome also runs the real
@@ -34,7 +33,7 @@ variable CHROME-U
 PATH-CAP BUFFER: FILE
 variable FILE-U
 
-: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
+: ARG+ ( str -- ) PROC-ARGV+ ;
 
 : SPAWN ( str -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -43,15 +42,15 @@ variable FILE-U
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : SETUP ( -- )
-   s" browser-display" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY u DIR-U !
-   s" browser display: module and output in " type DIR u type cr
-   DIR u s" display.wasm" MOD FS:JOIN-PATH MOD-U !
-   DIR u s" scene.bin" FILE FS:JOIN-PATH FILE-U !
-   FILE FILE-U @ s" sixteen bytes ok" FS:WRITE-ALL ;
+   s" browser-display" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY d STR:LEN DIR-U !
+   s" browser display: module and output in " type d type cr
+   d s" display.wasm" MOD FS:JOIN-PATH MOD-U !
+   d s" scene.bin" FILE FS:JOIN-PATH FILE-U !
+   FILE FILE-U @ >str s" sixteen bytes ok" FS:WRITE-ALL ;
 
 : BUILD ( -- n )
-   s" test/browser/display.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/display.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 : MAC-CHROME ( -- str )
    s" /Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ;
@@ -64,7 +63,8 @@ variable FILE-U
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
 : FIND-CHROME ( -- )
    MAC-CHROME FS:EXISTS? if
-      MAC-CHROME {: a:^ u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
+      MAC-CHROME {: m:str :}
+      m STR:DATA CHROME m STR:LEN BYTE-COPY m STR:LEN CHROME-U ! exit
    then
    s" google-chrome" CHROME FIND-EXECUTABLE MATCH option
       none OF 0 ENDOF
@@ -73,11 +73,13 @@ variable FILE-U
 
 : PEER ( -- n )
    PROC-ARGV-RESET
-   s" test/browser/display-peer.mjs" ARG+ MOD MOD-U @ ARG+ DIR DIR-U @ ARG+
+   s" test/browser/display-peer.mjs" ARG+
+   MOD MOD-U @ >str ARG+ DIR DIR-U @ >str ARG+
    CHROME-ASKED? if
       FIND-CHROME CHROME-U @ 0<> if
-         s" --chrome" ARG+ CHROME CHROME-U @ ARG+
-         s" browser display: Chrome " type CHROME CHROME-U @ type cr
+         s" --chrome" ARG+ CHROME CHROME-U @ >str ARG+
+         s" browser display: Chrome " type
+         CHROME CHROME-U @ >str type cr
       else
          s" --chrome: Chrome is installed" T-LABEL CHROME-U @ 0<> TTRUE
       then
@@ -85,7 +87,7 @@ variable FILE-U
       s" browser display: Chrome cases run only with -- --chrome" type cr
    then
    s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u SPAWN ;
+   EXE u >str SPAWN ;
 
 public
 
@@ -94,25 +96,25 @@ public
    s" browser display fixture builds" T-LABEL
    BUILD {: rc:n :}
    rc 0 T=
-   rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
+   rc 0<> if ERR ERR-U @ >str type cr T-REPORT exit then
    s" browser display fixture validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    PEER {: peer:n :}
    s" SVG/input records, scenes, identities, refusals and CLI" T-LABEL
    peer 0 T=
-   OUT OUT-U @ type ERR ERR-U @ type
-   s" four fetched answers end with the memory one does"
+   OUT OUT-U @ >str type ERR ERR-U @ >str type
+   s" four fetched answers end with the memory one does" str>
       MOD MOD-U @ [: \ the answer follows the typed "fetch" that asks for it
          s" --typed" ARG+ s" fetch" ARG+
-         s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ ARG+ ;]
+         s" --answer" ARG+ s" 200" ARG+ FILE FILE-U @ >str ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four loads end with the memory one does"
-      MOD MOD-U @ [: s" --load" ARG+ FILE FILE-U @ ARG+ ;]
+   s" four loads end with the memory one does" str>
+      MOD MOD-U @ [: s" --load" ARG+ FILE FILE-U @ >str ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four focus turns end with the memory one does"
+   s" four focus turns end with the memory one does" str>
       MOD MOD-U @ [: s" --focus" ARG+ s" 000102030405060708090a0b0c0d0e0f" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four highlight turns end with the memory one does"
+   s" four highlight turns end with the memory one does" str>
       MOD MOD-U @ [: s" --highlight" ARG+ s" 0f0e0d0c0b0a09080706050403020100" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
    T-REPORT ;

@@ -1,4 +1,3 @@
-split-str
 \ request-test.f - the browser request protocol under bun:
 \ src/lib/browser/host-cli.mjs runs test/browser/request.f's module, built by
 \ tools/hb-build.f, through src/lib/browser/turn.js. test/wasm/device.f runs
@@ -51,27 +50,27 @@ PATH-CAP BUFFER: FILE
 
 : KIND99$ ( -- str )  s" a record of kind 99, which names no record" ;
 
-: OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n )  ERR ERR-U @ ;
+: OUT$ ( -- str )  OUT OUT-U @ >str ;
+: ERR$ ( -- str )  ERR ERR-U @ >str ;
 
-: TRAP$ ( -- str )  TRAP TRAP-U @ ;
+: TRAP$ ( -- str )  TRAP TRAP-U @ >str ;
 
-: FILE! ( ^u8 n ^u8 n -- )
-   {: a:^ u:n name:^ nu:n :}
-   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu a u FS:WRITE-ALL ;
+: FILE! ( str str -- )
+   {: s:str name:str :}
+   DIR DIR-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str s FS:WRITE-ALL ;
 
 : SUBDIR ( str ^u8 -- n )
-   {: name:^ nu:n dst:^ :}
-   DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
-   dst u FS:MAKE-DIR
+   {: name:str dst:^ :}
+   DIR DIR-U @ >str name dst FS:JOIN-PATH {: u:n :}
+   dst u >str FS:MAKE-DIR
    u ;
 
 : SETUP ( -- )
-   s" browser-request" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
-   s" browser request: module, answers and transcripts in " type  DIR u type cr
-   DIR u s" request.wasm" MOD FS:JOIN-PATH MOD-U !
+   s" browser-request" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
+   s" browser request: module, answers and transcripts in " type  d type cr
+   d s" request.wasm" MOD FS:JOIN-PATH MOD-U !
    s" expected" WANT-DIR SUBDIR WANT-U !
    s" actual" GOT-DIR SUBDIR GOT-U !
    NONE$ s" empty.bin" FILE!
@@ -80,15 +79,15 @@ PATH-CAP BUFFER: FILE
    THREE$ s" three.bin" FILE!
    ZFF$ s" zff.bin" FILE! ;
 
-: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
+: ARG+ ( str -- )  PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
 : FILE-ARG+ ( str -- )
-   {: name:^ nu:n :}
-   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu ARG+ ;
+   {: name:str :}
+   DIR DIR-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str ARG+ ;
 
 : SPAWN ( str -- n )
    OUT CAP >LEN  ERR CAP >LEN  PROCESS:WAIT-FOREVER
@@ -102,11 +101,11 @@ PATH-CAP BUFFER: FILE
    rc 0 T= ;
 
 : BUILD ( -- n )
-   s" test/browser/request.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/request.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
+   s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ >str ARG+ ;
 
 : TYPED+ ( str -- )
    s" --typed" ARG+  ARG+ ;
@@ -115,13 +114,13 @@ PATH-CAP BUFFER: FILE
 \ name. request.f's replies: 470 leaves a record of no kind, 471 traps, and 202
 \ to a legacy post posts /followup.
 : ANSWER+ ( n str -- )
-   {: status:n name:^ nu:n :}
-   s" --answer" ARG+  status N-ARG+  name nu FILE-ARG+ ;
+   {: status:n name:str :}
+   s" --answer" ARG+  status N-ARG+  name FILE-ARG+ ;
 
 \ The waiting tagged request with this ID answered, ahead of older ones.
 : ANSWER-ID+ ( str n str -- )
-   {: id:^ iu:n status:n name:^ nu:n :}
-   s" --answer-id" ARG+  id iu ARG+  status N-ARG+  name nu FILE-ARG+ ;
+   {: id:str status:n name:str :}
+   s" --answer-id" ARG+  id ARG+  status N-ARG+  name FILE-ARG+ ;
 
 : RESIZE+ ( n n -- )
    {: w:n h:n :}
@@ -133,31 +132,31 @@ PATH-CAP BUFFER: FILE
 
 : HOST ( -- n )
    s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u SPAWN ;
+   EXE u >str SPAWN ;
 
 \ ---- the lines the host prints, built in SB ---------------------------------
-: LINE ( ^u8 n -- )
+: LINE ( str -- )
    SB-APPEND  10 SB-APPEND-C ;
 
 : HELLO ( -- )
    SB-RESET  s" hello" LINE ;
 
-: DECIMALS ( ^u8 n -- )
-   {: a:^ u:n :}
-   u 0 ?do  a i + c@ FMT:SB-U  44 SB-APPEND-C  loop ;
+: DECIMALS ( str -- )
+   {: s:str :}
+   s STR:LEN 0 ?do  s STR:DATA i + c@ FMT:SB-U  44 SB-APPEND-C  loop ;
 
 \ A tagged request as the host makes it: method and path, the ID, then the
 \ body's length and hex.
 : REQUEST-LINE ( str str str -- )
-   {: what:^ wu:n id:^ iu:n body:^ bu:n :}
-   s" request " SB-APPEND  what wu SB-APPEND  32 SB-APPEND-C
-   id iu SB-APPEND  32 SB-APPEND-C  body bu LINE ;
+   {: what:str id:str body:str :}
+   s" request " SB-APPEND  what SB-APPEND  32 SB-APPEND-C
+   id SB-APPEND  32 SB-APPEND-C  body LINE ;
 
 \ The fixture's requests: POST /state and PUT /view with the body 00 ff, and
 \ GET /projects with none.
 : STATE-LINE ( str -- )
-   {: id:^ iu:n :}
-   s" POST /state" id iu s" 2 00ff" REQUEST-LINE ;
+   {: id:str :}
+   s" POST /state" id s" 2 00ff" REQUEST-LINE ;
 
 : PROJECTS-LINE ( -- )
    s" GET /projects" ID2$ s" 0 " REQUEST-LINE ;
@@ -168,14 +167,14 @@ PATH-CAP BUFFER: FILE
 \ The text a reply's run answers: the ID, the status and drawing size, then
 \ the body's bytes.
 : REPLY-LINE ( str str str -- )
-   {: id:^ iu:n what:^ wu:n body:^ bu:n :}
-   s" text " SB-APPEND  id iu SB-APPEND  32 SB-APPEND-C
-   what wu SB-APPEND  32 SB-APPEND-C  body bu DECIMALS  10 SB-APPEND-C ;
+   {: id:str what:str body:str :}
+   s" text " SB-APPEND  id SB-APPEND  32 SB-APPEND-C
+   what SB-APPEND  32 SB-APPEND-C  body DECIMALS  10 SB-APPEND-C ;
 
 : ERR-LINE$ ( -- str )
-   ERR ERR-U @ 10 STR:INDEX-OF MATCH option
-      none OF ERR 0 ENDOF
-      some OF IDX>N ERR swap ENDOF
+   ERR ERR-U @ >str 10 STR:INDEX-OF MATCH option
+      none OF ERR 0 >str ENDOF
+      some OF IDX>N ERR swap >str ENDOF
    ;MATCH ;
 
 : ENDED-LINE ( str -- )
@@ -183,13 +182,13 @@ PATH-CAP BUFFER: FILE
 
 \ Writes the expected text and the actual bytes as this name in DIR's expected
 \ and actual directories, then compares them.
-: SAME ( ^u8 n ^u8 n -- )
-   {: got:^ gu:n name:^ nu:n :}
-   WANT-DIR WANT-U @ name nu FILE FS:JOIN-PATH {: wu:n :}
-   FILE wu SB$ FS:WRITE-ALL
-   GOT-DIR GOT-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu got gu FS:WRITE-ALL
-   got gu SB$ T$= ;
+: SAME ( str str -- )
+   {: got:str name:str :}
+   WANT-DIR WANT-U @ >str name FILE FS:JOIN-PATH {: wu:n :}
+   FILE wu >str SB$ FS:WRITE-ALL
+   GOT-DIR GOT-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str got FS:WRITE-ALL
+   got SB$ T$= ;
 
 \ ---- the cases --------------------------------------------------------------
 
@@ -227,8 +226,8 @@ PATH-CAP BUFFER: FILE
    HOST-OPEN  s" request" TYPED+  s" trap" TYPED+  200 s" one.bin" ANSWER+
    s" trapped: the run fails" T-LABEL
    HOST 1 T=
-   ERR-LINE$ {: t:^ u:n :}
-   t TRAP u BYTE-COPY  u TRAP-U !
+   ERR-LINE$ {: t:str :}
+   t STR:DATA TRAP t STR:LEN BYTE-COPY  t STR:LEN TRAP-U !
    s" trapped: the host names the fault the fixture's trap recorded" T-LABEL
    TRAP$ s" fault kind 102 at " STR:STARTS-WITH? TTRUE
    HELLO  ID1$ STATE-LINE
@@ -340,30 +339,30 @@ PATH-CAP BUFFER: FILE
 \ Four rounds of a tagged request and its answer end with the memory one round
 \ does: each typed and each answered run frees its delivery.
 : FREED-CASE ( -- )
-   s" freed: four answered requests end with the memory one does"
+   s" freed: four answered requests end with the memory one does" str>
    MOD MOD-U @ [: s" x" TYPED+  ID1$ 201 s" zff.bin" ANSWER-ID+ ;]
    BROWSER-MEMORY-TEST:FREED ;
 
-: MALFORMED ( ^u8 n ^u8 n -- )
-   {: cmd:^ cu:n what:^ wu:n :}
-   SB-RESET  s" malformed " SB-APPEND  cmd cu SB-APPEND  s" : " SB-APPEND
-   what wu SB-APPEND  SB$ T-LABEL ;
+: MALFORMED ( str str -- )
+   {: cmd:str what:str :}
+   SB-RESET  s" malformed " SB-APPEND  cmd SB-APPEND  s" : " SB-APPEND
+   what SB-APPEND  SB$ T-LABEL ;
 
 \ Typed text whose run leaves a malformed request record: the turn fails before
 \ any request reaches the host.
-: REFUSED ( ^u8 n -- )
-   {: cmd:^ cu:n :}
-   HOST-OPEN  cmd cu TYPED+
-   cmd cu s" the turn fails" MALFORMED
+: REFUSED ( str -- )
+   {: cmd:str :}
+   HOST-OPEN  cmd TYPED+
+   cmd s" the turn fails" MALFORMED
    HOST 1 T=
-   cmd cu s" no request reaches the host" MALFORMED
+   cmd s" no request reaches the host" MALFORMED
    OUT$ s\" hello\n" T$= ;
 
-: REJECT ( ^u8 n ^u8 n -- )
-   {: cmd:^ cu:n why:^ wu:n :}
-   cmd cu REFUSED
-   cmd cu s" the failure names the reason" MALFORMED
-   ERR$ why wu STR:CONTAINS? TTRUE ;
+: REJECT ( str str -- )
+   {: cmd:str why:str :}
+   cmd REFUSED
+   cmd s" the failure names the reason" MALFORMED
+   ERR$ why STR:CONTAINS? TTRUE ;
 
 : MALFORMED-CASES ( -- )
    s" short header" s" request header" REJECT

@@ -1,4 +1,3 @@
-split-str
 \ take.f - TAKE-TURN, a browser host module that keeps a delivery past its turn
 \ with BROWSER-EVENT:TAKE, built by `tools/hb-build.f -- --target wasm`, whose
 \ entry is MAIN; test/browser/take-test.f runs it under
@@ -32,31 +31,31 @@ variable HELD-U
    {: kind:n a:n b:n c:n :}
    kind FIELD,  a FIELD,  b FIELD,  c FIELD, ;
 
-: SAY ( ^u8 n -- )
-   {: t:^ u:n :}
-   u 0 ?do  t i + c@  TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U !  loop ;
+: SAY ( str -- )
+   {: t:str :}
+   t STR:LEN 0 ?do  t STR:DATA i + c@  TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U !  loop ;
 
 : TEXT-RECORD ( str -- )
-   {: t:^ u:n :}
-   3 t BYTES>N u 0 RECORD ;
+   {: s:str :}
+   3 s STR:DATA BYTES>N s STR:LEN 0 RECORD ;
 
 : SHOW-HELD ( -- )
    HELD-U @ 0= if exit then
-   0 TEXT-U !  s" held " SAY  HELD @ HELD-U @ SAY
-   TEXT TEXT-U @ TEXT-RECORD
+   0 TEXT-U !  s" held " SAY  HELD @ HELD-U @ >str SAY
+   TEXT TEXT-U @ >str TEXT-RECORD
    HELD @ HELD-U @ FREE  0 HELD-U ! ;
 
 : SAME? ( str str -- bool )
-   {: a:^ au:n b:^ bu:n :}
-   a BYTES>N b BYTES>N =  au bu =  and ;
+   {: a:str b:str :}
+   a STR:DATA BYTES>N b STR:DATA BYTES>N =  a STR:LEN b STR:LEN =  and ;
 
 : HOLD ( -- )
-   0 EVENT@ 1 EVENT@ 2 EVENT@ DELIVERY {: kind:n at:n u:n d:^ du:n :}
-   BROWSER-EVENT:TAKE {: k:^ ku:n :}
-   k ku d du SAME? 0= if 91 throw then
-   DELIVERY d du SAME? 0= if 91 throw then
+   0 EVENT@ 1 EVENT@ 2 EVENT@ DELIVERY {: kind:n at:n u:n d:str :}
+   BROWSER-EVENT:TAKE {: k:str :}
+   k d SAME? 0= if 91 throw then
+   DELIVERY d SAME? 0= if 91 throw then
    0 EVENT@ kind <>  1 EVENT@ at <> or  2 EVENT@ u <> or if 91 throw then
-   k HELD !  ku HELD-U ! ;
+   k STR:DATA HELD !  k STR:LEN HELD-U ! ;
 
 : TYPED ( -- )
    SHOW-HELD

@@ -1,4 +1,3 @@
-split-str
 \ C2 refusals retain the operation and the logical owner or loan in both
 \ diagnostic formats. Every candidate runs through the real evaluator.
 require src/lib/string.f
@@ -16,19 +15,21 @@ $4000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: REFUSAL ( ^u8 n ^u8 n ^u8 n ^u8 n -- )
-   {: source:^ source-u:n operation:^ operation-u:n culprit:^ culprit-u:n reason:^ reason-u:n :}
-   source source-u OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+: REFUSAL ( str str str str -- )
+   {: source:str operation:str culprit:str reason:str :}
+   source OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: out-u:len err-u:len oc :}
    oc MATCH PROCESS:ending
       exited OF 70 = ENDOF
       signaled OF drop false ENDOF
-      timeout OF source source-u OUT out-u LEN>N ERR err-u LEN>N T-TIMED-OUT ENDOF
+      timeout OF
+         source OUT out-u LEN>N >str ERR err-u LEN>N >str T-TIMED-OUT
+      ENDOF
    ;MATCH
    TTRUE
-   ERR err-u LEN>N operation operation-u STR:CONTAINS? TTRUE
-   ERR err-u LEN>N culprit culprit-u STR:CONTAINS? TTRUE
-   ERR err-u LEN>N reason reason-u STR:CONTAINS? TTRUE ;
+   ERR err-u LEN>N >str operation STR:CONTAINS? TTRUE
+   ERR err-u LEN>N >str culprit STR:CONTAINS? TTRUE
+   ERR err-u LEN>N >str reason STR:CONTAINS? TTRUE ;
 
 public
 : RUN ( -- )

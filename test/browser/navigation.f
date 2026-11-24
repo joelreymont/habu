@@ -1,4 +1,3 @@
-split-str
 \ navigation.f - Wasm fixture for the browser navigation, tree, highlight,
 \ pick and occlude protocol, built by `tools/hb-build.f -- --target wasm`,
 \ whose entry is MAIN. Typed "pick" picks pixel 5, 6 with id 9; a picked
@@ -37,9 +36,9 @@ variable PRESS-MODS
 : CHAR+ ( n -- )
    TEXT TEXT-U @ + c! TEXT-U @ 1+ TEXT-U ! ;
 
-: SAY ( ^u8 n -- )
-   {: a:^ u:n :}
-   u 0 ?do a i + c@ CHAR+ loop ;
+: SAY ( str -- )
+   {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ CHAR+ loop ;
 
 : DIGITS ( n -- )
    {: v:n :}
@@ -53,9 +52,9 @@ variable PRESS-MODS
 : TEXT-RECORD ( -- )
    3 TEXT BYTES>N TEXT-U @ 0 RECORD ;
 
-: TREE ( ^u8 n n -- )
-   {: a:^ u:n key:n :}
-   5 a BYTES>N u key RECORD ;
+: TREE ( str n -- )
+   {: s:str key:n :}
+   5 s STR:DATA BYTES>N s STR:LEN key RECORD ;
 
 : MESH ( n n -- )
    {: u:n handle:n :}
@@ -175,20 +174,20 @@ variable PRESS-MODS
 : KEY-TEXT ( -- )
    0 TEXT-U !
    s" key " SAY
-   1 EVENT@ >BYTES 2 EVENT@ SAY
+   1 EVENT@ >BYTES 2 EVENT@ >str SAY
    32 CHAR+ 3 EVENT@ SIGNED 44 CHAR+ 4 EVENT@ SIGNED
    32 CHAR+ 6 EVENT@ SIGNED
    TEXT-RECORD ;
 
 : IS? ( str -- bool )
-   {: a:^ u:n :}
-   2 EVENT@ u <> if false exit then
-   u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop
+   {: s:str :}
+   2 EVENT@ s STR:LEN <> if false exit then
+   s STR:LEN 0 ?do 1 EVENT@ i + >BYTES c@ s STR:DATA i + c@ <> if false unloop exit then loop
    true ;
 
 : INVALID ( -- )
    s" json" IS? if s" nope" 0 TREE exit then
-   s" utf8" IS? if 255 TEXT c! TEXT 1 0 TREE exit then
+   s" utf8" IS? if 255 TEXT c! TEXT 1 >str 0 TREE exit then
    s" duplicate" IS? if
       s\" [{\"key\":1,\"parent\":0,\"label\":\"A\"},{\"key\":1,\"parent\":0,\"label\":\"B\"}]" 0 TREE exit then
    s" parent" IS? if

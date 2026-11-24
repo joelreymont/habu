@@ -1,4 +1,3 @@
-split-str
 \ The C2 writer admits only the public runtime entries.
 require src/core/exit-status.f
 require src/lib/test.f
@@ -21,7 +20,7 @@ EXPORT C2-MEM:WITH-READ
 package C2-MEMORY-NATIVE-BOUNDARY
 private
 
-: ENTRY ( ^u8 n -- n )
+: ENTRY ( str -- n )
    XREF-FIND dup XREF-FOUND? 0= if
       drop s" c2-memory-native-boundary: missing entry" EXIT-STATUS:FAILURE die
    then XREF-START ;

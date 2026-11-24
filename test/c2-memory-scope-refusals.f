@@ -1,4 +1,3 @@
-split-str
 \ Checker boundaries for the public C2 owner and shared loan entries.
 
 require src/lib/string.f
@@ -19,29 +18,31 @@ create ERR CAP allot
 \ Run the source in a child: the lengths of what it wrote to OUT and ERR, and
 \ whether it exited with the expected status.
 : EXITED? ( str n -- len len bool )
-   {: src:^ srcu:n expected:n :}
-   src srcu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+   {: src:str expected:n :}
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu erru
    oc MATCH PROCESS:ending
       exited OF expected = ENDOF
       signaled OF drop false ENDOF
-      timeout OF src srcu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+      timeout OF
+         src OUT outu LEN>N >str ERR erru LEN>N >str T-TIMED-OUT
+      ENDOF
    ;MATCH ;
 
 \ Exited with the expected status, WHY in the diagnostic and SAID in the output.
 : REPORTED? ( str n str str -- bool )
-   {: expected:n why:^ whyu:n said:^ saidu:n :}
+   {: expected:n why:str said:str :}
    expected EXITED? {: outu:len erru:len exited:bool :}
-   exited ERR erru LEN>N why whyu STR:CONTAINS? and
-   OUT outu LEN>N said saidu STR:CONTAINS? and ;
+   exited ERR erru LEN>N >str why STR:CONTAINS? and
+   OUT outu LEN>N >str said STR:CONTAINS? and ;
 
 \ Exited with the expected status, FIELDS and HELP in its JSON rejection.
 : JSON-REPORTED? ( str n str str -- bool )
-   {: expected:n fields:^ fieldsu:n help:^ helpu:n :}
+   {: expected:n fields:str help:str :}
    expected EXITED? {: outu:len erru:len exited:bool :}
-   exited ERR erru LEN>N fields fieldsu STR:CONTAINS? and
-   ERR erru LEN>N help helpu STR:CONTAINS? and ;
+   exited ERR erru LEN>N >str fields STR:CONTAINS? and
+   ERR erru LEN>N >str help STR:CONTAINS? and ;
 
 : STORED ( -- )
    s" an ordinary quotation may be stored in a typed global" T-LABEL

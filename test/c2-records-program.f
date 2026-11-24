@@ -1,4 +1,3 @@
-split-str
 \ A table initializes many committed records under one C2 scope.
 require src/core/exit-status.f
 require src/lib/test.f
@@ -13,7 +12,7 @@ private
 41 constant MANY
 MANY 2 * CELL * constant MANY-BYTES
 
-: ENTRY ( ^u8 n -- n )
+: ENTRY ( str -- n )
    XREF-FIND dup XREF-FOUND? 0= if
       drop s" c2-records-program: missing native entry" EXIT-STATUS:FAILURE die
    then XREF-START ;

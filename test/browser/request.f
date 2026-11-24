@@ -1,4 +1,3 @@
-split-str
 \ request.f - real Wasm fixture for the browser request/reply protocol.
 \ Built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN.
 
@@ -46,8 +45,8 @@ variable TEXT-U
    8 0 do dup $FF and REQ-C 8 rshift loop drop ;
 
 : REQ+ ( str -- )
-   {: a:^ u:n :}
-   u 0 ?do a i + c@ REQ-C loop ;
+   {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ REQ-C loop ;
 
 : BOM ( -- )
    $EF REQ-C $BB REQ-C $BF REQ-C ;
@@ -57,9 +56,9 @@ variable TEXT-U
    7 REQ BYTES>N REQ-U @ id RECORD ;
 
 : IS? ( n n str -- bool )
-   {: at:n u:n t:^ tu:n :}
-   u tu <> if false exit then
-   tu 0 ?do at i + >BYTES c@ t i + c@ <> if false unloop exit then loop
+   {: at:n u:n t:str :}
+   u t STR:LEN <> if false exit then
+   t STR:LEN 0 ?do at i + >BYTES c@ t STR:DATA i + c@ <> if false unloop exit then loop
    true ;
 
 \ Overruns the loop stack, a fault that still traps, so the module ends.
@@ -77,8 +76,8 @@ variable TEXT-U
    at u s" trap" IS? if SINK exit then
    at u s" throw" IS? if $20000000000001 REQUEST 94 throw then
    at u s" fetch throw" IS? if
-      s" /state" {: path:^ len:n :}
-      1 path BYTES>N len 0 RECORD 94 throw
+      s" /state" {: path:str :}
+      1 path STR:DATA BYTES>N path STR:LEN 0 RECORD 94 throw
    then
    at u s" short header" IS? if 7 REQ BYTES>N 15 $20000000000001 RECORD exit then
    at u s" outside" IS? if 7 -1 REQ-U @ $20000000000001 RECORD exit then
@@ -118,14 +117,14 @@ variable TEXT-U
       4 REQ BYTES>N REQ-U @ 6 RECORD exit
    then
    at u s" legacy fetch" IS? if
-      s" /state" {: path:^ len:n :}
-      1 path BYTES>N len 0 RECORD exit
+      s" /state" {: path:str :}
+      1 path STR:DATA BYTES>N path STR:LEN 0 RECORD exit
    then
    at u s" legacy two" IS? if
       0 REQ-U ! s" /state" REQ+ 0 REQ-C $FF REQ-C
       4 REQ BYTES>N REQ-U @ 6 RECORD
-      s" /state" {: path:^ len:n :}
-      1 path BYTES>N len 0 RECORD exit
+      s" /state" {: path:str :}
+      1 path STR:DATA BYTES>N path STR:LEN 0 RECORD exit
    then
    at u s" two" IS? if
       $20000000000001 REQUEST $20000000000002 REQUEST exit
@@ -140,8 +139,8 @@ variable TEXT-U
    at u s" interleaved" IS? if
       REQ-U @ 0 ?do REQ i + c@ REQ2 i + c! loop
       7 REQ2 BYTES>N REQ-U @ $20000000000001 RECORD
-      s" /legacy*" {: span:^ len:n :}
-      4 span BYTES>N len 7 RECORD
+      s" /legacy*" {: span:str :}
+      4 span STR:DATA BYTES>N span STR:LEN 7 RECORD
       0 REQ-U ! 3 REQ-CELL 9 REQ-CELL
       s" GET" REQ+ s" /projects" REQ+
       $20000000000002 REQUEST exit

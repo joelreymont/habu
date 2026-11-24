@@ -1,4 +1,3 @@
-split-str
 \ Generated initialized-field words keep their receiver and value boundaries
 \ through ordinary source evaluation.
 require src/lib/string.f
@@ -15,15 +14,17 @@ create OUT CAP allot
 create ERR CAP allot
 variable ERR-U
 
-: REFUSED? ( ^u8 n n -- bool )
-   {: src:^ srcu:n expected:n :}
-   src srcu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
+: REFUSED? ( str n -- bool )
+   {: src:str expected:n :}
+   src OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER SUBJECT:RUN
    {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
    oc MATCH PROCESS:ending
       exited OF expected = ENDOF
       signaled OF drop false ENDOF
-      timeout OF src srcu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
+      timeout OF
+         src OUT outu LEN>N >str ERR erru LEN>N >str T-TIMED-OUT
+      ENDOF
    ;MATCH ;
 
 public
@@ -36,7 +37,7 @@ public
    s" package C2IA STRUCTURE badwidth<a> DERIVE init FIELD value a FIELD tail n ;STRUCTURE ;package"
       70 REFUSED? TTRUE
    s" invalid width reports the fixed-cell requirement" T-LABEL
-   ERR ERR-U @ s" canonical fixed-cell record" STR:CONTAINS? TTRUE
+   ERR ERR-U @ >str s" canonical fixed-cell record" STR:CONTAINS? TTRUE
    s" an accessor name a private word holds is refused" T-LABEL
    s" package C2IA private : PO-A@ ( -- n ) 1 ; STRUCTURE po OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE ;package"
       70 REFUSED? TTRUE

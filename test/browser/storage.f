@@ -1,4 +1,3 @@
-split-str
 \ storage.f - STORAGE-TURN, a browser host module whose dynamic buffer shares
 \ the module's allocator with the deliveries the host reserves through it, built
 \ by `tools/hb-build.f -- --target wasm`, whose entry is MAIN;
@@ -62,11 +61,11 @@ variable TYPED-N
    0 HELD FIRST !
    42 131071 HELD c!
    0 EVENT BYTES>N TURN-REVISION:PROTOCOL 0 RECORD
-   s" fixture" {: path:^ u:n :}
-   1 path BYTES>N u 0 RECORD
+   s" fixture" {: path:str :}
+   1 path STR:DATA BYTES>N path STR:LEN 0 RECORD
    0 TEXT-U !
-   s" loading" {: t:^ tu:n :}
-   tu 0 ?do  t i + c@ CHAR+  loop
+   s" loading" {: t:str :}
+   t STR:LEN 0 ?do  t STR:DATA i + c@ CHAR+  loop
    TEXT-RECORD ;
 
 : BYTES ( -- )
@@ -95,13 +94,13 @@ variable TYPED-N
    1 EVENT@ >BYTES c@ TYPED-N @ 500 < if 97 else 98 then <> if 97 throw then
    TYPED-N @ 0= if 1 EVENT@ TYPED-AT ! then
    1 EVENT@ TYPED-AT @ <> if 91 throw then
-   DELIVERY FREE
+   DELIVERY str> FREE
    TYPED-N @ 1+ TYPED-N !
    TYPED-N @ 1000 = if
       FETCH-AT @ FETCH-LEN @ SUM FETCH-SUM @ <> if 99 throw then
       0 TEXT-U !
-      s" typed " {: t:^ tu:n :}
-      tu 0 ?do t i + c@ CHAR+ loop
+      s" typed " {: t:str :}
+      t STR:LEN 0 ?do t STR:DATA i + c@ CHAR+ loop
       TYPED-N @ DIGITS TEXT-RECORD
    then ;
 

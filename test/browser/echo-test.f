@@ -1,4 +1,3 @@
-split-str
 \ echo-test.f - the browser host's turns under bun: src/lib/browser/host-cli.mjs
 \ runs test/browser/echo.f's module through src/lib/browser/turn.js
 \ (src/lib/browser/host.f), and test/browser/stale.f's, whose hello states
@@ -43,23 +42,23 @@ DYNAMIC-BUFFER PAYLOAD u8
 : REFUSED$ ( -- str )  s" refused: no extrusion ends at that face" ;
 : DROPPED$ ( -- str )  s" dropped" ;
 
-: FILE! ( ^u8 n ^u8 n -- )
-   {: a:^ u:n name:^ nu:n :}
-   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu a u FS:WRITE-ALL ;
+: FILE! ( str str -- )
+   {: s:str name:str :}
+   DIR DIR-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str s FS:WRITE-ALL ;
 
 : SETUP ( -- )
-   s" browser-echo" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
-   s" browser echo: module and files in " type  DIR u type cr
-   DIR u s" echo.wasm" MOD FS:JOIN-PATH MOD-U !
-   DIR u s" stale.wasm" STALE-MOD FS:JOIN-PATH STALE-MOD-U !
+   s" browser-echo" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
+   s" browser echo: module and files in " type  d type cr
+   d s" echo.wasm" MOD FS:JOIN-PATH MOD-U !
+   d s" stale.wasm" STALE-MOD FS:JOIN-PATH STALE-MOD-U !
    SMALL$ s" small.bin" FILE!
    LANDED$ s" landed.txt" FILE!
    REFUSED$ s" refused.txt" FILE!
    DROPPED$ s" dropped.txt" FILE! ;
 
-: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
+: ARG+ ( str -- )  PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
@@ -75,22 +74,22 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : SUCCEEDED ( n -- )
    {: rc:n :}
-   rc 0<> if  ERR ERR-U @ type cr  then
+   rc 0<> if  ERR ERR-U @ >str type cr  then
    rc 0 T= ;
 
 : BUILD ( -- )
    s" test/browser/echo.f builds into a module that validates" T-LABEL
-   s" test/browser/echo.f" MOD MOD-U @ WASM-HARNESS:BUILD 0 T=
+   s" test/browser/echo.f" str> MOD MOD-U @ WASM-HARNESS:BUILD 0 T=
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE ;
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
+   s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ >str ARG+ ;
 
 \ A step at x and y: --pointer, --move or --release.
 : AT+ ( str n n n -- )
-   {: flag:^ fu:n x:n y:n buttons:n :}
-   flag fu ARG+  x N-ARG+  y N-ARG+  buttons N-ARG+  0 N-ARG+ ;
+   {: flag:str x:n y:n buttons:n :}
+   flag ARG+  x N-ARG+  y N-ARG+  buttons N-ARG+  0 N-ARG+ ;
 
 : TYPED+ ( str -- )
    s" --typed" ARG+  ARG+ ;
@@ -98,26 +97,26 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ The oldest waiting request answered with the status and the file of this
 \ name in DIR.
 : ANSWER+ ( n str -- )
-   {: status:n name:^ nu:n :}
+   {: status:n name:str :}
    s" --answer" ARG+  status N-ARG+
-   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu ARG+ ;
+   DIR DIR-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str ARG+ ;
 
 : HOST ( -- n )
    s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u SPAWN ;
+   EXE u >str SPAWN ;
 
 \ ---- the lines the host prints, built in SB ---------------------------------
-: LINE ( ^u8 n -- )
+: LINE ( str -- )
    SB-APPEND  10 SB-APPEND-C ;
 
 : TEXT-LINE ( str -- )
    s" text " SB-APPEND  LINE ;
 
 \ The checksum echo.f's module answers for bytes.
-: SUM ( ^u8 n -- n )
-   {: a:^ u:n :}
-   0  u 0 ?do  31 *  a i + c@ +  $FFFFFFFF and  loop ;
+: SUM ( str -- n )
+   {: s:str :}
+   0  s STR:LEN 0 ?do  31 *  s STR:DATA i + c@ +  $FFFFFFFF and  loop ;
 
 : SUM-LINE ( str -- )
    SUM  s" text " SB-APPEND  FMT:SB-U  10 SB-APPEND-C ;
@@ -130,15 +129,15 @@ DYNAMIC-BUFFER PAYLOAD u8
    {: d:n :}
    d 10 < if  d 48 +  else  d 87 +  then  SB-APPEND-C ;
 
-: HEX ( ^u8 n -- )
-   {: a:^ u:n :}
-   u 0 ?do  a i + c@ dup 4 rshift NIBBLE $F and NIBBLE  loop ;
+: HEX ( str -- )
+   {: s:str :}
+   s STR:LEN 0 ?do  s STR:DATA i + c@ dup 4 rshift NIBBLE $F and NIBBLE  loop ;
 
 \ The line of a post typed text T makes: its path T, its body T twice.
 : POST-LINE ( str -- )
-   {: t:^ u:n :}
-   s" post " SB-APPEND  t u SB-APPEND  32 SB-APPEND-C
-   u 2 * FMT:SB-U  32 SB-APPEND-C  t u HEX  t u HEX  10 SB-APPEND-C ;
+   {: s:str :}
+   s" post " SB-APPEND  s SB-APPEND  32 SB-APPEND-C
+   s STR:LEN 2 * FMT:SB-U  32 SB-APPEND-C  s HEX  s HEX  10 SB-APPEND-C ;
 
 \ ---- the cases --------------------------------------------------------------
 : SMALL-CASE ( -- )
@@ -146,7 +145,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    HOST SUCCEEDED
    STARTED  SMALL$ SUM-LINE  s" 3,4" TEXT-LINE
    s" a small file: hello, loading, fetch fixture, the copy's checksum, then 3,4" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 \ A file of several pages, which reserve grows memory for. Byte i is the low byte
 \ of i + i/509 (509 is prime), so a page copied to the wrong place changes the sum.
@@ -154,12 +153,12 @@ DYNAMIC-BUFFER PAYLOAD u8
    PAGE-BYTES 8 * 13 + {: u:n :}
    u PAYLOAD-RESERVE
    u 0 ?do  i  i 509 / +  $FF and  i PAYLOAD c!  loop
-   0 PAYLOAD u s" large.bin" FILE!
+   0 PAYLOAD u >str s" large.bin" FILE!
    HOST-OPEN  200 s" large.bin" ANSWER+  s" --pointer" 0 0 1 AT+  s" --pointer" 1279 719 1 AT+
    HOST SUCCEEDED
-   STARTED  0 PAYLOAD u SUM-LINE  s" 0,0" TEXT-LINE  s" 1279,719" TEXT-LINE
+   STARTED  0 PAYLOAD u >str SUM-LINE  s" 0,0" TEXT-LINE  s" 1279,719" TEXT-LINE
    s" a file of several pages: its reserve grows memory and the module reads the copy" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : HELD-CASE ( -- )
    HOST-OPEN  200 s" small.bin" ANSWER+  s" 12" TYPED+
@@ -173,7 +172,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" 200" TEXT-LINE  LANDED$ TEXT-LINE  s" fetch fixture" LINE
    s" outstanding post ab" LINE  s" outstanding fetch fixture" LINE
    s" held: input runs while a post waits; its 200 then answers status, body and fetch" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : COPIED-CASE ( -- )
    HOST-OPEN  200 s" small.bin" ANSWER+  s" first" TYPED+  s" second!" TYPED+
@@ -185,7 +184,7 @@ DYNAMIC-BUFFER PAYLOAD u8
    s" 409" TEXT-LINE  DROPPED$ TEXT-LINE  s" first" POST-LINE
    s" outstanding post second!" LINE  s" outstanding post first" LINE
    s" copied: a waiting post's path and body survive a rewrite of their buffer and growth" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : CHAINED-CASE ( -- )
    HOST-OPEN  200 s" small.bin" ANSWER+  s" dé" TYPED+
@@ -197,12 +196,12 @@ DYNAMIC-BUFFER PAYLOAD u8
    SMALL$ SUM-LINE  s" dé" POST-LINE
    s" 422" TEXT-LINE  REFUSED$ TEXT-LINE
    s" chained: a post's answer fetches, and that fetch goes before the second post" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : TRAP$ ( -- str )
-   ERR ERR-U @ 10 STR:INDEX-OF MATCH option
-      none OF ERR 0 ENDOF
-      some OF IDX>N ERR swap ENDOF
+   ERR ERR-U @ >str 10 STR:INDEX-OF MATCH option
+      none OF ERR 0 >str ENDOF
+      some OF IDX>N ERR swap >str ENDOF
    ;MATCH ;
 
 : ENDED-LINE ( str -- )
@@ -214,13 +213,13 @@ DYNAMIC-BUFFER PAYLOAD u8
    HOST 1 T=
    STARTED
    s" trapped: after a trap the module prints nothing more" T-LABEL
-   OUT OUT-U @ SB$ T$=
-   TRAP$ {: t:^ u:n :}
+   OUT OUT-U @ >str SB$ T$=
+   TRAP$ {: t:str :}
    s" trapped: the host names the fault kind the module recorded" T-LABEL
-   t u s" fault kind 102 at " STR:STARTS-WITH? TTRUE
+   t s" fault kind 102 at " STR:STARTS-WITH? TTRUE
    s" trapped: the waiting fetch's answer, a pointer and typed text are refused" T-LABEL
-   SB-RESET  t u LINE  t u ENDED-LINE  t u ENDED-LINE  t u ENDED-LINE
-   ERR ERR-U @ SB$ T$= ;
+   SB-RESET  t LINE  t ENDED-LINE  t ENDED-LINE  t ENDED-LINE
+   ERR ERR-U @ >str SB$ T$= ;
 
 : FAILED-CASE ( -- )
    HOST-OPEN  404 s" small.bin" ANSWER+  s" x" TYPED+  s" --fail" ARG+
@@ -229,29 +228,31 @@ DYNAMIC-BUFFER PAYLOAD u8
    HOST 1 T=
    STARTED  s" x" TEXT-LINE  s" x" POST-LINE  s" 1,2" TEXT-LINE
    s" failed: a 404 fetch, a failed post and a post's long or negative path end their turns" T-LABEL
-   OUT OUT-U @ SB$ T$=
+   OUT OUT-U @ >str SB$ T$=
    s" failed: each failure is printed, a failure with no request waiting too" T-LABEL
    SB-RESET  s" fixture: 404" LINE  s" x: failed" LINE
    s" a post's path of 28 bytes in its span of 27" LINE
    s" a post's path of -1 bytes in its span of 24" LINE
    s" --fail: no request is outstanding" LINE
-   ERR ERR-U @ SB$ T$= ;
+   ERR ERR-U @ >str SB$ T$= ;
 
 \ A hello one revision past the fixtures' ends the module before any other
 \ event, the host naming both revisions.
 : STALE-CASE ( -- )
    s" test/browser/stale.f builds into a module" T-LABEL
-   s" test/browser/stale.f" STALE-MOD STALE-MOD-U @ WASM-HARNESS:BUILD 0 T=
+   s" test/browser/stale.f" str> STALE-MOD STALE-MOD-U @
+   WASM-HARNESS:BUILD 0 T=
    s" stale: a hello of another revision ends the module, exit status 1" T-LABEL
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+  STALE-MOD STALE-MOD-U @ ARG+
+   s" src/lib/browser/host-cli.mjs" ARG+
+   STALE-MOD STALE-MOD-U @ >str ARG+
    HOST 1 T=
    s" stale: the host names the module's revision and its own" T-LABEL
    SB-RESET  s" the module follows turn protocol " SB-APPEND
    TURN-REVISION:PROTOCOL 1+ FMT:SB-INT
    s"  and this host turn protocol " SB-APPEND  TURN-REVISION:PROTOCOL FMT:SB-INT
    10 SB-APPEND-C
-   ERR ERR-U @ SB$ T$= ;
+   ERR ERR-U @ >str SB$ T$= ;
 
 public
 

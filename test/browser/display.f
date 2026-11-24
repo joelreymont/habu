@@ -1,4 +1,3 @@
-split-str
 \ display.f - checked Wasm peer for SVG images and typed-input control. It
 \ echoes a load, focus or highlight event as a text record: the kind's name,
 \ a space and the event's bytes in lowercase hex. Typed "fetch" fetches the
@@ -121,22 +120,22 @@ TYPED-VARIABLE SHOWN held
       drawn OF RENDER ENDOF
    ;MATCH ;
 
-: SVG ( ^u8 n -- )
-   {: a:^ u:n :}
-   8 a BYTES>N u 0 RECORD
+: SVG ( str -- )
+   {: s:str :}
+   8 s STR:DATA BYTES>N s STR:LEN 0 RECORD
    HELD-NONE SHOWN ! ;
 
 : IMAGE+ ( str -- )
-   {: a:^ u:n :}
-   a IMAGE IMAGE-U @ + u BYTE-COPY
-   u IMAGE-U +! ;
+   {: s:str :}
+   s STR:DATA IMAGE IMAGE-U @ + s STR:LEN BYTE-COPY
+   s STR:LEN IMAGE-U +! ;
 
 : RED ( -- )
    0 IMAGE-U !
    s" <svg xmlns='http://www.w3.org/2000/svg' width='400' height='100' viewBox='0 0 400 100' onload='parent.svgScript=1'>" IMAGE+
    s" <script>parent.svgScript=2</script><a href='/svg-link'><rect width='400' height='100' fill='#d62828'/></a>" IMAGE+
    s" <image href='/svg-external' width='10' height='10'/></svg>" IMAGE+
-   IMAGE IMAGE-U @ SVG ;
+   IMAGE IMAGE-U @ >str SVG ;
 
 : BLUE ( -- )
    s\" <svg xmlns='http://www.w3.org/2000/svg' width='100' height='400' viewBox='0 0 100 400'><rect width='100' height='400' fill='#245bd6'/></svg>" SVG ;
@@ -149,7 +148,7 @@ TYPED-VARIABLE SHOWN held
    {: bits:n dst:^ :}
    4 0 do bits i 8 * rshift $FF and dst i + c! loop ;
 
-: VERTEX ( str n n n -- )
+: VERTEX ( ^u8 n n n n -- )
    \ Vertex k of the mesh at m, at x, y and z 0 on the grid, of a face.
    {: m:^ k:n x:n y:n face:n :}
    m 20 + k 12 * + {: at:^ :}
@@ -164,7 +163,7 @@ TYPED-VARIABLE SHOWN held
    m 3 1 0 1 VERTEX  m 4 1 1 1 VERTEX  m 5 0 1 1 VERTEX
    6 0 do i m 92 + i 2 * + U16! loop ;
 
-: TRIANGLE ( str n -- )
+: TRIANGLE ( ^u8 n n -- )
    \ The unit square's lower-left half as face 34, whose highlight bit is bit
    \ 2 of the second word; the indices end at byte 62.
    {: m:^ ox:n oy:n :}
@@ -178,14 +177,14 @@ TYPED-VARIABLE SHOWN held
    {: m:^ x:n y:n z:n :}
    x m 8 + U32!  y m 12 + U32!  z m 16 + U32! ;
 
-: CORNER ( str n n n -- )
+: CORNER ( ^u8 n n n n -- )
    \ Vertex k of the mesh at m at x, y and z on its grid, of face 0, its
    \ normal +z, octahedral 0, 0.
    {: m:^ k:n x:n y:n z:n :}
    m 20 + k 12 * + {: at:^ :}
    x at U16!  y at 2 + U16!  z at 4 + U16! ;
 
-: QUAD ( str n n n n -- )
+: QUAD ( ^u8 n n n n n -- )
    \ The mesh at m, the rectangle x0..x1 by y0..y1 at z on its grid: vertices
    \ 0 to 3 counterclockwise from x0, y0 and triangles 0 1 2 and 0 2 3, so
    \ each side is a whole triangle edge; the indices end at byte 80.
@@ -322,13 +321,13 @@ TYPED-VARIABLE SHOWN held
    s\" [{\"key\":1,\"parent\":0,\"label\":\"Van\"}," SB-APPEND
    s\" {\"key\":2,\"parent\":1,\"label\":\"Shelf\"" SB-APPEND ;
 
-: TREE ( ^u8 n -- )
+: TREE ( str -- )
    \ The rows closed by the string, sent with no selection.
-   SB-APPEND SB$ {: t:^ tu:n :} 5 t BYTES>N tu 0 RECORD ;
+   SB-APPEND SB$ {: t:str :} 5 t STR:DATA BYTES>N t STR:LEN 0 RECORD ;
 
 : OPENED ( -- )
    \ Shelf's child Bracket arrives with Bracket's child Bolt.
-   s" opened" {: a:^ u:n :} 3 a BYTES>N u 0 RECORD
+   s" opened" {: s:str :} 3 s STR:DATA BYTES>N s STR:LEN 0 RECORD
    ROWS s\" },{\"key\":3,\"parent\":2,\"label\":\"Bracket\"}," SB-APPEND
    s\" {\"key\":4,\"parent\":3,\"label\":\"Bolt\"}]" TREE ;
 
@@ -399,16 +398,16 @@ TYPED-VARIABLE SHOWN held
    \ Byte k of the event's bytes.
    1 EVENT@ + >BYTES c@ ;
 
-: NAMED ( ^u8 n -- )
-   {: a:^ u:n :}
-   a ECHO-BUF u BYTE-COPY u ECHO-U ! ;
+: NAMED ( str -- )
+   {: s:str :}
+   s STR:DATA ECHO-BUF s STR:LEN BYTE-COPY s STR:LEN ECHO-U ! ;
 
 \ The name and the event's bytes in ECHO-BUF; refuses an echo past the
 \ buffer.
 : ECHOED ( str -- )
-   {: a:^ u:n :}
-   u 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
-   a u NAMED
+   {: s:str :}
+   s STR:LEN 2 EVENT@ dup + + ECHO-CAP > if -1 throw then
+   s NAMED
    2 EVENT@ 0 ?do i BYTE@ BYTE, loop ;
 
 : ECHO-RECORD ( -- )
@@ -480,16 +479,16 @@ TYPED-VARIABLE SHOWN held
    VOLUME-TEXT ;
 
 : IS? ( str -- bool )
-   {: a:^ u:n :}
-   2 EVENT@ u <> if false exit then
-   u 0 ?do 1 EVENT@ i + >BYTES c@ a i + c@ <> if false unloop exit then loop
+   {: s:str :}
+   2 EVENT@ s STR:LEN <> if false exit then
+   s STR:LEN 0 ?do 1 EVENT@ i + >BYTES c@ s STR:DATA i + c@ <> if false unloop exit then loop
    true ;
 
 : WARNED ( -- )
    2 s" warned" write drop ;
 
 : DIE-255 ( -- )
-   255 MALFORMED c!  2 MALFORMED 1 write drop
+   255 MALFORMED c!  2 MALFORMED 1 >str write drop
    s" boom" 1 die ;
 
 : COMMAND ( -- )
@@ -512,14 +511,21 @@ TYPED-VARIABLE SHOWN held
    s" broken" IS? if s" <svg>" SVG exit then
    s" on" IS? if 9 1 0 0 RECORD exit then
    s" off" IS? if 9 0 0 0 RECORD exit then
-   s" text" IS? if s" still here" {: a:^ u:n :} 3 a BYTES>N u 0 RECORD exit then
+   s" text" IS? if
+      s" still here" {: s:str :}
+      3 s STR:DATA BYTES>N s STR:LEN 0 RECORD exit
+   then
    s" warn" IS? if WARNED exit then
    s" warn-throw" IS? if WARNED 93 throw then
    s" die" IS? if WARNED s" " 1 die then
    s" die-255" IS? if DIE-255 then
-   s" tree" IS? if s" []" {: a:^ u:n :} 5 a BYTES>N u 0 RECORD exit then
+   s" tree" IS? if
+      s" []" {: s:str :} 5 s STR:DATA BYTES>N s STR:LEN 0 RECORD exit
+   then
    s" more" IS? if ROWS s\" ,\"more\":true}]" TREE exit then
-   s" fetch" IS? if s" slow" {: a:^ u:n :} 1 a BYTES>N u 0 RECORD exit then
+   s" fetch" IS? if
+      s" slow" {: s:str :} 1 s STR:DATA BYTES>N s STR:LEN 0 RECORD exit
+   then
    s" empty" IS? if 8 0 0 0 RECORD exit then
    s" negative" IS? if 8 0 -1 0 RECORD exit then
    s" outside" IS? if 8 -1 1 0 RECORD exit then
@@ -541,7 +547,7 @@ TYPED-VARIABLE SHOWN held
    s" ground-far" IS? if 0 0 1 $3F800000 PLANE! 40 0 GROUND exit then
    s" ground-box" IS? if UP UPSIDE exit then ;
 
-: ECHO ( ^u8 n -- )
+: ECHO ( str -- )
    ECHOED ECHO-RECORD ;
 
 : ONES ( -- n )

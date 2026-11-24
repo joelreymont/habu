@@ -1,4 +1,3 @@
-split-str
 \ build-items.f - a definer builds words of keyword, type, operand and call
 \ items: a match over a family of its own answers as the same text does, an if
 \ and a begin loop, a construct, a call of a word found where the definer runs,
@@ -77,11 +76,11 @@ ENUM bfam ba bb ;ENUM
 : BFAM-ITEM ( -- ) s" bfam" BFAM EFFECT:TYPE-ITEM ;
 
 \ : NAME ( bfam -- n ) match bfam ba of 1 endof X of 2 endof ;match ;
-: MAKE-MATCH ( str str -- ) {: xa:^ xu:n :}
+: MAKE-MATCH ( str str -- ) {: x:str :}
    EFFECT:EMPTY BFAM EFFECT:IN EFFECT:N EFFECT:OUT define-word
    s" match" KW  BFAM-ITEM
    s" ba" OPND  s" of" KW  1 literal  s" endof" KW
-   xa xu OPND  s" of" KW  2 literal  s" endof" KW
+   x OPND  s" of" KW  2 literal  s" endof" KW
    s" ;match" KW
    postpone ; ;
 
@@ -102,9 +101,9 @@ ENUM bfam ba bb ;ENUM
    postpone ; ;
 
 \ : NAME ( -- n ) X ;
-: MAKE-CALL ( str str -- ) {: xa:^ xu:n :}
+: MAKE-CALL ( str str -- ) {: x:str :}
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
-   xa xu EFFECT:CALL
+   x EFFECT:CALL
    postpone ; ;
 
 : BI-TEXT ( bfam -- n ) match bfam ba of 1 endof bb of 2 endof ;match ;
@@ -236,8 +235,8 @@ BI-BAD-UNREAD 6 T=
 
 : KEEP-BUILT ( -- n ) [: s" BI-KEEP" MAKE-KEEP ;] catch ;
 KEEP-BUILT 0 T=
-s" Q" drop NULLABLE:SOME NONES BI-KEEP NUL-BYTE 81 T=
-s" Q" drop NULLABLE:SOME NONES BI-KEEP-TEXT NUL-BYTE 81 T=
+s" Q" STR:DATA NULLABLE:SOME NONES BI-KEEP NUL-BYTE 81 T=
+s" Q" STR:DATA NULLABLE:SOME NONES BI-KEEP-TEXT NUL-BYTE 81 T=
 
 \ : NAME ( bfam -- n ) {: x:bfam :} x 1 + ;
 : MAKE-WRONG ( str -- )
@@ -318,9 +317,9 @@ s" = word: [ n -- option<a> ]" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 8192 BUFFER: BUILT-DIAG
 variable BUILT-DIAG-U
 : KEEP-DIAG ( -- )
-   DECL-DIAG:TEXT$ {: a:^ u:n :}
-   a BUILT-DIAG u BYTE-COPY  u BUILT-DIAG-U ! ;
-: BUILT-DIAG$ ( -- str ) BUILT-DIAG BUILT-DIAG-U @ ;
+   DECL-DIAG:TEXT$ {: t:str :}
+   t STR:DATA BUILT-DIAG t STR:LEN BYTE-COPY  t STR:LEN BUILT-DIAG-U ! ;
+: BUILT-DIAG$ ( -- str ) BUILT-DIAG BUILT-DIAG-U @ >str ;
 
 \ : NAME ( -- ) C2-MEM:WITH-FIELD inner ; with no view to lend a field of.
 : MAKE-LOAN ( str -- )
@@ -333,16 +332,16 @@ variable BUILT-DIAG-U
    [: s" : BI-LOAN ( -- ) C2-MEM:WITH-FIELD inner ;" evaluate-closed ;] catch ;
 \ A record's first line, and its notes from `= declared:` on: the twins' places
 \ differ, the built one's at the definer's call.
-: CUT ( ^u8 n ^u8 n -- n ) {: a:^ u:n ka:^ ku:n :}
-   a u ka ku STR:FIND-SUB MATCH option
-      none OF u ENDOF
+: CUT ( str str -- n ) {: s:str k:str :}
+   s k STR:FIND-SUB MATCH option
+      none OF s STR:LEN ENDOF
       some OF IDX>N ENDOF
    ;MATCH ;
-: HEAD$ ( str -- str ) {: a:^ u:n :}
-   a  a u S\" \n" CUT ;
-: NOTES$ ( str -- str ) {: a:^ u:n :}
-   a u s" = declared:" CUT {: k:n :}
-   a k +  u k - ;
+: HEAD$ ( str -- str ) {: s:str :}
+   s STR:DATA  s S\" \n" CUT >str ;
+: NOTES$ ( str -- str ) {: s:str :}
+   s s" = declared:" CUT {: k:n :}
+   s STR:DATA k +  s STR:LEN k - >str ;
 DECL-DIAG:PROSE  LOAN-BUILT 70 T=  KEEP-DIAG
 DECL-DIAG:PROSE  LOAN-TEXT 70 T=
 BUILT-DIAG$ HEAD$  DECL-DIAG:TEXT$ HEAD$ T$=
@@ -389,9 +388,9 @@ s" bad match: unknown variant" DECL-DIAG:HAS? TTRUE  DECL-DIAG:OFF
 
 \ : NAME ( -- n ) 5 S ; with S an item spelled by the string: an item's
 \ spelling is one token, else it is rejected as define-word's name is, 70.
-: MAKE-SPELLED ( str str -- ) {: sa:^ su:n :}
+: MAKE-SPELLED ( str str -- ) {: s:str :}
    EFFECT:EMPTY EFFECT:N EFFECT:OUT define-word
-   5 literal  sa su KW
+   5 literal  s KW
    postpone ; ;
 : EMPTY-ITEM ( -- n ) [: s" BI-EMPTY-ITEM" s" " MAKE-SPELLED ;] catch ;
 : BLANK-ITEM ( -- n )
@@ -507,32 +506,32 @@ DECL-DIAG:PROSE  FORGED-VAR 70 T=  NOT-TYPE
 DECL-DIAG:PROSE  FORGED-ITEM 70 T=  NOT-TYPE  DECL-DIAG:OFF
 
 300 constant LONG-N
-s" [ -- ]" nip LONG-N 2 * + constant LONG-TYPE-CAP
-s" : BI-LONG-OK ( -- ) [: ;] BI-LONG drop ;" nip LONG-N 5 * +
+s" [ -- ]" STR:LEN LONG-N 2 * + constant LONG-TYPE-CAP
+s" : BI-LONG-OK ( -- ) [: ;] BI-LONG drop ;" STR:LEN LONG-N 5 * +
 constant LONG-CALL-CAP
 LONG-TYPE-CAP BUFFER: LONG-TYPE
 LONG-CALL-CAP BUFFER: LONG-CALL
 variable LONG-U
-: LONG+ ( ^u8 str -- ) {: dst:^ a:^ u:n :}
-   a dst LONG-U @ + u BYTE-COPY  LONG-U @ u + LONG-U ! ;
+: LONG+ ( ^u8 str -- ) {: dst:^ s:str :}
+   s STR:DATA dst LONG-U @ + s STR:LEN BYTE-COPY  LONG-U @ s STR:LEN + LONG-U ! ;
 \ [ n n … -- ] of LONG-N cells
 : LONG-TYPE$ ( -- str )
    0 LONG-U !  LONG-TYPE s" [ " LONG+
    LONG-N 0 ?do LONG-TYPE s" n " LONG+ loop
-   LONG-TYPE s" -- ]" LONG+  LONG-TYPE LONG-U @ ;
+   LONG-TYPE s" -- ]" LONG+  LONG-TYPE LONG-U @ >str ;
 \ : NAME ( -- ) [: drop drop … ;] BI-LONG drop ; of k drops
-: LONG-CALL$ ( str n -- str ) {: na:^ nu:n k:n :}
-   0 LONG-U !  LONG-CALL s" : " LONG+  LONG-CALL na nu LONG+
+: LONG-CALL$ ( str n -- str ) {: ns:str k:n :}
+   0 LONG-U !  LONG-CALL s" : " LONG+  LONG-CALL ns LONG+
    LONG-CALL s"  ( -- ) [: " LONG+
    k 0 ?do LONG-CALL s" drop " LONG+ loop
-   LONG-CALL s" ;] BI-LONG drop ;" LONG+  LONG-CALL LONG-U @ ;
+   LONG-CALL s" ;] BI-LONG drop ;" LONG+  LONG-CALL LONG-U @ >str ;
 LONG-TYPE-CAP 64 + BUFFER: LONG-HEAD
 \ The rejection's head: BI-LONG takes the LONG-N cells and gets a quotation.
 : LONG-HEAD$ ( -- str )
-   LONG-TYPE$ {: ta:^ tu:n :}
+   LONG-TYPE$ {: t:str :}
    0 LONG-U !  LONG-HEAD s" error[E-MISMATCH]: `BI-LONG` takes " LONG+
-   LONG-HEAD ta tu LONG+  LONG-HEAD s" ; the stack holds [ a b " LONG+
-   LONG-HEAD LONG-U @ ;
+   LONG-HEAD t LONG+  LONG-HEAD s" ; the stack holds [ a b " LONG+
+   LONG-HEAD LONG-U @ >str ;
 
 s" BI-LONG" LONG-TYPE$ EFFECT:READ-TYPE MAKE-ID
 s" BI-LONG-OK" LONG-N LONG-CALL$ TEST-EVAL:RC 0 T=
@@ -565,48 +564,48 @@ public
 : LNEG-GO ( -- ) s" BI-LNEG" MAKE-LNEG ;
 \ A read of local -1 names no bind: unbound, never an ended block.
 : LNEG-CHILD ( -- )
-   s" BITEM:LNEG-GO" 70 SUBJECT:REJECTED {: e:^ eu:n exited:bool :}
+   s" BITEM:LNEG-GO" 70 SUBJECT:REJECTED {: e:str exited:bool :}
    exited TTRUE
-   e eu s" reads built local -1, which no `{:` group bound before it"
+   e s" reads built local -1, which no `{:` group bound before it"
    STR:CONTAINS? TTRUE
-   e eu s" block has ended" STR:CONTAINS? TFALSE ;
+   e s" block has ended" STR:CONTAINS? TFALSE ;
 
 \ A built body's rejection names the line of the definer's call, and a built
 \ local by its declared type, not a listing index.
 : PLACED-CHILD ( -- )
    s" include test/fixtures/build-items/placed.f" 70 SUBJECT:REJECTED
-   {: e:^ eu:n exited:bool :}
+   {: e:str exited:bool :}
    exited TTRUE
-   e eu s" placed.f:19" STR:CONTAINS? TTRUE
-   e eu s" `n` reads built local 0" STR:CONTAINS? TTRUE ;
+   e s" placed.f:19" STR:CONTAINS? TTRUE
+   e s" `n` reads built local 0" STR:CONTAINS? TTRUE ;
 
 \ A read pinned after an earlier failure is placed at the definer's call.
 : UNBOUND-CHILD ( -- )
    s" include test/fixtures/build-items/unbound.f" 70 SUBJECT:REJECTED
-   {: e:^ eu:n exited:bool :}
+   {: e:str exited:bool :}
    exited TTRUE
-   e eu s" error[E-UNDEFINED]: reads built local 9, which no `{:` group bound before it"
+   e s" error[E-UNDEFINED]: reads built local 9, which no `{:` group bound before it"
    STR:CONTAINS? TTRUE
-   e eu s\" 14 | s\" BI-UNBOUND\" MAKE-UNBOUND" STR:CONTAINS? TTRUE
-   e eu s" unbound.f:14:16" STR:CONTAINS? TTRUE ;
+   e s\" 14 | s\" BI-UNBOUND\" MAKE-UNBOUND" STR:CONTAINS? TTRUE
+   e s" unbound.f:14:16" STR:CONTAINS? TTRUE ;
 
 \ A call an evaluated string appends is placed in no line of the file whose
 \ text opened the definition: the string's offsets are not the file's.
 : EVALUATED-CHILD ( -- )
    s" include test/fixtures/build-items/evaluated.f" 70 SUBJECT:REJECTED
-   {: e:^ eu:n exited:bool :}
+   {: e:str exited:bool :}
    exited TTRUE
-   e eu s" input underflow" STR:CONTAINS? TTRUE
-   e eu S\" evaluated.f:1\n" STR:CONTAINS? TFALSE ;
+   e s" input underflow" STR:CONTAINS? TTRUE
+   e S\" evaluated.f:1\n" STR:CONTAINS? TFALSE ;
 
 \ A read no group bound, in a body text finishes, names the local by its
 \ index, never by its listing token.
 : UNREAD-CHILD ( -- )
-   s" BITEM:UNREAD-GO 1 + ;" 70 SUBJECT:REJECTED {: e:^ eu:n exited:bool :}
+   s" BITEM:UNREAD-GO 1 + ;" 70 SUBJECT:REJECTED {: e:str exited:bool :}
    exited TTRUE
-   e eu s" reads built local 9, which no `{:` group bound before it"
+   e s" reads built local 9, which no `{:` group bound before it"
    STR:CONTAINS? TTRUE
-   e eu s" l9" STR:CONTAINS? TFALSE ;
+   e s" l9" STR:CONTAINS? TFALSE ;
 
 \ Two built locals of one type read in a body text finishes are two locals.
 s" SUB2-GO - ;" evaluate-closed  10 3 BI-SUB2 7 T=
@@ -617,7 +616,7 @@ private
 : JSON-ON ( -- )  REJECTION:CAPTURE  true REJECTION:JSON ! ;
 : JSON-OFF ( -- )  false REJECTION:JSON !  REJECTION:BUFFER-OFF ;
 : UNREAD-JSON ( -- n ) [: s" UNREAD-GO 1 + ;" evaluate-closed ;] catch ;
-: JSON-HAS ( str -- ) REJECTION:BUFFER$ 2swap STR:CONTAINS? TTRUE ;
+: JSON-HAS ( str -- ) REJECTION:BUFFER$ swap STR:CONTAINS? TTRUE ;
 JSON-ON  UNREAD-JSON 70 T=  JSON-OFF
 S\" \"code\":\"E-UNDEFINED\"" JSON-HAS
 S\" \"message\":\"reads built local 9, which no `{:` group bound before it" JSON-HAS
@@ -657,17 +656,17 @@ package BITEM-BUILD
 private
 PATH-CAP BUFFER: DIR  variable DIR-U
 PATH-CAP BUFFER: PATH
-: DIR$ ( -- str ) DIR DIR-U @ ;
+: DIR$ ( -- str ) DIR DIR-U @ >str ;
 \ NAME's path in DIR, in bytes the next call reuses.
-: IN$ ( str -- str ) DIR$ 2swap PATH FS:JOIN-PATH PATH swap ;
+: IN$ ( str -- str ) DIR$ swap PATH FS:JOIN-PATH PATH swap >str ;
 
 \ Builds SRC into DIR's PROG under DIR's OUT.
-: BUILD ( CMD:command ^u8 n ^u8 n ^u8 n -- CMD:command n )
-   {: src:^ srcu:n out:^ outu:n prog:^ progu:n :}
+: BUILD ( CMD:command str str str -- CMD:command n )
+   {: src:str out:str prog:str :}
    CMD:RESET
    s" --load" CMD:ARG+  s" tools/hb-build.f" CMD:ARG+  s" --" CMD:ARG+
-   src srcu CMD:ARG+  s" -o" CMD:ARG+  prog progu IN$ CMD:ARG+
-   s" HABU_OUT" out outu IN$ CMD:ENV+
+   src CMD:ARG+  s" -o" CMD:ARG+  prog IN$ CMD:ARG+
+   s" HABU_OUT" out IN$ CMD:ENV+
    ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N ;
 
@@ -689,19 +688,19 @@ PATH-CAP BUFFER: PATH
 
 \ Built program NAME's bytes, in storage its size makes.
 : PROG-READ ( str -- str )
-   IN$ {: p:^ pu:n :}
-   p pu FS:FILE-SIZE {: u:n :}
+   IN$ {: p:str :}
+   p FS:FILE-SIZE {: u:n :}
    u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: b:^ :}
-   p pu b u FS:READ-ALL u T=  b u ;
-: PROG-FREE ( str -- ) MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+   p b u FS:READ-ALL u T=  b u >str ;
+: PROG-FREE ( str -- ) str> MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 \ Built programs A and B are the same image.
 : SAME-PROGS ( str str -- )
-   {: x:^ xu:n y:^ yu:n :}
-   x xu PROG-READ {: a:^ au:n :}
-   y yu PROG-READ {: b:^ bu:n :}
-   a au b bu CODESIGN:SAME-IMAGE? TTRUE
-   a au PROG-FREE  b bu PROG-FREE ;
+   {: x:str y:str :}
+   x PROG-READ {: a:str :}
+   y PROG-READ {: b:str :}
+   a b CODESIGN:SAME-IMAGE? TTRUE
+   a PROG-FREE  b PROG-FREE ;
 
 : C2-BYTES ( CMD:command -- CMD:command )
    s" test/fixtures/build-items/c2-bytes.f" s" c2-bytes" s" c2-bytes-cold" BUILD 0 SHOW {: cold:n :}
@@ -714,8 +713,8 @@ PATH-CAP BUFFER: PATH
    CMD:OUT$ S\" bitem-c2-bytes: a\n" STR:= TTRUE
    rc 0 T= ;
 
-: CAP-BUILD ( CMD:command ^u8 n -- CMD:command bool ) {: prog:^ progu:n :}
-   s" test/fixtures/build-items/cap-grown.f" s" cap-grown" prog progu BUILD
+: CAP-BUILD ( CMD:command str -- CMD:command bool ) {: prog:str :}
+   s" test/fixtures/build-items/cap-grown.f" s" cap-grown" prog BUILD
    0 SHOW {: rc:n :}
    rc 0 T=  rc 0= ;
 
@@ -744,8 +743,8 @@ PATH-CAP BUFFER: PATH
 
 public
 : RUN ( -- )
-   s" habu-bitem-build" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
+   s" habu-bitem-build" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
    ['] CHECKS ['] REMOVE finally ;
 ;package
 

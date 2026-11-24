@@ -1,4 +1,3 @@
-split-str
 \ app.f - real Wasm fixture for the turn protocol's rpc, after and read records
 \ and its notified, tick, file and chunk events, built by `tools/hb-build.f --
 \ --target wasm`, whose entry is MAIN. Each event it reads answers a text record
@@ -51,9 +50,9 @@ variable FILE-SIZE
    n q 10 * - 48 + SAY-C ;
 
 
-: SAY ( ^u8 n -- )
-   {: a:^ u:n :}
-   u 0 ?do a i + c@ SAY-C loop ;
+: SAY ( str -- )
+   {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ SAY-C loop ;
 
 
 \ Delivered bytes are freed once the turn ends, so the text copies them.
@@ -72,8 +71,8 @@ variable FILE-SIZE
 
 
 : SPAN+ ( str -- )
-   {: a:^ u:n :}
-   u 0 ?do a i + c@ SPAN-C loop ;
+   {: s:str :}
+   s STR:LEN 0 ?do s STR:DATA i + c@ SPAN-C loop ;
 
 
 : SPAN-CELL ( n -- )
@@ -81,10 +80,10 @@ variable FILE-SIZE
 
 
 \ An rpc's span: the method's u64 length, the method, then the params.
-: MAKE ( ^u8 n ^u8 n -- )
-   {: m:^ mu:n p:^ pu:n :}
+: MAKE ( str str -- )
+   {: m:str p:str :}
    0 SPAN-U !
-   mu SPAN-CELL m mu SPAN+ p pu SPAN+ ;
+   m STR:LEN SPAN-CELL m SPAN+ p SPAN+ ;
 
 
 : CALL ( -- )
@@ -101,16 +100,16 @@ variable FILE-SIZE
 
 
 : IS? ( n n str -- bool )
-   {: at:n u:n t:^ tu:n :}
-   u tu <> if false exit then
-   tu 0 ?do at i + >BYTES c@ t i + c@ <> if false unloop exit then loop
+   {: at:n u:n t:str :}
+   u t STR:LEN <> if false exit then
+   t STR:LEN 0 ?do at i + >BYTES c@ t STR:DATA i + c@ <> if false unloop exit then loop
    true ;
 
 
 : SVG ( -- )
    s\" <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"8\"/>"
-   {: a:^ u:n :}
-   8 a BYTES>N u 0 RECORD ;
+   {: s:str :}
+   8 s STR:DATA BYTES>N s STR:LEN 0 RECORD ;
 
 
 \ A tree of rows 1 to 40 under the root, labelled by key, the last pressed.

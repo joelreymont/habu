@@ -1,4 +1,3 @@
-split-str
 \ navigation-test.f - Wasm end-to-end browser input, tree, highlight, pick and
 \ occlude records.
 \ The printed directory keeps the module and expected/actual CLI output.
@@ -32,16 +31,16 @@ PATH-CAP BUFFER: MOD
 variable MOD-U
 PATH-CAP BUFFER: FILE
 
-: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
+: ARG+ ( str -- ) PROC-ARGV+ ;
 
 : N-ARG+ ( n -- )
    SB-RESET FMT:SB-INT SB$ ARG+ ;
 
 : SETUP ( -- )
-   s" browser-navigation" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY u DIR-U !
-   s" browser navigation: module and CLI output in " type DIR u type cr
-   DIR u s" navigation.wasm" MOD FS:JOIN-PATH MOD-U ! ;
+   s" browser-navigation" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY d STR:LEN DIR-U !
+   s" browser navigation: module and CLI output in " type d type cr
+   d s" navigation.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : SPAWN ( str -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -50,24 +49,24 @@ PATH-CAP BUFFER: FILE
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : BUILD ( -- n )
-   s" test/browser/navigation.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/navigation.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+ ;
+   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ >str ARG+ ;
 
 : HOST ( -- n )
    s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u SPAWN ;
+   EXE u >str SPAWN ;
 
 : STEP+ ( str n n n n -- )
-   {: flag:^ u:n x:n y:n buttons:n mods:n :}
-   flag u ARG+ x N-ARG+ y N-ARG+ buttons N-ARG+ mods N-ARG+ ;
+   {: flag:str x:n y:n buttons:n mods:n :}
+   flag ARG+ x N-ARG+ y N-ARG+ buttons N-ARG+ mods N-ARG+ ;
 
 : TYPED+ ( str -- )
    s" --typed" ARG+ ARG+ ;
 
-: LINE ( ^u8 n -- )
+: LINE ( str -- )
    SB-APPEND 10 SB-APPEND-C ;
 
 : ROWS-WANT ( -- )
@@ -86,14 +85,14 @@ PATH-CAP BUFFER: FILE
    s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
       LINE ;
 
-: OUTPUT! ( ^u8 n -- )
-   {: a:^ n:n :}
-   DIR DIR-U @ s" expected.txt" FILE FS:JOIN-PATH {: u:n :}
-   FILE u a n FS:WRITE-ALL ;
+: OUTPUT! ( str -- )
+   {: s:str :}
+   DIR DIR-U @ >str s" expected.txt" FILE FS:JOIN-PATH {: u:n :}
+   FILE u >str s FS:WRITE-ALL ;
 
 : ACTUAL! ( -- )
-   DIR DIR-U @ s" actual.txt" FILE FS:JOIN-PATH {: u:n :}
-   FILE u OUT OUT-U @ FS:WRITE-ALL ;
+   DIR DIR-U @ >str s" actual.txt" FILE FS:JOIN-PATH {: u:n :}
+   FILE u >str OUT OUT-U @ >str FS:WRITE-ALL ;
 
 : INPUT-CASE ( -- )
    HOST-OPEN
@@ -122,7 +121,7 @@ PATH-CAP BUFFER: FILE
    SB$ OUTPUT!
    ACTUAL!
    s" input fields, tree opening and selection round-trip through Wasm" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : ZERO-CASE ( -- )
    HOST-OPEN s" zero" TYPED+
@@ -131,7 +130,7 @@ PATH-CAP BUFFER: FILE
    s" draw 0" LINE
    s" highlight 0" LINE
    s" zero instances clear safely" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : REMESH-CASE ( -- )
    HOST-OPEN s" remesh" TYPED+
@@ -143,7 +142,7 @@ PATH-CAP BUFFER: FILE
    s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
       LINE
    s" a mesh no row draws unmeshes and meshes again by its handle" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : REDRAW-CASE ( -- )
    HOST-OPEN s" redraw" TYPED+
@@ -152,7 +151,7 @@ PATH-CAP BUFFER: FILE
    s" draw 2 7/10/0/0/ff7314/0/32768 7/11/1/-/2060c0/65535/0"
       LINE
    s" a redraw draws the held mesh with the held highlight" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : PICK-CASE ( -- )
    \ 0.5's f32 bits are 1056964608.
@@ -165,7 +164,7 @@ PATH-CAP BUFFER: FILE
    s" pick 5 6 9" LINE
    s" outstanding pick 9" LINE
    s" a pick's answer reaches the module as a picked event, and a pick no step answers is outstanding" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : OCCLUDE-CASE ( -- )
    HOST-OPEN s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+
@@ -176,7 +175,7 @@ PATH-CAP BUFFER: FILE
       LINE
    s" text occluded 0100 0,9 640,480" LINE
    s" an occlude's answer reaches the module as event 19" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
 : UNANSWERED-CASE ( -- )
    HOST-OPEN s" occlude" TYPED+
@@ -187,14 +186,14 @@ PATH-CAP BUFFER: FILE
       LINE
    s" outstanding occlude 9" LINE
    s" an occlude no step answers is outstanding at the end" T-LABEL
-   OUT OUT-U @ SB$ T$= ;
+   OUT OUT-U @ >str SB$ T$= ;
 
-: REJECT ( ^u8 n ^u8 n -- )
-   {: command:^ cu:n why:^ wu:n :}
-   HOST-OPEN command cu TYPED+
+: REJECT ( str str -- )
+   {: command:str why:str :}
+   HOST-OPEN command TYPED+
    HOST 1 T=
    s" malformed browser record is rejected" T-LABEL
-   ERR ERR-U @ why wu STR:CONTAINS? TTRUE ;
+   ERR ERR-U @ >str why STR:CONTAINS? TTRUE ;
 
 : INVALID-CASES ( -- )
    s" json" s" tree JSON" REJECT
@@ -224,12 +223,12 @@ PATH-CAP BUFFER: FILE
    s" id" s" an occlude needs a positive id, got 0" REJECT ;
 
 : FREED-CASES ( -- )
-   s" four typed turns end with the memory one does"
+   s" four typed turns end with the memory one does" str>
       MOD MOD-U @ [: s" redraw" TYPED+ ;] BROWSER-MEMORY-TEST:FREED
-   s" four key turns end with the memory one does"
+   s" four key turns end with the memory one does" str>
       MOD MOD-U @ [: s" --key" ARG+ s" Escape" ARG+ 8 N-ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
-   s" four occluded turns end with the memory one does"
+   s" four occluded turns end with the memory one does" str>
       MOD MOD-U @
       [: s" occlude" TYPED+ s" --occluded" ARG+ s" 0100" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED ;
@@ -241,7 +240,7 @@ public
    s" browser navigation module builds" T-LABEL
    BUILD {: rc:n :}
    rc 0 T=
-   rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
+   rc 0<> if ERR ERR-U @ >str type cr T-REPORT exit then
    s" browser navigation module validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    INPUT-CASE ZERO-CASE REDRAW-CASE REMESH-CASE PICK-CASE

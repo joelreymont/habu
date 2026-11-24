@@ -1,4 +1,3 @@
-split-str
 \ take-test.f - test/browser/take.f's module under bun: a delivery a turn takes
 \ with BROWSER-EVENT:TAKE (src/lib/browser/event.f) outlives the turn, and the
 \ module frees it in a later one. The module is built by tools/hb-build.f and
@@ -28,7 +27,7 @@ variable DIR-U
 PATH-CAP BUFFER: MOD
 variable MOD-U
 
-: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
+: ARG+ ( str -- ) PROC-ARGV+ ;
 
 : SPAWN ( str -- n )
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
@@ -37,22 +36,22 @@ variable MOD-U
    outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc ;
 
 : SETUP ( -- )
-   s" browser-take" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY u DIR-U !
-   s" browser take: module in " type DIR u type cr
-   DIR u s" take.wasm" MOD FS:JOIN-PATH MOD-U ! ;
+   s" browser-take" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY d STR:LEN DIR-U !
+   s" browser take: module in " type d type cr
+   d s" take.wasm" MOD FS:JOIN-PATH MOD-U ! ;
 
 : BUILD ( -- n )
-   s" test/browser/take.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/take.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 \ host-cli.mjs on the module with the typed texts, run by bun.
-: HOST ( ^u8 n ^u8 n -- n )
-   {: a:^ au:n b:^ bu:n :}
+: HOST ( str str -- n )
+   {: a:str b:str :}
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ ARG+
-   s" --typed" ARG+ a au ARG+  s" --typed" ARG+ b bu ARG+
+   s" src/lib/browser/host-cli.mjs" ARG+ MOD MOD-U @ >str ARG+
+   s" --typed" ARG+ a ARG+  s" --typed" ARG+ b ARG+
    s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u SPAWN ;
+   EXE u >str SPAWN ;
 
 \ taken: typed "take" answers the text in its taken pages after its run, with
 \ DELIVERY and the event's fields as they were before TAKE; the next typed turn,
@@ -60,9 +59,9 @@ variable MOD-U
 : TAKEN-CASE ( -- )
    s" take" s" next" HOST {: rc:n :}
    s" taken: the taken pages answer its text after the run and in the next turn" T-LABEL
-   OUT OUT-U @ S\" hello\ntext take\ntext held take\n" T$=
+   OUT OUT-U @ >str S\" hello\ntext take\ntext held take\n" T$=
    s" taken: DELIVERY and the event's fields read the same after TAKE" T-LABEL
-   ERR ERR-U @ s" " T$=
+   ERR ERR-U @ >str s" " T$=
    rc 0 T= ;
 
 \ thrown: typed "boom" takes its delivery and throws 93; the next turn still
@@ -70,8 +69,8 @@ variable MOD-U
 : THROWN-CASE ( -- )
    s" boom" s" next" HOST {: rc:n :}
    s" thrown: a turn that throws after TAKE leaves its delivery taken" T-LABEL
-   OUT OUT-U @ S\" hello\ntext held boom\n" T$=
-   ERR ERR-U @ S\" throw 93\n" T$=
+   OUT OUT-U @ >str S\" hello\ntext held boom\n" T$=
+   ERR ERR-U @ >str S\" throw 93\n" T$=
    rc 1 T= ;
 
 public
@@ -83,12 +82,12 @@ public
    s" browser take fixture builds" T-LABEL
    BUILD {: rc:n :}
    rc 0 T=
-   rc 0<> if ERR ERR-U @ type cr T-REPORT exit then
+   rc 0<> if ERR ERR-U @ >str type cr T-REPORT exit then
    s" browser take fixture validates" T-LABEL
    MOD MOD-U @ WASM-HARNESS:VALID? TTRUE
    TAKEN-CASE
    THROWN-CASE
-   s" four take-then-free cycles end with the memory one does"
+   s" four take-then-free cycles end with the memory one does" str>
       MOD MOD-U @ [: s" --typed" ARG+ s" take" ARG+ s" --typed" ARG+ s" next" ARG+ ;]
       BROWSER-MEMORY-TEST:FREED
    T-REPORT ;

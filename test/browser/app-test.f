@@ -1,4 +1,3 @@
-split-str
 \ app-test.f - the turn protocol's rpc, after and read records and its notified,
 \ tick, file and chunk events under bun: src/lib/browser/host-cli.mjs runs
 \ test/browser/app.f's module through src/lib/browser/turn.js.
@@ -63,27 +62,27 @@ variable BEFORE-U
 \ to the host as it is, with its space run, LF and CR.
 : TITLE$ ( -- str )  s\" Zürich  <part>\x0A& \"co\"\x0D" ;
 
-: OUT$ ( -- ^u8 n )  OUT OUT-U @ ;
-: ERR$ ( -- ^u8 n )  ERR ERR-U @ ;
+: OUT$ ( -- str )  OUT OUT-U @ >str ;
+: ERR$ ( -- str )  ERR ERR-U @ >str ;
 
-: FILE! ( ^u8 n ^u8 n -- )
-   {: a:^ u:n name:^ nu:n :}
-   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu a u FS:WRITE-ALL ;
+: FILE! ( str str -- )
+   {: s:str name:str :}
+   DIR DIR-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str s FS:WRITE-ALL ;
 
 
 : SUBDIR ( str ^u8 -- n )
-   {: name:^ nu:n dst:^ :}
-   DIR DIR-U @ name nu dst FS:JOIN-PATH {: u:n :}
-   dst u FS:MAKE-DIR
+   {: name:str dst:^ :}
+   DIR DIR-U @ >str name dst FS:JOIN-PATH {: u:n :}
+   dst u >str FS:MAKE-DIR
    u ;
 
 
 : SETUP ( -- )
-   s" browser-app" FS:MKTEMP-DIR {: a:^ u:n :}
-   a DIR u BYTE-COPY  u DIR-U !
-   s" browser app: module, answers and transcripts in " type  DIR u type cr
-   DIR u s" app.wasm" MOD FS:JOIN-PATH MOD-U !
+   s" browser-app" FS:MKTEMP-DIR {: d:str :}
+   d STR:DATA DIR d STR:LEN BYTE-COPY  d STR:LEN DIR-U !
+   s" browser app: module, answers and transcripts in " type  d type cr
+   d s" app.wasm" MOD FS:JOIN-PATH MOD-U !
    s" expected" WANT-DIR SUBDIR WANT-U !
    s" actual" GOT-DIR SUBDIR GOT-U !
    RESULT$ s" result.json" FILE!
@@ -92,12 +91,12 @@ variable BEFORE-U
    DATA$ s" data.bin" FILE! ;
 
 
-: ARG+ ( ^u8 n -- )  PROC-ARGV+ ;
+: ARG+ ( str -- )  PROC-ARGV+ ;
 
 : FILE-ARG+ ( str -- )
-   {: name:^ nu:n :}
-   DIR DIR-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu ARG+ ;
+   {: name:str :}
+   DIR DIR-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str ARG+ ;
 
 
 : SPAWN ( str -- n )
@@ -114,24 +113,24 @@ variable BEFORE-U
 
 
 : BUILD ( -- n )
-   s" test/browser/app.f" MOD MOD-U @ WASM-HARNESS:BUILD ;
+   s" test/browser/app.f" str> MOD MOD-U @ WASM-HARNESS:BUILD ;
 
 
 : HOST-OPEN ( -- )
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ ARG+ ;
+   s" src/lib/browser/host-cli.mjs" ARG+  MOD MOD-U @ >str ARG+ ;
 
 
 : HOST ( -- n )
    s" bun" EXE RESOLVE-EXECUTABLE {: u:n :}
-   EXE u SPAWN ;
+   EXE u >str SPAWN ;
 
 
 : TYPED+ ( str -- )  s" --typed" ARG+  ARG+ ;
 
 : ANSWER-RPC+ ( str str -- )
-   {: id:^ iu:n name:^ nu:n :}
-   s" --answer-rpc" ARG+  id iu ARG+  name nu FILE-ARG+ ;
+   {: id:str name:str :}
+   s" --answer-rpc" ARG+  id ARG+  name FILE-ARG+ ;
 
 
 : FAIL-RPC+ ( str -- )  s" --fail-rpc" ARG+  ARG+ ;
@@ -139,7 +138,7 @@ variable BEFORE-U
 : NOTIFY+ ( -- )  s" --notify" ARG+  METHOD$ ARG+  s" params.json" FILE-ARG+ ;
 : FILE+ ( -- )  s" --file" ARG+  NAME$ ARG+  s" data.bin" FILE-ARG+ ;
 
-: LINE ( ^u8 n -- )
+: LINE ( str -- )
    SB-APPEND  10 SB-APPEND-C ;
 
 
@@ -147,27 +146,27 @@ variable BEFORE-U
    SB-RESET  s" hello" LINE ;
 
 : CALL-LINE ( str -- )
-   {: id:^ iu:n :}
-   s" rpc tools/call " SB-APPEND  id iu SB-APPEND
+   {: id:str :}
+   s" rpc tools/call " SB-APPEND  id SB-APPEND
    s\"  {\"name\":\"get_project\"}" LINE ;
 
 
 : ANSWERED-LINE ( str str str -- )
-   {: c:^ cu:n id:^ iu:n body:^ bu:n :}
-   s" text answered " SB-APPEND  c cu SB-APPEND  32 SB-APPEND-C
-   id iu SB-APPEND  32 SB-APPEND-C  body bu LINE ;
+   {: c:str id:str body:str :}
+   s" text answered " SB-APPEND  c SB-APPEND  32 SB-APPEND-C
+   id SB-APPEND  32 SB-APPEND-C  body LINE ;
 
 
 : RESULT-BODY$ ( -- str )  s\" {\"content\":[]}" ;
 : ERROR-BODY$ ( -- str )  s\" {\"code\":-32601,\"message\":\"Method not found\"}" ;
 
-: SAME ( ^u8 n ^u8 n -- )
-   {: got:^ gu:n name:^ nu:n :}
-   WANT-DIR WANT-U @ name nu FILE FS:JOIN-PATH {: wu:n :}
-   FILE wu SB$ FS:WRITE-ALL
-   GOT-DIR GOT-U @ name nu FILE FS:JOIN-PATH {: fu:n :}
-   FILE fu got gu FS:WRITE-ALL
-   got gu SB$ T$= ;
+: SAME ( str str -- )
+   {: got:str name:str :}
+   WANT-DIR WANT-U @ >str name FILE FS:JOIN-PATH {: wu:n :}
+   FILE wu >str SB$ FS:WRITE-ALL
+   GOT-DIR GOT-U @ >str name FILE FS:JOIN-PATH {: fu:n :}
+   FILE fu >str got FS:WRITE-ALL
+   got SB$ T$= ;
 
 : RPC-CASE ( -- )
    HOST-OPEN
@@ -231,46 +230,46 @@ variable BEFORE-U
 
 \ Each answered, notified, file and chunk run frees its delivery.
 : FREED-CASE ( -- )
-   s" freed: four rounds of deliveries end with the memory one does"
+   s" freed: four rounds of deliveries end with the memory one does" str>
    MOD MOD-U @ [: s" rpc" TYPED+  s" 1" s" result.json" ANSWER-RPC+
       NOTIFY+  FILE+  s" read start" TYPED+ ;]
    BROWSER-MEMORY-TEST:FREED ;
 
 
-: MALFORMED ( ^u8 n ^u8 n -- )
-   {: cmd:^ cu:n what:^ wu:n :}
-   SB-RESET  s" refused " SB-APPEND  cmd cu SB-APPEND  s" : " SB-APPEND
-   what wu SB-APPEND  SB$ T-LABEL ;
+: MALFORMED ( str str -- )
+   {: cmd:str what:str :}
+   SB-RESET  s" refused " SB-APPEND  cmd SB-APPEND  s" : " SB-APPEND
+   what SB-APPEND  SB$ T-LABEL ;
 
 
 \ Typed text whose run leaves a malformed record, after the steps already
 \ staged: the turn fails, and the host prints only the lines given and no rpc,
 \ after or read.
-: REFUSED ( ^u8 n ^u8 n -- )
-   {: cmd:^ cu:n before:^ bu:n :}
-   cmd cu TYPED+
-   cmd cu s" the turn fails" MALFORMED
+: REFUSED ( str str -- )
+   {: cmd:str before:str :}
+   cmd TYPED+
+   cmd s" the turn fails" MALFORMED
    HOST 1 T=
-   cmd cu s" the record reaches no host" MALFORMED
-   OUT$ before bu T$= ;
+   cmd s" the record reaches no host" MALFORMED
+   OUT$ before T$= ;
 
 
-: REJECT ( ^u8 n ^u8 n -- )
-   {: cmd:^ cu:n why:^ wu:n :}
-   HOST-OPEN  cmd cu s\" hello\n" REFUSED
-   cmd cu s" the failure names the reason" MALFORMED
-   ERR$ why wu STR:CONTAINS? TTRUE ;
+: REJECT ( str str -- )
+   {: cmd:str why:str :}
+   HOST-OPEN  cmd s\" hello\n" REFUSED
+   cmd s" the failure names the reason" MALFORMED
+   ERR$ why STR:CONTAINS? TTRUE ;
 
 
 \ A read after the file event: its line is printed before the refusal.
 : REJECT-READ ( str str -- )
-   {: cmd:^ cu:n why:^ wu:n :}
+   {: cmd:str why:str :}
    HELLO  FILE-LINE
-   SB$ {: a:^ u:n :}
-   a BEFORE u BYTE-COPY  u BEFORE-U !
-   HOST-OPEN  FILE+  cmd cu BEFORE BEFORE-U @ REFUSED
-   cmd cu s" the failure names the reason" MALFORMED
-   ERR$ why wu STR:CONTAINS? TTRUE ;
+   SB$ {: s:str :}
+   s STR:DATA BEFORE s STR:LEN BYTE-COPY  s STR:LEN BEFORE-U !
+   HOST-OPEN  FILE+  cmd BEFORE BEFORE-U @ >str REFUSED
+   cmd s" the failure names the reason" MALFORMED
+   ERR$ why STR:CONTAINS? TTRUE ;
 
 
 : MALFORMED-CASES ( -- )
@@ -300,7 +299,8 @@ variable BEFORE-U
 \ Chrome's executable in CHROME, CHROME-U 0 when it is not installed.
 : FIND-CHROME ( -- )
    MAC-CHROME FS:EXISTS? if
-      MAC-CHROME {: a:^ u:n :} a CHROME u BYTE-COPY u CHROME-U ! exit
+      MAC-CHROME {: m:str :}
+      m STR:DATA CHROME m STR:LEN BYTE-COPY m STR:LEN CHROME-U ! exit
    then
    s" google-chrome" CHROME FIND-EXECUTABLE MATCH option
       none OF 0 ENDOF
@@ -310,16 +310,17 @@ variable BEFORE-U
 : BYTES ( -- ^VEC:vector<u8> )  HEAP:ALLOCATOR 0 [type] u8 VEC:NEW ;
 
 : PAGE! ( -- )
-   MOD MOD-U @ FS:FILE-SIZE {: wu:n :}
+   MOD MOD-U @ >str FS:FILE-SIZE {: wu:n :}
    BYTES WASM !  WASM @ wu VEC:ENSURE
-   WASM @ VEC:SPAN SPAN:$ {: w:^ cap:n :}
-   MOD MOD-U @ w cap FS:READ-ALL cap <> if E-FS-IO throw then
+   WASM @ VEC:SPAN SPAN:$ {: w:str :}
+   MOD MOD-U @ >str w STR:DATA w STR:LEN FS:READ-ALL
+   w STR:LEN <> if E-FS-IO throw then
    BYTES PAGE !
    TITLE$ PAGE @ MCP-APP:PAGE+
    PAGE @ VEC:SPAN SPAN:$ s" page.html" FILE!
    PAGE @ VEC:DELETE
    BYTES CODE !
-   w cap CODE @ MCP-APP:CODE+
+   w CODE @ MCP-APP:CODE+
    CODE @ VEC:SPAN SPAN:$ s" code.json" FILE!
    CODE @ VEC:DELETE  WASM @ VEC:DELETE ;
 
@@ -331,11 +332,12 @@ variable BEFORE-U
    FIND-CHROME CHROME-U @ 0= if
       s" --chrome: Chrome is installed" T-LABEL CHROME-U @ 0<> TTRUE exit
    then
-   s" browser app: Chrome " type CHROME CHROME-U @ type cr
+   s" browser app: Chrome " type CHROME CHROME-U @ >str type cr
    PAGE!
    PROC-ARGV-RESET
-   s" test/browser/app-peer.mjs" ARG+  s" page.html" FILE-ARG+  DIR DIR-U @ ARG+
-   TITLE$ ARG+  s" --chrome" ARG+  CHROME CHROME-U @ ARG+
+   s" test/browser/app-peer.mjs" ARG+  s" page.html" FILE-ARG+
+   DIR DIR-U @ >str ARG+
+   TITLE$ ARG+  s" --chrome" ARG+  CHROME CHROME-U @ >str ARG+
    s" --chrome: the composed page runs as an MCP App under ChatGPT's CSP" T-LABEL
    HOST {: rc:n :}
    OUT$ type  ERR$ type

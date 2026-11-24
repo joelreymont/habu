@@ -1,4 +1,3 @@
-split-str
 \ echo.f - ECHO, the browser host's fixture module (src/lib/browser/host.f),
 \ built by `tools/hb-build.f -- --target wasm`, whose entry is MAIN;
 \ test/browser/echo-test.f runs it under src/lib/browser/host-cli.mjs. Every
@@ -37,9 +36,9 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 : CHAR+ ( n -- )
    TEXT TEXT-U @ + c!  TEXT-U @ 1+ TEXT-U ! ;
 
-: SAY ( ^u8 n -- )
-   {: t:^ u:n :}
-   u 0 ?do  t i + c@ CHAR+  loop ;
+: SAY ( str -- )
+   {: t:str :}
+   t STR:LEN 0 ?do  t STR:DATA i + c@ CHAR+  loop ;
 
 \ The digits of n, which is not negative.
 : DIGITS ( n -- )
@@ -56,8 +55,8 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    3 TEXT BYTES>N TEXT-U @ 0 RECORD ;
 
 : FETCH-FIXTURE ( -- )
-   s" fixture" {: path:^ u:n :}
-   1 path BYTES>N u 0 RECORD ;
+   s" fixture" {: path:str :}
+   1 path STR:DATA BYTES>N path STR:LEN 0 RECORD ;
 
 \ The zero event: hello with the event's address and the fixtures' revision, a
 \ fetch of `fixture`, then "loading" in the buffer the bytes, answered and
@@ -79,15 +78,15 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
    1 EVENT@ 2 EVENT@ SUM DIGITS
    TEXT-RECORD ;
 
-: AT ( ^u8 n -- )
+: AT ( str -- )
    0 TEXT-U !  SAY  1 EVENT@ SIGNED  44 CHAR+  2 EVENT@ SIGNED
    TEXT-RECORD ;
 
 \ The u bytes at at are the text t.
 : IS? ( n n str -- bool )
-   {: at:n u:n t:^ tu:n :}
-   u tu <> if false exit then
-   tu 0 ?do  at i + >BYTES c@  t i + c@ <> if false unloop exit then  loop
+   {: at:n u:n t:str :}
+   u t STR:LEN <> if false exit then
+   t STR:LEN 0 ?do  at i + >BYTES c@  t STR:DATA i + c@ <> if false unloop exit then  loop
    true ;
 
 \ The u bytes at at appended to REQ.
@@ -119,10 +118,10 @@ DYNAMIC-BUFFER ANSWER u8              \ the last answer's body
 : ANSWERED ( -- )
    3 EVENT@ 200 = if FETCH-FIXTURE then
    0 TEXT-U !  3 EVENT@ DIGITS  TEXT-RECORD
-   DELIVERY {: at:^ u:n :}
-   u 1 max ANSWER-RESERVE
-   at 0 ANSWER u BYTE-COPY
-   3 0 ANSWER BYTES>N u 0 RECORD ;
+   DELIVERY {: d:str :}
+   d STR:LEN 1 max ANSWER-RESERVE
+   d STR:DATA 0 ANSWER d STR:LEN BYTE-COPY
+   3 0 ANSWER BYTES>N d STR:LEN 0 RECORD ;
 
 : DISPATCH ( -- )
    0 EVENT@ {: kind:n :}

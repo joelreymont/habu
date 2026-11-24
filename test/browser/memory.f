@@ -1,4 +1,3 @@
-split-str
 \ memory.f - BROWSER-MEMORY-TEST: the memory src/lib/browser/host-cli.mjs's
 \ --memory line reports, for the browser tests that check a module frees its
 \ deliveries. FREED runs a module once and four times with the same steps and
@@ -21,7 +20,7 @@ CAP BUFFER: OUT
 CAP BUFFER: ERR
 PATH-CAP BUFFER: EXE
 
-: ARG+ ( ^u8 n -- ) PROC-ARGV+ ;
+: ARG+ ( str -- ) PROC-ARGV+ ;
 
 public
 
@@ -29,11 +28,11 @@ public
 \ output's other lines; E-PROC-OUTPUT without one.
 : MEMORY ( ^u8 n -- n )
    {: out:^ u:n :}
-   out u s\" \nmemory " STR:FIND-SUB MATCH option
+   out u >str s\" \nmemory " STR:FIND-SUB MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF IDX>N ENDOF
    ;MATCH 8 + {: at:n :}
-   out at + u at - STR:TRIM STR:>NUMBER? MATCH option
+   out at + u at - >str STR:TRIM STR:>NUMBER? MATCH option
       none OF E-PROC-OUTPUT throw ENDOF
       some OF ENDOF
    ;MATCH ;
@@ -44,25 +43,25 @@ private
 \ count times; the run's exit is checked under the label, its stderr shown when
 \ it failed.
 : MEMORY-AFTER ( str str [ -- ] n -- n )
-   {: label:^ lu:n mod:^ mu:n steps count:n :}
+   {: label:str mod:str steps count:n :}
    PROC-ARGV-RESET
-   s" src/lib/browser/host-cli.mjs" ARG+ mod mu ARG+
+   s" src/lib/browser/host-cli.mjs" ARG+ mod ARG+
    count 0 ?do steps execute loop
    s" --memory" ARG+
    s" bun" EXE RESOLVE-EXECUTABLE {: eu:n :}
-   EXE eu OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
+   EXE eu >str OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
-   rc 0<> if ERR erru LEN>N type cr then
-   label lu T-LABEL rc 0 T=
+   rc 0<> if ERR erru LEN>N >str type cr then
+   label T-LABEL rc 0 T=
    OUT outu LEN>N MEMORY ;
 
 public
 
 : FREED ( ^u8 n ^u8 n [ -- ] -- )
    {: label:^ lu:n mod:^ mu:n steps :}
-   label lu mod mu steps 1 MEMORY-AFTER {: one:n :}
-   label lu mod mu steps 4 MEMORY-AFTER {: four:n :}
-   label lu T-LABEL four one T= ;
+   label lu >str mod mu >str steps 1 MEMORY-AFTER {: one:n :}
+   label lu >str mod mu >str steps 4 MEMORY-AFTER {: four:n :}
+   label lu >str T-LABEL four one T= ;
 
 ;package

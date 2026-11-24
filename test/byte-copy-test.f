@@ -1,4 +1,3 @@
-split-str
 require src/lib/test.f
 
 package BYTE-COPY-TEST
@@ -18,7 +17,7 @@ create EXPECT CAP allot
    INIT
    EXPECT source + EXPECT dest + count REFERENCE
    ACTUAL source + ACTUAL dest + count BYTE-COPY
-   ACTUAL CAP EXPECT CAP T$= ;
+   ACTUAL CAP >str EXPECT CAP >str T$= ;
 
 : SMALL ( -- )
    81 0 ?do i {: count :}
@@ -41,7 +40,8 @@ create BIG-DST LARGE 16 + allot
       i 251 mod BIG-SRC i + c! 253 BIG-DST i + c!
    loop
    BIG-SRC src-offset + BIG-DST dst-offset + LARGE BYTE-COPY
-   BIG-SRC src-offset + LARGE BIG-DST dst-offset + LARGE T$=
+   BIG-SRC src-offset + LARGE >str
+   BIG-DST dst-offset + LARGE >str T$=
    dst-offset 0 ?do BIG-DST i + c@ 253 T= loop
    LARGE 16 + LARGE dst-offset + ?do BIG-DST i + c@ 253 T= loop ;
 
